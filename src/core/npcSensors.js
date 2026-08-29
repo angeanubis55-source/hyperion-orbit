@@ -21,5 +21,5 @@ export function isNpcWithinSensor(player, npc, radius) {
 }
 
 export function shouldDetectNpc(player, npc, radius, lockedNpc = null) {
-  return npc === lockedNpc || isNpcWithinSensor(player, npc, radius);
+  return npc === lockedNpc || npc?._attackedPlayerRecently === true || isNpcWithinSensor(player, npc, radius);
 }

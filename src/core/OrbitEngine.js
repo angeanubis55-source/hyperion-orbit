@@ -4326,6 +4326,7 @@ function usePulse() {
     e.empT = Math.max(e.empT || 0, PULSE_DISABLE);
     e._aggro = false;
     e._aggroT = 0;
+    e._attackedPlayerRecently = false;
 
     touched++;
   }
@@ -6363,6 +6364,7 @@ function enemyShoot(e, dt) {
       miss: willMiss,
       hitRadiusBonus: NPC_SHOTS.hitRadiusBonus,
     });
+    e._attackedPlayerRecently = true;
   }
 }
 
@@ -7028,6 +7030,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             e._provoked = false;
             e._aggro = false;
             e._aggroT = 0;
+            e._attackedPlayerRecently = false;
             if (e.aiZ) e.aiZ.state = "wander";
           }
         }
@@ -7071,6 +7074,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
     if (emp) {
       e._aggro = false;
       e._aggroT = 0;
+      e._attackedPlayerRecently = false;
       if (e.aiZ) e.aiZ.state = "wander";
 
       tickEmpWander(e, dt);
@@ -7155,6 +7159,7 @@ e.vy += myv * spdE * 1.35 * dt;
         if (playerInSZ) {
           e._aggro = false;
           e._aggroT = 0;
+          e._attackedPlayerRecently = false;
 
           if (npcInSZ) {
             e.aiZ.state = "wander";
@@ -7189,7 +7194,10 @@ e.vy += myv * spdE * 1.35 * dt;
               e._aggroT = aggroHold;
             }
           }
-          if (e._aggro && e._aggroT <= 0) e._aggro = false;
+          if (e._aggro && e._aggroT <= 0) {
+            e._aggro = false;
+            e._attackedPlayerRecently = false;
+          }
         }
 
         let mxv = 0, myv = 0;

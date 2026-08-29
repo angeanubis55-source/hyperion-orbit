@@ -255,6 +255,14 @@ test("un NPC verrouillé reste détecté hors des rayons normaux", () => {
   assert.equal(shouldDetectNpc(player, npc, 1600, npc), true);
 });
 
+test("un NPC attaquant reste détecté jusqu’à son retour en roam", () => {
+  const player = { x: 0, y: 0 };
+  const npc = { x: 10000, y: 10000, hp: 1, _attackedPlayerRecently: true };
+  assert.equal(shouldDetectNpc(player, npc, 1600), true);
+  npc._attackedPlayerRecently = false;
+  assert.equal(shouldDetectNpc(player, npc, 1600), false);
+});
+
 test("les Galaxy Gates désactivent toutes les limites des capteurs NPC", () => {
   const ranges = getNpcSensorRanges({ mode: "gate" });
   const player = { x: 0, y: 0 };
