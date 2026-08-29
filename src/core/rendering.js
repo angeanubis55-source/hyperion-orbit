@@ -28,3 +28,12 @@ export function isWorldPointVisible(worldX, worldY, camera, viewportWidth, viewp
 export function hpHueColor(percent, alpha = 0.98) {
   return `hsla(${120 * clamp(percent, 0, 1)}, 95%, 55%, ${clamp(alpha, 0, 1)})`;
 }
+
+export function drawCenteredImage(context, image, width, height, smoothing = false) {
+  if (!context || !image || width <= 0 || height <= 0) return false;
+  context.save();
+  context.imageSmoothingEnabled = smoothing;
+  context.drawImage(image, -width / 2, -height / 2, width, height);
+  context.restore();
+  return true;
+}

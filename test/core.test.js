@@ -7,7 +7,7 @@ import { clamp, circleRectResolve, dist2, segCircleHit } from "../src/core/colli
 import { createKeyboardState, createPointerState } from "../src/core/input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "../src/core/combat.js";
 import { forEachNearbyPair, rebuildIdIndex } from "../src/core/spatialIndex.js";
-import { hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "../src/core/rendering.js";
+import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "../src/core/rendering.js";
 import { createNpcEntity } from "../src/core/npcFactory.js";
 import { addProjectile, advanceProjectile, createProjectile } from "../src/core/projectiles.js";
 import { createWaveSpawnState } from "../src/core/waves.js";
@@ -124,6 +124,17 @@ test("les transformations caméra écran sont réversibles", () => {
 test("la couleur de vie est bornée", () => {
   assert.equal(hpHueColor(-1, 2), "hsla(0, 95%, 55%, 1)");
   assert.equal(hpHueColor(1), "hsla(120, 95%, 55%, 0.98)");
+});
+
+test("un sprite Canvas est dessiné autour de son centre", () => {
+  const calls = [];
+  const context = {
+    save: () => calls.push("save"),
+    restore: () => calls.push("restore"),
+    drawImage: (...args) => calls.push(args),
+  };
+  assert.equal(drawCenteredImage(context, "image", 40, 20), true);
+  assert.deepEqual(calls[1], ["image", -20, -10, 40, 20]);
 });
 
 test("la fabrique NPC initialise les statistiques et clone les récompenses", () => {

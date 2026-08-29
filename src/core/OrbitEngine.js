@@ -15,7 +15,7 @@ import { clamp, circleRectResolve, dist2, segCircleHit } from "./collision.js";
 import { createKeyboardState, createPointerState } from "./input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "./combat.js";
 import { forEachNearbyPair, rebuildIdIndex } from "./spatialIndex.js";
-import { hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "./rendering.js";
+import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "./rendering.js";
 import { createNpcEntity } from "./npcFactory.js";
 import { addProjectile, advanceProjectile } from "./projectiles.js";
 import { createWaveSpawnState } from "./waves.js";
@@ -1977,7 +1977,7 @@ if (spinSpeed !== 0) {
 
   ctx.globalAlpha *= repairOrbitFx.alpha * Number(pack.alpha ?? 1);
 
-  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  drawCenteredImage(ctx, img, w, h);
 
   ctx.restore();
 }
@@ -3893,7 +3893,7 @@ function drawCollectables(ox, oy) {
       const h = Number(sp.h || img.naturalHeight || img.height || 64) * scale;
 
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  drawCenteredImage(ctx, img, w, h);
 
       if (sp.glow !== false) {
         ctx.globalAlpha = 0.22;
@@ -5561,7 +5561,7 @@ function drawPlayerBody() {
 
   const w = pack.w ?? 170;
   const h = pack.h ?? 170;
-  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  drawCenteredImage(ctx, img, w, h);
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
@@ -5617,7 +5617,7 @@ else {
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  drawCenteredImage(ctx, img, w, h);
   ctx.restore();
 }
 
