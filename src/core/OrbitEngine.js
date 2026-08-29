@@ -20,6 +20,7 @@ import { createNpcEntity } from "./npcFactory.js";
 import { addProjectile, advanceProjectile } from "./projectiles.js";
 import { createWaveSpawnState } from "./waves.js";
 import { updateProgressHud, updateResourceHud, updateWaveHud } from "./hud.js";
+import { createPerformanceMonitor } from "./performanceMonitor.js";
 
 export function startOrbitGame(config) {
 
@@ -7816,7 +7817,11 @@ updateConfigButtons();
   if (ui.miniMapName) ui.miniMapName.textContent = `Map : ${rules?.mapLabel || "—"}`;
   if (ui.miniPos) ui.miniPos.textContent = `Pos : ${Math.floor(player.x)} / ${Math.floor(player.y)}`;
 
-  if (ui.fpsTxt) ui.fpsTxt.textContent = String(fpsValue || 0);
+  if (ui.fpsTxt) {
+    const perf = performanceMonitor.snapshot();
+    ui.fpsTxt.textContent = String(fpsValue || perf.fps || 0);
+    ui.fpsTxt.title = `Moyenne: ${perf.averageMs.toFixed(1)} ms | P95: ${perf.p95Ms.toFixed(1)} ms | Frames >25ms: ${perf.longFrames}`;
+  }
 }
 
 // ============================================================
@@ -7874,10 +7879,12 @@ let last = performance.now();
 let fpsAcc = 0;
 let fpsFrames = 0;
 let fpsValue = 0;
+const performanceMonitor = createPerformanceMonitor();
 
 function frame(t) {
   const dt = Math.min(0.033, (t - last) / 1000);
   last = t;
+  performanceMonitor.record(dt);
 
   fpsAcc += dt;
   fpsFrames++;

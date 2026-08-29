@@ -12,6 +12,7 @@ import { createNpcEntity } from "../src/core/npcFactory.js";
 import { addProjectile, advanceProjectile, createProjectile } from "../src/core/projectiles.js";
 import { createWaveSpawnState } from "../src/core/waves.js";
 import { updateProgressHud, updateResourceHud, updateWaveHud } from "../src/core/hud.js";
+import { createPerformanceMonitor } from "../src/core/performanceMonitor.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -191,6 +192,17 @@ test("le HUD borne les barres et affiche la progression", () => {
   assert.equal(ui.lvlTxt.textContent, "2 (25%)");
   updateWaveHud(ui, { started: true, wave: 3, remaining: 8, alive: 2 });
   assert.equal(ui.spawnLeftTxt.textContent, "8");
+});
+
+test("le moniteur de performances calcule moyenne et frames lentes", () => {
+  const monitor = createPerformanceMonitor(10);
+  for (let i = 0; i < 9; i++) monitor.record(0.01);
+  monitor.record(0.03);
+  const snapshot = monitor.snapshot();
+  assert.equal(snapshot.samples, 10);
+  assert.equal(snapshot.longFrames, 1);
+  assert.equal(snapshot.averageMs, 12);
+  assert.equal(snapshot.p95Ms, 30);
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {
