@@ -52,7 +52,14 @@ try {
 
     try {
       await page.addInitScript(({ coldStart }) => {
-        const user = { id: "smoke-user", pseudo: "Smoke", email: "smoke@local", password: "test", ship: "PhoenixBleu" };
+        const user = {
+          id: "smoke-user",
+          pseudo: "Smoke",
+          email: "smoke@local",
+          password: "test",
+          ship: "PhoenixBleu",
+          inventory: { counts: { laser_lf1: 1 }, ships: ["PhoenixBleu"], shipModules: [] },
+        };
         localStorage.setItem("orbit_users", JSON.stringify([user]));
         localStorage.setItem("orbit_current_user", JSON.stringify({ id: user.id, pseudo: user.pseudo, email: user.email }));
         if (!coldStart) sessionStorage.setItem("orbit_assets_preloaded_v1", "ready");
@@ -73,6 +80,29 @@ try {
           await page.click(`#profileOverlay .tabBtn[data-tab="${section}"]`);
           await page.waitForFunction((name) => document.getElementById(`panel_${name}`)?.classList.contains("active"), section);
         }
+
+        await page.click('#profileOverlay .tabBtn[data-tab="hangars"]');
+        await page.click("#hangarGrid [data-fit]");
+        await page.waitForSelector("#fitCard", { state: "visible", timeout: 10_000 });
+        await page.dragAndDrop("#fitInvGrid .invCell:not(.disabled)", "#fitSlotsLasers .slotCell");
+        await page.waitForSelector("#fitSlotsLasers .slotCell.filled");
+        await page.click('.fitCfgBtn[data-cfg="2"]');
+        await page.click('.fitCfgBtn[data-cfg="1"]');
+        await page.waitForSelector("#fitSlotsLasers .slotCell.filled");
+        const fitIssues = await page.evaluate(() => {
+          const issues = [];
+          const workspace = document.querySelector("#fitCard .fitWorkspace");
+          const ship = document.querySelector("#fitCard .fitShipPane");
+          const loadout = document.querySelector("#fitCard .fitLoadoutPane");
+          const inventory = document.querySelector("#fitCard .fitInventoryPane");
+          if (!workspace || !ship || !loadout || !inventory) issues.push("structure de la fenêtre Équiper incomplète");
+          if (workspace && workspace.scrollWidth > workspace.clientWidth + 2) issues.push("débordement horizontal dans Équiper");
+          return issues;
+        });
+        errors.push(...fitIssues);
+        if (captureProfile) await page.screenshot({ path: join(root, "profile-fit-preview.png"), fullPage: false });
+        await page.click("#fitBtnCancel");
+        await page.waitForSelector("#fitCard", { state: "hidden" });
 
         if (captureProfile) {
           await page.click('#profileOverlay .tabBtn[data-tab="stats"]');

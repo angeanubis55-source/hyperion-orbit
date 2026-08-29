@@ -401,6 +401,9 @@ function shipScaleToFit200(shipId, max = 200) {
 
 // -------------------- Tabs --------------------
 function setTab(next) {
+  if (next !== "hangars" && fitOverlayEl && fitOverlayEl.style.display !== "none") {
+    closeFitModal();
+  }
   tab = next;
   localStorage.setItem("orbit_profile_tab", tab);
 
@@ -1118,6 +1121,168 @@ if (!isShip && ammoQty) {
 // ------------------------------------
 // FIT MODAL (Équiper)
 // ------------------------------------
+function buildFitWindow() {
+  const overlay = document.createElement("div");
+  overlay.id = "fitOverlay";
+
+  const card = document.createElement("div");
+  card.id = "fitCard";
+  card.className = "fitWindow";
+  card.innerHTML = `
+    <header class="fitWindowHeader">
+      <div class="fitWindowIdentity">
+        <span class="fitWindowIcon">EQ</span>
+        <div>
+          <div id="fitTitle" class="fitTopTitle">Équipement</div>
+          <div id="fitSub" class="fitTopSub">Préparation du hangar…</div>
+        </div>
+      </div>
+      <div class="fitWindowActions">
+        <button id="fitBtnResetAll" class="secondary" type="button">Tout retirer</button>
+        <button id="fitBtnPresets" class="secondary" type="button">Presets</button>
+        <button id="fitBtnCancel" class="secondary" type="button">Annuler</button>
+        <button id="fitBtnSave" class="primary" type="button">Appliquer</button>
+      </div>
+    </header>
+
+    <div id="fitErr" class="fitError" role="status"></div>
+
+    <div class="fitWorkspace">
+      <aside class="fitShipPane">
+        <div class="fitPaneLabel">Vaisseau sélectionné</div>
+        <canvas id="fitShipCanvas" width="220" height="220"></canvas>
+        <div class="fitShipMeta">
+          <b id="fitShipName">—</b>
+          <span id="fitShipHint">Glisse un objet de l'inventaire vers un emplacement compatible.</span>
+        </div>
+        <div id="fitConfigBar" class="fitConfigBar">
+          <span>Configuration</span>
+          <div>
+            <button class="fitCfgBtn" data-cfg="1" type="button">1</button>
+            <button class="fitCfgBtn" data-cfg="2" type="button">2</button>
+          </div>
+        </div>
+      </aside>
+
+      <section class="fitLoadoutPane">
+        <div class="fitPaneHeading">
+          <div>
+            <strong>Équipement installé</strong>
+            <span>Glisse les objets entre l'inventaire et les emplacements.</span>
+          </div>
+        </div>
+        <div class="fitSlotsScroll">
+          <section class="fitSlotGroup">
+            <div class="fitGroupTitle"><span>Lasers</span><small>Armement principal</small></div>
+            <div id="fitSlotsLasers" class="slotGrid"></div>
+          </section>
+          <section class="fitSlotGroup">
+            <div class="fitGroupTitle"><span>Générateurs</span><small>Vitesse et bouclier</small></div>
+            <div id="fitSlotsGens" class="slotGrid"></div>
+          </section>
+          <section class="fitSlotGroup">
+            <div class="fitGroupTitle"><span>Extras</span><small>Équipements auxiliaires</small></div>
+            <div id="fitSlotsExtras" class="slotGrid"></div>
+          </section>
+          <section class="fitSlotGroup">
+            <div class="fitGroupTitle"><span>Modules spéciaux</span><small><span id="shipModsCount">1</span> emplacement(s)</small></div>
+            <div id="fitSlotsShipMods" class="slotGrid slotGridModules"></div>
+          </section>
+        </div>
+      </section>
+
+      <aside class="fitInventoryPane">
+        <div class="fitInventoryHeader">
+          <div>
+            <strong>Inventaire</strong>
+            <span>Objets disponibles</span>
+          </div>
+          <select id="fitInvFilter" class="fitSelect" aria-label="Filtrer l'inventaire">
+            <option value="all">Tout</option>
+            <option value="laser">Lasers</option>
+            <option value="speed">Vitesse</option>
+            <option value="shield">Bouclier</option>
+            <option value="extra">Extras</option>
+          </select>
+        </div>
+        <div class="fitInventoryTools">
+          <div id="fitSellDrop" class="fitSellDrop">Dépose un objet ici pour le vendre</div>
+        </div>
+        <div class="fitReturnHint">Dépose ici un objet équipé pour le retirer</div>
+        <div class="fitInvScroll">
+          <div id="fitInvGrid" class="invGrid"></div>
+          <div class="fitModulesHeading">Modules Roulette</div>
+          <div id="fitShipModules" class="fitShipModules"></div>
+        </div>
+      </aside>
+    </div>
+
+    <div id="presetOverlay" class="fitPresetOverlay">
+      <div class="fitPresetWindow">
+        <header>
+          <div><strong>Presets d'équipement</strong><span>Sauvegarde et recharge rapidement une configuration.</span></div>
+          <button id="presetClose" class="secondary" type="button">Fermer</button>
+        </header>
+        <label class="fitPresetField"><span>Nouveau preset</span><input id="fitPresetName" class="fitInput" placeholder="Nom de la configuration" /></label>
+        <button id="fitBtnSavePreset" class="primary" type="button">Sauvegarder la configuration actuelle</button>
+        <div class="fitPresetDivider"></div>
+        <label class="fitPresetField"><span>Presets enregistrés</span><select id="fitPresetSelect" class="fitSelect"><option value="">— Choisir —</option></select></label>
+        <div class="fitPresetActions">
+          <button id="fitBtnQuickLoad" class="secondary" type="button">Chargement rapide</button>
+          <button id="fitBtnLoadPreset" class="primary" type="button">Appliquer</button>
+          <button id="fitBtnDeletePreset" class="secondary" type="button">Supprimer</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  overlay.appendChild(card);
+  const host = document.getElementById("profileWindow") || document.body;
+  host.appendChild(overlay);
+  const returnZone = card.querySelector(".fitInventoryPane");
+  returnZone?.addEventListener("dragover", (event) => {
+    if (!event.dataTransfer.types.includes("application/x-orbit-slot")) return;
+    event.preventDefault();
+    returnZone.classList.add("dragReturnActive");
+  });
+  returnZone?.addEventListener("dragleave", (event) => {
+    if (!returnZone.contains(event.relatedTarget)) returnZone.classList.remove("dragReturnActive");
+  });
+  returnZone?.addEventListener("drop", (event) => {
+    returnZone.classList.remove("dragReturnActive");
+    const raw = event.dataTransfer.getData("application/x-orbit-slot");
+    if (!raw || !fitState.draft) return;
+    event.preventDefault();
+    try {
+      const source = JSON.parse(raw);
+      if (!Array.isArray(fitState.draft[source.slotType])) return;
+      fitState.draft[source.slotType][source.index] = null;
+      showFitError("");
+      renderSlots();
+      renderInventoryPalette();
+      renderShipModulesList();
+    } catch {}
+  });
+  const sellZone = card.querySelector("#fitSellDrop");
+  sellZone?.addEventListener("dragover", (event) => {
+    if (event.dataTransfer.types.includes("application/x-orbit-slot")) return;
+    event.preventDefault();
+    sellZone.classList.add("dragSellActive");
+  });
+  sellZone?.addEventListener("dragleave", () => sellZone.classList.remove("dragSellActive"));
+  sellZone?.addEventListener("drop", (event) => {
+    sellZone.classList.remove("dragSellActive");
+    if (event.dataTransfer.types.includes("application/x-orbit-slot")) return;
+    event.preventDefault();
+    const itemId = event.dataTransfer.getData("text/plain");
+    if (itemId) sellFitInventoryItem(itemId);
+  });
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) closeFitModal();
+  });
+  return overlay;
+}
+
 function buildModalShell() {
   const overlay = document.createElement("div");
   overlay.id = "fitOverlay";
@@ -1564,8 +1729,6 @@ function startFitShipAnim(shipId) {
     if (token !== _fitShipAnimToken) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "rgba(0,0,0,0.25)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const rec = _fitShipCache.get(shipId);
     if (!pack || !rec?.ready) {
@@ -1629,7 +1792,7 @@ function showFitError(text) {
     return;
   }
   el.style.display = "block";
-  el.textContent = "⚠️ " + text;
+  el.textContent = text;
 }
 
 function computeUsage(draft) {
@@ -1724,6 +1887,27 @@ function resetAllSlots() {
   renderShipModulesList();
 }
 
+function sellFitInventoryItem(itemId) {
+  if (!itemId || !fitState.draft) return;
+  const usage = computeUsage(fitState.draft)[itemId] || 0;
+  const owned = ownedCount(user, itemId);
+  if (owned <= usage) return showFitError("Tous les exemplaires de cet objet sont équipés");
+
+  const out = sellItem(itemId, 1);
+  if (!out?.ok) return showFitError(out?.error || "Vente impossible");
+
+  user = getCurrentUserFull();
+  fitState.selectedItemId = null;
+  fitState.selectedCopyKey = null;
+  showFitError("");
+  renderSlots();
+  renderInventoryPalette();
+  renderStats(user);
+  renderHangars(user);
+  if (tab === "shop") renderShop(user);
+  setMsg(`Vendu (+${formatNumber(out.gain)} crédits)`, true);
+}
+
 // -------------------- Inventory Palette --------------------
 function renderInventoryPalette() {
   const grid = document.getElementById("fitInvGrid");
@@ -1796,7 +1980,7 @@ function renderInventoryPalette() {
 
       cell.title = `${e.it?.name || e.itemId} (${i + 1}/${e.cnt})`;
 
-      cell.addEventListener("click", () => {
+      cell.addEventListener("orbitLegacyClick", () => {
         if (!isAvailableCopy) {
           showFitError("Plus de stock disponible (dés-équipe d'abord)");
           return;
@@ -1861,44 +2045,16 @@ function renderSlots() {
   const draft = fitState.draft;
   fitState.used = computeUsage(draft);
 
-  const onSlotClick = (slotType, idx) => {
-    const selItem = fitState.selectedItemId;
-    const cur = draft[slotType][idx] || null;
-
-    if (!selItem) {
-      if (cur) {
-        draft[slotType][idx] = null;
-        showFitError("");
-        renderSlots();
-        renderInventoryPalette();
-      }
-      return;
-    }
-
-    if (!isItemAllowedInSlot(slotType, selItem)) {
-      showFitError("Ce module ne va pas dans ce type de slot");
-      return;
-    }
-
-    if (cur === selItem) {
-      draft[slotType][idx] = null;
-      showFitError("");
-      renderSlots();
-      renderInventoryPalette();
-      return;
-    }
-
-    const tmp = structuredClone(draft);
-    tmp[slotType][idx] = null;
-    if (!canPlaceItem(selItem, tmp)) {
-      showFitError("Pas assez d'exemplaires disponibles");
-      return;
-    }
-
-    draft[slotType][idx] = selItem;
-    showFitError("");
-    renderSlots();
-    renderInventoryPalette();
+  const attachSlotDrag = (cell, slotType, idx, itemId) => {
+    if (!itemId) return;
+    cell.draggable = true;
+    cell.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData("text/plain", itemId);
+      event.dataTransfer.setData("application/x-orbit-slot", JSON.stringify({ slotType, index: idx }));
+      event.dataTransfer.effectAllowed = "move";
+      cell.classList.add("dragging");
+    });
+    cell.addEventListener("dragend", () => cell.classList.remove("dragging"));
   };
 
   const attachDrop = (cell, slotType, idx) => {
@@ -1917,16 +2073,24 @@ function renderSlots() {
         return;
       }
 
+      let source = null;
+      try {
+        const rawSource = ev.dataTransfer.getData("application/x-orbit-slot");
+        if (rawSource) source = JSON.parse(rawSource);
+      } catch {}
+
       const tmp = structuredClone(draft);
+      if (source && Array.isArray(tmp[source.slotType])) tmp[source.slotType][source.index] = null;
       tmp[slotType][idx] = null;
       if (!canPlaceItem(itemId, tmp)) {
         showFitError("Pas assez d'exemplaires disponibles");
         return;
       }
 
+      if (source && Array.isArray(draft[source.slotType])) draft[source.slotType][source.index] = null;
       draft[slotType][idx] = itemId;
-      fitState.selectedItemId = itemId;
-      fitState.selectedCopyKey = itemId + "#drop";
+      fitState.selectedItemId = null;
+      fitState.selectedCopyKey = null;
       showFitError("");
       renderSlots();
       renderInventoryPalette();
@@ -1942,7 +2106,7 @@ function renderSlots() {
     const id = draft.lasers[i];
     const label = id ? findCatalogItem(id)?.name || id : "—";
     const cell = slotCell(label, !!id, id);
-    cell.addEventListener("click", () => onSlotClick(slotType, i));
+    attachSlotDrag(cell, slotType, i, id);
     attachDrop(cell, slotType, i);
     lasersRoot.appendChild(cell);
   }
@@ -1952,7 +2116,7 @@ function renderSlots() {
     const id = draft.gens[i];
     const label = id ? findCatalogItem(id)?.name || id : "—";
     const cell = slotCell(label, !!id, id);
-    cell.addEventListener("click", () => onSlotClick(slotType, i));
+    attachSlotDrag(cell, slotType, i, id);
     attachDrop(cell, slotType, i);
     gensRoot.appendChild(cell);
   }
@@ -1962,7 +2126,7 @@ function renderSlots() {
     const id = draft.extras[i];
     const label = id ? findCatalogItem(id)?.name || id : "—";
     const cell = slotCell(label, !!id, id);
-    cell.addEventListener("click", () => onSlotClick(slotType, i));
+    attachSlotDrag(cell, slotType, i, id);
     attachDrop(cell, slotType, i);
     extrasRoot.appendChild(cell);
   }
@@ -1993,7 +2157,9 @@ function renderSlots() {
       cell.title = label;
     }
 
-    cell.addEventListener("click", () => {
+    attachSlotDrag(cell, slotType, i, id);
+
+    cell.addEventListener("orbitLegacyClick", () => {
       if (!fitState.selectedItemId && draft.shipMods[i]) {
         draft.shipMods[i] = null;
         showFitError("");
@@ -2075,7 +2241,14 @@ function renderSlots() {
         return;
       }
 
+      let source = null;
+      try {
+        const rawSource = ev.dataTransfer.getData("application/x-orbit-slot");
+        if (rawSource) source = JSON.parse(rawSource);
+      } catch {}
+
       const tmp = structuredClone(draft);
+      if (source && Array.isArray(tmp[source.slotType])) tmp[source.slotType][source.index] = null;
       tmp.shipMods[i] = null;
 
       const all = Array.isArray(user?.inventory?.shipModules) ? user.inventory.shipModules : [];
@@ -2104,8 +2277,10 @@ function renderSlots() {
         return;
       }
 
+      if (source && Array.isArray(draft[source.slotType])) draft[source.slotType][source.index] = null;
       draft.shipMods[i] = moduleId;
-      fitState.selectedItemId = moduleId;
+      fitState.selectedItemId = null;
+      fitState.selectedCopyKey = null;
       showFitError("");
       renderSlots();
       renderInventoryPalette();
@@ -2178,12 +2353,29 @@ function getFitForConfig(h, configNo) {
 }
 
 function setFitModalConfig(configNo) {
+  const nextConfig = Number(configNo) === 2 ? 2 : 1;
+  if (nextConfig === fitState.configNo) return;
+
+  if (fitState.hangarId && fitState.draft) {
+    const saved = saveHangarFit(fitState.hangarId, fitState.draft, fitState.configNo);
+    if (!saved?.ok) {
+      showFitError(saved?.error || "Impossible d'enregistrer la configuration actuelle");
+      return;
+    }
+  }
+
+  const activated = setActiveHangarConfig(fitState.hangarId, nextConfig);
+  if (!activated?.ok) {
+    showFitError(activated?.error || "Impossible d'activer cette configuration");
+    return;
+  }
+
   user = getCurrentUserFull();
 
   const h = (user?.hangars || []).find((x) => x?.id === fitState.hangarId);
   if (!h) return;
 
-  fitState.configNo = Number(configNo) === 2 ? 2 : 1;
+  fitState.configNo = nextConfig;
 
   const baseFit = getFitForConfig(h, fitState.configNo);
 
@@ -2199,12 +2391,13 @@ function setFitModalConfig(configNo) {
   fitState.selectedItemId = null;
   fitState.selectedCopyKey = null;
   fitState.used = computeUsage(fitState.draft);
+  showFitError("");
 
   const titleEl = document.getElementById("fitTitle");
   if (titleEl) {
-    titleEl.textContent = `⚙️ Équipement — ${h.shipId} — Config ${fitState.configNo}`;
+    titleEl.textContent = `Équipement — ${h.shipId} — Config ${fitState.configNo}`;
     window.GameWindowManager?.setTitle(
-  "fit",
+  "profileWindow",
   `Équipement — ${h.shipId} — Config ${fitState.configNo}`
 );
   }
@@ -2219,13 +2412,13 @@ function setFitModalConfig(configNo) {
 }
 
 function openFitModal(hangarId) {
-  if (!fitOverlayEl) fitOverlayEl = buildModalShell();
+  if (!fitOverlayEl) fitOverlayEl = buildFitWindow();
 
   user = getCurrentUserFull();
   if (!user) return (location.href = "./auth.html");
 
   const h = (user.hangars || []).find((x) => x?.id === hangarId);
-  if (!h) return setMsg("❌ Hangar introuvable", false);
+  if (!h) return setMsg("Hangar introuvable", false);
 
   fitState.hangarId = hangarId;
   fitState.selectedItemId = null;
@@ -2245,11 +2438,13 @@ fitState.draft = {
 
 const titleEl = document.getElementById("fitTitle");
 const subEl = document.getElementById("fitSub");
-if (titleEl) titleEl.textContent = `⚙️ Équipement — ${h.shipId} — Config ${fitState.configNo}`;
+if (titleEl) titleEl.textContent = `Équipement — ${h.shipId} — Config ${fitState.configNo}`;
 window.GameWindowManager?.setTitle(
-  "fit",
+  "profileWindow",
   `Équipement — ${h.shipId} — Config ${fitState.configNo}`
 );
+  const profileWindowIcon = document.querySelector("#profileWindow > .gameWinBar .gameWinIcon");
+  if (profileWindowIcon) profileWindowIcon.textContent = "EQ";
   if (subEl) {
     subEl.textContent = `Slots: Lasers ${fitState.slots.lasers} • Génés ${fitState.slots.gens} • Extras ${fitState.slots.extras} • Modules ${fitState.slots.shipMods}`;
   }
@@ -2285,6 +2480,7 @@ if (!cfgBar) {
 
 cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
   b.classList.toggle("active", Number(b.dataset.cfg) === fitState.configNo);
+  b.onclick = () => setFitModalConfig(Number(b.dataset.cfg));
 });
 
   const shipNameEl = document.getElementById("fitShipName");
@@ -2331,7 +2527,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
       fitState.selectedCopyKey = null;
 
       user = getCurrentUserFull();
-      setMsg(`✅ Vendu (+${formatNumber(out.gain)} crédits)`, true);
+      setMsg(`Vendu (+${formatNumber(out.gain)} crédits)`, true);
 
       showFitError("");
       renderSlots();
@@ -2388,7 +2584,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
       inpPresetName.value = "";
       showFitError("");
       refreshPresetSelect();
-      setMsg("✅ Preset sauvegardé", true);
+      setMsg("Preset sauvegardé", true);
     };
   }
 
@@ -2414,7 +2610,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
       renderSlots();
       renderInventoryPalette();
       renderShipModulesList();
-      setMsg("✅ Preset chargé", true);
+      setMsg("Preset chargé", true);
     };
   }
 
@@ -2431,7 +2627,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
 
       showFitError("");
       refreshPresetSelect();
-      setMsg("✅ Preset supprimé", true);
+      setMsg("Preset supprimé", true);
     };
   }
 
@@ -2467,7 +2663,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
     }
 
     user = getCurrentUserFull();
-    setMsg("✅ Équipement sauvegardé !", true);
+    setMsg("Équipement sauvegardé", true);
 
     closeFitModal();
 
@@ -2495,6 +2691,9 @@ function closeFitModal() {
 
   stopFitShipAnim();
   fitOverlayEl.style.display = "none";
+  window.GameWindowManager?.setTitle("profileWindow", "Profil / Hangars / Boutique");
+  const profileWindowIcon = document.querySelector("#profileWindow > .gameWinBar .gameWinIcon");
+  if (profileWindowIcon) profileWindowIcon.textContent = "👤";
 
   fitState.hangarId = null;
   fitState.configNo = 1;
