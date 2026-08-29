@@ -17,6 +17,7 @@ import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield 
 import { forEachNearbyPair, rebuildIdIndex } from "./spatialIndex.js";
 import { hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "./rendering.js";
 import { createNpcEntity } from "./npcFactory.js";
+import { addProjectile, advanceProjectile } from "./projectiles.js";
 
 export function startOrbitGame(config) {
 
@@ -4754,7 +4755,7 @@ const dmgShot = isSab
   const muzzleY = player.y + fy * (player.r + 10);
 
   if (!player.altShot) {
-bullets.push({
+addProjectile(bullets, {
   x: muzzleX,
   y: muzzleY,
   vx: fx * speed,
@@ -4786,7 +4787,7 @@ bullets.push({
     const ldx = ldx0 / ll, ldy = ldy0 / ll;
     const rdx = rdx0 / rl, rdy = rdy0 / rl;
 
-bullets.push({
+addProjectile(bullets, {
   x: leftX,
   y: leftY,
   vx: ldx * speed,
@@ -4803,7 +4804,7 @@ bullets.push({
   miss: shotMiss,
 });
 
-bullets.push({
+addProjectile(bullets, {
   x: rightX,
   y: rightY,
   vx: rdx * speed,
@@ -6411,7 +6412,7 @@ function enemyShoot(e, dt) {
     const baseDmg = e.bulletDmg ?? 10;
     const shotDmg = Math.max(1, Math.round(vary(baseDmg, 0.05)));
 
-    enemyBullets.push({
+    addProjectile(enemyBullets, {
       x: e.x + Math.cos(ang) * muzzle,
       y: e.y + Math.sin(ang) * muzzle,
       vx,
@@ -6795,16 +6796,11 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     continue;
   }
 
-  const oldX = b.x;
-  const oldY = b.y;
-
-  b.x += b.vx * dt;
-  b.y += b.vy * dt;
-  b.life -= dt;
+  const step = advanceProjectile(b, dt);
 
   const rr = (t.r || 18) + (b.r || 6);
 
-  if (segCircleHit(oldX, oldY, b.x, b.y, t.x, t.y, rr)) {
+  if (segCircleHit(step.oldX, step.oldY, b.x, b.y, t.x, t.y, rr)) {
     if (b.miss) {
       showPlayerMissOnce(b, t);
 
@@ -6844,7 +6840,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     continue;
   }
 
-  if (b.life <= 0) {
+  if (step.expired) {
     bullets.splice(i, 1);
     cleanupPlayerMissVolley(b);
   }
@@ -6852,9 +6848,6 @@ for (let i = bullets.length - 1; i >= 0; i--) {
 
 for (let i = enemyBullets.length - 1; i >= 0; i--) {
   const b = enemyBullets[i];
-
-  const oldX = b.x;
-  const oldY = b.y;
 
   // Le tir NPC recalcule sa direction vers le joueur.
   // Donc visuellement, il ne passe plus à côté.
@@ -6869,14 +6862,12 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
     b.vy = (dy / d) * spd;
   }
 
-  b.x += b.vx * dt;
-  b.y += b.vy * dt;
-  b.life -= dt;
+  const step = advanceProjectile(b, dt);
 
   if (!player.dead) {
     const rr = (b.r || 0) + player.r + (b.hitRadiusBonus || 0);
 
-    if (segCircleHit(oldX, oldY, b.x, b.y, player.x, player.y, rr)) {
+    if (segCircleHit(step.oldX, step.oldY, b.x, b.y, player.x, player.y, rr)) {
       enemyBullets.splice(i, 1);
 
       if (b.miss) {
@@ -6895,7 +6886,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
     }
   }
 
-  if (b.life <= 0) enemyBullets.splice(i, 1);
+  if (step.expired) enemyBullets.splice(i, 1);
 }
 
   for (let i = sparks.length - 1; i >= 0; i--) {

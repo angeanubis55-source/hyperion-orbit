@@ -9,6 +9,7 @@ import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield 
 import { forEachNearbyPair, rebuildIdIndex } from "../src/core/spatialIndex.js";
 import { hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "../src/core/rendering.js";
 import { createNpcEntity } from "../src/core/npcFactory.js";
+import { addProjectile, advanceProjectile, createProjectile } from "../src/core/projectiles.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -138,6 +139,17 @@ test("la fabrique prépare l’état spécial du Cubikon", () => {
   assert.equal(npc.angle, 0);
   assert.equal(npc.spriteFps, 20);
   assert.deepEqual(npc._minionIds, []);
+});
+
+test("les projectiles ont des valeurs sûres et progressent avec deltaTime", () => {
+  const projectiles = [];
+  const projectile = addProjectile(projectiles, { x: 10, vx: 20, life: 2, dmg: 5 });
+  assert.equal(projectile, projectiles[0]);
+  const step = advanceProjectile(projectile, 0.5);
+  assert.deepEqual(step, { oldX: 10, oldY: 0, expired: false });
+  assert.equal(projectile.x, 20);
+  assert.equal(projectile.life, 1.5);
+  assert.equal(createProjectile().r, 6);
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {
