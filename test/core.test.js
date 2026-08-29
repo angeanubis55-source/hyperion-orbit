@@ -8,6 +8,7 @@ import { createKeyboardState, createPointerState } from "../src/core/input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "../src/core/combat.js";
 import { forEachNearbyPair, rebuildIdIndex } from "../src/core/spatialIndex.js";
 import { hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "../src/core/rendering.js";
+import { createNpcEntity } from "../src/core/npcFactory.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -120,6 +121,23 @@ test("les transformations caméra écran sont réversibles", () => {
 test("la couleur de vie est bornée", () => {
   assert.equal(hpHueColor(-1, 2), "hsla(0, 95%, 55%, 1)");
   assert.equal(hpHueColor(1), "hsla(120, 95%, 55%, 0.98)");
+});
+
+test("la fabrique NPC initialise les statistiques et clone les récompenses", () => {
+  const config = { hp: 500, shield: 200, speed: 300, onKill: { reward: 50 } };
+  const npc = createNpcEntity({ id: 7, type: "npc_Test", x: 10, y: 20, config, random: () => 0.5 });
+  assert.equal(npc.hp, 500);
+  assert.equal(npc.sh, 200);
+  assert.equal(npc.speed, 300);
+  npc._onKill.reward = 0;
+  assert.equal(config.onKill.reward, 50);
+});
+
+test("la fabrique prépare l’état spécial du Cubikon", () => {
+  const npc = createNpcEntity({ id: 8, type: "npc_Cubikon", x: 0, y: 0, config: {}, random: () => 0.5 });
+  assert.equal(npc.angle, 0);
+  assert.equal(npc.spriteFps, 20);
+  assert.deepEqual(npc._minionIds, []);
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {

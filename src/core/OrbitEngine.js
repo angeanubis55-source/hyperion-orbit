@@ -16,6 +16,7 @@ import { createKeyboardState, createPointerState } from "./input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "./combat.js";
 import { forEachNearbyPair, rebuildIdIndex } from "./spatialIndex.js";
 import { hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "./rendering.js";
+import { createNpcEntity } from "./npcFactory.js";
 
 export function startOrbitGame(config) {
 
@@ -3916,92 +3917,21 @@ function drawCollectables(ox, oy) {
 }
 
 function makeEnemy(type, x, y) {
-  const cfg = NPC_TYPES[type];
-  if (!cfg) return null;
-  const onKillCfg = cfg?.onKill ? JSON.parse(JSON.stringify(cfg.onKill)) : null;
-
-  const e = {
+  const factoryEntity = createNpcEntity({
     id: newId(),
     type,
-    name: cfg.name || type,
-
-    spritePlay: !!cfg.playSprite,
-    spriteFps: Number(cfg.spriteSpeed ?? 12),
-    spriteAcc: 0,
-    spriteIdx: 0,
-
-    empT: 0,
-
     x,
     y,
-    vx: 0,
-    vy: 0,
-    wobble: rand(0, 999),
-    r: cfg.r ?? 18,
-
-    hpMax: Math.floor(cfg.hp ?? 50),
-    hp: 0,
-    shMax: Math.floor(cfg.shield ?? 0),
-    sh: 0,
-
-    speed: Math.floor(vary(cfg.speed ?? 320, 0.05)),
-    dr: cfg.dr ?? 0,
-
-    touchDmg: cfg.touchDmg ?? (14 + wave * 0.25),
-    value: cfg.value ?? 0,
-
-    canShoot: cfg.canShoot !== false,
-    shootRange: cfg.shootRange ?? 540,
-    shootCd: rand(0.2, 0.7),
-    shootRate: cfg.shootRate ?? 1.0,
-
-    bulletSpeed: cfg.bulletSpeed ?? 500,
-    bulletDmg: cfg.bulletDmg ?? 6,
-    bulletSpread: cfg.bulletSpread ?? 0.05,
-    burst: cfg.burst ?? 1,
-
-    bulletSprite: cfg.bulletSprite || null,
-    bulletScale: cfg.bulletScale ?? 1.5,
-    bulletR: cfg.bulletR ?? 7,
-    orbit: cfg.orbit ?? 0.45,
-
-    angle: (type === "npc_Cubikon") ? 0 : rand(0, TAU),
-    freezeT: 0,
-
-    passiveNative: !!cfg.passiveNative,
-    _provoked: false,
-    _onKill: onKillCfg,
-  };
-
-  e.hp = e.hpMax;
-  e.sh = e.shMax;
-
-  if (e.bulletSprite?.src) getCachedImage(e.bulletSprite.src);
+    config: NPC_TYPES[type],
+    wave,
+  });
+  if (!factoryEntity) return null;
+  if (factoryEntity.bulletSprite?.src) getCachedImage(factoryEntity.bulletSprite.src);
   ensureNpcPreview(type);
   ensureNpcLoaded(type);
-  
-  if (cfg.onKill && !e._onKill) {
-    e._onKill = cfg.onKill;
-  }
+  enemiesById.set(factoryEntity.id, factoryEntity);
+  return factoryEntity;
 
-  if (type === "npc_Cubikon") {
-  e._spawnedOnce = false;
-  e._sinceHit = 999;
-  e._resetting = false;
-  e._minionIds = [];
-
-  e._animPhase = null;         // "delay" | "open" | "hold" | "close"
-  e._openDelayT = 0;           // ✅ NEW
-  e._holdLastT = 0;
-  e.spriteDir = 1;
-  e._pendingSpawn = 0;
-
-  e.spriteFps = 20;
-}
-
-  enemiesById.set(e.id, e);
-
-  return e;
 }
 
 // ============================================================
