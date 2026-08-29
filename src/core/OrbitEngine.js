@@ -7841,6 +7841,7 @@ updateConfigButtons();
 // ============================================================
 let starting = false;
 let assetsPrepared = false;
+const SESSION_ASSET_CACHE_KEY = "orbit_assets_preloaded_v1";
 
 function renderLoadingProgress({ done = 0, total = 0 } = {}) {
   const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
@@ -7867,10 +7868,64 @@ function npcTypesForCurrentSector() {
   return types;
 }
 
+async function preloadWholeGameCache() {
+  if (ui.loadingStatus) ui.loadingStatus.textContent = "Premier lancement : mise en cache complète du jeu…";
+  const response = await fetch("./assets-manifest.json", { cache: "no-cache" });
+  if (!response.ok) throw new Error(`Manifeste de ressources indisponible (${response.status})`);
+  const manifest = await response.json();
+  const assets = Array.isArray(manifest?.assets) ? manifest.assets : [];
+  let cursor = 0;
+  let done = 0;
+  let failed = 0;
+
+  const update = () => {
+    const percent = assets.length ? Math.round((done / assets.length) * 100) : 100;
+    if (ui.loadingBar) ui.loadingBar.style.width = `${percent}%`;
+    if (ui.loadingCount) ui.loadingCount.textContent = `${done} / ${assets.length} ressources`;
+    if (ui.loadingPercent) ui.loadingPercent.textContent = `${percent} %`;
+    ui.loadingOverlay?.querySelector(".loadingTrack")?.setAttribute("aria-valuenow", String(percent));
+  };
+
+  update();
+  const worker = async () => {
+    while (cursor < assets.length) {
+      const index = cursor++;
+      try {
+        const assetResponse = await fetch(assets[index], { cache: "force-cache" });
+        if (!assetResponse.ok) throw new Error(String(assetResponse.status));
+        await assetResponse.arrayBuffer();
+      } catch {
+        failed++;
+      } finally {
+        done++;
+        if (done % 8 === 0 || done === assets.length) update();
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: 8 }, worker));
+  if (failed) console.warn(`${failed} ressource(s) n'ont pas pu être mises en cache.`);
+}
+
 async function prepareGameAssets() {
   if (assetsPrepared) return;
+
+  let sessionCacheReady = false;
+  try { sessionCacheReady = sessionStorage.getItem(SESSION_ASSET_CACHE_KEY) === "ready"; } catch {}
+
+  if (sessionCacheReady) {
+    if (ui.loadingOverlay) ui.loadingOverlay.style.display = "none";
+    await ensurePackLoaded(ACTIVE_SHIP);
+    playerImgs = ACTIVE_SHIP._imgs;
+    playerImgsReady = true;
+    assetsPrepared = true;
+    await startGame();
+    return;
+  }
+
   if (ui.loadingOverlay) ui.loadingOverlay.style.display = "grid";
-  if (ui.loadingStatus) ui.loadingStatus.textContent = "Mise en cache des ressources du secteur…";
+  await preloadWholeGameCache();
+  if (ui.loadingStatus) ui.loadingStatus.textContent = "Préparation des éléments du secteur…";
 
   const unsubscribe = IMG.onProgress(renderLoadingProgress);
   const jobs = [];
@@ -7900,6 +7955,7 @@ async function prepareGameAssets() {
   renderLoadingProgress(IMG.snapshot());
   unsubscribe();
   assetsPrepared = true;
+  try { sessionStorage.setItem(SESSION_ASSET_CACHE_KEY, "ready"); } catch {}
 
   playerImgs = ACTIVE_SHIP._imgs;
   playerImgsReady = true;

@@ -26,6 +26,7 @@ const { port } = server.address();
 const browser = await chromium.launch({ channel: "msedge", headless: true });
 const context = await browser.newContext();
 const requestedMap = process.argv.find((arg) => arg.startsWith("--map="))?.slice(6);
+const coldStart = process.argv.includes("--cold");
 const mapIds = requestedMap ? [requestedMap] : Object.keys(MAP_LOADERS);
 const failures = [];
 
@@ -47,16 +48,20 @@ try {
     });
 
     try {
-      await page.addInitScript(() => {
+      await page.addInitScript(({ coldStart }) => {
         const user = { id: "smoke-user", pseudo: "Smoke", email: "smoke@local", password: "test", ship: "PhoenixBleu" };
         localStorage.setItem("orbit_users", JSON.stringify([user]));
         localStorage.setItem("orbit_current_user", JSON.stringify({ id: user.id, pseudo: user.pseudo, email: user.email }));
-      });
+        if (!coldStart) sessionStorage.setItem("orbit_assets_preloaded_v1", "ready");
+      }, { coldStart });
       await page.goto(`http://127.0.0.1:${port}/index.html?map=${encodeURIComponent(mapId)}`, { waitUntil: "domcontentloaded", timeout: 20_000 });
       await page.waitForSelector("#game", { state: "visible", timeout: 10_000 });
-      await page.waitForSelector("#loadingStartBtn:not([disabled])", { timeout: 30_000 });
-      await page.click("#loadingStartBtn");
-      await page.waitForTimeout(400);
+      if (coldStart) {
+        await page.waitForSelector("#loadingStartBtn:not([disabled])", { timeout: 180_000 });
+        await page.click("#loadingStartBtn");
+      }
+      await page.waitForFunction(() => getComputedStyle(document.getElementById("loadingOverlay")).display === "none", null, { timeout: 30_000 });
+      await page.waitForTimeout(500);
       const canvasReady = await page.locator("#game").evaluate((canvas) => canvas.width > 0 && canvas.height > 0);
       if (!canvasReady) errors.push("canvas non initialisé");
     } catch (error) {

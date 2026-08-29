@@ -5,6 +5,7 @@
   "scripts": {
     "test": "node --test",
     "benchmark": "node scripts/benchmark-spatial.js",
+    "assets:manifest": "node scripts/generate-asset-manifest.js",
     "test:browser": "node scripts/smoke-browser.js"
   },
   "devDependencies": {
