@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Orbit Game – Clean Build</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="gameWindowDock">
+  <button id="btnGameHub" class="gameDockIcon profileDockIcon" type="button" title="Profil" aria-label="Profil">
+    <span>👤</span>
+  </button>
+</div>
+  
+
+  <!-- Ship selection overlay -->
+  <div id="skinOverlay" class="overlay" style="display:none;">
+    <div class="modal">
+      <h2>Choisis ton vaisseau</h2>
+      <p>Sélectionne un pack “Ship/...”.</p>
+      <div id="skinGrid" class="grid"></div>
+      <div class="modalRow">
+        <button class="secondaryBtn" id="randomSkinBtn">Aléatoire</button>
+        <button class="primaryBtn" id="startBtn" disabled>Jouer</button>
+      </div>
+    </div>
+  </div>
+
+    <!-- BOX 1 : Infos (Gate only) -->
+    <div id="boxWave" class="panel">
+      <div class="row"><span class="k">Vague</span><span class="v" id="waveTxt">—</span></div>
+      <div class="row"><span class="k">À apparaître</span><span class="v" id="spawnLeftTxt">—</span></div>
+      <div class="row"><span class="k">En vie</span><span class="v" id="aliveTxt">—</span></div>
+      <div class="row" style="margin-top:6px;"><span class="k">Kills</span><span class="v" id="kills">0</span></div>
+    </div>
+
+    <!-- BOX 2 : Économie / progression (toujours) -->
+<div id="boxMeta" class="panel">
+  <div class="row"><span class="k">Crédits</span><span class="v" id="credits">0</span></div>
+  <div class="row"><span class="k">Niveau</span><span class="v" id="lvlTxt">1</span></div>
+  <div class="row"><span class="k">Vitesse</span><span class="v" id="spdTxt">0</span></div>
+  <div class="row"><span class="k">Honneur</span><span class="v" id="honorTxt">0</span></div>
+  <div class="row"><span class="k">Expérience</span><span class="v" id="xpTxt">0</span></div>
+  <div class="row"><span class="k">Points de grade</span><span class="v" id="rankPtsTxt">0</span></div>
+
+  <div class="row configRow">
+    <span class="k">Configuration</span>
+    <span class="v configSwitch">
+      <button id="cfg1Btn" class="cfgBtn active">1</button>
+      <button id="cfg2Btn" class="cfgBtn">2</button>
+      <small id="cfgCooldownTxt"></small>
+    </span>
+  </div>
+</div>
+
+    <!-- BOX 3 : HP / Shield (toujours) -->
+    <div id="boxVitals" class="panel">
+      <div class="barWrap">
+        <div class="row"><span class="k"></span><span class="v" id="hpTxt">0 / 0</span></div>
+        <div class="bar hp"><i id="hpBar"></i></div>
+
+        <div class="row"><span class="k"></span><span class="v" id="shTxt">0 / 0</span></div>
+        <div class="bar sh"><i id="shBar"></i></div>
+
+        <div class="row mini"><span class="k">FPS</span><span class="v" id="fpsTxt">—</span></div>
+      </div>
+    </div>
+
+    <div id="minimap" class="panel interactive">
+      <div id="miniHeader" class="miniHeader">
+        <span id="miniMapName">Map : —</span>
+        <span id="miniPos">Pos : —</span>
+      </div>
+      <div id="miniDivider"></div>
+      <canvas id="miniCanvas" width="300" height="205"></canvas>
+    </div>
+
+    <div id="settingsWindow" class="panel gameSettingsPanel">
+  <div class="settingsBody">
+    <div class="settingsIntro">
+      Réglages rapides du jeu
+    </div>
+
+    <button id="optSound" class="settingsToggle" type="button">
+      🔊 Son : activé
+    </button>
+
+    <button id="optBackground" class="settingsToggle" type="button">
+      🌌 Fond de carte : affiché
+    </button>
+
+    <div class="settingsSection">
+  <div class="settingsSectionTitle">⌨️ Touches</div>
+
+  <button class="keyBindRow" data-bind-action="portal" type="button">
+    <span>Portail / vague suivante</span>
+    <kbd data-bind-value="portal">J</kbd>
+  </button>
+
+  <button class="keyBindRow" data-bind-action="switchConfig" type="button">
+    <span>Changer configuration</span>
+    <kbd data-bind-value="switchConfig">C</kbd>
+  </button>
+
+  <button class="keyBindRow" data-bind-action="toggleAttack" type="button">
+    <span>Attaque auto / verrouillage</span>
+    <kbd data-bind-value="toggleAttack">CTRL</kbd>
+  </button>
+
+  <button class="keyBindRow" data-bind-action="respawn" type="button">
+    <span>Réapparaître si mort</span>
+    <kbd data-bind-value="respawn">R</kbd>
+  </button>
+
+  <div class="settingsSectionSub">Munitions</div>
+
+  <button class="keyBindRow" data-bind-action="ammoX1" type="button">
+    <span>Munition X1</span>
+    <kbd data-bind-value="ammoX1">1</kbd>
+  </button>
+
+  <button class="keyBindRow" data-bind-action="ammoX2" type="button">
+    <span>Munition X2</span>
+    <kbd data-bind-value="ammoX2">2</kbd>
+  </button>
+
+  <button class="keyBindRow" data-bind-action="ammoX3" type="button">
+    <span>Munition X3</span>
+    <kbd data-bind-value="ammoX3">3</kbd>
+  </button>
+
+  <button class="keyBindRow" data-bind-action="ammoX4" type="button">
+    <span>Munition X4</span>
+    <kbd data-bind-value="ammoX4">4</kbd>
+  </button>
+
+  <button class="keyBindRow" data-bind-action="ammoSAB" type="button">
+    <span>Munition SAB</span>
+    <kbd data-bind-value="ammoSAB">5</kbd>
+  </button>
+
+  <button class="keyBindRow" data-bind-action="ammoX6" type="button">
+    <span>Munition X6</span>
+    <kbd data-bind-value="ammoX6">6</kbd>
+  </button>
+
+  <div class="settingsSectionSub">Compétences</div>
+
+  <button class="keyBindRow" data-bind-action="pulse" type="button">
+    <span>I.E.M</span>
+    <kbd data-bind-value="pulse">7</kbd>
+  </button>
+
+  <button class="keyBindRow" data-bind-action="nuke" type="button">
+    <span>Bombe</span>
+    <kbd data-bind-value="nuke">8</kbd>
+  </button>
+
+  <button id="btnResetKeybinds" class="settingsResetBtn" type="button">
+    ♻️ Réinitialiser les touches
+  </button>
+
+  <button id="btnResetWindows" class="settingsResetBtn settingsResetWindowsBtn" type="button">
+  🪟 Réinitialiser les fenêtres
+</button>
+</div>
+
+  </div>
+</div>
+
+    <div id="centerMsg" class="panel">
+      <h2 id="centerTitle">Pause</h2>
+      <p id="centerBody">Appuie sur <b>Esc</b> pour reprendre.</p>
+      <div class="btnHint" id="centerHint">Astuce : X4 = gros dégâts</div>
+    </div>
+
+    <!-- ✅ Respawn overlay (ZONE ONLY) -->
+<div id="respawnOverlay" class="overlay" style="display:none;">
+  <div class="modal" style="max-width: 980px;">
+    <h2>Réparation</h2>
+    <p>Choisis où réparer ton vaisseau :</p>
+
+    <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap: 14px;">
+      <div class="shopItem" style="padding:14px; cursor:pointer;" id="respawnBaseBtn">
+        <h4>🛠️ Réparée à la base</h4>
+        <p>Respawn en <b>1-1</b> aux coordonnées <b>1500 / 1500</b>.</p>
+        <button class="primaryBtn" style="width:100%;">Aller base</button>
+      </div>
+
+      <div class="shopItem" style="padding:14px; cursor:pointer;" id="respawnPortalBtn">
+        <h4>🌀 Réparée au portail</h4>
+        <p>Respawn au <b>portail le plus proche</b>.</p>
+        <button class="primaryBtn" style="width:100%;">Aller portail</button>
+      </div>
+
+      <div class="shopItem" style="padding:14px; cursor:pointer;" id="respawnHereBtn">
+        <h4>⚡ Réparer sur place</h4>
+        <p>Respawn <b>exactement ici</b>.</p>
+        <button class="primaryBtn" style="width:100%;">Réparer ici</button>
+      </div>
+    </div>
+
+    <div style="margin-top:10px; opacity:.7; font-size:13px;">
+      Astuce : touche <b>R</b> = Réparée à la base (en zone)
+    </div>
+  </div>
+</div>
+
+
+<div id="ammoBar" class="panel interactive compactAmmoBar">
+  <div class="ammoBtn compactAmmoBtn" data-ammo="x1" id="btnX1" title="Munition X1">
+    <strong>X1</strong>
+    <small id="cntX1">∞</small>
+  </div>
+
+  <div class="ammoBtn compactAmmoBtn" data-ammo="x2" id="btnX2" title="Munition X2">
+    <strong>X2</strong>
+    <small id="cntX2">0</small>
+  </div>
+
+  <div class="ammoBtn compactAmmoBtn" data-ammo="x3" id="btnX3" title="Munition X3">
+    <strong>X3</strong>
+    <small id="cntX3">0</small>
+  </div>
+
+  <div class="ammoBtn compactAmmoBtn" data-ammo="x4" id="btnX4" title="Munition X4">
+    <strong>X4</strong>
+    <small id="cntX4">0</small>
+  </div>
+
+  <div class="ammoBtn compactAmmoBtn sabCompactBtn" data-ammo="sab" id="btnSAB" title="Munition SAB">
+    <strong>SAB</strong>
+    <small id="cntSAB">0</small>
+  </div>
+
+  <div class="ammoBtn compactAmmoBtn" data-ammo="x6" id="btnX6" title="Munition X6">
+    <strong>X6</strong>
+    <small id="cntX6">0</small>
+  </div>
+
+  <div class="ammoDivider"></div>
+
+  <div class="ammoBtn skillBtn compactSkillBtn" data-skill="pulse" id="btnPulse" title="I.E.M">
+    <strong>IEM</strong>
+    <small id="pulsePct">100%</small>
+    <small id="pulsePrice" class="skillPriceMini">30k</small>
+  </div>
+
+  <div class="ammoBtn skillBtn compactSkillBtn" data-skill="nuke" id="btnNuke" title="Bombe">
+    <strong>NUKE</strong>
+    <small>100k</small>
+  </div>
+
+  <div class="ammoBtn skillBtn compactSkillBtn repairCompactBtn" data-skill="repair" id="btnRepair" title="Réparation">
+    <strong>REP</strong>
+    <small id="repairTxt">100%</small>
+  </div>
+</div>
+
+    <div id="portalOverlay">
+      <div id="portalCard">
+        <div class="title" id="portalTitle">Vague terminée</div>
+        <div class="sub" id="portalSub">Portail prêt — appuie sur <b>J</b> ou clique.</div>
+        <button id="nextWaveBtn">Passer à la vague suivante (J)</button>
+      </div>
+    </div>
+  </div>
+
+<div id="profileOverlay" class="profileOverlay" style="display:none;">
+  <div class="profileOverlayInner">
+
+    <div id="profileWindow" class="profileWindow">
+
+      <div class="profileHeaderCard">
+        <div class="profileHeaderTop">
+          <div>
+            <div class="profileTitle">🛸 Hyperion Orbit</div>
+            <div id="profileHeader" class="profileSub">Chargement...</div>
+          </div>
+
+          <div class="profileActions">
+            <button id="btnStart" class="primary">▶ Retour au jeu</button>
+            <button id="btnLogout" class="secondary">Déconnexion</button>
+          </div>
+        </div>
+
+        <div class="profileTabs">
+          <button class="tabBtn active" data-tab="stats">📊 Stats</button>
+          <button class="tabBtn" data-tab="hangars">🛰️ Hangars</button>
+          <button class="tabBtn" data-tab="shop">🛒 Boutique</button>
+        </div>
+      </div>
+
+      <div id="msg" class="msg"></div>
+
+      <div class="profileMainCard">
+
+        <section id="panel_stats" class="profilePanel active">
+          <div class="statsRow">
+            <div class="statCard">
+              <div class="statLabel">💰 Crédits</div>
+              <div class="statValue" id="statCredits">0</div>
+            </div>
+
+            <div class="statCard">
+              <div class="statLabel">🏆 Honneur</div>
+              <div class="statValue" id="statHonor">0</div>
+            </div>
+
+            <div class="statCard">
+              <div class="statLabel">⚡ Expérience</div>
+              <div class="statValue" id="statExp">0</div>
+            </div>
+
+            <div class="statCard">
+              <div class="statLabel">🎖️ Points de grade</div>
+              <div class="statValue" id="statRank">0</div>
+            </div>
+          </div>
+
+          <div class="previewCard">
+            <img id="activeShipPreview" alt="preview" />
+            <div class="previewMeta">
+              <div class="previewTitle">Hangar actif</div>
+              <div id="activeHangarLine" class="previewSub">...</div>
+            </div>
+          </div>
+        </section>
+
+        <section id="panel_hangars" class="profilePanel">
+          <div class="hint" style="text-align:left; margin-bottom:16px;">
+            Chaque vaisseau possédé = 1 hangar. Active et équipe ton vaisseau préféré.
+          </div>
+
+          <div id="hangarGrid" class="profileGrid"></div>
+        </section>
+
+        <section id="panel_shop" class="profilePanel">
+          <div class="hint" style="text-align:left; margin-bottom:12px;">
+            Boutique — Achète des modules et vaisseaux pour améliorer tes performances.
+          </div>
+
+          <div class="statsRow" style="margin-bottom:16px;">
+            <div class="statCard">
+              <div class="statLabel">💰 Crédits disponibles</div>
+              <div class="statValue" id="shopCredits">0</div>
+            </div>
+          </div>
+
+          <div class="subtabs" id="shopTabs">
+            <button class="subtabBtn active" data-shop="ammo">Munitions</button>
+            <button class="subtabBtn" data-shop="speedGen">Vitesse</button>
+            <button class="subtabBtn" data-shop="shieldGen">Bouclier</button>
+            <button class="subtabBtn" data-shop="lasers">Lasers</button>
+            <button class="subtabBtn" data-shop="extras">Extras</button>
+            <button class="subtabBtn" data-shop="ships">Vaisseaux</button>
+          </div>
+
+          <div class="shopLayout">
+            <div id="shopList" class="shopList"></div>
+
+            <div id="shopPreview" class="shopPreview">
+              <div class="profileTile">
+                <h3>Choisis un item</h3>
+                <p>Clique un item à gauche pour voir les détails.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<div id="toastContainer" class="toastContainer"></div>
+
+<div id="confirmOverlay" style="
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(8px);
+  display: none;
+  place-items: center;
+  z-index: 99998;
+">
+  <div style="
+    width: min(480px, 94vw);
+    background: linear-gradient(135deg, rgba(10,12,28,0.98), rgba(5,8,20,0.98));
+    border: 1px solid rgba(0,217,255,0.3);
+    border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 100px rgba(0,217,255,0.2);
+    padding: 24px;
+  ">
+    <h3 id="confirmTitle" style="font-size: 20px; font-weight: 900; margin-bottom: 12px; color: #00d9ff;"></h3>
+    <p id="confirmMessage" style="font-size: 14px; color: rgba(232,244,255,0.8); margin-bottom: 20px; line-height: 1.6;"></p>
+
+    <div style="display: flex; gap: 12px; justify-content: flex-end;">
+      <button id="confirmCancel" class="secondary">❌ Annuler</button>
+      <button id="confirmOk" class="primary">✅ Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ✅ Gestionnaire de fenêtres en jeu -->
+<script>
+(() => {
+  if (window.GameWindowManager) return;
+
+  let topZ = 90000;
+
+  const windows = new Map();
+
+  const WIN_POS_PREFIX = "orbit_hud_window_pos:";
+
+function posKey(id) {
+  return WIN_POS_PREFIX + id;
+}
+
+function loadWindowPosition(id) {
+  try {
+    const raw = localStorage.getItem(posKey(id));
+    if (!raw) return null;
+
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object") return null;
+
+    return {
+      left: Number(data.left),
+      top: Number(data.top),
+      width: Number(data.width),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveWindowPosition(id, card) {
+  if (!id || !card) return;
+
+  const r = card.getBoundingClientRect();
+
+  try {
+    localStorage.setItem(
+      posKey(id),
+      JSON.stringify({
+        left: Math.round(r.left),
+        top: Math.round(r.top),
+        width: Math.round(r.width),
+        savedAt: Date.now(),
+      })
+    );
+  } catch {}
+}
+
+function applySavedWindowPosition(id, card) {
+  if (!id || !card) return false;
+
+  const saved = loadWindowPosition(id);
+  if (!saved) return false;
+
+  const width = Math.max(
+    140,
+    Math.min(saved.width || card.getBoundingClientRect().width, window.innerWidth - 20)
+  );
+
+  const p = clampToScreen(
+    card,
+    Number.isFinite(saved.left) ? saved.left : 14,
+    Number.isFinite(saved.top) ? saved.top : 14
+  );
+
+  card.classList.add("floating");
+
+  card.style.position = "fixed";
+  card.style.left = `${Math.round(p.left)}px`;
+  card.style.top = `${Math.round(p.top)}px`;
+  card.style.right = "auto";
+  card.style.bottom = "auto";
+  card.style.width = `${Math.round(width)}px`;
+  card.style.minWidth = "0";
+  card.style.maxWidth = "none";
+  card.style.boxSizing = "border-box";
+  card.style.zIndex = String(++topZ);
+
+  return true;
+}
+
+function clearSavedWindowPositions() {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(WIN_POS_PREFIX)) {
+        localStorage.removeItem(k);
+      }
+    }
+  } catch {}
+}
+
+  function getDock() {
+    let dock = document.getElementById("gameWindowDock");
+
+    if (!dock) {
+      dock = document.createElement("div");
+      dock.id = "gameWindowDock";
+      document.body.appendChild(dock);
+    }
+
+    return dock;
+  }
+
+  function isInteractive(el) {
+    return !!el.closest(`
+      button,
+      input,
+      textarea,
+      select,
+      option,
+      a,
+      canvas,
+      .slot,
+      .slotBox,
+      .itemRow,
+      .shipCard,
+      .shipModRow,
+      .fitCfgBtn,
+      [data-no-drag]
+    `);
+  }
+
+function ensureWindowBar(card, title, icon) {
+  let bar = card.querySelector(":scope > .gameWinBar");
+
+  if (bar) return bar;
+
+  bar = document.createElement("div");
+  bar.className = "gameWinBar";
+
+  bar.innerHTML = `
+    <div class="gameWinIcon" aria-hidden="true">${icon}</div>
+    <div class="gameWinTitle">${title}</div>
+    <button class="gameWinMinBtn" type="button" title="Réduire" data-no-drag>−</button>
+  `;
+
+  card.insertBefore(bar, card.firstChild);
+
+  return bar;
+}
+
+  function makeDockIcon(id, title, icon) {
+    const dock = getDock();
+
+    let btn = dock.querySelector(`[data-window-id="${id}"]`);
+    if (btn) return btn;
+
+    btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "gameDockIcon";
+    btn.dataset.windowId = id;
+    btn.title = title;
+    btn.innerHTML = `<span>${icon}</span>`;
+
+    btn.addEventListener("click", () => {
+      window.GameWindowManager.restore(id);
+    });
+
+    dock.appendChild(btn);
+
+    return btn;
+  }
+
+function prepareFloating(card) {
+  const r = card.getBoundingClientRect();
+
+  card.classList.add("floating");
+
+  card.style.position = "fixed";
+  card.style.left = `${Math.round(r.left)}px`;
+  card.style.top = `${Math.round(r.top)}px`;
+  card.style.right = "auto";
+  card.style.bottom = "auto";
+
+  // ✅ largeur verrouillée pour éviter l'étirement
+  card.style.width = `${Math.round(r.width)}px`;
+  card.style.minWidth = "0";
+  card.style.maxWidth = "none";
+  card.style.boxSizing = "border-box";
+
+  card.style.zIndex = String(++topZ);
+}
+
+  function clampToScreen(card, left, top) {
+    const minVisibleX = 90;
+    const minVisibleY = 50;
+
+    const maxLeft = window.innerWidth - minVisibleX;
+    const maxTop = window.innerHeight - minVisibleY;
+
+    return {
+      left: Math.max(0, Math.min(left, maxLeft)),
+      top: Math.max(0, Math.min(top, maxTop)),
+    };
+  }
+
+  function applyMinimapProportions(card, width) {
+  if (!card || card.id !== "minimap") return;
+
+  const minW = 220;
+  const maxW = Math.min(620, window.innerWidth - 28);
+  const w = Math.max(minW, Math.min(Number(width) || 250, maxW));
+
+  card.style.width = `${Math.round(w)}px`;
+  card.style.minWidth = "0";
+  card.style.maxWidth = "none";
+  card.style.boxSizing = "border-box";
+
+  const canvas = card.querySelector("#miniCanvas");
+
+  if (canvas) {
+    // ratio actuel : 250px de large / 155px de haut
+    const canvasH = Math.round(w * 155 / 250);
+
+    canvas.style.width = "100%";
+    canvas.style.height = `${canvasH}px`;
+  }
+}
+
+function ensureResizeHandle(card) {
+  let handle = card.querySelector(":scope > .gameWinResizeHandle");
+
+  if (handle) return handle;
+
+  handle = document.createElement("div");
+  handle.className = "gameWinResizeHandle";
+  handle.dataset.noDrag = "1";
+  handle.title = "Agrandir / réduire la mini-carte";
+
+  card.appendChild(handle);
+
+  return handle;
+}
+
+function makeMinimapResizable(id, card) {
+  if (!card || card.id !== "minimap") return;
+  if (card.__miniResizeReady) return;
+
+  card.__miniResizeReady = true;
+
+  const handle = ensureResizeHandle(card);
+
+  let resizing = false;
+  let startX = 0;
+  let startY = 0;
+  let startW = 0;
+  let startH = 0;
+  let startLeft = 0;
+  let startTop = 0;
+  let chromeH = 0;
+  let canvasRatio = 155 / 250;
+
+  handle.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    prepareFloating(card);
+
+    const r = card.getBoundingClientRect();
+    const canvas = card.querySelector("#miniCanvas");
+    const cr = canvas ? canvas.getBoundingClientRect() : null;
+
+    resizing = true;
+
+    startX = e.clientX;
+    startY = e.clientY;
+
+    startW = r.width;
+    startH = r.height;
+
+    startLeft = r.left;
+    startTop = r.top;
+
+    const canvasH = cr?.height || Math.round(startW * 155 / 250);
+    chromeH = Math.max(0, startH - canvasH);
+    canvasRatio = canvasH / startW || 155 / 250;
+
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch {}
+  });
+
+  handle.addEventListener("pointermove", (e) => {
+    if (!resizing) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    // ✅ garde les proportions : on prend le mouvement dominant
+    let nextW = startW + Math.max(dx, dy / canvasRatio);
+
+    const minW = 220;
+
+    // ✅ ne dépasse pas à droite
+    const maxWByRight = window.innerWidth - startLeft - 14;
+
+    // ✅ ne dépasse pas en bas
+    const maxWByBottom =
+      (window.innerHeight - startTop - 14 - chromeH) / canvasRatio;
+
+    const maxW = Math.max(
+      minW,
+      Math.min(620, maxWByRight, maxWByBottom)
+    );
+
+    nextW = Math.max(minW, Math.min(nextW, maxW));
+
+    applyMinimapProportions(card, nextW);
+  });
+
+  function stopResize(e) {
+    if (!resizing) return;
+
+    resizing = false;
+
+    // ✅ sauvegarde aussi la nouvelle taille
+    saveWindowPosition(id, card);
+
+    try {
+      handle.releasePointerCapture(e.pointerId);
+    } catch {}
+  }
+
+  handle.addEventListener("pointerup", stopResize);
+  handle.addEventListener("pointercancel", stopResize);
+}
+
+  function makeDraggable(card, bar) {
+    if (!card || !bar || card.__gameWinDragReady) return;
+    card.__gameWinDragReady = true;
+
+    let dragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    bar.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      if (isInteractive(e.target)) return;
+
+      e.preventDefault();
+
+      prepareFloating(card);
+
+      const r = card.getBoundingClientRect();
+
+      dragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = r.left;
+      startTop = r.top;
+
+      try {
+        bar.setPointerCapture(e.pointerId);
+      } catch {}
+    });
+
+    bar.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+
+      const nextLeft = startLeft + (e.clientX - startX);
+      const nextTop = startTop + (e.clientY - startY);
+
+      const p = clampToScreen(card, nextLeft, nextTop);
+
+      card.style.left = `${p.left}px`;
+      card.style.top = `${p.top}px`;
+    });
+
+    function stop(e) {
+  if (!dragging) return;
+
+  dragging = false;
+
+  // ✅ sauvegarde la position quand tu relâches la fenêtre
+  saveWindowPosition(card.dataset.gameWindowId, card);
+
+  try {
+    bar.releasePointerCapture(e.pointerId);
+  } catch {}
+}
+
+    bar.addEventListener("pointerup", stop);
+    bar.addEventListener("pointercancel", stop);
+  }
+
+  window.GameWindowManager = {
+    register({ id, title, icon = "▣", root, card }) {
+      if (!id || !root || !card) return null;
+
+card.classList.add("gameWindow");
+card.dataset.gameWindowId = id;
+
+      const bar = ensureWindowBar(card, title, icon);
+      const minBtn = bar.querySelector(".gameWinMinBtn");
+
+      makeDraggable(card, bar);
+applySavedWindowPosition(id, card);
+
+// ✅ resize proportionnel uniquement pour la mini-carte
+if (id === "minimap") {
+  applyMinimapProportions(card, card.getBoundingClientRect().width || 250);
+  makeMinimapResizable(id, card);
+}
+
+minBtn.onpointerdown = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation();
+};
+
+minBtn.onclick = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation();
+
+  window.GameWindowManager.minimize(id);
+};
+
+      const state = windows.get(id) || {};
+      windows.set(id, {
+        ...state,
+        id,
+        title,
+        icon,
+        root,
+        card,
+        bar,
+        lastDisplay: state.lastDisplay || "grid",
+      });
+
+      card.addEventListener("pointerdown", () => {
+        card.style.zIndex = String(++topZ);
+      });
+
+      return windows.get(id);
+    },
+
+minimize(id) {
+  const w = windows.get(id);
+  if (!w) return;
+
+  w.lastDisplay = "block";
+
+  // ✅ root et card sont parfois le même élément, mais on sécurise les deux
+  w.root.classList.add("gameWinMinimized");
+  w.card.classList.add("gameWinMinimized");
+
+  w.root.style.display = "none";
+  w.card.style.display = "none";
+
+  makeDockIcon(id, w.title, w.icon);
+},
+
+restore(id) {
+  const w = windows.get(id);
+  if (!w) return;
+
+  // ✅ on retire l'état réduit sur root ET card
+  w.root.classList.remove("gameWinMinimized");
+  w.card.classList.remove("gameWinMinimized");
+
+  // ✅ pour les fenêtres HUD, on force block
+  w.root.style.display = "block";
+  w.card.style.display = "block";
+
+  applySavedWindowPosition(id, w.card);
+
+  w.card.style.visibility = "visible";
+  w.card.style.opacity = "1";
+  w.card.style.zIndex = String(++topZ);
+
+  // ✅ sécurité : si le moteur remet display none/block au mauvais moment
+  requestAnimationFrame(() => {
+    w.root.classList.remove("gameWinMinimized");
+    w.card.classList.remove("gameWinMinimized");
+
+    w.root.style.display = "block";
+    w.card.style.display = "block";
+    w.card.style.visibility = "visible";
+    w.card.style.opacity = "1";
+  });
+
+  const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);
+  if (dockBtn) dockBtn.remove();
+},
+
+    resetPositions() {
+  clearSavedWindowPositions();
+
+  const dock = getDock();
+
+  for (const [id, w] of windows.entries()) {
+    if (!w || !w.card || !w.root) continue;
+
+    const card = w.card;
+    const root = w.root;
+
+    root.classList.remove("gameWinMinimized");
+    card.classList.remove("gameWinMinimized");
+    card.classList.remove("floating");
+
+    root.style.display = "block";
+    card.style.display = "block";
+
+    card.style.position = "";
+    card.style.left = "";
+    card.style.top = "";
+    card.style.right = "";
+    card.style.bottom = "";
+    card.style.width = "";
+    card.style.minWidth = "";
+    card.style.maxWidth = "";
+    card.style.margin = "";
+    card.style.transform = "";
+    card.style.visibility = "visible";
+    card.style.opacity = "1";
+    card.style.zIndex = String(++topZ);
+
+    const dockBtn = dock.querySelector(`[data-window-id="${id}"]`);
+    if (dockBtn) dockBtn.remove();
+
+    if (id === "minimap" && typeof applyMinimapProportions === "function") {
+      requestAnimationFrame(() => {
+        applyMinimapProportions(card, card.getBoundingClientRect().width || 250);
+      });
+    }
+  }
+},
+
+    close(id) {
+      const w = windows.get(id);
+      if (!w) return;
+
+      w.root.style.display = "none";
+
+      const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);
+      if (dockBtn) dockBtn.remove();
+    },
+
+    setTitle(id, title) {
+      const w = windows.get(id);
+      if (!w) return;
+
+      w.title = title;
+
+      const titleEl = w.bar?.querySelector(".gameWinTitle");
+      if (titleEl) titleEl.textContent = title;
+
+      const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);
+      if (dockBtn) dockBtn.title = title;
+    },
+  };
+})();
+</script>
+
+<script type="module" src="./public/profile.js"></script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

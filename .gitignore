@@ -1,0 +1,16 @@
+# Dependencies and generated output
+node_modules/
+coverage/
+dist/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs and local configuration
+*.log
+.env
+.env.*
+!.env.example

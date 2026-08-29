@@ -1,0 +1,1934 @@
+:root{
+  --bg:#050814;
+  --panel:rgba(10,14,30,.72);
+  --panel2:rgba(10,14,30,.92);
+  --txt:#d7e2ff;
+  --muted:#93a7d6;
+  --accent:#7cf0ff;
+  --danger:#ff6b7a;
+  --warn:#ffd27a;
+
+  --x1:#ff3b4e;
+  --x2:#4aa3ff;
+  --x3:#3dff8c;
+  --x4:#f6f7ff;
+  --x6:#ffa54a;
+}
+
+*{
+  box-sizing:border-box;
+}
+
+html,
+body{
+  height:100%;
+  margin:0;
+  background:var(--bg);
+  overflow:hidden;
+  color:var(--txt);
+  font-family:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+}
+
+button,
+input,
+select,
+textarea{
+  font-family:inherit;
+}
+
+button{
+  user-select:none;
+}
+
+#game{
+  display:block;
+  width:100vw;
+  height:100vh;
+}
+
+#hud{
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+}
+
+.panel{
+  position:absolute;
+  background:var(--panel);
+  border:1px solid rgba(124,240,255,.14);
+  box-shadow:0 10px 30px rgba(0,0,0,.35);
+  border-radius:14px;
+  backdrop-filter:blur(8px);
+  pointer-events:none;
+}
+
+.panel.interactive{
+  pointer-events:auto;
+}
+
+.keyHint{
+  display:inline-block;
+  margin-left:6px;
+  padding:2px 7px;
+  border-radius:10px;
+  font-size:11px;
+  font-weight:1000;
+  color:rgba(215,226,255,.92);
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);
+  vertical-align:middle;
+}
+
+/* ============================================================
+   HUD — panneaux de jeu
+============================================================ */
+
+#boxWave{
+  left:14px;
+  top:14px;
+  min-width:240px;
+  padding:10px 12px;
+}
+
+#boxMeta{
+  left:14px;
+  top:150px;
+  min-width:240px;
+  padding:10px 12px;
+}
+
+#boxVitals{
+  left:14px;
+  top:270px;
+  min-width:240px;
+  padding:10px 12px;
+}
+
+#boxWave .row,
+#boxMeta .row,
+#boxVitals .row{
+  display:flex;
+  gap:10px;
+  justify-content:space-between;
+  align-items:baseline;
+  margin:2px 0;
+  padding:2px 1px;
+}
+
+#boxWave .k,
+#boxMeta .k,
+#boxVitals .k{
+  color:rgba(180,210,255,.64);
+  font-size:11.5px;
+}
+
+#boxWave .v,
+#boxMeta .v,
+#boxVitals .v{
+  color:rgba(235,248,255,.95);
+  font-weight:900;
+  font-variant-numeric:tabular-nums;
+  text-shadow:0 0 10px rgba(0,217,255,.10);
+}
+
+#credits,
+#lvlTxt,
+#spdTxt,
+#fpsTxt{
+  color:#7cf0ff;
+}
+
+.barWrap{
+  margin-top:8px;
+  display:grid;
+  gap:6px;
+}
+
+.bar{
+  height:10px;
+  background:rgba(255,255,255,.08);
+  border-radius:999px;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.08);
+}
+
+.bar > i{
+  display:block;
+  height:100%;
+  width:50%;
+}
+
+.bar.hp > i{
+  background:linear-gradient(90deg, var(--danger), #ffb2bb);
+}
+
+.bar.sh > i{
+  background:linear-gradient(90deg, var(--accent), #b8f7ff);
+}
+
+#boxVitals .row.mini{
+  margin-top:8px;
+  padding-top:6px;
+  border-top:1px solid rgba(255,255,255,.08);
+}
+
+#boxVitals .row.mini .k{
+  font-size:12px;
+  color:var(--muted);
+}
+
+#boxVitals .row.mini .v{
+  font-weight:1000;
+}
+
+.configRow{
+  margin-top:8px;
+}
+
+.configSwitch{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.cfgBtn,
+.fitCfgBtn{
+  border-radius:8px;
+  border:1px solid rgba(100,200,255,.28);
+  background:rgba(255,255,255,.06);
+  color:rgba(232,244,255,.75);
+  font-weight:900;
+  cursor:pointer;
+}
+
+.cfgBtn{
+  width:28px;
+  height:24px;
+}
+
+.fitCfgBtn{
+  min-width:42px;
+  height:30px;
+  border-radius:10px;
+}
+
+.cfgBtn.active,
+.fitCfgBtn.active{
+  background:rgba(0,217,255,.25);
+  border-color:rgba(0,217,255,.75);
+  color:#fff;
+  box-shadow:0 0 12px rgba(0,217,255,.28);
+}
+
+.cfgBtn:disabled{
+  opacity:.4;
+  cursor:not-allowed;
+}
+
+#cfgCooldownTxt{
+  color:rgba(232,244,255,.55);
+  font-size:11px;
+  min-width:30px;
+}
+
+/* ============================================================
+   Mini-carte
+============================================================ */
+
+#minimap{
+  right:14px;
+  bottom:14px;
+  width:250px;
+  height:auto;
+  padding:10px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  overflow:hidden;
+}
+
+#miniHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:2px 2px 0;
+  font-weight:1000;
+  font-size:12px;
+  color:rgba(215,226,255,.92);
+}
+
+#miniHeader span{
+  white-space:nowrap;
+  text-shadow:0 2px 0 rgba(5,8,20,.85);
+}
+
+#miniDivider{
+  height:1px;
+  background:rgba(255,255,255,.10);
+  border-top:1px solid rgba(124,240,255,.10);
+  opacity:.95;
+}
+
+#miniCanvas{
+  display:block;
+  width:100%;
+  height:155px;
+  border-radius:12px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(124,240,255,.18);
+  box-shadow:
+    inset 0 0 18px rgba(0,0,0,.34),
+    0 0 18px rgba(0,217,255,.06);
+}
+
+#minimap.gameWindow{
+  min-width:220px;
+  max-width:none;
+  padding:0;
+}
+
+#minimap.gameWindow #miniHeader{
+  padding:8px 12px 0;
+}
+
+#minimap.gameWindow #miniDivider{
+  margin:0 12px;
+}
+
+#minimap.gameWindow #miniCanvas{
+  width:calc(100% - 20px);
+  margin:0 10px 10px;
+}
+
+#minimap .gameWinResizeHandle{
+  position:absolute;
+  right:6px;
+  bottom:6px;
+  width:18px;
+  height:18px;
+  z-index:5;
+  cursor:nwse-resize;
+  pointer-events:auto;
+  border-right:2px solid rgba(124,240,255,.65);
+  border-bottom:2px solid rgba(124,240,255,.65);
+  border-radius:3px;
+  opacity:.65;
+  transition:opacity .15s ease, transform .15s ease, filter .15s ease;
+}
+
+#minimap .gameWinResizeHandle:hover{
+  opacity:1;
+  transform:scale(1.08);
+  filter:drop-shadow(0 0 8px rgba(0,217,255,.45));
+}
+
+#minimap .gameWinResizeHandle::before{
+  content:"";
+  position:absolute;
+  right:4px;
+  bottom:4px;
+  width:9px;
+  height:9px;
+  border-right:1px solid rgba(124,240,255,.45);
+  border-bottom:1px solid rgba(124,240,255,.45);
+}
+
+/* ============================================================
+   Fenêtres HUD — style commun propre
+============================================================ */
+
+.gameWindow{
+  pointer-events:auto !important;
+  overflow:hidden !important;
+  border-radius:16px !important;
+  border:1px solid rgba(124,240,255,.24) !important;
+  background:
+    linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80)) !important;
+  box-shadow:
+    0 18px 42px rgba(0,0,0,.55),
+    0 0 26px rgba(0,217,255,.12),
+    inset 0 0 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter:blur(14px) saturate(140%) !important;
+  transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.gameWindow:hover{
+  border-color:rgba(124,240,255,.42) !important;
+  box-shadow:
+    0 18px 42px rgba(0,0,0,.5),
+    0 0 28px rgba(0,217,255,.16),
+    inset 0 0 0 1px rgba(255,255,255,.05) !important;
+}
+
+.gameWindow.floating{
+  position:fixed !important;
+  right:auto !important;
+  bottom:auto !important;
+  margin:0 !important;
+  transform:none !important;
+  min-width:0 !important;
+  z-index:90000 !important;
+  box-sizing:border-box !important;
+  box-shadow:
+    0 24px 60px rgba(0,0,0,.62),
+    0 0 38px rgba(0,217,255,.20),
+    inset 0 0 0 1px rgba(255,255,255,.06) !important;
+}
+
+.gameWinMinimized{
+  display:none !important;
+}
+
+.gameWindow > .gameWinBar{
+  height:30px !important;
+  min-height:30px !important;
+  margin:0 !important;
+  padding:0 8px !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:8px !important;
+  border-bottom:1px solid rgba(124,240,255,.18) !important;
+  background:
+    linear-gradient(90deg, rgba(0,217,255,.18), rgba(124,240,255,.05), rgba(255,255,255,.035)) !important;
+  cursor:grab !important;
+  user-select:none !important;
+}
+
+.gameWindow > .gameWinBar:active{
+  cursor:grabbing !important;
+}
+
+.gameWindow > .gameWinBar::after{
+  content:none !important;
+  display:none !important;
+}
+
+.gameWinIcon{
+  width:auto !important;
+  height:auto !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  border:none !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  color:rgba(232,244,255,.92) !important;
+  font-size:15px !important;
+  line-height:1 !important;
+  opacity:.95 !important;
+  filter:drop-shadow(0 0 8px rgba(0,217,255,.22)) !important;
+  pointer-events:none !important;
+  flex-shrink:0 !important;
+}
+
+.gameWinTitle{
+  flex:1 !important;
+  min-width:0 !important;
+  font-size:11px !important;
+  font-weight:900 !important;
+  letter-spacing:.35px !important;
+  color:rgba(232,244,255,.88) !important;
+  text-shadow:0 0 10px rgba(0,217,255,.20) !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+
+.gameWinMinBtn{
+  width:22px !important;
+  height:22px !important;
+  margin-left:auto !important;
+  display:grid !important;
+  place-items:center !important;
+  flex-shrink:0 !important;
+  border-radius:8px !important;
+  border:1px solid rgba(124,240,255,.28) !important;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 36%),
+    linear-gradient(135deg, rgba(0,217,255,.16), rgba(0,70,100,.10)) !important;
+  color:rgba(232,244,255,.95) !important;
+  font-size:15px !important;
+  font-weight:1000 !important;
+  line-height:1 !important;
+  cursor:pointer !important;
+  box-shadow:
+    0 0 10px rgba(0,217,255,.10),
+    inset 0 0 0 1px rgba(255,255,255,.035) !important;
+  transition:transform .14s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease !important;
+}
+
+.gameWinMinBtn:hover{
+  transform:scale(1.06) !important;
+  border-color:rgba(124,240,255,.58) !important;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.20), transparent 36%),
+    linear-gradient(135deg, rgba(0,217,255,.24), rgba(0,70,100,.18)) !important;
+  box-shadow:
+    0 0 16px rgba(0,217,255,.20),
+    inset 0 0 0 1px rgba(255,255,255,.05) !important;
+}
+
+#boxWave.gameWindow,
+#boxMeta.gameWindow,
+#boxVitals.gameWindow,
+#minimap.gameWindow,
+#settingsWindow.gameWindow{
+  padding:0 !important;
+}
+
+#boxWave.gameWindow:not(.floating),
+#boxMeta.gameWindow:not(.floating),
+#boxVitals.gameWindow:not(.floating),
+#minimap.gameWindow:not(.floating),
+#settingsWindow.gameWindow:not(.floating){
+  position:absolute !important;
+}
+
+#boxWave.gameWindow:not(.floating){
+  left:14px !important;
+  top:14px !important;
+}
+
+#boxMeta.gameWindow:not(.floating){
+  left:14px !important;
+  top:150px !important;
+}
+
+#boxVitals.gameWindow:not(.floating){
+  left:14px !important;
+  top:270px !important;
+}
+
+#minimap.gameWindow:not(.floating){
+  right:14px !important;
+  bottom:14px !important;
+}
+
+#settingsWindow.gameWindow:not(.floating){
+  left:320px !important;
+  top:80px !important;
+}
+
+#boxWave.gameWindow > .row,
+#boxMeta.gameWindow > .row{
+  padding-left:12px !important;
+  padding-right:12px !important;
+}
+
+#boxWave.gameWindow > .row:first-of-type,
+#boxMeta.gameWindow > .row:first-of-type{
+  padding-top:10px !important;
+}
+
+#boxWave.gameWindow > .row:last-of-type,
+#boxMeta.gameWindow > .row:last-of-type{
+  padding-bottom:10px !important;
+}
+
+#boxVitals.gameWindow .barWrap{
+  margin-top:0 !important;
+  padding:10px 12px 12px !important;
+}
+
+@keyframes hudWindowPop{
+  from{
+    opacity:.82;
+    transform:scale(.985);
+  }
+  to{
+    opacity:1;
+    transform:scale(1);
+  }
+}
+
+#boxWave.gameWindow,
+#boxMeta.gameWindow,
+#boxVitals.gameWindow,
+#minimap.gameWindow{
+  animation:hudWindowPop .16s ease both;
+}
+
+/* ============================================================
+   Dock des fenêtres réduites
+============================================================ */
+
+#gameWindowDock{
+  position:fixed !important;
+  top:12px !important;
+  left:12px !important;
+  right:auto !important;
+  bottom:auto !important;
+  z-index:96000 !important;
+  display:flex !important;
+  flex-direction:row !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  gap:8px !important;
+  padding:6px !important;
+  width:auto !important;
+  height:auto !important;
+  max-width:calc(100vw - 24px) !important;
+  overflow-x:auto !important;
+  overflow-y:hidden !important;
+  border-radius:16px !important;
+  background:rgba(3,8,20,.35) !important;
+  border:1px solid rgba(124,240,255,.12) !important;
+  backdrop-filter:blur(10px) !important;
+  box-shadow:0 12px 32px rgba(0,0,0,.35) !important;
+  pointer-events:auto !important;
+}
+
+#gameWindowDock:empty{
+  display:none !important;
+}
+
+#gameWindowDock .gameDockIcon{
+  width:42px !important;
+  height:42px !important;
+  border-radius:13px !important;
+  border:1px solid rgba(124,240,255,.34) !important;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,.18), transparent 34%),
+    linear-gradient(135deg, rgba(0,217,255,.16), rgba(4,9,24,.92)) !important;
+  color:#e8f4ff !important;
+  font-size:20px !important;
+  font-weight:900 !important;
+  display:grid !important;
+  place-items:center !important;
+  cursor:pointer !important;
+  box-shadow:
+    0 10px 22px rgba(0,0,0,.42),
+    0 0 14px rgba(0,217,255,.10) !important;
+  backdrop-filter:blur(10px) !important;
+  transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+#gameWindowDock .gameDockIcon:hover{
+  transform:translateY(-3px) scale(1.04) !important;
+  border-color:rgba(124,240,255,.82) !important;
+  box-shadow:
+    0 12px 28px rgba(0,0,0,.50),
+    0 0 24px rgba(0,217,255,.28) !important;
+}
+
+#gameWindowDock .gameDockIcon span{
+  pointer-events:none;
+}
+
+#btnGameHub.profileDockIcon{
+  order:-999 !important;
+}
+
+/* ============================================================
+   Barre munitions / compétences
+============================================================ */
+
+#ammoBar{
+  left:50%;
+  bottom:14px;
+  transform:translateX(-50%);
+  padding:10px 12px;
+  display:flex;
+  gap:10px;
+  align-items:center;
+  background:rgba(10,14,30,.78);
+  border:1px solid rgba(124,240,255,.18);
+  pointer-events:auto;
+}
+
+.ammoBtn{
+  --c:var(--accent);
+  cursor:pointer;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+  color:var(--txt);
+  padding:8px 10px;
+  border-radius:12px;
+  font-weight:900;
+  min-width:92px;
+  text-align:center;
+  user-select:none;
+}
+
+.ammoBtn small{
+  display:block;
+  margin-top:2px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+}
+
+.ammoBtn.active,
+.ammoBtn.ready{
+  border-color:color-mix(in srgb, var(--c) 55%, rgba(255,255,255,.1));
+  background:color-mix(in srgb, var(--c) 18%, rgba(255,255,255,.06));
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--c) 18%, transparent) inset;
+}
+
+.ammoBtn.disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+.ammoBtn[data-ammo="x1"]{ --c:var(--x1); }
+.ammoBtn[data-ammo="x2"]{ --c:var(--x2); }
+.ammoBtn[data-ammo="x3"]{ --c:var(--x3); }
+.ammoBtn[data-ammo="x4"]{ --c:var(--x4); }
+.ammoBtn[data-ammo="x6"]{ --c:var(--x6); }
+.ammoBtn[data-ammo="sab"]{ --c:#173c9c; }
+.ammoBtn[data-skill="pulse"]{ --c:#b342ff; }
+.ammoBtn[data-skill="nuke"]{ --c:#ff3b4e; }
+.ammoBtn[data-skill="repair"]{ --c:#3dff8c; }
+
+.skillBtn{
+  min-width:130px;
+}
+
+#btnPulse{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+}
+
+#btnPulse .skillTopRow{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  width:100%;
+}
+
+#btnPulse .skillTop{
+  font-weight:900;
+}
+
+#btnPulse .skillTopRow .keyHint{
+  margin:0;
+}
+
+#btnPulse small{
+  display:inline-block;
+  margin-top:0;
+}
+
+#btnPulse .skillBottom{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  width:100%;
+}
+
+#btnPulse #pulsePrice,
+#btnPulse #pulsePct{
+  white-space:nowrap;
+  margin:0;
+}
+
+/* ============================================================
+   Messages, portail, modales
+============================================================ */
+
+#centerMsg{
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  width:min(560px, calc(100vw - 28px));
+  padding:18px 20px;
+  text-align:center;
+  display:none;
+}
+
+#centerMsg h2{
+  margin:0 0 8px;
+  font-size:18px;
+}
+
+#centerMsg p{
+  margin:6px 0;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.4;
+}
+
+#centerMsg .btnHint{
+  display:inline-block;
+  margin-top:10px;
+  padding:8px 10px;
+  border-radius:12px;
+  border:1px solid rgba(124,240,255,.22);
+  background:rgba(124,240,255,.08);
+  color:var(--txt);
+  font-size:12px;
+}
+
+#startHint{
+  left:50%;
+  top:14px;
+  transform:translateX(-50%);
+  width:min(760px, calc(100vw - 28px));
+  padding:10px 12px;
+  display:none;
+  text-align:center;
+}
+
+#startHint .t{
+  margin-bottom:4px;
+  color:var(--accent);
+  font-size:13px;
+  font-weight:900;
+}
+
+#startHint .b{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+}
+
+#portalOverlay{
+  position:fixed;
+  inset:0;
+  display:none;
+  place-items:center;
+  pointer-events:none;
+}
+
+#portalCard{
+  width:min(420px, calc(100vw - 28px));
+  padding:14px;
+  text-align:center;
+  border-radius:18px;
+  border:1px solid rgba(124,240,255,.20);
+  background:rgba(10,14,30,.55);
+  backdrop-filter:blur(8px);
+  box-shadow:0 18px 60px rgba(0,0,0,.55);
+  pointer-events:auto;
+}
+
+#portalCard .title{
+  margin-bottom:6px;
+  color:var(--accent);
+  font-size:16px;
+  font-weight:1000;
+}
+
+#portalCard .sub{
+  margin-bottom:10px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+}
+
+#nextWaveBtn{
+  width:100%;
+  cursor:pointer;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);
+  color:var(--txt);
+  padding:12px;
+  border-radius:14px;
+  font-weight:1000;
+}
+
+#nextWaveBtn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+.overlay{
+  position:fixed;
+  inset:0;
+  display:none;
+  place-items:center;
+  background:rgba(0,0,0,.50);
+  backdrop-filter:blur(6px);
+  pointer-events:auto;
+  z-index:9999;
+}
+
+.modal{
+  width:min(860px, calc(100vw - 28px));
+  padding:14px;
+  background:rgba(10,14,30,.90);
+  border:1px solid rgba(124,240,255,.20);
+  border-radius:18px;
+  box-shadow:0 18px 80px rgba(0,0,0,.65);
+}
+
+.modal h2{
+  margin:0 0 6px;
+  color:var(--accent);
+  font-size:16px;
+}
+
+.modal p{
+  margin:0 0 12px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+}
+
+.modal .grid{
+  display:grid;
+  grid-template-columns:repeat(7, minmax(0, 1fr));
+  gap:10px;
+}
+
+.skinBtn{
+  display:grid;
+  gap:6px;
+  justify-items:center;
+  padding:8px;
+  cursor:pointer;
+  user-select:none;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.04);
+  border-radius:14px;
+}
+
+.skinBtn.selected{
+  border-color:rgba(124,240,255,.55);
+  box-shadow:0 0 0 2px rgba(124,240,255,.12) inset;
+  background:rgba(124,240,255,.08);
+}
+
+.skinBtn canvas{
+  width:64px;
+  height:64px;
+  image-rendering:pixelated;
+  background:rgba(255,255,255,.03);
+  border-radius:12px;
+}
+
+.skinBtn span{
+  color:var(--txt);
+  font-size:11px;
+  font-weight:900;
+}
+
+.modalRow{
+  display:flex;
+  gap:10px;
+  justify-content:space-between;
+  align-items:center;
+  margin-top:12px;
+}
+
+.primaryBtn,
+.secondaryBtn,
+.primary,
+.secondary{
+  cursor:pointer;
+  color:var(--txt);
+  padding:10px 12px;
+  border-radius:14px;
+  font-weight:1000;
+}
+
+.primaryBtn,
+.primary{
+  min-width:220px;
+  border:1px solid rgba(124,240,255,.35);
+  background:rgba(124,240,255,.12);
+}
+
+.secondaryBtn,
+.secondary{
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);
+}
+
+.shopItem{
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.04);
+  border-radius:16px;
+  padding:10px;
+  margin-bottom:10px;
+}
+
+.shopItem h4{
+  margin:0 0 6px;
+  font-size:13px;
+}
+
+.shopItem p{
+  margin:0 0 8px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+}
+
+.shopItem button{
+  width:100%;
+  cursor:pointer;
+  border:1px solid rgba(124,240,255,.22);
+  background:rgba(124,240,255,.10);
+  color:var(--txt);
+  padding:9px 10px;
+  border-radius:12px;
+  font-weight:900;
+}
+
+.shopItem button:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+  border-color:rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+}
+
+/* ============================================================
+   Fenêtre Paramètres
+============================================================ */
+
+#settingsWindow{
+  left:320px;
+  top:80px;
+  width:290px;
+  padding:0 !important;
+  pointer-events:auto !important;
+  overflow:hidden !important;
+}
+
+#settingsWindow .settingsBody{
+  padding:12px;
+  display:grid;
+  gap:9px;
+  max-height:min(72vh, 720px);
+  overflow:auto;
+}
+
+#settingsWindow .settingsIntro{
+  margin-bottom:2px;
+  color:rgba(232,244,255,.68);
+  font-size:12px;
+  font-weight:800;
+}
+
+#settingsWindow .settingsToggle,
+#settingsWindow .keyBindRow,
+#settingsWindow .settingsResetBtn{
+  width:100%;
+  border-radius:12px;
+  color:rgba(232,244,255,.92);
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+  transition:transform .14s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease;
+}
+
+#settingsWindow .settingsToggle{
+  min-height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border:1px solid rgba(124,240,255,.22);
+  background:rgba(255,255,255,.055);
+  padding:0 12px;
+}
+
+#settingsWindow .settingsToggle:hover,
+#settingsWindow .keyBindRow:hover{
+  transform:translateY(-1px);
+  border-color:rgba(124,240,255,.55);
+  background:rgba(0,217,255,.10);
+  box-shadow:0 0 18px rgba(0,217,255,.12);
+}
+
+#settingsWindow .settingsToggle.isOn{
+  border-color:rgba(0,255,136,.35);
+  background:rgba(0,255,136,.08);
+}
+
+#settingsWindow .settingsToggle.isOff{
+  border-color:rgba(255,107,122,.35);
+  background:rgba(255,107,122,.08);
+  color:rgba(255,210,218,.92);
+}
+
+#settingsWindow .settingsSection{
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px solid rgba(124,240,255,.16);
+  display:grid;
+  gap:7px;
+}
+
+#settingsWindow .settingsSectionTitle{
+  margin-bottom:2px;
+  color:rgba(124,240,255,.95);
+  font-size:12px;
+  font-weight:1000;
+  letter-spacing:.4px;
+}
+
+#settingsWindow .settingsSectionSub{
+  margin-top:6px;
+  color:rgba(232,244,255,.55);
+  font-size:11px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.7px;
+}
+
+#settingsWindow .keyBindRow{
+  min-height:34px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  border:1px solid rgba(124,240,255,.16);
+  background:rgba(255,255,255,.045);
+  padding:0 10px;
+}
+
+#settingsWindow .keyBindRow.waiting{
+  border-color:rgba(255,210,122,.75);
+  background:rgba(255,210,122,.12);
+  box-shadow:0 0 18px rgba(255,210,122,.18);
+}
+
+#settingsWindow .keyBindRow kbd{
+  min-width:42px;
+  height:24px;
+  display:grid;
+  place-items:center;
+  border-radius:8px;
+  border:1px solid rgba(124,240,255,.28);
+  background:rgba(3,8,20,.72);
+  color:#7cf0ff;
+  font-family:inherit;
+  font-size:11px;
+  font-weight:1000;
+  box-shadow:
+    inset 0 -2px 0 rgba(0,0,0,.35),
+    0 0 10px rgba(0,217,255,.08);
+}
+
+#settingsWindow .settingsResetBtn{
+  margin-top:6px;
+  min-height:34px;
+  border:1px solid rgba(255,210,122,.28);
+  background:rgba(255,210,122,.08);
+  color:rgba(255,235,190,.95);
+}
+
+#settingsWindow .settingsResetBtn:hover{
+  border-color:rgba(255,210,122,.62);
+  box-shadow:0 0 16px rgba(255,210,122,.16);
+}
+
+/* ============================================================
+   Profil / hangars / boutique
+============================================================ */
+
+#profileOverlay{
+  position:fixed;
+  inset:0;
+  z-index:200000 !important;
+  background:rgba(0,0,0,.72) !important;
+  backdrop-filter:blur(10px) !important;
+  overflow:auto !important;
+  padding:24px !important;
+  color:#e8f4ff;
+}
+
+.profileOverlayInner{
+  max-width:1400px;
+  margin:0 auto;
+}
+
+#profileWindow{
+  position:relative !important;
+  z-index:200001 !important;
+  width:auto !important;
+  max-width:none !important;
+  min-height:auto !important;
+  display:flex !important;
+  flex-direction:column !important;
+  gap:16px !important;
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  overflow:visible !important;
+}
+
+.profileHeaderCard,
+.profileMainCard,
+#profileWindow .profileHeaderCard,
+#profileWindow .profileMainCard{
+  background:linear-gradient(135deg, rgba(255,255,255,.08), rgba(100,200,255,.04)) !important;
+  border:1px solid rgba(100,200,255,.25) !important;
+  border-radius:18px !important;
+  backdrop-filter:blur(24px) saturate(140%) !important;
+  box-shadow:
+    0 8px 32px rgba(0,0,0,.6),
+    0 0 0 1px rgba(255,255,255,.05) inset,
+    0 0 80px rgba(0,217,255,.1) !important;
+}
+
+.profileHeaderCard{
+  padding:24px;
+  margin-bottom:0;
+}
+
+.profileMainCard{
+  padding:24px;
+  max-height:calc(100vh - 175px);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+
+.profileHeaderTop{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:16px;
+  flex-wrap:wrap;
+  margin-bottom:16px;
+}
+
+.profileTitle{
+  font-size:28px;
+  font-weight:900;
+  background:linear-gradient(135deg, #ffffff, #00d9ff);
+  -webkit-background-clip:text;
+  background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+
+.profileSub{
+  margin-top:8px;
+  color:rgba(232,244,255,.65);
+  font-size:14px;
+}
+
+.profileActions{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.profileOverlay button{
+  padding:12px 20px;
+  border-radius:12px;
+  border:none;
+  font-size:14px;
+  font-weight:800;
+  cursor:pointer;
+  text-transform:uppercase;
+}
+
+.profileOverlay button.primary,
+.profileOverlay .primary{
+  background:linear-gradient(135deg, #00d9ff, #0088cc);
+  color:#000;
+  box-shadow:0 8px 24px rgba(0,217,255,.35);
+}
+
+.profileOverlay button.secondary,
+.profileOverlay .secondary{
+  background:linear-gradient(135deg, rgba(255,255,255,.1), rgba(100,200,255,.08));
+  color:#fff;
+  border:1px solid rgba(100,200,255,.3);
+}
+
+.profileOverlay button:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+.profileTabs,
+.subtabs{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.tabBtn,
+.subtabBtn{
+  background:rgba(255,255,255,.05);
+  color:rgba(232,244,255,.65);
+  border:1px solid rgba(100,200,255,.2) !important;
+}
+
+.tabBtn.active,
+.subtabBtn.active{
+  color:#fff;
+  background:linear-gradient(135deg, rgba(0,217,255,.25), rgba(138,43,226,.2));
+  border-color:rgba(0,217,255,.5) !important;
+}
+
+.profilePanel{
+  display:none;
+  flex:1;
+  min-height:0;
+  overflow:hidden;
+}
+
+.profilePanel.active{
+  display:flex;
+  flex-direction:column;
+}
+
+.hint{
+  color:rgba(232,244,255,.65);
+  font-size:13px;
+  line-height:1.45;
+}
+
+.statsRow{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));
+  gap:12px;
+  margin-bottom:20px;
+}
+
+.statCard,
+.profileTile,
+.tile{
+  background:linear-gradient(135deg, rgba(0,217,255,.08), rgba(138,43,226,.05));
+  border:1px solid rgba(100,200,255,.2);
+  border-radius:14px;
+  padding:16px;
+  backdrop-filter:blur(12px);
+  box-shadow:0 4px 12px rgba(0,0,0,.3);
+}
+
+.statLabel{
+  margin-bottom:6px;
+  color:rgba(232,244,255,.6);
+  font-size:11px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:1px;
+}
+
+.statValue{
+  color:#00d9ff;
+  font-size:24px;
+  font-weight:900;
+}
+
+.previewCard{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  padding:16px;
+  background:linear-gradient(135deg, rgba(0,217,255,.08), rgba(138,43,226,.05));
+  border:1px solid rgba(100,200,255,.2);
+  border-radius:16px;
+}
+
+.previewCard img,
+.tileShipPreview img,
+.shopRow img{
+  object-fit:contain;
+  background:rgba(0,0,0,.25);
+  border:1px solid rgba(100,200,255,.2);
+}
+
+.previewCard img{
+  width:80px;
+  height:80px;
+  padding:8px;
+  border-radius:12px;
+  border-color:rgba(0,217,255,.3);
+}
+
+.previewTitle{
+  font-size:16px;
+  font-weight:900;
+}
+
+.previewSub{
+  color:rgba(232,244,255,.6);
+  font-size:13px;
+}
+
+.profileGrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+  gap:14px;
+  overflow-y:auto;
+  padding-right:8px;
+}
+
+.tileShipPreview{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  margin-bottom:12px;
+}
+
+.tileShipPreview img{
+  width:72px;
+  height:72px;
+  padding:8px;
+  border-radius:12px;
+  border-color:rgba(0,217,255,.3);
+}
+
+.tileActions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+
+.msg{
+  display:none;
+  padding:12px 16px;
+  border-radius:12px;
+  font-size:13px;
+  margin-bottom:16px;
+}
+
+/* Boutique profil */
+
+.shopLayout{
+  display:grid;
+  grid-template-columns:340px 1fr;
+  gap:16px;
+  height:100%;
+  min-height:0;
+  overflow:hidden;
+}
+
+.shopList,
+.shopPreview{
+  overflow-y:auto;
+  padding-right:8px;
+}
+
+.shopList{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.shopRow{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid rgba(100,200,255,.2);
+  background:rgba(255,255,255,.05);
+  cursor:pointer;
+}
+
+.shopRow.active{
+  border-color:rgba(0,217,255,.6);
+  background:rgba(0,217,255,.15);
+}
+
+.shopRow img{
+  width:48px;
+  height:48px;
+  padding:4px;
+  border-radius:10px;
+}
+
+.shopMeta{
+  flex:1;
+  min-width:0;
+}
+
+.shopMeta b{
+  display:block;
+  font-size:14px;
+}
+
+.shopMeta span{
+  color:rgba(232,244,255,.6);
+  font-size:12px;
+}
+
+.shopPreview .bigImg{
+  width:100%;
+  max-width:400px;
+  max-height:400px;
+  display:block;
+  margin:0 auto 16px;
+  padding:20px;
+  object-fit:contain;
+  border-radius:16px;
+  background:rgba(0,0,0,.25);
+  border:1px solid rgba(0,217,255,.3);
+}
+
+.pill{
+  display:inline-block;
+  margin-left:8px;
+  padding:4px 10px;
+  border-radius:999px;
+  background:rgba(0,255,136,.15);
+  border:1px solid rgba(0,255,136,.3);
+  color:#00ff88;
+  font-size:10px;
+  font-weight:900;
+}
+
+#profileOverlay .shopLayoutGrid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(260px, 1fr));
+  gap:16px;
+  flex:1;
+  min-height:0;
+  overflow-y:auto;
+  padding-right:8px;
+}
+
+#profileOverlay .shipCard{
+  height:fit-content;
+  display:flex;
+  flex-direction:column;
+  padding:16px;
+  background:linear-gradient(135deg, rgba(255,255,255,.06), rgba(100,200,255,.03));
+  border:1px solid rgba(100,200,255,.2);
+  border-radius:16px;
+  backdrop-filter:blur(12px);
+  box-shadow:0 4px 12px rgba(0,0,0,.3);
+  transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease, opacity .25s ease;
+}
+
+#profileOverlay .shipCard:hover{
+  transform:translateY(-4px);
+  box-shadow:0 8px 24px rgba(0,217,255,.3);
+  border-color:rgba(0,217,255,.5);
+}
+
+#profileOverlay .shipCard.owned{
+  opacity:.6;
+  border-color:rgba(0,255,136,.3);
+}
+
+#profileOverlay .shipImageContainer{
+  width:100%;
+  height:280px;
+  position:relative;
+  margin-bottom:16px;
+  border-radius:12px;
+  background:rgba(0,0,0,.25);
+  border:1px solid rgba(0,217,255,.2);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+
+#profileOverlay .shipImageContainer img{
+  position:absolute;
+  image-rendering:pixelated;
+  object-fit:contain;
+}
+
+#profileOverlay .shipCard h3{
+  margin:0 0 8px;
+  color:#00d9ff;
+  font-size:18px;
+  font-weight:900;
+  text-align:center;
+}
+
+#profileOverlay .shipStats{
+  margin-bottom:12px;
+  color:rgba(232,244,255,.65);
+  font-size:12px;
+  text-align:center;
+  line-height:1.6;
+}
+
+#profileOverlay .shipPrice{
+  margin-bottom:12px;
+  font-size:16px;
+  text-align:center;
+}
+
+#profileOverlay .shipPrice .amount{
+  color:#00ff88;
+  font-size:20px;
+  font-weight:900;
+}
+
+/* ============================================================
+   Toasts / couches au-dessus
+============================================================ */
+
+#confirmOverlay{
+  z-index:230000 !important;
+}
+
+#fitOverlay{
+  z-index:220000 !important;
+}
+
+#toastContainer,
+.toastContainer{
+  position:fixed;
+  top:18px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:240000 !important;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:12px;
+  pointer-events:none;
+}
+
+.toast{
+  min-width:280px;
+  max-width:min(520px, calc(100vw - 32px));
+  padding:12px 16px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  border-radius:12px;
+  border:1px solid rgba(100,200,255,.3);
+  background:linear-gradient(135deg, rgba(255,255,255,.1), rgba(100,200,255,.05));
+  backdrop-filter:blur(12px);
+  box-shadow:0 8px 24px rgba(0,0,0,.4);
+  pointer-events:all;
+  animation:toastDrop .25s ease forwards;
+}
+
+.toast.success{
+  border-color:rgba(0,255,136,.5);
+  background:linear-gradient(135deg, rgba(0,255,136,.15), rgba(0,255,136,.05));
+}
+
+.toast.error{
+  border-color:rgba(255,0,110,.5);
+  background:linear-gradient(135deg, rgba(255,0,110,.15), rgba(255,0,110,.05));
+}
+
+.toast.removing{
+  animation:toastDropOut .25s ease forwards;
+}
+
+.toastIcon{
+  flex-shrink:0;
+  font-size:20px;
+}
+
+.toastContent{
+  flex:1;
+  color:#fff;
+  font-size:13px;
+  font-weight:700;
+  text-align:center;
+}
+
+@keyframes toastDrop{
+  from{
+    opacity:0;
+    transform:translateY(-14px) scale(.96);
+  }
+  to{
+    opacity:1;
+    transform:translateY(0) scale(1);
+  }
+}
+
+@keyframes toastDropOut{
+  from{
+    opacity:1;
+    transform:translateY(0) scale(1);
+  }
+  to{
+    opacity:0;
+    transform:translateY(-14px) scale(.96);
+  }
+}
+
+/* Scrollbars propres */
+.profileGrid::-webkit-scrollbar,
+.shopList::-webkit-scrollbar,
+.shopPreview::-webkit-scrollbar,
+#profileOverlay .shopLayoutGrid::-webkit-scrollbar,
+#settingsWindow .settingsBody::-webkit-scrollbar{
+  width:8px;
+  height:8px;
+}
+
+.profileGrid::-webkit-scrollbar-track,
+.shopList::-webkit-scrollbar-track,
+.shopPreview::-webkit-scrollbar-track,
+#profileOverlay .shopLayoutGrid::-webkit-scrollbar-track,
+#settingsWindow .settingsBody::-webkit-scrollbar-track{
+  background:rgba(255,255,255,.05);
+  border-radius:10px;
+}
+
+.profileGrid::-webkit-scrollbar-thumb,
+.shopList::-webkit-scrollbar-thumb,
+.shopPreview::-webkit-scrollbar-thumb,
+#profileOverlay .shopLayoutGrid::-webkit-scrollbar-thumb,
+#settingsWindow .settingsBody::-webkit-scrollbar-thumb{
+  background:rgba(0,217,255,.3);
+  border-radius:10px;
+}
+
+/* ============================================================
+   Responsive
+============================================================ */
+
+@media (max-width:1400px){
+  #profileOverlay .shopLayoutGrid{
+    grid-template-columns:repeat(2, minmax(260px, 1fr));
+  }
+}
+
+@media (max-width:1000px){
+  .shopLayout{
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width:900px){
+  .modal .grid{
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+  }
+
+  #profileOverlay .shopLayoutGrid{
+    grid-template-columns:1fr;
+  }
+
+  #ammoBar{
+    max-width:calc(100vw - 28px);
+    overflow-x:auto;
+  }
+}
+
+@media (max-width:768px){
+  #profileOverlay{
+    padding:14px !important;
+  }
+
+  .profileHeaderTop{
+    flex-direction:column;
+  }
+
+  .profileTabs{
+    flex-direction:column;
+  }
+
+  .statsRow{
+    grid-template-columns:1fr;
+  }
+
+  .profileMainCard{
+    max-height:none;
+  }
+}
+/* ============================================================
+   ✅ FIX MINI-MAP : empêche le canvas de dépasser du cadre
+============================================================ */
+
+#minimap.gameWindow{
+  padding: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+/* Header de la minimap */
+#minimap.gameWindow #miniHeader{
+  padding: 8px 12px 0 12px !important;
+  box-sizing: border-box !important;
+}
+
+/* Séparateur */
+#minimap.gameWindow #miniDivider{
+  margin: 0 12px !important;
+  width: auto !important;
+}
+
+/* Canvas bien contenu dans la fenêtre */
+#minimap.gameWindow #miniCanvas{
+  display: block !important;
+
+  width: calc(100% - 20px) !important;
+  max-width: calc(100% - 20px) !important;
+
+  margin: 0 10px 10px 10px !important;
+
+  box-sizing: border-box !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+
+  border: 1px solid rgba(124,240,255,.22) !important;
+}
+
+/* La poignée de resize reste dans le cadre */
+#minimap.gameWindow .gameWinResizeHandle{
+  right: 7px !important;
+  bottom: 7px !important;
+}
+/* =========================================================
+   BARRE MUNITIONS COMPACTE - VERSION GRANDE
+   ========================================================= */
+
+#ammoBar.compactAmmoBar {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+
+  width: auto;
+  max-width: calc(100vw - 24px);
+
+  padding: 10px 13px;
+  border-radius: 18px;
+
+  box-sizing: border-box;
+  z-index: 70000;
+}
+
+#ammoBar.compactAmmoBar .ammoBtn {
+  position: relative;
+
+  width: 66px;
+  height: 58px;
+  min-width: 66px;
+
+  padding: 0;
+  margin: 0;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+
+  border-radius: 14px;
+
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 900;
+
+  cursor: pointer;
+  user-select: none;
+
+  overflow: hidden;
+}
+
+#ammoBar.compactAmmoBar .ammoBtn strong {
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: .45px;
+}
+
+#ammoBar.compactAmmoBar .ammoBtn small {
+  font-size: 12px;
+  line-height: 1;
+  max-width: 100%;
+  opacity: .88;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#ammoBar.compactAmmoBar .ammoKey {
+  position: absolute;
+  top: 5px;
+  left: 6px;
+
+  min-width: 18px;
+  height: 18px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 6px;
+
+  font-size: 10px;
+  font-weight: 900;
+  opacity: .84;
+}
+
+#ammoBar.compactAmmoBar .sabCompactBtn {
+  width: 72px;
+  min-width: 72px;
+}
+
+#ammoBar.compactAmmoBar .compactSkillBtn {
+  width: 78px;
+  min-width: 78px;
+}
+
+#ammoBar.compactAmmoBar .repairCompactBtn {
+  width: 82px;
+  min-width: 82px;
+}
+
+#ammoBar.compactAmmoBar .ammoDivider {
+  width: 1px;
+  height: 44px;
+  margin: 0 5px;
+
+  background: rgba(255, 255, 255, .18);
+  border-radius: 99px;
+}
+
+#ammoBar.compactAmmoBar .skillPriceMini {
+  display: none;
+}
+
+#ammoBar.compactAmmoBar .ammoBtn.active {
+  transform: translateY(-3px);
+}
+
+/* Petit écran */
+@media (max-width: 680px) {
+  #ammoBar.compactAmmoBar {
+    gap: 6px;
+    padding: 8px 9px;
+    bottom: 12px;
+  }
+
+  #ammoBar.compactAmmoBar .ammoBtn {
+    width: 54px;
+    min-width: 54px;
+    height: 48px;
+  }
+
+  #ammoBar.compactAmmoBar .sabCompactBtn {
+    width: 60px;
+    min-width: 60px;
+  }
+
+  #ammoBar.compactAmmoBar .compactSkillBtn {
+    width: 62px;
+    min-width: 62px;
+  }
+
+  #ammoBar.compactAmmoBar .repairCompactBtn {
+    width: 64px;
+    min-width: 64px;
+  }
+
+  #ammoBar.compactAmmoBar .ammoBtn strong {
+    font-size: 13px;
+  }
+
+  #ammoBar.compactAmmoBar .ammoBtn small {
+    font-size: 10px;
+  }
+
+  #ammoBar.compactAmmoBar .ammoKey {
+    min-width: 15px;
+    height: 15px;
+    font-size: 8px;
+  }
+}

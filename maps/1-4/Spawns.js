@@ -1,0 +1,155 @@
+const rand = (a,b)=>a+Math.random()*(b-a);
+const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
+
+export function getZoneSpawns(WORLD) {
+  const pad = 300;
+  const N = 101;
+
+  const minDist = 0;
+  const minDist2 = minDist * minDist;
+
+  const camps = [];
+  let tries = 0;
+  const maxTries = 6000;
+
+  // ✅ Quotas EXACTS : 100 Cubikon + 400 Protegit
+  const quota = [
+    { type: "npc_Lordakia", left: 20 },
+    { type: "npc_Saimon", left: 40 },
+    { type: "npc_Boss_Saimon", left: 10 },
+    { type: "npc_Mordon", left: 40 },
+    { type: "npc_Sibelon", left: 15 },
+    { type: "npc_Boss_Sibelon", left: 5 },
+    { type: "npc_Emperor_Sibelon", left: 1 },
+  ];
+
+  function pickQuotaType() {
+    const total = quota.reduce((s, q) => s + Math.max(0, q.left), 0);
+    if (total <= 0) return "npc_Lordakia"; // fallback
+
+    let r = Math.random() * total;
+    for (const q of quota) {
+      if (q.left <= 0) continue;
+      r -= q.left;
+      if (r <= 0) {
+        q.left--;
+        return q.type;
+      }
+    }
+
+    // sécurité
+    for (const q of quota) {
+      if (q.left > 0) {
+        q.left--;
+        return q.type;
+      }
+    }
+    return "npc_Lordakia";
+  }
+
+  while (camps.length < N && tries < maxTries) {
+    tries++;
+
+    const x = rand(pad, WORLD.w - pad);
+    const y = rand(pad, WORLD.h - pad);
+
+    let ok = true;
+    for (const c of camps) {
+      if (dist2(x, y, c.x, c.y) < minDist2) { ok = false; break; }
+    }
+    if (!ok) continue;
+
+    const type = pickQuotaType();
+
+    camps.push({
+      type,
+      x, y,
+      radius: 350,
+      respawn: 0,
+      maxAlive: 1,
+      aggroRange: 750,
+      leashRange: 1700,
+      aggroHold: 4,
+    });
+  }
+
+  return camps;
+}
+
+export function getZonePortals(WORLD) {
+  return [
+    {
+      id: "p_14_to_12",
+      x: 1000,   // haut gauche
+      y: 1000,
+      r: 260,
+      toMap: "1-2",
+      toPortal: "p_12_to_14",
+    },
+    {
+      id: "p_14_to_13",
+      x: 10000,   // haut droite
+      y: 1000,
+      r: 260,
+      toMap: "1-3",
+      toPortal: "p_13_to_14",
+    },
+    {
+      id: "p_14_to_1-4.1",
+      x: 10000,   // haut droite
+      y: 3500,
+      r: 260,
+      toMap: "1-4.1",
+      toPortal: "p_1-4.1_to_14",
+    },
+    {
+      id: "p_14_to_34",
+      x: 10000,   // haut droite
+      y: 6000,
+      r: 260,
+      toMap: "3-4",
+      toPortal: "p_34_to_14",
+    },
+  ];
+}
+
+export function getZoneSafeModules(WORLD) {
+  // ✅ coin haut-gauche (position du bloc)
+  const baseX = 800;
+  const baseY = 800;
+
+  const modules = [
+    { id: "QUEST_MMO", x: 9000,   y: 3500,   w: 515, h: 728, spr: "QUEST_MMO" }, // Centre
+  //  { id: "CENTRE_MMO", x: 1500,   y: 1500,   w: 1009, h: 998, spr: "CENTRE_MMO" }, // Centre
+  ];
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+ 
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+
+  const halfW = (maxX - minX) / 2;
+  const halfH = (maxY - minY) / 2;
+
+  const margin = 0; // Zone autour de la base
+  const r = Math.hypot(halfW, halfH) + margin;
+
+  const zone = { kind: "circle", x: cx, y: cy, r };
+
+  const BEACON = {
+    spr: "BEACON_EIC",
+
+    imgW: 90,
+    imgH: 165,
+
+    w: 90,
+    h: 165,
+
+    count: 28,
+    
+    radius: null, 
+    offset: 0,         
+  };
+
+  return { zone, modules };
+}

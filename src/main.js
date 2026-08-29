@@ -1,0 +1,110 @@
+// src/main.js
+"use strict";
+
+import { getCurrentUserFull, getActiveHangarState } from "./core/account.js";
+import { DEFAULT_MAP_ID, getMapLoader, normalizeMapId } from "./core/mapRegistry.js";
+
+window.addEventListener("storage", (e) => {
+  if (e.key !== "orbit_sync") return;
+  // ✅ quand un vaisseau est activé dans profile, on reload le jeu
+  location.reload();
+});
+
+
+function bootGame() {
+  const u = getCurrentUserFull();
+  const st = getActiveHangarState(); // { pos, map }
+
+  // ✅ nouveau compte / jamais joué
+  const targetMap = st?.map || "1-1";
+
+  // ✅ si on n'est pas déjà sur la bonne map => naviguer
+  if (window.__CURRENT_MAP_ID__ !== targetMap && typeof window.__GO_TO_MAP__ === "function") {
+    window.__GO_TO_MAP__(targetMap);
+    return; // IMPORTANT: on sort, le reload de map relancera bootGame
+  }
+
+  // ✅ ici seulement tu démarres startOrbitGame(...) sur la map courante
+  // startOrbitGame({ rules: MAP_RULES[window.__CURRENT_MAP_ID__], ... })
+}
+
+
+/**
+ * Choix de map :
+ * - index.html?map=1-1
+ * - index.html?map=1-2
+ * + spawn optionnel: &spawn=p_12_to_11
+ * 
+ * ✅ NOUVEAU: Si pas de ?map= dans l'URL, on charge la dernière map sauvegardée du hangar actif
+ */
+
+const params = new URLSearchParams(location.search);
+
+// ✅ Map par défaut pour les nouveaux joueurs / nouveaux vaisseaux
+const DEFAULT_MAP = DEFAULT_MAP_ID;
+
+// ✅ Récupère la map depuis l'URL ou depuis la sauvegarde
+let mapName = params.get("map");
+let usedSavedMap = false;
+
+if (!mapName) {
+  // Pas de map dans l'URL → on regarde la sauvegarde du hangar actif
+  const state = getActiveHangarState();
+  
+  if (state.map) {
+    mapName = state.map;
+    usedSavedMap = true;
+    console.log(`[MAIN] Map sauvegardée chargée: ${mapName}`);
+  } else {
+    mapName = DEFAULT_MAP;
+    console.log(`[MAIN] Nouveau vaisseau → map par défaut: ${DEFAULT_MAP}`);
+  }
+} else {
+  console.log(`[MAIN] Map depuis URL: ${mapName}`);
+}
+
+mapName = normalizeMapId(mapName);
+
+const spawnPortalId = params.get("spawn") || null;
+
+// accessible depuis OrbitEngine
+window.__SPAWN_PORTAL_ID__ = spawnPortalId;
+window.__CURRENT_MAP_ID__ = mapName; // ✅ pour que OrbitEngine puisse sauvegarder
+
+// fonction globale pour changer de map (recharge la page)
+window.__GO_TO_MAP__ = (mapId, spawnId = null) => {
+  // ✅ Trigger sauvegarde avant de quitter la map
+  if (typeof window.__SAVE_BEFORE_LEAVE__ === "function") {
+    try {
+      window.__SAVE_BEFORE_LEAVE__();
+    } catch (e) {
+      console.warn("[GO_TO_MAP] Erreur sauvegarde:", e);
+    }
+  }
+  
+  const url = new URL(location.href);
+  url.searchParams.set("map", String(mapId));
+  if (spawnId) url.searchParams.set("spawn", String(spawnId));
+  else url.searchParams.delete("spawn");
+  location.href = url.toString(); // reload propre
+};
+
+// ✅ guard : si pas connecté → auth
+if (!localStorage.getItem("orbit_current_user")) {
+  location.href = "./public/auth.html";
+}
+
+
+const loader = getMapLoader(mapName);
+
+loader()
+  .then((mod) => {
+    if (!mod || typeof mod.init !== "function") {
+      throw new Error("La map ne contient pas export function init()");
+    }
+    mod.init();
+  })
+  .catch((err) => {
+    console.error(err);
+    alert("Erreur chargement map. Ouvre la console (F12).");
+  });
