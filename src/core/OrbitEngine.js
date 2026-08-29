@@ -28,7 +28,13 @@ import { pushBounded } from "./boundedCollection.js";
 
 export function startOrbitGame(config) {
 
-const {
+if (window.__ORBIT_ENGINE__?.switchMap) {
+  const pending = window.__ORBIT_ENGINE__.switchMap(config, window.__PENDING_MAP_SWITCH__ || {});
+  window.__ORBIT_SWITCH_PROMISE__ = pending;
+  return pending;
+}
+
+let {
   WORLD,
   getWavePlan,
   DEFAULT_WAVE_TYPE,
@@ -343,14 +349,17 @@ function lockSessionHangar() {
 }
 
 // ✅ Background layers (2 couches superposées)
-const BG_LAYERS = (
-  WORLD?.bgLayers ||
-  rules?.bgLayers ||
+function createBackgroundLayers(world = WORLD, mapRules = rules) {
+  return (
+  world?.bgLayers ||
+  mapRules?.bgLayers ||
   [
-    { src: WORLD?.bgSrc || rules?.bgSrc || null, mode: "tile", alpha: 0.85, parallax: 0.02 },
+    { src: world?.bgSrc || mapRules?.bgSrc || null, mode: "tile", alpha: 0.85, parallax: 0.02 },
     { src: "./Backgrounds/stars_tile.webp", mode: "tile", alpha: 0.55, parallax: 0.08, blend: "lighter" },
   ]
 ).filter(x => x && x.src);
+}
+let BG_LAYERS = createBackgroundLayers();
 
 // ============================================================
 // Canvas
@@ -804,7 +813,7 @@ registerHudWindows();
 // ============================================================
 const MAX_ALIVE = 100;
 let currentWavePlan = null;
-const NPC_SENSOR_RANGES = getNpcSensorRanges(rules);
+let NPC_SENSOR_RANGES = getNpcSensorRanges(rules);
 
 const TAU = Math.PI * 2;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -1033,39 +1042,23 @@ function startZonePortalJump(ptl) {
 }
 
 function finishZonePortalJump(ptl) {
-  if (!ptl) return;
+  if (!ptl || ptl.jumpSwitchPending) return;
 
   const toMap = ptl.jumpMap ?? ptl.toMap;
   const toPortal = ptl.jumpPortal ?? ptl.toPortal;
+  ptl.jumpSwitchPending = true;
 
-  try {
-    const maxWidth = 2560;
-    const scale = Math.min(1, maxWidth / canvas.width);
-    const snapshot = document.createElement("canvas");
-    snapshot.width = Math.max(1, Math.round(canvas.width * scale));
-    snapshot.height = Math.max(1, Math.round(canvas.height * scale));
-    snapshot.getContext("2d", { alpha: false }).drawImage(canvas, 0, 0, snapshot.width, snapshot.height);
-    const frame = snapshot.toDataURL("image/webp", 0.95);
-    sessionStorage.setItem("orbit_transition_frame", frame);
-  } catch (error) {
-    console.warn("Capture de transition indisponible:", error);
+  if (typeof window.__SWITCH_MAP__ === "function") {
+    window.__SWITCH_MAP__(toMap, toPortal).catch((error) => {
+      console.error("Changement interne impossible:", error);
+      ptl.jumpSwitchPending = false;
+      window.__GO_TO_MAP__?.(toMap, toPortal);
+    });
+    return;
   }
 
-  ptl.jumping = false;
-  ptl.jumpT = 0;
-  ptl.jumpMap = null;
-  ptl.jumpPortal = null;
-
-  if (typeof window.__GO_TO_MAP__ === "function") {
-    try {
-      sessionStorage.setItem("spawnPortalId", String(toPortal ?? ""));
-      sessionStorage.setItem("spawnMapId", String(toMap ?? ""));
-    } catch {}
-
-    window.__GO_TO_MAP__(toMap);
-  } else {
-    console.warn("window.__GO_TO_MAP__ manquante");
-  }
+  ptl.jumpSwitchPending = false;
+  window.__GO_TO_MAP__?.(toMap, toPortal);
 }
 
 function tickZonePortalJumps(dt) {
@@ -4835,7 +4828,7 @@ addCappedProjectile(bullets, {
 }
 
 // ✅ Zone map spawner
-const isZoneMap = rules?.mode === "zone";
+let isZoneMap = rules?.mode === "zone";
 let zoneCamps = [];
 let zonePortals = [];
 let zoneWalls = [];
@@ -5027,7 +5020,7 @@ for (let i = collectables.length - 1; i >= 0; i--) {
 // ============================================================
 // Death / Respawn
 // ============================================================
-function resetRun({ randomSpawn = false } = {}) {
+function resetRun({ randomSpawn = false, preparedZoneCamps = null, preparedZonePortals = null } = {}) {
   let spawnedFromPortal = false;
   attackActive = false;
   betweenWaves = false;
@@ -5080,7 +5073,7 @@ player.ammo = {
   Target.clear();
 
   if (isZoneMap && typeof rules.getZoneSpawns === "function") {
-    zoneCamps = rules.getZoneSpawns(WORLD).map((c, idx) => ({
+    zoneCamps = (preparedZoneCamps || rules.getZoneSpawns(WORLD)).map((c, idx) => ({
       id: idx + 1,
       ...c,
       t: 0,
@@ -5090,7 +5083,7 @@ player.ammo = {
   }
 
 if (isZoneMap && typeof rules.getZonePortals === "function") {
-  zonePortals = (rules.getZonePortals(WORLD) || []).map((p, i) => ({
+  zonePortals = (preparedZonePortals || rules.getZonePortals(WORLD) || []).map((p, i) => ({
     id: p.id ?? String(i + 1),
     ...p,
 
@@ -5111,6 +5104,7 @@ jumpT: 0,
 jumpDur: Math.max(0.1, Number(p.jumpDur ?? 2)),
 jumpMap: null,
 jumpPortal: null,
+jumpSwitchPending: false,
 
 closing: false,
 closeT: 0,
@@ -7875,8 +7869,7 @@ function renderLoadingProgress({ done = 0, total = 0 } = {}) {
 
 function revealPreparedGame() {
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    document.documentElement.classList.remove("orbitBooting", "orbitMapTransition");
-    document.documentElement.style.removeProperty("--orbit-transition-frame");
+    document.documentElement.classList.remove("orbitBooting");
   }));
 }
 
@@ -8123,6 +8116,62 @@ updateCurrentUserProgress({
   },
 });
 }
+
+async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
+  if (!nextConfig?.WORLD || !mapId) throw new Error("Configuration de destination invalide");
+
+  const nextRules = nextConfig.rules || {};
+  const nextWorld = nextConfig.WORLD;
+  const nextBackgrounds = createBackgroundLayers(nextWorld, nextRules);
+  const preparedZoneCamps = nextRules.mode === "zone" && typeof nextRules.getZoneSpawns === "function"
+    ? nextRules.getZoneSpawns(nextWorld) : [];
+  const preparedZonePortals = nextRules.mode === "zone" && typeof nextRules.getZonePortals === "function"
+    ? nextRules.getZonePortals(nextWorld) : [];
+
+  const jobs = nextBackgrounds.map((layer) => loadImage(layer.src, { priority: true }));
+  for (const camp of preparedZoneCamps) if (camp?.type && NPC_TYPES[camp.type]) jobs.push(ensureNpcLoaded(camp.type));
+  if (nextRules.mode !== "zone" && typeof nextConfig.getWavePlan === "function") {
+    const gateTypes = new Set();
+    for (let waveNo = 1; waveNo <= 32; waveNo++) {
+      for (const spawn of nextConfig.getWavePlan(waveNo)?.spawns || []) if (spawn?.type) gateTypes.add(spawn.type);
+    }
+    for (const type of gateTypes) if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
+  }
+  for (const targetPortal of preparedZonePortals) jobs.push(...preloadPortalSprites(targetPortal));
+  await Promise.allSettled(jobs);
+
+  saveStateImmediate();
+  WORLD = nextWorld;
+  getWavePlan = nextConfig.getWavePlan || (() => ({ spawns: [] }));
+  DEFAULT_WAVE_TYPE = nextConfig.DEFAULT_WAVE_TYPE || "dummy";
+  rules = nextRules;
+  BG_LAYERS = nextBackgrounds;
+  NPC_SENSOR_RANGES = getNpcSensorRanges(rules);
+  isZoneMap = rules.mode === "zone";
+
+  window.__CURRENT_MAP_ID__ = String(mapId);
+  window.__SPAWN_PORTAL_ID__ = spawnId;
+  window.__ORBIT_MAP_TRANSITION__ = true;
+  try {
+    sessionStorage.setItem("spawnPortalId", String(spawnId ?? ""));
+    sessionStorage.setItem("spawnMapId", String(mapId));
+  } catch {}
+
+  const url = new URL(location.href);
+  url.searchParams.set("map", String(mapId));
+  if (spawnId) url.searchParams.set("spawn", String(spawnId));
+  else url.searchParams.delete("spawn");
+  history.replaceState({ mapId }, "", url);
+
+  resetRun({ preparedZoneCamps, preparedZonePortals });
+  player.iFrames = 0;
+  mapPortalLock = 0.6;
+  markProgressDirty();
+  saveProgressNow();
+  return true;
+}
+
+window.__ORBIT_ENGINE__ = { switchMap: switchMapConfig };
 
 addEventListener("beforeunload", () => {
   try { saveStateImmediate(); } catch {}

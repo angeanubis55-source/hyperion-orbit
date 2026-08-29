@@ -40,33 +40,12 @@ button{
   user-select:none;
 }
 
-html.orbitBooting body > :not(#loadingOverlay):not(#mapTransitionOverlay):not(script){
+html.orbitBooting body > :not(#loadingOverlay):not(script){
   visibility:hidden !important;
-}
-
-html.orbitBooting.orbitMapTransition.orbitHudReady body > :not(#game):not(#loadingOverlay):not(#mapTransitionOverlay):not(script){
-  visibility:visible !important;
 }
 
 html.orbitSessionReady #loadingOverlay{
   display:none !important;
-}
-
-#mapTransitionOverlay{
-  position:fixed;
-  inset:0;
-  z-index:1;
-  pointer-events:none;
-  opacity:0;
-  background-color:var(--bg);
-  background-image:var(--orbit-transition-frame, none);
-  background-position:center;
-  background-size:cover;
-  background-repeat:no-repeat;
-}
-
-html.orbitMapTransition #mapTransitionOverlay{
-  opacity:1;
 }
 
 #game{

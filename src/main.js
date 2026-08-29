@@ -70,28 +70,32 @@ const spawnPortalId = params.get("spawn") || null;
 // accessible depuis OrbitEngine
 window.__SPAWN_PORTAL_ID__ = spawnPortalId;
 window.__CURRENT_MAP_ID__ = mapName; // ✅ pour que OrbitEngine puisse sauvegarder
-try {
-  window.__ORBIT_MAP_TRANSITION__ = sessionStorage.getItem("orbit_map_transition") === "1";
-  sessionStorage.removeItem("orbit_map_transition");
-  sessionStorage.removeItem("orbit_transition_frame");
-} catch {
-  window.__ORBIT_MAP_TRANSITION__ = false;
-}
+window.__ORBIT_MAP_TRANSITION__ = false;
 
 const mapPreloads = new Map();
 window.__PRELOAD_MAP__ = (mapId, spawnId = null) => {
-  const url = new URL(location.href);
-  url.searchParams.set("map", String(mapId));
-  if (spawnId) url.searchParams.set("spawn", String(spawnId));
-  else url.searchParams.delete("spawn");
-  const key = url.toString();
+  const normalizedId = normalizeMapId(mapId);
+  const key = normalizedId;
   if (!mapPreloads.has(key)) {
-    mapPreloads.set(key, fetch(key, { cache: "force-cache", credentials: "same-origin" }).then((response) => {
-      if (!response.ok) throw new Error(`Préchargement map impossible (${response.status})`);
-      return response.text();
-    }));
+    mapPreloads.set(key, getMapLoader(normalizedId)());
   }
   return mapPreloads.get(key);
+};
+
+window.__SWITCH_MAP__ = async (mapId, spawnId = null) => {
+  const normalizedId = normalizeMapId(mapId);
+  const mod = await window.__PRELOAD_MAP__(normalizedId, spawnId);
+  if (!mod || typeof mod.init !== "function") throw new Error("La destination ne peut pas être initialisée");
+  window.__PENDING_MAP_SWITCH__ = { mapId: normalizedId, spawnId };
+  window.__ORBIT_SWITCH_PROMISE__ = null;
+  mod.init();
+  const pending = window.__ORBIT_SWITCH_PROMISE__;
+  if (!pending) throw new Error("Le moteur n'a pas accepté le changement interne de carte");
+  try {
+    await pending;
+  } finally {
+    window.__PENDING_MAP_SWITCH__ = null;
+  }
 };
 
 // fonction globale pour changer de map (recharge la page)
@@ -109,7 +113,6 @@ window.__GO_TO_MAP__ = (mapId, spawnId = null) => {
   url.searchParams.set("map", String(mapId));
   if (spawnId) url.searchParams.set("spawn", String(spawnId));
   else url.searchParams.delete("spawn");
-  try { sessionStorage.setItem("orbit_map_transition", "1"); } catch {}
   location.href = url.toString();
 };
 

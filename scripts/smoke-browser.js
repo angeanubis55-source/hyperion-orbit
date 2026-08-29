@@ -27,7 +27,7 @@ const browser = await chromium.launch({ channel: "msedge", headless: true });
 const context = await browser.newContext();
 const requestedMap = process.argv.find((arg) => arg.startsWith("--map="))?.slice(6);
 const coldStart = process.argv.includes("--cold");
-const portalTransition = process.argv.includes("--transition");
+const switchTargets = process.argv.find((arg) => arg.startsWith("--switch="))?.slice(9).split(",").filter(Boolean) || [];
 const mapIds = requestedMap ? [requestedMap] : Object.keys(MAP_LOADERS);
 const failures = [];
 
@@ -49,13 +49,12 @@ try {
     });
 
     try {
-      await page.addInitScript(({ coldStart, portalTransition }) => {
+      await page.addInitScript(({ coldStart }) => {
         const user = { id: "smoke-user", pseudo: "Smoke", email: "smoke@local", password: "test", ship: "PhoenixBleu" };
         localStorage.setItem("orbit_users", JSON.stringify([user]));
         localStorage.setItem("orbit_current_user", JSON.stringify({ id: user.id, pseudo: user.pseudo, email: user.email }));
         if (!coldStart) sessionStorage.setItem("orbit_assets_preloaded_v1", "ready");
-        if (portalTransition) sessionStorage.setItem("orbit_map_transition", "1");
-      }, { coldStart, portalTransition });
+      }, { coldStart });
       await page.goto(`http://127.0.0.1:${port}/index.html?map=${encodeURIComponent(mapId)}`, { waitUntil: "domcontentloaded", timeout: 20_000 });
       await page.waitForSelector("#game", { state: "visible", timeout: 10_000 });
       if (coldStart) {
@@ -64,6 +63,18 @@ try {
       }
       await page.waitForFunction(() => getComputedStyle(document.getElementById("loadingOverlay")).display === "none", null, { timeout: 30_000 });
       await page.waitForFunction(() => !document.documentElement.classList.contains("orbitBooting"), null, { timeout: 30_000 });
+      if (switchTargets.length) {
+        await page.evaluate(async (targets) => {
+          const engineIdentity = window.__ORBIT_ENGINE__;
+          const documentIdentity = document.documentElement;
+          for (const target of targets) {
+            await window.__SWITCH_MAP__(target);
+            if (window.__CURRENT_MAP_ID__ !== target) throw new Error(`Carte interne incorrecte: ${window.__CURRENT_MAP_ID__}`);
+            if (window.__ORBIT_ENGINE__ !== engineIdentity) throw new Error("Le moteur a été recréé");
+            if (document.documentElement !== documentIdentity) throw new Error("Le document a été rechargé");
+          }
+        }, switchTargets);
+      }
       await page.waitForTimeout(500);
       const canvasReady = await page.locator("#game").evaluate((canvas) => canvas.width > 0 && canvas.height > 0);
       if (!canvasReady) errors.push("canvas non initialisé");
