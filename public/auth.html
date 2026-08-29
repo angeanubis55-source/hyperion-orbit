@@ -309,6 +309,7 @@
     }
 
     input[type="text"],
+    input[type="email"],
     input[type="password"]{
       flex: 1;
       padding: 14px 16px;
@@ -587,6 +588,13 @@
               <label for="regUser">Pseudo</label>
               <div class="inputWrap">
                 <input id="regUser" type="text" autocomplete="username" placeholder="Choisis ton nom de pilote" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="regEmail">Adresse email</label>
+              <div class="inputWrap">
+                <input id="regEmail" type="email" autocomplete="email" inputmode="email" placeholder="pilote@exemple.com" />
               </div>
             </div>
 

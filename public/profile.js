@@ -11,6 +11,8 @@ import {
   setActiveHangarConfig,
   buyModuleRoll,
   addShipModule,
+  updateCurrentUserEmail,
+  changeCurrentUserPassword,
 } from "../src/core/account.js";
 
 import { CATALOG, findCatalogItem } from "../src/core/catalog.js";
@@ -48,10 +50,19 @@ const statCredits = $("statCredits");
 const statHonor = $("statHonor");
 const statExp = $("statExp");
 const statRank = $("statRank");
-const activeShipPreview = $("activeShipPreview");
-const activeHangarLine = $("activeHangarLine");
+const accountEmail = $("accountEmail");
+const accountEmailStatus = $("accountEmailStatus");
+const emailCurrentPassword = $("emailCurrentPassword");
+const btnSaveEmail = $("btnSaveEmail");
+const passwordCurrent = $("passwordCurrent");
+const passwordNew = $("passwordNew");
+const passwordConfirm = $("passwordConfirm");
+const btnChangePassword = $("btnChangePassword");
 const shopCredits = $("shopCredits");
 const hangarGrid = $("hangarGrid");
+const hangarPreviewImage = $("hangarPreviewImage");
+const hangarPreviewTitle = $("hangarPreviewTitle");
+const hangarPreviewMeta = $("hangarPreviewMeta");
 const shopList = $("shopList");
 const shopPreview = $("shopPreview");
 const btnStart = $("btnStart");
@@ -62,6 +73,7 @@ let user = null;
 let tab = localStorage.getItem("orbit_profile_tab") || "stats";
 let shopTab = localStorage.getItem("orbit_shop_tab") || "ammo";
 let selectedShopItemId = null;
+let selectedHangarId = null;
 let shopRenderToken = 0;
 
 // -------------------- UI helpers --------------------
@@ -203,12 +215,19 @@ function saveGameBeforeProfileAction() {
 
 // -------------------- Icons --------------------
 const ITEM_ICON_BASE = "/assets/items/";
+const LASER_ICON_BASE = "/assets/lasers/";
+const FALLBACK_ICON = `data:image/svg+xml,${encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+    <rect width="64" height="64" rx="12" fill="#081b29"/>
+    <path d="M32 14v24M32 48h.01" stroke="#70e6ff" stroke-width="6" stroke-linecap="round"/>
+  </svg>
+`)}`;
 
 const ITEM_ICONS = {
   ammo_x2: ITEM_ICON_BASE + "ammo_x2.png",
   ammo_x3: ITEM_ICON_BASE + "ammo_x3.png",
   ammo_x4: ITEM_ICON_BASE + "ammo_x4.png",
-  ammo_sab: ITEM_ICON_BASE + "ammo_sab.png",
+  ammo_sab: ITEM_ICON_BASE + "ammo_abl.png",
   ammo_x6: ITEM_ICON_BASE + "ammo_x6.png",
  // ammo_abl: ITEM_ICON_BASE + "ammo_abl.png",
  // ammo_radion: ITEM_ICON_BASE + "ammo_radion.png",
@@ -224,19 +243,19 @@ const ITEM_ICONS = {
   shd_mk3: ITEM_ICON_BASE + "shd_mk3.png",
   shd_mk4: ITEM_ICON_BASE + "shd_mk4.png",
   shd_radion: ITEM_ICON_BASE + "shd_radion.png",
-  laser_lf1: ITEM_ICON_BASE + "laser_lf1.png",
-  laser_lf2: ITEM_ICON_BASE + "laser_lf2.png",
-  laser_lf3: ITEM_ICON_BASE + "laser_lf3.png",
-  laser_anchorlock: ITEM_ICON_BASE + "laser_lf5_anchorlock.png",
-  laser_odysseus: ITEM_ICON_BASE + "laser_odysseus.png",
-  laser_radion: ITEM_ICON_BASE + "laser_lf5_mortifier.png",
+  laser_lf1: LASER_ICON_BASE + "laser_lf1.png",
+  laser_lf2: LASER_ICON_BASE + "laser_lf2.png",
+  laser_lf3: LASER_ICON_BASE + "laser_lf3.png",
+  laser_anchorlock: LASER_ICON_BASE + "laser_lf5_anchorlock.png",
+  laser_odysseus: LASER_ICON_BASE + "laser_odysseus.png",
+  laser_radion: LASER_ICON_BASE + "laser_lf5_mortifier.png",
 };
 
 const FALLBACK_ICONS = {
-  ammo: "/assets/ammo.png",
-  speed: "/assets/speed.png",
-  shield: "/assets/shield.png",
-  laser: "/assets/laser.png",
+  ammo: ITEM_ICON_BASE + "ammo_x2.png",
+  speed: ITEM_ICON_BASE + "spd_mk0.png",
+  shield: ITEM_ICON_BASE + "shd_mk0.png",
+  laser: LASER_ICON_BASE + "laser_lf1.png",
 };
 
 const MODULE_ICONS = {
@@ -255,7 +274,7 @@ const MODULE_ICONS = {
 };
 
 function moduleIconSrc(type, tier) {
-  return MODULE_ICONS[`${type}-${tier}`] || "/assets/fallback.png";
+  return MODULE_ICONS[`${type}-${tier}`] || FALLBACK_ICON;
 }
 
 function randInt(min, max) {
@@ -334,12 +353,12 @@ function iconForItem(it, cat) {
   const itemId = it?.id;
   if (itemId && ITEM_ICONS[itemId]) return ITEM_ICONS[itemId];
   if (cat && FALLBACK_ICONS[cat]) return FALLBACK_ICONS[cat];
-  return "/assets/fallback.png";
+  return FALLBACK_ICON;
 }
 
 function shipPreviewSrc(shipId, frameIndex = 28) {
   const pack = SHIP_PACKS.find((p) => p.id === shipId);
-  if (!pack) return "/assets/fallback_ship.png";
+  if (!pack) return FALLBACK_ICON;
 
   const frames = Number(pack.frames || 1);
   const idx = ((frameIndex % frames) + frames) % frames;
@@ -414,23 +433,12 @@ function wireMainTabsOnce() {
 
 function wireShopTabsOnce() {
   const root = document.getElementById("shopTabs");
-  if (!root) return;
-
-  root.querySelectorAll(".subtabBtn").forEach((btn) => {
+  root?.querySelectorAll(".subtabBtn").forEach((btn) => {
     btn.addEventListener("click", () => {
       shopTab = btn.dataset.shop;
       localStorage.setItem("orbit_shop_tab", shopTab);
-
-      root.querySelectorAll(".subtabBtn").forEach((b) => {
-        b.classList.toggle("active", b.dataset.shop === shopTab);
-      });
-
       renderShop(user);
     });
-  });
-
-  root.querySelectorAll(".subtabBtn").forEach((b) => {
-    b.classList.toggle("active", b.dataset.shop === shopTab);
   });
 }
 
@@ -441,9 +449,10 @@ function renderHeader(u) {
     return;
   }
 
+  const emailLabel = String(u.email || "").endsWith("@local") ? "Non liée" : escapeHtml(u.email);
   headerEl.innerHTML = `
     <span style="color: #00d9ff;">Pilote:</span> ${escapeHtml(u.pseudo)} • 
-    <span style="color: #00d9ff;">Email:</span> ${escapeHtml(u.email)} • 
+    <span style="color: #00d9ff;">Email:</span> ${emailLabel} •
     <span style="color: #00d9ff;">Vaisseau actif:</span> ${escapeHtml(u.ship)}
   `;
 }
@@ -456,33 +465,71 @@ function renderStats(u) {
   statExp.textContent = formatNumber(u.stats?.exp ?? 0);
   statRank.textContent = formatNumber(u.stats?.rankPoints ?? 0);
 
-  const activeHangar = (u.hangars || []).find((h) => h?.active) || (u.hangars?.[0] || null);
-  const shipId = activeHangar?.shipId || u.ship;
-  const slots = getShipSlots(shipId);
-
-  if (activeHangarLine) {
-    activeHangarLine.innerHTML = `
-      <strong style="color: #00d9ff;">${shipId}</strong> • 
-      Lasers: ${slots.lasers} • 
-      Générateurs: ${slots.gens} • 
-      Extras: ${slots.extras}
-    `;
+  const linkedEmail = String(u.email || "").endsWith("@local") ? "" : String(u.email || "");
+  if (accountEmailStatus) {
+    accountEmailStatus.textContent = linkedEmail ? `Adresse liée : ${linkedEmail}` : "Aucune adresse email liée";
   }
+  if (accountEmail && document.activeElement !== accountEmail) accountEmail.value = linkedEmail;
+  if (btnSaveEmail) btnSaveEmail.textContent = linkedEmail ? "Modifier l'adresse" : "Lier cette adresse";
+}
 
-  if (activeShipPreview) {
-    const src = shipPreviewSrc(shipId);
-    if (src) {
-      activeShipPreview.src = src;
-      activeShipPreview.style.imageRendering = 'pixelated';
+function wireAccountSettingsOnce() {
+  btnSaveEmail?.addEventListener("click", () => {
+    const email = accountEmail?.value.trim() || "";
+    const currentPassword = emailCurrentPassword?.value || "";
+    const out = updateCurrentUserEmail(email, currentPassword);
+    if (!out?.ok) return setMsg(out?.error || "Impossible de modifier l'adresse email.", false);
+
+    if (emailCurrentPassword) emailCurrentPassword.value = "";
+    user = getCurrentUserFull();
+    renderHeader(user);
+    renderStats(user);
+    setMsg("Adresse email enregistrée.", true);
+  });
+
+  btnChangePassword?.addEventListener("click", () => {
+    const currentPassword = passwordCurrent?.value || "";
+    const nextPassword = passwordNew?.value || "";
+    if (nextPassword !== (passwordConfirm?.value || "")) {
+      return setMsg("Les nouveaux mots de passe ne correspondent pas.", false);
     }
-  }
+
+    const out = changeCurrentUserPassword(currentPassword, nextPassword);
+    if (!out?.ok) return setMsg(out?.error || "Impossible de changer le mot de passe.", false);
+
+    if (passwordCurrent) passwordCurrent.value = "";
+    if (passwordNew) passwordNew.value = "";
+    if (passwordConfirm) passwordConfirm.value = "";
+    setMsg("Mot de passe modifié avec succès.", true);
+  });
 }
 
 function renderHangars(u) {
   if (!u) return;
   hangarGrid.innerHTML = "";
 
-  if (!u.hangars || u.hangars.length === 0) {
+  const hangars = Array.isArray(u.hangars) ? u.hangars : [];
+  const activeHangar = hangars.find(h => h?.active) || hangars[0];
+  if (!selectedHangarId || !hangars.some(h => h.id === selectedHangarId)) {
+    selectedHangarId = activeHangar?.id || null;
+  }
+
+  const updateHangarPreview = (hangar) => {
+    if (!hangar) return;
+    const activePack = getShipPack(hangar.shipId);
+    const activeSlots = getShipSlots(hangar.shipId);
+    const preview = shipPreviewSrc(hangar.shipId);
+    if (hangarPreviewImage) {
+      hangarPreviewImage.src = preview || "";
+      hangarPreviewImage.style.display = preview ? "block" : "none";
+    }
+    if (hangarPreviewTitle) hangarPreviewTitle.textContent = activePack?.name || hangar.shipId;
+    if (hangarPreviewMeta) hangarPreviewMeta.textContent = `Lasers ${activeSlots.lasers} · Générateurs ${activeSlots.gens} · Extras ${activeSlots.extras}`;
+  };
+
+  updateHangarPreview(hangars.find(h => h.id === selectedHangarId) || activeHangar);
+
+  if (!hangars.length) {
     hangarGrid.innerHTML = `
       <div class="tile">
         <h3>Aucun hangar</h3>
@@ -492,7 +539,7 @@ function renderHangars(u) {
     return;
   }
 
-  for (const h of u.hangars || []) {
+  for (const h of hangars) {
     const isActive = !!h.active;
     const prev = shipPreviewSrc(h.shipId);
     const slots = getShipSlots(h.shipId);
@@ -501,7 +548,7 @@ function renderHangars(u) {
     const modsForShip = mods.filter(m => String(m?.shipId) === String(h.shipId));
 
     const el = document.createElement("div");
-    el.className = "tile";
+    el.className = "hangarListItem" + (h.id === selectedHangarId ? " selected" : "") + (isActive ? " active" : "");
     el.innerHTML = `
       <div class="tileShipPreview">
         ${prev ? `<img src="${prev}" alt="${h.shipId}" class="shipImg" style="image-rendering: pixelated;" />` : ""}
@@ -528,6 +575,13 @@ function renderHangars(u) {
         <button class="secondary" data-fit="${h.id}">⚙️ Équiper</button>
       </div>
     `;
+
+    el.addEventListener("click", () => {
+      selectedHangarId = h.id;
+      hangarGrid.querySelectorAll(".hangarListItem").forEach((item) => item.classList.remove("selected"));
+      el.classList.add("selected");
+      updateHangarPreview(h);
+    });
 
    el.querySelector(`[data-act="${h.id}"]`).addEventListener("click", () => {
   if (isActive) return;
@@ -569,13 +623,16 @@ function renderShop(user) {
   if (shopCredits) shopCredits.textContent = formatNumber(user.credits || 0);
   if (!shopList || !shopPreview) return;
 
+  document.querySelectorAll("#shopTabs .subtabBtn").forEach((button) => {
+    button.classList.toggle("active", button.dataset.shop === shopTab);
+  });
+
   const shopLayout = shopList.closest(".shopLayout");
+  shopLayout?.classList.toggle("extrasMode", shopTab === "extras");
 
   // Réinitialiser l'affichage
   const gridContainer = document.getElementById("shipsGridContainer");
-  if (gridContainer) {
-    gridContainer.style.display = "none";
-  }
+  if (gridContainer) gridContainer.remove();
 
   if (shopLayout) shopLayout.style.display = "grid";
   if (shopList) shopList.style.display = "flex";
@@ -587,12 +644,7 @@ function renderShop(user) {
     return;
   }
 
-  if (shopTab === "ships") {
-    renderShipsGrid(user);
-    return;
-  }
-
-  // ✅ CATÉGORIES NORMALES (munitions, vitesse, bouclier, lasers)
+  // Toutes les catégories utilisent la même liste et le même panneau d'aperçu.
   const token = ++shopRenderToken;
   shopList.innerHTML = "";
 
@@ -631,7 +683,7 @@ function renderShop(user) {
     img.style.imageRendering = shopTab === "ships" ? "pixelated" : "auto";
     img.onerror = () => {
       img.onerror = null;
-      img.src = "/assets/fallback.png";
+      img.src = FALLBACK_ICON;
     };
 
     const meta = document.createElement("div");
@@ -783,18 +835,7 @@ card.className = "shipCard" + (owned ? " owned" : "");
 function renderExtrasRoulette(user) {
   if (!shopList || !shopPreview) return;
 
-  shopList.innerHTML = `
-    <div class="tile">
-      <h3>🎰 Roulette Modules</h3>
-      <p style="margin-bottom: 8px; color: var(--muted);">
-        Tire au hasard pour obtenir un module bonus pour tes vaisseaux.
-      </p>
-      <p style="margin: 0; color: var(--muted);">
-        <strong style="color: #ff006e;">Coût:</strong> 
-        <span style="color: #00d9ff; font-weight: 900;">250 000</span> crédits
-      </p>
-    </div>
-  `;
+  shopList.innerHTML = "";
 
   const visible = 7;
   const centerIndex = Math.floor(visible / 2);
@@ -837,8 +878,14 @@ function renderExtrasRoulette(user) {
   }
 
   shopPreview.innerHTML = `
-    <div class="tile">
-      <h3>🎰 Roulette de Modules</h3>
+    <div class="tile extrasRoulettePanel">
+      <div class="extrasRouletteHeader">
+        <div>
+          <h3>🎰 Roulette de Modules</h3>
+          <p>Obtiens un module bonus aléatoire pour l'un de tes vaisseaux.</p>
+        </div>
+        <div class="extrasRouletteCost"><span>Coût du tirage</span><strong>250 000</strong> crédits</div>
+      </div>
       <div id="rouletteStrip" style="margin:16px 0;">
         ${renderStrip()}
       </div>
@@ -1743,7 +1790,7 @@ function renderInventoryPalette() {
       img.alt = e.it?.name || e.itemId;
       img.onerror = () => {
         img.onerror = null;
-        img.src = "/assets/fallback.png";
+        img.src = FALLBACK_ICON;
       };
       cell.appendChild(img);
 
@@ -1791,7 +1838,7 @@ function slotCell(label, filled, itemId = null) {
     img.draggable = false;
     img.onerror = () => {
       img.onerror = null;
-      img.src = "/assets/fallback.png";
+      img.src = FALLBACK_ICON;
     };
     d.appendChild(img);
   }
@@ -1938,7 +1985,7 @@ function renderSlots() {
     if (id) {
       const mod = (user?.inventory?.shipModules || []).find(m => m?.id === id);
       const img = document.createElement("img");
-      img.src = mod ? (MODULE_ICONS[mod.iconKey] || "/assets/fallback.png") : "/assets/fallback.png";
+      img.src = mod ? (MODULE_ICONS[mod.iconKey] || FALLBACK_ICON) : FALLBACK_ICON;
       img.draggable = false;
       cell.innerHTML = "";
       cell.appendChild(img);
@@ -2091,7 +2138,7 @@ function renderShipModulesList() {
   }
 
   root.innerHTML = list.slice().reverse().map((m) => {
-    const icon = MODULE_ICONS[m.iconKey] || "/assets/fallback.png";
+    const icon = MODULE_ICONS[m.iconKey] || FALLBACK_ICON;
     const bonus = (m.bonuses || [])
       .map(b => `<strong style="color:#00d9ff;">${b.pct}%</strong> ${formatStatLabel(b.stat)}`)
       .join(" • ");
@@ -2489,9 +2536,8 @@ function openProfileOverlay() {
   }
 
   const overlay = document.getElementById("profileOverlay");
-  if (overlay) {
-    overlay.style.display = "block";
-  }
+  if (window.GameWindowManager) window.GameWindowManager.restore("profileWindow");
+  else if (overlay) overlay.style.display = "block";
 
   renderHeader(user);
   renderStats(user);
@@ -2500,9 +2546,23 @@ function openProfileOverlay() {
   setTab(tab);
 }
 
-function closeProfileOverlay() {
+function closeProfileOverlay({ immediate = false } = {}) {
   const overlay = document.getElementById("profileOverlay");
-  if (overlay) overlay.style.display = "none";
+  if (window.GameWindowManager && !immediate) window.GameWindowManager.minimize("profileWindow");
+  else if (overlay) overlay.style.display = "none";
+}
+
+function registerProfileWindow() {
+  const root = document.getElementById("profileOverlay");
+  const card = document.getElementById("profileWindow");
+  if (!root || !card || !window.GameWindowManager) return;
+  window.GameWindowManager.register({
+    id: "profileWindow",
+    title: "Profil / Hangars / Boutique",
+    icon: "👤",
+    root,
+    card,
+  });
 }
 
 // -------------------- Boot --------------------
@@ -2522,7 +2582,7 @@ function boot() {
   renderShop(user);
   setTab(tab);
 
-  closeProfileOverlay();
+  closeProfileOverlay({ immediate: true });
 }
 
 // -------------------- Buttons --------------------
@@ -2545,6 +2605,8 @@ window.HyperionProfile = {
 };
 
 // Init
+registerProfileWindow();
 wireMainTabsOnce();
 wireShopTabsOnce();
+wireAccountSettingsOnce();
 boot();

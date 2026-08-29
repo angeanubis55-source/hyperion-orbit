@@ -13,6 +13,7 @@
     } catch {}
   </script>
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="profile-window.css" />
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -31,8 +32,11 @@
 </div>
 
 <div id="gameWindowDock">
-  <button id="btnGameHub" class="gameDockIcon profileDockIcon" type="button" title="Profil" aria-label="Profil">
+  <button id="btnGameHub" class="gameDockIcon profileDockIcon" data-window-id="profileWindow" type="button" title="Profil" aria-label="Profil">
     <span>👤</span>
+  </button>
+  <button id="btnLogout" class="gameDockIcon logoutDockIcon" type="button" title="Déconnexion" aria-label="Déconnexion">
+    <span>⏻</span>
   </button>
 </div>
   
@@ -331,14 +335,10 @@
             <div id="profileHeader" class="profileSub">Chargement...</div>
           </div>
 
-          <div class="profileActions">
-            <button id="btnStart" class="primary">▶ Retour au jeu</button>
-            <button id="btnLogout" class="secondary">Déconnexion</button>
-          </div>
         </div>
 
         <div class="profileTabs">
-          <button class="tabBtn active" data-tab="stats">📊 Stats</button>
+          <button class="tabBtn active" data-tab="stats">📊 Statistiques</button>
           <button class="tabBtn" data-tab="hangars">🛰️ Hangars</button>
           <button class="tabBtn" data-tab="shop">🛒 Boutique</button>
         </div>
@@ -371,12 +371,50 @@
             </div>
           </div>
 
-          <div class="previewCard">
-            <img id="activeShipPreview" alt="preview" />
-            <div class="previewMeta">
-              <div class="previewTitle">Hangar actif</div>
-              <div id="activeHangarLine" class="previewSub">...</div>
-            </div>
+          <div class="accountSettingsGrid">
+            <section class="accountCard">
+              <div class="accountCardHeader">
+                <span class="accountCardIcon">✉</span>
+                <div>
+                  <h3>Adresse email</h3>
+                  <p id="accountEmailStatus">Aucune adresse liée</p>
+                </div>
+              </div>
+              <label class="accountField">
+                <span>Nouvelle adresse email</span>
+                <input id="accountEmail" type="email" autocomplete="email" inputmode="email" placeholder="pilote@exemple.com" />
+              </label>
+              <label class="accountField">
+                <span>Mot de passe actuel</span>
+                <input id="emailCurrentPassword" type="password" autocomplete="current-password" placeholder="••••••••" />
+              </label>
+              <button id="btnSaveEmail" class="primary" type="button">Lier cette adresse</button>
+            </section>
+
+            <section class="accountCard">
+              <div class="accountCardHeader">
+                <span class="accountCardIcon">◆</span>
+                <div>
+                  <h3>Sécurité du compte</h3>
+                  <p>Modifie ton mot de passe de connexion</p>
+                </div>
+              </div>
+              <div class="passwordFields">
+                <label class="accountField">
+                  <span>Mot de passe actuel</span>
+                  <input id="passwordCurrent" type="password" autocomplete="current-password" placeholder="••••••••" />
+                </label>
+                <label class="accountField">
+                  <span>Nouveau mot de passe</span>
+                  <input id="passwordNew" type="password" autocomplete="new-password" placeholder="4 caractères minimum" />
+                </label>
+                <label class="accountField">
+                  <span>Confirmation</span>
+                  <input id="passwordConfirm" type="password" autocomplete="new-password" placeholder="Répète le nouveau mot de passe" />
+                </label>
+              </div>
+              <button id="btnChangePassword" class="primary" type="button">Changer le mot de passe</button>
+            </section>
           </div>
         </section>
 
@@ -385,18 +423,26 @@
             Chaque vaisseau possédé = 1 hangar. Active et équipe ton vaisseau préféré.
           </div>
 
-          <div id="hangarGrid" class="profileGrid"></div>
+          <div class="hangarWorkspace">
+            <aside id="hangarPreview" class="hangarPreview">
+              <div class="hangarPreviewEyebrow">VAISSEAU ACTIF</div>
+              <img id="hangarPreviewImage" alt="Vaisseau actif" />
+              <h3 id="hangarPreviewTitle">—</h3>
+              <p id="hangarPreviewMeta">Sélectionne un hangar pour voir ses détails.</p>
+            </aside>
+            <div id="hangarGrid" class="profileGrid"></div>
+          </div>
         </section>
 
         <section id="panel_shop" class="profilePanel">
-          <div class="hint" style="text-align:left; margin-bottom:12px;">
-            Boutique — Achète des modules et vaisseaux pour améliorer tes performances.
-          </div>
-
-          <div class="statsRow" style="margin-bottom:16px;">
-            <div class="statCard">
-              <div class="statLabel">💰 Crédits disponibles</div>
-              <div class="statValue" id="shopCredits">0</div>
+          <div class="shopToolbar">
+            <div>
+              <div class="shopToolbarTitle">Boutique orbitale</div>
+              <div class="shopToolbarSub">Modules, équipements et nouveaux vaisseaux</div>
+            </div>
+            <div class="shopBalance">
+              <span>Crédits disponibles</span>
+              <strong id="shopCredits">0</strong>
             </div>
           </div>
 
@@ -912,6 +958,7 @@ minimize(id) {
 
   w.lastDisplay = "block";
   clearTimeout(w.animationTimer);
+  clearTimeout(w.animationIconTimer);
   w.card.classList.remove("gameWinOpening");
   w.card.classList.add("gameWinClosing");
   const dockBtn = makeDockIcon(id, w.title, w.icon);
@@ -926,6 +973,14 @@ minimize(id) {
   w.card.style.setProperty("--dock-y-mid", `${(dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)) * 0.58}px`);
   w.card.style.setProperty("--dock-x-near", `${(dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)) * 0.68}px`);
   w.card.style.setProperty("--dock-y-near", `${(dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)) * 0.68}px`);
+  dockBtn.classList.add("dockIconFromWindow");
+  dockBtn.style.setProperty("--icon-start-x", `${cardRect.left + cardRect.width / 2 - dockRect.width / 2}px`);
+  dockBtn.style.setProperty("--icon-start-y", `${cardRect.top + cardRect.height / 2 - dockRect.height / 2}px`);
+  dockBtn.style.setProperty("--icon-end-x", `${dockRect.left}px`);
+  dockBtn.style.setProperty("--icon-end-y", `${dockRect.top}px`);
+  dockBtn.style.width = `${dockRect.width}px`;
+  dockBtn.style.height = `${dockRect.height}px`;
+  dockBtn.style.opacity = "0";
   w.animationTimer = setTimeout(() => {
 
   // ✅ root et card sont parfois le même élément, mais on sécurise les deux
@@ -933,7 +988,9 @@ minimize(id) {
   w.card.classList.add("gameWinMinimized");
 
   w.root.style.display = "none";
-  w.card.style.display = "none";
+    w.card.style.display = "none";
+    dockBtn.classList.remove("dockIconFromWindow");
+    dockBtn.removeAttribute("style");
 
   }, 380);
 },

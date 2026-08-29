@@ -428,26 +428,1038 @@ html.orbitSessionReady #loadingOverlay{
   display:none !important;
 }
 
+/* ============================================================
+   Profil compact : véritable fenêtre au-dessus du jeu
+============================================================ */
+#profileOverlay{
+  display:none;
+  padding:0 !important;
+  overflow:hidden !important;
+  background:transparent !important;
+  backdrop-filter:none !important;
+  pointer-events:none !important;
+}
+
+#profileOverlay .profileOverlayInner{
+  display:contents;
+  pointer-events:none;
+}
+
+#profileOverlay #profileWindow{
+  width:min(860px,calc(100vw - 48px)) !important;
+  height:min(620px,calc(100vh - 92px)) !important;
+  min-height:0 !important;
+  gap:0 !important;
+  overflow:hidden !important;
+  border:1px solid rgba(124,240,255,.3) !important;
+  border-radius:16px !important;
+  background:linear-gradient(145deg,rgba(8,20,36,.97),rgba(3,9,20,.98)) !important;
+  box-shadow:0 28px 80px rgba(0,0,0,.72),0 0 35px rgba(0,217,255,.12) !important;
+  pointer-events:auto !important;
+}
+
+#profileOverlay #profileWindow.gameWindow:not(.floating){
+  position:fixed !important;
+  left:max(24px,calc(50vw - 430px)) !important;
+  top:64px !important;
+}
+
+#profileOverlay #profileWindow.gameWindow.floating{
+  position:fixed !important;
+  width:min(860px,calc(100vw - 48px)) !important;
+  height:min(620px,calc(100vh - 92px)) !important;
+}
+
+#profileOverlay .profileHeaderCard,
+#profileOverlay .profileMainCard{
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  backdrop-filter:none !important;
+  box-shadow:none !important;
+}
+
+#profileOverlay .profileHeaderCard{
+  flex:0 0 auto;
+  margin:12px 12px 0;
+  padding:12px;
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:10px !important;
+  border-bottom:1px solid rgba(124,240,255,.14) !important;
+  background:linear-gradient(180deg,rgba(18,48,68,.62),rgba(6,20,34,.45)) !important;
+}
+
+#profileOverlay .profileHeaderTop{
+  flex-direction:row;
+  align-items:center;
+  margin-bottom:12px;
+  gap:12px;
+}
+
+#profileOverlay .profileTitle{ font-size:20px; }
+#profileOverlay .profileSub{ margin-top:3px; font-size:11px; }
+#profileOverlay .profileActions{ gap:8px; }
+
+#profileOverlay button{
+  box-sizing:border-box;
+  padding:8px 12px;
+  border-radius:8px;
+  font-size:12px;
+  text-transform:none;
+  transition:transform .15s ease,border-color .15s ease,background .15s ease,box-shadow .15s ease;
+}
+#profileOverlay button:hover:not(:disabled){ transform:translateY(-1px); }
+#profileOverlay button:active:not(:disabled){ transform:translateY(0); }
+
+#profileOverlay .profileTabs{
+  flex-direction:row;
+  flex-wrap:nowrap;
+  gap:5px;
+  overflow-x:auto;
+  scrollbar-width:none;
+  padding-top:3px;
+}
+#profileOverlay .profileTabs::-webkit-scrollbar{ display:none; }
+#profileOverlay .tabBtn{
+  min-width:115px;
+  border-radius:7px;
+  border:1px solid rgba(124,240,255,.18) !important;
+}
+
+#profileOverlay .profileMainCard{
+  flex:1 1 auto;
+  min-height:0;
+  max-height:none;
+  padding:12px;
+  overflow:hidden;
+}
+
+#profileOverlay .profilePanel.active{
+  min-height:0;
+  padding:14px;
+  box-sizing:border-box;
+  overflow:auto;
+  border:1px solid rgba(124,240,255,.16);
+  border-radius:10px;
+  background:linear-gradient(145deg,rgba(10,31,48,.62),rgba(4,14,27,.72));
+  animation:profilePanelEnter .18s ease both;
+}
+
+#profileOverlay .statsRow{
+  grid-template-columns:repeat(4,minmax(130px,1fr));
+  gap:9px;
+  margin-bottom:12px;
+}
+#profileOverlay .statCard,
+#profileOverlay .profileTile,
+#profileOverlay .tile{
+  padding:12px;
+  border-radius:10px;
+  box-shadow:0 3px 10px rgba(0,0,0,.22);
+}
+#profileOverlay .statLabel{ font-size:10px; }
+#profileOverlay .statValue{ font-size:19px; }
+#profileOverlay .previewCard{ padding:12px; border-radius:11px; }
+#profileOverlay .previewCard img{ width:64px; height:64px; }
+
+#profileOverlay .profileGrid{
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:10px;
+  padding:2px 7px 4px 2px;
+}
+#profileOverlay .tileShipPreview img{ width:58px; height:58px; }
+
+#profileOverlay .subtabs{
+  flex:0 0 auto;
+  flex-wrap:nowrap;
+  gap:5px;
+  padding-bottom:10px;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+#profileOverlay .subtabs::-webkit-scrollbar{ display:none; }
+#profileOverlay .subtabBtn{ white-space:nowrap; padding:7px 10px; }
+
+#profileOverlay .shopLayout{
+  grid-template-columns:280px minmax(0,1fr);
+  gap:12px;
+}
+#profileOverlay .shopList,
+#profileOverlay .shopPreview{ padding-right:6px; }
+#profileOverlay .shopRow{ gap:9px; padding:9px; border-radius:9px; }
+#profileOverlay .shopRow img{ width:42px; height:42px; }
+#profileOverlay .shopPreview .bigImg{
+  width:min(240px,70%);
+  max-height:220px;
+  margin-bottom:12px;
+  padding:12px;
+  border-radius:11px;
+}
+#profileOverlay .shopLayoutGrid{
+  grid-template-columns:repeat(3,minmax(190px,1fr));
+  gap:10px;
+}
+#profileOverlay .shipCard{ padding:11px; border-radius:11px; }
+#profileOverlay .shipCard:hover{ transform:translateY(-2px); }
+#profileOverlay .shipImageContainer{ height:130px; }
+
+@keyframes profileWindowEnter{
+  from{ opacity:0; transform:translateY(10px) scale(.98); }
+  to{ opacity:1; transform:translateY(0) scale(1); }
+}
+@keyframes profilePanelEnter{
+  from{ opacity:0; transform:translateY(4px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+
+@media (max-width:900px){
+  #profileOverlay .profileOverlayInner{ width:calc(100vw - 28px); height:calc(100vh - 28px); }
+  #profileOverlay .statsRow{ grid-template-columns:repeat(2,minmax(120px,1fr)); }
+  #profileOverlay .shopLayout{ grid-template-columns:240px minmax(0,1fr); }
+  #profileOverlay .shopLayoutGrid{ grid-template-columns:repeat(2,minmax(180px,1fr)); }
+}
+
+@media (max-width:650px){
+  #profileOverlay{ padding:7px !important; }
+  #profileOverlay .profileOverlayInner{ width:calc(100vw - 14px); height:calc(100vh - 14px); }
+  #profileOverlay .profileHeaderTop{ flex-direction:row; }
+  #profileOverlay .profileTitle{ font-size:16px; }
+  #profileOverlay .profileActions{ width:auto; }
+  #profileOverlay .profileActions button{ padding:7px 9px; }
+  #profileOverlay .profileMainCard{ padding:10px; }
+  #profileOverlay .shopLayout{ grid-template-columns:1fr; overflow-y:auto; }
+  #profileOverlay .shopList{ max-height:210px; }
+  #profileOverlay .shopLayoutGrid{ grid-template-columns:1fr; }
+}
+
+/* ============================================================
+   PROFIL V2 — composant HUD isolé, sans flou
+============================================================ */
+body #profileOverlay{
+  position:fixed !important;
+  inset:0 !important;
+  padding:0 !important;
+  margin:0 !important;
+  overflow:visible !important;
+  background:transparent !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  pointer-events:none !important;
+}
+
+body #profileOverlay .profileOverlayInner{ display:contents !important; }
+
+body #profileOverlay #profileWindow{
+  width:min(1040px,calc(100vw - 32px)) !important;
+  height:min(680px,calc(100vh - 48px)) !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:0 !important;
+  gap:0 !important;
+  overflow:hidden !important;
+  display:flex !important;
+  flex-direction:column !important;
+  color:#e8f4ff !important;
+  border:1px solid rgba(124,240,255,.24) !important;
+  border-radius:16px !important;
+  background:linear-gradient(135deg,rgba(10,18,36,.96),rgba(3,8,20,.95)) !important;
+  box-shadow:0 18px 42px rgba(0,0,0,.58),0 0 26px rgba(0,217,255,.12),inset 0 0 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  pointer-events:auto !important;
+}
+
+body #profileOverlay #profileWindow.gameWindow:not(.floating){
+  position:fixed !important;
+  left:max(16px,calc(50vw - 520px)) !important;
+  top:24px !important;
+}
+
+body #profileOverlay #profileWindow.gameWindow.floating{
+  position:fixed !important;
+  width:min(1040px,calc(100vw - 32px)) !important;
+  height:min(680px,calc(100vh - 48px)) !important;
+}
+
+body #profileOverlay #profileWindow > .gameWinBar{
+  flex:0 0 30px !important;
+  height:30px !important;
+  min-height:30px !important;
+  padding:0 8px 0 10px !important;
+  gap:8px !important;
+  border:0 !important;
+  border-bottom:1px solid rgba(124,240,255,.18) !important;
+  border-radius:0 !important;
+  background:linear-gradient(90deg,rgba(0,217,255,.18),rgba(124,240,255,.05),rgba(255,255,255,.035)) !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+
+body #profileOverlay #profileWindow > .gameWinBar .gameWinIcon{
+  width:20px !important;
+  height:20px !important;
+  display:grid !important;
+  place-items:center !important;
+  font-size:13px !important;
+}
+
+body #profileOverlay #profileWindow > .gameWinBar .gameWinTitle{
+  flex:1 !important;
+  min-width:0 !important;
+  color:#dff4ff !important;
+  font-size:12px !important;
+  font-weight:800 !important;
+  letter-spacing:.2px !important;
+}
+
+body #profileOverlay #profileWindow > .gameWinBar .gameWinMinBtn{
+  width:26px !important;
+  height:22px !important;
+  min-width:26px !important;
+  min-height:22px !important;
+  margin:0 !important;
+  padding:0 !important;
+  display:grid !important;
+  place-items:center !important;
+  border:1px solid rgba(124,240,255,.22) !important;
+  border-radius:9px !important;
+  background:linear-gradient(135deg,rgba(0,217,255,.18),rgba(0,70,100,.14)) !important;
+  box-shadow:none !important;
+  color:#bfefff !important;
+  font:800 15px/1 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  transform:none !important;
+}
+body #profileOverlay #profileWindow > .gameWinBar .gameWinMinBtn:hover{
+  border-color:rgba(124,240,255,.6) !important;
+  background:linear-gradient(135deg,rgba(0,217,255,.3),rgba(0,70,100,.22)) !important;
+  transform:none !important;
+}
+
+body #profileOverlay .profileHeaderCard{
+  flex:0 0 auto !important;
+  margin:10px 10px 0 !important;
+  padding:10px !important;
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:12px !important;
+  background:linear-gradient(135deg,rgba(15,45,65,.72),rgba(5,14,25,.82)) !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+
+body #profileOverlay .profileHeaderTop{
+  min-height:34px !important;
+  margin:0 0 9px !important;
+  display:flex !important;
+  flex-direction:row !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:10px !important;
+  flex-wrap:nowrap !important;
+}
+
+body #profileOverlay .profileTitle{
+  font-size:16px !important;
+  line-height:1.15 !important;
+  font-weight:850 !important;
+  color:#e8f7ff !important;
+  background:none !important;
+  -webkit-text-fill-color:currentColor !important;
+}
+body #profileOverlay .profileSub{ margin:2px 0 0 !important; font-size:10px !important; color:#829eb3 !important; }
+body #profileOverlay .profileActions{ flex:0 0 auto !important; display:flex !important; gap:6px !important; flex-wrap:nowrap !important; }
+
+body #profileOverlay button:not(.gameWinMinBtn){
+  min-height:30px !important;
+  padding:6px 10px !important;
+  border-radius:8px !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  box-shadow:none !important;
+}
+body #profileOverlay button.primary,
+body #profileOverlay .primary{
+  color:#eaffff !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+body #profileOverlay button.secondary,
+body #profileOverlay .secondary{
+  color:rgba(232,244,255,.88) !important;
+  border:1px solid rgba(124,240,255,.2) !important;
+  background:rgba(8,35,52,.62) !important;
+}
+body #profileOverlay button.primary:hover:not(:disabled),
+body #profileOverlay button.secondary:hover:not(:disabled){
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+
+body #profileOverlay .profileTabs,
+body #profileOverlay .subtabs{
+  display:flex !important;
+  flex-direction:row !important;
+  align-items:center !important;
+  flex-wrap:nowrap !important;
+  gap:6px !important;
+  padding:0 !important;
+  overflow-x:auto !important;
+  scrollbar-width:none !important;
+}
+body #profileOverlay .profileTabs::-webkit-scrollbar,
+body #profileOverlay .subtabs::-webkit-scrollbar{ display:none !important; }
+
+body #profileOverlay .tabBtn,
+body #profileOverlay .subtabBtn{
+  flex:0 0 auto !important;
+  min-width:0 !important;
+  color:rgba(205,230,245,.72) !important;
+  border:1px solid rgba(124,240,255,.18) !important;
+  background:rgba(8,35,52,.62) !important;
+}
+body #profileOverlay .tabBtn.active,
+body #profileOverlay .subtabBtn.active{
+  color:#edfbff !important;
+  border-color:#7cf0ff !important;
+  background:rgba(0,140,185,.28) !important;
+  box-shadow:0 0 0 1px rgba(88,210,255,.08) inset !important;
+}
+
+body #profileOverlay #msg{ flex:0 0 auto !important; margin:8px 10px 0 !important; padding:7px 9px !important; }
+
+body #profileOverlay .profileMainCard{
+  flex:1 1 auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  margin:0 !important;
+  padding:10px !important;
+  display:flex !important;
+  overflow:hidden !important;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+
+body #profileOverlay .profilePanel{ display:none !important; min-width:0 !important; min-height:0 !important; }
+body #profileOverlay .profilePanel.active{
+  width:100% !important;
+  padding:12px !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  flex-direction:column !important;
+  overflow:auto !important;
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:12px !important;
+  background:linear-gradient(135deg,rgba(8,28,45,.68),rgba(3,11,22,.76)) !important;
+  box-shadow:0 0 0 1px rgba(255,255,255,.02) inset !important;
+  backdrop-filter:none !important;
+  animation:profilePanelCleanIn .14s ease-out both !important;
+}
+
+body #profileOverlay .statsRow{
+  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  gap:8px !important;
+  margin:0 0 10px !important;
+}
+body #profileOverlay .statCard,
+body #profileOverlay .profileTile,
+body #profileOverlay .tile,
+body #profileOverlay .previewCard,
+body #profileOverlay .shopRow,
+body #profileOverlay .shipCard{
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:10px !important;
+  background:linear-gradient(135deg,rgba(15,45,65,.72),rgba(5,14,25,.8)) !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+body #profileOverlay .statCard{ padding:9px !important; }
+body #profileOverlay .statLabel{ margin:0 0 4px !important; font-size:9px !important; letter-spacing:.5px !important; }
+body #profileOverlay .statValue{ font-size:17px !important; color:#68d9ff !important; }
+body #profileOverlay .previewCard{ padding:10px !important; gap:10px !important; }
+body #profileOverlay .previewCard img{ width:54px !important; height:54px !important; padding:5px !important; }
+
+body #profileOverlay .profileGrid{
+  grid-template-columns:repeat(auto-fill,minmax(205px,1fr)) !important;
+  gap:8px !important;
+  padding:1px 5px 2px 1px !important;
+}
+body #profileOverlay .tileShipPreview img{ width:52px !important; height:52px !important; padding:5px !important; }
+body #profileOverlay .tileActions{ gap:6px !important; margin-top:8px !important; }
+
+body #profileOverlay #panel_shop > .hint{ margin-bottom:8px !important; }
+body #profileOverlay #panel_shop > .statsRow{ margin-bottom:8px !important; }
+body #profileOverlay #shopTabs{ flex:0 0 auto !important; margin-bottom:8px !important; }
+body #profileOverlay .shopLayout{
+  flex:1 1 auto !important;
+  min-height:0 !important;
+  grid-template-columns:235px minmax(0,1fr) !important;
+  gap:9px !important;
+  overflow:hidden !important;
+}
+body #profileOverlay .shopList,
+body #profileOverlay .shopPreview{
+  min-width:0 !important;
+  padding:7px !important;
+  overflow-y:auto !important;
+  border:1px solid rgba(124,240,255,.14) !important;
+  border-radius:10px !important;
+  background:rgba(2,10,20,.48) !important;
+}
+body #profileOverlay .shopList{ gap:6px !important; }
+body #profileOverlay .shopRow{ padding:7px !important; gap:7px !important; }
+body #profileOverlay .shopRow.active{ border-color:#7cf0ff !important; background:rgba(0,140,185,.24) !important; }
+body #profileOverlay .shopRow img{ width:38px !important; height:38px !important; padding:3px !important; }
+body #profileOverlay .shopPreview .bigImg{ width:min(190px,65%) !important; max-height:170px !important; padding:8px !important; }
+body #profileOverlay .shopLayoutGrid{ grid-template-columns:repeat(3,minmax(170px,1fr)) !important; gap:8px !important; }
+body #profileOverlay .shipCard{ padding:9px !important; }
+body #profileOverlay .shipCard:hover{ transform:translateY(-2px) !important; border-color:rgba(124,240,255,.48) !important; box-shadow:0 8px 22px rgba(0,0,0,.26) !important; }
+body #profileOverlay .shipImageContainer{ height:110px !important; }
+
+body #profileOverlay *{ scrollbar-color:#285a72 #07131f; scrollbar-width:thin; }
+
+@keyframes profilePanelCleanIn{
+  from{ opacity:0; transform:translateY(3px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+
+/* Profil V3 : tableau de bord interne */
+body #profileOverlay #profileWindow{
+  display:grid !important;
+  grid-template-columns:215px minmax(0,1fr) !important;
+  grid-template-rows:30px minmax(0,1fr) !important;
+}
+
+body #profileOverlay #profileWindow > .gameWinBar{
+  grid-column:1 / -1 !important;
+  grid-row:1 !important;
+}
+
+body #profileOverlay .profileHeaderCard{
+  grid-column:1 !important;
+  grid-row:2 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:10px 0 10px 10px !important;
+  padding:12px !important;
+  display:flex !important;
+  flex-direction:column !important;
+  border-radius:12px !important;
+  background:linear-gradient(180deg,rgba(14,45,65,.78),rgba(5,17,30,.84)) !important;
+}
+
+body #profileOverlay .profileHeaderTop{
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  justify-content:flex-start !important;
+  gap:13px !important;
+  margin:0 0 14px !important;
+  padding:2px 2px 14px !important;
+  border-bottom:1px solid rgba(124,240,255,.13) !important;
+}
+
+body #profileOverlay .profileTitle{
+  padding-left:10px !important;
+  border-left:3px solid #55dfff !important;
+  font-size:17px !important;
+}
+
+body #profileOverlay .profileSub{
+  margin-top:6px !important;
+  line-height:1.55 !important;
+  color:rgba(190,220,240,.68) !important;
+}
+
+body #profileOverlay .profileActions{
+  width:100% !important;
+  display:grid !important;
+  grid-template-columns:1fr !important;
+  gap:7px !important;
+}
+body #profileOverlay .profileActions button{ width:100% !important; }
+
+body #profileOverlay .profileTabs{
+  width:100% !important;
+  display:flex !important;
+  flex:1 1 auto !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  justify-content:flex-start !important;
+  gap:7px !important;
+  overflow-y:auto !important;
+}
+
+body #profileOverlay .profileTabs .tabBtn{
+  width:100% !important;
+  min-height:38px !important;
+  padding:9px 11px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  text-align:left !important;
+  border-radius:9px !important;
+  transition:transform .15s ease,border-color .15s ease,background .15s ease !important;
+}
+body #profileOverlay .profileTabs .tabBtn:hover:not(:disabled){ transform:translateX(2px) !important; }
+body #profileOverlay .profileTabs .tabBtn.active{
+  border-color:rgba(124,240,255,.5) !important;
+  background:linear-gradient(90deg,rgba(0,155,205,.34),rgba(0,90,125,.17)) !important;
+  box-shadow:inset 3px 0 0 #69e9ff !important;
+}
+
+body #profileOverlay #msg{
+  position:absolute !important;
+  top:42px !important;
+  right:14px !important;
+  z-index:4 !important;
+  max-width:520px !important;
+  margin:0 !important;
+  box-shadow:0 8px 24px rgba(0,0,0,.42) !important;
+}
+
+body #profileOverlay .profileMainCard{
+  grid-column:2 !important;
+  grid-row:2 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:10px !important;
+}
+
+body #profileOverlay .profilePanel.active{
+  padding:16px !important;
+  border-radius:12px !important;
+  background:
+    radial-gradient(circle at 90% 0,rgba(0,180,225,.08),transparent 34%),
+    linear-gradient(145deg,rgba(8,28,45,.72),rgba(3,11,22,.82)) !important;
+}
+
+body #profileOverlay .hint{
+  padding:9px 11px !important;
+  border-left:3px solid rgba(124,240,255,.45) !important;
+  border-radius:0 7px 7px 0 !important;
+  background:rgba(3,15,27,.5) !important;
+  color:rgba(210,232,247,.72) !important;
+}
+
+body #profileOverlay .statsRow{
+  gap:10px !important;
+}
+body #profileOverlay .statCard{
+  position:relative !important;
+  min-height:74px !important;
+  padding:12px !important;
+  overflow:hidden !important;
+  transition:transform .16s ease,border-color .16s ease,background .16s ease !important;
+}
+body #profileOverlay .statCard::after{
+  content:"";
+  position:absolute;
+  right:-18px;
+  bottom:-24px;
+  width:72px;
+  height:72px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(64,220,255,.15),transparent 68%);
+}
+body #profileOverlay .statCard:hover{
+  transform:translateY(-2px) !important;
+  border-color:rgba(124,240,255,.38) !important;
+  background:linear-gradient(135deg,rgba(18,58,80,.78),rgba(5,18,31,.84)) !important;
+}
+body #profileOverlay .statLabel{ font-size:10px !important; }
+body #profileOverlay .statValue{ margin-top:8px !important; font-size:21px !important; }
+
+body #profileOverlay .previewCard{
+  min-height:100px !important;
+  padding:14px !important;
+  background:
+    radial-gradient(circle at 12% 50%,rgba(0,190,235,.12),transparent 28%),
+    linear-gradient(135deg,rgba(15,45,65,.72),rgba(5,14,25,.8)) !important;
+}
+body #profileOverlay .previewCard img{
+  width:78px !important;
+  height:78px !important;
+  border-radius:12px !important;
+  background:rgba(0,0,0,.3) !important;
+}
+body #profileOverlay .previewTitle{ font-size:17px !important; }
+
+body #profileOverlay .profileGrid{
+  grid-template-columns:repeat(auto-fill,minmax(230px,1fr)) !important;
+  gap:11px !important;
+}
+body #profileOverlay .profileGrid > .tile{
+  padding:12px !important;
+  transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease !important;
+}
+body #profileOverlay .profileGrid > .tile:hover{
+  transform:translateY(-2px) !important;
+  border-color:rgba(124,240,255,.4) !important;
+  box-shadow:0 9px 22px rgba(0,0,0,.25) !important;
+}
+
+body #profileOverlay #shopTabs{
+  padding:6px !important;
+  border:1px solid rgba(124,240,255,.12) !important;
+  border-radius:10px !important;
+  background:rgba(2,10,20,.36) !important;
+}
+body #profileOverlay #shopTabs .subtabBtn{
+  flex:1 0 auto !important;
+  min-height:32px !important;
+  text-align:center !important;
+}
+
+body #profileOverlay .shopLayout{
+  grid-template-columns:260px minmax(0,1fr) !important;
+  gap:12px !important;
+}
+body #profileOverlay .shopList,
+body #profileOverlay .shopPreview{
+  padding:10px !important;
+  border-radius:11px !important;
+}
+body #profileOverlay .shopRow{
+  min-height:58px !important;
+  padding:9px !important;
+  transition:transform .14s ease,border-color .14s ease,background .14s ease !important;
+}
+body #profileOverlay .shopRow:hover{
+  transform:translateX(2px) !important;
+  border-color:rgba(124,240,255,.34) !important;
+}
+body #profileOverlay .shopRow.active{ box-shadow:inset 3px 0 0 #69e9ff !important; }
+body #profileOverlay .shopPreview .profileTile{ padding:16px !important; }
+body #profileOverlay .shopPreview .bigImg{
+  width:min(250px,72%) !important;
+  max-height:220px !important;
+  border-radius:14px !important;
+  background:radial-gradient(circle,rgba(0,180,230,.1),rgba(0,0,0,.28)) !important;
+}
+
+@media (max-width:820px){
+  body #profileOverlay #profileWindow{
+    grid-template-columns:1fr !important;
+    grid-template-rows:30px auto minmax(0,1fr) !important;
+  }
+  body #profileOverlay .profileHeaderCard{
+    grid-column:1 !important;
+    grid-row:2 !important;
+    margin:8px 8px 0 !important;
+    padding:8px !important;
+  }
+  body #profileOverlay .profileHeaderTop{ flex-direction:row !important; margin:0 0 8px !important; padding:0 0 8px !important; }
+  body #profileOverlay .profileActions{ width:auto !important; grid-template-columns:auto auto !important; }
+  body #profileOverlay .profileTabs{ flex-direction:row !important; overflow-x:auto !important; }
+  body #profileOverlay .profileTabs .tabBtn{ width:auto !important; min-height:32px !important; }
+  body #profileOverlay .profileMainCard{ grid-column:1 !important; grid-row:3 !important; padding:8px !important; }
+}
+
+/* Profil V5 : sections fixes, hangars liste + aperçu, boutique claire */
+body #profileOverlay .profileTabs{
+  flex:0 0 auto !important;
+  min-height:0 !important;
+  overflow:visible !important;
+}
+body #profileOverlay .profileTabs .tabBtn{
+  width:100% !important;
+  flex:0 0 auto !important;
+}
+
+body #profileOverlay #panel_hangars > .hint,
+body #profileOverlay #panel_shop > .hint{
+  flex:0 0 auto !important;
+}
+body #profileOverlay .hangarWorkspace{
+  flex:1 1 auto !important;
+  min-height:0 !important;
+  display:grid !important;
+  grid-template-columns:250px minmax(0,1fr) !important;
+  gap:14px !important;
+}
+body #profileOverlay .hangarPreview{
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:16px !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  justify-content:center !important;
+  text-align:center !important;
+  border:1px solid rgba(124,240,255,.2) !important;
+  border-radius:12px !important;
+  background:radial-gradient(circle at 50% 35%,rgba(0,180,230,.14),transparent 48%),rgba(3,14,25,.55) !important;
+}
+body #profileOverlay .hangarPreviewEyebrow{
+  align-self:stretch !important;
+  padding-bottom:10px !important;
+  border-bottom:1px solid rgba(124,240,255,.14) !important;
+  color:rgba(190,220,240,.6) !important;
+  font-size:10px !important;
+  font-weight:900 !important;
+  letter-spacing:1.2px !important;
+}
+body #profileOverlay #hangarPreviewImage{
+  width:170px !important;
+  height:170px !important;
+  margin:20px 0 14px !important;
+  object-fit:contain !important;
+  image-rendering:pixelated !important;
+  filter:drop-shadow(0 8px 18px rgba(0,217,255,.18)) !important;
+}
+body #profileOverlay #hangarPreviewTitle{ margin:0 0 8px !important; color:#e8f8ff !important; font-size:18px !important; }
+body #profileOverlay #hangarPreviewMeta{ margin:0 !important; color:rgba(205,230,245,.66) !important; font-size:11px !important; line-height:1.5 !important; }
+body #profileOverlay .hangarWorkspace > .profileGrid{
+  min-width:0 !important;
+  min-height:0 !important;
+  grid-template-columns:repeat(2,minmax(220px,1fr)) !important;
+  align-content:start !important;
+  overflow-y:auto !important;
+}
+body #profileOverlay .hangarWorkspace > .profileGrid > .tile{
+  min-height:150px !important;
+  display:flex !important;
+  flex-direction:column !important;
+}
+body #profileOverlay .hangarWorkspace .tileActions{ margin-top:auto !important; }
+
+body #profileOverlay #shopTabs{
+  flex:0 0 auto !important;
+  display:grid !important;
+  grid-template-columns:repeat(6,minmax(0,1fr)) !important;
+  gap:6px !important;
+  margin:0 0 14px !important;
+  padding:6px !important;
+  border:1px solid rgba(124,240,255,.15) !important;
+  border-radius:10px !important;
+  background:rgba(3,14,25,.55) !important;
+}
+body #profileOverlay #shopTabs .subtabBtn{ width:100% !important; min-width:0 !important; padding:8px 5px !important; white-space:nowrap !important; }
+body #profileOverlay #panel_shop .shopLayout{
+  flex:1 1 auto !important;
+  min-height:0 !important;
+  display:grid !important;
+  grid-template-columns:310px minmax(0,1fr) !important;
+  gap:14px !important;
+}
+body #profileOverlay #panel_shop .shopList,
+body #profileOverlay #panel_shop .shopPreview{
+  min-height:0 !important;
+  overflow:auto !important;
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:12px !important;
+  background:rgba(3,14,25,.48) !important;
+}
+body #profileOverlay #panel_shop .shopList{ padding:10px !important; gap:8px !important; }
+body #profileOverlay #panel_shop .shopPreview{ padding:16px !important; }
+body #profileOverlay #panel_shop .shopPreview .profileTile{ min-height:100% !important; box-sizing:border-box !important; }
+
+@media (max-width:820px){
+  body #profileOverlay .hangarWorkspace{ grid-template-columns:190px minmax(0,1fr) !important; gap:9px !important; }
+  body #profileOverlay #hangarPreviewImage{ width:125px !important; height:125px !important; }
+  body #profileOverlay .hangarWorkspace > .profileGrid{ grid-template-columns:1fr !important; }
+  body #profileOverlay #shopTabs{ grid-template-columns:repeat(3,minmax(0,1fr)) !important; }
+  body #profileOverlay #panel_shop .shopLayout{ grid-template-columns:1fr !important; overflow-y:auto !important; }
+  body #profileOverlay #panel_shop .shopList{ max-height:190px !important; }
+}
+
+@media (max-width:560px){
+  body #profileOverlay .hangarWorkspace{ grid-template-columns:1fr !important; overflow-y:auto !important; }
+  body #profileOverlay .hangarPreview{ min-height:210px !important; }
+  body #profileOverlay .hangarWorkspace > .profileGrid{ overflow:visible !important; }
+}
+
+/* Profil V4 : intérieur aéré et navigation par listes */
+body #profileOverlay #profileWindow{
+  width:min(1100px,calc(100vw - 32px)) !important;
+  height:min(720px,calc(100vh - 40px)) !important;
+  grid-template-columns:250px minmax(0,1fr) !important;
+}
+body #profileOverlay #profileWindow.gameWindow:not(.floating){
+  left:max(16px,calc(50vw - 550px)) !important;
+  top:20px !important;
+}
+body #profileOverlay #profileWindow.gameWindow.floating{
+  width:min(1100px,calc(100vw - 32px)) !important;
+  height:min(720px,calc(100vh - 40px)) !important;
+}
+
+body #profileOverlay .profileHeaderCard{
+  margin:14px 0 14px 14px !important;
+  padding:18px !important;
+}
+body #profileOverlay .profileHeaderTop{
+  min-height:0 !important;
+  margin:0 0 22px !important;
+  padding:0 0 20px !important;
+}
+body #profileOverlay .profileTitle{ font-size:19px !important; }
+body #profileOverlay .profileSub{ margin-top:10px !important; font-size:11px !important; line-height:1.7 !important; }
+
+body #profileOverlay .profileSelectGroup,
+body #profileOverlay .shopSelectBar{
+  display:grid !important;
+  gap:7px !important;
+}
+body #profileOverlay .profileSelectGroup label,
+body #profileOverlay .shopSelectBar label{
+  color:rgba(190,220,240,.62) !important;
+  font-size:10px !important;
+  font-weight:850 !important;
+  letter-spacing:.8px !important;
+  text-transform:uppercase !important;
+}
+body #profileOverlay .profileSelect{
+  width:100% !important;
+  height:40px !important;
+  padding:0 36px 0 12px !important;
+  box-sizing:border-box !important;
+  border:1px solid rgba(124,240,255,.3) !important;
+  border-radius:9px !important;
+  outline:0 !important;
+  color:#e9faff !important;
+  background-color:#0b2639 !important;
+  font:800 12px ui-sans-serif,system-ui !important;
+  cursor:pointer !important;
+}
+body #profileOverlay .profileSelect:focus{ border-color:#7cf0ff !important; }
+body #profileOverlay .profileSelect option{ color:#e9faff; background:#081a2a; }
+
+body #profileOverlay .profileMainCard{ padding:14px !important; }
+body #profileOverlay .profilePanel.active{ padding:20px !important; }
+body #profileOverlay .hint{ margin-bottom:16px !important; padding:12px 14px !important; line-height:1.55 !important; }
+body #profileOverlay .statsRow{ gap:14px !important; margin-bottom:16px !important; }
+body #profileOverlay .statCard{ min-height:88px !important; padding:15px !important; }
+body #profileOverlay .previewCard{ min-height:126px !important; padding:18px !important; }
+body #profileOverlay .previewCard img{ width:92px !important; height:92px !important; }
+body #profileOverlay .profileGrid{ gap:14px !important; }
+
+body #profileOverlay .shopSelectBar{
+  grid-template-columns:auto minmax(220px,340px) !important;
+  align-items:center !important;
+  margin:0 0 14px !important;
+  padding:10px 12px !important;
+  border:1px solid rgba(124,240,255,.13) !important;
+  border-radius:10px !important;
+  background:rgba(2,10,20,.36) !important;
+}
+body #profileOverlay .shopLayout{
+  grid-template-columns:290px minmax(0,1fr) !important;
+  gap:15px !important;
+}
+body #profileOverlay .shopList,
+body #profileOverlay .shopPreview{ padding:14px !important; }
+body #profileOverlay .shopList{ gap:10px !important; }
+body #profileOverlay .shopRow{ min-height:64px !important; padding:11px !important; }
+
+body #profileOverlay button:not(.gameWinMinBtn),
+body #profileOverlay button:not(.gameWinMinBtn):hover,
+body #profileOverlay button:not(.gameWinMinBtn):active,
+body #profileOverlay .statCard,
+body #profileOverlay .statCard:hover,
+body #profileOverlay .tile,
+body #profileOverlay .tile:hover,
+body #profileOverlay .shopRow,
+body #profileOverlay .shopRow:hover,
+body #profileOverlay .shipCard,
+body #profileOverlay .shipCard:hover{
+  transform:none !important;
+  transition:none !important;
+}
+body #profileOverlay button.primary:hover:not(:disabled){
+  border-color:rgba(124,240,255,.38) !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+body #profileOverlay button.secondary:hover:not(:disabled){
+  border-color:rgba(124,240,255,.2) !important;
+  background:rgba(8,35,52,.62) !important;
+  box-shadow:none !important;
+}
+
+#gameWindowDock .logoutDockIcon{
+  border-color:rgba(255,107,122,.36) !important;
+  color:#ffd2d8 !important;
+  background:linear-gradient(135deg,rgba(150,32,52,.2),rgba(62,12,25,.2)) !important;
+}
+#gameWindowDock .logoutDockIcon:hover{
+  transform:none !important;
+  border-color:rgba(255,107,122,.36) !important;
+  background:linear-gradient(135deg,rgba(150,32,52,.2),rgba(62,12,25,.2)) !important;
+}
+
+@media (max-width:820px){
+  body #profileOverlay #profileWindow,
+  body #profileOverlay #profileWindow.gameWindow.floating{
+    width:calc(100vw - 16px) !important;
+    height:calc(100vh - 24px) !important;
+    grid-template-columns:1fr !important;
+  }
+  body #profileOverlay #profileWindow.gameWindow:not(.floating){ left:8px !important; top:12px !important; }
+  body #profileOverlay .profileHeaderCard{ margin:8px 8px 0 !important; padding:10px !important; }
+  body #profileOverlay .profileHeaderTop{ margin:0 0 9px !important; padding:0 0 9px !important; }
+  body #profileOverlay .profileSelectGroup{ grid-template-columns:auto minmax(180px,1fr) !important; align-items:center !important; }
+  body #profileOverlay .profileMainCard{ padding:8px !important; }
+  body #profileOverlay .profilePanel.active{ padding:12px !important; }
+}
+
+@media (max-width:700px){
+  body #profileOverlay #profileWindow,
+  body #profileOverlay #profileWindow.gameWindow.floating{
+    width:calc(100vw - 16px) !important;
+    height:calc(100vh - 28px) !important;
+  }
+  body #profileOverlay #profileWindow.gameWindow:not(.floating){ left:8px !important; top:14px !important; }
+  body #profileOverlay .profileHeaderTop{ align-items:flex-start !important; }
+  body #profileOverlay .profileTitle{ font-size:14px !important; }
+  body #profileOverlay .statsRow{ grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+  body #profileOverlay .shopLayout{ grid-template-columns:1fr !important; overflow-y:auto !important; }
+  body #profileOverlay .shopList{ max-height:170px !important; }
+  body #profileOverlay .shopLayoutGrid{ grid-template-columns:1fr !important; }
+}
+
 .gameWindow.gameWinOpening{
   transform-origin:center center;
   will-change:transform;
+  backface-visibility:hidden;
   animation:gameWindowOpen .28s cubic-bezier(.16,1,.3,1) both !important;
 }
 .gameWindow.gameWinClosing{
   pointer-events:none !important;
   transform-origin:center center;
   will-change:transform;
+  backface-visibility:hidden;
   animation:gameWindowClose .36s linear both !important;
 }
+.gameDockIcon.dockIconFromWindow{
+  position:fixed !important;
+  left:var(--icon-start-x);
+  top:var(--icon-start-y);
+  z-index:96001 !important;
+  opacity:0;
+  animation:dockIconJourney .36s linear both;
+}
+@keyframes dockIconJourney{
+  0%,28%{ left:var(--icon-start-x); top:var(--icon-start-y); transform:scale(.7); opacity:0; }
+  58%{ left:var(--icon-start-x); top:var(--icon-start-y); transform:scale(1); opacity:1; animation-timing-function:cubic-bezier(.2,.7,.3,1); }
+  100%{ left:var(--icon-end-x); top:var(--icon-end-y); transform:scale(1); opacity:1; }
+}
 @keyframes gameWindowOpen{
-  0%{ transform:translate3d(var(--dock-x,0),var(--dock-y,8px),0) scale(var(--dock-scale,.16),.12); }
-  58%{ transform:translate3d(-2px,1px,0) scale(1.018,.985); }
-  100%{ transform:translate3d(0,0,0) scale(1); }
+  0%{ transform:translate3d(var(--dock-x,0),var(--dock-y,8px),0) scale(var(--dock-scale,.16)); opacity:0; }
+  24%{ opacity:1; }
+  58%{ transform:translate3d(-2px,1px,0) scale(1.018); opacity:1; }
+  100%{ transform:translate3d(0,0,0) scale(1); opacity:1; }
 }
 @keyframes gameWindowClose{
-  0%{ transform:translate3d(0,0,0) scale(1); animation-timing-function:cubic-bezier(.4,0,.2,1); }
-  58%{ transform:translate3d(0,0,0) scale(var(--dock-scale,.16),.12); animation-timing-function:cubic-bezier(.2,.7,.3,1); }
-  100%{ transform:translate3d(var(--dock-x,0),var(--dock-y,6px),0) scale(var(--dock-scale,.16),.12); }
+  0%{ transform:translate3d(0,0,0) scale(1); opacity:1; animation-timing-function:cubic-bezier(.4,0,.2,1); }
+  46%{ opacity:1; }
+  58%{ transform:translate3d(0,0,0) scale(var(--dock-scale,.16)); opacity:0; animation-timing-function:cubic-bezier(.2,.7,.3,1); }
+  100%{ transform:translate3d(var(--dock-x,0),var(--dock-y,6px),0) scale(var(--dock-scale,.16)); opacity:0; }
 }
 
 .gameWindow > .gameWinBar{
@@ -778,6 +1790,8 @@ html.orbitSessionReady #loadingOverlay{
   max-width:calc(100vw - 24px) !important;
   overflow-x:auto !important;
   overflow-y:hidden !important;
+  scrollbar-width:none;
+  -ms-overflow-style:none;
   border-radius:16px !important;
   background:rgba(3,8,20,.35) !important;
   border:1px solid rgba(124,240,255,.12) !important;
@@ -2140,6 +3154,12 @@ html.orbitSessionReady #loadingOverlay{
   }
 }
 
+#gameWindowDock::-webkit-scrollbar{
+  display:none;
+  width:0;
+  height:0;
+}
+
 .loadingOverlay{
   position:fixed;
   inset:0;
@@ -2175,3 +3195,20 @@ html.orbitSessionReady #loadingOverlay{
 #settingsWindow .settingsCheck input{width:17px;height:17px;accent-color:#7cf0ff}
 #settingsWindow .settingsCheck span{display:grid;gap:2px;font-size:12px}
 #settingsWindow .settingsCheck small{color:rgba(232,244,255,.58);font-size:10px}
+
+/* Profil : priorités finales pour la navigation et les nouveaux panneaux */
+body #profileOverlay .profileTabs{display:flex !important; flex-direction:column !important; gap:8px !important; padding:14px !important;}
+body #profileOverlay .profileTabs .tabBtn{display:flex !important; align-items:center !important; justify-content:flex-start !important; min-height:42px !important; padding:0 13px !important;}
+body #profileOverlay .hangarWorkspace{display:grid !important; grid-template-columns:250px minmax(0,1fr) !important; gap:14px !important; min-height:0 !important;}
+body #profileOverlay .hangarWorkspace > .profileGrid{display:grid !important; grid-template-columns:repeat(2,minmax(220px,1fr)) !important; min-width:0 !important; overflow-y:auto !important;}
+body #profileOverlay #shopTabs{display:grid !important; grid-template-columns:repeat(6,minmax(0,1fr)) !important; gap:6px !important;}
+body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-template-columns:310px minmax(0,1fr) !important; gap:14px !important; min-height:0 !important;}
+@media (max-width:820px){
+  body #profileOverlay .profileTabs{flex-direction:row !important; overflow-x:auto !important;}
+  body #profileOverlay .profileTabs .tabBtn{flex:1 0 auto !important; justify-content:center !important;}
+  body #profileOverlay .hangarWorkspace{grid-template-columns:190px minmax(0,1fr) !important;}
+  body #profileOverlay .hangarWorkspace > .profileGrid{grid-template-columns:1fr !important;}
+  body #profileOverlay #shopTabs{grid-template-columns:repeat(3,minmax(0,1fr)) !important;}
+  body #profileOverlay #panel_shop .shopLayout{grid-template-columns:1fr !important;}
+}
+@media (max-width:560px){body #profileOverlay .hangarWorkspace{grid-template-columns:1fr !important; overflow-y:auto !important;}}

@@ -1,0 +1,550 @@
+/* Fenêtre Profil — feuille canonique chargée après le thème historique. */
+#profileOverlay.profileOverlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 90000 !important;
+  display: none;
+  padding: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  pointer-events: none !important;
+}
+
+#profileOverlay .profileOverlayInner { display: contents !important; }
+
+#profileOverlay #profileWindow.gameWindow {
+  position: fixed !important;
+  width: min(1120px, calc(100vw - 32px)) !important;
+  height: min(720px, calc(100vh - 90px)) !important;
+  min-width: 760px !important;
+  min-height: 520px !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-columns: 230px minmax(0, 1fr) !important;
+  grid-template-rows: 30px minmax(0, 1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  color: #e8f4ff !important;
+  border: 1px solid rgba(124, 240, 255, .30) !important;
+  border-radius: 14px !important;
+  background: #071421 !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .68), 0 0 28px rgba(0, 217, 255, .12) !important;
+  backdrop-filter: none !important;
+  pointer-events: auto !important;
+}
+
+html body #profileOverlay #profileWindow.gameWindow:not(.floating) {
+  left: max(16px, calc(50vw - 560px)) !important;
+  top: 70px !important;
+}
+
+/* Même barre de titre et même bouton de réduction que toutes les fenêtres HUD. */
+#profileOverlay #profileWindow.gameWindow > .gameWinBar {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124, 240, 255, .18) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(90deg, rgba(0,217,255,.18), rgba(124,240,255,.05), rgba(255,255,255,.035)) !important;
+  box-shadow: none !important;
+  cursor: grab !important;
+}
+
+#profileOverlay #profileWindow .gameWinIcon {
+  width: auto !important;
+  height: auto !important;
+  display: inline-flex !important;
+  border: 0 !important;
+  background: transparent !important;
+  font-size: 15px !important;
+}
+
+#profileOverlay #profileWindow .gameWinTitle {
+  flex: 1 !important;
+  min-width: 0 !important;
+  color: rgba(232,244,255,.88) !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  letter-spacing: .35px !important;
+}
+
+html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn {
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 22px !important;
+  min-height: 22px !important;
+  margin: 0 0 0 auto !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(124,240,255,.28) !important;
+  border-radius: 8px !important;
+  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.16), rgba(0,70,100,.10)) !important;
+  color: rgba(232,244,255,.95) !important;
+  font: 1000 15px/1 system-ui !important;
+  box-shadow: 0 0 10px rgba(0,217,255,.10), inset 0 0 0 1px rgba(255,255,255,.035) !important;
+  transition: transform .14s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease !important;
+}
+
+html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover {
+  transform: scale(1.06) !important;
+  border-color: rgba(124,240,255,.58) !important;
+  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.20), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.24), rgba(0,70,100,.18)) !important;
+  box-shadow: 0 0 16px rgba(0,217,255,.20), inset 0 0 0 1px rgba(255,255,255,.05) !important;
+}
+
+#profileOverlay .profileHeaderCard {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 20px 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  gap: 22px !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-right: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(180deg, #0b2638, #071927) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+#profileOverlay .profileHeaderTop {
+  margin: 0 !important;
+  padding: 0 3px 18px !important;
+  display: block !important;
+  border-bottom: 1px solid rgba(124,240,255,.14) !important;
+}
+
+#profileOverlay .profileTitle {
+  padding: 0 !important;
+  border: 0 !important;
+  color: #f0fbff !important;
+  font-size: 17px !important;
+  font-weight: 900 !important;
+  line-height: 1.2 !important;
+  background: none !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+#profileOverlay .profileSub {
+  margin: 8px 0 0 !important;
+  color: rgba(204,228,241,.62) !important;
+  font-size: 10px !important;
+  line-height: 1.55 !important;
+}
+
+#profileOverlay .profileTabs {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  overflow: visible !important;
+}
+
+#profileOverlay .profileTabs .tabBtn,
+#profileOverlay #shopTabs .subtabBtn,
+#profileOverlay button:not(.gameWinMinBtn) {
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  min-height: 36px !important;
+  margin: 0 !important;
+  padding: 8px 11px !important;
+  border: 1px solid rgba(124,240,255,.17) !important;
+  border-radius: 8px !important;
+  color: rgba(215,235,246,.76) !important;
+  background: #0a2232 !important;
+  box-shadow: none !important;
+  font: 800 11px/1.2 system-ui !important;
+  text-transform: none !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+#profileOverlay .profileTabs .tabBtn {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
+
+#profileOverlay .profileTabs .tabBtn.active,
+#profileOverlay #shopTabs .subtabBtn.active {
+  color: #f1fcff !important;
+  border-color: rgba(124,240,255,.52) !important;
+  background: #0c3950 !important;
+  box-shadow: inset 3px 0 0 #69e9ff !important;
+}
+
+#profileOverlay .profileTabs .tabBtn:hover,
+#profileOverlay #shopTabs .subtabBtn:hover,
+#profileOverlay button:not(.gameWinMinBtn):hover,
+#profileOverlay button:not(.gameWinMinBtn):active { transform: none !important; }
+
+#profileOverlay #msg { display: none !important; }
+
+#profileOverlay .profileMainCard {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 14px !important;
+  display: flex !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #06111c !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+#profileOverlay .profilePanel { display: none !important; }
+#profileOverlay .profilePanel.active {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 11px !important;
+  background: #091a28 !important;
+  box-shadow: none !important;
+  animation: none !important;
+}
+
+#profileOverlay .hint {
+  flex: 0 0 auto !important;
+  margin: 0 0 12px !important;
+  padding: 10px 12px !important;
+  color: rgba(209,231,243,.70) !important;
+  font-size: 11px !important;
+  line-height: 1.45 !important;
+  border: 1px solid rgba(124,240,255,.12) !important;
+  border-radius: 8px !important;
+  background: #071622 !important;
+}
+
+#profileOverlay .statsRow {
+  flex: 0 0 auto !important;
+  margin: 0 0 14px !important;
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0,1fr)) !important;
+  gap: 10px !important;
+}
+
+#profileOverlay .statCard,
+#profileOverlay .previewCard,
+#profileOverlay .tile,
+#profileOverlay .profileTile {
+  box-sizing: border-box !important;
+  border: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 9px !important;
+  background: #0a2232 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+#profileOverlay .statCard { min-height: 82px !important; padding: 14px !important; }
+#profileOverlay .statLabel { margin: 0 0 9px !important; color: rgba(204,228,241,.56) !important; font-size: 9px !important; }
+#profileOverlay .statValue { color: #72e7ff !important; font-size: 20px !important; font-weight: 900 !important; }
+#profileOverlay .previewCard { flex: 1 1 auto !important; min-height: 0 !important; padding: 20px !important; gap: 18px !important; }
+#profileOverlay .previewCard img { width: 120px !important; height: 120px !important; padding: 10px !important; }
+
+/* Statistiques et gestion du compte. */
+#profileOverlay .accountSettingsGrid {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+
+#profileOverlay .accountCard {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  overflow-y: auto !important;
+  border: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 10px !important;
+  background: #071622 !important;
+}
+
+#profileOverlay .accountCardHeader {
+  min-width: 0 !important;
+  padding-bottom: 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 11px !important;
+  border-bottom: 1px solid rgba(124,240,255,.12) !important;
+}
+
+#profileOverlay .accountCardIcon {
+  width: 36px !important;
+  height: 36px !important;
+  flex: 0 0 36px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(124,240,255,.22) !important;
+  border-radius: 9px !important;
+  color: #74e8ff !important;
+  background: #0a2a3c !important;
+  font-size: 15px !important;
+}
+
+#profileOverlay .accountCardHeader h3 { margin: 0 !important; color: #effbff !important; font-size: 14px !important; }
+#profileOverlay .accountCardHeader p { margin: 3px 0 0 !important; overflow: hidden !important; color: rgba(204,228,241,.58) !important; font-size: 9px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#profileOverlay .passwordFields { display: grid !important; grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 10px !important; }
+#profileOverlay .passwordFields .accountField:first-child { grid-column: 1 / -1 !important; }
+
+#profileOverlay .accountField {
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+#profileOverlay .accountField > span {
+  color: rgba(204,228,241,.62) !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  letter-spacing: .35px !important;
+  text-transform: uppercase !important;
+}
+
+#profileOverlay .accountField input {
+  width: 100% !important;
+  height: 38px !important;
+  min-width: 0 !important;
+  padding: 0 11px !important;
+  box-sizing: border-box !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.18) !important;
+  border-radius: 8px !important;
+  color: #eaf9ff !important;
+  background: #05111c !important;
+  font: 700 11px/1 system-ui !important;
+}
+
+#profileOverlay .accountField input:focus { border-color: rgba(124,240,255,.62) !important; }
+#profileOverlay .accountField input::placeholder { color: rgba(185,211,225,.34) !important; }
+#profileOverlay .accountCard > button { width: 100% !important; margin-top: auto !important; }
+
+/* Hangars : aperçu fixe à gauche, vraie liste à droite. */
+#profileOverlay .hangarWorkspace {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: minmax(230px, 36%) minmax(0, 1fr) !important;
+  gap: 12px !important;
+}
+
+#profileOverlay .hangarPreview {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 18px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 10px !important;
+  background: radial-gradient(circle at 50% 38%, rgba(0,180,230,.14), transparent 42%), #071622 !important;
+}
+
+#profileOverlay .hangarPreviewEyebrow { color: rgba(190,220,240,.58) !important; font-size: 9px !important; font-weight: 900 !important; letter-spacing: 1.1px !important; }
+#profileOverlay #hangarPreviewImage { width: min(190px, 85%) !important; height: 190px !important; margin: 20px 0 14px !important; object-fit: contain !important; image-rendering: pixelated !important; }
+#profileOverlay #hangarPreviewTitle { margin: 0 0 8px !important; color: #eefbff !important; font-size: 19px !important; }
+#profileOverlay #hangarPreviewMeta { margin: 0 !important; color: rgba(204,228,241,.62) !important; font-size: 10px !important; line-height: 1.55 !important; }
+
+#profileOverlay .hangarWorkspace > #hangarGrid.profileGrid {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 0 5px 0 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  overflow-y: auto !important;
+}
+
+#profileOverlay .hangarListItem {
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
+  padding: 11px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0,1fr) auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+  border: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 9px !important;
+  background: #0a2232 !important;
+  cursor: pointer !important;
+}
+
+#profileOverlay .hangarListItem.selected { border-color: rgba(124,240,255,.50) !important; background: #0b2d40 !important; }
+#profileOverlay .hangarListItem.active { box-shadow: inset 3px 0 0 #48d99d !important; }
+#profileOverlay .hangarListItem .tileShipPreview { min-width: 0 !important; margin: 0 !important; gap: 10px !important; }
+#profileOverlay .hangarListItem .tileShipPreview img { width: 58px !important; height: 58px !important; padding: 4px !important; flex: 0 0 auto !important; }
+#profileOverlay .hangarListItem h3 { margin: 0 0 5px !important; font-size: 13px !important; }
+#profileOverlay .hangarListItem p { font-size: 9px !important; line-height: 1.4 !important; }
+#profileOverlay .hangarListItem .tileActions { margin: 0 !important; display: flex !important; flex-direction: column !important; gap: 6px !important; }
+#profileOverlay .hangarListItem .tileActions button { width: 92px !important; min-height: 30px !important; padding: 6px 8px !important; }
+
+/* Boutique : barre compacte, catégories fixes, liste et fiche produit. */
+#profileOverlay .shopToolbar {
+  flex: 0 0 auto !important;
+  min-height: 54px !important;
+  margin: 0 0 8px !important;
+  padding: 2px 4px 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  box-sizing: border-box !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+#profileOverlay .shopToolbarTitle { color: #effbff !important; font-size: 14px !important; font-weight: 900 !important; }
+#profileOverlay .shopToolbarSub { margin-top: 3px !important; color: rgba(204,228,241,.55) !important; font-size: 9px !important; }
+#profileOverlay .shopBalance { flex: 0 0 auto !important; text-align: right !important; }
+#profileOverlay .shopBalance span { display: block !important; color: rgba(204,228,241,.55) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
+#profileOverlay .shopBalance strong { display: block !important; margin-top: 2px !important; color: #75e8ff !important; font-size: 16px !important; }
+
+#profileOverlay #shopTabs.subtabs {
+  flex: 0 0 auto !important;
+  margin: 0 0 10px !important;
+  padding: 0 0 9px !important;
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0,1fr)) !important;
+  gap: 5px !important;
+  overflow: visible !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124,240,255,.12) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+#profileOverlay #shopTabs .subtabBtn {
+  width: 100% !important;
+  min-height: 32px !important;
+  padding: 6px 4px !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+#profileOverlay #shopTabs .subtabBtn.active {
+  border-color: #69e9ff !important;
+  color: #effcff !important;
+  background: rgba(0,217,255,.07) !important;
+  box-shadow: none !important;
+}
+
+html body #profileOverlay #panel_shop .shopLayout {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: 310px minmax(0,1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+html body #profileOverlay #panel_shop .shopList,
+html body #profileOverlay #panel_shop .shopPreview {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 8px !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+html body #profileOverlay #panel_shop .shopList { display: flex !important; flex-direction: column !important; gap: 0 !important; border-right: 1px solid rgba(124,240,255,.13) !important; }
+html body #profileOverlay .shopRow { flex: 0 0 auto !important; min-width: 0 !important; min-height: 64px !important; padding: 8px 10px !important; gap: 10px !important; border: 0 !important; border-bottom: 1px solid rgba(124,240,255,.09) !important; border-radius: 0 !important; background: transparent !important; background-image: none !important; box-shadow: none !important; transform: none !important; }
+html body #profileOverlay .shopRow.active { border-color: rgba(124,240,255,.09) !important; background: rgba(0,217,255,.10) !important; box-shadow: inset 3px 0 0 #69e9ff !important; }
+#profileOverlay .shopRow img { width: 48px !important; height: 48px !important; padding: 3px !important; flex: 0 0 auto !important; object-fit: contain !important; }
+#profileOverlay .shopMeta b { overflow: hidden !important; color: #e9f8ff !important; font-size: 11px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#profileOverlay .shopMeta span { color: rgba(204,228,241,.57) !important; font-size: 9px !important; }
+html body #profileOverlay #panel_shop .shopPreview > .tile { min-height: 100% !important; padding: 18px !important; display: flex !important; flex-direction: column !important; align-items: stretch !important; justify-content: center !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; }
+html body #profileOverlay .shopPreview .bigImg { width: min(200px, 70%) !important; height: 180px !important; margin: 0 auto 12px !important; padding: 8px !important; border: 0 !important; background: transparent !important; object-fit: contain !important; }
+html body #profileOverlay .shipPreviewContainer { width: 100% !important; height: 210px !important; margin: 0 0 12px !important; display: flex !important; align-items: center !important; justify-content: center !important; overflow: hidden !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; }
+#profileOverlay .shipPreviewContainer img { width: auto !important; height: auto !important; max-width: 74% !important; max-height: 74% !important; transform: none !important; image-rendering: pixelated !important; object-fit: contain !important; }
+#profileOverlay .shopPreview h3 { margin: 0 0 8px !important; color: #effbff !important; font-size: 17px !important; }
+#profileOverlay .shopPreview p { color: rgba(209,231,243,.68) !important; font-size: 11px !important; line-height: 1.45 !important; }
+#profileOverlay #btnBuyPreview { margin-top: auto !important; width: 100% !important; }
+
+html body #profileOverlay #panel_shop .shopLayout.extrasMode { display: block !important; overflow-y: auto !important; }
+html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopList { display: none !important; }
+html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { width: 100% !important; min-height: 100% !important; overflow: visible !important; }
+#profileOverlay .extrasRoulettePanel { justify-content: flex-start !important; }
+#profileOverlay .extrasRouletteHeader { padding-bottom: 14px !important; display: flex !important; align-items: flex-start !important; justify-content: space-between !important; gap: 20px !important; border-bottom: 1px solid rgba(124,240,255,.12) !important; }
+#profileOverlay .extrasRouletteHeader h3 { margin-bottom: 5px !important; }
+#profileOverlay .extrasRouletteHeader p { margin: 0 !important; }
+#profileOverlay .extrasRouletteCost { flex: 0 0 auto !important; color: rgba(204,228,241,.55) !important; font-size: 9px !important; text-align: right !important; }
+#profileOverlay .extrasRouletteCost span { display: block !important; text-transform: uppercase !important; }
+#profileOverlay .extrasRouletteCost strong { margin-right: 4px !important; color: #75e8ff !important; font-size: 16px !important; }
+
+#profileOverlay * { scrollbar-width: thin !important; scrollbar-color: #285a72 #07131f !important; }
+
+@media (max-width: 900px) {
+  #profileOverlay #profileWindow.gameWindow { width: calc(100vw - 16px) !important; height: calc(100vh - 24px) !important; min-width: 0 !important; grid-template-columns: 180px minmax(0,1fr) !important; }
+  html body #profileOverlay #profileWindow.gameWindow:not(.floating) { left: 8px !important; top: 70px !important; }
+  #profileOverlay .profileHeaderCard { padding: 14px 9px !important; }
+  #profileOverlay .statsRow { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  #profileOverlay .hangarWorkspace { grid-template-columns: 210px minmax(0,1fr) !important; }
+  #profileOverlay #panel_shop .shopLayout { grid-template-columns: 250px minmax(0,1fr) !important; }
+  #profileOverlay #shopTabs.subtabs { grid-template-columns: repeat(3,minmax(0,1fr)) !important; }
+  #profileOverlay .passwordFields { grid-template-columns: 1fr !important; }
+  #profileOverlay .passwordFields .accountField:first-child { grid-column: auto !important; }
+}
+
+@media (max-width: 650px) {
+  #profileOverlay #profileWindow.gameWindow { grid-template-columns: 1fr !important; grid-template-rows: 30px auto minmax(0,1fr) !important; }
+  #profileOverlay .profileHeaderCard { grid-column: 1 !important; grid-row: 2 !important; padding: 8px !important; gap: 8px !important; border-right: 0 !important; border-bottom: 1px solid rgba(124,240,255,.16) !important; }
+  #profileOverlay .profileHeaderTop { display: none !important; }
+  #profileOverlay .profileTabs { flex-direction: row !important; }
+  #profileOverlay .profileTabs .tabBtn { justify-content: center !important; }
+  #profileOverlay .profileMainCard { grid-column: 1 !important; grid-row: 3 !important; padding: 8px !important; }
+  #profileOverlay .hangarWorkspace { grid-template-columns: 1fr !important; overflow-y: auto !important; }
+  #profileOverlay .hangarPreview { min-height: 250px !important; }
+  #profileOverlay #panel_shop .shopLayout { grid-template-columns: 1fr !important; overflow-y: auto !important; }
+  #profileOverlay #panel_shop .shopList { max-height: 210px !important; }
+  #profileOverlay #panel_stats.profilePanel.active { overflow-y: auto !important; }
+  #profileOverlay .accountSettingsGrid { grid-template-columns: 1fr !important; overflow: visible !important; }
+  #profileOverlay .accountCard { min-height: 290px !important; overflow: visible !important; }
+}

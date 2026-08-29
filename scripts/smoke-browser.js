@@ -27,6 +27,8 @@ const browser = await chromium.launch({ channel: "msedge", headless: true });
 const context = await browser.newContext();
 const requestedMap = process.argv.find((arg) => arg.startsWith("--map="))?.slice(6);
 const coldStart = process.argv.includes("--cold");
+const inspectProfile = process.argv.includes("--profile");
+const captureProfile = process.argv.includes("--profile-screenshot");
 const switchTargets = process.argv.find((arg) => arg.startsWith("--switch="))?.slice(9).split(",").filter(Boolean) || [];
 const mapIds = requestedMap ? [requestedMap] : Object.keys(MAP_LOADERS);
 const failures = [];
@@ -63,6 +65,52 @@ try {
       }
       await page.waitForFunction(() => getComputedStyle(document.getElementById("loadingOverlay")).display === "none", null, { timeout: 30_000 });
       await page.waitForFunction(() => !document.documentElement.classList.contains("orbitBooting"), null, { timeout: 30_000 });
+      if (inspectProfile) {
+        await page.click("#btnGameHub");
+        await page.waitForSelector("#profileWindow", { state: "visible", timeout: 10_000 });
+
+        for (const section of ["stats", "hangars", "shop"]) {
+          await page.click(`#profileOverlay .tabBtn[data-tab="${section}"]`);
+          await page.waitForFunction((name) => document.getElementById(`panel_${name}`)?.classList.contains("active"), section);
+        }
+
+        if (captureProfile) {
+          await page.click('#profileOverlay .tabBtn[data-tab="stats"]');
+          await page.screenshot({ path: join(root, "profile-stats-preview.png"), fullPage: false });
+          await page.click('#profileOverlay .tabBtn[data-tab="hangars"]');
+          await page.screenshot({ path: join(root, "profile-hangars-preview.png"), fullPage: false });
+          await page.click('#profileOverlay .tabBtn[data-tab="shop"]');
+        }
+        for (const category of ["ammo", "speedGen", "shieldGen", "lasers", "extras", "ships"]) {
+          await page.click(`#shopTabs .subtabBtn[data-shop="${category}"]`);
+          if (captureProfile && category === "extras") {
+            await page.screenshot({ path: join(root, "profile-extras-preview.png"), fullPage: false });
+          }
+          if (category !== "extras") {
+            await page.waitForFunction(() => document.querySelectorAll("#shopList .shopRow").length > 0);
+          }
+        }
+        await page.waitForFunction(() => document.querySelectorAll("#shopList .shopRow").length > 0);
+        const profileIssues = await page.evaluate(() => {
+          const issues = [];
+          const windowCard = document.getElementById("profileWindow");
+          const list = document.getElementById("shopList");
+          const preview = document.getElementById("shopPreview");
+          const profileMin = getComputedStyle(windowCard?.querySelector(".gameWinMinBtn"));
+          const standardMin = getComputedStyle(document.querySelector("#boxVitals .gameWinMinBtn"));
+          const listRect = list?.getBoundingClientRect();
+          const previewRect = preview?.getBoundingClientRect();
+          if (!document.querySelector("#shopList .shopRow img")) issues.push("vaisseaux absents de la boutique");
+          if (!document.querySelector("#shopPreview .shipPreviewContainer img")) issues.push("aperçu du vaisseau absent");
+          if (listRect && previewRect && listRect.right > previewRect.left) issues.push("liste et aperçu boutique se chevauchent");
+          if (profileMin.width !== standardMin.width || profileMin.height !== standardMin.height || profileMin.borderRadius !== standardMin.borderRadius) {
+            issues.push(`bouton de réduction Profil différent du HUD (${profileMin.width}×${profileMin.height}, rayon ${profileMin.borderRadius} / ${standardMin.width}×${standardMin.height}, rayon ${standardMin.borderRadius})`);
+          }
+          return issues;
+        });
+        errors.push(...profileIssues);
+        if (captureProfile) await page.screenshot({ path: join(root, "profile-shop-preview.png"), fullPage: false });
+      }
       if (switchTargets.length) {
         await page.evaluate(async (targets) => {
           const engineIdentity = window.__ORBIT_ENGINE__;

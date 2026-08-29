@@ -394,11 +394,12 @@ function getActiveHangar(u) {
 // ---------------------------
 export function register({ pseudo, email, password }) {
   pseudo = String(pseudo || "").trim();
-  email = String(email || "").trim();
+  email = String(email || "").trim().toLowerCase();
   password = String(password || "");
 
   if (!pseudo || !email || !password) return { ok: false, error: "Champs manquants." };
-  if (password.length < 3) return { ok: false, error: "Mot de passe trop court." };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email)) return { ok: false, error: "Adresse email invalide." };
+  if (password.length < 4) return { ok: false, error: "Mot de passe trop court (4 caractères minimum)." };
 
   const users = readUsers();
   const keyP = norm(pseudo);
@@ -446,6 +447,43 @@ export function login(pseudoOrEmail, password) {
 
 export function logout() {
   writeCurrent(null);
+  return { ok: true };
+}
+
+export function updateCurrentUserEmail(email, currentPassword) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+
+  const nextEmail = String(email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(nextEmail)) {
+    return { ok: false, error: "Adresse email invalide." };
+  }
+  if (String(u.password || "") !== String(currentPassword || "")) {
+    return { ok: false, error: "Mot de passe actuel incorrect." };
+  }
+
+  const duplicate = readUsers().some((candidate) => candidate?.id !== u.id && norm(candidate?.email) === norm(nextEmail));
+  if (duplicate) return { ok: false, error: "Cette adresse email est déjà liée à un compte." };
+
+  u.email = nextEmail;
+  saveUser(u);
+  writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+  return { ok: true, user: { id: u.id, pseudo: u.pseudo, email: u.email } };
+}
+
+export function changeCurrentUserPassword(currentPassword, newPassword) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  if (String(u.password || "") !== String(currentPassword || "")) {
+    return { ok: false, error: "Mot de passe actuel incorrect." };
+  }
+
+  const nextPassword = String(newPassword || "");
+  if (nextPassword.length < 4) return { ok: false, error: "Le nouveau mot de passe doit contenir au moins 4 caractères." };
+  if (nextPassword === String(currentPassword || "")) return { ok: false, error: "Choisis un mot de passe différent de l'ancien." };
+
+  u.password = nextPassword;
+  saveUser(u);
   return { ok: true };
 }
 

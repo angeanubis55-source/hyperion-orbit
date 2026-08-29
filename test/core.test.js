@@ -424,7 +424,7 @@ test("les anciennes progressions numériques sont migrées vers le premier objec
 
 test("les comptes sauvegardés sont versionnés et les valeurs sont bornées", async () => {
   const { getCurrentUserFull, register, updateCurrentUserProgress } = await import("../src/core/account.js");
-  const created = register({ pseudo: "Pilote", email: "pilote@local", password: "secret" });
+  const created = register({ pseudo: "Pilote", email: "pilote@example.test", password: "secret" });
   assert.equal(created.ok, true);
 
   updateCurrentUserProgress({ credits: -500 });
@@ -434,4 +434,24 @@ test("les comptes sauvegardés sont versionnés et les valeurs sont bornées", a
   assert.deepEqual(user.quests, { active: {}, completed: [] });
   assert.ok(user.revision >= 1);
   assert.ok(user.updatedAt > 0);
+});
+
+test("un pilote peut lier son email et changer son mot de passe", async () => {
+  const {
+    changeCurrentUserPassword,
+    getCurrentUserFull,
+    login,
+    logout,
+    updateCurrentUserEmail,
+  } = await import("../src/core/account.js");
+
+  assert.equal(updateCurrentUserEmail("nouvelle@example.test", "incorrect").ok, false);
+  assert.equal(updateCurrentUserEmail("nouvelle@example.test", "secret").ok, true);
+  assert.equal(getCurrentUserFull().email, "nouvelle@example.test");
+
+  assert.equal(changeCurrentUserPassword("incorrect", "nouveau-secret").ok, false);
+  assert.equal(changeCurrentUserPassword("secret", "nouveau-secret").ok, true);
+  logout();
+  assert.equal(login("nouvelle@example.test", "secret").ok, false);
+  assert.equal(login("nouvelle@example.test", "nouveau-secret").ok, true);
 });

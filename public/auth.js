@@ -18,6 +18,7 @@ const rememberMe = $("rememberMe");
 
 // Register fields
 const regUser = $("regUser");
+const regEmail = $("regEmail");
 const regPass = $("regPass");
 const regPass2 = $("regPass2");
 
@@ -121,11 +122,16 @@ $("btnRegister").addEventListener("click", (e) => {
   e.preventDefault();
   try {
     const pseudo = regUser.value.trim();
+    const email = regEmail.value.trim();
     const p1 = regPass.value;
     const p2 = regPass2.value;
 
-    if (!pseudo || !p1 || !p2) {
+    if (!pseudo || !email || !p1 || !p2) {
       showMsg("⚠️ Tous les champs sont requis", false);
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email)) {
+      showMsg("⚠️ Entre une adresse email valide", false);
       return;
     }
     if (p1.length < 4) {
@@ -139,7 +145,7 @@ $("btnRegister").addEventListener("click", (e) => {
 
     const out = register({
       pseudo,
-      email: pseudo + "@local",
+      email,
       password: p1,
     });
 
