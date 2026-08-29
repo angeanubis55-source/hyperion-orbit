@@ -12,6 +12,7 @@ import {
 import { computeHangarStats } from "./hangars.js";
 import { findCatalogItem } from "./catalog.js";
 import { clamp, circleRectResolve, dist2, segCircleHit } from "./collision.js";
+import { createKeyboardState, createPointerState } from "./input.js";
 
 export function startOrbitGame(config) {
 
@@ -2323,8 +2324,9 @@ function updateRepairUI() {
 // ============================================================
 // Input
 // ============================================================
-const keys = new Set();
-const justPressed = new Set();
+const keyboard = createKeyboardState();
+const keys = keyboard.held;
+const justPressed = keyboard.pressed;
 
 // ✅ Anti-zoom navigateur
 window.addEventListener(
@@ -2390,8 +2392,7 @@ const used = [...boundKeys, "Escape"];
 
     if (used.includes(e.code)) e.preventDefault();
 
-    keys.add(e.code);
-    if (!e.repeat) justPressed.add(e.code);
+    keyboard.keyDown(e.code, e.repeat);
 
     // Pause / démarrage, on garde Escape fixe pour l’instant
     if (e.code === "Escape") {
@@ -2465,7 +2466,7 @@ const used = [...boundKeys, "Escape"];
   { passive: false }
 );
 
-addEventListener("keyup", (e) => keys.delete(e.code));
+addEventListener("keyup", (e) => keyboard.keyUp(e.code));
 
 // Click-to-move / Lock manuel
 canvas.style.touchAction = "none";
@@ -2570,23 +2571,12 @@ canvas.addEventListener(
 
 const moveTarget = { active: false, x: 0, y: 0 };
 
-let pointerDown = false;
-let dragStartX = 0, dragStartY = 0;
-let dragArmed = false;
-let dragging = false;
-let downOnEnemy = false;
+const pointer = createPointerState();
 const DRAG_THRESHOLD = 8;
 
 // ✅ Position souris écran mémorisée
-let lastPointerClientX = 0;
-let lastPointerClientY = 0;
-
-// ✅ True uniquement quand on maintient le clic sur la map
-let followPointerWhileDown = false;
-
 function rememberPointer(e) {
-  lastPointerClientX = e.clientX;
-  lastPointerClientY = e.clientY;
+  pointer.remember(e);
 }
 
 function setMoveTargetFromScreen(clientX, clientY) {
@@ -2606,13 +2596,13 @@ function setMoveTargetFromEvent(e) {
 
 // ✅ Recalcule la cible chaque frame tant que le clic est maintenu
 function refreshHoldMoveTarget() {
-  if (!pointerDown) return;
-  if (!followPointerWhileDown) return;
-  if (downOnEnemy) return;
+  if (!pointer.down) return;
+  if (!pointer.followWhileDown) return;
+  if (pointer.downOnEnemy) return;
   if (player.dead) return;
   if (paused || !started) return;
 
-  setMoveTargetFromScreen(lastPointerClientX, lastPointerClientY);
+  setMoveTargetFromScreen(pointer.clientX, pointer.clientY);
 }
 
 canvas.addEventListener(
@@ -2626,15 +2616,7 @@ canvas.addEventListener(
 
     if (e.button !== 0) return;
 
-pointerDown = true;
-rememberPointer(e);
-
-dragStartX = e.clientX;
-dragStartY = e.clientY;
-dragging = false;
-dragArmed = true;
-downOnEnemy = false;
-followPointerWhileDown = false;
+pointer.begin(e);
 
     canvas.setPointerCapture(e.pointerId);
 
@@ -2647,10 +2629,10 @@ if (portalButton) {
   portalButton.buttonPressed = true;
   portalButton.buttonHovered = true;
 
-  dragArmed = false;
-  dragging = false;
-  downOnEnemy = false;
-  followPointerWhileDown = false;
+  pointer.dragArmed = false;
+  pointer.dragging = false;
+  pointer.downOnEnemy = false;
+  pointer.followWhileDown = false;
 
   return;
 }
@@ -2661,10 +2643,10 @@ if (enemy) {
   // ✅ Mais on ne touche PAS à l'ordre de collecte de box
   Target.set(enemy);
 
-  downOnEnemy = true;
-  dragArmed = false;
-  dragging = false;
-  followPointerWhileDown = false;
+  pointer.downOnEnemy = true;
+  pointer.dragArmed = false;
+  pointer.dragging = false;
+  pointer.followWhileDown = false;
 
   return;
 }
@@ -2674,15 +2656,15 @@ if (collectable) {
 
   selectCollectable(collectable);
 
-  dragArmed = false;
-  dragging = false;
-  downOnEnemy = false;
-  followPointerWhileDown = false;
+  pointer.dragArmed = false;
+  pointer.dragging = false;
+  pointer.downOnEnemy = false;
+  pointer.followWhileDown = false;
 
   return;
 }
 cancelCollectableTarget();
-followPointerWhileDown = true;
+pointer.followWhileDown = true;
 setMoveTargetFromEvent(e);
   },
   { passive: false }
@@ -2693,17 +2675,17 @@ canvas.addEventListener(
   (e) => {
     rememberPointer(e);
 
-    if (!pointerDown || !dragArmed || downOnEnemy) return;
+    if (!pointer.down || !pointer.dragArmed || pointer.downOnEnemy) return;
 
-    const dx = e.clientX - dragStartX;
-    const dy = e.clientY - dragStartY;
+    const dx = e.clientX - pointer.dragStartX;
+    const dy = e.clientY - pointer.dragStartY;
 
-    if (!dragging) {
+    if (!pointer.dragging) {
       if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
-      dragging = true;
+      pointer.dragging = true;
     }
 
-    followPointerWhileDown = true;
+    pointer.followWhileDown = true;
     setMoveTargetFromEvent(e);
   },
   { passive: false }
@@ -2749,11 +2731,7 @@ canvas.addEventListener(
       }
     }
 
-    pointerDown = false;
-    dragArmed = false;
-    dragging = false;
-    downOnEnemy = false;
-    followPointerWhileDown = false;
+    pointer.reset();
 
     try {
       canvas.releasePointerCapture(e.pointerId);
@@ -2765,11 +2743,7 @@ canvas.addEventListener(
 canvas.addEventListener(
   "pointercancel",
   (e) => {
-    pointerDown = false;
-    dragArmed = false;
-    dragging = false;
-    downOnEnemy = false;
-    followPointerWhileDown = false;
+    pointer.reset();
 
     for (const ptl of zonePortals || []) {
       ptl.buttonPressed = false;
@@ -7613,7 +7587,7 @@ e.vy *= Math.pow(0.95, dt * 60);
   camera.x += (player.x - camera.x) * (1 - Math.pow(0.0009, dt * 60));
   camera.y += (player.y - camera.y) * (1 - Math.pow(0.0009, dt * 60));
 
-  justPressed.clear();
+  keyboard.endFrame();
 }
 
 // ============================================================

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { escapeHtml } from "../src/core/dom.js";
 import { DEFAULT_MAP_ID, MAP_LOADERS, normalizeMapId } from "../src/core/mapRegistry.js";
 import { clamp, circleRectResolve, dist2, segCircleHit } from "../src/core/collision.js";
+import { createKeyboardState, createPointerState } from "../src/core/input.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -37,6 +38,29 @@ test("un cercle est repoussé même si son centre est dans un mur", () => {
 
   const outside = circleRectResolve(0, 0, 5, rect);
   assert.equal(outside, null);
+});
+
+test("l’état clavier distingue une pression d’une touche maintenue", () => {
+  const keyboard = createKeyboardState();
+  keyboard.keyDown("Space", false);
+  assert.equal(keyboard.held.has("Space"), true);
+  assert.equal(keyboard.pressed.has("Space"), true);
+  keyboard.endFrame();
+  assert.equal(keyboard.pressed.has("Space"), false);
+  assert.equal(keyboard.held.has("Space"), true);
+  keyboard.keyUp("Space");
+  assert.equal(keyboard.held.has("Space"), false);
+});
+
+test("l’état pointeur centralise le début et la fin d’un geste", () => {
+  const pointer = createPointerState();
+  pointer.begin({ clientX: 12, clientY: 34 });
+  assert.equal(pointer.down, true);
+  assert.equal(pointer.dragStartX, 12);
+  pointer.followWhileDown = true;
+  pointer.reset();
+  assert.equal(pointer.down, false);
+  assert.equal(pointer.followWhileDown, false);
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {
