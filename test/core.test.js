@@ -11,7 +11,7 @@ import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint,
 import { createNpcEntity } from "../src/core/npcFactory.js";
 import { addProjectile, advanceProjectile, createProjectile } from "../src/core/projectiles.js";
 import { createWaveSpawnState } from "../src/core/waves.js";
-import { updateProgressHud, updateResourceHud, updateWaveHud } from "../src/core/hud.js";
+import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../src/core/hud.js";
 import { createPerformanceMonitor } from "../src/core/performanceMonitor.js";
 import { computeNpcSteering } from "../src/core/npcAI.js";
 
@@ -203,6 +203,14 @@ test("le HUD borne les barres et affiche la progression", () => {
   assert.equal(ui.lvlTxt.textContent, "2 (25%)");
   updateWaveHud(ui, { started: true, wave: 3, remaining: 8, alive: 2 });
   assert.equal(ui.spawnLeftTxt.textContent, "8");
+});
+
+test("les barres NPC apparaissent après un tir ou lors de la sélection", () => {
+  const npc = {};
+  assert.equal(shouldShowNpcBars(npc, null), false);
+  assert.equal(shouldShowNpcBars(npc, npc), true);
+  npc._healthRevealed = true;
+  assert.equal(shouldShowNpcBars(npc, null), true);
 });
 
 test("le moniteur de performances calcule moyenne et frames lentes", () => {

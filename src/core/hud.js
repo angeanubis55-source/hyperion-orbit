@@ -29,3 +29,7 @@ export function updateWaveHud(ui, { started, wave, remaining, alive }) {
   setText(ui.spawnLeftTxt, started ? remaining : "—");
   setText(ui.aliveTxt, started ? alive : "—");
 }
+
+export function shouldShowNpcBars(entity, selectedEntity) {
+  return !!entity && (entity === selectedEntity || entity._healthRevealed === true);
+}

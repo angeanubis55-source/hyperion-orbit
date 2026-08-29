@@ -19,7 +19,7 @@ import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint,
 import { createNpcEntity } from "./npcFactory.js";
 import { addProjectile, advanceProjectile } from "./projectiles.js";
 import { createWaveSpawnState } from "./waves.js";
-import { updateProgressHud, updateResourceHud, updateWaveHud } from "./hud.js";
+import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "./hud.js";
 import { createPerformanceMonitor } from "./performanceMonitor.js";
 import { computeNpcSteering } from "./npcAI.js";
 
@@ -3979,6 +3979,7 @@ function drainShieldFromEnemy(e, amount) {
   if (stolen <= 0) {
     return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0, sab: true };
   }
+  e._healthRevealed = true;
 
   // ✅ Transfert vers ton vaisseau, sans dépasser ton shield max.
   const gain = stolen * SAB50.transferPct;
@@ -4045,6 +4046,7 @@ function damageEnemy(e, dmg) {
   const result = damageEnemyLayers(e, dmg, { shieldPenetration: player.shPen });
   const shD = result.sh;
   const hpD = result.hp;
+  if (result.total > 0) e._healthRevealed = true;
 
   if (rules?.mode === "zone") {
     if (e.passiveNative) e._provoked = true;
@@ -7507,6 +7509,7 @@ if (GAME_SETTINGS.textures) {
     ctx.globalAlpha = 1;
   }
 
+  const selectedEnemyForBars = Target.get();
   for (const e of enemies) {
     if (e.hp <= 0) continue;
 
@@ -7522,6 +7525,8 @@ if (GAME_SETTINGS.textures) {
 
     drawEnemyBody(e);
 
+    const showNpcBars = shouldShowNpcBars(e, selectedEnemyForBars);
+    if (showNpcBars) {
     const pct = clamp(e.hp / e.hpMax, 0, 1);
     const w = e.r * 2.6;
     const h = 4;
@@ -7557,6 +7562,7 @@ if (GAME_SETTINGS.textures) {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(bx - 0.5, by - 0.5, w + 1, h + 1);
     ctx.restore();
+    }
 
     const label = npcLabelFor(e);
     
