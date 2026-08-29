@@ -26,6 +26,8 @@ export function createNpcEntity({ id, type, x, y, config, wave = 1, random = Mat
     bulletR: config.bulletR ?? 7, orbit: config.orbit ?? 0.45,
     angle: type === "npc_Cubikon" ? 0 : between(random, 0, Math.PI * 2), freezeT: 0,
     passiveNative: !!config.passiveNative, _provoked: false,
+    isHealer: !!config.isHealer,
+    healPulseCd: Number(config.healPulseInterval ?? 2), healPulseT: 0,
     _attackedPlayerRecently: false, _onKill: cloneConfig(config.onKill),
   };
   entity.hp = entity.hpMax;

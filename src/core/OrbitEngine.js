@@ -202,10 +202,14 @@ const ui = {
 
   fpsTxt: document.getElementById("fpsTxt"),
   perfDetails: document.getElementById("perfDetails"),
+  cacheTxt: document.getElementById("cacheTxt"),
+  clearCacheBtn: document.getElementById("clearCacheBtn"),
+  restartGameBtn: document.getElementById("restartGameBtn"),
 
   boxWave: document.getElementById("boxWave"),
   boxMeta: document.getElementById("boxMeta"),
   boxVitals: document.getElementById("boxVitals"),
+  boxPerformance: document.getElementById("boxPerformance"),
   questList: document.getElementById("questList"),
   questIntro: document.getElementById("questIntro"),
   questTabs: document.getElementById("questTabs"),
@@ -596,7 +600,8 @@ function registerHudWindows() {
 
   reg("boxWave", "Vagues / Kills", "🌊");
   reg("boxMeta", "Stats joueur", "📊");
-  reg("boxVitals", "Vie / Bouclier / FPS", "❤️");
+  reg("boxVitals", "Vie / Bouclier", "❤️");
+  reg("boxPerformance", "Performances / Cache", "📈");
   reg("minimap", "Mini-carte", "🗺️");
   reg("settingsWindow", "Paramètres", "⚙️");
   reg("questWindow", "Missions", "❗");
@@ -612,6 +617,30 @@ window.GameWindowManager?.minimize("questOfferWindow");
 }
 
 registerHudWindows();
+
+async function clearGameCacheAndCookies() {
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(key => caches.delete(key)));
+    }
+    document.cookie.split(";").forEach(cookie => {
+      const name = cookie.split("=")[0]?.trim();
+      if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+    });
+    try { sessionStorage.removeItem(SESSION_ASSET_CACHE_KEY); } catch {}
+    showToast("Cache et cookies vidés", 1.5);
+  } catch (error) {
+    console.warn("Nettoyage du cache incomplet", error);
+    showToast("Nettoyage du cache incomplet", 1.5);
+  }
+}
+
+ui.clearCacheBtn?.addEventListener("click", clearGameCacheAndCookies);
+ui.restartGameBtn?.addEventListener("click", async () => {
+  await clearGameCacheAndCookies();
+  window.location.reload();
+});
 
 // ============================================================
 // Helpers
@@ -2929,6 +2958,7 @@ const enemies = [];
 const pickups = [];
 const collectables = [];
 const sparks = [];
+const healerPulses = [];
 const floatTexts = [];
 const lasers = [];
 const engineTrails = [];
@@ -7160,6 +7190,29 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
   }
 
   applyNpcSeparation(dt);
+  for (const healer of enemies) {
+    if (!healer || healer.hp <= 0 || !healer.isHealer) continue;
+    const config = NPC_TYPES[healer.type] || {};
+    healer.healPulseT = Math.max(0, (healer.healPulseT || 0) - dt);
+    if (healer.healPulseT > 0) continue;
+    healer.healPulseT = Number(config.healPulseInterval ?? 2);
+    const radius = Number(config.healPulseRadius ?? 300);
+    const radius2 = radius * radius;
+    const amountPct = Number(config.healPulsePct ?? 0.1);
+    healerPulses.push({ x: healer.x, y: healer.y, radius, t: 0, life: 0.8 });
+    for (const ally of enemies) {
+      if (!ally || ally === healer || ally.hp <= 0 || ally.type === "npc_Streuner_Aider") continue;
+      const dx = ally.x - healer.x;
+      const dy = ally.y - healer.y;
+      if (dx * dx + dy * dy > radius2) continue;
+      ally.hp = Math.min(ally.hpMax, ally.hp + ally.hpMax * amountPct);
+      ally._healthRevealed = true;
+    }
+  }
+  for (let i = healerPulses.length - 1; i >= 0; i--) {
+    healerPulses[i].t += dt;
+    if (healerPulses[i].t >= healerPulses[i].life) healerPulses.splice(i, 1);
+  }
   const lockedNpcForActivity = Target.get();
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
@@ -7828,6 +7881,31 @@ if (GAME_SETTINGS.textures) {
   }
 
   const selectedEnemyForBars = Target.get();
+  for (const pulse of healerPulses) {
+    const x = pulse.x + ox;
+    const y = pulse.y + oy;
+    const k = clamp(pulse.t / pulse.life, 0, 1);
+    if (x < -pulse.radius || y < -pulse.radius || x > innerWidth + pulse.radius || y > innerHeight + pulse.radius) continue;
+    ctx.save();
+    ctx.globalAlpha = (1 - k) * 0.78;
+    const innerRadius = pulse.radius * (0.2 + k * 0.8);
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, innerRadius);
+    gradient.addColorStop(0, `rgba(55,255,125,${0.48 * (1 - k)})`);
+    gradient.addColorStop(0.72, `rgba(55,255,125,${0.25 * (1 - k)})`);
+    gradient.addColorStop(1, "rgba(80,255,145,0)");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, innerRadius, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(80,255,145,0.95)";
+    ctx.lineWidth = 6 - k * 3;
+    ctx.shadowColor = "rgba(80,255,145,0.8)";
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.arc(x, y, innerRadius, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
   for (const e of enemies) {
     if (e.hp <= 0) continue;
     if (!shouldDetectNpc(player, e, NPC_SENSOR_RANGES.visibility, selectedEnemyForBars)) continue;
@@ -8032,6 +8110,7 @@ function drawUI() {
   if (ui.boxWave) ui.boxWave.style.display = zoneMode ? "none" : "block";
   if (ui.boxMeta) ui.boxMeta.style.display = "block";
   if (ui.boxVitals) ui.boxVitals.style.display = "block";
+  if (ui.boxPerformance) ui.boxPerformance.style.display = "block";
 
   if (ui.credits) ui.credits.textContent = String(player.credits);
   if (ui.kills) ui.kills.textContent = String(player.kills);
@@ -8094,6 +8173,10 @@ updateConfigButtons();
     ui.fpsTxt.textContent = String(fpsValue || perf.fps || 0);
     if (ui.perfDetails) {
       ui.perfDetails.textContent = `Moy. ${perf.averageMs.toFixed(1)} ms · P95 ${perf.p95Ms.toFixed(1)} ms · Lentes ${perf.longFrames}`;
+    }
+    if (ui.cacheTxt) {
+      const cache = IMG.snapshot();
+      ui.cacheTxt.textContent = `${cache.done}/${cache.total}`;
     }
   }
 }

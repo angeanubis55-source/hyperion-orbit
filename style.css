@@ -147,6 +147,36 @@ html.orbitSessionReady #loadingOverlay{
   color:#7cf0ff;
 }
 
+#boxPerformance{
+  left:14px;
+  top:430px;
+  min-width:240px;
+  padding:10px 12px;
+  box-sizing:border-box;
+}
+
+#boxPerformance .barWrap{
+  width:100%;
+  box-sizing:border-box;
+  justify-items:stretch;
+}
+
+#boxPerformance .row{
+  display:flex;
+  width:100%;
+  box-sizing:border-box;
+  justify-content:space-between;
+  align-items:baseline;
+  gap:10px;
+}
+
+#boxPerformance .perfDetails{
+  width:100%;
+  box-sizing:border-box;
+  text-align:center;
+  white-space:normal;
+}
+
 .perfDetails{
   margin-top:3px;
   color:rgba(190,215,230,.72);
@@ -385,7 +415,6 @@ html.orbitSessionReady #loadingOverlay{
   right:auto !important;
   bottom:auto !important;
   margin:0 !important;
-  transform:none !important;
   min-width:0 !important;
   z-index:90000 !important;
   box-sizing:border-box !important;
@@ -397,6 +426,28 @@ html.orbitSessionReady #loadingOverlay{
 
 .gameWinMinimized{
   display:none !important;
+}
+
+.gameWindow.gameWinOpening{
+  transform-origin:center center;
+  will-change:transform;
+  animation:gameWindowOpen .28s cubic-bezier(.16,1,.3,1) both !important;
+}
+.gameWindow.gameWinClosing{
+  pointer-events:none !important;
+  transform-origin:center center;
+  will-change:transform;
+  animation:gameWindowClose .36s linear both !important;
+}
+@keyframes gameWindowOpen{
+  0%{ transform:translate3d(var(--dock-x,0),var(--dock-y,8px),0) scale(var(--dock-scale,.16),.12); }
+  58%{ transform:translate3d(-2px,1px,0) scale(1.018,.985); }
+  100%{ transform:translate3d(0,0,0) scale(1); }
+}
+@keyframes gameWindowClose{
+  0%{ transform:translate3d(0,0,0) scale(1); animation-timing-function:cubic-bezier(.4,0,.2,1); }
+  58%{ transform:translate3d(0,0,0) scale(var(--dock-scale,.16),.12); animation-timing-function:cubic-bezier(.2,.7,.3,1); }
+  100%{ transform:translate3d(var(--dock-x,0),var(--dock-y,6px),0) scale(var(--dock-scale,.16),.12); }
 }
 
 .gameWindow > .gameWinBar{
@@ -491,6 +542,7 @@ html.orbitSessionReady #loadingOverlay{
 #boxWave.gameWindow,
 #boxMeta.gameWindow,
 #boxVitals.gameWindow,
+#boxPerformance.gameWindow,
 #minimap.gameWindow,
 #settingsWindow.gameWindow{
   padding:0 !important;
@@ -499,6 +551,7 @@ html.orbitSessionReady #loadingOverlay{
 #boxWave.gameWindow:not(.floating),
 #boxMeta.gameWindow:not(.floating),
 #boxVitals.gameWindow:not(.floating),
+#boxPerformance.gameWindow:not(.floating),
 #minimap.gameWindow:not(.floating),
 #settingsWindow.gameWindow:not(.floating){
   position:absolute !important;
@@ -517,6 +570,11 @@ html.orbitSessionReady #loadingOverlay{
 #boxVitals.gameWindow:not(.floating){
   left:14px !important;
   top:270px !important;
+}
+
+#boxPerformance.gameWindow:not(.floating){
+  left:14px !important;
+  top:430px !important;
 }
 
 #minimap.gameWindow:not(.floating){
@@ -619,6 +677,15 @@ html.orbitSessionReady #loadingOverlay{
 .questAction:hover:not(:disabled){ background:rgba(0,190,235,.32); }
 .questAction:disabled{ cursor:default; opacity:.5; }
 .questAction.questCompletedAction:disabled{ border-color:rgba(86,225,132,.5); color:#92f5b1; background:rgba(18,104,51,.28); opacity:1; }
+.performanceActions{ display:grid; gap:9px; margin-top:14px; }
+.performanceButton{
+  width:100%; box-sizing:border-box; min-height:36px; padding:8px 12px; border:1px solid rgba(124,240,255,.28);
+  border-radius:7px; color:#eaffff; background:linear-gradient(135deg,rgba(8,65,88,.8),rgba(5,27,45,.86));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); cursor:pointer; font:800 12px ui-sans-serif,system-ui;
+  text-align:center; transition:transform .16s ease,border-color .16s ease,background .16s ease,box-shadow .16s ease;
+}
+.performanceButton:hover{ transform:translateY(-1px); border-color:rgba(124,240,255,.7); background:linear-gradient(135deg,rgba(0,145,190,.5),rgba(5,45,68,.92)); box-shadow:0 0 16px rgba(0,217,255,.16); }
+.performanceButton:active{ transform:translateY(0); }
 
 #boxWave.gameWindow > .row,
 #boxMeta.gameWindow > .row{
@@ -639,6 +706,36 @@ html.orbitSessionReady #loadingOverlay{
 #boxVitals.gameWindow .barWrap{
   margin-top:0 !important;
   padding:10px 12px 12px !important;
+}
+
+#boxPerformance.gameWindow{
+  width:280px !important;
+  min-width:280px !important;
+  max-width:calc(100vw - 28px) !important;
+}
+
+#boxPerformance.gameWindow .barWrap{
+  margin-top:0 !important;
+  padding:14px 14px 16px !important;
+  gap:10px;
+}
+
+#boxPerformance.gameWindow .row{
+  min-height:24px;
+  padding:0 3px;
+  border-bottom:1px solid rgba(124,240,255,.10);
+}
+
+#boxPerformance.gameWindow .perfDetails{
+  padding:7px 8px;
+  border:1px solid rgba(124,240,255,.12);
+  border-radius:7px;
+  background:rgba(4,19,31,.42);
+}
+
+#boxPerformance.gameWindow .performanceActions{
+  width:100%;
+  margin-top:4px;
 }
 
 @keyframes hudWindowPop{

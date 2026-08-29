@@ -377,6 +377,7 @@
     spriteSpeed: 0,
     bulletSprite: { src: "Munitions/x1.png", w: 78, h: 20, glow: true, invert: true },
     r: 18, hp: 600, shield: 800, speed: 300, bulletDmg: 40, bulletSpeed: 4500, value: 600,
+    isHealer: true, healPulseInterval: 2, healPulseRadius: 300, healPulsePct: 0.12,
     shootRange: 500, shootRate: 1.0, bulletSpread: 0.05, burst: 1, bulletR: 7, bulletScale: 1.5, orbit: 0.45,
   },
   npc_Streuner_Recruit: {

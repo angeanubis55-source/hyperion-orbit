@@ -86,8 +86,18 @@
         <div class="row"><span class="k"></span><span class="v" id="shTxt">0 / 0</span></div>
         <div class="bar sh"><i id="shBar"></i></div>
 
+      </div>
+    </div>
+
+    <div id="boxPerformance" class="panel">
+      <div class="barWrap">
         <div class="row mini"><span class="k">FPS</span><span class="v" id="fpsTxt">—</span></div>
         <div id="perfDetails" class="perfDetails">Moy. — ms · P95 — ms · Lentes —</div>
+        <div class="row mini"><span class="k">Cache images</span><span class="v" id="cacheTxt">—</span></div>
+        <div class="performanceActions">
+          <button id="clearCacheBtn" class="performanceButton" type="button">Vider cache et cookies</button>
+          <button id="restartGameBtn" class="performanceButton" type="button">Redémarrer le jeu</button>
+        </div>
       </div>
     </div>
 
@@ -901,6 +911,22 @@ minimize(id) {
   if (!w) return;
 
   w.lastDisplay = "block";
+  clearTimeout(w.animationTimer);
+  w.card.classList.remove("gameWinOpening");
+  w.card.classList.add("gameWinClosing");
+  const dockBtn = makeDockIcon(id, w.title, w.icon);
+  const cardRect = w.card.getBoundingClientRect();
+  const dockRect = dockBtn.getBoundingClientRect();
+  w.card.style.setProperty("--dock-x", `${dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)}px`);
+  w.card.style.setProperty("--dock-y", `${dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)}px`);
+  w.card.style.setProperty("--dock-scale", String(Math.max(0.08, Math.min(0.25, dockRect.width / cardRect.width))));
+  w.card.style.setProperty("--dock-origin-x", `${dockRect.left + dockRect.width / 2 - cardRect.left}px`);
+  w.card.style.setProperty("--dock-origin-y", `${dockRect.top + dockRect.height / 2 - cardRect.top}px`);
+  w.card.style.setProperty("--dock-x-mid", `${(dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)) * 0.58}px`);
+  w.card.style.setProperty("--dock-y-mid", `${(dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)) * 0.58}px`);
+  w.card.style.setProperty("--dock-x-near", `${(dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)) * 0.68}px`);
+  w.card.style.setProperty("--dock-y-near", `${(dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)) * 0.68}px`);
+  w.animationTimer = setTimeout(() => {
 
   // ✅ root et card sont parfois le même élément, mais on sécurise les deux
   w.root.classList.add("gameWinMinimized");
@@ -909,12 +935,14 @@ minimize(id) {
   w.root.style.display = "none";
   w.card.style.display = "none";
 
-  makeDockIcon(id, w.title, w.icon);
+  }, 380);
 },
 
 restore(id) {
   const w = windows.get(id);
   if (!w) return;
+  clearTimeout(w.animationTimer);
+  w.card.classList.remove("gameWinClosing");
 
   // ✅ on retire l'état réduit sur root ET card
   w.root.classList.remove("gameWinMinimized");
@@ -929,6 +957,23 @@ restore(id) {
   w.card.style.visibility = "visible";
   w.card.style.opacity = "1";
   w.card.style.zIndex = String(++topZ);
+  const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);
+  if (dockBtn) {
+    const cardRect = w.card.getBoundingClientRect();
+    const dockRect = dockBtn.getBoundingClientRect();
+    w.card.style.setProperty("--dock-x", `${dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)}px`);
+    w.card.style.setProperty("--dock-y", `${dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)}px`);
+    w.card.style.setProperty("--dock-scale", String(Math.max(0.08, Math.min(0.25, dockRect.width / cardRect.width))));
+    w.card.style.setProperty("--dock-origin-x", `${dockRect.left + dockRect.width / 2 - cardRect.left}px`);
+    w.card.style.setProperty("--dock-origin-y", `${dockRect.top + dockRect.height / 2 - cardRect.top}px`);
+    w.card.style.setProperty("--dock-x-mid", `${(dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)) * 0.58}px`);
+    w.card.style.setProperty("--dock-y-mid", `${(dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)) * 0.58}px`);
+    w.card.style.setProperty("--dock-x-near", `${(dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)) * 0.68}px`);
+    w.card.style.setProperty("--dock-y-near", `${(dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)) * 0.68}px`);
+  }
+  w.card.classList.remove("gameWinOpening");
+  requestAnimationFrame(() => w.card.classList.add("gameWinOpening"));
+  w.animationTimer = setTimeout(() => w.card.classList.remove("gameWinOpening"), 300);
 
   // ✅ sécurité : si le moteur remet display none/block au mauvais moment
   requestAnimationFrame(() => {
@@ -941,7 +986,6 @@ restore(id) {
     w.card.style.opacity = "1";
   });
 
-  const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);
   if (dockBtn) dockBtn.remove();
 },
 
