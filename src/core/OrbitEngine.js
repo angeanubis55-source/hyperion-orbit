@@ -7529,7 +7529,7 @@ if (GAME_SETTINGS.textures) {
 
     drawEnemyBody(e);
 
-    const showNpcBars = shouldShowNpcBars(e, selectedEnemyForBars);
+    const showNpcBars = NPC_SENSOR_RANGES.allVisible || shouldShowNpcBars(e, selectedEnemyForBars);
     if (showNpcBars) {
     const pct = clamp(e.hp / e.hpMax, 0, 1);
     const w = e.r * 2.6;

@@ -239,13 +239,22 @@ test("l’IA poursuit de loin et orbite sans reculer de près", () => {
 test("les capteurs NPC ont un radar plus large que la visibilité", () => {
   const ranges = getNpcSensorRanges();
   const player = { x: 0, y: 0 };
-  const nearby = { x: 850, y: 0, hp: 1 };
-  const radarOnly = { x: 1250, y: 0, hp: 1 };
+  const nearby = { x: 1200, y: 0, hp: 1 };
+  const radarOnly = { x: 1450, y: 0, hp: 1 };
   const hidden = { x: 1750, y: 0, hp: 1 };
   assert.equal(isNpcWithinSensor(player, nearby, ranges.visibility), true);
   assert.equal(isNpcWithinSensor(player, radarOnly, ranges.visibility), false);
   assert.equal(isNpcWithinSensor(player, radarOnly, ranges.radar), true);
   assert.equal(isNpcWithinSensor(player, hidden, ranges.radar), false);
+});
+
+test("les Galaxy Gates désactivent toutes les limites des capteurs NPC", () => {
+  const ranges = getNpcSensorRanges({ mode: "gate" });
+  const player = { x: 0, y: 0 };
+  const distantNpc = { x: 100000, y: 100000, hp: 1 };
+  assert.equal(ranges.allVisible, true);
+  assert.equal(isNpcWithinSensor(player, distantNpc, ranges.visibility), true);
+  assert.equal(isNpcWithinSensor(player, distantNpc, ranges.radar), true);
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {
