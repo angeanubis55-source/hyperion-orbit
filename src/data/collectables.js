@@ -130,7 +130,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
       randomStart: true,
       glow: false,
     },
-    rewards: { credits: [10000, 25000] },
+    rewards: { credits: [1, 3] },
   },
 
   Palladium_Ore: {
@@ -156,7 +156,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
       randomStart: true,
       glow: false,
     },
-    rewards: { credits: [1000, 1500] },
+    rewards: { credits: [1, 3] },
   },
 });
 

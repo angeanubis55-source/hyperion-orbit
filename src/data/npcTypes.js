@@ -1002,7 +1002,7 @@
     spriteSpeed: 20,
     bulletSprite: { src: "Munitions/special9.png", w: 46, h: 16, glow: true, invert: true },
     r: 18, hp: 4500000, shield: 0, speed: 140, value: 1200000,
-    bulletDmg: 45000, bulletSpeed: 4500,
+    bulletDmg: 450000000, bulletSpeed: 4500,
     shootRange: 400, shootRate: 1, bulletSpread: 0.05, burst: 1, bulletR: 7, bulletScale: 1.5, orbit: 0.45,
   },
   npc_Devolarium_Corrupted : {
