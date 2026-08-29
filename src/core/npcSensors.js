@@ -2,8 +2,8 @@
 
 import { dist2 } from "./collision.js";
 
-export const DEFAULT_NPC_VISIBILITY_RADIUS = 1800;
-export const DEFAULT_NPC_RADAR_RADIUS = 3000;
+export const DEFAULT_NPC_VISIBILITY_RADIUS = 900;
+export const DEFAULT_NPC_RADAR_RADIUS = 1500;
 
 export function getNpcSensorRanges(rules = {}) {
   const visibility = Math.max(100, Number(rules.npcVisibilityRadius) || DEFAULT_NPC_VISIBILITY_RADIUS);

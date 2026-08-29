@@ -237,11 +237,11 @@ test("l’IA poursuit de loin et orbite sans reculer de près", () => {
 });
 
 test("les capteurs NPC ont un radar plus large que la visibilité", () => {
-  const ranges = getNpcSensorRanges({ npcVisibilityRadius: 1800, npcRadarRadius: 3000 });
+  const ranges = getNpcSensorRanges();
   const player = { x: 0, y: 0 };
-  const nearby = { x: 1700, y: 0, hp: 1 };
-  const radarOnly = { x: 2500, y: 0, hp: 1 };
-  const hidden = { x: 3500, y: 0, hp: 1 };
+  const nearby = { x: 850, y: 0, hp: 1 };
+  const radarOnly = { x: 1250, y: 0, hp: 1 };
+  const hidden = { x: 1750, y: 0, hp: 1 };
   assert.equal(isNpcWithinSensor(player, nearby, ranges.visibility), true);
   assert.equal(isNpcWithinSensor(player, radarOnly, ranges.visibility), false);
   assert.equal(isNpcWithinSensor(player, radarOnly, ranges.radar), true);
