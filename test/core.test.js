@@ -6,7 +6,7 @@ import { DEFAULT_MAP_ID, MAP_LOADERS, normalizeMapId } from "../src/core/mapRegi
 import { clamp, circleRectResolve, dist2, segCircleHit } from "../src/core/collision.js";
 import { createKeyboardState, createPointerState } from "../src/core/input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "../src/core/combat.js";
-import { forEachNearbyPair, rebuildIdIndex } from "../src/core/spatialIndex.js";
+import { createSpatialPairIndex, forEachNearbyPair, rebuildIdIndex } from "../src/core/spatialIndex.js";
 import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "../src/core/rendering.js";
 import { createNpcEntity } from "../src/core/npcFactory.js";
 import { addProjectile, advanceProjectile, createProjectile } from "../src/core/projectiles.js";
@@ -111,6 +111,16 @@ test("l’index spatial ne visite que les paires de cellules voisines", () => {
 
   const byId = rebuildIdIndex(new Map(), entities);
   assert.equal(byId.get(2), entities[1]);
+});
+
+test("l’index spatial persistant réutilise ses buckets", () => {
+  const index = createSpatialPairIndex(100);
+  const entities = [{ id: 1, x: 10, y: 10, hp: 1 }, { id: 2, x: 20, y: 20, hp: 1 }];
+  index.forEachPair(entities, () => {});
+  const first = index.stats().allocatedBuckets;
+  index.forEachPair(entities, () => {});
+  assert.equal(index.stats().allocatedBuckets, first);
+  assert.equal(index.stats().activeBuckets, 1);
 });
 
 test("les transformations caméra écran sont réversibles", () => {

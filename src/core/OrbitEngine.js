@@ -14,7 +14,7 @@ import { findCatalogItem } from "./catalog.js";
 import { clamp, circleRectResolve, dist2, segCircleHit } from "./collision.js";
 import { createKeyboardState, createPointerState } from "./input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "./combat.js";
-import { forEachNearbyPair, rebuildIdIndex } from "./spatialIndex.js";
+import { createSpatialPairIndex, rebuildIdIndex } from "./spatialIndex.js";
 import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "./rendering.js";
 import { createNpcEntity } from "./npcFactory.js";
 import { addProjectile, advanceProjectile } from "./projectiles.js";
@@ -2900,6 +2900,7 @@ const NPC_SEP = {
   side: 12,
   maxPush: 220,
 };
+const npcSeparationIndex = createSpatialPairIndex(512);
 
 // ============================================================
 // ✅ NPC combat movement : moins robotique, sans toucher NPC_TYPES
@@ -3061,7 +3062,7 @@ function applyNpcSeparation(dt) {
   
   if (enemies.length <= 1) return;
 
-  forEachNearbyPair(enemies, 512, (a, b, i, j) => {
+  npcSeparationIndex.forEachPair(enemies, (a, b, i, j) => {
 
       if (a.type === "npc_Cubikon" || b.type === "npc_Cubikon") return;
 
