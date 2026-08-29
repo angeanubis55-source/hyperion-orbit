@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { escapeHtml } from "../src/core/dom.js";
 import { DEFAULT_MAP_ID, MAP_LOADERS, normalizeMapId } from "../src/core/mapRegistry.js";
+import { clamp, circleRectResolve, dist2, segCircleHit } from "../src/core/collision.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -18,6 +19,24 @@ globalThis.localStorage = new MemoryStorage();
 
 test("escapeHtml neutralise le HTML utilisateur", () => {
   assert.equal(escapeHtml(`<img src=x onerror="alert(1)">&'`), "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;&amp;&#39;");
+});
+
+test("les primitives de collision gèrent segments et distances", () => {
+  assert.equal(clamp(12, 0, 10), 10);
+  assert.equal(dist2(0, 0, 3, 4), 25);
+  assert.equal(segCircleHit(0, 0, 10, 0, 5, 1, 2), true);
+  assert.equal(segCircleHit(0, 0, 10, 0, 5, 3, 2), false);
+  assert.equal(segCircleHit(0, 0, 0, 0, 1, 0, 1), true);
+});
+
+test("un cercle est repoussé même si son centre est dans un mur", () => {
+  const rect = { x: 50, y: 50, w: 40, h: 20 };
+  const push = circleRectResolve(50, 50, 5, rect);
+  assert.ok(push);
+  assert.ok(Math.abs(push.x) + Math.abs(push.y) > 0);
+
+  const outside = circleRectResolve(0, 0, 5, rect);
+  assert.equal(outside, null);
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {

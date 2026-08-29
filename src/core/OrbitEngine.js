@@ -11,6 +11,7 @@ import {
 } from "./account.js";
 import { computeHangarStats } from "./hangars.js";
 import { findCatalogItem } from "./catalog.js";
+import { clamp, circleRectResolve, dist2, segCircleHit } from "./collision.js";
 
 export function startOrbitGame(config) {
 
@@ -783,53 +784,10 @@ const vary = (val, pct = 0.05) => {
   return val * v;
 };
 
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const dist2 = (ax, ay, bx, by) => {
-  const dx = ax - bx, dy = ay - by;
-  return dx * dx + dy * dy;
-};
-
-function segCircleHit(ax, ay, bx, by, cx, cy, r) {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const l2 = dx * dx + dy * dy;
-  
-  if (l2 <= 0.000001) {
-    return dist2(ax, ay, cx, cy) <= r * r;
-  }
-
-  const t = clamp(((cx - ax) * dx + (cy - ay) * dy) / l2, 0, 1);
-  const px = ax + dx * t;
-  const py = ay + dy * t;
-
-  return dist2(px, py, cx, cy) <= r * r;
-}
-
 const normAng = (a) => ((a % TAU) + TAU) % TAU;
 
 let nextId = 1;
 const newId = () => nextId++;
-
-function circleRectResolve(px, py, pr, r) {
-  const hx = r.w * 0.5;
-  const hy = r.h * 0.5;
-
-  const cx = clamp(px, r.x - hx, r.x + hx);
-  const cy = clamp(py, r.y - hy, r.y + hy);
-
-  const dx = px - cx;
-  const dy = py - cy;
-  const d2 = dx * dx + dy * dy;
-
-  if (d2 > pr * pr) return null;
-
-  const d = Math.sqrt(d2) || 0.0001;
-  const nx = dx / d;
-  const ny = dy / d;
-
-  const overlap = pr - d + 0.5;
-  return { x: nx * overlap, y: ny * overlap };
-}
 
 function resolvePlayerWalls() {
   if (!zoneWalls || !zoneWalls.length) return;
