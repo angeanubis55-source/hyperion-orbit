@@ -17,7 +17,7 @@ function defaultShipPrice(pack) {
 
 export const CATALOG = {
 ammo: [
-  { id: "ammo_x2",  name: "Munitions X2", price: 25000, give: { ammo: { x2: 100000000 } } },
+  { id: "ammo_x2",  name: "Munitions X2", price: 25000, give: { ammo: { x2: 2000 } } },
   { id: "ammo_x3",  name: "Munitions X3", price: 50000, give: { ammo: { x3: 1000 } } },
   { id: "ammo_x4",  name: "Munitions X4", price: 100000, give: { ammo: { x4: 1000 } } },
 
@@ -61,13 +61,13 @@ ammo: [
     { id: "extra_loot",  name: "Extra: Loot +",  price: 200000, module: { type: "extra", key: "loot_plus" } },
   ],
 
-  // ✅ auto depuis SHIP_PACKS
+  // ✅ auto depuis SHIP_PACKS (price propre à chaque vaisseau, fallback heuristique)
   ships: SHIP_PACKS
     .filter(p => p?.id && p.id !== "PhoenixBleu")
     .map(p => ({
       id: `ship_${p.id}`,
       name: `Vaisseau: ${p.name || p.id}`,
-      price: defaultShipPrice(p),
+      price: Number(p.price) > 0 ? Number(p.price) : defaultShipPrice(p),
       ship: { id: p.id },
     })),
 };
