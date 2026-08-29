@@ -18,6 +18,12 @@ Ouvrir ensuite l’adresse indiquée par le serveur.
 npm test
 ```
 
+Mesurer l’index spatial utilisé pour les NPC :
+
+```powershell
+npm run benchmark
+```
+
 ## État du projet
 
 - cartes et portails dynamiques ;
