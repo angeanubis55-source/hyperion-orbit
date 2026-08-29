@@ -1039,13 +1039,13 @@ function finishZonePortalJump(ptl) {
   const toPortal = ptl.jumpPortal ?? ptl.toPortal;
 
   try {
-    const maxWidth = 1920;
+    const maxWidth = 2560;
     const scale = Math.min(1, maxWidth / canvas.width);
     const snapshot = document.createElement("canvas");
     snapshot.width = Math.max(1, Math.round(canvas.width * scale));
     snapshot.height = Math.max(1, Math.round(canvas.height * scale));
     snapshot.getContext("2d", { alpha: false }).drawImage(canvas, 0, 0, snapshot.width, snapshot.height);
-    const frame = snapshot.toDataURL("image/jpeg", 0.7);
+    const frame = snapshot.toDataURL("image/webp", 0.95);
     sessionStorage.setItem("orbit_transition_frame", frame);
   } catch (error) {
     console.warn("Capture de transition indisponible:", error);
@@ -8159,6 +8159,7 @@ if (!cur) {
 
 const pack = SHIP_PACKS.find(p => p.id === cur.ship) || SHIP_PACKS[0];
 ACTIVE_SHIP = pack;
+document.documentElement.classList.add("orbitHudReady");
 
 prepareGameAssets().catch((error) => {
   console.error("Erreur de préparation:", error);

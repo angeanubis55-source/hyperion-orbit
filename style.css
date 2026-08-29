@@ -44,6 +44,10 @@ html.orbitBooting body > :not(#loadingOverlay):not(#mapTransitionOverlay):not(sc
   visibility:hidden !important;
 }
 
+html.orbitBooting.orbitMapTransition.orbitHudReady body > :not(#game):not(#loadingOverlay):not(#mapTransitionOverlay):not(script){
+  visibility:visible !important;
+}
+
 html.orbitSessionReady #loadingOverlay{
   display:none !important;
 }
@@ -51,7 +55,7 @@ html.orbitSessionReady #loadingOverlay{
 #mapTransitionOverlay{
   position:fixed;
   inset:0;
-  z-index:30000;
+  z-index:1;
   pointer-events:none;
   opacity:0;
   background-color:var(--bg);
@@ -79,6 +83,7 @@ html.orbitMapTransition #mapTransitionOverlay{
 
 .panel{
   position:absolute;
+  z-index:2;
   background:var(--panel);
   border:1px solid rgba(124,240,255,.14);
   box-shadow:0 10px 30px rgba(0,0,0,.35);
