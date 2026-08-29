@@ -17,6 +17,7 @@ import { computeNpcSteering } from "../src/core/npcAI.js";
 import { getNpcSensorRanges, isNpcWithinSensor, shouldDetectNpc } from "../src/core/npcSensors.js";
 import { shouldRunNpcFrame } from "../src/core/npcActivity.js";
 import { pushBounded } from "../src/core/boundedCollection.js";
+import { COLLECTABLE_SPAWN, COLLECTABLE_TYPES } from "../src/data/collectables.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -318,6 +319,13 @@ test("une bataille chargée conserve seulement les effets les plus récents", ()
   assert.equal(effects.length, 140);
   assert.equal(effects[0].id, 9_860);
   assert.equal(effects.at(-1).id, 9_999);
+});
+
+test("le catalogue des collectables centralise sprites, cartes et récompenses", () => {
+  assert.equal(Object.keys(COLLECTABLE_TYPES).length, 6);
+  assert.deepEqual(COLLECTABLE_TYPES.Palladium_Ore.maps, ["5-2"]);
+  assert.deepEqual(COLLECTABLE_TYPES.Astral_Prime_Box.rewards.ammo.x4, [800, 1100]);
+  assert.equal(COLLECTABLE_SPAWN.interval, 1);
 });
 
 test("les comptes sauvegardés sont versionnés et les valeurs sont bornées", async () => {
