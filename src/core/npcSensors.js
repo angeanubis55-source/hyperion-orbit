@@ -2,8 +2,8 @@
 
 import { dist2 } from "./collision.js";
 
-export const DEFAULT_NPC_VISIBILITY_RADIUS = 1250;
-export const DEFAULT_NPC_RADAR_RADIUS = 1600;
+export const DEFAULT_NPC_VISIBILITY_RADIUS = 1600;
+export const DEFAULT_NPC_RADAR_RADIUS = 2200;
 
 export function getNpcSensorRanges(rules = {}) {
   if (rules.mode === "gate") {
@@ -18,4 +18,8 @@ export function isNpcWithinSensor(player, npc, radius) {
   if (!player || !npc || npc.hp <= 0) return false;
   const range = Math.max(0, Number(radius) || 0);
   return dist2(player.x, player.y, npc.x, npc.y) <= range * range;
+}
+
+export function shouldDetectNpc(player, npc, radius, lockedNpc = null) {
+  return npc === lockedNpc || isNpcWithinSensor(player, npc, radius);
 }

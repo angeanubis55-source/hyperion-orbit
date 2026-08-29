@@ -14,7 +14,7 @@ import { createWaveSpawnState } from "../src/core/waves.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../src/core/hud.js";
 import { createPerformanceMonitor } from "../src/core/performanceMonitor.js";
 import { computeNpcSteering } from "../src/core/npcAI.js";
-import { getNpcSensorRanges, isNpcWithinSensor } from "../src/core/npcSensors.js";
+import { getNpcSensorRanges, isNpcWithinSensor, shouldDetectNpc } from "../src/core/npcSensors.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -239,13 +239,20 @@ test("l’IA poursuit de loin et orbite sans reculer de près", () => {
 test("les capteurs NPC ont un radar plus large que la visibilité", () => {
   const ranges = getNpcSensorRanges();
   const player = { x: 0, y: 0 };
-  const nearby = { x: 1200, y: 0, hp: 1 };
-  const radarOnly = { x: 1450, y: 0, hp: 1 };
-  const hidden = { x: 1750, y: 0, hp: 1 };
+  const nearby = { x: 1500, y: 0, hp: 1 };
+  const radarOnly = { x: 2000, y: 0, hp: 1 };
+  const hidden = { x: 2500, y: 0, hp: 1 };
   assert.equal(isNpcWithinSensor(player, nearby, ranges.visibility), true);
   assert.equal(isNpcWithinSensor(player, radarOnly, ranges.visibility), false);
   assert.equal(isNpcWithinSensor(player, radarOnly, ranges.radar), true);
   assert.equal(isNpcWithinSensor(player, hidden, ranges.radar), false);
+});
+
+test("un NPC verrouillé reste détecté hors des rayons normaux", () => {
+  const player = { x: 0, y: 0 };
+  const npc = { x: 10000, y: 10000, hp: 1 };
+  assert.equal(shouldDetectNpc(player, npc, 1600), false);
+  assert.equal(shouldDetectNpc(player, npc, 1600, npc), true);
 });
 
 test("les Galaxy Gates désactivent toutes les limites des capteurs NPC", () => {
