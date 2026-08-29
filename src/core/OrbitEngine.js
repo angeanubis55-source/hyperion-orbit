@@ -2076,6 +2076,8 @@ function drawExplosions(ox, oy) {
     const w = (EXPLOSION_PACK.w || (img.naturalWidth || img.width || 128)) * ex.scale;
     const h = (EXPLOSION_PACK.h || (img.naturalHeight || img.height || 128)) * ex.scale;
 
+    if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > innerWidth || y - h / 2 > innerHeight) continue;
+
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
@@ -3814,12 +3816,12 @@ function drawCollectables(ox, oy) {
     const x = c.x + ox;
     const y = c.y + oy;
 
-    drawCollectBeam(c, ox, oy);
-
     const maxSize = Math.max(sp.w || 64, sp.h || 64) * (sp.scale || 1);
     if (x < -maxSize || y < -maxSize || x > innerWidth + maxSize || y > innerHeight + maxSize) {
       continue;
     }
+
+    drawCollectBeam(c, ox, oy);
 
     const frames = Math.max(1, Number(sp.frames || sp._imgs?.length || 1));
     const idx = Math.floor(c.frameAcc) % frames;
@@ -6155,6 +6157,11 @@ function drawLaserBeam(L, ox, oy) {
   const visualLen = len + (LASER.visualExtraLen || 0);
   const STRETCH_X = 2.2;
   const STRETCH_Y = 0.75;
+  const endX = x + Math.cos(L.ang) * (start + visualLen);
+  const endY = y + Math.sin(L.ang) * (start + visualLen);
+  const margin = Math.max(40, L.width * 2);
+  if (Math.max(x, endX) < -margin || Math.min(x, endX) > innerWidth + margin ||
+      Math.max(y, endY) < -margin || Math.min(y, endY) > innerHeight + margin) return;
 
   if (!ok) {
     ctx.save();
@@ -7630,6 +7637,7 @@ if (GAME_SETTINGS.textures) {
 
   for (const s of sparks) {
     const x = s.x + ox, y = s.y + oy;
+    if (x < -40 || y < -40 || x > innerWidth + 40 || y > innerHeight + 40) continue;
     const a = 1 - clamp(s.t / 0.25, 0, 1);
     ctx.globalAlpha = a * 0.8;
     ctx.fillStyle = "rgba(255,210,122,0.9)";
@@ -7645,6 +7653,7 @@ if (GAME_SETTINGS.textures) {
 
     const sx = ft.x + ox;
     const sy = ft.y + oy;
+    if (sx < -120 || sy < -80 || sx > innerWidth + 120 || sy > innerHeight + 80) continue;
 
     const popK = Math.exp(-p * 10);
     const sc = 1 + (ft.pop || 0) * popK;
