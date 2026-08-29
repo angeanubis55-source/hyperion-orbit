@@ -13,6 +13,7 @@ import { addProjectile, advanceProjectile, createProjectile } from "../src/core/
 import { createWaveSpawnState } from "../src/core/waves.js";
 import { updateProgressHud, updateResourceHud, updateWaveHud } from "../src/core/hud.js";
 import { createPerformanceMonitor } from "../src/core/performanceMonitor.js";
+import { computeNpcSteering } from "../src/core/npcAI.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -213,6 +214,17 @@ test("le moniteur de performances calcule moyenne et frames lentes", () => {
   assert.equal(snapshot.longFrames, 1);
   assert.equal(snapshot.averageMs, 12);
   assert.equal(snapshot.p95Ms, 30);
+});
+
+test("l’IA poursuit de loin et orbite sans reculer de près", () => {
+  const entity = { vx: 100, vy: 0, wobble: 0 };
+  const ai = { minR: 100, maxR: 200, dir: 1, mode: "orbit", pauseT: 0, wobbleSeed: 0 };
+  const far = computeNpcSteering(entity, 300, 1, 0, ai, 1 / 60);
+  assert.ok(far.mxv > 0);
+  const close = computeNpcSteering(entity, 50, 1, 0, ai, 1 / 60);
+  assert.equal(Math.abs(close.mxv), 0);
+  assert.ok(Math.abs(close.myv) > 0);
+  assert.ok(entity.vx < 100);
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {

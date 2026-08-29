@@ -21,6 +21,7 @@ import { addProjectile, advanceProjectile } from "./projectiles.js";
 import { createWaveSpawnState } from "./waves.js";
 import { updateProgressHud, updateResourceHud, updateWaveHud } from "./hud.js";
 import { createPerformanceMonitor } from "./performanceMonitor.js";
+import { computeNpcSteering } from "./npcAI.js";
 
 export function startOrbitGame(config) {
 
@@ -2990,70 +2991,8 @@ function tickNpcCombatAI(ca, dt) {
 function computeNpcCombatMove(e, d, nx, ny, ai, dt) {
   const ca = ensureNpcCombatAI(ai);
   tickNpcCombatAI(ca, dt);
+  return computeNpcSteering(e, d, nx, ny, ca, dt, NPC_COMBAT_MOVE.closeBrake);
 
-  const minR = ca.minR;
-  const maxR = ca.maxR;
-  const midR = (minR + maxR) * 0.5;
-
-  const tx = -ny * ca.dir;
-  const ty = nx * ca.dir;
-
-  let mxv = 0;
-  let myv = 0;
-
-  // ✅ trop loin : il revient vers toi
-  if (d > maxR) {
-    const side = Math.sin(e.wobble * 1.4 + ca.wobbleSeed) * 0.30;
-
-    mxv = nx * 0.90 + tx * side;
-    myv = ny * 0.90 + ty * side;
-
-    return { mxv, myv };
-  }
-
-  // ✅ trop proche : il ne recule PLUS
-  // Avant : mxv = -nx / myv = -ny
-  // Maintenant : il freine, glisse ou reste sur place
-  if (d < minR) {
-    const brake = Math.pow(NPC_COMBAT_MOVE.closeBrake, dt * 60);
-    e.vx *= brake;
-    e.vy *= brake;
-
-    if (ca.mode === "hold" || ca.mode === "pause" || ca.pauseT > 0) {
-      return { mxv: 0, myv: 0 };
-    }
-
-    const sidePower = ca.mode === "drift" ? 0.25 : 0.55;
-    const wobble = Math.sin(e.wobble * 2.2 + ca.wobbleSeed) * 0.20;
-
-    mxv = tx * (sidePower + wobble);
-    myv = ty * (sidePower + wobble);
-
-    return { mxv, myv };
-  }
-
-  // ✅ dans la bonne zone : comportement moins robotique
-  if (ca.mode === "hold" || ca.pauseT > 0) {
-    return { mxv: 0, myv: 0 };
-  }
-
-  if (ca.mode === "pause") {
-    return { mxv: 0, myv: 0 };
-  }
-
-  const err = clamp((d - midR) / Math.max(1, maxR - minR), -1, 1);
-
-  // ✅ important :
-  // pull ne devient jamais négatif, donc le NPC ne recule pas quand tu avances vers lui
-  const pull = Math.max(0, err) * 0.45;
-
-  const orbitPower = ca.mode === "drift" ? 0.35 : 0.80;
-  const wobble = Math.sin(e.wobble * 1.7 + ca.wobbleSeed) * 0.18;
-
-  mxv = tx * (orbitPower + wobble) + nx * pull;
-  myv = ty * (orbitPower + wobble) + ny * pull;
-
-  return { mxv, myv };
 }
 
 function applyNpcSeparation(dt) {
