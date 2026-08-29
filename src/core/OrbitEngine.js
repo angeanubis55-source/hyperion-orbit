@@ -1167,7 +1167,6 @@ ui.questList?.addEventListener("click", event => {
       player.credits += Math.max(0, Number(reward.credits || 0));
       markProgressDirty();
       saveProgressNow();
-      renderAmmoShop();
       showToast(`Récompense : +${Number(reward.credits || 0).toLocaleString("fr-FR")} crédits`, 2);
     }
   }
@@ -1515,7 +1514,6 @@ function syncPlayerFromAccount() {
   }
 
   updateAmmoUI();
-  renderAmmoShop();
   drawUI();
 
   account.dirty = false;
@@ -3361,16 +3359,6 @@ const sctx = STAR_TILE.getContext("2d");
 const STAR_PATTERN = ctx.createPattern(STAR_TILE, "repeat");
 
 // ============================================================
-// Shop
-// ============================================================
-
-function renderAmmoShop() {
-  // Boutique munitions supprimée du HUD.
-  // Les achats se font maintenant dans la boutique Profil intégrée au jeu.
-  if (!ui.ammoShopBody) return;
-}
-
-// ============================================================
 // NPC TYPES
 // ============================================================
 function ensureNpcPreview(type) {
@@ -3867,7 +3855,6 @@ function applyCollectableReward(c) {
   if (changed) {
     markProgressDirty();
     updateAmmoUI();
-    renderAmmoShop();
   }
 
   advanceQuestProgress("collect", c.type);
@@ -4412,7 +4399,6 @@ function killRewards(e) {
   player.kills++;
   player.credits += e.value || 0;
   markProgressDirty();
-  renderAmmoShop();
 }
 
 function processDeaths() {
@@ -4496,18 +4482,23 @@ if (e.type === "npc_Cubikon") {
 
 function runOnKillAction(action, pos = null) {
   if (!action) return;
-  
-  if (action.spawn && pos) {
+
+  if (action.spawn) {
+    const ox = pos?.x ?? player.x;
+    const oy = pos?.y ?? player.y;
+
     for (const s of action.spawn) {
       const count = Math.max(1, Number(s.count || 1));
       const radius = Math.max(40, Number(s.radius || 260));
 
       for (let i = 0; i < count; i++) {
+        if (enemies.length >= MAX_ALIVE) break;
+
         const ang = Math.random() * Math.PI * 2;
         const d = 60 + Math.random() * radius;
 
-        const sx = clamp(pos.x + Math.cos(ang) * d, 80, WORLD.w - 80);
-        const sy = clamp(pos.y + Math.sin(ang) * d, 80, WORLD.h - 80);
+        const sx = clamp(ox + Math.cos(ang) * d, 80, WORLD.w - 80);
+        const sy = clamp(oy + Math.sin(ang) * d, 80, WORLD.h - 80);
 
         const en = makeEnemy(s.type, sx, sy);
         if (en) enemies.push(en);
@@ -4521,29 +4512,6 @@ function runOnKillAction(action, pos = null) {
     markProgressDirty();
     saveProgressNow();
     showToast(`GG ! +${reward} Cr.`, 2.2);
-  }
-
-  if (action.spawn && Array.isArray(action.spawn)) {
-    const ox = pos?.x ?? player.x;
-    const oy = pos?.y ?? player.y;
-
-    for (const s of action.spawn) {
-      const count = Math.max(1, Number(s.count || 1));
-      const rad = Math.max(0, Number(s.radius || 220));
-
-      for (let i = 0; i < count; i++) {
-        if (enemies.length >= MAX_ALIVE) break;
-
-        const a = Math.random() * Math.PI * 2;
-        const d = Math.random() * rad;
-
-        const sx = clamp(ox + Math.cos(a) * d, 80, WORLD.w - 80);
-        const sy = clamp(oy + Math.sin(a) * d, 80, WORLD.h - 80);
-
-        const ne = makeEnemy(s.type, sx, sy);
-        if (ne) enemies.push(ne);
-      }
-    }
   }
 
   const tp = action.tp;
@@ -4567,7 +4535,6 @@ const PULSE_COST = 30000;
 const NUKE_COST = 100000;
 
 const PULSE_COOLDOWN = 10.0;
-const PULSE_RADIUS = 5000000;
 
 let pulseCd = 0;
 let iemCd = 0;
@@ -4605,7 +4572,6 @@ function usePulse() {
   pulseCd = PULSE_COOLDOWN;
 
   markProgressDirty();
-  renderAmmoShop();
 
   showToast("IEM !", 1.0);
 
@@ -4631,7 +4597,6 @@ function useNuke() {
   }
   player.credits -= NUKE_COST;
   markProgressDirty();
-  renderAmmoShop();
 
   waveSpawns.reset();
   for (const e of enemies) {
@@ -5464,8 +5429,6 @@ jumpBaseFade: 1,
   wave = 1;
   if (!isZoneMap) beginWave();
 
-  renderAmmoShop();
-
   markProgressDirty();
   saveProgressNow();
 }
@@ -5574,7 +5537,6 @@ function respawn() {
   }
 
   respawnBaseGate();
-  resetRun({ randomSpawn: true });
   setCenterMsg(false);
   showToast("Nouvelle run — Wave 1", 1.6);
 }
@@ -6694,12 +6656,6 @@ function enemyShoot(e, dt) {
   }
 }
 
-function pointInRect(x, y, r) {
-  return !!r && x >= r.x1 && x <= r.x2 && y >= r.y1 && y <= r.y2;
-}
-
-
-
 function tickEmpWander(e, dt) {
   if (!e.empAI) {
     e.empAI = {
@@ -7185,7 +7141,6 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
       player.credits += pck.credits || 0;
       markProgressDirty();
       pickups.splice(i, 1);
-      renderAmmoShop();
     }
   }
 
@@ -8503,6 +8458,11 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
 
 window.__ORBIT_ENGINE__ = { switchMap: switchMapConfig };
 
+// ✅ Sauvegarde d'urgence avant de quitter la map (appelé par main.js via __GO_TO_MAP__)
+window.__SAVE_BEFORE_LEAVE__ = () => {
+  saveStateImmediate();
+};
+
 addEventListener("beforeunload", () => {
   try { saveStateImmediate(); } catch {}
   try { localStorage.removeItem("orbit_game_open"); } catch {}
@@ -8527,7 +8487,6 @@ window.addEventListener("storage", (e) => {
 resetPlayerToBase();
 updateAmmoUI();
 setAmmo("x1");
-renderAmmoShop();
 
 const cur = getCurrentUserFull() || null;
 
