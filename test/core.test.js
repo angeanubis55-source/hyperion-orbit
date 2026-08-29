@@ -18,6 +18,19 @@ import { getNpcSensorRanges, isNpcWithinSensor, shouldDetectNpc } from "../src/c
 import { shouldRunNpcFrame } from "../src/core/npcActivity.js";
 import { pushBounded } from "../src/core/boundedCollection.js";
 import { COLLECTABLE_SPAWN, COLLECTABLE_TYPES } from "../src/data/collectables.js";
+import {
+  QUEST_DEFINITIONS,
+  MAX_ACTIVE_QUESTS,
+  acceptQuest,
+  abandonQuest,
+  canAcceptQuest,
+  claimQuest,
+  getQuestObjectives,
+  isQuestComplete,
+  normalizeQuestState,
+  recordQuestCollect,
+  recordQuestKill,
+} from "../src/data/quests.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -328,6 +341,87 @@ test("le catalogue des collectables centralise sprites, cartes et récompenses",
   assert.equal(COLLECTABLE_SPAWN.interval, 1);
 });
 
+test("les quêtes respectent les prérequis et ne récompensent qu'une fois", () => {
+  const state = normalizeQuestState({ active: { unknown: 99 }, completed: ["unknown"] });
+  const first = QUEST_DEFINITIONS[0];
+  const second = QUEST_DEFINITIONS[1];
+
+  assert.equal(canAcceptQuest(state, first), true);
+  assert.equal(canAcceptQuest(state, second), false);
+  assert.equal(acceptQuest(state, first.id), true);
+
+  for (const objective of getQuestObjectives(first)) {
+    for (let i = 0; i < objective.amount + 3; i++) {
+      if (objective.kind === "collect") recordQuestCollect(state, objective.type);
+      else recordQuestKill(state, objective.type);
+    }
+    assert.equal(state.active[first.id][objective.id], objective.amount);
+  }
+  assert.equal(isQuestComplete(state, first), true);
+
+  const reward = claimQuest(state, first.id);
+  assert.equal(reward.credits, first.reward.credits);
+  assert.equal(claimQuest(state, first.id), null);
+  assert.equal(canAcceptQuest(state, second), true);
+});
+
+test("les quêtes acceptent cinq missions, la collecte et l'abandon", () => {
+  const state = normalizeQuestState();
+  const unlocked = QUEST_DEFINITIONS.filter(quest => !quest.requires);
+  const hasCollectObjective = quest => getQuestObjectives(quest).some(objective => objective.kind === "collect");
+  const collectCandidate = unlocked.find(hasCollectObjective);
+  const independent = [
+    ...unlocked.filter(quest => !hasCollectObjective(quest)).slice(0, MAX_ACTIVE_QUESTS - 1),
+    collectCandidate,
+    unlocked.find(quest => quest.id !== collectCandidate.id && hasCollectObjective(quest)),
+  ];
+
+  for (const quest of independent.slice(0, MAX_ACTIVE_QUESTS)) {
+    assert.equal(acceptQuest(state, quest.id), true);
+  }
+  assert.equal(Object.keys(state.active).length, MAX_ACTIVE_QUESTS);
+  assert.equal(acceptQuest(state, independent[MAX_ACTIVE_QUESTS].id), false);
+
+  const collectQuest = QUEST_DEFINITIONS.find(quest => hasCollectObjective(quest) && state.active[quest.id] != null);
+  assert.ok(collectQuest);
+  const collectObjective = getQuestObjectives(collectQuest).find(objective => objective.kind === "collect");
+  recordQuestCollect(state, collectObjective.type);
+  assert.equal(state.active[collectQuest.id][collectObjective.id], 1);
+  assert.equal(abandonQuest(state, collectQuest.id), true);
+  assert.equal(state.active[collectQuest.id], undefined);
+  assert.equal(abandonQuest(state, collectQuest.id), false);
+});
+
+test("une quête à plusieurs objectifs exige de tous les terminer", () => {
+  const quest = QUEST_DEFINITIONS.find(item => getQuestObjectives(item).length > 1);
+  const state = normalizeQuestState();
+  assert.equal(acceptQuest(state, quest.id), true);
+
+  const [first, ...remaining] = getQuestObjectives(quest);
+  for (let i = 0; i < first.amount; i++) {
+    if (first.kind === "collect") recordQuestCollect(state, first.type);
+    else recordQuestKill(state, first.type);
+  }
+  assert.equal(isQuestComplete(state, quest), false);
+  assert.equal(claimQuest(state, quest.id), null);
+
+  for (const objective of remaining) {
+    for (let i = 0; i < objective.amount; i++) {
+      if (objective.kind === "collect") recordQuestCollect(state, objective.type);
+      else recordQuestKill(state, objective.type);
+    }
+  }
+  assert.equal(isQuestComplete(state, quest), true);
+});
+
+test("les anciennes progressions numériques sont migrées vers le premier objectif", () => {
+  const quest = QUEST_DEFINITIONS[0];
+  const [first, second] = getQuestObjectives(quest);
+  const state = normalizeQuestState({ active: { [quest.id]: 3 } });
+  assert.equal(state.active[quest.id][first.id], 3);
+  assert.equal(state.active[quest.id][second.id], 0);
+});
+
 test("les comptes sauvegardés sont versionnés et les valeurs sont bornées", async () => {
   const { getCurrentUserFull, register, updateCurrentUserProgress } = await import("../src/core/account.js");
   const created = register({ pseudo: "Pilote", email: "pilote@local", password: "secret" });
@@ -336,7 +430,8 @@ test("les comptes sauvegardés sont versionnés et les valeurs sont bornées", a
   updateCurrentUserProgress({ credits: -500 });
   const user = getCurrentUserFull();
   assert.equal(user.credits, 0);
-  assert.equal(user.schemaVersion, 2);
+  assert.equal(user.schemaVersion, 3);
+  assert.deepEqual(user.quests, { active: {}, completed: [] });
   assert.ok(user.revision >= 1);
   assert.ok(user.updatedAt > 0);
 });

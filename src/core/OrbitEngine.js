@@ -26,6 +26,19 @@ import { getNpcSensorRanges, shouldDetectNpc } from "./npcSensors.js";
 import { shouldRunNpcFrame } from "./npcActivity.js";
 import { pushBounded } from "./boundedCollection.js";
 import {
+  QUEST_DEFINITIONS,
+  MAX_ACTIVE_QUESTS,
+  acceptQuest,
+  abandonQuest,
+  canAcceptQuest,
+  claimQuest,
+  getQuestObjectives,
+  isQuestComplete,
+  normalizeQuestState,
+  recordQuestCollect,
+  recordQuestKill,
+} from "../data/quests.js";
+import {
   COLLECTABLE_SPAWN as DEFAULT_COLLECTABLE_SPAWN,
   COLLECTABLE_TYPES as DEFAULT_COLLECTABLE_TYPES,
 } from "../data/collectables.js";
@@ -193,6 +206,11 @@ const ui = {
   boxWave: document.getElementById("boxWave"),
   boxMeta: document.getElementById("boxMeta"),
   boxVitals: document.getElementById("boxVitals"),
+  questList: document.getElementById("questList"),
+  questIntro: document.getElementById("questIntro"),
+  questTabs: document.getElementById("questTabs"),
+  questOfferDetail: document.getElementById("questOfferDetail"),
+  questOfferList: document.getElementById("questOfferList"),
 
   honorTxt: document.getElementById("honorTxt"),
   xpTxt: document.getElementById("xpTxt"),
@@ -581,10 +599,14 @@ function registerHudWindows() {
   reg("boxVitals", "Vie / Bouclier / FPS", "❤️");
   reg("minimap", "Mini-carte", "🗺️");
   reg("settingsWindow", "Paramètres", "⚙️");
+  reg("questWindow", "Missions", "❗");
+  reg("questOfferWindow", "Terminal de quêtes", "📡");
 wireSettingsWindow();
 
 // ✅ La fenêtre paramètres démarre réduite dans le dock
 window.GameWindowManager?.minimize("settingsWindow");
+window.GameWindowManager?.minimize("questWindow");
+window.GameWindowManager?.minimize("questOfferWindow");
 
   console.log("✅ HUD windows registered");
 }
@@ -696,6 +718,16 @@ const DEFAULT_PORTAL_JUMP_BUTTON = {
 
   // Le joueur doit être dans le rayon du portail
   requireNear: true,
+};
+
+const QUEST_BUTTON = {
+  idle: { src: "assets/Quest_Button/1.png" },
+  mouse: { src: "assets/Quest_Button/2.png" },
+  click: { src: "assets/Quest_Button/3.png" },
+  w: 88,
+  h: 135,
+  gap: 12,
+  interactionRadius: 700,
 };
 
 function getPortalSpriteSet(ptl = null) {
@@ -885,6 +917,7 @@ const account = {
   dirty: false,
   saveCd: 0,
 };
+let questState = normalizeQuestState(getCurrentUserFull()?.quests);
 
 function loadAccountUser() {
   account.user = getCurrentUserFull();
@@ -896,6 +929,224 @@ function markProgressDirty() {
   account.saveCd = 0.35;
 }
 
+let selectedQuestId = null;
+let lastQuestTerminalAccess = null;
+
+function hasQuestTerminalAccess() {
+  return (zoneSafe?.modules || []).some(module =>
+    isQuestModule(module) && isPlayerNearQuestModule(module)
+  );
+}
+
+function questCard(quest, { active = false } = {}) {
+  const objectives = getQuestObjectives(quest);
+  const progress = questState.active[quest.id] || {};
+  const ready = active && isQuestComplete(questState, quest);
+  const prerequisite = QUEST_DEFINITIONS.find(item => item.id === quest.requires);
+  const available = canAcceptQuest(questState, quest);
+  let actions = "";
+
+  if (active) {
+    actions = ready
+      ? `<button class="questAction" data-quest-action="claim" data-quest-id="${quest.id}">Récupérer la récompense</button>`
+      : `<button class="questAction" disabled>Mission en cours</button>`;
+    actions += `<button class="questAction questCancel" data-quest-action="abandon" data-quest-id="${quest.id}">Abandonner la mission</button>`;
+  }
+
+  return `<article class="questCard${!active && !available ? " isLocked" : ""}">
+    <div class="questTitle">${quest.title}</div>
+    <div class="questDescription">${quest.description}</div>
+    <div class="questReward">Récompense : ${Number(quest.reward.credits || 0).toLocaleString("fr-FR")} crédits</div>
+    ${active ? `<div class="questObjectives">${objectives.map(objective => {
+      const current = Number(progress[objective.id] || 0);
+      const percent = Math.min(100, current / objective.amount * 100);
+      return `<div class="questObjective">
+        <div class="questStatus"><span>${objective.label || objective.type}</span><b>${current} / ${objective.amount}</b></div>
+        <div class="questProgress"><i style="width:${percent}%"></i></div>
+      </div>`;
+    }).join("")}</div>${ready ? `<div class="questStatus questComplete">Tous les objectifs sont accomplis</div>` : ""}` : ""}
+    ${actions}
+  </article>`;
+}
+
+function renderQuestWindow() {
+  if (!ui.questList) return;
+  const activeIds = Object.keys(questState.active);
+
+  if (!activeIds.includes(selectedQuestId)) selectedQuestId = activeIds[0] || null;
+  if (ui.questIntro) {
+    ui.questIntro.textContent = `Journal de bord — ${activeIds.length}/${MAX_ACTIVE_QUESTS} missions actives`;
+  }
+  if (ui.questTabs) {
+    ui.questTabs.innerHTML = activeIds.map(id => {
+      const quest = QUEST_DEFINITIONS.find(item => item.id === id);
+      return quest ? `<button class="questTab${id === selectedQuestId ? " active" : ""}" data-quest-tab="${id}" title="${quest.title}">${quest.title}</button>` : "";
+    }).join("");
+  }
+
+  const selected = QUEST_DEFINITIONS.find(item => item.id === selectedQuestId);
+  const html = selected
+    ? questCard(selected, { active: true })
+    : `<div class="questEmpty">Aucune mission active. Approche-toi d’un bâtiment de quêtes pour en accepter.</div>`;
+
+  ui.questList.innerHTML = html;
+}
+
+let selectedQuestOfferId = null;
+
+const QUEST_HELP = {
+  npc_Streuner: "Présent en grand nombre dans les cartes de départ 1-1, 2-1 et 3-1.",
+  npc_Lordakia: "Cherche dans les secteurs de départ et les premières cartes de chaque faction.",
+  npc_Saimon: "Fréquente les cartes basses et intermédiaires des trois factions.",
+  npc_Mordon: "Présent surtout dans les cartes intermédiaires, notamment les secteurs x-3 et x-4.",
+  npc_Sibelon: "Cherche dans les secteurs intermédiaires x-3 et x-4.",
+  npc_Devolarium: "Présent dans plusieurs cartes intermédiaires des factions.",
+  npc_Sibelonit: "Souvent rencontré dans les secteurs avancés avec les Sibelons.",
+  npc_Kristallin: "Cherche dans les cartes avancées et les zones glacées.",
+  npc_Kristallon: "Présent dans les cartes avancées, accompagné de Kristallins.",
+  npc_Cubikon: "Le Cubikon se trouve dans les secteurs prévus pour les combats de groupe.",
+  Cargo_Box: "Les Cargo Boxes apparaissent après la destruction de nombreux NPC.",
+  Bonus_Box: "Les Bonus Boxes apparaissent naturellement sur presque toutes les cartes normales.",
+  Green_Booty_Box: "Les Green Booty Boxes peuvent apparaître sur les cartes normales.",
+  Palladium_Ore: "Le Palladium se collecte sur la carte pirate 5-2.",
+  Hybrid_Alloy_Box: "Les alliages hybrides proviennent notamment des Gygerthralls contaminés.",
+  Astral_Prime_Box: "Ces boîtes se trouvent dans les secteurs astrals spéciaux.",
+};
+
+function questTargetImage(quest) {
+  const target = getQuestObjectives(quest)[0];
+  const source = target?.kind === "collect"
+    ? COLLECTABLE_DEFS[target.type]?.sprite
+    : NPC_TYPES[target?.type]?.sprite;
+  if (!source?.path) return "assets/Quest_Button/1.png";
+  return `${source.path}${Number(source.firstNumber ?? 1)}${source.ext || ".png"}`;
+}
+
+function renderQuestTerminal() {
+  if (!ui.questOfferDetail || !ui.questOfferList) return;
+  const hasAccess = hasQuestTerminalAccess();
+  lastQuestTerminalAccess = hasAccess;
+  const offers = QUEST_DEFINITIONS.filter(quest => questState.active[quest.id] == null);
+
+  if (!offers.some(quest => quest.id === selectedQuestOfferId)) {
+    selectedQuestOfferId = offers[0]?.id || null;
+  }
+
+  ui.questOfferList.innerHTML = offers.length
+    ? offers.map(quest => {
+      const completed = questState.completed.includes(quest.id);
+      return `<button class="questOfferItem${quest.id === selectedQuestOfferId ? " active" : ""}${completed ? " completed" : ""}" data-quest-offer="${quest.id}">${quest.title}${completed ? " ✓" : ""}</button>`;
+    }).join("")
+    : `<div class="questEmpty">Aucune nouvelle mission.</div>`;
+
+  const quest = offers.find(item => item.id === selectedQuestOfferId);
+  if (!quest) {
+    ui.questOfferDetail.innerHTML = `<div class="questEmpty">Toutes les missions sont actives ou terminées.</div>`;
+    return;
+  }
+
+  const available = hasAccess && canAcceptQuest(questState, quest);
+  const completed = questState.completed.includes(quest.id);
+  const objectives = getQuestObjectives(quest);
+  const prerequisite = QUEST_DEFINITIONS.find(item => item.id === quest.requires);
+  const full = Object.keys(questState.active).length >= MAX_ACTIVE_QUESTS;
+  const status = completed
+    ? "Mission terminée. Récompense déjà récupérée."
+    : !hasAccess
+    ? "Rapproche-toi du bâtiment de quêtes."
+    : full ? `Tu as déjà ${MAX_ACTIVE_QUESTS} missions actives.`
+      : prerequisite && !questState.completed.includes(prerequisite.id)
+        ? `Prérequis : termine « ${prerequisite.title} ».`
+        : "Mission disponible.";
+
+  ui.questOfferDetail.innerHTML = `
+    <div class="questOfferImageWrap"><img class="questOfferImage" src="${questTargetImage(quest)}" alt="${quest.title}"></div>
+    <div class="questTitle">${quest.title}</div>
+    <div class="questDescription">${quest.description}</div>
+    <div class="questObjectives">${objectives.map(objective => `<div class="questObjective"><div class="questStatus"><span>${objective.label || objective.type}</span><b>${completed ? objective.amount : 0} / ${objective.amount}</b></div></div>`).join("")}</div>
+    <div class="questReward">Récompense : ${Number(quest.reward.credits || 0).toLocaleString("fr-FR")} crédits</div>
+    <div class="questOfferHelp"><b>Où chercher ?</b><br>${objectives.map(objective => `<b>${objective.label || objective.type} :</b> ${QUEST_HELP[objective.type] || "Explore les secteurs correspondant à cet objectif."}`).join("<br>")}</div>
+    <div class="questStatus">${status}</div>
+    <button class="questAction${completed ? " questCompletedAction" : ""}" data-quest-terminal-accept="${quest.id}" ${available ? "" : "disabled"}>${completed ? "Mission terminée ✓" : "Accepter cette mission"}</button>`;
+}
+
+function openQuestTerminal() {
+  renderQuestTerminal();
+  window.GameWindowManager?.restore("questOfferWindow");
+}
+
+ui.questOfferList?.addEventListener("click", event => {
+  const offer = event.target.closest("[data-quest-offer]");
+  if (!offer) return;
+  selectedQuestOfferId = offer.dataset.questOffer;
+  renderQuestTerminal();
+});
+
+ui.questOfferDetail?.addEventListener("click", event => {
+  const button = event.target.closest("[data-quest-terminal-accept]");
+  if (!button) return;
+  if (!hasQuestTerminalAccess()) {
+    showToast("Rapproche-toi du bâtiment de quêtes", 1.5);
+  } else if (acceptQuest(questState, button.dataset.questTerminalAccept)) {
+    selectedQuestId = button.dataset.questTerminalAccept;
+    markProgressDirty();
+    saveProgressNow();
+    showToast("Mission acceptée", 1.3);
+  }
+  renderQuestWindow();
+  renderQuestTerminal();
+});
+
+function advanceQuestProgress(kind, type) {
+  const advanced = kind === "collect"
+    ? recordQuestCollect(questState, type)
+    : recordQuestKill(questState, type);
+  if (!advanced.length) return;
+  markProgressDirty();
+  renderQuestWindow();
+
+  for (const id of advanced) {
+    const quest = QUEST_DEFINITIONS.find(item => item.id === id);
+    if (quest && isQuestComplete(questState, quest)) {
+      showToast(`Mission accomplie : ${quest.title}`, 2);
+    }
+  }
+}
+
+ui.questTabs?.addEventListener("click", event => {
+  const tab = event.target.closest("[data-quest-tab]");
+  if (!tab) return;
+  selectedQuestId = tab.dataset.questTab;
+  renderQuestWindow();
+});
+
+ui.questList?.addEventListener("click", event => {
+  const button = event.target.closest("[data-quest-action]");
+  if (!button) return;
+  const questId = button.dataset.questId;
+
+  if (button.dataset.questAction === "abandon" && abandonQuest(questState, questId)) {
+    selectedQuestId = null;
+    markProgressDirty();
+    saveProgressNow();
+    showToast("Mission abandonnée — progression perdue", 1.7);
+  }
+
+  if (button.dataset.questAction === "claim") {
+    const reward = claimQuest(questState, questId);
+    if (reward) {
+      player.credits += Math.max(0, Number(reward.credits || 0));
+      markProgressDirty();
+      saveProgressNow();
+      renderAmmoShop();
+      showToast(`Récompense : +${Number(reward.credits || 0).toLocaleString("fr-FR")} crédits`, 2);
+    }
+  }
+
+  renderQuestWindow();
+  renderQuestTerminal();
+});
+
 function saveProgressNow() {
   if (!account.user) return;
   
@@ -906,6 +1157,7 @@ function saveProgressNow() {
   
 updateCurrentUserProgress({
   credits: player.credits,
+  quests: questState,
 
   // ⚠️ Ne pas sauvegarder ship ici non plus.
   ammo: {
@@ -2356,6 +2608,50 @@ function updatePortalButtonCursor(clientX, clientY) {
   return false;
 }
 
+function isQuestModule(module) {
+  return String(module?.spr || "").startsWith("QUEST_");
+}
+
+function getQuestButtonPosition(module) {
+  return {
+    x: module.x,
+    y: module.y - Number(module.h || 0) / 2 - QUEST_BUTTON.h / 2 - QUEST_BUTTON.gap,
+  };
+}
+
+function pickQuestButtonAtScreen(clientX, clientY) {
+  if (!isZoneMap || !zoneSafe?.modules?.length) return null;
+  const mouseWorld = screenToWorld(clientX, clientY);
+
+  for (let i = zoneSafe.modules.length - 1; i >= 0; i--) {
+    const module = zoneSafe.modules[i];
+    if (!isQuestModule(module)) continue;
+    const pos = getQuestButtonPosition(module);
+
+    if (
+      mouseWorld.x >= pos.x - QUEST_BUTTON.w / 2 &&
+      mouseWorld.x <= pos.x + QUEST_BUTTON.w / 2 &&
+      mouseWorld.y >= pos.y - QUEST_BUTTON.h / 2 &&
+      mouseWorld.y <= pos.y + QUEST_BUTTON.h / 2
+    ) return module;
+  }
+
+  return null;
+}
+
+function updateQuestButtonCursor(clientX, clientY) {
+  const hoveredModule = pickQuestButtonAtScreen(clientX, clientY);
+  for (const module of zoneSafe?.modules || []) {
+    if (isQuestModule(module)) module.questButtonHovered = module === hoveredModule;
+  }
+  if (hoveredModule) canvas.style.cursor = "pointer";
+  return Boolean(hoveredModule);
+}
+
+function isPlayerNearQuestModule(module) {
+  return dist2(player.x, player.y, module.x, module.y) <= QUEST_BUTTON.interactionRadius ** 2;
+}
+
 canvas.addEventListener(
   "mousemove",
   (e) => {
@@ -2364,7 +2660,9 @@ canvas.addEventListener(
       e.clientY
     );
 
-    if (!overPortalButton) {
+    const overQuestButton = updateQuestButtonCursor(e.clientX, e.clientY);
+
+    if (!overPortalButton && !overQuestButton) {
       updateCollectableCursor(e.clientX, e.clientY);
     }
   },
@@ -2456,6 +2754,18 @@ if (portalButton) {
   return;
 }
 
+const questButton = pickQuestButtonAtScreen(e.clientX, e.clientY);
+
+if (questButton) {
+  questButton.questButtonPressed = true;
+  questButton.questButtonHovered = true;
+  pointer.dragArmed = false;
+  pointer.dragging = false;
+  pointer.downOnEnemy = false;
+  pointer.followWhileDown = false;
+  return;
+}
+
    const enemy = pickEnemyAtScreen(e.clientX, e.clientY);
 if (enemy) {
   // ✅ On lock le NPC
@@ -2517,6 +2827,7 @@ canvas.addEventListener(
       e.clientX,
       e.clientY
     );
+    const releasedOnQuest = pickQuestButtonAtScreen(e.clientX, e.clientY);
 
     let pressedPortal = null;
 
@@ -2526,6 +2837,12 @@ canvas.addEventListener(
       }
 
       ptl.buttonPressed = false;
+    }
+
+    let pressedQuest = null;
+    for (const module of zoneSafe?.modules || []) {
+      if (module.questButtonPressed) pressedQuest = module;
+      module.questButtonPressed = false;
     }
 
     // Le clic doit être relâché sur le même bouton
@@ -2550,6 +2867,14 @@ canvas.addEventListener(
       }
     }
 
+    if (pressedQuest && releasedOnQuest === pressedQuest) {
+      if (!isPlayerNearQuestModule(pressedQuest)) {
+        showToast("Approche-toi du bâtiment de quêtes", 1.4);
+      } else {
+        openQuestTerminal();
+      }
+    }
+
     pointer.reset();
 
     try {
@@ -2567,6 +2892,11 @@ canvas.addEventListener(
     for (const ptl of zonePortals || []) {
       ptl.buttonPressed = false;
       ptl.buttonHovered = false;
+    }
+
+    for (const module of zoneSafe?.modules || []) {
+      module.questButtonPressed = false;
+      module.questButtonHovered = false;
     }
 
     try {
@@ -2601,6 +2931,7 @@ const collectables = [];
 const sparks = [];
 const floatTexts = [];
 const lasers = [];
+const engineTrails = [];
 
 const ENTITY_LIMITS = Object.freeze({
   playerBullets: 320,
@@ -2610,7 +2941,100 @@ const ENTITY_LIMITS = Object.freeze({
   floatTexts: 140,
   lasers: 80,
   pulseFxs: 12,
+  engineTrails: 420,
 });
+
+function getEngineTrailLayout(entity, config) {
+  const sprite = config?.sprite || config || {};
+  const trail = sprite.trail ?? config?.trail ?? {};
+  if (trail === false) return null;
+
+  const w = Number(sprite.w ?? sprite.size ?? 160);
+  const h = Number(sprite.h ?? sprite.size ?? 140);
+  const engines = Math.max(1, Math.min(3, Number(trail.engines ?? (w >= 155 ? 2 : 1))));
+
+  return {
+    engines,
+    rear: Number(trail.rear ?? w * 0.34),
+    spacing: Number(trail.spacing ?? h * 0.16),
+    scale: clamp(Number(trail.scale ?? Math.min(w, h) / 150), 0.55, 1.8),
+  };
+}
+
+function emitEngineTrail(entity, config, dt) {
+  const speed = Math.hypot(entity.vx || 0, entity.vy || 0);
+  if (speed < 35 || !isOnScreenWorld(entity.x, entity.y, 180)) {
+    entity._trailAcc = 0;
+    return;
+  }
+
+  const layout = getEngineTrailLayout(entity, config);
+  if (!layout) return;
+
+  const speedRatio = clamp(speed / Math.max(100, Number(entity.speed || config?.speed || 320)), 0, 1);
+  entity._trailAcc = (entity._trailAcc || 0) + dt * (10 + speedRatio * 10);
+
+  while (entity._trailAcc >= 1) {
+    entity._trailAcc -= 1;
+    const angle = Number.isFinite(entity.angle) ? entity.angle : Math.atan2(entity.vy, entity.vx);
+    const fx = Math.cos(angle);
+    const fy = Math.sin(angle);
+    const px = -fy;
+    const py = fx;
+
+    for (let i = 0; i < layout.engines; i++) {
+      const side = layout.engines === 1 ? 0 : (i / (layout.engines - 1) - 0.5) * 2;
+      const jitter = (Math.random() - 0.5) * 4;
+      pushBounded(engineTrails, {
+        x: entity.x - fx * layout.rear + px * (side * layout.spacing + jitter),
+        y: entity.y - fy * layout.rear + py * (side * layout.spacing + jitter),
+        vx: (entity.vx || 0) * 0.12 - fx * (25 + Math.random() * 30) + px * jitter,
+        vy: (entity.vy || 0) * 0.12 - fy * (25 + Math.random() * 30) + py * jitter,
+        t: 0,
+        life: 0.45 + Math.random() * 0.3,
+        size: (3.2 + Math.random() * 2.4) * layout.scale,
+      }, ENTITY_LIMITS.engineTrails);
+    }
+  }
+}
+
+function tickEngineTrails(dt) {
+  if (!player.dead) emitEngineTrail(player, ACTIVE_SHIP, dt);
+
+  for (const enemy of enemies) {
+    if (enemy?.hp > 0) emitEngineTrail(enemy, NPC_TYPES[enemy.type], dt);
+  }
+
+  for (let i = engineTrails.length - 1; i >= 0; i--) {
+    const particle = engineTrails[i];
+    particle.t += dt;
+    if (particle.t >= particle.life) {
+      engineTrails.splice(i, 1);
+      continue;
+    }
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+    particle.vx *= Math.pow(0.94, dt * 60);
+    particle.vy *= Math.pow(0.94, dt * 60);
+  }
+}
+
+function drawEngineTrails(ox, oy) {
+  ctx.save();
+  for (const particle of engineTrails) {
+    const progress = particle.t / particle.life;
+    const x = particle.x + ox;
+    const y = particle.y + oy;
+    if (x < -30 || y < -30 || x > innerWidth + 30 || y > innerHeight + 30) continue;
+
+    ctx.globalAlpha = (1 - progress) * 0.3;
+    ctx.fillStyle = progress < 0.3 ? "rgb(125, 220, 255)" : "rgb(155, 175, 190)";
+    ctx.beginPath();
+    ctx.arc(x, y, particle.size * (0.75 + progress * 1.5), 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+}
 
 function addCappedProjectile(collection, options, limit) {
   while (collection.length >= limit) removeProjectile(collection, 0);
@@ -3416,6 +3840,8 @@ function applyCollectableReward(c) {
     renderAmmoShop();
   }
 
+  advanceQuestProgress("collect", c.type);
+
   if (parts.length) {
     showToast(parts.join(" • "), 1.25);
   } else {
@@ -4022,7 +4448,10 @@ if (e.type === "npc_Cubikon") {
    //   }
    // }
 
-    if (!e.noRewards) killRewards(e);
+    if (!e.noRewards) {
+      advanceQuestProgress("kill", e.type);
+      killRewards(e);
+    }
     
     if (e.type === "npc_Protegit" && e.masterId) {
       const cub = getEnemyById(e.masterId);
@@ -4820,6 +5249,7 @@ collectables.length = 0;
 sparks.length = 0;
 floatTexts.length = 0;
 lasers.length = 0;
+engineTrails.length = 0;
 collectableSpawnT = 0;
 
   fireCooldown = 0;
@@ -5433,6 +5863,10 @@ for (const k in SAFE_MODULE_SPR) {
   loadImage(SAFE_MODULE_SPR[k].src, { priority: false });
 }
 
+for (const state of Object.values(QUEST_BUTTON).filter(value => value?.src)) {
+  loadImage(state.src, { priority: true });
+}
+
 function drawPortal(ox, oy) {
   if (!portal.active) return;
 
@@ -5865,6 +6299,31 @@ function drawSafeModules(ox, oy) {
     );
 
     ctx.restore();
+
+    if (isQuestModule(m)) {
+      const buttonSprite = m.questButtonPressed
+        ? QUEST_BUTTON.click
+        : m.questButtonHovered
+          ? QUEST_BUTTON.mouse
+          : QUEST_BUTTON.idle;
+      const buttonImg = getCachedImage(buttonSprite.src);
+
+      if (isImgReady(buttonImg)) {
+        const button = getQuestButtonPosition(m);
+        ctx.save();
+        ctx.globalAlpha = isPlayerNearQuestModule(m) ? 1 : 0.65;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(
+          buttonImg,
+          button.x + ox - QUEST_BUTTON.w / 2,
+          button.y + oy - QUEST_BUTTON.h / 2,
+          QUEST_BUTTON.w,
+          QUEST_BUTTON.h
+        );
+        ctx.restore();
+      }
+    }
   }
 
   const bea = zoneSafe.beacons || [];
@@ -7191,6 +7650,7 @@ e.vy *= Math.pow(0.95, dt * 60);
     }
   }
 
+  tickEngineTrails(dt);
   processDeaths();
 
   camera.x += (player.x - camera.x) * (1 - Math.pow(0.0009, dt * 60));
@@ -7332,6 +7792,7 @@ if (GAME_SETTINGS.textures) {
   drawMoveTarget(ox, oy);
   drawPulseFx(ox, oy);
   drawCollectables(ox, oy);
+  drawEngineTrails(ox, oy);
 
   for (const pck of pickups) {
     const x = pck.x + ox, y = pck.y + oy;
@@ -7565,6 +8026,8 @@ if (GAME_SETTINGS.textures) {
 // ============================================================
 function drawUI() {
   const zoneMode = rules?.mode === "zone";
+  const terminalAccess = hasQuestTerminalAccess();
+  if (terminalAccess !== lastQuestTerminalAccess) renderQuestTerminal();
 
   if (ui.boxWave) ui.boxWave.style.display = zoneMode ? "none" : "block";
   if (ui.boxMeta) ui.boxMeta.style.display = "block";
@@ -7886,6 +8349,7 @@ function saveStateImmediate() {
 
 updateCurrentUserProgress({
   credits: player.credits,
+  quests: questState,
 
   // ⚠️ Ne surtout pas sauvegarder ship ici.
   // Le vaisseau actif est géré par setActiveHangar().

@@ -114,42 +114,9 @@ export function getZonePortals(WORLD) {
 }
 
 export function getZoneSafeModules(WORLD) {
-  // ✅ coin haut-gauche (position du bloc)
-  const baseX = 800;
-  const baseY = 800;
-
   const modules = [
-    { id: "QUEST_MMO", x: 9000,   y: 3500,   w: 515, h: 728, spr: "QUEST_MMO" }, // Centre
-  //  { id: "CENTRE_MMO", x: 1500,   y: 1500,   w: 1009, h: 998, spr: "CENTRE_MMO" }, // Centre
+    { id: "QUEST_MMO", x: 9000, y: 3500, w: 515, h: 728, spr: "QUEST_MMO" },
   ];
-
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
- 
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-
-  const halfW = (maxX - minX) / 2;
-  const halfH = (maxY - minY) / 2;
-
-  const margin = 0; // Zone autour de la base
-  const r = Math.hypot(halfW, halfH) + margin;
-
-  const zone = { kind: "circle", x: cx, y: cy, r };
-
-  const BEACON = {
-    spr: "BEACON_EIC",
-
-    imgW: 90,
-    imgH: 165,
-
-    w: 90,
-    h: 165,
-
-    count: 28,
-    
-    radius: null, 
-    offset: 0,         
-  };
-
-  return { zone, modules };
+  const zone = { kind: "circle", x: 9000, y: 3500, r: 600 };
+  return { zone, modules, beacons: [] };
 }

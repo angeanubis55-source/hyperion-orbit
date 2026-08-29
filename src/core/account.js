@@ -3,11 +3,12 @@
 
 import { findCatalogItem } from "./catalog.js";
 import { SHIP_PACKS } from "../data/shipPacks.js";
+import { normalizeQuestState } from "../data/quests.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
 const CUR_KEY = "orbit_current_user";
-const STORAGE_SCHEMA_VERSION = 2;
+const STORAGE_SCHEMA_VERSION = 3;
 const STARTER_CREDITS = 1000000;
 
 const STARTER_SHIP_ID = "PhoenixBleu";
@@ -190,6 +191,8 @@ function ensureUserShape(u) {
   u.stats.honor ??= 0;
   u.stats.exp ??= 0;
   u.stats.rankPoints ??= 0;
+
+  u.quests = normalizeQuestState(u.quests);
 
   // inventory
   if (!u.inventory || typeof u.inventory !== "object") u.inventory = {};
@@ -492,6 +495,10 @@ export function updateCurrentUserProgress(patch = {}) {
     if (patch.stats.honor != null) u.stats.honor = Number(patch.stats.honor || 0);
     if (patch.stats.exp != null) u.stats.exp = Number(patch.stats.exp || 0);
     if (patch.stats.rankPoints != null) u.stats.rankPoints = Number(patch.stats.rankPoints || 0);
+  }
+
+  if (patch.quests && typeof patch.quests === "object") {
+    u.quests = normalizeQuestState(patch.quests);
   }
 
   ensureUserShape(u);

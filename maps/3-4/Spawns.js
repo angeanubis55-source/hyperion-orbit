@@ -113,3 +113,11 @@ export function getZonePortals(WORLD) {
   ];
 }
 
+export function getZoneSafeModules(WORLD) {
+  const modules = [
+    { id: "QUEST_VRU", x: 5500, y: 2000, w: 515, h: 728, spr: "QUEST_VRU" },
+  ];
+  const zone = { kind: "circle", x: 5500, y: 2000, r: 600 };
+  return { zone, modules, beacons: [] };
+}
+

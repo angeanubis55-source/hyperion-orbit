@@ -127,13 +127,14 @@ export function getZoneSafeModules(WORLD) {
   // ============================================================
   const modules = [
     { id: "CENTRE_VRU", x: 9500, y: 3500, w: 571, h: 1155, spr: "CENTRE_VRU" },
+    { id: "QUEST_VRU", x: 8700, y: 3500, w: 515, h: 728, spr: "QUEST_VRU" },
   ];
 
   // ============================================================
   // ✅ ZONE RONDE auto (englobe les modules)
   // ============================================================
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const m of modules) {
+  for (const m of modules.slice(0, 1)) {
     minX = Math.min(minX, m.x - m.w / 2);
     minY = Math.min(minY, m.y - m.h / 2);
     maxX = Math.max(maxX, m.x + m.w / 2);

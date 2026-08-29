@@ -190,11 +190,12 @@ export function getZoneSafeModules(WORLD) {
 
   const modules = [
     { id: "CENTRE_MMO", x: 1500,   y: 1500,   w: 909, h: 898, spr: "CENTRE_MMO" }, // Centre
+    { id: "QUEST_MMO", x: 2300, y: 1500, w: 515, h: 728, spr: "QUEST_MMO" },
   //  { id: "CENTRE_MMO", x: 1500,   y: 1500,   w: 1009, h: 998, spr: "CENTRE_MMO" }, // Centre
   ];
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const m of modules) {
+  for (const m of modules.slice(0, 1)) {
     minX = Math.min(minX, m.x - m.w / 2);
     minY = Math.min(minY, m.y - m.h / 2);
     maxX = Math.max(maxX, m.x + m.w / 2);

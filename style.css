@@ -529,6 +529,97 @@ html.orbitSessionReady #loadingOverlay{
   top:80px !important;
 }
 
+#questWindow.gameWindow:not(.floating){
+  left:calc(50% - 220px) !important;
+  top:90px !important;
+}
+
+#questOfferWindow.gameWindow:not(.floating){
+  left:max(0px, calc(50% - 410px)) !important;
+  top:60px !important;
+}
+
+#gameWindowDock [data-window-id="questOfferWindow"]{ display:none !important; }
+
+.questPanel{
+  width:440px;
+  height:min(70vh, 620px);
+  max-height:calc(100vh - 30px);
+  display:flex;
+  flex-direction:column;
+}
+.questPanel.gameWindow:not(.gameWinMinimized){ display:flex !important; }
+.questPanel .gameWinBar,.questIntro,.questTabs{ flex-shrink:0; }
+
+.questIntro{
+  padding:12px 14px;
+  color:rgba(190,220,245,.72);
+  font-size:12px;
+  border-bottom:1px solid rgba(124,240,255,.12);
+}
+
+.questList{ display:grid; gap:10px; padding:12px; overflow-y:auto; min-height:0; flex:1; align-content:start; }
+.questTabs{ display:flex; gap:6px; padding:10px 12px 0; overflow-x:auto; }
+.questTab{
+  flex:0 0 auto; max-width:145px; padding:7px 9px; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; border:1px solid rgba(124,240,255,.18); border-radius:6px;
+  color:rgba(215,240,250,.72); background:rgba(0,35,55,.5); cursor:pointer;
+}
+.questTab.active{ color:#fff; border-color:#7cf0ff; background:rgba(0,145,190,.28); }
+.questTerminalTitle{ padding:2px 12px 0; color:#7cf0ff; font-size:12px; font-weight:900; text-transform:uppercase; }
+.questEmpty{ padding:22px 12px; text-align:center; color:rgba(200,225,240,.58); }
+.questCancel{ border-color:rgba(255,105,120,.35); background:rgba(150,25,45,.2); }
+
+.questOfferPanel{
+  width:min(820px, calc(100vw - 30px));
+  height:min(620px, calc(100vh - 30px));
+  padding:0 !important;
+}
+.questOfferLayout{ display:grid; grid-template-columns:minmax(0,1fr) 280px; height:calc(100% - 30px); min-height:0; }
+.questOfferDetail{ padding:20px; overflow-y:auto; min-width:0; }
+.questOfferList{ padding:10px; overflow-y:auto; border-left:1px solid rgba(124,240,255,.16); background:rgba(0,10,22,.3); }
+.questOfferItem{
+  display:block; width:100%; margin-bottom:7px; padding:10px; text-align:left; border-radius:7px;
+  border:1px solid rgba(124,240,255,.15); color:rgba(225,245,255,.8); background:rgba(8,35,52,.62); cursor:pointer;
+}
+.questOfferItem.active{ border-color:#7cf0ff; color:#fff; background:rgba(0,140,185,.28); }
+.questOfferItem.completed{ border-color:rgba(86,225,132,.48); color:#8ff5ae; background:rgba(18,104,51,.25); }
+.questOfferItem.completed.active{ border-color:#72f19b; color:#dfffe8; background:rgba(25,139,65,.38); }
+.questOfferItem:disabled{ opacity:.45; cursor:default; }
+.questOfferImageWrap{ height:230px; display:grid; place-items:center; margin-bottom:15px; border-radius:10px; background:radial-gradient(circle,rgba(0,155,210,.16),rgba(0,8,18,.72)); }
+.questOfferImage{ max-width:90%; max-height:210px; object-fit:contain; image-rendering:auto; }
+.questOfferHelp{ margin-top:14px; padding:11px; border-left:3px solid #7cf0ff; background:rgba(0,130,175,.1); color:rgba(210,240,250,.78); font-size:12px; line-height:1.5; }
+.questOfferPanel ::-webkit-scrollbar,.questPanel ::-webkit-scrollbar{ width:9px; height:9px; }
+.questOfferPanel ::-webkit-scrollbar-thumb,.questPanel ::-webkit-scrollbar-thumb{ border-radius:9px; background:rgba(124,240,255,.32); }
+@media (max-width:700px){
+  .questOfferLayout{ grid-template-columns:1fr 190px; }
+  .questOfferImageWrap{ height:170px; }
+}
+.questCard{
+  padding:12px;
+  border:1px solid rgba(124,240,255,.18);
+  border-radius:8px;
+  background:linear-gradient(135deg, rgba(15,45,65,.78), rgba(5,14,25,.88));
+}
+.questCard.isLocked{ opacity:.55; }
+.questTitle{ color:#dffaff; font-weight:900; }
+.questDescription,.questReward,.questStatus{ margin-top:6px; font-size:12px; color:rgba(205,230,245,.72); }
+.questObjectives{ display:grid; gap:9px; margin-top:10px; }
+.questObjective{ padding:7px 9px; border:1px solid rgba(88,174,220,.2); background:rgba(4,19,31,.42); }
+.questObjective .questStatus{ display:flex; justify-content:space-between; gap:12px; margin-top:0; }
+.questObjective .questStatus b{ color:#d8f3ff; white-space:nowrap; }
+.questComplete{ color:#7ff0a8; }
+.questReward{ color:#ffd27a; }
+.questProgress{ height:7px; margin-top:9px; overflow:hidden; border-radius:8px; background:rgba(0,0,0,.48); }
+.questProgress > i{ display:block; height:100%; background:linear-gradient(90deg,#00a8d6,#7cf0ff); }
+.questAction{
+  width:100%; margin-top:10px; padding:8px 10px; border:1px solid rgba(124,240,255,.35);
+  border-radius:6px; color:#eaffff; background:rgba(0,145,190,.22); cursor:pointer; font-weight:800;
+}
+.questAction:hover:not(:disabled){ background:rgba(0,190,235,.32); }
+.questAction:disabled{ cursor:default; opacity:.5; }
+.questAction.questCompletedAction:disabled{ border-color:rgba(86,225,132,.5); color:#92f5b1; background:rgba(18,104,51,.28); opacity:1; }
+
 #boxWave.gameWindow > .row,
 #boxMeta.gameWindow > .row{
   padding-left:12px !important;

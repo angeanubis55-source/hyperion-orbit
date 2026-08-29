@@ -1,7 +1,7 @@
 import { startOrbitGame } from "../../src/core/OrbitEngine.js";
 import { createImageLoader } from "../../src/core/ImageLoader.js";
 import { createSFX } from "../../src/core/SFX.js";
-import { getZoneSpawns, getZonePortals } from "./Spawns.js";
+import { getZoneSpawns, getZonePortals, getZoneSafeModules } from "./Spawns.js";
 
 import { WORLD } from "./World.js";
 
@@ -35,6 +35,7 @@ export function init() {
   mapLabel: "2-4",
   getZoneSpawns,
   getZonePortals, // ✅ ajout
+  getZoneSafeModules,
 },
 
   });

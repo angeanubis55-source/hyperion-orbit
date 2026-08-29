@@ -127,13 +127,14 @@ export function getZoneSafeModules(WORLD) {
   // ============================================================
   const modules = [
     { id: "CENTRE_EIC", x: 5500, y: 1500, w: 455, h: 1087, spr: "CENTRE_EIC" },
+    { id: "QUEST_EIC", x: 5500, y: 2300, w: 515, h: 728, spr: "QUEST_EIC" },
   ];
 
   // ============================================================
   // ✅ ZONE RONDE auto (englobe les modules)
   // ============================================================
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const m of modules) {
+  for (const m of modules.slice(0, 1)) {
     minX = Math.min(minX, m.x - m.w / 2);
     minY = Math.min(minY, m.y - m.h / 2);
     maxX = Math.max(maxX, m.x + m.w / 2);
