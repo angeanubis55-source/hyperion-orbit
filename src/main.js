@@ -73,9 +73,26 @@ window.__CURRENT_MAP_ID__ = mapName; // ✅ pour que OrbitEngine puisse sauvegar
 try {
   window.__ORBIT_MAP_TRANSITION__ = sessionStorage.getItem("orbit_map_transition") === "1";
   sessionStorage.removeItem("orbit_map_transition");
+  sessionStorage.removeItem("orbit_transition_frame");
 } catch {
   window.__ORBIT_MAP_TRANSITION__ = false;
 }
+
+const mapPreloads = new Map();
+window.__PRELOAD_MAP__ = (mapId, spawnId = null) => {
+  const url = new URL(location.href);
+  url.searchParams.set("map", String(mapId));
+  if (spawnId) url.searchParams.set("spawn", String(spawnId));
+  else url.searchParams.delete("spawn");
+  const key = url.toString();
+  if (!mapPreloads.has(key)) {
+    mapPreloads.set(key, fetch(key, { cache: "force-cache", credentials: "same-origin" }).then((response) => {
+      if (!response.ok) throw new Error(`Préchargement map impossible (${response.status})`);
+      return response.text();
+    }));
+  }
+  return mapPreloads.get(key);
+};
 
 // fonction globale pour changer de map (recharge la page)
 window.__GO_TO_MAP__ = (mapId, spawnId = null) => {
@@ -93,8 +110,7 @@ window.__GO_TO_MAP__ = (mapId, spawnId = null) => {
   if (spawnId) url.searchParams.set("spawn", String(spawnId));
   else url.searchParams.delete("spawn");
   try { sessionStorage.setItem("orbit_map_transition", "1"); } catch {}
-  document.documentElement.classList.add("orbitTransitionOut");
-  setTimeout(() => { location.href = url.toString(); }, 180);
+  location.href = url.toString();
 };
 
 // ✅ guard : si pas connecté → auth

@@ -1003,6 +1003,14 @@ function startZonePortalJump(ptl) {
 
   ptl.jumpMap = ptl.toMap;
   ptl.jumpPortal = ptl.toPortal;
+  ptl.jumpTargetReady = false;
+  ptl.jumpTargetPromise = Promise.resolve(
+    window.__PRELOAD_MAP__?.(ptl.jumpMap, ptl.jumpPortal)
+  ).catch((error) => {
+    console.warn("Préchargement de la prochaine carte incomplet:", error);
+  }).finally(() => {
+    ptl.jumpTargetReady = true;
+  });
 
   // ✅ transition open -> jump
   ptl.jumpSwitching = true;
@@ -1030,6 +1038,19 @@ function finishZonePortalJump(ptl) {
   const toMap = ptl.jumpMap ?? ptl.toMap;
   const toPortal = ptl.jumpPortal ?? ptl.toPortal;
 
+  try {
+    const maxWidth = 1920;
+    const scale = Math.min(1, maxWidth / canvas.width);
+    const snapshot = document.createElement("canvas");
+    snapshot.width = Math.max(1, Math.round(canvas.width * scale));
+    snapshot.height = Math.max(1, Math.round(canvas.height * scale));
+    snapshot.getContext("2d", { alpha: false }).drawImage(canvas, 0, 0, snapshot.width, snapshot.height);
+    const frame = snapshot.toDataURL("image/jpeg", 0.7);
+    sessionStorage.setItem("orbit_transition_frame", frame);
+  } catch (error) {
+    console.warn("Capture de transition indisponible:", error);
+  }
+
   ptl.jumping = false;
   ptl.jumpT = 0;
   ptl.jumpMap = null;
@@ -1056,6 +1077,7 @@ function tickZonePortalJumps(dt) {
     ptl.jumpT += dt;
 
     if (ptl.jumpT >= Math.max(0.1, Number(ptl.jumpDur || 2))) {
+      if (!ptl.jumpTargetReady) continue;
       finishZonePortalJump(ptl);
       return true;
     }
@@ -7853,7 +7875,8 @@ function renderLoadingProgress({ done = 0, total = 0 } = {}) {
 
 function revealPreparedGame() {
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    document.documentElement.classList.remove("orbitBooting", "orbitMapTransition", "orbitTransitionOut");
+    document.documentElement.classList.remove("orbitBooting", "orbitMapTransition");
+    document.documentElement.style.removeProperty("--orbit-transition-frame");
   }));
 }
 
