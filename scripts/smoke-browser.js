@@ -54,7 +54,9 @@ try {
       });
       await page.goto(`http://127.0.0.1:${port}/index.html?map=${encodeURIComponent(mapId)}`, { waitUntil: "domcontentloaded", timeout: 20_000 });
       await page.waitForSelector("#game", { state: "visible", timeout: 10_000 });
-      await page.waitForTimeout(700);
+      await page.waitForSelector("#loadingStartBtn:not([disabled])", { timeout: 30_000 });
+      await page.click("#loadingStartBtn");
+      await page.waitForTimeout(400);
       const canvasReady = await page.locator("#game").evaluate((canvas) => canvas.width > 0 && canvas.height > 0);
       if (!canvasReady) errors.push("canvas non initialisé");
     } catch (error) {

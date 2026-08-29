@@ -9,6 +9,23 @@ export function createImageLoader({
   const IMG_PROMISE = new Map();
   const IMG_QUEUE = [];
   let IMG_INFLIGHT = 0;
+  let IMG_TOTAL = 0;
+  let IMG_DONE = 0;
+  const listeners = new Set();
+  const idleWaiters = new Set();
+
+  function snapshot() {
+    return { total: IMG_TOTAL, done: IMG_DONE, pending: IMG_QUEUE.length + IMG_INFLIGHT };
+  }
+
+  function notify() {
+    const state = snapshot();
+    for (const listener of listeners) listener(state);
+    if (state.pending === 0) {
+      for (const resolve of idleWaiters) resolve(state);
+      idleWaiters.clear();
+    }
+  }
 
   function isReady(img) {
     return !!(img && img.complete && img.naturalWidth > 0);
@@ -21,7 +38,9 @@ export function createImageLoader({
 
       const finish = () => {
         IMG_INFLIGHT--;
+        IMG_DONE++;
         resolve(img);
+        notify();
         _pump();
       };
 
@@ -52,8 +71,10 @@ export function createImageLoader({
 
     const p = new Promise((resolve) => {
       const job = { src, img, resolve };
+      IMG_TOTAL++;
       if (priority) IMG_QUEUE.unshift(job);
       else IMG_QUEUE.push(job);
+      notify();
       _pump();
     });
 
@@ -74,5 +95,17 @@ export function createImageLoader({
     return Math.max(1, Math.min(maxDpr, window.devicePixelRatio || 1));
   }
 
-  return { load, getCached, isReady, computeDpr };
+  function onProgress(listener) {
+    if (typeof listener !== "function") return () => {};
+    listeners.add(listener);
+    listener(snapshot());
+    return () => listeners.delete(listener);
+  }
+
+  function whenIdle() {
+    if (IMG_QUEUE.length === 0 && IMG_INFLIGHT === 0) return Promise.resolve(snapshot());
+    return new Promise((resolve) => idleWaiters.add(resolve));
+  }
+
+  return { load, getCached, isReady, computeDpr, onProgress, whenIdle, snapshot };
 }

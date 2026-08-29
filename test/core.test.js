@@ -9,13 +9,14 @@ import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield 
 import { createSpatialPairIndex, forEachNearbyPair, rebuildIdIndex } from "../src/core/spatialIndex.js";
 import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "../src/core/rendering.js";
 import { createNpcEntity } from "../src/core/npcFactory.js";
-import { addProjectile, advanceProjectile, createProjectile } from "../src/core/projectiles.js";
+import { addProjectile, advanceProjectile, createProjectile, removeProjectile } from "../src/core/projectiles.js";
 import { createWaveSpawnState } from "../src/core/waves.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../src/core/hud.js";
 import { createPerformanceMonitor } from "../src/core/performanceMonitor.js";
 import { computeNpcSteering } from "../src/core/npcAI.js";
 import { getNpcSensorRanges, isNpcWithinSensor, shouldDetectNpc } from "../src/core/npcSensors.js";
 import { shouldRunNpcFrame } from "../src/core/npcActivity.js";
+import { pushBounded } from "../src/core/boundedCollection.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -179,6 +180,16 @@ test("les projectiles ont des valeurs sûres et progressent avec deltaTime", () 
   assert.equal(createProjectile().r, 6);
 });
 
+test("les projectiles supprimés sont recyclés sans conserver leur ancien état", () => {
+  const collection = [];
+  const first = addProjectile(collection, { x: 12, sprite: "ancien" });
+  removeProjectile(collection, 0);
+  const recycled = addProjectile(collection, { x: 30 });
+  assert.equal(recycled, first);
+  assert.equal(recycled.x, 30);
+  assert.equal("sprite" in recycled, false);
+});
+
 test("une file de vague compte et consomme chaque groupe", () => {
   const state = createWaveSpawnState();
   assert.equal(state.load([{ type: "a", count: 2 }, { type: "b", count: 1 }]), 3);
@@ -299,6 +310,14 @@ test("une carte inconnue revient à la carte de départ", () => {
 test("le registre ne contient que des chargeurs", () => {
   assert.ok(Object.keys(MAP_LOADERS).length > 30);
   for (const loader of Object.values(MAP_LOADERS)) assert.equal(typeof loader, "function");
+});
+
+test("une bataille chargée conserve seulement les effets les plus récents", () => {
+  const effects = [];
+  for (let i = 0; i < 10_000; i++) pushBounded(effects, { id: i }, 140);
+  assert.equal(effects.length, 140);
+  assert.equal(effects[0].id, 9_860);
+  assert.equal(effects.at(-1).id, 9_999);
 });
 
 test("les comptes sauvegardés sont versionnés et les valeurs sont bornées", async () => {

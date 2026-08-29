@@ -17,13 +17,14 @@ import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield 
 import { createSpatialPairIndex, rebuildIdIndex } from "./spatialIndex.js";
 import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "./rendering.js";
 import { createNpcEntity } from "./npcFactory.js";
-import { addProjectile, advanceProjectile } from "./projectiles.js";
+import { addProjectile, advanceProjectile, removeProjectile } from "./projectiles.js";
 import { createWaveSpawnState } from "./waves.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "./hud.js";
 import { createPerformanceMonitor } from "./performanceMonitor.js";
 import { computeNpcSteering } from "./npcAI.js";
 import { getNpcSensorRanges, shouldDetectNpc } from "./npcSensors.js";
 import { shouldRunNpcFrame } from "./npcActivity.js";
+import { pushBounded } from "./boundedCollection.js";
 
 export function startOrbitGame(config) {
 
@@ -424,6 +425,12 @@ cfgCooldownTxt: document.getElementById("cfgCooldownTxt"),
   centerHint: document.getElementById("centerHint"),
 
   startHint: document.getElementById("startHint"),
+  loadingOverlay: document.getElementById("loadingOverlay"),
+  loadingStatus: document.getElementById("loadingStatus"),
+  loadingBar: document.getElementById("loadingBar"),
+  loadingCount: document.getElementById("loadingCount"),
+  loadingPercent: document.getElementById("loadingPercent"),
+  loadingStartBtn: document.getElementById("loadingStartBtn"),
 
   ammoShopBody: document.getElementById("ammoShopBody"),
   shopCredits: document.getElementById("ammoShopCredits"),
@@ -474,6 +481,7 @@ const DEFAULT_GAME_SETTINGS = {
   sound: true,
   background: true,
   textures: true,
+  autoStart: false,
   keybinds: { ...DEFAULT_KEYBINDS },
 };
 
@@ -701,7 +709,10 @@ function renderSettingsWindow() {
     "🌑 Fond de carte : masqué"
   );
 
-    renderKeybindRows();
+  const autoStart = document.getElementById("optAutoStart");
+  if (autoStart) autoStart.checked = !!GAME_SETTINGS.autoStart;
+
+  renderKeybindRows();
   updateHudKeyHints();
 }
 
@@ -709,6 +720,7 @@ function wireSettingsWindow() {
   const soundBtn = document.getElementById("optSound");
   const bgBtn = document.getElementById("optBackground");
   const texBtn = document.getElementById("optTextures");
+  const autoStart = document.getElementById("optAutoStart");
 
   soundBtn?.addEventListener("click", () => {
     setGameSetting("sound", !GAME_SETTINGS.sound);
@@ -720,6 +732,10 @@ function wireSettingsWindow() {
 
   texBtn?.addEventListener("click", () => {
     setGameSetting("textures", !GAME_SETTINGS.textures);
+  });
+
+  autoStart?.addEventListener("change", () => {
+    setGameSetting("autoStart", autoStart.checked);
   });
 
   document.querySelectorAll("#settingsWindow .keyBindRow").forEach((btn) => {
@@ -941,23 +957,24 @@ function getPortalFrameSrc(pack, index) {
 
 function preloadPortalSprites(ptl = null) {
   const spr = getPortalSpriteSet(ptl);
+  const jobs = [];
 
-  if (spr.idle?.src) loadImage(spr.idle.src, { priority: true });
-  if (spr.open?.src) loadImage(spr.open.src, { priority: true });
-  if (spr.jump?.src) loadImage(spr.jump.src, { priority: true });
+  if (spr.idle?.src) jobs.push(loadImage(spr.idle.src, { priority: true }));
+  if (spr.open?.src) jobs.push(loadImage(spr.open.src, { priority: true }));
+  if (spr.jump?.src) jobs.push(loadImage(spr.jump.src, { priority: true }));
 
   const btn = spr.jumpButton;
 
 if (btn?.idle?.src) {
-  loadImage(btn.idle.src, { priority: true });
+  jobs.push(loadImage(btn.idle.src, { priority: true }));
 }
 
 if (btn?.mouse?.src) {
-  loadImage(btn.mouse.src, { priority: true });
+  jobs.push(loadImage(btn.mouse.src, { priority: true }));
 }
 
 if (btn?.click?.src) {
-  loadImage(btn.click.src, { priority: true });
+  jobs.push(loadImage(btn.click.src, { priority: true }));
 }
 
   // ✅ précharge le sprite animé par-dessus
@@ -967,9 +984,10 @@ if (btn?.click?.src) {
 
     for (let i = 0; i < frames; i++) {
       const src = getPortalFrameSrc(fx, i);
-      if (src) loadImage(src, { priority: true });
+      if (src) jobs.push(loadImage(src, { priority: true }));
     }
   }
+  return jobs;
 }
 
 function startZonePortalJump(ptl) {
@@ -1552,10 +1570,12 @@ if (_SFX_PLAY) {
 // Bullets sprites
 // ============================================================
 function preloadPlayerBulletSprites() {
+  const jobs = [];
   for (const k in PLAYER_BULLET_SPRITES) {
     const src = PLAYER_BULLET_SPRITES[k]?.src;
-    if (src) loadImage(src, { priority: false });
+    if (src) jobs.push(loadImage(src, { priority: false }));
   }
+  return jobs;
 }
 
 function drawBulletSprite(x, y, ang, key, side, scale = 1, spriteOverride = null) {
@@ -1729,22 +1749,15 @@ function ensureLaserLoaded() {
   if (LASER_PACK._promise) return LASER_PACK._promise;
   LASER_PACK._imgs = [];
 
-  LASER_PACK._promise = new Promise((resolve) => {
-    let done = 0;
+  LASER_PACK._promise = (async () => {
+    const jobs = [];
     for (let i = 0; i < LASER_PACK.frames; i++) {
-      const img = new Image();
-      img.src = `${LASER_PACK.path}${LASER_PACK.firstNumber + i}${LASER_PACK.ext}`;
-      img.onload = () => {
-        done++;
-        if (done >= LASER_PACK.frames) resolve(true);
-      };
-      img.onerror = () => {
-        done++;
-        if (done >= LASER_PACK.frames) resolve(true);
-      };
-      LASER_PACK._imgs.push(img);
+      const src = `${LASER_PACK.path}${LASER_PACK.firstNumber + i}${LASER_PACK.ext}`;
+      jobs.push(loadImage(src, { priority: false }).then((img) => { LASER_PACK._imgs[i] = img; }));
     }
-  });
+    await Promise.all(jobs);
+    return true;
+  })();
 
   return LASER_PACK._promise;
 }
@@ -1798,7 +1811,7 @@ const pulseFxs = [];
 
 function spawnPulseFx(x, y, scale = 1) {
   if (!pulseReady || !pulseImgs?.length) return;
-  pulseFxs.push({ x, y, t: 0, scale: Math.max(0.2, Number(scale) || 1) });
+  pushBounded(pulseFxs, { x, y, t: 0, scale: Math.max(0.2, Number(scale) || 1) }, ENTITY_LIMITS.pulseFxs);
 }
 
 function tickPulseFx(dt) {
@@ -2037,12 +2050,12 @@ function spawnExplosion(x, y, scale = 1) {
     return;
   }
 
-  explosions.push({
+  pushBounded(explosions, {
     x,
     y,
     t: 0,
     scale: Math.max(0.2, Number(scale) || 1),
-  });
+  }, ENTITY_LIMITS.explosions);
 }
 
 function tickExplosions(dt) {
@@ -2791,6 +2804,21 @@ const sparks = [];
 const floatTexts = [];
 const lasers = [];
 
+const ENTITY_LIMITS = Object.freeze({
+  playerBullets: 320,
+  enemyBullets: 900,
+  explosions: 48,
+  sparks: 180,
+  floatTexts: 140,
+  lasers: 80,
+  pulseFxs: 12,
+});
+
+function addCappedProjectile(collection, options, limit) {
+  while (collection.length >= limit) removeProjectile(collection, 0);
+  return addProjectile(collection, options);
+}
+
 let collectableTargetId = null;
 
 const COLLECTABLE_PICKUP = {
@@ -2870,7 +2898,7 @@ function cleanupPlayerMissVolley(b) {
 function addMissText(x, y) {
   const base = 70 + Math.random() * 35;
 
-  floatTexts.push({
+  pushBounded(floatTexts, {
     x,
     y,
     vx: (Math.random() * 2 - 1) * base * 0.45,
@@ -2885,7 +2913,7 @@ function addMissText(x, y) {
     glow: 1.0,
     weight: 900,
     impact: true,
-  });
+  }, ENTITY_LIMITS.floatTexts);
 }
 
 const CUBI_RESET = { 
@@ -3160,7 +3188,7 @@ function addFloatText(x, y, n, color, opts = {}) {
   const vx0 = (Math.random() * 2 - 1) * base * 0.60;
   const vy0 = -(base * (0.85 + Math.random() * 0.35));
 
-  floatTexts.push({
+  pushBounded(floatTexts, {
     x,
     y,
     vx: vx0,
@@ -3175,11 +3203,11 @@ function addFloatText(x, y, n, color, opts = {}) {
     glow: o.glow,
     weight: o.weight,
     impact: o.impact,
-  });
+  }, ENTITY_LIMITS.floatTexts);
 }
 
 function spawnSpark(x, y, big = false) {
-  sparks.push({ x, y, t: 0, big });
+  pushBounded(sparks, { x, y, t: 0, big }, ENTITY_LIMITS.sparks);
 }
 
 function spawnPickup(x, y, credits) {
@@ -3369,9 +3397,11 @@ function ensureCollectableLoaded(type) {
 }
 
 function preloadCollectables() {
+  const jobs = [];
   for (const [type] of collectableDefsList()) {
-    ensureCollectableLoaded(type);
+    jobs.push(ensureCollectableLoaded(type));
   }
+  return jobs;
 }
 
 preloadCollectables();
@@ -4423,7 +4453,7 @@ function spawnLaser(x, y, ang, targetId) {
   const fps = LASER_PACK.fps || 20;
   const durVis = LASER_PACK.frames / fps;
 
-  lasers.push({ x, y, ang, len, t: 0, dur: durVis, width: LASER.width, targetId });
+  pushBounded(lasers, { x, y, ang, len, t: 0, dur: durVis, width: LASER.width, targetId }, ENTITY_LIMITS.lasers);
 
   const rx = target.x - x;
   const ry = target.y - y;
@@ -4707,7 +4737,7 @@ const dmgShot = isSab
   const muzzleY = player.y + fy * (player.r + 10);
 
   if (!player.altShot) {
-addProjectile(bullets, {
+addCappedProjectile(bullets, {
   x: muzzleX,
   y: muzzleY,
   vx: fx * speed,
@@ -4722,7 +4752,7 @@ addProjectile(bullets, {
   volleySize,
     isSab,
   miss: shotMiss,
-});
+}, ENTITY_LIMITS.playerBullets);
   } else {
     const ox = px * SIDE_OFFSET;
     const oy = py * SIDE_OFFSET;
@@ -4739,7 +4769,7 @@ addProjectile(bullets, {
     const ldx = ldx0 / ll, ldy = ldy0 / ll;
     const rdx = rdx0 / rl, rdy = rdy0 / rl;
 
-addProjectile(bullets, {
+addCappedProjectile(bullets, {
   x: leftX,
   y: leftY,
   vx: ldx * speed,
@@ -4754,9 +4784,9 @@ addProjectile(bullets, {
   volleySize,
     isSab,
   miss: shotMiss,
-});
+}, ENTITY_LIMITS.playerBullets);
 
-addProjectile(bullets, {
+addCappedProjectile(bullets, {
   x: rightX,
   y: rightY,
   vx: rdx * speed,
@@ -4771,7 +4801,7 @@ addProjectile(bullets, {
   volleySize,
     isSab,
   miss: shotMiss,
-});
+}, ENTITY_LIMITS.playerBullets);
   }
 
   if (ammoKey === "x6") rsbCooldown = RSB_COOLDOWN;
@@ -6354,7 +6384,7 @@ function enemyShoot(e, dt) {
     const baseDmg = e.bulletDmg ?? 10;
     const shotDmg = Math.max(1, Math.round(vary(baseDmg, 0.05)));
 
-    addProjectile(enemyBullets, {
+    addCappedProjectile(enemyBullets, {
       x: e.x + Math.cos(ang) * muzzle,
       y: e.y + Math.sin(ang) * muzzle,
       vx,
@@ -6371,7 +6401,7 @@ function enemyShoot(e, dt) {
       homing: NPC_SHOTS.homing,
       miss: willMiss,
       hitRadiusBonus: NPC_SHOTS.hitRadiusBonus,
-    });
+    }, ENTITY_LIMITS.enemyBullets);
     e._attackedPlayerRecently = true;
   }
 }
@@ -6734,7 +6764,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
 
   const t = getEnemyById(b.targetId);
   if (!t) {
-    bullets.splice(i, 1);
+    removeProjectile(bullets, i);
     cleanupPlayerMissVolley(b);
     continue;
   }
@@ -6748,7 +6778,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       showPlayerMissOnce(b, t);
 
       spawnSpark(b.x, b.y, false);
-      bullets.splice(i, 1);
+      removeProjectile(bullets, i);
       cleanupPlayerMissVolley(b);
       continue;
     }
@@ -6778,13 +6808,13 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     }
 
     spawnSpark(b.x, b.y, out.total >= 600 || out.isCrit);
-    bullets.splice(i, 1);
+    removeProjectile(bullets, i);
     cleanupPlayerMissVolley(b);
     continue;
   }
 
   if (step.expired) {
-    bullets.splice(i, 1);
+    removeProjectile(bullets, i);
     cleanupPlayerMissVolley(b);
   }
 }
@@ -6811,7 +6841,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
     const rr = (b.r || 0) + player.r + (b.hitRadiusBonus || 0);
 
     if (segCircleHit(step.oldX, step.oldY, b.x, b.y, player.x, player.y, rr)) {
-      enemyBullets.splice(i, 1);
+      removeProjectile(enemyBullets, i);
 
       if (b.miss) {
         addMissText(
@@ -6829,7 +6859,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
     }
   }
 
-  if (step.expired) enemyBullets.splice(i, 1);
+  if (step.expired) removeProjectile(enemyBullets, i);
 }
 
   for (let i = sparks.length - 1; i >= 0; i--) {
@@ -7810,6 +7840,77 @@ updateConfigButtons();
 // Start game
 // ============================================================
 let starting = false;
+let assetsPrepared = false;
+
+function renderLoadingProgress({ done = 0, total = 0 } = {}) {
+  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  if (ui.loadingBar) ui.loadingBar.style.width = `${percent}%`;
+  if (ui.loadingCount) ui.loadingCount.textContent = `${done} / ${total} éléments`;
+  if (ui.loadingPercent) ui.loadingPercent.textContent = `${percent} %`;
+  ui.loadingOverlay?.querySelector(".loadingTrack")?.setAttribute("aria-valuenow", String(percent));
+}
+
+function npcTypesForCurrentSector() {
+  const types = new Set();
+  try {
+    if (rules?.mode === "zone" && typeof rules.getZoneSpawns === "function") {
+      for (const spawn of rules.getZoneSpawns(WORLD) || []) if (spawn?.type) types.add(spawn.type);
+    } else {
+      for (let waveNo = 1; waveNo <= 32; waveNo++) {
+        for (const spawn of getWavePlan(waveNo)?.spawns || []) if (spawn?.type) types.add(spawn.type);
+      }
+    }
+  } catch (error) {
+    console.warn("Préchargement NPC partiel:", error);
+  }
+  if (DEFAULT_WAVE_TYPE) types.add(DEFAULT_WAVE_TYPE);
+  return types;
+}
+
+async function prepareGameAssets() {
+  if (assetsPrepared) return;
+  if (ui.loadingOverlay) ui.loadingOverlay.style.display = "grid";
+  if (ui.loadingStatus) ui.loadingStatus.textContent = "Mise en cache des ressources du secteur…";
+
+  const unsubscribe = IMG.onProgress(renderLoadingProgress);
+  const jobs = [];
+  for (const layer of WORLD.bgLayers || []) if (layer?.src) jobs.push(loadImage(layer.src, { priority: true }));
+  jobs.push(ensurePackLoaded(ACTIVE_SHIP));
+  jobs.push(...preloadPlayerBulletSprites());
+  jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensurePulseFxLoaded(), ensureRepairOrbitLoaded());
+  jobs.push(...preloadCollectables());
+
+  for (const type of Object.keys(NPC_TYPES)) jobs.push(ensureNpcPreview(type));
+  for (const type of npcTypesForCurrentSector()) {
+    if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
+  }
+
+  if (rules?.mode === "zone" && typeof rules.getZonePortals === "function") {
+    try {
+      for (const portal of rules.getZonePortals(WORLD) || []) jobs.push(...preloadPortalSprites(portal));
+    } catch (error) {
+      console.warn("Préchargement portail partiel:", error);
+    }
+  } else {
+    jobs.push(...preloadPortalSprites());
+  }
+
+  await Promise.allSettled(jobs);
+  await IMG.whenIdle();
+  renderLoadingProgress(IMG.snapshot());
+  unsubscribe();
+  assetsPrepared = true;
+
+  playerImgs = ACTIVE_SHIP._imgs;
+  playerImgsReady = true;
+  if (ui.loadingStatus) ui.loadingStatus.textContent = "Secteur prêt. Tous les éléments essentiels sont en cache.";
+  if (ui.loadingStartBtn) {
+    ui.loadingStartBtn.disabled = false;
+    ui.loadingStartBtn.textContent = "DÉPART";
+  }
+
+  if (GAME_SETTINGS.autoStart) await startGame();
+}
 
 async function startGame() {
   if (starting || started) return;
@@ -7851,8 +7952,15 @@ if (ui.startHint) {
   resetRun({ randomSpawn: false });
   setCenterMsg(false);
 
+  if (ui.loadingOverlay) {
+    ui.loadingOverlay.classList.add("isLeaving");
+    setTimeout(() => { ui.loadingOverlay.style.display = "none"; }, 240);
+  }
+
   starting = false;
 }
+
+ui.loadingStartBtn?.addEventListener("click", () => startGame());
 
 // ============================================================
 // Frame loop
@@ -7955,10 +8063,13 @@ if (!cur) {
 const pack = SHIP_PACKS.find(p => p.id === cur.ship) || SHIP_PACKS[0];
 ACTIVE_SHIP = pack;
 
-ensurePackLoaded(pack).then(() => {
-  playerImgs = pack._imgs;
-  playerImgsReady = true;
-  startGame();
+prepareGameAssets().catch((error) => {
+  console.error("Erreur de préparation:", error);
+  if (ui.loadingStatus) ui.loadingStatus.textContent = "Chargement incomplet. Tu peux tout de même démarrer.";
+  if (ui.loadingStartBtn) {
+    ui.loadingStartBtn.disabled = false;
+    ui.loadingStartBtn.textContent = "DÉPART";
+  }
 });
 
 setCenterMsg(false);

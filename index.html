@@ -9,6 +9,19 @@
 <body>
 <canvas id="game"></canvas>
 
+<div id="loadingOverlay" class="loadingOverlay" role="dialog" aria-modal="true" aria-labelledby="loadingTitle">
+  <div class="loadingCard">
+    <div class="loadingEyebrow">HYPERION ORBIT</div>
+    <h1 id="loadingTitle">Préparation du secteur</h1>
+    <p id="loadingStatus">Initialisation du cache…</p>
+    <div class="loadingTrack" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <i id="loadingBar"></i>
+    </div>
+    <div class="loadingMeta"><span id="loadingCount">0 / 0 éléments</span><strong id="loadingPercent">0 %</strong></div>
+    <button id="loadingStartBtn" class="loadingStartBtn" type="button" disabled>Chargement…</button>
+  </div>
+</div>
+
 <div id="gameWindowDock">
   <button id="btnGameHub" class="gameDockIcon profileDockIcon" type="button" title="Profil" aria-label="Profil">
     <span>👤</span>
@@ -92,6 +105,11 @@
     <button id="optBackground" class="settingsToggle" type="button">
       🌌 Fond de carte : affiché
     </button>
+
+    <label class="settingsCheck" for="optAutoStart">
+      <input id="optAutoStart" type="checkbox" />
+      <span><b>Démarrage automatique</b><small>Entrer en jeu dès que le chargement est terminé</small></span>
+    </label>
 
     <div class="settingsSection">
   <div class="settingsSectionTitle">⌨️ Touches</div>
