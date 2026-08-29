@@ -13,6 +13,7 @@ import { computeHangarStats } from "./hangars.js";
 import { findCatalogItem } from "./catalog.js";
 import { clamp, circleRectResolve, dist2, segCircleHit } from "./collision.js";
 import { createKeyboardState, createPointerState } from "./input.js";
+import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "./combat.js";
 
 export function startOrbitGame(config) {
 
@@ -3950,10 +3951,6 @@ function drawCollectables(ox, oy) {
   }
 }
 
-function bulletLifeForRange(range, speed) {
-  return clamp(range / Math.max(120, speed) + 0.35, 0.6, 5.0);
-}
-
 function makeEnemy(type, x, y) {
   const cfg = NPC_TYPES[type];
   if (!cfg) return null;
@@ -4138,13 +4135,11 @@ function drainShieldFromEnemy(e, amount) {
   const raw = Math.max(1, Number(amount) || 1);
 
   // ✅ La SAB ne touche QUE le bouclier.
-  const stolen = Math.min(e.sh || 0, raw);
+  const stolen = drainShield(e, raw);
 
   if (stolen <= 0) {
     return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0, sab: true };
   }
-
-  e.sh -= stolen;
 
   // ✅ Transfert vers ton vaisseau, sans dépasser ton shield max.
   const gain = stolen * SAB50.transferPct;
@@ -4208,45 +4203,9 @@ function drainShieldFromEnemy(e, amount) {
 function damageEnemy(e, dmg) {
   if (!e || e.hp <= 0) return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
 
-  const variance = 0.95 + Math.random() * 0.10;
-  let finalDmg = dmg * variance;
-
-  const CRIT_CHANCE = 0.05;
-  const CRIT_MULT = 1.50;
-  const isCrit = Math.random() < CRIT_CHANCE;
-
-  if (isCrit) {
-    finalDmg *= CRIT_MULT;
-  }
-
-  const rawDamage = finalDmg;
-
-  let left = finalDmg * (1 - (e.dr || 0));
-  const pen = clamp(player.shPen || 0, 0, 1);
-
-  let shD = 0, hpD = 0, bypassD = 0;
-
-  if ((e.sh || 0) > 0 && pen > 0) {
-    const bypass = left * pen;
-    left -= bypass;
-    const a = Math.min(e.hp, bypass);
-    e.hp -= a;
-    bypassD = a;
-    hpD += a;
-  }
-
-  if ((e.sh || 0) > 0 && left > 0) {
-    const a = Math.min(e.sh, left);
-    e.sh -= a;
-    shD = a;
-    left -= a;
-  }
-
-  if (left > 0 && e.hp > 0) {
-    const a = Math.min(e.hp, left);
-    e.hp -= a;
-    hpD += a;
-  }
+  const result = damageEnemyLayers(e, dmg, { shieldPenetration: player.shPen });
+  const shD = result.sh;
+  const hpD = result.hp;
 
   if (rules?.mode === "zone") {
     if (e.passiveNative) e._provoked = true;
@@ -4287,14 +4246,7 @@ e._pendingSpawn = Math.floor(rand(30, 80)); // ✅ entre 30 et 150 Protegit
 
   }
 
-  return { 
-    total: shD + hpD,
-    sh: shD, 
-    hp: hpD, 
-    bypass: bypassD,
-    isCrit,
-    rawDamage
-  };
+  return result;
 }
 
 function hurtPlayer(amount) {
@@ -4303,12 +4255,7 @@ function hurtPlayer(amount) {
   resetRepairCooldown();
   player.iFrames = 0.1;
 
-  let dmg = amount * (1 - player.dr);
-  const absorb = Math.min(player.sh, dmg * 0.8);
-  player.sh -= absorb;
-  dmg -= absorb;
-
-  player.hp -= dmg;
+  damagePlayerLayers(player, amount);
 
   const shown = Math.max(1, Math.round(amount));
 

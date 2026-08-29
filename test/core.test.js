@@ -5,6 +5,7 @@ import { escapeHtml } from "../src/core/dom.js";
 import { DEFAULT_MAP_ID, MAP_LOADERS, normalizeMapId } from "../src/core/mapRegistry.js";
 import { clamp, circleRectResolve, dist2, segCircleHit } from "../src/core/collision.js";
 import { createKeyboardState, createPointerState } from "../src/core/input.js";
+import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "../src/core/combat.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -61,6 +62,34 @@ test("l’état pointeur centralise le début et la fin d’un geste", () => {
   pointer.reset();
   assert.equal(pointer.down, false);
   assert.equal(pointer.followWhileDown, false);
+});
+
+test("le combat répartit les dégâts entre bouclier, pénétration et vie", () => {
+  const target = { hp: 100, sh: 50, dr: 0 };
+  const result = damageEnemyLayers(target, 100, {
+    random: () => 0.5,
+    variance: 0,
+    critChance: 0,
+    shieldPenetration: 0.2,
+  });
+  assert.equal(result.bypass, 20);
+  assert.equal(result.sh, 50);
+  assert.equal(result.hp, 50);
+  assert.equal(target.hp, 50);
+  assert.equal(target.sh, 0);
+});
+
+test("SAB et dégâts joueur respectent les limites des ressources", () => {
+  const target = { hp: 10, sh: 30 };
+  assert.equal(drainShield(target, 50), 30);
+  assert.equal(target.sh, 0);
+
+  const player = { hp: 100, sh: 20, dr: 0 };
+  const result = damagePlayerLayers(player, 50);
+  assert.equal(result.sh, 20);
+  assert.equal(result.hp, 30);
+  assert.equal(player.hp, 70);
+  assert.equal(bulletLifeForRange(1000, 500), 2.35);
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {
