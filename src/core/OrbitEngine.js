@@ -392,6 +392,7 @@ const ui = {
   pulsePrice: document.getElementById("pulsePrice"),
 
   fpsTxt: document.getElementById("fpsTxt"),
+  perfDetails: document.getElementById("perfDetails"),
 
   boxWave: document.getElementById("boxWave"),
   boxMeta: document.getElementById("boxMeta"),
@@ -7820,7 +7821,9 @@ updateConfigButtons();
   if (ui.fpsTxt) {
     const perf = performanceMonitor.snapshot();
     ui.fpsTxt.textContent = String(fpsValue || perf.fps || 0);
-    ui.fpsTxt.title = `Moyenne: ${perf.averageMs.toFixed(1)} ms | P95: ${perf.p95Ms.toFixed(1)} ms | Frames >25ms: ${perf.longFrames}`;
+    if (ui.perfDetails) {
+      ui.perfDetails.textContent = `Moy. ${perf.averageMs.toFixed(1)} ms · P95 ${perf.p95Ms.toFixed(1)} ms · Lentes ${perf.longFrames}`;
+    }
   }
 }
 

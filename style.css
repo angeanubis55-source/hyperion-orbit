@@ -138,6 +138,16 @@ button{
   color:#7cf0ff;
 }
 
+.perfDetails{
+  margin-top:3px;
+  color:rgba(190,215,230,.72);
+  font-size:10px;
+  line-height:1.35;
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+
 .barWrap{
   margin-top:8px;
   display:grid;
