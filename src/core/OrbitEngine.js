@@ -19,6 +19,7 @@ import { hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint
 import { createNpcEntity } from "./npcFactory.js";
 import { addProjectile, advanceProjectile } from "./projectiles.js";
 import { createWaveSpawnState } from "./waves.js";
+import { updateProgressHud, updateResourceHud, updateWaveHud } from "./hud.js";
 
 export function startOrbitGame(config) {
 
@@ -7765,18 +7766,9 @@ function drawUI() {
 const u = account.user || null;
 const st = u?.stats || {};
 
-const honor = Number(st.honor || 0);
 const exp = Number(st.exp || 0);
-const rankPoints = Number(st.rankPoints || 0);
 const lvl = getLevelInfo(exp);
-
-if (ui.honorTxt) ui.honorTxt.textContent = String(Math.floor(honor));
-if (ui.xpTxt) ui.xpTxt.textContent = String(Math.floor(exp));
-if (ui.rankPtsTxt) ui.rankPtsTxt.textContent = String(Math.floor(rankPoints));
-
-if (ui.lvlTxt) {
-  ui.lvlTxt.textContent = `${lvl.level} (${lvl.pct}%)`;
-}
+updateProgressHud(ui, st, lvl);
 
 if (ui.spdTxt) {
   const spd = getSpeedBreakdown();
@@ -7798,14 +7790,8 @@ if (ui.spdTxt) {
 
 updateConfigButtons();
 
-  if (ui.hpTxt) ui.hpTxt.textContent = `${Math.max(0, Math.floor(player.hp))} / ${player.hpMax}`;
-  if (ui.shTxt) ui.shTxt.textContent = `${Math.max(0, Math.floor(player.sh))} / ${player.shMax}`;
-  if (ui.hpBar) ui.hpBar.style.width = `${clamp((player.hp / player.hpMax) * 100, 0, 100)}%`;
-  if (ui.shBar) ui.shBar.style.width = `${clamp((player.sh / player.shMax) * 100, 0, 100)}%`;
-
-  if (ui.waveTxt) ui.waveTxt.textContent = started ? String(wave) : "—";
-  if (ui.spawnLeftTxt) ui.spawnLeftTxt.textContent = started ? String(waveSpawns.remaining) : "—";
-  if (ui.aliveTxt) ui.aliveTxt.textContent = started ? String(enemies.length) : "—";
+  updateResourceHud(ui, player);
+  updateWaveHud(ui, { started, wave, remaining: waveSpawns.remaining, alive: enemies.length });
 
   if (ui.shopCredits) ui.shopCredits.textContent = String(player.credits);
 

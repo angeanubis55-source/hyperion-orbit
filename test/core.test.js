@@ -11,6 +11,7 @@ import { hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint
 import { createNpcEntity } from "../src/core/npcFactory.js";
 import { addProjectile, advanceProjectile, createProjectile } from "../src/core/projectiles.js";
 import { createWaveSpawnState } from "../src/core/waves.js";
+import { updateProgressHud, updateResourceHud, updateWaveHud } from "../src/core/hud.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -163,6 +164,22 @@ test("une file de vague compte et consomme chaque groupe", () => {
   assert.equal(state.peek().type, "b");
   state.consume();
   assert.equal(state.remaining, 0);
+});
+
+test("le HUD borne les barres et affiche la progression", () => {
+  const element = () => ({ textContent: "", style: {} });
+  const ui = {
+    hpTxt: element(), shTxt: element(), hpBar: element(), shBar: element(),
+    honorTxt: element(), xpTxt: element(), rankPtsTxt: element(), lvlTxt: element(),
+    waveTxt: element(), spawnLeftTxt: element(), aliveTxt: element(),
+  };
+  updateResourceHud(ui, { hp: 120, hpMax: 100, sh: -5, shMax: 50 });
+  assert.equal(ui.hpBar.style.width, "100%");
+  assert.equal(ui.shBar.style.width, "0%");
+  updateProgressHud(ui, { honor: 12.9, exp: 50, rankPoints: 4 }, { level: 2, pct: 25 });
+  assert.equal(ui.lvlTxt.textContent, "2 (25%)");
+  updateWaveHud(ui, { started: true, wave: 3, remaining: 8, alive: 2 });
+  assert.equal(ui.spawnLeftTxt.textContent, "8");
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {
