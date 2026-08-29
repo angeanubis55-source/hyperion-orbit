@@ -40,6 +40,42 @@ button{
   user-select:none;
 }
 
+html.orbitBooting body > :not(#loadingOverlay):not(#mapTransitionOverlay):not(script){
+  visibility:hidden !important;
+}
+
+html.orbitSessionReady #loadingOverlay{
+  display:none !important;
+}
+
+#mapTransitionOverlay{
+  position:fixed;
+  inset:0;
+  z-index:30000;
+  display:grid;
+  place-items:center;
+  pointer-events:none;
+  opacity:0;
+  background:#030611;
+  transition:opacity .22s ease;
+}
+
+html.orbitMapTransition #mapTransitionOverlay,
+html.orbitTransitionOut #mapTransitionOverlay{
+  opacity:1;
+}
+
+#mapTransitionOverlay i{
+  width:42px;
+  height:42px;
+  border:2px solid rgba(124,240,255,.18);
+  border-top-color:#7cf0ff;
+  border-radius:50%;
+  animation:orbitTransitionSpin .8s linear infinite;
+}
+
+@keyframes orbitTransitionSpin{to{transform:rotate(360deg)}}
+
 #game{
   display:block;
   width:100vw;

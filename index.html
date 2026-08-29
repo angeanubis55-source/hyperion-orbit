@@ -4,10 +4,23 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Orbit Game – Clean Build</title>
+  <script>
+    document.documentElement.classList.add("orbitBooting");
+    try {
+      if (sessionStorage.getItem("orbit_assets_preloaded_v1") === "ready") {
+        document.documentElement.classList.add("orbitSessionReady");
+      }
+      if (sessionStorage.getItem("orbit_map_transition") === "1") {
+        document.documentElement.classList.add("orbitMapTransition");
+      }
+    } catch {}
+  </script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <canvas id="game"></canvas>
+
+<div id="mapTransitionOverlay" aria-hidden="true"><i></i></div>
 
 <div id="loadingOverlay" class="loadingOverlay" role="dialog" aria-modal="true" aria-labelledby="loadingTitle">
   <div class="loadingCard">

@@ -797,7 +797,7 @@ window.GameWindowManager?.minimize("settingsWindow");
   console.log("✅ HUD windows registered");
 }
 
-setTimeout(registerHudWindows, 200);
+registerHudWindows();
 
 // ============================================================
 // Helpers
@@ -7851,6 +7851,12 @@ function renderLoadingProgress({ done = 0, total = 0 } = {}) {
   ui.loadingOverlay?.querySelector(".loadingTrack")?.setAttribute("aria-valuenow", String(percent));
 }
 
+function revealPreparedGame() {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.documentElement.classList.remove("orbitBooting", "orbitMapTransition", "orbitTransitionOut");
+  }));
+}
+
 function npcTypesForCurrentSector() {
   const types = new Set();
   try {
@@ -7915,7 +7921,16 @@ async function prepareGameAssets() {
 
   if (sessionCacheReady) {
     if (ui.loadingOverlay) ui.loadingOverlay.style.display = "none";
-    await ensurePackLoaded(ACTIVE_SHIP);
+    const essentialJobs = [ensurePackLoaded(ACTIVE_SHIP), loadImage(WALL_TEX.src, { priority: true })];
+    for (const layer of BG_LAYERS) essentialJobs.push(loadImage(layer.src, { priority: true }));
+    if (rules?.mode === "zone" && typeof rules.getZonePortals === "function") {
+      try {
+        for (const portal of rules.getZonePortals(WORLD) || []) essentialJobs.push(...preloadPortalSprites(portal));
+      } catch {}
+    } else {
+      essentialJobs.push(...preloadPortalSprites());
+    }
+    await Promise.allSettled(essentialJobs);
     playerImgs = ACTIVE_SHIP._imgs;
     playerImgsReady = true;
     assetsPrepared = true;
@@ -8006,12 +8021,15 @@ if (ui.startHint) {
 }
 
   resetRun({ randomSpawn: false });
+  if (window.__ORBIT_MAP_TRANSITION__) player.iFrames = 0;
   setCenterMsg(false);
 
   if (ui.loadingOverlay) {
     ui.loadingOverlay.classList.add("isLeaving");
     setTimeout(() => { ui.loadingOverlay.style.display = "none"; }, 240);
   }
+
+  revealPreparedGame();
 
   starting = false;
 }

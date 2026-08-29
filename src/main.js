@@ -70,6 +70,12 @@ const spawnPortalId = params.get("spawn") || null;
 // accessible depuis OrbitEngine
 window.__SPAWN_PORTAL_ID__ = spawnPortalId;
 window.__CURRENT_MAP_ID__ = mapName; // ✅ pour que OrbitEngine puisse sauvegarder
+try {
+  window.__ORBIT_MAP_TRANSITION__ = sessionStorage.getItem("orbit_map_transition") === "1";
+  sessionStorage.removeItem("orbit_map_transition");
+} catch {
+  window.__ORBIT_MAP_TRANSITION__ = false;
+}
 
 // fonction globale pour changer de map (recharge la page)
 window.__GO_TO_MAP__ = (mapId, spawnId = null) => {
@@ -86,7 +92,9 @@ window.__GO_TO_MAP__ = (mapId, spawnId = null) => {
   url.searchParams.set("map", String(mapId));
   if (spawnId) url.searchParams.set("spawn", String(spawnId));
   else url.searchParams.delete("spawn");
-  location.href = url.toString(); // reload propre
+  try { sessionStorage.setItem("orbit_map_transition", "1"); } catch {}
+  document.documentElement.classList.add("orbitTransitionOut");
+  setTimeout(() => { location.href = url.toString(); }, 180);
 };
 
 // ✅ guard : si pas connecté → auth
