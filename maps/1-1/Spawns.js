@@ -118,8 +118,8 @@ export function getZonePortals(WORLD) {
     },
     {
       id: "p_11_to_beta",
-      x: 3250,
-      y: 2500,
+      x: 2925,
+      y: 2925,
       r: 260,
       toMap: "beta",
  sprites: {

@@ -126,10 +126,7 @@ export function getZoneSafeModules(WORLD) {
   // x,y = CENTRE du module
   // ============================================================
   const modules = [
-    { id: "m1", x: 1000,   y: 3000,   w: 671, h: 781, spr: "M1" },
-    { id: "m2", x: 2000,   y: 3000,   w: 515, h: 728, spr: "M2" },
-    { id: "m3", x: 2000,   y: 4000,   w: 585, h: 511, spr: "M3" },
-    { id: "m4", x: 1000,   y: 4000,   w: 412, h: 302, spr: "M4" },
+    { id: "CENTRE_MMO", x: 1500, y: 3500, w: 909, h: 898, spr: "CENTRE_MMO" },
   ];
 
   // ============================================================
@@ -149,7 +146,7 @@ export function getZoneSafeModules(WORLD) {
   const halfW = (maxX - minX) / 2;
   const halfH = (maxY - minY) / 2;
 
-  const margin = 260;
+  const margin = 800;
   const r = Math.hypot(halfW, halfH) + margin;
 
   const zone = { kind: "circle", x: cx, y: cy, r };
@@ -163,7 +160,7 @@ export function getZoneSafeModules(WORLD) {
   // - si changer w/h ne change rien à l’écran => ton renderer ignore w/h
   // ============================================================
   const BEACON = {
-    spr: "B",
+    spr: "BEACON_MMO",
 
     // taille du PNG (info/debug)
     imgW: 90,

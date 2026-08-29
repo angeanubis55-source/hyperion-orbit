@@ -53,7 +53,7 @@ ammo: [
     { id: "laser_lf3", name: "laser LF-3", price: 200000, module: { type: "laser", damage: 201 } },
     { id: "laser_odysseus", name: "laser Odysseus", price: 1000000, module: { type: "laser", damage: 220 } },
     { id: "laser_anchorlock", name: "laser Anchorlock", price: 25000000, module: { type: "laser", damage: 245 } },
-    { id: "laser_radion", name: "laser Mortifier", price: 1000000000, module: { type: "laser", damage: 350 } },
+    { id: "laser_radion", name: "laser Mortifier", price: 1000000000, module: { type: "laser", damage: 520 } },
     ],
 
   extras: [
