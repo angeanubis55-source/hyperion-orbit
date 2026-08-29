@@ -14,6 +14,7 @@ import { findCatalogItem } from "./catalog.js";
 import { clamp, circleRectResolve, dist2, segCircleHit } from "./collision.js";
 import { createKeyboardState, createPointerState } from "./input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "./combat.js";
+import { forEachNearbyPair, rebuildIdIndex } from "./spatialIndex.js";
 
 export function startOrbitGame(config) {
 
@@ -3058,41 +3059,11 @@ function applyNpcSeparation(dt) {
   if (isZoneMap) return;
   if (!NPC_SEP.enable) return;
   
-  const n = enemies.length;
-  if (n <= 1) return;
+  if (enemies.length <= 1) return;
 
-  // Un index spatial évite de comparer chaque NPC à tous les autres.
-  const cellSize = 512;
-  const grid = new Map();
-  for (let i = 0; i < n; i++) {
-    const enemy = enemies[i];
-    if (!enemy || enemy.hp <= 0) continue;
-    const key = `${Math.floor(enemy.x / cellSize)},${Math.floor(enemy.y / cellSize)}`;
-    const bucket = grid.get(key);
-    if (bucket) bucket.push(i);
-    else grid.set(key, [i]);
-  }
+  forEachNearbyPair(enemies, 512, (a, b, i, j) => {
 
-  for (let i = 0; i < n; i++) {
-    const a = enemies[i];
-    if (!a || a.hp <= 0) continue;
-
-    const candidates = [];
-    const cellX = Math.floor(a.x / cellSize);
-    const cellY = Math.floor(a.y / cellSize);
-    for (let oy = -1; oy <= 1; oy++) {
-      for (let ox = -1; ox <= 1; ox++) {
-        const bucket = grid.get(`${cellX + ox},${cellY + oy}`);
-        if (bucket) candidates.push(...bucket);
-      }
-    }
-
-    for (const j of candidates) {
-      if (j <= i) continue;
-      const b = enemies[j];
-      if (!b || b.hp <= 0) continue;
-
-      if (a.type === "npc_Cubikon" || b.type === "npc_Cubikon") continue;
+      if (a.type === "npc_Cubikon" || b.type === "npc_Cubikon") return;
 
       const dx = b.x - a.x;
       const dy = b.y - a.y;
@@ -3103,7 +3074,7 @@ function applyNpcSeparation(dt) {
       const minDist = ra + rb + NPC_SEP.extra;
       const d2 = dx * dx + dy * dy;
 
-      if (d2 >= minDist * minDist) continue;
+      if (d2 >= minDist * minDist) return;
 
       const d = Math.sqrt(d2) || 0.0001;
 
@@ -3129,8 +3100,7 @@ function applyNpcSeparation(dt) {
       a.vy += ay;
       b.vx += bx;
       b.vy += by;
-    }
-  }
+  });
 }
 
 // ✅ Starfield scroll (effet déplacement réel)
@@ -4710,10 +4680,7 @@ let rsbCooldown = 0;
 const enemiesById = new Map();
 
 function rebuildEnemyIndex() {
-  enemiesById.clear();
-  for (const enemy of enemies) {
-    if (enemy?.id != null && enemy.hp > 0) enemiesById.set(enemy.id, enemy);
-  }
+  rebuildIdIndex(enemiesById, enemies);
 }
 
 function getEnemyById(id) {

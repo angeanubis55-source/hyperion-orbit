@@ -6,6 +6,7 @@ import { DEFAULT_MAP_ID, MAP_LOADERS, normalizeMapId } from "../src/core/mapRegi
 import { clamp, circleRectResolve, dist2, segCircleHit } from "../src/core/collision.js";
 import { createKeyboardState, createPointerState } from "../src/core/input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "../src/core/combat.js";
+import { forEachNearbyPair, rebuildIdIndex } from "../src/core/spatialIndex.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -90,6 +91,20 @@ test("SAB et dégâts joueur respectent les limites des ressources", () => {
   assert.equal(result.hp, 30);
   assert.equal(player.hp, 70);
   assert.equal(bulletLifeForRange(1000, 500), 2.35);
+});
+
+test("l’index spatial ne visite que les paires de cellules voisines", () => {
+  const entities = [
+    { id: 1, x: 10, y: 10, hp: 1 },
+    { id: 2, x: 20, y: 20, hp: 1 },
+    { id: 3, x: 5000, y: 5000, hp: 1 },
+  ];
+  const pairs = [];
+  forEachNearbyPair(entities, 100, (a, b) => pairs.push([a.id, b.id]));
+  assert.deepEqual(pairs, [[1, 2]]);
+
+  const byId = rebuildIdIndex(new Map(), entities);
+  assert.equal(byId.get(2), entities[1]);
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {
