@@ -202,7 +202,7 @@ function saveGameBeforeProfileAction() {
 }
 
 // -------------------- Icons --------------------
-const ITEM_ICON_BASE = "/assets/";
+const ITEM_ICON_BASE = "/assets/items/";
 
 const ITEM_ICONS = {
   ammo_x2: ITEM_ICON_BASE + "ammo_x2.png",

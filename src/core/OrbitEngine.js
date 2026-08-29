@@ -7663,7 +7663,7 @@ e.vy *= Math.pow(0.95, dt * 60);
 // Render
 // ============================================================
 const WALL_TEX = {
-  src: "assets/BlockZone.png",
+  src: "assets/ui/BlockZone.png",
   w: 64,
   h: 64,
 };
