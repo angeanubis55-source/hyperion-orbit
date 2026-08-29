@@ -7,6 +7,7 @@ import { clamp, circleRectResolve, dist2, segCircleHit } from "../src/core/colli
 import { createKeyboardState, createPointerState } from "../src/core/input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "../src/core/combat.js";
 import { forEachNearbyPair, rebuildIdIndex } from "../src/core/spatialIndex.js";
+import { hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "../src/core/rendering.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -105,6 +106,20 @@ test("l’index spatial ne visite que les paires de cellules voisines", () => {
 
   const byId = rebuildIdIndex(new Map(), entities);
   assert.equal(byId.get(2), entities[1]);
+});
+
+test("les transformations caméra écran sont réversibles", () => {
+  const camera = { x: 500, y: 300 };
+  const screen = worldToScreenPoint(520, 320, camera, 1000, 600);
+  assert.deepEqual(screen, { x: 520, y: 320 });
+  assert.deepEqual(screenToWorldPoint(screen.x, screen.y, camera, 1000, 600), { x: 520, y: 320 });
+  assert.equal(isWorldPointVisible(520, 320, camera, 1000, 600), true);
+  assert.equal(isWorldPointVisible(5000, 5000, camera, 1000, 600), false);
+});
+
+test("la couleur de vie est bornée", () => {
+  assert.equal(hpHueColor(-1, 2), "hsla(0, 95%, 55%, 1)");
+  assert.equal(hpHueColor(1), "hsla(120, 95%, 55%, 0.98)");
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {

@@ -15,6 +15,7 @@ import { clamp, circleRectResolve, dist2, segCircleHit } from "./collision.js";
 import { createKeyboardState, createPointerState } from "./input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "./combat.js";
 import { forEachNearbyPair, rebuildIdIndex } from "./spatialIndex.js";
+import { hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "./rendering.js";
 
 export function startOrbitGame(config) {
 
@@ -1480,22 +1481,15 @@ function setCenterMsg(show, title, body, hint) {
 const camera = { x: WORLD.w / 2, y: WORLD.h / 2 };
 
 function screenToWorld(sx, sy) {
-  const ox = innerWidth / 2 - camera.x;
-  const oy = innerHeight / 2 - camera.y;
-  return { x: sx - ox, y: sy - oy };
+  return screenToWorldPoint(sx, sy, camera, innerWidth, innerHeight);
 }
 
 function worldToScreen(x, y) {
-  return { 
-    x: x + (innerWidth / 2 - camera.x), 
-    y: y + (innerHeight / 2 - camera.y) 
-  };
+  return worldToScreenPoint(x, y, camera, innerWidth, innerHeight);
 }
 
 function isOnScreenWorld(x, y, margin = 120) {
-  const s = worldToScreen(x, y);
-  return s.x >= -margin && s.y >= -margin && 
-         s.x <= innerWidth + margin && s.y <= innerHeight + margin;
+  return isWorldPointVisible(x, y, camera, innerWidth, innerHeight, margin);
 }
 
 function pickEnemyAtScreen(sx, sy) {
@@ -5632,12 +5626,6 @@ function drawMinimap() {
 // ============================================================
 // Labels / colors
 // ============================================================
-function hpHueColor(pct, alpha = 0.98) {
-  const p = clamp(pct, 0, 1);
-  const hue = 120 * p;
-  return `hsla(${hue}, 95%, 55%, ${alpha})`;
-}
-
 function npcLabelFor(e) {
   const name = e && e.name ? String(e.name).trim() : "";
   return name || `NPC ${e?.id ?? "?"}`;
