@@ -10,6 +10,7 @@ import { forEachNearbyPair, rebuildIdIndex } from "../src/core/spatialIndex.js";
 import { hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "../src/core/rendering.js";
 import { createNpcEntity } from "../src/core/npcFactory.js";
 import { addProjectile, advanceProjectile, createProjectile } from "../src/core/projectiles.js";
+import { createWaveSpawnState } from "../src/core/waves.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -150,6 +151,18 @@ test("les projectiles ont des valeurs sûres et progressent avec deltaTime", () 
   assert.equal(projectile.x, 20);
   assert.equal(projectile.life, 1.5);
   assert.equal(createProjectile().r, 6);
+});
+
+test("une file de vague compte et consomme chaque groupe", () => {
+  const state = createWaveSpawnState();
+  assert.equal(state.load([{ type: "a", count: 2 }, { type: "b", count: 1 }]), 3);
+  assert.equal(state.tick(0.35), true);
+  state.consume();
+  assert.equal(state.remaining, 2);
+  state.consume();
+  assert.equal(state.peek().type, "b");
+  state.consume();
+  assert.equal(state.remaining, 0);
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {

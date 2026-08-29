@@ -18,6 +18,7 @@ import { forEachNearbyPair, rebuildIdIndex } from "./spatialIndex.js";
 import { hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "./rendering.js";
 import { createNpcEntity } from "./npcFactory.js";
 import { addProjectile, advanceProjectile } from "./projectiles.js";
+import { createWaveSpawnState } from "./waves.js";
 
 export function startOrbitGame(config) {
 
@@ -4394,7 +4395,7 @@ function useNuke() {
   markProgressDirty();
   renderAmmoShop();
 
-  waveToSpawn = 0;
+  waveSpawns.reset();
   for (const e of enemies) {
     e.hp = 0;
     e.sh = 0;
@@ -4876,27 +4877,17 @@ function npcIsInSafeZone(e) {
 // Wave system
 // ============================================================
 let wave = 1;
-let waveToSpawn = 0;
-let spawnTimer = 0;
-let waveQueue = [];
+const waveSpawns = createWaveSpawnState();
 
   function nextTypeInQueue() {
-    return waveQueue.length ? waveQueue[0].type : null;
+    return waveSpawns.peek()?.type || null;
   }
 
 function beginWave() {
   const plan = getWavePlan(wave);
   currentWavePlan = plan;
 
-  waveQueue = (plan.spawns || []).map((s) => ({
-    type: s.type,
-    left: s.count,
-    onKill: s.onKill || null,
-  }));
-
-  waveToSpawn = waveQueue.reduce((sum, s) => sum + (s.left || 0), 0);
-
-  spawnTimer = 0.35;
+  waveSpawns.load(plan.spawns || []);
   betweenWaves = false;
 
   portal.active = false;
@@ -4944,10 +4935,9 @@ function tryStartNextWave() {
 function waveController(dt) {
   if (!started || player.dead || betweenWaves) return;
 
-if (waveToSpawn > 0 && enemies.length < MAX_ALIVE) {
-  spawnTimer -= dt;
-  if (spawnTimer <= 0) {
-    const next = waveQueue.length ? waveQueue[0] : null;
+if (waveSpawns.remaining > 0 && enemies.length < MAX_ALIVE) {
+  if (waveSpawns.tick(dt)) {
+    const next = waveSpawns.peek();
     const type = next?.type || DEFAULT_WAVE_TYPE;
     const isCubikon = (type === "npc_Cubikon");
 
@@ -4967,18 +4957,12 @@ if (waveToSpawn > 0 && enemies.length < MAX_ALIVE) {
       enemies.push(e);
     }
 
-    if (waveQueue.length) {
-      waveQueue[0].left--;
-      if (waveQueue[0].left <= 0) waveQueue.shift();
-    }
-
-    waveToSpawn--;
-    spawnTimer = 0.05;
+    waveSpawns.consume();
   }
 }
 
 
-  if (waveToSpawn === 0 && enemies.length === 0) {
+  if (waveSpawns.remaining === 0 && enemies.length === 0) {
     onWaveCleared();
   }
 }
@@ -7820,7 +7804,7 @@ updateConfigButtons();
   if (ui.shBar) ui.shBar.style.width = `${clamp((player.sh / player.shMax) * 100, 0, 100)}%`;
 
   if (ui.waveTxt) ui.waveTxt.textContent = started ? String(wave) : "—";
-  if (ui.spawnLeftTxt) ui.spawnLeftTxt.textContent = started ? String(waveToSpawn) : "—";
+  if (ui.spawnLeftTxt) ui.spawnLeftTxt.textContent = started ? String(waveSpawns.remaining) : "—";
   if (ui.aliveTxt) ui.aliveTxt.textContent = started ? String(enemies.length) : "—";
 
   if (ui.shopCredits) ui.shopCredits.textContent = String(player.credits);
