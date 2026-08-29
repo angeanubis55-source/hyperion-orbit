@@ -14,6 +14,7 @@ import { createWaveSpawnState } from "../src/core/waves.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../src/core/hud.js";
 import { createPerformanceMonitor } from "../src/core/performanceMonitor.js";
 import { computeNpcSteering } from "../src/core/npcAI.js";
+import { getNpcSensorRanges, isNpcWithinSensor } from "../src/core/npcSensors.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -233,6 +234,18 @@ test("l’IA poursuit de loin et orbite sans reculer de près", () => {
   assert.equal(Math.abs(close.mxv), 0);
   assert.ok(Math.abs(close.myv) > 0);
   assert.ok(entity.vx < 100);
+});
+
+test("les capteurs NPC ont un radar plus large que la visibilité", () => {
+  const ranges = getNpcSensorRanges({ npcVisibilityRadius: 1800, npcRadarRadius: 3000 });
+  const player = { x: 0, y: 0 };
+  const nearby = { x: 1700, y: 0, hp: 1 };
+  const radarOnly = { x: 2500, y: 0, hp: 1 };
+  const hidden = { x: 3500, y: 0, hp: 1 };
+  assert.equal(isNpcWithinSensor(player, nearby, ranges.visibility), true);
+  assert.equal(isNpcWithinSensor(player, radarOnly, ranges.visibility), false);
+  assert.equal(isNpcWithinSensor(player, radarOnly, ranges.radar), true);
+  assert.equal(isNpcWithinSensor(player, hidden, ranges.radar), false);
 });
 
 test("normalizeMapId accepte les cartes réelles sans tenir compte de la casse", () => {

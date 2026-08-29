@@ -22,6 +22,7 @@ import { createWaveSpawnState } from "./waves.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "./hud.js";
 import { createPerformanceMonitor } from "./performanceMonitor.js";
 import { computeNpcSteering } from "./npcAI.js";
+import { getNpcSensorRanges, isNpcWithinSensor } from "./npcSensors.js";
 
 export function startOrbitGame(config) {
 
@@ -786,6 +787,7 @@ setTimeout(registerHudWindows, 200);
 // ============================================================
 const MAX_ALIVE = 100;
 let currentWavePlan = null;
+const NPC_SENSOR_RANGES = getNpcSensorRanges(rules);
 
 const TAU = Math.PI * 2;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -5353,6 +5355,7 @@ function drawMinimap() {
 
   for (const e of enemies) {
     if (!e || e.hp <= 0) continue;
+    if (!isNpcWithinSensor(player, e, NPC_SENSOR_RANGES.radar)) continue;
     const x = e.x * sx;
     const y = e.y * sy;
     const s = clamp((e.r || 18) / 12, 2, 6);
@@ -7512,6 +7515,7 @@ if (GAME_SETTINGS.textures) {
   const selectedEnemyForBars = Target.get();
   for (const e of enemies) {
     if (e.hp <= 0) continue;
+    if (!isNpcWithinSensor(player, e, NPC_SENSOR_RANGES.visibility)) continue;
 
     const x = e.x + ox, y = e.y + oy;
     if (x < -220 || y < -220 || x > innerWidth + 220 || y > innerHeight + 220) continue;
@@ -7691,7 +7695,9 @@ if (GAME_SETTINGS.textures) {
   }
 
   const t = Target.get();
-  if (t) drawTargetMarker(t, ox, oy, performance.now() / 1000);
+  if (t && isNpcWithinSensor(player, t, NPC_SENSOR_RANGES.visibility)) {
+    drawTargetMarker(t, ox, oy, performance.now() / 1000);
+  }
 
   drawPlayerBars(px, py);
   drawMinimap();
