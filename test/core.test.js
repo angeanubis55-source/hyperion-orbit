@@ -15,6 +15,7 @@ import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud 
 import { createPerformanceMonitor } from "../src/core/performanceMonitor.js";
 import { computeNpcSteering } from "../src/core/npcAI.js";
 import { getNpcSensorRanges, isNpcWithinSensor, shouldDetectNpc } from "../src/core/npcSensors.js";
+import { shouldRunNpcFrame } from "../src/core/npcActivity.js";
 
 class MemoryStorage {
   #data = new Map();
@@ -261,6 +262,18 @@ test("un NPC attaquant reste détecté jusqu’à son retour en roam", () => {
   assert.equal(shouldDetectNpc(player, npc, 1600), true);
   npc._attackedPlayerRecently = false;
   assert.equal(shouldDetectNpc(player, npc, 1600), false);
+});
+
+test("un NPC lointain est échelonné tandis qu’une cible reste active", () => {
+  const player = { x: 0, y: 0 };
+  const ranges = getNpcSensorRanges();
+  const npc = { id: 1, x: 10000, y: 10000, hp: 1 };
+  let ticks = 0;
+  for (let frame = 0; frame < 60; frame++) {
+    if (shouldRunNpcFrame({ player, npc, ranges, farInterval: 15 })) ticks++;
+  }
+  assert.equal(ticks, 4);
+  assert.equal(shouldRunNpcFrame({ player, npc, ranges, lockedNpc: npc, farInterval: 15 }), true);
 });
 
 test("les Galaxy Gates désactivent toutes les limites des capteurs NPC", () => {

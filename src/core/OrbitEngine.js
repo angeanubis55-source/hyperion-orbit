@@ -23,6 +23,7 @@ import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud 
 import { createPerformanceMonitor } from "./performanceMonitor.js";
 import { computeNpcSteering } from "./npcAI.js";
 import { getNpcSensorRanges, shouldDetectNpc } from "./npcSensors.js";
+import { shouldRunNpcFrame } from "./npcActivity.js";
 
 export function startOrbitGame(config) {
 
@@ -6864,9 +6865,17 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
   }
 
   applyNpcSeparation(dt);
-  
+  const lockedNpcForActivity = Target.get();
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
+    if (!e || e.hp <= 0) continue;
+    if (!shouldRunNpcFrame({
+      player,
+      npc: e,
+      ranges: NPC_SENSOR_RANGES,
+      lockedNpc: lockedNpcForActivity,
+      farInterval: 15,
+    })) continue;
 
     if (e.type === "npc_Cubikon" && !e.spritePlay) {
       e.angle = 0;
