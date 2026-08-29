@@ -4,6 +4,10 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "benchmark": "node scripts/benchmark-spatial.js"
+    "benchmark": "node scripts/benchmark-spatial.js",
+    "test:browser": "node scripts/smoke-browser.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
   }
 }

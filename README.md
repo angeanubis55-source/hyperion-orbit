@@ -18,6 +18,12 @@ Ouvrir ensuite l’adresse indiquée par le serveur.
 npm test
 ```
 
+Vérifier le démarrage réel de la carte 1-1 dans Edge en mode invisible :
+
+```powershell
+npm run test:browser
+```
+
 Mesurer l’index spatial utilisé pour les NPC :
 
 ```powershell
