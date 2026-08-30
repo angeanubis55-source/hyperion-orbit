@@ -21,7 +21,7 @@
   min-height: 520px !important;
   padding: 0 !important;
   display: grid !important;
-  grid-template-columns: 260px minmax(0, 1fr) !important;
+  grid-template-columns: 290px minmax(0, 1fr) !important;
   grid-template-rows: 30px minmax(0, 1fr) !important;
   gap: 0 !important;
   overflow: hidden !important;
@@ -184,7 +184,16 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
   min-height: 44px !important;
   padding: 11px 14px !important;
   font-size: 12px !important;
+  letter-spacing: .045em !important;
+  white-space: nowrap !important;
 }
+
+#profileOverlay .generalPanel { width: 100%; height: 100%; min-height: 0; padding: 18px; display: grid; grid-template-columns: minmax(220px,.8fr) minmax(280px,1.2fr); align-items: center; gap: 34px; overflow: auto; border: 0; border-radius: 0; background: transparent; }
+#profileOverlay .generalLogo { width: min(100%,360px); max-height: 260px; justify-self: center; object-fit: contain; filter: drop-shadow(0 0 22px rgba(0,200,255,.18)); }
+#profileOverlay .generalCopy { max-width: 500px; display: flex; flex-direction: column; gap: 10px; }
+#profileOverlay .generalCopy span { color: #72e7ff; font-size: 10px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+#profileOverlay .generalCopy h2 { margin: 0; color: #effbff; font-size: clamp(25px,3vw,40px); line-height: 1; }
+#profileOverlay .generalCopy p { margin: 0; color: rgba(215,235,246,.68); font-size: 11px; line-height: 1.7; }
 
 #profileOverlay .profileTabs .tabBtn.active,
 #profileOverlay #shopTabs .subtabBtn.active {
@@ -597,7 +606,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #profileOverlay * { scrollbar-width: thin !important; scrollbar-color: #285a72 #07131f !important; }
 
 @media (max-width: 900px) {
-  #profileOverlay #profileWindow.gameWindow { width: calc(100vw - 16px) !important; height: calc(100vh - 24px) !important; min-width: 0 !important; grid-template-columns: 180px minmax(0,1fr) !important; }
+  #profileOverlay #profileWindow.gameWindow { width: calc(100vw - 16px) !important; height: calc(100vh - 24px) !important; min-width: 0 !important; grid-template-columns: 240px minmax(0,1fr) !important; }
   html body #profileOverlay #profileWindow.gameWindow:not(.floating) { left: 8px !important; top: 70px !important; }
   #profileOverlay .profileHeaderCard { padding: 14px 9px !important; }
   #profileOverlay .statsRow { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
@@ -620,6 +629,9 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
   #profileOverlay #panel_shop .shopLayout { grid-template-columns: 1fr !important; overflow-y: auto !important; }
   #profileOverlay #panel_shop .shopList { max-height: 210px !important; }
   #profileOverlay #panel_stats.profilePanel.active { overflow-y: auto !important; }
+  #profileOverlay .generalPanel { height: auto; min-height: 100%; padding: 20px; grid-template-columns: 1fr; gap: 18px; text-align: center; }
+  #profileOverlay .generalLogo { max-height: 150px; }
+  #profileOverlay .generalCopy { align-items: center; }
   #profileOverlay .accountSettingsGrid { grid-template-columns: 1fr !important; overflow: visible !important; }
   #profileOverlay .accountCard { min-height: 290px !important; overflow: visible !important; }
 }

@@ -52,14 +52,6 @@ const $ = (id) => document.getElementById(id);
 
 // UI refs
 const msgEl = $("msg");
-const headerEl = $("profileHeader");
-const statCredits = $("statCredits");
-const statHonor = $("statHonor");
-const statExp = $("statExp");
-const statRank = $("statRank");
-const statRankName = $("statRankName");
-const statLifetimeKills = $("statLifetimeKills");
-const statFaction = $("statFaction");
 const npcKillList = $("npcKillList");
 const npcRewardTotals = $("npcRewardTotals");
 const npcRankExp = $("npcRankExp");
@@ -482,32 +474,11 @@ function wireShopTabsOnce() {
 
 // -------------------- Render --------------------
 function renderHeader(u) {
-  if (!u) {
-    headerEl.textContent = "Non connecté";
-    return;
-  }
-
-  const emailLabel = String(u.email || "").endsWith("@local") ? "Non liée" : escapeHtml(u.email);
-  headerEl.innerHTML = `
-    <span style="color: #00d9ff;">Pilote:</span> ${escapeHtml(u.pseudo)} • 
-    <span style="color: #00d9ff;">Email:</span> ${emailLabel} •
-    <span style="color: #00d9ff;">Vaisseau actif:</span> ${escapeHtml(u.ship)}
-  `;
+  return u;
 }
 
 function renderStats(u) {
   if (!u) return;
-
-  statCredits.textContent = formatNumber(u.credits || 0);
-  statHonor.textContent = formatNumber(u.stats?.honor ?? 0);
-  statExp.textContent = formatNumber(u.stats?.exp ?? 0);
-  const rankPoints = calculateRankPoints(u.stats);
-  statRank.textContent = formatNumber(rankPoints);
-  if (statRankName) statRankName.textContent = getRankInfo(rankPoints, u.stats?.honor).name;
-  if (statLifetimeKills) statLifetimeKills.textContent = formatNumber(u.stats?.lifetimeKills ?? 0);
-
-  const faction = getFaction(u.faction);
-  if (statFaction) statFaction.textContent = faction.shortName;
   renderNpcStats(u);
   renderAccount(u);
 }
@@ -2874,9 +2845,9 @@ function closeFitModal() {
 
   stopFitShipAnim();
   fitOverlayEl.style.display = "none";
-  window.GameWindowManager?.setTitle("profileWindow", "Profil / Hangars / Boutique");
+  window.GameWindowManager?.setTitle("profileWindow", "Espace pilote");
   const profileWindowIcon = document.querySelector("#profileWindow > .gameWinBar .gameWinIcon");
-  if (profileWindowIcon) profileWindowIcon.textContent = "👤";
+  if (profileWindowIcon) profileWindowIcon.textContent = "EP";
 
   fitState.hangarId = null;
   fitState.configNo = 1;
@@ -2940,8 +2911,8 @@ function registerProfileWindow() {
   if (!root || !card || !window.GameWindowManager) return;
   window.GameWindowManager.register({
     id: "profileWindow",
-    title: "Profil / Hangars / Boutique",
-    icon: "👤",
+    title: "Espace pilote",
+    icon: "EP",
     root,
     card,
   });
