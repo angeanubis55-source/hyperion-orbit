@@ -536,7 +536,14 @@ export function updateCurrentUserProgress(patch = {}) {
   }
 
   if (patch.quests && typeof patch.quests === "object") {
-    u.quests = normalizeQuestState(patch.quests);
+    const incoming = normalizeQuestState(patch.quests);
+    const existing = normalizeQuestState(u.quests);
+    // Un moteur fraîchement initialisé peut envoyer un journal vide avant
+    // d'avoir fini de se synchroniser. Ne détruis jamais des missions déjà
+    // sauvegardées dans ce cas.
+    const incomingEmpty = Object.keys(incoming.active).length === 0 && incoming.completed.length === 0;
+    const existingHasData = Object.keys(existing.active).length > 0 || existing.completed.length > 0;
+    if (!incomingEmpty || !existingHasData) u.quests = incoming;
   }
 
   ensureUserShape(u);

@@ -949,7 +949,18 @@ const account = {
 let questState = normalizeQuestState(getCurrentUserFull()?.quests);
 
 function loadAccountUser() {
+  const previousId = account.user?.id || null;
   account.user = getCurrentUserFull();
+
+  // Le module est initialisé avant la connexion. Dans ce cas, questState
+  // contient encore l'état vide issu de l'utilisateur anonyme : resynchronise
+  // une seule fois avec l'état réellement persisté du compte connecté.
+  const currentId = account.user?.id || null;
+  if (currentId && currentId !== previousId) {
+    questState = normalizeQuestState(account.user.quests);
+    selectedQuestId = null;
+    selectedQuestOfferId = null;
+  }
   return account.user;
 }
 
@@ -1000,6 +1011,18 @@ function questCard(quest, { active = false } = {}) {
 
 function renderQuestWindow() {
   if (!ui.questList) return;
+  // Rattrape le cas où le moteur a été instancié avant la session utilisateur
+  // (refresh/login) et aurait conservé un journal vide en mémoire.
+  {
+    const persisted = getCurrentUserFull()?.quests;
+    const memoryIds = Object.keys(questState.active).sort().join("|");
+    const savedState = persisted && normalizeQuestState(persisted);
+    const savedIds = savedState ? Object.keys(savedState.active).sort().join("|") : "";
+    // Après un refresh, le moteur peut avoir un ancien jeu de missions en
+    // mémoire. Les identifiants persistés font foi ; la progression en cours
+    // est conservée tant que le même jeu de missions est affiché.
+    if (savedState && savedIds !== memoryIds) questState = savedState;
+  }
   const activeIds = Object.keys(questState.active);
 
   if (!activeIds.includes(selectedQuestId)) selectedQuestId = activeIds[0] || null;
@@ -1055,7 +1078,11 @@ function renderQuestTerminal() {
   if (!ui.questOfferDetail || !ui.questOfferList) return;
   const hasAccess = hasQuestTerminalAccess();
   lastQuestTerminalAccess = hasAccess;
-  const offers = QUEST_DEFINITIONS.filter(quest => questState.active[quest.id] == null);
+  // Garder les missions acceptées dans le terminal permet de les consulter
+  // sans pouvoir les accepter une seconde fois.
+  // Le terminal sert aussi de journal : les missions disponibles, en cours
+  // et terminées restent toutes consultables.
+  const offers = QUEST_DEFINITIONS;
 
   if (!offers.some(quest => quest.id === selectedQuestOfferId)) {
     selectedQuestOfferId = offers[0]?.id || null;
@@ -1064,7 +1091,8 @@ function renderQuestTerminal() {
   ui.questOfferList.innerHTML = offers.length
     ? offers.map(quest => {
       const completed = questState.completed.includes(quest.id);
-      return `<button class="questOfferItem${quest.id === selectedQuestOfferId ? " active" : ""}${completed ? " completed" : ""}" data-quest-offer="${quest.id}">${quest.title}${completed ? " ✓" : ""}</button>`;
+      const accepted = questState.active[quest.id] != null;
+      return `<button class="questOfferItem${quest.id === selectedQuestOfferId ? " active" : ""}${accepted ? " accepted" : ""}${completed ? " completed" : ""}" data-quest-offer="${quest.id}">${quest.title}${accepted ? " — En cours" : ""}</button>`;
     }).join("")
     : `<div class="questEmpty">Aucune nouvelle mission.</div>`;
 
@@ -1075,6 +1103,7 @@ function renderQuestTerminal() {
   }
 
   const available = hasAccess && canAcceptQuest(questState, quest);
+  const accepted = questState.active[quest.id] != null;
   const completed = questState.completed.includes(quest.id);
   const objectives = getQuestObjectives(quest);
   const prerequisite = QUEST_DEFINITIONS.find(item => item.id === quest.requires);
@@ -1092,11 +1121,11 @@ function renderQuestTerminal() {
     <div class="questOfferImageWrap"><img class="questOfferImage" src="${questTargetImage(quest)}" alt="${quest.title}"></div>
     <div class="questTitle">${quest.title}</div>
     <div class="questDescription">${quest.description}</div>
-    <div class="questObjectives">${objectives.map(objective => `<div class="questObjective"><div class="questStatus"><span>${objective.label || objective.type}</span><b>${completed ? objective.amount : 0} / ${objective.amount}</b></div></div>`).join("")}</div>
+    <div class="questObjectives">${objectives.map(objective => { const current = accepted ? Number(questState.active[quest.id]?.[objective.id] || 0) : (completed ? objective.amount : 0); return `<div class="questObjective"><div class="questStatus"><span>${objective.label || objective.type}</span><b>${current} / ${objective.amount}</b></div></div>`; }).join("")}</div>
     <div class="questReward">Récompense : ${Number(quest.reward.credits || 0).toLocaleString("fr-FR")} crédits</div>
     <div class="questOfferHelp"><b>Où chercher ?</b><br>${objectives.map(objective => `<b>${objective.label || objective.type} :</b> ${QUEST_HELP[objective.type] || "Explore les secteurs correspondant à cet objectif."}`).join("<br>")}</div>
     <div class="questStatus">${status}</div>
-    <button class="questAction${completed ? " questCompletedAction" : ""}" data-quest-terminal-accept="${quest.id}" ${available ? "" : "disabled"}>${completed ? "Mission terminée ✓" : "Accepter cette mission"}</button>`;
+    <button class="questAction${completed ? " questCompletedAction" : accepted ? " questAcceptedAction" : ""}" data-quest-terminal-accept="${quest.id}" ${available ? "" : "disabled"}>${completed ? "Mission terminée ✓" : accepted ? "Mission en cours" : "Accepter cette mission"}</button>`;
 }
 
 function openQuestTerminal() {
@@ -1176,6 +1205,10 @@ ui.questList?.addEventListener("click", event => {
 });
 
 function saveProgressNow() {
+  // Les missions peuvent être acceptées depuis le terminal avant que la
+  // boucle de jeu ait initialisé `account.user`. Recharge alors le compte
+  // directement afin de ne jamais perdre la sauvegarde des quêtes.
+  if (!account.user) account.user = getCurrentUserFull();
   if (!account.user) return;
   
   if (!player.dead && started) {
@@ -1490,6 +1523,12 @@ function syncPlayerFromAccount() {
   if (!fresh) return false;
 
   account.user = fresh;
+  // Synchronise aussi le journal des missions lors d'un refresh ou d'une
+  // reconnexion (le moteur peut avoir été créé avant le compte).
+  questState = normalizeQuestState(fresh.quests);
+  if (!questState.active[selectedQuestId]) {
+    selectedQuestId = Object.keys(questState.active)[0] || null;
+  }
 
   // ✅ crédits toujours synchronisés avec le compte
   player.credits = Math.max(0, Number(fresh.credits || 0));
@@ -8321,6 +8360,11 @@ if (ui.startHint) {
 }
 
   resetRun({ randomSpawn: false });
+  // Le contenu des fenêtres n'est pas conservé par le DOM après un refresh.
+  // Recharge immédiatement le journal depuis le compte avant que le joueur
+  // rouvre l'icône « Missions » dans le dock.
+  renderQuestWindow();
+  renderQuestTerminal();
   if (window.__ORBIT_MAP_TRANSITION__) player.iFrames = 0;
   setCenterMsg(false);
 

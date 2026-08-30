@@ -1655,6 +1655,8 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 .questOfferItem.active{ border-color:#7cf0ff; color:#fff; background:rgba(0,140,185,.28); }
 .questOfferItem.completed{ border-color:rgba(86,225,132,.48); color:#8ff5ae; background:rgba(18,104,51,.25); }
 .questOfferItem.completed.active{ border-color:#72f19b; color:#dfffe8; background:rgba(25,139,65,.38); }
+.questOfferItem.accepted{ border-color:rgba(255,170,70,.72); color:#ffc276; background:rgba(148,78,18,.24); }
+.questOfferItem.accepted.active{ border-color:#ffb45c; color:#ffe0ad; background:rgba(178,96,20,.38); }
 .questOfferItem:disabled{ opacity:.45; cursor:default; }
 .questOfferImageWrap{ height:230px; display:grid; place-items:center; margin-bottom:15px; border-radius:10px; background:radial-gradient(circle,rgba(0,155,210,.16),rgba(0,8,18,.72)); }
 .questOfferImage{ max-width:90%; max-height:210px; object-fit:contain; image-rendering:auto; }
@@ -1689,6 +1691,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 .questAction:hover:not(:disabled){ background:rgba(0,190,235,.32); }
 .questAction:disabled{ cursor:default; opacity:.5; }
 .questAction.questCompletedAction:disabled{ border-color:rgba(86,225,132,.5); color:#92f5b1; background:rgba(18,104,51,.28); opacity:1; }
+.questAction.questAcceptedAction:disabled{ border-color:rgba(255,170,70,.6); color:#ffc276; background:rgba(148,78,18,.24); opacity:1; }
 .performanceActions{ display:grid; gap:9px; margin-top:14px; }
 .performanceButton{
   width:100%; box-sizing:border-box; min-height:36px; padding:8px 12px; border:1px solid rgba(124,240,255,.28);
