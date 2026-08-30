@@ -227,6 +227,9 @@ function ensureUserShape(u) {
 
   // modules roulette (instances uniques)
   if (!Array.isArray(u.inventory.shipModules)) u.inventory.shipModules = [];
+  if (!Array.isArray(u.inventory.moduleRollHistory)) {
+    u.inventory.moduleRollHistory = u.inventory.shipModules.map(module => ({ ...module }));
+  }
 
   // migration ancienne: inventory.modules array
   if (!Array.isArray(u.inventory.modules)) u.inventory.modules = [];
@@ -656,14 +659,19 @@ export function updateCurrentUserProgress(patch = {}) {
  * - Ships: unique
  * - Tout le reste: achetable plusieurs fois => counts[itemId]++
  */
-export function buyItem(itemId) {
+export function buyItem(itemId, requestedQuantity = 1) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
 
   const item = findCatalogItem(itemId);
   if (!item) return { ok: false, error: "Item introuvable." };
 
-  const price = Number(item.price || 0);
+  const isShip = !!item.ship?.id;
+  const quantity = isShip
+    ? 1
+    : Math.min(999, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
+  const unitPrice = Math.max(0, Number(item.price || 0));
+  const price = unitPrice * quantity;
   if (u.credits < price) return { ok: false, error: "Crédits insuffisants." };
 
   // ships: unique
@@ -682,15 +690,15 @@ export function buyItem(itemId) {
     u.ammo ??= defaultAmmo();
     for (const k of Object.keys(item.give.ammo)) {
       if (k === "x1") continue;
-      const add = Number(item.give.ammo[k] || 0);
+      const add = Number(item.give.ammo[k] || 0) * quantity;
       u.ammo[k] = Math.max(0, Number(u.ammo[k] || 0) + add);
     }
-    incCount(u, item.id, 1);
+    incCount(u, item.id, quantity);
   }
 
   // modules (multi)
   if (item.module) {
-    incCount(u, item.id, 1);
+    incCount(u, item.id, quantity);
     // compat
     if (!u.inventory.modules.includes(item.id)) u.inventory.modules.push(item.id);
   }
@@ -712,7 +720,7 @@ export function buyItem(itemId) {
 
   ensureUserShape(u);
   saveUser(u);
-  return { ok: true, user: u };
+  return { ok: true, user: u, quantity, totalPrice: price };
 }
 
 // ---------------------------
@@ -1017,6 +1025,7 @@ export function addShipModule(moduleObj) {
   }
 
   u.inventory.shipModules.push(moduleObj);
+  u.inventory.moduleRollHistory.push({ ...moduleObj });
 
   saveUser(u);
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });

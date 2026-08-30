@@ -25,6 +25,8 @@ import { formatInteger } from "../src/core/numberFormat.js";
 import { FACTIONS, getFaction } from "../src/core/factions.js";
 import { NPC_TYPES } from "../src/data/npcTypes.js";
 import { QUEST_DEFINITIONS } from "../src/data/quests.js";
+import { AMMO } from "../src/data/ammo.js";
+import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS } from "../src/data/moduleDrops.js";
 
 console.log("profile.js loaded ✅");
 
@@ -328,16 +330,15 @@ function formatStatLabel(stat) {
 }
 
 function generateShipModule(user) {
-  const tier = pickWeighted([["x1", 85], ["x2", 13], ["x3", 2]]);
-  const type = pickWeighted([["hp", 25], ["shd", 25], ["dmg", 25], ["spc", 25]]);
-  const statCount = pickWeighted([[1, 70], [2, 24], [3, 5.5], [4, 0.5]]);
+  const tier = pickWeighted(MODULE_TIER_WEIGHTS);
+  const type = pickWeighted(MODULE_TYPE_WEIGHTS);
+  const statCount = pickWeighted(MODULE_STAT_COUNT_WEIGHTS);
 
   const ships = Array.isArray(CATALOG?.ships) ? CATALOG.ships : [];
   const shipPick = ships.length ? ships[randInt(0, ships.length - 1)] : null;
   const shipId = shipPick?.ship?.id || "UnknownShip";
 
-  const ranges = { x1: [5, 15], x2: [10, 20], x3: [15, 30] };
-  const [mn, mx] = ranges[tier] || [5, 15];
+  const [mn, mx] = MODULE_BONUS_RANGES[tier] || MODULE_BONUS_RANGES.x1;
 
   const ALL_STATS = ["hp", "shield", "penetration", "speed", "damage"];
 
@@ -998,8 +999,8 @@ function renderExtrasRoulette(user) {
   const centerIndex = Math.floor(visible / 2);
 
   let cells = Array.from({ length: visible }, () => {
-    const tier = pickWeighted([["x1", 85], ["x2", 13], ["x3", 2]]);
-    const type = pickWeighted([["hp", 25], ["shd", 25], ["dmg", 25], ["spc", 25]]);
+    const tier = pickWeighted(MODULE_TIER_WEIGHTS);
+    const type = pickWeighted(MODULE_TYPE_WEIGHTS);
     return { type, tier };
   });
 
@@ -1029,41 +1030,76 @@ function renderExtrasRoulette(user) {
   }
 
   function rollStep() {
-    const tier = pickWeighted([["x1", 85], ["x2", 13], ["x3", 2]]);
-    const type = pickWeighted([["hp", 25], ["shd", 25], ["dmg", 25], ["spc", 25]]);
+    const tier = pickWeighted(MODULE_TIER_WEIGHTS);
+    const type = pickWeighted(MODULE_TYPE_WEIGHTS);
     cells = cells.slice(1).concat({ type, tier });
+  }
+
+  function renderModuleHistory(currentUser) {
+    const history = Array.isArray(currentUser?.inventory?.moduleRollHistory)
+      ? [...currentUser.inventory.moduleRollHistory].reverse()
+      : [];
+    if (!history.length) return `<div class="moduleHistoryEmpty">Aucun module obtenu pour le moment.</div>`;
+
+    return history.map((module, index) => {
+      const bonuses = Array.isArray(module?.bonuses)
+        ? module.bonuses.map(bonus => `${formatNumber(bonus.pct || 0)}% ${formatStatLabel(bonus.stat)}`).join(" • ")
+        : "Aucun bonus";
+      const obtainedAt = Number(module?.createdAt || 0) > 0
+        ? new Date(Number(module.createdAt) * 1000).toLocaleString("fr-FR")
+        : "Date inconnue";
+      return `
+        <div class="moduleHistoryRow">
+          <span class="moduleHistoryIndex">${formatNumber(history.length - index)}</span>
+          <img src="${moduleIconSrc(module?.type, module?.tier)}" alt="" />
+          <div class="moduleHistoryMeta">
+            <strong>${escapeHtml(String(module?.type || "module").toUpperCase())}-${escapeHtml(String(module?.tier || "x1").toUpperCase())}</strong>
+            <span>${escapeHtml(String(module?.shipId || "Vaisseau inconnu"))} • ${escapeHtml(bonuses)}</span>
+          </div>
+          <time>${escapeHtml(obtainedAt)}</time>
+        </div>
+      `;
+    }).join("");
   }
 
   shopPreview.innerHTML = `
     <div class="tile extrasRoulettePanel">
       <div class="extrasRouletteHeader">
         <div>
-          <h3>🎰 Roulette de Modules</h3>
+          <h3>Roulette de modules</h3>
           <p>Obtiens un module bonus aléatoire pour l'un de tes vaisseaux.</p>
         </div>
-        <div class="extrasRouletteCost"><span>Coût du tirage</span><strong>250 000</strong> crédits</div>
+        <div class="extrasRouletteCost"><span>Coût du tirage</span><strong>${formatNumber(MODULE_ROLL_COST)}</strong> crédits</div>
       </div>
       <div id="rouletteStrip" style="margin:16px 0;">
         ${renderStrip()}
       </div>
 
       <p style="color: var(--muted); font-size: 13px; margin: 12px 0; text-align: center;">
-        Tier: <strong style="color: #00d9ff;">x1 (85%)</strong>, 
-        <strong style="color: #ff006e;">x2 (13%)</strong>, 
-        <strong style="color: #00ff88;">x3 (2%)</strong>
+        Tier: <strong style="color: #00d9ff;">x1 (68%)</strong>,
+        <strong style="color: #ff006e;">x2 (25%)</strong>,
+        <strong style="color: #00ff88;">x3 (7%)</strong>
       </p>
 
-      <button id="btnRoll" class="primary" style="width: 100%;" ${Number(user?.credits || 0) < 250000 ? "disabled" : ""}>
-        🎰 Lancer (250 000 crédits)
+      <button id="btnRoll" class="primary" style="width: 100%;" ${Number(user?.credits || 0) < MODULE_ROLL_COST ? "disabled" : ""}>
+        Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)
       </button>
 
       <div id="rollResult" style="margin-top: 16px; text-align: center; color: var(--muted);"></div>
+      <section class="moduleHistoryPanel">
+        <header>
+          <strong>Historique des modules obtenus</strong>
+          <span>${formatNumber(user?.inventory?.moduleRollHistory?.length || 0)} tirage(s)</span>
+        </header>
+        <div id="moduleRollHistory" class="moduleHistoryList">${renderModuleHistory(user)}</div>
+      </section>
     </div>
   `;
 
   const stripEl = document.getElementById("rouletteStrip");
   const btn = document.getElementById("btnRoll");
   const res = document.getElementById("rollResult");
+  const historyEl = document.getElementById("moduleRollHistory");
 
   let rolling = false;
 
@@ -1072,10 +1108,10 @@ function renderExtrasRoulette(user) {
     rolling = true;
     res.textContent = "";
 
-    const pay = buyModuleRoll(250000);
+    const pay = buyModuleRoll(MODULE_ROLL_COST);
     if (!pay?.ok) {
       rolling = false;
-      setMsg("❌ " + (pay?.error || "Achat impossible."), false);
+      setMsg(pay?.error || "Achat impossible.", false);
       return;
     }
 
@@ -1109,7 +1145,7 @@ function renderExtrasRoulette(user) {
 
       const add = addShipModule(mod);
       if (!add?.ok) {
-        setMsg("❌ " + (add?.error || "Erreur stockage module."), false);
+        setMsg(add?.error || "Erreur stockage module.", false);
         rolling = false;
         return;
       }
@@ -1122,14 +1158,17 @@ function renderExtrasRoulette(user) {
 
       res.innerHTML = `
         <div style="margin-top:12px; padding: 12px; background: rgba(0,217,255,0.1); border: 1px solid rgba(0,217,255,0.3); border-radius: 12px;">
-          <div style="font-size: 16px; font-weight: 900; color: #00ff88; margin-bottom: 8px;">✅ Module Gagné!</div>
+          <div style="font-size: 16px; font-weight: 900; color: #00ff88; margin-bottom: 8px;">Module obtenu</div>
           <div style="color: var(--text);"><strong>${mod.type.toUpperCase()}-${mod.tier.toUpperCase()}</strong></div>
           <div style="color: var(--muted); font-size: 13px;">Vaisseau: <strong>${mod.shipId}</strong></div>
           <div style="color: var(--muted); font-size: 13px; margin-top: 4px;">Bonus: ${bonusesText}</div>
         </div>
       `;
 
-      setMsg("✅ Tirage réussi !", true);
+      if (historyEl) historyEl.innerHTML = renderModuleHistory(user);
+      const historyCount = document.querySelector(".moduleHistoryPanel > header span");
+      if (historyCount) historyCount.textContent = `${formatNumber(user?.inventory?.moduleRollHistory?.length || 0)} tirage(s)`;
+      setMsg("Tirage réussi.", true);
 
       renderHeader(user);
       renderStats(user);
@@ -1145,7 +1184,6 @@ function renderExtrasRoulette(user) {
 
 function renderShopPreview(user, it, cat) {
   const price = Number(it?.price || 0);
-  const can = Number(user?.credits || 0) >= price;
   const isShip = cat === "ships";
   const shipId = it?.ship?.id || null;
   const owned = isShip ? alreadyOwnsShip(user, shipId) : false;
@@ -1153,13 +1191,29 @@ const counts = user?.inventory?.counts || {};
 const countOwned = Number(counts[it?.id] || 0);
 
 const ammoQty = getAmmoQtyForShopItem(user, it);
+const isAmmo = !!ammoQty;
+const ammoKey = ammoQty?.key || "";
 
 let stockLine = "";
+let statLine = "";
+
+if (it?.module?.type === "speed") {
+  statLine = `<p class="shopItemStat">Vitesse par générateur <strong>+${formatNumber(it.module.bonusSpeed || 0)}</strong></p>`;
+} else if (it?.module?.type === "shield") {
+  statLine = `<p class="shopItemStat">Bouclier par générateur <strong>+${formatNumber(it.module.bonusShield || 0)}</strong></p>`;
+} else if (it?.module?.type === "laser") {
+  statLine = `<p class="shopItemStat">Dégâts de base par tir <strong>${formatNumber(it.module.damage || 0)}</strong></p>`;
+} else if (it?.give?.ammo) {
+  const multiplier = Number(AMMO[ammoKey]?.mult || 1);
+  statLine = ammoKey === "sab"
+    ? `<p class="shopItemStat">Absorption de bouclier <strong>${multiplier}×</strong></p>`
+    : `<p class="shopItemStat">Multiplicateur de dégâts <strong>${multiplier}×</strong></p>`;
+}
 
 if (!isShip && ammoQty) {
   stockLine = `
-    <p style="margin: 8px 0;">
-      Quantité possédée : 
+    <p class="shopAmmoOwned">
+      Munitions ${String(ammoKey).toUpperCase()} — quantité possédée :
       <strong style="color: #00d9ff;">${formatNumber(ammoQty.qty)}</strong>
     </p>
   `;
@@ -1171,16 +1225,6 @@ if (!isShip && ammoQty) {
     </p>
   `;
 }
-
-  let gainLine = "";
-  if (it?.give?.ammo) {
-    const entries = Object.entries(it.give.ammo)
-      .filter(([k]) => k !== "x1")
-      .map(([k, v]) => `${String(k).toUpperCase()} <strong>+${Number(v)}</strong>`);
-    if (entries.length) {
-      gainLine = `<p style="margin: 8px 0;">Gain munitions: ${entries.join(" • ")}</p>`;
-    }
-  }
 
   const imgSrc = isShip ? shipPreviewSrc(shipId) : iconForItem(it, cat);
 
@@ -1220,45 +1264,82 @@ if (!isShip && ammoQty) {
         ${owned ? `<span class="pill">Possédé</span>` : ""}
       </h3>
 
-      ${gainLine}
       ${stockLine}
-      
-      <p style="margin: 12px 0; font-size: 18px;">
-        <strong style="color: #00d9ff;">Prix:</strong> 
-        <span style="font-weight: 900; color: #00ff88;">${formatNumber(price)}</span> crédits
-      </p>
+      ${statLine}
 
-      <button id="btnBuyPreview" class="primary" style="width: 100%;" ${(!can || owned) ? "disabled" : ""}>
-        ${owned ? '✅ Déjà possédé' : `💰 Acheter (${formatNumber(price)})`}
-      </button>
+      ${!isShip ? `
+        <div class="shopPurchaseRow">
+          <div class="shopPurchaseInfo">
+            <label for="shopBuyQuantity">${isAmmo ? "Quantité à acheter × 1 000" : "Quantité à acheter"}</label>
+            <div class="shopPurchasePrice">
+              <span>Prix</span>
+              <strong><span id="shopPurchaseTotal">${formatNumber(price)}</span> crédits</strong>
+            </div>
+          </div>
+          <select id="shopBuyQuantity" aria-label="Quantité à acheter">
+            <option value="1">1</option>
+            <option value="5">5</option>
+            <option value="10">10</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+      ` : ""}
+      
+      ${isShip ? `<p style="margin: 12px 0; font-size: 18px;">
+        <strong style="color: #00d9ff;">Prix total:</strong>
+        <span id="shopPurchaseTotal" style="font-weight: 900; color: #00ff88;">${formatNumber(price)}</span> crédits
+      </p>` : ""}
+
+      <div class="shopBuySection">
+        <button id="btnBuyPreview" class="primary" style="width: 100%;" ${(Number(user?.credits || 0) < price || owned) ? "disabled" : ""}>
+          ${owned ? 'Déjà possédé' : (isShip ? `Acheter (${formatNumber(price)})` : 'Acheter')}
+        </button>
+      </div>
     </div>
   `;
 
   const btn = document.getElementById("btnBuyPreview");
   if (!btn) return;
 
+  const quantityInput = document.getElementById("shopBuyQuantity");
+  const totalEl = document.getElementById("shopPurchaseTotal");
+  const normalizeQuantity = () => isShip
+    ? 1
+    : Math.min(999, Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
+  const updatePurchaseSummary = () => {
+    const quantity = normalizeQuantity();
+    const total = price * quantity;
+    if (quantityInput) quantityInput.value = String(quantity);
+    if (totalEl) totalEl.textContent = formatNumber(total);
+    btn.disabled = owned || Number(user?.credits || 0) < total;
+    if (!owned) {
+      btn.textContent = isShip ? `Acheter (${formatNumber(total)})` : "Acheter";
+    }
+  };
+
+  quantityInput?.addEventListener("input", updatePurchaseSummary);
+  quantityInput?.addEventListener("change", updatePurchaseSummary);
+  updatePurchaseSummary();
+
   btn.addEventListener("click", () => {
-    console.log("Click sur btnBuyPreview détecté !", { owned, can });
-    
-    if (owned || !can) return;
+    const quantity = normalizeQuantity();
+    const totalPrice = price * quantity;
+    if (owned || Number(user?.credits || 0) < totalPrice) return;
 
     const itemName = it?.name || it?.id;
-    const priceFormatted = formatNumber(price);
-
-    console.log("Affichage confirmation pour:", itemName);
 
     showConfirm(
       '💰 Confirmer l\'achat',
-      `Voulez-vous acheter "${itemName}" pour ${priceFormatted} crédits ?`,
+      `Voulez-vous acheter ${quantity > 1 ? `${formatNumber(quantity)} × ` : ""}"${itemName}" pour ${formatNumber(totalPrice)} crédits ?`,
       () => {
-        console.log("Confirmation OK, achat en cours...");
-        const out = buyItem(it.id);
+        const out = buyItem(it.id, quantity);
         if (!out?.ok) {
           showToast(out?.error || "Achat impossible", 'error');
           return;
         }
 
-        showToast(`✅ ${itemName} acheté avec succès !`, 'success');
+        showToast(`✅ ${formatNumber(quantity)} × ${itemName} acheté avec succès !`, 'success');
 
         user = getCurrentUserFull();
         renderHeader(user);

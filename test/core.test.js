@@ -37,6 +37,8 @@ import { formatInteger } from "../src/core/numberFormat.js";
 import { COLLECTABLE_SPAWN, COLLECTABLE_TYPES } from "../src/data/collectables.js";
 import { GATE_MULTIPLIERS } from "../src/data/npcBalance.js";
 import { NPC_TYPES } from "../src/data/npcTypes.js";
+import { CATALOG } from "../src/core/catalog.js";
+import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_TIER_WEIGHTS } from "../src/data/moduleDrops.js";
 import {
   QUEST_DEFINITIONS,
   MAX_ACTIVE_QUESTS,
@@ -702,6 +704,50 @@ test("les comptes sauvegardés sont versionnés et les valeurs sont bornées", a
   assert.deepEqual(user.quests, { active: {}, completed: [] });
   assert.ok(user.revision >= 1);
   assert.ok(user.updatedAt > 0);
+});
+
+test("l'économie des équipements progresse par paliers et limite les modules X1", () => {
+  assert.deepEqual(CATALOG.speedGen.map(item => item.module.bonusSpeed), [2, 4, 6, 8, 11, 16]);
+  assert.deepEqual(CATALOG.shieldGen.map(item => item.module.bonusShield), [5000, 7500, 10000, 12500, 15000, 22500]);
+  assert.deepEqual(CATALOG.lasers.map(item => item.module.damage), [40, 100, 150, 200, 275, 600]);
+  assert.deepEqual(CATALOG.ammo.map(item => item.price), [50000, 150000, 500000, 250000, 1500000]);
+  assert.ok(CATALOG.ammo.every(item => Object.values(item.give.ammo).every(amount => amount === 1000)));
+  assert.equal(CATALOG.speedGen.at(-1).price, 1250000000);
+  assert.equal(CATALOG.shieldGen.at(-1).price, 1250000000);
+  assert.equal(CATALOG.lasers.at(-1).price, 1500000000);
+  assert.equal(MODULE_ROLL_COST, 1000000);
+  assert.ok(CATALOG.ships.every(item => Number(item.price) > 0));
+  assert.deepEqual(MODULE_TIER_WEIGHTS, [["x1", 68], ["x2", 25], ["x3", 7]]);
+  assert.deepEqual(MODULE_BONUS_RANGES.x1, [3, 8]);
+});
+
+test("la boutique applique un achat multiple de façon atomique", async () => {
+  const { buyItem, getCurrentUserFull, updateCurrentUserProgress } = await import("../src/core/account.js");
+  updateCurrentUserProgress({ credits: 1000000 });
+  const before = Number(getCurrentUserFull().ammo.x2 || 0);
+  const bought = buyItem("ammo_x2", 3);
+  assert.equal(bought.ok, true);
+  assert.equal(bought.quantity, 3);
+  assert.equal(bought.totalPrice, 150000);
+  assert.equal(getCurrentUserFull().ammo.x2, before + 3000);
+  assert.equal(getCurrentUserFull().credits, 850000);
+});
+
+test("la roulette conserve un historique persistant des modules obtenus", async () => {
+  const { addShipModule, getCurrentUserFull } = await import("../src/core/account.js");
+  const module = {
+    id: "module_test_history",
+    kind: "shipModule",
+    shipId: "PhoenixBleu",
+    tier: "x2",
+    type: "dmg",
+    bonuses: [{ stat: "damage", pct: 12 }],
+    createdAt: 123456,
+  };
+  assert.equal(addShipModule(module).ok, true);
+  const user = getCurrentUserFull();
+  assert.equal(user.inventory.shipModules.at(-1).id, module.id);
+  assert.equal(user.inventory.moduleRollHistory.at(-1).id, module.id);
 });
 
 test("un pilote peut lier son email et changer son mot de passe", async () => {

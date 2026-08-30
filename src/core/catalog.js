@@ -17,48 +17,48 @@ function defaultShipPrice(pack) {
 
 export const CATALOG = {
 ammo: [
-  { id: "ammo_x2",  name: "Munitions X2", price: 25000, give: { ammo: { x2: 2000 } } },
-  { id: "ammo_x3",  name: "Munitions X3", price: 50000, give: { ammo: { x3: 1000 } } },
-  { id: "ammo_x4",  name: "Munitions X4", price: 100000, give: { ammo: { x4: 1000 } } },
+  { id: "ammo_x2",  name: "Munitions X2", price: 50000, give: { ammo: { x2: 1000 } } },
+  { id: "ammo_x3",  name: "Munitions X3", price: 150000, give: { ammo: { x3: 1000 } } },
+  { id: "ammo_x4",  name: "Munitions X4", price: 500000, give: { ammo: { x4: 1000 } } },
 
   // ✅ SAB-50 maintenant achetable dans la vraie boutique
-  { id: "ammo_sab", name: "Munitions SAB-50", price: 75000, give: { ammo: { sab: 500 } } },
+  { id: "ammo_sab", name: "Munitions SAB-50", price: 250000, give: { ammo: { sab: 1000 } } },
 
-  { id: "ammo_x6",  name: "Munitions X6", price: 250000, give: { ammo: { x6: 1000 } } },
+  { id: "ammo_x6",  name: "Munitions X6", price: 1500000, give: { ammo: { x6: 1000 } } },
  // { id: "ammo_abl", name: "Munitions ABL", price: 250000, give: { ammo: { ABL: 1000 } } },
  // { id: "ammo_radion", name: "Munitions RADION", price: 10000000, give: { ammo: { RADION: 1000 } } },
 ],
 
   speedGen: [
-    { id: "spd_mk0", name: "Générateur de vitesse MK0", price: 10000, module: { type: "speed",  bonusSpeed: 3 } },
-    { id: "spd_mk1", name: "Générateur de vitesse MK1", price: 50000, module: { type: "speed",  bonusSpeed: 4 } },
-    { id: "spd_mk2", name: "Générateur de vitesse MK2", price: 200000, module: { type: "speed",  bonusSpeed: 5 } },
-    { id: "spd_mk3", name: "Générateur de vitesse MK3", price: 1000000, module: { type: "speed",  bonusSpeed: 7 } },
-    { id: "spd_mk4", name: "Générateur de vitesse MK4", price: 25000000, module: { type: "speed",  bonusSpeed: 10 } },
-    { id: "spd_radion", name: "Générateur de vitesse RADION", price: 1000000000, module: { type: "speed",  bonusSpeed: 12 } },
+    { id: "spd_mk0", name: "Générateur de vitesse MK0", price: 15000, module: { type: "speed",  bonusSpeed: 2 } },
+    { id: "spd_mk1", name: "Générateur de vitesse MK1", price: 75000, module: { type: "speed",  bonusSpeed: 4 } },
+    { id: "spd_mk2", name: "Générateur de vitesse MK2", price: 300000, module: { type: "speed",  bonusSpeed: 6 } },
+    { id: "spd_mk3", name: "Générateur de vitesse MK3", price: 1500000, module: { type: "speed",  bonusSpeed: 8 } },
+    { id: "spd_mk4", name: "Générateur de vitesse MK4", price: 40000000, module: { type: "speed",  bonusSpeed: 11 } },
+    { id: "spd_radion", name: "Générateur de vitesse RADION", price: 1250000000, module: { type: "speed",  bonusSpeed: 16 } },
   ],
 
   shieldGen: [
-    { id: "shd_mk0", name: "Générateur de bouclier MK0", price: 10000, module: { type: "shield", bonusShield: 9000 } },
-    { id: "shd_mk1", name: "Générateur de bouclier MK1", price: 50000, module: { type: "shield", bonusShield: 9500 } },
-    { id: "shd_mk2", name: "Générateur de bouclier MK2", price: 200000, module: { type: "shield", bonusShield: 10000 } },
-    { id: "shd_mk3", name: "Générateur de bouclier MK3", price: 1000000, module: { type: "shield", bonusShield: 11450 } },
-    { id: "shd_mk4", name: "Générateur de bouclier MK4", price: 25000000, module: { type: "shield", bonusShield: 11900 } },
-    { id: "shd_radion", name: "Générateur de bouclier RADION", price: 1000000000, module: { type: "shield", bonusShield: 14500 } },
+    { id: "shd_mk0", name: "Générateur de bouclier MK0", price: 12500, module: { type: "shield", bonusShield: 5000 } },
+    { id: "shd_mk1", name: "Générateur de bouclier MK1", price: 60000, module: { type: "shield", bonusShield: 7500 } },
+    { id: "shd_mk2", name: "Générateur de bouclier MK2", price: 250000, module: { type: "shield", bonusShield: 10000 } },
+    { id: "shd_mk3", name: "Générateur de bouclier MK3", price: 1250000, module: { type: "shield", bonusShield: 12500 } },
+    { id: "shd_mk4", name: "Générateur de bouclier MK4", price: 35000000, module: { type: "shield", bonusShield: 15000 } },
+    { id: "shd_radion", name: "Générateur de bouclier RADION", price: 1250000000, module: { type: "shield", bonusShield: 22500 } },
   ],
 
   lasers: [
-    { id: "laser_lf1", name: "laser LF-1", price: 10000, module: { type: "laser", damage: 65 } },
-    { id: "laser_lf2", name: "laser LF-2", price: 50000, module: { type: "laser", damage: 140 } },
-    { id: "laser_lf3", name: "laser LF-3", price: 200000, module: { type: "laser", damage: 201 } },
-    { id: "laser_odysseus", name: "laser Odysseus", price: 1000000, module: { type: "laser", damage: 220 } },
-    { id: "laser_anchorlock", name: "laser Anchorlock", price: 25000000, module: { type: "laser", damage: 245 } },
-    { id: "laser_radion", name: "laser Mortifier", price: 1000000000, module: { type: "laser", damage: 520 } },
+    { id: "laser_lf1", name: "laser LF-1", price: 10000, module: { type: "laser", damage: 40 } },
+    { id: "laser_lf2", name: "laser LF-2", price: 75000, module: { type: "laser", damage: 100 } },
+    { id: "laser_lf3", name: "laser LF-3", price: 350000, module: { type: "laser", damage: 150 } },
+    { id: "laser_odysseus", name: "laser Odysseus", price: 2000000, module: { type: "laser", damage: 200 } },
+    { id: "laser_anchorlock", name: "laser Anchorlock", price: 50000000, module: { type: "laser", damage: 275 } },
+    { id: "laser_radion", name: "laser Mortifier", price: 1500000000, module: { type: "laser", damage: 600 } },
     ],
 
   extras: [
-    { id: "extra_radar", name: "Extra: Radar +", price: 100000, module: { type: "extra", key: "radar_plus" } },
-    { id: "extra_loot",  name: "Extra: Loot +",  price: 200000, module: { type: "extra", key: "loot_plus" } },
+    { id: "extra_radar", name: "Extra: Radar +", price: 250000, module: { type: "extra", key: "radar_plus" } },
+    { id: "extra_loot",  name: "Extra: Loot +",  price: 500000, module: { type: "extra", key: "loot_plus" } },
   ],
 
   // ✅ auto depuis SHIP_PACKS (price propre à chaque vaisseau, fallback heuristique)

@@ -590,6 +590,19 @@ html body #profileOverlay .shipPreviewContainer { width: 100% !important; height
 #profileOverlay .shipPreviewContainer img { width: auto !important; height: auto !important; max-width: 74% !important; max-height: 74% !important; transform: none !important; image-rendering: pixelated !important; object-fit: contain !important; }
 #profileOverlay .shopPreview h3 { margin: 0 0 8px !important; color: #effbff !important; font-size: 17px !important; }
 #profileOverlay .shopPreview p { color: rgba(209,231,243,.68) !important; font-size: 11px !important; line-height: 1.45 !important; }
+#profileOverlay .shopPreview .shopItemStat { margin: 8px 0 !important; color: rgba(209,231,243,.72) !important; }
+#profileOverlay .shopPreview .shopItemStat strong { margin-left: 5px !important; color: #75e8ff !important; font-size: 13px !important; }
+#profileOverlay .shopAmmoOwned { margin: 8px 0 !important; color: rgba(225,241,249,.82) !important; font-size: 12px !important; }
+#profileOverlay .shopPurchaseRow { margin: 14px 0 0 !important; padding: 14px 4px !important; display: grid !important; grid-template-columns: minmax(160px,1fr) 110px !important; align-items: center !important; gap: 18px !important; border-top: 1px solid rgba(124,240,255,.15) !important; }
+#profileOverlay .shopPurchaseInfo { min-width: 0 !important; display: grid !important; gap: 8px !important; }
+#profileOverlay .shopPurchaseInfo > label { color: rgba(225,241,249,.78) !important; font-size: 11px !important; font-weight: 850 !important; }
+#profileOverlay .shopPurchaseRow > select { width: 110px !important; height: 36px !important; padding: 0 30px 0 12px !important; box-sizing: border-box !important; outline: 0 !important; border: 1px solid rgba(124,240,255,.30) !important; border-radius: 7px !important; color: #effcff !important; background: #051521 !important; font: 900 12px/1 system-ui !important; text-align: center !important; cursor: pointer !important; }
+#profileOverlay .shopPurchaseRow > select:focus { border-color: #69e9ff !important; }
+#profileOverlay .shopPurchaseRow > select option { color: #effcff !important; background: #071622 !important; }
+#profileOverlay .shopPurchasePrice { min-width: 0 !important; display: grid !important; gap: 3px !important; text-align: left !important; }
+#profileOverlay .shopPurchasePrice > span { color: rgba(204,228,241,.48) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
+#profileOverlay .shopPurchasePrice strong { color: #72efff !important; font-size: 13px !important; white-space: nowrap !important; }
+#profileOverlay .shopBuySection { margin-top: 12px !important; padding-top: 12px !important; border-top: 1px solid rgba(124,240,255,.12) !important; }
 #profileOverlay #btnBuyPreview { margin-top: auto !important; width: 100% !important; }
 
 html body #profileOverlay #panel_shop .shopLayout.extrasMode { display: block !important; overflow-y: auto !important; }
@@ -602,6 +615,19 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #profileOverlay .extrasRouletteCost { flex: 0 0 auto !important; color: rgba(204,228,241,.55) !important; font-size: 9px !important; text-align: right !important; }
 #profileOverlay .extrasRouletteCost span { display: block !important; text-transform: uppercase !important; }
 #profileOverlay .extrasRouletteCost strong { margin-right: 4px !important; color: #75e8ff !important; font-size: 16px !important; }
+#profileOverlay .moduleHistoryPanel { min-height: 0 !important; margin-top: 18px !important; border-top: 1px solid rgba(124,240,255,.13) !important; }
+#profileOverlay .moduleHistoryPanel > header { min-height: 42px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 16px !important; color: #effbff !important; }
+#profileOverlay .moduleHistoryPanel > header strong { font-size: 12px !important; }
+#profileOverlay .moduleHistoryPanel > header span { color: rgba(204,228,241,.52) !important; font-size: 9px !important; }
+#profileOverlay .moduleHistoryList { max-height: 230px !important; overflow-y: auto !important; border-top: 1px solid rgba(124,240,255,.09) !important; }
+#profileOverlay .moduleHistoryRow { min-height: 48px !important; padding: 7px 5px !important; display: grid !important; grid-template-columns: 28px 38px minmax(0,1fr) auto !important; align-items: center !important; gap: 9px !important; border-bottom: 1px solid rgba(124,240,255,.08) !important; }
+#profileOverlay .moduleHistoryIndex { color: rgba(204,228,241,.38) !important; font-size: 9px !important; text-align: center !important; }
+#profileOverlay .moduleHistoryRow img { width: 34px !important; height: 34px !important; object-fit: contain !important; image-rendering: pixelated !important; }
+#profileOverlay .moduleHistoryMeta { min-width: 0 !important; display: grid !important; gap: 3px !important; }
+#profileOverlay .moduleHistoryMeta strong { color: #75e8ff !important; font-size: 10px !important; }
+#profileOverlay .moduleHistoryMeta span { overflow: hidden !important; color: rgba(204,228,241,.60) !important; font-size: 9px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#profileOverlay .moduleHistoryRow time { color: rgba(204,228,241,.38) !important; font-size: 8px !important; white-space: nowrap !important; }
+#profileOverlay .moduleHistoryEmpty { padding: 24px !important; color: rgba(204,228,241,.45) !important; font-size: 10px !important; text-align: center !important; }
 
 #profileOverlay * { scrollbar-width: thin !important; scrollbar-color: #285a72 #07131f !important; }
 
