@@ -21,7 +21,7 @@ export function getLevelInfo(experience) {
 }
 
 export function getNpcExperienceReward(npc, definition = {}) {
-  return Math.max(0, Math.floor(Number(npc?.value ?? definition.value ?? 0)));
+  return Math.max(0, Math.floor(Number(npc?.exp ?? definition.exp ?? npc?.value ?? definition.value ?? 0)));
 }
 
 const BASE_NPC_HONOR = {
@@ -32,6 +32,8 @@ const BASE_NPC_HONOR = {
 };
 
 export function getNpcHonorReward(npc, definition = {}) {
+  const explicitHonor = npc?.honor ?? definition.honor;
+  if (explicitHonor != null) return Math.max(0, Math.floor(Number(explicitHonor) || 0));
   const credits = Math.max(0, Number(npc?.value ?? definition.value ?? 0));
   const rawType = String(npc?.type || definition.type || "").replace(/^npc_/, "");
   let type = rawType;
@@ -39,7 +41,7 @@ export function getNpcHonorReward(npc, definition = {}) {
   if (type.startsWith("Boss_")) { type = type.slice(5); multiplier *= 4; }
   if (type.startsWith("Uber_")) { type = type.slice(5); multiplier *= 8; }
   if (type.endsWith("_beta")) { type = type.slice(0, -5); multiplier *= 2; }
-  if (type.endsWith("_gamma")) { type = type.slice(0, -6); multiplier *= 4; }
+  if (type.endsWith("_gamma")) { type = type.slice(0, -6); multiplier *= 3; }
   if (type.endsWith("_alpha")) type = type.slice(0, -6);
   const known = BASE_NPC_HONOR[type];
   return Math.max(0, Math.floor(known == null ? credits * 0.1 : known * multiplier));

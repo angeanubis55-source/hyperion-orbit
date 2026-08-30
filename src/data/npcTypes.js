@@ -1,4 +1,6 @@
- export const NPC_TYPES = {
+import { applyNpcBalance } from "./npcBalance.js";
+
+export const NPC_TYPES = {
 
   npc_Streuner: {
     name: "-=[ Streuner ]=-",
@@ -1295,3 +1297,5 @@
     shootRange: 700, shootRate: 1.0, bulletSpread: 0.05, burst: 1, bulletR: 7, bulletScale: 1.5, orbit: 0.45,
   },
 };
+
+applyNpcBalance(NPC_TYPES);

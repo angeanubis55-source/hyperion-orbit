@@ -16,7 +16,9 @@ export function createNpcEntity({ id, type, x, y, config, wave = 1, random = Mat
     empT: 0, x, y, vx: 0, vy: 0, wobble: between(random, 0, 999), r: config.r ?? 18,
     hpMax: Math.floor(config.hp ?? 50), hp: 0,
     shMax: Math.floor(config.shield ?? 0), sh: 0,
-    speed: Math.floor((config.speed ?? 320) * (0.95 + random() * 0.1)), dr: config.dr ?? 0,
+    // La vitesse est une statistique de gameplay officielle : ne pas lui
+    // appliquer de variation aléatoire à chaque apparition.
+    speed: Math.floor(config.speed ?? 320), dr: config.dr ?? 0,
     touchDmg: config.touchDmg ?? (14 + wave * 0.25), value: config.value ?? 0,
     canShoot: config.canShoot !== false, shootRange: config.shootRange ?? 540,
     shootCd: between(random, 0.2, 0.7), shootRate: config.shootRate ?? 1,

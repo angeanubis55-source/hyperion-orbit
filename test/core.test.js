@@ -35,6 +35,8 @@ import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVeloc
 import { ADMIN_RANK, PILOT_RANKS, calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor } from "../src/core/progression.js";
 import { formatInteger } from "../src/core/numberFormat.js";
 import { COLLECTABLE_SPAWN, COLLECTABLE_TYPES } from "../src/data/collectables.js";
+import { GATE_MULTIPLIERS } from "../src/data/npcBalance.js";
+import { NPC_TYPES } from "../src/data/npcTypes.js";
 import {
   QUEST_DEFINITIONS,
   MAX_ACTIVE_QUESTS,
@@ -245,6 +247,42 @@ test("la progression calcule les niveaux et détecte les passages de niveau", ()
   assert.equal(getNpcHonorReward({ type: "npc_Streuner", value: 400 }), 2);
   assert.equal(getNpcHonorReward({ type: "npc_Boss_Mordon", value: 25600 }), 64);
   assert.equal(getNpcHonorReward({ type: "npc_Inconnu", value: 900 }), 90);
+});
+
+test("tous les NPC ont des statistiques et récompenses distinctes valides", () => {
+  for (const [type, npc] of Object.entries(NPC_TYPES)) {
+    assert.ok(npc.hp >= 1, `${type} doit avoir de la vie`);
+    assert.ok(npc.shield >= 0, `${type} doit avoir un bouclier valide`);
+    assert.ok(npc.speed >= 0, `${type} doit avoir une vitesse valide`);
+    assert.ok(npc.exp >= 0, `${type} doit avoir une expérience valide`);
+    assert.ok(npc.honor >= 0, `${type} doit avoir un honneur valide`);
+  }
+
+  for (const [gate, multiplier] of Object.entries(GATE_MULTIPLIERS)) {
+    const base = NPC_TYPES.npc_Kristallon;
+    const variant = NPC_TYPES[`npc_Kristallon_${gate}`];
+    assert.equal(variant.hp, base.hp * multiplier);
+    assert.equal(variant.shield, base.shield * multiplier);
+    assert.equal(variant.speed, base.speed);
+    assert.equal(variant.value, base.value * multiplier);
+    assert.equal(variant.exp, base.exp * multiplier);
+    assert.equal(variant.honor, base.honor * multiplier);
+  }
+
+  assert.deepEqual(
+    { credits: NPC_TYPES.npc_Blighted_Kristallon.value, exp: NPC_TYPES.npc_Blighted_Kristallon.exp, honor: NPC_TYPES.npc_Blighted_Kristallon.honor },
+    { credits: 500000, exp: 65000, honor: 300 },
+  );
+  assert.deepEqual(
+    { credits: NPC_TYPES.npc_Blighted_Gygerthrall.value, exp: NPC_TYPES.npc_Blighted_Gygerthrall.exp, honor: NPC_TYPES.npc_Blighted_Gygerthrall.honor },
+    { credits: 18800, exp: 9400, honor: 45 },
+  );
+  assert.equal(NPC_TYPES.npc_Streuner.speed, 270);
+  assert.equal(NPC_TYPES.npc_Protegit.speed, 420);
+  assert.equal(NPC_TYPES.npc_Cubikon.speed, 30);
+  assert.equal(NPC_TYPES.npc_Boss_Lordakia.speed, 400);
+  assert.equal(NPC_TYPES.npc_Boss_Devolarium.speed, 160);
+  assert.equal(NPC_TYPES.npc_Boss_Kristallon.speed, 250);
 });
 
 test("les grands nombres utilisent des espaces comme séparateurs", () => {
