@@ -27,6 +27,7 @@ import {
   updatePortalProximity,
 } from "../src/core/portalSystem.js";
 import { buildQuestJournalView, buildQuestTerminalView } from "../src/core/questPresentation.js";
+import { drawMoveTargetMarker, drawToastMessage } from "../src/core/canvasHudRenderer.js";
 import { COLLECTABLE_SPAWN, COLLECTABLE_TYPES } from "../src/data/collectables.js";
 import {
   QUEST_DEFINITIONS,
@@ -127,6 +128,25 @@ test("la présentation des quêtes distingue le journal et les états du termina
   });
   assert.match(terminal.listHtml, /accepted/);
   assert.match(terminal.detailHtml, /Mission en cours/);
+});
+
+test("les rendus HUD Canvas restaurent le contexte et gèrent les messages permanents", () => {
+  const calls = [];
+  const context = new Proxy({ globalAlpha: 1 }, {
+    get(target, property) {
+      if (property in target) return target[property];
+      return (...args) => calls.push([property, ...args]);
+    },
+    set(target, property, value) {
+      target[property] = value;
+      return true;
+    },
+  });
+  drawToastMessage(context, { text: "Zone de Non-Agression", t: 2, dur: Infinity, fixed: true }, 1200, 800);
+  assert.equal(Number.isFinite(context.globalAlpha), true);
+  drawMoveTargetMarker(context, { active: true, x: 10, y: 20 }, 5, 6);
+  assert.equal(calls.filter(call => call[0] === "save").length, 2);
+  assert.equal(calls.filter(call => call[0] === "restore").length, 2);
 });
 
 test("les primitives de collision gèrent segments et distances", () => {

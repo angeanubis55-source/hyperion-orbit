@@ -43,6 +43,12 @@ import {
 } from "./portalSystem.js";
 import { buildQuestJournalView, buildQuestTerminalView } from "./questPresentation.js";
 import {
+  drawMoveTargetMarker,
+  drawPlayerStatus,
+  drawTargetLock,
+  drawToastMessage,
+} from "./canvasHudRenderer.js";
+import {
   QUEST_DEFINITIONS,
   acceptQuest,
   abandonQuest,
@@ -6237,75 +6243,18 @@ function drawSafeModules(ox, oy) {
 }
 
 function drawToast() {
-  if (!toast) return;
-  const p = clamp(toast.t / toast.dur, 0, 1);
-  const a = 1 - p;
-  const y = innerHeight * 0.35 + (1 - p) * 8;
-
-  ctx.save();
-  ctx.globalAlpha = a;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
-  const isSafe = toast && toast.fixed && toast.text === "Zone de Non-Agression";
-  ctx.font = isSafe
-    ? "900 22px ui-sans-serif, system-ui"
-    : "1000 44px ui-sans-serif, system-ui";
-
-  ctx.lineWidth = 0;
-  ctx.strokeStyle = "rgba(5,8,20,0.85)";
-  ctx.strokeText(toast.text, innerWidth / 2, y);
-  ctx.fillStyle = "rgba(215,226,255,0.95)";
-  ctx.fillText(toast.text, innerWidth / 2, y);
-
-  ctx.restore();
-  ctx.globalAlpha = 1;
+  drawToastMessage(ctx, toast, innerWidth, innerHeight);
 }
 
 function drawMoveTarget(ox, oy) {
-  if (!moveTarget.active) return;
-  const x = moveTarget.x + ox;
-  const y = moveTarget.y + oy;
-
-  ctx.save();
-  ctx.globalAlpha = 0.9;
-  ctx.strokeStyle = "rgba(124,240,255,0.75)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(x, y, 16, 0, TAU);
-  ctx.stroke();
-
-  ctx.globalAlpha = 0.7;
-  ctx.beginPath();
-  ctx.moveTo(x - 10, y);
-  ctx.lineTo(x + 10, y);
-  ctx.moveTo(x, y - 10);
-  ctx.lineTo(x, y + 10);
-  ctx.stroke();
-
-  ctx.restore();
-  ctx.globalAlpha = 1;
+  drawMoveTargetMarker(ctx, moveTarget, ox, oy);
 }
 
 function drawTargetMarker(e, ox, oy, time) {
   if (!e || e.hp <= 0) return;
-
   const img = getCachedImage(LOCK_SPR.src);
   if (!isImgReady(img)) return;
-
-  const x = e.x + ox;
-  const y = e.y + oy + (LOCK_SPR.yOff || 0);
-
-  const a = 0.85 + Math.sin(time * 8.0) * 0.10;
-
-  ctx.save();
-  ctx.globalAlpha = a;
-  ctx.imageSmoothingEnabled = false;
-
-  ctx.drawImage(img, x - LOCK_SPR.w / 2, y - LOCK_SPR.h / 2, LOCK_SPR.w, LOCK_SPR.h);
-
-  ctx.restore();
-  ctx.globalAlpha = 1;
+  drawTargetLock(ctx, e, img, LOCK_SPR, ox, oy, time);
 }
 
 function drawLaserBeam(L, ox, oy) {
@@ -6388,56 +6337,7 @@ function drawLaserBeam(L, ox, oy) {
 }
 
 function drawPlayerBars(px, py) {
-  if (player.dead) return;
-
-  const w = 120, h = 4, gap = 0;
-  
-  const bx = px - w / 2;
-  const by = py - player.r - 72;
-
-  const hpPct = clamp(player.hp / player.hpMax, 0, 1);
-  const shPct = player.shMax > 0 ? clamp(player.sh / player.shMax, 0, 1) : 0;
-
-  ctx.save();
-  ctx.globalAlpha = 0.95;
-
-  ctx.fillStyle = "rgba(0,0,0,0.45)";
-  ctx.fillRect(bx, by, w, h);
-  ctx.fillStyle = hpHueColor(hpPct, 0.98);
-  ctx.fillRect(bx, by, w * hpPct, h);
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(bx - 0.5, by - 0.5, w + 1, h + 1);
-
-  if (player.shMax > 0) {
-    const sy = by + h + gap;
-    ctx.fillStyle = "rgba(0,0,0,0.45)";
-    ctx.fillRect(bx, sy, w, h);
-    ctx.fillStyle = "rgba(124,240,255,0.90)";
-    ctx.fillRect(bx, sy, w * shPct, h);
-    ctx.strokeStyle = "rgba(255,255,255,0.22)";
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(bx - 0.5, sy - 0.5, w + 1, h + 1);
-  }
-
-  const user = account.user;
-  const playerName = user?.pseudo || "Pilote";
-  
-  ctx.font = "900 16px ui-sans-serif, system-ui";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  
-  const nameY = py + player.r + 90;
-  
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = "rgba(5,8,20,0.90)";
-  ctx.strokeText(playerName, px, nameY);
-  
-  ctx.fillStyle = "rgba(124,240,255,0.95)";
-  ctx.fillText(playerName, px, nameY);
-
-  ctx.restore();
-  ctx.globalAlpha = 1;
+  drawPlayerStatus(ctx, player, account.user?.pseudo || "Pilote", px, py);
 }
 
 function getRsbPercent() {
