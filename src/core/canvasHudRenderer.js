@@ -90,3 +90,48 @@ export function drawPlayerStatus(context, player, playerName, x, y) {
   context.fillText(playerName || "Pilote", x, y + player.r + 90);
   context.restore();
 }
+
+export function drawNpcStatus(context, npc, label, showBars) {
+  if (!context || !npc || npc.hp <= 0) return;
+  if (showBars) {
+    const hpPercent = clamp(npc.hp / npc.hpMax, 0, 1);
+    const width = npc.r * 2.6;
+    const height = 4;
+    const x = -width / 2;
+    const y = -npc.r - 35 - height;
+    if ((npc.shMax || 0) > 0) {
+      const shieldPercent = clamp(npc.sh / npc.shMax, 0, 1);
+      context.save();
+      context.globalAlpha = 0.95;
+      context.fillStyle = "rgba(0,0,0,0.45)";
+      context.fillRect(x, y + height, width, height);
+      context.fillStyle = "rgba(124,240,255,0.90)";
+      context.fillRect(x, y + height, width * shieldPercent, height);
+      context.strokeStyle = "rgba(255,255,255,0.22)";
+      context.lineWidth = 1;
+      context.strokeRect(x - 0.5, y + height - 0.5, width + 1, height + 1);
+      context.restore();
+    }
+    context.save();
+    context.globalAlpha = 0.95;
+    context.fillStyle = "rgba(0,0,0,0.45)";
+    context.fillRect(x, y, width, height);
+    context.fillStyle = hpHueColor(hpPercent, 0.98);
+    context.fillRect(x, y, width * hpPercent, height);
+    context.strokeStyle = "rgba(255,255,255,0.22)";
+    context.lineWidth = 1.5;
+    context.strokeRect(x - 0.5, y - 0.5, width + 1, height + 1);
+    context.restore();
+  }
+  context.save();
+  context.globalAlpha = 0.98;
+  context.font = "900 13px ui-sans-serif, system-ui";
+  context.textAlign = "center";
+  context.textBaseline = "top";
+  context.lineWidth = 0;
+  context.strokeStyle = "rgba(5,8,20,0.90)";
+  context.strokeText(label, 0, npc.r + 35);
+  context.fillStyle = "rgba(255,59,78,0.95)";
+  context.fillText(label, 0, npc.r + 35);
+  context.restore();
+}

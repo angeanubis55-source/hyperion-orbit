@@ -44,10 +44,14 @@ import {
 import { buildQuestJournalView, buildQuestTerminalView } from "./questPresentation.js";
 import {
   drawMoveTargetMarker,
+  drawNpcStatus,
   drawPlayerStatus,
   drawTargetLock,
   drawToastMessage,
 } from "./canvasHudRenderer.js";
+import { renderMinimap } from "./minimapRenderer.js";
+import { drawBackgroundLayerSet, drawWallLayer } from "./worldLayerRenderer.js";
+import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./frameSystems.js";
 import {
   QUEST_DEFINITIONS,
   acceptQuest,
@@ -5567,159 +5571,26 @@ mini.addEventListener("pointerup", (e) => {
 }, { passive: true });
 
 function drawMinimap() {
-  const w = mini.width, h = mini.height;
-  mctx.clearRect(0, 0, w, h);
-
-  mctx.fillStyle = "rgba(255,255,255,0.04)";
-  mctx.fillRect(0, 0, w, h);
-
-  const sx = w / WORLD.w;
-  const sy = h / WORLD.h;
-  const lockedNpcOnRadar = Target.get();
-
-  for (const e of enemies) {
-    if (!e || e.hp <= 0) continue;
-    if (!shouldDetectNpc(player, e, NPC_SENSOR_RANGES.radar, lockedNpcOnRadar)) continue;
-    const x = e.x * sx;
-    const y = e.y * sy;
-    const s = clamp((e.r || 18) / 12, 2, 6);
-
-    mctx.fillStyle = "rgba(255,107,122,0.80)";
-    mctx.fillRect(x - s / 2, y - s / 2, s, s);
-  }
-
-  const minimapPortals = isZoneMap ? (zonePortals || []) : getInteractivePortals();
-  if (minimapPortals.length) {
-    mctx.save();
-    mctx.globalAlpha = 0.9;
-    mctx.lineWidth = 2;
-    mctx.strokeStyle = "rgba(124,240,255,0.7)";
-
-    for (const p of minimapPortals) {
-      const x = p.x * sx;
-      const y = p.y * sy;
-
-      const s = (sx + sy) * 0.5;
-      const rr = (p.r || 200) * s;
-
-      mctx.strokeStyle = !isZoneMap && p === gateReturnPortal
-        ? "rgba(255,178,92,0.9)"
-        : "rgba(124,240,255,0.8)";
-      mctx.beginPath();
-      mctx.arc(x, y, rr, 0, Math.PI * 2);
-      mctx.stroke();
-
-      mctx.fillStyle = !isZoneMap && p === gateReturnPortal
-        ? "rgba(255,178,92,0.95)"
-        : "rgba(124,240,255,0.95)";
-      mctx.beginPath();
-      mctx.arc(x, y, 2.5, 0, Math.PI * 2);
-      mctx.fill();
-    }
-
-    mctx.restore();
-  }
-
-  if (isZoneMap && zoneSafe) {
-    const mods = zoneSafe.modules || [];
-
-    mctx.save();
-    mctx.globalAlpha = 0.95;
-
-    for (const m of mods) {
-      const x = m.x * sx;
-      const y = m.y * sy;
-
-      const base = Math.max(m.w || 0, m.h || 0);
-      const r = Math.max(3, base * 0.18 * ((sx + sy) * 0.5));
-
-      mctx.fillStyle = "rgba(120,255,160,0.22)";
-      mctx.beginPath();
-      mctx.arc(x, y, r, 0, Math.PI * 2);
-      mctx.fill();
-
-      mctx.strokeStyle = "rgba(120,255,160,0.80)";
-      mctx.lineWidth = 1.5;
-      mctx.stroke();
-    }
-
-    const bea = zoneSafe.beacons || [];
-    mctx.fillStyle = "rgba(120,255,160,0.95)";
-    for (const b of bea) {
-      const x = b.x * sx;
-      const y = b.y * sy;
-      const r = 2;
-      mctx.beginPath();
-      mctx.arc(x, y, r, 0, Math.PI * 2);
-      mctx.fill();
-    }
-
-    mctx.restore();
-  }
-
-  mctx.fillStyle = "rgba(124,240,255,1)";
-  mctx.beginPath();
-  mctx.arc(player.x * sx, player.y * sy, 3.2, 0, Math.PI * 2);
-  mctx.fill();
-
-  if (moveTarget.active && !player.dead) {
-    const tx = moveTarget.x * sx;
-    const ty = moveTarget.y * sy;
-
-    mctx.save();
-    mctx.globalAlpha = 0.85;
-    mctx.lineWidth = 2;
-    mctx.strokeStyle = "rgba(124,240,255,0.75)";
-
-    mctx.beginPath();
-    mctx.moveTo(player.x * sx, player.y * sy);
-    mctx.lineTo(tx, ty);
-    mctx.stroke();
-
-    mctx.fillStyle = "rgba(124,240,255,0.95)";
-    mctx.beginPath();
-    mctx.arc(tx, ty, 3.2, 0, Math.PI * 2);
-    mctx.fill();
-
-    mctx.restore();
-  }
-
-  if (miniPing) {
-    const p = clamp(miniPing.t / miniPing.dur, 0, 1);
-    const a = 1 - p;
-
-    const x = miniPing.x * sx;
-    const y = miniPing.y * sy;
-
-    const r0 = 6;
-    const r1 = 26;
-    const r = r0 + (r1 - r0) * p;
-
-    mctx.save();
-    mctx.globalAlpha = a;
-    mctx.lineWidth = 2.5;
-    mctx.strokeStyle = "rgba(255,210,122,0.95)";
-    mctx.beginPath();
-    mctx.arc(x, y, r, 0, Math.PI * 2);
-    mctx.stroke();
-
-    mctx.globalAlpha = a * 0.25;
-    mctx.lineWidth = 6;
-    mctx.beginPath();
-    mctx.arc(x, y, r, 0, Math.PI * 2);
-    mctx.stroke();
-
-    mctx.restore();
-  }
-
-  const vw = innerWidth * sx;
-  const vh = innerHeight * sy;
-  const vx = (camera.x - innerWidth / 2) * sx;
-  const vy = (camera.y - innerHeight / 2) * sy;
-
-  mctx.strokeStyle = "rgba(124,240,255,0.6)";
-  mctx.strokeRect(vx, vy, vw, vh);
+  renderMinimap(mctx, {
+    width: mini.width,
+    height: mini.height,
+    world: WORLD,
+    player,
+    enemies,
+    portals: isZoneMap ? (zonePortals || []) : getInteractivePortals(),
+    returnPortal: gateReturnPortal,
+    isZoneMap,
+    safeZone: zoneSafe,
+    moveTarget,
+    ping: miniPing,
+    camera,
+    viewportWidth: innerWidth,
+    viewportHeight: innerHeight,
+    lockedNpc: Target.get(),
+    shouldShowNpc: (source, enemy, locked) => shouldDetectNpc(source, enemy, NPC_SENSOR_RANGES.radar, locked),
+  });
 }
+
 
 // ============================================================
 // Labels / colors
@@ -6574,44 +6445,7 @@ if (moveTarget.active && !player.dead) {
   }
 }
 
-// ✅ mouvement uniquement à la souris
-let ax = mx;
-let ay = my;
-
-const maxSpeed = Math.max(10, Number(player.baseSpeed || 0));
-
-// ✅ Plus cette valeur est haute, plus le vaisseau atteint vite sa vitesse max
-const MOVE_RESPONSE = 6.5;
-
-// ✅ Plus cette valeur est haute, plus le vaisseau freine vite quand tu arrêtes de bouger
-const STOP_RESPONSE = 7.5;
-
-if (!player.dead && (ax || ay)) {
-  const len = Math.hypot(ax, ay) || 1;
-  ax /= len;
-  ay /= len;
-
-  const targetVx = ax * maxSpeed;
-  const targetVy = ay * maxSpeed;
-
-  const t = 1 - Math.exp(-MOVE_RESPONSE * dt);
-
-  player.vx += (targetVx - player.vx) * t;
-  player.vy += (targetVy - player.vy) * t;
-} else {
-  const t = 1 - Math.exp(-STOP_RESPONSE * dt);
-
-  player.vx += (0 - player.vx) * t;
-  player.vy += (0 - player.vy) * t;
-}
-
-// Sécurité : ne jamais dépasser la vitesse max
-const sp = Math.hypot(player.vx, player.vy);
-if (sp > maxSpeed) {
-  const s = maxSpeed / sp;
-  player.vx *= s;
-  player.vy *= s;
-}
+updatePlayerVelocity(player, { x: mx, y: my }, dt);
 
   if (!player.dead) {
     player.x = player.x + player.vx * dt;
@@ -6872,43 +6706,12 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
   if (step.expired) removeProjectile(enemyBullets, i);
 }
 
-  for (let i = sparks.length - 1; i >= 0; i--) {
-    sparks[i].t += dt;
-    if (sparks[i].t > 0.25) sparks.splice(i, 1);
-  }
-
-  for (let i = floatTexts.length - 1; i >= 0; i--) {
-    const ft = floatTexts[i];
-    ft.t += dt;
-
-    ft.x += (ft.vx || 0) * dt;
-    ft.y += (ft.vy || 0) * dt;
-
-    ft.vx *= Math.pow(0.90, dt * 60);
-    ft.vy *= Math.pow(0.92, dt * 60);
-
-    if (ft.t >= ft.life) floatTexts.splice(i, 1);
-  }
-
-  for (let i = pickups.length - 1; i >= 0; i--) {
-    const pck = pickups[i];
-    pck.t += dt;
-    if (player.dead) continue;
-
-    const dx = player.x - pck.x;
-    const dy = player.y - pck.y;
-    const d = Math.hypot(dx, dy) || 1;
-
-    const spdLoot = 2200 + d * 2.8;
-    pck.x += (dx / d) * spdLoot * dt;
-    pck.y += (dy / d) * spdLoot * dt;
-
-    if (d < 28) {
-      player.credits += pck.credits || 0;
-      markProgressDirty();
-      pickups.splice(i, 1);
-    }
-  }
+  tickLifetimeItems(sparks, dt, () => 0.25);
+  tickFloatingTexts(floatTexts, dt);
+  attractPickups(pickups, player, dt, pickup => {
+    player.credits += pickup.credits || 0;
+    markProgressDirty();
+  });
 
   applyNpcSeparation(dt);
   for (const healer of enemies) {
@@ -6930,10 +6733,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
       ally._healthRevealed = true;
     }
   }
-  for (let i = healerPulses.length - 1; i >= 0; i--) {
-    healerPulses[i].t += dt;
-    if (healerPulses[i].t >= healerPulses[i].life) healerPulses.splice(i, 1);
-  }
+  tickLifetimeItems(healerPulses, dt, pulse => pulse.life);
   const lockedNpcForActivity = Target.get();
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
@@ -7446,92 +7246,24 @@ loadImage(WALL_TEX.src, { priority: true });
 
 function drawZoneWalls(ox, oy) {
   if (!isZoneMap || !zoneWalls?.length) return;
-
-  const img = getCachedImage(WALL_TEX.src);
-  if (!isImgReady(img)) return;
-
-  const pat = ctx.createPattern(img, "repeat");
-  if (!pat) return;
-
-  const iw = img.naturalWidth || img.width || 1;
-  const ih = img.naturalHeight || img.height || 1;
-
-  const sx = (WALL_TEX.w || iw) / iw;
-  const sy = (WALL_TEX.h || ih) / ih;
-
-  if (pat.setTransform) {
-    pat.setTransform(new DOMMatrix().scale(sx, sy));
-  }
-
-  ctx.save();
-
-  for (const w of zoneWalls) {
-    const left = (w.x - w.w / 2) + ox;
-    const top = (w.y - w.h / 2) + oy;
-
-    ctx.save();
-    ctx.translate(left, top);
-
-    ctx.fillStyle = pat;
-    ctx.fillRect(0, 0, w.w, w.h);
-
-    ctx.restore();
-  }
-
-  ctx.restore();
+  drawWallLayer(ctx, zoneWalls, WALL_TEX, {
+    offsetX: ox,
+    offsetY: oy,
+    getImage: getCachedImage,
+    isImageReady: isImgReady,
+    createScaleMatrix: (sx, sy) => new DOMMatrix().scale(sx, sy),
+  });
 }
 
 function drawBackgroundLayers(ox, oy) {
-  if (!BG_LAYERS || !BG_LAYERS.length) return;
-
-  for (const L of BG_LAYERS) {
-    const img = getCachedImage(L.src);
-    if (!isImgReady(img)) continue;
-
-    const alpha = clamp(L.alpha ?? 1, 0, 1);
-    const par = Number(L.parallax ?? 0);
-
-    const px = ox * par;
-    const py = oy * par;
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
-
-    if (L.blend) ctx.globalCompositeOperation = L.blend;
-
-    const iw = img.naturalWidth || img.width || 1;
-    const ih = img.naturalHeight || img.height || 1;
-
-    if (L.mode === "tile") {
-      const pat = ctx.createPattern(img, "repeat");
-      if (pat) {
-        ctx.translate(px, py);
-        ctx.fillStyle = pat;
-        ctx.fillRect(-px, -py, innerWidth, innerHeight);
-      }
-      ctx.restore();
-      ctx.globalCompositeOperation = "source-over";
-      continue;
-    }
-
-    const sx = innerWidth / iw;
-    const sy = innerHeight / ih;
-    const s = (L.mode === "contain") ? Math.min(sx, sy) : Math.max(sx, sy);
-
-    const dw = iw * s;
-    const dh = ih * s;
-
-    const x = (innerWidth - dw) * 0.5 + px;
-    const y = (innerHeight - dh) * 0.5 + py;
-
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(img, x, y, dw, dh);
-    ctx.imageSmoothingEnabled = false;
-
-    ctx.restore();
-    ctx.globalCompositeOperation = "source-over";
-  }
+  drawBackgroundLayerSet(ctx, BG_LAYERS, {
+    offsetX: ox,
+    offsetY: oy,
+    viewportWidth: innerWidth,
+    viewportHeight: innerHeight,
+    getImage: getCachedImage,
+    isImageReady: isImgReady,
+  });
 }
 
 function draw() {
@@ -7642,63 +7374,12 @@ if (GAME_SETTINGS.textures) {
 
     drawEnemyBody(e);
 
-    const showNpcBars = NPC_SENSOR_RANGES.allVisible || shouldShowNpcBars(e, selectedEnemyForBars);
-    if (showNpcBars) {
-    const pct = clamp(e.hp / e.hpMax, 0, 1);
-    const w = e.r * 2.6;
-    const h = 4;
-    const bx = -w / 2;
-    const by = -e.r - 35 - h;
-
-    if ((e.shMax || 0) > 0) {
-      const spct = clamp(e.sh / e.shMax, 0, 1);
-      const sy2 = by + h;
-
-      ctx.save();
-      ctx.globalAlpha = 0.95;
-      ctx.fillStyle = "rgba(0,0,0,0.45)";
-      ctx.fillRect(bx, sy2, w, h);
-      ctx.fillStyle = "rgba(124,240,255,0.90)";
-      ctx.fillRect(bx, sy2, w * spct, h);
-      ctx.strokeStyle = "rgba(255,255,255,0.22)";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(bx - 0.5, sy2 - 0.5, w + 1, h + 1);
-      ctx.restore();
-    }
-
-    ctx.save();
-    ctx.globalAlpha = 0.95;
-    ctx.fillStyle = "rgba(0,0,0,0.45)";
-    ctx.fillRect(bx, by, w, h);
-
-    const col = hpHueColor(pct, 0.98);
-    ctx.fillStyle = col;
-    ctx.fillRect(bx, by, w * pct, h);
-
-    ctx.strokeStyle = "rgba(255,255,255,0.22)";
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(bx - 0.5, by - 0.5, w + 1, h + 1);
-    ctx.restore();
-    }
-
-    const label = npcLabelFor(e);
-    
-    ctx.save();
-    ctx.globalAlpha = 0.98;
-    ctx.font = "900 13px ui-sans-serif, system-ui";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    
-    const labelY = e.r + 35;
-    
-    ctx.lineWidth = 0;
-    ctx.strokeStyle = "rgba(5,8,20,0.90)";
-    ctx.strokeText(label, 0, labelY);
-    
-    ctx.fillStyle = "rgba(255,59,78,0.95)";
-    ctx.fillText(label, 0, labelY);
-    
-    ctx.restore();
+    drawNpcStatus(
+      ctx,
+      e,
+      npcLabelFor(e),
+      NPC_SENSOR_RANGES.allVisible || shouldShowNpcBars(e, selectedEnemyForBars),
+    );
 
     ctx.restore();
     ctx.globalAlpha = 1;

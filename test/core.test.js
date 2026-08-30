@@ -28,6 +28,9 @@ import {
 } from "../src/core/portalSystem.js";
 import { buildQuestJournalView, buildQuestTerminalView } from "../src/core/questPresentation.js";
 import { drawMoveTargetMarker, drawToastMessage } from "../src/core/canvasHudRenderer.js";
+import { renderMinimap } from "../src/core/minimapRenderer.js";
+import { drawBackgroundLayerSet, drawWallLayer } from "../src/core/worldLayerRenderer.js";
+import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "../src/core/frameSystems.js";
 import { COLLECTABLE_SPAWN, COLLECTABLE_TYPES } from "../src/data/collectables.js";
 import {
   QUEST_DEFINITIONS,
@@ -147,6 +150,51 @@ test("les rendus HUD Canvas restaurent le contexte et gèrent les messages perma
   drawMoveTargetMarker(context, { active: true, x: 10, y: 20 }, 5, 6);
   assert.equal(calls.filter(call => call[0] === "save").length, 2);
   assert.equal(calls.filter(call => call[0] === "restore").length, 2);
+});
+
+test("la mini-carte filtre les NPC et dessine les portails avec un contexte équilibré", () => {
+  const calls = [];
+  const context = new Proxy({}, { get: (target, property) => target[property] || ((...args) => calls.push([property, ...args])), set: (target, property, value) => { target[property] = value; return true; } });
+  const player = { x: 500, y: 500, dead: false };
+  renderMinimap(context, {
+    width: 200, height: 100, world: { w: 1000, h: 1000 }, player,
+    enemies: [{ x: 100, y: 100, hp: 10, r: 18 }, { x: 200, y: 200, hp: 10, r: 18 }],
+    portals: [{ x: 300, y: 300, r: 50 }], moveTarget: { active: true, x: 700, y: 700 },
+    ping: { x: 700, y: 700, t: 0.5, dur: 1 }, camera: player,
+    viewportWidth: 800, viewportHeight: 600, shouldShowNpc: (_player, enemy) => enemy.x === 100,
+  });
+  assert.equal(calls.filter(call => call[0] === "fillRect").length, 2);
+  assert.equal(calls.filter(call => call[0] === "save").length, calls.filter(call => call[0] === "restore").length);
+});
+
+test("les couches du monde dessinent fonds et murs sans déséquilibrer Canvas", () => {
+  const calls = [];
+  const pattern = { setTransform: matrix => calls.push(["setTransform", matrix]) };
+  const context = new Proxy({ createPattern: () => pattern }, { get: (target, property) => target[property] || ((...args) => calls.push([property, ...args])), set: (target, property, value) => { target[property] = value; return true; } });
+  const image = { naturalWidth: 100, naturalHeight: 50 };
+  const common = { getImage: () => image, isImageReady: () => true };
+  drawBackgroundLayerSet(context, [{ src: "bg", mode: "cover", alpha: 1 }], { ...common, offsetX: 0, offsetY: 0, viewportWidth: 200, viewportHeight: 100 });
+  drawWallLayer(context, [{ x: 50, y: 50, w: 20, h: 30 }], { src: "wall", w: 64, h: 64 }, { ...common, offsetX: 5, offsetY: 6, createScaleMatrix: (x, y) => ({ x, y }) });
+  assert.equal(calls.some(call => call[0] === "drawImage"), true);
+  assert.equal(calls.some(call => call[0] === "setTransform"), true);
+  assert.equal(calls.filter(call => call[0] === "save").length, calls.filter(call => call[0] === "restore").length);
+});
+
+test("les systèmes de frame bornent le mouvement et nettoient les effets expirés", () => {
+  const player = { x: 0, y: 0, vx: 0, vy: 0, baseSpeed: 100, dead: false };
+  updatePlayerVelocity(player, { x: 10, y: 0 }, 1);
+  assert.ok(Math.hypot(player.vx, player.vy) <= 100);
+  const effects = [{ t: 0.2, life: 0.25 }, { t: 0, life: 1 }];
+  tickLifetimeItems(effects, 0.1, item => item.life);
+  assert.equal(effects.length, 1);
+  const texts = [{ t: 0, life: 0.05, x: 0, y: 0, vx: 10, vy: -10 }];
+  tickFloatingTexts(texts, 0.1);
+  assert.equal(texts.length, 0);
+  const pickups = [{ t: 0, x: 1, y: 1, credits: 20 }];
+  let reward = 0;
+  attractPickups(pickups, player, 0.016, item => { reward += item.credits; });
+  assert.equal(pickups.length, 0);
+  assert.equal(reward, 20);
 });
 
 test("les primitives de collision gèrent segments et distances", () => {
