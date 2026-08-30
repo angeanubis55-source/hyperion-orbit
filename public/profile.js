@@ -2957,6 +2957,15 @@ window.HyperionProfile = {
   close: closeProfileOverlay,
 };
 
+// Le moteur signale chaque sauvegarde de progression. Le registre peut ainsi
+// refléter immédiatement les destructions et les grades sans recharger la page.
+window.addEventListener("orbit:profile-progress", () => {
+  const refreshedUser = getCurrentUserFull();
+  if (!refreshedUser) return;
+  user = refreshedUser;
+  renderNpcStats(user);
+});
+
 // Init
 registerProfileWindow();
 wireMainTabsOnce();

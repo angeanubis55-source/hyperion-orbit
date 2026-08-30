@@ -1200,6 +1200,7 @@ updateCurrentUserProgress({
   },
 });
   account.dirty = false;
+  window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 }
 
 function savePositionNow() {
@@ -4413,6 +4414,9 @@ function killRewards(e) {
     account.user.stats.npcKills[e.type] = Math.max(0, Number(account.user.stats.npcKills[e.type] || 0)) + 1;
   }
   markProgressDirty();
+  // Une destruction doit être immédiatement disponible dans le registre,
+  // même si le joueur ouvre le profil avant la prochaine sauvegarde périodique.
+  saveProgressNow();
 }
 
 function processDeaths() {
@@ -4506,8 +4510,6 @@ function runOnKillAction(action, pos = null) {
       const radius = Math.max(40, Number(s.radius || 260));
 
       for (let i = 0; i < count; i++) {
-        if (enemies.length >= MAX_ALIVE) break;
-
         const ang = Math.random() * Math.PI * 2;
         const d = 60 + Math.random() * radius;
 
