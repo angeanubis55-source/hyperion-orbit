@@ -374,6 +374,25 @@
           <div class="accountSettingsGrid">
             <section class="accountCard">
               <div class="accountCardHeader">
+                <span class="accountCardIcon">ID</span>
+                <div>
+                  <h3>Pseudo du pilote</h3>
+                  <p id="accountPseudoStatus">Pseudo actuel</p>
+                </div>
+              </div>
+              <label class="accountField">
+                <span>Nouveau pseudo</span>
+                <input id="accountPseudo" type="text" autocomplete="username" maxlength="32" placeholder="Nouveau pseudo" />
+              </label>
+              <label class="accountField">
+                <span>Mot de passe actuel</span>
+                <input id="pseudoCurrentPassword" type="password" autocomplete="current-password" placeholder="••••••••" />
+              </label>
+              <button id="btnSavePseudo" class="primary" type="button">Changer de pseudo</button>
+            </section>
+
+            <section class="accountCard">
+              <div class="accountCardHeader">
                 <span class="accountCardIcon">✉</span>
                 <div>
                   <h3>Adresse email</h3>

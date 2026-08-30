@@ -1589,6 +1589,28 @@ const portal = {
   holdT: 0,
   startAfterSwitch: false,
 };
+const gateReturnPortal = {
+  active: false, x: 0, y: 0,
+  switching: false, switchT: 0, open: false,
+  holding: false, holdT: 0,
+  buttonHovered: false, buttonPressed: false,
+  proximityFade: 0,
+};
+portal.proximityFade = 0;
+
+function getInteractivePortals() {
+  return isZoneMap
+    ? (zonePortals || [])
+    : (betweenWaves ? [portal, gateReturnPortal].filter(ptl => ptl.active) : []);
+}
+
+function getGateReturnMap() {
+  const id = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+  if (id === "alpha") return "1-1";
+  if (id === "beta") return "2-1";
+  if (id === "gamma") return "3-1";
+  return "1-1";
+}
 
 let toast = null;
 let startHintT = 0;
@@ -2546,7 +2568,10 @@ const used = [...boundKeys, "Escape"];
     }
 
     if (isKeybind("portal", e.code)) {
-      if (!isZoneMap) tryStartNextWave();
+      if (!isZoneMap && betweenWaves) {
+        const near = getInteractivePortals().find(isPlayerNearPortal);
+        if (near) startGatePortalJump(near, near === portal ? "continue" : "return");
+      }
       return;
     }
 
@@ -2623,13 +2648,14 @@ function isPlayerNearPortal(ptl) {
 }
 
 function pickPortalButtonAtScreen(clientX, clientY) {
-  if (!isZoneMap || !zonePortals?.length) return null;
+  const portals = getInteractivePortals();
+  if (!portals.length) return null;
 
   const mouseWorld = screenToWorld(clientX, clientY);
 
   // On parcourt à l'envers pour prendre celui dessiné au-dessus
-  for (let i = zonePortals.length - 1; i >= 0; i--) {
-    const ptl = zonePortals[i];
+  for (let i = portals.length - 1; i >= 0; i--) {
+    const ptl = portals[i];
     const spr = getPortalSpriteSet(ptl);
     const btn = spr.jumpButton;
 
@@ -2655,14 +2681,15 @@ function pickPortalButtonAtScreen(clientX, clientY) {
 }
 
 function updatePortalButtonCursor(clientX, clientY) {
-  if (!isZoneMap || !zonePortals?.length) return false;
+  const portals = getInteractivePortals();
+  if (!portals.length) return false;
 
   const hoveredPortal = pickPortalButtonAtScreen(
     clientX,
     clientY
   );
 
-  for (const ptl of zonePortals) {
+  for (const ptl of portals) {
     ptl.buttonHovered = ptl === hoveredPortal;
   }
 
@@ -2897,7 +2924,7 @@ canvas.addEventListener(
 
     let pressedPortal = null;
 
-    for (const ptl of zonePortals || []) {
+    for (const ptl of getInteractivePortals()) {
       if (ptl.buttonPressed) {
         pressedPortal = ptl;
       }
@@ -2929,7 +2956,13 @@ canvas.addEventListener(
       } else if (requireNear && !nearEnough) {
         showToast("Approche-toi du portail", 1.2);
       } else {
-        startZonePortalJump(pressedPortal);
+        if (!isZoneMap && pressedPortal === portal) {
+          startGatePortalJump(portal, "continue");
+        } else if (!isZoneMap && pressedPortal === gateReturnPortal) {
+          startGatePortalJump(gateReturnPortal, "return");
+        } else {
+          startZonePortalJump(pressedPortal);
+        }
       }
     }
 
@@ -2955,7 +2988,7 @@ canvas.addEventListener(
   (e) => {
     pointer.reset();
 
-    for (const ptl of zonePortals || []) {
+    for (const ptl of getInteractivePortals()) {
       ptl.buttonPressed = false;
       ptl.buttonHovered = false;
     }
@@ -5133,6 +5166,7 @@ function beginWave() {
   betweenWaves = false;
 
   portal.active = false;
+  gateReturnPortal.active = false;
   ui.portalOverlay.style.display = "none";
   ui.nextWaveBtn.disabled = false;
 
@@ -5143,8 +5177,36 @@ function onWaveCleared() {
   betweenWaves = true;
 
   portal.active = true;
-  portal.x = player.x;
-  portal.y = player.y;
+  portal.x = WORLD.w / 2 - 420;
+  portal.y = WORLD.h / 2;
+  gateReturnPortal.active = true;
+  gateReturnPortal.x = WORLD.w / 2 + 420;
+  gateReturnPortal.y = WORLD.h / 2;
+  gateReturnPortal.switching = false;
+  gateReturnPortal.switchT = 0;
+  gateReturnPortal.open = false;
+  portal.proximityFade = 0;
+  gateReturnPortal.proximityFade = 0;
+
+  for (const ptl of [portal, gateReturnPortal]) {
+    ptl.switching = false;
+    ptl.switchT = 0;
+    ptl.open = false;
+    ptl.holding = false;
+    ptl.holdT = 0;
+    ptl.closing = false;
+    ptl.closeT = 0;
+    ptl.closeFrom = 0;
+    ptl.closeDur = portal.switchDur;
+    ptl.jumping = false;
+    ptl.jumpT = 0;
+    ptl.jumpDur = 2;
+    ptl.jumpSwitching = false;
+    ptl.jumpSwitchT = 0;
+    ptl.jumpSwitchDur = portal.switchDur;
+    ptl.buttonHovered = false;
+    ptl.buttonPressed = false;
+  }
 
   portal.switching = false;
   portal.switchT = 0;
@@ -5273,6 +5335,7 @@ function resetRun({ randomSpawn = false, preparedZoneCamps = null, preparedZoneP
   pendingVolleys.clear();
 
   portal.active = false;
+  gateReturnPortal.active = false;
   if (ui.portalOverlay) ui.portalOverlay.style.display = "none";
 
 bullets.length = 0;
@@ -5659,22 +5722,33 @@ function drawMinimap() {
     mctx.fillRect(x - s / 2, y - s / 2, s, s);
   }
 
-  if (isZoneMap && zonePortals?.length) {
+  const minimapPortals = isZoneMap ? (zonePortals || []) : getInteractivePortals();
+  if (minimapPortals.length) {
     mctx.save();
     mctx.globalAlpha = 0.9;
     mctx.lineWidth = 2;
     mctx.strokeStyle = "rgba(124,240,255,0.7)";
 
-    for (const p of zonePortals) {
+    for (const p of minimapPortals) {
       const x = p.x * sx;
       const y = p.y * sy;
 
       const s = (sx + sy) * 0.5;
       const rr = (p.r || 200) * s;
 
+      mctx.strokeStyle = !isZoneMap && p === gateReturnPortal
+        ? "rgba(255,178,92,0.9)"
+        : "rgba(124,240,255,0.8)";
       mctx.beginPath();
       mctx.arc(x, y, rr, 0, Math.PI * 2);
       mctx.stroke();
+
+      mctx.fillStyle = !isZoneMap && p === gateReturnPortal
+        ? "rgba(255,178,92,0.95)"
+        : "rgba(124,240,255,0.95)";
+      mctx.beginPath();
+      mctx.arc(x, y, 2.5, 0, Math.PI * 2);
+      mctx.fill();
     }
 
     mctx.restore();
@@ -5911,7 +5985,7 @@ function drawPortal(ox, oy) {
   const w = PORTAL_IDLE_SPR.w || imgA.naturalWidth || 128;
   const h = PORTAL_IDLE_SPR.h || imgA.naturalHeight || 128;
 
-  let p = portal.open ? 1 : 0;
+  let p = Number(portal.proximityFade || 0);
 
   if (portal.switching && portal.switchDur > 0) {
     p = clamp(portal.switchT / portal.switchDur, 0, 1);
@@ -5928,6 +6002,83 @@ function drawPortal(ox, oy) {
 
   ctx.restore();
   ctx.globalAlpha = 1;
+
+  const drawGateJump = (ptl) => {
+    if (!ptl.switching) return;
+    const spr = getPortalSpriteSet(ptl).jump;
+    const img = getCachedImage(spr?.src);
+    if (!isImgReady(img)) return;
+    const jw = Number(spr.w || img.naturalWidth || 128);
+    const jh = Number(spr.h || img.naturalHeight || 128);
+    const t = clamp(ptl.switchT / portal.switchDur, 0, 1);
+    ctx.save();
+    ctx.translate(ptl.x + ox, ptl.y + oy + Number(spr.yOff || 0));
+    ctx.rotate(t * TAU * Number(spr.spinSpeed || 0));
+    ctx.globalAlpha = t * Number(spr.alpha ?? 1);
+    ctx.drawImage(img, -jw / 2, -jh / 2, jw, jh);
+    ctx.restore();
+  };
+  drawGateJump(portal);
+
+  const drawGateButton = (ptl) => {
+    const btn = getPortalSpriteSet(ptl).jumpButton;
+    const img = getCachedImage((ptl.buttonPressed ? btn.click : ptl.buttonHovered ? btn.mouse : btn.idle)?.src);
+    if (!isImgReady(img)) return;
+    const bw = Number(btn.w || 88), bh = Number(btn.h || 135);
+    ctx.drawImage(img, ptl.x + ox + Number(btn.xOff || 0) - bw / 2, ptl.y + oy + Number(btn.yOff ?? -250) - bh / 2, bw, bh);
+  };
+  drawGateButton(portal);
+
+  if (!gateReturnPortal.active) return;
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  const returnFade = gateReturnPortal.switching
+    ? clamp(gateReturnPortal.switchT / portal.switchDur, 0, 1) : 0;
+  const returnVisualFade = gateReturnPortal.switching ? returnFade : Number(gateReturnPortal.proximityFade || 0);
+  ctx.globalAlpha = 1 - returnVisualFade;
+  ctx.drawImage(imgA, gateReturnPortal.x + ox - w / 2, gateReturnPortal.y + oy - h / 2, w, h);
+  ctx.globalAlpha = returnVisualFade;
+  ctx.drawImage(imgB, gateReturnPortal.x + ox - w / 2, gateReturnPortal.y + oy - h / 2, w, h);
+  ctx.globalAlpha = 1;
+  drawGateButton(gateReturnPortal);
+  drawGateJump(gateReturnPortal);
+  ctx.restore();
+}
+
+function startGatePortalJump(ptl, action) {
+  if (!ptl || ptl.jumping || !isPlayerNearPortal(ptl)) return;
+  ptl.gateAction = action;
+  ptl.jumpBaseFade = Math.max(0, getPortalOpenFade(ptl));
+  ptl.jumping = true;
+  ptl.jumpT = 0;
+  ptl.jumpDur = Math.max(0.1, Number(ptl.jumpDur || 2));
+  ptl.jumpSwitching = true;
+  ptl.jumpSwitchT = 0;
+  ptl.jumpSwitchDur = Math.max(0.1, Number(ptl.jumpSwitchDur || portal.switchDur));
+  ptl.open = true;
+  ptl.switching = false;
+  ptl.closing = false;
+  showToast("Saut en cours...", ptl.jumpDur);
+}
+
+function tickGatePortalJumps(dt) {
+  if (isZoneMap || !betweenWaves) return false;
+  for (const ptl of getInteractivePortals()) {
+    if (!ptl.jumping) continue;
+    ptl.jumpT += dt;
+    if (ptl.jumpT < ptl.jumpDur) continue;
+    const action = ptl.gateAction;
+    ptl.jumping = false;
+    if (action === "continue") {
+      betweenWaves = false;
+      wave++;
+      beginWave();
+    } else {
+      window.__GO_TO_MAP__?.(getGateReturnMap());
+    }
+    return true;
+  }
+  return false;
 }
 
 function getPortalOpenFade(ptl) {
@@ -5997,9 +6148,10 @@ function startZonePortalClosing(ptl) {
 }
 
 function tickZonePortalVisualTransitions(dt) {
-  if (!isZoneMap || !zonePortals?.length) return;
+  const portals = getInteractivePortals();
+  if (!portals.length) return;
 
-  for (const ptl of zonePortals) {
+  for (const ptl of portals) {
     if (ptl.closing) {
       ptl.closeT += dt;
 
@@ -6023,12 +6175,13 @@ function tickZonePortalVisualTransitions(dt) {
 }
 
 function drawZonePortals(ox, oy) {
-  if (!isZoneMap || !zonePortals?.length) return;
+  const portals = getInteractivePortals();
+  if (!portals.length) return;
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
 
-  for (const ptl of zonePortals) {
+  for (const ptl of portals) {
     const spr = getPortalSpriteSet(ptl);
 
     const imgIdle = getCachedImage(spr.idle?.src);
@@ -6574,7 +6727,7 @@ function drawPlayerBars(px, py) {
   }
 
   const user = account.user;
-  const playerName = user?.username || "Admin TEST";
+  const playerName = user?.pseudo || "Pilote";
   
   ctx.font = "900 16px ui-sans-serif, system-ui";
   ctx.textAlign = "center";
@@ -6800,35 +6953,31 @@ if (startHintT > 0) {
   }
 
   if (portal.active) {
-    if (portal.switching) {
-      portal.switchT += dt;
-      if (portal.switchT >= portal.switchDur) {
-        portal.switchT = portal.switchDur;
-        portal.switching = false;
-
-        portal.open = true;
-        portal.holding = true;
-        portal.holdT = 0;
+    for (const ptl of getInteractivePortals()) {
+      if (ptl.jumping) continue;
+      const near = isPlayerNearPortal(ptl);
+      if (near && !ptl.open && !ptl.switching && !ptl.holding && !ptl.closing) {
+        ptl.switching = true;
+        ptl.switchT = 0;
+      } else if (!near && (ptl.open || ptl.switching || ptl.holding) && !ptl.closing) {
+        startZonePortalClosing(ptl);
+      }
+      if (ptl.switching) {
+        ptl.switchT += dt;
+        if (ptl.switchT >= portal.switchDur) {
+          ptl.switching = false;
+          ptl.open = true;
+          ptl.holding = true;
+          ptl.holdT = 0;
+        }
+      } else if (ptl.holding) {
+        ptl.holdT += dt;
+        if (ptl.holdT >= portal.holdDur) ptl.holding = false;
       }
     }
-
-    if (portal.holding) {
-      portal.holdT += dt;
-      if (portal.holdT >= portal.holdDur) {
-        portal.holdT = portal.holdDur;
-        portal.holding = false;
-
-        if (portal.startAfterSwitch) {
-          portal.startAfterSwitch = false;
-
-          betweenWaves = false;
-          portal.active = false;
-          portal.open = false;
-
-          wave++;
-          beginWave();
-        }
-      }
+    if (justPressed.has(getKeybind("portal"))) {
+      const near = getInteractivePortals().find(isPlayerNearPortal);
+      if (near) startGatePortalJump(near, near === portal ? "continue" : "return");
     }
   }
 
@@ -6929,6 +7078,7 @@ if (sp > maxSpeed) {
   mapPortalLock = Math.max(0, mapPortalLock - dt);
   portalHintCd = Math.max(0, portalHintCd - dt);
   tickZonePortalVisualTransitions(dt);
+  if (tickGatePortalJumps(dt)) return;
   if (tickZonePortalJumps(dt)) return;
 
   if (isZoneMap && started && !player.dead && zonePortals.length) {
@@ -7833,7 +7983,6 @@ if (GAME_SETTINGS.textures) {
   ctx.fillRect(0, 0, innerWidth + STAR_TILE.width * 2, innerHeight + STAR_TILE.height * 2);
   ctx.restore();
 
-  drawPortal(ox, oy);
   drawZonePortals(ox, oy);
   drawSafeModules(ox, oy);
   drawMoveTarget(ox, oy);

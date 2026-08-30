@@ -12,6 +12,7 @@ import {
   buyModuleRoll,
   addShipModule,
   updateCurrentUserEmail,
+  updateCurrentUserPseudo,
   changeCurrentUserPassword,
 } from "../src/core/account.js";
 
@@ -50,6 +51,10 @@ const statCredits = $("statCredits");
 const statHonor = $("statHonor");
 const statExp = $("statExp");
 const statRank = $("statRank");
+const accountPseudo = $("accountPseudo");
+const accountPseudoStatus = $("accountPseudoStatus");
+const pseudoCurrentPassword = $("pseudoCurrentPassword");
+const btnSavePseudo = $("btnSavePseudo");
 const accountEmail = $("accountEmail");
 const accountEmailStatus = $("accountEmailStatus");
 const emailCurrentPassword = $("emailCurrentPassword");
@@ -468,6 +473,9 @@ function renderStats(u) {
   statExp.textContent = formatNumber(u.stats?.exp ?? 0);
   statRank.textContent = formatNumber(u.stats?.rankPoints ?? 0);
 
+  if (accountPseudoStatus) accountPseudoStatus.textContent = `Pseudo actuel : ${u.pseudo}`;
+  if (accountPseudo && document.activeElement !== accountPseudo) accountPseudo.value = String(u.pseudo || "");
+
   const linkedEmail = String(u.email || "").endsWith("@local") ? "" : String(u.email || "");
   if (accountEmailStatus) {
     accountEmailStatus.textContent = linkedEmail ? `Adresse liée : ${linkedEmail}` : "Aucune adresse email liée";
@@ -477,6 +485,19 @@ function renderStats(u) {
 }
 
 function wireAccountSettingsOnce() {
+  btnSavePseudo?.addEventListener("click", () => {
+    const pseudo = accountPseudo?.value.trim() || "";
+    const currentPassword = pseudoCurrentPassword?.value || "";
+    const out = updateCurrentUserPseudo(pseudo, currentPassword);
+    if (!out?.ok) return setMsg(out?.error || "Impossible de changer le pseudo.", false);
+
+    if (pseudoCurrentPassword) pseudoCurrentPassword.value = "";
+    user = getCurrentUserFull();
+    renderHeader(user);
+    renderStats(user);
+    setMsg("Pseudo modifié avec succès.", true);
+  });
+
   btnSaveEmail?.addEventListener("click", () => {
     const email = accountEmail?.value.trim() || "";
     const currentPassword = emailCurrentPassword?.value || "";

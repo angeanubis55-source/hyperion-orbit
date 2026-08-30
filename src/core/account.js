@@ -471,6 +471,31 @@ export function updateCurrentUserEmail(email, currentPassword) {
   return { ok: true, user: { id: u.id, pseudo: u.pseudo, email: u.email } };
 }
 
+export function updateCurrentUserPseudo(pseudo, currentPassword) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+
+  const nextPseudo = String(pseudo || "").trim();
+  if (nextPseudo.length < 3 || nextPseudo.length > 32) {
+    return { ok: false, error: "Le pseudo doit contenir entre 3 et 32 caractères." };
+  }
+  if (!/^[\p{L}\p{N}_ -]+$/u.test(nextPseudo)) {
+    return { ok: false, error: "Le pseudo contient des caractères non autorisés." };
+  }
+  if (String(u.password || "") !== String(currentPassword || "")) {
+    return { ok: false, error: "Mot de passe actuel incorrect." };
+  }
+
+  const duplicate = readUsers().some(candidate => candidate?.id !== u.id && norm(candidate?.pseudo) === norm(nextPseudo));
+  if (duplicate) return { ok: false, error: "Ce pseudo est déjà utilisé." };
+
+  u.pseudo = nextPseudo;
+  saveUser(u);
+  writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+  localStorage.setItem("orbit_sync", String(Date.now()));
+  return { ok: true, user: u };
+}
+
 export function changeCurrentUserPassword(currentPassword, newPassword) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
