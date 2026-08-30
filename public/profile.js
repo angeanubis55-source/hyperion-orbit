@@ -19,6 +19,7 @@ import {
 import { CATALOG, findCatalogItem } from "../src/core/catalog.js";
 import { SHIP_PACKS } from "../src/data/shipPacks.js";
 import { escapeHtml } from "../src/core/dom.js";
+import { calculateRankPoints, getRankInfo } from "../src/core/progression.js";
 
 console.log("profile.js loaded ✅");
 
@@ -51,6 +52,8 @@ const statCredits = $("statCredits");
 const statHonor = $("statHonor");
 const statExp = $("statExp");
 const statRank = $("statRank");
+const statRankName = $("statRankName");
+const statLifetimeKills = $("statLifetimeKills");
 const accountPseudo = $("accountPseudo");
 const accountPseudoStatus = $("accountPseudoStatus");
 const pseudoCurrentPassword = $("pseudoCurrentPassword");
@@ -471,7 +474,10 @@ function renderStats(u) {
   statCredits.textContent = formatNumber(u.credits || 0);
   statHonor.textContent = formatNumber(u.stats?.honor ?? 0);
   statExp.textContent = formatNumber(u.stats?.exp ?? 0);
-  statRank.textContent = formatNumber(u.stats?.rankPoints ?? 0);
+  const rankPoints = calculateRankPoints(u.stats);
+  statRank.textContent = formatNumber(rankPoints);
+  if (statRankName) statRankName.textContent = getRankInfo(rankPoints).name;
+  if (statLifetimeKills) statLifetimeKills.textContent = formatNumber(u.stats?.lifetimeKills ?? 0);
 
   if (accountPseudoStatus) accountPseudoStatus.textContent = `Pseudo actuel : ${u.pseudo}`;
   if (accountPseudo && document.activeElement !== accountPseudo) accountPseudo.value = String(u.pseudo || "");

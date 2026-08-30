@@ -4,6 +4,7 @@
 import { findCatalogItem } from "./catalog.js";
 import { SHIP_PACKS } from "../data/shipPacks.js";
 import { normalizeQuestState } from "../data/quests.js";
+import { calculateRankPoints } from "./progression.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -191,6 +192,8 @@ function ensureUserShape(u) {
   u.stats.honor ??= 0;
   u.stats.exp ??= 0;
   u.stats.rankPoints ??= 0;
+  u.stats.lifetimeKills ??= 0;
+  u.stats.rankPoints = calculateRankPoints(u.stats);
 
   u.quests = normalizeQuestState(u.quests);
 
@@ -419,7 +422,7 @@ export function register({ pseudo, email, password }) {
     ship: STARTER_SHIP_ID,
     inventory: { modules: [], ships: [STARTER_SHIP_ID], counts: {} },
     hangars: [makeHangar(STARTER_SHIP_ID, true)],
-    stats: { honor: 0, exp: 0, rankPoints: 0 },
+    stats: { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 },
   });
 
   users.push(user);
@@ -558,6 +561,8 @@ export function updateCurrentUserProgress(patch = {}) {
     if (patch.stats.honor != null) u.stats.honor = Number(patch.stats.honor || 0);
     if (patch.stats.exp != null) u.stats.exp = Number(patch.stats.exp || 0);
     if (patch.stats.rankPoints != null) u.stats.rankPoints = Number(patch.stats.rankPoints || 0);
+    if (patch.stats.lifetimeKills != null) u.stats.lifetimeKills = Math.max(0, Math.floor(Number(patch.stats.lifetimeKills || 0)));
+    u.stats.rankPoints = calculateRankPoints(u.stats);
   }
 
   if (patch.quests && typeof patch.quests === "object") {

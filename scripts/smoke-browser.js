@@ -109,8 +109,8 @@ try {
           await page.screenshot({ path: join(root, "profile-stats-preview.png"), fullPage: false });
           await page.click('#profileOverlay .tabBtn[data-tab="hangars"]');
           await page.screenshot({ path: join(root, "profile-hangars-preview.png"), fullPage: false });
-          await page.click('#profileOverlay .tabBtn[data-tab="shop"]');
         }
+        await page.click('#profileOverlay .tabBtn[data-tab="shop"]');
         for (const category of ["ammo", "speedGen", "shieldGen", "lasers", "extras", "ships"]) {
           await page.click(`#shopTabs .subtabBtn[data-shop="${category}"]`);
           if (captureProfile && category === "extras") {

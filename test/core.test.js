@@ -31,6 +31,7 @@ import { drawMoveTargetMarker, drawToastMessage } from "../src/core/canvasHudRen
 import { renderMinimap } from "../src/core/minimapRenderer.js";
 import { drawBackgroundLayerSet, drawWallLayer } from "../src/core/worldLayerRenderer.js";
 import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "../src/core/frameSystems.js";
+import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getRankInfo, grantExperience, grantHonor } from "../src/core/progression.js";
 import { COLLECTABLE_SPAWN, COLLECTABLE_TYPES } from "../src/data/collectables.js";
 import {
   QUEST_DEFINITIONS,
@@ -195,6 +196,28 @@ test("les systèmes de frame bornent le mouvement et nettoient les effets expir�
   attractPickups(pickups, player, 0.016, item => { reward += item.credits; });
   assert.equal(pickups.length, 0);
   assert.equal(reward, 20);
+});
+
+test("la progression calcule les niveaux et détecte les passages de niveau", () => {
+  assert.equal(getLevelInfo(0).level, 1);
+  assert.equal(getLevelInfo(10000).level, 2);
+  assert.equal(getLevelInfo(20000).level, 3);
+  assert.equal(getLevelInfo(40000).level, 4);
+  const stats = { exp: 9900 };
+  const result = grantExperience(stats, 200);
+  assert.equal(stats.exp, 10100);
+  assert.equal(result.leveledUp, true);
+  assert.equal(result.after.level, 2);
+  assert.equal(getNpcExperienceReward({ value: 400 }), 400);
+  assert.equal(getQuestExperienceReward({ reward: { credits: 50000 } }), 5000);
+  assert.equal(getQuestExperienceReward({ reward: { credits: 50000, exp: 1234 } }), 1234);
+  const rankStats = { exp: 1000000, honor: 10000 };
+  grantHonor(rankStats, 100);
+  assert.equal(calculateRankPoints(rankStats), 111);
+  assert.equal(getRankInfo(calculateRankPoints(rankStats)).name, "Pilote spatial");
+  assert.equal(getNpcHonorReward({ type: "npc_Streuner", value: 400 }), 2);
+  assert.equal(getNpcHonorReward({ type: "npc_Boss_Mordon", value: 25600 }), 64);
+  assert.equal(getNpcHonorReward({ type: "npc_Inconnu", value: 900 }), 90);
 });
 
 test("les primitives de collision gèrent segments et distances", () => {

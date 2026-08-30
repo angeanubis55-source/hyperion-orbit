@@ -52,6 +52,7 @@ import {
 import { renderMinimap } from "./minimapRenderer.js";
 import { drawBackgroundLayerSet, drawWallLayer } from "./worldLayerRenderer.js";
 import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./frameSystems.js";
+import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getRankInfo, grantExperience, grantHonor } from "./progression.js";
 import {
   QUEST_DEFINITIONS,
   acceptQuest,
@@ -245,7 +246,10 @@ const ui = {
 
   honorTxt: document.getElementById("honorTxt"),
   xpTxt: document.getElementById("xpTxt"),
+  xpBar: document.getElementById("xpBar"),
+  xpProgressTxt: document.getElementById("xpProgressTxt"),
   rankPtsTxt: document.getElementById("rankPtsTxt"),
+  rankNameTxt: document.getElementById("rankNameTxt"),
 
   lvlTxt: document.getElementById("lvlTxt"),
 cfg1Btn: document.getElementById("cfg1Btn"),
@@ -996,6 +1000,34 @@ function markProgressDirty() {
   account.saveCd = 0.35;
 }
 
+function awardExperience(amount, source = "") {
+  if (!account.user) loadAccountUser();
+  if (!account.user) return null;
+  account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0 };
+  const result = grantExperience(account.user.stats, amount);
+  if (result.gained <= 0) return result;
+  markProgressDirty();
+  if (result.leveledUp) {
+    showToast(`Niveau ${result.after.level} atteint !`, 2.6);
+  } else if (source === "quest") {
+    showToast(`+${result.gained.toLocaleString("fr-FR")} XP`, 1.8);
+  }
+  return result;
+}
+
+function awardHonor(amount) {
+  if (!account.user) loadAccountUser();
+  if (!account.user) return null;
+  account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
+  const previousRank = getRankInfo(account.user.stats.rankPoints);
+  const result = grantHonor(account.user.stats, amount);
+  account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
+  const nextRank = getRankInfo(account.user.stats.rankPoints);
+  if (result.gained > 0) markProgressDirty();
+  if (nextRank.index > previousRank.index) showToast(`Nouveau grade : ${nextRank.name}`, 2.6);
+  return result;
+}
+
 let selectedQuestId = null;
 let lastQuestTerminalAccess = null;
 
@@ -1109,10 +1141,14 @@ ui.questList?.addEventListener("click", event => {
   if (button.dataset.questAction === "claim") {
     const reward = claimQuest(questState, questId);
     if (reward) {
+      const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
       player.credits += Math.max(0, Number(reward.credits || 0));
+      const experience = getQuestExperienceReward(quest);
+      awardExperience(experience, "quest");
+      if (account.user?.stats) account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
       markProgressDirty();
       saveProgressNow();
-      showToast(`Récompense : +${Number(reward.credits || 0).toLocaleString("fr-FR")} crédits`, 2);
+      showToast(`Récompense : +${Number(reward.credits || 0).toLocaleString("fr-FR")} crédits · +${experience.toLocaleString("fr-FR")} XP`, 2.4);
     }
   }
 
@@ -1135,6 +1171,7 @@ function saveProgressNow() {
 updateCurrentUserProgress({
   credits: player.credits,
   quests: questState,
+  stats: { ...(account.user.stats || {}) },
 
   // ⚠️ Ne pas sauvegarder ship ici non plus.
   ammo: {
@@ -1287,31 +1324,6 @@ function getSpeedBreakdown() {
 
 function getConfigCooldownLeft() {
   return Math.max(0, (CONFIG_SWITCH.until - Date.now()) / 1000);
-}
-
-function getLevelInfo(exp) {
-  exp = Math.max(0, Number(exp || 0));
-
-  // Barème simple :
-  // niveau 1 = 0 exp
-  // niveau 2 = 1 000 exp
-  // niveau 3 = 4 000 exp
-  // niveau 4 = 9 000 exp
-  // etc
-  const level = Math.max(1, Math.floor(Math.sqrt(exp / 1000)) + 1);
-
-  const curReq = Math.pow(level - 1, 2) * 1000;
-  const nextReq = Math.pow(level, 2) * 1000;
-  const pct = nextReq > curReq
-    ? Math.floor(((exp - curReq) / (nextReq - curReq)) * 100)
-    : 100;
-
-  return {
-    level,
-    pct: clamp(pct, 0, 100),
-    curReq,
-    nextReq,
-  };
 }
 
 function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null) {
@@ -4375,6 +4387,10 @@ function hurtPlayer(amount) {
 function killRewards(e) {
   player.kills++;
   player.credits += e.value || 0;
+  const experience = getNpcExperienceReward(e, NPC_TYPES[e.type]);
+  awardExperience(experience);
+  awardHonor(getNpcHonorReward(e, { ...NPC_TYPES[e.type], type: e.type }));
+  if (account.user?.stats) account.user.stats.lifetimeKills = Math.max(0, Number(account.user.stats.lifetimeKills || 0)) + 1;
   markProgressDirty();
 }
 
@@ -7522,7 +7538,10 @@ const st = u?.stats || {};
 
 const exp = Number(st.exp || 0);
 const lvl = getLevelInfo(exp);
+st.rankPoints = calculateRankPoints(st);
+const rank = getRankInfo(st.rankPoints);
 updateProgressHud(ui, st, lvl);
+if (ui.rankNameTxt) ui.rankNameTxt.textContent = rank.name;
 
 if (ui.spdTxt) {
   const spd = getSpeedBreakdown();
@@ -7840,6 +7859,7 @@ function saveStateImmediate() {
 updateCurrentUserProgress({
   credits: player.credits,
   quests: questState,
+  stats: { ...(account.user.stats || {}) },
 
   // ⚠️ Ne surtout pas sauvegarder ship ici.
   // Le vaisseau actif est géré par setActiveHangar().

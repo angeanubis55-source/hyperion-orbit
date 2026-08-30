@@ -22,6 +22,8 @@ export function updateProgressHud(ui, stats, levelInfo) {
   setText(ui.xpTxt, Math.floor(Number(stats?.exp) || 0));
   setText(ui.rankPtsTxt, Math.floor(Number(stats?.rankPoints) || 0));
   setText(ui.lvlTxt, `${levelInfo.level} (${levelInfo.pct}%)`);
+  setText(ui.xpProgressTxt, `${Math.floor(Number(levelInfo.current) || 0)} / ${Math.floor(Number(levelInfo.required) || 0)}`);
+  if (ui.xpBar) ui.xpBar.style.width = `${clamp(levelInfo.pct, 0, 100)}%`;
 }
 
 export function updateWaveHud(ui, { started, wave, remaining, alive }) {

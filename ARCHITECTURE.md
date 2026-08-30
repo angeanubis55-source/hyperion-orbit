@@ -17,6 +17,7 @@ Le jeu reste une application navigateur rendue avec Canvas. `OrbitEngine.js` coo
 - `src/core/minimapRenderer.js` : rendu complet de la mini-carte.
 - `src/core/worldLayerRenderer.js` : arrière-plans, parallaxe et murs texturés.
 - `src/core/frameSystems.js` : déplacement inertiel, durées de vie, textes flottants et attraction des récompenses.
+- `src/core/progression.js` : courbe de niveaux, attribution d’expérience et barèmes configurables des NPC et quêtes.
 - `src/core/ImageLoader.js` : chargement et cache des ressources graphiques.
 
 ## Principes de maintenance
