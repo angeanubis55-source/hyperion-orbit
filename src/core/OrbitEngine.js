@@ -25,14 +25,28 @@ import { computeNpcSteering } from "./npcAI.js";
 import { getNpcSensorRanges, shouldDetectNpc } from "./npcSensors.js";
 import { shouldRunNpcFrame } from "./npcActivity.js";
 import { pushBounded } from "./boundedCollection.js";
+import { createRadiationSystem } from "./radiationSystem.js";
+import {
+  createGatePortalState,
+  getGateReturnMap as resolveGateReturnMap,
+  positionGateChoicePortals,
+  resetGatePortalState,
+} from "./gateSystem.js";
+import {
+  beginGatePortalJump,
+  getPortalJumpFade as computePortalJumpFade,
+  getPortalOpenFade as computePortalOpenFade,
+  startPortalClosing,
+  tickGatePortalJumps as advanceGatePortalJumps,
+  tickPortalVisualTransitions,
+  updatePortalProximity,
+} from "./portalSystem.js";
+import { buildQuestJournalView, buildQuestTerminalView } from "./questPresentation.js";
 import {
   QUEST_DEFINITIONS,
-  MAX_ACTIVE_QUESTS,
   acceptQuest,
   abandonQuest,
-  canAcceptQuest,
   claimQuest,
-  getQuestObjectives,
   isQuestComplete,
   normalizeQuestState,
   recordQuestCollect,
@@ -78,10 +92,7 @@ const DEFAULT_SPAWN = { x: 1500, y: 1500 };
 // ============================================================
 // ✅ Radiation zone (hors limites WORLD)
 // ============================================================
-const RADIATION = {
-  dpsPct: 0.10, // ✅ 10% HP max / seconde
-};
-
+const radiationSystem = createRadiationSystem();
 let radiationActive = false;
 
 function playerIsOutsideWorld() {
@@ -94,14 +105,15 @@ function playerIsOutsideWorld() {
 }
 
 function applyRadiation(dt) {
-  if (!started || paused || player.dead) return;
-
-  radiationActive = playerIsOutsideWorld();
-
-  if (!radiationActive) return;
-
-  const dmg = player.hpMax * RADIATION.dpsPct * dt;
-
+  const dmg = radiationSystem.update(dt, {
+    started,
+    paused,
+    dead: player.dead,
+    outside: playerIsOutsideWorld(),
+    hpMax: player.hpMax,
+  });
+  radiationActive = radiationSystem.state.active;
+  if (dmg <= 0) return;
   resetRepairCooldown();
   player.hp -= dmg;
 
@@ -109,6 +121,11 @@ function applyRadiation(dt) {
     player.hp = 0;
     die();
   }
+}
+
+function drawRadiationWarning() {
+  if (player.dead) return;
+  radiationSystem.draw(ctx, innerWidth, innerHeight, performance.now() / 1000);
 }
 
 // ✅ last death position (pour "réparer sur place")
@@ -978,37 +995,6 @@ function hasQuestTerminalAccess() {
   );
 }
 
-function questCard(quest, { active = false } = {}) {
-  const objectives = getQuestObjectives(quest);
-  const progress = questState.active[quest.id] || {};
-  const ready = active && isQuestComplete(questState, quest);
-  const prerequisite = QUEST_DEFINITIONS.find(item => item.id === quest.requires);
-  const available = canAcceptQuest(questState, quest);
-  let actions = "";
-
-  if (active) {
-    actions = ready
-      ? `<button class="questAction" data-quest-action="claim" data-quest-id="${quest.id}">Récupérer la récompense</button>`
-      : `<button class="questAction" disabled>Mission en cours</button>`;
-    actions += `<button class="questAction questCancel" data-quest-action="abandon" data-quest-id="${quest.id}">Abandonner la mission</button>`;
-  }
-
-  return `<article class="questCard${!active && !available ? " isLocked" : ""}">
-    <div class="questTitle">${quest.title}</div>
-    <div class="questDescription">${quest.description}</div>
-    <div class="questReward">Récompense : ${Number(quest.reward.credits || 0).toLocaleString("fr-FR")} crédits</div>
-    ${active ? `<div class="questObjectives">${objectives.map(objective => {
-      const current = Number(progress[objective.id] || 0);
-      const percent = Math.min(100, current / objective.amount * 100);
-      return `<div class="questObjective">
-        <div class="questStatus"><span>${objective.label || objective.type}</span><b>${current} / ${objective.amount}</b></div>
-        <div class="questProgress"><i style="width:${percent}%"></i></div>
-      </div>`;
-    }).join("")}</div>${ready ? `<div class="questStatus questComplete">Tous les objectifs sont accomplis</div>` : ""}` : ""}
-    ${actions}
-  </article>`;
-}
-
 function renderQuestWindow() {
   if (!ui.questList) return;
   // Rattrape le cas où le moteur a été instancié avant la session utilisateur
@@ -1023,109 +1009,29 @@ function renderQuestWindow() {
     // est conservée tant que le même jeu de missions est affiché.
     if (savedState && savedIds !== memoryIds) questState = savedState;
   }
-  const activeIds = Object.keys(questState.active);
-
-  if (!activeIds.includes(selectedQuestId)) selectedQuestId = activeIds[0] || null;
-  if (ui.questIntro) {
-    ui.questIntro.textContent = `Journal de bord — ${activeIds.length}/${MAX_ACTIVE_QUESTS} missions actives`;
-  }
-  if (ui.questTabs) {
-    ui.questTabs.innerHTML = activeIds.map(id => {
-      const quest = QUEST_DEFINITIONS.find(item => item.id === id);
-      return quest ? `<button class="questTab${id === selectedQuestId ? " active" : ""}" data-quest-tab="${id}" title="${quest.title}">${quest.title}</button>` : "";
-    }).join("");
-  }
-
-  const selected = QUEST_DEFINITIONS.find(item => item.id === selectedQuestId);
-  const html = selected
-    ? questCard(selected, { active: true })
-    : `<div class="questEmpty">Aucune mission active. Approche-toi d’un bâtiment de quêtes pour en accepter.</div>`;
-
-  ui.questList.innerHTML = html;
+  const view = buildQuestJournalView(questState, selectedQuestId);
+  selectedQuestId = view.selectedQuestId;
+  if (ui.questIntro) ui.questIntro.textContent = view.intro;
+  if (ui.questTabs) ui.questTabs.innerHTML = view.tabsHtml;
+  ui.questList.innerHTML = view.contentHtml;
 }
 
 let selectedQuestOfferId = null;
-
-const QUEST_HELP = {
-  npc_Streuner: "Présent en grand nombre dans les cartes de départ 1-1, 2-1 et 3-1.",
-  npc_Lordakia: "Cherche dans les secteurs de départ et les premières cartes de chaque faction.",
-  npc_Saimon: "Fréquente les cartes basses et intermédiaires des trois factions.",
-  npc_Mordon: "Présent surtout dans les cartes intermédiaires, notamment les secteurs x-3 et x-4.",
-  npc_Sibelon: "Cherche dans les secteurs intermédiaires x-3 et x-4.",
-  npc_Devolarium: "Présent dans plusieurs cartes intermédiaires des factions.",
-  npc_Sibelonit: "Souvent rencontré dans les secteurs avancés avec les Sibelons.",
-  npc_Kristallin: "Cherche dans les cartes avancées et les zones glacées.",
-  npc_Kristallon: "Présent dans les cartes avancées, accompagné de Kristallins.",
-  npc_Cubikon: "Le Cubikon se trouve dans les secteurs prévus pour les combats de groupe.",
-  Cargo_Box: "Les Cargo Boxes apparaissent après la destruction de nombreux NPC.",
-  Bonus_Box: "Les Bonus Boxes apparaissent naturellement sur presque toutes les cartes normales.",
-  Green_Booty_Box: "Les Green Booty Boxes peuvent apparaître sur les cartes normales.",
-  Palladium_Ore: "Le Palladium se collecte sur la carte pirate 5-2.",
-  Hybrid_Alloy_Box: "Les alliages hybrides proviennent notamment des Gygerthralls contaminés.",
-  Astral_Prime_Box: "Ces boîtes se trouvent dans les secteurs astrals spéciaux.",
-};
-
-function questTargetImage(quest) {
-  const target = getQuestObjectives(quest)[0];
-  const source = target?.kind === "collect"
-    ? COLLECTABLE_DEFS[target.type]?.sprite
-    : NPC_TYPES[target?.type]?.sprite;
-  if (!source?.path) return "assets/Quest_Button/1.png";
-  return `${source.path}${Number(source.firstNumber ?? 1)}${source.ext || ".png"}`;
-}
 
 function renderQuestTerminal() {
   if (!ui.questOfferDetail || !ui.questOfferList) return;
   const hasAccess = hasQuestTerminalAccess();
   lastQuestTerminalAccess = hasAccess;
-  // Garder les missions acceptées dans le terminal permet de les consulter
-  // sans pouvoir les accepter une seconde fois.
-  // Le terminal sert aussi de journal : les missions disponibles, en cours
-  // et terminées restent toutes consultables.
-  const offers = QUEST_DEFINITIONS;
-
-  if (!offers.some(quest => quest.id === selectedQuestOfferId)) {
-    selectedQuestOfferId = offers[0]?.id || null;
-  }
-
-  ui.questOfferList.innerHTML = offers.length
-    ? offers.map(quest => {
-      const completed = questState.completed.includes(quest.id);
-      const accepted = questState.active[quest.id] != null;
-      return `<button class="questOfferItem${quest.id === selectedQuestOfferId ? " active" : ""}${accepted ? " accepted" : ""}${completed ? " completed" : ""}" data-quest-offer="${quest.id}">${quest.title}${accepted ? " — En cours" : ""}</button>`;
-    }).join("")
-    : `<div class="questEmpty">Aucune nouvelle mission.</div>`;
-
-  const quest = offers.find(item => item.id === selectedQuestOfferId);
-  if (!quest) {
-    ui.questOfferDetail.innerHTML = `<div class="questEmpty">Toutes les missions sont actives ou terminées.</div>`;
-    return;
-  }
-
-  const available = hasAccess && canAcceptQuest(questState, quest);
-  const accepted = questState.active[quest.id] != null;
-  const completed = questState.completed.includes(quest.id);
-  const objectives = getQuestObjectives(quest);
-  const prerequisite = QUEST_DEFINITIONS.find(item => item.id === quest.requires);
-  const full = Object.keys(questState.active).length >= MAX_ACTIVE_QUESTS;
-  const status = completed
-    ? "Mission terminée. Récompense déjà récupérée."
-    : !hasAccess
-    ? "Rapproche-toi du bâtiment de quêtes."
-    : full ? `Tu as déjà ${MAX_ACTIVE_QUESTS} missions actives.`
-      : prerequisite && !questState.completed.includes(prerequisite.id)
-        ? `Prérequis : termine « ${prerequisite.title} ».`
-        : "Mission disponible.";
-
-  ui.questOfferDetail.innerHTML = `
-    <div class="questOfferImageWrap"><img class="questOfferImage" src="${questTargetImage(quest)}" alt="${quest.title}"></div>
-    <div class="questTitle">${quest.title}</div>
-    <div class="questDescription">${quest.description}</div>
-    <div class="questObjectives">${objectives.map(objective => { const current = accepted ? Number(questState.active[quest.id]?.[objective.id] || 0) : (completed ? objective.amount : 0); return `<div class="questObjective"><div class="questStatus"><span>${objective.label || objective.type}</span><b>${current} / ${objective.amount}</b></div></div>`; }).join("")}</div>
-    <div class="questReward">Récompense : ${Number(quest.reward.credits || 0).toLocaleString("fr-FR")} crédits</div>
-    <div class="questOfferHelp"><b>Où chercher ?</b><br>${objectives.map(objective => `<b>${objective.label || objective.type} :</b> ${QUEST_HELP[objective.type] || "Explore les secteurs correspondant à cet objectif."}`).join("<br>")}</div>
-    <div class="questStatus">${status}</div>
-    <button class="questAction${completed ? " questCompletedAction" : accepted ? " questAcceptedAction" : ""}" data-quest-terminal-accept="${quest.id}" ${available ? "" : "disabled"}>${completed ? "Mission terminée ✓" : accepted ? "Mission en cours" : "Accepter cette mission"}</button>`;
+  const view = buildQuestTerminalView({
+    questState,
+    selectedId: selectedQuestOfferId,
+    hasAccess,
+    collectables: COLLECTABLE_DEFS,
+    npcTypes: NPC_TYPES,
+  });
+  selectedQuestOfferId = view.selectedQuestId;
+  ui.questOfferList.innerHTML = view.listHtml;
+  ui.questOfferDetail.innerHTML = view.detailHtml;
 }
 
 function openQuestTerminal() {
@@ -1589,14 +1495,7 @@ const portal = {
   holdT: 0,
   startAfterSwitch: false,
 };
-const gateReturnPortal = {
-  active: false, x: 0, y: 0,
-  switching: false, switchT: 0, open: false,
-  holding: false, holdT: 0,
-  buttonHovered: false, buttonPressed: false,
-  proximityFade: 0,
-};
-portal.proximityFade = 0;
+const gateReturnPortal = createGatePortalState();
 
 function getInteractivePortals() {
   return isZoneMap
@@ -1605,11 +1504,7 @@ function getInteractivePortals() {
 }
 
 function getGateReturnMap() {
-  const id = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
-  if (id === "alpha") return "1-1";
-  if (id === "beta") return "2-1";
-  if (id === "gamma") return "3-1";
-  return "1-1";
+  return resolveGateReturnMap(window.__CURRENT_MAP_ID__, "1-1");
 }
 
 let toast = null;
@@ -5175,46 +5070,11 @@ function beginWave() {
 
 function onWaveCleared() {
   betweenWaves = true;
-
-  portal.active = true;
-  portal.x = WORLD.w / 2 - 420;
-  portal.y = WORLD.h / 2;
-  gateReturnPortal.active = true;
-  gateReturnPortal.x = WORLD.w / 2 + 420;
-  gateReturnPortal.y = WORLD.h / 2;
-  gateReturnPortal.switching = false;
-  gateReturnPortal.switchT = 0;
-  gateReturnPortal.open = false;
-  portal.proximityFade = 0;
-  gateReturnPortal.proximityFade = 0;
-
-  for (const ptl of [portal, gateReturnPortal]) {
-    ptl.switching = false;
-    ptl.switchT = 0;
-    ptl.open = false;
-    ptl.holding = false;
-    ptl.holdT = 0;
-    ptl.closing = false;
-    ptl.closeT = 0;
-    ptl.closeFrom = 0;
-    ptl.closeDur = portal.switchDur;
-    ptl.jumping = false;
-    ptl.jumpT = 0;
-    ptl.jumpDur = 2;
-    ptl.jumpSwitching = false;
-    ptl.jumpSwitchT = 0;
-    ptl.jumpSwitchDur = portal.switchDur;
-    ptl.buttonHovered = false;
-    ptl.buttonPressed = false;
-  }
-
-  portal.switching = false;
-  portal.switchT = 0;
-
-  portal.open = false;
-  portal.holding = false;
-  portal.holdT = 0;
-
+  resetGatePortalState(portal, { active: true, switchDuration: portal.switchDur });
+  portal.switchDur = Math.max(0.1, Number(portal.switchDur || 1));
+  portal.holdDur = Math.max(0.1, Number(portal.holdDur || 1.5));
+  resetGatePortalState(gateReturnPortal, { active: true, switchDuration: portal.switchDur });
+  positionGateChoicePortals(WORLD, portal, gateReturnPortal, 840);
   portal.startAfterSwitch = false;
 
   if (ui.portalOverlay) ui.portalOverlay.style.display = "none";
@@ -5972,206 +5832,40 @@ for (const state of Object.values(QUEST_BUTTON).filter(value => value?.src)) {
   loadImage(state.src, { priority: true });
 }
 
-function drawPortal(ox, oy) {
-  if (!portal.active) return;
-
-  const imgA = getCachedImage(PORTAL_IDLE_SPR.src);
-  const imgB = getCachedImage(PORTAL_OPEN_SPR.src);
-  if (!isImgReady(imgA) || !isImgReady(imgB)) return;
-
-  const x = portal.x + ox;
-  const y = portal.y + oy + (PORTAL_IDLE_SPR.yOff || 0);
-
-  const w = PORTAL_IDLE_SPR.w || imgA.naturalWidth || 128;
-  const h = PORTAL_IDLE_SPR.h || imgA.naturalHeight || 128;
-
-  let p = Number(portal.proximityFade || 0);
-
-  if (portal.switching && portal.switchDur > 0) {
-    p = clamp(portal.switchT / portal.switchDur, 0, 1);
-  }
-
-  ctx.save();
-  ctx.imageSmoothingEnabled = false;
-
-  ctx.globalAlpha = 1 - p;
-  ctx.drawImage(imgA, x - w / 2, y - h / 2, w, h);
-
-  ctx.globalAlpha = p;
-  ctx.drawImage(imgB, x - w / 2, y - h / 2, w, h);
-
-  ctx.restore();
-  ctx.globalAlpha = 1;
-
-  const drawGateJump = (ptl) => {
-    if (!ptl.switching) return;
-    const spr = getPortalSpriteSet(ptl).jump;
-    const img = getCachedImage(spr?.src);
-    if (!isImgReady(img)) return;
-    const jw = Number(spr.w || img.naturalWidth || 128);
-    const jh = Number(spr.h || img.naturalHeight || 128);
-    const t = clamp(ptl.switchT / portal.switchDur, 0, 1);
-    ctx.save();
-    ctx.translate(ptl.x + ox, ptl.y + oy + Number(spr.yOff || 0));
-    ctx.rotate(t * TAU * Number(spr.spinSpeed || 0));
-    ctx.globalAlpha = t * Number(spr.alpha ?? 1);
-    ctx.drawImage(img, -jw / 2, -jh / 2, jw, jh);
-    ctx.restore();
-  };
-  drawGateJump(portal);
-
-  const drawGateButton = (ptl) => {
-    const btn = getPortalSpriteSet(ptl).jumpButton;
-    const img = getCachedImage((ptl.buttonPressed ? btn.click : ptl.buttonHovered ? btn.mouse : btn.idle)?.src);
-    if (!isImgReady(img)) return;
-    const bw = Number(btn.w || 88), bh = Number(btn.h || 135);
-    ctx.drawImage(img, ptl.x + ox + Number(btn.xOff || 0) - bw / 2, ptl.y + oy + Number(btn.yOff ?? -250) - bh / 2, bw, bh);
-  };
-  drawGateButton(portal);
-
-  if (!gateReturnPortal.active) return;
-  ctx.save();
-  ctx.imageSmoothingEnabled = false;
-  const returnFade = gateReturnPortal.switching
-    ? clamp(gateReturnPortal.switchT / portal.switchDur, 0, 1) : 0;
-  const returnVisualFade = gateReturnPortal.switching ? returnFade : Number(gateReturnPortal.proximityFade || 0);
-  ctx.globalAlpha = 1 - returnVisualFade;
-  ctx.drawImage(imgA, gateReturnPortal.x + ox - w / 2, gateReturnPortal.y + oy - h / 2, w, h);
-  ctx.globalAlpha = returnVisualFade;
-  ctx.drawImage(imgB, gateReturnPortal.x + ox - w / 2, gateReturnPortal.y + oy - h / 2, w, h);
-  ctx.globalAlpha = 1;
-  drawGateButton(gateReturnPortal);
-  drawGateJump(gateReturnPortal);
-  ctx.restore();
-}
-
 function startGatePortalJump(ptl, action) {
   if (!ptl || ptl.jumping || !isPlayerNearPortal(ptl)) return;
-  ptl.gateAction = action;
-  ptl.jumpBaseFade = Math.max(0, getPortalOpenFade(ptl));
-  ptl.jumping = true;
-  ptl.jumpT = 0;
-  ptl.jumpDur = Math.max(0.1, Number(ptl.jumpDur || 2));
-  ptl.jumpSwitching = true;
-  ptl.jumpSwitchT = 0;
-  ptl.jumpSwitchDur = Math.max(0.1, Number(ptl.jumpSwitchDur || portal.switchDur));
-  ptl.open = true;
-  ptl.switching = false;
-  ptl.closing = false;
-  showToast("Saut en cours...", ptl.jumpDur);
+  if (beginGatePortalJump(ptl, action, portal.switchDur)) showToast("Saut en cours...", ptl.jumpDur);
 }
 
 function tickGatePortalJumps(dt) {
   if (isZoneMap || !betweenWaves) return false;
-  for (const ptl of getInteractivePortals()) {
-    if (!ptl.jumping) continue;
-    ptl.jumpT += dt;
-    if (ptl.jumpT < ptl.jumpDur) continue;
-    const action = ptl.gateAction;
-    ptl.jumping = false;
-    if (action === "continue") {
-      betweenWaves = false;
-      wave++;
-      beginWave();
-    } else {
-      window.__GO_TO_MAP__?.(getGateReturnMap());
-    }
-    return true;
+  const completed = advanceGatePortalJumps(getInteractivePortals(), dt);
+  if (!completed) return false;
+  if (completed.action === "continue") {
+    betweenWaves = false;
+    wave++;
+    beginWave();
+  } else {
+    window.__GO_TO_MAP__?.(getGateReturnMap());
   }
-  return false;
+  return true;
 }
 
 function getPortalOpenFade(ptl) {
-  if (!ptl) return 0;
-
-  // ✅ pendant le jump, on garde l'état visuel open figé
-  if (ptl.jumping && Number.isFinite(ptl.jumpBaseFade)) {
-    return clamp(ptl.jumpBaseFade, 0, 1);
-  }
-
-  // ✅ transition open -> idle
-  if (ptl.closing) {
-    const dur = Math.max(0.1, Number(ptl.closeDur || portal.switchDur || 1));
-    const t = clamp(ptl.closeT / dur, 0, 1);
-    const from = Number.isFinite(ptl.closeFrom) ? ptl.closeFrom : 1;
-    return from * (1 - t);
-  }
-
-  // ✅ transition idle -> open
-  if (ptl.switching) {
-    const dur = Math.max(0.1, Number(portal.switchDur || 1));
-    return clamp(ptl.switchT / dur, 0, 1);
-  }
-
-  return ptl.open ? 1 : 0;
+  return computePortalOpenFade(ptl, portal.switchDur);
 }
 
 function getPortalJumpFade(ptl) {
-  if (!ptl?.jumping) return 0;
-
-  // ✅ transition open -> jump
-  if (ptl.jumpSwitching) {
-    const dur = Math.max(0.1, Number(ptl.jumpSwitchDur || portal.switchDur || 1));
-    return clamp(ptl.jumpSwitchT / dur, 0, 1);
-  }
-
-  return 1;
+  return computePortalJumpFade(ptl, portal.switchDur);
 }
 
 function startZonePortalClosing(ptl) {
-  if (!ptl || ptl.jumping) return;
-
-  const from = getPortalOpenFade(ptl);
-
-  if (from <= 0.001) {
-    ptl.switching = false;
-    ptl.holding = false;
-    ptl.open = false;
-    ptl.switchT = 0;
-    ptl.holdT = 0;
-    ptl.closing = false;
-    ptl.closeT = 0;
-    ptl.closeFrom = 0;
-    return;
-  }
-
-  ptl.switching = false;
-  ptl.holding = false;
-  ptl.open = false;
-  ptl.switchT = 0;
-  ptl.holdT = 0;
-
-  ptl.closing = true;
-  ptl.closeT = 0;
-  ptl.closeFrom = from;
-  ptl.closeDur = Math.max(0.1, Number(ptl.closeDur || portal.switchDur || 1));
+  startPortalClosing(ptl, portal.switchDur);
 }
 
 function tickZonePortalVisualTransitions(dt) {
   const portals = getInteractivePortals();
-  if (!portals.length) return;
-
-  for (const ptl of portals) {
-    if (ptl.closing) {
-      ptl.closeT += dt;
-
-      if (ptl.closeT >= Math.max(0.1, Number(ptl.closeDur || portal.switchDur || 1))) {
-        ptl.closing = false;
-        ptl.closeT = 0;
-        ptl.closeFrom = 0;
-        ptl.open = false;
-      }
-    }
-
-    if (ptl.jumpSwitching) {
-      ptl.jumpSwitchT += dt;
-
-      if (ptl.jumpSwitchT >= Math.max(0.1, Number(ptl.jumpSwitchDur || portal.switchDur || 1))) {
-        ptl.jumpSwitching = false;
-        ptl.jumpSwitchT = 0;
-      }
-    }
-  }
+  tickPortalVisualTransitions(portals, dt, portal.switchDur);
 }
 
 function drawZonePortals(ox, oy) {
@@ -6953,28 +6647,11 @@ if (startHintT > 0) {
   }
 
   if (portal.active) {
-    for (const ptl of getInteractivePortals()) {
-      if (ptl.jumping) continue;
-      const near = isPlayerNearPortal(ptl);
-      if (near && !ptl.open && !ptl.switching && !ptl.holding && !ptl.closing) {
-        ptl.switching = true;
-        ptl.switchT = 0;
-      } else if (!near && (ptl.open || ptl.switching || ptl.holding) && !ptl.closing) {
-        startZonePortalClosing(ptl);
-      }
-      if (ptl.switching) {
-        ptl.switchT += dt;
-        if (ptl.switchT >= portal.switchDur) {
-          ptl.switching = false;
-          ptl.open = true;
-          ptl.holding = true;
-          ptl.holdT = 0;
-        }
-      } else if (ptl.holding) {
-        ptl.holdT += dt;
-        if (ptl.holdT >= portal.holdDur) ptl.holding = false;
-      }
-    }
+    updatePortalProximity(getInteractivePortals(), dt, {
+      isNear: isPlayerNearPortal,
+      switchDuration: portal.switchDur,
+      holdDuration: portal.holdDur,
+    });
     if (justPressed.has(getKeybind("portal"))) {
       const near = getInteractivePortals().find(isPlayerNearPortal);
       if (near) startGatePortalJump(near, near === portal ? "continue" : "return");
@@ -8240,6 +7917,7 @@ if (GAME_SETTINGS.textures) {
   drawPlayerBars(px, py);
   drawMinimap();
   drawToast();
+  drawRadiationWarning();
 }
 
 // ============================================================

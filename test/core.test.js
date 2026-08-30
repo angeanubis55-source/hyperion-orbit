@@ -17,6 +17,16 @@ import { computeNpcSteering } from "../src/core/npcAI.js";
 import { getNpcSensorRanges, isNpcWithinSensor, shouldDetectNpc } from "../src/core/npcSensors.js";
 import { shouldRunNpcFrame } from "../src/core/npcActivity.js";
 import { pushBounded } from "../src/core/boundedCollection.js";
+import { createRadiationSystem } from "../src/core/radiationSystem.js";
+import { createGatePortalState, getGateReturnMap, positionGateChoicePortals } from "../src/core/gateSystem.js";
+import {
+  beginGatePortalJump,
+  getPortalOpenFade,
+  tickGatePortalJumps,
+  tickPortalVisualTransitions,
+  updatePortalProximity,
+} from "../src/core/portalSystem.js";
+import { buildQuestJournalView, buildQuestTerminalView } from "../src/core/questPresentation.js";
 import { COLLECTABLE_SPAWN, COLLECTABLE_TYPES } from "../src/data/collectables.js";
 import {
   QUEST_DEFINITIONS,
@@ -46,6 +56,77 @@ globalThis.localStorage = new MemoryStorage();
 
 test("escapeHtml neutralise le HTML utilisateur", () => {
   assert.equal(escapeHtml(`<img src=x onerror="alert(1)">&'`), "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;&amp;&#39;");
+});
+
+test("la radiation avertit cinq secondes avant les dégâts et s'efface progressivement", () => {
+  const radiation = createRadiationSystem({ warningDuration: 5, dpsPct: 0.1 });
+  const context = { started: true, paused: false, dead: false, outside: true, hpMax: 1000 };
+  assert.equal(radiation.update(4.9, context), 0);
+  assert.ok(radiation.state.edgeFade > 0);
+  assert.equal(radiation.update(0.2, context), 20);
+
+  const beforeFade = radiation.state.edgeFade;
+  radiation.update(0.2, { ...context, outside: false });
+  assert.equal(radiation.state.exposure, 0);
+  assert.ok(radiation.state.edgeFade < beforeFade);
+});
+
+test("les portails de gate sont centrés et retournent vers la bonne base", () => {
+  const next = createGatePortalState();
+  const back = createGatePortalState();
+  positionGateChoicePortals({ w: 10000, h: 8000 }, next, back, 840);
+  assert.deepEqual([next.x, next.y], [4580, 4000]);
+  assert.deepEqual([back.x, back.y], [5420, 4000]);
+  assert.equal(getGateReturnMap("alpha"), "1-1");
+  assert.equal(getGateReturnMap("beta"), "2-1");
+  assert.equal(getGateReturnMap("gamma"), "3-1");
+});
+
+test("un portail s'ouvre, se ferme et termine son saut sans logique de rendu", () => {
+  const portal = createGatePortalState();
+  updatePortalProximity([portal], 0.5, {
+    isNear: () => true,
+    switchDuration: 0.5,
+    holdDuration: 1,
+  });
+  assert.equal(portal.open, true);
+  assert.equal(getPortalOpenFade(portal, 0.5), 1);
+
+  updatePortalProximity([portal], 0.1, {
+    isNear: () => false,
+    switchDuration: 0.5,
+    holdDuration: 1,
+  });
+  assert.equal(portal.closing, true);
+  tickPortalVisualTransitions([portal], 1, 0.5);
+  assert.equal(portal.open, false);
+  assert.equal(portal.closing, false);
+
+  portal.jumpDur = 0.25;
+  assert.equal(beginGatePortalJump(portal, "continue", 0.5), true);
+  assert.equal(tickGatePortalJumps([portal], 0.1), null);
+  const completed = tickGatePortalJumps([portal], 0.2);
+  assert.equal(completed?.action, "continue");
+  assert.equal(completed?.portal, portal);
+});
+
+test("la présentation des quêtes distingue le journal et les états du terminal", () => {
+  const state = normalizeQuestState();
+  assert.equal(acceptQuest(state, QUEST_DEFINITIONS[0].id), true);
+  const journal = buildQuestJournalView(state, null);
+  assert.equal(journal.selectedQuestId, QUEST_DEFINITIONS[0].id);
+  assert.match(journal.tabsHtml, /questTab active/);
+  assert.match(journal.contentHtml, /Abandonner la mission/);
+
+  const terminal = buildQuestTerminalView({
+    questState: state,
+    selectedId: QUEST_DEFINITIONS[0].id,
+    hasAccess: true,
+    collectables: COLLECTABLE_TYPES,
+    npcTypes: {},
+  });
+  assert.match(terminal.listHtml, /accepted/);
+  assert.match(terminal.detailHtml, /Mission en cours/);
 });
 
 test("les primitives de collision gèrent segments et distances", () => {
