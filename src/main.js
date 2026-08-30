@@ -3,6 +3,7 @@
 
 import { getCurrentUserFull, getActiveHangarState } from "./core/account.js";
 import { DEFAULT_MAP_ID, getMapLoader, normalizeMapId } from "./core/mapRegistry.js";
+import { getFactionHomeMap } from "./core/factions.js";
 
 window.addEventListener("storage", (e) => {
   if (e.key !== "orbit_sync") return;
@@ -16,7 +17,7 @@ function bootGame() {
   const st = getActiveHangarState(); // { pos, map }
 
   // ✅ nouveau compte / jamais joué
-  const targetMap = st?.map || "1-1";
+  const targetMap = st?.map || getFactionHomeMap(u?.faction);
 
   // ✅ si on n'est pas déjà sur la bonne map => naviguer
   if (window.__CURRENT_MAP_ID__ !== targetMap && typeof window.__GO_TO_MAP__ === "function") {
@@ -41,7 +42,7 @@ function bootGame() {
 const params = new URLSearchParams(location.search);
 
 // ✅ Map par défaut pour les nouveaux joueurs / nouveaux vaisseaux
-const DEFAULT_MAP = DEFAULT_MAP_ID;
+const DEFAULT_MAP = getFactionHomeMap(getCurrentUserFull()?.faction) || DEFAULT_MAP_ID;
 
 // ✅ Récupère la map depuis l'URL ou depuis la sauvegarde
 let mapName = params.get("map");

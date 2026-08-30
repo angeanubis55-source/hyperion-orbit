@@ -308,6 +308,14 @@
       gap: 8px;
     }
 
+    .factionChoices{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+    .factionChoice{ position:relative; cursor:pointer; margin:0 !important; text-transform:none !important; }
+    .factionChoice input{ position:absolute; opacity:0; pointer-events:none; }
+    .factionChoiceBody{ min-height:82px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; border:1px solid rgba(100,200,255,.25); border-radius:12px; background:rgba(0,217,255,.05); color:rgba(232,244,255,.72); transition:border-color .2s ease,background .2s ease,box-shadow .2s ease; }
+    .factionChoiceBody img{ max-width:42px; max-height:34px; object-fit:contain; image-rendering:auto; }
+    .factionChoiceBody strong{ font-size:13px; letter-spacing:.7px; }
+    .factionChoice input:checked + .factionChoiceBody{ color:#fff; border-color:rgba(0,217,255,.85); background:rgba(0,217,255,.13); box-shadow:0 0 0 2px rgba(0,217,255,.12),0 8px 22px rgba(0,0,0,.25); }
+
     input[type="text"],
     input[type="email"],
     input[type="password"]{
@@ -595,6 +603,15 @@
               <label for="regEmail">Adresse email</label>
               <div class="inputWrap">
                 <input id="regEmail" type="email" autocomplete="email" inputmode="email" placeholder="pilote@exemple.com" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Choisis ta firme</label>
+              <div class="factionChoices" role="radiogroup" aria-label="Firme du pilote">
+                <label class="factionChoice"><input type="radio" name="regFaction" value="mmo"><span class="factionChoiceBody"><img src="../assets/firmes/mmo.png" alt=""><strong>MMO</strong></span></label>
+                <label class="factionChoice"><input type="radio" name="regFaction" value="eic"><span class="factionChoiceBody"><img src="../assets/firmes/eic.png" alt=""><strong>EIC</strong></span></label>
+                <label class="factionChoice"><input type="radio" name="regFaction" value="vru"><span class="factionChoiceBody"><img src="../assets/firmes/vru.png" alt=""><strong>VRU</strong></span></label>
               </div>
             </div>
 

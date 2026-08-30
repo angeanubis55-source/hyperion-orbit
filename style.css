@@ -1639,6 +1639,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 .questTerminalTitle{ padding:2px 12px 0; color:#7cf0ff; font-size:12px; font-weight:900; text-transform:uppercase; }
 .questEmpty{ padding:22px 12px; text-align:center; color:rgba(200,225,240,.58); }
 .questCancel{ border-color:rgba(255,105,120,.35); background:rgba(150,25,45,.2); }
+.questCancelConfirm{ border-color:rgba(255,142,72,.8); color:#fff0df; background:rgba(190,72,18,.5); }
 
 .questOfferPanel{
   width:min(820px, calc(100vw - 30px));

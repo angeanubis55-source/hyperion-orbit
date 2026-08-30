@@ -19,6 +19,7 @@ import { shouldRunNpcFrame } from "../src/core/npcActivity.js";
 import { pushBounded } from "../src/core/boundedCollection.js";
 import { createRadiationSystem } from "../src/core/radiationSystem.js";
 import { createGatePortalState, getGateReturnMap, positionGateChoicePortals } from "../src/core/gateSystem.js";
+import { getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, resolveBaseCenter } from "../src/core/factions.js";
 import {
   beginGatePortalJump,
   getPortalOpenFade,
@@ -31,7 +32,7 @@ import { drawMoveTargetMarker, drawPlayerStatus, drawToastMessage } from "../src
 import { renderMinimap } from "../src/core/minimapRenderer.js";
 import { drawBackgroundLayerSet, drawWallLayer } from "../src/core/worldLayerRenderer.js";
 import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "../src/core/frameSystems.js";
-import { ADMIN_RANK, PILOT_RANKS, calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getRankInfo, grantExperience, grantHonor } from "../src/core/progression.js";
+import { ADMIN_RANK, PILOT_RANKS, calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor } from "../src/core/progression.js";
 import { formatInteger } from "../src/core/numberFormat.js";
 import { COLLECTABLE_SPAWN, COLLECTABLE_TYPES } from "../src/data/collectables.js";
 import {
@@ -83,9 +84,22 @@ test("les portails de gate sont centrés et retournent vers la bonne base", () =
   positionGateChoicePortals({ w: 10000, h: 8000 }, next, back, 840);
   assert.deepEqual([next.x, next.y], [4580, 4000]);
   assert.deepEqual([back.x, back.y], [5420, 4000]);
-  assert.equal(getGateReturnMap("alpha"), "1-1");
-  assert.equal(getGateReturnMap("beta"), "2-1");
-  assert.equal(getGateReturnMap("gamma"), "3-1");
+  assert.equal(getGateReturnMap("alpha", "1-1"), "1-1");
+  assert.equal(getGateReturnMap("beta", "2-1"), "2-1");
+  assert.equal(getGateReturnMap("gamma", "3-1"), "3-1");
+});
+
+test("la firme détermine les bases normale, supérieure et de Galaxy Gate", () => {
+  assert.equal(getFactionHomeMap("mmo"), "1-1");
+  assert.equal(getFactionHomeMap("eic"), "2-1");
+  assert.equal(getFactionHomeMap("vru"), "3-1");
+  assert.deepEqual(getFactionBaseSpawn("eic"), { x: 9500, y: 1500 });
+  assert.equal(getFactionRespawnMap("mmo", "1-4.1"), "1-1");
+  assert.equal(getFactionRespawnMap("mmo", "1-5"), "1-8");
+  assert.equal(getFactionRespawnMap("eic", "2-10"), "2-8");
+  assert.deepEqual(resolveBaseCenter({ modules: [{ id: "CENTRE_EIC", x: 5500, y: 1500 }] }), { x: 5500, y: 1500 });
+  assert.equal(getFactionRespawnMap("vru", "beta", { gate: true }), "3-1");
+  assert.equal(getGateReturnMap("beta", "1-1"), "1-1");
 });
 
 test("un portail s'ouvre, se ferme et termine son saut sans logique de rendu", () => {
@@ -123,6 +137,7 @@ test("la présentation des quêtes distingue le journal et les états du termina
   assert.equal(journal.selectedQuestId, QUEST_DEFINITIONS[0].id);
   assert.match(journal.tabsHtml, /questTab active/);
   assert.match(journal.contentHtml, /Abandonner la mission/);
+  assert.match(journal.contentHtml, /honneur/i);
 
   const terminal = buildQuestTerminalView({
     questState: state,
@@ -133,6 +148,7 @@ test("la présentation des quêtes distingue le journal et les états du termina
   });
   assert.match(terminal.listHtml, /accepted/);
   assert.match(terminal.detailHtml, /Mission en cours/);
+  assert.match(terminal.detailHtml, /honneur/i);
 });
 
 test("les rendus HUD Canvas restaurent le contexte et gèrent les messages permanents", () => {
@@ -212,6 +228,8 @@ test("la progression calcule les niveaux et détecte les passages de niveau", ()
   assert.equal(getNpcExperienceReward({ value: 400 }), 400);
   assert.equal(getQuestExperienceReward({ reward: { credits: 50000 } }), 5000);
   assert.equal(getQuestExperienceReward({ reward: { credits: 50000, exp: 1234 } }), 1234);
+  assert.equal(getQuestHonorReward({ reward: { credits: 50000 } }), 500);
+  assert.equal(getQuestHonorReward({ reward: { credits: 50000, honor: 42 } }), 42);
   const rankStats = { exp: 1000000, honor: 10000 };
   grantHonor(rankStats, 100);
   assert.equal(calculateRankPoints(rankStats), 111);
@@ -244,6 +262,19 @@ test("l'insigne de grade est dessiné à gauche du pseudo", () => {
   drawPlayerStatus(context, player, "Neo", 100, 100, { complete: true, naturalWidth: 20, naturalHeight: 16 });
   const imageCall = calls.find(call => call[0] === "drawImage");
   assert.deepEqual(imageCall?.slice(2), [60, 210, 20, 16]);
+});
+
+test("l'emblème de firme est dessiné à droite du pseudo", () => {
+  const calls = [];
+  const context = new Proxy({ measureText: () => ({ width: 30 }) }, {
+    get: (target, property) => target[property] || ((...args) => calls.push([property, ...args])),
+    set: (target, property, value) => { target[property] = value; return true; },
+  });
+  const player = { dead: false, hp: 100, hpMax: 100, sh: 100, shMax: 100, r: 28 };
+  const factionImage = { complete: true, naturalWidth: 18, naturalHeight: 16 };
+  drawPlayerStatus(context, player, "Neo", 100, 100, null, factionImage);
+  const factionDraw = calls.find(call => call[0] === "drawImage");
+  assert.deepEqual(factionDraw.slice(2), [120, 218, 18, 16]);
 });
 
 test("les primitives de collision gèrent segments et distances", () => {
@@ -622,13 +653,14 @@ test("les anciennes progressions numériques sont migrées vers le premier objec
 
 test("les comptes sauvegardés sont versionnés et les valeurs sont bornées", async () => {
   const { getCurrentUserFull, register, updateCurrentUserProgress } = await import("../src/core/account.js");
-  const created = register({ pseudo: "Pilote", email: "pilote@example.test", password: "secret" });
+  const created = register({ pseudo: "Pilote", email: "pilote@example.test", password: "secret", faction: "mmo" });
   assert.equal(created.ok, true);
 
   updateCurrentUserProgress({ credits: -500 });
   const user = getCurrentUserFull();
   assert.equal(user.credits, 0);
-  assert.equal(user.schemaVersion, 3);
+  assert.equal(user.schemaVersion, 4);
+  assert.equal(user.faction, "mmo");
   assert.deepEqual(user.quests, { active: {}, completed: [] });
   assert.ok(user.revision >= 1);
   assert.ok(user.updatedAt > 0);
@@ -652,4 +684,27 @@ test("un pilote peut lier son email et changer son mot de passe", async () => {
   logout();
   assert.equal(login("nouvelle@example.test", "secret").ok, false);
   assert.equal(login("nouvelle@example.test", "nouveau-secret").ok, true);
+});
+
+test("changer de firme coûte un milliard de crédits et la moitié de l'honneur", async () => {
+  const { changeCurrentUserFaction, getCurrentUserFull, updateCurrentUserProgress } = await import("../src/core/account.js");
+  updateCurrentUserProgress({ credits: 2000000000, stats: { honor: 1001, exp: 0, rankPoints: 0, lifetimeKills: 0, npcKills: {} } });
+  const changed = changeCurrentUserFaction("eic");
+  assert.equal(changed.ok, true);
+  assert.equal(changed.honorLost, 501);
+  const user = getCurrentUserFull();
+  assert.equal(user.faction, "eic");
+  assert.equal(user.credits, 1000000000);
+  assert.equal(user.stats.honor, 500);
+  assert.equal(user.hangars.find(hangar => hangar.active)?.lastMap, "2-1");
+  assert.equal(user.hangars.find(hangar => hangar.active)?.lastPos, null);
+  assert.equal(changeCurrentUserFaction("eic").ok, false);
+});
+
+test("les destructions NPC détaillées sont réellement sauvegardées", async () => {
+  const { getCurrentUserFull, updateCurrentUserProgress } = await import("../src/core/account.js");
+  updateCurrentUserProgress({ stats: { npcKills: { npc_Streuner: 3, npc_Lordakia: 2 }, npcKillBreakdownVersion: 1 } });
+  const user = getCurrentUserFull();
+  assert.deepEqual(user.stats.npcKills, { npc_Streuner: 3, npc_Lordakia: 2 });
+  assert.equal(user.stats.lifetimeKills, 5);
 });

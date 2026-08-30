@@ -21,6 +21,7 @@ const regUser = $("regUser");
 const regEmail = $("regEmail");
 const regPass = $("regPass");
 const regPass2 = $("regPass2");
+const factionChoices = [...document.querySelectorAll('input[name="regFaction"]')];
 
 function showMsg(text, ok) {
   msgEl.textContent = text || "";
@@ -125,8 +126,9 @@ $("btnRegister").addEventListener("click", (e) => {
     const email = regEmail.value.trim();
     const p1 = regPass.value;
     const p2 = regPass2.value;
+    const faction = factionChoices.find(input => input.checked)?.value || "";
 
-    if (!pseudo || !email || !p1 || !p2) {
+    if (!pseudo || !email || !p1 || !p2 || !faction) {
       showMsg("⚠️ Tous les champs sont requis", false);
       return;
     }
@@ -147,6 +149,7 @@ $("btnRegister").addEventListener("click", (e) => {
       pseudo,
       email,
       password: p1,
+      faction,
     });
 
     if (!out || out.ok === false) {

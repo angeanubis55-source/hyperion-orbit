@@ -3,14 +3,17 @@
 
 import { findCatalogItem } from "./catalog.js";
 import { SHIP_PACKS } from "../data/shipPacks.js";
-import { normalizeQuestState } from "../data/quests.js";
-import { calculateRankPoints } from "./progression.js";
+import { normalizeQuestState, QUEST_DEFINITIONS } from "../data/quests.js";
+import { calculateRankPoints, getQuestHonorReward } from "./progression.js";
+import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./factions.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
 const CUR_KEY = "orbit_current_user";
-const STORAGE_SCHEMA_VERSION = 3;
+const STORAGE_SCHEMA_VERSION = 4;
 const STARTER_CREDITS = 1000000;
+const NPC_KILL_BREAKDOWN_VERSION = 1;
+const QUEST_HONOR_VERSION = 1;
 
 const STARTER_SHIP_ID = "PhoenixBleu";
 
@@ -162,6 +165,7 @@ function ensureUserShape(u) {
   if (!u.id) u.id = uuid();
   u.pseudo = String(u.pseudo || "Player").trim().slice(0, 32) || "Player";
   u.email = String(u.email || `${u.pseudo}@local`).trim().slice(0, 254);
+  u.faction = normalizeFactionId(u.faction);
   if (!u.createdAt) u.createdAt = Date.now();
   u.schemaVersion = STORAGE_SCHEMA_VERSION;
   u.updatedAt = Number.isFinite(Number(u.updatedAt)) ? Number(u.updatedAt) : Date.now();
@@ -193,9 +197,27 @@ function ensureUserShape(u) {
   u.stats.exp ??= 0;
   u.stats.rankPoints ??= 0;
   u.stats.lifetimeKills ??= 0;
+  if (!u.stats.npcKills || typeof u.stats.npcKills !== "object" || Array.isArray(u.stats.npcKills)) u.stats.npcKills = {};
+  if (Number(u.stats.npcKillBreakdownVersion || 0) < NPC_KILL_BREAKDOWN_VERSION) {
+    u.stats.lifetimeKills = 0;
+    u.stats.npcKills = {};
+    u.stats.npcKillBreakdownVersion = NPC_KILL_BREAKDOWN_VERSION;
+  }
+  for (const [type, count] of Object.entries(u.stats.npcKills)) {
+    u.stats.npcKills[type] = Math.max(0, Math.floor(Number(count) || 0));
+  }
+  u.stats.lifetimeKills = Object.values(u.stats.npcKills).reduce((total, count) => total + Math.max(0, Number(count) || 0), 0);
   u.stats.rankPoints = calculateRankPoints(u.stats);
 
   u.quests = normalizeQuestState(u.quests);
+  if (Number(u.stats.questHonorVersion || 0) < QUEST_HONOR_VERSION) {
+    const completed = new Set(u.quests.completed);
+    u.stats.honor += QUEST_DEFINITIONS
+      .filter(quest => completed.has(quest.id))
+      .reduce((total, quest) => total + getQuestHonorReward(quest), 0);
+    u.stats.questHonorVersion = QUEST_HONOR_VERSION;
+    u.stats.rankPoints = calculateRankPoints(u.stats);
+  }
 
   // inventory
   if (!u.inventory || typeof u.inventory !== "object") u.inventory = {};
@@ -395,12 +417,16 @@ function getActiveHangar(u) {
 // ---------------------------
 // Exports demandés
 // ---------------------------
-export function register({ pseudo, email, password }) {
+export function register({ pseudo, email, password, faction }) {
   pseudo = String(pseudo || "").trim();
   email = String(email || "").trim().toLowerCase();
   password = String(password || "");
+  const requestedFaction = String(faction || "").trim().toLowerCase();
 
   if (!pseudo || !email || !password) return { ok: false, error: "Champs manquants." };
+  if (!requestedFaction || normalizeFactionId(requestedFaction, null) === null) {
+    return { ok: false, error: "Choisis une firme valide." };
+  }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email)) return { ok: false, error: "Adresse email invalide." };
   if (password.length < 4) return { ok: false, error: "Mot de passe trop court (4 caractères minimum)." };
 
@@ -416,6 +442,7 @@ export function register({ pseudo, email, password }) {
     pseudo,
     email,
     password,
+    faction: requestedFaction,
     createdAt: Date.now(),
     credits: STARTER_CREDITS,
     ammo: defaultAmmo(),
@@ -429,7 +456,7 @@ export function register({ pseudo, email, password }) {
   writeUsers(users);
 
   writeCurrent({ id: user.id, pseudo: user.pseudo, email: user.email });
-  return { ok: true, user: { id: user.id, pseudo: user.pseudo, email: user.email } };
+  return { ok: true, user: { id: user.id, pseudo: user.pseudo, email: user.email, faction: user.faction } };
 }
 
 export function login(pseudoOrEmail, password) {
@@ -515,6 +542,38 @@ export function changeCurrentUserPassword(currentPassword, newPassword) {
   return { ok: true };
 }
 
+export const FACTION_CHANGE_CREDIT_COST = 1000000000;
+
+export function changeCurrentUserFaction(nextFaction) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+
+  const factionId = normalizeFactionId(nextFaction, null);
+  if (!factionId) return { ok: false, error: "Firme invalide." };
+  if (factionId === u.faction) return { ok: false, error: "Tu appartiens déjà à cette firme." };
+  if (Number(u.credits || 0) < FACTION_CHANGE_CREDIT_COST) {
+    return { ok: false, error: "Il faut 1 000 000 000 crédits pour changer de firme." };
+  }
+
+  const honorBefore = Number(u.stats?.honor || 0);
+  const honorLost = honorBefore > 0 ? Math.ceil(honorBefore * 0.5) : 0;
+  u.credits = Math.max(0, Math.floor(Number(u.credits || 0) - FACTION_CHANGE_CREDIT_COST));
+  u.stats.honor = honorBefore - honorLost;
+  u.stats.rankPoints = calculateRankPoints(u.stats);
+  u.faction = factionId;
+  const destinationFaction = getFaction(factionId);
+  const baseSpawn = getFactionBaseSpawn(factionId);
+  const activeHangar = getActiveHangar(u);
+  if (activeHangar) {
+    activeHangar.lastMap = `${destinationFaction.sector}-1`;
+    activeHangar.lastPos = null;
+  }
+  saveUser(u);
+  try { sessionStorage.setItem("orbit_faction_transfer", JSON.stringify({ faction: factionId, map: `${destinationFaction.sector}-1`, fallback: baseSpawn })); } catch {}
+  localStorage.setItem("orbit_sync", String(Date.now()));
+  return { ok: true, user: u, faction: destinationFaction, creditsSpent: FACTION_CHANGE_CREDIT_COST, honorLost };
+}
+
 export function getCurrentUser() {
   const cur = readCurrent();
   if (!cur?.id) return null;
@@ -562,6 +621,15 @@ export function updateCurrentUserProgress(patch = {}) {
     if (patch.stats.exp != null) u.stats.exp = Number(patch.stats.exp || 0);
     if (patch.stats.rankPoints != null) u.stats.rankPoints = Number(patch.stats.rankPoints || 0);
     if (patch.stats.lifetimeKills != null) u.stats.lifetimeKills = Math.max(0, Math.floor(Number(patch.stats.lifetimeKills || 0)));
+    if (patch.stats.npcKills && typeof patch.stats.npcKills === "object" && !Array.isArray(patch.stats.npcKills)) {
+      u.stats.npcKills = Object.fromEntries(Object.entries(patch.stats.npcKills).map(([type, count]) => [
+        String(type),
+        Math.max(0, Math.floor(Number(count) || 0)),
+      ]));
+    }
+    if (patch.stats.npcKillBreakdownVersion != null) {
+      u.stats.npcKillBreakdownVersion = Math.max(0, Math.floor(Number(patch.stats.npcKillBreakdownVersion) || 0));
+    }
     u.stats.rankPoints = calculateRankPoints(u.stats);
   }
 

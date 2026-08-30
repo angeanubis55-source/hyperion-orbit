@@ -7,7 +7,7 @@ import {
   getQuestObjectives,
   isQuestComplete,
 } from "../data/quests.js";
-import { getQuestExperienceReward } from "./progression.js";
+import { getQuestExperienceReward, getQuestHonorReward } from "./progression.js";
 import { formatInteger } from "./numberFormat.js";
 
 const QUEST_HELP = {
@@ -30,7 +30,7 @@ const QUEST_HELP = {
 };
 
 function rewardLabel(quest) {
-  return `${formatInteger(quest.reward.credits)} crédits · ${formatInteger(getQuestExperienceReward(quest))} XP`;
+  return `${formatInteger(quest.reward.credits)} crédits · ${formatInteger(getQuestExperienceReward(quest))} XP · ${formatInteger(getQuestHonorReward(quest))} honneur`;
 }
 
 export function getQuestTargetImage(quest, collectables, npcTypes) {

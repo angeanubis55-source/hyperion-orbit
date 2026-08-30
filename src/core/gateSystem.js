@@ -50,10 +50,6 @@ export function positionGateChoicePortals(world, continuePortal, returnPortal, s
   return { continuePortal, returnPortal };
 }
 
-export function getGateReturnMap(mapId, fallback = "1-1") {
-  const id = String(mapId || "").toLowerCase();
-  if (id === "alpha") return "1-1";
-  if (id === "beta") return "2-1";
-  if (id === "gamma") return "3-1";
-  return String(fallback || "1-1");
+export function getGateReturnMap(_mapId, factionHomeMap = "1-1") {
+  return String(factionHomeMap || "1-1");
 }

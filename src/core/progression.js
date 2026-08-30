@@ -50,6 +50,11 @@ export function getQuestExperienceReward(quest) {
   return Math.max(0, Math.floor(Number(reward.exp ?? Number(reward.credits || 0) * 0.1)));
 }
 
+export function getQuestHonorReward(quest) {
+  const reward = quest?.reward || {};
+  return Math.max(0, Math.floor(Number(reward.honor ?? Number(reward.credits || 0) * 0.01)));
+}
+
 export function grantExperience(stats, amount) {
   const target = stats || {};
   const beforeExp = Math.max(0, Number(target.exp || 0));

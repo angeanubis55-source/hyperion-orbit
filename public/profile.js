@@ -14,13 +14,17 @@ import {
   updateCurrentUserEmail,
   updateCurrentUserPseudo,
   changeCurrentUserPassword,
+  changeCurrentUserFaction,
 } from "../src/core/account.js";
 
 import { CATALOG, findCatalogItem } from "../src/core/catalog.js";
 import { SHIP_PACKS } from "../src/data/shipPacks.js";
 import { escapeHtml } from "../src/core/dom.js";
-import { calculateRankPoints, getRankInfo } from "../src/core/progression.js";
+import { PILOT_RANKS, calculateRankPoints, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo } from "../src/core/progression.js";
 import { formatInteger } from "../src/core/numberFormat.js";
+import { FACTIONS, getFaction } from "../src/core/factions.js";
+import { NPC_TYPES } from "../src/data/npcTypes.js";
+import { QUEST_DEFINITIONS } from "../src/data/quests.js";
 
 console.log("profile.js loaded ✅");
 
@@ -55,6 +59,23 @@ const statExp = $("statExp");
 const statRank = $("statRank");
 const statRankName = $("statRankName");
 const statLifetimeKills = $("statLifetimeKills");
+const statFaction = $("statFaction");
+const npcKillList = $("npcKillList");
+const npcRewardTotals = $("npcRewardTotals");
+const npcRankExp = $("npcRankExp");
+const npcRankExpCalc = $("npcRankExpCalc");
+const npcRankHonor = $("npcRankHonor");
+const npcRankHonorCalc = $("npcRankHonorCalc");
+const npcRankImage = $("npcRankImage");
+const npcPreviousRankImage = $("npcPreviousRankImage");
+const npcPreviousRankName = $("npcPreviousRankName");
+const npcPreviousRankPoints = $("npcPreviousRankPoints");
+const npcRankPoints = $("npcRankPoints");
+const npcRankName = $("npcRankName");
+const npcNextRankImage = $("npcNextRankImage");
+const npcNextRankPoints = $("npcNextRankPoints");
+const npcNextRankName = $("npcNextRankName");
+const missionRewardSummary = $("missionRewardSummary");
 const accountPseudo = $("accountPseudo");
 const accountPseudoStatus = $("accountPseudoStatus");
 const pseudoCurrentPassword = $("pseudoCurrentPassword");
@@ -67,6 +88,9 @@ const passwordCurrent = $("passwordCurrent");
 const passwordNew = $("passwordNew");
 const passwordConfirm = $("passwordConfirm");
 const btnChangePassword = $("btnChangePassword");
+const accountFaction = $("accountFaction");
+const accountFactionStatus = $("accountFactionStatus");
+const btnChangeFaction = $("btnChangeFaction");
 const shopCredits = $("shopCredits");
 const hangarGrid = $("hangarGrid");
 const hangarPreviewImage = $("hangarPreviewImage");
@@ -437,6 +461,8 @@ function wireMainTabsOnce() {
       setTab(btn.dataset.tab);
 
       if (tab === "stats") renderStats(user);
+      if (tab === "account") renderAccount(user);
+      if (tab === "npcs") renderNpcStats(user);
       if (tab === "hangars") renderHangars(user);
       if (tab === "shop") renderShop(user);
     });
@@ -480,6 +506,96 @@ function renderStats(u) {
   if (statRankName) statRankName.textContent = getRankInfo(rankPoints, u.stats?.honor).name;
   if (statLifetimeKills) statLifetimeKills.textContent = formatNumber(u.stats?.lifetimeKills ?? 0);
 
+  const faction = getFaction(u.faction);
+  if (statFaction) statFaction.textContent = faction.shortName;
+  renderNpcStats(u);
+  renderAccount(u);
+}
+
+function renderNpcStats(u) {
+  if (!u) return;
+  const kills = u.stats?.npcKills || {};
+
+  const experience = Math.max(0, Number(u.stats?.exp || 0));
+  const honor = Number(u.stats?.honor || 0);
+  const rankPoints = calculateRankPoints(u.stats);
+  const rank = getRankInfo(rankPoints, honor);
+  const previousRank = rank.index > 0 ? PILOT_RANKS[rank.index - 1] : null;
+  if (npcRankExp) npcRankExp.textContent = formatNumber(experience);
+  if (npcRankExpCalc) npcRankExpCalc.textContent = `${formatNumber(experience)} ÷ 100 000 = ${formatNumber(Math.floor(experience / 100000))}`;
+  if (npcRankHonor) npcRankHonor.textContent = formatNumber(honor);
+  if (npcRankHonorCalc) npcRankHonorCalc.textContent = `${formatNumber(Math.max(0, honor))} ÷ 100 = ${formatNumber(Math.floor(Math.max(0, honor) / 100))}`;
+  if (npcRankImage) npcRankImage.src = rank.imagePath;
+  if (npcPreviousRankImage) {
+    npcPreviousRankImage.hidden = !previousRank;
+    npcPreviousRankImage.src = previousRank ? `assets/grades/${previousRank.image}` : "";
+  }
+  if (npcPreviousRankName) npcPreviousRankName.textContent = previousRank?.name || "Aucun";
+  if (npcPreviousRankPoints) npcPreviousRankPoints.textContent = previousRank ? `Seuil ${formatNumber(previousRank.points)}` : "Grade minimum";
+  if (npcRankPoints) npcRankPoints.textContent = formatNumber(rankPoints);
+  if (npcRankName) npcRankName.textContent = rank.name;
+  if (npcNextRankImage) {
+    npcNextRankImage.hidden = !rank.next;
+    npcNextRankImage.src = rank.next ? `assets/grades/${rank.next.image}` : "";
+  }
+  if (npcNextRankPoints) npcNextRankPoints.textContent = rank.next ? `${formatNumber(Math.max(0, rank.next.points - rankPoints))} points requis` : "Maximum";
+  if (npcNextRankName) npcNextRankName.textContent = rank.next?.name || "Grade maximal atteint";
+
+  const npcRows = Object.entries(NPC_TYPES)
+      .map(([type, npc]) => {
+        const count = Math.max(0, Number(kills[type] || 0));
+        const creditsEach = Math.max(0, Number(npc.value || 0));
+        const expEach = getNpcExperienceReward({ type, value: creditsEach }, npc);
+        const honorEach = getNpcHonorReward({ type, value: creditsEach }, { ...npc, type });
+        const exp = count * expEach;
+        const gainedHonor = count * honorEach;
+        return {
+          name: npc.name || type,
+          count,
+          exp,
+          honor: gainedHonor,
+          credits: count * creditsEach,
+          rankPoints: calculateRankPoints({ exp, honor: gainedHonor }),
+        };
+      })
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+  if (npcKillList) {
+    const rows = npcRows
+      .map(item => `<div class="npcRewardRow"><span class="npcRewardName">${escapeHtml(item.name)}</span><strong>${formatNumber(item.count)}</strong><span>${formatNumber(item.exp)}</span><span>${formatNumber(item.honor)}</span><span>${formatNumber(item.credits)}</span><span>${formatNumber(item.rankPoints)}</span></div>`)
+      .join("");
+    npcKillList.innerHTML = rows;
+  }
+
+  if (npcRewardTotals) {
+    const totals = npcRows.reduce((result, item) => {
+      result.count += item.count;
+      result.exp += item.exp;
+      result.honor += item.honor;
+      result.credits += item.credits;
+      return result;
+    }, { count: 0, exp: 0, honor: 0, credits: 0 });
+    const rankPoints = calculateRankPoints(totals);
+    npcRewardTotals.innerHTML = `<div class="npcRewardRow npcTotalRewardRow"><span class="npcRewardName">Total des destructions</span><strong>${formatNumber(totals.count)}</strong><span>${formatNumber(totals.exp)}</span><span>${formatNumber(totals.honor)}</span><span>${formatNumber(totals.credits)}</span><span>${formatNumber(rankPoints)}</span></div>`;
+  }
+
+  if (missionRewardSummary) {
+    const completedIds = new Set(Array.isArray(u.quests?.completed) ? u.quests.completed : []);
+    const completed = QUEST_DEFINITIONS.filter(quest => completedIds.has(quest.id));
+    const totals = completed.reduce((result, quest) => {
+      result.credits += Math.max(0, Number(quest.reward?.credits || 0));
+      result.exp += getQuestExperienceReward(quest);
+      result.honor += getQuestHonorReward(quest);
+      return result;
+    }, { credits: 0, exp: 0, honor: 0 });
+    const missionRankPoints = calculateRankPoints(totals);
+    missionRewardSummary.innerHTML = `<div class="npcRewardRow missionRewardRow"><span class="npcRewardName">Missions effectuées</span><strong>${formatNumber(completed.length)}</strong><span>${formatNumber(totals.exp)}</span><span>${formatNumber(totals.honor)}</span><span>${formatNumber(totals.credits)}</span><span>${formatNumber(missionRankPoints)}</span></div>`;
+  }
+}
+
+function renderAccount(u) {
+  if (!u) return;
+
   if (accountPseudoStatus) accountPseudoStatus.textContent = `Pseudo actuel : ${u.pseudo}`;
   if (accountPseudo && document.activeElement !== accountPseudo) accountPseudo.value = String(u.pseudo || "");
 
@@ -489,6 +605,14 @@ function renderStats(u) {
   }
   if (accountEmail && document.activeElement !== accountEmail) accountEmail.value = linkedEmail;
   if (btnSaveEmail) btnSaveEmail.textContent = linkedEmail ? "Modifier l'adresse" : "Lier cette adresse";
+  const faction = getFaction(u.faction);
+  if (accountFactionStatus) accountFactionStatus.textContent = `Firme actuelle : ${faction.shortName}`;
+  if (accountFaction) {
+    accountFaction.innerHTML = Object.values(FACTIONS)
+      .map(item => `<option value="${item.id}">${item.shortName} — ${item.name}</option>`)
+      .join("");
+    accountFaction.value = faction.id;
+  }
 }
 
 function wireAccountSettingsOnce() {
@@ -532,6 +656,37 @@ function wireAccountSettingsOnce() {
     if (passwordNew) passwordNew.value = "";
     if (passwordConfirm) passwordConfirm.value = "";
     setMsg("Mot de passe modifié avec succès.", true);
+  });
+  btnChangeFaction?.addEventListener("click", () => {
+    if (btnChangeFaction.dataset.confirmed !== "yes") {
+      const selected = getFaction(accountFaction?.value);
+      showConfirm(
+        "Confirmer le changement de firme",
+        `Rejoindre ${selected.shortName} coûtera 1 000 000 000 crédits et 50 % de ton honneur actuel. Cette opération est immédiate.`,
+        () => {
+          btnChangeFaction.dataset.confirmed = "yes";
+          btnChangeFaction.click();
+          delete btnChangeFaction.dataset.confirmed;
+        },
+      );
+      return;
+    }
+    const out = changeCurrentUserFaction(accountFaction?.value);
+    if (!out?.ok) {
+      showToast(out?.error || "Impossible de changer de firme.", "error");
+      return;
+    }
+    user = getCurrentUserFull();
+    renderHeader(user);
+    renderStats(user);
+    showToast(`Transfert vers ${out.faction.shortName} effectué. Honneur perdu : ${formatNumber(out.honorLost)}.`, "success");
+    setTimeout(() => {
+      const url = new URL(location.href);
+      url.searchParams.set("map", `${out.faction.sector}-1`);
+      url.searchParams.delete("spawn");
+      location.href = url.toString();
+    }, 700);
+    setMsg(`Firme changée : ${out.faction.shortName}. Coût : 1 000 000 000 crédits et ${formatNumber(out.honorLost)} honneur.`, true);
   });
 }
 

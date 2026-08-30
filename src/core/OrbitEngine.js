@@ -52,8 +52,9 @@ import {
 import { renderMinimap } from "./minimapRenderer.js";
 import { drawBackgroundLayerSet, drawWallLayer } from "./worldLayerRenderer.js";
 import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./frameSystems.js";
-import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getRankInfo, grantExperience, grantHonor } from "./progression.js";
+import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor } from "./progression.js";
 import { formatInteger } from "./numberFormat.js";
+import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, resolveBaseCenter } from "./factions.js";
 import {
   QUEST_DEFINITIONS,
   acceptQuest,
@@ -1129,11 +1130,26 @@ ui.questList?.addEventListener("click", event => {
   if (!button) return;
   const questId = button.dataset.questId;
 
-  if (button.dataset.questAction === "abandon" && abandonQuest(questState, questId)) {
-    selectedQuestId = null;
-    markProgressDirty();
-    saveProgressNow();
-    showToast("Mission abandonnée — progression perdue", 1.7);
+  if (button.dataset.questAction === "abandon") {
+    if (button.dataset.abandonConfirmed !== "true") {
+      button.dataset.abandonConfirmed = "true";
+      button.classList.add("questCancelConfirm");
+      button.textContent = "Confirmer l’abandon";
+      window.setTimeout(() => {
+        if (!button.isConnected || button.dataset.abandonConfirmed !== "true") return;
+        delete button.dataset.abandonConfirmed;
+        button.classList.remove("questCancelConfirm");
+        button.textContent = "Abandonner la mission";
+      }, 4000);
+      return;
+    }
+
+    if (abandonQuest(questState, questId)) {
+      selectedQuestId = null;
+      markProgressDirty();
+      saveProgressNow();
+      showToast("Mission abandonnée — progression perdue", 1.7);
+    }
   }
 
   if (button.dataset.questAction === "claim") {
@@ -1142,11 +1158,13 @@ ui.questList?.addEventListener("click", event => {
       const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
       player.credits += Math.max(0, Number(reward.credits || 0));
       const experience = getQuestExperienceReward(quest);
+      const honor = getQuestHonorReward(quest);
       awardExperience(experience, "quest");
+      awardHonor(honor);
       if (account.user?.stats) account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
       markProgressDirty();
       saveProgressNow();
-      showToast(`Récompense : +${formatInteger(reward.credits)} crédits · +${formatInteger(experience)} XP`, 2.4);
+      showToast(`Récompense : +${formatInteger(reward.credits)} crédits · +${formatInteger(experience)} XP · +${formatInteger(honor)} honneur`, 2.4);
     }
   }
 
@@ -1524,7 +1542,8 @@ function getInteractivePortals() {
 }
 
 function getGateReturnMap() {
-  return resolveGateReturnMap(window.__CURRENT_MAP_ID__, "1-1");
+  const homeMap = getFactionHomeMap((account.user || getCurrentUserFull())?.faction);
+  return resolveGateReturnMap(window.__CURRENT_MAP_ID__, homeMap);
 }
 
 let toast = null;
@@ -4389,6 +4408,10 @@ function killRewards(e) {
   awardExperience(experience);
   awardHonor(getNpcHonorReward(e, { ...NPC_TYPES[e.type], type: e.type }));
   if (account.user?.stats) account.user.stats.lifetimeKills = Math.max(0, Number(account.user.stats.lifetimeKills || 0)) + 1;
+  if (account.user?.stats && e.type) {
+    account.user.stats.npcKills ||= {};
+    account.user.stats.npcKills[e.type] = Math.max(0, Number(account.user.stats.npcKills[e.type] || 0)) + 1;
+  }
   markProgressDirty();
 }
 
@@ -4507,11 +4530,17 @@ function runOnKillAction(action, pos = null) {
 
   const tp = action.tp;
   if (tp?.toMap) {
-    setRespawnOverride({ map: tp.toMap, x: tp.x, y: tp.y });
+    const destinationMap = rules?.mode === "gate"
+      ? getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__, { gate: true })
+      : tp.toMap;
+    const destinationPosition = rules?.mode === "gate"
+      ? { baseCenter: true, fallback: getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction) }
+      : { x: tp.x, y: tp.y };
+    setRespawnOverride({ map: destinationMap, ...destinationPosition });
 
     const cur = window.__CURRENT_MAP_ID__ || "1-1";
-    if (typeof window.__GO_TO_MAP__ === "function" && String(cur) !== String(tp.toMap)) {
-      window.__GO_TO_MAP__(tp.toMap);
+    if (typeof window.__GO_TO_MAP__ === "function" && String(cur) !== String(destinationMap)) {
+      window.__GO_TO_MAP__(destinationMap);
       return;
     }
 
@@ -5324,6 +5353,24 @@ jumpBaseFade: 1,
     zoneSafe = null;
   }
 
+  if (!spawnedFromPortal) {
+    try {
+      const transfer = JSON.parse(sessionStorage.getItem("orbit_faction_transfer") || "null");
+      const currentMap = String(window.__CURRENT_MAP_ID__ || "1-1");
+      if (transfer && String(transfer.map || "") === currentMap) {
+        const center = resolveBaseCenter(zoneSafe, transfer.fallback);
+        const baseX = center.x;
+        const baseY = center.y;
+        if (Number.isFinite(baseX) && Number.isFinite(baseY)) {
+          player.x = clamp(baseX, 80, WORLD.w - 80);
+          player.y = clamp(baseY, 80, WORLD.h - 80);
+          spawnedFromPortal = true;
+        }
+        sessionStorage.removeItem("orbit_faction_transfer");
+      }
+    } catch {}
+  }
+
   if (isZoneMap && typeof rules.getZoneWalls === "function") {
     zoneWalls = rules.getZoneWalls(WORLD) || [];
   } else {
@@ -5335,8 +5382,9 @@ jumpBaseFade: 1,
     const ov = popRespawnOverride();
 
     if (ov && String(ov.map || "") === String(currentMap)) {
-      player.x = clamp(Number(ov.x) || DEFAULT_SPAWN.x, 80, WORLD.w - 80);
-      player.y = clamp(Number(ov.y) || DEFAULT_SPAWN.y, 80, WORLD.h - 80);
+      const position = ov.baseCenter ? resolveBaseCenter(zoneSafe, ov.fallback) : ov;
+      player.x = clamp(Number(position.x) || DEFAULT_SPAWN.x, 80, WORLD.w - 80);
+      player.y = clamp(Number(position.y) || DEFAULT_SPAWN.y, 80, WORLD.h - 80);
       spawnedFromPortal = true;
       console.log(`[RESPAWN] Override spawn: ${player.x}, ${player.y} on ${currentMap}`);
     }
@@ -5461,12 +5509,14 @@ function getNearestPortalTo(x, y) {
 }
 
 function respawnBaseGate() {
-  setRespawnOverride({ map: "1-1", x: 1500, y: 1500 });
+  const targetMap = getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__, { gate: true });
+  const baseSpawn = getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction);
+  setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn });
 
   const cur = window.__CURRENT_MAP_ID__ || "1-1";
 
-  if (typeof window.__GO_TO_MAP__ === "function" && String(cur) !== "1-1") {
-    window.__GO_TO_MAP__("1-1");
+  if (typeof window.__GO_TO_MAP__ === "function" && String(cur) !== targetMap) {
+    window.__GO_TO_MAP__(targetMap);
     return;
   }
 
@@ -5474,13 +5524,15 @@ function respawnBaseGate() {
 }
 
 function respawnBase() {
-  setRespawnOverride({ map: "1-1", x: 1500, y: 1500 });
+  const targetMap = getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, lastDeathPos.map || window.__CURRENT_MAP_ID__);
+  const baseSpawn = getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction);
+  setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn });
   showRespawnOverlay(false);
   setCenterMsg(false);
 
   const cur = window.__CURRENT_MAP_ID__ || "1-1";
-  if (typeof window.__GO_TO_MAP__ === "function" && String(cur) !== "1-1") {
-    window.__GO_TO_MAP__("1-1");
+  if (typeof window.__GO_TO_MAP__ === "function" && String(cur) !== targetMap) {
+    window.__GO_TO_MAP__(targetMap);
     return;
   }
 
@@ -6229,7 +6281,13 @@ function drawPlayerBars(px, py) {
     loadImage(rank.imagePath, { priority: true });
     rankImage = null;
   }
-  drawPlayerStatus(ctx, player, account.user?.pseudo || "Pilote", px, py, rankImage);
+  const faction = getFaction(account.user?.faction);
+  let factionImage = getCachedImage(faction.imagePath);
+  if (!isImgReady(factionImage)) {
+    loadImage(faction.imagePath, { priority: true });
+    factionImage = null;
+  }
+  drawPlayerStatus(ctx, player, account.user?.pseudo || "Pilote", px, py, rankImage, factionImage);
 }
 
 function getRsbPercent() {
@@ -7848,6 +7906,7 @@ function frame(t) {
 // Init
 // ============================================================
 function saveStateImmediate() {
+  try { if (sessionStorage.getItem("orbit_faction_transfer")) return; } catch {}
   if (!account.user) return;
   if (!started) return;
   if (player.dead) return;

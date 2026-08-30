@@ -15,13 +15,13 @@
 
 #profileOverlay #profileWindow.gameWindow {
   position: fixed !important;
-  width: min(1120px, calc(100vw - 32px)) !important;
+  width: min(1180px, calc(100vw - 32px)) !important;
   height: min(720px, calc(100vh - 90px)) !important;
   min-width: 760px !important;
   min-height: 520px !important;
   padding: 0 !important;
   display: grid !important;
-  grid-template-columns: 230px minmax(0, 1fr) !important;
+  grid-template-columns: 260px minmax(0, 1fr) !important;
   grid-template-rows: 30px minmax(0, 1fr) !important;
   gap: 0 !important;
   overflow: hidden !important;
@@ -35,7 +35,7 @@
 }
 
 html body #profileOverlay #profileWindow.gameWindow:not(.floating) {
-  left: max(16px, calc(50vw - 560px)) !important;
+  left: max(16px, calc(50vw - 590px)) !important;
   top: 70px !important;
 }
 
@@ -181,6 +181,9 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
   align-items: center !important;
   justify-content: flex-start !important;
   text-align: left !important;
+  min-height: 44px !important;
+  padding: 11px 14px !important;
+  font-size: 12px !important;
 }
 
 #profileOverlay .profileTabs .tabBtn.active,
@@ -280,6 +283,14 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
   gap: 12px !important;
 }
 
+#profileOverlay #panel_account.profilePanel.active { overflow-y: auto !important; }
+#profileOverlay #panel_account .accountSettingsGrid {
+  flex: 0 0 auto !important;
+  grid-auto-rows: minmax(280px, auto) !important;
+  overflow: visible !important;
+}
+#profileOverlay #panel_account .accountCard { overflow: visible !important; }
+
 #profileOverlay .accountCard {
   min-width: 0 !important;
   min-height: 0 !important;
@@ -336,7 +347,8 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
   text-transform: uppercase !important;
 }
 
-#profileOverlay .accountField input {
+#profileOverlay .accountField input,
+#profileOverlay .accountField select {
   width: 100% !important;
   height: 38px !important;
   min-width: 0 !important;
@@ -349,6 +361,68 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
   background: #05111c !important;
   font: 700 11px/1 system-ui !important;
 }
+
+#profileOverlay .accountField select { appearance: none !important; cursor: pointer !important; }
+#profileOverlay .accountField select option { color: #eaf9ff; background: #071622; }
+#profileOverlay .accountPanelIntro { margin: 0 0 12px; display: flex; flex-direction: column; gap: 4px; color: #effbff; }
+#profileOverlay .accountPanelIntro span { color: rgba(204,228,241,.62); font-size: 10px; }
+#profileOverlay .factionChangeCost { display: flex; flex-direction: column; gap: 5px; padding: 10px; border: 1px solid rgba(255,174,73,.2); border-radius: 8px; color: rgba(230,238,244,.72); background: rgba(255,145,45,.055); font-size: 10px; }
+#profileOverlay .factionChangeCost strong { color: #ffc06b; font-size: 11px; }
+
+#profileOverlay .npcStatsCard { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(124,240,255,.14); border-radius: 10px; background: #071622; }
+#profileOverlay .npcPanelIntro { margin: 0 0 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid rgba(124,240,255,.14); border-radius: 9px; background: #071622; }
+#profileOverlay .npcPanelIntro > div:first-child { display: flex; flex-direction: column; gap: 4px; }
+#profileOverlay .npcPanelIntro strong { color: #effbff; font-size: 13px; }
+#profileOverlay .npcPanelIntro span { color: rgba(204,228,241,.58); font-size: 10px; }
+#profileOverlay .npcTotalBadge { min-width: 110px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid rgba(124,240,255,.2); border-radius: 8px; background: #0a2232; }
+#profileOverlay .npcTotalBadge strong { color: #72e7ff; font-size: 18px; }
+#profileOverlay .npcStatsHeader { flex: 0 0 auto; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(124,240,255,.12); color: #effbff; font-size: 12px; font-weight: 900; }
+#profileOverlay .npcStatsHeader small { color: rgba(204,228,241,.52); font-size: 9px; font-weight: 700; }
+#profileOverlay .npcKillList { flex: 1 1 auto; min-height: 0; padding: 6px; display: block; overflow: auto; }
+#profileOverlay .npcKillRow { min-width: 0; padding: 7px 9px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-radius: 6px; color: rgba(215,235,246,.72); background: rgba(10,34,50,.7); font-size: 10px; }
+#profileOverlay .npcKillRow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#profileOverlay .npcKillRow strong { flex: 0 0 auto; color: #72e7ff; }
+
+#profileOverlay .rankCalculationCard { margin: 0 0 12px; padding: 10px; display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 8px; border: 1px solid rgba(124,240,255,.14); border-radius: 10px; background: #071622; }
+#profileOverlay .rankCalculationMetric,
+#profileOverlay .rankCalculationCurrent,
+#profileOverlay .rankCalculationAdjacent { min-width: 0; padding: 9px 10px; display: flex; flex-direction: column; justify-content: center; gap: 3px; border-radius: 7px; background: #0a2232; }
+#profileOverlay .rankCalculationCard span { color: rgba(204,228,241,.55); font-size: 8px; font-weight: 800; text-transform: uppercase; }
+#profileOverlay .rankCalculationCard strong { color: #72e7ff; font-size: 15px; }
+#profileOverlay .rankCalculationCard small { overflow: hidden; color: rgba(215,235,246,.68); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+#profileOverlay .rankCalculationCard .rankImportantValue { margin-top: 2px; font-size: 10px; font-weight: 800; }
+#profileOverlay .rankCalculationCurrent,
+#profileOverlay .rankCalculationAdjacent { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; }
+#profileOverlay .rankCalculationAdjacent { grid-column: span 2; border: 1px solid transparent; }
+#profileOverlay .rankCalculationCurrent { grid-column: span 2; border: 1px solid rgba(95,225,144,.28); background: rgba(20,92,59,.32); }
+#profileOverlay .rankPrevious { border-color: rgba(255,105,120,.22); background: rgba(112,35,48,.25); }
+#profileOverlay .rankNext { border-color: rgba(255,201,91,.25); background: rgba(112,83,24,.25); }
+#profileOverlay .rankPrevious strong { color: #ff9aa7; }
+#profileOverlay .rankPrevious .rankImportantValue { color: #ffc0c8; }
+#profileOverlay .rankCalculationCurrent strong { color: #7cf0a9; }
+#profileOverlay .rankCalculationCurrent .rankImportantValue,
+#profileOverlay .rankCalculationCurrent small b { color: #9bf5bc; }
+#profileOverlay .rankNext strong { color: #ffd477; }
+#profileOverlay .rankNext .rankImportantValue { color: #ffe2a0; }
+#profileOverlay .rankCalculationCurrent img,
+#profileOverlay .rankCalculationAdjacent img { width: 30px; height: 30px; object-fit: contain; image-rendering: auto; }
+#profileOverlay .rankCalculationCurrent div,
+#profileOverlay .rankCalculationAdjacent div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+#profileOverlay .rankMetricsSeparator { grid-column: 1 / -1; padding: 6px 2px 2px; border-top: 1px solid rgba(124,240,255,.18); }
+#profileOverlay .rankMetricsSeparator span { color: rgba(224,242,251,.7); }
+#profileOverlay .rankCalculationMetric { grid-column: span 3; }
+#profileOverlay .npcRewardRow { min-width: 0; padding: 7px 9px; display: grid; grid-template-columns: minmax(145px,1.6fr) repeat(5,minmax(68px,1fr)); align-items: center; gap: 8px; border-radius: 6px; color: rgba(215,235,246,.72); background: rgba(10,34,50,.7); font-size: 9px; }
+#profileOverlay .npcRewardRow + .npcRewardRow { margin-top: 4px; }
+#profileOverlay .npcRewardRow > :not(:first-child) { text-align: right; }
+#profileOverlay .npcRewardRow strong { color: #72e7ff; }
+#profileOverlay .npcRewardName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#profileOverlay .npcRewardHeader { flex: 0 0 auto; margin: 6px 6px 0; color: rgba(224,242,251,.72); background: #0d3044; font-size: 8px; font-weight: 900; text-transform: uppercase; }
+#profileOverlay .npcTotalsSeparator,
+#profileOverlay .missionStatsSeparator { flex: 0 0 auto; margin: 0 8px; padding: 8px 0 5px; border-top: 1px solid rgba(124,240,255,.22); color: #effbff; font-size: 10px; font-weight: 900; }
+#profileOverlay .npcRewardTotals { flex: 0 0 auto; padding: 0 6px 6px; overflow-x: auto; }
+#profileOverlay .npcTotalRewardRow { border: 1px solid rgba(114,231,255,.24); background: #0c2d40; }
+#profileOverlay .missionRewardSummary { flex: 0 0 auto; padding: 0 6px 6px; overflow-x: auto; }
+#profileOverlay .missionRewardRow { border: 1px solid rgba(124,240,255,.14); background: #0b2638; }
 
 #profileOverlay .accountField input:focus { border-color: rgba(124,240,255,.62) !important; }
 #profileOverlay .accountField input::placeholder { color: rgba(185,211,225,.34) !important; }

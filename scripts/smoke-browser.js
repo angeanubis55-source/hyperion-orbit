@@ -107,6 +107,10 @@ try {
         if (captureProfile) {
           await page.click('#profileOverlay .tabBtn[data-tab="stats"]');
           await page.screenshot({ path: join(root, "profile-stats-preview.png"), fullPage: false });
+          await page.click('#profileOverlay .tabBtn[data-tab="npcs"]');
+          await page.screenshot({ path: join(root, "profile-npcs-preview.png"), fullPage: false });
+          await page.click('#profileOverlay .tabBtn[data-tab="account"]');
+          await page.screenshot({ path: join(root, "profile-account-preview.png"), fullPage: false });
           await page.click('#profileOverlay .tabBtn[data-tab="hangars"]');
           await page.screenshot({ path: join(root, "profile-hangars-preview.png"), fullPage: false });
         }
