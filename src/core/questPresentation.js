@@ -8,6 +8,7 @@ import {
   isQuestComplete,
 } from "../data/quests.js";
 import { getQuestExperienceReward } from "./progression.js";
+import { formatInteger } from "./numberFormat.js";
 
 const QUEST_HELP = {
   npc_Streuner: "Présent en grand nombre dans les cartes de départ 1-1, 2-1 et 3-1.",
@@ -29,7 +30,7 @@ const QUEST_HELP = {
 };
 
 function rewardLabel(quest) {
-  return `${Number(quest.reward.credits || 0).toLocaleString("fr-FR")} crédits · ${getQuestExperienceReward(quest).toLocaleString("fr-FR")} XP`;
+  return `${formatInteger(quest.reward.credits)} crédits · ${formatInteger(getQuestExperienceReward(quest))} XP`;
 }
 
 export function getQuestTargetImage(quest, collectables, npcTypes) {

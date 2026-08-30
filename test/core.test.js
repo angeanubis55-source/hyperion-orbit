@@ -27,11 +27,12 @@ import {
   updatePortalProximity,
 } from "../src/core/portalSystem.js";
 import { buildQuestJournalView, buildQuestTerminalView } from "../src/core/questPresentation.js";
-import { drawMoveTargetMarker, drawToastMessage } from "../src/core/canvasHudRenderer.js";
+import { drawMoveTargetMarker, drawPlayerStatus, drawToastMessage } from "../src/core/canvasHudRenderer.js";
 import { renderMinimap } from "../src/core/minimapRenderer.js";
 import { drawBackgroundLayerSet, drawWallLayer } from "../src/core/worldLayerRenderer.js";
 import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "../src/core/frameSystems.js";
-import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getRankInfo, grantExperience, grantHonor } from "../src/core/progression.js";
+import { ADMIN_RANK, PILOT_RANKS, calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getRankInfo, grantExperience, grantHonor } from "../src/core/progression.js";
+import { formatInteger } from "../src/core/numberFormat.js";
 import { COLLECTABLE_SPAWN, COLLECTABLE_TYPES } from "../src/data/collectables.js";
 import {
   QUEST_DEFINITIONS,
@@ -214,10 +215,35 @@ test("la progression calcule les niveaux et détecte les passages de niveau", ()
   const rankStats = { exp: 1000000, honor: 10000 };
   grantHonor(rankStats, 100);
   assert.equal(calculateRankPoints(rankStats), 111);
-  assert.equal(getRankInfo(calculateRankPoints(rankStats)).name, "Pilote spatial");
+  assert.equal(getRankInfo(calculateRankPoints(rankStats)).name, "Pilote spatial de base");
+  assert.equal(getRankInfo(524288000).imagePath, "assets/grades/21.png");
+  assert.equal(getRankInfo(0, -1).name, "Paria");
+  assert.equal(getRankInfo(Number.MAX_SAFE_INTEGER).imagePath, "assets/grades/admin.png");
+  assert.equal(PILOT_RANKS.length, 21);
+  for (let index = 2; index < PILOT_RANKS.length; index++) {
+    assert.equal(PILOT_RANKS[index].points, PILOT_RANKS[index - 1].points * 2);
+  }
+  assert.equal(ADMIN_RANK.points, Number.MAX_SAFE_INTEGER);
   assert.equal(getNpcHonorReward({ type: "npc_Streuner", value: 400 }), 2);
   assert.equal(getNpcHonorReward({ type: "npc_Boss_Mordon", value: 25600 }), 64);
   assert.equal(getNpcHonorReward({ type: "npc_Inconnu", value: 900 }), 90);
+});
+
+test("les grands nombres utilisent des espaces comme séparateurs", () => {
+  assert.equal(formatInteger(1000000), "1 000 000");
+  assert.equal(formatInteger(12800), "12 800");
+});
+
+test("l'insigne de grade est dessiné à gauche du pseudo", () => {
+  const calls = [];
+  const context = new Proxy({ measureText: () => ({ width: 30 }) }, {
+    get: (target, property) => target[property] || ((...args) => calls.push([property, ...args])),
+    set: (target, property, value) => { target[property] = value; return true; },
+  });
+  const player = { dead: false, hp: 100, hpMax: 100, sh: 0, shMax: 0, r: 20 };
+  drawPlayerStatus(context, player, "Neo", 100, 100, { complete: true, naturalWidth: 20, naturalHeight: 16 });
+  const imageCall = calls.find(call => call[0] === "drawImage");
+  assert.deepEqual(imageCall?.slice(2), [60, 210, 20, 16]);
 });
 
 test("les primitives de collision gèrent segments et distances", () => {

@@ -53,6 +53,7 @@ import { renderMinimap } from "./minimapRenderer.js";
 import { drawBackgroundLayerSet, drawWallLayer } from "./worldLayerRenderer.js";
 import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./frameSystems.js";
 import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getRankInfo, grantExperience, grantHonor } from "./progression.js";
+import { formatInteger } from "./numberFormat.js";
 import {
   QUEST_DEFINITIONS,
   acceptQuest,
@@ -246,10 +247,7 @@ const ui = {
 
   honorTxt: document.getElementById("honorTxt"),
   xpTxt: document.getElementById("xpTxt"),
-  xpBar: document.getElementById("xpBar"),
-  xpProgressTxt: document.getElementById("xpProgressTxt"),
   rankPtsTxt: document.getElementById("rankPtsTxt"),
-  rankNameTxt: document.getElementById("rankNameTxt"),
 
   lvlTxt: document.getElementById("lvlTxt"),
 cfg1Btn: document.getElementById("cfg1Btn"),
@@ -1010,7 +1008,7 @@ function awardExperience(amount, source = "") {
   if (result.leveledUp) {
     showToast(`Niveau ${result.after.level} atteint !`, 2.6);
   } else if (source === "quest") {
-    showToast(`+${result.gained.toLocaleString("fr-FR")} XP`, 1.8);
+    showToast(`+${formatInteger(result.gained)} XP`, 1.8);
   }
   return result;
 }
@@ -1019,10 +1017,10 @@ function awardHonor(amount) {
   if (!account.user) loadAccountUser();
   if (!account.user) return null;
   account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
-  const previousRank = getRankInfo(account.user.stats.rankPoints);
+  const previousRank = getRankInfo(account.user.stats.rankPoints, account.user.stats.honor);
   const result = grantHonor(account.user.stats, amount);
   account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
-  const nextRank = getRankInfo(account.user.stats.rankPoints);
+  const nextRank = getRankInfo(account.user.stats.rankPoints, account.user.stats.honor);
   if (result.gained > 0) markProgressDirty();
   if (nextRank.index > previousRank.index) showToast(`Nouveau grade : ${nextRank.name}`, 2.6);
   return result;
@@ -1148,7 +1146,7 @@ ui.questList?.addEventListener("click", event => {
       if (account.user?.stats) account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
       markProgressDirty();
       saveProgressNow();
-      showToast(`Récompense : +${Number(reward.credits || 0).toLocaleString("fr-FR")} crédits · +${experience.toLocaleString("fr-FR")} XP`, 2.4);
+      showToast(`Récompense : +${formatInteger(reward.credits)} crédits · +${formatInteger(experience)} XP`, 2.4);
     }
   }
 
@@ -2327,7 +2325,7 @@ function formatAmmoCount(value) {
 
   const n = Math.max(0, Math.floor(Number(value) || 0));
 
-  return String(Math.min(n, 9999999));
+  return formatInteger(Math.min(n, 9999999));
 }
 
 function updateAmmoUI() {
@@ -6224,7 +6222,14 @@ function drawLaserBeam(L, ox, oy) {
 }
 
 function drawPlayerBars(px, py) {
-  drawPlayerStatus(ctx, player, account.user?.pseudo || "Pilote", px, py);
+  const stats = account.user?.stats || {};
+  const rank = getRankInfo(calculateRankPoints(stats), stats.honor);
+  let rankImage = getCachedImage(rank.imagePath);
+  if (!isImgReady(rankImage)) {
+    loadImage(rank.imagePath, { priority: true });
+    rankImage = null;
+  }
+  drawPlayerStatus(ctx, player, account.user?.pseudo || "Pilote", px, py, rankImage);
 }
 
 function getRsbPercent() {
@@ -7530,8 +7535,8 @@ function drawUI() {
   if (ui.boxVitals) ui.boxVitals.style.display = "block";
   if (ui.boxPerformance) ui.boxPerformance.style.display = "block";
 
-  if (ui.credits) ui.credits.textContent = String(player.credits);
-  if (ui.kills) ui.kills.textContent = String(player.kills);
+  if (ui.credits) ui.credits.textContent = formatInteger(player.credits);
+  if (ui.kills) ui.kills.textContent = formatInteger(player.kills);
 
 const u = account.user || null;
 const st = u?.stats || {};
@@ -7539,14 +7544,12 @@ const st = u?.stats || {};
 const exp = Number(st.exp || 0);
 const lvl = getLevelInfo(exp);
 st.rankPoints = calculateRankPoints(st);
-const rank = getRankInfo(st.rankPoints);
 updateProgressHud(ui, st, lvl);
-if (ui.rankNameTxt) ui.rankNameTxt.textContent = rank.name;
 
 if (ui.spdTxt) {
   const spd = getSpeedBreakdown();
 
-  ui.spdTxt.textContent = String(spd.total);
+  ui.spdTxt.textContent = formatInteger(spd.total);
 
   ui.spdTxt.title =
     `Vaisseau: ${spd.base}` +
@@ -7566,7 +7569,7 @@ updateConfigButtons();
   updateResourceHud(ui, player);
   updateWaveHud(ui, { started, wave, remaining: waveSpawns.remaining, alive: enemies.length });
 
-  if (ui.shopCredits) ui.shopCredits.textContent = String(player.credits);
+  if (ui.shopCredits) ui.shopCredits.textContent = formatInteger(player.credits);
 
   updateSkillUI();
   updateRepairUI();
@@ -7576,18 +7579,18 @@ updateConfigButtons();
 
   if (ui.pulsePrice) {
     if (pulseCd > 0) ui.pulsePrice.textContent = `${pulseCd.toFixed(1)}s`;
-    else ui.pulsePrice.textContent = "30,000 Cr.";
+    else ui.pulsePrice.textContent = "30 000 Cr.";
   }
 
   const rsbPct = getRsbPercent();
-  if (ui.cntX6) ui.cntX6.textContent = `${player.ammo.x6} • ${rsbPct}%`;
+  if (ui.cntX6) ui.cntX6.textContent = `${formatInteger(player.ammo.x6)} • ${rsbPct}%`;
   if (ui.btnX6) ui.btnX6.classList.toggle(
     "ready",
     started && !paused && !player.dead && ammoCount("x6") > 0 && rsbCooldown <= 0
   );
 
   if (ui.miniMapName) ui.miniMapName.textContent = `Map : ${rules?.mapLabel || "—"}`;
-  if (ui.miniPos) ui.miniPos.textContent = `Pos : ${Math.floor(player.x)} / ${Math.floor(player.y)}`;
+  if (ui.miniPos) ui.miniPos.textContent = `Pos : ${formatInteger(player.x)} / ${formatInteger(player.y)}`;
 
   if (ui.fpsTxt) {
     const perf = performanceMonitor.snapshot();

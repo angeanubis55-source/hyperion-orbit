@@ -61,19 +61,36 @@ export function grantExperience(stats, amount) {
 }
 
 export const PILOT_RANKS = [
-  { name: "Pilote débutant", points: 0 },
-  { name: "Pilote spatial", points: 100 },
-  { name: "Sergent", points: 500 },
-  { name: "Lieutenant", points: 1500 },
-  { name: "Capitaine", points: 4000 },
-  { name: "Major", points: 10000 },
-  { name: "Colonel", points: 25000 },
-  { name: "Général", points: 60000 },
-  { name: "Commandant suprême", points: 150000 },
+  { id: "basic_space_pilot", name: "Pilote spatial de base", points: 0, image: "1.png" },
+  { id: "space_pilot", name: "Pilote spatial", points: 1000, image: "2.png" },
+  { id: "chief_space_pilot", name: "Pilote spatial en chef", points: 2000, image: "3.png" },
+  { id: "basic_sergeant", name: "Sergent de base", points: 4000, image: "4.png" },
+  { id: "sergeant", name: "Sergent", points: 8000, image: "5.png" },
+  { id: "chief_sergeant", name: "Sergent-chef", points: 16000, image: "6.png" },
+  { id: "basic_lieutenant", name: "Lieutenant de base", points: 32000, image: "7.png" },
+  { id: "lieutenant", name: "Lieutenant", points: 64000, image: "8.png" },
+  { id: "chief_lieutenant", name: "Lieutenant-chef", points: 128000, image: "9.png" },
+  { id: "basic_captain", name: "Capitaine de base", points: 256000, image: "10.png" },
+  { id: "captain", name: "Capitaine", points: 512000, image: "11.png" },
+  { id: "chief_captain", name: "Capitaine-chef", points: 1024000, image: "12.png" },
+  { id: "basic_major", name: "Major de base", points: 2048000, image: "13.png" },
+  { id: "major", name: "Major", points: 4096000, image: "14.png" },
+  { id: "chief_major", name: "Major-chef", points: 8192000, image: "15.png" },
+  { id: "basic_colonel", name: "Colonel de base", points: 16384000, image: "16.png" },
+  { id: "colonel", name: "Colonel", points: 32768000, image: "17.png" },
+  { id: "chief_colonel", name: "Colonel-chef", points: 65536000, image: "18.png" },
+  { id: "basic_general", name: "Général de base", points: 131072000, image: "19.png" },
+  { id: "general", name: "Général", points: 262144000, image: "20.png" },
+  { id: "chief_general", name: "Chef général suprême", points: 524288000, image: "21.png" },
 ];
 
-export function getRankInfo(rankPoints) {
+export const OUTLAW_RANK = { id: "outlaw", name: "Paria", points: 0, image: "0.png", special: true };
+export const ADMIN_RANK = { id: "admin", name: "Administrateur", points: Number.MAX_SAFE_INTEGER, image: "admin.png", special: true };
+
+export function getRankInfo(rankPoints, honor = 0) {
   const points = Math.max(0, Math.floor(Number(rankPoints || 0)));
+  if (Number(honor || 0) < 0) return rankResult(OUTLAW_RANK, -1, points, PILOT_RANKS[0]);
+  if (points >= ADMIN_RANK.points) return rankResult(ADMIN_RANK, PILOT_RANKS.length, points, null);
   let index = 0;
   for (let i = 1; i < PILOT_RANKS.length; i++) {
     if (points < PILOT_RANKS[i].points) break;
@@ -81,13 +98,27 @@ export function getRankInfo(rankPoints) {
   }
   const rank = PILOT_RANKS[index];
   const next = PILOT_RANKS[index + 1] || null;
-  return { index, name: rank.name, points, next, maxRank: !next };
+  return rankResult(rank, index, points, next);
+}
+
+function rankResult(rank, index, points, next) {
+  return {
+    index,
+    id: rank.id,
+    name: rank.name,
+    image: rank.image,
+    imagePath: `assets/grades/${rank.image}`,
+    points,
+    next,
+    maxRank: !next,
+    special: !!rank.special,
+  };
 }
 
 export function grantHonor(stats, amount) {
   const target = stats || {};
   const gained = Math.max(0, Math.floor(Number(amount || 0)));
-  target.honor = Math.max(0, Number(target.honor || 0)) + gained;
+  target.honor = Number(target.honor || 0) + gained;
   return { gained, total: target.honor };
 }
 

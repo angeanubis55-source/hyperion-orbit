@@ -18,6 +18,8 @@ Le jeu reste une application navigateur rendue avec Canvas. `OrbitEngine.js` coo
 - `src/core/worldLayerRenderer.js` : arrière-plans, parallaxe et murs texturés.
 - `src/core/frameSystems.js` : déplacement inertiel, durées de vie, textes flottants et attraction des récompenses.
 - `src/core/progression.js` : courbe de niveaux, attribution d’expérience et barèmes configurables des NPC et quêtes.
+
+Les insignes sont stockés dans `assets/grades/` : `0.png` pour Paria, `1.png` à `21.png` pour les grades standards et `admin.png` pour le grade Administrateur.
 - `src/core/ImageLoader.js` : chargement et cache des ressources graphiques.
 
 ## Principes de maintenance

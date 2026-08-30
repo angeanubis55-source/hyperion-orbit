@@ -54,7 +54,7 @@ export function drawTargetLock(context, entity, image, sprite, offsetX, offsetY,
   context.restore();
 }
 
-export function drawPlayerStatus(context, player, playerName, x, y) {
+export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null) {
   if (!context || !player || player.dead) return;
   const width = 120;
   const height = 4;
@@ -85,9 +85,18 @@ export function drawPlayerStatus(context, player, playerName, x, y) {
   context.textBaseline = "top";
   context.lineWidth = 1;
   context.strokeStyle = "rgba(5,8,20,0.90)";
-  context.strokeText(playerName || "Pilote", x, y + player.r + 90);
+  const displayName = playerName || "Pilote";
+  const nameY = y + player.r + 90;
+  context.strokeText(displayName, x, nameY);
   context.fillStyle = "rgba(124,240,255,0.95)";
-  context.fillText(playerName || "Pilote", x, y + player.r + 90);
+  context.fillText(displayName, x, nameY);
+  if (rankImage?.complete && rankImage.naturalWidth > 0) {
+    const imageWidth = rankImage.naturalWidth;
+    const imageHeight = rankImage.naturalHeight;
+    const textWidth = context.measureText(displayName).width;
+    context.imageSmoothingEnabled = false;
+    context.drawImage(rankImage, x - textWidth / 2 - imageWidth - 5, nameY, imageWidth, imageHeight);
+  }
   context.restore();
 }
 
