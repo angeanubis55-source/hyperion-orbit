@@ -6,6 +6,7 @@ import { SHIP_PACKS } from "../data/shipPacks.js";
 import { normalizeQuestState, QUEST_DEFINITIONS } from "../data/quests.js";
 import { calculateRankPoints, getQuestHonorReward } from "./progression.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./factions.js";
+import { compactFitDraft } from "./fitLayout.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -142,12 +143,12 @@ function makeEmptyFit(shipId) {
 function normalizeFitForShip(shipId, fit) {
   const slots = getShipSlots(shipId);
 
-  return {
+  return compactFitDraft({
     lasers: normalizeArraySize(fit?.lasers, slots.lasers, null),
     gens: normalizeArraySize(fit?.gens, slots.gens, null),
     extras: normalizeArraySize(fit?.extras, slots.extras, null),
     shipMods: normalizeArraySize(fit?.shipMods, slots.shipMods, null),
-  };
+  }, slots);
 }
 
 function getHangarActiveConfigNo(h) {

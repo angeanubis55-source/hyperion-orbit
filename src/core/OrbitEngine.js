@@ -387,7 +387,7 @@ let waitingForBindAction = null;
 const KEYBIND_LABELS = {
   portal: "Portail",
   switchConfig: "Changer configuration",
-  toggleAttack: "Attaque auto",
+  toggleAttack: "Activer / arrêter le tir",
   respawn: "Réapparition",
 
   ammoX1: "Munition X1",
@@ -565,6 +565,41 @@ function wireSettingsWindow() {
   const bgBtn = document.getElementById("optBackground");
   const texBtn = document.getElementById("optTextures");
   const autoStart = document.getElementById("optAutoStart");
+  const settingsWindow = document.getElementById("settingsWindow");
+
+  if (settingsWindow) {
+    settingsWindow.style.width = `${Math.min(560, innerWidth - 24)}px`;
+  }
+
+  document.querySelectorAll("#settingsWindow [data-settings-tab]").forEach((tabButton) => {
+    tabButton.addEventListener("click", () => {
+      const target = tabButton.dataset.settingsTab;
+      settingsWindow?.classList.toggle("settingsControlsOpen", target === "controls");
+      if (settingsWindow) {
+        const requestedWidth = target === "controls" ? 1080 : 560;
+        settingsWindow.style.width = `${Math.min(requestedWidth, innerWidth - 24)}px`;
+      }
+      document.querySelectorAll("#settingsWindow [data-settings-tab]").forEach((button) => {
+        button.classList.toggle("active", button === tabButton);
+      });
+      document.querySelectorAll("#settingsWindow [data-settings-page]").forEach((page) => {
+        page.classList.toggle("active", page.dataset.settingsPage === target);
+      });
+      if (target === "controls" && settingsWindow) {
+        const keepSettingsOnScreen = () => {
+          const rect = settingsWindow.getBoundingClientRect();
+          if (rect.right > innerWidth - 8) {
+            settingsWindow.style.left = `${Math.max(8, innerWidth - rect.width - 8)}px`;
+          }
+          if (rect.bottom > innerHeight - 8) {
+            settingsWindow.style.top = `${Math.max(38, innerHeight - rect.height - 8)}px`;
+          }
+        };
+        requestAnimationFrame(keepSettingsOnScreen);
+        setTimeout(keepSettingsOnScreen, 220);
+      }
+    });
+  });
 
   soundBtn?.addEventListener("click", () => {
     setGameSetting("sound", !GAME_SETTINGS.sound);

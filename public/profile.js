@@ -27,6 +27,7 @@ import { NPC_TYPES } from "../src/data/npcTypes.js";
 import { QUEST_DEFINITIONS } from "../src/data/quests.js";
 import { AMMO } from "../src/data/ammo.js";
 import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS } from "../src/data/moduleDrops.js";
+import { appendToFitSlots, compactFitDraft } from "../src/core/fitLayout.js";
 
 console.log("profile.js loaded ✅");
 
@@ -1364,63 +1365,56 @@ function buildFitWindow() {
   card.id = "fitCard";
   card.className = "fitWindow";
   card.innerHTML = `
-    <header class="fitWindowHeader">
-      <div class="fitWindowIdentity">
-        <span class="fitWindowIcon">EQ</span>
-        <div>
-          <div id="fitTitle" class="fitTopTitle">Équipement</div>
-          <div id="fitSub" class="fitTopSub">Préparation du hangar…</div>
-        </div>
-      </div>
-      <div class="fitWindowActions">
-        <button id="fitBtnResetAll" class="secondary" type="button">Tout retirer</button>
-        <button id="fitBtnPresets" class="secondary" type="button">Presets</button>
-        <button id="fitBtnCancel" class="secondary" type="button">Annuler</button>
-        <button id="fitBtnSave" class="primary" type="button">Appliquer</button>
-      </div>
-    </header>
-
     <div id="fitErr" class="fitError" role="status"></div>
 
     <div class="fitWorkspace">
       <aside class="fitShipPane">
-        <div class="fitPaneLabel">Vaisseau sélectionné</div>
-        <canvas id="fitShipCanvas" width="220" height="220"></canvas>
+        <canvas id="fitShipCanvas" width="96" height="96"></canvas>
         <div class="fitShipMeta">
           <b id="fitShipName">—</b>
-          <span id="fitShipHint">Glisse un objet de l'inventaire vers un emplacement compatible.</span>
+        </div>
+        <div class="fitSectionNav" aria-label="Type d'équipement">
+          <button class="fitSectionBtn active" type="button">Vaisseau</button>
+          <button class="fitSectionBtn" type="button" disabled>Drones</button>
+          <button class="fitSectionBtn" type="button" disabled>REX</button>
         </div>
         <div id="fitConfigBar" class="fitConfigBar">
-          <span>Configuration</span>
+          <span>CONFIG.</span>
           <div>
             <button class="fitCfgBtn" data-cfg="1" type="button">1</button>
             <button class="fitCfgBtn" data-cfg="2" type="button">2</button>
           </div>
         </div>
+        <div class="fitWindowActions">
+          <span class="fitHelpTooltip" tabindex="0" aria-label="Aide sur la sélection">?
+            <span><b>Ctrl</b> : sélection multiple<br><b>Maj</b> : tous les exemplaires identiques<br><b>Double-clic</b> : équiper</span>
+          </span>
+          <button id="fitBtnSellSelection" class="secondary fitSellButton" type="button" disabled>Vendre</button>
+          <span class="fitActionSeparator" aria-hidden="true"></span>
+          <button id="fitBtnResetAll" class="secondary" type="button">Tout retirer</button>
+          <button id="fitBtnPresets" class="secondary" type="button">Presets</button>
+          <span class="fitActionSeparator" aria-hidden="true"></span>
+          <button id="fitBtnCancel" class="secondary fitBackButton" type="button">Retour</button>
+          <button id="fitBtnSave" class="primary" type="button">Appliquer</button>
+        </div>
       </aside>
 
       <section class="fitLoadoutPane">
-        <div class="fitPaneHeading">
-          <div>
-            <strong>Équipement installé</strong>
-            <span>Glisse les objets entre l'inventaire et les emplacements.</span>
-          </div>
-        </div>
         <div class="fitSlotsScroll">
-          <section class="fitSlotGroup">
-            <div class="fitGroupTitle"><span>Lasers</span><small>Armement principal</small></div>
+          <section class="fitSlotGroup" data-slot-type="lasers">
+            <div class="fitGroupTitle"><span>LASERS</span></div>
             <div id="fitSlotsLasers" class="slotGrid"></div>
           </section>
-          <section class="fitSlotGroup">
-            <div class="fitGroupTitle"><span>Générateurs</span><small>Vitesse et bouclier</small></div>
+          <section class="fitSlotGroup" data-slot-type="gens">
+            <div class="fitGroupTitle"><span>GÉNÉRATEURS</span></div>
             <div id="fitSlotsGens" class="slotGrid"></div>
           </section>
-          <section class="fitSlotGroup">
-            <div class="fitGroupTitle"><span>Extras</span><small>Équipements auxiliaires</small></div>
+          <section class="fitSlotGroup" data-slot-type="extras">
+            <div class="fitGroupTitle"><span>EXTRAS</span></div>
             <div id="fitSlotsExtras" class="slotGrid"></div>
           </section>
-          <section class="fitSlotGroup">
-            <div class="fitGroupTitle"><span>Modules spéciaux</span><small><span id="shipModsCount">1</span> emplacement(s)</small></div>
+          <section class="fitSlotGroup" data-slot-type="shipMods">
+            <div class="fitGroupTitle"><span>MODULES</span><small><span id="shipModsCount">1</span></small></div>
             <div id="fitSlotsShipMods" class="slotGrid slotGridModules"></div>
           </section>
         </div>
@@ -1429,8 +1423,7 @@ function buildFitWindow() {
       <aside class="fitInventoryPane">
         <div class="fitInventoryHeader">
           <div>
-            <strong>Inventaire</strong>
-            <span>Objets disponibles</span>
+            <strong>INVENTAIRE</strong>
           </div>
           <select id="fitInvFilter" class="fitSelect" aria-label="Filtrer l'inventaire">
             <option value="all">Tout</option>
@@ -1440,10 +1433,6 @@ function buildFitWindow() {
             <option value="extra">Extras</option>
           </select>
         </div>
-        <div class="fitInventoryTools">
-          <div id="fitSellDrop" class="fitSellDrop">Dépose un objet ici pour le vendre</div>
-        </div>
-        <div class="fitReturnHint">Dépose ici un objet équipé pour le retirer</div>
         <div class="fitInvScroll">
           <div id="fitInvGrid" class="invGrid"></div>
           <div class="fitModulesHeading">Modules Roulette</div>
@@ -1463,7 +1452,6 @@ function buildFitWindow() {
         <div class="fitPresetDivider"></div>
         <label class="fitPresetField"><span>Presets enregistrés</span><select id="fitPresetSelect" class="fitSelect"><option value="">— Choisir —</option></select></label>
         <div class="fitPresetActions">
-          <button id="fitBtnQuickLoad" class="secondary" type="button">Chargement rapide</button>
           <button id="fitBtnLoadPreset" class="primary" type="button">Appliquer</button>
           <button id="fitBtnDeletePreset" class="secondary" type="button">Supprimer</button>
         </div>
@@ -1475,6 +1463,30 @@ function buildFitWindow() {
   const host = document.getElementById("profileWindow") || document.body;
   host.appendChild(overlay);
   const returnZone = card.querySelector(".fitInventoryPane");
+  const loadoutZone = card.querySelector(".fitLoadoutPane");
+  loadoutZone?.addEventListener("dragover", (event) => {
+    if (event.dataTransfer.types.includes("application/x-orbit-slot")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    updateFitDropHighlights();
+  });
+  loadoutZone?.addEventListener("dragleave", (event) => {
+    if (!loadoutZone.contains(event.relatedTarget)) clearFitDropHighlights();
+  });
+  loadoutZone?.addEventListener("drop", (event) => {
+    clearFitDropHighlights();
+    if (event.defaultPrevented || event.dataTransfer.types.includes("application/x-orbit-slot")) return;
+    event.preventDefault();
+    let itemIds = [];
+    try { itemIds = JSON.parse(event.dataTransfer.getData("application/x-orbit-items") || "[]"); } catch {}
+    const fallbackItemId = event.dataTransfer.getData("text/plain");
+    if (!itemIds.length && fallbackItemId) itemIds = [fallbackItemId];
+    if (!itemIds.length) return;
+    const preferredSlotType = event.target.closest(".fitSlotGroup")?.dataset.slotType || null;
+    clearFitSelection();
+    itemIds.forEach((itemId, index) => fitState.selectedCopies.set(`drop#${index}`, itemId));
+    equipSelectedInventoryItems(preferredSlotType);
+  });
   returnZone?.addEventListener("dragover", (event) => {
     if (!event.dataTransfer.types.includes("application/x-orbit-slot")) return;
     event.preventDefault();
@@ -1486,12 +1498,16 @@ function buildFitWindow() {
   returnZone?.addEventListener("drop", (event) => {
     returnZone.classList.remove("dragReturnActive");
     const raw = event.dataTransfer.getData("application/x-orbit-slot");
-    if (!raw || !fitState.draft) return;
+    const rawGroup = event.dataTransfer.getData("application/x-orbit-slots");
+    if ((!raw && !rawGroup) || !fitState.draft) return;
     event.preventDefault();
     try {
-      const source = JSON.parse(raw);
-      if (!Array.isArray(fitState.draft[source.slotType])) return;
-      fitState.draft[source.slotType][source.index] = null;
+      const sources = rawGroup ? JSON.parse(rawGroup) : [JSON.parse(raw)];
+      for (const source of sources) {
+        if (Array.isArray(fitState.draft[source.slotType])) fitState.draft[source.slotType][source.index] = null;
+      }
+      compactCurrentFit();
+      clearFitSelection();
       showFitError("");
       renderSlots();
       renderInventoryPalette();
@@ -2013,10 +2029,111 @@ let fitState = {
   configNo: 1,
   selectedItemId: null,
   selectedCopyKey: null,
+  selectedCopies: new Map(),
+  selectedSlots: new Map(),
+  draggedItemIds: [],
   draft: null,
   used: null,
   slots: { lasers: 15, gens: 15, extras: 15, shipMods: 1 },
 };
+
+function clearFitSelection() {
+  fitState.selectedItemId = null;
+  fitState.selectedCopyKey = null;
+  fitState.selectedCopies.clear();
+  fitState.selectedSlots.clear();
+}
+
+function refreshReturnSelectionButton() {
+  const button = document.getElementById("fitBtnReturnSelection");
+  if (button) button.disabled = fitState.selectedSlots.size === 0;
+}
+
+function returnSelectedEquippedItems() {
+  if (!fitState.draft || !fitState.selectedSlots.size) return;
+  for (const slotKey of fitState.selectedSlots.keys()) {
+    const [slotType, rawIndex] = slotKey.split("#");
+    const index = Number(rawIndex);
+    if (Array.isArray(fitState.draft[slotType]) && Number.isInteger(index)) fitState.draft[slotType][index] = null;
+  }
+  compactCurrentFit();
+  clearFitSelection();
+  showFitError("");
+  renderSlots();
+  renderInventoryPalette();
+  renderShipModulesList();
+}
+
+function compactCurrentFit() {
+  if (fitState.draft) fitState.draft = compactFitDraft(fitState.draft, fitState.slots);
+}
+
+function slotTypeForItem(itemId) {
+  if (isRouletteModuleId(itemId)) return "shipMods";
+  const type = findCatalogItem(itemId)?.module?.type;
+  if (type === "laser") return "lasers";
+  if (type === "speed" || type === "shield") return "gens";
+  if (type === "extra") return "extras";
+  return null;
+}
+
+function selectedInventoryItemIds() {
+  return [...fitState.selectedCopies.values()];
+}
+
+function clearFitDropHighlights() {
+  document.querySelectorAll("#fitCard .fitSlotGroup.dragCompatible").forEach((group) => group.classList.remove("dragCompatible"));
+}
+
+function updateFitDropHighlights() {
+  clearFitDropHighlights();
+  const compatibleTypes = new Set((fitState.draggedItemIds || []).map(slotTypeForItem).filter(Boolean));
+  compatibleTypes.forEach((slotType) => {
+    document.querySelector(`#fitCard .fitSlotGroup[data-slot-type="${slotType}"]`)?.classList.add("dragCompatible");
+  });
+}
+
+function equipSelectedInventoryItems(preferredSlotType = null) {
+  if (!fitState.draft) return 0;
+  const selected = selectedInventoryItemIds();
+  if (!selected.length && fitState.selectedItemId) selected.push(fitState.selectedItemId);
+  if (!selected.length) return 0;
+
+  compactCurrentFit();
+  let added = 0;
+  for (const slotType of ["lasers", "gens", "extras"]) {
+    if (preferredSlotType && preferredSlotType !== slotType) continue;
+    const itemIds = selected.filter((itemId) => slotTypeForItem(itemId) === slotType);
+    const result = appendToFitSlots(fitState.draft[slotType], itemIds, fitState.slots[slotType]);
+    fitState.draft[slotType] = result.values;
+    added += result.added;
+  }
+
+  if (!preferredSlotType || preferredSlotType === "shipMods") {
+    const allModules = Array.isArray(user?.inventory?.shipModules) ? user.inventory.shipModules : [];
+    const moduleIds = selected.filter((itemId) => slotTypeForItem(itemId) === "shipMods");
+    for (const moduleId of moduleIds) {
+      const module = allModules.find((entry) => entry?.id === moduleId);
+      if (!module || fitState.draft.shipMods.includes(moduleId)) continue;
+      const sameTypeEquipped = fitState.draft.shipMods.some((equippedId) => {
+        const equipped = allModules.find((entry) => entry?.id === equippedId);
+        return equipped && equipped.type === module.type;
+      });
+      if (sameTypeEquipped) continue;
+      const result = appendToFitSlots(fitState.draft.shipMods, [moduleId], fitState.slots.shipMods);
+      fitState.draft.shipMods = result.values;
+      added += result.added;
+    }
+  }
+
+  clearFitSelection();
+  fitState.draggedItemIds = [];
+  clearFitDropHighlights();
+  showFitError(added ? "" : "Aucun emplacement compatible disponible");
+  renderSlots();
+  renderInventoryPalette();
+  return added;
+}
 
 function showFitError(text) {
   const el = document.getElementById("fitErr");
@@ -2114,8 +2231,7 @@ function resetAllSlots() {
   fitState.draft.extras = fitState.draft.extras.map(() => null);
   fitState.draft.shipMods = fitState.draft.shipMods.map(() => null);
 
-  fitState.selectedItemId = null;
-  fitState.selectedCopyKey = null;
+  clearFitSelection();
   showFitError("");
   renderSlots();
   renderInventoryPalette();
@@ -2132,8 +2248,7 @@ function sellFitInventoryItem(itemId) {
   if (!out?.ok) return showFitError(out?.error || "Vente impossible");
 
   user = getCurrentUserFull();
-  fitState.selectedItemId = null;
-  fitState.selectedCopyKey = null;
+  clearFitSelection();
   showFitError("");
   renderSlots();
   renderInventoryPalette();
@@ -2143,18 +2258,63 @@ function sellFitInventoryItem(itemId) {
   setMsg(`Vendu (+${formatNumber(out.gain)} crédits)`, true);
 }
 
+function sellSelectedInventoryItems() {
+  const selected = selectedInventoryItemIds();
+  if (!selected.length || !fitState.draft) return;
+  const grouped = new Map();
+  let estimatedGain = 0;
+  for (const itemId of selected) {
+    const item = findCatalogItem(itemId);
+    const entry = grouped.get(itemId) || { name: item?.name || itemId, quantity: 0, gain: 0 };
+    const unitGain = Math.floor(Math.max(0, Number(item?.price || 0)) * 0.5);
+    entry.quantity += 1;
+    entry.gain += unitGain;
+    estimatedGain += unitGain;
+    grouped.set(itemId, entry);
+  }
+  const detail = [...grouped.values()]
+    .map((entry) => `${entry.quantity} × ${entry.name} : ${formatNumber(entry.gain)} crédits`)
+    .join("\n");
+  showConfirm(
+    "Vendre la sélection",
+    `${detail}\n\nGain total : ${formatNumber(estimatedGain)} crédits`,
+    () => {
+      let sold = 0;
+      let totalGain = 0;
+      for (const itemId of selected) {
+        const out = sellItem(itemId, 1);
+        if (!out?.ok) continue;
+        sold += 1;
+        totalGain += Number(out.gain || 0);
+      }
+      user = getCurrentUserFull();
+      clearFitSelection();
+      showFitError(sold === selected.length ? "" : `${selected.length - sold} objet(s) n'ont pas pu être vendus`);
+      renderSlots();
+      renderInventoryPalette();
+      renderStats(user);
+      renderHangars(user);
+      if (tab === "shop") renderShop(user);
+      if (sold) setMsg(`${sold} objet(s) vendu(s) (+${formatNumber(totalGain)} crédits)`, true);
+    }
+  );
+}
+
 // -------------------- Inventory Palette --------------------
 function renderInventoryPalette() {
   const grid = document.getElementById("fitInvGrid");
   const sel = document.getElementById("fitInvFilter");
   const clearBtn = document.getElementById("fitBtnClearSel");
   const sellBtn = document.getElementById("fitBtnSell");
+  const countEl = document.getElementById("fitSelectionCount");
+  const equipBtn = document.getElementById("fitBtnEquipSelection");
+  const clearSelectionBtn = document.getElementById("fitBtnClearSelection");
+  const sellSelectionBtn = document.getElementById("fitBtnSellSelection");
   if (!grid) return;
 
   if (clearBtn) {
     clearBtn.onclick = () => {
-      fitState.selectedItemId = null;
-      fitState.selectedCopyKey = null;
+      clearFitSelection();
       showFitError("");
       renderInventoryPalette();
     };
@@ -2166,10 +2326,29 @@ function renderInventoryPalette() {
   fitState.used = computeUsage(fitState.draft);
 
   if (sellBtn) {
+    // Legacy button kept for compatibility with older layouts.
     const id = fitState.selectedItemId;
     const owned = id ? ownedCount(user, id) : 0;
     const used = id ? Number(fitState.used?.[id] || 0) : 0;
     sellBtn.disabled = !id || owned <= used;
+  }
+
+  const selectedCount = fitState.selectedCopies.size;
+  if (countEl) countEl.textContent = selectedCount ? `${selectedCount} sélectionné${selectedCount > 1 ? "s" : ""}` : "Aucune sélection";
+  if (equipBtn) {
+    equipBtn.disabled = selectedCount === 0;
+    equipBtn.onclick = () => equipSelectedInventoryItems();
+  }
+  if (clearSelectionBtn) {
+    clearSelectionBtn.disabled = selectedCount === 0;
+    clearSelectionBtn.onclick = () => {
+      clearFitSelection();
+      renderInventoryPalette();
+    };
+  }
+  if (sellSelectionBtn) {
+    sellSelectionBtn.disabled = selectedCount === 0;
+    sellSelectionBtn.onclick = sellSelectedInventoryItems;
   }
 
   const counts = user?.inventory?.counts || {};
@@ -2199,9 +2378,11 @@ function renderInventoryPalette() {
       const copyKey = `${e.itemId}#${i}`;
 
       const cell = document.createElement("div");
+      cell.dataset.copyKey = copyKey;
+      cell.dataset.itemId = e.itemId;
       cell.className =
         "invCell" +
-        (fitState.selectedCopyKey === copyKey ? " selected" : "") +
+        (fitState.selectedCopies.has(copyKey) ? " selected" : "") +
         (!isAvailableCopy ? " disabled" : "");
 
       const img = document.createElement("img");
@@ -2215,25 +2396,62 @@ function renderInventoryPalette() {
 
       cell.title = `${e.it?.name || e.itemId} (${i + 1}/${e.cnt})`;
 
-      cell.addEventListener("orbitLegacyClick", () => {
+      cell.addEventListener("click", (event) => {
         if (!isAvailableCopy) {
           showFitError("Plus de stock disponible (dés-équipe d'abord)");
           return;
         }
-        fitState.selectedItemId = e.itemId;
-        fitState.selectedCopyKey = copyKey;
+        if (event.shiftKey) {
+          fitState.selectedSlots.clear();
+          grid.querySelectorAll(".invCell:not(.disabled)").forEach((candidate) => {
+            if (candidate.dataset.itemId === e.itemId) {
+              fitState.selectedCopies.set(candidate.dataset.copyKey, candidate.dataset.itemId);
+            }
+          });
+          equipSelectedInventoryItems();
+          return;
+        } else if (event.ctrlKey || event.metaKey) {
+          fitState.selectedSlots.clear();
+          if (fitState.selectedCopies.has(copyKey)) fitState.selectedCopies.delete(copyKey);
+          else fitState.selectedCopies.set(copyKey, e.itemId);
+        } else {
+          const deselectOnly = fitState.selectedCopies.size === 1 && fitState.selectedCopies.has(copyKey);
+          clearFitSelection();
+          if (!deselectOnly) fitState.selectedCopies.set(copyKey, e.itemId);
+        }
+        const last = [...fitState.selectedCopies.entries()].at(-1);
+        fitState.selectedItemId = last?.[1] || null;
+        fitState.selectedCopyKey = last?.[0] || null;
         showFitError("");
+        renderSlots();
         renderInventoryPalette();
+      });
+
+      cell.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        if (!isAvailableCopy) return;
+        if (!fitState.selectedCopies.has(copyKey)) fitState.selectedCopies.set(copyKey, e.itemId);
+        equipSelectedInventoryItems();
       });
 
       cell.draggable = isAvailableCopy;
       cell.addEventListener("dragstart", (ev) => {
         if (!isAvailableCopy) return ev.preventDefault();
+        if (!fitState.selectedCopies.has(copyKey)) {
+          clearFitSelection();
+          fitState.selectedCopies.set(copyKey, e.itemId);
+        }
         ev.dataTransfer.setData("text/plain", e.itemId);
+        ev.dataTransfer.setData("application/x-orbit-items", JSON.stringify(selectedInventoryItemIds()));
         ev.dataTransfer.effectAllowed = "copy";
+        fitState.draggedItemIds = selectedInventoryItemIds();
 
         fitState.selectedItemId = e.itemId;
         fitState.selectedCopyKey = copyKey;
+      });
+      cell.addEventListener("dragend", () => {
+        fitState.draggedItemIds = [];
+        clearFitDropHighlights();
       });
 
       grid.appendChild(cell);
@@ -2277,19 +2495,58 @@ function renderSlots() {
   extrasRoot.innerHTML = "";
   shipModsRoot.innerHTML = "";
 
+  compactCurrentFit();
   const draft = fitState.draft;
   fitState.used = computeUsage(draft);
+  refreshReturnSelectionButton();
 
   const attachSlotDrag = (cell, slotType, idx, itemId) => {
     if (!itemId) return;
+    const slotKey = `${slotType}#${idx}`;
+    cell.classList.toggle("selected", fitState.selectedSlots.has(slotKey));
+    cell.addEventListener("click", (event) => {
+      if (event.shiftKey) {
+        clearFitSelection();
+        for (const currentType of ["lasers", "gens", "extras", "shipMods"]) {
+          fitState.draft[currentType].forEach((currentItemId, currentIndex) => {
+            if (currentItemId === itemId) fitState.selectedSlots.set(`${currentType}#${currentIndex}`, currentItemId);
+          });
+        }
+      } else if (event.ctrlKey || event.metaKey) {
+        fitState.selectedCopies.clear();
+        if (fitState.selectedSlots.has(slotKey)) fitState.selectedSlots.delete(slotKey);
+        else fitState.selectedSlots.set(slotKey, itemId);
+      } else {
+        const deselectOnly = fitState.selectedSlots.size === 1 && fitState.selectedSlots.has(slotKey);
+        clearFitSelection();
+        if (!deselectOnly) fitState.selectedSlots.set(slotKey, itemId);
+      }
+      showFitError("");
+      renderSlots();
+      renderInventoryPalette();
+    });
     cell.draggable = true;
     cell.addEventListener("dragstart", (event) => {
+      if (!fitState.selectedSlots.has(slotKey)) {
+        clearFitSelection();
+        fitState.selectedSlots.set(slotKey, itemId);
+      }
+      const selectedSources = [...fitState.selectedSlots.keys()].map((key) => {
+        const [selectedType, rawIndex] = key.split("#");
+        return { slotType: selectedType, index: Number(rawIndex) };
+      });
       event.dataTransfer.setData("text/plain", itemId);
       event.dataTransfer.setData("application/x-orbit-slot", JSON.stringify({ slotType, index: idx }));
+      event.dataTransfer.setData("application/x-orbit-slots", JSON.stringify(selectedSources));
       event.dataTransfer.effectAllowed = "move";
+      fitState.draggedItemIds = [itemId];
       cell.classList.add("dragging");
     });
-    cell.addEventListener("dragend", () => cell.classList.remove("dragging"));
+    cell.addEventListener("dragend", () => {
+      cell.classList.remove("dragging");
+      fitState.draggedItemIds = [];
+      clearFitDropHighlights();
+    });
   };
 
   const attachDrop = (cell, slotType, idx) => {
@@ -2300,6 +2557,7 @@ function renderSlots() {
 
     cell.addEventListener("drop", (ev) => {
       ev.preventDefault();
+      ev.stopPropagation();
       const itemId = ev.dataTransfer.getData("text/plain");
       if (!itemId) return;
 
@@ -2314,21 +2572,36 @@ function renderSlots() {
         if (rawSource) source = JSON.parse(rawSource);
       } catch {}
 
-      const tmp = structuredClone(draft);
-      if (source && Array.isArray(tmp[source.slotType])) tmp[source.slotType][source.index] = null;
-      tmp[slotType][idx] = null;
-      if (!canPlaceItem(itemId, tmp)) {
-        showFitError("Pas assez d'exemplaires disponibles");
+      if (!source) {
+        let draggedItems = [];
+        try { draggedItems = JSON.parse(ev.dataTransfer.getData("application/x-orbit-items") || "[]"); } catch {}
+        if (!draggedItems.length) draggedItems = [itemId];
+        clearFitSelection();
+        draggedItems.forEach((id, selectionIndex) => fitState.selectedCopies.set(`drag#${selectionIndex}`, id));
+        equipSelectedInventoryItems(slotType);
         return;
       }
 
       if (source && Array.isArray(draft[source.slotType])) draft[source.slotType][source.index] = null;
-      draft[slotType][idx] = itemId;
-      fitState.selectedItemId = null;
-      fitState.selectedCopyKey = null;
+      const result = appendToFitSlots(draft[slotType], [itemId], fitState.slots[slotType]);
+      draft[slotType] = result.values;
+      compactCurrentFit();
+      clearFitSelection();
       showFitError("");
       renderSlots();
       renderInventoryPalette();
+    });
+
+    cell.addEventListener("orbitDisabledSlotClick", () => {
+      if (draft[slotType][idx]) {
+        draft[slotType][idx] = null;
+        compactCurrentFit();
+        showFitError("");
+        renderSlots();
+        renderInventoryPalette();
+        return;
+      }
+      equipSelectedInventoryItems(slotType);
     });
   };
 
@@ -2388,15 +2661,22 @@ function renderSlots() {
       img.draggable = false;
       cell.innerHTML = "";
       cell.appendChild(img);
+      const details = document.createElement("div");
+      details.className = "shipModSlotDetails";
+      const bonusText = (mod?.bonuses || []).map((bonus) => `${bonus.pct}% ${formatStatLabel(bonus.stat)}`).join(" · ");
+      details.innerHTML = `<b>${mod ? `${String(mod.type || "").toUpperCase()}-${String(mod.tier || "").toUpperCase()}` : id}</b><span>${bonusText || "Module spécial"}</span>`;
+      cell.appendChild(details);
       cell.classList.add("filled");
+      cell.classList.add("shipModSlot");
       cell.title = label;
     }
 
     attachSlotDrag(cell, slotType, i, id);
 
-    cell.addEventListener("orbitLegacyClick", () => {
+    cell.addEventListener("orbitDisabledSlotClick", () => {
       if (!fitState.selectedItemId && draft.shipMods[i]) {
         draft.shipMods[i] = null;
+        compactCurrentFit();
         showFitError("");
         renderSlots();
         renderInventoryPalette();
@@ -2418,6 +2698,7 @@ function renderSlots() {
       const cur = draft.shipMods[i] || null;
       if (cur === selItem) {
         draft.shipMods[i] = null;
+        compactCurrentFit();
         showFitError("");
         renderSlots();
         renderInventoryPalette();
@@ -2454,7 +2735,8 @@ function renderSlots() {
         return;
       }
 
-      draft.shipMods[i] = selItem;
+      const result = appendToFitSlots(draft.shipMods, [selItem], fitState.slots.shipMods);
+      draft.shipMods = result.values;
       showFitError("");
       renderSlots();
       renderInventoryPalette();
@@ -2513,9 +2795,9 @@ function renderSlots() {
       }
 
       if (source && Array.isArray(draft[source.slotType])) draft[source.slotType][source.index] = null;
-      draft.shipMods[i] = moduleId;
-      fitState.selectedItemId = null;
-      fitState.selectedCopyKey = null;
+      draft.shipMods = appendToFitSlots(draft.shipMods, [moduleId], fitState.slots.shipMods).values;
+      compactCurrentFit();
+      clearFitSelection();
       showFitError("");
       renderSlots();
       renderInventoryPalette();
@@ -2549,12 +2831,13 @@ function renderShipModulesList() {
 
   root.innerHTML = list.slice().reverse().map((m) => {
     const icon = MODULE_ICONS[m.iconKey] || FALLBACK_ICON;
+    const equipped = fitState.draft?.shipMods?.includes(m.id);
     const bonus = (m.bonuses || [])
       .map(b => `<strong style="color:#00d9ff;">${b.pct}%</strong> ${formatStatLabel(b.stat)}`)
       .join(" • ");
 
     return `
-      <div class="shipModRow" data-modid="${m.id}">
+      <div class="shipModRow${equipped ? " equipped" : ""}" data-modid="${m.id}" data-equipped="${equipped ? "1" : "0"}">
         <img src="${icon}" style="width:40px;height:40px;object-fit:contain;image-rendering:pixelated;border-radius:10px;background:rgba(0,0,0,0.25);" />
         <div style="min-width:0;">
           <div style="font-weight:900; color:#00d9ff;">
@@ -2564,15 +2847,23 @@ function renderShipModulesList() {
             ${bonus}
           </div>
         </div>
+        ${equipped ? '<span class="shipModEquippedBadge">ÉQUIPÉ</span>' : ""}
       </div>
     `;
   }).join("");
 
   root.querySelectorAll(".shipModRow").forEach((row) => {
-    row.draggable = true;
+    row.draggable = row.dataset.equipped !== "1";
     row.addEventListener("dragstart", (ev) => {
+      if (row.dataset.equipped === "1") return ev.preventDefault();
       ev.dataTransfer.setData("text/plain", row.dataset.modid);
+      ev.dataTransfer.setData("application/x-orbit-items", JSON.stringify([row.dataset.modid]));
       ev.dataTransfer.effectAllowed = "copy";
+      fitState.draggedItemIds = [row.dataset.modid];
+    });
+    row.addEventListener("dragend", () => {
+      fitState.draggedItemIds = [];
+      clearFitDropHighlights();
     });
   });
 }
@@ -2622,10 +2913,10 @@ function setFitModalConfig(configNo) {
     extras: normalizeFitArray(baseFit.extras, fitState.slots.extras),
     shipMods: normalizeFitArray(baseFit.shipMods, fitState.slots.shipMods),
   };
-
-  fitState.selectedItemId = null;
-  fitState.selectedCopyKey = null;
+  compactCurrentFit();
+  clearFitSelection();
   fitState.used = computeUsage(fitState.draft);
+
   showFitError("");
 
   const titleEl = document.getElementById("fitTitle");
@@ -2656,8 +2947,7 @@ function openFitModal(hangarId) {
   if (!h) return setMsg("Hangar introuvable", false);
 
   fitState.hangarId = hangarId;
-  fitState.selectedItemId = null;
-  fitState.selectedCopyKey = null;
+  clearFitSelection();
 
  fitState.configNo = Number(h.activeConfig) === 2 ? 2 : 1;
 fitState.slots = getShipSlots(h.shipId);
@@ -2736,6 +3026,8 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
 
   const btnReset = document.getElementById("fitBtnResetAll");
   if (btnReset) btnReset.onclick = () => resetAllSlots();
+  const btnReturnSelection = document.getElementById("fitBtnReturnSelection");
+  if (btnReturnSelection) btnReturnSelection.onclick = returnSelectedEquippedItems;
 
   // VENDRE
   const btnSell = document.getElementById("fitBtnSell");
@@ -2758,8 +3050,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
         return;
       }
 
-      fitState.selectedItemId = null;
-      fitState.selectedCopyKey = null;
+      clearFitSelection();
 
       user = getCurrentUserFull();
       setMsg(`Vendu (+${formatNumber(out.gain)} crédits)`, true);
@@ -2838,13 +3129,13 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
         extras: normalizeFitArray(p.extras, fitState.slots.extras),
         shipMods: normalizeFitArray(p.shipMods, fitState.slots.shipMods),
       };
-
-      fitState.selectedItemId = null;
-      fitState.selectedCopyKey = null;
+      compactCurrentFit();
+      clearFitSelection();
       showFitError("");
       renderSlots();
       renderInventoryPalette();
       renderShipModulesList();
+      if (presetOverlay) presetOverlay.style.display = "none";
       setMsg("Preset chargé", true);
     };
   }
@@ -2869,6 +3160,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
   document.getElementById("fitBtnCancel").onclick = () => closeFitModal();
 
   document.getElementById("fitBtnSave").onclick = () => {
+    compactCurrentFit();
     const usage = computeUsage(fitState.draft);
 
     for (const [itemId, used] of Object.entries(usage)) {
@@ -2932,8 +3224,7 @@ function closeFitModal() {
 
   fitState.hangarId = null;
   fitState.configNo = 1;
-  fitState.selectedItemId = null;
-  fitState.selectedCopyKey = null;
+  clearFitSelection();
   fitState.draft = null;
   fitState.used = null;
 
@@ -3037,6 +3328,7 @@ window.HyperionProfile = {
   open: openProfileOverlay,
   close: closeProfileOverlay,
 };
+compactCurrentFit();
 
 // Le moteur signale chaque sauvegarde de progression. Le registre peut ainsi
 // refléter immédiatement les destructions et les grades sans recharger la page.

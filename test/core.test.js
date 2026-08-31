@@ -39,6 +39,7 @@ import { GATE_MULTIPLIERS } from "../src/data/npcBalance.js";
 import { NPC_TYPES } from "../src/data/npcTypes.js";
 import { CATALOG } from "../src/core/catalog.js";
 import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_TIER_WEIGHTS } from "../src/data/moduleDrops.js";
+import { appendToFitSlots, compactFitArray, compactFitDraft } from "../src/core/fitLayout.js";
 import {
   QUEST_DEFINITIONS,
   MAX_ACTIVE_QUESTS,
@@ -791,4 +792,18 @@ test("les destructions NPC détaillées sont réellement sauvegardées", async (
   const user = getCurrentUserFull();
   assert.deepEqual(user.stats.npcKills, { npc_Streuner: 3, npc_Lordakia: 2 });
   assert.equal(user.stats.lifetimeKills, 5);
+});
+
+test("les emplacements d'équipement se compactent vers le premier slot", () => {
+  assert.deepEqual(compactFitArray([null, "lf3", null, "lf4"], 5), ["lf3", "lf4", null, null, null]);
+  assert.deepEqual(
+    compactFitDraft({ lasers: [null, "lf3"], gens: ["g3n", null], extras: [], shipMods: [] }, { lasers: 3, gens: 2, extras: 1, shipMods: 1 }),
+    { lasers: ["lf3", null, null], gens: ["g3n", null], extras: [null], shipMods: [null] }
+  );
+});
+
+test("un groupe d'équipements remplit les slots de gauche à droite", () => {
+  const result = appendToFitSlots(["lf4", null, null, null], ["lf3", "lf2", "lf1"], 4);
+  assert.equal(result.added, 3);
+  assert.deepEqual(result.values, ["lf4", "lf3", "lf2", "lf1"]);
 });

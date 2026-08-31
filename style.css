@@ -3200,6 +3200,117 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #settingsWindow .settingsCheck span{display:grid;gap:2px;font-size:12px}
 #settingsWindow .settingsCheck small{color:rgba(232,244,255,.58);font-size:10px}
 
+/* Paramètres compacts : navigation par catégories */
+#settingsWindow{
+  width:560px;
+  height:440px;
+  transition:width .18s ease,height .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+#settingsWindow.settingsControlsOpen{
+  width:min(1080px,calc(100vw - 32px));
+  height:min(620px,calc(100vh - 48px));
+}
+#settingsWindow .settingsBody{
+  height:calc(100% - 30px);
+  max-height:none;
+  padding:0;
+  display:grid;
+  grid-template-rows:42px minmax(0,1fr);
+  gap:0;
+  overflow:hidden;
+}
+#settingsWindow .settingsTabs{
+  padding:6px 10px 0;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+  border-bottom:1px solid rgba(124,240,255,.14);
+  background:rgba(3,16,27,.64);
+}
+#settingsWindow .settingsTab{
+  min-width:0;
+  height:35px;
+  border:0;
+  border-bottom:2px solid transparent;
+  border-radius:7px 7px 0 0;
+  color:rgba(216,236,247,.56);
+  background:transparent;
+  font-size:10px;
+  font-weight:900;
+  text-transform:uppercase;
+  cursor:pointer;
+}
+#settingsWindow .settingsTab.active{
+  border-bottom-color:#69e9ff;
+  color:#effcff;
+  background:rgba(0,217,255,.09);
+}
+#settingsWindow .settingsPage{
+  min-width:0;
+  min-height:0;
+  padding:14px;
+  box-sizing:border-box;
+  display:none;
+  flex-direction:column;
+  gap:12px;
+  overflow:hidden;
+}
+#settingsWindow .settingsPage.active{display:flex}
+#settingsWindow .settingsPageIntro{display:grid;gap:3px;padding-bottom:10px;border-bottom:1px solid rgba(124,240,255,.11)}
+#settingsWindow .settingsPageIntro b{color:#effbff;font-size:13px}
+#settingsWindow .settingsPageIntro span{color:rgba(204,228,241,.50);font-size:9px}
+#settingsWindow .settingsQuickGrid{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:start}
+#settingsWindow .settingsToggle{min-height:42px;border-radius:8px;transform:none!important;box-shadow:none!important}
+#settingsWindow .settingsCheck{flex:0 0 auto;align-self:stretch;border-radius:8px;box-sizing:border-box}
+#settingsWindow .settingsKeyColumns{
+  flex:1 1 auto;
+  min-height:0;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:18px;
+  align-content:start;
+  overflow:hidden;
+}
+#settingsWindow .settingsKeyGroup{
+  min-width:0;
+  padding:18px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  border:1px solid rgba(124,240,255,.10);
+  border-radius:12px;
+  background:rgba(255,255,255,.018);
+}
+#settingsWindow .settingsSectionSub{
+  margin:0 0 5px;
+  padding:0 2px 11px;
+  border-top:0;
+  border-bottom:1px solid rgba(124,240,255,.10);
+  color:rgba(124,240,255,.72);
+  font-size:10px;
+}
+#settingsWindow .keyBindRow{min-width:0;min-height:42px;padding:0 13px;border-radius:8px;font-size:11px;transform:none!important;box-shadow:none!important}
+#settingsWindow .keyBindRow > span{min-width:0;white-space:normal;line-height:1.25;text-align:left}
+#settingsWindow .keyBindRow > kbd{flex:0 0 auto;margin-left:8px}
+#settingsWindow.settingsControlsOpen .settingsPage{padding:22px;gap:18px}
+#settingsWindow.settingsControlsOpen .settingsPageFooter{padding-top:14px}
+#settingsWindow.settingsControlsOpen .settingsResetBtn{min-height:40px;font-size:11px}
+#settingsWindow .settingsPageFooter{flex:0 0 auto;padding-top:10px;border-top:1px solid rgba(124,240,255,.11)}
+#settingsWindow [data-settings-page="general"] .settingsPageFooter{margin-top:auto}
+#settingsWindow .settingsResetBtn{width:100%;margin:0;border-radius:7px}
+#settingsWindow .settingsBody,
+#settingsWindow .settingsPage,
+#settingsWindow .settingsKeyColumns{scrollbar-width:none}
+#settingsWindow .settingsBody::-webkit-scrollbar,
+#settingsWindow .settingsPage::-webkit-scrollbar,
+#settingsWindow .settingsKeyColumns::-webkit-scrollbar{display:none}
+
+@media (max-width:600px){
+  #settingsWindow{width:calc(100vw - 24px);height:min(470px, calc(100vh - 100px))}
+  #settingsWindow .settingsQuickGrid{grid-template-columns:1fr}
+  #settingsWindow .settingsKeyColumns{grid-template-columns:1fr;overflow-y:auto}
+}
+
 /* Profil : priorités finales pour la navigation et les nouveaux panneaux */
 body #profileOverlay .profileTabs{display:flex !important; flex-direction:column !important; gap:8px !important; padding:14px !important;}
 body #profileOverlay .profileTabs .tabBtn{display:flex !important; align-items:center !important; justify-content:flex-start !important; min-height:42px !important; padding:0 13px !important;}

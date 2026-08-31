@@ -115,102 +115,59 @@
     </div>
 
     <div id="settingsWindow" class="panel gameSettingsPanel">
-  <div class="settingsBody">
-    <div class="settingsIntro">
-      Réglages rapides du jeu
+      <div class="settingsBody">
+        <nav class="settingsTabs" aria-label="Catégories des paramètres">
+          <button class="settingsTab active" data-settings-tab="general" type="button">Général</button>
+          <button class="settingsTab" data-settings-tab="controls" type="button">Commandes</button>
+        </nav>
+
+        <section class="settingsPage active" data-settings-page="general">
+          <div class="settingsPageIntro"><b>Préférences du jeu</b><span>Affichage, son et démarrage</span></div>
+          <div class="settingsQuickGrid">
+            <button id="optSound" class="settingsToggle" type="button">Son : activé</button>
+            <button id="optBackground" class="settingsToggle" type="button">Fond de carte : affiché</button>
+          </div>
+          <label class="settingsCheck" for="optAutoStart">
+            <input id="optAutoStart" type="checkbox" />
+            <span><b>Démarrage automatique</b><small>Entrer en jeu dès que le chargement est terminé</small></span>
+          </label>
+          <div class="settingsPageFooter">
+            <button id="btnResetWindows" class="settingsResetBtn settingsResetWindowsBtn" type="button">Réinitialiser les fenêtres</button>
+          </div>
+        </section>
+
+        <section class="settingsPage" data-settings-page="controls">
+          <div class="settingsKeyColumns">
+            <div class="settingsKeyGroup">
+              <div class="settingsSectionSub">Jeu</div>
+              <button class="keyBindRow" data-bind-action="portal" type="button"><span>Portail / vague suivante</span><kbd data-bind-value="portal">J</kbd></button>
+              <button class="keyBindRow" data-bind-action="switchConfig" type="button"><span>Changer configuration</span><kbd data-bind-value="switchConfig">C</kbd></button>
+              <button class="keyBindRow" data-bind-action="toggleAttack" type="button"><span>Activer / arrêter le tir</span><kbd data-bind-value="toggleAttack">CTRL</kbd></button>
+              <button class="keyBindRow" data-bind-action="respawn" type="button"><span>Réapparaître si mort</span><kbd data-bind-value="respawn">R</kbd></button>
+            </div>
+
+            <div class="settingsKeyGroup">
+              <div class="settingsSectionSub">Munitions</div>
+              <button class="keyBindRow" data-bind-action="ammoX1" type="button"><span>Munition X1</span><kbd data-bind-value="ammoX1">1</kbd></button>
+              <button class="keyBindRow" data-bind-action="ammoX2" type="button"><span>Munition X2</span><kbd data-bind-value="ammoX2">2</kbd></button>
+              <button class="keyBindRow" data-bind-action="ammoX3" type="button"><span>Munition X3</span><kbd data-bind-value="ammoX3">3</kbd></button>
+              <button class="keyBindRow" data-bind-action="ammoX4" type="button"><span>Munition X4</span><kbd data-bind-value="ammoX4">4</kbd></button>
+              <button class="keyBindRow" data-bind-action="ammoSAB" type="button"><span>Munition SAB</span><kbd data-bind-value="ammoSAB">5</kbd></button>
+              <button class="keyBindRow" data-bind-action="ammoX6" type="button"><span>Munition X6</span><kbd data-bind-value="ammoX6">6</kbd></button>
+            </div>
+
+            <div class="settingsKeyGroup">
+              <div class="settingsSectionSub">Compétences</div>
+              <button class="keyBindRow" data-bind-action="pulse" type="button"><span>I.E.M</span><kbd data-bind-value="pulse">7</kbd></button>
+              <button class="keyBindRow" data-bind-action="nuke" type="button"><span>Bombe</span><kbd data-bind-value="nuke">8</kbd></button>
+            </div>
+          </div>
+          <div class="settingsPageFooter">
+            <button id="btnResetKeybinds" class="settingsResetBtn" type="button">Réinitialiser les touches</button>
+          </div>
+        </section>
+      </div>
     </div>
-
-    <button id="optSound" class="settingsToggle" type="button">
-      🔊 Son : activé
-    </button>
-
-    <button id="optBackground" class="settingsToggle" type="button">
-      🌌 Fond de carte : affiché
-    </button>
-
-    <label class="settingsCheck" for="optAutoStart">
-      <input id="optAutoStart" type="checkbox" />
-      <span><b>Démarrage automatique</b><small>Entrer en jeu dès que le chargement est terminé</small></span>
-    </label>
-
-    <div class="settingsSection">
-  <div class="settingsSectionTitle">⌨️ Touches</div>
-
-  <button class="keyBindRow" data-bind-action="portal" type="button">
-    <span>Portail / vague suivante</span>
-    <kbd data-bind-value="portal">J</kbd>
-  </button>
-
-  <button class="keyBindRow" data-bind-action="switchConfig" type="button">
-    <span>Changer configuration</span>
-    <kbd data-bind-value="switchConfig">C</kbd>
-  </button>
-
-  <button class="keyBindRow" data-bind-action="toggleAttack" type="button">
-    <span>Attaque auto / verrouillage</span>
-    <kbd data-bind-value="toggleAttack">CTRL</kbd>
-  </button>
-
-  <button class="keyBindRow" data-bind-action="respawn" type="button">
-    <span>Réapparaître si mort</span>
-    <kbd data-bind-value="respawn">R</kbd>
-  </button>
-
-  <div class="settingsSectionSub">Munitions</div>
-
-  <button class="keyBindRow" data-bind-action="ammoX1" type="button">
-    <span>Munition X1</span>
-    <kbd data-bind-value="ammoX1">1</kbd>
-  </button>
-
-  <button class="keyBindRow" data-bind-action="ammoX2" type="button">
-    <span>Munition X2</span>
-    <kbd data-bind-value="ammoX2">2</kbd>
-  </button>
-
-  <button class="keyBindRow" data-bind-action="ammoX3" type="button">
-    <span>Munition X3</span>
-    <kbd data-bind-value="ammoX3">3</kbd>
-  </button>
-
-  <button class="keyBindRow" data-bind-action="ammoX4" type="button">
-    <span>Munition X4</span>
-    <kbd data-bind-value="ammoX4">4</kbd>
-  </button>
-
-  <button class="keyBindRow" data-bind-action="ammoSAB" type="button">
-    <span>Munition SAB</span>
-    <kbd data-bind-value="ammoSAB">5</kbd>
-  </button>
-
-  <button class="keyBindRow" data-bind-action="ammoX6" type="button">
-    <span>Munition X6</span>
-    <kbd data-bind-value="ammoX6">6</kbd>
-  </button>
-
-  <div class="settingsSectionSub">Compétences</div>
-
-  <button class="keyBindRow" data-bind-action="pulse" type="button">
-    <span>I.E.M</span>
-    <kbd data-bind-value="pulse">7</kbd>
-  </button>
-
-  <button class="keyBindRow" data-bind-action="nuke" type="button">
-    <span>Bombe</span>
-    <kbd data-bind-value="nuke">8</kbd>
-  </button>
-
-  <button id="btnResetKeybinds" class="settingsResetBtn" type="button">
-    ♻️ Réinitialiser les touches
-  </button>
-
-  <button id="btnResetWindows" class="settingsResetBtn settingsResetWindowsBtn" type="button">
-  🪟 Réinitialiser les fenêtres
-</button>
-</div>
-
-  </div>
-</div>
 
     <div id="questWindow" class="panel questPanel">
       <div id="questIntro" class="questIntro"></div>

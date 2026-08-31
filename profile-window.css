@@ -643,6 +643,109 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
   #profileOverlay .passwordFields .accountField:first-child { grid-column: auto !important; }
 }
 
+/* Equipment compact controls and single-page slot layout */
+#fitCard .fitSectionNav { display: flex !important; align-items: center !important; gap: 4px !important; margin-left: 8px !important; }
+#fitCard .fitSectionBtn { min-height: 28px !important; padding: 5px 10px !important; font-size: 8px !important; text-transform: uppercase !important; letter-spacing: .55px !important; }
+#fitCard .fitSectionBtn.active { border-color: rgba(105, 233, 255, .62) !important; color: #effdff !important; background: #0d4c62 !important; box-shadow: inset 0 -2px #65dff5 !important; }
+#fitCard .fitSectionBtn:disabled { opacity: .48 !important; }
+
+#fitCard .fitHelpTooltip {
+  width: 28px !important;
+  height: 28px !important;
+  flex: 0 0 28px !important;
+  position: relative !important;
+  display: grid !important;
+  place-items: center !important;
+  box-sizing: border-box !important;
+  border: 1px solid rgba(101, 223, 245, .58) !important;
+  border-radius: 50% !important;
+  color: #bdf7ff !important;
+  background: #0b4960 !important;
+  box-shadow: 0 0 8px rgba(101, 223, 245, .14) !important;
+  font: 900 13px/1 system-ui !important;
+  cursor: help !important;
+}
+#fitCard .fitHelpTooltip > span {
+  position: absolute !important;
+  z-index: 80 !important;
+  right: -6px !important;
+  bottom: calc(100% + 10px) !important;
+  width: 235px !important;
+  padding: 10px 12px !important;
+  box-sizing: border-box !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  transform: translateY(4px) !important;
+  border: 1px solid rgba(101, 223, 245, .34) !important;
+  border-radius: 4px !important;
+  color: rgba(222, 244, 249, .82) !important;
+  background: #071923 !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .55) !important;
+  font: 700 9px/1.75 system-ui !important;
+  pointer-events: none !important;
+  transition: opacity .14s ease, transform .14s ease !important;
+}
+#fitCard .fitHelpTooltip > span b { color: #73e6f8 !important; }
+#fitCard .fitHelpTooltip:hover > span,
+#fitCard .fitHelpTooltip:focus > span { visibility: visible !important; opacity: 1 !important; transform: translateY(0) !important; }
+
+#fitCard .fitSlotsScroll {
+  display: block !important;
+  padding: 10px 14px 12px !important;
+  overflow: hidden !important;
+}
+#fitCard .fitSlotGroup {
+  min-height: 0 !important;
+  padding: 8px 0 10px !important;
+  overflow: visible !important;
+  border-bottom: 1px solid rgba(101, 223, 245, .09) !important;
+}
+#fitCard .fitSlotGroup:last-child { border-bottom: 0 !important; }
+#fitCard .fitSlotGroup::after { display: none !important; }
+#fitCard .fitGroupTitle { min-height: 18px !important; margin-bottom: 7px !important; }
+#fitCard .fitGroupTitle span { font-size: 11px !important; font-weight: 900 !important; letter-spacing: 1.15px !important; color: rgba(218, 244, 249, .82) !important; }
+#fitCard .fitGroupTitle small { font-size: 8px !important; }
+#fitCard .slotGrid,
+#fitCard .invGrid {
+  grid-template-columns: repeat(auto-fill, 52px) !important;
+  gap: 8px !important;
+  justify-content: start !important;
+}
+#fitCard .slotCell,
+#fitCard .invCell {
+  width: 52px !important;
+  min-width: 52px !important;
+  height: 52px !important;
+  box-sizing: border-box !important;
+}
+
+#fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotGridModules {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
+  align-items: start !important;
+}
+#fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotCell {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 68px !important;
+  aspect-ratio: auto !important;
+  padding: 7px 9px !important;
+  box-sizing: border-box !important;
+  grid-template-columns: 48px minmax(0, 1fr) !important;
+  place-items: center start !important;
+  gap: 8px !important;
+}
+#fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotCell > img { width: 46px !important; height: 46px !important; }
+#fitCard .shipModSlotDetails { min-width: 0 !important; display: grid !important; gap: 5px !important; }
+#fitCard .shipModSlotDetails b { color: #dffaff !important; font-size: 9px !important; letter-spacing: .45px !important; }
+#fitCard .shipModSlotDetails span { overflow: hidden !important; color: rgba(145, 230, 244, .72) !important; font-size: 8px !important; line-height: 1.3 !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+
+#fitCard .fitSelectionBar { grid-template-columns: minmax(0, 1fr) auto !important; }
+#fitCard .fitSelectionBar > span { font-size: 8px !important; }
+#fitCard .shipModRow { position: relative !important; min-height: 58px !important; padding: 8px 5px !important; box-sizing: border-box !important; }
+#fitCard .shipModRow.equipped { opacity: .36 !important; filter: grayscale(1) !important; cursor: not-allowed !important; }
+#fitCard .shipModRow.equipped:hover { background: transparent !important; }
+#fitCard .shipModEquippedBadge { margin-left: auto !important; padding: 4px 6px !important; border: 1px solid rgba(174, 202, 210, .25) !important; border-radius: 3px !important; color: rgba(216, 232, 237, .78) !important; font-size: 7px !important; font-weight: 900 !important; letter-spacing: .5px !important; }
+
 @media (max-width: 650px) {
   #profileOverlay #profileWindow.gameWindow { grid-template-columns: 1fr !important; grid-template-rows: 30px auto minmax(0,1fr) !important; }
   #profileOverlay .profileHeaderCard { grid-column: 1 !important; grid-row: 2 !important; padding: 8px !important; gap: 8px !important; border-right: 0 !important; border-bottom: 1px solid rgba(124,240,255,.16) !important; }
@@ -742,6 +845,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 }
 
 #fitCard .fitWorkspace {
+  grid-row: 1 / -1 !important;
   min-width: 0 !important;
   min-height: 0 !important;
   margin: 12px !important;
@@ -779,6 +883,8 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #fitCard .fitConfigBar .fitCfgBtn.active { border-color: #69e9ff !important; color: #effcff !important; background: #0b4a62 !important; }
 
 #fitCard .fitLoadoutPane { display: flex !important; flex-direction: column !important; border-right: 1px solid rgba(124,240,255,.12) !important; }
+#fitCard .fitSlotGroup.dragCompatible { margin-inline: -8px !important; padding-inline: 8px !important; border: 1px solid rgba(105,233,255,.60) !important; border-radius: 9px !important; background: rgba(0,217,255,.085) !important; box-shadow: inset 0 0 24px rgba(0,217,255,.07), 0 0 12px rgba(0,217,255,.08) !important; }
+#fitCard .fitSlotGroup.dragCompatible .fitGroupTitle span { color: #75edff !important; }
 #fitCard .fitPaneHeading,
 #fitCard .fitInventoryHeader {
   min-height: 58px !important;
@@ -814,6 +920,11 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #fitCard .fitInput { height: 34px !important; min-width: 0 !important; padding: 0 9px !important; box-sizing: border-box !important; outline: 0 !important; border: 1px solid rgba(124,240,255,.18) !important; border-radius: 7px !important; color: #eaf8ff !important; background: #05111c !important; font: 700 9px/1 system-ui !important; }
 #fitCard .fitSelect option { color: #eaf8ff !important; background: #071622 !important; }
 #fitCard .fitInventoryTools { padding: 8px 10px !important; display: block !important; border-bottom: 1px solid rgba(124,240,255,.09) !important; }
+#fitCard .fitSelectionBar { display: grid !important; grid-template-columns: minmax(0,1fr) auto auto !important; align-items: center !important; gap: 6px !important; margin-bottom: 7px !important; }
+#fitCard .fitSelectionBar > span { min-width: 0 !important; color: #dff6ff !important; font-size: 9px !important; font-weight: 900 !important; }
+#fitCard .fitSelectionBar button { height: 28px !important; padding: 0 9px !important; }
+#fitCard .fitSelectionHelp { margin-bottom: 8px !important; color: rgba(204,228,241,.48) !important; font-size: 8px !important; line-height: 1.45 !important; }
+#fitCard .fitSelectionHelp b { color: #74eaff !important; }
 #fitCard .fitSellDrop { min-height: 34px !important; padding: 7px 10px !important; box-sizing: border-box !important; display: grid !important; place-items: center !important; color: rgba(204,228,241,.48) !important; border: 1px dashed rgba(124,240,255,.18) !important; border-radius: 7px !important; background: rgba(255,255,255,.02) !important; font-size: 8px !important; font-weight: 800 !important; text-align: center !important; transition: background .16s ease, border-color .16s ease, color .16s ease !important; }
 #fitCard .fitSellDrop.dragSellActive { color: #ffe3b2 !important; border-color: rgba(255,190,92,.65) !important; background: rgba(255,170,54,.12) !important; }
 #fitCard .fitReturnHint { padding: 8px 10px !important; color: rgba(204,228,241,.46) !important; border-bottom: 1px solid rgba(124,240,255,.08) !important; background: rgba(0,217,255,.025) !important; font-size: 8px !important; font-weight: 700 !important; text-align: center !important; transition: background .16s ease, color .16s ease !important; }
@@ -822,6 +933,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #fitCard .invGrid { min-width: 0 !important; display: grid !important; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)) !important; gap: 6px !important; }
 #fitCard .invCell { width: 100% !important; aspect-ratio: 1 !important; display: grid !important; place-items: center !important; position: relative !important; overflow: hidden !important; border: 1px solid rgba(124,240,255,.14) !important; border-radius: 8px !important; background: rgba(255,255,255,.025) !important; cursor: pointer !important; }
 #fitCard .invCell.selected { border-color: #69e9ff !important; background: rgba(0,217,255,.12) !important; box-shadow: inset 0 0 0 1px rgba(105,233,255,.12) !important; }
+#fitCard .invCell.selected::after { content: "" !important; position: absolute !important; top: 4px !important; right: 4px !important; width: 6px !important; height: 6px !important; border-radius: 50% !important; background: #69e9ff !important; box-shadow: 0 0 7px #69e9ff !important; }
 #fitCard .invCell.disabled { opacity: .25 !important; cursor: not-allowed !important; }
 #fitCard .invCell img { width: 82% !important; height: 82% !important; object-fit: contain !important; image-rendering: pixelated !important; pointer-events: none !important; }
 #fitCard .fitModulesHeading { margin: 16px 0 8px !important; padding-top: 12px !important; color: rgba(222,243,252,.76) !important; border-top: 1px solid rgba(124,240,255,.10) !important; font-size: 10px !important; font-weight: 900 !important; }
@@ -839,7 +951,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #fitCard .fitPresetField { display: grid !important; gap: 6px !important; }
 #fitCard .fitPresetField > span { color: rgba(204,228,241,.55) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
 #fitCard .fitPresetDivider { height: 1px !important; background: rgba(124,240,255,.10) !important; }
-#fitCard .fitPresetActions { display: grid !important; grid-template-columns: 1fr 1fr 1fr !important; gap: 7px !important; }
+#fitCard .fitPresetActions { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 7px !important; }
 
 @media (max-width: 1050px) {
   #fitCard .fitWorkspace { grid-template-columns: 160px minmax(0,1fr) 220px !important; }
@@ -857,3 +969,372 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
   #fitCard .fitLoadoutPane { min-height: 500px !important; border-right: 0 !important; border-bottom: 1px solid rgba(124,240,255,.12) !important; }
   #fitCard .fitInventoryPane { min-height: 420px !important; }
 }
+
+/* Equipment theme — DarkOrbit military interface */
+#fitCard.fitWindow {
+  --fit-military-cyan: #65dff5;
+  --fit-military-cyan-dim: rgba(101, 223, 245, .22);
+  --fit-military-steel: #0a1a26;
+  --fit-military-deep: #050d15;
+  border-color: rgba(101, 223, 245, .34) !important;
+  background:
+    linear-gradient(135deg, rgba(89, 216, 242, .025) 0 1px, transparent 1px 18px),
+    linear-gradient(160deg, #0b1c28 0%, #07131e 48%, #050c14 100%) !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .72), inset 0 0 0 1px rgba(172, 241, 255, .025) !important;
+}
+
+#fitCard .fitWindowHeader {
+  border-bottom-color: rgba(101, 223, 245, .20) !important;
+  background:
+    linear-gradient(90deg, rgba(28, 106, 129, .17), transparent 40%),
+    linear-gradient(180deg, #102735, #091923) !important;
+  box-shadow: inset 0 -1px rgba(0, 0, 0, .55) !important;
+}
+
+#fitCard .fitWindowIcon {
+  border: 1px solid rgba(101, 223, 245, .48) !important;
+  border-radius: 3px !important;
+  color: #c4f7ff !important;
+  background: linear-gradient(135deg, #17475a, #0a2837) !important;
+  box-shadow: inset 0 0 10px rgba(101, 223, 245, .12), 0 0 8px rgba(101, 223, 245, .08) !important;
+}
+
+#fitCard .fitTopTitle { color: #e8f9fc !important; letter-spacing: .35px !important; text-transform: uppercase !important; }
+#fitCard .fitTopSub { color: rgba(190, 225, 235, .52) !important; }
+
+#fitCard button {
+  border-radius: 3px !important;
+  border-color: rgba(101, 223, 245, .24) !important;
+  color: #cfeef4 !important;
+  background: linear-gradient(180deg, #102a38, #0a1c28) !important;
+}
+#fitCard button.primary {
+  border-color: rgba(101, 223, 245, .55) !important;
+  color: #effdff !important;
+  background: linear-gradient(180deg, #126079, #0b4054) !important;
+}
+#fitCard button:hover:not(:disabled) { border-color: rgba(132, 235, 253, .68) !important; color: #fff !important; filter: brightness(1.08) !important; }
+#fitCard button:active:not(:disabled) { filter: brightness(.92) !important; }
+
+#fitCard .fitWorkspace {
+  border-color: rgba(101, 223, 245, .17) !important;
+  border-radius: 4px !important;
+  background: #06111a !important;
+  box-shadow: inset 0 0 26px rgba(0, 0, 0, .25) !important;
+}
+
+#fitCard .fitShipPane,
+#fitCard .fitLoadoutPane,
+#fitCard .fitInventoryPane {
+  position: relative !important;
+  background:
+    linear-gradient(135deg, rgba(101, 223, 245, .025), transparent 35%),
+    linear-gradient(180deg, #0a1b27, #07131d) !important;
+}
+
+#fitCard .fitShipPane::before,
+#fitCard .fitLoadoutPane::before,
+#fitCard .fitInventoryPane::before {
+  content: "" !important;
+  position: absolute !important;
+  z-index: 2 !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 34px !important;
+  height: 2px !important;
+  background: var(--fit-military-cyan) !important;
+  box-shadow: 0 0 8px rgba(101, 223, 245, .45) !important;
+  pointer-events: none !important;
+}
+
+#fitCard .fitPaneLabel {
+  color: rgba(135, 226, 241, .66) !important;
+  letter-spacing: 1.15px !important;
+}
+#fitCard #fitShipCanvas {
+  background:
+    radial-gradient(circle, rgba(40, 153, 179, .10), transparent 59%),
+    linear-gradient(rgba(101, 223, 245, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(101, 223, 245, .035) 1px, transparent 1px) !important;
+  background-size: auto, 18px 18px, 18px 18px !important;
+}
+#fitCard #fitShipName { color: #edfaff !important; text-transform: uppercase !important; letter-spacing: .45px !important; }
+
+#fitCard .fitConfigBar {
+  border-top-color: rgba(101, 223, 245, .15) !important;
+  background: linear-gradient(90deg, rgba(101, 223, 245, .035), transparent) !important;
+}
+#fitCard .fitConfigBar .fitCfgBtn { border-radius: 2px !important; }
+#fitCard .fitConfigBar .fitCfgBtn.active {
+  border-color: #78e7fa !important;
+  color: #fff !important;
+  background: #10546b !important;
+  box-shadow: inset 0 -2px #71e5f9 !important;
+}
+
+#fitCard .fitPaneHeading,
+#fitCard .fitInventoryHeader {
+  border-bottom-color: rgba(101, 223, 245, .15) !important;
+  background: linear-gradient(90deg, rgba(21, 76, 94, .16), rgba(5, 16, 25, .25)) !important;
+}
+#fitCard .fitPaneHeading strong,
+#fitCard .fitInventoryHeader strong { color: #ecfbff !important; text-transform: uppercase !important; letter-spacing: .45px !important; }
+
+#fitCard .fitSlotGroup {
+  position: relative !important;
+  border-bottom-color: rgba(101, 223, 245, .10) !important;
+}
+#fitCard .fitSlotGroup::after {
+  content: "" !important;
+  position: absolute !important;
+  right: 0 !important;
+  bottom: -1px !important;
+  width: 28px !important;
+  height: 1px !important;
+  background: rgba(101, 223, 245, .45) !important;
+}
+#fitCard .fitGroupTitle span { color: #dff8fc !important; text-transform: uppercase !important; letter-spacing: .55px !important; }
+#fitCard .fitGroupTitle small { color: rgba(182, 216, 226, .42) !important; }
+
+#fitCard .slotCell {
+  position: relative !important;
+  border-radius: 3px !important;
+  border-style: solid !important;
+  border-color: rgba(108, 198, 218, .18) !important;
+  background:
+    linear-gradient(135deg, rgba(143, 229, 246, .045), transparent 45%),
+    #081620 !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .35) !important;
+}
+#fitCard .slotCell::before,
+#fitCard .invCell::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 3px !important;
+  left: 3px !important;
+  width: 7px !important;
+  height: 7px !important;
+  border-top: 1px solid rgba(116, 222, 242, .38) !important;
+  border-left: 1px solid rgba(116, 222, 242, .38) !important;
+  pointer-events: none !important;
+}
+#fitCard .slotCell.filled {
+  border-color: rgba(101, 223, 245, .54) !important;
+  background: radial-gradient(circle, rgba(27, 129, 155, .20), #09202c 72%) !important;
+  box-shadow: inset 0 -2px rgba(88, 215, 239, .16) !important;
+}
+#fitCard .slotCell:hover { border-color: rgba(123, 232, 250, .74) !important; background-color: #0c2734 !important; }
+
+#fitCard .fitSelect,
+#fitCard .fitInput {
+  border-radius: 3px !important;
+  border-color: rgba(101, 223, 245, .23) !important;
+  background: #06121c !important;
+}
+#fitCard .fitInventoryTools { background: rgba(4, 14, 22, .45) !important; }
+#fitCard .fitSelectionHelp { color: rgba(184, 216, 225, .48) !important; }
+#fitCard .fitSelectionHelp b { color: #74e6f8 !important; }
+#fitCard .fitSellDrop { border-radius: 3px !important; background: repeating-linear-gradient(-45deg, rgba(255, 177, 65, .025) 0 6px, transparent 6px 12px) !important; }
+#fitCard .fitReturnHint { background: rgba(19, 70, 86, .055) !important; }
+
+#fitCard .invCell {
+  border-radius: 3px !important;
+  border-color: rgba(108, 198, 218, .17) !important;
+  background: linear-gradient(145deg, rgba(140, 226, 244, .04), transparent 46%), #081620 !important;
+}
+#fitCard .invCell:hover { border-color: rgba(118, 229, 248, .62) !important; background-color: #0b2430 !important; }
+#fitCard .invCell.selected {
+  border-color: #70e7fa !important;
+  background: radial-gradient(circle, rgba(33, 157, 184, .22), #09212c 75%) !important;
+  box-shadow: inset 0 -2px #5adcf3, 0 0 10px rgba(76, 218, 243, .12) !important;
+}
+#fitCard .fitModulesHeading { color: #d8f3f8 !important; text-transform: uppercase !important; letter-spacing: .55px !important; }
+#fitCard .shipModRow { border-bottom-color: rgba(101, 223, 245, .10) !important; }
+#fitCard .shipModRow:hover { background: rgba(24, 103, 126, .10) !important; }
+
+#fitCard .fitSlotGroup.dragCompatible {
+  border-color: rgba(105, 233, 255, .72) !important;
+  background:
+    repeating-linear-gradient(-45deg, rgba(62, 210, 238, .035) 0 8px, transparent 8px 16px),
+    rgba(0, 217, 255, .075) !important;
+  box-shadow: inset 3px 0 #63e3f8, inset 0 0 25px rgba(0, 217, 255, .06) !important;
+}
+
+/* Final equipment sizing and help placement */
+#fitCard #fitShipCanvas {
+  width: 66px !important;
+  height: 66px !important;
+  flex: 0 0 66px !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  background: radial-gradient(circle, rgba(40, 153, 179, .10), transparent 62%) !important;
+  background-size: auto !important;
+}
+#fitCard .fitHelpTooltip > span {
+  left: 0 !important;
+  right: auto !important;
+  top: calc(100% + 10px) !important;
+  bottom: auto !important;
+}
+#fitCard .slotGrid { gap: 10px !important; }
+#fitCard .invGrid { gap: 8px !important; }
+#fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotGridModules { gap: 8px !important; }
+
+/* Equipment layout — full window, compact ship bar and two cards */
+#fitOverlay { padding: 0 !important; }
+#fitCard.fitWindow {
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+#fitCard .fitError { position: absolute !important; z-index: 40 !important; top: 8px !important; left: 50% !important; max-width: 520px !important; transform: translateX(-50%) !important; }
+#fitCard .fitWorkspace {
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 10px !important;
+  box-sizing: border-box !important;
+  grid-template-columns: minmax(0, 1fr) 330px !important;
+  grid-template-rows: 74px minmax(0, 1fr) !important;
+  gap: 10px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+#fitCard .fitShipPane {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  padding: 7px 10px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 11px !important;
+  border: 1px solid rgba(101, 223, 245, .13) !important;
+  border-radius: 4px !important;
+  background: linear-gradient(90deg, #0a1d29, #07131d) !important;
+}
+#fitCard .fitShipPane::before { height: 100% !important; width: 2px !important; }
+#fitCard #fitShipCanvas {
+  width: 58px !important;
+  height: 58px !important;
+  flex: 0 0 58px !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+#fitCard .fitShipMeta {
+  min-width: 130px !important;
+  display: grid !important;
+  gap: 3px !important;
+  text-align: left !important;
+}
+#fitCard #fitShipName { font-size: 13px !important; }
+#fitCard #fitShipHint { font-size: 8px !important; }
+#fitCard .fitConfigBar {
+  width: auto !important;
+  margin: 0 0 0 10px !important;
+  padding: 0 0 0 14px !important;
+  flex: 0 0 auto !important;
+  gap: 9px !important;
+  border-top: 0 !important;
+  border-left: 1px solid rgba(101, 223, 245, .13) !important;
+  background: transparent !important;
+}
+#fitCard .fitConfigBar > span { font-size: 7px !important; letter-spacing: .7px !important; }
+#fitCard .fitWindowActions { margin-left: auto !important; display: flex !important; gap: 6px !important; }
+#fitCard .fitWindowActions button { min-height: 30px !important; padding: 6px 10px !important; font-size: 8px !important; }
+#fitCard .fitLoadoutPane {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  border: 1px solid rgba(101, 223, 245, .15) !important;
+  border-radius: 4px !important;
+}
+#fitCard .fitInventoryPane {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  border: 1px solid rgba(101, 223, 245, .15) !important;
+  border-radius: 4px !important;
+}
+#fitCard .fitSlotsScroll { padding-top: 6px !important; }
+#fitCard .fitSlotGroup { padding: 11px 0 !important; }
+#fitCard .fitGroupTitle { margin-bottom: 7px !important; }
+#fitCard .fitGroupTitle span { font-size: 8px !important; letter-spacing: 1px !important; color: rgba(189, 226, 235, .60) !important; }
+#fitCard .fitGroupTitle small { font-size: 7px !important; }
+#fitCard .fitInventoryHeader { min-height: 48px !important; padding: 7px 10px !important; }
+#fitCard .fitInventoryHeader strong { font-size: 9px !important; letter-spacing: .9px !important; }
+#fitCard .fitInventoryHeader > div > span { display: none !important; }
+#fitCard .fitSelectionBar { grid-template-columns: minmax(75px, 1fr) auto auto auto !important; }
+#fitCard .fitSelectionBar button { min-height: 27px !important; padding: 5px 7px !important; font-size: 8px !important; }
+#fitCard .fitSellButton { border-color: rgba(235, 177, 76, .35) !important; color: #f0d19b !important; background: linear-gradient(180deg, #3b2a14, #241a0e) !important; }
+
+@media (max-width: 900px) {
+  #fitCard .fitWorkspace { grid-template-columns: minmax(0, 1fr) 270px !important; }
+  #fitCard .fitWindowActions button { padding-inline: 7px !important; }
+}
+
+/* Final overrides */
+#fitCard .fitShipPane { overflow: visible !important; z-index: 10 !important; }
+#fitCard #fitShipCanvas {
+  width: 84px !important;
+  height: 84px !important;
+  flex: 0 0 84px !important;
+  background: radial-gradient(circle, rgba(40, 153, 179, .10), transparent 62%) !important;
+  background-size: auto !important;
+}
+#fitCard .fitHelpTooltip > span {
+  left: 0 !important;
+  right: auto !important;
+  top: calc(100% + 10px) !important;
+  bottom: auto !important;
+}
+#fitCard .slotGrid { gap: 10px !important; }
+#fitCard .invGrid { gap: 8px !important; }
+#fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotGridModules { gap: 8px !important; }
+#fitCard .fitWorkspace { grid-template-rows: 96px minmax(0, 1fr) !important; }
+#fitCard .slotCell.selected {
+  border-color: #70e7fa !important;
+  background: radial-gradient(circle, rgba(33, 157, 184, .25), #09212c 75%) !important;
+  box-shadow: inset 0 -2px #5adcf3, 0 0 11px rgba(76, 218, 243, .18) !important;
+}
+#fitCard .slotCell.selected::after {
+  content: "" !important;
+  position: absolute !important;
+  z-index: 3 !important;
+  top: 4px !important;
+  right: 4px !important;
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: #69e9ff !important;
+  box-shadow: 0 0 7px #69e9ff !important;
+  pointer-events: none !important;
+}
+#fitCard .fitSlotsScroll {
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+}
+#fitCard .fitSlotsScroll::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+#fitCard .fitSlotGroup { border: 0 !important; }
+#fitCard .fitSlotGroup.dragCompatible {
+  margin-inline: 0 !important;
+  padding-inline: 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#fitCard .fitSlotGroup.dragCompatible .slotCell {
+  border-color: rgba(105, 233, 255, .68) !important;
+  box-shadow: inset 0 0 10px rgba(0, 217, 255, .08) !important;
+}
+#fitCard .fitInventorySelectionHint { color: rgba(184, 216, 225, .46) !important; font-size: 8px !important; }
+#fitCard .fitBackButton { margin-left: 0 !important; }
+#fitCard .fitActionSeparator {
+  width: 1px !important;
+  height: 24px !important;
+  flex: 0 0 1px !important;
+  margin: 0 6px !important;
+  display: block !important;
+  background: rgba(101, 223, 245, .34) !important;
+  box-shadow: 0 0 5px rgba(101, 223, 245, .10) !important;
+}
+#confirmMessage { white-space: pre-line !important; }
