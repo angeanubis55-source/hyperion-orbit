@@ -100,7 +100,9 @@ let {
   rules = {},
 } = config;
 
-const DEFAULT_SPAWN = { x: 1500, y: 1500 };
+function getFactionFallbackSpawn() {
+  return getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction);
+}
 
 // ============================================================
 // ✅ Radiation zone (hors limites WORLD)
@@ -4534,7 +4536,7 @@ function runOnKillAction(action, pos = null) {
   }
 
   const tp = action.tp;
-  if (tp?.toMap) {
+  if (tp?.toMap || tp?.factionBase) {
     const destinationMap = rules?.mode === "gate"
       ? getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__, { gate: true })
       : tp.toMap;
@@ -5388,8 +5390,9 @@ jumpBaseFade: 1,
 
     if (ov && String(ov.map || "") === String(currentMap)) {
       const position = ov.baseCenter ? resolveBaseCenter(zoneSafe, ov.fallback) : ov;
-      player.x = clamp(Number(position.x) || DEFAULT_SPAWN.x, 80, WORLD.w - 80);
-      player.y = clamp(Number(position.y) || DEFAULT_SPAWN.y, 80, WORLD.h - 80);
+      const fallbackSpawn = getFactionFallbackSpawn();
+      player.x = clamp(Number(position.x) || fallbackSpawn.x, 80, WORLD.w - 80);
+      player.y = clamp(Number(position.y) || fallbackSpawn.y, 80, WORLD.h - 80);
       spawnedFromPortal = true;
       console.log(`[RESPAWN] Override spawn: ${player.x}, ${player.y} on ${currentMap}`);
     }
@@ -5428,24 +5431,25 @@ jumpBaseFade: 1,
       : getActiveHangarState();
 
     const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
+    const fallbackSpawn = getFactionFallbackSpawn();
 
     if (!st?.map) {
-      player.x = clamp(DEFAULT_SPAWN.x, 80, WORLD.w - 80);
-      player.y = clamp(DEFAULT_SPAWN.y, 80, WORLD.h - 80);
-      console.log(`[SPAWN] Jamais joué => default ${DEFAULT_SPAWN.x},${DEFAULT_SPAWN.y} sur 1-1`);
+      player.x = clamp(fallbackSpawn.x, 80, WORLD.w - 80);
+      player.y = clamp(fallbackSpawn.y, 80, WORLD.h - 80);
+      console.log(`[SPAWN] Jamais joué => base de firme ${fallbackSpawn.x},${fallbackSpawn.y}`);
     } else {
       if (String(st.map) !== String(currentMap)) {
-        player.x = clamp(DEFAULT_SPAWN.x, 80, WORLD.w - 80);
-        player.y = clamp(DEFAULT_SPAWN.y, 80, WORLD.h - 80);
-        console.log(`[SPAWN] Map différente (saved=${st.map}, cur=${currentMap}) => default spawn`);
+        player.x = clamp(fallbackSpawn.x, 80, WORLD.w - 80);
+        player.y = clamp(fallbackSpawn.y, 80, WORLD.h - 80);
+        console.log(`[SPAWN] Map différente (saved=${st.map}, cur=${currentMap}) => base de firme`);
       } else if (st.pos && st.pos.x != null && st.pos.y != null) {
         player.x = clamp(st.pos.x, 80, WORLD.w - 80);
         player.y = clamp(st.pos.y, 80, WORLD.h - 80);
         console.log(`[SPAWN] Position sauvegardée: ${Math.floor(player.x)}, ${Math.floor(player.y)} sur ${currentMap}`);
       } else {
-        player.x = clamp(DEFAULT_SPAWN.x, 80, WORLD.w - 80);
-        player.y = clamp(DEFAULT_SPAWN.y, 80, WORLD.h - 80);
-        console.log(`[SPAWN] Pas de pos => default spawn`);
+        player.x = clamp(fallbackSpawn.x, 80, WORLD.w - 80);
+        player.y = clamp(fallbackSpawn.y, 80, WORLD.h - 80);
+        console.log(`[SPAWN] Pas de pos => base de firme`);
       }
     }
   }

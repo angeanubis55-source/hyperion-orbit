@@ -97,7 +97,7 @@ function makeHangar(shipId, active = false) {
       extras: [],
     },
 
-    // Position sauvegardée (null = jamais joué = spawn 1500,1500)
+    // Position sauvegardée (null = jamais joué = centre de la base de firme)
     lastPos: null, // { x:number, y:number } | null
 
     // Map sauvegardée (null = jamais joué = map par défaut "1-1")

@@ -191,7 +191,6 @@ export function getZoneSafeModules(WORLD) {
   const modules = [
     { id: "CENTRE_MMO", x: 1500,   y: 1500,   w: 909, h: 898, spr: "CENTRE_MMO" }, // Centre
     { id: "QUEST_MMO", x: 2300, y: 1500, w: 515, h: 728, spr: "QUEST_MMO" },
-  //  { id: "CENTRE_MMO", x: 1500,   y: 1500,   w: 1009, h: 998, spr: "CENTRE_MMO" }, // Centre
   ];
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

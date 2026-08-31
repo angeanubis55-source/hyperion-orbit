@@ -24,7 +24,7 @@ export const WAVE_PLANS = [
       count: 1,
       onKill: {
         reward: 1000000000,
-        tp: { toMap: "1-1", x: 1500, y: 1500 },
+        tp: { factionBase: true },
       },
     },
   ],

@@ -117,7 +117,7 @@ export function getZoneSafeModules(WORLD) {
   const baseY = 800;
 
   const modules = [
-    { id: "CENTRE_PIRATES", x: 1500,   y: 1500,   w: 3000, h: 1985, spr: "CENTRE_PIRATE" }, // Centre
+    { id: "CENTRE_PIRATES", x: WORLD.w / 2, y: WORLD.h / 2, w: 3000, h: 1985, spr: "CENTRE_PIRATE" }, // Centre
   ];
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

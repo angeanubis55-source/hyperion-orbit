@@ -30,13 +30,13 @@ export function getFactionBaseSpawn(value) {
   return { x: spawn.x, y: spawn.y };
 }
 
-export function resolveBaseCenter(zoneSafe, fallback = { x: 1500, y: 1500 }) {
+export function resolveBaseCenter(zoneSafe, fallback = null) {
   const module = zoneSafe?.modules?.find(item => String(item?.id || "").startsWith("CENTRE_"));
   const x = Number(module?.x ?? fallback?.x);
   const y = Number(module?.y ?? fallback?.y);
   return {
-    x: Number.isFinite(x) ? x : 1500,
-    y: Number.isFinite(y) ? y : 1500,
+    x: Number.isFinite(x) ? x : null,
+    y: Number.isFinite(y) ? y : null,
   };
 }
 
