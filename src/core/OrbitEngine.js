@@ -1876,6 +1876,7 @@ function setNotificationText(node, value, { goldTerms = [] } = {}) {
 }
 
 const MAX_VISIBLE_NOTIFICATIONS = 8;
+const NOTIFICATION_FLOW_STEP_MS = 1200;
 const pendingNotifications = [];
 let pendingNotificationGroup = null;
 let notificationGroupFrame = 0;
@@ -1900,7 +1901,9 @@ function mountNotification(spec) {
   node.dataset.baseVisibleMs = String(baseVisibleMs);
   const previousNodes = [...ui.orbitNotifications.children].filter(item => item !== node && !item.classList.contains("leaving"));
   const previousLeaveAt = Number(previousNodes.at(-1)?.dataset.leaveAt) || 0;
-  const leaveAt = spec.stagger ? Math.max(now + baseVisibleMs, previousLeaveAt + 650) : now + baseVisibleMs;
+  const leaveAt = spec.stagger
+    ? Math.max(now + NOTIFICATION_FLOW_STEP_MS, previousLeaveAt + NOTIFICATION_FLOW_STEP_MS)
+    : now + NOTIFICATION_FLOW_STEP_MS;
   node.dataset.leaveAt = String(leaveAt);
   node._leaveTimer = setTimeout(() => node.classList.add("leaving"), Math.max(0, leaveAt - now));
   node._removeTimer = setTimeout(() => removeNotificationNode(node), Math.max(0, leaveAt - now) + 700);
@@ -1912,10 +1915,9 @@ function resetVisibleNotificationFlow() {
   let previousLeaveAt = 0;
   for (const node of ui.orbitNotifications.children) {
     if (node.classList.contains("leaving")) continue;
-    const baseVisibleMs = Math.max(0, Number(node.dataset.baseVisibleMs) || 3800);
     const leaveAt = previousLeaveAt
-      ? Math.max(now + baseVisibleMs, previousLeaveAt + 650)
-      : now + baseVisibleMs;
+      ? previousLeaveAt + NOTIFICATION_FLOW_STEP_MS
+      : now + NOTIFICATION_FLOW_STEP_MS;
     previousLeaveAt = leaveAt;
     node.dataset.leaveAt = String(leaveAt);
     clearTimeout(node._leaveTimer);
