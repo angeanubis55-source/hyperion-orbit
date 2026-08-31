@@ -88,8 +88,11 @@ const accountFactionStatus = $("accountFactionStatus");
 const btnChangeFaction = $("btnChangeFaction");
 const shopCredits = $("shopCredits");
 const hangarGrid = $("hangarGrid");
+const hangarPreviewEyebrow = document.querySelector("#hangarPreview .hangarPreviewEyebrow");
 const hangarPreviewImage = $("hangarPreviewImage");
 const hangarPreviewTitle = $("hangarPreviewTitle");
+const hangarSelectedImage = $("hangarSelectedImage");
+const hangarSelectedTitle = $("hangarSelectedTitle");
 const hangarPreviewMeta = $("hangarPreviewMeta");
 const shopList = $("shopList");
 const shopPreview = $("shopPreview");
@@ -214,6 +217,21 @@ function getShopListFor(cat) {
 
 function formatNumber(num) {
   return formatInteger(num);
+}
+
+function getHangarActionAccess(action) {
+  const integrated = !!document.getElementById("profileOverlay");
+  if (!integrated) {
+    return {
+      ok: false,
+      error: "Ouvre l'Espace pilote directement depuis le jeu pour effectuer cette action.",
+    };
+  }
+  const access = window.__ORBIT_ENGINE__?.getHangarAccess?.();
+  if (!access) return { ok: false, error: "Le moteur du jeu n'est pas encore prêt." };
+  if (action === "activate" && !access.canActivate) return { ok: false, error: access.activationError };
+  if (action === "equip" && !access.canEquip) return { ok: false, error: access.equipmentError };
+  return { ok: true, access };
 }
 
 function getAmmoQtyForShopItem(u, it) {
@@ -678,15 +696,30 @@ function renderHangars(u) {
 
   const updateHangarPreview = (hangar) => {
     if (!hangar) return;
-    const activePack = getShipPack(hangar.shipId);
-    const activeSlots = getShipSlots(hangar.shipId);
-    const preview = shipPreviewSrc(hangar.shipId);
+    const isActivePreview = hangar.id === activeHangar?.id;
+    const activePack = getShipPack(activeHangar?.shipId);
+    const activeSlots = getShipSlots(activeHangar?.shipId);
+    const activePreview = shipPreviewSrc(activeHangar?.shipId);
+    const selectedPack = getShipPack(hangar.shipId);
+    const selectedSlots = getShipSlots(hangar.shipId);
+    const selectedPreview = shipPreviewSrc(hangar.shipId);
+    document.getElementById("hangarPreview")?.classList.toggle("isComparing", !isActivePreview);
     if (hangarPreviewImage) {
-      hangarPreviewImage.src = preview || "";
-      hangarPreviewImage.style.display = preview ? "block" : "none";
+      hangarPreviewImage.src = activePreview || "";
+      hangarPreviewImage.alt = "Vaisseau actif";
+      hangarPreviewImage.style.display = activePreview ? "block" : "none";
     }
-    if (hangarPreviewTitle) hangarPreviewTitle.textContent = activePack?.name || hangar.shipId;
-    if (hangarPreviewMeta) hangarPreviewMeta.textContent = `Lasers ${activeSlots.lasers} · Générateurs ${activeSlots.gens} · Extras ${activeSlots.extras}`;
+    if (hangarPreviewEyebrow) hangarPreviewEyebrow.textContent = "VAISSEAU ACTIF";
+    if (hangarPreviewTitle) hangarPreviewTitle.textContent = activePack?.name || activeHangar?.shipId || "—";
+    if (hangarSelectedImage) {
+      hangarSelectedImage.src = selectedPreview || "";
+      hangarSelectedImage.style.display = selectedPreview ? "block" : "none";
+    }
+    if (hangarSelectedTitle) hangarSelectedTitle.textContent = selectedPack?.name || hangar.shipId;
+    if (hangarPreviewMeta) {
+      const slots = isActivePreview ? activeSlots : selectedSlots;
+      hangarPreviewMeta.textContent = `${isActivePreview ? "Actif" : "Sélection"} · Lasers ${slots.lasers} · Générateurs ${slots.gens} · Extras ${slots.extras}`;
+    }
   };
 
   updateHangarPreview(hangars.find(h => h.id === selectedHangarId) || activeHangar);
@@ -758,8 +791,13 @@ if (!isIntegratedInGame && isGameOpen()) {
   );
 }
 
+  const access = getHangarActionAccess("activate");
+  if (!access.ok) return setMsg(access.error, false);
+
   const out = setActiveHangar(h.id);
   if (!out.ok) return setMsg("❌ " + (out.error || "Impossible d'activer le hangar."), false);
+
+  window.__ORBIT_ENGINE__?.markHangarChanged?.();
 
   user = getCurrentUserFull();
   setMsg("✅ Hangar activé avec succès !", true);
@@ -2886,6 +2924,11 @@ function setFitModalConfig(configNo) {
   if (nextConfig === fitState.configNo) return;
 
   if (fitState.hangarId && fitState.draft) {
+    const access = getHangarActionAccess("equip");
+    if (!access.ok) {
+      showFitError(access.error);
+      return;
+    }
     const saved = saveHangarFit(fitState.hangarId, fitState.draft, fitState.configNo);
     if (!saved?.ok) {
       showFitError(saved?.error || "Impossible d'enregistrer la configuration actuelle");
@@ -2941,6 +2984,8 @@ function setFitModalConfig(configNo) {
 }
 
 function openFitModal(hangarId) {
+  const access = getHangarActionAccess("equip");
+  if (!access.ok) return setMsg(access.error, false);
   if (!fitOverlayEl) fitOverlayEl = buildFitWindow();
 
   user = getCurrentUserFull();
@@ -3184,6 +3229,12 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
         showFitError(`Trop de "${findCatalogItem(itemId)?.name || itemId}" équipés: ${used}/${own}`);
         return;
       }
+    }
+
+    const access = getHangarActionAccess("equip");
+    if (!access.ok) {
+      showFitError(access.error);
+      return;
     }
 
     const out = saveHangarFit(fitState.hangarId, fitState.draft, fitState.configNo);

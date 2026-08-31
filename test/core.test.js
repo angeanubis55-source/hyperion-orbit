@@ -27,7 +27,7 @@ import {
   tickPortalVisualTransitions,
   updatePortalProximity,
 } from "../src/core/portalSystem.js";
-import { buildQuestJournalView, buildQuestTerminalView } from "../src/core/questPresentation.js";
+import { buildQuestJournalView, buildQuestTerminalView, formatQuestEntityName } from "../src/core/questPresentation.js";
 import { drawMoveTargetMarker, drawPlayerStatus, drawToastMessage } from "../src/core/canvasHudRenderer.js";
 import { renderMinimap } from "../src/core/minimapRenderer.js";
 import { drawBackgroundLayerSet, drawParallaxStarfield, drawWallLayer } from "../src/core/worldLayerRenderer.js";
@@ -71,11 +71,12 @@ test("escapeHtml neutralise le HTML utilisateur", () => {
 });
 
 test("la radiation avertit cinq secondes avant les dégâts et s'efface progressivement", () => {
-  const radiation = createRadiationSystem({ warningDuration: 5, dpsPct: 0.1 });
+  const radiation = createRadiationSystem({ warningDuration: 5, dpsPct: 0.1, tickInterval: 0.5 });
   const context = { started: true, paused: false, dead: false, outside: true, hpMax: 1000 };
   assert.equal(radiation.update(4.9, context), 0);
   assert.ok(radiation.state.edgeFade > 0);
-  assert.equal(radiation.update(0.2, context), 20);
+  assert.equal(radiation.update(0.2, context), 0);
+  assert.equal(radiation.update(0.4, context), 50);
 
   const beforeFade = radiation.state.edgeFade;
   radiation.update(0.2, { ...context, outside: false });
@@ -154,6 +155,9 @@ test("la présentation des quêtes distingue le journal et les états du termina
   assert.match(terminal.listHtml, /accepted/);
   assert.match(terminal.detailHtml, /Mission en cours/);
   assert.match(terminal.detailHtml, /honneur/i);
+  assert.equal(formatQuestEntityName("npc_Sibelonit"), "Sibelonit");
+  assert.equal(formatQuestEntityName("npc_Blighted_Gygerthrall"), "Blighted Gygerthrall");
+  assert.equal(formatQuestEntityName("Green_Booty_Box"), "Green Booty Box");
 });
 
 test("les rendus HUD Canvas restaurent le contexte et gèrent les messages permanents", () => {

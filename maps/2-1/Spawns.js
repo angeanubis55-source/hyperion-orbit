@@ -189,8 +189,7 @@ export function getZoneSafeModules(WORLD) {
   const baseY = 800;
 
   const modules = [
-    { id: "CENTRE_EIC", x: 9500,   y: 1500,   w: 455, h: 1087, spr: "CENTRE_EIC" }, // Centre
-    { id: "QUEST_EIC", x: 8700, y: 1500, w: 515, h: 728, spr: "QUEST_EIC" },
+    { id: "CENTRE_EIC", x: 9500, y: 1500, w: 455, h: 1087, spr: "CENTRE_EIC", questTerminal: true },
   ];
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

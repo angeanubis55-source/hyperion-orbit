@@ -72,47 +72,44 @@
     <!-- BOX 2 : Économie / progression (toujours) -->
 <div id="boxMeta" class="panel">
   <div class="row"><span class="k">Crédits</span><span class="v" id="credits">0</span></div>
-  <div class="row"><span class="k">Niveau</span><span class="v" id="lvlTxt">1</span></div>
-  <div class="row"><span class="k">Vitesse</span><span class="v" id="spdTxt">0</span></div>
-  <div class="row"><span class="k">Honneur</span><span class="v" id="honorTxt">0</span></div>
   <div class="row"><span class="k">Expérience</span><span class="v" id="xpTxt">0</span></div>
+  <div class="row"><span class="k">Honneur</span><span class="v" id="honorTxt">0</span></div>
   <div class="row"><span class="k">Points de grade</span><span class="v" id="rankPtsTxt">0</span></div>
-
-  <div class="row configRow">
-    <span class="k">Configuration</span>
-    <span class="v configSwitch">
-      <button id="cfg1Btn" class="cfgBtn active">1</button>
-      <button id="cfg2Btn" class="cfgBtn">2</button>
-      <small id="cfgCooldownTxt"></small>
-    </span>
-  </div>
+  <div class="row"><span class="k">Niveau</span><span class="v" id="lvlTxt">1</span></div>
 </div>
 
     <!-- BOX 3 : HP / Shield (toujours) -->
     <div id="boxVitals" class="panel">
       <div class="barWrap">
-        <div class="row"><span class="k"></span><span class="v" id="hpTxt">0 / 0</span></div>
-        <div class="bar hp"><i id="hpBar"></i></div>
-
-        <div class="row"><span class="k"></span><span class="v" id="shTxt">0 / 0</span></div>
-        <div class="bar sh"><i id="shBar"></i></div>
-
+        <div class="bar hp"><i id="hpBar"></i><span class="barValue" id="hpTxt">0 / 0</span></div>
+        <div class="bar sh"><i id="shBar"></i><span class="barValue" id="shTxt">0 / 0</span></div>
+        <div class="vitalsControls">
+          <div class="row"><span class="k">Vitesse</span><span class="v" id="spdTxt">0</span></div>
+          <div class="row configRow">
+            <span class="k">Configuration</span>
+            <span class="v configSwitch">
+              <button id="cfg1Btn" class="cfgBtn active">1</button>
+              <button id="cfg2Btn" class="cfgBtn">2</button>
+              <small id="cfgCooldownTxt"></small>
+            </span>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div id="boxPerformance" class="panel">
-      <div class="barWrap">
-        <div class="row mini"><span class="k">FPS</span><span class="v" id="fpsTxt">—</span></div>
-        <div id="perfDetails" class="perfDetails">Moy. — ms · P95 — ms · Lentes —</div>
-      </div>
-    </div>
+    <div id="fpsOverlay" aria-live="off">FPS : <span id="fpsTxt">—</span></div>
 
     <div id="minimap" class="panel interactive">
       <div id="miniHeader" class="miniHeader">
         <span id="miniMapName">Map : —</span>
         <span id="miniPos">Pos : —</span>
       </div>
-      <div id="miniDivider"></div>
+      <div id="miniZoomBar" class="miniZoomBar" aria-label="Taille de la mini-carte">
+        <div class="miniZoomActions">
+          <button id="miniZoomOut" class="gameWinMinBtn miniZoomBtn" type="button" aria-label="Diminuer la mini-carte" title="Diminuer">−</button>
+          <button id="miniZoomIn" class="gameWinMinBtn miniZoomBtn" type="button" aria-label="Agrandir la mini-carte" title="Agrandir">+</button>
+        </div>
+      </div>
       <canvas id="miniCanvas" width="300" height="205"></canvas>
     </div>
 
@@ -344,7 +341,6 @@
         <section id="panel_account" class="profilePanel">
           <div class="accountPanelIntro">
             <strong>Gestion du compte</strong>
-            <span>Pseudo, adresse email, sécurité et firme du pilote.</span>
           </div>
 
           <div class="accountSettingsGrid">
@@ -434,15 +430,21 @@
         </section>
 
         <section id="panel_hangars" class="profilePanel">
-          <div class="hint" style="text-align:left; margin-bottom:16px;">
-            Chaque vaisseau possédé = 1 hangar. Active et équipe ton vaisseau préféré.
-          </div>
-
           <div class="hangarWorkspace">
             <aside id="hangarPreview" class="hangarPreview">
               <div class="hangarPreviewEyebrow">VAISSEAU ACTIF</div>
-              <img id="hangarPreviewImage" alt="Vaisseau actif" />
-              <h3 id="hangarPreviewTitle">—</h3>
+              <div class="hangarPreviewStage">
+                <div class="hangarActivePreview">
+                  <img id="hangarPreviewImage" alt="Vaisseau actif" />
+                  <h3 id="hangarPreviewTitle">—</h3>
+                </div>
+                <div class="hangarFlowArrows" aria-hidden="true"><span>⌄</span><span>⌄</span><span>⌄</span></div>
+                <div class="hangarSelectedPreview">
+                  <div class="hangarSelectedLabel">VAISSEAU SÉLECTIONNÉ</div>
+                  <img id="hangarSelectedImage" alt="Vaisseau sélectionné" />
+                  <h3 id="hangarSelectedTitle">—</h3>
+                </div>
+              </div>
               <p id="hangarPreviewMeta">Sélectionne un hangar pour voir ses détails.</p>
             </aside>
             <div id="hangarGrid" class="profileGrid"></div>
@@ -453,7 +455,6 @@
           <div class="shopToolbar">
             <div>
               <div class="shopToolbarTitle">Boutique orbitale</div>
-              <div class="shopToolbarSub">Modules, équipements et nouveaux vaisseaux</div>
             </div>
             <div class="shopBalance">
               <span>Crédits disponibles</span>
@@ -785,6 +786,31 @@ function makeMinimapResizable(id, card) {
   card.__miniResizeReady = true;
 
   const handle = ensureResizeHandle(card);
+  handle.remove();
+  const zoomOut = card.querySelector("#miniZoomOut");
+  const zoomIn = card.querySelector("#miniZoomIn");
+  const zoomActions = card.querySelector(".miniZoomActions");
+  const windowBar = card.querySelector(":scope > .gameWinBar");
+  const minimizeButton = windowBar?.querySelector(".gameWinMinBtn:not(.miniZoomBtn)");
+  if (zoomActions && windowBar) windowBar.insertBefore(zoomActions, minimizeButton || null);
+
+  const resizeFromButton = (delta) => {
+    prepareFloating(card);
+    const rect = card.getBoundingClientRect();
+    const minW = 220;
+    const maxW = Math.max(minW, Math.min(620, window.innerWidth - rect.left - 14));
+    applyMinimapProportions(card, Math.max(minW, Math.min(rect.width + delta, maxW)));
+    saveWindowPosition(id, card);
+  };
+
+  zoomOut?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    resizeFromButton(-40);
+  });
+  zoomIn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    resizeFromButton(40);
+  });
 
   let resizing = false;
   let startX = 0;

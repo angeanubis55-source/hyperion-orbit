@@ -6,6 +6,7 @@ export function createRadiationSystem(options = {}) {
   const config = {
     dpsPct: Math.max(0, Number(options.dpsPct ?? 0.10)),
     warningDuration: Math.max(0, Number(options.warningDuration ?? 5)),
+    tickInterval: Math.max(0.05, Number(options.tickInterval ?? 0.5)),
     visualSettleDuration: Math.max(0.05, Number(options.visualSettleDuration ?? 1)),
     fadeInSpeed: Math.max(0.01, Number(options.fadeInSpeed ?? 2.4)),
     fadeOutSpeed: Math.max(0.01, Number(options.fadeOutSpeed ?? 0.85)),
@@ -16,6 +17,7 @@ export function createRadiationSystem(options = {}) {
     exposure: 0,
     edgeFade: 0,
     wasDamaging: false,
+    tickAccumulator: 0,
   };
 
   function reset() {
@@ -23,6 +25,7 @@ export function createRadiationSystem(options = {}) {
     state.exposure = 0;
     state.edgeFade = 0;
     state.wasDamaging = false;
+    state.tickAccumulator = 0;
   }
 
   function update(dt, context = {}) {
@@ -37,14 +40,24 @@ export function createRadiationSystem(options = {}) {
 
     if (!state.active) {
       state.exposure = 0;
+      state.tickAccumulator = 0;
       if (state.edgeFade <= 0) state.wasDamaging = false;
       return 0;
     }
 
+    const previousExposure = state.exposure;
     state.exposure += dt;
     if (state.exposure < config.warningDuration) return 0;
     state.wasDamaging = true;
-    return Math.max(0, Number(context.hpMax) || 0) * config.dpsPct * dt;
+    const damagingDt = Math.max(0, state.exposure - Math.max(previousExposure, config.warningDuration));
+    state.tickAccumulator += damagingDt;
+    const tickCount = Math.floor((state.tickAccumulator + 1e-9) / config.tickInterval);
+    if (tickCount <= 0) return 0;
+    state.tickAccumulator -= tickCount * config.tickInterval;
+    return Math.max(0, Number(context.hpMax) || 0)
+      * config.dpsPct
+      * config.tickInterval
+      * tickCount;
   }
 
   function draw(ctx, width, height, nowSeconds = 0) {

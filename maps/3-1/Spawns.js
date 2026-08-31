@@ -189,8 +189,7 @@ export function getZoneSafeModules(WORLD) {
   const baseY = 800;
 
   const modules = [
-    { id: "CENTRE_VRU", x: 9500,   y: 5500,   w: 571, h: 1155, spr: "CENTRE_VRU" }, // Centre
-    { id: "QUEST_VRU", x: 8700, y: 5500, w: 515, h: 728, spr: "QUEST_VRU" },
+    { id: "CENTRE_VRU", x: 9500, y: 5500, w: 571, h: 1155, spr: "CENTRE_VRU", questTerminal: true },
   ];
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

@@ -33,6 +33,19 @@ function rewardLabel(quest) {
   return `${formatInteger(quest.reward.credits)} crédits · ${formatInteger(getQuestExperienceReward(quest))} XP · ${formatInteger(getQuestHonorReward(quest))} honneur`;
 }
 
+export function formatQuestEntityName(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/^npc_/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function objectiveLabel(objective) {
+  return formatQuestEntityName(objective?.label || objective?.type || "Objectif");
+}
+
 export function getQuestTargetImage(quest, collectables, npcTypes) {
   const target = getQuestObjectives(quest)[0];
   const source = target?.kind === "collect"
@@ -58,7 +71,7 @@ export function buildQuestCard(quest, questState) {
     <div class="questObjectives">${objectives.map(objective => {
       const current = Number(progress[objective.id] || 0);
       const percent = Math.min(100, current / objective.amount * 100);
-      return `<div class="questObjective"><div class="questStatus"><span>${objective.label || objective.type}</span><b>${current} / ${objective.amount}</b></div><div class="questProgress"><i style="width:${percent}%"></i></div></div>`;
+      return `<div class="questObjective"><div class="questStatus"><span>${objectiveLabel(objective)}</span><b>${current} / ${objective.amount}</b></div><div class="questProgress"><i style="width:${percent}%"></i></div></div>`;
     }).join("")}</div>
     ${ready ? `<div class="questStatus questComplete">Tous les objectifs sont accomplis</div>` : ""}
     ${actions}
@@ -106,11 +119,10 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
     : prerequisite && !questState.completed.includes(prerequisite.id) ? `Prérequis : termine « ${prerequisite.title} ».`
     : "Mission disponible.";
   const detailHtml = `
-    <div class="questOfferImageWrap"><img class="questOfferImage" src="${getQuestTargetImage(quest, collectables, npcTypes)}" alt="${quest.title}"></div>
     <div class="questTitle">${quest.title}</div><div class="questDescription">${quest.description}</div>
-    <div class="questObjectives">${objectives.map(objective => { const current = accepted ? Number(questState.active[quest.id]?.[objective.id] || 0) : (completed ? objective.amount : 0); return `<div class="questObjective"><div class="questStatus"><span>${objective.label || objective.type}</span><b>${current} / ${objective.amount}</b></div></div>`; }).join("")}</div>
+    <div class="questObjectives">${objectives.map(objective => { const current = accepted ? Number(questState.active[quest.id]?.[objective.id] || 0) : (completed ? objective.amount : 0); return `<div class="questObjective"><div class="questStatus"><span>${objectiveLabel(objective)}</span><b>${current} / ${objective.amount}</b></div></div>`; }).join("")}</div>
     <div class="questReward">Récompense : ${rewardLabel(quest)}</div>
-    <div class="questOfferHelp"><b>Où chercher ?</b><br>${objectives.map(objective => `<b>${objective.label || objective.type} :</b> ${QUEST_HELP[objective.type] || "Explore les secteurs correspondant à cet objectif."}`).join("<br>")}</div>
+    <div class="questOfferHelp"><b>Où chercher ?</b><br>${objectives.map(objective => `<b>${objectiveLabel(objective)} :</b> ${QUEST_HELP[objective.type] || "Explore les secteurs correspondant à cet objectif."}`).join("<br>")}</div>
     <div class="questStatus">${status}</div>
     <button class="questAction${completed ? " questCompletedAction" : accepted ? " questAcceptedAction" : ""}" data-quest-terminal-accept="${quest.id}" ${available ? "" : "disabled"}>${completed ? "Mission terminée ✓" : accepted ? "Mission en cours" : "Accepter cette mission"}</button>`;
   return { selectedQuestId, listHtml, detailHtml };

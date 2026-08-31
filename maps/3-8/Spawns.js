@@ -126,8 +126,7 @@ export function getZoneSafeModules(WORLD) {
   // x,y = CENTRE du module
   // ============================================================
   const modules = [
-    { id: "CENTRE_VRU", x: 9500, y: 3500, w: 571, h: 1155, spr: "CENTRE_VRU" },
-    { id: "QUEST_VRU", x: 8700, y: 3500, w: 515, h: 728, spr: "QUEST_VRU" },
+    { id: "CENTRE_VRU", x: 9500, y: 3500, w: 571, h: 1155, spr: "CENTRE_VRU", questTerminal: true },
   ];
 
   // ============================================================

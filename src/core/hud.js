@@ -15,7 +15,10 @@ export function updateResourceHud(ui, player) {
   setText(ui.hpTxt, `${formatInteger(hp)} / ${formatInteger(hpMax)}`);
   setText(ui.shTxt, `${formatInteger(shield)} / ${formatInteger(shieldMax)}`);
   if (ui.hpBar) ui.hpBar.style.width = `${clamp(hpMax ? player.hp / hpMax * 100 : 0, 0, 100)}%`;
-  if (ui.shBar) ui.shBar.style.width = `${clamp(shieldMax ? player.sh / shieldMax * 100 : 0, 0, 100)}%`;
+  if (ui.shBar) {
+    ui.shBar.style.width = `${clamp(shieldMax ? player.sh / shieldMax * 100 : 0, 0, 100)}%`;
+    if (ui.shBar.parentElement) ui.shBar.parentElement.style.display = shieldMax > 0 ? "" : "none";
+  }
 }
 
 export function updateProgressHud(ui, stats, levelInfo) {

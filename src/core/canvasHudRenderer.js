@@ -6,7 +6,7 @@ import { hpHueColor } from "./rendering.js";
 export function drawToastMessage(context, toast, viewportWidth, viewportHeight) {
   if (!context || !toast) return;
   const progress = toast.dur === Infinity ? 0 : clamp(toast.t / toast.dur, 0, 1);
-  const alpha = 1 - progress;
+  const alpha = toast.fixed ? clamp(toast.alpha ?? 0, 0, 1) : 1 - progress;
   const y = viewportHeight * 0.35 + (1 - progress) * 8;
   const isSafe = toast.fixed && toast.text === "Zone de Non-Agression";
   context.save();
@@ -48,7 +48,7 @@ export function drawTargetLock(context, entity, image, sprite, offsetX, offsetY,
   const x = entity.x + offsetX;
   const y = entity.y + offsetY + (sprite.yOff || 0);
   context.save();
-  context.globalAlpha = 0.85 + Math.sin(time * 8) * 0.1;
+  context.globalAlpha = 0.95;
   context.imageSmoothingEnabled = false;
   context.drawImage(image, x - sprite.w / 2, y - sprite.h / 2, sprite.w, sprite.h);
   context.restore();

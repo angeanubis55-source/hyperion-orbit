@@ -293,6 +293,8 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
 }
 
 #profileOverlay #panel_account.profilePanel.active { overflow-y: auto !important; }
+#profileOverlay #panel_account.profilePanel.active { scrollbar-width: none !important; }
+#profileOverlay #panel_account.profilePanel.active::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
 #profileOverlay #panel_account .accountSettingsGrid {
   flex: 0 0 auto !important;
   grid-auto-rows: minmax(280px, auto) !important;
@@ -466,6 +468,91 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
 #profileOverlay #hangarPreviewTitle { margin: 0 0 8px !important; color: #eefbff !important; font-size: 19px !important; }
 #profileOverlay #hangarPreviewMeta { margin: 0 !important; color: rgba(204,228,241,.62) !important; font-size: 10px !important; line-height: 1.55 !important; }
 
+#profileOverlay .hangarPreviewStage {
+  width: 100% !important;
+  height: 330px !important;
+  position: relative !important;
+  flex: 0 0 330px !important;
+  overflow: hidden !important;
+}
+#profileOverlay .hangarActivePreview,
+#profileOverlay .hangarSelectedPreview {
+  position: absolute !important;
+  left: 50% !important;
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  transform: translateX(-50%) !important;
+  transition: top .42s cubic-bezier(.2,.8,.2,1), transform .42s cubic-bezier(.2,.8,.2,1), opacity .3s ease !important;
+}
+#profileOverlay .hangarActivePreview { top: 43px !important; }
+#profileOverlay .hangarActivePreview #hangarPreviewImage {
+  width: 190px !important;
+  height: 190px !important;
+  margin: 0 0 10px !important;
+  object-fit: contain !important;
+  image-rendering: pixelated !important;
+  transition: width .42s cubic-bezier(.2,.8,.2,1), height .42s cubic-bezier(.2,.8,.2,1) !important;
+}
+#profileOverlay .hangarActivePreview #hangarPreviewTitle,
+#profileOverlay .hangarSelectedPreview #hangarSelectedTitle {
+  margin: 0 !important;
+  color: #eefbff !important;
+  font-size: 17px !important;
+  line-height: 1.15 !important;
+}
+#profileOverlay .hangarSelectedPreview {
+  top: 204px !important;
+  opacity: 0 !important;
+  transform: translate(-50%, 28px) scale(.92) !important;
+  pointer-events: none !important;
+}
+#profileOverlay .hangarSelectedPreview #hangarSelectedImage {
+  width: 112px !important;
+  height: 82px !important;
+  margin: 4px 0 4px !important;
+  object-fit: contain !important;
+  image-rendering: pixelated !important;
+}
+#profileOverlay .hangarSelectedLabel {
+  color: #72e7ff !important;
+  font-size: 8px !important;
+  font-weight: 900 !important;
+  letter-spacing: 1px !important;
+}
+#profileOverlay .hangarFlowArrows {
+  position: absolute !important;
+  top: 132px !important;
+  left: 50% !important;
+  z-index: 3 !important;
+  display: grid !important;
+  gap: 0 !important;
+  color: #72e7ff !important;
+  font: 1000 18px/.55 ui-sans-serif,system-ui !important;
+  opacity: 0 !important;
+  transform: translateX(-50%) !important;
+  transition: opacity .2s ease .16s !important;
+  pointer-events: none !important;
+}
+#profileOverlay .hangarFlowArrows span { opacity: .16; text-shadow: 0 0 9px rgba(105,233,255,.8); }
+#profileOverlay .hangarPreview.isComparing .hangarActivePreview { top: 4px !important; }
+#profileOverlay .hangarPreview.isComparing .hangarActivePreview #hangarPreviewImage { width: 112px !important; height: 96px !important; }
+#profileOverlay .hangarPreview.isComparing .hangarActivePreview #hangarPreviewTitle { font-size: 13px !important; }
+#profileOverlay .hangarPreview.isComparing .hangarSelectedPreview {
+  opacity: 1 !important;
+  transform: translate(-50%, 0) scale(1) !important;
+}
+#profileOverlay .hangarPreview.isComparing .hangarFlowArrows { opacity: 1 !important; }
+#profileOverlay .hangarPreview.isComparing .hangarFlowArrows span:nth-child(1) { animation: hangarArrowPulse 1.2s linear infinite; }
+#profileOverlay .hangarPreview.isComparing .hangarFlowArrows span:nth-child(2) { animation: hangarArrowPulse 1.2s .2s linear infinite; }
+#profileOverlay .hangarPreview.isComparing .hangarFlowArrows span:nth-child(3) { animation: hangarArrowPulse 1.2s .4s linear infinite; }
+
+@keyframes hangarArrowPulse {
+  0%, 16%, 72%, 100% { opacity: .14; filter: none; }
+  28%, 52% { opacity: 1; filter: drop-shadow(0 0 5px #72e7ff); }
+}
+
 #profileOverlay .hangarWorkspace > #hangarGrid.profileGrid {
   min-width: 0 !important;
   min-height: 0 !important;
@@ -629,7 +716,6 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #profileOverlay .moduleHistoryRow time { color: rgba(204,228,241,.38) !important; font-size: 8px !important; white-space: nowrap !important; }
 #profileOverlay .moduleHistoryEmpty { padding: 24px !important; color: rgba(204,228,241,.45) !important; font-size: 10px !important; text-align: center !important; }
 
-#profileOverlay * { scrollbar-width: thin !important; scrollbar-color: #285a72 #07131f !important; }
 
 @media (max-width: 900px) {
   #profileOverlay #profileWindow.gameWindow { width: calc(100vw - 16px) !important; height: calc(100vh - 24px) !important; min-width: 0 !important; grid-template-columns: 240px minmax(0,1fr) !important; }

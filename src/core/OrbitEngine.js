@@ -131,6 +131,8 @@ function applyRadiation(dt) {
   if (dmg <= 0) return;
   resetRepairCooldown();
   player.hp -= dmg;
+  const shown = Math.max(1, Math.round(dmg));
+  addPlayerCombatFloat(shown, "rgba(255,80,100,0.95)");
 
   if (player.hp <= 0) {
     player.hp = 0;
@@ -233,12 +235,10 @@ const ui = {
   pulsePrice: document.getElementById("pulsePrice"),
 
   fpsTxt: document.getElementById("fpsTxt"),
-  perfDetails: document.getElementById("perfDetails"),
 
   boxWave: document.getElementById("boxWave"),
   boxMeta: document.getElementById("boxMeta"),
   boxVitals: document.getElementById("boxVitals"),
-  boxPerformance: document.getElementById("boxPerformance"),
   questList: document.getElementById("questList"),
   questIntro: document.getElementById("questIntro"),
   questTabs: document.getElementById("questTabs"),
@@ -695,8 +695,7 @@ function registerHudWindows() {
 
   reg("boxWave", "Vagues / Kills", "🌊");
   reg("boxMeta", "Stats joueur", "📊");
-  reg("boxVitals", "Vie / Bouclier", "❤️");
-  reg("boxPerformance", "Performances", "📈");
+  reg("boxVitals", "État du vaisseau", "❤️");
   reg("minimap", "Mini-carte", "🗺️");
   reg("settingsWindow", "Paramètres", "⚙️", false);
   reg("questWindow", "Missions", "❗", false);
@@ -910,7 +909,15 @@ if (btn?.click?.src) {
 }
 
 function startZonePortalJump(ptl) {
-  if (!ptl || ptl.jumping) return;
+  if (!ptl || ptl.jumping) return false;
+
+  const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").trim().toLowerCase();
+  const combatRestrictedMap = /^[123]-4\.1$/.test(mapId) || mapId === "4-4.123" || mapId === "4-5";
+  const combatCooldown = Math.max(Number(player.combatT) || 0, Number(player.attackedT) || 0);
+  if (combatRestrictedMap && combatCooldown > 0) {
+    showToast(`Portail verrouillé — attends ${Math.ceil(combatCooldown)} s après le combat`, 1.4);
+    return false;
+  }
 
   // ✅ on mémorise l'état visuel actuel du portail
   // comme ça le jump part de l'état open sans cassure
@@ -949,6 +956,7 @@ function startZonePortalJump(ptl) {
   mapPortalLock = Math.max(mapPortalLock, ptl.jumpDur + 0.25);
 
   showToast("Saut en cours...", ptl.jumpDur);
+  return true;
 }
 
 function finishZonePortalJump(ptl) {
@@ -1091,6 +1099,44 @@ function renderQuestWindow() {
   if (ui.questIntro) ui.questIntro.textContent = view.intro;
   if (ui.questTabs) ui.questTabs.innerHTML = view.tabsHtml;
   ui.questList.innerHTML = view.contentHtml;
+  fitQuestWindowToContent();
+}
+
+let questWindowFitFrame = 0;
+function fitQuestWindowToContent() {
+  const questWindow = document.getElementById("questWindow");
+  if (!questWindow || questWindow.style.display === "none") return;
+  cancelAnimationFrame(questWindowFitFrame);
+  questWindowFitFrame = requestAnimationFrame(() => {
+    if (questWindow.style.display === "none") return;
+    const bar = questWindow.querySelector(":scope > .gameWinBar");
+    const intro = questWindow.querySelector("#questIntro");
+    const tabs = questWindow.querySelector("#questTabs");
+    const list = questWindow.querySelector("#questList");
+    if (!list) return;
+
+    list.style.overflowY = "visible";
+    list.style.flex = "0 0 auto";
+    const chromeHeight = (bar?.offsetHeight || 30) + (intro?.offsetHeight || 0) + (tabs?.offsetHeight || 0);
+    const desiredHeight = chromeHeight + list.scrollHeight + 2;
+    const top = Math.max(8, questWindow.getBoundingClientRect().top || 8);
+    const availableHeight = Math.max(180, window.innerHeight - top - 12);
+    const nextHeight = Math.min(desiredHeight, availableHeight);
+    const heightValue = `${Math.ceil(nextHeight)}px`;
+    const overflowValue = desiredHeight > availableHeight + 1 ? "auto" : "visible";
+    const flexValue = overflowValue === "auto" ? "1 1 auto" : "0 0 auto";
+    if (questWindow.style.height !== heightValue) questWindow.style.height = heightValue;
+    if (list.style.overflowY !== overflowValue) list.style.overflowY = overflowValue;
+    if (list.style.flex !== flexValue) list.style.flex = flexValue;
+  });
+}
+
+window.addEventListener("resize", fitQuestWindowToContent);
+const questWindowElement = document.getElementById("questWindow");
+if (questWindowElement) {
+  new MutationObserver(() => {
+    if (questWindowElement.style.display !== "none") fitQuestWindowToContent();
+  }).observe(questWindowElement, { attributes: true, attributeFilter: ["class", "style"] });
 }
 
 let selectedQuestOfferId = null;
@@ -1276,7 +1322,7 @@ function saveShieldForConfig(configNo = getActiveConfigNo()) {
 
   CONFIG_SHIELDS[cfg] = {
     sh: Math.max(0, Math.min(player.shMax || 0, Number(player.sh || 0))),
-    shMax: Math.max(1, Number(player.shMax || 1)),
+    shMax: Math.max(0, Number(player.shMax) || 0),
   };
 }
 
@@ -1410,7 +1456,7 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
     Math.floor(shipBaseHP * (1 + (stats.bonusHPPct || 0) / 100))
   );
 
-  player.shMax = Math.max(1, Math.floor(stats.bonusShield || 1));
+  player.shMax = Math.max(0, Math.floor(Number(stats.bonusShield) || 0));
 
   if (!player.dead) {
     // ✅ HP reste partagé
@@ -1596,11 +1642,16 @@ function showToast(text, dur = 2) {
 }
 
 function showToastFixed(text) {
-  toast = { text: String(text ?? ""), t: 0, dur: Infinity, fixed: true };
+  const value = String(text ?? "");
+  if (toast?.fixed && toast.text === value) {
+    toast.exiting = false;
+    return;
+  }
+  toast = { text: value, t: 0, dur: Infinity, fixed: true, alpha: 0, exiting: false };
 }
 
 function clearToastFixed() {
-  if (toast && toast.fixed) toast = null;
+  if (toast?.fixed) toast.exiting = true;
 }
 
 function setCenterMsg(show, title, body, hint) {
@@ -2213,7 +2264,7 @@ function drawExplosions(ox, oy) {
 // ============================================================
 // BASE / PLAYER
 // ============================================================
-const REPAIR = { cooldown: 6.0, ratePct: 0.05 };
+const REPAIR = { cooldown: 6.0, ratePct: 0.05, tickInterval: 0.5 };
 
 const BASE_RUN = {
   range: 700,
@@ -2240,6 +2291,7 @@ const player = {
   r: 14,
   angle: 0,
   combatT: 0,
+  attackedT: 0,
 
   hpMax: 0,
   hp: 0,
@@ -2255,6 +2307,7 @@ const player = {
 
   shPen: 0,
   repairT: REPAIR.cooldown,
+  repairTickT: 0,
 
   baseDamage: 0,
   baseFireRate: 0,
@@ -2323,7 +2376,7 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
   player.hpMax = Math.max(1, Math.floor(shipBaseHP * (1 + (stats.bonusHPPct || 0) / 100)));
   player.hp = player.hpMax;
 
-  player.shMax = Math.max(1, Math.floor(stats.bonusShield || 1));
+  player.shMax = Math.max(0, Math.floor(Number(stats.bonusShield) || 0));
   player.sh = player.shMax;
 
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
@@ -2340,6 +2393,7 @@ player.accel = BASE_RUN.accel;
 player.friction = BASE_RUN.friction;
 
   player.repairT = REPAIR.cooldown;
+  player.repairTickT = 0;
   player.altShot = false;
 
   player.ammo = { ...BASE_RUN.ammo };
@@ -2424,19 +2478,39 @@ if (ui.btnSAB) {
 // ============================================================
 function resetRepairCooldown() {
   player.repairT = 0;
+  player.repairTickT = 0;
 }
 
 function tickRepair(dt) {
-  if (player.dead) return;
+  if (player.dead) {
+    player.repairTickT = 0;
+    return;
+  }
 
+  const previousRepairT = player.repairT;
   player.repairT = Math.min(REPAIR.cooldown, player.repairT + dt);
+  if (player.repairT < REPAIR.cooldown) return;
 
-  if (player.repairT >= REPAIR.cooldown) {
-    const hpAmt = player.hpMax * REPAIR.ratePct * dt;
-    const shAmt = player.shMax * REPAIR.ratePct * dt;
+  const repairingDt = previousRepairT >= REPAIR.cooldown
+    ? dt
+    : Math.max(0, dt - (REPAIR.cooldown - previousRepairT));
+  player.repairTickT += repairingDt;
+  const tickCount = Math.floor((player.repairTickT + 1e-9) / REPAIR.tickInterval);
+  if (tickCount <= 0) return;
+  player.repairTickT -= tickCount * REPAIR.tickInterval;
 
-    if (player.hp < player.hpMax) player.hp = Math.min(player.hpMax, player.hp + hpAmt);
-    if (player.sh < player.shMax) player.sh = Math.min(player.shMax, player.sh + shAmt);
+  const oldHp = player.hp;
+  const oldSh = player.sh;
+  player.hp = Math.min(player.hpMax, player.hp + player.hpMax * REPAIR.ratePct * REPAIR.tickInterval * tickCount);
+  player.sh = Math.min(player.shMax, player.sh + player.shMax * REPAIR.ratePct * REPAIR.tickInterval * tickCount);
+
+  const hpGain = Math.round(player.hp - oldHp);
+  const shGain = Math.round(player.sh - oldSh);
+  if (hpGain > 0) {
+    addPlayerCombatFloat(hpGain, "rgba(80,255,125,0.98)", "+");
+  }
+  if (shGain > 0) {
+    addPlayerCombatFloat(shGain, "rgba(70,180,255,0.98)", "+");
   }
 }
 
@@ -2674,7 +2748,7 @@ function updatePortalButtonCursor(clientX, clientY) {
 }
 
 function isQuestModule(module) {
-  return String(module?.spr || "").startsWith("QUEST_");
+  return module?.questTerminal === true || String(module?.spr || "").startsWith("QUEST_");
 }
 
 function getQuestButtonPosition(module) {
@@ -3461,7 +3535,7 @@ function addFloatText(x, y, n, color, opts = {}) {
     vy: vy0,
     t: 0,
     life: o.life,
-    text: DMG_FMT.format(Math.round(n)),
+    text: o.text ?? DMG_FMT.format(Math.round(n)),
     color,
     size: o.size,
     pop: o.pop,
@@ -3470,6 +3544,22 @@ function addFloatText(x, y, n, color, opts = {}) {
     weight: o.weight,
     impact: o.impact,
   }, ENTITY_LIMITS.floatTexts);
+}
+
+function addPlayerCombatFloat(amount, color, prefix = "") {
+  const shown = Math.max(1, Math.round(Number(amount) || 0));
+  const textOffsetX = (Math.random() - 0.5) * 60;
+  const textOffsetY = -90 - Math.random() * 20;
+  addFloatText(player.x + textOffsetX, player.y + textOffsetY, shown, color, {
+    text: `${prefix}${DMG_FMT.format(shown)}`,
+    size: 18,
+    pop: 0.3,
+    shake: 0.6,
+    life: 1,
+    glow: 1,
+    weight: 900,
+    impact: true,
+  });
 }
 
 function spawnSpark(x, y, big = false) {
@@ -4397,23 +4487,11 @@ function hurtPlayer(amount) {
 
   resetRepairCooldown();
   player.iFrames = 0.1;
+  player.attackedT = 5;
 
   damagePlayerLayers(player, amount);
 
-  const shown = Math.max(1, Math.round(amount));
-
-  const offsetX = (Math.random() - 0.5) * 60;
-  const offsetY = -90 - Math.random() * 20;
-
-  addFloatText(player.x + offsetX, player.y + offsetY, shown, "rgba(255,80,100,0.95)", {
-    size: 18,
-    pop: 0.3,
-    shake: 0.6,
-    life: 1,
-    glow: 1.0,
-    weight: 900,
-    impact: true
-  });
+  addPlayerCombatFloat(amount, "rgba(255,80,100,0.95)");
 
   if (player.hp <= 0) {
     player.hp = 0;
@@ -5100,11 +5178,34 @@ const DEFAULT_PORTAL_RADIUS = 450;
 
 const SAFE_ZONE_MARGIN = 450;
 
+function getCurrentZoneMapId() {
+  return String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").trim().toLowerCase();
+}
+
+function portalProvidesSafety(portal) {
+  const mapId = getCurrentZoneMapId();
+  if (/^[123]-4\.1$/.test(mapId) || mapId === "4-4.123" || mapId === "4-5") return false;
+  const sectorMatch = mapId.match(/^([123])-/);
+  const playerSector = getFaction((account.user || getCurrentUserFull())?.faction).sector;
+  if (sectorMatch && sectorMatch[1] !== playerSector) return false;
+  const destination = String(portal?.toMap || "").trim().toLowerCase();
+  return !["alpha", "beta", "gamma"].includes(destination);
+}
+
+function baseProvidesSafety() {
+  const center = zoneSafe?.modules?.find(module => String(module?.id || "").startsWith("CENTRE_"));
+  if (!center) return false;
+  const owner = String(center.id).slice("CENTRE_".length).toLowerCase();
+  if (owner === "pirates" || owner === "pirate") return true;
+  return owner === getFaction((account.user || getCurrentUserFull())?.faction).id;
+}
+
 function npcIsInSafeZone(e) {
   if (!isZoneMap) return false;
   
   if (zonePortals && zonePortals.length) {
     for (const p of zonePortals) {
+      if (!portalProvidesSafety(p)) continue;
       const rr = DEFAULT_PORTAL_RADIUS + SAFE_ZONE_MARGIN;
       if (dist2(e.x, e.y, p.x, p.y) <= rr * rr) {
         return true;
@@ -5112,7 +5213,7 @@ function npcIsInSafeZone(e) {
     }
   }
 
-  if (zoneSafe?.zone?.kind === "circle") {
+  if (baseProvidesSafety() && zoneSafe?.zone?.kind === "circle") {
     const z = zoneSafe.zone;
     const rr = (z.r || 0) + SAFE_ZONE_MARGIN;
     if (dist2(e.x, e.y, z.x, z.y) <= rr * rr) {
@@ -5413,6 +5514,12 @@ jumpBaseFade: 1,
       const fallbackSpawn = getFactionFallbackSpawn();
       player.x = clamp(Number(position.x) || fallbackSpawn.x, 80, WORLD.w - 80);
       player.y = clamp(Number(position.y) || fallbackSpawn.y, 80, WORLD.h - 80);
+      if (ov.respawn === true) {
+        player.hp = Math.max(1, Math.ceil(player.hpMax * 0.1));
+        player.sh = player.shMax > 0 ? Math.max(1, Math.ceil(player.shMax * 0.1)) : 0;
+        player.repairT = Math.max(0, REPAIR.cooldown - 5);
+        player.repairTickT = 0;
+      }
       spawnedFromPortal = true;
       console.log(`[RESPAWN] Override spawn: ${player.x}, ${player.y} on ${currentMap}`);
     }
@@ -5540,7 +5647,7 @@ function getNearestPortalTo(x, y) {
 function respawnBaseGate() {
   const targetMap = getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__, { gate: true });
   const baseSpawn = getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction);
-  setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn });
+  setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn, respawn: true });
 
   const cur = window.__CURRENT_MAP_ID__ || "1-1";
 
@@ -5555,7 +5662,7 @@ function respawnBaseGate() {
 function respawnBase() {
   const targetMap = getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, lastDeathPos.map || window.__CURRENT_MAP_ID__);
   const baseSpawn = getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction);
-  setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn });
+  setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn, respawn: true });
   showRespawnOverlay(false);
   setCenterMsg(false);
 
@@ -5577,7 +5684,7 @@ function respawnNearestPortal() {
     return;
   }
 
-  setRespawnOverride({ map: curMap, x: p.x, y: p.y });
+  setRespawnOverride({ map: curMap, x: p.x, y: p.y, respawn: true });
   showRespawnOverlay(false);
   setCenterMsg(false);
   resetRun({ randomSpawn: false });
@@ -5590,6 +5697,7 @@ function respawnHere() {
     map: curMap,
     x: lastDeathPos.x,
     y: lastDeathPos.y,
+    respawn: true,
   });
 
   showRespawnOverlay(false);
@@ -6334,12 +6442,13 @@ function playerIsInSafeZone() {
 
   if (zonePortals?.length) {
     for (const p of zonePortals) {
+      if (!portalProvidesSafety(p)) continue;
       const rr = DEFAULT_PORTAL_RADIUS;
       if (dist2(player.x, player.y, p.x, p.y) <= rr * rr) return true;
     }
   }
 
-  if (zoneSafe?.zone?.kind === "circle") {
+  if (baseProvidesSafety() && zoneSafe?.zone?.kind === "circle") {
     const z = zoneSafe.zone;
     if (dist2(player.x, player.y, z.x, z.y) <= (z.r || 0) * (z.r || 0)) return true;
   }
@@ -6475,6 +6584,7 @@ function update(dt) {
   if (paused) return;
   rebuildEnemyIndex();
   player.combatT = Math.max(0, (player.combatT || 0) - dt);
+  player.attackedT = Math.max(0, (player.attackedT || 0) - dt);
 
   fireCooldown = Math.max(0, fireCooldown - dt);
   laserCd = Math.max(0, laserCd - dt);
@@ -6506,7 +6616,11 @@ if (startHintT > 0) {
 
   if (toast) {
     toast.t += dt;
-    if (toast.dur !== Infinity && toast.t >= toast.dur) toast = null;
+    if (toast.fixed) {
+      const direction = toast.exiting ? -1 : 1;
+      toast.alpha = clamp((toast.alpha ?? 0) + direction * dt * 2.8, 0, 1);
+      if (toast.exiting && toast.alpha <= 0) toast = null;
+    } else if (toast.t >= toast.dur) toast = null;
   }
 
   if (miniPing) {
@@ -6599,7 +6713,7 @@ updatePlayerVelocity(player, { x: mx, y: my }, dt);
       safeZoneX = near.x;
       safeZoneY = near.y;
       safeZoneR = DEFAULT_PORTAL_RADIUS;
-      safeZoneActive = (player.combatT <= 0 && !attackActive);
+      safeZoneActive = portalProvidesSafety(near) && (player.combatT <= 0 && !attackActive);
 
       if (
   near.autoOpen &&
@@ -6665,7 +6779,7 @@ if (
         )
       );
 
-      if (inModules) {
+      if (inModules && baseProvidesSafety()) {
         safeZoneActive = (player.combatT <= 0 && !attackActive);
         if (safeZoneActive) showToastFixed("Zone de Non-Agression");
         else clearToastFixed();
@@ -7657,9 +7771,6 @@ updateConfigButtons();
   if (ui.fpsTxt) {
     const perf = performanceMonitor.snapshot();
     ui.fpsTxt.textContent = String(fpsValue || perf.fps || 0);
-    if (ui.perfDetails) {
-      ui.perfDetails.textContent = `Moy. ${perf.averageMs.toFixed(1)} ms · P95 ${perf.p95Ms.toFixed(1)} ms · Lentes ${perf.longFrames}`;
-    }
   }
 }
 
@@ -7990,7 +8101,56 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   return true;
 }
 
-window.__ORBIT_ENGINE__ = { switchMap: switchMapConfig };
+const HANGAR_ACTION_DELAY_MS = 5000;
+const HANGAR_SWITCH_TIME_KEY = "orbit_hangar_last_switch_at";
+
+function playerIsInBaseZone() {
+  const zone = zoneSafe?.zone;
+  return !!(zone?.kind === "circle"
+    && dist2(player.x, player.y, zone.x, zone.y) <= (zone.r || 0) * (zone.r || 0));
+}
+
+function getHangarAccess() {
+  const now = Date.now();
+  const lastSwitchAt = Math.max(0, Number(sessionStorage.getItem(HANGAR_SWITCH_TIME_KEY)) || 0);
+  const switchCooldownMs = Math.max(0, HANGAR_ACTION_DELAY_MS - (now - lastSwitchAt));
+  const attackedCooldownMs = Math.max(0, Math.ceil((player.attackedT || 0) * 1000));
+  const inNonAggressionZone = !!(safeZoneActive && playerIsInSafeZone());
+  const currentMap = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+  const factionSector = getFaction((account.user || getCurrentUserFull())?.faction).sector;
+  const equipmentMaps = new Set([`${factionSector}-1`, `${factionSector}-8`, "5-2"]);
+  const onEquipmentMap = equipmentMaps.has(currentMap);
+  const inEquipmentBase = onEquipmentMap && playerIsInBaseZone();
+
+  let activationError = "";
+  if (!inNonAggressionZone) activationError = "Place-toi dans une zone de non-agression pour changer de vaisseau.";
+  else if (attackedCooldownMs > 0) activationError = `Attends ${Math.ceil(attackedCooldownMs / 1000)} s après la dernière attaque reçue.`;
+  else if (switchCooldownMs > 0) activationError = `Attends ${Math.ceil(switchCooldownMs / 1000)} s avant un nouveau changement de vaisseau.`;
+
+  let equipmentError = "";
+  if (!onEquipmentMap) equipmentError = `L'équipement est disponible uniquement sur les bases ${factionSector}-1, ${factionSector}-8 ou 5-2.`;
+  else if (!inEquipmentBase) equipmentError = "Rapproche-toi de la base centrale pour modifier l'équipement.";
+
+  return {
+    canActivate: !activationError,
+    activationError,
+    canEquip: !equipmentError,
+    equipmentError,
+    attackedCooldownMs,
+    switchCooldownMs,
+    currentMap,
+  };
+}
+
+function markHangarChanged() {
+  sessionStorage.setItem(HANGAR_SWITCH_TIME_KEY, String(Date.now()));
+}
+
+window.__ORBIT_ENGINE__ = {
+  switchMap: switchMapConfig,
+  getHangarAccess,
+  markHangarChanged,
+};
 
 // ✅ Sauvegarde d'urgence avant de quitter la map (appelé par main.js via __GO_TO_MAP__)
 window.__SAVE_BEFORE_LEAVE__ = () => {
