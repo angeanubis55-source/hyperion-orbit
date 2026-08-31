@@ -2,6 +2,8 @@
 
 import { clamp } from "./collision.js";
 
+export const NPC_DIRECT_SPEED_FACTOR = 0.75;
+
 export function computeNpcSteering(entity, distance, nx, ny, ai, deltaTime, closeBrake = 0.7) {
   const tangentX = -ny * ai.dir;
   const tangentY = nx * ai.dir;
@@ -13,9 +15,6 @@ export function computeNpcSteering(entity, distance, nx, ny, ai, deltaTime, clos
   }
 
   if (distance < ai.minR) {
-    const brake = Math.pow(closeBrake, deltaTime * 60);
-    entity.vx *= brake;
-    entity.vy *= brake;
     if (ai.mode === "hold" || ai.mode === "pause" || ai.pauseT > 0) return { mxv: 0, myv: 0 };
     const sidePower = ai.mode === "drift" ? 0.25 : 0.55;
     const wobble = Math.sin(entity.wobble * 2.2 + ai.wobbleSeed) * 0.2;
@@ -31,4 +30,18 @@ export function computeNpcSteering(entity, distance, nx, ny, ai, deltaTime, clos
     mxv: tangentX * (orbitPower + wobble) + nx * pull,
     myv: tangentY * (orbitPower + wobble) + ny * pull,
   };
+}
+
+export function setNpcVelocity(entity, directionX, directionY, speed) {
+  const maxSpeed = Math.max(0, Number(speed) || 0) * NPC_DIRECT_SPEED_FACTOR;
+  const length = Math.hypot(directionX, directionY);
+  if (!length || !maxSpeed) {
+    entity.vx = 0;
+    entity.vy = 0;
+    return;
+  }
+
+  const scale = maxSpeed * Math.min(1, length) / length;
+  entity.vx = directionX * scale;
+  entity.vy = directionY * scale;
 }

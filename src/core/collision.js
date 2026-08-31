@@ -25,6 +25,18 @@ export function segCircleHit(ax, ay, bx, by, cx, cy, radius) {
   return dist2(closestX, closestY, cx, cy) <= radius * radius;
 }
 
+export function movingCircleHit(projectileStart, projectileEnd, targetStart, targetEnd, radius) {
+  return segCircleHit(
+    projectileStart.x - targetStart.x,
+    projectileStart.y - targetStart.y,
+    projectileEnd.x - targetEnd.x,
+    projectileEnd.y - targetEnd.y,
+    0,
+    0,
+    radius,
+  );
+}
+
 export function circleRectResolve(px, py, radius, rect) {
   if (!rect) return null;
 

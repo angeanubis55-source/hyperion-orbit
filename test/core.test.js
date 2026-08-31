@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { escapeHtml } from "../src/core/dom.js";
 import { DEFAULT_MAP_ID, MAP_LOADERS, normalizeMapId } from "../src/core/mapRegistry.js";
-import { clamp, circleRectResolve, dist2, segCircleHit } from "../src/core/collision.js";
+import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "../src/core/collision.js";
 import { createKeyboardState, createPointerState } from "../src/core/input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "../src/core/combat.js";
 import { createSpatialPairIndex, forEachNearbyPair, rebuildIdIndex } from "../src/core/spatialIndex.js";
@@ -13,7 +13,7 @@ import { addProjectile, advanceProjectile, createProjectile, removeProjectile } 
 import { createWaveSpawnState } from "../src/core/waves.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../src/core/hud.js";
 import { createPerformanceMonitor } from "../src/core/performanceMonitor.js";
-import { computeNpcSteering } from "../src/core/npcAI.js";
+import { computeNpcSteering, NPC_DIRECT_SPEED_FACTOR, setNpcVelocity } from "../src/core/npcAI.js";
 import { getNpcSensorRanges, isNpcWithinSensor, shouldDetectNpc } from "../src/core/npcSensors.js";
 import { shouldRunNpcFrame } from "../src/core/npcActivity.js";
 import { pushBounded } from "../src/core/boundedCollection.js";
@@ -31,7 +31,7 @@ import { buildQuestJournalView, buildQuestTerminalView } from "../src/core/quest
 import { drawMoveTargetMarker, drawPlayerStatus, drawToastMessage } from "../src/core/canvasHudRenderer.js";
 import { renderMinimap } from "../src/core/minimapRenderer.js";
 import { drawBackgroundLayerSet, drawParallaxStarfield, drawWallLayer } from "../src/core/worldLayerRenderer.js";
-import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "../src/core/frameSystems.js";
+import { advancePlayerToTarget, attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "../src/core/frameSystems.js";
 import { ADMIN_RANK, PILOT_RANKS, calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor } from "../src/core/progression.js";
 import { formatInteger } from "../src/core/numberFormat.js";
 import { COLLECTABLE_SPAWN, COLLECTABLE_TYPES } from "../src/data/collectables.js";
@@ -233,6 +233,9 @@ test("les systèmes de frame bornent le mouvement et nettoient les effets expir�
   const player = { x: 0, y: 0, vx: 0, vy: 0, baseSpeed: 100, dead: false };
   updatePlayerVelocity(player, { x: 10, y: 0 }, 1);
   assert.ok(Math.hypot(player.vx, player.vy) <= 100);
+  assert.equal(player.vx, 100);
+  updatePlayerVelocity(player, { x: 0, y: 0 }, 0.016);
+  assert.deepEqual({ vx: player.vx, vy: player.vy }, { vx: 0, vy: 0 });
   const effects = [{ t: 0.2, life: 0.25 }, { t: 0, life: 1 }];
   tickLifetimeItems(effects, 0.1, item => item.life);
   assert.equal(effects.length, 1);
@@ -244,6 +247,15 @@ test("les systèmes de frame bornent le mouvement et nettoient les effets expir�
   attractPickups(pickups, player, 0.016, item => { reward += item.credits; });
   assert.equal(pickups.length, 0);
   assert.equal(reward, 20);
+});
+
+test("le joueur s'arrête exactement sur le point cliqué sans le dépasser", () => {
+  const player = { x: 95, y: 50, vx: 200, vy: 0, dead: false };
+  const target = { active: true, x: 100, y: 50 };
+  const arrived = advancePlayerToTarget(player, target, 0.033);
+  assert.equal(arrived, true);
+  assert.deepEqual({ x: player.x, y: player.y, vx: player.vx, vy: player.vy }, { x: 100, y: 50, vx: 0, vy: 0 });
+  assert.equal(target.active, false);
 });
 
 test("la progression calcule les niveaux et détecte les passages de niveau", () => {
@@ -350,6 +362,13 @@ test("les primitives de collision gèrent segments et distances", () => {
   assert.equal(segCircleHit(0, 0, 10, 0, 5, 1, 2), true);
   assert.equal(segCircleHit(0, 0, 10, 0, 5, 3, 2), false);
   assert.equal(segCircleHit(0, 0, 0, 0, 1, 0, 1), true);
+  assert.equal(movingCircleHit(
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 50, y: -10000 },
+    { x: 50, y: 10000 },
+    5,
+  ), true);
 });
 
 test("un cercle est repoussé même si son centre est dans un mur", () => {
@@ -555,7 +574,13 @@ test("l’IA poursuit de loin et orbite sans reculer de près", () => {
   const close = computeNpcSteering(entity, 50, 1, 0, ai, 1 / 60);
   assert.equal(Math.abs(close.mxv), 0);
   assert.ok(Math.abs(close.myv) > 0);
-  assert.ok(entity.vx < 100);
+  assert.equal(entity.vx, 100);
+  setNpcVelocity(entity, close.mxv, close.myv, 300);
+  assert.ok(Math.hypot(entity.vx, entity.vy) <= 300 * NPC_DIRECT_SPEED_FACTOR);
+  setNpcVelocity(entity, 1, 0, 300);
+  assert.equal(entity.vx, 300 * NPC_DIRECT_SPEED_FACTOR);
+  setNpcVelocity(entity, 0, 0, 300);
+  assert.deepEqual({ vx: entity.vx, vy: entity.vy }, { vx: 0, vy: 0 });
 });
 
 test("les capteurs NPC ont un radar plus large que la visibilité", () => {

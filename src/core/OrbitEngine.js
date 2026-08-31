@@ -11,7 +11,7 @@ import {
 } from "./account.js";
 import { computeHangarStats } from "./hangars.js";
 import { findCatalogItem } from "./catalog.js";
-import { clamp, circleRectResolve, dist2, segCircleHit } from "./collision.js";
+import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./collision.js";
 import { createKeyboardState, createPointerState } from "./input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "./combat.js";
 import { createSpatialPairIndex, rebuildIdIndex } from "./spatialIndex.js";
@@ -21,7 +21,7 @@ import { addProjectile, advanceProjectile, removeProjectile } from "./projectile
 import { createWaveSpawnState } from "./waves.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "./hud.js";
 import { createPerformanceMonitor } from "./performanceMonitor.js";
-import { computeNpcSteering } from "./npcAI.js";
+import { computeNpcSteering, setNpcVelocity } from "./npcAI.js";
 import { getNpcSensorRanges, shouldDetectNpc } from "./npcSensors.js";
 import { shouldRunNpcFrame } from "./npcActivity.js";
 import { pushBounded } from "./boundedCollection.js";
@@ -51,7 +51,7 @@ import {
 } from "./canvasHudRenderer.js";
 import { renderMinimap } from "./minimapRenderer.js";
 import { drawBackgroundLayerSet, drawParallaxStarfield, drawWallLayer } from "./worldLayerRenderer.js";
-import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./frameSystems.js";
+import { advancePlayerToTarget, attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./frameSystems.js";
 import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor } from "./progression.js";
 import { formatInteger } from "./numberFormat.js";
 import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, resolveBaseCenter } from "./factions.js";
@@ -3033,7 +3033,7 @@ function getEngineTrailLayout(entity, config) {
   };
 }
 
-function emitEngineTrail(entity, config, dt) {
+function emitEngineTrail(entity, config, dt, ownerNpcId = null) {
   const speed = Math.hypot(entity.vx || 0, entity.vy || 0);
   if (speed < 35 || !isOnScreenWorld(entity.x, entity.y, 180)) {
     entity._trailAcc = 0;
@@ -3058,6 +3058,7 @@ function emitEngineTrail(entity, config, dt) {
       const side = layout.engines === 1 ? 0 : (i / (layout.engines - 1) - 0.5) * 2;
       const jitter = (Math.random() - 0.5) * 4;
       pushBounded(engineTrails, {
+        ownerNpcId,
         x: entity.x - fx * layout.rear + px * (side * layout.spacing + jitter),
         y: entity.y - fy * layout.rear + py * (side * layout.spacing + jitter),
         vx: (entity.vx || 0) * 0.12 - fx * (25 + Math.random() * 30) + px * jitter,
@@ -3073,12 +3074,25 @@ function emitEngineTrail(entity, config, dt) {
 function tickEngineTrails(dt) {
   if (!player.dead) emitEngineTrail(player, ACTIVE_SHIP, dt);
 
+  const lockedNpc = Target.get();
   for (const enemy of enemies) {
-    if (enemy?.hp > 0) emitEngineTrail(enemy, NPC_TYPES[enemy.type], dt);
+    if (enemy?.hp <= 0) continue;
+    if (!shouldDetectNpc(player, enemy, NPC_SENSOR_RANGES.visibility, lockedNpc)) {
+      enemy._trailAcc = 0;
+      continue;
+    }
+    emitEngineTrail(enemy, NPC_TYPES[enemy.type], dt, enemy.id);
   }
 
   for (let i = engineTrails.length - 1; i >= 0; i--) {
     const particle = engineTrails[i];
+    if (particle.ownerNpcId != null) {
+      const owner = getEnemyById(particle.ownerNpcId);
+      if (!owner || owner.hp <= 0 || !shouldDetectNpc(player, owner, NPC_SENSOR_RANGES.visibility, lockedNpc)) {
+        engineTrails.splice(i, 1);
+        continue;
+      }
+    }
     particle.t += dt;
     if (particle.t >= particle.life) {
       engineTrails.splice(i, 1);
@@ -3363,10 +3377,10 @@ function applyNpcSeparation(dt) {
       const bx = ( nx * push - tx * side) * dt;
       const by = ( ny * push - ty * side) * dt;
 
-      a.vx += ax;
-      a.vy += ay;
-      b.vx += bx;
-      b.vy += by;
+      a.x = clamp(a.x + ax, a.r || 18, WORLD.w - (a.r || 18));
+      a.y = clamp(a.y + ay, a.r || 18, WORLD.h - (a.r || 18));
+      b.x = clamp(b.x + bx, b.r || 18, WORLD.w - (b.r || 18));
+      b.y = clamp(b.y + by, b.r || 18, WORLD.h - (b.r || 18));
   });
 }
 
@@ -4997,6 +5011,8 @@ addCappedProjectile(bullets, {
   key: ammoKey,
   side: "player",
   targetId,
+  homing: true,
+  spd: speed,
   volleyId,
   volleySize,
     isSab,
@@ -5029,6 +5045,8 @@ addCappedProjectile(bullets, {
   key: ammoKey,
   side: "player",
   targetId,
+  homing: true,
+  spd: speed,
   volleyId,
   volleySize,
     isSab,
@@ -5046,6 +5064,8 @@ addCappedProjectile(bullets, {
   key: ammoKey,
   side: "player",
   targetId,
+  homing: true,
+  spd: speed,
   volleyId,
   volleySize,
     isSab,
@@ -6438,18 +6458,7 @@ function tickEmpWander(e, dt) {
 
   const spd = e.speed || 320;
 
-  e.vx += nx * spd * dt;
-  e.vy += ny * spd * dt;
-
-e.vx *= Math.pow(0.95, dt * 60);
-e.vy *= Math.pow(0.95, dt * 60);
-
-  const v = Math.hypot(e.vx, e.vy);
-  if (v > spd) {
-    const s = spd / v;
-    e.vx *= s;
-    e.vy *= s;
-  }
+  setNpcVelocity(e, nx, ny, spd);
 
   e.x = clamp(e.x + e.vx * dt, e.r, WORLD.w - e.r);
   e.y = clamp(e.y + e.vy * dt, e.r, WORLD.h - e.r);
@@ -6525,7 +6534,11 @@ if (moveTarget.active && !player.dead) {
   const dy = moveTarget.y - player.y;
   const d = Math.hypot(dx, dy);
 
-  if (d < 18) {
+  if (d <= 0.5) {
+    player.x = moveTarget.x;
+    player.y = moveTarget.y;
+    player.vx = 0;
+    player.vy = 0;
     moveTarget.active = false;
   } else {
     mx = dx / d;
@@ -6536,8 +6549,7 @@ if (moveTarget.active && !player.dead) {
 updatePlayerVelocity(player, { x: mx, y: my }, dt);
 
   if (!player.dead) {
-    player.x = player.x + player.vx * dt;
-    player.y = player.y + player.vy * dt;
+    advancePlayerToTarget(player, moveTarget, dt);
 
     if (isZoneMap && !playerIsOutsideWorld()) {
       resolvePlayerWalls();
@@ -6693,11 +6705,32 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     continue;
   }
 
+  if (b.homing && !b.miss) {
+    const dx = t.x - b.x;
+    const dy = t.y - b.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const baseSpeed = Math.max(120, Number(b.spd) || Math.hypot(b.vx, b.vy) || 120);
+    const targetSpeed = Math.hypot(Number(t.vx) || 0, Number(t.vy) || 0);
+    const chaseSpeed = Math.max(baseSpeed, targetSpeed + baseSpeed);
+    b.vx = dx / distance * chaseSpeed;
+    b.vy = dy / distance * chaseSpeed;
+  }
+
   const step = advanceProjectile(b, dt);
 
   const rr = (t.r || 18) + (b.r || 6);
+  const targetStart = {
+    x: Number.isFinite(t._previousX) ? t._previousX : t.x,
+    y: Number.isFinite(t._previousY) ? t._previousY : t.y,
+  };
 
-  if (segCircleHit(step.oldX, step.oldY, b.x, b.y, t.x, t.y, rr)) {
+  if (movingCircleHit(
+    { x: step.oldX, y: step.oldY },
+    { x: b.x, y: b.y },
+    targetStart,
+    { x: t.x, y: t.y },
+    rr,
+  )) {
     if (b.miss) {
       showPlayerMissOnce(b, t);
 
@@ -6818,6 +6851,8 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     if (!e || e.hp <= 0) continue;
+    e._previousX = e.x;
+    e._previousY = e.y;
     if (!shouldRunNpcFrame({
       player,
       npc: e,
@@ -7040,8 +7075,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
     }
 
     if (frozen) {
-      e.vx *= Math.pow(0.55, dt * 60);
-      e.vy *= Math.pow(0.55, dt * 60);
+      e.vx = 0;
+      e.vy = 0;
     } else {
       if (zoneMode) {
         const cfgE = NPC_TYPES[e.type] || {};
@@ -7073,18 +7108,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             const myv = dym / dm;
 
             const spdE = e.speed || 320;
-e.vx += mxv * spdE * 1.35 * dt;
-e.vy += myv * spdE * 1.35 * dt;
-
-            e.vx *= Math.pow(0.95, dt * 60);
-            e.vy *= Math.pow(0.95, dt * 60);
-
-            const v = Math.hypot(e.vx, e.vy);
-            if (v > spdE) {
-              const s = spdE / v;
-              e.vx *= s; 
-              e.vy *= s;
-            }
+            setNpcVelocity(e, mxv, myv, spdE);
 
             e.x = clamp(e.x + e.vx * dt, e.r, WORLD.w - e.r);
             e.y = clamp(e.y + e.vy * dt, e.r, WORLD.h - e.r);
@@ -7200,18 +7224,7 @@ e.vy += myv * spdE * 1.35 * dt;
         }
 
         const spdE = e.speed;
-e.vx += mxv * spdE * 1.35 * dt;
-e.vy += myv * spdE * 1.35 * dt;
-
-e.vx *= Math.pow(0.95, dt * 60);
-e.vy *= Math.pow(0.95, dt * 60);
-
-        const espN = Math.hypot(e.vx, e.vy);
-        if (espN > spdE) {
-          const s = spdE / espN;
-          e.vx *= s; 
-          e.vy *= s;
-        }
+        setNpcVelocity(e, mxv, myv, spdE);
 
         e.x = clamp(e.x + e.vx * dt, e.r, WORLD.w - e.r);
         e.y = clamp(e.y + e.vy * dt, e.r, WORLD.h - e.r);
@@ -7247,18 +7260,7 @@ e.vy *= Math.pow(0.95, dt * 60);
 
         const spdE = e.speed;
 
-e.vx += mxv * spdE * 1.35 * dt;
-e.vy += myv * spdE * 1.35 * dt;
-
-e.vx *= Math.pow(0.95, dt * 60);
-e.vy *= Math.pow(0.95, dt * 60);
-
-        const esp = Math.hypot(e.vx, e.vy);
-        if (esp > spdE) {
-          const s = spdE / esp;
-          e.vx *= s; 
-          e.vy *= s;
-        }
+        setNpcVelocity(e, mxv, myv, spdE);
       }
     }
 

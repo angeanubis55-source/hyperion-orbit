@@ -4,19 +4,46 @@ export function updatePlayerVelocity(player, direction, dt, options = {}) {
   const maxSpeed = Math.max(10, Number(player.baseSpeed || 0));
   if (!player.dead && (direction.x || direction.y)) {
     const length = Math.hypot(direction.x, direction.y) || 1;
-    const blend = 1 - Math.exp(-Number(options.moveResponse || 6.5) * dt);
-    player.vx += (direction.x / length * maxSpeed - player.vx) * blend;
-    player.vy += (direction.y / length * maxSpeed - player.vy) * blend;
+    player.vx = direction.x / length * maxSpeed;
+    player.vy = direction.y / length * maxSpeed;
   } else {
-    const blend = 1 - Math.exp(-Number(options.stopResponse || 7.5) * dt);
-    player.vx += (0 - player.vx) * blend;
-    player.vy += (0 - player.vy) * blend;
+    player.vx = 0;
+    player.vy = 0;
   }
   const speed = Math.hypot(player.vx, player.vy);
   if (speed > maxSpeed) {
     player.vx *= maxSpeed / speed;
     player.vy *= maxSpeed / speed;
   }
+}
+
+export function advancePlayerToTarget(player, target, dt, options = {}) {
+  if (!player || player.dead) return false;
+  const stepX = Number(player.vx || 0) * dt;
+  const stepY = Number(player.vy || 0) * dt;
+
+  if (target?.active) {
+    const dx = Number(target.x) - Number(player.x);
+    const dy = Number(target.y) - Number(player.y);
+    const distance = Math.hypot(dx, dy);
+    const snapDistance = Math.max(0.01, Number(options.snapDistance ?? 0.5));
+    const forwardStep = distance > 0
+      ? (stepX * dx + stepY * dy) / distance
+      : 0;
+
+    if (distance <= snapDistance || (forwardStep > 0 && forwardStep >= distance)) {
+      player.x = Number(target.x);
+      player.y = Number(target.y);
+      player.vx = 0;
+      player.vy = 0;
+      target.active = false;
+      return true;
+    }
+  }
+
+  player.x = Number(player.x) + stepX;
+  player.y = Number(player.y) + stepY;
+  return false;
 }
 
 export function tickLifetimeItems(items, dt, getLifetime) {
