@@ -7,6 +7,7 @@ import { normalizeQuestState, QUEST_DEFINITIONS } from "../data/quests.js";
 import { calculateRankPoints, getQuestHonorReward } from "./progression.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./factions.js";
 import { compactFitDraft } from "./fitLayout.js";
+import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState, spinGalaxyGate } from "./galaxyGates.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -174,6 +175,7 @@ function ensureUserShape(u) {
   u.credits = Number(u.credits);
   if (!Number.isFinite(u.credits)) u.credits = 0;
   u.credits = Math.max(0, Math.floor(u.credits));
+  u.galaxyGates = normalizeGalaxyGateState(u.galaxyGates);
 
   // starter credits (une seule fois)
   if (!u._starterCreditsGiven) {
@@ -722,6 +724,78 @@ export function buyItem(itemId, requestedQuantity = 1) {
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u, quantity, totalPrice: price };
+}
+
+export function spinCurrentUserGalaxyGate(gateId, count = 1, rng = Math.random) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const result = spinGalaxyGate(u.galaxyGates, gateId, count, u.credits, rng);
+  if (!result.ok) return result;
+  u.galaxyGates = result.state;
+  u.credits = result.credits;
+  for (const [ammoId, amount] of Object.entries(result.rewards.ammo)) {
+    u.ammo[ammoId] = Math.max(0, Number(u.ammo[ammoId]) || 0) + amount;
+  }
+  ensureUserShape(u);
+  saveUser(u);
+  return { ...result, user: u };
+}
+
+export function grantCurrentUserGalaxyEnergy(amount) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const gained = Math.max(0, Math.floor(Number(amount) || 0));
+  u.galaxyGates.energy += gained;
+  saveUser(u);
+  return { ok: true, gained, user: u };
+}
+
+export function consumeCurrentUserGalaxyGate(gateId) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const result = consumeBuiltGalaxyGate(u.galaxyGates, gateId);
+  if (!result.ok) return { ok: false, error: "Cette Galaxy Gate n'est pas construite.", state: result.state };
+  u.galaxyGates = result.state;
+  saveUser(u);
+  return { ok: true, user: u };
+}
+
+export function deployCurrentUserGalaxyGate(gateId) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const result = deployBuiltGalaxyGate(u.galaxyGates, gateId);
+  if (!result.ok) return { ok: false, error: "Cette Gate ne peut pas être envoyée sur la map.", state: result.state };
+  u.galaxyGates = result.state;
+  saveUser(u);
+  return { ok: true, user: u };
+}
+
+export function completeCurrentUserGalaxyGate(gateId) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const result = completeActiveGalaxyGate(u.galaxyGates, gateId);
+  if (!result.ok) return { ok: false, error: "Aucune Galaxy Gate active correspondante." };
+  const reward = GALAXY_GATE_DEFINITIONS[String(gateId || "").toLowerCase()]?.completion;
+  u.galaxyGates = result.state;
+  if (reward) {
+    u.credits += reward.credits;
+    u.stats.exp += reward.exp;
+    u.stats.honor += reward.honor;
+    u.ammo.x4 += reward.x4;
+  }
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, reward };
+}
+
+export function saveCurrentUserGalaxyGateWave(gateId, wave) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const id = String(gateId || "").toLowerCase();
+  if (u.galaxyGates.active !== id) return { ok: false, error: "Galaxy Gate inactive." };
+  u.galaxyGates.activeWave = Math.max(1, Math.floor(Number(wave) || 1));
+  saveUser(u);
+  return { ok: true, user: u };
 }
 
 // ---------------------------

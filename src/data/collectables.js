@@ -30,7 +30,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
   },
 
   Bonus_Box: {
-    name: "Bonus crédits",
+    name: "Bonus aléatoire",
     maps: "*",
     qty: 50,
     spawnBatch: 50,
@@ -52,7 +52,13 @@ export const COLLECTABLE_TYPES = Object.freeze({
       randomStart: true,
       glow: false,
     },
-    rewards: { credits: [1000, 10000] },
+    exclusiveRewards: [
+      { weight: 75, reward: { credits: [5000, 10000] } },
+      { weight: 10, reward: { galaxyEnergy: [1, 3] } },
+      { weight: 8, reward: { ammo: { x2: [20, 60] } } },
+      { weight: 5, reward: { ammo: { x3: [10, 30] } } },
+      { weight: 2, reward: { ammo: { x4: [5, 15] } } },
+    ],
   },
 
   Green_Booty_Box: {

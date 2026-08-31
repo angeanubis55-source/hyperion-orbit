@@ -20,7 +20,7 @@ export const WAVE_PLANS = [
       type: "npc_Cubikon_alpha",
       count: 1,
       onKill: {
-        reward: 10000000,
+        reward: 0,
         tp: { factionBase: true },
       },
     },

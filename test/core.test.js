@@ -19,6 +19,7 @@ import { shouldRunNpcFrame } from "../src/core/npcActivity.js";
 import { pushBounded } from "../src/core/boundedCollection.js";
 import { createRadiationSystem } from "../src/core/radiationSystem.js";
 import { createGatePortalState, getGateReturnMap, positionGateChoicePortals } from "../src/core/gateSystem.js";
+import { consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState, spinGalaxyGate } from "../src/core/galaxyGates.js";
 import { getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, resolveBaseCenter } from "../src/core/factions.js";
 import {
   beginGatePortalJump,
@@ -93,6 +94,53 @@ test("les portails de gate sont centrés et retournent vers la bonne base", () =
   assert.equal(getGateReturnMap("alpha", "1-1"), "1-1");
   assert.equal(getGateReturnMap("beta", "2-1"), "2-1");
   assert.equal(getGateReturnMap("gamma", "3-1"), "3-1");
+});
+
+test("le Galaxy Spinner assemble, sauvegarde et consomme les Gates", () => {
+  const initial = normalizeGalaxyGateState({ energy: 40, parts: { alpha: 33 } });
+  const spin = spinGalaxyGate(initial, "alpha", 1, 0, () => 0.1);
+  assert.equal(spin.ok, true);
+  assert.equal(spin.state.built.alpha, 1);
+  assert.equal(spin.state.parts.alpha, 0);
+  assert.equal(GALAXY_GATE_DEFINITIONS.alpha.requiredParts, 34);
+  const unavailable = consumeBuiltGalaxyGate(spin.state, "alpha");
+  assert.equal(unavailable.ok, false);
+  const deployed = deployBuiltGalaxyGate(spin.state, "alpha");
+  assert.equal(deployed.ok, true);
+  assert.equal(deployed.state.deployed.alpha, true);
+  assert.equal(deployed.state.built.alpha, 0);
+  const consumed = consumeBuiltGalaxyGate(deployed.state, "alpha");
+  assert.equal(consumed.ok, true);
+  assert.equal(consumed.state.built.alpha, 0);
+  assert.equal(consumed.state.active, "alpha");
+  const resumed = consumeBuiltGalaxyGate(consumed.state, "alpha");
+  assert.equal(resumed.ok, true);
+  assert.equal(resumed.state.built.alpha, 0);
+});
+
+test("le Galaxy Spinner limite chaque Gate à une construction", () => {
+  const full = normalizeGalaxyGateState({ energy: 1, parts: { alpha: 33 }, built: { alpha: 2, beta: 1, gamma: 1 } });
+  const spin = spinGalaxyGate(full, "alpha", 1, 0, () => 0.1);
+  assert.equal(spin.state.built.alpha, 1);
+  assert.equal(spin.state.parts.alpha, 0);
+  assert.equal(spin.rewards.parts, 0);
+});
+
+test("le Galaxy Spinner accepte cent tirages et expose les récompenses finales", () => {
+  const initial = normalizeGalaxyGateState({ energy: 100 });
+  const spin = spinGalaxyGate(initial, "alpha", 100, 0, () => 0.5);
+  assert.equal(spin.performed, 100);
+  assert.equal(GALAXY_GATE_DEFINITIONS.alpha.completion.credits, GALAXY_GATE_DEFINITIONS.alpha.completion.exp);
+  assert.equal(GALAXY_GATE_DEFINITIONS.gamma.completion.credits, 12000000);
+});
+
+test("le générateur Ensemble ouvre la Gate dont il obtient une pièce", () => {
+  const rolls = [0.1, 0.5];
+  const spin = spinGalaxyGate(normalizeGalaxyGateState({ energy: 1 }), "alpha", 1, 0, () => rolls.shift() ?? 0.5);
+  assert.equal(spin.state.parts.beta, 1);
+  assert.equal(spin.state.parts.alpha, 0);
+  assert.equal(spin.state.lastOpenedGate, "beta");
+  assert.equal(spin.rewards.partsByGate.beta, 1);
 });
 
 test("la firme détermine les bases normale, supérieure et de Galaxy Gate", () => {
@@ -663,6 +711,8 @@ test("le catalogue des collectables centralise sprites, cartes et récompenses",
   assert.equal(Object.keys(COLLECTABLE_TYPES).length, 6);
   assert.deepEqual(COLLECTABLE_TYPES.Palladium_Ore.maps, ["5-2"]);
   assert.deepEqual(COLLECTABLE_TYPES.Astral_Prime_Box.rewards.ammo.x4, [800, 1100]);
+  assert.equal(COLLECTABLE_TYPES.Bonus_Box.exclusiveRewards.reduce((sum, item) => sum + item.weight, 0), 100);
+  assert.equal(COLLECTABLE_TYPES.Bonus_Box.exclusiveRewards.filter(item => item.reward.ammo).length, 3);
   assert.equal(COLLECTABLE_SPAWN.interval, 1);
 });
 

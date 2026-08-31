@@ -7,8 +7,15 @@ import {
   getActiveHangarId,
   getHangarStateById,
   saveHangarStateById,
-  setActiveHangarConfig
+  setActiveHangarConfig,
+  consumeCurrentUserGalaxyGate,
+  completeCurrentUserGalaxyGate,
+  grantCurrentUserGalaxyEnergy,
+  spinCurrentUserGalaxyGate,
+  saveCurrentUserGalaxyGateWave,
+  deployCurrentUserGalaxyGate,
 } from "./account.js";
+import { GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, GALAXY_SPIN_CREDIT_COST } from "./galaxyGates.js";
 import { computeHangarStats } from "./hangars.js";
 import { findCatalogItem } from "./catalog.js";
 import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./collision.js";
@@ -54,6 +61,8 @@ import { drawBackgroundLayerSet, drawParallaxStarfield, drawWallLayer } from "./
 import { advancePlayerToTarget, attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./frameSystems.js";
 import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor } from "./progression.js";
 import { formatInteger } from "./numberFormat.js";
+import { escapeHtml } from "./dom.js";
+import { appendGameLog, readGameLogs } from "./gameLogStore.js";
 import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, resolveBaseCenter } from "./factions.js";
 import {
   QUEST_DEFINITIONS,
@@ -244,6 +253,30 @@ const ui = {
   questTabs: document.getElementById("questTabs"),
   questOfferDetail: document.getElementById("questOfferDetail"),
   questOfferList: document.getElementById("questOfferList"),
+  galaxyGateWindow: document.getElementById("galaxyGateWindow"),
+  ggEnergy: document.getElementById("ggEnergy"),
+  ggCredits: document.getElementById("ggCredits"),
+  ggTabs: document.getElementById("ggTabs"),
+  ggParts: document.getElementById("ggParts"),
+  ggPortalImage: document.getElementById("ggPortalImage"),
+  ggRewards: document.getElementById("ggRewards"),
+  ggMultiplier: document.getElementById("ggMultiplier"),
+  ggBuilt: document.getElementById("ggBuilt"),
+  ggCompleted: document.getElementById("ggCompleted"),
+  ggWave: document.getElementById("ggWave"),
+  ggCreditCost: document.getElementById("ggCreditCost"),
+  ggResult: document.getElementById("ggResult"),
+  ggHistory: document.getElementById("ggHistory"),
+  ggSpinCount: document.getElementById("ggSpinCount"),
+  ggSpinBtn: document.getElementById("ggSpinBtn"),
+  ggNpcRewardScale: document.getElementById("ggNpcRewardScale"),
+  ggDeployBtn: document.getElementById("ggDeployBtn"),
+  orbitNotifications: document.getElementById("orbitNotifications"),
+  gameLogEntries: document.getElementById("gameLogEntries"),
+  gameLogSearch: document.getElementById("gameLogSearch"),
+  gameLogPrevious: document.getElementById("gameLogPrevious"),
+  gameLogNext: document.getElementById("gameLogNext"),
+  gameLogPage: document.getElementById("gameLogPage"),
 
   honorTxt: document.getElementById("honorTxt"),
   xpTxt: document.getElementById("xpTxt"),
@@ -700,12 +733,105 @@ function registerHudWindows() {
   reg("settingsWindow", "Paramètres", "⚙️", false);
   reg("questWindow", "Missions", "❗", false);
   reg("questOfferWindow", "Terminal de quêtes", "📡", false);
+  reg("galaxyGateWindow", "Galaxy Gates", "✦", false);
+  reg("gameLogWindow", "LOG", "≡", false);
 wireSettingsWindow();
 
   console.log("✅ HUD windows registered");
 }
 
 registerHudWindows();
+
+let selectedGalaxyGateId = null;
+
+function renderGalaxyGateWindow(message = "") {
+  if (!ui.ggTabs) return;
+  const user = getCurrentUserFull();
+  const state = user?.galaxyGates;
+  if (!state) return;
+  if (!selectedGalaxyGateId && GALAXY_GATE_DEFINITIONS[state.lastOpenedGate]) selectedGalaxyGateId = state.lastOpenedGate;
+  const gate = GALAXY_GATE_DEFINITIONS[selectedGalaxyGateId] || GALAXY_GATE_DEFINITIONS.alpha;
+  ui.ggEnergy.textContent = formatInteger(state.energy);
+  ui.ggCredits.textContent = formatInteger(user.credits);
+  const displayedParts = state.built[gate.id] >= GALAXY_GATE_BUILD_LIMIT ? gate.requiredParts : state.parts[gate.id];
+  ui.ggParts.textContent = `${formatInteger(displayedParts)} / ${formatInteger(gate.requiredParts)}`;
+  ui.ggPortalImage.src = gate.image;
+  ui.ggPortalImage.alt = `Portail ${gate.name}`;
+  const completion = gate.completion;
+  ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${formatInteger(completion.exp)} XP</span><span>${formatInteger(completion.honor)} honneur</span><span>${formatInteger(completion.credits)} crédits</span><span>${formatInteger(completion.x4)} UCB-100</span>`;
+  ui.ggNpcRewardScale.innerHTML = `Récompenses des NPC <em>×${gate.rewardScale}</em>`;
+  ui.ggMultiplier.textContent = `x${state.multipliers[gate.id]}`;
+  ui.ggBuilt.textContent = `${formatInteger(state.built[gate.id])} / ${GALAXY_GATE_BUILD_LIMIT}`;
+  ui.ggCompleted.textContent = formatInteger(state.completed[gate.id]);
+  const activeWave = state.active === gate.id ? Math.min(gate.maxWaves, Math.max(1, Number(state.activeWave) || 1)) : 0;
+  ui.ggWave.textContent = `${activeWave} / ${gate.maxWaves}`;
+  ui.ggCreditCost.textContent = formatInteger(GALAXY_SPIN_CREDIT_COST);
+  const isActive = state.active === gate.id;
+  const isDeployed = state.deployed?.[gate.id] === true;
+  const isFull = state.built[gate.id] >= GALAXY_GATE_BUILD_LIMIT;
+  const isEnsembleFull = Object.values(GALAXY_GATE_DEFINITIONS).every(item => state.built[item.id] >= GALAXY_GATE_BUILD_LIMIT);
+  ui.ggSpinBtn.hidden = isEnsembleFull;
+  ui.ggSpinBtn.disabled = isEnsembleFull;
+  ui.ggSpinBtn.style.gridColumn = isFull ? "3" : "4";
+  ui.ggDeployBtn.hidden = !isFull;
+  ui.ggDeployBtn.style.gridColumn = "4";
+  ui.ggDeployBtn.disabled = !isFull || isDeployed || Boolean(state.active);
+  ui.ggDeployBtn.textContent = isActive ? "Gate en cours" : isDeployed ? "Envoyée sur la map" : "Envoyer sur la map";
+  ui.ggTabs.innerHTML = Object.values(GALAXY_GATE_DEFINITIONS).map(item => {
+    const parts = state.built[item.id] >= GALAXY_GATE_BUILD_LIMIT ? item.requiredParts : state.parts[item.id];
+    return `<button type="button" data-gg-gate="${item.id}" class="${item.id === gate.id ? "active" : ""}">${item.name}<small>${parts}/${item.requiredParts}</small></button>`;
+  }).join("");
+  const history = [...state.history].reverse();
+  ui.ggHistory.innerHTML = history.length ? history.map(entry => {
+    const item = GALAXY_GATE_DEFINITIONS[entry.gate];
+    const reward = entry.rewards || {};
+    const ammo = Object.entries(reward.ammo || {}).filter(([, amount]) => amount > 0).map(([id, amount]) => `${formatInteger(amount)} ${id.toUpperCase()}`);
+    const gains = [reward.parts ? `${reward.parts} pièce(s)` : "", reward.built ? `${reward.built} Gate construite` : "", reward.credits ? `${formatInteger(reward.credits)} crédits` : "", reward.energy ? `${reward.energy} énergie` : "", ...ammo].filter(Boolean);
+    return `<div class="ggHistoryRow"><span><b>${item?.name || entry.gate}</b> · ${entry.spins} spin(s)</span><div class="ggHistoryGains">${(gains.length ? gains : ["Multiplicateur augmenté"]).map(gain => `<small>${gain}</small>`).join("")}</div></div>`;
+  }).join("") : `<div class="ggHistoryEmpty">Aucun spin enregistré.</div>`;
+}
+
+ui.ggTabs?.addEventListener("click", event => {
+  const button = event.target.closest("[data-gg-gate]");
+  if (!button) return;
+  selectedGalaxyGateId = button.dataset.ggGate;
+  renderGalaxyGateWindow();
+});
+
+ui.galaxyGateWindow?.addEventListener("click", event => {
+  const deployButton = event.target.closest("[data-gg-deploy]");
+  if (deployButton) {
+    saveProgressNow();
+    const result = deployCurrentUserGalaxyGate(selectedGalaxyGateId);
+    if (!result.ok) return renderGalaxyGateWindow(result.error);
+    account.user = result.user;
+    renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[selectedGalaxyGateId].name} envoyée sur la map.`);
+    return;
+  }
+  const button = event.target.closest("[data-gg-spin]");
+  if (!button) return;
+  saveProgressNow();
+  const result = spinCurrentUserGalaxyGate(selectedGalaxyGateId, Number(ui.ggSpinCount?.value || 1));
+  if (!result.ok) {
+    renderGalaxyGateWindow(result.error);
+    return;
+  }
+  account.user = result.user;
+  if (GALAXY_GATE_DEFINITIONS[result.state.lastOpenedGate]) selectedGalaxyGateId = result.state.lastOpenedGate;
+  player.credits = result.user.credits;
+  player.ammo.x2 = result.user.ammo.x2;
+  player.ammo.x3 = result.user.ammo.x3;
+  player.ammo.x4 = result.user.ammo.x4;
+  updateAmmoUI();
+  const reward = result.rewards;
+  const pieces = reward.parts ? `${reward.parts} pièce(s)` : "";
+  const ammo = Object.entries(reward.ammo).filter(([, amount]) => amount > 0).map(([id, amount]) => `${formatInteger(amount)} ${id.toUpperCase()}`).join(", ");
+  const extras = [reward.credits ? `${formatInteger(reward.credits)} crédits` : "", reward.energy ? `${reward.energy} énergie` : "", reward.built ? `${reward.built} Gate prête` : ""].filter(Boolean).join(", ");
+  renderGalaxyGateWindow([`${result.performed} spin(s)`, pieces, ammo, extras].filter(Boolean).join(" · "));
+  window.dispatchEvent(new CustomEvent("orbit:galaxy-gates"));
+});
+
+renderGalaxyGateWindow();
 
 // ============================================================
 // Helpers
@@ -919,6 +1045,17 @@ function startZonePortalJump(ptl) {
     return false;
   }
 
+  const gateId = String(ptl.toMap || "").toLowerCase();
+  if (GALAXY_GATE_DEFINITIONS[gateId]) {
+    const access = consumeCurrentUserGalaxyGate(gateId);
+    if (!access.ok) {
+      showToast("Cette Galaxy Gate doit d'abord être construite dans le Spinner", 1.8);
+      return false;
+    }
+    account.user = access.user;
+    renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[gateId].name} activée`);
+  }
+
   // ✅ on mémorise l'état visuel actuel du portail
   // comme ça le jump part de l'état open sans cassure
   ptl.jumpBaseFade = Math.max(0, getPortalOpenFade(ptl));
@@ -955,7 +1092,8 @@ function startZonePortalJump(ptl) {
   // ✅ le joueur peut quitter le portail, le jump continue quand même
   mapPortalLock = Math.max(mapPortalLock, ptl.jumpDur + 0.25);
 
-  showToast("Saut en cours...", ptl.jumpDur);
+  const destinationMap = String(ptl.jumpMap || ptl.toMap || "inconnue");
+  showNotification(`Saut en cours vers la carte ${destinationMap}`, ptl.jumpDur, "info", { goldTerms: [destinationMap] });
   return true;
 }
 
@@ -1241,12 +1379,17 @@ ui.questList?.addEventListener("click", event => {
       player.credits += Math.max(0, Number(reward.credits || 0));
       const experience = getQuestExperienceReward(quest);
       const honor = getQuestHonorReward(quest);
-      awardExperience(experience, "quest");
+      awardExperience(experience);
       awardHonor(honor);
       if (account.user?.stats) account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
       markProgressDirty();
       saveProgressNow();
-      showToast(`Récompense : +${formatInteger(reward.credits)} crédits · +${formatInteger(experience)} XP · +${formatInteger(honor)} honneur`, 2.4);
+      addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(reward.credits)} crédits · +${formatInteger(experience)} XP · +${formatInteger(honor)} honneur`, "reward");
+      showNotificationGroup([
+        `Vous avez reçu ${formatInteger(reward.credits)} crédits`,
+        `Vous avez gagné ${formatInteger(experience)} XP`,
+        `Vous avez gagné ${formatInteger(honor)} honneur`,
+      ]);
     }
   }
 
@@ -1620,8 +1763,15 @@ const gateReturnPortal = createGatePortalState();
 
 function getInteractivePortals() {
   return isZoneMap
-    ? (zonePortals || [])
+    ? (zonePortals || []).filter(isZonePortalAvailable)
     : (betweenWaves ? [portal, gateReturnPortal].filter(ptl => ptl.active) : []);
+}
+
+function isZonePortalAvailable(ptl) {
+  const gateId = String(ptl?.toMap || "").toLowerCase();
+  if (!GALAXY_GATE_DEFINITIONS[gateId]) return true;
+  const state = (account.user || getCurrentUserFull())?.galaxyGates;
+  return state?.active === gateId || state?.deployed?.[gateId] === true;
 }
 
 function getGateReturnMap() {
@@ -1631,15 +1781,241 @@ function getGateReturnMap() {
 
 let toast = null;
 let startHintT = 0;
+const sessionGameLog = [];
+const GAME_LOG_PAGE_SIZE = 100;
+let gameLogPage = 0;
+let gameLogQuery = "";
+let gameLogRenderToken = 0;
+let gameLogSearchTimer = 0;
+
+function getGameLogUserId() {
+  return String(account.user?.id || getCurrentUserFull()?.id || "");
+}
+
+function formatGameLogDate(timestamp) {
+  return new Date(timestamp).toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+async function renderGameLog() {
+  if (!ui.gameLogEntries) return;
+  const token = ++gameLogRenderToken;
+  const userId = getGameLogUserId();
+  let result;
+  try {
+    result = await readGameLogs(userId, { query: gameLogQuery, page: gameLogPage, pageSize: GAME_LOG_PAGE_SIZE });
+  } catch (error) {
+    console.warn("Historique IndexedDB indisponible :", error);
+    const filtered = sessionGameLog
+      .filter(entry => !gameLogQuery || entry.text.toLocaleLowerCase("fr-FR").includes(gameLogQuery))
+      .reverse();
+    const offset = gameLogPage * GAME_LOG_PAGE_SIZE;
+    result = { entries: filtered.slice(offset, offset + GAME_LOG_PAGE_SIZE), hasNext: filtered.length > offset + GAME_LOG_PAGE_SIZE };
+  }
+  if (token !== gameLogRenderToken) return;
+  ui.gameLogEntries.innerHTML = result.entries.length
+    ? result.entries.map(entry => `<div class="gameLogEntry ${escapeHtml(entry.type)}"><time>${formatGameLogDate(entry.timestamp)}</time><span>${escapeHtml(entry.text)}</span></div>`).join("")
+    : `<div class="gameLogEmpty">Aucun événement${gameLogQuery ? " correspondant" : ""}.</div>`;
+  if (ui.gameLogPage) ui.gameLogPage.textContent = `Page ${gameLogPage + 1}`;
+  if (ui.gameLogPrevious) ui.gameLogPrevious.disabled = gameLogPage === 0;
+  if (ui.gameLogNext) ui.gameLogNext.disabled = !result.hasNext;
+}
+
+function addGameLog(text, type = "info") {
+  const value = String(text ?? "").trim();
+  if (!value) return;
+  const entry = { text: value, type, timestamp: Date.now() };
+  sessionGameLog.push(entry);
+  if (sessionGameLog.length > 250) sessionGameLog.shift();
+  const userId = getGameLogUserId();
+  void appendGameLog(userId, entry)
+    .then(() => { if (gameLogPage === 0) void renderGameLog(); })
+    .catch(error => {
+      console.warn("Écriture du journal impossible :", error);
+      if (gameLogPage === 0) void renderGameLog();
+    });
+}
+
+function setNotificationText(node, value, { goldTerms = [] } = {}) {
+  const quantityPattern = /(?<![\p{L}\d])[+-]?\d+(?:[ \u00a0\u202f]\d{3})*(?:[.,]\d+)?(?![\p{L}\d])/gu;
+  const ranges = [...value.matchAll(quantityPattern)].map(match => [match.index, match.index + match[0].length]);
+  const loweredValue = value.toLocaleLowerCase("fr-FR");
+  for (const rawTerm of goldTerms) {
+    const term = String(rawTerm || "").trim();
+    if (!term) continue;
+    const loweredTerm = term.toLocaleLowerCase("fr-FR");
+    let start = 0;
+    while ((start = loweredValue.indexOf(loweredTerm, start)) >= 0) {
+      ranges.push([start, start + term.length]);
+      start += term.length;
+    }
+  }
+  ranges.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  const mergedRanges = [];
+  for (const range of ranges) {
+    const previous = mergedRanges.at(-1);
+    if (previous && range[0] <= previous[1]) previous[1] = Math.max(previous[1], range[1]);
+    else mergedRanges.push([...range]);
+  }
+  let cursor = 0;
+  for (const [start, end] of mergedRanges) {
+    if (start > cursor) node.append(document.createTextNode(value.slice(cursor, start)));
+    const amount = document.createElement("span");
+    amount.className = "orbitNotificationAmount";
+    amount.textContent = value.slice(start, end);
+    node.append(amount);
+    cursor = end;
+  }
+  if (cursor < value.length) node.append(document.createTextNode(value.slice(cursor)));
+}
+
+const MAX_VISIBLE_NOTIFICATIONS = 8;
+const pendingNotifications = [];
+let pendingNotificationGroup = null;
+let notificationGroupFrame = 0;
+
+function removeNotificationNode(node) {
+  if (!node) return;
+  clearTimeout(node._leaveTimer);
+  clearTimeout(node._removeTimer);
+  node.remove();
+  pumpNotificationQueue();
+}
+
+function mountNotification(spec) {
+  if (!ui.orbitNotifications) return;
+  const node = document.createElement("div");
+  node.className = `orbitNotification ${spec.type}`;
+  setNotificationText(node, spec.value, { goldTerms: spec.goldTerms });
+  ui.orbitNotifications.appendChild(node);
+  node.style.setProperty("--notice-height", `${node.scrollHeight}px`);
+  const now = Date.now();
+  const baseVisibleMs = Math.max(spec.minVisibleMs, spec.durationMs);
+  node.dataset.baseVisibleMs = String(baseVisibleMs);
+  const previousNodes = [...ui.orbitNotifications.children].filter(item => item !== node && !item.classList.contains("leaving"));
+  const previousLeaveAt = Number(previousNodes.at(-1)?.dataset.leaveAt) || 0;
+  const leaveAt = spec.stagger ? Math.max(now + baseVisibleMs, previousLeaveAt + 650) : now + baseVisibleMs;
+  node.dataset.leaveAt = String(leaveAt);
+  node._leaveTimer = setTimeout(() => node.classList.add("leaving"), Math.max(0, leaveAt - now));
+  node._removeTimer = setTimeout(() => removeNotificationNode(node), Math.max(0, leaveAt - now) + 700);
+}
+
+function resetVisibleNotificationFlow() {
+  if (!ui.orbitNotifications) return;
+  const now = Date.now();
+  let previousLeaveAt = 0;
+  for (const node of ui.orbitNotifications.children) {
+    if (node.classList.contains("leaving")) continue;
+    const baseVisibleMs = Math.max(0, Number(node.dataset.baseVisibleMs) || 3800);
+    const leaveAt = previousLeaveAt
+      ? Math.max(now + baseVisibleMs, previousLeaveAt + 650)
+      : now + baseVisibleMs;
+    previousLeaveAt = leaveAt;
+    node.dataset.leaveAt = String(leaveAt);
+    clearTimeout(node._leaveTimer);
+    clearTimeout(node._removeTimer);
+    node._leaveTimer = setTimeout(() => node.classList.add("leaving"), Math.max(0, leaveAt - now));
+    node._removeTimer = setTimeout(() => removeNotificationNode(node), Math.max(0, leaveAt - now) + 700);
+  }
+}
+
+function pumpNotificationQueue() {
+  if (!ui.orbitNotifications) return;
+  while (ui.orbitNotifications.children.length < MAX_VISIBLE_NOTIFICATIONS && pendingNotifications.length) {
+    mountNotification(pendingNotifications.shift());
+  }
+}
+
+function makeRoomForLatestNotification() {
+  if (!ui.orbitNotifications || ui.orbitNotifications.children.length < MAX_VISIBLE_NOTIFICATIONS) return;
+  if (ui.orbitNotifications.querySelector(".leaving")) return;
+  const oldest = [...ui.orbitNotifications.children].find(node => !node.classList.contains("leaving"));
+  if (!oldest) return;
+  clearTimeout(oldest._leaveTimer);
+  clearTimeout(oldest._removeTimer);
+  oldest.classList.add("notificationEvicting", "leaving");
+  oldest._removeTimer = setTimeout(() => removeNotificationNode(oldest), 700);
+}
+
+function flushLatestNotificationGroup() {
+  notificationGroupFrame = 0;
+  const group = pendingNotificationGroup;
+  pendingNotificationGroup = null;
+  if (!group?.length || !ui.orbitNotifications) return;
+  const activeNodes = [...ui.orbitNotifications.children].filter(node => !node.classList.contains("leaving"));
+  const overflow = Math.max(0, activeNodes.length + group.length - MAX_VISIBLE_NOTIFICATIONS);
+  if (overflow > 0) {
+    pendingNotifications.length = 0;
+    for (const node of activeNodes.slice(0, overflow)) {
+      clearTimeout(node._leaveTimer);
+      clearTimeout(node._removeTimer);
+      node.classList.add("leaving", "notificationSuperseded");
+      node._removeTimer = setTimeout(() => removeNotificationNode(node), 700);
+    }
+  }
+  for (const spec of group.slice(-MAX_VISIBLE_NOTIFICATIONS)) mountNotification(spec);
+  resetVisibleNotificationFlow();
+}
+
+function showNotificationGroup(messages, type = "info", { goldTerms = [], minVisibleMs = 3800 } = {}) {
+  const values = messages.map(message => String(message ?? "").trim()).filter(Boolean);
+  if (!values.length) return;
+  pendingNotificationGroup = values.map(value => ({
+    value,
+    type,
+    goldTerms,
+    minVisibleMs,
+    stagger: true,
+    durationMs: 4000,
+  }));
+  if (!notificationGroupFrame) notificationGroupFrame = requestAnimationFrame(flushLatestNotificationGroup);
+}
+
+function showNotification(text, dur = 2, type = "info", { log = true, goldTerms = [], minVisibleMs = 3800, stagger = true } = {}) {
+  const value = String(text ?? "").trim();
+  if (!value) return;
+  if (log) addGameLog(value, type);
+  if (!ui.orbitNotifications) return;
+  const spec = { value, type, goldTerms, minVisibleMs, stagger, durationMs: Number(dur) * 1000 };
+  if (ui.orbitNotifications.children.length >= MAX_VISIBLE_NOTIFICATIONS) {
+    pendingNotifications[0] = spec;
+    pendingNotifications.length = 1;
+    makeRoomForLatestNotification();
+  } else {
+    mountNotification(spec);
+  }
+}
 
 function showToast(text, dur = 2) {
-  toast = {
-    text: String(text ?? ""),
-    t: 0,
-    dur: Math.max(0.25, Number(dur) || 2),
-    fixed: false,
-  };
+  const value = String(text ?? "");
+  const type = /insuffisant|impossible|verrouill|erreur|annul/i.test(value) ? "error" : /\+|récompense|reçu|niveau|grade|accomplie/i.test(value) ? "reward" : "info";
+  showNotification(value, dur, type);
 }
+
+ui.gameLogSearch?.addEventListener("input", () => {
+  clearTimeout(gameLogSearchTimer);
+  gameLogSearchTimer = setTimeout(() => {
+    gameLogQuery = String(ui.gameLogSearch?.value || "").trim().toLocaleLowerCase("fr-FR");
+    gameLogPage = 0;
+    void renderGameLog();
+  }, 180);
+});
+ui.gameLogPrevious?.addEventListener("click", () => {
+  if (gameLogPage <= 0) return;
+  gameLogPage -= 1;
+  void renderGameLog();
+});
+ui.gameLogNext?.addEventListener("click", () => {
+  gameLogPage += 1;
+  void renderGameLog();
+});
+void renderGameLog();
 
 function showToastFixed(text) {
   const value = String(text ?? "");
@@ -3711,6 +4087,20 @@ function rollValue(v, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function pickExclusiveCollectableReward(entries) {
+  const pool = Array.isArray(entries)
+    ? entries.filter(entry => Number(entry?.weight) > 0 && entry?.reward)
+    : [];
+  if (!pool.length) return null;
+  const total = pool.reduce((sum, entry) => sum + Number(entry.weight), 0);
+  let roll = Math.random() * total;
+  for (const entry of pool) {
+    roll -= Number(entry.weight);
+    if (roll <= 0) return entry.reward;
+  }
+  return pool.at(-1).reward;
+}
+
 function ensureCollectableLoaded(type) {
   const cfg = COLLECTABLE_DEFS[type];
   const sp = cfg?.sprite;
@@ -3902,7 +4292,7 @@ function applyCollectableReward(c) {
   const cfg = COLLECTABLE_DEFS[c.type];
   if (!cfg) return;
 
-  const reward = cfg.reward || cfg.rewards || {};
+  const reward = pickExclusiveCollectableReward(cfg.exclusiveRewards) || cfg.reward || cfg.rewards || {};
   const parts = [];
 
   let changed = false;
@@ -3914,13 +4304,24 @@ function applyCollectableReward(c) {
     changed = true;
   }
 
+  const galaxyEnergy = rollValue(reward.galaxyEnergy, 0);
+  if (galaxyEnergy > 0) {
+    const result = grantCurrentUserGalaxyEnergy(galaxyEnergy);
+    if (result.ok) {
+      account.user = result.user;
+      parts.push(`+${formatInteger(galaxyEnergy)} énergie pour les portails intergalactiques (GG)`);
+      changed = true;
+      renderGalaxyGateWindow();
+    }
+  }
+
   if (reward.ammo && typeof reward.ammo === "object") {
     for (const key in reward.ammo) {
       const amount = rollValue(reward.ammo[key], 0);
       if (amount <= 0) continue;
 
       player.ammo[key] = Math.max(0, Number(player.ammo[key]) || 0) + amount;
-      parts.push(`+${amount} ${key.toUpperCase()}`);
+      parts.push(`+${formatInteger(amount)} munitions type ${key.toUpperCase()}`);
       changed = true;
     }
   }
@@ -3976,7 +4377,8 @@ function applyCollectableReward(c) {
   advanceQuestProgress("collect", c.type);
 
   if (parts.length) {
-    showToast(parts.join(" • "), 1.25);
+    addGameLog(`${cfg.name || c.type} · ${parts.join(" · ")}`, "reward");
+    showNotificationGroup(parts.map(part => `Vous avez reçu ${part.replace(/^\+/, "")}`));
   } else {
     showToast(cfg.name || "Collectable", 1.0);
   }
@@ -4501,15 +4903,26 @@ function hurtPlayer(amount) {
 
 function killRewards(e) {
   player.kills++;
-  player.credits += e.value || 0;
+  const credits = Math.max(0, Number(e.value) || 0);
+  player.credits += credits;
   const experience = getNpcExperienceReward(e, NPC_TYPES[e.type]);
+  const honor = getNpcHonorReward(e, { ...NPC_TYPES[e.type], type: e.type });
   awardExperience(experience);
-  awardHonor(getNpcHonorReward(e, { ...NPC_TYPES[e.type], type: e.type }));
+  awardHonor(honor);
+  const npcName = String(NPC_TYPES[e.type]?.name || e.type || "NPC").replace(/^npc_/i, "");
+  addGameLog(`${npcName} détruit · +${formatInteger(credits)} crédits · +${formatInteger(experience)} XP · +${formatInteger(honor)} honneur`, "reward");
+  showNotificationGroup([
+    `${npcName} éliminé`,
+    `Vous avez reçu ${formatInteger(credits)} crédits`,
+    `Vous avez gagné ${formatInteger(experience)} XP`,
+    `Vous avez gagné ${formatInteger(honor)} honneur`,
+  ]);
   if (account.user?.stats) account.user.stats.lifetimeKills = Math.max(0, Number(account.user.stats.lifetimeKills || 0)) + 1;
   if (account.user?.stats && e.type) {
     account.user.stats.npcKills ||= {};
     account.user.stats.npcKills[e.type] = Math.max(0, Number(account.user.stats.npcKills[e.type] || 0)) + 1;
   }
+
   markProgressDirty();
   // Une destruction doit être immédiatement disponible dans le registre,
   // même si le joueur ouvre le profil avant la prochaine sauvegarde périodique.
@@ -4595,6 +5008,61 @@ if (e.type === "npc_Cubikon") {
   }
 }
 
+let gateCompletionPending = false;
+
+function scheduleGalaxyGateCompletion(gateId, completion) {
+  if (gateCompletionPending) return;
+  gateCompletionPending = true;
+  attackActive = false;
+  player.vx = 0;
+  player.vy = 0;
+  moveTarget.active = false;
+  const gate = GALAXY_GATE_DEFINITIONS[gateId];
+  const reward = completion.reward || gate?.completion;
+  const user = account.user || getCurrentUserFull();
+  const destinationMap = getFactionRespawnMap(user?.faction, gateId, { gate: true });
+  const gateName = gate?.name || gateId;
+  const stillInCompletedGate = () => String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === gateId;
+  const scheduleCountdown = (startDelay) => {
+    [3, 2, 1].forEach((second, index) => {
+      setTimeout(() => {
+        if (stillInCompletedGate()) showNotification(String(second), 4, "info", { log: false });
+      }, startDelay + index * 1000);
+    });
+  };
+
+  scheduleCountdown(0);
+
+  setTimeout(() => {
+    if (!stillInCompletedGate() || !reward) return;
+    const messages = [
+      `Vous avez gagné ${formatInteger(reward.exp)} XP`,
+      `Vous avez gagné ${formatInteger(reward.honor)} honneur`,
+      `Vous avez reçu ${formatInteger(reward.credits)} crédits`,
+      `Vous avez reçu ${formatInteger(reward.x4)} UCB-100`,
+    ];
+    showNotificationGroup(messages, "reward");
+    addGameLog(`${gateName} · ${messages.join(" · ")}`, "reward");
+  }, 3000);
+
+  scheduleCountdown(3700);
+
+  setTimeout(() => {
+    if (!stillInCompletedGate()) return;
+    showNotification(`Galaxy Gate ${gateName} terminée`, 4, "reward", { log: false, goldTerms: [gateName] });
+    addGameLog(`Galaxy Gate ${gateName} terminée`, "reward");
+  }, 6700);
+
+  setTimeout(() => {
+    if (!stillInCompletedGate()) return;
+    setRespawnOverride({ map: destinationMap, baseCenter: true, fallback: getFactionBaseSpawn(user?.faction) });
+    addGameLog(`Retour vers la base mère ${destinationMap}`, "info");
+    gateCompletionPending = false;
+    if (typeof window.__GO_TO_MAP__ === "function" && String(destinationMap) !== gateId) window.__GO_TO_MAP__(destinationMap);
+    else resetRun({ randomSpawn: false });
+  }, 8500);
+}
+
 function runOnKillAction(action, pos = null) {
   if (!action) return;
 
@@ -4629,6 +5097,20 @@ function runOnKillAction(action, pos = null) {
 
   const tp = action.tp;
   if (tp?.toMap || tp?.factionBase) {
+    const currentGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+    if (rules?.mode === "gate" && tp.factionBase && GALAXY_GATE_DEFINITIONS[currentGateId]) {
+      const completion = completeCurrentUserGalaxyGate(currentGateId);
+      if (completion.ok) {
+        account.user = completion.user;
+        player.credits = completion.user.credits;
+        player.ammo.x4 = completion.user.ammo.x4;
+        updateAmmoUI();
+        markProgressDirty();
+        renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[currentGateId].name} terminée`);
+        scheduleGalaxyGateCompletion(currentGateId, completion);
+      }
+      return;
+    }
     const destinationMap = rules?.mode === "gate"
       ? getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__, { gate: true })
       : tp.toMap;
@@ -5204,7 +5686,7 @@ function npcIsInSafeZone(e) {
   if (!isZoneMap) return false;
   
   if (zonePortals && zonePortals.length) {
-    for (const p of zonePortals) {
+    for (const p of getInteractivePortals()) {
       if (!portalProvidesSafety(p)) continue;
       const rr = DEFAULT_PORTAL_RADIUS + SAFE_ZONE_MARGIN;
       if (dist2(e.x, e.y, p.x, p.y) <= rr * rr) {
@@ -5229,10 +5711,29 @@ function npcIsInSafeZone(e) {
 // ============================================================
 let wave = 1;
 const waveSpawns = createWaveSpawnState();
+const GATE_WAVE_COUNTDOWN_SECONDS = 5;
+let waveStartCountdown = 0;
+let waveCountdownSecond = -1;
 
   function nextTypeInQueue() {
     return waveSpawns.peek()?.type || null;
   }
+
+function updateWaveCountdownNotice() {
+  const second = Math.max(1, Math.ceil(waveStartCountdown));
+  if (second === waveCountdownSecond) return;
+  waveCountdownSecond = second;
+  showNotification(String(second), 4, "info", { log: false });
+}
+
+function finishWaveCountdownNotice() {
+  const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+  const gateName = GALAXY_GATE_DEFINITIONS[gateId]?.name || rules?.mapLabel || gateId;
+  showNotification(`La vague ${wave} de la Galaxy Gate ${gateName} commence`, 4, "info", {
+    log: false,
+    goldTerms: [gateName],
+  });
+}
 
 function beginWave() {
   const plan = getWavePlan(wave);
@@ -5240,16 +5741,19 @@ function beginWave() {
 
   waveSpawns.load(plan.spawns || []);
   betweenWaves = false;
+  waveStartCountdown = rules?.mode === "gate" ? GATE_WAVE_COUNTDOWN_SECONDS : 0;
+  waveCountdownSecond = -1;
 
   portal.active = false;
   gateReturnPortal.active = false;
   ui.portalOverlay.style.display = "none";
   ui.nextWaveBtn.disabled = false;
 
-  if (!isZoneMap) showToast(`Vague ${wave}`, 1.0);
+  if (waveStartCountdown > 0) updateWaveCountdownNotice();
 }
 
 function onWaveCleared() {
+  if (gateCompletionPending) return;
   betweenWaves = true;
   resetGatePortalState(portal, { active: true, switchDuration: portal.switchDur });
   portal.switchDur = Math.max(0.1, Number(portal.switchDur || 1));
@@ -5279,6 +5783,15 @@ function tryStartNextWave() {
 
 function waveController(dt) {
   if (!started || player.dead || betweenWaves) return;
+
+  if (waveStartCountdown > 0) {
+    waveStartCountdown = Math.max(0, waveStartCountdown - dt);
+    if (waveStartCountdown > 0) {
+      updateWaveCountdownNotice();
+      return;
+    }
+    finishWaveCountdownNotice();
+  }
 
 if (waveSpawns.remaining > 0 && enemies.length < MAX_ALIVE) {
   if (waveSpawns.tick(dt)) {
@@ -5596,7 +6109,11 @@ jumpBaseFade: 1,
   camera.x = player.x;
   camera.y = player.y;
 
-  wave = 1;
+  const activeGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+  const savedGateWave = (rules?.mode === "gate" && account.user?.galaxyGates?.active === activeGateId)
+    ? account.user.galaxyGates.activeWave
+    : 1;
+  wave = Math.max(1, Math.floor(Number(savedGateWave) || 1));
   if (!isZoneMap) beginWave();
 
   markProgressDirty();
@@ -5780,7 +6297,7 @@ function drawMinimap() {
     world: WORLD,
     player,
     enemies,
-    portals: isZoneMap ? (zonePortals || []) : getInteractivePortals(),
+    portals: getInteractivePortals(),
     returnPortal: gateReturnPortal,
     isZoneMap,
     safeZone: zoneSafe,
@@ -5914,7 +6431,16 @@ for (const state of Object.values(QUEST_BUTTON).filter(value => value?.src)) {
 
 function startGatePortalJump(ptl, action) {
   if (!ptl || ptl.jumping || !isPlayerNearPortal(ptl)) return;
-  if (beginGatePortalJump(ptl, action, portal.switchDur)) showToast("Saut en cours...", ptl.jumpDur);
+  if (beginGatePortalJump(ptl, action, portal.switchDur)) {
+    const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+    const gateName = GALAXY_GATE_DEFINITIONS[gateId]?.name || rules?.mapLabel || gateId;
+    if (action === "continue") {
+      showNotification(`Saut en cours vers la vague ${wave + 1} de la map ${gateName}`, ptl.jumpDur, "info", { goldTerms: [gateName] });
+    } else {
+      const destinationMap = String(getGateReturnMap());
+      showNotification(`Saut en cours vers la carte ${destinationMap}`, ptl.jumpDur, "info", { goldTerms: [destinationMap] });
+    }
+  }
 }
 
 function tickGatePortalJumps(dt) {
@@ -5924,8 +6450,24 @@ function tickGatePortalJumps(dt) {
   if (completed.action === "continue") {
     betweenWaves = false;
     wave++;
+    const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+    if (GALAXY_GATE_DEFINITIONS[gateId]) {
+      const saved = saveCurrentUserGalaxyGateWave(gateId, wave);
+      if (saved.ok) {
+        account.user = saved.user;
+        renderGalaxyGateWindow();
+      }
+    }
     beginWave();
   } else {
+    const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+    if (GALAXY_GATE_DEFINITIONS[gateId]) {
+      const saved = saveCurrentUserGalaxyGateWave(gateId, wave + 1);
+      if (saved.ok) {
+        account.user = saved.user;
+        renderGalaxyGateWindow();
+      }
+    }
     window.__GO_TO_MAP__?.(getGateReturnMap());
   }
   return true;
@@ -6441,7 +6983,7 @@ function playerIsInSafeZone() {
   if (!isZoneMap) return false;
 
   if (zonePortals?.length) {
-    for (const p of zonePortals) {
+    for (const p of getInteractivePortals()) {
       if (!portalProvidesSafety(p)) continue;
       const rr = DEFAULT_PORTAL_RADIUS;
       if (dist2(player.x, player.y, p.x, p.y) <= rr * rr) return true;
@@ -6701,7 +7243,7 @@ updatePlayerVelocity(player, { x: mx, y: my }, dt);
   if (isZoneMap && started && !player.dead && zonePortals.length) {
     let near = null;
 
-    for (const p of zonePortals) {
+    for (const p of getInteractivePortals()) {
       const rr = DEFAULT_PORTAL_RADIUS;
       if (dist2(player.x, player.y, p.x, p.y) <= rr * rr) {
         near = p;
@@ -8080,6 +8622,7 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   isZoneMap = rules.mode === "zone";
 
   window.__CURRENT_MAP_ID__ = String(mapId);
+  addGameLog(`Entrée sur la carte ${mapId}`, "info");
   window.__SPAWN_PORTAL_ID__ = spawnId;
   window.__ORBIT_MAP_TRANSITION__ = true;
   try {
@@ -8186,6 +8729,14 @@ const cur = getCurrentUserFull() || null;
 
 if (!cur) {
   location.href = "./public/auth.html";
+  return;
+}
+
+const currentGateMapId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[currentGateMapId] && cur.galaxyGates?.active !== currentGateMapId) {
+  const homeMap = getFactionHomeMap(cur.faction);
+  showToast("Galaxy Gate non construite", 1.5);
+  window.__GO_TO_MAP__?.(homeMap);
   return;
 }
 

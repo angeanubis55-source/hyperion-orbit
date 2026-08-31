@@ -17,6 +17,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="orbitNotifications" class="orbitNotifications" aria-live="polite"></div>
 
 <div id="loadingOverlay" class="loadingOverlay" role="dialog" aria-modal="true" aria-labelledby="loadingTitle">
   <div class="loadingCard">
@@ -177,6 +178,61 @@
       <div class="questOfferLayout">
         <section id="questOfferDetail" class="questOfferDetail"></section>
         <aside id="questOfferList" class="questOfferList"></aside>
+      </div>
+    </div>
+
+    <div id="galaxyGateWindow" class="panel galaxyGatePanel">
+      <div class="ggBody">
+        <div class="ggBalances">
+          <div><span>Énergie Galaxy</span><strong id="ggEnergy">0</strong></div>
+          <div><span>Crédits</span><strong id="ggCredits">0</strong></div>
+        </div>
+        <div class="ggWorkspace">
+          <nav class="ggGateNav">
+            <span>Galaxy Gates</span>
+            <div id="ggTabs" class="ggTabs"></div>
+          </nav>
+          <div class="ggMain">
+            <div class="ggCore">
+              <div class="ggPortalPreview">
+                <img id="ggPortalImage" alt="Portail Galaxy Gate">
+              </div>
+              <div class="ggDetails">
+                <div><span>Multiplicateur</span><b id="ggMultiplier">x1</b></div>
+                <div><span>GG construite</span><b id="ggBuilt">0 / 1</b></div>
+                <div><span>Terminées</span><b id="ggCompleted">0</b></div>
+                <div><span>Vague</span><b id="ggWave">0 / 11</b></div>
+              </div>
+              <div class="ggInlineCost"><b><em>1</em> énergie ou <em id="ggCreditCost">100 000</em> crédits</b><small id="ggNpcRewardScale">Récompenses des NPC ×1</small></div>
+            </div>
+            <div class="ggPartsBar"><span>Pièces assemblées</span><strong id="ggParts">0 / 0</strong></div>
+            <div id="ggRewards" class="ggRewards"></div>
+            <div class="ggSpinControls">
+              <label for="ggSpinCount">Nombre de spins</label>
+              <select id="ggSpinCount">
+                <option value="1">1</option><option value="2">2</option><option value="10">10</option><option value="50">50</option><option value="100">100</option>
+              </select>
+              <button id="ggSpinBtn" type="button" data-gg-spin>Lancer le spin</button>
+              <button id="ggDeployBtn" class="ggDeployBtn" type="button" data-gg-deploy hidden>Envoyer sur la map</button>
+            </div>
+          </div>
+          <section class="ggHistorySection">
+            <h3>Historique des spins</h3>
+            <div id="ggHistory" class="ggHistory"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div id="gameLogWindow" class="panel gameLogPanel">
+      <div class="gameLogToolbar">
+        <label class="gameLogSearch"><span>Rechercher</span><input id="gameLogSearch" type="search" placeholder="NPC, crédits, mission…" autocomplete="off" /></label>
+      </div>
+      <div id="gameLogEntries" class="gameLogEntries"><div class="gameLogEmpty">Aucun événement.</div></div>
+      <div class="gameLogPagination">
+        <button id="gameLogPrevious" type="button">Précédent</button>
+        <span id="gameLogPage">Page 1</span>
+        <button id="gameLogNext" type="button">Suivant</button>
       </div>
     </div>
 
@@ -729,16 +785,36 @@ function prepareFloating(card) {
 }
 
   function clampToScreen(card, left, top) {
-    const minVisibleX = 90;
-    const minVisibleY = 50;
-
-    const maxLeft = window.innerWidth - minVisibleX;
-    const maxTop = window.innerHeight - minVisibleY;
+    const margin = 8;
+    const rect = card.getBoundingClientRect();
+    const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+    const maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
 
     return {
-      left: Math.max(0, Math.min(left, maxLeft)),
-      top: Math.max(0, Math.min(top, maxTop)),
+      left: Math.max(margin, Math.min(Number(left) || margin, maxLeft)),
+      top: Math.max(margin, Math.min(Number(top) || margin, maxTop)),
     };
+  }
+
+  function keepWindowInsideViewport(card, { centerIfUnpositioned = false } = {}) {
+    if (!card) return;
+    const margin = 8;
+    let rect = card.getBoundingClientRect();
+    if (rect.width > window.innerWidth - margin * 2) {
+      card.style.width = `${Math.max(140, window.innerWidth - margin * 2)}px`;
+      rect = card.getBoundingClientRect();
+    }
+    card.style.maxHeight = `${Math.max(120, window.innerHeight - margin * 2)}px`;
+    const hasPosition = card.classList.contains("floating") && Number.isFinite(parseFloat(card.style.left)) && Number.isFinite(parseFloat(card.style.top));
+    if (!hasPosition) prepareFloating(card);
+    rect = card.getBoundingClientRect();
+    const requestedLeft = centerIfUnpositioned && !hasPosition ? (window.innerWidth - rect.width) / 2 : rect.left;
+    const requestedTop = centerIfUnpositioned && !hasPosition ? (window.innerHeight - rect.height) / 2 : rect.top;
+    const p = clampToScreen(card, requestedLeft, requestedTop);
+    card.style.left = `${Math.round(p.left)}px`;
+    card.style.top = `${Math.round(p.top)}px`;
+    card.style.right = "auto";
+    card.style.bottom = "auto";
   }
 
   function applyMinimapProportions(card, width) {
@@ -1015,6 +1091,7 @@ minBtn.onclick = (e) => {
         card.classList.remove("gameWinMinimized");
         root.style.display = "block";
         card.style.display = "block";
+        requestAnimationFrame(() => keepWindowInsideViewport(card, { centerIfUnpositioned: true }));
         const existingDockButton = getDock().querySelector(`[data-window-id="${id}"]`);
         if (existingDockButton) existingDockButton.remove();
       } else {
@@ -1091,7 +1168,8 @@ restore(id) {
   w.root.style.display = "block";
   w.card.style.display = "block";
 
-  applySavedWindowPosition(id, w.card);
+  const restoredSavedPosition = applySavedWindowPosition(id, w.card);
+  keepWindowInsideViewport(w.card, { centerIfUnpositioned: !restoredSavedPosition });
 
   w.card.style.visibility = "visible";
   w.card.style.opacity = "1";
@@ -1204,6 +1282,14 @@ restore(id) {
       if (dockBtn) dockBtn.title = title;
     },
   };
+
+  window.addEventListener("resize", () => {
+    for (const w of windows.values()) {
+      if (!w?.card || w.card.style.display === "none") continue;
+      keepWindowInsideViewport(w.card);
+      saveWindowPosition(w.id, w.card);
+    }
+  });
 })();
 </script>
 

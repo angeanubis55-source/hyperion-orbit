@@ -29,6 +29,8 @@ const requestedMap = process.argv.find((arg) => arg.startsWith("--map="))?.slice
 const coldStart = process.argv.includes("--cold");
 const inspectProfile = process.argv.includes("--profile");
 const captureProfile = process.argv.includes("--profile-screenshot");
+const inspectCombat = process.argv.includes("--combat");
+const inspectWindows = process.argv.includes("--windows");
 const switchTargets = process.argv.find((arg) => arg.startsWith("--switch="))?.slice(9).split(",").filter(Boolean) || [];
 const mapIds = requestedMap ? [requestedMap] : Object.keys(MAP_LOADERS);
 const failures = [];
@@ -72,6 +74,22 @@ try {
       }
       await page.waitForFunction(() => getComputedStyle(document.getElementById("loadingOverlay")).display === "none", null, { timeout: 30_000 });
       await page.waitForFunction(() => !document.documentElement.classList.contains("orbitBooting"), null, { timeout: 30_000 });
+      if (inspectCombat) {
+        await page.waitForTimeout(1800);
+        await page.click("#btnNuke");
+        await page.waitForTimeout(500);
+      }
+      if (inspectWindows) {
+        await page.click('[data-window-id="galaxyGateWindow"]');
+        await page.waitForSelector("#galaxyGateWindow", { state: "visible", timeout: 10_000 });
+        const windowIssue = await page.locator("#galaxyGateWindow").evaluate((card) => {
+          const r = card.getBoundingClientRect();
+          return r.left < 0 || r.top < 0 || r.right > innerWidth + 1 || r.bottom > innerHeight + 1
+            ? `Galaxy Spinner hors écran: ${Math.round(r.left)},${Math.round(r.top)} → ${Math.round(r.right)},${Math.round(r.bottom)}`
+            : "";
+        });
+        if (windowIssue) errors.push(windowIssue);
+      }
       if (inspectProfile) {
         await page.click("#btnGameHub");
         await page.waitForSelector("#profileWindow", { state: "visible", timeout: 10_000 });
