@@ -14,6 +14,7 @@ import {
   spinCurrentUserGalaxyGate,
   saveCurrentUserGalaxyGateWave,
   deployCurrentUserGalaxyGate,
+  armCurrentUserGalaxyGateMultiplier,
 } from "./account.js";
 import { GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, GALAXY_SPIN_CREDIT_COST } from "./galaxyGates.js";
 import { computeHangarStats } from "./hangars.js";
@@ -261,6 +262,7 @@ const ui = {
   ggPortalImage: document.getElementById("ggPortalImage"),
   ggRewards: document.getElementById("ggRewards"),
   ggMultiplier: document.getElementById("ggMultiplier"),
+  ggMultiplierBtn: document.getElementById("ggMultiplierBtn"),
   ggBuilt: document.getElementById("ggBuilt"),
   ggCompleted: document.getElementById("ggCompleted"),
   ggWave: document.getElementById("ggWave"),
@@ -744,6 +746,18 @@ registerHudWindows();
 
 let selectedGalaxyGateId = null;
 
+function formatGalaxyGatePartRewards(reward) {
+  const detailed = Object.entries(reward?.partsByGate || {})
+    .filter(([, amount]) => Number(amount) > 0)
+    .map(([gateId, amount]) => {
+      const gateName = GALAXY_GATE_DEFINITIONS[gateId]?.name || gateId;
+      return `${formatInteger(amount)} pièce${Number(amount) > 1 ? "s" : ""} ${gateName}`;
+    });
+  if (detailed.length) return detailed;
+  const total = Math.max(0, Number(reward?.parts) || 0);
+  return total ? [`${formatInteger(total)} pièce${total > 1 ? "s" : ""}`] : [];
+}
+
 function renderGalaxyGateWindow(message = "") {
   if (!ui.ggTabs) return;
   const user = getCurrentUserFull();
@@ -761,33 +775,78 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${formatInteger(completion.exp)} XP</span><span>${formatInteger(completion.honor)} honneur</span><span>${formatInteger(completion.credits)} crédits</span><span>${formatInteger(completion.x4)} UCB-100</span>`;
   ui.ggNpcRewardScale.innerHTML = `Récompenses des NPC <em>×${gate.rewardScale}</em>`;
   ui.ggMultiplier.textContent = `x${state.multipliers[gate.id]}`;
+  if (ui.ggMultiplierBtn) {
+    const armed = state.multiplierArmed?.[gate.id] === true;
+    ui.ggMultiplierBtn.disabled = state.multipliers[gate.id] <= 1;
+    ui.ggMultiplierBtn.classList.toggle("active", armed);
+    ui.ggMultiplierBtn.textContent = armed ? "Activé pour le prochain spin" : "Activer";
+  }
   ui.ggBuilt.textContent = `${formatInteger(state.built[gate.id])} / ${GALAXY_GATE_BUILD_LIMIT}`;
   ui.ggCompleted.textContent = formatInteger(state.completed[gate.id]);
   const activeWave = state.active === gate.id ? Math.min(gate.maxWaves, Math.max(1, Number(state.activeWave) || 1)) : 0;
   ui.ggWave.textContent = `${activeWave} / ${gate.maxWaves}`;
-  ui.ggCreditCost.textContent = formatInteger(GALAXY_SPIN_CREDIT_COST);
+  const selectedSpinCount = Math.max(1, Number(ui.ggSpinCount?.value || 1));
+  ui.ggCreditCost.textContent = formatInteger(GALAXY_SPIN_CREDIT_COST * selectedSpinCount);
   const isActive = state.active === gate.id;
   const isDeployed = state.deployed?.[gate.id] === true;
   const isFull = state.built[gate.id] >= GALAXY_GATE_BUILD_LIMIT;
-  const isEnsembleFull = Object.values(GALAXY_GATE_DEFINITIONS).every(item => state.built[item.id] >= GALAXY_GATE_BUILD_LIMIT);
-  ui.ggSpinBtn.hidden = isEnsembleFull;
-  ui.ggSpinBtn.disabled = isEnsembleFull;
-  ui.ggSpinBtn.style.gridColumn = isFull ? "3" : "4";
+  ui.ggSpinBtn.hidden = false;
+  ui.ggSpinBtn.disabled = false;
   ui.ggDeployBtn.hidden = !isFull;
-  ui.ggDeployBtn.style.gridColumn = "4";
   ui.ggDeployBtn.disabled = !isFull || isDeployed || Boolean(state.active);
-  ui.ggDeployBtn.textContent = isActive ? "Gate en cours" : isDeployed ? "Envoyée sur la map" : "Envoyer sur la map";
+  ui.ggDeployBtn.textContent = isActive ? "Gate en cours" : isDeployed ? "Portail préparé" : "Préparer le portail";
   ui.ggTabs.innerHTML = Object.values(GALAXY_GATE_DEFINITIONS).map(item => {
     const parts = state.built[item.id] >= GALAXY_GATE_BUILD_LIMIT ? item.requiredParts : state.parts[item.id];
     return `<button type="button" data-gg-gate="${item.id}" class="${item.id === gate.id ? "active" : ""}">${item.name}<small>${parts}/${item.requiredParts}</small></button>`;
   }).join("");
   const history = [...state.history].reverse();
   ui.ggHistory.innerHTML = history.length ? history.map(entry => {
-    const item = GALAXY_GATE_DEFINITIONS[entry.gate];
     const reward = entry.rewards || {};
-    const ammo = Object.entries(reward.ammo || {}).filter(([, amount]) => amount > 0).map(([id, amount]) => `${formatInteger(amount)} ${id.toUpperCase()}`);
-    const gains = [reward.parts ? `${reward.parts} pièce(s)` : "", reward.built ? `${reward.built} Gate construite` : "", reward.credits ? `${formatInteger(reward.credits)} crédits` : "", reward.energy ? `${reward.energy} énergie` : "", ...ammo].filter(Boolean);
-    return `<div class="ggHistoryRow"><span><b>${item?.name || entry.gate}</b> · ${entry.spins} spin(s)</span><div class="ggHistoryGains">${(gains.length ? gains : ["Multiplicateur augmenté"]).map(gain => `<small>${gain}</small>`).join("")}</div></div>`;
+    const applications = Array.isArray(reward.multiplierApplications) && reward.multiplierApplications.length
+      ? reward.multiplierApplications
+      : reward.multiplierApplied ? [reward.multiplierApplied] : [];
+    const appliedTotals = applications.reduce((totals, item) => {
+      const key = `${item.rewardType}:${item.rewardId || ""}`;
+      totals[key] = (totals[key] || 0) + (Number(item.amount) || 0);
+      return totals;
+    }, {});
+    const ammo = Object.entries(reward.ammo || {})
+      .map(([id, amount]) => [id, Math.max(0, amount - (appliedTotals[`ammo:${id}`] || 0))])
+      .filter(([, amount]) => amount > 0)
+      .map(([id, amount]) => `${formatInteger(amount)} munitions ${id.toUpperCase()}`);
+    const built = Object.entries(reward.builtByGate || {}).filter(([, amount]) => amount > 0).map(([gateId]) => `${GALAXY_GATE_DEFINITIONS[gateId]?.name || gateId} terminée`);
+    const duplicateCounts = (reward.duplicates || []).reduce((counts, item) => {
+      counts[item.gate] = (counts[item.gate] || 0) + 1;
+      return counts;
+    }, {});
+    const duplicates = Object.entries(duplicateCounts).map(([gateId, amount]) => `Doublon (${GALAXY_GATE_DEFINITIONS[gateId]?.name || gateId}) +${amount} multiplicateur${amount > 1 ? "s" : ""}`);
+    const groupedApplications = Object.values(applications.reduce((groups, applied) => {
+      const key = `${applied.rewardType}:${applied.rewardId || ""}:x${applied.multiplier}`;
+      if (!groups[key]) groups[key] = { ...applied, amount: 0, count: 0 };
+      groups[key].amount += Number(applied.amount) || 0;
+      groups[key].count++;
+      return groups;
+    }, {}));
+    const appliedTexts = groupedApplications.map(applied => {
+      if (applied.rewardType === "ammo") return `Munitions ${String(applied.rewardId || "").toUpperCase()} obtenues : ${formatInteger(applied.amount)} x${applied.multiplier}`;
+      if (applied.rewardType === "credits") return `Crédits obtenus : ${formatInteger(applied.amount)} x${applied.multiplier}`;
+      if (applied.rewardType === "energy") return `Énergies obtenues : ${formatInteger(applied.amount)} x${applied.multiplier}`;
+      if (applied.rewardType === "parts") return `Pièces ${GALAXY_GATE_DEFINITIONS[applied.rewardId]?.name || applied.rewardId} obtenues : ${formatInteger(applied.amount)} x${applied.multiplier}`;
+      return "";
+    }).filter(Boolean);
+    const remainingCredits = Math.max(0, (reward.credits || 0) - (appliedTotals["credits:"] || 0));
+    const remainingEnergy = Math.max(0, (reward.energy || 0) - (appliedTotals["energy:"] || 0));
+    const remainingParts = Object.fromEntries(Object.entries(reward.partsByGate || {}).map(([gateId, amount]) => [
+      gateId,
+      Math.max(0, amount - (appliedTotals[`parts:${gateId}`] || 0)),
+    ]));
+    const credits = remainingCredits ? `${formatInteger(remainingCredits)} crédits` : "";
+    const energy = remainingEnergy ? `${remainingEnergy} énergie` : "";
+    const gains = [...formatGalaxyGatePartRewards({ partsByGate: remainingParts }), ...built, ...duplicates, credits, energy, ...ammo].filter(Boolean);
+    const gainRows = (gains.length || appliedTexts.length)
+      ? `${gains.map(gain => `<small>${gain}</small>`).join("")}${appliedTexts.map(text => `<small class="ggHistoryMultiplierApplied">${text}</small>`).join("")}`
+      : `<small>Aucun gain direct</small>`;
+    return `<div class="ggHistoryRow"><span><b>Alpha · Beta · Gamma</b> · ${entry.spins} spin(s)</span><div class="ggHistoryGains">${gainRows}</div></div>`;
   }).join("") : `<div class="ggHistoryEmpty">Aucun spin enregistré.</div>`;
 }
 
@@ -796,6 +855,17 @@ ui.ggTabs?.addEventListener("click", event => {
   if (!button) return;
   selectedGalaxyGateId = button.dataset.ggGate;
   renderGalaxyGateWindow();
+});
+
+ui.ggSpinCount?.addEventListener("change", () => renderGalaxyGateWindow());
+
+ui.ggMultiplierBtn?.addEventListener("click", () => {
+  const state = getCurrentUserFull()?.galaxyGates;
+  const armed = state?.multiplierArmed?.[selectedGalaxyGateId] === true;
+  const result = armCurrentUserGalaxyGateMultiplier(selectedGalaxyGateId, !armed);
+  if (!result.ok) return renderGalaxyGateWindow(result.error);
+  account.user = result.user;
+  renderGalaxyGateWindow(armed ? "Multiplicateur désactivé." : "Multiplicateur activé pour le prochain spin.");
 });
 
 ui.galaxyGateWindow?.addEventListener("click", event => {
@@ -824,8 +894,8 @@ ui.galaxyGateWindow?.addEventListener("click", event => {
   player.ammo.x4 = result.user.ammo.x4;
   updateAmmoUI();
   const reward = result.rewards;
-  const pieces = reward.parts ? `${reward.parts} pièce(s)` : "";
-  const ammo = Object.entries(reward.ammo).filter(([, amount]) => amount > 0).map(([id, amount]) => `${formatInteger(amount)} ${id.toUpperCase()}`).join(", ");
+  const pieces = formatGalaxyGatePartRewards(reward).join(", ");
+  const ammo = Object.entries(reward.ammo).filter(([, amount]) => amount > 0).map(([id, amount]) => `${formatInteger(amount)} munitions ${id.toUpperCase()}`).join(", ");
   const extras = [reward.credits ? `${formatInteger(reward.credits)} crédits` : "", reward.energy ? `${reward.energy} énergie` : "", reward.built ? `${reward.built} Gate prête` : ""].filter(Boolean).join(", ");
   renderGalaxyGateWindow([`${result.performed} spin(s)`, pieces, ammo, extras].filter(Boolean).join(" · "));
   window.dispatchEvent(new CustomEvent("orbit:galaxy-gates"));
@@ -1047,6 +1117,12 @@ function startZonePortalJump(ptl) {
 
   const gateId = String(ptl.toMap || "").toLowerCase();
   if (GALAXY_GATE_DEFINITIONS[gateId]) {
+    const user = account.user || getCurrentUserFull();
+    const factionHomeMap = getFactionHomeMap(user?.faction);
+    if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() !== factionHomeMap) {
+      showToast(`Cette Galaxy Gate est uniquement accessible depuis ta base mère ${factionHomeMap}`, 1.8);
+      return false;
+    }
     const access = consumeCurrentUserGalaxyGate(gateId);
     if (!access.ok) {
       showToast("Cette Galaxy Gate doit d'abord être construite dans le Spinner", 1.8);
@@ -1770,7 +1846,10 @@ function getInteractivePortals() {
 function isZonePortalAvailable(ptl) {
   const gateId = String(ptl?.toMap || "").toLowerCase();
   if (!GALAXY_GATE_DEFINITIONS[gateId]) return true;
-  const state = (account.user || getCurrentUserFull())?.galaxyGates;
+  const user = account.user || getCurrentUserFull();
+  const factionHomeMap = getFactionHomeMap(user?.faction);
+  if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() !== factionHomeMap) return false;
+  const state = user?.galaxyGates;
   return state?.active === gateId || state?.deployed?.[gateId] === true;
 }
 
@@ -5023,6 +5102,9 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
   const reward = completion.reward || gate?.completion;
   const user = account.user || getCurrentUserFull();
   const destinationMap = getFactionRespawnMap(user?.faction, gateId, { gate: true });
+  const destinationReady = Promise.resolve(window.__PRELOAD_MAP__?.(destinationMap)).catch((error) => {
+    console.warn("Préchargement de la base mère incomplet :", error);
+  });
   const gateName = gate?.name || gateId;
   const stillInCompletedGate = () => String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === gateId;
   const scheduleCountdown = (startDelay) => {
@@ -5055,11 +5137,21 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
     addGameLog(`Galaxy Gate ${gateName} terminée`, "reward");
   }, 6700);
 
-  setTimeout(() => {
+  setTimeout(async () => {
+    if (!stillInCompletedGate()) return;
+    await destinationReady;
     if (!stillInCompletedGate()) return;
     setRespawnOverride({ map: destinationMap, baseCenter: true, fallback: getFactionBaseSpawn(user?.faction) });
     addGameLog(`Retour vers la base mère ${destinationMap}`, "info");
     gateCompletionPending = false;
+    if (typeof window.__SWITCH_MAP__ === "function" && String(destinationMap) !== gateId) {
+      try {
+        await window.__SWITCH_MAP__(destinationMap);
+        return;
+      } catch (error) {
+        console.error("Retour interne après Galaxy Gate impossible :", error);
+      }
+    }
     if (typeof window.__GO_TO_MAP__ === "function" && String(destinationMap) !== gateId) window.__GO_TO_MAP__(destinationMap);
     else resetRun({ randomSpawn: false });
   }, 8500);

@@ -19,7 +19,7 @@ import { shouldRunNpcFrame } from "../src/core/npcActivity.js";
 import { pushBounded } from "../src/core/boundedCollection.js";
 import { createRadiationSystem } from "../src/core/radiationSystem.js";
 import { createGatePortalState, getGateReturnMap, positionGateChoicePortals } from "../src/core/gateSystem.js";
-import { consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState, spinGalaxyGate } from "../src/core/galaxyGates.js";
+import { consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "../src/core/galaxyGates.js";
 import { getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, resolveBaseCenter } from "../src/core/factions.js";
 import {
   beginGatePortalJump,
@@ -141,6 +141,90 @@ test("le générateur Ensemble ouvre la Gate dont il obtient une pièce", () => 
   assert.equal(spin.state.parts.alpha, 0);
   assert.equal(spin.state.lastOpenedGate, "beta");
   assert.equal(spin.rewards.partsByGate.beta, 1);
+});
+
+test("le Spinner reste actif avec trois Gates construites et identifie le doublon", () => {
+  const rolls = [0.1, 0.5];
+  const full = normalizeGalaxyGateState({ energy: 1, built: { alpha: 1, beta: 1, gamma: 1 } });
+  const spin = spinGalaxyGate(full, "alpha", 1, 0, () => rolls.shift() ?? 0.5);
+  assert.equal(spin.ok, true);
+  assert.deepEqual(spin.rewards.duplicates, [{ gate: "beta", multiplier: 2 }]);
+  assert.equal(spin.state.multipliers.beta, 2);
+  assert.equal(spin.state.lastOpenedGate, "beta");
+});
+
+test("un multiplicateur arrivé à x5 s'arme automatiquement sur sa Gate", () => {
+  const rolls = [0.1, 0.99];
+  const full = normalizeGalaxyGateState({
+    energy: 1,
+    built: { alpha: 1, beta: 1, gamma: 1 },
+    multipliers: { gamma: 4 },
+  });
+  const spin = spinGalaxyGate(full, "alpha", 1, 0, () => rolls.shift() ?? 0.5);
+  assert.deepEqual(spin.rewards.duplicates, [{ gate: "gamma", multiplier: 5 }]);
+  assert.equal(spin.state.lastOpenedGate, "gamma");
+  assert.equal(spin.state.multipliers.gamma, 5);
+  assert.equal(spin.state.multiplierArmed.gamma, true);
+});
+
+test("un x5 obtenu dans un lot affecte le gain suivant sans multiplier le doublon", () => {
+  const rolls = [0.25, 0.99, 0.8];
+  const full = normalizeGalaxyGateState({
+    energy: 2,
+    built: { alpha: 1, beta: 1, gamma: 1 },
+    multipliers: { gamma: 4 },
+  });
+  const spin = spinGalaxyGate(full, "alpha", 2, 0, () => rolls.shift() ?? 0.5);
+  assert.deepEqual(spin.rewards.duplicates, [{ gate: "gamma", multiplier: 5 }]);
+  assert.equal(spin.rewards.ammo.x4, 375);
+  assert.deepEqual(spin.rewards.multiplierApplications, [{
+    gate: "gamma",
+    multiplier: 5,
+    spin: 2,
+    rewardType: "ammo",
+    rewardId: "x4",
+    amount: 375,
+  }]);
+  assert.equal(spin.state.multipliers.gamma, 1);
+  assert.equal(spin.state.multiplierArmed.gamma, false);
+});
+
+test("un multiplicateur armé affecte uniquement le prochain spin", () => {
+  const initial = normalizeGalaxyGateState({ energy: 2, multipliers: { alpha: 3 } });
+  const armed = setGalaxyGateMultiplierArmed(initial, "alpha", true);
+  assert.equal(armed.ok, true);
+  const spin = spinGalaxyGate(armed.state, "alpha", 2, 0, () => 0.5);
+  assert.deepEqual(spin.rewards.multiplierApplied, {
+    gate: "alpha",
+    multiplier: 3,
+    spin: 1,
+    rewardType: "ammo",
+    rewardId: "x2",
+    amount: 750,
+  });
+  assert.equal(spin.rewards.ammo.x2, 1000);
+  assert.equal(spin.state.multipliers.alpha, 1);
+  assert.equal(spin.state.multiplierArmed.alpha, false);
+});
+
+test("un multiplicateur peut fournir plusieurs pièces de Galaxy Gate", () => {
+  const rolls = [0.1, 0];
+  const initial = normalizeGalaxyGateState({
+    energy: 1,
+    multipliers: { alpha: 5 },
+    multiplierArmed: { alpha: true },
+  });
+  const spin = spinGalaxyGate(initial, "alpha", 1, 0, () => rolls.shift() ?? 0.5);
+  assert.equal(spin.rewards.partsByGate.alpha, 5);
+  assert.equal(spin.state.parts.alpha, 5);
+  assert.deepEqual(spin.rewards.multiplierApplications, [{
+    gate: "alpha",
+    multiplier: 5,
+    spin: 1,
+    rewardType: "parts",
+    rewardId: "alpha",
+    amount: 5,
+  }]);
 });
 
 test("la firme détermine les bases normale, supérieure et de Galaxy Gate", () => {

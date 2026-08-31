@@ -194,26 +194,27 @@
           </nav>
           <div class="ggMain">
             <div class="ggCore">
+              <button id="ggDeployBtn" class="ggDeployBtn ggDeployTop" type="button" data-gg-deploy hidden>Préparer le portail</button>
               <div class="ggPortalPreview">
                 <img id="ggPortalImage" alt="Portail Galaxy Gate">
               </div>
               <div class="ggDetails">
-                <div><span>Multiplicateur</span><b id="ggMultiplier">x1</b></div>
+                <div class="ggMultiplierRow"><span>Multiplicateur</span><b id="ggMultiplier">x1</b><button id="ggMultiplierBtn" type="button" disabled>Activer</button></div>
                 <div><span>GG construite</span><b id="ggBuilt">0 / 1</b></div>
                 <div><span>Terminées</span><b id="ggCompleted">0</b></div>
                 <div><span>Vague</span><b id="ggWave">0 / 11</b></div>
               </div>
-              <div class="ggInlineCost"><b><em>1</em> énergie ou <em id="ggCreditCost">100 000</em> crédits</b><small id="ggNpcRewardScale">Récompenses des NPC ×1</small></div>
+              <small id="ggNpcRewardScale" class="ggNpcRewardScale">Récompenses des NPC ×1</small>
             </div>
             <div class="ggPartsBar"><span>Pièces assemblées</span><strong id="ggParts">0 / 0</strong></div>
             <div id="ggRewards" class="ggRewards"></div>
             <div class="ggSpinControls">
               <label for="ggSpinCount">Nombre de spins</label>
               <select id="ggSpinCount">
-                <option value="1">1</option><option value="2">2</option><option value="10">10</option><option value="50">50</option><option value="100">100</option>
+                <option value="1">1</option><option value="2">2</option><option value="5">5</option><option value="10">10</option><option value="50">50</option><option value="100">100</option>
               </select>
+              <div class="ggSpinPrice"><strong><em id="ggCreditCost">100 000</em> crédits</strong></div>
               <button id="ggSpinBtn" type="button" data-gg-spin>Lancer le spin</button>
-              <button id="ggDeployBtn" class="ggDeployBtn" type="button" data-gg-deploy hidden>Envoyer sur la map</button>
             </div>
           </div>
           <section class="ggHistorySection">
@@ -1294,6 +1295,6 @@ restore(id) {
 </script>
 
 <script type="module" src="./public/profile.js"></script>
-<script type="module" src="./src/main.js"></script>
+<script type="module" src="./src/main.js?v=gg-history-3"></script>
 </body>
 </html>

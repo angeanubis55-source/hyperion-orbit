@@ -7,7 +7,7 @@ import { normalizeQuestState, QUEST_DEFINITIONS } from "../data/quests.js";
 import { calculateRankPoints, getQuestHonorReward } from "./progression.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./factions.js";
 import { compactFitDraft } from "./fitLayout.js";
-import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState, spinGalaxyGate } from "./galaxyGates.js";
+import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./galaxyGates.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -16,6 +16,7 @@ const STORAGE_SCHEMA_VERSION = 4;
 const STARTER_CREDITS = 1000000;
 const NPC_KILL_BREAKDOWN_VERSION = 1;
 const QUEST_HONOR_VERSION = 1;
+const GALAXY_GATE_DATA_RESET_VERSION = 1;
 
 const STARTER_SHIP_ID = "PhoenixBleu";
 
@@ -175,7 +176,11 @@ function ensureUserShape(u) {
   u.credits = Number(u.credits);
   if (!Number.isFinite(u.credits)) u.credits = 0;
   u.credits = Math.max(0, Math.floor(u.credits));
-  u.galaxyGates = normalizeGalaxyGateState(u.galaxyGates);
+  const currentUserId = readCurrent()?.id;
+  const mustResetGalaxyGates = String(currentUserId || "") === String(u.id)
+    && Number(u._galaxyGateDataResetVersion || 0) < GALAXY_GATE_DATA_RESET_VERSION;
+  u.galaxyGates = normalizeGalaxyGateState(mustResetGalaxyGates ? null : u.galaxyGates);
+  if (mustResetGalaxyGates) u._galaxyGateDataResetVersion = GALAXY_GATE_DATA_RESET_VERSION;
 
   // starter credits (une seule fois)
   if (!u._starterCreditsGiven) {
@@ -739,6 +744,16 @@ export function spinCurrentUserGalaxyGate(gateId, count = 1, rng = Math.random) 
   ensureUserShape(u);
   saveUser(u);
   return { ...result, user: u };
+}
+
+export function armCurrentUserGalaxyGateMultiplier(gateId, armed = true) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const result = setGalaxyGateMultiplierArmed(u.galaxyGates, gateId, armed);
+  if (!result.ok) return { ok: false, error: "Aucun multiplicateur disponible.", state: result.state };
+  u.galaxyGates = result.state;
+  saveUser(u);
+  return { ok: true, user: u, state: result.state };
 }
 
 export function grantCurrentUserGalaxyEnergy(amount) {
