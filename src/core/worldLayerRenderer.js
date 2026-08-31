@@ -37,6 +37,63 @@ export function drawBackgroundLayerSet(context, layers, options) {
   }
 }
 
+const STARFIELD_LAYERS = Object.freeze([
+  { spacing: 180, parallax: 0.04, driftX: 3, driftY: 1.02, radius: 0.75, alpha: 0.48 },
+  { spacing: 132, parallax: 0.11, driftX: 5.8, driftY: 1.97, radius: 1.05, alpha: 0.65 },
+  { spacing: 98, parallax: 0.23, driftX: 9.5, driftY: 3.23, radius: 1.35, alpha: 0.86 },
+]);
+
+function starHash(x, y, seed) {
+  let value = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(seed | 0, 1442695041);
+  value = Math.imul(value ^ (value >>> 13), 1274126177);
+  return ((value ^ (value >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * Champ d'étoiles à trois profondeurs. Les positions sont calculées depuis une
+ * grille déterministe : aucune étoile ne scintille ou ne saute entre deux frames.
+ */
+export function drawParallaxStarfield(context, options = {}) {
+  if (!context) return;
+  const viewportWidth = Math.max(1, Number(options.viewportWidth) || 1);
+  const viewportHeight = Math.max(1, Number(options.viewportHeight) || 1);
+  const cameraX = Number(options.cameraX) || 0;
+  const cameraY = Number(options.cameraY) || 0;
+  const elapsedSeconds = Math.max(0, Number(options.elapsedSeconds) || 0);
+
+  context.save();
+  context.globalCompositeOperation = "lighter";
+
+  STARFIELD_LAYERS.forEach((layer, layerIndex) => {
+    const worldOffsetX = cameraX * layer.parallax - elapsedSeconds * layer.driftX;
+    const worldOffsetY = cameraY * layer.parallax - elapsedSeconds * layer.driftY;
+    const firstColumn = Math.floor(worldOffsetX / layer.spacing) - 1;
+    const firstRow = Math.floor(worldOffsetY / layer.spacing) - 1;
+    const columns = Math.ceil(viewportWidth / layer.spacing) + 3;
+    const rows = Math.ceil(viewportHeight / layer.spacing) + 3;
+
+    for (let row = firstRow; row < firstRow + rows; row++) {
+      for (let column = firstColumn; column < firstColumn + columns; column++) {
+        const jitterX = starHash(column, row, layerIndex * 7 + 1) * layer.spacing;
+        const jitterY = starHash(column, row, layerIndex * 7 + 2) * layer.spacing;
+        const x = column * layer.spacing + jitterX - worldOffsetX;
+        const y = row * layer.spacing + jitterY - worldOffsetY;
+        if (x < -3 || y < -3 || x > viewportWidth + 3 || y > viewportHeight + 3) continue;
+
+        const brightness = 0.62 + starHash(column, row, layerIndex * 7 + 3) * 0.38;
+        const radius = layer.radius * (0.72 + starHash(column, row, layerIndex * 7 + 4) * 0.55);
+        context.globalAlpha = layer.alpha * brightness;
+        context.fillStyle = layerIndex === 2 ? "#dff8ff" : "#b8dded";
+        context.beginPath();
+        context.arc(x, y, radius, 0, Math.PI * 2);
+        context.fill();
+      }
+    }
+  });
+
+  context.restore();
+}
+
 export function drawWallLayer(context, walls, texture, options) {
   if (!context || !walls?.length || !texture) return;
   const { offsetX, offsetY, getImage, isImageReady, createScaleMatrix } = options;

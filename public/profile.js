@@ -95,6 +95,9 @@ const shopList = $("shopList");
 const shopPreview = $("shopPreview");
 const btnStart = $("btnStart");
 const btnLogout = $("btnLogout");
+const btnSessionMenu = $("btnSessionMenu");
+const sessionMenu = $("sessionMenu");
+const btnRestartGame = $("btnRestartGame");
 
 // state
 let user = null;
@@ -3287,6 +3290,7 @@ function registerProfileWindow() {
     icon: "EP",
     root,
     card,
+    defaultOpen: false,
   });
 }
 
@@ -3307,7 +3311,6 @@ function boot() {
   renderShop(user);
   setTab(tab);
 
-  closeProfileOverlay({ immediate: true });
 }
 
 // -------------------- Buttons --------------------
@@ -3318,6 +3321,36 @@ document.getElementById("btnGameHub")?.addEventListener("click", () => {
 btnLogout?.addEventListener("click", () => {
   logout();
   location.href = AUTH_URL;
+});
+
+btnSessionMenu?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const open = !sessionMenu?.classList.contains("open");
+  sessionMenu?.classList.toggle("open", open);
+  btnSessionMenu.setAttribute("aria-expanded", String(open));
+});
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest(".sessionDockMenu")) return;
+  sessionMenu?.classList.remove("open");
+  btnSessionMenu?.setAttribute("aria-expanded", "false");
+});
+
+btnRestartGame?.addEventListener("click", async () => {
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+    document.cookie.split(";").forEach((cookie) => {
+      const name = cookie.split("=")[0]?.trim();
+      if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+    });
+    sessionStorage.removeItem("orbit_assets_preloaded_v1");
+  } catch (error) {
+    console.warn("Redémarrage avec nettoyage partiel", error);
+  }
+  location.reload();
 });
 
 btnStart?.addEventListener("click", () => {

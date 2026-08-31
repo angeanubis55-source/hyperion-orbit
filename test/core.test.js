@@ -30,7 +30,7 @@ import {
 import { buildQuestJournalView, buildQuestTerminalView } from "../src/core/questPresentation.js";
 import { drawMoveTargetMarker, drawPlayerStatus, drawToastMessage } from "../src/core/canvasHudRenderer.js";
 import { renderMinimap } from "../src/core/minimapRenderer.js";
-import { drawBackgroundLayerSet, drawWallLayer } from "../src/core/worldLayerRenderer.js";
+import { drawBackgroundLayerSet, drawParallaxStarfield, drawWallLayer } from "../src/core/worldLayerRenderer.js";
 import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "../src/core/frameSystems.js";
 import { ADMIN_RANK, PILOT_RANKS, calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor } from "../src/core/progression.js";
 import { formatInteger } from "../src/core/numberFormat.js";
@@ -201,6 +201,32 @@ test("les couches du monde dessinent fonds et murs sans déséquilibrer Canvas",
   assert.equal(calls.some(call => call[0] === "drawImage"), true);
   assert.equal(calls.some(call => call[0] === "setTransform"), true);
   assert.equal(calls.filter(call => call[0] === "save").length, calls.filter(call => call[0] === "restore").length);
+});
+
+test("les trois profondeurs d'étoiles dérivent même avec une caméra immobile", () => {
+  const renderAt = elapsedSeconds => {
+    const arcs = [];
+    const context = new Proxy({}, {
+      get: (target, property) => target[property] || ((...args) => {
+        if (property === "arc") arcs.push(args.slice(0, 3));
+      }),
+      set: (target, property, value) => { target[property] = value; return true; },
+    });
+    drawParallaxStarfield(context, {
+      viewportWidth: 800,
+      viewportHeight: 600,
+      cameraX: 500,
+      cameraY: 500,
+      elapsedSeconds,
+    });
+    return arcs;
+  };
+
+  const initial = renderAt(0);
+  const later = renderAt(2);
+  assert.ok(initial.length > 80);
+  assert.equal(new Set(initial.map(([, , radius]) => radius.toFixed(1))).size >= 3, true);
+  assert.notDeepEqual(later.slice(0, 20), initial.slice(0, 20));
 });
 
 test("les systèmes de frame bornent le mouvement et nettoient les effets expirés", () => {

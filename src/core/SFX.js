@@ -9,6 +9,7 @@ export function createSFX() {
     last: Object.create(null),
     active: Object.create(null),
     enabled: true,
+    masterVolume: 0.55,
     _preloaded: false,
 
     init() {
@@ -17,8 +18,14 @@ export function createSFX() {
       if (!AC) return;
       api.ctx = new AC();
       api.master = api.ctx.createGain();
-      api.master.gain.value = 0.55;
+      api.master.gain.value = api.masterVolume;
       api.master.connect(api.ctx.destination);
+    },
+
+    setMasterVolume(value) {
+      api.masterVolume = Math.max(0, Math.min(1, Number(value) || 0));
+      if (!api.master || !api.ctx) return;
+      api.master.gain.setTargetAtTime(api.masterVolume, api.ctx.currentTime, 0.015);
     },
 
     resume() {

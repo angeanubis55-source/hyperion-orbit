@@ -50,7 +50,7 @@ import {
   drawToastMessage,
 } from "./canvasHudRenderer.js";
 import { renderMinimap } from "./minimapRenderer.js";
-import { drawBackgroundLayerSet, drawWallLayer } from "./worldLayerRenderer.js";
+import { drawBackgroundLayerSet, drawParallaxStarfield, drawWallLayer } from "./worldLayerRenderer.js";
 import { attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./frameSystems.js";
 import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor } from "./progression.js";
 import { formatInteger } from "./numberFormat.js";
@@ -232,9 +232,6 @@ const ui = {
 
   fpsTxt: document.getElementById("fpsTxt"),
   perfDetails: document.getElementById("perfDetails"),
-  cacheTxt: document.getElementById("cacheTxt"),
-  clearCacheBtn: document.getElementById("clearCacheBtn"),
-  restartGameBtn: document.getElementById("restartGameBtn"),
 
   boxWave: document.getElementById("boxWave"),
   boxMeta: document.getElementById("boxMeta"),
@@ -323,7 +320,9 @@ const DEFAULT_KEYBINDS = {
 
 const DEFAULT_GAME_SETTINGS = {
   sound: true,
+  soundVolume: 55,
   background: true,
+  stars: true,
   textures: true,
   autoStart: false,
   keybinds: { ...DEFAULT_KEYBINDS },
@@ -341,11 +340,17 @@ function loadGameSettings() {
     const raw = localStorage.getItem(GAME_SETTINGS_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
 
-    return {
+    const settings = {
       ...DEFAULT_GAME_SETTINGS,
       ...(parsed && typeof parsed === "object" ? parsed : {}),
       keybinds: normalizeKeybinds(parsed?.keybinds),
     };
+    settings.soundVolume = clamp(Math.round(Number(settings.soundVolume) || 0), 0, 100);
+    if (!settings.sound || settings.soundVolume === 0) {
+      settings.sound = false;
+      settings.soundVolume = 0;
+    }
+    return settings;
   } catch {
     return {
       ...DEFAULT_GAME_SETTINGS,
@@ -366,6 +371,12 @@ function setGameSetting(key, value) {
   if (!(key in GAME_SETTINGS)) return;
 
   GAME_SETTINGS[key] = !!value;
+  if (key === "sound") {
+    GAME_SETTINGS.soundVolume = GAME_SETTINGS.sound
+      ? Math.max(1, Number(GAME_SETTINGS.soundVolume) || 55)
+      : 0;
+    SFX?.setMasterVolume?.(GAME_SETTINGS.soundVolume / 100);
+  }
   saveGameSettings();
   renderSettingsWindow();
 
@@ -377,9 +388,21 @@ function setGameSetting(key, value) {
     showToast(GAME_SETTINGS.background ? "Fond de carte affiché" : "Fond de carte masqué", 1.1);
   }
 
+  if (key === "stars") {
+    showToast(GAME_SETTINGS.stars ? "Étoiles animées" : "Étoiles masquées", 1.1);
+  }
+
   if (key === "textures") {
     showToast(GAME_SETTINGS.textures ? "Textures affichées" : "Textures masquées", 1.1);
   }
+}
+
+function setSoundVolume(value) {
+  GAME_SETTINGS.soundVolume = clamp(Math.round(Number(value) || 0), 0, 100);
+  GAME_SETTINGS.sound = GAME_SETTINGS.soundVolume > 0;
+  saveGameSettings();
+  SFX?.setMasterVolume?.(GAME_SETTINGS.soundVolume / 100);
+  renderSettingsWindow();
 }
 
 let waitingForBindAction = null;
@@ -542,16 +565,28 @@ function renderSettingsWindow() {
   updateSettingsButton(
     "optSound",
     GAME_SETTINGS.sound,
-    "🔊 Son : activé",
-    "🔇 Son : coupé"
+    "Son : activé",
+    "Son : coupé"
   );
 
   updateSettingsButton(
     "optBackground",
     GAME_SETTINGS.background,
-    "🌌 Fond de carte : affiché",
-    "🌑 Fond de carte : masqué"
+    "Fond : affiché",
+    "Fond : masqué"
   );
+
+  updateSettingsButton(
+    "optStars",
+    GAME_SETTINGS.stars,
+    "Étoiles : visibles",
+    "Étoiles : masquées"
+  );
+
+  const volume = document.getElementById("optVolume");
+  const volumeValue = document.getElementById("optVolumeValue");
+  if (volume) volume.value = String(GAME_SETTINGS.soundVolume);
+  if (volumeValue) volumeValue.textContent = `${GAME_SETTINGS.soundVolume} %`;
 
   const autoStart = document.getElementById("optAutoStart");
   if (autoStart) autoStart.checked = !!GAME_SETTINGS.autoStart;
@@ -560,53 +595,45 @@ function renderSettingsWindow() {
   updateHudKeyHints();
 }
 
+function normalizeSettingsWindow() {
+  const settingsWindow = document.getElementById("settingsWindow");
+  if (settingsWindow) {
+    settingsWindow.classList.remove("settingsControlsOpen");
+    settingsWindow.style.width = `${Math.min(940, innerWidth - 24)}px`;
+  }
+}
+
 function wireSettingsWindow() {
   const soundBtn = document.getElementById("optSound");
+  const volume = document.getElementById("optVolume");
   const bgBtn = document.getElementById("optBackground");
+  const starsBtn = document.getElementById("optStars");
   const texBtn = document.getElementById("optTextures");
   const autoStart = document.getElementById("optAutoStart");
   const settingsWindow = document.getElementById("settingsWindow");
 
   if (settingsWindow) {
-    settingsWindow.style.width = `${Math.min(560, innerWidth - 24)}px`;
+    normalizeSettingsWindow();
   }
 
-  document.querySelectorAll("#settingsWindow [data-settings-tab]").forEach((tabButton) => {
-    tabButton.addEventListener("click", () => {
-      const target = tabButton.dataset.settingsTab;
-      settingsWindow?.classList.toggle("settingsControlsOpen", target === "controls");
-      if (settingsWindow) {
-        const requestedWidth = target === "controls" ? 1080 : 560;
-        settingsWindow.style.width = `${Math.min(requestedWidth, innerWidth - 24)}px`;
-      }
-      document.querySelectorAll("#settingsWindow [data-settings-tab]").forEach((button) => {
-        button.classList.toggle("active", button === tabButton);
-      });
-      document.querySelectorAll("#settingsWindow [data-settings-page]").forEach((page) => {
-        page.classList.toggle("active", page.dataset.settingsPage === target);
-      });
-      if (target === "controls" && settingsWindow) {
-        const keepSettingsOnScreen = () => {
-          const rect = settingsWindow.getBoundingClientRect();
-          if (rect.right > innerWidth - 8) {
-            settingsWindow.style.left = `${Math.max(8, innerWidth - rect.width - 8)}px`;
-          }
-          if (rect.bottom > innerHeight - 8) {
-            settingsWindow.style.top = `${Math.max(38, innerHeight - rect.height - 8)}px`;
-          }
-        };
-        requestAnimationFrame(keepSettingsOnScreen);
-        setTimeout(keepSettingsOnScreen, 220);
-      }
-    });
+  window.addEventListener("orbit:window-restored", (event) => {
+    if (event.detail?.id === "settingsWindow") normalizeSettingsWindow();
   });
 
   soundBtn?.addEventListener("click", () => {
     setGameSetting("sound", !GAME_SETTINGS.sound);
   });
 
+  volume?.addEventListener("input", () => {
+    setSoundVolume(volume.value);
+  });
+
   bgBtn?.addEventListener("click", () => {
     setGameSetting("background", !GAME_SETTINGS.background);
+  });
+
+  starsBtn?.addEventListener("click", () => {
+    setGameSetting("stars", !GAME_SETTINGS.stars);
   });
 
   texBtn?.addEventListener("click", () => {
@@ -647,7 +674,7 @@ function registerHudWindows() {
     return;
   }
 
-  const reg = (id, title, icon) => {
+  const reg = (id, title, icon, defaultOpen = true) => {
     const el = document.getElementById(id);
     if (!el) {
       console.warn("HUD window introuvable:", id);
@@ -660,52 +687,24 @@ function registerHudWindows() {
       icon,
       root: el,
       card: el,
+      defaultOpen,
     });
   };
 
   reg("boxWave", "Vagues / Kills", "🌊");
   reg("boxMeta", "Stats joueur", "📊");
   reg("boxVitals", "Vie / Bouclier", "❤️");
-  reg("boxPerformance", "Performances / Cache", "📈");
+  reg("boxPerformance", "Performances", "📈");
   reg("minimap", "Mini-carte", "🗺️");
-  reg("settingsWindow", "Paramètres", "⚙️");
-  reg("questWindow", "Missions", "❗");
-  reg("questOfferWindow", "Terminal de quêtes", "📡");
+  reg("settingsWindow", "Paramètres", "⚙️", false);
+  reg("questWindow", "Missions", "❗", false);
+  reg("questOfferWindow", "Terminal de quêtes", "📡", false);
 wireSettingsWindow();
-
-// ✅ La fenêtre paramètres démarre réduite dans le dock
-window.GameWindowManager?.minimize("settingsWindow");
-window.GameWindowManager?.minimize("questWindow");
-window.GameWindowManager?.minimize("questOfferWindow");
 
   console.log("✅ HUD windows registered");
 }
 
 registerHudWindows();
-
-async function clearGameCacheAndCookies() {
-  try {
-    if (window.caches) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map(key => caches.delete(key)));
-    }
-    document.cookie.split(";").forEach(cookie => {
-      const name = cookie.split("=")[0]?.trim();
-      if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
-    });
-    try { sessionStorage.removeItem(SESSION_ASSET_CACHE_KEY); } catch {}
-    showToast("Cache et cookies vidés", 1.5);
-  } catch (error) {
-    console.warn("Nettoyage du cache incomplet", error);
-    showToast("Nettoyage du cache incomplet", 1.5);
-  }
-}
-
-ui.clearCacheBtn?.addEventListener("click", clearGameCacheAndCookies);
-ui.restartGameBtn?.addEventListener("click", async () => {
-  await clearGameCacheAndCookies();
-  window.location.reload();
-});
 
 // ============================================================
 // Helpers
@@ -1664,6 +1663,7 @@ function pickEnemyAtScreen(sx, sy) {
 // SFX
 // ============================================================
 const SFX = createSFX();
+SFX.setMasterVolume?.(GAME_SETTINGS.soundVolume / 100);
 // ✅ Mute global sans devoir modifier tous les SFX.play du jeu
 const _SFX_PLAY = typeof SFX?.play === "function" ? SFX.play.bind(SFX) : null;
 
@@ -3367,38 +3367,6 @@ function applyNpcSeparation(dt) {
       b.vy += by;
   });
 }
-
-// ✅ Starfield scroll (effet déplacement réel)
-let starScrollX = 0;
-let starScrollY = 0;
-
-const STAR_SCROLL_FACTOR = 2;
-
-// ============================================================
-// Starfield pattern
-// ============================================================
-const STAR_TILE = document.createElement("canvas");
-STAR_TILE.width = 512;
-STAR_TILE.height = 512;
-const sctx = STAR_TILE.getContext("2d");
-
-(function buildStars() {
-  sctx.clearRect(0, 0, STAR_TILE.width, STAR_TILE.height);
-  for (let i = 0; i < 50; i++) {
-    const x = Math.random() * STAR_TILE.width;
-    const y = Math.random() * STAR_TILE.height;
-    const r = 0.6 + Math.random() * 1.8;
-    const a = 0.15 + Math.random() * 0.75;
-    sctx.globalAlpha = a;
-    sctx.fillStyle = "#e8f0ff";
-    sctx.beginPath();
-    sctx.arc(x, y, r, 0, TAU);
-    sctx.fill();
-  }
-  sctx.globalAlpha = 1;
-})();
-
-const STAR_PATTERN = ctx.createPattern(STAR_TILE, "repeat");
 
 // ============================================================
 // NPC TYPES
@@ -6584,14 +6552,6 @@ updatePlayerVelocity(player, { x: mx, y: my }, dt);
     idleSway += (target - idleSway) * (1 - Math.pow(0.0006, dt * 60));
   }
 
-  if (!player.dead && started && !paused) {
-    starScrollX += (-player.vx * dt) * STAR_SCROLL_FACTOR;
-    starScrollY += (-player.vy * dt) * STAR_SCROLL_FACTOR;
-
-    starScrollX %= STAR_TILE.width;
-    starScrollY %= STAR_TILE.height;
-  }
-
   applyRadiation(dt);
 
   player.iFrames = Math.max(0, player.iFrames - dt);
@@ -7393,20 +7353,21 @@ if (GAME_SETTINGS.background) {
   drawBackgroundLayers(ox, oy);
 }
 
+// Le champ d'étoiles est une composante permanente de l'espace. Il reste
+// visible même si les images de fond optionnelles sont désactivées.
+if (GAME_SETTINGS.stars) {
+  drawParallaxStarfield(ctx, {
+    cameraX: camera.x,
+    cameraY: camera.y,
+    viewportWidth: innerWidth,
+    viewportHeight: innerHeight,
+    elapsedSeconds: performance.now() / 1000,
+  });
+}
+
 if (GAME_SETTINGS.textures) {
   drawZoneWalls(ox, oy);
 }
-
-  ctx.save();
-  ctx.globalAlpha = 0.55;
-  ctx.fillStyle = STAR_PATTERN;
-
-  const spx = (starScrollX % STAR_TILE.width) - STAR_TILE.width;
-  const spy = (starScrollY % STAR_TILE.height) - STAR_TILE.height;
-
-  ctx.translate(spx, spy);
-  ctx.fillRect(0, 0, innerWidth + STAR_TILE.width * 2, innerHeight + STAR_TILE.height * 2);
-  ctx.restore();
 
   drawZonePortals(ox, oy);
   drawSafeModules(ox, oy);
@@ -7625,10 +7586,10 @@ function drawUI() {
   const terminalAccess = hasQuestTerminalAccess();
   if (terminalAccess !== lastQuestTerminalAccess) renderQuestTerminal();
 
-  if (ui.boxWave) ui.boxWave.style.display = zoneMode ? "none" : "block";
-  if (ui.boxMeta) ui.boxMeta.style.display = "block";
-  if (ui.boxVitals) ui.boxVitals.style.display = "block";
-  if (ui.boxPerformance) ui.boxPerformance.style.display = "block";
+  if (ui.boxWave) {
+    const waveWindowOpen = window.GameWindowManager?.isOpen("boxWave") ?? true;
+    ui.boxWave.style.display = !zoneMode && waveWindowOpen ? "block" : "none";
+  }
 
   if (ui.credits) ui.credits.textContent = formatInteger(player.credits);
   if (ui.kills) ui.kills.textContent = formatInteger(player.kills);
@@ -7692,10 +7653,6 @@ updateConfigButtons();
     ui.fpsTxt.textContent = String(fpsValue || perf.fps || 0);
     if (ui.perfDetails) {
       ui.perfDetails.textContent = `Moy. ${perf.averageMs.toFixed(1)} ms · P95 ${perf.p95Ms.toFixed(1)} ms · Lentes ${perf.longFrames}`;
-    }
-    if (ui.cacheTxt) {
-      const cache = IMG.snapshot();
-      ui.cacheTxt.textContent = `${cache.done}/${cache.total}`;
     }
   }
 }

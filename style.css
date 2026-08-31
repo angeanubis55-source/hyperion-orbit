@@ -1393,6 +1393,52 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   background:linear-gradient(135deg,rgba(150,32,52,.2),rgba(62,12,25,.2)) !important;
 }
 
+#gameWindowDock .sessionDockMenu{
+  position:relative;
+  display:flex;
+  order:-2000;
+}
+#gameWindowDock .gameDockSeparator{
+  align-self:stretch;
+  width:1px;
+  min-width:1px;
+  margin:5px 3px;
+  order:-1500;
+  background:linear-gradient(180deg,transparent,rgba(124,240,255,.42),transparent);
+  box-shadow:0 0 8px rgba(0,217,255,.12);
+}
+#gameWindowDock .sessionMenu{
+  position:absolute;
+  left:0;
+  right:auto;
+  top:calc(100% + 10px);
+  bottom:auto;
+  z-index:100020;
+  width:150px;
+  padding:6px;
+  display:none;
+  gap:4px;
+  border:1px solid rgba(124,240,255,.24);
+  border-radius:7px;
+  background:#071723;
+  box-shadow:0 14px 36px rgba(0,0,0,.62);
+}
+#gameWindowDock .sessionMenu.open{ display:grid; }
+#gameWindowDock .sessionMenu button{
+  width:100%;
+  min-height:32px;
+  padding:7px 10px;
+  border:1px solid rgba(124,240,255,.13);
+  border-radius:5px;
+  color:#dceff5;
+  background:#0a2230;
+  font:800 10px/1.2 system-ui;
+  text-align:left;
+  cursor:pointer;
+}
+#gameWindowDock .sessionMenu button:hover{ border-color:rgba(124,240,255,.35); background:#0d3041; }
+#gameWindowDock .sessionMenu #btnLogout{ color:#ffd2d8; border-color:rgba(255,107,122,.22); }
+
 @media (max-width:820px){
   body #profileOverlay #profileWindow,
   body #profileOverlay #profileWindow.gameWindow.floating{
@@ -1792,8 +1838,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   width:auto !important;
   height:auto !important;
   max-width:calc(100vw - 24px) !important;
-  overflow-x:auto !important;
-  overflow-y:hidden !important;
+  overflow:visible !important;
   scrollbar-width:none;
   -ms-overflow-style:none;
   border-radius:16px !important;
@@ -3200,68 +3245,41 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #settingsWindow .settingsCheck span{display:grid;gap:2px;font-size:12px}
 #settingsWindow .settingsCheck small{color:rgba(232,244,255,.58);font-size:10px}
 
-/* Paramètres compacts : navigation par catégories */
+/* Paramètres unifiés */
 #settingsWindow{
-  width:560px;
-  height:440px;
+  width:min(940px,calc(100vw - 24px));
+  height:min(650px,calc(100vh - 48px));
   transition:width .18s ease,height .18s ease,border-color .18s ease,box-shadow .18s ease;
-}
-#settingsWindow.settingsControlsOpen{
-  width:min(1080px,calc(100vw - 32px));
-  height:min(620px,calc(100vh - 48px));
 }
 #settingsWindow .settingsBody{
   height:calc(100% - 30px);
   max-height:none;
   padding:0;
-  display:grid;
-  grid-template-rows:42px minmax(0,1fr);
-  gap:0;
+  display:block;
   overflow:hidden;
-}
-#settingsWindow .settingsTabs{
-  padding:6px 10px 0;
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:6px;
-  border-bottom:1px solid rgba(124,240,255,.14);
-  background:rgba(3,16,27,.64);
-}
-#settingsWindow .settingsTab{
-  min-width:0;
-  height:35px;
-  border:0;
-  border-bottom:2px solid transparent;
-  border-radius:7px 7px 0 0;
-  color:rgba(216,236,247,.56);
-  background:transparent;
-  font-size:10px;
-  font-weight:900;
-  text-transform:uppercase;
-  cursor:pointer;
-}
-#settingsWindow .settingsTab.active{
-  border-bottom-color:#69e9ff;
-  color:#effcff;
-  background:rgba(0,217,255,.09);
 }
 #settingsWindow .settingsPage{
   min-width:0;
   min-height:0;
-  padding:14px;
+  height:100%;
+  padding:18px;
   box-sizing:border-box;
-  display:none;
+  display:flex;
   flex-direction:column;
   gap:12px;
   overflow:hidden;
 }
-#settingsWindow .settingsPage.active{display:flex}
 #settingsWindow .settingsPageIntro{display:grid;gap:3px;padding-bottom:10px;border-bottom:1px solid rgba(124,240,255,.11)}
 #settingsWindow .settingsPageIntro b{color:#effbff;font-size:13px}
 #settingsWindow .settingsPageIntro span{color:rgba(204,228,241,.50);font-size:9px}
-#settingsWindow .settingsQuickGrid{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:start}
-#settingsWindow .settingsToggle{min-height:42px;border-radius:8px;transform:none!important;box-shadow:none!important}
-#settingsWindow .settingsCheck{flex:0 0 auto;align-self:stretch;border-radius:8px;box-sizing:border-box}
+#settingsWindow .settingsPreferences{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(260px,.75fr);gap:10px;align-items:stretch}
+#settingsWindow .settingsQuickGrid{flex:0 0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;align-content:start}
+#settingsWindow .settingsToggle{min-height:42px;padding:0 8px;border-radius:8px;white-space:nowrap;transform:none!important;box-shadow:none!important}
+#settingsWindow .settingsVolume{height:42px;min-width:0;padding:5px 9px;display:grid;gap:3px;box-sizing:border-box;border:1px solid rgba(124,240,255,.22);border-radius:8px;background:rgba(255,255,255,.055)}
+#settingsWindow .settingsVolume span{display:flex;align-items:center;justify-content:space-between;gap:6px;color:rgba(225,242,250,.78);font-size:9px;font-weight:800}
+#settingsWindow .settingsVolume output{color:#7cf0ff;font-variant-numeric:tabular-nums}
+#settingsWindow .settingsVolume input{width:100%;height:12px;margin:0;accent-color:#7cf0ff;cursor:pointer}
+#settingsWindow .settingsCheck{flex:0 0 auto;align-self:stretch;height:42px;min-height:42px;padding:5px 11px;border-radius:8px;box-sizing:border-box}
 #settingsWindow .settingsKeyColumns{
   flex:1 1 auto;
   min-height:0;
@@ -3273,30 +3291,27 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 }
 #settingsWindow .settingsKeyGroup{
   min-width:0;
-  padding:18px;
+  padding:14px;
   display:flex;
   flex-direction:column;
-  gap:10px;
+  gap:7px;
   border:1px solid rgba(124,240,255,.10);
   border-radius:12px;
   background:rgba(255,255,255,.018);
 }
 #settingsWindow .settingsSectionSub{
-  margin:0 0 5px;
-  padding:0 2px 11px;
+  margin:0 0 3px;
+  padding:0 2px 8px;
   border-top:0;
   border-bottom:1px solid rgba(124,240,255,.10);
   color:rgba(124,240,255,.72);
   font-size:10px;
 }
-#settingsWindow .keyBindRow{min-width:0;min-height:42px;padding:0 13px;border-radius:8px;font-size:11px;transform:none!important;box-shadow:none!important}
+#settingsWindow .keyBindRow{min-width:0;height:38px;min-height:38px;padding:0 13px;border-radius:8px;font-size:11px;transform:none!important;box-shadow:none!important}
 #settingsWindow .keyBindRow > span{min-width:0;white-space:normal;line-height:1.25;text-align:left}
 #settingsWindow .keyBindRow > kbd{flex:0 0 auto;margin-left:8px}
-#settingsWindow.settingsControlsOpen .settingsPage{padding:22px;gap:18px}
-#settingsWindow.settingsControlsOpen .settingsPageFooter{padding-top:14px}
-#settingsWindow.settingsControlsOpen .settingsResetBtn{min-height:40px;font-size:11px}
-#settingsWindow .settingsPageFooter{flex:0 0 auto;padding-top:10px;border-top:1px solid rgba(124,240,255,.11)}
-#settingsWindow [data-settings-page="general"] .settingsPageFooter{margin-top:auto}
+#settingsWindow .settingsControlsIntro{margin-top:2px}
+#settingsWindow .settingsPageFooter{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:10px;border-top:1px solid rgba(124,240,255,.11)}
 #settingsWindow .settingsResetBtn{width:100%;margin:0;border-radius:7px}
 #settingsWindow .settingsBody,
 #settingsWindow .settingsPage,
@@ -3306,7 +3321,9 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #settingsWindow .settingsKeyColumns::-webkit-scrollbar{display:none}
 
 @media (max-width:600px){
-  #settingsWindow{width:calc(100vw - 24px);height:min(470px, calc(100vh - 100px))}
+  #settingsWindow{width:calc(100vw - 24px);height:min(650px, calc(100vh - 48px))}
+  #settingsWindow .settingsPage{overflow-y:auto}
+  #settingsWindow .settingsPreferences{grid-template-columns:1fr}
   #settingsWindow .settingsQuickGrid{grid-template-columns:1fr}
   #settingsWindow .settingsKeyColumns{grid-template-columns:1fr;overflow-y:auto}
 }

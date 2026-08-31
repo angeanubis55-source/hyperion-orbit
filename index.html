@@ -32,11 +32,18 @@
 </div>
 
 <div id="gameWindowDock">
+  <div class="sessionDockMenu">
+    <button id="btnSessionMenu" class="gameDockIcon logoutDockIcon" type="button" title="Session" aria-label="Menu de session" aria-expanded="false">
+      <span>⏻</span>
+    </button>
+    <div id="sessionMenu" class="sessionMenu" role="menu">
+      <button id="btnLogout" type="button" role="menuitem">Déconnexion</button>
+      <button id="btnRestartGame" type="button" role="menuitem">Redémarrer</button>
+    </div>
+  </div>
+  <span class="gameDockSeparator" aria-hidden="true"></span>
   <button id="btnGameHub" class="gameDockIcon profileDockIcon" data-window-id="profileWindow" type="button" title="Profil" aria-label="Profil">
     <span>👤</span>
-  </button>
-  <button id="btnLogout" class="gameDockIcon logoutDockIcon" type="button" title="Déconnexion" aria-label="Déconnexion">
-    <span>⏻</span>
   </button>
 </div>
   
@@ -97,11 +104,6 @@
       <div class="barWrap">
         <div class="row mini"><span class="k">FPS</span><span class="v" id="fpsTxt">—</span></div>
         <div id="perfDetails" class="perfDetails">Moy. — ms · P95 — ms · Lentes —</div>
-        <div class="row mini"><span class="k">Cache images</span><span class="v" id="cacheTxt">—</span></div>
-        <div class="performanceActions">
-          <button id="clearCacheBtn" class="performanceButton" type="button">Vider cache et cookies</button>
-          <button id="restartGameBtn" class="performanceButton" type="button">Redémarrer le jeu</button>
-        </div>
       </div>
     </div>
 
@@ -116,27 +118,25 @@
 
     <div id="settingsWindow" class="panel gameSettingsPanel">
       <div class="settingsBody">
-        <nav class="settingsTabs" aria-label="Catégories des paramètres">
-          <button class="settingsTab active" data-settings-tab="general" type="button">Général</button>
-          <button class="settingsTab" data-settings-tab="controls" type="button">Commandes</button>
-        </nav>
-
-        <section class="settingsPage active" data-settings-page="general">
+        <section class="settingsPage active">
           <div class="settingsPageIntro"><b>Préférences du jeu</b><span>Affichage, son et démarrage</span></div>
-          <div class="settingsQuickGrid">
-            <button id="optSound" class="settingsToggle" type="button">Son : activé</button>
-            <button id="optBackground" class="settingsToggle" type="button">Fond de carte : affiché</button>
+          <div class="settingsPreferences">
+            <div class="settingsQuickGrid">
+              <button id="optSound" class="settingsToggle" type="button">Son : activé</button>
+              <label class="settingsVolume" for="optVolume">
+                <span>Volume <output id="optVolumeValue">55 %</output></span>
+                <input id="optVolume" type="range" min="0" max="100" step="1" value="55" />
+              </label>
+              <button id="optBackground" class="settingsToggle" type="button">Fond de carte : affiché</button>
+              <button id="optStars" class="settingsToggle" type="button">Étoiles : animées</button>
+            </div>
+            <label class="settingsCheck" for="optAutoStart">
+              <input id="optAutoStart" type="checkbox" />
+              <span><b>Démarrage automatique</b><small>Entrer en jeu dès que le chargement est terminé</small></span>
+            </label>
           </div>
-          <label class="settingsCheck" for="optAutoStart">
-            <input id="optAutoStart" type="checkbox" />
-            <span><b>Démarrage automatique</b><small>Entrer en jeu dès que le chargement est terminé</small></span>
-          </label>
-          <div class="settingsPageFooter">
-            <button id="btnResetWindows" class="settingsResetBtn settingsResetWindowsBtn" type="button">Réinitialiser les fenêtres</button>
-          </div>
-        </section>
 
-        <section class="settingsPage" data-settings-page="controls">
+          <div class="settingsPageIntro settingsControlsIntro"><b>Commandes</b><span>Clique sur une commande pour modifier sa touche</span></div>
           <div class="settingsKeyColumns">
             <div class="settingsKeyGroup">
               <div class="settingsSectionSub">Jeu</div>
@@ -163,6 +163,7 @@
             </div>
           </div>
           <div class="settingsPageFooter">
+            <button id="btnResetWindows" class="settingsResetBtn settingsResetWindowsBtn" type="button">Réinitialiser les fenêtres</button>
             <button id="btnResetKeybinds" class="settingsResetBtn" type="button">Réinitialiser les touches</button>
           </div>
         </section>
@@ -527,9 +528,31 @@
   const windows = new Map();
 
   const WIN_POS_PREFIX = "orbit_hud_window_pos:";
+  const WIN_STATE_PREFIX = "orbit_hud_window_state:";
 
 function posKey(id) {
   return WIN_POS_PREFIX + id;
+}
+
+function stateKey(id) {
+  return WIN_STATE_PREFIX + id;
+}
+
+function loadWindowOpenState(id) {
+  try {
+    const raw = localStorage.getItem(stateKey(id));
+    if (raw === null) return null;
+    const data = JSON.parse(raw);
+    return typeof data?.open === "boolean" ? data.open : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveWindowOpenState(id, open) {
+  try {
+    localStorage.setItem(stateKey(id), JSON.stringify({ open: !!open, savedAt: Date.now() }));
+  } catch {}
 }
 
 function loadWindowPosition(id) {
@@ -915,7 +938,7 @@ function makeMinimapResizable(id, card) {
   }
 
   window.GameWindowManager = {
-    register({ id, title, icon = "▣", root, card }) {
+    register({ id, title, icon = "▣", root, card, defaultOpen = true }) {
       if (!id || !root || !card) return null;
 
 card.classList.add("gameWindow");
@@ -959,6 +982,23 @@ minBtn.onclick = (e) => {
         lastDisplay: state.lastDisplay || "grid",
       });
 
+      const savedOpen = loadWindowOpenState(id);
+      const shouldOpen = savedOpen === null ? !!defaultOpen : savedOpen;
+      if (shouldOpen) {
+        root.classList.remove("gameWinMinimized");
+        card.classList.remove("gameWinMinimized");
+        root.style.display = "block";
+        card.style.display = "block";
+        const existingDockButton = getDock().querySelector(`[data-window-id="${id}"]`);
+        if (existingDockButton) existingDockButton.remove();
+      } else {
+        root.classList.add("gameWinMinimized");
+        card.classList.add("gameWinMinimized");
+        root.style.display = "none";
+        card.style.display = "none";
+        makeDockIcon(id, title, icon);
+      }
+
       card.addEventListener("pointerdown", () => {
         card.style.zIndex = String(++topZ);
       });
@@ -969,6 +1009,7 @@ minBtn.onclick = (e) => {
 minimize(id) {
   const w = windows.get(id);
   if (!w) return;
+  saveWindowOpenState(id, false);
 
   w.lastDisplay = "block";
   clearTimeout(w.animationTimer);
@@ -1012,6 +1053,7 @@ minimize(id) {
 restore(id) {
   const w = windows.get(id);
   if (!w) return;
+  saveWindowOpenState(id, true);
   clearTimeout(w.animationTimer);
   w.card.classList.remove("gameWinClosing");
 
@@ -1056,6 +1098,8 @@ restore(id) {
     w.card.style.visibility = "visible";
     w.card.style.opacity = "1";
   });
+
+  window.dispatchEvent(new CustomEvent("orbit:window-restored", { detail: { id } }));
 
   if (dockBtn) dockBtn.remove();
 },
@@ -1106,11 +1150,19 @@ restore(id) {
     close(id) {
       const w = windows.get(id);
       if (!w) return;
+      saveWindowOpenState(id, false);
 
       w.root.style.display = "none";
 
       const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);
       if (dockBtn) dockBtn.remove();
+    },
+
+    isOpen(id) {
+      const w = windows.get(id);
+      if (!w) return false;
+      const savedOpen = loadWindowOpenState(id);
+      return savedOpen === null ? !w.root.classList.contains("gameWinMinimized") : savedOpen;
     },
 
     setTitle(id, title) {
