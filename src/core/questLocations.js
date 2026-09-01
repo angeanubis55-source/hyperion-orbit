@@ -3,11 +3,10 @@
 import { MAP_LOADERS } from "./mapRegistry.js";
 import { NPC_TYPES } from "../data/npcTypes.js";
 
-const GATE_MAPS = new Set(["alpha", "beta", "gamma", "tsan", "low", "qz"]);
+const GATE_MAPS = new Set(["alpha", "beta", "gamma", "low", "qz"]);
 const SPECIAL_GATE_WAVES = Object.freeze({
   low: () => import("../../maps/Low_map/Waves.js"),
   qz: () => import("../../maps/Blighted_map/Waves.js"),
-  tsan: () => import("../../maps/Tsan_map/Waves.js"),
 });
 const WORLD_SAMPLE = Object.freeze({ w: 24000, h: 14000 });
 

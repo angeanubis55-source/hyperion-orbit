@@ -113,8 +113,6 @@ const PIRATE_CAMPAIGNS = [
 ];
 
 const SPECIAL_CAMPAIGNS = [
-  Q("corrupted_scouts", "Échos corrompus", "Analyse les premières créatures corrompues.", [K("devo", "npc_Devolarium_Corrupted", 25, "Éliminer des Devolariums corrompus"), K("saimon", "npc_Saimon_Corrupted", 50, "Éliminer des Saimons corrompus")], 12000000, 6000000, 24000),
-  Q("corrupted_heavy", "Noyau corrompu", "Affronte les unités corrompues lourdes.", [K("lordakium", "npc_Lordakium_Corrupted", 30, "Éliminer des Lordakiums corrompus"), K("devourer", "npc_Devourer_Corrupted", 10, "Éliminer des Devourers corrompus")], 30000000, 15000000, 60000, "corrupted_scouts"),
   Q("ancient_trio", "Triade ancienne", "Affronte Styxus, Charopos et Lanatum.", [K("styxus", "npc_Styxus", 25, "Éliminer des Styxus"), K("charopos", "npc_Charopos", 25, "Éliminer des Charopos"), K("lanatum", "npc_Lanatum", 25, "Éliminer des Lanatum")], 40000000, 20000000, 80000),
 ];
 

@@ -7,7 +7,7 @@ import { normalizeQuestState, QUEST_DEFINITIONS } from "../data/quests.js";
 import { calculateRankPoints, getQuestHonorReward } from "./progression.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./factions.js";
 import { compactFitDraft } from "./fitLayout.js";
-import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./galaxyGates.js";
+import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./galaxyGates.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -801,6 +801,16 @@ export function completeCurrentUserGalaxyGate(gateId) {
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u, reward };
+}
+
+export function loseCurrentUserGalaxyGateLife(gateId) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const result = loseGalaxyGateLife(u.galaxyGates, gateId);
+  if (!result.ok) return { ok: false, error: "Aucune Galaxy Gate active correspondante.", ...result };
+  u.galaxyGates = result.state;
+  saveUser(u);
+  return { ...result, user: u };
 }
 
 export function saveCurrentUserGalaxyGateWave(gateId, wave) {

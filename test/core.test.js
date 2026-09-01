@@ -19,7 +19,7 @@ import { shouldRunNpcFrame } from "../src/core/npcActivity.js";
 import { pushBounded } from "../src/core/boundedCollection.js";
 import { createRadiationSystem } from "../src/core/radiationSystem.js";
 import { createGatePortalState, getGateReturnMap, positionGateChoicePortals } from "../src/core/gateSystem.js";
-import { consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "../src/core/galaxyGates.js";
+import { consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "../src/core/galaxyGates.js";
 import { getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, resolveBaseCenter } from "../src/core/factions.js";
 import {
   beginGatePortalJump,
@@ -120,6 +120,20 @@ test("le Galaxy Spinner assemble, sauvegarde et consomme les Gates", () => {
   assert.equal(resumed.state.built.alpha, 0);
 });
 
+test("une Galaxy Gate possède cinq vies et est perdue à la cinquième destruction", () => {
+  let state = consumeBuiltGalaxyGate(normalizeGalaxyGateState({ deployed: { alpha: true } }), "alpha").state;
+  assert.equal(state.lives.alpha, 5);
+  for (let remaining = 4; remaining >= 0; remaining--) {
+    const result = loseGalaxyGateLife(state, "alpha");
+    assert.equal(result.ok, true);
+    assert.equal(result.lives, remaining);
+    assert.equal(result.exhausted, remaining === 0);
+    state = result.state;
+  }
+  assert.equal(state.active, null);
+  assert.equal(state.activeWave, 1);
+});
+
 test("le Galaxy Spinner limite chaque Gate à une construction", () => {
   const full = normalizeGalaxyGateState({ energy: 1, parts: { alpha: 33 }, built: { alpha: 2, beta: 1, gamma: 1 } });
   const spin = spinGalaxyGate(full, "alpha", 1, 0, () => 0.1);
@@ -145,7 +159,7 @@ test("le générateur Ensemble ouvre la Gate dont il obtient une pièce", () => 
   assert.equal(spin.rewards.partsByGate.beta, 1);
 });
 
-test("le Spinner reste actif avec trois Gates construites et identifie le doublon", () => {
+test("le Spinner reste actif avec toutes les Gates construites et identifie le doublon", () => {
   const rolls = [0.1, 0.5];
   const full = normalizeGalaxyGateState({ energy: 1, built: { alpha: 1, beta: 1, gamma: 1 } });
   const spin = spinGalaxyGate(full, "alpha", 1, 0, () => rolls.shift() ?? 0.5);
@@ -156,7 +170,7 @@ test("le Spinner reste actif avec trois Gates construites et identifie le doublo
 });
 
 test("un multiplicateur arrivé à x5 s'arme automatiquement sur sa Gate", () => {
-  const rolls = [0.1, 0.99];
+  const rolls = [0.1, 0.9];
   const full = normalizeGalaxyGateState({
     energy: 1,
     built: { alpha: 1, beta: 1, gamma: 1 },
@@ -170,7 +184,7 @@ test("un multiplicateur arrivé à x5 s'arme automatiquement sur sa Gate", () =>
 });
 
 test("un x5 obtenu dans un lot affecte le gain suivant sans multiplier le doublon", () => {
-  const rolls = [0.25, 0.99, 0.8];
+  const rolls = [0.25, 0.9, 0.8];
   const full = normalizeGalaxyGateState({
     energy: 2,
     built: { alpha: 1, beta: 1, gamma: 1 },

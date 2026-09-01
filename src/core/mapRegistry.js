@@ -6,7 +6,6 @@ export const MAP_LOADERS = Object.freeze({
   alpha: () => import("../../maps/Alpha_map/Gate.js"),
   beta: () => import("../../maps/Beta_map/Gate.js"),
   gamma: () => import("../../maps/Gamma_map/Gate.js"),
-  tsan: () => import("../../maps/Tsan_map/Gate.js"),
   low: () => import("../../maps/Low_map/Gate.js"),
   qz: () => import("../../maps/Blighted_map/Gate.js"),
   "1-1": () => import("../../maps/1-1/Map.js"),

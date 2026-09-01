@@ -1,9 +1,9 @@
 "use strict";
 
 export const GALAXY_GATE_DEFINITIONS = Object.freeze({
-  alpha: Object.freeze({ id: "alpha", name: "Alpha", requiredParts: 34, maxWaves: 11, image: "assets/Alpha_Portal/désactivé.png", completion: Object.freeze({ exp: 4000000, honor: 100000, credits: 4000000, x4: 20000 }), rewardScale: 1 }),
-  beta: Object.freeze({ id: "beta", name: "Beta", requiredParts: 48, maxWaves: 11, image: "assets/Beta_Portal/désactivé.png", completion: Object.freeze({ exp: 8000000, honor: 200000, credits: 8000000, x4: 40000 }), rewardScale: 2 }),
-  gamma: Object.freeze({ id: "gamma", name: "Gamma", requiredParts: 82, maxWaves: 11, image: "assets/Gamma_Portal/désactivé.png", completion: Object.freeze({ exp: 12000000, honor: 300000, credits: 12000000, x4: 60000 }), rewardScale: 3 }),
+  alpha: Object.freeze({ id: "alpha", name: "Alpha", group: "ensemble", requiredParts: 34, maxWaves: 11, maxLives: 5, image: "assets/Alpha_Portal/désactivé.png", completion: Object.freeze({ exp: 4000000, honor: 100000, credits: 4000000, x4: 20000 }), rewardScale: 1 }),
+  beta: Object.freeze({ id: "beta", name: "Beta", group: "ensemble", requiredParts: 48, maxWaves: 11, maxLives: 5, image: "assets/Beta_Portal/désactivé.png", completion: Object.freeze({ exp: 8000000, honor: 200000, credits: 8000000, x4: 40000 }), rewardScale: 2 }),
+  gamma: Object.freeze({ id: "gamma", name: "Gamma", group: "ensemble", requiredParts: 82, maxWaves: 11, maxLives: 5, image: "assets/Gamma_Portal/désactivé.png", completion: Object.freeze({ exp: 12000000, honor: 300000, credits: 12000000, x4: 60000 }), rewardScale: 3 }),
 });
 
 export const GALAXY_SPIN_CREDIT_COST = 100000;
@@ -17,6 +17,7 @@ export function normalizeGalaxyGateState(raw) {
     built: {},
     deployed: {},
     completed: {},
+    lives: {},
     multipliers: {},
     multiplierArmed: {},
     active: GALAXY_GATE_DEFINITIONS[String(source.active || "").toLowerCase()] ? String(source.active).toLowerCase() : null,
@@ -30,6 +31,7 @@ export function normalizeGalaxyGateState(raw) {
     if (state.built[gate.id] >= GALAXY_GATE_BUILD_LIMIT) state.parts[gate.id] = 0;
     state.deployed[gate.id] = source.deployed?.[gate.id] === true;
     state.completed[gate.id] = Math.max(0, Math.floor(Number(source.completed?.[gate.id]) || 0));
+    state.lives[gate.id] = Math.min(gate.maxLives, Math.max(0, Math.floor(Number(source.lives?.[gate.id]) || gate.maxLives)));
     state.multipliers[gate.id] = Math.min(5, Math.max(1, Math.floor(Number(source.multipliers?.[gate.id]) || 1)));
     state.multiplierArmed[gate.id] = source.multiplierArmed?.[gate.id] === true && state.multipliers[gate.id] > 1;
   }
@@ -44,9 +46,9 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
   let balance = Math.max(0, Math.floor(Number(credits) || 0));
   const rewards = {
     parts: 0,
-    partsByGate: { alpha: 0, beta: 0, gamma: 0 },
+    partsByGate: Object.fromEntries(Object.keys(GALAXY_GATE_DEFINITIONS).map(id => [id, 0])),
     built: 0,
-    builtByGate: { alpha: 0, beta: 0, gamma: 0 },
+    builtByGate: Object.fromEntries(Object.keys(GALAXY_GATE_DEFINITIONS).map(id => [id, 0])),
     duplicates: [],
     multiplierApplied: null,
     multiplierApplications: [],
@@ -56,8 +58,10 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
   };
   let performed = 0;
 
+  const spinGroup = gate.group || gate.id;
+  const groupGates = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === spinGroup);
   const randomGate = () => {
-    const gates = Object.values(GALAXY_GATE_DEFINITIONS);
+    const gates = groupGates;
     return gates[Math.min(gates.length - 1, Math.floor(Math.max(0, Math.min(0.999999, Number(rng()) || 0)) * gates.length))];
   };
   const registerDuplicate = (duplicateGate) => {
@@ -91,7 +95,7 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
     performed++;
     const roll = Math.max(0, Math.min(0.999999, Number(rng()) || 0));
     if (roll < 0.22) {
-      const availableGates = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => state.built[item.id] < GALAXY_GATE_BUILD_LIMIT);
+      const availableGates = groupGates.filter(item => state.built[item.id] < GALAXY_GATE_BUILD_LIMIT);
       const partGate = availableGates.length
         ? availableGates[Math.min(availableGates.length - 1, Math.floor(Math.max(0, Math.min(0.999999, Number(rng()) || 0)) * availableGates.length))]
         : null;
@@ -164,6 +168,7 @@ export function deployBuiltGalaxyGate(stateInput, gateId) {
   }
   state.built[id]--;
   state.deployed[id] = true;
+  state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
   return { ok: true, state };
 }
 
@@ -175,6 +180,7 @@ export function consumeBuiltGalaxyGate(stateInput, gateId) {
   state.deployed[id] = false;
   state.active = id;
   state.activeWave = 1;
+  state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
   return { ok: true, state };
 }
 
@@ -184,6 +190,20 @@ export function completeActiveGalaxyGate(stateInput, gateId) {
   if (state.active !== id) return { ok: false, state };
   state.active = null;
   state.activeWave = 1;
+  state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
   state.completed[id]++;
   return { ok: true, state };
+}
+
+export function loseGalaxyGateLife(stateInput, gateId) {
+  const state = normalizeGalaxyGateState(stateInput);
+  const id = String(gateId || "").toLowerCase();
+  if (!GALAXY_GATE_DEFINITIONS[id] || state.active !== id) return { ok: false, state, exhausted: false };
+  state.lives[id] = Math.max(0, state.lives[id] - 1);
+  const exhausted = state.lives[id] === 0;
+  if (exhausted) {
+    state.active = null;
+    state.activeWave = 1;
+  }
+  return { ok: true, state, exhausted, lives: state.lives[id] };
 }

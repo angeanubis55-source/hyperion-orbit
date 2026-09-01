@@ -10,6 +10,7 @@ import {
   setActiveHangarConfig,
   consumeCurrentUserGalaxyGate,
   completeCurrentUserGalaxyGate,
+  loseCurrentUserGalaxyGateLife,
   grantCurrentUserGalaxyEnergy,
   spinCurrentUserGalaxyGate,
   saveCurrentUserGalaxyGateWave,
@@ -265,6 +266,7 @@ const ui = {
   ggMultiplierBtn: document.getElementById("ggMultiplierBtn"),
   ggBuilt: document.getElementById("ggBuilt"),
   ggCompleted: document.getElementById("ggCompleted"),
+  ggLives: document.getElementById("ggLives"),
   ggWave: document.getElementById("ggWave"),
   ggCreditCost: document.getElementById("ggCreditCost"),
   ggResult: document.getElementById("ggResult"),
@@ -783,6 +785,7 @@ function renderGalaxyGateWindow(message = "") {
   }
   ui.ggBuilt.textContent = `${formatInteger(state.built[gate.id])} / ${GALAXY_GATE_BUILD_LIMIT}`;
   ui.ggCompleted.textContent = formatInteger(state.completed[gate.id]);
+  if (ui.ggLives) ui.ggLives.textContent = `${formatInteger(state.lives?.[gate.id] ?? gate.maxLives)} / ${formatInteger(gate.maxLives)}`;
   const activeWave = state.active === gate.id ? Math.min(gate.maxWaves, Math.max(1, Number(state.activeWave) || 1)) : 0;
   ui.ggWave.textContent = `${activeWave} / ${gate.maxWaves}`;
   const selectedSpinCount = Math.max(1, Number(ui.ggSpinCount?.value || 1));
@@ -846,7 +849,11 @@ function renderGalaxyGateWindow(message = "") {
     const gainRows = (gains.length || appliedTexts.length)
       ? `${gains.map(gain => `<small>${gain}</small>`).join("")}${appliedTexts.map(text => `<small class="ggHistoryMultiplierApplied">${text}</small>`).join("")}`
       : `<small>Aucun gain direct</small>`;
-    return `<div class="ggHistoryRow"><span><b>Alpha · Beta · Gamma</b> · ${entry.spins} spin(s)</span><div class="ggHistoryGains">${gainRows}</div></div>`;
+    const historyGate = GALAXY_GATE_DEFINITIONS[entry.gate] || GALAXY_GATE_DEFINITIONS.alpha;
+    const gateSetLabel = historyGate.group === "ensemble"
+      ? Object.values(GALAXY_GATE_DEFINITIONS).filter(item => item.group === "ensemble").map(item => item.name).join(" · ")
+      : historyGate.name;
+    return `<div class="ggHistoryRow"><span><b>${gateSetLabel}</b> · ${entry.spins} spin(s)</span><div class="ggHistoryGains">${gainRows}</div></div>`;
   }).join("") : `<div class="ggHistoryEmpty">Aucun spin enregistré.</div>`;
 }
 
@@ -6247,6 +6254,18 @@ function die() {
   lastDeathPos.y = player.y;
   lastDeathPos.map = window.__CURRENT_MAP_ID__ || "1-1";
 
+  const defeatedGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+  if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[defeatedGateId]) {
+    const lifeResult = loseCurrentUserGalaxyGateLife(defeatedGateId);
+    if (lifeResult.ok) {
+      account.user = lifeResult.user;
+      const gateName = GALAXY_GATE_DEFINITIONS[defeatedGateId].name;
+      if (lifeResult.exhausted) showNotificationGroup([`Galaxy Gate ${gateName} perdue`, "Il ne vous reste plus aucune vie."]);
+      else showNotificationGroup([`Vaisseau détruit dans la Galaxy Gate ${gateName}`, `${lifeResult.lives} vie${lifeResult.lives > 1 ? "s" : ""} restante${lifeResult.lives > 1 ? "s" : ""}`]);
+      renderGalaxyGateWindow();
+    }
+  }
+
   if (started) {
     const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
     if (SESSION_HANGAR_ID) {
@@ -6625,9 +6644,10 @@ function drawZonePortals(ox, oy) {
 
     const w = spr.idle.w || imgIdle.naturalWidth || 128;
     const h = spr.idle.h || imgIdle.naturalHeight || 128;
+    const xOff = Number(spr.idle.xOff || 0);
     const yOff = spr.idle.yOff || 0;
 
-    const x = ptl.x + ox;
+    const x = ptl.x + ox + xOff;
     const y = ptl.y + oy + yOff;
 
     const openFade = getPortalOpenFade(ptl);
@@ -6645,12 +6665,17 @@ function drawZonePortals(ox, oy) {
 
     // ✅ portail ouvert
     ctx.globalAlpha = openFade;
+    const openW = spr.open.w || w;
+    const openH = spr.open.h || h;
+    const openScale = Number(spr.open.scale ?? 1);
+    const openXOff = Number(spr.open.xOff || 0);
+    const openYOff = Number(spr.open.yOff || 0);
     ctx.drawImage(
       imgOpen,
-      x - w / 2,
-      y - h / 2,
-      w,
-      h
+      x + openXOff - (openW * openScale) / 2,
+      y + openYOff - (openH * openScale) / 2,
+      openW * openScale,
+      openH * openScale
     );
 
     ctx.globalAlpha = 1;
@@ -6673,6 +6698,7 @@ function drawZonePortals(ox, oy) {
           128;
 
         const jumpYOff = Number(spr.jump.yOff || 0);
+        const jumpXOff = Number(spr.jump.xOff || 0);
 
         const dur = Math.max(
           0.1,
@@ -6695,7 +6721,7 @@ function drawZonePortals(ox, oy) {
           jumpFade;
 
         ctx.save();
-        ctx.translate(x, y + jumpYOff);
+        ctx.translate(x + jumpXOff, y + jumpYOff);
         ctx.rotate(angle);
         ctx.globalAlpha = alpha;
 
