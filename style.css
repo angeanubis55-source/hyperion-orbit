@@ -1812,7 +1812,22 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 .questOfferItem.accepted{ border-color:rgba(255,170,70,.72); color:#ffc276; background:rgba(148,78,18,.24); }
 .questOfferItem.accepted.active{ border-color:#ffb45c; color:#ffe0ad; background:rgba(178,96,20,.38); }
 .questOfferItem:disabled{ opacity:.45; cursor:default; }
-.questOfferHelp{ margin-top:14px; padding:11px; border-left:3px solid #7cf0ff; background:rgba(0,130,175,.1); color:rgba(210,240,250,.78); font-size:12px; line-height:1.5; }
+.questInfoCard{ display:grid; gap:9px; margin-top:12px; padding:11px 12px; border:1px solid rgba(88,174,220,.22); background:rgba(4,19,31,.5); }
+.questInfoCard h4{ margin:0; padding-bottom:8px; border-bottom:1px solid rgba(124,240,255,.14); color:#92dfef; font-size:11px; letter-spacing:.055em; text-transform:uppercase; }
+.questInfoRows{ display:grid; gap:0; }
+.questInfoRows > div{ display:grid; grid-template-columns:minmax(120px,.8fr) minmax(0,1.2fr); align-items:start; gap:14px; padding:6px 2px; border-bottom:1px solid rgba(124,240,255,.08); }
+.questInfoRows > div:last-child{ border-bottom:0; }
+.questInfoRows span{ color:#86aab8; font-size:11px; }
+.questInfoRows b{ color:#d9f3fb; font-size:11px; font-weight:700; overflow-wrap:anywhere; }
+.questRewardCard{ border-color:rgba(255,202,92,.24); background:rgba(50,35,8,.24); }
+.questRewardCard h4,.questRewardCard .questInfoRows b{ color:#ffd071; }
+.questSeriesCard{ border-color:rgba(176,135,255,.24); background:rgba(31,21,52,.28); }
+.questSeriesCard h4{ color:#cbb2ff; }
+.questHelpCard{ border-color:rgba(124,240,255,.26); background:rgba(0,75,105,.13); }
+.questHelpList{ display:grid; gap:8px; }
+.questHelpList article{ padding:8px 9px; border:1px solid rgba(124,240,255,.12); background:rgba(3,16,27,.42); }
+.questHelpList article > b{ color:#bcecf6; font-size:11px; }
+.questHelpList p{ margin:4px 0 0; color:#90b8c5; font-size:11px; line-height:1.48; }
 @media (max-width:700px){
   .questOfferLayout{ grid-template-columns:1fr 190px; }
 }

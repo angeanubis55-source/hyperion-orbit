@@ -12,29 +12,20 @@ import {
 import { getQuestExperienceReward, getQuestHonorReward } from "./progression.js";
 import { formatInteger } from "./numberFormat.js";
 
-const QUEST_HELP = {
-  npc_Streuner: "Présent en grand nombre dans les cartes de départ 1-1, 2-1 et 3-1.",
-  npc_Lordakia: "Cherche dans les secteurs de départ et les premières cartes de chaque faction.",
-  npc_Saimon: "Fréquente les cartes basses et intermédiaires des trois factions.",
-  npc_Mordon: "Présent surtout dans les cartes intermédiaires, notamment les secteurs x-3 et x-4.",
-  npc_Sibelon: "Cherche dans les secteurs intermédiaires x-3 et x-4.",
-  npc_Devolarium: "Présent dans plusieurs cartes intermédiaires des factions.",
-  npc_Sibelonit: "Souvent rencontré dans les secteurs avancés avec les Sibelons.",
-  npc_Kristallin: "Cherche dans les cartes avancées et les zones glacées.",
-  npc_Kristallon: "Présent dans les cartes avancées, accompagné de Kristallins.",
-  npc_Cubikon: "Le Cubikon se trouve dans les secteurs prévus pour les combats de groupe.",
-  Cargo_Box: "Les Cargo Boxes apparaissent après la destruction de nombreux NPC.",
-  Bonus_Box: "Les Bonus Boxes apparaissent naturellement sur presque toutes les cartes normales.",
-  Green_Booty_Box: "Les Green Booty Boxes peuvent apparaître sur les cartes normales.",
-  Palladium_Ore: "Le Palladium se collecte sur la carte pirate 5-2.",
-  Hybrid_Alloy_Box: "Les alliages hybrides proviennent notamment des Gygerthralls contaminés.",
-  Astral_Prime_Box: "Ces boîtes se trouvent dans les secteurs astrals spéciaux.",
-};
-
-function rewardLabel(quest) {
-  const ammo = Object.entries(quest.reward?.ammo || {}).filter(([, amount]) => amount > 0).map(([type, amount]) => `${formatInteger(amount)} munitions ${type === "x6" ? "RSB-75" : type.toUpperCase()}`);
+function rewardRows(quest) {
+  const ammo = Object.entries(quest.reward?.ammo || {}).filter(([, amount]) => amount > 0).map(([type, amount]) => [`Munitions ${type === "x6" ? "RSB-75" : type.toUpperCase()}`, formatInteger(amount)]);
   const galaxyEnergy = Math.max(0, Math.floor(Number(quest.reward?.galaxyEnergy) || 0));
-  return [`${formatInteger(quest.reward.credits)} crédits`, `${formatInteger(getQuestExperienceReward(quest))} XP`, `${formatInteger(getQuestHonorReward(quest))} honneur`, ...ammo, ...(galaxyEnergy ? [`${formatInteger(galaxyEnergy)} énergies Galaxy Gate`] : [])].join(" · ");
+  return [
+    ["Crédits", formatInteger(quest.reward.credits)],
+    ["Expérience", formatInteger(getQuestExperienceReward(quest))],
+    ["Honneur", formatInteger(getQuestHonorReward(quest))],
+    ...ammo,
+    ...(galaxyEnergy ? [["Énergies Galaxy Gate", formatInteger(galaxyEnergy)]] : []),
+  ];
+}
+
+function rewardCard(quest) {
+  return `<section class="questInfoCard questRewardCard"><h4>Récompenses</h4><div class="questInfoRows">${rewardRows(quest).map(([label, value]) => `<div><span>${label}</span><b>${value}</b></div>`).join("")}</div></section>`;
 }
 
 export function formatQuestEntityName(value) {
@@ -50,12 +41,37 @@ function objectiveLabel(objective) {
   return formatQuestEntityName(objective?.label || objective?.type || "Objectif");
 }
 
-function objectiveHelp(objective) {
-  if (objective.kind === "visit") return `Utilise les portails pour atteindre la carte ${objective.type}.`;
-  if (objective.kind === "gate") return `Construis puis termine la Galaxy Gate ${formatQuestEntityName(objective.type)}.`;
-  if (objective.kind === "kill" && objective.type === "*") return objective.map ? `Toute destruction de NPC effectuée sur ${objective.map} compte.` : "Toute destruction de NPC compte, sans restriction d’espèce ou de carte.";
-  if (objective.map) return `${QUEST_HELP[objective.type] || "Cherche cette cible"} Objectif valable uniquement sur ${objective.map}.`;
-  return QUEST_HELP[objective.type] || "Explore les secteurs correspondant à cet objectif.";
+function gateAdvice(type) {
+  const name = formatQuestEntityName(type);
+  const tactical = type === "gamma"
+    ? "Prévois ta configuration la plus résistante : les vagues Gamma sont les plus longues et les plus solides."
+    : type === "beta"
+      ? "Utilise une configuration dégâts et une configuration bouclier : Beta demande davantage d’endurance qu’Alpha."
+      : "Commence avec Alpha, conserve une configuration de fuite et répare-toi complètement entre les vagues.";
+  return `Construis ${name} dans le Galaxy Spinner depuis ta base mère, puis utilise « Préparer le portail ». ${tactical} Entre deux vagues, utilise le portail de retour si tes munitions ou ton équipement ne suffisent plus.`;
+}
+
+function collectableAdvice(objective, collectables) {
+  const definition = collectables?.[objective.type];
+  if (objective.map) return `Collecte cette ressource sur la carte ${objective.map} : seules les collectes effectuées sur cette carte comptent.`;
+  if (definition?.maps === "*") {
+    if (objective.type === "Cargo_Box") return "Détruis des NPC sur les cartes normales puis récupère les Cargo Boxes qu’ils abandonnent.";
+    return "Disponible sur toutes les cartes normales. Parcours les zones peu fréquentées pour en trouver plus rapidement.";
+  }
+  const maps = Array.isArray(definition?.maps) ? definition.maps : definition?.maps ? [definition.maps] : [];
+  return maps.length ? `Disponible sur ${maps.join(", ")}.` : "Cette ressource est obtenue comme butin spécial après la destruction des NPC associés.";
+}
+
+function objectiveHelp(objective, npcLocations, collectables) {
+  if (objective.kind === "visit") return `Destination : carte ${objective.type}. Suis les portails indiqués sur la mini-carte et évite le combat pour valider la visite rapidement.`;
+  if (objective.kind === "gate") return gateAdvice(objective.type);
+  if (objective.kind === "collect") return collectableAdvice(objective, collectables);
+  if (objective.kind === "kill" && objective.type === "*") return objective.map ? `Élimine n’importe quel NPC sur la carte ${objective.map}. Les destructions réalisées ailleurs ne comptent pas.` : "Tous les NPC détruits comptent, quelle que soit leur espèce ou leur carte.";
+  if (objective.map) return `Cible présente sur la carte ${objective.map}. Seules les destructions réalisées sur cette carte comptent.`;
+  const maps = npcLocations?.[objective.type] || [];
+  return maps.length
+    ? `Cartes disponibles : ${maps.join(", ")}. Choisis la carte la plus proche de ta firme et reste près d’un portail pour pouvoir te replier.`
+    : "Cette cible apparaît par invocation ou après la destruction d’un NPC parent ; élimine ses unités associées pour la faire apparaître.";
 }
 
 export function getQuestTargetImage(quest, collectables, npcTypes) {
@@ -79,7 +95,7 @@ export function buildQuestCard(quest, questState) {
   return `<article class="questCard">
     <div class="questTitle">${quest.title}</div>
     <div class="questDescription">${quest.description}</div>
-    <div class="questReward">Récompense : ${rewardLabel(quest)}</div>
+    ${rewardCard(quest)}
     <div class="questObjectives">${objectives.map(objective => {
       const current = Number(progress[objective.id] || 0);
       const percent = Math.min(100, current / objective.amount * 100);
@@ -107,7 +123,7 @@ export function buildQuestJournalView(questState, selectedId) {
   };
 }
 
-export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes }) {
+export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes, npcLocations = {} }) {
   const orderedQuests = getOrderedQuestDefinitions();
   const selectedQuestId = orderedQuests.some(quest => quest.id === selectedId)
     ? selectedId
@@ -135,14 +151,17 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
     : full ? `Tu as déjà ${MAX_ACTIVE_QUESTS} missions actives.`
     : missingPrerequisites.length ? (quest.requiresAll ? `Prérequis : termine les ${prerequisiteIds.length} missions précédentes.` : `Prérequis : termine « ${prerequisite?.title || missingPrerequisites[0]} ».`)
     : "Mission disponible.";
+  const seriesRows = [
+    ...(prerequisite ? [["Mission requise", prerequisite.title]] : []),
+    ...(quest.requiresAll ? [["Progression requise", `${prerequisiteIds.length - missingPrerequisites.length} / ${prerequisiteIds.length} missions terminées`]] : []),
+    ...(unlockedQuests.length ? [["Débloque ensuite", unlockedQuests.map(item => item.title).join(", ")]] : []),
+  ];
   const detailHtml = `
     <div class="questTitle">${quest.title}</div><div class="questDescription">${quest.description}</div>
     <div class="questObjectives">${objectives.map(objective => { const current = accepted ? Number(questState.active[quest.id]?.[objective.id] || 0) : (completed ? objective.amount : 0); return `<div class="questObjective"><div class="questStatus"><span>${objectiveLabel(objective)}</span><b>${current} / ${objective.amount}</b></div></div>`; }).join("")}</div>
-    <div class="questReward">Récompense : ${rewardLabel(quest)}</div>
-    ${prerequisite ? `<div class="questSeriesInfo"><b>Mission requise :</b> ${prerequisite.title}</div>` : ""}
-    ${quest.requiresAll ? `<div class="questSeriesInfo"><b>Mission requise :</b> terminer toutes les ${prerequisiteIds.length} missions précédentes (${prerequisiteIds.length - missingPrerequisites.length}/${prerequisiteIds.length}).</div>` : ""}
-    ${unlockedQuests.length ? `<div class="questSeriesInfo"><b>Débloque ensuite :</b> ${unlockedQuests.map(item => item.title).join(" · ")}</div>` : ""}
-    <div class="questOfferHelp"><b>Où chercher ?</b><br>${objectives.map(objective => `<b>${objectiveLabel(objective)} :</b> ${objectiveHelp(objective)}`).join("<br>")}</div>
+    ${rewardCard(quest)}
+    ${seriesRows.length ? `<section class="questInfoCard questSeriesCard"><h4>Série de missions</h4><div class="questInfoRows">${seriesRows.map(([label, value]) => `<div><span>${label}</span><b>${value}</b></div>`).join("")}</div></section>` : ""}
+    <section class="questInfoCard questHelpCard"><h4>Où chercher et comment réussir ?</h4><div class="questHelpList">${objectives.map(objective => `<article><b>${objectiveLabel(objective)}</b><p>${objectiveHelp(objective, npcLocations, collectables)}</p></article>`).join("")}</div></section>
     <div class="questStatus">${status}</div>
     <button class="questAction${completed ? " questCompletedAction" : accepted ? " questAcceptedAction" : ""}" data-quest-terminal-accept="${quest.id}" ${available ? "" : "disabled"}>${completed ? "Mission terminée ✓" : accepted ? "Mission en cours" : "Accepter cette mission"}</button>`;
   return { selectedQuestId, listHtml, detailHtml };

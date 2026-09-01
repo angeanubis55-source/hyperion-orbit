@@ -115,9 +115,7 @@ const PIRATE_CAMPAIGNS = [
 const SPECIAL_CAMPAIGNS = [
   Q("corrupted_scouts", "Échos corrompus", "Analyse les premières créatures corrompues.", [K("devo", "npc_Devolarium_Corrupted", 25, "Éliminer des Devolariums corrompus"), K("saimon", "npc_Saimon_Corrupted", 50, "Éliminer des Saimons corrompus")], 12000000, 6000000, 24000),
   Q("corrupted_heavy", "Noyau corrompu", "Affronte les unités corrompues lourdes.", [K("lordakium", "npc_Lordakium_Corrupted", 30, "Éliminer des Lordakiums corrompus"), K("devourer", "npc_Devourer_Corrupted", 10, "Éliminer des Devourers corrompus")], 30000000, 15000000, 60000, "corrupted_scouts"),
-  Q("spire_trinity", "Trinité des Spires", "Détruis chaque famille de Spire.", [K("vine", "npc_Vinespire", 40, "Éliminer des Vinespires"), K("chrono", "npc_Chronospire", 40, "Éliminer des Chronospires"), K("pyro", "npc_Pyrospire", 40, "Éliminer des Pyrospires")], 22000000, 11000000, 44000),
-  Q("stalker_pack", "Meute de Stalkers", "Neutralise les trois lignées de Stalkers.", [K("magma", "npc_Magma_Stalker", 60, "Éliminer des Magma Stalkers"), K("veil", "npc_Veil_Stalker", 60, "Éliminer des Veil Stalkers"), K("spore", "npc_Spore_Stalker", 60, "Éliminer des Spore Stalkers")], 28000000, 14000000, 56000),
-  Q("ancient_trio", "Triade ancienne", "Affronte Styxus, Charopos et Lanatum.", [K("styxus", "npc_Styxus", 25, "Éliminer des Styxus"), K("charopos", "npc_Charopos", 25, "Éliminer des Charopos"), K("lanatum", "npc_Lanatum", 25, "Éliminer des Lanatum")], 40000000, 20000000, 80000, "stalker_pack"),
+  Q("ancient_trio", "Triade ancienne", "Affronte Styxus, Charopos et Lanatum.", [K("styxus", "npc_Styxus", 25, "Éliminer des Styxus"), K("charopos", "npc_Charopos", 25, "Éliminer des Charopos"), K("lanatum", "npc_Lanatum", 25, "Éliminer des Lanatum")], 40000000, 20000000, 80000),
 ];
 
 const PERMANENT_ELITE_CONTRACTS = [

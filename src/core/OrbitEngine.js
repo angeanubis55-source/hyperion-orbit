@@ -50,6 +50,7 @@ import {
   updatePortalProximity,
 } from "./portalSystem.js";
 import { buildQuestJournalView, buildQuestTerminalView } from "./questPresentation.js";
+import { loadNpcLocationIndex } from "./questLocations.js";
 import {
   drawMoveTargetMarker,
   drawNpcStatus,
@@ -1353,6 +1354,7 @@ if (questWindowElement) {
 }
 
 let selectedQuestOfferId = null;
+let questNpcLocations = {};
 
 function renderQuestTerminal() {
   if (!ui.questOfferDetail || !ui.questOfferList) return;
@@ -1364,11 +1366,17 @@ function renderQuestTerminal() {
     hasAccess,
     collectables: COLLECTABLE_DEFS,
     npcTypes: NPC_TYPES,
+    npcLocations: questNpcLocations,
   });
   selectedQuestOfferId = view.selectedQuestId;
   ui.questOfferList.innerHTML = view.listHtml;
   ui.questOfferDetail.innerHTML = view.detailHtml;
 }
+
+loadNpcLocationIndex().then(locations => {
+  questNpcLocations = locations;
+  renderQuestTerminal();
+});
 
 function openQuestTerminal() {
   renderQuestTerminal();

@@ -285,10 +285,23 @@ test("la présentation des quêtes distingue le journal et les états du termina
     hasAccess: true,
     collectables: COLLECTABLE_TYPES,
     npcTypes: {},
+    npcLocations: { npc_Streuner: ["1-1", "2-1", "3-1"] },
   });
   assert.match(terminal.listHtml, /accepted/);
   assert.match(terminal.detailHtml, /Mission en cours/);
   assert.match(terminal.detailHtml, /honneur/i);
+  assert.match(terminal.detailHtml, /questRewardCard/);
+  assert.match(terminal.detailHtml, /Cartes disponibles : 1-1, 2-1, 3-1/);
+  assert.match(terminal.detailHtml, /Où chercher et comment réussir/);
+  const gateHelp = buildQuestTerminalView({
+    questState: state,
+    selectedId: "gate_alpha",
+    hasAccess: true,
+    collectables: COLLECTABLE_TYPES,
+    npcTypes: {},
+  });
+  assert.match(gateHelp.detailHtml, /Galaxy Spinner/);
+  assert.match(gateHelp.detailHtml, /Préparer le portail/);
   assert.equal(formatQuestEntityName("npc_Sibelonit"), "Sibelonit");
   assert.equal(formatQuestEntityName("npc_Blighted_Gygerthrall"), "Blighted Gygerthrall");
   assert.equal(formatQuestEntityName("Green_Booty_Box"), "Green Booty Box");
