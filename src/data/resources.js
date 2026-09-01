@@ -1,6 +1,7 @@
 "use strict";
 
 export const RESOURCE_TYPES = Object.freeze({
+  refined_component: Object.freeze({ id: "refined_component", name: "Composant raffiné", plural: "Composants raffinés" }),
   npc_debris: Object.freeze({ id: "npc_debris", name: "Débris de NPC", plural: "Débris de NPC" }),
   hybrid_alloy: Object.freeze({ id: "hybrid_alloy", name: "Alliage hybride", plural: "Alliages hybrides" }),
   indoctrinated_oil: Object.freeze({ id: "indoctrinated_oil", name: "Huile indoctrinée", plural: "Huiles indoctrinées" }),

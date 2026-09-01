@@ -8,6 +8,7 @@ import { calculateRankPoints, getQuestHonorReward } from "./progression.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./factions.js";
 import { compactFitDraft } from "./fitLayout.js";
 import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./galaxyGates.js";
+import { getCraftingRecipe } from "../data/crafting.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -1187,5 +1188,53 @@ export function saveHangarStateById(hangarId, x, y, mapId) {
 
   saveUser(u);
   return { ok: true };
+}
+
+export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const recipe = getCraftingRecipe(recipeId);
+  if (!recipe) return { ok: false, error: "Recette introuvable." };
+  const quantity = Math.min(100, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
+  if (Object.keys(recipe.output?.ships || {}).length && quantity !== 1) {
+    return { ok: false, error: "Un vaisseau se fabrique un par un." };
+  }
+  for (const shipId of Object.keys(recipe.output?.ships || {})) {
+    if (u.inventory?.ships?.includes(shipId)) return { ok: false, error: "Ce vaisseau est déjà possédé." };
+  }
+  const creditCost = Math.max(0, Number(recipe.costs?.credits || 0)) * quantity;
+  if (Number(u.credits || 0) < creditCost) return { ok: false, error: "Crédits insuffisants." };
+
+  u.inventory ||= {};
+  u.inventory.resources ||= {};
+  for (const [resourceId, unitCost] of Object.entries(recipe.costs?.resources || {})) {
+    const required = Math.max(0, Number(unitCost || 0)) * quantity;
+    if (Number(u.inventory.resources[resourceId] || 0) < required) {
+      return { ok: false, error: `Ressource insuffisante : ${resourceId}.` };
+    }
+  }
+
+  u.credits -= creditCost;
+  for (const [resourceId, unitCost] of Object.entries(recipe.costs?.resources || {})) {
+    u.inventory.resources[resourceId] = Math.max(0, Number(u.inventory.resources[resourceId] || 0) - Number(unitCost || 0) * quantity);
+  }
+  for (const [resourceId, unitAmount] of Object.entries(recipe.output?.resources || {})) {
+    u.inventory.resources[resourceId] = Math.max(0, Number(u.inventory.resources[resourceId] || 0) + Number(unitAmount || 0) * quantity);
+  }
+  for (const [itemId, unitAmount] of Object.entries(recipe.output?.items || {})) incCount(u, itemId, Number(unitAmount || 0) * quantity);
+  for (const shipId of Object.keys(recipe.output?.ships || {})) {
+    u.inventory.ships ??= [];
+    u.hangars ??= [];
+    u.inventory.ships.push(shipId);
+    if (!u.hangars.some(hangar => hangar?.shipId === shipId)) u.hangars.push(makeHangar(shipId, false));
+  }
+  u.ammo ??= defaultAmmo();
+  for (const [ammoId, unitAmount] of Object.entries(recipe.output?.ammo || {})) {
+    if (ammoId !== "x1") u.ammo[ammoId] = Math.max(0, Number(u.ammo[ammoId] || 0) + Number(unitAmount || 0) * quantity);
+  }
+  ensureUserShape(u);
+  saveUser(u);
+  localStorage.setItem("orbit_sync", String(Date.now()));
+  return { ok: true, user: u, recipe, quantity };
 }
 

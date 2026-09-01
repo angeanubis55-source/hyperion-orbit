@@ -83,6 +83,26 @@
     </div>
 
     <!-- BOX 2 : Économie / progression (toujours) -->
+<div id="escortWindow" class="panel escortWindow">
+  <div id="escortWindowBody" class="escortWindowBody"></div>
+</div>
+
+<div id="craftingWindow" class="panel craftingWindow">
+  <div class="craftingLayout">
+    <div id="craftingRecipes" class="craftingRecipes"></div>
+    <section id="craftingDetail" class="craftingDetail"></section>
+  </div>
+  <div class="craftingActions">
+    <label for="craftingQuantity">Quantité</label>
+    <select id="craftingQuantity"><option value="1">1</option><option value="5">5</option><option value="10">10</option></select>
+    <button id="craftingBuildBtn" type="button">FABRIQUER</button>
+  </div>
+  <div id="craftingProgress" class="craftingProgress" hidden>
+    <div><i id="craftingProgressBar"></i></div><strong id="craftingProgressPct">0 %</strong>
+  </div>
+  <div id="craftingMessage" class="craftingMessage" aria-live="polite"></div>
+</div>
+
 <div id="boxMeta" class="panel">
   <div class="row"><span class="k">Crédits</span><span class="v" id="credits">0</span></div>
   <div class="row"><span class="k">Expérience</span><span class="v" id="xpTxt">0</span></div>
@@ -753,7 +773,7 @@ function clearSavedWindowPositions() {
     `);
   }
 
-function ensureWindowBar(card, title, icon) {
+function ensureWindowBar(card, title, icon, minimizable = true) {
   let bar = card.querySelector(":scope > .gameWinBar");
 
   if (bar) return bar;
@@ -764,7 +784,7 @@ function ensureWindowBar(card, title, icon) {
   bar.innerHTML = `
     <div class="gameWinIcon" aria-hidden="true">${icon}</div>
     <div class="gameWinTitle">${title}</div>
-    <button class="gameWinMinBtn" type="button" title="Réduire" data-no-drag>−</button>
+    ${minimizable ? '<button class="gameWinMinBtn" type="button" title="Réduire" data-no-drag>−</button>' : ''}
   `;
 
   card.insertBefore(bar, card.firstChild);
@@ -1070,13 +1090,13 @@ function makeMinimapResizable(id, card) {
   }
 
   window.GameWindowManager = {
-    register({ id, title, icon = "▣", root, card, defaultOpen = true }) {
+    register({ id, title, icon = "▣", root, card, defaultOpen = true, minimizable = true }) {
       if (!id || !root || !card) return null;
 
 card.classList.add("gameWindow");
 card.dataset.gameWindowId = id;
 
-      const bar = ensureWindowBar(card, title, icon);
+      const bar = ensureWindowBar(card, title, icon, minimizable);
       const minBtn = bar.querySelector(".gameWinMinBtn");
 
       makeDraggable(card, bar);
@@ -1088,13 +1108,13 @@ if (id === "minimap") {
   makeMinimapResizable(id, card);
 }
 
-minBtn.onpointerdown = (e) => {
+if (minBtn) minBtn.onpointerdown = (e) => {
   e.preventDefault();
   e.stopPropagation();
   e.stopImmediatePropagation();
 };
 
-minBtn.onclick = (e) => {
+if (minBtn) minBtn.onclick = (e) => {
   e.preventDefault();
   e.stopPropagation();
   e.stopImmediatePropagation();
@@ -1111,11 +1131,12 @@ minBtn.onclick = (e) => {
         root,
         card,
         bar,
+        minimizable,
         lastDisplay: state.lastDisplay || "grid",
       });
 
       const savedOpen = loadWindowOpenState(id);
-      const shouldOpen = savedOpen === null ? !!defaultOpen : savedOpen;
+      const shouldOpen = minimizable === false ? true : (savedOpen === null ? !!defaultOpen : savedOpen);
       if (shouldOpen) {
         root.classList.remove("gameWinMinimized");
         card.classList.remove("gameWinMinimized");
@@ -1141,7 +1162,7 @@ minBtn.onclick = (e) => {
 
 minimize(id) {
   const w = windows.get(id);
-  if (!w) return;
+  if (!w || w.minimizable === false) return;
   saveWindowOpenState(id, false);
 
   w.lastDisplay = "block";

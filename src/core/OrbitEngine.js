@@ -16,10 +16,13 @@ import {
   saveCurrentUserGalaxyGateWave,
   deployCurrentUserGalaxyGate,
   armCurrentUserGalaxyGateMultiplier,
+  craftCurrentUserRecipe,
 } from "./account.js";
 import { GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, GALAXY_SPIN_CREDIT_COST } from "./galaxyGates.js";
 import { computeHangarStats } from "./hangars.js";
 import { findCatalogItem } from "./catalog.js";
+import { CRAFTING_RECIPES } from "../data/crafting.js";
+import { ITEM_RARITIES } from "../data/itemRarities.js";
 import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./collision.js";
 import { createKeyboardState, createPointerState } from "./input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "./combat.js";
@@ -283,6 +286,15 @@ const ui = {
   ggDeployBtn: document.getElementById("ggDeployBtn"),
   orbitNotifications: document.getElementById("orbitNotifications"),
   gameLogEntries: document.getElementById("gameLogEntries"),
+  escortWindowBody: document.getElementById("escortWindowBody"),
+  craftingRecipes: document.getElementById("craftingRecipes"),
+  craftingDetail: document.getElementById("craftingDetail"),
+  craftingQuantity: document.getElementById("craftingQuantity"),
+  craftingBuildBtn: document.getElementById("craftingBuildBtn"),
+  craftingMessage: document.getElementById("craftingMessage"),
+  craftingProgress: document.getElementById("craftingProgress"),
+  craftingProgressBar: document.getElementById("craftingProgressBar"),
+  craftingProgressPct: document.getElementById("craftingProgressPct"),
   gameLogSearch: document.getElementById("gameLogSearch"),
   gameLogPrevious: document.getElementById("gameLogPrevious"),
   gameLogNext: document.getElementById("gameLogNext"),
@@ -340,53 +352,6 @@ cfgCooldownTxt: document.getElementById("cfgCooldownTxt"),
   portalSub: document.getElementById("portalSub"),
   nextWaveBtn: document.getElementById("nextWaveBtn"),
 };
-
-function enableBossStatusDragging() {
-  const panel = ui.gygerimStatus;
-  const handle = panel?.querySelector(".gygerimTitle");
-  if (!panel || !handle) return;
-  const storageKey = "orbit_boss_status_position";
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
-    if (Number.isFinite(saved?.left) && Number.isFinite(saved?.top)) {
-      panel.style.left = `${clamp(saved.left, 0, Math.max(0, innerWidth - 290))}px`;
-      panel.style.top = `${clamp(saved.top, 0, Math.max(0, innerHeight - 90))}px`;
-      panel.style.transform = "none";
-    }
-  } catch {}
-  let dragging = false;
-  let offsetX = 0;
-  let offsetY = 0;
-  handle.addEventListener("pointerdown", event => {
-    if (event.button !== 0) return;
-    const rect = panel.getBoundingClientRect();
-    dragging = true;
-    offsetX = event.clientX - rect.left;
-    offsetY = event.clientY - rect.top;
-    panel.style.left = `${rect.left}px`;
-    panel.style.top = `${rect.top}px`;
-    panel.style.transform = "none";
-    handle.setPointerCapture(event.pointerId);
-    event.preventDefault();
-  });
-  handle.addEventListener("pointermove", event => {
-    if (!dragging) return;
-    const left = clamp(event.clientX - offsetX, 0, Math.max(0, innerWidth - panel.offsetWidth));
-    const top = clamp(event.clientY - offsetY, 0, Math.max(0, innerHeight - panel.offsetHeight));
-    panel.style.left = `${left}px`;
-    panel.style.top = `${top}px`;
-  });
-  const stopDragging = event => {
-    if (!dragging) return;
-    dragging = false;
-    try { handle.releasePointerCapture(event.pointerId); } catch {}
-    try { localStorage.setItem(storageKey, JSON.stringify({ left: panel.offsetLeft, top: panel.offsetTop })); } catch {}
-  };
-  handle.addEventListener("pointerup", stopDragging);
-  handle.addEventListener("pointercancel", stopDragging);
-}
-
-enableBossStatusDragging();
 
 // ============================================================
 // ✅ Paramètres rapides du jeu
@@ -766,7 +731,7 @@ function registerHudWindows() {
     return;
   }
 
-  const reg = (id, title, icon, defaultOpen = true) => {
+  const reg = (id, title, icon, defaultOpen = true, options = {}) => {
     const el = document.getElementById(id);
     if (!el) {
       console.warn("HUD window introuvable:", id);
@@ -780,6 +745,7 @@ function registerHudWindows() {
       root: el,
       card: el,
       defaultOpen,
+      ...options,
     });
   };
 
@@ -792,12 +758,129 @@ function registerHudWindows() {
   reg("questOfferWindow", "Terminal de quêtes", "📡", false);
   reg("galaxyGateWindow", "Galaxy Gates", "✦", false);
   reg("gameLogWindow", "LOG", "≡", false);
+  reg("craftingWindow", "Atelier de fabrication", "AF", false);
+  if (["low", "qz"].includes(String(window.__CURRENT_MAP_ID__ || "").toLowerCase())) {
+    reg("escortWindow", "Gestion des escortes", "ES", false);
+  }
+  reg("gygerimStatus", "État du boss", "B", true, { minimizable: false });
 wireSettingsWindow();
 
   console.log("✅ HUD windows registered");
 }
 
 registerHudWindows();
+
+let selectedCraftingRecipeId = CRAFTING_RECIPES[0]?.id || null;
+
+function craftingResourceAmount(user, resourceId) {
+  return Math.max(0, Number(user?.inventory?.resources?.[resourceId] || 0));
+}
+
+const CRAFTING_DURATION_BY_RARITY = Object.freeze({ common: 2, rare: 5, epic: 10, legendary: 20 });
+let craftingJob = null;
+
+function describeCraftingCosts(user, recipe, quantity) {
+  const resourceLines = Object.entries(recipe.costs?.resources || {}).map(([id, amount]) => {
+    const required = Number(amount) * quantity;
+    const owned = craftingResourceAmount(user, id);
+    return `<li><span>${escapeHtml(getResourceName(id, required))}</span><strong class="${owned >= required ? "enough" : "missing"}">${formatInteger(owned)} / ${formatInteger(required)}</strong></li>`;
+  });
+  const creditRequired = Number(recipe.costs?.credits || 0) * quantity;
+  resourceLines.push(`<li><span>Cr&eacute;dits</span><strong class="${Number(user.credits || 0) >= creditRequired ? "enough" : "missing"}">${formatInteger(user.credits)} / ${formatInteger(creditRequired)}</strong></li>`);
+  return resourceLines.join("");
+}
+
+function describeCraftingOutput(map, quantity, labelForId) {
+  return Object.entries(map || {}).map(([id, amount]) =>
+    `<li><span>${escapeHtml(labelForId(id))}</span><strong>${formatInteger(Number(amount) * quantity)}</strong></li>`
+  ).join("");
+}
+
+function renderCraftingWindow(message = "") {
+  if (!ui.craftingRecipes || !ui.craftingDetail) return;
+  const user = getCurrentUserFull();
+  if (!user) return;
+  account.user = user;
+  let quantity = Math.max(1, Number(ui.craftingQuantity?.value || 1));
+  ui.craftingRecipes.innerHTML = CRAFTING_RECIPES.map(recipe => {
+    const rarity = ITEM_RARITIES[recipe.rarity] || ITEM_RARITIES.common;
+    return `<button type="button" class="craftingRecipe rarity-${rarity.id}${recipe.id === selectedCraftingRecipeId ? " active" : ""}" data-recipe-id="${escapeHtml(recipe.id)}"${craftingJob ? " disabled" : ""}><span>${escapeHtml(recipe.name)}</span><small>${escapeHtml(rarity.name)}</small></button>`;
+  }).join("");
+  const recipe = CRAFTING_RECIPES.find(entry => entry.id === selectedCraftingRecipeId) || CRAFTING_RECIPES[0];
+  if (!recipe) return;
+  selectedCraftingRecipeId = recipe.id;
+  if (Object.keys(recipe.output?.ships || {}).length && quantity !== 1) {
+    quantity = 1;
+    if (ui.craftingQuantity) ui.craftingQuantity.value = "1";
+  }
+  const rarity = ITEM_RARITIES[recipe.rarity] || ITEM_RARITIES.common;
+  const costs = describeCraftingCosts(user, recipe, quantity);
+  const outputs = [
+    describeCraftingOutput(recipe.output?.resources, quantity, id => getResourceName(id, Number(recipe.output.resources[id]) * quantity)),
+    describeCraftingOutput(recipe.output?.items, quantity, id => findCatalogItem(id)?.name || id),
+    describeCraftingOutput(recipe.output?.ammo, quantity, id => `Munitions ${id.toUpperCase()}`),
+    describeCraftingOutput(recipe.output?.ships, quantity, id => findCatalogItem(recipe.catalogItemId)?.name || `Vaisseau ${id}`),
+  ].join("");
+  const baseDuration = CRAFTING_DURATION_BY_RARITY[rarity.id] || 2;
+  const duration = baseDuration * (1 + Math.max(0, quantity - 1) * 0.15);
+  ui.craftingDetail.innerHTML = `<div class="craftingRarity rarity-${rarity.id}">${escapeHtml(rarity.name)}</div><h3>${escapeHtml(recipe.name)}</h3><small class="craftingDuration">Temps de fabrication : ${duration.toFixed(duration % 1 ? 1 : 0)} s</small><div class="craftingColumns"><div><h4>CO&Ucirc;T</h4><ul>${costs}</ul></div><div><h4>R&Eacute;SULTAT</h4><ul>${outputs}</ul></div></div>`;
+  const canAfford = Number(user.credits || 0) >= Number(recipe.costs?.credits || 0) * quantity
+    && Object.entries(recipe.costs?.resources || {}).every(([id, amount]) => craftingResourceAmount(user, id) >= Number(amount) * quantity);
+  if (ui.craftingBuildBtn) ui.craftingBuildBtn.disabled = !canAfford || Boolean(craftingJob);
+  if (ui.craftingQuantity) ui.craftingQuantity.disabled = Boolean(craftingJob);
+  if (ui.craftingMessage) ui.craftingMessage.textContent = message || (craftingJob ? "Fabrication en cours..." : canAfford ? "Prêt à fabriquer." : "Ressources insuffisantes.");
+}
+
+ui.craftingRecipes?.addEventListener("click", event => {
+  const button = event.target.closest("[data-recipe-id]");
+  if (!button) return;
+  selectedCraftingRecipeId = button.dataset.recipeId;
+  renderCraftingWindow();
+});
+ui.craftingQuantity?.addEventListener("change", () => renderCraftingWindow());
+ui.craftingBuildBtn?.addEventListener("click", () => {
+  if (craftingJob) return;
+  const recipe = CRAFTING_RECIPES.find(entry => entry.id === selectedCraftingRecipeId);
+  if (!recipe) return;
+  const quantity = Math.max(1, Number(ui.craftingQuantity?.value || 1));
+  const user = getCurrentUserFull();
+  const canAfford = Number(user?.credits || 0) >= Number(recipe.costs?.credits || 0) * quantity
+    && Object.entries(recipe.costs?.resources || {}).every(([id, amount]) => craftingResourceAmount(user, id) >= Number(amount) * quantity);
+  if (!canAfford) return renderCraftingWindow("Ressources insuffisantes.");
+  const baseDuration = CRAFTING_DURATION_BY_RARITY[recipe.rarity] || 2;
+  const durationMs = baseDuration * (1 + Math.max(0, quantity - 1) * 0.15) * 1000;
+  craftingJob = { recipe, quantity, startedAt: performance.now(), durationMs };
+  if (ui.craftingProgress) ui.craftingProgress.hidden = false;
+  renderCraftingWindow("Fabrication en cours...");
+  const timer = setInterval(() => {
+    if (!craftingJob) return clearInterval(timer);
+    const progress = clamp((performance.now() - craftingJob.startedAt) / craftingJob.durationMs, 0, 1);
+    const percent = Math.round(progress * 100);
+    if (ui.craftingProgressBar) ui.craftingProgressBar.style.width = `${percent}%`;
+    if (ui.craftingProgressPct) ui.craftingProgressPct.textContent = `${percent} %`;
+    if (progress < 1) return;
+    clearInterval(timer);
+    const completed = craftingJob;
+    craftingJob = null;
+    const result = craftCurrentUserRecipe(completed.recipe.id, completed.quantity);
+    if (!result.ok) {
+      if (ui.craftingProgress) ui.craftingProgress.hidden = true;
+      if (ui.craftingProgressBar) ui.craftingProgressBar.style.width = "0%";
+      return renderCraftingWindow(result.error);
+    }
+    account.user = result.user;
+    syncPlayerFromAccount();
+    window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+    showNotification(`${result.recipe.name} fabriqué`, 2.5, "reward", { goldTerms: [result.recipe.name] });
+    if (ui.craftingProgress) ui.craftingProgress.hidden = true;
+    if (ui.craftingProgressBar) ui.craftingProgressBar.style.width = "0%";
+    renderCraftingWindow(`${result.quantity} fabrication${result.quantity > 1 ? "s" : ""} terminée${result.quantity > 1 ? "s" : ""}.`);
+  }, 80);
+});
+window.addEventListener("orbit:window-restored", event => {
+  if (event.detail?.id === "craftingWindow") renderCraftingWindow();
+});
+queueMicrotask(() => renderCraftingWindow());
 
 let selectedGalaxyGateId = null;
 
@@ -9123,6 +9206,23 @@ if (GAME_SETTINGS.textures) {
 // ============================================================
 // UI update
 // ============================================================
+let lastEscortPanelHtml = "";
+function renderEscortPanel() {
+  if (!ui.escortWindowBody) return;
+  const html = escortShips.length ? escortShips.map((escort, index) => {
+    const alive = escort.hp > 0;
+    const hpPct = clamp(escort.hp / Math.max(1, escort.hpMax), 0, 1) * 100;
+    const shPct = clamp(escort.sh / Math.max(1, escort.shMax), 0, 1) * 100;
+    const targetName = alive && escort.target ? (NPC_TYPES[escort.target.type]?.name || "Cible") : "Aucune cible";
+    const status = alive ? targetName : `Retour dans ${Math.ceil(Number(escort.respawnT || 0))} s`;
+    return `<article class="escortStatus${alive ? "" : " destroyed"}"><div class="escortStatusHead"><strong>ESCORTE ${index + 1}</strong><span>${escapeHtml(status)}</span></div><div class="escortMiniBar hp"><i style="width:${hpPct}%"></i><b>${formatInteger(escort.hp)} / ${formatInteger(escort.hpMax)}</b></div><div class="escortMiniBar sh"><i style="width:${shPct}%"></i><b>${formatInteger(escort.sh)} / ${formatInteger(escort.shMax)}</b></div></article>`;
+  }).join("") : `<div class="escortEmpty">Aucune escorte engag&eacute;e dans cette Gate.</div>`;
+  if (html !== lastEscortPanelHtml) {
+    ui.escortWindowBody.innerHTML = html;
+    lastEscortPanelHtml = html;
+  }
+}
+
 function drawUI() {
   const zoneMode = rules?.mode === "zone";
   const terminalAccess = hasQuestTerminalAccess();
@@ -9150,6 +9250,7 @@ function drawUI() {
       if (ui.gygerimShTxt) ui.gygerimShTxt.textContent = `${formatInteger(boss.sh)} / ${formatInteger(shMax)}`;
     }
   }
+  renderEscortPanel();
 
 const u = account.user || null;
 const st = u?.stats || {};

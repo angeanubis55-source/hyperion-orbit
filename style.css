@@ -176,6 +176,52 @@ html.orbitSessionReady #loadingOverlay{
 .gygerimResource.hp i{ background:linear-gradient(90deg,#d92d4b,#ff8799); }
 .gygerimResource.sh i{ background:linear-gradient(90deg,#19a9d1,#93edff); }
 
+#gygerimStatus.gameWindow{ padding:0 11px 10px; transform:none; }
+#gygerimStatus.gameWindow > .gameWinBar{ margin:0 -11px 8px !important; }
+#gygerimStatus.gameWindow .gygerimTitle{ cursor:default; touch-action:auto; }
+
+#craftingWindow{ display:none; width:720px; max-height:490px; padding:0 12px 10px; pointer-events:auto; }
+#craftingWindow.gameWindow > .gameWinBar{ margin:0 -12px 12px !important; }
+.craftingLayout{ height:315px; min-height:0; display:grid; grid-template-columns:220px 1fr; gap:10px; }
+.craftingRecipes{ min-height:0; display:flex; flex-direction:column; gap:6px; overflow-y:auto; }
+.craftingRecipe{ padding:10px; display:flex; justify-content:space-between; gap:8px; border:1px solid rgba(124,240,255,.14); border-left:3px solid var(--rarity,#a9bcc7); color:#dcecf5; background:#061521; text-align:left; }
+.craftingRecipe.active{ background:#0a2637; box-shadow:inset 0 0 18px rgba(0,217,255,.1); }
+.craftingRecipe small,.craftingRarity{ color:var(--rarity,#a9bcc7); font-weight:900; }
+.craftingDetail{ min-height:0; padding:14px; overflow-y:auto; border:1px solid rgba(124,240,255,.17); background:linear-gradient(145deg,#071b29,#04111b); }
+.craftingDetail h3{ margin:4px 0 17px; font-size:20px; color:#f0f9ff; }
+.craftingDuration{ display:block; margin:-14px 0 16px; color:#7897a9; font-size:9px; }
+.craftingRarity{ text-transform:uppercase; letter-spacing:1px; font-size:9px; }
+.craftingColumns{ display:grid; grid-template-columns:1fr; gap:10px; }
+.craftingColumns > div{ padding:12px; border:1px solid rgba(124,240,255,.12); background:rgba(0,0,0,.16); }
+.craftingColumns h4{ margin:0 0 8px; color:#6fdff5; font-size:10px; }
+.craftingColumns ul{ margin:0; padding:0; list-style:none; }
+.craftingColumns li{ display:flex; justify-content:space-between; gap:8px; padding:5px 0; color:#a9bfcd; border-bottom:1px solid rgba(255,255,255,.05); font-size:11px; }
+.craftingColumns li strong{ color:#ffd56a; }
+.craftingColumns li strong.enough{ color:#9deab4; }.craftingColumns li strong.missing{ color:#ff8799; }
+.craftingActions{ display:grid; grid-template-columns:auto 90px 1fr; gap:8px; align-items:center; margin-top:10px; padding:9px; border:1px solid rgba(124,240,255,.14); }
+.craftingActions label{ color:#8eabbc; font-size:10px; font-weight:900; }
+.craftingActions select,.craftingActions button{ height:36px; border:1px solid rgba(124,240,255,.3); color:#eaf8ff; background:#082436; }
+.craftingActions button{ font-weight:1000; }.craftingActions button:disabled{ opacity:.38; }
+.craftingMessage{ min-height:15px; padding-top:7px; color:#89a9ba; font-size:10px; text-align:center; }
+.craftingProgress{ grid-template-columns:1fr 48px; gap:9px; align-items:center; margin-top:8px; }
+.craftingProgress:not([hidden]){ display:grid; }
+.craftingProgress > div{ height:9px; overflow:hidden; border:1px solid rgba(124,240,255,.22); border-radius:999px; background:#03101a; }
+.craftingProgress i{ display:block; width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,#08a9d4,#6eeaff); box-shadow:0 0 10px rgba(0,217,255,.45); transition:width .08s linear; }
+.craftingProgress strong{ color:#dff8ff; font-size:10px; text-align:right; }
+.rarity-common{ --rarity:#a9bcc7; }.rarity-rare{ --rarity:#45bfff; }.rarity-epic{ --rarity:#ba72ff; }.rarity-legendary{ --rarity:#ffd15c; }
+
+#escortWindow{ display:none; width:330px; padding:0 9px 9px; pointer-events:auto; }
+#escortWindow.gameWindow > .gameWinBar{ margin:0 -9px 9px !important; }
+.escortWindowBody{ display:grid; gap:7px; max-height:430px; overflow-y:auto; }
+.escortStatus{ padding:8px; border:1px solid rgba(124,240,255,.14); background:#061521; }
+.escortStatus.destroyed{ opacity:.58; border-color:rgba(255,93,111,.3); }
+.escortStatusHead{ display:flex; justify-content:space-between; gap:8px; margin-bottom:6px; font-size:9px; }
+.escortStatusHead strong{ color:#75e8ff; }.escortStatusHead span{ color:#99adba; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.escortMiniBar{ position:relative; height:13px; margin-top:4px; overflow:hidden; border:1px solid rgba(255,255,255,.08); background:#08101a; }
+.escortMiniBar i{ display:block; height:100%; }.escortMiniBar.hp i{ background:#39b95e; }.escortMiniBar.sh i{ background:#22a8d5; }
+.escortMiniBar b{ position:absolute; inset:0; display:grid; place-items:center; color:white; font-size:8px; text-shadow:0 1px 2px #000; }
+.escortEmpty{ padding:22px 12px; color:#7895a6; text-align:center; font-size:11px; }
+
 #boxMeta{
   left:14px;
   top:150px;

@@ -27,6 +27,7 @@ import { NPC_TYPES } from "../src/data/npcTypes.js";
 import { QUEST_DEFINITIONS } from "../src/data/quests.js";
 import { AMMO } from "../src/data/ammo.js";
 import { getResourceName } from "../src/data/resources.js";
+import { getItemRarity } from "../src/data/itemRarities.js";
 import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS } from "../src/data/moduleDrops.js";
 import { appendToFitSlots, compactFitDraft } from "../src/core/fitLayout.js";
 
@@ -639,6 +640,7 @@ function inventoryItemIcon(entry) {
 
 function inventoryTooltipText(entry) {
   const lines = [entry.name];
+  if (entry.rarity) lines.push(`RaretÃ© : ${entry.rarity.name}`);
   if (entry.kind === "ammo") {
     const multiplier = Number(AMMO?.[entry.id]?.mult);
     if (Number.isFinite(multiplier)) lines.push(`Multiplicateur de dégâts : x${multiplier}`);
@@ -689,7 +691,9 @@ function renderInventory(u) {
   inventorySections.innerHTML = slots.length ? slots.map((entry) => {
       const stacked = entry.stacked !== false && !["module", "ship", "equipment"].includes(entry.kind);
       const quantity = entry.quantityLabel || inventoryQuantityLabel(entry.quantity);
-      return `<article class="inventorySlot" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(inventoryTooltipText(entry))}" tabindex="0" aria-label="${escapeHtml(inventoryTooltipText(entry).replace(/\n/g, ". "))}">
+      const rarity = getItemRarity(entry.id);
+      entry.rarity = rarity;
+      return `<article class="inventorySlot rarity-${escapeHtml(rarity.id)}" data-rarity="${escapeHtml(rarity.id)}" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(inventoryTooltipText(entry))}" tabindex="0" aria-label="${escapeHtml(inventoryTooltipText(entry).replace(/\n/g, ". "))}">
         <img src="${escapeHtml(inventoryItemIcon(entry))}" alt="" />
         ${stacked ? `<span class="inventorySlotQuantity">${escapeHtml(quantity)}</span>` : ""}
       </article>`;
@@ -2615,6 +2619,8 @@ function renderInventoryPalette() {
         "invCell" +
         (fitState.selectedCopies.has(copyKey) ? " selected" : "") +
         (!isAvailableCopy ? " disabled" : "");
+      const rarity = getItemRarity(e.itemId);
+      cell.classList.add(`rarity-${rarity.id}`);
 
       const img = document.createElement("img");
       img.src = iconForItem(e.it, e.it?.module?.type);
@@ -2625,7 +2631,7 @@ function renderInventoryPalette() {
       };
       cell.appendChild(img);
 
-      cell.title = `${e.it?.name || e.itemId} (${i + 1}/${e.cnt})`;
+      cell.title = `${e.it?.name || e.itemId} · ${rarity.name} (${i + 1}/${e.cnt})`;
 
       cell.addEventListener("click", (event) => {
         if (!isAvailableCopy) {
@@ -2700,6 +2706,9 @@ function slotCell(label, filled, itemId = null) {
   d.title = label || "";
 
   if (filled && itemId) {
+    const rarity = getItemRarity(itemId);
+    d.classList.add(`rarity-${rarity.id}`);
+    d.title = `${label || itemId} · ${rarity.name}`;
     const img = document.createElement("img");
     img.src = iconForItem({ id: itemId }, "modules");
     img.alt = label || itemId;

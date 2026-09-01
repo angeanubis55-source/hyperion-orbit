@@ -1137,6 +1137,32 @@ test("la boutique applique un achat multiple de façon atomique", async () => {
   assert.equal(getCurrentUserFull().credits, 850000);
 });
 
+test("l'atelier consomme les ressources et sauvegarde chaque fabrication", async () => {
+  const { craftCurrentUserRecipe, getCurrentUserFull, updateCurrentUserProgress } = await import("../src/core/account.js");
+  updateCurrentUserProgress({ credits: 1000000, inventory: { resources: { npc_debris: 500 } } });
+  const crafted = craftCurrentUserRecipe("refine_debris", 2);
+  assert.equal(crafted.ok, true);
+  const user = getCurrentUserFull();
+  assert.equal(user.credits, 950000);
+  assert.equal(user.inventory.resources.npc_debris, 100);
+  assert.equal(user.inventory.resources.refined_component, 8);
+  const rejected = craftCurrentUserRecipe("forge_radion", 1);
+  assert.equal(rejected.ok, false);
+  assert.equal(getCurrentUserFull().credits, 950000);
+});
+
+test("l'atelier génère automatiquement une recette pour toute la boutique", async () => {
+  const { CRAFTING_RECIPES } = await import("../src/data/crafting.js");
+  const catalogItems = Object.values(CATALOG).flatMap(items => Array.isArray(items) ? items : []);
+  assert.equal(CRAFTING_RECIPES.length, catalogItems.length + 1);
+  for (const item of catalogItems) {
+    const recipe = CRAFTING_RECIPES.find(entry => entry.catalogItemId === item.id);
+    assert.ok(recipe, `recette manquante pour ${item.id}`);
+    assert.ok(recipe.costs.resources.refined_component >= 1, `composant raffinÃ© manquant pour ${item.id}`);
+  }
+  assert.equal(CRAFTING_RECIPES.find(recipe => recipe.id === "refine_debris").costs.resources.npc_debris, 200);
+});
+
 test("la roulette conserve un historique persistant des modules obtenus", async () => {
   const { addShipModule, getCurrentUserFull } = await import("../src/core/account.js");
   const module = {
