@@ -1,48 +1,32 @@
-// src/maps/alpha/AlphaWaves.js
-export const DEFAULT_WAVE_TYPE = " ";
+export const DEFAULT_WAVE_TYPE = "npc_Viral_Kristallon";
+
+export const QZ_COMPLETION_REWARD = Object.freeze({
+  exp: 2000000,
+  honor: 50000,
+  credits: 2000000,
+  x4: 0,
+  resources: Object.freeze({ indoctrinated_oil: [1, 3] }),
+});
 
 export const WAVE_PLANS = [
   null,
-  [{ type: "", count: 1 }],
-  [{ type: "npc_Viral_Kristallon", count: 25 },{ type: "npc_Viral_Gygerthrall", count: 10 }],
-
-  // ✅ Cubikon = FIN GG
   [
     {
       type: "npc_Gygerim_Overlord",
       count: 1,
       onKill: {
-        reward: 10000000,
-        tp: { factionBase: true },
+        completeSpecialGate: {
+          gateId: "qz",
+          name: "QZ",
+          reward: QZ_COMPLETION_REWARD,
+        },
       },
     },
+    { type: "npc_Viral_Kristallon", count: 30 },
   ],
 ];
 
-export function getWavePlan(w) {
-  const spawns = WAVE_PLANS[w];
-  if (spawns && spawns.length) {
-    return {
-      spawns: spawns.map((s) => ({
-        type: s.type,
-        count: s.count,
-        onKill: s.onKill || null, // ✅ important
-      })),
-    };
-  }
-
-  // fallback: répète la dernière vague définie
-  for (let i = WAVE_PLANS.length - 1; i >= 1; i--) {
-    if (WAVE_PLANS[i] && WAVE_PLANS[i].length) {
-      return {
-        spawns: WAVE_PLANS[i].map((s) => ({
-          type: s.type,
-          count: s.count,
-          onKill: s.onKill || null,
-        })),
-      };
-    }
-  }
-
-  return { spawns: [{ type: DEFAULT_WAVE_TYPE, count: 10, onKill: null }] };
+export function getWavePlan(wave) {
+  const spawns = WAVE_PLANS[wave] || WAVE_PLANS[1];
+  return { spawns: spawns.map(spawn => ({ ...spawn, onKill: spawn.onKill || null })) };
 }

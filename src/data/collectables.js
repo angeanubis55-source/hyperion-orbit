@@ -4,7 +4,7 @@
 // Pour en ajouter une, duplique une entrée et adapte son sprite, ses cartes et ses récompenses.
 export const COLLECTABLE_TYPES = Object.freeze({
   Cargo_Box: {
-    name: "Bonus crédits",
+    name: "Débris de NPC",
     maps: "*",
     qty: 0,
     spawnBatch: 50,
@@ -26,7 +26,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
       randomStart: true,
       glow: false,
     },
-    rewards: { credits: [1000, 10000] },
+    rewards: { resources: { npc_debris: [1, 3] } },
   },
 
   Bonus_Box: {
@@ -114,7 +114,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
   },
 
   Hybrid_Alloy_Box: {
-    name: "Immunizer CPU bonus",
+    name: "Alliage hybride",
     maps: "*",
     qty: 0,
     spawnBatch: 100,
@@ -136,7 +136,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
       randomStart: true,
       glow: false,
     },
-    rewards: { credits: [1, 3] },
+    rewards: { resources: { hybrid_alloy: [1, 3] } },
   },
 
   Palladium_Ore: {

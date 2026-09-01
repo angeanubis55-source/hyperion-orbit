@@ -2,10 +2,18 @@
 
 import { clamp } from "./collision.js";
 
+export function getMinimapPortalColors(portal, isReturn = false) {
+  if (isReturn) return { stroke: "rgba(255,178,92,0.9)", fill: "rgba(255,178,92,0.95)" };
+  if (String(portal?.toMap || "").toLowerCase() === "low") {
+    return { stroke: "rgba(190,96,255,0.95)", fill: "rgba(210,130,255,1)" };
+  }
+  return { stroke: "rgba(124,240,255,0.8)", fill: "rgba(124,240,255,0.95)" };
+}
+
 export function renderMinimap(context, options) {
   if (!context) return;
   const {
-    width, height, world, player, enemies = [], portals = [], returnPortal = null,
+    width, height, world, player, enemies = [], allies = [], portals = [], returnPortal = null,
     isZoneMap = false, safeZone = null, moveTarget = null, ping = null,
     camera, viewportWidth, viewportHeight, lockedNpc = null, shouldShowNpc = () => true,
   } = options;
@@ -22,20 +30,29 @@ export function renderMinimap(context, options) {
     context.fillRect(enemy.x * scaleX - size / 2, enemy.y * scaleY - size / 2, size, size);
   }
 
+  context.fillStyle = "rgba(80,255,145,0.95)";
+  for (const ally of allies) {
+    if (!ally || ally.hp <= 0) continue;
+    context.beginPath();
+    context.arc(ally.x * scaleX, ally.y * scaleY, 2.6, 0, Math.PI * 2);
+    context.fill();
+  }
+
   if (portals.length) {
     context.save();
     context.globalAlpha = 0.9;
     context.lineWidth = 2;
     for (const portal of portals) {
       const isReturn = !isZoneMap && portal === returnPortal;
+      const colors = getMinimapPortalColors(portal, isReturn);
       const x = portal.x * scaleX;
       const y = portal.y * scaleY;
       const radius = (portal.r || 200) * ((scaleX + scaleY) * 0.5);
-      context.strokeStyle = isReturn ? "rgba(255,178,92,0.9)" : "rgba(124,240,255,0.8)";
+      context.strokeStyle = colors.stroke;
       context.beginPath();
       context.arc(x, y, radius, 0, Math.PI * 2);
       context.stroke();
-      context.fillStyle = isReturn ? "rgba(255,178,92,0.95)" : "rgba(124,240,255,0.95)";
+      context.fillStyle = colors.fill;
       context.beginPath();
       context.arc(x, y, 2.5, 0, Math.PI * 2);
       context.fill();

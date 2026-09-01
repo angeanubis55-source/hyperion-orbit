@@ -30,6 +30,21 @@ export function init() {
     rules: {
       mapLabel: "GG Low",
       mode: "gate",
+      playerSpawn: { x: 520, yRatio: 0.5 },
+      escort: { shipId: "Goliath", ammo: "x3", max: 3 },
+      bossEncounter: {
+        bossType: "npc_Century_Falcon",
+        countPerPhase: 15,
+        phaseTypes: [
+          "npc_Vagrant",
+          "npc_Marauder",
+          "npc_Outcast",
+          "npc_Corsair",
+          "npc_Hooligan",
+          "npc_Ravager",
+          "npc_Convict",
+        ],
+      },
     },
   });
 }

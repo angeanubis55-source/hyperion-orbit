@@ -122,6 +122,60 @@ html.orbitSessionReady #loadingOverlay{
   padding:10px 12px;
 }
 
+#gygerimStatus{
+  display:none;
+  position:fixed;
+  top:34px;
+  left:50%;
+  width:290px;
+  padding:9px 11px 10px;
+  transform:translateX(-50%);
+  z-index:115;
+  box-sizing:border-box;
+  pointer-events:auto;
+}
+
+.gygerimTitle{
+  margin-bottom:7px;
+  color:#edf8ff;
+  font:900 11px/1.2 ui-sans-serif,system-ui;
+  letter-spacing:.8px;
+  text-align:center;
+  cursor:move;
+  user-select:none;
+  touch-action:none;
+}
+
+.gygerimResource{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:3px 10px;
+  align-items:center;
+  margin-top:5px;
+  color:rgba(185,210,230,.76);
+  font:800 9px/1.1 ui-sans-serif,system-ui;
+}
+
+.gygerimResource strong{
+  color:#eaf6ff;
+  font-size:9px;
+  font-variant-numeric:tabular-nums;
+  text-align:right;
+}
+
+.gygerimResource > div{
+  grid-column:1 / -1;
+  height:7px;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:999px;
+  background:rgba(255,255,255,.07);
+}
+
+.gygerimResource i{ display:block; width:0; height:100%; transition:width .12s linear; }
+.gygerimResource.hp i{ background:linear-gradient(90deg,#d92d4b,#ff8799); }
+.gygerimResource.sh i{ background:linear-gradient(90deg,#19a9d1,#93edff); }
+
 #boxMeta{
   left:14px;
   top:150px;

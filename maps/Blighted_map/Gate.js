@@ -30,6 +30,22 @@ export function init() {
     rules: {
       mapLabel: "GG QZ",
       mode: "gate",
+      bossEncounter: {
+        bossType: "npc_Gygerim_Overlord",
+        name: "QZ",
+        stationary: true,
+        initialGuard: true,
+        position: { xRatio: 0.9, yRatio: 0.5 },
+        phaseGroups: Array.from({ length: 10 }, (_, index) => {
+          const base = (index % 2 === 0 ? 2 : 3) + index * 3;
+          return [
+            { type: "npc_Viral_Kristallon", count: base },
+            { type: "npc_Viral_Gygerthrall", count: base },
+          ];
+        }),
+      },
+      playerSpawn: { x: 520, yRatio: 0.5 },
+      escort: { shipId: "Goliath", ammo: "x3", max: 7 },
     },
   });
 }

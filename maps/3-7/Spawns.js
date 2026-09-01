@@ -107,6 +107,10 @@ export function getZonePortals(WORLD) {
       y: 3500,
       r: 260,
       toMap: "qz",
+      entryResource: "hybrid_alloy",
+      entryResourceCost: 30,
+      escortResourceCost: 10,
+      maxEscorts: 7,
     },
   ];
 }

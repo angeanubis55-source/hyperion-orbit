@@ -357,8 +357,8 @@ export const NPC_TYPES = {
     playSprite: false,
     spriteSpeed: 0,
     bulletSprite: { src: "Munitions/Kristallon.png", w: 40, h: 15, glow: true, invert: true },
-    r: 18, hp: 240000, shield: 200000, speed: 550, bulletDmg: 2500, bulletSpeed: 4500, value: 18800,
-    shootRange: 620, shootRate: 1.0, bulletSpread: 0.05, burst: 1, bulletR: 7, bulletScale: 1.5, orbit: 0.45,
+    r: 18, hp: 240000, shield: 200000, speed: 350, bulletDmg: 2500, bulletSpeed: 4500, value: 18800,
+    shootRange: 500, shootRate: 1.0, bulletSpread: 0.05, burst: 1, bulletR: 7, bulletScale: 1.5, orbit: 0.45,
   },
   npc_Blighted_Kristallin: {
     name: "-=[ Plagued Kristallin ]=-",
@@ -649,7 +649,7 @@ export const NPC_TYPES = {
     spriteSpeed: 0,
     bulletSprite: { src: "Munitions/x4.png", w: 46, h: 16, glow: true, invert: true },
     r: 18, hp: 4500000, shield: 4500000, speed: 200, bulletDmg: 24500, bulletSpeed: 4500, value: 1500000,
-    shootRange: 700, shootRate: 1.0, bulletSpread: 0.05, burst: 1, bulletR: 7, bulletScale: 1.5, orbit: 0.45,
+    shootRange: 600, shootRate: 1.0, bulletSpread: 0.05, burst: 1, bulletR: 7, bulletScale: 1.5, orbit: 0.45,
   },
 
 
@@ -1168,13 +1168,13 @@ export const NPC_TYPES = {
   passiveNative: true,
   spriteSpeed: 20,
   bulletSprite: { src: "Munitions/Kristallon.png", w: 40, h: 15, glow: true, invert: true },
-  r: 18, hp: 600000, shield: 450000, speed: 700, value: 500000,
-  bulletDmg: 4500, bulletSpeed: 4500, shootRange: 500,
+  r: 18, hp: 600000, shield: 450000, speed: 450, value: 500000,
+  bulletDmg: 4500, bulletSpeed: 4500, shootRange: 580,
   shootRate: 1.0, bulletSpread: 0.05, burst: 1, bulletR: 7, bulletScale: 1.5, orbit: 0.45,
 
   onKill: {
     spawn: [
-      { type: "npc_Viral_Gygerthrall", count: 5, radius: 260 }
+      { type: "npc_Viral_Gygerthrall", count: 2, radius: 260 }
     ]
   },
   },
@@ -1184,8 +1184,8 @@ export const NPC_TYPES = {
     playSprite: false,
     spriteSpeed: 0,
     bulletSprite: { src: "Munitions/Special8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 245000, shield: 450000, speed: 1000, bulletDmg: 2500, bulletSpeed: 4500, value: 18800,
-    shootRange: 620, shootRate: 1.0, bulletSpread: 0.05, burst: 1, bulletR: 7, bulletScale: 1.5, orbit: 0.45,
+    r: 18, hp: 245000, shield: 450000, speed: 350, bulletDmg: 2500, bulletSpeed: 4500, value: 18800,
+    shootRange: 500, shootRate: 1.0, bulletSpread: 0.05, burst: 1, bulletR: 7, bulletScale: 1.5, orbit: 0.45,
   },
   npc_Gygerim_Overlord: {
     name: "-=[ Gygerim Overlord ]=-",

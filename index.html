@@ -70,6 +70,18 @@
       <div class="row" style="margin-top:6px;"><span class="k">Kills</span><span class="v" id="kills">0</span></div>
     </div>
 
+    <div id="gygerimStatus" class="panel" aria-label="État du boss">
+      <div id="bossStatusTitle" class="gygerimTitle">BOSS</div>
+      <div class="gygerimResource hp">
+        <span>VIE</span><strong id="gygerimHpTxt">0 / 0</strong>
+        <div><i id="gygerimHpBar"></i></div>
+      </div>
+      <div class="gygerimResource sh">
+        <span>BOUCLIER</span><strong id="gygerimShTxt">0 / 0</strong>
+        <div><i id="gygerimShBar"></i></div>
+      </div>
+    </div>
+
     <!-- BOX 2 : Économie / progression (toujours) -->
 <div id="boxMeta" class="panel">
   <div class="row"><span class="k">Crédits</span><span class="v" id="credits">0</span></div>
@@ -239,9 +251,9 @@
     </div>
 
     <div id="centerMsg" class="panel">
-      <h2 id="centerTitle">Pause</h2>
-      <p id="centerBody">Appuie sur <b>Esc</b> pour reprendre.</p>
-      <div class="btnHint" id="centerHint">Astuce : X4 = gros dégâts</div>
+      <h2 id="centerTitle"></h2>
+      <p id="centerBody"></p>
+      <div class="btnHint" id="centerHint"></div>
     </div>
 
     <!-- ✅ Respawn overlay (ZONE ONLY) -->
@@ -345,6 +357,7 @@
         <div class="profileTabs">
           <button class="tabBtn active" data-tab="stats">GÉNÉRAL</button>
           <button class="tabBtn" data-tab="hangars">HANGARS &amp; ÉQUIPEMENT</button>
+          <button class="tabBtn" data-tab="inventory">INVENTAIRE</button>
           <button class="tabBtn" data-tab="shop">BOUTIQUE</button>
           <button class="tabBtn" data-tab="account">COMPTE</button>
           <button class="tabBtn" data-tab="npcs">NPC &amp; GRADES</button>
@@ -507,6 +520,21 @@
             </aside>
             <div id="hangarGrid" class="profileGrid"></div>
           </div>
+        </section>
+
+        <section id="panel_inventory" class="profilePanel">
+          <div class="inventoryToolbar">
+            <div>
+              <div class="inventoryTitle">Inventaire du pilote</div>
+              <div class="inventorySubtitle">Tous les biens et ressources conservés sur ton compte.</div>
+            </div>
+            <label class="inventorySearchField">
+              <span>Rechercher</span>
+              <input id="inventorySearch" type="search" autocomplete="off" placeholder="Objet, ressource, vaisseau..." />
+            </label>
+          </div>
+          <div id="inventorySections" class="inventorySections"></div>
+          <div id="inventoryTooltip" class="inventoryTooltip" role="tooltip"></div>
         </section>
 
         <section id="panel_shop" class="profilePanel">

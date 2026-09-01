@@ -1,48 +1,37 @@
-// src/maps/Beta/BetaWaves.js
-export const DEFAULT_WAVE_TYPE = "npc_Streuner";
+export const DEFAULT_WAVE_TYPE = "npc_Century_Falcon";
+
+// La LOW rapporte exactement la moitié de la récompense finale d'Alpha.
+export const LOW_COMPLETION_REWARD = Object.freeze({
+  exp: 2000000,
+  honor: 50000,
+  credits: 2000000,
+  x4: 10000,
+});
 
 export const WAVE_PLANS = [
   null,
-  [{ type: "npc_Vagrant", count: 100 }],
-
-    // ✅ Cubikon = FIN GG
   [
     {
       type: "npc_Century_Falcon",
       count: 1,
       onKill: {
-        reward: 30000000,
-        tp: { factionBase: true },
+        completeSpecialGate: {
+          gateId: "low",
+          name: "LOW",
+          reward: LOW_COMPLETION_REWARD,
+        },
       },
     },
   ],
-
 ];
 
-export function getWavePlan(w) {
-  const spawns = WAVE_PLANS[w];
-  if (spawns && spawns.length) {
-    return {
-      spawns: spawns.map((s) => ({
-        type: s.type,
-        count: s.count,
-        onKill: s.onKill || null, // ✅ important
-      })),
-    };
-  }
-
-  // fallback: répète la dernière vague définie
-  for (let i = WAVE_PLANS.length - 1; i >= 1; i--) {
-    if (WAVE_PLANS[i] && WAVE_PLANS[i].length) {
-      return {
-        spawns: WAVE_PLANS[i].map((s) => ({
-          type: s.type,
-          count: s.count,
-          onKill: s.onKill || null,
-        })),
-      };
-    }
-  }
-
-  return { spawns: [{ type: DEFAULT_WAVE_TYPE, count: 10, onKill: null }] };
+export function getWavePlan(wave) {
+  const spawns = WAVE_PLANS[wave] || WAVE_PLANS[1];
+  return {
+    spawns: spawns.map(spawn => ({
+      type: spawn.type,
+      count: spawn.count,
+      onKill: spawn.onKill || null,
+    })),
+  };
 }

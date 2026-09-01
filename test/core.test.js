@@ -30,7 +30,7 @@ import {
 } from "../src/core/portalSystem.js";
 import { buildQuestJournalView, buildQuestTerminalView, formatQuestEntityName } from "../src/core/questPresentation.js";
 import { drawMoveTargetMarker, drawPlayerStatus, drawToastMessage } from "../src/core/canvasHudRenderer.js";
-import { renderMinimap } from "../src/core/minimapRenderer.js";
+import { getMinimapPortalColors, renderMinimap } from "../src/core/minimapRenderer.js";
 import { drawBackgroundLayerSet, drawParallaxStarfield, drawWallLayer } from "../src/core/worldLayerRenderer.js";
 import { advancePlayerToTarget, attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "../src/core/frameSystems.js";
 import { ADMIN_RANK, PILOT_RANKS, calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor } from "../src/core/progression.js";
@@ -38,6 +38,14 @@ import { formatInteger } from "../src/core/numberFormat.js";
 import { COLLECTABLE_SPAWN, COLLECTABLE_TYPES } from "../src/data/collectables.js";
 import { GATE_MULTIPLIERS } from "../src/data/npcBalance.js";
 import { NPC_TYPES } from "../src/data/npcTypes.js";
+import { getZonePortals as getMmoLowPortals } from "../maps/1-3/Spawns.js";
+import { getZonePortals as getEicLowPortals } from "../maps/2-3/Spawns.js";
+import { getZonePortals as getVruLowPortals } from "../maps/3-3/Spawns.js";
+import { getWavePlan as getLowWavePlan, LOW_COMPLETION_REWARD } from "../maps/Low_map/Waves.js";
+import { getWavePlan as getQzWavePlan, QZ_COMPLETION_REWARD } from "../maps/Blighted_map/Waves.js";
+import { getZonePortals as getMmoQzPortals } from "../maps/1-7/Spawns.js";
+import { getZonePortals as getEicQzPortals } from "../maps/2-7/Spawns.js";
+import { getZonePortals as getVruQzPortals } from "../maps/3-7/Spawns.js";
 import { CATALOG } from "../src/core/catalog.js";
 import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_TIER_WEIGHTS } from "../src/data/moduleDrops.js";
 import { appendToFitSlots, compactFitArray, compactFitDraft } from "../src/core/fitLayout.js";
@@ -96,6 +104,44 @@ test("les portails de gate sont centrés et retournent vers la bonne base", () =
   assert.equal(getGateReturnMap("alpha", "1-1"), "1-1");
   assert.equal(getGateReturnMap("beta", "2-1"), "2-1");
   assert.equal(getGateReturnMap("gamma", "3-1"), "3-1");
+});
+
+test("la gate LOW coûte un million dans chaque firme et commence par le Century Falcon", () => {
+  for (const getPortals of [getMmoLowPortals, getEicLowPortals, getVruLowPortals]) {
+    const portal = getPortals({ w: 11000, h: 7000 }).find(item => item.toMap === "low");
+    assert.equal(portal?.entryCost, 1000000);
+  }
+  const plan = getLowWavePlan(1);
+  assert.deepEqual(plan.spawns.map(({ type, count }) => ({ type, count })), [
+    { type: "npc_Century_Falcon", count: 1 },
+  ]);
+  assert.deepEqual(LOW_COMPLETION_REWARD, {
+    exp: GALAXY_GATE_DEFINITIONS.alpha.completion.exp / 2,
+    honor: GALAXY_GATE_DEFINITIONS.alpha.completion.honor / 2,
+    credits: GALAXY_GATE_DEFINITIONS.alpha.completion.credits / 2,
+    x4: GALAXY_GATE_DEFINITIONS.alpha.completion.x4 / 2,
+  });
+});
+
+test("la QZ coûte trente Alliages hybrides, accepte sept escortes et prépare l'Overlord", () => {
+  for (const getPortals of [getMmoQzPortals, getEicQzPortals, getVruQzPortals]) {
+    const portal = getPortals({ w: 11000, h: 7000 }).find(item => item.toMap === "qz");
+    assert.equal(portal?.entryResource, "hybrid_alloy");
+    assert.equal(portal?.entryResourceCost, 30);
+    assert.equal(portal?.escortResourceCost, 10);
+    assert.equal(portal?.maxEscorts, 7);
+  }
+  assert.deepEqual(getQzWavePlan(1).spawns.map(({ type, count }) => ({ type, count })), [
+    { type: "npc_Gygerim_Overlord", count: 1 },
+    { type: "npc_Viral_Kristallon", count: 30 },
+  ]);
+  assert.deepEqual(QZ_COMPLETION_REWARD, {
+    exp: GALAXY_GATE_DEFINITIONS.alpha.completion.exp / 2,
+    honor: GALAXY_GATE_DEFINITIONS.alpha.completion.honor / 2,
+    credits: GALAXY_GATE_DEFINITIONS.alpha.completion.credits / 2,
+    x4: 0,
+    resources: { indoctrinated_oil: [1, 3] },
+  });
 });
 
 test("le Galaxy Spinner assemble, sauvegarde et consomme les Gates", () => {
@@ -353,6 +399,11 @@ test("la mini-carte filtre les NPC et dessine les portails avec un contexte équ
   });
   assert.equal(calls.filter(call => call[0] === "fillRect").length, 2);
   assert.equal(calls.filter(call => call[0] === "save").length, calls.filter(call => call[0] === "restore").length);
+  assert.deepEqual(getMinimapPortalColors({ toMap: "low" }), {
+    stroke: "rgba(190,96,255,0.95)",
+    fill: "rgba(210,130,255,1)",
+  });
+  assert.notDeepEqual(getMinimapPortalColors({ toMap: "1-2" }), getMinimapPortalColors({ toMap: "low" }));
 });
 
 test("les couches du monde dessinent fonds et murs sans déséquilibrer Canvas", () => {
@@ -489,6 +540,29 @@ test("tous les NPC ont des statistiques et récompenses distinctes valides", () 
   assert.equal(NPC_TYPES.npc_Boss_Lordakia.speed, 400);
   assert.equal(NPC_TYPES.npc_Boss_Devolarium.speed, 160);
   assert.equal(NPC_TYPES.npc_Boss_Kristallon.speed, 250);
+});
+
+test("les NPC de la LOW utilisent leurs statistiques et récompenses dédiées", () => {
+  assert.deepEqual(
+    ["npc_Vagrant", "npc_Marauder", "npc_Outcast", "npc_Corsair", "npc_Hooligan", "npc_Ravager", "npc_Convict"].map(type => {
+      const npc = NPC_TYPES[type];
+      return [npc.hp, npc.shield, npc.speed, npc.bulletDmg, npc.value, npc.exp, npc.honor];
+    }),
+    [
+      [80000, 80000, 335, 5000, 45000, 9000, 12],
+      [200000, 120000, 315, 11000, 90000, 18000, 24],
+      [300000, 160000, 300, 15000, 150000, 27000, 36],
+      [400000, 240000, 290, 16000, 240000, 39000, 48],
+      [750000, 600000, 280, 9000, 375000, 48000, 96],
+      [900000, 600000, 270, 22000, 480000, 54000, 192],
+      [1200000, 600000, 260, 23000, 660000, 60000, 300],
+    ],
+  );
+  const falcon = NPC_TYPES.npc_Century_Falcon;
+  assert.deepEqual(
+    [falcon.hp, falcon.shield, falcon.speed, falcon.bulletDmg, falcon.value, falcon.exp, falcon.honor],
+    [12000000, 9000000, 360, 70000, 3000000, 3000000, 15000],
+  );
 });
 
 test("les grands nombres utilisent des espaces comme séparateurs", () => {
@@ -824,6 +898,8 @@ test("le catalogue des collectables centralise sprites, cartes et récompenses",
   assert.equal(Object.keys(COLLECTABLE_TYPES).length, 6);
   assert.deepEqual(COLLECTABLE_TYPES.Palladium_Ore.maps, ["5-2"]);
   assert.deepEqual(COLLECTABLE_TYPES.Astral_Prime_Box.rewards.ammo.x4, [800, 1100]);
+  assert.deepEqual(COLLECTABLE_TYPES.Cargo_Box.rewards.resources.npc_debris, [1, 3]);
+  assert.deepEqual(COLLECTABLE_TYPES.Hybrid_Alloy_Box.rewards.resources.hybrid_alloy, [1, 3]);
   assert.equal(COLLECTABLE_TYPES.Bonus_Box.exclusiveRewards.reduce((sum, item) => sum + item.weight, 0), 100);
   assert.equal(COLLECTABLE_TYPES.Bonus_Box.exclusiveRewards.filter(item => item.reward.ammo).length, 3);
   assert.equal(COLLECTABLE_SPAWN.interval, 1);
@@ -1023,11 +1099,12 @@ test("les comptes sauvegardés sont versionnés et les valeurs sont bornées", a
   const created = register({ pseudo: "Pilote", email: "pilote@example.test", password: "secret", faction: "mmo" });
   assert.equal(created.ok, true);
 
-  updateCurrentUserProgress({ credits: -500 });
+  updateCurrentUserProgress({ credits: -500, inventory: { resources: { npc_debris: 3, hybrid_alloy: 2 } } });
   const user = getCurrentUserFull();
   assert.equal(user.credits, 0);
   assert.equal(user.schemaVersion, 4);
   assert.equal(user.faction, "mmo");
+  assert.deepEqual(user.inventory.resources, { npc_debris: 3, hybrid_alloy: 2 });
   assert.deepEqual(user.quests, { active: {}, completed: [] });
   assert.ok(user.revision >= 1);
   assert.ok(user.updatedAt > 0);

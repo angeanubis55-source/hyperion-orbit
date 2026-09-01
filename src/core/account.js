@@ -233,6 +233,16 @@ function ensureUserShape(u) {
   // counts = { [itemId]: number }
   if (!u.inventory.counts || typeof u.inventory.counts !== "object") u.inventory.counts = {};
 
+  // Matériaux persistants récupérés en jeu.
+  if (!u.inventory.resources || typeof u.inventory.resources !== "object" || Array.isArray(u.inventory.resources)) {
+    u.inventory.resources = {};
+  }
+  for (const [resourceId, quantity] of Object.entries(u.inventory.resources)) {
+    const normalized = Math.max(0, Math.floor(Number(quantity) || 0));
+    if (normalized > 0) u.inventory.resources[resourceId] = normalized;
+    else delete u.inventory.resources[resourceId];
+  }
+
   // modules roulette (instances uniques)
   if (!Array.isArray(u.inventory.shipModules)) u.inventory.shipModules = [];
   if (!Array.isArray(u.inventory.moduleRollHistory)) {
@@ -624,6 +634,13 @@ export function updateCurrentUserProgress(patch = {}) {
     if (patch.ammo.x4 != null) u.ammo.x4 = Math.max(0, Number(patch.ammo.x4 || 0));
     if (patch.ammo.x6 != null) u.ammo.x6 = Math.max(0, Number(patch.ammo.x6 || 0));
     if (patch.ammo.sab != null) u.ammo.sab = Math.max(0, Number(patch.ammo.sab || 0));
+  }
+
+  if (patch.inventory?.resources && typeof patch.inventory.resources === "object" && !Array.isArray(patch.inventory.resources)) {
+    u.inventory ||= {};
+    u.inventory.resources = Object.fromEntries(Object.entries(patch.inventory.resources)
+      .map(([resourceId, quantity]) => [String(resourceId), Math.max(0, Math.floor(Number(quantity) || 0))])
+      .filter(([, quantity]) => quantity > 0));
   }
 
   if (patch.stats && typeof patch.stats === "object") {

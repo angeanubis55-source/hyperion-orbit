@@ -29,7 +29,7 @@ export function createRadiationSystem(options = {}) {
   }
 
   function update(dt, context = {}) {
-    if (!context.started || context.paused || context.dead) return 0;
+    if (!context.started || context.dead) return 0;
     dt = Math.max(0, Number(dt) || 0);
     state.active = !!context.outside;
     state.edgeFade = clamp(

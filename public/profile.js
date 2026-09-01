@@ -26,6 +26,7 @@ import { FACTIONS, getFaction } from "../src/core/factions.js";
 import { NPC_TYPES } from "../src/data/npcTypes.js";
 import { QUEST_DEFINITIONS } from "../src/data/quests.js";
 import { AMMO } from "../src/data/ammo.js";
+import { getResourceName } from "../src/data/resources.js";
 import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS } from "../src/data/moduleDrops.js";
 import { appendToFitSlots, compactFitDraft } from "../src/core/fitLayout.js";
 
@@ -94,6 +95,9 @@ const hangarPreviewTitle = $("hangarPreviewTitle");
 const hangarSelectedImage = $("hangarSelectedImage");
 const hangarSelectedTitle = $("hangarSelectedTitle");
 const hangarPreviewMeta = $("hangarPreviewMeta");
+const inventorySearch = $("inventorySearch");
+const inventorySections = $("inventorySections");
+const inventoryTooltip = $("inventoryTooltip");
 const shopList = $("shopList");
 const shopPreview = $("shopPreview");
 const btnStart = $("btnStart");
@@ -109,6 +113,7 @@ let shopTab = localStorage.getItem("orbit_shop_tab") || "ammo";
 let selectedShopItemId = null;
 let selectedHangarId = null;
 let shopRenderToken = 0;
+let inventoryQuery = "";
 
 // -------------------- UI helpers --------------------
 function setMsg(text, ok = false) {
@@ -470,6 +475,9 @@ if (panel) panel.classList.add("active");
 }
 
 function wireMainTabsOnce() {
+  if (inventoryTooltip && inventoryTooltip.parentElement !== document.body) {
+    document.body.appendChild(inventoryTooltip);
+  }
   document.querySelectorAll(".tabBtn").forEach((btn) => {
     btn.addEventListener("click", () => {
       setMsg("", true);
@@ -479,9 +487,29 @@ function wireMainTabsOnce() {
       if (tab === "account") renderAccount(user);
       if (tab === "npcs") renderNpcStats(user);
       if (tab === "hangars") renderHangars(user);
+      if (tab === "inventory") renderInventory(user);
       if (tab === "shop") renderShop(user);
     });
   });
+
+  inventorySearch?.addEventListener("input", () => {
+    inventoryQuery = inventorySearch.value || "";
+    renderInventory(user);
+  });
+
+  inventorySections?.addEventListener("pointermove", (event) => {
+    const slot = event.target.closest(".inventorySlot");
+    if (!slot || !inventoryTooltip) return;
+    inventoryTooltip.textContent = slot.dataset.tooltip || "";
+    inventoryTooltip.classList.add("visible");
+    const margin = 14;
+    const tooltipRect = inventoryTooltip.getBoundingClientRect();
+    const left = Math.max(margin, Math.min(window.innerWidth - tooltipRect.width - margin, event.clientX + margin));
+    const top = Math.max(margin, Math.min(window.innerHeight - tooltipRect.height - margin, event.clientY + margin));
+    inventoryTooltip.style.left = `${left}px`;
+    inventoryTooltip.style.top = `${top}px`;
+  });
+  inventorySections?.addEventListener("pointerleave", () => inventoryTooltip?.classList.remove("visible"));
 }
 
 function wireShopTabsOnce() {
@@ -504,6 +532,168 @@ function renderStats(u) {
   if (!u) return;
   renderNpcStats(u);
   renderAccount(u);
+}
+
+const INVENTORY_AMMO_NAMES = Object.freeze({
+  x1: "Munitions LCB-10 (X1)", x2: "Munitions MCB-25 (X2)",
+  x3: "Munitions MCB-50 (X3)", x4: "Munitions UCB-100 (X4)",
+  x6: "Munitions RSB-75 (X6)", sab: "Munitions SAB-50",
+  ABL: "Munitions ABL", RADION: "Munitions RADION",
+});
+
+function humanizeInventoryId(value) {
+  return String(value || "Ressource")
+    .replace(/^resource[_-]?/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function finiteInventoryQuantity(value) {
+  if (value === Infinity || value === "Infinity") return Infinity;
+  const quantity = Number(value);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 0;
+}
+
+function inventoryQuantityLabel(value) {
+  return value === Infinity ? "∞" : formatNumber(value);
+}
+
+function catalogEntry(itemId) {
+  for (const [category, entries] of Object.entries(CATALOG || {})) {
+    const item = Array.isArray(entries) ? entries.find((entry) => entry?.id === itemId) : null;
+    if (item) return { item, category };
+  }
+  return null;
+}
+
+function buildInventorySections(u) {
+  const ammoItems = Object.entries(u?.ammo || {}).map(([id, rawQuantity]) => ({
+    id, kind: "ammo",
+    name: INVENTORY_AMMO_NAMES[id] || `Munitions ${humanizeInventoryId(id)}`,
+    quantity: finiteInventoryQuantity(rawQuantity), detail: "Réserve de munitions",
+  })).filter((entry) => entry.id !== "x1" && (entry.quantity > 0 || entry.quantity === Infinity));
+
+  const equipment = [];
+  const resources = new Map();
+  for (const [itemId, rawQuantity] of Object.entries(u?.inventory?.counts || {})) {
+    const quantity = finiteInventoryQuantity(rawQuantity);
+    if (!quantity) continue;
+    const found = catalogEntry(itemId);
+    if (found && found.category !== "ammo" && found.category !== "ships") {
+      equipment.push({
+        id: itemId, kind: "equipment", category: found.category, item: found.item,
+        name: found.item.name || humanizeInventoryId(itemId), quantity,
+        detail: ({ lasers: "Laser", speedGen: "Générateur de vitesse", shieldGen: "Générateur de bouclier", extras: "Extra" })[found.category] || "Équipement",
+      });
+    } else if (!found) {
+      resources.set(itemId, { id: itemId, kind: "resource", name: getResourceName(itemId), quantity, detail: "Ressource" });
+    }
+  }
+
+  for (const source of [u?.resources, u?.inventory?.resources]) {
+    for (const [resourceId, rawQuantity] of Object.entries(source || {})) {
+      const quantity = finiteInventoryQuantity(rawQuantity);
+      if (!quantity) continue;
+      const existing = resources.get(resourceId);
+      resources.set(resourceId, {
+        id: resourceId, kind: "resource", name: getResourceName(resourceId),
+        quantity: (existing?.quantity || 0) + quantity, detail: "Ressource",
+      });
+    }
+  }
+
+  const modules = (u?.inventory?.shipModules || []).map((module, index) => {
+    const compatibleShip = getShipPack(module?.shipId);
+    return {
+      id: module?.id || `module-${index}`, kind: "module", module,
+      name: `${String(module?.type || "module").toUpperCase()} ${String(module?.tier || "").toUpperCase()}`.trim(), quantity: 1,
+      detail: (module?.bonuses || []).map((bonus) => `${formatNumber(bonus?.pct || 0)}% ${formatStatLabel(bonus?.stat)}`).join(" · ") || "Module de vaisseau",
+      searchText: `${module?.shipId || ""} ${compatibleShip?.name || ""}`,
+    };
+  });
+
+  const ships = (u?.inventory?.ships || []).map((shipId) => {
+    const pack = getShipPack(shipId);
+    return { id: String(shipId), kind: "ship", name: pack?.name || String(shipId), quantity: 1, detail: "Vaisseau possédé" };
+  });
+
+  return [
+    { id: "ammo", title: "Munitions", items: ammoItems },
+    { id: "equipment", title: "Équipements", items: equipment },
+    { id: "modules", title: "Modules de vaisseau", items: modules },
+    { id: "ships", title: "Vaisseaux", items: ships },
+    { id: "resources", title: "Ressources", items: [...resources.values()] },
+  ];
+}
+
+function inventoryItemIcon(entry) {
+  if (entry.kind === "ship") return shipPreviewSrc(entry.id);
+  if (entry.kind === "module") return moduleIconSrc(entry.module?.type, entry.module?.tier);
+  if (entry.kind === "equipment") return iconForItem(entry.item, entry.category);
+  if (entry.kind === "ammo") {
+    const ammoId = entry.id === "sab" ? "ammo_sab" : `ammo_${String(entry.id).toLowerCase()}`;
+    return ITEM_ICONS[ammoId] || FALLBACK_ICONS.ammo;
+  }
+  return FALLBACK_ICON;
+}
+
+function inventoryTooltipText(entry) {
+  const lines = [entry.name];
+  if (entry.kind === "ammo") {
+    const multiplier = Number(AMMO?.[entry.id]?.mult);
+    if (Number.isFinite(multiplier)) lines.push(`Multiplicateur de dégâts : x${multiplier}`);
+    lines.push(`Quantité possédée : ${inventoryQuantityLabel(entry.quantity)}`);
+  } else if (entry.kind === "equipment") {
+    const module = entry.item?.module || {};
+    if (Number.isFinite(Number(module.damage))) lines.push(`Dégâts : ${formatNumber(module.damage)}`);
+    if (Number.isFinite(Number(module.bonusSpeed))) lines.push(`Vitesse : +${formatNumber(module.bonusSpeed)}`);
+    if (Number.isFinite(Number(module.bonusShield))) lines.push(`Bouclier : +${formatNumber(module.bonusShield)}`);
+    if (module.key) lines.push(`Effet : ${humanizeInventoryId(module.key)}`);
+    lines.push(entry.detail);
+  } else if (entry.kind === "ship") {
+    const pack = getShipPack(entry.id);
+    if (pack) {
+      lines.push(`Points de vie : ${formatNumber(pack.hp || 0)}`);
+      lines.push(`Vitesse : ${formatNumber(pack.speed || 0)}`);
+      lines.push(`Slots : ${formatNumber(pack.slots?.lasers || 0)} lasers · ${formatNumber(pack.slots?.gens || 0)} générateurs · ${formatNumber(pack.slots?.extras || 0)} extras`);
+    }
+  } else if (entry.kind === "module") {
+    if (entry.module?.shipId) lines.push(`Vaisseau : ${getShipPack(entry.module.shipId)?.name || entry.module.shipId}`);
+    if (entry.detail) lines.push(entry.detail);
+  } else {
+    if (entry.detail) lines.push(entry.detail);
+    lines.push(`Quantité : ${entry.quantityLabel || inventoryQuantityLabel(entry.quantity)}`);
+  }
+  return lines.filter(Boolean).join("\n");
+}
+
+function expandInventorySlots(section) {
+  if (section.id !== "equipment") return section.items;
+  return section.items.flatMap((entry) => Array.from({ length: Math.max(0, Math.floor(entry.quantity)) }, (_, index) => ({
+    ...entry,
+    slotId: `${entry.id}-${index}`,
+    quantity: 1,
+    stacked: false,
+  })));
+}
+
+function renderInventory(u) {
+  if (!u || !inventorySections) return;
+  const sections = buildInventorySections(u);
+
+  const query = inventoryQuery.trim().toLocaleLowerCase("fr");
+  const slots = sections.flatMap((section) => {
+    const matchingItems = section.items.filter((entry) => !query || `${entry.name} ${entry.detail} ${entry.id} ${entry.searchText || ""}`.toLocaleLowerCase("fr").includes(query));
+    return expandInventorySlots({ ...section, items: matchingItems });
+  });
+  inventorySections.innerHTML = slots.length ? slots.map((entry) => {
+      const stacked = entry.stacked !== false && !["module", "ship", "equipment"].includes(entry.kind);
+      const quantity = entry.quantityLabel || inventoryQuantityLabel(entry.quantity);
+      return `<article class="inventorySlot" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(inventoryTooltipText(entry))}" tabindex="0" aria-label="${escapeHtml(inventoryTooltipText(entry).replace(/\n/g, ". "))}">
+        <img src="${escapeHtml(inventoryItemIcon(entry))}" alt="" />
+        ${stacked ? `<span class="inventorySlotQuantity">${escapeHtml(quantity)}</span>` : ""}
+      </article>`;
+    }).join("") : `<div class="inventoryEmpty">${query ? "Aucun résultat." : "Aucun élément possédé."}</div>`;
 }
 
 function renderNpcStats(u) {
@@ -3321,6 +3511,7 @@ function openProfileOverlay() {
   renderHeader(user);
   renderStats(user);
   renderHangars(user);
+  renderInventory(user);
   renderShop(user);
   setTab(tab);
 }
@@ -3359,6 +3550,7 @@ function boot() {
   renderHeader(user);
   renderStats(user);
   renderHangars(user);
+  renderInventory(user);
   renderShop(user);
   setTab(tab);
 
@@ -3421,6 +3613,7 @@ window.addEventListener("orbit:profile-progress", () => {
   if (!refreshedUser) return;
   user = refreshedUser;
   renderNpcStats(user);
+  renderInventory(user);
 });
 
 // Init

@@ -19,6 +19,14 @@ const BASE_REWARDS = Object.freeze({
 });
 
 const EXACT_REWARDS = Object.freeze({
+  npc_Vagrant: { credits: 45000, exp: 9000, honor: 12 },
+  npc_Marauder: { credits: 90000, exp: 18000, honor: 24 },
+  npc_Outcast: { credits: 150000, exp: 27000, honor: 36 },
+  npc_Corsair: { credits: 240000, exp: 39000, honor: 48 },
+  npc_Hooligan: { credits: 375000, exp: 48000, honor: 96 },
+  npc_Ravager: { credits: 480000, exp: 54000, honor: 192 },
+  npc_Convict: { credits: 660000, exp: 60000, honor: 300 },
+  npc_Century_Falcon: { credits: 3000000, exp: 3000000, honor: 15000 },
   npc_Boss_Sibelonit: { credits: 102400, exp: 12800, honor: 64 },
   npc_Uber_Sibelonit: { credits: 204800, exp: 25600, honor: 128 },
   npc_Blighted_Kristallin: { credits: 12800, exp: 6400, honor: 32 },
@@ -37,6 +45,14 @@ const EXACT_REWARDS = Object.freeze({
 });
 
 const EXACT_STATS = Object.freeze({
+  npc_Vagrant: { hp: 80000, shield: 80000, bulletDmg: 5000 },
+  npc_Marauder: { hp: 200000, shield: 120000, bulletDmg: 11000 },
+  npc_Outcast: { hp: 300000, shield: 160000, bulletDmg: 15000 },
+  npc_Corsair: { hp: 400000, shield: 240000, bulletDmg: 16000 },
+  npc_Hooligan: { hp: 750000, shield: 600000, bulletDmg: 9000 },
+  npc_Ravager: { hp: 900000, shield: 600000, bulletDmg: 22000 },
+  npc_Convict: { hp: 1200000, shield: 600000, bulletDmg: 23000 },
+  npc_Century_Falcon: { hp: 12000000, shield: 9000000, bulletDmg: 70000 },
   npc_Saimon: { hp: 6000, shield: 6000 },
   npc_Uber_Sibelon: { hp: 1600000, shield: 1600000 },
   npc_Boss_Kristallon: { hp: 1600000, shield: 1200000 },
@@ -73,6 +89,16 @@ const BASE_SPEEDS = Object.freeze({
 });
 
 const OFFICIAL_SPEEDS = Object.freeze({
+  // Le Vagrant suit normalement la vitesse du joueur (+15). Le moteur
+  // utilisant une vitesse NPC fixe, 335 conserve ce léger avantage.
+  npc_Vagrant: 335,
+  npc_Marauder: 315,
+  npc_Outcast: 300,
+  npc_Corsair: 290,
+  npc_Hooligan: 280,
+  npc_Ravager: 270,
+  npc_Convict: 260,
+  npc_Century_Falcon: 360,
   npc_Boss_Streuner: 250,
   npc_Boss_Lordakia: 400,
   npc_Boss_Saimon: 300,
