@@ -49,10 +49,12 @@ import {
   canAcceptQuest,
   claimQuest,
   getQuestObjectives,
+  getOrderedQuestDefinitions,
   isQuestComplete,
   normalizeQuestState,
   recordQuestCollect,
   recordQuestKill,
+  recordQuestProgress,
 } from "../src/data/quests.js";
 
 class MemoryStorage {
@@ -871,6 +873,114 @@ test("une quête à plusieurs objectifs exige de tous les terminer", () => {
     }
   }
   assert.equal(isQuestComplete(state, quest), true);
+});
+
+test("les missions suivent les visites, les Gates et les éliminations par carte", () => {
+  const visitQuest = QUEST_DEFINITIONS.find(quest => getQuestObjectives(quest).some(objective => objective.kind === "visit"));
+  const gateQuest = QUEST_DEFINITIONS.find(quest => !quest.requires && getQuestObjectives(quest).some(objective => objective.kind === "gate"));
+  const mappedQuest = QUEST_DEFINITIONS.find(quest => !quest.requires && getQuestObjectives(quest).some(objective => objective.kind === "kill" && objective.map));
+  const state = normalizeQuestState({});
+  assert.equal(acceptQuest(state, visitQuest.id), true);
+  const visitObjective = getQuestObjectives(visitQuest)[0];
+  recordQuestProgress(state, "visit", visitObjective.type, 1, { map: visitObjective.type });
+  assert.equal(state.active[visitQuest.id][visitObjective.id], 1);
+  assert.equal(acceptQuest(state, gateQuest.id), true);
+  const gateObjective = getQuestObjectives(gateQuest)[0];
+  recordQuestProgress(state, "gate", gateObjective.type);
+  assert.equal(state.active[gateQuest.id][gateObjective.id], 1);
+  assert.equal(acceptQuest(state, mappedQuest.id), true);
+  const mappedObjective = getQuestObjectives(mappedQuest).find(objective => objective.map);
+  recordQuestProgress(state, "kill", mappedObjective.type, 1, { map: "1-1" });
+  assert.equal(state.active[mappedQuest.id][mappedObjective.id], 0);
+  recordQuestProgress(state, "kill", mappedObjective.type, 1, { map: mappedObjective.map });
+  assert.equal(state.active[mappedQuest.id][mappedObjective.id], 1);
+});
+
+test("les contrats permanents sont libres et les missions peuvent récompenser des munitions", () => {
+  const permanentIds = ["pirate_saboteur_17500", "elite_cube_3500", "elite_protegit_35000", "elite_interceptor_65000", "elite_annihilator_10500"];
+  for (const id of permanentIds) {
+    const quest = QUEST_DEFINITIONS.find(item => item.id === id);
+    assert.ok(quest);
+    assert.equal(quest.requires, undefined);
+  }
+  const ammoQuest = QUEST_DEFINITIONS.find(item => item.id === "ammo_x4_easy");
+  const state = normalizeQuestState({});
+  assert.equal(acceptQuest(state, ammoQuest.id), true);
+  const objective = getQuestObjectives(ammoQuest)[0];
+  recordQuestProgress(state, objective.kind, objective.type, objective.amount);
+  assert.deepEqual(claimQuest(state, ammoQuest.id).ammo, { x4: 500 });
+});
+
+test("les missions peuvent récompenser des énergies Galaxy Gate", () => {
+  const quest = QUEST_DEFINITIONS.find(item => item.id === "energy_first_cells");
+  const state = normalizeQuestState({});
+  assert.ok(quest);
+  assert.equal(acceptQuest(state, quest.id), true);
+  const objective = getQuestObjectives(quest)[0];
+  recordQuestProgress(state, objective.kind, objective.type, objective.amount);
+  assert.equal(claimQuest(state, quest.id).galaxyEnergy, 5);
+});
+
+test("les objectifs de la carte inconnue ne progressent que sur ???", () => {
+  const quest = QUEST_DEFINITIONS.find(item => item.id === "cursed_first_contact");
+  const state = normalizeQuestState({});
+  assert.equal(acceptQuest(state, quest.id), true);
+  const objective = getQuestObjectives(quest).find(item => item.kind === "kill");
+  recordQuestProgress(state, "kill", objective.type, objective.amount, { map: "4-5" });
+  assert.equal(state.active[quest.id][objective.id], 0);
+  recordQuestProgress(state, "kill", objective.type, objective.amount, { map: "???" });
+  assert.equal(state.active[quest.id][objective.id], objective.amount);
+  const visit = getQuestObjectives(quest).find(item => item.kind === "visit");
+  recordQuestProgress(state, "visit", visit.type, 1, { map: "???" });
+  const reward = claimQuest(state, quest.id);
+  assert.equal(reward.galaxyEnergy, 250);
+  assert.deepEqual(reward.ammo, { x4: 100000, x6: 10000 });
+});
+
+test("les contrats légendaires comptent toutes les destructions de NPC", () => {
+  const quest = QUEST_DEFINITIONS.find(item => item.id === "legend_million_npcs");
+  const state = normalizeQuestState({});
+  assert.equal(acceptQuest(state, quest.id), true);
+  recordQuestProgress(state, "kill", "npc_Streuner", 400000, { map: "1-1" });
+  recordQuestProgress(state, "kill", "npc_Cubikon", 600000, { map: "???" });
+  assert.equal(isQuestComplete(state, quest), true);
+});
+
+test("la mission finale exige automatiquement toutes les missions précédentes", () => {
+  const finalQuest = QUEST_DEFINITIONS.at(-1);
+  const previousIds = QUEST_DEFINITIONS.slice(0, -1).map(quest => quest.id);
+  assert.equal(finalQuest.id, "ultimate_all_missions");
+  assert.deepEqual(finalQuest.requiresAll, previousIds);
+  assert.equal(canAcceptQuest(normalizeQuestState({ completed: previousIds.slice(1) }), finalQuest), false);
+  assert.equal(canAcceptQuest(normalizeQuestState({ completed: previousIds }), finalQuest), true);
+  assert.equal(getQuestObjectives(finalQuest)[0].amount, 1);
+});
+
+test("le terminal classe les missions par progression et conserve les chaînes", () => {
+  const ordered = getOrderedQuestDefinitions();
+  const ids = ordered.map(quest => quest.id);
+  assert.equal(ordered.length, QUEST_DEFINITIONS.length);
+  assert.equal(new Set(ids).size, QUEST_DEFINITIONS.length);
+  assert.equal(ids.at(-1), "ultimate_all_missions");
+  assert.ok(ids.indexOf("supply_x2_starter") < ids.indexOf("legend_million_npcs"));
+  assert.deepEqual(ids.slice(ids.indexOf("supply_x2_starter"), ids.indexOf("supply_x2_starter") + 3), [
+    "supply_x2_starter",
+    "supply_x2_patrol",
+    "supply_x2_armored",
+  ]);
+  for (const quest of ordered) {
+    if (quest.requires) assert.ok(ids.indexOf(quest.requires) < ids.indexOf(quest.id));
+  }
+});
+
+test("les missions de navigation pure ont des récompenses contenues", () => {
+  const navigationQuests = QUEST_DEFINITIONS.filter(quest => {
+    const objectives = getQuestObjectives(quest);
+    return objectives.length > 0 && objectives.every(objective => objective.kind === "visit");
+  });
+  assert.ok(navigationQuests.length >= 10);
+  assert.ok(navigationQuests.every(quest => quest.reward.credits <= 5000000));
+  assert.equal(QUEST_DEFINITIONS.find(quest => quest.id === "century_013").reward.credits, 5000000);
 });
 
 test("les anciennes progressions numériques sont migrées vers le premier objectif", () => {

@@ -72,8 +72,7 @@ import {
   claimQuest,
   isQuestComplete,
   normalizeQuestState,
-  recordQuestCollect,
-  recordQuestKill,
+  recordQuestProgress,
 } from "../data/quests.js";
 import {
   COLLECTABLE_SPAWN as DEFAULT_COLLECTABLE_SPAWN,
@@ -1393,15 +1392,16 @@ ui.questOfferDetail?.addEventListener("click", event => {
     markProgressDirty();
     saveProgressNow();
     showToast("Mission acceptée", 1.3);
+    advanceQuestProgress("visit", String(window.__CURRENT_MAP_ID__ || "").toLowerCase());
   }
   renderQuestWindow();
   renderQuestTerminal();
 });
 
 function advanceQuestProgress(kind, type) {
-  const advanced = kind === "collect"
-    ? recordQuestCollect(questState, type)
-    : recordQuestKill(questState, type);
+  const advanced = recordQuestProgress(questState, kind, type, 1, {
+    map: String(window.__CURRENT_MAP_ID__ || "").toLowerCase(),
+  });
   if (!advanced.length) return;
   markProgressDirty();
   renderQuestWindow();
@@ -1453,6 +1453,9 @@ ui.questList?.addEventListener("click", event => {
     if (reward) {
       const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
       player.credits += Math.max(0, Number(reward.credits || 0));
+      const ammoRewards = Object.entries(reward.ammo || {}).filter(([type, amount]) => Object.hasOwn(player.ammo, type) && Number(amount) > 0);
+      for (const [type, amount] of ammoRewards) player.ammo[type] += Math.max(0, Math.floor(Number(amount) || 0));
+      if (ammoRewards.length) updateAmmoUI();
       const experience = getQuestExperienceReward(quest);
       const honor = getQuestHonorReward(quest);
       awardExperience(experience);
@@ -1460,11 +1463,23 @@ ui.questList?.addEventListener("click", event => {
       if (account.user?.stats) account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
       markProgressDirty();
       saveProgressNow();
-      addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(reward.credits)} crédits · +${formatInteger(experience)} XP · +${formatInteger(honor)} honneur`, "reward");
+      const galaxyEnergy = Math.max(0, Math.floor(Number(reward.galaxyEnergy) || 0));
+      if (galaxyEnergy > 0) {
+        const energyResult = grantCurrentUserGalaxyEnergy(galaxyEnergy);
+        if (energyResult.ok) {
+          account.user = energyResult.user;
+          renderGalaxyGateWindow();
+        }
+      }
+      const ammoMessages = ammoRewards.map(([type, amount]) => `Vous avez reçu ${formatInteger(amount)} munitions ${type === "x6" ? "RSB-75" : type.toUpperCase()}`);
+      const energyMessage = galaxyEnergy > 0 ? `Vous avez reçu ${formatInteger(galaxyEnergy)} énergies pour les portails intergalactiques (GG)` : "";
+      addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(reward.credits)} crédits · +${formatInteger(experience)} XP · +${formatInteger(honor)} honneur${ammoMessages.length ? ` · ${ammoMessages.join(" · ")}` : ""}${energyMessage ? ` · ${energyMessage}` : ""}`, "reward");
       showNotificationGroup([
         `Vous avez reçu ${formatInteger(reward.credits)} crédits`,
         `Vous avez gagné ${formatInteger(experience)} XP`,
         `Vous avez gagné ${formatInteger(honor)} honneur`,
+        ...ammoMessages,
+        ...(energyMessage ? [energyMessage] : []),
       ]);
     }
   }
@@ -5195,6 +5210,7 @@ function runOnKillAction(action, pos = null) {
     if (rules?.mode === "gate" && tp.factionBase && GALAXY_GATE_DEFINITIONS[currentGateId]) {
       const completion = completeCurrentUserGalaxyGate(currentGateId);
       if (completion.ok) {
+        advanceQuestProgress("gate", currentGateId);
         account.user = completion.user;
         player.credits = completion.user.credits;
         player.ammo.x4 = completion.user.ammo.x4;
@@ -8595,6 +8611,7 @@ if (ui.startHint) {
 }
 
   resetRun({ randomSpawn: false });
+  advanceQuestProgress("visit", String(window.__CURRENT_MAP_ID__ || "").toLowerCase());
   // Le contenu des fenêtres n'est pas conservé par le DOM après un refresh.
   // Recharge immédiatement le journal depuis le compte avant que le joueur
   // rouvre l'icône « Missions » dans le dock.

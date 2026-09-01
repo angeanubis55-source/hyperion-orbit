@@ -4,7 +4,9 @@ import {
   MAX_ACTIVE_QUESTS,
   QUEST_DEFINITIONS,
   canAcceptQuest,
+  getQuestPrerequisiteIds,
   getQuestObjectives,
+  getOrderedQuestDefinitions,
   isQuestComplete,
 } from "../data/quests.js";
 import { getQuestExperienceReward, getQuestHonorReward } from "./progression.js";
@@ -30,7 +32,9 @@ const QUEST_HELP = {
 };
 
 function rewardLabel(quest) {
-  return `${formatInteger(quest.reward.credits)} crédits · ${formatInteger(getQuestExperienceReward(quest))} XP · ${formatInteger(getQuestHonorReward(quest))} honneur`;
+  const ammo = Object.entries(quest.reward?.ammo || {}).filter(([, amount]) => amount > 0).map(([type, amount]) => `${formatInteger(amount)} munitions ${type === "x6" ? "RSB-75" : type.toUpperCase()}`);
+  const galaxyEnergy = Math.max(0, Math.floor(Number(quest.reward?.galaxyEnergy) || 0));
+  return [`${formatInteger(quest.reward.credits)} crédits`, `${formatInteger(getQuestExperienceReward(quest))} XP`, `${formatInteger(getQuestHonorReward(quest))} honneur`, ...ammo, ...(galaxyEnergy ? [`${formatInteger(galaxyEnergy)} énergies Galaxy Gate`] : [])].join(" · ");
 }
 
 export function formatQuestEntityName(value) {
@@ -44,6 +48,14 @@ export function formatQuestEntityName(value) {
 
 function objectiveLabel(objective) {
   return formatQuestEntityName(objective?.label || objective?.type || "Objectif");
+}
+
+function objectiveHelp(objective) {
+  if (objective.kind === "visit") return `Utilise les portails pour atteindre la carte ${objective.type}.`;
+  if (objective.kind === "gate") return `Construis puis termine la Galaxy Gate ${formatQuestEntityName(objective.type)}.`;
+  if (objective.kind === "kill" && objective.type === "*") return objective.map ? `Toute destruction de NPC effectuée sur ${objective.map} compte.` : "Toute destruction de NPC compte, sans restriction d’espèce ou de carte.";
+  if (objective.map) return `${QUEST_HELP[objective.type] || "Cherche cette cible"} Objectif valable uniquement sur ${objective.map}.`;
+  return QUEST_HELP[objective.type] || "Explore les secteurs correspondant à cet objectif.";
 }
 
 export function getQuestTargetImage(quest, collectables, npcTypes) {
@@ -96,14 +108,16 @@ export function buildQuestJournalView(questState, selectedId) {
 }
 
 export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes }) {
-  const selectedQuestId = QUEST_DEFINITIONS.some(quest => quest.id === selectedId)
+  const orderedQuests = getOrderedQuestDefinitions();
+  const selectedQuestId = orderedQuests.some(quest => quest.id === selectedId)
     ? selectedId
-    : (QUEST_DEFINITIONS[0]?.id || null);
+    : (orderedQuests[0]?.id || null);
   const quest = QUEST_DEFINITIONS.find(item => item.id === selectedQuestId);
-  const listHtml = QUEST_DEFINITIONS.map(item => {
+  const listHtml = orderedQuests.map(item => {
     const completed = questState.completed.includes(item.id);
     const accepted = questState.active[item.id] != null;
-    return `<button class="questOfferItem${item.id === selectedQuestId ? " active" : ""}${accepted ? " accepted" : ""}${completed ? " completed" : ""}" data-quest-offer="${item.id}">${item.title}${accepted ? " — En cours" : ""}</button>`;
+    const locked = getQuestPrerequisiteIds(item).some(id => !questState.completed.includes(id));
+    return `<button class="questOfferItem${item.id === selectedQuestId ? " active" : ""}${accepted ? " accepted" : ""}${completed ? " completed" : ""}${locked ? " locked" : ""}" data-quest-offer="${item.id}">${item.title}${accepted ? " — En cours" : ""}</button>`;
   }).join("") || `<div class="questEmpty">Aucune nouvelle mission.</div>`;
   if (!quest) return { selectedQuestId, listHtml, detailHtml: `<div class="questEmpty">Toutes les missions sont actives ou terminées.</div>` };
 
@@ -112,17 +126,23 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
   const completed = questState.completed.includes(quest.id);
   const objectives = getQuestObjectives(quest);
   const prerequisite = QUEST_DEFINITIONS.find(item => item.id === quest.requires);
+  const prerequisiteIds = getQuestPrerequisiteIds(quest);
+  const missingPrerequisites = prerequisiteIds.filter(id => !questState.completed.includes(id));
+  const unlockedQuests = QUEST_DEFINITIONS.filter(item => item.requires === quest.id);
   const full = Object.keys(questState.active).length >= MAX_ACTIVE_QUESTS;
   const status = completed ? "Mission terminée. Récompense déjà récupérée."
     : !hasAccess ? "Rapproche-toi du bâtiment de quêtes."
     : full ? `Tu as déjà ${MAX_ACTIVE_QUESTS} missions actives.`
-    : prerequisite && !questState.completed.includes(prerequisite.id) ? `Prérequis : termine « ${prerequisite.title} ».`
+    : missingPrerequisites.length ? (quest.requiresAll ? `Prérequis : termine les ${prerequisiteIds.length} missions précédentes.` : `Prérequis : termine « ${prerequisite?.title || missingPrerequisites[0]} ».`)
     : "Mission disponible.";
   const detailHtml = `
     <div class="questTitle">${quest.title}</div><div class="questDescription">${quest.description}</div>
     <div class="questObjectives">${objectives.map(objective => { const current = accepted ? Number(questState.active[quest.id]?.[objective.id] || 0) : (completed ? objective.amount : 0); return `<div class="questObjective"><div class="questStatus"><span>${objectiveLabel(objective)}</span><b>${current} / ${objective.amount}</b></div></div>`; }).join("")}</div>
     <div class="questReward">Récompense : ${rewardLabel(quest)}</div>
-    <div class="questOfferHelp"><b>Où chercher ?</b><br>${objectives.map(objective => `<b>${objectiveLabel(objective)} :</b> ${QUEST_HELP[objective.type] || "Explore les secteurs correspondant à cet objectif."}`).join("<br>")}</div>
+    ${prerequisite ? `<div class="questSeriesInfo"><b>Mission requise :</b> ${prerequisite.title}</div>` : ""}
+    ${quest.requiresAll ? `<div class="questSeriesInfo"><b>Mission requise :</b> terminer toutes les ${prerequisiteIds.length} missions précédentes (${prerequisiteIds.length - missingPrerequisites.length}/${prerequisiteIds.length}).</div>` : ""}
+    ${unlockedQuests.length ? `<div class="questSeriesInfo"><b>Débloque ensuite :</b> ${unlockedQuests.map(item => item.title).join(" · ")}</div>` : ""}
+    <div class="questOfferHelp"><b>Où chercher ?</b><br>${objectives.map(objective => `<b>${objectiveLabel(objective)} :</b> ${objectiveHelp(objective)}`).join("<br>")}</div>
     <div class="questStatus">${status}</div>
     <button class="questAction${completed ? " questCompletedAction" : accepted ? " questAcceptedAction" : ""}" data-quest-terminal-accept="${quest.id}" ${available ? "" : "disabled"}>${completed ? "Mission terminée ✓" : accepted ? "Mission en cours" : "Accepter cette mission"}</button>`;
   return { selectedQuestId, listHtml, detailHtml };
