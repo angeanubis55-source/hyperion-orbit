@@ -32,7 +32,7 @@ import { QUEST_DEFINITIONS } from "../src/data/quests.js";
 import { AMMO } from "../src/data/ammo.js";
 import { getResourceName } from "../src/data/resources.js";
 import { getItemRarity } from "../src/data/itemRarities.js";
-import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
+import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
 import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS } from "../src/data/moduleDrops.js";
 import { appendToFitSlots, compactFitDraft } from "../src/core/fitLayout.js";
 
@@ -2422,7 +2422,7 @@ function renderDroneEquipmentLegacy() {
       const drone = fresh?.drones?.items?.find(entry => entry.id === fitState.droneId);
       if (!drone) return;
       drone.fit.equipment[Number(slot.dataset.droneSlot)] = itemId;
-      const saved = saveCurrentUserDroneFit(drone.id, drone.fit);
+      const saved = saveCurrentUserDroneFit(drone.id, drone.fit, fitState.configNo);
       if (!saved.ok) return showFitError(saved.error);
       user = saved.user; showFitError(""); renderDroneEquipment(); renderInventoryPalette();
     });
@@ -2431,7 +2431,7 @@ function renderDroneEquipmentLegacy() {
       const drone = fresh?.drones?.items?.find(entry => entry.id === fitState.droneId);
       if (!drone) return;
       drone.fit.equipment[Number(slot.dataset.droneSlot)] = null;
-      saveCurrentUserDroneFit(drone.id, drone.fit); renderDroneEquipment(); renderInventoryPalette();
+      saveCurrentUserDroneFit(drone.id, drone.fit, fitState.configNo); renderDroneEquipment(); renderInventoryPalette();
     });
   });
 }
@@ -2444,10 +2444,10 @@ function renderDroneEquipment() {
   if (!drones.length) { root.innerHTML = `<div class="fitDroneEmpty">Aucun drone. Achète ton premier Iris dans la boutique.</div>`; return; }
   root.innerHTML = `<div class="droneCards">${drones.map((drone,index)=>{
     const type=DRONE_TYPES[drone.type]; const next=DRONE_LEVEL_XP[drone.level]??DRONE_LEVEL_XP.at(-1);
-    const pct=drone.level>=5?100:Math.min(100,Math.floor(drone.exp/next*100));
+    const pct=drone.level>=DRONE_MAX_LEVEL?100:Math.min(100,Math.floor(drone.exp/next*100));
     const slots=drone.fit.equipment.map((id,slotIndex)=>{const item=id?findCatalogItem(id):null;return `<button class="droneFitSlot${item?" filled":""}" data-drone-id="${drone.id}" data-drone-slot="${slotIndex}" title="${escapeHtml(item?.name||"Dépose un laser ou un bouclier")}">${item?`<img src="${iconForItem(item)}" alt="">`:`<span>+</span>`}</button>`}).join("");
-    const xpText=drone.level>=5?"Niveau maximal":`${formatNumber(Math.floor(drone.exp))} XP / ${formatNumber(next)} XP`;
-    return `<article class="droneEquipmentCard"><img class="droneCardSprite" src="${getDroneSpritePath(drone,29)}" alt=""><div class="droneCardIdentity"><strong>${type.name} ${index+1}</strong><span>Niveau ${drone.level} · ${xpText}</span></div><div class="droneCardAbility"><label>DESIGN</label><button class="droneDesignSlot" title="${drone.fit.ability?escapeHtml(drone.fit.ability):"Design vide"}">${drone.fit.ability?escapeHtml(drone.fit.ability):"+"}</button></div><div class="droneCardSlots"><label>ÉQUIPEMENT</label><div>${slots}</div></div>${drone.level>=5?"":`<div class="droneXp"><i style="width:${pct}%"></i></div>`}</article>`;
+    const xpText=drone.level>=DRONE_MAX_LEVEL?"Niveau maximal":`${formatNumber(Math.floor(drone.exp))} XP / ${formatNumber(next)} XP`;
+    return `<article class="droneEquipmentCard"><img class="droneCardSprite" src="${getDroneSpritePath(drone,29)}" alt=""><div class="droneCardIdentity"><strong>${type.name} ${index+1}</strong><span>Niveau ${drone.level} · ${xpText}</span></div><div class="droneCardAbility"><label>DESIGN</label><button class="droneDesignSlot" title="${drone.fit.ability?escapeHtml(drone.fit.ability):"Design vide"}">${drone.fit.ability?escapeHtml(drone.fit.ability):"+"}</button></div><div class="droneCardSlots"><label>ÉQUIPEMENT</label><div>${slots}</div></div>${drone.level>=DRONE_MAX_LEVEL?"":`<div class="droneXp"><i style="width:${pct}%"></i></div>`}</article>`;
   }).join("")}</div>`;
   root.querySelectorAll("[data-drone-slot]").forEach(slot=>{
     slot.addEventListener("dragover",event=>{event.preventDefault();slot.classList.add("dragTarget")});
@@ -2457,10 +2457,10 @@ function renderDroneEquipment() {
       if(type!=="laser"&&type!=="shield")return showFitError("Un drone accepte uniquement un laser ou un bouclier.");
       if((computeUsage(fitState.draft)[itemId]||0)>=ownedCount(user,itemId))return showFitError("Tous les exemplaires sont déjà équipés.");
       const fresh=getCurrentUserFull();const drone=fresh?.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);if(!drone)return;
-      drone.fit.equipment[Number(slot.dataset.droneSlot)]=itemId;const saved=saveCurrentUserDroneFit(drone.id,drone.fit);if(!saved.ok)return showFitError(saved.error);
+      drone.fit.equipment[Number(slot.dataset.droneSlot)]=itemId;const saved=saveCurrentUserDroneFit(drone.id,drone.fit,fitState.configNo);if(!saved.ok)return showFitError(saved.error);
       user=saved.user;showFitError("");renderDroneEquipment();renderInventoryPalette();
     });
-    slot.addEventListener("dblclick",()=>{const fresh=getCurrentUserFull();const drone=fresh?.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);if(!drone)return;drone.fit.equipment[Number(slot.dataset.droneSlot)]=null;saveCurrentUserDroneFit(drone.id,drone.fit);renderDroneEquipment();renderInventoryPalette();});
+    slot.addEventListener("dblclick",()=>{const fresh=getCurrentUserFull();const drone=fresh?.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);if(!drone)return;drone.fit.equipment[Number(slot.dataset.droneSlot)]=null;saveCurrentUserDroneFit(drone.id,drone.fit,fitState.configNo);renderDroneEquipment();renderInventoryPalette();});
   });
 }
 
@@ -2536,7 +2536,7 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
       if (!drone) break;
       const equipment = [...drone.fit.equipment];
       equipment[equipment.findIndex(value => !value)] = itemId;
-      const saved = saveCurrentUserDroneFit(drone.id, { ...drone.fit, equipment });
+      const saved = saveCurrentUserDroneFit(drone.id, { ...drone.fit, equipment }, fitState.configNo);
       if (!saved.ok) break;
       user = saved.user;
       added++;
@@ -3432,8 +3432,6 @@ window.GameWindowManager?.setTitle(
   "profileWindow",
   `Équipement — ${h.shipId} — Config ${fitState.configNo}`
 );
-  const profileWindowIcon = document.querySelector("#profileWindow > .gameWinBar .gameWinIcon");
-  if (profileWindowIcon) profileWindowIcon.textContent = "EQ";
   if (subEl) {
     subEl.textContent = `Slots: Lasers ${fitState.slots.lasers} • Génés ${fitState.slots.gens} • Extras ${fitState.slots.extras} • Modules ${fitState.slots.shipMods}`;
   }
@@ -3689,8 +3687,6 @@ function closeFitModal() {
   stopFitShipAnim();
   fitOverlayEl.style.display = "none";
   window.GameWindowManager?.setTitle("profileWindow", "Espace pilote");
-  const profileWindowIcon = document.querySelector("#profileWindow > .gameWinBar .gameWinIcon");
-  if (profileWindowIcon) profileWindowIcon.textContent = "EP";
 
   fitState.hangarId = null;
   fitState.configNo = 1;
@@ -3755,7 +3751,7 @@ function registerProfileWindow() {
   window.GameWindowManager.register({
     id: "profileWindow",
     title: "Espace pilote",
-    icon: "EP",
+    icon: "👤",
     root,
     card,
     defaultOpen: false,
@@ -3772,6 +3768,8 @@ function boot() {
     location.href = AUTH_URL;
     return;
   }
+
+  lastAccountUiSignature = accountUiSignature(user);
 
   renderHeader(user);
   renderStats(user);
@@ -3840,6 +3838,42 @@ window.addEventListener("orbit:profile-progress", () => {
   user = refreshedUser;
   renderNpcStats(user);
   renderInventory(user);
+});
+
+// Toute mutation du compte rafraîchit les vues ouvertes dans le même onglet.
+let accountRefreshFrame = 0;
+let lastAccountUiSignature = "";
+function accountUiSignature(value) {
+  return JSON.stringify({
+    credits: value?.credits,
+    ship: value?.ship,
+    inventory: value?.inventory,
+    hangars: value?.hangars,
+    drones: value?.drones,
+  });
+}
+window.addEventListener("orbit:user-updated", () => {
+  if (accountRefreshFrame) return;
+  accountRefreshFrame = requestAnimationFrame(() => {
+    accountRefreshFrame = 0;
+    const refreshedUser = getCurrentUserFull();
+    if (!refreshedUser) return;
+    const signature = accountUiSignature(refreshedUser);
+    if (signature === lastAccountUiSignature) return;
+    lastAccountUiSignature = signature;
+    user = refreshedUser;
+    const profileVisible = document.getElementById("profileOverlay")?.style.display !== "none";
+    if (!profileVisible) return;
+    renderHeader(user);
+    renderStats(user);
+    renderHangars(user);
+    renderInventory(user);
+    renderShop(user);
+    if (fitOverlayEl?.style.display !== "none" && fitState.hangarId) {
+      renderDroneEquipment();
+      renderInventoryPalette();
+    }
+  });
 });
 
 // Init

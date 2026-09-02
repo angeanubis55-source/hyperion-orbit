@@ -220,10 +220,16 @@ function ensureUserShape(u) {
     const definition = DRONE_TYPES[drone.type];
     const exp = Math.max(0, Number(drone.exp) || 0);
     const fit = drone.fit && typeof drone.fit === "object" ? drone.fit : {};
+    const fits = drone.fits && typeof drone.fits === "object" ? drone.fits : {};
+    const normalizedFit = (value) => ({
+      equipment: normalizeArraySize(value?.equipment, definition.slots),
+      ability: value?.ability || null,
+    });
     return {
       id: String(drone.id || `drone_${u.id}_${index}`), type: drone.type, exp,
       level: getDroneLevel(exp),
-      fit: { equipment: normalizeArraySize(fit.equipment, definition.slots), ability: fit.ability || null },
+      fits: { "1": normalizedFit(fits["1"] || fit), "2": normalizedFit(fits["2"] || {}) },
+      fit: normalizedFit(fits[String(Number(u.hangars?.find(h => h?.active)?.activeConfig) === 2 ? 2 : 1)] || fit),
     };
   });
   if (!Array.isArray(u.drones.formations)) u.drones.formations = [];
@@ -422,9 +428,23 @@ function saveUser(user) {
   user.revision = Math.max(0, Math.floor(Number(user.revision) || 0)) + 1;
   const users = readUsers();
   const idx = users.findIndex((x) => x?.id === user.id);
+  const uiFingerprint = (value) => JSON.stringify({
+    credits: value?.credits,
+    ship: value?.ship,
+    inventory: value?.inventory,
+    drones: value?.drones,
+    hangars: (value?.hangars || []).map(hangar => ({
+      id: hangar?.id, shipId: hangar?.shipId, active: hangar?.active,
+      activeConfig: hangar?.activeConfig, fits: hangar?.fits, fit: hangar?.fit,
+    })),
+  });
+  const uiChanged = idx < 0 || uiFingerprint(users[idx]) !== uiFingerprint(user);
   if (idx >= 0) users[idx] = user;
   else users.push(user);
   writeUsers(users);
+  if (uiChanged && typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
+    window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: user.id, revision: user.revision } }));
+  }
 }
 
 function incCount(u, itemId, delta = 1) {
@@ -813,13 +833,17 @@ export function setCurrentUserDroneFormation(formationId) {
   return { ok: true, user: u, formation };
 }
 
-export function saveCurrentUserDroneFit(droneId, fit) {
+export function saveCurrentUserDroneFit(droneId, fit, configNo = null) {
   const u = getCurrentUserFull();
   const drone = u?.drones?.items?.find(entry => entry.id === droneId);
   const definition = drone ? DRONE_TYPES[drone.type] : null;
   if (!u || !drone || !definition) return { ok: false, error: "Drone introuvable." };
   const equipment = Array.from({ length: definition.slots }, (_, index) => fit?.equipment?.[index] || null);
-  drone.fit = { equipment, ability: fit?.ability || null };
+  const activeHangar = getActiveHangar(u);
+  const cfg = String(Number(configNo ?? activeHangar?.activeConfig) === 2 ? 2 : 1);
+  drone.fits ||= {};
+  drone.fits[cfg] = { equipment, ability: fit?.ability || null };
+  drone.fit = drone.fits[cfg];
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u, drone };

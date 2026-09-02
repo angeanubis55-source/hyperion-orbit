@@ -4,8 +4,11 @@ import { clamp } from "./collision.js";
 
 export function getMinimapPortalColors(portal, isReturn = false) {
   if (isReturn) return { stroke: "rgba(255,178,92,0.9)", fill: "rgba(255,178,92,0.95)" };
-  if (String(portal?.toMap || "").toLowerCase() === "low") {
+  if (["low", "qz"].includes(String(portal?.toMap || "").toLowerCase())) {
     return { stroke: "rgba(190,96,255,0.95)", fill: "rgba(210,130,255,1)" };
+  }
+  if (Number(portal?.shortcutCreditCost || 0) > 0) {
+    return { stroke: "rgba(255,205,82,0.95)", fill: "rgba(255,224,120,1)" };
   }
   return { stroke: "rgba(124,240,255,0.8)", fill: "rgba(124,240,255,0.95)" };
 }

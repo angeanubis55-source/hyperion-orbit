@@ -100,6 +100,7 @@ export function getZonePortals(WORLD) {
       r: 260,
       toMap: "3-6",
       toPortal: "p_36_to_37",
+      shortcutCreditCost: 50000,
     },
     {
       id: "p_37_to_qz",

@@ -315,7 +315,6 @@ cfgCooldownTxt: document.getElementById("cfgCooldownTxt"),
   miniPos: document.getElementById("miniPos"),
 
   btnPulse: document.getElementById("btnPulse"),
-  btnNuke: document.getElementById("btnNuke"),
   btnRepair: document.getElementById("btnRepair"),
   repairTxt: document.getElementById("repairTxt"),
 
@@ -376,9 +375,12 @@ function initializeCustomActionBar() {
   }));
   let saved = [];
   try { saved = JSON.parse(localStorage.getItem(ACTION_BAR_LAYOUT_KEY) || "[]"); } catch {}
-  const layout = Array.from({ length: 10 }, (_, index) => saved[index] || null);
+  const layout = Array.from({ length: 20 }, (_, index) => saved[index] || null);
   const used = new Set(layout.filter(id => byId.has(id)));
-  for (const id of byId.keys()) if (!used.has(id)) layout[layout.findIndex(value => !value)] = id;
+  for (const id of byId.keys()) if (!used.has(id)) {
+    const emptyIndex = layout.findIndex(value => !value);
+    if (emptyIndex >= 0) layout[emptyIndex] = id;
+  }
   bar.replaceChildren();
   const persist = () => localStorage.setItem(ACTION_BAR_LAYOUT_KEY, JSON.stringify(
     [...bar.querySelectorAll(".actionSlot")].map(slot => slot.querySelector(".ammoBtn")?.dataset.actionId || null)
@@ -388,22 +390,37 @@ function initializeCustomActionBar() {
     const slot = document.createElement("div");
     slot.className = "actionSlot";
     slot.dataset.index = String(index);
-    if (byId.has(id)) slot.appendChild(byId.get(id));
+    if (byId.has(id)) {
+      const original = byId.get(id);
+      const instance = original.cloneNode(true);
+      instance.removeAttribute("id");
+      instance.dataset.actionId = id;
+      instance.onclick = () => original.click();
+      instance.addEventListener("dragstart", event => {
+        if (palette.hidden) return event.preventDefault();
+        event.dataTransfer.setData("application/x-orbit-action", id);
+        event.dataTransfer.effectAllowed = "move";
+      });
+      slot.appendChild(instance);
+    }
     slot.addEventListener("dragover", event => { event.preventDefault(); slot.classList.add("dragTarget"); });
     slot.addEventListener("dragleave", () => slot.classList.remove("dragTarget"));
     slot.addEventListener("drop", event => {
       event.preventDefault();
       slot.classList.remove("dragTarget");
       const actionId = event.dataTransfer.getData("application/x-orbit-action");
-      const button = byId.get(actionId);
-      if (!button) return;
-      const source = button.closest(".actionSlot");
-      const displaced = slot.querySelector(".ammoBtn");
-      if (displaced && source) source.appendChild(displaced);
-      else if (displaced) {
-        const empty = [...bar.querySelectorAll(".actionSlot")].find(entry => entry !== slot && !entry.querySelector(".ammoBtn"));
-        if (empty) empty.appendChild(displaced); else displaced.remove();
+      const original = byId.get(actionId);
+      if (!original || palette.hidden) return;
+      const draggedElement = document.querySelector(`.actionSlot .ammoBtn[data-action-id="${CSS.escape(actionId)}"].isDragging`);
+      const source = draggedElement?.closest(".actionSlot");
+      const button = source ? draggedElement : original.cloneNode(true);
+      if (!source) {
+        button.removeAttribute("id");
+        button.dataset.actionId = actionId;
+        button.onclick = () => original.click();
       }
+      const displaced = slot.querySelector(".ammoBtn");
+      if (displaced && displaced !== button) displaced.remove();
       slot.appendChild(button);
       persist();
       updateHudKeyHints();
@@ -411,6 +428,7 @@ function initializeCustomActionBar() {
     slots.appendChild(slot);
   });
   actions.forEach(button => button.addEventListener("dragstart", event => {
+    if (palette.hidden) return event.preventDefault();
     event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId);
     event.dataTransfer.effectAllowed = "move";
   }));
@@ -424,6 +442,7 @@ function initializeCustomActionBar() {
       if (!result.ok) return showNotification(result.error, 2.5, "error");
       account.user = result.user;
       applyCurrentConfigStats(true);
+      syncActionDockState();
       showNotification(`${formation.name} activée`, 2, "info", { goldTerms: [formation.name] });
       renderPalette("formations");
     };
@@ -431,8 +450,28 @@ function initializeCustomActionBar() {
     byId.set(button.dataset.actionId, button);
     return button;
   });
+  bar.addEventListener("dragstart", event => {
+    const item = event.target.closest(".actionSlot .ammoBtn");
+    if (!item) return;
+    if (palette.hidden) return event.preventDefault();
+    item.classList.add("isDragging");
+    event.dataTransfer.setData("application/x-orbit-action", item.dataset.actionId || "");
+    event.dataTransfer.effectAllowed = "move";
+  });
+  bar.addEventListener("dragend", () => bar.querySelectorAll(".isDragging").forEach(item => item.classList.remove("isDragging")));
   const paletteItems = palette.querySelector(".actionPaletteItems");
-  layout.forEach((id,index)=>{ if(id?.startsWith("formation:")&&byId.has(id)) slots.children[index]?.appendChild(byId.get(id)); });
+  layout.forEach((id,index)=>{
+    if (!id?.startsWith("formation:") || !byId.has(id) || slots.children[index]?.querySelector(".ammoBtn")) return;
+    const original = byId.get(id);
+    const instance = original.cloneNode(true);
+    instance.dataset.actionId = id;
+    instance.onclick = () => original.click();
+    instance.addEventListener("dragstart", event => {
+      if (palette.hidden) return event.preventDefault();
+      event.dataTransfer.setData("application/x-orbit-action", id);
+    });
+    slots.children[index]?.appendChild(instance);
+  });
   function renderPalette(category) {
     paletteItems.replaceChildren();
     palette.querySelectorAll("[data-action-category]").forEach(button => button.classList.toggle("active", button.dataset.actionCategory === category));
@@ -460,9 +499,8 @@ function initializeCustomActionBar() {
   });
   document.addEventListener("drop", event => {
     const actionId = event.dataTransfer?.getData("application/x-orbit-action");
-    if (!actionId || event.target.closest(".actionSlot")) return;
-    const button = byId.get(actionId);
-    if (button?.closest(".actionSlot")) button.remove();
+    if (!actionId || event.target.closest(".actionSlot") || palette.hidden) return;
+    bar.querySelector(".actionSlot .ammoBtn.isDragging")?.remove();
     persist();
     updateHudKeyHints();
   });
@@ -474,6 +512,11 @@ function initializeCustomActionBar() {
     }
   }, true);
   bar.append(toggle, palette);
+  paletteItems.addEventListener("wheel", event => {
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    event.preventDefault();
+    paletteItems.scrollLeft += event.deltaY;
+  }, { passive: false });
   renderPalette("ammo");
   persist();
   queueMicrotask(updateHudKeyHints);
@@ -502,6 +545,9 @@ const DEFAULT_KEYBINDS = {
   slot8: "Digit8",
   slot9: "Digit9",
   slot10: "Digit0",
+  slot11: "F1", slot12: "F2", slot13: "F3", slot14: "F4", slot15: "F5",
+  slot16: "F6", slot17: "F7", slot18: "F8", slot19: "F9", slot20: "F10",
+  toggleWindows: "KeyH",
 };
 
 const DEFAULT_GAME_SETTINGS = {
@@ -609,6 +655,9 @@ const KEYBIND_LABELS = {
 
   slot1: "Slot 1", slot2: "Slot 2", slot3: "Slot 3", slot4: "Slot 4", slot5: "Slot 5",
   slot6: "Slot 6", slot7: "Slot 7", slot8: "Slot 8", slot9: "Slot 9", slot10: "Slot 10",
+  slot11: "Slot 11", slot12: "Slot 12", slot13: "Slot 13", slot14: "Slot 14", slot15: "Slot 15",
+  slot16: "Slot 16", slot17: "Slot 17", slot18: "Slot 18", slot19: "Slot 19", slot20: "Slot 20",
+  toggleWindows: "Masquer / restaurer les fenêtres",
 };
 
 function getKeybind(action) {
@@ -754,19 +803,10 @@ function renderSettingsWindow() {
     "Son : coupé"
   );
 
-  updateSettingsButton(
-    "optBackground",
-    GAME_SETTINGS.background,
-    "Fond : affiché",
-    "Fond : masqué"
-  );
-
-  updateSettingsButton(
-    "optStars",
-    GAME_SETTINGS.stars,
-    "Étoiles : visibles",
-    "Étoiles : masquées"
-  );
+  const background = document.getElementById("optBackground");
+  const stars = document.getElementById("optStars");
+  if (background) background.checked = !!GAME_SETTINGS.background;
+  if (stars) stars.checked = !!GAME_SETTINGS.stars;
 
   const volume = document.getElementById("optVolume");
   const volumeValue = document.getElementById("optVolumeValue");
@@ -816,12 +856,12 @@ function wireSettingsWindow() {
     setSoundVolume(volume.value);
   });
 
-  bgBtn?.addEventListener("click", () => {
-    setGameSetting("background", !GAME_SETTINGS.background);
+  bgBtn?.addEventListener("change", () => {
+    setGameSetting("background", bgBtn.checked);
   });
 
-  starsBtn?.addEventListener("click", () => {
-    setGameSetting("stars", !GAME_SETTINGS.stars);
+  starsBtn?.addEventListener("change", () => {
+    setGameSetting("stars", starsBtn.checked);
   });
 
   texBtn?.addEventListener("click", () => {
@@ -977,7 +1017,7 @@ function renderCraftingWindow(message = "") {
     describeCraftingOutput(recipe.output?.formations, quantity, id => `Formation ${id}`),
   ].join("");
   const baseDuration = CRAFTING_DURATION_BY_RARITY[rarity.id] || 2;
-  const duration = baseDuration * (1 + Math.max(0, quantity - 1) * 0.15);
+  const duration = baseDuration * quantity;
   ui.craftingDetail.innerHTML = `<div class="craftingRarity rarity-${rarity.id}">${escapeHtml(rarity.name)}</div><h3>${escapeHtml(recipe.name)}</h3><small class="craftingDuration">Temps de fabrication : ${duration.toFixed(duration % 1 ? 1 : 0)} s</small><div class="craftingColumns"><div><h4>CO&Ucirc;T</h4><ul>${costs}</ul></div><div><h4>R&Eacute;SULTAT</h4><ul>${outputs}</ul></div></div>`;
   const canAfford = Number(user.credits || 0) >= Number(recipe.costs?.credits || 0) * quantity
     && Object.entries(recipe.costs?.resources || {}).every(([id, amount]) => craftingResourceAmount(user, id) >= Number(amount) * quantity);
@@ -1006,7 +1046,7 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
     && Object.entries(recipe.costs?.resources || {}).every(([id, amount]) => craftingResourceAmount(user, id) >= Number(amount) * quantity);
   if (!canAfford) return renderCraftingWindow("Ressources insuffisantes.");
   const baseDuration = CRAFTING_DURATION_BY_RARITY[recipe.rarity] || 2;
-  const durationMs = baseDuration * (1 + Math.max(0, quantity - 1) * 0.15) * 1000;
+  const durationMs = baseDuration * quantity * 1000;
   craftingJob = { recipe, quantity, startedAt: performance.now(), durationMs };
   if (ui.craftingProgress) ui.craftingProgress.hidden = false;
   renderCraftingWindow("Fabrication en cours...");
@@ -1406,6 +1446,66 @@ if (btn?.click?.src) {
   return jobs;
 }
 
+const SHORTCUT_TAX_CONFIRMATION_KEY = "orbit_shortcut_tax_confirmation_hidden_v1";
+
+function isShortcutTaxConfirmationHidden() {
+  try {
+    return localStorage.getItem(SHORTCUT_TAX_CONFIRMATION_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function hideShortcutTaxConfirmation() {
+  try {
+    localStorage.setItem(SHORTCUT_TAX_CONFIRMATION_KEY, "1");
+  } catch {}
+}
+
+function requestShortcutTaxConfirmation(ptl, shortcutCost) {
+  if (!ptl || ptl.entryConfirmationOpen) return false;
+  const overlay = document.getElementById("confirmOverlay");
+  const title = document.getElementById("confirmTitle");
+  const message = document.getElementById("confirmMessage");
+  const cancel = document.getElementById("confirmCancel");
+  const confirm = document.getElementById("confirmOk");
+  if (!overlay || !title || !message || !cancel || !confirm) return false;
+
+  const destination = String(ptl.toMap || "secteur inconnu").toUpperCase();
+  const enough = player.credits >= shortcutCost;
+  const remainingCredits = Math.max(0, player.credits - shortcutCost);
+
+  ptl.entryConfirmationOpen = true;
+  title.textContent = `Raccourci vers ${destination}`;
+  message.innerHTML = `Ce portail est un raccourci intersectoriel.<br><strong>${formatInteger(shortcutCost)} crédits</strong> seront débités à chaque passage.<br><br>Tu possèdes <strong>${formatInteger(player.credits)}</strong> crédits.<br>Après le passage : <strong>${formatInteger(remainingCredits)}</strong> crédits.<label style="display:flex;align-items:center;gap:9px;margin-top:16px;color:#b9dce8;font-weight:800;cursor:pointer"><input id="shortcutTaxDontAskAgain" type="checkbox" style="width:17px;height:17px;accent-color:#26c3e4"> Ne plus afficher cette confirmation</label>`;
+  cancel.style.display = "";
+  cancel.textContent = "Annuler";
+  confirm.disabled = !enough;
+  confirm.textContent = enough ? "Payer et utiliser" : "Crédits insuffisants";
+  overlay.style.display = "grid";
+
+  const cleanup = () => {
+    ptl.entryConfirmationOpen = false;
+    overlay.style.display = "none";
+    overlay.onclick = null;
+    cancel.onclick = null;
+    confirm.onclick = null;
+    confirm.disabled = false;
+  };
+
+  cancel.onclick = cleanup;
+  overlay.onclick = event => { if (event.target === overlay) cleanup(); };
+  confirm.onclick = () => {
+    if (player.credits < shortcutCost) return;
+    if (document.getElementById("shortcutTaxDontAskAgain")?.checked) {
+      hideShortcutTaxConfirmation();
+    }
+    cleanup();
+    startZonePortalJump(ptl, true);
+  };
+  return true;
+}
+
 function requestPortalEntryConfirmation(ptl, entryCost) {
   if (!ptl || ptl.entryConfirmationOpen) return false;
   const overlay = document.getElementById("confirmOverlay");
@@ -1544,6 +1644,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   }
 
   const entryCost = Math.max(0, Math.floor(Number(ptl.entryCost) || 0));
+  const shortcutCreditCost = Math.max(0, Math.floor(Number(ptl.shortcutCreditCost) || 0));
   const confirmedEntryCost = entryConfirmed
     ? Math.max(entryCost, Math.floor(Number(ptl.pendingEntryCost) || entryCost))
     : entryCost;
@@ -1567,9 +1668,13 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
     ptl.pendingResourceCost = 0;
     ptl.pendingEscortCount = 0;
   }
-  if (confirmedEntryCost > 0 && player.credits < confirmedEntryCost) {
-    showToast(`Entrée refusée — ${formatInteger(confirmedEntryCost)} crédits requis`, 1.8);
+  const totalPortalCreditCost = confirmedEntryCost + shortcutCreditCost;
+  if (totalPortalCreditCost > 0 && player.credits < totalPortalCreditCost) {
+    showToast(`Passage refusé — ${formatInteger(totalPortalCreditCost)} crédits requis`, 1.8);
     return false;
+  }
+  if (shortcutCreditCost > 0 && !entryConfirmed && !isShortcutTaxConfirmationHidden()) {
+    return requestShortcutTaxConfirmation(ptl, shortcutCreditCost);
   }
   if (entryCost > 0 && !entryConfirmed) {
     return requestPortalEntryConfirmation(ptl, entryCost);
@@ -1604,6 +1709,15 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
     addGameLog(`Entrée ${String(ptl.toMap || "Gate").toUpperCase()} · -${formatInteger(confirmedEntryCost)} crédits`, "info");
     ptl.pendingEntryCost = 0;
     ptl.pendingEscortCount = 0;
+  }
+
+  if (shortcutCreditCost > 0) {
+    player.credits -= shortcutCreditCost;
+    if (account.user) account.user.credits = player.credits;
+    markProgressDirty();
+    saveProgressNow();
+    showNotification(`Taxe du raccourci acquittée : ${formatInteger(shortcutCreditCost)} crédits`, 3, "info");
+    addGameLog(`Raccourci vers ${String(ptl.toMap || "secteur").toUpperCase()} · -${formatInteger(shortcutCreditCost)} crédits`, "info");
   }
 
   // ✅ on mémorise l'état visuel actuel du portail
@@ -2951,9 +3065,15 @@ function ensurePulseFxLoaded() {
 
 const pulseFxs = [];
 
-function spawnPulseFx(x, y, scale = 1) {
+function spawnPulseFx(x, y, scale = 1, followPlayer = false) {
   if (!pulseReady || !pulseImgs?.length) return;
-  pushBounded(pulseFxs, { x, y, t: 0, scale: Math.max(0.2, Number(scale) || 1) }, ENTITY_LIMITS.pulseFxs);
+  pushBounded(pulseFxs, {
+    x,
+    y,
+    t: 0,
+    scale: Math.max(0.2, Number(scale) || 1),
+    followPlayer: followPlayer === true,
+  }, ENTITY_LIMITS.pulseFxs);
 }
 
 function tickPulseFx(dt) {
@@ -2979,8 +3099,8 @@ function drawPulseFx(ox, oy) {
     const img = pulseImgs[idx];
     if (!isImgReady(img)) continue;
 
-    const x = fx.x + ox;
-    const y = fx.y + oy;
+    const x = (fx.followPlayer ? player.x : fx.x) + ox;
+    const y = (fx.followPlayer ? player.y : fx.y) + oy;
 
     const w = (PULSE_PACK.w || (img.naturalWidth || img.width || 256)) * fx.scale;
     const h = (PULSE_PACK.h || (img.naturalHeight || img.height || 256)) * fx.scale;
@@ -3443,6 +3563,49 @@ function updateAmmoUI() {
   if (ui.cntSAB) {
     ui.cntSAB.textContent = formatAmmoCount(player.ammo.sab);
   }
+
+  syncActionDockState();
+}
+
+function syncActionDockState() {
+  const activeAmmo = player.ammo.active || "x1";
+  const ammoValues = {
+    x1: "∞", x2: formatAmmoCount(player.ammo.x2), x3: formatAmmoCount(player.ammo.x3),
+    x4: formatAmmoCount(player.ammo.x4), sab: formatAmmoCount(player.ammo.sab),
+    x6: `${formatAmmoCount(player.ammo.x6)} • ${getRsbPercent()}%`,
+  };
+  document.querySelectorAll("#ammoBar [data-ammo]").forEach(button => {
+    const ammo = button.dataset.ammo;
+    button.classList.toggle("active", ammo === activeAmmo);
+    const quantity = button.querySelector("small");
+    if (quantity) quantity.textContent = ammoValues[ammo] ?? "0";
+  });
+
+  const activeFormationId = getActiveDroneFormation(account.user).id;
+  document.querySelectorAll("#ammoBar [data-action-id^='formation:']").forEach(button => {
+    button.classList.toggle("active", button.dataset.actionId === `formation:${activeFormationId}`);
+  });
+
+  const now = performance.now();
+  document.querySelectorAll("#ammoBar [data-skill]").forEach(button => {
+    const skill = button.dataset.skill;
+    const smallLabels = button.querySelectorAll("small");
+    const progress = skill === "pulse"
+      ? clamp(pulseCd / PULSE_COOLDOWN, 0, 1)
+      : 0;
+    button.classList.toggle("skillFeedback", progress > 0 && skill !== "repair");
+    button.style.setProperty("--skill-feedback", progress.toFixed(3));
+    if (skill === "pulse") {
+      button.classList.toggle("disabled", !canUseSkill(PULSE_COST) || pulseCd > 0);
+      button.classList.toggle("ready", canUseSkill(PULSE_COST) && pulseCd <= 0);
+      if (smallLabels[0]) smallLabels[0].textContent = `${getPulsePercent()}%`;
+      if (smallLabels[1]) smallLabels[1].textContent = pulseCd > 0 ? `${pulseCd.toFixed(1)}s` : "30k";
+    } else if (skill === "repair") {
+      button.classList.remove("active", "ready", "skillFeedback");
+      button.classList.toggle("disabled", player.dead);
+      if (smallLabels[0] && ui.repairTxt) smallLabels[0].textContent = ui.repairTxt.textContent;
+    }
+  });
 }
 
 ui.btnX1.addEventListener("click", () => startAttack("x1"));
@@ -3504,8 +3667,9 @@ function updateRepairUI() {
   else if (pct < 1) ui.repairTxt.textContent = `${Math.floor(pct * 100)}%`;
   else ui.repairTxt.textContent = needs ? `+${Math.round(REPAIR.ratePct * 100)}%/s` : "OK";
 
-  ui.btnRepair.classList.toggle("ready", pct >= 1 && needs && !player.dead);
+  ui.btnRepair.classList.remove("active", "ready");
   ui.btnRepair.classList.toggle("disabled", player.dead);
+  syncActionDockState();
 }
 
 // ============================================================
@@ -3600,7 +3764,12 @@ const used = [...boundKeys];
       return;
     }
 
-    for (let slotIndex = 0; slotIndex < 10; slotIndex++) {
+    if (isKeybind("toggleWindows", e.code)) {
+      window.GameWindowManager?.toggleAll?.();
+      return;
+    }
+
+    for (let slotIndex = 0; slotIndex < 20; slotIndex++) {
       if (!isKeybind(`slot${slotIndex + 1}`, e.code)) continue;
       document.querySelectorAll("#ammoBar .actionSlot")[slotIndex]?.querySelector(".ammoBtn")?.click();
       return;
@@ -6135,10 +6304,9 @@ function runOnKillAction(action, pos = null) {
 }
 
 // ============================================================
-// Skills (Pulse / Nuke)
+// Compétence IEM
 // ============================================================
 const PULSE_COST = 30000;
-const NUKE_COST = 100000;
 
 const PULSE_COOLDOWN = 10.0;
 
@@ -6151,12 +6319,10 @@ function canUseSkill(cost) {
 
 function updateSkillUI() {
   const pulseOk = canUseSkill(PULSE_COST) && pulseCd <= 0;
-  const nukeOk = canUseSkill(NUKE_COST);
   
   ui.btnPulse.classList.toggle("disabled", !pulseOk);
-  ui.btnNuke.classList.toggle("disabled", !nukeOk);
   ui.btnPulse.classList.toggle("ready", pulseOk);
-  ui.btnNuke.classList.toggle("ready", nukeOk);
+  syncActionDockState();
 }
 
 function npcIsEngagingPlayer(enemy) {
@@ -6186,6 +6352,7 @@ function usePulse() {
 
   player.credits -= PULSE_COST;
   pulseCd = PULSE_COOLDOWN;
+  spawnPulseFx(player.x, player.y, 1, true);
 
   markProgressDirty();
 
@@ -6206,28 +6373,8 @@ function usePulse() {
   if (touched <= 0) showToast("IEM : aucune cible", 0.9);
 }
 
-function useNuke() {
-  if (!canUseSkill(NUKE_COST)) {
-    showToast("Pas assez de crédits (Nucléaire)", 1.2);
-    return;
-  }
-  player.credits -= NUKE_COST;
-  markProgressDirty();
-
-  waveSpawns.reset();
-  for (const e of enemies) {
-    e.hp = 0;
-    e.sh = 0;
-  }
-  processDeaths();
-  showToast("NUCLÉAIRE !!!", 1.2);
-}
-
 ui.btnPulse.addEventListener("click", () => {
   if (!ui.btnPulse.classList.contains("disabled")) usePulse();
-});
-ui.btnNuke.addEventListener("click", () => {
-  if (!ui.btnNuke.classList.contains("disabled")) useNuke();
 });
 
 if (ui.respawnBaseBtn) {
@@ -7580,6 +7727,13 @@ function getDroneFormationOffsets(count, formationId) {
 }
 
 const droneVisualStates = new Map();
+let droneFormationVisualAngle = Number.NaN;
+let lastDronePlayerAngle = Number.NaN;
+let droneTurnTransitionStartedAt = 0;
+
+function shortestAngleDelta(from, to) {
+  return Math.atan2(Math.sin(to - from), Math.cos(to - from));
+}
 
 function queueDroneLevelTransition(droneId, fromLevel, toLevel) {
   const id = String(droneId || "");
@@ -7603,7 +7757,16 @@ function drawPlayerDrones() {
   const now = performance.now();
   // Les références montrent toujours le vaisseau orienté vers le haut.
   // L'angle du moteur vaut -PI/2 dans cette orientation : on compense ce quart de tour.
-  const formationAngle = player.angle + Math.PI / 2;
+  const desiredFormationAngle = player.angle + Math.PI / 2;
+  if (!Number.isFinite(droneFormationVisualAngle)) droneFormationVisualAngle = desiredFormationAngle;
+  if (Number.isFinite(lastDronePlayerAngle) && Math.abs(shortestAngleDelta(lastDronePlayerAngle, player.angle)) > 2.6) {
+    droneTurnTransitionStartedAt = now;
+  }
+  lastDronePlayerAngle = player.angle;
+  // La formation accompagne volontairement la rotation avec un léger retard :
+  // les drones décrivent ainsi un mouvement visible au lieu de pivoter comme un bloc rigide.
+  droneFormationVisualAngle += shortestAngleDelta(droneFormationVisualAngle, desiredFormationAngle) * 0.0800;
+  const formationAngle = droneFormationVisualAngle;
   const ca = Math.cos(formationAngle), sa = Math.sin(formationAngle);
   // Les sprites des drones sont encodés dans le sens opposé aux vaisseaux.
   const frame = ((angleToFrameIndex(player.angle, 32) + 16) % 32) + 1;
@@ -7623,6 +7786,15 @@ function drawPlayerDrones() {
     state.y += (target.y - state.y) * follow;
     state.lastAt = now;
     let collapse = 1;
+    const turnAge = now - droneTurnTransitionStartedAt;
+    if (droneTurnTransitionStartedAt && turnAge < 600) {
+      const turnCollapse = turnAge < 160
+        ? 1 - turnAge / 160
+        : turnAge < 225
+          ? 0
+          : Math.min(1, (turnAge - 225) / 375);
+      collapse = Math.min(collapse, turnCollapse);
+    }
     const transition = state.levelTransition;
     if (transition) {
       const age = now - transition.startedAt;
@@ -7649,13 +7821,17 @@ function drawPlayerDrones() {
     if (!GAME_SETTINGS.drones || collapse <= 0.03) return;
     const src = getDroneSpritePath({ ...drone, level: state.displayLevel }, frame);
     const image = getCachedImage(src);
+    let renderImage = image;
     if (!isImgReady(image)) {
       loadImage(src, { priority: true });
-      return;
+      renderImage = state.lastImage || null;
+      if (!isImgReady(renderImage)) return;
+    } else {
+      state.lastImage = image;
     }
     ctx.save();
     ctx.translate(x, y);
-    drawCenteredImage(ctx, image, 64, 56);
+    drawCenteredImage(ctx, renderImage, 64, 56);
     ctx.restore();
   });
   const activeIds = new Set(drones.map((drone, index) => String(drone.id || index)));
@@ -8192,23 +8368,33 @@ function drawPlayerBars(px, py) {
     loadImage(faction.imagePath, { priority: true });
     factionImage = null;
   }
-  const droneIndicators = GAME_SETTINGS.drones ? [] : (account.user?.drones?.items || []).map(drone => {
+  const droneIndicators = (account.user?.drones?.items || []).map(drone => {
     const ability = drone?.fit?.ability;
     const design = typeof ability === "string"
       ? ability.toLowerCase()
       : `${ability?.id || ""} ${ability?.name || ""}`.toLowerCase();
     if (design.includes("hercules")) return "rgb(30,144,255)";
     if (design.includes("havoc") || design.includes("havok")) return "rgb(255,45,55)";
-    if (drone?.type === "apis") return "rgb(70,110,210)";
-    if (drone?.type === "zeus") return "rgb(150,160,70)";
+    if (drone?.type === "apis") return "rgb(90,180,255)";
+    if (drone?.type === "zeus") return "rgb(174,190,75)";
     return "rgb(255,255,255)";
   });
-  const activeFormation = !GAME_SETTINGS.drones ? getActiveDroneFormation(account.user) : null;
+  const activeFormation = getActiveDroneFormation(account.user);
   let droneFormationImage = activeFormation ? getCachedImage(activeFormation.icon) : null;
   if (activeFormation && !isImgReady(droneFormationImage)) {
     loadImage(activeFormation.icon, { priority: true });
     droneFormationImage = null;
   }
+  const activeHangar = getActiveHangarFromUser(account.user);
+  const activeFit = activeHangar?.fits?.[String(Number(activeHangar.activeConfig) === 2 ? 2 : 1)] || activeHangar?.fit || {};
+  const equippedModules = (account.user?.inventory?.shipModules || []).filter(module => (activeFit.shipMods || []).includes(module?.id));
+  const moduleColorByType = {
+    hp: "rgb(70,210,105)",
+    shd: "rgb(45,150,255)",
+    dmg: "rgb(255,70,70)",
+    spc: "rgb(255,215,70)",
+  };
+  const moduleIndicators = equippedModules.map(module => moduleColorByType[module.type]).filter(Boolean);
   drawPlayerStatus(
     ctx,
     player,
@@ -8219,6 +8405,7 @@ function drawPlayerBars(px, py) {
     factionImage,
     droneIndicators,
     droneFormationImage,
+    moduleIndicators,
   );
 }
 
@@ -8754,7 +8941,11 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
     if (segCircleHit(step.oldX, step.oldY, b.x, b.y, bulletTarget.x, bulletTarget.y, rr)) {
       removeProjectile(enemyBullets, i);
 
-      if (b.miss) {
+      const formationEvasion = bulletTarget === player
+        ? Math.max(0, Number(getActiveDroneFormation(account.user).effects?.evasionPct || 0)) / 100
+        : 0;
+      const effectiveMiss = b.miss || (formationEvasion > 0 && Math.random() < formationEvasion);
+      if (effectiveMiss) {
         if (bulletTarget === player) addMissText(player.x + (Math.random() - 0.5) * 50, player.y - 85 - Math.random() * 20);
         spawnSpark(bulletTarget.x, bulletTarget.y, false);
       } else {
@@ -9340,7 +9531,6 @@ if (GAME_SETTINGS.textures) {
   drawZonePortals(ox, oy);
   drawSafeModules(ox, oy);
   drawMoveTarget(ox, oy);
-  drawPulseFx(ox, oy);
   drawCollectables(ox, oy);
   drawEngineTrails(ox, oy);
   drawGateEscorts(ox, oy);
@@ -9510,9 +9700,6 @@ if (GAME_SETTINGS.textures) {
     const bobY = Math.sin(tt * 4.0) * 2 * idleSway;
     ctx.translate(0, bobY);
 
-    const blink = player.iFrames > 0 ? Math.sin(performance.now() * 0.03) * 0.35 + 0.65 : 1;
-    ctx.globalAlpha = blink;
-
     drawPlayerDrones();
         const ok = drawPlayerBody();
     if (!ok) {
@@ -9536,6 +9723,9 @@ if (GAME_SETTINGS.textures) {
     ctx.restore();
     ctx.globalAlpha = 1;
   }
+
+  // L'IEM reste centrée sur le joueur et se dessine au-dessus du vaisseau.
+  drawPulseFx(ox, oy);
 
   const t = Target.get();
   drawEscortTargetLocks(ox, oy);
@@ -10063,6 +10253,13 @@ window.addEventListener("storage", (e) => {
   if (started && SESSION_HANGAR_ID && nowActive && nowActive !== SESSION_HANGAR_ID) {
     location.reload();
   }
+});
+
+window.addEventListener("orbit:user-updated", () => {
+  const refreshed = getCurrentUserFull();
+  if (!refreshed) return;
+  account.user = refreshed;
+  if (started) applyCurrentConfigStats(true);
 });
 
 resetPlayerToBase();

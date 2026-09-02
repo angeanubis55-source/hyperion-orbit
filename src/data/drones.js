@@ -1,6 +1,6 @@
 "use strict";
-export const MAX_IRIS_DRONES=8, IRIS_BASE_PRICE=15000000, SPECIAL_DRONE_PRICE=500000000, DRONE_MAX_LEVEL=5, DRONE_XP_SHARE=.05;
-export const DRONE_LEVEL_XP=Object.freeze([0,25000,100000,300000,750000]);
+export const MAX_IRIS_DRONES=8, IRIS_BASE_PRICE=15000000, SPECIAL_DRONE_PRICE=500000000, DRONE_MAX_LEVEL=6, DRONE_XP_SHARE=.05;
+export const DRONE_LEVEL_XP=Object.freeze([0,25000,100000,300000,750000,1500000]);
 export const DRONE_TYPES=Object.freeze({
   iris:Object.freeze({id:"iris",name:"Iris",maxOwned:8,slots:2,path:"assets/Drones/Iris_lvl_"}),
   apis:Object.freeze({id:"apis",name:"Apis",maxOwned:1,slots:2,path:"assets/Drones/Apis_lvl_"}),
@@ -57,8 +57,8 @@ export const DRONE_FORMATION_LAYOUTS=Object.freeze({
   wave:points("-31,-24;31,-24;-18,-13;18,-13;-31,-1;31,-1;-18,10;18,10;-31,22;31,22"),
 });
 export function getIrisPrice(n){return IRIS_BASE_PRICE*(2**Math.max(0,Math.min(7,Math.floor(Number(n)||0))));}
-export function getDroneLevel(experience){const xp=Math.max(0,Number(experience)||0);let level=1;for(let i=1;i<DRONE_LEVEL_XP.length;i++)if(xp>=DRONE_LEVEL_XP[i])level=i+1;return Math.min(5,level);}
-export function getDroneSpritePath(drone,frame=1){const type=DRONE_TYPES[drone?.type]||DRONE_TYPES.iris;const state=Math.max(0,Math.min(4,Number(drone?.level||1)-1));return `${type.path}${state}/${Math.max(1,Math.min(32,Math.floor(Number(frame)||1)))}.png`;}
+export function getDroneLevel(experience){const xp=Math.max(0,Number(experience)||0);let level=1;for(let i=1;i<DRONE_LEVEL_XP.length;i++)if(xp>=DRONE_LEVEL_XP[i])level=i+1;return Math.min(DRONE_MAX_LEVEL,level);}
+export function getDroneSpritePath(drone,frame=1){const type=DRONE_TYPES[drone?.type]||DRONE_TYPES.iris;const state=Math.max(0,Math.min(DRONE_MAX_LEVEL-1,Number(drone?.level||1)-1));return `${type.path}${state}/${Math.max(1,Math.min(32,Math.floor(Number(frame)||1)))}.png`;}
 export function getDroneShopSpritePath(type){return `assets/Drones/Shop/${DRONE_TYPES[type]?.id||"iris"}.gif`;}
 export function getActiveDroneFormation(user){const selected=DRONE_FORMATIONS.find(x=>x.id===user?.drones?.activeFormation)||DRONE_FORMATIONS[0];return (user?.drones?.items?.length||0)>=selected.minDrones?selected:DRONE_FORMATIONS[0];}
 export function createDrone(type,id){const d=DRONE_TYPES[type];return d?{id,type,level:1,exp:0,fit:{equipment:Array(d.slots).fill(null),ability:null}}:null;}

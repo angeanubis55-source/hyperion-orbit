@@ -2244,7 +2244,6 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 .ammoBtn[data-ammo="x6"]{ --c:var(--x6); }
 .ammoBtn[data-ammo="sab"]{ --c:#173c9c; }
 .ammoBtn[data-skill="pulse"]{ --c:#b342ff; }
-.ammoBtn[data-skill="nuke"]{ --c:#ff3b4e; }
 .ammoBtn[data-skill="repair"]{ --c:#3dff8c; }
 
 .skillBtn{
@@ -3595,6 +3594,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #settingsWindow .settingsCheck{display:flex;align-items:center;gap:10px;min-height:46px;padding:7px 11px;border:1px solid rgba(124,240,255,.22);border-radius:12px;background:rgba(255,255,255,.055);cursor:pointer}
 #settingsWindow .settingsCheck input{width:17px;height:17px;accent-color:#7cf0ff}
 #settingsWindow .settingsCheck span{display:grid;gap:2px;font-size:12px}
+#settingsWindow .settingsCheck span{min-width:0;overflow-wrap:anywhere}
 #settingsWindow .settingsCheck small{color:rgba(232,244,255,.58);font-size:10px}
 
 /* Paramètres unifiés */
@@ -3625,13 +3625,17 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #settingsWindow .settingsPageIntro b{color:#effbff;font-size:13px}
 #settingsWindow .settingsPageIntro span{color:rgba(204,228,241,.50);font-size:9px}
 #settingsWindow .settingsPreferences{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(260px,.75fr);gap:10px;align-items:stretch}
-#settingsWindow .settingsQuickGrid{flex:0 0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;align-content:start}
+#settingsWindow .settingsQuickGrid{flex:0 0 auto;display:grid;grid-template-columns:minmax(230px,2fr) repeat(2,minmax(120px,1fr));gap:8px;align-content:start}
 #settingsWindow .settingsChecks{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
 #settingsWindow .settingsToggle{min-height:42px;padding:0 8px;border-radius:8px;white-space:nowrap;transform:none!important;box-shadow:none!important}
 #settingsWindow .settingsVolume{height:42px;min-width:0;padding:5px 9px;display:grid;gap:3px;box-sizing:border-box;border:1px solid rgba(124,240,255,.22);border-radius:8px;background:rgba(255,255,255,.055)}
 #settingsWindow .settingsVolume span{display:flex;align-items:center;justify-content:space-between;gap:6px;color:rgba(225,242,250,.78);font-size:9px;font-weight:800}
 #settingsWindow .settingsVolume output{color:#7cf0ff;font-variant-numeric:tabular-nums}
 #settingsWindow .settingsVolume input{width:100%;height:12px;margin:0;accent-color:#7cf0ff;cursor:pointer}
+#settingsWindow .settingsSoundControl{grid-template-columns:auto 1fr;align-items:center;height:48px}
+#settingsWindow .settingsSoundControl .settingsToggle{grid-row:1 / 3;min-height:34px}
+#settingsWindow .settingsSoundControl input{grid-column:2}
+#settingsWindow .settingsCheck.compact{height:48px;min-width:0}
 #settingsWindow .settingsCheck{flex:0 0 auto;align-self:stretch;height:42px;min-height:42px;padding:5px 11px;border-radius:8px;box-sizing:border-box}
 #settingsWindow .settingsKeyColumns{
   flex:1 1 auto;
@@ -3640,7 +3644,8 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   grid-template-columns:repeat(3,minmax(0,1fr));
   gap:18px;
   align-content:start;
-  overflow:hidden;
+  overflow-y:auto;
+  overflow-x:hidden;
 }
 #settingsWindow .settingsKeyGroup{
   min-width:0;
@@ -3701,7 +3706,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 
 /* Barre rapide : dock carré, discret et entièrement homogène. */
 #ammoBar.compactAmmoBar{gap:4px !important;padding:5px !important;border-radius:0 !important}
-#ammoBar .actionSlots{grid-template-columns:repeat(10,46px) !important;gap:4px !important}
+#ammoBar .actionSlots{grid-template-columns:repeat(10,46px) !important;grid-template-rows:repeat(2,44px);gap:4px !important}
 #ammoBar.compactAmmoBar .actionSlot,
 #ammoBar.compactAmmoBar .actionSlot .ammoBtn,
 #ammoBar.compactAmmoBar .actionSlot .skillBtn,
@@ -3715,7 +3720,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar.compactAmmoBar .actionSlot .skillBtn{width:42px !important;min-width:42px !important;height:40px !important;min-height:40px !important}
 #ammoBar .actionPaletteToggle{width:27px !important;min-width:27px !important;height:44px !important;padding:0 !important;font-size:13px !important;color:rgba(158,238,255,.7) !important;transform:none !important}
 #ammoBar .actionPaletteToggle.active{transform:none !important;background:#0d4052 !important}
-#ammoBar .actionPalette{right:0 !important;width:520px !important;bottom:53px !important;padding:7px !important}
+#ammoBar .actionPalette{right:0 !important;width:520px !important;bottom:calc(100% + 10px) !important;padding:7px !important}
 #ammoBar .actionPaletteItems{gap:4px !important}
 #ammoBar .actionPaletteItems>.ammoBtn,
 #ammoBar .formationQuickAction{flex:0 0 46px !important;width:46px !important;min-width:46px !important;height:44px !important;min-height:44px !important;padding:2px !important}
@@ -3753,17 +3758,18 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   top:3px;
   width:40px;
   height:31px;
-  background-image:url("assets/Control_menu.png");
+  background-position:center;
+  background-size:contain;
   background-repeat:no-repeat;
   image-rendering:auto;
   pointer-events:none;
 }
-#ammoBar .compactAmmoBtn[data-ammo="x1"]::before{background-position:-78px -91px}
-#ammoBar .compactAmmoBtn[data-ammo="x2"]::before{background-position:-115px -91px}
-#ammoBar .compactAmmoBtn[data-ammo="x3"]::before{background-position:-151px -91px}
-#ammoBar .compactAmmoBtn[data-ammo="x4"]::before{background-position:-409px -91px}
-#ammoBar .compactAmmoBtn[data-ammo="sab"]::before{background-position:-343px -91px}
-#ammoBar .compactAmmoBtn[data-ammo="x6"]::before{background-position:-303px -91px}
+#ammoBar .compactAmmoBtn[data-ammo="x1"]::before{background-image:url("assets/items/ammo_x1.png");background-size:76% auto}
+#ammoBar .compactAmmoBtn[data-ammo="x2"]::before{background-image:url("assets/items/ammo_x2.png")}
+#ammoBar .compactAmmoBtn[data-ammo="x3"]::before{background-image:url("assets/items/ammo_x3.png")}
+#ammoBar .compactAmmoBtn[data-ammo="x4"]::before{background-image:url("assets/items/ammo_x4.png")}
+#ammoBar .compactAmmoBtn[data-ammo="sab"]::before{background-image:url("assets/items/ammo_abl.png")}
+#ammoBar .compactAmmoBtn[data-ammo="x6"]::before{background-image:url("assets/items/ammo_x6.png")}
 #ammoBar .compactAmmoBtn[data-ammo] > strong{display:none !important}
 #ammoBar .compactAmmoBtn[data-ammo] > small{
   position:absolute;
@@ -3794,7 +3800,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar .actionPalette{
   left:50% !important;
   right:auto !important;
-  bottom:64px !important;
+  bottom:calc(100% + 12px) !important;
   transform:translateX(-50%) !important;
 }
 #ammoBar .formationQuickAction span,
@@ -3803,7 +3809,44 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar.compactAmmoBar .ammoBtn.active,
 #ammoBar.compactAmmoBar .formationActionSlot.active,
 #ammoBar .formationQuickAction.active{transform:none !important}
+#ammoBar [data-skill]{position:relative;overflow:hidden}
+#ammoBar [data-skill="pulse"]::before,
+#ammoBar [data-skill="repair"]::before{
+  content:"";
+  position:absolute;
+  z-index:1;
+  inset:3px 3px 10px;
+  background-position:center;
+  background-size:contain;
+  background-repeat:no-repeat;
+  pointer-events:none;
+}
+#ammoBar [data-skill="pulse"]::before{background-image:url("assets/pulse/IEM.png")}
+#ammoBar [data-skill="repair"]::before{background-image:url("assets/Repair_Robot/2.png")}
+#ammoBar [data-skill="pulse"] > strong,
+#ammoBar [data-skill="repair"] > strong{display:none !important}
+#ammoBar [data-skill="pulse"] > small,
+#ammoBar [data-skill="repair"] > small{position:relative;z-index:2}
+#ammoBar [data-skill].skillFeedback::after{
+  content:"";
+  position:absolute;
+  inset:1px;
+  pointer-events:none;
+  opacity:var(--skill-feedback,0);
+  border:1px solid color-mix(in srgb,var(--c,#7cf0ff) 85%,white);
+  background:color-mix(in srgb,var(--c,#7cf0ff) 18%,transparent);
+  box-shadow:inset 0 0 12px color-mix(in srgb,var(--c,#7cf0ff) 55%,transparent),0 0 8px color-mix(in srgb,var(--c,#7cf0ff) 45%,transparent);
+}
+#ammoBar [data-skill="repair"]{cursor:default !important}
 #settingsWindow .settingsKeyColumns{grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr) !important}
-#settingsWindow .settingsSlotKeys{display:grid;grid-template-columns:1fr 1fr;gap:5px 8px}
+#settingsWindow .settingsSlotKeys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px 8px}
 #settingsWindow .settingsSlotKeyGroup{min-width:0}
+#settingsWindow .settingsPreferences{grid-template-columns:minmax(0,1.4fr) minmax(300px,1fr) !important}
+#settingsWindow .settingsQuickGrid{grid-template-columns:minmax(220px,1.5fr) repeat(2,minmax(110px,1fr)) !important}
+#settingsWindow .settingsCheck{height:auto !important;min-height:52px !important;align-items:center !important}
+#settingsWindow .settingsCheck span{min-width:0 !important;line-height:1.15 !important}
+#settingsWindow .settingsCheck small{line-height:1.25 !important;overflow-wrap:anywhere !important}
+#settingsWindow .settingsSoundControl{height:52px !important}
+#settingsWindow .settingsSlotKeys .keyBindRow{min-height:34px !important;padding:5px 7px !important;font-size:9px !important}
+#settingsWindow .settingsSlotKeys .keyBindRow kbd{min-width:30px !important;padding:3px 5px !important}
 .craftingRecipe.ownedLimit{opacity:.38 !important;filter:grayscale(1) !important;border-color:rgba(130,150,160,.16) !important;background:#071018 !important}

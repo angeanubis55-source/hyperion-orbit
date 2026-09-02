@@ -46,12 +46,19 @@ const fit =
 
   // Les équipements des drones participent aux statistiques du vaisseau.
   // Chaque niveau après le premier améliore de 5 % uniquement l'objet porté.
-  for (const drone of user?.drones?.items || []) {
-    const levelMultiplier = 1 + Math.max(0, Math.min(4, Number(drone?.level || 1) - 1)) * 0.05;
+  const drones = user?.drones?.items || [];
+  const designId = (drone) => String(typeof drone?.fit?.ability === "string"
+    ? drone.fit.ability
+    : drone?.fit?.ability?.id || drone?.fit?.ability?.name || "").toLowerCase();
+  for (const drone of drones) {
+    const levelMultiplier = 1 + Math.max(0, Math.min(5, Number(drone?.level || 1) - 1)) * 0.05;
+    const design = designId(drone);
+    const laserDesignMultiplier = design.includes("havoc") || design.includes("havok") ? 1.1 : design.includes("spartan") ? 1.01 : 1;
+    const shieldDesignMultiplier = design.includes("hercules") ? 1.15 : design.includes("spartan") ? 1.01 : 1;
     for (const itemId of drone?.fit?.equipment || []) {
       const item = itemId ? findCatalogItem(itemId) : null;
-      if (item?.module?.type === "laser") baseDamage += Number(item.module.damage || 0) * levelMultiplier;
-      if (item?.module?.type === "shield") baseShield += Number(item.module.bonusShield || 0) * levelMultiplier;
+      if (item?.module?.type === "laser") baseDamage += Number(item.module.damage || 0) * levelMultiplier * laserDesignMultiplier;
+      if (item?.module?.type === "shield") baseShield += Number(item.module.bonusShield || 0) * levelMultiplier * shieldDesignMultiplier;
     }
   }
 
@@ -102,6 +109,14 @@ const fit =
   bonusHPPct += Number(formationEffects.hpPct || 0);
   bonusSpeedPct += Number(formationEffects.speedPct || 0);
   bonusPenetrationPct += Number(formationEffects.penetrationPct || 0);
+
+  // Bonus d'ensemble des designs : actifs uniquement si tous les drones portent le même design.
+  if (drones.length && drones.every(drone => /havoc|havok/.test(designId(drone)))) bonusDamagePct += 10;
+  if (drones.length && drones.every(drone => designId(drone).includes("hercules"))) bonusHPPct += 20;
+  if (drones.length && drones.every(drone => designId(drone).includes("spartan"))) {
+    bonusDamagePct += 10;
+    bonusHPPct += 10;
+  }
 
   // ✅ ÉTAPE 3 : calculer les valeurs finales
   const totalLaserDamage = baseDamage * (1 + bonusDamagePct / 100);

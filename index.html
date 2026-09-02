@@ -148,13 +148,13 @@
           <div class="settingsPageIntro"><b>Préférences du jeu</b><span>Affichage, son et démarrage</span></div>
           <div class="settingsPreferences">
             <div class="settingsQuickGrid">
-              <button id="optSound" class="settingsToggle" type="button">Son : activé</button>
-              <label class="settingsVolume" for="optVolume">
+              <label class="settingsVolume settingsSoundControl" for="optVolume">
+                <button id="optSound" class="settingsToggle" type="button">Son : activé</button>
                 <span>Volume <output id="optVolumeValue">55 %</output></span>
                 <input id="optVolume" type="range" min="0" max="100" step="1" value="55" />
               </label>
-              <button id="optBackground" class="settingsToggle" type="button">Fond de carte : affiché</button>
-              <button id="optStars" class="settingsToggle" type="button">Étoiles : animées</button>
+              <label class="settingsCheck compact" for="optBackground"><input id="optBackground" type="checkbox" /><span><b>Fond de carte</b></span></label>
+              <label class="settingsCheck compact" for="optStars"><input id="optStars" type="checkbox" /><span><b>Étoiles</b></span></label>
             </div>
             <div class="settingsChecks">
               <label class="settingsCheck" for="optAutoStart">
@@ -176,6 +176,7 @@
               <button class="keyBindRow" data-bind-action="switchConfig" type="button"><span>Changer configuration</span><kbd data-bind-value="switchConfig">C</kbd></button>
               <button class="keyBindRow" data-bind-action="toggleAttack" type="button"><span>Activer / arrêter le tir</span><kbd data-bind-value="toggleAttack">CTRL</kbd></button>
               <button class="keyBindRow" data-bind-action="respawn" type="button"><span>Réapparaître si mort</span><kbd data-bind-value="respawn">R</kbd></button>
+              <button class="keyBindRow" data-bind-action="toggleWindows" type="button"><span>Masquer / restaurer les fenêtres</span><kbd data-bind-value="toggleWindows">H</kbd></button>
             </div>
 
             <div class="settingsKeyGroup settingsSlotKeyGroup">
@@ -191,6 +192,16 @@
                 <button class="keyBindRow" data-bind-action="slot8" type="button"><span>Slot 8</span><kbd data-bind-value="slot8">8</kbd></button>
                 <button class="keyBindRow" data-bind-action="slot9" type="button"><span>Slot 9</span><kbd data-bind-value="slot9">9</kbd></button>
                 <button class="keyBindRow" data-bind-action="slot10" type="button"><span>Slot 10</span><kbd data-bind-value="slot10">0</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot11" type="button"><span>Slot 11</span><kbd data-bind-value="slot11">F1</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot12" type="button"><span>Slot 12</span><kbd data-bind-value="slot12">F2</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot13" type="button"><span>Slot 13</span><kbd data-bind-value="slot13">F3</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot14" type="button"><span>Slot 14</span><kbd data-bind-value="slot14">F4</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot15" type="button"><span>Slot 15</span><kbd data-bind-value="slot15">F5</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot16" type="button"><span>Slot 16</span><kbd data-bind-value="slot16">F6</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot17" type="button"><span>Slot 17</span><kbd data-bind-value="slot17">F7</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot18" type="button"><span>Slot 18</span><kbd data-bind-value="slot18">F8</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot19" type="button"><span>Slot 19</span><kbd data-bind-value="slot19">F9</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot20" type="button"><span>Slot 20</span><kbd data-bind-value="slot20">F10</kbd></button>
               </div>
             </div>
           </div>
@@ -348,11 +359,6 @@
     <strong>IEM</strong>
     <small id="pulsePct">100%</small>
     <small id="pulsePrice" class="skillPriceMini">30k</small>
-  </div>
-
-  <div class="ammoBtn skillBtn compactSkillBtn" data-skill="nuke" id="btnNuke" title="Bombe">
-    <strong>NUKE</strong>
-    <small>100k</small>
   </div>
 
   <div class="ammoBtn skillBtn compactSkillBtn repairCompactBtn" data-skill="repair" id="btnRepair" title="Réparation">
@@ -638,6 +644,29 @@
 
   const windows = new Map();
 
+  function bringWindowToFront(card) {
+    if (!card || card.classList.contains("gameWinMinimized")) return;
+
+    // Le dock reste au-dessus des fenêtres. Si la pile devient trop haute,
+    // on la compacte en conservant exactement l'ordre visuel actuel.
+    if (topZ >= 95000) {
+      [...document.querySelectorAll(".gameWindow")]
+        .filter((windowCard) => windowCard.style.display !== "none")
+        .sort((a, b) => (Number(a.style.zIndex) || 90000) - (Number(b.style.zIndex) || 90000))
+        .forEach((windowCard, index) => windowCard.style.setProperty("z-index", String(90001 + index), "important"));
+      topZ = 90000 + document.querySelectorAll(".gameWindow").length;
+    }
+
+    card.style.setProperty("z-index", String(++topZ), "important");
+  }
+
+  // Capture également les fenêtres ajoutées plus tard : tout clic dans une
+  // fenêtre, son contenu ou sa barre de déplacement la remet au premier plan.
+  document.addEventListener("pointerdown", (event) => {
+    const card = event.target instanceof Element ? event.target.closest(".gameWindow") : null;
+    if (card) bringWindowToFront(card);
+  }, { capture: true });
+
   const WIN_POS_PREFIX = "orbit_hud_window_pos:";
   const WIN_STATE_PREFIX = "orbit_hud_window_state:";
 
@@ -730,7 +759,7 @@ function applySavedWindowPosition(id, card) {
   card.style.minWidth = "0";
   card.style.maxWidth = "none";
   card.style.boxSizing = "border-box";
-  card.style.zIndex = String(++topZ);
+  bringWindowToFront(card);
 
   return true;
 }
@@ -835,7 +864,7 @@ function prepareFloating(card) {
   card.style.maxWidth = "none";
   card.style.boxSizing = "border-box";
 
-  card.style.zIndex = String(++topZ);
+  bringWindowToFront(card);
 }
 
   function clampToScreen(card, left, top) {
@@ -1157,10 +1186,6 @@ if (minBtn) minBtn.onclick = (e) => {
         makeDockIcon(id, title, icon);
       }
 
-      card.addEventListener("pointerdown", () => {
-        card.style.zIndex = String(++topZ);
-      });
-
       return windows.get(id);
     },
 
@@ -1228,7 +1253,7 @@ restore(id) {
 
   w.card.style.visibility = "visible";
   w.card.style.opacity = "1";
-  w.card.style.zIndex = String(++topZ);
+  bringWindowToFront(w.card);
   const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);
   if (dockBtn) {
     const cardRect = w.card.getBoundingClientRect();
@@ -1263,6 +1288,21 @@ restore(id) {
   if (dockBtn) dockBtn.remove();
 },
 
+    toggleAll() {
+      this._hiddenWindowOrder ||= [];
+      if (this._hiddenWindowOrder.length) {
+        const order = [...this._hiddenWindowOrder];
+        this._hiddenWindowOrder = [];
+        order.forEach(id => this.restore(id));
+        return;
+      }
+      this._hiddenWindowOrder = [...windows.values()]
+        .filter(w => w?.minimizable !== false && w.card?.style.display !== "none" && !w.card?.classList.contains("gameWinMinimized"))
+        .sort((a, b) => (Number(a.card.style.zIndex) || 0) - (Number(b.card.style.zIndex) || 0))
+        .map(w => w.id);
+      this._hiddenWindowOrder.forEach(id => this.minimize(id));
+    },
+
     resetPositions() {
   clearSavedWindowPositions();
 
@@ -1293,7 +1333,7 @@ restore(id) {
     card.style.transform = "";
     card.style.visibility = "visible";
     card.style.opacity = "1";
-    card.style.zIndex = String(++topZ);
+    bringWindowToFront(card);
 
     const dockBtn = dock.querySelector(`[data-window-id="${id}"]`);
     if (dockBtn) dockBtn.remove();

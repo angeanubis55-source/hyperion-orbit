@@ -46,8 +46,14 @@ import { getWavePlan as getQzWavePlan, QZ_COMPLETION_REWARD } from "../maps/Blig
 import { getZonePortals as getMmoQzPortals } from "../maps/1-7/Spawns.js";
 import { getZonePortals as getEicQzPortals } from "../maps/2-7/Spawns.js";
 import { getZonePortals as getVruQzPortals } from "../maps/3-7/Spawns.js";
+import { getZonePortals as getMmoSixPortals } from "../maps/1-6/Spawns.js";
+import { getZonePortals as getMmoSevenPortals } from "../maps/1-7/Spawns.js";
+import { getZonePortals as getEicSixPortals } from "../maps/2-6/Spawns.js";
+import { getZonePortals as getEicSevenPortals } from "../maps/2-7/Spawns.js";
+import { getZonePortals as getVruSixPortals } from "../maps/3-6/Spawns.js";
+import { getZonePortals as getVruSevenPortals } from "../maps/3-7/Spawns.js";
 import { CATALOG } from "../src/core/catalog.js";
-import { createDrone, DRONE_FORMATIONS, getDroneLevel, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
+import { createDrone, DRONE_FORMATIONS, DRONE_MAX_LEVEL, getDroneLevel, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
 import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_TIER_WEIGHTS } from "../src/data/moduleDrops.js";
 import { appendToFitSlots, compactFitArray, compactFitDraft } from "../src/core/fitLayout.js";
 import {
@@ -143,6 +149,18 @@ test("la QZ coûte trente Alliages hybrides, accepte sept escortes et prépare l
     x4: 0,
     resources: { indoctrinated_oil: [1, 3] },
   });
+});
+
+test("les raccourcis x-6 vers x-7 et retour coûtent 50 000 crédits", () => {
+  const pairs = [
+    [getMmoSixPortals, "1-7"], [getMmoSevenPortals, "1-6"],
+    [getEicSixPortals, "2-7"], [getEicSevenPortals, "2-6"],
+    [getVruSixPortals, "3-7"], [getVruSevenPortals, "3-6"],
+  ];
+  for (const [getPortals, destination] of pairs) {
+    const portal = getPortals({ w: 11000, h: 7000 }).find(item => item.toMap === destination);
+    assert.equal(portal?.shortcutCreditCost, 50000);
+  }
 });
 
 test("le Galaxy Spinner assemble, sauvegarde et consomme les Gates", () => {
@@ -403,6 +421,11 @@ test("la mini-carte filtre les NPC et dessine les portails avec un contexte équ
   assert.deepEqual(getMinimapPortalColors({ toMap: "low" }), {
     stroke: "rgba(190,96,255,0.95)",
     fill: "rgba(210,130,255,1)",
+  });
+  assert.deepEqual(getMinimapPortalColors({ toMap: "qz" }), getMinimapPortalColors({ toMap: "low" }));
+  assert.deepEqual(getMinimapPortalColors({ toMap: "1-7", shortcutCreditCost: 50000 }), {
+    stroke: "rgba(255,205,82,0.95)",
+    fill: "rgba(255,224,120,1)",
   });
   assert.notDeepEqual(getMinimapPortalColors({ toMap: "1-2" }), getMinimapPortalColors({ toMap: "low" }));
 });
@@ -1246,10 +1269,33 @@ test("les drones suivent le prix progressif, les niveaux et leurs sprites", () =
   assert.equal(getDroneLevel(750000), 5);
   const drone = createDrone("iris", "iris_test");
   assert.equal(drone.fit.equipment.length, 2);
-  assert.match(getDroneSpritePath({ ...drone, level: 5 }, 32), /Iris_lvl_4\/32\.png$/);
+  assert.equal(DRONE_MAX_LEVEL, 6);
+  assert.equal(getDroneLevel(1500000), 6);
+  assert.match(getDroneSpritePath({ ...drone, level: 6 }, 32), /Iris_lvl_5\/32\.png$/);
   assert.ok(DRONE_FORMATIONS.every(formation => formation.id === "standard" || formation.minDrones === 4));
   assert.equal(DRONE_FORMATIONS.length, 21);
   assert.equal(DRONE_FORMATIONS.find(formation => formation.id === "drill")?.effects.laserDamagePct, 20);
+});
+
+test("les équipements des drones sont indépendants entre les deux configurations", async () => {
+  const {
+    buyCurrentUserDrone,
+    getCurrentUserFull,
+    saveCurrentUserDroneFit,
+    setActiveHangarConfig,
+    updateCurrentUserProgress,
+  } = await import("../src/core/account.js");
+  updateCurrentUserProgress({ credits: 3000000000 });
+  const bought = buyCurrentUserDrone("iris");
+  assert.equal(bought.ok, true);
+  const hangarId = getCurrentUserFull().hangars.find(hangar => hangar.active)?.id;
+  assert.ok(hangarId);
+  assert.equal(saveCurrentUserDroneFit(bought.drone.id, { equipment: ["laser_lf3", null], ability: null }, 1).ok, true);
+  assert.equal(saveCurrentUserDroneFit(bought.drone.id, { equipment: [null, "shield_sg3n"], ability: null }, 2).ok, true);
+  setActiveHangarConfig(hangarId, 1);
+  assert.deepEqual(getCurrentUserFull().drones.items.find(drone => drone.id === bought.drone.id).fit.equipment, ["laser_lf3", null]);
+  setActiveHangarConfig(hangarId, 2);
+  assert.deepEqual(getCurrentUserFull().drones.items.find(drone => drone.id === bought.drone.id).fit.equipment, [null, "shield_sg3n"]);
 });
 
 test("le catalogue expose les Iris, Apis, Zeus et les formations", () => {
