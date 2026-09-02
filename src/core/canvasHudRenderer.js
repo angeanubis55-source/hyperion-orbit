@@ -54,7 +54,7 @@ export function drawTargetLock(context, entity, image, sprite, offsetX, offsetY,
   context.restore();
 }
 
-export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null) {
+export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null) {
   if (!context || !player || player.dead) return;
   const width = 120;
   const height = 4;
@@ -71,6 +71,27 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
   context.strokeStyle = "rgba(255,255,255,0.22)";
   context.lineWidth = 1.5;
   context.strokeRect(barX - 0.5, barY - 0.5, width + 1, height + 1);
+  if (Array.isArray(droneIndicators) && droneIndicators.length) {
+    const indicatorSize = 4;
+    const indicatorGap = 2;
+    const indicatorY = barY - 5 - indicatorSize;
+    if (droneFormationImage?.complete && droneFormationImage.naturalWidth > 0) {
+      const formationWidth = 40;
+      const formationHeight = 40;
+      context.imageSmoothingEnabled = true;
+      context.drawImage(
+        droneFormationImage,
+        barX - 10 - formationWidth,
+        barY + height / 2 - formationHeight / 2,
+        formationWidth,
+        formationHeight,
+      );
+    }
+    droneIndicators.forEach((color, index) => {
+      context.fillStyle = color;
+      context.fillRect(barX + index * (indicatorSize + indicatorGap), indicatorY, indicatorSize, indicatorSize);
+    });
+  }
   if (player.shMax > 0) {
     const shieldY = barY + height;
     context.fillStyle = "rgba(0,0,0,0.45)";

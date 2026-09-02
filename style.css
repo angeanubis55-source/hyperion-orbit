@@ -3520,7 +3520,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #ammoBar .formationQuickAction img { width:58px; height:38px; object-fit:contain; image-rendering:auto; }
 #ammoBar .formationQuickAction.active { border-color:#d8af51; color:#ffd978; background:#2a2211; }
 #ammoBar .formationActionSlot { display:grid !important; place-items:center; padding:2px !important; }
-#ammoBar .formationActionSlot img { width:38px; height:25px; object-fit:contain; }
+#ammoBar .formationActionSlot img { width:40px; height:40px; object-fit:contain; }
 #ammoBar .formationActionSlot span { display:none; }
 #ammoBar.compactAmmoBar .actionSlot {
   width: 46px;
@@ -3626,6 +3626,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #settingsWindow .settingsPageIntro span{color:rgba(204,228,241,.50);font-size:9px}
 #settingsWindow .settingsPreferences{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(260px,.75fr);gap:10px;align-items:stretch}
 #settingsWindow .settingsQuickGrid{flex:0 0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;align-content:start}
+#settingsWindow .settingsChecks{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
 #settingsWindow .settingsToggle{min-height:42px;padding:0 8px;border-radius:8px;white-space:nowrap;transform:none!important;box-shadow:none!important}
 #settingsWindow .settingsVolume{height:42px;min-width:0;padding:5px 9px;display:grid;gap:3px;box-sizing:border-box;border:1px solid rgba(124,240,255,.22);border-radius:8px;background:rgba(255,255,255,.055)}
 #settingsWindow .settingsVolume span{display:flex;align-items:center;justify-content:space-between;gap:6px;color:rgba(225,242,250,.78);font-size:9px;font-weight:800}
@@ -3676,6 +3677,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   #settingsWindow{width:calc(100vw - 24px);height:min(650px, calc(100vh - 48px))}
   #settingsWindow .settingsPage{overflow-y:auto}
   #settingsWindow .settingsPreferences{grid-template-columns:1fr}
+  #settingsWindow .settingsChecks{grid-template-columns:1fr}
   #settingsWindow .settingsQuickGrid{grid-template-columns:1fr}
   #settingsWindow .settingsKeyColumns{grid-template-columns:1fr;overflow-y:auto}
 }
@@ -3717,7 +3719,84 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar .actionPaletteItems{gap:4px !important}
 #ammoBar .actionPaletteItems>.ammoBtn,
 #ammoBar .formationQuickAction{flex:0 0 46px !important;width:46px !important;min-width:46px !important;height:44px !important;min-height:44px !important;padding:2px !important}
-#ammoBar .formationQuickAction img{width:40px !important;height:36px !important}
+#ammoBar .formationQuickAction img{width:40px !important;height:40px !important;object-fit:contain !important}
+#ammoBar.compactAmmoBar .actionSlot .formationActionSlot,
+#ammoBar .formationQuickAction{
+  width:46px !important;
+  min-width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:2px !important;
+  box-sizing:border-box !important;
+  display:grid !important;
+  place-items:center !important;
+  overflow:visible !important;
+}
+#ammoBar.compactAmmoBar .actionSlot .ammoBtn,
+#ammoBar.compactAmmoBar .actionSlot .skillBtn{
+  width:46px !important;
+  min-width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  box-sizing:border-box !important;
+}
+#ammoBar .compactAmmoBtn[data-ammo]{
+  position:relative !important;
+  overflow:hidden !important;
+  padding:0 !important;
+}
+#ammoBar .compactAmmoBtn[data-ammo]::before{
+  content:"";
+  position:absolute;
+  z-index:1;
+  left:3px;
+  top:3px;
+  width:40px;
+  height:31px;
+  background-image:url("assets/Control_menu.png");
+  background-repeat:no-repeat;
+  image-rendering:auto;
+  pointer-events:none;
+}
+#ammoBar .compactAmmoBtn[data-ammo="x1"]::before{background-position:-78px -91px}
+#ammoBar .compactAmmoBtn[data-ammo="x2"]::before{background-position:-115px -91px}
+#ammoBar .compactAmmoBtn[data-ammo="x3"]::before{background-position:-151px -91px}
+#ammoBar .compactAmmoBtn[data-ammo="x4"]::before{background-position:-409px -91px}
+#ammoBar .compactAmmoBtn[data-ammo="sab"]::before{background-position:-343px -91px}
+#ammoBar .compactAmmoBtn[data-ammo="x6"]::before{background-position:-303px -91px}
+#ammoBar .compactAmmoBtn[data-ammo] > strong{display:none !important}
+#ammoBar .compactAmmoBtn[data-ammo] > small{
+  position:absolute;
+  z-index:3;
+  left:2px;
+  right:2px;
+  bottom:1px;
+  margin:0 !important;
+  overflow:hidden;
+  color:rgba(225,241,249,.78) !important;
+  font-size:7px !important;
+  line-height:8px;
+  text-align:center;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+#ammoBar.compactAmmoBar .actionSlot .formationActionSlot img,
+#ammoBar .formationQuickAction img{
+  display:block !important;
+  width:40px !important;
+  height:40px !important;
+  max-width:none !important;
+  max-height:none !important;
+  margin:0 !important;
+  object-fit:contain !important;
+  transform:none !important;
+}
+#ammoBar .actionPalette{
+  left:50% !important;
+  right:auto !important;
+  bottom:64px !important;
+  transform:translateX(-50%) !important;
+}
 #ammoBar .formationQuickAction span,
 #ammoBar .actionPalette .slotKeyHint{display:none !important}
 #ammoBar .slotKeyHint{position:absolute;top:2px;left:3px;z-index:4;color:rgba(218,244,250,.66);font-size:7px;font-weight:900;line-height:1;pointer-events:none}

@@ -510,6 +510,7 @@ const DEFAULT_GAME_SETTINGS = {
   background: true,
   stars: true,
   textures: true,
+  drones: true,
   autoStart: false,
   keybinds: { ...DEFAULT_KEYBINDS },
 };
@@ -583,6 +584,10 @@ function setGameSetting(key, value) {
 
   if (key === "textures") {
     showToast(GAME_SETTINGS.textures ? "Textures affichées" : "Textures masquées", 1.1);
+  }
+
+  if (key === "drones") {
+    showToast(GAME_SETTINGS.drones ? "Drones affichés" : "Drones masqués", 1.1);
   }
 }
 
@@ -770,6 +775,8 @@ function renderSettingsWindow() {
 
   const autoStart = document.getElementById("optAutoStart");
   if (autoStart) autoStart.checked = !!GAME_SETTINGS.autoStart;
+  const drones = document.getElementById("optDrones");
+  if (drones) drones.checked = !!GAME_SETTINGS.drones;
 
   renderKeybindRows();
   updateHudKeyHints();
@@ -790,6 +797,7 @@ function wireSettingsWindow() {
   const starsBtn = document.getElementById("optStars");
   const texBtn = document.getElementById("optTextures");
   const autoStart = document.getElementById("optAutoStart");
+  const drones = document.getElementById("optDrones");
   const settingsWindow = document.getElementById("settingsWindow");
 
   if (settingsWindow) {
@@ -822,6 +830,10 @@ function wireSettingsWindow() {
 
   autoStart?.addEventListener("change", () => {
     setGameSetting("autoStart", autoStart.checked);
+  });
+
+  drones?.addEventListener("change", () => {
+    setGameSetting("drones", drones.checked);
   });
 
   document.querySelectorAll("#settingsWindow .keyBindRow").forEach((btn) => {
@@ -1726,8 +1738,10 @@ function awardExperience(amount, source = "") {
   const result = grantExperience(account.user.stats, Number(amount || 0) * (1 + formationBonus / 100));
   if (result.gained <= 0) return result;
   for (const drone of account.user.drones?.items || []) {
+    const previousLevel = Math.max(1, Number(drone.level) || getDroneLevel(drone.exp));
     drone.exp = Math.max(0, Number(drone.exp) || 0) + result.gained * DRONE_XP_SHARE;
     drone.level = getDroneLevel(drone.exp);
+    if (drone.level > previousLevel) queueDroneLevelTransition(drone.id, previousLevel, drone.level);
   }
   markProgressDirty();
   if (result.leveledUp) {
@@ -7565,6 +7579,20 @@ function getDroneFormationOffsets(count, formationId) {
   });
 }
 
+const droneVisualStates = new Map();
+
+function queueDroneLevelTransition(droneId, fromLevel, toLevel) {
+  const id = String(droneId || "");
+  if (!id || toLevel <= fromLevel) return;
+  const state = droneVisualStates.get(id) || { x: 0, y: 0, initialized: false };
+  state.levelTransition = {
+    startedAt: performance.now(),
+    fromLevel: Math.max(1, Number(fromLevel) || 1),
+    toLevel: Math.max(1, Number(toLevel) || 1),
+  };
+  droneVisualStates.set(id, state);
+}
+
 function drawPlayerDrones() {
   const droneState = account.user?.drones;
   const drones = droneState?.items || [];
@@ -7572,6 +7600,7 @@ function drawPlayerDrones() {
   const formation = DRONE_FORMATIONS.find(entry => entry.id === droneState.activeFormation);
   const formationId = drones.length >= Number(formation?.minDrones || 0) ? formation?.id : "standard";
   const offsets = getDroneFormationOffsets(drones.length, formationId);
+  const now = performance.now();
   // Les références montrent toujours le vaisseau orienté vers le haut.
   // L'angle du moteur vaut -PI/2 dans cette orientation : on compense ce quart de tour.
   const formationAngle = player.angle + Math.PI / 2;
@@ -7579,10 +7608,46 @@ function drawPlayerDrones() {
   // Les sprites des drones sont encodés dans le sens opposé aux vaisseaux.
   const frame = ((angleToFrameIndex(player.angle, 32) + 16) % 32) + 1;
   drones.forEach((drone, index) => {
-    const point = offsets[index];
+    const target = offsets[index];
+    const id = String(drone.id || index);
+    const state = droneVisualStates.get(id) || {
+      x: target.x,
+      y: target.y,
+      lastAt: now,
+      initialized: true,
+      displayLevel: Math.max(1, Number(drone.level) || 1),
+    };
+    const elapsed = Math.min(0.05, Math.max(0, (now - Number(state.lastAt || now)) / 1000));
+    const follow = 1 - Math.exp(-elapsed * 7.5);
+    state.x += (target.x - state.x) * follow;
+    state.y += (target.y - state.y) * follow;
+    state.lastAt = now;
+    let collapse = 1;
+    const transition = state.levelTransition;
+    if (transition) {
+      const age = now - transition.startedAt;
+      if (age < 360) {
+        collapse = 1 - age / 360;
+        state.displayLevel = transition.fromLevel;
+      } else if (age < 500) {
+        collapse = 0;
+        state.displayLevel = transition.toLevel;
+      } else if (age < 980) {
+        collapse = (age - 500) / 480;
+        state.displayLevel = transition.toLevel;
+      } else {
+        state.displayLevel = transition.toLevel;
+        state.levelTransition = null;
+      }
+    } else {
+      state.displayLevel = Math.max(1, Number(drone.level) || 1);
+    }
+    droneVisualStates.set(id, state);
+    const point = { x: state.x * collapse, y: state.y * collapse };
     const x = point.x * ca - point.y * sa;
     const y = point.x * sa + point.y * ca;
-    const src = getDroneSpritePath(drone, frame);
+    if (!GAME_SETTINGS.drones || collapse <= 0.03) return;
+    const src = getDroneSpritePath({ ...drone, level: state.displayLevel }, frame);
     const image = getCachedImage(src);
     if (!isImgReady(image)) {
       loadImage(src, { priority: true });
@@ -7593,6 +7658,8 @@ function drawPlayerDrones() {
     drawCenteredImage(ctx, image, 64, 56);
     ctx.restore();
   });
+  const activeIds = new Set(drones.map((drone, index) => String(drone.id || index)));
+  for (const id of droneVisualStates.keys()) if (!activeIds.has(id)) droneVisualStates.delete(id);
 }
 
 function tickGatePortalJumps(dt) {
@@ -8125,7 +8192,34 @@ function drawPlayerBars(px, py) {
     loadImage(faction.imagePath, { priority: true });
     factionImage = null;
   }
-  drawPlayerStatus(ctx, player, account.user?.pseudo || "Pilote", px, py, rankImage, factionImage);
+  const droneIndicators = GAME_SETTINGS.drones ? [] : (account.user?.drones?.items || []).map(drone => {
+    const ability = drone?.fit?.ability;
+    const design = typeof ability === "string"
+      ? ability.toLowerCase()
+      : `${ability?.id || ""} ${ability?.name || ""}`.toLowerCase();
+    if (design.includes("hercules")) return "rgb(30,144,255)";
+    if (design.includes("havoc") || design.includes("havok")) return "rgb(255,45,55)";
+    if (drone?.type === "apis") return "rgb(70,110,210)";
+    if (drone?.type === "zeus") return "rgb(150,160,70)";
+    return "rgb(255,255,255)";
+  });
+  const activeFormation = !GAME_SETTINGS.drones ? getActiveDroneFormation(account.user) : null;
+  let droneFormationImage = activeFormation ? getCachedImage(activeFormation.icon) : null;
+  if (activeFormation && !isImgReady(droneFormationImage)) {
+    loadImage(activeFormation.icon, { priority: true });
+    droneFormationImage = null;
+  }
+  drawPlayerStatus(
+    ctx,
+    player,
+    account.user?.pseudo || "Pilote",
+    px,
+    py,
+    rankImage,
+    factionImage,
+    droneIndicators,
+    droneFormationImage,
+  );
 }
 
 function getRsbPercent() {
