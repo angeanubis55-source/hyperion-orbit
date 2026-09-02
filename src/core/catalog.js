@@ -2,6 +2,7 @@
 "use strict";
 
 import { SHIP_PACKS } from "../data/shipPacks.js";
+import { DRONE_FORMATIONS, SPECIAL_DRONE_PRICE, getDroneShopSpritePath } from "../data/drones.js";
 
 /**
  * Règle de prix temporaire:
@@ -60,6 +61,18 @@ ammo: [
     { id: "extra_radar", name: "Extra: Radar +", price: 250000, module: { type: "extra", key: "radar_plus" } },
     { id: "extra_loot",  name: "Extra: Loot +",  price: 500000, module: { type: "extra", key: "loot_plus" } },
   ],
+
+  drones: [
+    { id: "drone_iris", name: "Drone Iris", price: 15000000, drone: { type: "iris" }, icon: getDroneShopSpritePath("iris") },
+    { id: "drone_apis", name: "Drone Apis", price: SPECIAL_DRONE_PRICE, drone: { type: "apis" }, icon: getDroneShopSpritePath("apis") },
+    { id: "drone_zeus", name: "Drone Zeus", price: SPECIAL_DRONE_PRICE, drone: { type: "zeus" }, icon: getDroneShopSpritePath("zeus") },
+  ],
+
+  formations: DRONE_FORMATIONS.filter(formation => formation.price > 0).map(formation => ({
+    id: `formation_${formation.id}`, name: formation.name, price: formation.price,
+    formation: { id: formation.id, minDrones: formation.minDrones, icon: formation.icon },
+    icon: formation.icon,
+  })),
 
   // ✅ auto depuis SHIP_PACKS (price propre à chaque vaisseau, fallback heuristique)
   ships: SHIP_PACKS

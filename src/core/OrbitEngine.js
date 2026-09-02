@@ -17,12 +17,14 @@ import {
   deployCurrentUserGalaxyGate,
   armCurrentUserGalaxyGateMultiplier,
   craftCurrentUserRecipe,
+  setCurrentUserDroneFormation,
 } from "./account.js";
 import { GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, GALAXY_SPIN_CREDIT_COST } from "./galaxyGates.js";
 import { computeHangarStats } from "./hangars.js";
 import { findCatalogItem } from "./catalog.js";
 import { CRAFTING_RECIPES } from "../data/crafting.js";
 import { ITEM_RARITIES } from "../data/itemRarities.js";
+import { DRONE_FORMATIONS, DRONE_FORMATION_LAYOUTS, DRONE_TYPES, DRONE_XP_SHARE, getActiveDroneFormation, getDroneLevel, getDroneSpritePath } from "../data/drones.js";
 import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./collision.js";
 import { createKeyboardState, createPointerState } from "./input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "./combat.js";
@@ -353,6 +355,132 @@ cfgCooldownTxt: document.getElementById("cfgCooldownTxt"),
   nextWaveBtn: document.getElementById("nextWaveBtn"),
 };
 
+const ACTION_BAR_LAYOUT_KEY = "orbit_action_bar_layout_v2";
+
+function initializeCustomActionBar() {
+  const bar = document.getElementById("ammoBar");
+  if (!bar || bar.dataset.customized === "1") return;
+  bar.dataset.customized = "1";
+  const actions = [...bar.querySelectorAll(":scope > .ammoBtn")];
+  const palette = document.createElement("div");
+  palette.className = "actionPalette";
+  palette.hidden = true;
+  palette.innerHTML = `<nav><button class="active" data-action-category="ammo">Munitions</button><button data-action-category="formations">Formations</button><button data-action-category="skills">Compétences</button></nav><div class="actionPaletteItems"></div>`;
+  const toggle = document.createElement("button");
+  toggle.type = "button"; toggle.className = "actionPaletteToggle"; toggle.textContent = "⌃"; toggle.title = "Configurer la barre rapide";
+  const byId = new Map(actions.map((button) => {
+    const id = button.dataset.ammo ? `ammo:${button.dataset.ammo}` : `skill:${button.dataset.skill}`;
+    button.dataset.actionId = id;
+    button.draggable = true;
+    return [id, button];
+  }));
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(ACTION_BAR_LAYOUT_KEY) || "[]"); } catch {}
+  const layout = Array.from({ length: 10 }, (_, index) => saved[index] || null);
+  const used = new Set(layout.filter(id => byId.has(id)));
+  for (const id of byId.keys()) if (!used.has(id)) layout[layout.findIndex(value => !value)] = id;
+  bar.replaceChildren();
+  const persist = () => localStorage.setItem(ACTION_BAR_LAYOUT_KEY, JSON.stringify(
+    [...bar.querySelectorAll(".actionSlot")].map(slot => slot.querySelector(".ammoBtn")?.dataset.actionId || null)
+  ));
+  const slots = document.createElement("div"); slots.className = "actionSlots"; bar.appendChild(slots);
+  layout.forEach((id, index) => {
+    const slot = document.createElement("div");
+    slot.className = "actionSlot";
+    slot.dataset.index = String(index);
+    if (byId.has(id)) slot.appendChild(byId.get(id));
+    slot.addEventListener("dragover", event => { event.preventDefault(); slot.classList.add("dragTarget"); });
+    slot.addEventListener("dragleave", () => slot.classList.remove("dragTarget"));
+    slot.addEventListener("drop", event => {
+      event.preventDefault();
+      slot.classList.remove("dragTarget");
+      const actionId = event.dataTransfer.getData("application/x-orbit-action");
+      const button = byId.get(actionId);
+      if (!button) return;
+      const source = button.closest(".actionSlot");
+      const displaced = slot.querySelector(".ammoBtn");
+      if (displaced && source) source.appendChild(displaced);
+      else if (displaced) {
+        const empty = [...bar.querySelectorAll(".actionSlot")].find(entry => entry !== slot && !entry.querySelector(".ammoBtn"));
+        if (empty) empty.appendChild(displaced); else displaced.remove();
+      }
+      slot.appendChild(button);
+      persist();
+      updateHudKeyHints();
+    });
+    slots.appendChild(slot);
+  });
+  actions.forEach(button => button.addEventListener("dragstart", event => {
+    event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId);
+    event.dataTransfer.effectAllowed = "move";
+  }));
+  const formationButtons = DRONE_FORMATIONS.map(formation => {
+    const button = document.createElement("button");
+    button.className = "ammoBtn formationActionSlot"; button.dataset.actionCategory = "formations";
+    button.dataset.actionId = `formation:${formation.id}`; button.draggable = true;
+    button.innerHTML = `<img src="${formation.icon}" alt=""><span>${formation.name.replace("Formation ", "")}</span>`;
+    button.onclick = () => {
+      const result = setCurrentUserDroneFormation(formation.id);
+      if (!result.ok) return showNotification(result.error, 2.5, "error");
+      account.user = result.user;
+      applyCurrentConfigStats(true);
+      showNotification(`${formation.name} activée`, 2, "info", { goldTerms: [formation.name] });
+      renderPalette("formations");
+    };
+    button.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId); event.dataTransfer.effectAllowed = "move"; });
+    byId.set(button.dataset.actionId, button);
+    return button;
+  });
+  const paletteItems = palette.querySelector(".actionPaletteItems");
+  layout.forEach((id,index)=>{ if(id?.startsWith("formation:")&&byId.has(id)) slots.children[index]?.appendChild(byId.get(id)); });
+  function renderPalette(category) {
+    paletteItems.replaceChildren();
+    palette.querySelectorAll("[data-action-category]").forEach(button => button.classList.toggle("active", button.dataset.actionCategory === category));
+    if (category === "formations") formationButtons.forEach(button => {
+      const clone = button.cloneNode(true); clone.className = "formationQuickAction"; clone.draggable = true;
+      clone.classList.toggle("active", button.dataset.actionId === `formation:${account?.user?.drones?.activeFormation}`);
+      clone.onclick = () => button.click();
+      clone.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId); event.dataTransfer.effectAllowed = "copy"; });
+      paletteItems.appendChild(clone);
+    });
+    else actions.filter(button => category === "ammo" ? !!button.dataset.ammo : !!button.dataset.skill).forEach(button => {
+      const clone = button.cloneNode(true); clone.removeAttribute("id"); clone.draggable = true; clone.dataset.actionId = button.dataset.actionId;
+      clone.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", clone.dataset.actionId); });
+      clone.onclick = () => button.click(); paletteItems.appendChild(clone);
+    });
+  }
+  palette.querySelectorAll("[data-action-category]").forEach(button => button.onclick = () => renderPalette(button.dataset.actionCategory));
+  toggle.onclick = () => {
+    palette.hidden = !palette.hidden;
+    toggle.classList.toggle("active", !palette.hidden);
+    toggle.textContent = palette.hidden ? "⌃" : "⌄";
+  };
+  document.addEventListener("dragover", event => {
+    if (event.dataTransfer?.types?.includes("application/x-orbit-action")) event.preventDefault();
+  });
+  document.addEventListener("drop", event => {
+    const actionId = event.dataTransfer?.getData("application/x-orbit-action");
+    if (!actionId || event.target.closest(".actionSlot")) return;
+    const button = byId.get(actionId);
+    if (button?.closest(".actionSlot")) button.remove();
+    persist();
+    updateHudKeyHints();
+  });
+  document.addEventListener("pointerdown", event => {
+    if (!palette.hidden && !bar.contains(event.target)) {
+      palette.hidden = true;
+      toggle.classList.remove("active");
+      toggle.textContent = "⌃";
+    }
+  }, true);
+  bar.append(toggle, palette);
+  renderPalette("ammo");
+  persist();
+  queueMicrotask(updateHudKeyHints);
+}
+
+initializeCustomActionBar();
+
 // ============================================================
 // ✅ Paramètres rapides du jeu
 // ============================================================
@@ -364,15 +492,16 @@ const DEFAULT_KEYBINDS = {
   toggleAttack: "ControlLeft",
   respawn: "KeyR",
 
-  ammoX1: "Digit1",
-  ammoX2: "Digit2",
-  ammoX3: "Digit3",
-  ammoX4: "Digit4",
-  ammoSAB: "Digit5",
-  ammoX6: "Digit6",
-
-  pulse: "Digit7",
-  nuke: "Digit8",
+  slot1: "Digit1",
+  slot2: "Digit2",
+  slot3: "Digit3",
+  slot4: "Digit4",
+  slot5: "Digit5",
+  slot6: "Digit6",
+  slot7: "Digit7",
+  slot8: "Digit8",
+  slot9: "Digit9",
+  slot10: "Digit0",
 };
 
 const DEFAULT_GAME_SETTINGS = {
@@ -386,10 +515,13 @@ const DEFAULT_GAME_SETTINGS = {
 };
 
 function normalizeKeybinds(raw) {
-  return {
-    ...DEFAULT_KEYBINDS,
-    ...(raw && typeof raw === "object" ? raw : {}),
-  };
+  const normalized = { ...DEFAULT_KEYBINDS };
+  if (raw && typeof raw === "object") {
+    for (const key of Object.keys(DEFAULT_KEYBINDS)) {
+      if (typeof raw[key] === "string" && raw[key]) normalized[key] = raw[key];
+    }
+  }
+  return normalized;
 }
 
 function loadGameSettings() {
@@ -470,15 +602,8 @@ const KEYBIND_LABELS = {
   toggleAttack: "Activer / arrêter le tir",
   respawn: "Réapparition",
 
-  ammoX1: "Munition X1",
-  ammoX2: "Munition X2",
-  ammoX3: "Munition X3",
-  ammoX4: "Munition X4",
-  ammoSAB: "Munition SAB-50",
-  ammoX6: "Munition X6",
-
-  pulse: "I.E.M",
-  nuke: "Bombe",
+  slot1: "Slot 1", slot2: "Slot 2", slot3: "Slot 3", slot4: "Slot 4", slot5: "Slot 5",
+  slot6: "Slot 6", slot7: "Slot 7", slot8: "Slot 8", slot9: "Slot 9", slot10: "Slot 10",
 };
 
 function getKeybind(action) {
@@ -581,19 +706,17 @@ function renderKeybindRows() {
 }
 
 function updateHudKeyHints() {
-  const setHint = (selector, action) => {
-    const el = document.querySelector(`${selector} .keyHint`);
-    if (el) el.textContent = codeLabel(getKeybind(action));
-  };
-
-  setHint("#btnX1", "ammoX1");
-  setHint("#btnX2", "ammoX2");
-  setHint("#btnX3", "ammoX3");
-  setHint("#btnX4", "ammoX4");
-  setHint("#btnSAB", "ammoSAB");
-  setHint("#btnX6", "ammoX6");
-  setHint("#btnPulse", "pulse");
-  setHint("#btnNuke", "nuke");
+  document.querySelectorAll("#ammoBar .actionSlot").forEach((slot, index) => {
+    const action = slot.querySelector(".ammoBtn");
+    if (!action) return;
+    let hint = action.querySelector(".slotKeyHint");
+    if (!hint) {
+      hint = document.createElement("span");
+      hint.className = "slotKeyHint";
+      action.appendChild(hint);
+    }
+    hint.textContent = codeLabel(getKeybind(`slot${index + 1}`));
+  });
 
   if (ui.portalSub) {
     ui.portalSub.innerHTML = `Portail prêt — appuie sur <b>${codeLabel(getKeybind("portal"))}</b> ou clique.`;
@@ -779,6 +902,23 @@ function craftingResourceAmount(user, resourceId) {
 const CRAFTING_DURATION_BY_RARITY = Object.freeze({ common: 2, rare: 5, epic: 10, legendary: 20 });
 let craftingJob = null;
 
+function getCraftingOwnershipBlock(user, recipe, quantity = 1) {
+  for (const shipId of Object.keys(recipe?.output?.ships || {})) {
+    if (user?.inventory?.ships?.includes(shipId)) return "Vaisseau déjà possédé.";
+  }
+  for (const formationId of Object.keys(recipe?.output?.formations || {})) {
+    if (user?.drones?.formations?.includes(formationId)) return "Formation déjà possédée.";
+  }
+  for (const [type, unitAmount] of Object.entries(recipe?.output?.drones || {})) {
+    const definition = DRONE_TYPES[type];
+    const owned = (user?.drones?.items || []).filter(drone => drone?.type === type).length;
+    if (!definition || owned + Number(unitAmount || 0) * quantity > definition.maxOwned) {
+      return `Limite de ${definition?.name || type} atteinte.`;
+    }
+  }
+  return "";
+}
+
 function describeCraftingCosts(user, recipe, quantity) {
   const resourceLines = Object.entries(recipe.costs?.resources || {}).map(([id, amount]) => {
     const required = Number(amount) * quantity;
@@ -804,7 +944,8 @@ function renderCraftingWindow(message = "") {
   let quantity = Math.max(1, Number(ui.craftingQuantity?.value || 1));
   ui.craftingRecipes.innerHTML = CRAFTING_RECIPES.map(recipe => {
     const rarity = ITEM_RARITIES[recipe.rarity] || ITEM_RARITIES.common;
-    return `<button type="button" class="craftingRecipe rarity-${rarity.id}${recipe.id === selectedCraftingRecipeId ? " active" : ""}" data-recipe-id="${escapeHtml(recipe.id)}"${craftingJob ? " disabled" : ""}><span>${escapeHtml(recipe.name)}</span><small>${escapeHtml(rarity.name)}</small></button>`;
+    const ownershipBlock = getCraftingOwnershipBlock(user, recipe, 1);
+    return `<button type="button" class="craftingRecipe rarity-${rarity.id}${recipe.id === selectedCraftingRecipeId ? " active" : ""}${ownershipBlock ? " ownedLimit" : ""}" data-recipe-id="${escapeHtml(recipe.id)}" title="${escapeHtml(ownershipBlock)}"${craftingJob ? " disabled" : ""}><span>${escapeHtml(recipe.name)}</span><small>${escapeHtml(ownershipBlock || rarity.name)}</small></button>`;
   }).join("");
   const recipe = CRAFTING_RECIPES.find(entry => entry.id === selectedCraftingRecipeId) || CRAFTING_RECIPES[0];
   if (!recipe) return;
@@ -820,15 +961,18 @@ function renderCraftingWindow(message = "") {
     describeCraftingOutput(recipe.output?.items, quantity, id => findCatalogItem(id)?.name || id),
     describeCraftingOutput(recipe.output?.ammo, quantity, id => `Munitions ${id.toUpperCase()}`),
     describeCraftingOutput(recipe.output?.ships, quantity, id => findCatalogItem(recipe.catalogItemId)?.name || `Vaisseau ${id}`),
+    describeCraftingOutput(recipe.output?.drones, quantity, id => `Drone ${id.toUpperCase()}`),
+    describeCraftingOutput(recipe.output?.formations, quantity, id => `Formation ${id}`),
   ].join("");
   const baseDuration = CRAFTING_DURATION_BY_RARITY[rarity.id] || 2;
   const duration = baseDuration * (1 + Math.max(0, quantity - 1) * 0.15);
   ui.craftingDetail.innerHTML = `<div class="craftingRarity rarity-${rarity.id}">${escapeHtml(rarity.name)}</div><h3>${escapeHtml(recipe.name)}</h3><small class="craftingDuration">Temps de fabrication : ${duration.toFixed(duration % 1 ? 1 : 0)} s</small><div class="craftingColumns"><div><h4>CO&Ucirc;T</h4><ul>${costs}</ul></div><div><h4>R&Eacute;SULTAT</h4><ul>${outputs}</ul></div></div>`;
   const canAfford = Number(user.credits || 0) >= Number(recipe.costs?.credits || 0) * quantity
     && Object.entries(recipe.costs?.resources || {}).every(([id, amount]) => craftingResourceAmount(user, id) >= Number(amount) * quantity);
-  if (ui.craftingBuildBtn) ui.craftingBuildBtn.disabled = !canAfford || Boolean(craftingJob);
+  const ownershipBlock = getCraftingOwnershipBlock(user, recipe, quantity);
+  if (ui.craftingBuildBtn) ui.craftingBuildBtn.disabled = !canAfford || Boolean(craftingJob) || Boolean(ownershipBlock);
   if (ui.craftingQuantity) ui.craftingQuantity.disabled = Boolean(craftingJob);
-  if (ui.craftingMessage) ui.craftingMessage.textContent = message || (craftingJob ? "Fabrication en cours..." : canAfford ? "Prêt à fabriquer." : "Ressources insuffisantes.");
+  if (ui.craftingMessage) ui.craftingMessage.textContent = message || (craftingJob ? "Fabrication en cours..." : ownershipBlock || (canAfford ? "Prêt à fabriquer." : "Ressources insuffisantes."));
 }
 
 ui.craftingRecipes?.addEventListener("click", event => {
@@ -844,6 +988,8 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
   if (!recipe) return;
   const quantity = Math.max(1, Number(ui.craftingQuantity?.value || 1));
   const user = getCurrentUserFull();
+  const ownershipBlock = getCraftingOwnershipBlock(user, recipe, quantity);
+  if (ownershipBlock) return renderCraftingWindow(ownershipBlock);
   const canAfford = Number(user?.credits || 0) >= Number(recipe.costs?.credits || 0) * quantity
     && Object.entries(recipe.costs?.resources || {}).every(([id, amount]) => craftingResourceAmount(user, id) >= Number(amount) * quantity);
   if (!canAfford) return renderCraftingWindow("Ressources insuffisantes.");
@@ -880,6 +1026,7 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
 window.addEventListener("orbit:window-restored", event => {
   if (event.detail?.id === "craftingWindow") renderCraftingWindow();
 });
+window.addEventListener("orbit:profile-progress", () => renderCraftingWindow());
 queueMicrotask(() => renderCraftingWindow());
 
 let selectedGalaxyGateId = null;
@@ -1575,8 +1722,13 @@ function awardExperience(amount, source = "") {
   if (!account.user) loadAccountUser();
   if (!account.user) return null;
   account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0 };
-  const result = grantExperience(account.user.stats, amount);
+  const formationBonus = source === "npc" ? Number(getActiveDroneFormation(account.user).effects?.npcXpPct || 0) : 0;
+  const result = grantExperience(account.user.stats, Number(amount || 0) * (1 + formationBonus / 100));
   if (result.gained <= 0) return result;
+  for (const drone of account.user.drones?.items || []) {
+    drone.exp = Math.max(0, Number(drone.exp) || 0) + result.gained * DRONE_XP_SHARE;
+    drone.level = getDroneLevel(drone.exp);
+  }
   markProgressDirty();
   if (result.leveledUp) {
     showToast(`Niveau ${result.after.level} atteint !`, 2.6);
@@ -1591,7 +1743,8 @@ function awardHonor(amount) {
   if (!account.user) return null;
   account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
   const previousRank = getRankInfo(account.user.stats.rankPoints, account.user.stats.honor);
-  const result = grantHonor(account.user.stats, amount);
+  const formationBonus = Number(getActiveDroneFormation(account.user).effects?.honorPct || 0);
+  const result = grantHonor(account.user.stats, Number(amount || 0) * Math.max(0, 1 + formationBonus / 100));
   account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
   const nextRank = getRankInfo(account.user.stats.rankPoints, account.user.stats.honor);
   if (result.gained > 0) markProgressDirty();
@@ -1827,6 +1980,7 @@ updateCurrentUserProgress({
   quests: questState,
   stats: { ...(account.user.stats || {}) },
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
+  drones: account.user.drones,
 
   // ⚠️ Ne pas sauvegarder ship ici non plus.
   ammo: {
@@ -1980,7 +2134,8 @@ function getSpeedBreakdown() {
     }
   }
 
-  const total = Math.floor(base + genSpeed * (1 + speedPct / 100));
+  speedPct += Number(getActiveDroneFormation(u).effects?.speedPct || 0);
+  const total = Math.floor((base + genSpeed) * (1 + speedPct / 100));
 
   return {
     shipId,
@@ -2008,6 +2163,7 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
 
   const hangar = getActiveHangarFromUser(u);
   const stats = computeHangarStats(hangar, u);
+  player.dr = clamp(BASE_RUN.dr + Number(stats.formationEffects?.shieldAbsorptionPct || 0) / 100, 0, 1);
 
   // ✅ HP partagé entre les configs
   const oldHpPct =
@@ -3181,6 +3337,7 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
   const stats = computeHangarStats(hangar, u);
 
   player.dr = BASE_RUN.dr;
+  player.dr = clamp(player.dr + Number(stats.formationEffects?.shieldAbsorptionPct || 0) / 100, 0, 1);
   player.shPen = BASE_RUN.shPen + ((stats.bonusPenetrationPct || 0) / 100);
 
   const shipBaseHP = Number(pack?.hp || 1);
@@ -3429,43 +3586,9 @@ const used = [...boundKeys];
       return;
     }
 
-    if (isKeybind("ammoX1", e.code)) {
-      startAttack("x1");
-      return;
-    }
-
-    if (isKeybind("ammoX2", e.code)) {
-      startAttack("x2");
-      return;
-    }
-
-    if (isKeybind("ammoX3", e.code)) {
-      startAttack("x3");
-      return;
-    }
-
-    if (isKeybind("ammoX4", e.code)) {
-      startAttack("x4");
-      return;
-    }
-
-    if (isKeybind("ammoSAB", e.code)) {
-      startAttack("sab");
-      return;
-    }
-
-    if (isKeybind("ammoX6", e.code)) {
-      startAttack("x6");
-      return;
-    }
-
-    if (isKeybind("pulse", e.code)) {
-      usePulse();
-      return;
-    }
-
-    if (isKeybind("nuke", e.code)) {
-      useNuke();
+    for (let slotIndex = 0; slotIndex < 10; slotIndex++) {
+      if (!isKeybind(`slot${slotIndex + 1}`, e.code)) continue;
+      document.querySelectorAll("#ammoBar .actionSlot")[slotIndex]?.querySelector(".ammoBtn")?.click();
       return;
     }
   },
@@ -3547,6 +3670,18 @@ function updatePortalButtonCursor(clientX, clientY) {
 
 function isQuestModule(module) {
   return module?.questTerminal === true || String(module?.spr || "").startsWith("QUEST_");
+}
+
+function tickDroneFormationEffects(dt) {
+  if (player.dead || player.shMax <= 0) return;
+  const effects = getActiveDroneFormation(account.user).effects || {};
+  const regenPct = Number(effects.shieldRegenPct || 0);
+  const drainPct = Number(effects.shieldDrainPct || 0);
+  if (regenPct > 0) {
+    const perSecond = Math.min(Number(effects.shieldRegenCap || Infinity), player.shMax * regenPct / 100);
+    player.sh = Math.min(player.shMax, player.sh + perSecond * dt);
+  }
+  if (drainPct > 0) player.sh = Math.max(0, player.sh - player.shMax * drainPct / 100 * dt);
 }
 
 function getQuestButtonPosition(module) {
@@ -5631,7 +5766,7 @@ function killRewards(e) {
   player.credits += credits;
   const experience = getNpcExperienceReward(e, NPC_TYPES[e.type]);
   const honor = getNpcHonorReward(e, { ...NPC_TYPES[e.type], type: e.type });
-  awardExperience(experience);
+  awardExperience(experience, "npc");
   awardHonor(honor);
   const npcName = String(NPC_TYPES[e.type]?.name || e.type || "NPC").replace(/^npc_/i, "");
   addGameLog(`${npcName} détruit · +${formatInteger(credits)} crédits · +${formatInteger(experience)} XP · +${formatInteger(honor)} honneur`, "reward");
@@ -6414,7 +6549,7 @@ const life = bulletLifeForRange(playerRange, speed);
 // Elle utilise ta puissance laser comme quantité de bouclier à voler.
 const dmgShot = isSab
   ? player.baseDamage * SAB50.drainMult
-  : player.baseDamage * mult;
+  : player.baseDamage * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100);
 
   const shotMiss = Math.random() < PLAYER_SHOTS.missChance;
 
@@ -7345,6 +7480,121 @@ function startGatePortalJump(ptl, action) {
   }
 }
 
+const DIMENSIONAL_DRONE_FORMATIONS = new Set(["ring", "drill", "veteran", "dome", "wheel", "x", "wave"]);
+const STANDARD_DRONE_FORMATION_RADIUS = Math.max(
+  ...DRONE_FORMATION_LAYOUTS.standard.map(point => Math.hypot(point.x, point.y)),
+  1,
+);
+
+function getDroneFormationOffsets(count, formationId) {
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  if (!n) return [];
+  const reference = DRONE_FORMATION_LAYOUTS[formationId] || DRONE_FORMATION_LAYOUTS.standard;
+  const referenceRadius = Math.max(...reference.map(point => Math.hypot(point.x, point.y)), 1);
+  const normalizedScale = DIMENSIONAL_DRONE_FORMATIONS.has(formationId)
+    ? STANDARD_DRONE_FORMATION_RADIUS / referenceRadius
+    : 1;
+  if (reference?.length) return Array.from({length:n},(_,index)=>{
+    const sourceIndex=n===1?Math.floor(reference.length/2):Math.round(index*(reference.length-1)/(n-1));
+    const point=reference[sourceIndex];
+    // Les coordonnées viennent uniquement des dix marqueurs jaunes de l'image.
+    // Le cartouche « 3D » n'est jamais un point de formation.
+    const shipClearance = 35;
+    if (DIMENSIONAL_DRONE_FORMATIONS.has(formationId)) {
+      if (formationId === "veteran") {
+        // Les quatre branches doivent se croiser exactement au centre du vaisseau.
+        const scale = ((STANDARD_DRONE_FORMATION_RADIUS * 4) + shipClearance) / referenceRadius;
+        return { x: point.x * scale, y: point.y * scale };
+      }
+      // Chaque moitié est écartée du vaisseau sans changer son dessin interne.
+      // La réduction d'échelle compense cette marge afin de conserver la largeur standard.
+      const centerClearance = 60;
+      const scale = ((STANDARD_DRONE_FORMATION_RADIUS * 4) + shipClearance - centerClearance) / referenceRadius;
+      const clearanceX = point.x ? Math.sign(point.x) * centerClearance : 0;
+      const clearanceY = !point.x && point.y ? Math.sign(point.y) * centerClearance : 0;
+      return { x: point.x * scale + clearanceX, y: point.y * scale + clearanceY };
+    }
+    const length = Math.hypot(point.x, point.y) || 1;
+    const scale = 4 * normalizedScale;
+    return {
+      x: point.x * scale + (point.x / length) * shipClearance,
+      y: point.y * scale + (point.y / length) * shipClearance,
+    };
+  });
+  if (formationId === "ring") return Array.from({ length: n }, (_, index) => {
+    const angle = (index / n) * TAU;
+    return { x: Math.cos(angle) * 105, y: Math.sin(angle) * 72 };
+  });
+  if (["turtle","dome","ring"].includes(formationId)) return Array.from({ length: n }, (_, index) => {
+    const angle = (index / n) * TAU;
+    return { x: Math.cos(angle) * (formationId === "ring" ? 112 : 90), y: Math.sin(angle) * (formationId === "ring" ? 78 : 62) };
+  });
+  if (["barrier","wall"].includes(formationId)) return Array.from({ length: n }, (_, index) => ({ x: -88, y: (index - (n - 1) / 2) * 30 }));
+  if (formationId === "arrow") return Array.from({ length: n }, (_, index) => {
+    const side = index % 2 === 0 ? -1 : 1;
+    const rank = Math.floor(index / 2) + 1;
+    return { x: -45 - rank * 25, y: side * rank * 24 };
+  });
+  if (formationId === "diamond") return Array.from({ length: n }, (_, index) => {
+    const angle = (index / n) * TAU;
+    return { x: Math.cos(angle) * 100, y: Math.sin(angle) * 62 };
+  });
+  if (formationId === "heart") return Array.from({ length: n }, (_, index) => {
+    const t = (index / Math.max(1, n - 1)) * Math.PI * 2;
+    return { x: -65 + Math.sin(t) * 50, y: -Math.cos(t) * 42 + Math.cos(t * 2) * 16 };
+  });
+  if (["pincer","crab","butterfly"].includes(formationId)) return Array.from({ length: n }, (_, index) => {
+    const side = index % 2 === 0 ? -1 : 1;
+    const rank = Math.floor(index / 2);
+    return { x: -70 + rank * 18, y: side * (35 + rank * 18) };
+  });
+  if (["star","x","wheel"].includes(formationId)) return Array.from({ length: n }, (_, index) => {
+    const angle = (index / n) * TAU;
+    const radius = index % 2 ? 105 : 72;
+    return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius * .7 };
+  });
+  if (["double_arrow","chevron","drill","lance"].includes(formationId)) return Array.from({ length: n }, (_, index) => {
+    const side = index % 2 === 0 ? -1 : 1;
+    const rank = Math.floor(index / 2) + 1;
+    return { x: -35 - rank * 27, y: side * rank * (formationId === "double_arrow" ? 34 : 24) };
+  });
+  if (formationId === "wave") return Array.from({ length: n }, (_, index) => ({ x: -78 + index * 17, y: Math.sin(index * 1.35) * 50 }));
+  return Array.from({ length: n }, (_, index) => {
+    const angle = Math.PI * 0.55 + (index / Math.max(1, n - 1)) * Math.PI * 0.9;
+    return { x: Math.cos(angle) * 92, y: Math.sin(angle) * 64 };
+  });
+}
+
+function drawPlayerDrones() {
+  const droneState = account.user?.drones;
+  const drones = droneState?.items || [];
+  if (!drones.length) return;
+  const formation = DRONE_FORMATIONS.find(entry => entry.id === droneState.activeFormation);
+  const formationId = drones.length >= Number(formation?.minDrones || 0) ? formation?.id : "standard";
+  const offsets = getDroneFormationOffsets(drones.length, formationId);
+  // Les références montrent toujours le vaisseau orienté vers le haut.
+  // L'angle du moteur vaut -PI/2 dans cette orientation : on compense ce quart de tour.
+  const formationAngle = player.angle + Math.PI / 2;
+  const ca = Math.cos(formationAngle), sa = Math.sin(formationAngle);
+  // Les sprites des drones sont encodés dans le sens opposé aux vaisseaux.
+  const frame = ((angleToFrameIndex(player.angle, 32) + 16) % 32) + 1;
+  drones.forEach((drone, index) => {
+    const point = offsets[index];
+    const x = point.x * ca - point.y * sa;
+    const y = point.x * sa + point.y * ca;
+    const src = getDroneSpritePath(drone, frame);
+    const image = getCachedImage(src);
+    if (!isImgReady(image)) {
+      loadImage(src, { priority: true });
+      return;
+    }
+    ctx.save();
+    ctx.translate(x, y);
+    drawCenteredImage(ctx, image, 64, 56);
+    ctx.restore();
+  });
+}
+
 function tickGatePortalJumps(dt) {
   if (isZoneMap || !betweenWaves) return false;
   const completed = advanceGatePortalJumps(getInteractivePortals(), dt);
@@ -8177,6 +8427,7 @@ updatePlayerVelocity(player, { x: mx, y: my }, dt);
 
   player.iFrames = Math.max(0, player.iFrames - dt);
   tickRepair(dt);
+  tickDroneFormationEffects(dt);
   tickRepairOrbitFx(dt);
   tickCollectables(dt);
 
@@ -9168,6 +9419,7 @@ if (GAME_SETTINGS.textures) {
     const blink = player.iFrames > 0 ? Math.sin(performance.now() * 0.03) * 0.35 + 0.65 : 1;
     ctx.globalAlpha = blink;
 
+    drawPlayerDrones();
         const ok = drawPlayerBody();
     if (!ok) {
       ctx.rotate(player.angle);
@@ -9215,7 +9467,7 @@ function renderEscortPanel() {
     const shPct = clamp(escort.sh / Math.max(1, escort.shMax), 0, 1) * 100;
     const targetName = alive && escort.target ? (NPC_TYPES[escort.target.type]?.name || "Cible") : "Aucune cible";
     const status = alive ? targetName : `Retour dans ${Math.ceil(Number(escort.respawnT || 0))} s`;
-    return `<article class="escortStatus${alive ? "" : " destroyed"}"><div class="escortStatusHead"><strong>ESCORTE ${index + 1}</strong><span>${escapeHtml(status)}</span></div><div class="escortMiniBar hp"><i style="width:${hpPct}%"></i><b>${formatInteger(escort.hp)} / ${formatInteger(escort.hpMax)}</b></div><div class="escortMiniBar sh"><i style="width:${shPct}%"></i><b>${formatInteger(escort.sh)} / ${formatInteger(escort.shMax)}</b></div></article>`;
+    return `<article class="escortStatus${alive ? "" : " destroyed"}"><div class="escortStatusHead"><strong>ESCORTE ${index + 1}</strong><span>${escapeHtml(status)}</span></div><div class="escortVitals barWrap"><div class="bar hp"><i style="width:${hpPct}%"></i><span class="barValue">${formatInteger(escort.hp)} / ${formatInteger(escort.hpMax)}</span></div><div class="bar sh"><i style="width:${shPct}%"></i><span class="barValue">${formatInteger(escort.sh)} / ${formatInteger(escort.shMax)}</span></div></div></article>`;
   }).join("") : `<div class="escortEmpty">Aucune escorte engag&eacute;e dans cette Gate.</div>`;
   if (html !== lastEscortPanelHtml) {
     ui.escortWindowBody.innerHTML = html;
@@ -9572,6 +9824,7 @@ updateCurrentUserProgress({
   quests: questState,
   stats: { ...(account.user.stats || {}) },
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
+  drones: account.user.drones,
 
   // ⚠️ Ne surtout pas sauvegarder ship ici.
   // Le vaisseau actif est géré par setActiveHangar().

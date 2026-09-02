@@ -1,5 +1,6 @@
 "use strict";
 import { findCatalogItem } from "./catalog.js";
+import { getActiveDroneFormation } from "../data/drones.js";
 
 /**
  * calcule les bonus à partir d'un hangar + user.inventory.shipModules
@@ -43,6 +44,17 @@ const fit =
     }
   }
 
+  // Les équipements des drones participent aux statistiques du vaisseau.
+  // Chaque niveau après le premier améliore de 5 % uniquement l'objet porté.
+  for (const drone of user?.drones?.items || []) {
+    const levelMultiplier = 1 + Math.max(0, Math.min(4, Number(drone?.level || 1) - 1)) * 0.05;
+    for (const itemId of drone?.fit?.equipment || []) {
+      const item = itemId ? findCatalogItem(itemId) : null;
+      if (item?.module?.type === "laser") baseDamage += Number(item.module.damage || 0) * levelMultiplier;
+      if (item?.module?.type === "shield") baseShield += Number(item.module.bonusShield || 0) * levelMultiplier;
+    }
+  }
+
   // extras
   const extras = [];
   for (const itemId of (fit.extras || [])) {
@@ -59,6 +71,7 @@ const fit =
   let bonusShieldPct = 0;
   let bonusHPPct = 0;
   let bonusPenetrationPct = 0;
+  const formationEffects = getActiveDroneFormation(user).effects || {};
 
   const shipModules = Array.isArray(user?.inventory?.shipModules) 
     ? user.inventory.shipModules 
@@ -84,6 +97,12 @@ const fit =
     }
   }
 
+  bonusDamagePct += Number(formationEffects.laserDamagePct || 0);
+  bonusShieldPct += Number(formationEffects.shieldPct || 0);
+  bonusHPPct += Number(formationEffects.hpPct || 0);
+  bonusSpeedPct += Number(formationEffects.speedPct || 0);
+  bonusPenetrationPct += Number(formationEffects.penetrationPct || 0);
+
   // ✅ ÉTAPE 3 : calculer les valeurs finales
   const totalLaserDamage = baseDamage * (1 + bonusDamagePct / 100);
   const bonusSpeed = baseSpeed * (1 + bonusSpeedPct / 100);
@@ -95,6 +114,7 @@ const fit =
     bonusShield, 
     bonusHPPct,           // % à appliquer sur le HP du ship
     bonusPenetrationPct,  // % absolu de pénétration
-    extras 
+    extras,
+    formationEffects,
   };
 }

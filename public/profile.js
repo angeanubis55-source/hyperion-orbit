@@ -15,6 +15,10 @@ import {
   updateCurrentUserPseudo,
   changeCurrentUserPassword,
   changeCurrentUserFaction,
+  buyCurrentUserDrone,
+  buyCurrentUserDroneFormation,
+  setCurrentUserDroneFormation,
+  saveCurrentUserDroneFit,
 } from "../src/core/account.js";
 
 import { CATALOG, findCatalogItem } from "../src/core/catalog.js";
@@ -28,6 +32,7 @@ import { QUEST_DEFINITIONS } from "../src/data/quests.js";
 import { AMMO } from "../src/data/ammo.js";
 import { getResourceName } from "../src/data/resources.js";
 import { getItemRarity } from "../src/data/itemRarities.js";
+import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
 import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS } from "../src/data/moduleDrops.js";
 import { appendToFitSlots, compactFitDraft } from "../src/core/fitLayout.js";
 
@@ -404,6 +409,7 @@ function generateShipModule(user) {
 
 function iconForItem(it, cat) {
   if (cat === "ships") return shipPreviewSrc(it?.ship?.id, 28);
+  if (it?.icon) return it.icon;
   const itemId = it?.id;
   if (itemId && ITEM_ICONS[itemId]) return ITEM_ICONS[itemId];
   if (cat && FALLBACK_ICONS[cat]) return FALLBACK_ICONS[cat];
@@ -618,17 +624,57 @@ function buildInventorySections(u) {
     return { id: String(shipId), kind: "ship", name: pack?.name || String(shipId), quantity: 1, detail: "Vaisseau possédé" };
   });
 
+  const drones = (u?.drones?.items || []).map((drone, index) => ({
+    id: drone.id || `drone-${index}`,
+    kind: "drone",
+    drone,
+    name: `${DRONE_TYPES[drone.type]?.name || "Drone"} ${index + 1}`,
+    quantity: 1,
+    detail: `Niveau ${drone.level || 1} · ${formatNumber(Math.floor(Number(drone.exp) || 0))} XP`,
+  }));
+
+  const storedDesigns = Array.isArray(u?.drones?.designs) ? u.drones.designs : [];
+  const equippedDesigns = (u?.drones?.items || []).map(drone => drone?.fit?.ability).filter(Boolean);
+  const designs = [...storedDesigns, ...equippedDesigns].map((design, index) => {
+    const value = typeof design === "string" ? { id: design, name: design } : (design || {});
+    return {
+      id: value.id || `drone-design-${index}`,
+      kind: "droneDesign",
+      design: value,
+      name: value.name || humanizeInventoryId(value.id || "Design de drone"),
+      quantity: 1,
+      detail: "Design de drone",
+    };
+  });
+  const droneFormations = (u?.drones?.formations || []).filter(id => id !== "standard").map(id => {
+    const formation = DRONE_FORMATIONS.find(entry => entry.id === id);
+    return {
+      id: `formation-${id}`,
+      kind: "droneFormation",
+      formation,
+      name: formation?.name || humanizeInventoryId(id),
+      quantity: 1,
+      detail: "Formation de drones possédée",
+    };
+  });
+
   return [
     { id: "ammo", title: "Munitions", items: ammoItems },
     { id: "equipment", title: "Équipements", items: equipment },
     { id: "modules", title: "Modules de vaisseau", items: modules },
     { id: "ships", title: "Vaisseaux", items: ships },
+    { id: "drones", title: "Drones", items: drones },
+    { id: "drone-designs", title: "Designs de drones", items: designs },
+    { id: "drone-formations", title: "Formations de drones", items: droneFormations },
     { id: "resources", title: "Ressources", items: [...resources.values()] },
   ];
 }
 
 function inventoryItemIcon(entry) {
   if (entry.kind === "ship") return shipPreviewSrc(entry.id);
+  if (entry.kind === "drone") return getDroneSpritePath(entry.drone, 29);
+  if (entry.kind === "droneDesign") return entry.design?.icon || FALLBACK_ICON;
+  if (entry.kind === "droneFormation") return entry.formation?.icon || FALLBACK_ICON;
   if (entry.kind === "module") return moduleIconSrc(entry.module?.type, entry.module?.tier);
   if (entry.kind === "equipment") return iconForItem(entry.item, entry.category);
   if (entry.kind === "ammo") {
@@ -659,6 +705,13 @@ function inventoryTooltipText(entry) {
       lines.push(`Vitesse : ${formatNumber(pack.speed || 0)}`);
       lines.push(`Slots : ${formatNumber(pack.slots?.lasers || 0)} lasers · ${formatNumber(pack.slots?.gens || 0)} générateurs · ${formatNumber(pack.slots?.extras || 0)} extras`);
     }
+  } else if (entry.kind === "drone") {
+    lines.push(entry.detail);
+    lines.push("2 emplacements d'équipement");
+  } else if (entry.kind === "droneDesign") {
+    lines.push(entry.detail);
+  } else if (entry.kind === "droneFormation") {
+    lines.push(entry.formation?.description || entry.detail);
   } else if (entry.kind === "module") {
     if (entry.module?.shipId) lines.push(`Vaisseau : ${getShipPack(entry.module.shipId)?.name || entry.module.shipId}`);
     if (entry.detail) lines.push(entry.detail);
@@ -689,7 +742,7 @@ function renderInventory(u) {
     return expandInventorySlots({ ...section, items: matchingItems });
   });
   inventorySections.innerHTML = slots.length ? slots.map((entry) => {
-      const stacked = entry.stacked !== false && !["module", "ship", "equipment"].includes(entry.kind);
+      const stacked = entry.stacked !== false && !["module", "ship", "equipment", "drone", "droneDesign", "droneFormation"].includes(entry.kind);
       const quantity = entry.quantityLabel || inventoryQuantityLabel(entry.quantity);
       const rarity = getItemRarity(entry.id);
       entry.rarity = rarity;
@@ -1064,8 +1117,11 @@ function renderShop(user) {
   }
 
   for (const it of list) {
-    const price = Number(it.price || 0);
+    const ownedIris = user?.drones?.items?.filter(drone => drone.type === "iris").length || 0;
+    const price = it.drone?.type === "iris" ? getIrisPrice(ownedIris) : Number(it.price || 0);
     const ownedShip = shopTab === "ships" ? alreadyOwnsShip(user, it.ship?.id) : false;
+    const ownedDrone = it.drone ? (user?.drones?.items || []).filter(drone => drone.type === it.drone.type).length : 0;
+    const ownedFormation = it.formation ? user?.drones?.formations?.includes(it.formation.id) : false;
 
     const row = document.createElement("div");
     row.className = "shopRow" + (it.id === selectedShopItemId ? " active" : "");
@@ -1074,7 +1130,9 @@ function renderShop(user) {
     img.src = iconForItem(it, shopTab);
     img.alt = it.name || it.id;
     img.loading = "lazy";
-    img.style.imageRendering = shopTab === "ships" ? "pixelated" : "auto";
+    img.style.imageRendering = (shopTab === "ships" || shopTab === "drones") ? "pixelated" : "auto";
+    if (shopTab === "drones") img.classList.add("droneShopRowImage");
+    if (shopTab === "formations") img.classList.add("formationShopRowImage");
     img.onerror = () => {
       img.onerror = null;
       img.src = FALLBACK_ICON;
@@ -1087,7 +1145,9 @@ function renderShop(user) {
     title.textContent = it.name || it.id;
 
     const sub = document.createElement("span");
-    sub.innerHTML = `💰 ${formatNumber(price)} crédits` + (ownedShip ? ` • <span style="color: #00ff88;">Possédé</span>` : "");
+    sub.innerHTML = `${formatNumber(price)} crédits`
+      + (ownedShip || ownedFormation ? ` · <span style="color:#00ff88;">Possédé</span>` : "")
+      + (it.drone ? ` · ${ownedDrone}/${it.drone.type === "iris" ? 8 : 1}` : "");
 
     meta.appendChild(title);
     meta.appendChild(sub);
@@ -1419,10 +1479,16 @@ function renderExtrasRoulette(user) {
 }
 
 function renderShopPreview(user, it, cat) {
-  const price = Number(it?.price || 0);
+  const ownedIris = user?.drones?.items?.filter(drone => drone.type === "iris").length || 0;
+  const price = it?.drone?.type === "iris" ? getIrisPrice(ownedIris) : Number(it?.price || 0);
   const isShip = cat === "ships";
+  const isDrone = cat === "drones";
+  const isFormation = cat === "formations";
   const shipId = it?.ship?.id || null;
-  const owned = isShip ? alreadyOwnsShip(user, shipId) : false;
+  const droneCount = isDrone ? (user?.drones?.items || []).filter(drone => drone.type === it?.drone?.type).length : 0;
+  const droneLimit = it?.drone?.type === "iris" ? 8 : 1;
+  const formationOwned = isFormation && user?.drones?.formations?.includes(it?.formation?.id);
+  const owned = isShip ? alreadyOwnsShip(user, shipId) : isDrone ? droneCount >= droneLimit : Boolean(formationOwned);
 const counts = user?.inventory?.counts || {};
 const countOwned = Number(counts[it?.id] || 0);
 
@@ -1445,8 +1511,17 @@ if (it?.module?.type === "speed") {
     ? `<p class="shopItemStat">Absorption de bouclier <strong>${multiplier}×</strong></p>`
     : `<p class="shopItemStat">Multiplicateur de dégâts <strong>${multiplier}×</strong></p>`;
 }
+if (isFormation) {
+  const formation = DRONE_FORMATIONS.find(entry => entry.id === it?.formation?.id);
+  statLine = `<p class="shopItemStat formationDescription">${escapeHtml(formation?.description || "Aucun bonus ni malus")}</p>`;
+}
 
-if (!isShip && ammoQty) {
+if (isDrone) {
+  stockLine = `<p class="shopAmmoOwned">Drones possédés : <strong>${droneCount} / ${droneLimit}</strong></p>`;
+} else if (isFormation) {
+  const active = user?.drones?.activeFormation === it?.formation?.id;
+  stockLine = `<p class="shopAmmoOwned">${formationOwned ? (active ? "Formation active" : "Formation possédée") : `Nécessite au moins ${it?.formation?.minDrones || 4} drones`}</p>`;
+} else if (!isShip && ammoQty) {
   stockLine = `
     <p class="shopAmmoOwned">
       Munitions ${String(ammoKey).toUpperCase()} — quantité possédée :
@@ -1486,8 +1561,7 @@ if (!isShip && ammoQty) {
     `;
   } else {
     previewHtml = `
-      <img src="${imgSrc}" alt="${it?.name || it?.id}" class="bigImg" 
-           style="image-rendering: auto;" />
+      <img src="${imgSrc}" alt="${it?.name || it?.id}" class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}" />
     `;
   }
 
@@ -1503,7 +1577,7 @@ if (!isShip && ammoQty) {
       ${stockLine}
       ${statLine}
 
-      ${!isShip ? `
+      ${!isShip && !isDrone && !isFormation ? `
         <div class="shopPurchaseRow">
           <div class="shopPurchaseInfo">
             <label for="shopBuyQuantity">${isAmmo ? "Quantité à acheter × 1 000" : "Quantité à acheter"}</label>
@@ -1522,14 +1596,14 @@ if (!isShip && ammoQty) {
         </div>
       ` : ""}
       
-      ${isShip ? `<p style="margin: 12px 0; font-size: 18px;">
+      ${isShip || isDrone || isFormation ? `<p style="margin: 12px 0; font-size: 18px;">
         <strong style="color: #00d9ff;">Prix total:</strong>
         <span id="shopPurchaseTotal" style="font-weight: 900; color: #00ff88;">${formatNumber(price)}</span> crédits
       </p>` : ""}
 
       <div class="shopBuySection">
-        <button id="btnBuyPreview" class="primary" style="width: 100%;" ${(Number(user?.credits || 0) < price || owned) ? "disabled" : ""}>
-          ${owned ? 'Déjà possédé' : (isShip ? `Acheter (${formatNumber(price)})` : 'Acheter')}
+        <button id="btnBuyPreview" class="primary" style="width: 100%;" ${(Number(user?.credits || 0) < price || (owned && !formationOwned)) ? "disabled" : ""}>
+          ${formationOwned ? (user?.drones?.activeFormation === it?.formation?.id ? 'Formation active' : 'Activer la formation') : owned ? 'Déjà possédé' : ((isShip || isDrone || isFormation) ? `Acheter (${formatNumber(price)})` : 'Acheter')}
         </button>
       </div>
     </div>
@@ -1540,7 +1614,7 @@ if (!isShip && ammoQty) {
 
   const quantityInput = document.getElementById("shopBuyQuantity");
   const totalEl = document.getElementById("shopPurchaseTotal");
-  const normalizeQuantity = () => isShip
+  const normalizeQuantity = () => (isShip || isDrone || isFormation)
     ? 1
     : Math.min(999, Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
   const updatePurchaseSummary = () => {
@@ -1548,9 +1622,9 @@ if (!isShip && ammoQty) {
     const total = price * quantity;
     if (quantityInput) quantityInput.value = String(quantity);
     if (totalEl) totalEl.textContent = formatNumber(total);
-    btn.disabled = owned || Number(user?.credits || 0) < total;
+    btn.disabled = (owned && !formationOwned) || (formationOwned && user?.drones?.activeFormation === it?.formation?.id) || (!formationOwned && Number(user?.credits || 0) < total);
     if (!owned) {
-      btn.textContent = isShip ? `Acheter (${formatNumber(total)})` : "Acheter";
+      btn.textContent = (isShip || isDrone || isFormation) ? `Acheter (${formatNumber(total)})` : "Acheter";
     }
   };
 
@@ -1561,6 +1635,14 @@ if (!isShip && ammoQty) {
   btn.addEventListener("click", () => {
     const quantity = normalizeQuantity();
     const totalPrice = price * quantity;
+    if (formationOwned) {
+      const activated = setCurrentUserDroneFormation(it.formation.id);
+      if (!activated.ok) return showToast(activated.error, "error");
+      user = activated.user;
+      renderShop(user);
+      syncGameCredits();
+      return;
+    }
     if (owned || Number(user?.credits || 0) < totalPrice) return;
 
     const itemName = it?.name || it?.id;
@@ -1569,7 +1651,11 @@ if (!isShip && ammoQty) {
       '💰 Confirmer l\'achat',
       `Voulez-vous acheter ${quantity > 1 ? `${formatNumber(quantity)} × ` : ""}"${itemName}" pour ${formatNumber(totalPrice)} crédits ?`,
       () => {
-        const out = buyItem(it.id, quantity);
+        const out = isDrone
+          ? buyCurrentUserDrone(it.drone.type)
+          : isFormation
+            ? buyCurrentUserDroneFormation(it.formation.id)
+            : buyItem(it.id, quantity);
         if (!out?.ok) {
           showToast(out?.error || "Achat impossible", 'error');
           return;
@@ -1609,8 +1695,8 @@ function buildFitWindow() {
           <b id="fitShipName">—</b>
         </div>
         <div class="fitSectionNav" aria-label="Type d'équipement">
-          <button class="fitSectionBtn active" type="button">Vaisseau</button>
-          <button class="fitSectionBtn" type="button" disabled>Drones</button>
+          <button class="fitSectionBtn active" data-fit-section="ship" type="button">Vaisseau</button>
+          <button class="fitSectionBtn" data-fit-section="drones" type="button">Drones</button>
           <button class="fitSectionBtn" type="button" disabled>REX</button>
         </div>
         <div id="fitConfigBar" class="fitConfigBar">
@@ -1635,6 +1721,7 @@ function buildFitWindow() {
       </aside>
 
       <section class="fitLoadoutPane">
+        <div id="fitDroneWorkspace" class="fitDroneWorkspace" hidden></div>
         <div class="fitSlotsScroll">
           <section class="fitSlotGroup" data-slot-type="lasers">
             <div class="fitGroupTitle"><span>LASERS</span></div>
@@ -1699,6 +1786,7 @@ function buildFitWindow() {
   host.appendChild(overlay);
   const returnZone = card.querySelector(".fitInventoryPane");
   const loadoutZone = card.querySelector(".fitLoadoutPane");
+  card.querySelectorAll("[data-fit-section]").forEach(button => button.addEventListener("click", () => setFitSection(button.dataset.fitSection)));
   loadoutZone?.addEventListener("dragover", (event) => {
     if (event.dataTransfer.types.includes("application/x-orbit-slot")) return;
     event.preventDefault();
@@ -2270,7 +2358,111 @@ let fitState = {
   draft: null,
   used: null,
   slots: { lasers: 15, gens: 15, extras: 15, shipMods: 1 },
+  section: "ship",
+  droneId: null,
 };
+
+function setFitSection(section = "ship") {
+  fitState.section = section === "drones" ? "drones" : "ship";
+  document.querySelectorAll("#fitCard [data-fit-section]").forEach(button => button.classList.toggle("active", button.dataset.fitSection === fitState.section));
+  const shipSlots = document.querySelector("#fitCard .fitSlotsScroll");
+  const droneWorkspace = document.getElementById("fitDroneWorkspace");
+  const configBar = document.getElementById("fitConfigBar");
+  const inventoryPane = document.querySelector("#fitCard .fitInventoryPane");
+  const inventoryFilter = document.getElementById("fitInvFilter");
+  document.getElementById("fitCard")?.classList.toggle("droneMode", fitState.section === "drones");
+  if (shipSlots) shipSlots.hidden = fitState.section !== "ship";
+  if (droneWorkspace) droneWorkspace.hidden = fitState.section !== "drones";
+  if (configBar) configBar.hidden = fitState.section !== "ship";
+  if (inventoryPane) inventoryPane.hidden = false;
+  if (fitState.section === "drones" && inventoryFilter) inventoryFilter.value = "all";
+  if (fitState.section === "drones") renderDroneEquipment();
+  if (fitState.draft) renderInventoryPalette();
+}
+
+function renderDroneEquipmentLegacy() {
+  const root = document.getElementById("fitDroneWorkspace");
+  if (!root) return;
+  user = getCurrentUserFull();
+  const drones = user?.drones?.items || [];
+  if (!drones.length) {
+    root.innerHTML = `<div class="fitDroneEmpty">Aucun drone. Achète ton premier Iris dans la boutique.</div>`;
+    return;
+  }
+  if (!drones.some(drone => drone.id === fitState.droneId)) fitState.droneId = drones[0].id;
+  const selected = drones.find(drone => drone.id === fitState.droneId);
+  const definition = DRONE_TYPES[selected.type];
+  const nextXp = DRONE_LEVEL_XP[selected.level] ?? DRONE_LEVEL_XP.at(-1);
+  const percent = selected.level >= 5 ? 100 : Math.min(100, Math.floor((selected.exp / nextXp) * 100));
+  const slotMarkup = selected.fit.equipment.map((itemId, index) => {
+    const item = itemId ? findCatalogItem(itemId) : null;
+    return `<button class="droneFitSlot${item ? " filled" : ""}" data-drone-slot="${index}" title="${escapeHtml(item?.name || "Dépose un laser ou un bouclier")}">${item ? `<img src="${iconForItem(item)}" alt="">` : `<span>+</span>`}</button>`;
+  }).join("");
+  root.innerHTML = `
+    <div class="droneRoster">${drones.map((drone, index) => `<button class="droneRosterItem${drone.id === selected.id ? " active" : ""}" data-drone-id="${drone.id}"><img src="${getDroneSpritePath(drone, 1)}" alt=""><span>${DRONE_TYPES[drone.type].name} ${index + 1}</span><small>Niveau ${drone.level}</small></button>`).join("")}</div>
+    <div class="droneFitDetail">
+      <header><img src="${getDroneSpritePath(selected, 1)}" alt=""><div><strong>${definition.name}</strong><span>Niveau ${selected.level} · ${formatNumber(Math.floor(selected.exp))} XP</span></div></header>
+      <div class="droneXp"><i style="width:${percent}%"></i></div>
+      <h4>ÉQUIPEMENT DU DRONE</h4><div class="droneFitSlots">${slotMarkup}</div>
+      <h4>CAPACITÉ / DESIGN</h4><button class="droneAbilitySlot" data-drone-ability>${selected.fit.ability ? escapeHtml(selected.fit.ability) : "Emplacement réservé aux designs Havoc, Hercules et Spartan"}</button>
+      <p>Glisse un laser ou un générateur de bouclier depuis l’inventaire. Double-clique sur un équipement pour le retirer.</p>
+    </div>`;
+  root.querySelectorAll("[data-drone-id]").forEach(button => button.onclick = () => { fitState.droneId = button.dataset.droneId; renderDroneEquipment(); });
+  root.querySelectorAll("[data-drone-slot]").forEach(slot => {
+    slot.addEventListener("dragover", event => { event.preventDefault(); slot.classList.add("dragTarget"); });
+    slot.addEventListener("dragleave", () => slot.classList.remove("dragTarget"));
+    slot.addEventListener("drop", event => {
+      event.preventDefault(); slot.classList.remove("dragTarget");
+      const itemId = event.dataTransfer.getData("text/plain");
+      const type = findCatalogItem(itemId)?.module?.type;
+      if (type !== "laser" && type !== "shield") return showFitError("Un drone accepte uniquement un laser ou un bouclier.");
+      const usage = computeUsage(fitState.draft)[itemId] || 0;
+      if (usage >= ownedCount(user, itemId)) return showFitError("Tous les exemplaires de cet objet sont déjà équipés.");
+      const fresh = getCurrentUserFull();
+      const drone = fresh?.drones?.items?.find(entry => entry.id === fitState.droneId);
+      if (!drone) return;
+      drone.fit.equipment[Number(slot.dataset.droneSlot)] = itemId;
+      const saved = saveCurrentUserDroneFit(drone.id, drone.fit);
+      if (!saved.ok) return showFitError(saved.error);
+      user = saved.user; showFitError(""); renderDroneEquipment(); renderInventoryPalette();
+    });
+    slot.addEventListener("dblclick", () => {
+      const fresh = getCurrentUserFull();
+      const drone = fresh?.drones?.items?.find(entry => entry.id === fitState.droneId);
+      if (!drone) return;
+      drone.fit.equipment[Number(slot.dataset.droneSlot)] = null;
+      saveCurrentUserDroneFit(drone.id, drone.fit); renderDroneEquipment(); renderInventoryPalette();
+    });
+  });
+}
+
+function renderDroneEquipment() {
+  const root = document.getElementById("fitDroneWorkspace");
+  if (!root) return;
+  user = getCurrentUserFull();
+  const drones = user?.drones?.items || [];
+  if (!drones.length) { root.innerHTML = `<div class="fitDroneEmpty">Aucun drone. Achète ton premier Iris dans la boutique.</div>`; return; }
+  root.innerHTML = `<div class="droneCards">${drones.map((drone,index)=>{
+    const type=DRONE_TYPES[drone.type]; const next=DRONE_LEVEL_XP[drone.level]??DRONE_LEVEL_XP.at(-1);
+    const pct=drone.level>=5?100:Math.min(100,Math.floor(drone.exp/next*100));
+    const slots=drone.fit.equipment.map((id,slotIndex)=>{const item=id?findCatalogItem(id):null;return `<button class="droneFitSlot${item?" filled":""}" data-drone-id="${drone.id}" data-drone-slot="${slotIndex}" title="${escapeHtml(item?.name||"Dépose un laser ou un bouclier")}">${item?`<img src="${iconForItem(item)}" alt="">`:`<span>+</span>`}</button>`}).join("");
+    const xpText=drone.level>=5?"Niveau maximal":`${formatNumber(Math.floor(drone.exp))} XP / ${formatNumber(next)} XP`;
+    return `<article class="droneEquipmentCard"><img class="droneCardSprite" src="${getDroneSpritePath(drone,29)}" alt=""><div class="droneCardIdentity"><strong>${type.name} ${index+1}</strong><span>Niveau ${drone.level} · ${xpText}</span></div><div class="droneCardAbility"><label>DESIGN</label><button class="droneDesignSlot" title="${drone.fit.ability?escapeHtml(drone.fit.ability):"Design vide"}">${drone.fit.ability?escapeHtml(drone.fit.ability):"+"}</button></div><div class="droneCardSlots"><label>ÉQUIPEMENT</label><div>${slots}</div></div>${drone.level>=5?"":`<div class="droneXp"><i style="width:${pct}%"></i></div>`}</article>`;
+  }).join("")}</div>`;
+  root.querySelectorAll("[data-drone-slot]").forEach(slot=>{
+    slot.addEventListener("dragover",event=>{event.preventDefault();slot.classList.add("dragTarget")});
+    slot.addEventListener("dragleave",()=>slot.classList.remove("dragTarget"));
+    slot.addEventListener("drop",event=>{
+      event.preventDefault();slot.classList.remove("dragTarget");const itemId=event.dataTransfer.getData("text/plain");const type=findCatalogItem(itemId)?.module?.type;
+      if(type!=="laser"&&type!=="shield")return showFitError("Un drone accepte uniquement un laser ou un bouclier.");
+      if((computeUsage(fitState.draft)[itemId]||0)>=ownedCount(user,itemId))return showFitError("Tous les exemplaires sont déjà équipés.");
+      const fresh=getCurrentUserFull();const drone=fresh?.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);if(!drone)return;
+      drone.fit.equipment[Number(slot.dataset.droneSlot)]=itemId;const saved=saveCurrentUserDroneFit(drone.id,drone.fit);if(!saved.ok)return showFitError(saved.error);
+      user=saved.user;showFitError("");renderDroneEquipment();renderInventoryPalette();
+    });
+    slot.addEventListener("dblclick",()=>{const fresh=getCurrentUserFull();const drone=fresh?.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);if(!drone)return;drone.fit.equipment[Number(slot.dataset.droneSlot)]=null;saveCurrentUserDroneFit(drone.id,drone.fit);renderDroneEquipment();renderInventoryPalette();});
+  });
+}
 
 function clearFitSelection() {
   fitState.selectedItemId = null;
@@ -2334,6 +2526,28 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
   if (!selected.length && fitState.selectedItemId) selected.push(fitState.selectedItemId);
   if (!selected.length) return 0;
 
+  if (fitState.section === "drones") {
+    let added = 0;
+    for (const itemId of selected) {
+      const moduleType = findCatalogItem(itemId)?.module?.type;
+      if (moduleType !== "laser" && moduleType !== "shield") continue;
+      const fresh = getCurrentUserFull();
+      const drone = fresh?.drones?.items?.find(entry => (entry.fit?.equipment || []).some(value => !value));
+      if (!drone) break;
+      const equipment = [...drone.fit.equipment];
+      equipment[equipment.findIndex(value => !value)] = itemId;
+      const saved = saveCurrentUserDroneFit(drone.id, { ...drone.fit, equipment });
+      if (!saved.ok) break;
+      user = saved.user;
+      added++;
+    }
+    clearFitSelection();
+    showFitError(added ? "" : "Aucun emplacement de drone disponible");
+    renderDroneEquipment();
+    renderInventoryPalette();
+    return added;
+  }
+
   compactCurrentFit();
   let added = 0;
   for (const slotType of ["lasers", "gens", "extras"]) {
@@ -2385,6 +2599,7 @@ function showFitError(text) {
 function computeUsage(draft) {
   const map = Object.create(null);
   const all = [...draft.lasers, ...draft.gens, ...draft.extras, ...(draft.shipMods || [])];
+  for (const drone of user?.drones?.items || []) all.push(...(drone.fit?.equipment || []));
   for (const id of all) {
     if (!id) continue;
     map[id] = (map[id] || 0) + 1;
@@ -2590,7 +2805,8 @@ function renderInventoryPalette() {
   const entries = Object.entries(counts)
     .map(([itemId, cnt]) => ({ itemId, cnt: Number(cnt || 0), it: findCatalogItem(itemId) }))
     .filter((x) => x.cnt > 0 && x.it?.module)
-    .filter((x) => x.it?.module?.type !== "ammo");
+    .filter((x) => x.it?.module?.type !== "ammo")
+    .filter((x) => fitState.section !== "drones" || ["laser", "shield"].includes(x.it?.module?.type));
 
   const filtered = entries.filter((e) => {
     const t = e.it?.module?.type;
@@ -3195,6 +3411,7 @@ function openFitModal(hangarId) {
 
   fitState.hangarId = hangarId;
   clearFitSelection();
+  setFitSection("ship");
 
  fitState.configNo = Number(h.activeConfig) === 2 ? 2 : 1;
 fitState.slots = getShipSlots(h.shipId);

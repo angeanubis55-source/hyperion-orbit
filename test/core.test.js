@@ -47,6 +47,7 @@ import { getZonePortals as getMmoQzPortals } from "../maps/1-7/Spawns.js";
 import { getZonePortals as getEicQzPortals } from "../maps/2-7/Spawns.js";
 import { getZonePortals as getVruQzPortals } from "../maps/3-7/Spawns.js";
 import { CATALOG } from "../src/core/catalog.js";
+import { createDrone, DRONE_FORMATIONS, getDroneLevel, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
 import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_TIER_WEIGHTS } from "../src/data/moduleDrops.js";
 import { appendToFitSlots, compactFitArray, compactFitDraft } from "../src/core/fitLayout.js";
 import {
@@ -1235,4 +1236,24 @@ test("un groupe d'équipements remplit les slots de gauche à droite", () => {
   const result = appendToFitSlots(["lf4", null, null, null], ["lf3", "lf2", "lf1"], 4);
   assert.equal(result.added, 3);
   assert.deepEqual(result.values, ["lf4", "lf3", "lf2", "lf1"]);
+});
+
+test("les drones suivent le prix progressif, les niveaux et leurs sprites", () => {
+  assert.equal(getIrisPrice(0), 15000000);
+  assert.equal(getIrisPrice(1), 30000000);
+  assert.equal(getIrisPrice(7), 1920000000);
+  assert.equal(getDroneLevel(0), 1);
+  assert.equal(getDroneLevel(750000), 5);
+  const drone = createDrone("iris", "iris_test");
+  assert.equal(drone.fit.equipment.length, 2);
+  assert.match(getDroneSpritePath({ ...drone, level: 5 }, 32), /Iris_lvl_4\/32\.png$/);
+  assert.ok(DRONE_FORMATIONS.every(formation => formation.id === "standard" || formation.minDrones === 4));
+  assert.equal(DRONE_FORMATIONS.length, 21);
+  assert.equal(DRONE_FORMATIONS.find(formation => formation.id === "drill")?.effects.laserDamagePct, 20);
+});
+
+test("le catalogue expose les Iris, Apis, Zeus et les formations", () => {
+  assert.equal(CATALOG.drones.length, 3);
+  assert.ok(CATALOG.drones.some(item => item.drone?.type === "zeus" && item.price === 500000000));
+  assert.equal(CATALOG.formations.length, DRONE_FORMATIONS.filter(formation => formation.price > 0).length);
 });

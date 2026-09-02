@@ -1530,4 +1530,85 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
   background: rgba(101, 223, 245, .34) !important;
   box-shadow: 0 0 5px rgba(101, 223, 245, .10) !important;
 }
+
+#fitCard .fitDroneWorkspace {
+  height: 100%; min-height: 0; padding: 12px; box-sizing: border-box;
+  display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 12px;
+  overflow: hidden; background: #07141e;
+}
+#fitCard .fitDroneWorkspace[hidden] { display: none !important; }
+#fitCard .droneRoster { min-height: 0; display: grid; align-content: start; gap: 6px; overflow-y: auto; }
+#fitCard .droneRosterItem { min-height: 54px; display: grid; grid-template-columns: 42px 1fr; grid-template-rows: 1fr 1fr; align-items: center; gap: 0 8px; text-align: left; }
+#fitCard .droneRosterItem img { width: 40px; height: 40px; grid-row: 1 / -1; object-fit: contain; image-rendering: pixelated; }
+#fitCard .droneRosterItem span { color: #eafaff; font-size: 10px; font-weight: 900; }
+#fitCard .droneRosterItem small { color: #7eacbc; font-size: 8px; }
+#fitCard .droneRosterItem.active { border-color: #6ee7fa !important; background: #0d4052 !important; }
+#fitCard .droneFitDetail { min-width: 0; padding: 18px; border: 1px solid rgba(105,233,255,.16); background: linear-gradient(145deg,#0a1e2b,#06121c); }
+#fitCard .droneFitDetail header { display: flex; align-items: center; gap: 14px; padding-bottom: 12px; border-bottom: 1px solid rgba(105,233,255,.14); }
+#fitCard .droneFitDetail header img { width: 74px; height: 74px; object-fit: contain; image-rendering: pixelated; }
+#fitCard .droneFitDetail header div { display: grid; gap: 5px; }
+#fitCard .droneFitDetail header strong { color: #effcff; font-size: 18px; }
+#fitCard .droneFitDetail header span, #fitCard .droneFitDetail p { color: #789cac; font-size: 9px; }
+#fitCard .droneXp { height: 7px; margin: 12px 0 18px; overflow: hidden; border: 1px solid #16445a; background: #041019; }
+#fitCard .droneXp i { display: block; height: 100%; background: linear-gradient(90deg,#16a9ca,#75edff); }
+#fitCard .droneFitDetail h4 { margin: 15px 0 8px; color: #7fdff0; font-size: 9px; letter-spacing: 1px; }
+#fitCard .droneFitSlots { display: flex; gap: 10px; }
+#fitCard .droneFitSlot, #fitCard .droneAbilitySlot { border: 1px solid rgba(105,233,255,.22); background: #06121c; }
+#fitCard .droneFitSlot { width: 64px; height: 64px; display: grid; place-items: center; }
+#fitCard .droneFitSlot img { width: 88%; height: 88%; object-fit: contain; }
+#fitCard .droneFitSlot span { color: #346377; font-size: 24px; }
+#fitCard .droneFitSlot.dragTarget { border-color: #70e7fa; background: rgba(20,154,182,.22); }
+#fitCard .droneAbilitySlot { width: 100%; min-height: 48px; color: #789cac; font-size: 9px; text-align: left; }
+#fitCard .fitDroneEmpty { place-self: center; color: #789cac; }
+#fitCard .fitDroneWorkspace { display:block; overflow-y:auto; }
+#fitCard .droneCards { display:grid; gap:10px; }
+#fitCard .droneEquipmentCard { min-height:92px; padding:10px 12px; display:grid; grid-template-columns:82px minmax(150px,1fr) auto minmax(180px,.8fr); align-items:center; gap:14px; border:1px solid rgba(105,233,255,.17); border-radius:5px; background:linear-gradient(100deg,#0a1e2b,#06121c); }
+#fitCard .droneCardSprite { width:74px; height:66px; object-fit:contain; image-rendering:pixelated; }
+#fitCard .droneCardIdentity { display:grid; gap:5px; }
+#fitCard .droneCardIdentity strong { color:#effcff; font-size:13px; }
+#fitCard .droneCardIdentity span { color:#789cac; font-size:9px; }
+#fitCard .droneCardIdentity .droneXp { width:100%; margin:2px 0 0; }
+#fitCard .droneCardSlots, #fitCard .droneCardAbility { display:grid; gap:6px; }
+#fitCard .droneCardSlots label, #fitCard .droneCardAbility label { color:#70dceb; font-size:8px; font-weight:900; letter-spacing:1px; }
+#fitCard .droneCardSlots>div { display:flex; gap:8px; }
+#fitCard .droneCardAbility .droneAbilitySlot { min-width:180px; }
+#fitCard .droneGlobalHint { margin:10px 2px 0; color:#789cac; font-size:9px; text-align:center; }
+body #profileOverlay .droneShopImage { width:74px !important; height:66px !important; object-fit:contain !important; image-rendering:pixelated !important; transform:scale(1.12); }
+body #profileOverlay .formationShopImage { width:min(420px,90%) !important; height:190px !important; object-fit:contain !important; image-rendering:auto !important; }
+body #profileOverlay .formationDescription { line-height:1.55; color:#d8c17c; }
+body #profileOverlay .shopRow img.droneShopRowImage { width:58px !important; height:52px !important; padding:0 !important; image-rendering:pixelated !important; }
+body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important; height:48px !important; padding:0 !important; object-fit:contain !important; }
+#fitCard.droneMode .fitLoadoutPane { grid-column:1 / -1 !important; }
+#fitCard .fitInventoryPane[hidden] { display:none !important; }
+#fitCard .droneEquipmentCard { grid-template-columns:82px minmax(170px,1fr) auto auto; grid-template-rows:auto 11px; }
+#fitCard .droneFitSlot, #fitCard .droneDesignSlot { width:56px !important; height:56px !important; min-width:56px; padding:3px; display:grid; place-items:center; box-sizing:border-box; border:1px solid rgba(105,233,255,.22); border-radius:3px; color:#346377; background:#06121c; }
+#fitCard .droneDesignSlot { font-size:22px; }
+#fitCard .droneCardAbility { padding-right:14px; border-right:1px solid rgba(105,233,255,.18); }
+#fitCard .droneEquipmentCard>.droneXp { grid-column:1 / -1; position:relative; width:100%; height:9px; margin:5px 0 0; overflow:visible; }
+#fitCard .droneEquipmentCard>.droneXp span { position:absolute; inset:0; display:grid; place-items:center; color:#eaffff; font-size:7px; font-weight:900; line-height:9px; text-shadow:0 1px 2px #000; }
+#fitCard .droneInventoryTray { margin-top:10px; padding:9px; border:1px solid rgba(105,233,255,.14); background:#06121c; }
+#fitCard .droneInventoryTray>label { display:block; margin-bottom:7px; color:#70dceb; font-size:8px; font-weight:900; letter-spacing:1px; }
+#fitCard .droneInventoryTray>div { display:flex; gap:7px; overflow-x:auto; }
+#fitCard .droneInventoryTray button { position:relative; flex:0 0 50px; width:50px; height:50px; padding:3px; }
+#fitCard .droneInventoryTray img { width:100%; height:100%; object-fit:contain; }
+#fitCard .droneInventoryTray button span { position:absolute; right:3px; bottom:2px; color:#ffd56b; font-size:8px; }
 #confirmMessage { white-space: pre-line !important; }
+
+/* Drones : même composition que l'équipement du vaisseau, inventaire à droite. */
+#fitCard.droneMode .fitLoadoutPane{grid-column:1 !important;grid-row:2 !important}
+#fitCard.droneMode .fitInventoryPane{display:flex !important;grid-column:2 !important;grid-row:2 !important}
+#fitCard.droneMode .fitSlotsScroll{display:none !important}
+#fitCard:not(.droneMode) .fitDroneWorkspace{display:none !important}
+#fitCard.droneMode .fitModulesHeading,
+#fitCard.droneMode .fitShipModules{display:none !important}
+#fitCard.droneMode .fitDroneWorkspace{display:block !important;height:100% !important;padding:10px !important;overflow-y:auto !important;background:transparent !important}
+#fitCard.droneMode .droneCards{display:grid !important;gap:8px !important}
+#fitCard.droneMode .droneEquipmentCard{min-height:108px !important;padding:10px 12px !important;grid-template-columns:72px minmax(150px,1fr) auto auto !important;grid-template-rows:minmax(70px,auto) 11px !important;gap:10px !important;border-radius:3px !important;background:linear-gradient(100deg,#0a1e2b,#071722) !important}
+#fitCard.droneMode .droneCardSprite{width:64px !important;height:56px !important}
+#fitCard.droneMode .droneCardIdentity strong{font-size:12px !important}
+#fitCard.droneMode .droneCardAbility{padding-right:12px !important;border-right:1px solid rgba(105,233,255,.22) !important}
+#fitCard.droneMode .droneFitSlot,
+#fitCard.droneMode .droneDesignSlot{width:52px !important;height:52px !important;min-width:52px !important;border-radius:3px !important}
+#fitCard.droneMode .droneEquipmentCard>.droneXp{grid-column:1 / -1 !important;align-self:end !important;height:9px !important;margin:2px 0 0 !important}
+#fitCard.droneMode .droneGlobalHint,
+#fitCard.droneMode .droneInventoryTray{display:none !important}

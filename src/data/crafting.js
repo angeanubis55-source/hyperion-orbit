@@ -37,6 +37,10 @@ function recipeFromCatalog(item) {
   const rarity = rarityForCatalogItem(item);
   const output = item?.ship?.id
     ? { ships: { [item.ship.id]: 1 } }
+    : item?.drone?.type
+      ? { drones: { [item.drone.type]: 1 } }
+      : item?.formation?.id
+        ? { formations: { [item.formation.id]: 1 } }
     : item?.give?.ammo
       ? { ammo: { ...item.give.ammo } }
       : { items: { [item.id]: 1 } };

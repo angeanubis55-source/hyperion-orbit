@@ -72,13 +72,9 @@
 
     <div id="gygerimStatus" class="panel" aria-label="État du boss">
       <div id="bossStatusTitle" class="gygerimTitle">BOSS</div>
-      <div class="gygerimResource hp">
-        <span>VIE</span><strong id="gygerimHpTxt">0 / 0</strong>
-        <div><i id="gygerimHpBar"></i></div>
-      </div>
-      <div class="gygerimResource sh">
-        <span>BOUCLIER</span><strong id="gygerimShTxt">0 / 0</strong>
-        <div><i id="gygerimShBar"></i></div>
+      <div class="bossVitals barWrap">
+        <div class="bar hp"><i id="gygerimHpBar"></i><span class="barValue" id="gygerimHpTxt">0 / 0</span></div>
+        <div class="bar sh"><i id="gygerimShBar"></i><span class="barValue" id="gygerimShTxt">0 / 0</span></div>
       </div>
     </div>
 
@@ -176,20 +172,20 @@
               <button class="keyBindRow" data-bind-action="respawn" type="button"><span>Réapparaître si mort</span><kbd data-bind-value="respawn">R</kbd></button>
             </div>
 
-            <div class="settingsKeyGroup">
-              <div class="settingsSectionSub">Munitions</div>
-              <button class="keyBindRow" data-bind-action="ammoX1" type="button"><span>Munition X1</span><kbd data-bind-value="ammoX1">1</kbd></button>
-              <button class="keyBindRow" data-bind-action="ammoX2" type="button"><span>Munition X2</span><kbd data-bind-value="ammoX2">2</kbd></button>
-              <button class="keyBindRow" data-bind-action="ammoX3" type="button"><span>Munition X3</span><kbd data-bind-value="ammoX3">3</kbd></button>
-              <button class="keyBindRow" data-bind-action="ammoX4" type="button"><span>Munition X4</span><kbd data-bind-value="ammoX4">4</kbd></button>
-              <button class="keyBindRow" data-bind-action="ammoSAB" type="button"><span>Munition SAB</span><kbd data-bind-value="ammoSAB">5</kbd></button>
-              <button class="keyBindRow" data-bind-action="ammoX6" type="button"><span>Munition X6</span><kbd data-bind-value="ammoX6">6</kbd></button>
-            </div>
-
-            <div class="settingsKeyGroup">
-              <div class="settingsSectionSub">Compétences</div>
-              <button class="keyBindRow" data-bind-action="pulse" type="button"><span>I.E.M</span><kbd data-bind-value="pulse">7</kbd></button>
-              <button class="keyBindRow" data-bind-action="nuke" type="button"><span>Bombe</span><kbd data-bind-value="nuke">8</kbd></button>
+            <div class="settingsKeyGroup settingsSlotKeyGroup">
+              <div class="settingsSectionSub">Barre rapide</div>
+              <div class="settingsSlotKeys">
+                <button class="keyBindRow" data-bind-action="slot1" type="button"><span>Slot 1</span><kbd data-bind-value="slot1">1</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot2" type="button"><span>Slot 2</span><kbd data-bind-value="slot2">2</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot3" type="button"><span>Slot 3</span><kbd data-bind-value="slot3">3</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot4" type="button"><span>Slot 4</span><kbd data-bind-value="slot4">4</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot5" type="button"><span>Slot 5</span><kbd data-bind-value="slot5">5</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot6" type="button"><span>Slot 6</span><kbd data-bind-value="slot6">6</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot7" type="button"><span>Slot 7</span><kbd data-bind-value="slot7">7</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot8" type="button"><span>Slot 8</span><kbd data-bind-value="slot8">8</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot9" type="button"><span>Slot 9</span><kbd data-bind-value="slot9">9</kbd></button>
+                <button class="keyBindRow" data-bind-action="slot10" type="button"><span>Slot 10</span><kbd data-bind-value="slot10">0</kbd></button>
+              </div>
             </div>
           </div>
           <div class="settingsPageFooter">
@@ -573,8 +569,10 @@
             <button class="subtabBtn" data-shop="speedGen">Vitesse</button>
             <button class="subtabBtn" data-shop="shieldGen">Bouclier</button>
             <button class="subtabBtn" data-shop="lasers">Lasers</button>
-            <button class="subtabBtn" data-shop="extras">Extras</button>
+            <button class="subtabBtn" data-shop="extras">Modules</button>
             <button class="subtabBtn" data-shop="ships">Vaisseaux</button>
+            <button class="subtabBtn" data-shop="drones">Drones</button>
+            <button class="subtabBtn" data-shop="formations">Formations</button>
           </div>
 
           <div class="shopLayout">

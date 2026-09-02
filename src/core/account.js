@@ -9,6 +9,7 @@ import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./factions.
 import { compactFitDraft } from "./fitLayout.js";
 import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./galaxyGates.js";
 import { getCraftingRecipe } from "../data/crafting.js";
+import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../data/drones.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -212,6 +213,28 @@ function ensureUserShape(u) {
     u.stats.npcKills = {};
     u.stats.npcKillBreakdownVersion = NPC_KILL_BREAKDOWN_VERSION;
   }
+
+  if (!u.drones || typeof u.drones !== "object") u.drones = {};
+  if (!Array.isArray(u.drones.items)) u.drones.items = [];
+  u.drones.items = u.drones.items.filter(drone => DRONE_TYPES[drone?.type]).map((drone, index) => {
+    const definition = DRONE_TYPES[drone.type];
+    const exp = Math.max(0, Number(drone.exp) || 0);
+    const fit = drone.fit && typeof drone.fit === "object" ? drone.fit : {};
+    return {
+      id: String(drone.id || `drone_${u.id}_${index}`), type: drone.type, exp,
+      level: getDroneLevel(exp),
+      fit: { equipment: normalizeArraySize(fit.equipment, definition.slots), ability: fit.ability || null },
+    };
+  });
+  if (!Array.isArray(u.drones.formations)) u.drones.formations = [];
+  u.drones.formations = [...new Set(u.drones.formations.filter(id => DRONE_FORMATIONS.some(formation => formation.id === id)))];
+  if (!Array.isArray(u.drones.designs)) u.drones.designs = [];
+  u.drones.designs = u.drones.designs
+    .filter(design => typeof design === "string" || (design && typeof design === "object"))
+    .map(design => typeof design === "string" ? design : structuredClone(design));
+  if (!u.drones.formations.includes("standard")) u.drones.formations.unshift("standard");
+  if (!u.drones.activeFormation || !u.drones.formations.includes(u.drones.activeFormation)) u.drones.activeFormation = "standard";
+  u.drones.lastFormationChangeAt = Math.max(0, Number(u.drones.lastFormationChangeAt) || 0);
   for (const [type, count] of Object.entries(u.stats.npcKills)) {
     u.stats.npcKills[type] = Math.max(0, Math.floor(Number(count) || 0));
   }
@@ -643,6 +666,7 @@ export function updateCurrentUserProgress(patch = {}) {
       .map(([resourceId, quantity]) => [String(resourceId), Math.max(0, Math.floor(Number(quantity) || 0))])
       .filter(([, quantity]) => quantity > 0));
   }
+  if (patch.drones && typeof patch.drones === "object") u.drones = structuredClone(patch.drones);
 
   if (patch.stats && typeof patch.stats === "object") {
     u.stats ??= {};
@@ -747,6 +771,73 @@ export function buyItem(itemId, requestedQuantity = 1) {
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u, quantity, totalPrice: price };
+}
+
+export function buyCurrentUserDrone(type) {
+  const u = getCurrentUserFull();
+  const definition = DRONE_TYPES[type];
+  if (!u || !definition) return { ok: false, error: "Drone introuvable." };
+  const owned = u.drones.items.filter(drone => drone.type === type).length;
+  if (owned >= definition.maxOwned) return { ok: false, error: `Limite de ${definition.maxOwned} ${definition.name} atteinte.` };
+  const price = type === "iris" ? getIrisPrice(owned) : SPECIAL_DRONE_PRICE;
+  if (u.credits < price) return { ok: false, error: "Crédits insuffisants." };
+  u.credits -= price;
+  const drone = createDrone(type, `drone_${uuid()}`);
+  u.drones.items.push(drone);
+  saveUser(u);
+  return { ok: true, user: u, drone, price };
+}
+
+export function buyCurrentUserDroneFormation(formationId) {
+  const u = getCurrentUserFull();
+  const formation = DRONE_FORMATIONS.find(entry => entry.id === formationId);
+  if (!u || !formation) return { ok: false, error: "Formation introuvable." };
+  if (u.drones.formations.includes(formation.id)) return { ok: false, error: "Formation déjà possédée." };
+  if (u.credits < formation.price) return { ok: false, error: "Crédits insuffisants." };
+  u.credits -= formation.price;
+  u.drones.formations.push(formation.id);
+  saveUser(u);
+  return { ok: true, user: u, formation, price: formation.price };
+}
+
+export function setCurrentUserDroneFormation(formationId) {
+  const u = getCurrentUserFull();
+  const formation = DRONE_FORMATIONS.find(entry => entry.id === formationId);
+  if (!u || !formation || !u.drones.formations.includes(formationId)) return { ok: false, error: "Formation non possédée." };
+  if (u.drones.items.length < formation.minDrones) return { ok: false, error: `Il faut au moins ${formation.minDrones} drones.` };
+  const cooldownLeft = 2000 - (Date.now() - u.drones.lastFormationChangeAt);
+  if (cooldownLeft > 0) return { ok: false, error: `Formation disponible dans ${(cooldownLeft / 1000).toFixed(1)} s.` };
+  u.drones.activeFormation = formationId;
+  u.drones.lastFormationChangeAt = Date.now();
+  saveUser(u);
+  return { ok: true, user: u, formation };
+}
+
+export function saveCurrentUserDroneFit(droneId, fit) {
+  const u = getCurrentUserFull();
+  const drone = u?.drones?.items?.find(entry => entry.id === droneId);
+  const definition = drone ? DRONE_TYPES[drone.type] : null;
+  if (!u || !drone || !definition) return { ok: false, error: "Drone introuvable." };
+  const equipment = Array.from({ length: definition.slots }, (_, index) => fit?.equipment?.[index] || null);
+  drone.fit = { equipment, ability: fit?.ability || null };
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, drone };
+}
+
+export function grantCurrentUserDroneExperience(amount) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  const gained = Math.max(0, Number(amount) || 0) * 0.05;
+  const levelUps = [];
+  for (const drone of u.drones.items) {
+    const before = drone.level;
+    drone.exp += gained;
+    drone.level = getDroneLevel(drone.exp);
+    if (drone.level > before) levelUps.push({ id: drone.id, level: drone.level });
+  }
+  saveUser(u);
+  return { ok: true, user: u, gained, levelUps };
 }
 
 export function spinCurrentUserGalaxyGate(gateId, count = 1, rng = Math.random) {
@@ -1202,6 +1293,14 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
   for (const shipId of Object.keys(recipe.output?.ships || {})) {
     if (u.inventory?.ships?.includes(shipId)) return { ok: false, error: "Ce vaisseau est déjà possédé." };
   }
+  for (const [type, unitAmount] of Object.entries(recipe.output?.drones || {})) {
+    const definition = DRONE_TYPES[type];
+    const owned = u.drones.items.filter(drone => drone.type === type).length;
+    if (!definition || owned + Number(unitAmount || 0) * quantity > definition.maxOwned) return { ok: false, error: `Limite de drones ${definition?.name || type} dépassée.` };
+  }
+  for (const formationId of Object.keys(recipe.output?.formations || {})) {
+    if (u.drones.formations.includes(formationId)) return { ok: false, error: "Formation déjà possédée." };
+  }
   const creditCost = Math.max(0, Number(recipe.costs?.credits || 0)) * quantity;
   if (Number(u.credits || 0) < creditCost) return { ok: false, error: "Crédits insuffisants." };
 
@@ -1228,6 +1327,11 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
     u.inventory.ships.push(shipId);
     if (!u.hangars.some(hangar => hangar?.shipId === shipId)) u.hangars.push(makeHangar(shipId, false));
   }
+  for (const [type, unitAmount] of Object.entries(recipe.output?.drones || {})) {
+    const count = Number(unitAmount || 0) * quantity;
+    for (let index = 0; index < count; index++) u.drones.items.push(createDrone(type, `drone_${uuid()}`));
+  }
+  for (const formationId of Object.keys(recipe.output?.formations || {})) u.drones.formations.push(formationId);
   u.ammo ??= defaultAmmo();
   for (const [ammoId, unitAmount] of Object.entries(recipe.output?.ammo || {})) {
     if (ammoId !== "x1") u.ammo[ammoId] = Math.max(0, Number(u.ammo[ammoId] || 0) + Number(unitAmount || 0) * quantity);
