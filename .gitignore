@@ -15,6 +15,5 @@ Thumbs.db
 .env.*
 !.env.example
 
-# Large launcher data files
-.launcher-profile/ProvenanceData/
-.launcher-profile/component_crx_cache/
+# Large launcher data files (Edge browser profile, regenerated on each launch)
+.launcher-profile/

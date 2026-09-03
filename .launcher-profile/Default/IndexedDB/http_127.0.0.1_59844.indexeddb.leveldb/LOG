@@ -1,5 +1,0 @@
-2026/09/02-11:59:06.825 a7c Creating DB C:\Users\dilan\Desktop\Darkorbit LOL\.launcher-profile\Default\IndexedDB\http_127.0.0.1_59844.indexeddb.leveldb since it was missing.
-2026/09/02-11:59:06.841 a7c Reusing MANIFEST C:\Users\dilan\Desktop\Darkorbit LOL\.launcher-profile\Default\IndexedDB\http_127.0.0.1_59844.indexeddb.leveldb/MANIFEST-000001
-2026/09/02-12:18:52.699 351c Level-0 table #5: started
-2026/09/02-12:18:52.732 351c Level-0 table #5: 823669 bytes OK
-2026/09/02-12:18:52.739 351c Delete type=0 #3

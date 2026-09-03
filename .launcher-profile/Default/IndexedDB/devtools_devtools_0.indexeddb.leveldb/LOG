@@ -1,6 +1,0 @@
-2026/09/02-20:21:18.506 4ab4 Creating DB C:\Users\dilan\Desktop\Darkorbit LOL\.launcher-profile\Default\IndexedDB\devtools_devtools_0.indexeddb.leveldb since it was missing.
-2026/09/02-20:21:18.514 4ab4 Reusing MANIFEST C:\Users\dilan\Desktop\Darkorbit LOL\.launcher-profile\Default\IndexedDB\devtools_devtools_0.indexeddb.leveldb/MANIFEST-000001
-2026/09/02-20:21:33.653 36cc Level-0 table #5: started
-2026/09/02-20:21:33.656 36cc Level-0 table #5: 1044 bytes OK
-2026/09/02-20:21:33.659 36cc Delete type=0 #3
-2026/09/02-20:21:33.660 36cc Manual compaction at level-0 from (begin) .. (end); will stop at (end)
