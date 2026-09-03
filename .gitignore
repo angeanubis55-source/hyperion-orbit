@@ -14,3 +14,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Large launcher data files
+.launcher-profile/ProvenanceData/
+.launcher-profile/component_crx_cache/
