@@ -15,9 +15,4 @@ Thumbs.db
 .env.*
 !.env.example
 
-# Large launcher data files (Edge browser profile, regenerated on each launch)
-.launcher-profile/
 
-# .NET build artifacts
-launcher/bin/
-launcher/obj/
