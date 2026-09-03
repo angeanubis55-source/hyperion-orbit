@@ -24,6 +24,7 @@ import { computeHangarStats } from "./hangars.js";
 import { findCatalogItem } from "./catalog.js";
 import { CRAFTING_RECIPES } from "../data/crafting.js";
 import { ITEM_RARITIES } from "../data/itemRarities.js";
+import { SHIP_EFFECTS } from "../data/shipEffects.js";
 import { DRONE_FORMATIONS, DRONE_FORMATION_LAYOUTS, DRONE_TYPES, DRONE_XP_SHARE, getActiveDroneFormation, getDroneLevel, getDroneSpritePath } from "../data/drones.js";
 import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./collision.js";
 import { createKeyboardState, createPointerState } from "./input.js";
@@ -2939,6 +2940,52 @@ function drawBulletSprite(x, y, ang, key, side, scale = 1, spriteOverride = null
 let ACTIVE_SHIP = SHIP_PACKS[0];
 let playerImgs = [];
 let playerImgsReady = false;
+
+// --- Effet de vaisseau (Ship_effet) superposé par-dessus le vaisseau ---
+let shipEffectFor = "";        // id du vaisseau dont l'effet est chargé
+let shipEffectImgs = [];       // images chargées de l'effet
+let shipEffectReady = false;   // images prêtes à être dessinées
+let shipEffectLoading = false; // chargement en cours / déjà tenté pour cet id
+const SHIP_EFFECT_FPS = 60;
+
+// Charge (une seule fois par vaisseau) les frames de l'effet correspondant.
+// Retourne l'objet { frames, w, h } de l'effet, ou null s'il n'y en a pas.
+function loadShipEffect(shipId) {
+  const id = shipId || "";
+  if (shipEffectFor === id && (shipEffectReady || shipEffectLoading)) return shipEffectInfo();
+  shipEffectFor = id;
+  shipEffectImgs = [];
+  shipEffectReady = false;
+
+  const info = SHIP_EFFECTS[id];
+  if (!info) { shipEffectLoading = true; return null; }
+
+  shipEffectLoading = true;
+  const promises = [];
+  shipEffectImgs = new Array(info.frames);
+  for (let i = 0; i < info.frames; i++) {
+    const src = `${info.path}${1 + i}.png`;
+    promises.push(loadImage(src, { priority: false }).then((img) => (shipEffectImgs[i] = img)));
+  }
+  Promise.all(promises).then(() => { shipEffectReady = true; shipEffectLoading = false; });
+  return info;
+}
+
+function shipEffectInfo() {
+  return SHIP_EFFECTS[shipEffectFor] || null;
+}
+
+// Dessine l'effet superposé par-dessus le vaisseau (boucle à l'infini, 60 fps).
+function drawShipEffectOverlay() {
+  const info = SHIP_EFFECTS[shipEffectFor];
+  if (!info || !shipEffectReady || !shipEffectImgs || !shipEffectImgs.length) return;
+  const t = performance.now() / 1000;
+  const idx = Math.floor(t * SHIP_EFFECT_FPS) % info.frames;
+  const img = shipEffectImgs[idx];
+  if (!isImgReady(img)) return;
+  ctx.imageSmoothingEnabled = false;
+  drawCenteredImage(ctx, img, info.w, info.h);
+}
 
 function getPackById(shipId) {
   return SHIP_PACKS.find(p => p?.id === shipId) || null;
@@ -7536,6 +7583,11 @@ function drawPlayerBody() {
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.restore();
+
+  // ✅ Effet de vaisseau (Ship_effet) par-dessus le vaisseau, boucle à l'infini
+  loadShipEffect(pack?.id);
+  drawShipEffectOverlay();
+
   return true;
 }
 
