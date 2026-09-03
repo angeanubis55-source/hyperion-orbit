@@ -4,7 +4,7 @@ export const WORLD = {
 
   bgLayers: [
     {
-      src: "./Backgrounds/mapMaudite.png",
+      src: "./Backgrounds/mapQZ.png",
       mode: "cover",
       alpha: 1,
       parallax: 0,

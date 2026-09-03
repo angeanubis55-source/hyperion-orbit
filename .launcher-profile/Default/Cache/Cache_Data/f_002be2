@@ -1,0 +1,3884 @@
+// public/profile.js
+"use strict";
+
+import {
+  getCurrentUserFull,
+  logout,
+  buyItem,
+  sellItem,
+  setActiveHangar,
+  saveHangarFit,
+  setActiveHangarConfig,
+  buyModuleRoll,
+  addShipModule,
+  updateCurrentUserEmail,
+  updateCurrentUserPseudo,
+  changeCurrentUserPassword,
+  changeCurrentUserFaction,
+  buyCurrentUserDrone,
+  buyCurrentUserDroneFormation,
+  setCurrentUserDroneFormation,
+  saveCurrentUserDroneFit,
+} from "../src/core/account.js";
+
+import { CATALOG, findCatalogItem } from "../src/core/catalog.js";
+import { SHIP_PACKS } from "../src/data/shipPacks.js";
+import { escapeHtml } from "../src/core/dom.js";
+import { PILOT_RANKS, calculateRankPoints, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo } from "../src/core/progression.js";
+import { formatInteger } from "../src/core/numberFormat.js";
+import { FACTIONS, getFaction } from "../src/core/factions.js";
+import { NPC_TYPES } from "../src/data/npcTypes.js";
+import { QUEST_DEFINITIONS } from "../src/data/quests.js";
+import { AMMO } from "../src/data/ammo.js";
+import { getResourceName } from "../src/data/resources.js";
+import { getItemRarity } from "../src/data/itemRarities.js";
+import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
+import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS } from "../src/data/moduleDrops.js";
+import { appendToFitSlots, compactFitDraft } from "../src/core/fitLayout.js";
+
+console.log("profile.js loaded ✅");
+
+// ✅ détecte si index.html (le jeu) est ouvert
+function isGameOpen() {
+  try {
+    const t = Number(localStorage.getItem("orbit_game_open") || 0);
+    if (!Number.isFinite(t) || t <= 0) return false;
+
+    // si le flag est récent, on considère le jeu ouvert
+    return (Date.now() - t) < 2000; // 2 minutes
+  } catch {
+    return false;
+  }
+}
+
+// ✅ affichage message (utilise ton système existant si tu en as un)
+function showHangarMsg(text) {
+  // si tu as déjà une fonction showToast / showNotif -> remplace par la tienne
+  showToast(text);
+}
+
+
+const $ = (id) => document.getElementById(id);
+
+// UI refs
+const msgEl = $("msg");
+const npcKillList = $("npcKillList");
+const npcRewardTotals = $("npcRewardTotals");
+const npcRankExp = $("npcRankExp");
+const npcRankExpCalc = $("npcRankExpCalc");
+const npcRankHonor = $("npcRankHonor");
+const npcRankHonorCalc = $("npcRankHonorCalc");
+const npcRankImage = $("npcRankImage");
+const npcPreviousRankImage = $("npcPreviousRankImage");
+const npcPreviousRankName = $("npcPreviousRankName");
+const npcPreviousRankPoints = $("npcPreviousRankPoints");
+const npcRankPoints = $("npcRankPoints");
+const npcRankName = $("npcRankName");
+const npcNextRankImage = $("npcNextRankImage");
+const npcNextRankPoints = $("npcNextRankPoints");
+const npcNextRankName = $("npcNextRankName");
+const missionRewardSummary = $("missionRewardSummary");
+const accountPseudo = $("accountPseudo");
+const accountPseudoStatus = $("accountPseudoStatus");
+const pseudoCurrentPassword = $("pseudoCurrentPassword");
+const btnSavePseudo = $("btnSavePseudo");
+const accountEmail = $("accountEmail");
+const accountEmailStatus = $("accountEmailStatus");
+const emailCurrentPassword = $("emailCurrentPassword");
+const btnSaveEmail = $("btnSaveEmail");
+const passwordCurrent = $("passwordCurrent");
+const passwordNew = $("passwordNew");
+const passwordConfirm = $("passwordConfirm");
+const btnChangePassword = $("btnChangePassword");
+const accountFaction = $("accountFaction");
+const accountFactionStatus = $("accountFactionStatus");
+const btnChangeFaction = $("btnChangeFaction");
+const shopCredits = $("shopCredits");
+const hangarGrid = $("hangarGrid");
+const hangarPreviewEyebrow = document.querySelector("#hangarPreview .hangarPreviewEyebrow");
+const hangarPreviewImage = $("hangarPreviewImage");
+const hangarPreviewTitle = $("hangarPreviewTitle");
+const hangarSelectedImage = $("hangarSelectedImage");
+const hangarSelectedTitle = $("hangarSelectedTitle");
+const hangarPreviewMeta = $("hangarPreviewMeta");
+const inventorySearch = $("inventorySearch");
+const inventorySections = $("inventorySections");
+const inventoryTooltip = $("inventoryTooltip");
+const shopList = $("shopList");
+const shopPreview = $("shopPreview");
+const btnStart = $("btnStart");
+const btnLogout = $("btnLogout");
+const btnSessionMenu = $("btnSessionMenu");
+const sessionMenu = $("sessionMenu");
+const btnRestartGame = $("btnRestartGame");
+
+// state
+let user = null;
+let tab = localStorage.getItem("orbit_profile_tab") || "stats";
+let shopTab = localStorage.getItem("orbit_shop_tab") || "ammo";
+let selectedShopItemId = null;
+let selectedHangarId = null;
+let shopRenderToken = 0;
+let inventoryQuery = "";
+
+// -------------------- UI helpers --------------------
+function setMsg(text, ok = false) {
+  const message = String(text ?? "").trim();
+
+  // ✅ évite les toasts vides avec juste le check vert
+  if (!message) return;
+
+  showToast(message, ok ? "success" : "error");
+}
+
+function showToast(message, type = "info") {
+  const container = document.getElementById("toastContainer");
+  if (!container) return;
+
+  message = String(message ?? "").trim();
+
+  // ✅ sécurité supplémentaire
+  if (!message) return;
+
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  
+  const icons = {
+    success: "✅",
+    error: "❌",
+    info: "ℹ️"
+  };
+
+  toast.innerHTML = `
+    <div class="toastIcon">${icons[type] || icons.info}</div>
+    <div class="toastContent">${escapeHtml(message)}</div>
+  `;
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add("removing");
+
+    setTimeout(() => {
+      if (toast.parentElement) {
+        toast.remove();
+      }
+    }, 250);
+  }, 3000);
+}
+
+function showConfirm(title, message, onConfirm) {
+  const overlay = document.getElementById('confirmOverlay');
+  const titleEl = document.getElementById('confirmTitle');
+  const messageEl = document.getElementById('confirmMessage');
+  const cancelBtn = document.getElementById('confirmCancel');
+  const okBtn = document.getElementById('confirmOk');
+
+  if (!overlay || !titleEl || !messageEl || !cancelBtn || !okBtn) return;
+
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+  overlay.style.display = 'grid';
+
+  const cleanup = () => {
+    overlay.style.display = 'none';
+    cancelBtn.onclick = null;
+    okBtn.onclick = null;
+  };
+
+  cancelBtn.onclick = cleanup;
+
+  overlay.onclick = (e) => {
+    if (e.target === overlay) cleanup();
+  };
+
+  okBtn.onclick = () => {
+    cleanup();
+    if (onConfirm) onConfirm();
+  };
+}
+
+function ownedCount(u, itemId) {
+  const n = Number(u?.inventory?.counts?.[itemId] || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function alreadyOwnsShip(u, shipId) {
+  if (!shipId) return false;
+  return Array.isArray(u?.inventory?.ships) && u.inventory.ships.includes(String(shipId));
+}
+
+function getShopListFor(cat) {
+  const direct = CATALOG?.[cat];
+  if (Array.isArray(direct) && direct.length) return direct;
+
+  if (cat === "ships") {
+    const allCatalogItems = Object.values(CATALOG || {}).flatMap((v) => (Array.isArray(v) ? v : []));
+    const shipItems = allCatalogItems.filter((it) => it?.ship?.id);
+    const out = [];
+    for (const pack of SHIP_PACKS || []) {
+      const it = shipItems.find((x) => String(x.ship.id) === String(pack.id));
+      if (it) out.push(it);
+    }
+    return out.length ? out : shipItems;
+  }
+
+  return [];
+}
+
+function formatNumber(num) {
+  return formatInteger(num);
+}
+
+function getHangarActionAccess(action) {
+  const integrated = !!document.getElementById("profileOverlay");
+  if (!integrated) {
+    return {
+      ok: false,
+      error: "Ouvre l'Espace pilote directement depuis le jeu pour effectuer cette action.",
+    };
+  }
+  const access = window.__ORBIT_ENGINE__?.getHangarAccess?.();
+  if (!access) return { ok: false, error: "Le moteur du jeu n'est pas encore prêt." };
+  if (action === "activate" && !access.canActivate) return { ok: false, error: access.activationError };
+  if (action === "equip" && !access.canEquip) return { ok: false, error: access.equipmentError };
+  return { ok: true, access };
+}
+
+function getAmmoQtyForShopItem(u, it) {
+  const ammoGive = it?.give?.ammo;
+
+  if (!ammoGive || typeof ammoGive !== "object") return null;
+
+  const ammoKey = Object.keys(ammoGive).find((k) => k !== "x1");
+  if (!ammoKey) return null;
+
+  const qty = Number(u?.ammo?.[ammoKey] || 0);
+
+  return {
+    key: ammoKey,
+    qty: Number.isFinite(qty) ? qty : 0,
+  };
+}
+
+function syncGameCredits() {
+  if (window.HyperionGameSync?.syncFromAccount) {
+    window.HyperionGameSync.syncFromAccount();
+  }
+}
+
+function saveGameBeforeProfileAction() {
+  if (window.HyperionGameSync?.saveNow) {
+    window.HyperionGameSync.saveNow();
+  }
+}
+
+// -------------------- Icons --------------------
+const ITEM_ICON_BASE = "/assets/items/";
+const LASER_ICON_BASE = "/assets/lasers/";
+const FALLBACK_ICON = `data:image/svg+xml,${encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+    <rect width="64" height="64" rx="12" fill="#081b29"/>
+    <path d="M32 14v24M32 48h.01" stroke="#70e6ff" stroke-width="6" stroke-linecap="round"/>
+  </svg>
+`)}`;
+
+const ITEM_ICONS = {
+  ammo_x2: ITEM_ICON_BASE + "ammo_x2.png",
+  ammo_x3: ITEM_ICON_BASE + "ammo_x3.png",
+  ammo_x4: ITEM_ICON_BASE + "ammo_x4.png",
+  ammo_sab: ITEM_ICON_BASE + "ammo_abl.png",
+  ammo_x6: ITEM_ICON_BASE + "ammo_x6.png",
+ // ammo_abl: ITEM_ICON_BASE + "ammo_abl.png",
+ // ammo_radion: ITEM_ICON_BASE + "ammo_radion.png",
+  spd_mk0: ITEM_ICON_BASE + "spd_mk0.png",
+  spd_mk1: ITEM_ICON_BASE + "spd_mk1.png",
+  spd_mk2: ITEM_ICON_BASE + "spd_mk2.png",
+  spd_mk3: ITEM_ICON_BASE + "spd_mk3.png",
+  spd_mk4: ITEM_ICON_BASE + "spd_mk4.png",
+  spd_radion: ITEM_ICON_BASE + "spd_radion.png",
+  shd_mk0: ITEM_ICON_BASE + "shd_mk0.png",
+  shd_mk1: ITEM_ICON_BASE + "shd_mk1.png",
+  shd_mk2: ITEM_ICON_BASE + "shd_mk2.png",
+  shd_mk3: ITEM_ICON_BASE + "shd_mk3.png",
+  shd_mk4: ITEM_ICON_BASE + "shd_mk4.png",
+  shd_radion: ITEM_ICON_BASE + "shd_radion.png",
+  laser_lf1: LASER_ICON_BASE + "laser_lf1.png",
+  laser_lf2: LASER_ICON_BASE + "laser_lf2.png",
+  laser_lf3: LASER_ICON_BASE + "laser_lf3.png",
+  laser_anchorlock: LASER_ICON_BASE + "laser_lf5_anchorlock.png",
+  laser_odysseus: LASER_ICON_BASE + "laser_odysseus.png",
+  laser_radion: LASER_ICON_BASE + "laser_lf5_mortifier.png",
+};
+
+const FALLBACK_ICONS = {
+  ammo: ITEM_ICON_BASE + "ammo_x2.png",
+  speed: ITEM_ICON_BASE + "spd_mk0.png",
+  shield: ITEM_ICON_BASE + "shd_mk0.png",
+  laser: LASER_ICON_BASE + "laser_lf1.png",
+};
+
+const MODULE_ICONS = {
+  "hp-x1": ITEM_ICON_BASE + "hpx1.png",
+  "hp-x2": ITEM_ICON_BASE + "hpx2.png",
+  "hp-x3": ITEM_ICON_BASE + "hpx3.png",
+  "shd-x1": ITEM_ICON_BASE + "shdx1.png",
+  "shd-x2": ITEM_ICON_BASE + "shdx2.png",
+  "shd-x3": ITEM_ICON_BASE + "shdx3.png",
+  "dmg-x1": ITEM_ICON_BASE + "dmgx1.png",
+  "dmg-x2": ITEM_ICON_BASE + "dmgx2.png",
+  "dmg-x3": ITEM_ICON_BASE + "dmgx3.png",
+  "spc-x1": ITEM_ICON_BASE + "spcx1.png",
+  "spc-x2": ITEM_ICON_BASE + "spcx2.png",
+  "spc-x3": ITEM_ICON_BASE + "spcx3.png",
+};
+
+function moduleIconSrc(type, tier) {
+  return MODULE_ICONS[`${type}-${tier}`] || FALLBACK_ICON;
+}
+
+function randInt(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function pickWeighted(pairs) {
+  const total = pairs.reduce((s, [, w]) => s + w, 0);
+  let r = Math.random() * total;
+  for (const [v, w] of pairs) {
+    r -= w;
+    if (r <= 0) return v;
+  }
+  return pairs[pairs.length - 1][0];
+}
+
+function formatStatLabel(stat) {
+  if (stat === "hp") return "PV";
+  if (stat === "shield") return "Bouclier";
+  if (stat === "damage") return "Dégâts";
+  if (stat === "penetration") return "Pénétration";
+  if (stat === "speed") return "Vitesse";
+  return stat;
+}
+
+function generateShipModule(user) {
+  const tier = pickWeighted(MODULE_TIER_WEIGHTS);
+  const type = pickWeighted(MODULE_TYPE_WEIGHTS);
+  const statCount = pickWeighted(MODULE_STAT_COUNT_WEIGHTS);
+
+  const ships = Array.isArray(CATALOG?.ships) ? CATALOG.ships : [];
+  const shipPick = ships.length ? ships[randInt(0, ships.length - 1)] : null;
+  const shipId = shipPick?.ship?.id || "UnknownShip";
+
+  const [mn, mx] = MODULE_BONUS_RANGES[tier] || MODULE_BONUS_RANGES.x1;
+
+  const ALL_STATS = ["hp", "shield", "penetration", "speed", "damage"];
+
+  let mainStat = "hp";
+  if (type === "hp") mainStat = "hp";
+  if (type === "shd") mainStat = "shield";
+  if (type === "dmg") mainStat = "damage";
+  if (type === "spc") mainStat = Math.random() < 0.5 ? "penetration" : "speed";
+
+  const picked = new Set([mainStat]);
+  const bonuses = [{ stat: mainStat, pct: randInt(mn, mx) }];
+
+  while (bonuses.length < statCount) {
+    const pool = ALL_STATS.filter((s) => !picked.has(s));
+    if (!pool.length) break;
+    const s = pool[randInt(0, pool.length - 1)];
+    picked.add(s);
+    bonuses.push({ stat: s, pct: randInt(mn, mx) });
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const uid = Math.random().toString(16).slice(2, 8);
+
+  return {
+    id: `mod_${now}_${uid}`,
+    kind: "shipModule",
+    shipId,
+    tier,
+    type,
+    bonuses,
+    iconKey: `${type}-${tier}`,
+    createdAt: now,
+  };
+}
+
+function iconForItem(it, cat) {
+  if (cat === "ships") return shipPreviewSrc(it?.ship?.id, 28);
+  if (it?.icon) return it.icon;
+  const itemId = it?.id;
+  if (itemId && ITEM_ICONS[itemId]) return ITEM_ICONS[itemId];
+  if (cat && FALLBACK_ICONS[cat]) return FALLBACK_ICONS[cat];
+  return FALLBACK_ICON;
+}
+
+function shipPreviewSrc(shipId, frameIndex = 28) {
+  const pack = SHIP_PACKS.find((p) => p.id === shipId);
+  if (!pack) return FALLBACK_ICON;
+
+  const frames = Number(pack.frames || 1);
+  const idx = ((frameIndex % frames) + frames) % frames;
+  const first = Number(pack.firstNumber || 1);
+  const ext = pack.ext || ".png";
+  const base = String(pack.path || "");
+  const absBase = base.startsWith("/") ? base : "/" + base;
+
+  return `${absBase}${first + idx}${ext}`;
+}
+
+function getShipPack(shipId) {
+  return SHIP_PACKS.find((p) => String(p.id) === String(shipId)) || null;
+}
+
+function getShipSlots(shipId) {
+  const p = getShipPack(shipId);
+  const s = p?.slots || null;
+  return {
+    lasers: Number(s?.lasers ?? 15),
+    gens: Number(s?.gens ?? 15),
+    extras: Number(s?.extras ?? 15),
+    shipMods: Number(s?.shipMods ?? 1),
+  };
+}
+
+function normalizeFitArray(arr, n) {
+  const a = Array.isArray(arr) ? arr.slice(0, n) : [];
+  while (a.length < n) a.push(null);
+  return a;
+}
+
+function shipScaleToFit200(shipId, max = 200) {
+  const p = getShipPack(shipId);
+  if (!p) return 1;
+  const w = Number(p.w || max);
+  const h = Number(p.h || max);
+  return Math.min(max / w, max / h, 1);
+}
+
+// -------------------- Tabs --------------------
+function setTab(next) {
+  if (next !== "hangars" && fitOverlayEl && fitOverlayEl.style.display !== "none") {
+    closeFitModal();
+  }
+  tab = next;
+  localStorage.setItem("orbit_profile_tab", tab);
+
+  document.querySelectorAll(".tabBtn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.tab === tab);
+  });
+
+document.querySelectorAll("#profileOverlay .profilePanel").forEach((p) => {
+  p.classList.remove("active");
+});
+
+const panel = document.getElementById("panel_" + tab);
+if (panel) panel.classList.add("active");
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function wireMainTabsOnce() {
+  if (inventoryTooltip && inventoryTooltip.parentElement !== document.body) {
+    document.body.appendChild(inventoryTooltip);
+  }
+  document.querySelectorAll(".tabBtn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setMsg("", true);
+      setTab(btn.dataset.tab);
+
+      if (tab === "stats") renderStats(user);
+      if (tab === "account") renderAccount(user);
+      if (tab === "npcs") renderNpcStats(user);
+      if (tab === "hangars") renderHangars(user);
+      if (tab === "inventory") renderInventory(user);
+      if (tab === "shop") renderShop(user);
+    });
+  });
+
+  inventorySearch?.addEventListener("input", () => {
+    inventoryQuery = inventorySearch.value || "";
+    renderInventory(user);
+  });
+
+  inventorySections?.addEventListener("pointermove", (event) => {
+    const slot = event.target.closest(".inventorySlot");
+    if (!slot || !inventoryTooltip) return;
+    inventoryTooltip.textContent = slot.dataset.tooltip || "";
+    inventoryTooltip.classList.add("visible");
+    const margin = 14;
+    const tooltipRect = inventoryTooltip.getBoundingClientRect();
+    const left = Math.max(margin, Math.min(window.innerWidth - tooltipRect.width - margin, event.clientX + margin));
+    const top = Math.max(margin, Math.min(window.innerHeight - tooltipRect.height - margin, event.clientY + margin));
+    inventoryTooltip.style.left = `${left}px`;
+    inventoryTooltip.style.top = `${top}px`;
+  });
+  inventorySections?.addEventListener("pointerleave", () => inventoryTooltip?.classList.remove("visible"));
+}
+
+function wireShopTabsOnce() {
+  const root = document.getElementById("shopTabs");
+  root?.querySelectorAll(".subtabBtn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      shopTab = btn.dataset.shop;
+      localStorage.setItem("orbit_shop_tab", shopTab);
+      renderShop(user);
+    });
+  });
+}
+
+// -------------------- Render --------------------
+function renderHeader(u) {
+  return u;
+}
+
+function renderStats(u) {
+  if (!u) return;
+  renderNpcStats(u);
+  renderAccount(u);
+}
+
+const INVENTORY_AMMO_NAMES = Object.freeze({
+  x1: "Munitions LCB-10 (X1)", x2: "Munitions MCB-25 (X2)",
+  x3: "Munitions MCB-50 (X3)", x4: "Munitions UCB-100 (X4)",
+  x6: "Munitions RSB-75 (X6)", sab: "Munitions SAB-50",
+  ABL: "Munitions ABL", RADION: "Munitions RADION",
+});
+
+function humanizeInventoryId(value) {
+  return String(value || "Ressource")
+    .replace(/^resource[_-]?/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function finiteInventoryQuantity(value) {
+  if (value === Infinity || value === "Infinity") return Infinity;
+  const quantity = Number(value);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 0;
+}
+
+function inventoryQuantityLabel(value) {
+  return value === Infinity ? "∞" : formatNumber(value);
+}
+
+function catalogEntry(itemId) {
+  for (const [category, entries] of Object.entries(CATALOG || {})) {
+    const item = Array.isArray(entries) ? entries.find((entry) => entry?.id === itemId) : null;
+    if (item) return { item, category };
+  }
+  return null;
+}
+
+function buildInventorySections(u) {
+  const ammoItems = Object.entries(u?.ammo || {}).map(([id, rawQuantity]) => ({
+    id, kind: "ammo",
+    name: INVENTORY_AMMO_NAMES[id] || `Munitions ${humanizeInventoryId(id)}`,
+    quantity: finiteInventoryQuantity(rawQuantity), detail: "Réserve de munitions",
+  })).filter((entry) => entry.id !== "x1" && (entry.quantity > 0 || entry.quantity === Infinity));
+
+  const equipment = [];
+  const resources = new Map();
+  for (const [itemId, rawQuantity] of Object.entries(u?.inventory?.counts || {})) {
+    const quantity = finiteInventoryQuantity(rawQuantity);
+    if (!quantity) continue;
+    const found = catalogEntry(itemId);
+    if (found && found.category !== "ammo" && found.category !== "ships") {
+      equipment.push({
+        id: itemId, kind: "equipment", category: found.category, item: found.item,
+        name: found.item.name || humanizeInventoryId(itemId), quantity,
+        detail: ({ lasers: "Laser", speedGen: "Générateur de vitesse", shieldGen: "Générateur de bouclier", extras: "Extra" })[found.category] || "Équipement",
+      });
+    } else if (!found) {
+      resources.set(itemId, { id: itemId, kind: "resource", name: getResourceName(itemId), quantity, detail: "Ressource" });
+    }
+  }
+
+  for (const source of [u?.resources, u?.inventory?.resources]) {
+    for (const [resourceId, rawQuantity] of Object.entries(source || {})) {
+      const quantity = finiteInventoryQuantity(rawQuantity);
+      if (!quantity) continue;
+      const existing = resources.get(resourceId);
+      resources.set(resourceId, {
+        id: resourceId, kind: "resource", name: getResourceName(resourceId),
+        quantity: (existing?.quantity || 0) + quantity, detail: "Ressource",
+      });
+    }
+  }
+
+  const modules = (u?.inventory?.shipModules || []).map((module, index) => {
+    const compatibleShip = getShipPack(module?.shipId);
+    return {
+      id: module?.id || `module-${index}`, kind: "module", module,
+      name: `${String(module?.type || "module").toUpperCase()} ${String(module?.tier || "").toUpperCase()}`.trim(), quantity: 1,
+      detail: (module?.bonuses || []).map((bonus) => `${formatNumber(bonus?.pct || 0)}% ${formatStatLabel(bonus?.stat)}`).join(" · ") || "Module de vaisseau",
+      searchText: `${module?.shipId || ""} ${compatibleShip?.name || ""}`,
+    };
+  });
+
+  const ships = (u?.inventory?.ships || []).map((shipId) => {
+    const pack = getShipPack(shipId);
+    return { id: String(shipId), kind: "ship", name: pack?.name || String(shipId), quantity: 1, detail: "Vaisseau possédé" };
+  });
+
+  const drones = (u?.drones?.items || []).map((drone, index) => ({
+    id: drone.id || `drone-${index}`,
+    kind: "drone",
+    drone,
+    name: `${DRONE_TYPES[drone.type]?.name || "Drone"} ${index + 1}`,
+    quantity: 1,
+    detail: `Niveau ${drone.level || 1} · ${formatNumber(Math.floor(Number(drone.exp) || 0))} XP`,
+  }));
+
+  const storedDesigns = Array.isArray(u?.drones?.designs) ? u.drones.designs : [];
+  const equippedDesigns = (u?.drones?.items || []).map(drone => drone?.fit?.ability).filter(Boolean);
+  const designs = [...storedDesigns, ...equippedDesigns].map((design, index) => {
+    const value = typeof design === "string" ? { id: design, name: design } : (design || {});
+    return {
+      id: value.id || `drone-design-${index}`,
+      kind: "droneDesign",
+      design: value,
+      name: value.name || humanizeInventoryId(value.id || "Design de drone"),
+      quantity: 1,
+      detail: "Design de drone",
+    };
+  });
+  const droneFormations = (u?.drones?.formations || []).filter(id => id !== "standard").map(id => {
+    const formation = DRONE_FORMATIONS.find(entry => entry.id === id);
+    return {
+      id: `formation-${id}`,
+      kind: "droneFormation",
+      formation,
+      name: formation?.name || humanizeInventoryId(id),
+      quantity: 1,
+      detail: "Formation de drones possédée",
+    };
+  });
+
+  return [
+    { id: "ammo", title: "Munitions", items: ammoItems },
+    { id: "equipment", title: "Équipements", items: equipment },
+    { id: "modules", title: "Modules de vaisseau", items: modules },
+    { id: "ships", title: "Vaisseaux", items: ships },
+    { id: "drones", title: "Drones", items: drones },
+    { id: "drone-designs", title: "Designs de drones", items: designs },
+    { id: "drone-formations", title: "Formations de drones", items: droneFormations },
+    { id: "resources", title: "Ressources", items: [...resources.values()] },
+  ];
+}
+
+function inventoryItemIcon(entry) {
+  if (entry.kind === "ship") return shipPreviewSrc(entry.id);
+  if (entry.kind === "drone") return getDroneSpritePath(entry.drone, 29);
+  if (entry.kind === "droneDesign") return entry.design?.icon || FALLBACK_ICON;
+  if (entry.kind === "droneFormation") return entry.formation?.icon || FALLBACK_ICON;
+  if (entry.kind === "module") return moduleIconSrc(entry.module?.type, entry.module?.tier);
+  if (entry.kind === "equipment") return iconForItem(entry.item, entry.category);
+  if (entry.kind === "ammo") {
+    const ammoId = entry.id === "sab" ? "ammo_sab" : `ammo_${String(entry.id).toLowerCase()}`;
+    return ITEM_ICONS[ammoId] || FALLBACK_ICONS.ammo;
+  }
+  return FALLBACK_ICON;
+}
+
+function inventoryTooltipText(entry) {
+  const lines = [entry.name];
+  if (entry.rarity) lines.push(`RaretÃ© : ${entry.rarity.name}`);
+  if (entry.kind === "ammo") {
+    const multiplier = Number(AMMO?.[entry.id]?.mult);
+    if (Number.isFinite(multiplier)) lines.push(`Multiplicateur de dégâts : x${multiplier}`);
+    lines.push(`Quantité possédée : ${inventoryQuantityLabel(entry.quantity)}`);
+  } else if (entry.kind === "equipment") {
+    const module = entry.item?.module || {};
+    if (Number.isFinite(Number(module.damage))) lines.push(`Dégâts : ${formatNumber(module.damage)}`);
+    if (Number.isFinite(Number(module.bonusSpeed))) lines.push(`Vitesse : +${formatNumber(module.bonusSpeed)}`);
+    if (Number.isFinite(Number(module.bonusShield))) lines.push(`Bouclier : +${formatNumber(module.bonusShield)}`);
+    if (module.key) lines.push(`Effet : ${humanizeInventoryId(module.key)}`);
+    lines.push(entry.detail);
+  } else if (entry.kind === "ship") {
+    const pack = getShipPack(entry.id);
+    if (pack) {
+      lines.push(`Points de vie : ${formatNumber(pack.hp || 0)}`);
+      lines.push(`Vitesse : ${formatNumber(pack.speed || 0)}`);
+      lines.push(`Slots : ${formatNumber(pack.slots?.lasers || 0)} lasers · ${formatNumber(pack.slots?.gens || 0)} générateurs · ${formatNumber(pack.slots?.extras || 0)} extras`);
+    }
+  } else if (entry.kind === "drone") {
+    lines.push(entry.detail);
+    lines.push("2 emplacements d'équipement");
+  } else if (entry.kind === "droneDesign") {
+    lines.push(entry.detail);
+  } else if (entry.kind === "droneFormation") {
+    lines.push(entry.formation?.description || entry.detail);
+  } else if (entry.kind === "module") {
+    if (entry.module?.shipId) lines.push(`Vaisseau : ${getShipPack(entry.module.shipId)?.name || entry.module.shipId}`);
+    if (entry.detail) lines.push(entry.detail);
+  } else {
+    if (entry.detail) lines.push(entry.detail);
+    lines.push(`Quantité : ${entry.quantityLabel || inventoryQuantityLabel(entry.quantity)}`);
+  }
+  return lines.filter(Boolean).join("\n");
+}
+
+function expandInventorySlots(section) {
+  if (section.id !== "equipment") return section.items;
+  return section.items.flatMap((entry) => Array.from({ length: Math.max(0, Math.floor(entry.quantity)) }, (_, index) => ({
+    ...entry,
+    slotId: `${entry.id}-${index}`,
+    quantity: 1,
+    stacked: false,
+  })));
+}
+
+function renderInventory(u) {
+  if (!u || !inventorySections) return;
+  const sections = buildInventorySections(u);
+
+  const query = inventoryQuery.trim().toLocaleLowerCase("fr");
+  const slots = sections.flatMap((section) => {
+    const matchingItems = section.items.filter((entry) => !query || `${entry.name} ${entry.detail} ${entry.id} ${entry.searchText || ""}`.toLocaleLowerCase("fr").includes(query));
+    return expandInventorySlots({ ...section, items: matchingItems });
+  });
+  inventorySections.innerHTML = slots.length ? slots.map((entry) => {
+      const stacked = entry.stacked !== false && !["module", "ship", "equipment", "drone", "droneDesign", "droneFormation"].includes(entry.kind);
+      const quantity = entry.quantityLabel || inventoryQuantityLabel(entry.quantity);
+      const rarity = getItemRarity(entry.id);
+      entry.rarity = rarity;
+      return `<article class="inventorySlot rarity-${escapeHtml(rarity.id)}" data-rarity="${escapeHtml(rarity.id)}" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(inventoryTooltipText(entry))}" tabindex="0" aria-label="${escapeHtml(inventoryTooltipText(entry).replace(/\n/g, ". "))}">
+        <img src="${escapeHtml(inventoryItemIcon(entry))}" alt="" />
+        ${stacked ? `<span class="inventorySlotQuantity">${escapeHtml(quantity)}</span>` : ""}
+      </article>`;
+    }).join("") : `<div class="inventoryEmpty">${query ? "Aucun résultat." : "Aucun élément possédé."}</div>`;
+}
+
+function renderNpcStats(u) {
+  if (!u) return;
+  const kills = u.stats?.npcKills || {};
+
+  const experience = Math.max(0, Number(u.stats?.exp || 0));
+  const honor = Number(u.stats?.honor || 0);
+  const rankPoints = calculateRankPoints(u.stats);
+  const rank = getRankInfo(rankPoints, honor);
+  const previousRank = rank.index > 0 ? PILOT_RANKS[rank.index - 1] : null;
+  if (npcRankExp) npcRankExp.textContent = formatNumber(experience);
+  if (npcRankExpCalc) npcRankExpCalc.textContent = `${formatNumber(experience)} ÷ 100 000 = ${formatNumber(Math.floor(experience / 100000))}`;
+  if (npcRankHonor) npcRankHonor.textContent = formatNumber(honor);
+  if (npcRankHonorCalc) npcRankHonorCalc.textContent = `${formatNumber(Math.max(0, honor))} ÷ 100 = ${formatNumber(Math.floor(Math.max(0, honor) / 100))}`;
+  if (npcRankImage) npcRankImage.src = rank.imagePath;
+  if (npcPreviousRankImage) {
+    npcPreviousRankImage.hidden = !previousRank;
+    npcPreviousRankImage.src = previousRank ? `assets/grades/${previousRank.image}` : "";
+  }
+  if (npcPreviousRankName) npcPreviousRankName.textContent = previousRank?.name || "Aucun";
+  if (npcPreviousRankPoints) npcPreviousRankPoints.textContent = previousRank ? `Seuil ${formatNumber(previousRank.points)}` : "Grade minimum";
+  if (npcRankPoints) npcRankPoints.textContent = formatNumber(rankPoints);
+  if (npcRankName) npcRankName.textContent = rank.name;
+  if (npcNextRankImage) {
+    npcNextRankImage.hidden = !rank.next;
+    npcNextRankImage.src = rank.next ? `assets/grades/${rank.next.image}` : "";
+  }
+  if (npcNextRankPoints) npcNextRankPoints.textContent = rank.next ? `${formatNumber(Math.max(0, rank.next.points - rankPoints))} points requis` : "Maximum";
+  if (npcNextRankName) npcNextRankName.textContent = rank.next?.name || "Grade maximal atteint";
+
+  const npcRows = Object.entries(NPC_TYPES)
+      .map(([type, npc]) => {
+        const count = Math.max(0, Number(kills[type] || 0));
+        const creditsEach = Math.max(0, Number(npc.value || 0));
+        const expEach = getNpcExperienceReward({ type, value: creditsEach }, npc);
+        const honorEach = getNpcHonorReward({ type, value: creditsEach }, { ...npc, type });
+        const exp = count * expEach;
+        const gainedHonor = count * honorEach;
+        return {
+          name: npc.name || type,
+          count,
+          exp,
+          honor: gainedHonor,
+          credits: count * creditsEach,
+          rankPoints: calculateRankPoints({ exp, honor: gainedHonor }),
+        };
+      })
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+  if (npcKillList) {
+    const rows = npcRows
+      .map(item => `<div class="npcRewardRow"><span class="npcRewardName">${escapeHtml(item.name)}</span><strong>${formatNumber(item.count)}</strong><span>${formatNumber(item.exp)}</span><span>${formatNumber(item.honor)}</span><span>${formatNumber(item.credits)}</span><span>${formatNumber(item.rankPoints)}</span></div>`)
+      .join("");
+    npcKillList.innerHTML = rows;
+  }
+
+  if (npcRewardTotals) {
+    const totals = npcRows.reduce((result, item) => {
+      result.count += item.count;
+      result.exp += item.exp;
+      result.honor += item.honor;
+      result.credits += item.credits;
+      return result;
+    }, { count: 0, exp: 0, honor: 0, credits: 0 });
+    const rankPoints = calculateRankPoints(totals);
+    npcRewardTotals.innerHTML = `<div class="npcRewardRow npcTotalRewardRow"><span class="npcRewardName">Total des destructions</span><strong>${formatNumber(totals.count)}</strong><span>${formatNumber(totals.exp)}</span><span>${formatNumber(totals.honor)}</span><span>${formatNumber(totals.credits)}</span><span>${formatNumber(rankPoints)}</span></div>`;
+  }
+
+  if (missionRewardSummary) {
+    const completedIds = new Set(Array.isArray(u.quests?.completed) ? u.quests.completed : []);
+    const completed = QUEST_DEFINITIONS.filter(quest => completedIds.has(quest.id));
+    const totals = completed.reduce((result, quest) => {
+      result.credits += Math.max(0, Number(quest.reward?.credits || 0));
+      result.exp += getQuestExperienceReward(quest);
+      result.honor += getQuestHonorReward(quest);
+      return result;
+    }, { credits: 0, exp: 0, honor: 0 });
+    const missionRankPoints = calculateRankPoints(totals);
+    missionRewardSummary.innerHTML = `<div class="npcRewardRow missionRewardRow"><span class="npcRewardName">Missions effectuées</span><strong>${formatNumber(completed.length)}</strong><span>${formatNumber(totals.exp)}</span><span>${formatNumber(totals.honor)}</span><span>${formatNumber(totals.credits)}</span><span>${formatNumber(missionRankPoints)}</span></div>`;
+  }
+}
+
+function renderAccount(u) {
+  if (!u) return;
+
+  if (accountPseudoStatus) accountPseudoStatus.textContent = `Pseudo actuel : ${u.pseudo}`;
+  if (accountPseudo && document.activeElement !== accountPseudo) accountPseudo.value = String(u.pseudo || "");
+
+  const linkedEmail = String(u.email || "").endsWith("@local") ? "" : String(u.email || "");
+  if (accountEmailStatus) {
+    accountEmailStatus.textContent = linkedEmail ? `Adresse liée : ${linkedEmail}` : "Aucune adresse email liée";
+  }
+  if (accountEmail && document.activeElement !== accountEmail) accountEmail.value = linkedEmail;
+  if (btnSaveEmail) btnSaveEmail.textContent = linkedEmail ? "Modifier l'adresse" : "Lier cette adresse";
+  const faction = getFaction(u.faction);
+  if (accountFactionStatus) accountFactionStatus.textContent = `Firme actuelle : ${faction.shortName}`;
+  if (accountFaction) {
+    accountFaction.innerHTML = Object.values(FACTIONS)
+      .map(item => `<option value="${item.id}">${item.shortName} — ${item.name}</option>`)
+      .join("");
+    accountFaction.value = faction.id;
+  }
+}
+
+function wireAccountSettingsOnce() {
+  btnSavePseudo?.addEventListener("click", () => {
+    const pseudo = accountPseudo?.value.trim() || "";
+    const currentPassword = pseudoCurrentPassword?.value || "";
+    const out = updateCurrentUserPseudo(pseudo, currentPassword);
+    if (!out?.ok) return setMsg(out?.error || "Impossible de changer le pseudo.", false);
+
+    if (pseudoCurrentPassword) pseudoCurrentPassword.value = "";
+    user = getCurrentUserFull();
+    renderHeader(user);
+    renderStats(user);
+    setMsg("Pseudo modifié avec succès.", true);
+  });
+
+  btnSaveEmail?.addEventListener("click", () => {
+    const email = accountEmail?.value.trim() || "";
+    const currentPassword = emailCurrentPassword?.value || "";
+    const out = updateCurrentUserEmail(email, currentPassword);
+    if (!out?.ok) return setMsg(out?.error || "Impossible de modifier l'adresse email.", false);
+
+    if (emailCurrentPassword) emailCurrentPassword.value = "";
+    user = getCurrentUserFull();
+    renderHeader(user);
+    renderStats(user);
+    setMsg("Adresse email enregistrée.", true);
+  });
+
+  btnChangePassword?.addEventListener("click", () => {
+    const currentPassword = passwordCurrent?.value || "";
+    const nextPassword = passwordNew?.value || "";
+    if (nextPassword !== (passwordConfirm?.value || "")) {
+      return setMsg("Les nouveaux mots de passe ne correspondent pas.", false);
+    }
+
+    const out = changeCurrentUserPassword(currentPassword, nextPassword);
+    if (!out?.ok) return setMsg(out?.error || "Impossible de changer le mot de passe.", false);
+
+    if (passwordCurrent) passwordCurrent.value = "";
+    if (passwordNew) passwordNew.value = "";
+    if (passwordConfirm) passwordConfirm.value = "";
+    setMsg("Mot de passe modifié avec succès.", true);
+  });
+  btnChangeFaction?.addEventListener("click", () => {
+    if (btnChangeFaction.dataset.confirmed !== "yes") {
+      const selected = getFaction(accountFaction?.value);
+      showConfirm(
+        "Confirmer le changement de firme",
+        `Rejoindre ${selected.shortName} coûtera 1 000 000 000 crédits et 50 % de ton honneur actuel. Cette opération est immédiate.`,
+        () => {
+          btnChangeFaction.dataset.confirmed = "yes";
+          btnChangeFaction.click();
+          delete btnChangeFaction.dataset.confirmed;
+        },
+      );
+      return;
+    }
+    const out = changeCurrentUserFaction(accountFaction?.value);
+    if (!out?.ok) {
+      showToast(out?.error || "Impossible de changer de firme.", "error");
+      return;
+    }
+    user = getCurrentUserFull();
+    renderHeader(user);
+    renderStats(user);
+    showToast(`Transfert vers ${out.faction.shortName} effectué. Honneur perdu : ${formatNumber(out.honorLost)}.`, "success");
+    setTimeout(() => {
+      const url = new URL(location.href);
+      url.searchParams.set("map", `${out.faction.sector}-1`);
+      url.searchParams.delete("spawn");
+      location.href = url.toString();
+    }, 700);
+    setMsg(`Firme changée : ${out.faction.shortName}. Coût : 1 000 000 000 crédits et ${formatNumber(out.honorLost)} honneur.`, true);
+  });
+}
+
+function renderHangars(u) {
+  if (!u) return;
+  hangarGrid.innerHTML = "";
+
+  const hangars = Array.isArray(u.hangars) ? u.hangars : [];
+  const activeHangar = hangars.find(h => h?.active) || hangars[0];
+  if (!selectedHangarId || !hangars.some(h => h.id === selectedHangarId)) {
+    selectedHangarId = activeHangar?.id || null;
+  }
+
+  const updateHangarPreview = (hangar) => {
+    if (!hangar) return;
+    const isActivePreview = hangar.id === activeHangar?.id;
+    const activePack = getShipPack(activeHangar?.shipId);
+    const activeSlots = getShipSlots(activeHangar?.shipId);
+    const activePreview = shipPreviewSrc(activeHangar?.shipId);
+    const selectedPack = getShipPack(hangar.shipId);
+    const selectedSlots = getShipSlots(hangar.shipId);
+    const selectedPreview = shipPreviewSrc(hangar.shipId);
+    document.getElementById("hangarPreview")?.classList.toggle("isComparing", !isActivePreview);
+    if (hangarPreviewImage) {
+      hangarPreviewImage.src = activePreview || "";
+      hangarPreviewImage.alt = "Vaisseau actif";
+      hangarPreviewImage.style.display = activePreview ? "block" : "none";
+    }
+    if (hangarPreviewEyebrow) hangarPreviewEyebrow.textContent = "VAISSEAU ACTIF";
+    if (hangarPreviewTitle) hangarPreviewTitle.textContent = activePack?.name || activeHangar?.shipId || "—";
+    if (hangarSelectedImage) {
+      hangarSelectedImage.src = selectedPreview || "";
+      hangarSelectedImage.style.display = selectedPreview ? "block" : "none";
+    }
+    if (hangarSelectedTitle) hangarSelectedTitle.textContent = selectedPack?.name || hangar.shipId;
+    if (hangarPreviewMeta) {
+      const slots = isActivePreview ? activeSlots : selectedSlots;
+      hangarPreviewMeta.textContent = `${isActivePreview ? "Actif" : "Sélection"} · Lasers ${slots.lasers} · Générateurs ${slots.gens} · Extras ${slots.extras}`;
+    }
+  };
+
+  updateHangarPreview(hangars.find(h => h.id === selectedHangarId) || activeHangar);
+
+  if (!hangars.length) {
+    hangarGrid.innerHTML = `
+      <div class="tile">
+        <h3>Aucun hangar</h3>
+        <p>Achète ton premier vaisseau dans la boutique !</p>
+      </div>
+    `;
+    return;
+  }
+
+  for (const h of hangars) {
+    const isActive = !!h.active;
+    const prev = shipPreviewSrc(h.shipId);
+    const slots = getShipSlots(h.shipId);
+
+    const mods = Array.isArray(u?.inventory?.shipModules) ? u.inventory.shipModules : [];
+    const modsForShip = mods.filter(m => String(m?.shipId) === String(h.shipId));
+
+    const el = document.createElement("div");
+    el.className = "hangarListItem" + (h.id === selectedHangarId ? " selected" : "") + (isActive ? " active" : "");
+    el.innerHTML = `
+      <div class="tileShipPreview">
+        ${prev ? `<img src="${prev}" alt="${h.shipId}" class="shipImg" style="image-rendering: pixelated;" />` : ""}
+        <div style="flex: 1;">
+          <h3>
+            ${h.shipId} 
+            ${isActive ? `<span class="pill">Actif</span>` : ""}
+          </h3>
+          <p style="margin-bottom: 4px; color: var(--muted);">
+            Lasers: <strong>${slots.lasers}</strong> • 
+            Génés: <strong>${slots.gens}</strong> • 
+            Extras: <strong>${slots.extras}</strong>
+          </p>
+          <p style="margin: 0; color: var(--muted);">
+            Modules roulette: <strong style="color: #00d9ff;">${modsForShip.length}</strong>
+          </p>
+        </div>
+      </div>
+
+      <div class="tileActions">
+        <button class="${isActive ? 'secondary' : 'primary'}" data-act="${h.id}" ${isActive ? 'disabled' : ''}>
+          ${isActive ? '✅ Activé' : 'Activer'}
+        </button>
+        <button class="secondary" data-fit="${h.id}">⚙️ Équiper</button>
+      </div>
+    `;
+
+    el.addEventListener("click", () => {
+      selectedHangarId = h.id;
+      hangarGrid.querySelectorAll(".hangarListItem").forEach((item) => item.classList.remove("selected"));
+      el.classList.add("selected");
+      updateHangarPreview(h);
+    });
+
+   el.querySelector(`[data-act="${h.id}"]`).addEventListener("click", () => {
+  if (isActive) return;
+
+  // ✅ si le jeu (index.html) est ouvert, on bloque le changement de hangar
+const isIntegratedInGame = !!document.getElementById("profileOverlay");
+
+if (!isIntegratedInGame && isGameOpen()) {
+  return setMsg(
+    "⚠️ Le jeu est ouvert. Ferme-le d’abord avant de changer de hangar.",
+    false
+  );
+}
+
+  const access = getHangarActionAccess("activate");
+  if (!access.ok) return setMsg(access.error, false);
+
+  const out = setActiveHangar(h.id);
+  if (!out.ok) return setMsg("❌ " + (out.error || "Impossible d'activer le hangar."), false);
+
+  window.__ORBIT_ENGINE__?.markHangarChanged?.();
+
+  user = getCurrentUserFull();
+  setMsg("✅ Hangar activé avec succès !", true);
+  renderHeader(user);
+  renderStats(user);
+  renderHangars(user);
+  if (tab === "shop") renderShop(user);
+  if (isIntegratedInGame) {
+  setTimeout(() => location.reload(), 500);
+}
+});
+
+
+     el.querySelector(`[data-fit="${h.id}"]`).addEventListener("click", () => {
+      openFitModal(h.id);
+    });
+
+    hangarGrid.appendChild(el);
+  }
+}
+
+function renderShop(user) {
+  if (shopCredits) shopCredits.textContent = formatNumber(user.credits || 0);
+  if (!shopList || !shopPreview) return;
+
+  document.querySelectorAll("#shopTabs .subtabBtn").forEach((button) => {
+    button.classList.toggle("active", button.dataset.shop === shopTab);
+  });
+
+  const shopLayout = shopList.closest(".shopLayout");
+  shopLayout?.classList.toggle("extrasMode", shopTab === "extras");
+
+  // Réinitialiser l'affichage
+  const gridContainer = document.getElementById("shipsGridContainer");
+  if (gridContainer) gridContainer.remove();
+
+  if (shopLayout) shopLayout.style.display = "grid";
+  if (shopList) shopList.style.display = "flex";
+  if (shopPreview) shopPreview.style.display = "block";
+
+  // Catégories spéciales
+  if (shopTab === "extras") {
+    renderExtrasRoulette(user);
+    return;
+  }
+
+  // Toutes les catégories utilisent la même liste et le même panneau d'aperçu.
+  const token = ++shopRenderToken;
+  shopList.innerHTML = "";
+
+  const list = getShopListFor(shopTab);
+  if (!Array.isArray(list) || !list.length) {
+    shopList.innerHTML = `
+      <div class="tile">
+        <h3>Aucun item</h3>
+        <p>Cette catégorie est vide.</p>
+      </div>
+    `;
+    shopPreview.innerHTML = `
+      <div class="tile">
+        <h3>—</h3>
+        <p class="muted">Aucune preview disponible.</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (!selectedShopItemId || !list.some((x) => x.id === selectedShopItemId)) {
+    selectedShopItemId = list[0].id;
+  }
+
+  for (const it of list) {
+    const ownedIris = user?.drones?.items?.filter(drone => drone.type === "iris").length || 0;
+    const price = it.drone?.type === "iris" ? getIrisPrice(ownedIris) : Number(it.price || 0);
+    const ownedShip = shopTab === "ships" ? alreadyOwnsShip(user, it.ship?.id) : false;
+    const ownedDrone = it.drone ? (user?.drones?.items || []).filter(drone => drone.type === it.drone.type).length : 0;
+    const ownedFormation = it.formation ? user?.drones?.formations?.includes(it.formation.id) : false;
+
+    const row = document.createElement("div");
+    row.className = "shopRow" + (it.id === selectedShopItemId ? " active" : "");
+
+    const img = document.createElement("img");
+    img.src = iconForItem(it, shopTab);
+    img.alt = it.name || it.id;
+    img.loading = "lazy";
+    img.style.imageRendering = (shopTab === "ships" || shopTab === "drones") ? "pixelated" : "auto";
+    if (shopTab === "drones") img.classList.add("droneShopRowImage");
+    if (shopTab === "formations") img.classList.add("formationShopRowImage");
+    img.onerror = () => {
+      img.onerror = null;
+      img.src = FALLBACK_ICON;
+    };
+
+    const meta = document.createElement("div");
+    meta.className = "shopMeta";
+
+    const title = document.createElement("b");
+    title.textContent = it.name || it.id;
+
+    const sub = document.createElement("span");
+    sub.innerHTML = `${formatNumber(price)} crédits`
+      + (ownedShip || ownedFormation ? ` · <span style="color:#00ff88;">Possédé</span>` : "")
+      + (it.drone ? ` · ${ownedDrone}/${it.drone.type === "iris" ? 8 : 1}` : "");
+
+    meta.appendChild(title);
+    meta.appendChild(sub);
+    row.appendChild(img);
+    row.appendChild(meta);
+
+    row.addEventListener("click", () => {
+      selectedShopItemId = it.id;
+      renderShop(user);
+    });
+
+    shopList.appendChild(row);
+  }
+
+  requestAnimationFrame(() => {
+    if (token !== shopRenderToken) return;
+    const it = list.find((x) => x.id === selectedShopItemId) || list[0];
+    renderShopPreview(user, it, shopTab);
+  });
+}
+function renderShipsGrid(user) {
+  // Masquer complètement la structure liste/preview
+  const shopLayout = shopList?.closest(".shopLayout");
+  if (shopLayout) shopLayout.style.display = "none";
+
+  if (shopList) shopList.style.display = "none";
+  if (shopPreview) shopPreview.style.display = "none";
+
+  // Trouver le parent du shopLayout (le panel shop)
+  const shopPanel = document.getElementById("panel_shop");
+  if (!shopPanel) return;
+
+  // Créer ou récupérer le container grid
+  let gridContainer = document.getElementById("shipsGridContainer");
+  if (!gridContainer) {
+    gridContainer = document.createElement("div");
+    gridContainer.id = "shipsGridContainer";
+    gridContainer.className = "shopLayoutGrid";
+    // Ajouter directement au panel shop au lieu de shopList.parentElement
+    shopPanel.appendChild(gridContainer);
+  }
+
+  gridContainer.style.display = "grid";
+  gridContainer.innerHTML = "";
+  gridContainer.scrollTop = 0;
+
+  const list = getShopListFor("ships");
+  if (!Array.isArray(list) || !list.length) {
+    gridContainer.innerHTML = `
+      <div class="tile">
+        <h3>Aucun vaisseau</h3>
+        <p>Aucun vaisseau disponible.</p>
+      </div>
+    `;
+    return;
+  }
+
+  for (const it of list) {
+    const price = Number(it.price || 0);
+    const shipId = it?.ship?.id;
+    const owned = alreadyOwnsShip(user, shipId);
+    const can = Number(user?.credits || 0) >= price;
+
+    const pack = getShipPack(shipId);
+    const shipW = pack?.w || 200;
+    const shipH = pack?.h || 200;
+    const containerSize = 280;
+    const scale = Math.min(containerSize / shipW, containerSize / shipH, 1) * 0.75;
+
+    const imgSrc = shipPreviewSrc(shipId);
+
+const card = document.createElement("div");
+card.className = "shipCard" + (owned ? " owned" : "");
+
+    card.innerHTML = `
+      <div class="shipImageContainer">
+        <img src="${imgSrc}" alt="${it.name || it.id}"
+             style="width: ${shipW}px; height: ${shipH}px; transform: scale(${scale});" />
+      </div>
+
+      <h3>
+        ${it.name || it.id}
+        ${owned ? ` <span class="pill">Possédé</span>` : ""}
+      </h3>
+
+      <div class="shipStats">
+        💪 HP: <strong style="color:#00d9ff;">${formatNumber(pack?.hp || 0)}</strong> •
+        ⚡ Vitesse: <strong style="color:#00d9ff;">${pack?.speed || 0}</strong><br>
+        🔫 Lasers: <strong>${pack?.slots?.lasers || 0}</strong> •
+        ⚙️ Génés: <strong>${pack?.slots?.gens || 0}</strong> •
+        🛡️ Extras: <strong>${pack?.slots?.extras || 0}</strong>
+        ${pack?.slots?.shipMods ? ` • ✨ Modules: <strong>${pack.slots.shipMods}</strong>` : ""}
+      </div>
+
+      <div class="shipPrice">
+        💰 <span class="amount">${formatNumber(price)}</span> crédits
+      </div>
+
+      <button class="primary" style="width: 100%;" ${(!can || owned) ? "disabled" : ""} data-ship-buy="${it.id}">
+        ${owned ? "✅ Déjà possédé" : `💰 Acheter`}
+      </button>
+    `;
+
+    const btn = card.querySelector(`[data-ship-buy="${it.id}"]`);
+    if (btn) {
+      btn.addEventListener("click", () => {
+        if (owned || !can) return;
+
+        const shipName = it.name || it.id;
+        const priceFormatted = formatNumber(price);
+
+        showConfirm(
+          '🚀 Confirmer l\'achat',
+          `Voulez-vous acheter le vaisseau "${shipName}" pour ${priceFormatted} crédits ?`,
+          () => {
+            const out = buyItem(it.id);
+            if (!out?.ok) {
+              showToast(out?.error || "Achat impossible", 'error');
+              return;
+            }
+
+            showToast(`✅ Vaisseau ${shipName} acheté !`, 'success');
+
+            user = getCurrentUserFull();
+            renderHeader(user);
+            renderStats(user);
+            renderHangars(user);
+            renderShop(user);
+            syncGameCredits();
+          }
+        );
+      });
+    }
+
+    gridContainer.appendChild(card);
+  }
+}
+
+function renderExtrasRoulette(user) {
+  if (!shopList || !shopPreview) return;
+
+  shopList.innerHTML = "";
+
+  const visible = 7;
+  const centerIndex = Math.floor(visible / 2);
+
+  let cells = Array.from({ length: visible }, () => {
+    const tier = pickWeighted(MODULE_TIER_WEIGHTS);
+    const type = pickWeighted(MODULE_TYPE_WEIGHTS);
+    return { type, tier };
+  });
+
+  function renderStrip() {
+    return `
+      <div style="display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;">
+        ${cells
+          .map((c, i) => {
+            const isCenter = i === centerIndex;
+            const src = moduleIconSrc(c.type, c.tier);
+            return `
+              <div style="
+                width:64px;height:64px;border-radius:14px;
+                border:1px solid ${isCenter ? "rgba(0,217,255,0.6)" : "rgba(255,255,255,0.14)"};
+                background:${isCenter ? "rgba(0,217,255,0.15)" : "rgba(255,255,255,0.05)"};
+                display:grid;place-items:center;
+                transform:${isCenter ? "scale(1.1)" : "scale(1)"};
+                transition: all 0.3s ease;
+              ">
+                <img src="${src}" style="width:52px;height:52px;object-fit:contain;image-rendering:pixelated;" />
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  function rollStep() {
+    const tier = pickWeighted(MODULE_TIER_WEIGHTS);
+    const type = pickWeighted(MODULE_TYPE_WEIGHTS);
+    cells = cells.slice(1).concat({ type, tier });
+  }
+
+  function renderModuleHistory(currentUser) {
+    const history = Array.isArray(currentUser?.inventory?.moduleRollHistory)
+      ? [...currentUser.inventory.moduleRollHistory].reverse()
+      : [];
+    if (!history.length) return `<div class="moduleHistoryEmpty">Aucun module obtenu pour le moment.</div>`;
+
+    return history.map((module, index) => {
+      const bonuses = Array.isArray(module?.bonuses)
+        ? module.bonuses.map(bonus => `${formatNumber(bonus.pct || 0)}% ${formatStatLabel(bonus.stat)}`).join(" • ")
+        : "Aucun bonus";
+      const obtainedAt = Number(module?.createdAt || 0) > 0
+        ? new Date(Number(module.createdAt) * 1000).toLocaleString("fr-FR")
+        : "Date inconnue";
+      return `
+        <div class="moduleHistoryRow">
+          <span class="moduleHistoryIndex">${formatNumber(history.length - index)}</span>
+          <img src="${moduleIconSrc(module?.type, module?.tier)}" alt="" />
+          <div class="moduleHistoryMeta">
+            <strong>${escapeHtml(String(module?.type || "module").toUpperCase())}-${escapeHtml(String(module?.tier || "x1").toUpperCase())}</strong>
+            <span>${escapeHtml(String(module?.shipId || "Vaisseau inconnu"))} • ${escapeHtml(bonuses)}</span>
+          </div>
+          <time>${escapeHtml(obtainedAt)}</time>
+        </div>
+      `;
+    }).join("");
+  }
+
+  shopPreview.innerHTML = `
+    <div class="tile extrasRoulettePanel">
+      <div class="extrasRouletteHeader">
+        <div>
+          <h3>Roulette de modules</h3>
+          <p>Obtiens un module bonus aléatoire pour l'un de tes vaisseaux.</p>
+        </div>
+        <div class="extrasRouletteCost"><span>Coût du tirage</span><strong>${formatNumber(MODULE_ROLL_COST)}</strong> crédits</div>
+      </div>
+      <div id="rouletteStrip" style="margin:16px 0;">
+        ${renderStrip()}
+      </div>
+
+      <p style="color: var(--muted); font-size: 13px; margin: 12px 0; text-align: center;">
+        Tier: <strong style="color: #00d9ff;">x1 (68%)</strong>,
+        <strong style="color: #ff006e;">x2 (25%)</strong>,
+        <strong style="color: #00ff88;">x3 (7%)</strong>
+      </p>
+
+      <button id="btnRoll" class="primary" style="width: 100%;" ${Number(user?.credits || 0) < MODULE_ROLL_COST ? "disabled" : ""}>
+        Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)
+      </button>
+
+      <div id="rollResult" style="margin-top: 16px; text-align: center; color: var(--muted);"></div>
+      <section class="moduleHistoryPanel">
+        <header>
+          <strong>Historique des modules obtenus</strong>
+          <span>${formatNumber(user?.inventory?.moduleRollHistory?.length || 0)} tirage(s)</span>
+        </header>
+        <div id="moduleRollHistory" class="moduleHistoryList">${renderModuleHistory(user)}</div>
+      </section>
+    </div>
+  `;
+
+  const stripEl = document.getElementById("rouletteStrip");
+  const btn = document.getElementById("btnRoll");
+  const res = document.getElementById("rollResult");
+  const historyEl = document.getElementById("moduleRollHistory");
+
+  let rolling = false;
+
+  btn?.addEventListener("click", () => {
+    if (rolling) return;
+    rolling = true;
+    res.textContent = "";
+
+    const pay = buyModuleRoll(MODULE_ROLL_COST);
+    if (!pay?.ok) {
+      rolling = false;
+      setMsg(pay?.error || "Achat impossible.", false);
+      return;
+    }
+
+    user = getCurrentUserFull();
+    renderHeader(user);
+    renderStats(user);
+    renderHangars(user);
+    if (shopCredits) shopCredits.textContent = formatNumber(user.credits || 0);
+    syncGameCredits();
+
+    let steps = randInt(26, 44);
+    let delay = 35;
+
+    const tick = () => {
+      rollStep();
+      if (stripEl) stripEl.innerHTML = renderStrip();
+
+      steps--;
+      delay = Math.min(140, delay + (steps < 10 ? 10 : 0));
+
+      if (steps > 0) {
+        setTimeout(tick, delay);
+        return;
+      }
+
+      const u2 = getCurrentUserFull();
+      const mod = generateShipModule(u2);
+
+      cells[centerIndex] = { type: mod.type, tier: mod.tier };
+      if (stripEl) stripEl.innerHTML = renderStrip();
+
+      const add = addShipModule(mod);
+      if (!add?.ok) {
+        setMsg(add?.error || "Erreur stockage module.", false);
+        rolling = false;
+        return;
+      }
+
+      user = getCurrentUserFull();
+
+      const bonusesText = mod.bonuses
+        .map((b) => `<strong style="color: #00d9ff;">${b.pct}%</strong> ${formatStatLabel(b.stat)}`)
+        .join(" • ");
+
+      res.innerHTML = `
+        <div style="margin-top:12px; padding: 12px; background: rgba(0,217,255,0.1); border: 1px solid rgba(0,217,255,0.3); border-radius: 12px;">
+          <div style="font-size: 16px; font-weight: 900; color: #00ff88; margin-bottom: 8px;">Module obtenu</div>
+          <div style="color: var(--text);"><strong>${mod.type.toUpperCase()}-${mod.tier.toUpperCase()}</strong></div>
+          <div style="color: var(--muted); font-size: 13px;">Vaisseau: <strong>${mod.shipId}</strong></div>
+          <div style="color: var(--muted); font-size: 13px; margin-top: 4px;">Bonus: ${bonusesText}</div>
+        </div>
+      `;
+
+      if (historyEl) historyEl.innerHTML = renderModuleHistory(user);
+      const historyCount = document.querySelector(".moduleHistoryPanel > header span");
+      if (historyCount) historyCount.textContent = `${formatNumber(user?.inventory?.moduleRollHistory?.length || 0)} tirage(s)`;
+      setMsg("Tirage réussi.", true);
+
+      renderHeader(user);
+      renderStats(user);
+      if (shopCredits) shopCredits.textContent = formatNumber(user.credits || 0);
+      syncGameCredits();
+
+      rolling = false;
+    };
+
+    tick();
+  });
+}
+
+function renderShopPreview(user, it, cat) {
+  const ownedIris = user?.drones?.items?.filter(drone => drone.type === "iris").length || 0;
+  const price = it?.drone?.type === "iris" ? getIrisPrice(ownedIris) : Number(it?.price || 0);
+  const isShip = cat === "ships";
+  const isDrone = cat === "drones";
+  const isFormation = cat === "formations";
+  const shipId = it?.ship?.id || null;
+  const droneCount = isDrone ? (user?.drones?.items || []).filter(drone => drone.type === it?.drone?.type).length : 0;
+  const droneLimit = it?.drone?.type === "iris" ? 8 : 1;
+  const formationOwned = isFormation && user?.drones?.formations?.includes(it?.formation?.id);
+  const owned = isShip ? alreadyOwnsShip(user, shipId) : isDrone ? droneCount >= droneLimit : Boolean(formationOwned);
+const counts = user?.inventory?.counts || {};
+const countOwned = Number(counts[it?.id] || 0);
+
+const ammoQty = getAmmoQtyForShopItem(user, it);
+const isAmmo = !!ammoQty;
+const ammoKey = ammoQty?.key || "";
+
+let stockLine = "";
+let statLine = "";
+
+if (it?.module?.type === "speed") {
+  statLine = `<p class="shopItemStat">Vitesse par générateur <strong>+${formatNumber(it.module.bonusSpeed || 0)}</strong></p>`;
+} else if (it?.module?.type === "shield") {
+  statLine = `<p class="shopItemStat">Bouclier par générateur <strong>+${formatNumber(it.module.bonusShield || 0)}</strong></p>`;
+} else if (it?.module?.type === "laser") {
+  statLine = `<p class="shopItemStat">Dégâts de base par tir <strong>${formatNumber(it.module.damage || 0)}</strong></p>`;
+} else if (it?.give?.ammo) {
+  const multiplier = Number(AMMO[ammoKey]?.mult || 1);
+  statLine = ammoKey === "sab"
+    ? `<p class="shopItemStat">Absorption de bouclier <strong>${multiplier}×</strong></p>`
+    : `<p class="shopItemStat">Multiplicateur de dégâts <strong>${multiplier}×</strong></p>`;
+}
+if (isFormation) {
+  const formation = DRONE_FORMATIONS.find(entry => entry.id === it?.formation?.id);
+  statLine = `<p class="shopItemStat formationDescription">${escapeHtml(formation?.description || "Aucun bonus ni malus")}</p>`;
+}
+
+if (isDrone) {
+  stockLine = `<p class="shopAmmoOwned">Drones possédés : <strong>${droneCount} / ${droneLimit}</strong></p>`;
+} else if (isFormation) {
+  const active = user?.drones?.activeFormation === it?.formation?.id;
+  stockLine = `<p class="shopAmmoOwned">${formationOwned ? (active ? "Formation active" : "Formation possédée") : `Nécessite au moins ${it?.formation?.minDrones || 4} drones`}</p>`;
+} else if (!isShip && ammoQty) {
+  stockLine = `
+    <p class="shopAmmoOwned">
+      Munitions ${String(ammoKey).toUpperCase()} — quantité possédée :
+      <strong style="color: #00d9ff;">${formatNumber(ammoQty.qty)}</strong>
+    </p>
+  `;
+} else if (!isShip) {
+  stockLine = `
+    <p style="margin: 8px 0;">
+      Stock possédé : 
+      <strong style="color: #00d9ff;">${formatNumber(countOwned)}</strong>
+    </p>
+  `;
+}
+
+  const imgSrc = isShip ? shipPreviewSrc(shipId) : iconForItem(it, cat);
+
+  let previewHtml = "";
+  
+  if (isShip) {
+    // Récupérer les dimensions du vaisseau depuis SHIP_PACKS
+    const pack = getShipPack(shipId);
+    const shipW = pack?.w || 200;
+    const shipH = pack?.h || 200;
+    
+    // Container de 400x400px
+    const containerSize = 400;
+    
+    // Calculer le scale pour que le vaisseau rentre dans le container
+    const scale = Math.min(containerSize / shipW, containerSize / shipH, 1) * 0.8; // 0.8 pour laisser un peu de marge
+    
+    previewHtml = `
+      <div class="shipPreviewContainer">
+        <img src="${imgSrc}" alt="${it?.name || it?.id}"
+             style="width: ${shipW}px; height: ${shipH}px; transform: scale(${scale});" />
+      </div>
+    `;
+  } else {
+    previewHtml = `
+      <img src="${imgSrc}" alt="${it?.name || it?.id}" class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}" />
+    `;
+  }
+
+  shopPreview.innerHTML = `
+    <div class="tile">
+      ${previewHtml}
+
+      <h3>
+        ${it?.name || it?.id} 
+        ${owned ? `<span class="pill">Possédé</span>` : ""}
+      </h3>
+
+      ${stockLine}
+      ${statLine}
+
+      ${!isShip && !isDrone && !isFormation ? `
+        <div class="shopPurchaseRow">
+          <div class="shopPurchaseInfo">
+            <label for="shopBuyQuantity">${isAmmo ? "Quantité à acheter × 1 000" : "Quantité à acheter"}</label>
+            <div class="shopPurchasePrice">
+              <span>Prix</span>
+              <strong><span id="shopPurchaseTotal">${formatNumber(price)}</span> crédits</strong>
+            </div>
+          </div>
+          <select id="shopBuyQuantity" aria-label="Quantité à acheter">
+            <option value="1">1</option>
+            <option value="5">5</option>
+            <option value="10">10</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+      ` : ""}
+      
+      ${isShip || isDrone || isFormation ? `<p style="margin: 12px 0; font-size: 18px;">
+        <strong style="color: #00d9ff;">Prix total:</strong>
+        <span id="shopPurchaseTotal" style="font-weight: 900; color: #00ff88;">${formatNumber(price)}</span> crédits
+      </p>` : ""}
+
+      <div class="shopBuySection">
+        <button id="btnBuyPreview" class="primary" style="width: 100%;" ${(Number(user?.credits || 0) < price || (owned && !formationOwned)) ? "disabled" : ""}>
+          ${formationOwned ? (user?.drones?.activeFormation === it?.formation?.id ? 'Formation active' : 'Activer la formation') : owned ? 'Déjà possédé' : ((isShip || isDrone || isFormation) ? `Acheter (${formatNumber(price)})` : 'Acheter')}
+        </button>
+      </div>
+    </div>
+  `;
+
+  const btn = document.getElementById("btnBuyPreview");
+  if (!btn) return;
+
+  const quantityInput = document.getElementById("shopBuyQuantity");
+  const totalEl = document.getElementById("shopPurchaseTotal");
+  const normalizeQuantity = () => (isShip || isDrone || isFormation)
+    ? 1
+    : Math.min(999, Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
+  const updatePurchaseSummary = () => {
+    const quantity = normalizeQuantity();
+    const total = price * quantity;
+    if (quantityInput) quantityInput.value = String(quantity);
+    if (totalEl) totalEl.textContent = formatNumber(total);
+    btn.disabled = (owned && !formationOwned) || (formationOwned && user?.drones?.activeFormation === it?.formation?.id) || (!formationOwned && Number(user?.credits || 0) < total);
+    if (!owned) {
+      btn.textContent = (isShip || isDrone || isFormation) ? `Acheter (${formatNumber(total)})` : "Acheter";
+    }
+  };
+
+  quantityInput?.addEventListener("input", updatePurchaseSummary);
+  quantityInput?.addEventListener("change", updatePurchaseSummary);
+  updatePurchaseSummary();
+
+  btn.addEventListener("click", () => {
+    const quantity = normalizeQuantity();
+    const totalPrice = price * quantity;
+    if (formationOwned) {
+      const activated = setCurrentUserDroneFormation(it.formation.id);
+      if (!activated.ok) return showToast(activated.error, "error");
+      user = activated.user;
+      renderShop(user);
+      syncGameCredits();
+      return;
+    }
+    if (owned || Number(user?.credits || 0) < totalPrice) return;
+
+    const itemName = it?.name || it?.id;
+
+    showConfirm(
+      '💰 Confirmer l\'achat',
+      `Voulez-vous acheter ${quantity > 1 ? `${formatNumber(quantity)} × ` : ""}"${itemName}" pour ${formatNumber(totalPrice)} crédits ?`,
+      () => {
+        const out = isDrone
+          ? buyCurrentUserDrone(it.drone.type)
+          : isFormation
+            ? buyCurrentUserDroneFormation(it.formation.id)
+            : buyItem(it.id, quantity);
+        if (!out?.ok) {
+          showToast(out?.error || "Achat impossible", 'error');
+          return;
+        }
+
+        showToast(`✅ ${formatNumber(quantity)} × ${itemName} acheté avec succès !`, 'success');
+
+        user = getCurrentUserFull();
+        renderHeader(user);
+        renderStats(user);
+        renderHangars(user);
+        renderShop(user);
+        setTab("shop");
+        syncGameCredits();
+      }
+    );
+  });
+}
+
+// ------------------------------------
+// FIT MODAL (Équiper)
+// ------------------------------------
+function buildFitWindow() {
+  const overlay = document.createElement("div");
+  overlay.id = "fitOverlay";
+
+  const card = document.createElement("div");
+  card.id = "fitCard";
+  card.className = "fitWindow";
+  card.innerHTML = `
+    <div id="fitErr" class="fitError" role="status"></div>
+
+    <div class="fitWorkspace">
+      <aside class="fitShipPane">
+        <canvas id="fitShipCanvas" width="96" height="96"></canvas>
+        <div class="fitShipMeta">
+          <b id="fitShipName">—</b>
+        </div>
+        <div class="fitSectionNav" aria-label="Type d'équipement">
+          <button class="fitSectionBtn active" data-fit-section="ship" type="button">Vaisseau</button>
+          <button class="fitSectionBtn" data-fit-section="drones" type="button">Drones</button>
+          <button class="fitSectionBtn" type="button" disabled>REX</button>
+        </div>
+        <div id="fitConfigBar" class="fitConfigBar">
+          <span>CONFIG.</span>
+          <div>
+            <button class="fitCfgBtn" data-cfg="1" type="button">1</button>
+            <button class="fitCfgBtn" data-cfg="2" type="button">2</button>
+          </div>
+        </div>
+        <div class="fitWindowActions">
+          <span class="fitHelpTooltip" tabindex="0" aria-label="Aide sur la sélection">?
+            <span><b>Ctrl</b> : sélection multiple<br><b>Maj</b> : tous les exemplaires identiques<br><b>Double-clic</b> : équiper</span>
+          </span>
+          <button id="fitBtnSellSelection" class="secondary fitSellButton" type="button" disabled>Vendre</button>
+          <span class="fitActionSeparator" aria-hidden="true"></span>
+          <button id="fitBtnResetAll" class="secondary" type="button">Tout retirer</button>
+          <button id="fitBtnPresets" class="secondary" type="button">Presets</button>
+          <span class="fitActionSeparator" aria-hidden="true"></span>
+          <button id="fitBtnCancel" class="secondary fitBackButton" type="button">Retour</button>
+          <button id="fitBtnSave" class="primary" type="button">Appliquer</button>
+        </div>
+      </aside>
+
+      <section class="fitLoadoutPane">
+        <div id="fitDroneWorkspace" class="fitDroneWorkspace" hidden></div>
+        <div class="fitSlotsScroll">
+          <section class="fitSlotGroup" data-slot-type="lasers">
+            <div class="fitGroupTitle"><span>LASERS</span></div>
+            <div id="fitSlotsLasers" class="slotGrid"></div>
+          </section>
+          <section class="fitSlotGroup" data-slot-type="gens">
+            <div class="fitGroupTitle"><span>GÉNÉRATEURS</span></div>
+            <div id="fitSlotsGens" class="slotGrid"></div>
+          </section>
+          <section class="fitSlotGroup" data-slot-type="extras">
+            <div class="fitGroupTitle"><span>EXTRAS</span></div>
+            <div id="fitSlotsExtras" class="slotGrid"></div>
+          </section>
+          <section class="fitSlotGroup" data-slot-type="shipMods">
+            <div class="fitGroupTitle"><span>MODULES</span><small><span id="shipModsCount">1</span></small></div>
+            <div id="fitSlotsShipMods" class="slotGrid slotGridModules"></div>
+          </section>
+        </div>
+      </section>
+
+      <aside class="fitInventoryPane">
+        <div class="fitInventoryHeader">
+          <div>
+            <strong>INVENTAIRE</strong>
+          </div>
+          <select id="fitInvFilter" class="fitSelect" aria-label="Filtrer l'inventaire">
+            <option value="all">Tout</option>
+            <option value="laser">Lasers</option>
+            <option value="speed">Vitesse</option>
+            <option value="shield">Bouclier</option>
+            <option value="extra">Extras</option>
+          </select>
+        </div>
+        <div class="fitInvScroll">
+          <div id="fitInvGrid" class="invGrid"></div>
+          <div class="fitModulesHeading">Modules Roulette</div>
+          <div id="fitShipModules" class="fitShipModules"></div>
+        </div>
+      </aside>
+    </div>
+
+    <div id="presetOverlay" class="fitPresetOverlay">
+      <div class="fitPresetWindow">
+        <header>
+          <div><strong>Presets d'équipement</strong><span>Sauvegarde et recharge rapidement une configuration.</span></div>
+          <button id="presetClose" class="secondary" type="button">Fermer</button>
+        </header>
+        <label class="fitPresetField"><span>Nouveau preset</span><input id="fitPresetName" class="fitInput" placeholder="Nom de la configuration" /></label>
+        <button id="fitBtnSavePreset" class="primary" type="button">Sauvegarder la configuration actuelle</button>
+        <div class="fitPresetDivider"></div>
+        <label class="fitPresetField"><span>Presets enregistrés</span><select id="fitPresetSelect" class="fitSelect"><option value="">— Choisir —</option></select></label>
+        <div class="fitPresetActions">
+          <button id="fitBtnLoadPreset" class="primary" type="button">Appliquer</button>
+          <button id="fitBtnDeletePreset" class="secondary" type="button">Supprimer</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  overlay.appendChild(card);
+  const host = document.getElementById("profileWindow") || document.body;
+  host.appendChild(overlay);
+  const returnZone = card.querySelector(".fitInventoryPane");
+  const loadoutZone = card.querySelector(".fitLoadoutPane");
+  card.querySelectorAll("[data-fit-section]").forEach(button => button.addEventListener("click", () => setFitSection(button.dataset.fitSection)));
+  loadoutZone?.addEventListener("dragover", (event) => {
+    if (event.dataTransfer.types.includes("application/x-orbit-slot")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    updateFitDropHighlights();
+  });
+  loadoutZone?.addEventListener("dragleave", (event) => {
+    if (!loadoutZone.contains(event.relatedTarget)) clearFitDropHighlights();
+  });
+  loadoutZone?.addEventListener("drop", (event) => {
+    clearFitDropHighlights();
+    if (event.defaultPrevented || event.dataTransfer.types.includes("application/x-orbit-slot")) return;
+    event.preventDefault();
+    let itemIds = [];
+    try { itemIds = JSON.parse(event.dataTransfer.getData("application/x-orbit-items") || "[]"); } catch {}
+    const fallbackItemId = event.dataTransfer.getData("text/plain");
+    if (!itemIds.length && fallbackItemId) itemIds = [fallbackItemId];
+    if (!itemIds.length) return;
+    const preferredSlotType = event.target.closest(".fitSlotGroup")?.dataset.slotType || null;
+    clearFitSelection();
+    itemIds.forEach((itemId, index) => fitState.selectedCopies.set(`drop#${index}`, itemId));
+    equipSelectedInventoryItems(preferredSlotType);
+  });
+  returnZone?.addEventListener("dragover", (event) => {
+    if (!event.dataTransfer.types.includes("application/x-orbit-slot")) return;
+    event.preventDefault();
+    returnZone.classList.add("dragReturnActive");
+  });
+  returnZone?.addEventListener("dragleave", (event) => {
+    if (!returnZone.contains(event.relatedTarget)) returnZone.classList.remove("dragReturnActive");
+  });
+  returnZone?.addEventListener("drop", (event) => {
+    returnZone.classList.remove("dragReturnActive");
+    const raw = event.dataTransfer.getData("application/x-orbit-slot");
+    const rawGroup = event.dataTransfer.getData("application/x-orbit-slots");
+    if ((!raw && !rawGroup) || !fitState.draft) return;
+    event.preventDefault();
+    try {
+      const sources = rawGroup ? JSON.parse(rawGroup) : [JSON.parse(raw)];
+      for (const source of sources) {
+        if (Array.isArray(fitState.draft[source.slotType])) fitState.draft[source.slotType][source.index] = null;
+      }
+      compactCurrentFit();
+      clearFitSelection();
+      showFitError("");
+      renderSlots();
+      renderInventoryPalette();
+      renderShipModulesList();
+    } catch {}
+  });
+  const sellZone = card.querySelector("#fitSellDrop");
+  sellZone?.addEventListener("dragover", (event) => {
+    if (event.dataTransfer.types.includes("application/x-orbit-slot")) return;
+    event.preventDefault();
+    sellZone.classList.add("dragSellActive");
+  });
+  sellZone?.addEventListener("dragleave", () => sellZone.classList.remove("dragSellActive"));
+  sellZone?.addEventListener("drop", (event) => {
+    sellZone.classList.remove("dragSellActive");
+    if (event.dataTransfer.types.includes("application/x-orbit-slot")) return;
+    event.preventDefault();
+    const itemId = event.dataTransfer.getData("text/plain");
+    if (itemId) sellFitInventoryItem(itemId);
+  });
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) closeFitModal();
+  });
+  return overlay;
+}
+
+function buildModalShell() {
+  const overlay = document.createElement("div");
+  overlay.id = "fitOverlay";
+overlay.style.cssText = `
+  position:fixed; inset:0; background:rgba(0,0,0,0.75);
+  display:none; place-items:center; z-index:70000;
+  padding:18px;
+  overflow:auto;
+  backdrop-filter: blur(8px);
+`;
+
+const card = document.createElement("div");
+  card.style.cssText = `
+    width: min(1400px, 96vw);
+    max-height: calc(100vh - 36px);
+    overflow: auto;
+    background: linear-gradient(135deg, rgba(10,12,28,0.98), rgba(5,8,20,0.98));
+    border: 1px solid rgba(0,217,255,0.3);
+    border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 100px rgba(0,217,255,0.2);
+    padding: 20px;
+  `;
+
+  card.innerHTML = `
+<style>
+  :root{
+    --fit-panel: rgba(255,255,255,0.04);
+    --fit-border2: rgba(100,200,255,0.2);
+    --fit-text: #e8f4ff;
+    --fit-muted: rgba(232,244,255,0.6);
+    --fit-accent: rgba(0,217,255,0.6);
+    --fit-accentBg: rgba(0,217,255,0.15);
+  }
+
+  .fitTop{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+    margin-bottom: 16px;
+  }
+  .fitTopTitle{ 
+    font-weight:900; 
+    font-size:24px; 
+    background: linear-gradient(135deg, #ffffff, #00d9ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .fitTopSub{ color:var(--fit-muted); font-size:13px; margin-top:6px; }
+
+  .fitLayout{
+    margin-top:14px;
+    display:grid;
+    grid-template-columns: 280px 1fr 360px;
+    gap:12px;
+    align-items:start;
+    min-width:0;
+  }
+
+  @media (max-width: 1400px){
+    .fitLayout{ grid-template-columns: 1fr; }
+    #fitCard{ height:auto !important; overflow:auto !important; }
+  }
+
+  .fitPanel{
+    min-width:0;
+    min-height:0;
+    border:1px solid var(--fit-border2);
+    background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(100,200,255,0.03));
+    border-radius:16px;
+    padding:16px;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+
+  .fitInvScroll{
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: calc(92vh - 210px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 6px;
+    scrollbar-width: thin;
+  }
+  .fitInvScroll::-webkit-scrollbar{ width: 10px; }
+  .fitInvScroll::-webkit-scrollbar-track{ background: rgba(255,255,255,0.05); border-radius: 10px; }
+  .fitInvScroll::-webkit-scrollbar-thumb{ background: rgba(0,217,255,0.3); border-radius: 10px; }
+  .fitInvScroll::-webkit-scrollbar-thumb:hover{ background: rgba(0,217,255,0.5); }
+
+  .fitShipWrap{ display:grid; gap:12px; place-items:center; }
+  #fitShipCanvas{
+    width:220px;height:220px;border-radius:16px;
+    border:1px solid rgba(0,217,255,0.3);
+    background: rgba(0,0,0,0.25);
+    image-rendering: pixelated;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .fitShipMeta{ text-align:center; display:grid; gap:4px; }
+  #fitShipName{ color:var(--fit-text); font-weight: 900; font-size: 16px; }
+  #fitShipHint{ color:var(--fit-muted); font-size:12px; line-height: 1.4; }
+
+  .fitGroupTitle{ 
+    font-weight:900; 
+    margin-bottom:10px; 
+    color: #00d9ff;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .slotGrid{
+    display:grid;
+    grid-template-columns: repeat(10, minmax(46px, 1fr));
+    gap:6px;
+    align-content:start;
+    min-width:0;
+  }
+
+  .slotCell{
+    width:100%;
+    aspect-ratio: 1 / 1;
+    border-radius:10px;
+    border:1px solid rgba(100,200,255,0.2);
+    background: rgba(255,255,255,0.06);
+    display:grid;
+    place-items:center;
+    cursor:pointer;
+    user-select:none;
+    overflow:hidden;
+    transition: all 0.3s ease;
+  }
+  .slotCell:hover{
+    border-color: rgba(0,217,255,0.4);
+    background: rgba(255,255,255,0.1);
+  }
+  .slotCell img{
+    width:90%;height:90%;
+    object-fit:contain;
+    image-rendering:pixelated;
+  }
+  .slotCell.filled{
+    background: rgba(0,217,255,0.15);
+    border-color: rgba(0,217,255,0.5);
+  }
+
+  .fitInvTop{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom: 12px;
+  }
+  .fitBtnRow{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+
+  .fitSelect, .fitInput{
+    padding:10px 14px;
+    border-radius:12px;
+    border:1px solid rgba(100,200,255,0.25);
+    background: rgba(255,255,255,0.06);
+    color:var(--fit-text);
+    font-weight:700;
+    outline:none;
+    font-size: 13px;
+  }
+  .fitInput{ width:180px; }
+
+  .invGrid{
+    display:grid;
+    grid-template-columns: repeat(7, 40px);
+    gap:6px;
+    align-content:start;
+    justify-content:start;
+    min-width:0;
+  }
+
+  .invCell{
+    width:40px;height:40px;border-radius:10px;
+    border:1px solid rgba(100,200,255,0.2);
+    background: rgba(255,255,255,0.06);
+    cursor:pointer;
+    display:grid;
+    place-items:center;
+    position:relative;
+    overflow:hidden;
+    transition: all 0.3s ease;
+  }
+  .invCell:hover{
+    border-color: rgba(0,217,255,0.4);
+    background: rgba(255,255,255,0.1);
+  }
+  .invCell.selected{
+    border-color: var(--fit-accent);
+    background: var(--fit-accentBg);
+    box-shadow: 0 0 12px rgba(0,217,255,0.3);
+  }
+  .invCell.disabled{
+    opacity:0.3;
+    cursor:not-allowed;
+  }
+  .invCell img{
+    width:34px;height:34px;
+    object-fit:contain;
+    image-rendering:pixelated;
+    display:block;
+    pointer-events:none;
+  }
+
+  .fitHr{ margin:16px 0; border:0; border-top:1px solid rgba(100,200,255,0.2); }
+  .fitHelp{ 
+    margin-top:12px; 
+    color:rgba(232,244,255,0.5); 
+    font-size:12px; 
+    line-height:1.4; 
+  }
+  
+  .shipModRow{
+    border:1px solid rgba(100,200,255,0.2);
+    background:rgba(255,255,255,0.04);
+    border-radius:12px;
+    padding:10px;
+    display:flex;
+    gap:10px;
+    align-items:center;
+    cursor:grab;
+    transition: all 0.3s ease;
+  }
+  .shipModRow:hover{
+    border-color: rgba(0,217,255,0.4);
+    background: rgba(0,217,255,0.08);
+    transform: translateY(-2px);
+  }
+  .shipModRow:active{
+    cursor: grabbing;
+  }
+</style>
+
+    <div class="fitTop">
+      <div>
+        <div id="fitTitle" class="fitTopTitle">⚙️ Équipement</div>
+        <div id="fitSub" class="fitTopSub">...</div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button id="fitBtnPresets" class="secondary">📋 Presets</button>
+        <button id="fitBtnCancel" class="secondary">✖ Annuler</button>
+        <button id="fitBtnSave" class="primary">✅ Appliquer</button>
+      </div>
+    </div>
+
+    <div id="fitErr" class="msg err" style="display:none; margin-bottom:12px;"></div>
+
+    <div class="fitLayout">
+      <div class="fitPanel">
+        <div class="fitShipWrap">
+          <canvas id="fitShipCanvas" width="220" height="220"></canvas>
+          <div class="fitShipMeta">
+            <b id="fitShipName">—</b>
+            <span id="fitShipHint">Glisse un item depuis l'inventaire ou clique sur un slot</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="fitPanel">
+        <div style="display:grid; gap:16px;">
+          <div>
+            <div class="fitGroupTitle">🔫 Lasers</div>
+            <div id="fitSlotsLasers" class="slotGrid"></div>
+          </div>
+
+          <div>
+            <div class="fitGroupTitle">⚡ Générateurs</div>
+            <div id="fitSlotsGens" class="slotGrid"></div>
+          </div>
+
+          <div>
+            <div class="fitGroupTitle">🛡️ Extras</div>
+            <div id="fitSlotsExtras" class="slotGrid"></div>
+          </div>
+
+          <div>
+            <div class="fitGroupTitle">✨ Modules Roulette (<span id="shipModsCount">1</span> slots)</div>
+            <div id="fitSlotsShipMods" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,56px));max-width:100%;gap:6px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="fitPanel">
+        <div class="fitInvTop">
+          <div style="font-weight:900; color: #00d9ff;">📦 Inventaire</div>
+
+          <div class="fitBtnRow">
+            <select id="fitInvFilter" class="fitSelect">
+              <option value="all">Tout</option>
+              <option value="laser">Lasers</option>
+              <option value="speed">Vitesse</option>
+              <option value="shield">Bouclier</option>
+              <option value="extra">Extras</option>
+            </select>
+
+            <button id="fitBtnClearSel" class="secondary" title="Désélectionner">
+              🗑️
+            </button>
+
+            <button id="fitBtnSell" class="secondary" disabled title="Vendre (50% du prix)">
+              💰
+            </button>
+
+            <button id="fitBtnResetAll" class="secondary" title="Tout retirer">
+              ♻️
+            </button>
+          </div>
+        </div>
+
+        <div class="fitInvScroll">
+          <div id="fitInvGrid" class="invGrid"></div>
+          <hr class="fitHr" />
+          <div style="font-weight:900; margin-bottom:10px; color: #00d9ff;">✨ Modules Roulette</div>
+          <div id="fitShipModules" style="display:grid;gap:8px;"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <div id="presetOverlay" style="
+      position:fixed; inset:0;
+      background:rgba(0,0,0,0.75);
+      display:none; place-items:center;
+      z-index:71000;
+      backdrop-filter: blur(8px);
+    ">
+      <div style="
+        width:min(560px, 94vw);
+        background: linear-gradient(135deg, rgba(10,12,28,0.98), rgba(5,8,20,0.98));
+        border:1px solid rgba(0,217,255,0.3);
+        border-radius:16px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+        padding:20px;
+      ">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:16px;">
+          <div style="font-weight:900; font-size: 18px; color: #00d9ff;">📋 Presets</div>
+          <button id="presetClose" class="secondary">✖ Fermer</button>
+        </div>
+
+        <div class="fitBtnRow" style="margin-bottom:12px;">
+          <input id="fitPresetName" class="fitInput" placeholder="Nom du preset..." />
+          <button id="fitBtnSavePreset" class="primary">💾 Sauver</button>
+          <button id="fitBtnQuickLoad" class="secondary">📥 Charger</button>
+        </div>
+
+        <div class="fitBtnRow">
+          <select id="fitPresetSelect" class="fitSelect" style="flex:1; min-width:220px;">
+            <option value="">— Choisir —</option>
+          </select>
+          <button id="fitBtnLoadPreset" class="secondary">✅ Appliquer</button>
+          <button id="fitBtnDeletePreset" class="secondary">🗑️ Supprimer</button>
+        </div>
+
+        <div class="fitHelp">
+          💡 Sauvegarde ta configuration actuelle pour la recharger plus tard.
+        </div>
+      </div>
+    </div>
+  `;
+
+  overlay.appendChild(card);
+document.body.appendChild(overlay);
+
+
+
+overlay.addEventListener("click", (e) => {
+  if (e.target === overlay) closeFitModal();
+});
+
+return overlay;
+}
+
+// -------- Ship rotating preview --------
+const _fitShipCache = new Map();
+
+function ensureShipFramesLoaded(shipId) {
+  shipId = String(shipId || "");
+  if (!shipId) return Promise.resolve(null);
+
+  const existing = _fitShipCache.get(shipId);
+  if (existing?.promise) return existing.promise;
+
+  const pack = SHIP_PACKS.find((p) => p?.id === shipId);
+  if (!pack) return Promise.resolve(null);
+
+  const rec = { imgs: new Array(pack.frames || 1), ready: false, promise: null };
+  rec.promise = (async () => {
+    const frames = Math.max(1, Number(pack.frames || 1));
+    const first = Number(pack.firstNumber || 1);
+    const ext = pack.ext || ".png";
+    const base = String(pack.path || "");
+    const absBase = base.startsWith("/") ? base : "/" + base;
+
+    const jobs = [];
+    for (let i = 0; i < frames; i++) {
+      const src = `${absBase}${first + i}${ext}`;
+      jobs.push(
+        new Promise((resolve) => {
+          const img = new Image();
+          img.src = src;
+          img.onload = () => resolve(img);
+          img.onerror = () => resolve(null);
+        }).then((img) => {
+          rec.imgs[i] = img;
+        })
+      );
+    }
+    await Promise.all(jobs);
+    rec.ready = true;
+    return rec;
+  })();
+
+  _fitShipCache.set(shipId, rec);
+  return rec.promise;
+}
+
+let _fitShipAnimToken = 0;
+
+function startFitShipAnim(shipId) {
+  const canvas = document.getElementById("fitShipCanvas");
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+
+  const token = ++_fitShipAnimToken;
+  const pack = SHIP_PACKS.find((p) => p?.id === shipId) || null;
+
+  const draw = (t) => {
+    if (token !== _fitShipAnimToken) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const rec = _fitShipCache.get(shipId);
+    if (!pack || !rec?.ready) {
+      requestAnimationFrame(draw);
+      return;
+    }
+
+    const frames = Math.max(1, Number(pack.frames || rec.imgs.length || 1));
+    const idx = Math.floor((t / 1000) * 18) % frames;
+    const img = rec.imgs[idx] || rec.imgs[0];
+    if (!img || !img.naturalWidth) {
+      requestAnimationFrame(draw);
+      return;
+    }
+
+    const baseW = Number(pack.w || img.naturalWidth || 160);
+    const baseH = Number(pack.h || img.naturalHeight || 160);
+
+    const pad = 0.88;
+    const s = Math.min((canvas.width * pad) / baseW, (canvas.height * pad) / baseH, 1);
+
+    const dw = baseW * s;
+    const dh = baseH * s;
+
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+    ctx.restore();
+
+    requestAnimationFrame(draw);
+  };
+
+  requestAnimationFrame(draw);
+}
+
+function stopFitShipAnim() {
+  _fitShipAnimToken++;
+}
+
+// ------------------------------------
+// FIT STATE
+// ------------------------------------
+let fitOverlayEl = null;
+
+let fitState = {
+  hangarId: null,
+  configNo: 1,
+  selectedItemId: null,
+  selectedCopyKey: null,
+  selectedCopies: new Map(),
+  selectedSlots: new Map(),
+  draggedItemIds: [],
+  draft: null,
+  used: null,
+  slots: { lasers: 15, gens: 15, extras: 15, shipMods: 1 },
+  section: "ship",
+  droneId: null,
+};
+
+function setFitSection(section = "ship") {
+  fitState.section = section === "drones" ? "drones" : "ship";
+  document.querySelectorAll("#fitCard [data-fit-section]").forEach(button => button.classList.toggle("active", button.dataset.fitSection === fitState.section));
+  const shipSlots = document.querySelector("#fitCard .fitSlotsScroll");
+  const droneWorkspace = document.getElementById("fitDroneWorkspace");
+  const configBar = document.getElementById("fitConfigBar");
+  const inventoryPane = document.querySelector("#fitCard .fitInventoryPane");
+  const inventoryFilter = document.getElementById("fitInvFilter");
+  document.getElementById("fitCard")?.classList.toggle("droneMode", fitState.section === "drones");
+  if (shipSlots) shipSlots.hidden = fitState.section !== "ship";
+  if (droneWorkspace) droneWorkspace.hidden = fitState.section !== "drones";
+  if (configBar) configBar.hidden = fitState.section !== "ship";
+  if (inventoryPane) inventoryPane.hidden = false;
+  if (fitState.section === "drones" && inventoryFilter) inventoryFilter.value = "all";
+  if (fitState.section === "drones") renderDroneEquipment();
+  if (fitState.draft) renderInventoryPalette();
+}
+
+function renderDroneEquipmentLegacy() {
+  const root = document.getElementById("fitDroneWorkspace");
+  if (!root) return;
+  user = getCurrentUserFull();
+  const drones = user?.drones?.items || [];
+  if (!drones.length) {
+    root.innerHTML = `<div class="fitDroneEmpty">Aucun drone. Achète ton premier Iris dans la boutique.</div>`;
+    return;
+  }
+  if (!drones.some(drone => drone.id === fitState.droneId)) fitState.droneId = drones[0].id;
+  const selected = drones.find(drone => drone.id === fitState.droneId);
+  const definition = DRONE_TYPES[selected.type];
+  const nextXp = DRONE_LEVEL_XP[selected.level] ?? DRONE_LEVEL_XP.at(-1);
+  const percent = selected.level >= 5 ? 100 : Math.min(100, Math.floor((selected.exp / nextXp) * 100));
+  const slotMarkup = selected.fit.equipment.map((itemId, index) => {
+    const item = itemId ? findCatalogItem(itemId) : null;
+    return `<button class="droneFitSlot${item ? " filled" : ""}" data-drone-slot="${index}" title="${escapeHtml(item?.name || "Dépose un laser ou un bouclier")}">${item ? `<img src="${iconForItem(item)}" alt="">` : `<span>+</span>`}</button>`;
+  }).join("");
+  root.innerHTML = `
+    <div class="droneRoster">${drones.map((drone, index) => `<button class="droneRosterItem${drone.id === selected.id ? " active" : ""}" data-drone-id="${drone.id}"><img src="${getDroneSpritePath(drone, 1)}" alt=""><span>${DRONE_TYPES[drone.type].name} ${index + 1}</span><small>Niveau ${drone.level}</small></button>`).join("")}</div>
+    <div class="droneFitDetail">
+      <header><img src="${getDroneSpritePath(selected, 1)}" alt=""><div><strong>${definition.name}</strong><span>Niveau ${selected.level} · ${formatNumber(Math.floor(selected.exp))} XP</span></div></header>
+      <div class="droneXp"><i style="width:${percent}%"></i></div>
+      <h4>ÉQUIPEMENT DU DRONE</h4><div class="droneFitSlots">${slotMarkup}</div>
+      <h4>CAPACITÉ / DESIGN</h4><button class="droneAbilitySlot" data-drone-ability>${selected.fit.ability ? escapeHtml(selected.fit.ability) : "Emplacement réservé aux designs Havoc, Hercules et Spartan"}</button>
+      <p>Glisse un laser ou un générateur de bouclier depuis l’inventaire. Double-clique sur un équipement pour le retirer.</p>
+    </div>`;
+  root.querySelectorAll("[data-drone-id]").forEach(button => button.onclick = () => { fitState.droneId = button.dataset.droneId; renderDroneEquipment(); });
+  root.querySelectorAll("[data-drone-slot]").forEach(slot => {
+    slot.addEventListener("dragover", event => { event.preventDefault(); slot.classList.add("dragTarget"); });
+    slot.addEventListener("dragleave", () => slot.classList.remove("dragTarget"));
+    slot.addEventListener("drop", event => {
+      event.preventDefault(); slot.classList.remove("dragTarget");
+      const itemId = event.dataTransfer.getData("text/plain");
+      const type = findCatalogItem(itemId)?.module?.type;
+      if (type !== "laser" && type !== "shield") return showFitError("Un drone accepte uniquement un laser ou un bouclier.");
+      const usage = computeUsage(fitState.draft)[itemId] || 0;
+      if (usage >= ownedCount(user, itemId)) return showFitError("Tous les exemplaires de cet objet sont déjà équipés.");
+      const fresh = getCurrentUserFull();
+      const drone = fresh?.drones?.items?.find(entry => entry.id === fitState.droneId);
+      if (!drone) return;
+      drone.fit.equipment[Number(slot.dataset.droneSlot)] = itemId;
+      const saved = saveCurrentUserDroneFit(drone.id, drone.fit, fitState.configNo);
+      if (!saved.ok) return showFitError(saved.error);
+      user = saved.user; showFitError(""); renderDroneEquipment(); renderInventoryPalette();
+    });
+    slot.addEventListener("dblclick", () => {
+      const fresh = getCurrentUserFull();
+      const drone = fresh?.drones?.items?.find(entry => entry.id === fitState.droneId);
+      if (!drone) return;
+      drone.fit.equipment[Number(slot.dataset.droneSlot)] = null;
+      saveCurrentUserDroneFit(drone.id, drone.fit, fitState.configNo); renderDroneEquipment(); renderInventoryPalette();
+    });
+  });
+}
+
+function renderDroneEquipment() {
+  const root = document.getElementById("fitDroneWorkspace");
+  if (!root) return;
+  user = getCurrentUserFull();
+  const drones = user?.drones?.items || [];
+  if (!drones.length) { root.innerHTML = `<div class="fitDroneEmpty">Aucun drone. Achète ton premier Iris dans la boutique.</div>`; return; }
+  root.innerHTML = `<div class="droneCards">${drones.map((drone,index)=>{
+    const type=DRONE_TYPES[drone.type]; const next=DRONE_LEVEL_XP[drone.level]??DRONE_LEVEL_XP.at(-1);
+    const pct=drone.level>=DRONE_MAX_LEVEL?100:Math.min(100,Math.floor(drone.exp/next*100));
+    const slots=drone.fit.equipment.map((id,slotIndex)=>{const item=id?findCatalogItem(id):null;return `<button class="droneFitSlot${item?" filled":""}" data-drone-id="${drone.id}" data-drone-slot="${slotIndex}" title="${escapeHtml(item?.name||"Dépose un laser ou un bouclier")}">${item?`<img src="${iconForItem(item)}" alt="">`:`<span>+</span>`}</button>`}).join("");
+    const xpText=drone.level>=DRONE_MAX_LEVEL?"Niveau maximal":`${formatNumber(Math.floor(drone.exp))} XP / ${formatNumber(next)} XP`;
+    return `<article class="droneEquipmentCard"><img class="droneCardSprite" src="${getDroneSpritePath(drone,29)}" alt=""><div class="droneCardIdentity"><strong>${type.name} ${index+1}</strong><span>Niveau ${drone.level} · ${xpText}</span></div><div class="droneCardAbility"><label>DESIGN</label><button class="droneDesignSlot" title="${drone.fit.ability?escapeHtml(drone.fit.ability):"Design vide"}">${drone.fit.ability?escapeHtml(drone.fit.ability):"+"}</button></div><div class="droneCardSlots"><label>ÉQUIPEMENT</label><div>${slots}</div></div>${drone.level>=DRONE_MAX_LEVEL?"":`<div class="droneXp"><i style="width:${pct}%"></i></div>`}</article>`;
+  }).join("")}</div>`;
+  root.querySelectorAll("[data-drone-slot]").forEach(slot=>{
+    slot.addEventListener("dragover",event=>{event.preventDefault();slot.classList.add("dragTarget")});
+    slot.addEventListener("dragleave",()=>slot.classList.remove("dragTarget"));
+    slot.addEventListener("drop",event=>{
+      event.preventDefault();slot.classList.remove("dragTarget");const itemId=event.dataTransfer.getData("text/plain");const type=findCatalogItem(itemId)?.module?.type;
+      if(type!=="laser"&&type!=="shield")return showFitError("Un drone accepte uniquement un laser ou un bouclier.");
+      if((computeUsage(fitState.draft)[itemId]||0)>=ownedCount(user,itemId))return showFitError("Tous les exemplaires sont déjà équipés.");
+      const fresh=getCurrentUserFull();const drone=fresh?.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);if(!drone)return;
+      drone.fit.equipment[Number(slot.dataset.droneSlot)]=itemId;const saved=saveCurrentUserDroneFit(drone.id,drone.fit,fitState.configNo);if(!saved.ok)return showFitError(saved.error);
+      user=saved.user;showFitError("");renderDroneEquipment();renderInventoryPalette();
+    });
+    slot.addEventListener("dblclick",()=>{const fresh=getCurrentUserFull();const drone=fresh?.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);if(!drone)return;drone.fit.equipment[Number(slot.dataset.droneSlot)]=null;saveCurrentUserDroneFit(drone.id,drone.fit,fitState.configNo);renderDroneEquipment();renderInventoryPalette();});
+  });
+}
+
+function clearFitSelection() {
+  fitState.selectedItemId = null;
+  fitState.selectedCopyKey = null;
+  fitState.selectedCopies.clear();
+  fitState.selectedSlots.clear();
+}
+
+function refreshReturnSelectionButton() {
+  const button = document.getElementById("fitBtnReturnSelection");
+  if (button) button.disabled = fitState.selectedSlots.size === 0;
+}
+
+function returnSelectedEquippedItems() {
+  if (!fitState.draft || !fitState.selectedSlots.size) return;
+  for (const slotKey of fitState.selectedSlots.keys()) {
+    const [slotType, rawIndex] = slotKey.split("#");
+    const index = Number(rawIndex);
+    if (Array.isArray(fitState.draft[slotType]) && Number.isInteger(index)) fitState.draft[slotType][index] = null;
+  }
+  compactCurrentFit();
+  clearFitSelection();
+  showFitError("");
+  renderSlots();
+  renderInventoryPalette();
+  renderShipModulesList();
+}
+
+function compactCurrentFit() {
+  if (fitState.draft) fitState.draft = compactFitDraft(fitState.draft, fitState.slots);
+}
+
+function slotTypeForItem(itemId) {
+  if (isRouletteModuleId(itemId)) return "shipMods";
+  const type = findCatalogItem(itemId)?.module?.type;
+  if (type === "laser") return "lasers";
+  if (type === "speed" || type === "shield") return "gens";
+  if (type === "extra") return "extras";
+  return null;
+}
+
+function selectedInventoryItemIds() {
+  return [...fitState.selectedCopies.values()];
+}
+
+function clearFitDropHighlights() {
+  document.querySelectorAll("#fitCard .fitSlotGroup.dragCompatible").forEach((group) => group.classList.remove("dragCompatible"));
+}
+
+function updateFitDropHighlights() {
+  clearFitDropHighlights();
+  const compatibleTypes = new Set((fitState.draggedItemIds || []).map(slotTypeForItem).filter(Boolean));
+  compatibleTypes.forEach((slotType) => {
+    document.querySelector(`#fitCard .fitSlotGroup[data-slot-type="${slotType}"]`)?.classList.add("dragCompatible");
+  });
+}
+
+function equipSelectedInventoryItems(preferredSlotType = null) {
+  if (!fitState.draft) return 0;
+  const selected = selectedInventoryItemIds();
+  if (!selected.length && fitState.selectedItemId) selected.push(fitState.selectedItemId);
+  if (!selected.length) return 0;
+
+  if (fitState.section === "drones") {
+    let added = 0;
+    for (const itemId of selected) {
+      const moduleType = findCatalogItem(itemId)?.module?.type;
+      if (moduleType !== "laser" && moduleType !== "shield") continue;
+      const fresh = getCurrentUserFull();
+      const drone = fresh?.drones?.items?.find(entry => (entry.fit?.equipment || []).some(value => !value));
+      if (!drone) break;
+      const equipment = [...drone.fit.equipment];
+      equipment[equipment.findIndex(value => !value)] = itemId;
+      const saved = saveCurrentUserDroneFit(drone.id, { ...drone.fit, equipment }, fitState.configNo);
+      if (!saved.ok) break;
+      user = saved.user;
+      added++;
+    }
+    clearFitSelection();
+    showFitError(added ? "" : "Aucun emplacement de drone disponible");
+    renderDroneEquipment();
+    renderInventoryPalette();
+    return added;
+  }
+
+  compactCurrentFit();
+  let added = 0;
+  for (const slotType of ["lasers", "gens", "extras"]) {
+    if (preferredSlotType && preferredSlotType !== slotType) continue;
+    const itemIds = selected.filter((itemId) => slotTypeForItem(itemId) === slotType);
+    const result = appendToFitSlots(fitState.draft[slotType], itemIds, fitState.slots[slotType]);
+    fitState.draft[slotType] = result.values;
+    added += result.added;
+  }
+
+  if (!preferredSlotType || preferredSlotType === "shipMods") {
+    const allModules = Array.isArray(user?.inventory?.shipModules) ? user.inventory.shipModules : [];
+    const moduleIds = selected.filter((itemId) => slotTypeForItem(itemId) === "shipMods");
+    for (const moduleId of moduleIds) {
+      const module = allModules.find((entry) => entry?.id === moduleId);
+      if (!module || fitState.draft.shipMods.includes(moduleId)) continue;
+      const sameTypeEquipped = fitState.draft.shipMods.some((equippedId) => {
+        const equipped = allModules.find((entry) => entry?.id === equippedId);
+        return equipped && equipped.type === module.type;
+      });
+      if (sameTypeEquipped) continue;
+      const result = appendToFitSlots(fitState.draft.shipMods, [moduleId], fitState.slots.shipMods);
+      fitState.draft.shipMods = result.values;
+      added += result.added;
+    }
+  }
+
+  clearFitSelection();
+  fitState.draggedItemIds = [];
+  clearFitDropHighlights();
+  showFitError(added ? "" : "Aucun emplacement compatible disponible");
+  renderSlots();
+  renderInventoryPalette();
+  return added;
+}
+
+function showFitError(text) {
+  const el = document.getElementById("fitErr");
+  if (!el) return;
+  if (!text) {
+    el.style.display = "none";
+    el.textContent = "";
+    return;
+  }
+  el.style.display = "block";
+  el.textContent = text;
+}
+
+function computeUsage(draft) {
+  const map = Object.create(null);
+  const all = [...draft.lasers, ...draft.gens, ...draft.extras, ...(draft.shipMods || [])];
+  for (const drone of user?.drones?.items || []) all.push(...(drone.fit?.equipment || []));
+  for (const id of all) {
+    if (!id) continue;
+    map[id] = (map[id] || 0) + 1;
+  }
+  return map;
+}
+
+function isRouletteModuleId(id) {
+  return typeof id === "string" && id.startsWith("mod_");
+}
+
+function canPlaceItem(itemId, draft) {
+  if (!itemId) return true;
+  const owned = ownedCount(user, itemId);
+  const used = computeUsage(draft)[itemId] || 0;
+  return used < owned;
+}
+
+function isItemAllowedInSlot(slotType, itemId) {
+  if (!itemId) return true;
+
+  if (slotType === "shipMods") {
+    return isRouletteModuleId(itemId);
+  }
+
+  const it = findCatalogItem(itemId);
+  if (!it?.module) return false;
+  const t = it.module.type;
+
+  if (slotType === "lasers") return t === "laser";
+  if (slotType === "gens") return t === "speed" || t === "shield";
+  if (slotType === "extras") return t === "extra";
+  return false;
+}
+
+// -------------------- Presets --------------------
+function presetStorageKey(u, hangarId) {
+  const uid = String(u?.email || u?.pseudo || "guest");
+  return `orbit_fit_presets:${uid}:${String(hangarId || "")}`;
+}
+
+function loadPresets(u, hangarId) {
+  try {
+    const raw = localStorage.getItem(presetStorageKey(u, hangarId));
+    const obj = raw ? JSON.parse(raw) : {};
+    return obj && typeof obj === "object" ? obj : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePresets(u, hangarId, presetsObj) {
+  try {
+    localStorage.setItem(presetStorageKey(u, hangarId), JSON.stringify(presetsObj || {}));
+  } catch {}
+}
+
+function refreshPresetSelect() {
+  const sel = document.getElementById("fitPresetSelect");
+  if (!sel) return;
+
+  const presets = loadPresets(user, fitState.hangarId);
+  const names = Object.keys(presets).sort((a, b) => a.localeCompare(b));
+
+  sel.innerHTML = `<option value="">— Choisir —</option>`;
+  for (const n of names) {
+    const opt = document.createElement("option");
+    opt.value = n;
+    opt.textContent = n;
+    sel.appendChild(opt);
+  }
+}
+
+function resetAllSlots() {
+  if (!fitState?.draft) return;
+
+  fitState.draft.lasers = fitState.draft.lasers.map(() => null);
+  fitState.draft.gens = fitState.draft.gens.map(() => null);
+  fitState.draft.extras = fitState.draft.extras.map(() => null);
+  fitState.draft.shipMods = fitState.draft.shipMods.map(() => null);
+
+  clearFitSelection();
+  showFitError("");
+  renderSlots();
+  renderInventoryPalette();
+  renderShipModulesList();
+}
+
+function sellFitInventoryItem(itemId) {
+  if (!itemId || !fitState.draft) return;
+  const usage = computeUsage(fitState.draft)[itemId] || 0;
+  const owned = ownedCount(user, itemId);
+  if (owned <= usage) return showFitError("Tous les exemplaires de cet objet sont équipés");
+
+  const out = sellItem(itemId, 1);
+  if (!out?.ok) return showFitError(out?.error || "Vente impossible");
+
+  user = getCurrentUserFull();
+  clearFitSelection();
+  showFitError("");
+  renderSlots();
+  renderInventoryPalette();
+  renderStats(user);
+  renderHangars(user);
+  if (tab === "shop") renderShop(user);
+  setMsg(`Vendu (+${formatNumber(out.gain)} crédits)`, true);
+}
+
+function sellSelectedInventoryItems() {
+  const selected = selectedInventoryItemIds();
+  if (!selected.length || !fitState.draft) return;
+  const grouped = new Map();
+  let estimatedGain = 0;
+  for (const itemId of selected) {
+    const item = findCatalogItem(itemId);
+    const entry = grouped.get(itemId) || { name: item?.name || itemId, quantity: 0, gain: 0 };
+    const unitGain = Math.floor(Math.max(0, Number(item?.price || 0)) * 0.5);
+    entry.quantity += 1;
+    entry.gain += unitGain;
+    estimatedGain += unitGain;
+    grouped.set(itemId, entry);
+  }
+  const detail = [...grouped.values()]
+    .map((entry) => `${entry.quantity} × ${entry.name} : ${formatNumber(entry.gain)} crédits`)
+    .join("\n");
+  showConfirm(
+    "Vendre la sélection",
+    `${detail}\n\nGain total : ${formatNumber(estimatedGain)} crédits`,
+    () => {
+      let sold = 0;
+      let totalGain = 0;
+      for (const itemId of selected) {
+        const out = sellItem(itemId, 1);
+        if (!out?.ok) continue;
+        sold += 1;
+        totalGain += Number(out.gain || 0);
+      }
+      user = getCurrentUserFull();
+      clearFitSelection();
+      showFitError(sold === selected.length ? "" : `${selected.length - sold} objet(s) n'ont pas pu être vendus`);
+      renderSlots();
+      renderInventoryPalette();
+      renderStats(user);
+      renderHangars(user);
+      if (tab === "shop") renderShop(user);
+      if (sold) setMsg(`${sold} objet(s) vendu(s) (+${formatNumber(totalGain)} crédits)`, true);
+    }
+  );
+}
+
+// -------------------- Inventory Palette --------------------
+function renderInventoryPalette() {
+  const grid = document.getElementById("fitInvGrid");
+  const sel = document.getElementById("fitInvFilter");
+  const clearBtn = document.getElementById("fitBtnClearSel");
+  const sellBtn = document.getElementById("fitBtnSell");
+  const countEl = document.getElementById("fitSelectionCount");
+  const equipBtn = document.getElementById("fitBtnEquipSelection");
+  const clearSelectionBtn = document.getElementById("fitBtnClearSelection");
+  const sellSelectionBtn = document.getElementById("fitBtnSellSelection");
+  if (!grid) return;
+
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      clearFitSelection();
+      showFitError("");
+      renderInventoryPalette();
+    };
+  }
+
+  const filter = String(sel?.value || "all");
+  grid.innerHTML = "";
+
+  fitState.used = computeUsage(fitState.draft);
+
+  if (sellBtn) {
+    // Legacy button kept for compatibility with older layouts.
+    const id = fitState.selectedItemId;
+    const owned = id ? ownedCount(user, id) : 0;
+    const used = id ? Number(fitState.used?.[id] || 0) : 0;
+    sellBtn.disabled = !id || owned <= used;
+  }
+
+  const selectedCount = fitState.selectedCopies.size;
+  if (countEl) countEl.textContent = selectedCount ? `${selectedCount} sélectionné${selectedCount > 1 ? "s" : ""}` : "Aucune sélection";
+  if (equipBtn) {
+    equipBtn.disabled = selectedCount === 0;
+    equipBtn.onclick = () => equipSelectedInventoryItems();
+  }
+  if (clearSelectionBtn) {
+    clearSelectionBtn.disabled = selectedCount === 0;
+    clearSelectionBtn.onclick = () => {
+      clearFitSelection();
+      renderInventoryPalette();
+    };
+  }
+  if (sellSelectionBtn) {
+    sellSelectionBtn.disabled = selectedCount === 0;
+    sellSelectionBtn.onclick = sellSelectedInventoryItems;
+  }
+
+  const counts = user?.inventory?.counts || {};
+  const entries = Object.entries(counts)
+    .map(([itemId, cnt]) => ({ itemId, cnt: Number(cnt || 0), it: findCatalogItem(itemId) }))
+    .filter((x) => x.cnt > 0 && x.it?.module)
+    .filter((x) => x.it?.module?.type !== "ammo")
+    .filter((x) => fitState.section !== "drones" || ["laser", "shield"].includes(x.it?.module?.type));
+
+  const filtered = entries.filter((e) => {
+    const t = e.it?.module?.type;
+    if (filter === "all") return true;
+    return t === filter;
+  });
+
+  filtered.sort(
+    (a, b) =>
+      (a.it?.module?.type || "").localeCompare(b.it?.module?.type || "") ||
+      (a.it?.name || a.itemId).localeCompare(b.it?.name || b.itemId)
+  );
+
+  for (const e of filtered) {
+    const used = Number(fitState.used?.[e.itemId] || 0);
+    const left = Math.max(0, e.cnt - used);
+
+    for (let i = 0; i < e.cnt; i++) {
+      const isAvailableCopy = i < left;
+      const copyKey = `${e.itemId}#${i}`;
+
+      const cell = document.createElement("div");
+      cell.dataset.copyKey = copyKey;
+      cell.dataset.itemId = e.itemId;
+      cell.className =
+        "invCell" +
+        (fitState.selectedCopies.has(copyKey) ? " selected" : "") +
+        (!isAvailableCopy ? " disabled" : "");
+      const rarity = getItemRarity(e.itemId);
+      cell.classList.add(`rarity-${rarity.id}`);
+
+      const img = document.createElement("img");
+      img.src = iconForItem(e.it, e.it?.module?.type);
+      img.alt = e.it?.name || e.itemId;
+      img.onerror = () => {
+        img.onerror = null;
+        img.src = FALLBACK_ICON;
+      };
+      cell.appendChild(img);
+
+      cell.title = `${e.it?.name || e.itemId} · ${rarity.name} (${i + 1}/${e.cnt})`;
+
+      cell.addEventListener("click", (event) => {
+        if (!isAvailableCopy) {
+          showFitError("Plus de stock disponible (dés-équipe d'abord)");
+          return;
+        }
+        if (event.shiftKey) {
+          fitState.selectedSlots.clear();
+          grid.querySelectorAll(".invCell:not(.disabled)").forEach((candidate) => {
+            if (candidate.dataset.itemId === e.itemId) {
+              fitState.selectedCopies.set(candidate.dataset.copyKey, candidate.dataset.itemId);
+            }
+          });
+          equipSelectedInventoryItems();
+          return;
+        } else if (event.ctrlKey || event.metaKey) {
+          fitState.selectedSlots.clear();
+          if (fitState.selectedCopies.has(copyKey)) fitState.selectedCopies.delete(copyKey);
+          else fitState.selectedCopies.set(copyKey, e.itemId);
+        } else {
+          const deselectOnly = fitState.selectedCopies.size === 1 && fitState.selectedCopies.has(copyKey);
+          clearFitSelection();
+          if (!deselectOnly) fitState.selectedCopies.set(copyKey, e.itemId);
+        }
+        const last = [...fitState.selectedCopies.entries()].at(-1);
+        fitState.selectedItemId = last?.[1] || null;
+        fitState.selectedCopyKey = last?.[0] || null;
+        showFitError("");
+        renderSlots();
+        renderInventoryPalette();
+      });
+
+      cell.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        if (!isAvailableCopy) return;
+        if (!fitState.selectedCopies.has(copyKey)) fitState.selectedCopies.set(copyKey, e.itemId);
+        equipSelectedInventoryItems();
+      });
+
+      cell.draggable = isAvailableCopy;
+      cell.addEventListener("dragstart", (ev) => {
+        if (!isAvailableCopy) return ev.preventDefault();
+        if (!fitState.selectedCopies.has(copyKey)) {
+          clearFitSelection();
+          fitState.selectedCopies.set(copyKey, e.itemId);
+        }
+        ev.dataTransfer.setData("text/plain", e.itemId);
+        ev.dataTransfer.setData("application/x-orbit-items", JSON.stringify(selectedInventoryItemIds()));
+        ev.dataTransfer.effectAllowed = "copy";
+        fitState.draggedItemIds = selectedInventoryItemIds();
+
+        fitState.selectedItemId = e.itemId;
+        fitState.selectedCopyKey = copyKey;
+      });
+      cell.addEventListener("dragend", () => {
+        fitState.draggedItemIds = [];
+        clearFitDropHighlights();
+      });
+
+      grid.appendChild(cell);
+    }
+  }
+
+  if (!filtered.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;color:var(--fit-muted);font-size:12px;text-align:center;padding:20px;">Aucun item dans l'inventaire</div>`;
+  }
+}
+
+function slotCell(label, filled, itemId = null) {
+  const d = document.createElement("div");
+  d.className = "slotCell" + (filled ? " filled" : "");
+  d.title = label || "";
+
+  if (filled && itemId) {
+    const rarity = getItemRarity(itemId);
+    d.classList.add(`rarity-${rarity.id}`);
+    d.title = `${label || itemId} · ${rarity.name}`;
+    const img = document.createElement("img");
+    img.src = iconForItem({ id: itemId }, "modules");
+    img.alt = label || itemId;
+    img.draggable = false;
+    img.onerror = () => {
+      img.onerror = null;
+      img.src = FALLBACK_ICON;
+    };
+    d.appendChild(img);
+  }
+  return d;
+}
+
+function renderSlots() {
+  const lasersRoot = document.getElementById("fitSlotsLasers");
+  const gensRoot = document.getElementById("fitSlotsGens");
+  const extrasRoot = document.getElementById("fitSlotsExtras");
+  const shipModsRoot = document.getElementById("fitSlotsShipMods");
+
+  if (!lasersRoot || !gensRoot || !extrasRoot || !shipModsRoot) return;
+
+  lasersRoot.innerHTML = "";
+  gensRoot.innerHTML = "";
+  extrasRoot.innerHTML = "";
+  shipModsRoot.innerHTML = "";
+
+  compactCurrentFit();
+  const draft = fitState.draft;
+  fitState.used = computeUsage(draft);
+  refreshReturnSelectionButton();
+
+  const attachSlotDrag = (cell, slotType, idx, itemId) => {
+    if (!itemId) return;
+    const slotKey = `${slotType}#${idx}`;
+    cell.classList.toggle("selected", fitState.selectedSlots.has(slotKey));
+    cell.addEventListener("click", (event) => {
+      if (event.shiftKey) {
+        clearFitSelection();
+        for (const currentType of ["lasers", "gens", "extras", "shipMods"]) {
+          fitState.draft[currentType].forEach((currentItemId, currentIndex) => {
+            if (currentItemId === itemId) fitState.selectedSlots.set(`${currentType}#${currentIndex}`, currentItemId);
+          });
+        }
+      } else if (event.ctrlKey || event.metaKey) {
+        fitState.selectedCopies.clear();
+        if (fitState.selectedSlots.has(slotKey)) fitState.selectedSlots.delete(slotKey);
+        else fitState.selectedSlots.set(slotKey, itemId);
+      } else {
+        const deselectOnly = fitState.selectedSlots.size === 1 && fitState.selectedSlots.has(slotKey);
+        clearFitSelection();
+        if (!deselectOnly) fitState.selectedSlots.set(slotKey, itemId);
+      }
+      showFitError("");
+      renderSlots();
+      renderInventoryPalette();
+    });
+    cell.draggable = true;
+    cell.addEventListener("dragstart", (event) => {
+      if (!fitState.selectedSlots.has(slotKey)) {
+        clearFitSelection();
+        fitState.selectedSlots.set(slotKey, itemId);
+      }
+      const selectedSources = [...fitState.selectedSlots.keys()].map((key) => {
+        const [selectedType, rawIndex] = key.split("#");
+        return { slotType: selectedType, index: Number(rawIndex) };
+      });
+      event.dataTransfer.setData("text/plain", itemId);
+      event.dataTransfer.setData("application/x-orbit-slot", JSON.stringify({ slotType, index: idx }));
+      event.dataTransfer.setData("application/x-orbit-slots", JSON.stringify(selectedSources));
+      event.dataTransfer.effectAllowed = "move";
+      fitState.draggedItemIds = [itemId];
+      cell.classList.add("dragging");
+    });
+    cell.addEventListener("dragend", () => {
+      cell.classList.remove("dragging");
+      fitState.draggedItemIds = [];
+      clearFitDropHighlights();
+    });
+  };
+
+  const attachDrop = (cell, slotType, idx) => {
+    cell.addEventListener("dragover", (ev) => {
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = "copy";
+    });
+
+    cell.addEventListener("drop", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const itemId = ev.dataTransfer.getData("text/plain");
+      if (!itemId) return;
+
+      if (!isItemAllowedInSlot(slotType, itemId)) {
+        showFitError("Ce module ne va pas dans ce type de slot");
+        return;
+      }
+
+      let source = null;
+      try {
+        const rawSource = ev.dataTransfer.getData("application/x-orbit-slot");
+        if (rawSource) source = JSON.parse(rawSource);
+      } catch {}
+
+      if (!source) {
+        let draggedItems = [];
+        try { draggedItems = JSON.parse(ev.dataTransfer.getData("application/x-orbit-items") || "[]"); } catch {}
+        if (!draggedItems.length) draggedItems = [itemId];
+        clearFitSelection();
+        draggedItems.forEach((id, selectionIndex) => fitState.selectedCopies.set(`drag#${selectionIndex}`, id));
+        equipSelectedInventoryItems(slotType);
+        return;
+      }
+
+      if (source && Array.isArray(draft[source.slotType])) draft[source.slotType][source.index] = null;
+      const result = appendToFitSlots(draft[slotType], [itemId], fitState.slots[slotType]);
+      draft[slotType] = result.values;
+      compactCurrentFit();
+      clearFitSelection();
+      showFitError("");
+      renderSlots();
+      renderInventoryPalette();
+    });
+
+    cell.addEventListener("orbitDisabledSlotClick", () => {
+      if (draft[slotType][idx]) {
+        draft[slotType][idx] = null;
+        compactCurrentFit();
+        showFitError("");
+        renderSlots();
+        renderInventoryPalette();
+        return;
+      }
+      equipSelectedInventoryItems(slotType);
+    });
+  };
+
+  const L = Number(fitState?.slots?.lasers ?? 0);
+  const G = Number(fitState?.slots?.gens ?? 0);
+  const E = Number(fitState?.slots?.extras ?? 0);
+
+  for (let i = 0; i < L; i++) {
+    const slotType = "lasers";
+    const id = draft.lasers[i];
+    const label = id ? findCatalogItem(id)?.name || id : "—";
+    const cell = slotCell(label, !!id, id);
+    attachSlotDrag(cell, slotType, i, id);
+    attachDrop(cell, slotType, i);
+    lasersRoot.appendChild(cell);
+  }
+
+  for (let i = 0; i < G; i++) {
+    const slotType = "gens";
+    const id = draft.gens[i];
+    const label = id ? findCatalogItem(id)?.name || id : "—";
+    const cell = slotCell(label, !!id, id);
+    attachSlotDrag(cell, slotType, i, id);
+    attachDrop(cell, slotType, i);
+    gensRoot.appendChild(cell);
+  }
+
+  for (let i = 0; i < E; i++) {
+    const slotType = "extras";
+    const id = draft.extras[i];
+    const label = id ? findCatalogItem(id)?.name || id : "—";
+    const cell = slotCell(label, !!id, id);
+    attachSlotDrag(cell, slotType, i, id);
+    attachDrop(cell, slotType, i);
+    extrasRoot.appendChild(cell);
+  }
+
+  // ShipMods (slots dynamiques)
+  const SM = Number(fitState?.slots?.shipMods ?? 1);
+  
+  for (let i = 0; i < SM; i++) {
+    const slotType = "shipMods";
+    const id = draft.shipMods[i];
+
+    let label = "—";
+    if (id) {
+      const mod = (user?.inventory?.shipModules || []).find(m => m?.id === id);
+      label = mod ? `${mod.type.toUpperCase()}-${mod.tier.toUpperCase()}` : id;
+    }
+
+    const cell = slotCell(label, !!id, null);
+
+    if (id) {
+      const mod = (user?.inventory?.shipModules || []).find(m => m?.id === id);
+      const img = document.createElement("img");
+      img.src = mod ? (MODULE_ICONS[mod.iconKey] || FALLBACK_ICON) : FALLBACK_ICON;
+      img.draggable = false;
+      cell.innerHTML = "";
+      cell.appendChild(img);
+      const details = document.createElement("div");
+      details.className = "shipModSlotDetails";
+      const bonusText = (mod?.bonuses || []).map((bonus) => `${bonus.pct}% ${formatStatLabel(bonus.stat)}`).join(" · ");
+      details.innerHTML = `<b>${mod ? `${String(mod.type || "").toUpperCase()}-${String(mod.tier || "").toUpperCase()}` : id}</b><span>${bonusText || "Module spécial"}</span>`;
+      cell.appendChild(details);
+      cell.classList.add("filled");
+      cell.classList.add("shipModSlot");
+      cell.title = label;
+    }
+
+    attachSlotDrag(cell, slotType, i, id);
+
+    cell.addEventListener("orbitDisabledSlotClick", () => {
+      if (!fitState.selectedItemId && draft.shipMods[i]) {
+        draft.shipMods[i] = null;
+        compactCurrentFit();
+        showFitError("");
+        renderSlots();
+        renderInventoryPalette();
+        renderShipModulesList();
+        return;
+      }
+      
+      const selItem = fitState.selectedItemId;
+      if (!selItem) {
+        showFitError("Sélectionne un module roulette dans la liste");
+        return;
+      }
+
+      if (!isItemAllowedInSlot("shipMods", selItem)) {
+        showFitError("Ce module ne va pas dans ce slot");
+        return;
+      }
+
+      const cur = draft.shipMods[i] || null;
+      if (cur === selItem) {
+        draft.shipMods[i] = null;
+        compactCurrentFit();
+        showFitError("");
+        renderSlots();
+        renderInventoryPalette();
+        renderShipModulesList();
+        return;
+      }
+
+      const tmp = structuredClone(draft);
+      tmp.shipMods[i] = null;
+
+      const all = Array.isArray(user?.inventory?.shipModules) ? user.inventory.shipModules : [];
+      const selModule = all.find(m => m?.id === selItem);
+      
+      if (!selModule) {
+        showFitError("Module introuvable");
+        return;
+      }
+
+      // Vérifier qu'on n'a pas déjà un module du même type
+      const alreadyHasSameType = tmp.shipMods.some(modId => {
+        if (!modId) return false;
+        const mod = all.find(m => m?.id === modId);
+        return mod && mod.type === selModule.type;
+      });
+
+      if (alreadyHasSameType) {
+        showFitError(`Tu as déjà un module ${selModule.type.toUpperCase()} équipé`);
+        return;
+      }
+
+      const used = computeUsage(tmp)[selItem] || 0;
+      if (used >= 1) {
+        showFitError("Module déjà utilisé");
+        return;
+      }
+
+      const result = appendToFitSlots(draft.shipMods, [selItem], fitState.slots.shipMods);
+      draft.shipMods = result.values;
+      showFitError("");
+      renderSlots();
+      renderInventoryPalette();
+      renderShipModulesList();
+    });
+
+    cell.addEventListener("dragover", (ev) => {
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = "copy";
+    });
+
+    cell.addEventListener("drop", (ev) => {
+      ev.preventDefault();
+      const moduleId = ev.dataTransfer.getData("text/plain");
+      if (!moduleId) return;
+
+      if (!isItemAllowedInSlot("shipMods", moduleId)) {
+        showFitError("Ce module ne va pas dans ce slot");
+        return;
+      }
+
+      let source = null;
+      try {
+        const rawSource = ev.dataTransfer.getData("application/x-orbit-slot");
+        if (rawSource) source = JSON.parse(rawSource);
+      } catch {}
+
+      const tmp = structuredClone(draft);
+      if (source && Array.isArray(tmp[source.slotType])) tmp[source.slotType][source.index] = null;
+      tmp.shipMods[i] = null;
+
+      const all = Array.isArray(user?.inventory?.shipModules) ? user.inventory.shipModules : [];
+      const selModule = all.find(m => m?.id === moduleId);
+      
+      if (!selModule) {
+        showFitError("Module introuvable");
+        return;
+      }
+
+      // Vérifier qu'on n'a pas déjà un module du même type
+      const alreadyHasSameType = tmp.shipMods.some(modId => {
+        if (!modId) return false;
+        const mod = all.find(m => m?.id === modId);
+        return mod && mod.type === selModule.type;
+      });
+
+      if (alreadyHasSameType) {
+        showFitError(`Tu as déjà un module ${selModule.type.toUpperCase()} équipé`);
+        return;
+      }
+
+      const used = computeUsage(tmp)[moduleId] || 0;
+      if (used >= 1) {
+        showFitError("Module déjà utilisé");
+        return;
+      }
+
+      if (source && Array.isArray(draft[source.slotType])) draft[source.slotType][source.index] = null;
+      draft.shipMods = appendToFitSlots(draft.shipMods, [moduleId], fitState.slots.shipMods).values;
+      compactCurrentFit();
+      clearFitSelection();
+      showFitError("");
+      renderSlots();
+      renderInventoryPalette();
+      renderShipModulesList();
+    });
+
+    shipModsRoot.appendChild(cell);
+  }
+}
+
+function renderShipModulesList() {
+  const root = document.getElementById("fitShipModules");
+  if (!root) return;
+
+  const u = getCurrentUserFull();
+  if (!u) return;
+
+  const h = (u.hangars || []).find(x => x?.id === fitState.hangarId);
+  if (!h) {
+    root.innerHTML = `<div style="color:var(--fit-muted);font-size:12px;text-align:center;padding:10px;">Hangar introuvable</div>`;
+    return;
+  }
+
+  const all = Array.isArray(u?.inventory?.shipModules) ? u.inventory.shipModules : [];
+  const list = all.filter(m => String(m?.shipId) === String(h.shipId));
+
+  if (!list.length) {
+    root.innerHTML = `<div style="color:var(--fit-muted);font-size:12px;text-align:center;padding:10px;">Aucun module pour ${h.shipId}</div>`;
+    return;
+  }
+
+  root.innerHTML = list.slice().reverse().map((m) => {
+    const icon = MODULE_ICONS[m.iconKey] || FALLBACK_ICON;
+    const equipped = fitState.draft?.shipMods?.includes(m.id);
+    const bonus = (m.bonuses || [])
+      .map(b => `<strong style="color:#00d9ff;">${b.pct}%</strong> ${formatStatLabel(b.stat)}`)
+      .join(" • ");
+
+    return `
+      <div class="shipModRow${equipped ? " equipped" : ""}" data-modid="${m.id}" data-equipped="${equipped ? "1" : "0"}">
+        <img src="${icon}" style="width:40px;height:40px;object-fit:contain;image-rendering:pixelated;border-radius:10px;background:rgba(0,0,0,0.25);" />
+        <div style="min-width:0;">
+          <div style="font-weight:900; color:#00d9ff;">
+            ${String(m.type || "").toUpperCase()}-${String(m.tier || "").toUpperCase()}
+          </div>
+          <div style="font-size:12px; color:var(--fit-muted); word-break:break-word;">
+            ${bonus}
+          </div>
+        </div>
+        ${equipped ? '<span class="shipModEquippedBadge">ÉQUIPÉ</span>' : ""}
+      </div>
+    `;
+  }).join("");
+
+  root.querySelectorAll(".shipModRow").forEach((row) => {
+    row.draggable = row.dataset.equipped !== "1";
+    row.addEventListener("dragstart", (ev) => {
+      if (row.dataset.equipped === "1") return ev.preventDefault();
+      ev.dataTransfer.setData("text/plain", row.dataset.modid);
+      ev.dataTransfer.setData("application/x-orbit-items", JSON.stringify([row.dataset.modid]));
+      ev.dataTransfer.effectAllowed = "copy";
+      fitState.draggedItemIds = [row.dataset.modid];
+    });
+    row.addEventListener("dragend", () => {
+      fitState.draggedItemIds = [];
+      clearFitDropHighlights();
+    });
+  });
+}
+
+function getFitForConfig(h, configNo) {
+  const cfg = Number(configNo) === 2 ? "2" : "1";
+
+  return (
+    h?.fits?.[cfg] ||
+    h?.fit ||
+    { lasers: [], gens: [], extras: [], shipMods: [] }
+  );
+}
+
+function setFitModalConfig(configNo) {
+  const nextConfig = Number(configNo) === 2 ? 2 : 1;
+  if (nextConfig === fitState.configNo) return;
+
+  if (fitState.hangarId && fitState.draft) {
+    const access = getHangarActionAccess("equip");
+    if (!access.ok) {
+      showFitError(access.error);
+      return;
+    }
+    const saved = saveHangarFit(fitState.hangarId, fitState.draft, fitState.configNo);
+    if (!saved?.ok) {
+      showFitError(saved?.error || "Impossible d'enregistrer la configuration actuelle");
+      return;
+    }
+  }
+
+  const activated = setActiveHangarConfig(fitState.hangarId, nextConfig);
+  if (!activated?.ok) {
+    showFitError(activated?.error || "Impossible d'activer cette configuration");
+    return;
+  }
+
+  user = getCurrentUserFull();
+
+  const h = (user?.hangars || []).find((x) => x?.id === fitState.hangarId);
+  if (!h) return;
+
+  fitState.configNo = nextConfig;
+
+  const baseFit = getFitForConfig(h, fitState.configNo);
+
+  fitState.slots = getShipSlots(h.shipId);
+
+  fitState.draft = {
+    lasers: normalizeFitArray(baseFit.lasers, fitState.slots.lasers),
+    gens: normalizeFitArray(baseFit.gens, fitState.slots.gens),
+    extras: normalizeFitArray(baseFit.extras, fitState.slots.extras),
+    shipMods: normalizeFitArray(baseFit.shipMods, fitState.slots.shipMods),
+  };
+  compactCurrentFit();
+  clearFitSelection();
+  fitState.used = computeUsage(fitState.draft);
+
+  showFitError("");
+
+  const titleEl = document.getElementById("fitTitle");
+  if (titleEl) {
+    titleEl.textContent = `Équipement — ${h.shipId} — Config ${fitState.configNo}`;
+    window.GameWindowManager?.setTitle(
+  "profileWindow",
+  `Équipement — ${h.shipId} — Config ${fitState.configNo}`
+);
+  }
+
+  document.querySelectorAll(".fitCfgBtn").forEach((b) => {
+    b.classList.toggle("active", Number(b.dataset.cfg) === fitState.configNo);
+  });
+
+  renderSlots();
+  renderInventoryPalette();
+  renderShipModulesList();
+}
+
+function openFitModal(hangarId) {
+  const access = getHangarActionAccess("equip");
+  if (!access.ok) return setMsg(access.error, false);
+  if (!fitOverlayEl) fitOverlayEl = buildFitWindow();
+
+  user = getCurrentUserFull();
+  if (!user) return (location.href = "./auth.html");
+
+  const h = (user.hangars || []).find((x) => x?.id === hangarId);
+  if (!h) return setMsg("Hangar introuvable", false);
+
+  fitState.hangarId = hangarId;
+  clearFitSelection();
+  setFitSection("ship");
+
+ fitState.configNo = Number(h.activeConfig) === 2 ? 2 : 1;
+fitState.slots = getShipSlots(h.shipId);
+
+const baseFit = getFitForConfig(h, fitState.configNo);
+
+fitState.draft = {
+  lasers: normalizeFitArray(baseFit.lasers, fitState.slots.lasers),
+  gens: normalizeFitArray(baseFit.gens, fitState.slots.gens),
+  extras: normalizeFitArray(baseFit.extras, fitState.slots.extras),
+  shipMods: normalizeFitArray(baseFit.shipMods, fitState.slots.shipMods),
+};
+
+const titleEl = document.getElementById("fitTitle");
+const subEl = document.getElementById("fitSub");
+if (titleEl) titleEl.textContent = `Équipement — ${h.shipId} — Config ${fitState.configNo}`;
+window.GameWindowManager?.setTitle(
+  "profileWindow",
+  `Équipement — ${h.shipId} — Config ${fitState.configNo}`
+);
+  if (subEl) {
+    subEl.textContent = `Slots: Lasers ${fitState.slots.lasers} • Génés ${fitState.slots.gens} • Extras ${fitState.slots.extras} • Modules ${fitState.slots.shipMods}`;
+  }
+
+  let cfgBar = document.getElementById("fitConfigBar");
+
+if (!cfgBar) {
+  cfgBar = document.createElement("div");
+  cfgBar.id = "fitConfigBar";
+  cfgBar.style.cssText = `
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin:10px 0 14px;
+  `;
+
+  cfgBar.innerHTML = `
+    <span style="font-size:13px;color:rgba(232,244,255,.65);font-weight:800;">
+      Configuration :
+    </span>
+    <button class="fitCfgBtn" data-cfg="1">1</button>
+    <button class="fitCfgBtn" data-cfg="2">2</button>
+  `;
+
+  subEl.insertAdjacentElement("afterend", cfgBar);
+
+  cfgBar.querySelectorAll(".fitCfgBtn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setFitModalConfig(Number(btn.dataset.cfg));
+    });
+  });
+}
+
+cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
+  b.classList.toggle("active", Number(b.dataset.cfg) === fitState.configNo);
+  b.onclick = () => setFitModalConfig(Number(b.dataset.cfg));
+});
+
+  const shipNameEl = document.getElementById("fitShipName");
+  if (shipNameEl) shipNameEl.textContent = h.shipId;
+
+  const shipModsCountEl = document.getElementById("shipModsCount");
+  if (shipModsCountEl) shipModsCountEl.textContent = fitState.slots.shipMods;
+
+  showFitError("");
+
+  const filterSel = document.getElementById("fitInvFilter");
+  if (filterSel) {
+    filterSel.onchange = () => {
+      showFitError("");
+      renderInventoryPalette();
+    };
+  }
+
+  const btnReset = document.getElementById("fitBtnResetAll");
+  if (btnReset) btnReset.onclick = () => resetAllSlots();
+  const btnReturnSelection = document.getElementById("fitBtnReturnSelection");
+  if (btnReturnSelection) btnReturnSelection.onclick = returnSelectedEquippedItems;
+
+  // VENDRE
+  const btnSell = document.getElementById("fitBtnSell");
+  if (btnSell) {
+    btnSell.onclick = () => {
+      const itemId = fitState.selectedItemId;
+      if (!itemId) return showFitError("Sélectionne un item à vendre");
+
+      const usage = computeUsage(fitState.draft)[itemId] || 0;
+      const owned = ownedCount(user, itemId);
+
+      if (owned <= usage) {
+        showFitError("Impossible: tout est équipé");
+        return;
+      }
+
+      const out = sellItem(itemId, 1);
+      if (!out.ok) {
+        showFitError(out.error || "Vente impossible");
+        return;
+      }
+
+      clearFitSelection();
+
+      user = getCurrentUserFull();
+      setMsg(`Vendu (+${formatNumber(out.gain)} crédits)`, true);
+
+      showFitError("");
+      renderSlots();
+      renderInventoryPalette();
+      renderStats(user);
+      renderHangars(user);
+      if (tab === "shop") renderShop(user);
+    };
+  }
+
+  // Presets
+  refreshPresetSelect();
+
+  const presetOverlay = document.getElementById("presetOverlay");
+  const btnPresets = document.getElementById("fitBtnPresets");
+  const btnPresetClose = document.getElementById("presetClose");
+
+  if (btnPresets && presetOverlay) {
+    btnPresets.onclick = () => {
+      refreshPresetSelect();
+      presetOverlay.style.display = "grid";
+    };
+  }
+  if (btnPresetClose && presetOverlay) {
+    btnPresetClose.onclick = () => {
+      presetOverlay.style.display = "none";
+    };
+  }
+  if (presetOverlay) {
+    presetOverlay.onclick = (e) => {
+      if (e.target === presetOverlay) presetOverlay.style.display = "none";
+    };
+  }
+
+  const selPreset = document.getElementById("fitPresetSelect");
+  const btnQuickLoad = document.getElementById("fitBtnQuickLoad");
+  if (btnQuickLoad && selPreset) {
+    btnQuickLoad.onclick = () => {
+      const key = String(selPreset.value || "");
+      if (!key) return showFitError("Choisis un preset");
+      document.getElementById("fitBtnLoadPreset")?.click();
+    };
+  }
+
+  const btnSavePreset = document.getElementById("fitBtnSavePreset");
+  const inpPresetName = document.getElementById("fitPresetName");
+  if (btnSavePreset && inpPresetName) {
+    btnSavePreset.onclick = () => {
+      const name = String(inpPresetName.value || "").trim();
+      if (!name) return showFitError("Donne un nom au preset");
+      const presets = loadPresets(user, fitState.hangarId);
+      presets[name] = structuredClone(fitState.draft);
+      savePresets(user, fitState.hangarId, presets);
+      inpPresetName.value = "";
+      showFitError("");
+      refreshPresetSelect();
+      setMsg("Preset sauvegardé", true);
+    };
+  }
+
+  const btnLoad = document.getElementById("fitBtnLoadPreset");
+  if (btnLoad && selPreset) {
+    btnLoad.onclick = () => {
+      const key = String(selPreset.value || "");
+      if (!key) return showFitError("Choisis un preset");
+      const presets = loadPresets(user, fitState.hangarId);
+      const p = presets[key];
+      if (!p) return showFitError("Preset introuvable");
+
+      fitState.draft = {
+        lasers: normalizeFitArray(p.lasers, fitState.slots.lasers),
+        gens: normalizeFitArray(p.gens, fitState.slots.gens),
+        extras: normalizeFitArray(p.extras, fitState.slots.extras),
+        shipMods: normalizeFitArray(p.shipMods, fitState.slots.shipMods),
+      };
+      compactCurrentFit();
+      clearFitSelection();
+      showFitError("");
+      renderSlots();
+      renderInventoryPalette();
+      renderShipModulesList();
+      if (presetOverlay) presetOverlay.style.display = "none";
+      setMsg("Preset chargé", true);
+    };
+  }
+
+  const btnDel = document.getElementById("fitBtnDeletePreset");
+  if (btnDel && selPreset) {
+    btnDel.onclick = () => {
+      const key = String(selPreset.value || "");
+      if (!key) return showFitError("Choisis un preset");
+      const presets = loadPresets(user, fitState.hangarId);
+      if (!presets[key]) return showFitError("Preset introuvable");
+
+      delete presets[key];
+      savePresets(user, fitState.hangarId, presets);
+
+      showFitError("");
+      refreshPresetSelect();
+      setMsg("Preset supprimé", true);
+    };
+  }
+
+  document.getElementById("fitBtnCancel").onclick = () => closeFitModal();
+
+  document.getElementById("fitBtnSave").onclick = () => {
+    compactCurrentFit();
+    const usage = computeUsage(fitState.draft);
+
+    for (const [itemId, used] of Object.entries(usage)) {
+      if (isRouletteModuleId(itemId)) {
+        const all = Array.isArray(user?.inventory?.shipModules) ? user.inventory.shipModules : [];
+        const hasIt = all.some(m => m?.id === itemId);
+
+        const own = hasIt ? 1 : 0;
+        if (used > own) {
+          showFitError(`Module introuvable: ${itemId}`);
+          return;
+        }
+        continue;
+      }
+
+      const own = ownedCount(user, itemId);
+      if (used > own) {
+        showFitError(`Trop de "${findCatalogItem(itemId)?.name || itemId}" équipés: ${used}/${own}`);
+        return;
+      }
+    }
+
+    const access = getHangarActionAccess("equip");
+    if (!access.ok) {
+      showFitError(access.error);
+      return;
+    }
+
+    const out = saveHangarFit(fitState.hangarId, fitState.draft, fitState.configNo);
+    if (!out.ok) {
+      showFitError(out.error || "Sauvegarde impossible");
+      return;
+    }
+
+    user = getCurrentUserFull();
+    setMsg("Équipement sauvegardé", true);
+
+    closeFitModal();
+
+    renderHeader(user);
+    renderStats(user);
+    renderHangars(user);
+    if (tab === "shop") renderShop(user);
+  };
+
+fitState.used = computeUsage(fitState.draft);
+renderSlots();
+renderInventoryPalette();
+renderShipModulesList();
+
+fitOverlayEl.style.display = "grid";
+
+ensureShipFramesLoaded(h.shipId).then(() => {
+  if (!fitOverlayEl || fitOverlayEl.style.display === "none") return;
+  startFitShipAnim(h.shipId);
+});
+}
+
+function closeFitModal() {
+  if (!fitOverlayEl) return;
+
+  stopFitShipAnim();
+  fitOverlayEl.style.display = "none";
+  window.GameWindowManager?.setTitle("profileWindow", "Espace pilote");
+
+  fitState.hangarId = null;
+  fitState.configNo = 1;
+  clearFitSelection();
+  fitState.draft = null;
+  fitState.used = null;
+
+  showFitError("");
+
+  const filterSel = document.getElementById("fitInvFilter");
+  if (filterSel) filterSel.value = "all";
+
+  const inv = document.getElementById("fitInvGrid");
+  if (inv) inv.innerHTML = "";
+  const a = document.getElementById("fitSlotsLasers");
+  const b = document.getElementById("fitSlotsGens");
+  const c = document.getElementById("fitSlotsExtras");
+  const d = document.getElementById("fitSlotsShipMods");
+  if (a) a.innerHTML = "";
+  if (b) b.innerHTML = "";
+  if (c) c.innerHTML = "";
+  if (d) d.innerHTML = "";
+}
+
+// -------------------- Overlay intégré jeu --------------------
+const AUTH_URL = location.pathname.includes("/public/")
+  ? "./auth.html"
+  : "./public/auth.html";
+
+function openProfileOverlay() {
+  saveGameBeforeProfileAction();
+
+  user = getCurrentUserFull();
+
+  if (!user) {
+    location.href = AUTH_URL;
+    return;
+  }
+
+  const overlay = document.getElementById("profileOverlay");
+  if (window.GameWindowManager) window.GameWindowManager.restore("profileWindow");
+  else if (overlay) overlay.style.display = "block";
+
+  renderHeader(user);
+  renderStats(user);
+  renderHangars(user);
+  renderInventory(user);
+  renderShop(user);
+  setTab(tab);
+}
+
+function closeProfileOverlay({ immediate = false } = {}) {
+  const overlay = document.getElementById("profileOverlay");
+  if (window.GameWindowManager && !immediate) window.GameWindowManager.minimize("profileWindow");
+  else if (overlay) overlay.style.display = "none";
+}
+
+function registerProfileWindow() {
+  const root = document.getElementById("profileOverlay");
+  const card = document.getElementById("profileWindow");
+  if (!root || !card || !window.GameWindowManager) return;
+  window.GameWindowManager.register({
+    id: "profileWindow",
+    title: "Espace pilote",
+    icon: "👤",
+    root,
+    card,
+    defaultOpen: false,
+  });
+}
+
+// -------------------- Boot --------------------
+function boot() {
+  setMsg("", true);
+
+  user = getCurrentUserFull();
+
+  if (!user) {
+    location.href = AUTH_URL;
+    return;
+  }
+
+  lastAccountUiSignature = accountUiSignature(user);
+
+  renderHeader(user);
+  renderStats(user);
+  renderHangars(user);
+  renderInventory(user);
+  renderShop(user);
+  setTab(tab);
+
+}
+
+// -------------------- Buttons --------------------
+document.getElementById("btnGameHub")?.addEventListener("click", () => {
+  openProfileOverlay();
+});
+
+btnLogout?.addEventListener("click", () => {
+  logout();
+  location.href = AUTH_URL;
+});
+
+btnSessionMenu?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const open = !sessionMenu?.classList.contains("open");
+  sessionMenu?.classList.toggle("open", open);
+  btnSessionMenu.setAttribute("aria-expanded", String(open));
+});
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest(".sessionDockMenu")) return;
+  sessionMenu?.classList.remove("open");
+  btnSessionMenu?.setAttribute("aria-expanded", "false");
+});
+
+btnRestartGame?.addEventListener("click", async () => {
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+    document.cookie.split(";").forEach((cookie) => {
+      const name = cookie.split("=")[0]?.trim();
+      if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+    });
+    sessionStorage.removeItem("orbit_assets_preloaded_v1");
+  } catch (error) {
+    console.warn("Redémarrage avec nettoyage partiel", error);
+  }
+  location.reload();
+});
+
+btnStart?.addEventListener("click", () => {
+  closeProfileOverlay();
+});
+
+window.HyperionProfile = {
+  open: openProfileOverlay,
+  close: closeProfileOverlay,
+};
+compactCurrentFit();
+
+// Le moteur signale chaque sauvegarde de progression. Le registre peut ainsi
+// refléter immédiatement les destructions et les grades sans recharger la page.
+window.addEventListener("orbit:profile-progress", () => {
+  const refreshedUser = getCurrentUserFull();
+  if (!refreshedUser) return;
+  user = refreshedUser;
+  renderNpcStats(user);
+  renderInventory(user);
+});
+
+// Toute mutation du compte rafraîchit les vues ouvertes dans le même onglet.
+let accountRefreshFrame = 0;
+let lastAccountUiSignature = "";
+function accountUiSignature(value) {
+  return JSON.stringify({
+    credits: value?.credits,
+    ship: value?.ship,
+    inventory: value?.inventory,
+    hangars: value?.hangars,
+    drones: value?.drones,
+  });
+}
+window.addEventListener("orbit:user-updated", () => {
+  if (accountRefreshFrame) return;
+  accountRefreshFrame = requestAnimationFrame(() => {
+    accountRefreshFrame = 0;
+    const refreshedUser = getCurrentUserFull();
+    if (!refreshedUser) return;
+    const signature = accountUiSignature(refreshedUser);
+    if (signature === lastAccountUiSignature) return;
+    lastAccountUiSignature = signature;
+    user = refreshedUser;
+    const profileVisible = document.getElementById("profileOverlay")?.style.display !== "none";
+    if (!profileVisible) return;
+    renderHeader(user);
+    renderStats(user);
+    renderHangars(user);
+    renderInventory(user);
+    renderShop(user);
+    if (fitOverlayEl?.style.display !== "none" && fitState.hangarId) {
+      renderDroneEquipment();
+      renderInventoryPalette();
+    }
+  });
+});
+
+// Init
+registerProfileWindow();
+wireMainTabsOnce();
+wireShopTabsOnce();
+wireAccountSettingsOnce();
+boot();

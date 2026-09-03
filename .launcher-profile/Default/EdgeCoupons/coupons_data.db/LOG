@@ -1,0 +1,15 @@
+2026/09/02-21:15:20.724 878 Reusing MANIFEST C:\Users\dilan\Desktop\Darkorbit LOL\.launcher-profile\Default\EdgeCoupons/coupons_data.db/MANIFEST-000001
+2026/09/02-21:15:20.725 878 Recovering log #29
+2026/09/02-21:15:20.725 878 Reusing old log C:\Users\dilan\Desktop\Darkorbit LOL\.launcher-profile\Default\EdgeCoupons/coupons_data.db/000029.log 
+2026/09/02-21:15:20.811 1b28 Level-0 table #33: started
+2026/09/02-21:15:20.818 1b28 Level-0 table #33: 683376 bytes OK
+2026/09/02-21:15:20.821 1b28 Delete type=0 #29
+2026/09/02-21:15:20.822 9e4 Compacting 4@0 + 1@1 files
+2026/09/02-21:15:20.830 9e4 Generated table #34@0: 3 keys, 683376 bytes
+2026/09/02-21:15:20.830 9e4 Compacted 4@0 + 1@1 files => 683376 bytes
+2026/09/02-21:15:20.832 9e4 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/09/02-21:15:20.833 9e4 Delete type=2 #21
+2026/09/02-21:15:20.833 9e4 Delete type=2 #24
+2026/09/02-21:15:20.833 9e4 Delete type=2 #27
+2026/09/02-21:15:20.833 9e4 Delete type=2 #30
+2026/09/02-21:15:20.833 9e4 Delete type=2 #33

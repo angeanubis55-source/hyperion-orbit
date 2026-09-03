@@ -2,8 +2,6 @@
 node_modules/
 coverage/
 dist/
-.launcher-profile/
-/DarkOrbit Launcher.exe
 
 # Editors and operating systems
 .idea/
