@@ -119,6 +119,7 @@ let shopTab = localStorage.getItem("orbit_shop_tab") || "ammo";
 let selectedShopItemId = null;
 let selectedHangarId = null;
 let shopRenderToken = 0;
+let rouletteRailCells = [];
 let inventoryQuery = "";
 
 // -------------------- UI helpers --------------------
@@ -1291,44 +1292,40 @@ function renderExtrasRoulette(user) {
 
   shopList.innerHTML = "";
 
-  const visible = 7;
+  const visible = 9;
   const centerIndex = Math.floor(visible / 2);
+  const STEP = 74; // 64px (case) + 10px (gap)
+  const WINDOW_W = visible * STEP - 10; // 508px, largeur exacte de la fenêtre
 
   let cells = Array.from({ length: visible }, () => {
     const tier = pickWeighted(MODULE_TIER_WEIGHTS);
     const type = pickWeighted(MODULE_TYPE_WEIGHTS);
     return { type, tier };
   });
+  // Si un rail est déjà persisté, on garde les 9 mêmes cellules pour l'idle
+  // (sinon le re-render régénèrerait les 9 à chaque lancer).
+  if (rouletteRailCells.length) cells = rouletteRailCells.slice(0, visible);
 
-  function renderStrip() {
+  function randomCell() {
+    return { type: pickWeighted(MODULE_TYPE_WEIGHTS), tier: pickWeighted(MODULE_TIER_WEIGHTS) };
+  }
+
+  function cellHtml(c) {
+    const src = moduleIconSrc(c.type, c.tier);
     return `
-      <div style="display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;">
-        ${cells
-          .map((c, i) => {
-            const isCenter = i === centerIndex;
-            const src = moduleIconSrc(c.type, c.tier);
-            return `
-              <div style="
-                width:64px;height:64px;border-radius:14px;
-                border:1px solid ${isCenter ? "rgba(0,217,255,0.6)" : "rgba(255,255,255,0.14)"};
-                background:${isCenter ? "rgba(0,217,255,0.15)" : "rgba(255,255,255,0.05)"};
-                display:grid;place-items:center;
-                transform:${isCenter ? "scale(1.1)" : "scale(1)"};
-                transition: all 0.3s ease;
-              ">
-                <img src="${src}" style="width:52px;height:52px;object-fit:contain;image-rendering:pixelated;" />
-              </div>
-            `;
-          })
-          .join("")}
+      <div style="
+        flex:0 0 auto;width:64px;height:64px;border-radius:14px;
+        border:1px solid rgba(255,255,255,0.14);
+        background:rgba(255,255,255,0.05);
+        display:grid;place-items:center;
+      ">
+        <img src="${src}" style="width:52px;height:52px;object-fit:contain;image-rendering:pixelated;" />
       </div>
     `;
   }
 
-  function rollStep() {
-    const tier = pickWeighted(MODULE_TIER_WEIGHTS);
-    const type = pickWeighted(MODULE_TYPE_WEIGHTS);
-    cells = cells.slice(1).concat({ type, tier });
+  function railHtml(arr) {
+    return arr.map(cellHtml).join("");
   }
 
   function renderModuleHistory(currentUser) {
@@ -1367,8 +1364,9 @@ function renderExtrasRoulette(user) {
         </div>
         <div class="extrasRouletteCost"><span>Coût du tirage</span><strong>${formatNumber(MODULE_ROLL_COST)}</strong> crédits</div>
       </div>
-      <div id="rouletteStrip" style="margin:16px 0;">
-        ${renderStrip()}
+      <div id="rouletteWindow" style="margin:16px auto;position:relative;overflow:hidden;width:${WINDOW_W}px;padding:16px 0;-webkit-mask-image:linear-gradient(to right,transparent,#000 7%,#000 93%,transparent);mask-image:linear-gradient(to right,transparent,#000 7%,#000 93%,transparent);">
+        <div id="rouletteRail" style="display:flex;gap:10px;width:max-content;will-change:transform;">${railHtml(cells)}</div>
+        <div id="rouletteCenterCell" style="position:absolute;left:${centerIndex * STEP + (64 - 68) / 2}px;top:50%;transform:translateY(-50%);width:68px;height:68px;pointer-events:none;border-radius:16px;border:3px solid #ffd700;box-shadow:0 0 16px rgba(255,215,0,0.6), inset 0 0 12px rgba(255,215,0,0.28);"></div>
       </div>
 
       <p style="color: var(--muted); font-size: 13px; margin: 12px 0; text-align: center;">
@@ -1392,17 +1390,17 @@ function renderExtrasRoulette(user) {
     </div>
   `;
 
-  const stripEl = document.getElementById("rouletteStrip");
+  const railEl = document.getElementById("rouletteRail");
   const btn = document.getElementById("btnRoll");
-  const res = document.getElementById("rollResult");
-  const historyEl = document.getElementById("moduleRollHistory");
 
   let rolling = false;
 
   btn?.addEventListener("click", () => {
     if (rolling) return;
     rolling = true;
-    res.textContent = "";
+
+    const resOut = document.getElementById("rollResult");
+    if (resOut) resOut.textContent = "";
 
     const pay = buyModuleRoll(MODULE_ROLL_COST);
     if (!pay?.ok) {
@@ -1418,26 +1416,78 @@ function renderExtrasRoulette(user) {
     if (shopCredits) shopCredits.textContent = formatNumber(user.credits || 0);
     syncGameCredits();
 
-    let steps = randInt(26, 44);
-    let delay = 35;
+    const u2 = getCurrentUserFull();
+    const mod = generateShipModule(u2);
 
-    const tick = () => {
-      rollStep();
-      if (stripEl) stripEl.innerHTML = renderStrip();
+    // Rail long persistant (illusion de défilement sans fin) : les cellules ne
+    // sont PAS régénérées entre tirages. On continue depuis rouletteRailCells
+    // (les 9 visibles restent identiques -> "on garde les 9 et on génère la suite").
+    const railLen = 84;
+    const k = randInt(30, 42); // index (bien au milieu) du module gagné dans le rail
+    if (!rouletteRailCells.length) rouletteRailCells = cells.slice(); // premier lancer : les 9 de l'idle
+    while (rouletteRailCells.length < railLen) rouletteRailCells.push(randomCell());
+    rouletteRailCells[k] = { type: mod.type, tier: mod.tier }; // place le gagnant à k
+    const rail = rouletteRailCells.slice(0, railLen);
 
-      steps--;
-      delay = Math.min(140, delay + (steps < 10 ? 10 : 0));
+    // Position finale : la case k est centrée sous la case dorée.
+    const finalX = (centerIndex - k) * STEP;
 
-      if (steps > 0) {
-        setTimeout(tick, delay);
-        return;
+    if (railEl) {
+      railEl.innerHTML = railHtml(rail);
+      railEl.style.transition = "none";
+      railEl.style.transform = "translateX(0px)";
+
+      // Animation rAF à profil de vitesse CONTINU (aucune cassure), style "bait" :
+      // accélère très très vite -> maintient très vite -> ralentit doucement ->
+      // maintient une vitesse basse (comme s'il allait s'arrêter) -> s'arrête.
+      const DURATION = 2000; // ms
+      // Points de contrôle (fraction de temps, vélocité normalisée) :
+      const PTS = [
+        [0.00, 0.00], // à l'arrêt
+        [0.015, 4.00], // accélération quasi instantanée -> vitesse max
+        [0.40, 4.00], // maintient très vite
+        [0.85, 0.00], // ralentit doucement jusqu'à l'arrêt
+        [1.00, 0.00], // arrêt
+      ];
+      // vélocité normalisée continue (interpolation cosine lissée entre les points)
+      function vel(tr) {
+        if (tr <= PTS[0][0]) return PTS[0][1];
+        for (let i = 1; i < PTS.length; i++) {
+          if (tr <= PTS[i][0]) {
+            const t0 = PTS[i - 1][0], v0 = PTS[i - 1][1];
+            const t1 = PTS[i][0], v1 = PTS[i][1];
+            const u = (tr - t0) / (t1 - t0);
+            const s = 0.5 - 0.5 * Math.cos(Math.PI * u); // cosine smoothstep -> C1, pas de cassure
+            return v0 + (v1 - v0) * s;
+          }
+        }
+        return PTS[PTS.length - 1][1];
       }
+      // intégration numérique -> progression σ(τ) : 0 -> 1
+      const N = 500;
+      const v = new Array(N + 1);
+      let acc = 0;
+      for (let i = 0; i <= N; i++) {
+        v[i] = acc;
+        acc += vel(i / N) / N;
+      }
+      const vTot = v[N] || 1;
+      const start = performance.now();
+      function frame(now) {
+        const tr = Math.min(1, (now - start) / DURATION);
+        const sigma = v[Math.round(tr * N)] / vTot;
+        railEl.style.transform = `translateX(${finalX * sigma}px)`;
+        if (tr < 1) requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
 
-      const u2 = getCurrentUserFull();
-      const mod = generateShipModule(u2);
-
-      cells[centerIndex] = { type: mod.type, tier: mod.tier };
-      if (stripEl) stripEl.innerHTML = renderStrip();
+    setTimeout(() => {
+      // A l'arrêt : verrouille la position (la case dorée fixe marque la sélection).
+      if (railEl) {
+        railEl.style.transition = "none";
+        railEl.style.transform = `translateX(${finalX}px)`;
+      }
 
       const add = addShipModule(mod);
       if (!add?.ok) {
@@ -1446,13 +1496,14 @@ function renderExtrasRoulette(user) {
         return;
       }
 
-      user = getCurrentUserFull();
+      const user2 = getCurrentUserFull();
 
       const bonusesText = mod.bonuses
         .map((b) => `<strong style="color: #00d9ff;">${b.pct}%</strong> ${formatStatLabel(b.stat)}`)
         .join(" • ");
 
-      res.innerHTML = `
+      const resFinal = document.getElementById("rollResult");
+      if (resFinal) resFinal.innerHTML = `
         <div style="margin-top:12px; padding: 12px; background: rgba(0,217,255,0.1); border: 1px solid rgba(0,217,255,0.3); border-radius: 12px;">
           <div style="font-size: 16px; font-weight: 900; color: #00ff88; margin-bottom: 8px;">Module obtenu</div>
           <div style="color: var(--text);"><strong>${mod.type.toUpperCase()}-${mod.tier.toUpperCase()}</strong></div>
@@ -1461,20 +1512,19 @@ function renderExtrasRoulette(user) {
         </div>
       `;
 
-      if (historyEl) historyEl.innerHTML = renderModuleHistory(user);
+      const historyEl = document.getElementById("moduleRollHistory");
+      if (historyEl) historyEl.innerHTML = renderModuleHistory(user2);
       const historyCount = document.querySelector(".moduleHistoryPanel > header span");
-      if (historyCount) historyCount.textContent = `${formatNumber(user?.inventory?.moduleRollHistory?.length || 0)} tirage(s)`;
+      if (historyCount) historyCount.textContent = `${formatNumber(user2?.inventory?.moduleRollHistory?.length || 0)} tirage(s)`;
       setMsg("Tirage réussi.", true);
 
-      renderHeader(user);
-      renderStats(user);
-      if (shopCredits) shopCredits.textContent = formatNumber(user.credits || 0);
+      renderHeader(user2);
+      renderStats(user2);
+      if (shopCredits) shopCredits.textContent = formatNumber(user2.credits || 0);
       syncGameCredits();
 
       rolling = false;
-    };
-
-    tick();
+    }, 2150);
   });
 }
 
@@ -3868,7 +3918,9 @@ window.addEventListener("orbit:user-updated", () => {
     renderStats(user);
     renderHangars(user);
     renderInventory(user);
-    renderShop(user);
+    // La roulette de modules gère elle-même son affichage, son résultat et son
+    // historique : ne pas la reconstruire ici, sinon le tirage en cours est effacé.
+    if (shopTab !== "extras") renderShop(user);
     if (fitOverlayEl?.style.display !== "none" && fitState.hangarId) {
       renderDroneEquipment();
       renderInventoryPalette();
