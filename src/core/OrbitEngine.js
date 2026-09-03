@@ -559,6 +559,8 @@ const DEFAULT_GAME_SETTINGS = {
   textures: true,
   drones: true,
   autoStart: false,
+  shipEffect: true,
+  shipSmoke: true,
   keybinds: { ...DEFAULT_KEYBINDS },
 };
 
@@ -818,6 +820,10 @@ function renderSettingsWindow() {
   if (autoStart) autoStart.checked = !!GAME_SETTINGS.autoStart;
   const drones = document.getElementById("optDrones");
   if (drones) drones.checked = !!GAME_SETTINGS.drones;
+  const shipEffect = document.getElementById("optShipEffect");
+  if (shipEffect) shipEffect.checked = !!GAME_SETTINGS.shipEffect;
+  const shipSmoke = document.getElementById("optShipSmoke");
+  if (shipSmoke) shipSmoke.checked = !!GAME_SETTINGS.shipSmoke;
 
   renderKeybindRows();
   updateHudKeyHints();
@@ -839,6 +845,8 @@ function wireSettingsWindow() {
   const texBtn = document.getElementById("optTextures");
   const autoStart = document.getElementById("optAutoStart");
   const drones = document.getElementById("optDrones");
+  const shipEffect = document.getElementById("optShipEffect");
+  const shipSmoke = document.getElementById("optShipSmoke");
   const settingsWindow = document.getElementById("settingsWindow");
 
   if (settingsWindow) {
@@ -875,6 +883,14 @@ function wireSettingsWindow() {
 
   drones?.addEventListener("change", () => {
     setGameSetting("drones", drones.checked);
+  });
+
+  shipEffect?.addEventListener("change", () => {
+    setGameSetting("shipEffect", shipEffect.checked);
+  });
+
+  shipSmoke?.addEventListener("change", () => {
+    setGameSetting("shipSmoke", shipSmoke.checked);
   });
 
   document.querySelectorAll("#settingsWindow .keyBindRow").forEach((btn) => {
@@ -4572,16 +4588,20 @@ function emitEngineTrail(entity, config, dt, ownerNpcId = null) {
 }
 
 function tickEngineTrails(dt) {
-  if (!player.dead) emitEngineTrail(player, ACTIVE_SHIP, dt);
+  if (!player.dead && GAME_SETTINGS.shipSmoke) emitEngineTrail(player, ACTIVE_SHIP, dt);
 
   const lockedNpc = Target.get();
-  for (const enemy of enemies) {
-    if (enemy?.hp <= 0) continue;
-    if (!shouldDetectNpc(player, enemy, NPC_SENSOR_RANGES.visibility, lockedNpc)) {
-      enemy._trailAcc = 0;
-      continue;
+  if (GAME_SETTINGS.shipSmoke) {
+    for (const enemy of enemies) {
+      if (enemy?.hp <= 0) continue;
+      if (!shouldDetectNpc(player, enemy, NPC_SENSOR_RANGES.visibility, lockedNpc)) {
+        enemy._trailAcc = 0;
+        continue;
+      }
+      emitEngineTrail(enemy, NPC_TYPES[enemy.type], dt, enemy.id);
     }
-    emitEngineTrail(enemy, NPC_TYPES[enemy.type], dt, enemy.id);
+  } else {
+    for (const enemy of enemies) if (enemy) enemy._trailAcc = 0;
   }
 
   for (let i = engineTrails.length - 1; i >= 0; i--) {
@@ -7585,8 +7605,10 @@ function drawPlayerBody() {
   ctx.restore();
 
   // ✅ Effet de vaisseau (Ship_effet) par-dessus le vaisseau, boucle à l'infini
-  loadShipEffect(pack?.id);
-  drawShipEffectOverlay();
+  if (GAME_SETTINGS.shipEffect) {
+    loadShipEffect(pack?.id);
+    drawShipEffectOverlay();
+  }
 
   return true;
 }

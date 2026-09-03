@@ -3599,10 +3599,15 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 
 /* Paramètres unifiés */
 #settingsWindow{
-  width:min(940px,calc(100vw - 24px));
-  height:min(650px,calc(100vh - 48px));
+  width:min(980px,calc(100vw - 20px));
+  height:min(720px,calc(100vh - 16px));
   transition:width .18s ease,height .18s ease,border-color .18s ease,box-shadow .18s ease;
 }
+/* Hauteur uniforme de tous les contrôles de la fenêtre */
+#settingsWindow .settingsCheck,
+#settingsWindow .settingsToggle,
+#settingsWindow .settingsResetBtn{height:34px;min-height:34px}
+#settingsWindow .keyBindRow{height:32px;min-height:32px}
 #settingsWindow .settingsBody{
   height:calc(100% - 30px);
   max-height:none;
@@ -3614,63 +3619,70 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   min-width:0;
   min-height:0;
   height:100%;
-  padding:18px;
+  padding:14px;
   box-sizing:border-box;
   display:flex;
   flex-direction:column;
-  gap:12px;
+  gap:10px;
   overflow:hidden;
 }
-#settingsWindow .settingsPageIntro{display:grid;gap:3px;padding-bottom:10px;border-bottom:1px solid rgba(124,240,255,.11)}
+#settingsWindow .settingsPageIntro{display:grid;gap:2px;padding-bottom:8px;border-bottom:1px solid rgba(124,240,255,.11)}
 #settingsWindow .settingsPageIntro b{color:#effbff;font-size:13px}
 #settingsWindow .settingsPageIntro span{color:rgba(204,228,241,.50);font-size:9px}
-#settingsWindow .settingsPreferences{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(260px,.75fr);gap:10px;align-items:stretch}
-#settingsWindow .settingsQuickGrid{flex:0 0 auto;display:grid;grid-template-columns:minmax(230px,2fr) repeat(2,minmax(120px,1fr));gap:8px;align-content:start}
-#settingsWindow .settingsChecks{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
-#settingsWindow .settingsToggle{min-height:42px;padding:0 8px;border-radius:8px;white-space:nowrap;transform:none!important;box-shadow:none!important}
-#settingsWindow .settingsVolume{height:42px;min-width:0;padding:5px 9px;display:grid;gap:3px;box-sizing:border-box;border:1px solid rgba(124,240,255,.22);border-radius:8px;background:rgba(255,255,255,.055)}
-#settingsWindow .settingsVolume span{display:flex;align-items:center;justify-content:space-between;gap:6px;color:rgba(225,242,250,.78);font-size:9px;font-weight:800}
-#settingsWindow .settingsVolume output{color:#7cf0ff;font-variant-numeric:tabular-nums}
-#settingsWindow .settingsVolume input{width:100%;height:12px;margin:0;accent-color:#7cf0ff;cursor:pointer}
-#settingsWindow .settingsSoundControl{grid-template-columns:auto 1fr;align-items:center;height:48px}
-#settingsWindow .settingsSoundControl .settingsToggle{grid-row:1 / 3;min-height:34px}
-#settingsWindow .settingsSoundControl input{grid-column:2}
-#settingsWindow .settingsCheck.compact{height:48px;min-width:0}
-#settingsWindow .settingsCheck{flex:0 0 auto;align-self:stretch;height:42px;min-height:42px;padding:5px 11px;border-radius:8px;box-sizing:border-box}
+#settingsWindow .settingsPreferences{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:8px;align-items:stretch}
+#settingsWindow .settingsVisual,
+#settingsWindow .settingsAudio{
+  min-width:0;padding:8px;box-sizing:border-box;
+  border:1px solid rgba(124,240,255,.22);border-radius:10px;background:rgba(255,255,255,.055);
+}
+#settingsWindow .settingsVisual{display:grid;gap:6px;overflow:hidden}
+#settingsWindow .settingsVisualTitle{padding:0 2px 5px;border-bottom:1px solid rgba(124,240,255,.10);color:rgba(124,240,255,.72);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.6px}
+#settingsWindow .settingsVisualGrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:0;align-content:center}
+#settingsWindow .settingsVisual .settingsCheck{padding:4px 8px;border-radius:8px;width:100%;box-sizing:border-box}
+#settingsWindow .settingsVisual .settingsCheck span{font-size:11px;overflow-wrap:anywhere}
+#settingsWindow .settingsVisual .settingsCheck input{width:14px;height:14px}
+#settingsWindow .settingsAudio{display:flex;flex-direction:column;justify-content:center;gap:6px;align-self:stretch}
+#settingsWindow .settingsAudio .settingsToggle{width:100%;justify-content:center;letter-spacing:.3px;font-size:11px;overflow:hidden;text-overflow:ellipsis}
+#settingsWindow .settingsAudio .settingsVolumeRow{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+#settingsWindow .settingsAudio .settingsVolumeSlider{flex:1 1 auto;min-width:0;height:11px;margin:0;accent-color:#7cf0ff;cursor:pointer}
+#settingsWindow .settingsAudio .settingsVolumeValue{flex:0 0 auto;color:#7cf0ff;font-size:10px;font-weight:900;font-variant-numeric:tabular-nums;background:rgba(0,217,255,.10);border:1px solid rgba(0,217,255,.25);padding:0 7px;border-radius:6px;white-space:nowrap}
+#settingsWindow .settingsToggle{padding:0 8px;border-radius:8px;white-space:nowrap;transform:none!important;box-shadow:none!important}
+#settingsWindow .settingsCheck{flex:0 0 auto;align-self:stretch;padding:5px 11px;border-radius:8px;box-sizing:border-box}
 #settingsWindow .settingsKeyColumns{
   flex:1 1 auto;
   min-height:0;
   display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:18px;
+  grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr);
+  gap:10px;
   align-content:start;
   overflow-y:auto;
   overflow-x:hidden;
 }
 #settingsWindow .settingsKeyGroup{
   min-width:0;
-  padding:14px;
+  padding:8px;
   display:flex;
   flex-direction:column;
-  gap:7px;
+  gap:5px;
+  align-content:start;
   border:1px solid rgba(124,240,255,.10);
-  border-radius:12px;
+  border-radius:10px;
   background:rgba(255,255,255,.018);
 }
 #settingsWindow .settingsSectionSub{
   margin:0 0 3px;
-  padding:0 2px 8px;
+  padding:0 2px 5px;
   border-top:0;
   border-bottom:1px solid rgba(124,240,255,.10);
   color:rgba(124,240,255,.72);
   font-size:10px;
 }
-#settingsWindow .keyBindRow{min-width:0;height:38px;min-height:38px;padding:0 13px;border-radius:8px;font-size:11px;transform:none!important;box-shadow:none!important}
-#settingsWindow .keyBindRow > span{min-width:0;white-space:normal;line-height:1.25;text-align:left}
+#settingsWindow .keyBindRow{min-width:0;width:100%;padding:0 10px;border-radius:8px;font-size:11px;box-sizing:border-box;transform:none!important;box-shadow:none!important}
+#settingsWindow .keyBindRow > span{min-width:0;white-space:normal;line-height:1.2;text-align:left}
 #settingsWindow .keyBindRow > kbd{flex:0 0 auto;margin-left:8px}
-#settingsWindow .settingsControlsIntro{margin-top:2px}
-#settingsWindow .settingsPageFooter{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:10px;border-top:1px solid rgba(124,240,255,.11)}
-#settingsWindow .settingsResetBtn{width:100%;margin:0;border-radius:7px}
+#settingsWindow .settingsControlsIntro{margin-top:0}
+#settingsWindow .settingsPageFooter{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:8px;border-top:1px solid rgba(124,240,255,.11)}
+#settingsWindow .settingsResetBtn{width:100%;margin:0;border-radius:8px;font-size:11px}
 #settingsWindow .settingsBody,
 #settingsWindow .settingsPage,
 #settingsWindow .settingsKeyColumns{scrollbar-width:none}
@@ -3682,8 +3694,6 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   #settingsWindow{width:calc(100vw - 24px);height:min(650px, calc(100vh - 48px))}
   #settingsWindow .settingsPage{overflow-y:auto}
   #settingsWindow .settingsPreferences{grid-template-columns:1fr}
-  #settingsWindow .settingsChecks{grid-template-columns:1fr}
-  #settingsWindow .settingsQuickGrid{grid-template-columns:1fr}
   #settingsWindow .settingsKeyColumns{grid-template-columns:1fr;overflow-y:auto}
 }
 
@@ -3838,15 +3848,16 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   box-shadow:inset 0 0 12px color-mix(in srgb,var(--c,#7cf0ff) 55%,transparent),0 0 8px color-mix(in srgb,var(--c,#7cf0ff) 45%,transparent);
 }
 #ammoBar [data-skill="repair"]{cursor:default !important}
-#settingsWindow .settingsKeyColumns{grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr) !important}
+#settingsWindow .settingsKeyColumns{grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr) !important}
 #settingsWindow .settingsSlotKeys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px 8px}
 #settingsWindow .settingsSlotKeyGroup{min-width:0}
-#settingsWindow .settingsPreferences{grid-template-columns:minmax(0,1.4fr) minmax(300px,1fr) !important}
-#settingsWindow .settingsQuickGrid{grid-template-columns:minmax(220px,1.5fr) repeat(2,minmax(110px,1fr)) !important}
-#settingsWindow .settingsCheck{height:auto !important;min-height:52px !important;align-items:center !important}
+#settingsWindow .settingsPreferences{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) !important}
+#settingsWindow .settingsCheck{height:34px !important;min-height:34px !important;align-items:center !important}
+#settingsWindow .settingsVisual .settingsCheck{height:34px !important;min-height:34px !important;padding:4px 8px !important}
+#settingsWindow .settingsVisual .settingsCheck span{font-size:11px !important}
 #settingsWindow .settingsCheck span{min-width:0 !important;line-height:1.15 !important}
 #settingsWindow .settingsCheck small{line-height:1.25 !important;overflow-wrap:anywhere !important}
-#settingsWindow .settingsSoundControl{height:52px !important}
-#settingsWindow .settingsSlotKeys .keyBindRow{min-height:34px !important;padding:5px 7px !important;font-size:9px !important}
+#settingsWindow .settingsSoundControl{height:auto !important}
+#settingsWindow .settingsSlotKeys .keyBindRow{height:32px !important;min-height:32px !important;padding:4px 9px !important;font-size:10px !important;width:100% !important}
 #settingsWindow .settingsSlotKeys .keyBindRow kbd{min-width:30px !important;padding:3px 5px !important}
 .craftingRecipe.ownedLimit{opacity:.38 !important;filter:grayscale(1) !important;border-color:rgba(130,150,160,.16) !important;background:#071018 !important}

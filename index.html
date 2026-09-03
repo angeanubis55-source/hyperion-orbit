@@ -147,26 +147,26 @@
         <section class="settingsPage active">
           <div class="settingsPageIntro"><b>Préférences du jeu</b><span>Affichage, son et démarrage</span></div>
           <div class="settingsPreferences">
-            <div class="settingsQuickGrid">
-              <label class="settingsVolume settingsSoundControl" for="optVolume">
-                <button id="optSound" class="settingsToggle" type="button">Son : activé</button>
-                <span>Volume <output id="optVolumeValue">55 %</output></span>
-                <input id="optVolume" type="range" min="0" max="100" step="1" value="55" />
-              </label>
-              <label class="settingsCheck compact" for="optBackground"><input id="optBackground" type="checkbox" /><span><b>Fond de carte</b></span></label>
-              <label class="settingsCheck compact" for="optStars"><input id="optStars" type="checkbox" /><span><b>Étoiles</b></span></label>
+            <div class="settingsVisual">
+              <span class="settingsVisualTitle">Visuels et performances</span>
+              <div class="settingsVisualGrid">
+                <label class="settingsCheck" for="optBackground"><input id="optBackground" type="checkbox" /><span><b>Fond de carte</b></span></label>
+                <label class="settingsCheck" for="optStars"><input id="optStars" type="checkbox" /><span><b>Étoiles</b></span></label>
+                <label class="settingsCheck" for="optShipEffect"><input id="optShipEffect" type="checkbox" /><span><b>Effet du vaisseau</b></span></label>
+                <label class="settingsCheck" for="optDrones"><input id="optDrones" type="checkbox" /><span><b>Afficher les drones</b></span></label>
+                <label class="settingsCheck" for="optShipSmoke"><input id="optShipSmoke" type="checkbox" /><span><b>Fumées des vaisseaux</b></span></label>
+              </div>
             </div>
-            <div class="settingsChecks">
-              <label class="settingsCheck" for="optAutoStart">
-                <input id="optAutoStart" type="checkbox" />
-                <span><b>Démarrage automatique</b><small>Entrer en jeu dès que le chargement est terminé</small></span>
-              </label>
-              <label class="settingsCheck" for="optDrones">
-                <input id="optDrones" type="checkbox" />
-                <span><b>Afficher les drones</b><small>Masquer les sprites et afficher leurs indicateurs</small></span>
-              </label>
-            </div>
+            <label class="settingsAudio settingsSoundControl" for="optVolume">
+              <button id="optSound" class="settingsToggle" type="button">Son : activé</button>
+              <span class="settingsVolumeRow"><input id="optVolume" class="settingsVolumeSlider" type="range" min="0" max="100" step="1" value="55" /><output id="optVolumeValue" class="settingsVolumeValue">55 %</output></span>
+            </label>
           </div>
+
+          <label class="settingsCheck settingsPrefStandalone" for="optAutoStart">
+            <input id="optAutoStart" type="checkbox" />
+            <span><b>Démarrage automatique</b></span>
+          </label>
 
           <div class="settingsPageIntro settingsControlsIntro"><b>Commandes</b><span>Clique sur une commande pour modifier sa touche</span></div>
           <div class="settingsKeyColumns">
