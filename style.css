@@ -270,6 +270,14 @@ html.orbitSessionReady #loadingOverlay{
   pointer-events:none;
   user-select:none;
 }
+#fpsOverlay .versionTxt{
+  color:#ffd166;
+}
+#fpsOverlay .fpsSep{
+  color:rgba(205,220,235,.45);
+  font-weight:700;
+  padding:0 2px;
+}
 
 #boxPerformance{
   left:14px;

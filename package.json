@@ -6,6 +6,7 @@
     "test": "node --test",
     "benchmark": "node scripts/benchmark-spatial.js",
     "assets:manifest": "node scripts/generate-asset-manifest.js",
+    "version:sync": "node scripts/version-sync.js",
     "test:browser": "node scripts/smoke-browser.js"
   },
   "devDependencies": {

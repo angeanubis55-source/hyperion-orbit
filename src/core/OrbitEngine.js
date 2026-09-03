@@ -25,6 +25,7 @@ import { findCatalogItem } from "./catalog.js";
 import { CRAFTING_RECIPES } from "../data/crafting.js";
 import { ITEM_RARITIES } from "../data/itemRarities.js";
 import { SHIP_EFFECTS } from "../data/shipEffects.js";
+import { GAME_VERSION } from "../data/version.js";
 import { DRONE_FORMATIONS, DRONE_FORMATION_LAYOUTS, DRONE_TYPES, DRONE_XP_SHARE, getActiveDroneFormation, getDroneLevel, getDroneSpritePath } from "../data/drones.js";
 import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./collision.js";
 import { createKeyboardState, createPointerState } from "./input.js";
@@ -258,6 +259,7 @@ const ui = {
   pulsePrice: document.getElementById("pulsePrice"),
 
   fpsTxt: document.getElementById("fpsTxt"),
+  versionTxt: document.getElementById("versionTxt"),
 
   boxWave: document.getElementById("boxWave"),
   boxMeta: document.getElementById("boxMeta"),
@@ -9916,6 +9918,7 @@ updateConfigButtons();
   if (ui.miniMapName) ui.miniMapName.textContent = `Map : ${rules?.mapLabel || "—"}`;
   if (ui.miniPos) ui.miniPos.textContent = `Pos : ${formatInteger(player.x)} / ${formatInteger(player.y)}`;
 
+  if (ui.versionTxt) ui.versionTxt.textContent = `ALPHA v.${GAME_VERSION}`;
   if (ui.fpsTxt) {
     const perf = performanceMonitor.snapshot();
     ui.fpsTxt.textContent = String(fpsValue || perf.fps || 0);
