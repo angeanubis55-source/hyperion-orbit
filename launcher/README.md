@@ -1,6 +1,6 @@
 # Lanceur DarkOrbit
 
-Le lanceur démarre le serveur local en arrière-plan puis ouvre le jeu dans une fenêtre Edge/Chrome dédiée, sans barre d’adresse.
+Le lanceur démarre le serveur local en arrière-plan puis ouvre le jeu dans le navigateur par défaut de l’utilisateur.
 
 Pour reconstruire l’exécutable depuis la racine du projet :
 

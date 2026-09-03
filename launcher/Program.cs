@@ -17,24 +17,17 @@ internal static class Program
 
             var node = FindExecutable("node.exe")
                 ?? throw new InvalidOperationException("Node.js est requis pour démarrer le serveur local du jeu.");
-            var browser = FindBrowser()
-                ?? throw new InvalidOperationException("Microsoft Edge ou Google Chrome est requis pour ouvrir le jeu.");
 
             server = StartServer(node, root);
             var address = server.StandardOutput.ReadLine();
             if (string.IsNullOrWhiteSpace(address) || !address.StartsWith("http://127.0.0.1:", StringComparison.Ordinal))
                 throw new InvalidOperationException("Le serveur local n'a pas pu démarrer.");
 
-            var profile = Path.Combine(root, ".launcher-profile");
-            var browserProcess = Process.Start(new ProcessStartInfo
+            _ = Process.Start(new ProcessStartInfo
             {
-                FileName = browser,
-                Arguments = $"--app=\"{address}\" --start-maximized --disable-session-crashed-bubble --no-first-run --user-data-dir=\"{profile}\"",
-                WorkingDirectory = root,
-                UseShellExecute = false,
-            }) ?? throw new InvalidOperationException("La fenêtre du jeu n'a pas pu être ouverte.");
-
-            browserProcess.WaitForExit();
+                FileName = address,
+                UseShellExecute = true,
+            }) ?? throw new InvalidOperationException("Le navigateur n'a pas pu être ouvert.");
         }
         catch (Exception error)
         {
@@ -73,18 +66,6 @@ internal static class Program
                 File.Exists(Path.Combine(directory.FullName, "scripts", "game-server.js"))) return directory.FullName;
         }
         return null;
-    }
-
-    private static string? FindBrowser()
-    {
-        var candidates = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge", "Application", "msedge.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft", "Edge", "Application", "msedge.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google", "Chrome", "Application", "chrome.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Google", "Chrome", "Application", "chrome.exe"),
-        };
-        return candidates.FirstOrDefault(File.Exists);
     }
 
     private static string? FindExecutable(string name)
