@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "94f43129",
+    "message": "fix: barre d'action respecte la config exacte (plus d'auto-remplissage), formations restaurées au refresh, gains XP/honneur réels affichés avec bonus formation coloré"
+  },
+  {
     "version": "a08f7ba7",
     "message": "fix: patchnotes affichés dès l'ouverture + libellés lisibles en français pour toutes les versions"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "4b0a6476",
     "message": "Mise à jour du système d'équipement des modules."
-  },
-  {
-    "version": "5b0440b5",
-    "message": "Refonte complète du profil de l'Espace pilote."
   }
 ];
