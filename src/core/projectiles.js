@@ -43,11 +43,17 @@ export function removeProjectile(collection, index) {
   return projectile || null;
 }
 
+/**
+ * Fait progresser un projectile d'un pas temporel et renvoie simplement si il
+ * est expiré. La position précédente est écrite dans `_oldX`/`_oldY` du
+ * projectile lui-même, ce qui évite d'allouer un objet à chaque frame par
+ * projectile (et donc des micro-freezes liés au ramasse-miettes en combat).
+ */
 export function advanceProjectile(projectile, deltaTime) {
-  const oldX = projectile.x;
-  const oldY = projectile.y;
+  projectile._oldX = projectile.x;
+  projectile._oldY = projectile.y;
   projectile.x += projectile.vx * deltaTime;
   projectile.y += projectile.vy * deltaTime;
   projectile.life -= deltaTime;
-  return { oldX, oldY, expired: projectile.life <= 0 };
+  return projectile.life <= 0;
 }

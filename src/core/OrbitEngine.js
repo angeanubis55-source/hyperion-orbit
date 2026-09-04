@@ -9042,7 +9042,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     b.vy = dy / distance * chaseSpeed;
   }
 
-  const step = advanceProjectile(b, dt);
+  const expired = advanceProjectile(b, dt);
 
   const rr = (t.r || 18) + (b.r || 6);
   const targetStart = {
@@ -9051,7 +9051,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
   };
 
   if (movingCircleHit(
-    { x: step.oldX, y: step.oldY },
+    { x: b._oldX, y: b._oldY },
     { x: b.x, y: b.y },
     targetStart,
     { x: t.x, y: t.y },
@@ -9097,7 +9097,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     continue;
   }
 
-  if (step.expired) {
+  if (expired) {
     removeProjectile(bullets, i);
     cleanupPlayerMissVolley(b);
   }
@@ -9120,12 +9120,12 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
     b.vy = (dy / d) * spd;
   }
 
-  const step = advanceProjectile(b, dt);
+  const expired = advanceProjectile(b, dt);
 
   if (bulletTarget?.hp > 0) {
     const rr = (b.r || 0) + (bulletTarget.r || player.r) + (b.hitRadiusBonus || 0);
 
-    if (segCircleHit(step.oldX, step.oldY, b.x, b.y, bulletTarget.x, bulletTarget.y, rr)) {
+    if (segCircleHit(b._oldX, b._oldY, b.x, b.y, bulletTarget.x, bulletTarget.y, rr)) {
       removeProjectile(enemyBullets, i);
 
       const formationEvasion = bulletTarget === player
@@ -9148,7 +9148,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
     }
   }
 
-  if (step.expired) removeProjectile(enemyBullets, i);
+  if (expired) removeProjectile(enemyBullets, i);
 }
 
   tickLifetimeItems(sparks, dt, () => 0.25);

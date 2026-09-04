@@ -809,8 +809,10 @@ test("les projectiles ont des valeurs sûres et progressent avec deltaTime", () 
   const projectiles = [];
   const projectile = addProjectile(projectiles, { x: 10, vx: 20, life: 2, dmg: 5 });
   assert.equal(projectile, projectiles[0]);
-  const step = advanceProjectile(projectile, 0.5);
-  assert.deepEqual(step, { oldX: 10, oldY: 0, expired: false });
+  const expired = advanceProjectile(projectile, 0.5);
+  assert.equal(expired, false);
+  assert.equal(projectile._oldX, 10);
+  assert.equal(projectile._oldY, 0);
   assert.equal(projectile.x, 20);
   assert.equal(projectile.life, 1.5);
   assert.equal(createProjectile().r, 6);
