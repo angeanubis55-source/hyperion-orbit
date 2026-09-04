@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Orbit Game – Clean Build</title>
+  <title>Hyperion Orbit</title>
+  <link rel="icon" type="image/png" href="assets/ui/Logo_mini.png" />
   <script>
     document.documentElement.classList.add("orbitBooting");
     try {
@@ -389,6 +390,7 @@
           <button class="tabBtn" data-tab="shop">BOUTIQUE</button>
           <button class="tabBtn" data-tab="account">COMPTE</button>
           <button class="tabBtn" data-tab="npcs">NPC &amp; GRADES</button>
+          <button class="tabBtn" data-tab="patchnotes">PATCNOTES</button>
         </div>
       </div>
 
@@ -435,6 +437,13 @@
             <div class="missionStatsSeparator"><span>Missions accomplies</span></div>
             <div id="missionRewardSummary" class="missionRewardSummary"></div>
           </section>
+        </section>
+
+        <section id="panel_patchnotes" class="profilePanel">
+          <div class="patchNotesIntro">
+            Résumé des modifications apportées à chaque mise à jour, des plus récentes aux plus anciennes.
+          </div>
+          <div id="patchNotesList" class="patchNotesList"></div>
         </section>
 
         <section id="panel_account" class="profilePanel">

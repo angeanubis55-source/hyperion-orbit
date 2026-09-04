@@ -35,6 +35,7 @@ import { getItemRarity } from "../src/data/itemRarities.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
 import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS } from "../src/data/moduleDrops.js";
 import { appendToFitSlots, compactFitDraft } from "../src/core/fitLayout.js";
+import { PATCH_NOTES } from "../src/data/patchNotes.js";
 
 console.log("profile.js loaded ✅");
 
@@ -497,6 +498,7 @@ function wireMainTabsOnce() {
       if (tab === "hangars") renderHangars(user);
       if (tab === "inventory") renderInventory(user);
       if (tab === "shop") renderShop(user);
+      if (tab === "patchnotes") renderPatchNotes();
     });
   });
 
@@ -833,6 +835,22 @@ function renderNpcStats(u) {
     const missionRankPoints = calculateRankPoints(totals);
     missionRewardSummary.innerHTML = `<div class="npcRewardRow missionRewardRow"><span class="npcRewardName">Missions effectuées</span><strong>${formatNumber(completed.length)}</strong><span>${formatNumber(totals.exp)}</span><span>${formatNumber(totals.honor)}</span><span>${formatNumber(totals.credits)}</span><span>${formatNumber(missionRankPoints)}</span></div>`;
   }
+}
+
+function renderPatchNotes() {
+  const list = document.getElementById("patchNotesList");
+  if (!list) return;
+  const notes = Array.isArray(PATCH_NOTES) ? PATCH_NOTES : [];
+  if (notes.length === 0) {
+    list.innerHTML = "";
+    return;
+  }
+  list.innerHTML = notes.map((entry) =>
+    `<div class="patchNoteCard">
+      <div class="patchNoteVersion">v.${escapeHtml(entry.version)}</div>
+      <div class="patchNoteBody">${escapeHtml(entry.message)}</div>
+    </div>`
+  ).join("");
 }
 
 function renderAccount(u) {
