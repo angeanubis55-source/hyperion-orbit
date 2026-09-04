@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "e6da6aba",
+    "message": "Synchronise la version du jeu (7d0cc13b)"
+  },
+  {
     "version": "7d0cc13b",
     "message": "Synchronise la version du jeu (94f43129)"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "d73e15f6",
     "message": "Équilibrage : quantité de munitions x2, récompenses des NPC et prix des vaisseaux."
-  },
-  {
-    "version": "f816dd24",
-    "message": "Corrections : double apparition à la mort, redémarrage de session et sauvegarde avant le changement de carte."
   }
 ];
