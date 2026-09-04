@@ -406,28 +406,49 @@ test("les rendus HUD Canvas restaurent le contexte et gèrent les messages perma
 });
 
 test("la mini-carte filtre les NPC et dessine les portails avec un contexte équilibré", () => {
-  const calls = [];
-  const context = new Proxy({}, { get: (target, property) => target[property] || ((...args) => calls.push([property, ...args])), set: (target, property, value) => { target[property] = value; return true; } });
-  const player = { x: 500, y: 500, dead: false };
-  renderMinimap(context, {
-    width: 200, height: 100, world: { w: 1000, h: 1000 }, player,
-    enemies: [{ x: 100, y: 100, hp: 10, r: 18 }, { x: 200, y: 200, hp: 10, r: 18 }],
-    portals: [{ x: 300, y: 300, r: 50 }], moveTarget: { active: true, x: 700, y: 700 },
-    ping: { x: 700, y: 700, t: 0.5, dur: 1 }, camera: player,
-    viewportWidth: 800, viewportHeight: 600, shouldShowNpc: (_player, enemy) => enemy.x === 100,
+  const prevDocument = globalThis.document;
+  const staticCalls = [];
+  const staticContext = new Proxy({}, {
+    get: (target, property) => target[property] || ((...args) => staticCalls.push([property, ...args])),
+    set: (target, property, value) => { target[property] = value; return true; },
   });
-  assert.equal(calls.filter(call => call[0] === "fillRect").length, 2);
-  assert.equal(calls.filter(call => call[0] === "save").length, calls.filter(call => call[0] === "restore").length);
-  assert.deepEqual(getMinimapPortalColors({ toMap: "low" }), {
-    stroke: "rgba(190,96,255,0.95)",
-    fill: "rgba(210,130,255,1)",
-  });
-  assert.deepEqual(getMinimapPortalColors({ toMap: "qz" }), getMinimapPortalColors({ toMap: "low" }));
-  assert.deepEqual(getMinimapPortalColors({ toMap: "1-7", shortcutCreditCost: 50000 }), {
-    stroke: "rgba(255,205,82,0.95)",
-    fill: "rgba(255,224,120,1)",
-  });
-  assert.notDeepEqual(getMinimapPortalColors({ toMap: "1-2" }), getMinimapPortalColors({ toMap: "low" }));
+  globalThis.document = {
+    createElement: () => ({
+      getContext: () => staticContext,
+      width: 0,
+      height: 0,
+    }),
+  };
+
+  try {
+    const calls = [];
+    const context = new Proxy({}, { get: (target, property) => target[property] || ((...args) => calls.push([property, ...args])), set: (target, property, value) => { target[property] = value; return true; } });
+    const player = { x: 500, y: 500, dead: false };
+    renderMinimap(context, {
+      width: 200, height: 100, world: { w: 1000, h: 1000 }, player,
+      enemies: [{ x: 100, y: 100, hp: 10, r: 18 }, { x: 200, y: 200, hp: 10, r: 18 }],
+      portals: [{ x: 300, y: 300, r: 50 }], moveTarget: { active: true, x: 700, y: 700 },
+      ping: { x: 700, y: 700, t: 0.5, dur: 1 }, camera: player,
+      viewportWidth: 800, viewportHeight: 600, shouldShowNpc: (_player, enemy) => enemy.x === 100,
+    });
+    assert.equal(calls.some(call => call[0] === "drawImage"), true, "la couche statique est posée par drawImage");
+    assert.equal(calls.filter(call => call[0] === "fillRect").length, 1, "un seul ennemi filtré dessiné côté dynamique");
+    assert.equal(calls.filter(call => call[0] === "save").length, calls.filter(call => call[0] === "restore").length);
+    assert.equal(staticCalls.filter(call => call[0] === "fillRect").length, 1, "fond de la mini-carte rendu dans la couche statique");
+    assert.equal(staticCalls.filter(call => call[0] === "arc").length >= 2, true, "portail rendu dans la couche statique");
+    assert.deepEqual(getMinimapPortalColors({ toMap: "low" }), {
+      stroke: "rgba(190,96,255,0.95)",
+      fill: "rgba(210,130,255,1)",
+    });
+    assert.deepEqual(getMinimapPortalColors({ toMap: "qz" }), getMinimapPortalColors({ toMap: "low" }));
+    assert.deepEqual(getMinimapPortalColors({ toMap: "1-7", shortcutCreditCost: 50000 }), {
+      stroke: "rgba(255,205,82,0.95)",
+      fill: "rgba(255,224,120,1)",
+    });
+    assert.notDeepEqual(getMinimapPortalColors({ toMap: "1-2" }), getMinimapPortalColors({ toMap: "low" }));
+  } finally {
+    globalThis.document = prevDocument;
+  }
 });
 
 test("les couches du monde dessinent fonds et murs sans déséquilibrer Canvas", () => {
