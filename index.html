@@ -20,15 +20,15 @@
 <div id="orbitNotifications" class="orbitNotifications" aria-live="polite"></div>
 
 <div id="loadingOverlay" class="loadingOverlay" role="dialog" aria-modal="true" aria-labelledby="loadingTitle">
-  <div class="loadingCard">
-    <div class="loadingEyebrow">HYPERION ORBIT</div>
-    <h1 id="loadingTitle">Préparation du secteur</h1>
-    <p id="loadingStatus">Initialisation du cache…</p>
+  <img class="loadingLogo" src="assets/ui/Logo.png" alt="Hyperion Orbit" draggable="false" />
+  <div class="loadingBottom">
+    <h1 id="loadingTitle">Chargement du jeu</h1>
+    <p class="loadingHint">Cette opération ne se fait qu'une seule fois au démarrage complet du jeu.</p>
     <div class="loadingTrack" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-      <i id="loadingBar"></i>
+      <i id="loadingFill"></i>
+      <strong id="loadingPercent">0 %</strong>
+      <button id="loadingStartBtn" class="loadingStartBtn" type="button" disabled>DEPART</button>
     </div>
-    <div class="loadingMeta"><span id="loadingCount">0 / 0 éléments</span><strong id="loadingPercent">0 %</strong></div>
-    <button id="loadingStartBtn" class="loadingStartBtn" type="button" disabled>Chargement…</button>
   </div>
 </div>
 

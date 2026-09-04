@@ -336,7 +336,7 @@ cfgCooldownTxt: document.getElementById("cfgCooldownTxt"),
   startHint: document.getElementById("startHint"),
   loadingOverlay: document.getElementById("loadingOverlay"),
   loadingStatus: document.getElementById("loadingStatus"),
-  loadingBar: document.getElementById("loadingBar"),
+  loadingBar: document.getElementById("loadingFill"),
   loadingCount: document.getElementById("loadingCount"),
   loadingPercent: document.getElementById("loadingPercent"),
   loadingStartBtn: document.getElementById("loadingStartBtn"),
@@ -10109,14 +10109,6 @@ let starting = false;
 let assetsPrepared = false;
 const SESSION_ASSET_CACHE_KEY = "orbit_assets_preloaded_v1";
 
-function renderLoadingProgress({ done = 0, total = 0 } = {}) {
-  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
-  if (ui.loadingBar) ui.loadingBar.style.width = `${percent}%`;
-  if (ui.loadingCount) ui.loadingCount.textContent = `${done} / ${total} éléments`;
-  if (ui.loadingPercent) ui.loadingPercent.textContent = `${percent} %`;
-  ui.loadingOverlay?.querySelector(".loadingTrack")?.setAttribute("aria-valuenow", String(percent));
-}
-
 function revealPreparedGame() {
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.documentElement.classList.remove("orbitBooting");
@@ -10204,11 +10196,10 @@ async function prepareGameAssets() {
     return;
   }
 
-  if (ui.loadingOverlay) ui.loadingOverlay.style.display = "grid";
-  await preloadWholeGameCache();
-  if (ui.loadingStatus) ui.loadingStatus.textContent = "Préparation des éléments du secteur…";
+  if (ui.loadingOverlay) ui.loadingOverlay.style.display = "block";
 
-  const unsubscribe = IMG.onProgress(renderLoadingProgress);
+  const cachePromise = preloadWholeGameCache();
+
   const jobs = [];
   for (const layer of WORLD.bgLayers || []) if (layer?.src) jobs.push(loadImage(layer.src, { priority: true }));
   jobs.push(ensurePackLoaded(ACTIVE_SHIP));
@@ -10231,10 +10222,8 @@ async function prepareGameAssets() {
     jobs.push(...preloadPortalSprites());
   }
 
-  await Promise.allSettled(jobs);
-  await IMG.whenIdle();
-  renderLoadingProgress(IMG.snapshot());
-  unsubscribe();
+  const sectorPromise = Promise.allSettled(jobs).then(() => IMG.whenIdle());
+  await Promise.allSettled([cachePromise, sectorPromise]);
   assetsPrepared = true;
   try { sessionStorage.setItem(SESSION_ASSET_CACHE_KEY, "ready"); } catch {}
 
@@ -10245,6 +10234,7 @@ async function prepareGameAssets() {
     ui.loadingStartBtn.disabled = false;
     ui.loadingStartBtn.textContent = "DÉPART";
   }
+  if (ui.loadingOverlay) ui.loadingOverlay.classList.add("isReady");
 
   if (GAME_SETTINGS.autoStart) await startGame();
 }
