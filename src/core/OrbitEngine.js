@@ -19,7 +19,12 @@ import {
   craftCurrentUserRecipe,
   setCurrentUserDroneFormation,
 } from "./account.js";
-import { GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, GALAXY_SPIN_CREDIT_COST } from "./galaxyGates.js";
+import {
+  GALAXY_GATE_BUILD_LIMIT,
+  GALAXY_GATE_DEFINITIONS,
+  GALAXY_SPIN_CREDIT_COST,
+  normalizeGalaxyGateState,
+} from "./galaxyGates.js";
 import { computeHangarStats } from "./hangars.js";
 import { findCatalogItem } from "./catalog.js";
 import { CRAFTING_RECIPES } from "../data/crafting.js";
@@ -291,6 +296,8 @@ const ui = {
   ggDeployBtn: document.getElementById("ggDeployBtn"),
   orbitNotifications: document.getElementById("orbitNotifications"),
   gameLogEntries: document.getElementById("gameLogEntries"),
+  gameLogWindow: document.getElementById("gameLogWindow"),
+  questWindow: document.getElementById("questWindow"),
   escortWindowBody: document.getElementById("escortWindowBody"),
   craftingRecipes: document.getElementById("craftingRecipes"),
   craftingDetail: document.getElementById("craftingDetail"),
@@ -1863,6 +1870,20 @@ function markProgressDirty() {
   account.saveCd = 0.35;
 }
 
+let progressSaveIdleHandle = 0;
+function scheduleProgressSave() {
+  if (progressSaveIdleHandle) return;
+  const persist = () => {
+    progressSaveIdleHandle = 0;
+    if (account.user && account.dirty) saveProgressNow();
+  };
+  if (typeof requestIdleCallback === "function") {
+    progressSaveIdleHandle = requestIdleCallback(persist, { timeout: 1200 });
+  } else {
+    progressSaveIdleHandle = setTimeout(persist, 0);
+  }
+}
+
 function awardExperience(amount, source = "") {
   if (!account.user) loadAccountUser();
   if (!account.user) return null;
@@ -1913,7 +1934,7 @@ function renderQuestWindow() {
   // Rattrape le cas où le moteur a été instancié avant la session utilisateur
   // (refresh/login) et aurait conservé un journal vide en mémoire.
   {
-    const persisted = getCurrentUserFull()?.quests;
+    const persisted = (account.user || getCurrentUserFull())?.quests;
     const memoryIds = Object.keys(questState.active).sort().join("|");
     const savedState = persisted && normalizeQuestState(persisted);
     const savedIds = savedState ? Object.keys(savedState.active).sort().join("|") : "";
@@ -2026,7 +2047,10 @@ function advanceQuestProgress(kind, type) {
   });
   if (!advanced.length) return;
   markProgressDirty();
-  renderQuestWindow();
+  const questVisible = ui.questWindow
+    && ui.questWindow.style.display !== "none"
+    && !ui.questWindow.classList.contains("gameWinMinimized");
+  if (questVisible) renderQuestWindow();
 
   for (const id of advanced) {
     const quest = QUEST_DEFINITIONS.find(item => item.id === id);
@@ -2117,17 +2141,19 @@ function saveProgressNow() {
   if (!account.user) account.user = getCurrentUserFull();
   if (!account.user) return;
   
-  if (!player.dead && started) {
-    const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
-    saveActiveHangarState(player.x, player.y, currentMap);
-  }
-  
-updateCurrentUserProgress({
+  const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
+  const result = updateCurrentUserProgress({
   credits: player.credits,
   quests: questState,
   stats: { ...(account.user.stats || {}) },
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
   drones: account.user.drones,
+  hangarState: !player.dead && started ? {
+    id: SESSION_HANGAR_ID || null,
+    x: player.x,
+    y: player.y,
+    mapId: currentMap,
+  } : null,
 
   // ⚠️ Ne pas sauvegarder ship ici non plus.
   ammo: {
@@ -2139,6 +2165,7 @@ updateCurrentUserProgress({
     x6: player.ammo.x6 || 0,
   },
 });
+  if (result?.ok && result.user) account.user = result.user;
   account.dirty = false;
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 }
@@ -2571,10 +2598,14 @@ function addGameLog(text, type = "info") {
   if (sessionGameLog.length > 250) sessionGameLog.shift();
   const userId = getGameLogUserId();
   void appendGameLog(userId, entry)
-    .then(() => { if (gameLogPage === 0) void renderGameLog(); })
+    .then(() => {
+      const logVisible = ui.gameLogWindow
+        && ui.gameLogWindow.style.display !== "none"
+        && !ui.gameLogWindow.classList.contains("gameWinMinimized");
+      if (gameLogPage === 0 && logVisible) void renderGameLog();
+    })
     .catch(error => {
       console.warn("Écriture du journal impossible :", error);
-      if (gameLogPage === 0) void renderGameLog();
     });
 }
 
@@ -4318,8 +4349,10 @@ function initializeGateEscorts() {
       ?? (gateId === "qz" ? sessionStorage.getItem("orbit_qz_escorts") : null);
     count = Math.max(0, Math.min(Number(rules.escort.max) || 7, Number(stored) || 0));
   } catch {}
-  const pack = SHIP_PACKS.find(item => item.id === (rules.escort.shipId || "Goliath"));
-  if (pack) ensurePackLoaded(pack);
+  const escortShipId = String(rules.escort.shipId || "goliath").toLowerCase();
+  const pack = SHIP_PACKS.find(item => String(item.id || "").toLowerCase() === escortShipId)
+    || SHIP_PACKS.find(item => String(item.id || "").toLowerCase() === "goliath");
+  if (pack) void ensurePackLoaded(pack).catch(error => console.warn("Sprite de l'escorte indisponible :", error));
   for (let index = 0; index < count; index++) {
     const angle = (index / Math.max(1, count)) * TAU;
     escortShips.push({
@@ -5369,7 +5402,6 @@ function applyCollectableReward(c) {
   const goldTerms = [];
 
   let changed = false;
-  let resourcesChanged = false;
 
   const credits = rollValue(reward.credits, 0);
   if (credits > 0) {
@@ -5380,12 +5412,15 @@ function applyCollectableReward(c) {
 
   const galaxyEnergy = rollValue(reward.galaxyEnergy, 0);
   if (galaxyEnergy > 0) {
-    const result = grantCurrentUserGalaxyEnergy(galaxyEnergy);
-    if (result.ok) {
-      account.user = result.user;
+    if (!account.user) loadAccountUser();
+    if (account.user) {
+      account.user.galaxyGates = normalizeGalaxyGateState(account.user.galaxyGates);
+      account.user.galaxyGates.energy += galaxyEnergy;
       parts.push(`+${formatInteger(galaxyEnergy)} énergie pour les portails intergalactiques (GG)`);
       changed = true;
-      renderGalaxyGateWindow();
+      if (ui.galaxyGateWindow.style.display !== "none" && !ui.galaxyGateWindow.classList.contains("gameWinMinimized")) {
+        renderGalaxyGateWindow();
+      }
     }
   }
 
@@ -5412,7 +5447,6 @@ function applyCollectableReward(c) {
         parts.push(`+${formatInteger(amount)} ${getResourceName(resourceId, amount)}`);
         goldTerms.push(formatInteger(amount));
         changed = true;
-        resourcesChanged = true;
       }
     }
   }
@@ -5474,8 +5508,13 @@ function applyCollectableReward(c) {
   } else {
     showToast(cfg.name || "Collectable", 1.0);
   }
-  if (resourcesChanged) saveProgressNow();
 }
+
+document.addEventListener("click", event => {
+  if (event.target.closest?.('[data-window-id="questWindow"]')) {
+    setTimeout(renderQuestWindow, 0);
+  }
+});
 
 function tickCollectables(dt) {
   if (!started || player.dead) return;
@@ -6035,9 +6074,8 @@ function killRewards(e) {
   }
 
   markProgressDirty();
-  // Une destruction doit être immédiatement disponible dans le registre,
-  // même si le joueur ouvre le profil avant la prochaine sauvegarde périodique.
-  saveProgressNow();
+  // La sauvegarde temporisée regroupe les destructions rapprochées et évite
+  // de sérialiser tout le compte au milieu de chaque frame de combat.
 }
 
 function emptyEnemyDamageResult() {
@@ -8691,7 +8729,7 @@ function update(dt) {
 
   if (account.user && account.dirty) {
     account.saveCd -= dt;
-    if (account.saveCd <= 0) saveProgressNow();
+    if (account.saveCd <= 0) scheduleProgressSave();
   }
 
   tickAutoAttack(dt);
@@ -10332,7 +10370,11 @@ window.addEventListener("storage", (e) => {
   }
 });
 
-window.addEventListener("orbit:user-updated", () => {
+window.addEventListener("orbit:user-updated", event => {
+  // Une sauvegarde issue de ce moteur possède déjà le bon état en mémoire.
+  // Évite de relire le compte et de recalculer tout l'équipement après chaque
+  // destruction ou collecte.
+  if (event?.detail?.source === "progress") return;
   const refreshed = getCurrentUserFull();
   if (!refreshed) return;
   account.user = refreshed;

@@ -3883,6 +3883,8 @@ compactCurrentFit();
 // Le moteur signale chaque sauvegarde de progression. Le registre peut ainsi
 // refléter immédiatement les destructions et les grades sans recharger la page.
 window.addEventListener("orbit:profile-progress", () => {
+  const overlay = document.getElementById("profileOverlay");
+  if (!overlay || overlay.style.display === "none" || overlay.hidden) return;
   const refreshedUser = getCurrentUserFull();
   if (!refreshedUser) return;
   user = refreshedUser;
@@ -3903,6 +3905,8 @@ function accountUiSignature(value) {
   });
 }
 window.addEventListener("orbit:user-updated", () => {
+  const overlay = document.getElementById("profileOverlay");
+  if (!overlay || overlay.style.display === "none" || overlay.hidden) return;
   if (accountRefreshFrame) return;
   accountRefreshFrame = requestAnimationFrame(() => {
     accountRefreshFrame = 0;
@@ -3912,8 +3916,6 @@ window.addEventListener("orbit:user-updated", () => {
     if (signature === lastAccountUiSignature) return;
     lastAccountUiSignature = signature;
     user = refreshedUser;
-    const profileVisible = document.getElementById("profileOverlay")?.style.display !== "none";
-    if (!profileVisible) return;
     renderHeader(user);
     renderStats(user);
     renderHangars(user);

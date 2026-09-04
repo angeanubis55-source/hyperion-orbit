@@ -422,28 +422,19 @@ function computeCombatFromFit(fit) {
   return { dmg, bonusSpeed, bonusShield };
 }
 
-function saveUser(user) {
+function saveUser(user, options = {}) {
   user.schemaVersion = STORAGE_SCHEMA_VERSION;
   user.updatedAt = Date.now();
   user.revision = Math.max(0, Math.floor(Number(user.revision) || 0)) + 1;
   const users = readUsers();
   const idx = users.findIndex((x) => x?.id === user.id);
-  const uiFingerprint = (value) => JSON.stringify({
-    credits: value?.credits,
-    ship: value?.ship,
-    inventory: value?.inventory,
-    drones: value?.drones,
-    hangars: (value?.hangars || []).map(hangar => ({
-      id: hangar?.id, shipId: hangar?.shipId, active: hangar?.active,
-      activeConfig: hangar?.activeConfig, fits: hangar?.fits, fit: hangar?.fit,
-    })),
-  });
-  const uiChanged = idx < 0 || uiFingerprint(users[idx]) !== uiFingerprint(user);
   if (idx >= 0) users[idx] = user;
   else users.push(user);
   writeUsers(users);
-  if (uiChanged && typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
-    window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: user.id, revision: user.revision } }));
+  if (options.notify !== false && typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
+    window.dispatchEvent(new CustomEvent("orbit:user-updated", {
+      detail: { userId: user.id, revision: user.revision, source: options.source || "account" },
+    }));
   }
 }
 
@@ -656,10 +647,18 @@ export function getCurrentUserFull() {
     return null;
   }
 
+  // Une lecture de compte doit rester une opération sans écriture. Auparavant,
+  // chaque appel réécrivait l'intégralité de `orbit_users`, ce qui bloquait le
+  // thread principal dès que le profil devenait volumineux (inventaire, drones,
+  // quêtes...). La migration n'est persistée que lorsqu'elle est réellement
+  // nécessaire.
+  const needsMigration = Number(u0.schemaVersion || 0) !== STORAGE_SCHEMA_VERSION;
   const u = ensureUserShape(u0);
-  saveUser(u);
+  if (needsMigration) saveUser(u);
 
-  writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+  if (cur.pseudo !== u.pseudo || cur.email !== u.email) {
+    writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+  }
   return u;
 }
 
@@ -687,6 +686,19 @@ export function updateCurrentUserProgress(patch = {}) {
       .filter(([, quantity]) => quantity > 0));
   }
   if (patch.drones && typeof patch.drones === "object") u.drones = structuredClone(patch.drones);
+
+  if (patch.hangarState && typeof patch.hangarState === "object") {
+    const requestedId = String(patch.hangarState.id || "");
+    const hangar = requestedId
+      ? (u.hangars || []).find(entry => String(entry?.id || "") === requestedId)
+      : getActiveHangar(u);
+    if (hangar) {
+      const px = Number(patch.hangarState.x);
+      const py = Number(patch.hangarState.y);
+      if (Number.isFinite(px) && Number.isFinite(py)) hangar.lastPos = { x: px, y: py };
+      if (patch.hangarState.mapId) hangar.lastMap = String(patch.hangarState.mapId).toLowerCase();
+    }
+  }
 
   if (patch.stats && typeof patch.stats === "object") {
     u.stats ??= {};
@@ -718,8 +730,7 @@ export function updateCurrentUserProgress(patch = {}) {
   }
 
   ensureUserShape(u);
-  saveUser(u);
-  writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+  saveUser(u, { source: "progress" });
 
   return { ok: true, user: u };
 }
@@ -1157,7 +1168,8 @@ export function saveActiveHangarState(x, y, mapId) {
     h.lastMap = String(mapId).toLowerCase();
   }
 
-  saveUser(u);
+  // La position est sauvegardée périodiquement et ne modifie aucune vue UI.
+  saveUser(u, { notify: false });
   return { ok: true };
 }
 
@@ -1301,7 +1313,8 @@ export function saveHangarStateById(hangarId, x, y, mapId) {
 
   if (mapId) h.lastMap = String(mapId).toLowerCase();
 
-  saveUser(u);
+  // Évite un recalcul complet de l'équipement à chaque sauvegarde de position.
+  saveUser(u, { notify: false });
   return { ok: true };
 }
 

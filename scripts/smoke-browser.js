@@ -76,7 +76,7 @@ try {
       await page.waitForFunction(() => !document.documentElement.classList.contains("orbitBooting"), null, { timeout: 30_000 });
       if (inspectCombat) {
         await page.waitForTimeout(1800);
-        await page.click("#btnPulse");
+        await page.locator('#ammoBar [data-skill="pulse"]').first().click();
         await page.waitForTimeout(500);
       }
       if (inspectWindows) {

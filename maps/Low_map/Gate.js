@@ -31,7 +31,7 @@ export function init() {
       mapLabel: "GG Low",
       mode: "gate",
       playerSpawn: { x: 520, yRatio: 0.5 },
-      escort: { shipId: "Goliath", ammo: "x3", max: 3 },
+      escort: { shipId: "goliath", ammo: "x3", max: 3 },
       bossEncounter: {
         bossType: "npc_Century_Falcon",
         countPerPhase: 15,
