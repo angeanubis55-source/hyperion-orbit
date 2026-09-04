@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "a08f7ba7",
+    "message": "fix: patchnotes affichés dès l'ouverture + libellés lisibles en français pour toutes les versions"
+  },
+  {
     "version": "0f447475",
     "message": "Nouvel onglet « Patchnotes » dans l'Espace pilote : il liste automatiquement chaque mise à jour, avec un favicon et un titre d'onglet « Hyperion Orbit » mis à jour."
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "5b0440b5",
     "message": "Refonte complète du profil de l'Espace pilote."
-  },
-  {
-    "version": "501b3056",
-    "message": "Soin apporté aux fenêtres du HUD et animations du dock."
   }
 ];

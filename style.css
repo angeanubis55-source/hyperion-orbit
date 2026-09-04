@@ -2025,6 +2025,8 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 .orbitNotification{ max-width:100%; max-height:var(--notice-height,24px); box-sizing:border-box; overflow:hidden; padding:1px 6px; border:0; color:#fff; background:transparent; text-shadow:0 1px 3px #000,0 0 6px rgba(0,0,0,.8); box-shadow:none; font:700 12px/1.22 ui-sans-serif,system-ui; text-align:center; animation:orbitNoticeIn .25s ease-out both; }
 .orbitNotification.reward,.orbitNotification.error{ border:0; color:#fff; }
 .orbitNotificationAmount{ color:#ffd36b; font-weight:900; text-shadow:0 0 7px rgba(255,184,43,.28),0 1px 3px #000; }
+.orbitNotificationAmountPlain{ color:#fff; font-weight:900; text-shadow:0 0 7px rgba(255,255,255,.25),0 1px 3px #000; }
+.orbitNotificationAmountViolet{ color:#d08bff; font-weight:900; text-shadow:0 0 7px rgba(189,93,255,.32),0 1px 3px #000; }
 .orbitNotification.leaving{ animation:orbitNoticeOut .65s cubic-bezier(.4,0,.2,1) both; }
 @keyframes orbitNoticeIn{from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:translateY(0)}}
 @keyframes orbitNoticeOut{from{opacity:1;max-height:var(--notice-height,24px);padding-top:1px;padding-bottom:1px;transform:translateY(0)}to{opacity:0;max-height:0;padding-top:0;padding-bottom:0;transform:translateY(-8px)}}

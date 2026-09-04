@@ -386,16 +386,29 @@ function initializeCustomActionBar() {
   let saved = [];
   try { saved = JSON.parse(localStorage.getItem(ACTION_BAR_LAYOUT_KEY) || "[]"); } catch {}
   const layout = Array.from({ length: 20 }, (_, index) => saved[index] || null);
-  const used = new Set(layout.filter(id => byId.has(id)));
-  for (const id of byId.keys()) if (!used.has(id)) {
-    const emptyIndex = layout.findIndex(value => !value);
-    if (emptyIndex >= 0) layout[emptyIndex] = id;
-  }
   bar.replaceChildren();
   const persist = () => localStorage.setItem(ACTION_BAR_LAYOUT_KEY, JSON.stringify(
     [...bar.querySelectorAll(".actionSlot")].map(slot => slot.querySelector(".ammoBtn")?.dataset.actionId || null)
   ));
   const slots = document.createElement("div"); slots.className = "actionSlots"; bar.appendChild(slots);
+  const formationButtons = DRONE_FORMATIONS.map(formation => {
+    const button = document.createElement("button");
+    button.className = "ammoBtn formationActionSlot"; button.dataset.actionCategory = "formations";
+    button.dataset.actionId = `formation:${formation.id}`; button.draggable = true;
+    button.innerHTML = `<img src="${formation.icon}" alt=""><span>${formation.name.replace("Formation ", "")}</span>`;
+    button.onclick = () => {
+      const result = setCurrentUserDroneFormation(formation.id);
+      if (!result.ok) return showNotification(result.error, 2.5, "error");
+      account.user = result.user;
+      applyCurrentConfigStats(true);
+      syncActionDockState();
+      showNotification(`${formation.name} activée`, 2, "info", { goldTerms: [formation.name] });
+      renderPalette("formations");
+    };
+    button.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId); event.dataTransfer.effectAllowed = "move"; });
+    byId.set(button.dataset.actionId, button);
+    return button;
+  });
   layout.forEach((id, index) => {
     const slot = document.createElement("div");
     slot.className = "actionSlot";
@@ -442,24 +455,6 @@ function initializeCustomActionBar() {
     event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId);
     event.dataTransfer.effectAllowed = "move";
   }));
-  const formationButtons = DRONE_FORMATIONS.map(formation => {
-    const button = document.createElement("button");
-    button.className = "ammoBtn formationActionSlot"; button.dataset.actionCategory = "formations";
-    button.dataset.actionId = `formation:${formation.id}`; button.draggable = true;
-    button.innerHTML = `<img src="${formation.icon}" alt=""><span>${formation.name.replace("Formation ", "")}</span>`;
-    button.onclick = () => {
-      const result = setCurrentUserDroneFormation(formation.id);
-      if (!result.ok) return showNotification(result.error, 2.5, "error");
-      account.user = result.user;
-      applyCurrentConfigStats(true);
-      syncActionDockState();
-      showNotification(`${formation.name} activée`, 2, "info", { goldTerms: [formation.name] });
-      renderPalette("formations");
-    };
-    button.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId); event.dataTransfer.effectAllowed = "move"; });
-    byId.set(button.dataset.actionId, button);
-    return button;
-  });
   bar.addEventListener("dragstart", event => {
     const item = event.target.closest(".actionSlot .ammoBtn");
     if (!item) return;
@@ -470,18 +465,6 @@ function initializeCustomActionBar() {
   });
   bar.addEventListener("dragend", () => bar.querySelectorAll(".isDragging").forEach(item => item.classList.remove("isDragging")));
   const paletteItems = palette.querySelector(".actionPaletteItems");
-  layout.forEach((id,index)=>{
-    if (!id?.startsWith("formation:") || !byId.has(id) || slots.children[index]?.querySelector(".ammoBtn")) return;
-    const original = byId.get(id);
-    const instance = original.cloneNode(true);
-    instance.dataset.actionId = id;
-    instance.onclick = () => original.click();
-    instance.addEventListener("dragstart", event => {
-      if (palette.hidden) return event.preventDefault();
-      event.dataTransfer.setData("application/x-orbit-action", id);
-    });
-    slots.children[index]?.appendChild(instance);
-  });
   function renderPalette(category) {
     paletteItems.replaceChildren();
     palette.querySelectorAll("[data-action-category]").forEach(button => button.classList.toggle("active", button.dataset.actionCategory === category));
@@ -2607,34 +2590,87 @@ function addGameLog(text, type = "info") {
     });
 }
 
-function setNotificationText(node, value, { goldTerms = [] } = {}) {
+function setNotificationText(node, value, { goldTerms = [], whiteTerms = [], violetTerms = [] } = {}) {
   const quantityPattern = /(?<![\p{L}\d])[+-]?\d+(?:[ \u00a0\u202f]\d{3})*(?:[.,]\d+)?(?![\p{L}\d])/gu;
-  const ranges = [...value.matchAll(quantityPattern)].map(match => [match.index, match.index + match[0].length]);
-  const loweredValue = value.toLocaleLowerCase("fr-FR");
-  for (const rawTerm of goldTerms) {
-    const term = String(rawTerm || "").trim();
-    if (!term) continue;
-    const loweredTerm = term.toLocaleLowerCase("fr-FR");
-    let start = 0;
-    while ((start = loweredValue.indexOf(loweredTerm, start)) >= 0) {
-      ranges.push([start, start + term.length]);
-      start += term.length;
+  const collectRanges = (terms) => {
+    const ranges = [];
+    const loweredValue = value.toLocaleLowerCase("fr-FR");
+    for (const rawTerm of terms) {
+      const term = String(rawTerm || "").trim();
+      if (!term) continue;
+      const loweredTerm = term.toLocaleLowerCase("fr-FR");
+      let start = 0;
+      while ((start = loweredValue.indexOf(loweredTerm, start)) >= 0) {
+        ranges.push([start, start + term.length]);
+        start += term.length;
+      }
+    }
+    return ranges;
+  };
+  const mergeRanges = (ranges) => {
+    ranges.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+    const merged = [];
+    for (const range of ranges) {
+      const previous = merged.at(-1);
+      if (previous && range[0] <= previous[1]) previous[1] = Math.max(previous[1], range[1]);
+      else merged.push([...range]);
+    }
+    return merged;
+  };
+  const goldRanges = mergeRanges([
+    ...[...value.matchAll(quantityPattern)].map(match => [match.index, match.index + match[0].length]),
+    ...collectRanges(goldTerms),
+  ]);
+  const plainRanges = mergeRanges(collectRanges(whiteTerms));
+  const violetRanges = mergeRanges(collectRanges(violetTerms));
+  const segments = [];
+  for (const [start, end] of goldRanges) {
+    for (let i = start; i < end; i++) {
+      const inViolet = violetRanges.some(([vs, ve]) => i >= vs && i < ve);
+      segments.push({ start: i, end: i + 1, cls: inViolet ? "orbitNotificationAmountViolet" : "orbitNotificationAmount" });
     }
   }
-  ranges.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
-  const mergedRanges = [];
-  for (const range of ranges) {
-    const previous = mergedRanges.at(-1);
-    if (previous && range[0] <= previous[1]) previous[1] = Math.max(previous[1], range[1]);
-    else mergedRanges.push([...range]);
+  for (const [ps, pe] of plainRanges) {
+    for (let i = ps; i < pe; i++) {
+      if ((value[i] === "+" || value[i] === "-") && /\d/.test(value[i + 1] || "")) {
+        segments.push({ start: i, end: i + 1, cls: "orbitNotificationAmountPlain" });
+      }
+    }
   }
+  const explicitViolet = [];
+  for (const [vs, ve] of violetRanges) {
+    if (!segments.some(segment => segment.start >= vs && segment.end <= ve)) explicitViolet.push([vs, ve]);
+  }
+  for (const [vs, ve] of explicitViolet) {
+    segments.push({ start: vs, end: ve, cls: "orbitNotificationAmountViolet" });
+  }
+  if (!segments.length) {
+    node.append(document.createTextNode(value));
+    return;
+  }
+  const bounds = [...new Set(segments.flatMap(segment => [segment.start, segment.end]))].sort((a, b) => a - b);
   let cursor = 0;
-  for (const [start, end] of mergedRanges) {
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const start = bounds[i];
+    const end = bounds[i + 1];
+    if (end <= start) continue;
+    const covering = segments.filter(segment => segment.start <= start && segment.end >= end);
+    const cls = covering.some(segment => segment.cls === "orbitNotificationAmountPlain")
+      ? "orbitNotificationAmountPlain"
+      : covering.some(segment => segment.cls === "orbitNotificationAmountViolet")
+        ? "orbitNotificationAmountViolet"
+        : covering.some(segment => segment.cls === "orbitNotificationAmount")
+          ? "orbitNotificationAmount"
+          : null;
     if (start > cursor) node.append(document.createTextNode(value.slice(cursor, start)));
-    const amount = document.createElement("span");
-    amount.className = "orbitNotificationAmount";
-    amount.textContent = value.slice(start, end);
-    node.append(amount);
+    if (cls) {
+      const amount = document.createElement("span");
+      amount.className = cls;
+      amount.textContent = value.slice(start, end);
+      node.append(amount);
+    } else {
+      node.append(document.createTextNode(value.slice(start, end)));
+    }
     cursor = end;
   }
   if (cursor < value.length) node.append(document.createTextNode(value.slice(cursor)));
@@ -2658,7 +2694,7 @@ function mountNotification(spec) {
   if (!ui.orbitNotifications) return;
   const node = document.createElement("div");
   node.className = `orbitNotification ${spec.type}`;
-  setNotificationText(node, spec.value, { goldTerms: spec.goldTerms });
+  setNotificationText(node, spec.value, { goldTerms: spec.goldTerms, whiteTerms: spec.whiteTerms, violetTerms: spec.violetTerms });
   ui.orbitNotifications.appendChild(node);
   node.style.setProperty("--notice-height", `${node.scrollHeight}px`);
   const now = Date.now();
@@ -2730,13 +2766,15 @@ function flushLatestNotificationGroup() {
   resetVisibleNotificationFlow();
 }
 
-function showNotificationGroup(messages, type = "info", { goldTerms = [], minVisibleMs = 3800 } = {}) {
+function showNotificationGroup(messages, type = "info", { goldTerms = [], whiteTerms = [], violetTerms = [], minVisibleMs = 3800 } = {}) {
   const values = messages.map(message => String(message ?? "").trim()).filter(Boolean);
   if (!values.length) return;
   pendingNotificationGroup = values.map(value => ({
     value,
     type,
     goldTerms,
+    whiteTerms,
+    violetTerms,
     minVisibleMs,
     stagger: true,
     durationMs: 4000,
@@ -6130,16 +6168,27 @@ function killRewards(e) {
   player.credits += credits;
   const experience = getNpcExperienceReward(e, NPC_TYPES[e.type]);
   const honor = getNpcHonorReward(e, { ...NPC_TYPES[e.type], type: e.type });
-  awardExperience(experience, "npc");
-  awardHonor(honor);
+  const xpResult = awardExperience(experience, "npc");
+  const honorResult = awardHonor(honor);
+  const gainedXp = xpResult?.gained ?? experience;
+  const gainedHonor = honorResult?.gained ?? honor;
+  const xpBonus = Math.max(0, gainedXp - experience);
+  const honorBonus = Math.max(0, gainedHonor - honor);
+  const formationName = String(getActiveDroneFormation(account.user)?.name || "").replace(/^Formation\s+/i, "");
+  const xpBonusText = xpBonus > 0 ? `( +${formatInteger(xpBonus)} ${formationName} )` : "";
+  const honorBonusText = honorBonus > 0 ? `( +${formatInteger(honorBonus)} ${formationName} )` : "";
+  const xpText = `${formatInteger(gainedXp)} XP ${xpBonusText}`.trim();
+  const honorText = `${formatInteger(gainedHonor)} honneur ${honorBonusText}`.trim();
+  const whiteTerms = [xpBonusText, honorBonusText].filter(Boolean);
+  const violetTerms = formationName ? [formationName] : [];
   const npcName = String(NPC_TYPES[e.type]?.name || e.type || "NPC").replace(/^npc_/i, "");
-  addGameLog(`${npcName} détruit · +${formatInteger(credits)} crédits · +${formatInteger(experience)} XP · +${formatInteger(honor)} honneur`, "reward");
+  addGameLog(`${npcName} détruit · +${formatInteger(credits)} crédits · +${xpText} · +${honorText}`, "reward");
   showNotificationGroup([
     `${npcName} éliminé`,
     `Vous avez reçu ${formatInteger(credits)} crédits`,
-    `Vous avez gagné ${formatInteger(experience)} XP`,
-    `Vous avez gagné ${formatInteger(honor)} honneur`,
-  ]);
+    `Vous avez gagné ${xpText}`,
+    `Vous avez gagné ${honorText}`,
+  ], "info", { whiteTerms, violetTerms });
   if (account.user?.stats) account.user.stats.lifetimeKills = Math.max(0, Number(account.user.stats.lifetimeKills || 0)) + 1;
   if (account.user?.stats && e.type) {
     account.user.stats.npcKills ||= {};

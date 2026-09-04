@@ -350,21 +350,6 @@ function ensureUserShape(u) {
     if (h.lastPos === undefined) h.lastPos = null;
     if (h.lastMap === undefined) h.lastMap = null;
 
-    // migration depuis l'ancien modèle
-    if (h.modules && typeof h.modules === "object") {
-      const oldGen = h.modules.speed || h.modules.shield || null;
-      if (oldGen && !h.fit.gens.some((x) => x)) h.fit.gens[0] = oldGen;
-
-      if (h.modules.laser && !h.fit.lasers.some((x) => x)) h.fit.lasers[0] = h.modules.laser;
-
-      const oldExtras = Array.isArray(h.modules.extras) ? h.modules.extras : [];
-      if (oldExtras.length && !h.fit.extras.some((x) => x)) {
-        for (let i = 0; i < Math.min(slots.extras, oldExtras.length); i++) {
-          h.fit.extras[i] = oldExtras[i];
-        }
-      }
-    }
-
     // ✅ Configurations 1 / 2 par hangar
     h.activeConfig = getHangarActiveConfigNo(h);
 
