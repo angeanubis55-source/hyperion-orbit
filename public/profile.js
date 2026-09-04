@@ -469,6 +469,8 @@ function setTab(next) {
   tab = next;
   localStorage.setItem("orbit_profile_tab", tab);
 
+  if (tab === "patchnotes") renderPatchNotes();
+
   document.querySelectorAll(".tabBtn").forEach((b) => {
     b.classList.toggle("active", b.dataset.tab === tab);
   });
@@ -498,7 +500,6 @@ function wireMainTabsOnce() {
       if (tab === "hangars") renderHangars(user);
       if (tab === "inventory") renderInventory(user);
       if (tab === "shop") renderShop(user);
-      if (tab === "patchnotes") renderPatchNotes();
     });
   });
 

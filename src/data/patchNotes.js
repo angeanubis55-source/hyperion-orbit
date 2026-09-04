@@ -1,243 +1,243 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0f447475",
+    "message": "Nouvel onglet « Patchnotes » dans l'Espace pilote : il liste automatiquement chaque mise à jour, avec un favicon et un titre d'onglet « Hyperion Orbit » mis à jour."
+  },
+  {
     "version": "438b61b7",
-    "message": "ui: refondre l'écran de chargement (logo centré, bas de l'écran) et paralléliser les préchargements"
+    "message": "Refonte complète de l'écran de chargement : logo centré, barre de progression en bas de l'écran, chargements lancés en parallèle pour un démarrage plus rapide et plus fluide."
   },
   {
     "version": "93336f6a",
-    "message": "outil: profiler les appels Canvas et le temps JS par frame"
+    "message": "Ajout d'un outil de profilage pour mesurer les performances du rendu et identifier les ralentissements."
   },
   {
     "version": "953b6511",
-    "message": "perf: supprimer l'allocation objet par projectile et par frame"
+    "message": "Optimisation du jeu : suppression des allocations mémoire superflues lors du tir des projectiles pour des FPS plus stables."
   },
   {
     "version": "8ca56ad9",
-    "message": "minor fixes"
+    "message": "Corrections mineures et améliorations de stabilité."
   },
   {
     "version": "97493b33",
-    "message": "perf: rendre la couche statique de la mini-carte en offscreen"
+    "message": "Optimisation de la mini-carte : la couche statique est pré-calculée, ce qui allège le rendu à chaque frame."
   },
   {
     "version": "0dc1e103",
-    "message": "perf: pré-rendre le champ d'étoiles en 3 textures offscreen"
+    "message": "Optimisation du champ d'étoiles : pré-rendu en textures pour de meilleures performances visuelles."
   },
   {
     "version": "bf066d59",
-    "message": "perf: auditer et optimiser le rendu et le HUD pour les FPS"
+    "message": "Audit et optimisation du rendu et du HUD pour améliorer les FPS."
   },
   {
     "version": "6224b63f",
-    "message": "Synchronise la version du jeu"
+    "message": "Synchronisation automatique du numéro de version avec les mises à jour."
   },
   {
     "version": "efb6fb7e",
-    "message": "minor fixes"
+    "message": "Corrections et améliorations de stabilité."
   },
   {
     "version": "a273f142",
-    "message": "Roulette modules: rail persistant sans regeneration, profil vitesse sans bait, gain affiche immediatement"
+    "message": "Roulette de modules revue : chemin de progression persistant et affichage instantané du gain."
   },
   {
     "version": "b2869d0c",
-    "message": "test pre-push hook version sync"
+    "message": "Test du mécanisme de synchronisation automatique de la version avant un push."
   },
   {
     "version": "af426336",
-    "message": "version alphanumeric bump 17fec436"
+    "message": "Le numéro de version passe en format alphanumérique pour un suivi plus clair."
   },
   {
     "version": "17fec436",
-    "message": "HUD : version ALPHA v.<hash> a gauche du FPS, auto-sync depuis git"
+    "message": "Le HUD affiche désormais la version du jeu à gauche du compteur de FPS, synchronisée automatiquement."
   },
   {
     "version": "3df39699",
-    "message": "mapK: fond carte QZ en jpg"
+    "message": "Fond du secteur QZ passé en jpg pour un meilleur affichage."
   },
   {
     "version": "4caabbf7",
-    "message": "fenetre parametres: autoStart hors card, jeu etroit / barre rapide large, touches 32px"
+    "message": "Fenêtre de paramètres améliorée avec démarrage automatique hors carte et touches plus grandes."
   },
   {
     "version": "c7028074",
-    "message": "effet vaisseau superpose (Ship_effet) 60fps + data shipEffects"
+    "message": "Effets de vaisseau superposés (Ship_effet) pour un rendu plus détaillé à 60 FPS."
   },
   {
     "version": "21ee443e",
-    "message": "effet / ship swap minor fixes"
+    "message": "Corrections sur les effets de vaisseau et le changement de vaisseau."
   },
   {
     "version": "2a8c72d0",
-    "message": "added all ship & effect for ship"
+    "message": "Ajout de tous les vaisseaux et effets de vaisseau disponibles."
   },
   {
     "version": "106606f9",
-    "message": "Supprime le launcher C# et son executable (test abandonne), conserve les scripts node"
+    "message": "Suppression du lanceur C# et de son exécutable, remplacé par les scripts Node."
   },
   {
     "version": "1a3de825",
-    "message": "Serveur HTTP integre au lanceur : exe autonome, plus de dependance Node.js"
+    "message": "Intégration d'un serveur HTTP dans le lanceur : l'exécutable est autonome, sans dépendance à Node.js."
   },
   {
     "version": "0f67a4ff",
-    "message": "Ouvre le jeu dans le navigateur par defaut au lieu d'une fenetre Edge dediee"
+    "message": "Le jeu s'ouvre désormais dans le navigateur par défaut au lieu d'une fenêtre Edge dédiée."
   },
   {
     "version": "3635db36",
-    "message": "Supprime le profil navigateur launcher-profile (regenerable) du tracking git"
+    "message": "Suppression du profil navigateur dédié au lanceur, régénérable, du suivi Git."
   },
   {
     "version": "7cd1614f",
-    "message": "Retire les gros fichiers du tracking et met a jour le .gitignore"
+    "message": "Retrait des gros fichiers du suivi Git et mise à jour du fichier .gitignore."
   },
   {
     "version": "6b555711",
-    "message": ".exe added for Alpha test"
+    "message": "Ajout de l'exécutable de test Alpha."
   },
   {
     "version": "a22caa20",
-    "message": "feat: finalize dock drones portals and Windows launcher"
+    "message": "Finalisation des docks, portails et drones, plus le lanceur Windows."
   },
   {
     "version": "49032062",
-    "message": "added ship & backup oint"
+    "message": "Ajout de vaisseaux et sauvegarde du dernier point de départ."
   },
   {
     "version": "c13521cf",
-    "message": "minor fixes"
+    "message": "Corrections de stabilité et d'affichage."
   },
   {
     "version": "79f72dcf",
-    "message": "feat: add complete drone system and formations"
+    "message": "Ajout du système complet de drones et de formations."
   },
   {
     "version": "bdea61d4",
-    "message": "feat: add crafting workshop and escort HUD"
+    "message": "Ajout de l'atelier d'artisanat et du HUD d'escorte."
   },
   {
     "version": "e0f63f22",
-    "message": "feat: expand gate encounters and escort systems"
+    "message": "Extension des rencontres de portails et des systèmes d'escorte."
   },
   {
     "version": "0376a463",
-    "message": "minor fixes"
+    "message": "Corrections de stabilité et d'affichage."
   },
   {
     "version": "eb4099a3",
-    "message": "Ameliorer le catalogue et le terminal de quetes"
+    "message": "Amélioration du catalogue de la boutique et du terminal de missions."
   },
   {
     "version": "0d2e92a1",
-    "message": "Quest added"
+    "message": "Ajout de nouvelles missions."
   },
   {
     "version": "91a7e12e",
-    "message": "Ameliorer le Galaxy Spinner et securiser les Gates"
+    "message": "Amélioration du Galaxy Spinner et sécurisation des portails."
   },
   {
     "version": "77dff680",
-    "message": "Affiner le flux des notifications"
+    "message": "Affinage des notifications du jeu."
   },
   {
     "version": "c876d665",
-    "message": "log & messages added"
+    "message": "Ajout de journaux et de messages texte dans le jeu."
   },
   {
     "version": "649db531",
-    "message": "Improve HUD quests bases and faction safety rules"
+    "message": "Amélioration du HUD des missions, des bases et des règles de sécurité des firmes."
   },
   {
     "version": "8545d78b",
-    "message": "Ameliore les deplacements et la precision des lasers"
+    "message": "Amélioration des déplacements et de la précision des lasers."
   },
   {
     "version": "1a6bb0e4",
-    "message": "Rend les retours de gates dependants de la firme"
+    "message": "Le retour de portail dépend désormais de la firme du joueur."
   },
   {
     "version": "0e2fd055",
-    "message": "Ameliore les fenetres, les parametres et le fond etoile"
+    "message": "Amélioration des fenêtres, des paramètres et du fond d'étoiles."
   },
   {
     "version": "138cf2dc",
-    "message": "Refonte de l'equipement et ameliorations du jeu"
+    "message": "Refonte de l'équipement et améliorations générales du jeu."
   },
   {
     "version": "ac19a006",
-    "message": "price fixes"
+    "message": "Ajustement des prix dans la boutique."
   },
   {
     "version": "f9e56c6d",
-    "message": "npc fixe"
+    "message": "Correction des mécaniques des NPC."
   },
   {
     "version": "14ddd489",
-    "message": "minor fixes"
+    "message": "Corrections et réglages divers."
   },
   {
     "version": "2fb08037",
-    "message": "minor fixes"
+    "message": "Corrections et réglages divers."
   },
   {
     "version": "ae0b70a4",
-    "message": "feat: add factions ranks and combat statistics"
+    "message": "Ajout des grades et des statistiques de combat des firmes."
   },
   {
     "version": "f157022a",
-    "message": "add DarkOrbit progression ranks and badges"
+    "message": "Ajout des grades et badges de progression de DarkOrbit."
   },
   {
     "version": "b5aa2f64",
-    "message": "test 1 grade xp honor & minor fix"
+    "message": "Ajout du grade, de l'expérience et de l'honneur, avec corrections."
   },
   {
     "version": "51380ed3",
-    "message": "refactor world rendering and frame systems"
+    "message": "Refonte du rendu du monde et du système de frames."
   },
   {
     "version": "9fcf8943",
-    "message": "refactor canvas hud rendering"
+    "message": "Refonte du rendu du HUD en canvas."
   },
   {
     "version": "7d901451",
-    "message": "refactor core quest gate and radiation systems"
+    "message": "Refonte des systèmes de mission, de portail et de radiation."
   },
   {
     "version": "2746c380",
-    "message": "pseudo fix"
+    "message": "Correction de l'affichage du pseudo."
   },
   {
     "version": "69e64e9c",
-    "message": "quest mode fix"
+    "message": "Correction du mode mission."
   },
   {
     "version": "f5126d69",
-    "message": "equal minor"
+    "message": "Corrections mineures d'équilibrage."
   },
   {
     "version": "d73e15f6",
-    "message": "balance: fix ammo x2 quantity, corrupted npc rewards, explicit ship prices"
+    "message": "Équilibrage : quantité de munitions x2, récompenses des NPC et prix des vaisseaux."
   },
   {
     "version": "f816dd24",
-    "message": "fix: double spawn on kill, double resetRun on respawn, missing save before map leave"
+    "message": "Corrections : double apparition à la mort, redémarrage de session et sauvegarde avant le changement de carte."
   },
   {
     "version": "4b0a6476",
-    "message": "equip module updated"
+    "message": "Mise à jour du système d'équipement des modules."
   },
   {
     "version": "5b0440b5",
-    "message": "complete rebuild of profil"
+    "message": "Refonte complète du profil de l'Espace pilote."
   },
   {
     "version": "501b3056",
-    "message": "feat: polish HUD windows and dock animations"
-  },
-  {
-    "version": "26979857",
-    "message": "chore: organize assets into categorized folders"
+    "message": "Soin apporté aux fenêtres du HUD et animations du dock."
   }
 ];

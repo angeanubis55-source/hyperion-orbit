@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { PATCH_NOTES_OVERRIDES } from "../src/data/patchNotesOverrides.js";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const out = join(__dir, "..", "src", "data", "patchNotes.js");
@@ -23,7 +24,8 @@ const entries = lines
   .map((line) => {
     const tab = line.indexOf("\t");
     const version = tab > 0 ? line.slice(0, tab) : line;
-    const message = tab > 0 ? line.slice(tab + 1).trim() : "";
+    const rawMessage = tab > 0 ? line.slice(tab + 1).trim() : "";
+    const message = PATCH_NOTES_OVERRIDES[version] || rawMessage;
     return { version, message };
   });
 
