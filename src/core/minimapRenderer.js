@@ -107,6 +107,9 @@ export function renderMinimap(context, options) {
     camera, viewportWidth, viewportHeight, lockedNpc = null, shouldShowNpc = () => true,
   } = options;
   const staticLayer = getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height);
+  // La couche statique contient un fond blanc translucide. Sans effacer le
+  // canvas visible, ce voile s'accumule à chaque frame jusqu'à devenir blanc.
+  context.clearRect(0, 0, width, height);
   context.drawImage(staticLayer, 0, 0);
   const scaleX = width / world.w;
   const scaleY = height / world.h;
