@@ -74,9 +74,58 @@ function starHash(x, y, seed) {
 }
 
 /**
- * Champ d'étoiles à trois profondeurs. Les positions sont calculées depuis une
- * grille déterministe : aucune étoile ne scintille ou ne saute entre deux frames.
+ * Champ d'étoiles à trois profondeurs. Chaque profondeur est pré-rendue une
+ * seule fois dans un canvas offscreen tuilable (les étoiles sont déterministes,
+ * aucune ne scintille ni ne saute entre deux frames). À chaque frame, on ne fait
+ * que décaler les textures (parallaxe + dérive) via drawImage, ce qui évite de
+ * redessiner ~600 arcs par image.
  */
+const STARFIELD_TILE_MARGIN = 3;
+const starfieldCache = new Map();
+
+function buildStarLayer(layer, layerIndex, viewportWidth, viewportHeight) {
+  const spacing = layer.spacing;
+  const cellsW = Math.ceil(viewportWidth / spacing) + STARFIELD_TILE_MARGIN * 2;
+  const cellsH = Math.ceil(viewportHeight / spacing) + STARFIELD_TILE_MARGIN * 2;
+  const tileW = Math.max(1, cellsW * spacing);
+  const tileH = Math.max(1, cellsH * spacing);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(tileW);
+  canvas.height = Math.ceil(tileH);
+  const c = canvas.getContext("2d");
+  c.save();
+  c.globalCompositeOperation = "lighter";
+  for (let row = 0; row < cellsH; row++) {
+    for (let col = 0; col < cellsW; col++) {
+      const jitterX = starHash(col, row, layerIndex * 7 + 1) * spacing;
+      const jitterY = starHash(col, row, layerIndex * 7 + 2) * spacing;
+      let x = (col * spacing + jitterX) % tileW;
+      let y = (row * spacing + jitterY) % tileH;
+      if (x < 0) x += tileW;
+      if (y < 0) y += tileH;
+      const brightness = 0.62 + starHash(col, row, layerIndex * 7 + 3) * 0.38;
+      const radius = layer.radius * (0.72 + starHash(col, row, layerIndex * 7 + 4) * 0.55);
+      c.globalAlpha = layer.alpha * brightness;
+      c.fillStyle = layerIndex === 2 ? "#dff8ff" : "#b8dded";
+      c.beginPath();
+      c.arc(x, y, radius, 0, Math.PI * 2);
+      c.fill();
+    }
+  }
+  c.restore();
+  return { canvas, tileW, tileH };
+}
+
+function getStarLayer(layer, layerIndex, viewportWidth, viewportHeight) {
+  const key = `${layerIndex}:${Math.round(viewportWidth)}:${Math.round(viewportHeight)}`;
+  let tile = starfieldCache.get(key);
+  if (!tile) {
+    tile = buildStarLayer(layer, layerIndex, viewportWidth, viewportHeight);
+    starfieldCache.set(key, tile);
+  }
+  return tile;
+}
+
 export function drawParallaxStarfield(context, options = {}) {
   if (!context) return;
   const viewportWidth = Math.max(1, Number(options.viewportWidth) || 1);
@@ -89,28 +138,15 @@ export function drawParallaxStarfield(context, options = {}) {
   context.globalCompositeOperation = "lighter";
 
   STARFIELD_LAYERS.forEach((layer, layerIndex) => {
-    const worldOffsetX = cameraX * layer.parallax - elapsedSeconds * layer.driftX;
-    const worldOffsetY = cameraY * layer.parallax - elapsedSeconds * layer.driftY;
-    const firstColumn = Math.floor(worldOffsetX / layer.spacing) - 1;
-    const firstRow = Math.floor(worldOffsetY / layer.spacing) - 1;
-    const columns = Math.ceil(viewportWidth / layer.spacing) + 3;
-    const rows = Math.ceil(viewportHeight / layer.spacing) + 3;
+    const src = getStarLayer(layer, layerIndex, viewportWidth, viewportHeight);
+    const offsetX = cameraX * layer.parallax - elapsedSeconds * layer.driftX;
+    const offsetY = cameraY * layer.parallax - elapsedSeconds * layer.driftY;
+    let startX = ((offsetX % src.tileW) + src.tileW) % src.tileW;
+    let startY = ((offsetY % src.tileH) + src.tileH) % src.tileH;
 
-    for (let row = firstRow; row < firstRow + rows; row++) {
-      for (let column = firstColumn; column < firstColumn + columns; column++) {
-        const jitterX = starHash(column, row, layerIndex * 7 + 1) * layer.spacing;
-        const jitterY = starHash(column, row, layerIndex * 7 + 2) * layer.spacing;
-        const x = column * layer.spacing + jitterX - worldOffsetX;
-        const y = row * layer.spacing + jitterY - worldOffsetY;
-        if (x < -3 || y < -3 || x > viewportWidth + 3 || y > viewportHeight + 3) continue;
-
-        const brightness = 0.62 + starHash(column, row, layerIndex * 7 + 3) * 0.38;
-        const radius = layer.radius * (0.72 + starHash(column, row, layerIndex * 7 + 4) * 0.55);
-        context.globalAlpha = layer.alpha * brightness;
-        context.fillStyle = layerIndex === 2 ? "#dff8ff" : "#b8dded";
-        context.beginPath();
-        context.arc(x, y, radius, 0, Math.PI * 2);
-        context.fill();
+    for (const dx of [0, src.tileW]) {
+      for (const dy of [0, src.tileH]) {
+        context.drawImage(src.canvas, dx - startX, dy - startY);
       }
     }
   });

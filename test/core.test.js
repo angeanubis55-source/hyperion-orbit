@@ -444,29 +444,52 @@ test("les couches du monde dessinent fonds et murs sans déséquilibrer Canvas",
 });
 
 test("les trois profondeurs d'étoiles dérivent même avec une caméra immobile", () => {
-  const renderAt = elapsedSeconds => {
-    const arcs = [];
+  const prevDocument = globalThis.document;
+  const tileStars = [];
+  const tileContext = new Proxy({}, {
+    get: (target, property) => target[property] || ((...args) => {
+      if (property === "arc") tileStars.push(args.slice(0, 3));
+    }),
+    set: (target, property, value) => { target[property] = value; return true; },
+  });
+  globalThis.document = {
+    createElement: () => ({
+      getContext: () => tileContext,
+      width: 0,
+      height: 0,
+    }),
+  };
+
+  try {
+    const draws = [];
     const context = new Proxy({}, {
       get: (target, property) => target[property] || ((...args) => {
-        if (property === "arc") arcs.push(args.slice(0, 3));
+        if (property === "drawImage") draws.push(args.slice(0, 3));
       }),
       set: (target, property, value) => { target[property] = value; return true; },
     });
-    drawParallaxStarfield(context, {
-      viewportWidth: 800,
-      viewportHeight: 600,
-      cameraX: 500,
-      cameraY: 500,
-      elapsedSeconds,
-    });
-    return arcs;
-  };
+    const renderAt = elapsedSeconds => {
+      draws.length = 0;
+      drawParallaxStarfield(context, {
+        viewportWidth: 800,
+        viewportHeight: 600,
+        cameraX: 500,
+        cameraY: 500,
+        elapsedSeconds,
+      });
+      return draws.map(([src, x, y]) => `${Math.round(x)},${Math.round(y)}`);
+    };
 
-  const initial = renderAt(0);
-  const later = renderAt(2);
-  assert.ok(initial.length > 80);
-  assert.equal(new Set(initial.map(([, , radius]) => radius.toFixed(1))).size >= 3, true);
-  assert.notDeepEqual(later.slice(0, 20), initial.slice(0, 20));
+    const initial = renderAt(0);
+    const later = renderAt(2);
+
+    assert.ok(tileStars.length > 80, "le sprite pré-rendu contient les étoiles");
+    assert.equal(new Set(tileStars.map(([, , radius]) => radius.toFixed(1))).size >= 3, true);
+    assert.equal(initial.length >= 3, true, "une tuile dessinée par profondeur");
+    assert.notDeepEqual(later, initial, "le décalage des textures dérive avec le temps");
+  } finally {
+    globalThis.document = prevDocument;
+  }
 });
 
 test("les systèmes de frame bornent le mouvement et nettoient les effets expirés", () => {
