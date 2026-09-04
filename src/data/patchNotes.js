@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "7d0cc13b",
+    "message": "Synchronise la version du jeu (94f43129)"
+  },
+  {
     "version": "94f43129",
     "message": "fix: barre d'action respecte la config exacte (plus d'auto-remplissage), formations restaurées au refresh, gains XP/honneur réels affichés avec bonus formation coloré"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "f816dd24",
     "message": "Corrections : double apparition à la mort, redémarrage de session et sauvegarde avant le changement de carte."
-  },
-  {
-    "version": "4b0a6476",
-    "message": "Mise à jour du système d'équipement des modules."
   }
 ];
