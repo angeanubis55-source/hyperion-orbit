@@ -1,6 +1,6 @@
 :root{
   --bg:#050814;
-  --panel:rgba(10,14,30,.72);
+  --panel:rgba(10,14,30,.90);
   --panel2:rgba(10,14,30,.92);
   --txt:#d7e2ff;
   --muted:#93a7d6;
@@ -90,7 +90,6 @@ html.orbitSessionReady #loadingOverlay{
   border:1px solid rgba(124,240,255,.14);
   box-shadow:0 10px 30px rgba(0,0,0,.35);
   border-radius:14px;
-  backdrop-filter:blur(8px);
   pointer-events:none;
 }
 
@@ -598,7 +597,6 @@ html.orbitSessionReady #loadingOverlay{
     0 18px 42px rgba(0,0,0,.55),
     0 0 26px rgba(0,217,255,.12),
     inset 0 0 0 1px rgba(255,255,255,.04) !important;
-  backdrop-filter:blur(14px) saturate(140%) !important;
   transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 
@@ -2129,7 +2127,6 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   border-radius:16px !important;
   background:rgba(3,8,20,.35) !important;
   border:1px solid rgba(124,240,255,.12) !important;
-  backdrop-filter:blur(10px) !important;
   box-shadow:0 12px 32px rgba(0,0,0,.35) !important;
   pointer-events:auto !important;
 }
@@ -2155,7 +2152,6 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   box-shadow:
     0 10px 22px rgba(0,0,0,.42),
     0 0 14px rgba(0,217,255,.10) !important;
-  backdrop-filter:blur(10px) !important;
   transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
 

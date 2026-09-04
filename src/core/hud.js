@@ -3,22 +3,45 @@
 import { clamp } from "./collision.js";
 import { formatInteger } from "./numberFormat.js";
 
+const lastText = new Map();
+
 const setText = (element, value) => {
-  if (element) element.textContent = String(value);
+  if (!element) return;
+  const text = String(value);
+  const previous = lastText.get(element);
+  if (previous === text) return;
+  lastText.set(element, text);
+  element.textContent = text;
+};
+
+const lastWidth = new Map();
+const lastDisplay = new Map();
+
+const setWidth = (element, width) => {
+  if (!element) return;
+  if (lastWidth.get(element) === width) return;
+  lastWidth.set(element, width);
+  element.style.width = width;
+};
+
+const setDisplay = (element, display) => {
+  if (!element) return;
+  if (lastDisplay.get(element) === display) return;
+  lastDisplay.set(element, display);
+  element.style.display = display;
 };
 
 export function updateResourceHud(ui, player) {
-  const hp = Math.max(0, Math.floor(Number(player.hp) || 0));
-  const shield = Math.max(0, Math.floor(Number(player.sh) || 0));
-  const hpMax = Math.max(0, Number(player.hpMax) || 0);
-  const shieldMax = Math.max(0, Number(player.shMax) || 0);
+  const hp = Math.floor(Number(player.hp) || 0);
+  const shield = Math.floor(Number(player.sh) || 0);
+  const hpMax = Math.floor(Number(player.hpMax) || 0);
+  const shieldMax = Math.floor(Number(player.shMax) || 0);
   setText(ui.hpTxt, `${formatInteger(hp)} / ${formatInteger(hpMax)}`);
   setText(ui.shTxt, `${formatInteger(shield)} / ${formatInteger(shieldMax)}`);
-  if (ui.hpBar) ui.hpBar.style.width = `${clamp(hpMax ? player.hp / hpMax * 100 : 0, 0, 100)}%`;
-  if (ui.shBar) {
-    ui.shBar.style.width = `${clamp(shieldMax ? player.sh / shieldMax * 100 : 0, 0, 100)}%`;
-    if (ui.shBar.parentElement) ui.shBar.parentElement.style.display = shieldMax > 0 ? "" : "none";
-  }
+  setWidth(ui.hpBar, `${clamp(player.hpMax ? player.hp / player.hpMax * 100 : 0, 0, 100)}%`);
+  const shieldWidth = `${clamp(shieldMax ? player.sh / shieldMax * 100 : 0, 0, 100)}%`;
+  setWidth(ui.shBar, shieldWidth);
+  if (ui.shBar?.parentElement) setDisplay(ui.shBar.parentElement, shieldMax > 0 ? "" : "none");
 }
 
 export function updateProgressHud(ui, stats, levelInfo) {

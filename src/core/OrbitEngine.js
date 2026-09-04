@@ -2392,18 +2392,16 @@ function updateConfigButtons() {
   const left = getConfigCooldownLeft();
 
   if (ui.cfg1Btn) {
-    ui.cfg1Btn.classList.toggle("active", active === 1);
-    ui.cfg1Btn.disabled = left > 0 || active === 1 || player.dead;
+    setHudClass(ui.cfg1Btn, "active", active === 1);
+    setHudDisabled(ui.cfg1Btn, left > 0 || active === 1 || player.dead);
   }
 
   if (ui.cfg2Btn) {
-    ui.cfg2Btn.classList.toggle("active", active === 2);
-    ui.cfg2Btn.disabled = left > 0 || active === 2 || player.dead;
+    setHudClass(ui.cfg2Btn, "active", active === 2);
+    setHudDisabled(ui.cfg2Btn, left > 0 || active === 2 || player.dead);
   }
 
-  if (ui.cfgCooldownTxt) {
-    ui.cfgCooldownTxt.textContent = left > 0 ? `${left.toFixed(1)}s` : "";
-  }
+  setHudText(ui.cfgCooldownTxt, left > 0 ? `${left.toFixed(1)}s` : "");
 }
 
 function trySwitchConfig(nextConfig) {
@@ -3663,45 +3661,118 @@ function updateAmmoUI() {
   syncActionDockState();
 }
 
+let actionDockCache = null;
+let actionDockDirty = true;
+let actionDockObserver = null;
+const lastDockField = new WeakMap();
+
+function invalidateActionDockCache() {
+  actionDockCache = null;
+  actionDockDirty = true;
+}
+
+function isTextOnlyMutation(records) {
+  for (const record of records) {
+    if (record.type !== "childList") return false;
+    const nodes = [...record.addedNodes, ...record.removedNodes];
+    if (nodes.some((node) => node.nodeType !== 3)) return false;
+  }
+  return true;
+}
+
+function ensureActionDockCache() {
+  const bar = document.getElementById("ammoBar");
+  if (!bar) return null;
+  const fresh = { bar, ammo: [], formations: [], skills: [] };
+  for (const button of bar.querySelectorAll("[data-ammo]")) {
+    fresh.ammo.push({ button, ammo: button.dataset.ammo, small: button.querySelector("small") });
+  }
+  for (const button of bar.querySelectorAll("[data-action-id^='formation:']")) {
+    fresh.formations.push({ button, actionId: button.dataset.actionId });
+  }
+  for (const button of bar.querySelectorAll("[data-skill]")) {
+    fresh.skills.push({ button, skill: button.dataset.skill, small: button.querySelectorAll("small") });
+  }
+  if (!actionDockObserver && typeof MutationObserver !== "undefined") {
+    actionDockObserver = new MutationObserver((records) => {
+      if (isTextOnlyMutation(records)) return;
+      invalidateActionDockCache();
+    });
+    actionDockObserver.observe(bar, { childList: true, subtree: true });
+  }
+  return fresh;
+}
+
+function dockFieldCache(button) {
+  let byField = lastDockField.get(button);
+  if (!byField) {
+    byField = new Map();
+    lastDockField.set(button, byField);
+  }
+  return byField;
+}
+
+function applyDockField(button, field, value, apply) {
+  const byField = dockFieldCache(button);
+  if (byField.get(field) === value) return;
+  byField.set(field, value);
+  apply(value);
+}
+
 function syncActionDockState() {
+  if (!actionDockCache) {
+    if (actionDockDirty) {
+      actionDockCache = ensureActionDockCache();
+      actionDockDirty = false;
+    }
+    if (!actionDockCache) return;
+  }
+
   const activeAmmo = player.ammo.active || "x1";
-  const ammoValues = {
-    x1: "∞", x2: formatAmmoCount(player.ammo.x2), x3: formatAmmoCount(player.ammo.x3),
-    x4: formatAmmoCount(player.ammo.x4), sab: formatAmmoCount(player.ammo.sab),
-    x6: `${formatAmmoCount(player.ammo.x6)} • ${getRsbPercent()}%`,
-  };
-  document.querySelectorAll("#ammoBar [data-ammo]").forEach(button => {
-    const ammo = button.dataset.ammo;
-    button.classList.toggle("active", ammo === activeAmmo);
-    const quantity = button.querySelector("small");
-    if (quantity) quantity.textContent = ammoValues[ammo] ?? "0";
-  });
+
+  for (const { button, ammo, small } of actionDockCache.ammo) {
+    const value = ammo === "x1" ? "∞" : formatAmmoCount(player.ammo[ammo]);
+    applyDockField(button, "active", ammo === activeAmmo,
+      (v) => button.classList.toggle("active", v));
+    applyDockField(button, "text", value,
+      (v) => { if (small) small.textContent = v; });
+  }
 
   const activeFormationId = getActiveDroneFormation(account.user).id;
-  document.querySelectorAll("#ammoBar [data-action-id^='formation:']").forEach(button => {
-    button.classList.toggle("active", button.dataset.actionId === `formation:${activeFormationId}`);
-  });
+  for (const { button, actionId } of actionDockCache.formations) {
+    applyDockField(button, "active", actionId === `formation:${activeFormationId}`,
+      (v) => button.classList.toggle("active", v));
+  }
 
-  const now = performance.now();
-  document.querySelectorAll("#ammoBar [data-skill]").forEach(button => {
-    const skill = button.dataset.skill;
-    const smallLabels = button.querySelectorAll("small");
-    const progress = skill === "pulse"
-      ? clamp(pulseCd / PULSE_COOLDOWN, 0, 1)
-      : 0;
-    button.classList.toggle("skillFeedback", progress > 0 && skill !== "repair");
-    button.style.setProperty("--skill-feedback", progress.toFixed(3));
+  for (const { button, skill, small } of actionDockCache.skills) {
     if (skill === "pulse") {
-      button.classList.toggle("disabled", !canUseSkill(PULSE_COST) || pulseCd > 0);
-      button.classList.toggle("ready", canUseSkill(PULSE_COST) && pulseCd <= 0);
-      if (smallLabels[0]) smallLabels[0].textContent = `${getPulsePercent()}%`;
-      if (smallLabels[1]) smallLabels[1].textContent = pulseCd > 0 ? `${pulseCd.toFixed(1)}s` : "30k";
+      const progress = pulseCd > 0 ? clamp(pulseCd / PULSE_COOLDOWN, 0, 1) : 0;
+      const canUse = canUseSkill(PULSE_COST);
+      applyDockField(button, "feedback", progress > 0,
+        (v) => button.classList.toggle("skillFeedback", v));
+      applyDockField(button, "progress", progress.toFixed(3),
+        (v) => button.style.setProperty("--skill-feedback", v));
+      applyDockField(button, "disabled", !canUse || pulseCd > 0,
+        (v) => button.classList.toggle("disabled", v));
+      applyDockField(button, "ready", canUse && pulseCd <= 0,
+        (v) => button.classList.toggle("ready", v));
+      applyDockField(button, "pct", `${getPulsePercent()}%`,
+        (v) => { if (small[0]) small[0].textContent = v; });
+      applyDockField(button, "cd", pulseCd > 0 ? `${pulseCd.toFixed(1)}s` : "30k",
+        (v) => { if (small[1]) small[1].textContent = v; });
     } else if (skill === "repair") {
-      button.classList.remove("active", "ready", "skillFeedback");
-      button.classList.toggle("disabled", player.dead);
-      if (smallLabels[0] && ui.repairTxt) smallLabels[0].textContent = ui.repairTxt.textContent;
+      applyDockField(button, "active", false,
+        (v) => button.classList.remove("active"));
+      applyDockField(button, "ready", false,
+        (v) => button.classList.remove("ready"));
+      applyDockField(button, "feedback", false,
+        (v) => button.classList.remove("skillFeedback"));
+      applyDockField(button, "disabled", player.dead,
+        (v) => button.classList.toggle("disabled", v));
+      applyDockField(button, "text", ui.repairTxt ? ui.repairTxt.textContent : "",
+        (v) => { if (small[0]) small[0].textContent = v; });
     }
-  });
+  }
 }
 
 ui.btnX1.addEventListener("click", () => startAttack("x1"));
@@ -3759,12 +3830,14 @@ function updateRepairUI() {
   const pct = REPAIR.cooldown <= 0 ? 1 : clamp(player.repairT / REPAIR.cooldown, 0, 1);
   const needs = !player.dead && (player.hp < player.hpMax - 0.01 || player.sh < player.shMax - 0.01);
 
-  if (player.dead) ui.repairTxt.textContent = "OFF";
-  else if (pct < 1) ui.repairTxt.textContent = `${Math.floor(pct * 100)}%`;
-  else ui.repairTxt.textContent = needs ? `+${Math.round(REPAIR.ratePct * 100)}%/s` : "OK";
+  const text = player.dead ? "OFF"
+    : pct < 1 ? `${Math.floor(pct * 100)}%`
+    : needs ? `+${Math.round(REPAIR.ratePct * 100)}%/s` : "OK";
+  setHudText(ui.repairTxt, text);
 
-  ui.btnRepair.classList.remove("active", "ready");
-  ui.btnRepair.classList.toggle("disabled", player.dead);
+  setHudClass(ui.btnRepair, "active", false);
+  setHudClass(ui.btnRepair, "ready", false);
+  setHudClass(ui.btnRepair, "disabled", player.dead);
   syncActionDockState();
 }
 
@@ -6427,8 +6500,8 @@ function canUseSkill(cost) {
 function updateSkillUI() {
   const pulseOk = canUseSkill(PULSE_COST) && pulseCd <= 0;
   
-  ui.btnPulse.classList.toggle("disabled", !pulseOk);
-  ui.btnPulse.classList.toggle("ready", pulseOk);
+  setHudClass(ui.btnPulse, "disabled", !pulseOk);
+  setHudClass(ui.btnPulse, "ready", pulseOk);
   syncActionDockState();
 }
 
@@ -9873,6 +9946,73 @@ function renderEscortPanel() {
   }
 }
 
+const hudLastText = new Map();
+const hudLastWidth = new Map();
+const hudLastDisplay = new Map();
+
+function setHudText(element, value) {
+  if (!element) return;
+  const text = String(value);
+  if (hudLastText.get(element) === text) return;
+  hudLastText.set(element, text);
+  element.textContent = text;
+}
+
+function setHudWidth(element, width) {
+  if (!element) return;
+  if (hudLastWidth.get(element) === width) return;
+  hudLastWidth.set(element, width);
+  element.style.width = width;
+}
+
+function setHudDisplay(element, display) {
+  if (!element) return;
+  if (hudLastDisplay.get(element) === display) return;
+  hudLastDisplay.set(element, display);
+  element.style.display = display;
+}
+
+const hudLastAttr = new WeakMap();
+
+function setHudAttr(element, name, value) {
+  if (!element) return;
+  const text = String(value);
+  let byName = hudLastAttr.get(element);
+  if (!byName) {
+    byName = new Map();
+    hudLastAttr.set(element, byName);
+  }
+  if (byName.get(name) === text) return;
+  byName.set(name, text);
+  element.setAttribute(name, text);
+}
+
+const hudLastClass = new WeakMap();
+
+function setHudClass(element, className, on) {
+  if (!element || !className) return;
+  let byName = hudLastClass.get(element);
+  if (!byName) {
+    byName = new Map();
+    hudLastClass.set(element, byName);
+  }
+  const bool = !!on;
+  if (byName.get(className) === bool) return;
+  byName.set(className, bool);
+  if (bool) element.classList.add(className);
+  else element.classList.remove(className);
+}
+
+const hudLastDisabled = new WeakMap();
+
+function setHudDisabled(element, on) {
+  if (!element) return;
+  const bool = !!on;
+  if (hudLastDisabled.get(element) === bool) return;
+  hudLastDisabled.set(element, bool);
+  element.disabled = bool;
+}
+
 function drawUI() {
   const zoneMode = rules?.mode === "zone";
   const terminalAccess = hasQuestTerminalAccess();
@@ -9880,24 +10020,24 @@ function drawUI() {
 
   if (ui.boxWave) {
     const waveWindowOpen = window.GameWindowManager?.isOpen("boxWave") ?? true;
-    ui.boxWave.style.display = !zoneMode && waveWindowOpen ? "block" : "none";
+    setHudDisplay(ui.boxWave, !zoneMode && waveWindowOpen ? "block" : "none");
   }
 
-  if (ui.credits) ui.credits.textContent = formatInteger(player.credits);
-  if (ui.kills) ui.kills.textContent = formatInteger(player.kills);
+  setHudText(ui.credits, formatInteger(player.credits));
+  setHudText(ui.kills, formatInteger(player.kills));
 
   if (ui.gygerimStatus) {
     const bossType = rules?.bossEncounter?.bossType;
     const boss = bossType ? enemies.find(enemy => enemy?.hp > 0 && enemy.type === bossType) : null;
-    ui.gygerimStatus.style.display = boss ? "block" : "none";
+    setHudDisplay(ui.gygerimStatus, boss ? "block" : "none");
     if (boss) {
       const hpMax = Math.max(1, Number(boss.hpMax) || 1);
       const shMax = Math.max(0, Number(boss.shMax) || 0);
-      if (ui.bossStatusTitle) ui.bossStatusTitle.textContent = String(NPC_TYPES[boss.type]?.name || rules?.bossEncounter?.name || "BOSS").toLocaleUpperCase("fr-FR");
-      if (ui.gygerimHpBar) ui.gygerimHpBar.style.width = `${clamp(boss.hp / hpMax, 0, 1) * 100}%`;
-      if (ui.gygerimShBar) ui.gygerimShBar.style.width = `${(shMax > 0 ? clamp(boss.sh / shMax, 0, 1) : 0) * 100}%`;
-      if (ui.gygerimHpTxt) ui.gygerimHpTxt.textContent = `${formatInteger(boss.hp)} / ${formatInteger(hpMax)}`;
-      if (ui.gygerimShTxt) ui.gygerimShTxt.textContent = `${formatInteger(boss.sh)} / ${formatInteger(shMax)}`;
+      setHudText(ui.bossStatusTitle, String(NPC_TYPES[boss.type]?.name || rules?.bossEncounter?.name || "BOSS").toLocaleUpperCase("fr-FR"));
+      setHudWidth(ui.gygerimHpBar, `${clamp(boss.hp / hpMax, 0, 1) * 100}%`);
+      setHudWidth(ui.gygerimShBar, `${(shMax > 0 ? clamp(boss.sh / shMax, 0, 1) : 0) * 100}%`);
+      setHudText(ui.gygerimHpTxt, `${formatInteger(boss.hp)} / ${formatInteger(hpMax)}`);
+      setHudText(ui.gygerimShTxt, `${formatInteger(boss.sh)} / ${formatInteger(shMax)}`);
     }
   }
   renderEscortPanel();
@@ -9913,13 +10053,13 @@ updateProgressHud(ui, st, lvl);
 if (ui.spdTxt) {
   const spd = getSpeedBreakdown();
 
-  ui.spdTxt.textContent = formatInteger(spd.total);
+  setHudText(ui.spdTxt, formatInteger(spd.total));
 
-  ui.spdTxt.title =
+  setHudAttr(ui.spdTxt, "title",
     `Vaisseau: ${spd.base}` +
     ` | Générateurs: +${spd.genSpeed}` +
     ` | Modules vitesse: +${spd.speedPct}%` +
-    ` | Config ${spd.config}`;
+    ` | Config ${spd.config}`);
 
   // Debug console si vitesse anormale
   if (spd.total > spd.base && !window.__speedDebugShown) {
@@ -9933,33 +10073,32 @@ updateConfigButtons();
   updateResourceHud(ui, player);
   updateWaveHud(ui, { started, wave, remaining: waveSpawns.remaining, alive: enemies.length });
 
-  if (ui.shopCredits) ui.shopCredits.textContent = formatInteger(player.credits);
+  setHudText(ui.shopCredits, formatInteger(player.credits));
 
   updateSkillUI();
   updateRepairUI();
 
   const pulsePct = getPulsePercent();
-  if (ui.pulsePct) ui.pulsePct.textContent = `${pulsePct}%`;
+  setHudText(ui.pulsePct, `${pulsePct}%`);
 
   if (ui.pulsePrice) {
-    if (pulseCd > 0) ui.pulsePrice.textContent = `${pulseCd.toFixed(1)}s`;
-    else ui.pulsePrice.textContent = "30 000 Cr.";
+    const pulsePriceText = pulseCd > 0 ? `${pulseCd.toFixed(1)}s` : "30 000 Cr.";
+    setHudText(ui.pulsePrice, pulsePriceText);
   }
 
   const rsbPct = getRsbPercent();
-  if (ui.cntX6) ui.cntX6.textContent = `${formatInteger(player.ammo.x6)} • ${rsbPct}%`;
-  if (ui.btnX6) ui.btnX6.classList.toggle(
-    "ready",
+  setHudText(ui.cntX6, `${formatInteger(player.ammo.x6)} • ${rsbPct}%`);
+  setHudClass(ui.btnX6, "ready",
     started && !player.dead && ammoCount("x6") > 0 && rsbCooldown <= 0
   );
 
-  if (ui.miniMapName) ui.miniMapName.textContent = `Map : ${rules?.mapLabel || "—"}`;
-  if (ui.miniPos) ui.miniPos.textContent = `Pos : ${formatInteger(player.x)} / ${formatInteger(player.y)}`;
+  setHudText(ui.miniMapName, `Map : ${rules?.mapLabel || "—"}`);
+  setHudText(ui.miniPos, `Pos : ${formatInteger(player.x)} / ${formatInteger(player.y)}`);
 
-  if (ui.versionTxt) ui.versionTxt.textContent = `ALPHA v.${GAME_VERSION}`;
+  setHudText(ui.versionTxt, `ALPHA v.${GAME_VERSION}`);
   if (ui.fpsTxt) {
     const perf = performanceMonitor.snapshot();
-    ui.fpsTxt.textContent = String(fpsValue || perf.fps || 0);
+    setHudText(ui.fpsTxt, String(fpsValue || perf.fps || 0));
   }
 }
 
