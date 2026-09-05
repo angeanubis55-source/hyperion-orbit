@@ -595,3 +595,99 @@ export const SHIP_PACKS = [
   { id: "zephyr_nobilis", name: "Zephyr Nobilis", path: "Ship/ship_zephyr_nobilis/", frames: 32, firstNumber: 1, ext: ".png", w: 200, h: 160, slots: { lasers: 12, gens: 16, extras: 3, shipMods: 4 }, price: 25000000, hp: 250000, speed: 300, angleOffset: Math.PI },
   { id: "zephyr_ullrin", name: "Zephyr Ullrin", path: "Ship/ship_zephyr_ullrin/", frames: 32, firstNumber: 1, ext: ".png", w: 173, h: 154, slots: { lasers: 12, gens: 16, extras: 3, shipMods: 4 }, price: 25000000, hp: 250000, speed: 300, angleOffset: Math.PI },
 ];
+
+// ------------------------------------------------------------
+// ✅ Familles de vaisseaux (base + variantes partagent les modules)
+// ------------------------------------------------------------
+// Un module roulette gagné pour un vaisseau doit pouvoir s'équiper sur sa
+// variante (ex : Goliath Plus <=> Goliath Plus Argon). La "famille" est le
+// nom du vaisseau sans les suffixes "cosmétiques" (designs / factions).
+
+// Mots qui structurent une famille ENTIÈRE (on s'arrête dessus) :
+// goliath_plus, goliath_x, goliath_champion, citadel_elite, ...
+const SHIP_FAMILY_ANCHORS = new Set([
+  "plus", "x", "champion", "elite", "veteran",
+  "lightning", "ambassador", "surgeon", "minion",
+]);
+
+// Suffixes purement décoratifs / factions (EIC/MMO/VRU) : on les retire
+// tant qu'ils sont en fin d'identifiant.
+const SHIP_DESIGN_TRAITS = new Set([
+  "ability", "ace", "adept", "amor", "amber", "argon", "arios", "asimov",
+  "astral", "atlantis", "avenger", "bane", "bastion", "blacklight",
+  "blaze", "borealis", "bronze", "carbonite", "celestial", "centaur",
+  "cerevisia", "cicada", "contagion", "corsair", "crimson", "damage", "dogma",
+  "dreadwing", "dusklight", "eic", "eldritch", "elysium", "empyrian",
+  "enigma", "enforcer", "epion", "exalted", "firestar", "frost", "frozen",
+  "goal", "gold", "guardian", "harbinger", "hellspire", "horus", "hp",
+  "ignite", "infinite", "inferno", "iron", "jade", "kick", "khepri",
+  "lava", "locust", "maelstorm", "maelstrom", "mamba", "mmo", "mobius", "neikos",
+  "nobilis", "ocean", "osiris", "peacemaker", "phantasm", "plague",
+  "poison", "prometheus", "prosperous", "psyche", "raven", "razer",
+  "referee", "revenge", "rocket", "rocketeer", "ronin", "sapphire",
+  "saturn", "seeker", "seraph", "shield", "silver", "smite", "solemn",
+  "sovereign", "speed", "starscream", "stealthblack", "strife", "striker",
+  "sunstorm", "thornspire", "tyrannos", "ullrin", "vanquisher", "viking",
+  "violet", "vru", "wildfire", "wyvern",
+  // pays / régions (Goliath Champion * : France, Germany, ...)
+  "albania", "austria", "belgium", "croatia", "czech_republic", "england",
+  "france", "germany", "hungary", "iceland", "independence", "ireland",
+  "italy", "northen_ireland", "poland", "portugal", "republic_of_ireland",
+  "romania", "russia", "slovakia", "spain", "sweden", "switzerland",
+  "turkey", "ukraine", "wales",
+  // misc / entités
+  "bleu", "egg", "infected", "pink",
+]);
+
+const SHIP_PACK_ID_SET = new Set(SHIP_PACKS.map((p) => String(p?.id)));
+
+function humanizeShipId(id) {
+  return String(id || "")
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word[0]?.toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+// Famille d'un vaisseau : on coupe les suffixes cosmétiques de l'identifiant.
+export function getShipFamilyId(shipId) {
+  const id = String(shipId || "");
+  if (!id) return id;
+  if (id.includes("_design_")) return id.split("_design_")[0];
+
+  const parts = id.split("_");
+  if (parts.length < 2) return id;
+
+  let end = parts.length;
+  while (end > 1) {
+    const leaf = parts[end - 1];
+    if (SHIP_FAMILY_ANCHORS.has(leaf)) break;
+    const prefix = parts.slice(0, end - 1).join("_");
+    const isTrait = SHIP_DESIGN_TRAITS.has(leaf) || SHIP_PACK_ID_SET.has(prefix);
+    if (!isTrait) break;
+    end--;
+  }
+
+  const family = parts.slice(0, end).join("_");
+  return family || id;
+}
+
+export function getShipFamilyName(familyId) {
+  const pack = SHIP_PACKS.find((p) => String(p?.id) === String(familyId));
+  if (pack?.name) return String(pack.name).replace(/^Vaisseau:\s*/i, "");
+  return humanizeShipId(familyId);
+}
+
+export function getShipFamilyMembers() {
+  const map = new Map();
+  for (const pack of SHIP_PACKS) {
+    const family = getShipFamilyId(pack.id);
+    if (!map.has(family)) map.set(family, []);
+    map.get(family).push(pack.id);
+  }
+  return map;
+}
+
+export function getShipFamilyIds() {
+  return Array.from(getShipFamilyMembers().keys());
+}

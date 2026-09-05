@@ -814,9 +814,10 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #profileOverlay .moduleHistoryPanel > header strong { font-size: 12px !important; }
 #profileOverlay .moduleHistoryPanel > header span { color: rgba(204,228,241,.52) !important; font-size: 9px !important; }
 #profileOverlay .moduleHistoryList { max-height: 230px !important; overflow-y: auto !important; border-top: 1px solid rgba(124,240,255,.09) !important; }
-#profileOverlay .moduleHistoryRow { min-height: 48px !important; padding: 7px 5px !important; display: grid !important; grid-template-columns: 28px 38px minmax(0,1fr) auto !important; align-items: center !important; gap: 9px !important; border-bottom: 1px solid rgba(124,240,255,.08) !important; }
+#profileOverlay .moduleHistoryRow { min-height: 48px !important; padding: 7px 5px !important; display: grid !important; grid-template-columns: 28px 38px 40px minmax(0,1fr) auto !important; align-items: center !important; gap: 9px !important; border-bottom: 1px solid rgba(124,240,255,.08) !important; }
 #profileOverlay .moduleHistoryIndex { color: rgba(204,228,241,.38) !important; font-size: 9px !important; text-align: center !important; }
 #profileOverlay .moduleHistoryRow img { width: 34px !important; height: 34px !important; object-fit: contain !important; image-rendering: pixelated !important; }
+#profileOverlay .moduleHistoryShipImg { width: 40px !important; height: 40px !important; background: rgba(0,217,255,0.06) !important; border: 1px solid rgba(124,240,255,.12) !important; border-radius: 9px !important; }
 #profileOverlay .moduleHistoryMeta { min-width: 0 !important; display: grid !important; gap: 3px !important; }
 #profileOverlay .moduleHistoryMeta strong { color: #75e8ff !important; font-size: 10px !important; }
 #profileOverlay .moduleHistoryMeta span { overflow: hidden !important; color: rgba(204,228,241,.60) !important; font-size: 9px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
@@ -1612,3 +1613,10 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
 #fitCard.droneMode .droneEquipmentCard>.droneXp{grid-column:1 / -1 !important;align-self:end !important;height:9px !important;margin:2px 0 0 !important}
 #fitCard.droneMode .droneGlobalHint,
 #fitCard.droneMode .droneInventoryTray{display:none !important}
+
+/* Drones : même sélection que le vaisseau (contour bleu + point bleu) */
+#fitCard .droneFitSlot{position:relative !important;overflow:hidden !important}
+#fitCard .droneFitSlot.selected{border-color:#70e7fa !important;background:radial-gradient(circle,rgba(33,157,184,.25),#09212c 75%) !important;box-shadow:inset 0 -2px #5adcf3,0 0 11px rgba(76,218,243,.18) !important}
+#fitCard .droneFitSlot.selected::after{content:"" !important;position:absolute !important;z-index:3 !important;top:4px !important;right:4px !important;width:6px !important;height:6px !important;border-radius:50% !important;background:#69e9ff !important;box-shadow:0 0 7px #69e9ff !important}
+#fitCard .droneFitSlot.dragCompatible{border-color:rgba(105,233,255,.65) !important;box-shadow:0 0 12px rgba(105,233,255,.28),inset 0 0 16px rgba(105,233,255,.08) !important;background:rgba(0,217,255,.09) !important}
+#fitCard .droneFitSlot.dragging{opacity:.45 !important}

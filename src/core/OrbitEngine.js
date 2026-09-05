@@ -1872,7 +1872,8 @@ function awardExperience(amount, source = "") {
   if (!account.user) return null;
   account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0 };
   const formationBonus = source === "npc" ? Number(getActiveDroneFormation(account.user).effects?.npcXpPct || 0) : 0;
-  const result = grantExperience(account.user.stats, Number(amount || 0) * (1 + formationBonus / 100));
+  const moduleBonus = Number(player?.expBonusPct || 0);
+  const result = grantExperience(account.user.stats, Number(amount || 0) * Math.max(0, 1 + (formationBonus + moduleBonus) / 100));
   if (result.gained <= 0) return result;
   for (const drone of account.user.drones?.items || []) {
     const previousLevel = Math.max(1, Number(drone.level) || getDroneLevel(drone.exp));
@@ -1895,7 +1896,8 @@ function awardHonor(amount) {
   account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
   const previousRank = getRankInfo(account.user.stats.rankPoints, account.user.stats.honor);
   const formationBonus = Number(getActiveDroneFormation(account.user).effects?.honorPct || 0);
-  const result = grantHonor(account.user.stats, Number(amount || 0) * Math.max(0, 1 + formationBonus / 100));
+  const moduleBonus = Number(player?.honorBonusPct || 0);
+  const result = grantHonor(account.user.stats, Number(amount || 0) * Math.max(0, 1 + (formationBonus + moduleBonus) / 100));
   account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
   const nextRank = getRankInfo(account.user.stats.rankPoints, account.user.stats.honor);
   if (result.gained > 0) markProgressDirty();
@@ -2357,6 +2359,10 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   }
 
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
+
+  player.laserHitBonusPct = clamp(Number(stats.bonusLaserHitPct || 0), -100, 100);
+  player.expBonusPct = Number(stats.bonusExpPct || 0);
+  player.honorBonusPct = Number(stats.bonusHonorPct || 0);
 
   const shipBaseSpeed = Number(pack?.speed || 0);
   player.baseSpeed = Math.max(
@@ -3614,6 +3620,10 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
   player.sh = player.shMax;
 
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
+
+  player.laserHitBonusPct = clamp(Number(stats.bonusLaserHitPct || 0), -100, 100);
+  player.expBonusPct = Number(stats.bonusExpPct || 0);
+  player.honorBonusPct = Number(stats.bonusHonorPct || 0);
 
   player.baseFireRate = BASE_RUN.baseFireRate;
   player.baseBulletSpeed = BASE_RUN.baseBulletSpeed;
@@ -6941,7 +6951,7 @@ const dmgShot = isSab
   ? player.baseDamage * SAB50.drainMult
   : player.baseDamage * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100);
 
-  const shotMiss = Math.random() < PLAYER_SHOTS.missChance;
+  const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (Number(player.laserHitBonusPct || 0) / 100));
 
   const ang = player.angle;
   const fx = Math.cos(ang), fy = Math.sin(ang);

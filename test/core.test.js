@@ -54,7 +54,7 @@ import { getZonePortals as getVruSixPortals } from "../maps/3-6/Spawns.js";
 import { getZonePortals as getVruSevenPortals } from "../maps/3-7/Spawns.js";
 import { CATALOG } from "../src/core/catalog.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_MAX_LEVEL, getDroneLevel, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
-import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_TIER_WEIGHTS } from "../src/data/moduleDrops.js";
+import { MODULE_ALL_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_STAT_COUNT_WEIGHTS_BY_TIER, MODULE_STAT_MAX_ANY, MODULE_STAT_MAX_BY_COLOR, MODULE_STAT_MAX_OFF_COLOR, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../src/data/moduleDrops.js";
 import { appendToFitSlots, compactFitArray, compactFitDraft } from "../src/core/fitLayout.js";
 import {
   QUEST_DEFINITIONS,
@@ -1192,7 +1192,53 @@ test("l'économie des équipements progresse par paliers et limite les modules X
   assert.equal(MODULE_ROLL_COST, 1000000);
   assert.ok(CATALOG.ships.every(item => Number(item.price) > 0));
   assert.deepEqual(MODULE_TIER_WEIGHTS, [["x1", 68], ["x2", 25], ["x3", 7]]);
-  assert.deepEqual(MODULE_BONUS_RANGES.x1, [3, 8]);
+  assert.deepEqual(MODULE_TYPE_WEIGHTS, [["hp", 25], ["shd", 25], ["dmg", 25], ["spc", 25]]);
+  assert.deepEqual(MODULE_STAT_COUNT_WEIGHTS, [[1, 72], [2, 23], [3, 4.5], [4, 0.5]]);
+  assert.deepEqual(MODULE_TIER_MALUS, { x1: -4, x2: -6, x3: -8 });
+  assert.ok(MODULE_ALL_STATS.includes("laser_hit"));
+  assert.ok(MODULE_ALL_STATS.includes("exp"));
+  assert.ok(MODULE_ALL_STATS.includes("honor"));
+  assert.equal(getModuleRarity(1), "common");
+  assert.equal(getModuleRarity(2), "rare");
+  assert.equal(getModuleRarity(3), "epic");
+  assert.equal(getModuleRarity(4), "legendary");
+  // Cap maximal par couleur : stat dans SA couleur -> max défini.
+  assert.equal(getStatMaxPct("hp", "hp"), 32);           // vert
+  assert.equal(getStatMaxPct("shield", "shd"), 30);      // bleu
+  assert.equal(getStatMaxPct("damage", "dmg"), 20);      // rouge
+  assert.equal(getStatMaxPct("laser_hit", "spc"), 10);   // jaune
+  assert.equal(getStatMaxPct("penetration", "spc"), 12); // jaune
+  assert.equal(getStatMaxPct("speed", "spc"), 12);       // jaune
+  // "Toutes couleurs" : exp/honneur 12% quel que soit le module.
+  for (const type of ["hp", "shd", "dmg", "spc"]) {
+    assert.equal(getStatMaxPct("exp", type), 12, `exp dans ${type}`);
+    assert.equal(getStatMaxPct("honor", type), 12, `honor dans ${type}`);
+  }
+  // Une stat hors de sa couleur : 5% max (ex : Dégâts dans un bleu).
+  assert.equal(getStatMaxPct("damage", "shd"), MODULE_STAT_MAX_OFF_COLOR);
+  assert.equal(getStatMaxPct("hp", "dmg"), MODULE_STAT_MAX_OFF_COLOR);
+  assert.equal(getStatMaxPct("shield", "hp"), MODULE_STAT_MAX_OFF_COLOR);
+  assert.equal(getStatMaxPct("speed", "dmg"), MODULE_STAT_MAX_OFF_COLOR);
+  // Cohérence des tables.
+  assert.deepEqual(MODULE_STAT_MAX_BY_COLOR.hp, { hp: 32 });
+  assert.deepEqual(MODULE_STAT_MAX_BY_COLOR.shd, { shield: 30 });
+  assert.deepEqual(MODULE_STAT_MAX_BY_COLOR.dmg, { damage: 20 });
+  assert.deepEqual(MODULE_STAT_MAX_ANY, { exp: 12, honor: 12 });
+  assert.equal(MODULE_PCT_BAN, 0);
+  // La rareté est corrélée au tier : le X1 penche vers Commun/Rare,
+  // le X2 vers Rare/Épique, le X3 vers Épique/Légendaire.
+  const byTier = MODULE_STAT_COUNT_WEIGHTS_BY_TIER;
+  assert.deepEqual(byTier.x1, [[1, 80], [2, 17], [3, 2.5], [4, 0.5]]);
+  assert.deepEqual(byTier.x2, [[1, 10], [2, 60], [3, 27], [4, 3]]);
+  assert.deepEqual(byTier.x3, [[1, 3], [2, 22], [3, 50], [4, 25]]);
+  assert.deepEqual(getModuleStatCountWeights("x2"), byTier.x2);
+  assert.deepEqual(getModuleStatCountWeights("inconnu"), MODULE_STAT_COUNT_WEIGHTS);
+  const x1Common = byTier.x1.find(p => p[0] === 1)[1];
+  const x2Rare = byTier.x2.find(p => p[0] === 2)[1];
+  const x3Epic = byTier.x3.find(p => p[0] === 3)[1];
+  assert.ok(x1Common > 50, "x1 doit surtout donner du Commun");
+  assert.ok(x2Rare > 50, "x2 doit surtout donner du Rare");
+  assert.ok(x3Epic > 40, "x3 doit surtout donner de l'Épique");
 });
 
 test("la boutique applique un achat multiple de façon atomique", async () => {

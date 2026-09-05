@@ -11,6 +11,7 @@ import {
   setActiveHangarConfig,
   buyModuleRoll,
   addShipModule,
+  replaceShipModule,
   updateCurrentUserEmail,
   updateCurrentUserPseudo,
   changeCurrentUserPassword,
@@ -18,11 +19,11 @@ import {
   buyCurrentUserDrone,
   buyCurrentUserDroneFormation,
   setCurrentUserDroneFormation,
-  saveCurrentUserDroneFit,
+  saveCurrentUserDroneFits,
 } from "../src/core/account.js";
 
 import { CATALOG, findCatalogItem } from "../src/core/catalog.js";
-import { SHIP_PACKS } from "../src/data/shipPacks.js";
+import { SHIP_PACKS, getShipFamilyId, getShipFamilyMembers, getShipFamilyName } from "../src/data/shipPacks.js";
 import { escapeHtml } from "../src/core/dom.js";
 import { PILOT_RANKS, calculateRankPoints, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo } from "../src/core/progression.js";
 import { formatInteger } from "../src/core/numberFormat.js";
@@ -31,9 +32,9 @@ import { NPC_TYPES } from "../src/data/npcTypes.js";
 import { QUEST_DEFINITIONS } from "../src/data/quests.js";
 import { AMMO } from "../src/data/ammo.js";
 import { getResourceName } from "../src/data/resources.js";
-import { getItemRarity } from "../src/data/itemRarities.js";
+import { getItemRarity, ITEM_RARITIES } from "../src/data/itemRarities.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
-import { MODULE_BONUS_RANGES, MODULE_ROLL_COST, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS } from "../src/data/moduleDrops.js";
+import { MODULE_ALL_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../src/data/moduleDrops.js";
 import { appendToFitSlots, compactFitDraft } from "../src/core/fitLayout.js";
 import { PATCH_NOTES } from "../src/data/patchNotes.js";
 
@@ -121,6 +122,7 @@ let selectedShopItemId = null;
 let selectedHangarId = null;
 let shopRenderToken = 0;
 let rouletteRailCells = [];
+let moduleReroll = null;
 let inventoryQuery = "";
 
 // -------------------- UI helpers --------------------
@@ -361,38 +363,81 @@ function formatStatLabel(stat) {
   if (stat === "damage") return "Dégâts";
   if (stat === "penetration") return "Pénétration";
   if (stat === "speed") return "Vitesse";
+  if (stat === "laser_hit") return "Chance de tir";
+  if (stat === "exp") return "Expérience";
+  if (stat === "honor") return "Honneur";
   return stat;
 }
 
-function generateShipModule(user) {
-  const tier = pickWeighted(MODULE_TIER_WEIGHTS);
-  const type = pickWeighted(MODULE_TYPE_WEIGHTS);
-  const statCount = pickWeighted(MODULE_STAT_COUNT_WEIGHTS);
+function rollModulePct(min, max) {
+  let value = 0;
+  let guard = 0;
+  while (value === MODULE_PCT_BAN && guard < 16) {
+    value = randInt(min, max);
+    guard++;
+  }
+  return value;
+}
+
+function moduleFamilyId(module) {
+  if (module?.familyId) return String(module.familyId);
+  return getShipFamilyId(module?.shipId);
+}
+
+function familyBaseShipId(familyId) {
+  const family = String(familyId || "");
+  if (getShipPack(family)) return family;
+  const members = getShipFamilyMembers().get(family) || [];
+  let best = members[0] || family;
+  for (const id of members) {
+    const idSeg = String(id).split("_").length;
+    const bestSeg = String(best).split("_").length;
+    if (idSeg < bestSeg || (idSeg === bestSeg && String(id).length < String(best).length)) best = id;
+  }
+  return best;
+}
+
+function moduleRarityMeta(module) {
+  const id = getModuleRarity(module?.bonuses?.length);
+  const meta = ITEM_RARITIES[id] || ITEM_RARITIES.common;
+  return { id, name: meta.name, color: meta.color };
+}
+
+function generateShipModule(user, opts = {}) {
+  const tier = opts.tier || pickWeighted(MODULE_TIER_WEIGHTS);
+  const type = opts.type || pickWeighted(MODULE_TYPE_WEIGHTS);
+  const statCount = opts.statCount || pickWeighted(getModuleStatCountWeights(tier));
 
   const ships = Array.isArray(CATALOG?.ships) ? CATALOG.ships : [];
   const shipPick = ships.length ? ships[randInt(0, ships.length - 1)] : null;
-  const shipId = shipPick?.ship?.id || "UnknownShip";
+  const shipId = opts.shipId || shipPick?.ship?.id || "UnknownShip";
+  const familyId = opts.familyId || getShipFamilyId(shipId);
 
-  const [mn, mx] = MODULE_BONUS_RANGES[tier] || MODULE_BONUS_RANGES.x1;
-
-  const ALL_STATS = ["hp", "shield", "penetration", "speed", "damage"];
+  // Malus (borne basse) fixé par le tier. Le cap positif dépend de la
+  // COULEUR du module et de la stat tirée (getStatMaxPct).
+  const mn = MODULE_TIER_MALUS[tier] ?? -4;
 
   let mainStat = "hp";
   if (type === "hp") mainStat = "hp";
   if (type === "shd") mainStat = "shield";
   if (type === "dmg") mainStat = "damage";
-  if (type === "spc") mainStat = Math.random() < 0.5 ? "penetration" : "speed";
+  if (type === "spc") mainStat = MODULE_SPC_STATS[randInt(0, MODULE_SPC_STATS.length - 1)];
 
+  // Chaque stat est tirée indépendamment : bonus (+) ou malus (-).
+  // Une stat hors de sa couleur est plafonnée à 5% (ex : Dégâts dans un
+  // module bleu/Shield), sauf Exp/Honneur toujours à 12%.
   const picked = new Set([mainStat]);
-  const bonuses = [{ stat: mainStat, pct: randInt(mn, mx) }];
+  const bonuses = [{ stat: mainStat, pct: rollModulePct(mn, getStatMaxPct(mainStat, type)) }];
 
-  while (bonuses.length < statCount) {
-    const pool = ALL_STATS.filter((s) => !picked.has(s));
-    if (!pool.length) break;
-    const s = pool[randInt(0, pool.length - 1)];
+  const pool = MODULE_ALL_STATS.filter((s) => !picked.has(s));
+  while (bonuses.length < statCount && pool.length) {
+    const index = randInt(0, pool.length - 1);
+    const s = pool.splice(index, 1)[0];
     picked.add(s);
-    bonuses.push({ stat: s, pct: randInt(mn, mx) });
+    bonuses.push({ stat: s, pct: rollModulePct(mn, getStatMaxPct(s, type)) });
   }
+
+  const rarity = getModuleRarity(bonuses.length);
 
   const now = Math.floor(Date.now() / 1000);
   const uid = Math.random().toString(16).slice(2, 8);
@@ -401,9 +446,11 @@ function generateShipModule(user) {
     id: `mod_${now}_${uid}`,
     kind: "shipModule",
     shipId,
+    familyId,
     tier,
     type,
     bonuses,
+    rarity,
     iconKey: `${type}-${tier}`,
     createdAt: now,
   };
@@ -615,11 +662,13 @@ function buildInventorySections(u) {
 
   const modules = (u?.inventory?.shipModules || []).map((module, index) => {
     const compatibleShip = getShipPack(module?.shipId);
+    const rarityMeta = moduleRarityMeta(module);
     return {
       id: module?.id || `module-${index}`, kind: "module", module,
       name: `${String(module?.type || "module").toUpperCase()} ${String(module?.tier || "").toUpperCase()}`.trim(), quantity: 1,
       detail: (module?.bonuses || []).map((bonus) => `${formatNumber(bonus?.pct || 0)}% ${formatStatLabel(bonus?.stat)}`).join(" · ") || "Module de vaisseau",
-      searchText: `${module?.shipId || ""} ${compatibleShip?.name || ""}`,
+      rarityId: rarityMeta.id,
+      searchText: `${module?.shipId || ""} ${compatibleShip?.name || ""} ${getShipFamilyName(moduleFamilyId(module))} ${rarityMeta.name}`,
     };
   });
 
@@ -717,7 +766,11 @@ function inventoryTooltipText(entry) {
   } else if (entry.kind === "droneFormation") {
     lines.push(entry.formation?.description || entry.detail);
   } else if (entry.kind === "module") {
-    if (entry.module?.shipId) lines.push(`Vaisseau : ${getShipPack(entry.module.shipId)?.name || entry.module.shipId}`);
+    if (entry.module?.shipId) {
+      const rarityMeta = moduleRarityMeta(entry.module);
+      lines.push(`Famille : ${getShipFamilyName(moduleFamilyId(entry.module))} (${rarityMeta.name})`);
+      lines.push(`Vaisseau : ${getShipPack(entry.module.shipId)?.name || entry.module.shipId}`);
+    }
     if (entry.detail) lines.push(entry.detail);
   } else {
     if (entry.detail) lines.push(entry.detail);
@@ -1007,7 +1060,8 @@ function renderHangars(u) {
     const slots = getShipSlots(h.shipId);
 
     const mods = Array.isArray(u?.inventory?.shipModules) ? u.inventory.shipModules : [];
-    const modsForShip = mods.filter(m => String(m?.shipId) === String(h.shipId));
+    const shipFamily = getShipFamilyId(h.shipId);
+    const modsForShip = mods.filter(m => moduleFamilyId(m) === shipFamily);
 
     const el = document.createElement("div");
     el.className = "hangarListItem" + (h.id === selectedHangarId ? " selected" : "") + (isActive ? " active" : "");
@@ -1357,16 +1411,21 @@ function renderExtrasRoulette(user) {
       const bonuses = Array.isArray(module?.bonuses)
         ? module.bonuses.map(bonus => `${formatNumber(bonus.pct || 0)}% ${formatStatLabel(bonus.stat)}`).join(" • ")
         : "Aucun bonus";
+      const rarity = moduleRarityMeta(module);
+      const familyId = moduleFamilyId(module);
+      const familyShipImg = shipPreviewSrc(familyBaseShipId(familyId));
       const obtainedAt = Number(module?.createdAt || 0) > 0
         ? new Date(Number(module.createdAt) * 1000).toLocaleString("fr-FR")
         : "Date inconnue";
       return `
         <div class="moduleHistoryRow">
           <span class="moduleHistoryIndex">${formatNumber(history.length - index)}</span>
-          <img src="${moduleIconSrc(module?.type, module?.tier)}" alt="" />
+          <img src="${moduleIconSrc(module?.type, module?.tier)}" alt="" class="moduleHistoryModImg" />
+          <img src="${familyShipImg}" alt="" class="moduleHistoryShipImg" />
           <div class="moduleHistoryMeta">
             <strong>${escapeHtml(String(module?.type || "module").toUpperCase())}-${escapeHtml(String(module?.tier || "x1").toUpperCase())}</strong>
-            <span>${escapeHtml(String(module?.shipId || "Vaisseau inconnu"))} • ${escapeHtml(bonuses)}</span>
+            <span style="color:${rarity.color};font-weight:700;">${escapeHtml(rarity.name)}</span>
+            <span>${escapeHtml(getShipFamilyName(familyId))} • ${escapeHtml(bonuses)}</span>
           </div>
           <time>${escapeHtml(obtainedAt)}</time>
         </div>
@@ -1388,12 +1447,6 @@ function renderExtrasRoulette(user) {
         <div id="rouletteCenterCell" style="position:absolute;left:${centerIndex * STEP + (64 - 68) / 2}px;top:50%;transform:translateY(-50%);width:68px;height:68px;pointer-events:none;border-radius:16px;border:3px solid #ffd700;box-shadow:0 0 16px rgba(255,215,0,0.6), inset 0 0 12px rgba(255,215,0,0.28);"></div>
       </div>
 
-      <p style="color: var(--muted); font-size: 13px; margin: 12px 0; text-align: center;">
-        Tier: <strong style="color: #00d9ff;">x1 (68%)</strong>,
-        <strong style="color: #ff006e;">x2 (25%)</strong>,
-        <strong style="color: #00ff88;">x3 (7%)</strong>
-      </p>
-
       <button id="btnRoll" class="primary" style="width: 100%;" ${Number(user?.credits || 0) < MODULE_ROLL_COST ? "disabled" : ""}>
         Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)
       </button>
@@ -1414,100 +1467,143 @@ function renderExtrasRoulette(user) {
 
   let rolling = false;
 
-  btn?.addEventListener("click", () => {
+  const renderRollResultCard = (mod) => {
+    const bonusesText = mod.bonuses
+      .map((b) => {
+        const color = Number(b.pct) < 0 ? "#ff5566" : "#00ff88";
+        return `<strong style="color: ${color};">${b.pct}%</strong> ${formatStatLabel(b.stat)}`;
+      })
+      .join(" • ");
+
+    const rarityMeta = moduleRarityMeta(mod);
+    const familyId = moduleFamilyId(mod);
+    const shipImg = shipPreviewSrc(familyBaseShipId(familyId));
+    const credits = Number(user?.credits || 0);
+
+    const rerollBtn = moduleReroll
+      ? `<div style="margin-top:26px;">
+           <button id="btnRerollModule" class="secondary" style="width:100%;padding:12px 14px;"
+             ${credits < moduleReroll.cost ? "disabled" : ""}>
+             Relancer ce module (${formatNumber(moduleReroll.cost)} crédits)
+           </button>
+         </div>`
+      : "";
+
+    const resFinal = document.getElementById("rollResult");
+    if (resFinal) resFinal.innerHTML = `
+      <div style="padding: 12px; background: rgba(0,217,255,0.1); border: 1px solid rgba(0,217,255,0.3); border-radius: 12px;">
+        <div style="display:flex; gap:14px; align-items:center; text-align:left;">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size: 16px; font-weight: 900; color: #00ff88; margin-bottom: 8px;">Module obtenu</div>
+            <div style="color: var(--text);"><strong>${mod.type.toUpperCase()}-${mod.tier.toUpperCase()}</strong>
+              <span style="margin-left:8px; color:${rarityMeta.color}; font-weight:700;">${rarityMeta.name}</span>
+            </div>
+            <div style="color: var(--muted); font-size: 13px;">Vaisseau: <strong>${mod.shipId}</strong></div>
+            <div style="color: var(--muted); font-size: 13px;">Famille: ${escapeHtml(getShipFamilyName(familyId))}</div>
+            <div style="color: var(--muted); font-size: 13px; margin-top: 4px;">Stats: ${bonusesText}</div>
+          </div>
+          <img src="${shipImg}" alt="" style="width:120px;height:120px;object-fit:contain;image-rendering:pixelated;background:rgba(0,0,0,0.25);border-radius:12px;border:1px solid rgba(255,215,0,0.25);" />
+        </div>
+      </div>
+      ${rerollBtn}
+    `;
+
+    const rerollBtnEl = document.getElementById("btnRerollModule");
+    if (rerollBtnEl) rerollBtnEl.addEventListener("click", handleReroll);
+  };
+
+  const refreshAfterModule = (user2, message = "Tirage réussi.") => {
+    const historyEl = document.getElementById("moduleRollHistory");
+    if (historyEl) historyEl.innerHTML = renderModuleHistory(user2);
+    const historyCount = document.querySelector(".moduleHistoryPanel > header span");
+    if (historyCount) historyCount.textContent = `${formatNumber(user2?.inventory?.moduleRollHistory?.length || 0)} tirage(s)`;
+    setMsg(message, true);
+    renderHeader(user2);
+    renderStats(user2);
+    renderHangars(user2);
+    if (shopCredits) shopCredits.textContent = formatNumber(user2.credits || 0);
+    syncGameCredits();
+  };
+
+  // Animation rAF -> profil de vitesse CONTINU (style "bait").
+  const spinWheel = (buildCells, winCell, onStop) => {
+    if (!railEl) { onStop(); return; }
+
+    const k = randInt(30, 40); // index du gagnant (bien au milieu du rail)
+    const railLen = k + 9;     // cellules utiles : k + fenêtre visible
+    const rail = buildCells(railLen);
+    rail[k] = { type: winCell.type, tier: winCell.tier };
+    const finalX = (centerIndex - k) * STEP;
+
+    railEl.innerHTML = railHtml(rail);
+    railEl.style.transition = "none";
+    railEl.style.transform = "translateX(0px)";
+
+    const DURATION = 900; // ms
+    const PTS = [
+      [0.00, 0.00],
+      [0.015, 4.00],
+      [0.40, 4.00],
+      [0.85, 0.00],
+      [1.00, 0.00],
+    ];
+    function vel(tr) {
+      if (tr <= PTS[0][0]) return PTS[0][1];
+      for (let i = 1; i < PTS.length; i++) {
+        if (tr <= PTS[i][0]) {
+          const t0 = PTS[i - 1][0], v0 = PTS[i - 1][1];
+          const t1 = PTS[i][0], v1 = PTS[i][1];
+          const u = (tr - t0) / (t1 - t0);
+          const s = 0.5 - 0.5 * Math.cos(Math.PI * u);
+          return v0 + (v1 - v0) * s;
+        }
+      }
+      return PTS[PTS.length - 1][1];
+    }
+    const N = 500;
+    const v = new Array(N + 1);
+    let acc = 0;
+    for (let i = 0; i <= N; i++) {
+      v[i] = acc;
+      acc += vel(i / N) / N;
+    }
+    const vTot = v[N] || 1;
+    const start = performance.now();
+    function frame(now) {
+      const tr = Math.min(1, (now - start) / DURATION);
+      const sigma = v[Math.round(tr * N)] / vTot;
+      railEl.style.transform = `translateX(${finalX * sigma}px)`;
+      if (tr < 1) requestAnimationFrame(frame);
+      else {
+        railEl.style.transition = "none";
+        railEl.style.transform = `translateX(${finalX}px)`;
+        onStop();
+      }
+    }
+    requestAnimationFrame(frame);
+  };
+
+  // 🎰 TIRAGE DE BASE
+  const handleBaseRoll = () => {
     if (rolling) return;
     rolling = true;
+    moduleReroll = null; // un nouveau tirage de base "casse" la possibilité de reroll
 
     const resOut = document.getElementById("rollResult");
     if (resOut) resOut.textContent = "";
 
-    const pay = buyModuleRoll(MODULE_ROLL_COST);
-    if (!pay?.ok) {
-      rolling = false;
-      setMsg(pay?.error || "Achat impossible.", false);
-      return;
-    }
-
-    user = getCurrentUserFull();
-    renderHeader(user);
-    renderStats(user);
-    renderHangars(user);
-    if (shopCredits) shopCredits.textContent = formatNumber(user.credits || 0);
-    syncGameCredits();
-
+    // ✅ La roue démarre INSTANTANÉMENT : aucune écriture localStorage ni
+    // re-rendu avant l'animation (tout est délégué à l'arrêt).
     const u2 = getCurrentUserFull();
     const mod = generateShipModule(u2);
 
-    // Rail long persistant (illusion de défilement sans fin) : les cellules ne
-    // sont PAS régénérées entre tirages. On continue depuis rouletteRailCells
-    // (les 9 visibles restent identiques -> "on garde les 9 et on génère la suite").
-    const railLen = 84;
-    const k = randInt(30, 42); // index (bien au milieu) du module gagné dans le rail
-    if (!rouletteRailCells.length) rouletteRailCells = cells.slice(); // premier lancer : les 9 de l'idle
-    while (rouletteRailCells.length < railLen) rouletteRailCells.push(randomCell());
-    rouletteRailCells[k] = { type: mod.type, tier: mod.tier }; // place le gagnant à k
-    const rail = rouletteRailCells.slice(0, railLen);
-
-    // Position finale : la case k est centrée sous la case dorée.
-    const finalX = (centerIndex - k) * STEP;
-
-    if (railEl) {
-      railEl.innerHTML = railHtml(rail);
-      railEl.style.transition = "none";
-      railEl.style.transform = "translateX(0px)";
-
-      // Animation rAF à profil de vitesse CONTINU (aucune cassure), style "bait" :
-      // accélère très très vite -> maintient très vite -> ralentit doucement ->
-      // maintient une vitesse basse (comme s'il allait s'arrêter) -> s'arrête.
-      const DURATION = 2000; // ms
-      // Points de contrôle (fraction de temps, vélocité normalisée) :
-      const PTS = [
-        [0.00, 0.00], // à l'arrêt
-        [0.015, 4.00], // accélération quasi instantanée -> vitesse max
-        [0.40, 4.00], // maintient très vite
-        [0.85, 0.00], // ralentit doucement jusqu'à l'arrêt
-        [1.00, 0.00], // arrêt
-      ];
-      // vélocité normalisée continue (interpolation cosine lissée entre les points)
-      function vel(tr) {
-        if (tr <= PTS[0][0]) return PTS[0][1];
-        for (let i = 1; i < PTS.length; i++) {
-          if (tr <= PTS[i][0]) {
-            const t0 = PTS[i - 1][0], v0 = PTS[i - 1][1];
-            const t1 = PTS[i][0], v1 = PTS[i][1];
-            const u = (tr - t0) / (t1 - t0);
-            const s = 0.5 - 0.5 * Math.cos(Math.PI * u); // cosine smoothstep -> C1, pas de cassure
-            return v0 + (v1 - v0) * s;
-          }
-        }
-        return PTS[PTS.length - 1][1];
+    const finishRoll = () => {
+      const pay = buyModuleRoll(MODULE_ROLL_COST);
+      if (!pay?.ok) {
+        setMsg(pay?.error || "Achat impossible.", false);
+        rolling = false;
+        return;
       }
-      // intégration numérique -> progression σ(τ) : 0 -> 1
-      const N = 500;
-      const v = new Array(N + 1);
-      let acc = 0;
-      for (let i = 0; i <= N; i++) {
-        v[i] = acc;
-        acc += vel(i / N) / N;
-      }
-      const vTot = v[N] || 1;
-      const start = performance.now();
-      function frame(now) {
-        const tr = Math.min(1, (now - start) / DURATION);
-        const sigma = v[Math.round(tr * N)] / vTot;
-        railEl.style.transform = `translateX(${finalX * sigma}px)`;
-        if (tr < 1) requestAnimationFrame(frame);
-      }
-      requestAnimationFrame(frame);
-    }
-
-    setTimeout(() => {
-      // A l'arrêt : verrouille la position (la case dorée fixe marque la sélection).
-      if (railEl) {
-        railEl.style.transition = "none";
-        railEl.style.transform = `translateX(${finalX}px)`;
-      }
-
       const add = addShipModule(mod);
       if (!add?.ok) {
         setMsg(add?.error || "Erreur stockage module.", false);
@@ -1515,36 +1611,93 @@ function renderExtrasRoulette(user) {
         return;
       }
 
-      const user2 = getCurrentUserFull();
-
-      const bonusesText = mod.bonuses
-        .map((b) => `<strong style="color: #00d9ff;">${b.pct}%</strong> ${formatStatLabel(b.stat)}`)
-        .join(" • ");
-
-      const resFinal = document.getElementById("rollResult");
-      if (resFinal) resFinal.innerHTML = `
-        <div style="margin-top:12px; padding: 12px; background: rgba(0,217,255,0.1); border: 1px solid rgba(0,217,255,0.3); border-radius: 12px;">
-          <div style="font-size: 16px; font-weight: 900; color: #00ff88; margin-bottom: 8px;">Module obtenu</div>
-          <div style="color: var(--text);"><strong>${mod.type.toUpperCase()}-${mod.tier.toUpperCase()}</strong></div>
-          <div style="color: var(--muted); font-size: 13px;">Vaisseau: <strong>${mod.shipId}</strong></div>
-          <div style="color: var(--muted); font-size: 13px; margin-top: 4px;">Bonus: ${bonusesText}</div>
-        </div>
-      `;
-
-      const historyEl = document.getElementById("moduleRollHistory");
-      if (historyEl) historyEl.innerHTML = renderModuleHistory(user2);
-      const historyCount = document.querySelector(".moduleHistoryPanel > header span");
-      if (historyCount) historyCount.textContent = `${formatNumber(user2?.inventory?.moduleRollHistory?.length || 0)} tirage(s)`;
-      setMsg("Tirage réussi.", true);
-
-      renderHeader(user2);
-      renderStats(user2);
-      if (shopCredits) shopCredits.textContent = formatNumber(user2.credits || 0);
-      syncGameCredits();
-
+      user = getCurrentUserFull();
+      // Active la possibilité de REROLLER ce module (x5, puis x5 à chaque fois).
+      moduleReroll = {
+        shipId: mod.shipId,
+        familyId: moduleFamilyId(mod),
+        type: mod.type,
+        tier: mod.tier,
+        statCount: mod.bonuses.length,
+        currentId: mod.id,
+        cost: MODULE_ROLL_COST * 5,
+        rerolls: 0,
+      };
+      renderRollResultCard(mod);
+      refreshAfterModule(user);
       rolling = false;
-    }, 2150);
-  });
+    };
+
+    spinWheel(
+      (railLen) => {
+        rouletteRailCells = cells.slice();
+        while (rouletteRailCells.length < railLen) rouletteRailCells.push(randomCell());
+        return rouletteRailCells.slice(0, railLen);
+      },
+      { type: mod.type, tier: mod.tier },
+      finishRoll
+    );
+  };
+
+  // 🔁 REROLL du module courant : même type/tier/rareté/vaisseau/famille,
+  // seuls les % changent. Prix multiplié par 5 à chaque relance.
+  const handleReroll = () => {
+    if (rolling || !moduleReroll) return;
+    rolling = true;
+
+    const cost = moduleReroll.cost;
+    user = getCurrentUserFull();
+    if (Number(user?.credits || 0) < cost) {
+      setMsg("Crédits insuffisants pour relancer.", false);
+      rolling = false;
+      return;
+    }
+
+    const onStop = () => {
+      const pay = buyModuleRoll(cost);
+      if (!pay?.ok) {
+        setMsg(pay?.error || "Achat impossible.", false);
+        rolling = false;
+        return;
+      }
+      user = pay.user;
+      const newMod = generateShipModule(user, {
+        shipId: moduleReroll.shipId,
+        familyId: moduleReroll.familyId,
+        type: moduleReroll.type,
+        tier: moduleReroll.tier,
+        statCount: moduleReroll.statCount,
+      });
+      const repl = replaceShipModule(moduleReroll.currentId, newMod);
+      if (!repl?.ok) {
+        setMsg(repl?.error || "Erreur stockage module.", false);
+        rolling = false;
+        return;
+      }
+
+      user = getCurrentUserFull();
+      moduleReroll.currentId = newMod.id;
+      moduleReroll.cost = cost * 5;
+      moduleReroll.rerolls += 1;
+
+      // La CARD ne se ferme pas : elle attend le nouveau tirage puis se met à jour.
+      renderRollResultCard(newMod);
+      refreshAfterModule(user, `Reroll réussi (${formatNumber(cost)} crédits).`);
+      rolling = false;
+    };
+
+    spinWheel(
+      (railLen) => {
+        const uniform = { type: moduleReroll.type, tier: moduleReroll.tier };
+        rouletteRailCells = Array.from({ length: railLen }, () => ({ ...uniform }));
+        return rouletteRailCells.slice(0, railLen);
+      },
+      { type: moduleReroll.type, tier: moduleReroll.tier },
+      onStop
+    );
+  };
+
+  btn?.addEventListener("click", handleBaseRoll);
 }
 
 function renderShopPreview(user, it, cat) {
@@ -1891,9 +2044,43 @@ function buildFitWindow() {
     returnZone.classList.remove("dragReturnActive");
     const raw = event.dataTransfer.getData("application/x-orbit-slot");
     const rawGroup = event.dataTransfer.getData("application/x-orbit-slots");
-    if ((!raw && !rawGroup) || !fitState.draft) return;
+    if (!raw && !rawGroup) return;
     event.preventDefault();
     try {
+      if (fitState.section === "drones") {
+        // Retour d'un équipement de drone vers l'inventaire (un ou plusieurs slots).
+        let sources = [];
+        if (rawGroup) { try { sources = JSON.parse(rawGroup); } catch {} }
+        if (!sources.length) { try { const p = JSON.parse(raw); if (p?.droneId != null) sources = [p]; } catch {} }
+        sources = sources.filter((source) => source?.droneId != null && Number.isInteger(source?.slot));
+        if (!sources.length) return;
+        const fresh = getCurrentUserFull();
+        if (!fresh) return;
+        const grouped = new Map();
+        sources.forEach((source) => {
+          if (!grouped.has(source.droneId)) grouped.set(source.droneId, new Set());
+          grouped.get(source.droneId).add(source.slot);
+        });
+        const fits = [];
+        for (const [droneId, slots] of grouped) {
+          const drone = fresh.drones?.items?.find((entry) => entry.id === droneId);
+          if (!drone || !Array.isArray(drone.fit?.equipment)) continue;
+          const equipment = [...drone.fit.equipment];
+          for (const slot of slots) if (equipment[slot] != null) equipment[slot] = null;
+          if (equipment.every((value, index) => value === drone.fit.equipment[index])) continue;
+          fits.push({ droneId, fit: { ...drone.fit, equipment }, configNo: fitState.configNo });
+        }
+        if (!fits.length) return;
+        const saved = saveCurrentUserDroneFits(fits);
+        if (!saved.ok) return showFitError(saved.error);
+        user = saved.user;
+        clearFitSelection();
+        showFitError("");
+        lastAccountUiSignature = accountUiSignature(user);
+        renderDroneEquipment(user);
+        renderInventoryPalette();
+        return;
+      }
       const sources = rawGroup ? JSON.parse(rawGroup) : [JSON.parse(raw)];
       for (const source of sources) {
         if (Array.isArray(fitState.draft[source.slotType])) fitState.draft[source.slotType][source.index] = null;
@@ -2422,7 +2609,8 @@ let fitState = {
   selectedItemId: null,
   selectedCopyKey: null,
   selectedCopies: new Map(),
-  selectedSlots: new Map(),
+  selectedSlots: new Map(), // émet le changement
+  selectedDroneSlots: new Map(),
   draggedItemIds: [],
   draft: null,
   used: null,
@@ -2449,88 +2637,104 @@ function setFitSection(section = "ship") {
   if (fitState.draft) renderInventoryPalette();
 }
 
-function renderDroneEquipmentLegacy() {
-  const root = document.getElementById("fitDroneWorkspace");
-  if (!root) return;
-  user = getCurrentUserFull();
-  const drones = user?.drones?.items || [];
-  if (!drones.length) {
-    root.innerHTML = `<div class="fitDroneEmpty">Aucun drone. Achète ton premier Iris dans la boutique.</div>`;
-    return;
-  }
-  if (!drones.some(drone => drone.id === fitState.droneId)) fitState.droneId = drones[0].id;
-  const selected = drones.find(drone => drone.id === fitState.droneId);
-  const definition = DRONE_TYPES[selected.type];
-  const nextXp = DRONE_LEVEL_XP[selected.level] ?? DRONE_LEVEL_XP.at(-1);
-  const percent = selected.level >= 5 ? 100 : Math.min(100, Math.floor((selected.exp / nextXp) * 100));
-  const slotMarkup = selected.fit.equipment.map((itemId, index) => {
-    const item = itemId ? findCatalogItem(itemId) : null;
-    return `<button class="droneFitSlot${item ? " filled" : ""}" data-drone-slot="${index}" title="${escapeHtml(item?.name || "Dépose un laser ou un bouclier")}">${item ? `<img src="${iconForItem(item)}" alt="">` : `<span>+</span>`}</button>`;
-  }).join("");
-  root.innerHTML = `
-    <div class="droneRoster">${drones.map((drone, index) => `<button class="droneRosterItem${drone.id === selected.id ? " active" : ""}" data-drone-id="${drone.id}"><img src="${getDroneSpritePath(drone, 1)}" alt=""><span>${DRONE_TYPES[drone.type].name} ${index + 1}</span><small>Niveau ${drone.level}</small></button>`).join("")}</div>
-    <div class="droneFitDetail">
-      <header><img src="${getDroneSpritePath(selected, 1)}" alt=""><div><strong>${definition.name}</strong><span>Niveau ${selected.level} · ${formatNumber(Math.floor(selected.exp))} XP</span></div></header>
-      <div class="droneXp"><i style="width:${percent}%"></i></div>
-      <h4>ÉQUIPEMENT DU DRONE</h4><div class="droneFitSlots">${slotMarkup}</div>
-      <h4>CAPACITÉ / DESIGN</h4><button class="droneAbilitySlot" data-drone-ability>${selected.fit.ability ? escapeHtml(selected.fit.ability) : "Emplacement réservé aux designs Havoc, Hercules et Spartan"}</button>
-      <p>Glisse un laser ou un générateur de bouclier depuis l’inventaire. Double-clique sur un équipement pour le retirer.</p>
-    </div>`;
-  root.querySelectorAll("[data-drone-id]").forEach(button => button.onclick = () => { fitState.droneId = button.dataset.droneId; renderDroneEquipment(); });
-  root.querySelectorAll("[data-drone-slot]").forEach(slot => {
-    slot.addEventListener("dragover", event => { event.preventDefault(); slot.classList.add("dragTarget"); });
-    slot.addEventListener("dragleave", () => slot.classList.remove("dragTarget"));
-    slot.addEventListener("drop", event => {
-      event.preventDefault(); slot.classList.remove("dragTarget");
-      const itemId = event.dataTransfer.getData("text/plain");
-      const type = findCatalogItem(itemId)?.module?.type;
-      if (type !== "laser" && type !== "shield") return showFitError("Un drone accepte uniquement un laser ou un bouclier.");
-      const usage = computeUsage(fitState.draft)[itemId] || 0;
-      if (usage >= ownedCount(user, itemId)) return showFitError("Tous les exemplaires de cet objet sont déjà équipés.");
-      const fresh = getCurrentUserFull();
-      const drone = fresh?.drones?.items?.find(entry => entry.id === fitState.droneId);
-      if (!drone) return;
-      drone.fit.equipment[Number(slot.dataset.droneSlot)] = itemId;
-      const saved = saveCurrentUserDroneFit(drone.id, drone.fit, fitState.configNo);
-      if (!saved.ok) return showFitError(saved.error);
-      user = saved.user; showFitError(""); renderDroneEquipment(); renderInventoryPalette();
-    });
-    slot.addEventListener("dblclick", () => {
-      const fresh = getCurrentUserFull();
-      const drone = fresh?.drones?.items?.find(entry => entry.id === fitState.droneId);
-      if (!drone) return;
-      drone.fit.equipment[Number(slot.dataset.droneSlot)] = null;
-      saveCurrentUserDroneFit(drone.id, drone.fit, fitState.configNo); renderDroneEquipment(); renderInventoryPalette();
-    });
-  });
-}
 
-function renderDroneEquipment() {
+function renderDroneEquipment(userOverride) {
   const root = document.getElementById("fitDroneWorkspace");
   if (!root) return;
-  user = getCurrentUserFull();
+  if (userOverride) user = userOverride; else user = getCurrentUserFull();
   const drones = user?.drones?.items || [];
   if (!drones.length) { root.innerHTML = `<div class="fitDroneEmpty">Aucun drone. Achète ton premier Iris dans la boutique.</div>`; return; }
   root.innerHTML = `<div class="droneCards">${drones.map((drone,index)=>{
     const type=DRONE_TYPES[drone.type]; const next=DRONE_LEVEL_XP[drone.level]??DRONE_LEVEL_XP.at(-1);
     const pct=drone.level>=DRONE_MAX_LEVEL?100:Math.min(100,Math.floor(drone.exp/next*100));
-    const slots=drone.fit.equipment.map((id,slotIndex)=>{const item=id?findCatalogItem(id):null;return `<button class="droneFitSlot${item?" filled":""}" data-drone-id="${drone.id}" data-drone-slot="${slotIndex}" title="${escapeHtml(item?.name||"Dépose un laser ou un bouclier")}">${item?`<img src="${iconForItem(item)}" alt="">`:`<span>+</span>`}</button>`}).join("");
+    const slots=drone.fit.equipment.map((id,slotIndex)=>{
+      const item=id?findCatalogItem(id):null;
+      const selKey=`${drone.id}#${slotIndex}`;
+      return `<button class="droneFitSlot${item?" filled":""}${fitState.selectedDroneSlots.has(selKey)?" selected":""}" data-drone-id="${drone.id}" data-drone-slot="${slotIndex}" data-item-id="${item?.id ?? ""}" title="${escapeHtml(item?.name||"Dépose un laser ou un bouclier")}">${item?`<img src="${iconForItem(item)}" alt="">`:`<span>+</span>`}</button>`;
+    }).join("");
     const xpText=drone.level>=DRONE_MAX_LEVEL?"Niveau maximal":`${formatNumber(Math.floor(drone.exp))} XP / ${formatNumber(next)} XP`;
     return `<article class="droneEquipmentCard"><img class="droneCardSprite" src="${getDroneSpritePath(drone,29)}" alt=""><div class="droneCardIdentity"><strong>${type.name} ${index+1}</strong><span>Niveau ${drone.level} · ${xpText}</span></div><div class="droneCardAbility"><label>DESIGN</label><button class="droneDesignSlot" title="${drone.fit.ability?escapeHtml(drone.fit.ability):"Design vide"}">${drone.fit.ability?escapeHtml(drone.fit.ability):"+"}</button></div><div class="droneCardSlots"><label>ÉQUIPEMENT</label><div>${slots}</div></div>${drone.level>=DRONE_MAX_LEVEL?"":`<div class="droneXp"><i style="width:${pct}%"></i></div>`}</article>`;
   }).join("")}</div>`;
   root.querySelectorAll("[data-drone-slot]").forEach(slot=>{
-    slot.addEventListener("dragover",event=>{event.preventDefault();slot.classList.add("dragTarget")});
+    const itemId=slot.dataset.itemId;
+    slot.addEventListener("click",event=>{
+      if(!itemId)return;
+      const selKey=`${slot.dataset.droneId}#${slot.dataset.droneSlot}`;
+      if(event.shiftKey){
+        const matched=[...fitState.selectedDroneSlots.values()].filter(id=>id===itemId).length;
+        const alreadyFullySelected=fitState.selectedDroneSlots.size>0&&matched===fitState.selectedDroneSlots.size;
+        clearFitSelection();
+        if(!alreadyFullySelected)root.querySelectorAll("[data-drone-slot]").forEach(candidate=>{if(candidate.dataset.itemId===itemId)fitState.selectedDroneSlots.set(`${candidate.dataset.droneId}#${candidate.dataset.droneSlot}`,itemId);});
+      }else if(event.ctrlKey||event.metaKey){
+        fitState.selectedCopies.clear();
+        if(fitState.selectedDroneSlots.has(selKey))fitState.selectedDroneSlots.delete(selKey);
+        else fitState.selectedDroneSlots.set(selKey,itemId);
+      }else{
+        const deselectOnly=fitState.selectedDroneSlots.size===1&&fitState.selectedDroneSlots.has(selKey);
+        clearFitSelection();
+        if(!deselectOnly)fitState.selectedDroneSlots.set(selKey,itemId);
+      }
+      showFitError("");
+      renderDroneEquipment();renderInventoryPalette();
+    });
+    slot.addEventListener("dragover",event=>{event.preventDefault();event.dataTransfer.dropEffect=itemId?"move":"copy";slot.classList.add("dragTarget")});
     slot.addEventListener("dragleave",()=>slot.classList.remove("dragTarget"));
     slot.addEventListener("drop",event=>{
-      event.preventDefault();slot.classList.remove("dragTarget");const itemId=event.dataTransfer.getData("text/plain");const type=findCatalogItem(itemId)?.module?.type;
+      event.preventDefault();event.stopPropagation();slot.classList.remove("dragTarget");
+      const droppedId=event.dataTransfer.getData("text/plain");
+      const type=droppedId?findCatalogItem(droppedId)?.module?.type:null;
+      let srcDrone=null;
+      try{const raw=event.dataTransfer.getData("application/x-orbit-slot");if(raw){const p=JSON.parse(raw);if(p&&p.droneId!=null&&p.slot!=null)srcDrone=p;}}catch{}
+      if(srcDrone){
+        const fresh=getCurrentUserFull();if(!fresh)return showFitError("Non connecté.");
+        const target=fresh.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);
+        const source=fresh.drones?.items?.find(entry=>entry.id===srcDrone.droneId);
+        if(!target)return;
+        const equipment=[...target.fit.equipment];equipment[Number(slot.dataset.droneSlot)]=droppedId;
+        const fits=[{droneId:target.id,fit:{...target.fit,equipment},configNo:fitState.configNo}];
+        if(source&&source.id!==target.id&&source.fit?.equipment[srcDrone.slot]===droppedId){const srcEq=[...source.fit.equipment];srcEq[srcDrone.slot]=null;fits.push({droneId:source.id,fit:{...source.fit,equipment:srcEq},configNo:fitState.configNo});}
+        const saved=saveCurrentUserDroneFits(fits);if(!saved.ok)return showFitError(saved.error);
+        user=saved.user;clearFitSelection();showFitError("");
+        lastAccountUiSignature=accountUiSignature(user);
+        renderDroneEquipment(user);renderInventoryPalette();
+        return;
+      }
       if(type!=="laser"&&type!=="shield")return showFitError("Un drone accepte uniquement un laser ou un bouclier.");
-      if((computeUsage(fitState.draft)[itemId]||0)>=ownedCount(user,itemId))return showFitError("Tous les exemplaires sont déjà équipés.");
-      const fresh=getCurrentUserFull();const drone=fresh?.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);if(!drone)return;
-      drone.fit.equipment[Number(slot.dataset.droneSlot)]=itemId;const saved=saveCurrentUserDroneFit(drone.id,drone.fit,fitState.configNo);if(!saved.ok)return showFitError(saved.error);
-      user=saved.user;showFitError("");renderDroneEquipment();renderInventoryPalette();
+      if((computeUsage(fitState.draft)[droppedId]||0)>=ownedCount(user,droppedId))return showFitError("Tous les exemplaires sont déjà équipés.");
+      const fresh=getCurrentUserFull();if(!fresh)return;
+      const drone=fresh.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);if(!drone)return;
+      if(drone.fit?.equipment[Number(slot.dataset.droneSlot)])return showFitError("Emplacement occupé.");
+      const equipment=[...drone.fit.equipment];equipment[Number(slot.dataset.droneSlot)]=droppedId;
+      const saved=saveCurrentUserDroneFits([{droneId:drone.id,fit:{...drone.fit,equipment},configNo:fitState.configNo}]);if(!saved.ok)return showFitError(saved.error);
+      user=saved.user;clearFitSelection();showFitError("");
+      lastAccountUiSignature=accountUiSignature(user);
+      renderDroneEquipment(user);renderInventoryPalette();
     });
-    slot.addEventListener("dblclick",()=>{const fresh=getCurrentUserFull();const drone=fresh?.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);if(!drone)return;drone.fit.equipment[Number(slot.dataset.droneSlot)]=null;saveCurrentUserDroneFit(drone.id,drone.fit,fitState.configNo);renderDroneEquipment();renderInventoryPalette();});
+    if(itemId){
+      slot.draggable=true;
+      slot.addEventListener("dragstart",event=>{
+        if(!fitState.selectedDroneSlots.has(`${slot.dataset.droneId}#${slot.dataset.droneSlot}`)){
+          clearFitSelection();
+          fitState.selectedDroneSlots.set(`${slot.dataset.droneId}#${slot.dataset.droneSlot}`,itemId);
+        }
+        event.dataTransfer.setData("text/plain",itemId);
+        event.dataTransfer.setData("application/x-orbit-slot",JSON.stringify({droneId:slot.dataset.droneId,slot:Number(slot.dataset.droneSlot)}));
+        const slotted=[...fitState.selectedDroneSlots.entries()].map(([key,id])=>{const[droneId,s]=key.split("#");return{droneId,slot:Number(s),itemId:id};});
+        event.dataTransfer.setData("application/x-orbit-slots",JSON.stringify(slotted));
+        event.dataTransfer.effectAllowed="move";
+        fitState.draggedItemIds=[itemId];
+        slot.classList.add("dragging");
+      });
+      slot.addEventListener("dragend",()=>{slot.classList.remove("dragging");fitState.draggedItemIds=[];clearFitDropHighlights();});
+    }
   });
+  root.addEventListener("dragover",event=>{
+    if(!event.dataTransfer.types.includes("application/x-orbit-items"))return;
+    event.preventDefault();
+    root.querySelectorAll("[data-drone-slot]").forEach(s=>s.classList.add("dragCompatible"));
+  });
+  root.addEventListener("dragleave",event=>{if(!root.contains(event.relatedTarget))clearFitDropHighlights();});
+  root.addEventListener("drop",()=>clearFitDropHighlights());
 }
 
 function clearFitSelection() {
@@ -2538,6 +2742,7 @@ function clearFitSelection() {
   fitState.selectedCopyKey = null;
   fitState.selectedCopies.clear();
   fitState.selectedSlots.clear();
+  fitState.selectedDroneSlots.clear();
 }
 
 function refreshReturnSelectionButton() {
@@ -2579,6 +2784,8 @@ function selectedInventoryItemIds() {
 
 function clearFitDropHighlights() {
   document.querySelectorAll("#fitCard .fitSlotGroup.dragCompatible").forEach((group) => group.classList.remove("dragCompatible"));
+  document.querySelectorAll("#fitCard .droneFitSlot.dragCompatible").forEach((slot) => slot.classList.remove("dragCompatible"));
+  document.querySelectorAll("#fitCard .droneFitSlot.dragging").forEach((slot) => slot.classList.remove("dragging"));
 }
 
 function updateFitDropHighlights() {
@@ -2596,23 +2803,27 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
   if (!selected.length) return 0;
 
   if (fitState.section === "drones") {
-    let added = 0;
+    const fresh = getCurrentUserFull();
+    if (!fresh) return 0;
+    const fits = [];
     for (const itemId of selected) {
       const moduleType = findCatalogItem(itemId)?.module?.type;
       if (moduleType !== "laser" && moduleType !== "shield") continue;
-      const fresh = getCurrentUserFull();
-      const drone = fresh?.drones?.items?.find(entry => (entry.fit?.equipment || []).some(value => !value));
+      const drone = fresh.drones?.items?.find(entry => (entry.fit?.equipment || []).some(value => !value));
       if (!drone) break;
       const equipment = [...drone.fit.equipment];
       equipment[equipment.findIndex(value => !value)] = itemId;
-      const saved = saveCurrentUserDroneFit(drone.id, { ...drone.fit, equipment }, fitState.configNo);
-      if (!saved.ok) break;
-      user = saved.user;
-      added++;
+      drone.fit = { ...drone.fit, equipment };
+      fits.push({ droneId: drone.id, fit: drone.fit, configNo: fitState.configNo });
     }
+    const saved = saveCurrentUserDroneFits(fits);
+    if (!saved.ok) return showFitError(saved.error), 0;
+    user = saved.user;
+    const added = saved.applied;
     clearFitSelection();
     showFitError(added ? "" : "Aucun emplacement de drone disponible");
-    renderDroneEquipment();
+    lastAccountUiSignature = accountUiSignature(user);
+    renderDroneEquipment(user);
     renderInventoryPalette();
     return added;
   }
@@ -2629,10 +2840,13 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
 
   if (!preferredSlotType || preferredSlotType === "shipMods") {
     const allModules = Array.isArray(user?.inventory?.shipModules) ? user.inventory.shipModules : [];
+    const hangar = (user?.hangars || []).find((x) => x?.id === fitState.hangarId);
+    const shipFamily = hangar ? getShipFamilyId(hangar.shipId) : null;
     const moduleIds = selected.filter((itemId) => slotTypeForItem(itemId) === "shipMods");
     for (const moduleId of moduleIds) {
       const module = allModules.find((entry) => entry?.id === moduleId);
       if (!module || fitState.draft.shipMods.includes(moduleId)) continue;
+      if (shipFamily && moduleFamilyId(module) !== shipFamily) continue;
       const sameTypeEquipped = fitState.draft.shipMods.some((equippedId) => {
         const equipped = allModules.find((entry) => entry?.id === equippedId);
         return equipped && equipped.type === module.type;
@@ -2691,7 +2905,13 @@ function isItemAllowedInSlot(slotType, itemId) {
   if (!itemId) return true;
 
   if (slotType === "shipMods") {
-    return isRouletteModuleId(itemId);
+    if (!isRouletteModuleId(itemId)) return false;
+    const allModules = Array.isArray(user?.inventory?.shipModules) ? user.inventory.shipModules : [];
+    const module = allModules.find((entry) => entry?.id === itemId);
+    if (!module) return true;
+    const hangar = (user?.hangars || []).find((x) => x?.id === fitState.hangarId);
+    if (!hangar) return true;
+    return moduleFamilyId(module) === getShipFamilyId(hangar.shipId);
   }
 
   const it = findCatalogItem(itemId);
@@ -2744,6 +2964,24 @@ function refreshPresetSelect() {
 
 function resetAllSlots() {
   if (!fitState?.draft) return;
+
+  if (fitState.section === "drones") {
+    const fresh = getCurrentUserFull();
+    if (!fresh) return;
+    const fits = [];
+    for (const drone of fresh.drones?.items || []) {
+      fits.push({ droneId: drone.id, fit: { equipment: [], ability: drone.fit?.ability || null }, configNo: fitState.configNo });
+    }
+    const saved = saveCurrentUserDroneFits(fits);
+    if (!saved.ok) return showFitError(saved.error);
+    user = saved.user;
+    clearFitSelection();
+    showFitError("");
+    lastAccountUiSignature = accountUiSignature(user);
+    renderDroneEquipment(user);
+    renderInventoryPalette();
+    return;
+  }
 
   fitState.draft.lasers = fitState.draft.lasers.map(() => null);
   fitState.draft.gens = fitState.draft.gens.map(() => null);
@@ -2924,14 +3162,17 @@ function renderInventoryPalette() {
           return;
         }
         if (event.shiftKey) {
-          fitState.selectedSlots.clear();
-          grid.querySelectorAll(".invCell:not(.disabled)").forEach((candidate) => {
-            if (candidate.dataset.itemId === e.itemId) {
-              fitState.selectedCopies.set(candidate.dataset.copyKey, candidate.dataset.itemId);
-            }
-          });
-          equipSelectedInventoryItems();
-          return;
+          const copiesOfType = [...fitState.selectedCopies.values()].filter((id) => id === e.itemId).length;
+          const alreadyFullySelected = fitState.selectedCopies.size > 0 && copiesOfType === fitState.selectedCopies.size;
+          clearFitSelection();
+          if (!alreadyFullySelected) {
+            fitState.selectedSlots.clear();
+            grid.querySelectorAll(".invCell:not(.disabled)").forEach((candidate) => {
+              if (candidate.dataset.itemId === e.itemId) {
+                fitState.selectedCopies.set(candidate.dataset.copyKey, candidate.dataset.itemId);
+              }
+            });
+          }
         } else if (event.ctrlKey || event.metaKey) {
           fitState.selectedSlots.clear();
           if (fitState.selectedCopies.has(copyKey)) fitState.selectedCopies.delete(copyKey);
@@ -3031,11 +3272,15 @@ function renderSlots() {
     cell.classList.toggle("selected", fitState.selectedSlots.has(slotKey));
     cell.addEventListener("click", (event) => {
       if (event.shiftKey) {
+        const matched = [...fitState.selectedSlots.values()].filter((id) => id === itemId).length;
+        const alreadyFullySelected = fitState.selectedSlots.size > 0 && matched === fitState.selectedSlots.size;
         clearFitSelection();
-        for (const currentType of ["lasers", "gens", "extras", "shipMods"]) {
-          fitState.draft[currentType].forEach((currentItemId, currentIndex) => {
-            if (currentItemId === itemId) fitState.selectedSlots.set(`${currentType}#${currentIndex}`, currentItemId);
-          });
+        if (!alreadyFullySelected) {
+          for (const currentType of ["lasers", "gens", "extras", "shipMods"]) {
+            fitState.draft[currentType].forEach((currentItemId, currentIndex) => {
+              if (currentItemId === itemId) fitState.selectedSlots.set(`${currentType}#${currentIndex}`, currentItemId);
+            });
+          }
         }
       } else if (event.ctrlKey || event.metaKey) {
         fitState.selectedCopies.clear();
@@ -3347,18 +3592,23 @@ function renderShipModulesList() {
   }
 
   const all = Array.isArray(u?.inventory?.shipModules) ? u.inventory.shipModules : [];
-  const list = all.filter(m => String(m?.shipId) === String(h.shipId));
+  const shipFamily = getShipFamilyId(h.shipId);
+  const list = all.filter(m => moduleFamilyId(m) === shipFamily);
 
   if (!list.length) {
-    root.innerHTML = `<div style="color:var(--fit-muted);font-size:12px;text-align:center;padding:10px;">Aucun module pour ${h.shipId}</div>`;
+    root.innerHTML = `<div style="color:var(--fit-muted);font-size:12px;text-align:center;padding:10px;">Aucun module pour ${getShipFamilyName(shipFamily)}</div>`;
     return;
   }
 
   root.innerHTML = list.slice().reverse().map((m) => {
     const icon = MODULE_ICONS[m.iconKey] || FALLBACK_ICON;
     const equipped = fitState.draft?.shipMods?.includes(m.id);
+    const rarityMeta = moduleRarityMeta(m);
     const bonus = (m.bonuses || [])
-      .map(b => `<strong style="color:#00d9ff;">${b.pct}%</strong> ${formatStatLabel(b.stat)}`)
+      .map(b => {
+        const color = Number(b.pct) < 0 ? "#ff5566" : "#00d9ff";
+        return `<strong style="color:${color};">${b.pct}%</strong> ${formatStatLabel(b.stat)}`;
+      })
       .join(" • ");
 
     return `
@@ -3367,9 +3617,11 @@ function renderShipModulesList() {
         <div style="min-width:0;">
           <div style="font-weight:900; color:#00d9ff;">
             ${String(m.type || "").toUpperCase()}-${String(m.tier || "").toUpperCase()}
+            <span style="margin-left:6px;font-size:11px;color:${rarityMeta.color};">${rarityMeta.name}</span>
           </div>
           <div style="font-size:12px; color:var(--fit-muted); word-break:break-word;">
             ${bonus}
+            <div style="opacity:.55;">${escapeHtml(getShipFamilyName(moduleFamilyId(m)))}</div>
           </div>
         </div>
         ${equipped ? '<span class="shipModEquippedBadge">ÉQUIPÉ</span>' : ""}
@@ -3555,8 +3807,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
     };
   }
 
-  const btnReset = document.getElementById("fitBtnResetAll");
-  if (btnReset) btnReset.onclick = () => resetAllSlots();
+  document.querySelectorAll("#fitBtnResetAll").forEach((btn) => { btn.onclick = () => resetAllSlots(); });
   const btnReturnSelection = document.getElementById("fitBtnReturnSelection");
   if (btnReturnSelection) btnReturnSelection.onclick = returnSelectedEquippedItems;
 

@@ -78,6 +78,9 @@ const fit =
   let bonusShieldPct = 0;
   let bonusHPPct = 0;
   let bonusPenetrationPct = 0;
+  let bonusLaserHitPct = 0;
+  let bonusExpPct = 0;
+  let bonusHonorPct = 0;
   const formationEffects = getActiveDroneFormation(user).effects || {};
 
   const shipModules = Array.isArray(user?.inventory?.shipModules) 
@@ -101,6 +104,9 @@ const fit =
       if (stat === "damage") bonusDamagePct += pct;
       if (stat === "speed") bonusSpeedPct += pct;
       if (stat === "penetration") bonusPenetrationPct += pct;
+      if (stat === "laser_hit") bonusLaserHitPct += pct;
+      if (stat === "exp") bonusExpPct += pct;
+      if (stat === "honor") bonusHonorPct += pct;
     }
   }
 
@@ -109,6 +115,8 @@ const fit =
   bonusHPPct += Number(formationEffects.hpPct || 0);
   bonusSpeedPct += Number(formationEffects.speedPct || 0);
   bonusPenetrationPct += Number(formationEffects.penetrationPct || 0);
+  bonusHonorPct += Number(formationEffects.honorPct || 0);
+  bonusExpPct += Number(formationEffects.npcXpPct || 0);
 
   // Bonus d'ensemble des designs : actifs uniquement si tous les drones portent le même design.
   if (drones.length && drones.every(drone => /havoc|havok/.test(designId(drone)))) bonusDamagePct += 10;
@@ -129,6 +137,9 @@ const fit =
     bonusShield, 
     bonusHPPct,           // % à appliquer sur le HP du ship
     bonusPenetrationPct,  // % absolu de pénétration
+    bonusLaserHitPct,     // % de réduction du taux de MISS du joueur
+    bonusExpPct,          // % d'XP gagné en plus
+    bonusHonorPct,        // % d'honneur gagné en plus
     extras,
     formationEffects,
   };

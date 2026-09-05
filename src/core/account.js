@@ -845,6 +845,27 @@ export function saveCurrentUserDroneFit(droneId, fit, configNo = null) {
   return { ok: true, user: u, drone };
 }
 
+export function saveCurrentUserDroneFits(fits) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  const activeHangar = getActiveHangar(u);
+  let applied = 0;
+  for (const entry of fits ?? []) {
+    const drone = u?.drones?.items?.find((d) => d.id === entry.droneId);
+    const definition = drone ? DRONE_TYPES[drone.type] : null;
+    if (!drone || !definition) continue;
+    const equipment = Array.from({ length: definition.slots }, (_, index) => entry.fit?.equipment?.[index] || null);
+    const cfg = String(Number(entry.configNo ?? activeHangar?.activeConfig) === 2 ? 2 : 1);
+    drone.fits ||= {};
+    drone.fits[cfg] = { equipment, ability: entry.fit?.ability || null };
+    drone.fit = drone.fits[cfg];
+    applied++;
+  }
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, applied };
+}
+
 export function grantCurrentUserDroneExperience(amount) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
@@ -1256,6 +1277,31 @@ export function addShipModule(moduleObj) {
 
   u.inventory.shipModules.push(moduleObj);
   u.inventory.moduleRollHistory.push({ ...moduleObj });
+
+  saveUser(u);
+  writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+
+  return { ok: true, user: u };
+}
+
+// ✅ Reroll : remplace le module précédent (même chaine de rerolls)
+export function replaceShipModule(oldId, newModule) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+
+  ensureUserShape(u);
+
+  if (!newModule || typeof newModule !== "object") {
+    return { ok: false, error: "Module invalide." };
+  }
+
+  if (oldId) {
+    u.inventory.shipModules = u.inventory.shipModules.filter((m) => m?.id !== oldId);
+    u.inventory.moduleRollHistory = u.inventory.moduleRollHistory.filter((h) => h?.id !== oldId);
+  }
+
+  u.inventory.shipModules.push(newModule);
+  u.inventory.moduleRollHistory.push({ ...newModule });
 
   saveUser(u);
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
