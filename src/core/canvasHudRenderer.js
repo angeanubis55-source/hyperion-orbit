@@ -115,7 +115,7 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
   const displayName = playerName || "Pilote";
   const nameY = y + player.r + 90;
   context.strokeText(displayName, x, nameY);
-  context.fillStyle = "rgba(124,240,255,0.95)";
+  context.fillStyle = "rgba(255,255,255,0.95)";
   context.fillText(displayName, x, nameY);
   const textWidth = context.measureText(displayName).width;
   context.imageSmoothingEnabled = false;
