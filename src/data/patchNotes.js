@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "75253117",
+    "message": "ui: pseudo du joueur en blanc (avant: cyan) dans le rendu canvas"
+  },
+  {
     "version": "f1e8c60f",
     "message": "feat: relancer un module à la roulette (prix ×5), expérience drones alignée sur le vaisseau (sélection, drag&drop, retour groupé), Maj=type + re-Maj désélectionne, tout retirer vide aussi les drones, perf fit (sauvegardes batch, refresh unique), bonus modules précision/XP/honneur en vol"
   },

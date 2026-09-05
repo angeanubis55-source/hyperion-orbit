@@ -1,1 +1,1 @@
-export const GAME_VERSION = "f1e8c60f";
+export const GAME_VERSION = "75253117";
