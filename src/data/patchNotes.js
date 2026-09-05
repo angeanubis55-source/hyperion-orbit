@@ -1,12 +1,28 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "c16c9488",
+    "message": "fix: bonus modules XP/honneur dans le log de kill (part formation vs modules), arrondi au supérieur pour ne plus perdre le bonus sur les petites bases (ex. honneur des Streuner)"
+  },
+  {
+    "version": "a173633c",
+    "message": "Synchronise la version du jeu (75253117)"
+  },
+  {
     "version": "75253117",
     "message": "ui: pseudo du joueur en blanc (avant: cyan) dans le rendu canvas"
   },
   {
+    "version": "39d8a34b",
+    "message": "Synchronise la version du jeu (f1e8c60f)"
+  },
+  {
     "version": "f1e8c60f",
     "message": "feat: relancer un module à la roulette (prix ×5), expérience drones alignée sur le vaisseau (sélection, drag&drop, retour groupé), Maj=type + re-Maj désélectionne, tout retirer vide aussi les drones, perf fit (sauvegardes batch, refresh unique), bonus modules précision/XP/honneur en vol"
+  },
+  {
+    "version": "9f27cf62",
+    "message": "Synchronise la version du jeu (e6da6aba)"
   },
   {
     "version": "e6da6aba",
@@ -227,25 +243,5 @@ export const PATCH_NOTES = [
   {
     "version": "9fcf8943",
     "message": "Refonte du rendu du HUD en canvas."
-  },
-  {
-    "version": "7d901451",
-    "message": "Refonte des systèmes de mission, de portail et de radiation."
-  },
-  {
-    "version": "2746c380",
-    "message": "Correction de l'affichage du pseudo."
-  },
-  {
-    "version": "69e64e9c",
-    "message": "Correction du mode mission."
-  },
-  {
-    "version": "f5126d69",
-    "message": "Corrections mineures d'équilibrage."
-  },
-  {
-    "version": "d73e15f6",
-    "message": "Équilibrage : quantité de munitions x2, récompenses des NPC et prix des vaisseaux."
   }
 ];
