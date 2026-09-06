@@ -64,13 +64,8 @@ export function createRadiationSystem(options = {}) {
     if (!ctx || state.edgeFade <= 0.001) return;
     const progress = clamp(state.exposure / config.warningDuration, 0, 1);
     const pulseClock = state.active ? state.exposure : nowSeconds;
-    const pulse = 0.5 + 0.5 * Math.sin(pulseClock * Math.PI * 2.4);
-    const blendRaw = state.active
-      ? clamp((state.exposure - config.warningDuration) / config.visualSettleDuration, 0, 1)
-      : (state.wasDamaging ? 1 : 0);
-    const blend = blendRaw * blendRaw * (3 - 2 * blendRaw);
-    const strength = state.active ? 0.35 + progress * 0.65 : 1;
-    const alpha = ((0.12 + pulse * 0.22) * (1 - blend) + 0.34 * blend) * strength * state.edgeFade;
+    const pulse = 0.5 + 0.5 * Math.sin(pulseClock * Math.PI * 2 * 0.6);
+    const alpha = (0.07 + pulse * 0.13) * state.edgeFade;
     const edge = Math.max(90, Math.min(width, height) * 0.18);
 
     ctx.save();

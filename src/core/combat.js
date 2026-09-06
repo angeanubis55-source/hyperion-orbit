@@ -62,6 +62,7 @@ export function drainShield(target, amount) {
 }
 
 export function damagePlayerLayers(player, amount, shieldAbsorb = 0.8) {
+  if (!player || player.invincibleT > 0) return { total: 0, sh: 0, hp: 0 };
   const reduced = Math.max(0, Number(amount) || 0) * (1 - clamp(Number(player.dr || 0), 0, 1));
   const absorbed = Math.min(Math.max(0, Number(player.sh) || 0), reduced * clamp(shieldAbsorb, 0, 1));
   const hpDamage = reduced - absorbed;

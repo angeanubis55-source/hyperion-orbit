@@ -2454,6 +2454,33 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   z-index:9999;
 }
 
+#deathVeil{
+  position:fixed;
+  inset:0;
+  background:#000;
+  opacity:0;
+  pointer-events:none;
+  z-index:9998;
+  transition:opacity 1.6s ease-in;
+}
+
+#deathVeil.active{ opacity:.65; }
+
+#deathVeil.instant{
+  transition:none;
+  opacity:0;
+}
+
+#respawnOverlay.fadeIn{
+  background:rgba(0,0,0,0);
+  animation:respawnOverlayIn .6s ease-out both;
+}
+
+@keyframes respawnOverlayIn{
+  from{ opacity:0; }
+  to{ opacity:1; }
+}
+
 .modal{
   width:min(860px, calc(100vw - 28px));
   padding:14px;

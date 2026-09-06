@@ -6,9 +6,13 @@ import { hpHueColor } from "./rendering.js";
 export function drawToastMessage(context, toast, viewportWidth, viewportHeight) {
   if (!context || !toast) return;
   const progress = toast.dur === Infinity ? 0 : clamp(toast.t / toast.dur, 0, 1);
-  const alpha = toast.fixed ? clamp(toast.alpha ?? 0, 0, 1) : 1 - progress;
+  let alpha = toast.fixed ? clamp(toast.alpha ?? 0, 0, 1) : 1 - progress;
   const y = viewportHeight * 0.35 + (1 - progress) * 8;
-  const isSafe = toast.fixed && toast.text === "Zone de Non-Agression";
+  const isSafe = toast.fixed && (toast.text === "Zone de Non-Agression" || toast.text === "Vous êtes en zone de radiations");
+  if (toast.pulse) {
+    const puls = 0.55 + 0.45 * Math.sin(performance.now() / 1000 * Math.PI * 2 * 0.6);
+    alpha *= puls;
+  }
   context.save();
   context.globalAlpha = alpha;
   context.textAlign = "center";

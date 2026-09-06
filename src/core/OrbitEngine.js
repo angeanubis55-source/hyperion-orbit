@@ -144,6 +144,7 @@ function playerIsOutsideWorld() {
 }
 
 function applyRadiation(dt) {
+  if ((player.invincibleT || 0) > 0) return;
   const dmg = radiationSystem.update(dt, {
     started,
     dead: player.dead,
@@ -151,6 +152,15 @@ function applyRadiation(dt) {
     hpMax: player.hpMax,
   });
   radiationActive = radiationSystem.state.active;
+  if (radiationActive) {
+    showToastFixed("Vous êtes en zone de radiations", { pulse: true });
+    SFX.loop("radiationLoop", { vol: 0.5, fadeIn: 0.3 });
+  } else {
+    if (toast?.fixed && toast.text === "Vous êtes en zone de radiations") {
+      clearToastFixed();
+    }
+    SFX.stopLoop("radiationLoop", { fadeOut: 0.7 });
+  }
   if (dmg <= 0) return;
   resetRepairCooldown();
   player.hp -= dmg;
@@ -190,6 +200,34 @@ function popRespawnOverride() {
 function showRespawnOverlay(show) {
   if (!ui.respawnOverlay) return;
   ui.respawnOverlay.style.display = show ? "grid" : "none";
+  if (!show) {
+    const veil = document.getElementById("deathVeil");
+    if (veil) {
+      veil.classList.remove("active");
+      veil.classList.add("instant");
+    }
+    ui.respawnOverlay.classList.remove("fadeIn");
+  }
+}
+
+// Séquence de mort : son, voile noir progressif (65 % max), puis le menu de
+// réapparition apparaît en fondu par-dessus le monde assombri.
+function startDeathSequence() {
+  setCenterMsg(false);
+  const veil = document.getElementById("deathVeil");
+  if (veil) {
+    veil.classList.remove("instant");
+    veil.classList.add("active");
+  }
+  setTimeout(() => {
+    showRespawnOverlay(true);
+    const ov = ui.respawnOverlay;
+    if (ov) {
+      ov.classList.remove("fadeIn");
+      void ov.offsetWidth; // relance l'animation de fondu
+      ov.classList.add("fadeIn");
+    }
+  }, 1800);
 }
 
 // ✅ Hangar verrouillé pour CET onglet
@@ -2852,13 +2890,14 @@ ui.gameLogNext?.addEventListener("click", () => {
 });
 void renderGameLog();
 
-function showToastFixed(text) {
+function showToastFixed(text, opts = {}) {
   const value = String(text ?? "");
   if (toast?.fixed && toast.text === value) {
     toast.exiting = false;
+    if (opts.pulse) toast.pulse = true;
     return;
   }
-  toast = { text: value, t: 0, dur: Infinity, fixed: true, alpha: 0, exiting: false };
+  toast = { text: value, t: 0, dur: Infinity, fixed: true, alpha: 0, exiting: false, pulse: !!opts.pulse };
 }
 
 function clearToastFixed() {
@@ -3277,6 +3316,79 @@ function drawPulseFx(ox, oy) {
 }
 
 // ============================================================
+// ✅ INSTA SHIELD - sprite au-dessus du vaisseau (3 s à la réapparition)
+// ============================================================
+const INSTA_SHIELD_PACK = {
+  path: "assets/instaShield/",
+  frames: 64,
+  firstNumber: 1,
+  ext: ".png",
+  dur: 3.0,
+  w: 320,
+  h: 320,
+};
+
+let instaShieldImgs = [];
+let instaShieldReady = false;
+let instaShieldT = -1; // -1 = inactif
+
+function ensureInstaShieldLoaded() {
+  if (INSTA_SHIELD_PACK._promise) return INSTA_SHIELD_PACK._promise;
+
+  INSTA_SHIELD_PACK._imgs = new Array(INSTA_SHIELD_PACK.frames);
+
+  INSTA_SHIELD_PACK._promise = (async () => {
+    const jobs = [];
+    for (let i = 0; i < INSTA_SHIELD_PACK.frames; i++) {
+      const src = `${INSTA_SHIELD_PACK.path}${INSTA_SHIELD_PACK.firstNumber + i}${INSTA_SHIELD_PACK.ext}`;
+      jobs.push(
+        loadImage(src, { priority: false })
+          .then((img) => (INSTA_SHIELD_PACK._imgs[i] = img))
+          .catch(() => (INSTA_SHIELD_PACK._imgs[i] = null))
+      );
+    }
+    await Promise.all(jobs);
+    instaShieldImgs = INSTA_SHIELD_PACK._imgs;
+    instaShieldReady = true;
+  })();
+
+  return INSTA_SHIELD_PACK._promise;
+}
+
+// Lance le bouclier + invincibilité de 3 s à la réapparition du joueur.
+function startRespawnInstaShield() {
+  instaShieldT = 0;
+  player.invincibleT = INSTA_SHIELD_PACK.dur;
+  ensureInstaShieldLoaded();
+}
+
+function tickInstaShield(dt) {
+  if (instaShieldT < 0) return;
+  instaShieldT += dt;
+  if (instaShieldT >= INSTA_SHIELD_PACK.dur) instaShieldT = -1;
+}
+
+// Dessiné par-dessus le vaisseau ET toute autre effet de vaisseau.
+function drawInstaShield() {
+  if (instaShieldT < 0 || !instaShieldReady || !instaShieldImgs?.length) return;
+
+  const frames = INSTA_SHIELD_PACK.frames || instaShieldImgs.length;
+  const idx = Math.min(frames - 1, Math.floor((instaShieldT / INSTA_SHIELD_PACK.dur) * frames));
+  const img = instaShieldImgs[idx];
+  if (!isImgReady(img)) return;
+
+  const w = INSTA_SHIELD_PACK.w;
+  const h = INSTA_SHIELD_PACK.h;
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.globalAlpha = 1;
+  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
+// ============================================================
 // ✅ REPAIR ORBIT FX - sprite qui tourne autour du vaisseau
 // ============================================================
 const DEFAULT_REPAIR_ORBIT_SPR = {
@@ -3293,8 +3405,8 @@ scale: 1,
 // ✅ position fixe par rapport au vaisseau
 // négatif en X = gauche
 // négatif en Y = haut
-xOff: -25,
-yOff: -25,
+xOff: -65,
+yOff: -65,
 
 // ✅ plus de rotation autour du vaisseau
 radius: 0,
@@ -3315,6 +3427,16 @@ let repairOrbitReady = false;
 const repairOrbitFx = {
   t: 0,
   alpha: 0,
+  fx: 1,
+  fy: 1,
+  x: -65,
+  y: -65,
+  tx: -65,
+  ty: -65,
+  rot: 0,
+  tRot: 0,
+  cornerT: 0,
+  prevActive: false,
 };
 
 function getRepairOrbitFrameSrc(pack, index) {
@@ -3370,19 +3492,52 @@ function isRepairingNow() {
   return needHp || needSh;
 }
 
+// Rotation du robot selon son coin (référence) :
+// haut gauche = 0°, haut droite = 90° (droite), bas gauche = -90° (gauche), bas droite = 180°.
+function repairOrbitCornerRot(fx = repairOrbitFx.fx, fy = repairOrbitFx.fy) {
+  if (fx === -1 && fy === 1) return Math.PI / 2;
+  if (fx === 1 && fy === -1) return -Math.PI / 2;
+  if (fx === -1 && fy === -1) return Math.PI;
+  return 0;
+}
+
 function tickRepairOrbitFx(dt) {
   const active = isRepairingNow();
 
   if (active) {
     repairOrbitFx.t += dt;
     repairOrbitFx.alpha = Math.min(1, repairOrbitFx.alpha + dt * 5);
+
+    // Repioche un coin toutes les 1 s (peut être le même ou un autre).
+    if (!repairOrbitFx.prevActive || repairOrbitFx.cornerT >= 1) {
+      repairOrbitFx.cornerT = 0;
+      repairOrbitFx.fx = Math.random() < 0.5 ? -1 : 1;
+      repairOrbitFx.fy = Math.random() < 0.5 ? -1 : 1;
+      const px = Number(REPAIR_ORBIT_PACK.xOff ?? -45);
+      const py = Number(REPAIR_ORBIT_PACK.yOff ?? -45);
+      repairOrbitFx.tx = px * repairOrbitFx.fx;
+      repairOrbitFx.ty = py * repairOrbitFx.fy;
+      repairOrbitFx.tRot = repairOrbitCornerRot(repairOrbitFx.fx, repairOrbitFx.fy);
+    }
+    repairOrbitFx.cornerT += dt;
+
+    // Lissage vers la cible : mouvement visible, sans cassure.
+    const k = 1 - Math.pow(0.0001, dt);
+    repairOrbitFx.x += (repairOrbitFx.tx - repairOrbitFx.x) * k;
+    repairOrbitFx.y += (repairOrbitFx.ty - repairOrbitFx.y) * k;
+    let dRot = repairOrbitFx.tRot - repairOrbitFx.rot;
+    dRot = Math.atan2(Math.sin(dRot), Math.cos(dRot));
+    repairOrbitFx.rot += dRot * k;
   } else {
     repairOrbitFx.alpha = Math.max(0, repairOrbitFx.alpha - dt * 8);
+    repairOrbitFx.cornerT = 0;
 
     if (repairOrbitFx.alpha <= 0) {
       repairOrbitFx.t = 0;
     }
   }
+
+  repairOrbitFx.prevActive = active;
 }
 
 function drawRepairOrbitFxLocal() {
@@ -3399,8 +3554,8 @@ function drawRepairOrbitFxLocal() {
 
   if (!isImgReady(img)) return;
 
-const x = Number(pack.xOff ?? -45);
-const y = Number(pack.yOff ?? -45);
+const x = repairOrbitFx.x;
+const y = repairOrbitFx.y;
 
 const spinSpeed = Number(pack.spinSpeed ?? 0);
 
@@ -3409,6 +3564,9 @@ const h = (pack.h || img.naturalHeight || img.height || 96) * (pack.scale || 1);
 
 ctx.save();
 ctx.translate(x, y);
+
+// ✅ rotation selon le coin (lissée) + rotation optionnelle du sprite sur lui-même
+ctx.rotate(repairOrbitFx.rot);
 
 // ✅ rotation optionnelle du sprite sur lui-même
 if (spinSpeed !== 0) {
@@ -3421,6 +3579,52 @@ if (spinSpeed !== 0) {
   ctx.globalAlpha *= repairOrbitFx.alpha * Number(pack.alpha ?? 1);
 
   drawCenteredImage(ctx, img, w, h);
+
+  ctx.restore();
+}
+
+// ✅ Éclair vert venant uniquement du coin où se trouve le robot, en direction du vaisseau.
+function drawRepairBolts() {
+  if (repairOrbitFx.alpha <= 0.01) return;
+
+  const pack = REPAIR_ORBIT_PACK;
+  const cx = repairOrbitFx.x;
+  const cy = repairOrbitFx.y;
+
+  const t = performance.now() / 1000;
+  const alpha = repairOrbitFx.alpha * Number(pack.alpha ?? 1);
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = "rgba(80,255,140,0.9)";
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.shadowColor = "rgba(80,255,140,0.95)";
+  ctx.shadowBlur = 10;
+
+  const m = Math.hypot(cx, cy) || 1;
+  const tx = cx - (cx / m) * (player.r + 16);
+  const ty = cy - (cy / m) * (player.r + 16);
+  const segs = 5;
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  for (let i = 1; i < segs; i++) {
+    const f = i / segs;
+    const ix = cx + (tx - cx) * f;
+    const iy = cy + (ty - cy) * f;
+    const jx = (
+      Math.sin(t * 46 + i * 9.3 + cx * 0.35) * 0.5 +
+      Math.sin(t * 71 + i * 5.1 + cy * 0.29) * 0.5
+    ) * 12 * f;
+    const jy = (
+      Math.cos(t * 42 + i * 7.7 + cy * 0.31) * 0.5 +
+      Math.cos(t * 64 + i * 11.3 + cx * 0.27) * 0.5
+    ) * 12 * f;
+    ctx.lineTo(ix + jx, iy + jy);
+  }
+  ctx.lineTo(tx, ty);
+  ctx.stroke();
 
   ctx.restore();
 }
@@ -3528,6 +3732,7 @@ function drawExplosions(ox, oy) {
 // BASE / PLAYER
 // ============================================================
 const REPAIR = { cooldown: 6.0, ratePct: 0.05, tickInterval: 0.5 };
+let repairSoundActive = false;
 
 const BASE_RUN = {
   range: 700,
@@ -3860,20 +4065,38 @@ if (ui.btnSAB) {
 // ============================================================
 // Repair
 // ============================================================
+function stopRepairSound({ fadeOut = 0 } = {}) {
+  if (!repairSoundActive) return;
+  repairSoundActive = false;
+  SFX.stopLoop("repairLoop", { fadeOut });
+}
+
 function resetRepairCooldown() {
   player.repairT = 0;
   player.repairTickT = 0;
+  stopRepairSound({ fadeOut: 0 });
 }
 
 function tickRepair(dt) {
   if (player.dead) {
     player.repairTickT = 0;
+    stopRepairSound({ fadeOut: 0 });
     return;
   }
 
   const previousRepairT = player.repairT;
   player.repairT = Math.min(REPAIR.cooldown, player.repairT + dt);
   if (player.repairT < REPAIR.cooldown) return;
+
+  // Transition vers la phase de réparation : son "Repair Start" puis boucle "Repair".
+  if (previousRepairT < REPAIR.cooldown) {
+    const needs = player.hp < player.hpMax - 0.01 || player.sh < player.shMax - 0.01;
+    if (needs) {
+      SFX.play("repairStart", { vol: 0.7 });
+      repairSoundActive = true;
+      SFX.loop("repairLoop", { vol: 0.6, fadeIn: 0.25 });
+    }
+  }
 
   const repairingDt = previousRepairT >= REPAIR.cooldown
     ? dt
@@ -3887,6 +4110,10 @@ function tickRepair(dt) {
   const oldSh = player.sh;
   player.hp = Math.min(player.hpMax, player.hp + player.hpMax * REPAIR.ratePct * REPAIR.tickInterval * tickCount);
   player.sh = Math.min(player.shMax, player.sh + player.shMax * REPAIR.ratePct * REPAIR.tickInterval * tickCount);
+
+  if (player.hp >= player.hpMax - 0.01 && player.sh >= player.shMax - 0.01) {
+    stopRepairSound({ fadeOut: 0 });
+  }
 
   const hpGain = Math.round(player.hp - oldHp);
   const shGain = Math.round(player.sh - oldSh);
@@ -6180,7 +6407,7 @@ e._pendingSpawn = Math.floor(rand(30, 80)); // ✅ entre 30 et 150 Protegit
 }
 
 function hurtPlayer(amount) {
-  if (player.dead || player.iFrames > 0) return;
+  if (player.dead || player.iFrames > 0 || (player.invincibleT || 0) > 0) return;
 
   resetRepairCooldown();
   player.iFrames = 0.1;
@@ -6627,6 +6854,7 @@ function usePulse() {
   player.credits -= PULSE_COST;
   pulseCd = PULSE_COOLDOWN;
   spawnPulseFx(player.x, player.y, 1, true);
+  SFX.play("pulseIEM", { vol: 0.6 });
 
   markProgressDirty();
 
@@ -6830,7 +7058,8 @@ const PLAYER_SHOT_SFX = {
   x2: "pShotX2", 
   x3: "pShotX3", 
   x4: "pShotX4", 
-  x6: "pShotX4" 
+  x6: "pShotX6", 
+  sab: "pShotSab" 
 };
 
 function playPlayerShot(ammoKey) {
@@ -7576,6 +7805,17 @@ function die() {
   player.dead = true;
   player.vx = player.vy = 0;
 
+  // Coupe immédiatement l'effet de radiation (son, glow rouge + texte pulsé) à la mort.
+  radiationSystem.reset();
+  radiationActive = false;
+  SFX.stopLoop("radiationLoop", { fadeOut: 0 });
+  repairSoundActive = false;
+  SFX.stop("repairStart");
+  SFX.stopLoop("repairLoop", { fadeOut: 0 });
+  if (toast?.fixed && toast.text === "Vous êtes en zone de radiations") toast = null;
+
+  SFX.crossfade("deathPlayer", "deathPlayer2", { vol: 0.8, crossAt: 0.2 });
+
   lastDeathPos.x = player.x;
   lastDeathPos.y = player.y;
   lastDeathPos.map = window.__CURRENT_MAP_ID__ || "1-1";
@@ -7609,8 +7849,7 @@ function die() {
   }
 
   if (isZoneMap) {
-    setCenterMsg(false);
-    showRespawnOverlay(true);
+    startDeathSequence();
     return;
   }
 
@@ -7635,6 +7874,10 @@ function respawnBaseGate() {
   const targetMap = getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__, { gate: true });
   const baseSpawn = getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction);
   setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn, respawn: true });
+  SFX.stop("deathPlayer");
+  SFX.stop("deathPlayer2");
+  SFX.play("respawnPlayer", { vol: 0.8 });
+  startRespawnInstaShield();
 
   const cur = window.__CURRENT_MAP_ID__ || "1-1";
 
@@ -7646,20 +7889,32 @@ function respawnBaseGate() {
   resetRun({ randomSpawn: false });
 }
 
+// À la réapparition choisie, le menu et le voile noir disparaissent instantanément,
+// le son de réapparition joue, puis le respawn s'enchaîne directement.
+function startRespawn(action) {
+  SFX.stop("deathPlayer");
+  SFX.stop("deathPlayer2");
+  SFX.play("respawnPlayer", { vol: 0.8 });
+  if (toast?.fixed && toast.text === "Vous êtes en zone de radiations") toast = null;
+  showRespawnOverlay(false);
+  setCenterMsg(false);
+  action();
+  startRespawnInstaShield();
+}
+
 function respawnBase() {
   const targetMap = getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, lastDeathPos.map || window.__CURRENT_MAP_ID__);
   const baseSpawn = getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction);
   setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn, respawn: true });
-  showRespawnOverlay(false);
-  setCenterMsg(false);
+  startRespawn(() => {
+    const cur = window.__CURRENT_MAP_ID__ || "1-1";
+    if (typeof window.__GO_TO_MAP__ === "function" && String(cur) !== targetMap) {
+      window.__GO_TO_MAP__(targetMap);
+      return;
+    }
 
-  const cur = window.__CURRENT_MAP_ID__ || "1-1";
-  if (typeof window.__GO_TO_MAP__ === "function" && String(cur) !== targetMap) {
-    window.__GO_TO_MAP__(targetMap);
-    return;
-  }
-
-  resetRun({ randomSpawn: false });
+    resetRun({ randomSpawn: false });
+  });
 }
 
 function respawnNearestPortal() {
@@ -7672,9 +7927,9 @@ function respawnNearestPortal() {
   }
 
   setRespawnOverride({ map: curMap, x: p.x, y: p.y, respawn: true });
-  showRespawnOverlay(false);
-  setCenterMsg(false);
-  resetRun({ randomSpawn: false });
+  startRespawn(() => {
+    resetRun({ randomSpawn: false });
+  });
 }
 
 function respawnHere() {
@@ -7687,9 +7942,9 @@ function respawnHere() {
     respawn: true,
   });
 
-  showRespawnOverlay(false);
-  setCenterMsg(false);
-  resetRun({ randomSpawn: false });
+  startRespawn(() => {
+    resetRun({ randomSpawn: false });
+  });
 }
 
 function respawn() {
@@ -8889,6 +9144,7 @@ function update(dt) {
   rebuildEnemyIndex();
   player.combatT = Math.max(0, (player.combatT || 0) - dt);
   player.attackedT = Math.max(0, (player.attackedT || 0) - dt);
+  player.invincibleT = Math.max(0, (player.invincibleT || 0) - dt);
 
   fireCooldown = Math.max(0, fireCooldown - dt);
   laserCd = Math.max(0, laserCd - dt);
@@ -8904,6 +9160,7 @@ function update(dt) {
   tickVolleyFloats(dt);
   tickExplosions(dt);
   tickPulseFx(dt);
+  tickInstaShield(dt);
 
   for (let i = lasers.length - 1; i >= 0; i--) {
     lasers[i].t += dt;
@@ -9057,11 +9314,9 @@ updatePlayerVelocity(player, { x: mx, y: my }, dt);
         }
       }
 
-      if (radiationActive) {
-        showToastFixed("☢ RADIATIONS ☢");
-      } else if (safeZoneActive) {
+      if (safeZoneActive) {
         showToastFixed("Zone de Non-Agression");
-      } else {
+      } else if (toast?.fixed && toast.text === "Zone de Non-Agression") {
         clearToastFixed();
       }
 
@@ -9089,10 +9344,10 @@ if (
       if (inModules && baseProvidesSafety()) {
         safeZoneActive = (player.combatT <= 0 && !attackActive);
         if (safeZoneActive) showToastFixed("Zone de Non-Agression");
-        else clearToastFixed();
+        else if (toast?.fixed && toast.text === "Zone de Non-Agression") clearToastFixed();
       } else {
         safeZoneActive = false;
-        clearToastFixed();
+        if (toast?.fixed && toast.text === "Zone de Non-Agression") clearToastFixed();
       }
 for (const ptl of zonePortals) {
   if (ptl.jumping) continue;
@@ -9104,7 +9359,7 @@ for (const ptl of zonePortals) {
     }
   } else {
     safeZoneActive = false;
-    clearToastFixed();
+    if (toast?.fixed && toast.text === "Zone de Non-Agression") clearToastFixed();
   }
 
   const tAim = Target.get();
@@ -10001,6 +10256,12 @@ if (GAME_SETTINGS.textures) {
 
     // ✅ FX réparation par-dessus le vaisseau
     drawRepairOrbitFxLocal();
+
+    // ✅ Éclairs verts des 4 coins vers le vaisseau (pendant la réparation)
+    drawRepairBolts();
+
+    // ✅ Insta shield : au-dessus du vaisseau et de tout autre effet (3 s)
+    drawInstaShield();
 
     ctx.restore();
     ctx.globalAlpha = 1;
