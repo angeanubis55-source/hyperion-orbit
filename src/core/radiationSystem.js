@@ -4,9 +4,11 @@ import { clamp } from "./collision.js";
 
 export function createRadiationSystem(options = {}) {
   const config = {
-    dpsPct: Math.max(0, Number(options.dpsPct ?? 0.10)),
     warningDuration: Math.max(0, Number(options.warningDuration ?? 5)),
     tickInterval: Math.max(0.05, Number(options.tickInterval ?? 0.5)),
+    minPct: Math.max(0, Number(options.minPct ?? 0.01)),
+    maxPct: Math.max(0, Number(options.maxPct ?? 0.05)),
+    scaleDepth: Math.max(1, Number(options.scaleDepth ?? 2000)),
     visualSettleDuration: Math.max(0.05, Number(options.visualSettleDuration ?? 1)),
     fadeInSpeed: Math.max(0.01, Number(options.fadeInSpeed ?? 2.4)),
     fadeOutSpeed: Math.max(0.01, Number(options.fadeOutSpeed ?? 0.85)),
@@ -18,6 +20,7 @@ export function createRadiationSystem(options = {}) {
     edgeFade: 0,
     wasDamaging: false,
     tickAccumulator: 0,
+    pct: 0,
   };
 
   function reset() {
@@ -26,6 +29,7 @@ export function createRadiationSystem(options = {}) {
     state.edgeFade = 0;
     state.wasDamaging = false;
     state.tickAccumulator = 0;
+    state.pct = 0;
   }
 
   function update(dt, context = {}) {
@@ -41,9 +45,15 @@ export function createRadiationSystem(options = {}) {
     if (!state.active) {
       state.exposure = 0;
       state.tickAccumulator = 0;
+      state.pct = 0;
       if (state.edgeFade <= 0) state.wasDamaging = false;
       return 0;
     }
+
+    // Le pourcentage augmente avec la distance au point de retour (bord de carte).
+    const depth = Math.max(0, Number(context.depth) || 0);
+    const depthT = clamp(depth / config.scaleDepth, 0, 1);
+    state.pct = config.minPct + (config.maxPct - config.minPct) * depthT;
 
     const previousExposure = state.exposure;
     state.exposure += dt;
@@ -55,7 +65,7 @@ export function createRadiationSystem(options = {}) {
     if (tickCount <= 0) return 0;
     state.tickAccumulator -= tickCount * config.tickInterval;
     return Math.max(0, Number(context.hpMax) || 0)
-      * config.dpsPct
+      * state.pct
       * config.tickInterval
       * tickCount;
   }

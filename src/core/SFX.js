@@ -10,9 +10,10 @@ buffers: Object.create(null),
     active: Object.create(null),
     sources: Object.create(null),
     loops: Object.create(null),
-    enabled: true,
+enabled: true,
     masterVolume: 0.55,
     _preloaded: false,
+    preloaded: null,
 
     init() {
       if (api.ctx) return;
@@ -55,7 +56,7 @@ buffers: Object.create(null),
       api.resume();
       if (!api.ctx) return;
 
-      Promise.all([
+      api.preloaded = Promise.all([
         api.load("pShotX1", "Son/sfx_shot_x1.mp3"),
         api.load("pShotX2", "Son/sfx_shot_x2.mp3"),
         api.load("pShotX3", "Son/sfx_shot_x3.mp3"),
@@ -69,6 +70,16 @@ buffers: Object.create(null),
         api.load("radiationLoop", "Son/Radiation.mp3"),
         api.load("repairStart", "Son/Repair_start.mp3"),
         api.load("repairLoop", "Son/Repair.mp3"),
+        api.load("swReady", "Son/Saut_possible.mp3"),
+        api.load("swJump", "Son/Saut_en_cours.mp3"),
+        api.load("swDone", "Son/Saut_terminee.mp3"),
+        api.load("swDeny", "Son/Saut_impossible.mp3"),
+        api.load("shipMove", "Son/Ship_move.mp3"),
+        api.load("npcDeath", "Son/Mort_autre.mp3"),
+        api.load("collect", "Son/recolte.mp3"),
+        api.load("laserHit1", "Son/LaserHit_1.mp3"),
+        api.load("laserHit2", "Son/LaserHit_2.mp3"),
+        api.load("laserHit3", "Son/Laser_Hit_3.mp3"),
       ]).catch(() => {});
     },
 
@@ -77,11 +88,14 @@ buffers: Object.create(null),
       const buf = api.buffers[name];
       if (!buf) return;
 
-      const { vol = 1, rate = 1, detune = 0, cooldown = 0, maxVoices = 4 } = opts;
+      const { vol = 1, rate = 1, detune = 0, cooldown = 0, maxVoices = 4, cut = false } = opts;
       const now = api.ctx.currentTime;
 
       const last = api.last[name] ?? -999;
       if (cooldown && now - last < cooldown) return;
+
+      // ✅ coupe immédiatement l'instance précédente avant de jouer (tirs serrés)
+      if (cut) api.stop(name);
 
       api.active[name] = api.active[name] ?? 0;
       if (api.active[name] >= maxVoices) return;
@@ -100,11 +114,12 @@ buffers: Object.create(null),
       src.connect(g);
       g.connect(api.master);
 
-      (api.sources[name] = api.sources[name] || []).push(src);
+      const node = { src, g };
+      (api.sources[name] = api.sources[name] || []).push(node);
       src.onended = () => {
         const list = api.sources[name];
         if (list) {
-          const i = list.indexOf(src);
+          const i = list.indexOf(node);
           if (i >= 0) list.splice(i, 1);
         }
         api.active[name] = Math.max(0, (api.active[name] || 1) - 1);
@@ -116,59 +131,134 @@ buffers: Object.create(null),
     stop(name) {
       const list = api.sources[name];
       if (!list) return;
-      for (const s of Array.from(list)) {
+      for (const n of Array.from(list)) {
         try {
-          s.onended = null;
-          s.stop();
+          n.src.onended = null;
+          n.src.stop();
         } catch {}
       }
       api.sources[name] = [];
       api.active[name] = 0;
     },
 
-    // Joue un son en boucle (une seule instance gardée). Utilisé pour les ambiances.
+    // Atténue toutes les instances en cours d'un son en fondu, sans coupure.
+    // Ne baisse jamais à 0 : `to` est le volume cible (encore audible par défaut).
+    fadeOut(name, opts = {}) {
+      const list = api.sources[name];
+      if (!list || !list.length) return;
+      const { dur = 0.35, to = 0.35 } = opts;
+      const now = api.ctx.currentTime;
+      for (const n of Array.from(list)) {
+        try {
+          const cur = Math.max(0, n.g.gain.value);
+          n.g.gain.cancelScheduledValues(now);
+          n.g.gain.setValueAtTime(cur, now);
+          n.g.gain.linearRampToValueAtTime(Math.min(cur, to), now + dur);
+        } catch {}
+      }
+      api.active[name] = 0;
+    },
+
+    // Boucle sonore avec crossfade : chaque copie démarre légèrement avant la fin
+    // de la précédente et se fond avec elle, ce qui élimine les coupures
+    // perceptibles au point de boucle des MP3 non bouclables.
+    // Toutes les copies sont identiques : aucune différence audible au démarrage.
     loop(name, opts = {}) {
       if (!api.enabled || !api.ctx) return;
       if (api.loops[name]) return;
       const buf = api.buffers[name];
       if (!buf) return;
 
-      const { vol = 1, rate = 1, fadeIn = 0.3 } = opts;
+      const { vol = 1, rate = 1, fadeIn = 0.3, crossfade = 0.18, instantFirst = false } = opts;
+      const dur = buf.duration;
+      const step = Math.max(0.05, dur - crossfade);
+      const xfade = Math.min(crossfade, step * 0.9);
       const now = api.ctx.currentTime;
 
-      const src = api.ctx.createBufferSource();
-      src.buffer = buf;
-      src.loop = true;
-      src.playbackRate.value = rate;
+      const state = {
+        nodes: [],
+        vol,
+        step,
+        xfade,
+        nextAt: now + Math.max(0.02, fadeIn),
+        fadeOut: 0.3,
+        keeper: null,
+        stopped: false,
+        first: true,
+      };
 
-      const g = api.ctx.createGain();
-      g.gain.setValueAtTime(0, now);
-      g.gain.linearRampToValueAtTime(vol, now + fadeIn);
+      const spawn = (when) => {
+        const src = api.ctx.createBufferSource();
+        src.buffer = buf;
+        src.playbackRate.value = rate;
+        const g = api.ctx.createGain();
+        // ✅ première copie : volume total immédiat (aucun fondu d'entrée)
+        if (state.first && instantFirst) {
+          g.gain.setValueAtTime(vol, when);
+        } else {
+          g.gain.setValueAtTime(0, when);
+          g.gain.linearRampToValueAtTime(vol, when + xfade);
+        }
+        g.gain.setValueAtTime(vol, when + dur - xfade);
+        g.gain.linearRampToValueAtTime(0, when + dur);
+        src.connect(g);
+        g.connect(api.master);
+        src.start(when);
+        src.stop(when + dur + 0.02);
+        const node = { src, g };
+        state.nodes.push(node);
+        state.first = false;
+        src.onended = () => {
+          const i = state.nodes.indexOf(node);
+          if (i >= 0) state.nodes.splice(i, 1);
+        };
+      };
 
-      src.connect(g);
-      g.connect(api.master);
-      src.start(now);
+      api.loops[name] = state;
 
-      api.loops[name] = { src, g, vol };
+      const scheduleAhead = () => {
+        if (api.loops[name] !== state || state.stopped) return;
+        const horizon = api.ctx.currentTime + 8;
+        while (state.nextAt < horizon) {
+          spawn(state.nextAt);
+          state.nextAt += state.step;
+        }
+        state.keeper = window.setTimeout(scheduleAhead, 1000);
+      };
+      scheduleAhead();
     },
 
     // Arrête une boucle, avec fondu de sortie si demandé (0 = coupure instantanée).
     stopLoop(name, opts = {}) {
       const l = api.loops[name];
       if (!l) return;
-      const { fadeOut = 0.3 } = opts;
+      if (l.stopped) return;
+      l.stopped = true;
+
+      if (l.keeper) {
+        clearTimeout(l.keeper);
+        l.keeper = null;
+      }
+
+      const { fadeOut } = opts;
+      const f = Number.isFinite(fadeOut) ? fadeOut : l.fadeOut;
       const now = api.ctx.currentTime;
 
-      try {
-        if (fadeOut > 0) {
-          l.g.gain.cancelScheduledValues(now);
-          l.g.gain.setValueAtTime(l.g.gain.value, now);
-          l.g.gain.linearRampToValueAtTime(0, now + fadeOut);
-          l.src.stop(now + fadeOut + 0.05);
-        } else {
-          l.src.stop();
-        }
-      } catch {}
+      for (const n of l.nodes) {
+        try {
+          if (f > 0) {
+            n.g.gain.cancelScheduledValues(now);
+            n.g.gain.setValueAtTime(Math.max(0, n.g.gain.value), now);
+            n.g.gain.linearRampToValueAtTime(0, now + f);
+          }
+        } catch {}
+      }
+      for (const n of l.nodes) {
+        try {
+          if (f > 0) n.src.stop(now + f + 0.02);
+          else n.src.stop();
+        } catch {}
+      }
 
       delete api.loops[name];
     },
@@ -208,11 +298,12 @@ buffers: Object.create(null),
         gA.gain.linearRampToValueAtTime(0, tCross + fade);
         srcA.start(now);
         srcA.stop(now + durA + 0.05);
-        (api.sources[nameA] = api.sources[nameA] || []).push(srcA);
+        const nodeA = { src: srcA, g: gA };
+        (api.sources[nameA] = api.sources[nameA] || []).push(nodeA);
         srcA.onended = () => {
           const list = api.sources[nameA];
           if (list) {
-            const i = list.indexOf(srcA);
+            const i = list.indexOf(nodeA);
             if (i >= 0) list.splice(i, 1);
           }
           api.active[nameA] = Math.max(0, (api.active[nameA] || 1) - 1);
@@ -226,11 +317,12 @@ buffers: Object.create(null),
         gB.connect(api.master);
         gB.gain.setValueAtTime(vol, tCross);
         srcB.start(tCross);
-        (api.sources[nameB] = api.sources[nameB] || []).push(srcB);
+        const nodeB = { src: srcB, g: gB };
+        (api.sources[nameB] = api.sources[nameB] || []).push(nodeB);
         srcB.onended = () => {
           const list = api.sources[nameB];
           if (list) {
-            const i = list.indexOf(srcB);
+            const i = list.indexOf(nodeB);
             if (i >= 0) list.splice(i, 1);
           }
           api.active[nameB] = Math.max(0, (api.active[nameB] || 1) - 1);

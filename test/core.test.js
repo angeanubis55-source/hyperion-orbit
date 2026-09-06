@@ -89,12 +89,15 @@ test("escapeHtml neutralise le HTML utilisateur", () => {
 });
 
 test("la radiation avertit cinq secondes avant les dégâts et s'efface progressivement", () => {
-  const radiation = createRadiationSystem({ warningDuration: 5, dpsPct: 0.1, tickInterval: 0.5 });
+  const radiation = createRadiationSystem({ warningDuration: 5, tickInterval: 1, scaleDepth: 2000 });
   const context = { started: true, paused: false, dead: false, outside: true, hpMax: 1000 };
   assert.equal(radiation.update(4.9, context), 0);
   assert.ok(radiation.state.edgeFade > 0);
   assert.equal(radiation.update(0.2, context), 0);
-  assert.equal(radiation.update(0.4, context), 50);
+  // tout proche du point de retour (bord de carte) : 1 %
+  assert.equal(radiation.update(1, { ...context, depth: 0 }), 10);
+  // loin du point de retour : jusqu'à 5 %
+  assert.equal(radiation.update(1, { ...context, depth: 2000 }), 50);
 
   const beforeFade = radiation.state.edgeFade;
   radiation.update(0.2, { ...context, outside: false });

@@ -1157,7 +1157,7 @@ export function saveActiveHangarMap(mapId) {
   return { ok: true };
 }
 
-export function saveActiveHangarState(x, y, mapId) {
+export function saveActiveHangarState(x, y, mapId, hpPct, shPct) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
 
@@ -1174,6 +1174,10 @@ export function saveActiveHangarState(x, y, mapId) {
     h.lastMap = String(mapId).toLowerCase();
   }
 
+  // ✅ persiste la vitalité (ratio vie/bouclier) pour la restaurer après un refresh
+  if (Number.isFinite(Number(hpPct))) h.lastHpPct = Math.max(0, Math.min(1, Number(hpPct)));
+  if (Number.isFinite(Number(shPct))) h.lastShPct = Math.max(0, Math.min(1, Number(shPct)));
+
   // La position est sauvegardée périodiquement et ne modifie aucune vue UI.
   saveUser(u, { notify: false });
   return { ok: true };
@@ -1189,6 +1193,8 @@ export function getActiveHangarState() {
   return {
     pos: h.lastPos || null,
     map: h.lastMap || null,
+    hpPct: Number.isFinite(Number(h.lastHpPct)) ? Number(h.lastHpPct) : null,
+    shPct: Number.isFinite(Number(h.lastShPct)) ? Number(h.lastShPct) : null,
   };
 }
 
@@ -1327,11 +1333,16 @@ export function getHangarStateById(hangarId) {
   const h = (u.hangars || []).find(x => x?.id === hangarId) || null;
   if (!h) return { pos: null, map: null };
 
-  return { pos: h.lastPos || null, map: h.lastMap || null };
+  return {
+    pos: h.lastPos || null,
+    map: h.lastMap || null,
+    hpPct: Number.isFinite(Number(h.lastHpPct)) ? Number(h.lastHpPct) : null,
+    shPct: Number.isFinite(Number(h.lastShPct)) ? Number(h.lastShPct) : null,
+  };
 }
 
 // ✅ save état dans un hangar précis (IMPORTANT)
-export function saveHangarStateById(hangarId, x, y, mapId) {
+export function saveHangarStateById(hangarId, x, y, mapId, hpPct, shPct) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
 
@@ -1343,6 +1354,10 @@ export function saveHangarStateById(hangarId, x, y, mapId) {
   if (Number.isFinite(px) && Number.isFinite(py)) h.lastPos = { x: px, y: py };
 
   if (mapId) h.lastMap = String(mapId).toLowerCase();
+
+  // ✅ persiste la vitalité (ratio vie/bouclier) pour la restaurer après un refresh
+  if (Number.isFinite(Number(hpPct))) h.lastHpPct = Math.max(0, Math.min(1, Number(hpPct)));
+  if (Number.isFinite(Number(shPct))) h.lastShPct = Math.max(0, Math.min(1, Number(shPct)));
 
   // Évite un recalcul complet de l'équipement à chaque sauvegarde de position.
   saveUser(u, { notify: false });

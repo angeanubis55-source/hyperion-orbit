@@ -1,16 +1,32 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0dd4dc0d",
+    "message": "Synchronise la version du jeu (61a175fd)"
+  },
+  {
     "version": "61a175fd",
-    "message": "feat: robot réparateur mobile (4 coins, rotation 0°/90°/180°, éclairs verts vers le vaisseau), sons réparation/radiation/insta shield/mort, arrêt net des sons, invincibilité insta shield 3 s"
+    "message": "feat: robot réparateur mobile (4 coins, rotation, éclairs vers le vaisseau), sons réparation/radiation/mort et arrêt sonore net"
+  },
+  {
+    "version": "5084adc2",
+    "message": "Synchronise la version du jeu (76fb2cec)"
   },
   {
     "version": "76fb2cec",
     "message": "assets: ajout de nouveaux sons et effets (ambiance, bouclier, IEM, bombe, roquettes, mort, réapparition...) et mise à jour des tirs existants"
   },
   {
+    "version": "2967f4c0",
+    "message": "Synchronise la version du jeu (129b02ce)"
+  },
+  {
     "version": "129b02ce",
-    "message": "feat: inventaire, réglages et Espace pilote — rareté réelle des objets (vaisseaux, modules, drones, formations, munitions), 'Module(s)' violet avec parenthèses blanches, réglage Marqueur de déplacement, Espace pilote translucide au premier plan, 'Chance de réussite laser', fix infobulle 'Rareté'"
+    "message": "feat: inventaire, réglages et Espace pilote"
+  },
+  {
+    "version": "9bf9e5a7",
+    "message": "Synchronise la version du jeu (c16c9488)"
   },
   {
     "version": "c16c9488",
@@ -223,37 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "ac19a006",
     "message": "Ajustement des prix dans la boutique."
-  },
-  {
-    "version": "f9e56c6d",
-    "message": "Correction des mécaniques des NPC."
-  },
-  {
-    "version": "14ddd489",
-    "message": "Corrections et réglages divers."
-  },
-  {
-    "version": "2fb08037",
-    "message": "Corrections et réglages divers."
-  },
-  {
-    "version": "ae0b70a4",
-    "message": "Ajout des grades et des statistiques de combat des firmes."
-  },
-  {
-    "version": "f157022a",
-    "message": "Ajout des grades et badges de progression de DarkOrbit."
-  },
-  {
-    "version": "b5aa2f64",
-    "message": "Ajout du grade, de l'expérience et de l'honneur, avec corrections."
-  },
-  {
-    "version": "51380ed3",
-    "message": "Refonte du rendu du monde et du système de frames."
-  },
-  {
-    "version": "9fcf8943",
-    "message": "Refonte du rendu du HUD en canvas."
   }
 ];

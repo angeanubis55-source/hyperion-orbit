@@ -131,7 +131,7 @@ function getFactionFallbackSpawn() {
 // ============================================================
 // ✅ Radiation zone (hors limites WORLD)
 // ============================================================
-const radiationSystem = createRadiationSystem();
+const radiationSystem = createRadiationSystem({ tickInterval: 1.0, minPct: 0.01, maxPct: 0.05, scaleDepth: 2000 });
 let radiationActive = false;
 
 function playerIsOutsideWorld() {
@@ -143,23 +143,41 @@ function playerIsOutsideWorld() {
   );
 }
 
+function radiationDepth(x, y) {
+  const dx = x < 0 ? -x : x > WORLD.w ? x - WORLD.w : 0;
+  const dy = y < 0 ? -y : y > WORLD.h ? y - WORLD.h : 0;
+  return Math.hypot(dx, dy);
+}
+
 function applyRadiation(dt) {
   if ((player.invincibleT || 0) > 0) return;
   const dmg = radiationSystem.update(dt, {
     started,
     dead: player.dead,
     outside: playerIsOutsideWorld(),
+    depth: radiationDepth(player.x, player.y),
     hpMax: player.hpMax,
   });
   radiationActive = radiationSystem.state.active;
   if (radiationActive) {
     showToastFixed("Vous êtes en zone de radiations", { pulse: true });
-    SFX.loop("radiationLoop", { vol: 0.5, fadeIn: 0.3 });
+    // ✅ on attend 5 s avant de jouer le son de la zone de radiation
+    if (radiationSoundDelay <= 0 && !SFX.loops["radiationLoop"]) {
+      radiationSoundDelay = 5;
+    }
   } else {
     if (toast?.fixed && toast.text === "Vous êtes en zone de radiations") {
       clearToastFixed();
     }
+    radiationSoundDelay = 0;
     SFX.stopLoop("radiationLoop", { fadeOut: 0.7 });
+  }
+  if (radiationSoundDelay > 0) {
+    radiationSoundDelay -= dt;
+    if (radiationSoundDelay <= 0) {
+      radiationSoundDelay = 0;
+      if (radiationActive) SFX.loop("radiationLoop", { vol: 0.5, fadeIn: 0.3 });
+    }
   }
   if (dmg <= 0) return;
   resetRepairCooldown();
@@ -197,6 +215,99 @@ function popRespawnOverride() {
   }
 }
 
+// ✅ l'état « mort en attente » survit au refresh : si le joueur recharge en
+// étant détruit (zone map, lieu de réapparition pas encore choisi), il reste
+// mort et on rejoue l'animation + le son d'explosion au rechargement.
+function markDeathPending() {
+  try {
+    sessionStorage.setItem(
+      "orbit_death_pending",
+      JSON.stringify({
+        map: window.__CURRENT_MAP_ID__ || "1-1",
+        x: player.x,
+        y: player.y,
+        ts: Date.now(),
+      }),
+    );
+  } catch {}
+}
+
+function clearDeathPending() {
+  try { sessionStorage.removeItem("orbit_death_pending"); } catch {}
+}
+
+// ✅ une mort en attente sur LA carte courante ? (utilisé au boot pour ne pas
+// démarrer en silence : on force un clic DÉPART qui débloque l'audio et laisse
+// le son d'explosion se rejouer automatiquement.)
+function hasPendingDeath() {
+  try {
+    const raw = sessionStorage.getItem("orbit_death_pending");
+    if (!raw) return false;
+    const rec = JSON.parse(raw);
+    return String(rec?.map || "") === String(window.__CURRENT_MAP_ID__ || "1-1");
+  } catch {
+    return false;
+  }
+}
+
+function tryReplayPendingDeath() {
+  try {
+    const raw = sessionStorage.getItem("orbit_death_pending");
+    if (!raw) return false;
+    const rec = JSON.parse(raw);
+    const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
+    if (String(rec?.map || "") !== currentMap) return false;
+
+    player.dead = true;
+    player.hp = 0;
+    player.vx = player.vy = 0;
+    player.x = clamp(Number(rec.x) || player.x, 80, WORLD.w - 80);
+    player.y = clamp(Number(rec.y) || player.y, 80, WORLD.h - 80);
+    lastDeathPos.x = player.x;
+    lastDeathPos.y = player.y;
+    lastDeathPos.map = currentMap;
+
+    // ✅ au boot, les buffers audio ne sont pas encore chargés ET le
+// AudioContext est souvent suspendu par la politique d'autoplay (aucun geste
+// utilisateur). On joue donc le son de mort :
+//  - dès que le préchargement SFX est terminé si le contexte tourne déjà ;
+//  - sinon dès le premier geste qui le reprend (statechange → running),
+//    uniquement si le joueur est toujours mort (pas encore réapparu).
+    let deathSoundPlayed = false;
+    const playDeathSound = () => {
+      if (deathSoundPlayed || !player.dead) return;
+      deathSoundPlayed = true;
+      SFX.crossfade("deathPlayer", "deathPlayer2", { vol: 0.8, crossAt: 0.2 });
+    };
+    const armOnResume = () => {
+      const ctx = SFX.ctx;
+      if (!ctx || ctx.state === "running") {
+        playDeathSound();
+        return;
+      }
+      if (typeof ctx.addEventListener === "function") {
+        const onState = () => {
+          if (ctx.state === "running") {
+            ctx.removeEventListener("statechange", onState);
+            playDeathSound();
+          }
+        };
+        ctx.addEventListener("statechange", onState);
+        // garde-fou : au-delà le joueur a forcément réagi (ou réapparu)
+        window.setTimeout(() => ctx.removeEventListener("statechange", onState), 20000);
+      }
+    };
+    if (SFX.preloaded) SFX.preloaded.then(armOnResume).catch(armOnResume);
+    else armOnResume();
+    triggerDeathShake();
+    startDeathSequence();
+    console.log("[RESPAWN] Mort rejouée après refresh : vous étiez déjà détruit.");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function showRespawnOverlay(show) {
   if (!ui.respawnOverlay) return;
   ui.respawnOverlay.style.display = show ? "grid" : "none";
@@ -212,6 +323,17 @@ function showRespawnOverlay(show) {
 
 // Séquence de mort : son, voile noir progressif (65 % max), puis le menu de
 // réapparition apparaît en fondu par-dessus le monde assombri.
+function updateShipMoveSound() {
+  const moving = started && !player.dead && Math.hypot(player.vx || 0, player.vy || 0) > 5;
+  if (moving && !shipMoveSoundActive) {
+    shipMoveSoundActive = true;
+    SFX.loop("shipMove", { vol: 0.6, rate: 1, fadeIn: 0, instantFirst: true });
+  } else if (!moving && shipMoveSoundActive) {
+    shipMoveSoundActive = false;
+    SFX.stopLoop("shipMove", { fadeOut: 0.3 });
+  }
+}
+
 function startDeathSequence() {
   setCenterMsg(false);
   const veil = document.getElementById("deathVeil");
@@ -1694,10 +1816,17 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
     return false;
   }
 
+  if ((player.portalLockT || 0) > 0) {
+    SFX.play("swDeny", { vol: 0.85 });
+    showToast(`Portail bloqué — attends ${Math.ceil(player.portalLockT)} s après ta mort`, 1.4);
+    return false;
+  }
+
   const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").trim().toLowerCase();
   const combatRestrictedMap = /^[123]-4\.1$/.test(mapId) || mapId === "4-4.123" || mapId === "4-5";
   const combatCooldown = Math.max(Number(player.combatT) || 0, Number(player.attackedT) || 0);
   if (combatRestrictedMap && combatCooldown > 0) {
+    SFX.play("swDeny", { vol: 0.85 });
     showToast(`Portail verrouillé — attends ${Math.ceil(combatCooldown)} s après le combat`, 1.4);
     return false;
   }
@@ -1787,6 +1916,12 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   ptl.jumpT = 0;
   ptl.jumpDur = Math.max(0.1, Number(ptl.jumpDur ?? 2));
 
+  // ✅ verrouille le robot réparateur pendant le saut : cooldown à 0
+  player.repairJumpLock = true;
+  player.repairT = 0;
+  player.repairTickT = 0;
+  stopRepairSound({ fadeOut: 0 });
+
   ptl.jumpMap = ptl.toMap;
   ptl.jumpPortal = ptl.toPortal;
   ptl.jumpTargetReady = false;
@@ -1817,6 +1952,13 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
 
   const destinationMap = String(ptl.jumpMap || ptl.toMap || "inconnue");
   showNotification(`Saut en cours vers la carte ${destinationMap}`, ptl.jumpDur, "info", { goldTerms: [destinationMap] });
+
+  // ✅ "Saut possible" puis 500 ms après → "saut en cours"
+  SFX.play("swReady", { vol: 0.85 });
+  window.setTimeout(() => {
+    SFX.play("swJump", { vol: 0.85 });
+  }, 500);
+
   return true;
 }
 
@@ -2183,11 +2325,13 @@ function saveProgressNow() {
   stats: { ...(account.user.stats || {}) },
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
   drones: account.user.drones,
-  hangarState: !player.dead && started ? {
+hangarState: !player.dead && started ? {
     id: SESSION_HANGAR_ID || null,
     x: player.x,
     y: player.y,
     mapId: currentMap,
+    hpPct: savedHpPct(),
+    shPct: savedShPct(),
   } : null,
 
   // ⚠️ Ne pas sauvegarder ship ici non plus.
@@ -2221,15 +2365,23 @@ window.giveHybridAlloy = function giveHybridAlloy(amount = 100) {
   return resources.hybrid_alloy;
 };
 
+function savedHpPct() {
+  return player.hpMax > 0 ? clamp(player.hp / player.hpMax, 0, 1) : null;
+}
+
+function savedShPct() {
+  return player.shMax > 0 ? clamp(player.sh / player.shMax, 0, 1) : null;
+}
+
 function savePositionNow() {
   if (!account.user) return;
   if (player.dead || !started) return;
   
   const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
   if (SESSION_HANGAR_ID) {
-    saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap);
+    saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
   } else {
-    saveActiveHangarState(player.x, player.y, currentMap);
+    saveActiveHangarState(player.x, player.y, currentMap, savedHpPct(), savedShPct());
   }
 }
 
@@ -2918,6 +3070,20 @@ function setCenterMsg(show, title, body, hint) {
 // ============================================================
 const camera = { x: WORLD.w / 2, y: WORLD.h / 2 };
 
+// Tremblement d'écran déclenché à la mort : fort au début, puis amorti
+// très doucement jusqu'au retour à zéro.
+let camShake = null; // { t, dur, max }
+
+function triggerDeathShake() {
+  camShake = { t: 0, dur: 3.2, max: 110 };
+}
+
+function tickCamShake(dt) {
+  if (!camShake) return;
+  camShake.t += dt;
+  if (camShake.t >= camShake.dur) camShake = null;
+}
+
 function screenToWorld(sx, sy) {
   return screenToWorldPoint(sx, sy, camera, innerWidth, innerHeight);
 }
@@ -3380,12 +3546,12 @@ function drawInstaShield() {
   const w = INSTA_SHIELD_PACK.w;
   const h = INSTA_SHIELD_PACK.h;
 
-  ctx.save();
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.globalAlpha = 1;
-  ctx.drawImage(img, -w / 2, -h / 2, w, h);
-  ctx.restore();
+ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.globalAlpha = 1;
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    ctx.restore();
 }
 
 // ============================================================
@@ -3483,7 +3649,7 @@ function ensureRepairOrbitLoaded() {
 }
 
 function isRepairingNow() {
-  if (!started || player.dead) return false;
+  if (!started || player.dead || player.repairJumpLock) return false;
   if (player.repairT < REPAIR.cooldown) return false;
 
   const needHp = player.hp < player.hpMax - 0.5;
@@ -3602,9 +3768,8 @@ function drawRepairBolts() {
   ctx.shadowColor = "rgba(80,255,140,0.95)";
   ctx.shadowBlur = 10;
 
-  const m = Math.hypot(cx, cy) || 1;
-  const tx = cx - (cx / m) * (player.r + 16);
-  const ty = cy - (cy / m) * (player.r + 16);
+  const tx = 0;
+  const ty = 0;
   const segs = 5;
 
   ctx.beginPath();
@@ -3729,10 +3894,132 @@ function drawExplosions(ox, oy) {
 }
 
 // ============================================================
+// ✅ SHIP_DAMAGE FX (sprite, 1x par tir reçu)
+// ============================================================
+const SHIP_DAMAGE_PACK = {
+  path: "assets/Ship_damage/",
+  frames: 9,
+  firstNumber: 1,
+  ext: ".png",
+  fps: 30,
+  w: 320,
+  h: 320,
+  scale: 1,
+};
+
+let shipDamageImgs = [];
+let shipDamageReady = false;
+
+function ensureShipDamageLoaded() {
+  if (SHIP_DAMAGE_PACK._promise) return SHIP_DAMAGE_PACK._promise;
+
+  SHIP_DAMAGE_PACK._imgs = new Array(SHIP_DAMAGE_PACK.frames);
+
+  SHIP_DAMAGE_PACK._promise = (async () => {
+    const jobs = [];
+    for (let i = 0; i < SHIP_DAMAGE_PACK.frames; i++) {
+      const src = `${SHIP_DAMAGE_PACK.path}${SHIP_DAMAGE_PACK.firstNumber + i}${SHIP_DAMAGE_PACK.ext}`;
+      jobs.push(
+        loadImage(src, { priority: false })
+          .then((img) => (SHIP_DAMAGE_PACK._imgs[i] = img))
+          .catch(() => (SHIP_DAMAGE_PACK._imgs[i] = null))
+      );
+    }
+    await Promise.all(jobs);
+
+    shipDamageImgs = SHIP_DAMAGE_PACK._imgs;
+    shipDamageReady = true;
+    return true;
+  })();
+
+  return SHIP_DAMAGE_PACK._promise;
+}
+
+const shipDamages = [];
+
+// ✅ rayon du rond calculé automatiquement d'après la taille du sprite du
+// vaisseau : grande dimension (w ou h) / 6.
+function shipDamageBubbleRadius() {
+  const pack = ACTIVE_SHIP || SHIP_PACKS[0];
+  const w = Number(pack?.w) || 170;
+  const h = Number(pack?.h) || 170;
+  return Math.max(w, h) / 6;
+}
+
+// ✅ le sprite est posé sur la ligne du rond (bord du cercle), à l'angle du
+// tir qui arrive, et orienté "face au tir" (vers le NPC qui nous a touchés).
+// Il est ancré au vaisseau : pendant l'animation il reste donc toujours
+// sur le cercle, même si le joueur continue d'avancer.
+function spawnShipDamage(fromX, fromY) {
+  if (!shipDamageReady || !shipDamageImgs || !shipDamageImgs.length) return;
+
+  const ang = Math.atan2(fromY - player.y, fromX - player.x);
+  const rad = shipDamageBubbleRadius();
+
+  pushBounded(shipDamages, {
+    ang,
+    rad,
+    rot: ang,
+    t: 0,
+    scale: Number(SHIP_DAMAGE_PACK.scale) || 0.4,
+  }, ENTITY_LIMITS.explosions);
+}
+
+function tickShipDamages(dt) {
+  if (!shipDamages.length) return;
+
+  const fps = SHIP_DAMAGE_PACK.fps || 30;
+  const frames = SHIP_DAMAGE_PACK.frames || shipDamageImgs.length || 1;
+  const dur = frames / fps;
+
+  for (let i = shipDamages.length - 1; i >= 0; i--) {
+    const sd = shipDamages[i];
+    sd.t += dt;
+    if (sd.t >= dur) shipDamages.splice(i, 1);
+  }
+}
+
+function drawShipDamages(ox, oy) {
+  if (!shipDamageReady || !shipDamageImgs || !shipDamageImgs.length) return;
+
+  const fps = SHIP_DAMAGE_PACK.fps || 30;
+  const frames = SHIP_DAMAGE_PACK.frames || shipDamageImgs.length || 1;
+
+  for (const sd of shipDamages) {
+    const idx = Math.min(frames - 1, Math.floor(sd.t * fps));
+    const img = shipDamageImgs[idx];
+    if (!isImgReady(img)) continue;
+
+    // ✅ recalculé à chaque frame sur le cercle AUTOUR DU VAISSEAU :
+    // le sprite suit le joueur qui avance au lieu de rester en place.
+    const x = player.x + Math.cos(sd.ang) * sd.rad + ox;
+    const y = player.y + Math.sin(sd.ang) * sd.rad + oy;
+
+    const w = (SHIP_DAMAGE_PACK.w || (img.naturalWidth || img.width || 128)) * sd.scale;
+    const h = (SHIP_DAMAGE_PACK.h || (img.naturalHeight || img.height || 128)) * sd.scale;
+
+    if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > innerWidth || y - h / 2 > innerHeight) continue;
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    // ✅ rotation libre sur 360° : le sprite pointe "à droite" (angle 0) par
+    // défaut ; on le pivote vers l'angle du tir reçu pour qu'il fasse face.
+    ctx.translate(x, y);
+    ctx.rotate(sd.rot || 0);
+    ctx.globalAlpha = 1;
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    ctx.restore();
+  }
+}
+
+// ============================================================
 // BASE / PLAYER
 // ============================================================
-const REPAIR = { cooldown: 6.0, ratePct: 0.05, tickInterval: 0.5 };
+const REPAIR = { cooldown: 6.0, ratePct: 0.05, tickInterval: 1.0 };
 let repairSoundActive = false;
+let shipMoveSoundActive = false;
+let radiationSoundDelay = 0;
 
 const BASE_RUN = {
   range: 700,
@@ -3740,8 +4027,10 @@ const BASE_RUN = {
   kills: 0,
   dr: 0,
   shPen: 0.2,
-  baseFireRate: 2,
+  baseFireRate: 1,
   baseBulletSpeed: 4000,
+  // ✅ +1 px/s de vitesse de tir par px de distance à la cible
+  bulletSpeedDistGain: 1.0,
   fireRateMult: 1.0,
   laserDmgMult: 1.0,
   accel: 3200,
@@ -3760,6 +4049,8 @@ const player = {
   angle: 0,
   combatT: 0,
   attackedT: 0,
+  portalLockT: 0,
+  invincibleT: 0,
 
   hpMax: 0,
   hp: 0,
@@ -3776,6 +4067,10 @@ const player = {
   shPen: 0,
   repairT: REPAIR.cooldown,
   repairTickT: 0,
+  // ✅ verrou pendant le saut : cooldown maintenu à 0, réarmé à l'arrivée
+  repairJumpLock: false,
+  // ✅ au refresh : le cooldown repart de 0 (cold start), puis se désarme
+  repairColdStart: false,
 
   baseDamage: 0,
   baseFireRate: 0,
@@ -3842,11 +4137,19 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
   player.shPen = BASE_RUN.shPen + ((stats.bonusPenetrationPct || 0) / 100);
 
   const shipBaseHP = Number(pack?.hp || 1);
+
+  // ✅ Aucun soin au changement de carte/portail/URL : on garde le même
+  // pourcentage de vie et de bouclier. Seul le robot réparateur régénère.
+  // (Au boot : hpMax=0 → ratio 1 → vie pleine. Après une mort : hp=0 → 1 PV,
+  // puis l'override de résurrection applique sa pénalité de 10 %.)
+  const oldHpPct = player.hpMax > 0 ? clamp(player.hp / player.hpMax, 0, 1) : 1;
+  const oldShPct = player.shMax > 0 ? clamp(player.sh / player.shMax, 0, 1) : 1;
+
   player.hpMax = Math.max(1, Math.floor(shipBaseHP * (1 + (stats.bonusHPPct || 0) / 100)));
-  player.hp = player.hpMax;
+  player.hp = Math.max(1, Math.floor(player.hpMax * oldHpPct));
 
   player.shMax = Math.max(0, Math.floor(Number(stats.bonusShield) || 0));
-  player.sh = player.shMax;
+  player.sh = Math.max(0, Math.floor(player.shMax * oldShPct));
 
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
 
@@ -3865,7 +4168,9 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
 player.accel = BASE_RUN.accel;
 player.friction = BASE_RUN.friction;
 
-  player.repairT = REPAIR.cooldown;
+  if (!player.repairColdStart) {
+    player.repairT = REPAIR.cooldown;
+  }
   player.repairTickT = 0;
   player.altShot = false;
 
@@ -4084,12 +4389,25 @@ function tickRepair(dt) {
     return;
   }
 
+  // ✅ pendant un saut de portail : cooldown bloqué à 0 (le robot ne peut
+  // pas se recharger ni réparer). À l'arrivée (resetRun) il est réarmé
+  // immédiatement et relance sa réparation avec le son.
+  if (player.repairJumpLock) {
+    player.repairT = 0;
+    player.repairTickT = 0;
+    stopRepairSound({ fadeOut: 0 });
+    return;
+  }
+
   const previousRepairT = player.repairT;
   player.repairT = Math.min(REPAIR.cooldown, player.repairT + dt);
   if (player.repairT < REPAIR.cooldown) return;
 
-  // Transition vers la phase de réparation : son "Repair Start" puis boucle "Repair".
-  if (previousRepairT < REPAIR.cooldown) {
+  // ✅ Démarre le son de réparation dès que le robot est actif et "a besoin".
+  // Cas du saut : le cooldown arrive déjà plein (resetPlayerToBase) sans
+  // jamais franchir le seuil → on relance le son au réarmement si la boucle
+  // n'est pas déjà en cours (repairSoundActive).
+  if (!repairSoundActive) {
     const needs = player.hp < player.hpMax - 0.01 || player.sh < player.shMax - 0.01;
     if (needs) {
       SFX.play("repairStart", { vol: 0.7 });
@@ -5108,6 +5426,30 @@ const PLAYER_SHOTS = {
 // Empêche d'afficher MISS deux fois quand le tir visuel a 2 projectiles
 const playerMissVolleysShown = new Set();
 
+// Empêche d'afficher "0" deux fois pour le double tir SAB quand la cible n'a plus de bouclier.
+const sabZeroShown = new Set();
+
+function showSabZeroOnce(b, t) {
+  const key = b.volleyId ?? `solo_${Math.random()}`;
+  if (sabZeroShown.has(key)) return;
+  sabZeroShown.add(key);
+  addFloatText(
+    t.x + (Math.random() - 0.5) * 50,
+    t.y - 70 - Math.random() * 20,
+    0,
+    "rgba(120,180,255,0.85)",
+    {
+      size: 16,
+      pop: 0.25,
+      shake: 0.4,
+      life: 0.7,
+      glow: 0.8,
+      weight: 900,
+      impact: true,
+    }
+  );
+}
+
 function showPlayerMissOnce(b, t) {
   const key = b.volleyId ?? `solo_${Math.random()}`;
 
@@ -5127,6 +5469,7 @@ function cleanupPlayerMissVolley(b) {
   const stillExists = bullets.some(x => x && x.volleyId === b.volleyId);
   if (!stillExists) {
     playerMissVolleysShown.delete(b.volleyId);
+    sabZeroShown.delete(b.volleyId);
   }
 }
 
@@ -5945,6 +6288,7 @@ const isSelected = collectableTargetId === c.id && c.armed === true;
       const rr = player.r + (c.pickupRadius || c.r || 32);
 
       if (dist2(player.x, player.y, c.x, c.y) <= rr * rr) {
+        SFX.play("collect", { vol: 0.45, cut: true, maxVoices: 3 });
         applyCollectableReward(c);
         collectables.splice(i, 1);
       }
@@ -5991,6 +6335,7 @@ player.y = collectY;
 
     // ✅ Attente de 1 seconde avant collecte
     if (c.collectT >= COLLECTABLE_PICKUP.holdDuration) {
+      SFX.play("collect", { vol: 0.45, cut: true, maxVoices: 3 });
       applyCollectableReward(c);
 
       collectableTargetId = null;
@@ -6198,6 +6543,11 @@ const Target = (() => {
 
     if (next !== cur && typeof attackActive !== "undefined" && attackActive) {
       stopAttack();
+    }
+
+    // ✅ changement de cible → cooldown de tir remis à zéro (tir immédiat)
+    if (next !== cur && typeof fireCooldown !== "undefined") {
+      fireCooldown = 0;
     }
 
     cur = next;
@@ -6542,6 +6892,19 @@ function processDeaths() {
     if (e.hp > 0) continue;
 
     spawnExplosion(e.x, e.y, e.isBoss ? 1.6 : 1.0);
+
+    // ✅ atténue tous les sons de laser (toutes munitions) en fondu avant le son de mort
+    SFX.fadeOut("pShotX1", { dur: 0.25, to: 0.3 });
+    SFX.fadeOut("pShotX2", { dur: 0.25, to: 0.3 });
+    SFX.fadeOut("pShotX3", { dur: 0.25, to: 0.3 });
+    SFX.fadeOut("pShotX4", { dur: 0.25, to: 0.3 });
+    SFX.fadeOut("pShotX6", { dur: 0.25, to: 0.3 });
+    SFX.fadeOut("pShotSab", { dur: 0.25, to: 0.3 });
+
+    // ✅ son de mort des NPC — beaucoup d'instances et aucun cooldown :
+    // avec un clip ~6s, un maxVoices bas saturait et les kills rapides
+    // (one-shot + changement de cible) devenaient silencieux.
+    SFX.play("npcDeath", { vol: 0.8, maxVoices: 16, cooldown: 0 });
 
 let dropType = "Cargo_Box";
 
@@ -7005,19 +7368,45 @@ function startAttack(ammoOverride = null) {
     return;
   }
 
-  if (ammoOverride) setAmmo(ammoOverride);
-
-  if (attackActive && ammoOverride) return;
-
-  if (attackActive) {
-    stopAttack();
+  if (!ammoOverride) {
+    if (attackActive) {
+      stopAttack();
+      return;
+    }
+    if (player.dead || !started) return;
+    const t = Target.get();
+    if (!t) return;
+    attackActive = true;
+    tryFireOnce(null, true);
     return;
   }
+
+  // ✅ changement de munition :
+  const switchingToX6 = ammoOverride === "x6";
+
+  if (attackActive && switchingToX6) {
+    // le X6 a son propre rythme (12 tirs / 83 ms) : on coupe la salve en cours.
+    clearPendingSalvo();
+  } else if (attackActive && !switchingToX6) {
+    // ✅ entre munitions standard : les faux tirs (en attente et déjà en vol)
+    // deviennent instantanément la nouvelle munition, sans perdre leur cadence
+    // (on ne repart pas d'un nouveau vrai tir pour relancer la salve).
+    reskinSalvo(ammoOverride);
+  }
+
+  if (ammoOverride) setAmmo(ammoOverride);
 
   if (player.dead || !started) return;
 
   const t = Target.get();
   if (!t) return;
+
+  // ✅ X6 indisponible : l'attaque reste active mais visuellement rien ne
+  // part jusqu'à la fin du cooldown, où la salve X6 se déclenche d'elle-même.
+  if (switchingToX6 && rsbCooldown > 0) {
+    attackActive = true;
+    return;
+  }
 
   attackActive = true;
   tryFireOnce(null, true);
@@ -7025,6 +7414,7 @@ function startAttack(ammoOverride = null) {
 
 function stopAttack() {
   attackActive = false;
+  clearPendingSalvo();
 }
 
 function toggleAttack() {
@@ -7045,6 +7435,13 @@ function tickAutoAttack(dt) {
   const d2 = dist2(player.x, player.y, t.x, t.y);
   if (d2 > playerRange * playerRange) return;
 
+  const ammoKey = player.ammo.active || "x1";
+  // ✅ la salve X6 suit son propre cooldown (5 s), indépendant du laser standard.
+  if (ammoKey === "x6") {
+    if (rsbCooldown <= 0) tryFireOnce(null, true);
+    return;
+  }
+
   if (fireCooldown <= 0) {
     tryFireOnce(null, true);
   }
@@ -7064,7 +7461,24 @@ const PLAYER_SHOT_SFX = {
 
 function playPlayerShot(ammoKey) {
   const id = PLAYER_SHOT_SFX[ammoKey] || PLAYER_SHOT_SFX.x1;
-  SFX.play(id, { vol: 0.28, rate: 0.98 + Math.random() * 0.04, cooldown: 0.02, maxVoices: 2 });
+  const isX6 = ammoKey === "x6";
+  // ✅ hors X6 : on alterne entre son standard, légèrement plus aigu et
+  // légèrement plus grave pour casser la monotonie.
+  const RATE_VARIANTS = [0.9, 1.0, 1.1];
+  const rate = isX6
+    ? 0.98 + Math.random() * 0.04
+    : RATE_VARIANTS[Math.floor(Math.random() * RATE_VARIANTS.length)];
+  SFX.play(id, { vol: 0.28, rate, cooldown: 0.01, cut: true });
+}
+
+// ✅ quand un vrai tir touche sa cible (dégâts, sans dégâts ou MISS),
+// on joue aléatoirement un des 3 sons "laser hit".
+const PLAYER_LASER_HIT_SFX = ["laserHit1", "laserHit2", "laserHit3"];
+const PLAYER_LASER_HIT_VOL = 0.4;
+
+function playPlayerLaserHit() {
+  const id = PLAYER_LASER_HIT_SFX[Math.floor(Math.random() * PLAYER_LASER_HIT_SFX.length)];
+  SFX.play(id, { vol: PLAYER_LASER_HIT_VOL, cooldown: 0.04, maxVoices: 4 });
 }
 
 let fireCooldown = 0;
@@ -7087,6 +7501,81 @@ function getEnemyById(id) {
 let volleySeq = 1;
 const VOLLEY_FLOAT_TIMEOUT = 0.08;
 const pendingVolleys = new Map();
+
+// ✅ éclatement temporel de la salve (purement visuel) :
+// les éclairs de la salve sont espacés sur la durée d'un tir.
+// Chaque entrée stocke les infos du tir (cible, formes, balistiques) :
+// au moment du spawn, la munition utilisée est celle ACTIVE, ce qui permet
+// de "reskinner" instantanément les faux tirs pendant un changement d'ammo.
+const pendingSalvo = [];
+
+function clearPendingSalvo() {
+  pendingSalvo.length = 0;
+}
+
+function scheduleSalvoPart(delay, entry) {
+  if (delay <= 0) {
+    spawnSalvoDecoy(entry);
+    return;
+  }
+  pendingSalvo.push({ t: delay, ...entry });
+}
+
+function spawnSalvoDecoy(e) {
+  // ✅ la salve s'arrête si la cible n'existe plus (NPC mort)
+  const t2 = getEnemyById(e.targetId);
+  if (!t2) return;
+  // ✅ recalcule la position de départ depuis le vaisseau au moment du tir
+  // (le joueur a pu bouger entre le début et la fin de la salve)
+  const ang2 = Math.atan2(t2.y - player.y, t2.x - player.x);
+  const fx2 = Math.cos(ang2), fy2 = Math.sin(ang2);
+  const px2 = -fy2, py2 = fx2;
+  const muzzle2X = player.x + fx2 * (player.r + 10);
+  const muzzle2Y = player.y + fy2 * (player.r + 10);
+  // ✅ munition active au moment du tir : si on a switché entre-temps,
+  // le faux tir devient instantanément la nouvelle munition.
+  const key = player.ammo.active || e.key || "x1";
+  for (const [off, aOff] of e.items) {
+    addCappedProjectile(bullets, {
+      x: muzzle2X + px2 * off,
+      y: muzzle2Y + py2 * off,
+      vx: Math.cos(ang2 + aOff) * e.speed,
+      vy: Math.sin(ang2 + aOff) * e.speed,
+      r: 6.0,
+      life: e.life,
+      dmg: 0,
+      key,
+      side: "player",
+      targetId: e.targetId,
+      homing: true,
+      spd: e.speed,
+      volleyId: e.volleyId,
+      volleySize: e.volleySize,
+      isSab: false,
+      miss: false,
+      visual: true,
+    }, ENTITY_LIMITS.playerBullets);
+  }
+}
+
+function tickPendingSalvo(dt) {
+  if (!pendingSalvo.length) return;
+  for (let i = pendingSalvo.length - 1; i >= 0; i--) {
+    const entry = pendingSalvo[i];
+    entry.t -= dt;
+    if (entry.t <= 0) {
+      pendingSalvo.splice(i, 1);
+      spawnSalvoDecoy(entry);
+    }
+  }
+}
+
+// ✅ les faux tirs déjà en vol deviennent instantanément la nouvelle munition.
+function reskinSalvo(newKey) {
+  for (const b of bullets) {
+    if (b && b.visual) b.key = newKey;
+  }
+}
 
 function flushVolleyKey(key, v) {
   pendingVolleys.delete(key);
@@ -7178,12 +7667,17 @@ function tryFireOnce(ammoOverride = null, silent = false) {
   const d2 = dist2(player.x, player.y, t.x, t.y);
   if (d2 > playerRange * playerRange) return false;
 
-  if (fireCooldown > 0) return false;
-
   let ammoKey = player.ammo.active || "x1";
 
-  if (ammoKey === "x6" && rsbCooldown > 0) {
-    ammoKey = "x1";
+  // ✅ la salve X6 a son propre cooldown (5 s) : elle ignore le cooldown
+  // du tir laser standard et ne le réinitialise pas.
+  if (ammoKey === "x6") {
+    if (rsbCooldown > 0) {
+      // ✅ pendant le retour de la salve x6 : on n'attaque pas (pas de repli x1)
+      return false;
+    }
+  } else if (fireCooldown > 0) {
+    return false;
   }
 
   player.angle = Math.atan2(t.y - player.y, t.x - player.x);
@@ -7191,7 +7685,9 @@ function tryFireOnce(ammoOverride = null, silent = false) {
   const ammoCfg = AMMO[ammoKey] || AMMO.x1;
 
   const baseCd = 1 / Math.max(0.001, player.baseFireRate * player.fireRateMult);
-  fireCooldown = typeof ammoCfg.cooldown === "number" ? ammoCfg.cooldown : baseCd;
+  if (ammoKey !== "x6") {
+    fireCooldown = typeof ammoCfg.cooldown === "number" ? ammoCfg.cooldown : baseCd;
+  }
 
   const mult = ammoCfg.mult || 1;
 
@@ -7202,10 +7698,11 @@ function tryFireOnce(ammoOverride = null, silent = false) {
 
 const isSab = ammoKey === "sab";
 
-// ✅ Vitesse différente pour la SAB-50
-const speed = isSab
-  ? player.baseBulletSpeed * SAB50.bulletSpeedMult
-  : player.baseBulletSpeed;
+// ✅ Vitesse du tir : base 4000, et plus on est loin de la cible plus elle
+// augmente (dist * bulletSpeedDistGain).
+const distToTarget = Math.hypot(t.x - player.x, t.y - player.y);
+const speed = (player.baseBulletSpeed + distToTarget * BASE_RUN.bulletSpeedDistGain)
+  * (isSab ? SAB50.bulletSpeedMult : 1);
 
 const life = bulletLifeForRange(playerRange, speed);
 
@@ -7299,6 +7796,28 @@ addCappedProjectile(bullets, {
   }
 
   if (ammoKey === "x6") rsbCooldown = RSB_COOLDOWN;
+
+  // ✅ Salve visuelle : seule la première volée (le vrai tir) inflige les dégâts ;
+  // les éclairs suivants sont des doublons esthétiques (dmg 0) qui convergent sur la cible.
+  // X6 → 12 tirs affichés par seconde ; autres munitions → 6 tirs (1 toutes les 200 ms).
+  const salvoShots = ammoKey === "x6" ? 12 : 6;
+  const salvoInterval = ammoKey === "x6" ? 1 / 12 : 0.2;
+
+  // 🔫 salve : le vrai tir compte pour le premier éclair affiché (t=0).
+  // Les éclairs restants s'affichent toutes les `salvoInterval` ms en
+  // alternant toujours "les 2" (paire gauche/droite) puis "le seul" (central),
+  // même pour les faux tirs.
+  const isRealPair = !!player.altShot;
+  const pairItems = [[-SIDE_OFFSET, 0], [SIDE_OFFSET, 0]];
+  const singleItems = [[0, 0]];
+  const salvoShotParams = { targetId, speed, life, volleyId, volleySize };
+  for (let i = 1; i < salvoShots; i++) {
+    const fakeIsPair = isRealPair ? i % 2 === 0 : i % 2 === 1;
+    scheduleSalvoPart(i * salvoInterval, {
+      ...salvoShotParams,
+      items: fakeIsPair ? pairItems : singleItems,
+    });
+  }
 
   player.altShot = !player.altShot;
   maybeTriggerLaser();
@@ -7559,12 +8078,19 @@ function resetRun({ randomSpawn = false, preparedZoneCamps = null, preparedZoneP
   betweenWaves = false;
   pendingVolleys.clear();
 
+  // ✅ arrivée effective sur la carte = saut réussi : le robot réparateur
+  // est réarmé immédiatement (resetPlayerToBase le remet sur son cooldown),
+  // la réparation repart dès l'arrivée, sons compris.
+  player.repairJumpLock = false;
+
   portal.active = false;
   gateReturnPortal.active = false;
   if (ui.portalOverlay) ui.portalOverlay.style.display = "none";
 
 bullets.length = 0;
 enemyBullets.length = 0;
+clearPendingSalvo();
+shipDamages.length = 0;
 enemies.length = 0;
 escortShips.length = 0;
 pickups.length = 0;
@@ -7587,6 +8113,8 @@ collectableSpawnT = 0;
   }
 
   resetPlayerToBase({ keepCredits: true });
+  // 🔥 fin du cold start : le cooldown réparateur repart désormais normalement
+  player.repairColdStart = false;
 
   if (u) {
     player.credits = Number(u.credits || 0);
@@ -7734,6 +8262,15 @@ jumpBaseFade: 1,
         spawnedFromPortal = true;
         console.log(`[SPAWN] Arrivée via portail ${pid} sur map ${currentMap}`);
       }
+
+      // ✅ Son "Saut terminée" quand on apparaît de l'autre côté du portail
+      if (spawnedFromPortal) {
+        window.setTimeout(() => {
+          SFX.stop("swJump");
+          SFX.stop("swReady");
+          SFX.play("swDone", { vol: 0.85 });
+        }, 400);
+      }
     }
   }
 
@@ -7778,9 +8315,9 @@ jumpBaseFade: 1,
     if (!player.dead && started) {
       const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
       if (SESSION_HANGAR_ID) {
-        saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap);
+        saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
       } else {
-        saveActiveHangarState(player.x, player.y, currentMap);
+        saveActiveHangarState(player.x, player.y, currentMap, savedHpPct(), savedShPct());
       }
       console.log(`[SPAWN] Position sauvegardée immédiatement: ${Math.floor(player.x)}, ${Math.floor(player.y)} sur ${currentMap}`);
     }
@@ -7804,6 +8341,8 @@ function die() {
   attackActive = false;
   player.dead = true;
   player.vx = player.vy = 0;
+  radiationSoundDelay = 0;
+  triggerDeathShake();
 
   // Coupe immédiatement l'effet de radiation (son, glow rouge + texte pulsé) à la mort.
   radiationSystem.reset();
@@ -7812,7 +8351,10 @@ function die() {
   repairSoundActive = false;
   SFX.stop("repairStart");
   SFX.stopLoop("repairLoop", { fadeOut: 0 });
+  shipMoveSoundActive = false;
+  SFX.stopLoop("shipMove", { fadeOut: 0 });
   if (toast?.fixed && toast.text === "Vous êtes en zone de radiations") toast = null;
+  clearPendingSalvo();
 
   SFX.crossfade("deathPlayer", "deathPlayer2", { vol: 0.8, crossAt: 0.2 });
 
@@ -7832,14 +8374,12 @@ function die() {
     }
   }
 
-  if (started) {
-    const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
-    if (SESSION_HANGAR_ID) {
-      saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap);
-    } else {
-      saveActiveHangarState(player.x, player.y, currentMap);
-    }
-  }
+  // ✅ on ne sauvegarde jamais la position/vitalité au moment de la mort :
+  // sinon un refresh après une mort réapparaissait sur le lieu exact avec
+  // ~0 PV. On garde la dernière sauvegarde « en vie ».
+  // L'état « mort » lui est mémorisé séparément (sessionStorage) pour être
+  // rejoué si le joueur refresh avant d'avoir choisi un lieu de réapparition.
+  markDeathPending();
 
   if (rules?.mode === "gate") {
     setCenterMsg(false);
@@ -7871,6 +8411,8 @@ function getNearestPortalTo(x, y) {
 }
 
 function respawnBaseGate() {
+  clearDeathPending();
+  SFX.resume();
   const targetMap = getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__, { gate: true });
   const baseSpawn = getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction);
   setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn, respawn: true });
@@ -7878,6 +8420,7 @@ function respawnBaseGate() {
   SFX.stop("deathPlayer2");
   SFX.play("respawnPlayer", { vol: 0.8 });
   startRespawnInstaShield();
+  player.portalLockT = Math.max(player.portalLockT || 0, 5);
 
   const cur = window.__CURRENT_MAP_ID__ || "1-1";
 
@@ -7892,6 +8435,8 @@ function respawnBaseGate() {
 // À la réapparition choisie, le menu et le voile noir disparaissent instantanément,
 // le son de réapparition joue, puis le respawn s'enchaîne directement.
 function startRespawn(action) {
+  clearDeathPending();
+  SFX.resume();
   SFX.stop("deathPlayer");
   SFX.stop("deathPlayer2");
   SFX.play("respawnPlayer", { vol: 0.8 });
@@ -7900,6 +8445,8 @@ function startRespawn(action) {
   setCenterMsg(false);
   action();
   startRespawnInstaShield();
+  // ✅ le portail reste bloqué 5 s à partir du moment où le vaisseau réapparaît vraiment
+  player.portalLockT = Math.max(player.portalLockT || 0, 5);
 }
 
 function respawnBase() {
@@ -9145,6 +9692,7 @@ function update(dt) {
   player.combatT = Math.max(0, (player.combatT || 0) - dt);
   player.attackedT = Math.max(0, (player.attackedT || 0) - dt);
   player.invincibleT = Math.max(0, (player.invincibleT || 0) - dt);
+  player.portalLockT = Math.max(0, (player.portalLockT || 0) - dt);
 
   fireCooldown = Math.max(0, fireCooldown - dt);
   laserCd = Math.max(0, laserCd - dt);
@@ -9159,6 +9707,7 @@ function update(dt) {
   tickAutoAttack(dt);
   tickVolleyFloats(dt);
   tickExplosions(dt);
+  tickShipDamages(dt);
   tickPulseFx(dt);
   tickInstaShield(dt);
 
@@ -9230,6 +9779,9 @@ updatePlayerVelocity(player, { x: mx, y: my }, dt);
       resolvePlayerWalls();
     }
   }
+
+  updateShipMoveSound();
+  tickPendingSalvo(dt);
 
   {
     const spd = Math.hypot(player.vx, player.vy);
@@ -9408,6 +9960,9 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     rr,
   )) {
     if (b.miss) {
+      // ✅ MISS : le tir "touche" mais ne tue pas → son laser hit
+      if (!b.visual) playPlayerLaserHit();
+
       showPlayerMissOnce(b, t);
 
       spawnSpark(b.x, b.y, false);
@@ -9417,28 +9972,22 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     }
 
     const sabRecipient = b.ownerEscortId ? getEscortById(b.ownerEscortId) : player;
-    const out = b.isSab
-      ? drainShieldFromEnemy(t, b.dmg, sabRecipient)
-      : damageEnemy(t, b.dmg);
+    // ✅ les éclairs visuels de la salve X6 n'infligent aucun dégât
+    let out = { total: 0 };
+    if (!b.visual) {
+      out = b.isSab
+        ? drainShieldFromEnemy(t, b.dmg, sabRecipient)
+        : damageEnemy(t, b.dmg);
+
+      // ✅ son laser hit, sauf si ce tir tue : le son de mort du NPC s'en charge.
+      // (le vrai tir a touché : qu'il fasse des dégâts ou non)
+      if (t.hp > 0) playPlayerLaserHit();
+    }
 
     if (out.total > 0) {
       if (!b.ownerEscortId || Target.get() === t) queueVolleyFloat(t, out, b.volleyId, b.volleySize);
-    } else if (b.isSab) {
-      addFloatText(
-        t.x + (Math.random() - 0.5) * 50,
-        t.y - 70 - Math.random() * 20,
-        0,
-        "rgba(120,180,255,0.85)",
-        {
-          size: 16,
-          pop: 0.25,
-          shake: 0.4,
-          life: 0.7,
-          glow: 0.8,
-          weight: 900,
-          impact: true,
-        }
-      );
+    } else if (b.isSab && !b.visual) {
+      showSabZeroOnce(b, t);
     }
 
     spawnSpark(b.x, b.y, out.total >= 600 || out.isCrit);
@@ -9472,6 +10021,16 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
 
   const expired = advanceProjectile(b, dt);
 
+  // ✅ Dès que le tir NPC entre dans le rond imaginaire (même un miss),
+  // on joue le sprite Ship_damage, face au projectile.
+  if (bulletTarget === player && !b._bubblePlayed) {
+    const rad = shipDamageBubbleRadius();
+    if (segCircleHit(b._oldX, b._oldY, b.x, b.y, player.x, player.y, rad)) {
+      b._bubblePlayed = true;
+      spawnShipDamage(b._oldX, b._oldY);
+    }
+  }
+
   if (bulletTarget?.hp > 0) {
     const rr = (b.r || 0) + (bulletTarget.r || player.r) + (b.hitRadiusBonus || 0);
 
@@ -9486,7 +10045,15 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
         if (bulletTarget === player) addMissText(player.x + (Math.random() - 0.5) * 50, player.y - 85 - Math.random() * 20);
         spawnSpark(bulletTarget.x, bulletTarget.y, false);
       } else {
-        if (bulletTarget === player) hurtPlayer(b.dmg);
+        if (bulletTarget === player) {
+          // (sprite déjà joué à l'entrée du rond) ; secours si le tir est
+          // né déjà dans le cercle (pas de détection de franchissement)
+          if (!b._bubblePlayed) {
+            b._bubblePlayed = true;
+            spawnShipDamage(b.x, b.y);
+          }
+          hurtPlayer(b.dmg);
+        }
         else {
           damagePlayerLayers(bulletTarget, b.dmg);
           if (bulletTarget.hp <= 0) destroyEscort(bulletTarget);
@@ -9999,6 +10566,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
   tickEngineTrails(dt);
   processDeaths();
 
+  tickCamShake(dt);
+
   camera.x += (player.x - camera.x) * (1 - Math.pow(0.0009, dt * 60));
   camera.y += (player.y - camera.y) * (1 - Math.pow(0.0009, dt * 60));
 
@@ -10042,8 +10611,17 @@ function draw() {
   ctx.fillStyle = "#050814";
   ctx.fillRect(0, 0, innerWidth, innerHeight);
 
-  const ox = innerWidth / 2 - camera.x;
-  const oy = innerHeight / 2 - camera.y;
+  let ox = innerWidth / 2 - camera.x;
+  let oy = innerHeight / 2 - camera.y;
+
+  if (camShake) {
+    const p = camShake.t / camShake.dur;
+    const amp = camShake.max * Math.pow(1 - p, 3);
+    if (amp > 0.1) {
+      ox += (Math.random() * 2 - 1) * amp;
+      oy += (Math.random() * 2 - 1) * amp;
+    }
+  }
 
 if (GAME_SETTINGS.background) {
   drawBackgroundLayers(ox, oy);
@@ -10266,6 +10844,10 @@ if (GAME_SETTINGS.textures) {
     ctx.restore();
     ctx.globalAlpha = 1;
   }
+
+  // ✅ bubble d'impact PAR-DESSUS le vaisseau : elle reste visible même si
+  // le point d'impact est sur la silhouette du vaisseau.
+  drawShipDamages(ox, oy);
 
   // L'IEM reste centrée sur le joueur et se dessine au-dessus du vaisseau.
   drawPulseFx(ox, oy);
@@ -10560,7 +11142,7 @@ async function prepareGameAssets() {
   for (const layer of WORLD.bgLayers || []) if (layer?.src) jobs.push(loadImage(layer.src, { priority: true }));
   jobs.push(ensurePackLoaded(ACTIVE_SHIP));
   jobs.push(...preloadPlayerBulletSprites());
-  jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensurePulseFxLoaded(), ensureRepairOrbitLoaded());
+  jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensurePulseFxLoaded(), ensureRepairOrbitLoaded(), ensureShipDamageLoaded());
   jobs.push(...preloadCollectables());
 
   for (const type of Object.keys(NPC_TYPES)) jobs.push(ensureNpcPreview(type));
@@ -10602,6 +11184,7 @@ async function startGame() {
   SFX.preload();
   preloadPlayerBulletSprites();
   ensureExplosionLoaded();
+  ensureShipDamageLoaded();
   ensurePulseFxLoaded();
   ensureRepairOrbitLoaded();
 
@@ -10647,6 +11230,10 @@ if (ui.startHint) {
   }
 
   revealPreparedGame();
+
+  // ✅ si le joueur a refreshé pendant sa mort (lieu de réapparition pas encore
+  // choisi), on le garde mort et on rejoue l'animation + le son d'explosion.
+  tryReplayPendingDeath();
 
   starting = false;
 }
@@ -10698,9 +11285,9 @@ function saveStateImmediate() {
 
   const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
   if (SESSION_HANGAR_ID) {
-    saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap);
+    saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
   } else {
-    saveActiveHangarState(player.x, player.y, currentMap);
+    saveActiveHangarState(player.x, player.y, currentMap, savedHpPct(), savedShPct());
   }
 
 updateCurrentUserProgress({
@@ -10869,6 +11456,24 @@ window.addEventListener("orbit:user-updated", event => {
 resetPlayerToBase();
 updateAmmoUI();
 setAmmo("x1");
+
+// ✅ le cooldown du robot réparateur repart de 0 au refresh
+{
+  player.repairT = 0;
+  player.repairTickT = 0;
+  player.repairColdStart = true;
+}
+
+// ✅ restaure la vitalité de la dernière session (refresh ne soigne plus)
+{
+  const restored = getActiveHangarState();
+  if (player.hpMax > 0 && Number.isFinite(Number(restored?.hpPct))) {
+    player.hp = Math.max(1, Math.floor(player.hpMax * clamp(Number(restored.hpPct), 0, 1)));
+  }
+  if (player.shMax > 0 && Number.isFinite(Number(restored?.shPct))) {
+    player.sh = Math.max(0, Math.floor(player.shMax * clamp(Number(restored.shPct), 0, 1)));
+  }
+}
 
 const cur = getCurrentUserFull() || null;
 
