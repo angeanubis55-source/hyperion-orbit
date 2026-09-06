@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "61a175fd",
+    "message": "feat: robot réparateur mobile (4 coins, rotation 0°/90°/180°, éclairs verts vers le vaisseau), sons réparation/radiation/insta shield/mort, arrêt net des sons, invincibilité insta shield 3 s"
+  },
+  {
     "version": "76fb2cec",
     "message": "assets: ajout de nouveaux sons et effets (ambiance, bouclier, IEM, bombe, roquettes, mort, réapparition...) et mise à jour des tirs existants"
   },
