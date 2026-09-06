@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "129b02ce",
+    "message": "feat: inventaire, réglages et Espace pilote — rareté réelle des objets (vaisseaux, modules, drones, formations, munitions), 'Module(s)' violet avec parenthèses blanches, réglage Marqueur de déplacement, Espace pilote translucide au premier plan, 'Chance de réussite laser', fix infobulle 'Rareté'"
+  },
+  {
     "version": "c16c9488",
     "message": "fix: bonus modules XP/honneur dans le log de kill (part formation vs modules), arrondi au supérieur pour ne plus perdre le bonus sur les petites bases (ex. honneur des Streuner)"
   },
