@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "76fb2cec",
+    "message": "assets: ajout de nouveaux sons et effets (ambiance, bouclier, IEM, bombe, roquettes, mort, réapparition...) et mise à jour des tirs existants"
+  },
+  {
     "version": "129b02ce",
     "message": "feat: inventaire, réglages et Espace pilote — rareté réelle des objets (vaisseaux, modules, drones, formations, munitions), 'Module(s)' violet avec parenthèses blanches, réglage Marqueur de déplacement, Espace pilote translucide au premier plan, 'Chance de réussite laser', fix infobulle 'Rareté'"
   },
