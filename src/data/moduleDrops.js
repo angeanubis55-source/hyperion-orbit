@@ -64,7 +64,7 @@ export const MODULE_TIER_MALUS = Object.freeze({
 //   🟢 vert (hp)  -> PV 32 %
 //   🔵 bleu (shd) -> Bouclier 30 %
 //   🔴 rouge (dmg)-> Dégâts 20 %
-//   🟡 jaune (spc)-> Chance de tir 10 %, Pénétration 12 %, Vitesse 12 %
+//   🟡 jaune (spc)-> Chance de réussite laser 10 %, Pénétration 12 %, Vitesse 12 %
 export const MODULE_STAT_MAX_BY_COLOR = Object.freeze({
   hp: Object.freeze({ hp: 32 }),
   shd: Object.freeze({ shield: 30 }),

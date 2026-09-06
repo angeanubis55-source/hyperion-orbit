@@ -36,6 +36,7 @@ import { getItemRarity, ITEM_RARITIES } from "../src/data/itemRarities.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
 import { MODULE_ALL_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../src/data/moduleDrops.js";
 import { appendToFitSlots, compactFitDraft } from "../src/core/fitLayout.js";
+import { rarityForCatalogItem } from "../src/data/crafting.js";
 import { PATCH_NOTES } from "../src/data/patchNotes.js";
 
 console.log("profile.js loaded ✅");
@@ -363,7 +364,7 @@ function formatStatLabel(stat) {
   if (stat === "damage") return "Dégâts";
   if (stat === "penetration") return "Pénétration";
   if (stat === "speed") return "Vitesse";
-  if (stat === "laser_hit") return "Chance de tir";
+  if (stat === "laser_hit") return "Chance de réussite laser";
   if (stat === "exp") return "Expérience";
   if (stat === "honor") return "Honneur";
   return stat;
@@ -739,7 +740,7 @@ function inventoryItemIcon(entry) {
 
 function inventoryTooltipText(entry) {
   const lines = [entry.name];
-  if (entry.rarity) lines.push(`RaretÃ© : ${entry.rarity.name}`);
+  if (entry.rarity) lines.push(`Rareté : ${entry.rarity.name}`);
   if (entry.kind === "ammo") {
     const multiplier = Number(AMMO?.[entry.id]?.mult);
     if (Number.isFinite(multiplier)) lines.push(`Multiplicateur de dégâts : x${multiplier}`);
@@ -789,6 +790,26 @@ function expandInventorySlots(section) {
   })));
 }
 
+function inventoryEntryRarity(entry) {
+  if (entry.rarityId) return ITEM_RARITIES[entry.rarityId] || ITEM_RARITIES.common;
+
+  let item = null;
+  if (entry.kind === "ship") {
+    item = (CATALOG?.ships || []).find((x) => x?.ship?.id === String(entry.id));
+  } else if (entry.kind === "ammo") {
+    item = findCatalogItem(`ammo_${String(entry.id).toLowerCase()}`);
+  } else if (entry.kind === "equipment") {
+    item = findCatalogItem(String(entry.id));
+  } else if (entry.kind === "drone") {
+    item = (CATALOG?.drones || []).find((x) => x?.drone?.type === entry.drone?.type);
+  } else if (entry.kind === "droneFormation") {
+    item = (CATALOG?.formations || []).find((x) => x?.formation?.id === entry.formation?.id);
+  }
+
+  if (item) return ITEM_RARITIES[rarityForCatalogItem(item)] || ITEM_RARITIES.common;
+  return getItemRarity(entry.id);
+}
+
 function renderInventory(u) {
   if (!u || !inventorySections) return;
   const sections = buildInventorySections(u);
@@ -801,7 +822,7 @@ function renderInventory(u) {
   inventorySections.innerHTML = slots.length ? slots.map((entry) => {
       const stacked = entry.stacked !== false && !["module", "ship", "equipment", "drone", "droneDesign", "droneFormation"].includes(entry.kind);
       const quantity = entry.quantityLabel || inventoryQuantityLabel(entry.quantity);
-      const rarity = getItemRarity(entry.id);
+      const rarity = inventoryEntryRarity(entry);
       entry.rarity = rarity;
       return `<article class="inventorySlot rarity-${escapeHtml(rarity.id)}" data-rarity="${escapeHtml(rarity.id)}" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(inventoryTooltipText(entry))}" tabindex="0" aria-label="${escapeHtml(inventoryTooltipText(entry).replace(/\n/g, ". "))}">
         <img src="${escapeHtml(inventoryItemIcon(entry))}" alt="" />

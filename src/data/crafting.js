@@ -3,7 +3,7 @@
 import { CATALOG } from "../core/catalog.js";
 import { getItemRarity } from "./itemRarities.js";
 
-function rarityForCatalogItem(item) {
+export function rarityForCatalogItem(item) {
   const explicit = getItemRarity(item).id;
   if (explicit !== "common") return explicit;
   const price = Math.max(0, Number(item?.price || 0));

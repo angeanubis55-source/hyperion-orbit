@@ -553,6 +553,7 @@ const DEFAULT_GAME_SETTINGS = {
   autoStart: false,
   shipEffect: true,
   shipSmoke: true,
+  moveMarker: true,
   keybinds: { ...DEFAULT_KEYBINDS },
 };
 
@@ -629,6 +630,10 @@ function setGameSetting(key, value) {
 
   if (key === "drones") {
     showToast(GAME_SETTINGS.drones ? "Drones affichés" : "Drones masqués", 1.1);
+  }
+
+  if (key === "moveMarker") {
+    showToast(GAME_SETTINGS.moveMarker ? "Marqueur de déplacement affiché" : "Marqueur de déplacement masqué", 1.1);
   }
 }
 
@@ -816,6 +821,8 @@ function renderSettingsWindow() {
   if (shipEffect) shipEffect.checked = !!GAME_SETTINGS.shipEffect;
   const shipSmoke = document.getElementById("optShipSmoke");
   if (shipSmoke) shipSmoke.checked = !!GAME_SETTINGS.shipSmoke;
+  const moveMarker = document.getElementById("optMoveMarker");
+  if (moveMarker) moveMarker.checked = !!GAME_SETTINGS.moveMarker;
 
   renderKeybindRows();
   updateHudKeyHints();
@@ -839,6 +846,7 @@ function wireSettingsWindow() {
   const drones = document.getElementById("optDrones");
   const shipEffect = document.getElementById("optShipEffect");
   const shipSmoke = document.getElementById("optShipSmoke");
+  const moveMarker = document.getElementById("optMoveMarker");
   const settingsWindow = document.getElementById("settingsWindow");
 
   if (settingsWindow) {
@@ -883,6 +891,10 @@ function wireSettingsWindow() {
 
   shipSmoke?.addEventListener("change", () => {
     setGameSetting("shipSmoke", shipSmoke.checked);
+  });
+
+  moveMarker?.addEventListener("change", () => {
+    setGameSetting("moveMarker", moveMarker.checked);
   });
 
   document.querySelectorAll("#settingsWindow .keyBindRow").forEach((btn) => {
@@ -2640,14 +2652,26 @@ function setNotificationText(node, value, { goldTerms = [], whiteTerms = [], vio
     for (let i = ps; i < pe; i++) {
       if ((value[i] === "+" || value[i] === "-") && /\d/.test(value[i + 1] || "")) {
         segments.push({ start: i, end: i + 1, cls: "orbitNotificationAmountPlain" });
+      } else if (value[i] === "(" || value[i] === ")") {
+        segments.push({ start: i, end: i + 1, cls: "orbitNotificationAmountPlain" });
       }
     }
   }
-  const explicitViolet = [];
+  const violetUncovered = [];
   for (const [vs, ve] of violetRanges) {
-    if (!segments.some(segment => segment.start >= vs && segment.end <= ve)) explicitViolet.push([vs, ve]);
+    let runStart = -1;
+    for (let i = vs; i < ve; i++) {
+      const covered = segments.some(segment => segment.start <= i && segment.end > i);
+      if (!covered) {
+        if (runStart === -1) runStart = i;
+      } else if (runStart !== -1) {
+        violetUncovered.push([runStart, i]);
+        runStart = -1;
+      }
+    }
+    if (runStart !== -1) violetUncovered.push([runStart, ve]);
   }
-  for (const [vs, ve] of explicitViolet) {
+  for (const [vs, ve] of violetUncovered) {
     segments.push({ start: vs, end: ve, cls: "orbitNotificationAmountViolet" });
   }
   if (!segments.length) {
@@ -6196,12 +6220,12 @@ function killRewards(e) {
   const honorModuleBonus = Math.max(0, honorTotalBonus - honorFormationBonus);
   const xpBonusText = xpFormationBonus > 0 ? `( +${formatInteger(xpFormationBonus)} ${formationName} )` : "";
   const honorBonusText = honorFormationBonus > 0 ? `( +${formatInteger(honorFormationBonus)} ${formationName} )` : "";
-  const xpModuleText = xpModuleBonus > 0 ? `( +${formatInteger(xpModuleBonus)} modules )` : "";
-  const honorModuleText = honorModuleBonus > 0 ? `( +${formatInteger(honorModuleBonus)} modules )` : "";
+  const xpModuleText = xpModuleBonus > 0 ? `( +${formatInteger(xpModuleBonus)} Module(s) )` : "";
+  const honorModuleText = honorModuleBonus > 0 ? `( +${formatInteger(honorModuleBonus)} Module(s) )` : "";
   const xpText = `${formatInteger(gainedXp)} XP ${xpBonusText} ${xpModuleText}`.trim();
   const honorText = `${formatInteger(gainedHonor)} honneur ${honorBonusText} ${honorModuleText}`.trim();
   const whiteTerms = [xpBonusText, xpModuleText, honorBonusText, honorModuleText].filter(Boolean);
-  const violetTerms = formationName ? [formationName] : [];
+  const violetTerms = [...(formationName ? [formationName] : []), ...(xpModuleBonus > 0 || honorModuleBonus > 0 ? ["Module(s)"] : [])];
   const npcName = String(NPC_TYPES[e.type]?.name || e.type || "NPC").replace(/^npc_/i, "");
   addGameLog(`${npcName} détruit · +${formatInteger(credits)} crédits · +${xpText} · +${honorText}`, "reward");
   showNotificationGroup([
@@ -8522,6 +8546,7 @@ function drawToast() {
 }
 
 function drawMoveTarget(ox, oy) {
+  if (!GAME_SETTINGS.moveMarker) return;
   drawMoveTargetMarker(ctx, moveTarget, ox, oy);
 }
 
