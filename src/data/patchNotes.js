@@ -1,6 +1,14 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "df296162",
+    "message": "Secu + logs + audio : hash password local + migration, escapeHtml XSS stocke, sentinel X1, suppress logs MAIN/SPAWN, AudioContext differe avant geste"
+  },
+  {
+    "version": "d92865ad",
+    "message": "Grosses corrections sur les sauvegardes , Hangar , boutique et inventaire + patch complet FPS"
+  },
+  {
     "version": "1c83531e",
     "message": "Espace pilote: designs de vaisseaux dynamiques, dropdown hangar sans reload, suppression des cartes toast au profit des indications rapides"
   },
@@ -231,13 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "8545d78b",
     "message": "Amélioration des déplacements et de la précision des lasers."
-  },
-  {
-    "version": "1a6bb0e4",
-    "message": "Le retour de portail dépend désormais de la firme du joueur."
-  },
-  {
-    "version": "0e2fd055",
-    "message": "Amélioration des fenêtres, des paramètres et du fond d'étoiles."
   }
 ];
