@@ -698,6 +698,81 @@ body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !i
 #profileOverlay .hangarListItem .tileActions { margin: 0 !important; display: flex !important; flex-direction: column !important; gap: 6px !important; }
 #profileOverlay .hangarListItem .tileActions button { width: 92px !important; min-height: 30px !important; padding: 6px 8px !important; }
 
+#profileOverlay .hangarDesignRow {
+  grid-column: 1 / -1 !important;
+  width: 100% !important;
+  min-height: 44px !important;
+  margin: 2px 0 0 !important;
+  padding: 8px 0 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border-top: 1px solid rgba(124,240,255,.14) !important;
+}
+#profileOverlay .hangarDesignRow label {
+  flex: 0 0 auto !important;
+  font-size: 9px !important;
+  font-weight: 900 !important;
+  text-transform: uppercase !important;
+  letter-spacing: .5px !important;
+  color: #8fcddd !important;
+}
+#profileOverlay .hangarDesignTrigger {
+  flex: 1 !important;
+  min-width: 0 !important;
+  height: 28px !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  border: 1px solid rgba(124,240,255,.3) !important;
+  border-radius: 6px !important;
+  color: #eaf8ff !important;
+  background: #082436 !important;
+  font-weight: 800 !important;
+  font-size: 11px !important;
+  cursor: pointer !important;
+  text-align: left !important;
+}
+#profileOverlay .hangarDesignTrigger:hover { border-color: rgba(124,240,255,.55) !important; }
+#profileOverlay .hangarDesignValue { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#profileOverlay .hangarDesignCaret { flex: 0 0 auto !important; opacity: .75 !important; }
+#profileOverlay .hangarDesignRow.disabled { opacity: .55 !important; }
+#profileOverlay .hangarDesignRow.disabled .hangarDesignTrigger { cursor: not-allowed !important; }
+
+/* Panneau référencé de la liste des designs (appendu au body) : 10 items max visibles, scroll. */
+.hangarDesignPanel {
+  position: fixed !important;
+  z-index: 1001000 !important;
+  overflow-y: auto !important;
+  padding: 4px !important;
+  box-sizing: border-box !important;
+  border: 1px solid rgba(124,240,255,.30) !important;
+  border-radius: 8px !important;
+  background: #071a2b !important;
+  box-shadow: 0 14px 34px rgba(0,0,0,.5) !important;
+}
+.hangarDesignPanel .hangarDesignOption {
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+  min-height: 28px !important;
+  padding: 0 10px !important;
+  box-sizing: border-box !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  color: #eaf8ff !important;
+  background: transparent !important;
+  font-weight: 800 !important;
+  font-size: 11px !important;
+  text-align: left !important;
+  cursor: pointer !important;
+}
+.hangarDesignPanel .hangarDesignOption:hover:not(:disabled) { background: rgba(0,180,230,.22) !important; }
+.hangarDesignPanel .hangarDesignOption.selected { color: #7cf0ff !important; background: rgba(0,150,200,.18) !important; }
+.hangarDesignPanel .hangarDesignOption.locked { color: rgba(190,215,230,.45) !important; cursor: not-allowed !important; }
+
 /* Boutique : barre compacte, catégories fixes, liste et fiche produit. */
 #profileOverlay .shopToolbar {
   flex: 0 0 auto !important;

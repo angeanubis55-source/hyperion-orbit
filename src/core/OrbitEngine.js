@@ -31,6 +31,7 @@ import { CRAFTING_RECIPES } from "../data/crafting.js";
 import { ITEM_RARITIES } from "../data/itemRarities.js";
 import { SHIP_EFFECTS } from "../data/shipEffects.js";
 import { GAME_VERSION } from "../data/version.js";
+import { getShipPackById as getShipPackByIdData } from "../data/shipPacks.js";
 import { DRONE_FORMATIONS, DRONE_FORMATION_LAYOUTS, DRONE_TYPES, DRONE_XP_SHARE, getActiveDroneFormation, getDroneLevel, getDroneSpritePath } from "../data/drones.js";
 import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./collision.js";
 import { createKeyboardState, createPointerState } from "./input.js";
@@ -3308,7 +3309,7 @@ function drawShipEffectOverlay() {
 }
 
 function getPackById(shipId) {
-  return SHIP_PACKS.find(p => p?.id === shipId) || null;
+  return getShipPackByIdData(shipId) || null;
 }
 
 function getShipBaseStats(shipId) {
@@ -4089,7 +4090,7 @@ const player = {
 };
 
 function getShipPackById(shipId) {
-  return SHIP_PACKS.find(p => String(p.id) === String(shipId)) || SHIP_PACKS[0];
+  return getShipPackByIdData(shipId) || SHIP_PACKS[0];
 }
 
 function getActiveHangarFromUser(u) {
@@ -8108,7 +8109,7 @@ collectableSpawnT = 0;
   const u = loadAccountUser();
 
   if (u?.ship) {
-    const found = SHIP_PACKS.find(p => p.id === u.ship);
+    const found = getShipPackByIdData(u.ship);
     if (found) ACTIVE_SHIP = found;
   }
 
@@ -11190,7 +11191,7 @@ async function startGame() {
 
   const u = getCurrentUserFull();
   if (u?.ship) {
-    const found = SHIP_PACKS.find(p => p.id === u.ship);
+    const found = getShipPackByIdData(u.ship);
     if (found) ACTIVE_SHIP = found;
   }
 
@@ -11410,10 +11411,46 @@ function markHangarChanged() {
   sessionStorage.setItem(HANGAR_SWITCH_TIME_KEY, String(Date.now()));
 }
 
+// ✅ Échange dynamique du vaisseau actif (design modifié dans l'Espace pilote)
+// sans recharger la page : on rafraîchit ACTIVE_SHIP, ses sprites et les stats.
+function applyHangarDesignLive() {
+  try {
+    const u = loadAccountUser();
+    const shipId = (u?.ship || ACTIVE_SHIP?.id || "PhoenixBleu");
+    const pack = getShipPackById(shipId);
+    if (!pack) return { ok: false, error: "Vaisseau introuvable." };
+
+    ACTIVE_SHIP = pack;
+
+    // recharge les sprites du nouveau modèle
+    playerImgsReady = false;
+    ensurePackLoaded(pack)
+      .then(() => {
+        playerImgs = pack._imgs;
+        playerImgsReady = true;
+      })
+      .catch(() => {
+        playerImgsReady = true;
+      });
+
+    // recalcule les stats (hp, bouclier, vitesse, dégâts…) en gardant les ratios
+    applyCurrentConfigStats(true);
+
+    updateResourceHud(ui, player);
+
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+}
+
 window.__ORBIT_ENGINE__ = {
   switchMap: switchMapConfig,
   getHangarAccess,
   markHangarChanged,
+  applyHangarDesignLive,
+  showToast,
+  showNotification,
 };
 
 // ✅ Sauvegarde d'urgence avant de quitter la map (appelé par main.js via __GO_TO_MAP__)
@@ -11490,7 +11527,7 @@ if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[currentGateMapId] && cur.g
   return;
 }
 
-const pack = SHIP_PACKS.find(p => p.id === cur.ship) || SHIP_PACKS[0];
+const pack = getShipPackByIdData(cur.ship) || SHIP_PACKS[0];
 ACTIVE_SHIP = pack;
 document.documentElement.classList.add("orbitHudReady");
 

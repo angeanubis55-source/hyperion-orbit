@@ -2,7 +2,7 @@
 "use strict";
 
 import { findCatalogItem } from "./catalog.js";
-import { SHIP_PACKS } from "../data/shipPacks.js";
+import { SHIP_PACKS, getShipDesignBaseId, getShipPackById } from "../data/shipPacks.js";
 import { normalizeQuestState, QUEST_DEFINITIONS } from "../data/quests.js";
 import { calculateRankPoints, getQuestHonorReward } from "./progression.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./factions.js";
@@ -119,7 +119,7 @@ function normalizeArraySize(arr, size, fill = null) {
 }
 
 function getShipPack(shipId) {
-  return (SHIP_PACKS || []).find((p) => String(p?.id) === String(shipId)) || null;
+  return getShipPackById(shipId);
 }
 
 function getShipSlots(shipId) {
@@ -298,17 +298,28 @@ function ensureUserShape(u) {
   // ship actif
   if (!u.ship) u.ship = STARTER_SHIP_ID;
 
+  // designs de vaisseaux (variantes cosmétiques possédées, sans hangar)
+  if (!Array.isArray(u.inventory.shipDesigns)) u.inventory.shipDesigns = [];
+  u.inventory.shipDesigns = [...new Set(u.inventory.shipDesigns.map(String).filter(Boolean))];
+
   // starter ship toujours owned
   if (!u.inventory.ships.includes(STARTER_SHIP_ID)) u.inventory.ships.push(STARTER_SHIP_ID);
 
   // hangars
   if (!Array.isArray(u.hangars)) u.hangars = [];
 
-  // 1 hangar par ship possédé
+  // 1 hangar par vaisseau de base possédé (un design ne crée pas de hangar :
+  // il s'applique sur le hangar du vaisseau de base).
+  const canonicalBaseOf = (sid) => {
+    const id = String(sid || "");
+    const pack = getShipPackById(id);
+    const canonical = pack?.id || id;
+    return getShipDesignBaseId(canonical) || canonical;
+  };
   for (const shipId of u.inventory.ships) {
-    if (!u.hangars.some((h) => h && h.shipId === shipId)) {
-      u.hangars.push(makeHangar(shipId, false));
-    }
+    const baseOf = canonicalBaseOf(shipId);
+    const already = u.hangars.some((h) => h && canonicalBaseOf(h.shipId) === baseOf);
+    if (!already) u.hangars.push(makeHangar(baseOf, false));
   }
 
   if (!u.hangars.length) {
@@ -316,12 +327,13 @@ function ensureUserShape(u) {
   }
 
   // actif cohérent avec u.ship
-  let activeHangar = u.hangars.find((h) => h?.shipId === u.ship) || null;
+  let activeHangar = u.hangars.find((h) => h && canonicalBaseOf(h.shipId) === canonicalBaseOf(u.ship)) || null;
   if (!activeHangar) {
     u.ship = u.hangars[0].shipId || STARTER_SHIP_ID;
     activeHangar = u.hangars[0];
   }
   for (const h of u.hangars) h.active = h === activeHangar;
+  if (activeHangar?.shipId) u.ship = activeHangar.shipId;
 
   // FIT loadout (par vaisseau)
   for (const h of u.hangars) {
@@ -733,7 +745,8 @@ export function buyItem(itemId, requestedQuantity = 1) {
   if (!item) return { ok: false, error: "Item introuvable." };
 
   const isShip = !!item.ship?.id;
-  const quantity = isShip
+  const isDesign = !!item.design?.id;
+  const quantity = (isShip || isDesign)
     ? 1
     : Math.min(999, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
   const unitPrice = Math.max(0, Number(item.price || 0));
@@ -745,6 +758,15 @@ export function buyItem(itemId, requestedQuantity = 1) {
     const shipId = String(item.ship.id);
     if (u.inventory?.ships?.includes(shipId)) {
       return { ok: false, error: "Déjà possédé." };
+    }
+  }
+
+  // designs: unique (pas de hangar créé, le design s'applique au hangar de base)
+  if (item.design?.id) {
+    const designId = String(item.design.id);
+    u.inventory.shipDesigns ??= [];
+    if (u.inventory.shipDesigns.includes(designId) || (Array.isArray(u.inventory.ships) && u.inventory.ships.includes(designId))) {
+      return { ok: false, error: "Design déjà possédé." };
     }
   }
 
@@ -782,6 +804,13 @@ export function buyItem(itemId, requestedQuantity = 1) {
     if (!u.hangars.some((h) => h?.shipId === shipId)) {
       u.hangars.push(makeHangar(shipId, false));
     }
+  }
+
+  // design purchase => juste la collection (s'appliquera via le dropdown hangar)
+  if (item.design?.id) {
+    const designId = String(item.design.id);
+    u.inventory.shipDesigns ??= [];
+    if (!u.inventory.shipDesigns.includes(designId)) u.inventory.shipDesigns.push(designId);
   }
 
   ensureUserShape(u);
@@ -997,6 +1026,59 @@ export function setActiveHangar(hangarId) {
   return { ok: true, user: u };
 }
 
+// ✅ Applique un design (variante cosmétique) à un hangar existant.
+// Le hangar garde son id/équipement mais change de modèle visuel.
+export function setHangarDesign(hangarId, designId) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  if (!hangarId) return { ok: false, error: "Hangar inexistant." };
+  if (!designId || designId === "none") {
+    designId = null;
+  } else {
+    designId = String(designId);
+  }
+
+  const h = (u.hangars || []).find((x) => x?.id === hangarId);
+  if (!h) return { ok: false, error: "Hangar introuvable." };
+
+  const baseId = getShipDesignBaseId(h.shipId) || h.shipId;
+  const targetBase =
+    designId == null ? baseId : getShipDesignBaseId(designId) || designId;
+  if (targetBase !== baseId) {
+    return { ok: false, error: "Ce design n'appartient pas à ce vaisseau." };
+  }
+
+  if (designId != null) {
+    if (designId !== baseId) {
+      const owned =
+        Array.isArray(u.inventory?.shipDesigns) &&
+        (u.inventory.shipDesigns.includes(designId) ||
+          (Array.isArray(u.inventory?.ships) && u.inventory.ships.includes(designId)));
+      if (!owned) return { ok: false, error: "Design non possédé." };
+    }
+  }
+
+  h.shipId = designId == null ? baseId : designId;
+
+  // préserve l'équipement en le re-normalisant sur le nouveau modèle
+  const prevFit = h.fits?.[h.activeConfig || "1"] || h.fit || null;
+  h.fits ??= {};
+  h.fits[h.activeConfig || "1"] = normalizeFitForShip(h.shipId, prevFit);
+  h.fit = h.fits[h.activeConfig || "1"];
+
+  if ((u.hangars || []).find((x) => x.id === h.id)?.active || h.active) {
+    u.ship = h.shipId;
+  }
+
+  ensureUserShape(u);
+  saveUser(u);
+  writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+
+  // ✅ SIGNAL cross-onglet (le jeu va détecter ça et se resync)
+  localStorage.setItem("orbit_sync", String(Date.now()));
+
+  return { ok: true, user: u };
+}
 
 // ---------------------------
 // Fit API
@@ -1223,6 +1305,9 @@ export function sellItem(itemId, qty = 1) {
 
   // pas de vente de ships ici
   if (it.ship) return { ok: false, error: "Impossible de vendre un vaisseau ici." };
+
+  // pas de vente de designs ici
+  if (it.design) return { ok: false, error: "Impossible de vendre un design." };
 
   const price = Number(it.price || 0);
   if (!Number.isFinite(price) || price <= 0) return { ok: false, error: "Prix invalide." };

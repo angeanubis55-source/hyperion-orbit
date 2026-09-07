@@ -314,6 +314,7 @@ export const SHIP_PACKS = [
   { id: "liberator", name: "Liberator", path: "Ship/ship_liberator/", frames: 32, firstNumber: 1, ext: ".png", w: 169, h: 150, slots: { lasers: 4, gens: 6, extras: 2, shipMods: 4 }, price: 100000, hp: 116000, speed: 300, angleOffset: Math.PI },
   { id: "liberator_plus", name: "Liberator Plus", path: "Ship/ship_liberator_plus/", frames: 32, firstNumber: 1, ext: ".png", w: 225, h: 200, slots: { lasers: 12, gens: 12, extras: 4, shipMods: 4 }, price: 800000, hp: 275000, speed: 350, angleOffset: Math.PI },
   { id: "liberator_plus_frost", name: "Liberator Plus Frost", path: "Ship/ship_liberator_plus_frost/", frames: 32, firstNumber: 1, ext: ".png", w: 225, h: 200, slots: { lasers: 12, gens: 12, extras: 4, shipMods: 4 }, price: 800000, hp: 275000, speed: 350, angleOffset: Math.PI },
+  { id: "mimesis", name: "Mimesis", path: "Ship/ship_mimesis_asimov/", frames: 32, firstNumber: 1, ext: ".png", w: 200, h: 160, slots: { lasers: 12, gens: 14, extras: 3, shipMods: 4 }, price: 30000000, hp: 386000, speed: 300, angleOffset: Math.PI },
   { id: "mimesis_asimov", name: "Mimesis Asimov", path: "Ship/ship_mimesis_asimov/", frames: 32, firstNumber: 1, ext: ".png", w: 200, h: 160, slots: { lasers: 12, gens: 14, extras: 3, shipMods: 4 }, price: 30000000, hp: 386000, speed: 300, angleOffset: Math.PI },
   { id: "mimesis_frost", name: "Mimesis Frost", path: "Ship/ship_mimesis_frost/", frames: 32, firstNumber: 1, ext: ".png", w: 200, h: 178, slots: { lasers: 12, gens: 14, extras: 3, shipMods: 4 }, price: 30000000, hp: 386000, speed: 300, angleOffset: Math.PI },
   { id: "mimesis_inferno", name: "Mimesis Inferno", path: "Ship/ship_mimesis_inferno/", frames: 32, firstNumber: 1, ext: ".png", w: 200, h: 160, slots: { lasers: 12, gens: 14, extras: 3, shipMods: 4 }, price: 30000000, hp: 386000, speed: 300, angleOffset: Math.PI },
@@ -550,6 +551,7 @@ export const SHIP_PACKS = [
   { id: "spectrum_ullrin", name: "Spectrum Ullrin", path: "Ship/ship_spectrum_ullrin/", frames: 32, firstNumber: 1, ext: ".png", w: 169, h: 150, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 35000000, hp: 356000, speed: 300, angleOffset: Math.PI },
   { id: "streuner_rocketeer", name: "Streuner Rocketeer", path: "Ship/ship_streuner_rocketeer/", frames: 33, firstNumber: 1, ext: ".png", w: 160, h: 160, slots: { lasers: 4, gens: 6, extras: 2, shipMods: 4 }, price: 500000, hp: 100000, speed: 320, angleOffset: Math.PI },
   { id: "streuner_seeker_rocket", name: "Streuner Seeker Rocket", path: "Ship/ship_streuner_seeker_rocket/", frames: 32, firstNumber: 1, ext: ".png", w: 110, h: 110, slots: { lasers: 4, gens: 6, extras: 2, shipMods: 4 }, price: 500000, hp: 100000, speed: 320, angleOffset: Math.PI },
+  { id: "tartarus", name: "Tartarus", path: "Ship/ship_tartarus_dusklight/", frames: 32, firstNumber: 1, ext: ".png", w: 260, h: 208, slots: { lasers: 14, gens: 15, extras: 3, shipMods: 4 }, price: 50000000, hp: 360000, speed: 220, angleOffset: Math.PI },
   { id: "tartarus_dusklight", name: "Tartarus Dusklight", path: "Ship/ship_tartarus_dusklight/", frames: 32, firstNumber: 1, ext: ".png", w: 260, h: 208, slots: { lasers: 14, gens: 15, extras: 3, shipMods: 4 }, price: 50000000, hp: 360000, speed: 220, angleOffset: Math.PI },
   { id: "tartarus_epion", name: "Tartarus Epion", path: "Ship/ship_tartarus_epion/", frames: 32, firstNumber: 1, ext: ".png", w: 300, h: 244, slots: { lasers: 14, gens: 15, extras: 3, shipMods: 4 }, price: 50000000, hp: 360000, speed: 220, angleOffset: Math.PI },
   { id: "tartarus_frost", name: "Tartarus Frost", path: "Ship/ship_tartarus_frost/", frames: 32, firstNumber: 1, ext: ".png", w: 260, h: 208, slots: { lasers: 14, gens: 15, extras: 3, shipMods: 4 }, price: 50000000, hp: 360000, speed: 220, angleOffset: Math.PI },
@@ -641,6 +643,23 @@ const SHIP_DESIGN_TRAITS = new Set([
 
 const SHIP_PACK_ID_SET = new Set(SHIP_PACKS.map((p) => String(p?.id)));
 
+// Pack d'un vaisseau avec tolérance à la casse. « PhoenixBleu » (id legacy du
+// starter dans les comptes sauvegardés) correspond au pack « phoenix_bleu ».
+const SHIP_PACK_ALIASES = {
+  phoenixbleu: "phoenix_bleu",
+};
+
+const SHIP_PACK_BY_ID_LOWER = new Map(
+  SHIP_PACKS.map((p) => [String(p?.id).toLowerCase(), p]),
+);
+
+export function getShipPackById(shipId) {
+  if (!shipId) return null;
+  const key = String(shipId).toLowerCase();
+  const pack = SHIP_PACK_BY_ID_LOWER.get(key) || SHIP_PACK_BY_ID_LOWER.get(SHIP_PACK_ALIASES[key]);
+  return pack || null;
+}
+
 function humanizeShipId(id) {
   return String(id || "")
     .split("_")
@@ -673,7 +692,7 @@ export function getShipFamilyId(shipId) {
 }
 
 export function getShipFamilyName(familyId) {
-  const pack = SHIP_PACKS.find((p) => String(p?.id) === String(familyId));
+  const pack = getShipPackById(familyId);
   if (pack?.name) return String(pack.name).replace(/^Vaisseau:\s*/i, "");
   return humanizeShipId(familyId);
 }
@@ -690,4 +709,76 @@ export function getShipFamilyMembers() {
 
 export function getShipFamilyIds() {
   return Array.from(getShipFamilyMembers().keys());
+}
+
+// ------------------------------------------------------------
+// ✅ Groupes « vaisseau de base / designs »
+// ------------------------------------------------------------
+// La liste officielle des vaisseaux de base = les modèles distincts achetables
+// dans la boutique. Tout pack qui n'est pas une base est un design rattaché à
+// la base dont il porte le préfixe (ex : Goliath Champion France = design de
+// Goliath). Un modèle autonome absent de la liste (ex : police, dinde) reste
+// un « vaisseau » de la boutique car aucun parent ne lui est assignable.
+
+const SHIP_BASE_IDS = new Set([
+  "phoenix_bleu", // Phoenix
+  "liberator", "piranha", "leonov", "nostromo", "bigboy", "vengeance",
+  "pusat", "goliath", "goliath_x", "diminisher", "sentinel", "solace",
+  "spectrum", "venom", "defcom", "yamato", "aegis", "citadel", "spearhead",
+  "tartarus", "cyborg", "hammerclaw", "mimesis", "centurion", "hecate",
+  "disruptor", "berserker", "zephyr", "solaris", "keres", "retiarus",
+  "orcus", "holo", "tempest", "basilisk", "paladin", "hyperion",
+  "liberator_plus", "goliath_plus", "citadel_plus", "solace_plus",
+  "solaris_plus", "pusat_plus", "hammerclaw_plus", "hecate_plus",
+  "spearhead_plus", "tartarus_plus", "spectrum_plus", "retiarus_plus",
+]);
+
+// Entrées retirées de la boutique (NPC / collectables / doublons) : ni base,
+// ni design, juste exclues du catalogue.
+const SHIP_REMOVED_IDS = new Set([
+  "bigboy1", "gygerthrall_infected", "infected_egg", "kristallin_pink",
+  "kristallon_pink", "streuner_rocketeer", "streuner_seeker_rocket",
+  "slender", "plague_minion_blacklight", "hitac_frost", "hitac_infected",
+  "hitac_minion_frost",
+]);
+
+// Cas particuliers : ids dont le préfixe ne correspond pas à une base connue.
+const SHIP_DESIGN_BASE_OVERRIDES = {
+  "c_elite_ullrin": "citadel",                       // Citadel Elite Ullrin
+  "g_champion_design_g_champion_ireland": "goliath", // Goliath Champion Ireland
+};
+
+export function isRemovedShipPack(shipId) {
+  return SHIP_REMOVED_IDS.has(String(shipId || ""));
+}
+
+// Renvoie l'id de la base d'un vaisseau, ou null si le vaisseau EST une base
+// (ou un modèle autonome non listé comme design, ex : police, dinde).
+export function getShipDesignBaseId(shipId) {
+  const id = String(shipId || "");
+  if (!id) return null;
+  if (SHIP_BASE_IDS.has(id)) return null;
+  if (SHIP_DESIGN_BASE_OVERRIDES[id]) return SHIP_DESIGN_BASE_OVERRIDES[id];
+
+  const parts = id.split("_");
+  if (parts.length < 2) return null;
+
+  // Remonte les préfixes de droite à gauche : dès qu'un préfixe est une base
+  // connue, le vaisseau est un design de cette base.
+  for (let end = parts.length - 1; end >= 1; end--) {
+    const candidate = parts.slice(0, end).join("_");
+    if (SHIP_BASE_IDS.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+// Liste complète d'un groupe de designs : la base d'abord, puis toutes ses
+// variantes (dans l'ordre du fichier).
+export function getShipDesignIds(baseId) {
+  const base = String(baseId || "");
+  const out = [base];
+  for (const pack of SHIP_PACKS) {
+    if (getShipDesignBaseId(pack.id) === base) out.push(pack.id);
+  }
+  return out;
 }

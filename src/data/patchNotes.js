@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "c8a4a841",
+    "message": "grosse Update de son et de fonctionnalitée"
+  },
+  {
     "version": "0dd4dc0d",
     "message": "Synchronise la version du jeu (61a175fd)"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "138cf2dc",
     "message": "Refonte de l'équipement et améliorations générales du jeu."
-  },
-  {
-    "version": "ac19a006",
-    "message": "Ajustement des prix dans la boutique."
   }
 ];

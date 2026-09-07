@@ -1,7 +1,7 @@
 // src/core/catalog.js
 "use strict";
 
-import { SHIP_PACKS } from "../data/shipPacks.js";
+import { SHIP_PACKS, getShipDesignBaseId, isRemovedShipPack } from "../data/shipPacks.js";
 import { DRONE_FORMATIONS, SPECIAL_DRONE_PRICE, getDroneShopSpritePath } from "../data/drones.js";
 
 /**
@@ -75,13 +75,24 @@ ammo: [
   })),
 
   // ✅ auto depuis SHIP_PACKS (price propre à chaque vaisseau, fallback heuristique)
+  // « Vaisseaux » = uniquement les vaisseaux de base ; toutes les variantes
+  // (designs) sont dans la catégorie « designs ».
   ships: SHIP_PACKS
-    .filter(p => p?.id && p.id !== "PhoenixBleu")
+    .filter(p => p?.id && p.id !== "PhoenixBleu" && !isRemovedShipPack(p.id) && !getShipDesignBaseId(p.id))
     .map(p => ({
       id: `ship_${p.id}`,
       name: `Vaisseau: ${p.name || p.id}`,
       price: Number(p.price) > 0 ? Number(p.price) : defaultShipPrice(p),
       ship: { id: p.id },
+    })),
+
+  designs: SHIP_PACKS
+    .filter(p => p?.id && p.id !== "PhoenixBleu" && !isRemovedShipPack(p.id) && getShipDesignBaseId(p.id))
+    .map(p => ({
+      id: `design_${p.id}`,
+      name: p.name || p.id,
+      price: Number(p.price) > 0 ? Number(p.price) : defaultShipPrice(p),
+      design: { id: p.id, base: getShipDesignBaseId(p.id) },
     })),
 };
 

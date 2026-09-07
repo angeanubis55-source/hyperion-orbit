@@ -7,6 +7,7 @@ import {
   buyItem,
   sellItem,
   setActiveHangar,
+  setHangarDesign,
   saveHangarFit,
   setActiveHangarConfig,
   buyModuleRoll,
@@ -23,7 +24,7 @@ import {
 } from "../src/core/account.js";
 
 import { CATALOG, findCatalogItem } from "../src/core/catalog.js";
-import { SHIP_PACKS, getShipFamilyId, getShipFamilyMembers, getShipFamilyName } from "../src/data/shipPacks.js";
+import { SHIP_PACKS, getShipFamilyId, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../src/data/shipPacks.js";
 import { escapeHtml } from "../src/core/dom.js";
 import { PILOT_RANKS, calculateRankPoints, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo } from "../src/core/progression.js";
 import { formatInteger } from "../src/core/numberFormat.js";
@@ -137,13 +138,25 @@ function setMsg(text, ok = false) {
 }
 
 function showToast(message, type = "info") {
-  const container = document.getElementById("toastContainer");
-  if (!container) return;
-
   message = String(message ?? "").trim();
 
   // ✅ sécurité supplémentaire
   if (!message) return;
+
+  // ✅ Dans le jeu (index.html), on passe par les indications rapides
+  // (les lignes en haut de l'écran, comme les kills de NPC) au lieu des cartes toast.
+  const engine = window.__ORBIT_ENGINE__;
+  if (engine?.showToast) {
+    const clean = message
+      .replace(/^[\u2705\u274C\u26A0\u2139](?:\uFE0F)?[:\s,]*/, "")
+      .trim();
+    if (!clean) return;
+    engine.showToast(clean);
+    return;
+  }
+
+  const container = document.getElementById("toastContainer");
+  if (!container) return;
 
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
@@ -213,9 +226,34 @@ function alreadyOwnsShip(u, shipId) {
   return Array.isArray(u?.inventory?.ships) && u.inventory.ships.includes(String(shipId));
 }
 
+// un design est possédé s'il est dans shipDesigns (achat design) ou legacy ships
+function alreadyOwnsDesign(u, shipId) {
+  if (!shipId) return false;
+  const id = String(shipId);
+  return (
+    (Array.isArray(u?.inventory?.shipDesigns) && u.inventory.shipDesigns.includes(id)) ||
+    (Array.isArray(u?.inventory?.ships) && u.inventory.ships.includes(id))
+  );
+}
+
+// id de vaisseau représenté par un item de boutique (base OU design)
+function itemShipId(it) {
+  return String(it?.ship?.id || it?.design?.id || "");
+}
+
 function getShopListFor(cat) {
   const direct = CATALOG?.[cat];
-  if (Array.isArray(direct) && direct.length) return direct;
+  if (Array.isArray(direct) && direct.length) {
+    if (cat === "designs") {
+      // groupe les designs par vaisseau de base (l'ordre du fichier est déjà cohérent)
+      return [...direct].sort((a, b) => {
+        const ab = String(a.design?.base || a.id);
+        const bb = String(b.design?.base || b.id);
+        return ab.localeCompare(bb) || String(a.name).localeCompare(String(b.name));
+      });
+    }
+    return direct;
+  }
 
   if (cat === "ships") {
     const allCatalogItems = Object.values(CATALOG || {}).flatMap((v) => (Array.isArray(v) ? v : []));
@@ -459,6 +497,7 @@ function generateShipModule(user, opts = {}) {
 
 function iconForItem(it, cat) {
   if (cat === "ships") return shipPreviewSrc(it?.ship?.id, 28);
+  if (cat === "designs") return shipPreviewSrc(it?.design?.id, 28);
   if (it?.icon) return it.icon;
   const itemId = it?.id;
   if (itemId && ITEM_ICONS[itemId]) return ITEM_ICONS[itemId];
@@ -467,7 +506,7 @@ function iconForItem(it, cat) {
 }
 
 function shipPreviewSrc(shipId, frameIndex = 28) {
-  const pack = SHIP_PACKS.find((p) => p.id === shipId);
+  const pack = getShipPackById(shipId);
   if (!pack) return FALLBACK_ICON;
 
   const frames = Number(pack.frames || 1);
@@ -481,7 +520,7 @@ function shipPreviewSrc(shipId, frameIndex = 28) {
 }
 
 function getShipPack(shipId) {
-  return SHIP_PACKS.find((p) => String(p.id) === String(shipId)) || null;
+  return getShipPackById(shipId);
 }
 
 function getShipSlots(shipId) {
@@ -678,6 +717,16 @@ function buildInventorySections(u) {
     return { id: String(shipId), kind: "ship", name: pack?.name || String(shipId), quantity: 1, detail: "Vaisseau possédé" };
   });
 
+  const shipDesigns = (u?.inventory?.shipDesigns || []).map((shipId) => {
+    const pack = getShipPack(shipId);
+    const baseId = getShipDesignBaseId(shipId) || shipId;
+    const baseName = getShipPack(baseId)?.name || baseId;
+    return {
+      id: String(shipId), kind: "shipDesign", name: pack?.name || String(shipId), quantity: 1,
+      detail: `Design de ${baseName}`,
+    };
+  });
+
   const drones = (u?.drones?.items || []).map((drone, index) => ({
     id: drone.id || `drone-${index}`,
     kind: "drone",
@@ -717,6 +766,7 @@ function buildInventorySections(u) {
     { id: "equipment", title: "Équipements", items: equipment },
     { id: "modules", title: "Modules de vaisseau", items: modules },
     { id: "ships", title: "Vaisseaux", items: ships },
+    { id: "ship-designs", title: "Designs de vaisseaux", items: shipDesigns },
     { id: "drones", title: "Drones", items: drones },
     { id: "drone-designs", title: "Designs de drones", items: designs },
     { id: "drone-formations", title: "Formations de drones", items: droneFormations },
@@ -726,6 +776,7 @@ function buildInventorySections(u) {
 
 function inventoryItemIcon(entry) {
   if (entry.kind === "ship") return shipPreviewSrc(entry.id);
+  if (entry.kind === "shipDesign") return shipPreviewSrc(entry.id);
   if (entry.kind === "drone") return getDroneSpritePath(entry.drone, 29);
   if (entry.kind === "droneDesign") return entry.design?.icon || FALLBACK_ICON;
   if (entry.kind === "droneFormation") return entry.formation?.icon || FALLBACK_ICON;
@@ -753,6 +804,14 @@ function inventoryTooltipText(entry) {
     if (module.key) lines.push(`Effet : ${humanizeInventoryId(module.key)}`);
     lines.push(entry.detail);
   } else if (entry.kind === "ship") {
+    const pack = getShipPack(entry.id);
+    if (pack) {
+      lines.push(`Points de vie : ${formatNumber(pack.hp || 0)}`);
+      lines.push(`Vitesse : ${formatNumber(pack.speed || 0)}`);
+      lines.push(`Slots : ${formatNumber(pack.slots?.lasers || 0)} lasers · ${formatNumber(pack.slots?.gens || 0)} générateurs · ${formatNumber(pack.slots?.extras || 0)} extras`);
+    }
+  } else if (entry.kind === "shipDesign") {
+    lines.push(`Vaisseau de base : ${entry.detail.replace("Design de ", "")}`);
     const pack = getShipPack(entry.id);
     if (pack) {
       lines.push(`Points de vie : ${formatNumber(pack.hp || 0)}`);
@@ -1025,6 +1084,106 @@ function wireAccountSettingsOnce() {
   });
 }
 
+// -------------------- Design dropdown (liste référencée, max 10 items visibles) --------------------
+let hangarDesignPanel = null;
+let hangarDesignPanelCleanup = null;
+
+function closeHangarDesignPanel() {
+  if (hangarDesignPanelCleanup) hangarDesignPanelCleanup();
+  hangarDesignPanelCleanup = null;
+  if (hangarDesignPanel) {
+    hangarDesignPanel.remove();
+    hangarDesignPanel = null;
+  }
+}
+
+function openHangarDesignPanel(triggerEl, hangarId, options, currentId) {
+  closeHangarDesignPanel();
+
+  const panel = document.createElement("div");
+  panel.className = "hangarDesignPanel";
+  for (const opt of options) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className =
+      "hangarDesignOption" +
+      (opt.id === currentId ? " selected" : "") +
+      (opt.locked ? " locked" : "");
+    btn.textContent = opt.label;
+    btn.disabled = !!opt.locked;
+    btn.addEventListener("click", () => {
+      closeHangarDesignPanel();
+      applyHangarDesign(hangarId, opt.id);
+    });
+    panel.appendChild(btn);
+  }
+
+  document.body.appendChild(panel);
+  hangarDesignPanel = panel;
+
+  const rect = triggerEl.getBoundingClientRect();
+  const width = Math.max(200, rect.width);
+  panel.style.width = `${width}px`;
+  panel.style.left = `${Math.min(rect.left, window.innerWidth - width - 8)}px`;
+
+  const itemH = 28;
+  const maxH = itemH * 10 + 10;
+  const below = window.innerHeight - rect.bottom - 6;
+  const top = below >= maxH ? rect.bottom + 4 : Math.max(4, rect.top - maxH - 4);
+  panel.style.maxHeight = `${maxH}px`;
+  panel.style.top = `${top}px`;
+
+  const onPointer = (e) => {
+    if (!panel.contains(e.target) && !triggerEl.contains(e.target)) closeHangarDesignPanel();
+  };
+  const onKey = (e) => {
+    if (e.key === "Escape") closeHangarDesignPanel();
+  };
+  const onScroll = (e) => {
+    if (e.target !== document && e.target !== window && e.target !== document.documentElement) return;
+    closeHangarDesignPanel();
+  };
+
+  document.addEventListener("pointerdown", onPointer, true);
+  document.addEventListener("keydown", onKey, true);
+  window.addEventListener("scroll", onScroll, true);
+  hangarDesignPanelCleanup = () => {
+    document.removeEventListener("pointerdown", onPointer, true);
+    document.removeEventListener("keydown", onKey, true);
+    window.removeEventListener("scroll", onScroll, true);
+  };
+}
+
+function applyHangarDesign(hangarId, designId) {
+  const isIntegratedInGame = !!document.getElementById("profileOverlay");
+  if (!isIntegratedInGame && isGameOpen()) {
+    return setMsg("⚠️ Le jeu est ouvert. Ferme-le d'abord avant de changer de design.", false);
+  }
+
+  const access = getHangarActionAccess("equip");
+  if (!access.ok) {
+    return setMsg(access.error, false);
+  }
+
+  const out = setHangarDesign(hangarId, designId);
+  if (!out.ok) {
+    return setMsg("❌ " + (out.error || "Impossible d'appliquer le design."), false);
+  }
+
+  window.__ORBIT_ENGINE__?.markHangarChanged?.();
+
+  user = getCurrentUserFull();
+  setMsg("✅ Design appliqué !", true);
+  renderHeader(user);
+  renderStats(user);
+  renderHangars(user);
+  if (tab === "shop") renderShop(user);
+
+  if (isIntegratedInGame) {
+    window.__ORBIT_ENGINE__?.applyHangarDesignLive?.();
+  }
+}
+
 function renderHangars(u) {
   if (!u) return;
   hangarGrid.innerHTML = "";
@@ -1079,10 +1238,41 @@ function renderHangars(u) {
     const isActive = !!h.active;
     const prev = shipPreviewSrc(h.shipId);
     const slots = getShipSlots(h.shipId);
+    const hangarPackName = getShipPack(h.shipId)?.name || h.shipId;
 
     const mods = Array.isArray(u?.inventory?.shipModules) ? u.inventory.shipModules : [];
     const shipFamily = getShipFamilyId(h.shipId);
     const modsForShip = mods.filter(m => moduleFamilyId(m) === shipFamily);
+
+    // ✅ Liste déroulante des designs de la famille du vaisseau (toujours
+    // affichée pour garder une hauteur identique, design possédé ou non).
+    const designBase = getShipDesignBaseId(h.shipId) || h.shipId;
+    const designIds = getShipDesignIds(designBase);
+    const hasDesigns = designIds.length > 1;
+    const designOptions = designIds.map((did) => {
+      const isBase = did === designBase;
+      const ownedD = alreadyOwnsDesign(u, did);
+      const dpack = getShipPack(did);
+      const locked = !isBase && !ownedD;
+      return {
+        id: did,
+        label:
+          `${dpack?.name || did}` +
+          (isBase ? " · Base" : "") +
+          (locked ? " · Verrouillé" : ""),
+        locked,
+      };
+    });
+    const currentName = getShipPack(h.shipId)?.name || h.shipId;
+    const designSelectHtml = `
+        <div class="hangarDesignRow"${hasDesigns ? "" : " disabled"}>
+          <label>Design</label>
+          <button type="button" class="hangarDesignTrigger" data-design-trigger="${h.id}" ${hasDesigns ? "" : "disabled"}>
+            <span class="hangarDesignValue">${escapeHtml(currentName)}</span>
+            <span class="hangarDesignCaret">▾</span>
+          </button>
+        </div>
+      `;
 
     const el = document.createElement("div");
     el.className = "hangarListItem" + (h.id === selectedHangarId ? " selected" : "") + (isActive ? " active" : "");
@@ -1091,7 +1281,7 @@ function renderHangars(u) {
         ${prev ? `<img src="${prev}" alt="${h.shipId}" class="shipImg" style="image-rendering: pixelated;" />` : ""}
         <div style="flex: 1;">
           <h3>
-            ${h.shipId} 
+            ${escapeHtml(hangarPackName)}
             ${isActive ? `<span class="pill">Actif</span>` : ""}
           </h3>
           <p style="margin-bottom: 4px; color: var(--muted);">
@@ -1107,10 +1297,11 @@ function renderHangars(u) {
 
       <div class="tileActions">
         <button class="${isActive ? 'secondary' : 'primary'}" data-act="${h.id}" ${isActive ? 'disabled' : ''}>
-          ${isActive ? '✅ Activé' : 'Activer'}
+          ${isActive ? 'Activé' : 'Activer'}
         </button>
-        <button class="secondary" data-fit="${h.id}">⚙️ Équiper</button>
+        <button class="secondary" data-fit="${h.id}">Équiper</button>
       </div>
+      ${designSelectHtml}
     `;
 
     el.addEventListener("click", () => {
@@ -1148,13 +1339,21 @@ if (!isIntegratedInGame && isGameOpen()) {
   renderHangars(user);
   if (tab === "shop") renderShop(user);
   if (isIntegratedInGame) {
-  setTimeout(() => location.reload(), 500);
-}
+    window.__ORBIT_ENGINE__?.applyHangarDesignLive?.();
+  }
 });
 
 
      el.querySelector(`[data-fit="${h.id}"]`).addEventListener("click", () => {
       openFitModal(h.id);
+    });
+
+    // ✅ Dropdown design (variante du vaisseau) — liste custom, max 10 items visibles
+    const designTrigger = el.querySelector(`[data-design-trigger="${h.id}"]`);
+    designTrigger?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!hasDesigns) return;
+      openHangarDesignPanel(designTrigger, h.id, designOptions, h.shipId);
     });
 
     hangarGrid.appendChild(el);
@@ -1214,7 +1413,10 @@ function renderShop(user) {
   for (const it of list) {
     const ownedIris = user?.drones?.items?.filter(drone => drone.type === "iris").length || 0;
     const price = it.drone?.type === "iris" ? getIrisPrice(ownedIris) : Number(it.price || 0);
-    const ownedShip = shopTab === "ships" ? alreadyOwnsShip(user, it.ship?.id) : false;
+    const isShipLike = shopTab === "ships" || shopTab === "designs";
+    const ownedShip = isShipLike
+      ? (shopTab === "designs" ? alreadyOwnsDesign(user, itemShipId(it)) : alreadyOwnsShip(user, it.ship?.id))
+      : false;
     const ownedDrone = it.drone ? (user?.drones?.items || []).filter(drone => drone.type === it.drone.type).length : 0;
     const ownedFormation = it.formation ? user?.drones?.formations?.includes(it.formation.id) : false;
 
@@ -1225,7 +1427,7 @@ function renderShop(user) {
     img.src = iconForItem(it, shopTab);
     img.alt = it.name || it.id;
     img.loading = "lazy";
-    img.style.imageRendering = (shopTab === "ships" || shopTab === "drones") ? "pixelated" : "auto";
+    img.style.imageRendering = (shopTab === "ships" || shopTab === "designs" || shopTab === "drones") ? "pixelated" : "auto";
     if (shopTab === "drones") img.classList.add("droneShopRowImage");
     if (shopTab === "formations") img.classList.add("formationShopRowImage");
     img.onerror = () => {
@@ -1241,6 +1443,7 @@ function renderShop(user) {
 
     const sub = document.createElement("span");
     sub.innerHTML = `${formatNumber(price)} crédits`
+      + (shopTab === "designs" ? ` · ${getShipPack(it.design?.base)?.name || it.design?.base}` : "")
       + (ownedShip || ownedFormation ? ` · <span style="color:#00ff88;">Possédé</span>` : "")
       + (it.drone ? ` · ${ownedDrone}/${it.drone.type === "iris" ? 8 : 1}` : "");
 
@@ -1329,20 +1532,20 @@ card.className = "shipCard" + (owned ? " owned" : "");
       </h3>
 
       <div class="shipStats">
-        💪 HP: <strong style="color:#00d9ff;">${formatNumber(pack?.hp || 0)}</strong> •
-        ⚡ Vitesse: <strong style="color:#00d9ff;">${pack?.speed || 0}</strong><br>
-        🔫 Lasers: <strong>${pack?.slots?.lasers || 0}</strong> •
-        ⚙️ Génés: <strong>${pack?.slots?.gens || 0}</strong> •
-        🛡️ Extras: <strong>${pack?.slots?.extras || 0}</strong>
-        ${pack?.slots?.shipMods ? ` • ✨ Modules: <strong>${pack.slots.shipMods}</strong>` : ""}
+        HP: <strong style="color:#00d9ff;">${formatNumber(pack?.hp || 0)}</strong> •
+        Vitesse: <strong style="color:#00d9ff;">${pack?.speed || 0}</strong><br>
+        Lasers: <strong>${pack?.slots?.lasers || 0}</strong> •
+        Génés: <strong>${pack?.slots?.gens || 0}</strong> •
+        Extras: <strong>${pack?.slots?.extras || 0}</strong>
+        ${pack?.slots?.shipMods ? ` • Modules: <strong>${pack.slots.shipMods}</strong>` : ""}
       </div>
 
       <div class="shipPrice">
-        💰 <span class="amount">${formatNumber(price)}</span> crédits
+        <span class="amount">${formatNumber(price)}</span> crédits
       </div>
 
       <button class="primary" style="width: 100%;" ${(!can || owned) ? "disabled" : ""} data-ship-buy="${it.id}">
-        ${owned ? "✅ Déjà possédé" : `💰 Acheter`}
+        ${owned ? "Déjà possédé" : `Acheter`}
       </button>
     `;
 
@@ -1355,7 +1558,7 @@ card.className = "shipCard" + (owned ? " owned" : "");
         const priceFormatted = formatNumber(price);
 
         showConfirm(
-          '🚀 Confirmer l\'achat',
+          'Confirmer l\'achat',
           `Voulez-vous acheter le vaisseau "${shipName}" pour ${priceFormatted} crédits ?`,
           () => {
             const out = buyItem(it.id);
@@ -1364,7 +1567,7 @@ card.className = "shipCard" + (owned ? " owned" : "");
               return;
             }
 
-            showToast(`✅ Vaisseau ${shipName} acheté !`, 'success');
+            showToast(`Vaisseau ${shipName} acheté !`, 'success');
 
             user = getCurrentUserFull();
             renderHeader(user);
@@ -1725,13 +1928,15 @@ function renderShopPreview(user, it, cat) {
   const ownedIris = user?.drones?.items?.filter(drone => drone.type === "iris").length || 0;
   const price = it?.drone?.type === "iris" ? getIrisPrice(ownedIris) : Number(it?.price || 0);
   const isShip = cat === "ships";
+  const isDesign = cat === "designs";
+  const isShipLike = isShip || isDesign;
   const isDrone = cat === "drones";
   const isFormation = cat === "formations";
-  const shipId = it?.ship?.id || null;
+  const shipId = it?.ship?.id || it?.design?.id || null;
   const droneCount = isDrone ? (user?.drones?.items || []).filter(drone => drone.type === it?.drone?.type).length : 0;
   const droneLimit = it?.drone?.type === "iris" ? 8 : 1;
   const formationOwned = isFormation && user?.drones?.formations?.includes(it?.formation?.id);
-  const owned = isShip ? alreadyOwnsShip(user, shipId) : isDrone ? droneCount >= droneLimit : Boolean(formationOwned);
+  const owned = isShipLike ? (isDesign ? alreadyOwnsDesign(user, shipId) : alreadyOwnsShip(user, shipId)) : isDrone ? droneCount >= droneLimit : Boolean(formationOwned);
 const counts = user?.inventory?.counts || {};
 const countOwned = Number(counts[it?.id] || 0);
 
@@ -1742,7 +1947,24 @@ const ammoKey = ammoQty?.key || "";
 let stockLine = "";
 let statLine = "";
 
-if (it?.module?.type === "speed") {
+if (isShipLike) {
+  const pack = getShipPack(shipId);
+  const slots = getShipSlots(shipId);
+  statLine = `
+    <p class="shopItemStat" style="margin-top:8px;">
+      HP <strong>${formatNumber(pack?.hp ?? 0)}</strong>
+      · Vitesse <strong>${formatNumber(pack?.speed ?? 0)}</strong>
+      · Laser <strong>${slots.lasers}</strong>
+      · Générateur <strong>${slots.gens}</strong>
+      · Extras <strong>${slots.extras}</strong>
+      · Modules <strong>${slots.shipMods}</strong>
+    </p>
+  `;
+  if (isDesign) {
+    const basePack = getShipPack(it?.design?.base);
+    statLine += `<p class="shopItemStat">Vaisseau de base : <strong>${escapeHtml(basePack?.name || it?.design?.base || "")}</strong></p>`;
+  }
+} else if (it?.module?.type === "speed") {
   statLine = `<p class="shopItemStat">Vitesse par générateur <strong>+${formatNumber(it.module.bonusSpeed || 0)}</strong></p>`;
 } else if (it?.module?.type === "shield") {
   statLine = `<p class="shopItemStat">Bouclier par générateur <strong>+${formatNumber(it.module.bonusShield || 0)}</strong></p>`;
@@ -1764,14 +1986,14 @@ if (isDrone) {
 } else if (isFormation) {
   const active = user?.drones?.activeFormation === it?.formation?.id;
   stockLine = `<p class="shopAmmoOwned">${formationOwned ? (active ? "Formation active" : "Formation possédée") : `Nécessite au moins ${it?.formation?.minDrones || 4} drones`}</p>`;
-} else if (!isShip && ammoQty) {
+} else if (!isShipLike && ammoQty) {
   stockLine = `
     <p class="shopAmmoOwned">
       Munitions ${String(ammoKey).toUpperCase()} — quantité possédée :
       <strong style="color: #00d9ff;">${formatNumber(ammoQty.qty)}</strong>
     </p>
   `;
-} else if (!isShip) {
+} else if (!isShipLike) {
   stockLine = `
     <p style="margin: 8px 0;">
       Stock possédé : 
@@ -1780,11 +2002,11 @@ if (isDrone) {
   `;
 }
 
-  const imgSrc = isShip ? shipPreviewSrc(shipId) : iconForItem(it, cat);
+  const imgSrc = isShipLike ? shipPreviewSrc(shipId) : iconForItem(it, cat);
 
   let previewHtml = "";
   
-  if (isShip) {
+  if (isShipLike) {
     // Récupérer les dimensions du vaisseau depuis SHIP_PACKS
     const pack = getShipPack(shipId);
     const shipW = pack?.w || 200;
@@ -1820,7 +2042,7 @@ if (isDrone) {
       ${stockLine}
       ${statLine}
 
-      ${!isShip && !isDrone && !isFormation ? `
+      ${!isShipLike && !isDrone && !isFormation ? `
         <div class="shopPurchaseRow">
           <div class="shopPurchaseInfo">
             <label for="shopBuyQuantity">${isAmmo ? "Quantité à acheter × 1 000" : "Quantité à acheter"}</label>
@@ -1839,14 +2061,14 @@ if (isDrone) {
         </div>
       ` : ""}
       
-      ${isShip || isDrone || isFormation ? `<p style="margin: 12px 0; font-size: 18px;">
+      ${isShipLike || isDrone || isFormation ? `<p style="margin: 12px 0; font-size: 18px;">
         <strong style="color: #00d9ff;">Prix total:</strong>
         <span id="shopPurchaseTotal" style="font-weight: 900; color: #00ff88;">${formatNumber(price)}</span> crédits
       </p>` : ""}
 
       <div class="shopBuySection">
         <button id="btnBuyPreview" class="primary" style="width: 100%;" ${(Number(user?.credits || 0) < price || (owned && !formationOwned)) ? "disabled" : ""}>
-          ${formationOwned ? (user?.drones?.activeFormation === it?.formation?.id ? 'Formation active' : 'Activer la formation') : owned ? 'Déjà possédé' : ((isShip || isDrone || isFormation) ? `Acheter (${formatNumber(price)})` : 'Acheter')}
+          ${formationOwned ? (user?.drones?.activeFormation === it?.formation?.id ? 'Formation active' : 'Activer la formation') : owned ? 'Déjà possédé' : ((isShipLike || isDrone || isFormation) ? `Acheter (${formatNumber(price)})` : 'Acheter')}
         </button>
       </div>
     </div>
@@ -1857,7 +2079,7 @@ if (isDrone) {
 
   const quantityInput = document.getElementById("shopBuyQuantity");
   const totalEl = document.getElementById("shopPurchaseTotal");
-  const normalizeQuantity = () => (isShip || isDrone || isFormation)
+  const normalizeQuantity = () => (isShipLike || isDrone || isFormation)
     ? 1
     : Math.min(999, Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
   const updatePurchaseSummary = () => {
@@ -1867,7 +2089,7 @@ if (isDrone) {
     if (totalEl) totalEl.textContent = formatNumber(total);
     btn.disabled = (owned && !formationOwned) || (formationOwned && user?.drones?.activeFormation === it?.formation?.id) || (!formationOwned && Number(user?.credits || 0) < total);
     if (!owned) {
-      btn.textContent = (isShip || isDrone || isFormation) ? `Acheter (${formatNumber(total)})` : "Acheter";
+      btn.textContent = (isShipLike || isDrone || isFormation) ? `Acheter (${formatNumber(total)})` : "Acheter";
     }
   };
 
@@ -1891,7 +2113,7 @@ if (isDrone) {
     const itemName = it?.name || it?.id;
 
     showConfirm(
-      '💰 Confirmer l\'achat',
+      'Confirmer l\'achat',
       `Voulez-vous acheter ${quantity > 1 ? `${formatNumber(quantity)} × ` : ""}"${itemName}" pour ${formatNumber(totalPrice)} crédits ?`,
       () => {
         const out = isDrone
@@ -1904,7 +2126,7 @@ if (isDrone) {
           return;
         }
 
-        showToast(`✅ ${formatNumber(quantity)} × ${itemName} acheté avec succès !`, 'success');
+        showToast(`${formatNumber(quantity)} × ${itemName} acheté avec succès !`, 'success');
 
         user = getCurrentUserFull();
         renderHeader(user);
@@ -2530,7 +2752,7 @@ function ensureShipFramesLoaded(shipId) {
   const existing = _fitShipCache.get(shipId);
   if (existing?.promise) return existing.promise;
 
-  const pack = SHIP_PACKS.find((p) => p?.id === shipId);
+  const pack = getShipPackById(shipId);
   if (!pack) return Promise.resolve(null);
 
   const rec = { imgs: new Array(pack.frames || 1), ready: false, promise: null };
@@ -2574,7 +2796,7 @@ function startFitShipAnim(shipId) {
   ctx.imageSmoothingEnabled = false;
 
   const token = ++_fitShipAnimToken;
-  const pack = SHIP_PACKS.find((p) => p?.id === shipId) || null;
+  const pack = getShipPackById(shipId);
 
   const draw = (t) => {
     if (token !== _fitShipAnimToken) return;
