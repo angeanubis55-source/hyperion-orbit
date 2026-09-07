@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "a8d4b3d8",
+    "message": "Laser : notifs portee (combat commence/hors de portee), triple bip Out_Of_Range + reglage, message d'evasion"
+  },
+  {
     "version": "f0f1b513",
     "message": "Dock : sons selection menus, pastille orbitale de tir, liseres et flash dynamiques"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "6b555711",
     "message": "Ajout de l'exécutable de test Alpha."
-  },
-  {
-    "version": "a22caa20",
-    "message": "Finalisation des docks, portails et drones, plus le lanceur Windows."
   }
 ];
