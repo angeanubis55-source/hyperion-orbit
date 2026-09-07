@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "c315fc8f",
+    "message": "Synchronise version (b2b22d27)"
+  },
+  {
     "version": "b2b22d27",
     "message": "Roquettes : arc en C, salves eventail, autos lies attaque, sons, fix syntaxe"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "0d2e92a1",
     "message": "Ajout de nouvelles missions."
-  },
-  {
-    "version": "91a7e12e",
-    "message": "Amélioration du Galaxy Spinner et sécurisation des portails."
   }
 ];

@@ -35,7 +35,7 @@ import { FACTIONS, getFaction } from "../src/core/factions.js";
 import { NPC_TYPES } from "../src/data/npcTypes.js";
 import { QUEST_DEFINITIONS } from "../src/data/quests.js";
 import { AMMO } from "../src/data/ammo.js";
-import { getRocketType } from "../src/data/rockets.js";
+import { getRocketType, rocketEffectLabel } from "../src/data/rockets.js";
 import { getResourceName } from "../src/data/resources.js";
 import { getItemRarity, ITEM_RARITIES } from "../src/data/itemRarities.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
@@ -840,7 +840,7 @@ function inventoryTooltipText(entry) {
     if (Number.isFinite(multiplier)) lines.push(`Multiplicateur de dégâts : x${multiplier}`);
     const rocket = getRocketType(entry.id);
     if (rocket) {
-      lines.push(`Dégâts fixes : ${formatNumber(rocket.damage)}`);
+      lines.push(rocketEffectLabel(rocket));
     }
     lines.push(`Quantité possédée : ${inventoryQuantityLabel(entry.quantity)}`);
   } else if (entry.kind === "equipment") {
@@ -2081,7 +2081,7 @@ if (isShipLike) {
     : `<p class="shopItemStat">Multiplicateur de dégâts <strong>${multiplier}×</strong></p>`;
 } else if (it?.give?.rockets) {
   const rocket = getRocketType(ammoKey);
-  statLine = `<p class="shopItemStat">Dégâts fixes <strong>${formatNumber(rocket?.damage || 0)}</strong> · Recharge <strong>${rocket?.cooldown || 1}s</strong> · Tir : touche ESPACE ou menu 🚀</p>`;
+  statLine = `<p class="shopItemStat">${escapeHtml(rocketEffectLabel(rocket))} · Recharge <strong>${rocket?.cooldown || 1}s</strong> · Tir : touche ESPACE ou menu 🚀</p>`;
 }
 if (isFormation) {
   const formation = DRONE_FORMATIONS.find(entry => entry.id === it?.formation?.id);

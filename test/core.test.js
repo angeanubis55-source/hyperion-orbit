@@ -9,7 +9,7 @@ import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield 
 import { createSpatialPairIndex, forEachNearbyPair, rebuildIdIndex } from "../src/core/spatialIndex.js";
 import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "../src/core/rendering.js";
 import { createNpcEntity } from "../src/core/npcFactory.js";
-import { addProjectile, advanceProjectile, createProjectile, removeProjectile } from "../src/core/projectiles.js";
+import { addProjectile, advanceProjectile, blendVelocityDirection, createProjectile, guideLauncherRocketVelocity, launcherRocketLaunchAngle, removeProjectile } from "../src/core/projectiles.js";
 import { createWaveSpawnState } from "../src/core/waves.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../src/core/hud.js";
 import { createPerformanceMonitor } from "../src/core/performanceMonitor.js";
@@ -821,6 +821,78 @@ test("les projectiles ont des valeurs sûres et progressent avec deltaTime", () 
   assert.equal(createProjectile().r, 6);
 });
 
+test("les roquettes gardent leur arc au loin mais entrent dans la hitbox en approche", () => {
+  const far = guideLauncherRocketVelocity({ dx: 2000, dy: 0, speed: 1000, lateralKick: 2500, hitRadius: 30 });
+  assert.ok(Math.abs(Math.atan2(far.vy, far.vx)) > Math.PI / 4);
+
+  const close = guideLauncherRocketVelocity({ dx: 200, dy: 0, speed: 1000, lateralKick: 2500, hitRadius: 30 });
+  const closeAngle = Math.abs(Math.atan2(close.vy, close.vx));
+  assert.ok(closeAngle < Math.PI / 4);
+  assert.ok(Math.abs(Math.hypot(close.vx, close.vy) - 1000) < 1e-9);
+
+  const centered = guideLauncherRocketVelocity({ dx: 20, dy: 0, speed: 1000, lateralKick: 2500, hitRadius: 30 });
+  assert.equal(centered.vy, 0);
+  assert.equal(centered.vx, 1000);
+});
+
+test("les roquettes du lanceur partent principalement sur les côtés", () => {
+  const left = launcherRocketLaunchAngle(0, -1);
+  const right = launcherRocketLaunchAngle(0, 1);
+  assert.ok(Math.abs(Math.sin(left)) > Math.cos(left));
+  assert.ok(Math.abs(Math.sin(right)) > Math.cos(right));
+  assert.ok(left < 0);
+  assert.ok(right > 0);
+  assert.ok(Math.cos(left) > 0);
+  assert.ok(Math.cos(right) > 0);
+  assert.ok(Math.abs(left) >= 48 * Math.PI / 180);
+  assert.ok(Math.abs(right) >= 48 * Math.PI / 180);
+
+  // Même aux extrémités d'une salve, aucune roquette ne repart en arrière.
+  const outerLeft = launcherRocketLaunchAngle(0, -1, -0.24);
+  const outerRight = launcherRocketLaunchAngle(0, 1, 0.24);
+  assert.ok(Math.cos(outerLeft) > 0);
+  assert.ok(Math.cos(outerRight) > 0);
+
+  const salvoAngles = Array.from({ length: 5 }, (_, i) => {
+    const direction = i % 2 === 0 ? -1 : 1;
+    return launcherRocketLaunchAngle(0, direction, (i - 2) * 0.12);
+  });
+  assert.equal(new Set(salvoAngles.map(angle => angle.toFixed(6))).size, 5);
+  const sortedAngles = [...salvoAngles].sort((a, b) => a - b);
+  for (let i = 1; i < sortedAngles.length; i++) {
+    assert.ok(sortedAngles[i] - sortedAngles[i - 1] >= 9 * Math.PI / 180);
+  }
+});
+
+test("le retour d'une roquette latérale se raccorde progressivement", () => {
+  const departure = blendVelocityDirection(0, 1, 1, 0, 0, 1000);
+  const middle = blendVelocityDirection(0, 1, 1, 0, 0.5, 1000);
+  const returnFlight = blendVelocityDirection(0, 1, 1, 0, 1, 1000);
+  assert.deepEqual(departure, { vx: 0, vy: 1000 });
+  assert.ok(Math.abs(middle.vx - middle.vy) < 1e-9);
+  assert.deepEqual(returnFlight, { vx: 1000, vy: 0 });
+});
+
+test("une roquette en approche touche sans pouvoir orbiter même avec un arc extrême", () => {
+  const rocket = { x: -300, y: 0 };
+  let hit = false;
+  for (let frame = 0; frame < 120 && !hit; frame++) {
+    const old = { ...rocket };
+    const guided = guideLauncherRocketVelocity({
+      dx: -rocket.x,
+      dy: -rocket.y,
+      speed: 1000,
+      lateralKick: 3000,
+      hitRadius: 30,
+    });
+    rocket.x += guided.vx / 60;
+    rocket.y += guided.vy / 60;
+    hit = movingCircleHit(old, rocket, { x: 0, y: 0 }, { x: 0, y: 0 }, 30);
+  }
+  assert.equal(hit, true);
+  assert.ok(Math.hypot(rocket.x, rocket.y) <= 50);
+});
+
 test("les projectiles supprimés sont recyclés sans conserver leur ancien état", () => {
   const collection = [];
   const first = addProjectile(collection, { x: 12, sprite: "ancien" });
@@ -1259,12 +1331,35 @@ test("la boutique applique un achat multiple de façon atomique", async () => {
 test("la boutique vend les 12 roquettes", async () => {
   const { buyItem, getCurrentUserFull, updateCurrentUserProgress } = await import("../src/core/account.js");
   const { CATALOG } = await import("../src/core/catalog.js");
-  const { ROCKET_IDS, getRocketType } = await import("../src/data/rockets.js");
+  const { ROCKET_IDS, getRocketType, rocketEffectLabel } = await import("../src/data/rockets.js");
 
   assert.equal(ROCKET_IDS.length, 12);
   assert.equal(CATALOG.rockets.length, 6);
   assert.equal(CATALOG.launchers.length, 6);
-  assert.equal(getRocketType("r310")?.damage, 1000);
+  const expectedDamage = {
+    r310: 1000,
+    plt2026: 2000,
+    plt2021: 4000,
+    plt3030: 6000,
+    dcr250: 0,
+    pld8: 0,
+    eco10: 2000,
+    hstrm01: 4000,
+    ubr100: 7500,
+    cbr: 3000,
+    sar01: 0,
+    sar02: 0,
+  };
+  for (const [id, damage] of Object.entries(expectedDamage)) {
+    assert.equal(getRocketType(id)?.damage, damage, `dégâts ${id}`);
+  }
+  assert.deepEqual(getRocketType("dcr250")?.effect, { slowPct: 30, duration: 5 });
+  assert.deepEqual(getRocketType("pld8")?.effect, { accuracyPenaltyPct: 30, duration: 5 });
+  assert.deepEqual(getRocketType("cbr")?.effect, { shieldDrain: 3000 });
+  assert.deepEqual(getRocketType("sar01")?.effect, { shieldDrain: 1000 });
+  assert.deepEqual(getRocketType("sar02")?.effect, { shieldDrain: 4000 });
+  assert.match(rocketEffectLabel("hstrm01"), /4[^0-9]*000 dégâts par roquette/);
+  assert.match(rocketEffectLabel("cbr"), /3[^0-9]*000 dégâts.*3[^0-9]*000 de bouclier/);
   // 6 standards tirables, 6 de lance-roquettes (pas de tir manuel).
   const manual = ROCKET_IDS.filter((id) => getRocketType(id)?.manual !== false);
   const launcher = ROCKET_IDS.filter((id) => getRocketType(id)?.manual === false);

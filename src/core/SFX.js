@@ -50,9 +50,7 @@ enabled: true,
 
     init(opts = {}) {
       if (api.ctx) return;
-      // Politique autoplay Chrome/Edge : pas de `new AudioContext()` avant un geste,
-      // sinon warning "AudioContext was not allowed to start" + contexte suspendu.
-      if (!opts.fromGesture && !api._hasGesture()) {
+      if (!opts.fromGesture && !opts.tryAutoplay && !api._hasGesture()) {
         api._armGesture();
         return;
       }
@@ -92,15 +90,14 @@ enabled: true,
 
     preload() {
       if (api._preloaded) return;
-      // Avant tout geste (ex: autoStart), on diffère sans créer de contexte pour éviter le warning.
-      if (!api._hasGesture()) {
-        api._preloadDeferred = true;
-        api._armGesture();
-        return;
-      }
-      api._preloaded = true;
-      api.resume();
+      // Tente le démarrage immédiatement. Il réussit sans interaction lorsque
+      // le navigateur a déjà accordé l'autoplay à ce site. Sinon les buffers
+      // sont tout de même prêts et le premier vrai geste reprend le contexte.
+      api.init({ tryAutoplay: true });
       if (!api.ctx) return;
+      api._preloaded = true;
+      if (api.ctx.state !== "running") api.ctx.resume().catch(() => {});
+      if (!api._hasGesture()) api._armGesture();
 
       api.preloaded = Promise.all([
         api.load("pShotX1", "Son/sfx_shot_x1.mp3"),
@@ -110,6 +107,9 @@ enabled: true,
         api.load("pShotX6", "Son/sfx_shot_x6.mp3"),
         api.load("sfx_shot_roquettes", "Son/sfx_shot_roquettes.mp3"),
         api.load("sfx_shot_lance_roquettes", "Son/sfx_shot_Lance_roquettes.mp3"),
+        api.load("rocketsLoadStart", "Son/RocketsLoadStart.mp3"),
+        api.load("rocketLoad", "Son/RocketLoad.mp3"),
+        api.load("rocketsLoaded", "Son/RocketsLoaded.mp3"),
         api.load("pShotSab", "Son/sfx_shot_Sab.mp3"),
         api.load("pulseIEM", "Son/Iem_Instant.mp3"),
         api.load("deathPlayer", "Son/Mort_joueur.mp3"),

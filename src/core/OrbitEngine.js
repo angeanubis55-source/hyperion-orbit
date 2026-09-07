@@ -40,7 +40,7 @@ import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield 
 import { createSpatialPairIndex, rebuildIdIndex } from "./spatialIndex.js";
 import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "./rendering.js";
 import { createNpcEntity } from "./npcFactory.js";
-import { addProjectile, advanceProjectile, removeProjectile } from "./projectiles.js";
+import { addProjectile, advanceProjectile, blendVelocityDirection, guideLauncherRocketVelocity, launcherRocketLaunchAngle, removeProjectile } from "./projectiles.js";
 import { createWaveSpawnState } from "./waves.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "./hud.js";
 import { createPerformanceMonitor } from "./performanceMonitor.js";
@@ -5684,6 +5684,7 @@ const PLAYER_SHOTS = {
 
 // Empêche d'afficher MISS deux fois quand le tir visuel a 2 projectiles
 const playerMissVolleysShown = new Set();
+const rocketEffectVolleysShown = new Set();
 
 // Empêche d'afficher "0" deux fois pour le double tir SAB quand la cible n'a plus de bouclier.
 const sabZeroShown = new Set();
@@ -5722,6 +5723,17 @@ function showPlayerMissOnce(b, t) {
   );
 }
 
+function showRocketEffectHitOnce(b, t) {
+  if (!b?.rocketEffect || (!b.rocketEffect.slowPct && !b.rocketEffect.accuracyPenaltyPct)) return;
+  const key = b.volleyId ?? `solo_${Math.random()}`;
+  if (rocketEffectVolleysShown.has(key)) return;
+  rocketEffectVolleysShown.add(key);
+  const isSlow = b.rocketEffect.slowPct > 0;
+  addFloatText(t.x, t.y - 92, 0, isSlow ? "rgba(80,220,255,0.98)" : "rgba(205,120,255,0.98)", {
+    text: "TOUCHÉ", size: 18, pop: 0.35, shake: 0.35, life: 1, glow: 1.2, weight: 900, impact: true,
+  });
+}
+
 function cleanupPlayerMissVolley(b) {
   if (!b || b.volleyId == null) return;
 
@@ -5729,6 +5741,7 @@ function cleanupPlayerMissVolley(b) {
   if (!stillExists) {
     playerMissVolleysShown.delete(b.volleyId);
     sabZeroShown.delete(b.volleyId);
+    rocketEffectVolleysShown.delete(b.volleyId);
   }
 }
 
@@ -6899,6 +6912,8 @@ function drainShieldFromEnemy(e, amount, recipient = player) {
   if (stolen <= 0) {
     return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0, sab: true };
   }
+  e._damagedByPlayer = true;
+  if (e._cubikonDeathFlee) e.noRewards = false;
   e._healthRevealed = true;
   triggerBossEncounterPhase(e, stolen);
 
@@ -6937,9 +6952,7 @@ function drainShieldFromEnemy(e, amount, recipient = player) {
       e._openDelayT = 2.0;
       e._holdLastT = 0;
 
-      // Mets ici la même valeur que tu as choisie pour le Cubikon.
-      // Pour 30 à 80 inclus :
-      e._pendingSpawn = Math.floor(rand(30, 81));
+      e._pendingSpawn = 20;
 
       e.spritePlay = false;
       e.spriteDir = 1;
@@ -6968,6 +6981,10 @@ function damageEnemy(e, dmg) {
   if (e._bossEncounter?.invulnerable) return emptyEnemyDamageResult();
 
   const result = damageEnemyLayers(e, dmg, { shieldPenetration: player.shPen });
+  if (result.total > 0) {
+    e._damagedByPlayer = true;
+    if (e._cubikonDeathFlee) e.noRewards = false;
+  }
   const shD = result.sh;
   const hpD = result.hp;
   if (result.total > 0) e._healthRevealed = true;
@@ -6999,7 +7016,7 @@ function damageEnemy(e, dmg) {
   e._animPhase = "delay";
   e._openDelayT = 2.0;      // ✅ ici ton délai
   e._holdLastT = 0;
-e._pendingSpawn = Math.floor(rand(30, 80)); // ✅ entre 30 et 150 Protegit
+e._pendingSpawn = 20;
 
   e.spritePlay = false;
   e.spriteDir = 1;
@@ -7008,11 +7025,74 @@ e._pendingSpawn = Math.floor(rand(30, 80)); // ✅ entre 30 et 150 Protegit
 
   e.angle = 0;
 }
-
-
   }
 
   return result;
+}
+
+function applyRocketHit(e, b, recipient = player) {
+  if (!e || e.hp <= 0 || e._bossEncounter?.invulnerable) return emptyEnemyDamageResult();
+  const effect = b.rocketEffect || null;
+  const direct = b.dmg > 0 ? damageEnemy(e, b.dmg) : emptyEnemyDamageResult();
+  const drained = effect?.shieldDrain > 0 && e.hp > 0
+    ? drainShieldFromEnemy(e, effect.shieldDrain, recipient)
+    : emptyEnemyDamageResult();
+
+  if (effect?.slowPct > 0) {
+    e.rocketSlowPct = Math.max(Number(e.rocketSlowPct || 0), Number(effect.slowPct));
+    e.rocketSlowT = Math.max(Number(e.rocketSlowT || 0), Number(effect.duration || 5));
+  }
+  if (effect?.accuracyPenaltyPct > 0) {
+    e.rocketAccuracyPenaltyPct = Math.max(Number(e.rocketAccuracyPenaltyPct || 0), Number(effect.accuracyPenaltyPct));
+    e.rocketAccuracyT = Math.max(Number(e.rocketAccuracyT || 0), Number(effect.duration || 5));
+  }
+  if (effect) {
+    e._damagedByPlayer = true;
+    if (e._cubikonDeathFlee) e.noRewards = false;
+  }
+  if (effect && rules?.mode === "zone") {
+    if (e.passiveNative) e._provoked = true;
+    e._aggroT = e.aggroHold ?? 3.5;
+    e._aggro = true;
+  }
+
+  return {
+    total: (direct.total || 0) + (drained.total || 0),
+    sh: (direct.sh || 0) + (drained.sh || 0),
+    hp: direct.hp || 0,
+    bypass: direct.bypass || 0,
+    isCrit: !!(direct.isCrit || drained.isCrit),
+    rawDamage: (direct.rawDamage || 0) + (drained.rawDamage || 0),
+    rocketDirectRaw: direct.rawDamage || 0,
+    rocketShieldDrainRaw: drained.rawDamage || 0,
+  };
+}
+
+function applyRocketVolleyHit(e, b, count, recipient = player) {
+  const combined = {
+    total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0,
+    rocketDirectRaw: 0, rocketShieldDrainRaw: 0,
+  };
+  for (let i = 0; i < Math.max(1, count || 1); i++) {
+    const hit = applyRocketHit(e, b, recipient);
+    combined.total += hit.total || 0;
+    combined.sh += hit.sh || 0;
+    combined.hp += hit.hp || 0;
+    combined.bypass += hit.bypass || 0;
+    combined.rawDamage += hit.rawDamage || 0;
+    combined.rocketDirectRaw += hit.rocketDirectRaw || 0;
+    combined.rocketShieldDrainRaw += hit.rocketShieldDrainRaw || 0;
+    if (hit.isCrit) combined.isCrit = true;
+  }
+  return combined;
+}
+
+function npcEffectiveSpeed(e, fallback = 320) {
+  const baseSpeed = Number(e?.speed) || fallback;
+  const slowPct = (e?.rocketSlowT || 0) > 0
+    ? clamp(Number(e.rocketSlowPct) || 0, 0, 95)
+    : 0;
+  return baseSpeed * (1 - slowPct / 100);
 }
 
 function hurtPlayer(amount) {
@@ -7154,20 +7234,17 @@ function processDeathsMeasured() {
     const e = enemies[i];
     if (e.hp > 0) continue;
 
-    spawnExplosion(e.x, e.y, e.isBoss ? 1.6 : 1.0);
-
-    // ✅ atténue tous les sons de laser (toutes munitions) en fondu avant le son de mort
-    SFX.fadeOut("pShotX1", { dur: 0.25, to: 0.3 });
-    SFX.fadeOut("pShotX2", { dur: 0.25, to: 0.3 });
-    SFX.fadeOut("pShotX3", { dur: 0.25, to: 0.3 });
-    SFX.fadeOut("pShotX4", { dur: 0.25, to: 0.3 });
-    SFX.fadeOut("pShotX6", { dur: 0.25, to: 0.3 });
-    SFX.fadeOut("pShotSab", { dur: 0.25, to: 0.3 });
-
-    // ✅ son de mort des NPC — beaucoup d'instances et aucun cooldown :
-    // avec un clip ~6s, un maxVoices bas saturait et les kills rapides
-    // (one-shot + changement de cible) devenaient silencieux.
-    SFX.play("npcDeath", { vol: 0.8, maxVoices: 16, cooldown: 0 });
+    if (!e.suppressDeathExplosion) {
+      spawnExplosion(e.x, e.y, e.isBoss ? 1.6 : 1.0);
+      // Atténue les lasers avant le son de mort pour une destruction réelle.
+      SFX.fadeOut("pShotX1", { dur: 0.25, to: 0.3 });
+      SFX.fadeOut("pShotX2", { dur: 0.25, to: 0.3 });
+      SFX.fadeOut("pShotX3", { dur: 0.25, to: 0.3 });
+      SFX.fadeOut("pShotX4", { dur: 0.25, to: 0.3 });
+      SFX.fadeOut("pShotX6", { dur: 0.25, to: 0.3 });
+      SFX.fadeOut("pShotSab", { dur: 0.25, to: 0.3 });
+      SFX.play("npcDeath", { vol: 0.8, maxVoices: 16, cooldown: 0 });
+    }
 
 let dropType = "Cargo_Box";
 
@@ -7205,16 +7282,25 @@ if (e.type === "npc_Cubikon") {
     if (m.type !== "npc_Protegit") continue;
     if (m.masterId !== e.id) continue;
 
-    // ✅ Quand le Cubikon meurt, tous ses Protegit explosent directement.
-    // Pas de fuite, pas de suivi du joueur, pas de mort 1 par 1.
-    m.value = 0;
-    m.noRewards = true;
+    // À la mort du Cubikon, chaque Protegit fuit dans sa propre direction
+    // pendant deux secondes et perd progressivement toute sa vie.
+    const fleeAngle = Math.random() * TAU;
+    const fleeSpeed = Math.max(650, Number(m.speed) || 650);
+    m._cubikonDeathFlee = true;
+    m._cubikonDeathFleeT = 2;
+    m._cubikonDeathDecayActive = true;
+    m._cubikonDeathDecay = Math.max(1, Number(m.hpMax) || Number(m.hp) || 1) * 0.05;
+    m.noRewards = !m._damagedByPlayer;
     m.despawnT = 0;
     m.despawnDur = 0;
-    m.vx = 0;
-    m.vy = 0;
-    m.hp = 0;
-    m.sh = 0;
+    m.masterId = null;
+    m._provoked = false;
+    m._aggro = false;
+    m._aggroT = 0;
+    m._attackedPlayerRecently = false;
+    m.vx = Math.cos(fleeAngle) * fleeSpeed;
+    m.vy = Math.sin(fleeAngle) * fleeSpeed;
+    m.angle = fleeAngle;
   }
 }
 
@@ -7747,17 +7833,21 @@ function tryFireRocket(opts = {}) {
 
 // Fabrique un projectile roquette (tir unique ou salve) : centre du vaisseau,
 // tête chercheuse en arc (C), fumée arc-en-ciel, MISS possible au contact.
-function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize = 1, arcDir = null, arcScale = 1, arcBoost = 0 } = {}) {
+function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize = 1, arcDir = null, arcScale = 1, arcBoost = 0, miss = null } = {}) {
   const distToTarget = Math.hypot(t.x - player.x, t.y - player.y);
   // Même vitesse de base que les standards.
   const speed = rocketLaunchSpeed(distToTarget);
   // Durée garantie : la roquette touche toujours (ou MISS au contact),
   // jamais d'expiration en vol tant que la cible vit.
   const life = rocketFlightLife(playerRange, speed);
-  const dmg = (rocket?.damage || 1000)
+  const dmg = (rocket?.damage ?? 1000)
     * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100);
-  const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (Number(player.laserHitBonusPct || 0) / 100));
-  const ang = player.angle + spread;
+  const shotMiss = typeof miss === "boolean"
+    ? miss
+    : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (Number(player.laserHitBonusPct || 0) / 100));
+  const ang = rocket.manual === false
+    ? launcherRocketLaunchAngle(player.angle, arcDir, spread)
+    : player.angle + spread;
 
   addCappedProjectile(bullets, {
     x: player.x,
@@ -7767,15 +7857,20 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
     r: 8.0,
     life,
     dmg,
+    rocketEffect: rocket.effect || null,
     key: rocket.id,
     side: "player",
     targetId: t.id,
     homing: true,
     spd: speed,
     volleyId,
-    volleySize: 1,
+    volleySize: Math.max(1, volleySize || 1),
     isSab: false,
     isRocket: true,
+    isLauncherRocket: rocket.manual === false,
+    launcherDepartureX: Math.cos(ang),
+    launcherDepartureY: Math.sin(ang),
+    launcherDepartureT: 0,
     // Vol en arc (C) : 70° de près → 45° au max de portée (sens aléatoire),
     // + bonus d'angle pour les salves (arcs plus grands, plus loin).
     // Arc grand si la cible est proche, petit si elle est loin.
@@ -7832,13 +7927,14 @@ function tryFireSalvo(opts = {}) {
   updateAmmoUI();
 
   const volleyId = volleySeq++;
+  const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (Number(player.laserHitBonusPct || 0) / 100));
   for (let i = 0; i < n; i++) {
     // 1 son par roquette, en même temps.
     SFX.play("sfx_shot_lance_roquettes", { vol: 0.45, maxVoices: 8 });
     // Éventail large : sens alterné + grande ampleur → 5 grands C distincts.
     const dirSign = i % 2 === 0 ? -1 : 1;
     const scale = 1.8 + 1.2 * (n > 1 ? i / (n - 1) : 0.5);
-    spawnRocketProjectile(rocket, t, { spread: (i - (n - 1) / 2) * 0.12, volleyId, volleySize: n, arcDir: dirSign, arcScale: scale, arcBoost: 15 });
+    spawnRocketProjectile(rocket, t, { spread: (i - (n - 1) / 2) * 0.12, volleyId, volleySize: n, arcDir: dirSign, arcScale: scale, arcBoost: 15, miss: volleyMiss });
   }
   return true;
 }
@@ -7917,6 +8013,22 @@ function playPlayerLaserHit() {
 // Impacts d'une même volée : 1er immédiat, suivants décalés de 100 ms.
 // (Map bornée : pas de fuite sur la durée d'une session.)
 const rocketVolleyHitCount = new Map();
+const launcherVolleyImpactCount = new Map();
+
+function registerLauncherRocketImpact(b) {
+  const key = b.volleyId;
+  const need = Math.max(1, Number(b.volleySize) || 1);
+  const count = (launcherVolleyImpactCount.get(key) || 0) + 1;
+  if (count >= need) {
+    launcherVolleyImpactCount.delete(key);
+    return { final: true, count: need };
+  }
+  if (launcherVolleyImpactCount.size > 500 && !launcherVolleyImpactCount.has(key)) {
+    launcherVolleyImpactCount.delete(launcherVolleyImpactCount.keys().next().value);
+  }
+  launcherVolleyImpactCount.set(key, count);
+  return { final: false, count };
+}
 function playRocketImpactStaggered(volleyId) {
   const n = rocketVolleyHitCount.get(volleyId) || 0;
   if (rocketVolleyHitCount.size > 500 && !rocketVolleyHitCount.has(volleyId)) {
@@ -7968,14 +8080,19 @@ function tickLauncherCharger(dt) {
     if (launcherPhaseT >= 2) {
       launcherPhase = "reload";
       launcherReloadT = 0;
+      SFX.play("rocketsLoadStart", { vol: 0.7, cut: true });
     }
     launcherFullT = 0;
     return;
   }
   // reload : +1/s. Le tir est possible à tout moment (même partiel).
+  const previousLit = launcherLitNow();
   launcherReloadT = Math.min(5, launcherReloadT + dt);
   // Mémorise le plein affiché pour la salve auto.
   const lit = launcherLitNow();
+  for (let loaded = previousLit + 1; loaded <= lit; loaded++) {
+    SFX.play(loaded === 5 ? "rocketsLoaded" : "rocketLoad", { vol: 0.7, maxVoices: 5 });
+  }
   if (lit >= full) launcherFullT += dt;
   else launcherFullT = 0;
 }
@@ -8075,6 +8192,17 @@ function flushVolleyKey(key, v) {
   pendingVolleys.delete(key);
   if (!v || v.rawDamage <= 0) return;
 
+  if (v.hasRocketBreakdown) {
+    const opts = { size: 18, pop: 0.3, shake: 0.6, life: 1, glow: v.isCrit ? 1.4 : 1, weight: 900, impact: true };
+    if (v.rocketDirectRaw > 0) {
+      addFloatText(v.x - 24, v.y - 52, v.rocketDirectRaw, "rgba(255,107,122,0.95)", opts);
+    }
+    if (v.rocketShieldDrainRaw > 0) {
+      addFloatText(v.x + 24, v.y - 82, v.rocketShieldDrainRaw, "rgba(124,240,255,0.95)", opts);
+    }
+    return;
+  }
+
   const n = Math.max(1, Math.round(v.rawDamage));
 
   const col = v.isCrit 
@@ -8099,7 +8227,7 @@ function flushVolleyKey(key, v) {
   addFloatText(v.x + offsetX, v.y + offsetY, n, col, opts);
 }
 
-function queueVolleyFloat(target, out, volleyId, volleySize) {
+function queueVolleyFloat(target, out, volleyId, volleySize, timeout = VOLLEY_FLOAT_TIMEOUT) {
   if (!target || !out) return;
 
   const key = `${volleyId}:${target.id}`;
@@ -8108,11 +8236,15 @@ function queueVolleyFloat(target, out, volleyId, volleySize) {
     v = {
       t: 0,
       need: Math.max(1, volleySize || 1),
+      timeout: Math.max(VOLLEY_FLOAT_TIMEOUT, Number(timeout) || 0),
       got: 0,
       total: 0,
       hp: 0,
       sh: 0,
       rawDamage: 0,
+      rocketDirectRaw: 0,
+      rocketShieldDrainRaw: 0,
+      hasRocketBreakdown: false,
       x: target.x,
       y: target.y,
       r: target.r || 18,
@@ -8127,6 +8259,9 @@ function queueVolleyFloat(target, out, volleyId, volleySize) {
   v.hp += out.hp || 0;
   v.sh += out.sh || 0;
   v.rawDamage += out.rawDamage || 0;
+  v.rocketDirectRaw += out.rocketDirectRaw || 0;
+  v.rocketShieldDrainRaw += out.rocketShieldDrainRaw || 0;
+  if (Object.hasOwn(out, "rocketDirectRaw") || Object.hasOwn(out, "rocketShieldDrainRaw")) v.hasRocketBreakdown = true;
   v.x = target.x;
   v.y = target.y;
   v.r = target.r || v.r;
@@ -8140,7 +8275,7 @@ function tickVolleyFloats(dt) {
   if (!pendingVolleys.size) return;
   for (const [key, v] of pendingVolleys) {
     v.t += dt;
-    if (v.t >= VOLLEY_FLOAT_TIMEOUT) flushVolleyKey(key, v);
+    if (v.t >= v.timeout) flushVolleyKey(key, v);
   }
 }
 
@@ -8571,6 +8706,7 @@ function resetRun({ randomSpawn = false, preparedZoneCamps = null, preparedZoneP
   attackActive = false;
   betweenWaves = false;
   pendingVolleys.clear();
+  launcherVolleyImpactCount.clear();
 
   // ✅ arrivée effective sur la carte = saut réussi : le robot réparateur
   // est réarmé immédiatement (resetPlayerToBase le remet sur son cooldown),
@@ -9173,6 +9309,49 @@ else {
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   drawCenteredImage(ctx, img, w, h);
+  ctx.restore();
+}
+
+function drawRocketDebuffEffect(e) {
+  const slowed = (e.rocketSlowT || 0) > 0;
+  const disrupted = (e.rocketAccuracyT || 0) > 0;
+  if (!slowed && !disrupted) return;
+
+  const now = performance.now() * 0.001;
+  const radius = Math.max(24, Number(e.r) || 24);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  if (slowed) {
+    const pulse = 0.75 + Math.sin(now * 7) * 0.15;
+    ctx.strokeStyle = `rgba(70,220,255,${pulse})`;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = "rgba(70,220,255,0.95)";
+    ctx.shadowBlur = 14;
+    for (let i = 0; i < 3; i++) {
+      const direction = i % 2 ? -1 : 1;
+      const start = now * direction + i;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 7 + i * 6, start, start + Math.PI * 1.25);
+      ctx.stroke();
+    }
+  }
+  if (disrupted) {
+    ctx.rotate(now * 2.8);
+    ctx.strokeStyle = "rgba(205,95,255,0.92)";
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = "rgba(205,95,255,1)";
+    ctx.shadowBlur = 12;
+    const arm = radius + 15;
+    for (let i = 0; i < 4; i++) {
+      ctx.rotate(Math.PI / 2);
+      ctx.beginPath();
+      ctx.moveTo(arm - 9, -7);
+      ctx.lineTo(arm, -7);
+      ctx.lineTo(arm, 7);
+      ctx.lineTo(arm - 9, 7);
+      ctx.stroke();
+    }
+  }
   ctx.restore();
 }
 
@@ -10068,7 +10247,8 @@ function enemyShoot(e, dt, combatTarget = player) {
           target: farthest === player ? "player" : "escort",
           targetId: farthest === player ? null : farthest.id,
           homing: true,
-          miss: Math.random() < NPC_SHOTS.missChance,
+          miss: Math.random() < Math.min(1, NPC_SHOTS.missChance
+            + ((e.rocketAccuracyT || 0) > 0 ? Number(e.rocketAccuracyPenaltyPct || 0) / 100 : 0)),
           hitRadiusBonus: NPC_SHOTS.hitRadiusBonus,
           longRange: true,
         }, ENTITY_LIMITS.enemyBullets);
@@ -10101,7 +10281,8 @@ function enemyShoot(e, dt, combatTarget = player) {
   const burst = Math.max(1, e.burst || 1);
 
   for (let k = 0; k < burst; k++) {
-    const willMiss = Math.random() < NPC_SHOTS.missChance;
+    const accuracyPenalty = (e.rocketAccuracyT || 0) > 0 ? Number(e.rocketAccuracyPenaltyPct || 0) / 100 : 0;
+    const willMiss = Math.random() < Math.min(1, NPC_SHOTS.missChance + accuracyPenalty);
 
     // Plus de spread ici : le tir part directement vers le joueur.
     const ang = ang0;
@@ -10174,7 +10355,7 @@ function tickEmpWander(e, dt) {
   const nx = dx / d;
   const ny = dy / d;
 
-  const spd = e.speed || 320;
+  const spd = npcEffectiveSpeed(e);
 
   setNpcVelocity(e, nx, ny, spd);
 
@@ -10464,11 +10645,36 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       const fade = Math.min(1, distance / Math.max(1, b.arcDist0 || 1));
       const kickNow = (b.arcKick0 || 0) * Math.pow(0.5, b.arcT * chaseSpeed / 1500) * fade * fade;
       const nx = dx / distance, ny = dy / distance;
-      b.vx += -ny * kickNow;
-      b.vy += nx * kickNow;
-      const sp = Math.hypot(b.vx, b.vy) || 1;
-      b.vx = b.vx / sp * chaseSpeed;
-      b.vy = b.vy / sp * chaseSpeed;
+      if (b.isLauncherRocket) {
+        const guided = guideLauncherRocketVelocity({
+          dx,
+          dy,
+          speed: chaseSpeed,
+          lateralKick: kickNow,
+          hitRadius: (t.r || 18) + (b.r || 6),
+        });
+        // La salve se détache du vaisseau : bref départ latéral, puis raccord
+        // progressif vers l'arc guidé sans excursion démesurée.
+        b.launcherDepartureT = (b.launcherDepartureT || 0) + dt;
+        const returnProgress = (b.launcherDepartureT - 0.08) / 0.28;
+        const departure = blendVelocityDirection(
+          b.launcherDepartureX,
+          b.launcherDepartureY,
+          guided.vx,
+          guided.vy,
+          returnProgress,
+          chaseSpeed,
+        );
+        b.vx = departure.vx;
+        b.vy = departure.vy;
+      } else {
+        // Les roquettes normales conservent exactement leur arc historique.
+        b.vx += -ny * kickNow;
+        b.vy += nx * kickNow;
+        const sp = Math.hypot(b.vx, b.vy) || 1;
+        b.vx = b.vx / sp * chaseSpeed;
+        b.vy = b.vy / sp * chaseSpeed;
+      }
       // Fumée arc-en-ciel + filet : densité au mètre (tous les 12 px),
       // constante à toute vitesse — couvre tout le vol même à 3 s.
       const lastPt = b.trail?.length ? b.trail[b.trail.length - 1] : null;
@@ -10477,13 +10683,16 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       if (b.smokeDist >= 12) {
         b.smokeDist = 0;
         b.smokeHue = ((b.smokeHue || 0) + 8) % 360;
-        pushBounded(sparks, { x: b.x, y: b.y, t: 0, big: false, smoke: true, color: `hsla(${b.smokeHue},100%,65%,0.9)` }, ENTITY_LIMITS.sparks);
+        const smokeColor = b.isLauncherRocket
+          ? "rgba(190,200,205,0.82)"
+          : `hsla(${b.smokeHue},100%,65%,0.9)`;
+        pushBounded(sparks, { x: b.x, y: b.y, t: 0, big: false, smoke: true, color: smokeColor }, ENTITY_LIMITS.sparks);
         b.trail ??= [];
-        b.trail.push({ x: b.x, y: b.y, hue: b.smokeHue || 0 });
+        b.trail.push({ x: b.x, y: b.y, hue: b.smokeHue || 0, color: b.isLauncherRocket ? "rgba(205,215,220,0.9)" : null });
         if (b.trail.length > 110) b.trail.shift();
       }
       if (!b.trail?.length) {
-        b.trail = [{ x: b.x, y: b.y, hue: b.smokeHue || 0 }];
+        b.trail = [{ x: b.x, y: b.y, hue: b.smokeHue || 0, color: b.isLauncherRocket ? "rgba(205,215,220,0.9)" : null }];
       }
     }
   }
@@ -10503,6 +10712,19 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     { x: t.x, y: t.y },
     rr,
   )) {
+    let launcherImpact = null;
+    if (b.isLauncherRocket && !b.visual) {
+      launcherImpact = registerLauncherRocketImpact(b);
+      if (!launcherImpact.final) {
+        if (b.miss) playPlayerLaserHit();
+        else if (!b.ownerEscortId) playRocketImpactStaggered(b.volleyId);
+        spawnSpark(b.x, b.y, false);
+        removeProjectile(bullets, i);
+        cleanupPlayerMissVolley(b);
+        continue;
+      }
+    }
+
     if (b.miss) {
       // ✅ MISS : le tir "touche" mais ne tue pas → son laser hit
       if (!b.visual) playPlayerLaserHit();
@@ -10521,7 +10743,15 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     if (!b.visual) {
       out = b.isSab
         ? drainShieldFromEnemy(t, b.dmg, sabRecipient)
-        : damageEnemy(t, b.dmg);
+        : b.isRocket
+          ? b.isLauncherRocket
+            ? applyRocketVolleyHit(t, b, launcherImpact?.count || b.volleySize, sabRecipient)
+            : applyRocketHit(t, b, sabRecipient)
+          : damageEnemy(t, b.dmg);
+
+      if (b.isRocket && (b.rocketEffect?.slowPct || b.rocketEffect?.accuracyPenaltyPct)) {
+        showRocketEffectHitOnce(b, t);
+      }
 
       // Son d'impact : lasers = silencieux ; roquettes = 1 son chacune,
       // décalés de 100 ms dans une salve (pas 5 en même temps).
@@ -10531,7 +10761,9 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     }
 
     if (out.total > 0) {
-      if (!b.ownerEscortId || Target.get() === t) queueVolleyFloat(t, out, b.volleyId, b.volleySize);
+      if (!b.ownerEscortId || Target.get() === t) {
+        queueVolleyFloat(t, out, b.volleyId, b.isLauncherRocket ? 1 : b.volleySize, b.isLauncherRocket ? 1.5 : VOLLEY_FLOAT_TIMEOUT);
+      }
     } else if (b.isSab && !b.visual) {
       showSabZeroOnce(b, t);
     }
@@ -10725,7 +10957,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
     if (e._holdLastT <= 0) {
       // ✅ Spawn ici (pendant la frame ouverte)
-      const n = e._pendingSpawn || 30;
+      const n = e._pendingSpawn || 20;
       e._pendingSpawn = 0;
       spawnProtegitOnCubikonHit(e, n);
 
@@ -10838,8 +11070,37 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
       }
     }
 
+    if (e.type === "npc_Protegit" && e._cubikonDeathDecayActive) {
+      e.hp = Math.max(0, e.hp - (e._cubikonDeathDecay || 0) * dt);
+      if (e.hp <= 0) {
+        e.hp = 0;
+        e.sh = 0;
+        e.suppressDeathExplosion = false;
+        continue;
+      }
+
+      if (e._cubikonDeathFlee) {
+        e._cubikonDeathFleeT = Math.max(0, (e._cubikonDeathFleeT || 0) - dt);
+        e.x = clamp(e.x + e.vx * dt, e.r, WORLD.w - e.r);
+        e.y = clamp(e.y + e.vy * dt, e.r, WORLD.h - e.r);
+        if (e._cubikonDeathFleeT <= 0) {
+          e._cubikonDeathFlee = false;
+          e.vx = 0;
+          e.vy = 0;
+          e.wanderMode = true;
+          if (e.aiZ) e.aiZ.state = "wander";
+        }
+        continue;
+      }
+    }
+
     e.empT = Math.max(0, (e.empT || 0) - dt);
     const emp = (e.empT || 0) > 0;
+
+    e.rocketSlowT = Math.max(0, (e.rocketSlowT || 0) - dt);
+    if (e.rocketSlowT <= 0) e.rocketSlowPct = 0;
+    e.rocketAccuracyT = Math.max(0, (e.rocketAccuracyT || 0) - dt);
+    if (e.rocketAccuracyT <= 0) e.rocketAccuracyPenaltyPct = 0;
 
     if (e.type === "npc_Cubikon") {
       e._hitSpawnCd = Math.max(0, (e._hitSpawnCd || 0) - dt);
@@ -10910,7 +11171,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             const mxv = dxm / dm;
             const myv = dym / dm;
 
-            const spdE = e.speed || 320;
+            const spdE = npcEffectiveSpeed(e);
             setNpcVelocity(e, mxv, myv, spdE);
 
             e.x = clamp(e.x + e.vx * dt, e.r, WORLD.w - e.r);
@@ -11026,7 +11287,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           myv = (tyW / tdistW) * 0.65;
         }
 
-        const spdE = e.speed;
+        const spdE = npcEffectiveSpeed(e);
         setNpcVelocity(e, mxv, myv, spdE);
 
         e.x = clamp(e.x + e.vx * dt, e.r, WORLD.w - e.r);
@@ -11061,7 +11322,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
         let mxv = mv.mxv;
         let myv = mv.myv;
 
-        const spdE = e.speed;
+        const spdE = npcEffectiveSpeed(e);
 
         setNpcVelocity(e, mxv, myv, spdE);
       }
@@ -11270,6 +11531,7 @@ if (GAME_SETTINGS.textures) {
     ctx.lineWidth = 2;
 
     drawEnemyBody(e);
+    drawRocketDebuffEffect(e);
 
     drawNpcStatus(
       ctx,
@@ -11289,7 +11551,8 @@ if (GAME_SETTINGS.textures) {
   for (const b of bullets) {
     const x = b.x + ox, y = b.y + oy;
     if (x < -90 || y < -90 || x > innerWidth + 90 || y > innerHeight + 90) continue;
-    // Filet fin arc-en-ciel derrière les roquettes (sous le sprite).
+    // Filet fin derrière les roquettes : gris pour le lanceur, arc-en-ciel
+    // pour les roquettes normales.
     if (b.isRocket && b.trail?.length > 1) {
       ctx.save();
       ctx.lineWidth = 1;
@@ -11297,7 +11560,7 @@ if (GAME_SETTINGS.textures) {
       for (let i = 1; i < b.trail.length; i++) {
         const p0 = b.trail[i - 1], p1 = b.trail[i];
         ctx.globalAlpha = 0.75 * (i / b.trail.length);
-        ctx.strokeStyle = `hsla(${p1.hue || 0},100%,62%,1)`;
+        ctx.strokeStyle = p1.color || `hsla(${p1.hue || 0},100%,62%,1)`;
         ctx.beginPath();
         ctx.moveTo(p0.x + ox, p0.y + oy);
         ctx.lineTo(p1.x + ox, p1.y + oy);
@@ -11806,10 +12069,36 @@ let fpsAcc = 0;
 let fpsFrames = 0;
 let fpsValue = 0;
 const performanceMonitor = createPerformanceMonitor();
+let frameRequestId = 0;
+let backgroundFrameTimer = 0;
+let frameScheduleGeneration = 0;
+
+function scheduleNextFrame() {
+  const generation = frameScheduleGeneration;
+  if (document.visibilityState === "hidden") {
+    backgroundFrameTimer = setTimeout(() => {
+      backgroundFrameTimer = 0;
+      if (generation === frameScheduleGeneration) frame(performance.now());
+    }, 33);
+    return;
+  }
+  frameRequestId = requestAnimationFrame((t) => {
+    frameRequestId = 0;
+    if (generation === frameScheduleGeneration) frame(t);
+  });
+}
+
+function restartFrameScheduler() {
+  frameScheduleGeneration++;
+  if (frameRequestId) cancelAnimationFrame(frameRequestId);
+  if (backgroundFrameTimer) clearTimeout(backgroundFrameTimer);
+  frameRequestId = 0;
+  backgroundFrameTimer = 0;
+  scheduleNextFrame();
+}
 
 function frame(t) {
   const realDt = Math.max(0, (t - last) / 1000);
-  const dt = Math.min(0.033, realDt);
   last = t;
   performanceMonitor.record(realDt);
 
@@ -11822,15 +12111,25 @@ function frame(t) {
   }
 
   try {
-    update(dt);
-    draw();
-    drawUI();
+    // Les navigateurs ralentissent les timers des onglets masqués. Découper
+    // le temps écoulé garde la simulation stable sans perdre cette durée.
+    let remainingDt = Math.min(realDt, 1.25);
+    do {
+      const dt = Math.min(0.033, remainingDt);
+      update(dt);
+      remainingDt -= dt;
+    } while (remainingDt > 0.0001);
+
+    if (document.visibilityState !== "hidden") {
+      draw();
+      drawUI();
+    }
   } catch (err) {
     console.error("CRASH:", err);
     started = false;
     setCenterMsg(true, "Erreur JS", "Ouvre la console (F12) et copie l'erreur <b>CRASH</b>.", "");
   }
-  requestAnimationFrame(frame);
+  scheduleNextFrame();
 }
 
 // ============================================================
@@ -12031,6 +12330,7 @@ addEventListener("visibilitychange", () => {
     try { saveStateImmediate(); } catch {}
     try { localStorage.setItem("orbit_game_open", String(Date.now())); } catch {}
   }
+  restartFrameScheduler();
 });
 
 window.addEventListener("storage", (e) => {
@@ -12104,6 +12404,6 @@ prepareGameAssets().catch((error) => {
 });
 
 setCenterMsg(false);
-requestAnimationFrame(frame);
+scheduleNextFrame();
 
 }
