@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "dc44835a",
+    "message": "Roquettes + lance-roquettes : 12 types, boutique, palette, tir en arc, salves, sons, secu hash"
+  },
+  {
     "version": "e7557a24",
     "message": "Synchronise version (df296162)"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "c876d665",
     "message": "Ajout de journaux et de messages texte dans le jeu."
-  },
-  {
-    "version": "649db531",
-    "message": "Amélioration du HUD des missions, des bases et des règles de sécurité des firmes."
   }
 ];
