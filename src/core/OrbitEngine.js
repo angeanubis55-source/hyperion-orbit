@@ -10457,13 +10457,12 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     b.vy = dy / distance * chaseSpeed;
     if (b.isRocket) {
       // Arc en C : échelle ABSOLUE (impulsion initiale × extinction temps
-      // × fade racine de la distance restante) : poursuite pure en finale,
+      // × fade de la distance restante) : poursuite pure en finale,
       // pas de dépassement, pas d'orbite autour de la cible.
-      // Mesuré en simulation : 100 % de touches, pire cas 483 ms (< 2000 ms),
-      // courbe ~3× de près, ~1.3× au max de portée.
       b.arcT = (b.arcT || 0) + dt;
-      const fade = Math.sqrt(Math.min(1, distance / Math.max(1, b.arcDist0 || 1)));
-      const kickNow = (b.arcKick0 || 0) * Math.pow(0.5, b.arcT * chaseSpeed / 1500) * fade;
+      // Fade quadratique : l'arc meurt vite en finale (jamais de tour complet).
+      const fade = Math.min(1, distance / Math.max(1, b.arcDist0 || 1));
+      const kickNow = (b.arcKick0 || 0) * Math.pow(0.5, b.arcT * chaseSpeed / 1500) * fade * fade;
       const nx = dx / distance, ny = dy / distance;
       b.vx += -ny * kickNow;
       b.vy += nx * kickNow;
