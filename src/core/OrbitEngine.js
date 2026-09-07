@@ -2528,6 +2528,7 @@ hangarState: !player.dead && started ? {
     sab: player.ammo.sab || 0,
     x6: player.ammo.x6 || 0,
   },
+  ammoActive: player.ammo.active || "x1",
   rockets: sanitizeRocketsForSave(),
   rocketActive: player.rocketActive || "r310",
   rocketAuto: player.rocketAuto === true,
@@ -2844,7 +2845,9 @@ function syncPlayerFromAccount() {
 
   // ✅ munitions synchronisées aussi si achat en boutique profil
   const a = fresh.ammo || {};
-  const active = player.ammo?.active || "x1";
+  // Préfère la sélection persistée (fresh), sinon garde celle en mémoire.
+  const rawActive = String(fresh.ammoActive ?? fresh.ammo?.active ?? player.ammo?.active ?? "x1").toLowerCase();
+  const active = AMMO[rawActive] ? rawActive : "x1";
 
   player.ammo = {
     ...player.ammo,
@@ -4410,7 +4413,13 @@ function ammoCount(key) {
 function setAmmo(key) {
   if (!AMMO[key]) return;
   if (key !== "x1" && ammoCount(key) <= 0) key = "x1";
+  if (player.ammo.active === key) {
+    updateAmmoUI();
+    return;
+  }
   player.ammo.active = key;
+  // Persiste la sélection du dock rapide (sinon refresh => retour x1).
+  markProgressDirty();
   updateAmmoUI();
 }
 
@@ -8779,7 +8788,9 @@ launcherReloadT = 0;
 launcherFullT = 0;
 launcherPhase = "reload";
 launcherPhaseT = 0;
-    setAmmo("x1");
+    // Restaure la munition du dock rapide (sinon retour x1 au refresh).
+    // setAmmo valide le stock et marque dirty uniquement si changement.
+    setAmmo(String(u.ammoActive ?? u.ammo?.active ?? "x1").toLowerCase());
     updateAmmoUI();
   }
 
@@ -12174,6 +12185,7 @@ updateCurrentUserProgress({
     sab: player.ammo.sab || 0,
     x6: player.ammo.x6 || 0,
   },
+  ammoActive: player.ammo.active || "x1",
   rockets: sanitizeRocketsForSave(),
   rocketActive: player.rocketActive || "r310",
   rocketAuto: player.rocketAuto === true,
@@ -12364,7 +12376,14 @@ window.addEventListener("orbit:user-updated", event => {
 
 resetPlayerToBase();
 updateAmmoUI();
-setAmmo("x1");
+// Restaure la sélection persistée au boot sans marquer dirty
+// (les stocks réels sont chargés au start ; un save ici écraserait tout).
+{
+  const bootUser = loadAccountUser();
+  const bootAmmo = String(bootUser?.ammoActive ?? bootUser?.ammo?.active ?? "x1").toLowerCase();
+  if (AMMO[bootAmmo]) player.ammo.active = bootAmmo;
+  updateAmmoUI();
+}
 
 // ✅ le cooldown du robot réparateur repart de 0 au refresh
 {

@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "94c6f73b",
+    "message": "dock rapide fix"
+  },
+  {
     "version": "0d6e7dc6",
     "message": "Synchronise version (d049fe40)"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "e0f63f22",
     "message": "Extension des rencontres de portails et des systèmes d'escorte."
-  },
-  {
-    "version": "0376a463",
-    "message": "Corrections de stabilité et d'affichage."
   }
 ];

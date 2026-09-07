@@ -287,6 +287,18 @@ function ensureUserShape(u) {
     u.ammo[k] = Math.max(0, Number(u.ammo[k] || 0));
   }
 
+  // Sélection munition du dock rapide (persistée comme rocketActive).
+  // Fallback compat : ancienne sauvegarde avec ammo.active embarqué.
+  const VALID_ACTIVE_AMMO = ["x1", "x2", "x3", "x4", "x6", "sab"];
+  const rawAmmoActive = String(u.ammoActive ?? u.ammo?.active ?? "x1").toLowerCase();
+  u.ammoActive = VALID_ACTIVE_AMMO.includes(rawAmmoActive) ? rawAmmoActive : "x1";
+  u.ammo.active = u.ammoActive;
+  // Sans stock, retombe sur x1 (infini).
+  if (u.ammoActive !== "x1" && !(Number(u.ammo[u.ammoActive] || 0) > 0)) {
+    u.ammoActive = "x1";
+    u.ammo.active = "x1";
+  }
+
   // roquettes (stock consommable, lance-roquettes natif au vaisseau)
   if (!u.rockets || typeof u.rockets !== "object" || Array.isArray(u.rockets)) u.rockets = {};
   for (const id of Object.keys(ROCKET_TYPES)) {
@@ -774,6 +786,25 @@ export function updateCurrentUserProgress(patch = {}) {
     if (patch.ammo.x6 != null) u.ammo.x6 = Math.max(0, Number(patch.ammo.x6 || 0));
     if (patch.ammo.sab != null) u.ammo.sab = Math.max(0, Number(patch.ammo.sab || 0));
   }
+  // Sélection munition du dock rapide (miroir de rocketActive).
+  // Acceptée via patch.ammoActive ou patch.ammo.active (compat).
+  {
+    const VALID_ACTIVE_AMMO = ["x1", "x2", "x3", "x4", "x6", "sab"];
+    const rawAmmoActive = patch.ammoActive ?? patch.ammo?.active;
+    if (rawAmmoActive != null) {
+      const key = String(rawAmmoActive).toLowerCase();
+      if (VALID_ACTIVE_AMMO.includes(key)) {
+        u.ammo ??= defaultAmmo();
+        u.ammoActive = key;
+        u.ammo.active = key;
+      }
+    }
+    // Sans stock, retombe sur x1.
+    if (u.ammoActive && u.ammoActive !== "x1" && !(Number(u.ammo?.[u.ammoActive] || 0) > 0)) {
+      u.ammoActive = "x1";
+      if (u.ammo) u.ammo.active = "x1";
+    }
+  }
 
   if (patch.rockets && typeof patch.rockets === "object") {
     u.rockets ??= {};
@@ -863,7 +894,7 @@ export function buyItem(itemId, requestedQuantity = 1) {
   const isDesign = !!item.design?.id;
   const quantity = (isShip || isDesign)
     ? 1
-    : Math.min(999, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
+    : Math.min(1000, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
   const unitPrice = Math.max(0, Number(item.price || 0));
   const price = unitPrice * quantity;
   if (u.credits < price) return { ok: false, error: "Crédits insuffisants." };

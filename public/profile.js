@@ -2164,6 +2164,7 @@ if (isDrone) {
             <option value="10">10</option>
             <option value="50">50</option>
             <option value="100">100</option>
+            <option value="1000">1000</option>
           </select>
         </div>
       ` : ""}
@@ -2188,7 +2189,7 @@ if (isDrone) {
   const totalEl = document.getElementById("shopPurchaseTotal");
   const normalizeQuantity = () => (isShipLike || isDrone || isFormation)
     ? 1
-    : Math.min(999, Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
+    : Math.min(1000, Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
   const updatePurchaseSummary = () => {
     const quantity = normalizeQuantity();
     const total = price * quantity;
