@@ -1,3 +1,4 @@
+import { inventoryPage } from "../src/core/inventoryPage.js";
 // public/profile.js
 "use strict";
 
@@ -22,6 +23,8 @@ import {
   setCurrentUserDroneFormation,
   saveCurrentUserDroneFits,
 } from "../src/core/account.js";
+
+import { measureGameTask } from "../src/core/performanceTimings.js";
 
 import { CATALOG, findCatalogItem } from "../src/core/catalog.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../src/data/shipPacks.js";
@@ -581,17 +584,13 @@ function wireMainTabsOnce() {
       setMsg("", true);
       setTab(btn.dataset.tab);
 
-      if (tab === "stats") renderStats(user);
-      if (tab === "account") renderAccount(user);
-      if (tab === "npcs") renderNpcStats(user);
-      if (tab === "hangars") renderHangars(user);
-      if (tab === "inventory") renderInventory(user);
-      if (tab === "shop") renderShop(user);
+      renderActiveProfilePanel();
     });
   });
 
   inventorySearch?.addEventListener("input", () => {
     inventoryQuery = inventorySearch.value || "";
+    inventoryPageIndex = 0;
     renderInventory(user);
   });
 
@@ -839,16 +838,6 @@ function inventoryTooltipText(entry) {
   return lines.filter(Boolean).join("\n");
 }
 
-function expandInventorySlots(section) {
-  if (section.id !== "equipment") return section.items;
-  return section.items.flatMap((entry) => Array.from({ length: Math.max(0, Math.floor(entry.quantity)) }, (_, index) => ({
-    ...entry,
-    slotId: `${entry.id}-${index}`,
-    quantity: 1,
-    stacked: false,
-  })));
-}
-
 function inventoryEntryRarity(entry) {
   if (entry.rarityId) return ITEM_RARITIES[entry.rarityId] || ITEM_RARITIES.common;
 
@@ -869,15 +858,44 @@ function inventoryEntryRarity(entry) {
   return getItemRarity(entry.id);
 }
 
+let lastInventorySignature = "";
+let inventoryPageIndex = 0;
+let inventoryPager = null;
 function renderInventory(u) {
+  return measureGameTask("ui.renderInventory", () => renderInventoryMeasured(u));
+}
+
+function renderInventoryMeasured(u) {
   if (!u || !inventorySections) return;
   const sections = buildInventorySections(u);
+  const signature = JSON.stringify([inventoryQuery, inventoryPageIndex, sections]);
+  if (signature === lastInventorySignature) return;
+  lastInventorySignature = signature;
 
   const query = inventoryQuery.trim().toLocaleLowerCase("fr");
-  const slots = sections.flatMap((section) => {
-    const matchingItems = section.items.filter((entry) => !query || `${entry.name} ${entry.detail} ${entry.id} ${entry.searchText || ""}`.toLocaleLowerCase("fr").includes(query));
-    return expandInventorySlots({ ...section, items: matchingItems });
-  });
+  const matching = sections.map(section => ({ ...section, items: section.items.filter(entry =>
+    !query || `${entry.name} ${entry.detail} ${entry.id} ${entry.searchText || ""}`.toLocaleLowerCase("fr").includes(query)) }));
+  const result = inventoryPage(matching, inventoryPageIndex);
+  inventoryPageIndex = result.page;
+  const { slots } = result;
+  inventorySections.dataset.totalSlots = String(result.total);
+  if (!inventoryPager) {
+    inventoryPager = document.createElement("nav");
+    inventoryPager.className = "inventoryPager";
+    inventoryPager.setAttribute("aria-label", "Pages de l?inventaire");
+    inventorySections.before(inventoryPager);
+    inventoryPager.addEventListener("click", event => {
+      const button = event.target.closest("[data-inventory-page]");
+      if (!button || button.disabled) return;
+      inventoryPageIndex += Number(button.dataset.inventoryPage);
+      renderInventory(user);
+      inventorySections.scrollTop = 0;
+    });
+  }
+  inventoryPager.innerHTML = `<button data-inventory-page="-1" ${result.page === 0 ? "disabled" : ""}>Pr?c?dent</button>
+    <span role="status">Page ${result.page + 1} / ${result.pages} ? ${formatNumber(result.total)} emplacements</span>
+    <button data-inventory-page="1" ${result.page + 1 === result.pages ? "disabled" : ""}>Suivant</button>`;
+  inventoryTooltip?.classList.remove("visible");
   inventorySections.innerHTML = slots.length ? slots.map((entry) => {
       const stacked = entry.stacked !== false && !["module", "ship", "equipment", "drone", "droneDesign", "droneFormation"].includes(entry.kind);
       const quantity = entry.quantityLabel || inventoryQuantityLabel(entry.quantity);
@@ -1185,6 +1203,10 @@ function applyHangarDesign(hangarId, designId) {
 }
 
 function renderHangars(u) {
+  return measureGameTask("ui.renderHangars", () => renderHangarsMeasured(u));
+}
+
+function renderHangarsMeasured(u) {
   if (!u) return;
   hangarGrid.innerHTML = "";
 
@@ -1360,9 +1382,27 @@ if (!isIntegratedInGame && isGameOpen()) {
   }
 }
 
+let lastShopListSignature = "";
+let refreshShopBalance = null;
+function currentProfileUser() { return user; }
+
 function renderShop(user) {
+  return measureGameTask("ui.renderShop", () => renderShopMeasured(user));
+}
+
+function renderShopMeasured(user) {
   if (shopCredits) shopCredits.textContent = formatNumber(user.credits || 0);
   if (!shopList || !shopPreview) return;
+  const listSignature = JSON.stringify([shopTab, user.inventory?.ships,
+    user.inventory?.shipDesigns, user.drones?.items?.map(drone => [drone.id, drone.type]),
+    user.drones?.formations, user.drones?.activeFormation]);
+  if (shopTab !== "extras" && listSignature === lastShopListSignature && refreshShopBalance) {
+    refreshShopBalance(user);
+    return;
+  }
+  lastShopListSignature = listSignature;
+  refreshShopBalance = null;
+  const token = ++shopRenderToken;
 
   document.querySelectorAll("#shopTabs .subtabBtn").forEach((button) => {
     button.classList.toggle("active", button.dataset.shop === shopTab);
@@ -1386,7 +1426,6 @@ function renderShop(user) {
   }
 
   // Toutes les catégories utilisent la même liste et le même panneau d'aperçu.
-  const token = ++shopRenderToken;
   shopList.innerHTML = "";
 
   const list = getShopListFor(shopTab);
@@ -1454,7 +1493,9 @@ function renderShop(user) {
 
     row.addEventListener("click", () => {
       selectedShopItemId = it.id;
-      renderShop(user);
+      ++shopRenderToken;
+      for (const sibling of shopList.children) sibling.classList.toggle("active", sibling === row);
+      renderShopPreview(currentProfileUser(), it, shopTab);
     });
 
     shopList.appendChild(row);
@@ -1463,7 +1504,7 @@ function renderShop(user) {
   requestAnimationFrame(() => {
     if (token !== shopRenderToken) return;
     const it = list.find((x) => x.id === selectedShopItemId) || list[0];
-    renderShopPreview(user, it, shopTab);
+    renderShopPreview(currentProfileUser(), it, shopTab);
   });
 }
 function renderShipsGrid(user) {
@@ -1625,13 +1666,21 @@ function renderExtrasRoulette(user) {
     return arr.map(cellHtml).join("");
   }
 
+  let historyPage = 0;
+  let historyUser = user;
   function renderModuleHistory(currentUser) {
+    historyUser = currentUser;
     const history = Array.isArray(currentUser?.inventory?.moduleRollHistory)
-      ? [...currentUser.inventory.moduleRollHistory].reverse()
+      ? currentUser.inventory.moduleRollHistory
       : [];
     if (!history.length) return `<div class="moduleHistoryEmpty">Aucun module obtenu pour le moment.</div>`;
 
-    return history.map((module, index) => {
+    const pages = Math.max(1, Math.ceil(history.length / 30));
+    historyPage = Math.max(0, Math.min(historyPage, pages - 1));
+    const end = history.length - historyPage * 30;
+    const entries = history.slice(Math.max(0, end - 30), end).reverse();
+    const controls = `<nav class="inventoryPager" aria-label="Pages de l?historique"><button data-history-page="-1" ${historyPage === 0 ? "disabled" : ""}>Pr?c?dent</button><span>Page ${historyPage + 1} / ${pages}</span><button data-history-page="1" ${historyPage + 1 === pages ? "disabled" : ""}>Suivant</button></nav>`;
+    return controls + entries.map((module, index) => {
       const bonuses = Array.isArray(module?.bonuses)
         ? module.bonuses.map(bonus => `${formatNumber(bonus.pct || 0)}% ${formatStatLabel(bonus.stat)}`).join(" • ")
         : "Aucun bonus";
@@ -1643,7 +1692,7 @@ function renderExtrasRoulette(user) {
         : "Date inconnue";
       return `
         <div class="moduleHistoryRow">
-          <span class="moduleHistoryIndex">${formatNumber(history.length - index)}</span>
+          <span class="moduleHistoryIndex">${formatNumber(end - index)}</span>
           <img src="${moduleIconSrc(module?.type, module?.tier)}" alt="" class="moduleHistoryModImg" />
           <img src="${familyShipImg}" alt="" class="moduleHistoryShipImg" />
           <div class="moduleHistoryMeta">
@@ -1686,6 +1735,12 @@ function renderExtrasRoulette(user) {
     </div>
   `;
 
+  document.getElementById("moduleRollHistory").onclick = event => {
+    const button = event.target.closest("[data-history-page]");
+    if (!button || button.disabled) return;
+    historyPage += Number(button.dataset.historyPage);
+    document.getElementById("moduleRollHistory").innerHTML = renderModuleHistory(historyUser);
+  };
   const railEl = document.getElementById("rouletteRail");
   const btn = document.getElementById("btnRoll");
 
@@ -1738,6 +1793,7 @@ function renderExtrasRoulette(user) {
 
   const refreshAfterModule = (user2, message = "Tirage réussi.") => {
     const historyEl = document.getElementById("moduleRollHistory");
+    historyPage = 0;
     if (historyEl) historyEl.innerHTML = renderModuleHistory(user2);
     const historyCount = document.querySelector(".moduleHistoryPanel > header span");
     if (historyCount) historyCount.textContent = `${formatNumber(user2?.inventory?.moduleRollHistory?.length || 0)} tirage(s)`;
@@ -1990,14 +2046,14 @@ if (isDrone) {
   stockLine = `
     <p class="shopAmmoOwned">
       Munitions ${String(ammoKey).toUpperCase()} — quantité possédée :
-      <strong style="color: #00d9ff;">${formatNumber(ammoQty.qty)}</strong>
+      <strong data-shop-stock style="color: #00d9ff;">${formatNumber(ammoQty.qty)}</strong>
     </p>
   `;
 } else if (!isShipLike) {
   stockLine = `
     <p style="margin: 8px 0;">
       Stock possédé : 
-      <strong style="color: #00d9ff;">${formatNumber(countOwned)}</strong>
+      <strong data-shop-stock style="color: #00d9ff;">${formatNumber(countOwned)}</strong>
     </p>
   `;
 }
@@ -2095,6 +2151,14 @@ if (isDrone) {
 
   quantityInput?.addEventListener("input", updatePurchaseSummary);
   quantityInput?.addEventListener("change", updatePurchaseSummary);
+  refreshShopBalance = freshUser => {
+    user = freshUser;
+    const stock = shopPreview.querySelector("[data-shop-stock]");
+    if (stock) stock.textContent = formatNumber(isAmmo
+      ? getAmmoQtyForShopItem(user, it)?.qty || 0
+      : user.inventory?.counts?.[it.id] || 0);
+    updatePurchaseSummary();
+  };
   updatePurchaseSummary();
 
   btn.addEventListener("click", () => {
@@ -2319,7 +2383,6 @@ function buildFitWindow() {
         user = saved.user;
         clearFitSelection();
         showFitError("");
-        lastAccountUiSignature = accountUiSignature(user);
         renderDroneEquipment(user);
         renderInventoryPalette();
         return;
@@ -3065,7 +3128,6 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
     const added = saved.applied;
     clearFitSelection();
     showFitError(added ? "" : "Aucun emplacement de drone disponible");
-    lastAccountUiSignature = accountUiSignature(user);
     renderDroneEquipment(user);
     renderInventoryPalette();
     return added;
@@ -3220,7 +3282,6 @@ function resetAllSlots() {
     user = saved.user;
     clearFitSelection();
     showFitError("");
-    lastAccountUiSignature = accountUiSignature(user);
     renderDroneEquipment(user);
     renderInventoryPalette();
     return;
@@ -4294,11 +4355,8 @@ function openProfileOverlay() {
   else if (overlay) overlay.style.display = "block";
 
   renderHeader(user);
-  renderStats(user);
-  renderHangars(user);
-  renderInventory(user);
-  renderShop(user);
   setTab(tab);
+  if (profileIsVisible()) renderActiveProfilePanel();
 }
 
 function closeProfileOverlay({ immediate = false } = {}) {
@@ -4332,14 +4390,10 @@ function boot() {
     return;
   }
 
-  lastAccountUiSignature = accountUiSignature(user);
 
   renderHeader(user);
-  renderStats(user);
-  renderHangars(user);
-  renderInventory(user);
-  renderShop(user);
   setTab(tab);
+  if (profileIsVisible()) renderActiveProfilePanel();
 
 }
 
@@ -4393,51 +4447,36 @@ window.HyperionProfile = {
 };
 compactCurrentFit();
 
-// Le moteur signale chaque sauvegarde de progression. Le registre peut ainsi
-// refléter immédiatement les destructions et les grades sans recharger la page.
-window.addEventListener("orbit:profile-progress", () => {
-  const overlay = document.getElementById("profileOverlay");
-  if (!overlay || overlay.style.display === "none" || overlay.hidden) return;
-  const refreshedUser = getCurrentUserFull();
-  if (!refreshedUser) return;
-  user = refreshedUser;
-  renderNpcStats(user);
-  renderInventory(user);
-});
-
-// Toute mutation du compte rafraîchit les vues ouvertes dans le même onglet.
+// One refresh per mutation, and only for the visible panel.
 let accountRefreshFrame = 0;
-let lastAccountUiSignature = "";
-function accountUiSignature(value) {
-  return JSON.stringify({
-    credits: value?.credits,
-    ship: value?.ship,
-    inventory: value?.inventory,
-    hangars: value?.hangars,
-    drones: value?.drones,
-  });
-}
-window.addEventListener("orbit:user-updated", () => {
+function profileIsVisible() {
   const overlay = document.getElementById("profileOverlay");
-  if (!overlay || overlay.style.display === "none" || overlay.hidden) return;
-  if (accountRefreshFrame) return;
+  return !!overlay && overlay.style.display !== "none" && !overlay.hidden
+    && !overlay.classList.contains("gameWinMinimized");
+}
+
+function renderActiveProfilePanel({ mutation = false } = {}) {
+  if (!user) return;
+  if (tab === "stats") renderStats(user);
+  if (tab === "account") renderAccount(user);
+  if (tab === "npcs") renderNpcStats(user);
+  if (tab === "hangars") renderHangars(user);
+  if (tab === "inventory") renderInventory(user);
+  // The roulette owns its animation and result during account mutations.
+  if (tab === "shop" && !(mutation && shopTab === "extras")) renderShop(user);
+}
+
+window.addEventListener("orbit:user-updated", () => {
+  if (!profileIsVisible() || accountRefreshFrame) return;
   accountRefreshFrame = requestAnimationFrame(() => {
     accountRefreshFrame = 0;
-    const refreshedUser = getCurrentUserFull();
-    if (!refreshedUser) return;
-    const signature = accountUiSignature(refreshedUser);
-    if (signature === lastAccountUiSignature) return;
-    lastAccountUiSignature = signature;
-    user = refreshedUser;
+    if (!profileIsVisible()) return;
+    user = getCurrentUserFull();
+    if (!user) return;
     renderHeader(user);
-    renderStats(user);
-    renderHangars(user);
-    renderInventory(user);
-    // La roulette de modules gère elle-même son affichage, son résultat et son
-    // historique : ne pas la reconstruire ici, sinon le tirage en cours est effacé.
-    if (shopTab !== "extras") renderShop(user);
-    if (fitOverlayEl?.style.display !== "none" && fitState.hangarId) {
-      renderDroneEquipment();
+    renderActiveProfilePanel({ mutation: true });
+    if (fitOverlayEl && fitOverlayEl.style.display !== "none" && fitState.hangarId) {
+      renderDroneEquipment(user);
       renderInventoryPalette();
     }
   });

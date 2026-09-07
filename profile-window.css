@@ -304,7 +304,7 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
 /* Inventaire du compte */
 #profileOverlay #panel_inventory.profilePanel.active {
   display: grid !important;
-  grid-template-rows: auto minmax(0, 1fr) !important;
+  grid-template-rows: auto auto minmax(0, 1fr) !important;
   gap: 12px !important;
   overflow: hidden !important;
 }
@@ -1700,3 +1700,4 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
 #fitCard .droneFitSlot.selected::after{content:"" !important;position:absolute !important;z-index:3 !important;top:4px !important;right:4px !important;width:6px !important;height:6px !important;border-radius:50% !important;background:#69e9ff !important;box-shadow:0 0 7px #69e9ff !important}
 #fitCard .droneFitSlot.dragCompatible{border-color:rgba(105,233,255,.65) !important;box-shadow:0 0 12px rgba(105,233,255,.28),inset 0 0 16px rgba(105,233,255,.08) !important;background:rgba(0,217,255,.09) !important}
 #fitCard .droneFitSlot.dragging{opacity:.45 !important}
+.inventoryPager { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; } .inventoryPager button:disabled { opacity: .4; cursor: default; }

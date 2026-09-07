@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "1c83531e",
+    "message": "Espace pilote: designs de vaisseaux dynamiques, dropdown hangar sans reload, suppression des cartes toast au profit des indications rapides"
+  },
+  {
     "version": "c8a4a841",
     "message": "grosse Update de son et de fonctionnalitée"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "0e2fd055",
     "message": "Amélioration des fenêtres, des paramètres et du fond d'étoiles."
-  },
-  {
-    "version": "138cf2dc",
-    "message": "Refonte de l'équipement et améliorations générales du jeu."
   }
 ];

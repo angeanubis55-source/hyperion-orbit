@@ -1,3 +1,4 @@
+import { measureGameTask } from "./performanceTimings.js";
 "use strict";
 import {
   getCurrentUserFull,
@@ -2313,6 +2314,10 @@ ui.questList?.addEventListener("click", event => {
 });
 
 function saveProgressNow() {
+  return measureGameTask("saveProgressNow", saveProgressNowMeasured);
+}
+
+function saveProgressNowMeasured() {
   // Les missions peuvent être acceptées depuis le terminal avant que la
   // boucle de jeu ait initialisé `account.user`. Recharge alors le compte
   // directement afin de ne jamais perdre la sauvegarde des quêtes.
@@ -6888,6 +6893,10 @@ function updateBossEncounters() {
 }
 
 function processDeaths() {
+  return measureGameTask("processDeaths", processDeathsMeasured);
+}
+
+function processDeathsMeasured() {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     if (e.hp > 0) continue;
@@ -11251,11 +11260,12 @@ let fpsValue = 0;
 const performanceMonitor = createPerformanceMonitor();
 
 function frame(t) {
-  const dt = Math.min(0.033, (t - last) / 1000);
+  const realDt = Math.max(0, (t - last) / 1000);
+  const dt = Math.min(0.033, realDt);
   last = t;
-  performanceMonitor.record(dt);
+  performanceMonitor.record(realDt);
 
-  fpsAcc += dt;
+  fpsAcc += realDt;
   fpsFrames++;
   if (fpsAcc >= 0.25) {
     fpsValue = Math.round(fpsFrames / fpsAcc);
