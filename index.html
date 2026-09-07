@@ -145,31 +145,33 @@
 
     <div id="settingsWindow" class="panel gameSettingsPanel">
       <div class="settingsBody">
-        <section class="settingsPage active">
-          <div class="settingsPageIntro"><b>Préférences du jeu</b><span>Affichage, son et démarrage</span></div>
-          <div class="settingsPreferences">
-            <div class="settingsVisual">
-              <span class="settingsVisualTitle">Visuels et performances</span>
-              <div class="settingsVisualGrid">
-                <label class="settingsCheck" for="optBackground"><input id="optBackground" type="checkbox" /><span><b>Fond de carte</b></span></label>
-                <label class="settingsCheck" for="optStars"><input id="optStars" type="checkbox" /><span><b>Étoiles</b></span></label>
-                <label class="settingsCheck" for="optShipEffect"><input id="optShipEffect" type="checkbox" /><span><b>Effet du vaisseau</b></span></label>
-                <label class="settingsCheck" for="optDrones"><input id="optDrones" type="checkbox" /><span><b>Afficher les drones</b></span></label>
-                <label class="settingsCheck" for="optMoveMarker"><input id="optMoveMarker" type="checkbox" /><span><b>Marqueur de déplacement</b></span></label>
-                <label class="settingsCheck" for="optShipSmoke"><input id="optShipSmoke" type="checkbox" /><span><b>Fumées des vaisseaux</b></span></label>
-              </div>
+        <nav class="settingsTabs">
+          <button class="settingsTab active" data-settings-tab="visual" type="button">Visuels et performances</button>
+          <button class="settingsTab" data-settings-tab="controls" type="button">Commandes</button>
+          <button class="settingsTab" data-settings-tab="sound" type="button">Son</button>
+        </nav>
+        <section class="settingsPage active" data-settings-page="visual">
+          <div class="settingsPageIntro"><b>Visuels et performances</b><span>Affichage et démarrage</span></div>
+          <div class="settingsVisual">
+            <div class="settingsVisualGrid">
+              <label class="settingsCheck" for="optBackground"><input id="optBackground" type="checkbox" /><span><b>Fond de carte</b></span></label>
+              <label class="settingsCheck" for="optStars"><input id="optStars" type="checkbox" /><span><b>Étoiles</b></span></label>
+              <label class="settingsCheck" for="optShipEffect"><input id="optShipEffect" type="checkbox" /><span><b>Effet du vaisseau</b></span></label>
+              <label class="settingsCheck" for="optDrones"><input id="optDrones" type="checkbox" /><span><b>Afficher les drones</b></span></label>
+              <label class="settingsCheck" for="optMoveMarker"><input id="optMoveMarker" type="checkbox" /><span><b>Marqueur de déplacement</b></span></label>
+              <label class="settingsCheck" for="optShipSmoke"><input id="optShipSmoke" type="checkbox" /><span><b>Fumées des vaisseaux</b></span></label>
             </div>
-            <label class="settingsAudio settingsSoundControl" for="optVolume">
-              <button id="optSound" class="settingsToggle" type="button">Son : activé</button>
-              <span class="settingsVolumeRow"><input id="optVolume" class="settingsVolumeSlider" type="range" min="0" max="100" step="1" value="55" /><output id="optVolumeValue" class="settingsVolumeValue">55 %</output></span>
-            </label>
           </div>
 
           <label class="settingsCheck settingsPrefStandalone" for="optAutoStart">
             <input id="optAutoStart" type="checkbox" />
             <span><b>Démarrage automatique</b></span>
           </label>
-
+          <div class="settingsPageFooter">
+            <button id="btnResetWindows" class="settingsResetBtn settingsResetWindowsBtn" type="button">Réinitialiser les fenêtres</button>
+          </div>
+        </section>
+        <section class="settingsPage" data-settings-page="controls">
           <div class="settingsPageIntro settingsControlsIntro"><b>Commandes</b><span>Clique sur une commande pour modifier sa touche</span></div>
           <div class="settingsKeyColumns">
             <div class="settingsKeyGroup">
@@ -184,6 +186,7 @@
 
             <div class="settingsKeyGroup settingsSlotKeyGroup">
               <div class="settingsSectionSub">Barre rapide</div>
+              <button class="keyBindRow" data-bind-action="toggleDock" type="button"><span>Ouvrir / fermer le menu du dock rapide</span><kbd data-bind-value="toggleDock">TAB</kbd></button>
               <div class="settingsSlotKeys">
                 <button class="keyBindRow" data-bind-action="slot1" type="button"><span>Slot 1</span><kbd data-bind-value="slot1">1</kbd></button>
                 <button class="keyBindRow" data-bind-action="slot2" type="button"><span>Slot 2</span><kbd data-bind-value="slot2">2</kbd></button>
@@ -209,8 +212,19 @@
             </div>
           </div>
           <div class="settingsPageFooter">
-            <button id="btnResetWindows" class="settingsResetBtn settingsResetWindowsBtn" type="button">Réinitialiser les fenêtres</button>
             <button id="btnResetKeybinds" class="settingsResetBtn" type="button">Réinitialiser les touches</button>
+          </div>
+        </section>
+        <section class="settingsPage" data-settings-page="sound">
+          <div class="settingsPageIntro"><b>Son</b><span>Volume général et volume de chaque son du jeu</span></div>
+          <div class="settingsAudio settingsSoundControl">
+            <button id="optSound" class="settingsToggle" type="button">Sons généraux : activés</button>
+            <span class="settingsVolumeRow"><input id="optVolume" class="settingsVolumeSlider" type="range" min="0" max="100" step="1" value="50" /><output id="optVolumeValue" class="settingsVolumeValue">50 %</output></span>
+          </div>
+          <div class="settingsSectionSub">Sons du jeu</div>
+          <div id="sfxList" class="sfxList"></div>
+          <div class="settingsPageFooter">
+            <button id="btnResetSfx" class="settingsResetBtn" type="button">Réinitialiser les sons</button>
           </div>
         </section>
       </div>

@@ -96,6 +96,7 @@ import {
 } from "../data/collectables.js";
 import { getResourceName } from "../data/resources.js";
 import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../data/rockets.js";
+import { SFX_SOUND_NAMES } from "./SFX.js";
 
 export function startOrbitGame(config) {
 
@@ -179,7 +180,7 @@ function applyRadiation(dt) {
     radiationSoundDelay -= dt;
     if (radiationSoundDelay <= 0) {
       radiationSoundDelay = 0;
-      if (radiationActive) SFX.loop("radiationLoop", { vol: 0.5, fadeIn: 0.3 });
+      if (radiationActive) SFX.loop("radiationLoop", { fadeIn: 0.3 });
     }
   }
   if (dmg <= 0) return;
@@ -280,7 +281,7 @@ function tryReplayPendingDeath() {
     const playDeathSound = () => {
       if (deathSoundPlayed || !player.dead) return;
       deathSoundPlayed = true;
-      SFX.crossfade("deathPlayer", "deathPlayer2", { vol: 0.8, crossAt: 0.2 });
+      SFX.crossfade("deathPlayer", "deathPlayer2", { crossAt: 0.2 });
     };
     const armOnResume = () => {
       const ctx = SFX.ctx;
@@ -329,7 +330,7 @@ function updateShipMoveSound() {
   const moving = started && !player.dead && Math.hypot(player.vx || 0, player.vy || 0) > 5;
   if (moving && !shipMoveSoundActive) {
     shipMoveSoundActive = true;
-    SFX.loop("shipMove", { vol: 0.6, rate: 1, fadeIn: 0, instantFirst: true });
+    SFX.loop("shipMove", { rate: 1, fadeIn: 0, instantFirst: true });
   } else if (!moving && shipMoveSoundActive) {
     shipMoveSoundActive = false;
     SFX.stopLoop("shipMove", { fadeOut: 0.3 });
@@ -527,6 +528,9 @@ cfgCooldownTxt: document.getElementById("cfgCooldownTxt"),
 };
 
 const ACTION_BAR_LAYOUT_KEY = "orbit_action_bar_layout_v2";
+
+// Bascule du menu du dock rapide (palette), accessible au clavier (TAB par défaut).
+let toggleActionDockMenu = null;
 
 function initializeCustomActionBar() {
   const bar = document.getElementById("ammoBar");
@@ -815,11 +819,13 @@ function initializeCustomActionBar() {
     });
   }
   palette.querySelectorAll("[data-action-category]").forEach(button => button.onclick = () => renderPalette(button.dataset.actionCategory));
-  toggle.onclick = () => {
+  const flipActionPalette = () => {
     palette.hidden = !palette.hidden;
     toggle.classList.toggle("active", !palette.hidden);
     toggle.textContent = palette.hidden ? "⌃" : "⌄";
   };
+  toggle.onclick = flipActionPalette;
+  toggleActionDockMenu = flipActionPalette;
   document.addEventListener("dragover", event => {
     if (event.dataTransfer?.types?.includes("application/x-orbit-action")) event.preventDefault();
   });
@@ -875,11 +881,12 @@ const DEFAULT_KEYBINDS = {
   slot11: "F1", slot12: "F2", slot13: "F3", slot14: "F4", slot15: "F5",
   slot16: "F6", slot17: "F7", slot18: "F8", slot19: "F9", slot20: "F10",
   toggleWindows: "KeyH",
+  toggleDock: "Tab",
 };
 
 const DEFAULT_GAME_SETTINGS = {
   sound: true,
-  soundVolume: 55,
+  soundVolume: 50,
   background: true,
   stars: true,
   textures: true,
@@ -889,7 +896,57 @@ const DEFAULT_GAME_SETTINGS = {
   shipSmoke: true,
   moveMarker: true,
   keybinds: { ...DEFAULT_KEYBINDS },
+  // Volumes individuels (0..100) et muets par son, persistés comme le reste.
+  sfxVolumes: Object.fromEntries(SFX_SOUND_NAMES.map((name) => [name, 50])),
+  sfxMuted: {},
+  sfxDefaultsVersion: 1,
 };
+
+// Lignes de l'onglet Son : un groupe = une ligne qui règle tous ses sons.
+// Les 28 noms de SFX_SOUND_NAMES y figurent exactement une fois.
+const SFX_ROWS = [
+  { id: "laser", label: "Tirs laser", members: ["pShotX1", "pShotX2", "pShotX3", "pShotX4", "pShotX6", "pShotSab"] },
+  { id: "sfx_shot_roquettes", label: "Tir de roquettes", members: ["sfx_shot_roquettes"] },
+  { id: "launcher", label: "Lance-roquettes", members: ["sfx_shot_lance_roquettes", "rocketLoad", "rocketsLoadStart", "rocketsLoaded"] },
+  { id: "pulseIEM", label: "Pulse IEM", members: ["pulseIEM"] },
+  { id: "death", label: "Mort du joueur", members: ["deathPlayer", "deathPlayer2"] },
+  { id: "respawnPlayer", label: "Réapparition", members: ["respawnPlayer"] },
+  { id: "radiationLoop", label: "Radiation", members: ["radiationLoop"] },
+  { id: "repair", label: "Robot réparateur", members: ["repairStart", "repairLoop"] },
+  { id: "jumps", label: "Sauts", members: ["swReady", "swJump", "swDone", "swDeny"] },
+  { id: "shipMove", label: "Déplacement du vaisseau", members: ["shipMove"] },
+  { id: "npcDeath", label: "Mort des NPC", members: ["npcDeath"] },
+  { id: "collect", label: "Récolte", members: ["collect"] },
+  { id: "hits", label: "Impacts laser", members: ["laserHit1", "laserHit2", "laserHit3"] },
+];
+
+function getSfxRow(id) {
+  return SFX_ROWS.find((row) => row.id === id) || null;
+}
+
+function normalizeSfxVolumes(raw) {
+  const normalized = {};
+  const source = raw && typeof raw === "object" ? raw : {};
+  for (const name of SFX_SOUND_NAMES) {
+    normalized[name] = clamp(Math.round(Number(source[name] ?? 50) || 0), 0, 100);
+  }
+  // Migration : avant, le défaut était 100 partout. Si tout est encore à 100,
+  // ce sont des valeurs jamais touchées → on part à 50 pour le premier démarrage.
+  const hadKeys = SFX_SOUND_NAMES.some((name) => source[name] != null);
+  if (hadKeys && SFX_SOUND_NAMES.every((name) => normalized[name] === 100)) {
+    for (const name of SFX_SOUND_NAMES) normalized[name] = 50;
+  }
+  return normalized;
+}
+
+function normalizeSfxMuted(raw) {
+  const normalized = {};
+  const source = raw && typeof raw === "object" ? raw : {};
+  for (const name of SFX_SOUND_NAMES) {
+    if (source[name] === true) normalized[name] = true;
+  }
+  return normalized;
+}
 
 function normalizeKeybinds(raw) {
   const normalized = { ...DEFAULT_KEYBINDS };
@@ -910,17 +967,31 @@ function loadGameSettings() {
       ...DEFAULT_GAME_SETTINGS,
       ...(parsed && typeof parsed === "object" ? parsed : {}),
       keybinds: normalizeKeybinds(parsed?.keybinds),
+      sfxVolumes: normalizeSfxVolumes(parsed?.sfxVolumes),
+      sfxMuted: normalizeSfxMuted(parsed?.sfxMuted),
     };
     settings.soundVolume = clamp(Math.round(Number(settings.soundVolume) || 0), 0, 100);
     if (!settings.sound || settings.soundVolume === 0) {
       settings.sound = false;
       settings.soundVolume = 0;
     }
+    // Migration unique : les volumes par son partent à 50 (ni 100, ni les
+    // valeurs héritées d'avant). Les réglages futurs sont ensuite conservés.
+    if (Number(parsed?.sfxDefaultsVersion || 0) < 1) {
+      settings.sfxVolumes = Object.fromEntries(SFX_SOUND_NAMES.map((name) => [name, 50]));
+      settings.sfxMuted = {};
+      settings.sfxDefaultsVersion = 1;
+      try {
+        localStorage.setItem(GAME_SETTINGS_KEY, JSON.stringify(settings));
+      } catch {}
+    }
     return settings;
   } catch {
     return {
       ...DEFAULT_GAME_SETTINGS,
       keybinds: { ...DEFAULT_KEYBINDS },
+      sfxVolumes: normalizeSfxVolumes(),
+      sfxMuted: {},
     };
   }
 }
@@ -939,7 +1010,7 @@ function setGameSetting(key, value) {
   GAME_SETTINGS[key] = !!value;
   if (key === "sound") {
     GAME_SETTINGS.soundVolume = GAME_SETTINGS.sound
-      ? Math.max(1, Number(GAME_SETTINGS.soundVolume) || 55)
+      ? Math.max(1, Number(GAME_SETTINGS.soundVolume) || 50)
       : 0;
     SFX?.setMasterVolume?.(GAME_SETTINGS.soundVolume / 100);
   }
@@ -979,6 +1050,50 @@ function setSoundVolume(value) {
   renderSettingsWindow();
 }
 
+// Applique les volumes / muets individuels au moteur audio.
+function applySfxSettings() {
+  if (!SFX) return;
+  for (const name of SFX_SOUND_NAMES) {
+    SFX.setSoundVolume?.(name, (GAME_SETTINGS.sfxVolumes?.[name] ?? 50) / 100);
+    SFX.setSoundMuted?.(name, GAME_SETTINGS.sfxMuted?.[name] === true);
+  }
+}
+
+function setSfxVolume(rowId, value) {
+  const row = getSfxRow(rowId);
+  if (!row) return;
+  GAME_SETTINGS.sfxVolumes ||= {};
+  const volume = clamp(Math.round(Number(value) || 0), 0, 100);
+  for (const name of row.members) {
+    GAME_SETTINGS.sfxVolumes[name] = volume;
+    SFX?.setSoundVolume?.(name, volume / 100);
+  }
+  saveGameSettings();
+  renderSfxRows();
+}
+
+function setSfxMuted(rowId, muted) {
+  const row = getSfxRow(rowId);
+  if (!row) return;
+  GAME_SETTINGS.sfxMuted ||= {};
+  for (const name of row.members) {
+    if (muted) GAME_SETTINGS.sfxMuted[name] = true;
+    else delete GAME_SETTINGS.sfxMuted[name];
+    SFX?.setSoundMuted?.(name, muted === true);
+  }
+  saveGameSettings();
+  renderSfxRows();
+}
+
+function resetSfxVolumes() {
+  GAME_SETTINGS.sfxVolumes = Object.fromEntries(SFX_SOUND_NAMES.map((name) => [name, 50]));
+  GAME_SETTINGS.sfxMuted = {};
+  saveGameSettings();
+  applySfxSettings();
+  renderSfxRows();
+  showToast("Sons réinitialisés", 1.2);
+}
+
 let waitingForBindAction = null;
 
 const KEYBIND_LABELS = {
@@ -993,6 +1108,7 @@ const KEYBIND_LABELS = {
   slot11: "Slot 11", slot12: "Slot 12", slot13: "Slot 13", slot14: "Slot 14", slot15: "Slot 15",
   slot16: "Slot 16", slot17: "Slot 17", slot18: "Slot 18", slot19: "Slot 19", slot20: "Slot 20",
   toggleWindows: "Masquer / restaurer les fenêtres",
+  toggleDock: "Ouvrir / fermer le menu du dock rapide",
 };
 
 function getKeybind(action) {
@@ -1094,6 +1210,87 @@ function renderKeybindRows() {
   });
 }
 
+// Onglets de la fenêtre paramètres (Visuels / Commandes / Son).
+function switchSettingsTab(name) {
+  const window_ = document.getElementById("settingsWindow");
+  if (!window_) return;
+  const valid = ["visual", "controls", "sound"];
+  const target = valid.includes(name) ? name : "visual";
+  window_.querySelectorAll("[data-settings-tab]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.settingsTab === target);
+  });
+  window_.querySelectorAll("[data-settings-page]").forEach((page) => {
+    page.classList.toggle("active", page.dataset.settingsPage === target);
+  });
+}
+
+// Construit une ligne (checkbox + slider) par groupe de sons, les unes sous les autres.
+function buildSfxRows() {
+  const list = document.getElementById("sfxList");
+  if (!list || list.dataset.built === "1") return;
+  list.dataset.built = "1";
+  list.replaceChildren();
+  for (const row of SFX_ROWS) {
+    const el = document.createElement("label");
+    el.className = "sfxRow";
+    el.dataset.sfxRow = row.id;
+
+    const mute = document.createElement("input");
+    mute.type = "checkbox";
+    mute.dataset.sfxMute = row.id;
+    mute.title = "Activer / couper ces sons";
+    mute.addEventListener("change", () => setSfxMuted(row.id, !mute.checked));
+
+    const title = document.createElement("span");
+    title.className = "sfxName";
+    title.textContent = row.label;
+
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = "100";
+    slider.step = "1";
+    slider.className = "settingsVolumeSlider";
+    slider.dataset.sfxVolume = row.id;
+    slider.setAttribute("aria-label", `Volume ${row.label}`);
+    slider.addEventListener("input", () => setSfxVolume(row.id, slider.value));
+
+    const value = document.createElement("output");
+    value.className = "settingsVolumeValue";
+    value.dataset.sfxValue = row.id;
+
+    el.append(mute, title, slider, value);
+    list.appendChild(el);
+  }
+  renderSfxRows();
+}
+
+// Resynchronise les lignes de sons avec les réglages (sans reconstruire).
+// Groupe : valeur commune affichée, sinon moyenne + "Mixte".
+function renderSfxRows() {
+  const list = document.getElementById("sfxList");
+  if (!list || list.dataset.built !== "1") return;
+  for (const row of SFX_ROWS) {
+    const el = list.querySelector(`[data-sfx-row="${CSS.escape(row.id)}"]`);
+    if (!el) continue;
+    const volumes = row.members.map((name) => GAME_SETTINGS.sfxVolumes?.[name] ?? 50);
+    const muted = row.members.map((name) => GAME_SETTINGS.sfxMuted?.[name] === true);
+    const allMuted = muted.every(Boolean);
+    const allEqual = volumes.every((v) => v === volumes[0]);
+    const shown = allEqual ? volumes[0] : Math.round(volumes.reduce((a, b) => a + b, 0) / volumes.length);
+    const mute = el.querySelector("[data-sfx-mute]");
+    const slider = el.querySelector("[data-sfx-volume]");
+    const value = el.querySelector("[data-sfx-value]");
+    if (mute) mute.checked = !allMuted;
+    if (slider) {
+      slider.value = String(shown);
+      slider.disabled = allMuted;
+    }
+    if (value) value.textContent = allMuted ? "Coupé" : allEqual ? `${shown} %` : `Mixte ${shown} %`;
+    el.classList.toggle("muted", allMuted);
+  }
+}
+
 function updateHudKeyHints() {
   document.querySelectorAll("#ammoBar .actionSlot").forEach((slot, index) => {
     const action = slot.querySelector(".ammoBtn, .rocketQuickAction");
@@ -1134,8 +1331,8 @@ function renderSettingsWindow() {
   updateSettingsButton(
     "optSound",
     GAME_SETTINGS.sound,
-    "Son : activé",
-    "Son : coupé"
+    "Sons généraux : activés",
+    "Sons généraux : coupés"
   );
 
   const background = document.getElementById("optBackground");
@@ -1160,6 +1357,7 @@ function renderSettingsWindow() {
   if (moveMarker) moveMarker.checked = !!GAME_SETTINGS.moveMarker;
 
   renderKeybindRows();
+  renderSfxRows();
   updateHudKeyHints();
 }
 
@@ -1241,6 +1439,16 @@ function wireSettingsWindow() {
 document.getElementById("btnResetKeybinds")?.addEventListener("click", () => {
   resetKeybinds();
 });
+
+document.getElementById("btnResetSfx")?.addEventListener("click", () => {
+  resetSfxVolumes();
+});
+
+  document.querySelectorAll("#settingsWindow [data-settings-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => switchSettingsTab(btn.dataset.settingsTab));
+  });
+  buildSfxRows();
+  switchSettingsTab("visual");
 
 document.getElementById("btnResetWindows")?.addEventListener("click", () => {
   if (window.GameWindowManager?.resetPositions) {
@@ -1990,7 +2198,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   }
 
   if ((player.portalLockT || 0) > 0) {
-    SFX.play("swDeny", { vol: 0.85 });
+    SFX.play("swDeny");
     showToast(`Portail bloqué — attends ${Math.ceil(player.portalLockT)} s après ta mort`, 1.4);
     return false;
   }
@@ -1999,7 +2207,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   const combatRestrictedMap = /^[123]-4\.1$/.test(mapId) || mapId === "4-4.123" || mapId === "4-5";
   const combatCooldown = Math.max(Number(player.combatT) || 0, Number(player.attackedT) || 0);
   if (combatRestrictedMap && combatCooldown > 0) {
-    SFX.play("swDeny", { vol: 0.85 });
+    SFX.play("swDeny");
     showToast(`Portail verrouillé — attends ${Math.ceil(combatCooldown)} s après le combat`, 1.4);
     return false;
   }
@@ -2127,9 +2335,9 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   showNotification(`Saut en cours vers la carte ${destinationMap}`, ptl.jumpDur, "info", { goldTerms: [destinationMap] });
 
   // ✅ "Saut possible" puis 500 ms après → "saut en cours"
-  SFX.play("swReady", { vol: 0.85 });
+  SFX.play("swReady");
   window.setTimeout(() => {
-    SFX.play("swJump", { vol: 0.85 });
+    SFX.play("swJump");
   }, 500);
 
   return true;
@@ -3340,6 +3548,7 @@ function pickEnemyAtScreen(sx, sy) {
 // ============================================================
 const SFX = createSFX();
 SFX.setMasterVolume?.(GAME_SETTINGS.soundVolume / 100);
+applySfxSettings();
 // ✅ Mute global sans devoir modifier tous les SFX.play du jeu
 const _SFX_PLAY = typeof SFX?.play === "function" ? SFX.play.bind(SFX) : null;
 
@@ -4682,9 +4891,9 @@ function tickRepair(dt) {
   if (!repairSoundActive) {
     const needs = player.hp < player.hpMax - 0.01 || player.sh < player.shMax - 0.01;
     if (needs) {
-      SFX.play("repairStart", { vol: 0.7 });
+      SFX.play("repairStart");
       repairSoundActive = true;
-      SFX.loop("repairLoop", { vol: 0.6, fadeIn: 0.25 });
+      SFX.loop("repairLoop", { fadeIn: 0.25 });
     }
   }
 
@@ -4829,6 +5038,11 @@ const used = [...boundKeys];
 
     if (isKeybind("toggleWindows", e.code)) {
       window.GameWindowManager?.toggleAll?.();
+      return;
+    }
+
+    if (isKeybind("toggleDock", e.code)) {
+      toggleActionDockMenu?.();
       return;
     }
 
@@ -6578,7 +6792,7 @@ const isSelected = collectableTargetId === c.id && c.armed === true;
       const rr = player.r + (c.pickupRadius || c.r || 32);
 
       if (dist2(player.x, player.y, c.x, c.y) <= rr * rr) {
-        SFX.play("collect", { vol: 0.45, cut: true, maxVoices: 3 });
+        SFX.play("collect", { cut: true, maxVoices: 3 });
         applyCollectableReward(c);
         collectables.splice(i, 1);
       }
@@ -6625,7 +6839,7 @@ player.y = collectY;
 
     // ✅ Attente de 1 seconde avant collecte
     if (c.collectT >= COLLECTABLE_PICKUP.holdDuration) {
-      SFX.play("collect", { vol: 0.45, cut: true, maxVoices: 3 });
+      SFX.play("collect", { cut: true, maxVoices: 3 });
       applyCollectableReward(c);
 
       collectableTargetId = null;
@@ -7261,7 +7475,7 @@ function processDeathsMeasured() {
       SFX.fadeOut("pShotX4", { dur: 0.25, to: 0.3 });
       SFX.fadeOut("pShotX6", { dur: 0.25, to: 0.3 });
       SFX.fadeOut("pShotSab", { dur: 0.25, to: 0.3 });
-      SFX.play("npcDeath", { vol: 0.8, maxVoices: 16, cooldown: 0 });
+      SFX.play("npcDeath", { maxVoices: 16, cooldown: 0 });
     }
 
 let dropType = "Cargo_Box";
@@ -7584,7 +7798,7 @@ function usePulse() {
   player.credits -= PULSE_COST;
   pulseCd = PULSE_COOLDOWN;
   spawnPulseFx(player.x, player.y, 1, true);
-  SFX.play("pulseIEM", { vol: 0.6 });
+  SFX.play("pulseIEM");
 
   markProgressDirty();
 
@@ -7836,7 +8050,7 @@ function tryFireRocket(opts = {}) {
 
   player.angle = Math.atan2(t.y - player.y, t.x - player.x);
 
-  SFX.play("sfx_shot_roquettes", { vol: 0.4, cooldown: 0.05, cut: true });
+  SFX.play("sfx_shot_roquettes", { cooldown: 0.05, cut: true });
 
   player.rockets[rocket.id] = rocketCount(rocket.id) - 1;
   rocketCooldown = rocket?.cooldown || 1.0;
@@ -7948,7 +8162,7 @@ function tryFireSalvo(opts = {}) {
   const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (Number(player.laserHitBonusPct || 0) / 100));
   for (let i = 0; i < n; i++) {
     // 1 son par roquette, en même temps.
-    SFX.play("sfx_shot_lance_roquettes", { vol: 0.45, maxVoices: 8 });
+    SFX.play("sfx_shot_lance_roquettes", { maxVoices: 8 });
     // Éventail large : sens alterné + grande ampleur → 5 grands C distincts.
     const dirSign = i % 2 === 0 ? -1 : 1;
     const scale = 1.8 + 1.2 * (n > 1 ? i / (n - 1) : 0.5);
@@ -8015,17 +8229,16 @@ function playPlayerShot(ammoKey) {
   const rate = isX6
     ? 0.98 + Math.random() * 0.04
     : RATE_VARIANTS[Math.floor(Math.random() * RATE_VARIANTS.length)];
-  SFX.play(id, { vol: 0.28, rate, cooldown: 0.01, cut: true });
+  SFX.play(id, { rate, cooldown: 0.01, cut: true });
 }
 
 // ✅ quand un vrai tir touche sa cible (dégâts, sans dégâts ou MISS),
 // on joue aléatoirement un des 3 sons "laser hit".
 const PLAYER_LASER_HIT_SFX = ["laserHit1", "laserHit2", "laserHit3"];
-const PLAYER_LASER_HIT_VOL = 0.4;
 
 function playPlayerLaserHit() {
   const id = PLAYER_LASER_HIT_SFX[Math.floor(Math.random() * PLAYER_LASER_HIT_SFX.length)];
-  SFX.play(id, { vol: PLAYER_LASER_HIT_VOL, cooldown: 0.04, maxVoices: 4 });
+  SFX.play(id, { cooldown: 0.04, maxVoices: 4 });
 }
 
 // Impacts d'une même volée : 1er immédiat, suivants décalés de 100 ms.
@@ -8098,7 +8311,7 @@ function tickLauncherCharger(dt) {
     if (launcherPhaseT >= 2) {
       launcherPhase = "reload";
       launcherReloadT = 0;
-      SFX.play("rocketsLoadStart", { vol: 0.7, cut: true });
+      SFX.play("rocketsLoadStart", { cut: true });
     }
     launcherFullT = 0;
     return;
@@ -8109,7 +8322,7 @@ function tickLauncherCharger(dt) {
   // Mémorise le plein affiché pour la salve auto.
   const lit = launcherLitNow();
   for (let loaded = previousLit + 1; loaded <= lit; loaded++) {
-    SFX.play(loaded === 5 ? "rocketsLoaded" : "rocketLoad", { vol: 0.7, maxVoices: 5 });
+    SFX.play(loaded === 5 ? "rocketsLoaded" : "rocketLoad", { maxVoices: 5 });
   }
   if (lit >= full) launcherFullT += dt;
   else launcherFullT = 0;
@@ -8931,7 +9144,7 @@ jumpBaseFade: 1,
         window.setTimeout(() => {
           SFX.stop("swJump");
           SFX.stop("swReady");
-          SFX.play("swDone", { vol: 0.85 });
+          SFX.play("swDone");
         }, 400);
       }
     }
@@ -9014,7 +9227,7 @@ function die() {
   if (toast?.fixed && toast.text === "Vous êtes en zone de radiations") toast = null;
   clearPendingSalvo();
 
-  SFX.crossfade("deathPlayer", "deathPlayer2", { vol: 0.8, crossAt: 0.2 });
+  SFX.crossfade("deathPlayer", "deathPlayer2", { crossAt: 0.2 });
 
   lastDeathPos.x = player.x;
   lastDeathPos.y = player.y;
@@ -9076,7 +9289,7 @@ function respawnBaseGate() {
   setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn, respawn: true });
   SFX.stop("deathPlayer");
   SFX.stop("deathPlayer2");
-  SFX.play("respawnPlayer", { vol: 0.8 });
+  SFX.play("respawnPlayer");
   startRespawnInstaShield();
   player.portalLockT = Math.max(player.portalLockT || 0, 5);
 
@@ -9097,7 +9310,7 @@ function startRespawn(action) {
   SFX.resume();
   SFX.stop("deathPlayer");
   SFX.stop("deathPlayer2");
-  SFX.play("respawnPlayer", { vol: 0.8 });
+  SFX.play("respawnPlayer");
   if (toast?.fixed && toast.text === "Vous êtes en zone de radiations") toast = null;
   showRespawnOverlay(false);
   setCenterMsg(false);

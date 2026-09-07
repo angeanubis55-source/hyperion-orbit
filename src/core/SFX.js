@@ -1,6 +1,39 @@
 // src/core/SFX.js
 "use strict";
 
+// Tous les sons chargeables du jeu (mêmes clés que preload()).
+// Sert aussi à générer les réglages de volume individuels.
+export const SFX_SOUND_NAMES = Object.freeze([
+  "pShotX1",
+  "pShotX2",
+  "pShotX3",
+  "pShotX4",
+  "pShotX6",
+  "sfx_shot_roquettes",
+  "sfx_shot_lance_roquettes",
+  "rocketsLoadStart",
+  "rocketLoad",
+  "rocketsLoaded",
+  "pShotSab",
+  "pulseIEM",
+  "deathPlayer",
+  "deathPlayer2",
+  "respawnPlayer",
+  "radiationLoop",
+  "repairStart",
+  "repairLoop",
+  "swReady",
+  "swJump",
+  "swDone",
+  "swDeny",
+  "shipMove",
+  "npcDeath",
+  "collect",
+  "laserHit1",
+  "laserHit2",
+  "laserHit3",
+]);
+
 export function createSFX() {
   const api = {
     ctx: null,
@@ -11,7 +44,12 @@ buffers: Object.create(null),
     sources: Object.create(null),
     loops: Object.create(null),
 enabled: true,
-    masterVolume: 0.55,
+    masterVolume: 0.5,
+    // Volume (0..1) et muet par son. Appliqués via un nœud de gain
+    // dédié : les boucles en cours suivent aussi les réglages en direct.
+    soundGains: Object.create(null),
+    soundVolumes: Object.create(null),
+    soundMuted: Object.create(null),
     _preloaded: false,
     preloaded: null,
     _gestureSeen: false,
@@ -66,6 +104,50 @@ enabled: true,
       api.masterVolume = Math.max(0, Math.min(1, Number(value) || 0));
       if (!api.master || !api.ctx) return;
       api.master.gain.setTargetAtTime(api.masterVolume, api.ctx.currentTime, 0.015);
+    },
+
+    // Nœud de gain dédié à un son (créé à la demande, branché sur le master).
+    _soundGain(name) {
+      if (!api.ctx || !api.master) return api.master;
+      let g = api.soundGains[name];
+      if (!g) {
+        g = api.ctx.createGain();
+        g.gain.value = api.soundMuted[name] ? 0 : Math.max(0, Math.min(1, Number(api.soundVolumes[name] ?? 1)));
+        g.connect(api.master);
+        api.soundGains[name] = g;
+      }
+      return g;
+    },
+
+    _applySoundGain(name) {
+      const g = api.soundGains[name];
+      if (!g || !api.ctx) return;
+      const v = api.soundMuted[name] ? 0 : Math.max(0, Math.min(1, Number(api.soundVolumes[name] ?? 1)));
+      try {
+        g.gain.setTargetAtTime(v, api.ctx.currentTime, 0.015);
+      } catch {
+        try { g.gain.value = v; } catch {}
+      }
+    },
+
+    // Volume individuel d'un son (0..1). Fonctionne avant init : appliqué
+    // dès que le nœud de gain est créé.
+    setSoundVolume(name, value) {
+      api.soundVolumes[name] = Math.max(0, Math.min(1, Number(value) || 0));
+      api._applySoundGain(name);
+    },
+
+    getSoundVolume(name) {
+      return Math.max(0, Math.min(1, Number(api.soundVolumes[name] ?? 1)));
+    },
+
+    setSoundMuted(name, muted) {
+      api.soundMuted[name] = muted === true;
+      api._applySoundGain(name);
+    },
+
+    isSoundMuted(name) {
+      return api.soundMuted[name] === true;
     },
 
     resume() {
@@ -160,7 +242,7 @@ enabled: true,
       g.gain.value = vol;
 
       src.connect(g);
-      g.connect(api.master);
+      g.connect(api._soundGain(name));
 
       const node = { src, g };
       (api.sources[name] = api.sources[name] || []).push(node);
@@ -250,7 +332,7 @@ enabled: true,
         g.gain.setValueAtTime(vol, when + dur - xfade);
         g.gain.linearRampToValueAtTime(0, when + dur);
         src.connect(g);
-        g.connect(api.master);
+        g.connect(api._soundGain(name));
         src.start(when);
         src.stop(when + dur + 0.02);
         const node = { src, g };
@@ -341,7 +423,7 @@ enabled: true,
         srcA.playbackRate.value = rate;
         const gA = api.ctx.createGain();
         srcA.connect(gA);
-        gA.connect(api.master);
+        gA.connect(api._soundGain(nameA));
         gA.gain.setValueAtTime(vol, now);
         gA.gain.linearRampToValueAtTime(0, tCross + fade);
         srcA.start(now);
@@ -362,7 +444,7 @@ enabled: true,
         srcB.playbackRate.value = rate;
         const gB = api.ctx.createGain();
         srcB.connect(gB);
-        gB.connect(api.master);
+        gB.connect(api._soundGain(nameB));
         gB.gain.setValueAtTime(vol, tCross);
         srcB.start(tCross);
         const nodeB = { src: srcB, g: gB };

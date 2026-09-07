@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "984b709b",
+    "message": "Boutique : option x1000 + persistance munition dock rapide"
+  },
+  {
     "version": "94c6f73b",
     "message": "dock rapide fix"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "bdea61d4",
     "message": "Ajout de l'atelier d'artisanat et du HUD d'escorte."
-  },
-  {
-    "version": "e0f63f22",
-    "message": "Extension des rencontres de portails et des systèmes d'escorte."
   }
 ];

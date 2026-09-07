@@ -3827,13 +3827,15 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   height:calc(100% - 30px);
   max-height:none;
   padding:0;
-  display:block;
+  display:flex;
+  flex-direction:column;
   overflow:hidden;
 }
 #settingsWindow .settingsPage{
   min-width:0;
   min-height:0;
-  height:100%;
+  flex:1 1 auto;
+  height:auto;
   padding:14px;
   box-sizing:border-box;
   display:flex;
@@ -3897,13 +3899,36 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #settingsWindow .keyBindRow > kbd{flex:0 0 auto;margin-left:8px}
 #settingsWindow .settingsControlsIntro{margin-top:0}
 #settingsWindow .settingsPageFooter{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:8px;border-top:1px solid rgba(124,240,255,.11)}
+#settingsWindow .settingsPageFooter:has(> :only-child){grid-template-columns:1fr}
 #settingsWindow .settingsResetBtn{width:100%;margin:0;border-radius:8px;font-size:11px}
+/* Onglets des paramètres : une seule page visible à la fois */
+#settingsWindow .settingsTabs{flex:0 0 auto;display:flex;gap:6px;padding:10px 14px 0}
+#settingsWindow .settingsTab{flex:1 1 0;min-width:0;height:32px;padding:0 8px;border:1px solid rgba(124,240,255,.22);border-radius:8px;color:rgba(204,228,241,.65);background:rgba(255,255,255,.03);font-size:11px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+#settingsWindow .settingsTab:hover{color:#eaffff;border-color:rgba(124,240,255,.45)}
+#settingsWindow .settingsTab.active{color:#06222e;background:linear-gradient(180deg,#7cf0ff,#38b6d6);border-color:#7cf0ff}
+#settingsWindow .settingsPage{display:none}
+#settingsWindow .settingsPage.active{display:flex}
+/* Liste des sons : une ligne par son, les unes sous les autres */
+#settingsWindow .sfxList{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:5px;overflow-y:auto;overflow-x:hidden;padding:2px}
+#settingsWindow .sfxRow{display:grid;grid-template-columns:auto minmax(110px,1fr) minmax(110px,1.4fr) auto;align-items:center;gap:10px;min-height:34px;padding:4px 10px;border:1px solid rgba(124,240,255,.14);border-radius:8px;background:rgba(255,255,255,.03);cursor:pointer;box-sizing:border-box}
+#settingsWindow .sfxRow.muted{opacity:.55}
+#settingsWindow .sfxRow input[type="checkbox"]{width:15px;height:15px;accent-color:#7cf0ff;cursor:pointer}
+#settingsWindow .sfxRow .sfxName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#dceef4;font-size:11px;font-weight:700}
+#settingsWindow .sfxRow .settingsVolumeSlider{width:100%;min-width:0;height:11px;margin:0;accent-color:#7cf0ff;cursor:pointer}
+#settingsWindow .sfxRow .settingsVolumeSlider:disabled{opacity:.4;cursor:default}
+#settingsWindow .sfxRow .settingsVolumeValue{color:#7cf0ff;font-size:10px;font-weight:900;font-variant-numeric:tabular-nums;background:rgba(0,217,255,.10);border:1px solid rgba(0,217,255,.25);padding:0 7px;border-radius:6px;white-space:nowrap;min-width:44px;text-align:center}
 #settingsWindow .settingsBody,
 #settingsWindow .settingsPage,
 #settingsWindow .settingsKeyColumns{scrollbar-width:none}
 #settingsWindow .settingsBody::-webkit-scrollbar,
 #settingsWindow .settingsPage::-webkit-scrollbar,
 #settingsWindow .settingsKeyColumns::-webkit-scrollbar{display:none}
+/* Barre de défilement fine et visible pour la liste des sons */
+#settingsWindow .sfxList{scrollbar-width:thin;scrollbar-color:rgba(124,240,255,.45) transparent}
+#settingsWindow .sfxList::-webkit-scrollbar{display:block;width:8px}
+#settingsWindow .sfxList::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:4px}
+#settingsWindow .sfxList::-webkit-scrollbar-thumb{background:rgba(124,240,255,.35);border-radius:4px}
+#settingsWindow .sfxList::-webkit-scrollbar-thumb:hover{background:rgba(124,240,255,.6)}
 
 @media (max-width:600px){
   #settingsWindow{width:calc(100vw - 24px);height:min(650px, calc(100vh - 48px))}
