@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "b68abde3",
+    "message": "Dock rapide : voile de recharge en arc (IEM, roquettes, formations, robot) + uniformisation des slots"
+  },
+  {
     "version": "1868de3f",
     "message": "minor fixes & sound control"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "c13521cf",
     "message": "Corrections de stabilité et d'affichage."
-  },
-  {
-    "version": "79f72dcf",
-    "message": "Ajout du système complet de drones et de formations."
   }
 ];

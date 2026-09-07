@@ -4266,17 +4266,26 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   pointer-events:none;
   background:conic-gradient(from 0deg at 50% 50%,
     rgba(3,7,16,.8) 0deg calc(var(--cd,0) * 360deg),
-    var(--cd-edge,rgba(200,120,255,.9)) calc(var(--cd,0) * 360deg) calc(var(--cd,0) * 360deg + 3deg),
+    var(--cd-edge,rgba(175,185,195,.9)) calc(var(--cd,0) * 360deg) calc(var(--cd,0) * 360deg + 3deg),
     transparent calc(var(--cd,0) * 360deg + 3deg));
 }
-/* Roquettes standard : liseré orange (fallback, écrasé en JS par la couleur
-   exacte du contour du slot au démarrage du voile) */
+/* Liseré de balayage : couleur du type (gris classique uniquement sur X6).
+   (L'IEM garde son liseré violet, couleur de son slot.) */
 #ammoBar .rocketActionSlot.cdVeil,
 #ammoBar .rocketQuickAction.cdVeil{--cd-edge:rgba(255,170,80,.9)}
-/* Formations : liseré doré (fallback, écrasé en JS par la couleur
-   exacte du contour du slot au démarrage du voile) */
 #ammoBar .formationActionSlot.cdVeil,
 #ammoBar .formationQuickAction.cdVeil{--cd-edge:rgba(232,196,106,.9)}
+/* "Prêt" X6 (l'IEM a le sien, violet) : une seule animation fluide 1,4 s
+   (montée + descente, sans coupure) : contour, fond et glow orange */
+#ammoBar [data-ammo="x6"].x6Ready{animation:x6ReadyFlash .45s ease-out}
+@keyframes x6ReadyFlash{
+  35%{
+    border-color:color-mix(in srgb, var(--c) 85%, white);
+    background:color-mix(in srgb, var(--c) 38%, rgba(255,255,255,.08));
+    box-shadow:0 0 18px 3px rgba(255,165,74,.8),
+      0 0 0 2px color-mix(in srgb, var(--c) 45%, transparent) inset;
+  }
+}
 #ammoBar [data-skill="repair"]{cursor:default !important}
 #settingsWindow .settingsKeyColumns{grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr) !important}
 #settingsWindow .settingsSlotKeys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px 8px}

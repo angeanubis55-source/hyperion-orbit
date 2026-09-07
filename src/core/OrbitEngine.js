@@ -4809,6 +4809,29 @@ function syncActionDockState() {
       (v) => button.classList.toggle("active", v));
     applyDockField(button, "text", value,
       (v) => { if (small) small.textContent = v; });
+    // X6 (RSB) : voile de son cooldown 5 s. Liseré auto-adaptatif en continu
+    // comme roquettes/formations ; flash de fin couleur du contour du slot.
+    if (ammo === "x6") {
+      const cooling = rsbCooldown > 0;
+      const progress = cooling ? clamp(rsbCooldown / RSB_COOLDOWN, 0, 1) : 0;
+      const wasCooling = button.dataset.x6Cooling === "1";
+      if (wasCooling && !cooling) {
+        // Fin du voile : animation "prêt" unique (pas de double système).
+        button.classList.remove("x6Ready");
+        void button.offsetWidth;
+        button.classList.add("x6Ready");
+        setTimeout(() => button.classList.remove("x6Ready"), 500);
+      }
+      button.dataset.x6Cooling = cooling ? "1" : "0";
+      applyDockField(button, "cdVeil", cooling,
+        (v) => button.classList.toggle("cdVeil", v));
+      applyDockField(button, "cdProgress", progress.toFixed(3),
+        (v) => button.style.setProperty("--cd", v));
+      if (cooling) {
+        applyDockField(button, "cdEdge", getComputedStyle(button).borderColor,
+          (v) => button.style.setProperty("--cd-edge", v));
+      }
+    }
   }
 
   const activeFormationId = getActiveDroneFormation(account.user).id;
@@ -4828,13 +4851,15 @@ function syncActionDockState() {
     const cooling = formationLockLeft > 0;
     const progress = cooling ? clamp(formationLockLeft / FORMATION_SWITCH_MS, 0, 1) : 0;
     applyDockField(button, "cdVeil", cooling,
-      (v) => {
-        button.classList.toggle("cdVeil", v);
-        // Liseré de balayage = couleur exacte du contour du slot.
-        if (v) button.style.setProperty("--cd-edge", getComputedStyle(button).borderColor);
-      });
+      (v) => button.classList.toggle("cdVeil", v));
     applyDockField(button, "cdProgress", progress.toFixed(3),
       (v) => button.style.setProperty("--cd", v));
+    // Liseré auto-adaptatif : suit la bordure du slot en continu (la sélection
+    // peut changer : doré sélectionnée, gris les autres).
+    if (cooling) {
+      applyDockField(button, "cdEdge", getComputedStyle(button).borderColor,
+        (v) => button.style.setProperty("--cd-edge", v));
+    }
   }
 
   // Roquettes standard : cooldown partagé, voile sur chaque slot de roquette.
@@ -4843,13 +4868,15 @@ function syncActionDockState() {
     const cooling = rocketCooldown > 0;
     const progress = cooling ? clamp(rocketCooldown / (rocketCooldownMax || 1), 0, 1) : 0;
     applyDockField(button, "cdVeil", cooling,
-      (v) => {
-        button.classList.toggle("cdVeil", v);
-        // Liseré de balayage = couleur exacte du contour du slot.
-        if (v) button.style.setProperty("--cd-edge", getComputedStyle(button).borderColor);
-      });
+      (v) => button.classList.toggle("cdVeil", v));
     applyDockField(button, "cdProgress", progress.toFixed(3),
       (v) => button.style.setProperty("--cd", v));
+    // Liseré auto-adaptatif : suit la bordure du slot en continu (la roquette
+    // active peut changer en cours de recharge : orange / gris).
+    if (cooling) {
+      applyDockField(button, "cdEdge", getComputedStyle(button).borderColor,
+        (v) => button.style.setProperty("--cd-edge", v));
+    }
   }
 
   for (const { button, skill, small } of actionDockCache.skills) {
