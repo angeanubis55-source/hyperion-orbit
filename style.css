@@ -2283,9 +2283,9 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 .ammoBtn[data-ammo="x3"]{ --c:var(--x3); }
 .ammoBtn[data-ammo="x4"]{ --c:var(--x4); }
 .ammoBtn[data-ammo="x6"]{ --c:var(--x6); }
-.ammoBtn[data-ammo="sab"]{ --c:#173c9c; }
+.ammoBtn[data-ammo="sab"]{ --c:#2f62c0; }
 .ammoBtn[data-skill="pulse"]{ --c:#b342ff; }
-.ammoBtn[data-skill="repair"]{ --c:#3dff8c; }
+.ammoBtn[data-skill="repair"]{ --c:#39ff14; }
 
 .skillBtn{
   min-width:130px;
@@ -3626,10 +3626,17 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   height: 44px;
   display: grid;
   place-items: center;
+  place-content: center;
   box-sizing: border-box;
   border: 1px solid rgba(110, 214, 237, .13);
   border-radius: 5px;
   background: rgba(3, 13, 21, .68);
+}
+/* Case équipée : le bouton (46×44) recouvre exactement la case ; on efface
+   le fond/bordure du slot pour une empreinte strictement identique à vide. */
+#ammoBar.compactAmmoBar .actionSlot:has(> .ammoBtn, > .rocketQuickAction, > .launcherAutoBtn):not(.dragTarget) {
+  border-color: transparent;
+  background: transparent;
 }
 #ammoBar.compactAmmoBar .actionSlot.dragTarget {
   border-color: #70e7fa;
@@ -4099,6 +4106,10 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar .formationQuickAction span,
 #ammoBar .actionPalette .slotKeyHint{display:none !important}
 #ammoBar .slotKeyHint{position:absolute;top:2px;left:3px;z-index:4;color:rgba(218,244,250,.66);font-size:7px;font-weight:900;line-height:1;pointer-events:none}
+/* Mémos techniques des touches assignées (1, 2, Numpad1...) masqués */
+#ammoBar .slotKeyHint,
+#ammoBar .ammoKey,
+#ammoBar .keyHint{display:none !important}
 #ammoBar.compactAmmoBar .ammoBtn.active,
 #ammoBar.compactAmmoBar .formationActionSlot.active,
 #ammoBar.compactAmmoBar .rocketActionSlot.active,
@@ -4121,17 +4132,151 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar [data-skill="pulse"] > strong,
 #ammoBar [data-skill="repair"] > strong{display:none !important}
 #ammoBar [data-skill="pulse"] > small,
-#ammoBar [data-skill="repair"] > small{position:relative;z-index:2}
+#ammoBar [data-skill="repair"] > small{position:relative;z-index:3}
+/* IEM + réparation : textes strictement identiques aux compteurs
+   munitions/roquettes (même emplacement, taille, graisse, couleur). */
+#ammoBar #btnPulse{gap:0}
+#ammoBar #btnPulse > small,
+#ammoBar #btnRepair > small{
+  display:block;
+  margin:2px 0 0;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+  line-height:1.2;
+  white-space:nowrap;
+}
+#ammoBar.compactAmmoBar #btnPulse > small,
+#ammoBar.compactAmmoBar #btnRepair > small{font-size:12px;line-height:1;opacity:.88}
+/* Le prix IEM reste masqué en mode compact (comme avant) */
+#ammoBar.compactAmmoBar #btnPulse > small.skillPriceMini{display:none}
+/* Texte IEM : pareil que la réparation (en bas, minuscule).
+   Sélecteur par attribut : les boutons visibles sont des clones sans id. */
+#ammoBar [data-skill="pulse"] > small{
+  position:absolute;
+  z-index:3;
+  left:2px;
+  right:2px;
+  bottom:2px;
+  margin:0 !important;
+  overflow:hidden;
+  color:rgba(225,241,249,.78) !important;
+  font-size:7px !important;
+  line-height:8px;
+  text-align:center;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  text-shadow:0 1px 3px #000, 0 0 6px #000;
+}
+#ammoBar [data-skill="pulse"] > small.skillPriceMini{bottom:11px}
+/* Texte réparation (OK / %) : en bas, minuscule comme les compteurs de
+   roquettes. Même remarque : sélecteur par attribut pour les clones. */
+#ammoBar [data-skill="repair"] > small{
+  position:absolute;
+  z-index:3;
+  left:2px;
+  right:2px;
+  bottom:2px;
+  margin:0 !important;
+  overflow:hidden;
+  color:rgba(225,241,249,.78) !important;
+  font-size:7px !important;
+  line-height:8px;
+  text-align:center;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  text-shadow:0 1px 3px #000, 0 0 6px #000;
+}
+/* Reste en bas aussi pendant le voile (la règle générique .cdVeil > small
+   repasserait sinon le texte en relatif = centré). */
+#ammoBar [data-skill="repair"].cdVeil > small{position:absolute}
+/* Robot réparateur : liseré de balayage lime (couleur du robot) */
+#ammoBar [data-skill="repair"].cdVeil{--cd-edge:rgba(57,255,20,.9)}
+/* Robot réparateur : lime + contour en permanence */
+#ammoBar [data-skill="repair"]{
+  border-color:color-mix(in srgb, var(--c) 60%, rgba(255,255,255,.12));
+  background:
+    radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--c) 22%, transparent), transparent 70%),
+    color-mix(in srgb, var(--c) 15%, rgba(255,255,255,.05));
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--c) 35%, transparent) inset;
+}
+/* Robot en train de réparer : glow lime clignotant */
+#ammoBar [data-skill="repair"].repairing{animation:repairBlink 1.1s ease-in-out infinite}
+@keyframes repairBlink{
+  0%,100%{box-shadow:0 0 4px rgba(57,255,20,.25),0 0 0 2px rgba(57,255,20,.18) inset}
+  50%{box-shadow:0 0 22px 3px rgba(57,255,20,.9),0 0 0 2px rgba(57,255,20,.55) inset}
+}
+/* IEM : voile de recharge carré plein rectangle, balayé en arc depuis le haut.
+   Zone déjà dévoilée lumineuse (fond violet éclairé + contour), sans halo
+   extérieur pendant la recharge ; la lueur extérieure ne revient qu'une fois
+   prête, avec le flash. */
+#ammoBar [data-skill="pulse"].ready,
+#ammoBar [data-skill="pulse"].skillFeedback{
+  border-color:color-mix(in srgb, var(--c) 78%, white);
+  background:
+    linear-gradient(rgba(255,255,255,.14), rgba(255,255,255,0) 55%),
+    color-mix(in srgb, var(--c) 32%, rgba(255,255,255,.08));
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--c) 35%, transparent) inset,
+    inset 0 1px 0 rgba(255,255,255,.28);
+}
+/* IEM prête : lueur extérieure + flash */
+#ammoBar [data-skill="pulse"].ready{
+  box-shadow:0 0 12px color-mix(in srgb, var(--c) 55%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--c) 22%, transparent) inset;
+}
+/* Pendant la recharge le bouton porte aussi .disabled (clic bloqué) mais on ne
+   veut pas son opacity:.45 qui éteindrait la zone dévoilée. */
+#ammoBar [data-skill="pulse"].skillFeedback.disabled{opacity:1}
+#ammoBar [data-skill="pulse"].skillFeedback > small{color:#cfe3ee}
 #ammoBar [data-skill].skillFeedback::after{
   content:"";
   position:absolute;
-  inset:1px;
+  inset:0;
+  z-index:2;
   pointer-events:none;
-  opacity:var(--skill-feedback,0);
-  border:1px solid color-mix(in srgb,var(--c,#7cf0ff) 85%,white);
-  background:color-mix(in srgb,var(--c,#7cf0ff) 18%,transparent);
-  box-shadow:inset 0 0 12px color-mix(in srgb,var(--c,#7cf0ff) 55%,transparent),0 0 8px color-mix(in srgb,var(--c,#7cf0ff) 45%,transparent);
+  opacity:1;
+  /* Voile restant = --skill-feedback (1 -> tout couvert, 0 -> tout dévoilé),
+     bien sombre pour un contraste net avec la zone déjà dévoilée,
+     avec un liseré clair au bord de l'arc pour bien lire la progression. */
+  background:conic-gradient(from 0deg at 50% 50%,
+    rgba(3,7,16,.8) 0deg calc(var(--skill-feedback,0) * 360deg),
+    rgba(200,120,255,.9) calc(var(--skill-feedback,0) * 360deg) calc(var(--skill-feedback,0) * 360deg + 3deg),
+    transparent calc(var(--skill-feedback,0) * 360deg + 3deg));
 }
+#ammoBar [data-skill="pulse"].skillReadyPop{animation:iemReadyFlash .7s ease-out}
+@keyframes iemReadyFlash{
+  0%{box-shadow:0 0 0 0 rgba(196,110,255,.95),0 0 0 0 rgba(196,110,255,.5)}
+  60%{box-shadow:0 0 22px 4px rgba(196,110,255,.55),0 0 0 3px rgba(196,110,255,.25)}
+  100%{box-shadow:0 0 12px rgba(179,66,255,.55),0 0 0 0 rgba(196,110,255,0)}
+}
+/* ============================================================
+   Voile de recharge générique : roquettes standard + formations.
+   Même principe que l'IEM (voile carré balayé en arc, zone dévoilée
+   nette, lueur "prêt"), teinté par type via --cd-edge / --cd-glow.
+   ============================================================ */
+#ammoBar .cdVeil{position:relative;overflow:hidden}
+#ammoBar .cdVeil > small,
+#ammoBar .cdVeil > strong,
+#ammoBar .cdVeil > span{position:relative;z-index:2}
+#ammoBar .cdVeil::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:1;
+  pointer-events:none;
+  background:conic-gradient(from 0deg at 50% 50%,
+    rgba(3,7,16,.8) 0deg calc(var(--cd,0) * 360deg),
+    var(--cd-edge,rgba(200,120,255,.9)) calc(var(--cd,0) * 360deg) calc(var(--cd,0) * 360deg + 3deg),
+    transparent calc(var(--cd,0) * 360deg + 3deg));
+}
+/* Roquettes standard : liseré orange (fallback, écrasé en JS par la couleur
+   exacte du contour du slot au démarrage du voile) */
+#ammoBar .rocketActionSlot.cdVeil,
+#ammoBar .rocketQuickAction.cdVeil{--cd-edge:rgba(255,170,80,.9)}
+/* Formations : liseré doré (fallback, écrasé en JS par la couleur
+   exacte du contour du slot au démarrage du voile) */
+#ammoBar .formationActionSlot.cdVeil,
+#ammoBar .formationQuickAction.cdVeil{--cd-edge:rgba(232,196,106,.9)}
 #ammoBar [data-skill="repair"]{cursor:default !important}
 #settingsWindow .settingsKeyColumns{grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr) !important}
 #settingsWindow .settingsSlotKeys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px 8px}

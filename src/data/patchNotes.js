@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "1868de3f",
+    "message": "minor fixes & sound control"
+  },
+  {
     "version": "984b709b",
     "message": "Boutique : option x1000 + persistance munition dock rapide"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "79f72dcf",
     "message": "Ajout du système complet de drones et de formations."
-  },
-  {
-    "version": "bdea61d4",
-    "message": "Ajout de l'atelier d'artisanat et du HUD d'escorte."
   }
 ];

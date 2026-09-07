@@ -4729,6 +4729,9 @@ let actionDockCache = null;
 let actionDockDirty = true;
 let actionDockObserver = null;
 const lastDockField = new WeakMap();
+// Durée du verrou après un changement de formation (doit rester synchronisée
+// avec setCurrentUserDroneFormation dans account.js).
+const FORMATION_SWITCH_MS = 2000;
 
 function invalidateActionDockCache() {
   actionDockCache = null;
@@ -4747,12 +4750,18 @@ function isTextOnlyMutation(records) {
 function ensureActionDockCache() {
   const bar = document.getElementById("ammoBar");
   if (!bar) return null;
-  const fresh = { bar, ammo: [], formations: [], skills: [] };
+  const fresh = { bar, ammo: [], formations: [], skills: [], rockets: [] };
   for (const button of bar.querySelectorAll("[data-ammo]")) {
     fresh.ammo.push({ button, ammo: button.dataset.ammo, small: button.querySelector("small") });
   }
   for (const button of bar.querySelectorAll("[data-action-id^='formation:']")) {
     fresh.formations.push({ button, actionId: button.dataset.actionId });
+  }
+  for (const button of bar.querySelectorAll("[data-action-id^='rocket:']")) {
+    // Standards uniquement : le lance-roquettes est exclu (comme pour l'IEM).
+    const rid = String(button.dataset.actionId || "").slice("rocket:".length).toLowerCase();
+    if (getRocketType(rid)?.manual === false) continue;
+    fresh.rockets.push({ button, rocketId: rid });
   }
   for (const button of bar.querySelectorAll("[data-skill]")) {
     fresh.skills.push({ button, skill: button.dataset.skill, small: button.querySelectorAll("small") });
@@ -4803,28 +4812,76 @@ function syncActionDockState() {
   }
 
   const activeFormationId = getActiveDroneFormation(account.user).id;
+  // Verrou 2 s après un changement de formation (miroir de account.js :
+  // setCurrentUserDroneFormation). Pilote le voile + le flash des formations.
+  let formationLockLeft = 0;
+  try {
+    const lastChange = account?.user?.drones?.lastFormationChangeAt || 0;
+    formationLockLeft = Math.max(0, FORMATION_SWITCH_MS - (Date.now() - lastChange));
+  } catch { formationLockLeft = 0; }
   for (const { button, actionId } of actionDockCache.formations) {
-    applyDockField(button, "active", actionId === `formation:${activeFormationId}`,
+    const selected = actionId === `formation:${activeFormationId}`;
+    applyDockField(button, "active", selected,
       (v) => button.classList.toggle("active", v));
+    // Pendant le verrou, toutes les formations sont indisponibles :
+    // le voile s'affiche sur chaque slot qui contient une formation.
+    const cooling = formationLockLeft > 0;
+    const progress = cooling ? clamp(formationLockLeft / FORMATION_SWITCH_MS, 0, 1) : 0;
+    applyDockField(button, "cdVeil", cooling,
+      (v) => {
+        button.classList.toggle("cdVeil", v);
+        // Liseré de balayage = couleur exacte du contour du slot.
+        if (v) button.style.setProperty("--cd-edge", getComputedStyle(button).borderColor);
+      });
+    applyDockField(button, "cdProgress", progress.toFixed(3),
+      (v) => button.style.setProperty("--cd", v));
+  }
+
+  // Roquettes standard : cooldown partagé, voile sur chaque slot de roquette.
+  // (Pas de flash : ~1 s en tir soutenu = trop de clignotement.)
+  for (const { button } of actionDockCache.rockets) {
+    const cooling = rocketCooldown > 0;
+    const progress = cooling ? clamp(rocketCooldown / (rocketCooldownMax || 1), 0, 1) : 0;
+    applyDockField(button, "cdVeil", cooling,
+      (v) => {
+        button.classList.toggle("cdVeil", v);
+        // Liseré de balayage = couleur exacte du contour du slot.
+        if (v) button.style.setProperty("--cd-edge", getComputedStyle(button).borderColor);
+      });
+    applyDockField(button, "cdProgress", progress.toFixed(3),
+      (v) => button.style.setProperty("--cd", v));
   }
 
   for (const { button, skill, small } of actionDockCache.skills) {
     if (skill === "pulse") {
       const progress = pulseCd > 0 ? clamp(pulseCd / PULSE_COOLDOWN, 0, 1) : 0;
       const canUse = canUseSkill(PULSE_COST);
-      applyDockField(button, "feedback", progress > 0,
+      const cooling = progress > 0;
+      // Front descendant du cooldown -> petite lueur "prête" (one-shot).
+      const wasCooling = button.dataset.iemCooling === "1";
+      if (wasCooling && !cooling && canUse) {
+        button.classList.remove("skillReadyPop");
+        void button.offsetWidth;
+        button.classList.add("skillReadyPop");
+        setTimeout(() => button.classList.remove("skillReadyPop"), 750);
+      }
+      button.dataset.iemCooling = cooling ? "1" : "0";
+      applyDockField(button, "feedback", cooling,
         (v) => button.classList.toggle("skillFeedback", v));
       applyDockField(button, "progress", progress.toFixed(3),
         (v) => button.style.setProperty("--skill-feedback", v));
-      applyDockField(button, "disabled", !canUse || pulseCd > 0,
+      applyDockField(button, "disabled", !canUse || cooling,
         (v) => button.classList.toggle("disabled", v));
-      applyDockField(button, "ready", canUse && pulseCd <= 0,
+      applyDockField(button, "ready", canUse && !cooling,
         (v) => button.classList.toggle("ready", v));
-      applyDockField(button, "pct", `${getPulsePercent()}%`,
+      // Plus de compteur 0->100% : le voile circulaire montre la progression.
+      // On affiche le temps restant pendant la recharge, "PRÊT" une fois dispo.
+      applyDockField(button, "main", cooling ? `${pulseCd.toFixed(1)}s` : "PRÊT",
         (v) => { if (small[0]) small[0].textContent = v; });
-      applyDockField(button, "cd", pulseCd > 0 ? `${pulseCd.toFixed(1)}s` : "30k",
+      applyDockField(button, "cd", cooling ? "" : "30k",
         (v) => { if (small[1]) small[1].textContent = v; });
-    } else if (skill === "repair") {      applyDockField(button, "active", false,
+    } else if (skill === "repair") {
+      applyDockField(button, "active", false,
         (v) => button.classList.remove("active"));
       applyDockField(button, "ready", false,
         (v) => button.classList.remove("ready"));
@@ -4834,6 +4891,19 @@ function syncActionDockState() {
         (v) => button.classList.toggle("disabled", v));
       applyDockField(button, "text", ui.repairTxt ? ui.repairTxt.textContent : "",
         (v) => { if (small[0]) small[0].textContent = v; });
+      // Robot réparateur : même voile que le reste pendant sa recharge (6 s).
+      const repairPct = REPAIR.cooldown <= 0 ? 1 : clamp(player.repairT / REPAIR.cooldown, 0, 1);
+      const repairCooling = !player.dead && repairPct < 1;
+      const repairProgress = repairCooling ? 1 - repairPct : 0;
+      applyDockField(button, "cdVeil", repairCooling,
+        (v) => button.classList.toggle("cdVeil", v));
+      applyDockField(button, "cdProgress", repairProgress.toFixed(3),
+        (v) => button.style.setProperty("--cd", v));
+      // Glow lime clignotant pendant la réparation active. Piloté ici (et non
+      // dans updateRepairUI) car les boutons visibles sont des clones du dock,
+      // pas les nœuds d'origine (#btnRepair est détaché après init du dock).
+      applyDockField(button, "repairing", repairSoundActive,
+        (v) => button.classList.toggle("repairing", v));
     }
   }
 }
@@ -4936,6 +5006,8 @@ function updateRepairUI() {
   setHudClass(ui.btnRepair, "active", false);
   setHudClass(ui.btnRepair, "ready", false);
   setHudClass(ui.btnRepair, "disabled", player.dead);
+  // Note : le glow "repairing" est piloté dans syncActionDockState (les boutons
+  // visibles sont des clones ; ui.btnRepair est détaché après init du dock).
   syncActionDockState();
 }
 
@@ -8053,7 +8125,8 @@ function tryFireRocket(opts = {}) {
   SFX.play("sfx_shot_roquettes", { cooldown: 0.05, cut: true });
 
   player.rockets[rocket.id] = rocketCount(rocket.id) - 1;
-  rocketCooldown = rocket?.cooldown || 1.0;
+  rocketCooldownMax = rocket?.cooldown || 1.0;
+  rocketCooldown = rocketCooldownMax;
   // Arme comme les lasers : lève la zone de non-agression pendant 5 s.
   player.combatT = 5.0;
   markProgressDirty();
@@ -8278,6 +8351,8 @@ let rsbCooldown = 0;
 
 // Roquettes R-310 : tir manuel à tête chercheuse, stock consommable.
 let rocketCooldown = 0;
+// Durée de référence du cooldown en cours (pour le voile du dock).
+let rocketCooldownMax = 1.0;
 // Lance-roquettes : chargeur 5 coups à 1/s, tir quand on veut (même partiel),
 // 2 s de pause après chaque salve avant la recharge. Pas d'autre blocage.
 let launcherReloadT = 0;
@@ -12070,12 +12145,13 @@ updateConfigButtons();
   updateSkillUI();
   updateRepairUI();
 
-  const pulsePct = getPulsePercent();
-  setHudText(ui.pulsePct, `${pulsePct}%`);
+  // IEM : pas de % qui remonte, la progression est montrée par le voile
+  // circulaire du dock (voir syncActionDockState). Ici on affiche le temps
+  // restant pendant la recharge, "PRÊT" une fois disponible.
+  setHudText(ui.pulsePct, pulseCd > 0 ? `${pulseCd.toFixed(1)}s` : "PRÊT");
 
   if (ui.pulsePrice) {
-    const pulsePriceText = pulseCd > 0 ? `${pulseCd.toFixed(1)}s` : "30 000 Cr.";
-    setHudText(ui.pulsePrice, pulsePriceText);
+    setHudText(ui.pulsePrice, pulseCd > 0 ? "" : "30k");
   }
 
   const rsbPct = getRsbPercent();
