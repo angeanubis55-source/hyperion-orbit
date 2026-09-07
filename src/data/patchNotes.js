@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "e7557a24",
+    "message": "Synchronise version (df296162)"
+  },
+  {
     "version": "df296162",
     "message": "Secu + logs + audio : hash password local + migration, escapeHtml XSS stocke, sentinel X1, suppress logs MAIN/SPAWN, AudioContext differe avant geste"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "649db531",
     "message": "Amélioration du HUD des missions, des bases et des règles de sécurité des firmes."
-  },
-  {
-    "version": "8545d78b",
-    "message": "Amélioration des déplacements et de la précision des lasers."
   }
 ];

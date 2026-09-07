@@ -9,6 +9,7 @@ import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./factions.
 import { compactFitDraft } from "./fitLayout.js";
 import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./galaxyGates.js";
 import { getCraftingRecipe } from "../data/crafting.js";
+import { ROCKET_TYPES } from "../data/rockets.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../data/drones.js";
 
 // localStorage keys
@@ -285,6 +286,16 @@ function ensureUserShape(u) {
   for (const k of AMMO_KEYS) {
     u.ammo[k] = Math.max(0, Number(u.ammo[k] || 0));
   }
+
+  // roquettes (stock consommable, lance-roquettes natif au vaisseau)
+  if (!u.rockets || typeof u.rockets !== "object" || Array.isArray(u.rockets)) u.rockets = {};
+  for (const id of Object.keys(ROCKET_TYPES)) {
+    u.rockets[id] = Math.max(0, Math.floor(Number(u.rockets[id] || 0)));
+  }
+  if (!ROCKET_TYPES[String(u.rocketActive || "").toLowerCase()]) u.rocketActive = "r310";
+  u.rocketAuto = u.rocketAuto === true;
+  if (!ROCKET_TYPES[String(u.launcherActive || "").toLowerCase()]) u.launcherActive = "eco10";
+  u.launcherAuto = u.launcherAuto === true;
 
   // stats
   if (!u.stats || typeof u.stats !== "object") u.stats = {};
@@ -584,6 +595,7 @@ export function register({ pseudo, email, password, faction }) {
     createdAt: Date.now(),
     credits: STARTER_CREDITS,
     ammo: defaultAmmo(),
+    rockets: { r310: 10 },
     ship: STARTER_SHIP_ID,
     inventory: { modules: [], ships: [STARTER_SHIP_ID], counts: {} },
     hangars: [makeHangar(STARTER_SHIP_ID, true)],
@@ -763,6 +775,22 @@ export function updateCurrentUserProgress(patch = {}) {
     if (patch.ammo.sab != null) u.ammo.sab = Math.max(0, Number(patch.ammo.sab || 0));
   }
 
+  if (patch.rockets && typeof patch.rockets === "object") {
+    u.rockets ??= {};
+    for (const [k, v] of Object.entries(patch.rockets)) {
+      if (!ROCKET_TYPES[String(k).toLowerCase()]) continue;
+      u.rockets[k] = Math.max(0, Math.floor(Number(v || 0)));
+    }
+  }
+  if (patch.rocketActive != null && ROCKET_TYPES[String(patch.rocketActive).toLowerCase()]) {
+    u.rocketActive = String(patch.rocketActive).toLowerCase();
+  }
+  if (patch.rocketAuto != null) u.rocketAuto = patch.rocketAuto === true;
+  if (patch.launcherActive != null && ROCKET_TYPES[String(patch.launcherActive).toLowerCase()]) {
+    u.launcherActive = String(patch.launcherActive).toLowerCase();
+  }
+  if (patch.launcherAuto != null) u.launcherAuto = patch.launcherAuto === true;
+
   if (patch.inventory?.resources && typeof patch.inventory.resources === "object" && !Array.isArray(patch.inventory.resources)) {
     u.inventory ||= {};
     u.inventory.resources = Object.fromEntries(Object.entries(patch.inventory.resources)
@@ -867,6 +895,16 @@ export function buyItem(itemId, requestedQuantity = 1) {
       if (k === "x1") continue;
       const add = Number(item.give.ammo[k] || 0) * quantity;
       u.ammo[k] = Math.max(0, Number(u.ammo[k] || 0) + add);
+    }
+    incCount(u, item.id, quantity);
+  }
+
+  // rocket packs (consommable, hors munitions laser)
+  if (item.give?.rockets) {
+    u.rockets ??= {};
+    for (const k of Object.keys(item.give.rockets)) {
+      const add = Number(item.give.rockets[k] || 0) * quantity;
+      u.rockets[k] = Math.max(0, Math.floor(Number(u.rockets[k] || 0) + add));
     }
     incCount(u, item.id, quantity);
   }

@@ -177,6 +177,7 @@
               <button class="keyBindRow" data-bind-action="portal" type="button"><span>Portail / vague suivante</span><kbd data-bind-value="portal">J</kbd></button>
               <button class="keyBindRow" data-bind-action="switchConfig" type="button"><span>Changer configuration</span><kbd data-bind-value="switchConfig">C</kbd></button>
               <button class="keyBindRow" data-bind-action="toggleAttack" type="button"><span>Activer / arrêter le tir</span><kbd data-bind-value="toggleAttack">CTRL</kbd></button>
+              <button class="keyBindRow" data-bind-action="fireRocket" type="button"><span>Tirer une roquette</span><kbd data-bind-value="fireRocket">ESPACE</kbd></button>
               <button class="keyBindRow" data-bind-action="respawn" type="button"><span>Réapparaître si mort</span><kbd data-bind-value="respawn">R</kbd></button>
               <button class="keyBindRow" data-bind-action="toggleWindows" type="button"><span>Masquer / restaurer les fenêtres</span><kbd data-bind-value="toggleWindows">H</kbd></button>
             </div>
@@ -590,7 +591,9 @@
           </div>
 
           <div class="subtabs" id="shopTabs">
-            <button class="subtabBtn active" data-shop="ammo">Munitions</button>
+            <button class="subtabBtn active" data-shop="ammo">Lasers</button>
+            <button class="subtabBtn" data-shop="rockets">Roquettes</button>
+            <button class="subtabBtn" data-shop="launchers">Lance-roquettes</button>
             <button class="subtabBtn" data-shop="speedGen">Vitesse</button>
             <button class="subtabBtn" data-shop="shieldGen">Bouclier</button>
             <button class="subtabBtn" data-shop="lasers">Lasers</button>

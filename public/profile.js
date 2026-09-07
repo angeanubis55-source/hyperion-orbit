@@ -35,6 +35,7 @@ import { FACTIONS, getFaction } from "../src/core/factions.js";
 import { NPC_TYPES } from "../src/data/npcTypes.js";
 import { QUEST_DEFINITIONS } from "../src/data/quests.js";
 import { AMMO } from "../src/data/ammo.js";
+import { getRocketType } from "../src/data/rockets.js";
 import { getResourceName } from "../src/data/resources.js";
 import { getItemRarity, ITEM_RARITIES } from "../src/data/itemRarities.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
@@ -291,13 +292,19 @@ function getHangarActionAccess(action) {
 
 function getAmmoQtyForShopItem(u, it) {
   const ammoGive = it?.give?.ammo;
+  const rocketGive = it?.give?.rockets;
+  const give = (ammoGive && typeof ammoGive === "object")
+    ? { store: u?.ammo, give: ammoGive }
+    : (rocketGive && typeof rocketGive === "object")
+      ? { store: u?.rockets, give: rocketGive }
+      : null;
 
-  if (!ammoGive || typeof ammoGive !== "object") return null;
+  if (!give) return null;
 
-  const ammoKey = Object.keys(ammoGive).find((k) => k !== "x1");
+  const ammoKey = Object.keys(give.give).find((k) => k !== "x1");
   if (!ammoKey) return null;
 
-  const qty = Number(u?.ammo?.[ammoKey] || 0);
+  const qty = Number(give.store?.[ammoKey] || 0);
 
   return {
     key: ammoKey,
@@ -333,8 +340,33 @@ const ITEM_ICONS = {
   ammo_x4: ITEM_ICON_BASE + "ammo_x4.png",
   ammo_sab: ITEM_ICON_BASE + "ammo_abl.png",
   ammo_x6: ITEM_ICON_BASE + "ammo_x6.png",
- // ammo_abl: ITEM_ICON_BASE + "ammo_abl.png",
- // ammo_radion: ITEM_ICON_BASE + "ammo_radion.png",
+  // ammo_abl: ITEM_ICON_BASE + "ammo_abl.png",
+  // ammo_radion: ITEM_ICON_BASE + "ammo_radion.png",
+  // Roquettes : icônes de /Roquettes/ (ton dossier). Fallbacks automatiques si absent.
+  rocket_r310: "/Roquettes/r-310_100x100.png",
+  ammo_r310: "/Roquettes/r-310_100x100.png",
+  rocket_eco10: "/Roquettes/eco-10_100x100.png",
+  ammo_eco10: "/Roquettes/eco-10_100x100.png",
+  rocket_plt2021: "/Roquettes/plt-2021_100x100.png",
+  ammo_plt2021: "/Roquettes/plt-2021_100x100.png",
+  rocket_plt2026: "/Roquettes/plt-2026_100x100.png",
+  ammo_plt2026: "/Roquettes/plt-2026_100x100.png",
+  rocket_plt3030: "/Roquettes/plt-3030_100x100.png",
+  ammo_plt3030: "/Roquettes/plt-3030_100x100.png",
+  rocket_ubr100: "/Roquettes/ubr-100_100x100.png",
+  ammo_ubr100: "/Roquettes/ubr-100_100x100.png",
+  rocket_dcr250: "/Roquettes/dcr-250_100x100.png",
+  ammo_dcr250: "/Roquettes/dcr-250_100x100.png",
+  rocket_cbr: "/Roquettes/cbr_100x100.png",
+  ammo_cbr: "/Roquettes/cbr_100x100.png",
+  rocket_pld8: "/Roquettes/pld-8_100x100.png",
+  ammo_pld8: "/Roquettes/pld-8_100x100.png",
+  rocket_sar01: "/Roquettes/sar-01_100x100.png",
+  ammo_sar01: "/Roquettes/sar-01_100x100.png",
+  rocket_sar02: "/Roquettes/sar-02_100x100.png",
+  ammo_sar02: "/Roquettes/sar-02_100x100.png",
+  rocket_hstrm01: "/Roquettes/hstrm-01_100x100.png",
+  ammo_hstrm01: "/Roquettes/hstrm-01_100x100.png",
   spd_mk0: ITEM_ICON_BASE + "spd_mk0.png",
   spd_mk1: ITEM_ICON_BASE + "spd_mk1.png",
   spd_mk2: ITEM_ICON_BASE + "spd_mk2.png",
@@ -357,6 +389,8 @@ const ITEM_ICONS = {
 
 const FALLBACK_ICONS = {
   ammo: ITEM_ICON_BASE + "ammo_x2.png",
+  rockets: "/Roquettes/r-310_100x100.png",
+  launchers: "/Roquettes/hstrm-01_100x100.png",
   speed: ITEM_ICON_BASE + "spd_mk0.png",
   shield: ITEM_ICON_BASE + "shd_mk0.png",
   laser: LASER_ICON_BASE + "laser_lf1.png",
@@ -634,6 +668,7 @@ const INVENTORY_AMMO_NAMES = Object.freeze({
   x3: "Munitions MCB-50 (X3)", x4: "Munitions UCB-100 (X4)",
   x6: "Munitions RSB-75 (X6)", sab: "Munitions SAB-50",
   ABL: "Munitions ABL", RADION: "Munitions RADION",
+  r310: "Roquette R-310",
 });
 
 function humanizeInventoryId(value) {
@@ -668,6 +703,17 @@ function buildInventorySections(u) {
     quantity: finiteInventoryQuantity(rawQuantity), detail: "Réserve de munitions",
   })).filter((entry) => entry.id !== "x1" && (entry.quantity > 0 || entry.quantity === Infinity));
 
+  for (const [id, rawQuantity] of Object.entries(u?.rockets || {})) {
+    const quantity = finiteInventoryQuantity(rawQuantity);
+    if (!quantity) continue;
+    const rocket = getRocketType(id);
+    ammoItems.push({
+      id, kind: "ammo",
+      name: rocket?.name || INVENTORY_AMMO_NAMES[id] || `Roquette ${humanizeInventoryId(id)}`,
+      quantity, detail: rocket?.manual === false ? "Roquettes de lance-roquettes" : "Réserve de roquettes",
+    });
+  }
+
   const equipment = [];
   const resources = new Map();
   for (const [itemId, rawQuantity] of Object.entries(u?.inventory?.counts || {})) {
@@ -678,7 +724,7 @@ function buildInventorySections(u) {
       equipment.push({
         id: itemId, kind: "equipment", category: found.category, item: found.item,
         name: found.item.name || humanizeInventoryId(itemId), quantity,
-        detail: ({ lasers: "Laser", speedGen: "Générateur de vitesse", shieldGen: "Générateur de bouclier", extras: "Extra" })[found.category] || "Équipement",
+        detail: ({ lasers: "Laser", speedGen: "Générateur de vitesse", shieldGen: "Générateur de bouclier", extras: "Extra", rockets: "Roquettes", launchers: "Lance-roquettes" })[found.category] || "Équipement",
       });
     } else if (!found) {
       resources.set(itemId, { id: itemId, kind: "resource", name: getResourceName(itemId), quantity, detail: "Ressource" });
@@ -792,6 +838,10 @@ function inventoryTooltipText(entry) {
   if (entry.kind === "ammo") {
     const multiplier = Number(AMMO?.[entry.id]?.mult);
     if (Number.isFinite(multiplier)) lines.push(`Multiplicateur de dégâts : x${multiplier}`);
+    const rocket = getRocketType(entry.id);
+    if (rocket) {
+      lines.push(`Dégâts fixes : ${formatNumber(rocket.damage)}`);
+    }
     lines.push(`Quantité possédée : ${inventoryQuantityLabel(entry.quantity)}`);
   } else if (entry.kind === "equipment") {
     const module = entry.item?.module || {};
@@ -1393,7 +1443,7 @@ function renderShopMeasured(user) {
   if (!shopList || !shopPreview) return;
   const listSignature = JSON.stringify([shopTab, user.inventory?.ships,
     user.inventory?.shipDesigns, user.drones?.items?.map(drone => [drone.id, drone.type]),
-    user.drones?.formations, user.drones?.activeFormation]);
+    user.drones?.formations, user.drones?.activeFormation, user.rockets]);
   if (shopTab !== "extras" && listSignature === lastShopListSignature && refreshShopBalance) {
     refreshShopBalance(user);
     return;
@@ -2029,6 +2079,9 @@ if (isShipLike) {
   statLine = ammoKey === "sab"
     ? `<p class="shopItemStat">Absorption de bouclier <strong>${multiplier}×</strong></p>`
     : `<p class="shopItemStat">Multiplicateur de dégâts <strong>${multiplier}×</strong></p>`;
+} else if (it?.give?.rockets) {
+  const rocket = getRocketType(ammoKey);
+  statLine = `<p class="shopItemStat">Dégâts fixes <strong>${formatNumber(rocket?.damage || 0)}</strong> · Recharge <strong>${rocket?.cooldown || 1}s</strong> · Tir : touche ESPACE ou menu 🚀</p>`;
 }
 if (isFormation) {
   const formation = DRONE_FORMATIONS.find(entry => entry.id === it?.formation?.id);
@@ -2099,7 +2152,7 @@ if (isDrone) {
       ${!isShipLike && !isDrone && !isFormation ? `
         <div class="shopPurchaseRow">
           <div class="shopPurchaseInfo">
-            <label for="shopBuyQuantity">${isAmmo ? "Quantité à acheter × 1 000" : "Quantité à acheter"}</label>
+            <label for="shopBuyQuantity">${it?.give?.rockets ? "Quantité à acheter × 10" : isAmmo ? "Quantité à acheter × 1 000" : "Quantité à acheter"}</label>
             <div class="shopPurchasePrice">
               <span>Prix</span>
               <strong><span id="shopPurchaseTotal">${formatNumber(price)}</span> crédits</strong>

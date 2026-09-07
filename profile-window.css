@@ -853,6 +853,7 @@ html body #profileOverlay #panel_shop .shopPreview {
 }
 
 html body #profileOverlay #panel_shop .shopList { display: flex !important; flex-direction: column !important; gap: 0 !important; border-right: 1px solid rgba(124,240,255,.13) !important; }
+html body #profileOverlay .shopGroupHeader { flex: 0 0 auto !important; padding: 10px 10px 6px !important; color: #ffd9a8 !important; font-size: 10px !important; font-weight: 900 !important; text-transform: uppercase !important; letter-spacing: .08em !important; border-bottom: 1px solid rgba(255,154,60,.25) !important; background: rgba(255,154,60,.06) !important; }
 html body #profileOverlay .shopRow { flex: 0 0 auto !important; min-width: 0 !important; min-height: 64px !important; padding: 8px 10px !important; gap: 10px !important; border: 0 !important; border-bottom: 1px solid rgba(124,240,255,.09) !important; border-radius: 0 !important; background: transparent !important; background-image: none !important; box-shadow: none !important; transform: none !important; }
 html body #profileOverlay .shopRow.active { border-color: rgba(124,240,255,.09) !important; background: rgba(0,217,255,.10) !important; box-shadow: inset 3px 0 0 #69e9ff !important; }
 #profileOverlay .shopRow img { width: 48px !important; height: 48px !important; padding: 3px !important; flex: 0 0 auto !important; object-fit: contain !important; }

@@ -95,6 +95,7 @@ import {
   COLLECTABLE_TYPES as DEFAULT_COLLECTABLE_TYPES,
 } from "../data/collectables.js";
 import { getResourceName } from "../data/resources.js";
+import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../data/rockets.js";
 
 export function startOrbitGame(config) {
 
@@ -535,7 +536,7 @@ function initializeCustomActionBar() {
   const palette = document.createElement("div");
   palette.className = "actionPalette";
   palette.hidden = true;
-  palette.innerHTML = `<nav><button class="active" data-action-category="ammo">Munitions</button><button data-action-category="formations">Formations</button><button data-action-category="skills">Compétences</button></nav><div class="actionPaletteItems"></div>`;
+  palette.innerHTML = `<nav><button class="active" data-action-category="ammo">Munitions</button><button data-action-category="rockets">Roquettes</button><button data-action-category="launchers">Lance-roq.</button><button data-action-category="formations">Formations</button><button data-action-category="skills">Compétences</button></nav><div class="actionPaletteItems"></div>`;
   const toggle = document.createElement("button");
   toggle.type = "button"; toggle.className = "actionPaletteToggle"; toggle.textContent = "⌃"; toggle.title = "Configurer la barre rapide";
   const byId = new Map(actions.map((button) => {
@@ -549,7 +550,7 @@ function initializeCustomActionBar() {
   const layout = Array.from({ length: 20 }, (_, index) => saved[index] || null);
   bar.replaceChildren();
   const persist = () => localStorage.setItem(ACTION_BAR_LAYOUT_KEY, JSON.stringify(
-    [...bar.querySelectorAll(".actionSlot")].map(slot => slot.querySelector(".ammoBtn")?.dataset.actionId || null)
+    [...bar.querySelectorAll(".actionSlot")].map(slot => slot.querySelector(".ammoBtn, .rocketQuickAction")?.dataset.actionId || null)
   ));
   const slots = document.createElement("div"); slots.className = "actionSlots"; bar.appendChild(slots);
   const formationButtons = DRONE_FORMATIONS.map(formation => {
@@ -570,6 +571,90 @@ function initializeCustomActionBar() {
     byId.set(button.dataset.actionId, button);
     return button;
   });
+  // Onglet Roquettes de la palette : clic = roquette active (tir via ESPACE).
+  const rocketButtons = ROCKET_IDS.map(id => {
+    const r = getRocketType(id);
+    const button = document.createElement("button");
+    button.className = "ammoBtn rocketActionSlot"; button.dataset.actionCategory = "rockets";
+    button.dataset.actionId = `rocket:${id}`; button.draggable = true;
+    button.title = r?.name || id;
+    button.innerHTML = `<img src="${escapeHtml(rocketShopIcon(id) || "")}" alt=""><strong>${escapeHtml(r?.short || id)}</strong><small class="rocketCount">0</small>`;
+    const img = button.querySelector("img");
+    if (img) img.onerror = () => { img.onerror = null; img.style.display = "none"; };
+    button.onclick = () => {
+      const rid = String(id).toLowerCase();
+      const isLauncher = getRocketType(rid)?.manual === false;
+      if (isLauncher) {
+        // Sélection seule (fond du bouton USE) : le tir passe par USE (salve).
+        // La charge repart de zéro sur changement de munition.
+        if (player.launcherActive !== rid) {
+          launcherReloadT = 0;
+          launcherFullT = 0;
+          launcherPhase = "reload";
+          launcherPhaseT = 0;
+        }
+        player.launcherActive = rid;
+        markProgressDirty();
+        renderPalette("launchers");
+        updateAmmoUI();
+        return;
+      }
+      player.rocketActive = id;
+      markProgressDirty();
+      refreshRocketPaletteCounts();
+      updateAmmoUI();
+      // Clic = tir immédiat de la sélection (strict : pas de bascule), auto ou pas.
+      tryFireRocket({ strict: true });
+    };
+    button.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId); event.dataTransfer.effectAllowed = "move"; });
+    byId.set(button.dataset.actionId, button);
+    return button;
+  });
+
+  // Bouton USE lance-roquettes : nœud permanent créé dès l'init pour que les
+  // slots le retrouvent après un refresh. Contenu mis à jour à chaque appel.
+  // (La création est pure DOM car player n'existe pas encore à l'init.)
+  let launcherUseBtn = null;
+  function createLauncherUseBtn() {
+    if (launcherUseBtn) return launcherUseBtn;
+    launcherUseBtn = document.createElement("button");
+    launcherUseBtn.type = "button";
+    launcherUseBtn.dataset.actionCategory = "launchers";
+    launcherUseBtn.dataset.actionId = "skill:launcherUse";
+    launcherUseBtn.draggable = true;
+    launcherUseBtn.onclick = () => {
+      // Salve du type lance-roquettes sélectionné (strict : la sélection).
+      markProgressDirty();
+      updateAmmoUI();
+      tryFireSalvo();
+    };
+    launcherUseBtn.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", launcherUseBtn.dataset.actionId); event.dataTransfer.effectAllowed = "move"; });
+    byId.set(launcherUseBtn.dataset.actionId, launcherUseBtn);
+    // Contenu placeholder pour que les slots clonés ne soient jamais vides
+    // (player n'existe pas encore à l'init ; updateLauncherUseBtn complète après).
+    launcherUseBtn.className = "rocketQuickAction launcherAutoBtn";
+    launcherUseBtn.title = "Utiliser la roquette sélectionnée";
+    launcherUseBtn.innerHTML = `<strong>USE</strong><span class="launcherSquares"><span class="lsq">■</span><span class="lsq">■</span><span class="lsq">■</span><span class="lsq">■</span><span class="lsq">■</span></span><small class="launcherStock"><span class="launcherCount">0</span></small>`;
+    return launcherUseBtn;
+  }
+  function updateLauncherUseBtn() {
+    const btn = createLauncherUseBtn();
+    const activeId = String(player.launcherActive || "eco10").toLowerCase();
+    const icon = rocketShopIcon(activeId) || rocketShopIcon("eco10");
+    const lit = launcherLitNow();
+    btn.className = "rocketQuickAction launcherAutoBtn";
+    btn.title = "Utiliser la roquette sélectionnée";
+    btn.style.backgroundImage = icon ? `url("${icon}")` : "";
+    btn.innerHTML = `<strong>USE</strong><span class="launcherSquares">${[0, 1, 2, 3, 4].map((i) => `<span class="lsq${i < lit ? " lit" : ""}">■</span>`).join("")}</span><small class="launcherStock"><span class="launcherCount">${formatInteger(rocketCount(activeId))}</span></small>`;
+    // Marque l'état affiché (le refresh ne retouche que si ça change).
+    launcherSquaresShown = lit;
+    return btn;
+  }
+  function getLauncherUseBtn() {
+    return updateLauncherUseBtn();
+  }
+  // Enregistre dès l'init pour que les slots restaurés le retrouvent.
+  createLauncherUseBtn();
   layout.forEach((id, index) => {
     const slot = document.createElement("div");
     slot.className = "actionSlot";
@@ -595,7 +680,7 @@ function initializeCustomActionBar() {
       const actionId = event.dataTransfer.getData("application/x-orbit-action");
       const original = byId.get(actionId);
       if (!original || palette.hidden) return;
-      const draggedElement = document.querySelector(`.actionSlot .ammoBtn[data-action-id="${CSS.escape(actionId)}"].isDragging`);
+      const draggedElement = document.querySelector(`.actionSlot .ammoBtn[data-action-id="${CSS.escape(actionId)}"].isDragging, .actionSlot .rocketQuickAction[data-action-id="${CSS.escape(actionId)}"].isDragging`);
       const source = draggedElement?.closest(".actionSlot");
       const button = source ? draggedElement : original.cloneNode(true);
       if (!source) {
@@ -603,7 +688,7 @@ function initializeCustomActionBar() {
         button.dataset.actionId = actionId;
         button.onclick = () => original.click();
       }
-      const displaced = slot.querySelector(".ammoBtn");
+      const displaced = slot.querySelector(".ammoBtn, .rocketQuickAction");
       if (displaced && displaced !== button) displaced.remove();
       slot.appendChild(button);
       persist();
@@ -617,7 +702,7 @@ function initializeCustomActionBar() {
     event.dataTransfer.effectAllowed = "move";
   }));
   bar.addEventListener("dragstart", event => {
-    const item = event.target.closest(".actionSlot .ammoBtn");
+    const item = event.target.closest(".actionSlot .ammoBtn, .actionSlot .rocketQuickAction, .actionSlot .launcherAutoBtn");
     if (!item) return;
     if (palette.hidden) return event.preventDefault();
     item.classList.add("isDragging");
@@ -629,6 +714,84 @@ function initializeCustomActionBar() {
   function renderPalette(category) {
     paletteItems.replaceChildren();
     palette.querySelectorAll("[data-action-category]").forEach(button => button.classList.toggle("active", button.dataset.actionCategory === category));
+    if (category === "rockets" || category === "launchers") {
+      const onlyLaunchers = category === "launchers";
+      if (!onlyLaunchers) {
+        // Bouton AUTO en tête (avant R-310) : tir automatique dès que possible.
+        const autoBtn = document.createElement("button");
+        autoBtn.type = "button";
+        autoBtn.className = "rocketQuickAction" + (player.rocketAuto ? " active" : "");
+        autoBtn.title = "Roquettes automatiques : ON = tir dès que possible";
+        autoBtn.innerHTML = `<strong>AUTO</strong><small>${player.rocketAuto ? "ON" : "OFF"}</small>`;
+        autoBtn.onclick = () => {
+          player.rocketAuto = !player.rocketAuto;
+          markProgressDirty();
+          saveProgressNow();
+          renderPalette("rockets");
+          updateAmmoUI();
+          if (!player.rocketAuto) {
+            showNotification("Roquettes automatiques : OFF", 1.5, "info");
+            return;
+          }
+          const stock = ROCKET_IDS.filter((id) => getRocketType(id)?.manual !== false)
+            .reduce((sum, id) => sum + rocketCount(id), 0);
+          const tgt = Target.get();
+          const missing = !attackActive ? "enclenche l'attaque de base (CTRL)"
+            : stock <= 0 ? "achète des roquettes (boutique > Roquettes)"
+            : !tgt ? "verrouille une cible (clic sur un NPC)"
+            : dist2(player.x, player.y, tgt.x, tgt.y) > playerRange * playerRange ? "rapproche-toi (hors de portée)"
+            : "c'est parti";
+          showNotification(`Roquettes automatiques : ON — ${missing}`, 3, "info");
+        };
+        paletteItems.appendChild(autoBtn);
+      } else {
+        // Onglet lance-roquettes : petit bouton ON/OFF + gros bouton UTILISER
+        // (fond = roquette sélectionnée). UTILISER tire la sélection.
+        const toggleBtn = document.createElement("button");
+        toggleBtn.type = "button";
+        toggleBtn.className = "rocketQuickAction launcherAutoToggle" + (player.launcherAuto ? " active" : "");
+        toggleBtn.title = "Lance-roquettes automatique";
+        toggleBtn.innerHTML = `<strong>AUTO</strong><small>${player.launcherAuto ? "ON" : "OFF"}</small>`;
+        toggleBtn.onclick = () => {
+          player.launcherAuto = !player.launcherAuto;
+          markProgressDirty();
+          saveProgressNow();
+          renderPalette("launchers");
+          updateAmmoUI();
+          if (!player.launcherAuto) {
+            showNotification("Lance-roquettes auto : OFF", 1.5, "info");
+            return;
+          }
+          // Diagnostic immédiat : dit ce qui manque pour que ça tire.
+          const stock = rocketCount(player.launcherActive);
+          const tgt = Target.get();
+          const missing = !attackActive ? "enclenche l'attaque de base (CTRL)"
+            : stock <= 0 ? "achète des roquettes (boutique > Lance-roquettes)"
+            : !tgt ? "verrouille une cible (clic sur un NPC)"
+            : dist2(player.x, player.y, tgt.x, tgt.y) > playerRange * playerRange ? "rapproche-toi (hors de portée)"
+            : "charge du chargeur en cours…";
+          showNotification(`Lance-roquettes auto : ON — ${missing}`, 3, "info");
+        };
+        paletteItems.appendChild(toggleBtn);
+        // Bouton USE : nœud permanent (enregistré dans byId dès l'init) pour
+        // que les slots le retrouvent après un refresh. Contenu rafraîchi ici.
+        paletteItems.appendChild(getLauncherUseBtn());
+      }
+      rocketButtons
+        .filter((button) => (getRocketType(String(button.dataset.actionId || "").slice("rocket:".length))?.manual === false) === onlyLaunchers)
+        .forEach(button => {
+        const clone = button.cloneNode(true); clone.className = "rocketQuickAction"; clone.draggable = button.draggable;
+        clone.title = button.title;
+        const selectedId = onlyLaunchers ? player.launcherActive : player.rocketActive;
+        clone.classList.toggle("active", button.dataset.actionId === `rocket:${selectedId}`);
+        const cloneImg = clone.querySelector("img");
+        if (cloneImg) cloneImg.onerror = () => { cloneImg.onerror = null; cloneImg.style.display = "none"; };
+        clone.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", clone.dataset.actionId); });
+        clone.onclick = () => button.click(); paletteItems.appendChild(clone);
+      });
+      refreshRocketPaletteCounts();
+      return;
+    }
     if (category === "formations") formationButtons.forEach(button => {
       const clone = button.cloneNode(true); clone.className = "formationQuickAction"; clone.draggable = true;
       clone.classList.toggle("active", button.dataset.actionId === `formation:${account?.user?.drones?.activeFormation}`);
@@ -654,7 +817,7 @@ function initializeCustomActionBar() {
   document.addEventListener("drop", event => {
     const actionId = event.dataTransfer?.getData("application/x-orbit-action");
     if (!actionId || event.target.closest(".actionSlot") || palette.hidden) return;
-    bar.querySelector(".actionSlot .ammoBtn.isDragging")?.remove();
+    bar.querySelector(".actionSlot .ammoBtn.isDragging, .actionSlot .rocketQuickAction.isDragging, .actionSlot .launcherAutoBtn.isDragging")?.remove();
     persist();
     updateHudKeyHints();
   });
@@ -687,6 +850,7 @@ const DEFAULT_KEYBINDS = {
   portal: "KeyJ",
   switchConfig: "KeyC",
   toggleAttack: "ControlLeft",
+  fireRocket: "Space",
   respawn: "KeyR",
 
   slot1: "Digit1",
@@ -812,6 +976,7 @@ const KEYBIND_LABELS = {
   portal: "Portail",
   switchConfig: "Changer configuration",
   toggleAttack: "Activer / arrêter le tir",
+  fireRocket: "Tirer une roquette",
   respawn: "Réapparition",
 
   slot1: "Slot 1", slot2: "Slot 2", slot3: "Slot 3", slot4: "Slot 4", slot5: "Slot 5",
@@ -922,7 +1087,7 @@ function renderKeybindRows() {
 
 function updateHudKeyHints() {
   document.querySelectorAll("#ammoBar .actionSlot").forEach((slot, index) => {
-    const action = slot.querySelector(".ammoBtn");
+    const action = slot.querySelector(".ammoBtn, .rocketQuickAction");
     if (!action) return;
     let hint = action.querySelector(".slotKeyHint");
     if (!hint) {
@@ -2310,6 +2475,14 @@ ui.questList?.addEventListener("click", event => {
   renderQuestTerminal();
 });
 
+function sanitizeRocketsForSave() {
+  const out = {};
+  for (const id of ROCKET_IDS) {
+    out[id] = Math.max(0, Math.floor(Number(player.rockets?.[id] || 0)));
+  }
+  return out;
+}
+
 function saveProgressNow() {
   return measureGameTask("saveProgressNow", saveProgressNowMeasured);
 }
@@ -2346,6 +2519,11 @@ hangarState: !player.dead && started ? {
     sab: player.ammo.sab || 0,
     x6: player.ammo.x6 || 0,
   },
+  rockets: sanitizeRocketsForSave(),
+  rocketActive: player.rocketActive || "r310",
+  rocketAuto: player.rocketAuto === true,
+  launcherActive: player.launcherActive || "eco10",
+  launcherAuto: player.launcherAuto === true,
 });
   if (result?.ok && result.user) account.user = result.user;
   account.dirty = false;
@@ -2669,6 +2847,20 @@ function syncPlayerFromAccount() {
     x6: Math.max(0, Number(a.x6 || 0)),
     sab: Math.max(0, Number(a.sab || 0)),
   };
+
+  // ✅ roquettes synchronisées aussi si achat en boutique profil
+  const rk = fresh.rockets || {};
+  const nextRockets = { ...player.rockets };
+  for (const id of ROCKET_IDS) {
+    nextRockets[id] = Math.max(0, Math.floor(Number(rk[id] || 0)));
+  }
+  player.rockets = nextRockets;
+  if (ROCKET_TYPES[String(fresh.rocketActive || "").toLowerCase()]) {
+    player.rocketActive = String(fresh.rocketActive).toLowerCase();
+  }
+  player.rocketAuto = fresh.rocketAuto === true;
+  player.launcherActive = ROCKET_TYPES[String(fresh.launcherActive || "").toLowerCase()] ? String(fresh.launcherActive).toLowerCase() : "eco10";
+  player.launcherAuto = fresh.launcherAuto === true;
 
   if (player.ammo.active !== "x1" && ammoCount(player.ammo.active) <= 0) {
     player.ammo.active = "x1";
@@ -4089,6 +4281,17 @@ const player = {
   altShot: false,
 
   ammo: { active: "x1", x1: Infinity, x2: 0, x3: 0, x4: 0, x6: 0, sab: 0 },
+
+  // Roquettes : stock consommable (lance-roquettes natif au vaisseau).
+  // Seule player.rocketActive est tirée ; sélection dans l'onglet Roquettes.
+  // rocketAuto = tir automatique dès que possible (bouton AUTO).
+  rockets: Object.fromEntries(ROCKET_IDS.map((id) => [id, 0])),
+  rocketActive: "r310",
+  rocketAuto: false,
+  // Lance-roquettes : sélection (fond du bouton USE, défaut eco10) + état auto.
+  // Le tir arrive avec la mécanique (états déjà persistés).
+  launcherActive: "eco10",
+  launcherAuto: false,
 };
 
 function getShipPackById(shipId) {
@@ -4220,6 +4423,53 @@ function formatAmmoCount(value) {
   return formatInteger(Math.min(n, 9999999));
 }
 
+// Dernier état des carrés AUTO affiché : le refresh ne les retouche que si
+// le stock change (laisse jouer la charge après un changement de munition).
+let launcherSquaresShown = -1;
+
+// Rafraîchit les boutons roquettes de la palette et des slots (compte + actif).
+function refreshRocketPaletteCounts() {
+  // Init du jeu : player n'existe pas encore (déclaré plus bas) → on saute.
+  try { void player.rockets; } catch { return; }
+  const bar = document.getElementById("ammoBar");
+  if (!bar) return;
+  const activeStd = `rocket:${String(player.rocketActive || "r310").toLowerCase()}`;
+  const activeLauncher = `rocket:${String(player.launcherActive || "eco10").toLowerCase()}`;
+  for (const el of bar.querySelectorAll('[data-action-id^="rocket:"]')) {
+    const id = String(el.dataset.actionId || "").slice("rocket:".length);
+    const count = el.querySelector(".rocketCount");
+    if (count) count.textContent = formatInteger(rocketCount(id));
+    const isLauncher = getRocketType(id)?.manual === false;
+    el.classList.toggle("active", el.dataset.actionId === (isLauncher ? activeLauncher : activeStd));
+  }
+  // Carrés du bouton USE : chargeur (1/s jusqu'à min(5, stock)).
+  // On ne retouche que si ça a changé (laisse la charge jouer entre deux).
+  const launcherLit = launcherLitNow();
+  if (launcherLit !== launcherSquaresShown) {
+    launcherSquaresShown = launcherLit;
+    for (const el of bar.querySelectorAll(".launcherAutoBtn")) {
+      el.querySelectorAll(".lsq").forEach((sq, i) => {
+        sq.classList.toggle("lit", i < launcherLit);
+      });
+    }
+  }
+  for (const el of bar.querySelectorAll(".launcherAutoBtn .launcherCount")) {
+    el.textContent = formatInteger(rocketCount(player.launcherActive));
+  }
+  // Fond du bouton USE (palette + slots) : suit la sélection.
+  const launcherBgIcon = rocketShopIcon(String(player.launcherActive || "eco10").toLowerCase()) || rocketShopIcon("eco10") || "";
+  const launcherBgWant = launcherBgIcon ? `url("${launcherBgIcon}")` : "";
+  for (const el of bar.querySelectorAll(".launcherAutoBtn")) {
+    if (el.style.backgroundImage !== launcherBgWant) el.style.backgroundImage = launcherBgWant;
+  }
+  // Petit bouton ON/OFF lance-roquettes.
+  for (const el of bar.querySelectorAll(".launcherAutoToggle")) {
+    el.classList.toggle("active", !!player.launcherAuto);
+    const s = el.querySelector("small");
+    if (s) s.textContent = player.launcherAuto ? "ON" : "OFF";
+  }
+}
+
 function updateAmmoUI() {
   const active = player.ammo.active;
 
@@ -4242,6 +4492,8 @@ function updateAmmoUI() {
   if (ui.cntSAB) {
     ui.cntSAB.textContent = formatAmmoCount(player.ammo.sab);
   }
+
+  refreshRocketPaletteCounts();
 
   syncActionDockState();
 }
@@ -4345,8 +4597,7 @@ function syncActionDockState() {
         (v) => { if (small[0]) small[0].textContent = v; });
       applyDockField(button, "cd", pulseCd > 0 ? `${pulseCd.toFixed(1)}s` : "30k",
         (v) => { if (small[1]) small[1].textContent = v; });
-    } else if (skill === "repair") {
-      applyDockField(button, "active", false,
+    } else if (skill === "repair") {      applyDockField(button, "active", false,
         (v) => button.classList.remove("active"));
       applyDockField(button, "ready", false,
         (v) => button.classList.remove("ready"));
@@ -4553,6 +4804,11 @@ const used = [...boundKeys];
       return;
     }
 
+    if (isKeybind("fireRocket", e.code)) {
+      tryFireRocket();
+      return;
+    }
+
     if (isKeybind("toggleWindows", e.code)) {
       window.GameWindowManager?.toggleAll?.();
       return;
@@ -4560,7 +4816,7 @@ const used = [...boundKeys];
 
     for (let slotIndex = 0; slotIndex < 20; slotIndex++) {
       if (!isKeybind(`slot${slotIndex + 1}`, e.code)) continue;
-      document.querySelectorAll("#ammoBar .actionSlot")[slotIndex]?.querySelector(".ammoBtn")?.click();
+      document.querySelectorAll("#ammoBar .actionSlot")[slotIndex]?.querySelector(".ammoBtn, .rocketQuickAction")?.click();
       return;
     }
   },
@@ -7190,7 +7446,7 @@ function canUseSkill(cost) {
 
 function updateSkillUI() {
   const pulseOk = canUseSkill(PULSE_COST) && pulseCd <= 0;
-  
+
   setHudClass(ui.btnPulse, "disabled", !pulseOk);
   setHudClass(ui.btnPulse, "ready", pulseOk);
   syncActionDockState();
@@ -7429,8 +7685,178 @@ function toggleAttack() {
   else startAttack();
 }
 
-function tickAutoAttack(dt) {
+// ============================================================
+// Roquettes (tir manuel façon DarkOrbit, lanceur natif au vaisseau)
+// ============================================================
+function activeRocket() {
+  return getRocketType(player.rocketActive) || getRocketType("r310");
+}
+
+function rocketCount(id = player.rocketActive) {
+  const key = String(id || "r310").toLowerCase();
+  return Math.max(0, Math.floor(Number(player.rockets?.[key] || 0)));
+}
+
+function tryFireRocket(opts = {}) {
+  const silent = opts.auto === true;
+  const notify = (text, dur, type) => { if (!silent) showNotification(text, dur, type); };
+  if (player.dead || !started) return false;
+  const rocket = activeRocket();
+  // Standards uniquement : les lance-roquettes passent par le bouton USE (salves).
+  if (rocket.manual === false) {
+    notify("Roquette de lance-roquettes — bouton USE.", 2, "error");
+    return false;
+  }
+  if (rocketCount(rocket.id) <= 0) {
+    // Bascule auto vers un type standard possédé (sauf tir strict : la sélection).
+    if (!opts.strict) {
+      const fallback = ROCKET_IDS.filter((id) => getRocketType(id)?.manual !== false).find((id) => rocketCount(id) > 0);
+      if (fallback) {
+        player.rocketActive = fallback;
+        return tryFireRocket(opts);
+      }
+    }
+    notify("Plus de roquettes — boutique > Roquettes.", 2.5, "error");
+    return false;
+  }
+  if (rocketCooldown > 0) return false;
+
+  const t = Target.get();
+  if (!t) return false;
+
+  const d2 = dist2(player.x, player.y, t.x, t.y);
+  if (d2 > playerRange * playerRange) {
+    notify("Cible hors de portée.", 1.5, "error");
+    return false;
+  }
+
+  player.angle = Math.atan2(t.y - player.y, t.x - player.x);
+
+  SFX.play("sfx_shot_roquettes", { vol: 0.4, cooldown: 0.05, cut: true });
+
+  player.rockets[rocket.id] = rocketCount(rocket.id) - 1;
+  rocketCooldown = rocket?.cooldown || 1.0;
+  // Arme comme les lasers : lève la zone de non-agression pendant 5 s.
+  player.combatT = 5.0;
+  markProgressDirty();
+  updateAmmoUI();
+
+  spawnRocketProjectile(rocket, t, { volleyId: volleySeq++, volleySize: 1 });
+  return true;
+}
+
+// Fabrique un projectile roquette (tir unique ou salve) : centre du vaisseau,
+// tête chercheuse en arc (C), fumée arc-en-ciel, MISS possible au contact.
+function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize = 1, arcDir = null, arcScale = 1, arcBoost = 0 } = {}) {
+  const distToTarget = Math.hypot(t.x - player.x, t.y - player.y);
+  // Même vitesse de base que les standards.
+  const speed = rocketLaunchSpeed(distToTarget);
+  // Durée garantie : la roquette touche toujours (ou MISS au contact),
+  // jamais d'expiration en vol tant que la cible vit.
+  const life = rocketFlightLife(playerRange, speed);
+  const dmg = (rocket?.damage || 1000)
+    * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100);
+  const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (Number(player.laserHitBonusPct || 0) / 100));
+  const ang = player.angle + spread;
+
+  addCappedProjectile(bullets, {
+    x: player.x,
+    y: player.y,
+    vx: Math.cos(ang) * speed,
+    vy: Math.sin(ang) * speed,
+    r: 8.0,
+    life,
+    dmg,
+    key: rocket.id,
+    side: "player",
+    targetId: t.id,
+    homing: true,
+    spd: speed,
+    volleyId,
+    volleySize: 1,
+    isSab: false,
+    isRocket: true,
+    // Vol en arc (C) : 70° de près → 45° au max de portée (sens aléatoire),
+    // + bonus d'angle pour les salves (arcs plus grands, plus loin).
+    // Arc grand si la cible est proche, petit si elle est loin.
+    // En salve : sens alterné + ampleur propre à chaque roquette (éventail, pas de superposition).
+    arcDist0: distToTarget,
+    arcT: 0,
+    arcKick0: (arcDir ?? (Math.random() < 0.5 ? -1 : 1)) * arcScale * speed * Math.tan((70 + arcBoost - Math.min(1, distToTarget / playerRange) * 25) * Math.PI / 180),
+    smokeT: 0,
+    smokeHue: Math.floor(Math.random() * 360),
+    miss: shotMiss,
+  }, ENTITY_LIMITS.playerBullets);
+}
+
+// Salve du lance-roquettes : N = carrés bleus (chargeur), tir possible à tout
+// moment même partiel. Le tir vide le chargeur puis impose 2 s de pause
+// (manuel comme auto) avant la recharge.
+// Totalement séparé des standards (sélection, stock, cycle propres).
+function tryFireSalvo(opts = {}) {
+  const silent = opts.auto === true;
+  const notify = (text, dur, type) => { if (!silent) showNotification(text, dur, type); };
+  if (player.dead || !started) return false;
+  const id = String(player.launcherActive || "eco10").toLowerCase();
+  const rocket = getRocketType(id);
+  if (!rocket || rocket.manual !== false) return false;
+  const n = launcherLitNow();
+  if (n <= 0) {
+    notify("Chargeur vide — rechargement en cours…", 2, "error");
+    return false;
+  }
+  // En auto : laisse le chargeur plein affiché 0.4 s avant la salve.
+  if (opts.auto) {
+    const full = Math.min(5, rocketCount(id));
+    if (n < full || launcherFullT < 0.4) return false;
+  }
+
+  const t = Target.get();
+  if (!t) return false;
+
+  if (dist2(player.x, player.y, t.x, t.y) > playerRange * playerRange) {
+    notify("Cible hors de portée.", 1.5, "error");
+    return false;
+  }
+
+  player.angle = Math.atan2(t.y - player.y, t.x - player.x);
+
+  player.rockets[id] = rocketCount(id) - n;
+  launcherReloadT = 0;
+  launcherFullT = 0;
+  launcherPhase = "cooldown";
+  launcherPhaseT = 0;
+  // Arme comme les lasers : lève la zone de non-agression pendant 5 s.
+  player.combatT = 5.0;
+  markProgressDirty();
+  updateAmmoUI();
+
+  const volleyId = volleySeq++;
+  for (let i = 0; i < n; i++) {
+    // 1 son par roquette, en même temps.
+    SFX.play("sfx_shot_lance_roquettes", { vol: 0.45, maxVoices: 8 });
+    // Éventail large : sens alterné + grande ampleur → 5 grands C distincts.
+    const dirSign = i % 2 === 0 ? -1 : 1;
+    const scale = 1.8 + 1.2 * (n > 1 ? i / (n - 1) : 0.5);
+    spawnRocketProjectile(rocket, t, { spread: (i - (n - 1) / 2) * 0.12, volleyId, volleySize: n, arcDir: dirSign, arcScale: scale, arcBoost: 15 });
+  }
+  return true;
+}
+
+// Autos roquettes : ne tirent que sur ON **et** attaque de base enclenchée
+// (Activer / arrêter le tir). Silencieux : pas de spam de notifications.
+function tickAutoRockets() {
   if (!attackActive) return;
+  if (player.dead || !started) return;
+  const t = Target.get();
+  if (!t) return;
+  if (dist2(player.x, player.y, t.x, t.y) > playerRange * playerRange) return;
+  // Deux armes séparées : chacune son cooldown, pas de blocage croisé.
+  if (player.rocketAuto) tryFireRocket({ auto: true });
+  if (player.launcherAuto) tryFireSalvo({ auto: true });
+}
+
+function tickAutoAttack(dt) {  if (!attackActive) return;
   if (player.dead || !started) return;
 
   const t = Target.get();
@@ -7488,10 +7914,71 @@ function playPlayerLaserHit() {
   SFX.play(id, { vol: PLAYER_LASER_HIT_VOL, cooldown: 0.04, maxVoices: 4 });
 }
 
+// Impacts d'une même volée : 1er immédiat, suivants décalés de 100 ms.
+// (Map bornée : pas de fuite sur la durée d'une session.)
+const rocketVolleyHitCount = new Map();
+function playRocketImpactStaggered(volleyId) {
+  const n = rocketVolleyHitCount.get(volleyId) || 0;
+  if (rocketVolleyHitCount.size > 500 && !rocketVolleyHitCount.has(volleyId)) {
+    const oldest = rocketVolleyHitCount.keys().next().value;
+    rocketVolleyHitCount.delete(oldest);
+  }
+  rocketVolleyHitCount.set(volleyId, n + 1);
+  if (n === 0) playPlayerLaserHit();
+  else window.setTimeout(() => playPlayerLaserHit(), n * 100);
+}
+
 let fireCooldown = 0;
 
 const RSB_COOLDOWN = 5.0;
 let rsbCooldown = 0;
+
+// Roquettes R-310 : tir manuel à tête chercheuse, stock consommable.
+let rocketCooldown = 0;
+// Lance-roquettes : chargeur 5 coups à 1/s, tir quand on veut (même partiel),
+// 2 s de pause après chaque salve avant la recharge. Pas d'autre blocage.
+let launcherReloadT = 0;
+let launcherPhase = "reload"; // reload | cooldown
+let launcherPhaseT = 0;
+let launcherFullT = 0; // temps passé chargeur plein (affichage avant salve auto)
+
+function launcherThreshold() {
+  return Math.max(0, Math.min(5, rocketCount(player.launcherActive)));
+}
+
+function launcherLitNow() {
+  if (launcherPhase === "cooldown") return 0;
+  const stock = rocketCount(player.launcherActive);
+  return Math.max(0, Math.min(5, Math.floor(launcherReloadT), stock));
+}
+
+function tickLauncherCharger(dt) {
+  const full = launcherThreshold();
+  if (full <= 0) {
+    // Rien à charger : retour au début du cycle.
+    if (launcherPhase !== "reload" || launcherReloadT !== 0) {
+      launcherPhase = "reload";
+      launcherReloadT = 0;
+    }
+    launcherFullT = 0;
+    return;
+  }
+  if (launcherPhase === "cooldown") {
+    launcherPhaseT += dt;
+    if (launcherPhaseT >= 2) {
+      launcherPhase = "reload";
+      launcherReloadT = 0;
+    }
+    launcherFullT = 0;
+    return;
+  }
+  // reload : +1/s. Le tir est possible à tout moment (même partiel).
+  launcherReloadT = Math.min(5, launcherReloadT + dt);
+  // Mémorise le plein affiché pour la salve auto.
+  const lit = launcherLitNow();
+  if (lit >= full) launcherFullT += dt;
+  else launcherFullT = 0;
+}
 
 const enemiesById = new Map();
 
@@ -8136,6 +8623,17 @@ player.ammo = {
   sab: Number(a.sab || 0),
   x6: Number(a.x6 || 0),
 };
+const rk0 = u.rockets || {};
+player.rockets = Object.fromEntries(ROCKET_IDS.map((id) => [id, Math.max(0, Math.floor(Number(rk0[id] || 0)))]));
+player.rocketActive = ROCKET_TYPES[String(u.rocketActive || "").toLowerCase()] ? String(u.rocketActive).toLowerCase() : "r310";
+player.rocketAuto = u.rocketAuto === true;
+player.launcherActive = ROCKET_TYPES[String(u.launcherActive || "").toLowerCase()] ? String(u.launcherActive).toLowerCase() : "eco10";
+player.launcherAuto = u.launcherAuto === true;
+rocketCooldown = 0;
+launcherReloadT = 0;
+launcherFullT = 0;
+launcherPhase = "reload";
+launcherPhaseT = 0;
     setAmmo("x1");
     updateAmmoUI();
   }
@@ -9701,6 +10199,16 @@ function update(dt) {
   fireCooldown = Math.max(0, fireCooldown - dt);
   laserCd = Math.max(0, laserCd - dt);
   rsbCooldown = Math.max(0, rsbCooldown - dt);
+  const rocketWasCooling = rocketCooldown > 0;
+  rocketCooldown = Math.max(0, rocketCooldown - dt);
+  // Fin de recharge roquette : rafraîchir le bouton une fois.
+  if (rocketWasCooling && rocketCooldown <= 0) updateAmmoUI();
+  // Chargeur lance-roquettes : refresh à chaque carré gagné/perdu.
+  if (started && !player.dead) {
+    const before = launcherLitNow();
+    tickLauncherCharger(dt);
+    if (launcherLitNow() !== before) updateAmmoUI();
+  }
   pulseCd = Math.max(0, pulseCd - dt);
 
   if (account.user && account.dirty) {
@@ -9709,6 +10217,7 @@ function update(dt) {
   }
 
   tickAutoAttack(dt);
+  tickAutoRockets();
   tickVolleyFloats(dt);
   tickExplosions(dt);
   tickShipDamages(dt);
@@ -9946,6 +10455,38 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     const chaseSpeed = Math.max(baseSpeed, targetSpeed + baseSpeed);
     b.vx = dx / distance * chaseSpeed;
     b.vy = dy / distance * chaseSpeed;
+    if (b.isRocket) {
+      // Arc en C : échelle ABSOLUE (impulsion initiale × extinction temps
+      // × fade racine de la distance restante) : poursuite pure en finale,
+      // pas de dépassement, pas d'orbite autour de la cible.
+      // Mesuré en simulation : 100 % de touches, pire cas 483 ms (< 2000 ms),
+      // courbe ~3× de près, ~1.3× au max de portée.
+      b.arcT = (b.arcT || 0) + dt;
+      const fade = Math.sqrt(Math.min(1, distance / Math.max(1, b.arcDist0 || 1)));
+      const kickNow = (b.arcKick0 || 0) * Math.pow(0.5, b.arcT * chaseSpeed / 1500) * fade;
+      const nx = dx / distance, ny = dy / distance;
+      b.vx += -ny * kickNow;
+      b.vy += nx * kickNow;
+      const sp = Math.hypot(b.vx, b.vy) || 1;
+      b.vx = b.vx / sp * chaseSpeed;
+      b.vy = b.vy / sp * chaseSpeed;
+      // Fumée arc-en-ciel + filet : densité au mètre (tous les 12 px),
+      // constante à toute vitesse — couvre tout le vol même à 3 s.
+      const lastPt = b.trail?.length ? b.trail[b.trail.length - 1] : null;
+      const stepMoved = lastPt ? Math.hypot(b.x - lastPt.x, b.y - lastPt.y) : 99;
+      b.smokeDist = (b.smokeDist || 0) + stepMoved;
+      if (b.smokeDist >= 12) {
+        b.smokeDist = 0;
+        b.smokeHue = ((b.smokeHue || 0) + 8) % 360;
+        pushBounded(sparks, { x: b.x, y: b.y, t: 0, big: false, smoke: true, color: `hsla(${b.smokeHue},100%,65%,0.9)` }, ENTITY_LIMITS.sparks);
+        b.trail ??= [];
+        b.trail.push({ x: b.x, y: b.y, hue: b.smokeHue || 0 });
+        if (b.trail.length > 110) b.trail.shift();
+      }
+      if (!b.trail?.length) {
+        b.trail = [{ x: b.x, y: b.y, hue: b.smokeHue || 0 }];
+      }
+    }
   }
 
   const expired = advanceProjectile(b, dt);
@@ -9983,9 +10524,11 @@ for (let i = bullets.length - 1; i >= 0; i--) {
         ? drainShieldFromEnemy(t, b.dmg, sabRecipient)
         : damageEnemy(t, b.dmg);
 
-      // ✅ son laser hit, sauf si ce tir tue : le son de mort du NPC s'en charge.
-      // (le vrai tir a touché : qu'il fasse des dégâts ou non)
-      if (t.hp > 0) playPlayerLaserHit();
+      // Son d'impact : lasers = silencieux ; roquettes = 1 son chacune,
+      // décalés de 100 ms dans une salve (pas 5 en même temps).
+      if (t.hp > 0 && b.isRocket && !b.ownerEscortId) {
+        playRocketImpactStaggered(b.volleyId);
+      }
     }
 
     if (out.total > 0) {
@@ -10072,7 +10615,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
   if (expired) removeProjectile(enemyBullets, i);
 }
 
-  tickLifetimeItems(sparks, dt, () => 0.25);
+  tickLifetimeItems(sparks, dt, (s) => (s.smoke ? 1 : 0.25));
   tickFloatingTexts(floatTexts, dt);
   attractPickups(pickups, player, dt, pickup => {
     player.credits += pickup.credits || 0;
@@ -10747,6 +11290,23 @@ if (GAME_SETTINGS.textures) {
   for (const b of bullets) {
     const x = b.x + ox, y = b.y + oy;
     if (x < -90 || y < -90 || x > innerWidth + 90 || y > innerHeight + 90) continue;
+    // Filet fin arc-en-ciel derrière les roquettes (sous le sprite).
+    if (b.isRocket && b.trail?.length > 1) {
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.lineCap = "round";
+      for (let i = 1; i < b.trail.length; i++) {
+        const p0 = b.trail[i - 1], p1 = b.trail[i];
+        ctx.globalAlpha = 0.75 * (i / b.trail.length);
+        ctx.strokeStyle = `hsla(${p1.hue || 0},100%,62%,1)`;
+        ctx.beginPath();
+        ctx.moveTo(p0.x + ox, p0.y + oy);
+        ctx.lineTo(p1.x + ox, p1.y + oy);
+        ctx.stroke();
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
     const ang = Math.atan2(b.vy, b.vx);
     drawBulletSprite(x, y, ang, b.key || "x1", "player", 1.6);
   }
@@ -10762,11 +11322,12 @@ if (GAME_SETTINGS.textures) {
   for (const s of sparks) {
     const x = s.x + ox, y = s.y + oy;
     if (x < -40 || y < -40 || x > innerWidth + 40 || y > innerHeight + 40) continue;
-    const a = 1 - clamp(s.t / 0.25, 0, 1);
-    ctx.globalAlpha = a * 0.8;
-    ctx.fillStyle = "rgba(255,210,122,0.9)";
+    const lifeSpan = s.smoke ? 1 : 0.25;
+    const a = 1 - clamp(s.t / lifeSpan, 0, 1);
+    ctx.globalAlpha = a * (s.smoke ? 0.55 : 0.8);
+    ctx.fillStyle = s.color || "rgba(255,210,122,0.9)";
     ctx.beginPath();
-    ctx.arc(x, y, (s.big ? 26 : 14) * (1 - a * 0.2), 0, TAU);
+    ctx.arc(x, y, (s.big ? 26 : s.smoke ? 2.5 : 14) * (1 - a * 0.2), 0, TAU);
     ctx.fill();
     ctx.globalAlpha = 1;
   }
@@ -11306,6 +11867,11 @@ updateCurrentUserProgress({
     sab: player.ammo.sab || 0,
     x6: player.ammo.x6 || 0,
   },
+  rockets: sanitizeRocketsForSave(),
+  rocketActive: player.rocketActive || "r310",
+  rocketAuto: player.rocketAuto === true,
+  launcherActive: player.launcherActive || "eco10",
+  launcherAuto: player.launcherAuto === true,
 });
 }
 

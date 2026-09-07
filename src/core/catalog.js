@@ -3,6 +3,7 @@
 
 import { SHIP_PACKS, getShipDesignBaseId, isRemovedShipPack } from "../data/shipPacks.js";
 import { DRONE_FORMATIONS, SPECIAL_DRONE_PRICE, getDroneShopSpritePath } from "../data/drones.js";
+import { ROCKET_TYPES, rocketShopIcon } from "../data/rockets.js";
 
 /**
  * Règle de prix temporaire:
@@ -26,9 +27,30 @@ ammo: [
   { id: "ammo_sab", name: "Munitions SAB-50", price: 250000, give: { ammo: { sab: 1000 } } },
 
   { id: "ammo_x6",  name: "Munitions X6", price: 1500000, give: { ammo: { x6: 1000 } } },
- // { id: "ammo_abl", name: "Munitions ABL", price: 250000, give: { ammo: { ABL: 1000 } } },
- // { id: "ammo_radion", name: "Munitions RADION", price: 10000000, give: { ammo: { RADION: 1000 } } },
-],
+  // { id: "ammo_abl", name: "Munitions ABL", price: 250000, give: { ammo: { ABL: 1000 } } },
+  // { id: "ammo_radion", name: "Munitions RADION", price: 10000000, give: { ammo: { RADION: 1000 } } },
+  ],
+
+  // Roquettes tirables (lanceur natif) : généré depuis data/rockets.js.
+  // Nouvelles roquettes = juste une entrée là-bas, la boutique suit toute seule.
+  rockets: Object.values(ROCKET_TYPES).filter((r) => r.manual !== false).map((r) => ({
+    id: `rocket_${r.id}`,
+    name: `${r.name} ×${r.packSize}`,
+    price: r.packPrice,
+    give: { rockets: { [r.id]: r.packSize } },
+    icon: rocketShopIcon(r.id),
+    manual: true,
+  })),
+
+  // Roquettes de lance-roquettes : catégorie à part (pas de tir manuel pour l'instant).
+  launchers: Object.values(ROCKET_TYPES).filter((r) => r.manual === false).map((r) => ({
+    id: `rocket_${r.id}`,
+    name: `${r.name} ×${r.packSize}`,
+    price: r.packPrice,
+    give: { rockets: { [r.id]: r.packSize } },
+    icon: rocketShopIcon(r.id),
+    manual: false,
+  })),
 
   speedGen: [
     { id: "spd_mk0", name: "Générateur de vitesse MK0", price: 15000, module: { type: "speed",  bonusSpeed: 2 } },

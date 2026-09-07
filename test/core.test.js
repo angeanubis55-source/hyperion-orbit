@@ -1256,6 +1256,110 @@ test("la boutique applique un achat multiple de façon atomique", async () => {
   assert.equal(getCurrentUserFull().credits, 850000);
 });
 
+test("la boutique vend les 12 roquettes", async () => {
+  const { buyItem, getCurrentUserFull, updateCurrentUserProgress } = await import("../src/core/account.js");
+  const { CATALOG } = await import("../src/core/catalog.js");
+  const { ROCKET_IDS, getRocketType } = await import("../src/data/rockets.js");
+
+  assert.equal(ROCKET_IDS.length, 12);
+  assert.equal(CATALOG.rockets.length, 6);
+  assert.equal(CATALOG.launchers.length, 6);
+  assert.equal(getRocketType("r310")?.damage, 1000);
+  // 6 standards tirables, 6 de lance-roquettes (pas de tir manuel).
+  const manual = ROCKET_IDS.filter((id) => getRocketType(id)?.manual !== false);
+  const launcher = ROCKET_IDS.filter((id) => getRocketType(id)?.manual === false);
+  // Cooldown unique : 1 s pour toutes les standards, pas de cooldown perso.
+  for (const id of manual) {
+    assert.equal(getRocketType(id)?.cooldown, 1.0, `cooldown ${id}`);
+  }
+  assert.deepEqual(manual, ["r310", "plt2021", "plt2026", "plt3030", "dcr250", "pld8"]);
+  assert.deepEqual(launcher, ["eco10", "ubr100", "cbr", "sar01", "sar02", "hstrm01"]);
+  for (const item of CATALOG.rockets) {
+    const typeId = Object.keys(item.give.rockets)[0];
+    assert.ok(getRocketType(typeId), `type inconnu pour ${item.id}`);
+    assert.equal(item.manual, getRocketType(typeId)?.manual !== false);
+  }
+
+  updateCurrentUserProgress({ credits: 1000000, rockets: { r310: 0 }, rocketActive: "r310" });
+  const bought = buyItem("rocket_r310", 2);
+  assert.equal(bought.ok, true);
+  assert.equal(bought.quantity, 2);
+  assert.equal(bought.totalPrice, 60000);
+  assert.equal(getCurrentUserFull().rockets.r310, 20);
+
+  const plt = buyItem("rocket_plt2026", 1);
+  assert.equal(plt.ok, true);
+  assert.equal(getCurrentUserFull().rockets.plt2026, 10);
+
+  // Roquette de lance-roquettes : achetable et stockée, mais pas de tir manuel.
+  const eco = buyItem("rocket_eco10", 1);
+  assert.equal(eco.ok, true);
+  assert.equal(getCurrentUserFull().rockets.eco10, 10);
+  assert.equal(getCurrentUserFull().credits, 1000000 - 60000 - 120000 - 15000);
+
+  updateCurrentUserProgress({ rocketActive: "plt2026" });
+  assert.equal(getCurrentUserFull().rocketActive, "plt2026");
+  updateCurrentUserProgress({ rocketActive: "inexistante" });
+  assert.equal(getCurrentUserFull().rocketActive, "plt2026");
+});
+
+test("les roquettes survivent à la sauvegarde et au rechargement", async () => {
+  const { getCurrentUserFull, updateCurrentUserProgress } = await import("../src/core/account.js");
+  updateCurrentUserProgress({ rockets: { r310: 7, plt3030: 3 }, rocketActive: "plt3030" });
+  const raw = JSON.parse(globalThis.localStorage.getItem("orbit_users"));
+  const cur = JSON.parse(globalThis.localStorage.getItem("orbit_current_user"));
+  const stored = raw.find((u) => u.id === cur.id);
+  assert.equal(stored.rockets.r310, 7);
+  assert.equal(stored.rockets.plt3030, 3);
+  assert.equal(stored.rocketActive, "plt3030");
+  const reloaded = getCurrentUserFull();
+  assert.equal(reloaded.rockets.r310, 7);
+  assert.equal(reloaded.rockets.plt3030, 3);
+  assert.equal(reloaded.rocketActive, "plt3030");
+});
+
+test("le mode roquettes automatiques est persisté", async () => {
+  const { getCurrentUserFull, updateCurrentUserProgress } = await import("../src/core/account.js");
+  assert.equal(getCurrentUserFull().rocketAuto, false);
+  updateCurrentUserProgress({ rocketAuto: true });
+  assert.equal(getCurrentUserFull().rocketAuto, true);
+  const raw = JSON.parse(globalThis.localStorage.getItem("orbit_users"));
+  const cur = JSON.parse(globalThis.localStorage.getItem("orbit_current_user"));
+  assert.equal(raw.find((u) => u.id === cur.id).rocketAuto, true);
+  updateCurrentUserProgress({ rocketAuto: false });
+  assert.equal(getCurrentUserFull().rocketAuto, false);
+});
+
+test("le mode lance-roquettes auto est persisté", async () => {
+  const { getCurrentUserFull, updateCurrentUserProgress } = await import("../src/core/account.js");
+  assert.equal(getCurrentUserFull().launcherAuto, false);
+  // Sélection par défaut : eco10, même sur les vieux comptes.
+  assert.equal(getCurrentUserFull().launcherActive, "eco10");
+  updateCurrentUserProgress({ launcherAuto: true, launcherActive: "ubr100" });
+  assert.equal(getCurrentUserFull().launcherAuto, true);
+  assert.equal(getCurrentUserFull().launcherActive, "ubr100");
+  updateCurrentUserProgress({ launcherActive: "inexistante" });
+  assert.equal(getCurrentUserFull().launcherActive, "ubr100");
+  updateCurrentUserProgress({ launcherAuto: false });
+  assert.equal(getCurrentUserFull().launcherAuto, false);
+});
+
+test("les roquettes vivent assez longtemps pour toujours toucher", async () => {
+  const { rocketFlightLife, rocketLaunchSpeed } = await import("../src/data/rockets.js");
+  // 5000 de portée à 1500 u/s = 3.33 s en direct ; l'arc demande de la marge.
+  assert.ok(rocketFlightLife(5000, 1500) >= (5000 / 1500) * 2);
+  assert.ok(rocketFlightLife(100, 1500) >= 6);
+  assert.ok(rocketFlightLife(0, 1500) >= 6);
+  // Arrivée en 2000 ms max même si l'arc fait 2.2× la distance, de près comme de loin.
+  for (const dist of [0, 100, 700, 2000, 5000]) {
+    const speed = rocketLaunchSpeed(dist);
+    assert.ok(speed >= 500, `trop lent à ${dist}`);
+    assert.ok((dist * 2.2) / speed <= 2, `trop long à ${dist}`);
+  }
+  // Loin = accélère, près = ralentit (comme les munitions laser).
+  assert.ok(rocketLaunchSpeed(700) > rocketLaunchSpeed(100));
+});
+
 test("l'atelier consomme les ressources et sauvegarde chaque fabrication", async () => {
   const { craftCurrentUserRecipe, getCurrentUserFull, updateCurrentUserProgress } = await import("../src/core/account.js");
   updateCurrentUserProgress({ credits: 1000000, inventory: { resources: { npc_debris: 500 } } });

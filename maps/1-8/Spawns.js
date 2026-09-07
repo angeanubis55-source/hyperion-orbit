@@ -95,7 +95,7 @@ export function getZonePortals(WORLD) {
       y: 6000,
       r: 260,
       toMap: "1-8.1",
-      toMap: "p_18.1_to_18",
+      toPortal: "p_18.1_to_18",
     },
     {
       id: "p_18_to_19",
