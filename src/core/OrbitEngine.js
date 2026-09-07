@@ -917,7 +917,7 @@ const DEFAULT_GAME_SETTINGS = {
 };
 
 // Lignes de l'onglet Son : un groupe = une ligne qui règle tous ses sons.
-// Les 30 noms de SFX_SOUND_NAMES y figurent exactement une fois.
+// Les 31 noms de SFX_SOUND_NAMES y figurent exactement une fois.
 const SFX_ROWS = [
   { id: "laser", label: "Tirs laser", members: ["pShotX1", "pShotX2", "pShotX3", "pShotX4", "pShotX6", "pShotSab"] },
   { id: "sfx_shot_roquettes", label: "Tir de roquettes", members: ["sfx_shot_roquettes"] },
@@ -932,6 +932,7 @@ const SFX_ROWS = [
   { id: "npcDeath", label: "Mort des NPC", members: ["npcDeath"] },
   { id: "collect", label: "Récolte", members: ["collect"] },
   { id: "hits", label: "Impacts laser", members: ["laserHit1", "laserHit2", "laserHit3"] },
+  { id: "range", label: "Portée / Hors de portée", members: ["outOfRange"] },
   { id: "menuSelect", label: "Sélection des menus", members: ["selectNew", "selectAgain"] },
 ];
 
@@ -7701,6 +7702,8 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
     } catch {}
   }
   attackActive = false;
+  laserCombatInRange = null;
+  escapeWatch = null;
   player.vx = 0;
   player.vy = 0;
   moveTarget.active = false;
@@ -8065,6 +8068,59 @@ function spawnLaser(x, y, ang, targetId) {
 // ============================================================
 let attackActive = false;
 
+// Suivi de portée laser pendant l'attaque : true = à portée (combat),
+// false = hors de portée, null = pas d'attaque en cours.
+// Les notifs ne partent que sur transition → jamais de spam, même en continu.
+let laserCombatInRange = null;
+// Surveillance d'évasion : attaque arrêtée en plein combat, on guette la
+// sortie de portée pour annoncer "Vous avez échappé à l'attaque !".
+let escapeWatch = null;
+
+// Anti-spam des notifs manuelles répétées (clic / CTRL).
+let laserRangeNotifyLast = -10;
+function notifyLaserRange(text, type) {
+  const now = (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000;
+  if (now - laserRangeNotifyLast < 1.5) return false;
+  laserRangeNotifyLast = now;
+  showNotification(text, 1.5, type);
+  return true;
+}
+
+// "Hors de portée" : Out_Of_Range joué 3x en enchaîné (le suivant démarre
+// quand le précédent atteint 50 % de sa durée).
+// La suite est annulée si on rentre en combat ou si l'attaque s'arrête entre-temps.
+let outOfRangeSeq = 0;
+function playOutOfRangeTriple() {
+  const seq = ++outOfRangeSeq;
+  const buffered = SFX?.buffers?.outOfRange?.duration;
+  const gapMs = Number.isFinite(buffered) && buffered > 0 ? Math.round((buffered * 1000) / 2) : 250;
+  SFX?.play?.("outOfRange");
+  for (let i = 1; i < 3; i++) {
+    window.setTimeout(() => {
+      if (seq !== outOfRangeSeq) return; // relance plus récente
+      if (!attackActive) return; // attaque arrêtée entre-temps
+      if (laserCombatInRange === true) return; // rentré en combat entre-temps
+      SFX?.play?.("outOfRange");
+    }, i * gapMs);
+  }
+}
+
+function isLaserTargetOutOfRange(t) {
+  if (!t) return false;
+  return dist2(player.x, player.y, t.x, t.y) > playerRange * playerRange;
+}
+
+// Annonce immédiate au déclenchement manuel : "Le combat a commencé."
+// à portée, "Cible hors de portée." sinon (comme roquettes / lance-roquettes).
+function announceLaserCombatRange(t) {
+  const out = isLaserTargetOutOfRange(t);
+  laserCombatInRange = !out;
+  escapeWatch = null;
+  if (out) {
+    if (notifyLaserRange("Cible hors de portée.", "error")) playOutOfRangeTriple();
+  } else notifyLaserRange("Le combat a commencé.", "info");
+}
+
 function startAttack(ammoOverride = null) {
   const currentAmmo = player.ammo.active || "x1";
 
@@ -8072,6 +8128,9 @@ function startAttack(ammoOverride = null) {
     stopAttack();
     return;
   }
+  // Changement de munition en plein combat : pas de nouvelle annonce,
+  // tickAutoAttack suit déjà les transitions de portée.
+  const wasAttackActive = attackActive;
 
   if (!ammoOverride) {
     if (attackActive) {
@@ -8082,6 +8141,7 @@ function startAttack(ammoOverride = null) {
     const t = Target.get();
     if (!t) return;
     attackActive = true;
+    announceLaserCombatRange(t);
     tryFireOnce(null, true);
     return;
   }
@@ -8110,15 +8170,22 @@ function startAttack(ammoOverride = null) {
   // part jusqu'à la fin du cooldown, où la salve X6 se déclenche d'elle-même.
   if (switchingToX6 && rsbCooldown > 0) {
     attackActive = true;
+    if (!wasAttackActive) announceLaserCombatRange(t);
     return;
   }
 
   attackActive = true;
+  if (!wasAttackActive) announceLaserCombatRange(t);
   tryFireOnce(null, true);
 }
 
 function stopAttack() {
+  // Arrêt en plein combat : on surveille les sorties de portée (évasion).
+  // Réarmé à chaque retour à portée → le message revient à chaque sortie.
+  const t = laserCombatInRange === true ? Target.get() : null;
+  escapeWatch = t ? { targetId: t.id, wasIn: true } : null;
   attackActive = false;
+  laserCombatInRange = null;
   clearPendingSalvo();
 }
 
@@ -8309,7 +8376,22 @@ function tickAutoRockets() {
   if (player.launcherAuto) tryFireSalvo({ auto: true });
 }
 
-function tickAutoAttack(dt) {  if (!attackActive) return;
+function tickAutoAttack(dt) {
+  // Attaque coupée en plein combat : on guette chaque sortie de portée.
+  // Retour à portée = réarmé (silencieux) → le message revient à la sortie suivante.
+  if (!attackActive) {
+    if (escapeWatch && !player.dead && started) {
+      const wt = Target.get();
+      if (!wt || wt.id !== escapeWatch.targetId) escapeWatch = null;
+      else if (isLaserTargetOutOfRange(wt)) {
+        if (escapeWatch.wasIn) notifyLaserRange("Vous avez échappé à l'attaque !", "info");
+        escapeWatch.wasIn = false;
+      } else {
+        escapeWatch.wasIn = true;
+      }
+    }
+    return;
+  }
   if (player.dead || !started) return;
 
   const t = Target.get();
@@ -8319,7 +8401,20 @@ function tickAutoAttack(dt) {  if (!attackActive) return;
   }
 
   const d2 = dist2(player.x, player.y, t.x, t.y);
-  if (d2 > playerRange * playerRange) return;
+  const inRange = d2 <= playerRange * playerRange;
+  // Annonce les changements de portée pendant l'attaque :
+  // "Le combat a commencé." en entrant, "Cible hors de portée." en sortant.
+  if (laserCombatInRange === null) {
+    laserCombatInRange = inRange;
+  } else if (inRange !== laserCombatInRange) {
+    laserCombatInRange = inRange;
+    if (inRange) notifyLaserRange("Le combat a commencé.", "info");
+    else {
+      // Tir toujours enclenché et sortie de portée : hors de portée + triple bip.
+      if (notifyLaserRange("Cible hors de portée.", "error")) playOutOfRangeTriple();
+    }
+  }
+  if (!inRange) return;
 
   const ammoKey = player.ammo.active || "x1";
   // ✅ la salve X6 suit son propre cooldown (5 s), indépendant du laser standard.
@@ -9062,6 +9157,8 @@ for (let i = collectables.length - 1; i >= 0; i--) {
 function resetRun({ randomSpawn = false, preparedZoneCamps = null, preparedZonePortals = null } = {}) {
   let spawnedFromPortal = false;
   attackActive = false;
+  laserCombatInRange = null;
+  escapeWatch = null;
   betweenWaves = false;
   pendingVolleys.clear();
   launcherVolleyImpactCount.clear();
@@ -9337,6 +9434,8 @@ jumpBaseFade: 1,
 
 function die() {
   attackActive = false;
+  laserCombatInRange = null;
+  escapeWatch = null;
   player.dead = true;
   player.vx = player.vy = 0;
   radiationSoundDelay = 0;

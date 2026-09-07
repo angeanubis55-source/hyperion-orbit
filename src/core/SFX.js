@@ -34,6 +34,7 @@ export const SFX_SOUND_NAMES = Object.freeze([
   "laserHit3",
   "selectNew",
   "selectAgain",
+  "outOfRange",
 ]);
 
 export function createSFX() {
@@ -214,6 +215,7 @@ enabled: true,
         api.load("laserHit3", "Son/Laser_Hit_3.mp3"),
         api.load("selectNew", "Son/Selection_nouvelle.mp3"),
         api.load("selectAgain", "Son/selection_deja.mp3"),
+        api.load("outOfRange", "Son/Out_Of_Range.mp3"),
       ]).catch(() => {});
     },
 

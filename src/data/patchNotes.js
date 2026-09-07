@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "f0f1b513",
+    "message": "Dock : sons selection menus, pastille orbitale de tir, liseres et flash dynamiques"
+  },
+  {
     "version": "75593e32",
     "message": "Dock rapide : voile X6 + flash pret bref, liseres auto-adaptatifs, anneau interne uniformise"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "a22caa20",
     "message": "Finalisation des docks, portails et drones, plus le lanceur Windows."
-  },
-  {
-    "version": "49032062",
-    "message": "Ajout de vaisseaux et sauvegarde du dernier point de départ."
   }
 ];
