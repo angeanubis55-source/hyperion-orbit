@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0d6e7dc6",
+    "message": "Synchronise version (d049fe40)"
+  },
+  {
     "version": "d049fe40",
     "message": "Roquettes : effets (slow/precision/shield-drain), guidage lanceur, sons chargement, renommage Son"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "0376a463",
     "message": "Corrections de stabilité et d'affichage."
-  },
-  {
-    "version": "eb4099a3",
-    "message": "Amélioration du catalogue de la boutique et du terminal de missions."
   }
 ];

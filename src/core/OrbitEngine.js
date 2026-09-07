@@ -680,17 +680,26 @@ function initializeCustomActionBar() {
       const actionId = event.dataTransfer.getData("application/x-orbit-action");
       const original = byId.get(actionId);
       if (!original || palette.hidden) return;
-      const draggedElement = document.querySelector(`.actionSlot .ammoBtn[data-action-id="${CSS.escape(actionId)}"].isDragging, .actionSlot .rocketQuickAction[data-action-id="${CSS.escape(actionId)}"].isDragging`);
+      const draggedElement = document.querySelector(`.actionSlot .ammoBtn[data-action-id="${CSS.escape(actionId)}"].isDragging, .actionSlot .rocketQuickAction[data-action-id="${CSS.escape(actionId)}"].isDragging, .actionSlot .launcherAutoBtn[data-action-id="${CSS.escape(actionId)}"].isDragging`);
       const source = draggedElement?.closest(".actionSlot");
-      const button = source ? draggedElement : original.cloneNode(true);
-      if (!source) {
+      // Drop sur le même slot : rien à faire.
+      if (source && source === slot) return;
+      const displaced = slot.querySelector("[data-action-id]");
+      if (source) {
+        // Déplacement slot -> slot : échange (swap) au lieu de supprimer l'occupant.
+        const button = draggedElement;
+        if (displaced && displaced !== button) source.appendChild(displaced);
+        slot.appendChild(button);
+      } else {
+        // Copie depuis la palette : remplacement direct en 1 coup.
+        const button = original.cloneNode(true);
         button.removeAttribute("id");
         button.dataset.actionId = actionId;
+        button.draggable = true;
         button.onclick = () => original.click();
+        if (displaced && displaced !== button) displaced.remove();
+        slot.appendChild(button);
       }
-      const displaced = slot.querySelector(".ammoBtn, .rocketQuickAction");
-      if (displaced && displaced !== button) displaced.remove();
-      slot.appendChild(button);
       persist();
       updateHudKeyHints();
     });
