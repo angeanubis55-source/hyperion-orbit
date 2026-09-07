@@ -49,19 +49,14 @@ let mapName = params.get("map");
 let usedSavedMap = false;
 
 if (!mapName) {
-  // Pas de map dans l'URL → on regarde la sauvegarde du hangar actif
   const state = getActiveHangarState();
   
   if (state.map) {
     mapName = state.map;
     usedSavedMap = true;
-    console.log(`[MAIN] Map sauvegardée chargée: ${mapName}`);
   } else {
     mapName = DEFAULT_MAP;
-    console.log(`[MAIN] Nouveau vaisseau → map par défaut: ${DEFAULT_MAP}`);
   }
-} else {
-  console.log(`[MAIN] Map depuis URL: ${mapName}`);
 }
 
 mapName = normalizeMapId(mapName);

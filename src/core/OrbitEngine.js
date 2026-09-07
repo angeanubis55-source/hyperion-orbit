@@ -303,7 +303,6 @@ function tryReplayPendingDeath() {
     else armOnResume();
     triggerDeathShake();
     startDeathSequence();
-    console.log("[RESPAWN] Mort rejouée après refresh : vous étiez déjà détruit.");
     return true;
   } catch {
     return false;
@@ -1122,8 +1121,6 @@ function registerHudWindows() {
   }
   reg("gygerimStatus", "État du boss", "B", true, { minimizable: false });
 wireSettingsWindow();
-
-  console.log("✅ HUD windows registered");
 }
 
 registerHudWindows();
@@ -1318,7 +1315,7 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggDeployBtn.textContent = isActive ? "Gate en cours" : isDeployed ? "Portail préparé" : "Préparer le portail";
   ui.ggTabs.innerHTML = Object.values(GALAXY_GATE_DEFINITIONS).map(item => {
     const parts = state.built[item.id] >= GALAXY_GATE_BUILD_LIMIT ? item.requiredParts : state.parts[item.id];
-    return `<button type="button" data-gg-gate="${item.id}" class="${item.id === gate.id ? "active" : ""}">${item.name}<small>${parts}/${item.requiredParts}</small></button>`;
+    return `<button type="button" data-gg-gate="${escapeHtml(item.id)}" class="${item.id === gate.id ? "active" : ""}">${escapeHtml(item.name)}<small>${parts}/${item.requiredParts}</small></button>`;
   }).join("");
   const history = [...state.history].reverse();
   ui.ggHistory.innerHTML = history.length ? history.map(entry => {
@@ -1334,13 +1331,13 @@ function renderGalaxyGateWindow(message = "") {
     const ammo = Object.entries(reward.ammo || {})
       .map(([id, amount]) => [id, Math.max(0, amount - (appliedTotals[`ammo:${id}`] || 0))])
       .filter(([, amount]) => amount > 0)
-      .map(([id, amount]) => `${formatInteger(amount)} munitions ${id.toUpperCase()}`);
-    const built = Object.entries(reward.builtByGate || {}).filter(([, amount]) => amount > 0).map(([gateId]) => `${GALAXY_GATE_DEFINITIONS[gateId]?.name || gateId} terminée`);
+      .map(([id, amount]) => `${formatInteger(amount)} munitions ${escapeHtml(String(id).toUpperCase())}`);
+    const built = Object.entries(reward.builtByGate || {}).filter(([, amount]) => amount > 0).map(([gateId]) => `${escapeHtml(GALAXY_GATE_DEFINITIONS[gateId]?.name || gateId)} terminée`);
     const duplicateCounts = (reward.duplicates || []).reduce((counts, item) => {
       counts[item.gate] = (counts[item.gate] || 0) + 1;
       return counts;
     }, {});
-    const duplicates = Object.entries(duplicateCounts).map(([gateId, amount]) => `Doublon (${GALAXY_GATE_DEFINITIONS[gateId]?.name || gateId}) +${amount} multiplicateur${amount > 1 ? "s" : ""}`);
+    const duplicates = Object.entries(duplicateCounts).map(([gateId, amount]) => `Doublon (${escapeHtml(GALAXY_GATE_DEFINITIONS[gateId]?.name || gateId)}) +${amount} multiplicateur${amount > 1 ? "s" : ""}`);
     const groupedApplications = Object.values(applications.reduce((groups, applied) => {
       const key = `${applied.rewardType}:${applied.rewardId || ""}:x${applied.multiplier}`;
       if (!groups[key]) groups[key] = { ...applied, amount: 0, count: 0 };
@@ -1349,10 +1346,10 @@ function renderGalaxyGateWindow(message = "") {
       return groups;
     }, {}));
     const appliedTexts = groupedApplications.map(applied => {
-      if (applied.rewardType === "ammo") return `Munitions ${String(applied.rewardId || "").toUpperCase()} obtenues : ${formatInteger(applied.amount)} x${applied.multiplier}`;
+      if (applied.rewardType === "ammo") return `Munitions ${escapeHtml(String(applied.rewardId || "").toUpperCase())} obtenues : ${formatInteger(applied.amount)} x${applied.multiplier}`;
       if (applied.rewardType === "credits") return `Crédits obtenus : ${formatInteger(applied.amount)} x${applied.multiplier}`;
       if (applied.rewardType === "energy") return `Énergies obtenues : ${formatInteger(applied.amount)} x${applied.multiplier}`;
-      if (applied.rewardType === "parts") return `Pièces ${GALAXY_GATE_DEFINITIONS[applied.rewardId]?.name || applied.rewardId} obtenues : ${formatInteger(applied.amount)} x${applied.multiplier}`;
+      if (applied.rewardType === "parts") return `Pièces ${escapeHtml(GALAXY_GATE_DEFINITIONS[applied.rewardId]?.name || applied.rewardId)} obtenues : ${formatInteger(applied.amount)} x${applied.multiplier}`;
       return "";
     }).filter(Boolean);
     const remainingCredits = Math.max(0, (reward.credits || 0) - (appliedTotals["credits:"] || 0));
@@ -1371,7 +1368,7 @@ function renderGalaxyGateWindow(message = "") {
     const gateSetLabel = historyGate.group === "ensemble"
       ? Object.values(GALAXY_GATE_DEFINITIONS).filter(item => item.group === "ensemble").map(item => item.name).join(" · ")
       : historyGate.name;
-    return `<div class="ggHistoryRow"><span><b>${gateSetLabel}</b> · ${entry.spins} spin(s)</span><div class="ggHistoryGains">${gainRows}</div></div>`;
+    return `<div class="ggHistoryRow"><span><b>${escapeHtml(gateSetLabel)}</b> · ${Number(entry.spins) || 0} spin(s)</span><div class="ggHistoryGains">${gainRows}</div></div>`;
   }).join("") : `<div class="ggHistoryEmpty">Aucun spin enregistré.</div>`;
 }
 
@@ -8244,7 +8241,6 @@ jumpBaseFade: 1,
         player.repairTickT = 0;
       }
       spawnedFromPortal = true;
-      console.log(`[RESPAWN] Override spawn: ${player.x}, ${player.y} on ${currentMap}`);
     }
   }
 
@@ -8262,7 +8258,11 @@ jumpBaseFade: 1,
 
     const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
     
-    if (wantPortal && wantMap && String(wantMap) === String(currentMap)) {
+    // Whitelist : id portail/map limités à [A-Za-z0-9_-], 64 chars max, map == carte courante.
+    const isSafeId = (v) => typeof v === "string" || typeof v === "number"
+      ? /^[A-Za-z0-9_-]{1,64}$/.test(String(v))
+      : false;
+    if (wantPortal && wantMap && isSafeId(wantPortal) && isSafeId(wantMap) && String(wantMap) === String(currentMap)) {
       const pid = String(wantPortal);
       const ptl = zonePortals.find(p => String(p.id) === pid);
 
@@ -8270,7 +8270,6 @@ jumpBaseFade: 1,
         player.x = clamp(ptl.x, 80, WORLD.w - 80);
         player.y = clamp(ptl.y, 80, WORLD.h - 80);
         spawnedFromPortal = true;
-        console.log(`[SPAWN] Arrivée via portail ${pid} sur map ${currentMap}`);
       }
 
       // ✅ Son "Saut terminée" quand on apparaît de l'autre côté du portail
@@ -8295,20 +8294,16 @@ jumpBaseFade: 1,
     if (!st?.map) {
       player.x = clamp(fallbackSpawn.x, 80, WORLD.w - 80);
       player.y = clamp(fallbackSpawn.y, 80, WORLD.h - 80);
-      console.log(`[SPAWN] Jamais joué => base de firme ${fallbackSpawn.x},${fallbackSpawn.y}`);
     } else {
       if (String(st.map) !== String(currentMap)) {
         player.x = clamp(fallbackSpawn.x, 80, WORLD.w - 80);
         player.y = clamp(fallbackSpawn.y, 80, WORLD.h - 80);
-        console.log(`[SPAWN] Map différente (saved=${st.map}, cur=${currentMap}) => base de firme`);
       } else if (st.pos && st.pos.x != null && st.pos.y != null) {
         player.x = clamp(st.pos.x, 80, WORLD.w - 80);
         player.y = clamp(st.pos.y, 80, WORLD.h - 80);
-        console.log(`[SPAWN] Position sauvegardée: ${Math.floor(player.x)}, ${Math.floor(player.y)} sur ${currentMap}`);
       } else {
         player.x = clamp(fallbackSpawn.x, 80, WORLD.w - 80);
         player.y = clamp(fallbackSpawn.y, 80, WORLD.h - 80);
-        console.log(`[SPAWN] Pas de pos => base de firme`);
       }
     }
   }
@@ -8329,7 +8324,6 @@ jumpBaseFade: 1,
       } else {
         saveActiveHangarState(player.x, player.y, currentMap, savedHpPct(), savedShPct());
       }
-      console.log(`[SPAWN] Position sauvegardée immédiatement: ${Math.floor(player.x)}, ${Math.floor(player.y)} sur ${currentMap}`);
     }
   }, 100);
 
@@ -11008,12 +11002,6 @@ if (ui.spdTxt) {
     ` | Générateurs: +${spd.genSpeed}` +
     ` | Modules vitesse: +${spd.speedPct}%` +
     ` | Config ${spd.config}`);
-
-  // Debug console si vitesse anormale
-  if (spd.total > spd.base && !window.__speedDebugShown) {
-    window.__speedDebugShown = true;
-    console.log("🚀 SPEED DEBUG", spd);
-  }
 }
 
 updateConfigButtons();

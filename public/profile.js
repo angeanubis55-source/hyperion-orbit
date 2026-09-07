@@ -43,8 +43,6 @@ import { appendToFitSlots, compactFitDraft } from "../src/core/fitLayout.js";
 import { rarityForCatalogItem } from "../src/data/crafting.js";
 import { PATCH_NOTES } from "../src/data/patchNotes.js";
 
-console.log("profile.js loaded ✅");
-
 // ✅ détecte si index.html (le jeu) est ouvert
 function isGameOpen() {
   try {
@@ -1300,7 +1298,7 @@ function renderHangarsMeasured(u) {
     el.className = "hangarListItem" + (h.id === selectedHangarId ? " selected" : "") + (isActive ? " active" : "");
     el.innerHTML = `
       <div class="tileShipPreview">
-        ${prev ? `<img src="${prev}" alt="${h.shipId}" class="shipImg" style="image-rendering: pixelated;" />` : ""}
+        ${prev ? `<img src="${escapeHtml(prev)}" alt="${escapeHtml(h.shipId)}" class="shipImg" style="image-rendering: pixelated;" />` : ""}
         <div style="flex: 1;">
           <h3>
             ${escapeHtml(hangarPackName)}
@@ -1563,12 +1561,12 @@ card.className = "shipCard" + (owned ? " owned" : "");
 
     card.innerHTML = `
       <div class="shipImageContainer">
-        <img src="${imgSrc}" alt="${it.name || it.id}"
+        <img src="${escapeHtml(imgSrc)}" alt="${escapeHtml(it.name || it.id)}"
              style="width: ${shipW}px; height: ${shipH}px; transform: scale(${scale});" />
       </div>
 
       <h3>
-        ${it.name || it.id}
+        ${escapeHtml(it.name || it.id)}
         ${owned ? ` <span class="pill">Possédé</span>` : ""}
       </h3>
 

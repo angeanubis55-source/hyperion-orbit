@@ -14,9 +14,48 @@ enabled: true,
     masterVolume: 0.55,
     _preloaded: false,
     preloaded: null,
+    _gestureSeen: false,
+    _preloadDeferred: false,
 
-    init() {
+    _hasGesture() {
+      if (api._gestureSeen) return true;
+      try {
+        const nav = typeof navigator !== "undefined" ? navigator : globalThis?.navigator;
+        if (nav?.userActivation?.hasBeenActive === true) return true;
+      } catch {}
+      return false;
+    },
+
+    _markGesture() {
+      api._gestureSeen = true;
+    },
+
+    _armGesture() {
+      if (api._gestureArmed || typeof window === "undefined") return;
+      api._gestureArmed = true;
+      const onGesture = () => {
+        api._markGesture();
+        api.resume();
+        // Si preload() avait été différé avant le premier geste, on le rejoue maintenant.
+        if (api._preloadDeferred && !api._preloaded) {
+          api._preloadDeferred = false;
+          api.preload();
+        }
+      };
+      for (const evt of ["pointerdown", "keydown", "touchstart", "click"]) {
+        try { window.addEventListener(evt, onGesture, { once: true, passive: true }); }
+        catch { try { window.addEventListener(evt, onGesture); } catch {} }
+      }
+    },
+
+    init(opts = {}) {
       if (api.ctx) return;
+      // Politique autoplay Chrome/Edge : pas de `new AudioContext()` avant un geste,
+      // sinon warning "AudioContext was not allowed to start" + contexte suspendu.
+      if (!opts.fromGesture && !api._hasGesture()) {
+        api._armGesture();
+        return;
+      }
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
       api.ctx = new AC();
@@ -32,7 +71,8 @@ enabled: true,
     },
 
     resume() {
-      api.init();
+      api._markGesture();
+      api.init({ fromGesture: true });
       if (!api.ctx) return;
       if (api.ctx.state !== "running") api.ctx.resume().catch(() => {});
     },
@@ -52,6 +92,12 @@ enabled: true,
 
     preload() {
       if (api._preloaded) return;
+      // Avant tout geste (ex: autoStart), on diffère sans créer de contexte pour éviter le warning.
+      if (!api._hasGesture()) {
+        api._preloadDeferred = true;
+        api._armGesture();
+        return;
+      }
       api._preloaded = true;
       api.resume();
       if (!api.ctx) return;
