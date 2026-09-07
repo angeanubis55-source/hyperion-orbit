@@ -4250,6 +4250,39 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   100%{box-shadow:0 0 12px rgba(179,66,255,.55),0 0 0 0 rgba(196,110,255,0)}
 }
 /* ============================================================
+   Pastille orbitale de tir (x1-x4, sab ; X6 exclu) : point blanc qui tourne
+   sur la bordure de la munition en cours de tir, avec traînée (f2, f3).
+   Piloté par la classe .firing (suit la sélection, disparaît à l'arrêt).
+   Boutons visibles = 46×44 : le centre de la pastille suit ce rectangle.
+   ============================================================ */
+#ammoBar [data-ammo] .fireOrbit{
+  position:absolute;
+  left:0;
+  top:0;
+  width:5px;
+  height:5px;
+  margin:0;
+  padding:0;
+  border-radius:50%;
+  background:#fff;
+  box-shadow:0 0 5px #fff,0 0 10px rgba(255,255,255,.6);
+  pointer-events:none;
+  opacity:0;
+  z-index:6;
+  offset-path:path("M -0.5 -0.5 H 44.5 V 42.5 H -0.5 Z");
+  offset-anchor:center;
+  offset-rotate:0deg;
+}
+#ammoBar [data-ammo].firing{position:relative}
+#ammoBar.compactAmmoBar [data-ammo].firing{overflow:visible !important}
+/* Une seule tête (5px) + traînée en chapelet : -1px à chaque fois,
+   collée à 1px derrière la précédente */
+#ammoBar [data-ammo].firing .fireOrbit.f1{opacity:1;animation:fireOrbit 1s linear infinite}
+#ammoBar [data-ammo].firing .fireOrbit.f2{width:4px;height:4px;opacity:.65;animation:fireOrbit 1s linear infinite;animation-delay:.035s;animation-fill-mode:backwards}
+#ammoBar [data-ammo].firing .fireOrbit.f3{width:3px;height:3px;opacity:.4;animation:fireOrbit 1s linear infinite;animation-delay:.065s;animation-fill-mode:backwards}
+#ammoBar [data-ammo].firing .fireOrbit.f4{width:2px;height:2px;opacity:.2;animation:fireOrbit 1s linear infinite;animation-delay:.085s;animation-fill-mode:backwards}
+@keyframes fireOrbit{from{offset-distance:100%}to{offset-distance:0%}}
+/* ============================================================
    Voile de recharge générique : roquettes standard + formations.
    Même principe que l'IEM (voile carré balayé en arc, zone dévoilée
    nette, lueur "prêt"), teinté par type via --cd-edge / --cd-glow.

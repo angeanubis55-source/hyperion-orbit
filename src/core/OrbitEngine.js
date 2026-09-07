@@ -547,6 +547,17 @@ function initializeCustomActionBar() {
     const id = button.dataset.ammo ? `ammo:${button.dataset.ammo}` : `skill:${button.dataset.skill}`;
     button.dataset.actionId = id;
     button.draggable = true;
+    // Pastilles d'orbite de tir (x1-x4, sab ; X6 exclu) : héritées par tous
+    // les clones (slots + palette), animées en CSS quand le bouton tire.
+    // Tête 5px + traînée dégressive (4, 3, 2px) collée juste derrière.
+    if (button.dataset.ammo && button.dataset.ammo !== "x6") {
+      for (const cls of ["f1", "f2", "f3", "f4"]) {
+        const dot = document.createElement("b");
+        dot.className = `fireOrbit ${cls}`;
+        dot.setAttribute("aria-hidden", "true");
+        button.appendChild(dot);
+      }
+    }
     return [id, button];
   }));
   let saved = [];
@@ -563,6 +574,7 @@ function initializeCustomActionBar() {
     button.dataset.actionId = `formation:${formation.id}`; button.draggable = true;
     button.innerHTML = `<img src="${formation.icon}" alt=""><span>${formation.name.replace("Formation ", "")}</span>`;
     button.onclick = () => {
+      playDockSelectSound(getActiveDroneFormation(account.user).id !== formation.id);
       const result = setCurrentUserDroneFormation(formation.id);
       if (!result.ok) return showNotification(result.error, 2.5, "error");
       account.user = result.user;
@@ -591,6 +603,7 @@ function initializeCustomActionBar() {
       if (isLauncher) {
         // Sélection seule (fond du bouton USE) : le tir passe par USE (salve).
         // La charge repart de zéro sur changement de munition.
+        playDockSelectSound(player.launcherActive !== rid);
         if (player.launcherActive !== rid) {
           launcherReloadT = 0;
           launcherFullT = 0;
@@ -603,6 +616,7 @@ function initializeCustomActionBar() {
         updateAmmoUI();
         return;
       }
+      playDockSelectSound(String(player.rocketActive || "").toLowerCase() !== String(id).toLowerCase());
       player.rocketActive = id;
       markProgressDirty();
       refreshRocketPaletteCounts();
@@ -903,7 +917,7 @@ const DEFAULT_GAME_SETTINGS = {
 };
 
 // Lignes de l'onglet Son : un groupe = une ligne qui règle tous ses sons.
-// Les 28 noms de SFX_SOUND_NAMES y figurent exactement une fois.
+// Les 30 noms de SFX_SOUND_NAMES y figurent exactement une fois.
 const SFX_ROWS = [
   { id: "laser", label: "Tirs laser", members: ["pShotX1", "pShotX2", "pShotX3", "pShotX4", "pShotX6", "pShotSab"] },
   { id: "sfx_shot_roquettes", label: "Tir de roquettes", members: ["sfx_shot_roquettes"] },
@@ -918,6 +932,7 @@ const SFX_ROWS = [
   { id: "npcDeath", label: "Mort des NPC", members: ["npcDeath"] },
   { id: "collect", label: "Récolte", members: ["collect"] },
   { id: "hits", label: "Impacts laser", members: ["laserHit1", "laserHit2", "laserHit3"] },
+  { id: "menuSelect", label: "Sélection des menus", members: ["selectNew", "selectAgain"] },
 ];
 
 function getSfxRow(id) {
@@ -4809,6 +4824,11 @@ function syncActionDockState() {
       (v) => button.classList.toggle("active", v));
     applyDockField(button, "text", value,
       (v) => { if (small) small.textContent = v; });
+    // Pastille orbitale blanche pendant le tir (x1-x4, sab ; X6 exclu).
+    // Suit la munition active : change de slot avec elle, disparaît à l'arrêt.
+    const firing = attackActive && !player.dead && ammo === activeAmmo && ammo !== "x6";
+    applyDockField(button, "firing", firing,
+      (v) => button.classList.toggle("firing", v));
     // X6 (RSB) : voile de son cooldown 5 s. Liseré auto-adaptatif en continu
     // comme roquettes/formations ; flash de fin couleur du contour du slot.
     if (ammo === "x6") {
@@ -4935,14 +4955,19 @@ function syncActionDockState() {
   }
 }
 
-ui.btnX1.addEventListener("click", () => startAttack("x1"));
-ui.btnX2.addEventListener("click", () => startAttack("x2"));
-ui.btnX3.addEventListener("click", () => startAttack("x3"));
-ui.btnX4.addEventListener("click", () => startAttack("x4"));
-ui.btnX6.addEventListener("click", () => startAttack("x6"));
+// Son de sélection du dock rapide : nouveau choix vs choix déjà actif.
+function playDockSelectSound(isNew) {
+  SFX.play(isNew ? "selectNew" : "selectAgain");
+}
+
+ui.btnX1.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== "x1"); startAttack("x1"); });
+ui.btnX2.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== "x2"); startAttack("x2"); });
+ui.btnX3.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== "x3"); startAttack("x3"); });
+ui.btnX4.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== "x4"); startAttack("x4"); });
+ui.btnX6.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== "x6"); startAttack("x6"); });
 
 if (ui.btnSAB) {
-  ui.btnSAB.addEventListener("click", () => startAttack("sab"));
+  ui.btnSAB.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== "sab"); startAttack("sab"); });
 }
 
 // ============================================================

@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "75593e32",
+    "message": "Dock rapide : voile X6 + flash pret bref, liseres auto-adaptatifs, anneau interne uniformise"
+  },
+  {
     "version": "b68abde3",
     "message": "Dock rapide : voile de recharge en arc (IEM, roquettes, formations, robot) + uniformisation des slots"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "49032062",
     "message": "Ajout de vaisseaux et sauvegarde du dernier point de départ."
-  },
-  {
-    "version": "c13521cf",
-    "message": "Corrections de stabilité et d'affichage."
   }
 ];
