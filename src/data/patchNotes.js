@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.138",
+    "date": "2026-09-08T12:12:21+02:00",
+    "message": "Harmonise les effets du bouton reparation en vert avec ISH et IEM"
+  },
+  {
     "version": "0.137",
     "date": "2026-09-08T12:09:29+02:00",
     "message": "Affiche les versions alpha numerotees et les patch notes dates"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.79",
     "date": "2026-09-03T10:08:18+02:00",
     "message": "Effets de vaisseau superposés (Ship_effet) pour un rendu plus détaillé à 60 FPS."
-  },
-  {
-    "version": "0.78",
-    "date": "2026-09-03T10:00:41+02:00",
-    "message": "Corrections sur les effets de vaisseau et le changement de vaisseau."
   }
 ];
