@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "caefeae6",
+    "message": "Demarrage : fenetre DEPART a chaque refresh, option auto grisee (desactivee temporairement)"
+  },
+  {
     "version": "52fb2f60",
     "message": "Version auto : notes et version pour a8d4b3d8"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "3635db36",
     "message": "Suppression du profil navigateur dédié au lanceur, régénérable, du suivi Git."
-  },
-  {
-    "version": "7cd1614f",
-    "message": "Retrait des gros fichiers du suivi Git et mise à jour du fichier .gitignore."
   }
 ];
