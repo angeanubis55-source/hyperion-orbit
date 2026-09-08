@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "192ceafe",
+    "message": "Version auto : notes et version pour 848d5a20"
+  },
+  {
     "version": "848d5a20",
     "message": "Optimise le chargement par secteur et limite les images de bases"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "4caabbf7",
     "message": "Fenêtre de paramètres améliorée avec démarrage automatique hors carte et touches plus grandes."
-  },
-  {
-    "version": "c7028074",
-    "message": "Effets de vaisseau superposés (Ship_effet) pour un rendu plus détaillé à 60 FPS."
   }
 ];
