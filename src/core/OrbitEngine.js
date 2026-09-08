@@ -425,6 +425,8 @@ const ui = {
 
   pulsePct: document.getElementById("pulsePct"),
   pulsePrice: document.getElementById("pulsePrice"),
+  ishPct: document.getElementById("ishPct"),
+  ishPrice: document.getElementById("ishPrice"),
 
   fpsTxt: document.getElementById("fpsTxt"),
   versionTxt: document.getElementById("versionTxt"),
@@ -488,6 +490,7 @@ cfgCooldownTxt: document.getElementById("cfgCooldownTxt"),
   miniPos: document.getElementById("miniPos"),
 
   btnPulse: document.getElementById("btnPulse"),
+  btnIsh: document.getElementById("btnIsh"),
   btnRepair: document.getElementById("btnRepair"),
   repairTxt: document.getElementById("repairTxt"),
 
@@ -917,12 +920,13 @@ const DEFAULT_GAME_SETTINGS = {
 };
 
 // Lignes de l'onglet Son : un groupe = une ligne qui règle tous ses sons.
-// Les 31 noms de SFX_SOUND_NAMES y figurent exactement une fois.
+// Tous les noms de SFX_SOUND_NAMES y figurent exactement une fois.
 const SFX_ROWS = [
   { id: "laser", label: "Tirs laser", members: ["pShotX1", "pShotX2", "pShotX3", "pShotX4", "pShotX6", "pShotSab"] },
+  { id: "escort", label: "Sons des escortes", members: ["escortX1", "escortX2", "escortX3", "escortX4", "escortX6", "escortSab"] },
   { id: "sfx_shot_roquettes", label: "Tir de roquettes", members: ["sfx_shot_roquettes"] },
   { id: "launcher", label: "Lance-roquettes", members: ["sfx_shot_lance_roquettes", "rocketLoad", "rocketsLoadStart", "rocketsLoaded"] },
-  { id: "pulseIEM", label: "Pulse IEM", members: ["pulseIEM"] },
+  { id: "pulseIsh", label: "IEM / ISH", members: ["pulseIEM", "ishShield"] },
   { id: "death", label: "Mort du joueur", members: ["deathPlayer", "deathPlayer2"] },
   { id: "respawnPlayer", label: "Réapparition", members: ["respawnPlayer"] },
   { id: "radiationLoop", label: "Radiation", members: ["radiationLoop"] },
@@ -991,6 +995,24 @@ function loadGameSettings() {
       settings.sound = false;
       settings.soundVolume = 0;
     }
+    // Migration de l'ancien réglage séparé "Sons des escortes" vers la
+    // ligne du tableau (clés escortX*). Appliquée une seule fois.
+    try {
+      const oldVol = parsed?.escortSoundVolume;
+      const oldOn = parsed?.escortSound;
+      const escortKeys = ["escortX1", "escortX2", "escortX3", "escortX4", "escortX6", "escortSab"];
+      const untouched = escortKeys.every((k) => parsed?.sfxVolumes?.[k] == null && parsed?.sfxMuted?.[k] == null);
+      if (untouched && (oldVol != null || oldOn != null)) {
+        const v = clamp(Math.round(Number(oldVol ?? 50) || 0), 0, 100);
+        for (const k of escortKeys) settings.sfxVolumes[k] = v;
+        if (oldOn === false || v === 0) {
+          settings.sfxMuted ||= {};
+          for (const k of escortKeys) settings.sfxMuted[k] = true;
+        }
+      }
+    } catch {}
+    delete settings.escortSound;
+    delete settings.escortSoundVolume;
     // Migration unique : les volumes par son partent à 50 (ni 100, ni les
     // valeurs héritées d'avant). Les réglages futurs sont ensuite conservés.
     if (Number(parsed?.sfxDefaultsVersion || 0) < 1) {
@@ -1110,6 +1132,7 @@ function resetSfxVolumes() {
   saveGameSettings();
   applySfxSettings();
   renderSfxRows();
+  renderSettingsWindow();
   showToast("Sons réinitialisés", 1.2);
 }
 
@@ -4934,6 +4957,32 @@ function syncActionDockState() {
         (v) => { if (small[0]) small[0].textContent = v; });
       applyDockField(button, "cd", cooling ? "" : "30k",
         (v) => { if (small[1]) small[1].textContent = v; });
+    } else if (skill === "ish") {
+      const ishProgress = ishCd > 0 ? clamp(ishCd / ISH_COOLDOWN, 0, 1) : 0;
+      const ishCanUse = canUseSkill(ISH_COST);
+      const ishCooling = ishProgress > 0;
+      // Front descendant du cooldown -> petite lueur "prête" (one-shot).
+      const ishWasCooling = button.dataset.ishCooling === "1";
+      if (ishWasCooling && !ishCooling && ishCanUse) {
+        button.classList.remove("skillReadyPop");
+        void button.offsetWidth;
+        button.classList.add("skillReadyPop");
+        setTimeout(() => button.classList.remove("skillReadyPop"), 750);
+      }
+      button.dataset.ishCooling = ishCooling ? "1" : "0";
+      applyDockField(button, "feedback", ishCooling,
+        (v) => button.classList.toggle("skillFeedback", v));
+      applyDockField(button, "progress", ishProgress.toFixed(3),
+        (v) => button.style.setProperty("--skill-feedback", v));
+      applyDockField(button, "disabled", !ishCanUse || ishCooling,
+        (v) => button.classList.toggle("disabled", v));
+      applyDockField(button, "ready", ishCanUse && !ishCooling,
+        (v) => button.classList.toggle("ready", v));
+      // Temps restant pendant la recharge, "PRÊT" une fois dispo.
+      applyDockField(button, "main", ishCooling ? `${ishCd.toFixed(1)}s` : "PRÊT",
+        (v) => { if (small[0]) small[0].textContent = v; });
+      applyDockField(button, "cd", ishCooling ? "" : "30k",
+        (v) => { if (small[1]) small[1].textContent = v; });
     } else if (skill === "repair") {
       applyDockField(button, "active", false,
         (v) => button.classList.remove("active"));
@@ -5653,6 +5702,9 @@ function getNpcCombatTarget(enemy) {
 
 function initializeGateEscorts() {
   escortShips.length = 0;
+  if (typeof clearPendingEscortSalvo === "function") {
+    try { clearPendingEscortSalvo(); } catch {}
+  }
   const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
   if (!rules?.escort) return;
   let count = 0;
@@ -5706,23 +5758,45 @@ function fireEscortVolley(escort, target) {
     ? (escort.damage / normalAmmoMult) * SAB50.drainMult
     : escort.damage;
   const shotMiss = Math.random() < PLAYER_SHOTS.missChance;
-  const shots = escort.altShot
+  const isRealPair = !!escort.altShot;
+  const shots = isRealPair
     ? [
         { x: muzzleX + px * SIDE_OFFSET, y: muzzleY + py * SIDE_OFFSET, damage: totalDamage * SIDE_DMG_SPLIT },
         { x: muzzleX - px * SIDE_OFFSET, y: muzzleY - py * SIDE_OFFSET, damage: totalDamage * SIDE_DMG_SPLIT },
       ]
     : [{ x: muzzleX, y: muzzleY, damage: totalDamage }];
+  playEscortShot(ammoKey);
+  const escortLife = bulletLifeForRange(ESCORT_ATTACK_RANGE, speed);
   for (const shot of shots) {
     const dx = target.x - shot.x;
     const dy = target.y - shot.y;
     const length = Math.hypot(dx, dy) || 1;
     addCappedProjectile(bullets, {
       x: shot.x, y: shot.y, vx: dx / length * speed, vy: dy / length * speed, spd: speed,
-      r: 6, life: bulletLifeForRange(ESCORT_ATTACK_RANGE, speed), dmg: shot.damage,
+      r: 6, life: escortLife, dmg: shot.damage,
       key: ammoKey, side: "player", targetId: target.id, homing: true, miss: shotMiss,
       isSab: useSab,
       ownerEscortId: escort.id, volleyId, volleySize: shots.length,
     }, ENTITY_LIMITS.playerBullets);
+  }
+  // Faux tirs visuels comme le joueur : 6 éclairs par salve, alternance
+  // paire / central, aucun dégât, aucun son d'impact.
+  const escortSalvoShots = 6;
+  const escortSalvoInterval = 0.2;
+  const pairItems = [[-SIDE_OFFSET, 0], [SIDE_OFFSET, 0]];
+  const singleItems = [[0, 0]];
+  for (let i = 1; i < escortSalvoShots; i++) {
+    const fakeIsPair = isRealPair ? i % 2 === 0 : i % 2 === 1;
+    scheduleEscortSalvoPart(i * escortSalvoInterval, {
+      escortId: escort.id,
+      targetId: target.id,
+      speed,
+      life: escortLife,
+      volleyId,
+      volleySize: shots.length,
+      key: ammoKey,
+      items: fakeIsPair ? pairItems : singleItems,
+    });
   }
   escort.altShot = !escort.altShot;
   escort.angle = angle;
@@ -7888,8 +7962,16 @@ const PULSE_COST = 30000;
 
 const PULSE_COOLDOWN = 10.0;
 
+// Compétence ISH : même CD que l'IEM, 3 s d'invincibilité + anim de réapparition.
+const ISH_COST = 30000;
+
+const ISH_COOLDOWN = 10.0;
+
+const ISH_DURATION = 3.0;
+
 let pulseCd = 0;
 let iemCd = 0;
+let ishCd = 0;
 
 function canUseSkill(cost) {
   return started && !player.dead && player.credits >= cost;
@@ -7897,9 +7979,12 @@ function canUseSkill(cost) {
 
 function updateSkillUI() {
   const pulseOk = canUseSkill(PULSE_COST) && pulseCd <= 0;
+  const ishOk = canUseSkill(ISH_COST) && ishCd <= 0;
 
   setHudClass(ui.btnPulse, "disabled", !pulseOk);
   setHudClass(ui.btnPulse, "ready", pulseOk);
+  setHudClass(ui.btnIsh, "disabled", !ishOk);
+  setHudClass(ui.btnIsh, "ready", ishOk);
   syncActionDockState();
 }
 
@@ -7954,6 +8039,37 @@ function usePulse() {
 
 ui.btnPulse.addEventListener("click", () => {
   if (!ui.btnPulse.classList.contains("disabled")) usePulse();
+});
+
+// ISH : 3 s d'invincibilité + même anim que la réapparition,
+// mais son Bouclier_Instant (pas le son de réapparition).
+function useIsh() {
+  if (!started || player.dead) return;
+
+  if (ishCd > 0) {
+    showToast(`ISH en recharge (${ishCd.toFixed(1)}s)`, 0.9);
+    return;
+  }
+
+  if (player.credits < ISH_COST) {
+    showToast("Pas assez de crédits (ISH)", 1.2);
+    return;
+  }
+
+  player.credits -= ISH_COST;
+  ishCd = ISH_COOLDOWN;
+  startRespawnInstaShield();
+  // L'ISH dure 3 s comme l'anim (même durée que l'invincibilité de réapparition).
+  player.invincibleT = Math.max(Number(player.invincibleT) || 0, ISH_DURATION);
+  SFX.play("ishShield");
+
+  markProgressDirty();
+
+  showToast("ISH !", 1.0);
+}
+
+ui.btnIsh?.addEventListener("click", () => {
+  if (!ui.btnIsh.classList.contains("disabled")) useIsh();
 });
 
 if (ui.respawnBaseBtn) {
@@ -8458,6 +8574,24 @@ function playPlayerShot(ammoKey) {
   SFX.play(id, { rate, cooldown: 0.01, cut: true });
 }
 
+// Tir réel d'une escorte : mêmes fichiers que le joueur mais clés SFX
+// dédiées, réglées par la ligne "Sons des escortes" (sans couper le joueur).
+const ESCORT_SHOT_SFX = {
+  x1: "escortX1",
+  x2: "escortX2",
+  x3: "escortX3",
+  x4: "escortX4",
+  x6: "escortX6",
+  sab: "escortSab",
+};
+
+function playEscortShot(ammoKey) {
+  const id = ESCORT_SHOT_SFX[ammoKey] || ESCORT_SHOT_SFX.x1;
+  const RATE_VARIANTS = [0.9, 1.0, 1.1];
+  const rate = RATE_VARIANTS[Math.floor(Math.random() * RATE_VARIANTS.length)];
+  SFX.play(id, { rate, cooldown: 0.05, maxVoices: 2 });
+}
+
 // ✅ quand un vrai tir touche sa cible (dégâts, sans dégâts ou MISS),
 // on joue aléatoirement un des 3 sons "laser hit".
 const PLAYER_LASER_HIT_SFX = ["laserHit1", "laserHit2", "laserHit3"];
@@ -8595,6 +8729,43 @@ function spawnSalvoDecoy(e) {
   // ✅ la salve s'arrête si la cible n'existe plus (NPC mort)
   const t2 = getEnemyById(e.targetId);
   if (!t2) return;
+  // ✅ munition active au moment du tir : si on a switché entre-temps,
+  // le faux tir devient instantanément la nouvelle munition.
+  const key = player.ammo.active || e.key || "x1";
+  // ✅ SAB inversé : les faux tirs partent eux aussi de la cible vers le vaisseau.
+  // (Si on a switché de munition entre-temps, retour au départ vaisseau classique.)
+  if (e.sabReverse && key === "sab") {
+    const rdx = player.x - t2.x, rdy = player.y - t2.y;
+    const rdl = Math.hypot(rdx, rdy) || 1;
+    const rnx = rdx / rdl, rny = rdy / rdl;
+    const startX = t2.x + rnx * ((t2.r || 18) + 6);
+    const startY = t2.y + rny * ((t2.r || 18) + 6);
+    const baseAng = Math.atan2(rny, rnx);
+    const qx = -rny, qy = rnx;
+    for (const [off, aOff] of e.items) {
+      addCappedProjectile(bullets, {
+        x: startX + qx * off,
+        y: startY + qy * off,
+        vx: Math.cos(baseAng + aOff) * e.speed,
+        vy: Math.sin(baseAng + aOff) * e.speed,
+        r: 6.0,
+        life: e.life,
+        dmg: 0,
+        key,
+        side: "player",
+        targetId: e.targetId,
+        homing: true,
+        sabReverse: true,
+        spd: e.speed,
+        volleyId: e.volleyId,
+        volleySize: e.volleySize,
+        isSab: true,
+        miss: false,
+        visual: true,
+      }, ENTITY_LIMITS.playerBullets);
+    }
+    return;
+  }
   // ✅ recalcule la position de départ depuis le vaisseau au moment du tir
   // (le joueur a pu bouger entre le début et la fin de la salve)
   const ang2 = Math.atan2(t2.y - player.y, t2.x - player.x);
@@ -8602,9 +8773,6 @@ function spawnSalvoDecoy(e) {
   const px2 = -fy2, py2 = fx2;
   const muzzle2X = player.x + fx2 * (player.r + 10);
   const muzzle2Y = player.y + fy2 * (player.r + 10);
-  // ✅ munition active au moment du tir : si on a switché entre-temps,
-  // le faux tir devient instantanément la nouvelle munition.
-  const key = player.ammo.active || e.key || "x1";
   for (const [off, aOff] of e.items) {
     addCappedProjectile(bullets, {
       x: muzzle2X + px2 * off,
@@ -8640,10 +8808,71 @@ function tickPendingSalvo(dt) {
   }
 }
 
+// Faux tirs des escortes : même visuel que le joueur (éclairs dmg 0),
+// spawnés depuis l'escorte au moment du tir, jamais de dégâts ni de son.
+const pendingEscortSalvo = [];
+
+function clearPendingEscortSalvo() {
+  pendingEscortSalvo.length = 0;
+}
+
+function scheduleEscortSalvoPart(delay, entry) {
+  if (delay <= 0) {
+    spawnEscortSalvoDecoy(entry);
+    return;
+  }
+  pendingEscortSalvo.push({ t: delay, ...entry });
+}
+
+function spawnEscortSalvoDecoy(e) {
+  const escort = getEscortById(e.escortId);
+  const t2 = getEnemyById(e.targetId);
+  if (!escort || escort.hp <= 0 || !t2) return;
+  const ang2 = Math.atan2(t2.y - escort.y, t2.x - escort.x);
+  const fx2 = Math.cos(ang2), fy2 = Math.sin(ang2);
+  const px2 = -fy2, py2 = fx2;
+  const muzzle2X = escort.x + fx2 * ((escort.pack?.r || 34) + 10);
+  const muzzle2Y = escort.y + fy2 * ((escort.pack?.r || 34) + 10);
+  for (const [off, aOff] of e.items) {
+    addCappedProjectile(bullets, {
+      x: muzzle2X + px2 * off,
+      y: muzzle2Y + py2 * off,
+      vx: Math.cos(ang2 + aOff) * e.speed,
+      vy: Math.sin(ang2 + aOff) * e.speed,
+      r: 6.0,
+      life: e.life,
+      dmg: 0,
+      key: e.key || "x3",
+      side: "player",
+      targetId: e.targetId,
+      homing: true,
+      spd: e.speed,
+      volleyId: e.volleyId,
+      volleySize: e.volleySize,
+      isSab: false,
+      miss: false,
+      visual: true,
+      ownerEscortId: e.escortId,
+    }, ENTITY_LIMITS.playerBullets);
+  }
+}
+
+function tickPendingEscortSalvo(dt) {
+  if (!pendingEscortSalvo.length) return;
+  for (let i = pendingEscortSalvo.length - 1; i >= 0; i--) {
+    const entry = pendingEscortSalvo[i];
+    entry.t -= dt;
+    if (entry.t <= 0) {
+      pendingEscortSalvo.splice(i, 1);
+      spawnEscortSalvoDecoy(entry);
+    }
+  }
+}
+
 // ✅ les faux tirs déjà en vol deviennent instantanément la nouvelle munition.
 function reskinSalvo(newKey) {
   for (const b of bullets) {
-    if (b && b.visual) b.key = newKey;
+    if (b && b.visual && !b.ownerEscortId) b.key = newKey;
   }
 }
 
@@ -8809,7 +9038,32 @@ const dmgShot = isSab
   const muzzleX = player.x + fx * (player.r + 10);
   const muzzleY = player.y + fy * (player.r + 10);
 
-  if (!player.altShot) {
+  if (isSab) {
+    // ✅ SAB inversé : UN seul laser central, tiré DE LA CIBLE VERS le vaisseau
+    // (absorption de bouclier). Pas d'alternance paire/impair (altShot untouched).
+    const rdx = player.x - t.x, rdy = player.y - t.y;
+    const rdl = Math.hypot(rdx, rdy) || 1;
+    const rnx = rdx / rdl, rny = rdy / rdl;
+    addCappedProjectile(bullets, {
+      x: t.x + rnx * ((t.r || 18) + 6),
+      y: t.y + rny * ((t.r || 18) + 6),
+      vx: rnx * speed,
+      vy: rny * speed,
+      r: 6.0,
+      life,
+      dmg: dmgShot,
+      key: ammoKey,
+      side: "player",
+      targetId,
+      homing: true,
+      sabReverse: true, // homing vers le joueur + impact à l'arrivée au vaisseau
+      spd: speed,
+      volleyId,
+      volleySize: 1,
+      isSab,
+      miss: shotMiss,
+    }, ENTITY_LIMITS.playerBullets);
+  } else if (!player.altShot) {
 addCappedProjectile(bullets, {
   x: muzzleX,
   y: muzzleY,
@@ -8894,20 +9148,22 @@ addCappedProjectile(bullets, {
   // 🔫 salve : le vrai tir compte pour le premier éclair affiché (t=0).
   // Les éclairs restants s'affichent toutes les `salvoInterval` ms en
   // alternant toujours "les 2" (paire gauche/droite) puis "le seul" (central),
-  // même pour les faux tirs.
-  const isRealPair = !!player.altShot;
+  // même pour les faux tirs. SAB inversé : que des centraux (cible→vaisseau).
+  const isRealPair = !!player.altShot && !isSab;
   const pairItems = [[-SIDE_OFFSET, 0], [SIDE_OFFSET, 0]];
   const singleItems = [[0, 0]];
-  const salvoShotParams = { targetId, speed, life, volleyId, volleySize };
+  const salvoShotParams = { targetId, speed, life, volleyId, volleySize: isSab ? 1 : volleySize, sabReverse: isSab };
   for (let i = 1; i < salvoShots; i++) {
-    const fakeIsPair = isRealPair ? i % 2 === 0 : i % 2 === 1;
+    const fakeIsPair = !isSab && (isRealPair ? i % 2 === 0 : i % 2 === 1);
     scheduleSalvoPart(i * salvoInterval, {
       ...salvoShotParams,
       items: fakeIsPair ? pairItems : singleItems,
     });
   }
 
-  player.altShot = !player.altShot;
+  // SAB inversé : toujours central unique → l'alternance altShot est préservée
+  // pour les autres munitions.
+  if (!isSab) player.altShot = !player.altShot;
   maybeTriggerLaser();
   player.combatT = 5.0;
   return true;
@@ -9181,6 +9437,7 @@ function resetRun({ randomSpawn = false, preparedZoneCamps = null, preparedZoneP
 bullets.length = 0;
 enemyBullets.length = 0;
 clearPendingSalvo();
+clearPendingEscortSalvo();
 shipDamages.length = 0;
 enemies.length = 0;
 escortShips.length = 0;
@@ -10856,6 +11113,7 @@ function update(dt) {
     if (launcherLitNow() !== before) updateAmmoUI();
   }
   pulseCd = Math.max(0, pulseCd - dt);
+  ishCd = Math.max(0, ishCd - dt);
 
   if (account.user && account.dirty) {
     account.saveCd -= dt;
@@ -10941,6 +11199,7 @@ updatePlayerVelocity(player, { x: mx, y: my }, dt);
 
   updateShipMoveSound();
   tickPendingSalvo(dt);
+  tickPendingEscortSalvo(dt);
 
   {
     const spd = Math.hypot(player.vx, player.vy);
@@ -11093,6 +11352,19 @@ for (let i = bullets.length - 1; i >= 0; i--) {
   }
 
   if (b.homing) {
+    if (b.sabReverse) {
+      // ✅ SAB inversé : poursuit le JOUEUR (absorption), pas la cible.
+      if (player.dead || (player.hp || 0) <= 0) {
+        removeProjectile(bullets, i);
+        cleanupPlayerMissVolley(b);
+        continue;
+      }
+      const pdx = player.x - b.x, pdy = player.y - b.y;
+      const pd = Math.hypot(pdx, pdy) || 1;
+      const pspd = Math.max(120, Number(b.spd) || Math.hypot(b.vx, b.vy) || 120);
+      b.vx = (pdx / pd) * pspd;
+      b.vy = (pdy / pd) * pspd;
+    } else {
     const dx = t.x - b.x;
     const dy = t.y - b.y;
     const distance = Math.hypot(dx, dy) || 1;
@@ -11157,12 +11429,48 @@ for (let i = bullets.length - 1; i >= 0; i--) {
         if (b.trail.length > 110) b.trail.shift();
       }
       if (!b.trail?.length) {
-        b.trail = [{ x: b.x, y: b.y, hue: b.smokeHue || 0, color: b.isLauncherRocket ? "rgba(205,215,220,0.9)" : null }];
+        b.trail = [{ x: b.x, y: b.y, hue: b.smokeHue || 0, color: b.isRocket ? "rgba(205,215,220,0.9)" : null }];
       }
+    }
     }
   }
 
   const expired = advanceProjectile(b, dt);
+
+  if (b.sabReverse) {
+    // ✅ SAB inversé : l'impact a lieu à l'ARRIVÉE AU VAISSEAU (absorption).
+    // Le drain est prélevé sur la cible `t` (qui doit toujours exister).
+    const pr = (player.r || 20) + (b.r || 6);
+    if (segCircleHit(b._oldX, b._oldY, b.x, b.y, player.x, player.y, pr)) {
+      if (b.miss) {
+        // ✅ SAB inversé : aucun son d'impact/d'absorption (même en MISS).
+        showPlayerMissOnce(b, t);
+        spawnSpark(b.x, b.y, false);
+        removeProjectile(bullets, i);
+        cleanupPlayerMissVolley(b);
+        continue;
+      }
+      const sabRecipient = b.ownerEscortId ? getEscortById(b.ownerEscortId) : player;
+      let out = { total: 0 };
+      if (!b.visual) {
+        out = drainShieldFromEnemy(t, b.dmg, sabRecipient);
+      }
+      if (out.total > 0) {
+        queueVolleyFloat(t, out, b.volleyId, 1, VOLLEY_FLOAT_TIMEOUT);
+      } else if (!b.visual) {
+        showSabZeroOnce(b, t);
+      }
+      spawnSpark(b.x, b.y, out.total >= 600 || out.isCrit);
+      removeProjectile(bullets, i);
+      cleanupPlayerMissVolley(b);
+      continue;
+    }
+    if (expired) {
+      removeProjectile(bullets, i);
+      cleanupPlayerMissVolley(b);
+    }
+    continue;
+  }
 
   const rr = (t.r || 18) + (b.r || 6);
   const targetStart = {
@@ -11181,7 +11489,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     if (b.isLauncherRocket && !b.visual) {
       launcherImpact = registerLauncherRocketImpact(b);
       if (!launcherImpact.final) {
-        if (b.miss) playPlayerLaserHit();
+        if (b.miss && !b.ownerEscortId) playPlayerLaserHit();
         else if (!b.ownerEscortId) playRocketImpactStaggered(b.volleyId);
         spawnSpark(b.x, b.y, false);
         removeProjectile(bullets, i);
@@ -11192,7 +11500,8 @@ for (let i = bullets.length - 1; i >= 0; i--) {
 
     if (b.miss) {
       // ✅ MISS : le tir "touche" mais ne tue pas → son laser hit
-      if (!b.visual) playPlayerLaserHit();
+      // (jamais pour les escortes : impacts silencieux).
+      if (!b.visual && !b.ownerEscortId) playPlayerLaserHit();
 
       showPlayerMissOnce(b, t);
 
@@ -12309,6 +12618,13 @@ updateConfigButtons();
 
   if (ui.pulsePrice) {
     setHudText(ui.pulsePrice, pulseCd > 0 ? "" : "30k");
+  }
+
+  // ISH : même affichage que l'IEM (temps restant / PRÊT + prix).
+  setHudText(ui.ishPct, ishCd > 0 ? `${ishCd.toFixed(1)}s` : "PRÊT");
+
+  if (ui.ishPrice) {
+    setHudText(ui.ishPrice, ishCd > 0 ? "" : "30k");
   }
 
   const rsbPct = getRsbPercent();

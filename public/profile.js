@@ -338,7 +338,7 @@ const ITEM_ICONS = {
   ammo_x2: ITEM_ICON_BASE + "ammo_x2.png",
   ammo_x3: ITEM_ICON_BASE + "ammo_x3.png",
   ammo_x4: ITEM_ICON_BASE + "ammo_x4.png",
-  ammo_sab: ITEM_ICON_BASE + "ammo_abl.png",
+  ammo_sab: ITEM_ICON_BASE + "ammo_sab.png",
   ammo_x6: ITEM_ICON_BASE + "ammo_x6.png",
   // ammo_abl: ITEM_ICON_BASE + "ammo_abl.png",
   // ammo_radion: ITEM_ICON_BASE + "ammo_radion.png",

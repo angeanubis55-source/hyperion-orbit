@@ -13,7 +13,7 @@ export const PLAYER_BULLET_SPRITES = {
   x2: { src: "Munitions/x2.png", w: 54, h: 18, glow: true, rotateOffset: Math.PI },
   x3: { src: "Munitions/x3.png", w: 56, h: 18, glow: true, rotateOffset: Math.PI },
   x4: { src: "Munitions/x4.png", w: 58, h: 18, glow: true, rotateOffset: Math.PI },
-  sab: { src: "Munitions/Special1.png", w: 150, h: 24, glow: true, rotateOffset: Math.PI },
+  sab: { src: "Munitions/Sab.png", w: 47, h: 65, glow: true, rotateOffset: Math.PI },
   x6: { src: "Munitions/rsb.png", w: 58, h: 18, glow: true, rotateOffset: Math.PI },
   // Roquettes : sprites "Munitions/<id>.png" à fournir (voir data/rockets.js).
   // En attendant, le moteur dessine un point de fallback au lieu de planter.

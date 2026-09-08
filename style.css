@@ -2285,6 +2285,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 .ammoBtn[data-ammo="x6"]{ --c:var(--x6); }
 .ammoBtn[data-ammo="sab"]{ --c:#2f62c0; }
 .ammoBtn[data-skill="pulse"]{ --c:#b342ff; }
+.ammoBtn[data-skill="ish"]{ --c:#ffe14d; }
 .ammoBtn[data-skill="repair"]{ --c:#39ff14; }
 
 .skillBtn{
@@ -2292,6 +2293,13 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 }
 
 #btnPulse{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+}
+
+#btnIsh{
   display:flex;
   flex-direction:column;
   align-items:center;
@@ -2319,6 +2327,11 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   margin-top:0;
 }
 
+#btnIsh small{
+  display:inline-block;
+  margin-top:0;
+}
+
 #btnPulse .skillBottom{
   display:flex;
   align-items:center;
@@ -2329,6 +2342,12 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 
 #btnPulse #pulsePrice,
 #btnPulse #pulsePct{
+  white-space:nowrap;
+  margin:0;
+}
+
+#btnIsh #ishPrice,
+#btnIsh #ishPct{
   white-space:nowrap;
   margin:0;
 }
@@ -4066,7 +4085,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar .compactAmmoBtn[data-ammo="x2"]::before{background-image:url("assets/items/ammo_x2.png")}
 #ammoBar .compactAmmoBtn[data-ammo="x3"]::before{background-image:url("assets/items/ammo_x3.png")}
 #ammoBar .compactAmmoBtn[data-ammo="x4"]::before{background-image:url("assets/items/ammo_x4.png")}
-#ammoBar .compactAmmoBtn[data-ammo="sab"]::before{background-image:url("assets/items/ammo_abl.png")}
+#ammoBar .compactAmmoBtn[data-ammo="sab"]::before{background-image:url("assets/items/ammo_sab.png")}
 #ammoBar .compactAmmoBtn[data-ammo="x6"]::before{background-image:url("assets/items/ammo_x6.png")}
 #ammoBar .compactAmmoBtn[data-ammo] > strong{display:none !important}
 #ammoBar .compactAmmoBtn[data-ammo] > small{
@@ -4117,6 +4136,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar .rocketQuickAction.active{transform:none !important}
 #ammoBar [data-skill]{position:relative;overflow:hidden}
 #ammoBar [data-skill="pulse"]::before,
+#ammoBar [data-skill="ish"]::before,
 #ammoBar [data-skill="repair"]::before{
   content:"";
   position:absolute;
@@ -4128,15 +4148,20 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   pointer-events:none;
 }
 #ammoBar [data-skill="pulse"]::before{background-image:url("assets/pulse/IEM.png")}
+#ammoBar [data-skill="ish"]::before{background-image:url("assets/Cpu/ish-01_100x100.png")}
 #ammoBar [data-skill="repair"]::before{background-image:url("assets/Repair_Robot/2.png")}
 #ammoBar [data-skill="pulse"] > strong,
+#ammoBar [data-skill="ish"] > strong,
 #ammoBar [data-skill="repair"] > strong{display:none !important}
 #ammoBar [data-skill="pulse"] > small,
+#ammoBar [data-skill="ish"] > small,
 #ammoBar [data-skill="repair"] > small{position:relative;z-index:3}
 /* IEM + réparation : textes strictement identiques aux compteurs
    munitions/roquettes (même emplacement, taille, graisse, couleur). */
 #ammoBar #btnPulse{gap:0}
+#ammoBar #btnIsh{gap:0}
 #ammoBar #btnPulse > small,
+#ammoBar #btnIsh > small,
 #ammoBar #btnRepair > small{
   display:block;
   margin:2px 0 0;
@@ -4147,12 +4172,15 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   white-space:nowrap;
 }
 #ammoBar.compactAmmoBar #btnPulse > small,
+#ammoBar.compactAmmoBar #btnIsh > small,
 #ammoBar.compactAmmoBar #btnRepair > small{font-size:12px;line-height:1;opacity:.88}
-/* Le prix IEM reste masqué en mode compact (comme avant) */
-#ammoBar.compactAmmoBar #btnPulse > small.skillPriceMini{display:none}
+/* Le prix IEM/ISH reste masqué en mode compact (comme avant) */
+#ammoBar.compactAmmoBar #btnPulse > small.skillPriceMini,
+#ammoBar.compactAmmoBar #btnIsh > small.skillPriceMini{display:none}
 /* Texte IEM : pareil que la réparation (en bas, minuscule).
    Sélecteur par attribut : les boutons visibles sont des clones sans id. */
-#ammoBar [data-skill="pulse"] > small{
+#ammoBar [data-skill="pulse"] > small,
+#ammoBar [data-skill="ish"] > small{
   position:absolute;
   z-index:3;
   left:2px;
@@ -4168,7 +4196,8 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   text-overflow:ellipsis;
   text-shadow:0 1px 3px #000, 0 0 6px #000;
 }
-#ammoBar [data-skill="pulse"] > small.skillPriceMini{bottom:11px}
+#ammoBar [data-skill="pulse"] > small.skillPriceMini,
+#ammoBar [data-skill="ish"] > small.skillPriceMini{bottom:11px}
 /* Texte réparation (OK / %) : en bas, minuscule comme les compteurs de
    roquettes. Même remarque : sélecteur par attribut pour les clones. */
 #ammoBar [data-skill="repair"] > small{
@@ -4206,12 +4235,14 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   0%,100%{box-shadow:0 0 4px rgba(57,255,20,.25),0 0 0 2px rgba(57,255,20,.18) inset}
   50%{box-shadow:0 0 22px 3px rgba(57,255,20,.9),0 0 0 2px rgba(57,255,20,.55) inset}
 }
-/* IEM : voile de recharge carré plein rectangle, balayé en arc depuis le haut.
-   Zone déjà dévoilée lumineuse (fond violet éclairé + contour), sans halo
+/* IEM/ISH : voile de recharge carré plein rectangle, balayé en arc depuis le haut.
+   Zone déjà dévoilée lumineuse (fond éclairé + contour), sans halo
    extérieur pendant la recharge ; la lueur extérieure ne revient qu'une fois
    prête, avec le flash. */
 #ammoBar [data-skill="pulse"].ready,
-#ammoBar [data-skill="pulse"].skillFeedback{
+#ammoBar [data-skill="pulse"].skillFeedback,
+#ammoBar [data-skill="ish"].ready,
+#ammoBar [data-skill="ish"].skillFeedback{
   border-color:color-mix(in srgb, var(--c) 78%, white);
   background:
     linear-gradient(rgba(255,255,255,.14), rgba(255,255,255,0) 55%),
@@ -4219,15 +4250,18 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   box-shadow:0 0 0 2px color-mix(in srgb, var(--c) 35%, transparent) inset,
     inset 0 1px 0 rgba(255,255,255,.28);
 }
-/* IEM prête : lueur extérieure + flash */
-#ammoBar [data-skill="pulse"].ready{
+/* IEM/ISH prête : lueur extérieure + flash */
+#ammoBar [data-skill="pulse"].ready,
+#ammoBar [data-skill="ish"].ready{
   box-shadow:0 0 12px color-mix(in srgb, var(--c) 55%, transparent),
     0 0 0 2px color-mix(in srgb, var(--c) 22%, transparent) inset;
 }
 /* Pendant la recharge le bouton porte aussi .disabled (clic bloqué) mais on ne
    veut pas son opacity:.45 qui éteindrait la zone dévoilée. */
-#ammoBar [data-skill="pulse"].skillFeedback.disabled{opacity:1}
-#ammoBar [data-skill="pulse"].skillFeedback > small{color:#cfe3ee}
+#ammoBar [data-skill="pulse"].skillFeedback.disabled,
+#ammoBar [data-skill="ish"].skillFeedback.disabled{opacity:1}
+#ammoBar [data-skill="pulse"].skillFeedback > small,
+#ammoBar [data-skill="ish"].skillFeedback > small{color:#cfe3ee}
 #ammoBar [data-skill].skillFeedback::after{
   content:"";
   position:absolute;
@@ -4248,6 +4282,19 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   0%{box-shadow:0 0 0 0 rgba(196,110,255,.95),0 0 0 0 rgba(196,110,255,.5)}
   60%{box-shadow:0 0 22px 4px rgba(196,110,255,.55),0 0 0 3px rgba(196,110,255,.25)}
   100%{box-shadow:0 0 12px rgba(179,66,255,.55),0 0 0 0 rgba(196,110,255,0)}
+}
+/* ISH : même flash "prête" mais en jaune léger + liseré de voile jaune */
+#ammoBar [data-skill="ish"].skillFeedback::after{
+  background:conic-gradient(from 0deg at 50% 50%,
+    rgba(3,7,16,.8) 0deg calc(var(--skill-feedback,0) * 360deg),
+    rgba(255,225,77,.9) calc(var(--skill-feedback,0) * 360deg) calc(var(--skill-feedback,0) * 360deg + 3deg),
+    transparent calc(var(--skill-feedback,0) * 360deg + 3deg));
+}
+#ammoBar [data-skill="ish"].skillReadyPop{animation:ishReadyFlash .7s ease-out}
+@keyframes ishReadyFlash{
+  0%{box-shadow:0 0 0 0 rgba(255,225,77,.95),0 0 0 0 rgba(255,225,77,.5)}
+  60%{box-shadow:0 0 22px 4px rgba(255,225,77,.55),0 0 0 3px rgba(255,225,77,.25)}
+  100%{box-shadow:0 0 12px rgba(255,225,77,.55),0 0 0 0 rgba(255,225,77,0)}
 }
 /* ============================================================
    Pastille orbitale de tir (x1-x4, sab ; X6 exclu) : point blanc qui tourne

@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "7ebac269",
+    "message": "Version auto : notes et version pour caefeae6"
+  },
+  {
     "version": "caefeae6",
     "message": "Demarrage : fenetre DEPART a chaque refresh, option auto grisee (desactivee temporairement)"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "0f67a4ff",
     "message": "Le jeu s'ouvre désormais dans le navigateur par défaut au lieu d'une fenêtre Edge dédiée."
-  },
-  {
-    "version": "3635db36",
-    "message": "Suppression du profil navigateur dédié au lanceur, régénérable, du suivi Git."
   }
 ];
