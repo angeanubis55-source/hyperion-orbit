@@ -249,6 +249,99 @@ function getHangarActiveFit(h) {
   return h?.fits?.[cfg] || h?.fit || null;
 }
 
+function normalizeDroneFitValue(value, slots) {
+  const size = Math.max(0, Math.floor(Number(slots) || 0));
+  return {
+    equipment: normalizeArraySize(value?.equipment, size, null),
+    ability: value?.ability || null,
+  };
+}
+
+/**
+ * Fit d'un drone pour un hangar + config donnés.
+ * Fallback legacy (drone.fits / drone.fit) pour les vieilles sauvegardes.
+ */
+export function getDroneFit(drone, hangarId, configNo) {
+  const cfg = String(Number(configNo) === 2 ? 2 : 1);
+  const hid = hangarId != null ? String(hangarId) : null;
+  if (hid && drone?.fitsByHangar?.[hid]?.[cfg]) return drone.fitsByHangar[hid][cfg];
+  if (hid && drone?.fitsByHangar?.[hid]?.[cfg] === undefined && drone?.fitsByHangar?.[hid]) {
+    return drone.fitsByHangar[hid][cfg] || { equipment: [], ability: null };
+  }
+  // legacy global par config
+  if (drone?.fits?.[cfg]) return drone.fits[cfg];
+  if (drone?.fit) return drone.fit;
+  return { equipment: [], ability: null };
+}
+
+function ensureDroneFitsByHangar(u) {
+  const hangars = Array.isArray(u.hangars) ? u.hangars.filter(Boolean) : [];
+  if (!u.drones || typeof u.drones !== "object") u.drones = {};
+  if (!Array.isArray(u.drones.items)) u.drones.items = [];
+  if (!hangars.length) return;
+  const activeHangar = u.hangars.find((h) => h?.active) || hangars[0] || null;
+  const activeCfg = String(Number(activeHangar?.activeConfig) === 2 ? 2 : 1);
+  for (const drone of u.drones.items) {
+    const definition = DRONE_TYPES[drone?.type];
+    if (!definition) continue;
+    const slots = Number(definition.slots) || 0;
+    const legacyFits = drone.fits && typeof drone.fits === "object" ? drone.fits : {};
+    const legacyFit = drone.fit && typeof drone.fit === "object" ? drone.fit : {};
+    if (!drone.fitsByHangar || typeof drone.fitsByHangar !== "object" || Array.isArray(drone.fitsByHangar)) {
+      drone.fitsByHangar = {};
+    }
+    const hasAnyHangarKey = Object.keys(drone.fitsByHangar).some((k) => hangars.some((h) => String(h?.id) === String(k)));
+    if (!hasAnyHangarKey) {
+      // Première migration : l'équipement existant reste sur le hangar actif,
+      // les autres hangars partent vides (exclusivité par vaisseau).
+      for (const h of hangars) {
+        const hid = String(h.id);
+        const isActive = activeHangar && String(h.id) === String(activeHangar.id);
+        if (isActive) {
+          drone.fitsByHangar[hid] = {
+            "1": normalizeDroneFitValue(legacyFits["1"] || (activeCfg === "1" ? legacyFit : {}), slots),
+            "2": normalizeDroneFitValue(legacyFits["2"] || (activeCfg === "2" ? legacyFit : {}), slots),
+          };
+        } else {
+          drone.fitsByHangar[hid] = {
+            "1": normalizeDroneFitValue({}, slots),
+            "2": normalizeDroneFitValue({}, slots),
+          };
+        }
+      }
+    } else {
+      for (const h of hangars) {
+        const hid = String(h.id);
+        const cur = drone.fitsByHangar[hid];
+        if (!cur || typeof cur !== "object") {
+          drone.fitsByHangar[hid] = {
+            "1": normalizeDroneFitValue({}, slots),
+            "2": normalizeDroneFitValue({}, slots),
+          };
+        } else {
+          drone.fitsByHangar[hid] = {
+            "1": normalizeDroneFitValue(cur["1"], slots),
+            "2": normalizeDroneFitValue(cur["2"], slots),
+          };
+        }
+      }
+      for (const key of Object.keys(drone.fitsByHangar)) {
+        if (!hangars.some((h) => String(h?.id) === String(key))) delete drone.fitsByHangar[key];
+      }
+    }
+    if (activeHangar) {
+      const hid = String(activeHangar.id);
+      const perHangar = drone.fitsByHangar[hid] || {};
+      perHangar["1"] = normalizeDroneFitValue(perHangar["1"], slots);
+      perHangar["2"] = normalizeDroneFitValue(perHangar["2"], slots);
+      drone.fitsByHangar[hid] = perHangar;
+      // Miroir legacy : le code qui lit drone.fit / drone.fits voit le hangar actif.
+      drone.fits = perHangar;
+      drone.fit = perHangar[activeCfg] || perHangar["1"];
+    }
+  }
+}
+
 function ensureUserShape(u) {
   if (!u || typeof u !== "object") return null;
 
@@ -333,11 +426,15 @@ function ensureUserShape(u) {
       equipment: normalizeArraySize(value?.equipment, definition.slots),
       ability: value?.ability || null,
     });
+    const prevFitsByHangar = drone.fitsByHangar && typeof drone.fitsByHangar === "object" && !Array.isArray(drone.fitsByHangar)
+      ? drone.fitsByHangar
+      : null;
     return {
       id: String(drone.id || `drone_${u.id}_${index}`), type: drone.type, exp,
       level: getDroneLevel(exp),
       fits: { "1": normalizedFit(fits["1"] || fit), "2": normalizedFit(fits["2"] || {}) },
       fit: normalizedFit(fits[String(Number(u.hangars?.find(h => h?.active)?.activeConfig) === 2 ? 2 : 1)] || fit),
+      ...(prevFitsByHangar ? { fitsByHangar: prevFitsByHangar } : {}),
     };
   });
   if (!Array.isArray(u.drones.formations)) u.drones.formations = [];
@@ -484,6 +581,9 @@ function ensureUserShape(u) {
     // compat : h.fit pointe toujours vers la config active
     h.fit = h.fits[String(h.activeConfig)];
   }
+
+  // ✅ Drones : équipement exclusif par hangar (migration legacy -> actif uniquement)
+  ensureDroneFitsByHangar(u);
 
   return u;
 }
@@ -1014,17 +1114,27 @@ export function setCurrentUserDroneFormation(formationId) {
   return { ok: true, user: u, formation };
 }
 
-export function saveCurrentUserDroneFit(droneId, fit, configNo = null) {
+export function saveCurrentUserDroneFit(droneId, fit, configNo = null, hangarId = null) {
   const u = getCurrentUserFull();
   const drone = u?.drones?.items?.find(entry => entry.id === droneId);
   const definition = drone ? DRONE_TYPES[drone.type] : null;
   if (!u || !drone || !definition) return { ok: false, error: "Drone introuvable." };
   const equipment = Array.from({ length: definition.slots }, (_, index) => fit?.equipment?.[index] || null);
   const activeHangar = getActiveHangar(u);
-  const cfg = String(Number(configNo ?? activeHangar?.activeConfig) === 2 ? 2 : 1);
-  drone.fits ||= {};
-  drone.fits[cfg] = { equipment, ability: fit?.ability || null };
-  drone.fit = drone.fits[cfg];
+  const targetHangarId = hangarId != null ? String(hangarId) : String(activeHangar?.id || "");
+  if (!targetHangarId) return { ok: false, error: "Hangar introuvable." };
+  const hangarForCfg = (u.hangars || []).find((h) => String(h?.id) === targetHangarId) || activeHangar;
+  const cfg = String(Number(configNo ?? hangarForCfg?.activeConfig) === 2 ? 2 : 1);
+  const value = { equipment, ability: fit?.ability || null };
+  drone.fitsByHangar ||= {};
+  drone.fitsByHangar[targetHangarId] ||= {};
+  drone.fitsByHangar[targetHangarId][cfg] = value;
+  // Miroir legacy si c'est le hangar actif (compat avec l'ancien code)
+  if (activeHangar && String(activeHangar.id) === targetHangarId) {
+    drone.fits ||= {};
+    drone.fits[cfg] = value;
+    drone.fit = value;
+  }
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u, drone };
@@ -1040,10 +1150,19 @@ export function saveCurrentUserDroneFits(fits) {
     const definition = drone ? DRONE_TYPES[drone.type] : null;
     if (!drone || !definition) continue;
     const equipment = Array.from({ length: definition.slots }, (_, index) => entry.fit?.equipment?.[index] || null);
-    const cfg = String(Number(entry.configNo ?? activeHangar?.activeConfig) === 2 ? 2 : 1);
-    drone.fits ||= {};
-    drone.fits[cfg] = { equipment, ability: entry.fit?.ability || null };
-    drone.fit = drone.fits[cfg];
+    const targetHangarId = entry.hangarId != null ? String(entry.hangarId) : String(activeHangar?.id || "");
+    if (!targetHangarId) continue;
+    const hangarForCfg = (u.hangars || []).find((h) => String(h?.id) === targetHangarId) || activeHangar;
+    const cfg = String(Number(entry.configNo ?? hangarForCfg?.activeConfig) === 2 ? 2 : 1);
+    const value = { equipment, ability: entry.fit?.ability || null };
+    drone.fitsByHangar ||= {};
+    drone.fitsByHangar[targetHangarId] ||= {};
+    drone.fitsByHangar[targetHangarId][cfg] = value;
+    if (activeHangar && String(activeHangar.id) === targetHangarId) {
+      drone.fits ||= {};
+      drone.fits[cfg] = value;
+      drone.fit = value;
+    }
     applied++;
   }
   ensureUserShape(u);

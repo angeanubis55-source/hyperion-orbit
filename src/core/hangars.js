@@ -46,16 +46,35 @@ const fit =
 
   // Les équipements des drones participent aux statistiques du vaisseau.
   // Chaque niveau après le premier améliore de 5 % uniquement l'objet porté.
+  // ✅ Exclusif par hangar : on lit le fit du drone pour CE hangar + CETTE config.
   const drones = user?.drones?.items || [];
-  const designId = (drone) => String(typeof drone?.fit?.ability === "string"
-    ? drone.fit.ability
-    : drone?.fit?.ability?.id || drone?.fit?.ability?.name || "").toLowerCase();
+  const hangarId = hangar?.id != null ? String(hangar.id) : null;
+  const droneFitForHangar = (drone) => {
+    if (hangarId && drone?.fitsByHangar?.[hangarId]?.[activeConfig]) return drone.fitsByHangar[hangarId][activeConfig];
+    if (drone?.fits?.[activeConfig]) {
+      // Legacy : si fitsByHangar absent, fits = global. Mais si fitsByHangar existe
+      // pour d'autres hangars, ne pas retomber sur le global (exclusivité).
+      const hasPerHangar = drone?.fitsByHangar && typeof drone.fitsByHangar === "object" && Object.keys(drone.fitsByHangar).length > 0;
+      if (!hasPerHangar) return drone.fits[activeConfig];
+      // Si le hangar courant n'a pas d'entrée, c'est vide (pas le fit d'un autre vaisseau).
+      if (hangarId) return { equipment: [], ability: null };
+      return drone.fits[activeConfig];
+    }
+    return drone?.fit || { equipment: [], ability: null };
+  };
+  const designId = (drone) => {
+    const fitForHangar = droneFitForHangar(drone);
+    return String(typeof fitForHangar?.ability === "string"
+      ? fitForHangar.ability
+      : fitForHangar?.ability?.id || fitForHangar?.ability?.name || "").toLowerCase();
+  };
   for (const drone of drones) {
+    const fitForHangar = droneFitForHangar(drone);
     const levelMultiplier = 1 + Math.max(0, Math.min(5, Number(drone?.level || 1) - 1)) * 0.05;
     const design = designId(drone);
     const laserDesignMultiplier = design.includes("havoc") || design.includes("havok") ? 1.1 : design.includes("spartan") ? 1.01 : 1;
     const shieldDesignMultiplier = design.includes("hercules") ? 1.15 : design.includes("spartan") ? 1.01 : 1;
-    for (const itemId of drone?.fit?.equipment || []) {
+    for (const itemId of fitForHangar?.equipment || []) {
       const item = itemId ? findCatalogItem(itemId) : null;
       if (item?.module?.type === "laser") baseDamage += Number(item.module.damage || 0) * levelMultiplier * laserDesignMultiplier;
       if (item?.module?.type === "shield") baseShield += Number(item.module.bonusShield || 0) * levelMultiplier * shieldDesignMultiplier;

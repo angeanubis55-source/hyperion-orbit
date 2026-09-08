@@ -22,6 +22,7 @@ import {
   buyCurrentUserDroneFormation,
   setCurrentUserDroneFormation,
   saveCurrentUserDroneFits,
+  getDroneFit,
 } from "../src/core/account.js";
 
 import { measureGameTask } from "../src/core/performanceTimings.js";
@@ -780,7 +781,12 @@ function buildInventorySections(u) {
   }));
 
   const storedDesigns = Array.isArray(u?.drones?.designs) ? u.drones.designs : [];
-  const equippedDesigns = (u?.drones?.items || []).map(drone => drone?.fit?.ability).filter(Boolean);
+  const equippedDesigns = (u?.drones?.items || []).flatMap(drone => {
+    if (drone?.fitsByHangar && typeof drone.fitsByHangar === "object" && !Array.isArray(drone.fitsByHangar)) {
+      return Object.values(drone.fitsByHangar).flatMap(perHangar => [perHangar?.["1"]?.ability, perHangar?.["2"]?.ability]);
+    }
+    return [drone?.fits?.["1"]?.ability, drone?.fits?.["2"]?.ability, drone?.fit?.ability];
+  }).filter(Boolean);
   const designs = [...storedDesigns, ...equippedDesigns].map((design, index) => {
     const value = typeof design === "string" ? { id: design, name: design } : (design || {});
     return {
@@ -2423,11 +2429,12 @@ function buildFitWindow() {
         const fits = [];
         for (const [droneId, slots] of grouped) {
           const drone = fresh.drones?.items?.find((entry) => entry.id === droneId);
-          if (!drone || !Array.isArray(drone.fit?.equipment)) continue;
-          const equipment = [...drone.fit.equipment];
+          const baseFit = drone ? droneFitForState(drone) : null;
+          if (!drone || !Array.isArray(baseFit?.equipment)) continue;
+          const equipment = [...baseFit.equipment];
           for (const slot of slots) if (equipment[slot] != null) equipment[slot] = null;
-          if (equipment.every((value, index) => value === drone.fit.equipment[index])) continue;
-          fits.push({ droneId, fit: { ...drone.fit, equipment }, configNo: fitState.configNo });
+          if (equipment.every((value, index) => value === baseFit.equipment[index])) continue;
+          fits.push({ droneId, fit: { ...baseFit, equipment }, configNo: fitState.configNo, hangarId: fitState.hangarId });
         }
         if (!fits.length) return;
         const saved = saveCurrentUserDroneFits(fits);
@@ -2977,6 +2984,18 @@ let fitState = {
   droneId: null,
 };
 
+// ✅ Drones exclusifs par hangar : lit le fit du drone pour le hangar + config en cours d'édition.
+function droneFitForState(drone) {
+  try {
+    if (fitState?.hangarId != null && typeof getDroneFit === "function") {
+      const f = getDroneFit(drone, fitState.hangarId, fitState.configNo);
+      if (f) return f;
+    }
+  } catch {}
+  const cfgKey = String(Number(fitState?.configNo) === 2 ? 2 : 1);
+  return drone?.fits?.[cfgKey] || drone?.fit || { equipment: [], ability: null };
+}
+
 function setFitSection(section = "ship") {
   fitState.section = section === "drones" ? "drones" : "ship";
   document.querySelectorAll("#fitCard [data-fit-section]").forEach(button => button.classList.toggle("active", button.dataset.fitSection === fitState.section));
@@ -3005,13 +3024,14 @@ function renderDroneEquipment(userOverride) {
   root.innerHTML = `<div class="droneCards">${drones.map((drone,index)=>{
     const type=DRONE_TYPES[drone.type]; const next=DRONE_LEVEL_XP[drone.level]??DRONE_LEVEL_XP.at(-1);
     const pct=drone.level>=DRONE_MAX_LEVEL?100:Math.min(100,Math.floor(drone.exp/next*100));
-    const slots=drone.fit.equipment.map((id,slotIndex)=>{
+    const fitForHangar=droneFitForState(drone);
+    const slots=(fitForHangar?.equipment || []).map((id,slotIndex)=>{
       const item=id?findCatalogItem(id):null;
       const selKey=`${drone.id}#${slotIndex}`;
       return `<button class="droneFitSlot${item?" filled":""}${fitState.selectedDroneSlots.has(selKey)?" selected":""}" data-drone-id="${drone.id}" data-drone-slot="${slotIndex}" data-item-id="${item?.id ?? ""}" title="${escapeHtml(item?.name||"Dépose un laser ou un bouclier")}">${item?`<img src="${iconForItem(item)}" alt="">`:`<span>+</span>`}</button>`;
     }).join("");
     const xpText=drone.level>=DRONE_MAX_LEVEL?"Niveau maximal":`${formatNumber(Math.floor(drone.exp))} XP / ${formatNumber(next)} XP`;
-    return `<article class="droneEquipmentCard"><img class="droneCardSprite" src="${getDroneSpritePath(drone,29)}" alt=""><div class="droneCardIdentity"><strong>${type.name} ${index+1}</strong><span>Niveau ${drone.level} · ${xpText}</span></div><div class="droneCardAbility"><label>DESIGN</label><button class="droneDesignSlot" title="${drone.fit.ability?escapeHtml(drone.fit.ability):"Design vide"}">${drone.fit.ability?escapeHtml(drone.fit.ability):"+"}</button></div><div class="droneCardSlots"><label>ÉQUIPEMENT</label><div>${slots}</div></div>${drone.level>=DRONE_MAX_LEVEL?"":`<div class="droneXp"><i style="width:${pct}%"></i></div>`}</article>`;
+    return `<article class="droneEquipmentCard"><img class="droneCardSprite" src="${getDroneSpritePath(drone,29)}" alt=""><div class="droneCardIdentity"><strong>${type.name} ${index+1}</strong><span>Niveau ${drone.level} · ${xpText}</span></div><div class="droneCardAbility"><label>DESIGN</label><button class="droneDesignSlot" title="${fitForHangar?.ability?escapeHtml(fitForHangar.ability):"Design vide"}">${fitForHangar?.ability?escapeHtml(fitForHangar.ability):"+"}</button></div><div class="droneCardSlots"><label>ÉQUIPEMENT</label><div>${slots}</div></div>${drone.level>=DRONE_MAX_LEVEL?"":`<div class="droneXp"><i style="width:${pct}%"></i></div>`}</article>`;
   }).join("")}</div>`;
   root.querySelectorAll("[data-drone-slot]").forEach(slot=>{
     const itemId=slot.dataset.itemId;
@@ -3048,9 +3068,11 @@ function renderDroneEquipment(userOverride) {
         const target=fresh.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);
         const source=fresh.drones?.items?.find(entry=>entry.id===srcDrone.droneId);
         if(!target)return;
-        const equipment=[...target.fit.equipment];equipment[Number(slot.dataset.droneSlot)]=droppedId;
-        const fits=[{droneId:target.id,fit:{...target.fit,equipment},configNo:fitState.configNo}];
-        if(source&&source.id!==target.id&&source.fit?.equipment[srcDrone.slot]===droppedId){const srcEq=[...source.fit.equipment];srcEq[srcDrone.slot]=null;fits.push({droneId:source.id,fit:{...source.fit,equipment:srcEq},configNo:fitState.configNo});}
+        const targetFit=droneFitForState(target);
+        const equipment=[...(targetFit?.equipment || [])];equipment[Number(slot.dataset.droneSlot)]=droppedId;
+        const fits=[{droneId:target.id,fit:{...targetFit,equipment},configNo:fitState.configNo,hangarId:fitState.hangarId}];
+        const sourceFit=source?droneFitForState(source):null;
+        if(source&&source.id!==target.id&&sourceFit?.equipment?.[srcDrone.slot]===droppedId){const srcEq=[...(sourceFit.equipment || [])];srcEq[srcDrone.slot]=null;fits.push({droneId:source.id,fit:{...sourceFit,equipment:srcEq},configNo:fitState.configNo,hangarId:fitState.hangarId});}
         const saved=saveCurrentUserDroneFits(fits);if(!saved.ok)return showFitError(saved.error);
         user=saved.user;clearFitSelection();showFitError("");
         lastAccountUiSignature=accountUiSignature(user);
@@ -3061,9 +3083,10 @@ function renderDroneEquipment(userOverride) {
       if((computeUsage(fitState.draft)[droppedId]||0)>=ownedCount(user,droppedId))return showFitError("Tous les exemplaires sont déjà équipés.");
       const fresh=getCurrentUserFull();if(!fresh)return;
       const drone=fresh.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);if(!drone)return;
-      if(drone.fit?.equipment[Number(slot.dataset.droneSlot)])return showFitError("Emplacement occupé.");
-      const equipment=[...drone.fit.equipment];equipment[Number(slot.dataset.droneSlot)]=droppedId;
-      const saved=saveCurrentUserDroneFits([{droneId:drone.id,fit:{...drone.fit,equipment},configNo:fitState.configNo}]);if(!saved.ok)return showFitError(saved.error);
+      const droneFit=droneFitForState(drone);
+      if(droneFit?.equipment?.[Number(slot.dataset.droneSlot)])return showFitError("Emplacement occupé.");
+      const equipment=[...(droneFit?.equipment || [])];equipment[Number(slot.dataset.droneSlot)]=droppedId;
+      const saved=saveCurrentUserDroneFits([{droneId:drone.id,fit:{...droneFit,equipment},configNo:fitState.configNo,hangarId:fitState.hangarId}]);if(!saved.ok)return showFitError(saved.error);
       user=saved.user;clearFitSelection();showFitError("");
       lastAccountUiSignature=accountUiSignature(user);
       renderDroneEquipment(user);renderInventoryPalette();
@@ -3164,15 +3187,27 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
     const fresh = getCurrentUserFull();
     if (!fresh) return 0;
     const fits = [];
+    // Suit les équipements déjà attribués dans cette boucle pour ce hangar/config.
+    const pendingByDrone = new Map();
+    const equipmentFor = (drone) => {
+      if (pendingByDrone.has(drone.id)) return pendingByDrone.get(drone.id);
+      const base = droneFitForState(drone);
+      return [...(base?.equipment || [])];
+    };
     for (const itemId of selected) {
       const moduleType = findCatalogItem(itemId)?.module?.type;
       if (moduleType !== "laser" && moduleType !== "shield") continue;
-      const drone = fresh.drones?.items?.find(entry => (entry.fit?.equipment || []).some(value => !value));
+      const drone = fresh.drones?.items?.find(entry => (equipmentFor(entry) || []).some(value => !value));
       if (!drone) break;
-      const equipment = [...drone.fit.equipment];
+      const baseFit = droneFitForState(drone);
+      const equipment = equipmentFor(drone);
       equipment[equipment.findIndex(value => !value)] = itemId;
-      drone.fit = { ...drone.fit, equipment };
-      fits.push({ droneId: drone.id, fit: drone.fit, configNo: fitState.configNo });
+      pendingByDrone.set(drone.id, equipment);
+      fits.push({ droneId: drone.id, fit: { ...baseFit, equipment: [...equipment] }, configNo: fitState.configNo, hangarId: fitState.hangarId });
+      // Met à jour l'objet frais pour que la prochaine itération voie l'emplacement occupé.
+      const idx = fits.length - 1;
+      // (pendingByDrone fait foi, pas besoin de muter fresh ici)
+      void idx;
     }
     const saved = saveCurrentUserDroneFits(fits);
     if (!saved.ok) return showFitError(saved.error), 0;
@@ -3238,8 +3273,9 @@ function showFitError(text) {
 
 function computeUsage(draft) {
   const map = Object.create(null);
-  const all = [...draft.lasers, ...draft.gens, ...draft.extras, ...(draft.shipMods || [])];
-  for (const drone of user?.drones?.items || []) all.push(...(drone.fit?.equipment || []));
+  const all = [...(draft?.lasers || []), ...(draft?.gens || []), ...(draft?.extras || []), ...(draft?.shipMods || [])];
+  // ✅ Comptage exclusif au hangar en cours d'édition (chaque vaisseau a ses propres drones).
+  for (const drone of user?.drones?.items || []) all.push(...(droneFitForState(drone)?.equipment || []));
   for (const id of all) {
     if (!id) continue;
     map[id] = (map[id] || 0) + 1;
@@ -3327,7 +3363,7 @@ function resetAllSlots() {
     if (!fresh) return;
     const fits = [];
     for (const drone of fresh.drones?.items || []) {
-      fits.push({ droneId: drone.id, fit: { equipment: [], ability: drone.fit?.ability || null }, configNo: fitState.configNo });
+      fits.push({ droneId: drone.id, fit: { equipment: [], ability: droneFitForState(drone)?.ability || null }, configNo: fitState.configNo, hangarId: fitState.hangarId });
     }
     const saved = saveCurrentUserDroneFits(fits);
     if (!saved.ok) return showFitError(saved.error);
@@ -4073,6 +4109,7 @@ function setFitModalConfig(configNo) {
   renderSlots();
   renderInventoryPalette();
   renderShipModulesList();
+  if (fitState.section === "drones") renderDroneEquipment(user);
 }
 
 function openFitModal(hangarId) {
