@@ -80,7 +80,7 @@ import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorR
 import { formatInteger } from "./numberFormat.js";
 import { escapeHtml } from "./dom.js";
 import { appendGameLog, readGameLogs } from "./gameLogStore.js";
-import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, resolveBaseCenter } from "./factions.js";
+import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, normalizeFactionId, resolveBaseCenter } from "./factions.js";
 import {
   QUEST_DEFINITIONS,
   acceptQuest,
@@ -901,9 +901,32 @@ const DEFAULT_KEYBINDS = {
   toggleDock: "Tab",
 };
 
+// Volumes par défaut réglés par le joueur (ne pas remettre à 50).
+const DEFAULT_SFX_VOLUMES = Object.freeze({
+  pShotX1: 30, pShotX2: 30, pShotX3: 30, pShotX4: 30, pShotX6: 30,
+  sfx_shot_roquettes: 30,
+  sfx_shot_lance_roquettes: 25, rocketLoad: 25, rocketsLoadStart: 25, rocketsLoaded: 25,
+  pShotSab: 30,
+  pulseIEM: 20, ishShield: 20,
+  deathPlayer: 30, deathPlayer2: 30,
+  respawnPlayer: 25,
+  radiationLoop: 25,
+  repairStart: 20, repairLoop: 20,
+  swReady: 20, swJump: 20, swDone: 20, swDeny: 20,
+  shipMove: 25,
+  npcDeath: 25,
+  collect: 30,
+  laserHit1: 10, laserHit2: 10, laserHit3: 10,
+  selectNew: 15, selectAgain: 15,
+  outOfRange: 30,
+  escortX1: 5, escortX2: 5, escortX3: 5, escortX4: 5, escortX6: 5, escortSab: 5,
+});
+
 const DEFAULT_GAME_SETTINGS = {
   sound: true,
-  soundVolume: 50,
+  soundVolume: 5,
+  music: true,
+  musicVolume: 1,
   background: true,
   stars: true,
   textures: true,
@@ -914,7 +937,7 @@ const DEFAULT_GAME_SETTINGS = {
   moveMarker: true,
   keybinds: { ...DEFAULT_KEYBINDS },
   // Volumes individuels (0..100) et muets par son, persistés comme le reste.
-  sfxVolumes: Object.fromEntries(SFX_SOUND_NAMES.map((name) => [name, 50])),
+  sfxVolumes: { ...DEFAULT_SFX_VOLUMES },
   sfxMuted: {},
   sfxDefaultsVersion: 1,
 };
@@ -948,13 +971,13 @@ function normalizeSfxVolumes(raw) {
   const normalized = {};
   const source = raw && typeof raw === "object" ? raw : {};
   for (const name of SFX_SOUND_NAMES) {
-    normalized[name] = clamp(Math.round(Number(source[name] ?? 50) || 0), 0, 100);
+    normalized[name] = clamp(Math.round(Number(source[name] ?? DEFAULT_SFX_VOLUMES[name] ?? 50) || 0), 0, 100);
   }
   // Migration : avant, le défaut était 100 partout. Si tout est encore à 100,
-  // ce sont des valeurs jamais touchées → on part à 50 pour le premier démarrage.
+  // ce sont des valeurs jamais touchées → on part sur les volumes par défaut.
   const hadKeys = SFX_SOUND_NAMES.some((name) => source[name] != null);
   if (hadKeys && SFX_SOUND_NAMES.every((name) => normalized[name] === 100)) {
-    for (const name of SFX_SOUND_NAMES) normalized[name] = 50;
+    for (const name of SFX_SOUND_NAMES) normalized[name] = DEFAULT_SFX_VOLUMES[name] ?? 50;
   }
   return normalized;
 }
@@ -995,6 +1018,16 @@ function loadGameSettings() {
       settings.sound = false;
       settings.soundVolume = 0;
     }
+    // Musique d'ambiance par firme : volume volontairement bas (10 par défaut).
+    // Les anciens comptes sans réglage héritent de 10, pas de 50.
+    if (parsed?.musicVolume == null && parsed?.music == null) {
+      settings.music = true;
+      settings.musicVolume = 1;
+    } else {
+      settings.musicVolume = clamp(Math.round(Number(settings.musicVolume ?? 1) || 0), 0, 100);
+      settings.music = parsed?.music == null ? settings.musicVolume > 0 : !!settings.music;
+      if (settings.musicVolume === 0) settings.music = false;
+    }
     // Migration de l'ancien réglage séparé "Sons des escortes" vers la
     // ligne du tableau (clés escortX*). Appliquée une seule fois.
     try {
@@ -1013,10 +1046,10 @@ function loadGameSettings() {
     } catch {}
     delete settings.escortSound;
     delete settings.escortSoundVolume;
-    // Migration unique : les volumes par son partent à 50 (ni 100, ni les
-    // valeurs héritées d'avant). Les réglages futurs sont ensuite conservés.
+    // Migration unique : les volumes par son partent sur les défauts réglés
+    // (ni 100, ni les valeurs héritées d'avant). Les réglages futurs sont ensuite conservés.
     if (Number(parsed?.sfxDefaultsVersion || 0) < 1) {
-      settings.sfxVolumes = Object.fromEntries(SFX_SOUND_NAMES.map((name) => [name, 50]));
+      settings.sfxVolumes = { ...DEFAULT_SFX_VOLUMES };
       settings.sfxMuted = {};
       settings.sfxDefaultsVersion = 1;
       try {
@@ -1051,7 +1084,7 @@ function setGameSetting(key, value) {
   GAME_SETTINGS[key] = !!value;
   if (key === "sound") {
     GAME_SETTINGS.soundVolume = GAME_SETTINGS.sound
-      ? Math.max(1, Number(GAME_SETTINGS.soundVolume) || 50)
+      ? Math.max(1, Number(GAME_SETTINGS.soundVolume) || DEFAULT_GAME_SETTINGS.soundVolume)
       : 0;
     SFX?.setMasterVolume?.(GAME_SETTINGS.soundVolume / 100);
   }
@@ -1059,6 +1092,9 @@ function setGameSetting(key, value) {
   renderSettingsWindow();
 
   if (key === "sound") {
+    try {
+      if (typeof updateMusicPlayback === "function") updateMusicPlayback();
+    } catch {}
     showToast(GAME_SETTINGS.sound ? "Son activé" : "Son coupé", 1.1);
   }
 
@@ -1089,13 +1125,17 @@ function setSoundVolume(value) {
   saveGameSettings();
   SFX?.setMasterVolume?.(GAME_SETTINGS.soundVolume / 100);
   renderSettingsWindow();
+  // Les sons généraux contrôlent absolument tout, musique incluse.
+  try {
+    if (typeof updateMusicPlayback === "function") updateMusicPlayback();
+  } catch {}
 }
 
 // Applique les volumes / muets individuels au moteur audio.
 function applySfxSettings() {
   if (!SFX) return;
   for (const name of SFX_SOUND_NAMES) {
-    SFX.setSoundVolume?.(name, (GAME_SETTINGS.sfxVolumes?.[name] ?? 50) / 100);
+    SFX.setSoundVolume?.(name, (GAME_SETTINGS.sfxVolumes?.[name] ?? DEFAULT_SFX_VOLUMES[name] ?? 50) / 100);
     SFX.setSoundMuted?.(name, GAME_SETTINGS.sfxMuted?.[name] === true);
   }
 }
@@ -1127,12 +1167,15 @@ function setSfxMuted(rowId, muted) {
 }
 
 function resetSfxVolumes() {
-  GAME_SETTINGS.sfxVolumes = Object.fromEntries(SFX_SOUND_NAMES.map((name) => [name, 50]));
+  GAME_SETTINGS.sfxVolumes = { ...DEFAULT_SFX_VOLUMES };
   GAME_SETTINGS.sfxMuted = {};
+  GAME_SETTINGS.music = true;
+  GAME_SETTINGS.musicVolume = 1;
   saveGameSettings();
   applySfxSettings();
   renderSfxRows();
   renderSettingsWindow();
+  updateMusicPlayback();
   showToast("Sons réinitialisés", 1.2);
 }
 
@@ -1315,7 +1358,7 @@ function renderSfxRows() {
   for (const row of SFX_ROWS) {
     const el = list.querySelector(`[data-sfx-row="${CSS.escape(row.id)}"]`);
     if (!el) continue;
-    const volumes = row.members.map((name) => GAME_SETTINGS.sfxVolumes?.[name] ?? 50);
+    const volumes = row.members.map((name) => GAME_SETTINGS.sfxVolumes?.[name] ?? DEFAULT_SFX_VOLUMES[name] ?? 50);
     const muted = row.members.map((name) => GAME_SETTINGS.sfxMuted?.[name] === true);
     const allMuted = muted.every(Boolean);
     const allEqual = volumes.every((v) => v === volumes[0]);
@@ -1331,6 +1374,30 @@ function renderSfxRows() {
     if (value) value.textContent = allMuted ? "Coupé" : allEqual ? `${shown} %` : `Mixte ${shown} %`;
     el.classList.toggle("muted", allMuted);
   }
+}
+
+// Ligne musique (même style que les sons du jeu, dans sa propre catégorie).
+// Les sons généraux contrôlent absolument tout : si coupés, la ligne
+// musique s'affiche coupée aussi.
+function renderMusicRow() {
+  const row = document.querySelector('[data-music-row="ambiance"]');
+  const box = document.getElementById("optMusic");
+  const slider = document.getElementById("optMusicVolume");
+  const value = document.getElementById("optMusicVolumeValue");
+  const shown = clamp(Math.round(Number(GAME_SETTINGS.musicVolume ?? 1) || 0), 0, 100);
+  const musicMuted = !GAME_SETTINGS.music || shown === 0;
+  const generalMuted = !GAME_SETTINGS.sound;
+  const effectivelyMuted = musicMuted || generalMuted;
+  if (box) box.checked = !musicMuted;
+  if (slider) {
+    slider.value = String(shown);
+    slider.disabled = effectivelyMuted;
+  }
+  if (value) {
+    if (generalMuted && !musicMuted) value.textContent = "Coupé (général)";
+    else value.textContent = effectivelyMuted ? "Coupé" : `${shown} %`;
+  }
+  row?.classList.toggle("muted", effectivelyMuted);
 }
 
 function updateHudKeyHints() {
@@ -1376,6 +1443,9 @@ function renderSettingsWindow() {
     "Sons généraux : activés",
     "Sons généraux : coupés"
   );
+  // Ligne musique (même style que les sons du jeu) : coupée si musique off
+  // OU si les sons généraux sont coupés (ils contrôlent absolument tout).
+  renderMusicRow();
 
   const background = document.getElementById("optBackground");
   const stars = document.getElementById("optStars");
@@ -1386,6 +1456,8 @@ function renderSettingsWindow() {
   const volumeValue = document.getElementById("optVolumeValue");
   if (volume) volume.value = String(GAME_SETTINGS.soundVolume);
   if (volumeValue) volumeValue.textContent = `${GAME_SETTINGS.soundVolume} %`;
+
+  renderMusicRow();
 
   const autoStart = document.getElementById("optAutoStart");
   if (autoStart) autoStart.checked = !!GAME_SETTINGS.autoStart;
@@ -1417,6 +1489,8 @@ function normalizeSettingsWindow() {
 function wireSettingsWindow() {
   const soundBtn = document.getElementById("optSound");
   const volume = document.getElementById("optVolume");
+  const musicBtn = document.getElementById("optMusic");
+  const musicVolume = document.getElementById("optMusicVolume");
   const bgBtn = document.getElementById("optBackground");
   const starsBtn = document.getElementById("optStars");
   const texBtn = document.getElementById("optTextures");
@@ -1441,6 +1515,14 @@ function wireSettingsWindow() {
 
   volume?.addEventListener("input", () => {
     setSoundVolume(volume.value);
+  });
+
+  musicBtn?.addEventListener("change", () => {
+    setMusicEnabled(musicBtn.checked);
+  });
+
+  musicVolume?.addEventListener("input", () => {
+    setMusicVolume(musicVolume.value);
   });
 
   bgBtn?.addEventListener("change", () => {
@@ -3602,6 +3684,154 @@ if (_SFX_PLAY) {
     if (!GAME_SETTINGS.sound) return null;
     return _SFX_PLAY(id, opts);
   };
+}
+
+// ============================================================
+// Musique d'ambiance par firme : FIRME -> GENERAL -> FIRME ...
+// ============================================================
+const MUSIC_TRACKS = Object.freeze({
+  mmo: "Son/Musique/MMO.mp3",
+  eic: "Son/Musique/EIC.mp3",
+  vru: "Son/Musique/VRU.mp3",
+  general: "Son/Musique/GENERAL.mp3",
+});
+
+const MUSIC_STATE = {
+  audio: null,
+  playlist: [],
+  index: 0,
+  faction: null,
+  started: false,
+};
+
+function getMusicFactionId() {
+  try {
+    const raw = (account?.user || getCurrentUserFull())?.faction;
+    return normalizeFactionId(raw);
+  } catch {
+    return "mmo";
+  }
+}
+
+function buildMusicPlaylist(factionId) {
+  const faction = normalizeFactionId(factionId);
+  const factionTrack = MUSIC_TRACKS[faction] || MUSIC_TRACKS.mmo;
+  return [factionTrack, MUSIC_TRACKS.general];
+}
+
+function applyMusicVolume() {
+  const el = MUSIC_STATE.audio;
+  if (!el) return;
+  const vol = clamp(Number(GAME_SETTINGS.musicVolume ?? 1) || 0, 0, 100) / 100;
+  try {
+    el.volume = vol;
+  } catch {}
+}
+
+function playMusicIndex() {
+  const el = MUSIC_STATE.audio;
+  if (!el) return;
+  const src = MUSIC_STATE.playlist[MUSIC_STATE.index % MUSIC_STATE.playlist.length];
+  if (!src) return;
+  try {
+    if (el.getAttribute("src") !== src) el.src = src;
+    applyMusicVolume();
+    const attempt = el.play();
+    if (attempt && typeof attempt.catch === "function") attempt.catch(() => {});
+  } catch {}
+}
+
+function refreshMusicPlaylistIfNeeded() {
+  const faction = getMusicFactionId();
+  if (MUSIC_STATE.faction !== faction) {
+    MUSIC_STATE.faction = faction;
+    MUSIC_STATE.playlist = buildMusicPlaylist(faction);
+    MUSIC_STATE.index = 0;
+    return true;
+  }
+  if (!MUSIC_STATE.playlist.length) {
+    MUSIC_STATE.playlist = buildMusicPlaylist(faction);
+    MUSIC_STATE.index = 0;
+    return true;
+  }
+  return false;
+}
+
+function ensureMusicElement() {
+  if (MUSIC_STATE.audio || typeof window === "undefined" || typeof Audio === "undefined") return MUSIC_STATE.audio;
+  const el = new Audio();
+  el.preload = "auto";
+  el.loop = false;
+  try {
+    el.volume = clamp(Number(GAME_SETTINGS.musicVolume ?? 1) || 0, 0, 100) / 100;
+  } catch {}
+  el.addEventListener("ended", () => {
+    if (!MUSIC_STATE.playlist.length) return;
+    MUSIC_STATE.index = (MUSIC_STATE.index + 1) % MUSIC_STATE.playlist.length;
+    playMusicIndex();
+  });
+  el.addEventListener("error", () => {
+    // Passe au morceau suivant pour ne jamais rester bloqué en silence.
+    window.setTimeout(() => {
+      if (!MUSIC_STATE.audio) return;
+      MUSIC_STATE.index = (MUSIC_STATE.index + 1) % Math.max(1, MUSIC_STATE.playlist.length);
+      if (GAME_SETTINGS.music && GAME_SETTINGS.sound) playMusicIndex();
+    }, 1500);
+  });
+  MUSIC_STATE.audio = el;
+  return el;
+}
+
+function updateMusicPlayback() {
+  const el = ensureMusicElement();
+  if (!el) return;
+  // La musique ne démarre qu'après le bouton DÉPART, jamais sur un simple clic ailleurs.
+  try {
+    if (typeof started !== "undefined" && !started) {
+      try { el.pause(); } catch {}
+      return;
+    }
+  } catch {}
+  const enabled = !!GAME_SETTINGS.music && !!GAME_SETTINGS.sound && (Number(GAME_SETTINGS.musicVolume ?? 0) > 0);
+  if (!enabled) {
+    try { el.pause(); } catch {}
+    return;
+  }
+  const switched = refreshMusicPlaylistIfNeeded();
+  applyMusicVolume();
+  try {
+    if (el.paused) playMusicIndex();
+    else if (switched) playMusicIndex();
+  } catch {}
+}
+
+function startFactionMusic() {
+  MUSIC_STATE.started = true;
+  refreshMusicPlaylistIfNeeded();
+  updateMusicPlayback();
+}
+
+function setMusicEnabled(enabled) {
+  GAME_SETTINGS.music = !!enabled;
+  if (GAME_SETTINGS.music && Number(GAME_SETTINGS.musicVolume ?? 0) <= 0) {
+    GAME_SETTINGS.musicVolume = 1;
+  }
+  if (!GAME_SETTINGS.music) {
+    // On garde le volume pour la réactivation.
+  }
+  saveGameSettings();
+  renderSettingsWindow();
+  updateMusicPlayback();
+  showToast(GAME_SETTINGS.music ? "Musique activée" : "Musique coupée", 1.1);
+}
+
+function setMusicVolume(value) {
+  GAME_SETTINGS.musicVolume = clamp(Math.round(Number(value) || 0), 0, 100);
+  // Remonter le slider réactive la musique, le mettre à 0 la coupe.
+  GAME_SETTINGS.music = GAME_SETTINGS.musicVolume > 0;
+  saveGameSettings();
+  renderSettingsWindow();
+  updateMusicPlayback();
 }
 
 // ============================================================
@@ -12811,6 +13041,9 @@ async function startGame() {
   }
 
   started = true;
+
+  // Musique lancée uniquement ici (clic DÉPART = geste utilisateur).
+  try { startFactionMusic(); } catch {}
 
   try {
     localStorage.setItem("orbit_game_open", String(Date.now()));

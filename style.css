@@ -3949,6 +3949,8 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #settingsWindow .settingsBody::-webkit-scrollbar,
 #settingsWindow .settingsPage::-webkit-scrollbar,
 #settingsWindow .settingsKeyColumns::-webkit-scrollbar{display:none}
+/* Catégorie musique : une seule ligne, jamais scrollable ni rognée */
+#settingsWindow #musicList{flex:0 0 auto;min-height:fit-content;overflow:visible}
 /* Barre de défilement fine et visible pour la liste des sons */
 #settingsWindow .sfxList{scrollbar-width:thin;scrollbar-color:rgba(124,240,255,.45) transparent}
 #settingsWindow .sfxList::-webkit-scrollbar{display:block;width:8px}
@@ -3961,6 +3963,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   #settingsWindow .settingsPage{overflow-y:auto}
   #settingsWindow .settingsPreferences{grid-template-columns:1fr}
   #settingsWindow .settingsKeyColumns{grid-template-columns:1fr;overflow-y:auto}
+  #settingsWindow .settingsSlotKeyColumns{grid-template-columns:1fr}
 }
 
 /* Profil : priorités finales pour la navigation et les nouveaux panneaux */
@@ -4369,6 +4372,9 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar [data-skill="repair"]{cursor:default !important}
 #settingsWindow .settingsKeyColumns{grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr) !important}
 #settingsWindow .settingsSlotKeys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px 8px}
+#settingsWindow .settingsSlotKeyColumns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 10px}
+#settingsWindow .settingsSlotKeyCol{min-width:0}
+#settingsWindow .settingsSlotKeyCol .settingsSlotKeys{grid-template-columns:repeat(2,minmax(0,1fr))}
 #settingsWindow .settingsSlotKeyGroup{min-width:0}
 #settingsWindow .settingsPreferences{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) !important}
 #settingsWindow .settingsCheck{height:34px !important;min-height:34px !important;align-items:center !important}
