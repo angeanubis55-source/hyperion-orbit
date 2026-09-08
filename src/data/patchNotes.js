@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "25566842",
+    "message": "ISH (bouclier 3s invincible, CD 10s, 30k) + SAB inverse (cible vers vaisseau, sprite Sab) + images ammo_sab"
+  },
+  {
     "version": "7ebac269",
     "message": "Version auto : notes et version pour caefeae6"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "1a3de825",
     "message": "Intégration d'un serveur HTTP dans le lanceur : l'exécutable est autonome, sans dépendance à Node.js."
-  },
-  {
-    "version": "0f67a4ff",
-    "message": "Le jeu s'ouvre désormais dans le navigateur par défaut au lieu d'une fenêtre Edge dédiée."
   }
 ];
