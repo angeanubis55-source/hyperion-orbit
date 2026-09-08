@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -8,26 +8,26 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const out = join(__dir, "..", "src", "data", "patchNotes.js");
 const limit = Number(process.env.PATCH_NOTES_LIMIT || "60");
 
-let lines;
-try {
-  lines = execSync(
-    "git log --no-merges --pretty=format:%h%x09%s HEAD",
-    { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }
-  ).trim().split("\n");
-} catch {
-  lines = [];
-}
+// Use the same history and exclusions as version-sync.js.
+// Keep the commit date so regeneration never changes a release's timestamp.
+const lines = execFileSync(
+  "git", ["log", "--first-parent", "--format=%h%x09%cI%x09%s", "HEAD"],
+  { cwd: join(__dir, ".."), encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }
+).trim().split(/\r?\n/);
 
-const entries = lines
+const changes = lines
   .filter(Boolean)
-  .slice(0, limit)
   .map((line) => {
-    const tab = line.indexOf("\t");
-    const version = tab > 0 ? line.slice(0, tab) : line;
-    const rawMessage = tab > 0 ? line.slice(tab + 1).trim() : "";
-    const message = PATCH_NOTES_OVERRIDES[version] || rawMessage;
-    return { version, message };
-  });
+    const [hash, date, ...subject] = line.split("\t");
+    return { hash, date, rawMessage: subject.join("\t").trim() };
+  })
+  .filter(({ rawMessage }) => !/^Version auto\s*:/i.test(rawMessage));
+
+const entries = changes.slice(0, limit).map(({ hash, date, rawMessage }, index) => ({
+  version: `0.${changes.length - index}`,
+  date,
+  message: PATCH_NOTES_OVERRIDES[hash] || rawMessage,
+}));
 
 const content =
   "// Généré automatiquement à chaque push. Ne pas modifier à la main.\n" +

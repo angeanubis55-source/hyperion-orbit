@@ -1051,9 +1051,12 @@ function renderPatchNotes() {
     list.innerHTML = "";
     return;
   }
+  const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short",
+  });
   list.innerHTML = notes.map((entry) =>
     `<div class="patchNoteCard">
-      <div class="patchNoteVersion">v.${escapeHtml(entry.version)}</div>
+      <div class="patchNoteVersion">ALPHA v.${escapeHtml(entry.version)} — <time datetime="${escapeHtml(entry.date)}">${escapeHtml(dateFormatter.format(new Date(entry.date)))}</time></div>
       <div class="patchNoteBody">${escapeHtml(entry.message)}</div>
     </div>`
   ).join("");
