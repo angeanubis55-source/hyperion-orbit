@@ -5,14 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Hyperion Orbit</title>
   <link rel="icon" type="image/png" href="assets/ui/Logo_mini.png" />
-  <script>
+    <script>
     document.documentElement.classList.add("orbitBooting");
-    try {
-      if (sessionStorage.getItem("orbit_assets_preloaded_v1") === "ready") {
-        document.documentElement.classList.add("orbitSessionReady");
-      }
-    } catch {}
-  </script>
+    // Fenêtre de départ à chaque refresh : pas de bypass session (la classe
+    // orbitSessionReady n'est plus posée, l'overlay reste visible avec DÉPART).
+    </script>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="profile-window.css" />
 </head>
@@ -164,8 +161,8 @@
           </div>
 
           <label class="settingsCheck settingsPrefStandalone" for="optAutoStart">
-            <input id="optAutoStart" type="checkbox" />
-            <span><b>Démarrage automatique</b></span>
+            <input id="optAutoStart" type="checkbox" disabled />
+            <span><b>Démarrage automatique (désactivée temporairement)</b></span>
           </label>
           <div class="settingsPageFooter">
             <button id="btnResetWindows" class="settingsResetBtn settingsResetWindowsBtn" type="button">Réinitialiser les fenêtres</button>

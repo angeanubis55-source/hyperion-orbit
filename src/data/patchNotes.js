@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "52fb2f60",
+    "message": "Version auto : notes et version pour a8d4b3d8"
+  },
+  {
     "version": "a8d4b3d8",
     "message": "Laser : notifs portee (combat commence/hors de portee), triple bip Out_Of_Range + reglage, message d'evasion"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "7cd1614f",
     "message": "Retrait des gros fichiers du suivi Git et mise à jour du fichier .gitignore."
-  },
-  {
-    "version": "6b555711",
-    "message": "Ajout de l'exécutable de test Alpha."
   }
 ];

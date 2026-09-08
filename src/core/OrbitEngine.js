@@ -1013,6 +1013,9 @@ function loadGameSettings() {
 }
 
 const GAME_SETTINGS = loadGameSettings();
+// Fenêtre de départ à chaque refresh : le démarrage auto est désactivé
+// temporairement (en mémoire seulement, la préférence sauvegardée est conservée).
+GAME_SETTINGS.autoStart = false;
 
 function saveGameSettings() {
   try {
@@ -1363,6 +1366,9 @@ function renderSettingsWindow() {
 
   const autoStart = document.getElementById("optAutoStart");
   if (autoStart) autoStart.checked = !!GAME_SETTINGS.autoStart;
+  // Démarrage auto neutralisé (fenêtre de départ à chaque refresh) :
+  // case décochée et grisée pour ne pas passer pour un bug.
+  if (autoStart) autoStart.disabled = true;
   const drones = document.getElementById("optDrones");
   if (drones) drones.checked = !!GAME_SETTINGS.drones;
   const shipEffect = document.getElementById("optShipEffect");
@@ -12397,7 +12403,7 @@ async function prepareGameAssets() {
   try { sessionCacheReady = sessionStorage.getItem(SESSION_ASSET_CACHE_KEY) === "ready"; } catch {}
 
   if (sessionCacheReady) {
-    if (ui.loadingOverlay) ui.loadingOverlay.style.display = "none";
+    if (ui.loadingOverlay) ui.loadingOverlay.style.display = "block";
     const essentialJobs = [ensurePackLoaded(ACTIVE_SHIP), loadImage(WALL_TEX.src, { priority: true })];
     for (const layer of BG_LAYERS) essentialJobs.push(loadImage(layer.src, { priority: true }));
     if (rules?.mode === "zone" && typeof rules.getZonePortals === "function") {
@@ -12411,7 +12417,14 @@ async function prepareGameAssets() {
     playerImgs = ACTIVE_SHIP._imgs;
     playerImgsReady = true;
     assetsPrepared = true;
-    await startGame();
+    // Fenêtre de départ à chaque refresh : pas de démarrage auto,
+    // on propose DÉPART comme après un préchargement complet.
+    if (ui.loadingStatus) ui.loadingStatus.textContent = "Secteur prêt. Tous les éléments essentiels sont en cache.";
+    if (ui.loadingStartBtn) {
+      ui.loadingStartBtn.disabled = false;
+      ui.loadingStartBtn.textContent = "DÉPART";
+    }
+    if (ui.loadingOverlay) ui.loadingOverlay.classList.add("isReady");
     return;
   }
 
