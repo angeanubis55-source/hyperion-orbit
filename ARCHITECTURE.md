@@ -34,6 +34,34 @@ Les insignes sont stockés dans `assets/grades/` : `0.png` pour Paria, `1.png` �
 
 `localStorage` reste une sauvegarde locale pratique, mais ne protège pas contre la triche. Pour une version multijoueur compétitive, le serveur devra être autoritaire sur l’authentification, les crédits, l’inventaire, les dégâts et les récompenses. Le client devra envoyer des intentions plutôt que modifier directement les soldes.
 
+## Chargement des ressources
+
+Le démarrage prépare uniquement le secteur courant : vaisseau équipé et son effet,
+fonds, NPC du secteur, portails, collectables autorisés et effets communs de jeu.
+Les images de bases et de balises sont sélectionnées via `getZoneSafeModules` :
+seuls les sprites référencés par le secteur sont préparés, au démarrage comme avant
+une transition. Une balise sans sprite reconnu conserve le repli vers BEACON_MMO.
+La progression de l'écran de départ provient de `ImageLoader.onProgress`.
+`assets-manifest.json` reste un inventaire, mais n'est plus téléchargé ni parcouru
+pour précharger tout le jeu. L'ancien indicateur de session `orbit_assets_preloaded_v1`
+n'est plus utilisé : un rafraîchissement prépare toujours les ressources nécessaires.
+
+Les ressources de la destination sont préparées avant le changement interne de carte,
+y compris ses collectables. Les autres vaisseaux et NPC sont chargés lorsqu'ils sont
+demandés. Le cache d'images du moteur réutilise les ressources déjà chargées.
+Le préchargement des modules de destination existant dans `src/main.js` est conservé ;
+il ne déclenche pas le téléchargement des images de toutes les cartes voisines.
+
+`scripts/game-server.js` fournit des ETag et répond 304 aux validations de ressources
+inchangées. `Cache-Control: no-cache` autorise leur stockage mais impose une validation,
+afin de rendre immédiatement visibles les modifications locales. Ces en-têtes devront
+également être configurés sur le futur hébergement si un autre serveur est utilisé.
+
+`npm run test:loading` contrôle le démarrage à froid, le rafraîchissement avec l'ancien
+indicateur de cache, les passages 1-1 → 1-8 → 1-1 et la réponse HTTP 304. Le rapport
+est enregistré dans `reports/sector-loading/results.json`. Les sprites optionnels de
+roquettes absents, documentés dans `src/data/rockets.js`, sont signalés séparément.
+
 ## Prochaines extractions
 
 - effets Canvas restants : lasers, explosions, collecte et traînées de réacteur ;

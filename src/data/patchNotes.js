@@ -1,6 +1,18 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "3d22f215",
+    "message": "Musique par firme (FIRME/GENERAL), volumes son par defaut du joueur, barre rapide en 2 colonnes"
+  },
+  {
+    "version": "0ea45201",
+    "message": "Drones exclusifs par hangar : equipement et designs isoles par vaisseau"
+  },
+  {
+    "version": "337f1aa9",
+    "message": "Version auto : notes et version pour 25566842"
+  },
+  {
     "version": "25566842",
     "message": "ISH (bouclier 3s invincible, CD 10s, 30k) + SAB inverse (cible vers vaisseau, sprite Sab) + images ammo_sab"
   },
@@ -227,17 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "21ee443e",
     "message": "Corrections sur les effets de vaisseau et le changement de vaisseau."
-  },
-  {
-    "version": "2a8c72d0",
-    "message": "Ajout de tous les vaisseaux et effets de vaisseau disponibles."
-  },
-  {
-    "version": "106606f9",
-    "message": "Suppression du lanceur C# et de son exécutable, remplacé par les scripts Node."
-  },
-  {
-    "version": "1a3de825",
-    "message": "Intégration d'un serveur HTTP dans le lanceur : l'exécutable est autonome, sans dépendance à Node.js."
   }
 ];

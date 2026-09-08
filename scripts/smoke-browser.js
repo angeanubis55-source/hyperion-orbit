@@ -67,11 +67,9 @@ try {
         if (!coldStart) sessionStorage.setItem("orbit_assets_preloaded_v1", "ready");
       }, { coldStart });
       await page.goto(`http://127.0.0.1:${port}/index.html?map=${encodeURIComponent(mapId)}`, { waitUntil: "domcontentloaded", timeout: 20_000 });
+      await page.waitForSelector("#loadingStartBtn:not([disabled])", { timeout: 180_000 });
+      await page.click("#loadingStartBtn");
       await page.waitForSelector("#game", { state: "visible", timeout: 10_000 });
-      if (coldStart) {
-        await page.waitForSelector("#loadingStartBtn:not([disabled])", { timeout: 180_000 });
-        await page.click("#loadingStartBtn");
-      }
       await page.waitForFunction(() => getComputedStyle(document.getElementById("loadingOverlay")).display === "none", null, { timeout: 30_000 });
       await page.waitForFunction(() => !document.documentElement.classList.contains("orbitBooting"), null, { timeout: 30_000 });
       if (inspectCombat) {

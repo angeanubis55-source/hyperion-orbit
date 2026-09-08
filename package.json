@@ -8,6 +8,7 @@
     "assets:manifest": "node scripts/generate-asset-manifest.js",
     "version:sync": "node scripts/version-sync.js",
     "test:browser": "node scripts/smoke-browser.js",
+    "test:loading": "node scripts/verify-sector-loading.js",
     "profile:canvas": "node scripts/profile-canvas.js"
   },
   "devDependencies": {

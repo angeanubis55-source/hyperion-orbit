@@ -3954,6 +3954,7 @@ let playerImgsReady = false;
 
 // --- Effet de vaisseau (Ship_effet) superposé par-dessus le vaisseau ---
 let shipEffectFor = "";        // id du vaisseau dont l'effet est chargé
+let shipEffectPromise = Promise.resolve();
 let shipEffectImgs = [];       // images chargées de l'effet
 let shipEffectReady = false;   // images prêtes à être dessinées
 let shipEffectLoading = false; // chargement en cours / déjà tenté pour cet id
@@ -3978,7 +3979,7 @@ function loadShipEffect(shipId) {
     const src = `${info.path}${1 + i}.png`;
     promises.push(loadImage(src, { priority: false }).then((img) => (shipEffectImgs[i] = img)));
   }
-  Promise.all(promises).then(() => { shipEffectReady = true; shipEffectLoading = false; });
+  shipEffectPromise = Promise.all(promises).then(() => { shipEffectReady = true; shipEffectLoading = false; });
   return info;
 }
 
@@ -6782,8 +6783,8 @@ function currentMapId() {
   return String(window.__CURRENT_MAP_ID__ || "1-1");
 }
 
-function collectableAllowedOnCurrentMap(cfg) {
-  const cur = currentMapId();
+function collectableAllowedOnCurrentMap(cfg, mapId = currentMapId()) {
+  const cur = String(mapId);
 
   const maps =
     cfg.maps ??
@@ -6901,15 +6902,15 @@ function ensureCollectableLoaded(type) {
   return sp._promise;
 }
 
-function preloadCollectables() {
+function preloadCollectables(mapId = currentMapId()) {
   const jobs = [];
-  for (const [type] of collectableDefsList()) {
+  for (const [type, cfg] of Object.entries(COLLECTABLE_DEFS)) {
+    if (!cfg || cfg.enabled === false || !collectableAllowedOnCurrentMap(cfg, mapId)) continue;
     jobs.push(ensureCollectableLoaded(type));
   }
   return jobs;
 }
 
-preloadCollectables();
 
 function isCollectablePositionOk(x, y, cfg) {
   const avoidPlayer = Number(cfg.avoidPlayer ?? COLLECTABLE_CFG.avoidPlayer ?? 700);
@@ -10335,8 +10336,19 @@ const SAFE_MODULE_SPR = {
   CENTRE_PIRATE: { src: "assets/PIRATES/Centre.png" },
 };
 
-for (const k in SAFE_MODULE_SPR) {
-  loadImage(SAFE_MODULE_SPR[k].src, { priority: false });
+function preloadSafeModuleSprites(sectorRules, world) {
+  if (sectorRules?.mode !== "zone" || typeof sectorRules.getZoneSafeModules !== "function") return [];
+  const safe = sectorRules.getZoneSafeModules(world);
+  const sources = new Set();
+  for (const module of safe?.modules || []) {
+    const sprite = SAFE_MODULE_SPR[module.spr];
+    if (sprite?.src) sources.add(sprite.src);
+  }
+  for (const beacon of safe?.beacons || []) {
+    const sprite = SAFE_MODULE_SPR[beacon.spr] || SAFE_MODULE_SPR.BEACON_MMO;
+    if (sprite?.src) sources.add(sprite.src);
+  }
+  return [...sources].map(src => loadImage(src, { priority: true }));
 }
 
 for (const state of Object.values(QUEST_BUTTON).filter(value => value?.src)) {
@@ -12878,7 +12890,6 @@ updateConfigButtons();
 // ============================================================
 let starting = false;
 let assetsPrepared = false;
-const SESSION_ASSET_CACHE_KEY = "orbit_assets_preloaded_v1";
 
 function revealPreparedGame() {
   requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -12903,117 +12914,51 @@ function npcTypesForCurrentSector() {
   return types;
 }
 
-async function preloadWholeGameCache() {
-  if (ui.loadingStatus) ui.loadingStatus.textContent = "Premier lancement : mise en cache complète du jeu…";
-  const response = await fetch("./assets-manifest.json", { cache: "no-cache" });
-  if (!response.ok) throw new Error(`Manifeste de ressources indisponible (${response.status})`);
-  const manifest = await response.json();
-  const assets = Array.isArray(manifest?.assets) ? manifest.assets : [];
-  let cursor = 0;
-  let done = 0;
-  let failed = 0;
-
-  const update = () => {
-    const percent = assets.length ? Math.round((done / assets.length) * 100) : 100;
-    if (ui.loadingBar) ui.loadingBar.style.width = `${percent}%`;
-    if (ui.loadingCount) ui.loadingCount.textContent = `${done} / ${assets.length} ressources`;
-    if (ui.loadingPercent) ui.loadingPercent.textContent = `${percent} %`;
-    ui.loadingOverlay?.querySelector(".loadingTrack")?.setAttribute("aria-valuenow", String(percent));
-  };
-
-  update();
-  const worker = async () => {
-    while (cursor < assets.length) {
-      const index = cursor++;
-      try {
-        const assetResponse = await fetch(assets[index], { cache: "force-cache" });
-        if (!assetResponse.ok) throw new Error(String(assetResponse.status));
-        await assetResponse.arrayBuffer();
-      } catch {
-        failed++;
-      } finally {
-        done++;
-        if (done % 8 === 0 || done === assets.length) update();
-      }
-    }
-  };
-
-  await Promise.all(Array.from({ length: 8 }, worker));
-  if (failed) console.warn(`${failed} ressource(s) n'ont pas pu être mises en cache.`);
-}
-
 async function prepareGameAssets() {
   if (assetsPrepared) return;
-
-  let sessionCacheReady = false;
-  try { sessionCacheReady = sessionStorage.getItem(SESSION_ASSET_CACHE_KEY) === "ready"; } catch {}
-
-  if (sessionCacheReady) {
-    if (ui.loadingOverlay) ui.loadingOverlay.style.display = "block";
-    const essentialJobs = [ensurePackLoaded(ACTIVE_SHIP), loadImage(WALL_TEX.src, { priority: true })];
-    for (const layer of BG_LAYERS) essentialJobs.push(loadImage(layer.src, { priority: true }));
-    if (rules?.mode === "zone" && typeof rules.getZonePortals === "function") {
-      try {
-        for (const portal of rules.getZonePortals(WORLD) || []) essentialJobs.push(...preloadPortalSprites(portal));
-      } catch {}
-    } else {
-      essentialJobs.push(...preloadPortalSprites());
+  if (ui.loadingOverlay) ui.loadingOverlay.style.display = "block";
+  if (ui.loadingStatus) ui.loadingStatus.textContent = "Chargement du secteur actuel…";
+  const stopProgress = IMG.onProgress(({ total, done }) => {
+    const percent = total ? Math.round(done / total * 100) : 0;
+    if (ui.loadingBar) ui.loadingBar.style.width = `${percent}%`;
+    if (ui.loadingCount) ui.loadingCount.textContent = `${done} / ${total} ressources du secteur`;
+    if (ui.loadingPercent) ui.loadingPercent.textContent = `${percent} %`;
+    ui.loadingOverlay?.querySelector(".loadingTrack")?.setAttribute("aria-valuenow", String(percent));
+  });
+  try {
+    const jobs = [ensurePackLoaded(ACTIVE_SHIP), loadImage(WALL_TEX.src, { priority: true })];
+    for (const layer of BG_LAYERS) if (layer.src) jobs.push(loadImage(layer.src, { priority: true }));
+    jobs.push(...preloadPlayerBulletSprites());
+    jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensurePulseFxLoaded(),
+      ensureRepairOrbitLoaded(), ensureShipDamageLoaded(), ensureInstaShieldLoaded());
+    jobs.push(...preloadCollectables());
+    jobs.push(...preloadSafeModuleSprites(rules, WORLD));
+    if (GAME_SETTINGS.shipEffect) {
+      loadShipEffect(ACTIVE_SHIP.id);
+      jobs.push(shipEffectPromise);
     }
-    await Promise.allSettled(essentialJobs);
+    for (const type of npcTypesForCurrentSector()) {
+      if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
+    }
+    if (rules?.mode === "zone" && typeof rules.getZonePortals === "function") {
+      for (const portal of rules.getZonePortals(WORLD) || []) jobs.push(...preloadPortalSprites(portal));
+    } else {
+      jobs.push(...preloadPortalSprites());
+    }
+    await Promise.allSettled(jobs);
+    await IMG.whenIdle();
+    assetsPrepared = true;
     playerImgs = ACTIVE_SHIP._imgs;
     playerImgsReady = true;
-    assetsPrepared = true;
-    // Fenêtre de départ à chaque refresh : pas de démarrage auto,
-    // on propose DÉPART comme après un préchargement complet.
-    if (ui.loadingStatus) ui.loadingStatus.textContent = "Secteur prêt. Tous les éléments essentiels sont en cache.";
+    if (ui.loadingStatus) ui.loadingStatus.textContent = "Secteur prêt.";
     if (ui.loadingStartBtn) {
       ui.loadingStartBtn.disabled = false;
       ui.loadingStartBtn.textContent = "DÉPART";
     }
     if (ui.loadingOverlay) ui.loadingOverlay.classList.add("isReady");
-    return;
+  } finally {
+    stopProgress();
   }
-
-  if (ui.loadingOverlay) ui.loadingOverlay.style.display = "block";
-
-  const cachePromise = preloadWholeGameCache();
-
-  const jobs = [];
-  for (const layer of WORLD.bgLayers || []) if (layer?.src) jobs.push(loadImage(layer.src, { priority: true }));
-  jobs.push(ensurePackLoaded(ACTIVE_SHIP));
-  jobs.push(...preloadPlayerBulletSprites());
-  jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensurePulseFxLoaded(), ensureRepairOrbitLoaded(), ensureShipDamageLoaded());
-  jobs.push(...preloadCollectables());
-
-  for (const type of Object.keys(NPC_TYPES)) jobs.push(ensureNpcPreview(type));
-  for (const type of npcTypesForCurrentSector()) {
-    if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
-  }
-
-  if (rules?.mode === "zone" && typeof rules.getZonePortals === "function") {
-    try {
-      for (const portal of rules.getZonePortals(WORLD) || []) jobs.push(...preloadPortalSprites(portal));
-    } catch (error) {
-      console.warn("Préchargement portail partiel:", error);
-    }
-  } else {
-    jobs.push(...preloadPortalSprites());
-  }
-
-  const sectorPromise = Promise.allSettled(jobs).then(() => IMG.whenIdle());
-  await Promise.allSettled([cachePromise, sectorPromise]);
-  assetsPrepared = true;
-  try { sessionStorage.setItem(SESSION_ASSET_CACHE_KEY, "ready"); } catch {}
-
-  playerImgs = ACTIVE_SHIP._imgs;
-  playerImgsReady = true;
-  if (ui.loadingStatus) ui.loadingStatus.textContent = "Secteur prêt. Tous les éléments essentiels sont en cache.";
-  if (ui.loadingStartBtn) {
-    ui.loadingStartBtn.disabled = false;
-    ui.loadingStartBtn.textContent = "DÉPART";
-  }
-  if (ui.loadingOverlay) ui.loadingOverlay.classList.add("isReady");
-
   if (GAME_SETTINGS.autoStart) await startGame();
 }
 
@@ -13208,6 +13153,8 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
     ? nextRules.getZonePortals(nextWorld) : [];
 
   const jobs = nextBackgrounds.map((layer) => loadImage(layer.src, { priority: true }));
+  jobs.push(...preloadCollectables(mapId));
+  jobs.push(...preloadSafeModuleSprites(nextRules, nextWorld));
   for (const camp of preparedZoneCamps) if (camp?.type && NPC_TYPES[camp.type]) jobs.push(ensureNpcLoaded(camp.type));
   if (nextRules.mode !== "zone" && typeof nextConfig.getWavePlan === "function") {
     const gateTypes = new Set();

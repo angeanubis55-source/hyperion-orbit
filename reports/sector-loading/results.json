@@ -1,0 +1,124 @@
+{
+  "date": "2026-09-08T09:49:45.419Z",
+  "browser": "152.0.4191.66",
+  "network": "local",
+  "networkConditions": {
+    "latency": 0,
+    "downloadThroughput": -1,
+    "uploadThroughput": -1
+  },
+  "cacheValidationStatus": 304,
+  "phases": [
+    {
+      "label": "cold 1-1",
+      "readyMs": 17104,
+      "requests": 648,
+      "pngRequests": 546,
+      "uniqueResourceBytes": 47663169,
+      "largestResources": [
+        {
+          "path": "/Backgrounds/map1-1.png",
+          "bytes": 2382317
+        },
+        {
+          "path": "/assets/items/ammo_x1.png",
+          "bytes": 2091127
+        },
+        {
+          "path": "/assets/items/ammo_x6.png",
+          "bytes": 1705436
+        },
+        {
+          "path": "/assets/items/ammo_x4.png",
+          "bytes": 1689080
+        },
+        {
+          "path": "/assets/items/ammo_x3.png",
+          "bytes": 1676080
+        },
+        {
+          "path": "/assets/items/ammo_x2.png",
+          "bytes": 1668754
+        },
+        {
+          "path": "/assets/ui/Logo.png",
+          "bytes": 1247622
+        },
+        {
+          "path": "/assets/MMO/Centre.png",
+          "bytes": 1087659
+        }
+      ]
+    },
+    {
+      "label": "reload with legacy cache flag",
+      "readyMs": 15550,
+      "requests": 648,
+      "pngRequests": 546,
+      "uniqueResourceBytes": 47663169,
+      "largestResources": [
+        {
+          "path": "/Backgrounds/map1-1.png",
+          "bytes": 2382317
+        },
+        {
+          "path": "/assets/items/ammo_x1.png",
+          "bytes": 2091127
+        },
+        {
+          "path": "/assets/items/ammo_x6.png",
+          "bytes": 1705436
+        },
+        {
+          "path": "/assets/items/ammo_x4.png",
+          "bytes": 1689080
+        },
+        {
+          "path": "/assets/items/ammo_x3.png",
+          "bytes": 1676080
+        },
+        {
+          "path": "/assets/items/ammo_x2.png",
+          "bytes": 1668754
+        },
+        {
+          "path": "/assets/ui/Logo.png",
+          "bytes": 1247622
+        },
+        {
+          "path": "/assets/MMO/Centre.png",
+          "bytes": 1087659
+        }
+      ]
+    },
+    {
+      "label": "transition 1-8",
+      "readyMs": 1534,
+      "requests": 36
+    },
+    {
+      "label": "return 1-1",
+      "readyMs": 330,
+      "requests": 1
+    },
+    {
+      "label": "pirate sector 5-2",
+      "requests": 291
+    }
+  ],
+  "errors": [],
+  "missingOptionalSprites": [
+    "/Munitions/r310.png",
+    "/Munitions/eco10.png",
+    "/Munitions/plt2021.png",
+    "/Munitions/plt2026.png",
+    "/Munitions/plt3030.png",
+    "/Munitions/ubr100.png",
+    "/Munitions/dcr250.png",
+    "/Munitions/cbr.png",
+    "/Munitions/pld8.png",
+    "/Munitions/sar01.png",
+    "/Munitions/sar02.png",
+    "/Munitions/hstrm01.png"
+  ]
+}

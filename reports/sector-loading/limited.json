@@ -1,0 +1,50 @@
+{
+  "date": "2026-09-08T09:37:17.621Z",
+  "browser": "152.0.4191.66",
+  "network": "limited",
+  "networkConditions": {
+    "latency": 80,
+    "downloadThroughput": 625000,
+    "uploadThroughput": 125000
+  },
+  "cacheValidationStatus": 304,
+  "phases": [
+    {
+      "label": "cold 1-1",
+      "readyMs": 100390,
+      "requests": 626,
+      "pngRequests": 523
+    },
+    {
+      "label": "reload with legacy cache flag",
+      "readyMs": 27287,
+      "requests": 626,
+      "pngRequests": 523
+    },
+    {
+      "label": "transition 1-8",
+      "readyMs": 11750,
+      "requests": 37
+    },
+    {
+      "label": "return 1-1",
+      "readyMs": 547,
+      "requests": 1
+    }
+  ],
+  "errors": [],
+  "missingOptionalSprites": [
+    "/Munitions/r310.png",
+    "/Munitions/plt2021.png",
+    "/Munitions/eco10.png",
+    "/Munitions/plt2026.png",
+    "/Munitions/plt3030.png",
+    "/Munitions/ubr100.png",
+    "/Munitions/cbr.png",
+    "/Munitions/dcr250.png",
+    "/Munitions/pld8.png",
+    "/Munitions/sar01.png",
+    "/Munitions/sar02.png",
+    "/Munitions/hstrm01.png"
+  ]
+}

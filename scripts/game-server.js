@@ -29,12 +29,23 @@ const server = createServer(async (request, response) => {
     const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
     const file = normalize(join(root, relative));
     if (file !== root && !file.startsWith(`${root}\\`) && !file.startsWith(`${root}/`)) throw new Error("Invalid path");
-    if (!(await stat(file)).isFile()) throw new Error("Not a file");
+    const info = await stat(file);
+    if (!info.isFile()) throw new Error("Not a file");
+    const etag = `W/"${info.size.toString(16)}-${info.mtimeMs.toString(16)}"`;
+    // Revalidate on refresh: unchanged resources return 304 without their body.
+    // Changed files remain immediately visible during local development.
+    response.setHeader("etag", etag);
+    response.setHeader("cache-control", "no-cache");
+    if (request.headers["if-none-match"]?.split(/\s*,\s*/).includes(etag)) {
+      response.writeHead(304);
+      response.end();
+      return;
+    }
     response.writeHead(200, {
       "content-type": mimeTypes[extname(file).toLowerCase()] || "application/octet-stream",
       "cache-control": "no-cache",
     });
-    response.end(await readFile(file));
+    response.end(request.method === "HEAD" ? undefined : await readFile(file));
   } catch {
     response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
     response.end("Fichier introuvable");
