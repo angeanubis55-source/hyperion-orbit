@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.137",
+    "date": "2026-09-08T12:09:29+02:00",
+    "message": "Affiche les versions alpha numerotees et les patch notes dates"
+  },
+  {
     "version": "0.136",
     "date": "2026-09-08T12:01:18+02:00",
     "message": "synchronisation complete"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.78",
     "date": "2026-09-03T10:00:41+02:00",
     "message": "Corrections sur les effets de vaisseau et le changement de vaisseau."
-  },
-  {
-    "version": "0.77",
-    "date": "2026-09-03T08:43:58+02:00",
-    "message": "Ajout de tous les vaisseaux et effets de vaisseau disponibles."
   }
 ];
