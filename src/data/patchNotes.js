@@ -1,6 +1,10 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "848d5a20",
+    "message": "Optimise le chargement par secteur et limite les images de bases"
+  },
+  {
     "version": "3d22f215",
     "message": "Musique par firme (FIRME/GENERAL), volumes son par defaut du joueur, barre rapide en 2 colonnes"
   },
@@ -235,9 +239,5 @@ export const PATCH_NOTES = [
   {
     "version": "c7028074",
     "message": "Effets de vaisseau superposés (Ship_effet) pour un rendu plus détaillé à 60 FPS."
-  },
-  {
-    "version": "21ee443e",
-    "message": "Corrections sur les effets de vaisseau et le changement de vaisseau."
   }
 ];
