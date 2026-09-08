@@ -5217,10 +5217,6 @@ function syncActionDockState() {
     } else if (skill === "repair") {
       applyDockField(button, "active", false,
         (v) => button.classList.remove("active"));
-      applyDockField(button, "ready", false,
-        (v) => button.classList.remove("ready"));
-      applyDockField(button, "feedback", false,
-        (v) => button.classList.remove("skillFeedback"));
       applyDockField(button, "disabled", player.dead,
         (v) => button.classList.toggle("disabled", v));
       applyDockField(button, "text", ui.repairTxt ? ui.repairTxt.textContent : "",
@@ -5229,15 +5225,23 @@ function syncActionDockState() {
       const repairPct = REPAIR.cooldown <= 0 ? 1 : clamp(player.repairT / REPAIR.cooldown, 0, 1);
       const repairCooling = !player.dead && repairPct < 1;
       const repairProgress = repairCooling ? 1 - repairPct : 0;
-      applyDockField(button, "cdVeil", repairCooling,
+      const repairReady = !player.dead && !repairCooling;
+      if (button.dataset.repairCooling === "1" && repairReady) {
+        button.classList.remove("skillReadyPop");
+        void button.offsetWidth;
+        button.classList.add("skillReadyPop");
+        setTimeout(() => button.classList.remove("skillReadyPop"), 750);
+      }
+      button.dataset.repairCooling = repairCooling ? "1" : "0";
+      applyDockField(button, "ready", repairReady,
+        (v) => button.classList.toggle("ready", v));
+      applyDockField(button, "feedback", repairCooling,
+        (v) => button.classList.toggle("skillFeedback", v));
+      applyDockField(button, "progress", repairProgress.toFixed(3),
+        (v) => button.style.setProperty("--skill-feedback", v));
+      applyDockField(button, "cdVeil", false,
         (v) => button.classList.toggle("cdVeil", v));
-      applyDockField(button, "cdProgress", repairProgress.toFixed(3),
-        (v) => button.style.setProperty("--cd", v));
-      // Glow lime clignotant pendant la réparation active. Piloté ici (et non
-      // dans updateRepairUI) car les boutons visibles sont des clones du dock,
-      // pas les nœuds d'origine (#btnRepair est détaché après init du dock).
-      applyDockField(button, "repairing", repairSoundActive,
-        (v) => button.classList.toggle("repairing", v));
+
     }
   }
 }
