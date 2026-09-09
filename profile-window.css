@@ -1702,3 +1702,40 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
 #fitCard .droneFitSlot.dragCompatible{border-color:rgba(105,233,255,.65) !important;box-shadow:0 0 12px rgba(105,233,255,.28),inset 0 0 16px rgba(105,233,255,.08) !important;background:rgba(0,217,255,.09) !important}
 #fitCard .droneFitSlot.dragging{opacity:.45 !important}
 .inventoryPager { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; } .inventoryPager button:disabled { opacity: .4; cursor: default; }
+
+/* P.E.T : même mise en page que les drones (workspace dédié, exclusif par hangar/config). */
+#fitCard .fitPetWorkspace{height:100%;min-height:0 !important;min-width:0;padding:12px;box-sizing:border-box;display:block;overflow-y:auto;background:#07141e}
+#fitCard .fitPetWorkspace[hidden]{display:none !important}
+#fitCard.petMode .fitLoadoutPane{grid-column:1 !important;grid-row:2 !important}
+#fitCard.petMode .fitInventoryPane{display:flex !important;grid-column:2 !important;grid-row:2 !important}
+#fitCard.petMode .fitSlotsScroll{display:none !important}
+#fitCard:not(.petMode) .fitPetWorkspace{display:none !important}
+#fitCard.petMode .fitModulesHeading,
+#fitCard.petMode .fitShipModules{display:none !important}
+#fitCard.petMode .fitPetWorkspace{display:block !important;height:100% !important;padding:10px !important;overflow-y:auto !important;background:transparent !important}
+#fitCard.petMode .droneCards{display:grid !important;gap:8px !important}
+#fitCard.petMode .droneEquipmentCard{min-height:108px !important;padding:10px 12px !important;grid-template-columns:72px minmax(150px,1fr) auto !important;grid-template-rows:minmax(70px,auto) 11px !important;gap:10px !important;border-radius:3px !important;background:linear-gradient(100deg,#0a1e2b,#071722) !important}
+/* P.E.T : 2 cartes — header 20 % (niveau/XP) + slots 80 % (lasers, générateurs, gears, protocoles). */
+#fitCard .petCards{display:flex !important;flex-direction:column !important;gap:8px !important;height:100% !important;min-height:0 !important}
+#fitCard .petHeaderCard{flex:1 1 20% !important;min-height:0 !important;overflow:hidden !important;padding:10px 12px !important;display:grid !important;grid-template-columns:64px minmax(0,1fr) !important;grid-template-rows:auto auto !important;gap:2px 10px !important;align-items:center !important;border:1px solid rgba(105,233,255,.17) !important;border-radius:5px !important;background:linear-gradient(100deg,#0a1e2b,#06121c) !important}
+#fitCard .petHeaderCard .droneCardSprite{width:56px !important;height:50px !important}
+#fitCard .petHeaderCard .droneCardIdentity strong{font-size:16px !important}
+#fitCard .petHeaderCard .droneCardIdentity span{font-size:11px !important;line-height:1.5 !important}
+
+/* Vaisseau : titres de groupes bleus comme le P.E.T, en plus gros. */
+#fitCard .fitGroupTitle span{color:#70dceb !important;font-size:10px !important;font-weight:900 !important}
+#fitCard .fitGroupTitle small{font-size:9px !important}
+/* Drones : textes plus gros. */
+#fitCard .droneCardSlots label,#fitCard .droneCardAbility label{font-size:10px !important}
+#fitCard .droneCardIdentity strong{font-size:15px !important}
+#fitCard .droneCardIdentity span{font-size:11px !important;line-height:1.5 !important}
+#fitCard.droneMode .droneCardIdentity strong{font-size:14px !important}
+#fitCard .petHeaderCard>.droneXp{grid-column:1 / -1 !important;grid-row:auto !important;margin:4px 0 0 !important}
+#fitCard .petSlotsCard{flex:4 1 80% !important;min-height:0 !important;overflow-y:auto !important;padding:10px 12px !important;border:1px solid rgba(105,233,255,.17) !important;border-radius:5px !important;background:linear-gradient(100deg,#0a1e2b,#06121c) !important}
+#fitCard .petGroups{grid-column:1 / -1 !important;display:grid !important;gap:10px !important}
+#fitCard .petGroup{display:grid !important;gap:6px !important}
+#fitCard .petGroup>label{color:#70dceb !important;font-size:10px !important;font-weight:900 !important;letter-spacing:1px !important}
+#fitCard .petGroup>label small{color:#789cac !important;font-weight:400 !important;letter-spacing:0 !important}
+#fitCard .petGroupSlots{display:flex !important;flex-wrap:wrap !important;gap:8px !important}
+#fitCard .petFitSlot.dragTarget{border-color:#70e7fa !important;background:rgba(20,154,182,.22) !important}
+#fitCard .petHeaderCard .droneCardSprite{image-rendering:auto !important}

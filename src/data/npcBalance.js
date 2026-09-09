@@ -13,7 +13,7 @@ const BASE_REWARDS = Object.freeze({
   Lordakium: { credits: 204800, exp: 25600, honor: 128 },
   Kristallin: { credits: 12800, exp: 6400, honor: 32 },
   Kristallon: { credits: 409600, exp: 51200, honor: 256 },
-  StreuneR8: { credits: 12000, exp: 6400, honor: 32 },
+  StreuneR8: { credits: 12000, exp: 6400000000, honor: 32 },
   Protegit: { credits: 12800, exp: 6400, honor: 32 },
   Cubikon: { credits: 1638400, exp: 512000, honor: 4096 },
 });

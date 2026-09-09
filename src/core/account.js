@@ -11,6 +11,7 @@ import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate
 import { getCraftingRecipe } from "../data/crafting.js";
 import { ROCKET_TYPES } from "../data/rockets.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../data/drones.js";
+import { createPet, emptyPetFit, getPetLevel, getPetMaxHp, getPetSlots, normalizePetMode, PET_FUEL_MAX, PET_SLOTS } from "../data/pets.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -342,6 +343,110 @@ function ensureDroneFitsByHangar(u) {
   }
 }
 
+/**
+ * Fit du P.E.T pour un hangar + config donnés (exclusif par vaisseau, comme les drones).
+ * Fallback legacy (pet.fits / pet.fit, ancien format {equipment}) pour les vieilles sauvegardes.
+ */
+export function getPetFit(pet, hangarId, configNo) {
+  const cfg = String(Number(configNo) === 2 ? 2 : 1);
+  const hid = hangarId != null ? String(hangarId) : null;
+  const level = getPetLevel(pet?.exp);
+  if (hid && pet?.fitsByHangar?.[hid]?.[cfg]) return pet.fitsByHangar[hid][cfg];
+  if (hid && pet?.fitsByHangar?.[hid]) {
+    return pet.fitsByHangar[hid][cfg] || emptyPetFit(level);
+  }
+  if (pet?.fits?.[cfg]) return pet.fits[cfg];
+  if (pet?.fit) return pet.fit;
+  return emptyPetFit(level);
+}
+
+function petFitSlotError(itemId, group, petLevel) {
+  const it = findCatalogItem(itemId);
+  if (!it) return "Objet introuvable.";
+  if (group === "lasers" && it?.module?.type !== "laser") return "Emplacement laser : laser uniquement.";
+  if (group === "generators" && it?.module?.type !== "shield") return "Emplacement générateur : bouclier uniquement.";
+  if (group === "gears" && !it?.petGear) return "Emplacement gear : gear P.E.T uniquement.";
+  if (group === "protocols") {
+    if (!it?.petProtocol) return "Emplacement protocole : protocole P.E.T uniquement.";
+    const req = Math.max(0, Number(it.petLevel) || 0);
+    if (petLevel < req) return `Ce protocole exige le P.E.T niveau ${req}.`;
+  }
+  return null;
+}
+
+function normalizePetFitValue(value, level = 0) {
+  const slots = getPetSlots(level);
+  const out = {
+    lasers: normalizeArraySize(value?.lasers, slots.lasers, null),
+    generators: normalizeArraySize(value?.generators, slots.generators, null),
+    gears: normalizeArraySize(value?.gears, slots.gears, null),
+    protocols: normalizeArraySize(value?.protocols, slots.protocols, null),
+    ability: value?.ability || null,
+  };
+  // Migration ancien format {equipment:[...]} : lasers → lasers, boucliers → générateurs.
+  if (Array.isArray(value?.equipment) && !Array.isArray(value?.lasers) && !Array.isArray(value?.generators)) {
+    for (const id of value.equipment) {
+      if (!id) continue;
+      const t = findCatalogItem(id)?.module?.type;
+      if (t === "laser" && out.lasers.includes(null)) out.lasers[out.lasers.indexOf(null)] = id;
+      else if (t === "shield" && out.generators.includes(null)) out.generators[out.generators.indexOf(null)] = id;
+    }
+  }
+  return out;
+}
+
+function ensurePetFitsByHangar(u) {
+  if (!u?.pet || u.pet.owned !== true) return;
+  const hangars = Array.isArray(u.hangars) ? u.hangars.filter(Boolean) : [];
+  if (!hangars.length) return;
+  const activeHangar = u.hangars.find((h) => h?.active) || hangars[0] || null;
+  const activeCfg = String(Number(activeHangar?.activeConfig) === 2 ? 2 : 1);
+  const pet = u.pet;
+  const level = getPetLevel(pet.exp);
+  const legacyFits = pet.fits && typeof pet.fits === "object" ? pet.fits : {};
+  const legacyFit = pet.fit && typeof pet.fit === "object" ? pet.fit : {};
+  if (!pet.fitsByHangar || typeof pet.fitsByHangar !== "object" || Array.isArray(pet.fitsByHangar)) {
+    pet.fitsByHangar = {};
+  }
+  const hasAnyHangarKey = Object.keys(pet.fitsByHangar).some((k) => hangars.some((h) => String(h?.id) === String(k)));
+  if (!hasAnyHangarKey) {
+    for (const h of hangars) {
+      const hid = String(h.id);
+      const isActive = activeHangar && String(h.id) === String(activeHangar.id);
+      if (isActive) {
+        pet.fitsByHangar[hid] = {
+          1: normalizePetFitValue(legacyFits["1"] || (activeCfg === "1" ? legacyFit : {}), level),
+          2: normalizePetFitValue(legacyFits["2"] || (activeCfg === "2" ? legacyFit : {}), level),
+        };
+      } else {
+        pet.fitsByHangar[hid] = { 1: normalizePetFitValue({}, level), 2: normalizePetFitValue({}, level) };
+      }
+    }
+  } else {
+    for (const h of hangars) {
+      const hid = String(h.id);
+      const cur = pet.fitsByHangar[hid];
+      if (!cur || typeof cur !== "object") {
+        pet.fitsByHangar[hid] = { 1: normalizePetFitValue({}, level), 2: normalizePetFitValue({}, level) };
+      } else {
+        pet.fitsByHangar[hid] = { 1: normalizePetFitValue(cur["1"], level), 2: normalizePetFitValue(cur["2"], level) };
+      }
+    }
+    for (const key of Object.keys(pet.fitsByHangar)) {
+      if (!hangars.some((h) => String(h?.id) === String(key))) delete pet.fitsByHangar[key];
+    }
+  }
+  if (activeHangar) {
+    const hid = String(activeHangar.id);
+    const perHangar = pet.fitsByHangar[hid] || {};
+    perHangar["1"] = normalizePetFitValue(perHangar["1"], level);
+    perHangar["2"] = normalizePetFitValue(perHangar["2"], level);
+    pet.fitsByHangar[hid] = perHangar;
+    pet.fits = perHangar;
+    pet.fit = perHangar[activeCfg] || perHangar["1"];
+  }
+}
+
 function ensureUserShape(u) {
   if (!u || typeof u !== "object") return null;
 
@@ -451,6 +556,37 @@ function ensureUserShape(u) {
   }
   u.stats.lifetimeKills = Object.values(u.stats.npcKills).reduce((total, count) => total + Math.max(0, Number(count) || 0), 0);
   u.stats.rankPoints = calculateRankPoints(u.stats);
+
+  // P.E.T : possédé une seule fois (unique comme un vaisseau).
+  // XP officielle : 5 % de l'XP du vaisseau, niveaux 0 → 20.
+  if (!u.pet || typeof u.pet !== "object" || Array.isArray(u.pet)) u.pet = {};
+  if (Number(u.inventory?.counts?.["pet_niveau1"] || 0) > 0) u.pet.owned = true;
+  if (u.pet.owned === true) {
+    if (!u.pet.id) u.pet.id = "niveau1";
+    const exp = Math.max(0, Number(u.pet.exp) || 0);
+    u.pet.exp = exp;
+    u.pet.level = getPetLevel(exp);
+    // État en jeu : actif ou non (bouton play/stop), mode passif/combat.
+    u.pet.active = u.pet.active === true;
+    u.pet.mode = normalizePetMode(u.pet.mode);
+    // Fuel infini pour le moment : 50 000 / 50 000 fixe.
+    u.pet.fuelMax = PET_FUEL_MAX;
+    u.pet.fuel = PET_FUEL_MAX;
+    // HP persistés (pleins par défaut). Le max suit le niveau officiel.
+    const petHpMax = getPetMaxHp(u.pet.level);
+    u.pet.hp = Number.isFinite(Number(u.pet.hp)) ? Math.max(0, Math.min(petHpMax, Math.floor(Number(u.pet.hp)))) : petHpMax;
+    // Bouclier : null = plein (le max dépend de l'équipement du hangar actif).
+    if (u.pet.sh != null && !Number.isFinite(Number(u.pet.sh))) u.pet.sh = null;
+    if (Number.isFinite(Number(u.pet.sh))) u.pet.sh = Math.max(0, Math.floor(Number(u.pet.sh)));
+    if (!u.pet.fits || typeof u.pet.fits !== "object") {
+      // Migration : l'ancien fit unique ({equipment}) part sur la config 1.
+      const legacyFit = u.pet.fit && typeof u.pet.fit === "object" ? u.pet.fit : {};
+      u.pet.fits = { 1: normalizePetFitValue(legacyFit, u.pet.level), 2: normalizePetFitValue({}, u.pet.level) };
+    } else {
+      u.pet.fits = { 1: normalizePetFitValue(u.pet.fits["1"], u.pet.level), 2: normalizePetFitValue(u.pet.fits["2"], u.pet.level) };
+    }
+    if (!u.pet.fit || typeof u.pet.fit !== "object") u.pet.fit = normalizePetFitValue(u.pet.fits["1"], u.pet.level);
+  }
 
   u.quests = normalizeQuestState(u.quests);
   if (Number(u.stats.questHonorVersion || 0) < QUEST_HONOR_VERSION) {
@@ -584,6 +720,9 @@ function ensureUserShape(u) {
 
   // ✅ Drones : équipement exclusif par hangar (migration legacy -> actif uniquement)
   ensureDroneFitsByHangar(u);
+
+  // ✅ P.E.T : même exclusivité par hangar (vaisseau) + config 1/2.
+  ensurePetFitsByHangar(u);
 
   return u;
 }
@@ -929,6 +1068,7 @@ export function updateCurrentUserProgress(patch = {}) {
       .filter(([, quantity]) => quantity > 0));
   }
   if (patch.drones && typeof patch.drones === "object") u.drones = structuredClone(patch.drones);
+  if (patch.pet && typeof patch.pet === "object") u.pet = structuredClone(patch.pet);
 
   if (patch.hangarState && typeof patch.hangarState === "object") {
     const requestedId = String(patch.hangarState.id || "");
@@ -980,7 +1120,7 @@ export function updateCurrentUserProgress(patch = {}) {
 
 /**
  * Achat boutique:
- * - Ships: unique
+ * - Ships / Designs / P.E.T: unique
  * - Tout le reste: achetable plusieurs fois => counts[itemId]++
  */
 export function buyItem(itemId, requestedQuantity = 1) {
@@ -992,7 +1132,8 @@ export function buyItem(itemId, requestedQuantity = 1) {
 
   const isShip = !!item.ship?.id;
   const isDesign = !!item.design?.id;
-  const quantity = (isShip || isDesign)
+  const isPet = !!item.pet?.id;
+  const quantity = (isShip || isDesign || isPet)
     ? 1
     : Math.min(1000, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
   const unitPrice = Math.max(0, Number(item.price || 0));
@@ -1014,6 +1155,21 @@ export function buyItem(itemId, requestedQuantity = 1) {
     if (u.inventory.shipDesigns.includes(designId) || (Array.isArray(u.inventory.ships) && u.inventory.ships.includes(designId))) {
       return { ok: false, error: "Design déjà possédé." };
     }
+  }
+
+  // P.E.T : unique
+  if (item.pet?.id) {
+    if (u.pet?.owned === true || Number(u.inventory?.counts?.[item.id] || 0) > 0) {
+      return { ok: false, error: "P.E.T déjà possédé." };
+    }
+  }
+
+  // Gears / protocoles P.E.T : P.E.T requis + palier de niveau
+  // (officiel : niveau 2 dès P.E.T 4, niveau 3 dès P.E.T 8).
+  const reqPetLevel = Math.max(0, Number(item.petLevel) || 0);
+  if (item.petGear || item.petProtocol) {
+    if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
+    if (getPetLevel(u.pet.exp) < reqPetLevel) return { ok: false, error: `P.E.T niveau ${reqPetLevel} requis.` };
   }
 
   // pay
@@ -1047,6 +1203,11 @@ export function buyItem(itemId, requestedQuantity = 1) {
     if (!u.inventory.modules.includes(item.id)) u.inventory.modules.push(item.id);
   }
 
+  // gears / protocoles P.E.T (multi)
+  if (item.petGear || item.petProtocol) {
+    incCount(u, item.id, quantity);
+  }
+
   // ship purchase => add ship + hangar
   if (item.ship?.id) {
     const shipId = String(item.ship.id);
@@ -1067,6 +1228,20 @@ export function buyItem(itemId, requestedQuantity = 1) {
     const designId = String(item.design.id);
     u.inventory.shipDesigns ??= [];
     if (!u.inventory.shipDesigns.includes(designId)) u.inventory.shipDesigns.push(designId);
+  }
+
+  // P.E.T purchase => collection unique + flag u.pet (niveau 0, comme l'officiel)
+  if (item.pet?.id) {
+    incCount(u, item.id, 1);
+    const fresh = createPet(String(item.pet.id));
+    u.pet ??= {};
+    u.pet.owned = true;
+    u.pet.id = fresh.id;
+    if (typeof u.pet.exp !== "number") u.pet.exp = 0;
+    if (typeof u.pet.level !== "number") u.pet.level = getPetLevel(u.pet.exp);
+    if (!u.pet.fits) u.pet.fits = fresh.fits;
+    if (!u.pet.fit) u.pet.fit = fresh.fit;
+    if (!u.pet.fitsByHangar) u.pet.fitsByHangar = {};
   }
 
   ensureUserShape(u);
@@ -1183,6 +1358,90 @@ export function grantCurrentUserDroneExperience(amount) {
   }
   saveUser(u);
   return { ok: true, user: u, gained, levelUps };
+}
+
+export function saveCurrentUserPetFit(fit, configNo = null, hangarId = null) {
+  return saveCurrentUserPetFits([{ fit, configNo, hangarId }]);
+}
+
+export function saveCurrentUserPetFits(fits) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
+  const level = getPetLevel(u.pet.exp);
+  const slots = getPetSlots(level);
+  const activeHangar = getActiveHangar(u);
+  let applied = 0;
+  for (const entry of fits ?? []) {
+    const fit = entry.fit ?? entry;
+    const targetHangarId = entry.hangarId != null ? String(entry.hangarId) : String(activeHangar?.id || "");
+    if (!targetHangarId) continue;
+    const hangarForCfg = (u.hangars || []).find((h) => String(h?.id) === targetHangarId) || activeHangar;
+    const cfg = String(Number(entry.configNo ?? hangarForCfg?.activeConfig) === 2 ? 2 : 1);
+    const groups = ["lasers", "generators", "gears", "protocols"];
+    const value = { ability: fit?.ability || null };
+    for (const group of groups) {
+      const size = slots[group];
+      value[group] = [];
+      for (let index = 0; index < size; index++) {
+        const id = fit?.[group]?.[index] || null;
+        if (!id) {
+          value[group].push(null);
+          continue;
+        }
+        const err = petFitSlotError(id, group, level);
+        if (err) return { ok: false, error: err };
+        value[group].push(id);
+      }
+    }
+    u.pet.fitsByHangar ||= {};
+    u.pet.fitsByHangar[targetHangarId] ||= {};
+    u.pet.fitsByHangar[targetHangarId][cfg] = value;
+    if (activeHangar && String(activeHangar.id) === targetHangarId) {
+      u.pet.fits ||= {};
+      u.pet.fits[cfg] = value;
+      u.pet.fit = value;
+    }
+    applied++;
+  }
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, applied };
+}
+
+export function grantCurrentUserPetExperience(amount) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  // L'XP n'est comptabilisée que si le P.E.T est activé (bouton play).
+  if (u.pet?.owned !== true || u.pet?.active !== true) return { ok: true, user: u, gained: 0, levelUps: [] };
+  const gained = Math.max(0, Number(amount) || 0) * 0.05;
+  const before = Number(u.pet.level) || 0;
+  u.pet.exp = Math.max(0, Number(u.pet.exp) || 0) + gained;
+  u.pet.level = getPetLevel(u.pet.exp);
+  saveUser(u);
+  return { ok: true, user: u, gained, levelUps: u.pet.level > before ? [{ level: u.pet.level }] : [] };
+}
+
+// Bouton play/stop de la fenêtre P.E.T en jeu.
+export function setPetActive(active) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
+  u.pet.active = active === true;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, active: u.pet.active };
+}
+
+// Dropdown passif / combat de la fenêtre P.E.T en jeu.
+export function setPetMode(mode) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
+  u.pet.mode = normalizePetMode(mode);
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, mode: u.pet.mode };
 }
 
 export function spinCurrentUserGalaxyGate(gateId, count = 1, rng = Math.random) {
@@ -1583,6 +1842,9 @@ export function sellItem(itemId, qty = 1) {
 
   // pas de vente de designs ici
   if (it.design) return { ok: false, error: "Impossible de vendre un design." };
+
+  // pas de vente de P.E.T ici (unique)
+  if (it.pet) return { ok: false, error: "Impossible de vendre un P.E.T." };
 
   const price = Number(it.price || 0);
   if (!Number.isFinite(price) || price <= 0) return { ok: false, error: "Prix invalide." };

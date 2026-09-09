@@ -1,3 +1,4 @@
+import { petEscortTarget, stepPetMotion, petCombatVelocity, orientPet } from "./petMotion.js";
 import { measureGameTask } from "./performanceTimings.js";
 "use strict";
 import {
@@ -19,6 +20,9 @@ import {
   armCurrentUserGalaxyGateMultiplier,
   craftCurrentUserRecipe,
   setCurrentUserDroneFormation,
+  getPetFit,
+  setPetActive,
+  setPetMode,
 } from "./account.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
@@ -34,6 +38,7 @@ import { SHIP_EFFECTS } from "../data/shipEffects.js";
 import { GAME_VERSION } from "../data/version.js";
 import { getShipPackById as getShipPackByIdData } from "../data/shipPacks.js";
 import { DRONE_FORMATIONS, DRONE_FORMATION_LAYOUTS, DRONE_TYPES, DRONE_XP_SHARE, getActiveDroneFormation, getDroneLevel, getDroneSpritePath } from "../data/drones.js";
+import { PET_XP_SHARE, PET_FUEL_MAX, getPetDamageBonus, getPetLevel, getPetLevelXp, getPetMaxHp, getPetNextLevelXp, getPetShieldBonus, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../data/pets.js";
 import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./collision.js";
 import { createKeyboardState, createPointerState } from "./input.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "./combat.js";
@@ -476,6 +481,22 @@ const ui = {
   gameLogPrevious: document.getElementById("gameLogPrevious"),
   gameLogNext: document.getElementById("gameLogNext"),
   gameLogPage: document.getElementById("gameLogPage"),
+
+  petWindow: document.getElementById("petWindow"),
+  petSprite: document.getElementById("petSprite"),
+  petNameTxt: document.getElementById("petNameTxt"),
+  petLevelTxt: document.getElementById("petLevelTxt"),
+  petPlayBtn: document.getElementById("petPlayBtn"),
+  petModeSelect: document.getElementById("petModeSelect"),
+  petHpBar: document.getElementById("petHpBar"),
+  petHpTxt: document.getElementById("petHpTxt"),
+  petShBar: document.getElementById("petShBar"),
+  petShTxt: document.getElementById("petShTxt"),
+  petXpBar: document.getElementById("petXpBar"),
+  petXpTxt: document.getElementById("petXpTxt"),
+  petFuelBar: document.getElementById("petFuelBar"),
+  petFuelTxt: document.getElementById("petFuelTxt"),
+  petNoPet: document.getElementById("petNoPet"),
 
   honorTxt: document.getElementById("honorTxt"),
   xpTxt: document.getElementById("xpTxt"),
@@ -1625,14 +1646,112 @@ function registerHudWindows() {
   reg("galaxyGateWindow", "Galaxy Gates", "✦", false);
   reg("gameLogWindow", "LOG", "≡", false);
   reg("craftingWindow", "Atelier de fabrication", "AF", false);
+  reg("petWindow", "P.E.T", "🤖", false);
   if (["low", "qz"].includes(String(window.__CURRENT_MAP_ID__ || "").toLowerCase())) {
     reg("escortWindow", "Gestion des escortes", "ES", false);
   }
   reg("gygerimStatus", "État du boss", "B", true, { minimizable: false });
 wireSettingsWindow();
+wirePetWindow();
 }
 
 registerHudWindows();
+
+// ============================================================
+// ✅ Fenêtre P.E.T en jeu : play/stop, mode passif/combat, barres
+// HP / bouclier / XP / fuel (50 000 / 50 000 fixe pour le moment).
+// ============================================================
+function petShieldMaxForHud(pet, user) {
+  const hangar = (user?.hangars || []).find((h) => h?.active) || null;
+  const hid = hangar ? String(hangar.id) : null;
+  const cfg = String(Number(hangar?.activeConfig) === 2 ? 2 : 1);
+  const fit = hid ? getPetFit(pet, hid, cfg) : null;
+  const mult = 1 + getPetShieldBonus(getPetLevel(pet?.exp)) / 100;
+  let max = 0;
+  for (const itemId of fit?.generators || []) {
+    const item = itemId ? findCatalogItem(itemId) : null;
+    if (item?.module?.type === "shield") max += Number(item.module.bonusShield || 0) * mult;
+  }
+  return Math.max(0, Math.floor(max));
+}
+
+function wirePetWindow() {
+  ui.petPlayBtn?.addEventListener("click", () => {
+    const pet = account.user?.pet?.owned === true ? account.user.pet : null;
+    if (!pet) return showToast("P.E.T non possédé.", 1.5);
+    const out = setPetActive(!pet.active);
+    if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
+    loadAccountUser();
+    showToast(out.active ? "P.E.T activé" : "P.E.T désactivé", 1.2);
+  });
+  ui.petModeSelect?.addEventListener("change", () => {
+    const out = setPetMode(ui.petModeSelect.value);
+    if (!out?.ok) {
+      showToast(out?.error || "Impossible.", 1.5);
+      return;
+    }
+    loadAccountUser();
+    showToast(out.mode === "combat" ? "P.E.T : mode combat" : "P.E.T : passif", 1.2);
+  });
+}
+
+function updatePetHud() {
+  const pet = account.user?.pet?.owned === true ? account.user.pet : null;
+  const has = !!pet;
+  if (ui.petNoPet) ui.petNoPet.hidden = has;
+  setHudDisabled(ui.petPlayBtn, !has);
+  setHudDisabled(ui.petModeSelect, !has);
+
+  const level = has ? getPetLevel(pet.exp) : 0;
+  const exp = has ? Math.max(0, Number(pet.exp) || 0) : 0;
+  const hpMax = has ? getPetMaxHp(level) : 0;
+  const hp = has ? Math.max(0, Math.min(hpMax, Math.floor(Number(pet.hp)))) : 0;
+  const shMax = has ? petShieldMaxForHud(pet, account.user) : 0;
+  const sh = has
+    ? (Number.isFinite(Number(pet.sh)) ? Math.max(0, Math.min(shMax, Math.floor(Number(pet.sh)))) : shMax)
+    : 0;
+  const next = has ? getPetNextLevelXp(level) : 1;
+  const prev = has ? getPetLevelXp(level) : 0;
+  // Progression infinie : plus de plafond au niveau 20.
+  const xpPct = Math.max(0, Math.min(100, ((exp - prev) / Math.max(1, next - prev)) * 100));
+
+  setHudText(ui.petLevelTxt, `Niveau ${level}`);
+  setHudText(ui.petHpTxt, `${formatInteger(hp)} / ${formatInteger(hpMax)}`);
+  setHudWidth(ui.petHpBar, `${hpMax > 0 ? (hp / hpMax) * 100 : 0}%`);
+  setHudText(ui.petShTxt, `${formatInteger(sh)} / ${formatInteger(shMax)}`);
+  setHudWidth(ui.petShBar, `${shMax > 0 ? (sh / shMax) * 100 : 0}%`);
+  if (ui.petShBar?.parentElement) setHudDisplay(ui.petShBar.parentElement, shMax > 0 ? "" : "none");
+  setHudText(ui.petXpTxt, `${formatInteger(Math.floor(exp))} / ${formatInteger(next)}`);
+  setHudWidth(ui.petXpBar, `${xpPct}%`);
+  setHudText(ui.petFuelTxt, `${formatInteger(PET_FUEL_MAX)} / ${formatInteger(PET_FUEL_MAX)}`);
+  setHudWidth(ui.petFuelBar, "100%");
+
+  if (ui.petPlayBtn) {
+    const label = pet?.active === true ? "⏸" : "▶";
+    if (ui.petPlayBtn.textContent !== label) ui.petPlayBtn.textContent = label;
+    setHudAttr(ui.petPlayBtn, "title", pet?.active === true ? "Désactiver le P.E.T" : "Activer le P.E.T");
+    setHudClass(ui.petPlayBtn, "isOn", pet?.active === true);
+  }
+  if (ui.petModeSelect) {
+    const mode = normalizePetMode(pet?.mode);
+    if (document.activeElement !== ui.petModeSelect && ui.petModeSelect.value !== mode) {
+      ui.petModeSelect.value = mode;
+    }
+  }
+  // Sprite de la fenêtre suit le palier de niveau (sans recharger en boucle).
+  const stage = has ? getPetStage(level) : 0;
+  if (stage !== lastPetHudStage) {
+    lastPetHudStage = stage;
+    if (ui.petSprite && stage > 0) {
+      setHudAttr(ui.petSprite, "src", `${getPetStageBase(level)}21.png`);
+      ui.petSprite.style.background = stage >= 6
+        ? 'url("/Pet/Niveau5/21.png") center / contain no-repeat'
+        : "";
+    }
+  }
+}
+
+let lastPetHudStage = 0;
 
 let selectedCraftingRecipeId = CRAFTING_RECIPES[0]?.id || null;
 
@@ -2581,6 +2700,16 @@ function awardExperience(amount, source = "") {
     drone.level = getDroneLevel(drone.exp);
     if (drone.level > previousLevel) queueDroneLevelTransition(drone.id, previousLevel, drone.level);
   }
+  // P.E.T / REX officiel : +5 % de l'XP du vaisseau quand il est possédé
+  // ET activé (bouton play de la fenêtre P.E.T).
+  if (account.user.pet?.owned === true && account.user.pet.active === true) {
+    const previousPetLevel = Math.max(0, Number(account.user.pet.level) || getPetLevel(account.user.pet.exp));
+    account.user.pet.exp = Math.max(0, Number(account.user.pet.exp) || 0) + result.gained * PET_XP_SHARE;
+    account.user.pet.level = getPetLevel(account.user.pet.exp);
+    if (account.user.pet.level > previousPetLevel) {
+      showToast(`P.E.T niveau ${account.user.pet.level} atteint !`, 2.6);
+    }
+  }
   markProgressDirty();
   if (result.leveledUp) {
     showToast(`Niveau ${result.after.level} atteint !`, 2.6);
@@ -2845,6 +2974,7 @@ function saveProgressNowMeasured() {
   stats: { ...(account.user.stats || {}) },
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
   drones: account.user.drones,
+  pet: account.user.pet,
 hangarState: !player.dead && started ? {
     id: SESSION_HANGAR_ID || null,
     x: player.x,
@@ -3842,6 +3972,18 @@ function preloadPlayerBulletSprites() {
   for (const k in PLAYER_BULLET_SPRITES) {
     const src = PLAYER_BULLET_SPRITES[k]?.src;
     if (src) jobs.push(loadImage(src, { priority: false }));
+  }
+  return jobs;
+}
+
+// Sprites P.E.T : tous les paliers (Niveau1 → Niveau5 + fusion),
+// 32 frames chacun, préchargés au chargement du jeu.
+function preloadPetSprites() {
+  const jobs = [];
+  for (const dir of PET_STAGE_DIRS) {
+    for (let frame = 1; frame <= PET_SPRITE_FRAMES; frame++) {
+      jobs.push(loadImage(`${dir}${frame}.png`, { priority: false }));
+    }
   }
   return jobs;
 }
@@ -6175,6 +6317,370 @@ function drawEscortTargetLocks(ox, oy) {
     if (escort.target?.hp > 0 && escort.target !== playerTarget) targets.add(escort.target);
   }
   for (const target of targets) drawTargetLock(ctx, target, image, ESCORT_LOCK_SPR, ox, oy, performance.now() / 1000);
+}
+
+// ============================================================
+// ✅ P.E.T / REX en jeu : libre, suit constamment le joueur (place
+// fixe près de lui quand il est immobile), sprite fixe par palier
+// (pas d'animation en boucle), taille contenue.
+// Passif = suit seulement, ne tire jamais (même attaqué).
+// Combat = riposte : attaque le NPC qui nous attaque (tirage
+// aléatoire toutes les 1 s si plusieurs) en se mettant à portée,
+// sinon attaque seulement si on a nous-même lancé une attaque.
+// ============================================================
+const petState = { x: 0, y: 0, angle: 0, fireCd: 0, pickCd: 0, target: null, ready: false, returning: false, weaveT: 0, followT: 0, wpX: 0, wpY: 0, hasWp: false, attackers: new Map() };
+
+// Règle générale : au-delà de 400px de nous, il revient vers nous quoi
+// qu'il fasse (attaque ou pas), quitte à repartir au combat après.
+// À l'arrêt, il s'arrête autour de nous dans un rayon de 300 (sans se
+// repositionner s'il est déjà dedans). Il ne bouge que si on bouge.
+
+// Reste dans ce rayon autour du vaisseau (600). Il ne bouge que si on
+// bouge : trouve une place et s'arrête quand on s'arrête.
+
+const PET_FOLLOW_RADIUS = 400;
+const PET_RETURN_CLEAR = 300;
+const PET_REST_RADIUS = 300;
+const PET_COMBAT_RADIUS = 300;
+// Taille d'affichage : taille réelle des sprites (154×137, sans réduction).
+const PET_DRAW_W = 154;
+const PET_DRAW_H = 137;
+// Retirage de la cible riposte toutes les 1 s si plusieurs attaquants.
+const PET_REPICK_DELAY = 1;
+// Un attaquant compte seulement s'il nous a infligé des dégâts il y a moins de 6 s
+// (pas un simple lock/aggro) : tracé via notePetAttacker sur dégâts réels.
+const PET_ATTACKER_MEMORY = 6;
+// Téléportation si trop loin (changement de map, respawn...).
+const PET_MAX_CHASE_DIST = 3000;
+
+// Enregistre un NPC qui vient RÉELLEMENT de nous infliger des dégâts
+// (tir qui touche, kamikaze, explosion au contact). Seule cette trace
+// déclenche la riposte du P.E.T — jamais un lock ou une aggro.
+function notePetAttacker(enemy) {
+  if (!enemy || enemy.hp <= 0 || enemy.id == null) return;
+  // Chaque dégât reçu accorde aléatoirement une ou deux salves de riposte.
+  const previous = petState.attackers.get(enemy.id);
+  petState.attackers.set(enemy.id, {
+    ref: enemy,
+    t: performance.now() / 1000,
+    pending: Math.min(8, (Number(previous?.pending) || 0) + (Math.random() < 0.5 ? 1 : 2)),
+  });
+  if (petState.attackers.size > 40) {
+    petState.attackers.delete(petState.attackers.keys().next().value);
+  }
+}
+
+// Autorise l'assistance sur cette cible seulement après un dégât confirmé du
+// joueur. Un MISS, un lock ou le simple démarrage du tir ne passe pas ici.
+function notePetPlayerDamage(enemy) {
+  if (!enemy || enemy.id == null) return;
+  petState.assistTarget = enemy;
+}
+
+function petVolleyDamage(pet, user) {
+  const hangar = (user?.hangars || []).find((h) => h?.active) || null;
+  const hid = hangar ? String(hangar.id) : null;
+  const cfg = String(Number(hangar?.activeConfig) === 2 ? 2 : 1);
+  const fit = hid ? getPetFit(pet, hid, cfg) : null;
+  const level = getPetLevel(pet?.exp);
+  const mult = 1 + getPetDamageBonus(level) / 100;
+  let base = 0;
+  let protoPct = 0;
+  const lasers = [];
+  for (const itemId of fit?.lasers || []) {
+    const item = itemId ? findCatalogItem(itemId) : null;
+    if (item?.module?.type === "laser") {
+      base += Number(item.module.damage || 0);
+      lasers.push(itemId);
+    }
+  }
+  for (const itemId of fit?.protocols || []) {
+    const item = itemId ? findCatalogItem(itemId) : null;
+    const pct = Number(item?.petProtocol?.pct || 0);
+    if (item?.petProtocol && (item.petProtocol.key === "damage" || item.petProtocol.key === "alien") && pct) {
+      protoPct += pct;
+    }
+  }
+  return { total: base * mult * (1 + protoPct / 100), count: lasers.length };
+}
+
+function firePetVolley(target) {
+  const { total, count } = petVolleyDamage(account.user?.pet, account.user);
+  if (!(total > 0) || !count) return;
+  const ammoKey = player.ammo.active || "x1";
+  const ammoCfg = AMMO[ammoKey] || AMMO.x1;
+  const isSab = ammoKey === "sab";
+  const angle = Math.atan2(target.y - petState.y, target.x - petState.x);
+  const speed = Math.max(900, Number(BASE_RUN.baseBulletSpeed) || 4000);
+  const muzzle = 50;
+  const muzzleX = petState.x + Math.cos(angle) * muzzle;
+  const muzzleY = petState.y + Math.sin(angle) * muzzle;
+  const volleyId = volleySeq++;
+  const volleyDamage = isSab ? total * SAB50.drainMult : total * (ammoCfg.mult || 1);
+  // Les points de tir suivent l'apparence, pas le nombre de lasers équipés.
+  const stage = getPetStage(getPetLevel(account.user?.pet?.exp));
+  const canFirePair = stage >= 4;
+  const isRealPair = canFirePair && (petState.altShot ?? true);
+  const shotOffsets = isRealPair ? [-SIDE_OFFSET, SIDE_OFFSET] : [0];
+  const perShot = volleyDamage / shotOffsets.length;
+  const life = bulletLifeForRange(playerRange, speed);
+  const perp = angle + Math.PI / 2;
+  for (const off of shotOffsets) {
+    const sx = muzzleX + Math.cos(perp) * off;
+    const sy = muzzleY + Math.sin(perp) * off;
+    const dx = target.x - sx;
+    const dy = target.y - sy;
+    const len = Math.hypot(dx, dy) || 1;
+    addCappedProjectile(bullets, {
+      x: sx, y: sy, vx: dx / len * speed, vy: dy / len * speed, spd: speed,
+      r: 6, life, dmg: perShot,
+      key: ammoKey, side: "player", targetId: target.id, homing: true,
+      isSab,
+      miss: Math.random() < PLAYER_SHOTS.missChance,
+      ownerEscortId: "pet", volleyId, volleySize: shotOffsets.length,
+    }, ENTITY_LIMITS.playerBullets);
+  }
+  // Comme dans DarkOrbit, les lasers du REX puisent dans la réserve choisie
+  // par le joueur. Le X1 reste naturellement illimité.
+  consumeAmmo(count);
+  playEscortShot(ammoKey);
+  const salvoShots = ammoKey === "x6" ? 12 : 6;
+  const salvoInterval = ammoKey === "x6" ? 1 / 12 : 0.2;
+  for (let i = 1; i < salvoShots; i++) {
+    const fakeIsPair = canFirePair && (isRealPair ? i % 2 === 0 : i % 2 === 1);
+    const items = fakeIsPair ? [[-SIDE_OFFSET, 0], [SIDE_OFFSET, 0]] : [[0, 0]];
+    scheduleEscortSalvoPart(i * salvoInterval, {
+      escortId: "pet", targetId: target.id, speed, life, volleyId,
+      volleySize: items.length, key: ammoKey, items,
+    });
+  }
+  petState.altShot = !isRealPair;
+  const retaliation = petState.attackers.get(target.id);
+  if (retaliation?.pending > 0) {
+    retaliation.pending -= 1;
+    if (retaliation.pending <= 0) petState.attackers.delete(target.id);
+  }
+  if (petState.outOfRangeTarget === target && petState.outOfRangeShots > 0) {
+    petState.outOfRangeShots -= 1;
+    if (petState.outOfRangeShots <= 0) {
+      petState.outOfRangeTarget = null;
+      if (petState.assistTarget === target) petState.assistTarget = null;
+    }
+  }
+}
+
+function updatePet(dt) {
+  const pet = account.user?.pet;
+  if (!pet?.owned || pet?.active !== true) { petState.ready = false; petState.target = null; return; }
+  if (!started || player.dead) return;
+  if (!petState.ready) {
+    petState.x = player.x - 90;
+    petState.y = player.y + 70;
+    petState.fireCd = 0;
+    petState.pickCd = 0;
+    petState.target = null;
+    petState.returning = false;
+    petState.weaveT = 0;
+    petState.vx = 0;
+    petState.vy = 0;
+    petState.followAngle = player.angle || 0;
+    petState.hasWp = false;
+    petState.followWait = 0;
+    petState.combatTarget = null;
+    petState.assistTarget = null;
+    petState.outOfRangeTarget = null;
+    petState.outOfRangeShots = 0;
+    petState.ready = true;
+  }
+
+  petState.fireCd = Math.max(0, petState.fireCd - dt);
+  petState.pickCd = Math.max(0, petState.pickCd - dt);
+
+  const ownerDistance = Math.hypot(player.x - petState.x, player.y - petState.y);
+  const selectedPetTarget = attackActive ? Target.get() : null;
+  const continuingAssist = !!selectedPetTarget && petState.assistTarget === selectedPetTarget
+    && selectedPetTarget.hp > 0 && enemies.includes(selectedPetTarget);
+  const outsidePlayerRange = continuingAssist
+    && Math.hypot(selectedPetTarget.x - player.x, selectedPetTarget.y - player.y) > playerRange;
+  if (outsidePlayerRange) {
+    if (petState.graceTarget !== selectedPetTarget) {
+      petState.graceTarget = selectedPetTarget;
+      petState.graceRemaining = 3;
+    }
+    petState.graceRemaining = Math.max(0, petState.graceRemaining - dt);
+  } else {
+    petState.graceTarget = null;
+    petState.graceRemaining = 0;
+  }
+  const finishingAttack = outsidePlayerRange && petState.graceRemaining > 0;
+  const leash = Math.max(750, playerRange * 1.2) + (finishingAttack ? 600 : 0);
+  // Inclure le rayon de combat : le cote oppose du NPC reste accessible.
+  const ownerLeash = leash + PET_COMBAT_RADIUS;
+  if (ownerDistance > ownerLeash && !petState.returning) {
+    petState.returning = true;
+    petState.assistTarget = null;
+    petState.escortX = undefined;
+    petState.escortY = undefined;
+  } else if (ownerDistance <= PET_REST_RADIUS + 22) {
+    petState.returning = false;
+  }
+  // Ne pas effacer a chaque image les nouveaux degats confirmes pendant le retour.
+  let target = null;
+  const petCombatMode = normalizePetMode(pet.mode) === "combat";
+  if (petCombatMode && !petState.returning) {
+    const playerTarget = attackActive ? Target.get() : null;
+    const playerTargetDistance = playerTarget
+      ? Math.hypot(playerTarget.x - player.x, playerTarget.y - player.y)
+      : Infinity;
+    const playerTargetInRange = playerTargetDistance <= playerRange;
+
+    // La riposte autonome reste disponible lorsque le joueur ne tire sur
+    // personne. Elle autorise aussi immédiatement cette même cible si le joueur
+    // l'attaque, sans attendre qu'il lui inflige lui-même un dégât.
+    // notePetAttacker n'est jamais appelée sur un simple lock, une tentative
+    // d'attaque ou un tir raté.
+    const nowS = performance.now() / 1000;
+    let lastDamageAt = -Infinity;
+    let lastAttacker = null;
+    let playerTargetHitUs = false;
+    for (const [id, record] of petState.attackers) {
+      const valid = record.pending && nowS - record.t <= PET_ATTACKER_MEMORY
+        && record.ref?.hp > 0 && enemies.includes(record.ref);
+      if (!valid) {
+        petState.attackers.delete(id);
+      } else {
+        if (record.ref === playerTarget) playerTargetHitUs = true;
+        if (record.t > lastDamageAt) {
+          lastDamageAt = record.t;
+          lastAttacker = record.ref;
+        }
+      }
+    }
+    if (playerTarget) {
+      const assisted = petState.assistTarget === playerTarget;
+      const authorized = assisted || playerTargetHitUs;
+      if (playerTargetInRange) {
+        petState.outOfRangeTarget = null;
+        petState.outOfRangeShots = 0;
+        if (authorized) target = playerTarget;
+      } else if (assisted) {
+        if (finishingAttack) target = playerTarget;
+      } else if (playerTargetHitUs) {
+        // Une agression reçue conserve sa règle séparée : une ou deux salves par impact.
+        target = playerTarget;
+      }
+    } else {
+      petState.outOfRangeTarget = null;
+      petState.outOfRangeShots = 0;
+      target = lastAttacker;
+    }
+  }
+  if (!petCombatMode) petState.assistTarget = null;
+  if (target && (!(target.hp > 0) || !enemies.includes(target)
+    || Math.hypot(target.x - player.x, target.y - player.y) > leash)) {
+    // Sortir de la zone annule aussi l'autorisation obtenue par un ancien
+    // dégât : en se rapprochant, le joueur devra réellement toucher à nouveau.
+    if (petState.assistTarget === target) petState.assistTarget = null;
+    petState.outOfRangeTarget = null;
+    petState.outOfRangeShots = 0;
+    target = null;
+  }
+  petState.target = target;
+  if (!target) {
+    for (let i = pendingEscortSalvo.length - 1; i >= 0; i--) {
+      if (pendingEscortSalvo[i].escortId === "pet") pendingEscortSalvo.splice(i, 1);
+    }
+  }
+  if (!target) petState.combatTarget = null;
+  const ownerSpeed = Math.max(260, getSpeedBreakdown().total);
+  // Close / intermediate / far zones blend continuously into catch-up speed.
+  const catchup = clamp((ownerDistance - 220) / 680, 0, 1);
+  const followSpeed = ownerSpeed * (1.1 + catchup * 0.65);
+  let destX = petState.x, destY = petState.y;
+  let wantSpeed = followSpeed;
+  const weaving = !!target;
+  const combat = target ? petCombatVelocity(petState, target, PET_COMBAT_RADIUS, dt, player) : null;
+  const weaveVX = combat?.vx || 0, weaveVY = combat?.vy || 0;
+  if (!target || petState.returning) {
+    const escort = petEscortTarget(petState, player, dt, petState.returning ? PET_REST_RADIUS * 0.65 : PET_REST_RADIUS);
+    destX = clamp(escort.x, 80, WORLD.w - 80);
+    destY = clamp(escort.y, 80, WORLD.h - 80);
+    wantSpeed = followSpeed;
+  }
+  const prevX = petState.x;
+  const prevY = petState.y;
+  if (weaving) {
+    const scale = Math.min(1, followSpeed / (Math.hypot(weaveVX, weaveVY) || 1));
+    stepPetMotion(petState, weaveVX * scale, weaveVY * scale, dt, WORLD);
+  } else {
+    const dx = destX - petState.x, dy = destY - petState.y;
+    const dist = Math.hypot(dx, dy);
+    {
+      // Match the owner's motion while correcting separation, then brake at rest.
+      const escorting = !target || petState.returning;
+      // Zone morte à l'arrivée : évite de dépasser le point puis d'inverser le
+      // cap en boucle, ce qui donnait l'impression que le PET glitchait sur place.
+      const settled = escorting && dist < 22;
+      let vx = settled ? 0 : dx * 3;
+      let vy = settled ? 0 : dy * 3;
+      const speed = Math.hypot(vx, vy);
+      const scale = speed > 0 ? Math.min(1, wantSpeed / speed) : 0;
+      stepPetMotion(petState, vx * scale, vy * scale, dt, WORLD);
+    }
+  }
+  if (target) petState.angle = Math.atan2(target.y - petState.y, target.x - petState.x);
+  else orientPet(petState, dt);
+  // Le REX doit réellement rejoindre sa zone de combat avant de tirer. Cette
+  // règle vaut aussi pour une riposte déclenchée par un dégât reçu.
+  const inRangeToFire = target
+    && Math.hypot(target.x - petState.x, target.y - petState.y) <= PET_COMBAT_RADIUS + 5;
+
+  if (!target || !inRangeToFire || petState.fireCd > 0) return;
+  firePetVolley(target);
+  petState.fireCd = 1 / Math.max(0.001, player.baseFireRate * player.fireRateMult);
+}
+
+const petCombinedFrames = new Map();
+
+function drawPet(ox, oy) {
+  const pet = account.user?.pet;
+  if (!pet?.owned || pet?.active !== true) return;
+  if (!petState.ready || player.dead || !started) return;
+  const x = petState.x + ox;
+  const y = petState.y + oy;
+  if (x < -160 || y < -160 || x > innerWidth + 160 || y > innerHeight + 160) return;
+  const level = getPetLevel(pet.exp);
+  // Sprite directionnel d'après sa propre orientation. Comme les drones,
+  // les sprites P.E.T sont encodés dans le sens opposé : demi-tour (+16).
+  const frame = ((angleToFrameIndex(petState.angle, 32) + 16) % 32) + 1;
+  const image = getCachedImage(`${getPetStageBase(level)}${frame}.png`);
+  // Le dernier palier contient uniquement les pièces à superposer au Niveau5.
+  const baseImage = getPetStage(level) >= 6
+    ? getCachedImage(`/Pet/Niveau5/${frame}.png`)
+    : null;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+  let sprite = image;
+  if (baseImage) {
+    // Précomposer les deux couches pour ne jamais afficher l'extension seule.
+    sprite = petCombinedFrames.get(frame);
+    if (!sprite && isImgReady(baseImage) && isImgReady(image)) {
+      sprite = document.createElement("canvas");
+      sprite.width = PET_DRAW_W;
+      sprite.height = PET_DRAW_H;
+      const composite = sprite.getContext("2d");
+      composite.imageSmoothingEnabled = false;
+      composite.drawImage(baseImage, 0, 0, PET_DRAW_W, PET_DRAW_H);
+      composite.drawImage(image, 0, 0, PET_DRAW_W, PET_DRAW_H);
+      petCombinedFrames.set(frame, sprite);
+    }
+    if (!sprite) sprite = isImgReady(baseImage) ? baseImage : null;
+  }
+  if (sprite && (baseImage || isImgReady(sprite))) drawCenteredImage(ctx, sprite, PET_DRAW_W, PET_DRAW_H);
+  else { ctx.fillStyle = "#79f5ff"; ctx.beginPath(); ctx.arc(0, 0, 20, 0, TAU); ctx.fill(); }
+  ctx.restore();
 }
 
 const ENTITY_LIMITS = Object.freeze({
@@ -9060,14 +9566,19 @@ function scheduleEscortSalvoPart(delay, entry) {
 }
 
 function spawnEscortSalvoDecoy(e) {
-  const escort = getEscortById(e.escortId);
+  const isPet = e.escortId === "pet";
+  if (isPet && (!account.user?.pet?.active || !petState.ready || player.dead)) return;
+  if (isPet && (petState.returning || petState.target?.id !== e.targetId
+    || normalizePetMode(account.user?.pet?.mode) !== "combat")) return;
+  const escort = isPet ? petState : getEscortById(e.escortId);
   const t2 = getEnemyById(e.targetId);
-  if (!escort || escort.hp <= 0 || !t2) return;
+  if (!escort || (isPet ? account.user?.pet?.hp <= 0 : escort.hp <= 0) || !t2 || t2.hp <= 0) return;
   const ang2 = Math.atan2(t2.y - escort.y, t2.x - escort.x);
   const fx2 = Math.cos(ang2), fy2 = Math.sin(ang2);
   const px2 = -fy2, py2 = fx2;
-  const muzzle2X = escort.x + fx2 * ((escort.pack?.r || 34) + 10);
-  const muzzle2Y = escort.y + fy2 * ((escort.pack?.r || 34) + 10);
+  const muzzle = isPet ? 50 : (escort.pack?.r || 34) + 10;
+  const muzzle2X = escort.x + fx2 * muzzle;
+  const muzzle2Y = escort.y + fy2 * muzzle;
   for (const [off, aOff] of e.items) {
     addCappedProjectile(bullets, {
       x: muzzle2X + px2 * off,
@@ -11215,6 +11726,7 @@ function enemyShoot(e, dt, combatTarget = player) {
           target: farthest === player ? "player" : "escort",
           targetId: farthest === player ? null : farthest.id,
           homing: true,
+          ownerId: e.id,
           miss: Math.random() < Math.min(1, NPC_SHOTS.missChance
             + ((e.rocketAccuracyT || 0) > 0 ? Number(e.rocketAccuracyPenaltyPct || 0) / 100 : 0)),
           hitRadiusBonus: NPC_SHOTS.hitRadiusBonus,
@@ -11281,6 +11793,7 @@ function enemyShoot(e, dt, combatTarget = player) {
       target: combatTarget === player ? "player" : "escort",
       targetId: combatTarget === player ? null : combatTarget.id,
       homing: NPC_SHOTS.homing,
+      ownerId: e.id,
       miss: willMiss,
       hitRadiusBonus: NPC_SHOTS.hitRadiusBonus,
     }, ENTITY_LIMITS.enemyBullets);
@@ -11471,6 +11984,7 @@ updatePlayerVelocity(player, { x: mx, y: my }, dt);
   else zoneController(dt);
   updateBossEncounters();
   updateGateEscorts(dt);
+  updatePet(dt);
 
   mapPortalLock = Math.max(0, mapPortalLock - dt);
   portalHintCd = Math.max(0, portalHintCd - dt);
@@ -11757,7 +12271,9 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       continue;
     }
 
-    const sabRecipient = b.ownerEscortId ? getEscortById(b.ownerEscortId) : player;
+    const sabRecipient = b.ownerEscortId === "pet"
+      ? player
+      : b.ownerEscortId ? getEscortById(b.ownerEscortId) : player;
     // ✅ les éclairs visuels de la salve X6 n'infligent aucun dégât
     let out = { total: 0 };
     if (!b.visual) {
@@ -11781,6 +12297,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     }
 
     if (out.total > 0) {
+      if (!b.ownerEscortId) notePetPlayerDamage(t);
       if (!b.ownerEscortId || Target.get() === t) {
         queueVolleyFloat(t, out, b.volleyId, b.isLauncherRocket ? 1 : b.volleySize, b.isLauncherRocket ? 1.5 : VOLLEY_FLOAT_TIMEOUT);
       }
@@ -11851,6 +12368,10 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
             spawnShipDamage(b.x, b.y);
           }
           hurtPlayer(b.dmg);
+          // Dégâts réellement reçus → le P.E.T pourra riposter sur ce NPC.
+          if (b.ownerId != null) {
+            notePetAttacker(enemies.find((x) => x?.id === b.ownerId) || null);
+          }
         }
         else {
           damagePlayerLayers(bulletTarget, b.dmg);
@@ -12328,6 +12849,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             spawnSpark(e.x, e.y, true);
             const dmgK = Number(cfgE.explodeDmg || 12000);
             hurtPlayer(dmgK);
+            notePetAttacker(e);
             e.hp = 0;
             e.sh = 0;
           }
@@ -12383,6 +12905,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
         const dmg = Number(cfgTouch.explodeDmg || 12000);
         hurtPlayer(dmg);
+        notePetAttacker(e);
 
         e.hp = 0;
         e.sh = 0;
@@ -12476,6 +12999,7 @@ if (GAME_SETTINGS.textures) {
   drawCollectables(ox, oy);
   drawEngineTrails(ox, oy);
   drawGateEscorts(ox, oy);
+  drawPet(ox, oy);
 
   for (const pck of pickups) {
     const x = pck.x + ox, y = pck.y + oy;
@@ -12850,6 +13374,7 @@ if (ui.spdTxt) {
 updateConfigButtons();
 
   updateResourceHud(ui, player);
+  updatePetHud();
   updateWaveHud(ui, { started, wave, remaining: waveSpawns.remaining, alive: enemies.length });
 
   setHudText(ui.shopCredits, formatInteger(player.credits));
@@ -12933,6 +13458,7 @@ async function prepareGameAssets() {
     const jobs = [ensurePackLoaded(ACTIVE_SHIP), loadImage(WALL_TEX.src, { priority: true })];
     for (const layer of BG_LAYERS) if (layer.src) jobs.push(loadImage(layer.src, { priority: true }));
     jobs.push(...preloadPlayerBulletSprites());
+    jobs.push(...preloadPetSprites());
     jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensurePulseFxLoaded(),
       ensureRepairOrbitLoaded(), ensureShipDamageLoaded(), ensureInstaShieldLoaded());
     jobs.push(...preloadCollectables());
@@ -12972,6 +13498,7 @@ async function startGame() {
 
   SFX.preload();
   preloadPlayerBulletSprites();
+  preloadPetSprites();
   ensureExplosionLoaded();
   ensureShipDamageLoaded();
   ensurePulseFxLoaded();
@@ -13125,6 +13652,7 @@ updateCurrentUserProgress({
   stats: { ...(account.user.stats || {}) },
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
   drones: account.user.drones,
+  pet: account.user.pet,
 
   // ⚠️ Ne surtout pas sauvegarder ship ici.
   // Le vaisseau actif est géré par setActiveHangar().
@@ -13386,5 +13914,13 @@ prepareGameAssets().catch((error) => {
 
 setCenterMsg(false);
 scheduleNextFrame();
+
+// ✅ Fenêtre P.E.T : ouverte d'office si le P.E.T est possédé et que le
+// joueur n'a jamais touché à son état (choix ensuite respecté).
+{
+  let petTouched = null;
+  try { petTouched = localStorage.getItem("orbit_hud_window_state:petWindow"); } catch {}
+  if (cur.pet?.owned === true && petTouched === null) window.GameWindowManager?.restore("petWindow");
+}
 
 }

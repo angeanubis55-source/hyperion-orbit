@@ -90,6 +90,18 @@ ammo: [
     { id: "drone_zeus", name: "Drone Zeus", price: SPECIAL_DRONE_PRICE, drone: { type: "zeus" }, icon: getDroneShopSpritePath("zeus") },
   ],
 
+  pets: [
+    { id: "pet_niveau1", name: "P.E.T", price: 10000000, icon: "/Pet/Niveau1/21.png", pet: { id: "niveau1" } },
+  ],
+
+  // Gears P.E.T (puces) : catégorie conservée, items retirés pour l'instant.
+  // Comme l'officiel, les emplacements se débloquent avec les niveaux du P.E.T.
+  petGears: [],
+
+  // Protocoles P.E.T (IA) : catégorie conservée, items retirés pour l'instant.
+  // Paliers officiels : niveau 2 dès P.E.T 4, niveau 3 dès P.E.T 8.
+  petProtocols: [],
+
   formations: DRONE_FORMATIONS.filter(formation => formation.price > 0).map(formation => ({
     id: `formation_${formation.id}`, name: formation.name, price: formation.price,
     formation: { id: formation.id, minDrones: formation.minDrones, icon: formation.icon },

@@ -22,7 +22,9 @@ import {
   buyCurrentUserDroneFormation,
   setCurrentUserDroneFormation,
   saveCurrentUserDroneFits,
+  saveCurrentUserPetFits,
   getDroneFit,
+  getPetFit,
 } from "../src/core/account.js";
 
 import { measureGameTask } from "../src/core/performanceTimings.js";
@@ -40,6 +42,7 @@ import { getRocketType, rocketEffectLabel } from "../src/data/rockets.js";
 import { getResourceName } from "../src/data/resources.js";
 import { getItemRarity, ITEM_RARITIES } from "../src/data/itemRarities.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../src/data/drones.js";
+import { emptyPetFit, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLevelXp, getPetSlots, getPetSpritePath } from "../src/data/pets.js";
 import { MODULE_ALL_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../src/data/moduleDrops.js";
 import { appendToFitSlots, compactFitDraft } from "../src/core/fitLayout.js";
 import { rarityForCatalogItem } from "../src/data/crafting.js";
@@ -721,11 +724,19 @@ function buildInventorySections(u) {
     const quantity = finiteInventoryQuantity(rawQuantity);
     if (!quantity) continue;
     const found = catalogEntry(itemId);
+    // Consumable purchase counts are not remaining stock. Their actual reserves
+    // are already stacked above from u.ammo and u.rockets, including launcher ammo.
+    if (found?.item.give?.ammo || found?.item.give?.rockets) continue;
+    // Le P.E.T a sa propre section (niveau/XP) : pas de doublon dans Équipements.
+    if (found?.category === "pets") continue;
     if (found && found.category !== "ammo" && found.category !== "ships") {
+      let detail = ({ lasers: "Laser", speedGen: "Générateur de vitesse", shieldGen: "Générateur de bouclier", extras: "Extra", rockets: "Roquettes", launchers: "Lance-roquettes", petGears: "Gear P.E.T", petProtocols: "Protocole P.E.T" })[found.category] || "Équipement";
+      if (found.item.petProtocol) detail = `Protocole P.E.T · +${Number(found.item.petProtocol.pct) || 0} % ${petProtocolStatLabel(found.item.petProtocol.key)}`;
+      if (found.item.petGear) detail = `Gear P.E.T · ${found.item.desc || found.item.name}`;
       equipment.push({
         id: itemId, kind: "equipment", category: found.category, item: found.item,
         name: found.item.name || humanizeInventoryId(itemId), quantity,
-        detail: ({ lasers: "Laser", speedGen: "Générateur de vitesse", shieldGen: "Générateur de bouclier", extras: "Extra", rockets: "Roquettes", launchers: "Lance-roquettes" })[found.category] || "Équipement",
+        detail,
       });
     } else if (!found) {
       resources.set(itemId, { id: itemId, kind: "resource", name: getResourceName(itemId), quantity, detail: "Ressource" });
@@ -810,6 +821,15 @@ function buildInventorySections(u) {
     };
   });
 
+  const pets = u?.pet?.owned === true ? [{
+    id: "pet_niveau1",
+    kind: "pet",
+    pet: u.pet,
+    name: "P.E.T",
+    quantity: 1,
+    detail: `Niveau ${Math.max(0, Number(u.pet.level) || 0)} · ${formatNumber(Math.floor(Number(u.pet.exp) || 0))} XP · ${getPetLevelBonus(Math.max(0, Number(u.pet.level) || 0))}`,
+  }] : [];
+
   return [
     { id: "ammo", title: "Munitions", items: ammoItems },
     { id: "equipment", title: "Équipements", items: equipment },
@@ -817,6 +837,7 @@ function buildInventorySections(u) {
     { id: "ships", title: "Vaisseaux", items: ships },
     { id: "ship-designs", title: "Designs de vaisseaux", items: shipDesigns },
     { id: "drones", title: "Drones", items: drones },
+    { id: "pets", title: "P.E.T", items: pets },
     { id: "drone-designs", title: "Designs de drones", items: designs },
     { id: "drone-formations", title: "Formations de drones", items: droneFormations },
     { id: "resources", title: "Ressources", items: [...resources.values()] },
@@ -827,6 +848,7 @@ function inventoryItemIcon(entry) {
   if (entry.kind === "ship") return shipPreviewSrc(entry.id);
   if (entry.kind === "shipDesign") return shipPreviewSrc(entry.id);
   if (entry.kind === "drone") return getDroneSpritePath(entry.drone, 29);
+  if (entry.kind === "pet") return getPetSpritePath(entry.pet, 21);
   if (entry.kind === "droneDesign") return entry.design?.icon || FALLBACK_ICON;
   if (entry.kind === "droneFormation") return entry.formation?.icon || FALLBACK_ICON;
   if (entry.kind === "module") return moduleIconSrc(entry.module?.type, entry.module?.tier);
@@ -855,6 +877,8 @@ function inventoryTooltipText(entry) {
     if (Number.isFinite(Number(module.bonusSpeed))) lines.push(`Vitesse : +${formatNumber(module.bonusSpeed)}`);
     if (Number.isFinite(Number(module.bonusShield))) lines.push(`Bouclier : +${formatNumber(module.bonusShield)}`);
     if (module.key) lines.push(`Effet : ${humanizeInventoryId(module.key)}`);
+    if (entry.item?.petProtocol) lines.push(`Bonus : +${Number(entry.item.petProtocol.pct) || 0} % ${petProtocolStatLabel(entry.item.petProtocol.key)} (équipé sur le P.E.T)`);
+    if (entry.item?.petGear && entry.item.desc) lines.push(entry.item.desc);
     lines.push(entry.detail);
   } else if (entry.kind === "ship") {
     const pack = getShipPack(entry.id);
@@ -874,6 +898,12 @@ function inventoryTooltipText(entry) {
   } else if (entry.kind === "drone") {
     lines.push(entry.detail);
     lines.push("2 emplacements d'équipement");
+  } else if (entry.kind === "pet") {
+    lines.push(entry.detail);
+    const petSlots = getPetSlots(Math.max(0, Number(entry.pet?.level) || 0));
+    lines.push(`Emplacements : ${petSlots.lasers} lasers · ${petSlots.generators} générateurs · ${petSlots.gears} gears · ${petSlots.protocols} protocoles`);
+    lines.push("Équipement exclusif par vaisseau et par config 1/2");
+    lines.push("Gagne 5 % de ton XP");
   } else if (entry.kind === "droneDesign") {
     lines.push(entry.detail);
   } else if (entry.kind === "droneFormation") {
@@ -904,6 +934,8 @@ function inventoryEntryRarity(entry) {
     item = findCatalogItem(String(entry.id));
   } else if (entry.kind === "drone") {
     item = (CATALOG?.drones || []).find((x) => x?.drone?.type === entry.drone?.type);
+  } else if (entry.kind === "pet") {
+    item = (CATALOG?.pets || []).find((x) => x?.id === "pet_niveau1");
   } else if (entry.kind === "droneFormation") {
     item = (CATALOG?.formations || []).find((x) => x?.formation?.id === entry.formation?.id);
   }
@@ -951,7 +983,7 @@ function renderInventoryMeasured(u) {
     <button data-inventory-page="1" ${result.page + 1 === result.pages ? "disabled" : ""}>Suivant</button>`;
   inventoryTooltip?.classList.remove("visible");
   inventorySections.innerHTML = slots.length ? slots.map((entry) => {
-      const stacked = entry.stacked !== false && !["module", "ship", "equipment", "drone", "droneDesign", "droneFormation"].includes(entry.kind);
+      const stacked = entry.stacked !== false && !["module", "ship", "equipment", "drone", "pet", "droneDesign", "droneFormation"].includes(entry.kind);
       const quantity = entry.quantityLabel || inventoryQuantityLabel(entry.quantity);
       const rarity = inventoryEntryRarity(entry);
       entry.rarity = rarity;
@@ -1452,7 +1484,8 @@ function renderShopMeasured(user) {
   if (!shopList || !shopPreview) return;
   const listSignature = JSON.stringify([shopTab, user.inventory?.ships,
     user.inventory?.shipDesigns, user.drones?.items?.map(drone => [drone.id, drone.type]),
-    user.drones?.formations, user.drones?.activeFormation, user.rockets]);
+    user.drones?.formations, user.drones?.activeFormation, user.rockets,
+    user.pet?.owned, user.pet?.level, Math.floor(Number(user.pet?.exp) || 0), user.inventory?.counts?.["pet_niveau1"]]);
   if (shopTab !== "extras" && listSignature === lastShopListSignature && refreshShopBalance) {
     refreshShopBalance(user);
     return;
@@ -1515,6 +1548,9 @@ function renderShopMeasured(user) {
       : false;
     const ownedDrone = it.drone ? (user?.drones?.items || []).filter(drone => drone.type === it.drone.type).length : 0;
     const ownedFormation = it.formation ? user?.drones?.formations?.includes(it.formation.id) : false;
+    const ownedPet = it.pet ? (user?.pet?.owned === true || Number(user?.inventory?.counts?.[it.id] || 0) > 0) : false;
+    const ownedPetGear = (it.petGear || it.petProtocol) ? Number(user?.inventory?.counts?.[it.id] || 0) : 0;
+    const petGearReq = (it.petGear || it.petProtocol) ? Math.max(0, Number(it.petLevel) || 0) : 0;
 
     const row = document.createElement("div");
     row.className = "shopRow" + (it.id === selectedShopItemId ? " active" : "");
@@ -1540,8 +1576,9 @@ function renderShopMeasured(user) {
     const sub = document.createElement("span");
     sub.innerHTML = `${formatNumber(price)} crédits`
       + (shopTab === "designs" ? ` · ${getShipPack(it.design?.base)?.name || it.design?.base}` : "")
-      + (ownedShip || ownedFormation ? ` · <span style="color:#00ff88;">Possédé</span>` : "")
-      + (it.drone ? ` · ${ownedDrone}/${it.drone.type === "iris" ? 8 : 1}` : "");
+      + (ownedShip || ownedFormation || ownedPet ? ` · <span style="color:#00ff88;">Possédé</span>` : "")
+      + (it.drone ? ` · ${ownedDrone}/${it.drone.type === "iris" ? 8 : 1}` : "")
+      + ((it.petGear || it.petProtocol) ? ` · ×${formatNumber(ownedPetGear)}${petGearReq > 0 ? ` · niv. P.E.T ${petGearReq}+` : ""}` : "");
 
     meta.appendChild(title);
     meta.appendChild(sub);
@@ -2045,11 +2082,14 @@ function renderShopPreview(user, it, cat) {
   const isShipLike = isShip || isDesign;
   const isDrone = cat === "drones";
   const isFormation = cat === "formations";
+  const isPet = cat === "pets" || !!it?.pet;
   const shipId = it?.ship?.id || it?.design?.id || null;
   const droneCount = isDrone ? (user?.drones?.items || []).filter(drone => drone.type === it?.drone?.type).length : 0;
   const droneLimit = it?.drone?.type === "iris" ? 8 : 1;
   const formationOwned = isFormation && user?.drones?.formations?.includes(it?.formation?.id);
-  const owned = isShipLike ? (isDesign ? alreadyOwnsDesign(user, shipId) : alreadyOwnsShip(user, shipId)) : isDrone ? droneCount >= droneLimit : Boolean(formationOwned);
+  const petOwned = isPet && (user?.pet?.owned === true || Number(user?.inventory?.counts?.[it?.id] || 0) > 0);
+  const owned = isShipLike ? (isDesign ? alreadyOwnsDesign(user, shipId) : alreadyOwnsShip(user, shipId)) : isDrone ? droneCount >= droneLimit : isPet ? petOwned : Boolean(formationOwned);
+  const isUnique = isShipLike || isDrone || isFormation || isPet;
 const counts = user?.inventory?.counts || {};
 const countOwned = Number(counts[it?.id] || 0);
 
@@ -2090,15 +2130,30 @@ if (isShipLike) {
     : `<p class="shopItemStat">Multiplicateur de dégâts <strong>${multiplier}×</strong></p>`;
 } else if (it?.give?.rockets) {
   const rocket = getRocketType(ammoKey);
-  statLine = `<p class="shopItemStat">${escapeHtml(rocketEffectLabel(rocket))} · Recharge <strong>${rocket?.cooldown || 1}s</strong> · Tir : touche ESPACE ou menu 🚀</p>`;
+  statLine = `<p class="shopItemStat">${escapeHtml(rocketEffectLabel(rocket))}</p>`;
+} else if (it?.petProtocol) {
+  const req = Math.max(0, Number(it.petLevel) || 0);
+  statLine = `<p class="shopItemStat">Bonus <strong>+${Number(it.petProtocol.pct) || 0} % ${escapeHtml(petProtocolStatLabel(it.petProtocol.key))}</strong> quand équipé sur le P.E.T (groupe PROTOCOLES).</p>`;
+  if (req > 0) statLine += `<p class="shopItemStat">Nécessite le <strong>P.E.T niveau ${req}</strong> (officiel : palier 2 dès niv. 4, palier 3 dès niv. 8).</p>`;
+} else if (it?.petGear) {
+  statLine = `<p class="shopItemStat">Gear P.E.T — <strong>${escapeHtml(it.desc || "utilitaire")}</strong> (groupe GEARS, sans stats de combat pour l'instant).</p>`;
 }
 if (isFormation) {
   const formation = DRONE_FORMATIONS.find(entry => entry.id === it?.formation?.id);
   statLine = `<p class="shopItemStat formationDescription">${escapeHtml(formation?.description || "Aucun bonus ni malus")}</p>`;
 }
+if (isPet) {
+  statLine = `<p class="shopItemStat">Compagnon P.E.T — ramasseur et soutien de combat.</p>`;
+}
 
 if (isDrone) {
   stockLine = `<p class="shopAmmoOwned">Drones possédés : <strong>${droneCount} / ${droneLimit}</strong></p>`;
+} else if (isPet) {
+  const petLevel = Math.max(0, Number(user?.pet?.level) || 0);
+  const petExp = Math.max(0, Number(user?.pet?.exp) || 0);
+  stockLine = petOwned
+    ? `<p class="shopAmmoOwned">P.E.T possédé — Niveau ${petLevel} · ${formatNumber(Math.floor(petExp))} XP · ${escapeHtml(getPetLevelBonus(petLevel))}</p>`
+    : `<p class="shopAmmoOwned">P.E.T non possédé — achat unique · gagne 5 % de ton XP</p>`;
 } else if (isFormation) {
   const active = user?.drones?.activeFormation === it?.formation?.id;
   stockLine = `<p class="shopAmmoOwned">${formationOwned ? (active ? "Formation active" : "Formation possédée") : `Nécessite au moins ${it?.formation?.minDrones || 4} drones`}</p>`;
@@ -2119,6 +2174,12 @@ if (isDrone) {
 }
 
   const imgSrc = isShipLike ? shipPreviewSrc(shipId) : iconForItem(it, cat);
+
+  // Gears / protocoles P.E.T : P.E.T requis + palier de niveau officiel.
+  const petReqLevel = Math.max(0, Number(it?.petLevel) || 0);
+  const needsPetGate = !!(it?.petGear || it?.petProtocol);
+  const petGateUnmetNow = () => needsPetGate && (user?.pet?.owned !== true || Math.max(0, Number(user?.pet?.level) || 0) < petReqLevel);
+  const petGateLabel = () => user?.pet?.owned !== true ? "P.E.T requis" : `P.E.T niveau ${petReqLevel} requis`;
 
   let previewHtml = "";
   
@@ -2158,7 +2219,7 @@ if (isDrone) {
       ${stockLine}
       ${statLine}
 
-      ${!isShipLike && !isDrone && !isFormation ? `
+      ${!isUnique ? `
         <div class="shopPurchaseRow">
           <div class="shopPurchaseInfo">
             <label for="shopBuyQuantity">${it?.give?.rockets ? "Quantité à acheter × 10" : isAmmo ? "Quantité à acheter × 1 000" : "Quantité à acheter"}</label>
@@ -2178,14 +2239,14 @@ if (isDrone) {
         </div>
       ` : ""}
       
-      ${isShipLike || isDrone || isFormation ? `<p style="margin: 12px 0; font-size: 18px;">
+      ${isUnique ? `<p style="margin: 12px 0; font-size: 18px;">
         <strong style="color: #00d9ff;">Prix total:</strong>
         <span id="shopPurchaseTotal" style="font-weight: 900; color: #00ff88;">${formatNumber(price)}</span> crédits
       </p>` : ""}
 
       <div class="shopBuySection">
-        <button id="btnBuyPreview" class="primary" style="width: 100%;" ${(Number(user?.credits || 0) < price || (owned && !formationOwned)) ? "disabled" : ""}>
-          ${formationOwned ? (user?.drones?.activeFormation === it?.formation?.id ? 'Formation active' : 'Activer la formation') : owned ? 'Déjà possédé' : ((isShipLike || isDrone || isFormation) ? `Acheter (${formatNumber(price)})` : 'Acheter')}
+        <button id="btnBuyPreview" class="primary" style="width: 100%;" ${(Number(user?.credits || 0) < price || (owned && !formationOwned) || petGateUnmetNow()) ? "disabled" : ""}>
+          ${formationOwned ? (user?.drones?.activeFormation === it?.formation?.id ? 'Formation active' : 'Activer la formation') : petGateUnmetNow() ? petGateLabel() : owned ? 'Déjà possédé' : (isUnique ? `Acheter (${formatNumber(price)})` : 'Acheter')}
         </button>
       </div>
     </div>
@@ -2196,7 +2257,7 @@ if (isDrone) {
 
   const quantityInput = document.getElementById("shopBuyQuantity");
   const totalEl = document.getElementById("shopPurchaseTotal");
-  const normalizeQuantity = () => (isShipLike || isDrone || isFormation)
+  const normalizeQuantity = () => isUnique
     ? 1
     : Math.min(1000, Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
   const updatePurchaseSummary = () => {
@@ -2204,9 +2265,10 @@ if (isDrone) {
     const total = price * quantity;
     if (quantityInput) quantityInput.value = String(quantity);
     if (totalEl) totalEl.textContent = formatNumber(total);
-    btn.disabled = (owned && !formationOwned) || (formationOwned && user?.drones?.activeFormation === it?.formation?.id) || (!formationOwned && Number(user?.credits || 0) < total);
-    if (!owned) {
-      btn.textContent = (isShipLike || isDrone || isFormation) ? `Acheter (${formatNumber(total)})` : "Acheter";
+    const gateUnmet = petGateUnmetNow();
+    btn.disabled = (owned && !formationOwned) || (formationOwned && user?.drones?.activeFormation === it?.formation?.id) || (!formationOwned && Number(user?.credits || 0) < total) || gateUnmet;
+    if (!owned && !formationOwned) {
+      btn.textContent = gateUnmet ? petGateLabel() : (isUnique ? `Acheter (${formatNumber(total)})` : "Acheter");
     }
   };
 
@@ -2234,6 +2296,7 @@ if (isDrone) {
       return;
     }
     if (owned || Number(user?.credits || 0) < totalPrice) return;
+    if (petGateUnmetNow()) return showToast(petGateLabel(), "error");
 
     const itemName = it?.name || it?.id;
 
@@ -2287,7 +2350,7 @@ function buildFitWindow() {
         <div class="fitSectionNav" aria-label="Type d'équipement">
           <button class="fitSectionBtn active" data-fit-section="ship" type="button">Vaisseau</button>
           <button class="fitSectionBtn" data-fit-section="drones" type="button">Drones</button>
-          <button class="fitSectionBtn" type="button" disabled>REX</button>
+          <button class="fitSectionBtn" data-fit-section="pet" type="button">P.E.T</button>
         </div>
         <div id="fitConfigBar" class="fitConfigBar">
           <span>CONFIG.</span>
@@ -2312,6 +2375,7 @@ function buildFitWindow() {
 
       <section class="fitLoadoutPane">
         <div id="fitDroneWorkspace" class="fitDroneWorkspace" hidden></div>
+        <div id="fitPetWorkspace" class="fitPetWorkspace" hidden></div>
         <div class="fitSlotsScroll">
           <section class="fitSlotGroup" data-slot-type="lasers">
             <div class="fitGroupTitle"><span>LASERS</span></div>
@@ -2446,6 +2510,42 @@ function buildFitWindow() {
         clearFitSelection();
         showFitError("");
         renderDroneEquipment(user);
+        renderInventoryPalette();
+        return;
+      }
+      if (fitState.section === "pet") {
+        // Retour d'un équipement P.E.T vers l'inventaire.
+        let removals = [];
+        try {
+          const rawPet = event.dataTransfer.getData("application/x-orbit-pet-slot");
+          if (rawPet) { const p = JSON.parse(rawPet); if (p?.group && Number.isInteger(p?.slot)) removals = [{ group: p.group, slot: p.slot }]; }
+        } catch {}
+        if (fitState.selectedPetSlots.size) {
+          removals = [...fitState.selectedPetSlots.keys()].map((key) => {
+            const [, group, rawSlot] = String(key).split("#");
+            return { group, slot: Number(rawSlot) };
+          }).filter((r) => r.group && Number.isInteger(r.slot));
+        }
+        if (!removals.length) return;
+        const fresh = getCurrentUserFull();
+        if (!fresh || fresh.pet?.owned !== true) return;
+        const baseFit = petFitForState(fresh.pet);
+        const nextFit = {
+          lasers: [...(baseFit?.lasers || [])],
+          generators: [...(baseFit?.generators || [])],
+          gears: [...(baseFit?.gears || [])],
+          protocols: [...(baseFit?.protocols || [])],
+          ability: baseFit?.ability || null,
+        };
+        for (const { group, slot } of removals) {
+          if (Array.isArray(nextFit[group]) && nextFit[group][slot] != null) nextFit[group][slot] = null;
+        }
+        const saved = saveCurrentUserPetFits([{ fit: nextFit, configNo: fitState.configNo, hangarId: fitState.hangarId }]);
+        if (!saved.ok) return showFitError(saved.error);
+        user = saved.user;
+        clearFitSelection();
+        showFitError("");
+        renderPetEquipment(user);
         renderInventoryPalette();
         return;
       }
@@ -2979,6 +3079,7 @@ let fitState = {
   selectedCopies: new Map(),
   selectedSlots: new Map(), // émet le changement
   selectedDroneSlots: new Map(),
+  selectedPetSlots: new Map(),
   draggedItemIds: [],
   draft: null,
   used: null,
@@ -2999,21 +3100,64 @@ function droneFitForState(drone) {
   return drone?.fits?.[cfgKey] || drone?.fit || { equipment: [], ability: null };
 }
 
+// ✅ P.E.T exclusif par hangar (vaisseau) + config 1/2, même pattern que les drones.
+// Groupes d'emplacements P.E.T (officiel : lasers / générateurs-boucliers / gears / protocoles).
+const PET_FIT_GROUPS = Object.freeze([
+  { key: "lasers", label: "LASERS", hint: "laser", accepts: "Un laser" },
+  { key: "generators", label: "GÉNÉRATEURS", hint: "bouclier uniquement", accepts: "Un bouclier" },
+  { key: "gears", label: "GEARS", hint: "puce P.E.T", accepts: "Un gear P.E.T" },
+  { key: "protocols", label: "PROTOCOLES", hint: "protocole IA", accepts: "Un protocole P.E.T" },
+]);
+
+function petProtocolStatLabel(key) {
+  if (key === "damage") return "dégâts";
+  if (key === "shield") return "bouclier";
+  if (key === "hp") return "coque";
+  if (key === "alien") return "dégâts Alien";
+  return String(key || "");
+}
+
+function petItemGroup(itemId) {
+  const it = itemId ? findCatalogItem(itemId) : null;
+  if (!it) return null;
+  if (it?.module?.type === "laser") return "lasers";
+  if (it?.module?.type === "shield") return "generators";
+  if (it?.petGear) return "gears";
+  if (it?.petProtocol) return "protocols";
+  return null;
+}
+
+function petFitForState(pet) {
+  try {
+    if (fitState?.hangarId != null && typeof getPetFit === "function") {
+      const f = getPetFit(pet, fitState.hangarId, fitState.configNo);
+      if (f) return f;
+    }
+  } catch {}
+  const cfgKey = String(Number(fitState?.configNo) === 2 ? 2 : 1);
+  return pet?.fits?.[cfgKey] || pet?.fit || { equipment: [], ability: null };
+}
+
 function setFitSection(section = "ship") {
-  fitState.section = section === "drones" ? "drones" : "ship";
+  fitState.section = section === "drones" ? "drones" : section === "pet" ? "pet" : "ship";
   document.querySelectorAll("#fitCard [data-fit-section]").forEach(button => button.classList.toggle("active", button.dataset.fitSection === fitState.section));
   const shipSlots = document.querySelector("#fitCard .fitSlotsScroll");
   const droneWorkspace = document.getElementById("fitDroneWorkspace");
+  const petWorkspace = document.getElementById("fitPetWorkspace");
   const configBar = document.getElementById("fitConfigBar");
   const inventoryPane = document.querySelector("#fitCard .fitInventoryPane");
   const inventoryFilter = document.getElementById("fitInvFilter");
-  document.getElementById("fitCard")?.classList.toggle("droneMode", fitState.section === "drones");
+  const card = document.getElementById("fitCard");
+  card?.classList.toggle("droneMode", fitState.section === "drones");
+  card?.classList.toggle("petMode", fitState.section === "pet");
   if (shipSlots) shipSlots.hidden = fitState.section !== "ship";
   if (droneWorkspace) droneWorkspace.hidden = fitState.section !== "drones";
+  if (petWorkspace) petWorkspace.hidden = fitState.section !== "pet";
   if (configBar) configBar.hidden = fitState.section !== "ship";
   if (inventoryPane) inventoryPane.hidden = false;
-  if (fitState.section === "drones" && inventoryFilter) inventoryFilter.value = "all";
+  if ((fitState.section === "drones" || fitState.section === "pet") && inventoryFilter) inventoryFilter.value = "all";
   if (fitState.section === "drones") renderDroneEquipment();
+  if (fitState.section === "pet") renderPetEquipment();
   if (fitState.draft) renderInventoryPalette();
 }
 
@@ -3121,12 +3265,125 @@ function renderDroneEquipment(userOverride) {
   root.addEventListener("drop",()=>clearFitDropHighlights());
 }
 
+function renderPetEquipment(userOverride) {
+  const root = document.getElementById("fitPetWorkspace");
+  if (!root) return;
+  if (userOverride) user = userOverride; else user = getCurrentUserFull();
+  const pet = user?.pet?.owned === true ? user.pet : null;
+  if (!pet) {
+    root.innerHTML = `<div class="fitDroneEmpty">Aucun P.E.T. Achète ton P.E.T dans la boutique (onglet P.E.T, 10 M crédits).</div>`;
+    return;
+  }
+  const level = Math.max(0, Number(pet.level) || getPetLevel(pet.exp));
+  const exp = Math.max(0, Number(pet.exp) || 0);
+  const next = getPetNextLevelXp(level);
+  const prevThreshold = getPetLevelXp(level);
+  const pct = Math.min(100, Math.max(0, Math.floor(((exp - prevThreshold) / Math.max(1, next - prevThreshold)) * 100)));
+  const fitForHangar = petFitForState(pet);
+  const slotsByGroup = getPetSlots(level);
+  const xpText = `${formatNumber(Math.floor(exp))} XP / ${formatNumber(next)} XP`;
+  const groupPlaceholder = { lasers: "Dépose un laser", generators: "Dépose un bouclier", gears: "Dépose un gear P.E.T", protocols: "Dépose un protocole" };
+  const groupsHtml = PET_FIT_GROUPS.map((group) => {
+    const arr = Array.isArray(fitForHangar?.[group.key]) ? fitForHangar[group.key] : [];
+    const filled = arr.filter(Boolean).length;
+    const size = Number(slotsByGroup[group.key]) || 0;
+    const buttons = arr.map((id, slotIndex) => {
+      const item = id ? findCatalogItem(id) : null;
+      const selKey = `pet#${group.key}#${slotIndex}`;
+      return `<button class="droneFitSlot petFitSlot${item ? " filled" : ""}${fitState.selectedPetSlots.has(selKey) ? " selected" : ""}" data-pet-group="${group.key}" data-pet-slot="${slotIndex}" data-item-id="${item?.id ?? ""}" title="${escapeHtml(item?.name || groupPlaceholder[group.key])}">${item ? `<img src="${iconForItem(item)}" alt="">` : `<span>+</span>`}</button>`;
+    }).join("");
+    return `<div class="petGroup"><label>${group.label} · ${filled}/${size}</label><div class="petGroupSlots">${buttons}</div></div>`;
+  }).join("");
+  root.innerHTML = `<div class="petCards">`
+    + `<article class="petHeaderCard">`
+    + `<img class="droneCardSprite" src="${getPetSpritePath(pet, 21)}" alt="P.E.T">`
+    + `<div class="droneCardIdentity"><strong>P.E.T · Niveau ${level}</strong><span>${xpText} · +5 % de ton XP · ${escapeHtml(getPetLevelBonus(level))}</span></div>`
+    + `<div class="droneXp"><i style="width:${pct}%"></i></div>`
+    + `</article>`
+    + `<article class="petSlotsCard"><div class="petGroups">${groupsHtml}</div>`
+    + `</article></div>`;
+  root.querySelectorAll("[data-pet-slot]").forEach(slot => {
+    const itemId = slot.dataset.itemId;
+    const groupKey = slot.dataset.petGroup;
+    const selKey = `pet#${groupKey}#${slot.dataset.petSlot}`;
+    slot.addEventListener("click", event => {
+      if (!itemId) return;
+      if (event.ctrlKey || event.metaKey) {
+        fitState.selectedCopies.clear();
+        if (fitState.selectedPetSlots.has(selKey)) fitState.selectedPetSlots.delete(selKey);
+        else fitState.selectedPetSlots.set(selKey, itemId);
+      } else {
+        const deselectOnly = fitState.selectedPetSlots.size === 1 && fitState.selectedPetSlots.has(selKey);
+        clearFitSelection();
+        if (!deselectOnly) fitState.selectedPetSlots.set(selKey, itemId);
+      }
+      showFitError("");
+      renderPetEquipment(); renderInventoryPalette();
+    });
+    slot.addEventListener("dragover", event => { event.preventDefault(); event.dataTransfer.dropEffect = itemId ? "move" : "copy"; slot.classList.add("dragTarget"); });
+    slot.addEventListener("dragleave", () => slot.classList.remove("dragTarget"));
+    slot.addEventListener("drop", event => {
+      event.preventDefault(); event.stopPropagation(); slot.classList.remove("dragTarget");
+      const droppedId = event.dataTransfer.getData("text/plain");
+      if (!droppedId) return;
+      const targetGroup = petItemGroup(droppedId);
+      if (!targetGroup) return showFitError("Cet objet ne va pas sur le P.E.T.");
+      if (targetGroup !== groupKey) {
+        const want = PET_FIT_GROUPS.find(g => g.key === targetGroup);
+        return showFitError(`Va dans ${want ? want.label : targetGroup} (glisse sur le bon groupe).`);
+      }
+      const droppedItem = findCatalogItem(droppedId);
+      const req = Math.max(0, Number(droppedItem?.petLevel) || 0);
+      if (req > 0 && level < req) return showFitError(`Exige le P.E.T niveau ${req}.`);
+      if ((computeUsage(fitState.draft)[droppedId] || 0) >= ownedCount(user, droppedId)) return showFitError("Tous les exemplaires sont déjà équipés.");
+      const fresh = getCurrentUserFull(); if (!fresh) return;
+      if (fresh.pet?.owned !== true) return showFitError("P.E.T non possédé.");
+      const baseFit = petFitForState(fresh.pet);
+      const nextFit = {
+        lasers: [...(baseFit?.lasers || [])],
+        generators: [...(baseFit?.generators || [])],
+        gears: [...(baseFit?.gears || [])],
+        protocols: [...(baseFit?.protocols || [])],
+        ability: baseFit?.ability || null,
+      };
+      nextFit[groupKey][Number(slot.dataset.petSlot)] = droppedId;
+      const saved = saveCurrentUserPetFits([{ fit: nextFit, configNo: fitState.configNo, hangarId: fitState.hangarId }]);
+      if (!saved.ok) return showFitError(saved.error);
+      user = saved.user; clearFitSelection(); showFitError("");
+      renderPetEquipment(user); renderInventoryPalette();
+    });
+    if (itemId) {
+      slot.draggable = true;
+      slot.addEventListener("dragstart", event => {
+        if (!fitState.selectedPetSlots.has(selKey)) {
+          clearFitSelection();
+          fitState.selectedPetSlots.set(selKey, itemId);
+        }
+        event.dataTransfer.setData("text/plain", itemId);
+        event.dataTransfer.setData("application/x-orbit-pet-slot", JSON.stringify({ group: groupKey, slot: Number(slot.dataset.petSlot) }));
+        event.dataTransfer.effectAllowed = "move";
+        fitState.draggedItemIds = [itemId];
+        slot.classList.add("dragging");
+      });
+      slot.addEventListener("dragend", () => { slot.classList.remove("dragging"); fitState.draggedItemIds = []; clearFitDropHighlights(); });
+    }
+  });
+  root.addEventListener("dragover", event => {
+    if (!event.dataTransfer.types.includes("application/x-orbit-items")) return;
+    event.preventDefault();
+    root.querySelectorAll("[data-pet-slot]").forEach(s => s.classList.add("dragCompatible"));
+  });
+  root.addEventListener("dragleave", event => { if (!root.contains(event.relatedTarget)) clearFitDropHighlights(); });
+  root.addEventListener("drop", () => clearFitDropHighlights());
+}
+
 function clearFitSelection() {
   fitState.selectedItemId = null;
   fitState.selectedCopyKey = null;
   fitState.selectedCopies.clear();
   fitState.selectedSlots.clear();
   fitState.selectedDroneSlots.clear();
+  fitState.selectedPetSlots.clear();
 }
 
 function refreshReturnSelectionButton() {
@@ -3170,6 +3427,8 @@ function clearFitDropHighlights() {
   document.querySelectorAll("#fitCard .fitSlotGroup.dragCompatible").forEach((group) => group.classList.remove("dragCompatible"));
   document.querySelectorAll("#fitCard .droneFitSlot.dragCompatible").forEach((slot) => slot.classList.remove("dragCompatible"));
   document.querySelectorAll("#fitCard .droneFitSlot.dragging").forEach((slot) => slot.classList.remove("dragging"));
+  document.querySelectorAll("#fitCard .petFitSlot.dragCompatible").forEach((slot) => slot.classList.remove("dragCompatible"));
+  document.querySelectorAll("#fitCard .petFitSlot.dragging").forEach((slot) => slot.classList.remove("dragging"));
 }
 
 function updateFitDropHighlights() {
@@ -3219,6 +3478,44 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
     clearFitSelection();
     showFitError(added ? "" : "Aucun emplacement de drone disponible");
     renderDroneEquipment(user);
+    renderInventoryPalette();
+    return added;
+  }
+
+  if (fitState.section === "pet") {
+    const fresh = getCurrentUserFull();
+    if (!fresh) return 0;
+    if (fresh.pet?.owned !== true) return showFitError("P.E.T non possédé."), 0;
+    const petLevel = Math.max(0, Number(fresh.pet.level) || getPetLevel(fresh.pet.exp));
+    const baseFit = petFitForState(fresh.pet);
+    const nextFit = {
+      lasers: [...(baseFit?.lasers || [])],
+      generators: [...(baseFit?.generators || [])],
+      gears: [...(baseFit?.gears || [])],
+      protocols: [...(baseFit?.protocols || [])],
+      ability: baseFit?.ability || null,
+    };
+    let added = 0;
+    let skippedGate = 0;
+    for (const itemId of selected) {
+      const group = petItemGroup(itemId);
+      if (!group) continue;
+      const it = findCatalogItem(itemId);
+      const req = Math.max(0, Number(it?.petLevel) || 0);
+      if (req > 0 && petLevel < req) { skippedGate++; continue; }
+      if ((computeUsage(fitState.draft)[itemId] || 0) >= ownedCount(fresh, itemId)) continue;
+      const freeIndex = nextFit[group].findIndex(value => !value);
+      if (freeIndex < 0) continue;
+      nextFit[group][freeIndex] = itemId;
+      added++;
+    }
+    if (!added) return showFitError(skippedGate ? "Paliers de niveau P.E.T insuffisants ou plus de place" : "Aucun emplacement P.E.T disponible"), 0;
+    const saved = saveCurrentUserPetFits([{ fit: nextFit, configNo: fitState.configNo, hangarId: fitState.hangarId }]);
+    if (!saved.ok) return showFitError(saved.error), 0;
+    user = saved.user;
+    clearFitSelection();
+    showFitError("");
+    renderPetEquipment(user);
     renderInventoryPalette();
     return added;
   }
@@ -3277,8 +3574,12 @@ function showFitError(text) {
 function computeUsage(draft) {
   const map = Object.create(null);
   const all = [...(draft?.lasers || []), ...(draft?.gens || []), ...(draft?.extras || []), ...(draft?.shipMods || [])];
-  // ✅ Comptage exclusif au hangar en cours d'édition (chaque vaisseau a ses propres drones).
+  // ✅ Comptage exclusif au hangar en cours d'édition (chaque vaisseau a ses propres drones + P.E.T).
   for (const drone of user?.drones?.items || []) all.push(...(droneFitForState(drone)?.equipment || []));
+  if (user?.pet?.owned === true) {
+    const petFit = petFitForState(user.pet);
+    all.push(...(petFit?.lasers || []), ...(petFit?.generators || []), ...(petFit?.gears || []), ...(petFit?.protocols || []));
+  }
   for (const id of all) {
     if (!id) continue;
     map[id] = (map[id] || 0) + 1;
@@ -3374,6 +3675,22 @@ function resetAllSlots() {
     clearFitSelection();
     showFitError("");
     renderDroneEquipment(user);
+    renderInventoryPalette();
+    return;
+  }
+
+  if (fitState.section === "pet") {
+    const fresh = getCurrentUserFull();
+    if (!fresh) return;
+    if (fresh.pet?.owned !== true) return showFitError("P.E.T non possédé.");
+    const petLevel = Math.max(0, Number(fresh.pet.level) || getPetLevel(fresh.pet.exp));
+    const baseFit = petFitForState(fresh.pet);
+    const saved = saveCurrentUserPetFits([{ fit: { ...emptyPetFit(petLevel), ability: baseFit?.ability || null }, configNo: fitState.configNo, hangarId: fitState.hangarId }]);
+    if (!saved.ok) return showFitError(saved.error);
+    user = saved.user;
+    clearFitSelection();
+    showFitError("");
+    renderPetEquipment(user);
     renderInventoryPalette();
     return;
   }
@@ -3504,11 +3821,19 @@ function renderInventoryPalette() {
   }
 
   const counts = user?.inventory?.counts || {};
+  const isPetSection = fitState.section === "pet";
+  const isDroneSection = fitState.section === "drones";
   const entries = Object.entries(counts)
     .map(([itemId, cnt]) => ({ itemId, cnt: Number(cnt || 0), it: findCatalogItem(itemId) }))
-    .filter((x) => x.cnt > 0 && x.it?.module)
+    .filter((x) => x.cnt > 0 && (x.it?.module || x.it?.petGear || x.it?.petProtocol))
     .filter((x) => x.it?.module?.type !== "ammo")
-    .filter((x) => fitState.section !== "drones" || ["laser", "shield"].includes(x.it?.module?.type));
+    .filter((x) => {
+      if (isDroneSection) return ["laser", "shield"].includes(x.it?.module?.type);
+      if (isPetSection) {
+        return ["laser", "shield"].includes(x.it?.module?.type) || x.it?.petGear || x.it?.petProtocol;
+      }
+      return true;
+    });
 
   const filtered = entries.filter((e) => {
     const t = e.it?.module?.type;
@@ -4113,6 +4438,7 @@ function setFitModalConfig(configNo) {
   renderInventoryPalette();
   renderShipModulesList();
   if (fitState.section === "drones") renderDroneEquipment(user);
+  if (fitState.section === "pet") renderPetEquipment(user);
 }
 
 function openFitModal(hangarId) {

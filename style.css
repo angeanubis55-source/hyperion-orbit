@@ -346,6 +346,14 @@ html.orbitSessionReady #loadingOverlay{
   background:linear-gradient(90deg, var(--accent), #b8f7ff);
 }
 
+.bar.xp > i{
+  background:linear-gradient(90deg, #7a4dff, #c9b3ff);
+}
+
+.bar.fuel > i{
+  background:linear-gradient(90deg, #3fae5a, #b6f0c3);
+}
+
 #boxVitals .row.mini{
   margin-top:8px;
   padding-top:6px;
@@ -2093,6 +2101,128 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   font-variant-numeric:tabular-nums;
   text-shadow:0 1px 2px rgba(0,0,0,.95),0 0 5px rgba(0,0,0,.85);
   pointer-events:none;
+}
+
+/* Fenêtre P.E.T en jeu : mêmes barres que l'état du vaisseau. */
+#petWindow.gameWindow{
+  width:320px !important;
+  max-width:calc(100vw - 28px) !important;
+}
+#petWindow.gameWindow .barWrap{
+  margin-top:0 !important;
+  padding:9px 12px 11px !important;
+  gap:7px !important;
+}
+
+#petWindow.gameWindow .bar{
+  position:relative;
+  height:22px;
+  overflow:hidden;
+  isolation:isolate;
+}
+
+#petWindow.gameWindow .bar > i{
+  position:absolute;
+  inset:0 auto 0 0;
+  z-index:0;
+  transition:width .18s ease;
+}
+
+#petWindow.gameWindow .barValue{
+  position:absolute;
+  inset:0;
+  z-index:1;
+  display:grid;
+  place-items:center;
+  color:#f4fbff;
+  font-size:11px;
+  font-weight:950;
+  font-variant-numeric:tabular-nums;
+  text-shadow:0 1px 2px rgba(0,0,0,.95),0 0 5px rgba(0,0,0,.85);
+  pointer-events:none;
+}
+
+#petWindow .petHeader{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 12px 6px;
+}
+
+#petWindow #petSprite{
+  width:46px;
+  height:46px;
+  object-fit:contain;
+  flex:0 0 auto;
+}
+
+#petWindow .petIdentity{
+  display:grid;
+  gap:2px;
+  flex:1 1 auto;
+  min-width:0;
+}
+
+#petWindow .petIdentity strong{
+  color:#effcff;
+  font-size:14px;
+}
+
+#petWindow .petIdentity span{
+  color:#789cac;
+  font-size:11px;
+}
+
+#petWindow #petPlayBtn{
+  flex:0 0 auto;
+  width:44px;
+  height:44px;
+  border-radius:50%;
+  border:1px solid rgba(105,233,255,.4);
+  background:#06121c;
+  color:#70e7fa;
+  font-size:18px;
+  cursor:pointer;
+}
+
+#petWindow #petPlayBtn.isOn{
+  background:#0d4c62;
+  color:#effdff;
+  box-shadow:0 0 12px rgba(105,233,255,.35);
+}
+
+#petWindow #petPlayBtn:disabled{
+  opacity:.45;
+  cursor:default;
+}
+
+#petWindow .petModeRow{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:2px 12px 4px;
+  color:#789cac;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:1px;
+}
+
+#petWindow .petModeRow select{
+  flex:1 1 auto;
+  min-width:0;
+  background:#06121c;
+  color:#eafaff;
+  border:1px solid rgba(105,233,255,.22);
+  border-radius:3px;
+  padding:5px 8px;
+  font-size:12px;
+}
+
+#petWindow .petNoPet{
+  padding:10px 12px 12px;
+  color:#789cac;
+  font-size:11px;
+  text-align:center;
 }
 
 #boxPerformance.gameWindow{
