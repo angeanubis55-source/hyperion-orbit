@@ -2,7 +2,7 @@
 export const PATCH_NOTES = [
   {
     "version": "0.140",
-    "date": "2026-09-10T16:16:47+02:00",
+    "date": "2026-09-10T16:22:23+02:00",
     "message": "Normalisation massive assets : chemins uppercase ASSETS/BACKGROUNDS/MAPS/PUBLIC/SRC, manifest regenere, scripts version corriges"
   },
   {
