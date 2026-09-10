@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.141",
+    "date": "2026-09-10T17:15:42+02:00",
+    "message": "Anti-freeze sauvegardes: debounce 15s, save portail masquee, cache parse, historique borne a 30"
+  },
+  {
     "version": "0.140",
     "date": "2026-09-10T16:22:23+02:00",
     "message": "Normalisation massive assets : chemins uppercase ASSETS/BACKGROUNDS/MAPS/PUBLIC/SRC, manifest regenere, scripts version corriges"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.82",
     "date": "2026-09-03T11:30:41+02:00",
     "message": "Le HUD affiche désormais la version du jeu à gauche du compteur de FPS, synchronisée automatiquement."
-  },
-  {
-    "version": "0.81",
-    "date": "2026-09-03T11:25:51+02:00",
-    "message": "Fond du secteur QZ passé en jpg pour un meilleur affichage."
   }
 ];
