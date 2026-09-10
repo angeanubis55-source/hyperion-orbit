@@ -7,7 +7,7 @@ Prototype de jeu spatial 2D jouable dans le navigateur, inspiré de DarkOrbit.
 Le projet utilise les modules JavaScript natifs et doit être servi par un serveur HTTP local.
 
 ```powershell
-npx serve .
+npm run server
 ```
 
 Ouvrir ensuite l’adresse indiquée par le serveur.

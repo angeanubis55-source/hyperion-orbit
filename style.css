@@ -3820,7 +3820,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   position:fixed;
   inset:0;
   z-index:20000;
-  background:#02050e url("../UI/Loading_screen.jpg") center / cover no-repeat;
+  background:#02050e url("/ASSETS/UI/LOADING_SCREEN.jpg") center / cover no-repeat;
 }
 .loadingOverlay.isLeaving{opacity:0;pointer-events:none;transition:opacity .22s ease}
 
@@ -4214,12 +4214,12 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   image-rendering:auto;
   pointer-events:none;
 }
-#ammoBar .compactAmmoBtn[data-ammo="x1"]::before{background-image:url("assets/items/ammo_x1.png");background-size:76% auto}
-#ammoBar .compactAmmoBtn[data-ammo="x2"]::before{background-image:url("assets/items/ammo_x2.png")}
-#ammoBar .compactAmmoBtn[data-ammo="x3"]::before{background-image:url("assets/items/ammo_x3.png")}
-#ammoBar .compactAmmoBtn[data-ammo="x4"]::before{background-image:url("assets/items/ammo_x4.png")}
-#ammoBar .compactAmmoBtn[data-ammo="sab"]::before{background-image:url("assets/items/ammo_sab.png")}
-#ammoBar .compactAmmoBtn[data-ammo="x6"]::before{background-image:url("assets/items/ammo_x6.png")}
+#ammoBar .compactAmmoBtn[data-ammo="x1"]::before{background-image:url("ASSETS/ITEMS/AMMO_X1.png");background-size:76% auto}
+#ammoBar .compactAmmoBtn[data-ammo="x2"]::before{background-image:url("ASSETS/ITEMS/AMMO_X2.png")}
+#ammoBar .compactAmmoBtn[data-ammo="x3"]::before{background-image:url("ASSETS/ITEMS/AMMO_X3.png")}
+#ammoBar .compactAmmoBtn[data-ammo="x4"]::before{background-image:url("ASSETS/ITEMS/AMMO_X4.png")}
+#ammoBar .compactAmmoBtn[data-ammo="sab"]::before{background-image:url("ASSETS/ITEMS/AMMO_SAB.png")}
+#ammoBar .compactAmmoBtn[data-ammo="x6"]::before{background-image:url("ASSETS/ITEMS/AMMO_X6.png")}
 #ammoBar .compactAmmoBtn[data-ammo] > strong{display:none !important}
 #ammoBar .compactAmmoBtn[data-ammo] > small{
   position:absolute;
@@ -4280,9 +4280,9 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   background-repeat:no-repeat;
   pointer-events:none;
 }
-#ammoBar [data-skill="pulse"]::before{background-image:url("assets/pulse/IEM.png")}
-#ammoBar [data-skill="ish"]::before{background-image:url("assets/Cpu/ish-01_100x100.png")}
-#ammoBar [data-skill="repair"]::before{background-image:url("assets/Repair_Robot/2.png")}
+#ammoBar [data-skill="pulse"]::before{background-image:url("ASSETS/PULSE/IEM.png")}
+#ammoBar [data-skill="ish"]::before{background-image:url("ASSETS/CPU/ISH_01_100X100.png")}
+#ammoBar [data-skill="repair"]::before{background-image:url("ASSETS/REPAIR_ROBOT/2.png")}
 #ammoBar [data-skill="pulse"] > strong,
 #ammoBar [data-skill="ish"] > strong,
 #ammoBar [data-skill="repair"] > strong{display:none !important}

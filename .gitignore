@@ -15,4 +15,11 @@ Thumbs.db
 .env.*
 !.env.example
 
+# Local audits, generated reports and reverse-engineering workspace
+TEST/TMP/
+TEST/REPORTS/
+TEST/LOGS/
+TEST/AUDITS/
+*.lck
+
 

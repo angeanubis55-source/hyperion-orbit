@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hyperion Orbit — Connexion</title>
+
+  <style>
+    :root{
+      color-scheme: dark;
+      --text: #e8f4ff;
+      --muted: rgba(232,244,255,.6);
+      --stroke: rgba(100,200,255,.15);
+      --accent: #00d9ff;
+      --accent2: #ff006e;
+      --glass: rgba(5, 10, 25, .35);
+      --r: 24px;
+    }
+
+    *{ box-sizing:border-box; margin:0; padding:0; }
+    html,body{ height:100%; }
+    
+    body{
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      overflow: hidden;
+      background: #020408;
+      position: relative;
+    }
+
+    /* Space background avec GIF */
+    .space{
+      position: fixed;
+      inset: 0;
+      background: url('https://wallpapercave.com/wp/wp11333140.jpg') center center / cover no-repeat;
+      z-index: 0;
+    }
+
+    .space::after{
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.3);
+    }
+
+    /* Space background avec GIF */
+    .space{
+      position: fixed;
+      inset: 0;
+      background: url('https://wallpapercave.com/wp/wp11333140.jpg') center center / cover no-repeat;
+      z-index: 0;
+    }
+
+    .space::after{
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.25);
+    }
+
+    .container{
+      position: relative;
+      z-index: 10;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    /* Carte principale avec liquid glass */
+    .card{
+      width: min(900px, 95vw);
+      background: 
+        linear-gradient(135deg, 
+          rgba(255,255,255,.08) 0%, 
+          rgba(100,200,255,.05) 50%,
+          rgba(255,255,255,.04) 100%);
+      border: 1px solid rgba(100,200,255,.25);
+      border-radius: var(--r);
+      backdrop-filter: blur(24px) saturate(140%);
+      -webkit-backdrop-filter: blur(24px) saturate(140%);
+      box-shadow: 
+        0 8px 32px rgba(0,0,0,.6),
+        0 0 0 1px rgba(255,255,255,.05) inset,
+        0 0 100px rgba(0,217,255,.15);
+      overflow: hidden;
+      position: relative;
+      animation: cardAppear 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes cardAppear {
+      from { 
+        opacity: 0; 
+        transform: translateY(30px) scale(0.95);
+      }
+      to { 
+        opacity: 1; 
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    /* Hologram effect sur le bord */
+    .card::before{
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: var(--r);
+      padding: 1px;
+      background: linear-gradient(45deg, 
+        transparent 30%,
+        rgba(0,217,255,.4) 50%,
+        transparent 70%);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      opacity: 0.6;
+      animation: hologramShimmer 3s linear infinite;
+    }
+
+    @keyframes hologramShimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    .cardInner{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 500px;
+    }
+
+    /* Panel gauche - Hero */
+    .hero{
+      padding: 40px 35px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background: 
+        linear-gradient(135deg, rgba(0,0,0,.3), rgba(0,20,40,.2)),
+        radial-gradient(circle at 30% 20%, rgba(0,217,255,.08), transparent 60%);
+      border-right: 1px solid rgba(100,200,255,.2);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Ship hologram background */
+    .hero::before{
+      display: none;
+    }
+
+    .logo{
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 30px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .logoIcon{
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+      background:
+        radial-gradient(circle at 35% 25%, rgba(255,255,255,.6), transparent 50%),
+        linear-gradient(135deg, rgba(0,217,255,.5), rgba(138,43,226,.4));
+      border: 1px solid rgba(255,255,255,.3);
+      box-shadow: 
+        0 8px 32px rgba(0,217,255,.4),
+        0 0 0 1px rgba(255,255,255,.1) inset;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      animation: iconPulse 3s ease-in-out infinite;
+    }
+
+    @keyframes iconPulse {
+      0%, 100% { box-shadow: 0 8px 32px rgba(0,217,255,.4), 0 0 0 1px rgba(255,255,255,.1) inset; }
+      50% { box-shadow: 0 8px 48px rgba(0,217,255,.6), 0 0 0 1px rgba(255,255,255,.2) inset; }
+    }
+
+    .logoText h1{
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+      background: linear-gradient(135deg, #fff, #00d9ff);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logoText p{
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.5px;
+    }
+
+    .heroContent{
+      position: relative;
+      z-index: 1;
+    }
+
+    .heroTitle{
+      font-size: 38px;
+      font-weight: 900;
+      line-height: 1.1;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #ffffff, #00d9ff, #8a2be2);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: titleShine 5s ease-in-out infinite;
+    }
+
+    @keyframes titleShine {
+      0%, 100% { filter: brightness(1); }
+      50% { filter: brightness(1.2); }
+    }
+
+    .heroSub{
+      color: rgba(232,244,255,.75);
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 32ch;
+    }
+
+    .heroStats{
+      display: none;
+    }
+
+    /* Panel droit - Forms */
+    .main{
+      padding: 35px 30px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      background: linear-gradient(135deg, rgba(0,10,20,.4), rgba(0,5,15,.3));
+    }
+
+    /* Tabs */
+    .tabs{
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      padding: 4px;
+      background: rgba(0,0,0,.3);
+      border-radius: 14px;
+      border: 1px solid rgba(100,200,255,.15);
+      position: relative;
+    }
+
+    .tab{
+      flex: 1;
+      padding: 12px 20px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      border-radius: 10px;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative;
+      letter-spacing: 0.5px;
+    }
+
+    .tab.active{
+      color: #fff;
+      background: linear-gradient(135deg, rgba(0,217,255,.25), rgba(138,43,226,.2));
+      box-shadow: 
+        0 4px 20px rgba(0,217,255,.3),
+        0 0 0 1px rgba(255,255,255,.1) inset;
+    }
+
+    .tab:not(.active):hover{
+      color: rgba(232,244,255,.9);
+      background: rgba(255,255,255,.05);
+    }
+
+    /* Forms */
+    .form{
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .field{
+      position: relative;
+    }
+
+    .field label{
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(232,244,255,.7);
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .inputWrap{
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .factionChoices{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+    .factionChoice{ position:relative; cursor:pointer; margin:0 !important; text-transform:none !important; }
+    .factionChoice input{ position:absolute; opacity:0; pointer-events:none; }
+    .factionChoiceBody{ min-height:82px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; border:1px solid rgba(100,200,255,.25); border-radius:12px; background:rgba(0,217,255,.05); color:rgba(232,244,255,.72); transition:border-color .2s ease,background .2s ease,box-shadow .2s ease; }
+    .factionChoiceBody img{ max-width:42px; max-height:34px; object-fit:contain; image-rendering:auto; }
+    .factionChoiceBody strong{ font-size:13px; letter-spacing:.7px; }
+    .factionChoice input:checked + .factionChoiceBody{ color:#fff; border-color:rgba(0,217,255,.85); background:rgba(0,217,255,.13); box-shadow:0 0 0 2px rgba(0,217,255,.12),0 8px 22px rgba(0,0,0,.25); }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"]{
+      flex: 1;
+      padding: 14px 16px;
+      border: 1px solid rgba(100,200,255,.25);
+      background: 
+        linear-gradient(135deg, rgba(0,217,255,.05), rgba(138,43,226,.03));
+      border-radius: 12px;
+      color: #fff;
+      font-size: 15px;
+      outline: none;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(12px);
+      box-shadow: 
+        0 4px 12px rgba(0,0,0,.3),
+        0 0 0 1px rgba(255,255,255,.03) inset;
+    }
+
+    input::placeholder{
+      color: rgba(232,244,255,.3);
+    }
+
+    input:focus{
+      border-color: rgba(0,217,255,.6);
+      background: rgba(0,217,255,.08);
+      box-shadow: 
+        0 0 0 3px rgba(0,217,255,.15),
+        0 8px 24px rgba(0,0,0,.4),
+        0 0 0 1px rgba(255,255,255,.05) inset;
+      transform: translateY(-1px);
+    }
+
+    .eyeBtn{
+      position: relative;
+      width: 40px;
+      height: 48px;
+      border: 1px solid rgba(0,217,255,0.3);
+      background: rgba(0,217,255,.12);
+      border-radius: 10px;
+      color: rgba(232,244,255,.7);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(12px);
+      flex-shrink: 0;
+    }
+
+    .eyeBtn:hover{
+      background: rgba(0,217,255,.25);
+      color: #fff;
+      border-color: rgba(0,217,255,0.5);
+    }
+
+    .rememberRow{
+      display: none;
+    }
+
+    /* Buttons */
+    .btn{
+      width: 100%;
+      padding: 14px 24px;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      text-transform: uppercase;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::before{
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(45deg, transparent, rgba(255,255,255,.2), transparent);
+      transform: translateX(-100%);
+      transition: transform 0.6s;
+    }
+
+    .btn:hover::before{
+      transform: translateX(100%);
+    }
+
+    .btn.primary{
+      background: linear-gradient(135deg, #00d9ff, #0088cc);
+      color: #000;
+      box-shadow: 
+        0 8px 24px rgba(0,217,255,.4),
+        0 0 0 1px rgba(255,255,255,.2) inset;
+    }
+
+    .btn.primary:hover{
+      transform: translateY(-2px);
+      box-shadow: 
+        0 12px 32px rgba(0,217,255,.5),
+        0 0 0 1px rgba(255,255,255,.3) inset;
+    }
+
+    .btn.primary:active{
+      transform: translateY(0);
+    }
+
+    .btn.secondary{
+      background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(100,200,255,.08));
+      color: #fff;
+      border: 1px solid rgba(100,200,255,.3);
+      box-shadow: 0 4px 12px rgba(0,0,0,.3);
+    }
+
+    .btn.secondary:hover{
+      background: linear-gradient(135deg, rgba(255,255,255,.15), rgba(100,200,255,.12));
+      transform: translateY(-2px);
+    }
+
+    /* Messages */
+    .msg{
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 13px;
+      margin-top: 12px;
+      display: none;
+      backdrop-filter: blur(12px);
+      animation: msgSlide 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes msgSlide {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .msg.ok{
+      display: block;
+      background: rgba(0,255,136,.12);
+      border: 1px solid rgba(0,255,136,.3);
+      color: #00ff88;
+    }
+
+    .msg.err{
+      display: block;
+      background: rgba(255,0,110,.12);
+      border: 1px solid rgba(255,0,110,.3);
+      color: #ff4488;
+    }
+
+    .hint{
+      margin-top: 16px;
+      font-size: 11px;
+      color: rgba(232,244,255,.45);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .hidden{
+      display: none !important;
+    }
+
+    .closeBtn{
+      display: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px){
+      .cardInner{
+        grid-template-columns: 1fr;
+      }
+      
+      .hero{
+        border-right: none;
+        border-bottom: 1px solid rgba(100,200,255,.2);
+        min-height: auto;
+        padding: 30px 25px;
+      }
+
+      .heroTitle{
+        font-size: 32px;
+      }
+
+      .main{
+        padding: 30px 25px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      *{
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .asteroid{
+        display: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Background layers -->
+  <div class="space"></div>
+
+  <div class="container">
+    <div class="card">
+      <div class="cardInner">
+        <!-- LEFT PANEL - Hero -->
+        <div class="hero">
+          <div>
+            <div class="logo">
+              <div class="logoText">
+                <h1>HYPERION</h1>
+                <p>Deep Space Combat System</p>
+              </div>
+            </div>
+
+            <div class="heroContent">
+              <div class="heroTitle">Entre dans l'orbite.</div>
+              <div class="heroSub">
+                Pilote ton vaisseau dans l'immensité de l'espace. 
+                Combats, explore, conquiers les étoiles.
+              </div>
+            </div>
+          </div>
+
+          <div class="heroStats">
+          </div>
+        </div>
+
+        <!-- RIGHT PANEL - Forms -->
+        <div class="main">
+          <div class="tabs">
+            <button id="tabLogin" class="tab active" type="button">Connexion</button>
+            <button id="tabJoin" class="tab" type="button">Inscription</button>
+          </div>
+
+          <!-- LOGIN FORM -->
+          <form id="formLogin" class="form" autocomplete="on">
+            <div class="field">
+              <label for="loginUser">Pseudo</label>
+              <div class="inputWrap">
+                <input id="loginUser" type="text" autocomplete="username" placeholder="Ton nom de pilote" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="loginPass">Mot de passe</label>
+              <div class="inputWrap">
+                <input id="loginPass" type="password" autocomplete="current-password" placeholder="••••••••" />
+                <button id="toggleLoginPass" class="eyeBtn" type="button" aria-label="Afficher/masquer">
+                  <svg id="eyeLoginOpen" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                  <svg id="eyeLoginOff" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
+                    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
+                    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+                    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
+                    <line x1="2" y1="2" x2="22" y2="22"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="rememberRow">
+              <input id="rememberMe" type="checkbox">
+              <label for="rememberMe" style="margin:0; text-transform:none; font-size:13px; font-weight:400;">Se souvenir de moi</label>
+            </div>
+
+            <button id="btnLogin" class="btn primary" type="button">Connexion</button>
+          </form>
+
+          <!-- JOIN FORM -->
+          <form id="formJoin" class="form hidden" autocomplete="on">
+            <div class="field">
+              <label for="regUser">Pseudo</label>
+              <div class="inputWrap">
+                <input id="regUser" type="text" autocomplete="username" placeholder="Choisis ton nom de pilote" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="regEmail">Adresse email</label>
+              <div class="inputWrap">
+                <input id="regEmail" type="email" autocomplete="email" inputmode="email" placeholder="pilote@exemple.com" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Choisis ta firme</label>
+              <div class="factionChoices" role="radiogroup" aria-label="Firme du pilote">
+                <label class="factionChoice"><input type="radio" name="regFaction" value="mmo"><span class="factionChoiceBody"><img src="../ASSETS/FACTIONS/MMO.png" alt=""><strong>MMO</strong></span></label>
+                <label class="factionChoice"><input type="radio" name="regFaction" value="eic"><span class="factionChoiceBody"><img src="../ASSETS/FACTIONS/EIC.png" alt=""><strong>EIC</strong></span></label>
+                <label class="factionChoice"><input type="radio" name="regFaction" value="vru"><span class="factionChoiceBody"><img src="../ASSETS/FACTIONS/VRU.png" alt=""><strong>VRU</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="regPass">Mot de passe</label>
+              <div class="inputWrap">
+                <input id="regPass" type="password" autocomplete="new-password" placeholder="Minimum 4 caractères" />
+                <button id="toggleRegPass" class="eyeBtn" type="button" aria-label="Afficher/masquer">
+                  <svg id="eyeRegOpen" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                  <svg id="eyeRegOff" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
+                    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
+                    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+                    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
+                    <line x1="2" y1="2" x2="22" y2="22"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="regPass2">Confirmation</label>
+              <div class="inputWrap">
+                <input id="regPass2" type="password" autocomplete="new-password" placeholder="Confirme ton mot de passe" />
+                <button id="toggleRegPass2" class="eyeBtn" type="button" aria-label="Afficher/masquer">
+                  <svg id="eyeReg2Open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                  <svg id="eyeReg2Off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
+                    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
+                    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+                    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
+                    <line x1="2" y1="2" x2="22" y2="22"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <button id="btnRegister" class="btn secondary" type="button">Créer un compte pilote</button>
+          </form>
+
+          <div id="msg" class="msg"></div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./AUTH.js"></script>
+</body>
+</html>

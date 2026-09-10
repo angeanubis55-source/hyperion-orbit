@@ -3,13 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test",
-    "benchmark": "node scripts/benchmark-spatial.js",
-    "assets:manifest": "node scripts/generate-asset-manifest.js",
-    "version:sync": "node scripts/version-sync.js",
-    "test:browser": "node scripts/smoke-browser.js",
-    "test:loading": "node scripts/verify-sector-loading.js",
-    "profile:canvas": "node scripts/profile-canvas.js"
+    "server": "node SCRIPTS/GAME_SERVER.js",
+    "test": "node --test \"TEST/UNIT_TESTS/*.js\"",
+    "benchmark": "node SCRIPTS/BENCHMARK_SPATIAL.js",
+    "assets:manifest": "node SCRIPTS/GENERATE_ASSET_MANIFEST.js",
+    "version:sync": "node SCRIPTS/VERSION_SYNC.js",
+    "test:browser": "node SCRIPTS/SMOKE_BROWSER.js",
+    "test:loading": "node SCRIPTS/VERIFY_SECTOR_LOADING.js",
+    "profile:canvas": "node SCRIPTS/PROFILE_CANVAS.js"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"
