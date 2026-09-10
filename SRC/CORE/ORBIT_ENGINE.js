@@ -2679,7 +2679,10 @@ function loadAccountUser() {
 
 function markProgressDirty() {
   account.dirty = true;
-  account.saveCd = 0.35;
+  // Filet de sécurité : la sauvegarde périodique ne sert qu'en cas de
+  // crash. Le vrai point de sauvegarde, c'est le portail / changement
+  // de map / quitter (saveStateImmediate, freeze masqué par le chargement).
+  account.saveCd = 15.0;
 }
 
 let progressSaveIdleHandle = 0;
@@ -8667,8 +8670,9 @@ function runOnKillAction(action, pos = null) {
   const reward = Number(action.reward || 0);
   if (reward > 0) {
     player.credits += reward;
+    // Ne jamais sauver en synchrone au milieu d'une frame de kill :
+    // la sauvegarde temporisée regroupe et évite le freeze (~600ms).
     markProgressDirty();
-    saveProgressNow();
     showToast(`GG ! +${reward} Cr.`, 2.2);
   }
 
@@ -8697,8 +8701,8 @@ function runOnKillAction(action, pos = null) {
     awardHonor(honor);
     updateAmmoUI();
     advanceQuestProgress("gate", String(special.gateId || "low").toLowerCase());
+    // Sauvegarde différée aussi ici (même raison : pas de freeze au kill).
     markProgressDirty();
-    saveProgressNow();
     scheduleGalaxyGateCompletion(String(special.gateId || "low").toLowerCase(), {
       name: special.name || "LOW",
       reward: { credits, exp: experience, honor, x4, resourceMessages },
@@ -10907,6 +10911,9 @@ for (const state of Object.values(QUEST_BUTTON).filter(value => value?.src)) {
 function startGatePortalJump(ptl, action) {
   if (!ptl || ptl.jumping || !isPlayerNearPortal(ptl)) return;
   if (beginGatePortalJump(ptl, action, portal.switchDur)) {
+    // Marque le progrès avant le saut : saveStateImmediate() le persistera
+    // pendant le préchargement, freeze masqué par l'animation de saut.
+    markProgressDirty();
     const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
     const gateName = GALAXY_GATE_DEFINITIONS[gateId]?.name || rules?.mapLabel || gateId;
     if (action === "continue") {
@@ -13668,8 +13675,11 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   resetRun({ preparedZoneCamps, preparedZonePortals });
   player.iFrames = 0;
   mapPortalLock = 0.6;
+  // Pas de save synchrone à l'arrivée : la position d'avant-saut a déjà
+  // été persistée par saveStateImmediate() avant la bascule (freeze masqué
+  // par le chargement). On marque dirty, le prochain portail / quit / filet
+  // 15s persistera la nouvelle map sans freeze visible.
   markProgressDirty();
-  saveProgressNow();
   return true;
 }
 

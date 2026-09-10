@@ -44,15 +44,32 @@ function safeParse(raw, fallback) {
 }
 
 function readUsers() {
-  const arr = safeParse(localStorage.getItem(USERS_KEY), []);
-  return Array.isArray(arr) ? arr.filter((u) => u && typeof u === "object") : [];
+  const raw = localStorage.getItem(USERS_KEY);
+  // Cache mémoire : évite un JSON.parse de ~1.6MB à chaque lecture
+  // (getCurrentUserFull est appelé à chaque frame de sauvegarde).
+  if (raw === readUsers._raw && Array.isArray(readUsers._cache)) return readUsers._cache;
+  const arr = safeParse(raw, []);
+  const list = Array.isArray(arr) ? arr.filter((u) => u && typeof u === "object") : [];
+  readUsers._raw = raw;
+  readUsers._cache = list;
+  return list;
 }
 
 function writeUsers(users) {
   const list = Array.isArray(users) ? users : [];
+  // Borne l'historique de roulette avant sérialisation : c'est ce qui
+  // faisait gonfler orbit_users à 1.6MB -> 600ms de freeze par save.
+  for (const u of list) {
+    if (u && Array.isArray(u.inventory?.moduleRollHistory) && u.inventory.moduleRollHistory.length > 30) {
+      u.inventory.moduleRollHistory = u.inventory.moduleRollHistory.slice(-30);
+    }
+  }
   // X1 infini : JSON.stringify(Infinity) donnerait null (corruption au reload).
   // On stocke -1 comme sentinel, relu comme Infinity dans ensureUserShape.
-  localStorage.setItem(USERS_KEY, JSON.stringify(list, (k, v) => (v === Infinity ? -1 : v)));
+  const raw = JSON.stringify(list, (k, v) => (v === Infinity ? -1 : v));
+  localStorage.setItem(USERS_KEY, raw);
+  readUsers._raw = raw;
+  readUsers._cache = list;
 }
 
 function readCurrent() {
