@@ -1262,14 +1262,14 @@ test("les comptes sauvegardés sont versionnés et les valeurs sont bornées", a
 });
 
 test("l'économie des équipements progresse par paliers et limite les modules X1", () => {
-  assert.deepEqual(CATALOG.speedGen.map(item => item.module.bonusSpeed), [2, 4, 6, 8, 11, 16]);
-  assert.deepEqual(CATALOG.shieldGen.map(item => item.module.bonusShield), [5000, 7500, 10000, 12500, 15000, 22500]);
-  assert.deepEqual(CATALOG.lasers.map(item => item.module.damage), [40, 100, 150, 200, 275, 600]);
-  assert.deepEqual(CATALOG.ammo.map(item => item.price), [50000, 150000, 500000, 250000, 1500000]);
+  assert.deepEqual(CATALOG.speedGen.map(item => item.module.bonusSpeed), [2, 4, 6, 8, 11]);
+  assert.deepEqual(CATALOG.shieldGen.map(item => item.module.bonusShield), [5000, 7500, 10000, 12500, 15000]);
+  assert.deepEqual(CATALOG.lasers.map(item => item.module.damage), [40, 100, 150, 200, 275]);
+  assert.deepEqual(CATALOG.ammo.map(item => item.price), [50000, 150000, 500000, 250000, 1500000, 3000000, 800000, 400000, 600000, 2000000, 1200000, 900000, 900000, 900000, 1000000]);
   assert.ok(CATALOG.ammo.every(item => Object.values(item.give.ammo).every(amount => amount === 1000)));
-  assert.equal(CATALOG.speedGen.at(-1).price, 1250000000);
-  assert.equal(CATALOG.shieldGen.at(-1).price, 1250000000);
-  assert.equal(CATALOG.lasers.at(-1).price, 1500000000);
+  assert.equal(CATALOG.speedGen.at(-1).price, 40000000);
+  assert.equal(CATALOG.shieldGen.at(-1).price, 35000000);
+  assert.equal(CATALOG.lasers.at(-1).price, 50000000);
   assert.equal(MODULE_ROLL_COST, 1000000);
   assert.ok(CATALOG.ships.every(item => Number(item.price) > 0));
   assert.deepEqual(MODULE_TIER_WEIGHTS, [["x1", 68], ["x2", 25], ["x3", 7]]);

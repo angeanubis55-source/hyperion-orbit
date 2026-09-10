@@ -184,6 +184,18 @@ function defaultAmmo() {
     x6: 0,
     sab: 0,
 
+    // munitions lasers spéciales (boutique)
+    rcb: 0,
+    cbo: 0,
+    job: 0,
+    rb: 0,
+    pib: 0,
+    idb: 0,
+    vb: 0,
+    emaa: 0,
+    sbl: 0,
+    abl: 0,
+
     // nouveaux types
     ABL: 0,
     RADION: 0,
@@ -497,14 +509,14 @@ function ensureUserShape(u) {
   u.ammo.x1 = Infinity;
 
   // normalise les munitions connues
-  const AMMO_KEYS = ["x2", "x3", "x4", "x6", "sab", "ABL", "RADION"];
+  const AMMO_KEYS = ["x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "ABL", "RADION"];
   for (const k of AMMO_KEYS) {
     u.ammo[k] = Math.max(0, Number(u.ammo[k] || 0));
   }
 
   // Sélection munition du dock rapide (persistée comme rocketActive).
   // Fallback compat : ancienne sauvegarde avec ammo.active embarqué.
-  const VALID_ACTIVE_AMMO = ["x1", "x2", "x3", "x4", "x6", "sab"];
+  const VALID_ACTIVE_AMMO = ["x1", "x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl"];
   const rawAmmoActive = String(u.ammoActive ?? u.ammo?.active ?? "x1").toLowerCase();
   u.ammoActive = VALID_ACTIVE_AMMO.includes(rawAmmoActive) ? rawAmmoActive : "x1";
   u.ammo.active = u.ammoActive;
@@ -1041,11 +1053,14 @@ export function updateCurrentUserProgress(patch = {}) {
     if (patch.ammo.x4 != null) u.ammo.x4 = Math.max(0, Number(patch.ammo.x4 || 0));
     if (patch.ammo.x6 != null) u.ammo.x6 = Math.max(0, Number(patch.ammo.x6 || 0));
     if (patch.ammo.sab != null) u.ammo.sab = Math.max(0, Number(patch.ammo.sab || 0));
+    for (const k of ["rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl"]) {
+      if (patch.ammo[k] != null) u.ammo[k] = Math.max(0, Number(patch.ammo[k] || 0));
+    }
   }
   // Sélection munition du dock rapide (miroir de rocketActive).
   // Acceptée via patch.ammoActive ou patch.ammo.active (compat).
   {
-    const VALID_ACTIVE_AMMO = ["x1", "x2", "x3", "x4", "x6", "sab"];
+    const VALID_ACTIVE_AMMO = ["x1", "x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl"];
     const rawAmmoActive = patch.ammoActive ?? patch.ammo?.active;
     if (rawAmmoActive != null) {
       const key = String(rawAmmoActive).toLowerCase();

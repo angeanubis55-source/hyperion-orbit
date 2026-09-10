@@ -18,17 +18,56 @@ function defaultShipPrice(pack) {
 }
 
 export const CATALOG = {
-ammo: [
-  { id: "ammo_x2",  name: "Munitions X2", price: 50000, give: { ammo: { x2: 1000 } } },
-  { id: "ammo_x3",  name: "Munitions X3", price: 150000, give: { ammo: { x3: 1000 } } },
-  { id: "ammo_x4",  name: "Munitions X4", price: 500000, give: { ammo: { x4: 1000 } } },
-
-  // ✅ SAB-50 maintenant achetable dans la vraie boutique
-  { id: "ammo_sab", name: "Munitions SAB-50", price: 250000, give: { ammo: { sab: 1000 } } },
-
-  { id: "ammo_x6",  name: "Munitions X6", price: 1500000, give: { ammo: { x6: 1000 } } },
-  // { id: "ammo_abl", name: "Munitions ABL", price: 250000, give: { ammo: { ABL: 1000 } } },
-  // { id: "ammo_radion", name: "Munitions RADION", price: 10000000, give: { ammo: { RADION: 1000 } } },
+  // Munitions lasers officielles (icônes : itemsControlMenu_texture officielle).
+  // Dégâts : LCB-10 x1 (base, stock infini, non vendue), MCB-25 x2, MCB-50 x3,
+  // UCB-100 x4, SAB-50 (vole le bouclier x2 + recharge le tien), RSB-75 x6.
+  ammo: [
+  { id: "ammo_x2", name: "MCB-25 (X2)", price: 50000, give: { ammo: { x2: 1000 } },
+    code: "MCB-25", mult: 2, laser: "bleu",
+    desc: "Batterie moyenne capacité : dégâts doublés (×2).", effect: "Tirs bleus." },
+  { id: "ammo_x3", name: "MCB-50 (X3)", price: 150000, give: { ammo: { x3: 1000 } },
+    code: "MCB-50", mult: 3, laser: "vert",
+    desc: "Batterie capacité max : dégâts triplés (×3).", effect: "Tirs verts." },
+  { id: "ammo_x4", name: "UCB-100 (X4)", price: 500000, give: { ammo: { x4: 1000 } },
+    code: "UCB-100", mult: 4, laser: "blanc",
+    desc: "Batterie ultra capacité : dégâts quadruplés (×4).", effect: "Tirs blancs." },
+  { id: "ammo_sab", name: "SAB-50", price: 250000, give: { ammo: { sab: 1000 } },
+    code: "SAB-50", mult: 2, laser: "bleu (cercles)",
+    desc: "Batterie absorbe-bouclier : vole le bouclier adverse (×2) et recharge le tien. Zéro dégât coque.", effect: "Cercles bleus + faisceau inversé (cible → toi)." },
+  { id: "ammo_x6", name: "RSB-75 (X6)", price: 1500000, give: { ammo: { x6: 1000 } },
+    code: "RSB-75", mult: 6, laser: "orange",
+    desc: "Batterie de salve rapide : dégâts sextuplés (×6).", effect: "Tirs oranges." },
+  // Munitions spéciales officielles (effets : voir COMBAT/AMMO_TYPES.js).
+  { id: "ammo_rcb", name: "RCB-140", price: 3000000, give: { ammo: { rcb: 1000 } },
+    code: "RCB-140", mult: 7, laser: "violet",
+    desc: "Munition d'événement : dégâts septuplés (×7).", effect: "Tirs violets." },
+  { id: "ammo_cbo", name: "CBO-100", price: 800000, give: { ammo: { cbo: 1000 } },
+    code: "CBO-100", mult: 3, laser: "violet (absorption)",
+    desc: "Dégâts triplés (×3) + vole le bouclier adverse (×1).", effect: "Faisceau inversé (cible → toi)." },
+  { id: "ammo_job", name: "JOB-100", price: 400000, give: { ammo: { job: 1000 } },
+    code: "JOB-100", mult: 2, laser: "jaune-vert",
+    desc: "×3,5 contre les aliens, ×2 contre les joueurs.", effect: "Tirs jaune-vert." },
+  { id: "ammo_rb", name: "RB-214", price: 600000, give: { ammo: { rb: 1000 } },
+    code: "RB-214", mult: 4, laser: "or",
+    desc: "Dégâts quadruplés (×4), ×8 contre les Demaners.", effect: "Tirs dorés." },
+  { id: "ammo_pib", name: "PIB-100", price: 2000000, give: { ammo: { pib: 1000 } },
+    code: "PIB-100", mult: 4, laser: "vert",
+    desc: "Dégâts quadruplés (×4) + infecte la cible (vitesse −10 %, 15 s).", effect: "Tirs verts." },
+  { id: "ammo_idb", name: "IDB-125", price: 1200000, give: { ammo: { idb: 1000 } },
+    code: "IDB-125", mult: 1, laser: "magenta (progressif)",
+    desc: "Commence à ×1 puis +1,25 par tir réussi jusqu'à ×6 (retombe à ×1 après 3 s sans tirer).", effect: "Tirs magenta." },
+  { id: "ammo_vb", name: "VB-142", price: 900000, give: { ammo: { vb: 1000 } },
+    code: "VB-142", mult: 4, laser: "mauve",
+    desc: "Dégâts quadruplés (×4), ×7 contre Styxus et Charopos.", effect: "Tirs mauves." },
+  { id: "ammo_emaa", name: "EMAA-20", price: 900000, give: { ammo: { emaa: 1000 } },
+    code: "EMAA-20", mult: 4, laser: "vert-jaune",
+    desc: "Dégâts quadruplés (×4), ×7 contre les Mimesis.", effect: "Tirs vert-jaune." },
+  { id: "ammo_sbl", name: "SBL-100", price: 900000, give: { ammo: { sbl: 1000 } },
+    code: "SBL-100", mult: 4, laser: "cyan",
+    desc: "Dégâts quadruplés (×4), ×8 contre les Sibelons.", effect: "Tirs cyan." },
+  { id: "ammo_abl", name: "A-BL", price: 1000000, give: { ammo: { abl: 1000 } },
+    code: "A-BL", mult: 4, laser: "rose",
+    desc: "Dégâts quadruplés (×4), ×8 contre Invoke et Mindfire Behemoth.", effect: "Tirs roses." },
   ],
 
   // Roquettes tirables (lanceur natif) : généré depuis data/rockets.js.
@@ -58,7 +97,6 @@ ammo: [
     { id: "spd_mk2", name: "Générateur de vitesse MK2", price: 300000, module: { type: "speed",  bonusSpeed: 6 } },
     { id: "spd_mk3", name: "Générateur de vitesse MK3", price: 1500000, module: { type: "speed",  bonusSpeed: 8 } },
     { id: "spd_mk4", name: "Générateur de vitesse MK4", price: 40000000, module: { type: "speed",  bonusSpeed: 11 } },
-    { id: "spd_radion", name: "Générateur de vitesse RADION", price: 1250000000, module: { type: "speed",  bonusSpeed: 16 } },
   ],
 
   shieldGen: [
@@ -67,7 +105,6 @@ ammo: [
     { id: "shd_mk2", name: "Générateur de bouclier MK2", price: 250000, module: { type: "shield", bonusShield: 10000 } },
     { id: "shd_mk3", name: "Générateur de bouclier MK3", price: 1250000, module: { type: "shield", bonusShield: 12500 } },
     { id: "shd_mk4", name: "Générateur de bouclier MK4", price: 35000000, module: { type: "shield", bonusShield: 15000 } },
-    { id: "shd_radion", name: "Générateur de bouclier RADION", price: 1250000000, module: { type: "shield", bonusShield: 22500 } },
   ],
 
   lasers: [
@@ -76,7 +113,6 @@ ammo: [
     { id: "laser_lf3", name: "laser LF-3", price: 350000, module: { type: "laser", damage: 150 } },
     { id: "laser_odysseus", name: "laser Odysseus", price: 2000000, module: { type: "laser", damage: 200 } },
     { id: "laser_anchorlock", name: "laser Anchorlock", price: 50000000, module: { type: "laser", damage: 275 } },
-    { id: "laser_radion", name: "laser Mortifier", price: 1500000000, module: { type: "laser", damage: 600 } },
     ],
 
   extras: [

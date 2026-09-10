@@ -339,13 +339,22 @@ const FALLBACK_ICON = `data:image/svg+xml,${encodeURIComponent(`
 `)}`;
 
 const ITEM_ICONS = {
-  ammo_x2: ITEM_ICON_BASE + "ammo_x2.png",
-  ammo_x3: ITEM_ICON_BASE + "ammo_x3.png",
-  ammo_x4: ITEM_ICON_BASE + "ammo_x4.png",
-  ammo_sab: ITEM_ICON_BASE + "ammo_sab.png",
-  ammo_x6: ITEM_ICON_BASE + "ammo_x6.png",
-  // ammo_abl: ITEM_ICON_BASE + "ammo_abl.png",
-  // ammo_radion: ITEM_ICON_BASE + "ammo_radion.png",
+  ammo_x1: ITEM_ICON_BASE + "AMMO_X1.png",
+  ammo_x2: ITEM_ICON_BASE + "AMMO_X2.png",
+  ammo_x3: ITEM_ICON_BASE + "AMMO_X3.png",
+  ammo_x4: ITEM_ICON_BASE + "AMMO_X4.png",
+  ammo_sab: ITEM_ICON_BASE + "AMMO_SAB.png",
+  ammo_x6: ITEM_ICON_BASE + "AMMO_X6.png",
+  ammo_rcb: ITEM_ICON_BASE + "AMMO_RCB.png",
+  ammo_cbo: ITEM_ICON_BASE + "AMMO_CBO.png",
+  ammo_job: ITEM_ICON_BASE + "AMMO_JOB.png",
+  ammo_rb: ITEM_ICON_BASE + "AMMO_RB.png",
+  ammo_pib: ITEM_ICON_BASE + "AMMO_PIB.png",
+  ammo_idb: ITEM_ICON_BASE + "AMMO_IDB.png",
+  ammo_vb: ITEM_ICON_BASE + "AMMO_VB.png",
+  ammo_emaa: ITEM_ICON_BASE + "AMMO_EMAA.png",
+  ammo_sbl: ITEM_ICON_BASE + "AMMO_SBL.png",
+  ammo_abl: ITEM_ICON_BASE + "AMMO_ABL.png",
   // Roquettes : icônes de /COMBAT/ROCKET_SPRITES/ (ton dossier). Fallbacks automatiques si absent.
   rocket_r310: "/COMBAT/ROCKET_SPRITES/R-310_100X100.png",
   ammo_r310: "/COMBAT/ROCKET_SPRITES/R-310_100X100.png",
@@ -376,23 +385,20 @@ const ITEM_ICONS = {
   spd_mk2: ITEM_ICON_BASE + "spd_mk2.png",
   spd_mk3: ITEM_ICON_BASE + "spd_mk3.png",
   spd_mk4: ITEM_ICON_BASE + "spd_mk4.png",
-  spd_radion: ITEM_ICON_BASE + "spd_radion.png",
   shd_mk0: ITEM_ICON_BASE + "shd_mk0.png",
   shd_mk1: ITEM_ICON_BASE + "shd_mk1.png",
   shd_mk2: ITEM_ICON_BASE + "shd_mk2.png",
   shd_mk3: ITEM_ICON_BASE + "shd_mk3.png",
   shd_mk4: ITEM_ICON_BASE + "shd_mk4.png",
-  shd_radion: ITEM_ICON_BASE + "shd_radion.png",
   laser_lf1: LASER_ICON_BASE + "laser_lf1.png",
   laser_lf2: LASER_ICON_BASE + "laser_lf2.png",
   laser_lf3: LASER_ICON_BASE + "laser_lf3.png",
   laser_anchorlock: LASER_ICON_BASE + "laser_lf5_anchorlock.png",
   laser_odysseus: LASER_ICON_BASE + "laser_odysseus.png",
-  laser_radion: LASER_ICON_BASE + "laser_lf5_mortifier.png",
 };
 
 const FALLBACK_ICONS = {
-  ammo: ITEM_ICON_BASE + "ammo_x2.png",
+  ammo: ITEM_ICON_BASE + "AMMO_X2.png",
   rockets: "/COMBAT/ROCKET_SPRITES/R-310_100X100.png",
   launchers: "/COMBAT/ROCKET_SPRITES/HSTRM-01_100X100.png",
   speed: ITEM_ICON_BASE + "spd_mk0.png",
@@ -671,7 +677,11 @@ const INVENTORY_AMMO_NAMES = Object.freeze({
   x1: "Munitions LCB-10 (X1)", x2: "Munitions MCB-25 (X2)",
   x3: "Munitions MCB-50 (X3)", x4: "Munitions UCB-100 (X4)",
   x6: "Munitions RSB-75 (X6)", sab: "Munitions SAB-50",
-  ABL: "Munitions ABL", RADION: "Munitions RADION",
+  rcb: "Munitions RCB-140", cbo: "Munitions CBO-100",
+  job: "Munitions JOB-100", rb: "Munitions RB-214",
+  pib: "Munitions PIB-100", idb: "Munitions IDB-125",
+  vb: "Munitions VB-142", emaa: "Munitions EMAA-20",
+  sbl: "Munitions SBL-100", abl: "Munitions A-BL",
   r310: "Roquette R-310",
 });
 
@@ -831,7 +841,7 @@ function buildInventorySections(u) {
   }] : [];
 
   return [
-    { id: "ammo", title: "Munitions", items: ammoItems },
+    { id: "ammo", title: "Munitions lasers", items: ammoItems },
     { id: "equipment", title: "Équipements", items: equipment },
     { id: "modules", title: "Modules de vaisseau", items: modules },
     { id: "ships", title: "Vaisseaux", items: ships },
@@ -2124,10 +2134,8 @@ if (isShipLike) {
 } else if (it?.module?.type === "laser") {
   statLine = `<p class="shopItemStat">Dégâts de base par tir <strong>${formatNumber(it.module.damage || 0)}</strong></p>`;
 } else if (it?.give?.ammo) {
-  const multiplier = Number(AMMO[ammoKey]?.mult || 1);
-  statLine = ammoKey === "sab"
-    ? `<p class="shopItemStat">Absorption de bouclier <strong>${multiplier}×</strong></p>`
-    : `<p class="shopItemStat">Multiplicateur de dégâts <strong>${multiplier}×</strong></p>`;
+  const ammoDesc = it?.desc ? `<p class="shopItemStat">${escapeHtml(it.desc)}</p>` : "";
+  statLine = `${ammoDesc}`;
 } else if (it?.give?.rockets) {
   const rocket = getRocketType(ammoKey);
   statLine = `<p class="shopItemStat">${escapeHtml(rocketEffectLabel(rocket))}</p>`;
@@ -2203,7 +2211,7 @@ if (isDrone) {
     `;
   } else {
     previewHtml = `
-      <img src="${imgSrc}" alt="${it?.name || it?.id}" class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}" />
+      <img src="${imgSrc}" alt="${it?.name || it?.id}" class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}${cat === "ammo" ? " ammoShopImage" : ""}" />
     `;
   }
 

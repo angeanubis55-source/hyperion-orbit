@@ -2350,6 +2350,9 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   display:flex;
   gap:10px;
   align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  max-width:min(1060px,96vw);
   background:rgba(10,14,30,.78);
   border:1px solid rgba(124,240,255,.18);
   pointer-events:auto;
@@ -2414,6 +2417,16 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 .ammoBtn[data-ammo="x4"]{ --c:var(--x4); }
 .ammoBtn[data-ammo="x6"]{ --c:var(--x6); }
 .ammoBtn[data-ammo="sab"]{ --c:#2f62c0; }
+.ammoBtn[data-ammo="rcb"]{ --c:#c83cff; }
+.ammoBtn[data-ammo="cbo"]{ --c:#965aff; }
+.ammoBtn[data-ammo="job"]{ --c:#dcff50; }
+.ammoBtn[data-ammo="rb"]{ --c:#ffd250; }
+.ammoBtn[data-ammo="pib"]{ --c:#50dcc8; }
+.ammoBtn[data-ammo="idb"]{ --c:#ff50c8; }
+.ammoBtn[data-ammo="vb"]{ --c:#aa50ff; }
+.ammoBtn[data-ammo="emaa"]{ --c:#8cff78; }
+.ammoBtn[data-ammo="sbl"]{ --c:#50dcff; }
+.ammoBtn[data-ammo="abl"]{ --c:#ff6eb4; }
 .ammoBtn[data-skill="pulse"]{ --c:#b342ff; }
 .ammoBtn[data-skill="ish"]{ --c:#ffe14d; }
 .ammoBtn[data-skill="repair"]{ --c:#39ff14; }
@@ -4220,6 +4233,16 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar .compactAmmoBtn[data-ammo="x4"]::before{background-image:url("ASSETS/ITEMS/AMMO_X4.png")}
 #ammoBar .compactAmmoBtn[data-ammo="sab"]::before{background-image:url("ASSETS/ITEMS/AMMO_SAB.png")}
 #ammoBar .compactAmmoBtn[data-ammo="x6"]::before{background-image:url("ASSETS/ITEMS/AMMO_X6.png")}
+#ammoBar .compactAmmoBtn[data-ammo="rcb"]::before{background-image:url("ASSETS/ITEMS/AMMO_RCB.png")}
+#ammoBar .compactAmmoBtn[data-ammo="cbo"]::before{background-image:url("ASSETS/ITEMS/AMMO_CBO.png")}
+#ammoBar .compactAmmoBtn[data-ammo="job"]::before{background-image:url("ASSETS/ITEMS/AMMO_JOB.png")}
+#ammoBar .compactAmmoBtn[data-ammo="rb"]::before{background-image:url("ASSETS/ITEMS/AMMO_RB.png")}
+#ammoBar .compactAmmoBtn[data-ammo="pib"]::before{background-image:url("ASSETS/ITEMS/AMMO_PIB.png")}
+#ammoBar .compactAmmoBtn[data-ammo="idb"]::before{background-image:url("ASSETS/ITEMS/AMMO_IDB.png")}
+#ammoBar .compactAmmoBtn[data-ammo="vb"]::before{background-image:url("ASSETS/ITEMS/AMMO_VB.png")}
+#ammoBar .compactAmmoBtn[data-ammo="emaa"]::before{background-image:url("ASSETS/ITEMS/AMMO_EMAA.png")}
+#ammoBar .compactAmmoBtn[data-ammo="sbl"]::before{background-image:url("ASSETS/ITEMS/AMMO_SBL.png")}
+#ammoBar .compactAmmoBtn[data-ammo="abl"]::before{background-image:url("ASSETS/ITEMS/AMMO_ABL.png")}
 #ammoBar .compactAmmoBtn[data-ammo] > strong{display:none !important}
 #ammoBar .compactAmmoBtn[data-ammo] > small{
   position:absolute;

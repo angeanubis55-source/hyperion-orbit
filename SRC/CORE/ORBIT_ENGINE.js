@@ -581,10 +581,10 @@ function initializeCustomActionBar() {
     const id = button.dataset.ammo ? `ammo:${button.dataset.ammo}` : `skill:${button.dataset.skill}`;
     button.dataset.actionId = id;
     button.draggable = true;
-    // Pastilles d'orbite de tir (x1-x4, sab ; X6 exclu) : héritées par tous
+    // Pastilles d'orbite de tir (sauf salves rapides X6/RCB) : héritées par tous
     // les clones (slots + palette), animées en CSS quand le bouton tire.
     // Tête 5px + traînée dégressive (4, 3, 2px) collée juste derrière.
-    if (button.dataset.ammo && button.dataset.ammo !== "x6") {
+    if (button.dataset.ammo && button.dataset.ammo !== "x6" && button.dataset.ammo !== "rcb") {
       for (const cls of ["f1", "f2", "f3", "f4"]) {
         const dot = document.createElement("b");
         dot.className = `fireOrbit ${cls}`;
@@ -594,6 +594,14 @@ function initializeCustomActionBar() {
     }
     return [id, button];
   }));
+  // ✅ Munitions (dont les nouvelles : RCB, CBO, JOB...) : câblage des
+  // ORIGINAUX (les clones des slots/palette redirigent vers eux via .click()).
+  for (const button of actions) {
+    const key = String(button.dataset.ammo || "").toLowerCase();
+    if (!key || button.dataset.ammoWired === "1") continue;
+    button.dataset.ammoWired = "1";
+    button.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== key); startAttack(key); });
+  }
   let saved = [];
   try { saved = JSON.parse(localStorage.getItem(ACTION_BAR_LAYOUT_KEY) || "[]"); } catch {}
   const layout = Array.from({ length: 20 }, (_, index) => saved[index] || null);
@@ -757,6 +765,30 @@ function initializeCustomActionBar() {
     });
     slots.appendChild(slot);
   });
+  // ✅ Nouvelles munitions (RCB, CBO, JOB...) : placées d'office dans les
+  // slots vides (anciens layouts sauvegardés + découverte immédiate).
+  // L'utilisateur peut toujours les déplacer via la palette (⌃).
+  {
+    const placedIds = new Set([...bar.querySelectorAll(".actionSlot [data-action-id]")].map((el) => el.dataset.actionId));
+    const missingAmmo = actions.filter((button) => button.dataset.ammo && !placedIds.has(`ammo:${button.dataset.ammo}`));
+    const emptySlots = [...bar.querySelectorAll(".actionSlot")].filter((slot) => !slot.querySelector("[data-action-id]"));
+    missingAmmo.forEach((original, index) => {
+      const slot = emptySlots[index];
+      if (!slot) return;
+      const id = `ammo:${original.dataset.ammo}`;
+      const instance = original.cloneNode(true);
+      instance.removeAttribute("id");
+      instance.dataset.actionId = id;
+      instance.onclick = () => original.click();
+      instance.addEventListener("dragstart", event => {
+        if (palette.hidden) return event.preventDefault();
+        event.dataTransfer.setData("application/x-orbit-action", id);
+        event.dataTransfer.effectAllowed = "move";
+      });
+      slot.appendChild(instance);
+    });
+    if (missingAmmo.length && emptySlots.length) persist();
+  }
   actions.forEach(button => button.addEventListener("dragstart", event => {
     if (palette.hidden) return event.preventDefault();
     event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId);
@@ -2944,7 +2976,8 @@ ui.questList?.addEventListener("click", event => {
           renderGalaxyGateWindow();
         }
       }
-      const ammoMessages = ammoRewards.map(([type, amount]) => `Vous avez reçu ${formatInteger(amount)} munitions ${type === "x6" ? "RSB-75" : type.toUpperCase()}`);
+      const AMMO_REWARD_NAMES = { x6: "RSB-75", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", sab: "SAB-50", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x1: "LCB-10" };
+      const ammoMessages = ammoRewards.map(([type, amount]) => `Vous avez reçu ${formatInteger(amount)} munitions ${AMMO_REWARD_NAMES[type] || String(type).toUpperCase()}`);
       const energyMessage = galaxyEnergy > 0 ? `Vous avez reçu ${formatInteger(galaxyEnergy)} énergies pour les portails intergalactiques (GG)` : "";
       addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(reward.credits)} crédits · +${formatInteger(experience)} XP · +${formatInteger(honor)} honneur${ammoMessages.length ? ` · ${ammoMessages.join(" · ")}` : ""}${energyMessage ? ` · ${energyMessage}` : ""}`, "reward");
       showNotificationGroup([
@@ -3005,6 +3038,16 @@ hangarState: !player.dead && started ? {
     x4: player.ammo.x4 || 0,
     sab: player.ammo.sab || 0,
     x6: player.ammo.x6 || 0,
+    rcb: player.ammo.rcb || 0,
+    cbo: player.ammo.cbo || 0,
+    job: player.ammo.job || 0,
+    rb: player.ammo.rb || 0,
+    pib: player.ammo.pib || 0,
+    idb: player.ammo.idb || 0,
+    vb: player.ammo.vb || 0,
+    emaa: player.ammo.emaa || 0,
+    sbl: player.ammo.sbl || 0,
+    abl: player.ammo.abl || 0,
   },
   ammoActive: player.ammo.active || "x1",
   rockets: sanitizeRocketsForSave(),
@@ -3336,6 +3379,16 @@ function syncPlayerFromAccount() {
     x4: Math.max(0, Number(a.x4 || 0)),
     x6: Math.max(0, Number(a.x6 || 0)),
     sab: Math.max(0, Number(a.sab || 0)),
+    rcb: Math.max(0, Number(a.rcb || 0)),
+    cbo: Math.max(0, Number(a.cbo || 0)),
+    job: Math.max(0, Number(a.job || 0)),
+    rb: Math.max(0, Number(a.rb || 0)),
+    pib: Math.max(0, Number(a.pib || 0)),
+    idb: Math.max(0, Number(a.idb || 0)),
+    vb: Math.max(0, Number(a.vb || 0)),
+    emaa: Math.max(0, Number(a.emaa || 0)),
+    sbl: Math.max(0, Number(a.sbl || 0)),
+    abl: Math.max(0, Number(a.abl || 0)),
   };
 
   // ✅ roquettes synchronisées aussi si achat en boutique profil
@@ -4902,7 +4955,7 @@ const BASE_RUN = {
   laserDmgMult: 1.0,
   accel: 3200,
   friction: 0.86,
-  ammo: { active: "x1", x1: Infinity, x2: 2000, x3: 1000, x4: 500, x6: 10, sab: 2000 },
+  ammo: { active: "x1", x1: Infinity, x2: 2000, x3: 1000, x4: 500, x6: 10, sab: 2000, rcb: 0, cbo: 0, job: 0, rb: 0, pib: 0, idb: 0, vb: 0, emaa: 0, sbl: 0, abl: 0 },
 };
 
 let playerRange = BASE_RUN.range;
@@ -4952,7 +5005,7 @@ const player = {
 
   altShot: false,
 
-  ammo: { active: "x1", x1: Infinity, x2: 0, x3: 0, x4: 0, x6: 0, sab: 0 },
+  ammo: { active: "x1", x1: Infinity, x2: 0, x3: 0, x4: 0, x6: 0, sab: 0, rcb: 0, cbo: 0, job: 0, rb: 0, pib: 0, idb: 0, vb: 0, emaa: 0, sbl: 0, abl: 0 },
 
   // Roquettes : stock consommable (lance-roquettes natif au vaisseau).
   // Seule player.rocketActive est tirée ; sélection dans l'onglet Roquettes.
@@ -5260,16 +5313,18 @@ function syncActionDockState() {
       (v) => button.classList.toggle("active", v));
     applyDockField(button, "text", value,
       (v) => { if (small) small.textContent = v; });
-    // Pastille orbitale blanche pendant le tir (x1-x4, sab ; X6 exclu).
+    // Pastille orbitale blanche pendant le tir (x1-x4, sab, spéciales ; X6/RCB exclus).
     // Suit la munition active : change de slot avec elle, disparaît à l'arrêt.
-    const firing = attackActive && !player.dead && ammo === activeAmmo && ammo !== "x6";
+    const firing = attackActive && !player.dead && ammo === activeAmmo && !isRsbLike(ammo);
     applyDockField(button, "firing", firing,
       (v) => button.classList.toggle("firing", v));
-    // X6 (RSB) : voile de son cooldown 5 s. Liseré auto-adaptatif en continu
+    // X6/RCB : voile de leur cooldown 5 s. Liseré auto-adaptatif en continu
     // comme roquettes/formations ; flash de fin couleur du contour du slot.
-    if (ammo === "x6") {
-      const cooling = rsbCooldown > 0;
-      const progress = cooling ? clamp(rsbCooldown / RSB_COOLDOWN, 0, 1) : 0;
+    if (isRsbLike(ammo)) {
+      const cd = ammo === "rcb" ? rcbCooldown : rsbCooldown;
+      const cdMax = ammo === "rcb" ? RCB_COOLDOWN : RSB_COOLDOWN;
+      const cooling = cd > 0;
+      const progress = cooling ? clamp(cd / cdMax, 0, 1) : 0;
       const wasCooling = button.dataset.x6Cooling === "1";
       if (wasCooling && !cooling) {
         // Fin du voile : animation "prêt" unique (pas de double système).
@@ -5284,7 +5339,13 @@ function syncActionDockState() {
       applyDockField(button, "cdProgress", progress.toFixed(3),
         (v) => button.style.setProperty("--cd", v));
       if (cooling) {
-        applyDockField(button, "cdEdge", getComputedStyle(button).borderColor,
+        // Liseré brillant seulement si X6 est la munition active : sinon
+        // le voile de recharge ressemble à une sélection (double-sélection
+        // apparente avec la vraie munition active).
+        const edgeColor = ammo === activeAmmo
+          ? getComputedStyle(button).borderColor
+          : "rgba(120,130,140,.35)";
+        applyDockField(button, "cdEdge", edgeColor,
           (v) => button.style.setProperty("--cd-edge", v));
       }
     }
@@ -5426,15 +5487,13 @@ function playDockSelectSound(isNew) {
   SFX.play(isNew ? "selectNew" : "selectAgain");
 }
 
-ui.btnX1.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== "x1"); startAttack("x1"); });
-ui.btnX2.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== "x2"); startAttack("x2"); });
-ui.btnX3.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== "x3"); startAttack("x3"); });
-ui.btnX4.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== "x4"); startAttack("x4"); });
-ui.btnX6.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== "x6"); startAttack("x6"); });
+// (Câblage des munitions : générique sur les originaux, voir
+// initializeCustomActionBar — les clones slots/palette suivent.)
 
-if (ui.btnSAB) {
-  ui.btnSAB.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== "sab"); startAttack("sab"); });
-}
+// ✅ Munitions spéciales : même câblage que X1-X6 (le dock est générique :
+// counts + actif déjà gérés par syncActionDockState pour tout [data-ammo]).
+// (Voir initializeCustomActionBar : les originaux sont câblés là-bas,
+// les clones des slots/palette redirigent vers eux.)
 
 // ============================================================
 // Repair
@@ -6447,7 +6506,7 @@ function firePetVolley(target) {
   if (!(total > 0) || !count) return;
   const ammoKey = player.ammo.active || "x1";
   const ammoCfg = AMMO[ammoKey] || AMMO.x1;
-  const isSab = ammoKey === "sab";
+const isSab = ammoKey === "sab";
   const angle = Math.atan2(target.y - petState.y, target.x - petState.x);
   const speed = Math.max(900, Number(BASE_RUN.baseBulletSpeed) || 4000);
   const muzzle = 50;
@@ -6456,8 +6515,9 @@ function firePetVolley(target) {
   const volleyId = volleySeq++;
   const volleyDamage = isSab ? total * SAB50.drainMult : total * (ammoCfg.mult || 1);
   // Les points de tir suivent l'apparence, pas le nombre de lasers équipés.
+  // SAB/CBO : UN seul laser central (comme sur le vaisseau), jamais en double.
   const stage = getPetStage(getPetLevel(account.user?.pet?.exp));
-  const canFirePair = stage >= 4;
+  const canFirePair = stage >= 4 && ammoKey !== "sab" && ammoKey !== "cbo";
   const isRealPair = canFirePair && (petState.altShot ?? true);
   const shotOffsets = isRealPair ? [-SIDE_OFFSET, SIDE_OFFSET] : [0];
   const perShot = volleyDamage / shotOffsets.length;
@@ -6482,8 +6542,8 @@ function firePetVolley(target) {
   // par le joueur. Le X1 reste naturellement illimité.
   consumeAmmo(count);
   playEscortShot(ammoKey);
-  const salvoShots = ammoKey === "x6" ? 12 : 6;
-  const salvoInterval = ammoKey === "x6" ? 1 / 12 : 0.2;
+  const salvoShots = isRsbLike(ammoKey) ? 12 : 6;
+  const salvoInterval = isRsbLike(ammoKey) ? 1 / 12 : 0.2;
   for (let i = 1; i < salvoShots; i++) {
     const fakeIsPair = canFirePair && (isRealPair ? i % 2 === 0 : i % 2 === 1);
     const items = fakeIsPair ? [[-SIDE_OFFSET, 0], [SIDE_OFFSET, 0]] : [[0, 0]];
@@ -8108,6 +8168,34 @@ function spawnProtegitOnCubikonHit(cub, count = 30) {
 }
 
 // ============================================================
+// ✅ Munitions spéciales du joueur (officielles) : résolution du
+// multiplicateur au moment du tir. Lecture seule du type de cible.
+const idbRamp = { mult: 1, lastUse: 0 };
+
+function resolveAmmoMult(ammoKey, target) {
+  const cfg = AMMO[ammoKey] || AMMO.x1;
+  const base = Number(cfg.mult || 1);
+  // IDB-125 : +1,25 par tir réussi jusqu'à ×6, reset après 3 s sans tirer.
+  if (ammoKey === "idb") {
+    const now = Date.now();
+    const resetMs = Number(cfg.rampResetMs || 3000);
+    if (now - idbRamp.lastUse > resetMs) idbRamp.mult = 1;
+    const current = Math.min(Number(cfg.rampMax || 6), Math.max(1, Number(idbRamp.mult || 1)));
+    idbRamp.mult = Math.min(Number(cfg.rampMax || 6), current + Number(cfg.rampStep || 1.25));
+    idbRamp.lastUse = now;
+    return current;
+  }
+  const targetType = String(target?.type || "");
+  // JOB-100 : ×3,5 aliens, ×2 joueurs.
+  if (ammoKey === "job") return targetType.startsWith("npc_") ? Number(cfg.vsNpcMult || 3.5) : base;
+  // Bonus conditionnels (RB/Demaners, SBL/Sibelons, VB/Styxus-Charopos,
+  // EMAA/Mimesis, A-BL/Invoke-Mindfire).
+  if (Array.isArray(cfg.vsMatch) && cfg.vsMatch.some((re) => re.test(targetType))) {
+    return Number(cfg.vsMult || base);
+  }
+  return base;
+}
+
 // ✅ SAB-50 : vole uniquement le bouclier NPC
 // ============================================================
 const SAB50 = {
@@ -9059,12 +9147,12 @@ function startAttack(ammoOverride = null) {
   }
 
   // ✅ changement de munition :
-  const switchingToX6 = ammoOverride === "x6";
+  const switchingToRsbLike = isRsbLike(ammoOverride);
 
-  if (attackActive && switchingToX6) {
-    // le X6 a son propre rythme (12 tirs / 83 ms) : on coupe la salve en cours.
+  if (attackActive && switchingToRsbLike) {
+    // les salves rapides ont leur propre rythme : on coupe la salve en cours.
     clearPendingSalvo();
-  } else if (attackActive && !switchingToX6) {
+  } else if (attackActive && !switchingToRsbLike) {
     // ✅ entre munitions standard : les faux tirs (en attente et déjà en vol)
     // deviennent instantanément la nouvelle munition, sans perdre leur cadence
     // (on ne repart pas d'un nouveau vrai tir pour relancer la salve).
@@ -9078,9 +9166,9 @@ function startAttack(ammoOverride = null) {
   const t = Target.get();
   if (!t) return;
 
-  // ✅ X6 indisponible : l'attaque reste active mais visuellement rien ne
-  // part jusqu'à la fin du cooldown, où la salve X6 se déclenche d'elle-même.
-  if (switchingToX6 && rsbCooldown > 0) {
+  // ✅ salve rapide indisponible : l'attaque reste active mais visuellement
+  // rien ne part jusqu'à la fin du cooldown, où la salve se déclenche d'elle-même.
+  if (switchingToRsbLike && rsbLikeCooldown(ammoOverride) > 0) {
     attackActive = true;
     if (!wasAttackActive) announceLaserCombatRange(t);
     return;
@@ -9329,9 +9417,10 @@ function tickAutoAttack(dt) {
   if (!inRange) return;
 
   const ammoKey = player.ammo.active || "x1";
-  // ✅ la salve X6 suit son propre cooldown (5 s), indépendant du laser standard.
-  if (ammoKey === "x6") {
-    if (rsbCooldown <= 0) tryFireOnce(null, true);
+  // ✅ les salves rapides (X6, RCB) suivent leur propre cooldown (5 s),
+  // indépendant du laser standard.
+  if (isRsbLike(ammoKey)) {
+    if (rsbLikeCooldown(ammoKey) <= 0) tryFireOnce(null, true);
     return;
   }
 
@@ -9343,25 +9432,40 @@ function tickAutoAttack(dt) {
 const SIDE_OFFSET = 30;
 const SIDE_DMG_SPLIT = 0.5;
 
-const PLAYER_SHOT_SFX = { 
-  x1: "pShotX1", 
-  x2: "pShotX2", 
-  x3: "pShotX3", 
-  x4: "pShotX4", 
-  x6: "pShotX6", 
-  sab: "pShotSab" 
+const PLAYER_SHOT_SFX = {
+  x1: "pShotX1",
+  x2: "pShotX2",
+  x3: "pShotX3",
+  x4: "pShotX4",
+  x6: "pShotX6",
+  sab: "pShotSab",
+  // Munitions spéciales : RCB = son RSB (comme son comportement) ;
+  // les autres n'ont aucun son dédié côté officiel → son X1.
+  rcb: "pShotX6",
+  cbo: "pShotSab",
+  job: "pShotX1",
+  rb: "pShotX1",
+  pib: "pShotX1",
+  idb: "pShotX1",
+  vb: "pShotX1",
+  emaa: "pShotX1",
+  sbl: "pShotX1",
+  abl: "pShotX1",
 };
 
 function playPlayerShot(ammoKey) {
   const id = PLAYER_SHOT_SFX[ammoKey] || PLAYER_SHOT_SFX.x1;
-  const isX6 = ammoKey === "x6";
-  // ✅ hors X6 : on alterne entre son standard, légèrement plus aigu et
-  // légèrement plus grave pour casser la monotonie.
+  // ✅ hors salves rapides : on alterne entre son standard, légèrement plus
+  // aigu et légèrement plus grave pour casser la monotonie.
   const RATE_VARIANTS = [0.9, 1.0, 1.1];
-  const rate = isX6
+  const rate = isRsbLike(ammoKey)
     ? 0.98 + Math.random() * 0.04
     : RATE_VARIANTS[Math.floor(Math.random() * RATE_VARIANTS.length)];
   SFX.play(id, { rate, cooldown: 0.01, cut: true });
+  // ✅ CBO-100 : double son SAB + X1 en même temps (absorption + tir).
+  if (ammoKey === "cbo") {
+    SFX.play(PLAYER_SHOT_SFX.x1, { rate, cooldown: 0.01, cut: true });
+  }
 }
 
 // Tir réel d'une escorte : mêmes fichiers que le joueur mais clés SFX
@@ -9373,6 +9477,16 @@ const ESCORT_SHOT_SFX = {
   x4: "escortX4",
   x6: "escortX6",
   sab: "escortSab",
+  rcb: "escortX6",
+  cbo: "escortSab",
+  job: "escortX1",
+  rb: "escortX1",
+  pib: "escortX1",
+  idb: "escortX1",
+  vb: "escortX1",
+  emaa: "escortX1",
+  sbl: "escortX1",
+  abl: "escortX1",
 };
 
 function playEscortShot(ammoKey) {
@@ -9425,6 +9539,17 @@ let fireCooldown = 0;
 
 const RSB_COOLDOWN = 5.0;
 let rsbCooldown = 0;
+
+// ✅ RCB-140 : même comportement que RSB-75 (salve rapide + cooldown 5 s),
+// avec son propre cooldown pour ne pas bloquer le X6 (et inversement).
+const RCB_COOLDOWN = 5.0;
+let rcbCooldown = 0;
+
+// Munitions à salve rapide (tir RSB) : X6 + RCB.
+const isRsbLike = (key) => key === "x6" || key === "rcb";
+function rsbLikeCooldown(key) {
+  return key === "rcb" ? rcbCooldown : rsbCooldown;
+}
 
 // Roquettes R-310 : tir manuel à tête chercheuse, stock consommable.
 let rocketCooldown = 0;
@@ -9522,9 +9647,9 @@ function spawnSalvoDecoy(e) {
   // ✅ munition active au moment du tir : si on a switché entre-temps,
   // le faux tir devient instantanément la nouvelle munition.
   const key = player.ammo.active || e.key || "x1";
-  // ✅ SAB inversé : les faux tirs partent eux aussi de la cible vers le vaisseau.
+  // ✅ SAB/CBO inversé : les faux tirs partent eux aussi de la cible vers le vaisseau.
   // (Si on a switché de munition entre-temps, retour au départ vaisseau classique.)
-  if (e.sabReverse && key === "sab") {
+  if (e.sabReverse && (key === "sab" || key === "cbo")) {
     const rdx = player.x - t2.x, rdy = player.y - t2.y;
     const rdl = Math.hypot(rdx, rdy) || 1;
     const rnx = rdx / rdl, rny = rdy / rdl;
@@ -9549,7 +9674,7 @@ function spawnSalvoDecoy(e) {
         spd: e.speed,
         volleyId: e.volleyId,
         volleySize: e.volleySize,
-        isSab: true,
+        isSab: key === "sab",
         miss: false,
         visual: true,
       }, ENTITY_LIMITS.playerBullets);
@@ -9781,11 +9906,11 @@ function tryFireOnce(ammoOverride = null, silent = false) {
 
   let ammoKey = player.ammo.active || "x1";
 
-  // ✅ la salve X6 a son propre cooldown (5 s) : elle ignore le cooldown
-  // du tir laser standard et ne le réinitialise pas.
-  if (ammoKey === "x6") {
-    if (rsbCooldown > 0) {
-      // ✅ pendant le retour de la salve x6 : on n'attaque pas (pas de repli x1)
+  // ✅ les salves rapides (X6, RCB) ont leur propre cooldown (5 s) : elles
+  // ignorent le cooldown du tir laser standard et ne le réinitialisent pas.
+  if (isRsbLike(ammoKey)) {
+    if (rsbLikeCooldown(ammoKey) > 0) {
+      // ✅ pendant le retour de la salve : on n'attaque pas (pas de repli x1)
       return false;
     }
   } else if (fireCooldown > 0) {
@@ -9797,11 +9922,13 @@ function tryFireOnce(ammoOverride = null, silent = false) {
   const ammoCfg = AMMO[ammoKey] || AMMO.x1;
 
   const baseCd = 1 / Math.max(0.001, player.baseFireRate * player.fireRateMult);
-  if (ammoKey !== "x6") {
+  if (!isRsbLike(ammoKey)) {
     fireCooldown = typeof ammoCfg.cooldown === "number" ? ammoCfg.cooldown : baseCd;
   }
 
-  const mult = ammoCfg.mult || 1;
+  // ✅ munitions spéciales : IDB rampe, JOB aliens/joueurs, bonus
+  // conditionnels (Demaners, Sibelons...). Voir COMBAT/AMMO_TYPES.js.
+  const mult = resolveAmmoMult(ammoKey, t);
 
   playPlayerShot(ammoKey);
 
@@ -9809,6 +9936,10 @@ function tryFireOnce(ammoOverride = null, silent = false) {
   if (ammoKey === activeKey) consumeAmmo(1);
 
 const isSab = ammoKey === "sab";
+// ✅ CBO-100 : même tir inversé que SAB (absorption), mais avec dégâts ×3
+// normaux + vol de bouclier ×1 (au lieu du drain pur).
+const isCbo = ammoKey === "cbo";
+const isSabLike = isSab || isCbo;
 
 // ✅ Vitesse du tir : base 4000, et plus on est loin de la cible plus elle
 // augmente (dist * bulletSpeedDistGain).
@@ -9833,8 +9964,8 @@ const dmgShot = isSab
   const muzzleX = player.x + fx * (player.r + 10);
   const muzzleY = player.y + fy * (player.r + 10);
 
-  if (isSab) {
-    // ✅ SAB inversé : UN seul laser central, tiré DE LA CIBLE VERS le vaisseau
+  if (isSabLike) {
+    // ✅ SAB/CBO inversé : UN seul laser central, tiré DE LA CIBLE VERS le vaisseau
     // (absorption de bouclier). Pas d'alternance paire/impair (altShot untouched).
     const rdx = player.x - t.x, rdy = player.y - t.y;
     const rdl = Math.hypot(rdx, rdy) || 1;
@@ -9933,12 +10064,13 @@ addCappedProjectile(bullets, {
   }
 
   if (ammoKey === "x6") rsbCooldown = RSB_COOLDOWN;
+  if (ammoKey === "rcb") rcbCooldown = RCB_COOLDOWN;
 
   // ✅ Salve visuelle : seule la première volée (le vrai tir) inflige les dégâts ;
   // les éclairs suivants sont des doublons esthétiques (dmg 0) qui convergent sur la cible.
-  // X6 → 12 tirs affichés par seconde ; autres munitions → 6 tirs (1 toutes les 200 ms).
-  const salvoShots = ammoKey === "x6" ? 12 : 6;
-  const salvoInterval = ammoKey === "x6" ? 1 / 12 : 0.2;
+  // X6/RCB → 12 tirs affichés par seconde ; autres munitions → 6 tirs (1 toutes les 200 ms).
+  const salvoShots = isRsbLike(ammoKey) ? 12 : 6;
+  const salvoInterval = isRsbLike(ammoKey) ? 1 / 12 : 0.2;
 
   // 🔫 salve : le vrai tir compte pour le premier éclair affiché (t=0).
   // Les éclairs restants s'affichent toutes les `salvoInterval` ms en
@@ -9947,9 +10079,9 @@ addCappedProjectile(bullets, {
   const isRealPair = !!player.altShot && !isSab;
   const pairItems = [[-SIDE_OFFSET, 0], [SIDE_OFFSET, 0]];
   const singleItems = [[0, 0]];
-  const salvoShotParams = { targetId, speed, life, volleyId, volleySize: isSab ? 1 : volleySize, sabReverse: isSab };
+  const salvoShotParams = { targetId, speed, life, volleyId, volleySize: isSabLike ? 1 : volleySize, sabReverse: isSabLike };
   for (let i = 1; i < salvoShots; i++) {
-    const fakeIsPair = !isSab && (isRealPair ? i % 2 === 0 : i % 2 === 1);
+    const fakeIsPair = !isSabLike && (isRealPair ? i % 2 === 0 : i % 2 === 1);
     scheduleSalvoPart(i * salvoInterval, {
       ...salvoShotParams,
       items: fakeIsPair ? pairItems : singleItems,
@@ -9958,7 +10090,7 @@ addCappedProjectile(bullets, {
 
   // SAB inversé : toujours central unique → l'alternance altShot est préservée
   // pour les autres munitions.
-  if (!isSab) player.altShot = !player.altShot;
+  if (!isSabLike) player.altShot = !player.altShot;
   maybeTriggerLaser();
   player.combatT = 5.0;
   return true;
@@ -10247,6 +10379,7 @@ collectableSpawnT = 0;
   fireCooldown = 0;
   laserCd = 2.0;
   rsbCooldown = 0;
+  rcbCooldown = 0;
 
   const u = loadAccountUser();
 
@@ -10271,6 +10404,16 @@ player.ammo = {
   x4: Number(a.x4 || 0),
   sab: Number(a.sab || 0),
   x6: Number(a.x6 || 0),
+  rcb: Number(a.rcb || 0),
+  cbo: Number(a.cbo || 0),
+  job: Number(a.job || 0),
+  rb: Number(a.rb || 0),
+  pib: Number(a.pib || 0),
+  idb: Number(a.idb || 0),
+  vb: Number(a.vb || 0),
+  emaa: Number(a.emaa || 0),
+  sbl: Number(a.sbl || 0),
+  abl: Number(a.abl || 0),
 };
 const rk0 = u.rockets || {};
 player.rockets = Object.fromEntries(ROCKET_IDS.map((id) => [id, Math.max(0, Math.floor(Number(rk0[id] || 0)))]));
@@ -11805,6 +11948,7 @@ function update(dt) {
   fireCooldown = Math.max(0, fireCooldown - dt);
   laserCd = Math.max(0, laserCd - dt);
   rsbCooldown = Math.max(0, rsbCooldown - dt);
+  rcbCooldown = Math.max(0, rcbCooldown - dt);
   const rocketWasCooling = rocketCooldown > 0;
   rocketCooldown = Math.max(0, rocketCooldown - dt);
   // Fin de recharge roquette : rafraîchir le bouton une fois.
@@ -12142,8 +12286,10 @@ for (let i = bullets.length - 1; i >= 0; i--) {
   const expired = advanceProjectile(b, dt);
 
   if (b.sabReverse) {
-    // ✅ SAB inversé : l'impact a lieu à l'ARRIVÉE AU VAISSEAU (absorption).
+    // ✅ SAB/CBO inversé : l'impact a lieu à l'ARRIVÉE AU VAISSEAU (absorption).
     // Le drain est prélevé sur la cible `t` (qui doit toujours exister).
+    // CBO = dégâts normaux (×3 déjà dans b.dmg) + vol de bouclier ×1 ;
+    // SAB = drain pur, zéro dégât coque.
     const pr = (player.r || 20) + (b.r || 6);
     if (segCircleHit(b._oldX, b._oldY, b.x, b.y, player.x, player.y, pr)) {
       if (b.miss) {
@@ -12157,7 +12303,16 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       const sabRecipient = b.ownerEscortId ? getEscortById(b.ownerEscortId) : player;
       let out = { total: 0 };
       if (!b.visual) {
-        out = drainShieldFromEnemy(t, b.dmg, sabRecipient);
+        if (b.key === "cbo") {
+          out = damageEnemy(t, b.dmg);
+          if (t.hp > 0) {
+            const leech = drainShieldFromEnemy(t, b.dmg / 3, sabRecipient);
+            out.total += leech.total || 0;
+            out.sh += leech.sh || 0;
+          }
+        } else {
+          out = drainShieldFromEnemy(t, b.dmg, sabRecipient);
+        }
       }
       if (out.total > 0) {
         queueVolleyFloat(t, out, b.volleyId, 1, VOLLEY_FLOAT_TIMEOUT);
@@ -12228,6 +12383,18 @@ for (let i = bullets.length - 1; i >= 0; i--) {
             ? applyRocketVolleyHit(t, b, launcherImpact?.count || b.volleySize, sabRecipient)
             : applyRocketHit(t, b, sabRecipient)
           : damageEnemy(t, b.dmg);
+
+      // ✅ CBO-100 (joueur) : dégâts normaux + vol de bouclier ×1, comme SAB.
+      if (!b.isRocket && !b.isSab && b.key === "cbo" && t.hp > 0) {
+        const leech = drainShieldFromEnemy(t, b.dmg / 3, sabRecipient);
+        out.total += leech.total || 0;
+        out.sh += leech.sh || 0;
+      }
+      // ✅ PIB-100 (joueur) : infecte la cible (vitesse −10 % pendant 15 s).
+      if (!b.isRocket && !b.isSab && b.key === "pib" && t.hp > 0) {
+        t.rocketSlowPct = Math.max(Number(t.rocketSlowPct || 0), 10);
+        t.rocketSlowT = Math.max(Number(t.rocketSlowT || 0), 15);
+      }
 
       if (b.isRocket && (b.rocketEffect?.slowPct || b.rocketEffect?.accuracyPenaltyPct)) {
         showRocketEffectHitOnce(b, t);
@@ -13613,6 +13780,16 @@ updateCurrentUserProgress({
     x4: player.ammo.x4 || 0,
     sab: player.ammo.sab || 0,
     x6: player.ammo.x6 || 0,
+    rcb: player.ammo.rcb || 0,
+    cbo: player.ammo.cbo || 0,
+    job: player.ammo.job || 0,
+    rb: player.ammo.rb || 0,
+    pib: player.ammo.pib || 0,
+    idb: player.ammo.idb || 0,
+    vb: player.ammo.vb || 0,
+    emaa: player.ammo.emaa || 0,
+    sbl: player.ammo.sbl || 0,
+    abl: player.ammo.abl || 0,
   },
   ammoActive: player.ammo.active || "x1",
   rockets: sanitizeRocketsForSave(),
