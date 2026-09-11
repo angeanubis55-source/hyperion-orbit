@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.159",
+    "date": "2026-09-11T21:11:26+02:00",
+    "message": "laser hit change"
+  },
+  {
     "version": "0.158",
     "date": "2026-09-11T20:02:02+02:00",
     "message": "Raygun supprime : ni visuel ni degats"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.100",
     "date": "2026-09-04T22:16:22+02:00",
     "message": "Synchronise la version du jeu (e6da6aba)"
-  },
-  {
-    "version": "0.99",
-    "date": "2026-09-04T22:15:44+02:00",
-    "message": "Synchronise la version du jeu (7d0cc13b)"
   }
 ];

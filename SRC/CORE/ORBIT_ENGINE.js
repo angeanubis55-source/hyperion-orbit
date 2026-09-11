@@ -4774,17 +4774,20 @@ function drawRepairBolts() {
 }
 
 // ============================================================
-// ✅ EXPLOSION FX (sprites)
+// ✅ EXPLOSION FX (sprites) — mort NPC = HIT_NPC (FLV 300x300 12fps)
 // ============================================================
 const EXPLOSION_PACK = {
-  path: "ASSETS/EXPLOSION/",
-  frames: 23,
+  path: "COMBAT/EXPLOSIONS/HIT_NPC/",
+  frames: 40,
   firstNumber: 1,
   ext: ".png",
-  fps: 30,
-  w: 512,
-  h: 512,
+  fps: 40,
+  w: 300,
+  h: 300,
 };
+
+// ✅ impacts laser : aucun sprite, aucun rond jaune (rien affiché).
+// ✅ impacts roquette : mini explosion HIT_NPC (voir spawnExplosion aux hits).
 
 let explosionImgs = [];
 let explosionReady = false;
@@ -4818,7 +4821,6 @@ const explosions = [];
 
 function spawnExplosion(x, y, scale = 1) {
   if (!explosionReady || !explosionImgs || !explosionImgs.length) {
-    spawnSpark(x, y, true);
     return;
   }
 
@@ -7427,7 +7429,10 @@ function addPlayerCombatFloat(amount, color, prefix = "") {
 }
 
 function spawnSpark(x, y, big = false) {
-  pushBounded(sparks, { x, y, t: 0, big }, ENTITY_LIMITS.sparks);
+  // ✅ legacy : les cercles jaunes sont désactivés (aucun rond dessiné).
+  // Impacts laser = rien ; impacts roquette = mini explosion HIT_NPC ;
+  // mort NPC = explosion HIT_NPC pleine taille.
+  // (la fumée des traînées roquette est poussée directement avec smoke:true)
 }
 
 function spawnPickup(x, y, credits) {
@@ -12681,7 +12686,6 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       if (b.miss) {
         // ✅ SAB inversé : aucun son d'impact/d'absorption (même en MISS).
         showPlayerMissOnce(b, t);
-        spawnSpark(b.x, b.y, false);
         removeProjectile(bullets, i);
         cleanupPlayerMissVolley(b);
         continue;
@@ -12705,7 +12709,6 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       } else if (!b.visual) {
         showSabZeroOnce(b, t);
       }
-      spawnSpark(b.x, b.y, out.total >= 600 || out.isCrit);
       removeProjectile(bullets, i);
       cleanupPlayerMissVolley(b);
       continue;
@@ -12736,7 +12739,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       if (!launcherImpact.final) {
         if (b.miss && !b.ownerEscortId) playPlayerLaserHit();
         else if (!b.ownerEscortId) playRocketImpactStaggered(b.volleyId);
-        spawnSpark(b.x, b.y, false);
+        spawnExplosion(b.x, b.y, 0.2);
         removeProjectile(bullets, i);
         cleanupPlayerMissVolley(b);
         continue;
@@ -12750,7 +12753,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
 
       showPlayerMissOnce(b, t);
 
-      spawnSpark(b.x, b.y, false);
+      if (b.isRocket) spawnExplosion(b.x, b.y, 0.2);
       removeProjectile(bullets, i);
       cleanupPlayerMissVolley(b);
       continue;
@@ -12802,7 +12805,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       showSabZeroOnce(b, t);
     }
 
-    spawnSpark(b.x, b.y, out.total >= 600 || out.isCrit);
+    if (b.isRocket) spawnExplosion(b.x, b.y, out.total >= 600 || out.isCrit ? 0.35 : 0.25);
     removeProjectile(bullets, i);
     cleanupPlayerMissVolley(b);
     continue;
@@ -12855,7 +12858,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
       const effectiveMiss = b.miss || (formationEvasion > 0 && Math.random() < formationEvasion);
       if (effectiveMiss) {
         if (bulletTarget === player) addMissText(player.x + (Math.random() - 0.5) * 50, player.y - 85 - Math.random() * 20);
-        spawnSpark(bulletTarget.x, bulletTarget.y, false);
+        if (b.isRocket) spawnExplosion(bulletTarget.x, bulletTarget.y, 0.2);
       } else {
         if (bulletTarget === player) {
           // (sprite déjà joué à l'entrée du rond) ; secours si le tir est
@@ -12874,7 +12877,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
           damagePlayerLayers(bulletTarget, b.dmg);
           if (bulletTarget.hp <= 0) destroyEscort(bulletTarget);
         }
-        spawnSpark(bulletTarget.x, bulletTarget.y, false);
+        if (b.isRocket) spawnExplosion(bulletTarget.x, bulletTarget.y, 0.25);
       }
 
       continue;
@@ -13343,7 +13346,6 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           const d2K = dist2(e.x, e.y, player.x, player.y);
           if (d2K <= rrK * rrK) {
             spawnExplosion(e.x, e.y, 1.4);
-            spawnSpark(e.x, e.y, true);
             const dmgK = Number(cfgE.explodeDmg || 12000);
             hurtPlayer(dmgK);
             notePetAttacker(e);
@@ -13398,7 +13400,6 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
       if (hit) {
         spawnExplosion(e.x, e.y, 1.4);
-        spawnSpark(e.x, e.y, true);
 
         const dmg = Number(cfgTouch.explodeDmg || 12000);
         hurtPlayer(dmg);
@@ -13627,15 +13628,18 @@ if (GAME_SETTINGS.textures) {
     drawBulletSprite(x, y, ang, b.key || "x1", "npc", scale, b.sprite || null);
   }
 
+  // ✅ impacts roquette/laser = sprites TOUCH_NPC / TOUCH_NPC2 :
+  // on ne dessine plus les cercles jaunes, seule la fumée de traînée reste.
   for (const s of sparks) {
+    if (!s.smoke) continue;
     const x = s.x + ox, y = s.y + oy;
     if (x < -40 || y < -40 || x > innerWidth + 40 || y > innerHeight + 40) continue;
-    const lifeSpan = s.smoke ? 1 : 0.25;
+    const lifeSpan = 1;
     const a = 1 - clamp(s.t / lifeSpan, 0, 1);
-    ctx.globalAlpha = a * (s.smoke ? 0.55 : 0.8);
+    ctx.globalAlpha = a * 0.55;
     ctx.fillStyle = s.color || "rgba(255,210,122,0.9)";
     ctx.beginPath();
-    ctx.arc(x, y, (s.big ? 26 : s.smoke ? 2.5 : 14) * (1 - a * 0.2), 0, TAU);
+    ctx.arc(x, y, 2.5 * (1 - a * 0.2), 0, TAU);
     ctx.fill();
     ctx.globalAlpha = 1;
   }
