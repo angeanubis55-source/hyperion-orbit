@@ -258,6 +258,9 @@ function getShopListFor(cat) {
         return ab.localeCompare(bb) || String(a.name).localeCompare(String(b.name));
       });
     }
+    if (cat === "petGears" || cat === "petProtocols") {
+      return groupPetShopItems(direct);
+    }
     return direct;
   }
 
@@ -273,6 +276,46 @@ function getShopListFor(cat) {
   }
 
   return [];
+}
+
+// Gears/protocoles P.E.T : 1 ligne par famille (clé), achat 1 par 1 via le
+// menu Niveau dans l'aperçu. Les niveaux verrouillés (P.E.T trop bas) sont
+// désactivés dans le menu et se réactivent quand le P.E.T monte de niveau
+// (la boutique se re-rend à chaque changement de niveau/XP du P.E.T).
+const petShopLevelSel = {};
+function petShopLevelOf(entry) {
+  return Number(entry?.petGear?.level ?? entry?.petProtocol?.level ?? 1) || 1;
+}
+function groupPetShopItems(direct) {
+  const groups = new Map();
+  for (const it of direct) {
+    const k = it?.petGear?.key || it?.petProtocol?.key || it?.id;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(it);
+  }
+  const out = [];
+  for (const [k, levels] of groups) {
+    levels.sort((a, b) => petShopLevelOf(a) - petShopLevelOf(b));
+    const first = levels[0];
+    const famName = String(first?.name || k).replace(/^([A-Z]+-[A-Z]+)\d+/, "$1");
+    out.push({
+      id: `petgrp_${k}`,
+      name: famName,
+      icon: first?.icon,
+      price: Number(first?.price || 0),
+      levels,
+    });
+  }
+  return out;
+}
+function petShopSelectedLevel(group, user) {
+  const levels = group?.levels || [];
+  if (!levels.length) return 1;
+  const petLevel = Math.max(0, Number(user?.pet?.level) || getPetLevel(user?.pet?.exp));
+  const wanted = Number(petShopLevelSel[group.id]);
+  if (levels.some((e) => petShopLevelOf(e) === wanted)) return wanted;
+  const unlocked = levels.filter((e) => Math.max(0, Number(e?.petLevel) || 0) <= petLevel);
+  return petShopLevelOf(unlocked[unlocked.length - 1] || levels[0]);
 }
 
 function formatNumber(num) {
@@ -380,30 +423,80 @@ const ITEM_ICONS = {
   ammo_sar02: "/COMBAT/ROCKET_SPRITES/SAR-02_100X100.png",
   rocket_hstrm01: "/COMBAT/ROCKET_SPRITES/HSTRM-01_100X100.png",
   ammo_hstrm01: "/COMBAT/ROCKET_SPRITES/HSTRM-01_100X100.png",
-  spd_mk0: ITEM_ICON_BASE + "spd_mk0.png",
-  spd_mk1: ITEM_ICON_BASE + "spd_mk1.png",
-  spd_mk2: ITEM_ICON_BASE + "spd_mk2.png",
-  spd_mk3: ITEM_ICON_BASE + "spd_mk3.png",
-  spd_mk4: ITEM_ICON_BASE + "spd_mk4.png",
-  shd_mk0: ITEM_ICON_BASE + "shd_mk0.png",
-  shd_mk1: ITEM_ICON_BASE + "shd_mk1.png",
-  shd_mk2: ITEM_ICON_BASE + "shd_mk2.png",
-  shd_mk3: ITEM_ICON_BASE + "shd_mk3.png",
-  shd_mk4: ITEM_ICON_BASE + "shd_mk4.png",
-  laser_lf1: LASER_ICON_BASE + "laser_lf1.png",
-  laser_lf2: LASER_ICON_BASE + "laser_lf2.png",
-  laser_lf3: LASER_ICON_BASE + "laser_lf3.png",
-  laser_anchorlock: LASER_ICON_BASE + "laser_lf5_anchorlock.png",
-  laser_odysseus: LASER_ICON_BASE + "laser_odysseus.png",
+  rocket_bdr1211: "/COMBAT/ROCKET_SPRITES/BDR-1211_100X100.png",
+  ammo_bdr1211: "/COMBAT/ROCKET_SPRITES/BDR-1211_100X100.png",
+  rocket_pir100: "/COMBAT/ROCKET_SPRITES/PIR-100_100X100.png",
+  ammo_pir100: "/COMBAT/ROCKET_SPRITES/PIR-100_100X100.png",
+  rocket_wizx: "/COMBAT/ROCKET_SPRITES/WIZ-X_100X100.png",
+  ammo_wizx: "/COMBAT/ROCKET_SPRITES/WIZ-X_100X100.png",
+  rocket_ric3: "/COMBAT/ROCKET_SPRITES/R-IC3_100X100.png",
+  ammo_ric3: "/COMBAT/ROCKET_SPRITES/R-IC3_100X100.png",
+  rocket_rc100: "/COMBAT/ROCKET_SPRITES/RC-100_100X100.png",
+  ammo_rc100: "/COMBAT/ROCKET_SPRITES/RC-100_100X100.png",
+  rocket_sr5: "/COMBAT/ROCKET_SPRITES/SR-5_100X100.png",
+  ammo_sr5: "/COMBAT/ROCKET_SPRITES/SR-5_100X100.png",
+  rocket_agt500: "/COMBAT/ROCKET_SPRITES/AGT-500_100X100.png",
+  ammo_agt500: "/COMBAT/ROCKET_SPRITES/AGT-500_100X100.png",
+  rocket_sp100x: "/COMBAT/ROCKET_SPRITES/SP-100X_100X100.png",
+  ammo_sp100x: "/COMBAT/ROCKET_SPRITES/SP-100X_100X100.png",
+  rocket_k300m: "/COMBAT/ROCKET_SPRITES/K-300M_100X100.png",
+  ammo_k300m: "/COMBAT/ROCKET_SPRITES/K-300M_100X100.png",
+  rocket_bdr1212: "/COMBAT/ROCKET_SPRITES/BDR-1212_100X100.png",
+  ammo_bdr1212: "/COMBAT/ROCKET_SPRITES/BDR-1212_100X100.png",
+  rocket_shg01: "/COMBAT/ROCKET_SPRITES/SHG-01_100X100.png",
+  ammo_shg01: "/COMBAT/ROCKET_SPRITES/SHG-01_100X100.png",
+  rocket_shg02: "/COMBAT/ROCKET_SPRITES/SHG-02_100X100.png",
+  ammo_shg02: "/COMBAT/ROCKET_SPRITES/SHG-02_100X100.png",
+  spd_g3n1010: ITEM_ICON_BASE + "G3N-1010.png",
+  spd_g3n2010: ITEM_ICON_BASE + "G3N-2010.png",
+  spd_g3n3210: ITEM_ICON_BASE + "G3N-3210.png",
+  spd_g3n3310: ITEM_ICON_BASE + "G3N-3310.png",
+  spd_g3n6900: ITEM_ICON_BASE + "G3N-6900.png",
+  spd_g3n7900: ITEM_ICON_BASE + "G3N-7900.png",
+  shd_sg3na01: ITEM_ICON_BASE + "SG3N-A01.png",
+  shd_fs01: ITEM_ICON_BASE + "FS-01.png",
+  shd_sg3na02: ITEM_ICON_BASE + "SG3N-A02.png",
+  shd_sg3na03: ITEM_ICON_BASE + "SG3N-A03.png",
+  shd_fs02: ITEM_ICON_BASE + "FS-02.png",
+  shd_fs03: ITEM_ICON_BASE + "FS-03.png",
+  shd_sg3nb00: ITEM_ICON_BASE + "SG3N-B00.png",
+  shd_sg3nb01: ITEM_ICON_BASE + "SG3N-B01.png",
+  shd_sg3nb02: ITEM_ICON_BASE + "SG3N-B02.png",
+  shd_fs04: ITEM_ICON_BASE + "FS-04.png",
+  shd_sg3nb03: ITEM_ICON_BASE + "SG3N-B03.png",
+  shd_sg3np01: ITEM_ICON_BASE + "SG3N-P01.png",
+  shd_sg3npx01: ITEM_ICON_BASE + "SG3N-PX01.png",
+  laser_lf1: LASER_ICON_BASE + "lf_1_100x100.png",
+  laser_mp1: LASER_ICON_BASE + "mp_1_100x100.png",
+  laser_lf2: LASER_ICON_BASE + "lf_2_100x100.png",
+  laser_ulf4: LASER_ICON_BASE + "lf_4_unstable_100x100.png",
+  laser_aa1: LASER_ICON_BASE + "aa_1_100x100.png",
+  laser_lf3: LASER_ICON_BASE + "lf_3_100x100.png",
+  laser_lf4: LASER_ICON_BASE + "lf_4_100x100.png",
+  laser_osl: LASER_ICON_BASE + "os_l_100x100.png",
+  laser_lf4hp: LASER_ICON_BASE + "lf_4_hp_100x100.png",
+  laser_lf4md: LASER_ICON_BASE + "lf_4_md_100x100.png",
+  laser_caucasus: LASER_ICON_BASE + "caucasus_100x100.png",
+  laser_lf4pd: LASER_ICON_BASE + "lf_4_pd_100x100.png",
+  laser_lf5: LASER_ICON_BASE + "lf_5_100x100.png",
+  laser_lf5al: LASER_ICON_BASE + "lf_5_al_100x100.png",
+  laser_lf5mf: LASER_ICON_BASE + "lf_5_mf_100x100.png",
+  laser_lfp01: LASER_ICON_BASE + "lf_p01_100x100.png",
+  laser_lfpx01: LASER_ICON_BASE + "lf_px01_100x100.png",
+  laser_aap1: LASER_ICON_BASE + "aap_1_100x100.png",
+  laser_prl: LASER_ICON_BASE + "pr_l_100x100.png",
 };
 
 const FALLBACK_ICONS = {
   ammo: ITEM_ICON_BASE + "AMMO_X2.png",
   rockets: "/COMBAT/ROCKET_SPRITES/R-310_100X100.png",
   launchers: "/COMBAT/ROCKET_SPRITES/HSTRM-01_100X100.png",
-  speed: ITEM_ICON_BASE + "spd_mk0.png",
-  shield: ITEM_ICON_BASE + "shd_mk0.png",
-  laser: LASER_ICON_BASE + "laser_lf1.png",
+  speedGen: ITEM_ICON_BASE + "G3N-1010.png",
+  shieldGen: ITEM_ICON_BASE + "SG3N-A01.png",
+  lasers: LASER_ICON_BASE + "lf_1_100x100.png",
+  speed: ITEM_ICON_BASE + "G3N-1010.png",
+  shield: ITEM_ICON_BASE + "SG3N-A01.png",
+  laser: LASER_ICON_BASE + "lf_1_100x100.png",
 };
 
 const MODULE_ICONS = {
@@ -1559,8 +1652,13 @@ function renderShopMeasured(user) {
     const ownedDrone = it.drone ? (user?.drones?.items || []).filter(drone => drone.type === it.drone.type).length : 0;
     const ownedFormation = it.formation ? user?.drones?.formations?.includes(it.formation.id) : false;
     const ownedPet = it.pet ? (user?.pet?.owned === true || Number(user?.inventory?.counts?.[it.id] || 0) > 0) : false;
-    const ownedPetGear = (it.petGear || it.petProtocol) ? Number(user?.inventory?.counts?.[it.id] || 0) : 0;
-    const petGearReq = (it.petGear || it.petProtocol) ? Math.max(0, Number(it.petLevel) || 0) : 0;
+    const groupLevels = Array.isArray(it?.levels) ? it.levels : null;
+    const ownedPetGear = groupLevels
+      ? groupLevels.reduce((sum, e) => sum + Number(user?.inventory?.counts?.[e.id] || 0), 0)
+      : (it.petGear || it.petProtocol) ? Number(user?.inventory?.counts?.[it.id] || 0) : 0;
+    const petGearReq = groupLevels
+      ? Math.min(...groupLevels.map((e) => Math.max(0, Number(e?.petLevel) || 0)))
+      : (it.petGear || it.petProtocol) ? Math.max(0, Number(it.petLevel) || 0) : 0;
 
     const row = document.createElement("div");
     row.className = "shopRow" + (it.id === selectedShopItemId ? " active" : "");
@@ -1588,7 +1686,8 @@ function renderShopMeasured(user) {
       + (shopTab === "designs" ? ` · ${getShipPack(it.design?.base)?.name || it.design?.base}` : "")
       + (ownedShip || ownedFormation || ownedPet ? ` · <span style="color:#00ff88;">Possédé</span>` : "")
       + (it.drone ? ` · ${ownedDrone}/${it.drone.type === "iris" ? 8 : 1}` : "")
-      + ((it.petGear || it.petProtocol) ? ` · ×${formatNumber(ownedPetGear)}${petGearReq > 0 ? ` · niv. P.E.T ${petGearReq}+` : ""}` : "");
+      + ((it.petGear || it.petProtocol) ? ` · ×${formatNumber(ownedPetGear)}${petGearReq > 0 ? ` · niv. P.E.T ${petGearReq}+` : ""}` : "")
+      + (groupLevels ? ` · ×${formatNumber(ownedPetGear)} · Niveaux 1-${groupLevels.length}` : "");
 
     meta.appendChild(title);
     meta.appendChild(sub);
@@ -2085,6 +2184,14 @@ function renderExtrasRoulette(user) {
 }
 
 function renderShopPreview(user, it, cat) {
+  // Groupe famille (gears/protocoles) : l'aperçu porte sur le niveau
+  // sélectionné, acheté 1 par 1 (pas de quantité).
+  const groupRef = Array.isArray(it?.levels) ? it : null;
+  if (groupRef) {
+    const sel = petShopSelectedLevel(groupRef, user);
+    petShopLevelSel[groupRef.id] = sel;
+    it = groupRef.levels.find((e) => petShopLevelOf(e) === sel) || groupRef.levels[0];
+  }
   const ownedIris = user?.drones?.items?.filter(drone => drone.type === "iris").length || 0;
   const price = it?.drone?.type === "iris" ? getIrisPrice(ownedIris) : Number(it?.price || 0);
   const isShip = cat === "ships";
@@ -2130,9 +2237,10 @@ if (isShipLike) {
 } else if (it?.module?.type === "speed") {
   statLine = `<p class="shopItemStat">Vitesse par générateur <strong>+${formatNumber(it.module.bonusSpeed || 0)}</strong></p>`;
 } else if (it?.module?.type === "shield") {
-  statLine = `<p class="shopItemStat">Bouclier par générateur <strong>+${formatNumber(it.module.bonusShield || 0)}</strong></p>`;
+  statLine = `<p class="shopItemStat">Bouclier par générateur <strong>+${formatNumber(it.module.bonusShield || 0)}</strong>${Number(it.module.absorbPct) > 0 ? ` · absorption <strong>${formatNumber(it.module.absorbPct)} %</strong>` : ""}</p>`;
 } else if (it?.module?.type === "laser") {
-  statLine = `<p class="shopItemStat">Dégâts de base par tir <strong>${formatNumber(it.module.damage || 0)}</strong></p>`;
+  statLine = `<p class="shopItemStat">Dégâts de base par tir <strong>${formatNumber(it.module.damage || 0)}</strong>${it?.module?.vsLabel ? ` · bonus vs <strong>${escapeHtml(it.module.vsLabel)}</strong>` : ""}${it?.petOnly ? " · <strong>P.E.T uniquement</strong>" : ""}</p>`;
+  if (it?.desc) statLine += `<p class="shopItemStat">${escapeHtml(it.desc)}</p>`;
 } else if (it?.give?.ammo) {
   const ammoDesc = it?.desc ? `<p class="shopItemStat">${escapeHtml(it.desc)}</p>` : "";
   statLine = `${ammoDesc}`;
@@ -2211,7 +2319,7 @@ if (isDrone) {
     `;
   } else {
     previewHtml = `
-      <img src="${imgSrc}" alt="${it?.name || it?.id}" class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}${cat === "ammo" ? " ammoShopImage" : ""}" />
+      <img src="${imgSrc}" alt="${it?.name || it?.id}" class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "lasers", "extras", "petGears", "petProtocols"].includes(cat) ? " equipShopImage" : ""}" />
     `;
   }
 
@@ -2230,12 +2338,26 @@ if (isDrone) {
       ${!isUnique ? `
         <div class="shopPurchaseRow">
           <div class="shopPurchaseInfo">
-            <label for="shopBuyQuantity">${it?.give?.rockets ? "Quantité à acheter × 10" : isAmmo ? "Quantité à acheter × 1 000" : "Quantité à acheter"}</label>
+            ${groupRef
+              ? `<label for="shopBuyLevel">Niveau</label>`
+              : `<label for="shopBuyQuantity">${it?.give?.rockets ? "Quantité à acheter × 10" : isAmmo ? "Quantité à acheter × 1 000" : "Quantité à acheter"}</label>`}
             <div class="shopPurchasePrice">
               <span>Prix</span>
               <strong><span id="shopPurchaseTotal">${formatNumber(price)}</span> crédits</strong>
             </div>
           </div>
+          ${groupRef ? `
+          <select id="shopBuyLevel" aria-label="Niveau à acheter">
+            ${groupRef.levels.map((e) => {
+              const lv = petShopLevelOf(e);
+              const req = Math.max(0, Number(e?.petLevel) || 0);
+              const petLevel = Math.max(0, Number(user?.pet?.level) || getPetLevel(user?.pet?.exp));
+              const locked = user?.pet?.owned !== true || petLevel < req;
+              const label = `Niveau ${lv}${locked ? (user?.pet?.owned !== true ? " (P.E.T requis)" : ` (P.E.T ${req} requis)`) : ""}`;
+              return `<option value="${lv}"${lv === petShopLevelOf(it) ? " selected" : ""}${locked ? " disabled" : ""}>${escapeHtml(label)}</option>`;
+            }).join("")}
+          </select>
+          ` : `
           <select id="shopBuyQuantity" aria-label="Quantité à acheter">
             <option value="1">1</option>
             <option value="5">5</option>
@@ -2244,6 +2366,7 @@ if (isDrone) {
             <option value="100">100</option>
             <option value="1000">1000</option>
           </select>
+          `}
         </div>
       ` : ""}
       
@@ -2264,10 +2387,13 @@ if (isDrone) {
   if (!btn) return;
 
   const quantityInput = document.getElementById("shopBuyQuantity");
+  const levelInput = document.getElementById("shopBuyLevel");
   const totalEl = document.getElementById("shopPurchaseTotal");
-  const normalizeQuantity = () => isUnique
+  const normalizeQuantity = () => groupRef
     ? 1
-    : Math.min(1000, Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
+    : isUnique
+      ? 1
+      : Math.min(1000, Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
   const updatePurchaseSummary = () => {
     const quantity = normalizeQuantity();
     const total = price * quantity;
@@ -2282,6 +2408,11 @@ if (isDrone) {
 
   quantityInput?.addEventListener("input", updatePurchaseSummary);
   quantityInput?.addEventListener("change", updatePurchaseSummary);
+  levelInput?.addEventListener("change", () => {
+    if (!groupRef) return;
+    petShopLevelSel[groupRef.id] = Number(levelInput.value) || 1;
+    renderShopPreview(user, groupRef, cat);
+  });
   refreshShopBalance = freshUser => {
     user = freshUser;
     const stock = shopPreview.querySelector("[data-shop-stock]");
@@ -3122,6 +3253,13 @@ function petProtocolStatLabel(key) {
   if (key === "shield") return "bouclier";
   if (key === "hp") return "coque";
   if (key === "alien") return "dégâts Alien";
+  if (key === "cargo") return "soute cargo";
+  if (key === "radar") return "radar";
+  if (key === "salvage") return "récupération";
+  if (key === "aim") return "précision";
+  if (key === "evasion") return "évasion";
+  if (key === "eco") return "économie fuel";
+  if (key === "heat") return "chaleur";
   return String(key || "");
 }
 

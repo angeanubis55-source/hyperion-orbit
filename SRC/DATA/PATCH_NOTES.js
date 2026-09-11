@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.142",
+    "date": "2026-09-10T22:16:31+02:00",
+    "message": "Pre-push roquettes"
+  },
+  {
     "version": "0.141",
     "date": "2026-09-10T17:15:42+02:00",
     "message": "Anti-freeze sauvegardes: debounce 15s, save portail masquee, cache parse, historique borne a 30"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.83",
     "date": "2026-09-03T11:30:53+02:00",
     "message": "Le numéro de version passe en format alphanumérique pour un suivi plus clair."
-  },
-  {
-    "version": "0.82",
-    "date": "2026-09-03T11:30:41+02:00",
-    "message": "Le HUD affiche désormais la version du jeu à gauche du compteur de FPS, synchronisée automatiquement."
   }
 ];

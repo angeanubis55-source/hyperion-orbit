@@ -84,11 +84,12 @@ export function getZoneSpawns(WORLD) {
 export function getZonePortals(WORLD) {
   return [
   {
-      id: "p_52_to_4-4.123",
+      id: "p_52_to_45",
       x: 10000,
       y: 6000,
       r: 260,
-      toMap: "4-4.123",
+      toMap: "4-5",
+      toPortal: "p_45_to_52",
 sprites: {
     idle: {
       src: "ASSETS/PIRATES_PORTAL/DESACTIVE.png",

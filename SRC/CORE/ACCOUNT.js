@@ -776,23 +776,29 @@ function computeCombatFromFit(fit) {
   let dmg = 0;
   let bonusSpeed = 0;
   let bonusShield = 0;
+  let bonusAbsorb = 0;
 
   const addModule = (itemId) => {
     if (!itemId) return;
     const it = findCatalogItem(itemId);
     if (!it?.module) return;
+    // Équipement P.E.T uniquement : ignoré sur le vaisseau.
+    if (it.petOnly) return;
 
     const t = it.module.type;
     if (t === "laser") dmg += Number(it.module.damage || 0);
     if (t === "speed") bonusSpeed += Number(it.module.bonusSpeed || 0);
-    if (t === "shield") bonusShield += Number(it.module.bonusShield || 0);
+    if (t === "shield") {
+      bonusShield += Number(it.module.bonusShield || 0);
+      bonusAbsorb = Math.max(bonusAbsorb, Number(it.module.absorbPct || 0));
+    }
   };
 
   for (const id of fit.lasers) addModule(id);
   for (const id of fit.gens) addModule(id);
   // extras: pas de stats pour l'instant
 
-  return { dmg, bonusSpeed, bonusShield };
+  return { dmg, bonusSpeed, bonusShield, bonusAbsorb };
 }
 
 function saveUser(user, options = {}) {
@@ -1720,7 +1726,7 @@ export function getActiveHangarCombatStats() {
   const slots = getShipSlots(shipId);
   const fit = clampFitToSlots(shipId, getHangarActiveFit(h) || {});
 
-  const { dmg, bonusSpeed, bonusShield } = computeCombatFromFit(fit);
+  const { dmg, bonusSpeed, bonusShield, bonusAbsorb } = computeCombatFromFit(fit);
 
   return {
     shipId,
@@ -1730,6 +1736,7 @@ export function getActiveHangarCombatStats() {
     totalLaserDamage: dmg,
     bonusSpeed,
     bonusShield,
+    bonusAbsorb,
 
     extras: fit.extras.filter(Boolean),
   };

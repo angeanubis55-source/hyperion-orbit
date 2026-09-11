@@ -1262,14 +1262,17 @@ test("les comptes sauvegardés sont versionnés et les valeurs sont bornées", a
 });
 
 test("l'économie des équipements progresse par paliers et limite les modules X1", () => {
-  assert.deepEqual(CATALOG.speedGen.map(item => item.module.bonusSpeed), [2, 4, 6, 8, 11]);
-  assert.deepEqual(CATALOG.shieldGen.map(item => item.module.bonusShield), [5000, 7500, 10000, 12500, 15000]);
-  assert.deepEqual(CATALOG.lasers.map(item => item.module.damage), [40, 100, 150, 200, 275]);
+  assert.deepEqual(CATALOG.speedGen.map(item => item.module.bonusSpeed), [2, 3, 4, 5, 7, 10]);
+  assert.deepEqual(CATALOG.speedGen.map(item => item.id), ["spd_g3n1010", "spd_g3n2010", "spd_g3n3210", "spd_g3n3310", "spd_g3n6900", "spd_g3n7900"]);
+  assert.deepEqual(CATALOG.shieldGen.map(item => item.module.bonusShield), [1000, 3200, 5000, 5000, 5600, 8000, 9000, 9500, 10000, 11400, 11450, 11500, 11900]);
+  assert.deepEqual(CATALOG.shieldGen.map(item => item.module.absorbPct || 80), [40, 70, 50, 60, 75, 80, 70, 70, 80, 80, 80, 80, 80]);
+  assert.deepEqual(CATALOG.lasers.map(item => item.module.damage), [65, 60, 140, 175, 280, 174, 200, 280, 225, 180, 225, 230, 235, 200, 245, 245, 210, 220, 452]);
+  assert.deepEqual(CATALOG.lasers.map(item => item.id), ["laser_lf1", "laser_mp1", "laser_lf2", "laser_lf3", "laser_lfp01", "laser_ulf4", "laser_lf4", "laser_lfpx01", "laser_aap1", "laser_aa1", "laser_lf4hp", "laser_lf4md", "laser_lf4pd", "laser_caucasus", "laser_lf5", "laser_lf5al", "laser_prl", "laser_osl", "laser_lf5mf"]);
   assert.deepEqual(CATALOG.ammo.map(item => item.price), [50000, 150000, 500000, 250000, 1500000, 3000000, 800000, 400000, 600000, 2000000, 1200000, 900000, 900000, 900000, 1000000]);
   assert.ok(CATALOG.ammo.every(item => Object.values(item.give.ammo).every(amount => amount === 1000)));
-  assert.equal(CATALOG.speedGen.at(-1).price, 40000000);
-  assert.equal(CATALOG.shieldGen.at(-1).price, 35000000);
-  assert.equal(CATALOG.lasers.at(-1).price, 50000000);
+  assert.equal(CATALOG.speedGen.at(-1).price, 15000000);
+  assert.equal(CATALOG.shieldGen.at(-1).price, 8000000);
+  assert.equal(CATALOG.lasers.at(-1).price, 600000000);
   assert.equal(MODULE_ROLL_COST, 1000000);
   assert.ok(CATALOG.ships.every(item => Number(item.price) > 0));
   assert.deepEqual(MODULE_TIER_WEIGHTS, [["x1", 68], ["x2", 25], ["x3", 7]]);
@@ -1339,9 +1342,9 @@ test("la boutique vend les 12 roquettes", async () => {
   const { CATALOG } = await import("../../SRC/CORE/CATALOG.js");
   const { ROCKET_IDS, getRocketType, rocketEffectLabel } = await import("../../COMBAT/ROCKET_TYPES.js");
 
-  assert.equal(ROCKET_IDS.length, 12);
-  assert.equal(CATALOG.rockets.length, 6);
-  assert.equal(CATALOG.launchers.length, 6);
+  assert.equal(ROCKET_IDS.length, 24);
+  assert.equal(CATALOG.rockets.length, 14);
+  assert.equal(CATALOG.launchers.length, 10);
   const expectedDamage = {
     r310: 1000,
     plt2026: 2000,
@@ -1349,10 +1352,22 @@ test("la boutique vend les 12 roquettes", async () => {
     plt3030: 6000,
     dcr250: 0,
     pld8: 0,
+    bdr1211: 7500,
+    wizx: 0,
+    ric3: 0,
+    rc100: 0,
+    sr5: 0,
+    agt500: 25000,
+    sp100x: 7200,
+    k300m: 0,
     eco10: 2000,
     hstrm01: 4000,
     ubr100: 7500,
     cbr: 3000,
+    pir100: 3500,
+    bdr1212: 4000,
+    shg01: 5000,
+    shg02: 7500,
     sar01: 0,
     sar02: 0,
   };
@@ -1360,21 +1375,35 @@ test("la boutique vend les 12 roquettes", async () => {
     assert.equal(getRocketType(id)?.damage, damage, `dégâts ${id}`);
   }
   assert.deepEqual(getRocketType("dcr250")?.effect, { slowPct: 30, duration: 5 });
-  assert.deepEqual(getRocketType("pld8")?.effect, { accuracyPenaltyPct: 30, duration: 5 });
+  assert.deepEqual(getRocketType("pld8")?.effect, { accuracyPenaltyPct: 40, duration: 5 });
   assert.deepEqual(getRocketType("cbr")?.effect, { shieldDrain: 3000 });
   assert.deepEqual(getRocketType("sar01")?.effect, { shieldDrain: 1000 });
   assert.deepEqual(getRocketType("sar02")?.effect, { shieldDrain: 4000 });
+  assert.deepEqual(getRocketType("pir100")?.effect, { shieldDrain: 2500 });
+  assert.deepEqual(getRocketType("ric3")?.effect, { freezeSec: 2 });
+  assert.deepEqual(getRocketType("rc100")?.effect, { freezeSec: 3 });
+  assert.deepEqual(getRocketType("sr5")?.effect, { shieldDrain: 80000, leechPct: 0.5 });
+  assert.deepEqual(getRocketType("sp100x")?.effect, { pierceShield: true });
+  assert.deepEqual(getRocketType("k300m")?.effect, { slowPct: 20, accuracyPenaltyPct: 5, duration: 2 });
+  assert.deepEqual(getRocketType("wizx")?.effect, { appearance: true });
+  assert.deepEqual(getRocketType("shg01")?.effect, { piercePct: 0.5 });
+  assert.deepEqual(getRocketType("shg02")?.effect, { piercePct: 0.75 });
+  assert.match(rocketEffectLabel("ric3"), /Gèle la cible pendant 2 s/);
+  assert.match(rocketEffectLabel("sp100x"), /7[^0-9]*200 dégâts directs coque/);
+  assert.match(rocketEffectLabel("sr5"), /80[^0-9]*000 de bouclier absorbé/);
+  assert.match(rocketEffectLabel("k300m"), /Ralentit de 20 % et réduit la précision de 5 % pendant 2 s/);
+  assert.match(rocketEffectLabel("shg01"), /5[^0-9]*000 dégâts dont 50 % ignorent le bouclier/);
   assert.match(rocketEffectLabel("hstrm01"), /4[^0-9]*000 dégâts par roquette/);
   assert.match(rocketEffectLabel("cbr"), /3[^0-9]*000 dégâts.*3[^0-9]*000 de bouclier/);
-  // 6 standards tirables, 6 de lance-roquettes (pas de tir manuel).
+  // 14 standards tirables, 10 de lance-roquettes (pas de tir manuel).
   const manual = ROCKET_IDS.filter((id) => getRocketType(id)?.manual !== false);
   const launcher = ROCKET_IDS.filter((id) => getRocketType(id)?.manual === false);
   // Cooldown unique : 1 s pour toutes les standards, pas de cooldown perso.
   for (const id of manual) {
     assert.equal(getRocketType(id)?.cooldown, 1.0, `cooldown ${id}`);
   }
-  assert.deepEqual(manual, ["r310", "plt2021", "plt2026", "plt3030", "dcr250", "pld8"]);
-  assert.deepEqual(launcher, ["eco10", "ubr100", "cbr", "sar01", "sar02", "hstrm01"]);
+  assert.deepEqual(manual, ["r310", "plt2021", "plt2026", "plt3030", "dcr250", "pld8", "bdr1211", "wizx", "ric3", "rc100", "sr5", "agt500", "sp100x", "k300m"]);
+  assert.deepEqual(launcher, ["eco10", "pir100", "bdr1212", "shg01", "shg02", "ubr100", "cbr", "sar01", "sar02", "hstrm01"]);
   for (const item of CATALOG.rockets) {
     const typeId = Object.keys(item.give.rockets)[0];
     assert.ok(getRocketType(typeId), `type inconnu pour ${item.id}`);
@@ -1417,6 +1446,93 @@ test("les roquettes survivent à la sauvegarde et au rechargement", async () => 
   assert.equal(reloaded.rockets.r310, 7);
   assert.equal(reloaded.rockets.plt3030, 3);
   assert.equal(reloaded.rocketActive, "plt3030");
+});
+
+test("équipement officiel : générateurs, canons, gears et protocoles P.E.T", async () => {
+  const { CATALOG, findCatalogItem } = await import("../../SRC/CORE/CATALOG.js");
+  // Générateurs de vitesse officiels.
+  assert.deepEqual(CATALOG.speedGen.map((i) => i.id), ["spd_g3n1010", "spd_g3n2010", "spd_g3n3210", "spd_g3n3310", "spd_g3n6900", "spd_g3n7900"]);
+  assert.ok(CATALOG.speedGen.every((i) => i.module?.type === "speed" && i.icon?.startsWith("/ASSETS/ITEMS/G3N-")));
+  // Boucliers : valeur + absorption, canons P.E.T exclus.
+  const p01 = findCatalogItem("shd_sg3np01");
+  assert.equal(p01?.module?.bonusShield, 11500);
+  assert.equal(p01?.petOnly, true);
+  const b02 = findCatalogItem("shd_sg3nb02");
+  assert.deepEqual([b02?.module?.bonusShield, b02?.module?.absorbPct], [10000, 80]);
+  // Canons laser : LF-1/MP-1/LF-2/LF-3/LF-4/PD/MD + LF-P01 (P.E.T uniquement).
+  const lfp01 = findCatalogItem("laser_lfp01");
+  assert.equal(lfp01?.module?.damage, 280);
+  assert.equal(lfp01?.petOnly, true);
+  assert.equal(findCatalogItem("laser_lf4pd")?.module?.damage, 235);
+  assert.ok(!findCatalogItem("laser_odysseus") && !findCatalogItem("laser_anchorlock"));
+  // Canons du SWF : AA-1/AAP-1 (Mimesis), PR-L (Blacklight), LF-5, OS-L, etc.
+  const aa1 = findCatalogItem("laser_aa1");
+  assert.equal(aa1?.module?.damage, 180);
+  assert.equal(aa1?.module?.vsMult, 305 / 180);
+  assert.ok(aa1?.module?.vsMatch?.some((re) => re.test("npc_Mimesis")));
+  const prl = findCatalogItem("laser_prl");
+  assert.equal(prl?.module?.damage, 210);
+  assert.equal(prl?.module?.vsMult, 3.5);
+  assert.ok(prl?.module?.vsMatch?.some((re) => re.test("npc_Invoke")));
+  assert.equal(findCatalogItem("laser_lf5mf")?.module?.damage, 452);
+  assert.equal(findCatalogItem("laser_lf5al")?.module?.damage, 245);
+  assert.equal(findCatalogItem("laser_lf5")?.module?.damage, 245);
+  assert.equal(findCatalogItem("laser_osl")?.module?.damage, 220);
+  assert.equal(findCatalogItem("laser_aap1")?.petOnly, true);
+  assert.equal(CATALOG.lasers.length, 19);
+  // Bonus NPC/joueurs : LF-3 et Caucasus +15 % aliens, MP-1 70 vs joueurs.
+  assert.equal(findCatalogItem("laser_lf3")?.module?.damage, 175);
+  assert.equal(findCatalogItem("laser_lf3")?.module?.vsMult, 1.15);
+  assert.equal(findCatalogItem("laser_caucasus")?.module?.overdrive, 100);
+  assert.equal(findCatalogItem("laser_mp1")?.module?.playerDamage, 70);
+  // Overdrive PR-L, critique OS-L, coque LF-4-HP, set Mortifier, U-LF4.
+  assert.equal(findCatalogItem("laser_prl")?.module?.overdrive, 200);
+  assert.equal(findCatalogItem("laser_osl")?.module?.critPct, 3);
+  assert.equal(findCatalogItem("laser_lf4hp")?.module?.hpPct, 0.5);
+  assert.equal(findCatalogItem("laser_lf5mf")?.module?.mf, true);
+  assert.equal(findCatalogItem("laser_ulf4")?.module?.unstable, true);
+  assert.ok(CATALOG.lasers.every((i) => typeof i.desc === "string" && i.desc.length > 0));
+  // Gears : 32 officiels, paliers PET 0/4/8, icônes CDN.
+  assert.equal(CATALOG.petGears.length, 32);
+  assert.ok(CATALOG.petGears.every((i) => i.petGear?.key && i.icon?.startsWith("/PET/PET_GEARS/")));
+  assert.deepEqual(
+    CATALOG.petGears.filter((i) => i.petGear.key === "al").map((i) => [i.petGear.level, i.petLevel]),
+    [[1, 0], [2, 4], [3, 8]],
+  );
+  // Protocoles : 33 officiels (11 × 3 niveaux), dégâts + alien câblés moteur.
+  assert.equal(CATALOG.petProtocols.length, 33);
+  assert.ok(CATALOG.petProtocols.every((i) => i.petProtocol?.key && Number(i.petProtocol.pct) > 0 && i.icon?.startsWith("/PET/PET_PROTOCOLS/")));
+  assert.ok(CATALOG.petProtocols.every((i) => [1, 2, 3].includes(i.petProtocol.level)));
+  assert.deepEqual(
+    CATALOG.petProtocols.filter((i) => i.petProtocol.key === "cargo").map((i) => [i.petProtocol.level, i.petLevel]),
+    [[1, 0], [2, 4], [3, 8]],
+  );
+  assert.deepEqual(
+    CATALOG.petProtocols.filter((i) => i.petProtocol.key === "alien").map((i) => i.petProtocol.pct),
+    [1, 3, 6],
+  );
+  assert.deepEqual(
+    CATALOG.petProtocols.filter((i) => i.petProtocol.key === "damage").map((i) => i.petProtocol.pct),
+    [1, 2, 4],
+  );
+});
+
+test("bonus canons : set Mortifier, coque Hyperplasmoid et détail vsMatch", async () => {
+  const { computeHangarStats } = await import("../../SHIP/SHIP_HANGARS.js");
+  const hangar = (lasers) => ({ id: "h1", activeConfig: 1, fits: { 1: { lasers, gens: [], extras: [], shipMods: [] } } });
+  const mf3 = computeHangarStats(hangar(["laser_lf5mf", "laser_lf5mf", "laser_lf5mf"]), {});
+  assert.equal(mf3.totalLaserDamage, 3 * 452 * 1.1);
+  const mf2 = computeHangarStats(hangar(["laser_lf5mf", "laser_lf5mf"]), {});
+  assert.equal(mf2.totalLaserDamage, 2 * 452);
+  const hp = computeHangarStats(hangar(["laser_lf4hp", "laser_lf4hp"]), {});
+  assert.equal(hp.bonusHPPct, 1);
+  const mods = computeHangarStats(hangar(["laser_aa1"]), {});
+  assert.equal(mods.laserMods.length, 1);
+  assert.equal(mods.laserMods[0].vsMult, 305 / 180);
+  assert.equal(mods.bonusAbsorb, 0);
+  const petOnlySkipped = computeHangarStats(hangar(["laser_lfp01"]), {});
+  assert.equal(petOnlySkipped.totalLaserDamage, 0);
+  assert.equal(petOnlySkipped.laserMods.length, 0);
 });
 
 test("le mode roquettes automatiques est persisté", async () => {

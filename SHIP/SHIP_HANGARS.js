@@ -23,25 +23,40 @@ const fit =
   let baseDamage = 0;
   let baseSpeed = 0;
   let baseShield = 0;
+  let bonusAbsorb = 0;
+  const laserMods = [];
+  // Mods des drones pour les bonus par canon (overdrive/vs/instable).
+  const droneLaserMods = [];
 
-  // lasers -> damage de base
+  // lasers -> damage de base (P.E.T uniquement ignorés sur le vaisseau)
+  let mfCount = 0;
+  let hpBonusPct = 0;
   for (const itemId of (fit.lasers || [])) {
     if (!itemId) continue;
     const it = findCatalogItem(itemId);
-    if (it?.module?.type === "laser") {
+    if (it?.module?.type === "laser" && !it.petOnly) {
       baseDamage += Number(it.module.damage || 0);
+      laserMods.push({
+        damage: Number(it.module.damage || 0),
+        vsMatch: it.module.vsMatch, vsMult: it.module.vsMult,
+        overdrive: it.module.overdrive, critPct: it.module.critPct,
+        unstable: it.module.unstable, mf: it.module.mf,
+      });
+      if (it.module.mf) mfCount += 1;
+      hpBonusPct += Number(it.module.hpPct || 0);
     }
   }
 
-  // gens -> speed/shield de base
+  // gens -> speed/shield de base (absorption = max monté)
   for (const itemId of (fit.gens || [])) {
     if (!itemId) continue;
     const it = findCatalogItem(itemId);
     if (it?.module?.type === "speed") {
       baseSpeed += Number(it.module.bonusSpeed || 0);
     }
-    if (it?.module?.type === "shield") {
+    if (it?.module?.type === "shield" && !it.petOnly) {
       baseShield += Number(it.module.bonusShield || 0);
+      bonusAbsorb = Math.max(bonusAbsorb, Number(it.module.absorbPct || 0));
     }
   }
 
@@ -77,7 +92,24 @@ const fit =
     const shieldDesignMultiplier = design.includes("hercules") ? 1.15 : design.includes("spartan") ? 1.01 : 1;
     for (const itemId of fitForHangar?.equipment || []) {
       const item = itemId ? findCatalogItem(itemId) : null;
-      if (item?.module?.type === "laser") baseDamage += Number(item.module.damage || 0) * levelMultiplier * laserDesignMultiplier;
+      if (item?.petOnly) continue;
+      if (item?.module?.type === "laser") {
+        const mult = levelMultiplier * laserDesignMultiplier;
+        baseDamage += Number(item.module.damage || 0) * mult;
+        // Bonus par canon des drones (overdrive / vsMatch / instable) :
+        // 1 laser = +bonus, 2 lasers = +2x bonus, 35 lasers = 35x bonus.
+        // On stocke le damage déjà scalé pour que le vs/overdrive suive le niveau/design.
+        // HP Hyperplasmoid : +0,5 %/canon, vaisseau + drones (officiel cumulé).
+        hpBonusPct += Number(item.module.hpPct || 0);
+        droneLaserMods.push({
+          damage: Number(item.module.damage || 0) * mult,
+          baseDamage: Number(item.module.damage || 0),
+          mult,
+          vsMatch: item.module.vsMatch, vsMult: item.module.vsMult,
+          overdrive: Number(item.module.overdrive || 0) * mult,
+          unstable: item.module.unstable,
+        });
+      }
       if (item?.module?.type === "shield") baseShield += Number(item.module.bonusShield || 0) * levelMultiplier * shieldDesignMultiplier;
     }
   }
@@ -170,6 +202,16 @@ const fit =
   bonusShieldPct += Number(formationEffects.shieldPct || 0);
   bonusHPPct += Number(formationEffects.hpPct || 0);
   bonusSpeedPct += Number(formationEffects.speedPct || 0);
+  // LF-4 Hyperplasmoid : +0,5 % de coque max par canon monté.
+  bonusHPPct += hpBonusPct;
+  // LF-5 Mortifier : dégâts globaux selon le nombre monté
+  // (officiel : 3:+10 %, 4:+20 %, 5:+28 %, 8:+40 %, 12:+48 %, 14+:+50 %).
+  if (mfCount >= 14) bonusDamagePct += 50;
+  else if (mfCount >= 12) bonusDamagePct += 48;
+  else if (mfCount >= 8) bonusDamagePct += 40;
+  else if (mfCount >= 5) bonusDamagePct += 28;
+  else if (mfCount >= 4) bonusDamagePct += 20;
+  else if (mfCount >= 3) bonusDamagePct += 10;
   // Protocoles P.E.T équipés sur ce hangar / cette config.
   bonusDamagePct += bonusPetDamagePct;
   bonusShieldPct += bonusPetShieldPct;
@@ -195,6 +237,9 @@ const fit =
     totalLaserDamage, 
     bonusSpeed, 
     bonusShield, 
+    bonusAbsorb,          // max des générateurs montés (0 = défaut 80 % moteur)
+    laserMods,            // détail canons du vaisseau (bonus vsMatch appliqués au tir)
+    droneLaserMods,       // détail canons des drones (overdrive/vs/instable x nombre équipé)
     bonusHPPct,           // % à appliquer sur le HP du ship
     bonusPenetrationPct,  // % absolu de pénétration
     bonusLaserHitPct,     // % de réduction du taux de MISS du joueur

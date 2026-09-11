@@ -3259,6 +3259,18 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   );
 
   player.shMax = Math.max(0, Math.floor(Number(stats.bonusShield) || 0));
+  // Absorption officielle du générateur équipé (max monté), défaut 80 %.
+  player.shAbsorb = Number(stats.bonusAbsorb) > 0 ? clamp(Number(stats.bonusAbsorb) / 100, 0, 1) : 0.8;
+  // Détail des canons du vaisseau (bonus conditionnels vsMatch au tir).
+  player.laserMods = Array.isArray(stats.laserMods) ? stats.laserMods : [];
+  // Drones : bonus par canon aussi (overdrive/vs/instable x nombre équipé).
+  player.droneLaserMods = Array.isArray(stats.droneLaserMods) ? stats.droneLaserMods : [];
+  // OS-L Odysseus : +3 % de critique par canon, +9 % dès 3 montés, dégâts ×2.
+  // Formule officielle : min(50 %, 3n + (n≥3 ? 9 : 0)).
+  let oslCount = 0;
+  for (const m of player.laserMods) if (Number(m?.critPct || 0) > 0) oslCount += 1;
+  player.critChance = oslCount > 0 ? Math.max(0.05, Math.min(0.5, (3 * oslCount + (oslCount >= 3 ? 9 : 0)) / 100)) : 0.05;
+  player.critMult = oslCount > 0 ? 2.0 : 1.5;
 
   if (!player.dead) {
     // ✅ HP reste partagé
@@ -5081,6 +5093,13 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
 
   player.shMax = Math.max(0, Math.floor(Number(stats.bonusShield) || 0));
   player.sh = Math.max(0, Math.floor(player.shMax * oldShPct));
+  player.shAbsorb = Number(stats.bonusAbsorb) > 0 ? clamp(Number(stats.bonusAbsorb) / 100, 0, 1) : 0.8;
+  player.laserMods = Array.isArray(stats.laserMods) ? stats.laserMods : [];
+  player.droneLaserMods = Array.isArray(stats.droneLaserMods) ? stats.droneLaserMods : [];
+  let oslCount = 0;
+  for (const m of player.laserMods) if (Number(m?.critPct || 0) > 0) oslCount += 1;
+  player.critChance = oslCount > 0 ? Math.max(0.05, Math.min(0.5, (3 * oslCount + (oslCount >= 3 ? 9 : 0)) / 100)) : 0.05;
+  player.critMult = oslCount > 0 ? 2.0 : 1.5;
 
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
 
@@ -6474,7 +6493,7 @@ function notePetPlayerDamage(enemy) {
   petState.assistTarget = enemy;
 }
 
-function petVolleyDamage(pet, user) {
+function petVolleyDamage(pet, user, target) {
   const hangar = (user?.hangars || []).find((h) => h?.active) || null;
   const hid = hangar ? String(hangar.id) : null;
   const cfg = String(Number(hangar?.activeConfig) === 2 ? 2 : 1);
@@ -6484,11 +6503,17 @@ function petVolleyDamage(pet, user) {
   let base = 0;
   let protoPct = 0;
   const lasers = [];
+  const targetType = String(target?.type || "");
   for (const itemId of fit?.lasers || []) {
     const item = itemId ? findCatalogItem(itemId) : null;
     if (item?.module?.type === "laser") {
-      base += Number(item.module.damage || 0);
+      const d = Number(item.module.damage || 0);
+      base += d;
       lasers.push(itemId);
+      // Bonus conditionnels P.E.T (AAP-1 vs Mimesis...).
+      if (Array.isArray(item.module.vsMatch) && item.module.vsMatch.some((re) => re?.test?.(targetType))) {
+        base += d * (Number(item.module.vsMult || 1) - 1);
+      }
     }
   }
   for (const itemId of fit?.protocols || []) {
@@ -6502,7 +6527,7 @@ function petVolleyDamage(pet, user) {
 }
 
 function firePetVolley(target) {
-  const { total, count } = petVolleyDamage(account.user?.pet, account.user);
+  const { total, count } = petVolleyDamage(account.user?.pet, account.user, target);
   if (!(total > 0) || !count) return;
   const ammoKey = player.ammo.active || "x1";
   const ammoCfg = AMMO[ammoKey] || AMMO.x1;
@@ -7009,13 +7034,14 @@ function showPlayerMissOnce(b, t) {
 }
 
 function showRocketEffectHitOnce(b, t) {
-  if (!b?.rocketEffect || (!b.rocketEffect.slowPct && !b.rocketEffect.accuracyPenaltyPct)) return;
+  if (!b?.rocketEffect || (!b.rocketEffect.slowPct && !b.rocketEffect.accuracyPenaltyPct && !b.rocketEffect.freezeSec)) return;
   const key = b.volleyId ?? `solo_${Math.random()}`;
   if (rocketEffectVolleysShown.has(key)) return;
   rocketEffectVolleysShown.add(key);
+  const isFrozen = (b.rocketEffect.freezeSec || 0) > 0;
   const isSlow = b.rocketEffect.slowPct > 0;
-  addFloatText(t.x, t.y - 92, 0, isSlow ? "rgba(80,220,255,0.98)" : "rgba(205,120,255,0.98)", {
-    text: "TOUCHÉ", size: 18, pop: 0.35, shake: 0.35, life: 1, glow: 1.2, weight: 900, impact: true,
+  addFloatText(t.x, t.y - 92, 0, isFrozen ? "rgba(150,230,255,0.98)" : isSlow ? "rgba(80,220,255,0.98)" : "rgba(205,120,255,0.98)", {
+    text: isFrozen ? "GELÉ" : "TOUCHÉ", size: 18, pop: 0.35, shake: 0.35, life: 1, glow: 1.2, weight: 900, impact: true,
   });
 }
 
@@ -8196,6 +8222,60 @@ function resolveAmmoMult(ammoKey, target) {
   return base;
 }
 
+// Bonus conditionnels des CANONS (AA-1 vs Mimesis, PR-L vs Blacklight...) :
+// s'ajoutent à la puissance de base, par canon monté.
+// 1 laser = +bonus, 2 lasers = +2x bonus, 35 lasers = 35x bonus.
+// Vaisseau + drones cumulés (P.E.T = dégâts propres, exclus).
+function laserFitVsExtra(laserMods, target, droneLaserMods = null) {
+  const targetType = String(target?.type || "");
+  let extra = 0;
+  for (const m of laserMods || []) {
+    const d = Number(m?.damage || 0);
+    if (!(d > 0)) continue;
+    if (Array.isArray(m?.vsMatch) && m.vsMatch.some((re) => re?.test?.(targetType))) {
+      extra += d * (Number(m?.vsMult || 1) - 1);
+    }
+  }
+  for (const m of droneLaserMods || []) {
+    const d = Number(m?.damage || 0);
+    if (!(d > 0)) continue;
+    if (Array.isArray(m?.vsMatch) && m.vsMatch.some((re) => re?.test?.(targetType))) {
+      extra += d * (Number(m?.vsMult || 1) - 1);
+    }
+  }
+  return extra;
+}
+
+// Overdrive par canon : 1x PR-L = +200, 2x = +400, 35x = +7000.
+// Tous les 5 tirs (volleyCount % 5 === 0), vaisseau + drones cumulés.
+function laserFitOverdrive(laserMods, droneLaserMods, volleyCount) {
+  if (Number(volleyCount || 0) % 5 !== 0) return 0;
+  let overdrive = 0;
+  for (const m of laserMods || []) overdrive += Number(m?.overdrive || 0);
+  for (const m of droneLaserMods || []) overdrive += Number(m?.overdrive || 0);
+  return overdrive;
+}
+
+// U-LF4 instable : 128-220 aléatoires par canon, vaisseau + drones.
+// Retourne le delta à ajouter à laserBase (déjà = baseDamage total).
+function laserFitUnstableDelta(laserMods, droneLaserMods) {
+  let delta = 0;
+  for (const m of laserMods || []) {
+    const d = Number(m?.damage || 0);
+    if (m?.unstable && d > 0) delta += (128 + Math.random() * 92) - d;
+  }
+  for (const m of droneLaserMods || []) {
+    const d = Number(m?.damage || 0);
+    if (m?.unstable && d > 0) {
+      const baseDmg = Number(m?.baseDamage || 174);
+      const mult = Number(m?.mult || 1) || 1;
+      delta += (128 + Math.random() * 92) * mult - d;
+      void baseDmg;
+    }
+  }
+  return delta;
+}
+
 // ✅ SAB-50 : vole uniquement le bouclier NPC
 // ============================================================
 const SAB50 = {
@@ -8210,7 +8290,7 @@ const SAB50 = {
   bulletSpeedMult: 1,
 };
 
-function drainShieldFromEnemy(e, amount, recipient = player) {
+function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
   if (!e || e.hp <= 0 || e._bossEncounter?.invulnerable) {
     return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0, sab: true };
   }
@@ -8232,7 +8312,7 @@ function drainShieldFromEnemy(e, amount, recipient = player) {
   triggerBossEncounterPhase(e, stolen);
 
   // ✅ Transfert vers ton vaisseau, sans dépasser ton shield max.
-  const gain = stolen * SAB50.transferPct;
+  const gain = stolen * (Number(transferPct) >= 0 ? Number(transferPct) : SAB50.transferPct);
   if (recipient?.hp > 0) {
     recipient.sh = Math.min(recipient.shMax, recipient.sh + gain);
   }
@@ -8290,11 +8370,15 @@ function drainShieldFromEnemy(e, amount, recipient = player) {
 // ============================================================
 // Combat
 // ============================================================
-function damageEnemy(e, dmg) {
+function damageEnemy(e, dmg, shieldPenetration, crit) {
   if (!e || e.hp <= 0) return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
   if (e._bossEncounter?.invulnerable) return emptyEnemyDamageResult();
 
-  const result = damageEnemyLayers(e, dmg, { shieldPenetration: player.shPen });
+  const result = damageEnemyLayers(e, dmg, {
+    shieldPenetration: shieldPenetration ?? player.shPen,
+    critChance: crit?.chance ?? undefined,
+    critMultiplier: crit?.mult ?? undefined,
+  });
   if (result.total > 0) {
     e._damagedByPlayer = true;
     if (e._cubikonDeathFlee) e.noRewards = false;
@@ -8347,9 +8431,9 @@ e._pendingSpawn = 20;
 function applyRocketHit(e, b, recipient = player) {
   if (!e || e.hp <= 0 || e._bossEncounter?.invulnerable) return emptyEnemyDamageResult();
   const effect = b.rocketEffect || null;
-  const direct = b.dmg > 0 ? damageEnemy(e, b.dmg) : emptyEnemyDamageResult();
+  const direct = b.dmg > 0 ? damageEnemy(e, b.dmg, effect?.pierceShield ? 1 : effect?.piercePct) : emptyEnemyDamageResult();
   const drained = effect?.shieldDrain > 0 && e.hp > 0
-    ? drainShieldFromEnemy(e, effect.shieldDrain, recipient)
+    ? drainShieldFromEnemy(e, effect.shieldDrain, recipient, effect?.leechPct)
     : emptyEnemyDamageResult();
 
   if (effect?.slowPct > 0) {
@@ -8359,6 +8443,9 @@ function applyRocketHit(e, b, recipient = player) {
   if (effect?.accuracyPenaltyPct > 0) {
     e.rocketAccuracyPenaltyPct = Math.max(Number(e.rocketAccuracyPenaltyPct || 0), Number(effect.accuracyPenaltyPct));
     e.rocketAccuracyT = Math.max(Number(e.rocketAccuracyT || 0), Number(effect.duration || 5));
+  }
+  if (effect?.freezeSec > 0) {
+    e.freezeT = Math.max(Number(e.freezeT || 0), Number(effect.freezeSec));
   }
   if (effect) {
     e._damagedByPlayer = true;
@@ -8416,7 +8503,7 @@ function hurtPlayer(amount) {
   player.iFrames = 0.1;
   player.attackedT = 5;
 
-  damagePlayerLayers(player, amount);
+  damagePlayerLayers(player, amount, Number(player.shAbsorb) > 0 ? Number(player.shAbsorb) : 0.8);
 
   addPlayerCombatFloat(amount, "rgba(255,80,100,0.95)");
 
@@ -9951,9 +10038,16 @@ const life = bulletLifeForRange(playerRange, speed);
 
 // ✅ SAB-50 ne fait pas de dégâts HP.
 // Elle utilise ta puissance laser comme quantité de bouclier à voler.
+player.volleyCount = (player.volleyCount || 0) + 1;
+// Bonus par canon x nombre équipé : vaisseau + drones.
+// 1x PR-L = +200, 2x = +400, 35x = +7000 tous les 5 tirs.
+// Idem vsMatch (LF-3, AA-1, PR-L Blacklight...) et U-LF4 instable.
+let laserBase = player.baseDamage + laserFitVsExtra(player.laserMods, t, player.droneLaserMods);
+laserBase += laserFitUnstableDelta(player.laserMods, player.droneLaserMods);
+const overdrive = laserFitOverdrive(player.laserMods, player.droneLaserMods, player.volleyCount);
 const dmgShot = isSab
   ? player.baseDamage * SAB50.drainMult
-  : player.baseDamage * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100);
+  : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100);
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (Number(player.laserHitBonusPct || 0) / 100));
 
@@ -10550,9 +10644,10 @@ jumpBaseFade: 1,
 
     const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
     
-    // Whitelist : id portail/map limités à [A-Za-z0-9_-], 64 chars max, map == carte courante.
+    // Whitelist : id portail/map limités à [A-Za-z0-9_-.], 64 chars max, map == carte courante.
+    // Le point est requis : maps 1-4.1 / 2-4.1 / 3-4.1 / 4-4.123 + portails p_..._to_....
     const isSafeId = (v) => typeof v === "string" || typeof v === "number"
-      ? /^[A-Za-z0-9_-]{1,64}$/.test(String(v))
+      ? /^[A-Za-z0-9_\-.]{1,64}$/.test(String(v))
       : false;
     if (wantPortal && wantMap && isSafeId(wantPortal) && isSafeId(wantMap) && String(wantMap) === String(currentMap)) {
       const pid = String(wantPortal);
@@ -10964,12 +11059,27 @@ function drawEnemyBody(e, exactFrame = null) {
 function drawRocketDebuffEffect(e) {
   const slowed = (e.rocketSlowT || 0) > 0;
   const disrupted = (e.rocketAccuracyT || 0) > 0;
-  if (!slowed && !disrupted) return;
+  const frozen = (e.freezeT || 0) > 0;
+  if (!slowed && !disrupted && !frozen) return;
 
   const now = performance.now() * 0.001;
   const radius = Math.max(24, Number(e.r) || 24);
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
+  if (frozen) {
+    const pulse = 0.7 + Math.sin(now * 5) * 0.2;
+    ctx.strokeStyle = `rgba(150,230,255,${pulse})`;
+    ctx.lineWidth = 4;
+    ctx.shadowColor = "rgba(150,230,255,1)";
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius + 10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius + 18, now * 1.5, now * 1.5 + Math.PI * 1.5);
+    ctx.stroke();
+  }
   if (slowed) {
     const pulse = 0.75 + Math.sin(now * 7) * 0.15;
     ctx.strokeStyle = `rgba(70,220,255,${pulse})`;
@@ -12378,11 +12488,11 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     if (!b.visual) {
       out = b.isSab
         ? drainShieldFromEnemy(t, b.dmg, sabRecipient)
-        : b.isRocket
-          ? b.isLauncherRocket
-            ? applyRocketVolleyHit(t, b, launcherImpact?.count || b.volleySize, sabRecipient)
-            : applyRocketHit(t, b, sabRecipient)
-          : damageEnemy(t, b.dmg);
+          : b.isRocket
+            ? b.isLauncherRocket
+              ? applyRocketVolleyHit(t, b, launcherImpact?.count || b.volleySize, sabRecipient)
+              : applyRocketHit(t, b, sabRecipient)
+            : damageEnemy(t, b.dmg, undefined, (!b.ownerEscortId ? { chance: player.critChance, mult: player.critMult } : undefined));
 
       // ✅ CBO-100 (joueur) : dégâts normaux + vol de bouclier ×1, comme SAB.
       if (!b.isRocket && !b.isSab && b.key === "cbo" && t.hp > 0) {
@@ -12396,7 +12506,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
         t.rocketSlowT = Math.max(Number(t.rocketSlowT || 0), 15);
       }
 
-      if (b.isRocket && (b.rocketEffect?.slowPct || b.rocketEffect?.accuracyPenaltyPct)) {
+      if (b.isRocket && (b.rocketEffect?.slowPct || b.rocketEffect?.accuracyPenaltyPct || b.rocketEffect?.freezeSec)) {
         showRocketEffectHitOnce(b, t);
       }
 
