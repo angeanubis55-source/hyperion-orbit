@@ -1,6 +1,16 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.146",
+    "date": "2026-09-11T13:30:47+02:00",
+    "message": "Slots hangar unifies vaisseau/drones/P.E.T + marquage P.E.T boutique, cleanup builder mort"
+  },
+  {
+    "version": "0.145",
+    "date": "2026-09-11T11:29:19+02:00",
+    "message": "Hangar brouillon + Apply base, portails PvP-only et spawn reload, fix dock X6"
+  },
+  {
     "version": "0.144",
     "date": "2026-09-11T11:02:49+02:00",
     "message": "Hangar local-only + REX détaché, pirates 5-2, dock X6, cooldown X6/RCB partagé"
@@ -289,15 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.87",
     "date": "2026-09-04T02:35:31+02:00",
     "message": "Synchronisation automatique du numéro de version avec les mises à jour."
-  },
-  {
-    "version": "0.86",
-    "date": "2026-09-04T02:30:31+02:00",
-    "message": "Corrections et améliorations de stabilité."
-  },
-  {
-    "version": "0.85",
-    "date": "2026-09-04T01:31:24+02:00",
-    "message": "Roulette de modules revue : chemin de progression persistant et affichage instantané du gain."
   }
 ];

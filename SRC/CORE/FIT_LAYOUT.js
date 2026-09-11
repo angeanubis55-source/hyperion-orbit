@@ -1,5 +1,17 @@
 const FIT_KEYS = ["lasers", "gens", "extras", "shipMods"];
 
+export function moveEquipmentSlots(source, target, sourceIndex, targetIndex) {
+  if (!Array.isArray(source) || !Array.isArray(target)
+    || !Number.isInteger(sourceIndex) || !Number.isInteger(targetIndex)
+    || sourceIndex < 0 || sourceIndex >= source.length
+    || targetIndex < 0 || targetIndex >= target.length || !source[sourceIndex]) return null;
+  const nextSource = [...source];
+  const nextTarget = source === target ? nextSource : [...target];
+  nextSource[sourceIndex] = target[targetIndex] || null;
+  nextTarget[targetIndex] = source[sourceIndex];
+  return { source: nextSource, target: nextTarget };
+}
+
 export function compactFitArray(values, capacity = Array.isArray(values) ? values.length : 0) {
   const size = Math.max(0, Math.floor(Number(capacity) || 0));
   const filled = (Array.isArray(values) ? values : []).filter(Boolean).slice(0, size);

@@ -2,16 +2,17 @@
 "use strict";
 
 import { findCatalogItem } from "./CATALOG.js";
-import { SHIP_PACKS, getShipDesignBaseId, getShipPackById } from "../../SHIP/SHIP_PACKS.js";
+import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, getShipFamilyId } from "../../SHIP/SHIP_PACKS.js";
 import { normalizeQuestState, QUEST_DEFINITIONS } from "../../QUEST/QUEST_TYPES.js";
 import { calculateRankPoints, getQuestHonorReward } from "./PROGRESSION.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.js";
 import { compactFitDraft } from "./FIT_LAYOUT.js";
+import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe } from "../DATA/CRAFTING.js";
 import { ROCKET_TYPES } from "../../COMBAT/ROCKET_TYPES.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../../DRONE/DRONE_TYPES.js";
-import { createPet, emptyPetFit, getPetLevel, getPetMaxHp, getPetSlots, normalizePetMode, PET_FUEL_MAX, PET_SLOTS } from "../../PET/PET_TYPES.js";
+import { createPet, emptyPetFit, getPetLevel, getPetMaxHp, getPetSlots, getPetShieldBonus, normalizePetMode, PET_FUEL_MAX, PET_SLOTS } from "../../PET/PET_TYPES.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -606,7 +607,7 @@ function ensureUserShape(u) {
     u.pet.hp = Number.isFinite(Number(u.pet.hp)) ? Math.max(0, Math.min(petHpMax, Math.floor(Number(u.pet.hp)))) : petHpMax;
     // Bouclier : null = plein (le max dépend de l'équipement du hangar actif).
     if (u.pet.sh != null && !Number.isFinite(Number(u.pet.sh))) u.pet.sh = null;
-    if (Number.isFinite(Number(u.pet.sh))) u.pet.sh = Math.max(0, Math.floor(Number(u.pet.sh)));
+    if (u.pet.sh != null && Number.isFinite(Number(u.pet.sh))) u.pet.sh = Math.max(0, Math.floor(Number(u.pet.sh)));
     if (!u.pet.fits || typeof u.pet.fits !== "object") {
       // Migration : l'ancien fit unique ({equipment}) part sur la config 1.
       const legacyFit = u.pet.fit && typeof u.pet.fit === "object" ? u.pet.fit : {};
@@ -801,12 +802,30 @@ function computeCombatFromFit(fit) {
   return { dmg, bonusSpeed, bonusShield, bonusAbsorb };
 }
 
+function petShieldCapacity(user) {
+  if (user?.pet?.owned !== true) return 0;
+  const hangar = getActiveHangar(user);
+  const fit = getPetFit(user.pet, hangar?.id, hangar?.activeConfig);
+  const multiplier = 1 + getPetShieldBonus(getPetLevel(user.pet.exp)) / 100;
+  return Math.max(0, Math.floor((fit.generators || []).reduce((sum, id) => {
+    const item = id ? findCatalogItem(id) : null;
+    return sum + (item?.module?.type === "shield" ? Number(item.module.bonusShield || 0) : 0);
+  }, 0) * multiplier));
+}
+
 function saveUser(user, options = {}) {
   user.schemaVersion = STORAGE_SCHEMA_VERSION;
   user.updatedAt = Date.now();
   user.revision = Math.max(0, Math.floor(Number(user.revision) || 0)) + 1;
   const users = readUsers();
   const idx = users.findIndex((x) => x?.id === user.id);
+  const previousPetMax = Number.isFinite(Number(options.previousPetShieldMax))
+    ? Math.max(0, Number(options.previousPetShieldMax))
+    : petShieldCapacity(users[idx]);
+  const nextPetMax = petShieldCapacity(user);
+  if (user.pet?.owned === true && previousPetMax !== nextPetMax) {
+    user.pet.sh = resizeShield({ sh: user.pet.sh ?? previousPetMax, shMax: previousPetMax }, nextPetMax).sh;
+  }
   if (idx >= 0) users[idx] = user;
   else users.push(user);
   writeUsers(users);
@@ -1406,6 +1425,7 @@ export function saveCurrentUserPetFits(fits) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
+  const previousPetShieldMax = petShieldCapacity(u);
   const level = getPetLevel(u.pet.exp);
   const slots = getPetSlots(level);
   const activeHangar = getActiveHangar(u);
@@ -1693,12 +1713,80 @@ export function saveHangarFit(hangarId, fitDraft, configNo = null) {
   return { ok: true, user: u, config: Number(cfg) };
 }
 
+// Validate the whole displayed configuration before publishing one account update.
+export function saveHangarLoadout(hangarId, { ship, drones = {}, pet = null }, configNo = null) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  const h = u.hangars.find(entry => entry.id === hangarId);
+  if (!h) return { ok: false, error: "Hangar introuvable." };
+  const previousPetShieldMax = petShieldCapacity(u);
+  const cfg = String(Number(configNo ?? h.activeConfig) === 2 ? 2 : 1);
+  const usage = new Map();
+  const count = id => { if (id) usage.set(id, (usage.get(id) || 0) + 1); };
+  const shipFit = normalizeFitForShip(h.shipId, ship);
+  for (const [group, ids] of Object.entries(shipFit)) {
+    for (const id of ids.filter(Boolean)) {
+      if (group === "shipMods") {
+        const mod = u.inventory.shipModules.find(entry => entry.id === id);
+        if (!mod || String(mod.familyId || getShipFamilyId(mod.shipId)) !== getShipFamilyId(h.shipId)) {
+          return { ok: false, error: "Module incompatible avec ce vaisseau." };
+        }
+      } else {
+        const item = findCatalogItem(id);
+        const types = { lasers: ["laser"], gens: ["speed", "shield"], extras: ["extra"] };
+        if (!item || item.petOnly || !types[group].includes(item.module?.type)) {
+          return { ok: false, error: "Équipement incompatible avec le vaisseau." };
+        }
+      }
+      count(id);
+    }
+  }
+  for (const id of Object.keys(drones)) {
+    if (!u.drones.items.some(drone => drone.id === id)) return { ok: false, error: "Drone introuvable." };
+  }
+  for (const drone of u.drones.items) {
+    const value = normalizeDroneFitValue(drones[drone.id] ?? getDroneFit(drone, h.id, cfg), DRONE_TYPES[drone.type].slots);
+    for (const id of value.equipment.filter(Boolean)) {
+      const item = findCatalogItem(id);
+      if (!item || item.petOnly || !["laser", "shield"].includes(item.module?.type)) {
+        return { ok: false, error: "Équipement incompatible avec les drones." };
+      }
+      count(id);
+    }
+    drone.fitsByHangar[h.id][cfg] = value;
+  }
+  if (pet && u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
+  if (u.pet?.owned === true) {
+    const level = getPetLevel(u.pet.exp);
+    const value = normalizePetFitValue(pet ?? getPetFit(u.pet, h.id, cfg), level);
+    for (const group of ["lasers", "generators", "gears", "protocols"]) {
+      for (const id of value[group].filter(Boolean)) {
+        const error = petFitSlotError(id, group, level);
+        if (error) return { ok: false, error };
+        count(id);
+      }
+    }
+    u.pet.fitsByHangar[h.id][cfg] = value;
+  }
+  for (const [id, used] of usage) {
+    const owned = u.inventory.shipModules.some(mod => mod.id === id) ? 1 : getOwnedCount(u, id);
+    if (used > owned) return { ok: false, error: `Trop de "${findCatalogItem(id)?.name || id}" équipés : ${used}/${owned}.` };
+  }
+  h.fits[cfg] = shipFit;
+  if (String(h.activeConfig) === cfg) h.fit = shipFit;
+  ensureUserShape(u);
+  saveUser(u, { previousPetShieldMax });
+  localStorage.setItem("orbit_sync", String(Date.now()));
+  return { ok: true, user: u, config: Number(cfg) };
+}
+
 export function setActiveHangarConfig(hangarId, configNo) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
 
   const h = (u.hangars || []).find((x) => x?.id === hangarId);
   if (!h) return { ok: false, error: "Hangar introuvable." };
+  const previousPetShieldMax = petShieldCapacity(u);
 
   const cfg = Number(configNo) === 2 ? 2 : 1;
   const shipId = h.shipId || u.ship;
@@ -1711,7 +1799,7 @@ export function setActiveHangarConfig(hangarId, configNo) {
   h.fit = h.fits[String(cfg)];
 
   ensureUserShape(u);
-  saveUser(u);
+  saveUser(u, { previousPetShieldMax });
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
 
   localStorage.setItem("orbit_sync", String(Date.now()));
@@ -1776,7 +1864,7 @@ export function saveActiveHangarPos(x, y) {
 
   h.lastPos = { x: px, y: py };
 
-  saveUser(u);
+  saveUser(u, { previousPetShieldMax });
   return { ok: true };
 }
 
@@ -1894,6 +1982,22 @@ export function sellItem(itemId, qty = 1) {
 
   const owned = getOwnedCount(u, itemId);
   if (owned < qty) return { ok: false, error: "Pas assez d'exemplaires." };
+
+  // Configurations can reuse copies, but a sale must leave enough for each one.
+  let reserved = 0;
+  for (const h of u.hangars || []) {
+    for (const cfg of ["1", "2"]) {
+      const fit = h.fits?.[cfg] || {};
+      const equipped = [...(fit.lasers || []), ...(fit.gens || []), ...(fit.extras || [])];
+      for (const drone of u.drones.items) equipped.push(...getDroneFit(drone, h.id, cfg).equipment);
+      if (u.pet?.owned === true) {
+        const pet = getPetFit(u.pet, h.id, cfg);
+        for (const group of ["lasers", "generators", "gears", "protocols"]) equipped.push(...pet[group]);
+      }
+      reserved = Math.max(reserved, equipped.filter(id => id === itemId).length);
+    }
+  }
+  if (owned - qty < reserved) return { ok: false, error: "Objet équipé : retire-le et applique les changements avant de le vendre." };
 
   const gainEach = Math.floor(price * 0.5);
   const gain = gainEach * qty;

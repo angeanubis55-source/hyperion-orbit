@@ -54,7 +54,9 @@ for (const file of files.filter(file => codeExtensions.has(extname(file).toLower
     const specifier = match[1];
     if (specifier.includes("${") || /^(?:https?:|data:)/i.test(specifier)) continue;
     const clean = specifier.replace(/^\.\//, "").replace(/^\//, "");
-    const target = resolve(root, clean);
+    const target = specifier.startsWith("../")
+      ? resolve(dirname(file), specifier)
+      : resolve(root, clean);
     resources.push({ file: relative(root, file), specifier, ...await exactPath(target) });
   }
   if (legacyPattern.test(source)) legacy.push(relative(root, file));

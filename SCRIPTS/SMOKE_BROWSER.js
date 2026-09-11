@@ -30,6 +30,7 @@ const coldStart = process.argv.includes("--cold");
 const inspectProfile = process.argv.includes("--profile");
 const captureProfile = process.argv.includes("--profile-screenshot");
 const inspectCombat = process.argv.includes("--combat");
+const inspectEquipment = process.argv.includes("--equipment");
 const inspectWindows = process.argv.includes("--windows");
 const switchTargets = process.argv.find((arg) => arg.startsWith("--switch="))?.slice(9).split(",").filter(Boolean) || [];
 const mapIds = requestedMap ? [requestedMap] : Object.keys(MAP_LOADERS);
@@ -74,7 +75,10 @@ try {
       await page.waitForFunction(() => !document.documentElement.classList.contains("orbitBooting"), null, { timeout: 30_000 });
       if (inspectCombat) {
         await page.waitForTimeout(1800);
-        await page.locator('#ammoBar [data-skill="pulse"]').first().click();
+        await page.locator('.actionPaletteToggle').click();
+        await page.locator('[data-action-category="skills"]').click();
+        await page.locator('.actionPaletteItems [data-skill="pulse"]').click();
+        await page.locator('.actionPaletteToggle').click();
         await page.waitForTimeout(500);
       }
       if (inspectWindows) {
@@ -117,8 +121,20 @@ try {
         });
         errors.push(...fitIssues);
         if (captureProfile) await page.screenshot({ path: join(root, "profile-fit-preview.png"), fullPage: false });
-        await page.click("#fitBtnCancel");
+        await page.click("#fitBtnSave");
         await page.waitForSelector("#fitCard", { state: "hidden" });
+        const savedFit = await page.evaluate(async () => {
+          const { getCurrentUserFull } = await import("/SRC/CORE/ACCOUNT.js");
+          return getCurrentUserFull().hangars.find(h => h.active).fit.lasers;
+        });
+        if (!savedFit.includes("laser_lf1")) errors.push("Appliquer n'a pas sauvegardé le laser sans P.E.T");
+        await page.click("#hangarGrid [data-fit]");
+        await page.waitForSelector("#fitSlotsLasers .slotCell.filled");
+        await page.click("#fitBtnResetAll");
+        await page.click("#fitBtnCancel");
+        await page.click("#hangarGrid [data-fit]");
+        await page.waitForSelector("#fitSlotsLasers .slotCell.filled");
+        await page.click("#fitBtnCancel");
 
         if (captureProfile) {
           await page.click('#profileOverlay .tabBtn[data-tab="stats"]');
@@ -163,6 +179,81 @@ try {
         });
         errors.push(...profileIssues);
         if (captureProfile) await page.screenshot({ path: join(root, "profile-shop-preview.png"), fullPage: false });
+      }
+      if (inspectEquipment) {
+        await page.evaluate(async () => {
+          const api = await import("/SRC/CORE/ACCOUNT.js");
+          const { computeHangarStats } = await import("/SHIP/SHIP_HANGARS.js");
+          const engine = window.__ORBIT_ENGINE__;
+          const originalDocument = document.documentElement;
+          const check = (value, message) => { if (!value) throw new Error(message); };
+          const ok = result => check(result.ok, result.error || "Échec équipement");
+          ok(api.updateCurrentUserProgress({ credits: 100000000 }));
+          ok(api.buyItem("laser_lf1", 3));
+          ok(api.buyItem("shd_sg3na01", 3));
+          ok(api.buyItem("pet_niveau1", 1));
+          ok(api.buyCurrentUserDrone("iris"));
+          window.HyperionGameSync.syncFromAccount();
+          const user = api.getCurrentUserFull();
+          const hid = user.hangars.find(h => h.active).id;
+          const did = user.drones.items[0].id;
+          // Visit empty config 2 first, reproducing its cached zero shield.
+          ok(api.setActiveHangarConfig(hid, 2));
+          ok(api.setActiveHangarConfig(hid, 1));
+          const loadout = {
+            ship: { lasers: ["laser_lf1"], gens: ["shd_sg3na01"] },
+            drones: { [did]: { equipment: ["laser_lf1", "shd_sg3na01"] } },
+            pet: { lasers: ["laser_lf1"], generators: ["shd_sg3na01"] },
+          };
+          const verify = cfg => {
+            const live = engine.getEquipmentState();
+            const saved = api.getCurrentUserFull();
+            const stats = computeHangarStats(saved.hangars.find(h => h.id === hid), saved);
+            check(live.config === cfg, `Config active incorrecte : ${live.config}/${cfg}`);
+            check(live.ship.shieldMax === 2000 && live.ship.shield === 2000, `Bouclier live config ${cfg} : ${JSON.stringify(live.ship)}`);
+            check(live.ship.damage === Math.floor(stats.totalLaserDamage), "Dégâts vaisseau/drones non synchronisés");
+            check(live.pet.shieldMax === 1000 && live.pet.shield === 1000 && live.pet.damage > 0, "Statistiques REX non synchronisées");
+            check(live.drones[0].equipment.includes("shd_sg3na01"), "Fit drone non synchronisé");
+            check(engine === window.__ORBIT_ENGINE__ && originalDocument === document.documentElement, "Rechargement inattendu");
+          };
+          ok(api.saveHangarLoadout(hid, loadout, 2));
+          check(engine.getEquipmentState().config === 1, "Appliquer a changé la config active");
+          ok(api.setActiveHangarConfig(hid, 2));
+          verify(2);
+          ok(api.saveHangarLoadout(hid, { ship: {}, drones: { [did]: { equipment: [] } }, pet: {} }, 2));
+          check(engine.getEquipmentState().ship.shieldMax === 0 && engine.getEquipmentState().pet.shieldMax === 0, "Retrait non appliqué en direct");
+          ok(api.saveHangarLoadout(hid, loadout, 2));
+          verify(2);
+          ok(api.saveHangarLoadout(hid, loadout, 1));
+          ok(api.setActiveHangarConfig(hid, 1));
+          verify(1);
+          ok(api.setActiveHangarConfig(hid, 2));
+          verify(2);
+        });
+        await page.click("#btnGameHub");
+        await page.click('#profileOverlay .tabBtn[data-tab="hangars"]');
+        await page.click("#hangarGrid [data-fit]");
+        await page.click("#fitBtnResetAll");
+        await page.click("#fitBtnSave");
+        await page.waitForSelector("#fitCard", { state: "hidden" });
+        await page.waitForFunction(() => {
+          const live = window.__ORBIT_ENGINE__.getEquipmentState();
+          return live.config === 2 && live.ship.shieldMax === 1000 && live.pet.shieldMax === 1000;
+        });
+        await page.click("#hangarGrid [data-fit]");
+        await page.click('.fitCfgBtn[data-cfg="1"]');
+        await page.waitForFunction(() => document.querySelector('.fitCfgBtn[data-cfg="1"]')?.classList.contains("active"));
+        await page.click('.fitCfgBtn[data-cfg="2"]');
+        await page.waitForFunction(() => document.querySelector('.fitCfgBtn[data-cfg="2"]')?.classList.contains("active"));
+        await page.click('[data-fit-section="pet"]');
+        await page.waitForSelector("#fitPetWorkspace .petFitSlot.filled");
+        const unifiedSlots = await page.evaluate(() => [...document.querySelectorAll("#fitPetWorkspace .petFitSlot, #fitDroneWorkspace .droneFitSlot")]
+          .every(slot => slot.classList.contains("slotCell")));
+        if (!unifiedSlots) errors.push("Les slots drones/P.E.T n'utilisent pas le cadre du vaisseau");
+        await page.dragAndDrop('#fitPetWorkspace .petFitSlot[data-pet-group="generators"].filled', "#fitCard .fitInventoryPane");
+        await page.waitForFunction(() => !document.querySelector('#fitPetWorkspace .petFitSlot[data-pet-group="generators"].filled'));
+        await page.click("#fitBtnSave");
+        await page.waitForFunction(() => window.__ORBIT_ENGINE__.getEquipmentState().pet.shieldMax === 0);
       }
       if (switchTargets.length) {
         await page.evaluate(async (targets) => {

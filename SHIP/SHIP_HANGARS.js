@@ -1,6 +1,7 @@
 "use strict";
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { getActiveDroneFormation } from "../DRONE/DRONE_TYPES.js";
+import { getShipPackById } from "./SHIP_PACKS.js";
 
 /**
  * calcule les bonus à partir d'un hangar + user.inventory.shipModules
@@ -194,7 +195,9 @@ const fit =
 
   // ✅ ÉTAPE 3 : calculer les valeurs finales
   const totalLaserDamage = baseDamage * (1 + bonusDamagePct / 100);
-  const bonusSpeed = baseSpeed * (1 + bonusSpeedPct / 100);
+  // The engine adds the hull speed: include its percentage bonus here too.
+  const hullSpeed = Number(getShipPackById(hangar?.shipId)?.speed || 0);
+  const bonusSpeed = baseSpeed * (1 + bonusSpeedPct / 100) + hullSpeed * bonusSpeedPct / 100;
   const bonusShield = baseShield * (1 + bonusShieldPct / 100);
 
   return { 

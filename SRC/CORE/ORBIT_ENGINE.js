@@ -25,6 +25,7 @@ import {
   craftCurrentUserRecipe,
   setCurrentUserDroneFormation,
   getPetFit,
+  getDroneFit,
   setPetActive,
   setPetMode,
 } from "./ACCOUNT.js";
@@ -35,6 +36,7 @@ import {
   normalizeGalaxyGateState,
 } from "./GALAXY_GATES.js";
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
+import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { findCatalogItem } from "./CATALOG.js";
 import { CRAFTING_RECIPES } from "../DATA/CRAFTING.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
@@ -386,7 +388,7 @@ function createBackgroundLayers(world = WORLD, mapRules = rules) {
   mapRules?.bgLayers ||
   [
     { src: world?.bgSrc || mapRules?.bgSrc || null, mode: "tile", alpha: 0.85, parallax: 0.02 },
-    { src: "./BACKGROUNDS/STARS_TILE.webp", mode: "tile", alpha: 0.55, parallax: 0.08, blend: "lighter" },
+    { src: "./BACKGROUNDS/MMO_STARS.png", mode: "tile", alpha: 0.55, parallax: 0.08, blend: "lighter" },
   ]
 ).filter(x => x && x.src);
 }
@@ -1763,7 +1765,7 @@ function updatePetHud() {
   const hp = has ? Math.max(0, Math.min(hpMax, Math.floor(Number(pet.hp)))) : 0;
   const shMax = has ? petShieldMaxForHud(pet, account.user) : 0;
   const sh = has
-    ? (Number.isFinite(Number(pet.sh)) ? Math.max(0, Math.min(shMax, Math.floor(Number(pet.sh)))) : shMax)
+    ? (pet.sh != null && Number.isFinite(Number(pet.sh)) ? Math.max(0, Math.min(shMax, Math.floor(Number(pet.sh)))) : shMax)
     : 0;
   const next = has ? getPetNextLevelXp(level) : 1;
   const prev = has ? getPetLevelXp(level) : 0;
@@ -3151,8 +3153,10 @@ function restoreShieldForConfig(configNo) {
     return;
   }
 
-  // On restaure la valeur absolue, sans dépasser le nouveau max
-  player.sh = Math.max(0, Math.min(player.shMax, Number(saved.sh || 0)));
+  // Le cache suit la nouvelle capacité si l'équipement a changé depuis la visite.
+  const resized = resizeShield(saved, player.shMax);
+  CONFIG_SHIELDS[cfg] = resized;
+  player.sh = resized.sh;
 }
 
 function getActiveConfigNo() {
@@ -3361,9 +3365,8 @@ const out = setActiveHangarConfig(hangarId, nextConfig);
     return;
   }
 
-  account.user = getCurrentUserFull();
-
-  applyCurrentConfigStats(true, nextConfig);
+  // setActiveHangarConfig publishes the complete update synchronously.
+  // The account listener applies the destination configuration exactly once.
 
   CONFIG_SWITCH.until = Date.now() + CONFIG_SWITCH.cooldownMs;
 
@@ -14120,6 +14123,17 @@ window.__ORBIT_ENGINE__ = {
   applyHangarDesignLive,
   showToast,
   showNotification,
+  getEquipmentState() {
+    const hangar = getActiveHangarFromUser(account.user);
+    const pet = account.user?.pet;
+    return structuredClone({
+      hangarId: hangar?.id, config: getActiveConfigNo(),
+      ship: { damage: player.baseDamage, speed: player.baseSpeed, hp: player.hp, hpMax: player.hpMax, shield: player.sh, shieldMax: player.shMax },
+      fit: hangar?.fits?.[String(getActiveConfigNo())],
+      drones: (account.user?.drones?.items || []).map(drone => getDroneFit(drone, hangar?.id, getActiveConfigNo())),
+      pet: { fit: getPetFit(pet, hangar?.id, getActiveConfigNo()), shield: pet?.sh ?? petShieldMaxForHud(pet, account.user), shieldMax: petShieldMaxForHud(pet, account.user), damage: petVolleyDamage(pet, account.user, null).total },
+    });
+  },
 };
 
 // ✅ Sauvegarde d'urgence avant de quitter la map (appelé par main.js via __GO_TO_MAP__)
@@ -14156,8 +14170,19 @@ window.addEventListener("orbit:user-updated", event => {
   if (event?.detail?.source === "progress") return;
   const refreshed = getCurrentUserFull();
   if (!refreshed) return;
+  const previous = account.user;
+  const previousHangar = getActiveHangarFromUser(previous);
+  const nextHangar = getActiveHangarFromUser(refreshed);
+  const switched = previousHangar?.id === nextHangar?.id
+    && Number(previousHangar?.activeConfig) !== Number(nextHangar?.activeConfig);
+  if (started && switched) saveShieldForConfig(previousHangar.activeConfig);
   account.user = refreshed;
-  if (started) applyCurrentConfigStats(true);
+  if (started) {
+    applyCurrentConfigStats(true, switched ? nextHangar.activeConfig : null);
+    updateConfigButtons();
+    updatePetHud();
+    drawUI();
+  }
 });
 
 resetPlayerToBase();
