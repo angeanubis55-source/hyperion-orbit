@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.152",
+    "date": "2026-09-11T17:12:04+02:00",
+    "message": "Equipement: effet selection bleu vaisseau/drones/PET, modules roulette en lignes rarete, selection exclusive module/inventaire"
+  },
+  {
     "version": "0.151",
     "date": "2026-09-11T16:27:09+02:00",
     "message": "Boot bloquant: drones + bases meres X-1/X-8, suppression preload a la mort"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.93",
     "date": "2026-09-04T05:45:44+02:00",
     "message": "Ajout d'un outil de profilage pour mesurer les performances du rendu et identifier les ralentissements."
-  },
-  {
-    "version": "0.92",
-    "date": "2026-09-04T04:54:12+02:00",
-    "message": "Optimisation du jeu : suppression des allocations mémoire superflues lors du tir des projectiles pour des FPS plus stables."
   }
 ];

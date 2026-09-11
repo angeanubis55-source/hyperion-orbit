@@ -3451,18 +3451,40 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
     const hangar = (user?.hangars || []).find((x) => x?.id === fitState.hangarId);
     const shipFamily = hangar ? getShipFamilyId(hangar.shipId) : null;
     const moduleIds = selected.filter((itemId) => slotTypeForItem(itemId) === "shipMods");
+    let blockedSameType = null;
+    let blockedFamily = false;
     for (const moduleId of moduleIds) {
       const module = allModules.find((entry) => entry?.id === moduleId);
       if (!module || fitState.draft.shipMods.includes(moduleId)) continue;
-      if (shipFamily && moduleFamilyId(module) !== shipFamily) continue;
+      if (shipFamily && moduleFamilyId(module) !== shipFamily) { blockedFamily = true; continue; }
       const sameTypeEquipped = fitState.draft.shipMods.some((equippedId) => {
         const equipped = allModules.find((entry) => entry?.id === equippedId);
         return equipped && equipped.type === module.type;
       });
-      if (sameTypeEquipped) continue;
+      if (sameTypeEquipped) { blockedSameType = module.type; continue; }
       const result = appendToFitSlots(fitState.draft.shipMods, [moduleId], fitState.slots.shipMods);
       fitState.draft.shipMods = result.values;
       added += result.added;
+    }
+    if (!added && blockedSameType) {
+      clearFitSelection();
+      fitState.draggedItemIds = [];
+      clearFitDropHighlights();
+      showFitError(`1 seul module ${String(blockedSameType).toUpperCase()} par vaisseau (officiel) — glisse le nouveau sur le slot occupé pour le remplacer`);
+      renderSlots();
+      renderInventoryPalette();
+      if (typeof renderShipModulesList === "function") renderShipModulesList();
+      return added;
+    }
+    if (!added && blockedFamily) {
+      clearFitSelection();
+      fitState.draggedItemIds = [];
+      clearFitDropHighlights();
+      showFitError("Ce module n'est pas compatible avec ce vaisseau");
+      renderSlots();
+      renderInventoryPalette();
+      if (typeof renderShipModulesList === "function") renderShipModulesList();
+      return added;
     }
   }
 
@@ -4167,7 +4189,7 @@ function renderSlots() {
       });
 
       if (alreadyHasSameType) {
-        showFitError(`Tu as déjà un module ${selModule.type.toUpperCase()} équipé`);
+        showFitError(`1 seul module ${selModule.type.toUpperCase()} par vaisseau (officiel) — clique sur son slot pour le retirer, ou glisse le nouveau sur ce slot pour le remplacer`);
         return;
       }
 
@@ -4177,8 +4199,10 @@ function renderSlots() {
         return;
       }
 
-      const result = appendToFitSlots(draft.shipMods, [selItem], fitState.slots.shipMods);
-      draft.shipMods = result.values;
+      // Placement ciblé : on remplace le contenu du slot cliqué (pas d'ajout en 1er libre).
+      draft.shipMods[i] = selItem;
+      compactCurrentFit();
+      clearFitSelection();
       showFitError("");
       renderSlots();
       renderInventoryPalette();
@@ -4192,6 +4216,7 @@ function renderSlots() {
 
     cell.addEventListener("drop", (ev) => {
       ev.preventDefault();
+      ev.stopPropagation();
       // Vaisseau intouchable hors base (ni ajout ni retrait).
       if (shipEditLocked()) return showFitError("Hors base : le vaisseau ne peut pas être modifié.");
       const moduleId = ev.dataTransfer.getData("text/plain");
@@ -4228,7 +4253,7 @@ function renderSlots() {
       });
 
       if (alreadyHasSameType) {
-        showFitError(`Tu as déjà un module ${selModule.type.toUpperCase()} équipé`);
+        showFitError(`1 seul module ${selModule.type.toUpperCase()} par vaisseau (officiel) — dépose le nouveau sur le slot ${selModule.type.toUpperCase()} occupé pour le remplacer`);
         return;
       }
 
@@ -4238,8 +4263,15 @@ function renderSlots() {
         return;
       }
 
-      if (source && Array.isArray(draft[source.slotType])) draft[source.slotType][source.index] = null;
-      draft.shipMods = appendToFitSlots(draft.shipMods, [moduleId], fitState.slots.shipMods).values;
+      // Placement ciblé : remplacement du slot visé (avec échange si déplacement interne).
+      if (source && source.slotType === "shipMods" && Number.isInteger(source.index) && Array.isArray(draft[source.slotType])) {
+        const displaced = draft.shipMods[i] || null;
+        draft[source.slotType][source.index] = displaced;
+        draft.shipMods[i] = moduleId;
+      } else {
+        if (source && Array.isArray(draft[source.slotType])) draft[source.slotType][source.index] = null;
+        draft.shipMods[i] = moduleId;
+      }
       compactCurrentFit();
       clearFitSelection();
       showFitError("");
