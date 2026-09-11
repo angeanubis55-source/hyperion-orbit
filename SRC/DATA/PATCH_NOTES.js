@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.161",
+    "date": "2026-09-11T21:44:29+02:00",
+    "message": "backup: securite avant univers persistant (0.160)"
+  },
+  {
     "version": "0.160",
     "date": "2026-09-11T21:34:20+02:00",
     "message": "Explosion NPC HIT_NPC, mini explosion impacts roquette, sans ronds jaunes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.102",
     "date": "2026-09-05T03:39:49+02:00",
     "message": "Synchronise la version du jeu (f1e8c60f)"
-  },
-  {
-    "version": "0.101",
-    "date": "2026-09-05T03:39:34+02:00",
-    "message": "feat: relancer un module à la roulette (prix ×5), expérience drones alignée sur le vaisseau (sélection, drag&drop, retour groupé), Maj=type + re-Maj désélectionne, tout retirer vide aussi les drones, perf fit (sauvegardes batch, refresh unique), bonus modules précision/XP/honneur en vol"
   }
 ];

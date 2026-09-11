@@ -114,6 +114,20 @@ import {
 import { getResourceName } from "../DATA/RESOURCES.js";
 import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { SFX_SOUND_NAMES } from "./SFX.js";
+import { createWorldClock } from "../SIM/WORLD_CLOCK.js";
+import {
+  UNIVERSE_KEY,
+  createUniverse,
+  deserializeUniverse,
+  ensureMapSlots,
+  getSlot,
+  markAlive,
+  markDead,
+  serializeUniverse,
+  snapshotEnemy as snapshotUniverseEnemy,
+  slotUid,
+  tickBackground,
+} from "../SIM/UNIVERSE_SIM.js";
 
 export function startOrbitGame(config) {
 
@@ -6184,6 +6198,75 @@ if (portalCardEl) {
 const bullets = [];
 const enemyBullets = [];
 const enemies = [];
+
+// ============================================================
+// Univers persistant (SIM pure, serveur-ready) : horloge qui ne
+// s'arrete jamais + slots stables par camp. Le client ne decide
+// plus de regen : il lit l'univers et marque mort/vivant.
+// ============================================================
+function createBrowserStorage() {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    return {
+      getItem: (k) => localStorage.getItem(k),
+      setItem: (k, v) => localStorage.setItem(k, v),
+    };
+  } catch {
+    return null;
+  }
+}
+const universeStorage = createBrowserStorage();
+const worldClock = createWorldClock({ storage: universeStorage });
+let universe = createUniverse();
+try {
+  universe = deserializeUniverse(universeStorage?.getItem?.(UNIVERSE_KEY));
+} catch {
+  universe = createUniverse();
+}
+// Rattrapage au boot : un refresh de 30s fait avancer le monde de 30s
+// (respawns dus pendant l'absence), jamais de re-roll.
+// Seules les maps zone vivent en fond : les instances GG (alpha/beta/gamma,
+// mode "gate") ne sont pas stockees dans l'univers. La map active est
+// ignoree : c'est sa vraie IA qui tourne.
+try {
+  tickBackground(universe, worldClock.now(), { skipMapId: String(window.__CURRENT_MAP_ID__ || "") });
+} catch {}
+// Tick de fond continu : toutes les 5s les maps sans joueur avancent
+// (respawns dus + derive bornee). Throttle dans persistUniverse.
+try {
+  if (typeof window !== "undefined" && !window.__UNIVERSE_BG_TICK__) {
+    window.__UNIVERSE_BG_TICK__ = true;
+    setInterval(() => {
+      try {
+        tickBackground(universe, worldClock.now(), { skipMapId: String(window.__CURRENT_MAP_ID__ || "") });
+        persistUniverse();
+      } catch {}
+    }, 5000);
+  }
+} catch {}
+let universeSaveT = 0;
+function persistUniverse({ force = false } = {}) {
+  worldClock.markTick({ force });
+  if (!universeStorage?.setItem && !force) return;
+  const nowMs = worldClock.now();
+  if (!force && nowMs - universeSaveT < 5000) return;
+  universeSaveT = nowMs;
+  try {
+    universeStorage?.setItem?.(UNIVERSE_KEY, serializeUniverse(universe));
+  } catch {}
+}
+function snapshotActiveEnemiesToUniverse(mapId) {
+  if (!isZoneMap) return;
+  const nowMs = worldClock.now();
+  for (const e of enemies) {
+    if (!e || e.hp <= 0 || !e.universeUid) continue;
+    const hpPct = e.hpMax > 0 ? e.hp / e.hpMax : 1;
+    const shPct = e.shMax > 0 ? e.sh / e.shMax : (e.sh > 0 ? 1 : 0);
+    try {
+      snapshotUniverseEnemy(universe, mapId, e.universeUid, { x: e.x, y: e.y, hpPct, shPct }, nowMs);
+    } catch {}
+  }
+}
 const escortShips = [];
 const pickups = [];
 const collectables = [];
@@ -8820,6 +8903,16 @@ if (e.type === "npc_Cubikon") {
       }
     }
 
+    // Univers persistant : la mort arme un timer mural (instant sauf Cubikon 60s).
+    // Changer de map ou refresh ne ressuscite plus en avance, l'horloge decide.
+    try {
+      const deadUid = e.universeUid || (e.homeCampId != null ? slotUid(currentMapId(), e.homeCampId) : null);
+      if (deadUid && isZoneMap) {
+        markDead(universe, currentMapId(), deadUid, worldClock.now());
+        persistUniverse();
+      }
+    } catch {}
+
     enemies.splice(i, 1);
   }
 }
@@ -10440,11 +10533,30 @@ for (let i = collectables.length - 1; i >= 0; i--) {
     }
 
     if (alive < (camp.maxAlive || 0)) {
+      // Univers persistant : un slot mort avant son respawnAt ne respawn pas,
+      // meme si le joueur change de map / refresh / meurt. L'horloge decide.
+      const uid = slotUid(curMap, camp.id);
+      let slot = null;
+      try {
+        slot = getSlot(universe, curMap, uid);
+      } catch { slot = null; }
+      if (slot && slot.alive === false) {
+        if (!worldClock.isDue(slot.respawnAtMs)) {
+          camp.t = 1;
+          continue;
+        }
+        try { markAlive(universe, curMap, uid, worldClock.now()); } catch {}
+      }
       let x = 0, y = 0;
 
       if (camp.type === "npc_Cubikon") {
   x = camp.x;
   y = camp.y;
+} else if (slot && slot.alive !== false && slot.updatedAtMs > 0 && Number.isFinite(Number(slot.x))) {
+  // NPC connu blesse/deplace : on le retrouve la ou on l'a laisse,
+  // pas a l'autre bout de la carte (derive de fond bornee entre-temps).
+  x = clamp(Number(slot.x), 80, WORLD.w - 80);
+  y = clamp(Number(slot.y), 80, WORLD.h - 80);
 } else {
   const pos = spawnRandomOnMap();
   x = pos.x;
@@ -10458,10 +10570,21 @@ for (let i = collectables.length - 1; i >= 0; i--) {
         e.homeX = null;
         e.homeY = null;
         e.homeCampId = camp.id;
+        e.universeUid = uid;
 
         e.wanderMode = true;
         e.aggroRange = camp.aggroRange ?? 700;
         e.aggroHold = camp.aggroHold ?? 3.5;
+
+        // Restaure le NPC blesse : meme HP que quand on l'a quitte.
+        if (slot && slot.alive !== false && slot.updatedAtMs > 0) {
+          if (Number.isFinite(Number(slot.hpPct)) && e.hpMax > 0) {
+            e.hp = Math.max(1, Math.floor(e.hpMax * Math.max(0, Math.min(1, Number(slot.hpPct)))));
+          }
+          if (Number.isFinite(Number(slot.shPct)) && e.shMax > 0) {
+            e.sh = Math.max(0, Math.floor(e.shMax * Math.max(0, Math.min(1, Number(slot.shPct)))));
+          }
+        }
 
         enemies.push(e);
       }
@@ -10567,11 +10690,54 @@ launcherPhaseT = 0;
   Target.clear();
 
   if (isZoneMap && typeof rules.getZoneSpawns === "function") {
-    zoneCamps = (preparedZoneCamps || rules.getZoneSpawns(WORLD)).map((c, idx) => ({
+    const freshCamps = (preparedZoneCamps || rules.getZoneSpawns(WORLD)).map((c, idx) => ({
       id: idx + 1,
       ...c,
       t: 0,
     }));
+    // Univers persistant : apres la premiere generation, l'univers est
+    // l'autorite (identite stable). Les defs fraiches (ordre random) ne
+    // servent qu'au reglage (aggro, radius...) et aux nouveaux slots.
+    // Sans ca, un Kristallon tape changeait de slot a chaque saut.
+    try {
+      const mapId = String(window.__CURRENT_MAP_ID__ || "1-1");
+      const stored = universe?.maps?.[mapId];
+      if (Array.isArray(stored) && stored.length > 0) {
+        const tuningByType = new Map();
+        for (const c of freshCamps) {
+          if (!tuningByType.has(String(c.type))) tuningByType.set(String(c.type), c);
+        }
+        zoneCamps = stored.slice(0, 220).map((s, idx) => {
+          const tuning = tuningByType.get(String(s.type)) || freshCamps[idx] || freshCamps[0] || {};
+          return {
+            id: idx + 1,
+            type: String(s.type),
+            x: Number(s.homeX),
+            y: Number(s.homeY),
+            radius: tuning.radius ?? 350,
+            respawn: tuning.respawn ?? 1.5,
+            maxAlive: tuning.maxAlive ?? 1,
+            aggroRange: tuning.aggroRange ?? 700,
+            leashRange: tuning.leashRange ?? 1700,
+            aggroHold: tuning.aggroHold ?? 4,
+            t: 0,
+          };
+        });
+        // La def a grandi (nouveau quota) : ajoute les slots manquants.
+        if (freshCamps.length > zoneCamps.length) {
+          for (let k = zoneCamps.length; k < freshCamps.length; k++) {
+            zoneCamps.push({ ...freshCamps[k], id: k + 1, t: 0 });
+          }
+        }
+      } else {
+        zoneCamps = freshCamps;
+      }
+      ensureMapSlots(universe, mapId, zoneCamps, worldClock.now());
+      tickBackground(universe, worldClock.now(), { skipMapId: mapId });
+      persistUniverse({ force: false });
+    } catch {
+      zoneCamps = freshCamps;
+    }
   } else {
     zoneCamps = [];
   }
@@ -14168,6 +14334,13 @@ function saveStateImmediate() {
   if (player.dead) return;
 
   const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
+  // Univers persistant : fige les NPC blesses/deplaces avant de quitter,
+  // puis fait avancer les autres maps (sauf l'active) + persiste.
+  try {
+    snapshotActiveEnemiesToUniverse(String(currentMap));
+    tickBackground(universe, worldClock.now(), { skipMapId: String(currentMap) });
+    persistUniverse();
+  } catch {}
   if (SESSION_HANGAR_ID) {
     saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
   } else {
@@ -14376,12 +14549,14 @@ window.__SAVE_BEFORE_LEAVE__ = () => {
 
 addEventListener("beforeunload", () => {
   try { saveStateImmediate(); } catch {}
+  try { persistUniverse({ force: true }); } catch {}
   try { localStorage.removeItem("orbit_game_open"); } catch {}
 });
 
 addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     try { saveStateImmediate(); } catch {}
+    try { persistUniverse({ force: true }); } catch {}
     try { localStorage.setItem("orbit_game_open", String(Date.now())); } catch {}
   }
   restartFrameScheduler();
