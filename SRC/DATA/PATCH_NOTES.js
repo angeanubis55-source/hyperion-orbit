@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.143",
+    "date": "2026-09-11T10:20:47+02:00",
+    "message": "Lasers: bonus xN vaisseau+drones, prix rebalancés + LF-5, fix sauts portails"
+  },
+  {
     "version": "0.142",
     "date": "2026-09-10T22:16:31+02:00",
     "message": "Pre-push roquettes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.84",
     "date": "2026-09-03T11:32:00+02:00",
     "message": "Test du mécanisme de synchronisation automatique de la version avant un push."
-  },
-  {
-    "version": "0.83",
-    "date": "2026-09-03T11:30:53+02:00",
-    "message": "Le numéro de version passe en format alphanumérique pour un suivi plus clair."
   }
 ];

@@ -894,9 +894,22 @@ function initializeCustomActionBar() {
     });
     else actions.filter(button => category === "ammo" ? !!button.dataset.ammo : !!button.dataset.skill).forEach(button => {
       const clone = button.cloneNode(true); clone.removeAttribute("id"); clone.draggable = true; clone.dataset.actionId = button.dataset.actionId;
+      // État actif explicite : cloneNode copiait l'état au moment du rendu, sans
+      // resync ensuite (le cache du dock peut encore pointer les clones détachés
+      // de la catégorie précédente quand on change vite de catégorie).
+      // À l'init player n'existe pas encore (TDZ) : on garde juste le clonage.
+      if (button.dataset.ammo) {
+        try {
+          clone.classList.toggle("active", String(button.dataset.ammo).toLowerCase() === String(player.ammo.active || "x1").toLowerCase());
+        } catch {}
+      }
       clone.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", clone.dataset.actionId); });
       clone.onclick = () => button.click(); paletteItems.appendChild(clone);
     });
+    // Le DOM du dock a changé : le cache de sync pointe des nœuds détachés.
+    // Invalidation synchrone (l'observer MutationObserver ne passe qu'après).
+    // À l'init les `let` du cache sont en TDZ : pas grave, cache déjà vide/dirty.
+    try { invalidateActionDockCache(); } catch {}
   }
   palette.querySelectorAll("[data-action-category]").forEach(button => button.onclick = () => renderPalette(button.dataset.actionCategory));
   const flipActionPalette = () => {
@@ -5340,7 +5353,7 @@ function syncActionDockState() {
     // X6/RCB : voile de leur cooldown 5 s. Liseré auto-adaptatif en continu
     // comme roquettes/formations ; flash de fin couleur du contour du slot.
     if (isRsbLike(ammo)) {
-      const cd = ammo === "rcb" ? rcbCooldown : rsbCooldown;
+      const cd = rsbLikeCooldown(ammo);
       const cdMax = ammo === "rcb" ? RCB_COOLDOWN : RSB_COOLDOWN;
       const cooling = cd > 0;
       const progress = cooling ? clamp(cd / cdMax, 0, 1) : 0;
@@ -9627,15 +9640,16 @@ let fireCooldown = 0;
 const RSB_COOLDOWN = 5.0;
 let rsbCooldown = 0;
 
-// ✅ RCB-140 : même comportement que RSB-75 (salve rapide + cooldown 5 s),
-// avec son propre cooldown pour ne pas bloquer le X6 (et inversement).
+// ✅ X6 + RCB-140 : cooldown PARTAGÉ (5 s). Tirer l'un bloque l'autre,
+// voiles et boutons suivent le même compteur des deux côtés.
 const RCB_COOLDOWN = 5.0;
 let rcbCooldown = 0;
 
 // Munitions à salve rapide (tir RSB) : X6 + RCB.
 const isRsbLike = (key) => key === "x6" || key === "rcb";
 function rsbLikeCooldown(key) {
-  return key === "rcb" ? rcbCooldown : rsbCooldown;
+  void key;
+  return Math.max(rsbCooldown, rcbCooldown);
 }
 
 // Roquettes R-310 : tir manuel à tête chercheuse, stock consommable.
@@ -10157,8 +10171,7 @@ addCappedProjectile(bullets, {
 }, ENTITY_LIMITS.playerBullets);
   }
 
-  if (ammoKey === "x6") rsbCooldown = RSB_COOLDOWN;
-  if (ammoKey === "rcb") rcbCooldown = RCB_COOLDOWN;
+  if (ammoKey === "x6" || ammoKey === "rcb") { rsbCooldown = RSB_COOLDOWN; rcbCooldown = RCB_COOLDOWN; }
 
   // ✅ Salve visuelle : seule la première volée (le vrai tir) inflige les dégâts ;
   // les éclairs suivants sont des doublons esthétiques (dmg 0) qui convergent sur la cible.
@@ -11056,8 +11069,37 @@ function drawEnemyBody(e, exactFrame = null) {
   ctx.restore();
 }
 
-function drawRocketDebuffEffect(e) {
-  const slowed = (e.rocketSlowT || 0) > 0;
+// Ubers pirates (5-2) : anneau rouge pulsé tout autour pour les repérer.
+const UBER_PIRATE_GLOW = new Set([
+  "npc_Uber_Interceptor",
+  "npc_Uber_Barracuda",
+  "npc_Uber_Saboteur",
+  "npc_Uber_Annihilator",
+]);
+
+function drawUberPirateGlow(e) {
+  if (!UBER_PIRATE_GLOW.has(String(e?.type || ""))) return;
+  if ((e.hp || 0) <= 0) return;
+  const now = performance.now() * 0.001;
+  const radius = Math.max(24, Number(e.r) || 24);
+  const pulse = 0.65 + Math.sin(now * 4) * 0.2;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.strokeStyle = `rgba(255,45,60,${pulse})`;
+  ctx.lineWidth = 4;
+  ctx.shadowColor = "rgba(255,30,45,1)";
+  ctx.shadowBlur = 18;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius + 10, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius + 18, -now * 1.2, -now * 1.2 + Math.PI * 1.5);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRocketDebuffEffect(e) {  const slowed = (e.rocketSlowT || 0) > 0;
   const disrupted = (e.rocketAccuracyT || 0) > 0;
   const frozen = (e.freezeT || 0) > 0;
   if (!slowed && !disrupted && !frozen) return;
@@ -11851,7 +11893,7 @@ function drawPlayerBars(px, py) {
 
 function getRsbPercent() {
   if (RSB_COOLDOWN <= 0) return 100;
-  return Math.round(clamp(1 - rsbCooldown / RSB_COOLDOWN, 0, 1) * 100);
+  return Math.round(clamp(1 - rsbLikeCooldown("x6") / RSB_COOLDOWN, 0, 1) * 100);
 }
 
 function getPulsePercent() {
@@ -13299,6 +13341,7 @@ if (GAME_SETTINGS.textures) {
     const enemySpriteFrame = enemyConfig?.sprite ? getEnemySpriteFrame(e, enemyConfig, enemyConfig.sprite) : 0;
     drawEnemyBody(e, enemySpriteFrame);
     if (GAME_SETTINGS.shipSmoke) npcEngine.draw(ctx, e, enemyConfig, isImgReady, enemySpriteFrame);
+    drawUberPirateGlow(e);
     drawRocketDebuffEffect(e);
 
     drawNpcStatus(
@@ -13628,7 +13671,7 @@ updateConfigButtons();
   const rsbPct = getRsbPercent();
   setHudText(ui.cntX6, `${formatInteger(player.ammo.x6)} • ${rsbPct}%`);
   setHudClass(ui.btnX6, "ready",
-    started && !player.dead && ammoCount("x6") > 0 && rsbCooldown <= 0
+    started && !player.dead && ammoCount("x6") > 0 && rsbLikeCooldown("x6") <= 0
   );
 
   setHudText(ui.miniMapName, `Map : ${rules?.mapLabel || "—"}`);

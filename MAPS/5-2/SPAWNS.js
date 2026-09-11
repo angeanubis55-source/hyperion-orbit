@@ -3,7 +3,7 @@ const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
 
 export function getZoneSpawns(WORLD) {
   const pad = 300;
-  const N = 236;
+  const N = 124;
 
   const minDist = 0;
   const minDist2 = minDist * minDist;
@@ -12,20 +12,17 @@ export function getZoneSpawns(WORLD) {
   let tries = 0;
   const maxTries = 6000;
 
-  // Flotte pirate complète : chaque cible des contrats 5-2 est jouable.
+  // Patrouilles pirates : Interceptor / Barracuda / Saboteur / Annihilator
+  // + 1 uber de chaque (anneau rouge en jeu).
   const quota = [
-    { type: "npc_Marauder", left: 20 },
-    { type: "npc_Vagrant", left: 20 },
-    { type: "npc_Outcast", left: 15 },
-    { type: "npc_Convict", left: 15 },
-    { type: "npc_Hooligan", left: 15 },
-    { type: "npc_Ravager", left: 10 },
-    { type: "npc_Corsair", left: 10 },
     { type: "npc_Interceptor", left: 60 },
-    { type: "npc_Barracuda", left: 20 },
-    { type: "npc_Saboteur", left: 30 },
-    { type: "npc_Annihilator", left: 20 },
-    { type: "npc_Battleray", left: 1 },
+    { type: "npc_Barracuda", left: 30 },
+    { type: "npc_Saboteur", left: 20 },
+    { type: "npc_Annihilator", left: 10 },
+    { type: "npc_Uber_Interceptor", left: 1 },
+    { type: "npc_Uber_Barracuda", left: 1 },
+    { type: "npc_Uber_Saboteur", left: 1 },
+    { type: "npc_Uber_Annihilator", left: 1 },
   ];
 
   function pickQuotaType() {

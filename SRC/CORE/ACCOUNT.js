@@ -1677,8 +1677,12 @@ export function saveHangarFit(hangarId, fitDraft, configNo = null) {
   h.fits ??= {};
   h.fits[cfg] = normalizeFitForShip(shipId, fitDraft);
 
-  h.activeConfig = Number(cfg);
-  h.fit = h.fits[cfg];
+  // Le hangar ne pilote jamais la config en jeu : on ne touche à activeConfig
+  // que si on sauvegarde la config déjà active (miroir h.fit à jour).
+  // Changer 1/2 dans le hangar reste local au hangar (voir PROFILE setFitModalConfig).
+  if (String(h.activeConfig ?? "1") === cfg) {
+    h.fit = h.fits[cfg];
+  }
 
   ensureUserShape(u);
   saveUser(u);

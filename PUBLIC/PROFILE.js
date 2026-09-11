@@ -4538,12 +4538,8 @@ function setFitModalConfig(configNo) {
     }
   }
 
-  const activated = setActiveHangarConfig(fitState.hangarId, nextConfig);
-  if (!activated?.ok) {
-    showFitError(activated?.error || "Impossible d'activer cette configuration");
-    return;
-  }
-
+  // Le hangar ne change jamais la config en jeu : on bascule juste le draft local.
+  // Seuls les boutons 1/2 en jeu (fenêtre vie/bouclier, touche C) appellent setActiveHangarConfig.
   user = getCurrentUserFull();
 
   const h = (user?.hangars || []).find((x) => x?.id === fitState.hangarId);

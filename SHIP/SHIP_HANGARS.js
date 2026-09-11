@@ -1,7 +1,6 @@
 "use strict";
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { getActiveDroneFormation } from "../DRONE/DRONE_TYPES.js";
-import { getPetDamageBonus, getPetLevel, getPetShieldBonus } from "../PET/PET_TYPES.js";
 
 /**
  * calcule les bonus à partir d'un hangar + user.inventory.shipModules
@@ -114,41 +113,10 @@ const fit =
     }
   }
 
-  // P.E.T : lasers + générateurs (boucliers) + protocoles, exclusif à CE hangar + CETTE config.
-  // Bonus de niveau officiels : dégâts +2 % / 2 niveaux, bouclier +2 % / 2 niveaux.
-  // Les gears sont utilitaires (pas de stats de combat).
-  let bonusPetDamagePct = 0;
-  let bonusPetShieldPct = 0;
-  let bonusPetHPPct = 0;
-  if (user?.pet?.owned === true) {
-    const petLevel = getPetLevel(user.pet.exp);
-    const petFitForHangar = (() => {
-      if (hangarId && user.pet?.fitsByHangar?.[hangarId]?.[activeConfig]) return user.pet.fitsByHangar[hangarId][activeConfig];
-      const hasPerHangar = user.pet?.fitsByHangar && typeof user.pet.fitsByHangar === "object" && Object.keys(user.pet.fitsByHangar).length > 0;
-      if (!hasPerHangar && user.pet?.fits?.[activeConfig]) return user.pet.fits[activeConfig];
-      if (hangarId && hasPerHangar) return { lasers: [], generators: [], gears: [], protocols: [] };
-      return user.pet?.fit || { lasers: [], generators: [], gears: [], protocols: [] };
-    })();
-    const petDamageMult = 1 + getPetDamageBonus(petLevel) / 100;
-    const petShieldMult = 1 + getPetShieldBonus(petLevel) / 100;
-    for (const itemId of petFitForHangar?.lasers || []) {
-      const item = itemId ? findCatalogItem(itemId) : null;
-      if (item?.module?.type === "laser") baseDamage += Number(item.module.damage || 0) * petDamageMult;
-    }
-    for (const itemId of petFitForHangar?.generators || []) {
-      const item = itemId ? findCatalogItem(itemId) : null;
-      if (item?.module?.type === "shield") baseShield += Number(item.module.bonusShield || 0) * petShieldMult;
-    }
-    for (const itemId of petFitForHangar?.protocols || []) {
-      const item = itemId ? findCatalogItem(itemId) : null;
-      const pct = Number(item?.petProtocol?.pct || 0);
-      if (!item?.petProtocol || !pct) continue;
-      const key = item.petProtocol.key;
-      if (key === "damage" || key === "alien") bonusPetDamagePct += pct;
-      if (key === "shield") bonusPetShieldPct += pct;
-      if (key === "hp") bonusPetHPPct += pct;
-    }
-  }
+  // REX (P.E.T) : AUCUNE stat ne remonte au vaisseau.
+  // Tout ce qui est équipé sur le REX (lasers, générateurs, protocoles, gears)
+  // reste sur le REX pour ses propres stats (voir petVolleyDamage côté moteur).
+  // Vaisseau = canons/générateurs du vaisseau + drones uniquement.
 
   // extras
   const extras = [];
@@ -212,10 +180,6 @@ const fit =
   else if (mfCount >= 5) bonusDamagePct += 28;
   else if (mfCount >= 4) bonusDamagePct += 20;
   else if (mfCount >= 3) bonusDamagePct += 10;
-  // Protocoles P.E.T équipés sur ce hangar / cette config.
-  bonusDamagePct += bonusPetDamagePct;
-  bonusShieldPct += bonusPetShieldPct;
-  bonusHPPct += bonusPetHPPct;
   bonusPenetrationPct += Number(formationEffects.penetrationPct || 0);
   bonusHonorPct += Number(formationEffects.honorPct || 0);
   bonusExpPct += Number(formationEffects.npcXpPct || 0);

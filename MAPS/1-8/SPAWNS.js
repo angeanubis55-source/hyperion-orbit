@@ -89,15 +89,14 @@ export function getZonePortals(WORLD) {
       toMap: "1-7",
       toPortal: "p_17_to_18",
     },
-    // Désactivé : map 1-8.1 inexistante (saut -> fallback 1-1 sinon).
-    // {
-    //   id: "p_18_to_18.1",
-    //   x: 5500,
-    //   y: 6000,
-    //   r: 260,
-    //   toMap: "1-8.1",
-    //   toPortal: "p_18.1_to_18",
-    // },
+    {
+      id: "p_18_to_18.1",
+      x: 5500,
+      y: 6000,
+      r: 260,
+      toMap: "1-8.1",
+      toPortal: "p_18.1_to_18",
+    },
     {
       id: "p_18_to_19",
       x: 1000,
