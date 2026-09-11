@@ -1809,6 +1809,7 @@ function updatePetHud() {
   const xpPct = Math.max(0, Math.min(100, ((exp - prev) / Math.max(1, next - prev)) * 100));
 
   setHudText(ui.petLevelTxt, `Niveau ${level}`);
+  if (has) setHudText(ui.petNameTxt, String(pet.pseudo || "REX"));
   setHudText(ui.petHpTxt, `${formatInteger(hp)} / ${formatInteger(hpMax)}`);
   setHudWidth(ui.petHpBar, `${hpMax > 0 ? (hp / hpMax) * 100 : 0}%`);
   setHudText(ui.petShTxt, `${formatInteger(sh)} / ${formatInteger(shMax)}`);
@@ -6850,6 +6851,11 @@ function drawPet(ox, oy) {
   ctx.translate(x, y);
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
+  // Même balancement qu'à l'arrêt que le vaisseau et les drones (sprite uniquement).
+  const petTt = performance.now() / 1000;
+  const petBobY = Math.sin(petTt * 4.0) * 2 * idleSway;
+  ctx.save();
+  ctx.translate(0, petBobY);
   let sprite = image;
   if (baseImage) {
     // Précomposer les deux couches pour ne jamais afficher l'extension seule.
@@ -6871,6 +6877,36 @@ function drawPet(ox, oy) {
     if (GAME_SETTINGS.shipSmoke) petEngine.draw(ctx, petState, sprite, frame, isImgReady);
   }
   else { ctx.fillStyle = "#79f5ff"; ctx.beginPath(); ctx.arc(0, 0, 20, 0, TAU); ctx.fill(); }
+  ctx.restore();
+  // Étiquette du REX : pseudo + firme à droite, comme le vaisseau — fixe, sans balancement.
+  try {
+    const petPseudo = String(pet?.pseudo || "REX");
+    const petFaction = getFaction(pet?.faction || account.user?.faction);
+    let petFactionImage = getCachedImage(petFaction.imagePath);
+    if (!isImgReady(petFactionImage)) {
+      loadImage(petFaction.imagePath, { priority: true });
+      petFactionImage = null;
+    }
+    ctx.font = "900 13px ui-sans-serif, system-ui";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(5,8,20,0.90)";
+    const petNameY = PET_DRAW_H / 2 + 10;
+    ctx.strokeText(petPseudo, 0, petNameY);
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.fillText(petPseudo, 0, petNameY);
+    if (petFactionImage?.complete && petFactionImage.naturalWidth > 0) {
+      const petTextWidth = ctx.measureText(petPseudo).width;
+      ctx.drawImage(
+        petFactionImage,
+        petTextWidth / 2 + 5,
+        petNameY,
+        petFactionImage.naturalWidth,
+        petFactionImage.naturalHeight,
+      );
+    }
+  } catch {}
   ctx.restore();
 }
 

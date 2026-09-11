@@ -16,6 +16,7 @@ import {
   replaceShipModule,
   updateCurrentUserEmail,
   updateCurrentUserPseudo,
+  updateCurrentUserPetPseudo,
   changeCurrentUserPassword,
   changeCurrentUserFaction,
   buyCurrentUserDrone,
@@ -90,6 +91,9 @@ const accountPseudo = $("accountPseudo");
 const accountPseudoStatus = $("accountPseudoStatus");
 const pseudoCurrentPassword = $("pseudoCurrentPassword");
 const btnSavePseudo = $("btnSavePseudo");
+const accountPetPseudo = $("accountPetPseudo");
+const accountPetPseudoStatus = $("accountPetPseudoStatus");
+const btnSavePetPseudo = $("btnSavePetPseudo");
 const accountEmail = $("accountEmail");
 const accountEmailStatus = $("accountEmailStatus");
 const emailCurrentPassword = $("emailCurrentPassword");
@@ -218,6 +222,44 @@ function showConfirm(title, message, onConfirm) {
     cleanup();
     if (onConfirm) onConfirm();
   };
+}
+
+// Fenêtre temporaire à l'achat du REX : choisir son pseudo.
+// (La firme est native : celle du vaisseau, pas besoin de l'afficher.)
+// Fenêtre construite en JS (Espace pilote + boutique partagent ce fichier).
+function showPetNamingModal({ itemName, totalPrice, onConfirm }) {
+  document.getElementById("petNamingOverlay")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "petNamingOverlay";
+  overlay.style.cssText = "position:fixed;inset:0;z-index:2000000;display:grid;place-items:center;background:rgba(3,8,18,.72);backdrop-filter:blur(3px);";
+  overlay.innerHTML = `
+    <div style="width:min(420px,92vw);background:#081826;border:1px solid rgba(0,217,255,.35);border-radius:12px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.6);color:#e8f4ff;font-family:inherit;">
+      <h3 style="margin:0 0 4px;font-size:17px;">Nommer ton REX</h3>
+      <p style="margin:0 0 14px;font-size:12px;opacity:.7;">Achat "${escapeHtml(itemName)}" pour ${formatNumber(totalPrice)} crédits — choisis le pseudo de ton P.E.T.</p>
+      <label style="display:block;font-size:11px;font-weight:800;letter-spacing:1px;opacity:.7;margin-bottom:6px;">PSEUDO DU REX</label>
+      <input id="petNamingInput" maxlength="32" value="REX" style="width:100%;box-sizing:border-box;background:#04121f;border:1px solid rgba(0,217,255,.35);border-radius:8px;color:#e8f4ff;padding:10px 12px;font-size:15px;font-weight:800;" />
+      <p id="petNamingError" style="display:none;margin:8px 0 0;font-size:12px;color:#ff7b8a;"></p>
+      <div style="display:flex;gap:10px;margin-top:16px;">
+        <button id="petNamingCancel" type="button" style="flex:1;background:transparent;border:1px solid rgba(255,255,255,.25);border-radius:8px;color:#e8f4ff;padding:10px;cursor:pointer;">Annuler</button>
+        <button id="petNamingOk" type="button" style="flex:1;background:#00d9ff;border:none;border-radius:8px;color:#04222e;padding:10px;font-weight:900;cursor:pointer;">Acheter</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const input = overlay.querySelector("#petNamingInput");
+  const err = overlay.querySelector("#petNamingError");
+  const cleanup = () => overlay.remove();
+  const fail = (text) => { if (err) { err.style.display = "block"; err.textContent = text; } };
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) cleanup(); });
+  overlay.querySelector("#petNamingCancel")?.addEventListener("click", cleanup);
+  overlay.querySelector("#petNamingOk")?.addEventListener("click", () => {
+    const pseudo = String(input?.value || "").trim();
+    if (pseudo.length < 3 || pseudo.length > 32) return fail("Le pseudo du REX doit contenir entre 3 et 32 caractères.");
+    if (!/^[\p{L}\p{N}_ -]+$/u.test(pseudo)) return fail("Le pseudo du REX contient des caractères non autorisés.");
+    cleanup();
+    if (onConfirm) onConfirm(pseudo);
+  });
+  input?.focus();
+  input?.select();
 }
 
 function ownedCount(u, itemId) {
@@ -1201,6 +1243,12 @@ function renderAccount(u) {
   if (accountPseudoStatus) accountPseudoStatus.textContent = `Pseudo actuel : ${u.pseudo}`;
   if (accountPseudo && document.activeElement !== accountPseudo) accountPseudo.value = String(u.pseudo || "");
 
+  const petPseudo = String(u?.pet?.pseudo || "REX");
+  const petOwnedForAccount = u?.pet?.owned === true;
+  if (accountPetPseudoStatus) accountPetPseudoStatus.textContent = petOwnedForAccount ? `Pseudo actuel : ${petPseudo}` : "P.E.T non possédé";
+  if (accountPetPseudo && document.activeElement !== accountPetPseudo) accountPetPseudo.value = petOwnedForAccount ? petPseudo : "";
+  if (btnSavePetPseudo) btnSavePetPseudo.disabled = !petOwnedForAccount;
+
   const linkedEmail = String(u.email || "").endsWith("@local") ? "" : String(u.email || "");
   if (accountEmailStatus) {
     accountEmailStatus.textContent = linkedEmail ? `Adresse liée : ${linkedEmail}` : "Aucune adresse email liée";
@@ -1229,6 +1277,25 @@ function wireAccountSettingsOnce() {
     renderHeader(user);
     renderStats(user);
     setMsg("Pseudo modifié avec succès.", true);
+  });
+
+  btnSavePetPseudo?.addEventListener("click", () => {
+    const pseudo = accountPetPseudo?.value.trim() || "";
+    if (!user?.pet || user.pet.owned !== true) return setMsg("P.E.T non possédé.", false);
+    showConfirm(
+      "Renommer le REX",
+      `Renommer ton REX en "${pseudo}" coûtera 1 000 000 crédits. Cette opération est immédiate.`,
+      () => {
+        const out = updateCurrentUserPetPseudo(pseudo);
+        if (!out?.ok) return setMsg(out?.error || "Impossible de renommer le REX.", false);
+        user = getCurrentUserFull();
+        renderHeader(user);
+        renderStats(user);
+        renderAccount(user);
+        syncGameCredits();
+        setMsg(`REX renommé en "${user?.pet?.pseudo}". Coût : 1 000 000 crédits.`, true);
+      },
+    );
   });
 
   btnSaveEmail?.addEventListener("click", () => {
@@ -2443,6 +2510,30 @@ if (isDrone) {
     if (petGateUnmetNow()) return showToast(petGateLabel(), "error");
 
     const itemName = it?.name || it?.id;
+
+    // REX : fenêtre temporaire pour choisir son pseudo (la firme est native : celle du vaisseau).
+    if (isPet && !petOwned) {
+      showPetNamingModal({
+        itemName,
+        totalPrice,
+        onConfirm: (petPseudo) => {
+          const out = buyItem(it.id, quantity, { petPseudo, petFaction: user?.faction });
+          if (!out?.ok) {
+            showToast(out?.error || "Achat impossible", 'error');
+            return;
+          }
+          showToast(`REX "${petPseudo}" acheté avec succès !`, 'success');
+          user = getCurrentUserFull();
+          renderHeader(user);
+          renderStats(user);
+          renderHangars(user);
+          renderShop(user);
+          setTab("shop");
+          syncGameCredits();
+        },
+      });
+      return;
+    }
 
     showConfirm(
       'Confirmer l\'achat',

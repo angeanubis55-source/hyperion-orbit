@@ -194,10 +194,23 @@ export function getPetShopIcon() {
   return PET_SHOP_ICON;
 }
 
-export function createPet(id = "niveau1") {
+export const PET_DEFAULT_PSEUDO = "REX";
+
+export function normalizePetPseudo(value, fallback = PET_DEFAULT_PSEUDO) {
+  const next = String(value ?? "").trim();
+  if (next.length >= 3 && next.length <= 32 && /^[\p{L}\p{N}_ -]+$/u.test(next)) return next;
+  const fb = String(fallback ?? "").trim();
+  if (fb.length >= 3 && fb.length <= 32 && /^[\p{L}\p{N}_ -]+$/u.test(fb)) return fb;
+  return PET_DEFAULT_PSEUDO;
+}
+
+export function createPet(id = "niveau1", options = {}) {
   return {
     id: String(id || "niveau1"),
     owned: true,
+    pseudo: normalizePetPseudo(options?.pseudo, PET_DEFAULT_PSEUDO),
+    // Firme du REX : celle du pilote à l'achat (null = hérite du compte).
+    faction: typeof options?.faction === "string" && options.faction ? String(options.faction) : null,
     level: 0,
     exp: 0,
     active: false,

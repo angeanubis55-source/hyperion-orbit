@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.156",
+    "date": "2026-09-11T17:43:46+02:00",
+    "message": "Hangar PET/drones: compactage haut-gauche comme le vaisseau"
+  },
+  {
     "version": "0.155",
     "date": "2026-09-11T17:36:29+02:00",
     "message": "Hangar minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.97",
     "date": "2026-09-04T22:15:05+02:00",
     "message": "fix: barre d'action respecte la config exacte (plus d'auto-remplissage), formations restaurées au refresh, gains XP/honneur réels affichés avec bonus formation coloré"
-  },
-  {
-    "version": "0.96",
-    "date": "2026-09-04T07:47:04+02:00",
-    "message": "fix: patchnotes affichés dès l'ouverture + libellés lisibles en français pour toutes les versions"
   }
 ];

@@ -12,7 +12,7 @@ import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate
 import { getCraftingRecipe } from "../DATA/CRAFTING.js";
 import { ROCKET_TYPES } from "../../COMBAT/ROCKET_TYPES.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../../DRONE/DRONE_TYPES.js";
-import { createPet, emptyPetFit, getPetLevel, getPetMaxHp, getPetSlots, getPetShieldBonus, normalizePetMode, PET_FUEL_MAX, PET_SLOTS } from "../../PET/PET_TYPES.js";
+import { createPet, emptyPetFit, getPetLevel, getPetMaxHp, getPetSlots, getPetShieldBonus, normalizePetMode, normalizePetPseudo, PET_DEFAULT_PSEUDO, PET_FUEL_MAX, PET_SLOTS } from "../../PET/PET_TYPES.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -596,6 +596,11 @@ function ensureUserShape(u) {
   if (Number(u.inventory?.counts?.["pet_niveau1"] || 0) > 0) u.pet.owned = true;
   if (u.pet.owned === true) {
     if (!u.pet.id) u.pet.id = "niveau1";
+    // Pseudo du REX (défaut "REX", renommable en boutique/compte).
+    u.pet.pseudo = normalizePetPseudo(u.pet.pseudo, PET_DEFAULT_PSEUDO);
+    // Firme du REX : celle du pilote à l'achat, sinon héritage du compte.
+    if (typeof u.pet.faction !== "string" || !u.pet.faction) u.pet.faction = normalizeFactionId(u.faction);
+    else u.pet.faction = normalizeFactionId(u.pet.faction, normalizeFactionId(u.faction));
     const exp = Math.max(0, Number(u.pet.exp) || 0);
     u.pet.exp = exp;
     u.pet.level = getPetLevel(exp);
@@ -986,6 +991,31 @@ export function updateCurrentUserPseudo(pseudo, currentPassword) {
   return { ok: true, user: u };
 }
 
+export const PET_PSEUDO_CHANGE_CREDIT_COST = 1000000;
+
+export function updateCurrentUserPetPseudo(pseudo, { free = false } = {}) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
+  const nextPseudo = String(pseudo || "").trim();
+  if (nextPseudo.length < 3 || nextPseudo.length > 32) {
+    return { ok: false, error: "Le pseudo du REX doit contenir entre 3 et 32 caractères." };
+  }
+  if (!/^[\p{L}\p{N}_ -]+$/u.test(nextPseudo)) {
+    return { ok: false, error: "Le pseudo du REX contient des caractères non autorisés." };
+  }
+  if (!free) {
+    if (Number(u.credits || 0) < PET_PSEUDO_CHANGE_CREDIT_COST) {
+      return { ok: false, error: "Il faut 1 000 000 crédits pour renommer le REX." };
+    }
+    u.credits = Math.max(0, Math.floor(Number(u.credits || 0) - PET_PSEUDO_CHANGE_CREDIT_COST));
+  }
+  u.pet.pseudo = nextPseudo;
+  saveUser(u);
+  localStorage.setItem("orbit_sync", String(Date.now()));
+  return { ok: true, user: u, creditsSpent: free ? 0 : PET_PSEUDO_CHANGE_CREDIT_COST };
+}
+
 export function changeCurrentUserPassword(currentPassword, newPassword) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
@@ -1021,6 +1051,8 @@ export function changeCurrentUserFaction(nextFaction) {
   u.stats.honor = honorBefore - honorLost;
   u.stats.rankPoints = calculateRankPoints(u.stats);
   u.faction = factionId;
+  // Le REX suit la firme du pilote (comme le vaisseau).
+  if (u.pet?.owned === true) u.pet.faction = factionId;
   const destinationFaction = getFaction(factionId);
   const baseSpawn = getFactionBaseSpawn(factionId);
   const activeHangar = getActiveHangar(u);
@@ -1183,7 +1215,7 @@ export function updateCurrentUserProgress(patch = {}) {
  * - Ships / Designs / P.E.T: unique
  * - Tout le reste: achetable plusieurs fois => counts[itemId]++
  */
-export function buyItem(itemId, requestedQuantity = 1) {
+export function buyItem(itemId, requestedQuantity = 1, options = {}) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
 
@@ -1293,10 +1325,13 @@ export function buyItem(itemId, requestedQuantity = 1) {
   // P.E.T purchase => collection unique + flag u.pet (niveau 0, comme l'officiel)
   if (item.pet?.id) {
     incCount(u, item.id, 1);
-    const fresh = createPet(String(item.pet.id));
+    const fresh = createPet(String(item.pet.id), { pseudo: options?.petPseudo, faction: options?.petFaction ?? u.faction });
     u.pet ??= {};
     u.pet.owned = true;
     u.pet.id = fresh.id;
+    // Pseudo choisi à l'achat (fenêtre temporaire), firme du pilote.
+    u.pet.pseudo = normalizePetPseudo(options?.petPseudo ?? fresh.pseudo, PET_DEFAULT_PSEUDO);
+    u.pet.faction = normalizeFactionId(options?.petFaction ?? fresh.faction ?? u.faction, normalizeFactionId(u.faction));
     if (typeof u.pet.exp !== "number") u.pet.exp = 0;
     if (typeof u.pet.level !== "number") u.pet.level = getPetLevel(u.pet.exp);
     if (!u.pet.fits) u.pet.fits = fresh.fits;
