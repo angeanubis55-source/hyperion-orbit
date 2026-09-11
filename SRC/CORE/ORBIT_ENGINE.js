@@ -97,7 +97,7 @@ import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorR
 import { formatInteger } from "./NUMBER_FORMAT.js";
 import { escapeHtml } from "../../UI/UI_DOM.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
-import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
+import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
 import {
   QUEST_DEFINITIONS,
   acceptQuest,
@@ -328,8 +328,28 @@ function tryReplayPendingDeath() {
   }
 }
 
-function showRespawnOverlay(show) {
+function showRespawnOverlay(show, { gateOnly = null } = {}) {
   if (!ui.respawnOverlay) return;
+  // ✅ en Galaxy Gate, seule la réparation à la base est proposée :
+  // auto-détecté via le mode de la map, surchargeable explicitement.
+  const gateMode = gateOnly ?? rules?.mode === "gate";
+  if (show && gateMode) {
+    if (ui.respawnPortalBtn) ui.respawnPortalBtn.style.display = "none";
+    if (ui.respawnHereBtn) ui.respawnHereBtn.style.display = "none";
+    if (ui.respawnBaseBtn) ui.respawnBaseBtn.style.display = "";
+    const grid = ui.respawnOverlay.querySelector(".grid");
+    if (grid) grid.style.gridTemplateColumns = "1fr";
+    const hint = ui.respawnOverlay.querySelector(".modal > div:last-child");
+    if (hint) hint.innerHTML = "En Galaxy Gate, seule la <b>réparation à la base</b> est possible (touche <b>R</b>).";
+  } else if (show) {
+    if (ui.respawnPortalBtn) ui.respawnPortalBtn.style.display = "";
+    if (ui.respawnHereBtn) ui.respawnHereBtn.style.display = "";
+    if (ui.respawnBaseBtn) ui.respawnBaseBtn.style.display = "";
+    const grid = ui.respawnOverlay.querySelector(".grid");
+    if (grid) grid.style.gridTemplateColumns = "repeat(3, 1fr)";
+    const hint = ui.respawnOverlay.querySelector(".modal > div:last-child");
+    if (hint) hint.innerHTML = "Astuce : touche <b>R</b> = Réparée à la base (en zone)";
+  }
   ui.respawnOverlay.style.display = show ? "grid" : "none";
   if (!show) {
     const veil = document.getElementById("deathVeil");
@@ -354,7 +374,12 @@ function updateShipMoveSound() {
   }
 }
 
+// ✅ verrou anti double réapparition (double touche R, R + clic) :
+// armé dans startRespawn, lu dans startDeathSequence et respawn().
+let respawnRunning = false;
+
 function startDeathSequence() {
+  // ✅ (voir verrou ci-dessus : ne pas réafficher la fenêtre par-dessus un switch)
   setCenterMsg(false);
   const veil = document.getElementById("deathVeil");
   if (veil) {
@@ -362,6 +387,9 @@ function startDeathSequence() {
     veil.classList.add("active");
   }
   setTimeout(() => {
+    // ✅ si le joueur a déjà lancé sa réapparition (touche R rapide) ou n'est
+    // plus mort, on ne réaffiche pas la fenêtre de réparation par-dessus.
+    if (!player.dead || respawnRunning) return;
     showRespawnOverlay(true);
     const ov = ui.respawnOverlay;
     if (ov) {
@@ -1986,7 +2014,9 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggBuilt.textContent = `${formatInteger(state.built[gate.id])} / ${GALAXY_GATE_BUILD_LIMIT}`;
   ui.ggCompleted.textContent = formatInteger(state.completed[gate.id]);
   if (ui.ggLives) ui.ggLives.textContent = `${formatInteger(state.lives?.[gate.id] ?? gate.maxLives)} / ${formatInteger(gate.maxLives)}`;
-  const activeWave = state.active === gate.id ? Math.min(gate.maxWaves, Math.max(1, Number(state.activeWave) || 1)) : 0;
+  const activeWave = state.active === gate.id
+    ? Math.min(gate.maxWaves, Math.max(1, Number(state.activeWave) || 1))
+    : Math.min(gate.maxWaves, Math.max(0, Number(state.waves?.[gate.id]) || 0));
   ui.ggWave.textContent = `${activeWave} / ${gate.maxWaves}`;
   const selectedSpinCount = Math.max(1, Number(ui.ggSpinCount?.value || 1));
   ui.ggCreditCost.textContent = formatInteger(GALAXY_SPIN_CREDIT_COST * selectedSpinCount);
@@ -1996,7 +2026,7 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggSpinBtn.hidden = false;
   ui.ggSpinBtn.disabled = false;
   ui.ggDeployBtn.hidden = !isFull;
-  ui.ggDeployBtn.disabled = !isFull || isDeployed || Boolean(state.active);
+  ui.ggDeployBtn.disabled = !isFull || isDeployed || state.active === gate.id;
   ui.ggDeployBtn.textContent = isActive ? "Gate en cours" : isDeployed ? "Portail préparé" : "Préparer le portail";
   ui.ggTabs.innerHTML = Object.values(GALAXY_GATE_DEFINITIONS).map(item => {
     const parts = state.built[item.id] >= GALAXY_GATE_BUILD_LIMIT ? item.requiredParts : state.parts[item.id];
@@ -2569,6 +2599,8 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
     }
     account.user = access.user;
     renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[gateId].name} activée`);
+    // ✅ arrivée de l'autre côté = son "saut terminée" (comme les portails de zone).
+    try { sessionStorage.setItem("orbit_gate_jump", "1"); } catch {}
   }
 
   if (entryCost > 0) {
@@ -8934,8 +8966,13 @@ function runOnKillAction(action, pos = null) {
     setRespawnOverride({ map: destinationMap, ...destinationPosition });
 
     const cur = window.__CURRENT_MAP_ID__ || "1-1";
-    if (typeof window.__GO_TO_MAP__ === "function" && String(cur) !== String(destinationMap)) {
-      window.__GO_TO_MAP__(destinationMap);
+    if (String(cur) !== String(destinationMap)) {
+      preloadRespawnMap(destinationMap);
+      // ✅ switch interne sans rechargement, fallback reload classique.
+      goToMapFast(destinationMap).catch((error) => {
+        console.warn("Téléportation impossible :", error);
+        window.__GO_TO_MAP__?.(destinationMap);
+      });
       return;
     }
 
@@ -9063,7 +9100,10 @@ ui.btnIsh?.addEventListener("click", () => {
 if (ui.respawnBaseBtn) {
   ui.respawnBaseBtn.addEventListener("click", (e) => {
     e.preventDefault();
-    respawnBase();
+    // ✅ en Galaxy Gate, le bouton « base » renvoie à la base mère (gate),
+    // sinon respawn de zone classique.
+    if (rules?.mode === "gate") respawnBaseGate();
+    else respawnBase();
   });
 }
 
@@ -10333,6 +10373,9 @@ function onWaveCleared() {
   resetGatePortalState(gateReturnPortal, { active: true, switchDuration: portal.switchDur });
   positionGateChoicePortals(WORLD, portal, gateReturnPortal, 840);
   portal.startAfterSwitch = false;
+  // ✅ précharge la base mère dès la fin de vague : le portail « retour »
+  // bascule en interne sans écran de chargement.
+  try { preloadRespawnMap(getGateReturnMap()); } catch {}
 
   if (ui.portalOverlay) ui.portalOverlay.style.display = "none";
 }
@@ -10705,6 +10748,20 @@ jumpBaseFade: 1,
         SFX.play("swDone");
       }, 400);
     }
+    // ✅ Arrivée via un saut de Galaxy Gate (entrée comme retour base) :
+    // mêmes sons que les portails de zone.
+    let gateJumpArrived = false;
+    try {
+      gateJumpArrived = sessionStorage.getItem("orbit_gate_jump") === "1";
+      if (gateJumpArrived) sessionStorage.removeItem("orbit_gate_jump");
+    } catch {}
+    if (gateJumpArrived && !spawnedFromPortal) {
+      window.setTimeout(() => {
+        SFX.stop("swJump");
+        SFX.stop("swReady");
+        SFX.play("swDone");
+      }, 400);
+    }
   }
 
   if (!spawnedFromPortal) {
@@ -10811,10 +10868,22 @@ function die() {
   // rejoué si le joueur refresh avant d'avoir choisi un lieu de réapparition.
   markDeathPending();
 
+  // ✅ précharge la map mère dès la mort : quand le joueur clique
+  // « Réparée à la base » dans le menu, le switch interne est déjà prêt
+  // et on évite l'écran de chargement complet du jeu.
+  try {
+    const respawnMap = rules?.mode === "gate"
+      ? getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__, { gate: true })
+      : getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__);
+    if (respawnMap) preloadRespawnMap(respawnMap);
+  } catch {}
+
   if (rules?.mode === "gate") {
+    // ✅ en Galaxy Gate on ne renvoie plus direct à la base mère :
+    // on affiche la fenêtre de réparation (seul choix = base), le joueur
+    // clique (ou touche R) pour valider le retour.
     setCenterMsg(false);
-    showRespawnOverlay(false);
-    respawnBaseGate();
+    startDeathSequence();
     return;
   }
 
@@ -10840,31 +10909,83 @@ function getNearestPortalTo(x, y) {
   return best;
 }
 
+// ✅ Précharge une map mère (ou respawn) sans bloquer : remplit le cache
+// __PRELOAD_MAP__ pour que le switch interne soit instantané.
+function preloadRespawnMap(mapId) {
+  try {
+    const normalized = String(mapId || "").trim();
+    if (!normalized) return;
+    Promise.resolve(window.__PRELOAD_MAP__?.(normalized)).catch((error) => {
+      console.warn("Préchargement de la map de réapparition incomplet :", error);
+    });
+  } catch {}
+}
+
+// ✅ Précharge les maps mères de la firme (base basse + base haute) en tâche
+// de fond : au moment de « Réparée à la base », elles sont déjà en cache.
+function preloadHomeMaps() {
+  try {
+    const faction = (account.user || getCurrentUserFull())?.faction;
+    const maps = new Set([
+      getFactionHomeMap(faction),
+      getFactionUpperBaseMap(faction),
+    ]);
+    for (const mapId of maps) {
+      if (mapId) preloadRespawnMap(mapId);
+    }
+  } catch {}
+}
+
+// ✅ Changement de map sans rechargement de page quand c'est possible :
+// tente le switch interne (__SWITCH_MAP__), sinon retombe sur __GO_TO_MAP__
+// (rechargement complet avec écran de chargement).
+async function goToMapFast(targetMap, spawnId = null) {
+  const cur = window.__CURRENT_MAP_ID__ || "1-1";
+  if (String(cur) === String(targetMap) && !spawnId) return "same";
+  if (typeof window.__SWITCH_MAP__ === "function") {
+    try {
+      await window.__SWITCH_MAP__(targetMap, spawnId);
+      return "switched";
+    } catch (error) {
+      console.warn("Changement interne impossible, rechargement :", error);
+    }
+  }
+  if (typeof window.__GO_TO_MAP__ === "function") {
+    window.__GO_TO_MAP__(targetMap, spawnId);
+    return "reloaded";
+  }
+  return "failed";
+}
+
 function respawnBaseGate() {
-  clearDeathPending();
-  SFX.resume();
   const targetMap = getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__, { gate: true });
   const baseSpawn = getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction);
   setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn, respawn: true });
-  SFX.stop("deathPlayer");
-  SFX.stop("deathPlayer2");
-  SFX.play("respawnPlayer");
-  startRespawnInstaShield();
-  player.portalLockT = Math.max(player.portalLockT || 0, 5);
+  preloadRespawnMap(targetMap);
+  // ✅ passe par startRespawn comme la zone : masque la fenêtre de réparation,
+  // joue le son, puis bascule en interne vers la base mère.
+  startRespawn(async () => {
+    const cur = window.__CURRENT_MAP_ID__ || "1-1";
 
-  const cur = window.__CURRENT_MAP_ID__ || "1-1";
+    if (String(cur) !== String(targetMap)) {
+      // ✅ switch interne sans écran de chargement ; fallback = reload classique.
+      const result = await goToMapFast(targetMap);
+      if (result === "switched" || result === "same") startRespawnInstaShield();
+      return;
+    }
 
-  if (typeof window.__GO_TO_MAP__ === "function" && String(cur) !== targetMap) {
-    window.__GO_TO_MAP__(targetMap);
-    return;
-  }
-
-  resetRun({ randomSpawn: false });
+    resetRun({ randomSpawn: false });
+  });
 }
 
 // À la réapparition choisie, le menu et le voile noir disparaissent instantanément,
 // le son de réapparition joue, puis le respawn s'enchaîne directement.
 function startRespawn(action) {
+  // ✅ ignore les déclenchements multiples (double-clic, R + clic, R répété
+  // pendant le switch) : sinon sons en double et deux changements de map
+  // concurrents qui se marchent dessus.
+  if (respawnRunning) return;
+  respawnRunning = true;
   clearDeathPending();
   SFX.resume();
   SFX.stop("deathPlayer");
@@ -10873,7 +10994,19 @@ function startRespawn(action) {
   if (toast?.fixed && toast.text === "Vous êtes en zone de radiations") toast = null;
   showRespawnOverlay(false);
   setCenterMsg(false);
-  action();
+  try {
+    const result = action();
+    if (result && typeof result.catch === "function") {
+      result
+        .catch((error) => console.warn("Réapparition impossible :", error))
+        .finally(() => { respawnRunning = false; });
+    } else {
+      respawnRunning = false;
+    }
+  } catch (error) {
+    console.warn("Réapparition impossible :", error);
+    respawnRunning = false;
+  }
   startRespawnInstaShield();
   // ✅ le portail reste bloqué 5 s à partir du moment où le vaisseau réapparaît vraiment
   player.portalLockT = Math.max(player.portalLockT || 0, 5);
@@ -10883,10 +11016,15 @@ function respawnBase() {
   const targetMap = getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, lastDeathPos.map || window.__CURRENT_MAP_ID__);
   const baseSpawn = getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction);
   setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn, respawn: true });
-  startRespawn(() => {
+  // ✅ la destination est déjà préchargée (mort + boot) : le switch est immédiat.
+  preloadRespawnMap(targetMap);
+  startRespawn(async () => {
     const cur = window.__CURRENT_MAP_ID__ || "1-1";
-    if (typeof window.__GO_TO_MAP__ === "function" && String(cur) !== targetMap) {
-      window.__GO_TO_MAP__(targetMap);
+    if (String(cur) !== String(targetMap)) {
+      // ✅ plus de rechargement complet du jeu : bascule interne,
+      // avec rechargement classique uniquement en secours.
+      const result = await goToMapFast(targetMap);
+      if (result === "switched" || result === "same") startRespawnInstaShield();
       return;
     }
 
@@ -10895,6 +11033,11 @@ function respawnBase() {
 }
 
 function respawnNearestPortal() {
+  // ✅ en Galaxy Gate, seul le retour base est autorisé.
+  if (rules?.mode === "gate") {
+    respawnBaseGate();
+    return;
+  }
   const curMap = window.__CURRENT_MAP_ID__ || "1-1";
 
   const p = getNearestPortalTo(lastDeathPos.x, lastDeathPos.y);
@@ -10910,6 +11053,11 @@ function respawnNearestPortal() {
 }
 
 function respawnHere() {
+  // ✅ en Galaxy Gate, seul le retour base est autorisé.
+  if (rules?.mode === "gate") {
+    respawnBaseGate();
+    return;
+  }
   const curMap = window.__CURRENT_MAP_ID__ || "1-1";
 
   setRespawnOverride({
@@ -10932,7 +11080,8 @@ function respawn() {
 
   respawnBaseGate();
   setCenterMsg(false);
-  showToast("Nouvelle run — Wave 1", 1.6);
+  // ✅ en gate on retourne à la base mère en gardant la progression (pas une run neuve).
+  showToast("Retour à la base mère", 1.6);
 }
 
 // ============================================================
@@ -11230,6 +11379,12 @@ for (const state of Object.values(QUEST_BUTTON).filter(value => value?.src)) {
 function startGatePortalJump(ptl, action) {
   if (!ptl || ptl.jumping || !isPlayerNearPortal(ptl)) return;
   if (beginGatePortalJump(ptl, action, portal.switchDur)) {
+    // ✅ mêmes sons que les portails de zone : saut possible puis saut en cours.
+    SFX.play("swReady");
+    window.setTimeout(() => {
+      SFX.play("swJump");
+    }, 500);
+    try { sessionStorage.setItem("orbit_gate_jump", "1"); } catch {}
     // Marque le progrès avant le saut : saveStateImmediate() le persistera
     // pendant le préchargement, freeze masqué par l'animation de saut.
     markProgressDirty();
@@ -11358,6 +11513,11 @@ function tickGatePortalJumps(dt) {
         renderGalaxyGateWindow();
       }
     }
+    // ✅ fin du saut vers la vague suivante : mêmes sons qu'une arrivée portail.
+    SFX.stop("swJump");
+    SFX.stop("swReady");
+    SFX.play("swDone");
+    try { sessionStorage.removeItem("orbit_gate_jump"); } catch {}
     beginWave();
   } else {
     const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
@@ -11368,7 +11528,14 @@ function tickGatePortalJumps(dt) {
         renderGalaxyGateWindow();
       }
     }
-    window.__GO_TO_MAP__?.(getGateReturnMap());
+    // ✅ retour base sans rechargement quand c'est possible (même pattern
+    // que les portails de zone / téléportations), fallback = reload classique.
+    const returnMap = getGateReturnMap();
+    try { preloadRespawnMap(returnMap); } catch {}
+    goToMapFast(returnMap).catch((error) => {
+      console.warn("Retour de Galaxy Gate impossible :", error);
+      window.__GO_TO_MAP__?.(returnMap);
+    });
   }
   return true;
 }
@@ -13784,6 +13951,12 @@ async function prepareGameAssets() {
   } finally {
     stopProgress();
   }
+  // ✅ charge aussi les maps mères en fond (sans bloquer le DÉPART) pour
+  // que « Réparée à la base » bascule en interne sans rechargement du jeu.
+  try {
+    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1500));
+    idle(() => preloadHomeMaps());
+  } catch {}
   if (GAME_SETTINGS.autoStart) await startGame();
 }
 
@@ -13848,6 +14021,13 @@ if (ui.startHint) {
   // ✅ si le joueur a refreshé pendant sa mort (lieu de réapparition pas encore
   // choisi), on le garde mort et on rejoue l'animation + le son d'explosion.
   tryReplayPendingDeath();
+
+  // ✅ après le DÉPART, les maps mères sont préchargées en fond pour un
+  // respawn base instantané (switch interne, pas de chargement du jeu).
+  try {
+    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 2000));
+    idle(() => preloadHomeMaps());
+  } catch {}
 
   starting = false;
 }
@@ -14223,10 +14403,18 @@ if (!cur) {
 
 const currentGateMapId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
 if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[currentGateMapId] && cur.galaxyGates?.active !== currentGateMapId) {
-  const homeMap = getFactionHomeMap(cur.faction);
-  showToast("Galaxy Gate non construite", 1.5);
-  window.__GO_TO_MAP__?.(homeMap);
-  return;
+  // ✅ alternance libre : l'accès direct (URL) à une gate déployée ou déjà
+  // commencée bascule dessus au lieu de renvoyer à la base mère.
+  const directAccess = consumeCurrentUserGalaxyGate(currentGateMapId);
+  if (directAccess.ok) {
+    account.user = directAccess.user;
+    renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[currentGateMapId].name} activée`);
+  } else {
+    const homeMap = getFactionHomeMap(cur.faction);
+    showToast("Galaxy Gate non construite", 1.5);
+    window.__GO_TO_MAP__?.(homeMap);
+    return;
+  }
 }
 
 const pack = getShipPackByIdData(cur.ship) || SHIP_PACKS[0];

@@ -22,6 +22,10 @@ export function normalizeGalaxyGateState(raw) {
     multiplierArmed: {},
     active: GALAXY_GATE_DEFINITIONS[String(source.active || "").toLowerCase()] ? String(source.active).toLowerCase() : null,
     activeWave: Math.max(1, Math.floor(Number(source.activeWave) || 1)),
+    // ✅ progression persistée par gate : permet d'alterner librement
+    // entre Alpha / Beta / Gamma sans perdre la vague atteinte.
+    // 0 = jamais commencée, sinon dernière vague sauvegardée.
+    waves: {},
     lastOpenedGate: GALAXY_GATE_DEFINITIONS[String(source.lastOpenedGate || "").toLowerCase()] ? String(source.lastOpenedGate).toLowerCase() : "alpha",
     history: Array.isArray(source.history) ? source.history.slice(-30) : [],
   };
@@ -34,6 +38,12 @@ export function normalizeGalaxyGateState(raw) {
     state.lives[gate.id] = Math.min(gate.maxLives, Math.max(0, Math.floor(Number(source.lives?.[gate.id]) || gate.maxLives)));
     state.multipliers[gate.id] = Math.min(5, Math.max(1, Math.floor(Number(source.multipliers?.[gate.id]) || 1)));
     state.multiplierArmed[gate.id] = source.multiplierArmed?.[gate.id] === true && state.multipliers[gate.id] > 1;
+    state.waves[gate.id] = Math.min(gate.maxWaves, Math.max(0, Math.floor(Number(source.waves?.[gate.id]) || 0)));
+  }
+  // ✅ la vague persistée de la gate active fait foi (vieilles saves sans `waves`).
+  if (state.active && GALAXY_GATE_DEFINITIONS[state.active]) {
+    if (state.waves[state.active] > 0) state.activeWave = Math.min(GALAXY_GATE_DEFINITIONS[state.active].maxWaves, state.waves[state.active]);
+    else state.waves[state.active] = Math.min(GALAXY_GATE_DEFINITIONS[state.active].maxWaves, state.activeWave);
   }
   return state;
 }
@@ -163,7 +173,9 @@ export function setGalaxyGateMultiplierArmed(stateInput, gateId, armed = true) {
 export function deployBuiltGalaxyGate(stateInput, gateId) {
   const state = normalizeGalaxyGateState(stateInput);
   const id = String(gateId || "").toLowerCase();
-  if (!GALAXY_GATE_DEFINITIONS[id] || state.built[id] <= 0 || state.active || state.deployed[id]) {
+  // ✅ on peut préparer une gate pendant qu'une autre est en cours (alternance libre) ;
+  // seul le déploiement de la gate déjà en cours est interdit.
+  if (!GALAXY_GATE_DEFINITIONS[id] || state.built[id] <= 0 || state.active === id || state.deployed[id]) {
     return { ok: false, state };
   }
   state.built[id]--;
@@ -175,12 +187,35 @@ export function deployBuiltGalaxyGate(stateInput, gateId) {
 export function consumeBuiltGalaxyGate(stateInput, gateId) {
   const state = normalizeGalaxyGateState(stateInput);
   const id = String(gateId || "").toLowerCase();
-  if (state.active === id) return { ok: true, state, resumed: true };
-  if (!GALAXY_GATE_DEFINITIONS[id] || !state.deployed[id] || state.active) return { ok: false, state };
+  if (!GALAXY_GATE_DEFINITIONS[id]) return { ok: false, state };
+  // Reprise de la gate déjà en cours.
+  if (state.active === id) {
+    state.waves[id] = Math.min(GALAXY_GATE_DEFINITIONS[id].maxWaves, Math.max(1, state.activeWave));
+    return { ok: true, state, resumed: true };
+  }
+  // ✅ alternance libre : on peut entrer dans une gate déployée même si une
+  // autre est en cours. La progression de l'ancienne est sauvegardée et son
+  // portail est reposé pour pouvoir y revenir plus tard.
+  if (state.active) {
+    if (!state.deployed[id]) return { ok: false, state };
+    const previous = state.active;
+    state.waves[previous] = Math.min(GALAXY_GATE_DEFINITIONS[previous].maxWaves, Math.max(1, state.activeWave));
+    state.deployed[previous] = true;
+    const hadProgress = (state.waves[id] || 0) > 0;
+    state.deployed[id] = false;
+    state.active = id;
+    state.activeWave = hadProgress ? state.waves[id] : 1;
+    state.waves[id] = Math.min(GALAXY_GATE_DEFINITIONS[id].maxWaves, Math.max(1, state.activeWave));
+    if (!hadProgress) state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
+    return { ok: true, state, switched: true, from: previous };
+  }
+  if (!state.deployed[id]) return { ok: false, state };
+  const hadProgress = (state.waves[id] || 0) > 0;
   state.deployed[id] = false;
   state.active = id;
-  state.activeWave = 1;
-  state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
+  state.activeWave = hadProgress ? state.waves[id] : 1;
+  state.waves[id] = Math.min(GALAXY_GATE_DEFINITIONS[id].maxWaves, Math.max(1, state.activeWave));
+  if (!hadProgress) state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
   return { ok: true, state };
 }
 
@@ -190,6 +225,7 @@ export function completeActiveGalaxyGate(stateInput, gateId) {
   if (state.active !== id) return { ok: false, state };
   state.active = null;
   state.activeWave = 1;
+  state.waves[id] = 0;
   state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
   state.completed[id]++;
   return { ok: true, state };
@@ -204,6 +240,9 @@ export function loseGalaxyGateLife(stateInput, gateId) {
   if (exhausted) {
     state.active = null;
     state.activeWave = 1;
+    state.waves[id] = 0;
+  } else {
+    state.waves[id] = Math.min(GALAXY_GATE_DEFINITIONS[id].maxWaves, Math.max(1, state.activeWave));
   }
   return { ok: true, state, exhausted, lives: state.lives[id] };
 }

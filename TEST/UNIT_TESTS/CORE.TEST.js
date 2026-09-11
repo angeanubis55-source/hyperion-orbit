@@ -21,7 +21,7 @@ import { updateEngineTrailParticles } from "../../SRC/CORE/ENGINE_TRAILS.js";
 import { SHIP_ENGINE_ASSIGNMENTS, SHIP_ENGINE_POSITIONS, SHIP_ENGINE_UNASSIGNED } from "../../SHIP/SHIP_ENGINE.js";
 import { createRadiationSystem } from "../../SRC/CORE/RADIATION_SYSTEM.js";
 import { createGatePortalState, getGateReturnMap, positionGateChoicePortals } from "../../SRC/CORE/GATE_SYSTEM.js";
-import { consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "../../SRC/CORE/GALAXY_GATES.js";
+import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "../../SRC/CORE/GALAXY_GATES.js";
 import { getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, resolveBaseCenter } from "../../SRC/CORE/FACTIONS.js";
 import {
   beginGatePortalJump,
@@ -188,6 +188,34 @@ test("le Galaxy Spinner assemble, sauvegarde et consomme les Gates", () => {
   const resumed = consumeBuiltGalaxyGate(consumed.state, "alpha");
   assert.equal(resumed.ok, true);
   assert.equal(resumed.state.built.alpha, 0);
+});
+
+test("les Galaxy Gates alternent librement sans perdre la vague", () => {
+  // Alpha + Beta déployées, entrée Alpha puis vague 5.
+  let state = normalizeGalaxyGateState({ deployed: { alpha: true, beta: true } });
+  const enterAlpha = consumeBuiltGalaxyGate(state, "alpha");
+  assert.equal(enterAlpha.ok, true);
+  state = { ...enterAlpha.state, activeWave: 5, waves: { ...enterAlpha.state.waves, alpha: 5 } };
+  // Switch vers Beta : Alpha suspendue (vague 5 + portail reposé).
+  const enterBeta = consumeBuiltGalaxyGate(state, "beta");
+  assert.equal(enterBeta.ok, true);
+  assert.equal(enterBeta.switched, true);
+  assert.equal(enterBeta.state.active, "beta");
+  assert.equal(enterBeta.state.waves.alpha, 5);
+  assert.equal(enterBeta.state.deployed.alpha, true);
+  state = { ...enterBeta.state, activeWave: 3, waves: { ...enterBeta.state.waves, beta: 3 } };
+  // Retour Alpha : vague 5 restaurée, Beta suspendue en vague 3.
+  const backAlpha = consumeBuiltGalaxyGate(state, "alpha");
+  assert.equal(backAlpha.ok, true);
+  assert.equal(backAlpha.state.active, "alpha");
+  assert.equal(backAlpha.state.activeWave, 5);
+  assert.equal(backAlpha.state.waves.beta, 3);
+  assert.equal(backAlpha.state.deployed.beta, true);
+  // Terminer Alpha ne touche pas la progression Beta.
+  const done = completeActiveGalaxyGate({ ...backAlpha.state, activeWave: 5 }, "alpha");
+  assert.equal(done.ok, true);
+  assert.equal(done.state.waves.alpha, 0);
+  assert.equal(done.state.waves.beta, 3);
 });
 
 test("une Galaxy Gate possède cinq vies et est perdue à la cinquième destruction", () => {

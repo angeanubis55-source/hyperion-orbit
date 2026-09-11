@@ -1590,6 +1590,9 @@ export function saveCurrentUserGalaxyGateWave(gateId, wave) {
   const id = String(gateId || "").toLowerCase();
   if (u.galaxyGates.active !== id) return { ok: false, error: "Galaxy Gate inactive." };
   u.galaxyGates.activeWave = Math.max(1, Math.floor(Number(wave) || 1));
+  // ✅ miroir persisté par gate (alternance Alpha/Beta/Gamma sans perte).
+  u.galaxyGates.waves ||= {};
+  u.galaxyGates.waves[id] = u.galaxyGates.activeWave;
   saveUser(u);
   return { ok: true, user: u };
 }

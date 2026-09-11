@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.147",
+    "date": "2026-09-11T13:31:57+02:00",
+    "message": "fixes de bug majeures"
+  },
+  {
     "version": "0.146",
     "date": "2026-09-11T13:30:47+02:00",
     "message": "Slots hangar unifies vaisseau/drones/P.E.T + marquage P.E.T boutique, cleanup builder mort"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.88",
     "date": "2026-09-04T03:37:46+02:00",
     "message": "Audit et optimisation du rendu et du HUD pour améliorer les FPS."
-  },
-  {
-    "version": "0.87",
-    "date": "2026-09-04T02:35:31+02:00",
-    "message": "Synchronisation automatique du numéro de version avec les mises à jour."
   }
 ];
