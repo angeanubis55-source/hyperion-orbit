@@ -2643,9 +2643,10 @@ function buildFitWindow() {
           fits.push({ droneId, fit: { ...baseFit, equipment }, configNo: fitState.configNo, hangarId: fitState.hangarId });
         }
         if (!fits.length) return;
-        const saved = saveCurrentUserDroneFits(fits);
-        if (!saved.ok) return showFitError(saved.error);
-        user = saved.user;
+        // Brouillon local : appliqué seulement via Appliquer (en base).
+        for (const { droneId, fit } of fits) {
+          fitState.droneDrafts[droneId] = { equipment: [...fit.equipment], ability: fit.ability || null };
+        }
         clearFitSelection();
         showFitError("");
         renderDroneEquipment(user);
@@ -2679,9 +2680,8 @@ function buildFitWindow() {
         for (const { group, slot } of removals) {
           if (Array.isArray(nextFit[group]) && nextFit[group][slot] != null) nextFit[group][slot] = null;
         }
-        const saved = saveCurrentUserPetFits([{ fit: nextFit, configNo: fitState.configNo, hangarId: fitState.hangarId }]);
-        if (!saved.ok) return showFitError(saved.error);
-        user = saved.user;
+        // Brouillon local : appliqué seulement via Appliquer (en base).
+        fitState.petDraft = { ...nextFit };
         clearFitSelection();
         showFitError("");
         renderPetEquipment(user);
@@ -3221,15 +3221,85 @@ let fitState = {
   selectedPetSlots: new Map(),
   draggedItemIds: [],
   draft: null,
+  // Brouillons locaux drones/REX (jamais persistés sans Appliquer).
+  droneDrafts: null, // { [droneId]: { equipment: [...], ability } }
+  petDraft: null, // { lasers, generators, gears, protocols, ability }
+  // Brouillons mis de côté par config (1/2) quand on bascule sans appliquer.
+  stash: null,
   used: null,
   slots: { lasers: 15, gens: 15, extras: 15, shipMods: 1 },
   section: "ship",
   droneId: null,
 };
 
+// Accès équipement en direct (base ou non). L'ouverture du hangar est libre,
+// mais Appliquer + édition du vaisseau exigent la base.
+function fitApplyAccess() {
+  try {
+    const access = getHangarActionAccess("equip");
+    return access && access.ok ? { ok: true } : { ok: false, error: access?.error || "Hors base." };
+  } catch {
+    return { ok: false, error: "Hors base." };
+  }
+}
+
+// Vaisseau intouchable hors base (ni ajout ni retrait).
+function shipEditLocked() {
+  if (fitState?.hangarId == null) return false;
+  return !fitApplyAccess().ok;
+}
+
+// Bouton(s) Appliquer grisé(s) hors base.
+function refreshFitApplyButton() {
+  const access = fitApplyAccess();
+  document.querySelectorAll("#fitBtnSave").forEach((btn) => {
+    btn.disabled = !access.ok;
+    btn.title = access.ok ? "Appliquer l'équipement" : (access.error || "Appliquer (base requise)");
+  });
+}
+
+// Snapshot stockage -> brouillons locaux (vaisseau + drones + REX).
+function initFitDrafts(hangarId, configNo) {
+  const h = (user?.hangars || []).find((x) => x?.id === hangarId);
+  if (!h) return false;
+  fitState.slots = getShipSlots(h.shipId);
+  const baseFit = getFitForConfig(h, configNo);
+  fitState.draft = {
+    lasers: normalizeFitArray(baseFit.lasers, fitState.slots.lasers),
+    gens: normalizeFitArray(baseFit.gens, fitState.slots.gens),
+    extras: normalizeFitArray(baseFit.extras, fitState.slots.extras),
+    shipMods: normalizeFitArray(baseFit.shipMods, fitState.slots.shipMods),
+  };
+  fitState.droneDrafts = {};
+  for (const drone of user?.drones?.items || []) {
+    let f = null;
+    try { f = getDroneFit(drone, hangarId, configNo); } catch {}
+    f = f || drone?.fits?.[String(Number(configNo) === 2 ? 2 : 1)] || drone?.fit || null;
+    fitState.droneDrafts[drone.id] = {
+      equipment: [...(f?.equipment || [])],
+      ability: f?.ability || null,
+    };
+  }
+  let pf = null;
+  try { pf = getPetFit(user?.pet, hangarId, configNo); } catch {}
+  pf = pf || user?.pet?.fits?.[String(Number(configNo) === 2 ? 2 : 1)] || user?.pet?.fit || null;
+  fitState.petDraft = {
+    lasers: [...(pf?.lasers || [])],
+    generators: [...(pf?.generators || [])],
+    gears: [...(pf?.gears || [])],
+    protocols: [...(pf?.protocols || [])],
+    ability: pf?.ability || null,
+  };
+  return true;
+}
+
 // ✅ Drones exclusifs par hangar : lit le fit du drone pour le hangar + config en cours d'édition.
+// Brouillon local prioritaire quand le modal est ouvert (jamais persisté sans Appliquer).
 function droneFitForState(drone) {
   try {
+    if (fitState?.hangarId != null && fitState?.droneDrafts && Object.prototype.hasOwnProperty.call(fitState.droneDrafts, drone?.id)) {
+      return fitState.droneDrafts[drone.id];
+    }
     if (fitState?.hangarId != null && typeof getDroneFit === "function") {
       const f = getDroneFit(drone, fitState.hangarId, fitState.configNo);
       if (f) return f;
@@ -3275,6 +3345,7 @@ function petItemGroup(itemId) {
 
 function petFitForState(pet) {
   try {
+    if (fitState?.hangarId != null && fitState?.petDraft) return fitState.petDraft;
     if (fitState?.hangarId != null && typeof getPetFit === "function") {
       const f = getPetFit(pet, fitState.hangarId, fitState.configNo);
       if (f) return f;
@@ -3305,6 +3376,7 @@ function setFitSection(section = "ship") {
   if (fitState.section === "drones") renderDroneEquipment();
   if (fitState.section === "pet") renderPetEquipment();
   if (fitState.draft) renderInventoryPalette();
+  refreshFitApplyButton();
 }
 
 
@@ -3366,8 +3438,11 @@ function renderDroneEquipment(userOverride) {
         const fits=[{droneId:target.id,fit:{...targetFit,equipment},configNo:fitState.configNo,hangarId:fitState.hangarId}];
         const sourceFit=source?droneFitForState(source):null;
         if(source&&source.id!==target.id&&sourceFit?.equipment?.[srcDrone.slot]===droppedId){const srcEq=[...(sourceFit.equipment || [])];srcEq[srcDrone.slot]=null;fits.push({droneId:source.id,fit:{...sourceFit,equipment:srcEq},configNo:fitState.configNo,hangarId:fitState.hangarId});}
-        const saved=saveCurrentUserDroneFits(fits);if(!saved.ok)return showFitError(saved.error);
-        user=saved.user;clearFitSelection();showFitError("");
+        // Brouillon local : appliqué seulement via Appliquer (en base).
+        for (const { droneId, fit } of fits) {
+          fitState.droneDrafts[droneId] = { equipment: [...fit.equipment], ability: fit.ability || null };
+        }
+        clearFitSelection();showFitError("");
         lastAccountUiSignature=accountUiSignature(user);
         renderDroneEquipment(user);renderInventoryPalette();
         return;
@@ -3379,8 +3454,9 @@ function renderDroneEquipment(userOverride) {
       const droneFit=droneFitForState(drone);
       if(droneFit?.equipment?.[Number(slot.dataset.droneSlot)])return showFitError("Emplacement occupé.");
       const equipment=[...(droneFit?.equipment || [])];equipment[Number(slot.dataset.droneSlot)]=droppedId;
-      const saved=saveCurrentUserDroneFits([{droneId:drone.id,fit:{...droneFit,equipment},configNo:fitState.configNo,hangarId:fitState.hangarId}]);if(!saved.ok)return showFitError(saved.error);
-      user=saved.user;clearFitSelection();showFitError("");
+      // Brouillon local : appliqué seulement via Appliquer (en base).
+      fitState.droneDrafts[drone.id] = { equipment: [...equipment], ability: droneFit?.ability || null };
+      clearFitSelection();showFitError("");
       lastAccountUiSignature=accountUiSignature(user);
       renderDroneEquipment(user);renderInventoryPalette();
     });
@@ -3409,6 +3485,7 @@ function renderDroneEquipment(userOverride) {
   });
   root.addEventListener("dragleave",event=>{if(!root.contains(event.relatedTarget))clearFitDropHighlights();});
   root.addEventListener("drop",()=>clearFitDropHighlights());
+  refreshFitApplyButton();
 }
 
 function renderPetEquipment(userOverride) {
@@ -3493,9 +3570,9 @@ function renderPetEquipment(userOverride) {
         ability: baseFit?.ability || null,
       };
       nextFit[groupKey][Number(slot.dataset.petSlot)] = droppedId;
-      const saved = saveCurrentUserPetFits([{ fit: nextFit, configNo: fitState.configNo, hangarId: fitState.hangarId }]);
-      if (!saved.ok) return showFitError(saved.error);
-      user = saved.user; clearFitSelection(); showFitError("");
+      // Brouillon local : appliqué seulement via Appliquer (en base).
+      fitState.petDraft = { ...nextFit };
+      clearFitSelection(); showFitError("");
       renderPetEquipment(user); renderInventoryPalette();
     });
     if (itemId) {
@@ -3521,6 +3598,7 @@ function renderPetEquipment(userOverride) {
   });
   root.addEventListener("dragleave", event => { if (!root.contains(event.relatedTarget)) clearFitDropHighlights(); });
   root.addEventListener("drop", () => clearFitDropHighlights());
+  refreshFitApplyButton();
 }
 
 function clearFitSelection() {
@@ -3539,6 +3617,8 @@ function refreshReturnSelectionButton() {
 
 function returnSelectedEquippedItems() {
   if (!fitState.draft || !fitState.selectedSlots.size) return;
+  // Vaisseau intouchable hors base (ni ajout ni retrait).
+  if (shipEditLocked()) return showFitError("Hors base : le vaisseau ne peut pas être modifié.");
   for (const slotKey of fitState.selectedSlots.keys()) {
     const [slotType, rawIndex] = slotKey.split("#");
     const index = Number(rawIndex);
@@ -3617,10 +3697,12 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
       // (pendingByDrone fait foi, pas besoin de muter fresh ici)
       void idx;
     }
-    const saved = saveCurrentUserDroneFits(fits);
-    if (!saved.ok) return showFitError(saved.error), 0;
-    user = saved.user;
-    const added = saved.applied;
+    // Brouillon local : appliqué seulement via Appliquer (en base).
+    // (une entrée fits par objet placé, comme applied côté sauvegarde).
+    for (const { droneId, fit } of fits) {
+      fitState.droneDrafts[droneId] = { equipment: [...fit.equipment], ability: fit.ability || null };
+    }
+    const added = fits.length;
     clearFitSelection();
     showFitError(added ? "" : "Aucun emplacement de drone disponible");
     renderDroneEquipment(user);
@@ -3656,9 +3738,8 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
       added++;
     }
     if (!added) return showFitError(skippedGate ? "Paliers de niveau P.E.T insuffisants ou plus de place" : "Aucun emplacement P.E.T disponible"), 0;
-    const saved = saveCurrentUserPetFits([{ fit: nextFit, configNo: fitState.configNo, hangarId: fitState.hangarId }]);
-    if (!saved.ok) return showFitError(saved.error), 0;
-    user = saved.user;
+    // Brouillon local : appliqué seulement via Appliquer (en base).
+    fitState.petDraft = { ...nextFit };
     clearFitSelection();
     showFitError("");
     renderPetEquipment(user);
@@ -3666,6 +3747,8 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
     return added;
   }
 
+  // Vaisseau intouchable hors base (ni ajout ni retrait).
+  if (shipEditLocked()) return showFitError("Hors base : le vaisseau ne peut pas être modifié."), 0;
   compactCurrentFit();
   let added = 0;
   for (const slotType of ["lasers", "gens", "extras"]) {
@@ -3809,15 +3892,11 @@ function resetAllSlots() {
   if (!fitState?.draft) return;
 
   if (fitState.section === "drones") {
-    const fresh = getCurrentUserFull();
-    if (!fresh) return;
-    const fits = [];
-    for (const drone of fresh.drones?.items || []) {
-      fits.push({ droneId: drone.id, fit: { equipment: [], ability: droneFitForState(drone)?.ability || null }, configNo: fitState.configNo, hangarId: fitState.hangarId });
+    // Brouillon local : appliqué seulement via Appliquer (en base).
+    for (const drone of user?.drones?.items || []) {
+      const prev = fitState.droneDrafts[drone.id] || { equipment: [], ability: null };
+      fitState.droneDrafts[drone.id] = { equipment: [], ability: prev.ability || null };
     }
-    const saved = saveCurrentUserDroneFits(fits);
-    if (!saved.ok) return showFitError(saved.error);
-    user = saved.user;
     clearFitSelection();
     showFitError("");
     renderDroneEquipment(user);
@@ -3826,14 +3905,13 @@ function resetAllSlots() {
   }
 
   if (fitState.section === "pet") {
-    const fresh = getCurrentUserFull();
-    if (!fresh) return;
-    if (fresh.pet?.owned !== true) return showFitError("P.E.T non possédé.");
-    const petLevel = Math.max(0, Number(fresh.pet.level) || getPetLevel(fresh.pet.exp));
-    const baseFit = petFitForState(fresh.pet);
-    const saved = saveCurrentUserPetFits([{ fit: { ...emptyPetFit(petLevel), ability: baseFit?.ability || null }, configNo: fitState.configNo, hangarId: fitState.hangarId }]);
-    if (!saved.ok) return showFitError(saved.error);
-    user = saved.user;
+    if (user?.pet?.owned !== true) return showFitError("P.E.T non possédé.");
+    // Brouillon local : appliqué seulement via Appliquer (en base).
+    const prev = fitState.petDraft || {};
+    fitState.petDraft = {
+      lasers: [], generators: [], gears: [], protocols: [],
+      ability: prev.ability || null,
+    };
     clearFitSelection();
     showFitError("");
     renderPetEquipment(user);
@@ -3841,6 +3919,8 @@ function resetAllSlots() {
     return;
   }
 
+  // Vaisseau intouchable hors base (ni ajout ni retrait).
+  if (shipEditLocked()) return showFitError("Hors base : le vaisseau ne peut pas être modifié.");
   fitState.draft.lasers = fitState.draft.lasers.map(() => null);
   fitState.draft.gens = fitState.draft.gens.map(() => null);
   fitState.draft.extras = fitState.draft.extras.map(() => null);
@@ -4161,8 +4241,14 @@ function renderSlots() {
       renderSlots();
       renderInventoryPalette();
     });
-    cell.draggable = true;
+    cell.draggable = !shipEditLocked();
     cell.addEventListener("dragstart", (event) => {
+      // Vaisseau intouchable hors base : pas de drag depuis ses slots.
+      if (shipEditLocked()) {
+        event.preventDefault();
+        showFitError("Hors base : le vaisseau ne peut pas être modifié.");
+        return;
+      }
       if (!fitState.selectedSlots.has(slotKey)) {
         clearFitSelection();
         fitState.selectedSlots.set(slotKey, itemId);
@@ -4194,6 +4280,8 @@ function renderSlots() {
     cell.addEventListener("drop", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
+      // Vaisseau intouchable hors base (ni ajout ni retrait).
+      if (shipEditLocked()) return showFitError("Hors base : le vaisseau ne peut pas être modifié.");
       const itemId = ev.dataTransfer.getData("text/plain");
       if (!itemId) return;
 
@@ -4229,6 +4317,8 @@ function renderSlots() {
     });
 
     cell.addEventListener("orbitDisabledSlotClick", () => {
+      // Vaisseau intouchable hors base (ni ajout ni retrait).
+      if (shipEditLocked()) return showFitError("Hors base : le vaisseau ne peut pas être modifié.");
       if (draft[slotType][idx]) {
         draft[slotType][idx] = null;
         compactCurrentFit();
@@ -4310,6 +4400,8 @@ function renderSlots() {
     attachSlotDrag(cell, slotType, i, id);
 
     cell.addEventListener("orbitDisabledSlotClick", () => {
+      // Vaisseau intouchable hors base (ni ajout ni retrait).
+      if (shipEditLocked()) return showFitError("Hors base : le vaisseau ne peut pas être modifié.");
       if (!fitState.selectedItemId && draft.shipMods[i]) {
         draft.shipMods[i] = null;
         compactCurrentFit();
@@ -4332,6 +4424,8 @@ function renderSlots() {
       }
 
       const cur = draft.shipMods[i] || null;
+      // Vaisseau intouchable hors base (ni ajout ni retrait).
+      if (shipEditLocked()) return showFitError("Hors base : le vaisseau ne peut pas être modifié.");
       if (cur === selItem) {
         draft.shipMods[i] = null;
         compactCurrentFit();
@@ -4386,6 +4480,8 @@ function renderSlots() {
 
     cell.addEventListener("drop", (ev) => {
       ev.preventDefault();
+      // Vaisseau intouchable hors base (ni ajout ni retrait).
+      if (shipEditLocked()) return showFitError("Hors base : le vaisseau ne peut pas être modifié.");
       const moduleId = ev.dataTransfer.getData("text/plain");
       if (!moduleId) return;
 
@@ -4442,6 +4538,7 @@ function renderSlots() {
 
     shipModsRoot.appendChild(cell);
   }
+  refreshFitApplyButton();
 }
 
 function renderShipModulesList() {
@@ -4525,38 +4622,30 @@ function setFitModalConfig(configNo) {
   const nextConfig = Number(configNo) === 2 ? 2 : 1;
   if (nextConfig === fitState.configNo) return;
 
-  if (fitState.hangarId && fitState.draft) {
-    const access = getHangarActionAccess("equip");
-    if (!access.ok) {
-      showFitError(access.error);
-      return;
-    }
-    const saved = saveHangarFit(fitState.hangarId, fitState.draft, fitState.configNo);
-    if (!saved?.ok) {
-      showFitError(saved?.error || "Impossible d'enregistrer la configuration actuelle");
-      return;
-    }
-  }
-
-  // Le hangar ne change jamais la config en jeu : on bascule juste le draft local.
+  // Brouillon uniquement : on met de côté les brouillons de la config actuelle,
+  // sans rien persister. Le hangar ne change jamais la config en jeu.
   // Seuls les boutons 1/2 en jeu (fenêtre vie/bouclier, touche C) appellent setActiveHangarConfig.
-  user = getCurrentUserFull();
+  fitState.stash ??= {};
+  fitState.stash[fitState.configNo] = {
+    draft: fitState.draft,
+    droneDrafts: fitState.droneDrafts,
+    petDraft: fitState.petDraft,
+  };
 
   const h = (user?.hangars || []).find((x) => x?.id === fitState.hangarId);
   if (!h) return;
 
   fitState.configNo = nextConfig;
-
-  const baseFit = getFitForConfig(h, fitState.configNo);
+  const stashed = fitState.stash[nextConfig];
+  if (stashed) {
+    fitState.draft = stashed.draft;
+    fitState.droneDrafts = stashed.droneDrafts;
+    fitState.petDraft = stashed.petDraft;
+  } else if (!initFitDrafts(fitState.hangarId, nextConfig)) {
+    return;
+  }
 
   fitState.slots = getShipSlots(h.shipId);
-
-  fitState.draft = {
-    lasers: normalizeFitArray(baseFit.lasers, fitState.slots.lasers),
-    gens: normalizeFitArray(baseFit.gens, fitState.slots.gens),
-    extras: normalizeFitArray(baseFit.extras, fitState.slots.extras),
-    shipMods: normalizeFitArray(baseFit.shipMods, fitState.slots.shipMods),
-  };
   compactCurrentFit();
   clearFitSelection();
   fitState.used = computeUsage(fitState.draft);
@@ -4584,8 +4673,11 @@ function setFitModalConfig(configNo) {
 }
 
 function openFitModal(hangarId) {
-  const access = getHangarActionAccess("equip");
-  if (!access.ok) return setMsg(access.error, false);
+  // Ouverture libre (même hors base) : tout est brouillon local, Appliquer exige la base.
+  if (!document.getElementById("profileOverlay")) {
+    return setMsg("Ouvre l'Espace pilote directement depuis le jeu pour effectuer cette action.", false);
+  }
+  if (!window.__ORBIT_ENGINE__?.getHangarAccess?.()) return setMsg("Le moteur du jeu n'est pas encore prêt.", false);
   if (!fitOverlayEl) fitOverlayEl = buildFitWindow();
 
   user = getCurrentUserFull();
@@ -4598,17 +4690,10 @@ function openFitModal(hangarId) {
   clearFitSelection();
   setFitSection("ship");
 
- fitState.configNo = Number(h.activeConfig) === 2 ? 2 : 1;
-fitState.slots = getShipSlots(h.shipId);
-
-const baseFit = getFitForConfig(h, fitState.configNo);
-
-fitState.draft = {
-  lasers: normalizeFitArray(baseFit.lasers, fitState.slots.lasers),
-  gens: normalizeFitArray(baseFit.gens, fitState.slots.gens),
-  extras: normalizeFitArray(baseFit.extras, fitState.slots.extras),
-  shipMods: normalizeFitArray(baseFit.shipMods, fitState.slots.shipMods),
-};
+  fitState.configNo = Number(h.activeConfig) === 2 ? 2 : 1;
+  fitState.stash = {};
+  if (!initFitDrafts(hangarId, fitState.configNo)) return setMsg("Hangar introuvable", false);
+  refreshFitApplyButton();
 
 const titleEl = document.getElementById("fitTitle");
 const subEl = document.getElementById("fitSub");
@@ -4763,6 +4848,8 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
   const btnLoad = document.getElementById("fitBtnLoadPreset");
   if (btnLoad && selPreset) {
     btnLoad.onclick = () => {
+      // Preset = modification du vaisseau : verrouillé hors base.
+      if (shipEditLocked()) return showFitError("Hors base : le vaisseau ne peut pas être modifié.");
       const key = String(selPreset.value || "");
       if (!key) return showFitError("Choisis un preset");
       const presets = loadPresets(user, fitState.hangarId);
@@ -4829,19 +4916,51 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
       }
     }
 
+    // Appliquer = la seule référence : vérification en direct, grisé hors base.
     const access = getHangarActionAccess("equip");
+    refreshFitApplyButton();
     if (!access.ok) {
       showFitError(access.error);
       return;
     }
 
+    // Vaisseau + drones + REX de la config affichée, en un seul passage.
     const out = saveHangarFit(fitState.hangarId, fitState.draft, fitState.configNo);
     if (!out.ok) {
       showFitError(out.error || "Sauvegarde impossible");
       return;
     }
+    const droneFits = Object.entries(fitState.droneDrafts || {}).map(([droneId, fit]) => ({
+      droneId, fit: { equipment: [...fit.equipment], ability: fit.ability || null },
+      configNo: fitState.configNo, hangarId: fitState.hangarId,
+    }));
+    if (droneFits.length) {
+      const savedDrones = saveCurrentUserDroneFits(droneFits);
+      if (!savedDrones.ok) {
+        showFitError(savedDrones.error || "Sauvegarde drones impossible");
+        return;
+      }
+    }
+    if (fitState.petDraft) {
+      const savedPet = saveCurrentUserPetFits([{
+        fit: {
+          lasers: [...fitState.petDraft.lasers],
+          generators: [...fitState.petDraft.generators],
+          gears: [...fitState.petDraft.gears],
+          protocols: [...fitState.petDraft.protocols],
+          ability: fitState.petDraft.ability || null,
+        },
+        configNo: fitState.configNo, hangarId: fitState.hangarId,
+      }]);
+      if (!savedPet.ok) {
+        showFitError(savedPet.error || "Sauvegarde P.E.T impossible");
+        return;
+      }
+    }
 
     user = getCurrentUserFull();
+    // La config appliquée devient le brouillon de référence (retours 1/2 cohérents).
+    if (fitState.stash) delete fitState.stash[fitState.configNo];
     setMsg("Équipement sauvegardé", true);
 
     closeFitModal();
@@ -4876,6 +4995,10 @@ function closeFitModal() {
   fitState.configNo = 1;
   clearFitSelection();
   fitState.draft = null;
+  // Fermer = tout annuler : les brouillons sont jetés, rien n'est persisté.
+  fitState.droneDrafts = null;
+  fitState.petDraft = null;
+  fitState.stash = null;
   fitState.used = null;
 
   showFitError("");

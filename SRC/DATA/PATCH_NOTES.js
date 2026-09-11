@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.144",
+    "date": "2026-09-11T11:02:49+02:00",
+    "message": "Hangar local-only + REX détaché, pirates 5-2, dock X6, cooldown X6/RCB partagé"
+  },
+  {
     "version": "0.143",
     "date": "2026-09-11T10:20:47+02:00",
     "message": "Lasers: bonus xN vaisseau+drones, prix rebalancés + LF-5, fix sauts portails"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.85",
     "date": "2026-09-04T01:31:24+02:00",
     "message": "Roulette de modules revue : chemin de progression persistant et affichage instantané du gain."
-  },
-  {
-    "version": "0.84",
-    "date": "2026-09-03T11:32:00+02:00",
-    "message": "Test du mécanisme de synchronisation automatique de la version avant un push."
   }
 ];

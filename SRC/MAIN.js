@@ -104,7 +104,19 @@ window.__GO_TO_MAP__ = (mapId, spawnId = null) => {
       console.warn("[GO_TO_MAP] Erreur sauvegarde:", e);
     }
   }
-  
+
+  // ✅ Mémorise le portail d'arrivée (même onglet : survit au rechargement).
+  // resetRun le lit en priorité ; l'URL ?map=&spawn= sert de secours.
+  try {
+    if (spawnId) {
+      sessionStorage.setItem("spawnPortalId", String(spawnId));
+      sessionStorage.setItem("spawnMapId", String(normalizeMapId(mapId)));
+    } else {
+      sessionStorage.removeItem("spawnPortalId");
+      sessionStorage.removeItem("spawnMapId");
+    }
+  } catch {}
+
   const url = new URL(location.href);
   url.searchParams.set("map", String(mapId));
   if (spawnId) url.searchParams.set("spawn", String(spawnId));

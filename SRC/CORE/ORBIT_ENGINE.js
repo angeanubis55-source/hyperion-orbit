@@ -2506,10 +2506,12 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
 
   const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").trim().toLowerCase();
   const combatRestrictedMap = /^[123]-4\.1$/.test(mapId) || mapId === "4-4.123" || mapId === "4-5";
-  const combatCooldown = Math.max(Number(player.combatT) || 0, Number(player.attackedT) || 0);
-  if (combatRestrictedMap && combatCooldown > 0) {
+  // Battle 4-x : les NPC ne bloquent jamais le saut, seul un joueur qui nous
+  // attaque verrouille (pvpAttackT, posé par hurtPlayer avec source.byPlayer).
+  const pvpCooldown = Number(player.pvpAttackT) || 0;
+  if (combatRestrictedMap && pvpCooldown > 0) {
     SFX.play("swDeny");
-    showToast(`Portail verrouillé — attends ${Math.ceil(combatCooldown)} s après le combat`, 1.4);
+    showToast(`Portail verrouillé — attaqué par un joueur, attends ${Math.ceil(pvpCooldown)} s`, 1.4);
     return false;
   }
 
@@ -4994,6 +4996,9 @@ const player = {
   angle: 0,
   combatT: 0,
   attackedT: 0,
+  // Attaqué par un JOUEUR (pas un NPC) : seul ce timer verrouille les portails
+  // des maps battle 4-x. Les dégâts NPC ne le déclenchent jamais.
+  pvpAttackT: 0,
   portalLockT: 0,
   invincibleT: 0,
 
@@ -8509,12 +8514,14 @@ function npcEffectiveSpeed(e, fallback = 320) {
   return baseSpeed * (1 - slowPct / 100);
 }
 
-function hurtPlayer(amount) {
+function hurtPlayer(amount, source = null) {
   if (player.dead || player.iFrames > 0 || (player.invincibleT || 0) > 0) return;
 
   resetRepairCooldown();
   player.iFrames = 0.1;
   player.attackedT = 5;
+  // Seul un joueur bloque les portails battle : les sources NPC passent null.
+  if (source?.byPlayer === true) player.pvpAttackT = 5;
 
   damagePlayerLayers(player, amount, Number(player.shAbsorb) > 0 ? Number(player.shAbsorb) : 0.8);
 
@@ -10650,36 +10657,50 @@ jumpBaseFade: 1,
     try {
       wantPortal = sessionStorage.getItem("spawnPortalId");
       wantMap = sessionStorage.getItem("spawnMapId");
-      
+
       sessionStorage.removeItem("spawnPortalId");
       sessionStorage.removeItem("spawnMapId");
     } catch {}
 
     const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
-    
+
     // Whitelist : id portail/map limités à [A-Za-z0-9_-.], 64 chars max, map == carte courante.
     // Le point est requis : maps 1-4.1 / 2-4.1 / 3-4.1 / 4-4.123 + portails p_..._to_....
     const isSafeId = (v) => typeof v === "string" || typeof v === "number"
       ? /^[A-Za-z0-9_\-.]{1,64}$/.test(String(v))
       : false;
-    if (wantPortal && wantMap && isSafeId(wantPortal) && isSafeId(wantMap) && String(wantMap) === String(currentMap)) {
-      const pid = String(wantPortal);
-      const ptl = zonePortals.find(p => String(p.id) === pid);
-
-      if (ptl) {
-        player.x = clamp(ptl.x, 80, WORLD.w - 80);
-        player.y = clamp(ptl.y, 80, WORLD.h - 80);
-        spawnedFromPortal = true;
-      }
-
+    // Candidats dans l'ordre : 1) switch interne (sessionStorage),
+    // 2) rechargement via __GO_TO_MAP__ (?map=&spawn=, window.__SPAWN_PORTAL_ID__).
+    // Le 2) couvrait un trou : l'URL portait le portail mais resetRun ne le lisait
+    // jamais → spawn fallback faction (ex 1500/1500) au lieu du portail.
+    let urlPortal = null;
+    let urlMap = null;
+    try {
+      const params = new URLSearchParams(location.search);
+      urlPortal = params.get("spawn") || window.__SPAWN_PORTAL_ID__ || null;
+      urlMap = params.get("map") || null;
+    } catch {}
+    const candidates = [];
+    if (wantPortal) candidates.push([wantPortal, wantMap]);
+    if (urlPortal) candidates.push([urlPortal, urlMap || currentMap]);
+    for (const [candPortal, candMap] of candidates) {
+      if (!candPortal || !candMap) continue;
+      if (!isSafeId(candPortal) || !isSafeId(candMap)) continue;
+      if (String(candMap).toLowerCase() !== String(currentMap).toLowerCase()) continue;
+      const ptl = zonePortals.find(p => String(p.id) === String(candPortal));
+      if (!ptl) continue;
+      player.x = clamp(ptl.x, 80, WORLD.w - 80);
+      player.y = clamp(ptl.y, 80, WORLD.h - 80);
+      spawnedFromPortal = true;
+      break;
+    }
+    if (spawnedFromPortal) {
       // ✅ Son "Saut terminée" quand on apparaît de l'autre côté du portail
-      if (spawnedFromPortal) {
-        window.setTimeout(() => {
-          SFX.stop("swJump");
-          SFX.stop("swReady");
-          SFX.play("swDone");
-        }, 400);
-      }
+      window.setTimeout(() => {
+        SFX.stop("swJump");
+        SFX.stop("swReady");
+        SFX.play("swDone");
+      }, 400);
     }
   }
 
@@ -12094,6 +12115,7 @@ function update(dt) {
   rebuildEnemyIndex();
   player.combatT = Math.max(0, (player.combatT || 0) - dt);
   player.attackedT = Math.max(0, (player.attackedT || 0) - dt);
+  player.pvpAttackT = Math.max(0, (player.pvpAttackT || 0) - dt);
   player.invincibleT = Math.max(0, (player.invincibleT || 0) - dt);
   player.portalLockT = Math.max(0, (player.portalLockT || 0) - dt);
 
