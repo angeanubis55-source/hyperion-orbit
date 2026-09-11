@@ -3710,6 +3710,14 @@ function sellSelectedInventoryItems() {
 }
 
 // -------------------- Inventory Palette --------------------
+// Rareté affichée dans le hangar : même règle que l'onglet Inventaire
+// (mapping explicite, sinon barème prix) pour que les couleurs correspondent.
+function fitItemRarity(itemId, catalogItem = null) {
+  const cat = catalogItem || findCatalogItem(itemId);
+  if (cat) return ITEM_RARITIES[rarityForCatalogItem(cat)] || ITEM_RARITIES.common;
+  return getItemRarity(itemId);
+}
+
 function renderInventoryPalette() {
   const grid = document.getElementById("fitInvGrid");
   const sel = document.getElementById("fitInvFilter");
@@ -3811,7 +3819,7 @@ function renderInventoryPalette() {
         "invCell" +
         (fitState.selectedCopies.has(copyKey) ? " selected" : "") +
         (!isAvailableCopy ? " disabled" : "");
-      const rarity = getItemRarity(e.itemId);
+      const rarity = fitItemRarity(e.itemId, e.it);
       cell.classList.add(`rarity-${rarity.id}`);
 
       const img = document.createElement("img");
@@ -3912,7 +3920,7 @@ function slotCell(label, filled, itemId = null) {
   d.title = label || "";
 
   if (filled && itemId) {
-    const rarity = getItemRarity(itemId);
+    const rarity = fitItemRarity(itemId);
     d.classList.add(`rarity-${rarity.id}`);
     d.title = `${label || itemId} · ${rarity.name}`;
     const img = document.createElement("img");
