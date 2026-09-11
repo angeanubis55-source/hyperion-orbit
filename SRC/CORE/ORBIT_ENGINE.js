@@ -10876,18 +10876,7 @@ function die() {
   // rejoué si le joueur refresh avant d'avoir choisi un lieu de réapparition.
   markDeathPending();
 
-  // ✅ à chaque mort (map, GG, QZ, LOW, maudite...) : charge la bonne base
-  // en fond (X-8 pour la maudite/QZ, sinon base standard) pour que
-  // « Réparée à la base » bascule sans latence au clic.
-  try {
-    const faction = (account.user || getCurrentUserFull())?.faction;
-    const targetMap = rules?.respawnBase === "upper"
-      ? getFactionUpperBaseMap(faction)
-      : (rules?.mode === "gate"
-        ? getFactionRespawnMap(faction, window.__CURRENT_MAP_ID__, { gate: true })
-        : getFactionRespawnMap(faction, window.__CURRENT_MAP_ID__));
-    if (targetMap) preloadRespawnMap(targetMap);
-  } catch {}
+  // ✅ les bases mères sont déjà chargées au boot : rien à précharger ici.
 
   if (rules?.mode === "gate") {
     // ✅ en Galaxy Gate on ne renvoie plus direct à la base mère :
@@ -10948,21 +10937,70 @@ function preloadHomeMaps() {
 }
 
 // ✅ Précharge tous les sprites de drones (iris / apis / zeus, tous niveaux,
-// toutes frames) en tâche de fond : évite les saccades quand ils apparaissent.
-let droneSpritesPreloaded = false;
-function preloadAllDroneSprites() {
-  if (droneSpritesPreloaded) return;
-  droneSpritesPreloaded = true;
+// toutes frames) : évite les décalages visuels aux premiers virages.
+function collectDroneSpriteJobs(background = false) {
+  const jobs = [];
   try {
     for (const type of Object.values(DRONE_TYPES)) {
       if (!type?.path) continue;
       for (let level = 0; level < DRONE_MAX_LEVEL; level++) {
         for (let frame = 1; frame <= 32; frame++) {
-          loadImage(`${type.path}${level}/${frame}.png`, { priority: false });
+          jobs.push(loadImage(`${type.path}${level}/${frame}.png`, { priority: !background }));
         }
       }
     }
   } catch {}
+  return jobs;
+}
+
+let droneSpritesPreloaded = false;
+function preloadAllDroneSprites() {
+  if (droneSpritesPreloaded) return;
+  droneSpritesPreloaded = true;
+  try {
+    Promise.allSettled(collectDroneSpriteJobs(true)).then(() => true);
+  } catch {}
+}
+
+// ✅ Assets des 2 bases mères de la firme (X-1 + X-8) : chargés au boot pour
+// une « Réparée à la base » instantanée, sans préchargement à la mort.
+async function collectHomeBaseJobs() {
+  const jobs = [];
+  try {
+    const faction = (account.user || getCurrentUserFull())?.faction;
+    const ids = [getFactionHomeMap(faction), getFactionUpperBaseMap(faction)];
+    for (const id of ids) {
+      if (!id) continue;
+      try {
+        const [spawnsMod, worldMod] = await Promise.all([
+          import(`../../MAPS/${id}/SPAWNS.js`),
+          import(`../../MAPS/${id}/WORLD.js`),
+        ]);
+        const world = worldMod?.WORLD;
+        if (!world) continue;
+        const rules = {
+          mode: "zone",
+          getZoneSpawns: spawnsMod?.getZoneSpawns,
+          getZonePortals: spawnsMod?.getZonePortals,
+          getZoneSafeModules: spawnsMod?.getZoneSafeModules,
+        };
+        for (const layer of createBackgroundLayers(world, rules)) {
+          if (layer?.src) jobs.push(loadImage(layer.src, { priority: true }));
+        }
+        jobs.push(...preloadCollectables(id));
+        jobs.push(...preloadSafeModuleSprites(rules, world));
+        for (const camp of (rules.getZoneSpawns?.(world) || [])) {
+          if (camp?.type && NPC_TYPES[camp.type]) jobs.push(ensureNpcLoaded(camp.type));
+        }
+        for (const targetPortal of (rules.getZonePortals?.(world) || [])) {
+          jobs.push(...preloadPortalSprites(targetPortal));
+        }
+      } catch (error) {
+        console.warn("Préchargement base incomplet:", id, error);
+      }
+    }
+  } catch {}
+  return jobs;
 }
 
 // ✅ Changement de map sans rechargement de page quand c'est possible :
@@ -13967,6 +14005,11 @@ async function prepareGameAssets() {
     for (const layer of BG_LAYERS) if (layer.src) jobs.push(loadImage(layer.src, { priority: true }));
     jobs.push(...preloadPlayerBulletSprites());
     jobs.push(...preloadPetSprites());
+    // ✅ drones dans le chargement bloquant : aucune saccade aux premiers virages.
+    jobs.push(...collectDroneSpriteJobs());
+    // ✅ bases mères (X-1 + X-8) dans le chargement bloquant : retour base
+    // instantané, sans préchargement à la mort.
+    jobs.push(...await collectHomeBaseJobs());
     jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensurePulseFxLoaded(),
       ensureRepairOrbitLoaded(), ensureShipDamageLoaded(), ensureInstaShieldLoaded());
     jobs.push(...preloadCollectables());

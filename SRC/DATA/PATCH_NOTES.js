@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.150",
+    "date": "2026-09-11T16:23:08+02:00",
+    "message": "Maudite/QZ: reparation unique + respawn X-8, preload base a la mort et au boot, preload sprites drones"
+  },
+  {
     "version": "0.149",
     "date": "2026-09-11T15:50:54+02:00",
     "message": "Version auto 0.148"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.91",
     "date": "2026-09-04T04:07:37+02:00",
     "message": "Corrections mineures et améliorations de stabilité."
-  },
-  {
-    "version": "0.90",
-    "date": "2026-09-04T03:55:48+02:00",
-    "message": "Optimisation de la mini-carte : la couche statique est pré-calculée, ce qui allège le rendu à chaque frame."
   }
 ];
