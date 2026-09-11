@@ -3349,7 +3349,8 @@ function updateFitDropHighlights() {
 function equipSelectedInventoryItems(preferredSlotType = null) {
   if (!fitState.draft) return 0;
   const selected = selectedInventoryItemIds();
-  if (!selected.length && fitState.selectedItemId) selected.push(fitState.selectedItemId);
+  // Le module roulette coexiste avec la sélection d'inventaire : on équipe les deux.
+  if (fitState.selectedItemId && !selected.includes(fitState.selectedItemId)) selected.push(fitState.selectedItemId);
   if (!selected.length) return 0;
 
   if (fitState.section === "drones") {
@@ -3471,6 +3472,7 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
   showFitError(added ? "" : "Aucun emplacement compatible disponible");
   renderSlots();
   renderInventoryPalette();
+  if (typeof renderShipModulesList === "function") renderShipModulesList();
   return added;
 }
 
@@ -3712,20 +3714,27 @@ function renderInventoryPalette() {
 
   if (sellBtn) {
     // Legacy button kept for compatibility with older layouts.
-    const id = fitState.selectedItemId;
+    const id = [...fitState.selectedCopies.values()].at(-1) || fitState.selectedItemId;
     const owned = id ? ownedCount(user, id) : 0;
     const used = id ? Number(fitState.used?.[id] || 0) : 0;
     sellBtn.disabled = !id || owned <= used;
   }
 
   const selectedCount = fitState.selectedCopies.size;
-  if (countEl) countEl.textContent = selectedCount ? `${selectedCount} sélectionné${selectedCount > 1 ? "s" : ""}` : "Aucune sélection";
+  const moduleSelected = isRouletteModuleId(fitState.selectedItemId);
+  const hasSelection = selectedCount > 0 || moduleSelected;
+  if (countEl) {
+    const parts = [];
+    if (selectedCount) parts.push(`${selectedCount} sélectionné${selectedCount > 1 ? "s" : ""}`);
+    if (moduleSelected) parts.push("1 module");
+    countEl.textContent = parts.length ? parts.join(" + ") : "Aucune sélection";
+  }
   if (equipBtn) {
-    equipBtn.disabled = selectedCount === 0;
+    equipBtn.disabled = !hasSelection;
     equipBtn.onclick = () => equipSelectedInventoryItems();
   }
   if (clearSelectionBtn) {
-    clearSelectionBtn.disabled = selectedCount === 0;
+    clearSelectionBtn.disabled = !hasSelection;
     clearSelectionBtn.onclick = () => {
       clearFitSelection();
       renderInventoryPalette();
@@ -3806,6 +3815,7 @@ function renderInventoryPalette() {
           showFitError("Plus de stock disponible (dés-équipe d'abord)");
           return;
         }
+        // Exclusif : sélectionner un item désélectionne le module roulette.
         if (event.shiftKey) {
           const copiesOfType = [...fitState.selectedCopies.values()].filter((id) => id === e.itemId).length;
           const alreadyFullySelected = fitState.selectedCopies.size > 0 && copiesOfType === fitState.selectedCopies.size;
@@ -3819,6 +3829,8 @@ function renderInventoryPalette() {
             });
           }
         } else if (event.ctrlKey || event.metaKey) {
+          // Exclusif : le module est toujours désélectionné, les copies se togglent.
+          if (isRouletteModuleId(fitState.selectedItemId)) fitState.selectedItemId = null;
           fitState.selectedSlots.clear();
           if (fitState.selectedCopies.has(copyKey)) fitState.selectedCopies.delete(copyKey);
           else fitState.selectedCopies.set(copyKey, e.itemId);
@@ -3833,6 +3845,7 @@ function renderInventoryPalette() {
         showFitError("");
         renderSlots();
         renderInventoryPalette();
+        renderShipModulesList();
       });
 
       cell.addEventListener("dblclick", (event) => {
@@ -4265,6 +4278,7 @@ function renderShipModulesList() {
   root.innerHTML = list.slice().reverse().map((m) => {
     const icon = MODULE_ICONS[m.iconKey] || FALLBACK_ICON;
     const equipped = fitState.draft?.shipMods?.includes(m.id);
+    const selected = fitState.selectedItemId === m.id && !equipped;
     const rarityMeta = moduleRarityMeta(m);
     const bonus = (m.bonuses || [])
       .map(b => {
@@ -4272,10 +4286,11 @@ function renderShipModulesList() {
         return `<strong style="color:${color};">${b.pct}%</strong> ${formatStatLabel(b.stat)}`;
       })
       .join(" • ");
+    const label = `${String(m.type || "").toUpperCase()}-${String(m.tier || "").toUpperCase()} · ${rarityMeta.name}${equipped ? " · ÉQUIPÉ" : ""}`;
 
     return `
-      <div class="shipModRow${equipped ? " equipped" : ""}" data-modid="${m.id}" data-equipped="${equipped ? "1" : "0"}">
-        <img src="${icon}" style="width:40px;height:40px;object-fit:contain;image-rendering:pixelated;border-radius:10px;background:rgba(0,0,0,0.25);" />
+      <div class="shipModRow rarity-${rarityMeta.id}${equipped ? " equipped" : ""}${selected ? " selected" : ""}" data-modid="${m.id}" data-equipped="${equipped ? "1" : "0"}" tabindex="0" role="button" aria-pressed="${selected ? "true" : "false"}" title="${escapeHtml(label)}">
+        <img src="${icon}" alt="${escapeHtml(label)}" draggable="false" onerror="this.onerror=null;this.src='${FALLBACK_ICON}'" />
         <div style="min-width:0;">
           <div style="font-weight:900; color:#00d9ff;">
             ${String(m.type || "").toUpperCase()}-${String(m.tier || "").toUpperCase()}
@@ -4303,6 +4318,35 @@ function renderShipModulesList() {
     row.addEventListener("dragend", () => {
       fitState.draggedItemIds = [];
       clearFitDropHighlights();
+    });
+    row.addEventListener("click", () => {
+      if (row.dataset.equipped === "1") {
+        showFitError("Module déjà équipé");
+        return;
+      }
+      const id = row.dataset.modid;
+      // Exclusif : sélectionner un module désélectionne l'inventaire.
+      const deselectOnly = fitState.selectedItemId === id;
+      clearFitSelection();
+      if (!deselectOnly) fitState.selectedItemId = id;
+      showFitError("");
+      renderShipModulesList();
+      renderInventoryPalette();
+      renderSlots();
+    });
+    row.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        row.click();
+      }
+    });
+    row.addEventListener("dblclick", (ev) => {
+      ev.preventDefault();
+      if (row.dataset.equipped === "1") return;
+      clearFitSelection();
+      fitState.selectedItemId = row.dataset.modid;
+      equipSelectedInventoryItems("shipMods");
+      renderShipModulesList();
     });
   });
 }
@@ -4464,7 +4508,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
   const btnSell = document.getElementById("fitBtnSell");
   if (btnSell) {
     btnSell.onclick = () => {
-      const itemId = fitState.selectedItemId;
+      const itemId = [...fitState.selectedCopies.values()].at(-1) || fitState.selectedItemId;
       if (!itemId) return showFitError("Sélectionne un item à vendre");
 
       const usage = computeUsage(fitState.draft)[itemId] || 0;

@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.151",
+    "date": "2026-09-11T16:27:09+02:00",
+    "message": "Boot bloquant: drones + bases meres X-1/X-8, suppression preload a la mort"
+  },
+  {
     "version": "0.150",
     "date": "2026-09-11T16:23:08+02:00",
     "message": "Maudite/QZ: reparation unique + respawn X-8, preload base a la mort et au boot, preload sprites drones"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.92",
     "date": "2026-09-04T04:54:12+02:00",
     "message": "Optimisation du jeu : suppression des allocations mémoire superflues lors du tir des projectiles pour des FPS plus stables."
-  },
-  {
-    "version": "0.91",
-    "date": "2026-09-04T04:07:37+02:00",
-    "message": "Corrections mineures et améliorations de stabilité."
   }
 ];
