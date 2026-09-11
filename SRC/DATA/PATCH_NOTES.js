@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.148",
+    "date": "2026-09-11T15:50:33+02:00",
+    "message": "GG: alternance libre avec vagues persistées, retour base sans rechargement, sons portails, fix double respawn en gate"
+  },
+  {
     "version": "0.147",
     "date": "2026-09-11T13:31:57+02:00",
     "message": "fixes de bug majeures"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.89",
     "date": "2026-09-04T03:48:57+02:00",
     "message": "Optimisation du champ d'étoiles : pré-rendu en textures pour de meilleures performances visuelles."
-  },
-  {
-    "version": "0.88",
-    "date": "2026-09-04T03:37:46+02:00",
-    "message": "Audit et optimisation du rendu et du HUD pour améliorer les FPS."
   }
 ];
