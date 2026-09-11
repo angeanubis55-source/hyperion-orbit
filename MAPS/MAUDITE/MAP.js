@@ -33,6 +33,10 @@ export function init() {
     rules: {
   mode: "zone",
   mapLabel: "???",
+  // ✅ comme en Galaxy Gate : à la mort, seule la réparation à la base est proposée.
+  baseRespawnOnly: true,
+  // ✅ mort sur la maudite = retour à la base haute (X-8).
+  respawnBase: "upper",
   getZoneSpawns,
   getZonePortals, // ✅ ajout
 },

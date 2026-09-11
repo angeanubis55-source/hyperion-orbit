@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.149",
+    "date": "2026-09-11T15:50:54+02:00",
+    "message": "Version auto 0.148"
+  },
+  {
     "version": "0.148",
     "date": "2026-09-11T15:50:33+02:00",
     "message": "GG: alternance libre avec vagues persistées, retour base sans rechargement, sons portails, fix double respawn en gate"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.90",
     "date": "2026-09-04T03:55:48+02:00",
     "message": "Optimisation de la mini-carte : la couche statique est pré-calculée, ce qui allège le rendu à chaque frame."
-  },
-  {
-    "version": "0.89",
-    "date": "2026-09-04T03:48:57+02:00",
-    "message": "Optimisation du champ d'étoiles : pré-rendu en textures pour de meilleures performances visuelles."
   }
 ];

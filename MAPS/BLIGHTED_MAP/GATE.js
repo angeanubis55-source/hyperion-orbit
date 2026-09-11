@@ -30,6 +30,8 @@ export function init() {
     rules: {
       mapLabel: "GG QZ",
       mode: "gate",
+      // ✅ mort en QZ = retour à la base haute (X-8).
+      respawnBase: "upper",
       bossEncounter: {
         bossType: "npc_Gygerim_Overlord",
         name: "QZ",

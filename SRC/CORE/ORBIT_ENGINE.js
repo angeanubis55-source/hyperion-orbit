@@ -43,7 +43,7 @@ import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
 import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
 import { GAME_VERSION } from "../DATA/VERSION.js";
 import { getShipPackById as getShipPackByIdData } from "../../SHIP/SHIP_PACKS.js";
-import { DRONE_FORMATIONS, DRONE_TYPES, DRONE_XP_SHARE, getActiveDroneFormation, getDroneLevel, getDroneSpritePath } from "../../DRONE/DRONE_TYPES.js";
+import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, getActiveDroneFormation, getDroneLevel, getDroneSpritePath } from "../../DRONE/DRONE_TYPES.js";
 import { DRONE_FORMATION_POSITIONS } from "../../DRONE/DRONE_FORMATIONS.js";
 import { PET_XP_SHARE, PET_FUEL_MAX, getPetDamageBonus, getPetLevel, getPetLevelXp, getPetMaxHp, getPetNextLevelXp, getPetShieldBonus, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
 import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./COLLISION.js";
@@ -328,11 +328,17 @@ function tryReplayPendingDeath() {
   }
 }
 
+// ✅ maps à réparation unique (retour base imposé) : Galaxy Gates + maps
+// marquées rules.baseRespawnOnly (ex : carte maudite). Sans logique de vies GG.
+function isBaseOnlyRespawnMap() {
+  return rules?.mode === "gate" || rules?.baseRespawnOnly === true;
+}
+
 function showRespawnOverlay(show, { gateOnly = null } = {}) {
   if (!ui.respawnOverlay) return;
-  // ✅ en Galaxy Gate, seule la réparation à la base est proposée :
-  // auto-détecté via le mode de la map, surchargeable explicitement.
-  const gateMode = gateOnly ?? rules?.mode === "gate";
+  // ✅ réparation unique à la base : Galaxy Gates + maps à respawn imposé
+  // (ex : carte maudite via rules.baseRespawnOnly). Surchargeable explicitement.
+  const gateMode = gateOnly ?? isBaseOnlyRespawnMap();
   if (show && gateMode) {
     if (ui.respawnPortalBtn) ui.respawnPortalBtn.style.display = "none";
     if (ui.respawnHereBtn) ui.respawnHereBtn.style.display = "none";
@@ -340,7 +346,9 @@ function showRespawnOverlay(show, { gateOnly = null } = {}) {
     const grid = ui.respawnOverlay.querySelector(".grid");
     if (grid) grid.style.gridTemplateColumns = "1fr";
     const hint = ui.respawnOverlay.querySelector(".modal > div:last-child");
-    if (hint) hint.innerHTML = "En Galaxy Gate, seule la <b>réparation à la base</b> est possible (touche <b>R</b>).";
+    if (hint) hint.innerHTML = rules?.mode === "gate"
+      ? "En Galaxy Gate, seule la <b>réparation à la base</b> est possible (touche <b>R</b>)."
+      : "Sur cette carte, seule la <b>réparation à la base</b> est possible (touche <b>R</b>).";
   } else if (show) {
     if (ui.respawnPortalBtn) ui.respawnPortalBtn.style.display = "";
     if (ui.respawnHereBtn) ui.respawnHereBtn.style.display = "";
@@ -9100,9 +9108,9 @@ ui.btnIsh?.addEventListener("click", () => {
 if (ui.respawnBaseBtn) {
   ui.respawnBaseBtn.addEventListener("click", (e) => {
     e.preventDefault();
-    // ✅ en Galaxy Gate, le bouton « base » renvoie à la base mère (gate),
-    // sinon respawn de zone classique.
-    if (rules?.mode === "gate") respawnBaseGate();
+    // ✅ réparation unique (gate + carte maudite) : le bouton « base »
+    // renvoie à la base mère, sinon respawn de zone classique.
+    if (isBaseOnlyRespawnMap()) respawnBaseGate();
     else respawnBase();
   });
 }
@@ -10868,14 +10876,17 @@ function die() {
   // rejoué si le joueur refresh avant d'avoir choisi un lieu de réapparition.
   markDeathPending();
 
-  // ✅ précharge la map mère dès la mort : quand le joueur clique
-  // « Réparée à la base » dans le menu, le switch interne est déjà prêt
-  // et on évite l'écran de chargement complet du jeu.
+  // ✅ à chaque mort (map, GG, QZ, LOW, maudite...) : charge la bonne base
+  // en fond (X-8 pour la maudite/QZ, sinon base standard) pour que
+  // « Réparée à la base » bascule sans latence au clic.
   try {
-    const respawnMap = rules?.mode === "gate"
-      ? getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__, { gate: true })
-      : getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__);
-    if (respawnMap) preloadRespawnMap(respawnMap);
+    const faction = (account.user || getCurrentUserFull())?.faction;
+    const targetMap = rules?.respawnBase === "upper"
+      ? getFactionUpperBaseMap(faction)
+      : (rules?.mode === "gate"
+        ? getFactionRespawnMap(faction, window.__CURRENT_MAP_ID__, { gate: true })
+        : getFactionRespawnMap(faction, window.__CURRENT_MAP_ID__));
+    if (targetMap) preloadRespawnMap(targetMap);
   } catch {}
 
   if (rules?.mode === "gate") {
@@ -10936,6 +10947,24 @@ function preloadHomeMaps() {
   } catch {}
 }
 
+// ✅ Précharge tous les sprites de drones (iris / apis / zeus, tous niveaux,
+// toutes frames) en tâche de fond : évite les saccades quand ils apparaissent.
+let droneSpritesPreloaded = false;
+function preloadAllDroneSprites() {
+  if (droneSpritesPreloaded) return;
+  droneSpritesPreloaded = true;
+  try {
+    for (const type of Object.values(DRONE_TYPES)) {
+      if (!type?.path) continue;
+      for (let level = 0; level < DRONE_MAX_LEVEL; level++) {
+        for (let frame = 1; frame <= 32; frame++) {
+          loadImage(`${type.path}${level}/${frame}.png`, { priority: false });
+        }
+      }
+    }
+  } catch {}
+}
+
 // ✅ Changement de map sans rechargement de page quand c'est possible :
 // tente le switch interne (__SWITCH_MAP__), sinon retombe sur __GO_TO_MAP__
 // (rechargement complet avec écran de chargement).
@@ -10958,7 +10987,12 @@ async function goToMapFast(targetMap, spawnId = null) {
 }
 
 function respawnBaseGate() {
-  const targetMap = getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, window.__CURRENT_MAP_ID__, { gate: true });
+  // ✅ base haute (X-8) pour les maps marquées respawnBase upper (maudite, QZ),
+  // sinon logique standard (gate → base mère).
+  const faction = (account.user || getCurrentUserFull())?.faction;
+  const targetMap = rules?.respawnBase === "upper"
+    ? getFactionUpperBaseMap(faction)
+    : getFactionRespawnMap(faction, window.__CURRENT_MAP_ID__, { gate: true });
   const baseSpawn = getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction);
   setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn, respawn: true });
   preloadRespawnMap(targetMap);
@@ -11013,7 +11047,12 @@ function startRespawn(action) {
 }
 
 function respawnBase() {
-  const targetMap = getFactionRespawnMap((account.user || getCurrentUserFull())?.faction, lastDeathPos.map || window.__CURRENT_MAP_ID__);
+  // ✅ base haute (X-8) pour les maps marquées respawnBase upper (maudite),
+  // sinon logique standard (zones basses → X-1, zones hautes → X-8).
+  const faction = (account.user || getCurrentUserFull())?.faction;
+  const targetMap = rules?.respawnBase === "upper"
+    ? getFactionUpperBaseMap(faction)
+    : getFactionRespawnMap(faction, lastDeathPos.map || window.__CURRENT_MAP_ID__);
   const baseSpawn = getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction);
   setRespawnOverride({ map: targetMap, baseCenter: true, fallback: baseSpawn, respawn: true });
   // ✅ la destination est déjà préchargée (mort + boot) : le switch est immédiat.
@@ -11033,8 +11072,8 @@ function respawnBase() {
 }
 
 function respawnNearestPortal() {
-  // ✅ en Galaxy Gate, seul le retour base est autorisé.
-  if (rules?.mode === "gate") {
+  // ✅ réparation unique : seul le retour base est autorisé.
+  if (isBaseOnlyRespawnMap()) {
     respawnBaseGate();
     return;
   }
@@ -11053,8 +11092,8 @@ function respawnNearestPortal() {
 }
 
 function respawnHere() {
-  // ✅ en Galaxy Gate, seul le retour base est autorisé.
-  if (rules?.mode === "gate") {
+  // ✅ réparation unique : seul le retour base est autorisé.
+  if (isBaseOnlyRespawnMap()) {
     respawnBaseGate();
     return;
   }
@@ -11073,6 +11112,13 @@ function respawnHere() {
 }
 
 function respawn() {
+  if (isBaseOnlyRespawnMap()) {
+    respawnBaseGate();
+    setCenterMsg(false);
+    // ✅ en gate on garde la progression ; sur la maudite on est éjecté vers la base.
+    showToast(rules?.mode === "gate" ? "Retour à la base mère" : "Éjecté vers la base mère", 1.6);
+    return;
+  }
   if (isZoneMap) {
     respawnBase();
     return;
@@ -13951,11 +13997,12 @@ async function prepareGameAssets() {
   } finally {
     stopProgress();
   }
-  // ✅ charge aussi les maps mères en fond (sans bloquer le DÉPART) pour
-  // que « Réparée à la base » bascule en interne sans rechargement du jeu.
+  // ✅ charge aussi les maps mères + tous les drones en fond (sans bloquer
+  // le DÉPART) pour une « Réparée à la base » sans rechargement et des
+  // drones sans saccades. Le préchargement ciblé à chaque mort reste actif.
   try {
     const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1500));
-    idle(() => preloadHomeMaps());
+    idle(() => { preloadHomeMaps(); preloadAllDroneSprites(); });
   } catch {}
   if (GAME_SETTINGS.autoStart) await startGame();
 }
@@ -14022,11 +14069,11 @@ if (ui.startHint) {
   // choisi), on le garde mort et on rejoue l'animation + le son d'explosion.
   tryReplayPendingDeath();
 
-  // ✅ après le DÉPART, les maps mères sont préchargées en fond pour un
-  // respawn base instantané (switch interne, pas de chargement du jeu).
+  // ✅ après le DÉPART : maps mères + drones en fond pour un respawn base
+  // instantané (switch interne) et des drones sans saccades.
   try {
     const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 2000));
-    idle(() => preloadHomeMaps());
+    idle(() => { preloadHomeMaps(); preloadAllDroneSprites(); });
   } catch {}
 
   starting = false;
