@@ -101,6 +101,8 @@ export function ensureMapSlots(universe, mapId, campDefs = [], nowMs = 0) {
       y: homeY,
       hpPct: 1,
       shPct: 1,
+      // false = prochain spawn en RANDOM (sort de mort). true = position connue.
+      scattered: true,
       updatedAtMs: now > 0 ? now : 0,
     };
   });
@@ -131,6 +133,7 @@ export function markDead(universe, mapId, uid, nowMs, delayMs = null) {
   slot.respawnAtMs = now + delay;
   slot.hpPct = 0;
   slot.shPct = 0;
+  slot.scattered = false; // prochain spawn en RANDOM
   slot.updatedAtMs = now;
   return slot;
 }
@@ -146,6 +149,7 @@ export function markAlive(universe, mapId, uid, nowMs) {
   slot.shPct = 1;
   slot.x = slot.homeX;
   slot.y = slot.homeY;
+  slot.scattered = false; // le spawner placera en RANDOM (sauf Cubikon)
   slot.updatedAtMs = now;
   return slot;
 }
@@ -186,15 +190,16 @@ export function tickBackground(universe, nowMs, { skipMapId = null } = {}) {
       if (!slot) continue;
       if (slot.alive === false) {
         if (Number(slot.respawnAtMs) > 0 && now < Number(slot.respawnAtMs)) continue;
-        slot.alive = true;
-        slot.deadAtMs = 0;
-        slot.respawnAtMs = 0;
-        slot.hpPct = 1;
-        slot.shPct = 1;
-        slot.x = slot.homeX;
-        slot.y = slot.homeY;
-        slot.updatedAtMs = now;
-        revived.push({ mapId: String(mapId), uid: String(slot.uid), type: String(slot.type) });
+      slot.alive = true;
+      slot.deadAtMs = 0;
+      slot.respawnAtMs = 0;
+      slot.hpPct = 1;
+      slot.shPct = 1;
+      slot.x = slot.homeX;
+      slot.y = slot.homeY;
+      slot.scattered = false; // le spawner placera en RANDOM (sauf Cubikon)
+      slot.updatedAtMs = now;
+      revived.push({ mapId: String(mapId), uid: String(slot.uid), type: String(slot.type) });
         continue;
       }
       // Derive bornee : proportionnelle au temps ecoule, plafonnee.
@@ -251,6 +256,7 @@ export function deserializeUniverse(raw) {
           y: asFiniteNumber(s.y ?? s.homeY, 0),
           hpPct: Math.max(0, Math.min(1, Number(s.hpPct ?? 1))),
           shPct: Math.max(0, Math.min(1, Number(s.shPct ?? 1))),
+          scattered: s.scattered !== false,
           updatedAtMs: Math.max(0, Math.floor(Number(s.updatedAtMs) || 0)),
         }));
     }

@@ -10535,11 +10535,14 @@ for (let i = collectables.length - 1; i >= 0; i--) {
     if (alive < (camp.maxAlive || 0)) {
       // Univers persistant : un slot mort avant son respawnAt ne respawn pas,
       // meme si le joueur change de map / refresh / meurt. L'horloge decide.
+      // Mort -> respawn RANDOM instant (sauf Cubikon : au camp).
+      // Vivant connu -> position + HP persistés (retrouvé où laissé).
       const uid = slotUid(curMap, camp.id);
       let slot = null;
       try {
         slot = getSlot(universe, curMap, uid);
       } catch { slot = null; }
+      const isCubikon = camp.type === "npc_Cubikon";
       if (slot && slot.alive === false) {
         if (!worldClock.isDue(slot.respawnAtMs)) {
           camp.t = 1;
@@ -10547,12 +10550,13 @@ for (let i = collectables.length - 1; i >= 0; i--) {
         }
         try { markAlive(universe, curMap, uid, worldClock.now()); } catch {}
       }
+      const scatter = !isCubikon && (!slot || slot.scattered === false);
       let x = 0, y = 0;
 
-      if (camp.type === "npc_Cubikon") {
+      if (isCubikon) {
   x = camp.x;
   y = camp.y;
-} else if (slot && slot.alive !== false && slot.updatedAtMs > 0 && Number.isFinite(Number(slot.x))) {
+} else if (!scatter && slot && slot.alive !== false && slot.updatedAtMs > 0 && Number.isFinite(Number(slot.x))) {
   // NPC connu blesse/deplace : on le retrouve la ou on l'a laisse,
   // pas a l'autre bout de la carte (derive de fond bornee entre-temps).
   x = clamp(Number(slot.x), 80, WORLD.w - 80);
@@ -10576,8 +10580,16 @@ for (let i = collectables.length - 1; i >= 0; i--) {
         e.aggroRange = camp.aggroRange ?? 700;
         e.aggroHold = camp.aggroHold ?? 3.5;
 
+        // Respawn random : fige la nouvelle position (full life).
+        if (scatter && slot) {
+          try {
+            snapshotUniverseEnemy(universe, curMap, uid, { x, y, hpPct: 1, shPct: 1 }, worldClock.now());
+            slot.scattered = true;
+          } catch {}
+        }
+
         // Restaure le NPC blesse : meme HP que quand on l'a quitte.
-        if (slot && slot.alive !== false && slot.updatedAtMs > 0) {
+        if (!scatter && slot && slot.alive !== false && slot.updatedAtMs > 0) {
           if (Number.isFinite(Number(slot.hpPct)) && e.hpMax > 0) {
             e.hp = Math.max(1, Math.floor(e.hpMax * Math.max(0, Math.min(1, Number(slot.hpPct)))));
           }
