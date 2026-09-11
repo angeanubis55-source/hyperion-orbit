@@ -1739,7 +1739,8 @@ test("les équipements des drones sont indépendants entre les deux configuratio
   setActiveHangarConfig(hangarId, 1);
   assert.deepEqual(getCurrentUserFull().drones.items.find(drone => drone.id === bought.drone.id).fit.equipment, ["laser_lf3", null]);
   setActiveHangarConfig(hangarId, 2);
-  assert.deepEqual(getCurrentUserFull().drones.items.find(drone => drone.id === bought.drone.id).fit.equipment, [null, "shield_sg3n"]);
+  // Comme le vaisseau : aucun trou, tout tassé en haut à gauche.
+  assert.deepEqual(getCurrentUserFull().drones.items.find(drone => drone.id === bought.drone.id).fit.equipment, ["shield_sg3n", null]);
 });
 
 test("le catalogue expose les Iris, Apis, Zeus et les formations", () => {

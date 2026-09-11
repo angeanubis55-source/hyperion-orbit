@@ -6,7 +6,7 @@ import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, getShipFamilyId } fro
 import { normalizeQuestState, QUEST_DEFINITIONS } from "../../QUEST/QUEST_TYPES.js";
 import { calculateRankPoints, getQuestHonorReward } from "./PROGRESSION.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.js";
-import { compactFitDraft } from "./FIT_LAYOUT.js";
+import { compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe } from "../DATA/CRAFTING.js";
@@ -282,8 +282,10 @@ function getHangarActiveFit(h) {
 
 function normalizeDroneFitValue(value, slots) {
   const size = Math.max(0, Math.floor(Number(slots) || 0));
+  // Comme le vaisseau : aucun trou, tout poussé en haut à gauche.
+  const equipment = compactFitArray(normalizeArraySize(value?.equipment, size, null), size);
   return {
-    equipment: normalizeArraySize(value?.equipment, size, null),
+    equipment,
     ability: value?.ability || null,
   };
 }
@@ -406,7 +408,7 @@ function petFitSlotError(itemId, group, petLevel) {
 
 function normalizePetFitValue(value, level = 0) {
   const slots = getPetSlots(level);
-  const out = {
+  const raw = {
     lasers: normalizeArraySize(value?.lasers, slots.lasers, null),
     generators: normalizeArraySize(value?.generators, slots.generators, null),
     gears: normalizeArraySize(value?.gears, slots.gears, null),
@@ -418,11 +420,12 @@ function normalizePetFitValue(value, level = 0) {
     for (const id of value.equipment) {
       if (!id) continue;
       const t = findCatalogItem(id)?.module?.type;
-      if (t === "laser" && out.lasers.includes(null)) out.lasers[out.lasers.indexOf(null)] = id;
-      else if (t === "shield" && out.generators.includes(null)) out.generators[out.generators.indexOf(null)] = id;
+      if (t === "laser" && raw.lasers.includes(null)) raw.lasers[raw.lasers.indexOf(null)] = id;
+      else if (t === "shield" && raw.generators.includes(null)) raw.generators[raw.generators.indexOf(null)] = id;
     }
   }
-  return out;
+  // Comme le vaisseau : aucun trou, tout poussé en haut à gauche dans chaque groupe.
+  return compactPetFit(raw, slots);
 }
 
 function ensurePetFitsByHangar(u) {
@@ -1351,7 +1354,7 @@ export function saveCurrentUserDroneFit(droneId, fit, configNo = null, hangarId 
   const drone = u?.drones?.items?.find(entry => entry.id === droneId);
   const definition = drone ? DRONE_TYPES[drone.type] : null;
   if (!u || !drone || !definition) return { ok: false, error: "Drone introuvable." };
-  const equipment = Array.from({ length: definition.slots }, (_, index) => fit?.equipment?.[index] || null);
+  const equipment = compactFitArray(Array.from({ length: definition.slots }, (_, index) => fit?.equipment?.[index] || null), definition.slots);
   const activeHangar = getActiveHangar(u);
   const targetHangarId = hangarId != null ? String(hangarId) : String(activeHangar?.id || "");
   if (!targetHangarId) return { ok: false, error: "Hangar introuvable." };
@@ -1381,7 +1384,7 @@ export function saveCurrentUserDroneFits(fits) {
     const drone = u?.drones?.items?.find((d) => d.id === entry.droneId);
     const definition = drone ? DRONE_TYPES[drone.type] : null;
     if (!drone || !definition) continue;
-    const equipment = Array.from({ length: definition.slots }, (_, index) => entry.fit?.equipment?.[index] || null);
+    const equipment = compactFitArray(Array.from({ length: definition.slots }, (_, index) => entry.fit?.equipment?.[index] || null), definition.slots);
     const targetHangarId = entry.hangarId != null ? String(entry.hangarId) : String(activeHangar?.id || "");
     if (!targetHangarId) continue;
     const hangarForCfg = (u.hangars || []).find((h) => String(h?.id) === targetHangarId) || activeHangar;
@@ -1452,6 +1455,9 @@ export function saveCurrentUserPetFits(fits) {
         value[group].push(id);
       }
     }
+    // Comme le vaisseau : aucun trou, tout poussé en haut à gauche.
+    const compactedPet = compactPetFit(value, slots);
+    for (const group of groups) value[group] = compactedPet[group];
     u.pet.fitsByHangar ||= {};
     u.pet.fitsByHangar[targetHangarId] ||= {};
     u.pet.fitsByHangar[targetHangarId][cfg] = value;

@@ -42,7 +42,7 @@ import { getItemRarity, ITEM_RARITIES } from "../SRC/DATA/ITEM_RARITIES.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../DRONE/DRONE_TYPES.js";
 import { emptyPetFit, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLevelXp, getPetSlots, getPetSpritePath } from "../PET/PET_TYPES.js";
 import { MODULE_ALL_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
-import { appendToFitSlots, compactFitDraft, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
+import { appendToFitSlots, compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
 import { rarityForCatalogItem } from "../SRC/DATA/CRAFTING.js";
 import { PATCH_NOTES } from "../SRC/DATA/PATCH_NOTES.js";
 
@@ -2652,8 +2652,11 @@ function buildFitWindow() {
         }
         if (!fits.length) return;
         // Brouillon local : appliqué seulement via Appliquer (en base).
+        // Comme le vaisseau : on tasse tout en haut à gauche après retrait.
         for (const { droneId, fit } of fits) {
-          fitState.droneDrafts[droneId] = { equipment: [...fit.equipment], ability: fit.ability || null };
+          const drone = fresh.drones?.items?.find((entry) => entry.id === droneId);
+          const size = drone ? Math.max(0, Number(DRONE_TYPES[drone.type]?.slots) || fit.equipment.length) : fit.equipment.length;
+          fitState.droneDrafts[droneId] = { equipment: compactDroneEquipment(fit.equipment, size), ability: fit.ability || null };
         }
         clearFitSelection();
         showFitError("");
@@ -2689,7 +2692,8 @@ function buildFitWindow() {
           if (Array.isArray(nextFit[group]) && nextFit[group][slot] != null) nextFit[group][slot] = null;
         }
         // Brouillon local : appliqué seulement via Appliquer (en base).
-        fitState.petDraft = { ...nextFit };
+        // Comme le vaisseau : on tasse tout en haut à gauche après retrait.
+        fitState.petDraft = compactPetFit({ ...nextFit }, petSizesFor(fresh.pet));
         clearFitSelection();
         showFitError("");
         renderPetEquipment(user);
@@ -2920,6 +2924,10 @@ function initFitDrafts(hangarId, configNo) {
     protocols: padGroup(pf?.protocols, petSizes.protocols),
     ability: pf?.ability || null,
   };
+  // Anciennes sauvegardes avec trous : on tasse tout en haut à gauche dès l'ouverture.
+  fitState.draft = compactFitDraft(fitState.draft, fitState.slots);
+  compactAllDroneDrafts();
+  compactCurrentPetDraft();
   return true;
 }
 
@@ -3014,6 +3022,8 @@ function renderDroneEquipment(userOverride) {
   const root = document.getElementById("fitDroneWorkspace");
   if (!root) return;
   if (userOverride) user = userOverride; else user = getCurrentUserFull();
+  // Comme le vaisseau : affichage toujours tassé en haut à gauche (aucun trou).
+  compactAllDroneDrafts();
   const drones = user?.drones?.items || [];
   if (!drones.length) { root.innerHTML = `<div class="fitDroneEmpty">Aucun drone. Achète ton premier Iris dans la boutique.</div>`; return; }
   root.innerHTML = `<div class="droneCards">${drones.map((drone,index)=>{
@@ -3079,8 +3089,11 @@ function renderDroneEquipment(userOverride) {
         }
         fits.push({ droneId: target.id, fit: { ...targetFit, equipment: moved.target } });
         // Brouillon local : appliqué seulement via Appliquer (en base).
+        // Comme le vaisseau : on tasse tout en haut à gauche après déplacement.
         for (const { droneId, fit } of fits) {
-          fitState.droneDrafts[droneId] = { equipment: [...fit.equipment], ability: fit.ability || null };
+          const droneEntry = droneId === source.id ? source : target;
+          const size = Math.max(0, Number(DRONE_TYPES[droneEntry.type]?.slots) || fit.equipment.length);
+          fitState.droneDrafts[droneId] = { equipment: compactDroneEquipment(fit.equipment, size), ability: fit.ability || null };
         }
         clearFitSelection();showFitError("");
         renderDroneEquipment(user);renderInventoryPalette();
@@ -3091,10 +3104,14 @@ function renderDroneEquipment(userOverride) {
       const fresh=getCurrentUserFull();if(!fresh)return;
       const drone=fresh.drones?.items?.find(entry=>entry.id===slot.dataset.droneId);if(!drone)return;
       const droneFit=droneFitForState(drone);
-      if(droneFit?.equipment?.[Number(slot.dataset.droneSlot)])return showFitError("Emplacement occupé.");
-      const equipment=[...(droneFit?.equipment || [])];equipment[Number(slot.dataset.droneSlot)]=droppedId;
+      // Comme le vaisseau : équipement toujours dans le slot libre le plus en haut à gauche.
+      const size = Math.max(0, Number(DRONE_TYPES[drone.type]?.slots) || (droneFit?.equipment || []).length);
+      const compacted = compactDroneEquipment(droneFit?.equipment || [], size);
+      const freeIndex = compacted.findIndex((value) => !value);
+      if (freeIndex < 0) return showFitError("Aucun emplacement de drone disponible");
+      compacted[freeIndex] = droppedId;
       // Brouillon local : appliqué seulement via Appliquer (en base).
-      fitState.droneDrafts[drone.id] = { equipment: [...equipment], ability: droneFit?.ability || null };
+      fitState.droneDrafts[drone.id] = { equipment: [...compacted], ability: droneFit?.ability || null };
       clearFitSelection();showFitError("");
       renderDroneEquipment(user);renderInventoryPalette();
     });
@@ -3131,6 +3148,8 @@ function renderPetEquipment(userOverride) {
   const root = document.getElementById("fitPetWorkspace");
   if (!root) return;
   if (userOverride) user = userOverride; else user = getCurrentUserFull();
+  // Comme le vaisseau : affichage toujours tassé en haut à gauche (aucun trou).
+  compactCurrentPetDraft();
   const pet = user?.pet?.owned === true ? user.pet : null;
   if (!pet) {
     root.innerHTML = `<div class="fitDroneEmpty">Aucun P.E.T. Achète ton P.E.T dans la boutique (onglet P.E.T, 10 M crédits).</div>`;
@@ -3235,7 +3254,8 @@ function renderPetEquipment(userOverride) {
         nextFit[srcPet.group][srcPet.slot] = displaced;
         nextFit[groupKey][targetIndex] = droppedId;
         // Brouillon local : appliqué seulement via Appliquer (en base).
-        fitState.petDraft = { ...nextFit };
+        // Comme le vaisseau : on tasse tout en haut à gauche après déplacement.
+        fitState.petDraft = compactPetFit({ ...nextFit }, petSizesFor(fresh.pet));
         clearFitSelection(); showFitError("");
         renderPetEquipment(user); renderInventoryPalette();
         return;
@@ -3243,11 +3263,15 @@ function renderPetEquipment(userOverride) {
       const droppedItem = findCatalogItem(droppedId);
       const req = Math.max(0, Number(droppedItem?.petLevel) || 0);
       if (req > 0 && level < req) return showFitError(`Exige le P.E.T niveau ${req}.`);
-      if (nextFit[groupKey][Number(slot.dataset.petSlot)]) return showFitError("Emplacement occupé.");
       if ((computeUsage(fitState.draft)[droppedId] || 0) >= ownedCount(user, droppedId)) return showFitError("Tous les exemplaires sont déjà équipés.");
-      nextFit[groupKey][Number(slot.dataset.petSlot)] = droppedId;
+      // Comme le vaisseau : équipement toujours dans le slot libre le plus en haut à gauche.
+      const compactedGroup = compactFitArray(nextFit[groupKey] || [], (petSizesFor(fresh.pet)[groupKey] ?? (nextFit[groupKey] || []).length));
+      const freePetIndex = compactedGroup.findIndex((value) => !value);
+      if (freePetIndex < 0) return showFitError("Aucun emplacement P.E.T disponible");
+      compactedGroup[freePetIndex] = droppedId;
+      nextFit[groupKey] = compactedGroup;
       // Brouillon local : appliqué seulement via Appliquer (en base).
-      fitState.petDraft = { ...nextFit };
+      fitState.petDraft = compactPetFit({ ...nextFit }, petSizesFor(fresh.pet));
       clearFitSelection(); showFitError("");
       renderPetEquipment(user); renderInventoryPalette();
     });
@@ -3311,6 +3335,38 @@ function returnSelectedEquippedItems() {
 
 function compactCurrentFit() {
   if (fitState.draft) fitState.draft = compactFitDraft(fitState.draft, fitState.slots);
+}
+
+// Drones / P.E.T : même règle que le vaisseau — aucun trou, tout poussé en haut à gauche.
+function droneCapacityFor(drone) {
+  return Math.max(0, Number(DRONE_TYPES[drone?.type]?.slots) || (droneFitForState(drone)?.equipment || []).length);
+}
+
+function petSizesFor(pet) {
+  const level = Math.max(0, Number(pet?.level) || getPetLevel(pet?.exp));
+  return getPetSlots(level);
+}
+
+function compactDroneDraft(droneId) {
+  const drone = (user?.drones?.items || []).find((entry) => entry?.id === droneId);
+  const current = droneId != null ? fitState.droneDrafts?.[droneId] : null;
+  if (!current || !Array.isArray(current.equipment)) return;
+  const size = drone ? droneCapacityFor(drone) : current.equipment.length;
+  fitState.droneDrafts[droneId] = {
+    equipment: compactDroneEquipment(current.equipment, size),
+    ability: current.ability || null,
+  };
+}
+
+function compactAllDroneDrafts() {
+  if (!fitState.droneDrafts) return;
+  for (const droneId of Object.keys(fitState.droneDrafts)) compactDroneDraft(droneId);
+}
+
+function compactCurrentPetDraft() {
+  if (!fitState.petDraft) return;
+  const sizes = petSizesFor(user?.pet);
+  fitState.petDraft = compactPetFit(fitState.petDraft, sizes);
 }
 
 // Objet réservé au P.E.T : laser/bouclier petOnly, gear ou protocole.
@@ -3396,13 +3452,16 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
   if (fitState.section === "drones") {
     const fresh = getCurrentUserFull();
     if (!fresh) return 0;
+    // Comme le vaisseau : on tasse d'abord pour que le 1er libre soit bien en haut à gauche.
+    compactAllDroneDrafts();
     const fits = [];
     // Suit les équipements déjà attribués dans cette boucle pour ce hangar/config.
     const pendingByDrone = new Map();
     const equipmentFor = (drone) => {
       if (pendingByDrone.has(drone.id)) return pendingByDrone.get(drone.id);
       const base = droneFitForState(drone);
-      return [...(base?.equipment || [])];
+      const size = Math.max(0, Number(DRONE_TYPES[drone.type]?.slots) || (base?.equipment || []).length);
+      return [...compactDroneEquipment(base?.equipment || [], size)];
     };
     for (const itemId of selected) {
       if (findCatalogItem(itemId)?.petOnly) continue;
@@ -3422,8 +3481,11 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
     }
     // Brouillon local : appliqué seulement via Appliquer (en base).
     // (une entrée fits par objet placé, comme applied côté sauvegarde).
+    // Déjà tassé (1er libre = haut-gauche), on re-tasse par sécurité.
     for (const { droneId, fit } of fits) {
-      fitState.droneDrafts[droneId] = { equipment: [...fit.equipment], ability: fit.ability || null };
+      const droneEntry = fresh.drones?.items?.find((entry) => entry.id === droneId);
+      const size = droneEntry ? Math.max(0, Number(DRONE_TYPES[droneEntry.type]?.slots) || fit.equipment.length) : fit.equipment.length;
+      fitState.droneDrafts[droneId] = { equipment: compactDroneEquipment(fit.equipment, size), ability: fit.ability || null };
     }
     const added = fits.length;
     clearFitSelection();
@@ -3439,13 +3501,15 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
     if (fresh.pet?.owned !== true) return showFitError("P.E.T non possédé."), 0;
     const petLevel = Math.max(0, Number(fresh.pet.level) || getPetLevel(fresh.pet.exp));
     const baseFit = petFitForState(fresh.pet);
-    const nextFit = {
+    // Comme le vaisseau : on tasse d'abord pour que le 1er libre soit bien en haut à gauche.
+    const petSizes = petSizesFor(fresh.pet);
+    const nextFit = compactPetFit({
       lasers: [...(baseFit?.lasers || [])],
       generators: [...(baseFit?.generators || [])],
       gears: [...(baseFit?.gears || [])],
       protocols: [...(baseFit?.protocols || [])],
       ability: baseFit?.ability || null,
-    };
+    }, petSizes);
     let added = 0;
     let skippedGate = 0;
     // Compte les placements du lot en cours : computeUsage lit l'ancien brouillon,
@@ -3466,7 +3530,8 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
     }
     if (!added) return showFitError(skippedGate ? "Paliers de niveau P.E.T insuffisants ou plus de place" : "Aucun emplacement P.E.T disponible"), 0;
     // Brouillon local : appliqué seulement via Appliquer (en base).
-    fitState.petDraft = { ...nextFit };
+    // Déjà tassé (1er libre = haut-gauche), on re-tasse par sécurité.
+    fitState.petDraft = compactPetFit({ ...nextFit }, petSizesFor(fresh.pet));
     clearFitSelection();
     showFitError("");
     renderPetEquipment(user);
@@ -4487,6 +4552,8 @@ function setFitModalConfig(configNo) {
 
   fitState.slots = getShipSlots(h.shipId);
   compactCurrentFit();
+  compactAllDroneDrafts();
+  compactCurrentPetDraft();
   clearFitSelection();
   fitState.used = computeUsage(fitState.draft);
 

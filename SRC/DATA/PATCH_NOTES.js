@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.155",
+    "date": "2026-09-11T17:36:29+02:00",
+    "message": "Hangar minor fixes"
+  },
+  {
     "version": "0.154",
     "date": "2026-09-11T17:25:18+02:00",
     "message": "Hangar minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.96",
     "date": "2026-09-04T07:47:04+02:00",
     "message": "fix: patchnotes affichés dès l'ouverture + libellés lisibles en français pour toutes les versions"
-  },
-  {
-    "version": "0.95",
-    "date": "2026-09-04T07:34:54+02:00",
-    "message": "Nouvel onglet « Patchnotes » dans l'Espace pilote : il liste automatiquement chaque mise à jour, avec un favicon et un titre d'onglet « Hyperion Orbit » mis à jour."
   }
 ];

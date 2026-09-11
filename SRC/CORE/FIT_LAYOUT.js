@@ -40,3 +40,28 @@ export function appendToFitSlots(values, itemIds, capacity = Array.isArray(value
   }
   return { values: compacted, added };
 }
+
+// Drones / P.E.T : même règle que le vaisseau — aucun trou, tout poussé en haut à gauche.
+// compactDroneEquipment(equipment, capacity) : compacte une liste d'équipement drone.
+// compactPetFit(fit, sizes) : compacte chaque groupe (lasers / generators-gears-protocols, etc.).
+export function compactDroneEquipment(values, capacity = Array.isArray(values) ? values.length : 0) {
+  return compactFitArray(values, capacity);
+}
+
+export function compactPetFit(fit, sizes = {}) {
+  const source = fit && typeof fit === "object" ? fit : {};
+  const result = { ...source };
+  for (const key of Object.keys(source)) {
+    if (key === "ability") continue;
+    if (!Array.isArray(source[key])) continue;
+    const fallback = source[key].length;
+    const size = sizes[key] ?? fallback;
+    result[key] = compactFitArray(source[key], size);
+  }
+  // Groupes connus même si absents du draft (taille imposée par le niveau).
+  for (const key of Object.keys(sizes)) {
+    if (key === "ability" || Array.isArray(result[key])) continue;
+    result[key] = compactFitArray([], sizes[key]);
+  }
+  return result;
+}
