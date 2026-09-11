@@ -4360,25 +4360,13 @@ let laserImgs = [];
 let laserReady = false;
 
 function ensureLaserLoaded() {
-  if (LASER_PACK._promise) return LASER_PACK._promise;
-  LASER_PACK._imgs = [];
-
-  LASER_PACK._promise = (async () => {
-    const jobs = [];
-    for (let i = 0; i < LASER_PACK.frames; i++) {
-      const src = `${LASER_PACK.path}${LASER_PACK.firstNumber + i}${LASER_PACK.ext}`;
-      jobs.push(loadImage(src, { priority: false }).then((img) => { LASER_PACK._imgs[i] = img; }));
-    }
-    await Promise.all(jobs);
-    return true;
-  })();
-
+  // Raygun désactivé : on ne charge plus COMBAT/RAYGUN/RAYGUN2/.
+  if (!LASER_PACK._promise) LASER_PACK._promise = Promise.resolve(false);
   return LASER_PACK._promise;
 }
 
 ensureLaserLoaded().then(() => {
-  laserImgs = LASER_PACK._imgs;
-  laserReady = true;
+  // Volontairement vide : laserReady reste à false, rien à afficher.
 });
 
 // ============================================================
@@ -9184,77 +9172,11 @@ const LASER = {
 let laserCd = 2.0;
 
 function maybeTriggerLaser() {
-  if (laserCd > 0) return;
-  if (Math.random() > LASER.chance) return;
-  const t = Target.get();
-  if (t) spawnLaser(player.x, player.y, player.angle, t.id);
-  laserCd = rand(LASER.minCd, LASER.maxCd);
+  return; // Raygun supprimé : ni visuel ni dégâts.
 }
 
 function spawnLaser(x, y, ang, targetId) {
-  const target = getEnemyById(targetId);
-  if (!target) return;
-
-  const len = playerRange + LASER.lenExtra;
-  const hitLen = len + (LASER.hitExtraLen || 0);
-  const start = player.r + 18;
-  const segMax = start + hitLen;
-
-  const dx = Math.cos(ang), dy = Math.sin(ang);
-
-  const fps = LASER_PACK.fps || 20;
-  const durVis = LASER_PACK.frames / fps;
-
-  pushBounded(lasers, { x, y, ang, len, t: 0, dur: durVis, width: LASER.width, targetId }, ENTITY_LIMITS.lasers);
-
-  const rx = target.x - x;
-  const ry = target.y - y;
-
-  const proj = rx * dx + ry * dy;
-  if (proj < 0 || proj > segMax) return;
-
-  const dist2ToLine = rx * rx + ry * ry - proj * proj;
-  const rad = (target.r || 18) + LASER.hitWidth;
-  if (dist2ToLine > rad * rad) return;
-
-  const variance = 0.95 + Math.random() * 0.10;
-  let dmg = LASER.baseDmg * (player.laserDmgMult || 1) * variance;
-
-  const CRIT_CHANCE = 0.05;
-  const CRIT_MULT = 1.50;
-  const isCrit = Math.random() < CRIT_CHANCE;
-
-  if (isCrit) {
-    dmg *= CRIT_MULT;
-  }
-
-  const rawDamage = dmg;
-
-  const out = damageEnemy(target, dmg);
-
-  if (out.total > 0) {
-    const n = Math.max(1, Math.round(rawDamage));
-    
-    const col = isCrit 
-      ? "rgba(255,220,50,0.98)"
-      : "rgba(179,66,255,0.95)";
-
-    const opts = {
-      size: 18,
-      pop: 0.3,
-      shake: 0.6,
-      life: 1,
-      glow: isCrit ? 1.4 : 1.0,
-      weight: 900,
-      impact: true
-    };
-
-    const offsetX = (Math.random() - 0.5) * 60;
-    const offsetY = -60 - Math.random() * 20;
-
-    addFloatText(target.x + offsetX, target.y + offsetY, n, col, opts);
-    spawnSpark(target.x, target.y, true);
-  }
+  return; // Raygun supprimé : ni visuel ni dégâts.
 }
 
 // ============================================================
@@ -13669,7 +13591,8 @@ if (GAME_SETTINGS.textures) {
 
   drawExplosions(ox, oy);
 
-  for (const L of lasers) drawLaserBeam(L, ox, oy);
+  // Raygun désactivé : aucun faisceau laser affiché.
+  // for (const L of lasers) drawLaserBeam(L, ox, oy);
 
   for (const b of bullets) {
     const x = b.x + ox, y = b.y + oy;
