@@ -7416,7 +7416,7 @@ function addPlayerCombatFloat(amount, color, prefix = "") {
   const textOffsetY = -90 - Math.random() * 20;
   addFloatText(player.x + textOffsetX, player.y + textOffsetY, shown, color, {
     text: `${prefix}${DMG_FMT.format(shown)}`,
-    size: 18,
+    size: 21,
     pop: 0.3,
     shake: 0.6,
     life: 1,
@@ -9918,7 +9918,7 @@ function flushVolleyKey(key, v) {
   if (!v || v.rawDamage <= 0) return;
 
   if (v.hasRocketBreakdown) {
-    const opts = { size: 18, pop: 0.3, shake: 0.6, life: 1, glow: v.isCrit ? 1.4 : 1, weight: 900, impact: true };
+    const opts = { size: v.isCrit ? 25 : 21, pop: 0.3, shake: 0.6, life: 1, glow: v.isCrit ? 1.6 : 1, weight: 900, impact: true };
     if (v.rocketDirectRaw > 0) {
       addFloatText(v.x - 24, v.y - 52, v.rocketDirectRaw, "rgba(255,107,122,0.95)", opts);
     }
@@ -9937,11 +9937,11 @@ function flushVolleyKey(key, v) {
         : "rgba(124,240,255,0.95)");
 
   const opts = {
-    size: 18,
+    size: v.isCrit ? 25 : 21,
     pop: 0.3,
     shake: 0.6,
     life: 1,
-    glow: v.isCrit ? 1.4 : 1.0,
+    glow: v.isCrit ? 1.6 : 1.0,
     weight: 900,
     impact: true
   };

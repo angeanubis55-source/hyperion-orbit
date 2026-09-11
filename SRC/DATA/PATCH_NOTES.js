@@ -1,6 +1,16 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.158",
+    "date": "2026-09-11T20:02:02+02:00",
+    "message": "Raygun supprime : ni visuel ni degats"
+  },
+  {
+    "version": "0.157",
+    "date": "2026-09-11T18:04:22+02:00",
+    "message": "REX: pseudo + firme, balancement jeu, fenetre nommage achat, renommage 1M"
+  },
+  {
     "version": "0.156",
     "date": "2026-09-11T17:43:46+02:00",
     "message": "Hangar PET/drones: compactage haut-gauche comme le vaisseau"
@@ -289,15 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.99",
     "date": "2026-09-04T22:15:44+02:00",
     "message": "Synchronise la version du jeu (7d0cc13b)"
-  },
-  {
-    "version": "0.98",
-    "date": "2026-09-04T22:15:19+02:00",
-    "message": "Synchronise la version du jeu (94f43129)"
-  },
-  {
-    "version": "0.97",
-    "date": "2026-09-04T22:15:05+02:00",
-    "message": "fix: barre d'action respecte la config exacte (plus d'auto-remplissage), formations restaurées au refresh, gains XP/honneur réels affichés avec bonus formation coloré"
   }
 ];
