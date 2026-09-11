@@ -3051,7 +3051,7 @@ function renderDroneEquipment(userOverride) {
       showFitError("");
       renderDroneEquipment();renderInventoryPalette();
     });
-    slot.addEventListener("dragover",event=>{event.preventDefault();event.dataTransfer.dropEffect=itemId?"move":"copy";slot.classList.add("dragTarget")});
+    slot.addEventListener("dragover",event=>{event.preventDefault();event.dataTransfer.dropEffect=itemId?"move":"copy";const ids=Array.isArray(fitState.draggedItemIds)?fitState.draggedItemIds:[];if(ids.length&&!ids.some(droneItemPlaceable))return;slot.classList.add("dragTarget")});
     slot.addEventListener("dragleave",()=>slot.classList.remove("dragTarget"));
     slot.addEventListener("drop",event=>{
       event.preventDefault();event.stopPropagation();slot.classList.remove("dragTarget");
@@ -3112,14 +3112,15 @@ function renderDroneEquipment(userOverride) {
         event.dataTransfer.effectAllowed="move";
         fitState.draggedItemIds=[itemId];
         slot.classList.add("dragging");
+        updateFitDropHighlights();
       });
       slot.addEventListener("dragend",()=>{slot.classList.remove("dragging");fitState.draggedItemIds=[];clearFitDropHighlights();});
     }
   });
   root.addEventListener("dragover",event=>{
-    if(!event.dataTransfer.types.includes("application/x-orbit-items"))return;
+    if(!(event.dataTransfer.types.includes("application/x-orbit-items") || event.dataTransfer.types.includes("text/plain") || (Array.isArray(fitState.draggedItemIds) && fitState.draggedItemIds.length)))return;
     event.preventDefault();
-    root.querySelectorAll("[data-drone-slot]").forEach(s=>s.classList.add("dragCompatible"));
+    updateFitDropHighlights();
   });
   root.addEventListener("dragleave",event=>{if(!root.contains(event.relatedTarget))clearFitDropHighlights();});
   root.addEventListener("drop",()=>clearFitDropHighlights());
@@ -3195,7 +3196,7 @@ function renderPetEquipment(userOverride) {
       showFitError("");
       renderPetEquipment(); renderInventoryPalette();
     });
-    slot.addEventListener("dragover", event => { event.preventDefault(); event.dataTransfer.dropEffect = itemId ? "move" : "copy"; slot.classList.add("dragTarget"); });
+    slot.addEventListener("dragover", event => { event.preventDefault(); event.dataTransfer.dropEffect = itemId ? "move" : "copy"; const ids = Array.isArray(fitState.draggedItemIds) ? fitState.draggedItemIds : []; if (ids.length && !ids.some((id) => petItemGroup(id) === groupKey)) return; slot.classList.add("dragTarget"); });
     slot.addEventListener("dragleave", () => slot.classList.remove("dragTarget"));
     slot.addEventListener("drop", event => {
       event.preventDefault(); event.stopPropagation(); slot.classList.remove("dragTarget");
@@ -3262,14 +3263,15 @@ function renderPetEquipment(userOverride) {
         event.dataTransfer.effectAllowed = "move";
         fitState.draggedItemIds = [itemId];
         slot.classList.add("dragging");
+        updateFitDropHighlights();
       });
       slot.addEventListener("dragend", () => { slot.classList.remove("dragging"); fitState.draggedItemIds = []; clearFitDropHighlights(); });
     }
   });
   root.addEventListener("dragover", event => {
-    if (!event.dataTransfer.types.includes("application/x-orbit-items")) return;
+    if(!(event.dataTransfer.types.includes("application/x-orbit-items") || event.dataTransfer.types.includes("text/plain") || (Array.isArray(fitState.draggedItemIds) && fitState.draggedItemIds.length)))return;
     event.preventDefault();
-    root.querySelectorAll("[data-pet-slot]").forEach(s => s.classList.add("dragCompatible"));
+    updateFitDropHighlights();
   });
   root.addEventListener("dragleave", event => { if (!root.contains(event.relatedTarget)) clearFitDropHighlights(); });
   root.addEventListener("drop", () => clearFitDropHighlights());
@@ -3336,13 +3338,51 @@ function clearFitDropHighlights() {
   document.querySelectorAll("#fitCard .droneFitSlot.dragging").forEach((slot) => slot.classList.remove("dragging"));
   document.querySelectorAll("#fitCard .petFitSlot.dragCompatible").forEach((slot) => slot.classList.remove("dragCompatible"));
   document.querySelectorAll("#fitCard .petFitSlot.dragging").forEach((slot) => slot.classList.remove("dragging"));
+  document.querySelectorAll("#fitCard .fitSlotsScroll .slotCell.dragCompatible").forEach((slot) => slot.classList.remove("dragCompatible"));
+  document.querySelectorAll("#fitCard .slotCell.dragTarget").forEach((slot) => slot.classList.remove("dragTarget"));
+  document.querySelectorAll("#fitCard .droneFitSlot.dragTarget").forEach((slot) => slot.classList.remove("dragTarget"));
+  document.querySelectorAll("#fitCard .petFitSlot.dragTarget").forEach((slot) => slot.classList.remove("dragTarget"));
+}
+
+function droneItemPlaceable(itemId) {
+  if (!itemId || isRouletteModuleId(itemId)) return false;
+  const it = findCatalogItem(itemId);
+  if (!it || it.petOnly || it.petGear || it.petProtocol) return false;
+  const t = it?.module?.type;
+  return t === "laser" || t === "shield";
 }
 
 function updateFitDropHighlights() {
   clearFitDropHighlights();
-  const compatibleTypes = new Set((fitState.draggedItemIds || []).map(slotTypeForItem).filter(Boolean));
+  const draggedIds = Array.isArray(fitState.draggedItemIds) ? fitState.draggedItemIds.filter(Boolean) : [];
+  if (!draggedIds.length) return;
+  // ---- Vaisseau : un groupe par type (lasers / gens / extras / shipMods) ----
+  // Les slots bleus viennent du CSS : `.fitSlotGroup.dragCompatible .slotCell`.
+  const compatibleTypes = new Set(draggedIds.map(slotTypeForItem).filter(Boolean));
+  // Modules roulette : ne surligne que si la famille correspond au hangar en cours.
+  if (compatibleTypes.has("shipMods")) {
+    const hangar = (user?.hangars || []).find((x) => x?.id === fitState.hangarId);
+    const shipFamily = hangar ? getShipFamilyId(hangar.shipId) : null;
+    const allModules = Array.isArray(user?.inventory?.shipModules) ? user.inventory.shipModules : [];
+    const anyCompatible = draggedIds.some((id) => {
+      if (!isRouletteModuleId(id)) return false;
+      const mod = allModules.find((entry) => entry?.id === id);
+      if (!mod || !shipFamily) return true;
+      return moduleFamilyId(mod) === shipFamily;
+    });
+    if (!anyCompatible) compatibleTypes.delete("shipMods");
+  }
   compatibleTypes.forEach((slotType) => {
     document.querySelector(`#fitCard .fitSlotGroup[data-slot-type="${slotType}"]`)?.classList.add("dragCompatible");
+  });
+  // ---- Drones : lasers + boucliers uniquement, tous les slots concernés ----
+  if (draggedIds.some(droneItemPlaceable)) {
+    document.querySelectorAll(`#fitCard #fitDroneWorkspace [data-drone-slot]`).forEach((s) => s.classList.add("dragCompatible"));
+  }
+  // ---- P.E.T : uniquement le(s) groupe(s) concerné(s) par l'item glissé ----
+  const petGroups = new Set(draggedIds.map(petItemGroup).filter(Boolean));
+  petGroups.forEach((groupKey) => {
+    document.querySelectorAll(`#fitCard #fitPetWorkspace [data-pet-group="${groupKey}"]`).forEach((s) => s.classList.add("dragCompatible"));
   });
 }
 
@@ -3899,6 +3939,7 @@ function renderInventoryPalette() {
 
         fitState.selectedItemId = e.itemId;
         fitState.selectedCopyKey = copyKey;
+        updateFitDropHighlights();
       });
       cell.addEventListener("dragend", () => {
         fitState.draggedItemIds = [];
@@ -4005,6 +4046,7 @@ function renderSlots() {
       event.dataTransfer.effectAllowed = "move";
       fitState.draggedItemIds = [itemId];
       cell.classList.add("dragging");
+      updateFitDropHighlights();
     });
     cell.addEventListener("dragend", () => {
       cell.classList.remove("dragging");
@@ -4017,7 +4059,12 @@ function renderSlots() {
     cell.addEventListener("dragover", (ev) => {
       ev.preventDefault();
       ev.dataTransfer.dropEffect = "copy";
+      const ids = Array.isArray(fitState.draggedItemIds) ? fitState.draggedItemIds : [];
+      if (ids.length && !ids.some((id) => isItemAllowedInSlot(slotType, id))) return;
+      cell.classList.add("dragTarget");
     });
+
+    cell.addEventListener("dragleave", () => cell.classList.remove("dragTarget"));
 
     cell.addEventListener("drop", (ev) => {
       ev.preventDefault();
@@ -4053,6 +4100,8 @@ function renderSlots() {
       draft[slotType] = result.values;
       compactCurrentFit();
       clearFitSelection();
+      fitState.draggedItemIds = [];
+      clearFitDropHighlights();
       showFitError("");
       renderSlots();
       renderInventoryPalette();
@@ -4220,7 +4269,12 @@ function renderSlots() {
     cell.addEventListener("dragover", (ev) => {
       ev.preventDefault();
       ev.dataTransfer.dropEffect = "copy";
+      const ids = Array.isArray(fitState.draggedItemIds) ? fitState.draggedItemIds : [];
+      if (ids.length && !ids.some((id) => isItemAllowedInSlot("shipMods", id))) return;
+      cell.classList.add("dragTarget");
     });
+
+    cell.addEventListener("dragleave", () => cell.classList.remove("dragTarget"));
 
     cell.addEventListener("drop", (ev) => {
       ev.preventDefault();
@@ -4282,6 +4336,8 @@ function renderSlots() {
       }
       compactCurrentFit();
       clearFitSelection();
+      fitState.draggedItemIds = [];
+      clearFitDropHighlights();
       showFitError("");
       renderSlots();
       renderInventoryPalette();
@@ -4354,6 +4410,7 @@ function renderShipModulesList() {
       ev.dataTransfer.setData("application/x-orbit-items", JSON.stringify([row.dataset.modid]));
       ev.dataTransfer.effectAllowed = "copy";
       fitState.draggedItemIds = [row.dataset.modid];
+      updateFitDropHighlights();
     });
     row.addEventListener("dragend", () => {
       fitState.draggedItemIds = [];

@@ -1189,6 +1189,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #fitCard .slotCell.filled { border-style: solid !important; border-color: rgba(124,240,255,.48) !important; background: rgba(0,217,255,.10) !important; }
 #fitCard .slotCell.filled { cursor: grab !important; }
 #fitCard .slotCell.dragging { opacity: .35 !important; }
+#fitCard .fitSlotsScroll .slotCell.dragTarget { border-color: #70e7fa !important; background: rgba(20,154,182,.22) !important; box-shadow: 0 0 12px rgba(105,233,255,.35) !important; }
 #fitCard .slotCell img { width: 86% !important; height: 86% !important; object-fit: contain !important; image-rendering: pixelated !important; }
 
 #fitCard .fitInventoryPane { display: flex !important; flex-direction: column !important; }
@@ -1995,4 +1996,32 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
 }
 #fitCard .fitShipModules .shipModRow.equipped:hover {
   background: linear-gradient(145deg, rgba(140, 226, 244, .04), transparent 46%), #081620 !important;
+}
+
+/* Surbrillance drag généralisée (lasers / générateurs / extras / modules / drones / P.E.T).
+   Les slots concernés deviennent bleus pendant le glisser. Bloc final = prioritaire
+   (spécificité 3 IDs pour passer au-dessus du bloc unifié). */
+#fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsLasers .slotCell,
+#fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsGens .slotCell,
+#fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsExtras .slotCell,
+#fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsShipMods .slotCell {
+  border-color: rgba(105, 233, 255, .68) !important;
+  background: rgba(0, 217, 255, .09) !important;
+  box-shadow: inset 0 0 10px rgba(0, 217, 255, .08), 0 0 12px rgba(105, 233, 255, .12) !important;
+}
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.dragCompatible,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.dragCompatible {
+  border-color: rgba(105, 233, 255, .65) !important;
+  background: rgba(0, 217, 255, .09) !important;
+  box-shadow: 0 0 12px rgba(105, 233, 255, .28), inset 0 0 16px rgba(105, 233, 255, .08) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.dragTarget,
+#fitOverlay #fitCard #fitSlotsGens .slotCell.dragTarget,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell.dragTarget,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.dragTarget,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.dragTarget,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.dragTarget {
+  border-color: #70e7fa !important;
+  background: rgba(20, 154, 182, .22) !important;
+  box-shadow: 0 0 12px rgba(105, 233, 255, .35) !important;
 }
