@@ -30,6 +30,7 @@ import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
+import { SHIP_ITEM_DIR, SHIP_ITEM_FULL_IDS, SHIP_ITEM_TRAIT_IDS, SHIP_TRAIT_DIR } from "../SHIP/SHIP_ITEMS.js";
 import { escapeHtml } from "../UI/UI_DOM.js";
 import { PILOT_RANKS, calculateRankPoints, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo } from "../SRC/CORE/PROGRESSION.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
@@ -105,7 +106,7 @@ const btnChangePassword = $("btnChangePassword");
 const accountFaction = $("accountFaction");
 const accountFactionStatus = $("accountFactionStatus");
 const btnChangeFaction = $("btnChangeFaction");
-const shopCredits = $("shopCredits");
+const shopCredits = $("shopWindowCredits") || $("shopCredits");
 const hangarGrid = $("hangarGrid");
 const hangarPreviewEyebrow = document.querySelector("#hangarPreview .hangarPreviewEyebrow");
 const hangarPreviewImage = $("hangarPreviewImage");
@@ -116,8 +117,8 @@ const hangarPreviewMeta = $("hangarPreviewMeta");
 const inventorySearch = $("inventorySearch");
 const inventorySections = $("inventorySections");
 const inventoryTooltip = $("inventoryTooltip");
-const shopList = $("shopList");
-const shopPreview = $("shopPreview");
+const shopList = $("shopWindowList") || $("shopList");
+const shopPreview = $("shopWindowPreview") || $("shopPreview");
 const btnStart = $("btnStart");
 const btnLogout = $("btnLogout");
 const btnSessionMenu = $("btnSessionMenu");
@@ -126,13 +127,22 @@ const btnRestartGame = $("btnRestartGame");
 
 // state
 let user = null;
-let tab = localStorage.getItem("orbit_profile_tab") || "stats";
+let storedTab = localStorage.getItem("orbit_profile_tab") || "stats";
+if (storedTab === "shop" && document.getElementById("shopWindowPanel")) storedTab = "stats";
+let tab = storedTab;
 let shopTab = localStorage.getItem("orbit_shop_tab") || "ammo";
 let selectedShopItemId = null;
 let selectedHangarId = null;
 let shopRenderToken = 0;
 let rouletteRailCells = [];
 let moduleReroll = null;
+
+// Coût de la prochaine relance d'un module : 5M de base, x5 par relance
+// déjà effectuée. Le compteur est stocké sur le module (persisté en
+// sauvegarde), donc il survit au re-render, au changement d'onglet et au reload.
+function nextModuleRerollCost(rerollsDone) {
+  return MODULE_ROLL_COST * Math.pow(5, (Number(rerollsDone) || 0) + 1);
+}
 let inventoryQuery = "";
 
 // -------------------- UI helpers --------------------
@@ -684,7 +694,16 @@ function iconForItem(it, cat) {
 }
 
 function shipPreviewSrc(shipId, frameIndex = 28) {
+  // Style uniforme 100x100 top-down : full-id puis trait, sinon frame sprite.
+  // Clé canonique via le pack (gère les alias comme PhoenixBleu).
   const pack = getShipPackById(shipId);
+  const key = pack?.id || shipId;
+  if (key && SHIP_ITEM_FULL_IDS.has(String(key))) {
+    return `${SHIP_ITEM_DIR}${key}.png`;
+  }
+  if (key && SHIP_ITEM_TRAIT_IDS.has(String(key))) {
+    return `${SHIP_TRAIT_DIR}${key}.png`;
+  }
   if (!pack) return FALLBACK_ICON;
 
   const frames = Number(pack.frames || 1);
@@ -728,6 +747,11 @@ function shipScaleToFit200(shipId, max = 200) {
 
 // -------------------- Tabs --------------------
 function setTab(next) {
+  // En jeu (index.html avec #shopWindowPanel), l'onglet boutique n'existe
+  // plus dans l'Espace pilote : il vit dans sa propre fenêtre.
+  // Sur la page standalone (PROFILE.html, sans #shopWindowPanel), on garde
+  // l'ancien onglet boutique.
+  if (next === "shop" && document.getElementById("shopWindowPanel")) next = "stats";
   if (next !== "hangars" && fitOverlayEl && fitOverlayEl.style.display !== "none") {
     closeFitModal();
   }
@@ -736,11 +760,11 @@ function setTab(next) {
 
   if (tab === "patchnotes") renderPatchNotes();
 
-  document.querySelectorAll(".tabBtn").forEach((b) => {
+  document.querySelectorAll("#profileWindow .tabBtn[data-tab], .tabs .tabBtn[data-tab]").forEach((b) => {
     b.classList.toggle("active", b.dataset.tab === tab);
   });
 
-document.querySelectorAll("#profileOverlay .profilePanel").forEach((p) => {
+document.querySelectorAll("#profileWindow .profilePanel, .mainCard .panel").forEach((p) => {
   p.classList.remove("active");
 });
 
@@ -754,7 +778,7 @@ function wireMainTabsOnce() {
   if (inventoryTooltip && inventoryTooltip.parentElement !== document.body) {
     document.body.appendChild(inventoryTooltip);
   }
-  document.querySelectorAll(".tabBtn").forEach((btn) => {
+  document.querySelectorAll("#profileWindow .tabBtn[data-tab], .tabs .tabBtn[data-tab]").forEach((btn) => {
     btn.addEventListener("click", () => {
       setMsg("", true);
       setTab(btn.dataset.tab);
@@ -785,14 +809,34 @@ function wireMainTabsOnce() {
 }
 
 function wireShopTabsOnce() {
-  const root = document.getElementById("shopTabs");
-  root?.querySelectorAll(".subtabBtn").forEach((btn) => {
+  const root = document.getElementById("shopWindowTabs") || document.getElementById("shopTabs");
+  root?.querySelectorAll(".tabBtn, .subtabBtn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      shopTab = btn.dataset.shop;
-      localStorage.setItem("orbit_shop_tab", shopTab);
-      renderShop(user);
+      setShopTab(btn.dataset.shop);
     });
   });
+}
+
+function setShopTab(next) {
+  if (!next) return;
+  shopTab = next;
+  localStorage.setItem("orbit_shop_tab", shopTab);
+  document.querySelectorAll("#shopWindowTabs .tabBtn, #shopTabs .subtabBtn").forEach((button) => {
+    button.classList.toggle("active", button.dataset.shop === shopTab);
+  });
+  if (user) renderShop(user);
+}
+
+function shopIsVisible() {
+  const overlay = document.getElementById("shopOverlay");
+  return !!overlay && overlay.style.display !== "none" && !overlay.hidden
+    && !overlay.classList.contains("gameWinMinimized");
+}
+
+function refreshShopIfVisible() {
+  try {
+    if (shopIsVisible() && user) renderShop(user);
+  } catch {}
 }
 
 // -------------------- Render --------------------
@@ -1452,7 +1496,7 @@ function applyHangarDesign(hangarId, designId) {
   renderHeader(user);
   renderStats(user);
   renderHangars(user);
-  if (tab === "shop") renderShop(user);
+  refreshShopIfVisible();
 
   if (isIntegratedInGame) {
     window.__ORBIT_ENGINE__?.applyHangarDesignLive?.();
@@ -1477,10 +1521,8 @@ function renderHangarsMeasured(u) {
     if (!hangar) return;
     const isActivePreview = hangar.id === activeHangar?.id;
     const activePack = getShipPack(activeHangar?.shipId);
-    const activeSlots = getShipSlots(activeHangar?.shipId);
     const activePreview = shipPreviewSrc(activeHangar?.shipId);
     const selectedPack = getShipPack(hangar.shipId);
-    const selectedSlots = getShipSlots(hangar.shipId);
     const selectedPreview = shipPreviewSrc(hangar.shipId);
     document.getElementById("hangarPreview")?.classList.toggle("isComparing", !isActivePreview);
     if (hangarPreviewImage) {
@@ -1496,8 +1538,7 @@ function renderHangarsMeasured(u) {
     }
     if (hangarSelectedTitle) hangarSelectedTitle.textContent = selectedPack?.name || hangar.shipId;
     if (hangarPreviewMeta) {
-      const slots = isActivePreview ? activeSlots : selectedSlots;
-      hangarPreviewMeta.textContent = `${isActivePreview ? "Actif" : "Sélection"} · Lasers ${slots.lasers} · Générateurs ${slots.gens} · Extras ${slots.extras}`;
+      hangarPreviewMeta.textContent = "";
     }
   };
 
@@ -1616,7 +1657,7 @@ if (!isIntegratedInGame && isGameOpen()) {
   renderHeader(user);
   renderStats(user);
   renderHangars(user);
-  if (tab === "shop") renderShop(user);
+  refreshShopIfVisible();
   if (isIntegratedInGame) {
     window.__ORBIT_ENGINE__?.applyHangarDesignLive?.();
   }
@@ -1662,7 +1703,7 @@ function renderShopMeasured(user) {
   refreshShopBalance = null;
   const token = ++shopRenderToken;
 
-  document.querySelectorAll("#shopTabs .subtabBtn").forEach((button) => {
+  document.querySelectorAll("#shopWindowTabs .tabBtn, #shopTabs .subtabBtn").forEach((button) => {
     button.classList.toggle("active", button.dataset.shop === shopTab);
   });
 
@@ -1675,7 +1716,7 @@ function renderShopMeasured(user) {
 
   if (shopLayout) shopLayout.style.display = "grid";
   if (shopList) shopList.style.display = "flex";
-  if (shopPreview) shopPreview.style.display = "block";
+  if (shopPreview) { shopPreview.style.display = "block"; shopPreview.style.flexDirection = ""; }
 
   // Catégories spéciales
   if (shopTab === "extras") {
@@ -1790,8 +1831,8 @@ function renderShipsGrid(user) {
   if (shopList) shopList.style.display = "none";
   if (shopPreview) shopPreview.style.display = "none";
 
-  // Trouver le parent du shopLayout (le panel shop)
-  const shopPanel = document.getElementById("panel_shop");
+  // Trouver le parent du shopLayout (le panel boutique)
+  const shopPanel = document.getElementById("shopWindowPanel") || document.getElementById("panel_shop");
   if (!shopPanel) return;
 
   // Créer ou récupérer le container grid
@@ -1904,6 +1945,11 @@ function renderExtrasRoulette(user) {
   if (!shopList || !shopPreview) return;
 
   shopList.innerHTML = "";
+  // La carte doit remplir toute la hauteur du panneau pour plaquer les
+  // boutons en bas : le conteneur passe en colonne flex (réinitialisé en
+  // block pour les autres onglets dans renderShopMeasured).
+  shopPreview.style.display = "flex";
+  shopPreview.style.flexDirection = "column";
 
   const visible = 9;
   const centerIndex = Math.floor(visible / 2);
@@ -1950,14 +1996,18 @@ function renderExtrasRoulette(user) {
       : [];
     if (!history.length) return `<div class="moduleHistoryEmpty">Aucun module obtenu pour le moment.</div>`;
 
-    const pages = Math.max(1, Math.ceil(history.length / 30));
+    const pages = Math.max(1, Math.ceil(history.length / 4));
     historyPage = Math.max(0, Math.min(historyPage, pages - 1));
-    const end = history.length - historyPage * 30;
-    const entries = history.slice(Math.max(0, end - 30), end).reverse();
-    const controls = `<nav class="inventoryPager" aria-label="Pages de l?historique"><button data-history-page="-1" ${historyPage === 0 ? "disabled" : ""}>Pr?c?dent</button><span>Page ${historyPage + 1} / ${pages}</span><button data-history-page="1" ${historyPage + 1 === pages ? "disabled" : ""}>Suivant</button></nav>`;
-    return controls + entries.map((module, index) => {
+    const end = history.length - historyPage * 4;
+    const entries = history.slice(Math.max(0, end - 4), end).reverse();
+    return entries.map((module, index) => {
       const bonuses = Array.isArray(module?.bonuses)
-        ? module.bonuses.map(bonus => `${formatNumber(bonus.pct || 0)}% ${formatStatLabel(bonus.stat)}`).join(" • ")
+        ? module.bonuses.map(bonus => {
+            const pct = Number(bonus.pct) || 0;
+            const color = pct < 0 ? "#ff5566" : "#00ff88";
+            const sign = pct > 0 ? "+" : "";
+            return `<strong style="color:${color};">${sign}${pct}%</strong> ${escapeHtml(formatStatLabel(bonus.stat))}`;
+          }).join(" • ")
         : "Aucun bonus";
       const rarity = moduleRarityMeta(module);
       const familyId = moduleFamilyId(module);
@@ -1965,57 +2015,133 @@ function renderExtrasRoulette(user) {
       const obtainedAt = Number(module?.createdAt || 0) > 0
         ? new Date(Number(module.createdAt) * 1000).toLocaleString("fr-FR")
         : "Date inconnue";
+      const rerollsDone = Number(module?.rerolls) || 0;
+      const nextCost = nextModuleRerollCost(rerollsDone);
+      const ownedModule = (currentUser?.inventory?.shipModules || []).some((m) => String(m?.id) === String(module?.id));
       return `
         <div class="moduleHistoryRow">
           <span class="moduleHistoryIndex">${formatNumber(end - index)}</span>
           <img src="${moduleIconSrc(module?.type, module?.tier)}" alt="" class="moduleHistoryModImg" />
           <img src="${familyShipImg}" alt="" class="moduleHistoryShipImg" />
           <div class="moduleHistoryMeta">
-            <strong>${escapeHtml(String(module?.type || "module").toUpperCase())}-${escapeHtml(String(module?.tier || "x1").toUpperCase())}</strong>
-            <span style="color:${rarity.color};font-weight:700;">${escapeHtml(rarity.name)}</span>
-            <span>${escapeHtml(getShipFamilyName(familyId))} • ${escapeHtml(bonuses)}</span>
+            <strong class="moduleHistoryName">${escapeHtml(String(module?.type || "module").toUpperCase())}-${escapeHtml(String(module?.tier || "x1").toUpperCase())}</strong>
+            <span class="moduleHistoryRarity" style="color:${rarity.color};font-weight:700;">${escapeHtml(rarity.name)}</span>
+            <span>${escapeHtml(getShipFamilyName(familyId))} • ${bonuses}</span>
           </div>
-          <time>${escapeHtml(obtainedAt)}</time>
+          <div class="moduleHistorySide">
+            <time>${escapeHtml(obtainedAt)}</time>
+            <span class="moduleHistoryReroll">Relances : <strong>${formatNumber(rerollsDone)}</strong> · Prochaine : <strong>${formatNumber(nextCost)}</strong></span>
+          </div>
+          ${module?.id ? `<button type="button" class="moduleHistoryRerollBtn" style="width:42px;height:42px;" data-reroll-module="${escapeHtml(String(module.id))}" title="Relancer ce module" ${ownedModule ? "" : "disabled"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7cf0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg></button>` : ""}
         </div>
       `;
     }).join("");
   }
+  function renderModuleHistoryPager(currentUser) {
+    const history = Array.isArray(currentUser?.inventory?.moduleRollHistory)
+      ? currentUser.inventory.moduleRollHistory
+      : [];
+    if (!history.length) return "";
+    const pages = Math.max(1, Math.ceil(history.length / 4));
+    historyPage = Math.max(0, Math.min(historyPage, pages - 1));
+    return `<nav class="inventoryPager" aria-label="Pages de l'historique"><button data-history-page="-1" ${historyPage === 0 ? "disabled" : ""}>Précédent</button><span>Page ${historyPage + 1} / ${pages}</span><button data-history-page="1" ${historyPage + 1 === pages ? "disabled" : ""}>Suivant</button></nav>`;
+  }
+  function updateModuleHistory(currentUser) {
+    const historyEl = document.getElementById("moduleRollHistory");
+    if (historyEl) historyEl.innerHTML = renderModuleHistory(currentUser);
+    const pagerEl = document.getElementById("moduleHistoryPager");
+    if (pagerEl) pagerEl.innerHTML = renderModuleHistoryPager(currentUser);
+  }
 
   shopPreview.innerHTML = `
-    <div class="tile extrasRoulettePanel">
+    <div class="tile extrasRoulettePanel" style="display:flex;flex-direction:column;flex:1 0 auto;min-height:100%;box-sizing:border-box;">
       <div class="extrasRouletteHeader">
         <div>
-          <h3>Roulette de modules</h3>
-          <p>Obtiens un module bonus aléatoire pour l'un de tes vaisseaux.</p>
+          <h3 id="extrasPanelTitle">Roulette de modules</h3>
+          <p id="extrasPanelSub">Obtiens un module bonus aléatoire pour l'un de tes vaisseaux.</p>
         </div>
-        <div class="extrasRouletteCost"><span>Coût du tirage</span><strong>${formatNumber(MODULE_ROLL_COST)}</strong> crédits</div>
+        <div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+          <div class="extrasRouletteCost" id="extrasRouletteCost"><span>Coût du tirage</span><strong>${formatNumber(MODULE_ROLL_COST)}</strong> crédits</div>
+        </div>
       </div>
-      <div id="rouletteWindow" style="margin:16px auto;position:relative;overflow:hidden;width:${WINDOW_W}px;padding:16px 0;-webkit-mask-image:linear-gradient(to right,transparent,#000 7%,#000 93%,transparent);mask-image:linear-gradient(to right,transparent,#000 7%,#000 93%,transparent);">
-        <div id="rouletteRail" style="display:flex;gap:10px;width:max-content;will-change:transform;">${railHtml(cells)}</div>
-        <div id="rouletteCenterCell" style="position:absolute;left:${centerIndex * STEP + (64 - 68) / 2}px;top:50%;transform:translateY(-50%);width:68px;height:68px;pointer-events:none;border-radius:16px;border:3px solid #ffd700;box-shadow:0 0 16px rgba(255,215,0,0.6), inset 0 0 12px rgba(255,215,0,0.28);"></div>
+      <div id="rouletteView" style="display:flex;flex-direction:column;flex:1 1 auto;">
+        <div id="rouletteWindow" style="margin:16px auto;position:relative;overflow:hidden;width:${WINDOW_W}px;padding:16px 0;-webkit-mask-image:linear-gradient(to right,transparent,#000 7%,#000 93%,transparent);mask-image:linear-gradient(to right,transparent,#000 7%,#000 93%,transparent);">
+          <div id="rouletteRail" style="display:flex;gap:10px;width:max-content;will-change:transform;">${railHtml(cells)}</div>
+          <div id="rouletteCenterCell" style="position:absolute;left:${centerIndex * STEP + (64 - 68) / 2}px;top:50%;transform:translateY(-50%);width:68px;height:68px;pointer-events:none;border-radius:16px;border:3px solid #ffd700;box-shadow:0 0 16px rgba(255,215,0,0.6), inset 0 0 12px rgba(255,215,0,0.28);"></div>
+        </div>
+
+        <button id="btnRoll" class="primary" style="width: 100%;" ${Number(user?.credits || 0) < MODULE_ROLL_COST ? "disabled" : ""}>
+          Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)
+        </button>
+
+        <div id="rollResult" style="margin-top: 16px; text-align: center; color: var(--muted);"></div>
+        <div style="margin-top:auto;padding:12px 0 2px;position:sticky;bottom:0;background:linear-gradient(180deg,rgba(5,14,25,0),rgba(5,14,25,.92) 45%);">
+          <button id="btnModuleHistory" class="secondary" type="button" style="width:100%;">Historique <span aria-hidden="true">→</span></button>
+        </div>
       </div>
-
-      <button id="btnRoll" class="primary" style="width: 100%;" ${Number(user?.credits || 0) < MODULE_ROLL_COST ? "disabled" : ""}>
-        Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)
-      </button>
-
-      <div id="rollResult" style="margin-top: 16px; text-align: center; color: var(--muted);"></div>
-      <section class="moduleHistoryPanel">
-        <header>
-          <strong>Historique des modules obtenus</strong>
-          <span>${formatNumber(user?.inventory?.moduleRollHistory?.length || 0)} tirage(s)</span>
-        </header>
-        <div id="moduleRollHistory" class="moduleHistoryList">${renderModuleHistory(user)}</div>
-      </section>
+      <div id="moduleHistoryView" style="display:none;flex-direction:column;flex:1 1 auto;">
+        <div id="moduleRollHistory" class="moduleHistoryList" style="border:0;">${renderModuleHistory(user)}</div>
+        <div style="margin-top:auto;padding:12px 0 2px;position:sticky;bottom:0;background:linear-gradient(180deg,rgba(5,14,25,0),rgba(5,14,25,.92) 45%);display:grid;gap:8px;">
+          <div id="moduleHistoryPager">${renderModuleHistoryPager(user)}</div>
+          <button id="btnBackRoulette" class="secondary" type="button" style="width:100%;"><span aria-hidden="true">←</span> Roulette de modules</button>
+        </div>
+      </div>
     </div>
   `;
 
-  document.getElementById("moduleRollHistory").onclick = event => {
+  const rouletteView = document.getElementById("rouletteView");
+  const historyView = document.getElementById("moduleHistoryView");
+  const panelTitle = document.getElementById("extrasPanelTitle");
+  const panelSub = document.getElementById("extrasPanelSub");
+  const costEl = document.getElementById("extrasRouletteCost");
+  const historyBtn = document.getElementById("btnModuleHistory");
+  const showRoulette = () => {
+    if (rouletteView) rouletteView.style.display = "flex";
+    if (historyView) historyView.style.display = "none";
+    if (panelTitle) panelTitle.textContent = "Roulette de modules";
+    if (panelSub) panelSub.textContent = "Obtiens un module bonus aléatoire pour l'un de tes vaisseaux.";
+    if (costEl) costEl.style.display = "";
+  };
+  const showHistory = () => {
+    historyPage = 0;
+    updateModuleHistory(user);
+    if (rouletteView) rouletteView.style.display = "none";
+    if (historyView) historyView.style.display = "flex";
+    if (panelTitle) panelTitle.textContent = "Historique des modules";
+    if (panelSub) panelSub.textContent = `${formatNumber(user?.inventory?.moduleRollHistory?.length || 0)} tirage(s)`;
+    if (costEl) costEl.style.display = "none";
+  };
+  historyBtn?.addEventListener("click", showHistory);
+  document.getElementById("btnBackRoulette")?.addEventListener("click", showRoulette);
+
+  document.getElementById("moduleHistoryPager").onclick = event => {
     const button = event.target.closest("[data-history-page]");
     if (!button || button.disabled) return;
     historyPage += Number(button.dataset.historyPage);
-    document.getElementById("moduleRollHistory").innerHTML = renderModuleHistory(historyUser);
+    updateModuleHistory(historyUser);
   };
+  document.getElementById("moduleHistoryView")?.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-reroll-module]");
+    if (!btn || btn.disabled) return;
+    const id = btn.dataset.rerollModule;
+    const entry = (historyUser?.inventory?.moduleRollHistory || []).find((h) => String(h?.id) === String(id));
+    if (!entry?.id) return;
+    const fresh = getCurrentUserFull();
+    const owned = (fresh?.inventory?.shipModules || []).some((m) => String(m?.id) === String(entry.id));
+    if (!owned) { setMsg("Module plus en inventaire : relance impossible.", false); return; }
+    moduleReroll = {
+      shipId: entry.shipId,
+      familyId: moduleFamilyId(entry),
+      type: entry.type,
+      tier: entry.tier,
+      statCount: Array.isArray(entry.bonuses) ? entry.bonuses.length : 0,
+      currentId: entry.id,
+      cost: nextModuleRerollCost(entry.rerolls),
+      rerolls: Number(entry.rerolls) || 0,
+    };
+    showRoulette();
+    handleReroll();
+  });
   const railEl = document.getElementById("rouletteRail");
   const btn = document.getElementById("btnRoll");
 
@@ -2034,17 +2160,32 @@ function renderExtrasRoulette(user) {
     const shipImg = shipPreviewSrc(familyBaseShipId(familyId));
     const credits = Number(user?.credits || 0);
 
-    const rerollBtn = moduleReroll
-      ? `<div style="margin-top:26px;">
-           <button id="btnRerollModule" class="secondary" style="width:100%;padding:12px 14px;"
-             ${credits < moduleReroll.cost ? "disabled" : ""}>
-             Relancer ce module (${formatNumber(moduleReroll.cost)} crédits)
-           </button>
-         </div>`
-      : "";
+    // Bouton relance collé sous "Lancer", carte du module collée sous la relance.
+    const rollBtn = document.getElementById("btnRoll");
+    let rerollRow = document.getElementById("rerollRow");
+    if (moduleReroll && rollBtn) {
+      if (!rerollRow) {
+        rerollRow = document.createElement("div");
+        rerollRow.id = "rerollRow";
+        rerollRow.style.marginTop = "8px";
+        rollBtn.insertAdjacentElement("afterend", rerollRow);
+      }
+      rerollRow.style.display = "";
+      rerollRow.innerHTML = `
+        <button id="btnRerollModule" class="secondary" style="width:100%;padding:12px 14px;"
+          ${credits < moduleReroll.cost ? "disabled" : ""}>
+          Relancer ce module (${formatNumber(moduleReroll.cost)} crédits)
+        </button>
+      `;
+    } else if (rerollRow) {
+      rerollRow.innerHTML = "";
+      rerollRow.style.display = "none";
+    }
 
     const resFinal = document.getElementById("rollResult");
-    if (resFinal) resFinal.innerHTML = `
+    if (resFinal) {
+      resFinal.style.marginTop = "8px";
+      resFinal.innerHTML = `
       <div style="padding: 12px; background: rgba(0,217,255,0.1); border: 1px solid rgba(0,217,255,0.3); border-radius: 12px;">
         <div style="display:flex; gap:14px; align-items:center; text-align:left;">
           <div style="flex:1; min-width:0;">
@@ -2059,19 +2200,19 @@ function renderExtrasRoulette(user) {
           <img src="${shipImg}" alt="" style="width:120px;height:120px;object-fit:contain;image-rendering:pixelated;background:rgba(0,0,0,0.25);border-radius:12px;border:1px solid rgba(255,215,0,0.25);" />
         </div>
       </div>
-      ${rerollBtn}
-    `;
+      `;
+    }
 
     const rerollBtnEl = document.getElementById("btnRerollModule");
     if (rerollBtnEl) rerollBtnEl.addEventListener("click", handleReroll);
   };
 
   const refreshAfterModule = (user2, message = "Tirage réussi.") => {
-    const historyEl = document.getElementById("moduleRollHistory");
     historyPage = 0;
-    if (historyEl) historyEl.innerHTML = renderModuleHistory(user2);
-    const historyCount = document.querySelector(".moduleHistoryPanel > header span");
-    if (historyCount) historyCount.textContent = `${formatNumber(user2?.inventory?.moduleRollHistory?.length || 0)} tirage(s)`;
+    updateModuleHistory(user2);
+    const panelSub = document.getElementById("extrasPanelSub");
+    const historyView = document.getElementById("moduleHistoryView");
+    if (panelSub && historyView && historyView.style.display !== "none") panelSub.textContent = `${formatNumber(user2?.inventory?.moduleRollHistory?.length || 0)} tirage(s)`;
     setMsg(message, true);
     renderHeader(user2);
     renderStats(user2);
@@ -2146,11 +2287,14 @@ function renderExtrasRoulette(user) {
 
     const resOut = document.getElementById("rollResult");
     if (resOut) resOut.textContent = "";
+    const rerollRowOut = document.getElementById("rerollRow");
+    if (rerollRowOut) { rerollRowOut.innerHTML = ""; rerollRowOut.style.display = "none"; }
 
     // ✅ La roue démarre INSTANTANÉMENT : aucune écriture localStorage ni
     // re-rendu avant l'animation (tout est délégué à l'arrêt).
     const u2 = getCurrentUserFull();
     const mod = generateShipModule(u2);
+    mod.rerolls = 0;
 
     const finishRoll = () => {
       const pay = buyModuleRoll(MODULE_ROLL_COST);
@@ -2175,7 +2319,7 @@ function renderExtrasRoulette(user) {
         tier: mod.tier,
         statCount: mod.bonuses.length,
         currentId: mod.id,
-        cost: MODULE_ROLL_COST * 5,
+        cost: nextModuleRerollCost(0),
         rerolls: 0,
       };
       renderRollResultCard(mod);
@@ -2208,6 +2352,13 @@ function renderExtrasRoulette(user) {
       return;
     }
 
+    // On referme la carte pendant la relance : elle se rouvre avec les
+    // nouveaux éléments à l'arrêt (pas d'affichage prématuré de l'ancien).
+    const resClear = document.getElementById("rollResult");
+    if (resClear) resClear.innerHTML = "";
+    const rerollRowClear = document.getElementById("rerollRow");
+    if (rerollRowClear) { rerollRowClear.innerHTML = ""; rerollRowClear.style.display = "none"; }
+
     const onStop = () => {
       const pay = buyModuleRoll(cost);
       if (!pay?.ok) {
@@ -2223,6 +2374,8 @@ function renderExtrasRoulette(user) {
         tier: moduleReroll.tier,
         statCount: moduleReroll.statCount,
       });
+      // Le compteur de relances est persisté sur le module lui-même.
+      newMod.rerolls = (Number(moduleReroll.rerolls) || 0) + 1;
       const repl = replaceShipModule(moduleReroll.currentId, newMod);
       if (!repl?.ok) {
         setMsg(repl?.error || "Erreur stockage module.", false);
@@ -2232,8 +2385,8 @@ function renderExtrasRoulette(user) {
 
       user = getCurrentUserFull();
       moduleReroll.currentId = newMod.id;
-      moduleReroll.cost = cost * 5;
-      moduleReroll.rerolls += 1;
+      moduleReroll.rerolls = newMod.rerolls;
+      moduleReroll.cost = nextModuleRerollCost(newMod.rerolls);
 
       // La CARD ne se ferme pas : elle attend le nouveau tirage puis se met à jour.
       renderRollResultCard(newMod);
@@ -2528,7 +2681,6 @@ if (isDrone) {
           renderStats(user);
           renderHangars(user);
           renderShop(user);
-          setTab("shop");
           syncGameCredits();
         },
       });
@@ -2556,7 +2708,6 @@ if (isDrone) {
         renderStats(user);
         renderHangars(user);
         renderShop(user);
-        setTab("shop");
         syncGameCredits();
       }
     );
@@ -3859,7 +4010,7 @@ function sellFitInventoryItem(itemId) {
   renderInventoryPalette();
   renderStats(user);
   renderHangars(user);
-  if (tab === "shop") renderShop(user);
+  refreshShopIfVisible();
   setMsg(`Vendu (+${formatNumber(out.gain)} crédits)`, true);
 }
 
@@ -3899,7 +4050,7 @@ function sellSelectedInventoryItems() {
       renderInventoryPalette();
       renderStats(user);
       renderHangars(user);
-      if (tab === "shop") renderShop(user);
+      refreshShopIfVisible();
       if (sold) setMsg(`${sold} objet(s) vendu(s) (+${formatNumber(totalGain)} crédits)`, true);
     }
   );
@@ -4790,7 +4941,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
       renderInventoryPalette();
       renderStats(user);
       renderHangars(user);
-      if (tab === "shop") renderShop(user);
+      refreshShopIfVisible();
     };
   }
 
@@ -4951,7 +5102,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
     renderHeader(user);
     renderStats(user);
     renderHangars(user);
-    if (tab === "shop") renderShop(user);
+    refreshShopIfVisible();
   };
 
 fitState.used = computeUsage(fitState.draft);
@@ -5048,6 +5199,50 @@ function registerProfileWindow() {
   hookFitDiscardOnMinimize();
 }
 
+function openShopOverlay() {
+  saveGameBeforeProfileAction();
+
+  user = getCurrentUserFull();
+
+  if (!user) {
+    location.href = AUTH_URL;
+    return;
+  }
+
+  const overlay = document.getElementById("shopOverlay");
+  if (window.GameWindowManager) window.GameWindowManager.restore("shopWindow");
+  else if (overlay) overlay.style.display = "block";
+
+  // Ouverture boutique : toujours l'onglet Munitions lasers par défaut.
+  shopTab = "ammo";
+  try { localStorage.setItem("orbit_shop_tab", shopTab); } catch {}
+  selectedShopItemId = null;
+  document.querySelectorAll("#shopWindowTabs .tabBtn").forEach((button) => {
+    button.classList.toggle("active", button.dataset.shop === shopTab);
+  });
+  if (shopIsVisible()) renderShop(user);
+}
+
+function closeShopOverlay({ immediate = false } = {}) {
+  const overlay = document.getElementById("shopOverlay");
+  if (window.GameWindowManager && !immediate) window.GameWindowManager.minimize("shopWindow");
+  else if (overlay) overlay.style.display = "none";
+}
+
+function registerShopWindow() {
+  const root = document.getElementById("shopOverlay");
+  const card = document.getElementById("shopWindow");
+  if (!root || !card || !window.GameWindowManager) return;
+  window.GameWindowManager.register({
+    id: "shopWindow",
+    title: "Boutique",
+    icon: "🛒",
+    root,
+    card,
+    defaultOpen: false,
+  });
+}
+
 // Le bouton réduire du window manager contourne closeProfileOverlay :
 // baisser la fenêtre = annuler les brouillons d'équipement (rien n'est appliqué).
 function hookFitDiscardOnMinimize() {
@@ -5085,6 +5280,10 @@ function boot() {
 // -------------------- Buttons --------------------
 document.getElementById("btnGameHub")?.addEventListener("click", () => {
   openProfileOverlay();
+});
+
+document.getElementById("btnShopHub")?.addEventListener("click", () => {
+  openShopOverlay();
 });
 
 btnLogout?.addEventListener("click", () => {
@@ -5129,6 +5328,8 @@ btnStart?.addEventListener("click", () => {
 window.HyperionProfile = {
   open: openProfileOverlay,
   close: closeProfileOverlay,
+  openShop: openShopOverlay,
+  closeShop: closeShopOverlay,
 };
 compactCurrentFit();
 
@@ -5147,19 +5348,22 @@ function renderActiveProfilePanel({ mutation = false } = {}) {
   if (tab === "npcs") renderNpcStats(user);
   if (tab === "hangars") renderHangars(user);
   if (tab === "inventory") renderInventory(user);
-  // The roulette owns its animation and result during account mutations.
-  if (tab === "shop" && !(mutation && shopTab === "extras")) renderShop(user);
+  // Page standalone (PROFILE.html) : la boutique reste un onglet du profil.
+  // En jeu, la boutique a sa propre fenêtre et ne passe plus par ici.
+  if (tab === "shop" && !document.getElementById("shopWindowPanel") && !(mutation && shopTab === "extras")) renderShop(user);
 }
 
 window.addEventListener("orbit:user-updated", () => {
-  if (!profileIsVisible() || accountRefreshFrame) return;
+  if ((!profileIsVisible() && !shopIsVisible()) || accountRefreshFrame) return;
   accountRefreshFrame = requestAnimationFrame(() => {
     accountRefreshFrame = 0;
-    if (!profileIsVisible()) return;
     user = getCurrentUserFull();
     if (!user) return;
-    renderHeader(user);
-    renderActiveProfilePanel({ mutation: true });
+    if (profileIsVisible()) {
+      renderHeader(user);
+      renderActiveProfilePanel({ mutation: true });
+    }
+    if (shopIsVisible() && shopTab !== "extras") renderShop(user);
     if (fitOverlayEl && fitOverlayEl.style.display !== "none" && fitState.hangarId) {
       renderDroneEquipment(user);
       renderInventoryPalette();
@@ -5169,6 +5373,7 @@ window.addEventListener("orbit:user-updated", () => {
 
 // Init
 registerProfileWindow();
+registerShopWindow();
 wireMainTabsOnce();
 wireShopTabsOnce();
 wireAccountSettingsOnce();

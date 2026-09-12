@@ -11,7 +11,7 @@
     // orbitSessionReady n'est plus posée, l'overlay reste visible avec DÉPART).
     </script>
   <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="PROFILE_WINDOW.css?v=fit-slots-8" />
+  <link rel="stylesheet" href="PROFILE_WINDOW.css?v=hangar-101" />
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -43,6 +43,9 @@
   <span class="gameDockSeparator" aria-hidden="true"></span>
   <button id="btnGameHub" class="gameDockIcon profileDockIcon" data-window-id="profileWindow" type="button" title="Profil" aria-label="Profil">
     <span>👤</span>
+  </button>
+  <button id="btnShopHub" class="gameDockIcon shopDockIcon" data-window-id="shopWindow" type="button" title="Boutique" aria-label="Boutique">
+    <span>🛒</span>
   </button>
 </div>
   
@@ -502,7 +505,6 @@
           <button class="tabBtn active" data-tab="stats">GÉNÉRAL</button>
           <button class="tabBtn" data-tab="hangars">HANGARS &amp; ÉQUIPEMENT</button>
           <button class="tabBtn" data-tab="inventory">INVENTAIRE</button>
-          <button class="tabBtn" data-tab="shop">BOUTIQUE</button>
           <button class="tabBtn" data-tab="account">COMPTE</button>
           <button class="tabBtn" data-tab="npcs">NPC &amp; GRADES</button>
           <button class="tabBtn" data-tab="patchnotes">PATCH-NOTES</button>
@@ -708,38 +710,54 @@
           <div id="inventoryTooltip" class="inventoryTooltip" role="tooltip"></div>
         </section>
 
-        <section id="panel_shop" class="profilePanel">
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<div id="shopOverlay" class="profileOverlay shopOverlay" style="display:none;">
+  <div class="profileOverlayInner">
+
+    <div id="shopWindow" class="profileWindow shopWindow">
+
+      <div class="profileHeaderCard">
+        <div class="profileTabs" id="shopWindowTabs">
+          <button class="tabBtn active" data-shop="ammo">MUNITIONS LASERS</button>
+          <button class="tabBtn" data-shop="rockets">ROQUETTES</button>
+          <button class="tabBtn" data-shop="launchers">LANCE-ROQUETTES</button>
+          <button class="tabBtn" data-shop="speedGen">GÉNÉRATEUR DE VITESSE</button>
+          <button class="tabBtn" data-shop="shieldGen">GÉNÉRATEUR DE BOUCLIER</button>
+          <button class="tabBtn" data-shop="lasers">CANONS LASERS</button>
+          <button class="tabBtn" data-shop="extras">MODULES</button>
+          <button class="tabBtn" data-shop="ships">VAISSEAUX</button>
+          <button class="tabBtn" data-shop="designs">DESIGNS</button>
+          <button class="tabBtn" data-shop="drones">DRONES</button>
+          <button class="tabBtn" data-shop="formations">FORMATIONS</button>
+          <button class="tabBtn" data-shop="pets">P.E.T</button>
+          <button class="tabBtn" data-shop="petGears">GEARS P.E.T</button>
+          <button class="tabBtn" data-shop="petProtocols">PROTOCOLES P.E.T</button>
+        </div>
+      </div>
+
+      <div class="profileMainCard">
+
+        <section id="shopWindowPanel" class="profilePanel active">
           <div class="shopToolbar">
             <div>
               <div class="shopToolbarTitle">Boutique orbitale</div>
             </div>
             <div class="shopBalance">
               <span>Crédits disponibles</span>
-              <strong id="shopCredits">0</strong>
+              <strong id="shopWindowCredits">0</strong>
             </div>
           </div>
 
-          <div class="subtabs" id="shopTabs">
-            <button class="subtabBtn active" data-shop="ammo">Munitions lasers</button>
-            <button class="subtabBtn" data-shop="rockets">Roquettes</button>
-            <button class="subtabBtn" data-shop="launchers">Lance-roquettes</button>
-            <button class="subtabBtn" data-shop="speedGen">Générateur de vitesse</button>
-            <button class="subtabBtn" data-shop="shieldGen">Générateur de bouclier</button>
-            <button class="subtabBtn" data-shop="lasers">Canons lasers</button>
-            <button class="subtabBtn" data-shop="extras">Modules</button>
-            <button class="subtabBtn" data-shop="ships">Vaisseaux</button>
-            <button class="subtabBtn" data-shop="designs">Designs</button>
-            <button class="subtabBtn" data-shop="drones">Drones</button>
-            <button class="subtabBtn" data-shop="formations">Formations</button>
-            <button class="subtabBtn" data-shop="pets">P.E.T</button>
-            <button class="subtabBtn" data-shop="petGears">Gears P.E.T</button>
-            <button class="subtabBtn" data-shop="petProtocols">Protocoles P.E.T</button>
-          </div>
-
           <div class="shopLayout">
-            <div id="shopList" class="shopList"></div>
+            <div id="shopWindowList" class="shopList"></div>
 
-            <div id="shopPreview" class="shopPreview">
+            <div id="shopWindowPreview" class="shopPreview">
               <div class="profileTile">
                 <h3>Choisis un item</h3>
                 <p>Clique un item à gauche pour voir les détails.</p>
@@ -787,7 +805,7 @@
 <!-- ✅ Gestionnaire de fenêtres en jeu -->
 <script src="./UI/UI_WINDOW_MANAGER.js"></script>
 
-<script type="module" src="./PUBLIC/PROFILE.js?v=fit-slots-6"></script>
-<script type="module" src="./SRC/MAIN.js?v=gg-history-3"></script>
+<script type="module" src="./PUBLIC/PROFILE.js?v=ship-items-7"></script>
+<script type="module" src="./SRC/MAIN.js?v=gg-history-4"></script>
 </body>
 </html>

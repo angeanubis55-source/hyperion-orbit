@@ -96,7 +96,7 @@ try {
         await page.click("#btnGameHub");
         await page.waitForSelector("#profileWindow", { state: "visible", timeout: 10_000 });
 
-        for (const section of ["stats", "hangars", "shop"]) {
+        for (const section of ["stats", "hangars", "inventory"]) {
           await page.click(`#profileOverlay .tabBtn[data-tab="${section}"]`);
           await page.waitForFunction((name) => document.getElementById(`panel_${name}`)?.classList.contains("active"), section);
         }
@@ -149,28 +149,29 @@ try {
           await page.waitForSelector("#inventorySections .inventorySlot");
           await page.screenshot({ path: join(root, "profile-inventory-preview.png"), fullPage: false });
         }
-        await page.click('#profileOverlay .tabBtn[data-tab="shop"]');
+        await page.click("#btnShopHub");
+        await page.waitForSelector("#shopWindow", { state: "visible", timeout: 10_000 });
         for (const category of ["ammo", "speedGen", "shieldGen", "lasers", "extras", "ships"]) {
-          await page.click(`#shopTabs .subtabBtn[data-shop="${category}"]`);
+          await page.click(`#shopWindowTabs .tabBtn[data-shop="${category}"]`);
           if (captureProfile && category === "extras") {
             await page.screenshot({ path: join(root, "profile-extras-preview.png"), fullPage: false });
           }
           if (category !== "extras") {
-            await page.waitForFunction(() => document.querySelectorAll("#shopList .shopRow").length > 0);
+            await page.waitForFunction(() => document.querySelectorAll("#shopWindowList .shopRow").length > 0);
           }
         }
-        await page.waitForFunction(() => document.querySelectorAll("#shopList .shopRow").length > 0);
+        await page.waitForFunction(() => document.querySelectorAll("#shopWindowList .shopRow").length > 0);
         const profileIssues = await page.evaluate(() => {
           const issues = [];
-          const windowCard = document.getElementById("profileWindow");
-          const list = document.getElementById("shopList");
-          const preview = document.getElementById("shopPreview");
+          const windowCard = document.getElementById("shopWindow");
+          const list = document.getElementById("shopWindowList");
+          const preview = document.getElementById("shopWindowPreview");
           const profileMin = getComputedStyle(windowCard?.querySelector(".gameWinMinBtn"));
           const standardMin = getComputedStyle(document.querySelector("#boxVitals .gameWinMinBtn"));
           const listRect = list?.getBoundingClientRect();
           const previewRect = preview?.getBoundingClientRect();
-          if (!document.querySelector("#shopList .shopRow img")) issues.push("vaisseaux absents de la boutique");
-          if (!document.querySelector("#shopPreview .shipPreviewContainer img")) issues.push("aperçu du vaisseau absent");
+          if (!document.querySelector("#shopWindowList .shopRow img")) issues.push("vaisseaux absents de la boutique");
+          if (!document.querySelector("#shopWindowPreview .shipPreviewContainer img")) issues.push("aperçu du vaisseau absent");
           if (listRect && previewRect && listRect.right > previewRect.left) issues.push("liste et aperçu boutique se chevauchent");
           if (profileMin.width !== standardMin.width || profileMin.height !== standardMin.height || profileMin.borderRadius !== standardMin.borderRadius) {
             issues.push(`bouton de réduction Profil différent du HUD (${profileMin.width}×${profileMin.height}, rayon ${profileMin.borderRadius} / ${standardMin.width}×${standardMin.height}, rayon ${standardMin.borderRadius})`);

@@ -24,7 +24,6 @@ export const SHIP_EFFECTS = {
   "goliath_plus_osiris": { path: "SHIP/SHIP_EFFECTS/SHIP_GOLIATH-PLUS-OSIRIS_EFFET/", frames: 55, w: 300, h: 244 },
   "goliath_plus_smite": { path: "SHIP/SHIP_EFFECTS/SHIP_GOLIATH-PLUS-SMITE_EFFET/", frames: 53, w: 300, h: 244 },
   "hecate_plus_empyrian": { path: "SHIP/SHIP_EFFECTS/SHIP_HECATE-PLUS-EMPYRIAN_EFFET/", frames: 94, w: 500, h: 500 },
-  "hitac_minion_frost": { path: "SHIP/SHIP_EFFECTS/SHIP_HITAC_MINION_FROST_EFFET/", frames: 20, w: 112, h: 100 },
   "holo_epion": { path: "SHIP/SHIP_EFFECTS/SHIP_HOLO-EPION_EFFET/", frames: 50, w: 300, h: 244 },
   "holo_osiris": { path: "SHIP/SHIP_EFFECTS/SHIP_HOLO-OSIRIS_EFFET/", frames: 55, w: 300, h: 244 },
   "holo_smite": { path: "SHIP/SHIP_EFFECTS/SHIP_HOLO-SMITE_EFFET/", frames: 53, w: 300, h: 244 },

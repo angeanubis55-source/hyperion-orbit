@@ -60,9 +60,10 @@ function writeUsers(users) {
   const list = Array.isArray(users) ? users : [];
   // Borne l'historique de roulette avant sérialisation : c'est ce qui
   // faisait gonfler orbit_users à 1.6MB -> 600ms de freeze par save.
+  // Plafond large (500) : tout l'historique utile est comptabilisé.
   for (const u of list) {
-    if (u && Array.isArray(u.inventory?.moduleRollHistory) && u.inventory.moduleRollHistory.length > 30) {
-      u.inventory.moduleRollHistory = u.inventory.moduleRollHistory.slice(-30);
+    if (u && Array.isArray(u.inventory?.moduleRollHistory) && u.inventory.moduleRollHistory.length > 500) {
+      u.inventory.moduleRollHistory = u.inventory.moduleRollHistory.slice(-500);
     }
   }
   // X1 infini : JSON.stringify(Infinity) donnerait null (corruption au reload).

@@ -1762,11 +1762,11 @@ test("la fumée des réacteurs conserve sa configuration et expire proprement", 
 });
 
 test("les réacteurs des vaisseaux utilisent les trajectoires extraites de main.swf", () => {
-  assert.equal(Object.keys(SHIP_ENGINE_ASSIGNMENTS).length, 566);
+  assert.equal(Object.keys(SHIP_ENGINE_ASSIGNMENTS).length, 564);
   assert.equal(SHIP_ENGINE_ASSIGNMENTS.orcus.positionClass, "ship_orcus");
   assert.equal(SHIP_ENGINE_ASSIGNMENTS.goliath_champion_italy.positionClass, "goliath-angled-wings");
   assert.equal(SHIP_ENGINE_POSITIONS.ship_orcus.leftInner.length, 32);
   assert.equal(SHIP_ENGINE_POSITIONS.ship_orcus.rightInner.length, 32);
   assert.equal(SHIP_ENGINE_ASSIGNMENTS.aegis, undefined);
-  assert.equal(Object.keys(SHIP_ENGINE_UNASSIGNED).length, 21);
+  assert.equal(Object.keys(SHIP_ENGINE_UNASSIGNED).length, 17);
 });

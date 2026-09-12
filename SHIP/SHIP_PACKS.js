@@ -42,7 +42,6 @@ export const SHIP_PACKS = [
   { id: "berserker_sandstorm", name: "Berserker Sandstorm", path: "SHIP/SHIP_SPRITES/SHIP_BERSERKER_SANDSTORM/", frames: 32, firstNumber: 1, ext: ".png", w: 170, h: 136, slots: { lasers: 5, gens: 16, extras: 3, shipMods: 4 }, price: 60000000, hp: 500000, speed: 290, angleOffset: Math.PI },
   { id: "berserker_ullrin", name: "Berserker Ullrin", path: "SHIP/SHIP_SPRITES/SHIP_BERSERKER_ULLRIN/", frames: 32, firstNumber: 1, ext: ".png", w: 170, h: 136, slots: { lasers: 5, gens: 16, extras: 3, shipMods: 4 }, price: 60000000, hp: 500000, speed: 290, angleOffset: Math.PI },
   { id: "bigboy", name: "Bigboy", path: "SHIP/SHIP_SPRITES/SHIP_BIGBOY/", frames: 32, firstNumber: 1, ext: ".png", w: 169, h: 150, slots: { lasers: 8, gens: 15, extras: 3, shipMods: 4 }, price: 4000000, hp: 360000, speed: 260, angleOffset: Math.PI },
-  { id: "bigboy_design_mamba_Emax", name: "Bigboy Design Mamba Emax", path: "SHIP/SHIP_SPRITES/SHIP_BIGBOY_DESIGN_MAMBA_EMAX/", frames: 32, firstNumber: 1, ext: ".png", w: 195, h: 141, slots: { lasers: 8, gens: 15, extras: 3, shipMods: 4 }, price: 4000000, hp: 360000, speed: 260, angleOffset: Math.PI },
   { id: "bigboy_mamba", name: "Bigboy Mamba", path: "SHIP/SHIP_SPRITES/SHIP_BIGBOY_MAMBA/", frames: 32, firstNumber: 1, ext: ".png", w: 169, h: 150, slots: { lasers: 8, gens: 15, extras: 3, shipMods: 4 }, price: 4000000, hp: 360000, speed: 260, angleOffset: Math.PI },
   { id: "bigboy_solemn", name: "Bigboy Solemn", path: "SHIP/SHIP_SPRITES/SHIP_BIGBOY_SOLEMN/", frames: 32, firstNumber: 1, ext: ".png", w: 189, h: 162, slots: { lasers: 8, gens: 15, extras: 3, shipMods: 4 }, price: 4000000, hp: 360000, speed: 260, angleOffset: Math.PI },
   { id: "c_elite_ullrin", name: "C Elite Ullrin", path: "SHIP/SHIP_SPRITES/SHIP_C_ELITE_ULLRIN/", frames: 32, firstNumber: 1, ext: ".png", w: 350, h: 310, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 25000000, hp: 356000, speed: 300, angleOffset: Math.PI },
@@ -249,7 +248,6 @@ export const SHIP_PACKS = [
   { id: "goliath_x_legend", name: "Goliath X Legend", path: "SHIP/SHIP_SPRITES/SHIP_GOLIATH_X_LEGEND/", frames: 32, firstNumber: 1, ext: ".png", w: 169, h: 150, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 160000000, hp: 356000, speed: 300, angleOffset: Math.PI },
   { id: "goliath_x_ocean", name: "Goliath X Ocean", path: "SHIP/SHIP_SPRITES/SHIP_GOLIATH_X_OCEAN/", frames: 32, firstNumber: 1, ext: ".png", w: 169, h: 150, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 160000000, hp: 356000, speed: 300, angleOffset: Math.PI },
   { id: "goliath_x_sandstorm", name: "Goliath X Sandstorm", path: "SHIP/SHIP_SPRITES/SHIP_GOLIATH_X_SANDSTORM/", frames: 32, firstNumber: 1, ext: ".png", w: 169, h: 150, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 160000000, hp: 356000, speed: 300, angleOffset: Math.PI },
-  { id: "gygerthrall_infected", name: "Gygerthrall Infected", path: "SHIP/SHIP_SPRITES/SHIP_GYGERTHRALL_INFECTED/", frames: 32, firstNumber: 1, ext: ".png", w: 100, h: 100, slots: { lasers: 8, gens: 12, extras: 2, shipMods: 4 }, price: 2500000, hp: 260000, speed: 260, angleOffset: Math.PI },
   { id: "hammerclaw", name: "Hammerclaw", path: "SHIP/SHIP_SPRITES/SHIP_HAMMERCLAW/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 12, gens: 15, extras: 3, shipMods: 4 }, price: 40000000, hp: 377500, speed: 290, angleOffset: Math.PI },
   { id: "hammerclaw_bane", name: "Hammerclaw Bane", path: "SHIP/SHIP_SPRITES/SHIP_HAMMERCLAW_BANE/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 12, gens: 15, extras: 3, shipMods: 4 }, price: 40000000, hp: 377500, speed: 290, angleOffset: Math.PI },
   { id: "hammerclaw_carbonite", name: "Hammerclaw Carbonite", path: "SHIP/SHIP_SPRITES/SHIP_HAMMERCLAW_CARBONITE/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 12, gens: 15, extras: 3, shipMods: 4 }, price: 40000000, hp: 377500, speed: 290, angleOffset: Math.PI },
@@ -288,8 +286,6 @@ export const SHIP_PACKS = [
   { id: "hecate_poison", name: "Hecate Poison", path: "SHIP/SHIP_SPRITES/SHIP_HECATE_POIAUDIO/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 15, gens: 16, extras: 3, shipMods: 4 }, price: 40000000, hp: 377500, speed: 300, angleOffset: Math.PI },
   { id: "hecate_tyrannos", name: "Hecate Tyrannos", path: "SHIP/SHIP_SPRITES/SHIP_HECATE_TYRANNOS/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 15, gens: 16, extras: 3, shipMods: 4 }, price: 40000000, hp: 377500, speed: 300, angleOffset: Math.PI },
   { id: "hecate_ullrin", name: "Hecate Ullrin", path: "SHIP/SHIP_SPRITES/SHIP_HECATE_ULLRIN/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 15, gens: 16, extras: 3, shipMods: 4 }, price: 40000000, hp: 377500, speed: 300, angleOffset: Math.PI },
-  { id: "hitac_frost", name: "Hitac Frost", path: "SHIP/SHIP_SPRITES/SHIP_HITAC_FROST/", frames: 10, firstNumber: 1, ext: ".png", w: 300, h: 266, slots: { lasers: 10, gens: 12, extras: 3, shipMods: 4 }, price: 5000000, hp: 300000, speed: 260, angleOffset: Math.PI },
-  { id: "hitac_minion_frost", name: "Hitac Minion Frost", path: "SHIP/SHIP_SPRITES/SHIP_HITAC_MINION_FROST/", frames: 10, firstNumber: 1, ext: ".png", w: 112, h: 100, slots: { lasers: 10, gens: 12, extras: 3, shipMods: 4 }, price: 5000000, hp: 300000, speed: 260, angleOffset: Math.PI },
   { id: "holo", name: "Holo", path: "SHIP/SHIP_SPRITES/SHIP_HOLO/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 35000000, hp: 375000, speed: 300, angleOffset: Math.PI },
   { id: "holo_epion", name: "Holo Epion", path: "SHIP/SHIP_SPRITES/SHIP_HOLO_EPION/", frames: 32, firstNumber: 1, ext: ".png", w: 300, h: 244, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 35000000, hp: 375000, speed: 300, angleOffset: Math.PI },
   { id: "holo_frost", name: "Holo Frost", path: "SHIP/SHIP_SPRITES/SHIP_HOLO_FROST/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 35000000, hp: 375000, speed: 300, angleOffset: Math.PI },
@@ -364,7 +360,6 @@ export const SHIP_PACKS = [
   { id: "paladin_prosperous", name: "Paladin Prosperous", path: "SHIP/SHIP_SPRITES/SHIP_PALADIN_PROSPEROUS/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 12, gens: 18, extras: 3, shipMods: 4 }, price: 30000000, hp: 325000, speed: 300, angleOffset: Math.PI },
   { id: "phoenix_bleu", name: "Phoenix Bleu", path: "SHIP/SHIP_SPRITES/SHIP_PHOENIX_BLEU/", frames: 32, firstNumber: 1, ext: ".png", w: 176, h: 157, slots: { lasers: 1, gens: 1, extras: 1, shipMods: 4 }, price: 0, hp: 104000, speed: 320, angleOffset: Math.PI },
   { id: "piranha", name: "Piranha", path: "SHIP/SHIP_SPRITES/SHIP_PIRANHA/", frames: 32, firstNumber: 1, ext: ".png", w: 155, h: 138, slots: { lasers: 6, gens: 8, extras: 2, shipMods: 4 }, price: 750000, hp: 164000, speed: 360, angleOffset: Math.PI },
-  { id: "plague_minion_blacklight", name: "Plague Minion Blacklight", path: "SHIP/SHIP_SPRITES/SHIP_PLAGUE_MINION_BLACKLIGHT/", frames: 32, firstNumber: 1, ext: ".png", w: 100, h: 100, slots: { lasers: 8, gens: 10, extras: 2, shipMods: 4 }, price: 2000000, hp: 200000, speed: 300, angleOffset: Math.PI },
   { id: "police", name: "Police", path: "SHIP/SHIP_SPRITES/SHIP_POLICE/", frames: 32, firstNumber: 1, ext: ".png", w: 202, h: 179, slots: { lasers: 25, gens: 25, extras: 10, shipMods: 4 }, price: 500000000, hp: 750000, speed: 160, angleOffset: Math.PI },
   { id: "pusat", name: "Pusat", path: "SHIP/SHIP_SPRITES/SHIP_PUSAT/", frames: 32, firstNumber: 1, ext: ".png", w: 170, h: 170, slots: { lasers: 16, gens: 12, extras: 3, shipMods: 4 }, price: 50000000, hp: 225000, speed: 370, angleOffset: Math.PI },
   { id: "pusat_blaze", name: "Pusat Blaze", path: "SHIP/SHIP_SPRITES/SHIP_PUSAT_BLAZE/", frames: 32, firstNumber: 1, ext: ".png", w: 169, h: 150, slots: { lasers: 16, gens: 12, extras: 3, shipMods: 4 }, price: 50000000, hp: 225000, speed: 370, angleOffset: Math.PI },
@@ -541,7 +536,6 @@ export const SHIP_PACKS = [
   { id: "spectrum_smite", name: "Spectrum Smite", path: "SHIP/SHIP_SPRITES/SHIP_SPECTRUM_SMITE/", frames: 32, firstNumber: 1, ext: ".png", w: 300, h: 244, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 35000000, hp: 356000, speed: 300, angleOffset: Math.PI },
   { id: "spectrum_tyrannos", name: "Spectrum Tyrannos", path: "SHIP/SHIP_SPRITES/SHIP_SPECTRUM_TYRANNOS/", frames: 32, firstNumber: 1, ext: ".png", w: 169, h: 150, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 35000000, hp: 356000, speed: 300, angleOffset: Math.PI },
   { id: "spectrum_ullrin", name: "Spectrum Ullrin", path: "SHIP/SHIP_SPRITES/SHIP_SPECTRUM_ULLRIN/", frames: 32, firstNumber: 1, ext: ".png", w: 169, h: 150, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 35000000, hp: 356000, speed: 300, angleOffset: Math.PI },
-  { id: "streuner_rocketeer", name: "Streuner Rocketeer", path: "SHIP/SHIP_SPRITES/SHIP_STREUNER_ROCKETEER/", frames: 33, firstNumber: 1, ext: ".png", w: 160, h: 160, slots: { lasers: 4, gens: 6, extras: 2, shipMods: 4 }, price: 500000, hp: 100000, speed: 320, angleOffset: Math.PI },
   { id: "tartarus", name: "Tartarus", path: "SHIP/SHIP_SPRITES/SHIP_TARTARUS_DUSKLIGHT/", frames: 32, firstNumber: 1, ext: ".png", w: 260, h: 208, slots: { lasers: 14, gens: 15, extras: 3, shipMods: 4 }, price: 50000000, hp: 360000, speed: 220, angleOffset: Math.PI },
   { id: "tartarus_dusklight", name: "Tartarus Dusklight", path: "SHIP/SHIP_SPRITES/SHIP_TARTARUS_DUSKLIGHT/", frames: 32, firstNumber: 1, ext: ".png", w: 260, h: 208, slots: { lasers: 14, gens: 15, extras: 3, shipMods: 4 }, price: 50000000, hp: 360000, speed: 220, angleOffset: Math.PI },
   { id: "tartarus_epion", name: "Tartarus Epion", path: "SHIP/SHIP_SPRITES/SHIP_TARTARUS_EPION/", frames: 32, firstNumber: 1, ext: ".png", w: 300, h: 244, slots: { lasers: 14, gens: 15, extras: 3, shipMods: 4 }, price: 50000000, hp: 360000, speed: 220, angleOffset: Math.PI },
@@ -727,10 +721,13 @@ const SHIP_BASE_IDS = new Set([
 // Entrées retirées de la boutique (NPC / collectables / doublons) : ni base,
 // ni design, juste exclues du catalogue.
 const SHIP_REMOVED_IDS = new Set([
-  "bigboy1", "gygerthrall_infected", "infected_egg", "kristallin_pink",
-  "kristallon_pink", "streuner_rocketeer", "streuner_seeker_rocket",
-  "slender", "plague_minion_blacklight", "hitac_frost", "hitac_infected",
-  "hitac_minion_frost",
+  "bigboy1", "infected_egg", "kristallin_pink",
+  "kristallon_pink", "streuner_seeker_rocket",
+  "slender", "hitac_infected",
+  // Designs retirés de la boutique : tous les Poison + Goliath Crimson.
+  "aegis_elite_poison", "berserker_poison", "cyborg_poison", "hecate_poison",
+  "pusat_poison", "solace_poison", "spectrum_poison", "venom_poison",
+  "goliath_crimson", "bigboy_design_mamba_Emax",
 ]);
 
 // Cas particuliers : ids dont le préfixe ne correspond pas à une base connue.

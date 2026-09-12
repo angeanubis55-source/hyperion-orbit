@@ -112,11 +112,13 @@ try {
           const openMs = measure(() => window.HyperionProfile.open());
           await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
           const tabs = {};
-          for (const tab of ['shop', 'hangars', 'inventory']) {
-            tabs[tab] = measure(() => document.querySelector('[data-tab="' + tab + '"]').click());
+          for (const tab of ['hangars', 'inventory']) {
+            tabs[tab] = measure(() => document.querySelector('#profileWindow [data-tab="' + tab + '"]').click());
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
           }
-          document.querySelector('[data-tab="shop"]').click();
+          tabs.shop = measure(() => window.HyperionProfile.openShop());
+          await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+          document.querySelector('#shopWindowTabs [data-shop="ammo"]').click();
           await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
           window.HyperionProfile.close({immediate: true});
           const openShopMs = measure(() => window.HyperionProfile.open());
@@ -140,22 +142,22 @@ try {
         const settle = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
         const require = (ok, message) => { if (!ok) throw new Error(message); };
         window.HyperionProfile.open();
-        document.querySelector('[data-tab="shop"]').click();
+        window.HyperionProfile.openShop();
         await settle();
-        document.querySelector('[data-shop="ammo"]').click();
+        document.querySelector('#shopWindowTabs [data-shop="ammo"]').click();
         await settle();
         const inventory = document.querySelector('#inventorySections').firstElementChild;
         const hangar = document.querySelector('#hangarGrid').firstElementChild;
-        const firstRow = document.querySelector('#shopList').firstElementChild;
+        const firstRow = document.querySelector('#shopWindowList').firstElementChild;
         const secondRow = firstRow.nextElementSibling;
         secondRow.click();
         await settle();
-        require(firstRow === document.querySelector('#shopList').firstElementChild, 'Selection rebuilt shop list');
-        const preview = document.querySelector('#shopPreview').firstElementChild;
+        require(firstRow === document.querySelector('#shopWindowList').firstElementChild, 'Selection rebuilt shop list');
+        const preview = document.querySelector('#shopWindowPreview').firstElementChild;
         account.updateCurrentUserProgress({credits: 1000000});
         await settle();
-        require(firstRow === document.querySelector('#shopList').firstElementChild, 'Balance rebuilt shop list');
-        require(preview === document.querySelector('#shopPreview').firstElementChild, 'Balance rebuilt preview');
+        require(firstRow === document.querySelector('#shopWindowList').firstElementChild, 'Balance rebuilt shop list');
+        require(preview === document.querySelector('#shopWindowPreview').firstElementChild, 'Balance rebuilt preview');
         require(inventory === document.querySelector('#inventorySections').firstElementChild, 'Hidden inventory rebuilt');
         require(hangar === document.querySelector('#hangarGrid').firstElementChild, 'Hidden hangars rebuilt');
         account.updateCurrentUserProgress({credits: 0, ammo: {x2: 42, x3: 42, x4: 42, x6: 42, sab: 42}});
@@ -190,14 +192,14 @@ try {
         }));
         localStorage.setItem('orbit_users', JSON.stringify(users));
         window.HyperionProfile.open();
-        document.querySelector('[data-tab="shop"]').click();
-        document.querySelector('[data-shop="extras"]').click();
-        require(document.querySelectorAll('.moduleHistoryRow').length === 30, 'History unbounded');
+        window.HyperionProfile.openShop();
+        document.querySelector('#shopWindowTabs [data-shop="extras"]').click();
+        require(document.querySelectorAll('.moduleHistoryRow').length === 4, 'History unbounded');
         require(document.querySelector('.moduleHistoryIndex').textContent === '65', 'History ordering incorrect');
         document.querySelector('[data-history-page="1"]').click();
-        require(document.querySelector('.moduleHistoryIndex').textContent === '35', 'History next page incorrect');
+        require(document.querySelector('.moduleHistoryIndex').textContent === '61', 'History next page incorrect');
         document.querySelector('[data-history-page="1"]').click();
-        require(document.querySelectorAll('.moduleHistoryRow').length === 5, 'History last page incorrect');
+        require(document.querySelectorAll('.moduleHistoryRow').length === 4, 'History last page incorrect');
         window.HyperionProfile.close({immediate: true});
         return 'selection, balance, hidden panels, purchase, inventory pages/search and history pages: OK';
       });

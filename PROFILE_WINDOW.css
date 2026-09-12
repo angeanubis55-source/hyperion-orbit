@@ -576,7 +576,7 @@ body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !i
 }
 
 #profileOverlay .hangarPreviewEyebrow { color: rgba(190,220,240,.58) !important; font-size: 9px !important; font-weight: 900 !important; letter-spacing: 1.1px !important; }
-#profileOverlay #hangarPreviewImage { width: min(190px, 85%) !important; height: 190px !important; margin: 20px 0 14px !important; object-fit: contain !important; image-rendering: pixelated !important; }
+#profileOverlay #hangarPreviewImage { width: 100px !important; height: 100px !important; margin: 20px 0 14px !important; object-fit: contain !important; image-rendering: pixelated !important; }
 #profileOverlay #hangarPreviewTitle { margin: 0 0 8px !important; color: #eefbff !important; font-size: 19px !important; }
 #profileOverlay #hangarPreviewMeta { margin: 0 !important; color: rgba(204,228,241,.62) !important; font-size: 10px !important; line-height: 1.55 !important; }
 
@@ -598,10 +598,10 @@ body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !i
   transform: translateX(-50%) !important;
   transition: top .42s cubic-bezier(.2,.8,.2,1), transform .42s cubic-bezier(.2,.8,.2,1), opacity .3s ease !important;
 }
-#profileOverlay .hangarActivePreview { top: 43px !important; }
+#profileOverlay .hangarActivePreview { top: 100px !important; }
 #profileOverlay .hangarActivePreview #hangarPreviewImage {
-  width: 190px !important;
-  height: 190px !important;
+  width: 100px !important;
+  height: 100px !important;
   margin: 0 0 10px !important;
   object-fit: contain !important;
   image-rendering: pixelated !important;
@@ -615,14 +615,14 @@ body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !i
   line-height: 1.15 !important;
 }
 #profileOverlay .hangarSelectedPreview {
-  top: 204px !important;
+  top: 190px !important;
   opacity: 0 !important;
   transform: translate(-50%, 28px) scale(.92) !important;
   pointer-events: none !important;
 }
 #profileOverlay .hangarSelectedPreview #hangarSelectedImage {
-  width: 112px !important;
-  height: 82px !important;
+  width: 100px !important;
+  height: 100px !important;
   margin: 4px 0 4px !important;
   object-fit: contain !important;
   image-rendering: pixelated !important;
@@ -635,7 +635,7 @@ body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !i
 }
 #profileOverlay .hangarFlowArrows {
   position: absolute !important;
-  top: 132px !important;
+  top: 150px !important;
   left: 50% !important;
   z-index: 3 !important;
   display: grid !important;
@@ -649,7 +649,7 @@ body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !i
 }
 #profileOverlay .hangarFlowArrows span { opacity: .16; text-shadow: 0 0 9px rgba(105,233,255,.8); }
 #profileOverlay .hangarPreview.isComparing .hangarActivePreview { top: 4px !important; }
-#profileOverlay .hangarPreview.isComparing .hangarActivePreview #hangarPreviewImage { width: 112px !important; height: 96px !important; }
+#profileOverlay .hangarPreview.isComparing .hangarActivePreview #hangarPreviewImage { width: 100px !important; height: 100px !important; }
 #profileOverlay .hangarPreview.isComparing .hangarActivePreview #hangarPreviewTitle { font-size: 13px !important; }
 #profileOverlay .hangarPreview.isComparing .hangarSelectedPreview {
   opacity: 1 !important;
@@ -2025,3 +2025,580 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
   background: rgba(20, 154, 182, .22) !important;
   box-shadow: 0 0 12px rgba(105, 233, 255, .35) !important;
 }
+
+/* =========================================================
+   Boutique orbitale — fenêtre dupliquée de l'Espace pilote.
+   Mêmes dimensions / grille / sidebar que #profileWindow,
+   mais les onglets principaux SONT les catégories boutique.
+   ========================================================= */
+#shopOverlay.profileOverlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 90000 !important;
+  display: none;
+  padding: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  pointer-events: none !important;
+}
+#shopOverlay .profileOverlayInner { display: contents !important; }
+#shopOverlay #shopWindow.gameWindow {
+  position: fixed !important;
+  width: min(1180px, calc(100vw - 32px)) !important;
+  height: min(720px, calc(100vh - 90px)) !important;
+  min-width: 760px !important;
+  min-height: 520px !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-columns: 290px minmax(0, 1fr) !important;
+  grid-template-rows: 30px minmax(0, 1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  color: #e8f4ff !important;
+  border: 1px solid rgba(124, 240, 255, .24) !important;
+  border-radius: 16px !important;
+  background: linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80)) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.55), 0 0 26px rgba(0,217,255,.12), inset 0 0 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter: none !important;
+  pointer-events: auto !important;
+}
+#shopOverlay #shopWindow.gameWindow:hover {
+  border-color: rgba(124, 240, 255, .42) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.50), 0 0 28px rgba(0,217,255,.16), inset 0 0 0 1px rgba(255,255,255,.05) !important;
+}
+html body #shopOverlay #shopWindow.gameWindow:not(.floating) {
+  left: max(16px, calc(50vw - 590px)) !important;
+  top: 70px !important;
+}
+#shopOverlay #shopWindow.gameWindow > .gameWinBar {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124, 240, 255, .18) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(90deg, rgba(0,217,255,.18), rgba(124,240,255,.05), rgba(255,255,255,.035)) !important;
+  box-shadow: none !important;
+  cursor: grab !important;
+}
+#shopOverlay #shopWindow .gameWinIcon {
+  width: auto !important;
+  height: auto !important;
+  display: inline-flex !important;
+  border: 0 !important;
+  background: transparent !important;
+  font-size: 15px !important;
+}
+#shopOverlay #shopWindow .gameWinTitle {
+  flex: 1 !important;
+  min-width: 0 !important;
+  color: rgba(232,244,255,.88) !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  letter-spacing: .35px !important;
+}
+html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn {
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 22px !important;
+  min-height: 22px !important;
+  margin: 0 0 0 auto !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(124,240,255,.28) !important;
+  border-radius: 8px !important;
+  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.16), rgba(0,70,100,.10)) !important;
+  color: rgba(232,244,255,.95) !important;
+  font: 1000 15px/1 system-ui !important;
+  box-shadow: 0 0 10px rgba(0,217,255,.10), inset 0 0 0 1px rgba(255,255,255,.035) !important;
+}
+#shopOverlay .profileHeaderCard {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 20px 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  gap: 22px !important;
+  overflow-y: auto !important;
+  border: 0 !important;
+  border-right: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(180deg, #0b2638, #071927) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  scrollbar-width: none !important;
+}
+#shopOverlay .profileHeaderCard::-webkit-scrollbar { display: none !important; }
+#shopOverlay .profileTabs {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  overflow: visible !important;
+}
+#shopOverlay .profileTabs .tabBtn {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 44px !important;
+  margin: 0 !important;
+  padding: 11px 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  border: 1px solid rgba(124,240,255,.17) !important;
+  border-radius: 8px !important;
+  color: rgba(215,235,246,.76) !important;
+  background: #0a2232 !important;
+  font: 800 12px/1.2 system-ui !important;
+  letter-spacing: .045em !important;
+  white-space: nowrap !important;
+}
+#shopOverlay .profileTabs .tabBtn.active {
+  color: #f1fcff !important;
+  border-color: rgba(124,240,255,.52) !important;
+  background: #0c3950 !important;
+  box-shadow: inset 3px 0 0 #69e9ff !important;
+}
+#shopOverlay .profileMainCard {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 14px !important;
+  display: flex !important;
+  position: relative !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #06111c !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+#shopOverlay .profilePanel { display: none !important; }
+#shopOverlay .profilePanel.active {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 11px !important;
+  background: #091a28 !important;
+  box-shadow: none !important;
+}
+#shopOverlay .shopToolbar {
+  flex: 0 0 auto !important;
+  min-height: 54px !important;
+  margin: 0 0 8px !important;
+  padding: 2px 4px 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  box-sizing: border-box !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+#shopOverlay .shopToolbarTitle { color: #effbff !important; font-size: 14px !important; font-weight: 900 !important; }
+#shopOverlay .shopBalance { flex: 0 0 auto !important; text-align: right !important; }
+#shopOverlay .shopBalance span { display: block !important; color: rgba(204,228,241,.55) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
+#shopOverlay .shopBalance strong { display: block !important; margin-top: 2px !important; color: #75e8ff !important; font-size: 16px !important; }
+html body #shopOverlay #shopWindowPanel .shopLayout {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: 310px minmax(0,1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+html body #shopOverlay #shopWindowPanel .shopList,
+html body #shopOverlay #shopWindowPanel .shopPreview {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 8px !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+html body #shopOverlay #shopWindowPanel .shopList { display: flex !important; flex-direction: column !important; gap: 0 !important; border-right: 1px solid rgba(124,240,255,.13) !important; }
+html body #shopOverlay .shopRow { flex: 0 0 auto !important; min-width: 0 !important; min-height: 64px !important; padding: 8px 10px !important; display: flex !important; align-items: center !important; gap: 10px !important; border: 0 !important; border-bottom: 1px solid rgba(124,240,255,.09) !important; border-radius: 0 !important; background: transparent !important; background-image: none !important; box-shadow: none !important; transform: none !important; cursor: pointer !important; }
+html body #shopOverlay .shopRow.active { border-color: rgba(124,240,255,.09) !important; background: rgba(0,217,255,.10) !important; box-shadow: inset 3px 0 0 #69e9ff !important; }
+body #shopOverlay .shopRow { transition: transform .14s ease, border-color .14s ease, background .14s ease !important; }
+body #shopOverlay .shopRow:hover { transform: translateX(2px) !important; border-color: rgba(124,240,255,.34) !important; }
+body #shopOverlay .shopPreview .profileTile { padding: 16px !important; }
+html body #shopOverlay #shopWindowPanel .shopLayout.extrasMode { display: block !important; overflow-y: auto !important; }
+html body #shopOverlay #shopWindowPanel .shopLayout.extrasMode .shopList { display: none !important; }
+html body #shopOverlay #shopWindowPanel .shopLayout.extrasMode .shopPreview { width: 100% !important; min-height: 100% !important; overflow: visible !important; }
+
+/* ---- Miroir visuel exact de l'ancienne boutique (avant transfert) ---- */
+/* Boutons : même base que #profileOverlay */
+#shopOverlay button:not(.gameWinMinBtn) {
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  min-height: 36px !important;
+  margin: 0 !important;
+  padding: 8px 11px !important;
+  border: 1px solid rgba(124,240,255,.17) !important;
+  border-radius: 8px !important;
+  color: rgba(215,235,246,.76) !important;
+  background: #0a2232 !important;
+  box-shadow: none !important;
+  font: 800 11px/1.2 system-ui !important;
+  text-transform: none !important;
+  transform: none !important;
+  transition: none !important;
+}
+#shopOverlay button:not(.gameWinMinBtn):hover,
+#shopOverlay button:not(.gameWinMinBtn):active { transform: none !important; }
+/* Cartes : même base que #profileOverlay */
+#shopOverlay .tile,
+#shopOverlay .profileTile {
+  box-sizing: border-box !important;
+  border: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 9px !important;
+  background: #0a2232 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+/* Liste boutique : lignes plates comme avant */
+html body #shopOverlay .shopGroupHeader { flex: 0 0 auto !important; padding: 10px 10px 6px !important; color: #ffd9a8 !important; font-size: 10px !important; font-weight: 900 !important; text-transform: uppercase !important; letter-spacing: .08em !important; border-bottom: 1px solid rgba(255,154,60,.25) !important; background: rgba(255,154,60,.06) !important; }
+#shopOverlay .shopRow img { width: 48px !important; height: 48px !important; padding: 3px !important; flex: 0 0 auto !important; object-fit: contain !important; }
+#shopOverlay .shopMeta { flex: 1 !important; min-width: 0 !important; }
+#shopOverlay .shopMeta b { display: block !important; overflow: hidden !important; color: #e9f8ff !important; font-size: 11px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#shopOverlay .shopMeta span { color: rgba(204,228,241,.57) !important; font-size: 9px !important; }
+/* Aperçu droit : PAS de carte, transparent comme avant */
+html body #shopOverlay #shopWindowPanel .shopPreview > .tile { min-height: 100% !important; padding: 18px !important; display: flex !important; flex-direction: column !important; align-items: stretch !important; justify-content: center !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
+html body #shopOverlay .shopPreview .bigImg { width: min(200px, 70%) !important; height: 180px !important; margin: 0 auto 12px !important; padding: 8px !important; display: block !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; object-fit: contain !important; }
+html body #shopOverlay .shopPreview .bigImg.ammoShopImage { width: 100px !important; height: 100px !important; padding: 0 !important; }
+html body #shopOverlay .shopPreview .bigImg.equipShopImage { width: 100px !important; max-width: 100px !important; height: 100px !important; max-height: 100px !important; padding: 8px !important; border: 0 !important; background: transparent !important; }
+html body #shopOverlay .shopPreviewContainer,
+html body #shopOverlay .shipPreviewContainer { width: 100% !important; height: 210px !important; margin: 0 0 12px !important; display: flex !important; align-items: center !important; justify-content: center !important; overflow: hidden !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; }
+#shopOverlay .shipPreviewContainer img { width: auto !important; height: auto !important; max-width: 74% !important; max-height: 74% !important; transform: none !important; image-rendering: pixelated !important; object-fit: contain !important; }
+#shopOverlay .shopPreview h3 { margin: 0 0 8px !important; color: #effbff !important; font-size: 17px !important; }
+#shopOverlay .shopPreview p { color: rgba(209,231,243,.68) !important; font-size: 11px !important; line-height: 1.45 !important; }
+#shopOverlay .shopPreview .shopItemStat { margin: 8px 0 !important; color: rgba(209,231,243,.72) !important; }
+#shopOverlay .shopPreview .shopItemStat strong { margin-left: 5px !important; color: #75e8ff !important; font-size: 13px !important; }
+#shopOverlay .shopAmmoOwned { margin: 8px 0 !important; color: rgba(225,241,249,.82) !important; font-size: 12px !important; }
+/* Ligne d'achat + menu déroulant quantité : identique à avant */
+#shopOverlay .shopPurchaseRow { margin: 14px 0 0 !important; padding: 14px 4px !important; display: grid !important; grid-template-columns: minmax(160px,1fr) 110px !important; align-items: center !important; gap: 18px !important; border-top: 1px solid rgba(124,240,255,.15) !important; }
+#shopOverlay .shopPurchaseInfo { min-width: 0 !important; display: grid !important; gap: 8px !important; }
+#shopOverlay .shopPurchaseInfo > label { color: rgba(225,241,249,.78) !important; font-size: 11px !important; font-weight: 850 !important; }
+#shopOverlay .shopPurchaseRow > select { width: 110px !important; height: 36px !important; padding: 0 30px 0 12px !important; box-sizing: border-box !important; outline: 0 !important; border: 1px solid rgba(124,240,255,.30) !important; border-radius: 7px !important; color: #effcff !important; background: #051521 !important; font: 900 12px/1 system-ui !important; text-align: center !important; cursor: pointer !important; }
+#shopOverlay .shopPurchaseRow > select:focus { border-color: #69e9ff !important; }
+#shopOverlay .shopPurchaseRow > select option { color: #effcff !important; background: #071622 !important; }
+#shopOverlay .shopPurchasePrice { min-width: 0 !important; display: grid !important; gap: 3px !important; text-align: left !important; }
+#shopOverlay .shopPurchasePrice > span { color: rgba(204,228,241,.48) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
+#shopOverlay .shopPurchasePrice strong { color: #72efff !important; font-size: 13px !important; white-space: nowrap !important; }
+#shopOverlay .shopBuySection { margin-top: 12px !important; padding-top: 12px !important; border-top: 1px solid rgba(124,240,255,.12) !important; }
+#shopOverlay #btnBuyPreview { margin-top: auto !important; width: 100% !important; }
+/* Roulette modules + historique : identique à avant */
+#shopOverlay .extrasRoulettePanel { justify-content: flex-start !important; }
+#shopOverlay .extrasRouletteHeader { padding-bottom: 14px !important; display: flex !important; align-items: flex-start !important; justify-content: space-between !important; gap: 20px !important; border-bottom: 1px solid rgba(124,240,255,.12) !important; }
+#shopOverlay .extrasRouletteHeader h3 { margin-bottom: 5px !important; }
+#shopOverlay .extrasRouletteHeader p { margin: 0 !important; }
+#shopOverlay .extrasRouletteCost { flex: 0 0 auto !important; color: rgba(204,228,241,.55) !important; font-size: 9px !important; text-align: right !important; }
+#shopOverlay .extrasRouletteCost span { display: block !important; text-transform: uppercase !important; }
+#shopOverlay .extrasRouletteCost strong { margin-right: 4px !important; color: #75e8ff !important; font-size: 16px !important; }
+#shopOverlay .moduleHistoryPanel { min-height: 0 !important; margin-top: 18px !important; border-top: 1px solid rgba(124,240,255,.13) !important; }
+#shopOverlay .moduleHistoryPanel > header { min-height: 42px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 16px !important; color: #effbff !important; }
+#shopOverlay .moduleHistoryPanel > header strong { font-size: 12px !important; }
+#shopOverlay .moduleHistoryPanel > header span { color: rgba(204,228,241,.52) !important; font-size: 9px !important; }
+#shopOverlay .moduleHistoryList { max-height: 230px !important; overflow-y: auto !important; border-top: 1px solid rgba(124,240,255,.09) !important; }
+#shopOverlay .moduleHistoryRow { min-height: 48px !important; padding: 7px 5px !important; display: grid !important; grid-template-columns: 28px 38px 40px minmax(0,1fr) auto !important; align-items: center !important; gap: 9px !important; border-bottom: 1px solid rgba(124,240,255,.08) !important; }
+#shopOverlay .moduleHistoryIndex { color: rgba(204,228,241,.38) !important; font-size: 9px !important; text-align: center !important; }
+#shopOverlay .moduleHistoryRow img { width: 34px !important; height: 34px !important; object-fit: contain !important; image-rendering: pixelated !important; }
+#shopOverlay .moduleHistoryShipImg { width: 40px !important; height: 40px !important; background: rgba(0,217,255,0.06) !important; border: 1px solid rgba(124,240,255,.12) !important; border-radius: 9px !important; }
+#shopOverlay .moduleHistoryMeta { min-width: 0 !important; display: grid !important; gap: 3px !important; }
+#shopOverlay .moduleHistoryMeta strong.moduleHistoryName { color: #75e8ff !important; font-size: 10px !important; }
+#shopOverlay .moduleHistoryMeta span:not(.moduleHistoryRarity) { overflow: hidden !important; color: rgba(204,228,241,.60) !important; font-size: 9px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#shopOverlay .moduleHistoryRow time { color: rgba(204,228,241,.38) !important; font-size: 8px !important; white-space: nowrap !important; }
+#shopOverlay .moduleHistoryEmpty { padding: 24px !important; color: rgba(204,228,241,.45) !important; font-size: 10px !important; text-align: center !important; }
+/* Images drones / formations : identique à avant */
+body #shopOverlay .droneShopImage { width: 74px !important; height: 66px !important; object-fit: contain !important; image-rendering: pixelated !important; transform: scale(1.12); }
+body #shopOverlay .formationShopImage { width: min(420px,90%) !important; height: 190px !important; object-fit: contain !important; image-rendering: auto !important; }
+body #shopOverlay .formationDescription { line-height: 1.55; color: #d8c17c; }
+body #shopOverlay .shopRow img.droneShopRowImage { width: 58px !important; height: 52px !important; padding: 0 !important; image-rendering: pixelated !important; }
+body #shopOverlay .shopRow img.formationShopRowImage { width: 72px !important; height: 48px !important; padding: 0 !important; object-fit: contain !important; }
+@media (max-width: 900px) {
+  #shopOverlay #shopWindow.gameWindow { width: calc(100vw - 16px) !important; height: calc(100vh - 24px) !important; min-width: 0 !important; grid-template-columns: 240px minmax(0,1fr) !important; }
+  html body #shopOverlay #shopWindow.gameWindow:not(.floating) { left: 8px !important; top: 70px !important; }
+  #shopOverlay #shopWindowPanel .shopLayout { grid-template-columns: 250px minmax(0,1fr) !important; }
+}
+@media (max-width: 650px) {
+  #shopOverlay #shopWindow.gameWindow { grid-template-columns: 1fr !important; grid-template-rows: 30px auto minmax(0,1fr) !important; }
+  #shopOverlay .profileHeaderCard { grid-column: 1 !important; grid-row: 2 !important; padding: 8px !important; border-right: 0 !important; border-bottom: 1px solid rgba(124,240,255,.16) !important; }
+  #shopOverlay .profileTabs { flex-direction: row !important; overflow-x: auto !important; }
+  #shopOverlay .profileTabs .tabBtn { justify-content: center !important; }
+  #shopOverlay .profileMainCard { grid-column: 1 !important; grid-row: 3 !important; padding: 8px !important; }
+  #shopOverlay #shopWindowPanel .shopLayout { grid-template-columns: 1fr !important; overflow-y: auto !important; }
+  #shopOverlay #shopWindowPanel .shopList { max-height: 210px !important; }
+}
+
+/* =========================================================
+   Miroir Boutique -> Espace pilote (fix transfert fenêtre).
+   La boutique vit dans #shopOverlay mais doit rendre EXACTEMENT
+   comme #profileOverlay : sidebar arrondie/translucide (pas pleine
+   et droite), boutons avec le même effet, panneaux transparents.
+   Ce bloc est chargé après style.css donc il gagne à
+   spécificité égale. Les `body #shopOverlay` battent aussi les
+   `#shopOverlay` plats définis plus haut dans ce même fichier.
+   ========================================================= */
+body #shopOverlay .profileHeaderCard{
+  grid-column:1 !important;
+  grid-row:2 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:14px 0 14px 14px !important;
+  padding:18px !important;
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:flex-start !important;
+  gap:22px !important;
+  overflow:hidden auto !important;
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:12px !important;
+  background:linear-gradient(180deg,rgba(14,45,65,.78),rgba(5,17,30,.84)) !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  scrollbar-width:none !important;
+}
+body #shopOverlay .profileTabs{
+  width:100% !important;
+  margin:0 !important;
+  padding:0 0 2px !important;
+  display:flex !important;
+  flex:1 1 auto !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  justify-content:flex-start !important;
+  gap:6px !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  scrollbar-width:none !important;
+}
+body #shopOverlay .profileTabs::-webkit-scrollbar{ display:none !important; }
+body #shopOverlay button:not(.gameWinMinBtn){
+  box-sizing:border-box !important;
+  min-width:0 !important;
+  min-height:30px !important;
+  margin:0 !important;
+  padding:6px 10px !important;
+  border-radius:8px !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  box-shadow:none !important;
+}
+body #shopOverlay .profileTabs .tabBtn{
+  width:100% !important;
+  flex:0 0 auto !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  min-height:38px !important;
+  padding:9px 11px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  text-align:left !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  border:1px solid rgba(124,240,255,.18) !important;
+  border-radius:9px !important;
+  color:rgba(205,230,245,.72) !important;
+  background:rgba(8,35,52,.62) !important;
+  font:800 11px/1.2 system-ui !important;
+  letter-spacing:.045em !important;
+  white-space:nowrap !important;
+  box-shadow:none !important;
+  transform:none !important;
+  transition:transform .15s ease,border-color .15s ease,background .15s ease !important;
+}
+body #shopOverlay .profileTabs .tabBtn:hover:not(:disabled){ transform:none !important; border-color:rgba(124,240,255,.45) !important; background:rgba(0,140,185,.18) !important; }
+body #shopOverlay .profileTabs .tabBtn.active{
+  color:#edfbff !important;
+  border-color:rgba(124,240,255,.5) !important;
+  background:linear-gradient(90deg,rgba(0,155,205,.34),rgba(0,90,125,.17)) !important;
+  box-shadow:inset 3px 0 0 #69e9ff !important;
+}
+body #shopOverlay .profileMainCard{
+  grid-column:2 !important;
+  grid-row:2 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:14px !important;
+  display:flex !important;
+  overflow:hidden !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+body #shopOverlay .profilePanel{ display:none !important; min-width:0 !important; min-height:0 !important; }
+body #shopOverlay .profilePanel.active{
+  width:100% !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:20px !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  flex-direction:column !important;
+  overflow:hidden auto !important;
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:12px !important;
+  background:
+    radial-gradient(circle at 90% 0,rgba(0,180,225,.08),transparent 34%),
+    linear-gradient(145deg,rgba(8,28,45,.72),rgba(3,11,22,.82)) !important;
+  box-shadow:0 0 0 1px rgba(255,255,255,.02) inset !important;
+  backdrop-filter:none !important;
+}
+/* Intérieur boutique : PAS de cartes en trop — on garde le design plat
+   d'origine (liste en lignes + aperçu transparent), juste posé sur le
+   panneau translucide ci-dessus. */
+html body #shopOverlay #shopWindowPanel .shopLayout{
+  flex:1 1 auto !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  display:grid !important;
+  grid-template-columns:310px minmax(0,1fr) !important;
+  gap:0 !important;
+  overflow:hidden !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+}
+html body #shopOverlay #shopWindowPanel .shopList,
+html body #shopOverlay #shopWindowPanel .shopPreview{
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:8px !important;
+  box-sizing:border-box !important;
+  overflow-y:auto !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+html body #shopOverlay #shopWindowPanel .shopList{ display:flex !important; flex-direction:column !important; gap:0 !important; border-right:1px solid rgba(124,240,255,.13) !important; }
+html body #shopOverlay .shopRow{
+  flex:0 0 auto !important;
+  min-width:0 !important;
+  min-height:64px !important;
+  padding:8px 10px !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:10px !important;
+  border:0 !important;
+  border-bottom:1px solid rgba(124,240,255,.09) !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  transform:none !important;
+  cursor:pointer !important;
+}
+html body #shopOverlay .shopRow.active{
+  border-color:rgba(124,240,255,.09) !important;
+  background:rgba(0,217,255,.10) !important;
+  box-shadow:inset 3px 0 0 #69e9ff !important;
+}
+body #shopOverlay .shopRow{ transition:transform .14s ease,border-color .14s ease,background .14s ease !important; }
+body #shopOverlay .shopRow:hover{ transform:translateX(2px) !important; border-color:rgba(124,240,255,.34) !important; }
+html body #shopOverlay #shopWindowPanel .shopPreview > .tile{
+  min-height:100% !important;
+  padding:18px !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  justify-content:center !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+html body #shopOverlay .shopPreview .bigImg{
+  width:min(200px,70%) !important;
+  height:180px !important;
+  margin:0 auto 12px !important;
+  padding:8px !important;
+  display:block !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  object-fit:contain !important;
+}
+
+/* =========================================================
+   Historique des modules : grand format (remplit la carte,
+   10 lignes par page, images et textes agrandis).
+   ========================================================= */
+html body #shopOverlay #moduleRollHistory{
+  flex:1 1 auto !important;
+  min-height:120px !important;
+  max-height:none !important;
+  overflow-y:auto !important;
+}
+html body #shopOverlay .moduleHistoryEmpty{ padding:28px 12px !important; font-size:12px !important; }
+html body #shopOverlay .moduleHistoryRow{
+  min-height:76px !important;
+  padding:10px 8px !important;
+  grid-template-columns:36px 54px 62px minmax(0,1fr) auto 46px !important;
+  gap:12px !important;
+  align-items:center !important;
+}
+html body #shopOverlay .moduleHistoryRow img{ width:52px !important; height:52px !important; }
+html body #shopOverlay .moduleHistoryShipImg{ width:60px !important; height:60px !important; border-radius:12px !important; }
+html body #shopOverlay .moduleHistoryIndex{ font-size:12px !important; }
+html body #shopOverlay .moduleHistoryMeta{ gap:4px !important; }
+html body #shopOverlay .moduleHistoryMeta strong.moduleHistoryName{ font-size:13px !important; }
+html body #shopOverlay .moduleHistoryMeta span{ font-size:11px !important; white-space:normal !important; }
+html body #shopOverlay .moduleHistoryRow time{ font-size:10px !important; }
+html body #shopOverlay .moduleHistorySide{ min-width:0 !important; display:grid !important; gap:3px !important; justify-items:end !important; text-align:right !important; }
+html body #shopOverlay .moduleHistoryReroll{ color:rgba(204,228,241,.55) !important; font-size:10px !important; white-space:nowrap !important; }
+html body #shopOverlay .moduleHistoryReroll strong{ color:#75e8ff !important; }
+html body #shopOverlay .moduleHistoryRerollBtn{
+  display:grid !important;
+  place-items:center !important;
+  border:1px solid rgba(124,240,255,.28) !important;
+  border-radius:10px !important;
+  background:rgba(0,217,255,.08) !important;
+  color:#e8f4ff !important;
+  font-size:19px !important;
+  line-height:1 !important;
+  cursor:pointer !important;
+  box-shadow:none !important;
+}
+html body #shopOverlay .moduleHistoryRerollBtn:hover:not(:disabled){
+  border-color:rgba(124,240,255,.6) !important;
+  background:rgba(0,217,255,.18) !important;
+  box-shadow:0 0 14px rgba(0,217,255,.18) !important;
+}
+html body #shopOverlay .moduleHistoryRerollBtn:disabled{ opacity:.35 !important; cursor:not-allowed !important; }

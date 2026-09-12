@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.163",
+    "date": "2026-09-11T23:52:11+02:00",
+    "message": "univers: respawn NPC random (sauf cubikon au camp), suppression tests sim + nettoyage bots"
+  },
+  {
     "version": "0.162",
     "date": "2026-09-11T22:03:21+02:00",
     "message": "univers persistant: horloge monde, slots stables, tick fond multi-maps (hors GG), respawn instant sauf cubikon 60s"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.104",
     "date": "2026-09-05T03:43:57+02:00",
     "message": "Synchronise la version du jeu (75253117)"
-  },
-  {
-    "version": "0.103",
-    "date": "2026-09-05T03:43:45+02:00",
-    "message": "ui: pseudo du joueur en blanc (avant: cyan) dans le rendu canvas"
   }
 ];

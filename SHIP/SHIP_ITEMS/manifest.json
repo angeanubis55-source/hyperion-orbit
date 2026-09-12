@@ -1,0 +1,2438 @@
+{
+ "berserker_amor": {
+  "url": "items/ship/berserker/design/berserker-amor_100x100.png",
+  "bytes": 5370
+ },
+ "berserker_arios": {
+  "url": "items/ship/berserker/design/berserker-arios_100x100.png",
+  "bytes": 5693
+ },
+ "berserker_blaze": {
+  "url": "items/ship/berserker/design/berserker-blaze_100x100.png",
+  "bytes": 5604
+ },
+ "berserker_borealis": {
+  "url": "items/ship/berserker/design/berserker-borealis_100x100.png",
+  "bytes": 5499
+ },
+ "berserker_carbonite": {
+  "url": "items/ship/berserker/design/berserker-carbonite_100x100.png",
+  "bytes": 5140
+ },
+ "berserker_dusklight": {
+  "url": "items/ship/berserker/design/berserker-dusklight_100x100.png",
+  "bytes": 16278
+ },
+ "berserker_elysium": {
+  "url": "items/ship/berserker/design/berserker-elysium_100x100.png",
+  "bytes": 14535
+ },
+ "berserker_empyrian": {
+  "url": "items/ship/berserker/design/berserker-empyrian_100x100.png",
+  "bytes": 15357
+ },
+ "berserker_epion": {
+  "url": "items/ship/berserker/design/berserker-epion_100x100.png",
+  "bytes": 16099
+ },
+ "berserker_frost": {
+  "url": "items/ship/berserker/design/berserker-frost_100x100.png",
+  "bytes": 7472
+ },
+ "berserker_inferno": {
+  "url": "items/ship/berserker/design/berserker-inferno_100x100.png",
+  "bytes": 8244
+ },
+ "berserker_lava": {
+  "url": "items/ship/berserker/design/berserker-lava_100x100.png",
+  "bytes": 5532
+ },
+ "berserker_legend": {
+  "url": "items/ship/berserker/design/berserker-legend_100x100.png",
+  "bytes": 5655
+ },
+ "berserker_neikos": {
+  "url": "items/ship/berserker/design/berserker-neikos_100x100.png",
+  "bytes": 5690
+ },
+ "berserker_nobilis": {
+  "url": "items/ship/berserker/design/berserker-nobilis_100x100.png",
+  "bytes": 15590
+ },
+ "berserker_ocean": {
+  "url": "items/ship/berserker/design/berserker-ocean_100x100.png",
+  "bytes": 5497
+ },
+ "berserker_phantasm": {
+  "url": "items/ship/berserker/design/berserker-phantasm_100x100.png",
+  "bytes": 5519
+ },
+ "berserker_poison": {
+  "url": "items/ship/berserker/design/berserker-poison_100x100.png",
+  "bytes": 5351
+ },
+ "berserker_prosperous": {
+  "url": "items/ship/berserker/design/berserker-prosperous_100x100.png",
+  "bytes": 6132
+ },
+ "berserker_psyche": {
+  "url": "items/ship/berserker/design/berserker-psyche_100x100.png",
+  "bytes": 5641
+ },
+ "berserker_sandstorm": {
+  "url": "items/ship/berserker/design/berserker-sandstorm_100x100.png",
+  "bytes": 14221
+ },
+ "berserker_ullrin": {
+  "url": "items/ship/berserker/design/berserker-ullrin_100x100.png",
+  "bytes": 5428
+ },
+ "centurion_frost": {
+  "url": "items/ship/centurion/design/centurion-frost_100x100.png",
+  "bytes": 7445
+ },
+ "centurion_nobilis": {
+  "url": "items/ship/centurion/design/centurion-nobilis_100x100.png",
+  "bytes": 18696
+ },
+ "centurion_tyrannos": {
+  "url": "items/ship/centurion/design/centurion-tyrannos_100x100.png",
+  "bytes": 5082
+ },
+ "citadel_epion": {
+  "url": "items/ship/citadel/design/citadel-epion_100x100.png",
+  "bytes": 6867
+ },
+ "citadel_osiris": {
+  "url": "items/ship/citadel/design/citadel-osiris_100x100.png",
+  "bytes": 6949
+ },
+ "citadel_plus_arios": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-arios_100x100.png",
+  "bytes": 17464
+ },
+ "citadel_plus_asimov": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-asimov_100x100.png",
+  "bytes": 7986
+ },
+ "citadel_plus_dusklight": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-dusklight_100x100.png",
+  "bytes": 20673
+ },
+ "citadel_plus_elysium": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-elysium_100x100.png",
+  "bytes": 20648
+ },
+ "citadel_plus_empyrian": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-empyrian_100x100.png",
+  "bytes": 7447
+ },
+ "citadel_plus_epion": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-epion_100x100.png",
+  "bytes": 7771
+ },
+ "citadel_plus_frost": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-frost_100x100.png",
+  "bytes": 8584
+ },
+ "citadel_plus_legend": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-legend_100x100.png",
+  "bytes": 7903
+ },
+ "citadel_plus_neikos": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-neikos_100x100.png",
+  "bytes": 20629
+ },
+ "citadel_plus_nobilis": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-nobilis_100x100.png",
+  "bytes": 7528
+ },
+ "citadel_plus_osiris": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-osiris_100x100.png",
+  "bytes": 19230
+ },
+ "citadel_plus_prometheus": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-prometheus_100x100.png",
+  "bytes": 20164
+ },
+ "citadel_plus_prosperous": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-prosperous_100x100.png",
+  "bytes": 7820
+ },
+ "citadel_plus_samurai": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-samurai_100x100.png",
+  "bytes": 18105
+ },
+ "citadel_plus_shogun": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-shogun_100x100.png",
+  "bytes": 15959
+ },
+ "citadel_plus_viking": {
+  "url": "items/ship/citadel-plus/design/citadel-plus-viking_100x100.png",
+  "bytes": 17285
+ },
+ "citadel_smite": {
+  "url": "items/ship/citadel/design/citadel-smite_100x100.png",
+  "bytes": 6991
+ },
+ "cyborg_amor": {
+  "url": "items/ship/cyborg/design/cyborg-amor_100x100.png",
+  "bytes": 6092
+ },
+ "cyborg_arios": {
+  "url": "items/ship/cyborg/design/cyborg-arios_100x100.png",
+  "bytes": 6412
+ },
+ "cyborg_asimov": {
+  "url": "items/ship/cyborg/design/cyborg-asimov_100x100.png",
+  "bytes": 4578
+ },
+ "cyborg_blaze": {
+  "url": "items/ship/cyborg/design/cyborg-blaze_100x100.png",
+  "bytes": 6447
+ },
+ "cyborg_carbonite": {
+  "url": "items/ship/cyborg/design/cyborg-carbonite_100x100.png",
+  "bytes": 5975
+ },
+ "cyborg_celestial": {
+  "url": "items/ship/cyborg/design/cyborg-celestial_100x100.png",
+  "bytes": 6118
+ },
+ "cyborg_dusklight": {
+  "url": "items/ship/cyborg/design/cyborg-dusklight_100x100.png",
+  "bytes": 6191
+ },
+ "cyborg_elysium": {
+  "url": "items/ship/cyborg/design/cyborg-elysium_100x100.png",
+  "bytes": 12431
+ },
+ "cyborg_empyrian": {
+  "url": "items/ship/cyborg/design/cyborg-empyrian_100x100.png",
+  "bytes": 12353
+ },
+ "cyborg_epion": {
+  "url": "items/ship/cyborg/design/cyborg-epion_100x100.png",
+  "bytes": 6224
+ },
+ "cyborg_firestar": {
+  "url": "items/ship/cyborg/design/cyborg-firestar_100x100.png",
+  "bytes": 5980
+ },
+ "cyborg_frost": {
+  "url": "items/ship/cyborg/design/cyborg-frost_100x100.png",
+  "bytes": 20130
+ },
+ "cyborg_frozen": {
+  "url": "items/ship/cyborg/design/cyborg-frozen_100x100.png",
+  "bytes": 8250
+ },
+ "cyborg_horus": {
+  "url": "items/ship/cyborg/design/cyborg-horus_100x100.png",
+  "bytes": 15611
+ },
+ "cyborg_inferno": {
+  "url": "items/ship/cyborg/design/cyborg-inferno_100x100.png",
+  "bytes": 6723
+ },
+ "cyborg_infinite": {
+  "url": "items/ship/cyborg/design/cyborg-infinite_100x100.png",
+  "bytes": 6307
+ },
+ "cyborg_lava": {
+  "url": "items/ship/cyborg/design/cyborg-lava_100x100.png",
+  "bytes": 6292
+ },
+ "cyborg_neikos": {
+  "url": "items/ship/cyborg/design/cyborg-neikos_100x100.png",
+  "bytes": 6352
+ },
+ "cyborg_nobilis": {
+  "url": "items/ship/cyborg/design/cyborg-nobilis_100x100.png",
+  "bytes": 6185
+ },
+ "cyborg_ocean": {
+  "url": "items/ship/cyborg/design/cyborg-ocean_100x100.png",
+  "bytes": 6446
+ },
+ "cyborg_osiris": {
+  "url": "items/ship/cyborg/design/cyborg-osiris_100x100.png",
+  "bytes": 6206
+ },
+ "cyborg_phantasm": {
+  "url": "items/ship/cyborg/design/cyborg-phantasm_100x100.png",
+  "bytes": 14889
+ },
+ "cyborg_poison": {
+  "url": "items/ship/cyborg/design/cyborg-poison_100x100.png",
+  "bytes": 6334
+ },
+ "cyborg_prometheus": {
+  "url": "items/ship/cyborg/design/cyborg-prometheus_100x100.png",
+  "bytes": 6432
+ },
+ "cyborg_prosperous": {
+  "url": "items/ship/cyborg/design/cyborg-prosperous_100x100.png",
+  "bytes": 12619
+ },
+ "cyborg_psyche": {
+  "url": "items/ship/cyborg/design/cyborg-psyche_100x100.png",
+  "bytes": 6189
+ },
+ "cyborg_scourge": {
+  "url": "items/ship/cyborg/design/cyborg-scourge_100x100.png",
+  "bytes": 6282
+ },
+ "cyborg_seraph": {
+  "url": "items/ship/cyborg/design/cyborg-seraph_100x100.png",
+  "bytes": 6098
+ },
+ "cyborg_smite": {
+  "url": "items/ship/cyborg/design/cyborg-smite_100x100.png",
+  "bytes": 6076
+ },
+ "cyborg_starscream": {
+  "url": "items/ship/cyborg/design/cyborg-starscream_100x100.png",
+  "bytes": 6318
+ },
+ "cyborg_sunstorm": {
+  "url": "items/ship/cyborg/design/cyborg-sunstorm_100x100.png",
+  "bytes": 6063
+ },
+ "cyborg_tyrannos": {
+  "url": "items/ship/cyborg/design/cyborg-tyrannos_100x100.png",
+  "bytes": 4351
+ },
+ "cyborg_ullrin": {
+  "url": "items/ship/cyborg/design/cyborg-ullrin_100x100.png",
+  "bytes": 6074
+ },
+ "diminisher_argon": {
+  "url": "items/ship/diminisher/design/diminisher-argon_100x100.png",
+  "bytes": 5969
+ },
+ "diminisher_arios": {
+  "url": "items/ship/diminisher/design/diminisher-arios_100x100.png",
+  "bytes": 6268
+ },
+ "diminisher_blaze": {
+  "url": "items/ship/diminisher/design/diminisher-blaze_100x100.png",
+  "bytes": 6106
+ },
+ "diminisher_carbonite": {
+  "url": "items/ship/diminisher/design/diminisher-carbonite_100x100.png",
+  "bytes": 6260
+ },
+ "diminisher_eldritch": {
+  "url": "items/ship/diminisher/design/diminisher-eldritch_100x100.png",
+  "bytes": 14975
+ },
+ "diminisher_empyrian": {
+  "url": "items/ship/diminisher/design/diminisher-empyrian_100x100.png",
+  "bytes": 15443
+ },
+ "diminisher_epion": {
+  "url": "items/ship/diminisher/design/diminisher-epion_100x100.png",
+  "bytes": 6194
+ },
+ "diminisher_frost": {
+  "url": "items/ship/diminisher/design/diminisher-frost_100x100.png",
+  "bytes": 7223
+ },
+ "diminisher_harbinger": {
+  "url": "items/ship/diminisher/design/diminisher-harbinger_100x100.png",
+  "bytes": 6109
+ },
+ "diminisher_inferno": {
+  "url": "items/ship/diminisher/design/diminisher-inferno_100x100.png",
+  "bytes": 8283
+ },
+ "diminisher_lava": {
+  "url": "items/ship/diminisher/design/diminisher-lava_100x100.png",
+  "bytes": 6226
+ },
+ "diminisher_legend": {
+  "url": "items/ship/diminisher/design/diminisher-legend_100x100.png",
+  "bytes": 6427
+ },
+ "diminisher_neikos": {
+  "url": "items/ship/diminisher/design/diminisher-neikos_100x100.png",
+  "bytes": 6105
+ },
+ "diminisher_nobilis": {
+  "url": "items/ship/diminisher/design/diminisher-nobilis_100x100.png",
+  "bytes": 6054
+ },
+ "diminisher_osiris": {
+  "url": "items/ship/diminisher/design/diminisher-osiris_100x100.png",
+  "bytes": 6213
+ },
+ "diminisher_phantasm": {
+  "url": "items/ship/diminisher/design/diminisher-phantasm_100x100.png",
+  "bytes": 6520
+ },
+ "diminisher_prometheus": {
+  "url": "items/ship/diminisher/design/diminisher-prometheus_100x100.png",
+  "bytes": 6239
+ },
+ "diminisher_prosperous": {
+  "url": "items/ship/diminisher/design/diminisher-prosperous_100x100.png",
+  "bytes": 14501
+ },
+ "diminisher_seraph": {
+  "url": "items/ship/diminisher/design/diminisher-seraph_100x100.png",
+  "bytes": 6227
+ },
+ "diminisher_smite": {
+  "url": "items/ship/diminisher/design/diminisher-smite_100x100.png",
+  "bytes": 6148
+ },
+ "diminisher_ullrin": {
+  "url": "items/ship/diminisher/design/diminisher-ullrin_100x100.png",
+  "bytes": 6332
+ },
+ "disruptor_arios": {
+  "url": "items/ship/disruptor/design/disruptor-arios_100x100.png",
+  "bytes": 7164
+ },
+ "disruptor_frost": {
+  "url": "items/ship/disruptor/design/disruptor-frost_100x100.png",
+  "bytes": 7981
+ },
+ "disruptor_harbinger": {
+  "url": "items/ship/disruptor/design/disruptor-harbinger_100x100.png",
+  "bytes": 7232
+ },
+ "disruptor_neikos": {
+  "url": "items/ship/disruptor/design/disruptor-neikos_100x100.png",
+  "bytes": 7146
+ },
+ "disruptor_prometheus": {
+  "url": "items/ship/disruptor/design/disruptor-prometheus_100x100.png",
+  "bytes": 7073
+ },
+ "disruptor_seraph": {
+  "url": "items/ship/disruptor/design/disruptor-seraph_100x100.png",
+  "bytes": 19085
+ },
+ "disruptor_tyrannos": {
+  "url": "items/ship/disruptor/design/disruptor-tyrannos_100x100.png",
+  "bytes": 7023
+ },
+ "disruptor_ullrin": {
+  "url": "items/ship/disruptor/design/disruptor-ullrin_100x100.png",
+  "bytes": 6756
+ },
+ "goliath_frost": {
+  "url": "items/ship/goliath/design/goliath-frost_100x100.png",
+  "bytes": 7635
+ },
+ "goliath_phantasm": {
+  "url": "items/ship/goliath/design/goliath-phantasm_100x100.png",
+  "bytes": 6162
+ },
+ "goliath_plus_amor": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-amor_100x100.png",
+  "bytes": 5214
+ },
+ "goliath_plus_argon": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-argon_100x100.png",
+  "bytes": 5217
+ },
+ "goliath_plus_arios": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-arios_100x100.png",
+  "bytes": 5333
+ },
+ "goliath_plus_arisen": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-arisen_100x100.png",
+  "bytes": 13109
+ },
+ "goliath_plus_bdayriot": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-bdayriot_100x100.png",
+  "bytes": 11703
+ },
+ "goliath_plus_blaze": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-blaze_100x100.png",
+  "bytes": 10624
+ },
+ "goliath_plus_carbonite": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-carbonite_100x100.png",
+  "bytes": 5345
+ },
+ "goliath_plus_dogma": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-dogma_100x100.png",
+  "bytes": 10801
+ },
+ "goliath_plus_dreadwing": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-dreadwing_100x100.png",
+  "bytes": 13755
+ },
+ "goliath_plus_elysium": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-elysium_100x100.png",
+  "bytes": 13707
+ },
+ "goliath_plus_empyrian": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-empyrian_100x100.png",
+  "bytes": 10830
+ },
+ "goliath_plus_epion": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-epion_100x100.png",
+  "bytes": 11453
+ },
+ "goliath_plus_frost": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-frost_100x100.png",
+  "bytes": 7037
+ },
+ "goliath_plus_neikos": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-neikos_100x100.png",
+  "bytes": 5172
+ },
+ "goliath_plus_nobilis": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-nobilis_100x100.png",
+  "bytes": 5210
+ },
+ "goliath_plus_osiris": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-osiris_100x100.png",
+  "bytes": 5379
+ },
+ "goliath_plus_phantasm": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-phantasm_100x100.png",
+  "bytes": 10377
+ },
+ "goliath_plus_prometheus": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-prometheus_100x100.png",
+  "bytes": 10358
+ },
+ "goliath_plus_prosperous": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-prosperous_100x100.png",
+  "bytes": 5208
+ },
+ "goliath_plus_psyche": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-psyche_100x100.png",
+  "bytes": 5227
+ },
+ "goliath_plus_smite": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-smite_100x100.png",
+  "bytes": 5264
+ },
+ "goliath_plus_ullrin": {
+  "url": "items/ship/goliath-plus/design/goliath-plus-ullrin_100x100.png",
+  "bytes": 5278
+ },
+ "goliath_razer": {
+  "url": "items/ship/goliath/design/goliath-razer_100x100.png",
+  "bytes": 7017
+ },
+ "goliath_x_argon": {
+  "url": "items/ship/goliath-x/design/goliath-x-argon_100x100.png",
+  "bytes": 5682
+ },
+ "goliath_x_borealis": {
+  "url": "items/ship/goliath-x/design/goliath-x-borealis_100x100.png",
+  "bytes": 6108
+ },
+ "goliath_x_frost": {
+  "url": "items/ship/goliath-x/design/goliath-x-frost_100x100.png",
+  "bytes": 21334
+ },
+ "goliath_x_lava": {
+  "url": "items/ship/goliath-x/design/goliath-x-lava_100x100.png",
+  "bytes": 6026
+ },
+ "goliath_x_legend": {
+  "url": "items/ship/goliath-x/design/goliath-x-legend_100x100.png",
+  "bytes": 6134
+ },
+ "goliath_x_ocean": {
+  "url": "items/ship/goliath-x/design/goliath-x-ocean_100x100.png",
+  "bytes": 6148
+ },
+ "goliath_x_sandstorm": {
+  "url": "items/ship/goliath-x/design/goliath-x-sandstorm_100x100.png",
+  "bytes": 6080
+ },
+ "hammerclaw_bane": {
+  "url": "items/ship/hammerclaw/design/hammerclaw-bane_100x100.png",
+  "bytes": 6808
+ },
+ "hammerclaw_carbonite": {
+  "url": "items/ship/hammerclaw/design/hammerclaw-carbonite_100x100.png",
+  "bytes": 7002
+ },
+ "hammerclaw_inferno": {
+  "url": "items/ship/hammerclaw/design/hammerclaw-inferno_100x100.png",
+  "bytes": 8654
+ },
+ "hammerclaw_lava": {
+  "url": "items/ship/hammerclaw/design/hammerclaw-lava_100x100.png",
+  "bytes": 6991
+ },
+ "hammerclaw_nobilis": {
+  "url": "items/ship/hammerclaw/design/hammerclaw-nobilis_100x100.png",
+  "bytes": 6646
+ },
+ "hammerclaw_plus_argon": {
+  "url": "items/ship/hammerclaw-plus/design/hammerclaw-plus-argon_100x100.png",
+  "bytes": 7508
+ },
+ "hammerclaw_plus_arios": {
+  "url": "items/ship/hammerclaw-plus/design/hammerclaw-plus-arios_100x100.png",
+  "bytes": 20605
+ },
+ "hammerclaw_plus_elysium": {
+  "url": "items/ship/hammerclaw-plus/design/hammerclaw-plus-elysium_100x100.png",
+  "bytes": 21269
+ },
+ "hammerclaw_plus_empyrian": {
+  "url": "items/ship/hammerclaw-plus/design/hammerclaw-plus-empyrian_100x100.png",
+  "bytes": 20911
+ },
+ "hammerclaw_plus_frost": {
+  "url": "items/ship/hammerclaw-plus/design/hammerclaw-plus-frost_100x100.png",
+  "bytes": 8316
+ },
+ "hammerclaw_plus_neikos": {
+  "url": "items/ship/hammerclaw-plus/design/hammerclaw-plus-neikos_100x100.png",
+  "bytes": 21307
+ },
+ "hammerclaw_plus_nobilis": {
+  "url": "items/ship/hammerclaw-plus/design/hammerclaw-plus-nobilis_100x100.png",
+  "bytes": 21701
+ },
+ "hammerclaw_plus_phantasm": {
+  "url": "items/ship/hammerclaw-plus/design/hammerclaw-plus-phantasm_100x100.png",
+  "bytes": 20048
+ },
+ "hammerclaw_plus_prometheus": {
+  "url": "items/ship/hammerclaw-plus/design/hammerclaw-plus-prometheus_100x100.png",
+  "bytes": 20416
+ },
+ "hammerclaw_prometheus": {
+  "url": "items/ship/hammerclaw/design/hammerclaw-prometheus_100x100.png",
+  "bytes": 6918
+ },
+ "hammerclaw_prosperous": {
+  "url": "items/ship/hammerclaw/design/hammerclaw-prosperous_100x100.png",
+  "bytes": 6881
+ },
+ "hammerclaw_tyrannos": {
+  "url": "items/ship/hammerclaw/design/hammerclaw-tyrannos_100x100.png",
+  "bytes": 6246
+ },
+ "hammerclaw_ullrin": {
+  "url": "items/ship/hammerclaw/design/hammerclaw-ullrin_100x100.png",
+  "bytes": 6316
+ },
+ "hecate_carbonite": {
+  "url": "items/ship/hecate/design/hecate-carbonite_100x100.png",
+  "bytes": 7026
+ },
+ "hecate_dusklight": {
+  "url": "items/ship/hecate/design/hecate-dusklight_100x100.png",
+  "bytes": 7529
+ },
+ "hecate_frost": {
+  "url": "items/ship/hecate/design/hecate-frost_100x100.png",
+  "bytes": 7881
+ },
+ "hecate_inferno": {
+  "url": "items/ship/hecate/design/hecate-inferno_100x100.png",
+  "bytes": 7064
+ },
+ "hecate_lava": {
+  "url": "items/ship/hecate/design/hecate-lava_100x100.png",
+  "bytes": 6828
+ },
+ "hecate_ocean": {
+  "url": "items/ship/hecate/design/hecate-ocean_100x100.png",
+  "bytes": 6807
+ },
+ "hecate_plus_asimov": {
+  "url": "items/ship/hecate-plus/design/hecate-plus-asimov_100x100.png",
+  "bytes": 19764
+ },
+ "hecate_plus_dusklight": {
+  "url": "items/ship/hecate-plus/design/hecate-plus-dusklight_100x100.png",
+  "bytes": 21844
+ },
+ "hecate_plus_elysium": {
+  "url": "items/ship/hecate-plus/design/hecate-plus-elysium_100x100.png",
+  "bytes": 20441
+ },
+ "hecate_plus_empyrian": {
+  "url": "items/ship/hecate-plus/design/hecate-plus-empyrian_100x100.png",
+  "bytes": 7273
+ },
+ "hecate_plus_frost": {
+  "url": "items/ship/hecate-plus/design/hecate-plus-frost_100x100.png",
+  "bytes": 27523
+ },
+ "hecate_plus_nobilis": {
+  "url": "items/ship/hecate-plus/design/hecate-plus-nobilis_100x100.png",
+  "bytes": 18142
+ },
+ "hecate_poison": {
+  "url": "items/ship/hecate/design/hecate-poison_100x100.png",
+  "bytes": 6803
+ },
+ "hecate_tyrannos": {
+  "url": "items/ship/hecate/design/hecate-tyrannos_100x100.png",
+  "bytes": 7547
+ },
+ "hecate_ullrin": {
+  "url": "items/ship/hecate/design/hecate-ullrin_100x100.png",
+  "bytes": 7584
+ },
+ "holo_epion": {
+  "url": "items/ship/holo/design/holo-epion_100x100.png",
+  "bytes": 5181
+ },
+ "holo_frost": {
+  "url": "items/ship/holo/design/holo-frost_100x100.png",
+  "bytes": 6714
+ },
+ "holo_osiris": {
+  "url": "items/ship/holo/design/holo-osiris_100x100.png",
+  "bytes": 5212
+ },
+ "holo_prometheus": {
+  "url": "items/ship/holo/design/holo-prometheus_100x100.png",
+  "bytes": 5235
+ },
+ "holo_smite": {
+  "url": "items/ship/holo/design/holo-smite_100x100.png",
+  "bytes": 5046
+ },
+ "holo_ullrin": {
+  "url": "items/ship/holo/design/holo-ullrin_100x100.png",
+  "bytes": 5144
+ },
+ "hyperion_cerevisia": {
+  "url": "items/ship/hyperion/design/hyperion-cerevisia_100x100.png",
+  "bytes": 14785
+ },
+ "keres_contagion": {
+  "url": "items/ship/keres/design/keres-contagion_100x100.png",
+  "bytes": 6081
+ },
+ "keres_frost": {
+  "url": "items/ship/keres/design/keres-frost_100x100.png",
+  "bytes": 7989
+ },
+ "keres_prometheus": {
+  "url": "items/ship/keres/design/keres-prometheus_100x100.png",
+  "bytes": 5971
+ },
+ "liberator_plus_frost": {
+  "url": "items/ship/liberator-plus/design/liberator-plus-frost_100x100.png",
+  "bytes": 7761
+ },
+ "mimesis_asimov": {
+  "url": "items/ship/mimesis/design/mimesis-asimov_100x100.png",
+  "bytes": 7222
+ },
+ "mimesis_frost": {
+  "url": "items/ship/mimesis/design/mimesis-frost_100x100.png",
+  "bytes": 8787
+ },
+ "mimesis_inferno": {
+  "url": "items/ship/mimesis/design/mimesis-inferno_100x100.png",
+  "bytes": 8727
+ },
+ "mimesis_phantasm": {
+  "url": "items/ship/mimesis/design/mimesis-phantasm_100x100.png",
+  "bytes": 7208
+ },
+ "mimesis_prometheus": {
+  "url": "items/ship/mimesis/design/mimesis-prometheus_100x100.png",
+  "bytes": 7364
+ },
+ "nostromo_razer": {
+  "url": "items/ship/nostromo/design/nostromo-razer_100x100.png",
+  "bytes": 5556
+ },
+ "orcus_amor": {
+  "url": "items/ship/orcus/design/orcus-amor_100x100.png",
+  "bytes": 14744
+ },
+ "orcus_arios": {
+  "url": "items/ship/orcus/design/orcus-arios_100x100.png",
+  "bytes": 4803
+ },
+ "orcus_asimov": {
+  "url": "items/ship/orcus/design/orcus-asimov_100x100.png",
+  "bytes": 15080
+ },
+ "orcus_blaze": {
+  "url": "items/ship/orcus/design/orcus-blaze_100x100.png",
+  "bytes": 5370
+ },
+ "orcus_celestial": {
+  "url": "items/ship/orcus/design/orcus-celestial_100x100.png",
+  "bytes": 4565
+ },
+ "orcus_dusklight": {
+  "url": "items/ship/orcus/design/orcus-dusklight_100x100.png",
+  "bytes": 14806
+ },
+ "orcus_elysium": {
+  "url": "items/ship/orcus/design/orcus-elysium_100x100.png",
+  "bytes": 4306
+ },
+ "orcus_empyrian": {
+  "url": "items/ship/orcus/design/orcus-empyrian_100x100.png",
+  "bytes": 4927
+ },
+ "orcus_epion": {
+  "url": "items/ship/orcus/design/orcus-epion_100x100.png",
+  "bytes": 4483
+ },
+ "orcus_firestar": {
+  "url": "items/ship/orcus/design/orcus-firestar_100x100.png",
+  "bytes": 4560
+ },
+ "orcus_frost": {
+  "url": "items/ship/orcus/design/orcus-frost_100x100.png",
+  "bytes": 6453
+ },
+ "orcus_guardian": {
+  "url": "items/ship/orcus/design/orcus-guardian_100x100.png",
+  "bytes": 14938
+ },
+ "orcus_harbinger": {
+  "url": "items/ship/orcus/design/orcus-harbinger_100x100.png",
+  "bytes": 4478
+ },
+ "orcus_hellspire": {
+  "url": "items/ship/orcus/design/orcus-hellspire_100x100.png",
+  "bytes": 14980
+ },
+ "orcus_inferno": {
+  "url": "items/ship/orcus/design/orcus-inferno_100x100.png",
+  "bytes": 7011
+ },
+ "orcus_maelstrom": {
+  "url": "items/ship/orcus/design/orcus-maelstrom_100x100.png",
+  "bytes": 4491
+ },
+ "orcus_mobius": {
+  "url": "items/ship/orcus/design/orcus-mobius_100x100.png",
+  "bytes": 4921
+ },
+ "orcus_neikos": {
+  "url": "items/ship/orcus/design/orcus-neikos_100x100.png",
+  "bytes": 4585
+ },
+ "orcus_nobilis": {
+  "url": "items/ship/orcus/design/orcus-nobilis_100x100.png",
+  "bytes": 4573
+ },
+ "orcus_osiris": {
+  "url": "items/ship/orcus/design/orcus-osiris_100x100.png",
+  "bytes": 4653
+ },
+ "orcus_phantasm": {
+  "url": "items/ship/orcus/design/orcus-phantasm_100x100.png",
+  "bytes": 640842
+ },
+ "orcus_prometheus": {
+  "url": "items/ship/orcus/design/orcus-prometheus_100x100.png",
+  "bytes": 4711
+ },
+ "orcus_psyche": {
+  "url": "items/ship/orcus/design/orcus-psyche_100x100.png",
+  "bytes": 15102
+ },
+ "orcus_seraph": {
+  "url": "items/ship/orcus/design/orcus-seraph_100x100.png",
+  "bytes": 4327
+ },
+ "orcus_smite": {
+  "url": "items/ship/orcus/design/orcus-smite_100x100.png",
+  "bytes": 4613
+ },
+ "orcus_starscream": {
+  "url": "items/ship/orcus/design/orcus-starscream_100x100.png",
+  "bytes": 4596
+ },
+ "orcus_strife": {
+  "url": "items/ship/orcus/design/orcus-strife_100x100.png",
+  "bytes": 14691
+ },
+ "orcus_sunstorm": {
+  "url": "items/ship/orcus/design/orcus-sunstorm_100x100.png",
+  "bytes": 4427
+ },
+ "orcus_thornspire": {
+  "url": "items/ship/orcus/design/orcus-thornspire_100x100.png",
+  "bytes": 14916
+ },
+ "orcus_ullrin": {
+  "url": "items/ship/orcus/design/orcus-ullrin_100x100.png",
+  "bytes": 4582
+ },
+ "orcus_viking": {
+  "url": "items/ship/orcus/design/orcus-viking_100x100.png",
+  "bytes": 16453
+ },
+ "orcus_wildfire": {
+  "url": "items/ship/orcus/design/orcus-wildfire_100x100.png",
+  "bytes": 16091
+ },
+ "paladin_dusklight": {
+  "url": "items/ship/paladin/design/paladin-dusklight_100x100.png",
+  "bytes": 12692
+ },
+ "paladin_empyrian": {
+  "url": "items/ship/paladin/design/paladin-empyrian_100x100.png",
+  "bytes": 12487
+ },
+ "paladin_frost": {
+  "url": "items/ship/paladin/design/paladin-frost_100x100.png",
+  "bytes": 21611
+ },
+ "paladin_guardian": {
+  "url": "items/ship/paladin/design/paladin-guardian_100x100.png",
+  "bytes": 12733
+ },
+ "paladin_khepri": {
+  "url": "items/ship/paladin/design/paladin-khepri_100x100.png",
+  "bytes": 13998
+ },
+ "paladin_legend": {
+  "url": "items/ship/paladin/design/paladin-legend_100x100.png",
+  "bytes": 12497
+ },
+ "paladin_nobilis": {
+  "url": "items/ship/paladin/design/paladin-nobilis_100x100.png",
+  "bytes": 9748
+ },
+ "paladin_prosperous": {
+  "url": "items/ship/paladin/design/paladin-prosperous_100x100.png",
+  "bytes": 12510
+ },
+ "pusat_blaze": {
+  "url": "items/ship/pusat/design/pusat-blaze_100x100.png",
+  "bytes": 5269
+ },
+ "pusat_carbonite": {
+  "url": "items/ship/pusat/design/pusat-carbonite_100x100.png",
+  "bytes": 5473
+ },
+ "pusat_frost": {
+  "url": "items/ship/pusat/design/pusat-frost_100x100.png",
+  "bytes": 8244
+ },
+ "pusat_inferno": {
+  "url": "items/ship/pusat/design/pusat-inferno_100x100.png",
+  "bytes": 8436
+ },
+ "pusat_lava": {
+  "url": "items/ship/pusat/design/pusat-lava_100x100.png",
+  "bytes": 5481
+ },
+ "pusat_legend": {
+  "url": "items/ship/pusat/design/pusat-legend_100x100.png",
+  "bytes": 5352
+ },
+ "pusat_ocean": {
+  "url": "items/ship/pusat/design/pusat-ocean_100x100.png",
+  "bytes": 5333
+ },
+ "pusat_plus_amor": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-amor_100x100.png",
+  "bytes": 13560
+ },
+ "pusat_plus_arios": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-arios_100x100.png",
+  "bytes": 14980
+ },
+ "pusat_plus_asimov": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-asimov_100x100.png",
+  "bytes": 6070
+ },
+ "pusat_plus_astral": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-astral_100x100.png",
+  "bytes": 6021
+ },
+ "pusat_plus_dusklight": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-dusklight_100x100.png",
+  "bytes": 6070
+ },
+ "pusat_plus_elysium": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-elysium_100x100.png",
+  "bytes": 15230
+ },
+ "pusat_plus_empyrian": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-empyrian_100x100.png",
+  "bytes": 13571
+ },
+ "pusat_plus_epion": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-epion_100x100.png",
+  "bytes": 15078
+ },
+ "pusat_plus_frost": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-frost_100x100.png",
+  "bytes": 7746
+ },
+ "pusat_plus_neikos": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-neikos_100x100.png",
+  "bytes": 15070
+ },
+ "pusat_plus_nobilis": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-nobilis_100x100.png",
+  "bytes": 14273
+ },
+ "pusat_plus_phantasm": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-phantasm_100x100.png",
+  "bytes": 13798
+ },
+ "pusat_plus_prometheus": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-prometheus_100x100.png",
+  "bytes": 12910
+ },
+ "pusat_plus_prosperous": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-prosperous_100x100.png",
+  "bytes": 14875
+ },
+ "pusat_plus_psyche": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-psyche_100x100.png",
+  "bytes": 13368
+ },
+ "pusat_plus_smite": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-smite_100x100.png",
+  "bytes": 6104
+ },
+ "pusat_plus_ullrin": {
+  "url": "items/ship/pusat-plus/design/pusat-plus-ullrin_100x100.png",
+  "bytes": 6343
+ },
+ "pusat_poison": {
+  "url": "items/ship/pusat/design/pusat-poison_100x100.png",
+  "bytes": 5382
+ },
+ "pusat_sandstorm": {
+  "url": "items/ship/pusat/design/pusat-sandstorm_100x100.png",
+  "bytes": 5428
+ },
+ "retiarus_arios": {
+  "url": "items/ship/retiarus/design/retiarus-arios_100x100.png",
+  "bytes": 6391
+ },
+ "retiarus_frost": {
+  "url": "items/ship/retiarus/design/retiarus-frost_100x100.png",
+  "bytes": 7403
+ },
+ "retiarus_neikos": {
+  "url": "items/ship/retiarus/design/retiarus-neikos_100x100.png",
+  "bytes": 6358
+ },
+ "retiarus_plus_asimov": {
+  "url": "items/ship/retiarus-plus/design/retiarus-plus-asimov_100x100.png",
+  "bytes": 17220
+ },
+ "retiarus_plus_empyrian": {
+  "url": "items/ship/retiarus-plus/design/retiarus-plus-empyrian_100x100.png",
+  "bytes": 16984
+ },
+ "retiarus_plus_inferno": {
+  "url": "items/ship/retiarus-plus/design/retiarus-plus-inferno_100x100.png",
+  "bytes": 27198
+ },
+ "retiarus_plus_wyvern": {
+  "url": "items/ship/retiarus-plus/design/retiarus-plus-wyvern_100x100.png",
+  "bytes": 20862
+ },
+ "sentinel_argon": {
+  "url": "items/ship/sentinel/design/sentinel-argon_100x100.png",
+  "bytes": 6232
+ },
+ "sentinel_arios": {
+  "url": "items/ship/sentinel/design/sentinel-arios_100x100.png",
+  "bytes": 3535
+ },
+ "sentinel_asimov": {
+  "url": "items/ship/sentinel/design/sentinel-asimov_100x100.png",
+  "bytes": 3927
+ },
+ "sentinel_carbonite": {
+  "url": "items/ship/sentinel/design/sentinel-carbonite_100x100.png",
+  "bytes": 3452
+ },
+ "sentinel_contagion": {
+  "url": "items/ship/sentinel-contagion_100x100.png",
+  "bytes": 3536,
+  "kind": "base"
+ },
+ "sentinel_elysium": {
+  "url": "items/ship/sentinel/design/sentinel-elysium_100x100.png",
+  "bytes": 10558
+ },
+ "sentinel_empyrian": {
+  "url": "items/ship/sentinel/design/sentinel-empyrian_100x100.png",
+  "bytes": 5645
+ },
+ "sentinel_epion": {
+  "url": "items/ship/sentinel/design/sentinel-epion_100x100.png",
+  "bytes": 3395
+ },
+ "sentinel_frost": {
+  "url": "items/ship/sentinel/design/sentinel-frost_100x100.png",
+  "bytes": 8320
+ },
+ "sentinel_harbinger": {
+  "url": "items/ship/sentinel/design/sentinel-harbinger_100x100.png",
+  "bytes": 3546
+ },
+ "sentinel_inferno": {
+  "url": "items/ship/sentinel/design/sentinel-inferno_100x100.png",
+  "bytes": 8486
+ },
+ "sentinel_lava": {
+  "url": "items/ship/sentinel/design/sentinel-lava_100x100.png",
+  "bytes": 6415
+ },
+ "sentinel_legend": {
+  "url": "items/ship/sentinel/design/sentinel-legend_100x100.png",
+  "bytes": 6439
+ },
+ "sentinel_neikos": {
+  "url": "items/ship/sentinel/design/sentinel-neikos_100x100.png",
+  "bytes": 3908
+ },
+ "sentinel_nobilis": {
+  "url": "items/ship/sentinel/design/sentinel-nobilis_100x100.png",
+  "bytes": 4847
+ },
+ "sentinel_osiris": {
+  "url": "items/ship/sentinel/design/sentinel-osiris_100x100.png",
+  "bytes": 4255
+ },
+ "sentinel_phantasm": {
+  "url": "items/ship/sentinel/design/sentinel-phantasm_100x100.png",
+  "bytes": 7046
+ },
+ "sentinel_prometheus": {
+  "url": "items/ship/sentinel/design/sentinel-prometheus_100x100.png",
+  "bytes": 9665
+ },
+ "sentinel_prosperous": {
+  "url": "items/ship/sentinel/design/sentinel-prosperous_100x100.png",
+  "bytes": 9390
+ },
+ "sentinel_seraph": {
+  "url": "items/ship/sentinel/design/sentinel-seraph_100x100.png",
+  "bytes": 12203
+ },
+ "sentinel_smite": {
+  "url": "items/ship/sentinel/design/sentinel-smite_100x100.png",
+  "bytes": 6370
+ },
+ "sentinel_tyrannos": {
+  "url": "items/ship/sentinel/design/sentinel-tyrannos_100x100.png",
+  "bytes": 4215
+ },
+ "sentinel_ullrin": {
+  "url": "items/ship/sentinel/design/sentinel-ullrin_100x100.png",
+  "bytes": 4244
+ },
+ "solace_argon": {
+  "url": "items/ship/solace/design/solace-argon_100x100.png",
+  "bytes": 6543
+ },
+ "solace_asimov": {
+  "url": "items/ship/solace/design/solace-asimov_100x100.png",
+  "bytes": 4380
+ },
+ "solace_blaze": {
+  "url": "items/ship/solace/design/solace-blaze_100x100.png",
+  "bytes": 6426
+ },
+ "solace_borealis": {
+  "url": "items/ship/solace/design/solace-borealis_100x100.png",
+  "bytes": 6188
+ },
+ "solace_carbonite": {
+  "url": "items/ship/solace/design/solace-carbonite_100x100.png",
+  "bytes": 7211
+ },
+ "solace_contagion": {
+  "url": "items/ship/solace-contagion_100x100.png",
+  "bytes": 6098,
+  "kind": "base"
+ },
+ "solace_epion": {
+  "url": "items/ship/solace/design/solace-epion_100x100.png",
+  "bytes": 12847
+ },
+ "solace_frost": {
+  "url": "items/ship/solace/design/solace-frost_100x100.png",
+  "bytes": 18336
+ },
+ "solace_inferno": {
+  "url": "items/ship/solace/design/solace-inferno_100x100.png",
+  "bytes": 6793
+ },
+ "solace_nobilis": {
+  "url": "items/ship/solace/design/solace-nobilis_100x100.png",
+  "bytes": 6882
+ },
+ "solace_ocean": {
+  "url": "items/ship/solace/design/solace-ocean_100x100.png",
+  "bytes": 6201
+ },
+ "solace_osiris": {
+  "url": "items/ship/solace/design/solace-osiris_100x100.png",
+  "bytes": 6796
+ },
+ "solace_plus_arios": {
+  "url": "items/ship/solace-plus/design/solace-plus-arios_100x100.png",
+  "bytes": 13194
+ },
+ "solace_plus_asimov": {
+  "url": "items/ship/solace-plus/design/solace-plus-asimov_100x100.png",
+  "bytes": 268989
+ },
+ "solace_plus_atlantis": {
+  "url": "items/ship/solace-plus/design/solace-plus-atlantis_100x100.png",
+  "bytes": 647562
+ },
+ "solace_plus_elysium": {
+  "url": "items/ship/solace-plus/design/solace-plus-elysium_100x100.png",
+  "bytes": 17095
+ },
+ "solace_plus_empyrian": {
+  "url": "items/ship/solace-plus/design/solace-plus-empyrian_100x100.png",
+  "bytes": 14666
+ },
+ "solace_plus_enigma": {
+  "url": "items/ship/solace-plus/design/solace-plus-enigma_100x100.png",
+  "bytes": 646500
+ },
+ "solace_plus_epion": {
+  "url": "items/ship/solace-plus/design/solace-plus-epion_100x100.png",
+  "bytes": 6279
+ },
+ "solace_plus_frost": {
+  "url": "items/ship/solace-plus/design/solace-plus-frost_100x100.png",
+  "bytes": 26300
+ },
+ "solace_plus_inferno": {
+  "url": "items/ship/solace-plus/design/solace-plus-inferno_100x100.png",
+  "bytes": 16648
+ },
+ "solace_plus_legend": {
+  "url": "items/ship/solace-plus/design/solace-plus-legend_100x100.png",
+  "bytes": 14419
+ },
+ "solace_plus_neikos": {
+  "url": "items/ship/solace-plus/design/solace-plus-neikos_100x100.png",
+  "bytes": 13014
+ },
+ "solace_plus_nobilis": {
+  "url": "items/ship/solace-plus/design/solace-plus-nobilis_100x100.png",
+  "bytes": 13063
+ },
+ "solace_plus_phantasm": {
+  "url": "items/ship/solace-plus/design/solace-plus-phantasm_100x100.png",
+  "bytes": 12743
+ },
+ "solace_plus_prometheus": {
+  "url": "items/ship/solace-plus/design/solace-plus-prometheus_100x100.png",
+  "bytes": 13992
+ },
+ "solace_plus_striker": {
+  "url": "items/ship/solace-plus/design/solace-plus-striker_100x100.png",
+  "bytes": 16759
+ },
+ "solace_plus_tyrannos": {
+  "url": "items/ship/solace-plus/design/solace-plus-tyrannos_100x100.png",
+  "bytes": 6494
+ },
+ "solace_plus_ullrin": {
+  "url": "items/ship/solace-plus/design/solace-plus-ullrin_100x100.png",
+  "bytes": 13650
+ },
+ "solace_poison": {
+  "url": "items/ship/solace/design/solace-poison_100x100.png",
+  "bytes": 6256
+ },
+ "solace_prometheus": {
+  "url": "items/ship/solace/design/solace-prometheus_100x100.png",
+  "bytes": 6367
+ },
+ "solace_prosperous": {
+  "url": "items/ship/solace/design/solace-prosperous_100x100.png",
+  "bytes": 269312
+ },
+ "solace_smite": {
+  "url": "items/ship/solace/design/solace-smite_100x100.png",
+  "bytes": 13678
+ },
+ "solace_tyrannos": {
+  "url": "items/ship/solace/design/solace-tyrannos_100x100.png",
+  "bytes": 6685
+ },
+ "solace_ullrin": {
+  "url": "items/ship/solace/design/solace-ullrin_100x100.png",
+  "bytes": 6272
+ },
+ "solaris_amor": {
+  "url": "items/ship/solaris/design/solaris-amor_100x100.png",
+  "bytes": 16138
+ },
+ "solaris_asimov": {
+  "url": "items/ship/solaris/design/solaris-asimov_100x100.png",
+  "bytes": 16198
+ },
+ "solaris_frost": {
+  "url": "items/ship/solaris/design/solaris-frost_100x100.png",
+  "bytes": 8949
+ },
+ "solaris_phantasm": {
+  "url": "items/ship/solaris/design/solaris-phantasm_100x100.png",
+  "bytes": 7399
+ },
+ "solaris_plus_arios": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-arios_100x100.png",
+  "bytes": 18512
+ },
+ "solaris_plus_asimov": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-asimov_100x100.png",
+  "bytes": 16701
+ },
+ "solaris_plus_elysium": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-elysium_100x100.png",
+  "bytes": 16635
+ },
+ "solaris_plus_empyrian": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-empyrian_100x100.png",
+  "bytes": 19335
+ },
+ "solaris_plus_epion": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-epion_100x100.png",
+  "bytes": 17105
+ },
+ "solaris_plus_frost": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-frost_100x100.png",
+  "bytes": 27407
+ },
+ "solaris_plus_inferno": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-inferno_100x100.png",
+  "bytes": 16856
+ },
+ "solaris_plus_legend": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-legend_100x100.png",
+  "bytes": 649606
+ },
+ "solaris_plus_neikos": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-neikos_100x100.png",
+  "bytes": 19144
+ },
+ "solaris_plus_nobilis": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-nobilis_100x100.png",
+  "bytes": 18016
+ },
+ "solaris_plus_osiris": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-osiris_100x100.png",
+  "bytes": 16360
+ },
+ "solaris_plus_prometheus": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-prometheus_100x100.png",
+  "bytes": 16498
+ },
+ "solaris_plus_ullrin": {
+  "url": "items/ship/solaris-plus/design/solaris-plus-ullrin_100x100.png",
+  "bytes": 7289
+ },
+ "solaris_psyche": {
+  "url": "items/ship/solaris/design/solaris-psyche_100x100.png",
+  "bytes": 7337
+ },
+ "solaris_ullrin": {
+  "url": "items/ship/solaris/design/solaris-ullrin_100x100.png",
+  "bytes": 16335
+ },
+ "spearhead_epion": {
+  "url": "items/ship/spearhead/design/spearhead-epion_100x100.png",
+  "bytes": 5793
+ },
+ "spearhead_osiris": {
+  "url": "items/ship/spearhead/design/spearhead-osiris_100x100.png",
+  "bytes": 5738
+ },
+ "spearhead_plus_arios": {
+  "url": "items/ship/spearhead-plus/design/spearhead-plus-arios_100x100.png",
+  "bytes": 13665
+ },
+ "spearhead_plus_blaze": {
+  "url": "items/ship/spearhead-plus/design/spearhead-plus-blaze_100x100.png",
+  "bytes": 13821
+ },
+ "spearhead_plus_empyrian": {
+  "url": "items/ship/spearhead-plus/design/spearhead-plus-empyrian_100x100.png",
+  "bytes": 13749
+ },
+ "spearhead_plus_frost": {
+  "url": "items/ship/spearhead-plus/design/spearhead-plus-frost_100x100.png",
+  "bytes": 18334
+ },
+ "spearhead_plus_neikos": {
+  "url": "items/ship/spearhead-plus/design/spearhead-plus-neikos_100x100.png",
+  "bytes": 14123
+ },
+ "spearhead_plus_nobilis": {
+  "url": "items/ship/spearhead-plus/design/spearhead-plus-nobilis_100x100.png",
+  "bytes": 13859
+ },
+ "spearhead_plus_sandstorm": {
+  "url": "items/ship/spearhead-plus/design/spearhead-plus-sandstorm_100x100.png",
+  "bytes": 17154
+ },
+ "spearhead_smite": {
+  "url": "items/ship/spearhead/design/spearhead-smite_100x100.png",
+  "bytes": 12765
+ },
+ "spectrum_ace": {
+  "url": "items/ship/spectrum/design/spectrum-ace_100x100.png",
+  "bytes": 5964
+ },
+ "spectrum_argon": {
+  "url": "items/ship/spectrum/design/spectrum-argon_100x100.png",
+  "bytes": 4261
+ },
+ "spectrum_asimov": {
+  "url": "items/ship/spectrum/design/spectrum-asimov_100x100.png",
+  "bytes": 268980
+ },
+ "spectrum_blaze": {
+  "url": "items/ship/spectrum/design/spectrum-blaze_100x100.png",
+  "bytes": 12575
+ },
+ "spectrum_carbonite": {
+  "url": "items/ship/spectrum/design/spectrum-carbonite_100x100.png",
+  "bytes": 4180
+ },
+ "spectrum_dusklight": {
+  "url": "items/ship/spectrum/design/spectrum-dusklight_100x100.png",
+  "bytes": 6297
+ },
+ "spectrum_empyrian": {
+  "url": "items/ship/spectrum/design/spectrum-empyrian_100x100.png",
+  "bytes": 12620
+ },
+ "spectrum_epion": {
+  "url": "items/ship/spectrum/design/spectrum-epion_100x100.png",
+  "bytes": 6435
+ },
+ "spectrum_frost": {
+  "url": "items/ship/spectrum/design/spectrum-frost_100x100.png",
+  "bytes": 21262
+ },
+ "spectrum_inferno": {
+  "url": "items/ship/spectrum/design/spectrum-inferno_100x100.png",
+  "bytes": 8812
+ },
+ "spectrum_lava": {
+  "url": "items/ship/spectrum/design/spectrum-lava_100x100.png",
+  "bytes": 5925
+ },
+ "spectrum_legend": {
+  "url": "items/ship/spectrum/design/spectrum-legend_100x100.png",
+  "bytes": 6228
+ },
+ "spectrum_ocean": {
+  "url": "items/ship/spectrum/design/spectrum-ocean_100x100.png",
+  "bytes": 12653
+ },
+ "spectrum_osiris": {
+  "url": "items/ship/spectrum/design/spectrum-osiris_100x100.png",
+  "bytes": 6411
+ },
+ "spectrum_plus": {
+  "url": "items/ship/spectrum-plus_100x100.png",
+  "bytes": 16507,
+  "kind": "base"
+ },
+ "spectrum_plus_amor": {
+  "url": "items/ship/spectrum-plus/design/spectrum-plus-amor_100x100.png",
+  "bytes": 17826
+ },
+ "spectrum_plus_arios": {
+  "url": "items/ship/spectrum-plus/design/spectrum-plus-arios_100x100.png",
+  "bytes": 18643
+ },
+ "spectrum_plus_asimov": {
+  "url": "items/ship/spectrum-plus/design/spectrum-plus-asimov_100x100.png",
+  "bytes": 18268
+ },
+ "spectrum_plus_dusklight": {
+  "url": "items/ship/spectrum-plus/design/spectrum-plus-dusklight_100x100.png",
+  "bytes": 17150
+ },
+ "spectrum_plus_empyrian": {
+  "url": "items/ship/spectrum-plus/design/spectrum-plus-empyrian_100x100.png",
+  "bytes": 18574
+ },
+ "spectrum_plus_frost": {
+  "url": "items/ship/spectrum-plus/design/spectrum-plus-frost_100x100.png",
+  "bytes": 24527
+ },
+ "spectrum_plus_inferno": {
+  "url": "items/ship/spectrum-plus/design/spectrum-plus-inferno_100x100.png",
+  "bytes": 23741
+ },
+ "spectrum_plus_neikos": {
+  "url": "items/ship/spectrum-plus/design/spectrum-plus-neikos_100x100.png",
+  "bytes": 19518
+ },
+ "spectrum_plus_prosperous": {
+  "url": "items/ship/spectrum-plus/design/spectrum-plus-prosperous_100x100.png",
+  "bytes": 16877
+ },
+ "spectrum_plus_psyche": {
+  "url": "items/ship/spectrum-plus/design/spectrum-plus-psyche_100x100.png",
+  "bytes": 17464
+ },
+ "spectrum_poison": {
+  "url": "items/ship/spectrum/design/spectrum-poison_100x100.png",
+  "bytes": 6034
+ },
+ "spectrum_prometheus": {
+  "url": "items/ship/spectrum/design/spectrum-prometheus_100x100.png",
+  "bytes": 11761
+ },
+ "spectrum_sandstorm": {
+  "url": "items/ship/spectrum/design/spectrum-sandstorm_100x100.png",
+  "bytes": 6052
+ },
+ "spectrum_smite": {
+  "url": "items/ship/spectrum/design/spectrum-smite_100x100.png",
+  "bytes": 4274
+ },
+ "spectrum_tyrannos": {
+  "url": "items/ship/spectrum/design/spectrum-tyrannos_100x100.png",
+  "bytes": 6561
+ },
+ "spectrum_ullrin": {
+  "url": "items/ship/spectrum/design/spectrum-ullrin_100x100.png",
+  "bytes": 269054
+ },
+ "tartarus_dusklight": {
+  "url": "items/ship/tartarus/design/tartarus-dusklight_100x100.png",
+  "bytes": 6941
+ },
+ "tartarus_epion": {
+  "url": "items/ship/tartarus/design/tartarus-epion_100x100.png",
+  "bytes": 6945
+ },
+ "tartarus_frost": {
+  "url": "items/ship/tartarus/design/tartarus-frost_100x100.png",
+  "bytes": 9337
+ },
+ "tartarus_osiris": {
+  "url": "items/ship/tartarus/design/tartarus-osiris_100x100.png",
+  "bytes": 15039
+ },
+ "tartarus_plus_carbonite": {
+  "url": "items/ship/tartarus-plus/design/tartarus-plus-carbonite_100x100.png",
+  "bytes": 13884
+ },
+ "tartarus_plus_elysium": {
+  "url": "items/ship/tartarus-plus/design/tartarus-plus-elysium_100x100.png",
+  "bytes": 14015
+ },
+ "tartarus_plus_empyrian": {
+  "url": "items/ship/tartarus-plus/design/tartarus-plus-empyrian_100x100.png",
+  "bytes": 14181
+ },
+ "tartarus_plus_frost": {
+  "url": "items/ship/tartarus-plus/design/tartarus-plus-frost_100x100.png",
+  "bytes": 28186
+ },
+ "tartarus_plus_phantasm": {
+  "url": "items/ship/tartarus-plus/design/tartarus-plus-phantasm_100x100.png",
+  "bytes": 13106
+ },
+ "tartarus_smite": {
+  "url": "items/ship/tartarus/design/tartarus-smite_100x100.png",
+  "bytes": 7169
+ },
+ "tempest_frost": {
+  "url": "items/ship/tempest/design/tempest-frost_100x100.png",
+  "bytes": 13775
+ },
+ "venom_argon": {
+  "url": "items/ship/venom/design/venom-argon_100x100.png",
+  "bytes": 9865
+ },
+ "venom_arios": {
+  "url": "items/ship/venom/design/venom-arios_100x100.png",
+  "bytes": 12029
+ },
+ "venom_blaze": {
+  "url": "items/ship/venom/design/venom-blaze_100x100.png",
+  "bytes": 5237
+ },
+ "venom_borealis": {
+  "url": "items/ship/venom/design/venom-borealis_100x100.png",
+  "bytes": 5282
+ },
+ "venom_empyrian": {
+  "url": "items/ship/venom/design/venom-empyrian_100x100.png",
+  "bytes": 14896
+ },
+ "venom_epion": {
+  "url": "items/ship/venom/design/venom-epion_100x100.png",
+  "bytes": 9967
+ },
+ "venom_frost": {
+  "url": "items/ship/venom/design/venom-frost_100x100.png",
+  "bytes": 21153
+ },
+ "venom_inferno": {
+  "url": "items/ship/venom/design/venom-inferno_100x100.png",
+  "bytes": 21225
+ },
+ "venom_neikos": {
+  "url": "items/ship/venom/design/venom-neikos_100x100.png",
+  "bytes": 12481
+ },
+ "venom_ocean": {
+  "url": "items/ship/venom/design/venom-ocean_100x100.png",
+  "bytes": 5260
+ },
+ "venom_poison": {
+  "url": "items/ship/venom/design/venom-poison_100x100.png",
+  "bytes": 5483
+ },
+ "venom_ullrin": {
+  "url": "items/ship/venom/design/venom-ullrin_100x100.png",
+  "bytes": 11725
+ },
+ "zephyr_asimov": {
+  "url": "items/ship/zephyr/design/zephyr-asimov_100x100.png",
+  "bytes": 10608
+ },
+ "zephyr_empyrian": {
+  "url": "items/ship/zephyr/design/zephyr-empyrian_100x100.png",
+  "bytes": 10604
+ },
+ "zephyr_frost": {
+  "url": "items/ship/zephyr/design/zephyr-frost_100x100.png",
+  "bytes": 9182
+ },
+ "zephyr_nobilis": {
+  "url": "items/ship/zephyr/design/zephyr-nobilis_100x100.png",
+  "bytes": 5729
+ },
+ "zephyr_ullrin": {
+  "url": "items/ship/zephyr/design/zephyr-ullrin_100x100.png",
+  "bytes": 10557
+ },
+ "berserker": {
+  "url": "items/ship/berserker_100x100.png",
+  "bytes": 6239,
+  "kind": "base"
+ },
+ "bigboy": {
+  "url": "items/ship/bigboy_100x100.png",
+  "bytes": 6963,
+  "kind": "base"
+ },
+ "centurion": {
+  "url": "items/ship/centurion_100x100.png",
+  "bytes": 6666,
+  "kind": "base"
+ },
+ "citadel_plus": {
+  "url": "items/ship/citadel-plus_100x100.png",
+  "bytes": 8211,
+  "kind": "base"
+ },
+ "cyborg": {
+  "url": "items/ship/cyborg_100x100.png",
+  "bytes": 6120,
+  "kind": "base"
+ },
+ "defcom": {
+  "url": "items/ship/defcom_100x100.png",
+  "bytes": 5624,
+  "kind": "base"
+ },
+ "diminisher": {
+  "url": "items/ship/diminisher_100x100.png",
+  "bytes": 6930,
+  "kind": "base"
+ },
+ "disruptor": {
+  "url": "items/ship/disruptor_100x100.png",
+  "bytes": 7138,
+  "kind": "base"
+ },
+ "goliath": {
+  "url": "items/ship/goliath_100x100.png",
+  "bytes": 6447,
+  "kind": "base"
+ },
+ "goliath_plus": {
+  "url": "items/ship/goliath-plus_100x100.png",
+  "bytes": 6307,
+  "kind": "base"
+ },
+ "goliath_x": {
+  "url": "items/ship/goliath-x_100x100.png",
+  "bytes": 6461,
+  "kind": "base"
+ },
+ "hammerclaw": {
+  "url": "items/ship/hammerclaw_100x100.png",
+  "bytes": 6844,
+  "kind": "base"
+ },
+ "hammerclaw_plus": {
+  "url": "items/ship/hammerclaw-plus_100x100.png",
+  "bytes": 7543,
+  "kind": "base"
+ },
+ "hecate": {
+  "url": "items/ship/hecate_100x100.png",
+  "bytes": 7542,
+  "kind": "base"
+ },
+ "hecate_plus": {
+  "url": "items/ship/hecate-plus_100x100.png",
+  "bytes": 7514,
+  "kind": "base"
+ },
+ "holo": {
+  "url": "items/ship/holo_100x100.png",
+  "bytes": 5092,
+  "kind": "base"
+ },
+ "hyperion": {
+  "url": "items/ship/hyperion_100x100.png",
+  "bytes": 13490,
+  "kind": "base"
+ },
+ "keres": {
+  "url": "items/ship/keres_100x100.png",
+  "bytes": 6077,
+  "kind": "base"
+ },
+ "liberator_plus": {
+  "url": "items/ship/liberator-plus_100x100.png",
+  "bytes": 5523,
+  "kind": "base"
+ },
+ "mimesis": {
+  "url": "items/ship/mimesis_100x100.png",
+  "bytes": 7651,
+  "kind": "base"
+ },
+ "nostromo": {
+  "url": "items/ship/nostromo_100x100.png",
+  "bytes": 6306,
+  "kind": "base"
+ },
+ "orcus": {
+  "url": "items/ship/orcus_100x100.png",
+  "bytes": 4866,
+  "kind": "base"
+ },
+ "paladin": {
+  "url": "items/ship/paladin_100x100.png",
+  "bytes": 12783,
+  "kind": "base"
+ },
+ "pusat": {
+  "url": "items/ship/pusat_100x100.png",
+  "bytes": 7243,
+  "kind": "base"
+ },
+ "pusat_plus": {
+  "url": "items/ship/pusat-plus_100x100.png",
+  "bytes": 6050,
+  "kind": "base"
+ },
+ "retiarus": {
+  "url": "items/ship/retiarus_100x100.png",
+  "bytes": 6572,
+  "kind": "base"
+ },
+ "retiarus_plus": {
+  "url": "items/ship/retiarus-plus_100x100.png",
+  "bytes": 17619,
+  "kind": "base"
+ },
+ "sentinel": {
+  "url": "items/ship/sentinel_100x100.png",
+  "bytes": 6196,
+  "kind": "base"
+ },
+ "solace": {
+  "url": "items/ship/solace_100x100.png",
+  "bytes": 6285,
+  "kind": "base"
+ },
+ "solace_plus": {
+  "url": "items/ship/solace-plus_100x100.png",
+  "bytes": 5567,
+  "kind": "base"
+ },
+ "solaris": {
+  "url": "items/ship/solaris_100x100.png",
+  "bytes": 6587,
+  "kind": "base"
+ },
+ "solaris_plus": {
+  "url": "items/ship/solaris-plus_100x100.png",
+  "bytes": 6768,
+  "kind": "base"
+ },
+ "spearhead_plus": {
+  "url": "items/ship/spearhead-plus_100x100.png",
+  "bytes": 5376,
+  "kind": "base"
+ },
+ "spectrum": {
+  "url": "items/ship/spectrum_100x100.png",
+  "bytes": 6854,
+  "kind": "base"
+ },
+ "tartarus": {
+  "url": "items/ship/tartarus_100x100.png",
+  "bytes": 6594,
+  "kind": "base"
+ },
+ "tartarus_plus": {
+  "url": "items/ship/tartarus-plus_100x100.png",
+  "bytes": 5911,
+  "kind": "base"
+ },
+ "tempest": {
+  "url": "items/ship/tempest_100x100.png",
+  "bytes": 5548,
+  "kind": "base"
+ },
+ "venom": {
+  "url": "items/ship/venom_100x100.png",
+  "bytes": 5882,
+  "kind": "base"
+ },
+ "yamato": {
+  "url": "items/ship/yamato_100x100.png",
+  "bytes": 7075,
+  "kind": "base"
+ },
+ "zephyr": {
+  "url": "items/ship/zephyr_100x100.png",
+  "bytes": 4892,
+  "kind": "base"
+ },
+ "aegis_eic": {
+  "url": "items/ship/aegis-eic_100x100.png",
+  "bytes": 5965,
+  "kind": "base"
+ },
+ "aegis_mmo": {
+  "url": "items/ship/aegis-mmo_100x100.png",
+  "bytes": 6266,
+  "kind": "base"
+ },
+ "aegis_vru": {
+  "url": "items/ship/aegis-vru_100x100.png",
+  "bytes": 5986,
+  "kind": "base"
+ },
+ "citadel_eic": {
+  "url": "items/ship/citadel-eic_100x100.png",
+  "bytes": 7266,
+  "kind": "base"
+ },
+ "citadel_mmo": {
+  "url": "items/ship/citadel-mmo_100x100.png",
+  "bytes": 7219,
+  "kind": "base"
+ },
+ "citadel_vru": {
+  "url": "items/ship/citadel-vru_100x100.png",
+  "bytes": 7228,
+  "kind": "base"
+ },
+ "defcom_raven": {
+  "url": "items/ship/defcom-raven_100x100.png",
+  "bytes": 5594,
+  "kind": "base"
+ },
+ "spearhead_eic": {
+  "url": "items/ship/spearhead-eic_100x100.png",
+  "bytes": 5221,
+  "kind": "base"
+ },
+ "spearhead_mmo": {
+  "url": "items/ship/spearhead-mmo_100x100.png",
+  "bytes": 5246,
+  "kind": "base"
+ },
+ "spearhead_vru": {
+  "url": "items/ship/spearhead-vru_100x100.png",
+  "bytes": 5204,
+  "kind": "base"
+ },
+ "yamato_ronin": {
+  "url": "items/ship/yamato-ronin_100x100.png",
+  "bytes": 6444,
+  "kind": "base"
+ },
+ "aegis_elite_eic": {
+  "url": "items/ship/a-elite-eic_100x100.png",
+  "bytes": 5849,
+  "kind": "series"
+ },
+ "aegis_elite_mmo": {
+  "url": "items/ship/a-elite-mmo_100x100.png",
+  "bytes": 5739,
+  "kind": "series"
+ },
+ "aegis_elite_vru": {
+  "url": "items/ship/a-elite-vru_100x100.png",
+  "bytes": 5853,
+  "kind": "series"
+ },
+ "aegis_veteran_eic": {
+  "url": "items/ship/a-veteran-eic_100x100.png",
+  "bytes": 6552,
+  "kind": "series"
+ },
+ "aegis_veteran_mmo": {
+  "url": "items/ship/a-veteran-mmo_100x100.png",
+  "bytes": 6407,
+  "kind": "series"
+ },
+ "aegis_veteran_vru": {
+  "url": "items/ship/a-veteran-vru_100x100.png",
+  "bytes": 6481,
+  "kind": "series"
+ },
+ "citadel_elite_eic": {
+  "url": "items/ship/c-elite-eic_100x100.png",
+  "bytes": 7132,
+  "kind": "series"
+ },
+ "citadel_elite_mmo": {
+  "url": "items/ship/c-elite-mmo_100x100.png",
+  "bytes": 6923,
+  "kind": "series"
+ },
+ "citadel_elite_vru": {
+  "url": "items/ship/c-elite-vru_100x100.png",
+  "bytes": 7051,
+  "kind": "series"
+ },
+ "citadel_veteran_eic": {
+  "url": "items/ship/c-veteran-eic_100x100.png",
+  "bytes": 7331,
+  "kind": "series"
+ },
+ "citadel_veteran_mmo": {
+  "url": "items/ship/c-veteran-mmo_100x100.png",
+  "bytes": 7190,
+  "kind": "series"
+ },
+ "citadel_veteran_vru": {
+  "url": "items/ship/c-veteran-vru_100x100.png",
+  "bytes": 7091,
+  "kind": "series"
+ },
+ "spearhead_elite_eic": {
+  "url": "items/ship/s-elite-eic_100x100.png",
+  "bytes": 5105,
+  "kind": "series"
+ },
+ "spearhead_elite_mmo": {
+  "url": "items/ship/s-elite-mmo_100x100.png",
+  "bytes": 4990,
+  "kind": "series"
+ },
+ "spearhead_elite_vru": {
+  "url": "items/ship/s-elite-vru_100x100.png",
+  "bytes": 4920,
+  "kind": "series"
+ },
+ "spearhead_veteran_eic": {
+  "url": "items/ship/s-veteran-eic_100x100.png",
+  "bytes": 5520,
+  "kind": "series"
+ },
+ "spearhead_veteran_mmo": {
+  "url": "items/ship/s-veteran-mmo_100x100.png",
+  "bytes": 5434,
+  "kind": "series"
+ },
+ "spearhead_veteran_vru": {
+  "url": "items/ship/s-veteran-vru_100x100.png",
+  "bytes": 5442,
+  "kind": "series"
+ },
+ "basilisk": {
+  "url": "items/ship/basilisk_100x100.png",
+  "bytes": 10469,
+  "kind": "base"
+ },
+ "leonov": {
+  "url": "items/ship/leonov_100x100.png",
+  "bytes": 6427,
+  "kind": "base"
+ },
+ "liberator": {
+  "url": "items/ship/liberator_100x100.png",
+  "bytes": 6253,
+  "kind": "base"
+ },
+ "piranha": {
+  "url": "items/ship/piranha_100x100.png",
+  "bytes": 5879,
+  "kind": "base"
+ },
+ "police": {
+  "url": "mirror sprite frame29",
+  "bytes": 13223,
+  "kind": "mirror"
+ },
+ "vengeance": {
+  "url": "items/ship/vengeance_100x100.png",
+  "bytes": 7707,
+  "kind": "base"
+ },
+ "goliath_centaur": {
+  "url": "items/ship/g-centaur_100x100.png",
+  "bytes": 6041,
+  "kind": "gseries"
+ },
+ "goliath_champion": {
+  "url": "items/ship/g-champion_100x100.png",
+  "bytes": 6589,
+  "kind": "gseries"
+ },
+ "goliath_goal": {
+  "url": "items/ship/g-goal_100x100.png",
+  "bytes": 6284,
+  "kind": "gseries"
+ },
+ "goliath_ignite": {
+  "url": "items/ship/g-ignite_100x100.png",
+  "bytes": 5838,
+  "kind": "gseries"
+ },
+ "goliath_kick": {
+  "url": "items/ship/g-kick_100x100.png",
+  "bytes": 6114,
+  "kind": "gseries"
+ },
+ "goliath_peacemaker": {
+  "url": "items/ship/g-peacemaker_100x100.png",
+  "bytes": 6528,
+  "kind": "gseries"
+ },
+ "goliath_referee": {
+  "url": "items/ship/g-referee_100x100.png",
+  "bytes": 5943,
+  "kind": "gseries"
+ },
+ "goliath_saturn": {
+  "url": "items/ship/g-saturn_100x100.png",
+  "bytes": 6731,
+  "kind": "gseries"
+ },
+ "goliath_sovereign": {
+  "url": "items/ship/g-sovereign_100x100.png",
+  "bytes": 6557,
+  "kind": "gseries"
+ },
+ "goliath_vanquisher": {
+  "url": "items/ship/g-vanquisher_100x100.png",
+  "bytes": 6558,
+  "kind": "gseries"
+ },
+ "nostromo_ambassador": {
+  "url": "items/ship/n-ambassador_100x100.png",
+  "bytes": 5913,
+  "kind": "gseries"
+ },
+ "vengeance_adept": {
+  "url": "items/ship/v-adept_100x100.png",
+  "bytes": 7194,
+  "kind": "gseries"
+ },
+ "vengeance_corsair": {
+  "url": "items/ship/v-corsair_100x100.png",
+  "bytes": 7025,
+  "kind": "gseries"
+ },
+ "goliath_bastion": {
+  "url": "items/ship/g-bastion_100x100.png",
+  "bytes": 6666,
+  "kind": "gseries"
+ },
+ "goliath_enforcer": {
+  "url": "items/ship/g-enforcer_100x100.png",
+  "bytes": 6408,
+  "kind": "gseries"
+ },
+ "goliath_exalted": {
+  "url": "items/ship/g-exalted_100x100.png",
+  "bytes": 6325,
+  "kind": "gseries"
+ },
+ "goliath_veteran": {
+  "url": "items/ship/g-veteran_100x100.png",
+  "bytes": 6565,
+  "kind": "gseries"
+ },
+ "nostromo_diplomat": {
+  "url": "items/ship/n-diplomat_100x100.png",
+  "bytes": 5777,
+  "kind": "prefix"
+ },
+ "nostromo_envoy": {
+  "url": "items/ship/n-envoy_100x100.png",
+  "bytes": 5829,
+  "kind": "prefix"
+ },
+ "vengeance_avenger": {
+  "url": "items/ship/v-avenger_100x100.png",
+  "bytes": 6598,
+  "kind": "prefix"
+ },
+ "vengeance_lightning": {
+  "url": "items/ship/v-lightning_100x100.png",
+  "bytes": 6628,
+  "kind": "prefix"
+ },
+ "vengeance_revenge": {
+  "url": "items/ship/v-revenge_100x100.png",
+  "bytes": 6555,
+  "kind": "prefix"
+ },
+ "c_elite_ullrin": {
+  "url": "items/ship/c-elite/design/c-elite-ullrin_100x100.png",
+  "bytes": 7085,
+  "kind": "swftrait"
+ },
+ "goliath_champion_argon": {
+  "url": "items/ship/g-champion/design/g-champion-argon_100x100.png",
+  "bytes": 5969,
+  "kind": "swftrait"
+ },
+ "goliath_champion_dusklight": {
+  "url": "items/ship/g-champion/design/g-champion-dusklight_100x100.png",
+  "bytes": 6138,
+  "kind": "swftrait"
+ },
+ "goliath_champion_lava": {
+  "url": "items/ship/g-champion/design/g-champion-lava_100x100.png",
+  "bytes": 6056,
+  "kind": "swftrait"
+ },
+ "goliath_champion_legend": {
+  "url": "items/ship/g-champion/design/g-champion-legend_100x100.png",
+  "bytes": 6134,
+  "kind": "swftrait"
+ },
+ "goliath_champion_tyrannos": {
+  "url": "items/ship/g-champion/design/g-champion-tyrannos_100x100.png",
+  "bytes": 6074,
+  "kind": "swftrait"
+ },
+ "goliath_jade": {
+  "url": "items/ship/goliath/design/jade_100x100.png",
+  "bytes": 6561,
+  "kind": "swftrait"
+ },
+ "goliath_surgeon_cicada": {
+  "url": "items/ship/g-surgeon/design/g-surgeon-cicada_100x100.png",
+  "bytes": 6310,
+  "kind": "swftrait"
+ },
+ "goliath_surgeon_locust": {
+  "url": "items/ship/g-surgeon/design/g-surgeon-locust_100x100.png",
+  "bytes": 7122,
+  "kind": "swftrait"
+ },
+ "nostromo_ambassador_frost": {
+  "url": "items/ship/n-ambassador/design/n-ambassador-frost_100x100.png",
+  "bytes": 8541,
+  "kind": "swftrait"
+ },
+ "nostromo_ambassador_inferno": {
+  "url": "items/ship/n-ambassador/design/n-ambassador-inferno_100x100.png",
+  "bytes": 8834,
+  "kind": "swftrait"
+ },
+ "vengeance_lightning_frost": {
+  "url": "items/ship/v-lightning/design/v-lightning-frost_100x100.png",
+  "bytes": 8997,
+  "kind": "folderlast"
+ },
+ "vengeance_lightning_inferno": {
+  "url": "items/ship/v-lightning/design/v-lightning-inferno_100x100.png",
+  "bytes": 23851,
+  "kind": "folderlast"
+ },
+ "vengeance_lightning_violet": {
+  "url": "items/ship/v-lightning/design/v-lightning-expo2016_100x100.png",
+  "bytes": 15039,
+  "kind": "folderlast"
+ },
+ "aegis_elite_blaze": {
+  "url": "items/ship/a-elite/design/a-elite-blaze_100x100.png",
+  "bytes": 6307,
+  "kind": "folderlast"
+ },
+ "aegis_elite_lava": {
+  "url": "items/ship/a-elite/design/a-elite-lava_100x100.png",
+  "bytes": 6165,
+  "kind": "folderlast"
+ },
+ "aegis_elite_legend": {
+  "url": "items/ship/a-elite/design/a-elite-legend_100x100.png",
+  "bytes": 6157,
+  "kind": "folderlast"
+ },
+ "aegis_elite_ocean": {
+  "url": "items/ship/a-elite/design/a-elite-ocean_100x100.png",
+  "bytes": 6017,
+  "kind": "folderlast"
+ },
+ "aegis_elite_poison": {
+  "url": "items/ship/a-elite/design/a-elite-poison_100x100.png",
+  "bytes": 5894,
+  "kind": "folderlast"
+ },
+ "aegis_elite_sandstorm": {
+  "url": "items/ship/a-elite/design/a-elite-sandstorm_100x100.png",
+  "bytes": 6002,
+  "kind": "folderlast"
+ },
+ "citadel_elite_frost": {
+  "url": "items/ship/c-elite/design/c-elite-frost_100x100.png",
+  "bytes": 8947,
+  "kind": "folderlast"
+ },
+ "goliath_champion_albania": {
+  "url": "items/ship/g-champion/design/g-champion-albania_100x100.png",
+  "bytes": 6181,
+  "kind": "folderlast"
+ },
+ "goliath_champion_austria": {
+  "url": "items/ship/g-champion/design/g-champion-austria_100x100.png",
+  "bytes": 6212,
+  "kind": "folderlast"
+ },
+ "goliath_champion_belgium": {
+  "url": "items/ship/g-champion/design/g-champion-belgium_100x100.png",
+  "bytes": 6169,
+  "kind": "folderlast"
+ },
+ "goliath_champion_croatia": {
+  "url": "items/ship/g-champion/design/g-champion-croatia_100x100.png",
+  "bytes": 6168,
+  "kind": "folderlast"
+ },
+ "goliath_champion_england": {
+  "url": "items/ship/g-champion/design/g-champion-england_100x100.png",
+  "bytes": 6218,
+  "kind": "folderlast"
+ },
+ "goliath_champion_france": {
+  "url": "items/ship/g-champion/design/g-champion-france_100x100.png",
+  "bytes": 6163,
+  "kind": "folderlast"
+ },
+ "goliath_champion_germany": {
+  "url": "items/ship/g-champion/design/g-champion-germany_100x100.png",
+  "bytes": 6055,
+  "kind": "folderlast"
+ },
+ "goliath_champion_hungary": {
+  "url": "items/ship/g-champion/design/g-champion-hungary_100x100.png",
+  "bytes": 6268,
+  "kind": "folderlast"
+ },
+ "goliath_champion_iceland": {
+  "url": "items/ship/g-champion/design/g-champion-iceland_100x100.png",
+  "bytes": 6187,
+  "kind": "folderlast"
+ },
+ "goliath_champion_independence": {
+  "url": "items/ship/g-champion/design/g-champion-independence_100x100.png",
+  "bytes": 6207,
+  "kind": "folderlast"
+ },
+ "goliath_champion_italy": {
+  "url": "items/ship/g-champion/design/g-champion-italy_100x100.png",
+  "bytes": 6209,
+  "kind": "folderlast"
+ },
+ "goliath_champion_poland": {
+  "url": "items/ship/g-champion/design/g-champion-poland_100x100.png",
+  "bytes": 6303,
+  "kind": "folderlast"
+ },
+ "goliath_champion_portugal": {
+  "url": "items/ship/g-champion/design/g-champion-portugal_100x100.png",
+  "bytes": 6143,
+  "kind": "folderlast"
+ },
+ "goliath_champion_romania": {
+  "url": "items/ship/g-champion/design/g-champion-romania_100x100.png",
+  "bytes": 6169,
+  "kind": "folderlast"
+ },
+ "goliath_champion_russia": {
+  "url": "items/ship/g-champion/design/g-champion-russia_100x100.png",
+  "bytes": 6303,
+  "kind": "folderlast"
+ },
+ "goliath_champion_slovakia": {
+  "url": "items/ship/g-champion/design/g-champion-slovakia_100x100.png",
+  "bytes": 6253,
+  "kind": "folderlast"
+ },
+ "goliath_champion_spain": {
+  "url": "items/ship/g-champion/design/g-champion-spain_100x100.png",
+  "bytes": 6054,
+  "kind": "folderlast"
+ },
+ "goliath_champion_sweden": {
+  "url": "items/ship/g-champion/design/g-champion-sweden_100x100.png",
+  "bytes": 6200,
+  "kind": "folderlast"
+ },
+ "goliath_champion_switzerland": {
+  "url": "items/ship/g-champion/design/g-champion-switzerland_100x100.png",
+  "bytes": 6280,
+  "kind": "folderlast"
+ },
+ "goliath_champion_turkey": {
+  "url": "items/ship/g-champion/design/g-champion-turkey_100x100.png",
+  "bytes": 6798,
+  "kind": "folderlast"
+ },
+ "goliath_champion_ukraine": {
+  "url": "items/ship/g-champion/design/g-champion-ukraine_100x100.png",
+  "bytes": 6210,
+  "kind": "folderlast"
+ },
+ "goliath_champion_wales": {
+  "url": "items/ship/g-champion/design/g-champion-wales_100x100.png",
+  "bytes": 6290,
+  "kind": "folderlast"
+ },
+ "spearhead_elite_frost": {
+  "url": "items/ship/s-elite/design/s-elite-frost_100x100.png",
+  "bytes": 7930,
+  "kind": "folderlast"
+ },
+ "goliath_surgeon_plague": {
+  "url": "board-es attachment g-surgeon_100x100",
+  "bytes": 15333,
+  "kind": "board"
+ },
+ "goliath_champion_czech_republic": {
+  "url": "https://board-es.darkorbit.com/attachments/g-champion-czech-republic_100x100-png.9429/",
+  "bytes": 14446,
+  "kind": "final"
+ },
+ "goliath_champion_northen_ireland": {
+  "url": "https://board-es.darkorbit.com/attachments/g-champion-northern-ireland_100x100-png.9437/",
+  "bytes": 14597,
+  "kind": "final"
+ },
+ "goliath_champion_republic_of_ireland": {
+  "url": "https://board-es.darkorbit.com/attachments/g-champion-republic-of-ireland_100x100-png.9440/",
+  "bytes": 14543,
+  "kind": "final"
+ },
+ "phoenix_bleu": {
+  "url": "https://darkorbit-22.bpsecure.com/do_img/global/items/ship/phoenix_100x100.png",
+  "bytes": 4901,
+  "kind": "user"
+ },
+ "cyborg_maelstorm": {
+  "url": "https://darkorbit-22.bpsecure.com/do_img/global/items/ship/cyborg/design/cyborg-maelstrom_100x100.png",
+  "bytes": 6193,
+  "kind": "final"
+ },
+ "bigboy_mamba": {
+  "url": "items/ship/bigboy/design/mamba_100x100.png",
+  "bytes": 7155,
+  "kind": "final2"
+ },
+ "centurion_ability": {
+  "url": "https://sharedimages.bpsecure.com/xenforo/2019-CW-16/centurion-ability1_100x100.png",
+  "bytes": 19380,
+  "kind": "page3"
+ },
+ "centurion_shield": {
+  "url": "https://sharedimages.bpsecure.com/xenforo/2019-CW-16/centurion-shield1_100x100.png",
+  "bytes": 19273,
+  "kind": "page3"
+ },
+ "centurion_hp": {
+  "url": "https://sharedimages.bpsecure.com/xenforo/2019-CW-16/centurion-hp1_100x100.png",
+  "bytes": 18823,
+  "kind": "page3"
+ },
+ "centurion_speed": {
+  "url": "https://sharedimages.bpsecure.com/xenforo/2019-CW-16/centurion-speed1_100x100.png",
+  "bytes": 18841,
+  "kind": "page3"
+ },
+ "centurion_damage": {
+  "url": "https://sharedimages.bpsecure.com/xenforo/2019-CW-16/centurion-damage1_100x100.png",
+  "bytes": 18704,
+  "kind": "page3"
+ },
+ "aegis_elite_frost": {
+  "url": "https://darkorbit-22.bpsecure.com/do_img/global/items/ship/a-elite/design/a-elite-frost_100x100.png",
+  "bytes": 8247,
+  "kind": "cdn"
+ },
+ "aegis": {
+  "url": "mirror sprite frame29",
+  "bytes": 17187,
+  "kind": "mirror"
+ },
+ "citadel": {
+  "url": "mirror sprite frame29",
+  "bytes": 34601,
+  "kind": "mirror"
+ },
+ "spearhead": {
+  "url": "mirror sprite frame29",
+  "bytes": 9819,
+  "kind": "mirror"
+ },
+ "dinde": {
+  "url": "mirror sprite frame29",
+  "bytes": 43898,
+  "kind": "mirror"
+ },
+ "diminisher_dusklight": {
+  "url": "mirror sprite frame29",
+  "bytes": 17641,
+  "kind": "mirror"
+ },
+ "bigboy_solemn": {
+  "url": "board bb-solemn",
+  "bytes": 17203,
+  "kind": "board"
+ },
+ "pusat_violet": {
+  "url": "board pusat-expo2016",
+  "bytes": 16593,
+  "kind": "board"
+ }
+}
