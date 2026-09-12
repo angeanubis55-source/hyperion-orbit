@@ -8,17 +8,17 @@
   function bringWindowToFront(card) {
     if (!card || card.classList.contains("gameWinMinimized")) return;
 
-    // L'Espace pilote vit dans #profileOverlay et la Boutique dans
-    // #shopOverlay : on remonte le conteneur avec la carte, sinon son
-    // z-index fixe (90000) le garderait toujours derrière les fenêtres
-    // HUD déjà remontées.
-    const overlay = card.closest("#profileOverlay, #shopOverlay");
+    // L'Espace pilote vit dans #profileOverlay, la Boutique dans
+    // #shopOverlay et les Hangars dans #hangarOverlay : on remonte le
+    // conteneur avec la carte, sinon son z-index fixe (90000) le garderait
+    // toujours derrière les fenêtres HUD déjà remontées.
+    const overlay = card.closest("#profileOverlay, #shopOverlay, #hangarOverlay");
     if (overlay) overlay.style.setProperty("z-index", String(++topZ), "important");
 
     // Le dock reste au-dessus des fenêtres. Si la pile devient trop haute,
     // on la compacte en conservant exactement l'ordre visuel actuel.
     if (topZ >= 95000) {
-      [...document.querySelectorAll(".gameWindow"), document.getElementById("profileOverlay"), document.getElementById("shopOverlay")]
+      [...document.querySelectorAll(".gameWindow"), document.getElementById("profileOverlay"), document.getElementById("shopOverlay"), document.getElementById("hangarOverlay")]
         .filter((windowCard) => windowCard && windowCard.style.display !== "none")
         .sort((a, b) => (Number(a.style.zIndex) || 90000) - (Number(b.style.zIndex) || 90000))
         .forEach((windowCard, index) => windowCard.style.setProperty("z-index", String(90001 + index), "important"));

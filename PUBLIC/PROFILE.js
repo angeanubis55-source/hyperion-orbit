@@ -129,6 +129,7 @@ const btnRestartGame = $("btnRestartGame");
 let user = null;
 let storedTab = localStorage.getItem("orbit_profile_tab") || "stats";
 if (storedTab === "shop" && document.getElementById("shopWindowPanel")) storedTab = "stats";
+if (storedTab === "hangars" && document.getElementById("hangarWindowPanel")) storedTab = "stats";
 let tab = storedTab;
 let shopTab = localStorage.getItem("orbit_shop_tab") || "ammo";
 let selectedShopItemId = null;
@@ -747,12 +748,14 @@ function shipScaleToFit200(shipId, max = 200) {
 
 // -------------------- Tabs --------------------
 function setTab(next) {
-  // En jeu (index.html avec #shopWindowPanel), l'onglet boutique n'existe
-  // plus dans l'Espace pilote : il vit dans sa propre fenêtre.
-  // Sur la page standalone (PROFILE.html, sans #shopWindowPanel), on garde
-  // l'ancien onglet boutique.
+  // En jeu (index.html avec #shopWindowPanel / #hangarWindowPanel), la
+  // boutique et les hangars vivent dans leur propre fenêtre.
+  // Sur la page standalone (PROFILE.html), ceux-ci restent des onglets du profil.
   if (next === "shop" && document.getElementById("shopWindowPanel")) next = "stats";
-  if (next !== "hangars" && fitOverlayEl && fitOverlayEl.style.display !== "none") {
+  if (next === "hangars" && document.getElementById("hangarWindowPanel")) next = "stats";
+  // Hors Espace pilote intégré, changer d'onglet annule les brouillons
+  // d'équipement ; en jeu, c'est la fermeture de la fenêtre Hangars qui s'en charge.
+  if (!document.getElementById("hangarWindowPanel") && next !== "hangars" && fitOverlayEl && fitOverlayEl.style.display !== "none") {
     closeFitModal();
   }
   tab = next;
@@ -2822,7 +2825,7 @@ function buildFitWindow() {
   `;
 
   overlay.appendChild(card);
-  const host = document.getElementById("profileWindow") || document.body;
+  const host = document.getElementById("hangarWindow") || document.getElementById("profileWindow") || document.body;
   host.appendChild(overlay);
   const returnZone = card.querySelector(".fitInventoryPane");
   const loadoutZone = card.querySelector(".fitLoadoutPane");
@@ -4804,10 +4807,10 @@ function setFitModalConfig(configNo) {
   const titleEl = document.getElementById("fitTitle");
   if (titleEl) {
     titleEl.textContent = `Équipement — ${h.shipId} — Config ${fitState.configNo}`;
-    window.GameWindowManager?.setTitle(
-  "profileWindow",
-  `Équipement — ${h.shipId} — Config ${fitState.configNo}`
-);
+  window.GameWindowManager?.setTitle(
+    equipWindowId(),
+    `Équipement — ${h.shipId} — Config ${fitState.configNo}`
+  );
   }
 
   document.querySelectorAll(".fitCfgBtn").forEach((b) => {
@@ -5123,7 +5126,7 @@ function closeFitModal() {
 
   stopFitShipAnim();
   fitOverlayEl.style.display = "none";
-  window.GameWindowManager?.setTitle("profileWindow", "Espace pilote");
+  window.GameWindowManager?.setTitle(equipWindowId(), equipWindowHomeTitle());
 
   fitState.hangarId = null;
   fitState.configNo = 1;
@@ -5177,8 +5180,9 @@ function openProfileOverlay() {
 }
 
 function closeProfileOverlay({ immediate = false } = {}) {
-  // Baisser la fenêtre = annuler : les brouillons d'équipement sont jetés.
-  closeFitModal();
+  // Baisser la fenêtre = annuler : les brouillons d'équipement sont jetés
+  // (standalone uniquement — en jeu c'est la fenêtre Hangars qui s'en charge).
+  if (!document.getElementById("hangarWindowPanel")) closeFitModal();
   const overlay = document.getElementById("profileOverlay");
   if (window.GameWindowManager && !immediate) window.GameWindowManager.minimize("profileWindow");
   else if (overlay) overlay.style.display = "none";
@@ -5243,6 +5247,87 @@ function registerShopWindow() {
   });
 }
 
+function hangarIsVisible() {
+  const overlay = document.getElementById("hangarOverlay");
+  return !!overlay && overlay.style.display !== "none" && !overlay.hidden
+    && !overlay.classList.contains("gameWinMinimized");
+}
+
+// Id de la fenêtre qui porte l'équipement : la fenêtre Hangars en jeu,
+// l'Espace pilote sur la page standalone.
+function equipWindowId() {
+  return document.getElementById("hangarWindowPanel") ? "hangarWindow" : "profileWindow";
+}
+
+function equipWindowHomeTitle() {
+  return document.getElementById("hangarWindowPanel") ? "Hangars & Équipement" : "Espace pilote";
+}
+
+function openHangarOverlay() {
+  saveGameBeforeProfileAction();
+
+  user = getCurrentUserFull();
+
+  if (!user) {
+    location.href = AUTH_URL;
+    return;
+  }
+
+  const overlay = document.getElementById("hangarOverlay");
+  if (window.GameWindowManager) window.GameWindowManager.restore("hangarWindow");
+  else if (overlay) overlay.style.display = "block";
+
+  document.querySelectorAll("#hangarWindowTabs .tabBtn").forEach((button) => {
+    button.classList.toggle("active", button.dataset.hangartab === "hangars");
+  });
+  if (hangarIsVisible()) renderHangars(user);
+}
+
+function closeHangarOverlay({ immediate = false } = {}) {
+  // Baisser la fenêtre = annuler : les brouillons d'équipement sont jetés.
+  closeFitModal();
+  const overlay = document.getElementById("hangarOverlay");
+  if (window.GameWindowManager && !immediate) window.GameWindowManager.minimize("hangarWindow");
+  else if (overlay) overlay.style.display = "none";
+}
+
+function registerHangarWindow() {
+  const root = document.getElementById("hangarOverlay");
+  const card = document.getElementById("hangarWindow");
+  if (!root || !card || !window.GameWindowManager) return;
+  window.GameWindowManager.register({
+    id: "hangarWindow",
+    title: "Hangars & Équipement",
+    icon: "🚀",
+    root,
+    card,
+    defaultOpen: false,
+  });
+  hookFitDiscardOnMinimize();
+}
+
+function wireHangarTabsOnce() {
+  const root = document.getElementById("hangarWindowTabs");
+  if (!root || root.__hangarTabsWired) return;
+  root.__hangarTabsWired = true;
+  root.querySelectorAll(".tabBtn").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.hangartab === "equipment") {
+        const hangars = Array.isArray(user?.hangars) ? user.hangars : [];
+        const active = hangars.find((h) => h?.active) || hangars[0];
+        const targetId = selectedHangarId || active?.id;
+        if (!targetId) return setMsg("Aucun hangar à équiper.", false);
+        // L'onglet Équipement est une action : HANGARS reste surligné.
+        openFitModal(targetId);
+        return;
+      }
+      root.querySelectorAll(".tabBtn").forEach((b) =>
+        b.classList.toggle("active", b === button));
+      if (user) renderHangars(user);
+    });
+  });
+}
+
 // Le bouton réduire du window manager contourne closeProfileOverlay :
 // baisser la fenêtre = annuler les brouillons d'équipement (rien n'est appliqué).
 function hookFitDiscardOnMinimize() {
@@ -5251,7 +5336,9 @@ function hookFitDiscardOnMinimize() {
   manager.__fitDiscardHooked = true;
   const baseMinimize = manager.minimize.bind(manager);
   manager.minimize = (id, ...rest) => {
-    if (String(id) === "profileWindow") {
+    if (String(id) === "hangarWindow") {
+      try { closeFitModal(); } catch {}
+    } else if (String(id) === "profileWindow" && !document.getElementById("hangarWindowPanel")) {
       try { closeFitModal(); } catch {}
     }
     return baseMinimize(id, ...rest);
@@ -5284,6 +5371,10 @@ document.getElementById("btnGameHub")?.addEventListener("click", () => {
 
 document.getElementById("btnShopHub")?.addEventListener("click", () => {
   openShopOverlay();
+});
+
+document.getElementById("btnHangarHub")?.addEventListener("click", () => {
+  openHangarOverlay();
 });
 
 btnLogout?.addEventListener("click", () => {
@@ -5330,6 +5421,8 @@ window.HyperionProfile = {
   close: closeProfileOverlay,
   openShop: openShopOverlay,
   closeShop: closeShopOverlay,
+  openHangar: openHangarOverlay,
+  closeHangar: closeHangarOverlay,
 };
 compactCurrentFit();
 
@@ -5346,7 +5439,7 @@ function renderActiveProfilePanel({ mutation = false } = {}) {
   if (tab === "stats") renderStats(user);
   if (tab === "account") renderAccount(user);
   if (tab === "npcs") renderNpcStats(user);
-  if (tab === "hangars") renderHangars(user);
+  if (tab === "hangars" && !document.getElementById("hangarWindowPanel")) renderHangars(user);
   if (tab === "inventory") renderInventory(user);
   // Page standalone (PROFILE.html) : la boutique reste un onglet du profil.
   // En jeu, la boutique a sa propre fenêtre et ne passe plus par ici.
@@ -5354,7 +5447,7 @@ function renderActiveProfilePanel({ mutation = false } = {}) {
 }
 
 window.addEventListener("orbit:user-updated", () => {
-  if ((!profileIsVisible() && !shopIsVisible()) || accountRefreshFrame) return;
+  if ((!profileIsVisible() && !shopIsVisible() && !hangarIsVisible()) || accountRefreshFrame) return;
   accountRefreshFrame = requestAnimationFrame(() => {
     accountRefreshFrame = 0;
     user = getCurrentUserFull();
@@ -5364,6 +5457,7 @@ window.addEventListener("orbit:user-updated", () => {
       renderActiveProfilePanel({ mutation: true });
     }
     if (shopIsVisible() && shopTab !== "extras") renderShop(user);
+    if (hangarIsVisible()) renderHangars(user);
     if (fitOverlayEl && fitOverlayEl.style.display !== "none" && fitState.hangarId) {
       renderDroneEquipment(user);
       renderInventoryPalette();
@@ -5374,7 +5468,9 @@ window.addEventListener("orbit:user-updated", () => {
 // Init
 registerProfileWindow();
 registerShopWindow();
+registerHangarWindow();
 wireMainTabsOnce();
 wireShopTabsOnce();
+wireHangarTabsOnce();
 wireAccountSettingsOnce();
 boot();

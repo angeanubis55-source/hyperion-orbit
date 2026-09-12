@@ -11,7 +11,7 @@
     // orbitSessionReady n'est plus posée, l'overlay reste visible avec DÉPART).
     </script>
   <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="PROFILE_WINDOW.css?v=hangar-101" />
+  <link rel="stylesheet" href="PROFILE_WINDOW.css?v=hangar-win-1" />
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -43,6 +43,9 @@
   <span class="gameDockSeparator" aria-hidden="true"></span>
   <button id="btnGameHub" class="gameDockIcon profileDockIcon" data-window-id="profileWindow" type="button" title="Profil" aria-label="Profil">
     <span>👤</span>
+  </button>
+  <button id="btnHangarHub" class="gameDockIcon hangarDockIcon" data-window-id="hangarWindow" type="button" title="Hangars" aria-label="Hangars">
+    <span>🚀</span>
   </button>
   <button id="btnShopHub" class="gameDockIcon shopDockIcon" data-window-id="shopWindow" type="button" title="Boutique" aria-label="Boutique">
     <span>🛒</span>
@@ -503,7 +506,6 @@
       <div class="profileHeaderCard">
         <div class="profileTabs">
           <button class="tabBtn active" data-tab="stats">GÉNÉRAL</button>
-          <button class="tabBtn" data-tab="hangars">HANGARS &amp; ÉQUIPEMENT</button>
           <button class="tabBtn" data-tab="inventory">INVENTAIRE</button>
           <button class="tabBtn" data-tab="account">COMPTE</button>
           <button class="tabBtn" data-tab="npcs">NPC &amp; GRADES</button>
@@ -673,28 +675,6 @@
           </div>
         </section>
 
-        <section id="panel_hangars" class="profilePanel">
-          <div class="hangarWorkspace">
-            <aside id="hangarPreview" class="hangarPreview">
-              <div class="hangarPreviewEyebrow">VAISSEAU ACTIF</div>
-              <div class="hangarPreviewStage">
-                <div class="hangarActivePreview">
-                  <img id="hangarPreviewImage" alt="Vaisseau actif" />
-                  <h3 id="hangarPreviewTitle">—</h3>
-                </div>
-                <div class="hangarFlowArrows" aria-hidden="true"><span>⌄</span><span>⌄</span><span>⌄</span></div>
-                <div class="hangarSelectedPreview">
-                  <div class="hangarSelectedLabel">VAISSEAU SÉLECTIONNÉ</div>
-                  <img id="hangarSelectedImage" alt="Vaisseau sélectionné" />
-                  <h3 id="hangarSelectedTitle">—</h3>
-                </div>
-              </div>
-              <p id="hangarPreviewMeta">Sélectionne un hangar pour voir ses détails.</p>
-            </aside>
-            <div id="hangarGrid" class="profileGrid"></div>
-          </div>
-        </section>
-
         <section id="panel_inventory" class="profilePanel">
           <div class="inventoryToolbar">
             <div>
@@ -773,6 +753,55 @@
   </div>
 </div>
 
+<div id="hangarOverlay" class="profileOverlay hangarOverlay" style="display:none;">
+  <div class="profileOverlayInner">
+
+    <div id="hangarWindow" class="profileWindow hangarWindow">
+
+      <div class="profileHeaderCard">
+        <div class="profileHeaderTop">
+          <div>
+            <div class="profileTitle">Hangars &amp; Équipement</div>
+            <div class="profileSub">Tes vaisseaux, leurs designs et leur équipement.</div>
+          </div>
+        </div>
+        <div class="profileTabs" id="hangarWindowTabs">
+          <button class="tabBtn active" data-hangartab="hangars">HANGARS</button>
+          <button class="tabBtn" data-hangartab="equipment">ÉQUIPEMENT</button>
+        </div>
+      </div>
+
+      <div class="profileMainCard">
+
+        <section id="hangarWindowPanel" class="profilePanel active">
+          <div class="hangarWorkspace">
+            <aside id="hangarPreview" class="hangarPreview">
+              <div class="hangarPreviewEyebrow">VAISSEAU ACTIF</div>
+              <div class="hangarPreviewStage">
+                <div class="hangarActivePreview">
+                  <img id="hangarPreviewImage" alt="Vaisseau actif" />
+                  <h3 id="hangarPreviewTitle">—</h3>
+                </div>
+                <div class="hangarFlowArrows" aria-hidden="true"><span>⌄</span><span>⌄</span><span>⌄</span></div>
+                <div class="hangarSelectedPreview">
+                  <div class="hangarSelectedLabel">VAISSEAU SÉLECTIONNÉ</div>
+                  <img id="hangarSelectedImage" alt="Vaisseau sélectionné" />
+                  <h3 id="hangarSelectedTitle">—</h3>
+                </div>
+              </div>
+              <p id="hangarPreviewMeta">Sélectionne un hangar pour voir ses détails.</p>
+            </aside>
+            <div id="hangarGrid" class="profileGrid"></div>
+          </div>
+        </section>
+
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
 <div id="toastContainer" class="toastContainer"></div>
 
 <div id="confirmOverlay" style="
@@ -803,9 +832,9 @@
 </div>
 
 <!-- ✅ Gestionnaire de fenêtres en jeu -->
-<script src="./UI/UI_WINDOW_MANAGER.js"></script>
+<script src="./UI/UI_WINDOW_MANAGER.js?v=hangar-win-1"></script>
 
-<script type="module" src="./PUBLIC/PROFILE.js?v=ship-items-7"></script>
+<script type="module" src="./PUBLIC/PROFILE.js?v=hangar-win-1"></script>
 <script type="module" src="./SRC/MAIN.js?v=gg-history-4"></script>
 </body>
 </html>

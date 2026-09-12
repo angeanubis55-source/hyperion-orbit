@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.165",
+    "date": "2026-09-12T04:45:15+02:00",
+    "message": "Fixes mineurs"
+  },
+  {
     "version": "0.164",
     "date": "2026-09-12T04:44:24+02:00",
     "message": "boutique: fenetre dediee alignee pilote, images officielles uniformes, historique modules en carte"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.106",
     "date": "2026-09-05T04:01:10+02:00",
     "message": "Synchronise la version du jeu (c16c9488)"
-  },
-  {
-    "version": "0.105",
-    "date": "2026-09-05T04:00:55+02:00",
-    "message": "fix: bonus modules XP/honneur dans le log de kill (part formation vs modules), arrondi au supérieur pour ne plus perdre le bonus sur les petites bases (ex. honneur des Streuner)"
   }
 ];

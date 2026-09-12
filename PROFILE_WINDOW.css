@@ -2558,7 +2558,7 @@ html body #shopOverlay .shopPreview .bigImg{
 
 /* =========================================================
    Historique des modules : grand format (remplit la carte,
-   10 lignes par page, images et textes agrandis).
+   4 lignes par page, images et textes agrandis).
    ========================================================= */
 html body #shopOverlay #moduleRollHistory{
   flex:1 1 auto !important;
@@ -2602,3 +2602,458 @@ html body #shopOverlay .moduleHistoryRerollBtn:hover:not(:disabled){
   box-shadow:0 0 14px rgba(0,217,255,.18) !important;
 }
 html body #shopOverlay .moduleHistoryRerollBtn:disabled{ opacity:.35 !important; cursor:not-allowed !important; }
+
+/* =========================================================
+   Hangars & Équipement — fenêtre dédiée, miroir exact de
+   l'Espace pilote (même grille, sidebar arrondie/translucide,
+   mêmes boutons et panneaux).
+   ========================================================= */
+#hangarOverlay.profileOverlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 90000 !important;
+  display: none;
+  padding: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  pointer-events: none !important;
+}
+#hangarOverlay .profileOverlayInner { display: contents !important; }
+#hangarOverlay #hangarWindow.gameWindow {
+  position: fixed !important;
+  width: min(1100px, calc(100vw - 32px)) !important;
+  height: min(720px, calc(100vh - 90px)) !important;
+  min-width: 760px !important;
+  min-height: 520px !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-columns: 250px minmax(0, 1fr) !important;
+  grid-template-rows: 30px minmax(0, 1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  color: #e8f4ff !important;
+  border: 1px solid rgba(124, 240, 255, .24) !important;
+  border-radius: 16px !important;
+  background: linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80)) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.55), 0 0 26px rgba(0,217,255,.12), inset 0 0 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter: none !important;
+  pointer-events: auto !important;
+}
+#hangarOverlay #hangarWindow.gameWindow:hover {
+  border-color: rgba(124, 240, 255, .42) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.50), 0 0 28px rgba(0,217,255,.16), inset 0 0 0 1px rgba(255,255,255,.05) !important;
+}
+html body #hangarOverlay #hangarWindow.gameWindow:not(.floating) {
+  left: max(16px, calc(50vw - 570px)) !important;
+  top: 45px !important;
+}
+#hangarOverlay #hangarWindow.gameWindow > .gameWinBar {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124, 240, 255, .18) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(90deg, rgba(0,217,255,.18), rgba(124,240,255,.05), rgba(255,255,255,.035)) !important;
+  box-shadow: none !important;
+  cursor: grab !important;
+}
+#hangarOverlay #hangarWindow .gameWinIcon {
+  width: auto !important;
+  height: auto !important;
+  display: inline-flex !important;
+  border: 0 !important;
+  background: transparent !important;
+  font-size: 15px !important;
+}
+#hangarOverlay #hangarWindow .gameWinTitle {
+  flex: 1 !important;
+  min-width: 0 !important;
+  color: rgba(232,244,255,.88) !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  letter-spacing: .35px !important;
+}
+html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 22px !important;
+  min-height: 22px !important;
+  margin: 0 0 0 auto !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(124,240,255,.28) !important;
+  border-radius: 8px !important;
+  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.16), rgba(0,70,100,.10)) !important;
+  color: rgba(232,244,255,.95) !important;
+  font: 1000 15px/1 system-ui !important;
+  box-shadow: 0 0 10px rgba(0,217,255,.10), inset 0 0 0 1px rgba(255,255,255,.035) !important;
+}
+/* Sidebar arrondie/translucide comme l'Espace pilote (pas pleine et droite). */
+body #hangarOverlay .profileHeaderCard{
+  grid-column:1 !important;
+  grid-row:2 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:14px 0 14px 14px !important;
+  padding:18px !important;
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:flex-start !important;
+  gap:22px !important;
+  overflow:hidden auto !important;
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:12px !important;
+  background:linear-gradient(180deg,rgba(14,45,65,.78),rgba(5,17,30,.84)) !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  scrollbar-width:none !important;
+}
+body #hangarOverlay .profileHeaderCard::-webkit-scrollbar{ display:none !important; }
+body #hangarOverlay .profileHeaderTop{
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:0 0 20px !important;
+  border-bottom:1px solid rgba(124,240,255,.13) !important;
+}
+body #hangarOverlay .profileTitle{ font-size:19px !important; }
+body #hangarOverlay .profileSub{ margin-top:10px !important; font-size:11px !important; line-height:1.7 !important; }
+body #hangarOverlay .profileTabs{
+  width:100% !important;
+  margin:0 !important;
+  padding:0 0 2px !important;
+  display:flex !important;
+  flex:1 1 auto !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  justify-content:flex-start !important;
+  gap:6px !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  scrollbar-width:none !important;
+}
+body #hangarOverlay .profileTabs::-webkit-scrollbar{ display:none !important; }
+body #hangarOverlay button:not(.gameWinMinBtn){
+  box-sizing:border-box !important;
+  min-width:0 !important;
+  min-height:30px !important;
+  margin:0 !important;
+  padding:6px 10px !important;
+  border-radius:8px !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  box-shadow:none !important;
+}
+body #hangarOverlay .profileTabs .tabBtn{
+  width:100% !important;
+  flex:0 0 auto !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  min-height:38px !important;
+  padding:9px 11px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  text-align:left !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  border:1px solid rgba(124,240,255,.18) !important;
+  border-radius:9px !important;
+  color:rgba(205,230,245,.72) !important;
+  background:rgba(8,35,52,.62) !important;
+  font:800 11px/1.2 system-ui !important;
+  letter-spacing:.045em !important;
+  white-space:nowrap !important;
+  box-shadow:none !important;
+  transform:none !important;
+  transition:transform .15s ease,border-color .15s ease,background .15s ease !important;
+}
+body #hangarOverlay .profileTabs .tabBtn:hover:not(:disabled){ transform:none !important; border-color:rgba(124,240,255,.45) !important; background:rgba(0,140,185,.18) !important; }
+body #hangarOverlay .profileTabs .tabBtn.active{
+  color:#edfbff !important;
+  border-color:rgba(124,240,255,.5) !important;
+  background:linear-gradient(90deg,rgba(0,155,205,.34),rgba(0,90,125,.17)) !important;
+  box-shadow:inset 3px 0 0 #69e9ff !important;
+}
+body #hangarOverlay .profileMainCard{
+  grid-column:2 !important;
+  grid-row:2 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:14px !important;
+  display:flex !important;
+  overflow:hidden !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+body #hangarOverlay .profilePanel{ display:none !important; min-width:0 !important; min-height:0 !important; }
+body #hangarOverlay .profilePanel.active{
+  width:100% !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:20px !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  flex-direction:column !important;
+  overflow:hidden auto !important;
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:12px !important;
+  background:
+    radial-gradient(circle at 90% 0,rgba(0,180,225,.08),transparent 34%),
+    linear-gradient(145deg,rgba(8,28,45,.72),rgba(3,11,22,.82)) !important;
+  box-shadow:0 0 0 1px rgba(255,255,255,.02) inset !important;
+  backdrop-filter:none !important;
+}
+/* Contenu hangars : mêmes cartes/listes que l'Espace pilote. */
+body #hangarOverlay .hangarWorkspace{
+  flex:1 1 auto !important;
+  min-height:0 !important;
+  display:grid !important;
+  grid-template-columns:250px minmax(0,1fr) !important;
+  gap:14px !important;
+}
+body #hangarOverlay .hangarPreview{
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:16px !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  justify-content:center !important;
+  text-align:center !important;
+  border:1px solid rgba(124,240,255,.2) !important;
+  border-radius:12px !important;
+  background:radial-gradient(circle at 50% 35%,rgba(0,180,230,.14),transparent 48%),rgba(3,14,25,.55) !important;
+  box-shadow:none !important;
+}
+body #hangarOverlay .hangarPreviewEyebrow{
+  align-self:stretch !important;
+  padding-bottom:10px !important;
+  border-bottom:1px solid rgba(124,240,255,.14) !important;
+  color:rgba(190,220,240,.6) !important;
+  font-size:10px !important;
+  font-weight:900 !important;
+  letter-spacing:1.2px !important;
+}
+body #hangarOverlay #hangarPreviewImage { width:100px !important; height:100px !important; margin:20px 0 14px !important; object-fit:contain !important; image-rendering:pixelated !important; filter:drop-shadow(0 8px 18px rgba(0,217,255,.18)) !important; }
+body #hangarOverlay #hangarPreviewTitle { margin:0 0 8px !important; color:#e8f8ff !important; font-size:18px !important; }
+body #hangarOverlay #hangarPreviewMeta { margin:0 !important; color:rgba(205,230,245,.66) !important; font-size:11px !important; line-height:1.5 !important; }
+body #hangarOverlay .hangarPreviewStage {
+  width:100% !important;
+  height:330px !important;
+  position:relative !important;
+  flex:0 0 330px !important;
+  overflow:hidden !important;
+}
+body #hangarOverlay .hangarActivePreview,
+body #hangarOverlay .hangarSelectedPreview {
+  position:absolute !important;
+  left:50% !important;
+  width:100% !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  transform:translateX(-50%) !important;
+  transition:top .42s cubic-bezier(.2,.8,.2,1), transform .42s cubic-bezier(.2,.8,.2,1), opacity .3s ease !important;
+}
+body #hangarOverlay .hangarActivePreview { top:100px !important; }
+body #hangarOverlay .hangarActivePreview #hangarPreviewImage {
+  width:100px !important;
+  height:100px !important;
+  margin:0 0 10px !important;
+  object-fit:contain !important;
+  image-rendering:pixelated !important;
+  transition:width .42s cubic-bezier(.2,.8,.2,1), height .42s cubic-bezier(.2,.8,.2,1) !important;
+}
+body #hangarOverlay .hangarActivePreview #hangarPreviewTitle,
+body #hangarOverlay .hangarSelectedPreview #hangarSelectedTitle {
+  margin:0 !important;
+  color:#eefbff !important;
+  font-size:17px !important;
+  line-height:1.15 !important;
+}
+body #hangarOverlay .hangarSelectedPreview {
+  top:190px !important;
+  opacity:0 !important;
+  transform:translate(-50%,28px) scale(.92) !important;
+  pointer-events:none !important;
+}
+body #hangarOverlay .hangarSelectedPreview #hangarSelectedImage {
+  width:100px !important;
+  height:100px !important;
+  margin:4px 0 4px !important;
+  object-fit:contain !important;
+  image-rendering:pixelated !important;
+}
+body #hangarOverlay .hangarSelectedLabel {
+  color:#72e7ff !important;
+  font-size:8px !important;
+  font-weight:900 !important;
+  letter-spacing:1px !important;
+}
+body #hangarOverlay .hangarFlowArrows {
+  position:absolute !important;
+  top:150px !important;
+  left:50% !important;
+  z-index:3 !important;
+  display:grid !important;
+  gap:0 !important;
+  color:#72e7ff !important;
+  font:1000 18px/.55 ui-sans-serif,system-ui !important;
+  opacity:0 !important;
+  transform:translateX(-50%) !important;
+  transition:opacity .2s ease .16s !important;
+  pointer-events:none !important;
+}
+body #hangarOverlay .hangarFlowArrows span { opacity:.16; text-shadow:0 0 9px rgba(105,233,255,.8); }
+body #hangarOverlay .hangarPreview.isComparing .hangarActivePreview { top:4px !important; }
+body #hangarOverlay .hangarPreview.isComparing .hangarActivePreview #hangarPreviewImage { width:100px !important; height:100px !important; }
+body #hangarOverlay .hangarPreview.isComparing .hangarActivePreview #hangarPreviewTitle { font-size:13px !important; }
+body #hangarOverlay .hangarPreview.isComparing .hangarSelectedPreview {
+  opacity:1 !important;
+  transform:translate(-50%,0) scale(1) !important;
+}
+body #hangarOverlay .hangarPreview.isComparing .hangarFlowArrows { opacity:1 !important; }
+body #hangarOverlay .hangarPreview.isComparing .hangarFlowArrows span:nth-child(1) { animation:hangarArrowPulse 1.2s linear infinite; }
+body #hangarOverlay .hangarPreview.isComparing .hangarFlowArrows span:nth-child(2) { animation:hangarArrowPulse 1.2s .2s linear infinite; }
+body #hangarOverlay .hangarPreview.isComparing .hangarFlowArrows span:nth-child(3) { animation:hangarArrowPulse 1.2s .4s linear infinite; }
+body #hangarOverlay .hangarWorkspace > .profileGrid{
+  min-width:0 !important;
+  min-height:0 !important;
+  grid-template-columns:repeat(2,minmax(220px,1fr)) !important;
+  align-content:start !important;
+  overflow-y:auto !important;
+}
+body #hangarOverlay .hangarWorkspace > .profileGrid > .tile{
+  min-height:150px !important;
+  display:flex !important;
+  flex-direction:column !important;
+}
+body #hangarOverlay .hangarWorkspace .tileActions{ margin-top:auto !important; }
+body #hangarOverlay .tile,
+body #hangarOverlay .profileTile{
+  box-sizing:border-box !important;
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:10px !important;
+  background:linear-gradient(135deg,rgba(15,45,65,.72),rgba(5,14,25,.8)) !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+body #hangarOverlay .hangarWorkspace > #hangarGrid.profileGrid{
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:0 5px 0 0 !important;
+  display:flex !important;
+  flex-direction:column !important;
+  gap:8px !important;
+  overflow-y:auto !important;
+}
+body #hangarOverlay .hangarListItem{
+  flex:0 0 auto !important;
+  min-width:0 !important;
+  padding:11px !important;
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) auto !important;
+  align-items:center !important;
+  gap:10px !important;
+  border:1px solid rgba(124,240,255,.14) !important;
+  border-radius:9px !important;
+  background:#0a2232 !important;
+  cursor:pointer !important;
+}
+body #hangarOverlay .hangarListItem.selected{ border-color:rgba(124,240,255,.50) !important; background:#0b2d40 !important; }
+body #hangarOverlay .hangarListItem.active{ box-shadow:inset 3px 0 0 #48d99d !important; }
+body #hangarOverlay .hangarListItem .tileShipPreview{ min-width:0 !important; margin:0 !important; display:flex !important; align-items:center !important; gap:10px !important; }
+body #hangarOverlay .hangarListItem .tileShipPreview img{ width:58px !important; height:58px !important; padding:4px !important; flex:0 0 auto !important; object-fit:contain !important; }
+body #hangarOverlay .hangarListItem h3{ margin:0 0 5px !important; font-size:13px !important; }
+body #hangarOverlay .hangarListItem p{ font-size:9px !important; line-height:1.4 !important; }
+body #hangarOverlay .hangarListItem .tileActions{ margin:0 !important; display:flex !important; flex-direction:column !important; gap:6px !important; }
+body #hangarOverlay .hangarListItem .tileActions button{ width:92px !important; min-height:30px !important; padding:6px 8px !important; }
+body #hangarOverlay .hangarDesignRow{
+  grid-column:1 / -1 !important;
+  width:100% !important;
+  min-height:44px !important;
+  margin:2px 0 0 !important;
+  padding:8px 0 0 !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:8px !important;
+  border-top:1px solid rgba(124,240,255,.14) !important;
+}
+body #hangarOverlay .hangarDesignRow label{
+  flex:0 0 auto !important;
+  font-size:9px !important;
+  font-weight:900 !important;
+  text-transform:uppercase !important;
+  letter-spacing:.5px !important;
+  color:#8fcddd !important;
+}
+body #hangarOverlay .hangarDesignTrigger{
+  flex:1 !important;
+  min-width:0 !important;
+  height:28px !important;
+  padding:0 8px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:8px !important;
+  border:1px solid rgba(124,240,255,.3) !important;
+  border-radius:6px !important;
+  color:#eaf8ff !important;
+  background:#082436 !important;
+  font-weight:800 !important;
+  font-size:11px !important;
+  cursor:pointer !important;
+  text-align:left !important;
+}
+body #hangarOverlay .hangarDesignTrigger:hover{ border-color:rgba(124,240,255,.55) !important; }
+body #hangarOverlay .hangarDesignValue{ overflow:hidden !important; text-overflow:ellipsis !important; white-space:nowrap !important; }
+body #hangarOverlay .hangarDesignCaret{ flex:0 0 auto !important; opacity:.75 !important; }
+body #hangarOverlay .hangarDesignRow.disabled{ opacity:.55 !important; }
+body #hangarOverlay .hangarDesignRow.disabled .hangarDesignTrigger{ cursor:not-allowed !important; }
+body #hangarOverlay button:not(.gameWinMinBtn),
+body #hangarOverlay button:not(.gameWinMinBtn):hover,
+body #hangarOverlay button:not(.gameWinMinBtn):active,
+body #hangarOverlay .tile,
+body #hangarOverlay .tile:hover{
+  transform:none !important;
+  transition:none !important;
+}
+body #hangarOverlay button.primary:hover:not(:disabled){
+  border-color:rgba(124,240,255,.38) !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+body #hangarOverlay button.secondary:hover:not(:disabled){
+  border-color:rgba(124,240,255,.2) !important;
+  background:rgba(8,35,52,.62) !important;
+  box-shadow:none !important;
+}
+@media (max-width: 900px) {
+  #hangarOverlay #hangarWindow.gameWindow { width:calc(100vw - 16px) !important; height:calc(100vh - 24px) !important; min-width:0 !important; grid-template-columns:240px minmax(0,1fr) !important; }
+  html body #hangarOverlay #hangarWindow.gameWindow:not(.floating) { left:8px !important; top:70px !important; }
+  body #hangarOverlay .hangarWorkspace { grid-template-columns:190px minmax(0,1fr) !important; gap:9px !important; }
+}
+@media (max-width: 650px) {
+  #hangarOverlay #hangarWindow.gameWindow { grid-template-columns:1fr !important; grid-template-rows:30px auto minmax(0,1fr) !important; }
+  body #hangarOverlay .profileHeaderCard { grid-column:1 !important; grid-row:2 !important; margin:8px 8px 0 !important; padding:10px !important; }
+  body #hangarOverlay .profileHeaderTop{ margin:0 0 9px !important; padding:0 0 9px !important; }
+  body #hangarOverlay .profileTabs { flex-direction:row !important; overflow-x:auto !important; }
+  body #hangarOverlay .profileTabs .tabBtn { justify-content:center !important; }
+  body #hangarOverlay .profileMainCard { grid-column:1 !important; grid-row:3 !important; padding:8px !important; }
+  body #hangarOverlay .profilePanel.active { padding:12px !important; }
+  body #hangarOverlay .hangarWorkspace { grid-template-columns:1fr !important; overflow-y:auto !important; }
+}

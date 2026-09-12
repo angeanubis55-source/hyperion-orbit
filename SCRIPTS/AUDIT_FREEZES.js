@@ -112,10 +112,11 @@ try {
           const openMs = measure(() => window.HyperionProfile.open());
           await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
           const tabs = {};
-          for (const tab of ['hangars', 'inventory']) {
-            tabs[tab] = measure(() => document.querySelector('#profileWindow [data-tab="' + tab + '"]').click());
-            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-          }
+          tabs.hangars = measure(() => window.HyperionProfile.openHangar());
+          await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+          tabs.inventory = measure(() => document.querySelector('#profileWindow [data-tab="inventory"]').click());
+          await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+          window.HyperionProfile.closeHangar({immediate: true});
           tabs.shop = measure(() => window.HyperionProfile.openShop());
           await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
           document.querySelector('#shopWindowTabs [data-shop="ammo"]').click();
