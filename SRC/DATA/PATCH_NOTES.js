@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.164",
+    "date": "2026-09-12T04:44:24+02:00",
+    "message": "boutique: fenetre dediee alignee pilote, images officielles uniformes, historique modules en carte"
+  },
+  {
     "version": "0.163",
     "date": "2026-09-11T23:52:11+02:00",
     "message": "univers: respawn NPC random (sauf cubikon au camp), suppression tests sim + nettoyage bots"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.105",
     "date": "2026-09-05T04:00:55+02:00",
     "message": "fix: bonus modules XP/honneur dans le log de kill (part formation vs modules), arrondi au supérieur pour ne plus perdre le bonus sur les petites bases (ex. honneur des Streuner)"
-  },
-  {
-    "version": "0.104",
-    "date": "2026-09-05T03:43:57+02:00",
-    "message": "Synchronise la version du jeu (75253117)"
   }
 ];
