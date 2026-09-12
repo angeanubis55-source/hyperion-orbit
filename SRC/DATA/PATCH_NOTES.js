@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.167",
+    "date": "2026-09-12T05:09:41+02:00",
+    "message": "hangars: suppression sidebar, fenetre pleine largeur"
+  },
+  {
     "version": "0.166",
     "date": "2026-09-12T05:06:15+02:00",
     "message": "hangars: fenetre dediee hangars-equipement sortie de l'espace pilote"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.108",
     "date": "2026-09-06T02:03:39+02:00",
     "message": "Synchronise la version du jeu (129b02ce)"
-  },
-  {
-    "version": "0.107",
-    "date": "2026-09-06T02:03:16+02:00",
-    "message": "feat: inventaire, réglages et Espace pilote"
   }
 ];

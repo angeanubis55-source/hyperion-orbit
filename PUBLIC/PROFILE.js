@@ -108,12 +108,6 @@ const accountFactionStatus = $("accountFactionStatus");
 const btnChangeFaction = $("btnChangeFaction");
 const shopCredits = $("shopWindowCredits") || $("shopCredits");
 const hangarGrid = $("hangarGrid");
-const hangarPreviewEyebrow = document.querySelector("#hangarPreview .hangarPreviewEyebrow");
-const hangarPreviewImage = $("hangarPreviewImage");
-const hangarPreviewTitle = $("hangarPreviewTitle");
-const hangarSelectedImage = $("hangarSelectedImage");
-const hangarSelectedTitle = $("hangarSelectedTitle");
-const hangarPreviewMeta = $("hangarPreviewMeta");
 const inventorySearch = $("inventorySearch");
 const inventorySections = $("inventorySections");
 const inventoryTooltip = $("inventoryTooltip");
@@ -1422,17 +1416,16 @@ function closeHangarDesignPanel() {
 function openHangarDesignPanel(triggerEl, hangarId, options, currentId) {
   closeHangarDesignPanel();
 
+  // Uniquement les designs possédés (la base l'est toujours).
+  const owned = options.filter((o) => !o.locked);
   const panel = document.createElement("div");
-  panel.className = "hangarDesignPanel";
-  for (const opt of options) {
+  panel.className = "hangarDesignPanel asImages";
+  for (const opt of owned) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className =
-      "hangarDesignOption" +
-      (opt.id === currentId ? " selected" : "") +
-      (opt.locked ? " locked" : "");
-    btn.textContent = opt.label;
-    btn.disabled = !!opt.locked;
+    btn.className = "hangarDesignImageOption" + (opt.id === currentId ? " selected" : "");
+    btn.title = opt.label;
+    btn.innerHTML = `<img src="${escapeHtml(opt.icon || "")}" alt="${escapeHtml(opt.label)}" />`;
     btn.addEventListener("click", () => {
       closeHangarDesignPanel();
       applyHangarDesign(hangarId, opt.id);
@@ -1444,12 +1437,12 @@ function openHangarDesignPanel(triggerEl, hangarId, options, currentId) {
   hangarDesignPanel = panel;
 
   const rect = triggerEl.getBoundingClientRect();
-  const width = Math.max(200, rect.width);
+  const cols = Math.min(4, Math.max(1, owned.length));
+  const width = cols * 80 + 20;
   panel.style.width = `${width}px`;
-  panel.style.left = `${Math.min(rect.left, window.innerWidth - width - 8)}px`;
+  panel.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
 
-  const itemH = 28;
-  const maxH = itemH * 10 + 10;
+  const maxH = 2 * 88 + 20;
   const below = window.innerHeight - rect.bottom - 6;
   const top = below >= maxH ? rect.bottom + 4 : Math.max(4, rect.top - maxH - 4);
   panel.style.maxHeight = `${maxH}px`;
@@ -1520,33 +1513,6 @@ function renderHangarsMeasured(u) {
     selectedHangarId = activeHangar?.id || null;
   }
 
-  const updateHangarPreview = (hangar) => {
-    if (!hangar) return;
-    const isActivePreview = hangar.id === activeHangar?.id;
-    const activePack = getShipPack(activeHangar?.shipId);
-    const activePreview = shipPreviewSrc(activeHangar?.shipId);
-    const selectedPack = getShipPack(hangar.shipId);
-    const selectedPreview = shipPreviewSrc(hangar.shipId);
-    document.getElementById("hangarPreview")?.classList.toggle("isComparing", !isActivePreview);
-    if (hangarPreviewImage) {
-      hangarPreviewImage.src = activePreview || "";
-      hangarPreviewImage.alt = "Vaisseau actif";
-      hangarPreviewImage.style.display = activePreview ? "block" : "none";
-    }
-    if (hangarPreviewEyebrow) hangarPreviewEyebrow.textContent = "VAISSEAU ACTIF";
-    if (hangarPreviewTitle) hangarPreviewTitle.textContent = activePack?.name || activeHangar?.shipId || "—";
-    if (hangarSelectedImage) {
-      hangarSelectedImage.src = selectedPreview || "";
-      hangarSelectedImage.style.display = selectedPreview ? "block" : "none";
-    }
-    if (hangarSelectedTitle) hangarSelectedTitle.textContent = selectedPack?.name || hangar.shipId;
-    if (hangarPreviewMeta) {
-      hangarPreviewMeta.textContent = "";
-    }
-  };
-
-  updateHangarPreview(hangars.find(h => h.id === selectedHangarId) || activeHangar);
-
   if (!hangars.length) {
     hangarGrid.innerHTML = `
       <div class="tile">
@@ -1560,18 +1526,11 @@ function renderHangarsMeasured(u) {
   for (const h of hangars) {
     const isActive = !!h.active;
     const prev = shipPreviewSrc(h.shipId);
-    const slots = getShipSlots(h.shipId);
     const hangarPackName = getShipPack(h.shipId)?.name || h.shipId;
 
-    const mods = Array.isArray(u?.inventory?.shipModules) ? u.inventory.shipModules : [];
-    const shipFamily = getShipFamilyId(h.shipId);
-    const modsForShip = mods.filter(m => moduleFamilyId(m) === shipFamily);
-
-    // ✅ Liste déroulante des designs de la famille du vaisseau (toujours
-    // affichée pour garder une hauteur identique, design possédé ou non).
+    // ✅ Dropdown visuel des designs possédés (base + designs débloqués).
     const designBase = getShipDesignBaseId(h.shipId) || h.shipId;
     const designIds = getShipDesignIds(designBase);
-    const hasDesigns = designIds.length > 1;
     const designOptions = designIds.map((did) => {
       const isBase = did === designBase;
       const ownedD = alreadyOwnsDesign(u, did);
@@ -1583,56 +1542,35 @@ function renderHangarsMeasured(u) {
           `${dpack?.name || did}` +
           (isBase ? " · Base" : "") +
           (locked ? " · Verrouillé" : ""),
+        icon: shipPreviewSrc(did),
         locked,
       };
     });
-    const currentName = getShipPack(h.shipId)?.name || h.shipId;
-    const designSelectHtml = `
-        <div class="hangarDesignRow"${hasDesigns ? "" : " disabled"}>
-          <label>Design</label>
-          <button type="button" class="hangarDesignTrigger" data-design-trigger="${h.id}" ${hasDesigns ? "" : "disabled"}>
-            <span class="hangarDesignValue">${escapeHtml(currentName)}</span>
-            <span class="hangarDesignCaret">▾</span>
-          </button>
-        </div>
-      `;
-
+    const ownedDesignCount = designOptions.filter((o) => !o.locked).length;
     const el = document.createElement("div");
     el.className = "hangarListItem" + (h.id === selectedHangarId ? " selected" : "") + (isActive ? " active" : "");
     el.innerHTML = `
-      <div class="tileShipPreview">
-        ${prev ? `<img src="${escapeHtml(prev)}" alt="${escapeHtml(h.shipId)}" class="shipImg" style="image-rendering: pixelated;" />` : ""}
-        <div style="flex: 1;">
-          <h3>
-            ${escapeHtml(hangarPackName)}
-            ${isActive ? `<span class="pill">Actif</span>` : ""}
-          </h3>
-          <p style="margin-bottom: 4px; color: var(--muted);">
-            Lasers: <strong>${slots.lasers}</strong> • 
-            Génés: <strong>${slots.gens}</strong> • 
-            Extras: <strong>${slots.extras}</strong>
-          </p>
-          <p style="margin: 0; color: var(--muted);">
-            Modules roulette: <strong style="color: #00d9ff;">${modsForShip.length}</strong>
-          </p>
-        </div>
+      <div class="hangarCardPhoto">
+        ${prev ? `<img src="${escapeHtml(prev)}" alt="${escapeHtml(h.shipId)}" class="shipImg" />` : ""}
+        <button type="button" class="hangarCardPhotoBadge" data-design-trigger="${h.id}" title="Choisir un design (${ownedDesignCount} possédé${ownedDesignCount > 1 ? "s" : ""})">▾</button>
       </div>
-
+      <h3>
+        ${escapeHtml(hangarPackName)}
+      </h3>
       <div class="tileActions">
         <button class="${isActive ? 'secondary' : 'primary'}" data-act="${h.id}" ${isActive ? 'disabled' : ''}>
           ${isActive ? 'Activé' : 'Activer'}
         </button>
         <button class="secondary" data-fit="${h.id}">Équiper</button>
       </div>
-      ${designSelectHtml}
     `;
 
-    el.addEventListener("click", () => {
+    const selectHangar = () => {
       selectedHangarId = h.id;
       hangarGrid.querySelectorAll(".hangarListItem").forEach((item) => item.classList.remove("selected"));
       el.classList.add("selected");
-      updateHangarPreview(h);
-    });
+    };
+    el.addEventListener("click", selectHangar);
 
    el.querySelector(`[data-act="${h.id}"]`).addEventListener("click", () => {
   if (isActive) return;
@@ -1671,12 +1609,11 @@ if (!isIntegratedInGame && isGameOpen()) {
       openFitModal(h.id);
     });
 
-    // ✅ Dropdown design (variante du vaisseau) — liste custom, max 10 items visibles
-    const designTrigger = el.querySelector(`[data-design-trigger="${h.id}"]`);
-    designTrigger?.addEventListener("click", (e) => {
+    // ✅ Petite flèche uniquement → dropdown visuel des designs possédés.
+    el.querySelector(`[data-design-trigger="${h.id}"]`)?.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (!hasDesigns) return;
-      openHangarDesignPanel(designTrigger, h.id, designOptions, h.shipId);
+      selectHangar();
+      openHangarDesignPanel(e.currentTarget, h.id, designOptions, h.shipId);
     });
 
     hangarGrid.appendChild(el);
