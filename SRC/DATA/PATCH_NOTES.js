@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.166",
+    "date": "2026-09-12T05:06:15+02:00",
+    "message": "hangars: fenetre dediee hangars-equipement sortie de l'espace pilote"
+  },
+  {
     "version": "0.165",
     "date": "2026-09-12T04:45:15+02:00",
     "message": "Fixes mineurs"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.107",
     "date": "2026-09-06T02:03:16+02:00",
     "message": "feat: inventaire, réglages et Espace pilote"
-  },
-  {
-    "version": "0.106",
-    "date": "2026-09-05T04:01:10+02:00",
-    "message": "Synchronise la version du jeu (c16c9488)"
   }
 ];

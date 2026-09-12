@@ -2628,7 +2628,7 @@ html body #shopOverlay .moduleHistoryRerollBtn:disabled{ opacity:.35 !important;
   min-height: 520px !important;
   padding: 0 !important;
   display: grid !important;
-  grid-template-columns: 250px minmax(0, 1fr) !important;
+  grid-template-columns: minmax(0, 1fr) !important;
   grid-template-rows: 30px minmax(0, 1fr) !important;
   gap: 0 !important;
   overflow: hidden !important;
@@ -2785,7 +2785,7 @@ body #hangarOverlay .profileTabs .tabBtn.active{
   box-shadow:inset 3px 0 0 #69e9ff !important;
 }
 body #hangarOverlay .profileMainCard{
-  grid-column:2 !important;
+  grid-column:1 / -1 !important;
   grid-row:2 !important;
   min-width:0 !important;
   min-height:0 !important;
@@ -3043,17 +3043,13 @@ body #hangarOverlay button.secondary:hover:not(:disabled){
   box-shadow:none !important;
 }
 @media (max-width: 900px) {
-  #hangarOverlay #hangarWindow.gameWindow { width:calc(100vw - 16px) !important; height:calc(100vh - 24px) !important; min-width:0 !important; grid-template-columns:240px minmax(0,1fr) !important; }
+  #hangarOverlay #hangarWindow.gameWindow { width:calc(100vw - 16px) !important; height:calc(100vh - 24px) !important; min-width:0 !important; grid-template-columns:minmax(0,1fr) !important; }
   html body #hangarOverlay #hangarWindow.gameWindow:not(.floating) { left:8px !important; top:70px !important; }
   body #hangarOverlay .hangarWorkspace { grid-template-columns:190px minmax(0,1fr) !important; gap:9px !important; }
 }
 @media (max-width: 650px) {
-  #hangarOverlay #hangarWindow.gameWindow { grid-template-columns:1fr !important; grid-template-rows:30px auto minmax(0,1fr) !important; }
-  body #hangarOverlay .profileHeaderCard { grid-column:1 !important; grid-row:2 !important; margin:8px 8px 0 !important; padding:10px !important; }
-  body #hangarOverlay .profileHeaderTop{ margin:0 0 9px !important; padding:0 0 9px !important; }
-  body #hangarOverlay .profileTabs { flex-direction:row !important; overflow-x:auto !important; }
-  body #hangarOverlay .profileTabs .tabBtn { justify-content:center !important; }
-  body #hangarOverlay .profileMainCard { grid-column:1 !important; grid-row:3 !important; padding:8px !important; }
+  #hangarOverlay #hangarWindow.gameWindow { grid-template-columns:1fr !important; grid-template-rows:30px minmax(0,1fr) !important; }
+  body #hangarOverlay .profileMainCard { grid-column:1 !important; grid-row:2 !important; padding:8px !important; }
   body #hangarOverlay .profilePanel.active { padding:12px !important; }
   body #hangarOverlay .hangarWorkspace { grid-template-columns:1fr !important; overflow-y:auto !important; }
 }
