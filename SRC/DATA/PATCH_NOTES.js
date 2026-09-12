@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.170",
+    "date": "2026-09-12T20:13:14+02:00",
+    "message": "boosters: couleurs lexique, icones famille, hauteur fenetre + config toggle unique"
+  },
+  {
     "version": "0.169",
     "date": "2026-09-12T16:08:54+02:00",
     "message": "maps/ui: perfs fond+etoiles, ZNA controleurs x-4/x-5, niveaux acces facon DO, icones menu officielles, fix XP StreuneR8, dock taskbar, mini-carte"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.111",
     "date": "2026-09-06T04:31:54+02:00",
     "message": "feat: robot réparateur mobile (4 coins, rotation, éclairs vers le vaisseau), sons réparation/radiation/mort et arrêt sonore net"
-  },
-  {
-    "version": "0.110",
-    "date": "2026-09-06T03:14:01+02:00",
-    "message": "Synchronise la version du jeu (76fb2cec)"
   }
 ];

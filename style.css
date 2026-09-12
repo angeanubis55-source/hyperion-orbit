@@ -604,7 +604,7 @@ html.orbitSessionReady #loadingOverlay{
 .gameWindow{
   pointer-events:auto !important;
   overflow:hidden !important;
-  border-radius:16px !important;
+  border-radius:8px !important;
   border:1px solid rgba(124,240,255,.24) !important;
   background:
     linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80)) !important;
@@ -665,7 +665,7 @@ html.orbitSessionReady #loadingOverlay{
   gap:0 !important;
   overflow:hidden !important;
   border:1px solid rgba(124,240,255,.3) !important;
-  border-radius:16px !important;
+  border-radius:8px !important;
   background:linear-gradient(145deg,rgba(8,20,36,.97),rgba(3,9,20,.98)) !important;
   box-shadow:0 28px 80px rgba(0,0,0,.72),0 0 35px rgba(0,217,255,.12) !important;
   pointer-events:auto !important;
@@ -909,7 +909,7 @@ body #profileOverlay #profileWindow{
   flex-direction:column !important;
   color:#e8f4ff !important;
   border:1px solid rgba(124,240,255,.24) !important;
-  border-radius:16px !important;
+  border-radius:8px !important;
   background:linear-gradient(135deg,rgba(10,18,36,.96),rgba(3,8,20,.95)) !important;
   box-shadow:0 18px 42px rgba(0,0,0,.58),0 0 26px rgba(0,217,255,.12),inset 0 0 0 1px rgba(255,255,255,.04) !important;
   backdrop-filter:none !important;
@@ -970,7 +970,7 @@ body #profileOverlay #profileWindow > .gameWinBar .gameWinMinBtn{
   display:grid !important;
   place-items:center !important;
   border:1px solid rgba(124,240,255,.22) !important;
-  border-radius:9px !important;
+  border-radius:6px !important;
   background:linear-gradient(135deg,rgba(0,217,255,.18),rgba(0,70,100,.14)) !important;
   box-shadow:none !important;
   color:#bfefff !important;
@@ -1653,13 +1653,15 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #gameWindowDock .sessionDockMenu{
   position:relative;
   display:flex;
+  gap:2px;
   order:-2000;
 }
+#btnSettingsHub{ order:-1900 !important; }
 #gameWindowDock .gameDockSeparator{
   align-self:stretch;
   width:1px;
   min-width:1px;
-  margin:5px 3px;
+  margin:5px 2px;
   order:-1500;
   background:linear-gradient(180deg,transparent,rgba(124,240,255,.42),transparent);
   box-shadow:0 0 8px rgba(0,217,255,.12);
@@ -1868,7 +1870,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   width:26px !important;
   height:26px !important;
   margin:0 -8px 0 auto !important;
-  border-radius:0 13px 0 0 !important;
+  border-radius:0 8px 0 0 !important;
 }
 
 /* Mini-carte : le bouton réduire est collé aux boutons + / -
@@ -2355,7 +2357,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   flex-wrap:wrap !important;
   align-items:center !important;
   justify-content:flex-start !important;
-  gap:8px !important;
+  gap:2px !important;
   padding:6px !important;
   width:auto !important;
   height:auto !important;
@@ -2363,7 +2365,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   overflow:visible !important;
   scrollbar-width:none;
   -ms-overflow-style:none;
-  border-radius:16px !important;
+  border-radius:8px !important;
   background:rgba(3,8,20,.35) !important;
   border:1px solid rgba(124,240,255,.12) !important;
   box-shadow:0 12px 32px rgba(0,0,0,.35) !important;
@@ -2377,7 +2379,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #gameWindowDock .gameDockIcon{
   width:42px !important;
   height:42px !important;
-  border-radius:13px !important;
+  border-radius:8px !important;
   border:1px solid rgba(124,240,255,.34) !important;
   background:
     radial-gradient(circle at 30% 20%, rgba(255,255,255,.18), transparent 34%),
@@ -2431,7 +2433,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 }
 
 #btnGameHub.profileDockIcon{
-  order:-999 !important;
+  order:-1800 !important;
 }
 
 /* ============================================================

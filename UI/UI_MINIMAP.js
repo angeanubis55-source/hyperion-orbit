@@ -102,7 +102,7 @@ function getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal
 export function renderMinimap(context, options) {
   if (!context) return;
   const {
-    width, height, world, player, enemies = [], allies = [], portals = [], returnPortal = null,
+    width, height, world, player, enemies = [], allies = [], pet = null, portals = [], returnPortal = null,
     isZoneMap = false, safeZone = null, moveTarget = null, ping = null,
     camera, viewportWidth, viewportHeight, lockedNpc = null, shouldShowNpc = () => true,
   } = options;
@@ -126,6 +126,20 @@ export function renderMinimap(context, options) {
     if (!ally || ally.hp <= 0) continue;
     context.beginPath();
     context.arc(ally.x * scaleX, ally.y * scaleY, 2.6, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  // REX / P.E.T actif : cercle vert 4x4 avec centre jaune 2x2.
+  if (pet?.active === true && Number.isFinite(Number(pet.x)) && Number.isFinite(Number(pet.y))) {
+    const px = pet.x * scaleX;
+    const py = pet.y * scaleY;
+    context.fillStyle = "#50ff91";
+    context.beginPath();
+    context.arc(px, py, 2, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#ffe14d";
+    context.beginPath();
+    context.arc(px, py, 1, 0, Math.PI * 2);
     context.fill();
   }
 

@@ -11745,6 +11745,8 @@ function drawMinimap() {
   const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   const useCss = cssW > 0 && cssH > 0;
   mctx.setTransform(useCss ? dpr : 1, 0, 0, useCss ? dpr : 1, 0, 0);
+  const petAccount = account.user?.pet;
+  const isPetActive = !!petAccount?.owned && petAccount?.active === true && !player.dead;
   renderMinimap(mctx, {
     width: useCss ? cssW : mini.width,
     height: useCss ? cssH : mini.height,
@@ -11752,6 +11754,13 @@ function drawMinimap() {
     player,
     enemies,
     allies: escortShips,
+    pet: isPetActive
+      ? {
+          active: true,
+          x: petState.ready ? petState.x : player.x - 90,
+          y: petState.ready ? petState.y : player.y + 70,
+        }
+      : null,
     portals: getInteractivePortals(),
     returnPortal: gateReturnPortal,
     isZoneMap,
