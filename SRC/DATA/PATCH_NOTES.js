@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.169",
+    "date": "2026-09-12T16:08:54+02:00",
+    "message": "maps/ui: perfs fond+etoiles, ZNA controleurs x-4/x-5, niveaux acces facon DO, icones menu officielles, fix XP StreuneR8, dock taskbar, mini-carte"
+  },
+  {
     "version": "0.168",
     "date": "2026-09-12T14:16:45+02:00",
     "message": "hangars: cartes compactes grille + preview animee retiree"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.110",
     "date": "2026-09-06T03:14:01+02:00",
     "message": "Synchronise la version du jeu (76fb2cec)"
-  },
-  {
-    "version": "0.109",
-    "date": "2026-09-06T03:13:42+02:00",
-    "message": "assets: ajout de nouveaux sons et effets (ambiance, bouclier, IEM, bombe, roquettes, mort, réapparition...) et mise à jour des tirs existants"
   }
 ];

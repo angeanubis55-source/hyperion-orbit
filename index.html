@@ -33,7 +33,7 @@
 <div id="gameWindowDock">
   <div class="sessionDockMenu">
     <button id="btnSessionMenu" class="gameDockIcon logoutDockIcon" type="button" title="Session" aria-label="Menu de session" aria-expanded="false">
-      <span><img src="ASSETS/UI/MENU/logout.png" alt="" draggable="false"></span>
+      <span><img src="ASSETS/UI/MENU/logout.png" data-menu-icon="logout" alt="" draggable="false"></span>
     </button>
     <div id="sessionMenu" class="sessionMenu" role="menu">
       <button id="btnLogout" type="button" role="menuitem">Déconnexion</button>
@@ -42,13 +42,13 @@
   </div>
   <span class="gameDockSeparator" aria-hidden="true"></span>
   <button id="btnGameHub" class="gameDockIcon profileDockIcon" data-window-id="profileWindow" type="button" title="Profil" aria-label="Profil">
-    <span><img src="ASSETS/UI/MENU/user.png" alt="" draggable="false"></span>
+    <span><img src="ASSETS/UI/MENU/user.png" data-menu-icon="user" alt="" draggable="false"></span>
   </button>
   <button id="btnHangarHub" class="gameDockIcon hangarDockIcon" data-window-id="hangarWindow" type="button" title="Hangars" aria-label="Hangars">
-    <span><img src="ASSETS/UI/MENU/hangar.png" alt="" draggable="false"></span>
+    <span><img src="ASSETS/UI/MENU/hangar.png" data-menu-icon="hangar" alt="" draggable="false"></span>
   </button>
   <button id="btnShopHub" class="gameDockIcon shopDockIcon" data-window-id="shopWindow" type="button" title="Boutique" aria-label="Boutique">
-    <span><img src="ASSETS/UI/MENU/shop.png" alt="" draggable="false"></span>
+    <span><img src="ASSETS/UI/MENU/shop.png" data-menu-icon="shop" alt="" draggable="false"></span>
   </button>
 </div>
   
@@ -110,9 +110,8 @@
           <div class="row configRow">
             <span class="k">Configuration</span>
             <span class="v configSwitch">
-              <button id="cfg1Btn" class="cfgBtn active">1</button>
-              <button id="cfg2Btn" class="cfgBtn">2</button>
               <small id="cfgCooldownTxt"></small>
+              <button id="cfgToggleBtn" class="cfgBtn active">1</button>
             </span>
           </div>
         </div>
@@ -321,6 +320,10 @@
         <div class="bar fuel"><i id="petFuelBar"></i><span class="barValue" id="petFuelTxt">0 / 0</span></div>
       </div>
       <div id="petNoPet" class="petNoPet" hidden>Achète ton P.E.T en boutique (onglet P.E.T, 10 M crédits).</div>
+    </div>
+
+    <div id="boosterWindow" class="panel boosterPanel">
+      <div id="boosterList" class="boosterList"></div>
     </div>
 
     <div id="gameLogWindow" class="panel gameLogPanel">
@@ -700,6 +703,7 @@
           <button class="tabBtn" data-shop="shieldGen">GÉNÉRATEUR DE BOUCLIER</button>
           <button class="tabBtn" data-shop="lasers">CANONS LASERS</button>
           <button class="tabBtn" data-shop="extras">MODULES</button>
+          <button class="tabBtn" data-shop="boosters">BOOSTERS</button>
           <button class="tabBtn" data-shop="ships">VAISSEAUX</button>
           <button class="tabBtn" data-shop="designs">DESIGNS</button>
           <button class="tabBtn" data-shop="drones">DRONES</button>

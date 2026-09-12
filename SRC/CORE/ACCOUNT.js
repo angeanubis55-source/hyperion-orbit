@@ -13,6 +13,7 @@ import { getCraftingRecipe } from "../DATA/CRAFTING.js";
 import { ROCKET_TYPES } from "../../COMBAT/ROCKET_TYPES.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../../DRONE/DRONE_TYPES.js";
 import { createPet, emptyPetFit, getPetLevel, getPetMaxHp, getPetSlots, getPetShieldBonus, normalizePetMode, normalizePetPseudo, PET_DEFAULT_PSEUDO, PET_FUEL_MAX, PET_SLOTS } from "../../PET/PET_TYPES.js";
+import { getBooster, normalizeBoostersState } from "../DATA/BOOSTERS.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -540,6 +541,9 @@ function ensureUserShape(u) {
   u.rocketAuto = u.rocketAuto === true;
   if (!ROCKET_TYPES[String(u.launcherActive || "").toLowerCase()]) u.launcherActive = "eco10";
   u.launcherAuto = u.launcherAuto === true;
+
+  // boosters (stock + effets actifs avec expiration)
+  u.boosters = normalizeBoostersState(u.boosters);
 
   // stats
   if (!u.stats || typeof u.stats !== "object") u.stats = {};
@@ -1301,6 +1305,19 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
     incCount(u, item.id, quantity);
   }
 
+  // boosters : chaque achat AJOUTE sa durée au timer actif
+  // (prolonge si déjà actif, démarre sinon). Pas de stock.
+  if (item.booster?.id) {
+    const def = getBooster(item.booster.id);
+    u.boosters = normalizeBoostersState(u.boosters);
+    if (def) {
+      const now = Date.now();
+      const current = Number(u.boosters.active[def.id] || 0);
+      const base = current > now ? current : now;
+      u.boosters.active[def.id] = base + Math.max(1, Number(def.durationSec) || 0) * 1000 * Math.max(1, quantity);
+    }
+  }
+
   // ship purchase => add ship + hangar
   if (item.ship?.id) {
     const shipId = String(item.ship.id);
@@ -1358,6 +1375,24 @@ export function buyCurrentUserDrone(type) {
   u.drones.items.push(drone);
   saveUser(u);
   return { ok: true, user: u, drone, price };
+}
+
+export function activateCurrentUserBooster(catalogItemId) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  const item = findCatalogItem(catalogItemId);
+  const def = getBooster(item?.booster?.id);
+  if (!item || !def) return { ok: false, error: "Booster introuvable." };
+  u.boosters = normalizeBoostersState(u.boosters);
+  const now = Date.now();
+  if (Number(u.boosters.active[def.id] || 0) > now) return { ok: false, error: "Booster déjà actif." };
+  const stock = Math.max(0, Math.floor(Number(u.inventory?.counts?.[item.id] || 0)));
+  if (stock <= 0) return { ok: false, error: "Aucun booster en stock." };
+  u.inventory.counts[item.id] = stock - 1;
+  u.boosters.active[def.id] = now + Math.max(1, Number(def.durationSec) || 0) * 1000;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, booster: def, expiresAt: u.boosters.active[def.id] };
 }
 
 export function buyCurrentUserDroneFormation(formationId) {

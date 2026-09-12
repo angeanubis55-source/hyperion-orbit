@@ -2078,7 +2078,38 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 .orbitNotification.leaving{ animation:orbitNoticeOut .65s cubic-bezier(.4,0,.2,1) both; }
 @keyframes orbitNoticeIn{from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:translateY(0)}}
 @keyframes orbitNoticeOut{from{opacity:1;max-height:var(--notice-height,24px);padding-top:1px;padding-bottom:1px;transform:translateY(0)}to{opacity:0;max-height:0;padding-top:0;padding-bottom:0;transform:translateY(-8px)}}
-.gameLogPanel{ width:520px; height:430px; min-width:380px; min-height:260px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); resize:both; overflow:hidden; }
+.gameLogPanel{ width:520px; height:430px; min-width:380px; min-height:260px; max-width:calc(100vw -
+20px); max-height:calc(100vh - 20px); resize:both; overflow:hidden; }
+
+/* Fenêtre Boosters */
+#boosterWindow{ padding-bottom:0 !important; }
+.boosterPanel{ width:280px !important; min-width:0 !important; max-width:min(280px, calc(100vw - 20px)) !important; }
+.boosterList{ display:grid; gap:5px; padding:8px 12px; max-height:440px; overflow-y:auto; scrollbar-width:thin; }
+.boosterEmpty{ color:rgba(204,228,241,.6); font-size:11px; padding:10px 4px; text-align:center; }
+.boosterRow{ display:grid; grid-template-columns:48px minmax(0,1fr) auto; gap:10px; align-items:center; padding:8px 10px; border:1px solid rgba(124,240,255,.14); border-radius:10px; background:rgba(8,25,40,.55); }
+.boosterRow img{ width:48px; height:48px; object-fit:contain; }
+.boosterRow.compact{ grid-template-columns:24px auto minmax(0,1fr); gap:8px; padding:3px 6px; align-items:center; }
+.boosterRow.compact img{ width:24px; height:24px; }
+/* Badge % individuel + groupes par icône avec tiret couleur famille */
+.boosterSingle{ display:grid; grid-template-columns:58px minmax(0,1fr); gap:6px; align-items:center; }
+.singleRail{ display:flex; align-items:center; justify-content:flex-end; gap:6px; }
+.singleBar{ width:0; height:18px; border-left:2px solid var(--boost, rgba(0,180,255,.9)); flex-shrink:0; }
+.boosterPct{ color:var(--boost, rgba(255,200,90,.95)); font-size:12px; font-weight:800; white-space:nowrap; }
+.boosterGroup{ display:grid; grid-template-columns:58px minmax(0,1fr); gap:6px; align-items:stretch; }
+.boosterGroupRail{ display:flex; align-items:stretch; gap:5px; }
+.boosterCombined{ align-self:center; color:var(--boost, rgba(255,200,90,.95)); font-size:13px; font-weight:900; white-space:nowrap; margin-left:auto; }
+.bracket{ width:0; border-left:2px solid var(--boost, rgba(0,180,255,.9)); }
+.boosterGroupCards{ display:grid; gap:5px; min-width:0; }
+.boosterRow.compact .boosterCode{ color:var(--boost, rgba(255,59,78,.95)); font-size:12px; white-space:nowrap; }
+.boosterRow.compact .boosterStatus{ color:var(--boost, #75e8ff); font-weight:800; font-size:12px; white-space:nowrap; justify-self:end; }
+.boosterMeta{ display:grid; gap:2px; min-width:0; }
+.boosterMeta strong{ color:#effbff; font-size:12px; }
+.boosterCode{ color:rgba(124,240,255,.6); font-size:10px; font-weight:700; }
+.boosterMeta span{ color:rgba(204,228,241,.65); font-size:10px; }
+.boosterStatus{ color:#75e8ff !important; font-weight:800; }
+.boosterRow button{ padding:8px 14px; border:1px solid rgba(124,240,255,.3); border-radius:8px; background:linear-gradient(135deg, rgba(0,217,255,.2), rgba(0,70,100,.25)); color:#effcff; font:800 11px system-ui; cursor:pointer; }
+.boosterRow button:disabled{ opacity:.4; cursor:default; }
+.boosterRow button:not(:disabled):hover{ border-color:rgba(124,240,255,.6); }
 .gameLogToolbar{ display:block; padding:8px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#668f9a; font-size:9px; font-weight:800; text-transform:uppercase; }
 .gameLogSearch{ min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:10px; color:#88d8e9; }.gameLogSearch input{ min-width:0; width:100%; height:30px; box-sizing:border-box; padding:0 9px; border:1px solid rgba(124,240,255,.22); border-radius:4px; outline:0; color:#e9fbff; background:#061927; font:600 11px ui-sans-serif,system-ui; }.gameLogSearch input:focus{ border-color:rgba(124,240,255,.65); }
 .gameLogEntries{ height:calc(100% - 116px); overflow-y:auto; display:grid; align-content:start; gap:5px; padding:9px; box-sizing:border-box; }.gameLogEntry{ display:grid; grid-template-columns:126px minmax(0,1fr); gap:9px; padding:7px 8px; border-left:2px solid rgba(78,201,232,.35); background:rgba(4,20,33,.58); color:#bcdde5; font-size:10px; line-height:1.35; }.gameLogEntry time{ color:#5d96a5; white-space:nowrap; }.gameLogEntry.reward{ border-left-color:#d7ac50; color:#f3dda9; }.gameLogEntry.error{ border-left-color:#e35b6b; color:#ffc4cb; }.gameLogEmpty{ padding:20px; text-align:center; color:#5c8290; font-size:11px; }
@@ -2363,8 +2394,8 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
 
-/* Survol : uniquement sur les fenêtres fermées (évite le doublon
-   avec le contour doré des fenêtres ouvertes) */
+/* États portés par les images officielles (idle / hover / select doré),
+   avec les effets CSS autour. */
 #gameWindowDock .gameDockIcon:hover:not(.dockIconActive){
   border-color:rgba(124,240,255,.82) !important;
   box-shadow:

@@ -114,11 +114,8 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
   context.font = "900 16px ui-sans-serif, system-ui";
   context.textAlign = "center";
   context.textBaseline = "top";
-  context.lineWidth = 1;
-  context.strokeStyle = "rgba(5,8,20,0.90)";
   const displayName = playerName || "Pilote";
   const nameY = y + player.r + 90;
-  context.strokeText(displayName, x, nameY);
   context.fillStyle = "rgba(255,255,255,0.95)";
   context.fillText(displayName, x, nameY);
   const textWidth = context.measureText(displayName).width;
@@ -181,9 +178,6 @@ export function drawNpcStatus(context, npc, label, showBars) {
   context.font = "900 13px ui-sans-serif, system-ui";
   context.textAlign = "center";
   context.textBaseline = "top";
-  context.lineWidth = 0;
-  context.strokeStyle = "rgba(5,8,20,0.90)";
-  context.strokeText(label, 0, npc.r + 35);
   context.fillStyle = "rgba(255,59,78,0.95)";
   context.fillText(label, 0, npc.r + 35);
   context.restore();

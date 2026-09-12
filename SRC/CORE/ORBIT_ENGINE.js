@@ -28,6 +28,7 @@ import {
   getDroneFit,
   setPetActive,
   setPetMode,
+  activateCurrentUserBooster,
 } from "./ACCOUNT.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
@@ -38,6 +39,7 @@ import {
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { findCatalogItem } from "./CATALOG.js";
+import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBoosterDuration, BOOSTERS } from "../DATA/BOOSTERS.js";
 import { CRAFTING_RECIPES } from "../DATA/CRAFTING.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
 import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
@@ -566,9 +568,10 @@ const ui = {
   rankPtsTxt: document.getElementById("rankPtsTxt"),
 
   lvlTxt: document.getElementById("lvlTxt"),
-cfg1Btn: document.getElementById("cfg1Btn"),
-cfg2Btn: document.getElementById("cfg2Btn"),
-cfgCooldownTxt: document.getElementById("cfgCooldownTxt"),
+  cfg1Btn: document.getElementById("cfg1Btn"),
+  cfg2Btn: document.getElementById("cfg2Btn"),
+  cfgToggleBtn: document.getElementById("cfgToggleBtn"),
+  cfgCooldownTxt: document.getElementById("cfgCooldownTxt"),
 
   miniMapName: document.getElementById("miniMapName"),
   miniPos: document.getElementById("miniPos"),
@@ -1046,7 +1049,7 @@ const DEFAULT_SFX_VOLUMES = Object.freeze({
   npcDeath: 25,
   collect: 30,
   laserHit1: 10, laserHit2: 10, laserHit3: 10,
-  selectNew: 15, selectAgain: 15,
+  selectNew: 15, selectAgain: 15, shieldSelected: 15,
   outOfRange: 30,
   escortX1: 5, escortX2: 5, escortX3: 5, escortX4: 5, escortX6: 5, escortSab: 5,
 });
@@ -1089,7 +1092,7 @@ const SFX_ROWS = [
   { id: "collect", label: "Récolte", members: ["collect"] },
   { id: "hits", label: "Impacts laser", members: ["laserHit1", "laserHit2", "laserHit3"] },
   { id: "range", label: "Portée / Hors de portée", members: ["outOfRange"] },
-  { id: "menuSelect", label: "Sélection des menus", members: ["selectNew", "selectAgain"] },
+  { id: "menuSelect", label: "Sélection des menus", members: ["selectNew", "selectAgain", "shieldSelected"] },
 ];
 
 function getSfxRow(id) {
@@ -1757,9 +1760,140 @@ function registerHudWindows() {
   reg("gameLogWindow", "LOG", menuIcon("log"), false);
   reg("craftingWindow", "Atelier de fabrication", menuIcon("assembly"), false);
   reg("petWindow", "P.E.T", menuIcon("pet"), false);
+  reg("boosterWindow", "Boosters", menuIcon("booster"), false);
   reg("gygerimStatus", "État du boss", menuIcon("worldBoss"), true, { minimizable: false });
 wireSettingsWindow();
 wirePetWindow();
+wireBoosterWindow();
+}
+
+// ============================================================
+// ✅ Fenêtre Boosters en jeu : stock, activation, compte à rebours
+// ============================================================
+function boosterCatalogId(def) {
+  return `booster_${def?.id || ""}`;
+}
+
+// Ordre des familles dans la fenêtre.
+const BOOSTER_FAMILY_ORDER = ["dmgPct", "shieldPct", "hpPct", "expPct", "honorPct", "repairPct", "resPct", "sregPct", "boxPct", "questPct", "petXpPct"];
+
+// Couleurs officielles lexique FR (cf. screenshot) : rouge = dégâts,
+// cyan = bouclier, vert = PV, orange = exp, rose = honneur, etc.
+const BOOSTER_FAMILY_COLORS = Object.freeze({
+  dmgPct: "#ff2222",
+  shieldPct: "#4dd2ff",
+  hpPct: "#33ff66",
+  expPct: "#ffa028",
+  honorPct: "#ffc2d1",
+  repairPct: "#c061ff",
+  resPct: "#e6c200",
+  sregPct: "#6b7cff",
+  boxPct: "#f5e0a0",
+  questPct: "#ffffff",
+  petXpPct: "#e5a055",
+});
+
+// Petite icône de catégorie (pour les multi-effets : MUL-B03, EPHON-1).
+const BOOSTER_FAMILY_ICONS = Object.freeze({
+  dmgPct: "/ASSETS/BOOSTERS/CAT/dmg.png",
+  shieldPct: "/ASSETS/BOOSTERS/CAT/shd.png",
+  hpPct: "/ASSETS/BOOSTERS/CAT/hp.png",
+  expPct: "/ASSETS/BOOSTERS/CAT/ep.png",
+  honorPct: "/ASSETS/BOOSTERS/CAT/hon.png",
+  repairPct: "/ASSETS/BOOSTERS/CAT/rep.png",
+  resPct: "/ASSETS/BOOSTERS/CAT/res.png",
+  sregPct: "/ASSETS/BOOSTERS/CAT/sreg.png",
+  boxPct: "/ASSETS/BOOSTERS/CAT/bb.png",
+  questPct: "/ASSETS/BOOSTERS/MINI/qr.png",
+  petXpPct: "/ASSETS/BOOSTERS/CAT/pep.png",
+});
+
+function boosterFacetIcon(facet) {
+  const keys = Object.keys(facet?.def?.effect || {}).filter(
+    (k) => k !== "hitPct" && BOOSTER_FAMILY_ORDER.includes(k)
+  );
+  // Multi-effets : icône de la catégorie, pas celle du booster.
+  if (keys.length > 1) return BOOSTER_FAMILY_ICONS[facet.key] || facet.def.iconMini || facet.def.icon;
+  return facet.def.iconMini || facet.def.icon;
+}
+
+function renderBoosterWindow() {
+  const list = document.getElementById("boosterList");
+  if (!list) return;
+  const user = account.user || getCurrentUserFull();
+  const now = Date.now();
+  // On n'affiche que les boosters ACTIFS (tout achat prolonge le timer).
+  const owned = BOOSTERS.filter((def) => boosterTimeLeftMs(user?.boosters, def.id, now) > 0);
+  if (!owned.length) {
+    list.innerHTML = `<div class="boosterEmpty">Aucun booster actif — achète-les en boutique (onglet BOOSTERS).</div>`;
+    return;
+  }
+  // Une ligne par effet : les multi-effets (MUL-B03, EPHON-1) apparaissent
+  // dans chaque famille avec le combiné actualisé.
+  const facets = [];
+  for (const def of owned) {
+    for (const [key, value] of Object.entries(def.effect || {})) {
+      if (key === "hitPct") continue; // précision : appliquée, non affichée en famille
+      if (!BOOSTER_FAMILY_ORDER.includes(key)) continue;
+      facets.push({ def, key, pct: Number(value) || 0 });
+    }
+  }
+  const rowHtml = (facet) => {
+    const leftMs = boosterTimeLeftMs(user?.boosters, facet.def.id, now);
+    const color = BOOSTER_FAMILY_COLORS[facet.key] || "#effbff";
+    const icon = boosterFacetIcon(facet);
+    return `<div class="boosterRow compact" data-booster="${facet.def.id}" data-family="${facet.key}" style="--boost:${color}" title="${facet.def.name} — ${facet.def.desc}">
+      <img src="${icon}" alt="${facet.def.code}">
+      <strong class="boosterCode">${facet.def.code}</strong>
+      <span class="boosterStatus" data-booster-countdown="${facet.def.id}">${formatBoosterCountdown(leftMs)}</span>
+    </div>`;
+  };
+  let html = "";
+  for (const key of BOOSTER_FAMILY_ORDER) {
+    const rows = facets.filter((f) => f.key === key);
+    if (!rows.length) continue;
+    const color = BOOSTER_FAMILY_COLORS[key] || "#ffc85a";
+    if (rows.length === 1) {
+      const pct = rows[0].pct;
+      html += `<div class="boosterSingle" data-family="${key}" style="--boost:${color}"><span class="singleRail"><span class="boosterPct">${pct}%</span><span class="singleBar" aria-hidden="true"></span></span>${rowHtml(rows[0])}</div>`;
+    } else {
+      const total = Math.round(rows.reduce((sum, f) => sum + f.pct, 0));
+      html += `<div class="boosterGroup" data-family="${key}" style="--boost:${color}"><div class="boosterGroupRail"><span class="boosterCombined">${total}%</span><span class="bracket" aria-hidden="true"></span></div><div class="boosterGroupCards">`;
+      for (const f of rows) html += rowHtml(f);
+      html += `</div></div>`;
+    }
+  }
+  list.innerHTML = html;
+}
+
+function refreshBoosterCountdowns() {
+  const list = document.getElementById("boosterList");
+  if (!list || list.style.display === "none") return;
+  const card = document.getElementById("boosterWindow");
+  if (!card || card.style.display === "none" || card.classList.contains("gameWinMinimized")) return;
+  const now = Date.now();
+  const user = account.user || getCurrentUserFull();
+  let changed = false;
+  for (const def of BOOSTERS) {
+    const el = list.querySelector(`[data-booster-countdown="${def.id}"]`);
+    if (!el) continue;
+    const leftMs = boosterTimeLeftMs(user?.boosters, def.id, now);
+    const next = formatBoosterCountdown(leftMs);
+    if (el.textContent !== next) {
+      // Fin d'effet : re-rendu complet (la ligne disparaît).
+      if (leftMs <= 0) { changed = true; break; }
+      el.textContent = next;
+    }
+  }
+  if (changed) renderBoosterWindow();
+}
+
+window.addEventListener("orbit:window-restored", (event) => {
+  if (event.detail?.id === "boosterWindow") renderBoosterWindow();
+});
+
+function wireBoosterWindow() {
+  queueMicrotask(() => renderBoosterWindow());
 }
 
 registerHudWindows();
@@ -2822,7 +2956,7 @@ function awardExperience(amount, source = "") {
   if (!account.user) return null;
   account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0 };
   const moduleBonus = Number(player?.expBonusPct || 0);
-  const raw = Number(amount || 0) * Math.max(0, 1 + moduleBonus / 100);
+  const raw = Number(amount || 0) * Math.max(0, 1 + moduleBonus / 100) * playerBoosterMults().exp;
   const result = grantExperience(account.user.stats, Math.max(0, Math.ceil(raw - Number.EPSILON)));
   if (result.gained <= 0) return result;
   for (const drone of account.user.drones?.items || []) {
@@ -2835,7 +2969,7 @@ function awardExperience(amount, source = "") {
   // ET activé (bouton play de la fenêtre P.E.T).
   if (account.user.pet?.owned === true && account.user.pet.active === true) {
     const previousPetLevel = Math.max(0, Number(account.user.pet.level) || getPetLevel(account.user.pet.exp));
-    account.user.pet.exp = Math.max(0, Number(account.user.pet.exp) || 0) + result.gained * PET_XP_SHARE;
+    account.user.pet.exp = Math.max(0, Number(account.user.pet.exp) || 0) + result.gained * PET_XP_SHARE * playerBoosterMults().petXp;
     account.user.pet.level = getPetLevel(account.user.pet.exp);
     if (account.user.pet.level > previousPetLevel) {
       showToast(`P.E.T niveau ${account.user.pet.level} atteint !`, 2.6);
@@ -2856,7 +2990,7 @@ function awardHonor(amount) {
   account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
   const previousRank = getRankInfo(account.user.stats.rankPoints, account.user.stats.honor);
   const moduleBonus = Number(player?.honorBonusPct || 0);
-  const raw = Number(amount || 0) * Math.max(0, 1 + moduleBonus / 100);
+  const raw = Number(amount || 0) * Math.max(0, 1 + moduleBonus / 100) * playerBoosterMults().honor;
   const result = grantHonor(account.user.stats, Math.max(0, Math.ceil(raw - Number.EPSILON)));
   account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
   const nextRank = getRankInfo(account.user.stats.rankPoints, account.user.stats.honor);
@@ -3043,18 +3177,20 @@ ui.questList?.addEventListener("click", event => {
     const reward = claimQuest(questState, questId);
     if (reward) {
       const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
-      player.credits += Math.max(0, Number(reward.credits || 0));
+      // Booster QR-01 : récompenses de quêtes doublées.
+      const questMult = playerBoosterMults().quest;
+      player.credits += Math.max(0, Math.floor(Number(reward.credits || 0) * questMult));
       const ammoRewards = Object.entries(reward.ammo || {}).filter(([type, amount]) => Object.hasOwn(player.ammo, type) && Number(amount) > 0);
-      for (const [type, amount] of ammoRewards) player.ammo[type] += Math.max(0, Math.floor(Number(amount) || 0));
+      for (const [type, amount] of ammoRewards) player.ammo[type] += Math.max(0, Math.floor(Number(amount) * questMult || 0));
       if (ammoRewards.length) updateAmmoUI();
-      const experience = getQuestExperienceReward(quest);
-      const honor = getQuestHonorReward(quest);
+      const experience = Math.floor(getQuestExperienceReward(quest) * questMult);
+      const honor = Math.floor(getQuestHonorReward(quest) * questMult);
       awardExperience(experience);
       awardHonor(honor);
       if (account.user?.stats) account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
       markProgressDirty();
       saveProgressNow();
-      const galaxyEnergy = Math.max(0, Math.floor(Number(reward.galaxyEnergy) || 0));
+      const galaxyEnergy = Math.max(0, Math.floor(Number(reward.galaxyEnergy) * questMult || 0));
       if (galaxyEnergy > 0) {
         const energyResult = grantCurrentUserGalaxyEnergy(galaxyEnergy);
         if (energyResult.ok) {
@@ -3343,10 +3479,10 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   const shipBaseHP = Number(pack?.hp || 1);
   player.hpMax = Math.max(
     1,
-    Math.floor(shipBaseHP * (1 + (stats.bonusHPPct || 0) / 100))
+    Math.floor(shipBaseHP * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp)
   );
 
-  player.shMax = Math.max(0, Math.floor(Number(stats.bonusShield) || 0));
+  player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield));
   // Absorption officielle du générateur équipé (max monté), défaut 80 %.
   player.shAbsorb = Number(stats.bonusAbsorb) > 0 ? clamp(Number(stats.bonusAbsorb) / 100, 0, 1) : 0.8;
   // Détail des canons du vaisseau (bonus conditionnels vsMatch au tir).
@@ -3394,6 +3530,11 @@ function updateConfigButtons() {
   const active = getActiveConfigNo();
   const left = getConfigCooldownLeft();
 
+  if (ui.cfgToggleBtn) {
+    setHudText(ui.cfgToggleBtn, String(active));
+    setHudClass(ui.cfgToggleBtn, "active", true);
+    setHudDisabled(ui.cfgToggleBtn, left > 0 || player.dead);
+  }
   if (ui.cfg1Btn) {
     setHudClass(ui.cfg1Btn, "active", active === 1);
     setHudDisabled(ui.cfg1Btn, left > 0 || active === 1 || player.dead);
@@ -3447,6 +3588,10 @@ const out = setActiveHangarConfig(hangarId, nextConfig);
 
 ui.cfg1Btn?.addEventListener("click", () => trySwitchConfig(1));
 ui.cfg2Btn?.addEventListener("click", () => trySwitchConfig(2));
+ui.cfgToggleBtn?.addEventListener("click", () => {
+  const current = getActiveConfigNo();
+  trySwitchConfig(current === 1 ? 2 : 1);
+});
 
 function syncPlayerFromAccount() {
   const fresh = getCurrentUserFull();
@@ -4541,6 +4686,91 @@ function tickInstaShield(dt) {
   if (instaShieldT >= INSTA_SHIELD_PACK.dur) instaShieldT = -1;
 }
 
+// ============================================================
+// ✅ BOOSTERS temporaires (boutique + fenêtre Boosters)
+// ============================================================
+function playerBoosterMults() {
+  try {
+    return activeBoosterMults(account.user?.boosters, Date.now());
+  } catch {
+    return { dmg: 1, shield: 1, hp: 1, exp: 1, honor: 1, repair: 1, res: 1, petXp: 1, hit: 0, sreg: 1, box: 1, quest: 1 };
+  }
+}
+
+let boosterPrevSignature = "";
+let boosterWindowRefreshT = 0;
+let boosterResyncT = 0;
+
+function boosterActiveSignature() {
+  const active = account.user?.boosters?.active || {};
+  const counts = account.user?.inventory?.counts || {};
+  const now = Date.now();
+  // Actifs + stocks : un achat (stock seul) re-rend aussi la fenêtre.
+  return BOOSTERS.map((d) => `${Number(active[d.id] || 0) > now ? "1" : "0"}:${Math.max(0, Math.floor(Number(counts[boosterCatalogId(d)] || 0)))}`).join("|");
+}
+
+function tickBoosters(dt) {
+  if (!started) return;
+  // Relecture périodique du compte (achats boutique, autre onglet...) :
+  // les nouveaux boosters s'appliquent aux calculs sous 2 s max.
+  boosterResyncT += dt;
+  if (boosterResyncT >= 2) {
+    boosterResyncT = 0;
+    try {
+      const fresh = getCurrentUserFull();
+      if (fresh && Number(fresh.revision || 0) !== Number(account.user?.revision || 0)) {
+        account.user = fresh;
+        try { applyCurrentConfigStats(true); } catch {}
+      }
+    } catch {}
+  }
+  const now = Date.now();
+  const userBoosters = account.user?.boosters;
+  // Migration du stock résiduel (anciennes versions) : tout part en timer.
+  const counts = account.user?.inventory?.counts;
+  if (userBoosters && counts) {
+    for (const def of BOOSTERS) {
+      const stockKey = `booster_${def.id}`;
+      const stock = Math.max(0, Math.floor(Number(counts[stockKey] || 0)));
+      if (stock <= 0) continue;
+      const current = Number(userBoosters.active?.[def.id] || 0);
+      const base = current > now ? current : now;
+      userBoosters.active ??= {};
+      userBoosters.active[def.id] = base + Math.max(1, Number(def.durationSec) || 0) * 1000 * stock;
+      counts[stockKey] = 0;
+    }
+  }
+  const signature = boosterActiveSignature();
+  if (signature !== boosterPrevSignature) {
+    const prev = boosterPrevSignature;
+    boosterPrevSignature = signature;
+    if (prev !== "") {
+      // Activation ou expiration : on Recalcule les max (bouclier/coque)
+      // en gardant les ratios, on annonce les fins, on sauvegarde.
+      try { applyCurrentConfigStats(true); } catch {}
+      const prevStates = prev.split("|");
+      const nextStates = signature.split("|");
+      if (prevStates.length === nextStates.length) {
+        BOOSTERS.forEach((b, i) => {
+          const wasActive = (prevStates[i] || "").startsWith("1:");
+          const isActive = (nextStates[i] || "").startsWith("1:");
+          if (wasActive && !isActive) showToast(`Booster ${b.name} terminé`, 2.2);
+          if (!wasActive && isActive) showToast(`Booster ${b.name} activé`, 2.2);
+        });
+      }
+      markProgressDirty();
+      saveProgressNow();
+      renderBoosterWindow();
+    }
+  }
+  // Compte à rebours de la fenêtre (1 s).
+  boosterWindowRefreshT += dt;
+  if (boosterWindowRefreshT >= 1) {
+    boosterWindowRefreshT = 0;
+    refreshBoosterCountdowns();
+  }
+}
+
 // Dessiné par-dessus le vaisseau ET toute autre effet de vaisseau.
 function drawInstaShield() {
   if (instaShieldT < 0 || !instaShieldReady || !instaShieldImgs?.length) return;
@@ -4559,6 +4789,108 @@ ctx.save();
     ctx.globalAlpha = 1;
     ctx.drawImage(img, -w / 2, -h / 2, w, h);
     ctx.restore();
+}
+
+// ============================================================
+// ✅ SHIELD SHIMMER - halo de bouclier officiel rejoué par-dessus
+// le vaisseau à intervalle aléatoire (1 à 10 s) tant que la config
+// active a du bouclier, avec le son shieldSelected.
+// ============================================================
+const SHIELD_SHIMMER_PACK = {
+  path: "ASSETS/SHIELD_SHIMMER/",
+  frames: 33,
+  firstNumber: 1,
+  ext: ".png",
+  fps: 24,
+};
+
+let shieldShimmerImgs = [];
+let shieldShimmerReady = false;
+let shieldShimmerT = -1; // progression de l'anim (-1 = inactif)
+let shieldShimmerNext = 10 + Math.random() * 20; // délai avant le prochain jeu (s)
+let shieldShimmerCfg = null; // config suivie (détecte le changement)
+
+function ensureShieldShimmerLoaded() {
+  if (SHIELD_SHIMMER_PACK._promise) return SHIELD_SHIMMER_PACK._promise;
+
+  SHIELD_SHIMMER_PACK._imgs = new Array(SHIELD_SHIMMER_PACK.frames);
+
+  SHIELD_SHIMMER_PACK._promise = (async () => {
+    const jobs = [];
+    for (let i = 0; i < SHIELD_SHIMMER_PACK.frames; i++) {
+      const src = `${SHIELD_SHIMMER_PACK.path}${SHIELD_SHIMMER_PACK.firstNumber + i}${SHIELD_SHIMMER_PACK.ext}`;
+      jobs.push(
+        loadImage(src, { priority: false })
+          .then((img) => (SHIELD_SHIMMER_PACK._imgs[i] = img))
+          .catch(() => (SHIELD_SHIMMER_PACK._imgs[i] = null))
+      );
+    }
+    await Promise.all(jobs);
+    shieldShimmerImgs = SHIELD_SHIMMER_PACK._imgs;
+    shieldShimmerReady = true;
+  })();
+
+  return SHIELD_SHIMMER_PACK._promise;
+}
+
+function tickShieldShimmer(dt) {
+  if (!started || player.dead) {
+    shieldShimmerT = -1;
+    return;
+  }
+  // En combat, le temps est gelé : ni le délai ni l'anim ne progressent,
+  // ça reprend exactement où c'était à la fin du combat.
+  if ((Number(player.combatT) || 0) > 0 || attackActive === true) return;
+  const cfg = getActiveConfigNo();
+  if (cfg !== shieldShimmerCfg) {
+    // Changement de config : on repart vite si la nouvelle a du bouclier.
+    shieldShimmerCfg = cfg;
+    shieldShimmerT = -1;
+    shieldShimmerNext = 1 + Math.random() * 2;
+  }
+  const hasShield = (player.shMax > 0) && (player.sh > 0);
+  if (!hasShield) {
+    // Plus de bouclier : pause. Au retour du bouclier, ça rejoue
+    // dans un délai frais de 10 à 30 s.
+    shieldShimmerT = -1;
+    shieldShimmerNext = 10 + Math.random() * 20;
+    return;
+  }
+  if (shieldShimmerT >= 0) {
+    shieldShimmerT += dt;
+    if (shieldShimmerT >= SHIELD_SHIMMER_PACK.frames / SHIELD_SHIMMER_PACK.fps) shieldShimmerT = -1;
+    return;
+  }
+  shieldShimmerNext -= dt;
+  if (shieldShimmerNext <= 0) {
+    shieldShimmerT = 0;
+    shieldShimmerNext = 10 + Math.random() * 20;
+    ensureShieldShimmerLoaded();
+    SFX.play("shieldSelected");
+  }
+}
+
+// Dessiné par-dessus le vaisseau quand l'anim est en cours,
+// avec fondu d'apparition / disparition.
+function drawShieldShimmer() {
+  if (shieldShimmerT < 0 || !shieldShimmerReady || !shieldShimmerImgs?.length) return;
+
+  const frames = SHIELD_SHIMMER_PACK.frames || shieldShimmerImgs.length;
+  const idx = Math.min(frames - 1, Math.floor(shieldShimmerT * SHIELD_SHIMMER_PACK.fps));
+  const img = shieldShimmerImgs[idx];
+  if (!isImgReady(img)) return;
+
+  const pack = ACTIVE_SHIP || SHIP_PACKS[0];
+  const size = Math.max(pack?.w ?? 170, pack?.h ?? 170) + 30;
+  const dur = frames / SHIELD_SHIMMER_PACK.fps;
+  const fade = 0.3;
+  const alpha = clamp(Math.min(shieldShimmerT / fade, (dur - shieldShimmerT) / fade), 0, 1);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(img, -size / 2, -size / 2, size, size);
+  ctx.restore();
 }
 
 // ============================================================
@@ -5168,10 +5500,10 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
   const oldHpPct = player.hpMax > 0 ? clamp(player.hp / player.hpMax, 0, 1) : 1;
   const oldShPct = player.shMax > 0 ? clamp(player.sh / player.shMax, 0, 1) : 1;
 
-  player.hpMax = Math.max(1, Math.floor(shipBaseHP * (1 + (stats.bonusHPPct || 0) / 100)));
+  player.hpMax = Math.max(1, Math.floor(shipBaseHP * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp));
   player.hp = Math.max(1, Math.floor(player.hpMax * oldHpPct));
 
-  player.shMax = Math.max(0, Math.floor(Number(stats.bonusShield) || 0));
+  player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield));
   player.sh = Math.max(0, Math.floor(player.shMax * oldShPct));
   player.shAbsorb = Number(stats.bonusAbsorb) > 0 ? clamp(Number(stats.bonusAbsorb) / 100, 0, 1) : 0.8;
   player.laserMods = Array.isArray(stats.laserMods) ? stats.laserMods : [];
@@ -5653,8 +5985,10 @@ function tickRepair(dt) {
 
   const oldHp = player.hp;
   const oldSh = player.sh;
-  player.hp = Math.min(player.hpMax, player.hp + player.hpMax * REPAIR.ratePct * REPAIR.tickInterval * tickCount);
-  player.sh = Math.min(player.shMax, player.sh + player.shMax * REPAIR.ratePct * REPAIR.tickInterval * tickCount);
+  const repairMult = playerBoosterMults().repair;
+  const sregMult = playerBoosterMults().sreg;
+  player.hp = Math.min(player.hpMax, player.hp + player.hpMax * REPAIR.ratePct * repairMult * REPAIR.tickInterval * tickCount);
+  player.sh = Math.min(player.shMax, player.sh + player.shMax * REPAIR.ratePct * repairMult * sregMult * REPAIR.tickInterval * tickCount);
 
   if (player.hp >= player.hpMax - 0.01 && player.sh >= player.shMax - 0.01) {
     stopRepairSound({ fadeOut: 0 });
@@ -6977,10 +7311,7 @@ function drawPet(ox, oy) {
     ctx.font = "900 13px ui-sans-serif, system-ui";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "rgba(5,8,20,0.90)";
     const petNameY = PET_DRAW_H / 2 + 10;
-    ctx.strokeText(petPseudo, 0, petNameY);
     ctx.fillStyle = "rgba(255,255,255,0.95)";
     ctx.fillText(petPseudo, 0, petNameY);
     if (petFactionImage?.complete && petFactionImage.naturalWidth > 0) {
@@ -7885,17 +8216,19 @@ function applyCollectableReward(c) {
   const reward = pickExclusiveCollectableReward(cfg.exclusiveRewards) || cfg.reward || cfg.rewards || {};
   const parts = [];
   const goldTerms = [];
+  // Booster Bonus Box : contenu doublé.
+  const boxMult = String(c?.type || "") === "Bonus_Box" ? playerBoosterMults().box : 1;
 
   let changed = false;
 
-  const credits = rollValue(reward.credits, 0);
+  const credits = Math.floor(rollValue(reward.credits, 0) * boxMult);
   if (credits > 0) {
     player.credits += credits;
     parts.push(`+${credits} crédits`);
     changed = true;
   }
 
-  const galaxyEnergy = rollValue(reward.galaxyEnergy, 0);
+  const galaxyEnergy = Math.floor(rollValue(reward.galaxyEnergy, 0) * boxMult);
   if (galaxyEnergy > 0) {
     if (!account.user) loadAccountUser();
     if (account.user) {
@@ -7911,7 +8244,7 @@ function applyCollectableReward(c) {
 
   if (reward.ammo && typeof reward.ammo === "object") {
     for (const key in reward.ammo) {
-      const amount = rollValue(reward.ammo[key], 0);
+      const amount = Math.floor(rollValue(reward.ammo[key], 0) * boxMult);
       if (amount <= 0) continue;
 
       player.ammo[key] = Math.max(0, Number(player.ammo[key]) || 0) + amount;
@@ -7925,8 +8258,10 @@ function applyCollectableReward(c) {
     if (account.user) {
       account.user.inventory ||= {};
       account.user.inventory.resources ||= {};
+      // Booster Ressources : +25 % sur les cargos venus de NPC.
+      const resMult = c?.fromNpc ? playerBoosterMults().res : 1;
       for (const [resourceId, range] of Object.entries(reward.resources)) {
-        const amount = rollValue(range, 0);
+        const amount = Math.floor(rollValue(range, 0) * resMult);
         if (amount <= 0) continue;
         account.user.inventory.resources[resourceId] = Math.max(0, Number(account.user.inventory.resources[resourceId]) || 0) + amount;
         parts.push(`+${formatInteger(amount)} ${getResourceName(resourceId, amount)}`);
@@ -9492,11 +9827,14 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
   // Durée garantie : la roquette touche toujours (ou MISS au contact),
   // jamais d'expiration en vol tant que la cible vit.
   const life = rocketFlightLife(playerRange, speed);
+  // Boosters dégâts : tous les dégâts infligés (officiel), roquettes comprises.
+  const rocketBoosterMults = playerBoosterMults();
   const dmg = (rocket?.damage ?? 1000)
-    * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100);
+    * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100)
+    * rocketBoosterMults.dmg;
   const shotMiss = typeof miss === "boolean"
     ? miss
-    : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (Number(player.laserHitBonusPct || 0) / 100));
+    : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.laserHitBonusPct || 0) + Number(rocketBoosterMults.hit || 0)) / 100));
   const ang = rocket.manual === false
     ? launcherRocketLaunchAngle(player.angle, arcDir, spread)
     : player.angle + spread;
@@ -10187,11 +10525,14 @@ player.volleyCount = (player.volleyCount || 0) + 1;
 let laserBase = player.baseDamage + laserFitVsExtra(player.laserMods, t, player.droneLaserMods);
 laserBase += laserFitUnstableDelta(player.laserMods, player.droneLaserMods);
 const overdrive = laserFitOverdrive(player.laserMods, player.droneLaserMods, player.volleyCount);
-const dmgShot = isSab
-  ? player.baseDamage * SAB50.drainMult
-  : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100);
+// Boosters : dégâts globaux + précision laser.
+const shotBoosterMults = playerBoosterMults();
+const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
+  const dmgShot = isSab
+    ? player.baseDamage * SAB50.drainMult * shotBoosterMults.dmg
+    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg;
 
-  const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (Number(player.laserHitBonusPct || 0) / 100));
+  const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (shotHitBonusPct / 100));
 
   const ang = player.angle;
   const fx = Math.cos(ang), fy = Math.sin(ang);
@@ -12582,6 +12923,8 @@ function update(dt) {
   tickShipDamages(dt);
   tickPulseFx(dt);
   tickInstaShield(dt);
+  tickShieldShimmer(dt);
+  tickBoosters(dt);
 
   for (let i = lasers.length - 1; i >= 0; i--) {
     lasers[i].t += dt;
@@ -13946,6 +14289,9 @@ if (GAME_SETTINGS.textures) {
     // ✅ Insta shield : au-dessus du vaisseau et de tout autre effet (3 s)
     drawInstaShield();
 
+    // ✅ Halo de bouclier officiel rejoué à intervalle aléatoire
+    drawShieldShimmer();
+
     ctx.restore();
     ctx.globalAlpha = 1;
   }
@@ -14199,7 +14545,8 @@ async function prepareGameAssets() {
     // instantané, sans préchargement à la mort.
     jobs.push(...await collectHomeBaseJobs());
     jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensurePulseFxLoaded(),
-      ensureRepairOrbitLoaded(), ensureShipDamageLoaded(), ensureInstaShieldLoaded());
+      ensureRepairOrbitLoaded(), ensureShipDamageLoaded(), ensureInstaShieldLoaded(),
+      ensureShieldShimmerLoaded());
     jobs.push(...preloadCollectables());
     jobs.push(...preloadSafeModuleSprites(rules, WORLD));
     if (GAME_SETTINGS.shipEffect) {

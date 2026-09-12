@@ -515,15 +515,15 @@ test("les trois profondeurs d'étoiles dérivent même avec une caméra immobile
   };
 
   try {
-    const draws = [];
-    const context = new Proxy({}, {
+    const fills = [];
+    const context = new Proxy({ createPattern: () => ({}) }, {
       get: (target, property) => target[property] || ((...args) => {
-        if (property === "drawImage") draws.push(args.slice(0, 3));
+        if (property === "fillRect") fills.push(args.slice(0, 4));
       }),
       set: (target, property, value) => { target[property] = value; return true; },
     });
     const renderAt = elapsedSeconds => {
-      draws.length = 0;
+      fills.length = 0;
       drawParallaxStarfield(context, {
         viewportWidth: 800,
         viewportHeight: 600,
@@ -531,16 +531,16 @@ test("les trois profondeurs d'étoiles dérivent même avec une caméra immobile
         cameraY: 500,
         elapsedSeconds,
       });
-      return draws.map(([src, x, y]) => `${Math.round(x)},${Math.round(y)}`);
+      return fills.map(([x, y, w, h]) => `${Math.round(x)},${Math.round(y)},${Math.round(w)},${Math.round(h)}`);
     };
 
     const initial = renderAt(0);
     const later = renderAt(2);
 
-    assert.ok(tileStars.length > 80, "le sprite pré-rendu contient les étoiles");
+    assert.ok(tileStars.length > 40, "le sprite pré-rendu contient les étoiles");
     assert.equal(new Set(tileStars.map(([, , radius]) => radius.toFixed(1))).size >= 3, true);
-    assert.equal(initial.length >= 3, true, "une tuile dessinée par profondeur");
-    assert.notDeepEqual(later, initial, "le décalage des textures dérive avec le temps");
+    assert.equal(initial.length, 3, "un fill pattern par profondeur");
+    assert.notDeepEqual(later, initial, "le décalage des motifs dérive avec le temps");
   } finally {
     globalThis.document = prevDocument;
   }

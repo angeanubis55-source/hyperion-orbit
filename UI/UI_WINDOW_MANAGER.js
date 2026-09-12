@@ -198,7 +198,7 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
     const dock = getDock();
 
     let btn = dock.querySelector(`[data-window-id="${id}"]`);
-    if (btn) return btn;
+    if (btn) { wireDockIconButton(btn); return btn; }
 
     btn = document.createElement("button");
     btn.type = "button";
@@ -218,8 +218,76 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
     });
 
     dock.appendChild(btn);
+    wireDockIconButton(btn);
 
     return btn;
+  }
+
+  // États officiels des icônes (featuresMenu_texture) : idle / hover /
+  // select doré (fenêtre ouverte). Le nom est lu une fois puis figé en
+  // data-menu-icon (le src change à chaque état).
+  function dockMenuIconName(btn) {
+    const img = btn ? btn.querySelector("span img") : null;
+    if (!img) return null;
+    if (img.dataset.menuIcon) return img.dataset.menuIcon;
+    const match = String(img.getAttribute("src") || "").match(/\/MENU\/([A-Za-z0-9_]+)\.png/i);
+    const base = match ? match[1] : null;
+    if (!base || /_(hover|select)$/i.test(base)) return null;
+    img.dataset.menuIcon = base;
+    return base;
+  }
+
+  function setDockIconVariant(btn, variant) {
+    const img = btn ? btn.querySelector("span img") : null;
+    const name = btn && img ? (img.dataset.menuIcon || dockMenuIconName(btn)) : null;
+    if (!img || !name) return;
+    const key = variant ? `${name}_${variant}` : name;
+    if (img.dataset.iconState === key) return;
+    img.dataset.iconState = key;
+    const base = "ASSETS/UI/MENU/";
+    img.onerror = () => {
+      // Pas de variante officielle (ex : booster) : on reste sur idle.
+      img.onerror = null;
+      img.dataset.iconState = name;
+      img.src = base + name + ".png";
+    };
+    img.src = base + key + ".png";
+  }
+
+  function refreshDockIcon(btn) {
+    if (!btn) return;
+    let hover = false;
+    try { hover = btn.matches(":hover"); } catch {}
+    const active = btn.classList.contains("dockIconActive");
+    setDockIconVariant(btn, active ? "select" : (hover ? "hover" : ""));
+  }
+
+  function wireDockIconButton(btn) {
+    if (!btn || btn.__dockIconWired) return;
+    btn.__dockIconWired = true;
+    const name = dockMenuIconName(btn);
+    if (name) {
+      // Précharge les 3 états pour un survol sans flash.
+      for (const suffix of ["", "_hover", "_select"]) {
+        const pre = new Image();
+        pre.src = `ASSETS/UI/MENU/${name}${suffix}.png`;
+      }
+    }
+    btn.addEventListener("mouseenter", () => refreshDockIcon(btn));
+    btn.addEventListener("mouseleave", () => refreshDockIcon(btn));
+    refreshDockIcon(btn);
+  }
+
+  function wireExistingDockIcons() {
+    getDock().querySelectorAll(".gameDockIcon").forEach(wireDockIconButton);
+  }
+
+  if (typeof document !== "undefined") {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", wireExistingDockIcons, { once: true });
+    } else {
+      wireExistingDockIcons();
+    }
   }
 
 function prepareFloating(card) {
@@ -592,13 +660,21 @@ if (barIcon && minimizable !== false) {
         card.style.display = "block";
         requestAnimationFrame(() => keepWindowInsideViewport(card, { centerIfUnpositioned: true }));
         // Barre des tâches : l'icône reste visible, état actif.
-        if (minimizable !== false) makeDockIcon(id, title, icon)?.classList.add("dockIconActive");
+        if (minimizable !== false) {
+          const dockBtn = makeDockIcon(id, title, icon);
+          dockBtn?.classList.add("dockIconActive");
+          refreshDockIcon(dockBtn);
+        }
       } else {
         root.classList.add("gameWinMinimized");
         card.classList.add("gameWinMinimized");
         root.style.display = "none";
         card.style.display = "none";
-        if (minimizable !== false) makeDockIcon(id, title, icon)?.classList.remove("dockIconActive");
+        if (minimizable !== false) {
+          const dockBtn = makeDockIcon(id, title, icon);
+          dockBtn?.classList.remove("dockIconActive");
+          refreshDockIcon(dockBtn);
+        }
       }
 
       return windows.get(id);
@@ -619,6 +695,7 @@ minimize(id) {
   const preExistingBtn = getDock().querySelector(`[data-window-id="${id}"]`);
   const dockBtn = makeDockIcon(id, w.title, w.icon);
   dockBtn.classList.remove("dockIconActive");
+  refreshDockIcon(dockBtn);
   const cardRect = w.card.getBoundingClientRect();
   const dockRect = dockBtn.getBoundingClientRect();
   w.card.style.setProperty("--dock-x", `${dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)}px`);
@@ -709,7 +786,10 @@ restore(id) {
 
   window.dispatchEvent(new CustomEvent("orbit:window-restored", { detail: { id } }));
 
-  if (dockBtn) dockBtn.classList.add("dockIconActive");
+  if (dockBtn) {
+    dockBtn.classList.add("dockIconActive");
+    refreshDockIcon(dockBtn);
+  }
 },
 
     toggleAll() {
@@ -763,7 +843,9 @@ restore(id) {
     if (w.minimizable === false) {
       if (dockBtn) dockBtn.remove();
     } else {
-      makeDockIcon(id, w.title, w.icon)?.classList.add("dockIconActive");
+      const btn2 = makeDockIcon(id, w.title, w.icon);
+      btn2?.classList.add("dockIconActive");
+      refreshDockIcon(btn2);
     }
 
     if (id === "minimap" && typeof applyMinimapProportions === "function") {

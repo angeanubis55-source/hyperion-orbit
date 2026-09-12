@@ -46,6 +46,7 @@ import { emptyPetFit, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLe
 import { MODULE_ALL_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 import { appendToFitSlots, compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
 import { rarityForCatalogItem } from "../SRC/DATA/CRAFTING.js";
+import { getBooster, formatBoosterDuration } from "../SRC/DATA/BOOSTERS.js";
 import { PATCH_NOTES } from "../SRC/DATA/PATCH_NOTES.js";
 
 // ✅ détecte si index.html (le jeu) est ouvert
@@ -2418,6 +2419,10 @@ if (isShipLike) {
   if (req > 0) statLine += `<p class="shopItemStat">Nécessite le <strong>P.E.T niveau ${req}</strong> (officiel : palier 2 dès niv. 4, palier 3 dès niv. 8).</p>`;
 } else if (it?.petGear) {
   statLine = `<p class="shopItemStat">Gear P.E.T — <strong>${escapeHtml(it.desc || "utilitaire")}</strong> (groupe GEARS, sans stats de combat pour l'instant).</p>`;
+} else if (it?.booster?.id) {
+  const boosterDef = getBooster(it.booster.id);
+  statLine = `<p class="shopItemStat">${escapeHtml(it.desc || "")}</p>`;
+  if (boosterDef) statLine += `<p class="shopItemStat">Durée par activation : <strong>${formatBoosterDuration(boosterDef.durationSec)}</strong> · activation depuis la fenêtre Boosters.</p>`;
 }
 if (isFormation) {
   const formation = DRONE_FORMATIONS.find(entry => entry.id === it?.formation?.id);
@@ -2484,7 +2489,7 @@ if (isDrone) {
     `;
   } else {
     previewHtml = `
-      <img src="${imgSrc}" alt="${it?.name || it?.id}" class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "lasers", "extras", "petGears", "petProtocols"].includes(cat) ? " equipShopImage" : ""}" />
+      <img src="${imgSrc}" alt="${it?.name || it?.id}" class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "lasers", "extras", "petGears", "petProtocols", "boosters"].includes(cat) ? " equipShopImage" : ""}" />
     `;
   }
 

@@ -4,6 +4,7 @@
 import { SHIP_PACKS, getShipDesignBaseId, isRemovedShipPack } from "../../SHIP/SHIP_PACKS.js";
 import { DRONE_FORMATIONS, SPECIAL_DRONE_PRICE, getDroneShopSpritePath } from "../../DRONE/DRONE_TYPES.js";
 import { ROCKET_TYPES, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
+import { BOOSTERS } from "../DATA/BOOSTERS.js";
 
 /**
  * Règle de prix temporaire:
@@ -248,6 +249,16 @@ export const CATALOG = {
     id: `formation_${formation.id}`, name: formation.name, price: formation.price,
     formation: { id: formation.id, minDrones: formation.minDrones, icon: formation.icon },
     icon: formation.icon,
+  })),
+
+  // Boosters officiels (stock consommable, activation depuis la fenêtre Boosters).
+  boosters: BOOSTERS.map((b) => ({
+    id: `booster_${b.id}`,
+    name: `${b.name} (${b.code})`,
+    price: b.price,
+    icon: b.icon,
+    desc: b.desc,
+    booster: { id: b.id },
   })),
 
   // ✅ auto depuis SHIP_PACKS (price propre à chaque vaisseau, fallback heuristique)
