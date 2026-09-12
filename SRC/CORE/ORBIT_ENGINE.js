@@ -40,12 +40,12 @@ import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { findCatalogItem } from "./CATALOG.js";
 import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBoosterDuration, BOOSTERS } from "../DATA/BOOSTERS.js";
-import { CRAFTING_RECIPES } from "../DATA/CRAFTING.js";
+import { CRAFTING_RECIPES, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
 import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
 import { GAME_VERSION } from "../DATA/VERSION.js";
 import { getShipPackById as getShipPackByIdData } from "../../SHIP/SHIP_PACKS.js";
-import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, getActiveDroneFormation, getDroneLevel, getDroneSpritePath } from "../../DRONE/DRONE_TYPES.js";
+import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath } from "../../DRONE/DRONE_TYPES.js";
 import { DRONE_FORMATION_POSITIONS } from "../../DRONE/DRONE_FORMATIONS.js";
 import { PET_XP_SHARE, PET_FUEL_MAX, getPetDamageBonus, getPetLevel, getPetLevelXp, getPetMaxHp, getPetNextLevelXp, getPetShieldBonus, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
 import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./COLLISION.js";
@@ -114,7 +114,7 @@ import {
   COLLECTABLE_SPAWN as DEFAULT_COLLECTABLE_SPAWN,
   COLLECTABLE_TYPES as DEFAULT_COLLECTABLE_TYPES,
 } from "../DATA/COLLECTABLES.js";
-import { getResourceName } from "../DATA/RESOURCES.js";
+import { getResourceName, getResourceIcon } from "../DATA/RESOURCES.js";
 import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { SFX_SOUND_NAMES } from "./SFX.js";
 import { createWorldClock } from "../SIM/WORLD_CLOCK.js";
@@ -1758,7 +1758,12 @@ function registerHudWindows() {
   reg("questOfferWindow", "Terminal de quêtes", menuIcon("quests"), false);
   reg("galaxyGateWindow", "Galaxy Gates", menuIcon("ggBuilder"), false);
   reg("gameLogWindow", "LOG", menuIcon("log"), false);
-  reg("craftingWindow", "Atelier de fabrication", menuIcon("assembly"), false);
+  // Assemblage désactivé (voir CRAFTING_ENABLED) : pas d'icône dock, code conservé.
+  if (CRAFTING_ENABLED) reg("craftingWindow", "Assemblage", menuIcon("assembly"), false);
+  else {
+    document.getElementById("craftingWindow")?.style.setProperty("display", "none", "important");
+    window.GameWindowManager?.close?.("craftingWindow");
+  }
   reg("petWindow", "P.E.T", menuIcon("pet"), false);
   reg("boosterWindow", "Boosters", menuIcon("booster"), false);
   reg("gygerimStatus", "État du boss", menuIcon("worldBoss"), true, { minimizable: false });
@@ -1962,7 +1967,7 @@ function updatePetHud() {
   setHudWidth(ui.petHpBar, `${hpMax > 0 ? (hp / hpMax) * 100 : 0}%`);
   setHudText(ui.petShTxt, `${formatInteger(sh)} / ${formatInteger(shMax)}`);
   setHudWidth(ui.petShBar, `${shMax > 0 ? (sh / shMax) * 100 : 0}%`);
-  if (ui.petShBar?.parentElement) setHudDisplay(ui.petShBar.parentElement, shMax > 0 ? "" : "none");
+  if (ui.petShBar?.parentElement) setHudDisplay(ui.petShBar.closest?.(".petMeter") || ui.petShBar.parentElement, shMax > 0 ? "" : "none");
   setHudText(ui.petXpTxt, `${formatInteger(Math.floor(exp))} / ${formatInteger(next)}`);
   setHudWidth(ui.petXpBar, `${xpPct}%`);
   setHudText(ui.petFuelTxt, `${formatInteger(PET_FUEL_MAX)} / ${formatInteger(PET_FUEL_MAX)}`);
@@ -2004,6 +2009,50 @@ function craftingResourceAmount(user, resourceId) {
 const CRAFTING_DURATION_BY_RARITY = Object.freeze({ common: 2, rare: 5, epic: 10, legendary: 20 });
 let craftingJob = null;
 
+const CRAFTING_FALLBACK_ICON = "/ASSETS/CPU/MICRO_TRANSISTORS_100X100.png";
+
+function craftingAmmoIcon(ammoId) {
+  const key = String(ammoId || "").toUpperCase();
+  return `/ASSETS/ITEMS/AMMO_${key}.png`;
+}
+
+function craftingItemIcon(catalogItemId) {
+  const item = catalogItemId ? findCatalogItem(catalogItemId) : null;
+  if (item?.icon) return item.icon;
+  const id = String(catalogItemId || "");
+  if (id.startsWith("ammo_")) return craftingAmmoIcon(id.slice(5));
+  if (id.startsWith("rocket_")) {
+    try { return rocketShopIcon(id.slice(7)) || CRAFTING_FALLBACK_ICON; } catch { return CRAFTING_FALLBACK_ICON; }
+  }
+  if (id.startsWith("laser_")) return `/ASSETS/LASERS/${id.slice(6)}_100x100.png`;
+  if (id.startsWith("spd_") || id.startsWith("shd_")) return `/ASSETS/ITEMS/${id.slice(4).toUpperCase()}.png`;
+  return CRAFTING_FALLBACK_ICON;
+}
+
+function craftingRecipeMainIcon(recipe) {
+  const out = recipe?.output || {};
+  const resId = Object.keys(out.resources || {})[0];
+  if (resId) return getResourceIcon(resId);
+  const ammoId = Object.keys(out.ammo || {})[0];
+  if (ammoId) return craftingAmmoIcon(ammoId);
+  const rocketId = Object.keys(out.rockets || {})[0];
+  if (rocketId) {
+    try { return rocketShopIcon(rocketId) || CRAFTING_FALLBACK_ICON; } catch { return CRAFTING_FALLBACK_ICON; }
+  }
+  const droneType = Object.keys(out.drones || {})[0];
+  if (droneType) {
+    try { return getDroneShopSpritePath(droneType) || CRAFTING_FALLBACK_ICON; } catch { return CRAFTING_FALLBACK_ICON; }
+  }
+  const formationId = Object.keys(out.formations || {})[0];
+  if (formationId) {
+    const formation = DRONE_FORMATIONS.find(entry => entry.id === formationId);
+    if (formation?.icon) return formation.icon;
+  }
+  const itemId = Object.keys(out.items || {})[0] || recipe?.catalogItemId;
+  if (itemId) return craftingItemIcon(itemId);
+  return CRAFTING_FALLBACK_ICON;
+}
+
 function getCraftingOwnershipBlock(user, recipe, quantity = 1) {
   for (const shipId of Object.keys(recipe?.output?.ships || {})) {
     if (user?.inventory?.ships?.includes(shipId)) return "Vaisseau déjà possédé.";
@@ -2022,62 +2071,129 @@ function getCraftingOwnershipBlock(user, recipe, quantity = 1) {
 }
 
 function describeCraftingCosts(user, recipe, quantity) {
-  const resourceLines = Object.entries(recipe.costs?.resources || {}).map(([id, amount]) => {
+  const rows = Object.entries(recipe.costs?.resources || {}).map(([id, amount]) => {
     const required = Number(amount) * quantity;
     const owned = craftingResourceAmount(user, id);
-    return `<li><span>${escapeHtml(getResourceName(id, required))}</span><strong class="${owned >= required ? "enough" : "missing"}">${formatInteger(owned)} / ${formatInteger(required)}</strong></li>`;
+    const pct = required > 0 ? Math.min(100, Math.round((owned / required) * 100)) : 100;
+    const ok = owned >= required;
+    return `<li class="assemblyCostRow${ok ? " enough" : " missing"}">`
+      + `<img src="${escapeHtml(getResourceIcon(id))}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
+      + `<span class="assemblyCostMeta"><span class="assemblyCostName">${escapeHtml(getResourceName(id, required))}</span>`
+      + `<span class="assemblyCostBar"><i style="width:${pct}%"></i></span></span>`
+      + `<strong>${formatInteger(owned)} / ${formatInteger(required)}</strong></li>`;
   });
   const creditRequired = Number(recipe.costs?.credits || 0) * quantity;
-  resourceLines.push(`<li><span>Cr&eacute;dits</span><strong class="${Number(user.credits || 0) >= creditRequired ? "enough" : "missing"}">${formatInteger(user.credits)} / ${formatInteger(creditRequired)}</strong></li>`);
-  return resourceLines.join("");
+  const creditOwned = Number(user.credits || 0);
+  const creditPct = creditRequired > 0 ? Math.min(100, Math.round((creditOwned / creditRequired) * 100)) : 100;
+  const creditOk = creditOwned >= creditRequired;
+  rows.push(`<li class="assemblyCostRow${creditOk ? " enough" : " missing"}">`
+    + `<span class="assemblyCreditIcon">¢</span>`
+    + `<span class="assemblyCostMeta"><span class="assemblyCostName">Crédits</span>`
+    + `<span class="assemblyCostBar"><i style="width:${creditPct}%"></i></span></span>`
+    + `<strong>${formatInteger(creditOwned)} / ${formatInteger(creditRequired)}</strong></li>`);
+  return rows.join("");
 }
 
-function describeCraftingOutput(map, quantity, labelForId) {
-  return Object.entries(map || {}).map(([id, amount]) =>
-    `<li><span>${escapeHtml(labelForId(id))}</span><strong>${formatInteger(Number(amount) * quantity)}</strong></li>`
-  ).join("");
+function describeCraftingOutputRow(icon, label, amount) {
+  return `<li class="assemblyResultRow">`
+    + `<img src="${escapeHtml(icon)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
+    + `<span>${escapeHtml(label)}</span><strong>×${formatInteger(amount)}</strong></li>`;
+}
+
+function describeCraftingOutputs(recipe, quantity) {
+  const out = recipe?.output || {};
+  const rows = [];
+  for (const [id, amount] of Object.entries(out.resources || {})) {
+    rows.push(describeCraftingOutputRow(getResourceIcon(id), getResourceName(id, Number(amount) * quantity), Number(amount) * quantity));
+  }
+  for (const [id, amount] of Object.entries(out.ammo || {})) {
+    rows.push(describeCraftingOutputRow(craftingAmmoIcon(id), `Munitions ${String(id).toUpperCase()}`, Number(amount) * quantity));
+  }
+  for (const [id, amount] of Object.entries(out.rockets || {})) {
+    let icon = CRAFTING_FALLBACK_ICON;
+    try { icon = rocketShopIcon(id) || CRAFTING_FALLBACK_ICON; } catch { /* noop */ }
+    const def = ROCKET_TYPES[id];
+    rows.push(describeCraftingOutputRow(icon, def?.name || `Roquette ${id}`, Number(amount) * quantity));
+  }
+  for (const [id, amount] of Object.entries(out.items || {})) {
+    rows.push(describeCraftingOutputRow(craftingItemIcon(id), findCatalogItem(id)?.name || id, Number(amount) * quantity));
+  }
+  for (const [type, amount] of Object.entries(out.drones || {})) {
+    let icon = CRAFTING_FALLBACK_ICON;
+    try { icon = getDroneShopSpritePath(type) || CRAFTING_FALLBACK_ICON; } catch { /* noop */ }
+    rows.push(describeCraftingOutputRow(icon, `Drone ${DRONE_TYPES[type]?.name || String(type).toUpperCase()}`, Number(amount) * quantity));
+  }
+  for (const [id, amount] of Object.entries(out.formations || {})) {
+    const formation = DRONE_FORMATIONS.find(entry => entry.id === id);
+    rows.push(describeCraftingOutputRow(formation?.icon || CRAFTING_FALLBACK_ICON, formation?.name || `Formation ${id}`, Number(amount) * quantity));
+  }
+  return rows.join("");
 }
 
 function renderCraftingWindow(message = "") {
+  // Assemblage désactivé : on masque la fenêtre, code conservé pour réactivation.
+  if (!CRAFTING_ENABLED) {
+    document.getElementById("craftingWindow")?.style.setProperty("display", "none", "important");
+    window.GameWindowManager?.close?.("craftingWindow");
+    if (ui.craftingMessage) ui.craftingMessage.textContent = "Assemblage désactivé.";
+    if (ui.craftingBuildBtn) ui.craftingBuildBtn.disabled = true;
+    return;
+  }
   if (!ui.craftingRecipes || !ui.craftingDetail) return;
   const user = getCurrentUserFull();
   if (!user) return;
   account.user = user;
-  let quantity = Math.max(1, Number(ui.craftingQuantity?.value || 1));
-  ui.craftingRecipes.innerHTML = CRAFTING_RECIPES.map(recipe => {
+  const quantity = Math.max(1, Number(ui.craftingQuantity?.value || 1));
+  const RARITY_RANK = { common: 0, rare: 1, epic: 2, legendary: 3 };
+  const visibleRecipes = CRAFTING_RECIPES.filter(recipe => (RARITY_RANK[recipe.rarity] ?? 0) >= 1);
+  if (!visibleRecipes.some(entry => entry.id === selectedCraftingRecipeId)) {
+    selectedCraftingRecipeId = visibleRecipes[0]?.id || CRAFTING_RECIPES[0]?.id || null;
+  }
+  ui.craftingRecipes.innerHTML = `<div class="assemblyTop"><button type="button" class="assemblyArrow" data-assembly-scroll="-1" aria-label="Précédent">◀</button>`
+    + `<div class="assemblyStrip noScrollbar">` + visibleRecipes.map(recipe => {
     const rarity = ITEM_RARITIES[recipe.rarity] || ITEM_RARITIES.common;
     const ownershipBlock = getCraftingOwnershipBlock(user, recipe, 1);
-    return `<button type="button" class="craftingRecipe rarity-${rarity.id}${recipe.id === selectedCraftingRecipeId ? " active" : ""}${ownershipBlock ? " ownedLimit" : ""}" data-recipe-id="${escapeHtml(recipe.id)}" title="${escapeHtml(ownershipBlock)}"${craftingJob ? " disabled" : ""}><span>${escapeHtml(recipe.name)}</span><small>${escapeHtml(ownershipBlock || rarity.name)}</small></button>`;
-  }).join("");
-  const recipe = CRAFTING_RECIPES.find(entry => entry.id === selectedCraftingRecipeId) || CRAFTING_RECIPES[0];
+    const icon = craftingRecipeMainIcon(recipe);
+    const affordable = Object.entries(recipe.costs?.resources || {}).every(([id, amount]) => craftingResourceAmount(user, id) >= Number(amount))
+      && Number(user.credits || 0) >= Number(recipe.costs?.credits || 0);
+    return `<button type="button" class="assemblySquare rarity-${rarity.id}${recipe.id === selectedCraftingRecipeId ? " active" : ""}${ownershipBlock ? " ownedLimit" : ""}${affordable && !ownershipBlock ? "" : " cantAfford"}" data-recipe-id="${escapeHtml(recipe.id)}" title="${escapeHtml(ownershipBlock ? `${recipe.name} — ${ownershipBlock}` : recipe.name)}"${craftingJob ? " disabled" : ""}>`
+      + `<img src="${escapeHtml(icon)}" alt="${escapeHtml(recipe.name)}" loading="lazy" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'"></button>`;
+  }).join("") + `</div><button type="button" class="assemblyArrow" data-assembly-scroll="1" aria-label="Suivant">▶</button></div>`;
+  queueMicrotask(() => {
+    const active = ui.craftingRecipes?.querySelector(".assemblySquare.active");
+    active?.scrollIntoView({ block: "nearest", inline: "center" });
+  });
+  const recipe = CRAFTING_RECIPES.find(entry => entry.id === selectedCraftingRecipeId) || visibleRecipes[0] || CRAFTING_RECIPES[0];
   if (!recipe) return;
   selectedCraftingRecipeId = recipe.id;
-  if (Object.keys(recipe.output?.ships || {}).length && quantity !== 1) {
-    quantity = 1;
-    if (ui.craftingQuantity) ui.craftingQuantity.value = "1";
-  }
   const rarity = ITEM_RARITIES[recipe.rarity] || ITEM_RARITIES.common;
   const costs = describeCraftingCosts(user, recipe, quantity);
-  const outputs = [
-    describeCraftingOutput(recipe.output?.resources, quantity, id => getResourceName(id, Number(recipe.output.resources[id]) * quantity)),
-    describeCraftingOutput(recipe.output?.items, quantity, id => findCatalogItem(id)?.name || id),
-    describeCraftingOutput(recipe.output?.ammo, quantity, id => `Munitions ${id.toUpperCase()}`),
-    describeCraftingOutput(recipe.output?.ships, quantity, id => findCatalogItem(recipe.catalogItemId)?.name || `Vaisseau ${id}`),
-    describeCraftingOutput(recipe.output?.drones, quantity, id => `Drone ${id.toUpperCase()}`),
-    describeCraftingOutput(recipe.output?.formations, quantity, id => `Formation ${id}`),
-  ].join("");
+  const outputs = describeCraftingOutputs(recipe, quantity);
+  const mainIcon = craftingRecipeMainIcon(recipe);
   const baseDuration = CRAFTING_DURATION_BY_RARITY[rarity.id] || 2;
   const duration = baseDuration * quantity;
-  ui.craftingDetail.innerHTML = `<div class="craftingRarity rarity-${rarity.id}">${escapeHtml(rarity.name)}</div><h3>${escapeHtml(recipe.name)}</h3><small class="craftingDuration">Temps de fabrication : ${duration.toFixed(duration % 1 ? 1 : 0)} s</small><div class="craftingColumns"><div><h4>CO&Ucirc;T</h4><ul>${costs}</ul></div><div><h4>R&Eacute;SULTAT</h4><ul>${outputs}</ul></div></div>`;
+  ui.craftingDetail.innerHTML = `<div class="assemblyHead">`
+    + `<img class="assemblyMainIcon rarity-${rarity.id}" src="${escapeHtml(mainIcon)}" alt="" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
+    + `<div><div class="craftingRarity rarity-${rarity.id}">${escapeHtml(rarity.name)}</div><h3>${escapeHtml(recipe.name)}</h3>`
+    + `<small class="craftingDuration">Temps d'assemblage : ${duration.toFixed(duration % 1 ? 1 : 0)} s</small></div></div>`
+    + `<div class="craftingColumns assemblyColumns"><div><h4>CO&Ucirc;T</h4><ul class="assemblyCosts">${costs}</ul></div>`
+    + `<div><h4>R&Eacute;SULTAT</h4><ul class="assemblyResults">${outputs}</ul></div></div>`;
   const canAfford = Number(user.credits || 0) >= Number(recipe.costs?.credits || 0) * quantity
     && Object.entries(recipe.costs?.resources || {}).every(([id, amount]) => craftingResourceAmount(user, id) >= Number(amount) * quantity);
   const ownershipBlock = getCraftingOwnershipBlock(user, recipe, quantity);
   if (ui.craftingBuildBtn) ui.craftingBuildBtn.disabled = !canAfford || Boolean(craftingJob) || Boolean(ownershipBlock);
   if (ui.craftingQuantity) ui.craftingQuantity.disabled = Boolean(craftingJob);
-  if (ui.craftingMessage) ui.craftingMessage.textContent = message || (craftingJob ? "Fabrication en cours..." : ownershipBlock || (canAfford ? "Prêt à fabriquer." : "Ressources insuffisantes."));
+  if (ui.craftingMessage) ui.craftingMessage.textContent = message || (craftingJob ? "Assemblage en cours..." : ownershipBlock || (canAfford ? "Prêt à assembler." : "Ressources insuffisantes."));
 }
 
 ui.craftingRecipes?.addEventListener("click", event => {
+  const scrollBtn = event.target.closest("[data-assembly-scroll]");
+  if (scrollBtn) {
+    const strip = ui.craftingRecipes?.querySelector(".assemblyStrip");
+    const dir = Number(scrollBtn.dataset.assemblyScroll || 1);
+    strip?.scrollBy({ left: dir * 320, behavior: "smooth" });
+    return;
+  }
   const button = event.target.closest("[data-recipe-id]");
   if (!button) return;
   selectedCraftingRecipeId = button.dataset.recipeId;
@@ -2085,6 +2201,7 @@ ui.craftingRecipes?.addEventListener("click", event => {
 });
 ui.craftingQuantity?.addEventListener("change", () => renderCraftingWindow());
 ui.craftingBuildBtn?.addEventListener("click", () => {
+  if (!CRAFTING_ENABLED) return renderCraftingWindow("Assemblage désactivé.");
   if (craftingJob) return;
   const recipe = CRAFTING_RECIPES.find(entry => entry.id === selectedCraftingRecipeId);
   if (!recipe) return;
@@ -2099,7 +2216,7 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
   const durationMs = baseDuration * quantity * 1000;
   craftingJob = { recipe, quantity, startedAt: performance.now(), durationMs };
   if (ui.craftingProgress) ui.craftingProgress.hidden = false;
-  renderCraftingWindow("Fabrication en cours...");
+  renderCraftingWindow("Assemblage en cours...");
   const timer = setInterval(() => {
     if (!craftingJob) return clearInterval(timer);
     const progress = clamp((performance.now() - craftingJob.startedAt) / craftingJob.durationMs, 0, 1);
@@ -2119,10 +2236,10 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
     account.user = result.user;
     syncPlayerFromAccount();
     window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
-    showNotification(`${result.recipe.name} fabriqué`, 2.5, "reward", { goldTerms: [result.recipe.name] });
+    showNotification(`${result.recipe.name} assemblé`, 2.5, "reward", { goldTerms: [result.recipe.name] });
     if (ui.craftingProgress) ui.craftingProgress.hidden = true;
     if (ui.craftingProgressBar) ui.craftingProgressBar.style.width = "0%";
-    renderCraftingWindow(`${result.quantity} fabrication${result.quantity > 1 ? "s" : ""} terminée${result.quantity > 1 ? "s" : ""}.`);
+    renderCraftingWindow(`${result.quantity} assemblage${result.quantity > 1 ? "s" : ""} terminé${result.quantity > 1 ? "s" : ""}.`);
   }, 80);
 });
 window.addEventListener("orbit:window-restored", event => {

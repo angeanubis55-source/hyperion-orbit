@@ -207,16 +207,6 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
     btn.title = title;
     btn.innerHTML = `<span>${icon}</span>`;
 
-    btn.addEventListener("click", () => {
-      const w = windows.get(id);
-      const open = !!w
-        && !w.card.classList.contains("gameWinMinimized")
-        && w.card.style.display !== "none"
-        && w.root.style.display !== "none";
-      if (open) window.GameWindowManager.minimize(id);
-      else window.GameWindowManager.restore(id);
-    });
-
     dock.appendChild(btn);
     wireDockIconButton(btn);
 
@@ -262,6 +252,10 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
     setDockIconVariant(btn, active ? "select" : (hover ? "hover" : ""));
   }
 
+  // Boutons gérés par leur propre logique d'ouverture (overlays profil/boutique/hangars) :
+  // on ne leur ajoute PAS le toggle générique pour éviter un double basculement.
+  const DOCK_ICONS_WITH_CUSTOM_TOGGLE = new Set(["btnGameHub", "btnShopHub", "btnHangarHub"]);
+
   function wireDockIconButton(btn) {
     if (!btn || btn.__dockIconWired) return;
     btn.__dockIconWired = true;
@@ -276,6 +270,22 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
     btn.addEventListener("mouseenter", () => refreshDockIcon(btn));
     btn.addEventListener("mouseleave", () => refreshDockIcon(btn));
     refreshDockIcon(btn);
+    // Toggle générique ouvrir / réduire. S'applique aux boutons créés par le
+    // manager COMME aux boutons déjà présents dans le HTML (ex : Paramètres),
+    // qui n'avaient sinon aucun handler et ne s'ouvraient plus.
+    if (!DOCK_ICONS_WITH_CUSTOM_TOGGLE.has(btn.id)) {
+      btn.addEventListener("click", () => {
+        const windowId = btn.dataset?.windowId;
+        if (!windowId || !window.GameWindowManager) return;
+        const w = windows.get(windowId);
+        const open = !!w
+          && !w.card.classList.contains("gameWinMinimized")
+          && w.card.style.display !== "none"
+          && w.root.style.display !== "none";
+        if (open) window.GameWindowManager.minimize(windowId);
+        else window.GameWindowManager.restore(windowId);
+      });
+    }
   }
 
   function wireExistingDockIcons() {

@@ -79,15 +79,15 @@
 
     <!-- BOX 2 : Économie / progression (toujours) -->
 
-<div id="craftingWindow" class="panel craftingWindow">
-  <div class="craftingLayout">
-    <div id="craftingRecipes" class="craftingRecipes"></div>
-    <section id="craftingDetail" class="craftingDetail"></section>
+<div id="craftingWindow" class="panel craftingWindow assemblyWindow">
+  <div class="craftingLayout assemblyLayout">
+    <div id="craftingRecipes" class="craftingRecipes assemblyLeft"></div>
+    <section id="craftingDetail" class="craftingDetail assemblyDetail"></section>
   </div>
-  <div class="craftingActions">
+  <div class="craftingActions assemblyActions">
     <label for="craftingQuantity">Quantité</label>
     <select id="craftingQuantity"><option value="1">1</option><option value="5">5</option><option value="10">10</option></select>
-    <button id="craftingBuildBtn" type="button">FABRIQUER</button>
+    <button id="craftingBuildBtn" type="button">ASSEMBLER</button>
   </div>
   <div id="craftingProgress" class="craftingProgress" hidden>
     <div><i id="craftingProgressBar"></i></div><strong id="craftingProgressPct">0 %</strong>
@@ -105,9 +105,15 @@
 
     <!-- BOX 3 : HP / Shield (toujours) -->
     <div id="boxVitals" class="panel">
-      <div class="barWrap">
-        <div class="bar hp"><i id="hpBar"></i><span class="barValue" id="hpTxt">0 / 0</span></div>
-        <div class="bar sh"><i id="shBar"></i><span class="barValue" id="shTxt">0 / 0</span></div>
+      <div class="barWrap vitalsMeters">
+        <div class="vitalsMeter">
+          <div class="vitalsMeterTop"><span class="vitalsMeterLabel is-hp">Coque</span><span class="barValue" id="hpTxt">0 / 0</span></div>
+          <div class="bar hp slim"><i id="hpBar"></i></div>
+        </div>
+        <div class="vitalsMeter">
+          <div class="vitalsMeterTop"><span class="vitalsMeterLabel is-sh">Bouclier</span><span class="barValue" id="shTxt">0 / 0</span></div>
+          <div class="bar sh slim"><i id="shBar"></i></div>
+        </div>
         <div class="vitalsControls">
           <div class="row"><span class="k">Vitesse</span><span class="v" id="spdTxt">0</span></div>
           <div class="row configRow">
@@ -306,7 +312,7 @@
         <img id="petSprite" src="./PET/PET_SPRITES/NIVEAU1/21.png" alt="P.E.T">
         <div class="petIdentity">
           <strong id="petNameTxt">P.E.T</strong>
-          <span id="petLevelTxt">Niveau 0</span>
+          <span class="petLevelBadge" id="petLevelTxt">Niveau 0</span>
         </div>
         <button id="petPlayBtn" type="button" title="Activer / désactiver le P.E.T">▶</button>
       </div>
@@ -316,11 +322,23 @@
           <option value="combat">Mode combat</option>
         </select>
       </label>
-      <div class="barWrap">
-        <div class="bar hp"><i id="petHpBar"></i><span class="barValue" id="petHpTxt">0 / 0</span></div>
-        <div class="bar sh"><i id="petShBar"></i><span class="barValue" id="petShTxt">0 / 0</span></div>
-        <div class="bar xp"><i id="petXpBar"></i><span class="barValue" id="petXpTxt">0 / 0</span></div>
-        <div class="bar fuel"><i id="petFuelBar"></i><span class="barValue" id="petFuelTxt">0 / 0</span></div>
+      <div class="barWrap petMeters">
+        <div class="petMeter">
+          <div class="petMeterTop"><span class="petMeterLabel is-hp">Coque</span><span class="barValue" id="petHpTxt">0 / 0</span></div>
+          <div class="bar hp slim"><i id="petHpBar"></i></div>
+        </div>
+        <div class="petMeter">
+          <div class="petMeterTop"><span class="petMeterLabel is-sh">Bouclier</span><span class="barValue" id="petShTxt">0 / 0</span></div>
+          <div class="bar sh slim"><i id="petShBar"></i></div>
+        </div>
+        <div class="petMeter">
+          <div class="petMeterTop"><span class="petMeterLabel is-xp">Expérience</span><span class="barValue" id="petXpTxt">0 / 0</span></div>
+          <div class="bar xp slim"><i id="petXpBar"></i></div>
+        </div>
+        <div class="petMeter">
+          <div class="petMeterTop"><span class="petMeterLabel is-fuel">Carburant</span><span class="barValue" id="petFuelTxt">0 / 0</span></div>
+          <div class="bar fuel slim"><i id="petFuelBar"></i></div>
+        </div>
       </div>
       <div id="petNoPet" class="petNoPet" hidden>Achète ton P.E.T en boutique (onglet P.E.T, 10 M crédits).</div>
     </div>

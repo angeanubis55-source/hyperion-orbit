@@ -1605,25 +1605,24 @@ test("les roquettes vivent assez longtemps pour toujours toucher", async () => {
   assert.ok(rocketLaunchSpeed(700) > rocketLaunchSpeed(100));
 });
 
-test("l'atelier consomme les ressources et sauvegarde chaque fabrication", async () => {
+test("l'atelier désactivé refuse toute fabrication (code conservé)", async () => {
   const { craftCurrentUserRecipe, getCurrentUserFull, updateCurrentUserProgress } = await import("../../SRC/CORE/ACCOUNT.js");
+  const { CRAFTING_ENABLED } = await import("../../SRC/DATA/CRAFTING.js");
+  assert.equal(CRAFTING_ENABLED, false);
   updateCurrentUserProgress({ credits: 1000000, inventory: { resources: { npc_debris: 500 } } });
   const crafted = craftCurrentUserRecipe("refine_debris", 2);
-  assert.equal(crafted.ok, true);
-  const user = getCurrentUserFull();
-  assert.equal(user.credits, 950000);
-  assert.equal(user.inventory.resources.npc_debris, 100);
-  assert.equal(user.inventory.resources.refined_component, 8);
+  assert.equal(crafted.ok, false);
+  assert.equal(crafted.error, "Assemblage désactivé.");
   const rejected = craftCurrentUserRecipe("forge_radion", 1);
   assert.equal(rejected.ok, false);
-  assert.equal(getCurrentUserFull().credits, 950000);
 });
 
 test("l'atelier génère automatiquement une recette pour toute la boutique", async () => {
   const { CRAFTING_RECIPES } = await import("../../SRC/DATA/CRAFTING.js");
   const catalogItems = Object.values(CATALOG).flatMap(items => Array.isArray(items) ? items : []);
-  assert.equal(CRAFTING_RECIPES.length, catalogItems.length + 1);
-  for (const item of catalogItems) {
+  const assemblable = catalogItems.filter(item => !item?.ship?.id && !item?.design?.id && !String(item?.id || "").startsWith("ship_") && !String(item?.id || "").startsWith("design_"));
+  assert.equal(CRAFTING_RECIPES.length, assemblable.length + 1);
+  for (const item of assemblable) {
     const recipe = CRAFTING_RECIPES.find(entry => entry.catalogItemId === item.id);
     assert.ok(recipe, `recette manquante pour ${item.id}`);
     assert.ok(recipe.costs.resources.refined_component >= 1, `composant raffinÃ© manquant pour ${item.id}`);

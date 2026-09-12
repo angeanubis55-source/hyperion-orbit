@@ -3,6 +3,11 @@
 import { CATALOG } from "../CORE/CATALOG.js";
 import { getItemRarity } from "./ITEM_RARITIES.js";
 
+// Interrupteur global de l'assemblage.
+// false = désactivé (caché + fabrication refusée), true = réactivé.
+// Le code est conservé tel quel pour une réactivation facile.
+export const CRAFTING_ENABLED = false;
+
 export function rarityForCatalogItem(item) {
   const explicit = getItemRarity(item).id;
   if (explicit !== "common") return explicit;
@@ -35,15 +40,15 @@ function resourceCostsForItem(item, rarity) {
 
 function recipeFromCatalog(item) {
   const rarity = rarityForCatalogItem(item);
-  const output = item?.ship?.id
-    ? { ships: { [item.ship.id]: 1 } }
-    : item?.drone?.type
-      ? { drones: { [item.drone.type]: 1 } }
-      : item?.formation?.id
-        ? { formations: { [item.formation.id]: 1 } }
-    : item?.give?.ammo
-      ? { ammo: { ...item.give.ammo } }
-      : { items: { [item.id]: 1 } };
+  const output = item?.drone?.type
+    ? { drones: { [item.drone.type]: 1 } }
+    : item?.formation?.id
+      ? { formations: { [item.formation.id]: 1 } }
+      : item?.give?.ammo
+        ? { ammo: { ...item.give.ammo } }
+        : item?.give?.rockets
+          ? { rockets: { ...item.give.rockets } }
+          : { items: { [item.id]: 1 } };
   return Object.freeze({
     id: `craft_${item.id}`,
     catalogItemId: item.id,
@@ -57,9 +62,19 @@ function recipeFromCatalog(item) {
   });
 }
 
+function isAssemblableCatalogItem(item) {
+  if (!item?.id) return false;
+  // ❌ Atelier façon assemblage DarkOrbit : pas de vaisseaux ni de designs.
+  if (item?.ship?.id) return false;
+  if (item?.design?.id) return false;
+  if (String(item?.id || "").startsWith("ship_")) return false;
+  if (String(item?.id || "").startsWith("design_")) return false;
+  return true;
+}
+
 const catalogRecipes = Object.values(CATALOG)
   .flatMap(items => Array.isArray(items) ? items : [])
-  .filter(item => item?.id)
+  .filter(isAssemblableCatalogItem)
   .map(recipeFromCatalog);
 
 export const CRAFTING_RECIPES = Object.freeze([

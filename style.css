@@ -168,18 +168,39 @@ html.orbitSessionReady #loadingOverlay{
 #gygerimStatus.gameWindow > .gameWinBar{ margin:0 -11px 8px !important; }
 #gygerimStatus.gameWindow .gygerimTitle{ cursor:default; touch-action:auto; }
 
-#craftingWindow{ display:none; width:720px; max-height:490px; padding:0 12px 10px; pointer-events:auto; }
+#craftingWindow{ display:none; width:860px; max-height:620px; padding:0 12px 10px; pointer-events:auto; }
 #craftingWindow.gameWindow > .gameWinBar{ margin:0 -12px 12px !important; }
-.craftingLayout{ height:315px; min-height:0; display:grid; grid-template-columns:220px 1fr; gap:10px; }
-.craftingRecipes{ min-height:0; display:flex; flex-direction:column; gap:6px; overflow-y:auto; }
-.craftingRecipe{ padding:10px; display:flex; justify-content:space-between; gap:8px; border:1px solid rgba(124,240,255,.14); border-left:3px solid var(--rarity,#a9bcc7); color:#dcecf5; background:#061521; text-align:left; }
-.craftingRecipe.active{ background:#0a2637; box-shadow:inset 0 0 18px rgba(0,217,255,.1); }
+.craftingLayout{ height:440px; min-height:0; display:flex; flex-direction:column; gap:10px; }
+.craftingRecipes{ min-height:0; display:flex; flex-direction:column; gap:8px; overflow:visible; padding-right:2px; }
+.craftingRecipe{ padding:8px; display:flex; align-items:center; gap:10px; border:1px solid rgba(124,240,255,.14); border-left:3px solid var(--rarity,#a9bcc7); color:#dcecf5; background:#061521; text-align:left; cursor:pointer; }
+.craftingRecipe img{ width:42px; height:42px; object-fit:contain; background:#020b12; border:1px solid rgba(124,240,255,.18); flex:none; }
+.craftingRecipe.active{ background:#0a2637; box-shadow:inset 0 0 18px rgba(0,217,255,.12); border-color:rgba(0,217,255,.45); }
+.craftingRecipe.cantAfford img{ filter:grayscale(.6); opacity:.75; }
+.assemblyTop{ display:flex; gap:8px; align-items:stretch; }
+.assemblyStrip{ flex:1; min-width:0; display:flex; gap:8px; overflow-x:auto; padding:8px; border:1px solid rgba(124,240,255,.14); background:#040e16; scrollbar-width:none; -ms-overflow-style:none; }
+.assemblyStrip::-webkit-scrollbar{ display:none; height:0; }
+.assemblyStrip.noScrollbar{ scrollbar-width:none; }
+.assemblySquare{ width:62px; height:62px; flex:none; display:grid; place-items:center; padding:4px; background:#061521; border:2px solid var(--rarity,#a9bcc7); cursor:pointer; }
+.assemblySquare img{ width:50px; height:50px; object-fit:contain; }
+.assemblySquare.active{ background:#0a2c42; box-shadow:0 0 0 2px rgba(0,217,255,.6), inset 0 0 14px rgba(0,217,255,.15); }
+.assemblySquare.cantAfford img{ filter:grayscale(.6); opacity:.75; }
+.assemblySquare.ownedLimit{ opacity:.45; filter:grayscale(1); }
+.assemblyArrow{ width:36px; flex:none; border:1px solid rgba(124,240,255,.3); background:#082436; color:#7df0ff; font-size:15px; cursor:pointer; }
+.assemblyArrow:hover{ background:#0d3a54; }
+.craftingDetail{ flex:1; min-height:0; }
+.assemblyItemMeta{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.assemblyItemName{ font-size:12px; font-weight:800; color:#eaf6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.assemblyItemMeta small{ font-size:9px; text-transform:uppercase; letter-spacing:.6px; }
+.assemblyDot{ width:9px; height:9px; border-radius:50%; background:#5a6d78; flex:none; }
+.assemblyDot.ok{ background:#35e07a; box-shadow:0 0 8px rgba(53,224,122,.7); }
+.assemblyHead{ display:flex; gap:14px; align-items:center; margin-bottom:12px; padding:10px; border:1px solid rgba(124,240,255,.14); background:rgba(0,0,0,.22); }
+.assemblyMainIcon{ width:76px; height:76px; object-fit:contain; background:#020b12; border:2px solid var(--rarity,#a9bcc7); padding:4px; flex:none; }
 .craftingRecipe small,.craftingRarity{ color:var(--rarity,#a9bcc7); font-weight:900; }
 .craftingDetail{ min-height:0; padding:14px; overflow-y:auto; border:1px solid rgba(124,240,255,.17); background:linear-gradient(145deg,#071b29,#04111b); }
-.craftingDetail h3{ margin:4px 0 17px; font-size:20px; color:#f0f9ff; }
-.craftingDuration{ display:block; margin:-14px 0 16px; color:#7897a9; font-size:9px; }
+.craftingDetail h3{ margin:2px 0 4px; font-size:19px; color:#f0f9ff; }
+.craftingDuration{ display:block; color:#7897a9; font-size:10px; }
 .craftingRarity{ text-transform:uppercase; letter-spacing:1px; font-size:9px; }
-.craftingColumns{ display:grid; grid-template-columns:1fr; gap:10px; }
+.craftingColumns{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .craftingColumns > div{ padding:12px; border:1px solid rgba(124,240,255,.12); background:rgba(0,0,0,.16); }
 .craftingColumns h4{ margin:0 0 8px; color:#6fdff5; font-size:10px; }
 .craftingColumns ul{ margin:0; padding:0; list-style:none; }
@@ -189,7 +210,24 @@ html.orbitSessionReady #loadingOverlay{
 .craftingActions{ display:grid; grid-template-columns:auto 90px 1fr; gap:8px; align-items:center; margin-top:10px; padding:9px; border:1px solid rgba(124,240,255,.14); }
 .craftingActions label{ color:#8eabbc; font-size:10px; font-weight:900; }
 .craftingActions select,.craftingActions button{ height:36px; border:1px solid rgba(124,240,255,.3); color:#eaf8ff; background:#082436; }
-.craftingActions button{ font-weight:1000; }.craftingActions button:disabled{ opacity:.38; }
+.craftingActions button{ font-weight:1000; letter-spacing:1px; background:linear-gradient(180deg,#0d3a54,#082436); border-color:rgba(0,217,255,.5); cursor:pointer; }
+.craftingActions button:hover:not(:disabled){ background:linear-gradient(180deg,#12547a,#0a3249); }
+.craftingActions button:disabled{ opacity:.38; }
+.assemblyCosts,.assemblyResults{ display:flex; flex-direction:column; gap:6px; }
+.assemblyCostRow,.assemblyResultRow{ display:grid; grid-template-columns:38px 1fr auto; gap:8px; align-items:center; padding:6px; border:1px solid rgba(255,255,255,.06); background:rgba(255,255,255,.02); }
+.assemblyCostRow img,.assemblyResultRow img{ width:36px; height:36px; object-fit:contain; background:#020b12; border:1px solid rgba(124,240,255,.16); }
+.assemblyCostRow.enough{ border-color:rgba(53,224,122,.25); }
+.assemblyCostRow.missing{ border-color:rgba(255,90,120,.35); }
+.assemblyCostRow strong,.assemblyResultRow strong{ font-size:11px; }
+.assemblyCostRow.enough strong{ color:#9deab4; }
+.assemblyCostRow.missing strong{ color:#ff8799; }
+.assemblyResultRow strong{ color:#ffd56a; }
+.assemblyCostMeta{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.assemblyCostName{ font-size:11px; color:#cfe8f5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.assemblyCostBar{ display:block; height:6px; border-radius:999px; background:#03101a; border:1px solid rgba(124,240,255,.18); overflow:hidden; }
+.assemblyCostBar i{ display:block; height:100%; background:linear-gradient(90deg,#08a9d4,#6eeaff); }
+.assemblyCostRow.missing .assemblyCostBar i{ background:linear-gradient(90deg,#b32040,#ff7a95); }
+.assemblyCreditIcon{ width:36px; height:36px; display:grid; place-items:center; font-weight:1000; color:#ffd56a; background:#020b12; border:1px solid rgba(255,213,106,.35); }
 .craftingMessage{ min-height:15px; padding-top:7px; color:#89a9ba; font-size:10px; text-align:center; }
 .craftingProgress{ grid-template-columns:1fr 48px; gap:9px; align-items:center; margin-top:8px; }
 .craftingProgress:not([hidden]){ display:grid; }
@@ -2142,126 +2180,231 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   padding-bottom:10px !important;
 }
 
-#boxVitals.gameWindow .barWrap{
+#boxVitals .barWrap.vitalsMeters{
   margin-top:0 !important;
-  padding:9px 12px 11px !important;
+  padding:9px 12px 9px !important;
+  display:grid !important;
   gap:7px !important;
 }
 
-#boxVitals.gameWindow .bar{
-  position:relative;
-  height:22px;
-  overflow:hidden;
-  isolation:isolate;
+#boxVitals .vitalsMeter{
+  display:grid;
+  gap:3px;
+  min-width:0;
 }
 
-#boxVitals.gameWindow .bar > i{
+#boxVitals .vitalsMeterTop{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:8px;
+  min-width:0;
+}
+
+#boxVitals .vitalsMeterLabel{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  color:#8fb2be;
+  font-size:9.5px;
+  font-weight:800;
+  letter-spacing:1.1px;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+
+#boxVitals .vitalsMeterLabel::before{
+  content:"";
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  flex:0 0 auto;
+  background:#789cac;
+}
+#boxVitals .vitalsMeterLabel.is-hp::before{ background:#ff6b7d; box-shadow:0 0 6px rgba(255,107,125,.6); }
+#boxVitals .vitalsMeterLabel.is-sh::before{ background:#4fd8f7; box-shadow:0 0 6px rgba(79,216,247,.6); }
+
+#boxVitals .bar.slim{
+  position:relative;
+  height:6px;
+  overflow:hidden;
+  isolation:isolate;
+  border-radius:999px;
+  background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.09);
+}
+
+#boxVitals .bar.slim > i{
   position:absolute;
   inset:0 auto 0 0;
   z-index:0;
+  height:100%;
+  border-radius:999px;
   transition:width .18s ease;
 }
 
-#boxVitals.gameWindow .barValue{
-  position:absolute;
-  inset:0;
-  z-index:1;
-  display:grid;
-  place-items:center;
-  color:#f4fbff;
-  font-size:11px;
-  font-weight:950;
+#boxVitals .barValue{
+  position:static;
+  inset:auto;
+  display:block;
+  color:#cfe8ef;
+  font-size:10px;
+  font-weight:700;
   font-variant-numeric:tabular-nums;
-  text-shadow:0 1px 2px rgba(0,0,0,.95),0 0 5px rgba(0,0,0,.85);
+  text-shadow:none;
+  opacity:.85;
+  white-space:nowrap;
   pointer-events:none;
 }
 
-/* Fenêtre P.E.T en jeu : mêmes barres que l'état du vaisseau. */
+/* Fenêtre P.E.T en jeu : version fine et élégante. */
 #petWindow.gameWindow{
-  width:320px !important;
+  width:272px !important;
   max-width:calc(100vw - 28px) !important;
 }
-#petWindow.gameWindow .barWrap{
+#petWindow.gameWindow .barWrap.petMeters{
   margin-top:0 !important;
-  padding:9px 12px 11px !important;
+  padding:2px 12px 12px !important;
+  display:grid !important;
   gap:7px !important;
 }
+#petWindow.gameWindow .petMeter{
+  display:grid;
+  gap:3px;
+  min-width:0;
+}
+#petWindow.gameWindow .petMeterTop{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:8px;
+  min-width:0;
+}
+#petWindow.gameWindow .petMeterLabel{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  color:#8fb2be;
+  font-size:9.5px;
+  font-weight:800;
+  letter-spacing:1.1px;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+#petWindow.gameWindow .petMeterLabel::before{
+  content:"";
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  flex:0 0 auto;
+  background:#789cac;
+  box-shadow:0 0 6px rgba(255,255,255,.15);
+}
+#petWindow.gameWindow .petMeterLabel.is-hp::before{ background:#ff6b7d; box-shadow:0 0 6px rgba(255,107,125,.6); }
+#petWindow.gameWindow .petMeterLabel.is-sh::before{ background:#4fd8f7; box-shadow:0 0 6px rgba(79,216,247,.6); }
+#petWindow.gameWindow .petMeterLabel.is-xp::before{ background:#9d7bff; box-shadow:0 0 6px rgba(157,123,255,.6); }
+#petWindow.gameWindow .petMeterLabel.is-fuel::before{ background:#5fd97c; box-shadow:0 0 6px rgba(95,217,124,.55); }
 
-#petWindow.gameWindow .bar{
-  position:relative;
-  height:22px;
-  overflow:hidden;
-  isolation:isolate;
+#petWindow.gameWindow .barValue{
+  position:static;
+  inset:auto;
+  display:block;
+  color:#cfe8ef;
+  font-size:10px;
+  font-weight:700;
+  font-variant-numeric:tabular-nums;
+  text-shadow:none;
+  opacity:.85;
+  white-space:nowrap;
+  pointer-events:none;
 }
 
-#petWindow.gameWindow .bar > i{
+#petWindow.gameWindow .bar.slim{
+  position:relative;
+  height:6px;
+  overflow:hidden;
+  isolation:isolate;
+  border-radius:999px;
+  background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.09);
+}
+
+#petWindow.gameWindow .bar.slim > i{
   position:absolute;
   inset:0 auto 0 0;
   z-index:0;
+  height:100%;
+  border-radius:999px;
   transition:width .18s ease;
-}
-
-#petWindow.gameWindow .barValue{
-  position:absolute;
-  inset:0;
-  z-index:1;
-  display:grid;
-  place-items:center;
-  color:#f4fbff;
-  font-size:11px;
-  font-weight:950;
-  font-variant-numeric:tabular-nums;
-  text-shadow:0 1px 2px rgba(0,0,0,.95),0 0 5px rgba(0,0,0,.85);
-  pointer-events:none;
 }
 
 #petWindow .petHeader{
   display:flex;
   align-items:center;
   gap:10px;
-  padding:10px 12px 6px;
+  padding:10px 12px 8px;
 }
 
 #petWindow #petSprite{
-  width:46px;
-  height:46px;
+  width:40px;
+  height:40px;
   object-fit:contain;
   flex:0 0 auto;
+  display:block;
 }
 
 #petWindow .petIdentity{
   display:grid;
-  gap:2px;
+  gap:3px;
   flex:1 1 auto;
   min-width:0;
 }
 
 #petWindow .petIdentity strong{
   color:#effcff;
-  font-size:14px;
+  font-size:13px;
+  line-height:1.1;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
-#petWindow .petIdentity span{
-  color:#789cac;
-  font-size:11px;
+#petWindow .petIdentity .petLevelBadge{
+  justify-self:start;
+  color:#8fe6f7;
+  background:rgba(105,233,255,.1);
+  border:1px solid rgba(105,233,255,.25);
+  font-size:9.5px;
+  font-weight:800;
+  letter-spacing:.6px;
+  padding:1px 7px;
+  border-radius:999px;
+  line-height:1.5;
 }
 
 #petWindow #petPlayBtn{
   flex:0 0 auto;
-  width:44px;
-  height:44px;
-  border-radius:50%;
-  border:1px solid rgba(105,233,255,.4);
-  background:#06121c;
-  color:#70e7fa;
-  font-size:18px;
+  width:38px;
+  height:30px;
+  border-radius:8px;
+  border:1px solid rgba(100,200,255,.28);
+  background:rgba(255,255,255,.06);
+  color:rgba(232,244,255,.75);
+  font-size:13px;
+  font-weight:900;
+  line-height:1;
+  display:grid;
+  place-items:center;
   cursor:pointer;
+  transition:border-color .15s ease, box-shadow .15s ease, background .15s ease, color .15s ease;
 }
 
+#petWindow #petPlayBtn:hover{ border-color:rgba(0,217,255,.75); color:#fff; }
 #petWindow #petPlayBtn.isOn{
-  background:#0d4c62;
-  color:#effdff;
-  box-shadow:0 0 12px rgba(105,233,255,.35);
+  background:rgba(0,217,255,.25);
+  border-color:rgba(0,217,255,.75);
+  color:#fff;
+  box-shadow:0 0 12px rgba(0,217,255,.28);
 }
 
 #petWindow #petPlayBtn:disabled{
@@ -2273,11 +2416,12 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   display:flex;
   align-items:center;
   gap:8px;
-  padding:2px 12px 4px;
+  padding:0 12px 8px;
   color:#789cac;
-  font-size:11px;
-  font-weight:900;
+  font-size:10px;
+  font-weight:800;
   letter-spacing:1px;
+  text-transform:uppercase;
 }
 
 #petWindow .petModeRow select{
@@ -2285,14 +2429,16 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   min-width:0;
   background:#06121c;
   color:#eafaff;
-  border:1px solid rgba(105,233,255,.22);
-  border-radius:3px;
-  padding:5px 8px;
-  font-size:12px;
+  border:1px solid rgba(105,233,255,.2);
+  border-radius:5px;
+  padding:4px 7px;
+  font-size:11px;
+  text-transform:none;
+  letter-spacing:0;
 }
 
 #petWindow .petNoPet{
-  padding:10px 12px 12px;
+  padding:8px 12px 12px;
   color:#789cac;
   font-size:11px;
   text-align:center;

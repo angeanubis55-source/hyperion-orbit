@@ -9,7 +9,7 @@ import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.
 import { compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
-import { getCraftingRecipe } from "../DATA/CRAFTING.js";
+import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { ROCKET_TYPES } from "../../COMBAT/ROCKET_TYPES.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../../DRONE/DRONE_TYPES.js";
 import { createPet, emptyPetFit, getPetLevel, getPetMaxHp, getPetSlots, getPetShieldBonus, normalizePetMode, normalizePetPseudo, PET_DEFAULT_PSEUDO, PET_FUEL_MAX, PET_SLOTS } from "../../PET/PET_TYPES.js";
@@ -2214,6 +2214,8 @@ export function saveHangarStateById(hangarId, x, y, mapId, hpPct, shPct) {
 }
 
 export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
+  // Assemblage désactivé (voir CRAFTING_ENABLED) : refusé, code conservé.
+  if (!CRAFTING_ENABLED) return { ok: false, error: "Assemblage désactivé." };
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const recipe = getCraftingRecipe(recipeId);
@@ -2253,6 +2255,10 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
     u.inventory.resources[resourceId] = Math.max(0, Number(u.inventory.resources[resourceId] || 0) + Number(unitAmount || 0) * quantity);
   }
   for (const [itemId, unitAmount] of Object.entries(recipe.output?.items || {})) incCount(u, itemId, Number(unitAmount || 0) * quantity);
+  for (const [rocketId, unitAmount] of Object.entries(recipe.output?.rockets || {})) {
+    u.rockets ??= {};
+    u.rockets[rocketId] = Math.max(0, Math.floor(Number(u.rockets[rocketId] || 0) + Number(unitAmount || 0) * quantity));
+  }
   for (const shipId of Object.keys(recipe.output?.ships || {})) {
     u.inventory.ships ??= [];
     u.hangars ??= [];

@@ -41,7 +41,12 @@ export function updateResourceHud(ui, player) {
   setWidth(ui.hpBar, `${clamp(player.hpMax ? player.hp / player.hpMax * 100 : 0, 0, 100)}%`);
   const shieldWidth = `${clamp(shieldMax ? player.sh / shieldMax * 100 : 0, 0, 100)}%`;
   setWidth(ui.shBar, shieldWidth);
-  if (ui.shBar?.parentElement) setDisplay(ui.shBar.parentElement, shieldMax > 0 ? "" : "none");
+  // Toujours visible : affiche 0 quand pas de bouclier (ne plus cacher la barre).
+  if (ui.shBar?.parentElement) setDisplay(ui.shBar.parentElement, "");
+  if (ui.shBar?.closest) {
+    const meter = ui.shBar.closest(".vitalsMeter");
+    if (meter) setDisplay(meter, "");
+  }
 }
 
 export function updateProgressHud(ui, stats, levelInfo) {

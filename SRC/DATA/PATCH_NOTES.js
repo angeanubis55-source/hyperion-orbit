@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.171",
+    "date": "2026-09-12T21:08:10+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.170",
     "date": "2026-09-12T20:13:14+02:00",
     "message": "boosters: couleurs lexique, icones famille, hauteur fenetre + config toggle unique"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.112",
     "date": "2026-09-06T04:32:11+02:00",
     "message": "Synchronise la version du jeu (61a175fd)"
-  },
-  {
-    "version": "0.111",
-    "date": "2026-09-06T04:31:54+02:00",
-    "message": "feat: robot réparateur mobile (4 coins, rotation, éclairs vers le vaisseau), sons réparation/radiation/mort et arrêt sonore net"
   }
 ];
