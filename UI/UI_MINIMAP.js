@@ -129,26 +129,41 @@ export function renderMinimap(context, options) {
     context.fill();
   }
 
-  context.fillStyle = "rgba(124,240,255,1)";
+  // Joueur : lignes horizontale + verticale sur toute la mini-carte.
+  const playerX = player.x * scaleX;
+  const playerY = player.y * scaleY;
+  context.save();
+  context.strokeStyle = "rgba(150,155,165,1)";
+  context.lineWidth = 0.5;
   context.beginPath();
-  context.arc(player.x * scaleX, player.y * scaleY, 3.2, 0, Math.PI * 2);
-  context.fill();
+  context.moveTo(0, playerY);
+  context.lineTo(width, playerY);
+  context.moveTo(playerX, 0);
+  context.lineTo(playerX, height);
+  context.stroke();
+  context.restore();
 
   if (moveTarget?.active && !player.dead) {
     const targetX = moveTarget.x * scaleX;
     const targetY = moveTarget.y * scaleY;
     context.save();
-    context.globalAlpha = 0.85;
-    context.lineWidth = 2;
+    context.globalAlpha = 0.35;
+    context.lineWidth = 1;
     context.strokeStyle = "rgba(124,240,255,0.75)";
     context.beginPath();
     context.moveTo(player.x * scaleX, player.y * scaleY);
     context.lineTo(targetX, targetY);
     context.stroke();
-    context.fillStyle = "rgba(124,240,255,0.95)";
+    // Destination : petite croix discrète, pas de boule.
+    const crossArm = 4;
+    context.globalAlpha = 0.6;
+    context.lineWidth = 1;
     context.beginPath();
-    context.arc(targetX, targetY, 3.2, 0, Math.PI * 2);
-    context.fill();
+    context.moveTo(targetX - crossArm, targetY);
+    context.lineTo(targetX + crossArm, targetY);
+    context.moveTo(targetX, targetY - crossArm);
+    context.lineTo(targetX, targetY + crossArm);
+    context.stroke();
     context.restore();
   }
 
@@ -170,7 +185,8 @@ export function renderMinimap(context, options) {
     context.restore();
   }
 
-  context.strokeStyle = "rgba(124,240,255,0.6)";
+  context.strokeStyle = "rgba(124,240,255,0.25)";
+  context.lineWidth = 1;
   context.strokeRect(
     (camera.x - viewportWidth / 2) * scaleX,
     (camera.y - viewportHeight / 2) * scaleY,

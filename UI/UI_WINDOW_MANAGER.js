@@ -164,6 +164,7 @@ function clearSavedWindowPositions() {
       option,
       a,
       canvas,
+      .gameWinIcon,
       .slot,
       .slotBox,
       .itemRow,
@@ -207,7 +208,13 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
     btn.innerHTML = `<span>${icon}</span>`;
 
     btn.addEventListener("click", () => {
-      window.GameWindowManager.restore(id);
+      const w = windows.get(id);
+      const open = !!w
+        && !w.card.classList.contains("gameWinMinimized")
+        && w.card.style.display !== "none"
+        && w.root.style.display !== "none";
+      if (open) window.GameWindowManager.minimize(id);
+      else window.GameWindowManager.restore(id);
     });
 
     dock.appendChild(btn);
@@ -288,6 +295,19 @@ function prepareFloating(card) {
 
     canvas.style.width = "100%";
     canvas.style.height = `${canvasH}px`;
+
+    // Le bitmap suit la taille affichée (× DPR) : sinon le navigateur
+    // étire un bitmap 300x205 fixe et tout devient flou dès qu'on
+    // agrandit avec +.
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const cssW = Math.max(1, Math.round(canvas.clientWidth || w));
+    const cssH = Math.max(1, Math.round(canvas.clientHeight || canvasH));
+    const nextW = Math.round(cssW * dpr);
+    const nextH = Math.round(cssH * dpr);
+    if (canvas.width !== nextW || canvas.height !== nextH) {
+      canvas.width = nextW;
+      canvas.height = nextH;
+    }
   }
 }
 
@@ -319,14 +339,24 @@ function makeMinimapResizable(id, card) {
   const zoomActions = card.querySelector(".miniZoomActions");
   const windowBar = card.querySelector(":scope > .gameWinBar");
   const minimizeButton = windowBar?.querySelector(".gameWinMinBtn:not(.miniZoomBtn)");
-  if (zoomActions && windowBar) windowBar.insertBefore(zoomActions, minimizeButton || null);
+  if (zoomActions && windowBar) {
+    const zoomBar = zoomActions.parentElement;
+    windowBar.insertBefore(zoomActions, minimizeButton || null);
+    // La barre d'origine est vide après le déplacement : on la masque
+    // pour supprimer le trait entre "Map : X-X" et la mini-carte.
+    if (zoomBar && zoomBar !== windowBar) zoomBar.style.display = "none";
+  }
 
   const resizeFromButton = (delta) => {
     prepareFloating(card);
     const rect = card.getBoundingClientRect();
     const minW = 220;
-    const maxW = Math.max(minW, Math.min(620, window.innerWidth - rect.left - 14));
-    applyMinimapProportions(card, Math.max(minW, Math.min(rect.width + delta, maxW)));
+    // Largeur max absolue (viewport) : on grandit toujours, puis on
+    // recale la fenêtre pour qu'elle reste entièrement visible,
+    // même collée contre un bord droit / bas.
+    const hardMaxW = Math.max(minW, Math.min(620, window.innerWidth - 28));
+    applyMinimapProportions(card, Math.max(minW, Math.min(rect.width + delta, hardMaxW)));
+    keepWindowInsideViewport(card);
     saveWindowPosition(id, card);
   };
 
@@ -523,6 +553,23 @@ if (minBtn) minBtn.onclick = (e) => {
   window.GameWindowManager.minimize(id);
 };
 
+// Clic sur l'icône de la barre = comme le bouton réduire (toggle).
+const barIcon = bar.querySelector(".gameWinIcon");
+if (barIcon && minimizable !== false) {
+  barIcon.title = "Réduire / Restaurer";
+  barIcon.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const current = windows.get(id);
+    const open = !!current
+      && !current.card.classList.contains("gameWinMinimized")
+      && current.card.style.display !== "none"
+      && current.root.style.display !== "none";
+    if (open) window.GameWindowManager.minimize(id);
+    else window.GameWindowManager.restore(id);
+  };
+}
+
       const state = windows.get(id) || {};
       windows.set(id, {
         ...state,
@@ -544,14 +591,14 @@ if (minBtn) minBtn.onclick = (e) => {
         root.style.display = "block";
         card.style.display = "block";
         requestAnimationFrame(() => keepWindowInsideViewport(card, { centerIfUnpositioned: true }));
-        const existingDockButton = getDock().querySelector(`[data-window-id="${id}"]`);
-        if (existingDockButton) existingDockButton.remove();
+        // Barre des tâches : l'icône reste visible, état actif.
+        if (minimizable !== false) makeDockIcon(id, title, icon)?.classList.add("dockIconActive");
       } else {
         root.classList.add("gameWinMinimized");
         card.classList.add("gameWinMinimized");
         root.style.display = "none";
         card.style.display = "none";
-        makeDockIcon(id, title, icon);
+        if (minimizable !== false) makeDockIcon(id, title, icon)?.classList.remove("dockIconActive");
       }
 
       return windows.get(id);
@@ -567,7 +614,11 @@ minimize(id) {
   clearTimeout(w.animationIconTimer);
   w.card.classList.remove("gameWinOpening");
   w.card.classList.add("gameWinClosing");
+  // Barre des tâches : si l'icône est déjà rangée dans le dock, on ne
+  // rejoue pas son animation d'arrivée (ça faisait glitcher).
+  const preExistingBtn = getDock().querySelector(`[data-window-id="${id}"]`);
   const dockBtn = makeDockIcon(id, w.title, w.icon);
+  dockBtn.classList.remove("dockIconActive");
   const cardRect = w.card.getBoundingClientRect();
   const dockRect = dockBtn.getBoundingClientRect();
   w.card.style.setProperty("--dock-x", `${dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)}px`);
@@ -579,14 +630,17 @@ minimize(id) {
   w.card.style.setProperty("--dock-y-mid", `${(dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)) * 0.58}px`);
   w.card.style.setProperty("--dock-x-near", `${(dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)) * 0.68}px`);
   w.card.style.setProperty("--dock-y-near", `${(dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)) * 0.68}px`);
-  dockBtn.classList.add("dockIconFromWindow");
-  dockBtn.style.setProperty("--icon-start-x", `${cardRect.left + cardRect.width / 2 - dockRect.width / 2}px`);
-  dockBtn.style.setProperty("--icon-start-y", `${cardRect.top + cardRect.height / 2 - dockRect.height / 2}px`);
-  dockBtn.style.setProperty("--icon-end-x", `${dockRect.left}px`);
-  dockBtn.style.setProperty("--icon-end-y", `${dockRect.top}px`);
-  dockBtn.style.width = `${dockRect.width}px`;
-  dockBtn.style.height = `${dockRect.height}px`;
-  dockBtn.style.opacity = "0";
+  w.dockBtnAnimated = !preExistingBtn;
+  if (w.dockBtnAnimated) {
+    dockBtn.classList.add("dockIconFromWindow");
+    dockBtn.style.setProperty("--icon-start-x", `${cardRect.left + cardRect.width / 2 - dockRect.width / 2}px`);
+    dockBtn.style.setProperty("--icon-start-y", `${cardRect.top + cardRect.height / 2 - dockRect.height / 2}px`);
+    dockBtn.style.setProperty("--icon-end-x", `${dockRect.left}px`);
+    dockBtn.style.setProperty("--icon-end-y", `${dockRect.top}px`);
+    dockBtn.style.width = `${dockRect.width}px`;
+    dockBtn.style.height = `${dockRect.height}px`;
+    dockBtn.style.opacity = "0";
+  }
   w.animationTimer = setTimeout(() => {
 
   // ✅ root et card sont parfois le même élément, mais on sécurise les deux
@@ -595,8 +649,10 @@ minimize(id) {
 
   w.root.style.display = "none";
     w.card.style.display = "none";
-    dockBtn.classList.remove("dockIconFromWindow");
-    dockBtn.removeAttribute("style");
+    if (w.dockBtnAnimated) {
+      dockBtn.classList.remove("dockIconFromWindow");
+      dockBtn.removeAttribute("style");
+    }
 
   }, 380);
 },
@@ -653,7 +709,7 @@ restore(id) {
 
   window.dispatchEvent(new CustomEvent("orbit:window-restored", { detail: { id } }));
 
-  if (dockBtn) dockBtn.remove();
+  if (dockBtn) dockBtn.classList.add("dockIconActive");
 },
 
     toggleAll() {
@@ -704,7 +760,11 @@ restore(id) {
     bringWindowToFront(card);
 
     const dockBtn = dock.querySelector(`[data-window-id="${id}"]`);
-    if (dockBtn) dockBtn.remove();
+    if (w.minimizable === false) {
+      if (dockBtn) dockBtn.remove();
+    } else {
+      makeDockIcon(id, w.title, w.icon)?.classList.add("dockIconActive");
+    }
 
     if (id === "minimap" && typeof applyMinimapProportions === "function") {
       requestAnimationFrame(() => {

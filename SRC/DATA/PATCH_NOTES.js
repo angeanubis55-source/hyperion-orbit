@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.168",
+    "date": "2026-09-12T14:16:45+02:00",
+    "message": "hangars: cartes compactes grille + preview animee retiree"
+  },
+  {
     "version": "0.167",
     "date": "2026-09-12T05:09:41+02:00",
     "message": "hangars: suppression sidebar, fenetre pleine largeur"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.109",
     "date": "2026-09-06T03:13:42+02:00",
     "message": "assets: ajout de nouveaux sons et effets (ambiance, bouclier, IEM, bombe, roquettes, mort, réapparition...) et mise à jour des tirs existants"
-  },
-  {
-    "version": "0.108",
-    "date": "2026-09-06T02:03:39+02:00",
-    "message": "Synchronise la version du jeu (129b02ce)"
   }
 ];

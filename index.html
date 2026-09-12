@@ -33,7 +33,7 @@
 <div id="gameWindowDock">
   <div class="sessionDockMenu">
     <button id="btnSessionMenu" class="gameDockIcon logoutDockIcon" type="button" title="Session" aria-label="Menu de session" aria-expanded="false">
-      <span>⏻</span>
+      <span><img src="ASSETS/UI/MENU/logout.png" alt="" draggable="false"></span>
     </button>
     <div id="sessionMenu" class="sessionMenu" role="menu">
       <button id="btnLogout" type="button" role="menuitem">Déconnexion</button>
@@ -42,13 +42,13 @@
   </div>
   <span class="gameDockSeparator" aria-hidden="true"></span>
   <button id="btnGameHub" class="gameDockIcon profileDockIcon" data-window-id="profileWindow" type="button" title="Profil" aria-label="Profil">
-    <span>👤</span>
+    <span><img src="ASSETS/UI/MENU/user.png" alt="" draggable="false"></span>
   </button>
   <button id="btnHangarHub" class="gameDockIcon hangarDockIcon" data-window-id="hangarWindow" type="button" title="Hangars" aria-label="Hangars">
-    <span>🚀</span>
+    <span><img src="ASSETS/UI/MENU/hangar.png" alt="" draggable="false"></span>
   </button>
   <button id="btnShopHub" class="gameDockIcon shopDockIcon" data-window-id="shopWindow" type="button" title="Boutique" aria-label="Boutique">
-    <span>🛒</span>
+    <span><img src="ASSETS/UI/MENU/shop.png" alt="" draggable="false"></span>
   </button>
 </div>
   
@@ -66,14 +66,6 @@
     </div>
   </div>
 
-    <!-- BOX 1 : Infos (Gate only) -->
-    <div id="boxWave" class="panel">
-      <div class="row"><span class="k">Vague</span><span class="v" id="waveTxt">—</span></div>
-      <div class="row"><span class="k">À apparaître</span><span class="v" id="spawnLeftTxt">—</span></div>
-      <div class="row"><span class="k">En vie</span><span class="v" id="aliveTxt">—</span></div>
-      <div class="row" style="margin-top:6px;"><span class="k">Kills</span><span class="v" id="kills">0</span></div>
-    </div>
-
     <div id="gygerimStatus" class="panel" aria-label="État du boss">
       <div id="bossStatusTitle" class="gygerimTitle">BOSS</div>
       <div class="bossVitals barWrap">
@@ -83,9 +75,6 @@
     </div>
 
     <!-- BOX 2 : Économie / progression (toujours) -->
-<div id="escortWindow" class="panel escortWindow">
-  <div id="escortWindowBody" class="escortWindowBody"></div>
-</div>
 
 <div id="craftingWindow" class="panel craftingWindow">
   <div class="craftingLayout">

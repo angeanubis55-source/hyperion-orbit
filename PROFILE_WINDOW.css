@@ -22,7 +22,7 @@
   padding: 0 !important;
   display: grid !important;
   grid-template-columns: 290px minmax(0, 1fr) !important;
-  grid-template-rows: 30px minmax(0, 1fr) !important;
+  grid-template-rows: 26px minmax(0, 1fr) !important;
   gap: 0 !important;
   overflow: hidden !important;
   color: #e8f4ff !important;
@@ -48,8 +48,8 @@ html body #profileOverlay #profileWindow.gameWindow:not(.floating) {
 #profileOverlay #profileWindow.gameWindow > .gameWinBar {
   grid-column: 1 / -1 !important;
   grid-row: 1 !important;
-  height: 30px !important;
-  min-height: 30px !important;
+  height: 26px !important;
+  min-height: 26px !important;
   margin: 0 !important;
   padding: 0 8px !important;
   display: flex !important;
@@ -67,6 +67,8 @@ html body #profileOverlay #profileWindow.gameWindow:not(.floating) {
   width: auto !important;
   height: auto !important;
   display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   border: 0 !important;
   background: transparent !important;
   font-size: 15px !important;
@@ -82,16 +84,16 @@ html body #profileOverlay #profileWindow.gameWindow:not(.floating) {
 }
 
 html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn {
-  width: 22px !important;
-  height: 22px !important;
-  min-width: 22px !important;
-  min-height: 22px !important;
-  margin: 0 0 0 auto !important;
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  min-height: 26px !important;
+  margin: 0 -8px 0 auto !important;
   padding: 0 !important;
   display: grid !important;
   place-items: center !important;
   border: 1px solid rgba(124,240,255,.28) !important;
-  border-radius: 8px !important;
+  border-radius: 0 13px 0 0 !important;
   background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.16), rgba(0,70,100,.10)) !important;
   color: rgba(232,244,255,.95) !important;
   font: 1000 15px/1 system-ui !important;
@@ -100,7 +102,6 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
 }
 
 html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover {
-  transform: scale(1.06) !important;
   border-color: rgba(124,240,255,.58) !important;
   background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.20), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.24), rgba(0,70,100,.18)) !important;
   box-shadow: 0 0 16px rgba(0,217,255,.20), inset 0 0 0 1px rgba(255,255,255,.05) !important;
@@ -1045,7 +1046,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #fitCard .shipModEquippedBadge { margin-left: auto !important; padding: 4px 6px !important; border: 1px solid rgba(174, 202, 210, .25) !important; border-radius: 3px !important; color: rgba(216, 232, 237, .78) !important; font-size: 7px !important; font-weight: 900 !important; letter-spacing: .5px !important; }
 
 @media (max-width: 650px) {
-  #profileOverlay #profileWindow.gameWindow { grid-template-columns: 1fr !important; grid-template-rows: 30px auto minmax(0,1fr) !important; }
+  #profileOverlay #profileWindow.gameWindow { grid-template-columns: 1fr !important; grid-template-rows: 26px auto minmax(0,1fr) !important; }
   #profileOverlay .profileHeaderCard { grid-column: 1 !important; grid-row: 2 !important; padding: 8px !important; gap: 8px !important; border-right: 0 !important; border-bottom: 1px solid rgba(124,240,255,.16) !important; }
   #profileOverlay .profileHeaderTop { display: none !important; }
   #profileOverlay .profileTabs { flex-direction: row !important; }
@@ -2074,7 +2075,7 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
   padding: 0 !important;
   display: grid !important;
   grid-template-columns: 290px minmax(0, 1fr) !important;
-  grid-template-rows: 30px minmax(0, 1fr) !important;
+  grid-template-rows: 26px minmax(0, 1fr) !important;
   gap: 0 !important;
   overflow: hidden !important;
   color: #e8f4ff !important;
@@ -2096,8 +2097,8 @@ html body #shopOverlay #shopWindow.gameWindow:not(.floating) {
 #shopOverlay #shopWindow.gameWindow > .gameWinBar {
   grid-column: 1 / -1 !important;
   grid-row: 1 !important;
-  height: 30px !important;
-  min-height: 30px !important;
+  height: 26px !important;
+  min-height: 26px !important;
   margin: 0 !important;
   padding: 0 8px !important;
   display: flex !important;
@@ -2114,6 +2115,8 @@ html body #shopOverlay #shopWindow.gameWindow:not(.floating) {
   width: auto !important;
   height: auto !important;
   display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   border: 0 !important;
   background: transparent !important;
   font-size: 15px !important;
@@ -2127,16 +2130,16 @@ html body #shopOverlay #shopWindow.gameWindow:not(.floating) {
   letter-spacing: .35px !important;
 }
 html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn {
-  width: 22px !important;
-  height: 22px !important;
-  min-width: 22px !important;
-  min-height: 22px !important;
-  margin: 0 0 0 auto !important;
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  min-height: 26px !important;
+  margin: 0 -8px 0 auto !important;
   padding: 0 !important;
   display: grid !important;
   place-items: center !important;
   border: 1px solid rgba(124,240,255,.28) !important;
-  border-radius: 8px !important;
+  border-radius: 0 13px 0 0 !important;
   background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.16), rgba(0,70,100,.10)) !important;
   color: rgba(232,244,255,.95) !important;
   font: 1000 15px/1 system-ui !important;
@@ -2328,13 +2331,19 @@ html body #shopOverlay .shipPreviewContainer { width: 100% !important; height: 2
 #shopOverlay .shopPreview .shopItemStat { margin: 8px 0 !important; color: rgba(209,231,243,.72) !important; }
 #shopOverlay .shopPreview .shopItemStat strong { margin-left: 5px !important; color: #75e8ff !important; font-size: 13px !important; }
 #shopOverlay .shopAmmoOwned { margin: 8px 0 !important; color: rgba(225,241,249,.82) !important; font-size: 12px !important; }
-/* Ligne d'achat + menu déroulant quantité : identique à avant */
+/* Ligne d'achat + quantité (saisie libre + menu déroulant) : identique à avant */
 #shopOverlay .shopPurchaseRow { margin: 14px 0 0 !important; padding: 14px 4px !important; display: grid !important; grid-template-columns: minmax(160px,1fr) 110px !important; align-items: center !important; gap: 18px !important; border-top: 1px solid rgba(124,240,255,.15) !important; }
 #shopOverlay .shopPurchaseInfo { min-width: 0 !important; display: grid !important; gap: 8px !important; }
 #shopOverlay .shopPurchaseInfo > label { color: rgba(225,241,249,.78) !important; font-size: 11px !important; font-weight: 850 !important; }
 #shopOverlay .shopPurchaseRow > select { width: 110px !important; height: 36px !important; padding: 0 30px 0 12px !important; box-sizing: border-box !important; outline: 0 !important; border: 1px solid rgba(124,240,255,.30) !important; border-radius: 7px !important; color: #effcff !important; background: #051521 !important; font: 900 12px/1 system-ui !important; text-align: center !important; cursor: pointer !important; }
 #shopOverlay .shopPurchaseRow > select:focus { border-color: #69e9ff !important; }
 #shopOverlay .shopPurchaseRow > select option { color: #effcff !important; background: #071622 !important; }
+#shopOverlay .shopQuantityBox { width: 110px !important; display: grid !important; gap: 6px !important; }
+#shopOverlay .shopQuantityBox > input { width: 100% !important; height: 36px !important; padding: 0 8px !important; box-sizing: border-box !important; outline: 0 !important; border: 1px solid rgba(124,240,255,.30) !important; border-radius: 7px !important; color: #effcff !important; background: #051521 !important; font: 900 12px/1 system-ui !important; text-align: center !important; }
+#shopOverlay .shopQuantityBox > input:focus { border-color: #69e9ff !important; }
+#shopOverlay .shopQuantityBox > select { width: 100% !important; height: 30px !important; padding: 0 26px 0 10px !important; box-sizing: border-box !important; outline: 0 !important; border: 1px solid rgba(124,240,255,.30) !important; border-radius: 7px !important; color: #effcff !important; background: #051521 !important; font: 900 11px/1 system-ui !important; text-align: center !important; cursor: pointer !important; }
+#shopOverlay .shopQuantityBox > select:focus { border-color: #69e9ff !important; }
+#shopOverlay .shopQuantityBox > select option { color: #effcff !important; background: #071622 !important; }
 #shopOverlay .shopPurchasePrice { min-width: 0 !important; display: grid !important; gap: 3px !important; text-align: left !important; }
 #shopOverlay .shopPurchasePrice > span { color: rgba(204,228,241,.48) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
 #shopOverlay .shopPurchasePrice strong { color: #72efff !important; font-size: 13px !important; white-space: nowrap !important; }
@@ -2374,7 +2383,7 @@ body #shopOverlay .shopRow img.formationShopRowImage { width: 72px !important; h
   #shopOverlay #shopWindowPanel .shopLayout { grid-template-columns: 250px minmax(0,1fr) !important; }
 }
 @media (max-width: 650px) {
-  #shopOverlay #shopWindow.gameWindow { grid-template-columns: 1fr !important; grid-template-rows: 30px auto minmax(0,1fr) !important; }
+  #shopOverlay #shopWindow.gameWindow { grid-template-columns: 1fr !important; grid-template-rows: 26px auto minmax(0,1fr) !important; }
   #shopOverlay .profileHeaderCard { grid-column: 1 !important; grid-row: 2 !important; padding: 8px !important; border-right: 0 !important; border-bottom: 1px solid rgba(124,240,255,.16) !important; }
   #shopOverlay .profileTabs { flex-direction: row !important; overflow-x: auto !important; }
   #shopOverlay .profileTabs .tabBtn { justify-content: center !important; }
@@ -2651,7 +2660,7 @@ html body #shopOverlay .moduleHistoryRerollBtn:disabled{ opacity:.35 !important;
   padding: 0 !important;
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) !important;
-  grid-template-rows: 30px minmax(0, 1fr) !important;
+  grid-template-rows: 26px minmax(0, 1fr) !important;
   gap: 0 !important;
   overflow: hidden !important;
   color: #e8f4ff !important;
@@ -2673,8 +2682,8 @@ html body #hangarOverlay #hangarWindow.gameWindow:not(.floating) {
 #hangarOverlay #hangarWindow.gameWindow > .gameWinBar {
   grid-column: 1 / -1 !important;
   grid-row: 1 !important;
-  height: 30px !important;
-  min-height: 30px !important;
+  height: 26px !important;
+  min-height: 26px !important;
   margin: 0 !important;
   padding: 0 8px !important;
   display: flex !important;
@@ -2691,6 +2700,8 @@ html body #hangarOverlay #hangarWindow.gameWindow:not(.floating) {
   width: auto !important;
   height: auto !important;
   display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   border: 0 !important;
   background: transparent !important;
   font-size: 15px !important;
@@ -2704,16 +2715,16 @@ html body #hangarOverlay #hangarWindow.gameWindow:not(.floating) {
   letter-spacing: .35px !important;
 }
 html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
-  width: 22px !important;
-  height: 22px !important;
-  min-width: 22px !important;
-  min-height: 22px !important;
-  margin: 0 0 0 auto !important;
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  min-height: 26px !important;
+  margin: 0 -8px 0 auto !important;
   padding: 0 !important;
   display: grid !important;
   place-items: center !important;
   border: 1px solid rgba(124,240,255,.28) !important;
-  border-radius: 8px !important;
+  border-radius: 0 13px 0 0 !important;
   background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.16), rgba(0,70,100,.10)) !important;
   color: rgba(232,244,255,.95) !important;
   font: 1000 15px/1 system-ui !important;
@@ -3013,7 +3024,7 @@ body #hangarOverlay button.secondary:hover:not(:disabled){
   body #hangarOverlay .hangarWorkspace { grid-template-columns:minmax(0,1fr) !important; gap:9px !important; }
 }
 @media (max-width: 650px) {
-  #hangarOverlay #hangarWindow.gameWindow { grid-template-columns:1fr !important; grid-template-rows:30px minmax(0,1fr) !important; }
+  #hangarOverlay #hangarWindow.gameWindow { grid-template-columns:1fr !important; grid-template-rows:26px minmax(0,1fr) !important; }
   body #hangarOverlay .profileMainCard { grid-column:1 !important; grid-row:2 !important; padding:8px !important; }
   body #hangarOverlay .profilePanel.active { padding:12px !important; }
   body #hangarOverlay .hangarWorkspace { grid-template-columns:1fr !important; overflow-y:auto !important; }

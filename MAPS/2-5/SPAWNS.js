@@ -114,7 +114,7 @@ export function getZonePortals(WORLD) {
 
 export function getZoneSafeModules() {
   return { zone: null, beacons: [], modules: [
-    { id: "QUEST_EIC_25", x: 1950, y: 5470, w: 515, h: 728, spr: "QUEST_EIC" },
+    { id: "QUEST_EIC_25", x: 1950, y: 5470, w: 515, h: 728, spr: "QUEST_EIC", safeRadius: 400 },
   ] };
 }
 

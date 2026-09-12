@@ -26,6 +26,41 @@ function cachedPattern(context, image, repeat) {
   return entry[key];
 }
 
+// ---------------------------------------------------------------
+// Fond de carte : les images de map font 2100x1310 jusqu'à
+// 4096x2604 (10+ Mo). Les tuiler en pleine résolution à chaque
+// frame via createPattern + fillRect plein écran sature le
+// fillrate GPU (surtout avec le blend "lighter" et un DPR à 2).
+// On tuile donc une version réduite (max 1024 px), pré-rendue UNE
+// seule fois : visuellement quasi identique (fond à alpha 0.85,
+// parallaxe 0.02), mais 4x à 16x moins de texels par frame.
+// ---------------------------------------------------------------
+const MAX_TILE_SIZE = 1024;
+const downsizedCache = new WeakMap();
+
+function tilingSource(image) {
+  if (!image) return null;
+  const w = image.naturalWidth || image.width || 0;
+  const h = image.naturalHeight || image.height || 0;
+  if (!w || !h) return image;
+  if (Math.max(w, h) <= MAX_TILE_SIZE) return image;
+  let small = downsizedCache.get(image);
+  if (!small) {
+    const scale = MAX_TILE_SIZE / Math.max(w, h);
+    small = document.createElement("canvas");
+    small.width = Math.max(1, Math.round(w * scale));
+    small.height = Math.max(1, Math.round(h * scale));
+    const c = small.getContext("2d");
+    // Qualité haute ici uniquement : c'est un pré-rendu unique,
+    // pas un coût par frame.
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = "high";
+    c.drawImage(image, 0, 0, small.width, small.height);
+    downsizedCache.set(image, small);
+  }
+  return small;
+}
+
 export function drawBackgroundLayerSet(context, layers, options) {
   if (!context || !layers?.length) return;
   const { offsetX, offsetY, viewportWidth, viewportHeight, getImage, isImageReady } = options;
@@ -37,10 +72,11 @@ export function drawBackgroundLayerSet(context, layers, options) {
     context.save();
     context.globalAlpha = clamp(layer.alpha ?? 1, 0, 1);
     if (layer.blend) context.globalCompositeOperation = layer.blend;
-    const imageWidth = image.naturalWidth || image.width || 1;
-    const imageHeight = image.naturalHeight || image.height || 1;
     if (layer.mode === "tile") {
-      const pattern = cachedPattern(context, image, "repeat");
+      // Version réduite (mise en cache) : le motif tient dans le
+      // cache texture GPU au lieu de saturer le fillrate.
+      const tiling = tilingSource(image);
+      const pattern = cachedPattern(context, tiling, "repeat");
       if (pattern) {
         context.translate(parallaxX, parallaxY);
         context.fillStyle = pattern;
@@ -49,13 +85,15 @@ export function drawBackgroundLayerSet(context, layers, options) {
       context.restore();
       continue;
     }
+    // Mode cover/contain (aucun layer actuel ne l'utilise) : on garde le
+    // smoothing par défaut du canvas, pas de "high" forcé chaque frame.
+    const imageWidth = image.naturalWidth || image.width || 1;
+    const imageHeight = image.naturalHeight || image.height || 1;
     const scaleX = viewportWidth / imageWidth;
     const scaleY = viewportHeight / imageHeight;
     const scale = layer.mode === "contain" ? Math.min(scaleX, scaleY) : Math.max(scaleX, scaleY);
     const width = imageWidth * scale;
     const height = imageHeight * scale;
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
     context.drawImage(image, (viewportWidth - width) * 0.5 + parallaxX, (viewportHeight - height) * 0.5 + parallaxY, width, height);
     context.restore();
   }
@@ -75,55 +113,69 @@ function starHash(x, y, seed) {
 
 /**
  * Champ d'étoiles à trois profondeurs. Chaque profondeur est pré-rendue une
- * seule fois dans un canvas offscreen tuilable (les étoiles sont déterministes,
- * aucune ne scintille ni ne saute entre deux frames). À chaque frame, on ne fait
- * que décaler les textures (parallaxe + dérive) via drawImage, ce qui évite de
- * redessiner ~600 arcs par image.
+ * seule fois dans un PETIT canvas offscreen (512x512) strictement périodique :
+ * chaque étoile débordant d'un bord est redessinée de l'autre côté, donc le
+ * motif se répète sans couture. À chaque frame, on ne fait qu'UN fillRect avec
+ * un pattern répété par couche (3 passes plein écran avec une texture 512²
+ * qui tient dans le cache GPU), au lieu de 12 drawImage d'un tile de la
+ * taille de l'écran.
+ *
+ * Ancien coût (1080p, DPR 2) : 12 drawImage de ~2500x1500 mis à l'échelle
+ * x2 en mode "lighter" + un cache qui se reconstruisait à chaque resize
+ * sans jamais être purgé (fuite mémoire).
+ * Nouveau coût : 3 fills d'un motif 512², cache borné à 3 entrées, aucun
+ * rebuild au resize. Même densité d'étoiles, mêmes parallaxes/dérives.
  */
-const STARFIELD_TILE_MARGIN = 3;
+const STAR_TILE = 512;
 const starfieldCache = new Map();
 
-function buildStarLayer(layer, layerIndex, viewportWidth, viewportHeight) {
-  const spacing = layer.spacing;
-  const cellsW = Math.ceil(viewportWidth / spacing) + STARFIELD_TILE_MARGIN * 2;
-  const cellsH = Math.ceil(viewportHeight / spacing) + STARFIELD_TILE_MARGIN * 2;
-  const tileW = Math.max(1, cellsW * spacing);
-  const tileH = Math.max(1, cellsH * spacing);
+function buildStarTile(layer, layerIndex) {
+  // Grille N x N calée sur 512 pour une périodicité exacte. L'écart avec
+  // `spacing` d'origine est < 11 %, la densité d'étoiles est conservée.
+  const cells = Math.max(1, Math.round(STAR_TILE / layer.spacing));
+  const cell = STAR_TILE / cells;
   const canvas = document.createElement("canvas");
-  canvas.width = Math.ceil(tileW);
-  canvas.height = Math.ceil(tileH);
+  canvas.width = STAR_TILE;
+  canvas.height = STAR_TILE;
   const c = canvas.getContext("2d");
   c.save();
   c.globalCompositeOperation = "lighter";
-  for (let row = 0; row < cellsH; row++) {
-    for (let col = 0; col < cellsW; col++) {
-      const jitterX = starHash(col, row, layerIndex * 7 + 1) * spacing;
-      const jitterY = starHash(col, row, layerIndex * 7 + 2) * spacing;
-      let x = (col * spacing + jitterX) % tileW;
-      let y = (row * spacing + jitterY) % tileH;
-      if (x < 0) x += tileW;
-      if (y < 0) y += tileH;
+  for (let row = 0; row < cells; row++) {
+    for (let col = 0; col < cells; col++) {
+      const x = col * cell + starHash(col, row, layerIndex * 7 + 1) * cell;
+      const y = row * cell + starHash(col, row, layerIndex * 7 + 2) * cell;
       const brightness = 0.62 + starHash(col, row, layerIndex * 7 + 3) * 0.38;
       const radius = layer.radius * (0.72 + starHash(col, row, layerIndex * 7 + 4) * 0.55);
       c.globalAlpha = layer.alpha * brightness;
       c.fillStyle = layerIndex === 2 ? "#dff8ff" : "#b8dded";
-      c.beginPath();
-      c.arc(x, y, radius, 0, Math.PI * 2);
-      c.fill();
+      // Dessin wrappé 3x3 : le motif est parfaitement tuilable.
+      for (let oy = -STAR_TILE; oy <= STAR_TILE; oy += STAR_TILE) {
+        for (let ox = -STAR_TILE; ox <= STAR_TILE; ox += STAR_TILE) {
+          const px = x + ox;
+          const py = y + oy;
+          if (px < -radius || py < -radius || px > STAR_TILE + radius || py > STAR_TILE + radius) continue;
+          c.beginPath();
+          c.arc(px, py, radius, 0, Math.PI * 2);
+          c.fill();
+        }
+      }
     }
   }
   c.restore();
-  return { canvas, tileW, tileH };
+  return canvas;
 }
 
-function getStarLayer(layer, layerIndex, viewportWidth, viewportHeight) {
-  const key = `${layerIndex}:${Math.round(viewportWidth)}:${Math.round(viewportHeight)}`;
-  let tile = starfieldCache.get(key);
+function getStarTile(layer, layerIndex) {
+  let tile = starfieldCache.get(layerIndex);
   if (!tile) {
-    tile = buildStarLayer(layer, layerIndex, viewportWidth, viewportHeight);
-    starfieldCache.set(key, tile);
+    tile = buildStarTile(layer, layerIndex);
+    starfieldCache.set(layerIndex, tile);
   }
   return tile;
+}
+
+function positiveModulo(value, mod) {
+  return ((value % mod) + mod) % mod;
 }
 
 export function drawParallaxStarfield(context, options = {}) {
@@ -138,17 +190,16 @@ export function drawParallaxStarfield(context, options = {}) {
   context.globalCompositeOperation = "lighter";
 
   STARFIELD_LAYERS.forEach((layer, layerIndex) => {
-    const src = getStarLayer(layer, layerIndex, viewportWidth, viewportHeight);
-    const offsetX = cameraX * layer.parallax - elapsedSeconds * layer.driftX;
-    const offsetY = cameraY * layer.parallax - elapsedSeconds * layer.driftY;
-    let startX = ((offsetX % src.tileW) + src.tileW) % src.tileW;
-    let startY = ((offsetY % src.tileH) + src.tileH) % src.tileH;
-
-    for (const dx of [0, src.tileW]) {
-      for (const dy of [0, src.tileH]) {
-        context.drawImage(src.canvas, dx - startX, dy - startY);
-      }
-    }
+    const tile = getStarTile(layer, layerIndex);
+    const pattern = cachedPattern(context, tile, "repeat");
+    if (!pattern) return;
+    const shiftX = positiveModulo(cameraX * layer.parallax - elapsedSeconds * layer.driftX, STAR_TILE);
+    const shiftY = positiveModulo(cameraY * layer.parallax - elapsedSeconds * layer.driftY, STAR_TILE);
+    context.save();
+    context.translate(-shiftX, -shiftY);
+    context.fillStyle = pattern;
+    context.fillRect(shiftX, shiftY, viewportWidth, viewportHeight);
+    context.restore();
   });
 
   context.restore();

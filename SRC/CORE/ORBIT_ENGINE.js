@@ -98,6 +98,7 @@ import { formatInteger } from "./NUMBER_FORMAT.js";
 import { escapeHtml } from "../../UI/UI_DOM.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
 import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
+import { checkMapAccess } from "./MAP_ACCESS.js";
 import {
   QUEST_DEFINITIONS,
   acceptQuest,
@@ -1743,21 +1744,20 @@ function registerHudWindows() {
     });
   };
 
-  reg("boxWave", "Vagues / Kills", "🌊");
-  reg("boxMeta", "Stats joueur", "📊");
-  reg("boxVitals", "État du vaisseau", "❤️");
-  reg("minimap", "Mini-carte", "🗺️");
-  reg("settingsWindow", "Paramètres", "⚙️", false);
-  reg("questWindow", "Missions", "❗", false);
-  reg("questOfferWindow", "Terminal de quêtes", "📡", false);
-  reg("galaxyGateWindow", "Galaxy Gates", "✦", false);
-  reg("gameLogWindow", "LOG", "≡", false);
-  reg("craftingWindow", "Atelier de fabrication", "AF", false);
-  reg("petWindow", "P.E.T", "🤖", false);
-  if (["low", "qz"].includes(String(window.__CURRENT_MAP_ID__ || "").toLowerCase())) {
-    reg("escortWindow", "Gestion des escortes", "ES", false);
-  }
-  reg("gygerimStatus", "État du boss", "B", true, { minimizable: false });
+  // Icônes officielles DarkOrbit (extraites de featuresMenu_texture).
+  const menuIcon = (name) => `<img class="menuIconImg" src="ASSETS/UI/MENU/${name}.png" alt="" draggable="false">`;
+
+  reg("boxMeta", "Stats joueur", menuIcon("pilotSheet"));
+  reg("boxVitals", "État du vaisseau", menuIcon("ship"));
+  reg("minimap", "Mini-carte", menuIcon("minimap"));
+  reg("settingsWindow", "Paramètres", menuIcon("settings"), false);
+  reg("questWindow", "Missions", menuIcon("quests"), false);
+  reg("questOfferWindow", "Terminal de quêtes", menuIcon("quests"), false);
+  reg("galaxyGateWindow", "Galaxy Gates", menuIcon("ggBuilder"), false);
+  reg("gameLogWindow", "LOG", menuIcon("log"), false);
+  reg("craftingWindow", "Atelier de fabrication", menuIcon("assembly"), false);
+  reg("petWindow", "P.E.T", menuIcon("pet"), false);
+  reg("gygerimStatus", "État du boss", menuIcon("worldBoss"), true, { minimizable: false });
 wireSettingsWindow();
 wirePetWindow();
 }
@@ -2568,6 +2568,20 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
     SFX.play("swDeny");
     showToast(`Portail verrouillé — attaqué par un joueur, attends ${Math.ceil(pvpCooldown)} s`, 1.4);
     return false;
+  }
+
+  // Niveau requis façon DarkOrbit officiel (voir SRC/CORE/MAP_ACCESS.js).
+  // Vérifié avant les coûts : inutile de payer si le niveau bloque.
+  const targetMapId = String(ptl.toMap || "").toLowerCase();
+  if (targetMapId) {
+    const user = account.user || getCurrentUserFull();
+    const playerLevel = getLevelInfo(Number(user?.stats?.exp || 0)).level;
+    const access = checkMapAccess(targetMapId, playerLevel, getFaction(user?.faction).sector);
+    if (!access.ok) {
+      SFX.play("swDeny");
+      showToast(`Accès refusé — niveau ${access.required} requis pour ${targetMapId.toUpperCase()} (niveau ${access.level})`, 2.4);
+      return false;
+    }
   }
 
   const entryCost = Math.max(0, Math.floor(Number(ptl.entryCost) || 0));
@@ -10358,6 +10372,20 @@ function baseProvidesSafety() {
   return owner === getFaction((account.user || getCurrentUserFull())?.faction).id;
 }
 
+// ZNA projetée par un module sûr (ex : contrôleur de missions sur les
+// maps x-4 / x-5 via `safeRadius`). Contrairement aux bases CENTRE_*,
+// elle est neutre : elle profite à toutes les factions car les
+// contrôleurs de missions sont accessibles à tout le monde.
+function getSafeModuleAt(x, y) {
+  if (!isZoneMap) return null;
+  for (const module of zoneSafe?.modules || []) {
+    const radius = Number(module?.safeRadius || 0);
+    if (!(radius > 0)) continue;
+    if (dist2(x, y, module.x, module.y) <= radius * radius) return module;
+  }
+  return null;
+}
+
 function npcIsInSafeZone(e) {
   if (!isZoneMap) return false;
   
@@ -10378,6 +10406,8 @@ function npcIsInSafeZone(e) {
       return true;
     }
   }
+
+  if (getSafeModuleAt(e.x, e.y)) return true;
 
   return false;
 }
@@ -11367,9 +11397,16 @@ mini.addEventListener("pointerup", (e) => {
 }, { passive: true });
 
 function drawMinimap() {
+  // Rendu en pixels CSS (bitmap = CSS × DPR, voir applyMinimapProportions) :
+  // net à toutes les tailles, même après +.
+  const cssW = mini.clientWidth || 0;
+  const cssH = mini.clientHeight || 0;
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const useCss = cssW > 0 && cssH > 0;
+  mctx.setTransform(useCss ? dpr : 1, 0, 0, useCss ? dpr : 1, 0, 0);
   renderMinimap(mctx, {
-    width: mini.width,
-    height: mini.height,
+    width: useCss ? cssW : mini.width,
+    height: useCss ? cssH : mini.height,
     world: WORLD,
     player,
     enemies,
@@ -12333,6 +12370,8 @@ function playerIsInSafeZone() {
     if (dist2(player.x, player.y, z.x, z.y) <= (z.r || 0) * (z.r || 0)) return true;
   }
 
+  if (getSafeModuleAt(player.x, player.y)) return true;
+
   return false;
 }
 
@@ -12728,7 +12767,15 @@ if (
         )
       );
 
-      if (inModules && baseProvidesSafety()) {
+      // ZNA des contrôleurs de missions (modules sûrs, ex : maps x-4 / x-5).
+      const safeModule = getSafeModuleAt(player.x, player.y);
+      if (safeModule) {
+        safeZoneX = safeModule.x;
+        safeZoneY = safeModule.y;
+        safeZoneR = Number(safeModule.safeRadius || 0);
+      }
+
+      if ((inModules && baseProvidesSafety()) || safeModule) {
         safeZoneActive = (player.combatT <= 0 && !attackActive);
         if (safeZoneActive) showToastFixed("Zone de Non-Agression");
         else if (toast?.fixed && toast.text === "Zone de Non-Agression") clearToastFixed();

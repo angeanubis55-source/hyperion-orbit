@@ -484,7 +484,18 @@ html.orbitSessionReady #loadingOverlay{
 .miniZoomActions{
   display:flex;
   align-items:center;
-  gap:4px;
+  gap:0;
+}
+
+/* Boutons + / - collés l'un à l'autre, même hauteur que le bouton réduire */
+.miniZoomActions .miniZoomBtn{
+  width:26px !important;
+  height:26px !important;
+  margin-left:0 !important;
+  border-radius:0 !important;
+}
+.miniZoomActions .miniZoomBtn + .miniZoomBtn{
+  margin-left:-1px !important;
 }
 
 .miniZoomBtn{
@@ -551,10 +562,6 @@ html.orbitSessionReady #loadingOverlay{
 #minimap > .gameWinBar .miniZoomActions{
   flex:0 0 auto;
   margin:0;
-}
-
-#minimap > .gameWinBar .gameWinMinBtn{
-  margin-left:0 !important;
 }
 
 #minimap .gameWinResizeHandle{
@@ -923,9 +930,9 @@ body #profileOverlay #profileWindow.gameWindow.floating{
 }
 
 body #profileOverlay #profileWindow > .gameWinBar{
-  flex:0 0 30px !important;
-  height:30px !important;
-  min-height:30px !important;
+  flex:0 0 26px !important;
+  height:26px !important;
+  min-height:26px !important;
   padding:0 8px 0 10px !important;
   gap:8px !important;
   border:0 !important;
@@ -1171,7 +1178,7 @@ body #profileOverlay .shipImageContainer{ height:110px !important; }
 body #profileOverlay #profileWindow{
   display:grid !important;
   grid-template-columns:215px minmax(0,1fr) !important;
-  grid-template-rows:30px minmax(0,1fr) !important;
+  grid-template-rows:26px minmax(0,1fr) !important;
 }
 
 body #profileOverlay #profileWindow > .gameWinBar{
@@ -1393,7 +1400,7 @@ body #profileOverlay .shopPreview .bigImg.equipShopImage{
 @media (max-width:820px){
   body #profileOverlay #profileWindow{
     grid-template-columns:1fr !important;
-    grid-template-rows:30px auto minmax(0,1fr) !important;
+    grid-template-rows:26px auto minmax(0,1fr) !important;
   }
   body #profileOverlay .profileHeaderCard{
     grid-column:1 !important;
@@ -1637,8 +1644,10 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 }
 #gameWindowDock .logoutDockIcon:hover{
   transform:none !important;
-  border-color:rgba(255,107,122,.36) !important;
-  background:linear-gradient(135deg,rgba(150,32,52,.2),rgba(62,12,25,.2)) !important;
+  border-color:rgba(124,240,255,.82) !important;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,.18), transparent 34%),
+    linear-gradient(135deg, rgba(0,217,255,.16), rgba(4,9,24,.92)) !important;
 }
 
 #gameWindowDock .sessionDockMenu{
@@ -1757,8 +1766,8 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 }
 
 .gameWindow > .gameWinBar{
-  height:30px !important;
-  min-height:30px !important;
+  height:26px !important;
+  min-height:26px !important;
   margin:0 !important;
   padding:0 8px !important;
   display:flex !important;
@@ -1794,8 +1803,16 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   line-height:1 !important;
   opacity:.95 !important;
   filter:drop-shadow(0 0 8px rgba(0,217,255,.22)) !important;
-  pointer-events:none !important;
+  pointer-events:auto !important;
+  cursor:pointer !important;
   flex-shrink:0 !important;
+}
+
+/* Icônes officielles DarkOrbit dans les barres de fenêtres */
+.gameWinIcon img.menuIconImg{
+  width:28px !important;
+  height:28px !important;
+  object-fit:contain !important;
 }
 
 .gameWinTitle{
@@ -1818,7 +1835,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   display:grid !important;
   place-items:center !important;
   flex-shrink:0 !important;
-  border-radius:8px !important;
+  border-radius:0 !important;
   border:1px solid rgba(124,240,255,.28) !important;
   background:
     radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 36%),
@@ -1835,7 +1852,6 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 }
 
 .gameWinMinBtn:hover{
-  transform:scale(1.06) !important;
   border-color:rgba(124,240,255,.58) !important;
   background:
     radial-gradient(circle at 30% 25%, rgba(255,255,255,.20), transparent 36%),
@@ -1843,6 +1859,22 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   box-shadow:
     0 0 16px rgba(0,217,255,.20),
     inset 0 0 0 1px rgba(255,255,255,.05) !important;
+}
+
+/* Vrai bouton réduire : carré collé dans l'angle haut-droit.
+   Les boutons zoom de la mini-carte (.miniZoomBtn) sont exclus :
+   ils gardent leur taille et leur place côte à côte. */
+.gameWindow > .gameWinBar > .gameWinMinBtn:not(.miniZoomBtn){
+  width:26px !important;
+  height:26px !important;
+  margin:0 -8px 0 auto !important;
+  border-radius:0 13px 0 0 !important;
+}
+
+/* Mini-carte : le bouton réduire est collé aux boutons + / -
+   (compense le gap de 8px de la barre + fusion des bordures). */
+#minimap.gameWindow > .gameWinBar > .gameWinMinBtn:not(.miniZoomBtn){
+  margin-left:-9px !important;
 }
 
 #boxWave.gameWindow,
@@ -2289,6 +2321,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   z-index:96000 !important;
   display:flex !important;
   flex-direction:row !important;
+  flex-wrap:wrap !important;
   align-items:center !important;
   justify-content:flex-start !important;
   gap:8px !important;
@@ -2330,16 +2363,40 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
 
-#gameWindowDock .gameDockIcon:hover{
-  transform:translateY(-3px) scale(1.04) !important;
+/* Survol : uniquement sur les fenêtres fermées (évite le doublon
+   avec le contour doré des fenêtres ouvertes) */
+#gameWindowDock .gameDockIcon:hover:not(.dockIconActive){
   border-color:rgba(124,240,255,.82) !important;
   box-shadow:
     0 12px 28px rgba(0,0,0,.50),
     0 0 24px rgba(0,217,255,.28) !important;
 }
 
+/* Fenêtre ouverte : contour doré dans la barre des tâches */
+#gameWindowDock .gameDockIcon.dockIconActive{
+  border-color:rgba(255,200,90,.95) !important;
+  box-shadow:
+    0 10px 22px rgba(0,0,0,.42),
+    0 0 18px rgba(255,185,70,.45),
+    inset 0 0 12px rgba(255,190,80,.22) !important;
+}
+
 #gameWindowDock .gameDockIcon span{
   pointer-events:none;
+  display:grid !important;
+  place-items:center !important;
+  line-height:0 !important;
+}
+
+/* Icônes officielles DarkOrbit dans le dock (taille native 34x34) */
+#gameWindowDock .gameDockIcon img{
+  width:34px !important;
+  height:34px !important;
+  object-fit:contain !important;
+  display:block !important;
+  margin:auto !important;
+  pointer-events:none !important;
+  transform:translateX(-1px) !important;
 }
 
 #btnGameHub.profileDockIcon{
@@ -3552,6 +3609,8 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #minimap.gameWindow #miniHeader{
   padding: 8px 12px 0 12px !important;
   box-sizing: border-box !important;
+  margin-top: -3px !important;
+  margin-bottom: 3px !important;
 }
 
 /* Séparateur */

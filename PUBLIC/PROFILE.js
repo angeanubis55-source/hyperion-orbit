@@ -2523,14 +2523,17 @@ if (isDrone) {
             }).join("")}
           </select>
           ` : `
-          <select id="shopBuyQuantity" aria-label="Quantité à acheter">
-            <option value="1">1</option>
-            <option value="5">5</option>
-            <option value="10">10</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-            <option value="1000">1000</option>
-          </select>
+          <div class="shopQuantityBox">
+            <input id="shopBuyQuantity" type="number" min="1" max="1000" step="1" value="1" inputmode="numeric" aria-label="Quantité à acheter" />
+            <select id="shopBuyQuantityPreset" aria-label="Quantités prédéfinies">
+              <option value="1">1</option>
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="1000">1000</option>
+            </select>
+          </div>
           `}
         </div>
       ` : ""}
@@ -2552,6 +2555,7 @@ if (isDrone) {
   if (!btn) return;
 
   const quantityInput = document.getElementById("shopBuyQuantity");
+  const quantityPreset = document.getElementById("shopBuyQuantityPreset");
   const levelInput = document.getElementById("shopBuyLevel");
   const totalEl = document.getElementById("shopPurchaseTotal");
   const normalizeQuantity = () => groupRef
@@ -2573,6 +2577,11 @@ if (isDrone) {
 
   quantityInput?.addEventListener("input", updatePurchaseSummary);
   quantityInput?.addEventListener("change", updatePurchaseSummary);
+  // Le menu déroulant reporte son montant dans la zone de saisie libre.
+  quantityPreset?.addEventListener("change", () => {
+    if (quantityInput && quantityPreset) quantityInput.value = quantityPreset.value;
+    updatePurchaseSummary();
+  });
   levelInput?.addEventListener("change", () => {
     if (!groupRef) return;
     petShopLevelSel[groupRef.id] = Number(levelInput.value) || 1;
@@ -5132,7 +5141,7 @@ function registerProfileWindow() {
   window.GameWindowManager.register({
     id: "profileWindow",
     title: "Espace pilote",
-    icon: "👤",
+    icon: `<img class="menuIconImg" src="/ASSETS/UI/MENU/user.png" alt="" draggable="false">`,
     root,
     card,
     defaultOpen: false,
@@ -5177,7 +5186,7 @@ function registerShopWindow() {
   window.GameWindowManager.register({
     id: "shopWindow",
     title: "Boutique",
-    icon: "🛒",
+    icon: `<img class="menuIconImg" src="/ASSETS/UI/MENU/shop.png" alt="" draggable="false">`,
     root,
     card,
     defaultOpen: false,
@@ -5235,7 +5244,7 @@ function registerHangarWindow() {
   window.GameWindowManager.register({
     id: "hangarWindow",
     title: "Hangars & Équipement",
-    icon: "🚀",
+    icon: `<img class="menuIconImg" src="/ASSETS/UI/MENU/hangar.png" alt="" draggable="false">`,
     root,
     card,
     defaultOpen: false,
@@ -5303,15 +5312,18 @@ function boot() {
 
 // -------------------- Buttons --------------------
 document.getElementById("btnGameHub")?.addEventListener("click", () => {
-  openProfileOverlay();
+  if (window.GameWindowManager?.isOpen("profileWindow")) window.GameWindowManager.minimize("profileWindow");
+  else openProfileOverlay();
 });
 
 document.getElementById("btnShopHub")?.addEventListener("click", () => {
-  openShopOverlay();
+  if (window.GameWindowManager?.isOpen("shopWindow")) window.GameWindowManager.minimize("shopWindow");
+  else openShopOverlay();
 });
 
 document.getElementById("btnHangarHub")?.addEventListener("click", () => {
-  openHangarOverlay();
+  if (window.GameWindowManager?.isOpen("hangarWindow")) window.GameWindowManager.minimize("hangarWindow");
+  else openHangarOverlay();
 });
 
 btnLogout?.addEventListener("click", () => {

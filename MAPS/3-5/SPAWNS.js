@@ -114,7 +114,7 @@ export function getZonePortals(WORLD) {
 
 export function getZoneSafeModules() {
   return { zone: null, beacons: [], modules: [
-    { id: "QUEST_VRU_35", x: 1950, y: 1530, w: 515, h: 728, spr: "QUEST_VRU" },
+    { id: "QUEST_VRU_35", x: 1950, y: 1530, w: 515, h: 728, spr: "QUEST_VRU", safeRadius: 400 },
   ] };
 }
 

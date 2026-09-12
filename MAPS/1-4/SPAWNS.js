@@ -115,7 +115,7 @@ export function getZonePortals(WORLD) {
 
 export function getZoneSafeModules(WORLD) {
   const modules = [
-    { id: "QUEST_MMO", x: 9000, y: 3500, w: 515, h: 728, spr: "QUEST_MMO" },
+    { id: "QUEST_MMO", x: 9000, y: 3500, w: 515, h: 728, spr: "QUEST_MMO", safeRadius: 400 },
   ];
   const zone = { kind: "circle", x: 9000, y: 3500, r: 600 };
   return { zone, modules, beacons: [] };
