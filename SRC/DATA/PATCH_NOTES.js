@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.182",
+    "date": "2026-09-13T14:46:18+02:00",
+    "message": "comptoir pirate: fenetre vente classique + boutons bases + affichage recompenses quetes corrige"
+  },
+  {
     "version": "0.181",
     "date": "2026-09-13T13:15:05+02:00",
     "message": "spawn: refresh restaure la position sauvegardee (spawn URL consomme) + autosave position 3s"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.123",
     "date": "2026-09-07T16:17:18+02:00",
     "message": "Synchronise version (d049fe40)"
-  },
-  {
-    "version": "0.122",
-    "date": "2026-09-07T16:16:26+02:00",
-    "message": "Roquettes : effets (slow/precision/shield-drain), guidage lanceur, sons chargement, renommage Son"
   }
 ];

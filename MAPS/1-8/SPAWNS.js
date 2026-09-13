@@ -126,7 +126,7 @@ export function getZoneSafeModules(WORLD) {
   // x,y = CENTRE du module
   // ============================================================
   const modules = [
-    { id: "CENTRE_MMO", x: 1500, y: 3500, w: 909, h: 898, spr: "CENTRE_MMO", questTerminal: true },
+    { id: "CENTRE_MMO", x: 1500, y: 3500, w: 909, h: 898, spr: "CENTRE_MMO", questTerminal: true, oreTrade: true },
   ];
 
   // ============================================================

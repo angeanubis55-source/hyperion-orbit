@@ -126,7 +126,7 @@ export function getZoneSafeModules(WORLD) {
   // x,y = CENTRE du module
   // ============================================================
   const modules = [
-    { id: "CENTRE_EIC", x: 5500, y: 1500, w: 455, h: 1087, spr: "CENTRE_EIC", questTerminal: true },
+    { id: "CENTRE_EIC", x: 5500, y: 1500, w: 455, h: 1087, spr: "CENTRE_EIC", questTerminal: true, oreTrade: true },
   ];
 
   // ============================================================
