@@ -23,6 +23,7 @@ import {
   deployCurrentUserGalaxyGate,
   armCurrentUserGalaxyGateMultiplier,
   craftCurrentUserRecipe,
+  refineCurrentUserOre,
   setCurrentUserDroneFormation,
   getPetFit,
   getDroneFit,
@@ -114,7 +115,7 @@ import {
   COLLECTABLE_SPAWN as DEFAULT_COLLECTABLE_SPAWN,
   COLLECTABLE_TYPES as DEFAULT_COLLECTABLE_TYPES,
 } from "../DATA/COLLECTABLES.js";
-import { getResourceName, getResourceIcon, cargoAdd, cargoUsed, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
+import { getResourceName, getResourceIcon, isOreResource, cargoAdd, cargoUsed, CARGO_CAPACITY, REFINERY_RECIPES, refineOreOutput } from "../DATA/RESOURCES.js";
 import { getNpcCargoOres } from "../../NPC/NPC_CARGO.js";
 import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { SFX_SOUND_NAMES } from "./SFX.js";
@@ -545,6 +546,11 @@ const ui = {
   craftingProgress: document.getElementById("craftingProgress"),
   craftingProgressBar: document.getElementById("craftingProgressBar"),
   craftingProgressPct: document.getElementById("craftingProgressPct"),
+  refineryWindow: document.getElementById("refineryWindow"),
+  refineryStock: document.getElementById("refineryStock"),
+  refineryRecipes: document.getElementById("refineryRecipes"),
+  refineryAuto: document.getElementById("refineryAuto"),
+  refineryMessage: document.getElementById("refineryMessage"),
   gameLogSearch: document.getElementById("gameLogSearch"),
   gameLogPrevious: document.getElementById("gameLogPrevious"),
   gameLogNext: document.getElementById("gameLogNext"),
@@ -1768,6 +1774,7 @@ function registerHudWindows() {
     window.GameWindowManager?.close?.("craftingWindow");
   }
   reg("petWindow", "P.E.T", menuIcon("pet"), false);
+  reg("refineryWindow", "Raffinage", menuIcon("refinement"), false);
   reg("boosterWindow", "Boosters", menuIcon("booster"), false);
   reg("gygerimStatus", "État du boss", menuIcon("worldBoss"), true, { minimizable: false });
 wireSettingsWindow();
@@ -2245,8 +2252,88 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
     renderCraftingWindow(`${result.quantity} assemblage${result.quantity > 1 ? "s" : ""} terminé${result.quantity > 1 ? "s" : ""}.`);
   }, 80);
 });
+
+// ============================================================
+// Raffinage minerais -> minerais nobles (ratios officiels)
+// Toujours au Max : seules les recettes faisables s'affichent.
+// ============================================================
+let refineryAutoTimer = null;
+
+function refineryRefineAll(messagePrefix = "") {
+  let total = 0;
+  for (const recipe of REFINERY_RECIPES) {
+    const result = refineCurrentUserOre(recipe.id, Infinity);
+    if (result.ok) {
+      account.user = result.user;
+      total += result.gained;
+    }
+  }
+  return total;
+}
+
+function renderRefineryWindow(message = "") {
+  if (!ui.refineryRecipes || !ui.refineryStock) return;
+  const user = account.user || getCurrentUserFull();
+  if (!user) return;
+  account.user = user;
+  const resources = user.inventory?.resources || {};
+  const stockIds = ["palladium", "prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "xenomit", "osmium"];
+  ui.refineryStock.innerHTML = stockIds.map(id =>
+    `<span class="refineryOre"><img src="${escapeHtml(getResourceIcon(id))}" alt="${escapeHtml(getResourceName(id))}" loading="lazy"><b>${formatInteger(resources[id] || 0)}</b></span>`
+  ).join("");
+  const rows = [];
+  for (const recipe of REFINERY_RECIPES) {
+    const { quantity } = refineOreOutput(resources, recipe, Infinity);
+    if (quantity <= 0) continue;
+    const inputs = Object.entries(recipe.inputs).map(([id, perUnit]) =>
+      `<span class="refineryOre"><img src="${escapeHtml(getResourceIcon(id))}" alt="${escapeHtml(getResourceName(id))}" loading="lazy"><b>${formatInteger(Number(perUnit) * quantity)} / ${formatInteger(resources[id] || 0)}</b></span>`
+    ).join(`<em class="refineryPlus">+</em>`);
+    const output = `<span class="refineryOre out"><img src="${escapeHtml(getResourceIcon(recipe.output.id))}" alt="${escapeHtml(getResourceName(recipe.output.id))}" loading="lazy"><b>+${formatInteger(Number(recipe.output.amount) * quantity)}</b></span>`;
+    rows.push(`<div class="refineryRow">${inputs}<em class="refineryArrow">→</em>${output}<button type="button" data-refinery-build="${escapeHtml(recipe.id)}">RAFFINER</button></div>`);
+  }
+  ui.refineryRecipes.innerHTML = rows.length ? rows.join("") : `<div class="refineryEmpty">Rien à raffiner pour le moment.</div>`;
+  if (ui.refineryMessage) ui.refineryMessage.textContent = message;
+}
+
+function stopRefineryAuto() {
+  if (refineryAutoTimer) {
+    clearInterval(refineryAutoTimer);
+    refineryAutoTimer = null;
+  }
+}
+
+ui.refineryAuto?.addEventListener("change", () => {
+  stopRefineryAuto();
+  if (ui.refineryAuto?.checked) {
+    refineryAutoTimer = setInterval(() => {
+      saveProgressNow();
+      const total = refineryRefineAll();
+      renderRefineryWindow(total > 0 ? `Raffinage auto : +${formatInteger(total)} minerais.` : "");
+      window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+    }, 1000);
+    renderRefineryWindow("");
+  } else {
+    renderRefineryWindow("");
+  }
+});
+
+ui.refineryRecipes?.addEventListener("click", event => {
+  const button = event.target.closest("[data-refinery-build]");
+  if (!button) return;
+  saveProgressNow();
+  const result = refineCurrentUserOre(button.dataset.refineryBuild, Infinity);
+  if (!result.ok) {
+    account.user = result.user || account.user;
+    return renderRefineryWindow(result.error);
+  }
+  account.user = result.user;
+  renderRefineryWindow(`${formatInteger(result.gained)} ${getResourceName(result.recipe.output.id, result.gained)} raffiné(s).`);
+  window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+});
+queueMicrotask(() => renderRefineryWindow());
 window.addEventListener("orbit:window-restored", event => {
   if (event.detail?.id === "craftingWindow") renderCraftingWindow();
+  if (event.detail?.id === "refineryWindow") renderRefineryWindow();
 });
 window.addEventListener("orbit:profile-progress", () => renderCraftingWindow());
 queueMicrotask(() => renderCraftingWindow());
@@ -8347,12 +8434,15 @@ function applyCollectableReward(c) {
   const boxMult = String(c?.type || "") === "Bonus_Box" ? playerBoosterMults().box : 1;
 
   let changed = false;
+  let grantedAny = false;
+  let oreBlockedAny = false;
 
   const credits = Math.floor(rollValue(reward.credits, 0) * boxMult);
   if (credits > 0) {
     player.credits += credits;
     parts.push(`+${credits} crédits`);
     changed = true;
+    grantedAny = true;
   }
 
   const galaxyEnergy = Math.floor(rollValue(reward.galaxyEnergy, 0) * boxMult);
@@ -8363,6 +8453,7 @@ function applyCollectableReward(c) {
       account.user.galaxyGates.energy += galaxyEnergy;
       parts.push(`+${formatInteger(galaxyEnergy)} énergie pour les portails intergalactiques (GG)`);
       changed = true;
+      grantedAny = true;
       if (ui.galaxyGateWindow.style.display !== "none" && !ui.galaxyGateWindow.classList.contains("gameWinMinimized")) {
         renderGalaxyGateWindow();
       }
@@ -8377,10 +8468,26 @@ function applyCollectableReward(c) {
       player.ammo[key] = Math.max(0, Number(player.ammo[key]) || 0) + amount;
       parts.push(`+${formatInteger(amount)} munitions type ${key.toUpperCase()}`);
       changed = true;
+      grantedAny = true;
     }
   }
 
-  if (reward.resources && typeof reward.resources === "object") {
+  // Refus anticipé Cargo_Box : si aucun minerai du cargo ne rentre en soute,
+  // on ne touche à rien (même pas les débris) et la box reste entière.
+  let cargoRefuseUpfront = false;
+  if (String(c?.type || "") === "Cargo_Box" && c?.fromNpc) {
+    if (!account.user) loadAccountUser();
+    const pendingUpfront = c.oreRemainder || getNpcCargoOres(c.fromNpc, currentMapId());
+    const upfrontIds = Object.keys(pendingUpfront);
+    if (upfrontIds.length && account.user) {
+      const resUpfront = account.user.inventory?.resources || {};
+      const multUpfront = playerBoosterMults().res;
+      const fits = upfrontIds.some(id => cargoAdd(resUpfront, id, Math.floor(Number(pendingUpfront[id]) * multUpfront)).added > 0);
+      if (!fits) cargoRefuseUpfront = true;
+    }
+  }
+
+  if (reward.resources && typeof reward.resources === "object" && !(String(c?.type || "") === "Cargo_Box" && (c?.cargoTaken === true || cargoRefuseUpfront))) {
     if (!account.user) loadAccountUser();
     if (account.user) {
       account.user.inventory ||= {};
@@ -8388,28 +8495,54 @@ function applyCollectableReward(c) {
       // Booster Ressources : +25 % sur les cargos venus de NPC.
       const resMult = c?.fromNpc ? playerBoosterMults().res : 1;
       for (const [resourceId, range] of Object.entries(reward.resources)) {
-        const amount = Math.floor(rollValue(range, 0) * resMult);
-        if (amount <= 0) continue;
-        account.user.inventory.resources[resourceId] = Math.max(0, Number(account.user.inventory.resources[resourceId]) || 0) + amount;
-        parts.push(`+${formatInteger(amount)} ${getResourceName(resourceId, amount)}`);
-        goldTerms.push(formatInteger(amount));
+        const wanted = Math.floor(rollValue(range, 0) * resMult);
+        if (wanted <= 0) continue;
+        // Minerais -> soute 3000 (plafonné, jamais de perte sèche ici : le refus est géré plus bas).
+        if (isOreResource(resourceId)) {
+          const { added, blocked } = cargoAdd(account.user.inventory.resources, resourceId, wanted);
+          if (added > 0) {
+            account.user.inventory.resources[resourceId] = Math.max(0, Number(account.user.inventory.resources[resourceId]) || 0) + added;
+            parts.push(`+${formatInteger(added)} ${getResourceName(resourceId, added)}`);
+            goldTerms.push(formatInteger(added));
+            changed = true;
+            grantedAny = true;
+          }
+          if (blocked > 0) oreBlockedAny = true;
+          continue;
+        }
+        account.user.inventory.resources[resourceId] = Math.max(0, Number(account.user.inventory.resources[resourceId]) || 0) + wanted;
+        parts.push(`+${formatInteger(wanted)} ${getResourceName(resourceId, wanted)}`);
+        goldTerms.push(formatInteger(wanted));
         changed = true;
+        grantedAny = true;
       }
     }
   }
 
   // Minerais du NPC dans son cargo (valeurs officielles : NPC_CARGO.js).
-  if (String(c?.type || "") === "Cargo_Box" && c?.fromNpc) {
-    const ores = getNpcCargoOres(c.fromNpc, currentMapId());
-    const ids = Object.keys(ores);
+  // - Soute pleine pour TOUT le minerai -> refus : animation + message, la box reste entière.
+  // - Partiel -> on prend ce qui rentre, le reste reste dedans (c.oreRemainder).
+  let cargoKept = false;
+  let cargoRefused = false;
+  if (cargoRefuseUpfront) {
+    parts.push("Soute pleine — vendez ou raffinez vos minerais");
+    changed = true;
+    cargoKept = true;
+    cargoRefused = true;
+  }
+  if (String(c?.type || "") === "Cargo_Box" && c?.fromNpc && !cargoRefuseUpfront) {
+    const table = c.oreRemainder || getNpcCargoOres(c.fromNpc, currentMapId());
+    const ids = Object.keys(table);
     if (ids.length) {
       if (!account.user) loadAccountUser();
       if (account.user) {
         account.user.inventory ||= {};
         account.user.inventory.resources ||= {};
         const resMult = playerBoosterMults().res;
+        const remainder = {};
+        let granted = false;
         for (const resourceId of ids) {
-          const wanted = Math.floor(Number(ores[resourceId]) * resMult);
+          const wanted = Math.floor(Number(table[resourceId]) * resMult);
           if (wanted <= 0) continue;
           const { added, blocked } = cargoAdd(account.user.inventory.resources, resourceId, wanted);
           if (added > 0) {
@@ -8417,14 +8550,34 @@ function applyCollectableReward(c) {
             parts.push(`+${formatInteger(added)} ${getResourceName(resourceId, added)}`);
             goldTerms.push(formatInteger(added));
             changed = true;
+            granted = true;
           }
-          if (blocked > 0) {
-            parts.push(`Soute pleine (${formatInteger(CARGO_CAPACITY)}) : ${formatInteger(blocked)} ${getResourceName(resourceId, blocked)} perdu(s)`);
-            changed = true;
-          }
+          if (blocked > 0) remainder[resourceId] = (remainder[resourceId] || 0) + blocked;
+        }
+        if (!granted) {
+          parts.push("Soute pleine — vendez ou raffinez vos minerais");
+          changed = true;
+          cargoKept = true;
+          cargoRefused = true;
+          delete c.oreRemainder;
+        } else if (Object.keys(remainder).length) {
+          c.oreRemainder = remainder;
+          c.cargoTaken = true;
+          cargoKept = true;
+        } else {
+          delete c.oreRemainder;
+          c.cargoTaken = true;
         }
       }
     }
+  }
+
+  // Box 100 % minerai (ex : rocher Palladium) pleine -> refus : la box reste.
+  if (oreBlockedAny && !grantedAny && !cargoKept) {
+    parts.push("Soute pleine — vendez ou raffinez vos minerais");
+    changed = true;
+    cargoKept = true;
+    cargoRefused = true;
   }
 
   const hpFlat = rollValue(reward.hp, 0);
@@ -8475,15 +8628,17 @@ function applyCollectableReward(c) {
     updateAmmoUI();
   }
 
-  advanceQuestProgress("collect", c.type);
+  if (!cargoRefused) advanceQuestProgress("collect", c.type);
 
   if (parts.length) {
-    const receivedMessages = parts.map(part => `Vous avez reçu ${part.replace(/^\+/, "")}`);
+    const receivedMessages = parts.map(part => part.startsWith("+") ? `Vous avez reçu ${part.replace(/^\+/, "")}` : part);
     addGameLog(receivedMessages.join(" · "), "reward");
     showNotificationGroup(receivedMessages, "reward", { goldTerms });
   } else {
     showToast(cfg.name || "Collectable", 1.0);
   }
+
+  return { kept: cargoKept };
 }
 
 document.addEventListener("click", event => {
@@ -8550,8 +8705,8 @@ const isSelected = collectableTargetId === c.id && c.armed === true;
 
       if (dist2(player.x, player.y, c.x, c.y) <= rr * rr) {
         SFX.play("collect", { cut: true, maxVoices: 3 });
-        applyCollectableReward(c);
-        collectables.splice(i, 1);
+        const autoRes = applyCollectableReward(c);
+        if (!autoRes?.kept) collectables.splice(i, 1);
       }
 
       continue;
@@ -8597,10 +8752,10 @@ player.y = collectY;
     // ✅ Attente de 1 seconde avant collecte
     if (c.collectT >= COLLECTABLE_PICKUP.holdDuration) {
       SFX.play("collect", { cut: true, maxVoices: 3 });
-      applyCollectableReward(c);
+      const collectRes = applyCollectableReward(c);
 
       collectableTargetId = null;
-      collectables.splice(i, 1);
+      if (!collectRes?.kept) collectables.splice(i, 1);
     }
   }
 }

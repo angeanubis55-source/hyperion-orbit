@@ -10,6 +10,7 @@ import { compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
+import { getRefineryRecipe, refineOreOutput } from "../DATA/RESOURCES.js";
 import { ROCKET_TYPES } from "../../COMBAT/ROCKET_TYPES.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../../DRONE/DRONE_TYPES.js";
 import { createPet, emptyPetFit, getPetLevel, getPetMaxHp, getPetSlots, getPetShieldBonus, normalizePetMode, normalizePetPseudo, PET_DEFAULT_PSEUDO, PET_FUEL_MAX, PET_SLOTS } from "../../PET/PET_TYPES.js";
@@ -2278,5 +2279,24 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
   saveUser(u);
   localStorage.setItem("orbit_sync", String(Date.now()));
   return { ok: true, user: u, recipe, quantity };
+}
+
+// Raffinage minerais -> minerais nobles (ratios officiels, voir REFINERY_RECIPES).
+export function refineCurrentUserOre(recipeId, requestedQuantity = 1) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const recipe = getRefineryRecipe(recipeId);
+  if (!recipe) return { ok: false, error: "Recette introuvable." };
+  u.inventory ||= {};
+  u.inventory.resources ||= {};
+  const { quantity, gained } = refineOreOutput(u.inventory.resources, recipe, requestedQuantity);
+  if (quantity <= 0) return { ok: false, error: "Minerais insuffisants.", user: u };
+  for (const [resourceId, perUnit] of Object.entries(recipe.inputs)) {
+    u.inventory.resources[resourceId] = Math.max(0, Number(u.inventory.resources[resourceId] || 0) - Math.floor(Number(perUnit) || 0) * quantity);
+  }
+  u.inventory.resources[recipe.output.id] = Math.max(0, Number(u.inventory.resources[recipe.output.id] || 0) + gained);
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, recipe, quantity, gained };
 }
 

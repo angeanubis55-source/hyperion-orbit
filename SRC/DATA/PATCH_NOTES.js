@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.174",
+    "date": "2026-09-13T10:44:55+02:00",
+    "message": "minerais: 8 ressources + soute cargo 3000 + cargos NPC (lexique FR)"
+  },
+  {
     "version": "0.173",
     "date": "2026-09-13T00:15:17+02:00",
     "message": "version: bump auto 0.172 + patch notes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.115",
     "date": "2026-09-07T07:42:55+02:00",
     "message": "Grosses corrections sur les sauvegardes , Hangar , boutique et inventaire + patch complet FPS"
-  },
-  {
-    "version": "0.114",
-    "date": "2026-09-07T06:30:28+02:00",
-    "message": "Espace pilote: designs de vaisseaux dynamiques, dropdown hangar sans reload, suppression des cartes toast au profit des indications rapides"
   }
 ];

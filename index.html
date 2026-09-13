@@ -53,6 +53,9 @@
   <button id="btnShopHub" class="gameDockIcon shopDockIcon" data-window-id="shopWindow" type="button" title="Boutique" aria-label="Boutique">
     <span><img src="ASSETS/UI/MENU/shop.png" data-menu-icon="shop" alt="" draggable="false"></span>
   </button>
+  <button id="btnRefineryHub" class="gameDockIcon" data-window-id="refineryWindow" type="button" title="Raffinage" aria-label="Raffinage">
+    <span><img src="ASSETS/UI/MENU/refinement.png" data-menu-icon="refinement" alt="" draggable="false"></span>
+  </button>
 </div>
   
 
@@ -78,6 +81,17 @@
     </div>
 
     <!-- BOX 2 : Économie / progression (toujours) -->
+
+<div id="refineryWindow" class="panel refineryPanel">
+  <div class="refineryBody">
+    <div id="refineryStock" class="refineryStock"></div>
+    <div id="refineryRecipes" class="refineryRecipes"></div>
+    <div class="refineryActions">
+      <label class="refineryAuto"><input id="refineryAuto" type="checkbox"><span>Raffinage auto (1 s)</span></label>
+    </div>
+    <div id="refineryMessage" class="refineryMessage" aria-live="polite"></div>
+  </div>
+</div>
 
 <div id="craftingWindow" class="panel craftingWindow assemblyWindow">
   <div class="craftingLayout assemblyLayout">

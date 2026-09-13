@@ -396,6 +396,26 @@ html.orbitSessionReady #loadingOverlay{
   background:linear-gradient(90deg, #c77b1e, #ffd36b);
 }
 
+.refineryPanel{ width:min(720px,calc(100vw - 24px)); }
+.refineryBody{ display:grid; gap:10px; padding:12px; color:#dff7ff; }
+.refineryStock{ display:flex; flex-direction:row; align-items:center; gap:12px; padding:10px 12px; border:1px solid rgba(124,240,255,.2); background:rgba(5,25,39,.72); overflow-x:auto; }
+.refineryOre{ display:inline-flex; flex:none; flex-direction:row; align-items:center; gap:6px; }
+.refineryOre img{ width:32px; height:32px; object-fit:contain; }
+.refineryOre b{ color:#fff; font-size:13px; }
+.refineryOre.out b{ color:#ffd36b; }
+.refineryRecipes{ display:grid; gap:8px; }
+.refineryRow{ display:flex; flex-direction:row; align-items:center; gap:8px; padding:8px 10px; border:1px solid rgba(90,210,240,.2); background:rgba(3,20,33,.72); overflow-x:auto; }
+.refineryPlus{ color:#8fcddd; font-style:normal; font-weight:900; }
+.refineryArrow{ color:#ffd36b; font-style:normal; font-weight:900; }
+.refineryRow button{ margin-left:auto; flex:none; height:38px; padding:0 14px; border:1px solid #67e7ff; border-radius:5px; color:#fff; background:linear-gradient(180deg,#0b7697,#07465f); font-weight:1000; text-transform:uppercase; cursor:pointer; }
+.refineryRow button:disabled{ opacity:.35; cursor:default; }
+.refineryActions{ display:flex; flex-direction:row; align-items:center; gap:10px; }
+.refineryAuto{ display:inline-flex; flex-direction:row; align-items:center; gap:10px; min-height:46px; padding:7px 11px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); cursor:pointer; }
+.refineryAuto input{ width:17px; height:17px; accent-color:#7cf0ff; cursor:pointer; }
+.refineryAuto span{ color:#8fcddd; font-size:11px; font-weight:900; text-transform:uppercase; }
+.refineryEmpty{ color:rgba(207,235,246,.6); font-size:12px; padding:8px 2px; }
+.refineryMessage{ color:#ffd36b; font-size:12px; min-height:16px; }
+
 #boxVitals .row.mini{
   margin-top:8px;
   padding-top:6px;

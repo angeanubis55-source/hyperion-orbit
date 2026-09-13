@@ -14,6 +14,7 @@ export const RESOURCE_TYPES = Object.freeze({
   promerium: Object.freeze({ id: "promerium", name: "Promerium", plural: "Promerium", icon: "/ASSETS/ORES/PROMERIUM.png" }),
   seprom: Object.freeze({ id: "seprom", name: "Seprom", plural: "Seprom", icon: "/ASSETS/ORES/SEPROM.png" }),
   xenomit: Object.freeze({ id: "xenomit", name: "Xenomit", plural: "Xenomit", icon: "/ASSETS/ORES/XENOMIT.png" }),
+  osmium: Object.freeze({ id: "osmium", name: "Osmium", plural: "Osmium", icon: "/ASSETS/ORES/OSMIUM.png" }),
 });
 
 export function getResourceName(resourceId, quantity = 1) {
@@ -31,7 +32,7 @@ export function getResourceIcon(resourceId) {
 // Soute du vaisseau : capacité 3000, occupée par les minerais.
 export const CARGO_CAPACITY = 3000;
 
-export const ORE_RESOURCE_IDS = Object.freeze(["palladium", "prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "xenomit"]);
+export const ORE_RESOURCE_IDS = Object.freeze(["palladium", "prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "xenomit", "osmium"]);
 
 export function isOreResource(resourceId) {
   return ORE_RESOURCE_IDS.includes(String(resourceId || ""));
@@ -46,6 +47,32 @@ export function cargoUsed(resources) {
 
 export function cargoFree(resources, capacity = CARGO_CAPACITY) {
   return Math.max(0, Math.floor(Number(capacity) || 0) - cargoUsed(resources));
+}
+
+// Raffinage officiel (ratios du client d'origine) : minerais bruts -> minerais nobles.
+export const REFINERY_RECIPES = Object.freeze([
+  Object.freeze({ id: "prometid", name: "Prometid", inputs: Object.freeze({ prometium: 20, endurium: 10 }), output: Object.freeze({ id: "prometid", amount: 1 }) }),
+  Object.freeze({ id: "duranium", name: "Duranium", inputs: Object.freeze({ endurium: 10, terbium: 20 }), output: Object.freeze({ id: "duranium", amount: 1 }) }),
+  Object.freeze({ id: "promerium", name: "Promerium", inputs: Object.freeze({ prometid: 10, duranium: 10, xenomit: 1 }), output: Object.freeze({ id: "promerium", amount: 1 }) }),
+  Object.freeze({ id: "seprom", name: "Seprom", inputs: Object.freeze({ promerium: 10 }), output: Object.freeze({ id: "seprom", amount: 1 }) }),
+  Object.freeze({ id: "osmium", name: "Osmium", inputs: Object.freeze({ seprom: 100 }), output: Object.freeze({ id: "osmium", amount: 1 }) }),
+  Object.freeze({ id: "xenomit", name: "Xenomit", inputs: Object.freeze({ prometid: 100, duranium: 100 }), output: Object.freeze({ id: "xenomit", amount: 10 }) }),
+]);
+
+export function getRefineryRecipe(recipeId) {
+  return REFINERY_RECIPES.find((recipe) => recipe.id === String(recipeId || "")) || null;
+}
+
+// Calcul pur : quantités raffinables avec le stock donné.
+export function refineOreOutput(resources, recipe, quantity = 1) {
+  const wanted = Math.max(1, Math.floor(Number(quantity) || 1));
+  const stock = resources && typeof resources === "object" ? resources : {};
+  let possible = wanted;
+  for (const [id, perUnit] of Object.entries(recipe?.inputs || {})) {
+    const need = Math.max(1, Math.floor(Number(perUnit) || 0));
+    possible = Math.min(possible, Math.floor(Math.max(0, Number(stock[id]) || 0) / need));
+  }
+  return { quantity: Math.max(0, possible), gained: Math.max(0, possible) * Math.max(1, Number(recipe?.output?.amount) || 1) };
 }
 
 // Ajout plafonné par la soute. Les ressources non-minerais (atelier) ne passent pas par la soute.

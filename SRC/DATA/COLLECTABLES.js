@@ -140,7 +140,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
   },
 
   Palladium_Ore: {
-    name: "Bonus crédits",
+    name: "Palladium",
     maps: ["5-2"],
     qty: 1000,
     spawnBatch: 1000,
@@ -162,7 +162,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
       randomStart: true,
       glow: false,
     },
-    rewards: { credits: [1, 3] },
+    rewards: { resources: { palladium: [1, 1] } },
   },
 });
 
