@@ -1,6 +1,26 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.180",
+    "date": "2026-09-13T12:49:22+02:00",
+    "message": "launcher: updater securise (version-skip, validation, sauvegarde, rollback)"
+  },
+  {
+    "version": "0.179",
+    "date": "2026-09-13T12:16:44+02:00",
+    "message": "launcher: .bat ne se remplace plus lui-meme, plus de blocs if multilignes"
+  },
+  {
+    "version": "0.178",
+    "date": "2026-09-13T12:03:31+02:00",
+    "message": "launcher: .bat mise a jour seule (wipe, zip github, sans lancement)"
+  },
+  {
+    "version": "0.177",
+    "date": "2026-09-13T11:56:14+02:00",
+    "message": "raffinage: styles cartes/boutons + temps reel + auto immediat + tout raffiner"
+  },
+  {
     "version": "0.176",
     "date": "2026-09-13T11:54:13+02:00",
     "message": "launcher: script .bat mise a jour + lancement (wipe, zip github, serveur local)"
@@ -279,25 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.121",
     "date": "2026-09-07T14:17:34+02:00",
     "message": "Synchronise version (b2b22d27)"
-  },
-  {
-    "version": "0.120",
-    "date": "2026-09-07T14:16:09+02:00",
-    "message": "Roquettes : arc en C, salves eventail, autos lies attaque, sons, fix syntaxe"
-  },
-  {
-    "version": "0.119",
-    "date": "2026-09-07T14:09:48+02:00",
-    "message": "Synchronise version (dc44835a)"
-  },
-  {
-    "version": "0.118",
-    "date": "2026-09-07T14:09:12+02:00",
-    "message": "Roquettes + lance-roquettes : 12 types, boutique, palette, tir en arc, salves, sons, secu hash"
-  },
-  {
-    "version": "0.117",
-    "date": "2026-09-07T10:25:42+02:00",
-    "message": "Synchronise version (df296162)"
   }
 ];

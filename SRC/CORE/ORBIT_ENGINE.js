@@ -3161,6 +3161,13 @@ function scheduleProgressSave() {
   }
 }
 
+// ✅ Sauvegarde rapprochée de la position : toutes les 3 s quand le joueur
+// a bougé (ou changé de map), pour retrouver sa place exacte après un refresh.
+// Réutilise savePositionNow() : ne persiste que position/map/vitalité,
+// sans toucher au reste de la progression.
+let positionSaveCd = 0;
+const lastPositionSave = { x: NaN, y: NaN, map: "" };
+
 function awardExperience(amount, source = "") {
   if (!account.user) loadAccountUser();
   if (!account.user) return null;
@@ -11604,6 +11611,20 @@ jumpBaseFade: 1,
     }
   }
 
+  // ✅ Consomme le spawn "portail" : il ne vaut que pour le saut en cours.
+  // Les valeurs ont déjà été lues ci-dessus (wantPortal/urlPortal) et chaque
+  // transition réécrit des valeurs fraîches avant le prochain resetRun.
+  // Sans ça, l'URL garde ?spawn=... et un refresh (F5) refait apparaître
+  // le joueur au portail au lieu de sa position sauvegardée.
+  try {
+    window.__SPAWN_PORTAL_ID__ = null;
+    const spawnUrl = new URL(location.href);
+    if (spawnUrl.searchParams.has("spawn")) {
+      spawnUrl.searchParams.delete("spawn");
+      history.replaceState(history.state ?? null, "", spawnUrl);
+    }
+  } catch {}
+
   if (!spawnedFromPortal) {
     const st = SESSION_HANGAR_ID
       ? getHangarStateById(SESSION_HANGAR_ID)
@@ -13243,6 +13264,22 @@ function update(dt) {
   if (account.user && account.dirty) {
     account.saveCd -= dt;
     if (account.saveCd <= 0) scheduleProgressSave();
+  }
+
+  if (account.user && started && !player.dead) {
+    positionSaveCd -= dt;
+    if (positionSaveCd <= 0) {
+      positionSaveCd = 3;
+      const posMap = window.__CURRENT_MAP_ID__ || "1-1";
+      if (posMap !== lastPositionSave.map
+        || Math.abs(player.x - lastPositionSave.x) > 1
+        || Math.abs(player.y - lastPositionSave.y) > 1) {
+        lastPositionSave.x = player.x;
+        lastPositionSave.y = player.y;
+        lastPositionSave.map = posMap;
+        savePositionNow();
+      }
+    }
   }
 
   tickAutoAttack(dt);
