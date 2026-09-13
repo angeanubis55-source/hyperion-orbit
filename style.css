@@ -392,6 +392,10 @@ html.orbitSessionReady #loadingOverlay{
   background:linear-gradient(90deg, #3fae5a, #b6f0c3);
 }
 
+.bar.cargo > i{
+  background:linear-gradient(90deg, #c77b1e, #ffd36b);
+}
+
 #boxVitals .row.mini{
   margin-top:8px;
   padding-top:6px;

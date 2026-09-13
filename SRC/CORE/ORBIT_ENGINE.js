@@ -114,7 +114,8 @@ import {
   COLLECTABLE_SPAWN as DEFAULT_COLLECTABLE_SPAWN,
   COLLECTABLE_TYPES as DEFAULT_COLLECTABLE_TYPES,
 } from "../DATA/COLLECTABLES.js";
-import { getResourceName, getResourceIcon } from "../DATA/RESOURCES.js";
+import { getResourceName, getResourceIcon, cargoAdd, cargoUsed, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
+import { getNpcCargoOres } from "../../NPC/NPC_CARGO.js";
 import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { SFX_SOUND_NAMES } from "./SFX.js";
 import { createWorldClock } from "../SIM/WORLD_CLOCK.js";
@@ -481,6 +482,8 @@ const ui = {
   shTxt: document.getElementById("shTxt"),
   hpBar: document.getElementById("hpBar"),
   shBar: document.getElementById("shBar"),
+  cargoTxt: document.getElementById("cargoTxt"),
+  cargoBar: document.getElementById("cargoBar"),
   gygerimStatus: document.getElementById("gygerimStatus"),
   bossStatusTitle: document.getElementById("bossStatusTitle"),
   gygerimHpBar: document.getElementById("gygerimHpBar"),
@@ -8061,6 +8064,13 @@ function currentMapId() {
   return String(window.__CURRENT_MAP_ID__ || "1-1");
 }
 
+// Soute lue depuis le compte en mémoire (pas de relecture storage à chaque frame).
+function currentCargo() {
+  const resources = account.user?.inventory?.resources || {};
+  const used = cargoUsed(resources);
+  return { used, capacity: CARGO_CAPACITY, free: Math.max(0, CARGO_CAPACITY - used) };
+}
+
 function collectableAllowedOnCurrentMap(cfg, mapId = currentMapId()) {
   const cur = String(mapId);
 
@@ -8384,6 +8394,35 @@ function applyCollectableReward(c) {
         parts.push(`+${formatInteger(amount)} ${getResourceName(resourceId, amount)}`);
         goldTerms.push(formatInteger(amount));
         changed = true;
+      }
+    }
+  }
+
+  // Minerais du NPC dans son cargo (valeurs officielles : NPC_CARGO.js).
+  if (String(c?.type || "") === "Cargo_Box" && c?.fromNpc) {
+    const ores = getNpcCargoOres(c.fromNpc, currentMapId());
+    const ids = Object.keys(ores);
+    if (ids.length) {
+      if (!account.user) loadAccountUser();
+      if (account.user) {
+        account.user.inventory ||= {};
+        account.user.inventory.resources ||= {};
+        const resMult = playerBoosterMults().res;
+        for (const resourceId of ids) {
+          const wanted = Math.floor(Number(ores[resourceId]) * resMult);
+          if (wanted <= 0) continue;
+          const { added, blocked } = cargoAdd(account.user.inventory.resources, resourceId, wanted);
+          if (added > 0) {
+            account.user.inventory.resources[resourceId] = Math.max(0, Number(account.user.inventory.resources[resourceId]) || 0) + added;
+            parts.push(`+${formatInteger(added)} ${getResourceName(resourceId, added)}`);
+            goldTerms.push(formatInteger(added));
+            changed = true;
+          }
+          if (blocked > 0) {
+            parts.push(`Soute pleine (${formatInteger(CARGO_CAPACITY)}) : ${formatInteger(blocked)} ${getResourceName(resourceId, blocked)} perdu(s)`);
+            changed = true;
+          }
+        }
       }
     }
   }
@@ -14579,7 +14618,7 @@ if (ui.spdTxt) {
 
 updateConfigButtons();
 
-  updateResourceHud(ui, player);
+  updateResourceHud(ui, player, currentCargo());
   updatePetHud();
   updateWaveHud(ui, { started, wave, remaining: waveSpawns.remaining, alive: enemies.length });
 
@@ -15046,7 +15085,7 @@ function applyHangarDesignLive() {
     // recalcule les stats (hp, bouclier, vitesse, dégâts…) en gardant les ratios
     applyCurrentConfigStats(true);
 
-    updateResourceHud(ui, player);
+    updateResourceHud(ui, player, currentCargo());
 
     return { ok: true };
   } catch (err) {

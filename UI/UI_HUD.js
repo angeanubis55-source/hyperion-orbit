@@ -31,7 +31,7 @@ const setDisplay = (element, display) => {
   element.style.display = display;
 };
 
-export function updateResourceHud(ui, player) {
+export function updateResourceHud(ui, player, cargo) {
   const hp = Math.floor(Number(player.hp) || 0);
   const shield = Math.floor(Number(player.sh) || 0);
   const hpMax = Math.floor(Number(player.hpMax) || 0);
@@ -46,6 +46,13 @@ export function updateResourceHud(ui, player) {
   if (ui.shBar?.closest) {
     const meter = ui.shBar.closest(".vitalsMeter");
     if (meter) setDisplay(meter, "");
+  }
+  // Soute du vaisseau (minerais / 3000).
+  if (cargo) {
+    const used = Math.max(0, Math.floor(Number(cargo.used) || 0));
+    const capacity = Math.max(1, Math.floor(Number(cargo.capacity) || 1));
+    setText(ui.cargoTxt, `${formatInteger(used)} / ${formatInteger(capacity)}`);
+    setWidth(ui.cargoBar, `${clamp(used / capacity * 100, 0, 100)}%`);
   }
 }
 

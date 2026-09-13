@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.173",
+    "date": "2026-09-13T00:15:17+02:00",
+    "message": "version: bump auto 0.172 + patch notes"
+  },
+  {
     "version": "0.172",
     "date": "2026-09-13T00:14:59+02:00",
     "message": "pet/vitals: barres fines elegantes + fix ouverture fenetre parametres"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.114",
     "date": "2026-09-07T06:30:28+02:00",
     "message": "Espace pilote: designs de vaisseaux dynamiques, dropdown hangar sans reload, suppression des cartes toast au profit des indications rapides"
-  },
-  {
-    "version": "0.113",
-    "date": "2026-09-06T09:12:30+02:00",
-    "message": "grosse Update de son et de fonctionnalitée"
   }
 ];
