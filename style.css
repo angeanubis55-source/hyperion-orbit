@@ -396,6 +396,15 @@ html.orbitSessionReady #loadingOverlay{
   background:linear-gradient(90deg, #c77b1e, #ffd36b);
 }
 
+.oreTradePanel{ width:max-content; max-width:min(640px,calc(100vw - 24px)); }
+.oreTradeBody{ display:grid; gap:10px; padding:12px; }
+.oreTradeRows{ display:grid; gap:10px; }
+.oreTradePrice{ color:#8fcddd; font-size:11px; font-weight:900; white-space:nowrap; }
+.oreTradeGain{ color:#ffd36b; font-size:13px; font-weight:900; margin-left:auto; white-space:nowrap; }
+.oreTradeRows button{ flex:none; min-height:30px; padding:6px 10px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); font:750 11px/1.2 ui-sans-serif,system-ui; text-transform:none; cursor:pointer; }
+.oreTradeRows button:disabled{ opacity:.35; cursor:default; }
+.oreTradeRows button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
+
 .refineryPanel{ width:max-content; max-width:min(880px,calc(100vw - 24px)); }
 .refineryBody{ display:grid; gap:10px; padding:12px; color:#dff7ff; }
 .refineryStock{ display:flex; flex-direction:row; align-items:center; gap:12px; padding:7px 11px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); overflow-x:auto; }

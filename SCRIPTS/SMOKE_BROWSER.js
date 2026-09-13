@@ -66,6 +66,12 @@ try {
         localStorage.setItem("orbit_users", JSON.stringify([user]));
         localStorage.setItem("orbit_current_user", JSON.stringify({ id: user.id, pseudo: user.pseudo, email: user.email }));
         if (!coldStart) sessionStorage.setItem("orbit_assets_preloaded_v1", "ready");
+        // Simule une transition de carte legitime : __GO_TO_MAP__ laisse un
+        // jeton spawnMapId en session, sans quoi le boot anti-triche ignore ?map=.
+        try {
+          const requested = new URLSearchParams(location.search).get("map");
+          if (requested) sessionStorage.setItem("spawnMapId", requested);
+        } catch {}
       }, { coldStart });
       await page.goto(`http://127.0.0.1:${port}/index.html?map=${encodeURIComponent(mapId)}`, { waitUntil: "domcontentloaded", timeout: 20_000 });
       await page.waitForSelector("#loadingStartBtn:not([disabled])", { timeout: 180_000 });

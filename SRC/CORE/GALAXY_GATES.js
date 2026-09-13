@@ -9,6 +9,17 @@ export const GALAXY_GATE_DEFINITIONS = Object.freeze({
 export const GALAXY_SPIN_CREDIT_COST = 100000;
 export const GALAXY_GATE_BUILD_LIMIT = 1;
 
+// Échange Palladium -> énergie Galaxy (comptoir pirate 5-2). 10:1.
+export const PALLADIUM_PER_GALAXY_ENERGY = 10;
+
+// Calcul pur : combien d'énergies avec `owned` Palladium (max `requested`).
+export function palladiumExchangeForEnergy(owned, requested = Infinity) {
+  const stock = Math.max(0, Math.floor(Number(owned) || 0));
+  const want = requested == null ? Infinity : Math.max(0, Math.floor(Number(requested) || 0));
+  const energies = Math.min(Math.floor(stock / PALLADIUM_PER_GALAXY_ENERGY), want);
+  return { energies, cost: energies * PALLADIUM_PER_GALAXY_ENERGY, remaining: stock - energies * PALLADIUM_PER_GALAXY_ENERGY };
+}
+
 export function normalizeGalaxyGateState(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
   const state = {

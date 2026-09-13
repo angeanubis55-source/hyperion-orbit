@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.181",
+    "date": "2026-09-13T13:15:05+02:00",
+    "message": "spawn: refresh restaure la position sauvegardee (spawn URL consomme) + autosave position 3s"
+  },
+  {
     "version": "0.180",
     "date": "2026-09-13T12:49:22+02:00",
     "message": "launcher: updater securise (version-skip, validation, sauvegarde, rollback)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.122",
     "date": "2026-09-07T16:16:26+02:00",
     "message": "Roquettes : effets (slow/precision/shield-drain), guidage lanceur, sons chargement, renommage Son"
-  },
-  {
-    "version": "0.121",
-    "date": "2026-09-07T14:17:34+02:00",
-    "message": "Synchronise version (b2b22d27)"
   }
 ];

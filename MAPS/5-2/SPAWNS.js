@@ -122,7 +122,7 @@ export function getZoneSafeModules(WORLD) {
   const baseY = 800;
 
   const modules = [
-    { id: "CENTRE_PIRATES", x: WORLD.w / 2, y: WORLD.h / 2, w: 3000, h: 1985, spr: "CENTRE_PIRATE" }, // Centre
+    { id: "CENTRE_PIRATES", x: WORLD.w / 2, y: WORLD.h / 2, w: 3000, h: 1985, spr: "CENTRE_PIRATE", oreTrade: true, tradeButtonX: 5000, tradeButtonY: 3350 }, // Centre + comptoir (vente minerais)
   ];
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

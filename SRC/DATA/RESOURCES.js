@@ -32,7 +32,7 @@ export function getResourceIcon(resourceId) {
 // Soute du vaisseau : capacité 3000, occupée par les minerais.
 export const CARGO_CAPACITY = 3000;
 
-export const ORE_RESOURCE_IDS = Object.freeze(["palladium", "prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "xenomit", "osmium"]);
+export const ORE_RESOURCE_IDS = Object.freeze(["palladium", "prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "osmium"]);
 
 export function isOreResource(resourceId) {
   return ORE_RESOURCE_IDS.includes(String(resourceId || ""));
@@ -48,6 +48,18 @@ export function cargoUsed(resources) {
 export function cargoFree(resources, capacity = CARGO_CAPACITY) {
   return Math.max(0, Math.floor(Number(capacity) || 0) - cargoUsed(resources));
 }
+
+// Prix de vente fixes au comptoir pirate (crédits / unité). Palladium = échange uniquement, Xenomit = invendable.
+export const ORE_SELL_PRICES = Object.freeze({
+  prometium: 20,
+  endurium: 30,
+  terbium: 50,
+  prometid: 100,
+  duranium: 150,
+  promerium: 500,
+  seprom: 750,
+  osmium: 100000,
+});
 
 // Raffinage officiel (ratios du client d'origine) : minerais bruts -> minerais nobles.
 export const REFINERY_RECIPES = Object.freeze([

@@ -24,6 +24,8 @@ import {
   armCurrentUserGalaxyGateMultiplier,
   craftCurrentUserRecipe,
   refineCurrentUserOre,
+  sellCurrentUserOre,
+  exchangeCurrentUserPalladiumForEnergy,
   setCurrentUserDroneFormation,
   getPetFit,
   getDroneFit,
@@ -104,6 +106,7 @@ import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMa
 import { checkMapAccess } from "./MAP_ACCESS.js";
 import {
   QUEST_DEFINITIONS,
+  MAX_ACTIVE_QUESTS,
   acceptQuest,
   abandonQuest,
   claimQuest,
@@ -115,7 +118,8 @@ import {
   COLLECTABLE_SPAWN as DEFAULT_COLLECTABLE_SPAWN,
   COLLECTABLE_TYPES as DEFAULT_COLLECTABLE_TYPES,
 } from "../DATA/COLLECTABLES.js";
-import { getResourceName, getResourceIcon, isOreResource, cargoAdd, cargoUsed, CARGO_CAPACITY, REFINERY_RECIPES, refineOreOutput } from "../DATA/RESOURCES.js";
+import { getResourceName, getResourceIcon, isOreResource, cargoAdd, cargoUsed, CARGO_CAPACITY, REFINERY_RECIPES, refineOreOutput, ORE_SELL_PRICES } from "../DATA/RESOURCES.js";
+import { PALLADIUM_PER_GALAXY_ENERGY, palladiumExchangeForEnergy } from "./GALAXY_GATES.js";
 import { getNpcCargoOres } from "../../NPC/NPC_CARGO.js";
 import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { SFX_SOUND_NAMES } from "./SFX.js";
@@ -485,6 +489,11 @@ const ui = {
   shBar: document.getElementById("shBar"),
   cargoTxt: document.getElementById("cargoTxt"),
   cargoBar: document.getElementById("cargoBar"),
+  oreTradeWindow: document.getElementById("oreTradeWindow"),
+  otPalladium: document.getElementById("otPalladium"),
+  otPalladiumGain: document.getElementById("otPalladiumGain"),
+  otExchangeBtn: document.getElementById("otExchangeBtn"),
+  otRows: document.getElementById("otRows"),
   gygerimStatus: document.getElementById("gygerimStatus"),
   bossStatusTitle: document.getElementById("bossStatusTitle"),
   gygerimHpBar: document.getElementById("gygerimHpBar"),
@@ -1774,6 +1783,11 @@ function registerHudWindows() {
     window.GameWindowManager?.close?.("craftingWindow");
   }
   reg("petWindow", "P.E.T", menuIcon("pet"), false);
+  reg("oreTradeWindow", "Commerce minerais", menuIcon("ore_trade"), false);
+  // Comptoir : pas de bouton réduire, juste une croix qui fait disparaître.
+  ui.oreTradeWindow?.querySelector(".gameWinBar .gameWinMinBtn")?.remove();
+  ui.oreTradeWindow?.querySelector(".gameWinBar")?.insertAdjacentHTML("beforeend", `<button class="gameWinMinBtn" type="button" title="Fermer">✕</button>`);
+  ui.oreTradeWindow?.querySelector(".gameWinBar > button:last-child")?.addEventListener("click", closeOreTradeWindow);
   reg("refineryWindow", "Raffinage", menuIcon("refinement"), false);
   reg("boosterWindow", "Boosters", menuIcon("booster"), false);
   reg("gygerimStatus", "État du boss", menuIcon("worldBoss"), true, { minimizable: false });
@@ -2259,13 +2273,19 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
 // Auto : raffine dès qu'une recette devient disponible.
 // ============================================================
 function refineryRefineAll() {
+  // Passes répétées : une recette peut débloquer la suivante (ex : Xenomit -> Promerium).
   let total = 0;
-  for (const recipe of REFINERY_RECIPES) {
-    const result = refineCurrentUserOre(recipe.id, Infinity);
-    if (result.ok) {
-      account.user = result.user;
-      total += result.gained;
+  for (let pass = 0; pass < 10; pass++) {
+    let progress = 0;
+    for (const recipe of REFINERY_RECIPES) {
+      const result = refineCurrentUserOre(recipe.id, Infinity);
+      if (result.ok) {
+        account.user = result.user;
+        progress += result.gained;
+      }
     }
+    total += progress;
+    if (progress <= 0) break;
   }
   return total;
 }
@@ -2622,6 +2642,20 @@ const QUEST_BUTTON = {
   h: 135,
   gap: 12,
   interactionRadius: 700,
+  // Comme le bouton vente : le vaisseau doit être dans ce rayon AUTOUR DU BOUTON.
+  proximityRadius: 450,
+};
+
+// Bouton Commerce minerais (sprites raffinerie d'origine : clickBubbles buttonRefinement).
+const TRADE_BUTTON = {
+  idle: { src: "ASSETS/TRADE_BUTTON/1.png" },
+  mouse: { src: "ASSETS/TRADE_BUTTON/2.png" },
+  click: { src: "ASSETS/TRADE_BUTTON/3.png" },
+  w: 88,
+  h: 135,
+  gap: 12,
+  // Le vaisseau doit être dans ce rayon AUTOUR DU BOUTON pour le rendre cliquable.
+  proximityRadius: 450,
 };
 
 function getPortalSpriteSet(ptl = null) {
@@ -3229,15 +3263,27 @@ function renderQuestWindow() {
   if (!ui.questList) return;
   // Rattrape le cas où le moteur a été instancié avant la session utilisateur
   // (refresh/login) et aurait conservé un journal vide en mémoire.
+  // Fusionne aussi le stockage frais : progression externe (ou autre onglet)
+  // adoptée sans jamais perdre la progression mémoire (on garde le max).
   {
-    const persisted = (account.user || getCurrentUserFull())?.quests;
-    const memoryIds = Object.keys(questState.active).sort().join("|");
-    const savedState = persisted && normalizeQuestState(persisted);
-    const savedIds = savedState ? Object.keys(savedState.active).sort().join("|") : "";
-    // Après un refresh, le moteur peut avoir un ancien jeu de missions en
-    // mémoire. Les identifiants persistés font foi ; la progression en cours
-    // est conservée tant que le même jeu de missions est affiché.
-    if (savedState && savedIds !== memoryIds) questState = savedState;
+    const persisted = normalizeQuestState(getCurrentUserFull()?.quests);
+    if (persisted) {
+      for (const [id, prog] of Object.entries(persisted.active)) {
+        if (questState.completed.includes(id)) continue;
+        const mem = questState.active[id];
+        if (!mem) {
+          if (Object.keys(questState.active).length < MAX_ACTIVE_QUESTS) questState.active[id] = { ...prog };
+          continue;
+        }
+        for (const [oid, val] of Object.entries(prog)) {
+          if (Number(val) > Number(mem[oid] || 0)) mem[oid] = Number(val);
+        }
+      }
+      for (const id of persisted.completed) {
+        if (!questState.completed.includes(id)) questState.completed.push(id);
+        if (questState.active[id]) delete questState.active[id];
+      }
+    }
   }
   const view = buildQuestJournalView(questState, selectedQuestId);
   selectedQuestId = view.selectedQuestId;
@@ -3396,14 +3442,17 @@ ui.questList?.addEventListener("click", event => {
       const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
       // Booster QR-01 : récompenses de quêtes doublées.
       const questMult = playerBoosterMults().quest;
-      player.credits += Math.max(0, Math.floor(Number(reward.credits || 0) * questMult));
+      const creditsGained = Math.max(0, Math.floor(Number(reward.credits || 0) * questMult));
+      player.credits += creditsGained;
       const ammoRewards = Object.entries(reward.ammo || {}).filter(([type, amount]) => Object.hasOwn(player.ammo, type) && Number(amount) > 0);
-      for (const [type, amount] of ammoRewards) player.ammo[type] += Math.max(0, Math.floor(Number(amount) * questMult || 0));
-      if (ammoRewards.length) updateAmmoUI();
+      const ammoGained = ammoRewards.map(([type, amount]) => [type, Math.max(0, Math.floor(Number(amount) * questMult || 0))]);
+      for (const [type, gained] of ammoGained) player.ammo[type] += gained;
+      if (ammoGained.length) updateAmmoUI();
       const experience = Math.floor(getQuestExperienceReward(quest) * questMult);
       const honor = Math.floor(getQuestHonorReward(quest) * questMult);
-      awardExperience(experience);
-      awardHonor(honor);
+      // Montants réellement reçus (bonus modules + boosters XP/honneur inclus).
+      const gainedXp = awardExperience(experience)?.gained ?? experience;
+      const gainedHonor = awardHonor(honor)?.gained ?? honor;
       if (account.user?.stats) account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
       markProgressDirty();
       saveProgressNow();
@@ -3416,13 +3465,13 @@ ui.questList?.addEventListener("click", event => {
         }
       }
       const AMMO_REWARD_NAMES = { x6: "RSB-75", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", sab: "SAB-50", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x1: "LCB-10" };
-      const ammoMessages = ammoRewards.map(([type, amount]) => `Vous avez reçu ${formatInteger(amount)} munitions ${AMMO_REWARD_NAMES[type] || String(type).toUpperCase()}`);
+      const ammoMessages = ammoGained.map(([type, gained]) => `Vous avez reçu ${formatInteger(gained)} munitions ${AMMO_REWARD_NAMES[type] || String(type).toUpperCase()}`);
       const energyMessage = galaxyEnergy > 0 ? `Vous avez reçu ${formatInteger(galaxyEnergy)} énergies pour les portails intergalactiques (GG)` : "";
-      addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(reward.credits)} crédits · +${formatInteger(experience)} XP · +${formatInteger(honor)} honneur${ammoMessages.length ? ` · ${ammoMessages.join(" · ")}` : ""}${energyMessage ? ` · ${energyMessage}` : ""}`, "reward");
+      addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(creditsGained)} crédits · +${formatInteger(gainedXp)} XP · +${formatInteger(gainedHonor)} honneur${ammoMessages.length ? ` · ${ammoMessages.join(" · ")}` : ""}${energyMessage ? ` · ${energyMessage}` : ""}`, "reward");
       showNotificationGroup([
-        `Vous avez reçu ${formatInteger(reward.credits)} crédits`,
-        `Vous avez gagné ${formatInteger(experience)} XP`,
-        `Vous avez gagné ${formatInteger(honor)} honneur`,
+        `Vous avez reçu ${formatInteger(creditsGained)} crédits`,
+        `Vous avez gagné ${formatInteger(gainedXp)} XP`,
+        `Vous avez gagné ${formatInteger(gainedHonor)} honneur`,
         ...ammoMessages,
         ...(energyMessage ? [energyMessage] : []),
       ]);
@@ -6431,6 +6480,10 @@ function isQuestModule(module) {
   return module?.questTerminal === true || String(module?.spr || "").startsWith("QUEST_");
 }
 
+function isTradeModule(module) {
+  return module?.oreTrade === true;
+}
+
 function tickDroneFormationEffects(dt) {
   if (player.dead || player.shMax <= 0) return;
   const effects = getActiveDroneFormation(account.user).effects || {};
@@ -6444,8 +6497,10 @@ function tickDroneFormationEffects(dt) {
 }
 
 function getQuestButtonPosition(module) {
+  // Base avec comptoir : les deux boutons côte à côte, centrés (quêtes à gauche).
+  const shift = isTradeModule(module) ? QUEST_BUTTON.w / 2 + QUEST_BUTTON.gap / 2 : 0;
   return {
-    x: module.x,
+    x: module.x - shift,
     y: module.y - Number(module.h || 0) / 2 - QUEST_BUTTON.h / 2 - QUEST_BUTTON.gap,
   };
 }
@@ -6480,7 +6535,72 @@ function updateQuestButtonCursor(clientX, clientY) {
 }
 
 function isPlayerNearQuestModule(module) {
-  return dist2(player.x, player.y, module.x, module.y) <= QUEST_BUTTON.interactionRadius ** 2;
+  if (!module) return false;
+  const pos = getQuestButtonPosition(module);
+  const radius = Number(QUEST_BUTTON.proximityRadius || 450);
+  return dist2(player.x, player.y, pos.x, pos.y) <= radius * radius;
+}
+
+function getTradeButtonPosition(module) {
+  if (Number.isFinite(Number(module?.tradeButtonX)) && Number.isFinite(Number(module?.tradeButtonY))) {
+    return { x: Number(module.tradeButtonX), y: Number(module.tradeButtonY) };
+  }
+  // Base avec terminal de quêtes : bouton commerce à côté (à droite), paire centrée.
+  if (isQuestModule(module)) {
+    return {
+      x: module.x + TRADE_BUTTON.w / 2 + TRADE_BUTTON.gap / 2,
+      y: module.y - Number(module.h || 0) / 2 - TRADE_BUTTON.h / 2 - TRADE_BUTTON.gap,
+    };
+  }
+  return {
+    x: module.x,
+    y: module.y - Number(module.h || 0) / 2 - TRADE_BUTTON.h / 2 - TRADE_BUTTON.gap,
+  };
+}
+
+function pickTradeButtonAtScreen(clientX, clientY) {
+  if (!isZoneMap || !zoneSafe?.modules?.length) return null;
+  const mouseWorld = screenToWorld(clientX, clientY);
+
+  for (let i = zoneSafe.modules.length - 1; i >= 0; i--) {
+    const module = zoneSafe.modules[i];
+    if (!isTradeModule(module)) continue;
+    const pos = getTradeButtonPosition(module);
+
+    if (
+      mouseWorld.x >= pos.x - TRADE_BUTTON.w / 2 &&
+      mouseWorld.x <= pos.x + TRADE_BUTTON.w / 2 &&
+      mouseWorld.y >= pos.y - TRADE_BUTTON.h / 2 &&
+      mouseWorld.y <= pos.y + TRADE_BUTTON.h / 2
+    ) return module;
+  }
+
+  return null;
+}
+
+function updateTradeButtonCursor(clientX, clientY) {
+  const hoveredModule = pickTradeButtonAtScreen(clientX, clientY);
+  for (const module of zoneSafe?.modules || []) {
+    if (isTradeModule(module)) module.tradeButtonHovered = module === hoveredModule;
+  }
+  if (hoveredModule) canvas.style.cursor = "pointer";
+  return Boolean(hoveredModule);
+}
+
+function isPlayerNearTradeModule(module) {
+  if (!module) return false;
+  const pos = getTradeButtonPosition(module);
+  const radius = Number(TRADE_BUTTON.proximityRadius || 250);
+  return dist2(player.x, player.y, pos.x, pos.y) <= radius * radius;
+}
+
+// Module commerce actif (fenêtre ouverte dessus). Fermeture si on s'éloigne.
+let activeTradeModule = null;
+
+function isTradeWindowAnchored() {
+  if (!activeTradeModule) return false;
+  if (!(zoneSafe?.modules || []).includes(activeTradeModule)) return false;
+  return isPlayerNearTradeModule(activeTradeModule);
 }
 
 canvas.addEventListener(
@@ -6493,7 +6613,9 @@ canvas.addEventListener(
 
     const overQuestButton = updateQuestButtonCursor(e.clientX, e.clientY);
 
-    if (!overPortalButton && !overQuestButton) {
+    const overTradeButton = updateTradeButtonCursor(e.clientX, e.clientY);
+
+    if (!overPortalButton && !overQuestButton && !overTradeButton) {
       updateCollectableCursor(e.clientX, e.clientY);
     }
   },
@@ -6597,6 +6719,18 @@ if (questButton) {
   return;
 }
 
+const tradeButton = pickTradeButtonAtScreen(e.clientX, e.clientY);
+
+if (tradeButton) {
+  tradeButton.tradeButtonPressed = true;
+  tradeButton.tradeButtonHovered = true;
+  pointer.dragArmed = false;
+  pointer.dragging = false;
+  pointer.downOnEnemy = false;
+  pointer.followWhileDown = false;
+  return;
+}
+
    const enemy = pickEnemyAtScreen(e.clientX, e.clientY);
 if (enemy) {
   // ✅ On lock le NPC
@@ -6659,6 +6793,7 @@ canvas.addEventListener(
       e.clientY
     );
     const releasedOnQuest = pickQuestButtonAtScreen(e.clientX, e.clientY);
+    const releasedOnTrade = pickTradeButtonAtScreen(e.clientX, e.clientY);
 
     let pressedPortal = null;
 
@@ -6674,6 +6809,12 @@ canvas.addEventListener(
     for (const module of zoneSafe?.modules || []) {
       if (module.questButtonPressed) pressedQuest = module;
       module.questButtonPressed = false;
+    }
+
+    let pressedTrade = null;
+    for (const module of zoneSafe?.modules || []) {
+      if (module.tradeButtonPressed) pressedTrade = module;
+      module.tradeButtonPressed = false;
     }
 
     // Le clic doit être relâché sur le même bouton
@@ -6712,6 +6853,14 @@ canvas.addEventListener(
       }
     }
 
+    if (pressedTrade && releasedOnTrade === pressedTrade) {
+      if (!isPlayerNearTradeModule(pressedTrade)) {
+        showToast("Approche-toi du comptoir pirate", 1.4);
+      } else {
+        openOreTradeWindow(pressedTrade);
+      }
+    }
+
     pointer.reset();
 
     try {
@@ -6734,6 +6883,8 @@ canvas.addEventListener(
     for (const module of zoneSafe?.modules || []) {
       module.questButtonPressed = false;
       module.questButtonHovered = false;
+      module.tradeButtonPressed = false;
+      module.tradeButtonHovered = false;
     }
 
     try {
@@ -12329,6 +12480,102 @@ for (const state of Object.values(QUEST_BUTTON).filter(value => value?.src)) {
   loadImage(state.src, { priority: true });
 }
 
+for (const state of Object.values(TRADE_BUTTON).filter(value => value?.src)) {
+  loadImage(state.src, { priority: true });
+}
+
+// ============================================================
+// Comptoir pirate 5-2 : vente minerais, ouvert UNIQUEMENT via le bouton monde.
+// ============================================================
+function renderOreTradeWindow() {
+  if (!ui.otRows) return;
+  const user = account.user || getCurrentUserFull();
+  if (!user) return;
+  account.user = user;
+  const resources = user.inventory?.resources || {};
+  const palladium = Math.max(0, Math.floor(Number(resources.palladium) || 0));
+  const { energies } = palladiumExchangeForEnergy(palladium, Infinity);
+  // Échange Palladium réservé à la base pirate (5-2), comme le vrai DO.
+  const palladiumAllowed = currentMapId() === "5-2";
+  if (ui.otPalladium) ui.otPalladium.textContent = formatInteger(palladium);
+  if (ui.otPalladiumGain) ui.otPalladiumGain.textContent = palladiumAllowed ? `+${formatInteger(energies)}` : "5-2";
+  if (ui.otExchangeBtn) ui.otExchangeBtn.disabled = energies <= 0 || !palladiumAllowed;
+  ui.otRows.innerHTML = Object.entries(ORE_SELL_PRICES).map(([id, price]) => {
+    const owned = Math.max(0, Math.floor(Number(resources[id]) || 0));
+    const gain = owned * price;
+    return `<div class="refineryRow"><span class="refineryOre"><img src="${escapeHtml(getResourceIcon(id))}" alt="${escapeHtml(getResourceName(id))}" loading="lazy"><b>${formatInteger(owned)}</b></span>`
+      + `<span class="oreTradePrice">${formatInteger(price)} crédits/u</span>`
+      + `<span class="oreTradeGain">+${formatInteger(gain)}</span>`
+      + `<button type="button" data-ore-sell="${escapeHtml(id)}"${owned <= 0 ? " disabled" : ""}>VENDRE</button></div>`;
+  }).join("");
+}
+
+function openOreTradeWindow(tradeModule = null) {
+  const anchor = tradeModule && isTradeModule(tradeModule) ? tradeModule : null;
+  if (!anchor || !isPlayerNearTradeModule(anchor)) {
+    showToast("Approche-toi du comptoir pirate", 1.4);
+    return;
+  }
+  if (!ui.oreTradeWindow) {
+    showToast("Fenêtre indisponible — recharge la page (Ctrl+F5)", 3);
+    return;
+  }
+  activeTradeModule = anchor;
+  renderOreTradeWindow();
+  if (window.GameWindowManager) window.GameWindowManager.restore("oreTradeWindow");
+  else ui.oreTradeWindow.style.display = "block";
+}
+
+function closeOreTradeWindow() {
+  activeTradeModule = null;
+  const card = ui.oreTradeWindow;
+  if (!card || card.classList.contains("gameWinClosing")) return;
+  if (window.GameWindowManager) {
+    // Même effet de disparition que les autres fenêtres, sans icône dock.
+    card.classList.add("gameWinClosing");
+    setTimeout(() => {
+      card.classList.remove("gameWinClosing");
+      window.GameWindowManager?.close("oreTradeWindow");
+    }, 360);
+  } else card.style.display = "none";
+}
+
+function isOreTradeWindowOpen() {
+  return !!ui.oreTradeWindow && ui.oreTradeWindow.style.display !== "none";
+}
+
+ui.otExchangeBtn?.addEventListener("click", () => {
+  if (!isTradeWindowAnchored()) {
+    closeOreTradeWindow();
+    return;
+  }
+  saveProgressNow();
+  const result = exchangeCurrentUserPalladiumForEnergy();
+  if (!result.ok) return;
+  account.user = result.user;
+  addPlayerCombatFloat(result.energies, "rgba(121,237,255,0.98)", "+");
+  showNotificationGroup([`Échange : ${formatInteger(result.cost)} Palladium → +${formatInteger(result.energies)} énergie(s) Galaxy`], "reward", { whiteTerms: [`+${formatInteger(result.energies)}`] });
+  renderOreTradeWindow();
+  window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+});
+ui.oreTradeWindow?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-ore-sell]");
+  if (!button) return;
+  if (!isTradeWindowAnchored()) {
+    closeOreTradeWindow();
+    return;
+  }
+  saveProgressNow();
+  const result = sellCurrentUserOre(button.dataset.oreSell);
+  if (!result.ok) return;
+  account.user = result.user;
+  player.credits = result.user.credits;
+  setHudText(ui.shopCredits, formatInteger(player.credits));
+  showNotificationGroup([`Vente : ${formatInteger(result.quantity)} ${getResourceName(result.resourceId, result.quantity)} → +${formatInteger(result.gained)} crédits`], "reward", { whiteTerms: [`+${formatInteger(result.gained)}`] });
+  renderOreTradeWindow();
+  window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+});
+
 function startGatePortalJump(ptl, action) {
   if (!ptl || ptl.jumping || !isPlayerNearPortal(ptl)) return;
   if (beginGatePortalJump(ptl, action, portal.switchDur)) {
@@ -12847,6 +13094,31 @@ function drawSafeModules(ox, oy) {
           button.y + oy - QUEST_BUTTON.h / 2,
           QUEST_BUTTON.w,
           QUEST_BUTTON.h
+        );
+        ctx.restore();
+      }
+    }
+
+    if (isTradeModule(m)) {
+      const tradeSprite = m.tradeButtonPressed
+        ? TRADE_BUTTON.click
+        : m.tradeButtonHovered
+          ? TRADE_BUTTON.mouse
+          : TRADE_BUTTON.idle;
+      const tradeImg = getCachedImage(tradeSprite.src);
+
+      if (isImgReady(tradeImg)) {
+        const tradeBtn = getTradeButtonPosition(m);
+        ctx.save();
+        ctx.globalAlpha = isPlayerNearTradeModule(m) ? 1 : 0.65;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(
+          tradeImg,
+          tradeBtn.x + ox - TRADE_BUTTON.w / 2,
+          tradeBtn.y + oy - TRADE_BUTTON.h / 2,
+          TRADE_BUTTON.w,
+          TRADE_BUTTON.h
         );
         ctx.restore();
       }
@@ -14820,6 +15092,8 @@ if (ui.spdTxt) {
 updateConfigButtons();
 
   updateResourceHud(ui, player, currentCargo());
+  // Comptoir pirate : la fenêtre se ferme dès qu'on s'éloigne du bouton.
+  if (isOreTradeWindowOpen() && !isTradeWindowAnchored()) closeOreTradeWindow();
   updatePetHud();
   updateWaveHud(ui, { started, wave, remaining: waveSpawns.remaining, alive: enemies.length });
 
@@ -15323,6 +15597,23 @@ addEventListener("beforeunload", () => {
   try { saveStateImmediate(); } catch {}
   try { persistUniverse({ force: true }); } catch {}
   try { localStorage.removeItem("orbit_game_open"); } catch {}
+});
+
+// ✅ Bloque le bouton retour/avant du navigateur : les changements de carte
+// passent uniquement par les portails du jeu. __GO_TO_MAP__ recharge la page
+// avec ?map=&spawn=, donc chaque saut crée une entrée d'historique ; sans ce
+// garde, "retour" recharge l'ancienne carte avec un état périmé (ex : retour
+// en 1-6 après un saut vers 1-5).
+try {
+  history.pushState({ orbitBackGuard: true }, "", location.href);
+} catch {}
+addEventListener("popstate", () => {
+  try {
+    history.pushState({ orbitBackGuard: true }, "", location.href);
+  } catch {}
+  try {
+    showNotification("Changement de carte : utilise les portails du jeu.", 3, "info");
+  } catch {}
 });
 
 addEventListener("visibilitychange", () => {

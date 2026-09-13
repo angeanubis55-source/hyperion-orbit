@@ -35,8 +35,13 @@ function bootGame() {
  * - index.html?map=1-1
  * - index.html?map=1-2
  * + spawn optionnel: &spawn=p_12_to_11
- * 
+ *
  * ✅ NOUVEAU: Si pas de ?map= dans l'URL, on charge la dernière map sauvegardée du hangar actif
+ *
+ * ✅ ANTI-TRICHE: une ?map= n'est honorée que si elle vient d'une transition
+ * du jeu (__GO_TO_MAP__ laisse toujours un jeton spawnMapId en session).
+ * Sinon (URL éditée à la main, favori...) on impose la carte sauvegardée
+ * (ou la base de la faction pour un nouveau compte) et on retire ?spawn=.
  */
 
 const params = new URLSearchParams(location.search);
@@ -47,21 +52,37 @@ const DEFAULT_MAP = getFactionHomeMap(getCurrentUserFull()?.faction) || DEFAULT_
 // ✅ Récupère la map depuis l'URL ou depuis la sauvegarde
 let mapName = params.get("map");
 let usedSavedMap = false;
+let urlTokenOk = false;
+try {
+  const tokenMap = sessionStorage.getItem("spawnMapId");
+  urlTokenOk = !!tokenMap && !!mapName
+    && String(tokenMap).toLowerCase() === String(mapName).toLowerCase();
+} catch {}
 
 if (!mapName) {
   const state = getActiveHangarState();
-  
+
   if (state.map) {
     mapName = state.map;
     usedSavedMap = true;
   } else {
     mapName = DEFAULT_MAP;
   }
+} else if (!urlTokenOk) {
+  const state = getActiveHangarState();
+  mapName = state.map || DEFAULT_MAP;
+  usedSavedMap = true;
+  try {
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.set("map", String(mapName));
+    cleanUrl.searchParams.delete("spawn");
+    history.replaceState(history.state ?? null, "", cleanUrl);
+  } catch {}
 }
 
 mapName = normalizeMapId(mapName);
 
-const spawnPortalId = params.get("spawn") || null;
+const spawnPortalId = urlTokenOk ? params.get("spawn") || null : null;
 
 // accessible depuis OrbitEngine
 window.__SPAWN_PORTAL_ID__ = spawnPortalId;
@@ -107,14 +128,12 @@ window.__GO_TO_MAP__ = (mapId, spawnId = null) => {
 
   // ✅ Mémorise le portail d'arrivée (même onglet : survit au rechargement).
   // resetRun le lit en priorité ; l'URL ?map=&spawn= sert de secours.
+  // spawnMapId sert AUSSI de jeton anti-triche : au chargement, une ?map=
+  // sans jeton correspondant est ignorée (édition manuelle de l'URL).
   try {
-    if (spawnId) {
-      sessionStorage.setItem("spawnPortalId", String(spawnId));
-      sessionStorage.setItem("spawnMapId", String(normalizeMapId(mapId)));
-    } else {
-      sessionStorage.removeItem("spawnPortalId");
-      sessionStorage.removeItem("spawnMapId");
-    }
+    sessionStorage.setItem("spawnMapId", String(normalizeMapId(mapId)));
+    if (spawnId) sessionStorage.setItem("spawnPortalId", String(spawnId));
+    else sessionStorage.removeItem("spawnPortalId");
   } catch {}
 
   const url = new URL(location.href);

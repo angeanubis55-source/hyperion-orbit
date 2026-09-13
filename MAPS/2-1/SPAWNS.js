@@ -1,4 +1,4 @@
-﻿const rand = (a,b)=>a+Math.random()*(b-a);
+const rand = (a,b)=>a+Math.random()*(b-a);
 const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
 
 export function getZoneSpawns(WORLD) {
@@ -12,7 +12,7 @@ export function getZoneSpawns(WORLD) {
   let tries = 0;
   const maxTries = 6000;
 
-  // ✅ Quotas EXACTS : 100 Cubikon + 400 Protegit
+  // ? Quotas EXACTS : 100 Cubikon + 400 Protegit
   const quota = [
     { type: "npc_Streuner", left: 30 },
     { type: "npc_Streuner_Recruit", left: 10 },
@@ -34,7 +34,7 @@ export function getZoneSpawns(WORLD) {
       }
     }
 
-    // sécurité
+    // s�curit�
     for (const q of quota) {
       if (q.left > 0) {
         q.left--;
@@ -183,12 +183,12 @@ export function getZonePortals(WORLD) {
 }
 
 export function getZoneSafeModules(WORLD) {
-  // ✅ coin haut-gauche (position du bloc)
+  // ? coin haut-gauche (position du bloc)
   const baseX = 800;
   const baseY = 800;
 
   const modules = [
-    { id: "CENTRE_EIC", x: 9500, y: 1500, w: 455, h: 1087, spr: "CENTRE_EIC", questTerminal: true },
+    { id: "CENTRE_EIC", x: 9500, y: 1500, w: 455, h: 1087, spr: "CENTRE_EIC", questTerminal: true, oreTrade: true },
   ];
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

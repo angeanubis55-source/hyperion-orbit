@@ -8,9 +8,9 @@ import { calculateRankPoints, getQuestHonorReward } from "./PROGRESSION.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.js";
 import { compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
-import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
+import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
-import { getRefineryRecipe, refineOreOutput } from "../DATA/RESOURCES.js";
+import { getRefineryRecipe, refineOreOutput, ORE_SELL_PRICES } from "../DATA/RESOURCES.js";
 import { ROCKET_TYPES } from "../../COMBAT/ROCKET_TYPES.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../../DRONE/DRONE_TYPES.js";
 import { createPet, emptyPetFit, getPetLevel, getPetMaxHp, getPetSlots, getPetShieldBonus, normalizePetMode, normalizePetPseudo, PET_DEFAULT_PSEUDO, PET_FUEL_MAX, PET_SLOTS } from "../../PET/PET_TYPES.js";
@@ -2298,5 +2298,40 @@ export function refineCurrentUserOre(recipeId, requestedQuantity = 1) {
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u, recipe, quantity, gained };
+}
+
+// Vente de minerais au comptoir pirate (prix fixes, tout le stock du minerai).
+export function sellCurrentUserOre(resourceId) {  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const id = String(resourceId || "");
+  const price = Math.max(0, Math.floor(Number(ORE_SELL_PRICES[id]) || 0));
+  if (price <= 0) return { ok: false, error: "Ce minerai ne se vend pas ici.", user: u };
+  u.inventory ||= {};
+  u.inventory.resources ||= {};
+  const owned = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0));
+  if (owned <= 0) return { ok: false, error: "Stock vide.", user: u };
+  const gained = owned * price;
+  u.inventory.resources[id] = 0;
+  u.credits = Math.max(0, Number(u.credits || 0)) + gained;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, resourceId: id, quantity: owned, gained };
+}
+
+// Échange Palladium -> énergie Galaxy (10:1, comptoir pirate). Tout le possible.
+export function exchangeCurrentUserPalladiumForEnergy() {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  u.inventory ||= {};
+  u.inventory.resources ||= {};
+  u.galaxyGates = normalizeGalaxyGateState(u.galaxyGates);
+  const owned = Math.max(0, Math.floor(Number(u.inventory.resources.palladium) || 0));
+  const { energies, cost } = palladiumExchangeForEnergy(owned, Infinity);
+  if (energies <= 0) return { ok: false, error: `Palladium insuffisant (il faut ${PALLADIUM_PER_GALAXY_ENERGY} Palladium pour 1 énergie).`, user: u };
+  u.inventory.resources.palladium = owned - cost;
+  u.galaxyGates.energy += energies;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, energies, cost, user: u };
 }
 
