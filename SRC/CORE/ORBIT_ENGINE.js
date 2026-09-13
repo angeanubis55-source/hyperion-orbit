@@ -595,7 +595,6 @@ const ui = {
   petWindow: document.getElementById("petWindow"),
   petSprite: document.getElementById("petSprite"),
   petNameTxt: document.getElementById("petNameTxt"),
-  petLevelTxt: document.getElementById("petLevelTxt"),
   petPlayBtn: document.getElementById("petPlayBtn"),
   petModeSelect: document.getElementById("petModeSelect"),
   petHpBar: document.getElementById("petHpBar"),
@@ -675,7 +674,7 @@ function initializeCustomActionBar() {
   const palette = document.createElement("div");
   palette.className = "actionPalette";
   palette.hidden = true;
-  palette.innerHTML = `<nav><button class="active" data-action-category="ammo">Munitions</button><button data-action-category="rockets">Roquettes</button><button data-action-category="launchers">Lance-roq.</button><button data-action-category="formations">Formations</button><button data-action-category="skills">Compétences</button></nav><div class="actionPaletteItems"></div>`;
+  palette.innerHTML = `<nav><button class="active" data-action-category="ammo">Munitions</button><button data-action-category="rockets">Roquettes</button><button data-action-category="launchers">Lance-roquettes</button><button data-action-category="formations">Formations</button><button data-action-category="skills">Compétences</button></nav><div class="actionPaletteItems"></div>`;
   const toggle = document.createElement("button");
   toggle.type = "button"; toggle.className = "actionPaletteToggle"; toggle.textContent = "⌃"; toggle.title = "Configurer la barre rapide";
   const byId = new Map(actions.map((button) => {
@@ -806,7 +805,7 @@ function initializeCustomActionBar() {
     btn.className = "rocketQuickAction launcherAutoBtn";
     btn.title = "Utiliser la roquette sélectionnée";
     btn.style.backgroundImage = icon ? `url("${icon}")` : "";
-    btn.innerHTML = `<strong>USE</strong><span class="launcherSquares">${[0, 1, 2, 3, 4].map((i) => `<span class="lsq${i < lit ? " lit" : ""}">■</span>`).join("")}</span><small class="launcherStock"><span class="launcherCount">${formatInteger(rocketCount(activeId))}</span></small>`;
+    btn.innerHTML = `<strong>USE</strong><span class="launcherSquares">${[0, 1, 2, 3, 4].map((i) => `<span class="lsq${i < lit ? " lit" : ""}">■</span>`).join("")}</span><small class="launcherStock"><span class="launcherCount">${formatRocketCount(rocketCount(activeId))}</span></small>`;
     // Marque l'état affiché (le refresh ne retouche que si ça change).
     launcherSquaresShown = lit;
     return btn;
@@ -1017,6 +1016,7 @@ function initializeCustomActionBar() {
     palette.hidden = !palette.hidden;
     toggle.classList.toggle("active", !palette.hidden);
     toggle.textContent = palette.hidden ? "⌃" : "⌄";
+    try { localStorage.setItem("orbit_palette_open", palette.hidden ? "0" : "1"); } catch {}
   };
   toggle.onclick = flipActionPalette;
   toggleActionDockMenu = flipActionPalette;
@@ -1030,13 +1030,7 @@ function initializeCustomActionBar() {
     persist();
     updateHudKeyHints();
   });
-  document.addEventListener("pointerdown", event => {
-    if (!palette.hidden && !bar.contains(event.target)) {
-      palette.hidden = true;
-      toggle.classList.remove("active");
-      toggle.textContent = "⌃";
-    }
-  }, true);
+  // Fermeture au clic ailleurs désactivée : seul le toggle ouvre/ferme.
   bar.append(toggle, palette);
   paletteItems.addEventListener("wheel", event => {
     if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
@@ -1044,6 +1038,24 @@ function initializeCustomActionBar() {
     paletteItems.scrollLeft += event.deltaY;
   }, { passive: false });
   renderPalette("ammo");
+  // Restauration après le boot : sinon le panneau ouvert recouvre l'écran de chargement.
+  const restorePalette = () => {
+    try {
+      if (localStorage.getItem("orbit_palette_open") === "1") {
+        palette.hidden = false;
+        toggle.classList.add("active");
+        toggle.textContent = "⌄";
+      }
+    } catch {}
+  };
+  if (document.documentElement.classList.contains("orbitBooting")) {
+    const bootWait = setInterval(() => {
+      if (!document.documentElement.classList.contains("orbitBooting")) {
+        clearInterval(bootWait);
+        restorePalette();
+      }
+    }, 300);
+  } else restorePalette();
   persist();
   queueMicrotask(updateHudKeyHints);
 }
@@ -2015,16 +2027,15 @@ function updatePetHud() {
   const prev = has ? getPetLevelXp(level) : 0;
   // Progression infinie : plus de plafond au niveau 20.
   const xpPct = Math.max(0, Math.min(100, ((exp - prev) / Math.max(1, next - prev)) * 100));
-
-  setHudText(ui.petLevelTxt, `Niveau ${level}`);
+  if (level > 15) setHudText(ui.petXpTxt, `${formatInteger(Math.floor(exp))} - ${level}`);
+  else setHudText(ui.petXpTxt, `${formatInteger(Math.floor(exp))} / ${formatInteger(next)} - ${level}`);
+  setHudWidth(ui.petXpBar, `${xpPct}%`);
   if (has) setHudText(ui.petNameTxt, String(pet.pseudo || "REX"));
   setHudText(ui.petHpTxt, `${formatInteger(hp)} / ${formatInteger(hpMax)}`);
   setHudWidth(ui.petHpBar, `${hpMax > 0 ? (hp / hpMax) * 100 : 0}%`);
   setHudText(ui.petShTxt, `${formatInteger(sh)} / ${formatInteger(shMax)}`);
   setHudWidth(ui.petShBar, `${shMax > 0 ? (sh / shMax) * 100 : 0}%`);
   if (ui.petShBar?.parentElement) setHudDisplay(ui.petShBar.closest?.(".petMeter") || ui.petShBar.parentElement, shMax > 0 ? "" : "none");
-  setHudText(ui.petXpTxt, `${formatInteger(Math.floor(exp))} / ${formatInteger(next)}`);
-  setHudWidth(ui.petXpBar, `${xpPct}%`);
   setHudText(ui.petFuelTxt, `${formatInteger(PET_FUEL_MAX)} / ${formatInteger(PET_FUEL_MAX)}`);
   setHudWidth(ui.petFuelBar, "100%");
 
@@ -4491,6 +4502,31 @@ ui.gameLogNext?.addEventListener("click", () => {
   gameLogPage += 1;
   void renderGameLog();
 });
+document.getElementById("gameLogResizeHandle")?.addEventListener("pointerdown", (event) => {
+  const panel = document.getElementById("gameLogWindow");
+  if (!panel) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const rect = panel.getBoundingClientRect();
+  const startW = rect.width;
+  const startH = rect.height;
+  const onMove = (ev) => {
+    const w = Math.min(window.innerWidth - 20, Math.max(380, startW + ev.clientX - startX));
+    const h = Math.min(window.innerHeight - 20, Math.max(260, startH + ev.clientY - startY));
+    panel.style.width = `${Math.round(w)}px`;
+    panel.style.height = `${Math.round(h)}px`;
+  };
+  const onUp = () => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    window.removeEventListener("pointercancel", onUp);
+  };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointercancel", onUp);
+});
 void renderGameLog();
 
 function showToastFixed(text, opts = {}) {
@@ -6062,7 +6098,13 @@ function formatAmmoCount(value) {
 
   const n = Math.max(0, Math.floor(Number(value) || 0));
 
-  return formatInteger(Math.min(n, 9999999));
+  return String(Math.min(n, 999999));
+}
+
+function formatRocketCount(value) {
+  const n = Math.max(0, Math.floor(Number(value) || 0));
+
+  return String(Math.min(n, 999999));
 }
 
 // Dernier état des carrés AUTO affiché : le refresh ne les retouche que si
@@ -6080,7 +6122,7 @@ function refreshRocketPaletteCounts() {
   for (const el of bar.querySelectorAll('[data-action-id^="rocket:"]')) {
     const id = String(el.dataset.actionId || "").slice("rocket:".length);
     const count = el.querySelector(".rocketCount");
-    if (count) count.textContent = formatInteger(rocketCount(id));
+    if (count) count.textContent = formatRocketCount(rocketCount(id));
     const isLauncher = getRocketType(id)?.manual === false;
     el.classList.toggle("active", el.dataset.actionId === (isLauncher ? activeLauncher : activeStd));
   }
@@ -6096,7 +6138,7 @@ function refreshRocketPaletteCounts() {
     }
   }
   for (const el of bar.querySelectorAll(".launcherAutoBtn .launcherCount")) {
-    el.textContent = formatInteger(rocketCount(player.launcherActive));
+    el.textContent = formatRocketCount(rocketCount(player.launcherActive));
   }
   // Fond du bouton USE (palette + slots) : suit la sélection.
   const launcherBgIcon = rocketShopIcon(String(player.launcherActive || "eco10").toLowerCase()) || rocketShopIcon("eco10") || "";

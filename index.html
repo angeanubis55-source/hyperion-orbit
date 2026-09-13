@@ -10,7 +10,7 @@
     // Fenêtre de départ à chaque refresh : pas de bypass session (la classe
     // orbitSessionReady n'est plus posée, l'overlay reste visible avec DÉPART).
     </script>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=ui-refresh-6" />
   <link rel="stylesheet" href="PROFILE_WINDOW.css?v=hangar-drift-9" />
 </head>
 <body>
@@ -131,7 +131,7 @@
   <div class="row"><span class="k">Crédits</span><span class="v" id="credits">0</span></div>
   <div class="row"><span class="k">Expérience</span><span class="v" id="xpTxt">0</span></div>
   <div class="row"><span class="k">Honneur</span><span class="v" id="honorTxt">0</span></div>
-  <div class="row"><span class="k">Points de grade</span><span class="v" id="rankPtsTxt">0</span></div>
+  <div class="row"><span class="k">PDG</span><span class="v" id="rankPtsTxt">0</span></div>
   <div class="row"><span class="k">Niveau</span><span class="v" id="lvlTxt">1</span></div>
 </div>
 
@@ -348,7 +348,6 @@
         <img id="petSprite" src="./PET/PET_SPRITES/NIVEAU1/21.png" alt="P.E.T">
         <div class="petIdentity">
           <strong id="petNameTxt">P.E.T</strong>
-          <span class="petLevelBadge" id="petLevelTxt">Niveau 0</span>
         </div>
         <button id="petPlayBtn" type="button" title="Activer / désactiver le P.E.T">▶</button>
       </div>
@@ -368,12 +367,12 @@
           <div class="bar sh slim"><i id="petShBar"></i></div>
         </div>
         <div class="petMeter">
-          <div class="petMeterTop"><span class="petMeterLabel is-xp">Expérience</span><span class="barValue" id="petXpTxt">0 / 0</span></div>
-          <div class="bar xp slim"><i id="petXpBar"></i></div>
-        </div>
-        <div class="petMeter">
           <div class="petMeterTop"><span class="petMeterLabel is-fuel">Carburant</span><span class="barValue" id="petFuelTxt">0 / 0</span></div>
           <div class="bar fuel slim"><i id="petFuelBar"></i></div>
+        </div>
+        <div class="petMeter">
+          <div class="petMeterTop"><span class="petMeterLabel is-level">Niveau</span><span class="barValue" id="petXpTxt">0 / 0</span></div>
+          <div class="bar xp slim"><i id="petXpBar"></i></div>
         </div>
       </div>
       <div id="petNoPet" class="petNoPet" hidden>Achète ton P.E.T en boutique (onglet P.E.T, 10 M crédits).</div>
@@ -393,6 +392,7 @@
         <span id="gameLogPage">Page 1</span>
         <button id="gameLogNext" type="button">Suivant</button>
       </div>
+      <div id="gameLogResizeHandle" class="gameLogResizeHandle" title="Redimensionner" data-no-drag></div>
     </div>
 
     <div id="centerMsg" class="panel">

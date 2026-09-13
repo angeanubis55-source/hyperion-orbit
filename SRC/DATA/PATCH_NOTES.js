@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.192",
+    "date": "2026-09-13T22:54:02+02:00",
+    "message": "sync version 0.191 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.191",
     "date": "2026-09-13T22:53:28+02:00",
     "message": "boutons style raffinage partout (config, pet, reduire, reparation, boutique) + pastille bleue + suppression dossier TEST"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.133",
     "date": "2026-09-08T08:52:52+02:00",
     "message": "Drones exclusifs par hangar : equipement et designs isoles par vaisseau"
-  },
-  {
-    "version": "0.132",
-    "date": "2026-09-08T08:24:14+02:00",
-    "message": "ISH (bouclier 3s invincible, CD 10s, 30k) + SAB inverse (cible vers vaisseau, sprite Sab) + images ammo_sab"
   }
 ];

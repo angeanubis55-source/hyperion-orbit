@@ -323,7 +323,7 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
   background: linear-gradient(120deg, rgba(11,38,56,.92), rgba(7,25,39,.92)) !important;
 }
 
-#profileOverlay .inventoryTitle { color: #f0fbff !important; font-size: 16px !important; font-weight: 900 !important; }
+#profileOverlay .inventoryTitle { color: #f0fbff !important; font-size: 11px !important; font-weight: 900 !important; }
 #profileOverlay .inventorySubtitle { margin-top: 4px !important; color: rgba(204,228,241,.58) !important; font-size: 10px !important; }
 #profileOverlay .inventorySearchField { width: min(310px, 42%) !important; display: grid !important; gap: 5px !important; }
 #profileOverlay .inventorySearchField > span { color: rgba(164,202,221,.72) !important; font-size: 9px !important; font-weight: 900 !important; text-transform: uppercase !important; letter-spacing: .7px !important; }
@@ -814,7 +814,7 @@ body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !i
   background: transparent !important;
 }
 
-#profileOverlay .shopToolbarTitle { color: #effbff !important; font-size: 14px !important; font-weight: 900 !important; }
+#profileOverlay .shopToolbarTitle { color: #effbff !important; font-size: 11px !important; font-weight: 900 !important; }
 #profileOverlay .shopToolbarSub { margin-top: 3px !important; color: rgba(204,228,241,.55) !important; font-size: 9px !important; }
 #profileOverlay .shopBalance { flex: 0 0 auto !important; text-align: right !important; }
 #profileOverlay .shopBalance span { display: block !important; color: rgba(204,228,241,.55) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
@@ -2237,7 +2237,7 @@ html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover
   border-radius: 0 !important;
   background: transparent !important;
 }
-#shopOverlay .shopToolbarTitle { color: #effbff !important; font-size: 14px !important; font-weight: 900 !important; }
+#shopOverlay .shopToolbarTitle { color: #effbff !important; font-size: 11px !important; font-weight: 900 !important; }
 #shopOverlay .shopBalance { flex: 0 0 auto !important; text-align: right !important; }
 #shopOverlay .shopBalance span { display: block !important; color: rgba(204,228,241,.55) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
 #shopOverlay .shopBalance strong { display: block !important; margin-top: 2px !important; color: #75e8ff !important; font-size: 16px !important; }
@@ -2792,7 +2792,7 @@ body #hangarOverlay .profileHeaderTop{
   padding:0 0 20px !important;
   border-bottom:1px solid rgba(124,240,255,.13) !important;
 }
-body #hangarOverlay .profileTitle{ font-size:19px !important; }
+body #hangarOverlay .profileTitle{ font-size:11px !important; }
 body #hangarOverlay .profileSub{ margin-top:10px !important; font-size:11px !important; line-height:1.7 !important; }
 body #hangarOverlay .profileTabs{
   width:100% !important;

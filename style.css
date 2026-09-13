@@ -250,7 +250,36 @@ html.orbitSessionReady #loadingOverlay{
   left:14px;
   top:150px;
   min-width:240px;
-  padding:10px 12px;
+  width:max-content;
+  max-width:min(420px,calc(100vw - 28px));
+  padding:12px 12px 10px;
+}
+#boxMeta .row{
+  white-space:nowrap;
+  align-items:center;
+}
+#boxMeta .k{
+  white-space:nowrap;
+}
+#boxMeta .v{
+  font-size:12px;
+  white-space:nowrap;
+}
+#boxMeta .row:has(#credits){
+  margin-top:4px;
+}
+#boxVitals .row .k{
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap;
+}
+#boxVitals .row{
+  align-items:center;
+}
+#spdTxt{
+  font-size:12px;
+  font-weight:900;
+  font-variant-numeric:tabular-nums;
 }
 
 #boxVitals{
@@ -285,6 +314,11 @@ html.orbitSessionReady #loadingOverlay{
   font-weight:900;
   font-variant-numeric:tabular-nums;
   text-shadow:0 0 10px rgba(0,217,255,.10);
+}
+
+#boxMeta .k{
+  font-size:12px;
+  font-weight:800;
 }
 
 #credits,
@@ -380,6 +414,11 @@ html.orbitSessionReady #loadingOverlay{
   background:linear-gradient(90deg, var(--danger), #ffb2bb);
 }
 
+#boxVitals .bar.hp > i,
+#petWindow .bar.hp > i{
+  background:linear-gradient(90deg, #3fae5a, #b6f0c3);
+}
+
 .bar.sh > i{
   background:linear-gradient(90deg, var(--accent), #b8f7ff);
 }
@@ -389,7 +428,7 @@ html.orbitSessionReady #loadingOverlay{
 }
 
 .bar.fuel > i{
-  background:linear-gradient(90deg, #3fae5a, #b6f0c3);
+  background:linear-gradient(90deg, #cfc9b8, #f5f1e6);
 }
 
 .bar.cargo > i{
@@ -574,7 +613,7 @@ html.orbitSessionReady #loadingOverlay{
   gap:10px;
   padding:2px 2px 0;
   font-weight:1000;
-  font-size:12px;
+  font-size:11px;
   color:rgba(215,226,255,.92);
 }
 
@@ -1862,6 +1901,11 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   body #profileOverlay .shopLayoutGrid{ grid-template-columns:1fr !important; }
 }
 
+/* Titres internes des fenêtres : 11px comme P.E.T */
+html body #profileOverlay .profileHeaderTop .profileTitle,
+html body #profileOverlay .profileTitle{ font-size:11px !important; }
+.modal h2{ font-size:11px !important; }
+
 .gameWindow.gameWinOpening{
   transform-origin:center center;
   will-change:transform;
@@ -2212,7 +2256,50 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 @keyframes orbitNoticeIn{from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:translateY(0)}}
 @keyframes orbitNoticeOut{from{opacity:1;max-height:var(--notice-height,24px);padding-top:1px;padding-bottom:1px;transform:translateY(0)}to{opacity:0;max-height:0;padding-top:0;padding-bottom:0;transform:translateY(-8px)}}
 .gameLogPanel{ width:520px; height:430px; min-width:380px; min-height:260px; max-width:calc(100vw -
-20px); max-height:calc(100vh - 20px); resize:both; overflow:hidden; }
+20px); max-height:calc(100vh - 20px); overflow:hidden; }
+.gameLogResizeHandle{
+  position:absolute;
+  right:0;
+  bottom:0;
+  width:26px;
+  height:26px;
+  z-index:5;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:0 0 8px 0;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+  color:#eaffff;
+  cursor:nwse-resize;
+  user-select:none;
+  transition:none;
+}
+.gameLogResizeHandle::before{
+  content:"";
+  width:9px;
+  height:9px;
+  border-right:2px solid #eaffff;
+  border-bottom:2px solid #eaffff;
+  border-radius:0 0 3px 0;
+  filter:drop-shadow(0 0 4px rgba(0,217,255,.6));
+}
+.gameLogResizeHandle::after{
+  content:"";
+  position:absolute;
+  right:7px;
+  bottom:7px;
+  width:4px;
+  height:4px;
+  border-right:1px solid rgba(234,255,255,.6);
+  border-bottom:1px solid rgba(234,255,255,.6);
+  border-radius:0 0 2px 0;
+}
+.gameLogResizeHandle:hover{
+  border-color:rgba(124,240,255,.62);
+  background:rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(0,217,255,.12);
+}
 
 /* Fenêtre Boosters */
 #boosterWindow{ padding-bottom:0 !important; }
@@ -2244,9 +2331,9 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 .boosterRow button:disabled{ opacity:.4; cursor:default; }
 .boosterRow button:not(:disabled):hover{ border-color:rgba(124,240,255,.6); }
 .gameLogToolbar{ display:block; padding:8px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#668f9a; font-size:9px; font-weight:800; text-transform:uppercase; }
-.gameLogSearch{ min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:10px; color:#88d8e9; }.gameLogSearch input{ min-width:0; width:100%; height:30px; box-sizing:border-box; padding:0 9px; border:1px solid rgba(124,240,255,.22); border-radius:4px; outline:0; color:#e9fbff; background:#061927; font:600 11px ui-sans-serif,system-ui; }.gameLogSearch input:focus{ border-color:rgba(124,240,255,.65); }
+.gameLogSearch{ min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:10px; color:#789cac; font-size:10px; letter-spacing:1px; }.gameLogSearch input{ min-width:0; width:100%; height:30px; box-sizing:border-box; padding:0 9px; outline:0; border:1px solid rgba(124,240,255,.30); border-radius:7px; color:#effcff; background:#051521; font:900 12px/1 ui-sans-serif,system-ui; }.gameLogSearch input:focus{ border-color:#69e9ff; }
 .gameLogEntries{ height:calc(100% - 116px); overflow-y:auto; display:grid; align-content:start; gap:5px; padding:9px; box-sizing:border-box; }.gameLogEntry{ display:grid; grid-template-columns:126px minmax(0,1fr); gap:9px; padding:7px 8px; border-left:2px solid rgba(78,201,232,.35); background:rgba(4,20,33,.58); color:#bcdde5; font-size:10px; line-height:1.35; }.gameLogEntry time{ color:#5d96a5; white-space:nowrap; }.gameLogEntry.reward{ border-left-color:#d7ac50; color:#f3dda9; }.gameLogEntry.error{ border-left-color:#e35b6b; color:#ffc4cb; }.gameLogEmpty{ padding:20px; text-align:center; color:#5c8290; font-size:11px; }
-.gameLogPagination{ width:100%; height:39px; display:grid; grid-template-columns:minmax(0,82px) minmax(46px,60px) minmax(0,82px); justify-content:center; align-items:center; gap:8px; padding:5px 9px; box-sizing:border-box; overflow:hidden; border-top:1px solid rgba(124,240,255,.14); }.gameLogPagination button{ min-width:0; width:100%; height:27px; padding:0 5px; box-sizing:border-box; overflow:hidden; border:1px solid rgba(124,240,255,.24); border-radius:4px; color:#bfe9f2; background:#071d2d; cursor:pointer; font:800 9px ui-sans-serif,system-ui; text-transform:uppercase; text-overflow:ellipsis; }.gameLogPagination button:disabled{ opacity:.35; cursor:default; }.gameLogPagination span{ min-width:0; color:#83bbc8; text-align:center; font:800 9px ui-sans-serif,system-ui; text-transform:uppercase; }
+.gameLogPagination{ width:100%; height:39px; display:grid; grid-template-columns:minmax(0,82px) minmax(46px,60px) minmax(0,82px); justify-content:center; align-items:center; gap:8px; padding:5px 9px; box-sizing:border-box; overflow:hidden; border-top:1px solid rgba(124,240,255,.14); }.gameLogPagination button{ min-width:0; width:100%; height:27px; padding:0 5px; box-sizing:border-box; overflow:hidden; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); cursor:pointer; font:750 11px/1.2 ui-sans-serif,system-ui; text-transform:none; text-overflow:ellipsis; transition:none; }.gameLogPagination button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }.gameLogPagination button:disabled{ opacity:.35; cursor:default; }.gameLogPagination span{ min-width:0; color:#83bbc8; text-align:center; font:800 9px ui-sans-serif,system-ui; text-transform:uppercase; }
 .performanceActions{ display:grid; gap:9px; margin-top:14px; }
 .performanceButton{
   width:100%; box-sizing:border-box; min-height:36px; padding:8px 12px; border:1px solid rgba(124,240,255,.28);
@@ -2288,7 +2375,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 
 #boxVitals .vitalsMeterTop{
   display:flex;
-  align-items:baseline;
+  align-items:center;
   justify-content:space-between;
   gap:8px;
   min-width:0;
@@ -2298,11 +2385,11 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   display:inline-flex;
   align-items:center;
   gap:6px;
-  color:#8fb2be;
-  font-size:9.5px;
+  color:rgba(180,210,255,.64);
+  font-size:12px;
   font-weight:800;
-  letter-spacing:1.1px;
-  text-transform:uppercase;
+  letter-spacing:normal;
+  text-transform:none;
   white-space:nowrap;
 }
 
@@ -2314,7 +2401,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   flex:0 0 auto;
   background:#789cac;
 }
-#boxVitals .vitalsMeterLabel.is-hp::before{ background:#ff6b7d; box-shadow:0 0 6px rgba(255,107,125,.6); }
+#boxVitals .vitalsMeterLabel.is-hp::before{ background:#5fd97c; box-shadow:0 0 6px rgba(95,217,124,.6); }
 #boxVitals .vitalsMeterLabel.is-sh::before{ background:#4fd8f7; box-shadow:0 0 6px rgba(79,216,247,.6); }
 
 #boxVitals .bar.slim{
@@ -2340,12 +2427,12 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   position:static;
   inset:auto;
   display:block;
-  color:#cfe8ef;
-  font-size:10px;
-  font-weight:700;
+  color:#fff;
+  font-size:12px;
+  font-weight:900;
   font-variant-numeric:tabular-nums;
   text-shadow:none;
-  opacity:.85;
+  opacity:1;
   white-space:nowrap;
   pointer-events:none;
 }
@@ -2368,7 +2455,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 }
 #petWindow.gameWindow .petMeterTop{
   display:flex;
-  align-items:baseline;
+  align-items:center;
   justify-content:space-between;
   gap:8px;
   min-width:0;
@@ -2377,11 +2464,11 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   display:inline-flex;
   align-items:center;
   gap:6px;
-  color:#8fb2be;
-  font-size:9.5px;
+  color:rgba(180,210,255,.64);
+  font-size:12px;
   font-weight:800;
-  letter-spacing:1.1px;
-  text-transform:uppercase;
+  letter-spacing:normal;
+  text-transform:none;
   white-space:nowrap;
 }
 #petWindow.gameWindow .petMeterLabel::before{
@@ -2393,21 +2480,22 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   background:#789cac;
   box-shadow:0 0 6px rgba(255,255,255,.15);
 }
-#petWindow.gameWindow .petMeterLabel.is-hp::before{ background:#ff6b7d; box-shadow:0 0 6px rgba(255,107,125,.6); }
+#petWindow.gameWindow .petMeterLabel.is-hp::before{ background:#5fd97c; box-shadow:0 0 6px rgba(95,217,124,.6); }
 #petWindow.gameWindow .petMeterLabel.is-sh::before{ background:#4fd8f7; box-shadow:0 0 6px rgba(79,216,247,.6); }
 #petWindow.gameWindow .petMeterLabel.is-xp::before{ background:#9d7bff; box-shadow:0 0 6px rgba(157,123,255,.6); }
-#petWindow.gameWindow .petMeterLabel.is-fuel::before{ background:#5fd97c; box-shadow:0 0 6px rgba(95,217,124,.55); }
+#petWindow.gameWindow .petMeterLabel.is-fuel::before{ background:#ece7d9; box-shadow:0 0 6px rgba(236,231,217,.55); }
+#petWindow.gameWindow .petMeterLabel.is-level::before{ background:#9d7bff; box-shadow:0 0 6px rgba(157,123,255,.6); }
 
 #petWindow.gameWindow .barValue{
   position:static;
   inset:auto;
   display:block;
-  color:#cfe8ef;
-  font-size:10px;
-  font-weight:700;
+  color:#fff;
+  font-size:12px;
+  font-weight:900;
   font-variant-numeric:tabular-nums;
   text-shadow:none;
-  opacity:.85;
+  opacity:1;
   white-space:nowrap;
   pointer-events:none;
 }
@@ -2432,6 +2520,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 }
 
 #petWindow .petHeader{
+  position:relative;
   display:flex;
   align-items:center;
   gap:10px;
@@ -2439,8 +2528,8 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 }
 
 #petWindow #petSprite{
-  width:40px;
-  height:40px;
+  width:48px;
+  height:48px;
   object-fit:contain;
   flex:0 0 auto;
   display:block;
@@ -2455,24 +2544,31 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 
 #petWindow .petIdentity strong{
   color:#effcff;
-  font-size:13px;
+  font-size:12px;
+  font-weight:800;
   line-height:1.1;
+  text-align:center;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
 }
 
 #petWindow .petIdentity .petLevelBadge{
-  justify-self:start;
+  position:absolute;
+  left:12px;
+  bottom:1px;
+  width:48px;
+  text-align:center;
   color:#8fe6f7;
-  background:rgba(105,233,255,.1);
-  border:1px solid rgba(105,233,255,.25);
+  background:none;
+  border:none;
+  padding:0;
   font-size:9.5px;
   font-weight:800;
   letter-spacing:.6px;
-  padding:1px 7px;
-  border-radius:999px;
   line-height:1.5;
+  text-shadow:0 1px 3px #000,0 0 6px rgba(0,0,0,.8);
+  white-space:nowrap;
 }
 
 #petWindow #petPlayBtn{
@@ -2511,11 +2607,11 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   align-items:center;
   gap:8px;
   padding:0 12px 8px;
-  color:#789cac;
-  font-size:10px;
+  color:rgba(180,210,255,.64);
+  font-size:12px;
   font-weight:800;
-  letter-spacing:1px;
-  text-transform:uppercase;
+  letter-spacing:normal;
+  text-transform:none;
 }
 
 #petWindow .petModeRow select{
@@ -2526,7 +2622,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   border:1px solid rgba(105,233,255,.2);
   border-radius:5px;
   padding:4px 7px;
-  font-size:11px;
+  font:800 11px/1.2 ui-sans-serif,system-ui;
   text-transform:none;
   letter-spacing:0;
 }
@@ -2691,8 +2787,9 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   justify-content:center;
   flex-wrap:wrap;
   max-width:min(1060px,96vw);
-  background:rgba(10,14,30,.78);
-  border:1px solid rgba(124,240,255,.18);
+  background:transparent;
+  border:1px solid transparent;
+  box-shadow:none;
   pointer-events:auto;
 }
 
@@ -4017,7 +4114,9 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 }
 
 #ammoBar.compactAmmoBar .ammoBtn small {
-  font-size: 12px;
+  font-size: 25px;
+  font-weight:900;
+  font-variant-numeric:tabular-nums;
   line-height: 1;
   max-width: 100%;
   opacity: .88;
@@ -4131,18 +4230,36 @@ body #profileOverlay button.secondary:hover:not(:disabled){
 #ammoBar .actionSlots { display:grid; grid-template-columns:repeat(10,46px); gap:4px; }
 #ammoBar .actionPaletteToggle { width:44px; min-width:44px; height:44px; border:1px solid rgba(110,214,237,.3); border-radius:5px; color:#9eeeff; background:#092333; font-size:22px; font-weight:900; cursor:pointer; }
 #ammoBar .actionPaletteToggle.active { color:#fff; background:#10526b; transform:rotate(45deg); }
-#ammoBar .actionPalette { position:absolute; right:0; bottom:58px; width:390px; padding:8px; border:1px solid rgba(110,214,237,.28); border-radius:8px; background:rgba(4,14,23,.97); box-shadow:0 12px 35px #000b; }
-#ammoBar .actionPalette[hidden] { display:none; }
-#ammoBar .actionPalette nav { display:flex; gap:5px; margin-bottom:8px; }
-#ammoBar .actionPalette nav button { flex:1; min-height:30px; border:1px solid #173d4e; color:#8cb2bf; background:#071721; font-size:9px; font-weight:900; text-transform:uppercase; }
-#ammoBar .actionPalette nav button.active { color:#eaffff; border-color:#63dcef; background:#0d4052; }
-#ammoBar .actionPaletteItems { display:flex; flex-wrap:nowrap; gap:6px; overflow-x:auto; overflow-y:hidden; }
+#ammoBar .actionPalette { position:absolute; right:0; bottom:58px; width:390px; padding:8px; border:1px solid transparent; border-radius:8px; background:transparent; box-shadow:none; opacity:1; visibility:visible; transition:opacity .18s ease, visibility .18s; }
+#ammoBar .actionPalette[hidden] { display:block; opacity:0; visibility:hidden; pointer-events:none; }
+#ammoBar .actionPalette nav { display:flex; gap:5px; justify-content:center; margin-bottom:5px; }
+#ammoBar .actionPalette nav button { flex:0 0 auto; width:128px; min-height:30px; border:1px solid rgba(124,240,255,.38); border-radius:8px !important; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); font:750 9px/1.2 ui-sans-serif,system-ui; text-transform:uppercase; cursor:pointer; transition:none; position:relative; }
+#ammoBar .actionPalette nav button:hover:not(:disabled) { border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
+#ammoBar .actionPalette nav button.active { border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
+#ammoBar .actionPalette nav button.active::before,
+#ammoBar .actionPalette nav button.active::after{
+  content:"";
+  position:absolute;
+  top:50%;
+  width:7px;
+  height:7px;
+  margin-top:-3.5px;
+  border-radius:50%;
+  background:#00d9ff;
+  box-shadow:0 0 8px rgba(0,217,255,.9);
+  animation:shopTabDotBlink 1s ease-in-out infinite;
+}
+#ammoBar .actionPalette nav button.active::before{ left:7px; }
+#ammoBar .actionPalette nav button.active::after{ right:7px; }
+#ammoBar.compactAmmoBar .actionPalette nav button{ border-radius:8px !important; }
+#ammoBar .actionPalette nav button:disabled{ opacity:.35; cursor:default; }
+#ammoBar .actionPaletteItems { display:flex; flex-wrap:nowrap; gap:6px; padding-bottom:0; overflow:visible; justify-content:center; }
 #ammoBar .actionPaletteItems>.ammoBtn, #ammoBar .formationQuickAction { flex:0 0 64px; }
 #ammoBar .actionPaletteItems>.ammoBtn, #ammoBar .rocketQuickAction { flex:0 0 64px; }
-#ammoBar .formationQuickAction { min-height:70px; padding:4px; display:grid; place-items:center; gap:2px; border:1px solid #173d4e; color:#bdd8e1; background:#071721; font-size:8px; }
+#ammoBar .formationQuickAction { min-height:70px; padding:4px; display:grid; place-items:center; gap:2px; border:1px solid rgba(255,255,255,.12); color:#bdd8e1; background:rgba(255,255,255,.06); font-size:8px; }
 #ammoBar .formationQuickAction img { width:58px; height:38px; object-fit:contain; image-rendering:auto; }
 #ammoBar .formationQuickAction.active { border-color:#d8af51; color:#ffd978; background:#2a2211; }
-#ammoBar .rocketQuickAction { min-height:70px; padding:4px; display:grid; place-items:center; gap:2px; border:1px solid #173d4e; color:#bdd8e1; background:#071721; font-size:8px; position:relative; }
+#ammoBar .rocketQuickAction { min-height:70px; padding:4px; display:grid; place-items:center; gap:2px; border:1px solid rgba(255,255,255,.12); color:#bdd8e1; background:rgba(255,255,255,.06); font-size:8px; position:relative; }
 #ammoBar .rocketQuickAction img { width:58px; height:38px; object-fit:contain; image-rendering:auto; }
 #ammoBar .rocketQuickAction.active { border-color:#ff9a3c; color:#ffd9a8; background:#2a1c11; }
 #ammoBar .rocketQuickAction > strong { display:block; font-size:10px; font-weight:900; letter-spacing:.05em; }
@@ -4537,7 +4654,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar.compactAmmoBar .actionSlot .skillBtn{width:42px !important;min-width:42px !important;height:40px !important;min-height:40px !important}
 #ammoBar .actionPaletteToggle{width:27px !important;min-width:27px !important;height:44px !important;padding:0 !important;font-size:13px !important;color:rgba(158,238,255,.7) !important;transform:none !important}
 #ammoBar .actionPaletteToggle.active{transform:none !important;background:#0d4052 !important}
-#ammoBar .actionPalette{right:0 !important;width:520px !important;bottom:calc(100% + 10px) !important;padding:7px !important}
+#ammoBar .actionPalette{right:0 !important;width:max-content !important;max-width:calc(100vw - 24px) !important;bottom:100% !important;padding:7px !important}
 #ammoBar .actionPaletteItems{gap:4px !important}
 #ammoBar .actionPaletteItems>.ammoBtn,
 #ammoBar .formationQuickAction{flex:0 0 46px !important;width:46px !important;min-width:46px !important;height:44px !important;min-height:44px !important;padding:2px !important}
@@ -4652,6 +4769,11 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   white-space:nowrap;
   text-overflow:ellipsis;
 }
+/* Compteurs munitions : taille + graisse comme coque (surcharge du 7px) */
+#ammoBar.compactAmmoBar .compactAmmoBtn[data-ammo] > small{
+  font-size:10px !important;
+  line-height:1 !important;
+}
 #ammoBar.compactAmmoBar .actionSlot .formationActionSlot img,
 #ammoBar.compactAmmoBar .actionSlot .rocketActionSlot img,
 #ammoBar .formationQuickAction img,
@@ -4668,7 +4790,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar .actionPalette{
   left:50% !important;
   right:auto !important;
-  bottom:calc(100% + 12px) !important;
+  bottom:calc(100% - 9px) !important;
   transform:translateX(-50%) !important;
 }
 #ammoBar .formationQuickAction span,
@@ -4767,6 +4889,56 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 }
 /* Reste en bas aussi pendant le voile (la règle générique .cdVeil > small
    repasserait sinon le texte en relatif = centré). */
+/* Compteurs roquettes / lance-roquettes / competences : comme munitions */
+#ammoBar.compactAmmoBar .actionSlot .rocketActionSlot > small.rocketCount,
+#ammoBar.compactAmmoBar .rocketQuickAction > small.rocketCount,
+#ammoBar.compactAmmoBar .rocketQuickAction > small.launcherStock,
+#ammoBar.compactAmmoBar [data-skill="pulse"] > small,
+#ammoBar.compactAmmoBar [data-skill="ish"] > small,
+#ammoBar.compactAmmoBar [data-skill="repair"] > small{
+  font-size:10px !important;
+  line-height:1 !important;
+  font-weight:900 !important;
+  font-variant-numeric:tabular-nums !important;
+}
+/* Bouton d'ouverture du dock : sorti a droite, carre, double chevron SVG */
+#ammoBar .actionPaletteToggle{
+  position:absolute !important;
+  right:-42px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  width:32px !important;
+  min-width:32px !important;
+  height:32px !important;
+  padding:0 !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cg fill='none' stroke='%23eaffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7 L8 2 L13 7'/%3E%3Cpath d='M3 12 L8 7 L13 12'/%3E%3C/g%3E%3C/svg%3E"), linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  background-position:center, 0 0 !important;
+  background-repeat:no-repeat !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  font-size:0 !important;
+  cursor:pointer !important;
+  transition:none !important;
+}
+#ammoBar .actionPaletteToggle:hover{
+  border-color:rgba(124,240,255,.62) !important;
+  background-color:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#ammoBar .actionPaletteToggle.active{
+  transform:translateY(-50%) !important;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cg fill='none' stroke='%23eaffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4 L8 9 L13 4'/%3E%3Cpath d='M3 9 L8 14 L13 9'/%3E%3C/g%3E%3C/svg%3E"), linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  background-position:center, 0 0 !important;
+  background-repeat:no-repeat !important;
+}
+#ammoBar .actionPaletteToggle:disabled{
+  opacity:.35 !important;
+  cursor:default !important;
+}
+@media (max-width:760px){
+  #ammoBar .actionPaletteToggle{ position:static !important; transform:none !important; width:27px !important; min-width:27px !important; height:44px !important; }
+}
 #ammoBar [data-skill="repair"].cdVeil > small{position:absolute}
 /* Robot réparateur : liseré de balayage lime (couleur du robot) */
 #ammoBar [data-skill="repair"].cdVeil{--cd-edge:rgba(57,255,20,.9)}
