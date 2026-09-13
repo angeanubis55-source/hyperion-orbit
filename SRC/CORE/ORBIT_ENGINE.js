@@ -550,7 +550,7 @@ const ui = {
   refineryStock: document.getElementById("refineryStock"),
   refineryRecipes: document.getElementById("refineryRecipes"),
   refineryAuto: document.getElementById("refineryAuto"),
-  refineryMessage: document.getElementById("refineryMessage"),
+  refineryAllBtn: document.getElementById("refineryAllBtn"),
   gameLogSearch: document.getElementById("gameLogSearch"),
   gameLogPrevious: document.getElementById("gameLogPrevious"),
   gameLogNext: document.getElementById("gameLogNext"),
@@ -2256,10 +2256,9 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
 // ============================================================
 // Raffinage minerais -> minerais nobles (ratios officiels)
 // Toujours au Max : seules les recettes faisables s'affichent.
+// Auto : raffine dès qu'une recette devient disponible.
 // ============================================================
-let refineryAutoTimer = null;
-
-function refineryRefineAll(messagePrefix = "") {
+function refineryRefineAll() {
   let total = 0;
   for (const recipe of REFINERY_RECIPES) {
     const result = refineCurrentUserOre(recipe.id, Infinity);
@@ -2269,6 +2268,11 @@ function refineryRefineAll(messagePrefix = "") {
     }
   }
   return total;
+}
+
+function maybeRefineryAuto() {
+  if (!ui.refineryAuto?.checked) return 0;
+  return refineryRefineAll();
 }
 
 function renderRefineryWindow(message = "") {
@@ -2292,29 +2296,27 @@ function renderRefineryWindow(message = "") {
     rows.push(`<div class="refineryRow">${inputs}<em class="refineryArrow">→</em>${output}<button type="button" data-refinery-build="${escapeHtml(recipe.id)}">RAFFINER</button></div>`);
   }
   ui.refineryRecipes.innerHTML = rows.length ? rows.join("") : `<div class="refineryEmpty">Rien à raffiner pour le moment.</div>`;
-  if (ui.refineryMessage) ui.refineryMessage.textContent = message;
-}
-
-function stopRefineryAuto() {
-  if (refineryAutoTimer) {
-    clearInterval(refineryAutoTimer);
-    refineryAutoTimer = null;
+  // Le manager verrouille la largeur en px : la libérer quand les lignes changent pour ré-adapter.
+  if (ui.refineryWindow && ui.refineryWindow.dataset.rowCount !== String(rows.length)) {
+    ui.refineryWindow.dataset.rowCount = String(rows.length);
+    ui.refineryWindow.style.width = "";
   }
 }
 
 ui.refineryAuto?.addEventListener("change", () => {
-  stopRefineryAuto();
   if (ui.refineryAuto?.checked) {
-    refineryAutoTimer = setInterval(() => {
-      saveProgressNow();
-      const total = refineryRefineAll();
-      renderRefineryWindow(total > 0 ? `Raffinage auto : +${formatInteger(total)} minerais.` : "");
-      window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
-    }, 1000);
-    renderRefineryWindow("");
+    refineryRefineAll();
+    renderRefineryWindow();
   } else {
-    renderRefineryWindow("");
+    renderRefineryWindow();
   }
+});
+
+ui.refineryAllBtn?.addEventListener("click", () => {
+  saveProgressNow();
+  refineryRefineAll();
+  renderRefineryWindow();
+  window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
 
 ui.refineryRecipes?.addEventListener("click", event => {
@@ -2327,7 +2329,8 @@ ui.refineryRecipes?.addEventListener("click", event => {
     return renderRefineryWindow(result.error);
   }
   account.user = result.user;
-  renderRefineryWindow(`${formatInteger(result.gained)} ${getResourceName(result.recipe.output.id, result.gained)} raffiné(s).`);
+  maybeRefineryAuto();
+  renderRefineryWindow();
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
 queueMicrotask(() => renderRefineryWindow());
@@ -8629,6 +8632,12 @@ function applyCollectableReward(c) {
   }
 
   if (!cargoRefused) advanceQuestProgress("collect", c.type);
+
+  // Raffinage : auto dès qu'une recette est faisable, puis temps réel à chaque collecte.
+  maybeRefineryAuto();
+  if (ui.refineryWindow && ui.refineryWindow.style.display !== "none" && !ui.refineryWindow.classList.contains("gameWinMinimized")) {
+    renderRefineryWindow();
+  }
 
   if (parts.length) {
     const receivedMessages = parts.map(part => part.startsWith("+") ? `Vous avez reçu ${part.replace(/^\+/, "")}` : part);

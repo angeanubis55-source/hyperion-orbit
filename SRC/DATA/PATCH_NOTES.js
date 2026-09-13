@@ -1,6 +1,16 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.176",
+    "date": "2026-09-13T11:54:13+02:00",
+    "message": "launcher: script .bat mise a jour + lancement (wipe, zip github, serveur local)"
+  },
+  {
+    "version": "0.175",
+    "date": "2026-09-13T11:12:47+02:00",
+    "message": "raffinage: fenetre + recettes officielles + soute pleine refuse/partiel + palladium ressource"
+  },
+  {
     "version": "0.174",
     "date": "2026-09-13T10:44:55+02:00",
     "message": "minerais: 8 ressources + soute cargo 3000 + cargos NPC (lexique FR)"
@@ -289,15 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.117",
     "date": "2026-09-07T10:25:42+02:00",
     "message": "Synchronise version (df296162)"
-  },
-  {
-    "version": "0.116",
-    "date": "2026-09-07T10:25:21+02:00",
-    "message": "Secu + logs + audio : hash password local + migration, escapeHtml XSS stocke, sentinel X1, suppress logs MAIN/SPAWN, AudioContext differe avant geste"
-  },
-  {
-    "version": "0.115",
-    "date": "2026-09-07T07:42:55+02:00",
-    "message": "Grosses corrections sur les sauvegardes , Hangar , boutique et inventaire + patch complet FPS"
   }
 ];

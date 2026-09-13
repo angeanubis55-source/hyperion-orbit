@@ -396,25 +396,27 @@ html.orbitSessionReady #loadingOverlay{
   background:linear-gradient(90deg, #c77b1e, #ffd36b);
 }
 
-.refineryPanel{ width:min(720px,calc(100vw - 24px)); }
+.refineryPanel{ width:max-content; max-width:min(880px,calc(100vw - 24px)); }
 .refineryBody{ display:grid; gap:10px; padding:12px; color:#dff7ff; }
-.refineryStock{ display:flex; flex-direction:row; align-items:center; gap:12px; padding:10px 12px; border:1px solid rgba(124,240,255,.2); background:rgba(5,25,39,.72); overflow-x:auto; }
+.refineryStock{ display:flex; flex-direction:row; align-items:center; gap:12px; padding:7px 11px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); overflow-x:auto; }
 .refineryOre{ display:inline-flex; flex:none; flex-direction:row; align-items:center; gap:6px; }
 .refineryOre img{ width:32px; height:32px; object-fit:contain; }
 .refineryOre b{ color:#fff; font-size:13px; }
 .refineryOre.out b{ color:#ffd36b; }
 .refineryRecipes{ display:grid; gap:8px; }
-.refineryRow{ display:flex; flex-direction:row; align-items:center; gap:8px; padding:8px 10px; border:1px solid rgba(90,210,240,.2); background:rgba(3,20,33,.72); overflow-x:auto; }
+.refineryRow{ display:flex; flex-direction:row; align-items:center; gap:8px; padding:7px 11px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); overflow-x:auto; }
 .refineryPlus{ color:#8fcddd; font-style:normal; font-weight:900; }
 .refineryArrow{ color:#ffd36b; font-style:normal; font-weight:900; }
-.refineryRow button{ margin-left:auto; flex:none; height:38px; padding:0 14px; border:1px solid #67e7ff; border-radius:5px; color:#fff; background:linear-gradient(180deg,#0b7697,#07465f); font-weight:1000; text-transform:uppercase; cursor:pointer; }
+.refineryRow button{ margin-left:auto; flex:none; min-height:30px; padding:6px 10px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); font:750 11px/1.2 ui-sans-serif,system-ui; text-transform:none; cursor:pointer; }
+.refineryRow button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
 .refineryRow button:disabled{ opacity:.35; cursor:default; }
-.refineryActions{ display:flex; flex-direction:row; align-items:center; gap:10px; }
-.refineryAuto{ display:inline-flex; flex-direction:row; align-items:center; gap:10px; min-height:46px; padding:7px 11px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); cursor:pointer; }
+.refineryFooter{ display:flex; flex-direction:row; align-items:center; gap:10px; }
+.refineryAuto{ display:inline-flex; flex-direction:row; align-items:center; gap:8px; cursor:pointer; }
 .refineryAuto input{ width:17px; height:17px; accent-color:#7cf0ff; cursor:pointer; }
 .refineryAuto span{ color:#8fcddd; font-size:11px; font-weight:900; text-transform:uppercase; }
+.refineryFooter button{ margin-left:auto; flex:none; min-height:30px; padding:6px 14px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); font:750 11px/1.2 ui-sans-serif,system-ui; text-transform:none; cursor:pointer; }
+.refineryFooter button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
 .refineryEmpty{ color:rgba(207,235,246,.6); font-size:12px; padding:8px 2px; }
-.refineryMessage{ color:#ffd36b; font-size:12px; min-height:16px; }
 
 #boxVitals .row.mini{
   margin-top:8px;
@@ -454,6 +456,19 @@ html.orbitSessionReady #loadingOverlay{
 .cfgBtn{
   width:28px;
   height:24px;
+}
+
+#cfgToggleBtn{
+  color:#eaffff;
+  border:1px solid rgba(124,240,255,.38);
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+}
+
+#cfgToggleBtn:hover:not(:disabled){
+  border-color:rgba(124,240,255,.62);
+  background:rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(0,217,255,.12);
 }
 
 .fitCfgBtn{
@@ -2411,9 +2426,10 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   width:38px;
   height:30px;
   border-radius:8px;
-  border:1px solid rgba(100,200,255,.28);
-  background:rgba(255,255,255,.06);
-  color:rgba(232,244,255,.75);
+  border:1px solid rgba(124,240,255,.38);
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+  color:#eaffff;
   font-size:13px;
   font-weight:900;
   line-height:1;
@@ -2423,12 +2439,12 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   transition:border-color .15s ease, box-shadow .15s ease, background .15s ease, color .15s ease;
 }
 
-#petWindow #petPlayBtn:hover{ border-color:rgba(0,217,255,.75); color:#fff; }
+#petWindow #petPlayBtn:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); color:#fff; }
 #petWindow #petPlayBtn.isOn{
-  background:rgba(0,217,255,.25);
-  border-color:rgba(0,217,255,.75);
-  color:#fff;
-  box-shadow:0 0 12px rgba(0,217,255,.28);
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  border-color:rgba(124,240,255,.38);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+  color:#eaffff;
 }
 
 #petWindow #petPlayBtn:disabled{
