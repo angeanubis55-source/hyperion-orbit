@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.185",
+    "date": "2026-09-13T16:46:29+02:00",
+    "message": "ameliorations equipement: cartes drag-drop + usure + comptoir centre + quetes bouton monde"
+  },
+  {
     "version": "0.184",
     "date": "2026-09-13T15:17:53+02:00",
     "message": "box battle x2 (4-x, x-4.1) + terminal quetes bouton monde + synchro journal"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.126",
     "date": "2026-09-07T19:15:20+02:00",
     "message": "minor fixes & sound control"
-  },
-  {
-    "version": "0.125",
-    "date": "2026-09-07T18:43:55+02:00",
-    "message": "Boutique : option x1000 + persistance munition dock rapide"
   }
 ];
