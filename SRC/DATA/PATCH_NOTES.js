@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.194",
+    "date": "2026-09-14T01:12:50+02:00",
+    "message": "sync version 0.193 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.193",
     "date": "2026-09-14T01:12:22+02:00",
     "message": "raffinage: log/pet/stats/minimap/dock palette (pastilles, compteurs, persistance) + boutique onglets"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.135",
     "date": "2026-09-08T11:52:06+02:00",
     "message": "Optimise le chargement par secteur et limite les images de bases"
-  },
-  {
-    "version": "0.134",
-    "date": "2026-09-08T09:27:17+02:00",
-    "message": "Musique par firme (FIRME/GENERAL), volumes son par defaut du joueur, barre rapide en 2 colonnes"
   }
 ];

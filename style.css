@@ -436,11 +436,19 @@ html.orbitSessionReady #loadingOverlay{
 }
 
 .oreTradePanel{ width:max-content; max-width:min(640px,calc(100vw - 24px)); }
-.oreTradeBody{ display:grid; gap:10px; padding:12px; }
-.oreTradeRows{ display:grid; gap:10px; }
-.oreTradeRows .refineryRow, #otPalladiumRow{ justify-content:center; }
-.oreTradePrice{ color:#8fcddd; font-size:11px; font-weight:900; white-space:nowrap; }
-.oreTradeGain{ color:#ffd36b; font-size:13px; font-weight:900; margin-left:auto; white-space:nowrap; }
+.oreTradeBody{ display:grid; gap:0; padding:12px; }
+.oreTradeRows{ display:grid; gap:0; }
+.oreTradeRows .refineryRow, #otPalladiumRow{ justify-content:center; border:none; border-bottom:1px solid rgba(124,240,255,.2); border-radius:0; background:none; }
+.oreTradeRows .refineryRow{ display:grid; grid-template-columns:auto 1fr auto; align-items:center; }
+#otPalladiumRow{ display:grid; grid-template-columns:auto 1fr auto; align-items:center; }
+#otPalladiumRow .oreTradeGain{ margin:0; text-align:left; }
+.oreTradeRows .refineryRow:last-child{ border-bottom:none; }
+.oreTradeRows .oreTradeGain{ margin:0; text-align:left; }
+.oreTradeRows button, #otExchangeBtn{ min-width:90px; text-align:center; }
+.oreTradeRows button{ margin-left:auto; }
+#otPalladiumRow button{ margin-left:auto; }
+.oreTradePrice{ color:#8fcddd; font-size:12px; font-weight:900; white-space:nowrap; }
+.oreTradeGain{ color:#ffd36b; font-size:12px; font-weight:900; margin-left:auto; white-space:nowrap; }
 .oreTradeRows button{ flex:none; min-height:30px; padding:6px 10px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); font:750 11px/1.2 ui-sans-serif,system-ui; text-transform:none; cursor:pointer; }
 .oreTradeRows button:disabled{ opacity:.35; cursor:default; }
 .oreTradeRows button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
@@ -450,7 +458,7 @@ html.orbitSessionReady #loadingOverlay{
 .refineryStock{ display:flex; flex-direction:row; align-items:center; justify-content:center; gap:12px; padding:7px 11px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); overflow:visible; }
 .refineryOre{ display:inline-flex; flex:none; flex-direction:row; align-items:center; gap:6px; }
 .refineryOre img{ width:32px; height:32px; object-fit:contain; }
-.refineryOre b{ color:#fff; font-size:13px; }
+.refineryOre b{ color:#fff; font-size:12px; font-weight:900; font-variant-numeric:tabular-nums; }
 .refineryOre.out b{ color:#ffd36b; }
 .refineryRecipes{ display:grid; gap:10px; }
 .refineryRow{ display:flex; flex-direction:row; align-items:center; gap:8px; padding:7px 11px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); overflow-x:auto; }
@@ -461,23 +469,44 @@ html.orbitSessionReady #loadingOverlay{
 .refineryRow button:disabled{ opacity:.35; cursor:default; }
 .refineryFooter{ display:flex; flex-direction:row; align-items:center; gap:10px; }
 .refineryAuto{ display:inline-flex; flex-direction:row; align-items:center; gap:8px; cursor:pointer; }
-.refineryAuto input{ width:17px; height:17px; accent-color:#7cf0ff; cursor:pointer; }
-.refineryAuto span{ color:#8fcddd; font-size:11px; font-weight:900; text-transform:uppercase; }
+.refineryAuto input{
+  appearance:none;
+  -webkit-appearance:none;
+  width:17px;
+  height:17px;
+  margin:0;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:6px;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+  cursor:pointer;
+}
+.refineryAuto input:checked::after{
+  content:"✓";
+  color:#eaffff;
+  font-size:11px;
+  font-weight:900;
+  line-height:1;
+}
+.refineryAuto input:hover{ border-color:rgba(124,240,255,.62); }
+.refineryAuto span{ color:#8fcddd; font-size:12px; font-weight:900; text-transform:none; }
 .refineryFooter button{ margin-left:auto; flex:none; min-height:30px; padding:6px 14px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); font:750 11px/1.2 ui-sans-serif,system-ui; text-transform:none; cursor:pointer; }
 .refineryFooter button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
 .refinerySeparator{ border:none; border-top:1px solid rgba(124,240,255,.2); margin:2px 0; }
 .refineryUpgrades{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; overflow-x:auto; overflow-y:visible; padding-bottom:2px; }
-.refinerySlotName{ color:#8fcddd; font-size:11px; font-weight:900; text-transform:uppercase; white-space:nowrap; }
+.refinerySlotName{ color:#8fcddd; font-size:12px; font-weight:900; text-transform:none; white-space:nowrap; }
 .upgCard{ position:relative; display:grid; justify-items:center; gap:6px; padding:12px 12px 14px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); }
 .upgHelp{ position:absolute; top:6px; right:8px; width:18px; height:18px; display:grid; place-items:center; border:1px solid rgba(124,240,255,.4); border-radius:50%; color:#8fcddd; font-size:11px; font-weight:900; cursor:help; }
 .upgIcon{ width:64px; height:64px; object-fit:contain; }
-.upgName{ color:#eaffff; font-size:11px; font-weight:900; text-transform:uppercase; }
+.upgName{ color:#eaffff; font-size:12px; font-weight:900; text-transform:none; }
 .upgSlot{ min-width:64px; min-height:40px; box-sizing:border-box; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:6px; padding:4px 8px; border:1px dashed rgba(124,240,255,.35); border-radius:8px; background:rgba(3,20,33,.92); }
 .upgSlot img{ width:28px; height:28px; object-fit:contain; pointer-events:none; }
-.upgSlot b{ color:#fff; font-size:12px; }
+.upgSlot b{ color:#fff; font-size:12px; font-weight:900; }
 .upgSlot.filled{ border-style:solid; border-color:rgba(124,240,255,.6); background:rgba(0,100,140,.5); }
 .upgSlot.dragTarget{ border-color:#ffd36b; box-shadow:0 0 12px rgba(255,211,107,.5); }
-.upgSlotEmpty{ color:rgba(207,235,246,.55); font-size:11px; }
+.upgSlotEmpty{ color:rgba(207,235,246,.55); font-size:12px; }
 .upgStatus{ align-self:stretch; text-align:right; color:#ffd36b; font-size:12px; font-weight:900; min-height:14px; }
 .refineryStock .refineryOre{ cursor:grab; }
 .refineryStock .refineryOre:active{ cursor:grabbing; }
@@ -492,7 +521,7 @@ html.orbitSessionReady #loadingOverlay{
 .upgAmountPreview{ color:#dff7ff; font-size:12px; }
 .upgAmountActions{ display:flex; flex-direction:row; justify-content:flex-end; gap:8px; }
 .upgAmountActions button{ min-height:30px; padding:6px 12px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); font:750 11px/1.2 ui-sans-serif,system-ui; cursor:pointer; }
-.refineryEmpty{ color:rgba(207,235,246,.6); font-size:12px; padding:8px 2px; }
+.refineryEmpty{ color:rgba(207,235,246,.6); font-size:12px; padding:8px 2px; text-align:center; }
 
 #boxVitals .row.mini{
   margin-top:8px;
@@ -613,7 +642,7 @@ html.orbitSessionReady #loadingOverlay{
   gap:10px;
   padding:2px 2px 0;
   font-weight:1000;
-  font-size:11px;
+  font-size:12px;
   color:rgba(215,226,255,.92);
 }
 
@@ -2036,6 +2065,53 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .gameWinMinBtn:disabled{
   opacity:.35 !important;
   cursor:default !important;
+}
+
+/* Boutons reduire : fleche ↖ CSS (comme poignee LOG, sens haut-gauche) */
+.gameWindow > .gameWinBar > .gameWinMinBtn:not(.miniZoomBtn){
+  position:relative;
+  font-size:0 !important;
+}
+.gameWindow > .gameWinBar > .gameWinMinBtn:not(.miniZoomBtn)::before{
+  content:"";
+  position:absolute;
+  left:4px;
+  top:4px;
+  width:9px;
+  height:9px;
+  border-top:2px solid #eaffff;
+  border-left:2px solid #eaffff;
+  border-radius:3px 0 0 0;
+  filter:drop-shadow(0 0 4px rgba(0,217,255,.6));
+}
+.gameWindow > .gameWinBar > .gameWinMinBtn:not(.miniZoomBtn)::after{
+  content:none !important;
+}
+/* Zoom mini-carte : plus/moins CSS classe */
+#minimap .miniZoomBtn{ position:relative; font-size:0 !important; }
+#minimap .miniZoomBtn::before{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:12px;
+  height:2px;
+  margin:-1px 0 0 -6px;
+  border-radius:2px;
+  background:#eaffff;
+  filter:drop-shadow(0 0 4px rgba(0,217,255,.6));
+}
+#minimap #miniZoomIn::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:2px;
+  height:12px;
+  margin:-6px 0 0 -1px;
+  border-radius:2px;
+  background:#eaffff;
+  filter:drop-shadow(0 0 4px rgba(0,217,255,.6));
 }
 
 /* Vrai bouton réduire : carré collé dans l'angle haut-droit.

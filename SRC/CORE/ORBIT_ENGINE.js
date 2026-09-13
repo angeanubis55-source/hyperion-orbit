@@ -1826,7 +1826,7 @@ function registerHudWindows() {
     window.GameWindowManager?.close?.("craftingWindow");
   }
   reg("petWindow", "P.E.T", menuIcon("pet"), false);
-  reg("oreTradeWindow", "Commerce minerais", menuIcon("ore_trade"), false, { minimizable: false });
+  reg("oreTradeWindow", "Commerce", menuIcon("ore_trade"), false, { minimizable: false });
   // Comptoir : juste une croix qui fait disparaître (jamais de dock).
   ui.oreTradeWindow?.querySelector(".gameWinBar")?.insertAdjacentHTML("beforeend", `<button class="gameWinMinBtn" type="button" title="Fermer">✕</button>`);
   ui.oreTradeWindow?.querySelector(".gameWinBar > button:last-child")?.addEventListener("click", closeOreTradeWindow);
@@ -2362,7 +2362,7 @@ function renderRefineryWindow(message = "") {
       `<span class="refineryOre"><img src="${escapeHtml(getResourceIcon(id))}" alt="${escapeHtml(getResourceName(id))}" loading="lazy"><b>${formatInteger(Number(perUnit) * quantity)} / ${formatInteger(resources[id] || 0)}</b></span>`
     ).join(`<em class="refineryPlus">+</em>`);
     const output = `<span class="refineryOre out"><img src="${escapeHtml(getResourceIcon(recipe.output.id))}" alt="${escapeHtml(getResourceName(recipe.output.id))}" loading="lazy"><b>+${formatInteger(Number(recipe.output.amount) * quantity)}</b></span>`;
-    rows.push(`<div class="refineryRow">${inputs}<em class="refineryArrow">→</em>${output}<button type="button" data-refinery-build="${escapeHtml(recipe.id)}">RAFFINER</button></div>`);
+    rows.push(`<div class="refineryRow">${inputs}<em class="refineryArrow">→</em>${output}<button type="button" data-refinery-build="${escapeHtml(recipe.id)}">Raffiner</button></div>`);
   }
   ui.refineryRecipes.innerHTML = rows.length ? rows.join("") : `<div class="refineryEmpty">Rien à raffiner pour le moment.</div>`;
   // Largeur adaptative : on grandit (jamais on rétrécit) pour englober le contenu, sans scroll.
@@ -13022,18 +13022,16 @@ function renderOreTradeWindow() {
   const resources = user.inventory?.resources || {};
   const palladium = Math.max(0, Math.floor(Number(resources.palladium) || 0));
   const { energies } = palladiumExchangeForEnergy(palladium, Infinity);
-  // Échange Palladium réservé à la base pirate (5-2), comme le vrai DO.
-  const palladiumAllowed = currentMapId() === "5-2";
+  // Échange Palladium possible partout.
   if (ui.otPalladium) ui.otPalladium.textContent = formatInteger(palladium);
-  if (ui.otPalladiumGain) ui.otPalladiumGain.textContent = palladiumAllowed ? `+${formatInteger(energies)}` : "5-2";
-  if (ui.otExchangeBtn) ui.otExchangeBtn.disabled = energies <= 0 || !palladiumAllowed;
+  if (ui.otPalladiumGain) ui.otPalladiumGain.textContent = `x10 = ${formatInteger(energies)} énergie`;
+  if (ui.otExchangeBtn) ui.otExchangeBtn.disabled = energies <= 0;
   ui.otRows.innerHTML = Object.entries(ORE_SELL_PRICES).map(([id, price]) => {
     const owned = Math.max(0, Math.floor(Number(resources[id]) || 0));
     const gain = owned * price;
     return `<div class="refineryRow"><span class="refineryOre"><img src="${escapeHtml(getResourceIcon(id))}" alt="${escapeHtml(getResourceName(id))}" loading="lazy"><b>${formatInteger(owned)}</b></span>`
-      + `<span class="oreTradePrice">${formatInteger(price)} crédits/u</span>`
-      + `<span class="oreTradeGain">+${formatInteger(gain)}</span>`
-      + `<button type="button" data-ore-sell="${escapeHtml(id)}"${owned <= 0 ? " disabled" : ""}>VENDRE</button></div>`;
+      + `<span class="oreTradeGain">x${formatInteger(price)} = ${formatInteger(gain)} crédit</span>`
+      + `<button type="button" data-ore-sell="${escapeHtml(id)}"${owned <= 0 ? " disabled" : ""}>Vendre</button></div>`;
   }).join("");
   // Fenêtre + cartes épousent le contenu (pas de largeur verrouillée trop grande).
   if (ui.oreTradeWindow && ui.oreTradeWindow.style.display !== "none") {
