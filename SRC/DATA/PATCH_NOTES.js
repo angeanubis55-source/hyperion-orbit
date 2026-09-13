@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.193",
+    "date": "2026-09-14T01:12:22+02:00",
+    "message": "raffinage: log/pet/stats/minimap/dock palette (pastilles, compteurs, persistance) + boutique onglets"
+  },
+  {
     "version": "0.192",
     "date": "2026-09-13T22:54:02+02:00",
     "message": "sync version 0.191 + patch-notes (hook post-push)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.134",
     "date": "2026-09-08T09:27:17+02:00",
     "message": "Musique par firme (FIRME/GENERAL), volumes son par defaut du joueur, barre rapide en 2 colonnes"
-  },
-  {
-    "version": "0.133",
-    "date": "2026-09-08T08:52:52+02:00",
-    "message": "Drones exclusifs par hangar : equipement et designs isoles par vaisseau"
   }
 ];
