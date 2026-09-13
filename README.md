@@ -6,8 +6,10 @@ Prototype de jeu spatial 2D jouable dans le navigateur, inspiré de DarkOrbit.
 
 Double-clique sur `HyperionOrbit.bat`.
 
-Le script supprime tout sauf lui-même, re-télécharge la dernière version depuis GitHub
-et remet tout en place.
+Le script vérifie d'abord le dernier commit GitHub : si le jeu est déjà à jour,
+il ne télécharge rien. Sinon il sauvegarde la version actuelle, supprime tout
+sauf lui-même, re-télécharge la dernière version depuis GitHub et remet tout
+en place (avec restauration automatique en cas d'échec).
 (Premier téléchargement lourd : ~1,3 Go d'images. Windows peut afficher un
 avertissement SmartScreen : `Informations complémentaires` > `Exécuter quand même`.)
 
