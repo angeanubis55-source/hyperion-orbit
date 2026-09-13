@@ -127,6 +127,7 @@ if (storedTab === "shop" && document.getElementById("shopWindowPanel")) storedTa
 if (storedTab === "hangars" && document.getElementById("hangarWindowPanel")) storedTab = "stats";
 let tab = storedTab;
 let shopTab = localStorage.getItem("orbit_shop_tab") || "ammo";
+if (shopTab === "launchers") shopTab = "rockets"; // onglet fusionné
 let selectedShopItemId = null;
 let selectedHangarId = null;
 let shopRenderToken = 0;
@@ -294,8 +295,14 @@ function itemShipId(it) {
 }
 
 function getShopListFor(cat) {
+  // Ancien onglet "Lance-roquettes" fusionné dans "Roquettes" (compat saved tab).
+  if (cat === "launchers") cat = "rockets";
   const direct = CATALOG?.[cat];
   if (Array.isArray(direct) && direct.length) {
+    // Onglet Roquettes : manuelles d'abord, lance-roquettes ensuite.
+    if (cat === "rockets") {
+      return [...direct].sort((a, b) => Number(b.manual !== false) - Number(a.manual !== false));
+    }
     if (cat === "designs") {
       // groupe les designs par vaisseau de base (l'ordre du fichier est déjà cohérent)
       return [...direct].sort((a, b) => {
@@ -1734,6 +1741,17 @@ function renderShopMeasured(user) {
       const badge = document.createElement("span");
       badge.className = "shopPetBadge";
       badge.textContent = "P.E.T";
+      title.appendChild(document.createTextNode(" "));
+      title.appendChild(badge);
+    }
+    // Onglet Roquettes fusionné : petite carte comme P.E.T (SG3N-P01).
+    // Badges courts (R / LR) : le titre rogne en ellipsis, le long est coupé.
+    if (shopTab === "rockets") {
+      const badge = document.createElement("span");
+      const isLauncher = it.manual === false;
+      badge.className = "shopPetBadge" + (isLauncher ? " shopLauncherBadge" : "");
+      badge.textContent = isLauncher ? "LR" : "R";
+      badge.title = isLauncher ? "Lance-roquettes" : "Roquette manuelle";
       title.appendChild(document.createTextNode(" "));
       title.appendChild(badge);
     }
@@ -4806,7 +4824,7 @@ const titleEl = document.getElementById("fitTitle");
 const subEl = document.getElementById("fitSub");
 if (titleEl) titleEl.textContent = `Équipement — ${h.shipId} — Config ${fitState.configNo}`;
 window.GameWindowManager?.setTitle(
-  "profileWindow",
+  equipWindowId(),
   `Équipement — ${h.shipId} — Config ${fitState.configNo}`
 );
   if (subEl) {
@@ -5127,6 +5145,8 @@ function openProfileOverlay() {
   const overlay = document.getElementById("profileOverlay");
   if (window.GameWindowManager) window.GameWindowManager.restore("profileWindow");
   else if (overlay) overlay.style.display = "block";
+  // Auto-réparation : un titre Équipement resté bloqué revient à Espace pilote.
+  window.GameWindowManager?.setTitle("profileWindow", "Espace pilote");
 
   renderHeader(user);
   setTab(tab);

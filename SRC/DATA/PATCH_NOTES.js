@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.189",
+    "date": "2026-09-13T19:54:44+02:00",
+    "message": "drops assemblage NPC (box 25% + direct) + collectables monde continu + icones ressources + purge vieux items"
+  },
+  {
     "version": "0.188",
     "date": "2026-09-13T17:19:24+02:00",
     "message": "double-clic maison via pointerup + dblclick natif desactive"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.130",
     "date": "2026-09-08T00:12:20+02:00",
     "message": "Laser : notifs portee (combat commence/hors de portee), triple bip Out_Of_Range + reglage, message d'evasion"
-  },
-  {
-    "version": "0.129",
-    "date": "2026-09-07T23:44:16+02:00",
-    "message": "Dock : sons selection menus, pastille orbitale de tir, liseres et flash dynamiques"
   }
 ];

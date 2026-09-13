@@ -1371,8 +1371,8 @@ test("la boutique vend les 12 roquettes", async () => {
   const { ROCKET_IDS, getRocketType, rocketEffectLabel } = await import("../../COMBAT/ROCKET_TYPES.js");
 
   assert.equal(ROCKET_IDS.length, 24);
-  assert.equal(CATALOG.rockets.length, 14);
-  assert.equal(CATALOG.launchers.length, 10);
+  assert.equal(CATALOG.rockets.length, 24);
+  assert.equal(CATALOG.launchers, undefined);
   const expectedDamage = {
     r310: 1000,
     plt2026: 2000,
@@ -1423,7 +1423,7 @@ test("la boutique vend les 12 roquettes", async () => {
   assert.match(rocketEffectLabel("shg01"), /5[^0-9]*000 dégâts dont 50 % ignorent le bouclier/);
   assert.match(rocketEffectLabel("hstrm01"), /4[^0-9]*000 dégâts par roquette/);
   assert.match(rocketEffectLabel("cbr"), /3[^0-9]*000 dégâts.*3[^0-9]*000 de bouclier/);
-  // 14 standards tirables, 10 de lance-roquettes (pas de tir manuel).
+  // 24 roquettes dans une seule catégorie boutique (14 standards + 10 lance-roquettes).
   const manual = ROCKET_IDS.filter((id) => getRocketType(id)?.manual !== false);
   const launcher = ROCKET_IDS.filter((id) => getRocketType(id)?.manual === false);
   // Cooldown unique : 1 s pour toutes les standards, pas de cooldown perso.

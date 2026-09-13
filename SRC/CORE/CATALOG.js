@@ -71,25 +71,16 @@ export const CATALOG = {
     desc: "Dégâts quadruplés (×4), ×8 contre Invoke et Mindfire Behemoth.", effect: "Tirs roses." },
   ],
 
-  // Roquettes tirables (lanceur natif) : généré depuis data/rockets.js.
+  // Roquettes (lanceur natif + lance-roquettes) : généré depuis data/rockets.js.
   // Nouvelles roquettes = juste une entrée là-bas, la boutique suit toute seule.
-  rockets: Object.values(ROCKET_TYPES).filter((r) => r.manual !== false).map((r) => ({
+  // Une seule catégorie boutique "Roquettes", le flag manual distingue l'usage.
+  rockets: Object.values(ROCKET_TYPES).map((r) => ({
     id: `rocket_${r.id}`,
     name: `${r.name} ×${r.packSize}`,
     price: r.packPrice,
     give: { rockets: { [r.id]: r.packSize } },
     icon: rocketShopIcon(r.id),
-    manual: true,
-  })),
-
-  // Roquettes de lance-roquettes : catégorie à part (pas de tir manuel pour l'instant).
-  launchers: Object.values(ROCKET_TYPES).filter((r) => r.manual === false).map((r) => ({
-    id: `rocket_${r.id}`,
-    name: `${r.name} ×${r.packSize}`,
-    price: r.packPrice,
-    give: { rockets: { [r.id]: r.packSize } },
-    icon: rocketShopIcon(r.id),
-    manual: false,
+    manual: r.manual !== false,
   })),
 
   // Générateurs de vitesse officiels (darkorbitwiki.com/equipment/generators).
