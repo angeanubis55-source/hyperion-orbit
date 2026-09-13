@@ -6,31 +6,16 @@ title Hyperion Orbit - Mise a jour
 rem ---------------------------------------------------------------------------
 rem  Hyperion Orbit : MISE A JOUR uniquement.
 rem  Double-clique ce fichier :
-rem  1. Il se recopie dans TEMP et se relance depuis la-bas (pour pouvoir
-rem     tout supprimer ici sans se tirer une balle dans le pied).
-rem  2. Il telecharge le ZIP de la derniere version depuis GitHub.
-rem  3. Il supprime TOUT dans ce dossier, dezippe et remet tout en place.
+rem  1. Il telecharge le ZIP de la derniere version depuis GitHub.
+rem  2. Il supprime TOUT dans ce dossier SAUF lui-meme,
+rem     dezippe et remet tout en place.
 rem ---------------------------------------------------------------------------
 
-if /i "%~1"=="--run" goto run
-set "MYDIR=%~dp0"
-if "%MYDIR:~-1%"=="\" set "MYDIR=%MYDIR:~0,-1%"
-copy /y "%~f0" "%TEMP%\HyperionOrbit-run.bat" >nul
-call "%TEMP%\HyperionOrbit-run.bat" --run "%MYDIR%"
-exit /b %errorlevel%
-
-:run
-
-set "GAMEDIR=%~2"
-if not defined GAMEDIR set "GAMEDIR=%~dp0"
-rem %~dp0 se termine par \ : "C:\jeu\" casserait les guillemets (\ " = guillemet echappe).
+set "GAMEDIR=%~dp0"
 if "%GAMEDIR:~-1%"=="\" set "GAMEDIR=%GAMEDIR:~0,-1%"
+set "BATNAME=%~nx0"
 cd /d "%GAMEDIR%" 2>nul
-if errorlevel 1 (
-  echo Impossible d'ouvrir le dossier : %GAMEDIR%
-  pause
-  exit /b 1
-)
+if errorlevel 1 goto bad_dir
 
 set "REPO=angeanubis55-source/hyperion-orbit"
 set "BRANCH=main"
@@ -43,7 +28,7 @@ echo ============================================
 echo  Hyperion Orbit - Mise a jour
 echo  Dossier : %GAMEDIR%
 echo ============================================
-echo.
+echo(
 
 rem --- [1/3] Telechargement -----------------------------------------------
 if exist "%WORKDIR%" rmdir /s /q "%WORKDIR%"
@@ -64,14 +49,15 @@ if not errorlevel 1 set "DL_OK=1"
 
 :dl_verif
 if "%DL_OK%"=="1" goto dl_ok
-echo.
+echo(
 echo Echec du telechargement. Verifie ta connexion internet puis reessaie.
-echo (Le jeu local n'a pas ete touche.)
+echo Le jeu local n'a pas ete touche.
 pause
 exit /b 1
+
 :dl_ok
 echo Telechargement termine.
-echo.
+echo(
 
 rem --- [2/3] Extraction ----------------------------------------------------
 echo [2/3] Extraction...
@@ -88,7 +74,7 @@ if errorlevel 1 goto unzip_fail
 goto unzip_findroot
 
 :unzip_fail
-echo.
+echo(
 echo Echec de l'extraction. Relance le script.
 pause
 exit /b 1
@@ -97,28 +83,38 @@ exit /b 1
 for /d %%d in ("%EXTRACTDIR%\*") do if not defined SRCDIR set "SRCDIR=%%d"
 if not defined SRCDIR goto unzip_fail
 echo Extraction terminee.
-echo.
+echo(
 
 rem --- [3/3] Remplacement des fichiers -------------------------------------
-echo [3/3] Remplacement des fichiers...
+echo [3/3] Remplacement des fichiers. Le script lui-meme est conserve.
 attrib -r -s -h /s /d "%GAMEDIR%\*" >nul 2>&1
-del /f /q "%GAMEDIR%\*" >nul 2>&1
+for %%f in ("%GAMEDIR%\*") do if /i not "%%~nxf"=="%BATNAME%" del /f /q "%%f" >nul 2>&1
 for /d %%d in ("%GAMEDIR%\*") do rmdir /s /q "%%d" >nul 2>&1
-robocopy "%SRCDIR%" "%GAMEDIR%" /E /MOVE /NFL /NDL /NJH /NJS >nul 2>&1
-if errorlevel 8 (
-  echo.
-  echo Echec de l'installation. Relance le script.
-  pause
-  exit /b 1
-)
-if not exist "%GAMEDIR%\index.html" (
-  echo.
-  echo Installation incomplete (index.html manquant). Relance le script.
-  pause
-  exit /b 1
-)
+robocopy "%SRCDIR%" "%GAMEDIR%" /E /MOVE /NFL /NDL /NJH /NJS /XF "%BATNAME%" >nul 2>&1
+if errorlevel 8 goto install_fail
+if not exist "%GAMEDIR%\index.html" goto install_incomplete
+goto install_ok
+
+:install_fail
+echo(
+echo Echec de l'installation. Relance le script.
+pause
+exit /b 1
+
+:install_incomplete
+echo(
+echo Installation incomplete, index.html manquant. Relance le script.
+pause
+exit /b 1
+
+:install_ok
 rmdir /s /q "%WORKDIR%" >nul 2>&1
 echo Mise a jour terminee. Tout est en place.
-echo.
+echo(
 pause
 exit /b 0
+
+:bad_dir
+echo Impossible d'ouvrir le dossier du jeu.
+pause
+exit /b 1
