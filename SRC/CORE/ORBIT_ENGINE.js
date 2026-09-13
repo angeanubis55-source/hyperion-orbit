@@ -3879,7 +3879,7 @@ function getSpeedBreakdown() {
   }
 
   speedPct += Number(getActiveDroneFormation(u).effects?.speedPct || 0);
-  const total = Math.floor((base + genSpeed) * (1 + speedPct / 100));
+  const total = Math.floor((base + genSpeed) * (1 + speedPct / 100) * playerUpgradeMults().speed);
 
   return {
     shipId,

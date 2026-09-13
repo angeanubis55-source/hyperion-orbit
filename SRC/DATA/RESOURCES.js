@@ -66,8 +66,8 @@ export const ORE_SELL_PRICES = Object.freeze({
 export const UPGRADE_CHARGE_COST = 100;
 
 export const UPGRADE_SLOTS = Object.freeze([
-  Object.freeze({ id: "laser", name: "Dégâts lasers", unit: "tirs", icon: "/ASSETS/LASERS/lf_4_100x100.png", help: "Charge un minerai sur les lasers : +dégâts à chaque tir. 1 minerai = 10 tirs. Prometid +15 %, Promerium +30 %, Seprom +60 %, Osmium +50 %." }),
-  Object.freeze({ id: "rocket", name: "Dégâts roquettes", unit: "tirs", icon: "/COMBAT/ROCKET_SPRITES/PLD-8_100X100.png", help: "Charge un minerai sur les roquettes : +dégâts par roquette. 1 minerai = 10 tirs. Prometid +15 %, Promerium +30 %, Seprom +60 %, Osmium +50 %." }),
+  Object.freeze({ id: "laser", name: "Dégâts lasers", unit: "tirs", icon: "/ASSETS/LASERS/lf_3_100x100.png", help: "Charge un minerai sur les lasers : +dégâts à chaque tir. 1 minerai = 10 tirs. Prometid +15 %, Promerium +30 %, Seprom +60 %, Osmium +50 %." }),
+  Object.freeze({ id: "rocket", name: "Dégâts roquettes", unit: "tirs", icon: "/COMBAT/ROCKET_SPRITES/PLT-3030_100X100.png", help: "Charge un minerai sur les roquettes : +dégâts par roquette. 1 minerai = 10 tirs. Prometid +15 %, Promerium +30 %, Seprom +60 %, Osmium +50 %." }),
   Object.freeze({ id: "speed", name: "Vitesse", unit: "min", icon: "/ASSETS/ITEMS/G3N-7900.png", help: "Charge un minerai sur les générateurs de vitesse. 1 minerai = 10 minutes. Duranium +10 %, Promerium +20 %." }),
   Object.freeze({ id: "shield", name: "Bouclier", unit: "min", icon: "/ASSETS/ITEMS/SG3N-B03.png", help: "Charge un minerai sur les générateurs de bouclier. 1 minerai = 10 minutes. Duranium +10 %, Promerium +20 %, Seprom +40 %, Osmium +50 %." }),
 ]);

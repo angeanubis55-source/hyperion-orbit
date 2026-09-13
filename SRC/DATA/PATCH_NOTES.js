@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.186",
+    "date": "2026-09-13T16:47:31+02:00",
+    "message": "sync"
+  },
+  {
     "version": "0.185",
     "date": "2026-09-13T16:46:29+02:00",
     "message": "ameliorations equipement: cartes drag-drop + usure + comptoir centre + quetes bouton monde"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.127",
     "date": "2026-09-07T22:03:59+02:00",
     "message": "Dock rapide : voile de recharge en arc (IEM, roquettes, formations, robot) + uniformisation des slots"
-  },
-  {
-    "version": "0.126",
-    "date": "2026-09-07T19:15:20+02:00",
-    "message": "minor fixes & sound control"
   }
 ];
