@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.195",
+    "date": "2026-09-14T01:40:48+02:00",
+    "message": "commerce/raffinage: textes 12px, compteurs sans espace, palette dock, onglets pastilles"
+  },
+  {
     "version": "0.194",
     "date": "2026-09-14T01:12:50+02:00",
     "message": "sync version 0.193 + patch-notes (hook post-push)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.136",
     "date": "2026-09-08T12:01:18+02:00",
     "message": "synchronisation complete"
-  },
-  {
-    "version": "0.135",
-    "date": "2026-09-08T11:52:06+02:00",
-    "message": "Optimise le chargement par secteur et limite les images de bases"
   }
 ];

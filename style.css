@@ -2380,11 +2380,13 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 /* Fenêtre Boosters */
 #boosterWindow{ padding-bottom:0 !important; }
 .boosterPanel{ width:280px !important; min-width:0 !important; max-width:min(280px, calc(100vw - 20px)) !important; }
-.boosterList{ display:grid; gap:5px; padding:8px 12px; max-height:440px; overflow-y:auto; scrollbar-width:thin; }
-.boosterEmpty{ color:rgba(204,228,241,.6); font-size:11px; padding:10px 4px; text-align:center; }
-.boosterRow{ display:grid; grid-template-columns:48px minmax(0,1fr) auto; gap:10px; align-items:center; padding:8px 10px; border:1px solid rgba(124,240,255,.14); border-radius:10px; background:rgba(8,25,40,.55); }
+.boosterList{ display:grid; gap:0; padding:8px 12px; max-height:440px; overflow-y:auto; scrollbar-width:thin; }
+.boosterEmpty{ color:rgba(204,228,241,.6); font-size:12px; padding:10px 4px; text-align:center; }
+.boosterRow{ display:grid; grid-template-columns:48px minmax(0,1fr) auto; gap:10px; align-items:center; padding:8px 10px; border:none; border-radius:0; background:none; }
 .boosterRow img{ width:48px; height:48px; object-fit:contain; }
-.boosterRow.compact{ grid-template-columns:24px auto minmax(0,1fr); gap:8px; padding:3px 6px; align-items:center; }
+.boosterRow.compact{ grid-template-columns:24px auto minmax(0,1fr); gap:8px; padding:2px 6px; align-items:center; }
+.boosterList > .boosterSingle:not(:last-child),
+.boosterList > .boosterGroup:not(:last-child){ border-bottom:1px solid rgba(124,240,255,.2); padding-bottom:8px; margin-bottom:8px; }
 .boosterRow.compact img{ width:24px; height:24px; }
 /* Badge % individuel + groupes par icône avec tiret couleur famille */
 .boosterSingle{ display:grid; grid-template-columns:58px minmax(0,1fr); gap:6px; align-items:center; }
@@ -2393,17 +2395,17 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .boosterPct{ color:var(--boost, rgba(255,200,90,.95)); font-size:12px; font-weight:800; white-space:nowrap; }
 .boosterGroup{ display:grid; grid-template-columns:58px minmax(0,1fr); gap:6px; align-items:stretch; }
 .boosterGroupRail{ display:flex; align-items:stretch; gap:5px; }
-.boosterCombined{ align-self:center; color:var(--boost, rgba(255,200,90,.95)); font-size:13px; font-weight:900; white-space:nowrap; margin-left:auto; }
-.bracket{ width:0; border-left:2px solid var(--boost, rgba(0,180,255,.9)); }
-.boosterGroupCards{ display:grid; gap:5px; min-width:0; }
+.boosterCombined{ align-self:center; color:var(--boost, rgba(255,200,90,.95)); font-size:12px; font-weight:900; white-space:nowrap; margin-left:auto; }
+.bracket{ width:0; align-self:center; height:75%; min-height:20px; border-left:2px solid var(--boost, rgba(0,180,255,.9)); }
+.boosterGroupCards{ display:grid; gap:2px; min-width:0; }
 .boosterRow.compact .boosterCode{ color:var(--boost, rgba(255,59,78,.95)); font-size:12px; white-space:nowrap; }
 .boosterRow.compact .boosterStatus{ color:var(--boost, #75e8ff); font-weight:800; font-size:12px; white-space:nowrap; justify-self:end; }
 .boosterMeta{ display:grid; gap:2px; min-width:0; }
 .boosterMeta strong{ color:#effbff; font-size:12px; }
-.boosterCode{ color:rgba(124,240,255,.6); font-size:10px; font-weight:700; }
-.boosterMeta span{ color:rgba(204,228,241,.65); font-size:10px; }
+.boosterCode{ color:rgba(124,240,255,.6); font-size:12px; font-weight:700; }
+.boosterMeta span{ color:rgba(204,228,241,.65); font-size:12px; }
 .boosterStatus{ color:#75e8ff !important; font-weight:800; }
-.boosterRow button{ padding:8px 14px; border:1px solid rgba(124,240,255,.3); border-radius:8px; background:linear-gradient(135deg, rgba(0,217,255,.2), rgba(0,70,100,.25)); color:#effcff; font:800 11px system-ui; cursor:pointer; }
+.boosterRow button{ padding:8px 14px; border:1px solid rgba(124,240,255,.3); border-radius:8px; background:linear-gradient(135deg, rgba(0,217,255,.2), rgba(0,70,100,.25)); color:#effcff; font:800 12px system-ui; cursor:pointer; }
 .boosterRow button:disabled{ opacity:.4; cursor:default; }
 .boosterRow button:not(:disabled):hover{ border-color:rgba(124,240,255,.6); }
 .gameLogToolbar{ display:block; padding:8px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#668f9a; font-size:9px; font-weight:800; text-transform:uppercase; }
