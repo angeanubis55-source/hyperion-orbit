@@ -546,6 +546,7 @@ const ui = {
   gameLogEntries: document.getElementById("gameLogEntries"),
   gameLogWindow: document.getElementById("gameLogWindow"),
   questWindow: document.getElementById("questWindow"),
+  questOfferWindow: document.getElementById("questOfferWindow"),
   escortWindowBody: document.getElementById("escortWindowBody"),
   craftingRecipes: document.getElementById("craftingRecipes"),
   craftingDetail: document.getElementById("craftingDetail"),
@@ -1773,7 +1774,11 @@ function registerHudWindows() {
   reg("minimap", "Mini-carte", menuIcon("minimap"));
   reg("settingsWindow", "Paramètres", menuIcon("settings"), false);
   reg("questWindow", "Missions", menuIcon("quests"), false);
-  reg("questOfferWindow", "Terminal de quêtes", menuIcon("quests"), false);
+  reg("questOfferWindow", "Terminal de quêtes", menuIcon("quests"), false, { minimizable: false });
+  // Terminal : comme le comptoir, juste une croix qui fait disparaître (jamais de dock).
+  ui.questOfferWindow?.querySelector(".gameWinBar")?.insertAdjacentHTML("beforeend", `<button class="gameWinMinBtn" type="button" title="Fermer">✕</button>`);
+  ui.questOfferWindow?.querySelector(".gameWinBar > button:last-child")?.addEventListener("click", closeQuestTerminal);
+  window.GameWindowManager?.close?.("questOfferWindow");
   reg("galaxyGateWindow", "Galaxy Gates", menuIcon("ggBuilder"), false);
   reg("gameLogWindow", "LOG", menuIcon("log"), false);
   // Assemblage désactivé (voir CRAFTING_ENABLED) : pas d'icône dock, code conservé.
@@ -1783,11 +1788,11 @@ function registerHudWindows() {
     window.GameWindowManager?.close?.("craftingWindow");
   }
   reg("petWindow", "P.E.T", menuIcon("pet"), false);
-  reg("oreTradeWindow", "Commerce minerais", menuIcon("ore_trade"), false);
-  // Comptoir : pas de bouton réduire, juste une croix qui fait disparaître.
-  ui.oreTradeWindow?.querySelector(".gameWinBar .gameWinMinBtn")?.remove();
+  reg("oreTradeWindow", "Commerce minerais", menuIcon("ore_trade"), false, { minimizable: false });
+  // Comptoir : juste une croix qui fait disparaître (jamais de dock).
   ui.oreTradeWindow?.querySelector(".gameWinBar")?.insertAdjacentHTML("beforeend", `<button class="gameWinMinBtn" type="button" title="Fermer">✕</button>`);
   ui.oreTradeWindow?.querySelector(".gameWinBar > button:last-child")?.addEventListener("click", closeOreTradeWindow);
+  window.GameWindowManager?.close?.("oreTradeWindow");
   reg("refineryWindow", "Raffinage", menuIcon("refinement"), false);
   reg("boosterWindow", "Boosters", menuIcon("booster"), false);
   reg("gygerimStatus", "État du boss", menuIcon("worldBoss"), true, { minimizable: false });
@@ -3358,6 +3363,19 @@ loadNpcLocationIndex().then(locations => {
 function openQuestTerminal() {
   renderQuestTerminal();
   window.GameWindowManager?.restore("questOfferWindow");
+}
+
+function closeQuestTerminal() {
+  const card = ui.questOfferWindow;
+  if (!card || card.classList.contains("gameWinClosing")) return;
+  if (window.GameWindowManager) {
+    // Même effet de disparition que le commerce, sans icône dock.
+    card.classList.add("gameWinClosing");
+    setTimeout(() => {
+      card.classList.remove("gameWinClosing");
+      window.GameWindowManager?.close("questOfferWindow");
+    }, 360);
+  } else card.style.display = "none";
 }
 
 ui.questOfferList?.addEventListener("click", event => {
@@ -8592,7 +8610,11 @@ function applyCollectableReward(c) {
   const parts = [];
   const goldTerms = [];
   // Booster Bonus Box : contenu doublé.
-  const boxMult = String(c?.type || "") === "Bonus_Box" ? playerBoosterMults().box : 1;
+  // Maps battle (4-x et x-4.1) : toutes les box sauf cargos doublées de base.
+  const battleMapId = String(currentMapId());
+  const isBattleMap = /^4(-|$|\.)/.test(battleMapId) || /-4\.1$/.test(battleMapId);
+  const battleMult = (isBattleMap && String(c?.type || "") !== "Cargo_Box") ? 2 : 1;
+  const boxMult = (String(c?.type || "") === "Bonus_Box" ? playerBoosterMults().box : 1) * battleMult;
 
   let changed = false;
   let grantedAny = false;
@@ -8654,7 +8676,7 @@ function applyCollectableReward(c) {
       account.user.inventory ||= {};
       account.user.inventory.resources ||= {};
       // Booster Ressources : +25 % sur les cargos venus de NPC.
-      const resMult = c?.fromNpc ? playerBoosterMults().res : 1;
+      const resMult = (c?.fromNpc ? playerBoosterMults().res : 1) * battleMult;
       for (const [resourceId, range] of Object.entries(reward.resources)) {
         const wanted = Math.floor(rollValue(range, 0) * resMult);
         if (wanted <= 0) continue;
@@ -15094,6 +15116,8 @@ updateConfigButtons();
   updateResourceHud(ui, player, currentCargo());
   // Comptoir pirate : la fenêtre se ferme dès qu'on s'éloigne du bouton.
   if (isOreTradeWindowOpen() && !isTradeWindowAnchored()) closeOreTradeWindow();
+  // Terminal de quêtes : pareil, uniquement via le bouton monde.
+  if (ui.questOfferWindow && ui.questOfferWindow.style.display !== "none" && !hasQuestTerminalAccess()) closeQuestTerminal();
   updatePetHud();
   updateWaveHud(ui, { started, wave, remaining: waveSpawns.remaining, alive: enemies.length });
 

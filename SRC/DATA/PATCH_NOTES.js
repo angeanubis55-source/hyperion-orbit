@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.183",
+    "date": "2026-09-13T14:47:53+02:00",
+    "message": "comptoir vente: boutons bases X-8 comme X-1"
+  },
+  {
     "version": "0.182",
     "date": "2026-09-13T14:46:18+02:00",
     "message": "comptoir pirate: fenetre vente classique + boutons bases + affichage recompenses quetes corrige"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.124",
     "date": "2026-09-07T18:00:30+02:00",
     "message": "dock rapide fix"
-  },
-  {
-    "version": "0.123",
-    "date": "2026-09-07T16:17:18+02:00",
-    "message": "Synchronise version (d049fe40)"
   }
 ];
