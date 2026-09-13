@@ -2,14 +2,12 @@
 
 Prototype de jeu spatial 2D jouable dans le navigateur, inspiré de DarkOrbit.
 
-## Jouer sur Windows (sans rien installer)
+## Mettre à jour (Windows)
 
-1. Télécharge le projet (bouton vert `Code` > `Download ZIP` sur GitHub) et dézippe-le où tu veux.
-2. Installe Node.js 20+ une seule fois : https://nodejs.org/
-3. Double-clique sur `HyperionOrbit.bat`.
+Double-clique sur `HyperionOrbit.bat`.
 
-Le script supprime tout sauf lui-même, re-télécharge la dernière version depuis GitHub,
-remet tout en place, démarre le serveur local et ouvre le jeu dans ton navigateur.
+Le script supprime tout sauf lui-même, re-télécharge la dernière version depuis GitHub
+et remet tout en place.
 (Premier téléchargement lourd : ~1,3 Go d'images. Windows peut afficher un
 avertissement SmartScreen : `Informations complémentaires` > `Exécuter quand même`.)
 
