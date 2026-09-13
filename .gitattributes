@@ -1,0 +1,2 @@
+# Garantit des fins de ligne Windows pour le launcher (le ZIP GitHub doit contenir un .bat propre).
+*.bat text eol=crlf
