@@ -483,9 +483,55 @@ function ensurePetFitsByHangar(u) {
   }
 }
 
+// Migration doublon starter : "PhoenixBleu" (legacy) et "phoenix_bleu"
+// désignent le même vaisseau. Normalise les ids au canonique et déduplique
+// les hangars par base (garde l'actif).
+export function normalizeStarterShipIds(u) {
+  if (!u || typeof u !== "object") return u;
+  const canonical = (sid) => String(getShipPackById(sid)?.id || sid);
+  const baseOf = (sid) => {
+    const id = canonical(sid);
+    return getShipDesignBaseId(id) || id;
+  };
+  if (Array.isArray(u.inventory?.ships)) {
+    const seen = new Set();
+    u.inventory.ships = u.inventory.ships.map(canonical).filter((sid) => {
+      const key = String(sid).toLowerCase();
+      if (!sid || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+  if (Array.isArray(u.inventory?.shipDesigns)) {
+    const seen = new Set();
+    u.inventory.shipDesigns = u.inventory.shipDesigns.map(canonical).filter((sid) => {
+      const key = String(sid).toLowerCase();
+      if (!sid || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+  if (u.ship) u.ship = canonical(u.ship);
+  if (Array.isArray(u.hangars)) {
+    for (const h of u.hangars) {
+      if (h && typeof h === "object" && h.shipId) h.shipId = canonical(h.shipId);
+    }
+    // Déduplique par base en gardant l'ordre ; en cas de conflit, l'actif gagne.
+    const winnerByBase = new Map();
+    for (const h of u.hangars) {
+      if (!h || typeof h !== "object") continue;
+      const base = String(baseOf(h.shipId)).toLowerCase();
+      const prev = winnerByBase.get(base);
+      if (!prev || (h.active === true && prev.active !== true)) winnerByBase.set(base, h);
+    }
+    u.hangars = u.hangars.filter((h) => h && winnerByBase.get(String(baseOf(h.shipId)).toLowerCase()) === h);
+    if (!u.hangars.some((h) => h?.active) && u.hangars.length) u.hangars[0].active = true;
+  }
+  return u;
+}
+
 // Items retirés du jeu (anciennes sauvegardes) : purge exacte, sans motif large.
-const REMOVED_ITEM_IDS = new Set([
-  "shd_mk4",
+const REMOVED_ITEM_IDS = new Set([  "shd_mk4",
   "spd_mk4",
   "laser_radion",
   "shd_radion",
@@ -842,6 +888,10 @@ function ensureUserShape(u) {
     // compat : h.fit pointe toujours vers la config active
     h.fit = h.fits[String(h.activeConfig)];
   }
+
+  // Migration doublon starter (legacy "PhoenixBleu" vs "phoenix_bleu") :
+  // ids normalisés au canonique + hangars dédupliqués par base.
+  normalizeStarterShipIds(u);
 
   // ✅ Drones : équipement exclusif par hangar (migration legacy -> actif uniquement)
   ensureDroneFitsByHangar(u);

@@ -92,19 +92,20 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
   padding: 0 !important;
   display: grid !important;
   place-items: center !important;
-  border: 1px solid rgba(124,240,255,.28) !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
   border-radius: 0 8px 0 0 !important;
-  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.16), rgba(0,70,100,.10)) !important;
-  color: rgba(232,244,255,.95) !important;
-  font: 1000 15px/1 system-ui !important;
-  box-shadow: 0 0 10px rgba(0,217,255,.10), inset 0 0 0 1px rgba(255,255,255,.035) !important;
-  transition: transform .14s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease !important;
+  background: linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  color: #eaffff !important;
+  font: 750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform: none !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  transition: none !important;
 }
 
-html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover {
-  border-color: rgba(124,240,255,.58) !important;
-  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.20), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.24), rgba(0,70,100,.18)) !important;
-  box-shadow: 0 0 16px rgba(0,217,255,.20), inset 0 0 0 1px rgba(255,255,255,.05) !important;
+html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover:not(:disabled) {
+  border-color: rgba(124,240,255,.62) !important;
+  background: rgba(0,140,185,.3) !important;
+  box-shadow: 0 0 16px rgba(0,217,255,.12) !important;
 }
 
 #profileOverlay .profileHeaderCard {
@@ -2144,17 +2145,19 @@ html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn {
   padding: 0 !important;
   display: grid !important;
   place-items: center !important;
-  border: 1px solid rgba(124,240,255,.28) !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
   border-radius: 0 8px 0 0 !important;
-  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.16), rgba(0,70,100,.10)) !important;
-  color: rgba(232,244,255,.95) !important;
-  font: 1000 15px/1 system-ui !important;
-  box-shadow: 0 0 10px rgba(0,217,255,.10), inset 0 0 0 1px rgba(255,255,255,.035) !important;
+  background: linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  color: #eaffff !important;
+  font: 750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform: none !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  transition: none !important;
 }
-html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover {
-  border-color: rgba(124,240,255,.58) !important;
-  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.20), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.24), rgba(0,70,100,.18)) !important;
-  box-shadow: 0 0 16px rgba(0,217,255,.20), inset 0 0 0 1px rgba(255,255,255,.05) !important;
+html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover:not(:disabled) {
+  border-color: rgba(124,240,255,.62) !important;
+  background: rgba(0,140,185,.3) !important;
+  box-shadow: 0 0 16px rgba(0,217,255,.12) !important;
 }
 #shopOverlay .profileHeaderCard {
   grid-column: 1 !important;
@@ -2171,7 +2174,7 @@ html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover
   border: 0 !important;
   border-right: 1px solid rgba(124,240,255,.16) !important;
   border-radius: 0 !important;
-  background: linear-gradient(180deg, #0b2638, #071927) !important;
+  background: transparent !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
   scrollbar-width: none !important;
@@ -2186,30 +2189,8 @@ html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover
   gap: 8px !important;
   overflow: visible !important;
 }
-#shopOverlay .profileTabs .tabBtn {
-  box-sizing: border-box !important;
-  width: 100% !important;
-  min-height: 44px !important;
-  margin: 0 !important;
-  padding: 11px 14px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  text-align: left !important;
-  border: 1px solid rgba(124,240,255,.17) !important;
-  border-radius: 8px !important;
-  color: rgba(215,235,246,.76) !important;
-  background: #0a2232 !important;
-  font: 800 12px/1.2 system-ui !important;
-  letter-spacing: .045em !important;
-  white-space: nowrap !important;
-}
-#shopOverlay .profileTabs .tabBtn.active {
-  color: #f1fcff !important;
-  border-color: rgba(124,240,255,.52) !important;
-  background: #0c3950 !important;
-  box-shadow: inset 3px 0 0 #69e9ff !important;
-}
+/* Onglets boutique : style porté par le bloc gagnant plus bas
+   (body #shopOverlay .profileTabs .tabBtn) + attrape-tout ci-dessus. */
 #shopOverlay .profileMainCard {
   grid-column: 2 !important;
   grid-row: 2 !important;
@@ -2222,7 +2203,7 @@ html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover
   overflow: hidden !important;
   border: 0 !important;
   border-radius: 0 !important;
-  background: #06111c !important;
+  background: transparent !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
 }
@@ -2285,34 +2266,44 @@ html body #shopOverlay #shopWindowPanel .shopPreview {
 }
 html body #shopOverlay #shopWindowPanel .shopList { display: flex !important; flex-direction: column !important; gap: 0 !important; border-right: 1px solid rgba(124,240,255,.13) !important; }
 html body #shopOverlay .shopRow { flex: 0 0 auto !important; min-width: 0 !important; min-height: 64px !important; padding: 8px 10px !important; display: flex !important; align-items: center !important; gap: 10px !important; border: 0 !important; border-bottom: 1px solid rgba(124,240,255,.09) !important; border-radius: 0 !important; background: transparent !important; background-image: none !important; box-shadow: none !important; transform: none !important; cursor: pointer !important; }
-html body #shopOverlay .shopRow.active { border-color: rgba(124,240,255,.09) !important; background: rgba(0,217,255,.10) !important; box-shadow: inset 3px 0 0 #69e9ff !important; }
-body #shopOverlay .shopRow { transition: transform .14s ease, border-color .14s ease, background .14s ease !important; }
-body #shopOverlay .shopRow:hover { transform: translateX(2px) !important; border-color: rgba(124,240,255,.34) !important; }
+html body #shopOverlay .shopRow.active { border-bottom-color: rgba(124,240,255,.09) !important; background: rgba(0,140,185,.18) !important; box-shadow: none !important; }
+body #shopOverlay .shopRow { transition: none !important; }
+body #shopOverlay .shopRow:hover { transform: none !important; border-bottom-color: rgba(124,240,255,.09) !important; background: rgba(0,140,185,.10) !important; box-shadow: none !important; }
 body #shopOverlay .shopPreview .profileTile { padding: 16px !important; }
 html body #shopOverlay #shopWindowPanel .shopLayout.extrasMode { display: block !important; overflow-y: auto !important; }
 html body #shopOverlay #shopWindowPanel .shopLayout.extrasMode .shopList { display: none !important; }
 html body #shopOverlay #shopWindowPanel .shopLayout.extrasMode .shopPreview { width: 100% !important; min-height: 100% !important; overflow: visible !important; }
 
 /* ---- Miroir visuel exact de l'ancienne boutique (avant transfert) ---- */
-/* Boutons : même base que #profileOverlay */
+/* Boutons boutique : style raffinage exact, sans exception. */
 #shopOverlay button:not(.gameWinMinBtn) {
   box-sizing: border-box !important;
   min-width: 0 !important;
-  min-height: 36px !important;
+  min-height: 30px !important;
   margin: 0 !important;
-  padding: 8px 11px !important;
-  border: 1px solid rgba(124,240,255,.17) !important;
+  padding: 6px 10px !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
   border-radius: 8px !important;
-  color: rgba(215,235,246,.76) !important;
-  background: #0a2232 !important;
-  box-shadow: none !important;
-  font: 800 11px/1.2 system-ui !important;
+  color: #eaffff !important;
+  background: linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  font: 750 11px/1.2 ui-sans-serif,system-ui !important;
   text-transform: none !important;
+  cursor: pointer !important;
   transform: none !important;
   transition: none !important;
 }
-#shopOverlay button:not(.gameWinMinBtn):hover,
-#shopOverlay button:not(.gameWinMinBtn):active { transform: none !important; }
+#shopOverlay button:not(.gameWinMinBtn):hover:not(:disabled),
+#shopOverlay button:not(.gameWinMinBtn):active:not(:disabled) {
+  border-color: rgba(124,240,255,.62) !important;
+  background: rgba(0,140,185,.3) !important;
+  box-shadow: 0 0 16px rgba(0,217,255,.12) !important;
+  transform: none !important;
+}
+#shopOverlay button:not(.gameWinMinBtn):disabled {
+  opacity: .35 !important;
+  cursor: default !important;
+}
 /* Cartes : même base que #profileOverlay */
 #shopOverlay .tile,
 #shopOverlay .profileTile {
@@ -2424,9 +2415,10 @@ body #shopOverlay .profileHeaderCard{
   justify-content:flex-start !important;
   gap:22px !important;
   overflow:hidden auto !important;
-  border:1px solid rgba(124,240,255,.16) !important;
-  border-radius:12px !important;
-  background:linear-gradient(180deg,rgba(14,45,65,.78),rgba(5,17,30,.84)) !important;
+  border:0 !important;
+  border-right:1px solid rgba(124,240,255,.16) !important;
+  border-radius:0 !important;
+  background:transparent !important;
   box-shadow:none !important;
   backdrop-filter:none !important;
   scrollbar-width:none !important;
@@ -2447,15 +2439,11 @@ body #shopOverlay .profileTabs{
 }
 body #shopOverlay .profileTabs::-webkit-scrollbar{ display:none !important; }
 body #shopOverlay button:not(.gameWinMinBtn){
-  box-sizing:border-box !important;
-  min-width:0 !important;
   min-height:30px !important;
-  margin:0 !important;
   padding:6px 10px !important;
   border-radius:8px !important;
   font:750 11px/1.2 ui-sans-serif,system-ui !important;
   text-transform:none !important;
-  box-shadow:none !important;
 }
 body #shopOverlay .profileTabs .tabBtn{
   width:100% !important;
@@ -2467,26 +2455,43 @@ body #shopOverlay .profileTabs .tabBtn{
   display:flex !important;
   align-items:center !important;
   justify-content:flex-start !important;
+  gap:8px !important;
   text-align:left !important;
   overflow:hidden !important;
   text-overflow:ellipsis !important;
-  border:1px solid rgba(124,240,255,.18) !important;
-  border-radius:9px !important;
-  color:rgba(205,230,245,.72) !important;
-  background:rgba(8,35,52,.62) !important;
-  font:800 11px/1.2 system-ui !important;
-  letter-spacing:.045em !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
   white-space:nowrap !important;
-  box-shadow:none !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  cursor:pointer !important;
   transform:none !important;
-  transition:transform .15s ease,border-color .15s ease,background .15s ease !important;
+  transition:none !important;
 }
-body #shopOverlay .profileTabs .tabBtn:hover:not(:disabled){ transform:none !important; border-color:rgba(124,240,255,.45) !important; background:rgba(0,140,185,.18) !important; }
+body #shopOverlay .profileTabs .tabBtn:hover:not(:disabled){ transform:none !important; border-color:rgba(124,240,255,.62) !important; background:rgba(0,140,185,.3) !important; box-shadow:0 0 16px rgba(0,217,255,.12) !important; }
 body #shopOverlay .profileTabs .tabBtn.active{
-  color:#edfbff !important;
-  border-color:rgba(124,240,255,.5) !important;
-  background:linear-gradient(90deg,rgba(0,155,205,.34),rgba(0,90,125,.17)) !important;
-  box-shadow:inset 3px 0 0 #69e9ff !important;
+  color:#eaffff !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+body #shopOverlay .profileTabs .tabBtn.active::after{
+  content:"" !important;
+  flex:0 0 auto !important;
+  width:8px !important;
+  height:8px !important;
+  margin-left:auto !important;
+  border-radius:50% !important;
+  background:#00d9ff !important;
+  box-shadow:0 0 8px rgba(0,217,255,.9) !important;
+  animation:shopTabDotBlink 1s ease-in-out infinite !important;
+}
+@keyframes shopTabDotBlink{
+  0%,100%{ opacity:1; }
+  50%{ opacity:.25; }
 }
 body #shopOverlay .profileMainCard{
   grid-column:2 !important;
@@ -2513,11 +2518,9 @@ body #shopOverlay .profilePanel.active{
   display:flex !important;
   flex-direction:column !important;
   overflow:hidden auto !important;
-  border:1px solid rgba(124,240,255,.16) !important;
-  border-radius:12px !important;
-  background:
-    radial-gradient(circle at 90% 0,rgba(0,180,225,.08),transparent 34%),
-    linear-gradient(145deg,rgba(8,28,45,.72),rgba(3,11,22,.82)) !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
   box-shadow:0 0 0 1px rgba(255,255,255,.02) inset !important;
   backdrop-filter:none !important;
 }
@@ -2567,12 +2570,23 @@ html body #shopOverlay .shopRow{
   cursor:pointer !important;
 }
 html body #shopOverlay .shopRow.active{
-  border-color:rgba(124,240,255,.09) !important;
-  background:rgba(0,217,255,.10) !important;
-  box-shadow:inset 3px 0 0 #69e9ff !important;
+  border-bottom-color:rgba(124,240,255,.09) !important;
+  background:rgba(0,140,185,.18) !important;
+  box-shadow:none !important;
 }
-body #shopOverlay .shopRow{ transition:transform .14s ease,border-color .14s ease,background .14s ease !important; }
-body #shopOverlay .shopRow:hover{ transform:translateX(2px) !important; border-color:rgba(124,240,255,.34) !important; }
+body #shopOverlay .shopRow{ transition:none !important; }
+body #shopOverlay .shopRow:hover{ transform:none !important; border-bottom-color:rgba(124,240,255,.09) !important; background:rgba(0,140,185,.10) !important; box-shadow:none !important; }
+html body #shopOverlay .shopRow.active::after{
+  content:"" !important;
+  flex:0 0 auto !important;
+  width:8px !important;
+  height:8px !important;
+  margin-left:auto !important;
+  border-radius:50% !important;
+  background:#00d9ff !important;
+  box-shadow:0 0 8px rgba(0,217,255,.9) !important;
+  animation:shopTabDotBlink 1s ease-in-out infinite !important;
+}
 html body #shopOverlay #shopWindowPanel .shopPreview > .tile{
   min-height:100% !important;
   padding:18px !important;
@@ -2629,21 +2643,23 @@ html body #shopOverlay .moduleHistoryReroll strong{ color:#75e8ff !important; }
 html body #shopOverlay .moduleHistoryRerollBtn{
   display:grid !important;
   place-items:center !important;
-  border:1px solid rgba(124,240,255,.28) !important;
-  border-radius:10px !important;
-  background:rgba(0,217,255,.08) !important;
-  color:#e8f4ff !important;
-  font-size:19px !important;
-  line-height:1 !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  color:#eaffff !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
   cursor:pointer !important;
-  box-shadow:none !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  transform:none !important;
+  transition:none !important;
 }
 html body #shopOverlay .moduleHistoryRerollBtn:hover:not(:disabled){
-  border-color:rgba(124,240,255,.6) !important;
-  background:rgba(0,217,255,.18) !important;
-  box-shadow:0 0 14px rgba(0,217,255,.18) !important;
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
 }
-html body #shopOverlay .moduleHistoryRerollBtn:disabled{ opacity:.35 !important; cursor:not-allowed !important; }
+html body #shopOverlay .moduleHistoryRerollBtn:disabled{ opacity:.35 !important; cursor:default !important; }
 
 /* =========================================================
    Hangars & Équipement — fenêtre dédiée, miroir exact de
@@ -2734,17 +2750,19 @@ html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
   padding: 0 !important;
   display: grid !important;
   place-items: center !important;
-  border: 1px solid rgba(124,240,255,.28) !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
   border-radius: 0 8px 0 0 !important;
-  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.16), rgba(0,70,100,.10)) !important;
-  color: rgba(232,244,255,.95) !important;
-  font: 1000 15px/1 system-ui !important;
-  box-shadow: 0 0 10px rgba(0,217,255,.10), inset 0 0 0 1px rgba(255,255,255,.035) !important;
+  background: linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  color: #eaffff !important;
+  font: 750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform: none !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  transition: none !important;
 }
-html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover {
-  border-color: rgba(124,240,255,.58) !important;
-  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.20), transparent 36%), linear-gradient(135deg, rgba(0,217,255,.24), rgba(0,70,100,.18)) !important;
-  box-shadow: 0 0 16px rgba(0,217,255,.20), inset 0 0 0 1px rgba(255,255,255,.05) !important;
+html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover:not(:disabled) {
+  border-color: rgba(124,240,255,.62) !important;
+  background: rgba(0,140,185,.3) !important;
+  box-shadow: 0 0 16px rgba(0,217,255,.12) !important;
 }
 /* Sidebar arrondie/translucide comme l'Espace pilote (pas pleine et droite). */
 body #hangarOverlay .profileHeaderCard{

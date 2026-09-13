@@ -1,16 +1,20 @@
 // SRC/CORE/CATALOG.js
 "use strict";
 
-import { SHIP_PACKS, getShipDesignBaseId, isRemovedShipPack } from "../../SHIP/SHIP_PACKS.js";
+import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, isRemovedShipPack } from "../../SHIP/SHIP_PACKS.js";
 import { DRONE_FORMATIONS, SPECIAL_DRONE_PRICE, getDroneShopSpritePath } from "../../DRONE/DRONE_TYPES.js";
 import { ROCKET_TYPES, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { BOOSTERS } from "../DATA/BOOSTERS.js";
 
 /**
  * Règle de prix temporaire:
- * - PhoenixBleu = de base => pas dans la boutique
+ * - Phoenix (starter, id legacy "PhoenixBleu" = pack "phoenix_bleu") :
+ *   de base => jamais dans la boutique (comparaison canonique).
  * - les autres => prix calculé (tu pourras remplacer par un champ price dans SHIP_PACKS plus tard)
  */
+function isStarterPackId(shipId) {
+  return String(getShipPackById(shipId)?.id || shipId).toLowerCase() === "phoenix_bleu";
+}
 function defaultShipPrice(pack) {
   // formule simple basée sur la taille / frames (à ajuster)
   const frames = Number(pack.frames || 1);
@@ -256,7 +260,7 @@ export const CATALOG = {
   // « Vaisseaux » = uniquement les vaisseaux de base ; toutes les variantes
   // (designs) sont dans la catégorie « designs ».
   ships: SHIP_PACKS
-    .filter(p => p?.id && p.id !== "PhoenixBleu" && !isRemovedShipPack(p.id) && !getShipDesignBaseId(p.id))
+    .filter(p => p?.id && !isStarterPackId(p.id) && !isRemovedShipPack(p.id) && !getShipDesignBaseId(p.id))
     .map(p => ({
       id: `ship_${p.id}`,
       name: `Vaisseau: ${p.name || p.id}`,
@@ -265,7 +269,7 @@ export const CATALOG = {
     })),
 
   designs: SHIP_PACKS
-    .filter(p => p?.id && p.id !== "PhoenixBleu" && !isRemovedShipPack(p.id) && getShipDesignBaseId(p.id))
+    .filter(p => p?.id && !isStarterPackId(p.id) && !isRemovedShipPack(p.id) && getShipDesignBaseId(p.id))
     .map(p => ({
       id: `design_${p.id}`,
       name: p.name || p.id,

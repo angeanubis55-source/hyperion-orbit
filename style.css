@@ -496,16 +496,34 @@ html.orbitSessionReady #loadingOverlay{
 }
 
 #cfgToggleBtn{
+  flex:none;
+  padding:0;
   color:#eaffff;
   border:1px solid rgba(124,240,255,.38);
+  border-radius:8px;
   background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+  font:750 11px/1.2 ui-sans-serif,system-ui;
+  text-transform:none;
+  cursor:pointer;
 }
 
 #cfgToggleBtn:hover:not(:disabled){
   border-color:rgba(124,240,255,.62);
   background:rgba(0,140,185,.3);
   box-shadow:0 0 16px rgba(0,217,255,.12);
+}
+
+#cfgToggleBtn.active{
+  color:#eaffff;
+  border-color:rgba(124,240,255,.38);
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+}
+
+#cfgToggleBtn:disabled{
+  opacity:.35;
+  cursor:default;
 }
 
 .fitCfgBtn{
@@ -1083,18 +1101,20 @@ body #profileOverlay #profileWindow > .gameWinBar .gameWinMinBtn{
   padding:0 !important;
   display:grid !important;
   place-items:center !important;
-  border:1px solid rgba(124,240,255,.22) !important;
+  border:1px solid rgba(124,240,255,.38) !important;
   border-radius:6px !important;
-  background:linear-gradient(135deg,rgba(0,217,255,.18),rgba(0,70,100,.14)) !important;
-  box-shadow:none !important;
-  color:#bfefff !important;
-  font:800 15px/1 ui-sans-serif,system-ui !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  color:#eaffff !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
   text-transform:none !important;
   transform:none !important;
+  transition:none !important;
 }
-body #profileOverlay #profileWindow > .gameWinBar .gameWinMinBtn:hover{
-  border-color:rgba(124,240,255,.6) !important;
-  background:linear-gradient(135deg,rgba(0,217,255,.3),rgba(0,70,100,.22)) !important;
+body #profileOverlay #profileWindow > .gameWinBar .gameWinMinBtn:hover:not(:disabled){
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
   transform:none !important;
 }
 
@@ -1952,29 +1972,26 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   place-items:center !important;
   flex-shrink:0 !important;
   border-radius:0 !important;
-  border:1px solid rgba(124,240,255,.28) !important;
-  background:
-    radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 36%),
-    linear-gradient(135deg, rgba(0,217,255,.16), rgba(0,70,100,.10)) !important;
-  color:rgba(232,244,255,.95) !important;
-  font-size:15px !important;
-  font-weight:1000 !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  color:#eaffff !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
   line-height:1 !important;
   cursor:pointer !important;
-  box-shadow:
-    0 0 10px rgba(0,217,255,.10),
-    inset 0 0 0 1px rgba(255,255,255,.035) !important;
-  transition:transform .14s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  transition:none !important;
 }
 
-.gameWinMinBtn:hover{
-  border-color:rgba(124,240,255,.58) !important;
-  background:
-    radial-gradient(circle at 30% 25%, rgba(255,255,255,.20), transparent 36%),
-    linear-gradient(135deg, rgba(0,217,255,.24), rgba(0,70,100,.18)) !important;
-  box-shadow:
-    0 0 16px rgba(0,217,255,.20),
-    inset 0 0 0 1px rgba(255,255,255,.05) !important;
+.gameWinMinBtn:hover:not(:disabled){
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+
+.gameWinMinBtn:disabled{
+  opacity:.35 !important;
+  cursor:default !important;
 }
 
 /* Vrai bouton réduire : carré collé dans l'angle haut-droit.
@@ -2467,25 +2484,25 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
   color:#eaffff;
-  font-size:13px;
-  font-weight:900;
+  font:750 11px/1.2 ui-sans-serif,system-ui;
+  text-transform:none;
   line-height:1;
   display:grid;
   place-items:center;
   cursor:pointer;
-  transition:border-color .15s ease, box-shadow .15s ease, background .15s ease, color .15s ease;
 }
 
-#petWindow #petPlayBtn:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); color:#fff; }
+#petWindow #petPlayBtn:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
 #petWindow #petPlayBtn.isOn{
   background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
   border-color:rgba(124,240,255,.38);
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
   color:#eaffff;
 }
+#petWindow #petPlayBtn.isOn:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
 
 #petWindow #petPlayBtn:disabled{
-  opacity:.45;
+  opacity:.35;
   cursor:default;
 }
 
@@ -3092,6 +3109,50 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   cursor:not-allowed;
   border-color:rgba(255,255,255,.12);
   background:rgba(255,255,255,.06);
+}
+
+/* Réparation : sans cards, titres centrés, boutons style raffinage */
+#respawnOverlay .shopItem{
+  border:none;
+  background:none;
+  border-radius:0;
+  margin-bottom:0;
+  display:grid;
+  justify-items:center;
+  gap:8px;
+  text-align:center;
+}
+#respawnOverlay .shopItem h4{
+  margin:0;
+  text-align:center;
+}
+#respawnOverlay .shopItem button,
+#respawnOverlay .primaryBtn{
+  min-height:34px;
+  padding:8px 10px;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:8px;
+  color:#eaffff;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+  font:750 11px/1.2 ui-sans-serif,system-ui;
+  text-transform:none;
+  text-align:center;
+  cursor:pointer;
+  transition:none;
+}
+#respawnOverlay .shopItem button:hover:not(:disabled),
+#respawnOverlay .primaryBtn:hover:not(:disabled){
+  border-color:rgba(124,240,255,.62);
+  background:rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(0,217,255,.12);
+}
+#respawnOverlay .shopItem button:disabled,
+#respawnOverlay .primaryBtn:disabled{
+  opacity:.35;
+  cursor:default;
+  border-color:rgba(124,240,255,.38);
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
 }
 
 /* ============================================================

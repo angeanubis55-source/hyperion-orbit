@@ -274,18 +274,20 @@ function ownedCount(u, itemId) {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Comparaison canonique (casse/alias) : "PhoenixBleu" == "phoenix_bleu".
 function alreadyOwnsShip(u, shipId) {
   if (!shipId) return false;
-  return Array.isArray(u?.inventory?.ships) && u.inventory.ships.includes(String(shipId));
+  const want = String(shipId).toLowerCase();
+  return Array.isArray(u?.inventory?.ships) && u.inventory.ships.some((s) => String(s).toLowerCase() === want);
 }
 
 // un design est possédé s'il est dans shipDesigns (achat design) ou legacy ships
 function alreadyOwnsDesign(u, shipId) {
   if (!shipId) return false;
-  const id = String(shipId);
+  const want = String(shipId).toLowerCase();
   return (
-    (Array.isArray(u?.inventory?.shipDesigns) && u.inventory.shipDesigns.includes(id)) ||
-    (Array.isArray(u?.inventory?.ships) && u.inventory.ships.includes(id))
+    (Array.isArray(u?.inventory?.shipDesigns) && u.inventory.shipDesigns.some((s) => String(s).toLowerCase() === want)) ||
+    (Array.isArray(u?.inventory?.ships) && u.inventory.ships.some((s) => String(s).toLowerCase() === want))
   );
 }
 
@@ -2405,18 +2407,21 @@ let stockLine = "";
 let statLine = "";
 
 if (isShipLike) {
-  const pack = getShipPack(shipId);
-  const slots = getShipSlots(shipId);
-  statLine = `
-    <p class="shopItemStat" style="margin-top:8px;">
-      HP <strong>${formatNumber(pack?.hp ?? 0)}</strong>
-      · Vitesse <strong>${formatNumber(pack?.speed ?? 0)}</strong>
-      · Laser <strong>${slots.lasers}</strong>
-      · Générateur <strong>${slots.gens}</strong>
-      · Extras <strong>${slots.extras}</strong>
-      · Modules <strong>${slots.shipMods}</strong>
-    </p>
-  `;
+  // Les stats (HP, vitesse, slots) appartiennent au vaisseau, pas au design.
+  if (!isDesign) {
+    const pack = getShipPack(shipId);
+    const slots = getShipSlots(shipId);
+    statLine = `
+      <p class="shopItemStat" style="margin-top:8px;">
+        HP <strong>${formatNumber(pack?.hp ?? 0)}</strong>
+        · Vitesse <strong>${formatNumber(pack?.speed ?? 0)}</strong>
+        · Laser <strong>${slots.lasers}</strong>
+        · Générateur <strong>${slots.gens}</strong>
+        · Extras <strong>${slots.extras}</strong>
+        · Modules <strong>${slots.shipMods}</strong>
+      </p>
+    `;
+  }
   if (isDesign) {
     const basePack = getShipPack(it?.design?.base);
     statLine += `<p class="shopItemStat">Vaisseau de base : <strong>${escapeHtml(basePack?.name || it?.design?.base || "")}</strong></p>`;

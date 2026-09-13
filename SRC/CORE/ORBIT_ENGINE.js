@@ -386,7 +386,7 @@ function showRespawnOverlay(show, { gateOnly = null } = {}) {
     if (ui.respawnBaseBtn) ui.respawnBaseBtn.style.display = "";
     const grid = ui.respawnOverlay.querySelector(".grid");
     if (grid) grid.style.gridTemplateColumns = "1fr";
-    const hint = ui.respawnOverlay.querySelector(".modal > div:last-child");
+    const hint = ui.respawnOverlay.querySelector("#respawnHint");
     if (hint) hint.innerHTML = rules?.mode === "gate"
       ? "En Galaxy Gate, seule la <b>réparation à la base</b> est possible (touche <b>R</b>)."
       : "Sur cette carte, seule la <b>réparation à la base</b> est possible (touche <b>R</b>).";
@@ -396,7 +396,7 @@ function showRespawnOverlay(show, { gateOnly = null } = {}) {
     if (ui.respawnBaseBtn) ui.respawnBaseBtn.style.display = "";
     const grid = ui.respawnOverlay.querySelector(".grid");
     if (grid) grid.style.gridTemplateColumns = "repeat(3, 1fr)";
-    const hint = ui.respawnOverlay.querySelector(".modal > div:last-child");
+    const hint = ui.respawnOverlay.querySelector("#respawnHint");
     if (hint) hint.innerHTML = "Astuce : touche <b>R</b> = Réparée à la base (en zone)";
   }
   ui.respawnOverlay.style.display = show ? "grid" : "none";
@@ -2386,7 +2386,12 @@ function renderRefineryWindow(message = "") {
   }
 }
 
+// Persistance checkbox auto-raffinage (sinon décochée à chaque refresh).
+try {
+  if (ui.refineryAuto) ui.refineryAuto.checked = localStorage.getItem("orbit_refinery_auto") === "1";
+} catch {}
 ui.refineryAuto?.addEventListener("change", () => {
+  try { localStorage.setItem("orbit_refinery_auto", ui.refineryAuto?.checked ? "1" : "0"); } catch {}
   if (ui.refineryAuto?.checked) {
     refineryRefineAll();
     renderRefineryWindow();

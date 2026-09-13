@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.190",
+    "date": "2026-09-13T21:46:42+02:00",
+    "message": "boutique roquettes fusionnees (badges R/LR) + fenetres 8px + hover reduire + titre espace pilote"
+  },
+  {
     "version": "0.189",
     "date": "2026-09-13T19:54:44+02:00",
     "message": "drops assemblage NPC (box 25% + direct) + collectables monde continu + icones ressources + purge vieux items"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.131",
     "date": "2026-09-08T07:24:46+02:00",
     "message": "Demarrage : fenetre DEPART a chaque refresh, option auto grisee (desactivee temporairement)"
-  },
-  {
-    "version": "0.130",
-    "date": "2026-09-08T00:12:20+02:00",
-    "message": "Laser : notifs portee (combat commence/hors de portee), triple bip Out_Of_Range + reglage, message d'evasion"
   }
 ];
