@@ -483,6 +483,87 @@ function ensurePetFitsByHangar(u) {
   }
 }
 
+// Items retirés du jeu (anciennes sauvegardes) : purge exacte, sans motif large.
+const REMOVED_ITEM_IDS = new Set([
+  "shd_mk4",
+  "spd_mk4",
+  "laser_radion",
+  "shd_radion",
+  "spd_radion",
+  "laser_anchorlock",
+  "radion",
+]);
+
+function isRemovedItemId(value) {
+  return typeof value === "string" && REMOVED_ITEM_IDS.has(value.toLowerCase());
+}
+
+// Purge les items retirés du jeu : counts, modules, équipés, munitions.
+// Tourne à chaque chargement (migration monde continu des vieux comptes).
+export function purgeRemovedItemIds(u) {
+  if (!u || typeof u !== "object") return u;
+  const counts = u.inventory?.counts;
+  if (counts && typeof counts === "object") {
+    for (const key of Object.keys(counts)) {
+      if (isRemovedItemId(key)) delete counts[key];
+    }
+  }
+  if (Array.isArray(u.inventory?.shipModules)) {
+    u.inventory.shipModules = u.inventory.shipModules.filter((m) => !isRemovedItemId(m?.id));
+  }
+  if (Array.isArray(u.inventory?.modules)) {
+    u.inventory.modules = u.inventory.modules.filter((id) => !isRemovedItemId(id));
+  }
+  const cleanFitArrays = (fit) => {
+    if (!fit || typeof fit !== "object") return;
+    for (const key of ["lasers", "gens", "generators", "extras", "equipment", "gears", "protocols", "shipMods"]) {
+      if (Array.isArray(fit[key])) {
+        fit[key] = fit[key].map((id) => (isRemovedItemId(id) ? null : id));
+      }
+    }
+  };
+  for (const h of u.hangars || []) {
+    if (!h || typeof h !== "object") continue;
+    for (const key of ["speed", "shield", "laser"]) {
+      if (typeof h.modules?.[key] === "string" && isRemovedItemId(h.modules[key])) h.modules[key] = null;
+    }
+    for (const cfg of ["1", "2"]) cleanFitArrays(h.fits?.[cfg]);
+    cleanFitArrays(h.fit);
+  }
+  for (const drone of u.drones?.items || []) {
+    if (!drone || typeof drone !== "object") continue;
+    for (const holder of [drone.fitsByHangar, drone.fits]) {
+      if (!holder || typeof holder !== "object") continue;
+      for (const sub of Object.values(holder)) {
+        if (sub && typeof sub === "object") {
+          if (Array.isArray(sub)) sub.forEach(cleanFitArrays);
+          else cleanFitArrays(sub);
+        }
+      }
+    }
+    cleanFitArrays(drone.fit);
+  }
+  const pet = u.pet;
+  if (pet && typeof pet === "object") {
+    for (const holder of [pet.fitsByHangar, pet.fits]) {
+      if (!holder || typeof holder !== "object") continue;
+      for (const sub of Object.values(holder)) {
+        if (sub && typeof sub === "object") {
+          if (Array.isArray(sub)) sub.forEach(cleanFitArrays);
+          else cleanFitArrays(sub);
+        }
+      }
+    }
+    cleanFitArrays(pet.fit);
+  }
+  if (u.ammo && typeof u.ammo === "object") {
+    for (const key of Object.keys(u.ammo)) {
+      if (isRemovedItemId(key)) u.ammo[key] = 0;
+    }
+  }
+  return u;
+}
+
 function ensureUserShape(u) {
   if (!u || typeof u !== "object") return null;
 
@@ -767,6 +848,9 @@ function ensureUserShape(u) {
 
   // ✅ P.E.T : même exclusivité par hangar (vaisseau) + config 1/2.
   ensurePetFitsByHangar(u);
+
+  // Items retirés du jeu : purge des vieilles sauvegardes.
+  purgeRemovedItemIds(u);
 
   return u;
 }

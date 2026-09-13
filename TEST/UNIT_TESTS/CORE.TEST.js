@@ -1074,7 +1074,7 @@ test("une bataille chargée conserve seulement les effets les plus récents", ()
 });
 
 test("le catalogue des collectables centralise sprites, cartes et récompenses", () => {
-  assert.equal(Object.keys(COLLECTABLE_TYPES).length, 6);
+  assert.equal(Object.keys(COLLECTABLE_TYPES).length, 14);
   assert.deepEqual(COLLECTABLE_TYPES.Palladium_Ore.maps, ["5-2"]);
   assert.deepEqual(COLLECTABLE_TYPES.Astral_Prime_Box.rewards.ammo.x4, [800, 1100]);
   assert.deepEqual(COLLECTABLE_TYPES.Cargo_Box.rewards.resources.npc_debris, [1, 3]);

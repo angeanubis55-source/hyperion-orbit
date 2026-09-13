@@ -1,10 +1,10 @@
 "use strict";
 
 export const RESOURCE_TYPES = Object.freeze({
-  refined_component: Object.freeze({ id: "refined_component", name: "Composant raffiné", plural: "Composants raffinés", icon: "/ASSETS/CPU/NANO_CONDENSER_100X100.png" }),
-  npc_debris: Object.freeze({ id: "npc_debris", name: "Débris de NPC", plural: "Débris de NPC", icon: "/ASSETS/CPU/MICRO_TRANSISTORS_100X100.png" }),
-  hybrid_alloy: Object.freeze({ id: "hybrid_alloy", name: "Alliage hybride", plural: "Alliages hybrides", icon: "/ASSETS/CPU/PRISMATIC_SOCKET_100X100.png" }),
-  indoctrinated_oil: Object.freeze({ id: "indoctrinated_oil", name: "Huile indoctrinée", plural: "Huiles indoctrinées", icon: "/ASSETS/CPU/RLLB_X_100X100.png" }),
+  refined_component: Object.freeze({ id: "refined_component", name: "Composant raffiné", plural: "Composants raffinés", icon: "/ASSETS/ORES/REFINED_COMPONENT.png" }),
+  npc_debris: Object.freeze({ id: "npc_debris", name: "Débris de NPC", plural: "Débris de NPC", icon: "/ASSETS/ORES/NPC_DEBRIS.png" }),
+  hybrid_alloy: Object.freeze({ id: "hybrid_alloy", name: "Alliage hybride", plural: "Alliages hybrides", icon: "/ASSETS/ORES/HYBRID_ALLOY.png" }),
+  indoctrinated_oil: Object.freeze({ id: "indoctrinated_oil", name: "Huile indoctrine", plural: "Huiles indoctrines", icon: "/ASSETS/ORES/INDOCTRINATED_OIL.png" }),
   palladium: Object.freeze({ id: "palladium", name: "Palladium", plural: "Palladium", icon: "/ASSETS/ORES/PALLADIUM.png" }),
   prometium: Object.freeze({ id: "prometium", name: "Prometium", plural: "Prometium", icon: "/ASSETS/ORES/PROMETIUM.png" }),
   endurium: Object.freeze({ id: "endurium", name: "Endurium", plural: "Endurium", icon: "/ASSETS/ORES/ENDURIUM.png" }),
@@ -15,6 +15,18 @@ export const RESOURCE_TYPES = Object.freeze({
   seprom: Object.freeze({ id: "seprom", name: "Seprom", plural: "Seprom", icon: "/ASSETS/ORES/SEPROM.png" }),
   xenomit: Object.freeze({ id: "xenomit", name: "Xenomit", plural: "Xenomit", icon: "/ASSETS/ORES/XENOMIT.png" }),
   osmium: Object.freeze({ id: "osmium", name: "Osmium", plural: "Osmium", icon: "/ASSETS/ORES/OSMIUM.png" }),
+  // Ressources d'assemblage (drops NPC officiels) : atelier, hors soute des 3000.
+  scrap: Object.freeze({ id: "scrap", name: "Scrap", plural: "Scrap", icon: "/ASSETS/ORES/SCRAP.png" }),
+  mucosum: Object.freeze({ id: "mucosum", name: "Mucosum", plural: "Mucosum", icon: "/ASSETS/ORES/MUCOSUM.png" }),
+  plasmide: Object.freeze({ id: "plasmide", name: "Plasmide", plural: "Plasmide", icon: "/ASSETS/ORES/PLASMIDE.png" }),
+  prismatium: Object.freeze({ id: "prismatium", name: "Prismatium", plural: "Prismatium", icon: "/ASSETS/ORES/PRISMATIUM.png" }),
+  aurus: Object.freeze({ id: "aurus", name: "Aurus", plural: "Aurus", icon: "/ASSETS/ORES/AURUS.png" }),
+  bifenon: Object.freeze({ id: "bifenon", name: "Bifenon", plural: "Bifenon", icon: "/ASSETS/ORES/BIFENON.png" }),
+  tetrathrin: Object.freeze({ id: "tetrathrin", name: "Tetrathrin", plural: "Tetrathrin", icon: "/ASSETS/ORES/TETRATHRIN.png" }),
+  kyhalon: Object.freeze({ id: "kyhalon", name: "Kyhalon", plural: "Kyhalon", icon: "/ASSETS/ORES/KYHALON.png" }),
+  rinusk: Object.freeze({ id: "rinusk", name: "Rinusk", plural: "Rinusk", icon: "/ASSETS/ORES/RINUSK.png" }),
+  blacklight_trace: Object.freeze({ id: "blacklight_trace", name: "Trace Blacklight", plural: "Traces Blacklight", icon: "/ASSETS/ORES/BLACKLIGHT_TRACE.png" }),
+  mindfire_cerebrum: Object.freeze({ id: "mindfire_cerebrum", name: "Cerebrum", plural: "Cerebrums", icon: "/ASSETS/ORES/MINDFIRE_CEREBRUM.png" }),
 });
 
 export function getResourceName(resourceId, quantity = 1) {

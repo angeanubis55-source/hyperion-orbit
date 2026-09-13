@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.188",
+    "date": "2026-09-13T17:19:24+02:00",
+    "message": "double-clic maison via pointerup + dblclick natif desactive"
+  },
+  {
     "version": "0.187",
     "date": "2026-09-13T16:53:44+02:00",
     "message": "vitesse upgrade via breakdown + icones lf3/plt3030 + slot instantane"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.129",
     "date": "2026-09-07T23:44:16+02:00",
     "message": "Dock : sons selection menus, pastille orbitale de tir, liseres et flash dynamiques"
-  },
-  {
-    "version": "0.128",
-    "date": "2026-09-07T23:09:23+02:00",
-    "message": "Dock rapide : voile X6 + flash pret bref, liseres auto-adaptatifs, anneau interne uniformise"
   }
 ];

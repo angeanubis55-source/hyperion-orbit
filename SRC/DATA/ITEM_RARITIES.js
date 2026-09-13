@@ -16,6 +16,10 @@ const ITEM_RARITY_BY_ID = Object.freeze({
   shd_mk3: "rare", shd_mk4: "epic",
   extra_radar: "rare", extra_loot: "rare", refined_component: "rare",
   hybrid_alloy: "epic", indoctrinated_oil: "legendary",
+  scrap: "common", mucosum: "common",
+  plasmide: "rare", prismatium: "rare", aurus: "rare", bifenon: "rare",
+  tetrathrin: "epic", kyhalon: "epic", rinusk: "epic", blacklight_trace: "epic",
+  mindfire_cerebrum: "legendary",
 });
 
 export function getItemRarity(itemOrId) {

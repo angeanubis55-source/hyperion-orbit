@@ -122,6 +122,7 @@ import {
 import { getResourceName, getResourceIcon, isOreResource, cargoAdd, cargoUsed, CARGO_CAPACITY, REFINERY_RECIPES, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOTS, UPGRADE_SLOT_ORES, UPGRADE_ORE_BONUS } from "../DATA/RESOURCES.js";
 import { PALLADIUM_PER_GALAXY_ENERGY, palladiumExchangeForEnergy } from "./GALAXY_GATES.js";
 import { getNpcCargoOres } from "../../NPC/NPC_CARGO.js";
+import { rollNpcAssemblyBox, rollNpcAssemblyDirect } from "../../NPC/NPC_ASSEMBLY.js";
 import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { SFX_SOUND_NAMES } from "./SFX.js";
 import { createWorldClock } from "../SIM/WORLD_CLOCK.js";
@@ -138,6 +139,22 @@ import {
   slotUid,
   tickBackground,
 } from "../SIM/UNIVERSE_SIM.js";
+import {
+  COLLECTABLE_STORE_KEY,
+  addCollectableDrop,
+  countCollectableSlots,
+  createCollectableStore,
+  deserializeCollectableStore,
+  dueCollectableSlots,
+  ensureCollectableSlots,
+  listCollectableDrops,
+  listCollectableSlots,
+  pruneExpiredDrops,
+  removeCollectableDrop,
+  reviveCollectableSlot,
+  serializeCollectableStore,
+  takeCollectableSlot,
+} from "../SIM/COLLECTABLE_SIM.js";
 
 export function startOrbitGame(config) {
 
@@ -7156,6 +7173,7 @@ try {
       try {
         tickBackground(universe, worldClock.now(), { skipMapId: String(window.__CURRENT_MAP_ID__ || "") });
         persistUniverse();
+        persistCollectables();
       } catch {}
     }, 5000);
   }
@@ -7169,6 +7187,23 @@ function persistUniverse({ force = false } = {}) {
   universeSaveT = nowMs;
   try {
     universeStorage?.setItem?.(UNIVERSE_KEY, serializeUniverse(universe));
+  } catch {}
+}
+// Monde continu collectables : même rythme que l'univers (5 s, force au quit).
+let collectableStore = createCollectableStore();
+try {
+  collectableStore = deserializeCollectableStore(universeStorage?.getItem?.(COLLECTABLE_STORE_KEY));
+} catch {
+  collectableStore = createCollectableStore();
+}
+let collectableSaveT = 0;
+function persistCollectables({ force = false } = {}) {
+  if (!universeStorage?.setItem && !force) return;
+  const nowMs = worldClock.now();
+  if (!force && nowMs - collectableSaveT < 5000) return;
+  collectableSaveT = nowMs;
+  try {
+    universeStorage?.setItem?.(COLLECTABLE_STORE_KEY, serializeCollectableStore(collectableStore));
   } catch {}
 }
 function snapshotActiveEnemiesToUniverse(mapId) {
@@ -8606,12 +8641,155 @@ function collectableTargetCount(cfg) {
   )));
 }
 
-function countCollectablesByType(type) {
-  let n = 0;
-  for (const c of collectables) {
-    if (c && c.type === type) n++;
+// ============================================================
+// Monde continu collectables (miroir NPC) : slots ambientes persistés +
+// drops dynamiques à durée de vie. Une box ramassée reste ramassée
+// (respawn après délai) même en cas de refresh / changement de map / mort.
+// ============================================================
+let collectablesWorldMap = null;
+
+function collectableRespawnDelayMs(type) {
+  const cfg = COLLECTABLE_DEFS[type] || {};
+  const sec = Number(cfg.respawnDelaySec ?? 60);
+  return Math.max(0, Math.floor((Number.isFinite(sec) ? sec : 60) * 1000));
+}
+
+function pushAmbientCollectableInstance(slot, mapId) {
+  const cfg = COLLECTABLE_DEFS[slot.type] || {};
+  ensureCollectableLoaded(slot.type);
+  const sp = cfg.sprite || {};
+  const frames = Math.max(1, Number(sp.frames || 1));
+  collectables.push({
+    id: newId(),
+    type: slot.type,
+    map: mapId,
+    x: clamp(Number(slot.x) || 0, 80, WORLD.w - 80),
+    y: clamp(Number(slot.y) || 0, 80, WORLD.h - 80),
+    r: Number(cfg.r ?? cfg.radius ?? 32),
+    pickupRadius: Number(cfg.pickupRadius ?? cfg.r ?? cfg.radius ?? 42),
+    armed: false,
+    slotUid: String(slot.uid),
+    dropUid: null,
+    t: 0,
+    frameAcc: sp.randomStart ? rand(0, frames) : 0,
+  });
+}
+
+// Position d'un nouveau slot : aléatoire, espacée des slots existants.
+function pickAmbientSlotPosition(type, taken) {
+  const cfg = COLLECTABLE_DEFS[type] || {};
+  const minSpacing = Number(cfg.minSpacing ?? COLLECTABLE_CFG.minSpacing ?? 120);
+  const maxAttempts = Math.max(1, Number(cfg.maxAttempts ?? COLLECTABLE_CFG.maxAttempts ?? 80));
+  for (let i = 0; i < maxAttempts; i++) {
+    const pos = spawnRandomOnMap();
+    if (minSpacing > 0) {
+      let ok = true;
+      for (const p of taken) {
+        if (dist2(pos.x, pos.y, p.x, p.y) < minSpacing * minSpacing) { ok = false; break; }
+      }
+      if (!ok) continue;
+    }
+    return pos;
   }
-  return n;
+  return spawnRandomOnMap();
+}
+
+// Respawn aléatoire d'un slot dû (comme les NPC : jamais à la même place).
+function respawnAmbientSlot(slot, mapId) {
+  const taken = listCollectableSlots(collectableStore, mapId)
+    .filter((s) => s && String(s.uid) !== String(slot.uid))
+    .map((s) => ({ x: Number(s.x), y: Number(s.y) }));
+  const pos = pickAmbientSlotPosition(slot.type, taken);
+  reviveCollectableSlot(collectableStore, mapId, String(slot.uid), pos.x, pos.y);
+  pushAmbientCollectableInstance({ ...slot, x: pos.x, y: pos.y }, mapId);
+}
+
+function initCollectableWorld(mapId) {
+  if (!WORLD || !(Number(WORLD.w) > 0) || !(Number(WORLD.h) > 0)) return;
+  const now = worldClock.now();
+  const defs = [];
+  const taken = listCollectableSlots(collectableStore, mapId).map((s) => ({ x: Number(s.x), y: Number(s.y) }));
+  for (const [type, cfg] of collectableDefsList()) {
+    const target = collectableTargetCount(cfg);
+    if (target <= 0) continue;
+    const existing = countCollectableSlots(collectableStore, mapId, type);
+    const missing = Math.max(0, target - existing);
+    for (let i = 0; i < target - missing; i++) defs.push({ type, x: 0, y: 0 });
+    for (let i = 0; i < missing; i++) {
+      const pos = pickAmbientSlotPosition(type, taken);
+      taken.push(pos);
+      defs.push({ type, x: pos.x, y: pos.y });
+    }
+    // Précharge les sprites des box de la map.
+    ensureCollectableLoaded(type);
+  }
+  const slots = ensureCollectableSlots(collectableStore, mapId, defs, now);
+  // Rattrapage horloge monde : respawns dus pendant l'absence (refresh...)
+  // sur de NOUVELLES positions aléatoires.
+  const spawned = new Set();
+  for (const slot of dueCollectableSlots(collectableStore, mapId, now)) {
+    try { respawnAmbientSlot(slot, mapId); spawned.add(String(slot.uid)); } catch {}
+  }
+  pruneExpiredDrops(collectableStore, mapId, now);
+  for (const slot of slots) {
+    if (slot && slot.alive !== false && !spawned.has(String(slot.uid))) pushAmbientCollectableInstance(slot, mapId);
+  }
+  // Drops dynamiques survivants (cargo temporaires, assemblage permanents).
+  for (const drop of listCollectableDrops(collectableStore, mapId)) {
+    const exp = Math.floor(Number(drop.expiresAtMs) || 0);
+    let elapsedSec = 0;
+    if (exp > 0) {
+      const remainingMs = exp - now;
+      if (remainingMs <= 0) continue;
+      const cfg = COLLECTABLE_DEFS[drop.type] || {};
+      const totalMs = Math.max(1, Math.floor(Number(cfg.npcDespawnAfter || 30) * 1000));
+      elapsedSec = Math.max(0, (totalMs - remainingMs) / 1000);
+    }
+    spawnCollectableAtRestored(drop, elapsedSec);
+  }
+  persistCollectables();
+}
+
+// Restaure un drop dynamique avec son temps restant (sans ré-enregistrer).
+function spawnCollectableAtRestored(drop, elapsedSec) {
+  const cfg = COLLECTABLE_DEFS[drop.type];
+  if (!cfg || cfg.enabled === false) return false;
+  ensureCollectableLoaded(drop.type);
+  const sp = cfg.sprite || {};
+  const frames = Math.max(1, Number(sp.frames || 1));
+  collectables.push({
+    id: newId(),
+    type: drop.type,
+    map: currentMapId(),
+    x: clamp(Number(drop.x) || 0, 80, WORLD.w - 80),
+    y: clamp(Number(drop.y) || 0, 80, WORLD.h - 80),
+    r: Number(cfg.r ?? cfg.radius ?? 32),
+    pickupRadius: Number(cfg.pickupRadius ?? cfg.r ?? cfg.radius ?? 42),
+    armed: false,
+    fromNpc: drop.fromNpc != null ? String(drop.fromNpc) : null,
+    fixedAmount: drop.amount,
+    dropUid: String(drop.uid),
+    slotUid: null,
+    despawnAfter: Math.max(0, Number(cfg.npcDespawnAfter || 0)),
+    t: Math.max(0, Number(elapsedSec) || 0),
+    frameAcc: sp.randomStart ? rand(0, frames) : 0,
+  });
+  return true;
+}
+
+// Retire une instance : slot -> mort programmée, drop -> enregistrement supprimé.
+function takeCollectableInstance(c) {
+  if (!c) return;
+  const mapId = String(c.map || currentMapId());
+  try {
+    if (c.slotUid) {
+      takeCollectableSlot(collectableStore, mapId, String(c.slotUid), worldClock.now(), collectableRespawnDelayMs(c.type));
+    }
+    if (c.dropUid) {
+      removeCollectableDrop(collectableStore, mapId, String(c.dropUid));
+    }
+    persistCollectables();
+  } catch {}
 }
 
 function rollValue(v, fallback = 0) {
@@ -8696,65 +8874,6 @@ function preloadCollectables(mapId = currentMapId()) {
 }
 
 
-function isCollectablePositionOk(x, y, cfg) {
-  const avoidPlayer = Number(cfg.avoidPlayer ?? COLLECTABLE_CFG.avoidPlayer ?? 700);
-  if (avoidPlayer > 0 && dist2(x, y, player.x, player.y) < avoidPlayer * avoidPlayer) {
-    return false;
-  }
-
-  const minSpacing = Number(cfg.minSpacing ?? COLLECTABLE_CFG.minSpacing ?? 120);
-  if (minSpacing > 0) {
-    for (const c of collectables) {
-      if (!c) continue;
-      if (dist2(x, y, c.x, c.y) < minSpacing * minSpacing) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-function spawnCollectable(type) {
-const cfg = COLLECTABLE_DEFS[type];
-if (!cfg || cfg.enabled === false) return false;
-if (!collectableAllowedOnCurrentMap(cfg)) return false;
-
-  ensureCollectableLoaded(type);
-
-  const maxAttempts = Math.max(1, Number(cfg.maxAttempts ?? COLLECTABLE_CFG.maxAttempts ?? 80));
-
-  for (let i = 0; i < maxAttempts; i++) {
-    const pos = spawnRandomOnMap();
-
-    if (!isCollectablePositionOk(pos.x, pos.y, cfg)) continue;
-
-    const sp = cfg.sprite || {};
-    const frames = Math.max(1, Number(sp.frames || 1));
-
-collectables.push({
-  id: newId(),
-  type,
-  map: currentMapId(),
-
-  x: pos.x,
-  y: pos.y,
-
-  r: Number(cfg.r ?? cfg.radius ?? 32),
-  pickupRadius: Number(cfg.pickupRadius ?? cfg.r ?? cfg.radius ?? 42),
-
-  armed: false,
-
-  t: 0,
-  frameAcc: sp.randomStart ? rand(0, frames) : 0,
-});
-
-    return true;
-  }
-
-  return false;
-}
-
 function spawnCollectableAt(type, x, y, opts = {}) {
   const cfg = COLLECTABLE_DEFS[type];
   if (!cfg || cfg.enabled === false) return false;
@@ -8764,14 +8883,17 @@ function spawnCollectableAt(type, x, y, opts = {}) {
 
   const sp = cfg.sprite || {};
   const frames = Math.max(1, Number(sp.frames || 1));
+  const cx = clamp(x, 80, WORLD.w - 80);
+  const cy = clamp(y, 80, WORLD.h - 80);
+  const despawnAfter = Math.max(0, Number(opts.despawnAfter || 0));
 
-  collectables.push({
+  const instance = {
     id: newId(),
     type,
     map: currentMapId(),
 
-    x: clamp(x, 80, WORLD.w - 80),
-    y: clamp(y, 80, WORLD.h - 80),
+    x: cx,
+    y: cy,
 
     r: Number(cfg.r ?? cfg.radius ?? 32),
     pickupRadius: Number(cfg.pickupRadius ?? cfg.r ?? cfg.radius ?? 42),
@@ -8782,11 +8904,34 @@ function spawnCollectableAt(type, x, y, opts = {}) {
     // ✅ permet de savoir que cette box vient d’un NPC
     fromNpc: opts.fromNpc || null,
 
-    despawnAfter: Math.max(0, Number(opts.despawnAfter || 0)),
+    // ✅ montant fixe (drops d'assemblage : quantité tirée au kill)
+    fixedAmount: Math.max(0, Math.floor(Number(opts.amount) || 0)) || null,
+
+    slotUid: null,
+    dropUid: null,
+
+    despawnAfter,
 
     t: 0,
     frameAcc: sp.randomStart ? rand(0, frames) : 0,
-  });
+  };
+  collectables.push(instance);
+
+  // Monde continu : les drops à durée de vie survivent au refresh
+  // (expiration en temps réel via l'horloge monde). expiresAtMs = 0 :
+  // jamais d'expiration (box d'assemblage, comme les bonus box).
+  try {
+    const record = addCollectableDrop(collectableStore, instance.map, {
+      type,
+      x: cx,
+      y: cy,
+      amount: instance.fixedAmount,
+      fromNpc: instance.fromNpc,
+      expiresAtMs: despawnAfter > 0 ? worldClock.now() + despawnAfter * 1000 : 0,
+    });
+    instance.dropUid = String(record.uid);
+    persistCollectables();
+  } catch {}
 
   return true;
 }
@@ -8907,8 +9052,9 @@ function applyCollectableReward(c) {
       account.user.inventory.resources ||= {};
       // Booster Ressources : +25 % sur les cargos venus de NPC.
       const resMult = (c?.fromNpc ? playerBoosterMults().res : 1) * battleMult;
+      const fixedAmount = c?.fixedAmount != null ? Math.max(0, Math.floor(Number(c.fixedAmount))) : null;
       for (const [resourceId, range] of Object.entries(reward.resources)) {
-        const wanted = Math.floor(rollValue(range, 0) * resMult);
+        const wanted = Math.floor((fixedAmount ?? rollValue(range, 0)) * resMult);
         if (wanted <= 0) continue;
         // Minerais -> soute 3000 (plafonné, jamais de perte sèche ici : le refus est géré plus bas).
         if (isOreResource(resourceId)) {
@@ -9070,26 +9216,45 @@ function tickCollectables(dt) {
   if (!started || player.dead) return;
   if (COLLECTABLE_CFG.enabled === false) return;
 
+  // Monde continu : init paresseuse (première frame sur la map) puis
+  // réconciliation périodique des slots (respawns dus via horloge monde).
+  const curMap = currentMapId();
+  if (collectablesWorldMap !== curMap) {
+    collectablesWorldMap = curMap;
+    try { initCollectableWorld(curMap); } catch {}
+  }
+
   collectableSpawnT -= dt;
 
   if (collectableSpawnT <= 0) {
     collectableSpawnT = Math.max(0.1, Number(COLLECTABLE_CFG.interval || 1.0));
 
-    for (const [type, cfg] of collectableDefsList()) {
-      const target = collectableTargetCount(cfg);
-      if (target <= 0) continue;
-
-      const alive = countCollectablesByType(type);
-      const missing = Math.max(0, target - alive);
-      const batch = Math.min(
-        missing,
-        Math.max(1, Number(cfg.spawnBatch ?? COLLECTABLE_CFG.spawnBatch ?? 5))
-      );
-
-      for (let i = 0; i < batch; i++) {
-        spawnCollectable(type);
+    try {
+      const now = worldClock.now();
+      const liveUids = new Set();
+      for (const c of collectables) {
+        if (c && c.slotUid && String(c.map || curMap) === curMap) liveUids.add(String(c.slotUid));
       }
-    }
+      let spawned = 0;
+      const spawnCap = Math.max(1, Number(COLLECTABLE_CFG.spawnBatch ?? 5));
+      // Respawn aléatoire des slots dus (nouvelle position à chaque fois).
+      for (const slot of dueCollectableSlots(collectableStore, curMap, now)) {
+        if (spawned >= spawnCap) break;
+        if (!slot || liveUids.has(String(slot.uid))) continue;
+        respawnAmbientSlot(slot, curMap);
+        liveUids.add(String(slot.uid));
+        spawned++;
+      }
+      // Filet de sécurité : slot vivant sans instance.
+      for (const slot of listCollectableSlots(collectableStore, curMap)) {
+        if (!slot || slot.alive === false || liveUids.has(String(slot.uid))) continue;
+        if (spawned >= spawnCap) break;
+        pushAmbientCollectableInstance(slot, curMap);
+        liveUids.add(String(slot.uid));
+        spawned++;
+      }
+      if (spawned) persistCollectables();
+    } catch {}
   }
 
   for (let i = collectables.length - 1; i >= 0; i--) {
@@ -9107,6 +9272,13 @@ function tickCollectables(dt) {
     moveTarget.active = false;
   }
 
+  // Monde continu : l'enregistrement du drop expire avec l'instance.
+  if (c.dropUid) {
+    try {
+      removeCollectableDrop(collectableStore, String(c.map || currentMapId()), String(c.dropUid));
+      persistCollectables();
+    } catch {}
+  }
   collectables.splice(i, 1);
   continue;
 }
@@ -9125,7 +9297,10 @@ const isSelected = collectableTargetId === c.id && c.armed === true;
       if (dist2(player.x, player.y, c.x, c.y) <= rr * rr) {
         SFX.play("collect", { cut: true, maxVoices: 3 });
         const autoRes = applyCollectableReward(c);
-        if (!autoRes?.kept) collectables.splice(i, 1);
+        if (!autoRes?.kept) {
+          takeCollectableInstance(c);
+          collectables.splice(i, 1);
+        }
       }
 
       continue;
@@ -9174,7 +9349,10 @@ player.y = collectY;
       const collectRes = applyCollectableReward(c);
 
       collectableTargetId = null;
-      if (!collectRes?.kept) collectables.splice(i, 1);
+      if (!collectRes?.kept) {
+        takeCollectableInstance(c);
+        collectables.splice(i, 1);
+      }
     }
   }
 }
@@ -9928,6 +10106,45 @@ if (
     // ✅ timer selon la box
     despawnAfter: Number(dropCfg.npcDespawnAfter || 0),
   });
+}
+
+// Drops d'assemblage officiels (NPC/NPC_ASSEMBLY.js).
+// - Box à collecter (scrap, mucosum, plasmide, prismatium, aurus, bifenon,
+//   tetrathrin, kyhalon) : spawn à côté du cargo.
+// - Direct inventaire (rinusk, trace, cerebrum) : sans collecte.
+if (!e.noRewards) {
+  const asmBox = rollNpcAssemblyBox(e.type);
+  if (asmBox && COLLECTABLE_DEFS[asmBox.box]) {
+    // Box d'assemblage : reste au sol indéfiniment (comme les bonus box),
+    // jamais de despawn comme les cargos.
+    spawnCollectableAt(asmBox.box, e.x + 70, e.y - 50, {
+      armed: false,
+      despawnAfter: 0,
+      amount: asmBox.amount,
+    });
+  }
+
+  const asmDirect = rollNpcAssemblyDirect(e.type);
+  if (asmDirect.length) {
+    if (!account.user) loadAccountUser();
+    if (account.user) {
+      account.user.inventory ||= {};
+      account.user.inventory.resources ||= {};
+      const received = [];
+      for (const { resource, qty } of asmDirect) {
+        const amount = Math.max(0, Math.floor(Number(qty) || 0));
+        if (amount <= 0) continue;
+        account.user.inventory.resources[resource] =
+          Math.max(0, Number(account.user.inventory.resources[resource]) || 0) + amount;
+        received.push(`Vous avez reçu ${formatInteger(amount)} ${getResourceName(resource, amount)}`);
+      }
+      if (received.length) {
+        markProgressDirty();
+        addGameLog(received.join(" · "), "reward");
+        showNotificationGroup(received, "reward", {});
+      }
+    }
+  }
 }
 
 
@@ -11747,6 +11964,7 @@ enemies.length = 0;
 escortShips.length = 0;
 pickups.length = 0;
 collectables.length = 0;
+collectablesWorldMap = null;
 sparks.length = 0;
 floatTexts.length = 0;
 lasers.length = 0;
@@ -15657,6 +15875,7 @@ function saveStateImmediate() {
     snapshotActiveEnemiesToUniverse(String(currentMap));
     tickBackground(universe, worldClock.now(), { skipMapId: String(currentMap) });
     persistUniverse();
+    persistCollectables({ force: true });
   } catch {}
   if (SESSION_HANGAR_ID) {
     saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
@@ -15875,6 +16094,7 @@ window.__SAVE_BEFORE_LEAVE__ = () => {
 addEventListener("beforeunload", () => {
   try { saveStateImmediate(); } catch {}
   try { persistUniverse({ force: true }); } catch {}
+  try { persistCollectables({ force: true }); } catch {}
   try { localStorage.removeItem("orbit_game_open"); } catch {}
 });
 
@@ -15899,6 +16119,7 @@ addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     try { saveStateImmediate(); } catch {}
     try { persistUniverse({ force: true }); } catch {}
+    try { persistCollectables({ force: true }); } catch {}
     try { localStorage.setItem("orbit_game_open", String(Date.now())); } catch {}
   }
   restartFrameScheduler();

@@ -39,7 +39,7 @@ import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { QUEST_DEFINITIONS } from "../QUEST/QUEST_TYPES.js";
 import { AMMO } from "../COMBAT/AMMO_TYPES.js";
 import { getRocketType, rocketEffectLabel } from "../COMBAT/ROCKET_TYPES.js";
-import { getResourceName } from "../SRC/DATA/RESOURCES.js";
+import { getResourceName, getResourceIcon } from "../SRC/DATA/RESOURCES.js";
 import { getItemRarity, ITEM_RARITIES } from "../SRC/DATA/ITEM_RARITIES.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../DRONE/DRONE_TYPES.js";
 import { emptyPetFit, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLevelXp, getPetSlots, getPetSpritePath } from "../PET/PET_TYPES.js";
@@ -1042,6 +1042,9 @@ function inventoryItemIcon(entry) {
     const ammoId = entry.id === "sab" ? "ammo_sab" : `ammo_${String(entry.id).toLowerCase()}`;
     return ITEM_ICONS[ammoId] || FALLBACK_ICONS.ammo;
   }
+  // Ressources : icône définie (dont 1re frame du sprite pour les box
+  // d'assemblage), sinon fallback générique — jamais le "!" par défaut.
+  if (entry.kind === "resource") return getResourceIcon(entry.id) || FALLBACK_ICON;
   return FALLBACK_ICON;
 }
 
