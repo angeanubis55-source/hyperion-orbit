@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.187",
+    "date": "2026-09-13T16:53:44+02:00",
+    "message": "vitesse upgrade via breakdown + icones lf3/plt3030 + slot instantane"
+  },
+  {
     "version": "0.186",
     "date": "2026-09-13T16:47:31+02:00",
     "message": "sync"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.128",
     "date": "2026-09-07T23:09:23+02:00",
     "message": "Dock rapide : voile X6 + flash pret bref, liseres auto-adaptatifs, anneau interne uniformise"
-  },
-  {
-    "version": "0.127",
-    "date": "2026-09-07T22:03:59+02:00",
-    "message": "Dock rapide : voile de recharge en arc (IEM, roquettes, formations, robot) + uniformisation des slots"
   }
 ];

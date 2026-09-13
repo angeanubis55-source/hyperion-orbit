@@ -6814,22 +6814,10 @@ canvas.addEventListener(
   { passive: true }
 );
 
-// Double click = lock + démarre l'attaque
-canvas.addEventListener(
-  "dblclick",
-  (e) => {
-    e.preventDefault();
-    SFX.resume();
-
-    const enemy = pickEnemyAtScreen(e.clientX, e.clientY);
-    if (!enemy) return;
-
-    Target.set(enemy);
-    stopAttack();
-    startAttack();
-  },
-  { passive: false }
-);
+// Double-clic maison géré dans le pointerup (fiable sur cibles mobiles).
+// Le dblclick natif est désactivé pour éviter les doubles attaques.
+let lastClickAtMs = 0;
+let lastClickEnemyId = null;
 
 const moveTarget = { active: false, x: 0, y: 0 };
 
@@ -7050,6 +7038,26 @@ canvas.addEventListener(
         showToast("Approche-toi du comptoir pirate", 1.4);
       } else {
         openOreTradeWindow(pressedTrade);
+      }
+    }
+
+    // Double-clic maison (fiable sur cibles mobiles) : 2 relâchés sur le même
+    // ennemi à moins de 500 ms -> verrouille + attaque. Pas de re-visée.
+    if (e.button === 0 && !e.shiftKey) {
+      const nowMs = performance.now();
+      const releasedEnemy = pickEnemyAtScreen(e.clientX, e.clientY);
+      if (releasedEnemy && releasedEnemy.hp > 0 && lastClickEnemyId === releasedEnemy.id && nowMs - lastClickAtMs < 500) {
+        lastClickAtMs = 0;
+        lastClickEnemyId = null;
+        Target.set(releasedEnemy);
+        stopAttack();
+        startAttack();
+      } else if (releasedEnemy && releasedEnemy.hp > 0) {
+        lastClickAtMs = nowMs;
+        lastClickEnemyId = releasedEnemy.id;
+      } else {
+        lastClickAtMs = 0;
+        lastClickEnemyId = null;
       }
     }
 
