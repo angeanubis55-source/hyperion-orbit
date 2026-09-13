@@ -26,6 +26,7 @@ import {
   refineCurrentUserOre,
   sellCurrentUserOre,
   exchangeCurrentUserPalladiumForEnergy,
+  chargeShipUpgrade,
   setCurrentUserDroneFormation,
   getPetFit,
   getDroneFit,
@@ -118,7 +119,7 @@ import {
   COLLECTABLE_SPAWN as DEFAULT_COLLECTABLE_SPAWN,
   COLLECTABLE_TYPES as DEFAULT_COLLECTABLE_TYPES,
 } from "../DATA/COLLECTABLES.js";
-import { getResourceName, getResourceIcon, isOreResource, cargoAdd, cargoUsed, CARGO_CAPACITY, REFINERY_RECIPES, refineOreOutput, ORE_SELL_PRICES } from "../DATA/RESOURCES.js";
+import { getResourceName, getResourceIcon, isOreResource, cargoAdd, cargoUsed, CARGO_CAPACITY, REFINERY_RECIPES, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOTS, UPGRADE_SLOT_ORES, UPGRADE_ORE_BONUS } from "../DATA/RESOURCES.js";
 import { PALLADIUM_PER_GALAXY_ENERGY, palladiumExchangeForEnergy } from "./GALAXY_GATES.js";
 import { getNpcCargoOres } from "../../NPC/NPC_CARGO.js";
 import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
@@ -561,6 +562,14 @@ const ui = {
   refineryRecipes: document.getElementById("refineryRecipes"),
   refineryAuto: document.getElementById("refineryAuto"),
   refineryAllBtn: document.getElementById("refineryAllBtn"),
+  refineryUpgrades: document.getElementById("refineryUpgrades"),
+  upgAmountDialog: document.getElementById("upgAmountDialog"),
+  upgAmountIcon: document.getElementById("upgAmountIcon"),
+  upgAmountTitle: document.getElementById("upgAmountTitle"),
+  upgAmountBtns: document.getElementById("upgAmountBtns"),
+  upgAmountPreview: document.getElementById("upgAmountPreview"),
+  upgAmountCancel: document.getElementById("upgAmountCancel"),
+  upgAmountOk: document.getElementById("upgAmountOk"),
   gameLogSearch: document.getElementById("gameLogSearch"),
   gameLogPrevious: document.getElementById("gameLogPrevious"),
   gameLogNext: document.getElementById("gameLogNext"),
@@ -2306,9 +2315,16 @@ function renderRefineryWindow(message = "") {
   if (!user) return;
   account.user = user;
   const resources = user.inventory?.resources || {};
+  const upgrades = user.upgrades || {};
+  // Anti-flash : on ne reconstruit que si les stocks ont vraiment changé.
+  const sig = ["prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "xenomit", "palladium", "osmium"]
+    .map(id => `${id}:${Math.floor(Number(resources[id]) || 0)}`).join(",")
+    + "|upg:" + ["laser", "rocket", "speed", "shield"].map(slot => `${slot}:${upgrades[slot]?.ore || "-"}:${Math.floor(Number(upgrades[slot]?.stock) || 0)}`).join(",");
+  if (ui.refineryWindow && ui.refineryWindow.dataset.stockSig === sig) return;
+  if (ui.refineryWindow) ui.refineryWindow.dataset.stockSig = sig;
   const stockIds = ["palladium", "prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "xenomit", "osmium"];
   ui.refineryStock.innerHTML = stockIds.map(id =>
-    `<span class="refineryOre"><img src="${escapeHtml(getResourceIcon(id))}" alt="${escapeHtml(getResourceName(id))}" loading="lazy"><b>${formatInteger(resources[id] || 0)}</b></span>`
+    `<span class="refineryOre" draggable="true" data-ore-drag="${escapeHtml(id)}" title="Glisser vers un slot d'amélioration"><img src="${escapeHtml(getResourceIcon(id))}" alt="${escapeHtml(getResourceName(id))}" loading="lazy" draggable="false"><b>${formatInteger(resources[id] || 0)}</b></span>`
   ).join("");
   const rows = [];
   for (const recipe of REFINERY_RECIPES) {
@@ -2321,10 +2337,35 @@ function renderRefineryWindow(message = "") {
     rows.push(`<div class="refineryRow">${inputs}<em class="refineryArrow">→</em>${output}<button type="button" data-refinery-build="${escapeHtml(recipe.id)}">RAFFINER</button></div>`);
   }
   ui.refineryRecipes.innerHTML = rows.length ? rows.join("") : `<div class="refineryEmpty">Rien à raffiner pour le moment.</div>`;
-  // Le manager verrouille la largeur en px : la libérer quand les lignes changent pour ré-adapter.
-  if (ui.refineryWindow && ui.refineryWindow.dataset.rowCount !== String(rows.length)) {
-    ui.refineryWindow.dataset.rowCount = String(rows.length);
-    ui.refineryWindow.style.width = "";
+  // Largeur adaptative : on grandit (jamais on rétrécit) pour englober le contenu, sans scroll.
+  if (ui.refineryWindow && ui.refineryWindow.style.display !== "none") {
+    const need = Math.max(ui.refineryStock?.scrollWidth || 0, ui.refineryRecipes?.scrollWidth || 0) + 26;
+    const have = ui.refineryWindow.clientWidth || 0;
+    const cap = Math.min(1200, window.innerWidth - 24);
+    if (need > have + 1) {
+      ui.refineryWindow.style.width = `${Math.min(Math.ceil(need), cap)}px`;
+      const rect = ui.refineryWindow.getBoundingClientRect();
+      if (rect.right > window.innerWidth - 8) {
+        ui.refineryWindow.style.left = `${Math.max(8, window.innerWidth - 8 - rect.width)}px`;
+      }
+    }
+  }
+  // Améliorations d'équipement : cartes avec slot drag & drop.
+  if (ui.refineryUpgrades) {
+    ui.refineryUpgrades.innerHTML = UPGRADE_SLOTS.map(slot => {
+      const loaded = upgrades[slot.id] || {};
+      const stock = Math.max(0, Math.floor(Number(loaded.stock) || 0));
+      const bonusPct = Math.round(Number(UPGRADE_ORE_BONUS[String(loaded.ore)]?.[slot.id] || 0) * 100);
+      const slotInner = stock > 0
+        ? `<img src="${escapeHtml(getResourceIcon(loaded.ore))}" alt="${escapeHtml(getResourceName(loaded.ore))}" loading="lazy" draggable="false"><b>${formatInteger(stock)}</b>`
+        : `<span class="upgSlotEmpty">Vide</span>`;
+      const status = stock > 0 ? `+${bonusPct}%` : "";
+      return `<div class="upgCard"><span class="upgHelp" title="${escapeHtml(slot.help || "")}">?</span>`
+        + `<img class="upgIcon" src="${escapeHtml(slot.icon)}" alt="${escapeHtml(slot.name)}" loading="lazy" draggable="false">`
+        + `<b class="upgName">${escapeHtml(slot.name)}</b>`
+        + `<div class="upgSlot${stock > 0 ? " filled" : ""}" data-upgrade-slot="${escapeHtml(slot.id)}">${slotInner}</div>`
+        + `<small class="upgStatus">${escapeHtml(status)}</small></div>`;
+    }).join("");
   }
 }
 
@@ -2354,7 +2395,129 @@ ui.refineryRecipes?.addEventListener("click", event => {
     return renderRefineryWindow(result.error);
   }
   account.user = result.user;
-  maybeRefineryAuto();
+  const autoTotal = maybeRefineryAuto();
+  renderRefineryWindow(`${formatInteger(result.gained + autoTotal)} ${getResourceName(result.recipe.output.id, result.gained + autoTotal)} raffiné(s).`);
+  window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+});
+ui.refineryUpgrades?.addEventListener("click", event => {
+  const button = event.target.closest("[data-upgrade-charge]");
+  if (!button) return;
+  const slot = String(button.dataset.upgradeCharge || "");
+  const select = ui.refineryUpgrades?.querySelector(`[data-upgrade-ore="${slot}"]`);
+  saveProgressNow();
+  const result = chargeShipUpgrade(slot, select?.value, Infinity);
+  if (!result.ok) {
+    account.user = result.user || account.user;
+    showToast(result.error, 2);
+    return;
+  }
+  account.user = result.user;
+  applyCurrentConfigStats(true);
+  renderRefineryWindow();
+  window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+});
+
+// Drag & drop minerai du stock -> slot d'amélioration, puis choix de la quantité.
+const UPGRADE_AMOUNT_CHOICES = Object.freeze(["max", 1, 5, 10, 50, 100, 500, 1000]);
+let pendingUpgrade = null;
+let pendingUpgradeAmount = "max";
+
+function openUpgradeAmountDialog(slotId, oreId) {
+  const user = account.user || getCurrentUserFull();
+  const slot = UPGRADE_SLOTS.find(entry => entry.id === String(slotId || ""));
+  if (!slot || !(UPGRADE_SLOT_ORES[slot.id] || []).includes(String(oreId || ""))) {
+    showToast("Minerai incompatible.", 2);
+    return;
+  }
+  const owned = Math.max(0, Math.floor(Number(user?.inventory?.resources?.[oreId]) || 0));
+  if (owned <= 0) {
+    showToast("Stock vide.", 2);
+    return;
+  }
+  pendingUpgrade = { slot: slot.id, ore: String(oreId) };
+  pendingUpgradeAmount = "max";
+  if (ui.upgAmountIcon) ui.upgAmountIcon.src = getResourceIcon(oreId);
+  if (ui.upgAmountTitle) ui.upgAmountTitle.textContent = `${slot.name} — ${getResourceName(oreId)}`;
+  renderUpgradeAmountDialog();
+  if (ui.upgAmountDialog) ui.upgAmountDialog.hidden = false;
+}
+
+function renderUpgradeAmountDialog() {
+  if (!pendingUpgrade || !ui.upgAmountBtns) return;
+  const user = account.user || getCurrentUserFull();
+  const owned = Math.max(0, Math.floor(Number(user?.inventory?.resources?.[pendingUpgrade.ore]) || 0));
+  const slot = UPGRADE_SLOTS.find(entry => entry.id === pendingUpgrade.slot) || {};
+  ui.upgAmountBtns.innerHTML = UPGRADE_AMOUNT_CHOICES.map(n => {
+    const isMax = n === "max";
+    const disabled = isMax ? owned <= 0 : owned < n;
+    const active = pendingUpgradeAmount === n ? "active" : "";
+    return `<button type="button" data-upgrade-amount="${n}" class="${active}"${disabled ? " disabled" : ""}>${isMax ? "MAX" : n}</button>`;
+  }).join("");
+  const amount = pendingUpgradeAmount === "max" ? Math.min(owned, 100000) : pendingUpgradeAmount;
+  const gives = amount * 10;
+  if (ui.upgAmountPreview) ui.upgAmountPreview.textContent = `${pendingUpgradeAmount === "max" ? "MAX" : pendingUpgradeAmount} minerai → +${formatInteger(gives)} ${slot.unit || "tirs"} (stock : ${formatInteger(owned)})`;
+}
+
+function closeUpgradeAmountDialog() {
+  pendingUpgrade = null;
+  if (ui.upgAmountDialog) ui.upgAmountDialog.hidden = true;
+}
+
+ui.refineryStock?.addEventListener("dragstart", event => {
+  const source = event.target.closest("[data-ore-drag]");
+  if (!source) return;
+  event.dataTransfer?.setData("text/plain", String(source.dataset.oreDrag || ""));
+  event.dataTransfer?.setData("application/x-ore", String(source.dataset.oreDrag || ""));
+});
+
+ui.refineryUpgrades?.addEventListener("dragover", event => {
+  const slot = event.target.closest("[data-upgrade-slot]");
+  if (!slot) return;
+  event.preventDefault();
+  slot.classList.add("dragTarget");
+});
+
+ui.refineryUpgrades?.addEventListener("dragleave", event => {
+  const slot = event.target.closest("[data-upgrade-slot]");
+  if (slot && !slot.contains(event.relatedTarget)) slot.classList.remove("dragTarget");
+});
+
+ui.refineryUpgrades?.addEventListener("drop", event => {
+  const slot = event.target.closest("[data-upgrade-slot]");
+  if (!slot) return;
+  event.preventDefault();
+  slot.classList.remove("dragTarget");
+  const ore = event.dataTransfer?.getData("application/x-ore") || event.dataTransfer?.getData("text/plain");
+  if (ore) openUpgradeAmountDialog(slot.dataset.upgradeSlot, ore);
+});
+
+ui.upgAmountBtns?.addEventListener("click", event => {
+  const button = event.target.closest("[data-upgrade-amount]");
+  if (!button || button.disabled) return;
+  const raw = button.dataset.upgradeAmount;
+  pendingUpgradeAmount = raw === "max" ? "max" : Math.max(1, Math.floor(Number(raw) || 1));
+  renderUpgradeAmountDialog();
+});
+
+ui.upgAmountCancel?.addEventListener("click", closeUpgradeAmountDialog);
+
+ui.upgAmountOk?.addEventListener("click", () => {
+  if (!pendingUpgrade) return closeUpgradeAmountDialog();
+  saveProgressNow();
+  const user = account.user || getCurrentUserFull();
+  const owned = Math.max(0, Math.floor(Number(user?.inventory?.resources?.[pendingUpgrade.ore]) || 0));
+  // MAX plafonné à 100 000 minerais (= 1 000 000 tirs/minutes).
+  const amount = pendingUpgradeAmount === "max" ? Math.min(owned, 100000) : pendingUpgradeAmount;
+  const result = chargeShipUpgrade(pendingUpgrade.slot, pendingUpgrade.ore, amount);
+  if (!result.ok) {
+    account.user = result.user || account.user;
+    showToast(result.error, 2);
+    closeUpgradeAmountDialog();
+    return;
+  }
+  account.user = result.user;
+  applyCurrentConfigStats(true);
+  closeUpgradeAmountDialog();
   renderRefineryWindow();
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
@@ -3766,7 +3929,7 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
     Math.floor(shipBaseHP * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp)
   );
 
-  player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield));
+  player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield * playerUpgradeMults().shield));
   // Absorption officielle du générateur équipé (max monté), défaut 80 %.
   player.shAbsorb = Number(stats.bonusAbsorb) > 0 ? clamp(Number(stats.bonusAbsorb) / 100, 0, 1) : 0.8;
   // Détail des canons du vaisseau (bonus conditionnels vsMatch au tir).
@@ -3801,7 +3964,7 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   const shipBaseSpeed = Number(pack?.speed || 0);
   player.baseSpeed = Math.max(
     10,
-    Math.floor(shipBaseSpeed + (stats.bonusSpeed || 0))
+    Math.floor((shipBaseSpeed + (stats.bonusSpeed || 0)) * playerUpgradeMults().speed)
   );
 
   player.accel = BASE_RUN.accel;
@@ -4984,6 +5147,8 @@ function playerBoosterMults() {
 let boosterPrevSignature = "";
 let boosterWindowRefreshT = 0;
 let boosterResyncT = 0;
+let upgradeDrainT = 0;
+let refineryLiveT = 0;
 
 function boosterActiveSignature() {
   const active = account.user?.boosters?.active || {};
@@ -4995,6 +5160,15 @@ function boosterActiveSignature() {
 
 function tickBoosters(dt) {
   if (!started) return;
+  // Usure améliorations bouclier/vitesse : 1 minerai / 60 s.
+  upgradeDrainT += dt;
+  if (upgradeDrainT >= 60) {
+    upgradeDrainT = 0;
+    let drained = false;
+    if (consumeUpgradeStock("shield")) drained = true;
+    if (consumeUpgradeStock("speed")) drained = true;
+    if (drained && ui.refineryWindow && ui.refineryWindow.style.display !== "none") renderRefineryWindow();
+  }
   // Relecture périodique du compte (achats boutique, autre onglet...) :
   // les nouveaux boosters s'appliquent aux calculs sous 2 s max.
   boosterResyncT += dt;
@@ -5787,7 +5961,7 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
   player.hpMax = Math.max(1, Math.floor(shipBaseHP * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp));
   player.hp = Math.max(1, Math.floor(player.hpMax * oldHpPct));
 
-  player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield));
+  player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield * playerUpgradeMults().shield));
   player.sh = Math.max(0, Math.floor(player.shMax * oldShPct));
   player.shAbsorb = Number(stats.bonusAbsorb) > 0 ? clamp(Number(stats.bonusAbsorb) / 100, 0, 1) : 0.8;
   player.laserMods = Array.isArray(stats.laserMods) ? stats.laserMods : [];
@@ -5809,7 +5983,7 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
   player.laserDmgMult = BASE_RUN.laserDmgMult;
 
   const shipBaseSpeed = Number(pack?.speed || 0);
-  player.baseSpeed = Math.max(10, Math.floor(shipBaseSpeed + (stats.bonusSpeed || 0)));
+  player.baseSpeed = Math.max(10, Math.floor((shipBaseSpeed + (stats.bonusSpeed || 0)) * playerUpgradeMults().speed));
 
 player.accel = BASE_RUN.accel;
 player.friction = BASE_RUN.friction;
@@ -8331,6 +8505,54 @@ function currentMapId() {
 }
 
 // Soute lue depuis le compte en mémoire (pas de relecture storage à chaque frame).
+// Bonus d'améliorations chargées (minerais sur l'équipement). Actif tant que le stock > 0.
+function playerUpgradeMults() {
+  const out = { laser: 1, rocket: 1, speed: 1, shield: 1 };
+  const upgrades = account.user?.upgrades || {};
+  for (const slot of Object.keys(out)) {
+    const loaded = upgrades[slot];
+    if (!loaded || Math.max(0, Math.floor(Number(loaded.stock) || 0)) <= 0) continue;
+    const pct = Number(UPGRADE_ORE_BONUS[String(loaded.ore)]?.[slot] || 0);
+    if (pct > 0) out[slot] = 1 + pct;
+  }
+  return out;
+}
+
+// Consomme le stock chargé (lasers/roquettes : par tir ; bouclier/vitesse : par palier).
+function consumeUpgradeStock(slot, amount = 1) {
+  const upgrades = account.user?.upgrades;
+  const loaded = upgrades?.[slot];
+  const stock = Math.max(0, Math.floor(Number(loaded?.stock) || 0));
+  if (stock <= 0) return false;
+  loaded.stock = Math.max(0, stock - Math.max(1, Math.floor(Number(amount) || 1)));
+  refreshUpgradeSlotDom(slot);
+  if (loaded.stock <= 0) {
+    markProgressDirty();
+    saveProgressNow();
+    applyCurrentConfigStats(true);
+  }
+  return true;
+}
+
+// Mise à jour instantanée du slot (sans reconstruire toute la fenêtre).
+function refreshUpgradeSlotDom(slot) {
+  if (!ui.refineryUpgrades) return;
+  if (!ui.refineryWindow || ui.refineryWindow.style.display === "none") return;
+  const el = ui.refineryUpgrades.querySelector(`[data-upgrade-slot="${slot}"]`);
+  if (!el) return;
+  const loaded = account.user?.upgrades?.[slot] || {};
+  const stock = Math.max(0, Math.floor(Number(loaded.stock) || 0));
+  el.classList.toggle("filled", stock > 0);
+  el.innerHTML = stock > 0
+    ? `<img src="${escapeHtml(getResourceIcon(loaded.ore))}" alt="${escapeHtml(getResourceName(loaded.ore))}" loading="lazy" draggable="false"><b>${formatInteger(stock)}</b>`
+    : `<span class="upgSlotEmpty">Vide</span>`;
+  const status = el.closest(".upgCard")?.querySelector(".upgStatus");
+  if (status) {
+    const bonusPct = Math.round(Number(UPGRADE_ORE_BONUS[String(loaded.ore)]?.[slot] || 0) * 100);
+    status.textContent = stock > 0 ? `+${bonusPct}%` : "";
+  }
+}
+
 function currentCargo() {
   const resources = account.user?.inventory?.resources || {};
   const used = cargoUsed(resources);
@@ -9266,6 +9488,14 @@ function laserFitVsExtra(laserMods, target, droneLaserMods = null) {
     }
   }
   return extra;
+}
+
+// Nombre de lasers (vaisseau + drones, config active) : 1 minerai chargé par laser et par salve.
+function countPlayerLasers() {
+  let count = 0;
+  for (const m of player.laserMods || []) if (Number(m?.damage || 0) > 0) count++;
+  for (const m of player.droneLaserMods || []) if (Number(m?.damage || 0) > 0) count++;
+  return Math.max(1, count);
 }
 
 // Overdrive par canon : 1x PR-L = +200, 2x = +400, 35x = +7000.
@@ -10331,7 +10561,8 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
   const rocketBoosterMults = playerBoosterMults();
   const dmg = (rocket?.damage ?? 1000)
     * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100)
-    * rocketBoosterMults.dmg;
+    * rocketBoosterMults.dmg * playerUpgradeMults().rocket;
+  consumeUpgradeStock("rocket");
   const shotMiss = typeof miss === "boolean"
     ? miss
     : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.laserHitBonusPct || 0) + Number(rocketBoosterMults.hit || 0)) / 100));
@@ -11000,7 +11231,7 @@ function tryFireOnce(ammoOverride = null, silent = false) {
   playPlayerShot(ammoKey);
 
   const activeKey = player.ammo.active || "x1";
-  if (ammoKey === activeKey) consumeAmmo(1);
+  if (ammoKey === activeKey) consumeAmmo(countPlayerLasers());
 
 const isSab = ammoKey === "sab";
 // ✅ CBO-100 : même tir inversé que SAB (absorption), mais avec dégâts ×3
@@ -11019,6 +11250,7 @@ const life = bulletLifeForRange(playerRange, speed);
 // ✅ SAB-50 ne fait pas de dégâts HP.
 // Elle utilise ta puissance laser comme quantité de bouclier à voler.
 player.volleyCount = (player.volleyCount || 0) + 1;
+consumeUpgradeStock("laser", countPlayerLasers());
 // Bonus par canon x nombre équipé : vaisseau + drones.
 // 1x PR-L = +200, 2x = +400, 35x = +7000 tous les 5 tirs.
 // Idem vsMatch (LF-3, AA-1, PR-L Blacklight...) et U-LF4 instable.
@@ -11030,7 +11262,7 @@ const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
   const dmgShot = isSab
     ? player.baseDamage * SAB50.drainMult * shotBoosterMults.dmg
-    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg;
+    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerUpgradeMults().laser;
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (shotHitBonusPct / 100));
 
@@ -12530,6 +12762,13 @@ function renderOreTradeWindow() {
       + `<span class="oreTradeGain">+${formatInteger(gain)}</span>`
       + `<button type="button" data-ore-sell="${escapeHtml(id)}"${owned <= 0 ? " disabled" : ""}>VENDRE</button></div>`;
   }).join("");
+  // Fenêtre + cartes épousent le contenu (pas de largeur verrouillée trop grande).
+  if (ui.oreTradeWindow && ui.oreTradeWindow.style.display !== "none") {
+    ui.oreTradeWindow.style.width = "";
+    const body = ui.oreTradeWindow.querySelector(".oreTradeBody");
+    const need = Math.max(body?.scrollWidth || 0, 280) + 26;
+    ui.oreTradeWindow.style.width = `${Math.min(Math.ceil(need), Math.min(640, window.innerWidth - 24))}px`;
+  }
 }
 
 function openOreTradeWindow(tradeModule = null) {
@@ -15584,7 +15823,15 @@ function applyHangarDesignLive() {
     // recalcule les stats (hp, bouclier, vitesse, dégâts…) en gardant les ratios
     applyCurrentConfigStats(true);
 
-    updateResourceHud(ui, player, currentCargo());
+  updateResourceHud(ui, player, currentCargo());
+  // Raffinerie ouverte : compteurs d'usure en (quasi) direct, sans reconstruire à chaque frame.
+  if (ui.refineryWindow && ui.refineryWindow.style.display !== "none" && !ui.refineryWindow.classList.contains("gameWinMinimized")) {
+    const nowMs = performance.now();
+    if (nowMs - refineryLiveT > 1500) {
+      refineryLiveT = nowMs;
+      renderRefineryWindow();
+    }
+  }
 
     return { ok: true };
   } catch (err) {

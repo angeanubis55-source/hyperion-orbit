@@ -399,20 +399,21 @@ html.orbitSessionReady #loadingOverlay{
 .oreTradePanel{ width:max-content; max-width:min(640px,calc(100vw - 24px)); }
 .oreTradeBody{ display:grid; gap:10px; padding:12px; }
 .oreTradeRows{ display:grid; gap:10px; }
+.oreTradeRows .refineryRow, #otPalladiumRow{ justify-content:center; }
 .oreTradePrice{ color:#8fcddd; font-size:11px; font-weight:900; white-space:nowrap; }
 .oreTradeGain{ color:#ffd36b; font-size:13px; font-weight:900; margin-left:auto; white-space:nowrap; }
 .oreTradeRows button{ flex:none; min-height:30px; padding:6px 10px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); font:750 11px/1.2 ui-sans-serif,system-ui; text-transform:none; cursor:pointer; }
 .oreTradeRows button:disabled{ opacity:.35; cursor:default; }
 .oreTradeRows button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
 
-.refineryPanel{ width:max-content; max-width:min(880px,calc(100vw - 24px)); }
+.refineryPanel{ width:max-content; max-width:min(1200px,calc(100vw - 24px)); }
 .refineryBody{ display:grid; gap:10px; padding:12px; color:#dff7ff; }
-.refineryStock{ display:flex; flex-direction:row; align-items:center; gap:12px; padding:7px 11px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); overflow-x:auto; }
+.refineryStock{ display:flex; flex-direction:row; align-items:center; justify-content:center; gap:12px; padding:7px 11px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); overflow:visible; }
 .refineryOre{ display:inline-flex; flex:none; flex-direction:row; align-items:center; gap:6px; }
 .refineryOre img{ width:32px; height:32px; object-fit:contain; }
 .refineryOre b{ color:#fff; font-size:13px; }
 .refineryOre.out b{ color:#ffd36b; }
-.refineryRecipes{ display:grid; gap:8px; }
+.refineryRecipes{ display:grid; gap:10px; }
 .refineryRow{ display:flex; flex-direction:row; align-items:center; gap:8px; padding:7px 11px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); overflow-x:auto; }
 .refineryPlus{ color:#8fcddd; font-style:normal; font-weight:900; }
 .refineryArrow{ color:#ffd36b; font-style:normal; font-weight:900; }
@@ -425,6 +426,33 @@ html.orbitSessionReady #loadingOverlay{
 .refineryAuto span{ color:#8fcddd; font-size:11px; font-weight:900; text-transform:uppercase; }
 .refineryFooter button{ margin-left:auto; flex:none; min-height:30px; padding:6px 14px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); font:750 11px/1.2 ui-sans-serif,system-ui; text-transform:none; cursor:pointer; }
 .refineryFooter button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
+.refinerySeparator{ border:none; border-top:1px solid rgba(124,240,255,.2); margin:2px 0; }
+.refineryUpgrades{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; overflow-x:auto; overflow-y:visible; padding-bottom:2px; }
+.refinerySlotName{ color:#8fcddd; font-size:11px; font-weight:900; text-transform:uppercase; white-space:nowrap; }
+.upgCard{ position:relative; display:grid; justify-items:center; gap:6px; padding:12px 12px 14px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); }
+.upgHelp{ position:absolute; top:6px; right:8px; width:18px; height:18px; display:grid; place-items:center; border:1px solid rgba(124,240,255,.4); border-radius:50%; color:#8fcddd; font-size:11px; font-weight:900; cursor:help; }
+.upgIcon{ width:64px; height:64px; object-fit:contain; }
+.upgName{ color:#eaffff; font-size:11px; font-weight:900; text-transform:uppercase; }
+.upgSlot{ min-width:64px; min-height:40px; box-sizing:border-box; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:6px; padding:4px 8px; border:1px dashed rgba(124,240,255,.35); border-radius:8px; background:rgba(3,20,33,.92); }
+.upgSlot img{ width:28px; height:28px; object-fit:contain; pointer-events:none; }
+.upgSlot b{ color:#fff; font-size:12px; }
+.upgSlot.filled{ border-style:solid; border-color:rgba(124,240,255,.6); background:rgba(0,100,140,.5); }
+.upgSlot.dragTarget{ border-color:#ffd36b; box-shadow:0 0 12px rgba(255,211,107,.5); }
+.upgSlotEmpty{ color:rgba(207,235,246,.55); font-size:11px; }
+.upgStatus{ align-self:stretch; text-align:right; color:#ffd36b; font-size:12px; font-weight:900; min-height:14px; }
+.refineryStock .refineryOre{ cursor:grab; }
+.refineryStock .refineryOre:active{ cursor:grabbing; }
+.upgAmountDialog{ display:grid; gap:10px; padding:12px; border:1px solid rgba(255,211,107,.4); border-radius:12px; background:rgba(20,14,4,.95); }
+.upgAmountDialog[hidden]{ display:none; }
+.upgAmountHead{ display:flex; flex-direction:row; align-items:center; gap:8px; color:#ffd36b; font-size:12px; font-weight:900; text-transform:uppercase; }
+.upgAmountHead img{ width:32px; height:32px; object-fit:contain; }
+.upgAmountBtns{ display:flex; flex-direction:row; flex-wrap:wrap; gap:8px; }
+.upgAmountBtns button{ min-width:52px; min-height:30px; padding:6px 10px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); font:750 11px/1.2 ui-sans-serif,system-ui; cursor:pointer; }
+.upgAmountBtns button.active{ border-color:#ffd36b; box-shadow:0 0 12px rgba(255,211,107,.5); }
+.upgAmountBtns button:disabled{ opacity:.35; cursor:default; }
+.upgAmountPreview{ color:#dff7ff; font-size:12px; }
+.upgAmountActions{ display:flex; flex-direction:row; justify-content:flex-end; gap:8px; }
+.upgAmountActions button{ min-height:30px; padding:6px 12px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); font:750 11px/1.2 ui-sans-serif,system-ui; cursor:pointer; }
 .refineryEmpty{ color:rgba(207,235,246,.6); font-size:12px; padding:8px 2px; }
 
 #boxVitals .row.mini{

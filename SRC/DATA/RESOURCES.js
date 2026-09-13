@@ -61,6 +61,32 @@ export const ORE_SELL_PRICES = Object.freeze({
   osmium: 100000,
 });
 
+// Améliorations d'équipement (onglet Upgrade du vrai DO) : minerai chargé = bonus.
+// Charge = 100 unités. Lasers/roquettes : 1/salve. Bouclier/vitesse : 1/60 s.
+export const UPGRADE_CHARGE_COST = 100;
+
+export const UPGRADE_SLOTS = Object.freeze([
+  Object.freeze({ id: "laser", name: "Dégâts lasers", unit: "tirs", icon: "/ASSETS/LASERS/lf_4_100x100.png", help: "Charge un minerai sur les lasers : +dégâts à chaque tir. 1 minerai = 10 tirs. Prometid +15 %, Promerium +30 %, Seprom +60 %, Osmium +50 %." }),
+  Object.freeze({ id: "rocket", name: "Dégâts roquettes", unit: "tirs", icon: "/COMBAT/ROCKET_SPRITES/PLD-8_100X100.png", help: "Charge un minerai sur les roquettes : +dégâts par roquette. 1 minerai = 10 tirs. Prometid +15 %, Promerium +30 %, Seprom +60 %, Osmium +50 %." }),
+  Object.freeze({ id: "speed", name: "Vitesse", unit: "min", icon: "/ASSETS/ITEMS/G3N-7900.png", help: "Charge un minerai sur les générateurs de vitesse. 1 minerai = 10 minutes. Duranium +10 %, Promerium +20 %." }),
+  Object.freeze({ id: "shield", name: "Bouclier", unit: "min", icon: "/ASSETS/ITEMS/SG3N-B03.png", help: "Charge un minerai sur les générateurs de bouclier. 1 minerai = 10 minutes. Duranium +10 %, Promerium +20 %, Seprom +40 %, Osmium +50 %." }),
+]);
+
+export const UPGRADE_SLOT_ORES = Object.freeze({
+  laser: Object.freeze(["prometid", "promerium", "seprom", "osmium"]),
+  rocket: Object.freeze(["prometid", "promerium", "seprom", "osmium"]),
+  speed: Object.freeze(["duranium", "promerium"]),
+  shield: Object.freeze(["duranium", "promerium", "seprom", "osmium"]),
+});
+
+export const UPGRADE_ORE_BONUS = Object.freeze({
+  prometid: Object.freeze({ laser: 0.15, rocket: 0.15 }),
+  duranium: Object.freeze({ speed: 0.10, shield: 0.10 }),
+  promerium: Object.freeze({ laser: 0.30, rocket: 0.30, speed: 0.20, shield: 0.20 }),
+  seprom: Object.freeze({ laser: 0.60, rocket: 0.60, shield: 0.40 }),
+  osmium: Object.freeze({ laser: 0.50, rocket: 0.50, shield: 0.50 }),
+});
+
 // Raffinage officiel (ratios du client d'origine) : minerais bruts -> minerais nobles.
 export const REFINERY_RECIPES = Object.freeze([
   Object.freeze({ id: "prometid", name: "Prometid", inputs: Object.freeze({ prometium: 20, endurium: 10 }), output: Object.freeze({ id: "prometid", amount: 1 }) }),

@@ -10,7 +10,7 @@ import { compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
-import { getRefineryRecipe, refineOreOutput, ORE_SELL_PRICES } from "../DATA/RESOURCES.js";
+import { getRefineryRecipe, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOT_ORES } from "../DATA/RESOURCES.js";
 import { ROCKET_TYPES } from "../../COMBAT/ROCKET_TYPES.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../../DRONE/DRONE_TYPES.js";
 import { createPet, emptyPetFit, getPetLevel, getPetMaxHp, getPetSlots, getPetShieldBonus, normalizePetMode, normalizePetPseudo, PET_DEFAULT_PSEUDO, PET_FUEL_MAX, PET_SLOTS } from "../../PET/PET_TYPES.js";
@@ -2333,5 +2333,29 @@ export function exchangeCurrentUserPalladiumForEnergy() {
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, energies, cost, user: u };
+}
+
+// Charge des minerais sur un équipement (1 minerai = 10 tirs ou 10 minutes).
+export function chargeShipUpgrade(slotId, oreId, oreAmount = 1) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const slot = String(slotId || "");
+  const ore = String(oreId || "");
+  if (!(UPGRADE_SLOT_ORES[slot] || []).includes(ore)) return { ok: false, error: "Minerai incompatible.", user: u };
+  const amount = Math.max(1, Math.floor(Number(oreAmount) || 1));
+  u.inventory ||= {};
+  u.inventory.resources ||= {};
+  const owned = Math.max(0, Math.floor(Number(u.inventory.resources[ore]) || 0));
+  if (owned < amount) return { ok: false, error: `Il faut ${amount} ${ore} (stock : ${owned}).`, user: u };
+  u.upgrades ||= {};
+  const current = u.upgrades[slot] || {};
+  u.inventory.resources[ore] = owned - amount;
+  // Même minerai : on cumule. Sinon on remplace (l'ancien est perdu, comme sur DO).
+  u.upgrades[slot] = String(current.ore) === ore
+    ? { ore, stock: Math.max(0, Math.floor(Number(current.stock) || 0)) + amount * 10 }
+    : { ore, stock: amount * 10 };
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, slot, ore, stock: u.upgrades[slot].stock };
 }
 
