@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.191",
+    "date": "2026-09-13T22:53:28+02:00",
+    "message": "boutons style raffinage partout (config, pet, reduire, reparation, boutique) + pastille bleue + suppression dossier TEST"
+  },
+  {
     "version": "0.190",
     "date": "2026-09-13T21:46:42+02:00",
     "message": "boutique roquettes fusionnees (badges R/LR) + fenetres 8px + hover reduire + titre espace pilote"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.132",
     "date": "2026-09-08T08:24:14+02:00",
     "message": "ISH (bouclier 3s invincible, CD 10s, 30k) + SAB inverse (cible vers vaisseau, sprite Sab) + images ammo_sab"
-  },
-  {
-    "version": "0.131",
-    "date": "2026-09-08T07:24:46+02:00",
-    "message": "Demarrage : fenetre DEPART a chaque refresh, option auto grisee (desactivee temporairement)"
   }
 ];
