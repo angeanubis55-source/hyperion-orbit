@@ -3792,7 +3792,7 @@ function awardExperience(amount, source = "") {
   if (result.gained <= 0) return result;
   for (const drone of account.user.drones?.items || []) {
     const previousLevel = Math.max(1, Number(drone.level) || getDroneLevel(drone.exp));
-    drone.exp = Math.max(0, Number(drone.exp) || 0) + result.gained * DRONE_XP_SHARE * (isLeonovHomeActive() ? 2 : 1);
+    drone.exp = Math.max(0, Number(drone.exp) || 0) + result.gained * DRONE_XP_SHARE;
     drone.level = getDroneLevel(drone.exp);
     if (drone.level > previousLevel) queueDroneLevelTransition(drone.id, previousLevel, drone.level);
   }
@@ -3800,7 +3800,7 @@ function awardExperience(amount, source = "") {
   // ET activé (bouton play de la fenêtre P.E.T).
   if (account.user.pet?.owned === true && account.user.pet.active === true) {
     const previousPetLevel = Math.max(0, Number(account.user.pet.level) || getPetLevel(account.user.pet.exp));
-    account.user.pet.exp = Math.max(0, Number(account.user.pet.exp) || 0) + result.gained * PET_XP_SHARE * playerBoosterMults().petXp * (isLeonovHomeActive() ? 2 : 1);
+    account.user.pet.exp = Math.max(0, Number(account.user.pet.exp) || 0) + result.gained * PET_XP_SHARE * playerBoosterMults().petXp;
     account.user.pet.level = getPetLevel(account.user.pet.exp);
     if (account.user.pet.level > previousPetLevel) {
       showToast(`P.E.T niveau ${account.user.pet.level} atteint !`, 2.6);
@@ -4291,7 +4291,10 @@ function getSpeedBreakdown() {
   }
 
   speedPct += Number(getActiveDroneFormation(u).effects?.speedPct || 0);
-  const total = Math.floor((base + genSpeed) * (1 + speedPct / 100) * playerUpgradeMults().speed);
+  // ✅ Leonov home (x-1 à x-4 de sa firme) : vitesse x2, comme le moteur
+  // de déplacement (player.baseSpeed) — sinon l'HUD affiche la moitié.
+  const leonovHome = isLeonovHomeActive();
+  const total = Math.floor((base + genSpeed) * (1 + speedPct / 100) * playerUpgradeMults().speed * (leonovHome ? 1.2 : 1));
 
   return {
     shipId,
@@ -4299,6 +4302,7 @@ function getSpeedBreakdown() {
     base,
     genSpeed,
     speedPct,
+    leonovHome,
     total,
     speedItems,
     speedModules,
@@ -12174,7 +12178,7 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
   const dmg = (rocket?.damage ?? 1000)
     * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100)
     * rocketBoosterMults.dmg * playerUpgradeMults().rocket
-    * (isLeonovHomeActive() ? 2 : 1);
+    * (isLeonovHomeActive() ? 2.5 : 1);
   consumeUpgradeStock("rocket");
   const shotMiss = typeof miss === "boolean"
     ? miss
@@ -16983,6 +16987,7 @@ if (ui.spdTxt) {
     `Vaisseau: ${spd.base}` +
     ` | Générateurs: +${spd.genSpeed}` +
     ` | Modules vitesse: +${spd.speedPct}%` +
+    (spd.leonovHome ? ` | Leonov home: x1.2` : ``) +
     ` | Config ${spd.config}`);
 }
 

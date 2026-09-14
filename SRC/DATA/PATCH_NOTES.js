@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.212",
+    "date": "2026-09-14T15:51:40+02:00",
+    "message": "pet: collecte rex alignee 0,2s + quetes insensibles casse + version"
+  },
+  {
     "version": "0.211",
     "date": "2026-09-14T15:37:30+02:00",
     "message": "sync complet: moteur effets vaisseaux + chantiers en cours"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.153",
     "date": "2026-09-11T17:20:21+02:00",
     "message": "Equipement: fix modules 1-par-couleur, remplacement au slot cible + message officiel"
-  },
-  {
-    "version": "0.152",
-    "date": "2026-09-11T17:12:04+02:00",
-    "message": "Equipement: effet selection bleu vaisseau/drones/PET, modules roulette en lignes rarete, selection exclusive module/inventaire"
   }
 ];

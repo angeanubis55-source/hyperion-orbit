@@ -31,7 +31,7 @@ const SHIP_BASE_INFO = {
   holo: { effet: null, competence: "Inversion (soi / ennemi)" },
   hyperion: { effet: null, competence: "Ancre gravitationnelle" },
   keres: { effet: null, competence: "Propagation / Esquive" },
-  leonov: { effet: "+100% Dégâts/Bouclier/PV, roquettes/XP/vitesse x2 (cartes x-1 à x-4 de sa firme)", competence: null },
+  leonov: { effet: "+150% Dégâts/Bouclier/PV, roquettes x2.5, XP x2, vitesse x1.2 (cartes x-1 à x-4 de sa firme)", competence: null },
   liberator: { effet: null, competence: null },
   mimesis: { effet: "+10% Bouclier, +5% Pénétration", competence: "Brouillage / Sortie de phase" },
   nostromo: { effet: null, competence: null },

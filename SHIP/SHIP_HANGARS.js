@@ -208,9 +208,9 @@ const fit =
     const mapId = String(ctx?.mapId || "").trim().toLowerCase();
     if (sector && new RegExp(`^${sector}-[1234]$`).test(mapId)) {
       leonovHome = true;
-      bonusDamagePct += 100;
-      bonusShieldPct += 100;
-      bonusHPPct += 100;
+      bonusDamagePct += 150;
+      bonusShieldPct += 150;
+      bonusHPPct += 150;
       bonusExpPct += 100;
     }
   }
@@ -237,7 +237,7 @@ const fit =
     bonusShield, 
     bonusAbsorb,          // max des générateurs montés (0 = défaut 80 % moteur)
     bonusFlatHP: Number(shipEffect.flatHp || 0), // PV fixes (ex : Yamato Ronin +40000)
-    speedMult: leonovHome ? 2 : 1, // Leonov home : vitesse x2
+    speedMult: leonovHome ? 1.2 : 1, // Leonov home : vitesse x1.2
     leonovHome,                     // Leonov home : roquettes x2, XP x2 drones/P.E.T. (moteur)
     laserMods,            // détail canons du vaisseau (bonus vsMatch appliqués au tir)
     droneLaserMods,       // détail canons des drones (overdrive/vs/instable x nombre équipé)
