@@ -97,7 +97,7 @@ import {
   drawToastMessage,
 } from "../../UI/UI_CANVAS_HUD.js";
 import { renderMinimap } from "../../UI/UI_MINIMAP.js";
-import { drawBackgroundLayerSet, drawParallaxStarfield, drawWallLayer } from "./WORLD_LAYER_RENDERER.js";
+import { drawWallLayer } from "./WORLD_LAYER_RENDERER.js";
 import { advancePlayerToTarget, attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./FRAME_SYSTEMS.js";
 import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor } from "./PROGRESSION.js";
 import { formatInteger } from "./NUMBER_FORMAT.js";
@@ -280,6 +280,16 @@ function popRespawnOverride() {
 // ✅ l'état « mort en attente » survit au refresh : si le joueur recharge en
 // étant détruit (zone map, lieu de réapparition pas encore choisi), il reste
 // mort et on rejoue l'animation + le son d'explosion au rechargement.
+// Bande de radiations hors-carte (scaleDepth 2000 + marge) : les positions
+// sauvegardees (refresh) et de mort peuvent legitimement s'y trouver, on ne
+// les rabat au bord que bien au-dela.
+const RADIATION_SPAWN_MARGIN = 2500;
+function clampSpawnPos(x, y) {
+  return {
+    x: clamp(Number(x) || 0, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN),
+    y: clamp(Number(y) || 0, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN),
+  };
+}
 function markDeathPending() {
   try {
     sessionStorage.setItem(
@@ -323,8 +333,9 @@ function tryReplayPendingDeath() {
     player.dead = true;
     player.hp = 0;
     player.vx = player.vy = 0;
-    player.x = clamp(Number(rec.x) || player.x, 80, WORLD.w - 80);
-    player.y = clamp(Number(rec.y) || player.y, 80, WORLD.h - 80);
+    const deathXY = clampSpawnPos(Number(rec.x) || player.x, Number(rec.y) || player.y);
+    player.x = deathXY.x;
+    player.y = deathXY.y;
     lastDeathPos.x = player.x;
     lastDeathPos.y = player.y;
     lastDeathPos.map = currentMap;
@@ -377,6 +388,16 @@ function isBaseOnlyRespawnMap() {
 
 function showRespawnOverlay(show, { gateOnly = null } = {}) {
   if (!ui.respawnOverlay) return;
+  if (show) {
+    document.body.classList.remove("orbitNoFade");
+    document.body.classList.add("orbitDead");
+  } else {
+    // Réapparition D'UN COUP : pas de transition au retour.
+    document.body.classList.add("orbitNoFade");
+    document.body.classList.remove("orbitDead");
+    void document.body.offsetWidth;
+    document.body.classList.remove("orbitNoFade");
+  }
   // ✅ réparation unique à la base : Galaxy Gates + maps à respawn imposé
   // (ex : carte maudite via rules.baseRespawnOnly). Surchargeable explicitement.
   const gateMode = gateOnly ?? isBaseOnlyRespawnMap();
@@ -430,6 +451,9 @@ let respawnRunning = false;
 function startDeathSequence() {
   // ✅ (voir verrou ci-dessus : ne pas réafficher la fenêtre par-dessus un switch)
   setCenterMsg(false);
+  // Fondu de sortie de tout le HUD (réapparition instantanée au choix).
+  document.body.classList.remove("orbitNoFade");
+  document.body.classList.add("orbitDead");
   const veil = document.getElementById("deathVeil");
   if (veil) {
     veil.classList.remove("instant");
@@ -458,18 +482,7 @@ function lockSessionHangar() {
   return id;
 }
 
-// ✅ Background layers (2 couches superposées)
-function createBackgroundLayers(world = WORLD, mapRules = rules) {
-  return (
-  world?.bgLayers ||
-  mapRules?.bgLayers ||
-  [
-    { src: world?.bgSrc || mapRules?.bgSrc || null, mode: "tile", alpha: 0.85, parallax: 0.02 },
-    { src: "./BACKGROUNDS/MMO_STARS.png", mode: "tile", alpha: 0.55, parallax: 0.08, blend: "lighter" },
-  ]
-).filter(x => x && x.src);
-}
-let BG_LAYERS = createBackgroundLayers();
+// ✅ Fonds de carte et étoiles supprimés : le canvas reste sur son vide #050814.
 
 // ============================================================
 // Canvas
@@ -720,7 +733,7 @@ function initializeCustomActionBar() {
       const result = setCurrentUserDroneFormation(formation.id);
       if (!result.ok) return showNotification(result.error, 2.5, "error");
       account.user = result.user;
-      applyCurrentConfigStats(true);
+      applyCurrentConfigStats(false, null, true);
       syncActionDockState();
       showNotification(`${formation.name} activée`, 2, "info", { goldTerms: [formation.name] });
       renderPalette("formations");
@@ -1116,8 +1129,6 @@ const DEFAULT_GAME_SETTINGS = {
   soundVolume: 5,
   music: true,
   musicVolume: 1,
-  background: true,
-  stars: true,
   textures: true,
   drones: true,
   autoStart: false,
@@ -1285,14 +1296,6 @@ function setGameSetting(key, value) {
       if (typeof updateMusicPlayback === "function") updateMusicPlayback();
     } catch {}
     showToast(GAME_SETTINGS.sound ? "Son activé" : "Son coupé", 1.1);
-  }
-
-  if (key === "background") {
-    showToast(GAME_SETTINGS.background ? "Fond de carte affiché" : "Fond de carte masqué", 1.1);
-  }
-
-  if (key === "stars") {
-    showToast(GAME_SETTINGS.stars ? "Étoiles animées" : "Étoiles masquées", 1.1);
   }
 
   if (key === "textures") {
@@ -1636,11 +1639,6 @@ function renderSettingsWindow() {
   // OU si les sons généraux sont coupés (ils contrôlent absolument tout).
   renderMusicRow();
 
-  const background = document.getElementById("optBackground");
-  const stars = document.getElementById("optStars");
-  if (background) background.checked = !!GAME_SETTINGS.background;
-  if (stars) stars.checked = !!GAME_SETTINGS.stars;
-
   const volume = document.getElementById("optVolume");
   const volumeValue = document.getElementById("optVolumeValue");
   if (volume) volume.value = String(GAME_SETTINGS.soundVolume);
@@ -1680,8 +1678,6 @@ function wireSettingsWindow() {
   const volume = document.getElementById("optVolume");
   const musicBtn = document.getElementById("optMusic");
   const musicVolume = document.getElementById("optMusicVolume");
-  const bgBtn = document.getElementById("optBackground");
-  const starsBtn = document.getElementById("optStars");
   const texBtn = document.getElementById("optTextures");
   const autoStart = document.getElementById("optAutoStart");
   const drones = document.getElementById("optDrones");
@@ -1712,14 +1708,6 @@ function wireSettingsWindow() {
 
   musicVolume?.addEventListener("input", () => {
     setMusicVolume(musicVolume.value);
-  });
-
-  bgBtn?.addEventListener("change", () => {
-    setGameSetting("background", bgBtn.checked);
-  });
-
-  starsBtn?.addEventListener("change", () => {
-    setGameSetting("stars", starsBtn.checked);
   });
 
   texBtn?.addEventListener("click", () => {
@@ -2040,8 +2028,10 @@ function updatePetHud() {
   setHudWidth(ui.petFuelBar, "100%");
 
   if (ui.petPlayBtn) {
-    const label = pet?.active === true ? "⏸" : "▶";
-    if (ui.petPlayBtn.textContent !== label) ui.petPlayBtn.textContent = label;
+    const label = pet?.active === true
+      ? '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="3" y="2" width="4" height="12" rx="1" fill="#eaffff"/><rect x="9" y="2" width="4" height="12" rx="1" fill="#eaffff"/></svg>'
+      : '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 2 L13 8 L4 14 Z" fill="#eaffff"/></svg>';
+    if (ui.petPlayBtn.innerHTML !== label) ui.petPlayBtn.innerHTML = label;
     setHudAttr(ui.petPlayBtn, "title", pet?.active === true ? "Désactiver le P.E.T" : "Activer le P.E.T");
     setHudClass(ui.petPlayBtn, "isOn", pet?.active === true);
   }
@@ -2445,7 +2435,7 @@ ui.refineryUpgrades?.addEventListener("click", event => {
     return;
   }
   account.user = result.user;
-  applyCurrentConfigStats(true);
+  applyCurrentConfigStats(false, null, true);
   renderRefineryWindow();
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
@@ -2549,7 +2539,7 @@ ui.upgAmountOk?.addEventListener("click", () => {
     return;
   }
   account.user = result.user;
-  applyCurrentConfigStats(true);
+  applyCurrentConfigStats(false, null, true);
   closeUpgradeAmountDialog();
   renderRefineryWindow();
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
@@ -3334,10 +3324,6 @@ function tickZonePortalJumps(dt) {
   return false;
 }
 
-// ✅ précharge tous les backgrounds
-for (const L of BG_LAYERS) {
-  if (L?.src) loadImage(L.src, { priority: true });
-}
 
 // ============================================================
 // State
@@ -3930,7 +3916,7 @@ function getConfigCooldownLeft() {
   return Math.max(0, (CONFIG_SWITCH.until - Date.now()) / 1000);
 }
 
-function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null) {
+function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null, keepAbsolute = false) {
   const u = loadAccountUser();
   if (!u) return false;
 
@@ -3977,14 +3963,26 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   player.critMult = oslCount > 0 ? 2.0 : 1.5;
 
   if (!player.dead) {
-    // ✅ HP reste partagé
-    player.hp = Math.max(1, Math.floor(player.hpMax * oldHpPct));
-
-    // ✅ Si on change de config : on restaure le bouclier de CETTE config
-    if (restoreShieldConfigNo !== null) {
-      restoreShieldForConfig(restoreShieldConfigNo);
+    // ✅ Valeurs absolues conservées : le now ne bouge pas, seul le max
+    // change (les barres now/max se recalculent).
+    if (keepAbsolute) {
+      player.hp = Math.max(1, Math.min(player.hpMax, Math.floor(player.hp)));
+      // Si on change de config : on restaure le bouclier de CETTE config.
+      if (restoreShieldConfigNo !== null) {
+        restoreShieldForConfig(restoreShieldConfigNo);
+      } else {
+        player.sh = Math.max(0, Math.min(player.shMax, Math.floor(player.sh)));
+      }
     } else {
-      player.sh = Math.max(0, Math.floor(player.shMax * oldShPct));
+      // HP reste partage (changement de config)
+      player.hp = Math.max(1, Math.floor(player.hpMax * oldHpPct));
+
+      // Si on change de config : on restaure le bouclier de CETTE config
+      if (restoreShieldConfigNo !== null) {
+        restoreShieldForConfig(restoreShieldConfigNo);
+      } else {
+        player.sh = Math.max(0, Math.floor(player.shMax * oldShPct));
+      }
     }
   }
 
@@ -4057,6 +4055,9 @@ const out = setActiveHangarConfig(hangarId, nextConfig);
 
   // setActiveHangarConfig publishes the complete update synchronously.
   // The account listener applies the destination configuration exactly once.
+
+  // Recalcul explicite (ne depend pas de l'ecouteur) : absolu + bouclier restaure.
+  applyCurrentConfigStats(false, nextConfig, true);
 
   CONFIG_SWITCH.until = Date.now() + CONFIG_SWITCH.cooldownMs;
 
@@ -5250,7 +5251,7 @@ function tickBoosters(dt) {
       const fresh = getCurrentUserFull();
       if (fresh && Number(fresh.revision || 0) !== Number(account.user?.revision || 0)) {
         account.user = fresh;
-        try { applyCurrentConfigStats(true); } catch {}
+        try { applyCurrentConfigStats(false, null, true); } catch {}
       }
     } catch {}
   }
@@ -5275,9 +5276,9 @@ function tickBoosters(dt) {
     const prev = boosterPrevSignature;
     boosterPrevSignature = signature;
     if (prev !== "") {
-      // Activation ou expiration : on Recalcule les max (bouclier/coque)
-      // en gardant les ratios, on annonce les fins, on sauvegarde.
-      try { applyCurrentConfigStats(true); } catch {}
+      // Activation ou expiration : on recalcule les max (bouclier/coque)
+      // en gardant les valeurs absolues, on annonce les fins, on sauvegarde.
+      try { applyCurrentConfigStats(false, null, true); } catch {}
       const prevStates = prev.split("|");
       const nextStates = signature.split("|");
       if (prevStates.length === nextStates.length) {
@@ -8633,7 +8634,7 @@ function consumeUpgradeStock(slot, amount = 1) {
   if (loaded.stock <= 0) {
     markProgressDirty();
     saveProgressNow();
-    applyCurrentConfigStats(true);
+    applyCurrentConfigStats(false, null, true);
   }
   return true;
 }
@@ -8822,12 +8823,14 @@ function spawnCollectableAtRestored(drop, elapsedSec) {
     id: newId(),
     type: drop.type,
     map: currentMapId(),
-    x: clamp(Number(drop.x) || 0, 80, WORLD.w - 80),
-    y: clamp(Number(drop.y) || 0, 80, WORLD.h - 80),
+    x: clamp(Number(drop.x) || 0, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN),
+    y: clamp(Number(drop.y) || 0, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN),
     r: Number(cfg.r ?? cfg.radius ?? 32),
     pickupRadius: Number(cfg.pickupRadius ?? cfg.r ?? cfg.radius ?? 42),
     armed: false,
     fromNpc: drop.fromNpc != null ? String(drop.fromNpc) : null,
+    oreRemainder: drop.ores && typeof drop.ores === "object" ? { ...drop.ores } : null,
+    rewardOverride: drop.noDefReward === true ? { resources: {} } : null,
     fixedAmount: drop.amount,
     dropUid: String(drop.uid),
     slotUid: null,
@@ -8944,8 +8947,8 @@ function spawnCollectableAt(type, x, y, opts = {}) {
 
   const sp = cfg.sprite || {};
   const frames = Math.max(1, Number(sp.frames || 1));
-  const cx = clamp(x, 80, WORLD.w - 80);
-  const cy = clamp(y, 80, WORLD.h - 80);
+  const cx = clamp(x, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
+  const cy = clamp(y, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
   const despawnAfter = Math.max(0, Number(opts.despawnAfter || 0));
 
   const instance = {
@@ -8964,6 +8967,12 @@ function spawnCollectableAt(type, x, y, opts = {}) {
 
     // ✅ permet de savoir que cette box vient d’un NPC
     fromNpc: opts.fromNpc || null,
+
+    // ✅ contenu minerai impose (epave du joueur : 1 prometium)
+    oreRemainder: opts.oreRemainder || null,
+
+    // ✅ recompense de base remplacee (epave du joueur : rien d'autre)
+    rewardOverride: opts.rewardOverride || null,
 
     // ✅ montant fixe (drops d'assemblage : quantité tirée au kill)
     fixedAmount: Math.max(0, Math.floor(Number(opts.amount) || 0)) || null,
@@ -8988,6 +8997,8 @@ function spawnCollectableAt(type, x, y, opts = {}) {
       y: cy,
       amount: instance.fixedAmount,
       fromNpc: instance.fromNpc,
+      ores: instance.oreRemainder,
+      noDefReward: instance.rewardOverride != null,
       expiresAtMs: despawnAfter > 0 ? worldClock.now() + despawnAfter * 1000 : 0,
     });
     instance.dropUid = String(record.uid);
@@ -9042,7 +9053,7 @@ function applyCollectableReward(c) {
   const cfg = COLLECTABLE_DEFS[c.type];
   if (!cfg) return;
 
-  const reward = pickExclusiveCollectableReward(cfg.exclusiveRewards) || cfg.reward || cfg.rewards || {};
+  const reward = c.rewardOverride || pickExclusiveCollectableReward(cfg.exclusiveRewards) || cfg.reward || cfg.rewards || {};
   const parts = [];
   const goldTerms = [];
   // Booster Bonus Box : contenu doublé.
@@ -9150,7 +9161,7 @@ function applyCollectableReward(c) {
     cargoKept = true;
     cargoRefused = true;
   }
-  if (String(c?.type || "") === "Cargo_Box" && c?.fromNpc && !cargoRefuseUpfront) {
+  if (String(c?.type || "") === "Cargo_Box" && (c?.fromNpc || c?.oreRemainder) && !cargoRefuseUpfront) {
     const table = c.oreRemainder || getNpcCargoOres(c.fromNpc, currentMapId());
     const ids = Object.keys(table);
     if (ids.length) {
@@ -12219,8 +12230,9 @@ jumpBaseFade: 1,
     if (ov && String(ov.map || "") === String(currentMap)) {
       const position = ov.baseCenter ? resolveBaseCenter(zoneSafe, ov.fallback) : ov;
       const fallbackSpawn = getFactionFallbackSpawn();
-      player.x = clamp(Number(position.x) || fallbackSpawn.x, 80, WORLD.w - 80);
-      player.y = clamp(Number(position.y) || fallbackSpawn.y, 80, WORLD.h - 80);
+      const spawnXY = clampSpawnPos(Number(position.x) || fallbackSpawn.x, Number(position.y) || fallbackSpawn.y);
+      player.x = spawnXY.x;
+      player.y = spawnXY.y;
       if (ov.respawn === true) {
         player.hp = Math.max(1, Math.ceil(player.hpMax * 0.1));
         player.sh = player.shMax > 0 ? Math.max(1, Math.ceil(player.shMax * 0.1)) : 0;
@@ -12329,8 +12341,9 @@ jumpBaseFade: 1,
         player.x = clamp(fallbackSpawn.x, 80, WORLD.w - 80);
         player.y = clamp(fallbackSpawn.y, 80, WORLD.h - 80);
       } else if (st.pos && st.pos.x != null && st.pos.y != null) {
-        player.x = clamp(st.pos.x, 80, WORLD.w - 80);
-        player.y = clamp(st.pos.y, 80, WORLD.h - 80);
+        const savedXY = clampSpawnPos(st.pos.x, st.pos.y);
+        player.x = savedXY.x;
+        player.y = savedXY.y;
       } else {
         player.x = clamp(fallbackSpawn.x, 80, WORLD.w - 80);
         player.y = clamp(fallbackSpawn.y, 80, WORLD.h - 80);
@@ -12397,6 +12410,18 @@ function die() {
   lastDeathPos.x = player.x;
   lastDeathPos.y = player.y;
   lastDeathPos.map = window.__CURRENT_MAP_ID__ || "1-1";
+
+  // ✅ explosion facon NPC sur le joueur.
+  spawnExplosion(player.x, player.y, 1.0);
+
+  // ✅ epave du joueur : cargo box de 1 prometium a l'endroit de la mort.
+  spawnCollectableAt("Cargo_Box", player.x, player.y, {
+    armed: false,
+    fromNpc: null,
+    despawnAfter: 300,
+    rewardOverride: { resources: {} },
+    oreRemainder: { prometium: 1 },
+  });
 
   const defeatedGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
   if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[defeatedGateId]) {
@@ -12525,9 +12550,6 @@ async function collectHomeBaseJobs() {
           getZonePortals: spawnsMod?.getZonePortals,
           getZoneSafeModules: spawnsMod?.getZoneSafeModules,
         };
-        for (const layer of createBackgroundLayers(world, rules)) {
-          if (layer?.src) jobs.push(loadImage(layer.src, { priority: true }));
-        }
         jobs.push(...preloadCollectables(id));
         jobs.push(...preloadSafeModuleSprites(rules, world));
         for (const camp of (rules.getZoneSpawns?.(world) || [])) {
@@ -14017,8 +14039,8 @@ function tickEmpWander(e, dt) {
     let tx = e.x + Math.cos(ang) * dist;
     let ty = e.y + Math.sin(ang) * dist;
 
-    tx = clamp(tx, 80, WORLD.w - 80);
-    ty = clamp(ty, 80, WORLD.h - 80);
+    tx = clamp(tx, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
+    ty = clamp(ty, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
 
     e.empAI.tx = tx;
     e.empAI.ty = ty;
@@ -14038,8 +14060,8 @@ function tickEmpWander(e, dt) {
 
   setNpcVelocity(e, nx, ny, spd);
 
-  e.x = clamp(e.x + e.vx * dt, e.r, WORLD.w - e.r);
-  e.y = clamp(e.y + e.vy * dt, e.r, WORLD.h - e.r);
+  e.x = clamp(e.x + e.vx * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.w - e.r + RADIATION_SPAWN_MARGIN);
+  e.y = clamp(e.y + e.vy * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.h - e.r + RADIATION_SPAWN_MARGIN);
 
   if (e.vx * e.vx + e.vy * e.vy > 25) {
     e.angle = Math.atan2(e.vy, e.vx);
@@ -14870,8 +14892,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
       if (e._cubikonDeathFlee) {
         e._cubikonDeathFleeT = Math.max(0, (e._cubikonDeathFleeT || 0) - dt);
-        e.x = clamp(e.x + e.vx * dt, e.r, WORLD.w - e.r);
-        e.y = clamp(e.y + e.vy * dt, e.r, WORLD.h - e.r);
+        e.x = clamp(e.x + e.vx * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.w - e.r + RADIATION_SPAWN_MARGIN);
+        e.y = clamp(e.y + e.vy * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.h - e.r + RADIATION_SPAWN_MARGIN);
         if (e._cubikonDeathFleeT <= 0) {
           e._cubikonDeathFlee = false;
           e.vx = 0;
@@ -14947,8 +14969,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
               const rMax = e.anchorRMax ?? 700;
               const r = rand(rMin, rMax);
 
-              e.anchorTX = clamp(master.x + Math.cos(ang) * r, 80, WORLD.w - 80);
-              e.anchorTY = clamp(master.y + Math.sin(ang) * r, 80, WORLD.h - 80);
+              e.anchorTX = clamp(master.x + Math.cos(ang) * r, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
+              e.anchorTY = clamp(master.y + Math.sin(ang) * r, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
 
               e.anchorWanderT = 0.8 + Math.random() * 1.0;
             }
@@ -14963,8 +14985,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             const spdE = npcEffectiveSpeed(e);
             setNpcVelocity(e, mxv, myv, spdE);
 
-            e.x = clamp(e.x + e.vx * dt, e.r, WORLD.w - e.r);
-            e.y = clamp(e.y + e.vy * dt, e.r, WORLD.h - e.r);
+            e.x = clamp(e.x + e.vx * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.w - e.r + RADIATION_SPAWN_MARGIN);
+            e.y = clamp(e.y + e.vy * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.h - e.r + RADIATION_SPAWN_MARGIN);
 
             if (e.vx * e.vx + e.vy * e.vy > 25) {
               e.angle = Math.atan2(e.vy, e.vx);
@@ -15013,8 +15035,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
               let tx = safeZoneX + nxOut * outDist + rand(-260, 260);
               let ty = safeZoneY + nyOut * outDist + rand(-260, 260);
 
-              tx = clamp(tx, 80, WORLD.w - 80);
-              ty = clamp(ty, 80, WORLD.h - 80);
+              tx = clamp(tx, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
+              ty = clamp(ty, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
 
               e.aiZ.wanderTarget = { x: tx, y: ty };
               e.aiZ.wanderT = 1.6 + Math.random() * 1.6;
@@ -15059,8 +15081,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             let tx = e.x + Math.cos(angle) * distance;
             let ty = e.y + Math.sin(angle) * distance;
 
-            tx = clamp(tx, 80, WORLD.w - 80);
-            ty = clamp(ty, 80, WORLD.h - 80);
+            tx = clamp(tx, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
+            ty = clamp(ty, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
 
             e.aiZ.wanderTarget = { x: tx, y: ty };
             e.aiZ.wanderT = 3 + Math.random() * 4;
@@ -15079,8 +15101,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
         const spdE = npcEffectiveSpeed(e);
         setNpcVelocity(e, mxv, myv, spdE);
 
-        e.x = clamp(e.x + e.vx * dt, e.r, WORLD.w - e.r);
-        e.y = clamp(e.y + e.vy * dt, e.r, WORLD.h - e.r);
+        e.x = clamp(e.x + e.vx * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.w - e.r + RADIATION_SPAWN_MARGIN);
+        e.y = clamp(e.y + e.vy * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.h - e.r + RADIATION_SPAWN_MARGIN);
 
         const spd2N = e.vx * e.vx + e.vy * e.vy;
         if (e._aggro) {
@@ -15136,8 +15158,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
       e.angle = Math.atan2(e.vy, e.vx);
     }
 
-    e.x = clamp(e.x + e.vx * dt, e.r, WORLD.w - e.r);
-    e.y = clamp(e.y + e.vy * dt, e.r, WORLD.h - e.r);
+    e.x = clamp(e.x + e.vx * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.w - e.r + RADIATION_SPAWN_MARGIN);
+    e.y = clamp(e.y + e.vy * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.h - e.r + RADIATION_SPAWN_MARGIN);
 
     const cfgTouch = NPC_TYPES[e.type] || {};
     if (!player.dead && cfgTouch.explodeOnTouch) {
@@ -15192,17 +15214,6 @@ function drawZoneWalls(ox, oy) {
   });
 }
 
-function drawBackgroundLayers(ox, oy) {
-  drawBackgroundLayerSet(ctx, BG_LAYERS, {
-    offsetX: ox,
-    offsetY: oy,
-    viewportWidth: innerWidth,
-    viewportHeight: innerHeight,
-    getImage: getCachedImage,
-    isImageReady: isImgReady,
-  });
-}
-
 function draw() {
   ctx.fillStyle = "#050814";
   ctx.fillRect(0, 0, innerWidth, innerHeight);
@@ -15218,22 +15229,6 @@ function draw() {
       oy += (Math.random() * 2 - 1) * amp;
     }
   }
-
-if (GAME_SETTINGS.background) {
-  drawBackgroundLayers(ox, oy);
-}
-
-// Le champ d'étoiles est une composante permanente de l'espace. Il reste
-// visible même si les images de fond optionnelles sont désactivées.
-if (GAME_SETTINGS.stars) {
-  drawParallaxStarfield(ctx, {
-    cameraX: camera.x,
-    cameraY: camera.y,
-    viewportWidth: innerWidth,
-    viewportHeight: innerHeight,
-    elapsedSeconds: performance.now() / 1000,
-  });
-}
 
 if (GAME_SETTINGS.textures) {
   drawZoneWalls(ox, oy);
@@ -15720,7 +15715,6 @@ async function prepareGameAssets() {
   });
   try {
     const jobs = [ensurePackLoaded(ACTIVE_SHIP), loadImage(WALL_TEX.src, { priority: true })];
-    for (const layer of BG_LAYERS) if (layer.src) jobs.push(loadImage(layer.src, { priority: true }));
     jobs.push(...preloadPlayerBulletSprites());
     jobs.push(...preloadPetSprites());
     // ✅ drones dans le chargement bloquant : aucune saccade aux premiers virages.
@@ -15980,13 +15974,12 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
 
   const nextRules = nextConfig.rules || {};
   const nextWorld = nextConfig.WORLD;
-  const nextBackgrounds = createBackgroundLayers(nextWorld, nextRules);
   const preparedZoneCamps = nextRules.mode === "zone" && typeof nextRules.getZoneSpawns === "function"
     ? nextRules.getZoneSpawns(nextWorld) : [];
   const preparedZonePortals = nextRules.mode === "zone" && typeof nextRules.getZonePortals === "function"
     ? nextRules.getZonePortals(nextWorld) : [];
 
-  const jobs = nextBackgrounds.map((layer) => loadImage(layer.src, { priority: true }));
+  const jobs = [];
   jobs.push(...preloadCollectables(mapId));
   jobs.push(...preloadSafeModuleSprites(nextRules, nextWorld));
   for (const camp of preparedZoneCamps) if (camp?.type && NPC_TYPES[camp.type]) jobs.push(ensureNpcLoaded(camp.type));
@@ -16005,7 +15998,6 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   getWavePlan = nextConfig.getWavePlan || (() => ({ spawns: [] }));
   DEFAULT_WAVE_TYPE = nextConfig.DEFAULT_WAVE_TYPE || "dummy";
   rules = nextRules;
-  BG_LAYERS = nextBackgrounds;
   NPC_SENSOR_RANGES = getNpcSensorRanges(rules);
   isZoneMap = rules.mode === "zone";
 
@@ -16102,8 +16094,8 @@ function applyHangarDesignLive() {
         playerImgsReady = true;
       });
 
-    // recalcule les stats (hp, bouclier, vitesse, dégâts…) en gardant les ratios
-    applyCurrentConfigStats(true);
+    // recalcule les stats (hp, bouclier, vitesse, dégâts…) en valeurs absolues
+    applyCurrentConfigStats(false, null, true);
 
   updateResourceHud(ui, player, currentCargo());
   // Raffinerie ouverte : compteurs d'usure en (quasi) direct, sans reconstruire à chaque frame.
@@ -16204,7 +16196,7 @@ window.addEventListener("orbit:user-updated", event => {
   if (started && switched) saveShieldForConfig(previousHangar.activeConfig);
   account.user = refreshed;
   if (started) {
-    applyCurrentConfigStats(true, switched ? nextHangar.activeConfig : null);
+    applyCurrentConfigStats(false, switched ? nextHangar.activeConfig : null, true);
     updateConfigButtons();
     updatePetHud();
     drawUI();

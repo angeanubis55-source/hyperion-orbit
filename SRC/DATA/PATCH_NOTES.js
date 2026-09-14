@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.199",
+    "date": "2026-09-14T02:12:41+02:00",
+    "message": "sync version 0.198 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.198",
     "date": "2026-09-14T02:12:14+02:00",
     "message": "log: refresh auto + tailles 10px, boutique/hangar reduire fleches, commerce x-format"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.140",
     "date": "2026-09-10T16:22:23+02:00",
     "message": "Normalisation massive assets : chemins uppercase ASSETS/BACKGROUNDS/MAPS/PUBLIC/SRC, manifest regenere, scripts version corriges"
-  },
-  {
-    "version": "0.139",
-    "date": "2026-09-09T08:47:02+02:00",
-    "message": "Systeme Pet complet : mouvement, XP, assets, profil et OrbitEngine"
   }
 ];

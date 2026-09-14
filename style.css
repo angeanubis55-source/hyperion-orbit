@@ -272,6 +272,7 @@ html.orbitSessionReady #loadingOverlay{
   font-size:11px;
   font-weight:800;
   white-space:nowrap;
+  color:#fff;
 }
 #boxVitals .row{
   align-items:center;
@@ -310,7 +311,7 @@ html.orbitSessionReady #loadingOverlay{
 #boxWave .v,
 #boxMeta .v,
 #boxVitals .v{
-  color:rgba(235,248,255,.95);
+  color:#fff;
   font-weight:900;
   font-variant-numeric:tabular-nums;
   text-shadow:0 0 10px rgba(0,217,255,.10);
@@ -319,6 +320,7 @@ html.orbitSessionReady #loadingOverlay{
 #boxMeta .k{
   font-size:12px;
   font-weight:800;
+  color:#fff;
 }
 
 #credits,
@@ -2480,7 +2482,11 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   background:#789cac;
 }
 #boxVitals .vitalsMeterLabel.is-hp::before{ background:#5fd97c; box-shadow:0 0 6px rgba(95,217,124,.6); }
+#boxVitals .vitalsMeterLabel.is-hp{ color:#5fd97c; }
 #boxVitals .vitalsMeterLabel.is-sh::before{ background:#4fd8f7; box-shadow:0 0 6px rgba(79,216,247,.6); }
+#boxVitals .vitalsMeterLabel.is-sh{ color:#4fd8f7; }
+#boxVitals .vitalsMeterLabel.is-cargo::before{ background:#ffd36b; box-shadow:0 0 6px rgba(255,211,107,.6); }
+#boxVitals .vitalsMeterLabel.is-cargo{ color:#ffd36b; }
 
 #boxVitals .bar.slim{
   position:relative;
@@ -2562,6 +2568,10 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 #petWindow.gameWindow .petMeterLabel.is-sh::before{ background:#4fd8f7; box-shadow:0 0 6px rgba(79,216,247,.6); }
 #petWindow.gameWindow .petMeterLabel.is-xp::before{ background:#9d7bff; box-shadow:0 0 6px rgba(157,123,255,.6); }
 #petWindow.gameWindow .petMeterLabel.is-fuel::before{ background:#ece7d9; box-shadow:0 0 6px rgba(236,231,217,.55); }
+#petWindow.gameWindow .petMeterLabel.is-hp{ color:#5fd97c; }
+#petWindow.gameWindow .petMeterLabel.is-sh{ color:#4fd8f7; }
+#petWindow.gameWindow .petMeterLabel.is-fuel{ color:#ece7d9; }
+#petWindow.gameWindow .petMeterLabel.is-level{ color:#9d7bff; }
 #petWindow.gameWindow .petMeterLabel.is-level::before{ background:#9d7bff; box-shadow:0 0 6px rgba(157,123,255,.6); }
 
 #petWindow.gameWindow .barValue{
@@ -2653,6 +2663,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   flex:0 0 auto;
   width:38px;
   height:30px;
+  padding:0;
   border-radius:8px;
   border:1px solid rgba(124,240,255,.38);
   background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
@@ -2664,6 +2675,12 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   display:grid;
   place-items:center;
   cursor:pointer;
+}
+#petWindow #petPlayBtn svg{
+  width:14px;
+  height:14px;
+  display:block;
+  filter:drop-shadow(0 0 4px rgba(0,217,255,.6));
 }
 
 #petWindow #petPlayBtn:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
@@ -2685,7 +2702,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   align-items:center;
   gap:8px;
   padding:0 12px 8px;
-  color:rgba(180,210,255,.64);
+  color:#fff;
   font-size:12px;
   font-weight:800;
   letter-spacing:normal;
@@ -3118,6 +3135,39 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   cursor:not-allowed;
 }
 
+/* Modales : cadre + entree facon gameWindow */
+.modal{
+  border:1px solid rgba(124,240,255,.24);
+  border-radius:8px;
+  background:linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80));
+  box-shadow:0 18px 42px rgba(0,0,0,.55), 0 0 26px rgba(0,217,255,.12), inset 0 0 0 1px rgba(255,255,255,.04);
+  animation:modalIn .22s ease-out;
+}
+#centerMsg{
+  border:1px solid rgba(124,240,255,.24);
+  border-radius:8px;
+  background:linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80));
+  box-shadow:0 18px 42px rgba(0,0,0,.55), 0 0 26px rgba(0,217,255,.12), inset 0 0 0 1px rgba(255,255,255,.04);
+  animation:modalIn .22s ease-out;
+}
+#portalCard{
+  border:1px solid rgba(124,240,255,.24);
+  border-radius:8px;
+  background:linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80));
+  box-shadow:0 18px 42px rgba(0,0,0,.55), 0 0 26px rgba(0,217,255,.12), inset 0 0 0 1px rgba(255,255,255,.04);
+  animation:modalIn .22s ease-out;
+}
+#confirmOverlay > div{
+  border:1px solid rgba(124,240,255,.24) !important;
+  border-radius:8px !important;
+  box-shadow:0 18px 42px rgba(0,0,0,.55), 0 0 26px rgba(0,217,255,.12) !important;
+  animation:modalIn .22s ease-out;
+}
+@keyframes modalIn{
+  from{ opacity:0; transform:translateY(8px) scale(.98); }
+  to{ opacity:1; transform:none; }
+}
+
 .overlay{
   position:fixed;
   inset:0;
@@ -3137,6 +3187,37 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   pointer-events:none;
   z-index:9998;
   transition:opacity 1.6s ease-in;
+}
+
+/* Mort : tout le HUD sort en fondu (le voile + la reparation restent) */
+body.orbitDead #gameWindowDock,
+body.orbitDead #ammoBar,
+body.orbitDead .gameWindow,
+body.orbitDead .panel,
+body.orbitDead #toastContainer,
+body.orbitDead .orbitNotifications,
+body.orbitDead #profileOverlay,
+body.orbitDead #shopOverlay,
+body.orbitDead #hangarOverlay,
+body.orbitDead #confirmOverlay,
+body.orbitDead #fpsOverlay{
+  opacity:0 !important;
+  pointer-events:none !important;
+  transition:opacity .6s ease;
+}
+/* Retour instantane apres le choix (pas de fondu inverse) */
+body.orbitNoFade #gameWindowDock,
+body.orbitNoFade #ammoBar,
+body.orbitNoFade .gameWindow,
+body.orbitNoFade .panel,
+body.orbitNoFade #toastContainer,
+body.orbitNoFade .orbitNotifications,
+body.orbitNoFade #profileOverlay,
+body.orbitNoFade #shopOverlay,
+body.orbitNoFade #hangarOverlay,
+body.orbitNoFade #confirmOverlay,
+body.orbitNoFade #fpsOverlay{
+  transition:none !important;
 }
 
 #deathVeil.active{ opacity:.65; }
@@ -5191,3 +5272,3077 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #settingsWindow .settingsSlotKeys .keyBindRow{height:32px !important;min-height:32px !important;padding:4px 9px !important;font-size:10px !important;width:100% !important}
 #settingsWindow .settingsSlotKeys .keyBindRow kbd{min-width:30px !important;padding:3px 5px !important}
 .craftingRecipe.ownedLimit{opacity:.38 !important;filter:grayscale(1) !important;border-color:rgba(130,150,160,.16) !important;background:#071018 !important}
+
+/* ============================================================
+   FUSION : contenu de PROFILE_WINDOW.css (ordre inchange : apres style.css)
+   ============================================================ */
+/* Fenêtre Profil — feuille canonique chargée après le thème historique. */
+#profileOverlay.profileOverlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 90000 !important;
+  display: none;
+  padding: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  pointer-events: none !important;
+}
+
+#profileOverlay .profileOverlayInner { display: contents !important; }
+
+#profileOverlay #profileWindow.gameWindow {
+  position: fixed !important;
+  width: min(1180px, calc(100vw - 32px)) !important;
+  height: min(720px, calc(100vh - 90px)) !important;
+  min-width: 760px !important;
+  min-height: 520px !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-columns: 290px minmax(0, 1fr) !important;
+  grid-template-rows: 26px minmax(0, 1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  color: #e8f4ff !important;
+  border: 1px solid rgba(124, 240, 255, .24) !important;
+  border-radius: 8px !important;
+  background: linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80)) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.55), 0 0 26px rgba(0,217,255,.12), inset 0 0 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter: none !important;
+  pointer-events: auto !important;
+}
+
+#profileOverlay #profileWindow.gameWindow:hover {
+  border-color: rgba(124, 240, 255, .42) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.50), 0 0 28px rgba(0,217,255,.16), inset 0 0 0 1px rgba(255,255,255,.05) !important;
+}
+
+html body #profileOverlay #profileWindow.gameWindow:not(.floating) {
+  left: max(16px, calc(50vw - 590px)) !important;
+  top: 70px !important;
+}
+
+/* Même barre de titre et même bouton de réduction que toutes les fenêtres HUD. */
+#profileOverlay #profileWindow.gameWindow > .gameWinBar {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124, 240, 255, .18) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(90deg, rgba(0,217,255,.18), rgba(124,240,255,.05), rgba(255,255,255,.035)) !important;
+  box-shadow: none !important;
+  cursor: grab !important;
+}
+
+#profileOverlay #profileWindow .gameWinIcon {
+  width: auto !important;
+  height: auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 0 !important;
+  background: transparent !important;
+  font-size: 15px !important;
+}
+
+#profileOverlay #profileWindow .gameWinTitle {
+  flex: 1 !important;
+  min-width: 0 !important;
+  color: rgba(232,244,255,.88) !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  letter-spacing: .35px !important;
+}
+
+html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn {
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  min-height: 26px !important;
+  margin: 0 -8px 0 auto !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
+  border-radius: 0 8px 0 0 !important;
+  background: linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  color: #eaffff !important;
+  font: 750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform: none !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  transition: none !important;
+}
+
+html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover:not(:disabled) {
+  border-color: rgba(124,240,255,.62) !important;
+  background: rgba(0,140,185,.3) !important;
+  box-shadow: 0 0 16px rgba(0,217,255,.12) !important;
+}
+
+#profileOverlay .profileHeaderCard {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 20px 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  gap: 22px !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-right: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(180deg, #0b2638, #071927) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+#profileOverlay .profileHeaderTop {
+  margin: 0 !important;
+  padding: 0 3px 18px !important;
+  display: block !important;
+  border-bottom: 1px solid rgba(124,240,255,.14) !important;
+}
+
+#profileOverlay .profileTitle {
+  padding: 0 !important;
+  border: 0 !important;
+  color: #f0fbff !important;
+  font-size: 17px !important;
+  font-weight: 900 !important;
+  line-height: 1.2 !important;
+  background: none !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+#profileOverlay .profileSub {
+  margin: 8px 0 0 !important;
+  color: rgba(204,228,241,.62) !important;
+  font-size: 10px !important;
+  line-height: 1.55 !important;
+}
+
+#profileOverlay .profileTabs {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  overflow: visible !important;
+}
+
+#profileOverlay .profileTabs .tabBtn,
+#profileOverlay #shopTabs .subtabBtn,
+#profileOverlay button:not(.gameWinMinBtn) {
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  min-height: 36px !important;
+  margin: 0 !important;
+  padding: 8px 11px !important;
+  border: 1px solid rgba(124,240,255,.17) !important;
+  border-radius: 8px !important;
+  color: rgba(215,235,246,.76) !important;
+  background: #0a2232 !important;
+  box-shadow: none !important;
+  font: 800 11px/1.2 system-ui !important;
+  text-transform: none !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+#profileOverlay .profileTabs .tabBtn {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  min-height: 44px !important;
+  padding: 11px 14px !important;
+  font-size: 12px !important;
+  letter-spacing: .045em !important;
+  white-space: nowrap !important;
+}
+
+#profileOverlay .generalPanel { width: 100%; height: 100%; min-height: 0; padding: 18px; display: grid; grid-template-columns: minmax(220px,.8fr) minmax(280px,1.2fr); align-items: center; gap: 34px; overflow: auto; border: 0; border-radius: 0; background: transparent; }
+#profileOverlay .generalLogo { width: min(100%,360px); max-height: 260px; justify-self: center; object-fit: contain; filter: drop-shadow(0 0 22px rgba(0,200,255,.18)); }
+#profileOverlay .generalCopy { max-width: 500px; display: flex; flex-direction: column; gap: 10px; }
+#profileOverlay .generalCopy span { color: #72e7ff; font-size: 10px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+#profileOverlay .generalCopy h2 { margin: 0; color: #effbff; font-size: clamp(25px,3vw,40px); line-height: 1; }
+#profileOverlay .generalCopy p { margin: 0; color: rgba(215,235,246,.68); font-size: 11px; line-height: 1.7; }
+
+#profileOverlay .profileTabs .tabBtn.active,
+#profileOverlay #shopTabs .subtabBtn.active {
+  color: #f1fcff !important;
+  border-color: rgba(124,240,255,.52) !important;
+  background: #0c3950 !important;
+  box-shadow: inset 3px 0 0 #69e9ff !important;
+}
+
+#profileOverlay .profileTabs .tabBtn:hover,
+#profileOverlay #shopTabs .subtabBtn:hover,
+#profileOverlay button:not(.gameWinMinBtn):hover,
+#profileOverlay button:not(.gameWinMinBtn):active { transform: none !important; }
+
+#profileOverlay #msg { display: none !important; }
+
+#profileOverlay .profileMainCard {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 14px !important;
+  display: flex !important;
+  position: relative !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #06111c !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+#profileOverlay .profilePanel { display: none !important; }
+#profileOverlay .profilePanel.active {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 11px !important;
+  background: #091a28 !important;
+  box-shadow: none !important;
+  animation: none !important;
+}
+
+#profileOverlay .hint {
+  flex: 0 0 auto !important;
+  margin: 0 0 12px !important;
+  padding: 10px 12px !important;
+  color: rgba(209,231,243,.70) !important;
+  font-size: 11px !important;
+  line-height: 1.45 !important;
+  border: 1px solid rgba(124,240,255,.12) !important;
+  border-radius: 8px !important;
+  background: #071622 !important;
+}
+
+#profileOverlay .statsRow {
+  flex: 0 0 auto !important;
+  margin: 0 0 14px !important;
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0,1fr)) !important;
+  gap: 10px !important;
+}
+
+#profileOverlay .statCard,
+#profileOverlay .previewCard,
+#profileOverlay .tile,
+#profileOverlay .profileTile {
+  box-sizing: border-box !important;
+  border: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 9px !important;
+  background: #0a2232 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+#profileOverlay .statCard { min-height: 82px !important; padding: 14px !important; }
+#profileOverlay .statLabel { margin: 0 0 9px !important; color: rgba(204,228,241,.56) !important; font-size: 9px !important; }
+#profileOverlay .statValue { color: #72e7ff !important; font-size: 20px !important; font-weight: 900 !important; }
+#profileOverlay .previewCard { flex: 1 1 auto !important; min-height: 0 !important; padding: 20px !important; gap: 18px !important; }
+#profileOverlay .previewCard img { width: 120px !important; height: 120px !important; padding: 10px !important; }
+
+/* Statistiques et gestion du compte. */
+#profileOverlay .accountSettingsGrid {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+
+#profileOverlay #panel_account.profilePanel.active { overflow-y: auto !important; }
+#profileOverlay #panel_account.profilePanel.active { scrollbar-width: none !important; }
+#profileOverlay #panel_account.profilePanel.active::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+
+/* Inventaire du compte */
+#profileOverlay #panel_inventory.profilePanel.active {
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) !important;
+  gap: 12px !important;
+  overflow: hidden !important;
+}
+
+#profileOverlay .inventoryToolbar {
+  min-width: 0 !important;
+  padding: 14px 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  border: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 10px !important;
+  background: linear-gradient(120deg, rgba(11,38,56,.92), rgba(7,25,39,.92)) !important;
+}
+
+#profileOverlay .inventoryTitle { color: #f0fbff !important; font-size: 11px !important; font-weight: 900 !important; }
+#profileOverlay .inventorySubtitle { margin-top: 4px !important; color: rgba(204,228,241,.58) !important; font-size: 10px !important; }
+#profileOverlay .inventorySearchField { width: min(310px, 42%) !important; display: grid !important; gap: 5px !important; }
+#profileOverlay .inventorySearchField > span { color: rgba(164,202,221,.72) !important; font-size: 9px !important; font-weight: 900 !important; text-transform: uppercase !important; letter-spacing: .7px !important; }
+#profileOverlay .inventorySearchField input {
+  width: 100% !important;
+  min-height: 36px !important;
+  padding: 8px 11px !important;
+  border: 1px solid rgba(124,240,255,.20) !important;
+  border-radius: 8px !important;
+  outline: none !important;
+  color: #e8f4ff !important;
+  background: #061521 !important;
+}
+#profileOverlay .inventorySearchField input:focus { border-color: rgba(0,217,255,.62) !important; box-shadow: 0 0 0 2px rgba(0,217,255,.08) !important; }
+
+#profileOverlay .inventorySections {
+  min-height: 0 !important;
+  padding: 10px !important;
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, 72px) !important;
+  grid-auto-rows: 72px !important;
+  align-content: start !important;
+  gap: 8px !important;
+  overflow-y: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+#profileOverlay .inventorySlot {
+  position: relative !important;
+  width: 72px !important;
+  height: 72px !important;
+  box-sizing: border-box !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow: hidden !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 9px !important;
+  background: radial-gradient(circle at 50% 42%, rgba(0,217,255,.12), rgba(2,12,20,.84) 72%) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025) !important;
+}
+#profileOverlay .inventorySlot:hover,
+#profileOverlay .inventorySlot:focus-visible { border-color: rgba(124,240,255,.65) !important; background: radial-gradient(circle at 50% 42%, rgba(0,217,255,.22), rgba(2,12,20,.84) 74%) !important; box-shadow: 0 0 14px rgba(0,217,255,.13), inset 0 0 0 1px rgba(255,255,255,.05) !important; }
+#profileOverlay .inventorySlot img { width: 84% !important; height: 84% !important; object-fit: contain !important; pointer-events: none !important; }
+#profileOverlay .inventorySlotQuantity { position: absolute !important; right: 5px !important; bottom: 4px !important; max-width: calc(100% - 10px) !important; overflow: hidden !important; color: #ffd56a !important; font-size: 10px !important; font-weight: 1000 !important; line-height: 1 !important; text-overflow: ellipsis !important; text-shadow: 0 1px 3px #000, 0 0 5px #000 !important; white-space: nowrap !important; }
+body > .inventoryTooltip {
+  position: fixed !important;
+  z-index: 999999 !important;
+  width: max-content !important;
+  max-width: 310px !important;
+  padding: 10px 12px !important;
+  display: block !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  border: 1px solid rgba(124,240,255,.36) !important;
+  border-radius: 8px !important;
+  color: rgba(221,241,250,.78) !important;
+  background: rgba(3,14,23,.97) !important;
+  box-shadow: 0 12px 28px rgba(0,0,0,.58), 0 0 16px rgba(0,217,255,.10) !important;
+  font: 700 10px/1.55 system-ui !important;
+  white-space: pre-line !important;
+  transition: opacity .12s ease !important;
+}
+body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !important; }
+
+#profileOverlay .inventorySlot[class*="rarity-"] {
+  border-color: color-mix(in srgb, var(--rarity) 48%, transparent) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), inset 0 -2px 0 var(--rarity) !important;
+}
+#profileOverlay .inventorySlot.rarity-common { --rarity:#a9bcc7; }
+#profileOverlay .inventorySlot.rarity-rare { --rarity:#45bfff; }
+#profileOverlay .inventorySlot.rarity-epic { --rarity:#ba72ff; }
+#profileOverlay .inventorySlot.rarity-legendary { --rarity:#ffd15c; }
+
+#fitCard .invCell[class*="rarity-"], #fitCard .slotCell[class*="rarity-"] {
+  border-color: color-mix(in srgb, var(--rarity) 50%, transparent) !important;
+  box-shadow: inset 0 -2px 0 var(--rarity), inset 0 0 12px color-mix(in srgb, var(--rarity) 9%, transparent) !important;
+}
+#fitCard .rarity-common { --rarity:#a9bcc7; }
+#fitCard .rarity-rare { --rarity:#45bfff; }
+#fitCard .rarity-epic { --rarity:#ba72ff; }
+#fitCard .rarity-legendary { --rarity:#ffd15c; }
+#profileOverlay .inventoryEmpty { padding: 18px 12px !important; color: rgba(177,207,224,.48) !important; font-size: 10px !important; text-align: center !important; }
+#profileOverlay #panel_account .accountSettingsGrid {
+  flex: 0 0 auto !important;
+  grid-auto-rows: minmax(280px, auto) !important;
+  overflow: visible !important;
+}
+#profileOverlay #panel_account .accountCard { overflow: visible !important; }
+
+#profileOverlay .accountCard {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  overflow-y: auto !important;
+  border: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 10px !important;
+  background: #071622 !important;
+}
+
+#profileOverlay .accountCardHeader {
+  min-width: 0 !important;
+  padding-bottom: 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 11px !important;
+  border-bottom: 1px solid rgba(124,240,255,.12) !important;
+}
+
+#profileOverlay .accountCardIcon {
+  width: 36px !important;
+  height: 36px !important;
+  flex: 0 0 36px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(124,240,255,.22) !important;
+  border-radius: 9px !important;
+  color: #74e8ff !important;
+  background: #0a2a3c !important;
+  font-size: 15px !important;
+}
+
+#profileOverlay .accountCardHeader h3 { margin: 0 !important; color: #effbff !important; font-size: 14px !important; }
+#profileOverlay .accountCardHeader p { margin: 3px 0 0 !important; overflow: hidden !important; color: rgba(204,228,241,.58) !important; font-size: 9px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#profileOverlay .passwordFields { display: grid !important; grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 10px !important; }
+#profileOverlay .passwordFields .accountField:first-child { grid-column: 1 / -1 !important; }
+
+#profileOverlay .accountField {
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+#profileOverlay .accountField > span {
+  color: rgba(204,228,241,.62) !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  letter-spacing: .35px !important;
+  text-transform: uppercase !important;
+}
+
+#profileOverlay .accountField input,
+#profileOverlay .accountField select {
+  width: 100% !important;
+  height: 38px !important;
+  min-width: 0 !important;
+  padding: 0 11px !important;
+  box-sizing: border-box !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.18) !important;
+  border-radius: 8px !important;
+  color: #eaf9ff !important;
+  background: #05111c !important;
+  font: 700 11px/1 system-ui !important;
+}
+
+#profileOverlay .accountField select { appearance: none !important; cursor: pointer !important; }
+#profileOverlay .accountField select option { color: #eaf9ff; background: #071622; }
+#profileOverlay .accountPanelIntro { margin: 0 0 12px; display: flex; flex-direction: column; gap: 4px; color: #effbff; }
+#profileOverlay .accountPanelIntro span { color: rgba(204,228,241,.62); font-size: 10px; }
+#profileOverlay .factionChangeCost { display: flex; flex-direction: column; gap: 5px; padding: 10px; border: 1px solid rgba(255,174,73,.2); border-radius: 8px; color: rgba(230,238,244,.72); background: rgba(255,145,45,.055); font-size: 10px; }
+#profileOverlay .factionChangeCost strong { color: #ffc06b; font-size: 11px; }
+
+#profileOverlay .npcStatsCard { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(124,240,255,.14); border-radius: 10px; background: #071622; }
+#profileOverlay .npcPanelIntro { margin: 0 0 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid rgba(124,240,255,.14); border-radius: 9px; background: #071622; }
+#profileOverlay .npcPanelIntro > div:first-child { display: flex; flex-direction: column; gap: 4px; }
+#profileOverlay .npcPanelIntro strong { color: #effbff; font-size: 13px; }
+#profileOverlay .npcPanelIntro span { color: rgba(204,228,241,.58); font-size: 10px; }
+#profileOverlay .npcTotalBadge { min-width: 110px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid rgba(124,240,255,.2); border-radius: 8px; background: #0a2232; }
+#profileOverlay .npcTotalBadge strong { color: #72e7ff; font-size: 18px; }
+#profileOverlay .npcStatsHeader { flex: 0 0 auto; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(124,240,255,.12); color: #effbff; font-size: 12px; font-weight: 900; }
+#profileOverlay .npcStatsHeader small { color: rgba(204,228,241,.52); font-size: 9px; font-weight: 700; }
+#profileOverlay .npcKillList { flex: 1 1 auto; min-height: 0; padding: 6px; display: block; overflow: auto; }
+#profileOverlay .npcKillRow { min-width: 0; padding: 7px 9px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-radius: 6px; color: rgba(215,235,246,.72); background: rgba(10,34,50,.7); font-size: 10px; }
+#profileOverlay .npcKillRow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#profileOverlay .npcKillRow strong { flex: 0 0 auto; color: #72e7ff; }
+
+#profileOverlay .rankCalculationCard { margin: 0 0 12px; padding: 10px; display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 8px; border: 1px solid rgba(124,240,255,.14); border-radius: 10px; background: #071622; }
+#profileOverlay .rankCalculationMetric,
+#profileOverlay .rankCalculationCurrent,
+#profileOverlay .rankCalculationAdjacent { min-width: 0; padding: 9px 10px; display: flex; flex-direction: column; justify-content: center; gap: 3px; border-radius: 7px; background: #0a2232; }
+#profileOverlay .rankCalculationCard span { color: rgba(204,228,241,.55); font-size: 8px; font-weight: 800; text-transform: uppercase; }
+#profileOverlay .rankCalculationCard strong { color: #72e7ff; font-size: 15px; }
+#profileOverlay .rankCalculationCard small { overflow: hidden; color: rgba(215,235,246,.68); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+#profileOverlay .rankCalculationCard .rankImportantValue { margin-top: 2px; font-size: 10px; font-weight: 800; }
+#profileOverlay .rankCalculationCurrent,
+#profileOverlay .rankCalculationAdjacent { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; }
+#profileOverlay .rankCalculationAdjacent { grid-column: span 2; border: 1px solid transparent; }
+#profileOverlay .rankCalculationCurrent { grid-column: span 2; border: 1px solid rgba(95,225,144,.28); background: rgba(20,92,59,.32); }
+#profileOverlay .rankPrevious { border-color: rgba(255,105,120,.22); background: rgba(112,35,48,.25); }
+#profileOverlay .rankNext { border-color: rgba(255,201,91,.25); background: rgba(112,83,24,.25); }
+#profileOverlay .rankPrevious strong { color: #ff9aa7; }
+#profileOverlay .rankPrevious .rankImportantValue { color: #ffc0c8; }
+#profileOverlay .rankCalculationCurrent strong { color: #7cf0a9; }
+#profileOverlay .rankCalculationCurrent .rankImportantValue,
+#profileOverlay .rankCalculationCurrent small b { color: #9bf5bc; }
+#profileOverlay .rankNext strong { color: #ffd477; }
+#profileOverlay .rankNext .rankImportantValue { color: #ffe2a0; }
+#profileOverlay .rankCalculationCurrent img,
+#profileOverlay .rankCalculationAdjacent img { width: 30px; height: 30px; object-fit: contain; image-rendering: auto; }
+#profileOverlay .rankCalculationCurrent div,
+#profileOverlay .rankCalculationAdjacent div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+#profileOverlay .rankMetricsSeparator { grid-column: 1 / -1; padding: 6px 2px 2px; border-top: 1px solid rgba(124,240,255,.18); }
+#profileOverlay .rankMetricsSeparator span { color: rgba(224,242,251,.7); }
+#profileOverlay .rankCalculationMetric { grid-column: span 3; }
+#profileOverlay .npcRewardRow { min-width: 0; padding: 7px 9px; display: grid; grid-template-columns: minmax(145px,1.6fr) repeat(5,minmax(68px,1fr)); align-items: center; gap: 8px; border-radius: 6px; color: rgba(215,235,246,.72); background: rgba(10,34,50,.7); font-size: 9px; }
+#profileOverlay .npcRewardRow + .npcRewardRow { margin-top: 4px; }
+#profileOverlay .npcRewardRow > :not(:first-child) { text-align: right; }
+#profileOverlay .npcRewardRow strong { color: #72e7ff; }
+#profileOverlay .npcRewardName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#profileOverlay .npcRewardHeader { flex: 0 0 auto; margin: 6px 6px 0; color: rgba(224,242,251,.72); background: #0d3044; font-size: 8px; font-weight: 900; text-transform: uppercase; }
+#profileOverlay .npcTotalsSeparator,
+#profileOverlay .missionStatsSeparator { flex: 0 0 auto; margin: 0 8px; padding: 8px 0 5px; border-top: 1px solid rgba(124,240,255,.22); color: #effbff; font-size: 10px; font-weight: 900; }
+#profileOverlay .npcRewardTotals { flex: 0 0 auto; padding: 0 6px 6px; overflow-x: auto; }
+#profileOverlay .npcTotalRewardRow { border: 1px solid rgba(114,231,255,.24); background: #0c2d40; }
+#profileOverlay .missionRewardSummary { flex: 0 0 auto; padding: 0 6px 6px; overflow-x: auto; }
+#profileOverlay .missionRewardRow { border: 1px solid rgba(124,240,255,.14); background: #0b2638; }
+
+#profileOverlay .accountField input:focus { border-color: rgba(124,240,255,.62) !important; }
+#profileOverlay .accountField input::placeholder { color: rgba(185,211,225,.34) !important; }
+#profileOverlay .accountCard > button { width: 100% !important; margin-top: auto !important; }
+
+/* Hangars : aperçu fixe à gauche, vraie liste à droite. */
+#profileOverlay .hangarWorkspace {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: minmax(230px, 36%) minmax(0, 1fr) !important;
+  gap: 12px !important;
+}
+
+#profileOverlay .hangarPreview {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 18px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 10px !important;
+  background: radial-gradient(circle at 50% 38%, rgba(0,180,230,.14), transparent 42%), #071622 !important;
+}
+
+#profileOverlay .hangarPreviewEyebrow { color: rgba(190,220,240,.58) !important; font-size: 9px !important; font-weight: 900 !important; letter-spacing: 1.1px !important; }
+#profileOverlay #hangarPreviewImage { width: 100px !important; height: 100px !important; margin: 20px 0 14px !important; object-fit: contain !important; image-rendering: pixelated !important; }
+#profileOverlay #hangarPreviewTitle { margin: 0 0 8px !important; color: #eefbff !important; font-size: 19px !important; }
+#profileOverlay #hangarPreviewMeta { margin: 0 !important; color: rgba(204,228,241,.62) !important; font-size: 10px !important; line-height: 1.55 !important; }
+
+#profileOverlay .hangarPreviewStage {
+  width: 100% !important;
+  height: 330px !important;
+  position: relative !important;
+  flex: 0 0 330px !important;
+  overflow: hidden !important;
+}
+#profileOverlay .hangarActivePreview,
+#profileOverlay .hangarSelectedPreview {
+  position: absolute !important;
+  left: 50% !important;
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  transform: translateX(-50%) !important;
+  transition: top .42s cubic-bezier(.2,.8,.2,1), transform .42s cubic-bezier(.2,.8,.2,1), opacity .3s ease !important;
+}
+#profileOverlay .hangarActivePreview { top: 100px !important; }
+#profileOverlay .hangarActivePreview #hangarPreviewImage {
+  width: 100px !important;
+  height: 100px !important;
+  margin: 0 0 10px !important;
+  object-fit: contain !important;
+  image-rendering: pixelated !important;
+  transition: width .42s cubic-bezier(.2,.8,.2,1), height .42s cubic-bezier(.2,.8,.2,1) !important;
+}
+#profileOverlay .hangarActivePreview #hangarPreviewTitle,
+#profileOverlay .hangarSelectedPreview #hangarSelectedTitle {
+  margin: 0 !important;
+  color: #eefbff !important;
+  font-size: 17px !important;
+  line-height: 1.15 !important;
+}
+#profileOverlay .hangarSelectedPreview {
+  top: 190px !important;
+  opacity: 0 !important;
+  transform: translate(-50%, 28px) scale(.92) !important;
+  pointer-events: none !important;
+}
+#profileOverlay .hangarSelectedPreview #hangarSelectedImage {
+  width: 100px !important;
+  height: 100px !important;
+  margin: 4px 0 4px !important;
+  object-fit: contain !important;
+  image-rendering: pixelated !important;
+}
+#profileOverlay .hangarSelectedLabel {
+  color: #72e7ff !important;
+  font-size: 8px !important;
+  font-weight: 900 !important;
+  letter-spacing: 1px !important;
+}
+#profileOverlay .hangarFlowArrows {
+  position: absolute !important;
+  top: 150px !important;
+  left: 50% !important;
+  z-index: 3 !important;
+  display: grid !important;
+  gap: 0 !important;
+  color: #72e7ff !important;
+  font: 1000 18px/.55 ui-sans-serif,system-ui !important;
+  opacity: 0 !important;
+  transform: translateX(-50%) !important;
+  transition: opacity .2s ease .16s !important;
+  pointer-events: none !important;
+}
+#profileOverlay .hangarFlowArrows span { opacity: .16; text-shadow: 0 0 9px rgba(105,233,255,.8); }
+#profileOverlay .hangarPreview.isComparing .hangarActivePreview { top: 4px !important; }
+#profileOverlay .hangarPreview.isComparing .hangarActivePreview #hangarPreviewImage { width: 100px !important; height: 100px !important; }
+#profileOverlay .hangarPreview.isComparing .hangarActivePreview #hangarPreviewTitle { font-size: 13px !important; }
+#profileOverlay .hangarPreview.isComparing .hangarSelectedPreview {
+  opacity: 1 !important;
+  transform: translate(-50%, 0) scale(1) !important;
+}
+#profileOverlay .hangarPreview.isComparing .hangarFlowArrows { opacity: 1 !important; }
+#profileOverlay .hangarPreview.isComparing .hangarFlowArrows span:nth-child(1) { animation: hangarArrowPulse 1.2s linear infinite; }
+#profileOverlay .hangarPreview.isComparing .hangarFlowArrows span:nth-child(2) { animation: hangarArrowPulse 1.2s .2s linear infinite; }
+#profileOverlay .hangarPreview.isComparing .hangarFlowArrows span:nth-child(3) { animation: hangarArrowPulse 1.2s .4s linear infinite; }
+
+@keyframes hangarArrowPulse {
+  0%, 16%, 72%, 100% { opacity: .14; filter: none; }
+  28%, 52% { opacity: 1; filter: drop-shadow(0 0 5px #72e7ff); }
+}
+
+#profileOverlay .hangarWorkspace > #hangarGrid.profileGrid {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 0 5px 0 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  overflow-y: auto !important;
+}
+
+#profileOverlay .hangarListItem {
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
+  padding: 11px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0,1fr) auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+  border: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 9px !important;
+  background: #0a2232 !important;
+  cursor: pointer !important;
+}
+
+#profileOverlay .hangarListItem.selected { border-color: rgba(124,240,255,.50) !important; background: #0b2d40 !important; }
+#profileOverlay .hangarListItem.active { box-shadow: inset 3px 0 0 #48d99d !important; }
+#profileOverlay .hangarListItem .tileShipPreview { min-width: 0 !important; margin: 0 !important; gap: 10px !important; }
+#profileOverlay .hangarListItem .tileShipPreview img { width: 58px !important; height: 58px !important; padding: 4px !important; flex: 0 0 auto !important; }
+#profileOverlay .hangarListItem h3 { margin: 0 0 5px !important; font-size: 13px !important; }
+#profileOverlay .hangarListItem p { font-size: 9px !important; line-height: 1.4 !important; }
+#profileOverlay .hangarListItem .tileActions { margin: 0 !important; display: flex !important; flex-direction: column !important; gap: 6px !important; }
+#profileOverlay .hangarListItem .tileActions button { width: 92px !important; min-height: 30px !important; padding: 6px 8px !important; }
+
+#profileOverlay .hangarDesignRow {
+  grid-column: 1 / -1 !important;
+  width: 100% !important;
+  min-height: 44px !important;
+  margin: 2px 0 0 !important;
+  padding: 8px 0 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border-top: 1px solid rgba(124,240,255,.14) !important;
+}
+#profileOverlay .hangarDesignRow label {
+  flex: 0 0 auto !important;
+  font-size: 9px !important;
+  font-weight: 900 !important;
+  text-transform: uppercase !important;
+  letter-spacing: .5px !important;
+  color: #8fcddd !important;
+}
+#profileOverlay .hangarDesignTrigger {
+  flex: 1 !important;
+  min-width: 0 !important;
+  height: 28px !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  border: 1px solid rgba(124,240,255,.3) !important;
+  border-radius: 6px !important;
+  color: #eaf8ff !important;
+  background: #082436 !important;
+  font-weight: 800 !important;
+  font-size: 11px !important;
+  cursor: pointer !important;
+  text-align: left !important;
+}
+#profileOverlay .hangarDesignTrigger:hover { border-color: rgba(124,240,255,.55) !important; }
+#profileOverlay .hangarDesignValue { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#profileOverlay .hangarDesignCaret { flex: 0 0 auto !important; opacity: .75 !important; }
+#profileOverlay .hangarDesignRow.disabled { opacity: .55 !important; }
+#profileOverlay .hangarDesignRow.disabled .hangarDesignTrigger { cursor: not-allowed !important; }
+
+/* Panneau référencé de la liste des designs (appendu au body) : 10 items max visibles, scroll. */
+.hangarDesignPanel {
+  position: fixed !important;
+  z-index: 1001000 !important;
+  overflow-y: auto !important;
+  padding: 4px !important;
+  box-sizing: border-box !important;
+  border: 1px solid rgba(124,240,255,.30) !important;
+  border-radius: 8px !important;
+  background: #071a2b !important;
+  box-shadow: 0 14px 34px rgba(0,0,0,.5) !important;
+}
+.hangarDesignPanel .hangarDesignOption {
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+  min-height: 28px !important;
+  padding: 0 10px !important;
+  box-sizing: border-box !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  color: #eaf8ff !important;
+  background: transparent !important;
+  font-weight: 800 !important;
+  font-size: 11px !important;
+  text-align: left !important;
+  cursor: pointer !important;
+}
+.hangarDesignPanel .hangarDesignOption:hover:not(:disabled) { background: rgba(0,180,230,.22) !important; }
+.hangarDesignPanel .hangarDesignOption.selected { color: #7cf0ff !important; background: rgba(0,150,200,.18) !important; }
+.hangarDesignPanel .hangarDesignOption.locked { color: rgba(190,215,230,.45) !important; cursor: not-allowed !important; }
+/* Variante visuelle : grille de vignettes des designs possédés. */
+.hangarDesignPanel.asImages {
+  padding: 10px !important;
+  display: grid !important;
+  grid-template-columns: repeat(4, 72px) !important;
+  gap: 8px !important;
+  max-width: min(340px, calc(100vw - 16px)) !important;
+}
+.hangarDesignPanel .hangarDesignImageOption {
+  width: 72px !important;
+  height: 72px !important;
+  padding: 4px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 10px !important;
+  background: rgba(3,14,25,.55) !important;
+  cursor: pointer !important;
+}
+.hangarDesignPanel .hangarDesignImageOption img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
+.hangarDesignPanel .hangarDesignImageOption:hover { border-color: rgba(124,240,255,.55) !important; background: rgba(0,140,185,.18) !important; }
+.hangarDesignPanel .hangarDesignImageOption.selected { border-color: #7cf0ff !important; box-shadow: inset 3px 0 0 #69e9ff !important; }
+
+/* Boutique : barre compacte, catégories fixes, liste et fiche produit. */
+#profileOverlay .shopToolbar {
+  flex: 0 0 auto !important;
+  min-height: 54px !important;
+  margin: 0 0 8px !important;
+  padding: 2px 4px 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  box-sizing: border-box !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+#profileOverlay .shopToolbarTitle { color: #effbff !important; font-size: 11px !important; font-weight: 900 !important; }
+#profileOverlay .shopToolbarSub { margin-top: 3px !important; color: rgba(204,228,241,.55) !important; font-size: 9px !important; }
+#profileOverlay .shopBalance { flex: 0 0 auto !important; text-align: right !important; }
+#profileOverlay .shopBalance span { display: block !important; color: rgba(204,228,241,.55) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
+#profileOverlay .shopBalance strong { display: block !important; margin-top: 2px !important; color: #75e8ff !important; font-size: 16px !important; }
+
+#profileOverlay #shopTabs.subtabs {
+  flex: 0 0 auto !important;
+  margin: 0 0 10px !important;
+  padding: 0 0 9px !important;
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0,1fr)) !important;
+  gap: 5px !important;
+  overflow: visible !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124,240,255,.12) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+#profileOverlay #shopTabs .subtabBtn {
+  width: 100% !important;
+  min-height: 32px !important;
+  padding: 6px 4px !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+#profileOverlay #shopTabs .subtabBtn.active {
+  border-color: #69e9ff !important;
+  color: #effcff !important;
+  background: rgba(0,217,255,.07) !important;
+  box-shadow: none !important;
+}
+
+html body #profileOverlay #panel_shop .shopLayout {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: 310px minmax(0,1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+html body #profileOverlay #panel_shop .shopList,
+html body #profileOverlay #panel_shop .shopPreview {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 8px !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+html body #profileOverlay #panel_shop .shopList { display: flex !important; flex-direction: column !important; gap: 0 !important; border-right: 1px solid rgba(124,240,255,.13) !important; }
+html body #profileOverlay .shopGroupHeader { flex: 0 0 auto !important; padding: 10px 10px 6px !important; color: #ffd9a8 !important; font-size: 10px !important; font-weight: 900 !important; text-transform: uppercase !important; letter-spacing: .08em !important; border-bottom: 1px solid rgba(255,154,60,.25) !important; background: rgba(255,154,60,.06) !important; }
+html body #profileOverlay .shopRow { flex: 0 0 auto !important; min-width: 0 !important; min-height: 64px !important; padding: 8px 10px !important; gap: 10px !important; border: 0 !important; border-bottom: 1px solid rgba(124,240,255,.09) !important; border-radius: 0 !important; background: transparent !important; background-image: none !important; box-shadow: none !important; transform: none !important; }
+html body #profileOverlay .shopRow.active { border-color: rgba(124,240,255,.09) !important; background: rgba(0,217,255,.10) !important; box-shadow: inset 3px 0 0 #69e9ff !important; }
+#profileOverlay .shopRow img { width: 48px !important; height: 48px !important; padding: 3px !important; flex: 0 0 auto !important; object-fit: contain !important; }
+#profileOverlay .shopMeta b { overflow: hidden !important; color: #e9f8ff !important; font-size: 11px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#profileOverlay .shopMeta span { color: rgba(204,228,241,.57) !important; font-size: 9px !important; }
+html body #profileOverlay #panel_shop .shopPreview > .tile { min-height: 100% !important; padding: 18px !important; display: flex !important; flex-direction: column !important; align-items: stretch !important; justify-content: center !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; }
+html body #profileOverlay .shopPreview .bigImg { width: min(200px, 70%) !important; height: 180px !important; margin: 0 auto 12px !important; padding: 8px !important; border: 0 !important; background: transparent !important; object-fit: contain !important; }
+html body #profileOverlay .shopPreview .bigImg.ammoShopImage { width: 100px !important; height: 100px !important; padding: 0 !important; }
+html body #profileOverlay .shipPreviewContainer { width: 100% !important; height: 210px !important; margin: 0 0 12px !important; display: flex !important; align-items: center !important; justify-content: center !important; overflow: hidden !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; }
+#profileOverlay .shipPreviewContainer img { width: auto !important; height: auto !important; max-width: 74% !important; max-height: 74% !important; transform: none !important; image-rendering: pixelated !important; object-fit: contain !important; }
+#profileOverlay .shopPreview h3 { margin: 0 0 8px !important; color: #effbff !important; font-size: 17px !important; }
+#profileOverlay .shopPreview p { color: rgba(209,231,243,.68) !important; font-size: 11px !important; line-height: 1.45 !important; }
+#profileOverlay .shopPreview .shopItemStat { margin: 8px 0 !important; color: rgba(209,231,243,.72) !important; }
+#profileOverlay .shopPreview .shopItemStat strong { margin-left: 5px !important; color: #75e8ff !important; font-size: 13px !important; }
+#profileOverlay .shopAmmoOwned { margin: 8px 0 !important; color: rgba(225,241,249,.82) !important; font-size: 12px !important; }
+#profileOverlay .shopPurchaseRow { margin: 14px 0 0 !important; padding: 14px 4px !important; display: grid !important; grid-template-columns: minmax(160px,1fr) 110px !important; align-items: center !important; gap: 18px !important; border-top: 1px solid rgba(124,240,255,.15) !important; }
+#profileOverlay .shopPurchaseInfo { min-width: 0 !important; display: grid !important; gap: 8px !important; }
+#profileOverlay .shopPurchaseInfo > label { color: rgba(225,241,249,.78) !important; font-size: 11px !important; font-weight: 850 !important; }
+#profileOverlay .shopPurchaseRow > select { width: 110px !important; height: 36px !important; padding: 0 30px 0 12px !important; box-sizing: border-box !important; outline: 0 !important; border: 1px solid rgba(124,240,255,.30) !important; border-radius: 7px !important; color: #effcff !important; background: #051521 !important; font: 900 12px/1 system-ui !important; text-align: center !important; cursor: pointer !important; }
+#profileOverlay .shopPurchaseRow > select:focus { border-color: #69e9ff !important; }
+#profileOverlay .shopPurchaseRow > select option { color: #effcff !important; background: #071622 !important; }
+#profileOverlay .shopPurchasePrice { min-width: 0 !important; display: grid !important; gap: 3px !important; text-align: left !important; }
+#profileOverlay .shopPurchasePrice > span { color: rgba(204,228,241,.48) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
+#profileOverlay .shopPurchasePrice strong { color: #72efff !important; font-size: 13px !important; white-space: nowrap !important; }
+#profileOverlay .shopBuySection { margin-top: 12px !important; padding-top: 12px !important; border-top: 1px solid rgba(124,240,255,.12) !important; }
+#profileOverlay #btnBuyPreview { margin-top: auto !important; width: 100% !important; }
+
+html body #profileOverlay #panel_shop .shopLayout.extrasMode { display: block !important; overflow-y: auto !important; }
+html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopList { display: none !important; }
+html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { width: 100% !important; min-height: 100% !important; overflow: visible !important; }
+#profileOverlay .extrasRoulettePanel { justify-content: flex-start !important; }
+#profileOverlay .extrasRouletteHeader { padding-bottom: 14px !important; display: flex !important; align-items: flex-start !important; justify-content: space-between !important; gap: 20px !important; border-bottom: 1px solid rgba(124,240,255,.12) !important; }
+#profileOverlay .extrasRouletteHeader h3 { margin-bottom: 5px !important; }
+#profileOverlay .extrasRouletteHeader p { margin: 0 !important; }
+#profileOverlay .extrasRouletteCost { flex: 0 0 auto !important; color: rgba(204,228,241,.55) !important; font-size: 9px !important; text-align: right !important; }
+#profileOverlay .extrasRouletteCost span { display: block !important; text-transform: uppercase !important; }
+#profileOverlay .extrasRouletteCost strong { margin-right: 4px !important; color: #75e8ff !important; font-size: 16px !important; }
+#profileOverlay .moduleHistoryPanel { min-height: 0 !important; margin-top: 18px !important; border-top: 1px solid rgba(124,240,255,.13) !important; }
+#profileOverlay .moduleHistoryPanel > header { min-height: 42px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 16px !important; color: #effbff !important; }
+#profileOverlay .moduleHistoryPanel > header strong { font-size: 12px !important; }
+#profileOverlay .moduleHistoryPanel > header span { color: rgba(204,228,241,.52) !important; font-size: 9px !important; }
+#profileOverlay .moduleHistoryList { max-height: 230px !important; overflow-y: auto !important; border-top: 1px solid rgba(124,240,255,.09) !important; }
+#profileOverlay .moduleHistoryRow { min-height: 48px !important; padding: 7px 5px !important; display: grid !important; grid-template-columns: 28px 38px 40px minmax(0,1fr) auto !important; align-items: center !important; gap: 9px !important; border-bottom: 1px solid rgba(124,240,255,.08) !important; }
+#profileOverlay .moduleHistoryIndex { color: rgba(204,228,241,.38) !important; font-size: 9px !important; text-align: center !important; }
+#profileOverlay .moduleHistoryRow img { width: 34px !important; height: 34px !important; object-fit: contain !important; image-rendering: pixelated !important; }
+#profileOverlay .moduleHistoryShipImg { width: 40px !important; height: 40px !important; background: rgba(0,217,255,0.06) !important; border: 1px solid rgba(124,240,255,.12) !important; border-radius: 9px !important; }
+#profileOverlay .moduleHistoryMeta { min-width: 0 !important; display: grid !important; gap: 3px !important; }
+#profileOverlay .moduleHistoryMeta strong { color: #75e8ff !important; font-size: 10px !important; }
+#profileOverlay .moduleHistoryMeta span { overflow: hidden !important; color: rgba(204,228,241,.60) !important; font-size: 9px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#profileOverlay .moduleHistoryRow time { color: rgba(204,228,241,.38) !important; font-size: 8px !important; white-space: nowrap !important; }
+#profileOverlay .moduleHistoryEmpty { padding: 24px !important; color: rgba(204,228,241,.45) !important; font-size: 10px !important; text-align: center !important; }
+
+
+@media (max-width: 900px) {
+  #profileOverlay #profileWindow.gameWindow { width: calc(100vw - 16px) !important; height: calc(100vh - 24px) !important; min-width: 0 !important; grid-template-columns: 240px minmax(0,1fr) !important; }
+  html body #profileOverlay #profileWindow.gameWindow:not(.floating) { left: 8px !important; top: 70px !important; }
+  #profileOverlay .profileHeaderCard { padding: 14px 9px !important; }
+  #profileOverlay .statsRow { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  #profileOverlay .hangarWorkspace { grid-template-columns: 210px minmax(0,1fr) !important; }
+  #profileOverlay #panel_shop .shopLayout { grid-template-columns: 250px minmax(0,1fr) !important; }
+  #profileOverlay #shopTabs.subtabs { grid-template-columns: repeat(3,minmax(0,1fr)) !important; }
+  #profileOverlay .passwordFields { grid-template-columns: 1fr !important; }
+  #profileOverlay .passwordFields .accountField:first-child { grid-column: auto !important; }
+}
+
+/* Equipment compact controls and single-page slot layout */
+#fitCard .fitSectionNav { display: flex !important; align-items: center !important; gap: 4px !important; margin-left: 8px !important; }
+#fitCard .fitSectionBtn { min-height: 28px !important; padding: 5px 10px !important; font-size: 8px !important; text-transform: uppercase !important; letter-spacing: .55px !important; }
+#fitCard .fitSectionBtn.active { border-color: rgba(105, 233, 255, .62) !important; color: #effdff !important; background: #0d4c62 !important; box-shadow: inset 0 -2px #65dff5 !important; }
+#fitCard .fitSectionBtn:disabled { opacity: .48 !important; }
+
+#fitCard .fitHelpTooltip {
+  width: 28px !important;
+  height: 28px !important;
+  flex: 0 0 28px !important;
+  position: relative !important;
+  display: grid !important;
+  place-items: center !important;
+  box-sizing: border-box !important;
+  border: 1px solid rgba(101, 223, 245, .58) !important;
+  border-radius: 50% !important;
+  color: #bdf7ff !important;
+  background: #0b4960 !important;
+  box-shadow: 0 0 8px rgba(101, 223, 245, .14) !important;
+  font: 900 13px/1 system-ui !important;
+  cursor: help !important;
+}
+#fitCard .fitHelpTooltip > span {
+  position: absolute !important;
+  z-index: 80 !important;
+  right: -6px !important;
+  bottom: calc(100% + 10px) !important;
+  width: 235px !important;
+  padding: 10px 12px !important;
+  box-sizing: border-box !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  transform: translateY(4px) !important;
+  border: 1px solid rgba(101, 223, 245, .34) !important;
+  border-radius: 4px !important;
+  color: rgba(222, 244, 249, .82) !important;
+  background: #071923 !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .55) !important;
+  font: 700 9px/1.75 system-ui !important;
+  pointer-events: none !important;
+  transition: opacity .14s ease, transform .14s ease !important;
+}
+#fitCard .fitHelpTooltip > span b { color: #73e6f8 !important; }
+#fitCard .fitHelpTooltip:hover > span,
+#fitCard .fitHelpTooltip:focus > span { visibility: visible !important; opacity: 1 !important; transform: translateY(0) !important; }
+
+#fitCard .fitSlotsScroll {
+  display: block !important;
+  padding: 10px 14px 12px !important;
+  overflow: hidden !important;
+}
+#fitCard .fitSlotGroup {
+  min-height: 0 !important;
+  padding: 8px 0 10px !important;
+  overflow: visible !important;
+  border-bottom: 1px solid rgba(101, 223, 245, .09) !important;
+}
+#fitCard .fitSlotGroup:last-child { border-bottom: 0 !important; }
+#fitCard .fitSlotGroup::after { display: none !important; }
+#fitCard .fitGroupTitle { min-height: 18px !important; margin-bottom: 7px !important; }
+#fitCard .fitGroupTitle span { font-size: 11px !important; font-weight: 900 !important; letter-spacing: 1.15px !important; color: rgba(218, 244, 249, .82) !important; }
+#fitCard .fitGroupTitle small { font-size: 8px !important; }
+#fitCard .slotGrid,
+#fitCard .invGrid {
+  grid-template-columns: repeat(auto-fill, 52px) !important;
+  gap: 8px !important;
+  justify-content: start !important;
+}
+#fitCard .slotCell,
+#fitCard .invCell {
+  width: 52px !important;
+  min-width: 52px !important;
+  height: 52px !important;
+  box-sizing: border-box !important;
+}
+
+#fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotGridModules {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
+  align-items: start !important;
+}
+#fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotCell {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 68px !important;
+  aspect-ratio: auto !important;
+  padding: 7px 9px !important;
+  box-sizing: border-box !important;
+  grid-template-columns: 48px minmax(0, 1fr) !important;
+  place-items: center start !important;
+  gap: 8px !important;
+}
+#fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotCell > img { width: 46px !important; height: 46px !important; }
+#fitCard .shipModSlotDetails { min-width: 0 !important; display: grid !important; gap: 5px !important; }
+#fitCard .shipModSlotDetails b { color: #dffaff !important; font-size: 9px !important; letter-spacing: .45px !important; }
+#fitCard .shipModSlotDetails span { overflow: hidden !important; color: rgba(145, 230, 244, .72) !important; font-size: 8px !important; line-height: 1.3 !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+
+#fitCard .fitSelectionBar { grid-template-columns: minmax(0, 1fr) auto !important; }
+#fitCard .fitSelectionBar > span { font-size: 8px !important; }
+#fitCard .shipModRow { position: relative !important; min-height: 58px !important; padding: 8px 5px !important; box-sizing: border-box !important; }
+#fitCard .shipModRow.equipped { opacity: .36 !important; filter: grayscale(1) !important; cursor: not-allowed !important; }
+#fitCard .shipModRow.equipped:hover { background: transparent !important; }
+#fitCard .shipModEquippedBadge { margin-left: auto !important; padding: 4px 6px !important; border: 1px solid rgba(174, 202, 210, .25) !important; border-radius: 3px !important; color: rgba(216, 232, 237, .78) !important; font-size: 7px !important; font-weight: 900 !important; letter-spacing: .5px !important; }
+
+@media (max-width: 650px) {
+  #profileOverlay #profileWindow.gameWindow { grid-template-columns: 1fr !important; grid-template-rows: 26px auto minmax(0,1fr) !important; }
+  #profileOverlay .profileHeaderCard { grid-column: 1 !important; grid-row: 2 !important; padding: 8px !important; gap: 8px !important; border-right: 0 !important; border-bottom: 1px solid rgba(124,240,255,.16) !important; }
+  #profileOverlay .profileHeaderTop { display: none !important; }
+  #profileOverlay .profileTabs { flex-direction: row !important; }
+  #profileOverlay .profileTabs .tabBtn { justify-content: center !important; }
+  #profileOverlay .profileMainCard { grid-column: 1 !important; grid-row: 3 !important; padding: 8px !important; }
+  #profileOverlay .hangarWorkspace { grid-template-columns: 1fr !important; overflow-y: auto !important; }
+  #profileOverlay .hangarPreview { min-height: 250px !important; }
+  #profileOverlay #panel_shop .shopLayout { grid-template-columns: 1fr !important; overflow-y: auto !important; }
+  #profileOverlay #panel_shop .shopList { max-height: 210px !important; }
+  #profileOverlay #panel_stats.profilePanel.active { overflow-y: auto !important; }
+  #profileOverlay .generalPanel { height: auto; min-height: 100%; padding: 20px; grid-template-columns: 1fr; gap: 18px; text-align: center; }
+  #profileOverlay .generalLogo { max-height: 150px; }
+  #profileOverlay .generalCopy { align-items: center; }
+  #profileOverlay .accountSettingsGrid { grid-template-columns: 1fr !important; overflow: visible !important; }
+  #profileOverlay .accountCard { min-height: 290px !important; overflow: visible !important; }
+}
+
+/* =========================================================
+   Équipement du hangar
+   ========================================================= */
+#fitOverlay {
+  position: absolute !important;
+  inset: 30px 0 0 !important;
+  z-index: 20 !important;
+  padding: 14px !important;
+  box-sizing: border-box !important;
+  display: none;
+  place-items: center !important;
+  overflow: hidden !important;
+  background: #06111c !important;
+  backdrop-filter: none !important;
+}
+
+#fitCard.fitWindow {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-rows: 52px auto minmax(0, 1fr) !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(124,240,255,.28) !important;
+  border-radius: 8px !important;
+  color: #eaf8ff !important;
+  background: #071421 !important;
+  box-shadow: 0 26px 80px rgba(0,0,0,.72), 0 0 30px rgba(0,217,255,.10) !important;
+}
+
+#fitCard .fitWindowHeader {
+  min-width: 0 !important;
+  padding: 0 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  border-bottom: 1px solid rgba(124,240,255,.16) !important;
+  background: linear-gradient(90deg, rgba(0,217,255,.13), rgba(10,34,50,.84) 42%, #0a2232) !important;
+}
+
+#fitCard .fitWindowIdentity { min-width: 0 !important; display: flex !important; align-items: center !important; gap: 10px !important; }
+#fitCard .fitWindowIcon { width: 30px !important; height: 30px !important; flex: 0 0 30px !important; display: grid !important; place-items: center !important; border: 1px solid rgba(124,240,255,.22) !important; border-radius: 8px !important; color: #79ebff !important; background: #09283a !important; }
+#fitCard .fitTopTitle { overflow: hidden !important; color: #effbff !important; font-size: 14px !important; font-weight: 900 !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#fitCard .fitTopSub { margin-top: 3px !important; overflow: hidden !important; color: rgba(204,228,241,.55) !important; font-size: 9px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#fitCard .fitWindowActions { flex: 0 0 auto !important; display: flex !important; gap: 7px !important; }
+
+#fitCard button {
+  min-width: 0 !important;
+  min-height: 32px !important;
+  padding: 7px 12px !important;
+  box-sizing: border-box !important;
+  border: 1px solid rgba(124,240,255,.18) !important;
+  border-radius: 8px !important;
+  color: rgba(225,242,250,.84) !important;
+  background: #0a2638 !important;
+  box-shadow: none !important;
+  font: 800 10px/1.2 system-ui !important;
+  text-transform: none !important;
+  transform: none !important;
+  transition: none !important;
+  cursor: pointer !important;
+}
+#fitCard button.primary { border-color: rgba(124,240,255,.42) !important; color: #effcff !important; background: #0b4a62 !important; }
+#fitCard button:disabled { opacity: .4 !important; cursor: not-allowed !important; }
+#fitCard button:hover:not(:disabled), #fitCard button:active:not(:disabled) { transform: none !important; box-shadow: none !important; }
+
+#fitCard .fitError {
+  margin: 8px 12px 0 !important;
+  padding: 8px 10px !important;
+  color: #ffd2d8 !important;
+  border: 1px solid rgba(255,107,122,.28) !important;
+  border-radius: 7px !important;
+  background: rgba(120,24,42,.22) !important;
+  font-size: 10px !important;
+}
+
+#fitCard .fitWorkspace {
+  grid-row: 1 / -1 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 12px !important;
+  display: grid !important;
+  grid-template-columns: 220px minmax(0,1fr) 300px !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 10px !important;
+  background: #071622 !important;
+}
+
+#fitCard .fitShipPane,
+#fitCard .fitLoadoutPane,
+#fitCard .fitInventoryPane { min-width: 0 !important; min-height: 0 !important; box-sizing: border-box !important; }
+
+#fitCard .fitShipPane {
+  padding: 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  border-right: 1px solid rgba(124,240,255,.12) !important;
+  background: #081b29 !important;
+}
+
+#fitCard .fitPaneLabel { align-self: stretch !important; color: rgba(204,228,241,.48) !important; font-size: 8px !important; font-weight: 900 !important; letter-spacing: .8px !important; text-transform: uppercase !important; }
+#fitCard #fitShipCanvas { width: 188px !important; height: 188px !important; margin: 28px 0 16px !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; image-rendering: pixelated !important; }
+#fitCard .fitShipMeta { min-width: 0 !important; display: grid !important; gap: 6px !important; text-align: center !important; }
+#fitCard #fitShipName { color: #effbff !important; font-size: 16px !important; }
+#fitCard #fitShipHint { color: rgba(204,228,241,.54) !important; font-size: 9px !important; line-height: 1.45 !important; }
+
+#fitCard .fitConfigBar { width: 100% !important; margin-top: auto !important; padding-top: 14px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 10px !important; border-top: 1px solid rgba(124,240,255,.11) !important; }
+#fitCard .fitConfigBar > span { color: rgba(204,228,241,.55) !important; font-size: 9px !important; font-weight: 800 !important; text-transform: uppercase !important; }
+#fitCard .fitConfigBar > div { display: flex !important; gap: 5px !important; }
+#fitCard .fitConfigBar .fitCfgBtn { width: 34px !important; padding: 0 !important; }
+#fitCard .fitConfigBar .fitCfgBtn.active { border-color: #69e9ff !important; color: #effcff !important; background: #0b4a62 !important; }
+
+#fitCard .fitLoadoutPane { display: flex !important; flex-direction: column !important; border-right: 1px solid rgba(124,240,255,.12) !important; }
+#fitCard .fitSlotGroup.dragCompatible { margin-inline: -8px !important; padding-inline: 8px !important; border: 1px solid rgba(105,233,255,.60) !important; border-radius: 9px !important; background: rgba(0,217,255,.085) !important; box-shadow: inset 0 0 24px rgba(0,217,255,.07), 0 0 12px rgba(0,217,255,.08) !important; }
+#fitCard .fitSlotGroup.dragCompatible .fitGroupTitle span { color: #75edff !important; }
+#fitCard .fitPaneHeading,
+#fitCard .fitInventoryHeader {
+  min-height: 58px !important;
+  padding: 10px 12px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  border-bottom: 1px solid rgba(124,240,255,.11) !important;
+}
+#fitCard .fitPaneHeading > div, #fitCard .fitInventoryHeader > div { min-width: 0 !important; display: grid !important; gap: 3px !important; }
+#fitCard .fitPaneHeading strong, #fitCard .fitInventoryHeader strong { color: #eefbff !important; font-size: 12px !important; }
+#fitCard .fitPaneHeading span, #fitCard .fitInventoryHeader span { color: rgba(204,228,241,.50) !important; font-size: 8px !important; }
+#fitCard .fitCompactBtn { flex: 0 0 auto !important; }
+
+#fitCard .fitSlotsScroll { flex: 1 1 auto !important; min-height: 0 !important; padding: 4px 14px 16px !important; overflow-y: auto !important; }
+#fitCard .fitSlotGroup { padding: 14px 0 !important; border-bottom: 1px solid rgba(124,240,255,.09) !important; }
+#fitCard .fitSlotGroup:last-child { border-bottom: 0 !important; }
+#fitCard .fitGroupTitle { margin: 0 0 10px !important; display: flex !important; align-items: baseline !important; justify-content: space-between !important; gap: 10px !important; }
+#fitCard .fitGroupTitle span { color: #dff6ff !important; font-size: 10px !important; font-weight: 900 !important; }
+#fitCard .fitGroupTitle small { color: rgba(204,228,241,.42) !important; font-size: 8px !important; font-weight: 700 !important; }
+#fitCard .slotGrid { min-width: 0 !important; display: grid !important; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)) !important; gap: 6px !important; }
+#fitCard .slotGridModules { grid-template-columns: repeat(auto-fill, minmax(42px, 52px)) !important; }
+#fitCard .slotCell { width: 100% !important; aspect-ratio: 1 !important; display: grid !important; place-items: center !important; overflow: hidden !important; border: 1px dashed rgba(124,240,255,.20) !important; border-radius: 8px !important; background: rgba(255,255,255,.025) !important; cursor: pointer !important; }
+#fitCard .slotCell.filled { border-style: solid !important; border-color: rgba(124,240,255,.48) !important; background: rgba(0,217,255,.10) !important; }
+#fitCard .slotCell.filled { cursor: grab !important; }
+#fitCard .slotCell.dragging { opacity: .35 !important; }
+#fitCard .fitSlotsScroll .slotCell.dragTarget { border-color: #70e7fa !important; background: rgba(20,154,182,.22) !important; box-shadow: 0 0 12px rgba(105,233,255,.35) !important; }
+#fitCard .slotCell img { width: 86% !important; height: 86% !important; object-fit: contain !important; image-rendering: pixelated !important; }
+
+#fitCard .fitInventoryPane { display: flex !important; flex-direction: column !important; }
+#fitCard .fitSelect,
+#fitCard .fitInput { height: 34px !important; min-width: 0 !important; padding: 0 9px !important; box-sizing: border-box !important; outline: 0 !important; border: 1px solid rgba(124,240,255,.18) !important; border-radius: 7px !important; color: #eaf8ff !important; background: #05111c !important; font: 700 9px/1 system-ui !important; }
+#fitCard .fitSelect option { color: #eaf8ff !important; background: #071622 !important; }
+#fitCard .fitInventoryTools { padding: 8px 10px !important; display: block !important; border-bottom: 1px solid rgba(124,240,255,.09) !important; }
+#fitCard .fitSelectionBar { display: grid !important; grid-template-columns: minmax(0,1fr) auto auto !important; align-items: center !important; gap: 6px !important; margin-bottom: 7px !important; }
+#fitCard .fitSelectionBar > span { min-width: 0 !important; color: #dff6ff !important; font-size: 9px !important; font-weight: 900 !important; }
+#fitCard .fitSelectionBar button { height: 28px !important; padding: 0 9px !important; }
+#fitCard .fitSelectionHelp { margin-bottom: 8px !important; color: rgba(204,228,241,.48) !important; font-size: 8px !important; line-height: 1.45 !important; }
+#fitCard .fitSelectionHelp b { color: #74eaff !important; }
+#fitCard .fitSellDrop { min-height: 34px !important; padding: 7px 10px !important; box-sizing: border-box !important; display: grid !important; place-items: center !important; color: rgba(204,228,241,.48) !important; border: 1px dashed rgba(124,240,255,.18) !important; border-radius: 7px !important; background: rgba(255,255,255,.02) !important; font-size: 8px !important; font-weight: 800 !important; text-align: center !important; transition: background .16s ease, border-color .16s ease, color .16s ease !important; }
+#fitCard .fitSellDrop.dragSellActive { color: #ffe3b2 !important; border-color: rgba(255,190,92,.65) !important; background: rgba(255,170,54,.12) !important; }
+#fitCard .fitReturnHint { padding: 8px 10px !important; color: rgba(204,228,241,.46) !important; border-bottom: 1px solid rgba(124,240,255,.08) !important; background: rgba(0,217,255,.025) !important; font-size: 8px !important; font-weight: 700 !important; text-align: center !important; transition: background .16s ease, color .16s ease !important; }
+#fitCard .fitInventoryPane.dragReturnActive .fitReturnHint { color: #dffbff !important; background: rgba(0,217,255,.16) !important; }
+#fitCard .fitInvScroll { flex: 1 1 auto !important; min-height: 0 !important; padding: 10px !important; overflow-y: auto !important; }
+#fitCard .invGrid { min-width: 0 !important; display: grid !important; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)) !important; gap: 6px !important; }
+#fitCard .invCell { width: 100% !important; aspect-ratio: 1 !important; display: grid !important; place-items: center !important; position: relative !important; overflow: hidden !important; border: 1px solid rgba(124,240,255,.14) !important; border-radius: 8px !important; background: rgba(255,255,255,.025) !important; cursor: pointer !important; }
+#fitCard .invCell.selected { border-color: #69e9ff !important; background: rgba(0,217,255,.12) !important; box-shadow: inset 0 0 0 1px rgba(105,233,255,.12) !important; }
+#fitCard .invCell.selected::after { content: "" !important; position: absolute !important; top: 4px !important; right: 4px !important; width: 6px !important; height: 6px !important; border-radius: 50% !important; background: #69e9ff !important; box-shadow: 0 0 7px #69e9ff !important; }
+#fitCard .invCell.disabled { opacity: .25 !important; cursor: not-allowed !important; }
+#fitCard .invCell img { width: 82% !important; height: 82% !important; object-fit: contain !important; image-rendering: pixelated !important; pointer-events: none !important; }
+#fitCard .fitModulesHeading { margin: 16px 0 8px !important; padding-top: 12px !important; color: rgba(222,243,252,.76) !important; border-top: 1px solid rgba(124,240,255,.10) !important; font-size: 10px !important; font-weight: 900 !important; }
+#fitCard .fitShipModules { display: grid !important; gap: 0 !important; }
+#fitCard .shipModRow { padding: 8px 4px !important; display: flex !important; align-items: center !important; gap: 8px !important; border: 0 !important; border-bottom: 1px solid rgba(124,240,255,.08) !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; transform: none !important; }
+
+#fitCard * { scrollbar-width: thin !important; scrollbar-color: #285a72 #07131f !important; }
+
+#fitCard .fitPresetOverlay { position: absolute !important; inset: 0 !important; z-index: 30 !important; display: none; place-items: center !important; padding: 20px !important; background: rgba(1,6,12,.86) !important; }
+#fitCard .fitPresetWindow { width: min(500px, calc(100vw - 40px)) !important; padding: 18px !important; display: grid !important; gap: 12px !important; border: 1px solid rgba(124,240,255,.25) !important; border-radius: 12px !important; background: #081b29 !important; box-shadow: 0 22px 70px rgba(0,0,0,.7) !important; }
+#fitCard .fitPresetWindow > header { padding-bottom: 12px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; border-bottom: 1px solid rgba(124,240,255,.12) !important; }
+#fitCard .fitPresetWindow > header > div { display: grid !important; gap: 3px !important; }
+#fitCard .fitPresetWindow > header strong { color: #effbff !important; font-size: 13px !important; }
+#fitCard .fitPresetWindow > header span { color: rgba(204,228,241,.52) !important; font-size: 9px !important; }
+#fitCard .fitPresetField { display: grid !important; gap: 6px !important; }
+#fitCard .fitPresetField > span { color: rgba(204,228,241,.55) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
+#fitCard .fitPresetDivider { height: 1px !important; background: rgba(124,240,255,.10) !important; }
+#fitCard .fitPresetActions { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 7px !important; }
+
+@media (max-width: 1050px) {
+  #fitCard .fitWorkspace { grid-template-columns: 160px minmax(0,1fr) 220px !important; }
+  #fitCard #fitShipCanvas { width: 130px !important; height: 130px !important; }
+}
+
+@media (max-width: 780px) {
+  #fitOverlay { padding: 8px !important; }
+  #fitCard.fitWindow { width: 100% !important; height: 100% !important; }
+  #fitCard .fitWindowHeader { padding: 0 8px !important; }
+  #fitCard .fitTopSub { display: none !important; }
+  #fitCard .fitWindowActions button { padding: 6px 8px !important; }
+  #fitCard .fitWorkspace { margin: 8px !important; grid-template-columns: 1fr !important; overflow-y: auto !important; }
+  #fitCard .fitShipPane { min-height: 280px !important; border-right: 0 !important; border-bottom: 1px solid rgba(124,240,255,.12) !important; }
+  #fitCard .fitLoadoutPane { min-height: 500px !important; border-right: 0 !important; border-bottom: 1px solid rgba(124,240,255,.12) !important; }
+  #fitCard .fitInventoryPane { min-height: 420px !important; }
+}
+
+/* Equipment theme — DarkOrbit military interface */
+#fitCard.fitWindow {
+  --fit-military-cyan: #65dff5;
+  --fit-military-cyan-dim: rgba(101, 223, 245, .22);
+  --fit-military-steel: #0a1a26;
+  --fit-military-deep: #050d15;
+  border-color: rgba(101, 223, 245, .34) !important;
+  background:
+    linear-gradient(135deg, rgba(89, 216, 242, .025) 0 1px, transparent 1px 18px),
+    linear-gradient(160deg, #0b1c28 0%, #07131e 48%, #050c14 100%) !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .72), inset 0 0 0 1px rgba(172, 241, 255, .025) !important;
+}
+
+#fitCard .fitWindowHeader {
+  border-bottom-color: rgba(101, 223, 245, .20) !important;
+  background:
+    linear-gradient(90deg, rgba(28, 106, 129, .17), transparent 40%),
+    linear-gradient(180deg, #102735, #091923) !important;
+  box-shadow: inset 0 -1px rgba(0, 0, 0, .55) !important;
+}
+
+#fitCard .fitWindowIcon {
+  border: 1px solid rgba(101, 223, 245, .48) !important;
+  border-radius: 3px !important;
+  color: #c4f7ff !important;
+  background: linear-gradient(135deg, #17475a, #0a2837) !important;
+  box-shadow: inset 0 0 10px rgba(101, 223, 245, .12), 0 0 8px rgba(101, 223, 245, .08) !important;
+}
+
+#fitCard .fitTopTitle { color: #e8f9fc !important; letter-spacing: .35px !important; text-transform: uppercase !important; }
+#fitCard .fitTopSub { color: rgba(190, 225, 235, .52) !important; }
+
+#fitCard button {
+  border-radius: 3px !important;
+  border-color: rgba(101, 223, 245, .24) !important;
+  color: #cfeef4 !important;
+  background: linear-gradient(180deg, #102a38, #0a1c28) !important;
+}
+#fitCard button.primary {
+  border-color: rgba(101, 223, 245, .55) !important;
+  color: #effdff !important;
+  background: linear-gradient(180deg, #126079, #0b4054) !important;
+}
+#fitCard button:hover:not(:disabled) { border-color: rgba(132, 235, 253, .68) !important; color: #fff !important; filter: brightness(1.08) !important; }
+#fitCard button:active:not(:disabled) { filter: brightness(.92) !important; }
+
+#fitCard .fitWorkspace {
+  border-color: rgba(101, 223, 245, .17) !important;
+  border-radius: 4px !important;
+  background: #06111a !important;
+  box-shadow: inset 0 0 26px rgba(0, 0, 0, .25) !important;
+}
+
+#fitCard .fitShipPane,
+#fitCard .fitLoadoutPane,
+#fitCard .fitInventoryPane {
+  position: relative !important;
+  background:
+    linear-gradient(135deg, rgba(101, 223, 245, .025), transparent 35%),
+    linear-gradient(180deg, #0a1b27, #07131d) !important;
+}
+
+#fitCard .fitShipPane::before,
+#fitCard .fitLoadoutPane::before,
+#fitCard .fitInventoryPane::before {
+  content: "" !important;
+  position: absolute !important;
+  z-index: 2 !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 34px !important;
+  height: 2px !important;
+  background: var(--fit-military-cyan) !important;
+  box-shadow: 0 0 8px rgba(101, 223, 245, .45) !important;
+  pointer-events: none !important;
+}
+
+#fitCard .fitPaneLabel {
+  color: rgba(135, 226, 241, .66) !important;
+  letter-spacing: 1.15px !important;
+}
+#fitCard #fitShipCanvas {
+  background:
+    radial-gradient(circle, rgba(40, 153, 179, .10), transparent 59%),
+    linear-gradient(rgba(101, 223, 245, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(101, 223, 245, .035) 1px, transparent 1px) !important;
+  background-size: auto, 18px 18px, 18px 18px !important;
+}
+#fitCard #fitShipName { color: #edfaff !important; text-transform: uppercase !important; letter-spacing: .45px !important; }
+
+#fitCard .fitConfigBar {
+  border-top-color: rgba(101, 223, 245, .15) !important;
+  background: linear-gradient(90deg, rgba(101, 223, 245, .035), transparent) !important;
+}
+#fitCard .fitConfigBar .fitCfgBtn { border-radius: 2px !important; }
+#fitCard .fitConfigBar .fitCfgBtn.active {
+  border-color: #78e7fa !important;
+  color: #fff !important;
+  background: #10546b !important;
+  box-shadow: inset 0 -2px #71e5f9 !important;
+}
+
+#fitCard .fitPaneHeading,
+#fitCard .fitInventoryHeader {
+  border-bottom-color: rgba(101, 223, 245, .15) !important;
+  background: linear-gradient(90deg, rgba(21, 76, 94, .16), rgba(5, 16, 25, .25)) !important;
+}
+#fitCard .fitPaneHeading strong,
+#fitCard .fitInventoryHeader strong { color: #ecfbff !important; text-transform: uppercase !important; letter-spacing: .45px !important; }
+
+#fitCard .fitSlotGroup {
+  position: relative !important;
+  border-bottom-color: rgba(101, 223, 245, .10) !important;
+}
+#fitCard .fitSlotGroup::after {
+  content: "" !important;
+  position: absolute !important;
+  right: 0 !important;
+  bottom: -1px !important;
+  width: 28px !important;
+  height: 1px !important;
+  background: rgba(101, 223, 245, .45) !important;
+}
+#fitCard .fitGroupTitle span { color: #dff8fc !important; text-transform: uppercase !important; letter-spacing: .55px !important; }
+#fitCard .fitGroupTitle small { color: rgba(182, 216, 226, .42) !important; }
+
+#fitCard .slotCell {
+  position: relative !important;
+  border-radius: 3px !important;
+  border-style: solid !important;
+  border-color: rgba(108, 198, 218, .18) !important;
+  background:
+    linear-gradient(135deg, rgba(143, 229, 246, .045), transparent 45%),
+    #081620 !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .35) !important;
+}
+#fitCard .slotCell::before,
+#fitCard .invCell::before,
+#fitCard .droneFitSlot::before,
+#fitCard .petFitSlot::before,
+#fitCard .droneDesignSlot::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 3px !important;
+  left: 3px !important;
+  width: 7px !important;
+  height: 7px !important;
+  border-top: 1px solid rgba(116, 222, 242, .38) !important;
+  border-left: 1px solid rgba(116, 222, 242, .38) !important;
+  pointer-events: none !important;
+}
+#fitCard .slotCell.filled {
+  border-color: rgba(101, 223, 245, .54) !important;
+  background: radial-gradient(circle, rgba(27, 129, 155, .20), #09202c 72%) !important;
+  box-shadow: inset 0 -2px rgba(88, 215, 239, .16) !important;
+}
+#fitCard .slotCell:hover,
+#fitCard .droneFitSlot:hover,
+#fitCard .petFitSlot:hover,
+#fitCard .droneDesignSlot:hover { border-color: rgba(123, 232, 250, .74) !important; background-color: #0c2734 !important; }
+
+#fitCard .fitSelect,
+#fitCard .fitInput {
+  border-radius: 3px !important;
+  border-color: rgba(101, 223, 245, .23) !important;
+  background: #06121c !important;
+}
+#fitCard .fitInventoryTools { background: rgba(4, 14, 22, .45) !important; }
+#fitCard .fitSelectionHelp { color: rgba(184, 216, 225, .48) !important; }
+#fitCard .fitSelectionHelp b { color: #74e6f8 !important; }
+#fitCard .fitSellDrop { border-radius: 3px !important; background: repeating-linear-gradient(-45deg, rgba(255, 177, 65, .025) 0 6px, transparent 6px 12px) !important; }
+#fitCard .fitReturnHint { background: rgba(19, 70, 86, .055) !important; }
+
+#fitCard .invCell {
+  border-radius: 3px !important;
+  border-color: rgba(108, 198, 218, .17) !important;
+  background: linear-gradient(145deg, rgba(140, 226, 244, .04), transparent 46%), #081620 !important;
+}
+#fitCard .invCell:hover { border-color: rgba(118, 229, 248, .62) !important; background-color: #0b2430 !important; }
+#fitCard .invCell.selected {
+  border-color: #70e7fa !important;
+  background: radial-gradient(circle, rgba(33, 157, 184, .22), #09212c 75%) !important;
+  box-shadow: inset 0 -2px #5adcf3, 0 0 10px rgba(76, 218, 243, .12) !important;
+}
+#fitCard .fitModulesHeading { color: #d8f3f8 !important; text-transform: uppercase !important; letter-spacing: .55px !important; }
+#fitCard .shipModRow { border-bottom-color: rgba(101, 223, 245, .10) !important; }
+#fitCard .shipModRow:hover { background: rgba(24, 103, 126, .10) !important; }
+
+#fitCard .fitSlotGroup.dragCompatible {
+  border-color: rgba(105, 233, 255, .72) !important;
+  background:
+    repeating-linear-gradient(-45deg, rgba(62, 210, 238, .035) 0 8px, transparent 8px 16px),
+    rgba(0, 217, 255, .075) !important;
+  box-shadow: inset 3px 0 #63e3f8, inset 0 0 25px rgba(0, 217, 255, .06) !important;
+}
+
+/* Final equipment sizing and help placement */
+#fitCard #fitShipCanvas {
+  width: 66px !important;
+  height: 66px !important;
+  flex: 0 0 66px !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  background: radial-gradient(circle, rgba(40, 153, 179, .10), transparent 62%) !important;
+  background-size: auto !important;
+}
+#fitCard .fitHelpTooltip > span {
+  left: 0 !important;
+  right: auto !important;
+  top: calc(100% + 10px) !important;
+  bottom: auto !important;
+}
+#fitCard .slotGrid { gap: 10px !important; }
+#fitCard .invGrid { gap: 8px !important; }
+#fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotGridModules { gap: 8px !important; }
+
+/* Equipment layout — full window, compact ship bar and two cards */
+#fitOverlay { padding: 0 !important; }
+#fitCard.fitWindow {
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+#fitCard .fitError { position: absolute !important; z-index: 40 !important; top: 8px !important; left: 50% !important; max-width: 520px !important; transform: translateX(-50%) !important; }
+#fitCard .fitWorkspace {
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 10px !important;
+  box-sizing: border-box !important;
+  grid-template-columns: minmax(0, 1fr) 330px !important;
+  grid-template-rows: 74px minmax(0, 1fr) !important;
+  gap: 10px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+#fitCard .fitShipPane {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  padding: 7px 10px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 11px !important;
+  border: 1px solid rgba(101, 223, 245, .13) !important;
+  border-radius: 4px !important;
+  background: linear-gradient(90deg, #0a1d29, #07131d) !important;
+}
+#fitCard .fitShipPane::before { height: 100% !important; width: 2px !important; }
+#fitCard #fitShipCanvas {
+  width: 58px !important;
+  height: 58px !important;
+  flex: 0 0 58px !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+#fitCard .fitShipMeta {
+  min-width: 130px !important;
+  display: grid !important;
+  gap: 3px !important;
+  text-align: left !important;
+}
+#fitCard #fitShipName { font-size: 13px !important; }
+#fitCard #fitShipHint { font-size: 8px !important; }
+#fitCard .fitConfigBar {
+  width: auto !important;
+  margin: 0 0 0 10px !important;
+  padding: 0 0 0 14px !important;
+  flex: 0 0 auto !important;
+  gap: 9px !important;
+  border-top: 0 !important;
+  border-left: 1px solid rgba(101, 223, 245, .13) !important;
+  background: transparent !important;
+}
+#fitCard .fitConfigBar > span { font-size: 7px !important; letter-spacing: .7px !important; }
+#fitCard .fitWindowActions { margin-left: auto !important; display: flex !important; gap: 6px !important; }
+#fitCard .fitWindowActions button { min-height: 30px !important; padding: 6px 10px !important; font-size: 8px !important; }
+#fitCard .fitLoadoutPane {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  border: 1px solid rgba(101, 223, 245, .15) !important;
+  border-radius: 4px !important;
+}
+#fitCard .fitInventoryPane {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  border: 1px solid rgba(101, 223, 245, .15) !important;
+  border-radius: 4px !important;
+}
+#fitCard .fitSlotsScroll { padding-top: 6px !important; }
+#fitCard .fitSlotGroup { padding: 11px 0 !important; }
+#fitCard .fitGroupTitle { margin-bottom: 7px !important; }
+#fitCard .fitGroupTitle span { font-size: 8px !important; letter-spacing: 1px !important; color: rgba(189, 226, 235, .60) !important; }
+#fitCard .fitGroupTitle small { font-size: 7px !important; }
+#fitCard .fitInventoryHeader { min-height: 48px !important; padding: 7px 10px !important; }
+#fitCard .fitInventoryHeader strong { font-size: 9px !important; letter-spacing: .9px !important; }
+#fitCard .fitInventoryHeader > div > span { display: none !important; }
+#fitCard .fitSelectionBar { grid-template-columns: minmax(75px, 1fr) auto auto auto !important; }
+#fitCard .fitSelectionBar button { min-height: 27px !important; padding: 5px 7px !important; font-size: 8px !important; }
+#fitCard .fitSellButton { border-color: rgba(235, 177, 76, .35) !important; color: #f0d19b !important; background: linear-gradient(180deg, #3b2a14, #241a0e) !important; }
+
+@media (max-width: 900px) {
+  #fitCard .fitWorkspace { grid-template-columns: minmax(0, 1fr) 270px !important; }
+  #fitCard .fitWindowActions button { padding-inline: 7px !important; }
+}
+
+/* Final overrides */
+#fitCard .fitShipPane { overflow: visible !important; z-index: 10 !important; }
+#fitCard #fitShipCanvas {
+  width: 84px !important;
+  height: 84px !important;
+  flex: 0 0 84px !important;
+  background: radial-gradient(circle, rgba(40, 153, 179, .10), transparent 62%) !important;
+  background-size: auto !important;
+}
+#fitCard .fitHelpTooltip > span {
+  left: 0 !important;
+  right: auto !important;
+  top: calc(100% + 10px) !important;
+  bottom: auto !important;
+}
+#fitCard .slotGrid { gap: 10px !important; }
+#fitCard .invGrid { gap: 8px !important; }
+#fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotGridModules { gap: 8px !important; }
+#fitCard .fitWorkspace { grid-template-rows: 96px minmax(0, 1fr) !important; }
+#fitCard .slotCell.selected {
+  border-color: #70e7fa !important;
+  background: radial-gradient(circle, rgba(33, 157, 184, .25), #09212c 75%) !important;
+  box-shadow: inset 0 -2px #5adcf3, 0 0 11px rgba(76, 218, 243, .18) !important;
+}
+#fitCard .slotCell.selected::after {
+  content: "" !important;
+  position: absolute !important;
+  z-index: 3 !important;
+  top: 4px !important;
+  right: 4px !important;
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: #69e9ff !important;
+  box-shadow: 0 0 7px #69e9ff !important;
+  pointer-events: none !important;
+}
+#fitCard .fitSlotsScroll {
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+}
+#fitCard .fitSlotsScroll::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+#fitCard .fitSlotGroup { border: 0 !important; }
+#fitCard .fitSlotGroup.dragCompatible {
+  margin-inline: 0 !important;
+  padding-inline: 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#fitCard .fitSlotGroup.dragCompatible .slotCell {
+  border-color: rgba(105, 233, 255, .68) !important;
+  box-shadow: inset 0 0 10px rgba(0, 217, 255, .08) !important;
+}
+#fitCard .fitInventorySelectionHint { color: rgba(184, 216, 225, .46) !important; font-size: 8px !important; }
+#fitCard .fitBackButton { margin-left: 0 !important; }
+#fitCard .fitActionSeparator {
+  width: 1px !important;
+  height: 24px !important;
+  flex: 0 0 1px !important;
+  margin: 0 6px !important;
+  display: block !important;
+  background: rgba(101, 223, 245, .34) !important;
+  box-shadow: 0 0 5px rgba(101, 223, 245, .10) !important;
+}
+
+#fitCard .fitDroneWorkspace {
+  height: 100%; min-height: 0; padding: 12px; box-sizing: border-box;
+  display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 12px;
+  overflow: hidden; background: #07141e;
+}
+#fitCard .fitDroneWorkspace[hidden] { display: none !important; }
+#fitCard .droneRoster { min-height: 0; display: grid; align-content: start; gap: 6px; overflow-y: auto; }
+#fitCard .droneRosterItem { min-height: 54px; display: grid; grid-template-columns: 42px 1fr; grid-template-rows: 1fr 1fr; align-items: center; gap: 0 8px; text-align: left; }
+#fitCard .droneRosterItem img { width: 40px; height: 40px; grid-row: 1 / -1; object-fit: contain; image-rendering: pixelated; }
+#fitCard .droneRosterItem span { color: #eafaff; font-size: 10px; font-weight: 900; }
+#fitCard .droneRosterItem small { color: #7eacbc; font-size: 8px; }
+#fitCard .droneRosterItem.active { border-color: #6ee7fa !important; background: #0d4052 !important; }
+#fitCard .droneFitDetail { min-width: 0; padding: 18px; border: 1px solid rgba(105,233,255,.16); background: linear-gradient(145deg,#0a1e2b,#06121c); }
+#fitCard .droneFitDetail header { display: flex; align-items: center; gap: 14px; padding-bottom: 12px; border-bottom: 1px solid rgba(105,233,255,.14); }
+#fitCard .droneFitDetail header img { width: 74px; height: 74px; object-fit: contain; image-rendering: pixelated; }
+#fitCard .droneFitDetail header div { display: grid; gap: 5px; }
+#fitCard .droneFitDetail header strong { color: #effcff; font-size: 18px; }
+#fitCard .droneFitDetail header span, #fitCard .droneFitDetail p { color: #789cac; font-size: 9px; }
+#fitCard .droneXp { height: 7px; margin: 12px 0 18px; overflow: hidden; border: 1px solid #16445a; background: #041019; }
+#fitCard .droneXp i { display: block; height: 100%; background: linear-gradient(90deg,#16a9ca,#75edff); }
+#fitCard .droneFitDetail h4 { margin: 15px 0 8px; color: #7fdff0; font-size: 9px; letter-spacing: 1px; }
+#fitCard .droneFitSlots { display: flex; gap: 10px; }
+#fitCard .droneFitSlot, #fitCard .droneAbilitySlot { border: 1px solid rgba(105,233,255,.22); background: #06121c; }
+#fitCard .droneFitSlot { width: 64px; height: 64px; display: grid; place-items: center; }
+#fitCard .droneFitSlot img { width: 88%; height: 88%; object-fit: contain; }
+#fitCard .droneFitSlot span { color: #346377; font-size: 24px; }
+#fitCard .droneFitSlot.dragTarget { border-color: #70e7fa; background: rgba(20,154,182,.22); }
+#fitCard .droneAbilitySlot { width: 100%; min-height: 48px; color: #789cac; font-size: 9px; text-align: left; }
+#fitCard .fitDroneEmpty { place-self: center; color: #789cac; }
+#fitCard .fitDroneWorkspace { display:block; overflow-y:auto; }
+#fitCard .droneCards { display:grid; gap:10px; }
+#fitCard .droneEquipmentCard { min-height:92px; padding:10px 12px; display:grid; grid-template-columns:82px minmax(150px,1fr) auto minmax(180px,.8fr); align-items:center; gap:14px; border:1px solid rgba(105,233,255,.17); border-radius:5px; background:linear-gradient(100deg,#0a1e2b,#06121c); }
+#fitCard .droneCardSprite { width:74px; height:66px; object-fit:contain; image-rendering:pixelated; }
+#fitCard .droneCardIdentity { display:grid; gap:5px; }
+#fitCard .droneCardIdentity strong { color:#effcff; font-size:13px; }
+#fitCard .droneCardIdentity span { color:#789cac; font-size:9px; }
+#fitCard .droneCardIdentity .droneXp { width:100%; margin:2px 0 0; }
+#fitCard .droneCardSlots, #fitCard .droneCardAbility { display:grid; gap:6px; }
+#fitCard .droneCardSlots label, #fitCard .droneCardAbility label { color:#70dceb; font-size:8px; font-weight:900; letter-spacing:1px; }
+#fitCard .droneCardSlots>div { display:flex; gap:10px; }
+#fitCard .droneCardAbility .droneAbilitySlot { min-width:180px; }
+#fitCard .droneGlobalHint { margin:10px 2px 0; color:#789cac; font-size:9px; text-align:center; }
+body #profileOverlay .droneShopImage { width:74px !important; height:66px !important; object-fit:contain !important; image-rendering:pixelated !important; transform:scale(1.12); }
+body #profileOverlay .formationShopImage { width:min(420px,90%) !important; height:190px !important; object-fit:contain !important; image-rendering:auto !important; }
+body #profileOverlay .formationDescription { line-height:1.55; color:#d8c17c; }
+body #profileOverlay .shopRow img.droneShopRowImage { width:58px !important; height:52px !important; padding:0 !important; image-rendering:pixelated !important; }
+body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important; height:48px !important; padding:0 !important; object-fit:contain !important; }
+#fitCard.droneMode .fitLoadoutPane { grid-column:1 / -1 !important; }
+#fitCard .fitInventoryPane[hidden] { display:none !important; }
+#fitCard .droneEquipmentCard { grid-template-columns:82px minmax(170px,1fr) auto auto; grid-template-rows:auto 11px; }
+#fitCard .droneFitSlot, #fitCard .droneDesignSlot { width:56px !important; height:56px !important; min-width:56px; padding:3px; display:grid; place-items:center; box-sizing:border-box; border:1px solid rgba(105,233,255,.22); border-radius:3px; color:#346377; background:#06121c; }
+#fitCard .droneDesignSlot { font-size:22px; }
+#fitCard .droneCardAbility { padding-right:14px; border-right:1px solid rgba(105,233,255,.18); }
+#fitCard .droneEquipmentCard>.droneXp { grid-column:1 / -1; position:relative; width:100%; height:9px; margin:5px 0 0; overflow:visible; }
+#fitCard .droneEquipmentCard>.droneXp span { position:absolute; inset:0; display:grid; place-items:center; color:#eaffff; font-size:7px; font-weight:900; line-height:9px; text-shadow:0 1px 2px #000; }
+#fitCard .droneInventoryTray { margin-top:10px; padding:9px; border:1px solid rgba(105,233,255,.14); background:#06121c; }
+#fitCard .droneInventoryTray>label { display:block; margin-bottom:7px; color:#70dceb; font-size:8px; font-weight:900; letter-spacing:1px; }
+#fitCard .droneInventoryTray>div { display:flex; gap:7px; overflow-x:auto; }
+#fitCard .droneInventoryTray button { position:relative; flex:0 0 50px; width:50px; height:50px; padding:3px; }
+#fitCard .droneInventoryTray img { width:100%; height:100%; object-fit:contain; }
+#fitCard .droneInventoryTray button span { position:absolute; right:3px; bottom:2px; color:#ffd56b; font-size:8px; }
+#confirmMessage { white-space: pre-line !important; }
+
+/* Drones : même composition que l'équipement du vaisseau, inventaire à droite. */
+#fitCard.droneMode .fitLoadoutPane{grid-column:1 !important;grid-row:2 !important}
+#fitCard.droneMode .fitInventoryPane{display:flex !important;grid-column:2 !important;grid-row:2 !important}
+#fitCard.droneMode .fitSlotsScroll{display:none !important}
+#fitCard:not(.droneMode) .fitDroneWorkspace{display:none !important}
+#fitCard.droneMode .fitModulesHeading,
+#fitCard.droneMode .fitShipModules{display:none !important}
+#fitCard.droneMode .fitDroneWorkspace{display:block !important;height:100% !important;padding:10px !important;overflow-y:auto !important;background:transparent !important}
+#fitCard.droneMode .droneCards{display:grid !important;gap:8px !important}
+#fitCard.droneMode .droneEquipmentCard{min-height:108px !important;padding:10px 12px !important;grid-template-columns:72px minmax(150px,1fr) auto auto !important;grid-template-rows:minmax(70px,auto) 11px !important;gap:10px !important;border-radius:3px !important;background:linear-gradient(100deg,#0a1e2b,#071722) !important}
+#fitCard.droneMode .droneCardSprite{width:64px !important;height:56px !important}
+#fitCard.droneMode .droneCardIdentity strong{font-size:12px !important}
+#fitCard.droneMode .droneCardAbility{padding-right:12px !important;border-right:1px solid rgba(105,233,255,.22) !important}
+#fitCard.droneMode .droneFitSlot,
+#fitCard.droneMode .droneDesignSlot{width:52px !important;height:52px !important;min-width:52px !important;border-radius:3px !important}
+#fitCard.droneMode .droneEquipmentCard>.droneXp{grid-column:1 / -1 !important;align-self:end !important;height:9px !important;margin:2px 0 0 !important}
+#fitCard.droneMode .droneGlobalHint,
+#fitCard.droneMode .droneInventoryTray{display:none !important}
+
+/* Drones : même sélection que le vaisseau (contour bleu + point bleu) */
+#fitCard .droneFitSlot{position:relative !important;overflow:hidden !important}
+#fitCard .petFitSlot,
+#fitCard .droneDesignSlot{position:relative !important;overflow:hidden !important}
+#fitCard .droneFitSlot.selected{border-color:#70e7fa !important;background:radial-gradient(circle,rgba(33,157,184,.25),#09212c 75%) !important;box-shadow:inset 0 -2px #5adcf3,0 0 11px rgba(76,218,243,.18) !important}
+#fitCard .droneFitSlot.selected::after{content:"" !important;position:absolute !important;z-index:3 !important;top:4px !important;right:4px !important;width:6px !important;height:6px !important;border-radius:50% !important;background:#69e9ff !important;box-shadow:0 0 7px #69e9ff !important}
+#fitCard .droneFitSlot.dragCompatible{border-color:rgba(105,233,255,.65) !important;box-shadow:0 0 12px rgba(105,233,255,.28),inset 0 0 16px rgba(105,233,255,.08) !important;background:rgba(0,217,255,.09) !important}
+#fitCard .droneFitSlot.dragging{opacity:.45 !important}
+.inventoryPager { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; } .inventoryPager button:disabled { opacity: .4; cursor: default; }
+
+/* P.E.T : même mise en page que les drones (workspace dédié, exclusif par hangar/config). */
+#fitCard .fitPetWorkspace{height:100%;min-height:0 !important;min-width:0;padding:12px;box-sizing:border-box;display:block;overflow-y:auto;background:#07141e}
+#fitCard .fitPetWorkspace[hidden]{display:none !important}
+#fitCard.petMode .fitLoadoutPane{grid-column:1 !important;grid-row:2 !important}
+#fitCard.petMode .fitInventoryPane{display:flex !important;grid-column:2 !important;grid-row:2 !important}
+#fitCard.petMode .fitSlotsScroll{display:none !important}
+#fitCard:not(.petMode) .fitPetWorkspace{display:none !important}
+#fitCard.petMode .fitModulesHeading,
+#fitCard.petMode .fitShipModules{display:none !important}
+#fitCard.petMode .fitPetWorkspace{display:block !important;height:100% !important;padding:10px !important;overflow-y:auto !important;background:transparent !important}
+#fitCard.petMode .droneCards{display:grid !important;gap:8px !important}
+#fitCard.petMode .droneEquipmentCard{min-height:108px !important;padding:10px 12px !important;grid-template-columns:72px minmax(150px,1fr) auto !important;grid-template-rows:minmax(70px,auto) 11px !important;gap:10px !important;border-radius:3px !important;background:linear-gradient(100deg,#0a1e2b,#071722) !important}
+/* P.E.T : 2 cartes — header 20 % (niveau/XP) + slots 80 % (lasers, générateurs, gears, protocoles). */
+#fitCard .petCards{display:flex !important;flex-direction:column !important;gap:8px !important;height:100% !important;min-height:0 !important}
+#fitCard .petHeaderCard{flex:1 1 20% !important;min-height:0 !important;overflow:hidden !important;padding:10px 12px !important;display:grid !important;grid-template-columns:64px minmax(0,1fr) !important;grid-template-rows:auto auto !important;gap:2px 10px !important;align-items:center !important;border:1px solid rgba(105,233,255,.17) !important;border-radius:5px !important;background:linear-gradient(100deg,#0a1e2b,#06121c) !important}
+#fitCard .petHeaderCard .droneCardSprite{width:56px !important;height:50px !important}
+#fitCard .petHeaderCard .droneCardIdentity strong{font-size:16px !important}
+#fitCard .petHeaderCard .droneCardIdentity span{font-size:11px !important;line-height:1.5 !important}
+
+/* Vaisseau : titres de groupes bleus comme le P.E.T, en plus gros. */
+#fitCard .fitGroupTitle span{color:#70dceb !important;font-size:10px !important;font-weight:900 !important}
+#fitCard .fitGroupTitle small{font-size:9px !important}
+/* Drones : textes plus gros. */
+#fitCard .droneCardSlots label,#fitCard .droneCardAbility label{font-size:10px !important}
+#fitCard .droneCardIdentity strong{font-size:15px !important}
+#fitCard .droneCardIdentity span{font-size:11px !important;line-height:1.5 !important}
+#fitCard.droneMode .droneCardIdentity strong{font-size:14px !important}
+#fitCard .petHeaderCard>.droneXp{grid-column:1 / -1 !important;grid-row:auto !important;margin:4px 0 0 !important}
+#fitCard .petSlotsCard{flex:4 1 80% !important;min-height:0 !important;overflow-y:auto !important;padding:10px 12px !important;border:1px solid rgba(105,233,255,.17) !important;border-radius:5px !important;background:linear-gradient(100deg,#0a1e2b,#06121c) !important}
+#fitCard .petGroups{grid-column:1 / -1 !important;display:grid !important;gap:10px !important}
+#fitCard .petGroup{display:grid !important;gap:6px !important}
+#fitCard .petGroup>label{color:#70dceb !important;font-size:10px !important;font-weight:900 !important;letter-spacing:1px !important}
+#fitCard .petGroup>label small{color:#789cac !important;font-weight:400 !important;letter-spacing:0 !important}
+#fitCard .petGroupSlots{display:flex !important;flex-wrap:wrap !important;gap:10px !important}
+#fitCard .petFitSlot{width:52px !important;height:52px !important;min-width:52px !important;padding:3px !important;box-sizing:border-box !important}
+/* P.E.T : mêmes états que les drones (sélection, drag, point bleu). */
+#fitCard .petFitSlot{position:relative !important;overflow:hidden !important}
+#fitCard .petFitSlot.selected{border-color:#70e7fa !important;background:radial-gradient(circle,rgba(33,157,184,.25),#09212c 75%) !important;box-shadow:inset 0 -2px #5adcf3,0 0 11px rgba(76,218,243,.18) !important}
+#fitCard .petFitSlot.selected::after{content:"" !important;position:absolute !important;z-index:3 !important;top:4px !important;right:4px !important;width:6px !important;height:6px !important;border-radius:50% !important;background:#69e9ff !important;box-shadow:0 0 7px #69e9ff !important}
+#fitCard .petFitSlot.dragCompatible{border-color:rgba(105,233,255,.65) !important;box-shadow:0 0 12px rgba(105,233,255,.28),inset 0 0 16px rgba(105,233,255,.08) !important;background:rgba(0,217,255,.09) !important}
+#fitCard .petFitSlot.dragging{opacity:.45 !important}
+#fitCard .petFitSlot.dragTarget{border-color:#70e7fa !important;background:rgba(20,154,182,.22) !important}
+
+/* Même cadre et mêmes états visuels pour le vaisseau, les drones et le P.E.T. */
+#fitCard .slotCell,
+#fitCard .droneFitSlot,
+#fitCard .petFitSlot,
+#fitCard .droneDesignSlot {
+  border-radius: 3px !important;
+}
+#fitCard .droneFitSlot,
+#fitCard .petFitSlot {
+  border-style: solid !important;
+  border-color: rgba(108, 198, 218, .18) !important;
+  border-radius: 3px !important;
+  background: linear-gradient(135deg, rgba(143, 229, 246, .045), transparent 45%), #081620 !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .35) !important;
+}
+#fitCard .droneFitSlot.filled,
+#fitCard .petFitSlot.filled {
+  border-color: rgba(101, 223, 245, .54) !important;
+  background: radial-gradient(circle, rgba(27, 129, 155, .20), #09202c 72%) !important;
+  box-shadow: inset 0 -2px rgba(88, 215, 239, .16) !important;
+}
+#fitCard .petHeaderCard .droneCardSprite{image-rendering:auto !important}
+
+/* Hangar : TOUTES les cases (vaisseau hors modules, drones, designs, P.E.T)
+   partagent exactement le rendu des cases vaisseau. Bloc final = prioritaire. */
+#fitOverlay #fitCard #fitSlotsLasers.slotGrid,
+#fitOverlay #fitCard #fitSlotsGens.slotGrid,
+#fitOverlay #fitCard #fitSlotsExtras.slotGrid,
+#fitOverlay #fitCard #fitDroneWorkspace .droneCardSlots > div,
+#fitOverlay #fitCard #fitPetWorkspace .petGroupSlots {
+  gap: 2px !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers.slotGrid,
+#fitOverlay #fitCard #fitSlotsGens.slotGrid,
+#fitOverlay #fitCard #fitSlotsExtras.slotGrid {
+  grid-template-columns: repeat(auto-fill, 52px) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell,
+#fitOverlay #fitCard #fitSlotsGens .slotCell,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell {
+  width: 52px !important;
+  min-width: 52px !important;
+  height: 52px !important;
+  aspect-ratio: auto !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell,
+#fitOverlay #fitCard #fitSlotsGens .slotCell,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot,
+#fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot {
+  position: relative !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+  border: 1px solid rgba(108, 198, 218, .18) !important;
+  border-radius: 3px !important;
+  background: linear-gradient(135deg, rgba(143, 229, 246, .045), transparent 45%), #081620 !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .35) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell::before,
+#fitOverlay #fitCard #fitSlotsGens .slotCell::before,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell::before,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot::before,
+#fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot::before,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 3px !important;
+  left: 3px !important;
+  width: 7px !important;
+  height: 7px !important;
+  border-top: 1px solid rgba(116, 222, 242, .38) !important;
+  border-left: 1px solid rgba(116, 222, 242, .38) !important;
+  pointer-events: none !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled,
+#fitOverlay #fitCard #fitSlotsGens .slotCell.filled,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell.filled,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled {
+  border-color: rgba(101, 223, 245, .54) !important;
+  background: radial-gradient(circle, rgba(27, 129, 155, .20), #09202c 72%) !important;
+  box-shadow: inset 0 -2px rgba(88, 215, 239, .16) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell:hover,
+#fitOverlay #fitCard #fitSlotsGens .slotCell:hover,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell:hover,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot:hover,
+#fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot:hover,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot:hover {
+  border-color: rgba(123, 232, 250, .74) !important;
+  background-color: #0c2734 !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell img,
+#fitOverlay #fitCard #fitSlotsGens .slotCell img,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell img,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot img,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot img {
+  width: 86% !important;
+  height: 86% !important;
+  object-fit: contain !important;
+  image-rendering: pixelated !important;
+}
+
+/* Badges "P.E.T uniquement" : boutique (lignes) + inventaire du hangar (cases). */
+.shopPetBadge {
+  display: inline-block !important;
+  padding: 1px 6px !important;
+  border: 1px solid rgba(112, 231, 250, .6) !important;
+  border-radius: 3px !important;
+  color: #70e7fa !important;
+  background: rgba(0, 217, 255, .08) !important;
+  font-size: 9px !important;
+  font-weight: 900 !important;
+  letter-spacing: 1px !important;
+  vertical-align: 1px !important;
+}
+/* Badge lance-roquettes : même carte que P.E.T, en orange. */
+.shopLauncherBadge {
+  border-color: rgba(255, 161, 77, .6) !important;
+  color: #ffa14d !important;
+  background: rgba(255, 154, 60, .08) !important;
+}
+#fitCard .invCell .petOnlyBadge {
+  position: absolute !important;
+  left: 3px !important;
+  bottom: 2px !important;
+  z-index: 2 !important;
+  padding: 0 4px !important;
+  border: 1px solid rgba(112, 231, 250, .6) !important;
+  border-radius: 3px !important;
+  color: #70e7fa !important;
+  background: rgba(4, 16, 25, .9) !important;
+  font-size: 7px !important;
+  font-weight: 900 !important;
+  letter-spacing: 1px !important;
+  line-height: 1.5 !important;
+  pointer-events: none !important;
+}
+
+/* Sélection vaisseau / drones / P.E.T : même rendu que l'inventaire
+   (contour bleu + surbrillance radiale + barre basse + point bleu).
+   Bloc final = spécificité max pour passer au-dessus du bloc unifié. */
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.selected,
+#fitOverlay #fitCard #fitSlotsGens .slotCell.selected,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell.selected,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.selected,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.selected,
+#fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot.selected,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.selected {
+  border-color: #70e7fa !important;
+  background: radial-gradient(circle, rgba(33, 157, 184, .25), #09212c 75%) !important;
+  box-shadow: inset 0 -2px #5adcf3, 0 0 11px rgba(76, 218, 243, .18) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.selected::after,
+#fitOverlay #fitCard #fitSlotsGens .slotCell.selected::after,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell.selected::after,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.selected::after,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.selected::after,
+#fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot.selected::after,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.selected::after {
+  content: "" !important;
+  position: absolute !important;
+  z-index: 3 !important;
+  top: 4px !important;
+  right: 4px !important;
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: #69e9ff !important;
+  box-shadow: 0 0 7px #69e9ff !important;
+  pointer-events: none !important;
+}
+
+/* Modules Roulette : lignes longues avec détail, idle en case grise classique,
+   sélection = effet bleu complet (contour + halo + barre + point). */
+#fitCard .fitShipModules {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 8px !important;
+}
+#fitCard .fitShipModules .shipModRow {
+  min-height: 58px !important;
+  margin: 0 !important;
+  padding: 8px 10px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  position: relative !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(108, 198, 218, .17) !important;
+  border-radius: 3px !important;
+  background: linear-gradient(145deg, rgba(140, 226, 244, .04), transparent 46%), #081620 !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .35) !important;
+  cursor: pointer !important;
+  outline: 0 !important;
+  transform: none !important;
+}
+#fitCard .fitShipModules .shipModRow[class*="rarity-"] {
+  border-color: color-mix(in srgb, var(--rarity) 50%, transparent) !important;
+  box-shadow: inset 0 -2px 0 var(--rarity), inset 0 0 12px color-mix(in srgb, var(--rarity) 9%, transparent) !important;
+}
+#fitCard .fitShipModules .shipModRow img {
+  width: 40px !important;
+  height: 40px !important;
+  flex: 0 0 40px !important;
+  object-fit: contain !important;
+  image-rendering: pixelated !important;
+  border-radius: 10px !important;
+  background: rgba(0, 0, 0, .25) !important;
+  pointer-events: none !important;
+}
+#fitCard .fitShipModules .shipModRow:hover {
+  border-color: rgba(118, 229, 248, .62) !important;
+  background-color: #0b2430 !important;
+}
+#fitCard .fitShipModules .shipModRow.selected {
+  border-color: #70e7fa !important;
+  background: radial-gradient(circle, rgba(33, 157, 184, .25), #09212c 75%) !important;
+  box-shadow: inset 0 -2px #5adcf3, 0 0 11px rgba(76, 218, 243, .18) !important;
+}
+#fitCard .fitShipModules .shipModRow.selected::after {
+  content: "" !important;
+  position: absolute !important;
+  z-index: 3 !important;
+  top: 4px !important;
+  right: 4px !important;
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: #69e9ff !important;
+  box-shadow: 0 0 7px #69e9ff !important;
+  pointer-events: none !important;
+}
+#fitCard .fitShipModules .shipModRow.equipped {
+  opacity: .36 !important;
+  filter: grayscale(1) !important;
+  cursor: not-allowed !important;
+}
+#fitCard .fitShipModules .shipModRow.equipped:hover {
+  background: linear-gradient(145deg, rgba(140, 226, 244, .04), transparent 46%), #081620 !important;
+}
+
+/* Surbrillance drag généralisée (lasers / générateurs / extras / modules / drones / P.E.T).
+   Les slots concernés deviennent bleus pendant le glisser. Bloc final = prioritaire
+   (spécificité 3 IDs pour passer au-dessus du bloc unifié). */
+#fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsLasers .slotCell,
+#fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsGens .slotCell,
+#fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsExtras .slotCell,
+#fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsShipMods .slotCell {
+  border-color: rgba(105, 233, 255, .68) !important;
+  background: rgba(0, 217, 255, .09) !important;
+  box-shadow: inset 0 0 10px rgba(0, 217, 255, .08), 0 0 12px rgba(105, 233, 255, .12) !important;
+}
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.dragCompatible,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.dragCompatible {
+  border-color: rgba(105, 233, 255, .65) !important;
+  background: rgba(0, 217, 255, .09) !important;
+  box-shadow: 0 0 12px rgba(105, 233, 255, .28), inset 0 0 16px rgba(105, 233, 255, .08) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.dragTarget,
+#fitOverlay #fitCard #fitSlotsGens .slotCell.dragTarget,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell.dragTarget,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.dragTarget,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.dragTarget,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.dragTarget {
+  border-color: #70e7fa !important;
+  background: rgba(20, 154, 182, .22) !important;
+  box-shadow: 0 0 12px rgba(105, 233, 255, .35) !important;
+}
+
+/* =========================================================
+   Boutique orbitale — fenêtre dupliquée de l'Espace pilote.
+   Mêmes dimensions / grille / sidebar que #profileWindow,
+   mais les onglets principaux SONT les catégories boutique.
+   ========================================================= */
+#shopOverlay.profileOverlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 90000 !important;
+  display: none;
+  padding: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  pointer-events: none !important;
+}
+#shopOverlay .profileOverlayInner { display: contents !important; }
+#shopOverlay #shopWindow.gameWindow {
+  position: fixed !important;
+  width: min(1180px, calc(100vw - 32px)) !important;
+  height: min(720px, calc(100vh - 90px)) !important;
+  min-width: 760px !important;
+  min-height: 520px !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-columns: 290px minmax(0, 1fr) !important;
+  grid-template-rows: 26px minmax(0, 1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  color: #e8f4ff !important;
+  border: 1px solid rgba(124, 240, 255, .24) !important;
+  border-radius: 8px !important;
+  background: linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80)) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.55), 0 0 26px rgba(0,217,255,.12), inset 0 0 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter: none !important;
+  pointer-events: auto !important;
+}
+#shopOverlay #shopWindow.gameWindow:hover {
+  border-color: rgba(124, 240, 255, .42) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.50), 0 0 28px rgba(0,217,255,.16), inset 0 0 0 1px rgba(255,255,255,.05) !important;
+}
+html body #shopOverlay #shopWindow.gameWindow:not(.floating) {
+  left: max(16px, calc(50vw - 590px)) !important;
+  top: 70px !important;
+}
+#shopOverlay #shopWindow.gameWindow > .gameWinBar {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124, 240, 255, .18) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(90deg, rgba(0,217,255,.18), rgba(124,240,255,.05), rgba(255,255,255,.035)) !important;
+  box-shadow: none !important;
+  cursor: grab !important;
+}
+#shopOverlay #shopWindow .gameWinIcon {
+  width: auto !important;
+  height: auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 0 !important;
+  background: transparent !important;
+  font-size: 15px !important;
+}
+#shopOverlay #shopWindow .gameWinTitle {
+  flex: 1 !important;
+  min-width: 0 !important;
+  color: rgba(232,244,255,.88) !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  letter-spacing: .35px !important;
+}
+html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn {
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  min-height: 26px !important;
+  margin: 0 -8px 0 auto !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
+  border-radius: 0 8px 0 0 !important;
+  background: linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  color: #eaffff !important;
+  font: 750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform: none !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  transition: none !important;
+}
+html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover:not(:disabled) {
+  border-color: rgba(124,240,255,.62) !important;
+  background: rgba(0,140,185,.3) !important;
+  box-shadow: 0 0 16px rgba(0,217,255,.12) !important;
+}
+#shopOverlay .profileHeaderCard {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 20px 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  gap: 22px !important;
+  overflow-y: auto !important;
+  border: 0 !important;
+  border-right: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  scrollbar-width: none !important;
+}
+#shopOverlay .profileHeaderCard::-webkit-scrollbar { display: none !important; }
+#shopOverlay .profileTabs {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  overflow: visible !important;
+}
+/* Onglets boutique : style porté par le bloc gagnant plus bas
+   (body #shopOverlay .profileTabs .tabBtn) + attrape-tout ci-dessus. */
+#shopOverlay .profileMainCard {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 14px !important;
+  display: flex !important;
+  position: relative !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+#shopOverlay .profilePanel { display: none !important; }
+#shopOverlay .profilePanel.active {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 11px !important;
+  background: #091a28 !important;
+  box-shadow: none !important;
+}
+#shopOverlay .shopToolbar {
+  flex: 0 0 auto !important;
+  min-height: 54px !important;
+  margin: 0 0 8px !important;
+  padding: 2px 4px 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  box-sizing: border-box !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+#shopOverlay .shopToolbarTitle { color: #effbff !important; font-size: 11px !important; font-weight: 900 !important; }
+#shopOverlay .shopBalance { flex: 0 0 auto !important; text-align: right !important; }
+#shopOverlay .shopBalance span { display: block !important; color: rgba(204,228,241,.55) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
+#shopOverlay .shopBalance strong { display: block !important; margin-top: 2px !important; color: #75e8ff !important; font-size: 16px !important; }
+html body #shopOverlay #shopWindowPanel .shopLayout {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: 310px minmax(0,1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+html body #shopOverlay #shopWindowPanel .shopList,
+html body #shopOverlay #shopWindowPanel .shopPreview {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 8px !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+html body #shopOverlay #shopWindowPanel .shopList { display: flex !important; flex-direction: column !important; gap: 0 !important; border-right: 1px solid rgba(124,240,255,.13) !important; }
+html body #shopOverlay .shopRow { flex: 0 0 auto !important; min-width: 0 !important; min-height: 64px !important; padding: 8px 10px !important; display: flex !important; align-items: center !important; gap: 10px !important; border: 0 !important; border-bottom: 1px solid rgba(124,240,255,.09) !important; border-radius: 0 !important; background: transparent !important; background-image: none !important; box-shadow: none !important; transform: none !important; cursor: pointer !important; }
+html body #shopOverlay .shopRow.active { border-bottom-color: rgba(124,240,255,.09) !important; background: rgba(0,140,185,.18) !important; box-shadow: none !important; }
+body #shopOverlay .shopRow { transition: none !important; }
+body #shopOverlay .shopRow:hover { transform: none !important; border-bottom-color: rgba(124,240,255,.09) !important; background: rgba(0,140,185,.10) !important; box-shadow: none !important; }
+body #shopOverlay .shopPreview .profileTile { padding: 16px !important; }
+html body #shopOverlay #shopWindowPanel .shopLayout.extrasMode { display: block !important; overflow-y: auto !important; }
+html body #shopOverlay #shopWindowPanel .shopLayout.extrasMode .shopList { display: none !important; }
+html body #shopOverlay #shopWindowPanel .shopLayout.extrasMode .shopPreview { width: 100% !important; min-height: 100% !important; overflow: visible !important; }
+
+/* ---- Miroir visuel exact de l'ancienne boutique (avant transfert) ---- */
+/* Boutons boutique : style raffinage exact, sans exception. */
+#shopOverlay button:not(.gameWinMinBtn) {
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  min-height: 30px !important;
+  margin: 0 !important;
+  padding: 6px 10px !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
+  border-radius: 8px !important;
+  color: #eaffff !important;
+  background: linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  font: 750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform: none !important;
+  cursor: pointer !important;
+  transform: none !important;
+  transition: none !important;
+}
+#shopOverlay button:not(.gameWinMinBtn):hover:not(:disabled),
+#shopOverlay button:not(.gameWinMinBtn):active:not(:disabled) {
+  border-color: rgba(124,240,255,.62) !important;
+  background: rgba(0,140,185,.3) !important;
+  box-shadow: 0 0 16px rgba(0,217,255,.12) !important;
+  transform: none !important;
+}
+#shopOverlay button:not(.gameWinMinBtn):disabled {
+  opacity: .35 !important;
+  cursor: default !important;
+}
+/* Cartes : même base que #profileOverlay */
+#shopOverlay .tile,
+#shopOverlay .profileTile {
+  box-sizing: border-box !important;
+  border: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 9px !important;
+  background: #0a2232 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+/* Liste boutique : lignes plates comme avant */
+html body #shopOverlay .shopGroupHeader { flex: 0 0 auto !important; padding: 10px 10px 6px !important; color: #ffd9a8 !important; font-size: 10px !important; font-weight: 900 !important; text-transform: uppercase !important; letter-spacing: .08em !important; border-bottom: 1px solid rgba(255,154,60,.25) !important; background: rgba(255,154,60,.06) !important; }
+#shopOverlay .shopRow img { width: 48px !important; height: 48px !important; padding: 3px !important; flex: 0 0 auto !important; object-fit: contain !important; }
+#shopOverlay .shopMeta { flex: 1 !important; min-width: 0 !important; }
+#shopOverlay .shopMeta b { display: block !important; overflow: hidden !important; color: #e9f8ff !important; font-size: 11px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#shopOverlay .shopMeta span { color: rgba(204,228,241,.57) !important; font-size: 9px !important; }
+/* Aperçu droit : PAS de carte, transparent comme avant */
+html body #shopOverlay #shopWindowPanel .shopPreview > .tile { min-height: 100% !important; padding: 18px !important; display: flex !important; flex-direction: column !important; align-items: stretch !important; justify-content: center !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
+html body #shopOverlay .shopPreview .bigImg { width: min(200px, 70%) !important; height: 180px !important; margin: 0 auto 12px !important; padding: 8px !important; display: block !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; object-fit: contain !important; }
+html body #shopOverlay .shopPreview .bigImg.ammoShopImage { width: 100px !important; height: 100px !important; padding: 0 !important; }
+html body #shopOverlay .shopPreview .bigImg.equipShopImage { width: 100px !important; max-width: 100px !important; height: 100px !important; max-height: 100px !important; padding: 8px !important; border: 0 !important; background: transparent !important; }
+html body #shopOverlay .shopPreviewContainer,
+html body #shopOverlay .shipPreviewContainer { width: 100% !important; height: 210px !important; margin: 0 0 12px !important; display: flex !important; align-items: center !important; justify-content: center !important; overflow: hidden !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; }
+#shopOverlay .shipPreviewContainer img { width: auto !important; height: auto !important; max-width: 74% !important; max-height: 74% !important; transform: none !important; image-rendering: pixelated !important; object-fit: contain !important; }
+#shopOverlay .shopPreview h3 { margin: 0 0 8px !important; color: #effbff !important; font-size: 17px !important; }
+#shopOverlay .shopPreview p { color: rgba(209,231,243,.68) !important; font-size: 11px !important; line-height: 1.45 !important; }
+#shopOverlay .shopPreview .shopItemStat { margin: 8px 0 !important; color: rgba(209,231,243,.72) !important; }
+#shopOverlay .shopPreview .shopItemStat strong { margin-left: 5px !important; color: #75e8ff !important; font-size: 13px !important; }
+#shopOverlay .shopAmmoOwned { margin: 8px 0 !important; color: rgba(225,241,249,.82) !important; font-size: 12px !important; }
+/* Ligne d'achat + quantité (saisie libre + menu déroulant) : identique à avant */
+#shopOverlay .shopPurchaseRow { margin: 14px 0 0 !important; padding: 14px 4px !important; display: grid !important; grid-template-columns: minmax(160px,1fr) 110px !important; align-items: center !important; gap: 18px !important; border-top: 1px solid rgba(124,240,255,.15) !important; }
+#shopOverlay .shopPurchaseInfo { min-width: 0 !important; display: grid !important; gap: 8px !important; }
+#shopOverlay .shopPurchaseInfo > label { color: rgba(225,241,249,.78) !important; font-size: 11px !important; font-weight: 850 !important; }
+#shopOverlay .shopPurchaseRow > select { width: 110px !important; height: 36px !important; padding: 0 30px 0 12px !important; box-sizing: border-box !important; outline: 0 !important; border: 1px solid rgba(124,240,255,.30) !important; border-radius: 7px !important; color: #effcff !important; background: #051521 !important; font: 900 12px/1 system-ui !important; text-align: center !important; cursor: pointer !important; }
+#shopOverlay .shopPurchaseRow > select:focus { border-color: #69e9ff !important; }
+#shopOverlay .shopPurchaseRow > select option { color: #effcff !important; background: #071622 !important; }
+#shopOverlay .shopQuantityBox { width: 110px !important; display: grid !important; gap: 6px !important; }
+#shopOverlay .shopQuantityBox > input { width: 100% !important; height: 36px !important; padding: 0 8px !important; box-sizing: border-box !important; outline: 0 !important; border: 1px solid rgba(124,240,255,.30) !important; border-radius: 7px !important; color: #effcff !important; background: #051521 !important; font: 900 12px/1 system-ui !important; text-align: center !important; }
+#shopOverlay .shopQuantityBox > input:focus { border-color: #69e9ff !important; }
+#shopOverlay .shopQuantityBox > select { width: 100% !important; height: 30px !important; padding: 0 26px 0 10px !important; box-sizing: border-box !important; outline: 0 !important; border: 1px solid rgba(124,240,255,.30) !important; border-radius: 7px !important; color: #effcff !important; background: #051521 !important; font: 900 11px/1 system-ui !important; text-align: center !important; cursor: pointer !important; }
+#shopOverlay .shopQuantityBox > select:focus { border-color: #69e9ff !important; }
+#shopOverlay .shopQuantityBox > select option { color: #effcff !important; background: #071622 !important; }
+#shopOverlay .shopPurchasePrice { min-width: 0 !important; display: grid !important; gap: 3px !important; text-align: left !important; }
+#shopOverlay .shopPurchasePrice > span { color: rgba(204,228,241,.48) !important; font-size: 8px !important; font-weight: 800 !important; text-transform: uppercase !important; }
+#shopOverlay .shopPurchasePrice strong { color: #72efff !important; font-size: 13px !important; white-space: nowrap !important; }
+#shopOverlay .shopBuySection { margin-top: 12px !important; padding-top: 12px !important; border-top: 1px solid rgba(124,240,255,.12) !important; }
+#shopOverlay #btnBuyPreview { margin-top: auto !important; width: 100% !important; }
+/* Roulette modules + historique : identique à avant */
+#shopOverlay .extrasRoulettePanel { justify-content: flex-start !important; }
+#shopOverlay .extrasRouletteHeader { padding-bottom: 14px !important; display: flex !important; align-items: flex-start !important; justify-content: space-between !important; gap: 20px !important; border-bottom: 1px solid rgba(124,240,255,.12) !important; }
+#shopOverlay .extrasRouletteHeader h3 { margin-bottom: 5px !important; }
+#shopOverlay .extrasRouletteHeader p { margin: 0 !important; }
+#shopOverlay .extrasRouletteCost { flex: 0 0 auto !important; color: rgba(204,228,241,.55) !important; font-size: 9px !important; text-align: right !important; }
+#shopOverlay .extrasRouletteCost span { display: block !important; text-transform: uppercase !important; }
+#shopOverlay .extrasRouletteCost strong { margin-right: 4px !important; color: #75e8ff !important; font-size: 16px !important; }
+#shopOverlay .moduleHistoryPanel { min-height: 0 !important; margin-top: 18px !important; border-top: 1px solid rgba(124,240,255,.13) !important; }
+#shopOverlay .moduleHistoryPanel > header { min-height: 42px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 16px !important; color: #effbff !important; }
+#shopOverlay .moduleHistoryPanel > header strong { font-size: 12px !important; }
+#shopOverlay .moduleHistoryPanel > header span { color: rgba(204,228,241,.52) !important; font-size: 9px !important; }
+#shopOverlay .moduleHistoryList { max-height: 230px !important; overflow-y: auto !important; border-top: 1px solid rgba(124,240,255,.09) !important; }
+#shopOverlay .moduleHistoryRow { min-height: 48px !important; padding: 7px 5px !important; display: grid !important; grid-template-columns: 28px 38px 40px minmax(0,1fr) auto !important; align-items: center !important; gap: 9px !important; border-bottom: 1px solid rgba(124,240,255,.08) !important; }
+#shopOverlay .moduleHistoryIndex { color: rgba(204,228,241,.38) !important; font-size: 9px !important; text-align: center !important; }
+#shopOverlay .moduleHistoryRow img { width: 34px !important; height: 34px !important; object-fit: contain !important; image-rendering: pixelated !important; }
+#shopOverlay .moduleHistoryShipImg { width: 40px !important; height: 40px !important; background: rgba(0,217,255,0.06) !important; border: 1px solid rgba(124,240,255,.12) !important; border-radius: 9px !important; }
+#shopOverlay .moduleHistoryMeta { min-width: 0 !important; display: grid !important; gap: 3px !important; }
+#shopOverlay .moduleHistoryMeta strong.moduleHistoryName { color: #75e8ff !important; font-size: 10px !important; }
+#shopOverlay .moduleHistoryMeta span:not(.moduleHistoryRarity) { overflow: hidden !important; color: rgba(204,228,241,.60) !important; font-size: 9px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#shopOverlay .moduleHistoryRow time { color: rgba(204,228,241,.38) !important; font-size: 8px !important; white-space: nowrap !important; }
+#shopOverlay .moduleHistoryEmpty { padding: 24px !important; color: rgba(204,228,241,.45) !important; font-size: 10px !important; text-align: center !important; }
+/* Images drones / formations : identique à avant */
+body #shopOverlay .droneShopImage { width: 74px !important; height: 66px !important; object-fit: contain !important; image-rendering: pixelated !important; transform: scale(1.12); }
+body #shopOverlay .formationShopImage { width: min(420px,90%) !important; height: 190px !important; object-fit: contain !important; image-rendering: auto !important; }
+body #shopOverlay .formationDescription { line-height: 1.55; color: #d8c17c; }
+body #shopOverlay .shopRow img.droneShopRowImage { width: 58px !important; height: 52px !important; padding: 0 !important; image-rendering: pixelated !important; }
+body #shopOverlay .shopRow img.formationShopRowImage { width: 72px !important; height: 48px !important; padding: 0 !important; object-fit: contain !important; }
+@media (max-width: 900px) {
+  #shopOverlay #shopWindow.gameWindow { width: calc(100vw - 16px) !important; height: calc(100vh - 24px) !important; min-width: 0 !important; grid-template-columns: 240px minmax(0,1fr) !important; }
+  html body #shopOverlay #shopWindow.gameWindow:not(.floating) { left: 8px !important; top: 70px !important; }
+  #shopOverlay #shopWindowPanel .shopLayout { grid-template-columns: 250px minmax(0,1fr) !important; }
+}
+@media (max-width: 650px) {
+  #shopOverlay #shopWindow.gameWindow { grid-template-columns: 1fr !important; grid-template-rows: 26px auto minmax(0,1fr) !important; }
+  #shopOverlay .profileHeaderCard { grid-column: 1 !important; grid-row: 2 !important; padding: 8px !important; border-right: 0 !important; border-bottom: 1px solid rgba(124,240,255,.16) !important; }
+  #shopOverlay .profileTabs { flex-direction: row !important; overflow-x: auto !important; }
+  #shopOverlay .profileTabs .tabBtn { justify-content: center !important; }
+  #shopOverlay .profileMainCard { grid-column: 1 !important; grid-row: 3 !important; padding: 8px !important; }
+  #shopOverlay #shopWindowPanel .shopLayout { grid-template-columns: 1fr !important; overflow-y: auto !important; }
+  #shopOverlay #shopWindowPanel .shopList { max-height: 210px !important; }
+}
+
+/* =========================================================
+   Miroir Boutique -> Espace pilote (fix transfert fenêtre).
+   La boutique vit dans #shopOverlay mais doit rendre EXACTEMENT
+   comme #profileOverlay : sidebar arrondie/translucide (pas pleine
+   et droite), boutons avec le même effet, panneaux transparents.
+   Ce bloc est chargé après style.css donc il gagne à
+   spécificité égale. Les `body #shopOverlay` battent aussi les
+   `#shopOverlay` plats définis plus haut dans ce même fichier.
+   ========================================================= */
+body #shopOverlay .profileHeaderCard{
+  grid-column:1 !important;
+  grid-row:2 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:14px 0 14px 14px !important;
+  padding:18px !important;
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:flex-start !important;
+  gap:22px !important;
+  overflow:hidden auto !important;
+  border:0 !important;
+  border-right:1px solid rgba(124,240,255,.16) !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  scrollbar-width:none !important;
+}
+body #shopOverlay .profileTabs{
+  width:100% !important;
+  margin:0 !important;
+  padding:0 0 2px !important;
+  display:flex !important;
+  flex:1 1 auto !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  justify-content:flex-start !important;
+  gap:6px !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  scrollbar-width:none !important;
+}
+body #shopOverlay .profileTabs::-webkit-scrollbar{ display:none !important; }
+body #shopOverlay button:not(.gameWinMinBtn){
+  min-height:30px !important;
+  padding:6px 10px !important;
+  border-radius:8px !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+}
+body #shopOverlay .profileTabs .tabBtn{
+  width:100% !important;
+  flex:0 0 auto !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  min-height:38px !important;
+  padding:9px 11px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  gap:8px !important;
+  text-align:left !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  white-space:nowrap !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  cursor:pointer !important;
+  transform:none !important;
+  transition:none !important;
+}
+body #shopOverlay .profileTabs .tabBtn:hover:not(:disabled){ transform:none !important; border-color:rgba(124,240,255,.62) !important; background:rgba(0,140,185,.3) !important; box-shadow:0 0 16px rgba(0,217,255,.12) !important; }
+body #shopOverlay .profileTabs .tabBtn.active{
+  color:#eaffff !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+body #shopOverlay .profileTabs .tabBtn.active::after{
+  content:"" !important;
+  flex:0 0 auto !important;
+  width:8px !important;
+  height:8px !important;
+  margin-left:auto !important;
+  border-radius:50% !important;
+  background:#00d9ff !important;
+  box-shadow:0 0 8px rgba(0,217,255,.9) !important;
+  animation:shopTabDotBlink 1s ease-in-out infinite !important;
+}
+@keyframes shopTabDotBlink{
+  0%,100%{ opacity:1; }
+  50%{ opacity:.25; }
+}
+body #shopOverlay .profileMainCard{
+  grid-column:2 !important;
+  grid-row:2 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:14px !important;
+  display:flex !important;
+  overflow:hidden !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+body #shopOverlay .profilePanel{ display:none !important; min-width:0 !important; min-height:0 !important; }
+body #shopOverlay .profilePanel.active{
+  width:100% !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:20px !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  flex-direction:column !important;
+  overflow:hidden auto !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:0 0 0 1px rgba(255,255,255,.02) inset !important;
+  backdrop-filter:none !important;
+}
+/* Intérieur boutique : PAS de cartes en trop — on garde le design plat
+   d'origine (liste en lignes + aperçu transparent), juste posé sur le
+   panneau translucide ci-dessus. */
+html body #shopOverlay #shopWindowPanel .shopLayout{
+  flex:1 1 auto !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  display:grid !important;
+  grid-template-columns:310px minmax(0,1fr) !important;
+  gap:0 !important;
+  overflow:hidden !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+}
+html body #shopOverlay #shopWindowPanel .shopList,
+html body #shopOverlay #shopWindowPanel .shopPreview{
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:8px !important;
+  box-sizing:border-box !important;
+  overflow-y:auto !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+html body #shopOverlay #shopWindowPanel .shopList{ display:flex !important; flex-direction:column !important; gap:0 !important; border-right:1px solid rgba(124,240,255,.13) !important; }
+html body #shopOverlay .shopRow{
+  flex:0 0 auto !important;
+  min-width:0 !important;
+  min-height:64px !important;
+  padding:8px 10px !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:10px !important;
+  border:0 !important;
+  border-bottom:1px solid rgba(124,240,255,.09) !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  transform:none !important;
+  cursor:pointer !important;
+}
+html body #shopOverlay .shopRow.active{
+  border-bottom-color:rgba(124,240,255,.09) !important;
+  background:rgba(0,140,185,.18) !important;
+  box-shadow:none !important;
+}
+body #shopOverlay .shopRow{ transition:none !important; }
+body #shopOverlay .shopRow:hover{ transform:none !important; border-bottom-color:rgba(124,240,255,.09) !important; background:rgba(0,140,185,.10) !important; box-shadow:none !important; }
+html body #shopOverlay .shopRow.active::after{
+  content:"" !important;
+  flex:0 0 auto !important;
+  width:8px !important;
+  height:8px !important;
+  margin-left:auto !important;
+  border-radius:50% !important;
+  background:#00d9ff !important;
+  box-shadow:0 0 8px rgba(0,217,255,.9) !important;
+  animation:shopTabDotBlink 1s ease-in-out infinite !important;
+}
+html body #shopOverlay #shopWindowPanel .shopPreview > .tile{
+  min-height:100% !important;
+  padding:18px !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  justify-content:center !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+html body #shopOverlay .shopPreview .bigImg{
+  width:min(200px,70%) !important;
+  height:180px !important;
+  margin:0 auto 12px !important;
+  padding:8px !important;
+  display:block !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  object-fit:contain !important;
+}
+
+/* =========================================================
+   Historique des modules : grand format (remplit la carte,
+   4 lignes par page, images et textes agrandis).
+   ========================================================= */
+html body #shopOverlay #moduleRollHistory{
+  flex:1 1 auto !important;
+  min-height:120px !important;
+  max-height:none !important;
+  overflow-y:auto !important;
+}
+html body #shopOverlay .moduleHistoryEmpty{ padding:28px 12px !important; font-size:12px !important; }
+html body #shopOverlay .moduleHistoryRow{
+  min-height:76px !important;
+  padding:10px 8px !important;
+  grid-template-columns:36px 54px 62px minmax(0,1fr) auto 46px !important;
+  gap:12px !important;
+  align-items:center !important;
+}
+html body #shopOverlay .moduleHistoryRow img{ width:52px !important; height:52px !important; }
+html body #shopOverlay .moduleHistoryShipImg{ width:60px !important; height:60px !important; border-radius:12px !important; }
+html body #shopOverlay .moduleHistoryIndex{ font-size:12px !important; }
+html body #shopOverlay .moduleHistoryMeta{ gap:4px !important; }
+html body #shopOverlay .moduleHistoryMeta strong.moduleHistoryName{ font-size:13px !important; }
+html body #shopOverlay .moduleHistoryMeta span{ font-size:11px !important; white-space:normal !important; }
+html body #shopOverlay .moduleHistoryRow time{ font-size:10px !important; }
+html body #shopOverlay .moduleHistorySide{ min-width:0 !important; display:grid !important; gap:3px !important; justify-items:end !important; text-align:right !important; }
+html body #shopOverlay .moduleHistoryReroll{ color:rgba(204,228,241,.55) !important; font-size:10px !important; white-space:nowrap !important; }
+html body #shopOverlay .moduleHistoryReroll strong{ color:#75e8ff !important; }
+html body #shopOverlay .moduleHistoryRerollBtn{
+  display:grid !important;
+  place-items:center !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  color:#eaffff !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  cursor:pointer !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  transform:none !important;
+  transition:none !important;
+}
+html body #shopOverlay .moduleHistoryRerollBtn:hover:not(:disabled){
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+html body #shopOverlay .moduleHistoryRerollBtn:disabled{ opacity:.35 !important; cursor:default !important; }
+
+/* =========================================================
+   Hangars & Équipement — fenêtre dédiée, miroir exact de
+   l'Espace pilote (même grille, sidebar arrondie/translucide,
+   mêmes boutons et panneaux).
+   ========================================================= */
+#hangarOverlay.profileOverlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 90000 !important;
+  display: none;
+  padding: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  pointer-events: none !important;
+}
+#hangarOverlay .profileOverlayInner { display: contents !important; }
+#hangarOverlay #hangarWindow.gameWindow {
+  position: fixed !important;
+  width: min(1100px, calc(100vw - 32px)) !important;
+  height: min(720px, calc(100vh - 90px)) !important;
+  min-width: 760px !important;
+  min-height: 520px !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: 26px minmax(0, 1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  color: #e8f4ff !important;
+  border: 1px solid rgba(124, 240, 255, .24) !important;
+  border-radius: 8px !important;
+  background: linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80)) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.55), 0 0 26px rgba(0,217,255,.12), inset 0 0 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter: none !important;
+  pointer-events: auto !important;
+}
+#hangarOverlay #hangarWindow.gameWindow:hover {
+  border-color: rgba(124, 240, 255, .42) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.50), 0 0 28px rgba(0,217,255,.16), inset 0 0 0 1px rgba(255,255,255,.05) !important;
+}
+html body #hangarOverlay #hangarWindow.gameWindow:not(.floating) {
+  left: max(16px, calc(50vw - 570px)) !important;
+  top: 45px !important;
+}
+#hangarOverlay #hangarWindow.gameWindow > .gameWinBar {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124, 240, 255, .18) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(90deg, rgba(0,217,255,.18), rgba(124,240,255,.05), rgba(255,255,255,.035)) !important;
+  box-shadow: none !important;
+  cursor: grab !important;
+}
+#hangarOverlay #hangarWindow .gameWinIcon {
+  width: auto !important;
+  height: auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 0 !important;
+  background: transparent !important;
+  font-size: 15px !important;
+}
+#hangarOverlay #hangarWindow .gameWinTitle {
+  flex: 1 !important;
+  min-width: 0 !important;
+  color: rgba(232,244,255,.88) !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  letter-spacing: .35px !important;
+}
+html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  min-height: 26px !important;
+  margin: 0 -8px 0 auto !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
+  border-radius: 0 8px 0 0 !important;
+  background: linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  color: #eaffff !important;
+  font: 750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform: none !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  transition: none !important;
+}
+html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover:not(:disabled) {
+  border-color: rgba(124,240,255,.62) !important;
+  background: rgba(0,140,185,.3) !important;
+  box-shadow: 0 0 16px rgba(0,217,255,.12) !important;
+}
+/* Sidebar arrondie/translucide comme l'Espace pilote (pas pleine et droite). */
+body #hangarOverlay .profileHeaderCard{
+  grid-column:1 !important;
+  grid-row:2 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:14px 0 14px 14px !important;
+  padding:18px !important;
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:flex-start !important;
+  gap:22px !important;
+  overflow:hidden auto !important;
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:12px !important;
+  background:linear-gradient(180deg,rgba(14,45,65,.78),rgba(5,17,30,.84)) !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  scrollbar-width:none !important;
+}
+body #hangarOverlay .profileHeaderCard::-webkit-scrollbar{ display:none !important; }
+body #hangarOverlay .profileHeaderTop{
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:0 0 20px !important;
+  border-bottom:1px solid rgba(124,240,255,.13) !important;
+}
+body #hangarOverlay .profileTitle{ font-size:11px !important; }
+body #hangarOverlay .profileSub{ margin-top:10px !important; font-size:11px !important; line-height:1.7 !important; }
+body #hangarOverlay .profileTabs{
+  width:100% !important;
+  margin:0 !important;
+  padding:0 0 2px !important;
+  display:flex !important;
+  flex:1 1 auto !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  justify-content:flex-start !important;
+  gap:6px !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  scrollbar-width:none !important;
+}
+body #hangarOverlay .profileTabs::-webkit-scrollbar{ display:none !important; }
+body #hangarOverlay button:not(.gameWinMinBtn){
+  box-sizing:border-box !important;
+  min-width:0 !important;
+  min-height:30px !important;
+  margin:0 !important;
+  padding:6px 10px !important;
+  border-radius:8px !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  box-shadow:none !important;
+}
+body #hangarOverlay .profileTabs .tabBtn{
+  width:100% !important;
+  flex:0 0 auto !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  min-height:38px !important;
+  padding:9px 11px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  text-align:left !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  border:1px solid rgba(124,240,255,.18) !important;
+  border-radius:9px !important;
+  color:rgba(205,230,245,.72) !important;
+  background:rgba(8,35,52,.62) !important;
+  font:800 11px/1.2 system-ui !important;
+  letter-spacing:.045em !important;
+  white-space:nowrap !important;
+  box-shadow:none !important;
+  transform:none !important;
+  transition:transform .15s ease,border-color .15s ease,background .15s ease !important;
+}
+body #hangarOverlay .profileTabs .tabBtn:hover:not(:disabled){ transform:none !important; border-color:rgba(124,240,255,.45) !important; background:rgba(0,140,185,.18) !important; }
+body #hangarOverlay .profileTabs .tabBtn.active{
+  color:#edfbff !important;
+  border-color:rgba(124,240,255,.5) !important;
+  background:linear-gradient(90deg,rgba(0,155,205,.34),rgba(0,90,125,.17)) !important;
+  box-shadow:inset 3px 0 0 #69e9ff !important;
+}
+body #hangarOverlay .profileMainCard{
+  grid-column:1 / -1 !important;
+  grid-row:2 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:14px !important;
+  display:flex !important;
+  overflow:hidden !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+body #hangarOverlay .profilePanel{ display:none !important; min-width:0 !important; min-height:0 !important; }
+body #hangarOverlay .profilePanel.active{
+  width:100% !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:20px !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  flex-direction:column !important;
+  overflow:hidden auto !important;
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:12px !important;
+  background:
+    radial-gradient(circle at 90% 0,rgba(0,180,225,.08),transparent 34%),
+    linear-gradient(145deg,rgba(8,28,45,.72),rgba(3,11,22,.82)) !important;
+  box-shadow:0 0 0 1px rgba(255,255,255,.02) inset !important;
+  backdrop-filter:none !important;
+}
+/* Contenu hangars : mêmes cartes/listes que l'Espace pilote. */
+body #hangarOverlay .hangarWorkspace{
+  flex:1 1 auto !important;
+  min-height:0 !important;
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) !important;
+  gap:10px !important;
+}
+body #hangarOverlay .hangarWorkspace > .profileGrid{
+  min-width:0 !important;
+  min-height:0 !important;
+  grid-template-columns:repeat(2,minmax(220px,1fr)) !important;
+  align-content:start !important;
+  overflow-y:auto !important;
+}
+body #hangarOverlay .hangarWorkspace > .profileGrid > .tile{
+  min-height:150px !important;
+  display:flex !important;
+  flex-direction:column !important;
+}
+body #hangarOverlay .hangarWorkspace .tileActions{ margin-top:auto !important; }
+body #hangarOverlay .tile,
+body #hangarOverlay .profileTile{
+  box-sizing:border-box !important;
+  border:1px solid rgba(124,240,255,.16) !important;
+  border-radius:10px !important;
+  background:linear-gradient(135deg,rgba(15,45,65,.72),rgba(5,14,25,.8)) !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+body #hangarOverlay .hangarWorkspace > #hangarGrid.profileGrid{
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:0 5px 0 0 !important;
+  display:grid !important;
+  grid-template-columns:repeat(auto-fill,minmax(180px,1fr)) !important;
+  gap:10px !important;
+  overflow-y:auto !important;
+  align-content:start !important;
+  align-items:start !important;
+}
+body #hangarOverlay .hangarListItem{
+  position:relative !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  min-width:0 !important;
+  padding:12px 10px !important;
+  gap:8px !important;
+  text-align:center !important;
+  border:1px solid rgba(124,240,255,.14) !important;
+  border-radius:12px !important;
+  background:linear-gradient(135deg,rgba(15,45,65,.72),rgba(5,14,25,.8)) !important;
+  box-shadow:none !important;
+  cursor:pointer !important;
+}
+body #hangarOverlay .hangarListItem.selected{ border-color:rgba(124,240,255,.50) !important; background:rgba(0,140,185,.18) !important; }
+body #hangarOverlay .hangarListItem.active::after{
+  content:"" !important;
+  position:absolute !important;
+  top:8px !important;
+  right:8px !important;
+  width:10px !important;
+  height:10px !important;
+  border-radius:50% !important;
+  background:#2bff88 !important;
+  box-shadow:0 0 8px #2bff88 !important;
+  animation:hangarActiveBlink 1.4s ease-in-out infinite !important;
+}
+@keyframes hangarActiveBlink{
+  0%,100%{ opacity:1; }
+  50%{ opacity:.25; }
+}
+body #hangarOverlay .hangarCardPhoto{
+  position:relative !important;
+  width:100px !important;
+  height:100px !important;
+}
+body #hangarOverlay .hangarCardPhoto img{
+  width:100px !important;
+  height:100px !important;
+  object-fit:contain !important;
+  transition:transform .15s ease, filter .15s ease !important;
+}
+body #hangarOverlay .hangarCardPhoto:hover img{ transform:scale(1.05) !important; filter:drop-shadow(0 0 10px rgba(0,217,255,.35)) !important; }
+body #hangarOverlay button.hangarCardPhotoBadge{
+  position:absolute !important;
+  right:2px !important;
+  bottom:2px !important;
+  min-width:20px !important;
+  height:20px !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:0 5px !important;
+  display:grid !important;
+  place-items:center !important;
+  border:1px solid rgba(124,240,255,.35) !important;
+  border-radius:7px !important;
+  background:rgba(3,14,25,.85) !important;
+  color:#7cf0ff !important;
+  font:900 11px/1 system-ui !important;
+  box-shadow:none !important;
+  cursor:pointer !important;
+}
+body #hangarOverlay button.hangarCardPhotoBadge:hover{ border-color:rgba(124,240,255,.6) !important; background:rgba(0,140,185,.35) !important; }
+body #hangarOverlay .hangarListItem h3{ margin:0 !important; font-size:12px !important; }
+body #hangarOverlay .hangarListItem .tileActions{ margin:0 !important; display:flex !important; flex-direction:row !important; gap:6px !important; }
+body #hangarOverlay .hangarListItem .tileActions button{ min-height:26px !important; padding:4px 10px !important; font-size:10px !important; }
+body #hangarOverlay .hangarDesignRow{
+  grid-column:1 / -1 !important;
+  width:100% !important;
+  min-height:44px !important;
+  margin:2px 0 0 !important;
+  padding:8px 0 0 !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:8px !important;
+  border-top:1px solid rgba(124,240,255,.14) !important;
+}
+body #hangarOverlay .hangarDesignRow label{
+  flex:0 0 auto !important;
+  font-size:9px !important;
+  font-weight:900 !important;
+  text-transform:uppercase !important;
+  letter-spacing:.5px !important;
+  color:#8fcddd !important;
+}
+body #hangarOverlay .hangarDesignTrigger{
+  flex:1 !important;
+  min-width:0 !important;
+  height:28px !important;
+  padding:0 8px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:8px !important;
+  border:1px solid rgba(124,240,255,.3) !important;
+  border-radius:6px !important;
+  color:#eaf8ff !important;
+  background:#082436 !important;
+  font-weight:800 !important;
+  font-size:11px !important;
+  cursor:pointer !important;
+  text-align:left !important;
+}
+body #hangarOverlay .hangarDesignTrigger:hover{ border-color:rgba(124,240,255,.55) !important; }
+body #hangarOverlay .hangarDesignValue{ overflow:hidden !important; text-overflow:ellipsis !important; white-space:nowrap !important; }
+body #hangarOverlay .hangarDesignCaret{ flex:0 0 auto !important; opacity:.75 !important; }
+body #hangarOverlay .hangarDesignRow.disabled{ opacity:.55 !important; }
+body #hangarOverlay .hangarDesignRow.disabled .hangarDesignTrigger{ cursor:not-allowed !important; }
+body #hangarOverlay button:not(.gameWinMinBtn),
+body #hangarOverlay button:not(.gameWinMinBtn):hover,
+body #hangarOverlay button:not(.gameWinMinBtn):active,
+body #hangarOverlay .tile,
+body #hangarOverlay .tile:hover{
+  transform:none !important;
+  transition:none !important;
+}
+body #hangarOverlay button.primary:hover:not(:disabled){
+  border-color:rgba(124,240,255,.38) !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+body #hangarOverlay button.secondary:hover:not(:disabled){
+  border-color:rgba(124,240,255,.2) !important;
+  background:rgba(8,35,52,.62) !important;
+  box-shadow:none !important;
+}
+@media (max-width: 900px) {
+  #hangarOverlay #hangarWindow.gameWindow { width:calc(100vw - 16px) !important; height:calc(100vh - 24px) !important; min-width:0 !important; grid-template-columns:minmax(0,1fr) !important; }
+  html body #hangarOverlay #hangarWindow.gameWindow:not(.floating) { left:8px !important; top:70px !important; }
+  body #hangarOverlay .hangarWorkspace { grid-template-columns:minmax(0,1fr) !important; gap:9px !important; }
+}
+@media (max-width: 650px) {
+  #hangarOverlay #hangarWindow.gameWindow { grid-template-columns:1fr !important; grid-template-rows:26px minmax(0,1fr) !important; }
+  body #hangarOverlay .profileMainCard { grid-column:1 !important; grid-row:2 !important; padding:8px !important; }
+  body #hangarOverlay .profilePanel.active { padding:12px !important; }
+  body #hangarOverlay .hangarWorkspace { grid-template-columns:1fr !important; overflow-y:auto !important; }
+}
+
+/* Surcharge finale : fleches ↖ sur les boutons reduire (battent les blocs ci-dessus) */
+html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn,
+html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn,
+html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn { font-size:0 !important; }

@@ -28,7 +28,7 @@ Le jeu reste une application navigateur rendue avec Canvas. `ORBIT_ENGINE.js` co
 - `QUEST/QUEST_TYPES.js` : définitions et règles métier des quêtes.
 - `UI/UI_CANVAS_HUD.js` : informations Canvas du joueur, des NPC et des cibles.
 - `UI/UI_MINIMAP.js` : rendu complet de la mini-carte.
-- `SRC/CORE/WORLD_LAYER_RENDERER.js` : arrière-plans, parallaxe et murs texturés.
+- `SRC/CORE/WORLD_LAYER_RENDERER.js` : murs texturés (fonds et étoiles supprimés, vide spatial).
 - `SRC/CORE/FRAME_SYSTEMS.js` : déplacement inertiel, durées de vie, textes flottants et attraction des récompenses.
 - `SRC/CORE/ENGINE_TRAILS.js` : géométrie, simulation et rendu de la fumée des réacteurs.
 - `SRC/CORE/PROGRESSION.js` : courbe de niveaux, attribution d’expérience et barèmes configurables des NPC et quêtes.

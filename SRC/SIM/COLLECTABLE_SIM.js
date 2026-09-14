@@ -150,7 +150,7 @@ export function reviveCollectableSlot(store, mapId, uid, x, y) {
   return slot;
 }
 
-// Drops dynamiques (cargo / assemblage, à durée de vie) : { uid, type, x, y, amount, fromNpc, expiresAtMs }.
+// Drops dynamiques (cargo / assemblage, à durée de vie) : { uid, type, x, y, amount, fromNpc, ores, noDefReward, expiresAtMs }.
 export function addCollectableDrop(store, mapId, drop = {}, nowMs = 0) {
   const entry = getMapEntry(store, String(mapId), true);
   const uid = String(drop?.uid || `${String(drop?.type || "drop")}#${Date.now()}#${entry.drops.length}`);
@@ -161,10 +161,24 @@ export function addCollectableDrop(store, mapId, drop = {}, nowMs = 0) {
     y: asFiniteNumber(drop?.y, 0),
     amount: Math.max(0, Math.floor(Number(drop?.amount) || 0)) || null,
     fromNpc: drop?.fromNpc != null ? String(drop.fromNpc) : null,
+    ores: sanitizeDropOres(drop?.ores),
+    noDefReward: drop?.noDefReward === true,
     expiresAtMs: Math.max(0, Math.floor(Number(drop?.expiresAtMs) || 0)),
   };
   entry.drops.push(record);
   return record;
+}
+
+function sanitizeDropOres(ores) {
+  if (!ores || typeof ores !== "object") return null;
+  const out = {};
+  for (const [key, value] of Object.entries(ores)) {
+    const id = String(key || "");
+    const qty = Math.max(0, Math.floor(Number(value) || 0));
+    if (!/^[A-Za-z0-9_]{1,32}$/.test(id) || qty <= 0) continue;
+    out[id] = Math.min(qty, 1000000);
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 export function removeCollectableDrop(store, mapId, uid) {
@@ -225,6 +239,8 @@ export function deserializeCollectableStore(raw) {
             y: asFiniteNumber(d.y, 0),
             amount: Math.max(0, Math.floor(Number(d.amount) || 0)) || null,
             fromNpc: d.fromNpc != null ? String(d.fromNpc) : null,
+            ores: sanitizeDropOres(d.ores),
+            noDefReward: d.noDefReward === true,
             expiresAtMs: Math.max(0, Math.floor(Number(d.expiresAtMs) || 0)),
           })),
       };
