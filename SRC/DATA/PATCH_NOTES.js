@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.208",
+    "date": "2026-09-14T14:23:02+02:00",
+    "message": "gates: credits finaux x3 + npc confines map sauf poursuite radiation"
+  },
+  {
     "version": "0.207",
     "date": "2026-09-14T12:41:53+02:00",
     "message": "galaxy gates: tirage SAB, X6 rare, PLT-2021/3030, UBR-100, HSTRM-01, energie 0,1%"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.149",
     "date": "2026-09-11T15:50:54+02:00",
     "message": "Version auto 0.148"
-  },
-  {
-    "version": "0.148",
-    "date": "2026-09-11T15:50:33+02:00",
-    "message": "GG: alternance libre avec vagues persistées, retour base sans rechargement, sons portails, fix double respawn en gate"
   }
 ];
