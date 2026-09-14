@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.202",
+    "date": "2026-09-14T04:04:05+02:00",
+    "message": "equipement: Appliquer enregistre les 2 configs (brouillons 1+2)"
+  },
+  {
     "version": "0.201",
     "date": "2026-09-14T03:55:37+02:00",
     "message": "sync version 0.200 + patch-notes (hook post-push)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.143",
     "date": "2026-09-11T10:20:47+02:00",
     "message": "Lasers: bonus xN vaisseau+drones, prix rebalancés + LF-5, fix sauts portails"
-  },
-  {
-    "version": "0.142",
-    "date": "2026-09-10T22:16:31+02:00",
-    "message": "Pre-push roquettes"
   }
 ];
