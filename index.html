@@ -10,7 +10,7 @@
     // Fenêtre de départ à chaque refresh : pas de bypass session (la classe
     // orbitSessionReady n'est plus posée, l'overlay reste visible avec DÉPART).
     </script>
-  <link rel="stylesheet" href="style.css?v=ui-refresh-8" />
+  <link rel="stylesheet" href="style.css?v=ui-refresh-15" />
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -299,33 +299,36 @@
       <div class="ggBody">
         <div class="ggWorkspace">
           <nav class="ggGateNav">
-            <span>Galaxy Gates</span>
+            <span>Portails</span>
             <div id="ggTabs" class="ggTabs"></div>
           </nav>
           <div class="ggMain">
             <div class="ggCore">
               <button id="ggDeployBtn" class="ggDeployBtn ggDeployTop" type="button" data-gg-deploy hidden>Préparer le portail</button>
               <div class="ggPortalPreview">
+                <div class="ggPreviewTop">
+                  <button id="ggRewardsHelp" class="ggRewardsHelp" type="button" title="Récompenses">?</button>
+                  <small id="ggNpcRewardScale" class="ggNpcRewardScale">Récompenses des NPC ×1</small>
+                  <span class="ggBuiltLine">GG construite <b id="ggBuilt">0 / 1</b></span>
+                </div>
                 <img id="ggPortalImage" alt="Portail Galaxy Gate">
+                <div id="ggRewards" class="ggRewards ggRewardsTip"></div>
               </div>
               <div class="ggDetails">
-                <div class="ggMultiplierRow"><span>Multiplicateur</span><b id="ggMultiplier">x1</b><button id="ggMultiplierBtn" type="button" disabled>Activer</button></div>
-                <div><span>GG construite</span><b id="ggBuilt">0 / 1</b></div>
-                <div><span>Terminées</span><b id="ggCompleted">0</b></div>
+                <button class="ggMultiplierRow" id="ggMultiplierBtn" type="button" disabled><span>Multiplicateur</span><b id="ggMultiplier">x1</b><span class="ggMultiplierAction">Désactivée</span></button>
+              </div>
+              <div class="ggDetailsBottom">
                 <div><span>Vies</span><b id="ggLives">5 / 5</b></div>
                 <div><span>Vague</span><b id="ggWave">0 / 11</b></div>
+                <div class="ggPartsBar"><span>Pièces</span><strong id="ggParts">0 / 0</strong></div>
               </div>
-              <small id="ggNpcRewardScale" class="ggNpcRewardScale">Récompenses des NPC ×1</small>
-            </div>
-            <div class="ggPartsBar"><span>Pièces assemblées</span><strong id="ggParts">0 / 0</strong></div>
-            <div id="ggRewards" class="ggRewards"></div>
-            <div class="ggSpinControls">
-              <label for="ggSpinCount">Nombre de spins</label>
-              <select id="ggSpinCount">
-                <option value="1">1</option><option value="2">2</option><option value="5">5</option><option value="10">10</option><option value="50">50</option><option value="100">100</option>
-              </select>
-              <div class="ggSpinPrice"><strong><em id="ggCreditCost">100 000</em> crédits</strong></div>
-              <button id="ggSpinBtn" type="button" data-gg-spin>Lancer le spin</button>
+              <div class="ggSpinControls">
+                <label for="ggSpinCount">Nombre de spins</label>
+                <select id="ggSpinCount">
+                  <option value="1">1</option><option value="2">2</option><option value="5">5</option><option value="10">10</option><option value="50">50</option><option value="100">100</option>
+                </select>
+                <button id="ggSpinBtn" type="button" data-gg-spin><span>Lancer le Spin</span><span class="ggSpinSep"></span><span><em id="ggCreditCost">100 000</em>&nbsp;Crédits</span></button>
+              </div>
             </div>
           </div>
           <div class="ggSide">
@@ -339,6 +342,13 @@
             </section>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div id="ggBuiltOverlay" class="overlay" style="display:none;">
+      <div class="modal ggBuiltModal">
+        <h2 id="ggBuiltTitle">GG terminée</h2>
+        <button id="ggBuiltDeployBtn" class="primaryBtn" type="button">Préparer le portail</button>
       </div>
     </div>
 

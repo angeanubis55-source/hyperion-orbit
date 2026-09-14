@@ -2587,10 +2587,11 @@ function renderGalaxyGateWindow(message = "") {
     const armed = state.multiplierArmed?.[gate.id] === true;
     ui.ggMultiplierBtn.disabled = state.multipliers[gate.id] <= 1;
     ui.ggMultiplierBtn.classList.toggle("active", armed);
-    ui.ggMultiplierBtn.textContent = armed ? "Activé pour le prochain spin" : "Activer";
+    const actionLabel = ui.ggMultiplierBtn.querySelector(".ggMultiplierAction");
+    if (actionLabel) actionLabel.textContent = armed ? "Activée" : "Désactivée";
   }
   ui.ggBuilt.textContent = `${formatInteger(state.built[gate.id])} / ${GALAXY_GATE_BUILD_LIMIT}`;
-  ui.ggCompleted.textContent = formatInteger(state.completed[gate.id]);
+  if (ui.ggCompleted) ui.ggCompleted.textContent = formatInteger(state.completed[gate.id]);
   if (ui.ggLives) ui.ggLives.textContent = `${formatInteger(state.lives?.[gate.id] ?? gate.maxLives)} / ${formatInteger(gate.maxLives)}`;
   const activeWave = state.active === gate.id
     ? Math.min(gate.maxWaves, Math.max(1, Number(state.activeWave) || 1))
@@ -2639,9 +2640,9 @@ function renderGalaxyGateWindow(message = "") {
       return groups;
     }, {}));
     const appliedTexts = groupedApplications.map(applied => {
-      if (applied.rewardType === "ammo") return `Munitions ${escapeHtml(String(applied.rewardId || "").toUpperCase())} obtenues : ${formatInteger(applied.amount)} x${applied.multiplier}`;
-      if (applied.rewardType === "credits") return `Crédits obtenus : ${formatInteger(applied.amount)} x${applied.multiplier}`;
-      if (applied.rewardType === "energy") return `Énergies obtenues : ${formatInteger(applied.amount)} x${applied.multiplier}`;
+      if (applied.rewardType === "ammo") return `${formatInteger(applied.amount)} Munitions ${escapeHtml(String(applied.rewardId || "").toUpperCase())} (x${applied.multiplier})`;
+      if (applied.rewardType === "credits") return `${formatInteger(applied.amount)} Crédits (x${applied.multiplier})`;
+      if (applied.rewardType === "energy") return `${formatInteger(applied.amount)} Énergies (x${applied.multiplier})`;
       if (applied.rewardType === "parts") return `Pièces ${escapeHtml(GALAXY_GATE_DEFINITIONS[applied.rewardId]?.name || applied.rewardId)} obtenues : ${formatInteger(applied.amount)} x${applied.multiplier}`;
       return "";
     }).filter(Boolean);
@@ -2696,6 +2697,7 @@ ui.galaxyGateWindow?.addEventListener("click", event => {
   const button = event.target.closest("[data-gg-spin]");
   if (!button) return;
   saveProgressNow();
+  const builtBeforeSpin = Number(getCurrentUserFull()?.galaxyGates?.built?.[selectedGalaxyGateId] || 0);
   const result = spinCurrentUserGalaxyGate(selectedGalaxyGateId, Number(ui.ggSpinCount?.value || 1));
   if (!result.ok) {
     renderGalaxyGateWindow(result.error);
@@ -2703,6 +2705,14 @@ ui.galaxyGateWindow?.addEventListener("click", event => {
   }
   account.user = result.user;
   if (GALAXY_GATE_DEFINITIONS[result.state.lastOpenedGate]) selectedGalaxyGateId = result.state.lastOpenedGate;
+  // GG terminee par ce spin et prete a etre placee : modale auto.
+  try {
+    const builtNow = Number(account.user?.galaxyGates?.built?.[selectedGalaxyGateId] || 0);
+    const gateDef = GALAXY_GATE_DEFINITIONS[selectedGalaxyGateId];
+    const deployed = account.user?.galaxyGates?.deployed?.[selectedGalaxyGateId] === true;
+    const active = account.user?.galaxyGates?.active === selectedGalaxyGateId;
+    if (gateDef && builtBeforeSpin < GALAXY_GATE_BUILD_LIMIT && builtNow >= GALAXY_GATE_BUILD_LIMIT && !deployed && !active) showGgBuiltModal(selectedGalaxyGateId);
+  } catch {}
   player.credits = result.user.credits;
   player.ammo.x2 = result.user.ammo.x2;
   player.ammo.x3 = result.user.ammo.x3;
@@ -2715,6 +2725,28 @@ ui.galaxyGateWindow?.addEventListener("click", event => {
   renderGalaxyGateWindow([`${result.performed} spin(s)`, pieces, ammo, extras].filter(Boolean).join(" · "));
   window.dispatchEvent(new CustomEvent("orbit:galaxy-gates"));
 });
+
+function showGgBuiltModal(gateId) {
+  const overlay = document.getElementById("ggBuiltOverlay");
+  const title = document.getElementById("ggBuiltTitle");
+  const button = document.getElementById("ggBuiltDeployBtn");
+  if (!overlay || !title || !button) return;
+  const gate = GALAXY_GATE_DEFINITIONS[gateId];
+  title.textContent = `GG ${gate?.name || gateId} terminée`;
+  button.onclick = () => {
+    overlay.style.display = "none";
+    selectedGalaxyGateId = gateId;
+    renderGalaxyGateWindow();
+    ui.galaxyGateWindow?.querySelector("[data-gg-deploy]")?.click();
+    window.setTimeout(() => {
+      try {
+        const st = getCurrentUserFull()?.galaxyGates;
+        if (st && Number(st.built?.[gateId] || 0) >= GALAXY_GATE_BUILD_LIMIT && st.deployed?.[gateId] !== true && st.active !== gateId) showGgBuiltModal(gateId);
+      } catch {}
+    }, 600);
+  };
+  overlay.style.display = "grid";
+}
 
 renderGalaxyGateWindow();
 
