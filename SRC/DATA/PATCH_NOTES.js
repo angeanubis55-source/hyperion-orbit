@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.200",
+    "date": "2026-09-14T03:55:01+02:00",
+    "message": "fonds de carte supprimes (125Mo, vide spatial) + fusion css + stats absolues + mort/radiation/npc"
+  },
+  {
     "version": "0.199",
     "date": "2026-09-14T02:12:41+02:00",
     "message": "sync version 0.198 + patch-notes (hook post-push)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.141",
     "date": "2026-09-10T17:15:42+02:00",
     "message": "Anti-freeze sauvegardes: debounce 15s, save portail masquee, cache parse, historique borne a 30"
-  },
-  {
-    "version": "0.140",
-    "date": "2026-09-10T16:22:23+02:00",
-    "message": "Normalisation massive assets : chemins uppercase ASSETS/BACKGROUNDS/MAPS/PUBLIC/SRC, manifest regenere, scripts version corriges"
   }
 ];
