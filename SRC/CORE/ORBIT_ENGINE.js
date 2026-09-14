@@ -4,14 +4,23 @@ import { NpcEngine } from "../../NPC/NPC_ENGINE_RENDERER.js";
 import { ShipEngine } from "../../SHIP/SHIP_ENGINE_RENDERER.js";
 import { PetEngine } from "../../PET/PET_ENGINE_RENDERER.js";
 import {
+  PET_BUOY_COOLDOWN_SEC,
+  PET_BUOY_DAMAGE_PCT,
+  PET_BUOY_DURATION_SEC,
+  PET_BUOY_HP_PCT,
+  PET_BUOY_RADIUS,
   PET_GEAR_AUTOLOOT_TYPES,
+  PET_GEAR_HPLINK_COOLDOWN_SEC,
+  PET_GEAR_HPLINK_DURATION_SEC,
   PET_GEAR_ORE_TYPES,
   PET_GEAR_PICK_DELAY,
   PET_GEAR_TRADE_WINDOW_SEC,
+  PET_SHIELD_REGEN_PCT_PER_SEC,
   listEquippedGearOptions,
   getPetEquippedGearLevels,
   getPetGearRange,
   getPetRepairPct,
+  getPetSacrificeCooldownSec,
   getPetTradeBonusPct,
   getPetTradeCooldownSec,
   pickNearestWithin,
@@ -46,6 +55,7 @@ import {
   setPetActive,
   setPetActiveGear,
   setPetMode,
+  repairPet,
   activateCurrentUserBooster,
 } from "./ACCOUNT.js";
 import {
@@ -306,9 +316,13 @@ function applyRadiation(dt) {
   }
   if (dmg <= 0) return;
   resetRepairCooldown();
-  player.hp -= dmg;
-  const shown = Math.max(1, Math.round(dmg));
-  addPlayerCombatFloat(shown, "rgba(255,80,100,0.95)");
+  // Lien HP : la radiation aussi part sur le REX.
+  const radRest = absorbPetLinkDamage(dmg);
+  player.hp -= radRest;
+  if (radRest > 0) {
+    const shown = Math.max(1, Math.round(radRest));
+    addPlayerCombatFloat(shown, "rgba(255,80,100,0.95)");
+  }
 
   if (player.hp <= 0) {
     player.hp = 0;
@@ -2040,13 +2054,25 @@ function petShieldMaxForHud(pet, user) {
     const item = itemId ? findCatalogItem(itemId) : null;
     if (item?.module?.type === "shield") max += Number(item.module.bonusShield || 0) * mult;
   }
-  return Math.max(0, Math.floor(max));
+  return Math.max(0, Math.floor(max * (1 + goliathHeatPct() / 100)));
 }
 
 function wirePetWindow() {
   ui.petPlayBtn?.addEventListener("click", () => {
     const pet = account.user?.pet?.owned === true ? account.user.pet : null;
     if (!pet) return showToast("P.E.T non possédé.", 1.5);
+    // REX détruit : la clé répare (10 000 crédits, coque pleine).
+    if (!(Number(pet.hp) > 0)) {
+      const out = repairPet();
+      if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
+      account.user = out.user;
+      player.credits = out.user.credits;
+      setHudText(ui.shopCredits, formatInteger(player.credits));
+      loadAccountUser();
+      markProgressDirty();
+      window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+      return showToast("REX réparé (coque 10 %, bouclier 0).", 1.8);
+    }
     const out = setPetActive(!pet.active);
     if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
     loadAccountUser();
@@ -2091,6 +2117,12 @@ function placePetDropdown(btn, list) {
   list.style.width = `${Math.max(120, r.width)}px`;
 }
 
+// Libellé court du menu Mode : sans les codes G- ("G-AL3 · Auto-Loot" → "Auto-Loot").
+function shortGearLabel(label) {
+  const parts = String(label || "").split("·");
+  return (parts.length > 1 ? parts[parts.length - 1] : parts[0] || "").trim() || String(label || "");
+}
+
 // Un seul comportement à la fois : Passif, Mode combat ou un gear équipé.
 function applyPetModeValue(v) {
     const pet = account.user?.pet?.owned === true ? account.user.pet : null;
@@ -2099,8 +2131,10 @@ function applyPetModeValue(v) {
     // Un seul comportement à la fois : Passif, Mode combat ou un gear équipé.
     if (v.startsWith("gear:")) {
       const key = v.slice("gear:".length).toLowerCase();
-      // Changer de comportement ferme le Trader (→ cooldown).
+      // Changer de comportement ferme le Trader (→ cooldown) et coupe lien/bouée.
       if (traWindowActive()) endTraSession();
+      if (hplLinkActive() && key !== "hpl") endHplLink("gear");
+      if (buoySessionActive() && key !== petBuoy.key) endBuoySession("gear");
       if (key === "tra") {
         const left = traCooldownLeftSec();
         if (left > 0) {
@@ -2138,6 +2172,46 @@ function applyPetModeValue(v) {
         showToast(`Cargo Trader : commerce ouvert 10 s (+${getPetTradeBonusPct(lvl)} %)`, 2);
         return;
       }
+      if (key === "fs") {
+        const left = fsCooldownLeftSec();
+        if (left > 0) {
+          showToast(`Flamme sacrificielle prête dans ${Math.ceil(left)} s`, 1.8);
+          loadAccountUser();
+          return;
+        }
+        triggerSacrificeFlame();
+        return;
+      }
+      if (key === "hpl") {
+        if (hplLinkActive()) {
+          showToast("Lien HP déjà actif.", 1.2);
+          loadAccountUser();
+          return;
+        }
+        const left = hplCooldownLeftSec();
+        if (left > 0) {
+          showToast(`Lien HP prêt dans ${Math.ceil(left)} s`, 1.8);
+          loadAccountUser();
+          return;
+        }
+        startHplLink();
+        return;
+      }
+      if (key === "bc" || key === "bh") {
+        if (buoySessionActive() && petBuoy.key === key) {
+          showToast("Bouée déjà active.", 1.2);
+          loadAccountUser();
+          return;
+        }
+        const left = buoyCooldownLeftSec(key);
+        if (left > 0) {
+          showToast(`Bouée prête dans ${Math.ceil(left)} s`, 1.8);
+          loadAccountUser();
+          return;
+        }
+        startBuoySession(key);
+        return;
+      }
       const outMode = setPetMode("passive");
       if (!outMode?.ok) return showToast(outMode?.error || "Impossible.", 1.5);
       const out = setPetActiveGear(key);
@@ -2146,12 +2220,14 @@ function applyPetModeValue(v) {
       petLocator.enemyId = null;
       petLocator.needsPick = true;
       loadAccountUser();
-      const label = petEquippedGearOptions().find((e) => e.key === key)?.label || key.toUpperCase();
+      const label = shortGearLabel(petEquippedGearOptions().find((e) => e.key === key)?.label) || key.toUpperCase();
       showToast(`P.E.T : ${label} actif`, 1.2);
       return;
     }
-    // Changer de comportement ferme le Trader (→ cooldown).
+    // Changer de comportement ferme le Trader (→ cooldown) et coupe lien/bouée.
     if (traWindowActive()) endTraSession();
+    if (hplLinkActive()) endHplLink("gear");
+    if (buoySessionActive()) endBuoySession("gear");
     const out = setPetMode(v);
     if (!out?.ok) {
       showToast(out?.error || "Impossible.", 1.5);
@@ -2174,7 +2250,7 @@ function updatePetHud() {
 
   const level = has ? getPetLevel(pet.exp) : 0;
   const exp = has ? Math.max(0, Number(pet.exp) || 0) : 0;
-  const hpMax = has ? getPetMaxHp(level) : 0;
+  const hpMax = has ? petMaxHpWithHeat(pet) : 0;
   const hp = has ? Math.max(0, Math.min(hpMax, Math.floor(Number(pet.hp)))) : 0;
   const shMax = has ? petShieldMaxForHud(pet, account.user) : 0;
   const sh = has
@@ -2197,29 +2273,39 @@ function updatePetHud() {
   setHudWidth(ui.petFuelBar, "100%");
 
   if (ui.petPlayBtn) {
-    const label = pet?.active === true
-      ? '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="3" y="2" width="4" height="12" rx="1" fill="#eaffff"/><rect x="9" y="2" width="4" height="12" rx="1" fill="#eaffff"/></svg>'
-      : '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 2 L13 8 L4 14 Z" fill="#eaffff"/></svg>';
+    const destroyed = has && !(Number(pet.hp) > 0);
+    const label = destroyed
+      ? '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M11.5 1a3.5 3.5 0 0 0-4.6 4.6L1 11.5V15h3.5l5.9-5.9A3.5 3.5 0 0 0 15 4.5l-2.3 2.3-2.4-.6-.6-2.4L11.5 1z" fill="#eaffff"/></svg>'
+      : pet?.active === true
+        ? '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="3" y="2" width="4" height="12" rx="1" fill="#eaffff"/><rect x="9" y="2" width="4" height="12" rx="1" fill="#eaffff"/></svg>'
+        : '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 2 L13 8 L4 14 Z" fill="#eaffff"/></svg>';
     if (ui.petPlayBtn.innerHTML !== label) ui.petPlayBtn.innerHTML = label;
-    setHudAttr(ui.petPlayBtn, "title", pet?.active === true ? "Désactiver le P.E.T" : "Activer le P.E.T");
-    setHudClass(ui.petPlayBtn, "isOn", pet?.active === true);
+    setHudAttr(ui.petPlayBtn, "title", destroyed
+      ? "Réparer le REX — 10 000 crédits"
+      : pet?.active === true ? "Désactiver le P.E.T" : "Activer le P.E.T");
+    setHudClass(ui.petPlayBtn, "isOn", pet?.active === true && !destroyed);
   }
   // Menu custom Mode (+ gears équipés, noms boutique, un seul choix actif).
   if (ui.petModeBtn && ui.petModeList) {
     const mode = normalizePetMode(pet?.mode);
     const equipped = has ? petEquippedGearOptions() : [];
-    // G-TRA en cooldown : option grisée avec le compte à rebours (non cliquable).
-    const traLeft = Math.ceil(traCooldownLeftSec());
-    const opts = [{ value: "passive", label: "G-A · Passif" }, { value: "combat", label: "G-CM · Combat" }]
-      .concat(equipped.map((e) => ({
-        value: `gear:${e.key}`,
-        label: e.key === "tra" && traLeft > 0 ? `${e.label} (${traLeft} s)` : e.label,
-        disabled: e.key === "tra" && traLeft > 0,
-      })));
+    // Gears à cooldown (TRA, FS, HPL, bouées) : option grisée + compte à rebours.
+    const cdLeft = { tra: Math.ceil(traCooldownLeftSec()), fs: Math.ceil(fsCooldownLeftSec()), hpl: Math.ceil(hplCooldownLeftSec()), bc: Math.ceil(buoyCooldownLeftSec("bc")), bh: Math.ceil(buoyCooldownLeftSec("bh")) };
+    const opts = [{ value: "passive", label: "Passif" }, { value: "combat", label: "Combat" }]
+      .concat(equipped.map((e) => {
+        const left = Number(cdLeft[e.key]) || 0;
+        const short = shortGearLabel(e.label);
+        return {
+          value: `gear:${e.key}`,
+          label: left > 0 ? `${short} (${left} s)` : short,
+          disabled: left > 0,
+        };
+      }));
     const activeKey = petActiveGearKey();
     const want = activeKey ? `gear:${activeKey}` : mode;
     const wantOpt = opts.find((o) => o.value === want) || opts[0];
-    const sig = `${mode}|${opts.map((o) => `${o.value}${o.disabled ? "!" : ""}`).join(",")}`;
+    // Libellés inclus : le compte à rebours (Xs) reconstruit chaque seconde.
+    const sig = `${mode}|${opts.map((o) => `${o.value}=${o.label}`).join(",")}`;
     if (sig !== lastPetModeSig) {
       lastPetModeSig = sig;
       ui.petModeList.innerHTML = opts.map((o) =>
@@ -2279,6 +2365,24 @@ function updatePetHud() {
   }
   // Cargo Trader (G-TRA) : expiration des 10 s ou fermeture manuelle → cooldown.
   if (petTrader.until > 0 && (!isOreTradeWindowOpen() || !traWindowActive())) endTraSession();
+  // Lien HP (G-HPL) : fin des 20 s, REX désactivé ou config changée → coupure.
+  if (petLink.until > 0) {
+    if (performance.now() / 1000 >= petLink.until) endHplLink("expired");
+    else if (account.user?.pet?.active !== true) endHplLink("off");
+    else if (petConfigKey() !== petLink.configKey) endHplLink("config");
+  }
+  // Bouées (G-BC / G-BH) : fin des 120 s ou REX désactivé → coupure. Aura PV.
+  // Config changée : on garde si la bouée est équipée sur les 2, sinon coupée.
+  // (L'IEM ne coupe jamais la bouée.)
+  if (petBuoy.until > 0) {
+    if (performance.now() / 1000 >= petBuoy.until) endBuoySession("expired");
+    else if (account.user?.pet?.active !== true) endBuoySession("off");
+    else if (petConfigKey() !== petBuoy.configKey) {
+      if (Number(petGearLevels()[petBuoy.key]) > 0) petBuoy.configKey = petConfigKey();
+      else endBuoySession("config");
+    }
+  }
+  tickBuoyHpAura();
   // Sprite de la fenêtre suit le palier de niveau (sans recharger en boucle).
   const stage = has ? getPetStage(level) : 0;
   if (stage !== lastPetHudStage) {
@@ -3688,7 +3792,7 @@ function awardExperience(amount, source = "") {
   if (result.gained <= 0) return result;
   for (const drone of account.user.drones?.items || []) {
     const previousLevel = Math.max(1, Number(drone.level) || getDroneLevel(drone.exp));
-    drone.exp = Math.max(0, Number(drone.exp) || 0) + result.gained * DRONE_XP_SHARE;
+    drone.exp = Math.max(0, Number(drone.exp) || 0) + result.gained * DRONE_XP_SHARE * (isLeonovHomeActive() ? 2 : 1);
     drone.level = getDroneLevel(drone.exp);
     if (drone.level > previousLevel) queueDroneLevelTransition(drone.id, previousLevel, drone.level);
   }
@@ -3696,7 +3800,7 @@ function awardExperience(amount, source = "") {
   // ET activé (bouton play de la fenêtre P.E.T).
   if (account.user.pet?.owned === true && account.user.pet.active === true) {
     const previousPetLevel = Math.max(0, Number(account.user.pet.level) || getPetLevel(account.user.pet.exp));
-    account.user.pet.exp = Math.max(0, Number(account.user.pet.exp) || 0) + result.gained * PET_XP_SHARE * playerBoosterMults().petXp;
+    account.user.pet.exp = Math.max(0, Number(account.user.pet.exp) || 0) + result.gained * PET_XP_SHARE * playerBoosterMults().petXp * (isLeonovHomeActive() ? 2 : 1);
     account.user.pet.level = getPetLevel(account.user.pet.exp);
     if (account.user.pet.level > previousPetLevel) {
       showToast(`P.E.T niveau ${account.user.pet.level} atteint !`, 2.6);
@@ -4236,6 +4340,7 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
     1,
     Math.floor((shipBaseHP + (stats.bonusFlatHP || 0)) * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp)
   );
+  refreshBuoyHpBase();
 
   player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield * playerUpgradeMults().shield));
   // Absorption officielle du générateur équipé (max monté), défaut 80 %.
@@ -4284,7 +4389,7 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   const shipBaseSpeed = Number(pack?.speed || 0);
   player.baseSpeed = Math.max(
     10,
-    Math.floor((shipBaseSpeed + (stats.bonusSpeed || 0)) * playerUpgradeMults().speed)
+    Math.floor((shipBaseSpeed + (stats.bonusSpeed || 0)) * playerUpgradeMults().speed * (stats.speedMult || 1))
   );
 
   player.accel = BASE_RUN.accel;
@@ -4913,6 +5018,15 @@ function pickEnemyAtScreen(sx, sy) {
     if (d2 < bestD2) {
       best = e;
       bestD2 = d2;
+    }
+  }
+
+  // Repli : notre REX (si en jeu et en vie), après les NPC.
+  if (!best && petLockValid()) {
+    const dx = w.x - petState.x;
+    const dy = w.y - petState.y;
+    if (Math.abs(dx) <= PET_DRAW_W / 2 && Math.abs(dy) <= PET_DRAW_H / 2) {
+      best = petTargetProxy;
     }
   }
 
@@ -6322,6 +6436,7 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
 
   player.hpMax = Math.max(1, Math.floor((shipBaseHP + (stats.bonusFlatHP || 0)) * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp));
   player.hp = Math.max(1, Math.floor(player.hpMax * oldHpPct));
+  refreshBuoyHpBase();
 
   player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield * playerUpgradeMults().shield));
   player.sh = Math.max(0, Math.floor(player.shMax * oldShPct));
@@ -6345,7 +6460,7 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
   player.laserDmgMult = BASE_RUN.laserDmgMult;
 
   const shipBaseSpeed = Number(pack?.speed || 0);
-  player.baseSpeed = Math.max(10, Math.floor((shipBaseSpeed + (stats.bonusSpeed || 0)) * playerUpgradeMults().speed));
+  player.baseSpeed = Math.max(10, Math.floor((shipBaseSpeed + (stats.bonusSpeed || 0)) * playerUpgradeMults().speed * (stats.speedMult || 1)));
 
 player.accel = BASE_RUN.accel;
 player.friction = BASE_RUN.friction;
@@ -7897,6 +8012,8 @@ const PET_FOLLOW_RADIUS = 400;
 const PET_RETURN_CLEAR = 300;
 const PET_REST_RADIUS = 300;
 const PET_COMBAT_RADIUS = 300;
+// Bouée (G-BC / G-BH) : le REX nous colle fortement en passif.
+const PET_BUOY_REST_RADIUS = 120;
 // Taille d'affichage : taille réelle des sprites (154×137, sans réduction).
 const PET_DRAW_W = 154;
 const PET_DRAW_H = 137;
@@ -7925,10 +8042,47 @@ function notePetAttacker(enemy) {
   }
 }
 
+// Dégâts du joueur sur son propre REX (bouclier puis coque, comme un NPC).
+function damagePetFromPlayer(dmg) {
+  const pet = account.user?.pet;
+  const out = { total: 0, sh: 0, hp: 0 };
+  const amount = Math.max(0, Number(dmg) || 0);
+  if (!pet || !(Number(pet.hp) > 0) || !(amount > 0)) return out;
+  let remaining = amount;
+  const shMax = petShieldMaxForHud(pet, account.user);
+  if (shMax > 0) {
+    const cur = pet.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : shMax;
+    const absorbed = Math.min(cur, remaining);
+    if (absorbed > 0) {
+      pet.sh = cur - absorbed;
+      remaining -= absorbed;
+      out.sh = absorbed;
+    }
+  }
+  if (remaining > 0) {
+    const hpBefore = Number(pet.hp);
+    pet.hp = Math.max(0, hpBefore - remaining);
+    out.hp = Math.min(remaining, hpBefore);
+  }
+  out.total = out.sh + out.hp;
+  markProgressDirty();
+  if (pet.hp <= 0) {
+    // Destruction par nos tirs : explosion + son comme un NPC.
+    spawnExplosion(petState.x, petState.y, 1.0);
+    SFX.play("npcDeath", { maxVoices: 16, cooldown: 0 });
+    onPetDestroyed();
+    showToast("REX détruit.", 1.8);
+    if (petLink.until > 0) endHplLink("destroyed");
+  }
+  return out;
+}
+
 // Autorise l'assistance sur cette cible seulement après un dégât confirmé du
 // joueur. Un MISS, un lock ou le simple démarrage du tir ne passe pas ici.
 function notePetPlayerDamage(enemy) {
   if (!enemy || enemy.id == null) return;
+  // Le REX ne riposte jamais contre nous.
+  if (enemy.isPetTarget) return;
   petState.assistTarget = enemy;
 }
 
@@ -7962,7 +8116,7 @@ function petVolleyDamage(pet, user, target) {
       protoPct += pct;
     }
   }
-  return { total: base * mult * (1 + protoPct / 100), count: lasers.length };
+  return { total: base * mult * (1 + protoPct / 100) * (1 + goliathHeatPct() / 100), count: lasers.length };
 }
 
 function firePetVolley(target) {
@@ -8066,17 +8220,317 @@ function petActiveGearKey() {
   return Number(levels[want]) > 0 ? want : null;
 }
 
+// Cooldowns des gears persistés en temps réel (timestamps Date.now :
+// survivent au refresh, contrairement aux sessions qui s'arrêtent).
+function getPetGearCdUntil(key) {
+  return Math.max(0, Number(account.user?.pet?.gearCds?.[key]) || 0);
+}
+
+function setPetGearCd(key, seconds) {
+  const pet = account.user?.pet;
+  if (!pet) return;
+  pet.gearCds = pet.gearCds && typeof pet.gearCds === "object" ? pet.gearCds : {};
+  pet.gearCds[key] = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
+  saveProgressNow();
+}
+
+function petGearCdLeftSec(key) {
+  return Math.max(0, (getPetGearCdUntil(key) - Date.now()) / 1000);
+}
+
 // Cargo Trader (G-TRA) : fenêtre commerce hors base pendant 10 s, puis cooldown.
 // Fermée avant la fin (ou à l'expiration) : impossible de rouvrir avant le cooldown.
 // À la fin, retour au comportement d'avant (mode + gear), pas Passif forcé.
-const petTrader = { until: 0, cooldownUntil: 0, level: 0, prevMode: null, prevGear: null };
+const petTrader = { until: 0, level: 0, prevMode: null, prevGear: null };
 
 function traWindowActive() {
   return petTrader.until > 0 && performance.now() / 1000 < petTrader.until;
 }
 
 function traCooldownLeftSec() {
-  return Math.max(0, petTrader.cooldownUntil - performance.now() / 1000);
+  return petGearCdLeftSec("tra");
+}
+
+// Lien HP (G-HPL, niveau unique) : 20 s, cooldown 240 s. Mixé au mode combat
+// (le REX se bat) + éclair entre lui et nous. Tous les dégâts coque, quelle
+// que soit la source, sont redirigés vers le REX. Coupures : fin des 20 s,
+// REX détruit, autre matériel, changement de config, IEM.
+const petLink = { until: 0, configKey: null, prevMode: null, prevGear: null };
+
+function hplLinkActive() {
+  return petLink.until > 0
+    && performance.now() / 1000 < petLink.until
+    && account.user?.pet?.active === true
+    && Number(account.user.pet.hp) > 0;
+}
+
+function hplCooldownLeftSec() {
+  return petGearCdLeftSec("hpl");
+}
+
+function petConfigKey() {
+  const user = account.user;
+  const hangar = (user?.hangars || []).find((h) => h?.active) || null;
+  if (!hangar) return null;
+  return `${String(hangar.id)}:${String(Number(hangar.activeConfig) === 2 ? 2 : 1)}`;
+}
+
+function startHplLink() {
+  const lvl = Math.floor(Number(petGearLevels().hpl) || 0);
+  if (!(lvl > 0)) {
+    loadAccountUser();
+    return showToast("Gear déséquipé.", 1.5);
+  }
+  const pet = account.user?.pet;
+  if (!(Number(pet?.hp) > 0)) {
+    loadAccountUser();
+    return showToast("Lien HP : REX détruit, répare-le.", 1.8);
+  }
+  petLink.prevMode = normalizePetMode(pet?.mode);
+  const prevGear = String(pet?.activeGear || "").toLowerCase() || null;
+  petLink.prevGear = prevGear && prevGear !== "hpl" ? prevGear : null;
+  petLink.configKey = petConfigKey();
+  petLink.until = performance.now() / 1000 + PET_GEAR_HPLINK_DURATION_SEC;
+  setPetMode("combat");
+  setPetActiveGear("hpl");
+  loadAccountUser();
+  showToast("Lien HP : dégâts coque redirigés 20 s", 2);
+}
+
+function endHplLink(reason) {
+  if (petLink.until <= 0) return;
+  petLink.until = 0;
+  petLink.configKey = null;
+  setPetGearCd("hpl", PET_GEAR_HPLINK_COOLDOWN_SEC);
+  if (String(account.user?.pet?.activeGear || "").toLowerCase() === "hpl") {
+    setPetActiveGear(null);
+    // Retour au comportement d'avant (si toujours équipé).
+    if (petLink.prevMode) setPetMode(petLink.prevMode);
+    const pg = petLink.prevGear;
+    if (pg && pg !== "hpl" && Number(petGearLevels()[pg]) > 0) {
+      setPetActiveGear(pg);
+      if (pg === "el") {
+        petLocator.manualType = null;
+        petLocator.enemyId = null;
+        petLocator.needsPick = true;
+      }
+    }
+  }
+  petLink.prevMode = null;
+  petLink.prevGear = null;
+  loadAccountUser();
+  const messages = {
+    expired: "Lien HP terminé — cooldown 240 s",
+    destroyed: "Lien rompu : REX détruit — cooldown 240 s",
+    gear: "Lien rompu : autre matériel — cooldown 240 s",
+    config: "Lien rompu : configuration changée — cooldown 240 s",
+    emp: "Lien rompu : IEM — cooldown 240 s",
+    off: "Lien rompu : REX désactivé — cooldown 240 s",
+  };
+  showToast(messages[reason] || messages.expired, 2);
+}
+
+// Portail / play : le REX respawn à côté de nous au lieu de traverser la carte.
+let petMapId = null;
+let wasPetOn = false;
+
+function resetPetSpawn() {
+  petState.ready = false;
+  petState.target = null;
+  petState.fetchId = null;
+  petState.fetchHold = 0;
+  petLocator.enemyId = null;
+  petLocator.manualType = null;
+}
+
+// Mort du REX : annule collecte, locator et lien visuel, purge fumée et réacteur.
+function onPetDestroyed() {
+  petState.fetchId = null;
+  petState.fetchHold = 0;
+  petState.repTickT = 0;
+  petState.shTickT = 0;
+  petState.target = null;
+  petState.combatTarget = null;
+  petState.assistTarget = null;
+  petLocator.enemyId = null;
+  petLocator.manualType = null;
+  // Flamme du réacteur éteinte + traînées existantes supprimées.
+  try { petEngine.states.delete(petState); } catch {}
+  for (let i = engineTrails.length - 1; i >= 0; i--) {
+    if (engineTrails[i]?.ownerPet) engineTrails.splice(i, 1);
+  }
+}
+
+// Part coque redirigée vers le REX (toutes sources). Retourne le reste au joueur.
+function absorbPetLinkDamage(hpAmount) {
+  if (!(hpAmount > 0) || !hplLinkActive()) return hpAmount;
+  const pet = account.user?.pet;
+  if (!pet || !(Number(pet.hp) > 0)) return hpAmount;
+  const taken = Math.min(Number(pet.hp), hpAmount);
+  pet.hp = Number(pet.hp) - taken;
+  markProgressDirty();
+  if (taken >= 1) {
+    addFloatText(
+      petState.x + (Math.random() - 0.5) * 60,
+      petState.y - 90 - Math.random() * 20,
+      Math.round(taken),
+      "rgba(255,80,100,0.95)",
+      { size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+    );
+  }
+  if (pet.hp <= 0) {
+    pet.hp = 0;
+    onPetDestroyed();
+    endHplLink("destroyed");
+  }
+  return hpAmount - taken;
+}
+
+// Bouées (G-BC combat / G-BH coque, niveau unique) : 120 s, cooldown 240 s.
+// Le REX colle le joueur en passif, halo continu de 500 : +5 % dégâts (rouge)
+// ou +5 % PV max (vert) quand on est dedans.
+const petBuoy = { key: null, until: 0, prevMode: null, prevGear: null, configKey: null };
+
+function buoySessionActive() {
+  return (petBuoy.key === "bc" || petBuoy.key === "bh") && petBuoy.until > 0
+    && performance.now() / 1000 < petBuoy.until;
+}
+
+function buoyCooldownLeftSec(key) {
+  return petGearCdLeftSec(key);
+}
+
+function buoyPlayerInside() {
+  if (!buoySessionActive() || !petState.ready || player.dead || !started) return false;
+  return Math.hypot(player.x - petState.x, player.y - petState.y) <= PET_BUOY_RADIUS;
+}
+
+// × dégâts du joueur dans le halo rouge.
+function buoyDamageMult() {
+  return petBuoy.key === "bc" && buoyPlayerInside() ? 1 + PET_BUOY_DAMAGE_PCT / 100 : 1;
+}
+
+function startBuoySession(key) {
+  if (!(Number(petGearLevels()[key]) > 0)) {
+    loadAccountUser();
+    return showToast("Gear déséquipé.", 1.5);
+  }
+  const pet = account.user?.pet;
+  if (!(Number(pet?.hp) > 0)) {
+    loadAccountUser();
+    return showToast("Bouée : REX détruit, répare-le.", 1.8);
+  }
+  petBuoy.prevMode = normalizePetMode(pet?.mode);
+  const prevGear = String(pet?.activeGear || "").toLowerCase() || null;
+  petBuoy.prevGear = prevGear && prevGear !== key ? prevGear : null;
+  petBuoy.key = key;
+  petBuoy.until = performance.now() / 1000 + PET_BUOY_DURATION_SEC;
+  petBuoy.configKey = petConfigKey();
+  setPetMode("passive");
+  setPetActiveGear(key);
+  loadAccountUser();
+  showToast(key === "bc"
+    ? "Bouée combat : +5 % dégâts dans le halo 120 s"
+    : "Bouée coque : +5 % PV max dans le halo 120 s", 2);
+}
+
+function endBuoySession(reason) {
+  if (!(petBuoy.key === "bc" || petBuoy.key === "bh") || petBuoy.until <= 0) return;
+  const key = petBuoy.key;
+  petBuoy.key = null;
+  petBuoy.until = 0;
+  setPetGearCd(key, PET_BUOY_COOLDOWN_SEC);
+  if (String(account.user?.pet?.activeGear || "").toLowerCase() === key) {
+    setPetActiveGear(null);
+    // Retour au comportement d'avant (si toujours équipé).
+    if (petBuoy.prevMode) setPetMode(petBuoy.prevMode);
+    const pg = petBuoy.prevGear;
+    if (pg && pg !== key && Number(petGearLevels()[pg]) > 0) {
+      setPetActiveGear(pg);
+      if (pg === "el") {
+        petLocator.manualType = null;
+        petLocator.enemyId = null;
+        petLocator.needsPick = true;
+      }
+    }
+  }
+  petBuoy.prevMode = null;
+  petBuoy.prevGear = null;
+  loadAccountUser();
+  const messages = {
+    expired: "Bouée terminée — cooldown 240 s",
+    gear: "Bouée coupée : autre matériel — cooldown 240 s",
+    off: "Bouée coupée : REX désactivé — cooldown 240 s",
+    destroyed: "Bouée coupée : REX détruit — cooldown 240 s",
+    config: "Bouée coupée : config sans bouée — cooldown 240 s",
+  };
+  showToast(messages[reason] || messages.expired, 2);
+}
+
+// Aura coque : +5 % PV max dans le halo vert (retirés en sortant).
+function tickBuoyHpAura() {
+  const inside = petBuoy.key === "bh" && buoyPlayerInside();
+  if (inside && !player.buoyHpBuff) {
+    player.buoyHpBuff = true;
+    player.hpMaxBase = player.hpMax;
+    player.hpMax = Math.max(1, Math.round(player.hpMax * (1 + PET_BUOY_HP_PCT / 100)));
+    player.hp = Math.min(player.hpMax, Math.round(player.hp * (1 + PET_BUOY_HP_PCT / 100)));
+    markProgressDirty();
+  } else if (!inside && player.buoyHpBuff) {
+    player.buoyHpBuff = false;
+    if (Number(player.hpMaxBase) > 0) player.hpMax = Math.max(1, Math.floor(Number(player.hpMaxBase)));
+    player.hp = Math.min(player.hp, player.hpMax);
+    markProgressDirty();
+  }
+}
+
+// Recalcul de vie (hangar/vaisseau) pendant le buff : rebase sans le perdre.
+function refreshBuoyHpBase() {
+  if (!player.buoyHpBuff) return;
+  player.hpMaxBase = player.hpMax;
+  player.hpMax = Math.max(1, Math.round(player.hpMax * (1 + PET_BUOY_HP_PCT / 100)));
+  player.hp = Math.min(player.hp, player.hpMax);
+}
+
+// Flamme sacrificielle (G-FS, niveau unique) : transfert instantané vers le vaisseau.
+// REX à zéro → rien + retour passif (sans cooldown). Sinon : min(bouclier REX,
+// manque du vaisseau) — tout si besoin — puis passif + cooldown 90 s.
+function fsCooldownLeftSec() {
+  return petGearCdLeftSec("fs");
+}
+
+function triggerSacrificeFlame() {
+  const lvl = Math.floor(Number(petGearLevels().fs) || 0);
+  if (!(lvl > 0)) {
+    loadAccountUser();
+    return showToast("Gear déséquipé.", 1.5);
+  }
+  const pet = account.user?.pet;
+  const shMax = petShieldMaxForHud(pet, account.user);
+  const rexSh = pet?.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : shMax;
+  if (!(rexSh > 0)) {
+    setPetMode("passive");
+    setPetActiveGear(null);
+    loadAccountUser();
+    return showToast("Flamme sacrificielle : REX sans bouclier.", 1.8);
+  }
+  const missing = player.shMax - player.sh;
+  const amount = Math.min(rexSh, Math.max(0, missing));
+  if (!(amount > 0)) {
+    setPetMode("passive");
+    setPetActiveGear(null);
+    loadAccountUser();
+    return showToast("Bouclier déjà plein.", 1.5);
+  }
+  pet.sh = Math.max(0, rexSh - amount);
+  player.sh = Math.min(player.shMax, player.sh + amount);
+  addPlayerCombatFloat(amount, "rgba(70,180,255,0.98)", "+");
+  markProgressDirty();
+  setPetGearCd("fs", getPetSacrificeCooldownSec(lvl));
+  setPetMode("passive");
+  setPetActiveGear(null);
+  loadAccountUser();
+  showToast(`Flamme sacrificielle : +${formatInteger(Math.round(amount))} bouclier`, 2);
 }
 
 function openTraTradeWindow() {
@@ -8096,7 +8550,7 @@ function endTraSession() {
   if (petTrader.until <= 0) return;
   petTrader.until = 0;
   if (isOreTradeWindowOpen()) closeOreTradeWindow();
-  petTrader.cooldownUntil = performance.now() / 1000 + getPetTradeCooldownSec(petTrader.level);
+  setPetGearCd("tra", getPetTradeCooldownSec(petTrader.level));
   petTrader.level = 0;
   if (String(account.user?.pet?.activeGear || "").toLowerCase() === "tra") {
     setPetActiveGear(null);
@@ -8119,11 +8573,11 @@ function endTraSession() {
   showToast(`Cargo Trader terminé — cooldown ${wait} s`, 2);
 }
 
-// Gear actif unique sous forme filtrée { al, ar, el, rep, tra } (0 = inactif).
+// Gear actif unique sous forme filtrée { al, ar, el, rep, tra, fs, hpl, bc, bh } (0 = inactif).
 function petActiveGears() {
   const levels = petGearLevels();
   const active = petActiveGearKey();
-  const gears = { al: 0, ar: 0, el: 0, rep: 0, tra: 0 };
+  const gears = { al: 0, ar: 0, el: 0, rep: 0, tra: 0, fs: 0, hpl: 0, bc: 0, bh: 0 };
   if (active && Number(levels[active]) > 0) gears[active] = Math.floor(Number(levels[active]));
   return gears;
 }
@@ -8216,10 +8670,19 @@ function tickPetPassiveGears(dt) {
   if (!pet || pet.active !== true || !petState.ready || player.dead || !started) return;
   // Un seul gear actif à la fois (sélecteur fenêtre P.E.T).
   const gears = petActiveGears();
-  // G-REP : 3 / 4 / 5 % de la coque max par pallier d'1 s, +X vert comme le vaisseau.
+  // Récupération (coque + bouclier) : tourne même REX détruit (revive via G-REP).
+  tickPetRecovery(dt, pet, gears);
+  if (!(Number(pet.hp) > 0)) return;
+  // La collecte (G-AL / G-AR) se fait en volant jusqu'à la box
+  // (voir updatePet) ; ici : localisateur uniquement.
+  tickPetLocator(gears, dt);
+}
+
+// Récupération coque/bouclier du REX (palliers d'1 s + indicateurs).
+function tickPetRecovery(dt, pet, gears) {
   const repPct = getPetRepairPct(gears.rep);
   if (repPct > 0) {
-    const max = getPetMaxHp(getPetLevel(pet.exp));
+    const max = petMaxHpWithHeat(pet);
     const cur = Number.isFinite(Number(pet.hp)) ? Number(pet.hp) : max;
     if (cur < max - 0.01) {
       petState.repTickT = (petState.repTickT || 0) + dt;
@@ -8245,6 +8708,34 @@ function tickPetPassiveGears(dt) {
   } else {
     petState.repTickT = 0;
   }
+  // Bouclier : recharge passive 5 %/s par pallier d'1 s, +X bleu comme le vaisseau.
+  const petShMax = petShieldMaxForHud(pet, account.user);
+  if (petShMax > 0) {
+    const curSh = pet.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : petShMax;
+    if (curSh < petShMax - 0.01) {
+      petState.shTickT = (petState.shTickT || 0) + dt;
+      if (petState.shTickT >= 1.0) {
+        petState.shTickT -= 1.0;
+        const oldSh = pet.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : petShMax;
+        pet.sh = Math.min(petShMax, oldSh + petShMax * PET_SHIELD_REGEN_PCT_PER_SEC / 100);
+        const shGain = Math.round(pet.sh - oldSh);
+        if (shGain > 0) {
+          addFloatText(
+            petState.x + (Math.random() - 0.5) * 60,
+            petState.y - 110 - Math.random() * 20,
+            shGain,
+            "rgba(70,180,255,0.98)",
+            { text: `+${DMG_FMT.format(shGain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+          );
+        }
+        markProgressDirty();
+      }
+    } else {
+      petState.shTickT = 0;
+    }
+  } else {
+    petState.shTickT = 0;
+  }
   // La collecte (G-AL / G-AR) se fait en volant jusqu'à la box
   // (voir updatePet) ; ici : réparation + localisateur uniquement.
   tickPetLocator(gears, dt);
@@ -8253,6 +8744,7 @@ function tickPetPassiveGears(dt) {
 function updatePet(dt) {
   const pet = account.user?.pet;
   if (!pet?.owned || pet?.active !== true) {
+    wasPetOn = false;
     petState.ready = false;
     petState.target = null;
     petState.fetchId = null;
@@ -8261,7 +8753,25 @@ function updatePet(dt) {
     petLocator.manualType = null;
     return;
   }
+  // Portail : respawn à côté de nous au lieu de traverser toute la carte.
+  const petMap = currentMapId();
+  if (petMapId !== petMap) {
+    petMapId = petMap;
+    resetPetSpawn();
+  }
+  // Play après pause : respawn à côté de nous.
+  if (!wasPetOn) {
+    wasPetOn = true;
+    resetPetSpawn();
+  }
   if (!started || player.dead) return;
+  // REX détruit : seule la récupération tourne (revive via G-REP).
+  if (!(Number(pet.hp) > 0)) {
+    if (petBuoy.until > 0) endBuoySession("destroyed");
+    tickPetRecovery(dt, pet, petActiveGears());
+    petState.target = null;
+    return;
+  }
   if (!petState.ready) {
     petState.x = player.x - 90;
     petState.y = player.y + 70;
@@ -8322,7 +8832,8 @@ function updatePet(dt) {
   }
   // Ne pas effacer a chaque image les nouveaux degats confirmes pendant le retour.
   let target = null;
-  const petCombatMode = normalizePetMode(pet.mode) === "combat";
+  // Lien HP : mixé au mode combat (le REX se bat pendant le lien).
+  const petCombatMode = normalizePetMode(pet.mode) === "combat" || hplLinkActive();
   if (petCombatMode && !petState.returning) {
     const playerTarget = attackActive ? Target.get() : null;
     const playerTargetDistance = playerTarget
@@ -8407,16 +8918,19 @@ function updatePet(dt) {
     petState.fetchHold = 0;
   }
   if (!target || petState.returning) {
-    const escort = petEscortTarget(petState, player, dt, petState.returning ? PET_REST_RADIUS * 0.65 : PET_REST_RADIUS);
-    destX = clamp(escort.x, 80, WORLD.w - 80);
-    destY = clamp(escort.y, 80, WORLD.h - 80);
+    // Bouée : le REX nous colle fortement (petit rayon d'escorte).
+    const restR = !petState.returning && buoySessionActive() ? PET_BUOY_REST_RADIUS : PET_REST_RADIUS;
+    const escort = petEscortTarget(petState, player, dt, petState.returning ? PET_REST_RADIUS * 0.65 : restR);
+    // Comme les NPC aggro : le REX suit hors-carte (zone de radiation).
+    destX = clamp(escort.x, 80 - RADIATION_SPAWN_MARGIN, WORLD.w - 80 + RADIATION_SPAWN_MARGIN);
+    destY = clamp(escort.y, 80 - RADIATION_SPAWN_MARGIN, WORLD.h - 80 + RADIATION_SPAWN_MARGIN);
     wantSpeed = followSpeed;
   }
   const prevX = petState.x;
   const prevY = petState.y;
   if (weaving) {
     const scale = Math.min(1, followSpeed / (Math.hypot(weaveVX, weaveVY) || 1));
-    stepPetMotion(petState, weaveVX * scale, weaveVY * scale, dt, WORLD);
+    stepPetMotion(petState, weaveVX * scale, weaveVY * scale, dt, WORLD, RADIATION_SPAWN_MARGIN);
   } else if (fetchTarget) {
     // Approche vivante (jamais de ligne droite parfaite ni de snap) :
     // lacet pendant le trajet, micro-flottement pendant la seconde de collecte.
@@ -8457,7 +8971,7 @@ function updatePet(dt) {
       const vx = (aimX - petState.x) * 3, vy = (aimY - petState.y) * 3;
       const speed = Math.hypot(vx, vy);
       const scale = speed > 0 ? Math.min(1, ownerSpeed / speed) : 0;
-      stepPetMotion(petState, vx * scale, vy * scale, dt, WORLD);
+      stepPetMotion(petState, vx * scale, vy * scale, dt, WORLD, RADIATION_SPAWN_MARGIN);
     }
   } else {
     const dx = destX - petState.x, dy = destY - petState.y;
@@ -8472,7 +8986,7 @@ function updatePet(dt) {
       let vy = settled ? 0 : dy * 3;
       const speed = Math.hypot(vx, vy);
       const scale = speed > 0 ? Math.min(1, wantSpeed / speed) : 0;
-      stepPetMotion(petState, vx * scale, vy * scale, dt, WORLD);
+      stepPetMotion(petState, vx * scale, vy * scale, dt, WORLD, RADIATION_SPAWN_MARGIN);
     }
   }
   if (target) petState.angle = Math.atan2(target.y - petState.y, target.x - petState.x);
@@ -8496,9 +9010,95 @@ function getPetSpriteFrame() {
   return ((angleToFrameIndex(petState.angle, 32) + 16) % 32) + 1;
 }
 
+// Lien HP (G-HPL) : gros éclair entre le vaisseau et le REX, comme le robot
+// réparateur. Retracé à chaque frame (scintillement électrique).
+function drawPetLink(ox, oy) {
+  if (!hplLinkActive() || !petState.ready || player.dead || !started) return;
+  const x1 = player.x + ox, y1 = player.y + oy;
+  const x2 = petState.x + ox, y2 = petState.y + oy;
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return;
+  const nx = -dy / len, ny = dx / len;
+  const segs = 9;
+  const pass = (color, width, amp) => {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineJoin = "round";
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    for (let i = 1; i < segs; i++) {
+      const t = i / segs;
+      const off = (Math.random() * 2 - 1) * amp * Math.sin(t * Math.PI);
+      ctx.lineTo(x1 + dx * t + nx * off, y1 + dy * t + ny * off);
+    }
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.restore();
+  };
+  pass("rgba(255,225,77,0.85)", 5, 30);
+  pass("rgba(255,255,255,0.9)", 2, 30);
+  // Halos aux deux extrémités.
+  for (const [hx, hy] of [[x1, y1], [x2, y2]]) {
+    const glow = ctx.createRadialGradient(hx, hy, 0, hx, hy, 34);
+    glow.addColorStop(0, "rgba(255,240,150,0.5)");
+    glow.addColorStop(1, "rgba(255,240,150,0)");
+    ctx.save();
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(hx, hy, 34, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// Bouées (G-BC / G-BH) : gros halo continu de 500 autour du REX,
+// rouge dégâts / vert coque.
+function drawPetBuoy(ox, oy) {
+  if (!(petBuoy.key === "bc" || petBuoy.key === "bh")) return;
+  if (petBuoy.until <= 0 || performance.now() / 1000 >= petBuoy.until) return;
+  const pet = account.user?.pet;
+  if (!pet?.owned || pet?.active !== true || !(Number(pet.hp) > 0)) return;
+  if (!petState.ready || player.dead || !started) return;
+  const sx = petState.x + ox, sy = petState.y + oy;
+  if (sx < -PET_BUOY_RADIUS || sy < -PET_BUOY_RADIUS
+    || sx > innerWidth + PET_BUOY_RADIUS || sy > innerHeight + PET_BUOY_RADIUS) return;
+  const t = performance.now() / 1000;
+  const pulse = 0.55 + Math.sin(t * 2.5) * 0.12;
+  const col = petBuoy.key === "bc" ? "255,70,80" : "80,255,150";
+  // Anneaux superposés, sans shadowBlur (coûteux sur un rayon de 500).
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const rings = [[10, 0.10], [5, 0.28], [2, 0.65]];
+  for (const [w, a] of rings) {
+    ctx.strokeStyle = `rgba(${col},${(a * (0.7 + pulse)).toFixed(3)})`;
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    ctx.arc(sx, sy, PET_BUOY_RADIUS, 0, TAU);
+    ctx.stroke();
+  }
+  // Pulsation centre → extérieur : 2 vaguelettes en boucle.
+  const period = 2.2;
+  for (let k = 0; k < 2; k++) {
+    const p = (((t + k * period / 2) % period) + period) % period / period;
+    const rr = 40 + (PET_BUOY_RADIUS - 40) * p;
+    ctx.strokeStyle = `rgba(${col},${(0.35 * (1 - p)).toFixed(3)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, rr, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawPet(ox, oy) {
   const pet = account.user?.pet;
   if (!pet?.owned || pet?.active !== true) return;
+  if (!(Number(pet.hp) > 0)) return;
   if (!petState.ready || player.dead || !started) return;
   const x = petState.x + ox;
   const y = petState.y + oy;
@@ -8543,6 +9143,8 @@ function drawPet(ox, oy) {
   }
   else { ctx.fillStyle = "#79f5ff"; ctx.beginPath(); ctx.arc(0, 0, 20, 0, TAU); ctx.fill(); }
   ctx.restore();
+  // Barres coque / bouclier quand on le lock, comme un NPC.
+  if (Target.get() === petTargetProxy) drawNpcStatus(ctx, petTargetProxy, String(pet?.pseudo || "REX"), true);
   // Étiquette du REX : pseudo + firme à droite, comme le vaisseau — fixe, sans balancement.
   try {
     const petPseudo = String(pet?.pseudo || "REX");
@@ -9186,6 +9788,29 @@ let collectableSpawnT = 0;
 
 function currentMapId() {
   return String(window.__CURRENT_MAP_ID__ || "1-1");
+}
+
+// ✅ Leonov : bonus actif si le vaisseau actif est le Leonov ET que la map
+// courante est une carte mère x-1 à x-4 de SA firme (secteur MMO=1, EIC=2, VRU=3).
+function isLeonovHomeActive() {
+  if (String(account.user?.ship || "").toLowerCase() !== "leonov") return false;
+  const sector = getFaction(account.user?.faction)?.sector;
+  if (!sector) return false;
+  return new RegExp(`^${sector}-[1234]$`).test(currentMapId().trim().toLowerCase());
+}
+
+// ✅ Goliath Plus (HEAT) : +10 % dégâts / PV / bouclier du REX par VISUEL
+// du P.E.T (Niveau1=+10 % ... Niveau5 et fusion=+50 % plafonné).
+// 0 si pas de Goliath Plus actif.
+function goliathHeatPct() {
+  if (!String(account.user?.ship || "").toLowerCase().startsWith("goliath_plus")) return 0;
+  const stage = getPetStage(getPetLevel(account.user?.pet?.exp));
+  return Math.min(50, Math.max(1, stage) * 10);
+}
+
+// PV max du REX avec le bonus HEAT du Goliath Plus.
+function petMaxHpWithHeat(pet) {
+  return Math.floor(getPetMaxHp(getPetLevel(pet?.exp)) * (1 + goliathHeatPct() / 100));
 }
 
 // Soute lue depuis le compte en mémoire (pas de relecture storage à chaque frame).
@@ -10196,6 +10821,7 @@ function petLocatorSilhouette(type, idx, img, w, h) {
 function drawPetLocator(ox, oy) {
   const pet = account.user?.pet;
   if (!pet?.owned || pet?.active !== true || !petState.ready || player.dead || !started) return;
+  if (!(Number(pet.hp) > 0)) return;
   if (petLocator.enemyId == null) return;
   const foe = enemiesById.get(petLocator.enemyId);
   if (!foe || !(foe.hp > 0)) return;
@@ -10294,6 +10920,14 @@ const Target = (() => {
 
   function get() {
     if (!cur) return null;
+    // Notre REX : lock valide tant qu'il est en jeu et en vie.
+    if (cur.isPetTarget) {
+      if (!petLockValid()) {
+        cur = null;
+        return null;
+      }
+      return cur;
+    }
     if (!enemies.includes(cur) || cur.hp <= 0) {
       cur = null;
       return null;
@@ -10303,6 +10937,35 @@ const Target = (() => {
 
   return { set, clear, get };
 })();
+
+// Cible "notre REX" : le joueur peut locker et attaquer son propre P.E.T
+// (double-clic comme un NPC). Positions et vie résolues en direct.
+const petTargetProxy = {
+  id: "pet",
+  isPetTarget: true,
+  name: "REX",
+  type: "pet_rex",
+  r: 40,
+  vx: 0,
+  vy: 0,
+  get x() { return petState.x; },
+  get y() { return petState.y; },
+  get hp() { return Number(account.user?.pet?.hp) || 0; },
+  get hpMax() { return petMaxHpWithHeat(account.user?.pet); },
+  get shMax() { return petShieldMaxForHud(account.user?.pet, account.user); },
+  get sh() {
+    const pet = account.user?.pet;
+    if (!pet) return 0;
+    const max = petShieldMaxForHud(pet, account.user);
+    return pet.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : max;
+  },
+};
+
+function petLockValid() {
+  const pet = account.user?.pet;
+  return !!pet && pet.owned === true && pet.active === true
+    && petState.ready && !player.dead && started && Number(pet.hp) > 0;
+}
 
 function spawnProtegitOnCubikonHit(cub, count = 30) {
   if (!cub || cub.hp <= 0) return;
@@ -10664,9 +11327,16 @@ function hurtPlayer(amount, source = null) {
   // Seul un joueur bloque les portails battle : les sources NPC passent null.
   if (source?.byPlayer === true) player.pvpAttackT = 5;
 
-  damagePlayerLayers(player, amount, Number(player.shAbsorb) > 0 ? Number(player.shAbsorb) : 0.8);
+  const dmgRes = damagePlayerLayers(player, amount, Number(player.shAbsorb) > 0 ? Number(player.shAbsorb) : 0.8);
+  // Lien HP : la part coque part sur le REX, le joueur ne garde que le reste.
+  let redirected = 0;
+  if (dmgRes.hp > 0) {
+    const rest = absorbPetLinkDamage(dmgRes.hp);
+    redirected = dmgRes.hp - rest;
+    player.hp = Math.min(player.hpMax, player.hp + redirected);
+  }
 
-  addPlayerCombatFloat(amount, "rgba(255,80,100,0.95)");
+  addPlayerCombatFloat(Math.max(0, Math.round(amount - redirected)), "rgba(255,80,100,0.95)");
 
   if (player.hp <= 0) {
     player.hp = 0;
@@ -11191,6 +11861,8 @@ function usePulse() {
 
   player.credits -= PULSE_COST;
   pulseCd = PULSE_COOLDOWN;
+  // IEM (EMP-01) : coupe le lien HP du REX.
+  if (hplLinkActive()) endHplLink("emp");
   spawnPulseFx(player.x, player.y, 1, true);
   SFX.play("pulseIEM");
 
@@ -11503,7 +12175,8 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
   const rocketBoosterMults = playerBoosterMults();
   const dmg = (rocket?.damage ?? 1000)
     * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100)
-    * rocketBoosterMults.dmg * playerUpgradeMults().rocket;
+    * rocketBoosterMults.dmg * playerUpgradeMults().rocket
+    * (isLeonovHomeActive() ? 2 : 1);
   consumeUpgradeStock("rocket");
   const shotMiss = typeof miss === "boolean"
     ? miss
@@ -11853,6 +12526,7 @@ function rebuildEnemyIndex() {
 
 function getEnemyById(id) {
   if (id == null) return null;
+  if (id === "pet") return petLockValid() ? petTargetProxy : null;
   const enemy = enemiesById.get(id);
   return enemy?.hp > 0 ? enemy : null;
 }
@@ -12204,7 +12878,7 @@ const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
   const dmgShot = isSab
     ? player.baseDamage * SAB50.drainMult * shotBoosterMults.dmg
-    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerUpgradeMults().laser;
+    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerUpgradeMults().laser * buoyDamageMult();
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (shotHitBonusPct / 100));
 
@@ -13446,7 +14120,7 @@ function drawMinimap() {
   const useCss = cssW > 0 && cssH > 0;
   mctx.setTransform(useCss ? dpr : 1, 0, 0, useCss ? dpr : 1, 0, 0);
   const petAccount = account.user?.pet;
-  const isPetActive = !!petAccount?.owned && petAccount?.active === true && !player.dead;
+  const isPetActive = !!petAccount?.owned && petAccount?.active === true && !player.dead && Number(petAccount.hp) > 0;
   // Marqueur du localisateur P.E.T (G-EL), résolu en direct.
   const petLocatorMarkers = [];
   if (isPetActive && petLocator.enemyId != null) {
@@ -15191,6 +15865,34 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       : b.ownerEscortId ? getEscortById(b.ownerEscortId) : player;
     // ✅ les éclairs visuels de la salve X6 n'infligent aucun dégât
     let out = { total: 0 };
+    // Tir du joueur sur son propre REX : bouclier puis coque (SAB = drain).
+    if (t.isPetTarget && !b.visual && !b.ownerEscortId) {
+      if (b.isSab) {
+        const pet = account.user?.pet;
+        const shMax = petShieldMaxForHud(pet, account.user);
+        const avail = pet?.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : shMax;
+        const drained = Math.min(Math.max(0, avail), Math.max(0, Number(b.dmg) || 0));
+        if (pet && drained > 0) {
+          pet.sh = Math.max(0, avail - drained);
+          player.sh = Math.min(player.shMax, player.sh + drained);
+          markProgressDirty();
+          out = { total: drained, sh: drained, hp: 0 };
+        }
+      } else {
+        out = damagePetFromPlayer(b.dmg);
+      }
+      if (out.total > 0) {
+        queueVolleyFloat(t, out, b.volleyId, b.volleySize, VOLLEY_FLOAT_TIMEOUT);
+      }
+      // Impact roquette sur le REX : explosion + son, comme un NPC.
+      if (b.isRocket) {
+        spawnExplosion(b.x, b.y, 0.25);
+        if (Number(account.user?.pet?.hp) > 0) playRocketImpactStaggered(b.volleyId);
+      }
+      removeProjectile(bullets, i);
+      cleanupPlayerMissVolley(b);
+      continue;
+    }
     if (!b.visual) {
       out = b.isSab
         ? drainShieldFromEnemy(t, b.dmg, sabRecipient)
@@ -15899,6 +16601,8 @@ if (GAME_SETTINGS.textures) {
   drawEngineTrails(ox, oy);
   drawGateEscorts(ox, oy);
   drawPet(ox, oy);
+  drawPetLink(ox, oy);
+  drawPetBuoy(ox, oy);
 
   for (const pck of pickups) {
     const x = pck.x + ox, y = pck.y + oy;

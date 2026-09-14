@@ -19,16 +19,43 @@ export const PET_GEAR_RANGES = Object.freeze({
 // Régénération coque G-REP : % de la coque max par seconde (pallier d'1 s).
 export const PET_GEAR_REPAIR_PCT = Object.freeze([3, 4, 5]);
 
+// Recharge passive du bouclier : % du bouclier max par seconde (pallier d'1 s),
+// comme la réparation du vaisseau.
+export const PET_SHIELD_REGEN_PCT_PER_SEC = 5;
+
 // Cargo Trader (G-TRA) : fenêtre commerce hors base, bonus de vente et cooldown par niveau.
 export const PET_GEAR_TRADE_WINDOW_SEC = 10;
 export const PET_GEAR_TRADE_COOLDOWN_SEC = Object.freeze([300, 120, 30]);
 export const PET_GEAR_TRADE_BONUS_PCT = Object.freeze([5, 15, 30]);
 
-// Types de collectables aspirés par G-AL (cargo + bonus boxes, hors green).
+// Flamme sacrificielle (G-FS, niveau unique) : transfère le bouclier du REX
+// vers le vaisseau (tout si besoin), cooldown 90 s.
+export const PET_GEAR_SACRIFICE_COOLDOWN_SEC = Object.freeze([90]);
+
+// Lien HP (G-HPL, niveau unique) : dégâts coque redirigés vers le REX,
+// durée 20 s, cooldown 240 s. Mixé au mode combat + éclair entre les deux.
+export const PET_GEAR_HPLINK_DURATION_SEC = 20;
+export const PET_GEAR_HPLINK_COOLDOWN_SEC = 240;
+
+// Bouées (G-BC combat / G-BH coque, niveau unique) : le REX colle le joueur
+// en passif, halo continu de 500. Dedans : +5 % dégâts (rouge) / +5 % PV max (vert).
+// Durée 120 s, cooldown 240 s.
+export const PET_BUOY_RADIUS = 500;
+export const PET_BUOY_DURATION_SEC = 120;
+export const PET_BUOY_COOLDOWN_SEC = 240;
+export const PET_BUOY_DAMAGE_PCT = 5;
+export const PET_BUOY_HP_PCT = 5;
+
+// Types de collectables aspirés par G-AL (cargo, bonus boxes, scrap,
+// mucosum, plasmide, prismatium — hors green).
 export const PET_GEAR_AUTOLOOT_TYPES = Object.freeze([
   "Cargo_Box",
   "Bonus_Box",
   "Astral_Prime_Box",
+  "Scrap_Box",
+  "Mucosum_Box",
+  "Plasmide_Box",
+  "Prismatium_Box",
 ]);
 
 // Types de collectables aspirés par G-AR (minerais + ressources d'assemblage).
@@ -56,7 +83,7 @@ export const PET_GEAR_LOCATOR_DELAY = 0.5;
  * @returns {object} ex : { al: 2, ar: 0, el: 1, rep: 3 } (0 = absent).
  */
 export function getPetEquippedGearLevels(fit, findItem) {
-  const levels = { al: 0, ar: 0, el: 0, rep: 0, tra: 0 };
+  const levels = { al: 0, ar: 0, el: 0, rep: 0, tra: 0, fs: 0, hpl: 0, bc: 0, bh: 0 };
   if (!fit || typeof findItem !== "function") return levels;
   for (const itemId of fit.gears || []) {
     if (!itemId) continue;
@@ -102,6 +129,12 @@ export function getPetTradeBonusPct(level) {
   return PET_GEAR_TRADE_BONUS_PCT[Math.min(l, PET_GEAR_TRADE_BONUS_PCT.length) - 1];
 }
 
+export function getPetSacrificeCooldownSec(level) {
+  const l = Math.floor(Number(level) || 0);
+  if (l < 1) return 0;
+  return PET_GEAR_SACRIFICE_COOLDOWN_SEC[Math.min(l, PET_GEAR_SACRIFICE_COOLDOWN_SEC.length) - 1];
+}
+
 /**
  * Plus proche élément d'une liste dans la portée (distance euclidienne).
  * @returns {object|null} l'élément le plus proche, ou null.
@@ -131,10 +164,14 @@ const PET_GEAR_SHORT_LABELS = Object.freeze({
   el: "G-EL",
   rep: "G-REP",
   tra: "G-TRA",
+  fs: "G-FS",
+  hpl: "G-HPL",
+  bc: "G-BC",
+  bh: "G-BH",
 });
 
 // Familles de gears passifs sélectionnables (un seul actif à la fois).
-export const PET_PASSIVE_GEAR_KEYS = Object.freeze(["al", "ar", "el", "rep", "tra"]);
+export const PET_PASSIVE_GEAR_KEYS = Object.freeze(["al", "ar", "el", "rep", "tra", "fs", "hpl", "bc", "bh"]);
 
 /**
  * Gears équipés pour le sélecteur : [{ key, level, label }],

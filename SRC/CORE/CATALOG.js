@@ -166,8 +166,9 @@ export const CATALOG = {
   // Gears P.E.T officiels (darkorbitwiki.com/p-e-t). Prix uridium → crédits (×1000).
   // Paliers officiels : niveau 2 dès P.E.T 4, niveau 3 dès P.E.T 8.
   // Branchés dans le moteur : G-AL / G-AR (auto-collecte), G-EL
-  // (localisateur), G-REP (régén coque) — voir PET/PET_GEARS.js.
-  // Reste à brancher (lot suivant) : kamikaze, trader, lien HP, etc.
+  // (localisateur), G-REP (régén coque), G-TRA (trader), G-FS (flamme),
+  // G-HPL (lien HP), G-BC / G-BH (bouées) — voir PET/PET_GEARS.js.
+  // Reste à brancher (lot suivant) : kamikaze.
   // C-GM/C-SR absents (aucune icône officielle).
   petGears: [
     { id: "gear_gal1", name: "G-AL1 · Auto-Loot", price: 7500000, icon: "/PET/PET_GEARS/G-AL1.png", petLevel: 0, petGear: { key: "al", level: 1 }, desc: "Collecte cargo + bonus boxes, portée 700." },
@@ -188,16 +189,10 @@ export const CATALOG = {
     { id: "gear_gkk1", name: "G-KK1 · Kamikaze", price: 7500000, icon: "/PET/PET_GEARS/G-KK1.png", petLevel: 0, petGear: { key: "kk", level: 1 }, desc: "Explosion 25000 dégâts, portée 250, cooldown 120 s." },
     { id: "gear_gkk2", name: "G-KK2 · Kamikaze", price: 17500000, icon: "/PET/PET_GEARS/G-KK1.png", petLevel: 4, petGear: { key: "kk", level: 2 }, desc: "Explosion 50000 dégâts, portée 350, cooldown 60 s." },
     { id: "gear_gkk3", name: "G-KK3 · Kamikaze", price: 50000000, icon: "/PET/PET_GEARS/G-KK1.png", petLevel: 8, petGear: { key: "kk", level: 3 }, desc: "Explosion 75000 dégâts, portée 450, cooldown 30 s." },
-    { id: "gear_gfs1", name: "G-FS1 · Flamme sacrificielle", price: 9000000, icon: "/PET/PET_GEARS/G-FS1.png", petLevel: 0, petGear: { key: "fs", level: 1 }, desc: "Transfère 30 % du bouclier à un allié, portée 350, cooldown 90 s." },
-    { id: "gear_gfs2", name: "G-FS2 · Flamme sacrificielle", price: 12500000, icon: "/PET/PET_GEARS/G-FS1.png", petLevel: 4, petGear: { key: "fs", level: 2 }, desc: "Transfère 40 % du bouclier à un allié, portée 400, cooldown 75 s." },
-    { id: "gear_gfs3", name: "G-FS3 · Flamme sacrificielle", price: 45000000, icon: "/PET/PET_GEARS/G-FS1.png", petLevel: 8, petGear: { key: "fs", level: 3 }, desc: "Transfère 50 % du bouclier à un allié, portée 450, cooldown 60 s." },
-    { id: "gear_ghr1", name: "G-HR1 · Consommation", price: 10000000, icon: "/PET/PET_GEARS/G-HR1.png", petLevel: 0, petGear: { key: "hr", level: 1 }, desc: "6250 dégâts/s 4 s, portée 150, réduit le HEAT." },
-    { id: "gear_ghr2", name: "G-HR2 · Consommation", price: 32000000, icon: "/PET/PET_GEARS/G-HR1.png", petLevel: 4, petGear: { key: "hr", level: 2 }, desc: "8750 dégâts/s 4 s, portée 175, réduit le HEAT." },
-    { id: "gear_ghr3", name: "G-HR3 · Consommation", price: 55000000, icon: "/PET/PET_GEARS/G-HR1.png", petLevel: 8, petGear: { key: "hr", level: 3 }, desc: "13000 dégâts/s 4 s, portée 250, réduit le HEAT." },
-    { id: "gear_ghpl1", name: "G-HPL1 · Lien HP", price: 10000000, icon: "/PET/PET_GEARS/G-HPL1.png", petLevel: 8, petGear: { key: "hpl", level: 1 }, desc: "Dégâts coque transférés au P.E.T, durée 20 s, cooldown 240 s." },
-    { id: "gear_gmm1", name: "G-MM1 · Méga-mine", price: 50000000, icon: "/PET/PET_GEARS/G-MM1.png", petLevel: 8, petGear: { key: "mm", level: 1 }, desc: "Mine 75000 dégâts par pulse, durée 6 s, cooldown 240 s." },
-    { id: "gear_gbc1", name: "G-BC1 · Bouée combat", price: 25000000, icon: "/PET/PET_GEARS/G-BC1.png", petLevel: 8, petGear: { key: "bc", level: 1 }, desc: "Bouée amplifiant les dégâts alliés (event)." },
-    { id: "gear_gbh1", name: "G-BH1 · Bouée coque", price: 25000000, icon: "/PET/PET_GEARS/G-BH1.png", petLevel: 8, petGear: { key: "bh", level: 1 }, desc: "Bouée renforçant la coque alliée (event)." },
+    { id: "gear_gfs1", name: "G-FS1 · Flamme sacrificielle", price: 9000000, icon: "/PET/PET_GEARS/G-FS1.png", petLevel: 0, petGear: { key: "fs", level: 1 }, desc: "Transfère le bouclier du REX vers ton vaisseau (tout si besoin), cooldown 90 s." },
+    { id: "gear_ghpl1", name: "G-HPL1 · Lien HP", price: 10000000, icon: "/PET/PET_GEARS/G-HPL1.png", petLevel: 8, petGear: { key: "hpl", level: 1 }, desc: "Dégâts coque redirigés vers le REX, mix combat + éclair, 20 s, cooldown 240 s." },
+    { id: "gear_gbc1", name: "G-BC1 · Bouée combat", price: 25000000, icon: "/PET/PET_GEARS/G-BC1.png", petLevel: 8, petGear: { key: "bc", level: 1 }, desc: "Halo 500 : +5 % dégâts dedans, 120 s, cooldown 240 s." },
+    { id: "gear_gbh1", name: "G-BH1 · Bouée coque", price: 25000000, icon: "/PET/PET_GEARS/G-BH1.png", petLevel: 8, petGear: { key: "bh", level: 1 }, desc: "Halo 500 : +5 % PV max dedans, 120 s, cooldown 240 s." },
   ],
 
   // Protocoles P.E.T officiels (IA). Seuls dégâts (AI-LM) et Alien (AI-AL)

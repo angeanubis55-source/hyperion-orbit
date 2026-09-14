@@ -2823,13 +2823,22 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 #petWindow .petDropdownList{
   position:fixed;
   z-index:9999;
-  max-height:190px;
   overflow-y:auto;
   background:#06121c;
   border:1px solid rgba(105,233,255,.25);
   border-radius:5px;
   padding:3px;
   box-shadow:0 8px 24px rgba(0,0,0,.5);
+}
+/* Menu Mode : hauteur auto selon le contenu, jamais de scroll. */
+#petWindow #petModeList{
+  max-height:none;
+  overflow:visible;
+}
+/* Menu NPC : 10 lignes visibles + scroll. */
+#petWindow #petNpcList{
+  max-height:250px;
+  overflow-y:auto;
 }
 #petWindow .petDropdownList[hidden]{
   display:none;

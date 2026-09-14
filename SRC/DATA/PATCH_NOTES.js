@@ -1,6 +1,16 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.210",
+    "date": "2026-09-14T15:36:58+02:00",
+    "message": "vaisseaux: HEAT au visuel REX, +7% Goliath, Leonov XP/vitesse x2, textes effets"
+  },
+  {
+    "version": "0.209",
+    "date": "2026-09-14T14:23:22+02:00",
+    "message": "sync version 0.208 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.208",
     "date": "2026-09-14T14:23:02+02:00",
     "message": "gates: credits finaux x3 + npc confines map sauf poursuite radiation"
@@ -289,15 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.151",
     "date": "2026-09-11T16:27:09+02:00",
     "message": "Boot bloquant: drones + bases meres X-1/X-8, suppression preload a la mort"
-  },
-  {
-    "version": "0.150",
-    "date": "2026-09-11T16:23:08+02:00",
-    "message": "Maudite/QZ: reparation unique + respawn X-8, preload base a la mort et au boot, preload sprites drones"
-  },
-  {
-    "version": "0.149",
-    "date": "2026-09-11T15:50:54+02:00",
-    "message": "Version auto 0.148"
   }
 ];

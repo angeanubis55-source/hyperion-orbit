@@ -44,7 +44,7 @@ export function petEscortTarget(state, player, dt, radius = 300) {
   return { x: state.escortX, y: state.escortY };
 }
 
-export function stepPetMotion(state, vx, vy, dt, world) {
+export function stepPetMotion(state, vx, vy, dt, world, outside = 0) {
   const requestedSpeed = Math.hypot(vx, vy);
   if (requestedSpeed > 1) {
     const requestedDirection = Math.atan2(vy, vx);
@@ -75,8 +75,9 @@ export function stepPetMotion(state, vx, vy, dt, world) {
     state.vx = Math.cos(direction) * speed;
     state.vy = Math.sin(direction) * speed;
     const x = state.x + state.vx * step, y = state.y + state.vy * step;
-    state.x = Math.max(80, Math.min(world.w - 80, x));
-    state.y = Math.max(80, Math.min(world.h - 80, y));
+    // outside > 0 : le REX peut suivre hors-carte (zone de radiation).
+    state.x = Math.max(80 - outside, Math.min(world.w - 80 + outside, x));
+    state.y = Math.max(80 - outside, Math.min(world.h - 80 + outside, y));
     if (state.x !== x) state.vx = 0;
     if (state.y !== y) state.vy = 0;
     remaining -= step;

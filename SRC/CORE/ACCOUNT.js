@@ -541,6 +541,12 @@ const REMOVED_ITEM_IDS = new Set([  "shd_mk4",
   "gear_grl2",
   "gear_grl3",
   "gear_grt1",
+  "gear_ghr1",
+  "gear_ghr2",
+  "gear_ghr3",
+  "gear_gfs2",
+  "gear_gfs3",
+  "gear_gmm1",
   "spd_mk4",
   "laser_radion",
   "shd_radion",
@@ -751,6 +757,19 @@ function ensureUserShape(u) {
     u.pet.mode = normalizePetMode(u.pet.mode);
     // Gear actif unique (sélecteur fenêtre P.E.T, null = aucun).
     if (typeof u.pet.activeGear !== "string" || !u.pet.activeGear) u.pet.activeGear = null;
+    // Cooldowns des gears (timestamps Date.now) : survivent au refresh.
+    const gcd = u.pet.gearCds && typeof u.pet.gearCds === "object" ? u.pet.gearCds : {};
+    u.pet.gearCds = {
+      tra: Math.max(0, Number(gcd.tra) || 0),
+      fs: Math.max(0, Number(gcd.fs) || 0),
+      hpl: Math.max(0, Number(gcd.hpl) || 0),
+      bc: Math.max(0, Number(gcd.bc) || 0),
+      bh: Math.max(0, Number(gcd.bh) || 0),
+    };
+    // Les sessions à durée (trader, lien, bouées) ne survivent pas au refresh.
+    if (["tra", "hpl", "bc", "bh"].includes(String(u.pet.activeGear || "").toLowerCase())) {
+      u.pet.activeGear = null;
+    }
     // Fuel infini pour le moment : 50 000 / 50 000 fixe.
     u.pet.fuelMax = PET_FUEL_MAX;
     u.pet.fuel = PET_FUEL_MAX;
@@ -1714,6 +1733,26 @@ export function setPetActive(active) {
   return { ok: true, user: u, active: u.pet.active };
 }
 
+// Réparation du REX détruit : 10 000 crédits, coque à 10 %, bouclier à 0,
+// sans activation (il faut rappuyer sur play).
+export const PET_REPAIR_COST = 10000;
+export function repairPet() {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
+  if (Number(u.pet.hp) > 0) return { ok: false, error: "REX intact." };
+  if (Math.max(0, Number(u.credits) || 0) < PET_REPAIR_COST) {
+    return { ok: false, error: `Il faut ${PET_REPAIR_COST} crédits.`, user: u };
+  }
+  u.credits = Math.max(0, Number(u.credits) || 0) - PET_REPAIR_COST;
+  u.pet.hp = Math.max(1, Math.floor(getPetMaxHp(getPetLevel(u.pet.exp)) * 0.1));
+  u.pet.sh = 0;
+  u.pet.active = false;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u };
+}
+
 // Dropdown passif / combat de la fenêtre P.E.T en jeu.
 export function setPetMode(mode) {
   const u = getCurrentUserFull();
@@ -1731,7 +1770,7 @@ export function setPetActiveGear(key) {
   if (!u) return { ok: false, error: "Non connecté." };
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
   const k = key == null || key === "" ? null : String(key).toLowerCase();
-  if (k != null && !["al", "ar", "el", "rep", "tra"].includes(k)) return { ok: false, error: "Gear inconnu." };
+  if (k != null && !["al", "ar", "el", "rep", "tra", "fs", "hpl", "bc", "bh"].includes(k)) return { ok: false, error: "Gear inconnu." };
   u.pet.activeGear = k;
   ensureUserShape(u);
   saveUser(u);
