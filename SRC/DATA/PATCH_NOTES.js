@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.198",
+    "date": "2026-09-14T02:12:14+02:00",
+    "message": "log: refresh auto + tailles 10px, boutique/hangar reduire fleches, commerce x-format"
+  },
+  {
     "version": "0.197",
     "date": "2026-09-14T01:48:31+02:00",
     "message": "sync version 0.196 + patch-notes (hook post-push)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.139",
     "date": "2026-09-09T08:47:02+02:00",
     "message": "Systeme Pet complet : mouvement, XP, assets, profil et OrbitEngine"
-  },
-  {
-    "version": "0.138",
-    "date": "2026-09-08T12:12:21+02:00",
-    "message": "Harmonise les effets du bouton reparation en vert avec ISH et IEM"
   }
 ];
