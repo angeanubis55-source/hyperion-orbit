@@ -134,7 +134,9 @@ import {
   MAX_ACTIVE_QUESTS,
   acceptQuest,
   abandonQuest,
+  canAcceptQuest,
   claimQuest,
+  getQuestObjectives,
   isQuestComplete,
   normalizeQuestState,
   recordQuestProgress,
@@ -2059,9 +2061,29 @@ const BOT_AMMO_NAMES = Object.freeze({
   sab: "SAB-50", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214",
   pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL",
 });
+// Modules du bot (façon fenêtre Général) : chaque module dérive un mode
+// de farm (kill/collect/both) + un comportement (quêtes, galaxy gates).
+const BOT_MODULES = Object.freeze({
+  both: { mode: "both", label: "Kill & Collect" },
+  kill: { mode: "kill", label: "Kill" },
+  collect: { mode: "collect", label: "Collect" },
+  quest: { mode: "both", label: "Quest" },
+  galaxy: { mode: "kill", label: "Galaxy Gates" },
+});
+function botModeForModule(m) {
+  return BOT_MODULES[String(m)]?.mode || "both";
+}
+function botSetModule(m) {
+  m = String(m || "both");
+  if (!BOT_MODULES[m]) m = "both";
+  Bot.module = m;
+  Bot.mode = botModeForModule(m);
+  botSaveConfig();
+}
 const Bot = {
   active: false,
   mode: "both",
+  module: "both",
   priority: "npc",
   targetMap: "",
   autoTravel: true,
@@ -2073,9 +2095,11 @@ const Bot = {
   formMove: "",
   formAttack: "",
   formTravel: "",
+  formFlee: "",
   cfgAttack: "",
   cfgFly: "",
   cfgTravel: "",
+  cfgFlee: "",
   cfgPrev: 0,
   ammoPrev: "",
   petMode: "",
@@ -2088,12 +2112,45 @@ const Bot = {
   sightT: 0,
   lock: true,
   overlay: true,
+  npcIgnoreDist: 0,
+  boxRadius: 0,
+  npcPrio: Object.create(null),
+  fleeResume: 45,
+  maxDeaths: 0,
+  reviveWait: 3,
+  deaths: 0,
+  wasDead: false,
+  statsT0: 0,
+  credits0: 0,
+  exp0: 0,
   orbit: true,
   orbitDist: 560,
   npcDist: Object.create(null),
   npcOrbit: Object.create(null),
   flee: true,
   fleePct: 25,
+  cargo: true,
+  cargoPct: 95,
+  sellBase: "auto",
+  refine: {
+    laser: { ore: "", qty: 20 },
+    shield: { ore: "", qty: 20 },
+    rocket: { ore: "", qty: 20 },
+    speed: { ore: "", qty: 20 },
+  },
+  skillIem: false,
+  iemFoes: 3,
+  skillIsh: false,
+  ishPct: 20,
+  rockets: false,
+  launchers: false,
+  questsAccept: false,
+  questsClaim: true,
+  questT: 0,
+  rocketPrev: false,
+  launcherPrev: false,
+  selling: false,
+  travelOverride: "",
   kills: 0,
   boxes: 0,
   lastNpcId: null,
@@ -2111,6 +2168,7 @@ const Bot = {
   status: "En pause",
   target: "—",
   hudT: 0,
+  tab: "general",
 };
 
 function botNotifyManual() {
@@ -2122,6 +2180,7 @@ function botSaveConfig() {
     localStorage.setItem(BOT_STORE_KEY, JSON.stringify({
       active: Bot.active,
       mode: Bot.mode,
+      module: Bot.module,
       priority: Bot.priority,
       targetMap: Bot.targetMap,
       autoTravel: Bot.autoTravel,
@@ -2133,12 +2192,20 @@ function botSaveConfig() {
       formMove: Bot.formMove,
       formAttack: Bot.formAttack,
       formTravel: Bot.formTravel,
+      formFlee: Bot.formFlee,
       cfgAttack: Bot.cfgAttack,
       cfgFly: Bot.cfgFly,
       cfgTravel: Bot.cfgTravel,
+      cfgFlee: Bot.cfgFlee,
       petMode: Bot.petMode,
       lock: Bot.lock,
       overlay: Bot.overlay,
+      npcIgnoreDist: Bot.npcIgnoreDist,
+      boxRadius: Bot.boxRadius,
+      npcPrio: Bot.npcPrio,
+      fleeResume: Bot.fleeResume,
+      maxDeaths: Bot.maxDeaths,
+      reviveWait: Bot.reviveWait,
       orbit: Bot.orbit,
       orbitDist: Bot.orbitDist,
       npcDist: Bot.npcDist,
@@ -2149,8 +2216,21 @@ function botSaveConfig() {
       npcSeen: Bot.npcSeen,
       flee: Bot.flee,
       fleePct: Bot.fleePct,
+      cargo: Bot.cargo,
+      cargoPct: Bot.cargoPct,
+      sellBase: Bot.sellBase,
+      refine: Bot.refine,
+      skillIem: Bot.skillIem,
+      iemFoes: Bot.iemFoes,
+      skillIsh: Bot.skillIsh,
+      ishPct: Bot.ishPct,
+      rockets: Bot.rockets,
+      launchers: Bot.launchers,
+      questsAccept: Bot.questsAccept,
+      questsClaim: Bot.questsClaim,
       kills: Bot.kills,
       boxes: Bot.boxes,
+      tab: Bot.tab,
       savedAt: Date.now(),
     }));
   } catch {}
@@ -2163,7 +2243,9 @@ function botLoadConfig() {
   try {
     const data = JSON.parse(raw);
     if (!data || typeof data !== "object") return false;
-    if (["collect", "kill", "both"].includes(data.mode)) Bot.mode = data.mode;
+    if (["both", "kill", "collect", "quest", "galaxy"].includes(data.module)) Bot.module = data.module;
+    else if (["collect", "kill", "both"].includes(data.mode)) Bot.module = data.mode;
+    Bot.mode = botModeForModule(Bot.module);
     if (["npc", "box", "nearest"].includes(data.priority)) Bot.priority = data.priority;
     if (typeof data.targetMap === "string") Bot.targetMap = data.targetMap;
     if (typeof data.autoTravel === "boolean") Bot.autoTravel = data.autoTravel;
@@ -2175,13 +2257,31 @@ function botLoadConfig() {
     if (typeof data.formMove === "string") Bot.formMove = data.formMove;
     if (typeof data.formAttack === "string") Bot.formAttack = data.formAttack;
     if (typeof data.formTravel === "string") Bot.formTravel = data.formTravel;
+    if (typeof data.formFlee === "string") Bot.formFlee = data.formFlee;
     if (data.cfgAttack === "1" || data.cfgAttack === "2") Bot.cfgAttack = data.cfgAttack;
     if (data.cfgFly === "1" || data.cfgFly === "2") Bot.cfgFly = data.cfgFly;
     if (data.cfgTravel === "1" || data.cfgTravel === "2") Bot.cfgTravel = data.cfgTravel;
+    if (data.cfgFlee === "1" || data.cfgFlee === "2") Bot.cfgFlee = data.cfgFlee;
     if (typeof data.petMode === "string") Bot.petMode = data.petMode;
     if (typeof data.lock === "boolean") Bot.lock = data.lock;
     if (typeof data.orbit === "boolean") Bot.orbit = data.orbit;
     if (typeof data.overlay === "boolean") Bot.overlay = data.overlay;
+    const nid = Math.floor(Number(data.npcIgnoreDist));
+    Bot.npcIgnoreDist = Number.isFinite(nid) ? Math.max(0, Math.min(20000, nid)) : 0;
+    const brad = Math.floor(Number(data.boxRadius));
+    Bot.boxRadius = Number.isFinite(brad) ? Math.max(0, Math.min(20000, brad)) : 0;
+    if (data.npcPrio && typeof data.npcPrio === "object") {
+      for (const [k, v] of Object.entries(data.npcPrio)) {
+        const p = Math.floor(Number(v));
+        if (Number.isFinite(p) && p > 0) Bot.npcPrio[String(k)] = Math.min(99, p);
+      }
+    }
+    const fr = Math.floor(Number(data.fleeResume));
+    if (Number.isFinite(fr)) Bot.fleeResume = Math.max(10, Math.min(100, fr));
+    const md = Math.floor(Number(data.maxDeaths));
+    Bot.maxDeaths = Number.isFinite(md) ? Math.max(0, Math.min(999, md)) : 0;
+    const rw = Math.floor(Number(data.reviveWait));
+    Bot.reviveWait = Number.isFinite(rw) ? Math.max(0, Math.min(60, rw)) : 3;
     const od = Math.floor(Number(data.orbitDist));
     if (Number.isFinite(od)) Bot.orbitDist = Math.max(200, Math.min(2000, od));
     if (data.npcDist && typeof data.npcDist === "object") {
@@ -2196,6 +2296,32 @@ function botLoadConfig() {
     if (typeof data.flee === "boolean") Bot.flee = data.flee;
     const fp = Math.floor(Number(data.fleePct));
     if (Number.isFinite(fp)) Bot.fleePct = Math.max(5, Math.min(90, fp));
+    if (typeof data.cargo === "boolean") Bot.cargo = data.cargo;
+    const cp = Math.floor(Number(data.cargoPct));
+    if (Number.isFinite(cp)) Bot.cargoPct = Math.max(50, Math.min(100, cp));
+    if (["auto", "low", "high"].includes(data.sellBase)) Bot.sellBase = data.sellBase;
+    if (data.refine && typeof data.refine === "object") {
+      for (const slot of ["laser", "shield", "rocket", "speed"]) {
+        const r = data.refine[slot];
+        if (!r || typeof r !== "object") continue;
+        const ore = String(r.ore || "").toLowerCase();
+        const qty = Math.floor(Number(r.qty));
+        Bot.refine[slot] = {
+          ore: (UPGRADE_SLOT_ORES[slot] || []).includes(ore) ? ore : "",
+          qty: Number.isFinite(qty) ? Math.max(1, Math.min(999, qty)) : 20,
+        };
+      }
+    }
+    if (typeof data.skillIem === "boolean") Bot.skillIem = data.skillIem;
+    const foes = Math.floor(Number(data.iemFoes));
+    if (Number.isFinite(foes)) Bot.iemFoes = Math.max(1, Math.min(10, foes));
+    if (typeof data.skillIsh === "boolean") Bot.skillIsh = data.skillIsh;
+    const ishp = Math.floor(Number(data.ishPct));
+    if (Number.isFinite(ishp)) Bot.ishPct = Math.max(5, Math.min(90, ishp));
+    if (typeof data.rockets === "boolean") Bot.rockets = data.rockets;
+    if (typeof data.launchers === "boolean") Bot.launchers = data.launchers;
+    if (typeof data.questsAccept === "boolean") Bot.questsAccept = data.questsAccept;
+    if (typeof data.questsClaim === "boolean") Bot.questsClaim = data.questsClaim;
     const ed = Math.floor(Number(data.engageDist));
     Bot.engageDist = Number.isFinite(ed) ? Math.max(0, Math.min(3000, ed)) : 0;
     if (data.npcAmmo && typeof data.npcAmmo === "object") {
@@ -2212,6 +2338,10 @@ function botLoadConfig() {
     }
     Bot.kills = Math.max(0, Math.floor(Number(data.kills) || 0));
     Bot.boxes = Math.max(0, Math.floor(Number(data.boxes) || 0));
+    if (typeof data.tab === "string") {
+      const migrated = BOT_TAB_LEGACY[data.tab] || data.tab;
+      if (document.querySelector(`#botTabs [data-bot-tab="${migrated}"]`)) Bot.tab = migrated;
+    }
     return data.active === true;
   } catch { return false; }
 }
@@ -2223,6 +2353,22 @@ function botLog(text) {
   line.textContent = text;
   el.prepend(line);
   while (el.children.length > 30) el.removeChild(el.lastChild);
+}
+
+// Onglets de la fenêtre : n'affiche que les sections de l'onglet actif.
+const BOT_TABS = ["general", "attack", "collect", "travel", "security", "npc", "rex", "stats", "log"];
+const BOT_TAB_LEGACY = Object.freeze({ combat: "attack", boxes: "collect" });
+function botSwitchTab(name) {
+  if (!BOT_TABS.includes(name)) name = "general";
+  Bot.tab = name;
+  document.querySelectorAll("#botTabs .botTab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.botTab === name);
+  });
+  document.querySelectorAll("#botWindow [data-bot-section]").forEach((sec) => {
+    const show = String(sec.dataset.botSection) === name;
+    sec.style.display = show ? "" : "none";
+  });
+  botSaveConfig();
 }
 
 function botRefreshHud() {
@@ -2243,6 +2389,48 @@ function botRefreshHud() {
   }
   if (killEl) killEl.textContent = String(Bot.kills);
   if (boxEl) boxEl.textContent = String(Bot.boxes);
+  botRefreshStats();
+}
+
+// Stats de session (onglet Stats) : durée, gains et taux horaires.
+function botRefreshStats() {
+  const set = (id, txt) => {
+    const el = document.getElementById(id);
+    if (el && el.textContent !== txt) el.textContent = txt;
+  };
+  set("botStatKills", String(Bot.kills));
+  set("botStatBoxes", String(Bot.boxes));
+  set("botStatDeaths", String(Bot.deaths));
+  if (!Bot.statsT0) {
+    set("botStatTime", "—");
+    set("botStatCredits", "+0");
+    set("botStatCreditsH", "—");
+    set("botStatXp", "+0");
+    set("botStatXpH", "—");
+    return;
+  }
+  const elapsedS = Math.max(0, (Date.now() - Bot.statsT0) / 1000);
+  const mm = String(Math.floor(elapsedS / 60)).padStart(2, "0");
+  const ss = String(Math.floor(elapsedS % 60)).padStart(2, "0");
+  const hh = Math.floor(elapsedS / 3600);
+  set("botStatTime", hh > 0 ? `${hh}h${mm}m` : `${mm}:${ss}`);
+  let credits = 0;
+  let exp = 0;
+  try {
+    credits = Math.max(0, Math.floor(Number(player.credits) || 0)) - Bot.credits0;
+    exp = Math.max(0, Math.floor(Number(account.user?.stats?.exp) || 0)) - Bot.exp0;
+  } catch {}
+  const sign = (n) => (n < 0 ? "-" : "+") + formatInteger(Math.abs(n));
+  set("botStatCredits", sign(credits));
+  set("botStatXp", sign(exp));
+  if (elapsedS >= 60) {
+    const perH = (n) => sign(Math.round(n / elapsedS * 3600));
+    set("botStatCreditsH", perH(credits));
+    set("botStatXpH", perH(exp));
+  } else {
+    set("botStatCreditsH", "—");
+    set("botStatXpH", "—");
+  }
 }
 
 function botSetActive(on) {
@@ -2251,6 +2439,8 @@ function botSetActive(on) {
   Bot.travelCd = 0;
   Bot.jumpCd = 0;
   Bot.fleeing = false;
+  Bot.selling = false;
+  Bot.travelOverride = "";
   Bot.lastFormation = "";
   Bot.roamT = 0;
   if (!Bot.active) {
@@ -2262,11 +2452,24 @@ function botSetActive(on) {
   } else {
     Bot.status = "Démarré";
     botSnapshotLoadout();
+    try {
+      Bot.statsT0 = Date.now();
+      Bot.credits0 = Math.max(0, Math.floor(Number(player.credits) || 0));
+      Bot.exp0 = Math.max(0, Math.floor(Number(account.user?.stats?.exp) || 0));
+    } catch { Bot.statsT0 = 0; Bot.credits0 = 0; Bot.exp0 = 0; }
+    Bot.deaths = 0;
+    Bot.wasDead = false;
     botApplyPetMode();
-    botLog(`Bot démarré (${Bot.mode === "collect" ? "collecte" : Bot.mode === "kill" ? "kill NPC" : "collecte + kill"})`);
+    botLog(`Bot démarré (${BOT_MODULES[Bot.module]?.label || Bot.module})`);
   }
   botSaveConfig();
   botRefreshHud();
+}
+
+// Priorité d'un type de NPC (style DarkBot : la plus haute gagne, 0 = normal).
+function botNpcPrio(type) {
+  const p = Math.floor(Number(Bot.npcPrio[String(type)]));
+  return Number.isFinite(p) ? Math.max(0, Math.min(99, p)) : 0;
 }
 
 // Distance d'orbite effective pour un type de NPC (surcharge perso ou défaut).
@@ -2303,12 +2506,128 @@ function botApplyConfig(want) {
   } catch {}
 }
 
+// Vend tous les minerais vendables au comptoir. Retourne les crédits gagnés.
+function botSellOres() {
+  let total = 0;
+  try {
+    for (const id of Object.keys(ORE_SELL_PRICES)) {
+      const owned = Math.floor(Number(account.user?.inventory?.resources?.[id]) || 0);
+      if (owned <= 0) continue;
+      const out = sellCurrentUserOre(id, 0);
+      if (out?.ok) total += Math.floor(Number(out.gained) || 0);
+    }
+    if (total > 0) {
+      account.user = getCurrentUserFull();
+      player.credits = Number(account.user?.credits) || player.credits;
+      setHudText(ui.shopCredits, formatInteger(player.credits));
+      markProgressDirty();
+      saveProgressNow();
+      window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+    }
+  } catch {}
+  return total;
+}
+
+// Charge les slots d'amélioration avec les minerais configurés (1 minerai
+// = 10 tirs / 10 min). Ne remplace JAMAIS un slot chargé d'un autre minerai
+// avec du stock restant. Retourne le minerai consommé (place libérée).
+function botRefineUpgrades() {
+  let consumed = 0;
+  try {
+    const user = account.user;
+    if (!user) return 0;
+    for (const slot of ["laser", "shield", "rocket", "speed"]) {
+      const cfg = Bot.refine?.[slot];
+      const ore = String(cfg?.ore || "").toLowerCase();
+      if (!ore || !(UPGRADE_SLOT_ORES[slot] || []).includes(ore)) continue;
+      const want = Math.max(1, Math.min(999, Math.floor(Number(cfg.qty) || 0)));
+      if (!(want > 0)) continue;
+      const loaded = user.upgrades?.[slot];
+      const loadedOre = String(loaded?.ore || "").toLowerCase();
+      const loadedStock = Math.max(0, Math.floor(Number(loaded?.stock) || 0));
+      if (loadedOre && loadedOre !== ore && loadedStock > 0) {
+        botLog(`Raffinage ${slot} : ${loadedOre} déjà chargé (${loadedStock}) — on garde`);
+        continue;
+      }
+      const owned = Math.max(0, Math.floor(Number(user.inventory?.resources?.[ore]) || 0));
+      const amount = Math.min(want, owned);
+      if (amount <= 0) continue;
+      const out = chargeShipUpgrade(slot, ore, amount);
+      if (out?.ok) {
+        consumed += amount;
+        botLog(`Raffinage ${slot} : +${amount * 10} (${ore})`);
+      }
+    }
+    if (consumed > 0) {
+      account.user = getCurrentUserFull();
+      markProgressDirty();
+      saveProgressNow();
+      window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+    }
+  } catch {}
+  return consumed;
+}
+
+// Base de vente la plus proche (en sauts) : X-1 (low) ou X-8 (high).
+// Respecte la préférence (auto / low / high), fallback sur l'autre base.
+function botPickSellBase(curMap) {
+  const faction = (account.user || getCurrentUserFull())?.faction;
+  const low = String(getFactionHomeMap(faction) || "").toLowerCase();
+  const high = String(getFactionUpperBaseMap(faction) || "").toLowerCase();
+  const cands = [];
+  if (Bot.sellBase === "low") { if (low) cands.push(low); if (high) cands.push(high); }
+  else if (Bot.sellBase === "high") { if (high) cands.push(high); if (low) cands.push(low); }
+  else {
+    const rl = low ? botFindRoute(curMap, low) : null;
+    const rh = high ? botFindRoute(curMap, high) : null;
+    const ranked = [
+      rl ? { map: low, hops: rl.length } : null,
+      rh ? { map: high, hops: rh.length } : null,
+    ].filter(Boolean).sort((a, b) => a.hops - b.hops);
+    for (const r of ranked) cands.push(r.map);
+    if (low && !cands.includes(low)) cands.push(low);
+    if (high && !cands.includes(high)) cands.push(high);
+  }
+  return cands.filter(Boolean);
+}
+function botNearestTradeModule() {
+  let best = null;
+  let bestD2 = Infinity;
+  let bestPos = null;
+  try {
+    for (const m of zoneSafe?.modules || []) {
+      if (!isTradeModule(m)) continue;
+      const pos = getTradeButtonPosition(m);
+      if (!pos) continue;
+      const d2 = dist2(player.x, player.y, pos.x, pos.y);
+      if (d2 < bestD2) { bestD2 = d2; best = m; bestPos = pos; }
+    }
+  } catch {}
+  return best ? { module: best, pos: bestPos, d2: bestD2 } : null;
+}
+
 // Mémorise config + munition au démarrage pour les restaurer à l'arrêt.
 function botSnapshotLoadout() {
   Bot.cfgPrev = 0;
   Bot.ammoPrev = "";
+  Bot.rocketPrev = false;
+  Bot.launcherPrev = false;
   try { Bot.cfgPrev = getActiveConfigNo() === 2 ? 2 : 1; } catch { Bot.cfgPrev = 0; }
   try { Bot.ammoPrev = String(player.ammo.active || ""); } catch { Bot.ammoPrev = ""; }
+  try { Bot.rocketPrev = player.rocketAuto === true; } catch {}
+  try { Bot.launcherPrev = player.launcherAuto === true; } catch {}
+  botApplyRocketFlags();
+}
+
+// Applique les flags roquettes/lance-roquettes du bot (restaurés à l'arrêt).
+function botApplyRocketFlags() {
+  try {
+    if (player.rocketAuto !== Bot.rockets || player.launcherAuto !== Bot.launchers) {
+      player.rocketAuto = Bot.rockets;
+      player.launcherAuto = Bot.launchers;
+      markProgressDirty();
+    }
+  } catch {}
 }
 
 function botRestoreLoadout() {
@@ -2329,6 +2648,13 @@ function botRestoreLoadout() {
   } catch {}
   try {
     if (Bot.ammoPrev && AMMO[Bot.ammoPrev] && player.ammo.active !== Bot.ammoPrev) setAmmo(Bot.ammoPrev);
+  } catch {}
+  try {
+    if (player.rocketAuto !== Bot.rocketPrev || player.launcherAuto !== Bot.launcherPrev) {
+      player.rocketAuto = Bot.rocketPrev;
+      player.launcherAuto = Bot.launcherPrev;
+      markProgressDirty();
+    }
   } catch {}
   Bot.cfgPrev = 0;
   Bot.ammoPrev = "";
@@ -2397,6 +2723,13 @@ function botRefreshPetOptions() {
   }
   sel.innerHTML = opts.join("");
   const valid = ["", "passive", "combat", ...gears.map((g) => `gear:${g.key}`)];
+  if (prev && !valid.includes(prev)) {
+    // Choix mémorisé mais gear non visible (compte pas encore chargé ou
+    // module déplacé) : on le garde au lieu de l'écraser.
+    const short = prev.startsWith("gear:") ? prev.slice(5).toUpperCase() : prev;
+    sel.innerHTML = `<option value="${escapeHtml(prev)}">${escapeHtml(short)} (mémorisé)</option>` + sel.innerHTML;
+    valid.push(prev);
+  }
   sel.value = valid.includes(prev) ? prev : "";
   Bot.petMode = sel.value;
 }
@@ -2409,7 +2742,8 @@ function botApplyPetMode() {
   Bot.petPrevGear = null;
   if (!Bot.petMode) return;
   const pet = account.user?.pet?.owned === true ? account.user.pet : null;
-  if (!pet) return;
+  if (!pet) { botLog("REX : non possédé — choix ignoré"); return; }
+  if (pet.active !== true) { botLog("REX : désactivé — active-le (fenêtre P.E.T)"); return; }
   Bot.petPrev = normalizePetMode(pet.mode);
   Bot.petPrevGear = String(pet.activeGear || "").toLowerCase() || null;
   try {
@@ -2417,7 +2751,7 @@ function botApplyPetMode() {
       const key = Bot.petMode.slice("gear:".length).toLowerCase();
       if (Bot.petPrevGear === key && Bot.petPrev === "passive") { Bot.petPrev = null; Bot.petPrevGear = null; return; }
       const outM = setPetMode("passive");
-      if (!outM?.ok) { Bot.petPrev = null; Bot.petPrevGear = null; return; }
+      if (!outM?.ok) { Bot.petPrev = null; Bot.petPrevGear = null; botLog(`REX : ${outM?.error || "impossible"}`); return; }
       const out = setPetActiveGear(key);
       if (!out?.ok) { Bot.petPrev = null; Bot.petPrevGear = null; botLog("REX : module indisponible"); return; }
       petLocator.manualType = null;
@@ -2429,7 +2763,7 @@ function botApplyPetMode() {
     }
     if (Bot.petPrev === Bot.petMode && !Bot.petPrevGear) { Bot.petPrev = null; Bot.petPrevGear = null; return; }
     const out = setPetMode(Bot.petMode);
-    if (!out?.ok) { Bot.petPrev = null; Bot.petPrevGear = null; return; }
+    if (!out?.ok) { Bot.petPrev = null; Bot.petPrevGear = null; botLog(`REX : ${out?.error || "impossible"}`); return; }
     try { setPetActiveGear(null); } catch {}
     petLocator.manualType = null;
     petLocator.enemyId = null;
@@ -2481,6 +2815,58 @@ function botNpcLocations() {
   return out;
 }
 
+// Quêtes auto du bot (toutes les 5 s) : rend les quêtes terminées, et
+// accepte au terminal les quêtes tuer/collecter qui correspondent à la
+// sélection et au mode du bot (jamais de doublon, une action par passage).
+function botTickQuests(dt) {
+  Bot.questT -= dt;
+  if (Bot.questT > 0) return;
+  Bot.questT = 5;
+  try {
+    if (!started || player.dead) return;
+    if (Bot.questsClaim) {
+      for (const id of Object.keys(questState.active || {})) {
+        const q = QUEST_DEFINITIONS.find(item => item.id === id);
+        if (q && isQuestComplete(questState, q)) {
+          if (claimQuestReward(id)) {
+            try { renderQuestWindow(); renderQuestTerminal(); } catch {}
+            botLog(`Quête rendue : ${q.title}`);
+          }
+          break;
+        }
+      }
+    }
+    if (Bot.questsAccept && hasQuestTerminalAccess()) {
+      if (Object.keys(questState.active || {}).length >= MAX_ACTIVE_QUESTS) return;
+      const curMap = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+      for (const q of QUEST_DEFINITIONS) {
+        if (!canAcceptQuest(questState, q)) continue;
+        let objs = [];
+        try { objs = getQuestObjectives(q); } catch { continue; }
+        if (!objs.length) continue;
+        let ok = true;
+        for (const o of objs) {
+          if (o.map && String(o.map).toLowerCase() !== curMap) { ok = false; break; }
+          if (o.kind === "kill") {
+            if (Bot.mode === "collect") { ok = false; break; }
+            if (o.type !== "*" && Bot.npcAllow.size && !Bot.npcAllow.has(String(o.type))) { ok = false; break; }
+          } else if (o.kind === "collect") {
+            if (Bot.mode === "kill") { ok = false; break; }
+            if (Bot.boxAllow.size && !Bot.boxAllow.has(String(o.type))) { ok = false; break; }
+          } else { ok = false; break; }
+        }
+        if (!ok) continue;
+        if (acceptQuest(questState, q.id)) {
+          markProgressDirty();
+          saveProgressNow();
+          try { renderQuestWindow(); renderQuestTerminal(); } catch {}
+          botLog(`Quête acceptée : ${q.title}`);
+          break;
+        }
+      }
+    }
+  } catch {}
+}
 // Mémorise les NPC croisés par map (throttlé) : enrichit le filtre par map
 // pour les types absents de l'index des spawns. Tourne même bot en pause.
 function botRecordSightings(dt) {
@@ -2562,11 +2948,13 @@ function botRenderNpcList() {
     const dist = botNpcDist(t);
     const orbit = botNpcOrbitOf(t);
     const ammo = Bot.npcAmmo[String(t)] || "";
+    const prio = botNpcPrio(t);
     const mapsFull = (maps || []).map(String).join(", ");
     rows.push(
       `<div class="botNpcRow" data-npc="${escapeHtml(t)}">` +
       `<input class="botNpcSel" type="checkbox" value="${escapeHtml(t)}"${Bot.npcAllow.has(t) ? " checked" : ""} title="Tuer ce NPC" />` +
       `<div class="botNpcId"><span class="botNpcName">${escapeHtml(name)}</span><small class="botNpcMaps" title="${escapeHtml(mapsFull || "Map inconnue")}">Maps : ${escapeHtml(mapsFull || "?")}</small></div>` +
+      `<input class="botNpcPrio" type="number" data-type="${escapeHtml(t)}" value="${prio}" min="0" max="99" step="1" title="Priorité (plus haute = tuée d'abord)" />` +
       `<input class="botNpcDist" type="number" data-type="${escapeHtml(t)}" value="${dist}" min="200" max="2000" step="10" title="Distance d'orbite (m)" />` +
       `<select class="botNpcAmmo" data-type="${escapeHtml(t)}" title="Munition pour ce NPC">${botAmmoOptions(ammo)}</select>` +
       `<input class="botNpcOrbit" type="checkbox" data-type="${escapeHtml(t)}"${orbit ? " checked" : ""} title="Tourner autour de ce NPC" />` +
@@ -2579,6 +2967,13 @@ function botRenderNpcList() {
 
 function wireBotWindow() {
   const wasActive = botLoadConfig();
+  document.querySelectorAll("#botTabs .botTab").forEach((btn) => {
+    if (!btn.dataset.botTabWired) {
+      btn.dataset.botTabWired = "1";
+      btn.addEventListener("click", () => botSwitchTab(btn.dataset.botTab));
+    }
+  });
+  botSwitchTab(Bot.tab || "general");
   const mapSelect = document.getElementById("botMapSelect");
   if (mapSelect && !mapSelect.options.length) {
     const cur = String(window.__CURRENT_MAP_ID__ || "1-1");
@@ -2628,6 +3023,18 @@ function wireBotWindow() {
         botSaveConfig();
       }
     });
+    npcList.addEventListener("change", (e) => {
+      const el = e.target.closest?.('input[type="number"].botNpcPrio');
+      if (!el) return;
+      const p = Math.floor(Number(el.value));
+      if (Number.isFinite(p)) {
+        const v = Math.max(0, Math.min(99, p));
+        if (v > 0) Bot.npcPrio[el.dataset.type] = v;
+        else delete Bot.npcPrio[el.dataset.type];
+        el.value = v;
+        botSaveConfig();
+      }
+    });
   }
   const boxList = document.getElementById("botBoxList");
   if (boxList && !boxList.children.length) {
@@ -2645,13 +3052,25 @@ function wireBotWindow() {
       botSaveConfig();
     });
   }
+  // Module (façon fenêtre Général) : Kill & Collect / Kill / Collect / Quest / Galaxy Gates.
+  const moduleSel = document.getElementById("botModule");
+  if (moduleSel) {
+    moduleSel.value = Bot.module || "both";
+    if (!moduleSel.dataset.wired) {
+      moduleSel.dataset.wired = "1";
+      moduleSel.addEventListener("change", () => {
+        botSetModule(moduleSel.value);
+        moduleSel.value = Bot.module;
+        botLog(`Module : ${BOT_MODULES[Bot.module]?.label || Bot.module}`);
+      });
+    }
+  }
   document.querySelectorAll('#botModeRow input[name="botMode"]').forEach((radio) => {
     radio.checked = radio.value === Bot.mode;
     radio.addEventListener("change", () => {
       if (!radio.checked) return;
-      Bot.mode = radio.value;
-      botSaveConfig();
-      botLog(`Mode : ${Bot.mode === "collect" ? "collecte uniquement" : Bot.mode === "kill" ? "kill NPC uniquement" : "collecte + kill"}`);
+      botSetModule(radio.value);
+      botLog(`Mode : ${BOT_MODULES[Bot.module]?.label || Bot.module}`);
     });
   });
   const autoTravel = document.getElementById("botAutoTravel");
@@ -2663,6 +3082,36 @@ function wireBotWindow() {
   if (autoRepair) {
     autoRepair.checked = Bot.autoRepair;
     autoRepair.addEventListener("change", () => { Bot.autoRepair = autoRepair.checked; botSaveConfig(); });
+  }
+  const reviveWait = document.getElementById("botReviveWait");
+  if (reviveWait) {
+    reviveWait.value = Bot.reviveWait;
+    if (!reviveWait.dataset.wired) {
+      reviveWait.dataset.wired = "1";
+      reviveWait.addEventListener("change", () => {
+        const v = Math.floor(Number(reviveWait.value));
+        if (Number.isFinite(v)) {
+          Bot.reviveWait = Math.max(0, Math.min(60, v));
+          reviveWait.value = Bot.reviveWait;
+          botSaveConfig();
+        }
+      });
+    }
+  }
+  const maxDeaths = document.getElementById("botMaxDeaths");
+  if (maxDeaths) {
+    maxDeaths.value = Bot.maxDeaths;
+    if (!maxDeaths.dataset.wired) {
+      maxDeaths.dataset.wired = "1";
+      maxDeaths.addEventListener("change", () => {
+        const v = Math.floor(Number(maxDeaths.value));
+        if (Number.isFinite(v)) {
+          Bot.maxDeaths = Math.max(0, Math.min(999, v));
+          maxDeaths.value = Bot.maxDeaths;
+          botSaveConfig();
+        }
+      });
+    }
   }
   if (mapSelect) {
     mapSelect.addEventListener("change", () => {
@@ -2733,6 +3182,21 @@ function wireBotWindow() {
     boxList?.querySelectorAll('input[type="checkbox"]').forEach((c) => { c.checked = false; });
     botSaveConfig();
   });
+  const boxRadius = document.getElementById("botBoxRadius");
+  if (boxRadius) {
+    boxRadius.value = Bot.boxRadius;
+    if (!boxRadius.dataset.wired) {
+      boxRadius.dataset.wired = "1";
+      boxRadius.addEventListener("change", () => {
+        const v = Math.floor(Number(boxRadius.value));
+        if (Number.isFinite(v)) {
+          Bot.boxRadius = Math.max(0, Math.min(20000, v));
+          boxRadius.value = Bot.boxRadius;
+          botSaveConfig();
+        }
+      });
+    }
+  }
   // Priorité du mode mixte.
   const priority = document.getElementById("botPriority");
   if (priority) {
@@ -2762,6 +3226,7 @@ function wireBotWindow() {
     ["botFormMove", "formMove"],
     ["botFormAttack", "formAttack"],
     ["botFormTravel", "formTravel"],
+    ["botFormFlee", "formFlee"],
   ];
   for (const [elId, key] of formDefs) {
     const sel = document.getElementById(elId);
@@ -2784,23 +3249,31 @@ function wireBotWindow() {
       sel.addEventListener("change", () => { Bot[key] = String(sel.value || ""); botSaveConfig(); });
     }
   }
-  // Configurations 1/2 par phase (vide = ne pas changer).
-  const cfgDefs = [
-    ["botCfgAttack", "cfgAttack"],
-    ["botCfgFly", "cfgFly"],
-    ["botCfgTravel", "cfgTravel"],
+  // Configurations 1/2 par phase, style boutons segmentés (—, 1, 2).
+  const cfgSegDefs = [
+    ["botCfgAttackSeg", "cfgAttack"],
+    ["botCfgFlySeg", "cfgFly"],
+    ["botCfgFleeSeg", "cfgFlee"],
+    ["botCfgTravelSeg", "cfgTravel"],
   ];
-  for (const [elId, key] of cfgDefs) {
-    const sel = document.getElementById(elId);
-    if (!sel) continue;
-    sel.value = Bot[key] || "";
-    if (!sel.dataset.wired) {
-      sel.dataset.wired = "1";
-      sel.addEventListener("change", () => {
-        const v = String(sel.value || "");
+  for (const [elId, key] of cfgSegDefs) {
+    const seg = document.getElementById(elId);
+    if (!seg) continue;
+    const paint = () => {
+      seg.querySelectorAll("button").forEach((b) => {
+        b.classList.toggle("on", String(b.dataset.v || "") === String(Bot[key] || ""));
+      });
+    };
+    paint();
+    if (!seg.dataset.wired) {
+      seg.dataset.wired = "1";
+      seg.addEventListener("click", (e) => {
+        const b = e.target.closest?.("button");
+        if (!b) return;
+        const v = String(b.dataset.v || "");
         Bot[key] = v === "1" || v === "2" ? v : "";
-        sel.value = Bot[key];
         botSaveConfig();
+        paint();
       });
     }
   }
@@ -2808,7 +3281,12 @@ function wireBotWindow() {
   botRefreshPetOptions();  const petSel = document.getElementById("botPetMode");
   if (petSel && !petSel.dataset.wired) {
     petSel.dataset.wired = "1";
-    petSel.addEventListener("change", () => { Bot.petMode = String(petSel.value || ""); botSaveConfig(); });
+    petSel.addEventListener("change", () => {
+      Bot.petMode = String(petSel.value || "");
+      botSaveConfig();
+      // Appliqué aussitôt même bot actif (avant : seulement au démarrage).
+      if (Bot.active) botApplyPetMode();
+    });
   }
   // Verrouillage de cible, orbite, fuite, overlays.
   const lockBox = document.getElementById("botLock");
@@ -2881,8 +3359,201 @@ function wireBotWindow() {
       });
     }
   }
-  const overlayBox = document.getElementById("botOverlay");
-  if (overlayBox) {
+  const fleeResume = document.getElementById("botFleeResume");
+  if (fleeResume) {
+    fleeResume.value = Bot.fleeResume;
+    if (!fleeResume.dataset.wired) {
+      fleeResume.dataset.wired = "1";
+      fleeResume.addEventListener("change", () => {
+        const v = Math.floor(Number(fleeResume.value));
+        if (Number.isFinite(v)) {
+          Bot.fleeResume = Math.max(10, Math.min(100, v));
+          fleeResume.value = Bot.fleeResume;
+          botSaveConfig();
+        }
+      });
+    }
+  }
+  const npcIgnore = document.getElementById("botNpcIgnore");
+  if (npcIgnore) {
+    npcIgnore.value = Bot.npcIgnoreDist;
+    if (!npcIgnore.dataset.wired) {
+      npcIgnore.dataset.wired = "1";
+      npcIgnore.addEventListener("change", () => {
+        const v = Math.floor(Number(npcIgnore.value));
+        if (Number.isFinite(v)) {
+          Bot.npcIgnoreDist = Math.max(0, Math.min(20000, v));
+          npcIgnore.value = Bot.npcIgnoreDist;
+          botSaveConfig();
+        }
+      });
+    }
+  }
+  const skillIemBox = document.getElementById("botSkillIem");
+  if (skillIemBox) {
+    skillIemBox.checked = Bot.skillIem;
+    if (!skillIemBox.dataset.wired) {
+      skillIemBox.dataset.wired = "1";
+      skillIemBox.addEventListener("change", () => { Bot.skillIem = skillIemBox.checked; botSaveConfig(); });
+    }
+  }
+  const iemFoes = document.getElementById("botIemFoes");
+  if (iemFoes) {
+    iemFoes.value = Bot.iemFoes;
+    if (!iemFoes.dataset.wired) {
+      iemFoes.dataset.wired = "1";
+      iemFoes.addEventListener("change", () => {
+        const v = Math.floor(Number(iemFoes.value));
+        if (Number.isFinite(v)) {
+          Bot.iemFoes = Math.max(1, Math.min(10, v));
+          iemFoes.value = Bot.iemFoes;
+          botSaveConfig();
+        }
+      });
+    }
+  }
+  const skillIshBox = document.getElementById("botSkillIsh");
+  if (skillIshBox) {
+    skillIshBox.checked = Bot.skillIsh;
+    if (!skillIshBox.dataset.wired) {
+      skillIshBox.dataset.wired = "1";
+      skillIshBox.addEventListener("change", () => { Bot.skillIsh = skillIshBox.checked; botSaveConfig(); });
+    }
+  }
+  const ishPct = document.getElementById("botIshPct");
+  if (ishPct) {
+    ishPct.value = Bot.ishPct;
+    if (!ishPct.dataset.wired) {
+      ishPct.dataset.wired = "1";
+      ishPct.addEventListener("change", () => {
+        const v = Math.floor(Number(ishPct.value));
+        if (Number.isFinite(v)) {
+          Bot.ishPct = Math.max(5, Math.min(90, v));
+          ishPct.value = Bot.ishPct;
+          botSaveConfig();
+        }
+      });
+    }
+  }
+  const rocketsBox = document.getElementById("botRockets");
+  if (rocketsBox) {
+    rocketsBox.checked = Bot.rockets;
+    if (!rocketsBox.dataset.wired) {
+      rocketsBox.dataset.wired = "1";
+      rocketsBox.addEventListener("change", () => {
+        Bot.rockets = rocketsBox.checked;
+        botSaveConfig();
+        if (Bot.active) botApplyRocketFlags();
+      });
+    }
+  }
+  const launchersBox = document.getElementById("botLaunchers");
+  if (launchersBox) {
+    launchersBox.checked = Bot.launchers;
+    if (!launchersBox.dataset.wired) {
+      launchersBox.dataset.wired = "1";
+      launchersBox.addEventListener("change", () => {
+        Bot.launchers = launchersBox.checked;
+        botSaveConfig();
+        if (Bot.active) botApplyRocketFlags();
+      });
+    }
+  }
+  const questsAcceptBox = document.getElementById("botQuestsAccept");
+  if (questsAcceptBox) {
+    questsAcceptBox.checked = Bot.questsAccept;
+    if (!questsAcceptBox.dataset.wired) {
+      questsAcceptBox.dataset.wired = "1";
+      questsAcceptBox.addEventListener("change", () => { Bot.questsAccept = questsAcceptBox.checked; botSaveConfig(); });
+    }
+  }
+  const questsClaimBox = document.getElementById("botQuestsClaim");
+  if (questsClaimBox) {
+    questsClaimBox.checked = Bot.questsClaim;
+    if (!questsClaimBox.dataset.wired) {
+      questsClaimBox.dataset.wired = "1";
+      questsClaimBox.addEventListener("change", () => { Bot.questsClaim = questsClaimBox.checked; botSaveConfig(); });
+    }
+  }
+  const cargoBox = document.getElementById("botCargo");
+  if (cargoBox) {
+    cargoBox.checked = Bot.cargo;    if (!cargoBox.dataset.wired) {
+      cargoBox.dataset.wired = "1";
+      cargoBox.addEventListener("change", () => {
+        Bot.cargo = cargoBox.checked;
+        if (!Bot.cargo) { Bot.selling = false; Bot.travelOverride = ""; }
+        botSaveConfig();
+      });
+    }
+  }
+  const cargoPct = document.getElementById("botCargoPct");  if (cargoPct) {
+    cargoPct.value = Bot.cargoPct;
+    if (!cargoPct.dataset.wired) {
+      cargoPct.dataset.wired = "1";
+      cargoPct.addEventListener("change", () => {
+        const v = Math.floor(Number(cargoPct.value));
+        if (Number.isFinite(v)) {
+          Bot.cargoPct = Math.max(50, Math.min(100, v));
+          cargoPct.value = Bot.cargoPct;
+          botSaveConfig();
+        }
+      });
+    }
+  }
+  const sellBaseSel = document.getElementById("botSellBase");
+  if (sellBaseSel) {
+    sellBaseSel.value = Bot.sellBase || "auto";
+    if (!sellBaseSel.dataset.wired) {
+      sellBaseSel.dataset.wired = "1";
+      sellBaseSel.addEventListener("change", () => {
+        const v = String(sellBaseSel.value || "auto");
+        Bot.sellBase = ["auto", "low", "high"].includes(v) ? v : "auto";
+        sellBaseSel.value = Bot.sellBase;
+        botSaveConfig();
+      });
+    }
+  }
+  const refineDefs = [
+    ["botRefineLaser", "botRefineLaserQty", "laser"],
+    ["botRefineShield", "botRefineShieldQty", "shield"],
+    ["botRefineRocket", "botRefineRocketQty", "rocket"],
+    ["botRefineSpeed", "botRefineSpeedQty", "speed"],
+  ];
+  for (const [selId, qtyId, slot] of refineDefs) {
+    const sel = document.getElementById(selId);
+    const qty = document.getElementById(qtyId);
+    if (sel && !sel.options.length) {
+      const ores = UPGRADE_SLOT_ORES[slot] || [];
+      const opts = [`<option value="">—</option>`];
+      for (const ore of ores) {
+        const bonus = Math.round(Number(UPGRADE_ORE_BONUS[ore]?.[slot] || 0) * 100);
+        opts.push(`<option value="${escapeHtml(ore)}">${escapeHtml(getResourceName(ore))}${bonus > 0 ? ` +${bonus}%` : ""}</option>`);
+      }
+      sel.innerHTML = opts.join("");
+    }
+    if (sel) sel.value = Bot.refine?.[slot]?.ore || "";
+    if (qty) qty.value = Bot.refine?.[slot]?.qty ?? 20;
+    if (sel && !sel.dataset.wired) {
+      sel.dataset.wired = "1";
+      sel.addEventListener("change", () => {
+        const ore = String(sel.value || "").toLowerCase();
+        Bot.refine[slot].ore = (UPGRADE_SLOT_ORES[slot] || []).includes(ore) ? ore : "";
+        botSaveConfig();
+      });
+    }
+    if (qty && !qty.dataset.wired) {
+      qty.dataset.wired = "1";
+      qty.addEventListener("change", () => {
+        const v = Math.floor(Number(qty.value));
+        if (Number.isFinite(v)) {
+          Bot.refine[slot].qty = Math.max(1, Math.min(999, v));
+          qty.value = Bot.refine[slot].qty;
+          botSaveConfig();
+        }
+      });
+    }
+  }
+  const overlayBox = document.getElementById("botOverlay");  if (overlayBox) {
     overlayBox.checked = Bot.overlay;
     if (!overlayBox.dataset.wired) {
       overlayBox.dataset.wired = "1";
@@ -2919,16 +3590,90 @@ function wireBotWindow() {
   if (wasActive) setTimeout(() => { if (!Bot.active) botSetActive(true); }, 3000);
 }
 
+// Cibles du module Quest : types NPC / box réclamés par les quêtes actives
+// non terminées (objectifs tuer/collecter). "*" = tout type accepté.
+function botQuestTargets() {
+  const npcs = new Set();
+  const boxes = new Set();
+  try {
+    for (const [id, prog] of Object.entries(questState.active || {})) {
+      const q = QUEST_DEFINITIONS.find(item => item.id === id);
+      if (!q) continue;
+      let objs = [];
+      try { objs = getQuestObjectives(q); } catch { continue; }
+      for (const o of objs) {
+        if (Number(prog?.[o.id] || 0) >= o.amount) continue;
+        if (o.kind === "kill") npcs.add(String(o.type));
+        else if (o.kind === "collect") boxes.add(String(o.type));
+      }
+    }
+  } catch {}
+  return { npcs, boxes };
+}
+
+// Plus proche NPC de quête (priorité DarkBot puis distance).
+function botNearestQuestNpc(set) {
+  let best = null;
+  let bestD2 = Infinity;
+  const ignore2 = Bot.npcIgnoreDist > 0 ? Bot.npcIgnoreDist * Bot.npcIgnoreDist : 0;
+  const any = set.has("*");
+  for (const e of enemies) {
+    if (!e || Number(e.hp) <= 0) continue;
+    if (e.isPetTarget) continue;
+    if (Bot.npcAllow.size && !Bot.npcAllow.has(String(e.type))) continue;
+    if (!any && !set.has(String(e.type))) continue;
+    try { if (typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
+    const d2 = dist2(player.x, player.y, e.x, e.y);
+    if (ignore2 > 0 && d2 > ignore2) continue;
+    const pr = botNpcPrio(e.type);
+    const bpr = best ? botNpcPrio(best.type) : -1;
+    if (!best || pr > bpr || (pr === bpr && d2 < bestD2)) { bestD2 = d2; best = e; }
+  }
+  return best ? { npc: best, d2: bestD2 } : null;
+}
+
+function botNearestQuestBox(set) {
+  let best = null;
+  let bestD2 = Infinity;
+  const rad2 = Bot.boxRadius > 0 ? Bot.boxRadius * Bot.boxRadius : 0;
+  for (const c of collectables) {
+    if (!c) continue;
+    if (Bot.boxAllow.size && !Bot.boxAllow.has(String(c.type))) continue;
+    if (!set.has(String(c.type))) continue;
+    const d2 = dist2(player.x, player.y, c.x, c.y);
+    if (rad2 > 0 && d2 > rad2) continue;
+    if (d2 < bestD2) { bestD2 = d2; best = c; }
+  }
+  return best ? { box: best, d2: bestD2 } : null;
+}
+
+// Plus proche NPC vivant (module Galaxy Gates : vagues imposées, pas de filtre).
+function botNearestAnyNpc() {
+  let best = null;
+  let bestD2 = Infinity;
+  for (const e of enemies) {
+    if (!e || Number(e.hp) <= 0) continue;
+    if (e.isPetTarget) continue;
+    const d2 = dist2(player.x, player.y, e.x, e.y);
+    if (d2 < bestD2) { bestD2 = d2; best = e; }
+  }
+  return best ? { npc: best, d2: bestD2 } : null;
+}
+
 function botNearestNpc() {
   let best = null;
   let bestD2 = Infinity;
+  const ignore2 = Bot.npcIgnoreDist > 0 ? Bot.npcIgnoreDist * Bot.npcIgnoreDist : 0;
   for (const e of enemies) {
     if (!e || Number(e.hp) <= 0) continue;
     if (e.isPetTarget) continue;
     if (Bot.npcAllow.size && !Bot.npcAllow.has(String(e.type))) continue;
     try { if (typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
-    if (d2 < bestD2) { bestD2 = d2; best = e; }
+    if (ignore2 > 0 && d2 > ignore2) continue;
+    const pr = botNpcPrio(e.type);
+    const bpr = best ? botNpcPrio(best.type) : -1;
+    if (!best || pr > bpr || (pr === bpr && d2 < bestD2)) { bestD2 = d2; best = e; }
   }
   return best ? { npc: best, d2: bestD2 } : null;
 }
@@ -2936,10 +3681,12 @@ function botNearestNpc() {
 function botNearestBox() {
   let best = null;
   let bestD2 = Infinity;
+  const rad2 = Bot.boxRadius > 0 ? Bot.boxRadius * Bot.boxRadius : 0;
   for (const c of collectables) {
     if (!c) continue;
     if (Bot.boxAllow.size && !Bot.boxAllow.has(String(c.type))) continue;
     const d2 = dist2(player.x, player.y, c.x, c.y);
+    if (rad2 > 0 && d2 > rad2) continue;
     if (d2 < bestD2) { bestD2 = d2; best = c; }
   }
   return best ? { box: best, d2: bestD2 } : null;
@@ -2981,23 +3728,46 @@ function tickBot(dt) {
     Bot.lastNpcId = null;
     Bot.lastBoxId = null;
     Bot.fleeing = false;
-    if (player.dead && started && Bot.autoRepair) {
-      Bot.repairT += dt;
-      const where = Bot.respawn === "portal" ? "portail" : Bot.respawn === "here" ? "sur place" : "base";
-      Bot.status = "En réparation…";
-      Bot.target = `Retour ${where}`;
-      if (Bot.repairT >= 3) {
-        Bot.repairT = 0;
-        try {
-          if (Bot.respawn === "portal") { respawnNearestPortal(); botLog("Réparation auto au portail"); }
-          else if (Bot.respawn === "here") { respawnHere(); botLog("Réparation auto sur place"); }
-          else { respawnBase(); botLog("Réparation auto à la base"); }
-        } catch {}
+    if (player.dead && started) {
+      if (!Bot.wasDead) {
+        Bot.wasDead = true;
+        Bot.deaths++;
+        botRefreshHud();
+        if (Bot.maxDeaths > 0 && Bot.deaths >= Bot.maxDeaths) {
+          botLog(`Limite de morts atteinte (${Bot.deaths}) — arrêt du bot`);
+          botSetActive(false);
+          return;
+        }
+      }
+      if (Bot.autoRepair && Bot.active) {
+        Bot.repairT += dt;
+        if (rules?.mode === "gate") {
+          // En Galaxy Gate : seule la sortie vers la base existe.
+          Bot.status = "En réparation…";
+          Bot.target = "Retour base (gate)";
+          if (Bot.repairT >= Math.max(0, Bot.reviveWait)) {
+            Bot.repairT = 0;
+            try { respawnBaseGate(); botLog("Gate terminée — retour base"); } catch {}
+          }
+        } else {
+        const where = Bot.respawn === "portal" ? "portail" : Bot.respawn === "here" ? "sur place" : "base";
+        Bot.status = "En réparation…";
+        Bot.target = `Retour ${where}`;
+        if (Bot.repairT >= Math.max(0, Bot.reviveWait)) {
+          Bot.repairT = 0;
+          try {
+            if (Bot.respawn === "portal") { respawnNearestPortal(); botLog("Réparation auto au portail"); }
+            else if (Bot.respawn === "here") { respawnHere(); botLog("Réparation auto sur place"); }
+            else { respawnBase(); botLog("Réparation auto à la base"); }
+          } catch {}
+        }
+        }
       }
     }
     if (Bot.hudT !== 1) { Bot.hudT = 1; botRefreshHud(); }
     return;
   }
+  Bot.wasDead = false;
 
   // Main manuelle récente : le joueur reprend la main, le bot attend.
   // Prioritaire sur tout (fuite et voyage compris).
@@ -3006,6 +3776,36 @@ function tickBot(dt) {
     botRefreshHudThrottled(dt);
     return;
   }
+
+  // Flags roquettes auto tenus en continu (restaurés à l'arrêt).
+  botApplyRocketFlags();
+
+  // Compétences auto : IEM si assailli par N+, ISH si coque critique.
+  // Vérifiés prêts avant appel (pas de spam de toasts de recharge).
+  if ((Bot.skillIem || Bot.skillIsh) && started && !player.dead) {
+    let foes = 0;
+    try {
+      for (const e of enemies) {
+        if (npcIsEngagingPlayer(e)) {
+          foes++;
+          if (foes >= Math.max(1, Bot.iemFoes)) break;
+        }
+      }
+    } catch { foes = 0; }
+    if (Bot.skillIem && foes >= Math.max(1, Bot.iemFoes) && pulseCd <= 0 && player.credits >= PULSE_COST) {
+      try { usePulse(); botLog(`IEM auto (${foes} assaillants)`); } catch {}
+    }
+    if (Bot.skillIsh && ishCd <= 0 && player.credits >= ISH_COST) {
+      const hpM = Math.max(1, Number(player.hpMax) || 1);
+      const hpP = (Number(player.hp) || 0) / hpM * 100;
+      if (hpP < Bot.ishPct) {
+        try { useIsh(); botLog(`ISH auto (${Math.round(hpP)} % coque)`); } catch {}
+      }
+    }
+  }
+
+  // Quêtes auto (rend + accept au terminal), throttlé en interne.
+  if (Bot.questsAccept || Bot.questsClaim) botTickQuests(dt);
 
   // Seuil de fuite : coque basse → repli au portail le plus proche, le
   // robot réparateur passif remonte la coque, reprise au seuil + 20 %.
@@ -3020,15 +3820,16 @@ function tickBot(dt) {
     botLog(`Coque à ${Math.round(hpPct)} % — fuite au portail`);
   }
   if (Bot.fleeing) {
-    const resumeAt = Math.min(100, Bot.fleePct + 20);
+    // Reprise explicite (style DarkBot REPAIR_HP_RANGE), plancher = seuil + 5.
+    const resumeAt = Math.max(Math.min(100, Bot.fleeResume), Bot.fleePct + 5);
     if (hpPct >= resumeAt) {
       Bot.fleeing = false;
       botLog(`Réparé (${Math.round(hpPct)} %) — reprise du farm`);
     } else {
       Bot.status = "Fuite — réparation";
       Bot.target = `Coque ${Math.round(hpPct)} % (reprise à ${resumeAt} %)`;
-      botApplyFormation(Bot.formMove);
-      botApplyConfig(Bot.cfgFly);
+      botApplyFormation(Bot.formFlee || Bot.formMove);
+      botApplyConfig(Bot.cfgFlee || Bot.cfgFly);
       const shelter = getNearestPortalTo(player.x, player.y);
       if (shelter) {
         if (attackActive) { try { stopAttack(); } catch {} }
@@ -3045,29 +3846,89 @@ function tickBot(dt) {
     }
   }
 
+  // Soute pleine : on raffine d'abord (charge les améliorations), et
+  // seulement si vraiment pas moyen on va vendre au comptoir.
+  // Jamais en Galaxy Gate (pas de comptoir, pas de sortie auto).
+  if (Bot.cargo && !Bot.selling && !player.dead && started && rules?.mode !== "gate") {
+    try {
+      const c = currentCargo();
+      if (c.capacity > 0 && c.used / c.capacity * 100 >= Bot.cargoPct) {
+        try { stopAttack(); } catch {}
+        try { cancelCollectableTarget(); } catch {}
+        try { if (Target.get()) Target.clear(); } catch {}
+        const freed = botRefineUpgrades();
+        const after = currentCargo();
+        if (after.capacity > 0 && after.used / after.capacity * 100 < Bot.cargoPct) {
+          botLog(freed > 0 ? `Soute allégée par raffinage (${freed} minerais) — reprise` : "Soute sous le seuil — reprise");
+        } else {
+          Bot.selling = true;
+          botLog(`Soute pleine (${formatInteger(after.used)}/${formatInteger(after.capacity)}) — direction comptoir`);
+        }
+      }
+    } catch {}
+  }
+  if (Bot.selling) {
+    const trade = botNearestTradeModule();
+    if (!trade) {
+      // Pas de comptoir ici : base la plus proche (X-1 / X-8, préférence
+      // respectée), fallback sur l'autre base si besoin.
+      const cur = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+      const next = botPickSellBase(cur).find((m) => m !== cur);
+      if (next) {
+        if (Bot.travelOverride !== next) botLog(`Direction base ${next.toUpperCase()} (vente)`);
+        Bot.travelOverride = next;
+      } else {
+        Bot.selling = false;
+        Bot.travelOverride = null;
+        botLog("Soute : aucune base accessible — vente annulée");
+      }
+    } else {
+      Bot.travelOverride = null;
+      if (isPlayerNearTradeModule(trade.module)) {
+        const gained = botSellOres();
+        Bot.selling = false;
+        botLog(gained > 0 ? `Vente comptoir : +${formatInteger(gained)} crédits — reprise` : "Soute : rien à vendre — reprise");
+      } else {
+        Bot.status = "Vente — comptoir";
+        Bot.target = `Comptoir (${Math.round(Math.sqrt(trade.d2))}m)`;
+        botApplyFormation(Bot.formMove);
+        botApplyConfig(Bot.cfgFly);
+        if (attackActive) { try { stopAttack(); } catch {} }
+        moveTarget.active = true;
+        moveTarget.x = clamp(trade.pos.x, 80, WORLD.w - 80);
+        moveTarget.y = clamp(trade.pos.y, 80, WORLD.h - 80);
+        botRefreshHudThrottled(dt);
+        return;
+      }
+    }
+  }
+
   // Voyage inter-maps : 100 % physique, de portail en portail (BFS).
   // AUCUNE téléportation : le vaisseau vole vraiment jusqu'au portail
   // puis saute, étape par étape jusqu'à la carte cible.
-  const wantMap = String(Bot.targetMap || "").toLowerCase();
+  // travelOverride (vente) prime sur la carte cible de l'utilisateur.
+  const effRaw = Bot.travelOverride || Bot.targetMap || "";
+  const wantMap = String(effRaw).toLowerCase();
   const curMap = String(window.__CURRENT_MAP_ID__ || "1-1").toLowerCase();
-  if (wantMap && wantMap !== curMap && Bot.autoTravel) {
+  // Module Galaxy Gates : on reste sur place (ni voyage, ni téléport).
+  if (wantMap && wantMap !== curMap && (Bot.autoTravel || Bot.travelOverride) && Bot.module !== "galaxy") {
     Bot.travelCd -= dt;
     Bot.jumpCd -= dt;
     botApplyFormation(Bot.formTravel);
     botApplyConfig(Bot.cfgTravel);
     if (!botPortalIndex) {
-      Bot.status = `Voyage → ${Bot.targetMap.toUpperCase()}`;
+      Bot.status = `Voyage → ${String(effRaw).toUpperCase()}`;
       Bot.target = "Cartographie des portails…";
       botRefreshHudThrottled(dt);
       return;
     }
     const route = botFindRoute(curMap, wantMap);
     if (!route) {
-      Bot.status = `Voyage → ${Bot.targetMap.toUpperCase()}`;
+      Bot.status = `Voyage → ${String(effRaw).toUpperCase()}`;
       Bot.target = "Aucune route physique";
       if (Bot.travelCd <= 0) {
         Bot.travelCd = 15;
-        botLog(`Aucune route physique vers ${Bot.targetMap.toUpperCase()} — nouvel essai dans 15 s`);
+        botLog(`Aucune route physique vers ${String(effRaw).toUpperCase()} — nouvel essai dans 15 s`);
       }
       botRefreshHudThrottled(dt);
       return;
@@ -3081,7 +3942,7 @@ function tickBot(dt) {
       return;
     }
     const step = route.length > 2 ? ` (via ${nextHop.toUpperCase()})` : "";
-    Bot.status = `Voyage → ${Bot.targetMap.toUpperCase()}${step}`;
+    Bot.status = `Voyage → ${String(effRaw).toUpperCase()}${step}`;
     Bot.target = `Portail (${Math.round(Math.hypot(portal.x - player.x, portal.y - player.y))}m)`;
     if (performance.now() - Bot.manualT < 2500) { botRefreshHudThrottled(dt); return; }
     if (attackActive) { try { stopAttack(); } catch {} }
@@ -3122,7 +3983,58 @@ function tickBot(dt) {
   }
 
   let pick = null; // { kind: "npc"|"box", ref }
-  if (lockedNpc) pick = { kind: "npc", ref: lockedNpc };
+  const gateMode = rules?.mode === "gate";
+  if (Bot.module === "galaxy") {
+    if (!gateMode) {
+      Bot.status = "Galaxy Gates";
+      Bot.target = "Entre dans une gate (spinner) pour démarrer";
+      if (attackActive) { try { stopAttack(); } catch {} }
+      try { if (Target.get()) Target.clear(); } catch {}
+      try { cancelCollectableTarget(); } catch {}
+      moveTarget.active = false;
+      botRefreshHudThrottled(dt);
+      return;
+    }
+    // En gate : on garde la cible en cours si vivante, sinon le plus proche
+    // (vagues imposées, pas de filtre de sélection).
+    let cur = null;
+    try {
+      const t = Target.get();
+      if (t && !t.isPetTarget && Number(t.hp) > 0 && enemies.includes(t)) cur = t;
+    } catch { cur = null; }
+    const found = cur ? { npc: cur } : botNearestAnyNpc();
+    if (!found) {
+      // Vague terminée → suivante (throttlé, garde-fous internes).
+      Bot.status = "Galaxy Gates";
+      Bot.target = "Vague suivante…";
+      Bot.jumpCd -= dt;
+      if (Bot.jumpCd <= 0) {
+        Bot.jumpCd = 3;
+        try { tryStartNextWave(); } catch {}
+      }
+      if (attackActive) { try { stopAttack(); } catch {} }
+      botRefreshHudThrottled(dt);
+      return;
+    }
+    pick = { kind: "npc", ref: found.npc };
+  } else if (Bot.module === "quest") {
+    // On ne vise que les cibles réclamées par les quêtes actives.
+    const qt = botQuestTargets();
+    const qNpc = qt.npcs.size ? botNearestQuestNpc(qt.npcs) : null;
+    const qBox = qt.boxes.size ? botNearestQuestBox(qt.boxes) : null;
+    if (lockedNpc && (qt.npcs.has("*") || qt.npcs.has(String(lockedNpc.type)))) {
+      pick = { kind: "npc", ref: lockedNpc };
+    } else if (Bot.priority === "box") {
+      pick = qBox ? { kind: "box", ref: qBox.box } : (qNpc ? { kind: "npc", ref: qNpc.npc } : null);
+    } else if (Bot.priority === "nearest") {
+      if (qNpc && qBox) pick = qNpc.d2 <= qBox.d2 ? { kind: "npc", ref: qNpc.npc } : { kind: "box", ref: qBox.box };
+      else if (qNpc) pick = { kind: "npc", ref: qNpc.npc };
+      else if (qBox) pick = { kind: "box", ref: qBox.box };
+    } else {
+      pick = qNpc ? { kind: "npc", ref: qNpc.npc } : (qBox ? { kind: "box", ref: qBox.box } : null);
+    }
+    if (!pick) Bot.target = "Aucune cible de quête";
+  } else if (lockedNpc) pick = { kind: "npc", ref: lockedNpc };
   else if (Bot.mode === "kill") pick = foundNpc ? { kind: "npc", ref: foundNpc.npc } : null;
   else if (Bot.mode === "collect") pick = foundBox ? { kind: "box", ref: foundBox.box } : null;
   else if (Bot.priority === "box") pick = foundBox ? { kind: "box", ref: foundBox.box } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null);
@@ -3173,6 +4085,10 @@ function tickBot(dt) {
     if (attackActive && !Target.get()) { try { stopAttack(); } catch {} }
     Bot.status = Bot.mode === "collect" ? "Collecte — patrouille" : Bot.mode === "kill" ? "Chasse — patrouille" : "Farm — patrouille";
     Bot.target = "Recherche de cible…";
+    if (Bot.module === "quest") {
+      Bot.status = "Quêtes — patrouille";
+      Bot.target = "Aucune cible (accepte des quêtes)";
+    }
     botRefreshHudThrottled(dt);
     return;
   }
@@ -5325,6 +6241,51 @@ ui.questTabs?.addEventListener("click", event => {
   renderQuestWindow();
 });
 
+// Rend une quête terminée + distribue les récompenses (même logique que le
+// clic manuel : crédits, munitions, XP, honneur, énergie GG). Réutilisé par
+// le BOT (quêtes auto). Retourne true si rendue.
+function claimQuestReward(questId) {
+  const reward = claimQuest(questState, questId);
+  if (!reward) return false;
+  const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
+  // Booster QR-01 : récompenses de quêtes doublées.
+  const questMult = playerBoosterMults().quest;
+  const creditsGained = Math.max(0, Math.floor(Number(reward.credits || 0) * questMult));
+  player.credits += creditsGained;
+  const ammoRewards = Object.entries(reward.ammo || {}).filter(([type, amount]) => Object.hasOwn(player.ammo, type) && Number(amount) > 0);
+  const ammoGained = ammoRewards.map(([type, amount]) => [type, Math.max(0, Math.floor(Number(amount) * questMult || 0))]);
+  for (const [type, gained] of ammoGained) player.ammo[type] += gained;
+  if (ammoGained.length) updateAmmoUI();
+  const experience = Math.floor(getQuestExperienceReward(quest) * questMult);
+  const honor = Math.floor(getQuestHonorReward(quest) * questMult);
+  // Montants réellement reçus (bonus modules + boosters XP/honneur inclus).
+  const gainedXp = awardExperience(experience)?.gained ?? experience;
+  const gainedHonor = awardHonor(honor)?.gained ?? honor;
+  if (account.user?.stats) account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
+  markProgressDirty();
+  saveProgressNow();
+  const galaxyEnergy = Math.max(0, Math.floor(Number(reward.galaxyEnergy) * questMult || 0));
+  if (galaxyEnergy > 0) {
+    const energyResult = grantCurrentUserGalaxyEnergy(galaxyEnergy);
+    if (energyResult.ok) {
+      account.user = energyResult.user;
+      renderGalaxyGateWindow();
+    }
+  }
+  const AMMO_REWARD_NAMES = { x6: "RSB-75", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", sab: "SAB-50", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x1: "LCB-10" };
+  const ammoMessages = ammoGained.map(([type, gained]) => `Vous avez reçu ${formatInteger(gained)} munitions ${AMMO_REWARD_NAMES[type] || String(type).toUpperCase()}`);
+  const energyMessage = galaxyEnergy > 0 ? `Vous avez reçu ${formatInteger(galaxyEnergy)} énergies pour les portails intergalactiques (GG)` : "";
+  addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(creditsGained)} crédits · +${formatInteger(gainedXp)} XP · +${formatInteger(gainedHonor)} honneur${ammoMessages.length ? ` · ${ammoMessages.join(" · ")}` : ""}${energyMessage ? ` · ${energyMessage}` : ""}`, "reward");
+  showNotificationGroup([
+    `Vous avez reçu ${formatInteger(creditsGained)} crédits`,
+    `Vous avez gagné ${formatInteger(gainedXp)} XP`,
+    `Vous avez gagné ${formatInteger(gainedHonor)} honneur`,
+    ...ammoMessages,
+    ...(energyMessage ? [energyMessage] : []),
+  ]);
+  return true;
+}
+
 ui.questList?.addEventListener("click", event => {
   const button = event.target.closest("[data-quest-action]");
   if (!button) return;
@@ -5353,45 +6314,7 @@ ui.questList?.addEventListener("click", event => {
   }
 
   if (button.dataset.questAction === "claim") {
-    const reward = claimQuest(questState, questId);
-    if (reward) {
-      const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
-      // Booster QR-01 : récompenses de quêtes doublées.
-      const questMult = playerBoosterMults().quest;
-      const creditsGained = Math.max(0, Math.floor(Number(reward.credits || 0) * questMult));
-      player.credits += creditsGained;
-      const ammoRewards = Object.entries(reward.ammo || {}).filter(([type, amount]) => Object.hasOwn(player.ammo, type) && Number(amount) > 0);
-      const ammoGained = ammoRewards.map(([type, amount]) => [type, Math.max(0, Math.floor(Number(amount) * questMult || 0))]);
-      for (const [type, gained] of ammoGained) player.ammo[type] += gained;
-      if (ammoGained.length) updateAmmoUI();
-      const experience = Math.floor(getQuestExperienceReward(quest) * questMult);
-      const honor = Math.floor(getQuestHonorReward(quest) * questMult);
-      // Montants réellement reçus (bonus modules + boosters XP/honneur inclus).
-      const gainedXp = awardExperience(experience)?.gained ?? experience;
-      const gainedHonor = awardHonor(honor)?.gained ?? honor;
-      if (account.user?.stats) account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
-      markProgressDirty();
-      saveProgressNow();
-      const galaxyEnergy = Math.max(0, Math.floor(Number(reward.galaxyEnergy) * questMult || 0));
-      if (galaxyEnergy > 0) {
-        const energyResult = grantCurrentUserGalaxyEnergy(galaxyEnergy);
-        if (energyResult.ok) {
-          account.user = energyResult.user;
-          renderGalaxyGateWindow();
-        }
-      }
-      const AMMO_REWARD_NAMES = { x6: "RSB-75", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", sab: "SAB-50", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x1: "LCB-10" };
-      const ammoMessages = ammoGained.map(([type, gained]) => `Vous avez reçu ${formatInteger(gained)} munitions ${AMMO_REWARD_NAMES[type] || String(type).toUpperCase()}`);
-      const energyMessage = galaxyEnergy > 0 ? `Vous avez reçu ${formatInteger(galaxyEnergy)} énergies pour les portails intergalactiques (GG)` : "";
-      addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(creditsGained)} crédits · +${formatInteger(gainedXp)} XP · +${formatInteger(gainedHonor)} honneur${ammoMessages.length ? ` · ${ammoMessages.join(" · ")}` : ""}${energyMessage ? ` · ${energyMessage}` : ""}`, "reward");
-      showNotificationGroup([
-        `Vous avez reçu ${formatInteger(creditsGained)} crédits`,
-        `Vous avez gagné ${formatInteger(gainedXp)} XP`,
-        `Vous avez gagné ${formatInteger(gainedHonor)} honneur`,
-        ...ammoMessages,
-        ...(energyMessage ? [energyMessage] : []),
-      ]);
-    }
+    claimQuestReward(questId);
   }
 
   renderQuestWindow();
@@ -17893,11 +18816,11 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
       const hit = d2 <= rr * rr;
 
-      if (hit) {
-        spawnExplosion(e.x, e.y, 1.4);
+          if (hit) {
+            spawnExplosion(e.x, e.y, 1.4);
 
-        const dmg = Number(cfgTouch.explodeDmg || 12000);
-        hurtPlayer(dmg);
+            const dmg = Number(cfgTouch.explodeDmg || 12000);
+            hurtPlayer(dmg);
         notePetAttacker(e);
 
         e.hp = 0;
