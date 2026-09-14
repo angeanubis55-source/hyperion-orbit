@@ -2626,6 +2626,11 @@ function renderGalaxyGateWindow(message = "") {
       .map(([id, amount]) => [id, Math.max(0, amount - (appliedTotals[`ammo:${id}`] || 0))])
       .filter(([, amount]) => amount > 0)
       .map(([id, amount]) => `${formatInteger(amount)} munitions ${escapeHtml(String(id).toUpperCase())}`);
+    const ROCKET_REWARD_NAMES = { plt2021: "PLT-2021", plt3030: "PLT-3030", ubr100: "UBR-100", hstrm01: "HSTRM-01" };
+    const rockets = Object.entries(reward.rockets || {})
+      .map(([id, amount]) => [id, Math.max(0, amount - (appliedTotals[`rockets:${id}`] || 0))])
+      .filter(([, amount]) => amount > 0)
+      .map(([id, amount]) => `${formatInteger(amount)} roquettes ${escapeHtml(ROCKET_REWARD_NAMES[String(id).toLowerCase()] || String(id).toUpperCase())}`);
     const built = Object.entries(reward.builtByGate || {}).filter(([, amount]) => amount > 0).map(([gateId]) => `${escapeHtml(GALAXY_GATE_DEFINITIONS[gateId]?.name || gateId)} terminée`);
     const duplicateCounts = (reward.duplicates || []).reduce((counts, item) => {
       counts[item.gate] = (counts[item.gate] || 0) + 1;
@@ -2641,6 +2646,7 @@ function renderGalaxyGateWindow(message = "") {
     }, {}));
     const appliedTexts = groupedApplications.map(applied => {
       if (applied.rewardType === "ammo") return `${formatInteger(applied.amount)} Munitions ${escapeHtml(String(applied.rewardId || "").toUpperCase())} (x${applied.multiplier})`;
+      if (applied.rewardType === "rockets") return `${formatInteger(applied.amount)} Roquettes ${escapeHtml(ROCKET_REWARD_NAMES[String(applied.rewardId || "").toLowerCase()] || String(applied.rewardId || "").toUpperCase())} (x${applied.multiplier})`;
       if (applied.rewardType === "credits") return `${formatInteger(applied.amount)} Crédits (x${applied.multiplier})`;
       if (applied.rewardType === "energy") return `${formatInteger(applied.amount)} Énergies (x${applied.multiplier})`;
       if (applied.rewardType === "parts") return `Pièces ${escapeHtml(GALAXY_GATE_DEFINITIONS[applied.rewardId]?.name || applied.rewardId)} obtenues : ${formatInteger(applied.amount)} x${applied.multiplier}`;
@@ -2654,7 +2660,7 @@ function renderGalaxyGateWindow(message = "") {
     ]));
     const credits = remainingCredits ? `${formatInteger(remainingCredits)} crédits` : "";
     const energy = remainingEnergy ? `${remainingEnergy} énergie` : "";
-    const gains = [...formatGalaxyGatePartRewards({ partsByGate: remainingParts }), ...built, ...duplicates, credits, energy, ...ammo].filter(Boolean);
+    const gains = [...formatGalaxyGatePartRewards({ partsByGate: remainingParts }), ...built, ...duplicates, credits, energy, ...ammo, ...rockets].filter(Boolean);
     const gainRows = (gains.length || appliedTexts.length)
       ? `${gains.map(gain => `<small>${gain}</small>`).join("")}${appliedTexts.map(text => `<small class="ggHistoryMultiplierApplied">${text}</small>`).join("")}`
       : `<small>Aucun gain direct</small>`;
@@ -2717,12 +2723,23 @@ ui.galaxyGateWindow?.addEventListener("click", event => {
   player.ammo.x2 = result.user.ammo.x2;
   player.ammo.x3 = result.user.ammo.x3;
   player.ammo.x4 = result.user.ammo.x4;
+  player.ammo.sab = result.user.ammo.sab;
+  player.ammo.x6 = result.user.ammo.x6;
+  player.rockets = player.rockets || {};
+  for (const [rocketId, amount] of Object.entries(result.user.rockets || {})) {
+    player.rockets[rocketId] = amount;
+  }
   updateAmmoUI();
   const reward = result.rewards;
   const pieces = formatGalaxyGatePartRewards(reward).join(", ");
-  const ammo = Object.entries(reward.ammo).filter(([, amount]) => amount > 0).map(([id, amount]) => `${formatInteger(amount)} munitions ${id.toUpperCase()}`).join(", ");
+  const ammo = Object.entries(reward.ammo || {}).filter(([, amount]) => amount > 0).map(([id, amount]) => `${formatInteger(amount)} munitions ${id.toUpperCase()}`).join(", ");
+  const rocketGains = Object.entries(reward.rockets || {}).filter(([, amount]) => amount > 0).map(([id, amount]) => {
+    const key = String(id).toLowerCase();
+    const label = key === "plt2021" ? "PLT-2021" : key === "plt3030" ? "PLT-3030" : key === "ubr100" ? "UBR-100" : key === "hstrm01" ? "HSTRM-01" : id.toUpperCase();
+    return `${formatInteger(amount)} roquettes ${label}`;
+  }).join(", ");
   const extras = [reward.credits ? `${formatInteger(reward.credits)} crédits` : "", reward.energy ? `${reward.energy} énergie` : "", reward.built ? `${reward.built} Gate prête` : ""].filter(Boolean).join(", ");
-  renderGalaxyGateWindow([`${result.performed} spin(s)`, pieces, ammo, extras].filter(Boolean).join(" · "));
+  renderGalaxyGateWindow([`${result.performed} spin(s)`, pieces, ammo, rocketGains, extras].filter(Boolean).join(" · "));
   window.dispatchEvent(new CustomEvent("orbit:galaxy-gates"));
 });
 

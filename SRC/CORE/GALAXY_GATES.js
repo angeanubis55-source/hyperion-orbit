@@ -84,7 +84,8 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
     multiplierApplications: [],
     credits: 0,
     energy: 0,
-    ammo: { x2: 0, x3: 0, x4: 0 },
+    ammo: { x2: 0, x3: 0, x4: 0, sab: 0, x6: 0 },
+    rockets: { plt2021: 0, plt3030: 0, ubr100: 0, hstrm01: 0 },
   };
   let performed = 0;
 
@@ -151,18 +152,36 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
       }
     } else if (roll < 0.32) {
       registerDuplicate(randomGate());
-    } else if (roll < 0.60) {
+    } else if (roll < 0.55) {
       const amount = applyArmedMultiplier("ammo", "x2", 250);
       rewards.ammo.x2 += amount;
-    } else if (roll < 0.78) {
+    } else if (roll < 0.69) {
       const amount = applyArmedMultiplier("ammo", "x3", 150);
       rewards.ammo.x3 += amount;
-    } else if (roll < 0.90) {
+    } else if (roll < 0.79) {
       const amount = applyArmedMultiplier("ammo", "x4", 75);
       rewards.ammo.x4 += amount;
-    } else if (roll < 0.97) {
+    } else if (roll < 0.86) {
+      const amount = applyArmedMultiplier("ammo", "sab", 200);
+      rewards.ammo.sab += amount;
+    } else if (roll < 0.90) {
+      const amount = applyArmedMultiplier("rockets", "plt2021", 20);
+      rewards.rockets.plt2021 += amount;
+    } else if (roll < 0.925) {
+      const amount = applyArmedMultiplier("rockets", "plt3030", 10);
+      rewards.rockets.plt3030 += amount;
+    } else if (roll < 0.945) {
+      const amount = applyArmedMultiplier("rockets", "ubr100", 10);
+      rewards.rockets.ubr100 += amount;
+    } else if (roll < 0.96) {
+      const amount = applyArmedMultiplier("rockets", "hstrm01", 10);
+      rewards.rockets.hstrm01 += amount;
+    } else if (roll < 0.99) {
       const amount = applyArmedMultiplier("credits", null, 50000);
       rewards.credits += amount;
+    } else if (roll < 0.999) {
+      const amount = applyArmedMultiplier("ammo", "x6", 20);
+      rewards.ammo.x6 += amount;
     } else {
       const amount = applyArmedMultiplier("energy", null, 2);
       rewards.energy += amount;

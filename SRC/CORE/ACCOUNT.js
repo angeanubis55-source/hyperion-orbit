@@ -1721,8 +1721,15 @@ export function spinCurrentUserGalaxyGate(gateId, count = 1, rng = Math.random) 
   if (!result.ok) return result;
   u.galaxyGates = result.state;
   u.credits = result.credits;
-  for (const [ammoId, amount] of Object.entries(result.rewards.ammo)) {
+  for (const [ammoId, amount] of Object.entries(result.rewards.ammo || {})) {
+    if (!(Number(amount) > 0)) continue;
     u.ammo[ammoId] = Math.max(0, Number(u.ammo[ammoId]) || 0) + amount;
+  }
+  for (const [rocketId, amount] of Object.entries(result.rewards.rockets || {})) {
+    if (!(Number(amount) > 0)) continue;
+    if (!ROCKET_TYPES[String(rocketId || "").toLowerCase()]) continue;
+    const key = String(rocketId).toLowerCase();
+    u.rockets[key] = Math.max(0, Number(u.rockets[key]) || 0) + amount;
   }
   ensureUserShape(u);
   saveUser(u);
