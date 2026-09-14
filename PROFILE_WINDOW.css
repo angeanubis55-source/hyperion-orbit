@@ -3063,3 +3063,8 @@ body #hangarOverlay button.secondary:hover:not(:disabled){
   body #hangarOverlay .profilePanel.active { padding:12px !important; }
   body #hangarOverlay .hangarWorkspace { grid-template-columns:1fr !important; overflow-y:auto !important; }
 }
+
+/* Surcharge finale : fleches ↖ sur les boutons reduire (battent les blocs ci-dessus) */
+html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn,
+html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn,
+html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn { font-size:0 !important; }

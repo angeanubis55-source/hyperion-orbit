@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.197",
+    "date": "2026-09-14T01:48:31+02:00",
+    "message": "sync version 0.196 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.196",
     "date": "2026-09-14T01:48:00+02:00",
     "message": "boosters 12px + separateurs categories + dock palette (largeur auto, pastilles onglets)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.138",
     "date": "2026-09-08T12:12:21+02:00",
     "message": "Harmonise les effets du bouton reparation en vert avec ISH et IEM"
-  },
-  {
-    "version": "0.137",
-    "date": "2026-09-08T12:09:29+02:00",
-    "message": "Affiche les versions alpha numerotees et les patch notes dates"
   }
 ];

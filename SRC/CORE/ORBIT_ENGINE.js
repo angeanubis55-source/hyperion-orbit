@@ -4247,16 +4247,19 @@ function addGameLog(text, type = "info") {
   const entry = { text: value, type, timestamp: Date.now() };
   sessionGameLog.push(entry);
   if (sessionGameLog.length > 250) sessionGameLog.shift();
+  const logVisibleNow = () => ui.gameLogWindow
+    && ui.gameLogWindow.style.display !== "none"
+    && !ui.gameLogWindow.classList.contains("gameWinMinimized");
+  // Rendu immédiat (sans attendre IndexedDB) : le journal est toujours frais.
+  if (gameLogPage === 0 && logVisibleNow()) void renderGameLog();
   const userId = getGameLogUserId();
   void appendGameLog(userId, entry)
     .then(() => {
-      const logVisible = ui.gameLogWindow
-        && ui.gameLogWindow.style.display !== "none"
-        && !ui.gameLogWindow.classList.contains("gameWinMinimized");
-      if (gameLogPage === 0 && logVisible) void renderGameLog();
+      if (gameLogPage === 0 && logVisibleNow()) void renderGameLog();
     })
     .catch(error => {
       console.warn("Écriture du journal impossible :", error);
+      if (gameLogPage === 0 && logVisibleNow()) void renderGameLog();
     });
 }
 
@@ -4528,6 +4531,17 @@ document.getElementById("gameLogResizeHandle")?.addEventListener("pointerdown", 
   window.addEventListener("pointercancel", onUp);
 });
 void renderGameLog();
+// Re-rendu à chaque réouverture (sinon le contenu date de la fermeture).
+if (ui.gameLogWindow && typeof MutationObserver !== "undefined") {
+  let gameLogWasVisible = ui.gameLogWindow.style.display !== "none"
+    && !ui.gameLogWindow.classList.contains("gameWinMinimized");
+  new MutationObserver(() => {
+    const visible = ui.gameLogWindow.style.display !== "none"
+      && !ui.gameLogWindow.classList.contains("gameWinMinimized");
+    if (visible && !gameLogWasVisible) void renderGameLog();
+    gameLogWasVisible = visible;
+  }).observe(ui.gameLogWindow, { attributes: true, attributeFilter: ["style", "class"] });
+}
 
 function showToastFixed(text, opts = {}) {
   const value = String(text ?? "");
@@ -10022,14 +10036,10 @@ function killRewards(e) {
   const honorFormationBonus = Math.min(honorTotalBonus, Math.max(0, Math.round(honor * honorFormationPct / 100)));
   const xpModuleBonus = Math.max(0, xpTotalBonus - xpFormationBonus);
   const honorModuleBonus = Math.max(0, honorTotalBonus - honorFormationBonus);
-  const xpBonusText = xpFormationBonus > 0 ? `( +${formatInteger(xpFormationBonus)} ${formationName} )` : "";
-  const honorBonusText = honorFormationBonus > 0 ? `( +${formatInteger(honorFormationBonus)} ${formationName} )` : "";
-  const xpModuleText = xpModuleBonus > 0 ? `( +${formatInteger(xpModuleBonus)} Module(s) )` : "";
-  const honorModuleText = honorModuleBonus > 0 ? `( +${formatInteger(honorModuleBonus)} Module(s) )` : "";
-  const xpText = `${formatInteger(gainedXp)} XP ${xpBonusText} ${xpModuleText}`.trim();
-  const honorText = `${formatInteger(gainedHonor)} honneur ${honorBonusText} ${honorModuleText}`.trim();
-  const whiteTerms = [xpBonusText, xpModuleText, honorBonusText, honorModuleText].filter(Boolean);
-  const violetTerms = [...(formationName ? [formationName] : []), ...(xpModuleBonus > 0 || honorModuleBonus > 0 ? ["Module(s)"] : [])];
+  const xpText = `${formatInteger(gainedXp)} XP`;
+  const honorText = `${formatInteger(gainedHonor)} honneur`;
+  const whiteTerms = [];
+  const violetTerms = [];
   const npcName = String(NPC_TYPES[e.type]?.name || e.type || "NPC").replace(/^npc_/i, "");
   addGameLog(`${npcName} détruit · +${formatInteger(credits)} crédits · +${xpText} · +${honorText}`, "reward");
   showNotificationGroup([
