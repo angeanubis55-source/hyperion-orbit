@@ -2582,10 +2582,10 @@ function renderGalaxyGateWindow(message = "") {
   const completion = gate.completion;
   ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${formatInteger(completion.exp)} XP</span><span>${formatInteger(completion.honor)} honneur</span><span>${formatInteger(completion.credits)} crédits</span><span>${formatInteger(completion.x4)} UCB-100</span>`;
   ui.ggNpcRewardScale.innerHTML = `Récompenses des NPC <em>×${gate.rewardScale}</em>`;
-  ui.ggMultiplier.textContent = `x${state.multipliers[gate.id]}`;
+  ui.ggMultiplier.textContent = `x${state.multiplier}`;
   if (ui.ggMultiplierBtn) {
-    const armed = state.multiplierArmed?.[gate.id] === true;
-    ui.ggMultiplierBtn.disabled = state.multipliers[gate.id] <= 1;
+    const armed = state.multiplierArmed === true;
+    ui.ggMultiplierBtn.disabled = state.multiplier <= 1;
     ui.ggMultiplierBtn.classList.toggle("active", armed);
     const actionLabel = ui.ggMultiplierBtn.querySelector(".ggMultiplierAction");
     if (actionLabel) actionLabel.textContent = armed ? "Activée" : "Désactivée";
@@ -2677,7 +2677,7 @@ ui.ggSpinCount?.addEventListener("change", () => renderGalaxyGateWindow());
 
 ui.ggMultiplierBtn?.addEventListener("click", () => {
   const state = getCurrentUserFull()?.galaxyGates;
-  const armed = state?.multiplierArmed?.[selectedGalaxyGateId] === true;
+  const armed = state?.multiplierArmed === true;
   const result = armCurrentUserGalaxyGateMultiplier(selectedGalaxyGateId, !armed);
   if (!result.ok) return renderGalaxyGateWindow(result.error);
   account.user = result.user;

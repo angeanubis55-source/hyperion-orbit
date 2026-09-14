@@ -29,8 +29,9 @@ export function normalizeGalaxyGateState(raw) {
     deployed: {},
     completed: {},
     lives: {},
-    multipliers: {},
-    multiplierArmed: {},
+    // ✅ multiplicateur unique partagé entre Alpha / Beta / Gamma.
+    multiplier: 1,
+    multiplierArmed: false,
     active: GALAXY_GATE_DEFINITIONS[String(source.active || "").toLowerCase()] ? String(source.active).toLowerCase() : null,
     activeWave: Math.max(1, Math.floor(Number(source.activeWave) || 1)),
     // ✅ progression persistée par gate : permet d'alterner librement
@@ -47,10 +48,18 @@ export function normalizeGalaxyGateState(raw) {
     state.deployed[gate.id] = source.deployed?.[gate.id] === true;
     state.completed[gate.id] = Math.max(0, Math.floor(Number(source.completed?.[gate.id]) || 0));
     state.lives[gate.id] = Math.min(gate.maxLives, Math.max(0, Math.floor(Number(source.lives?.[gate.id]) || gate.maxLives)));
-    state.multipliers[gate.id] = Math.min(5, Math.max(1, Math.floor(Number(source.multipliers?.[gate.id]) || 1)));
-    state.multiplierArmed[gate.id] = source.multiplierArmed?.[gate.id] === true && state.multipliers[gate.id] > 1;
     state.waves[gate.id] = Math.min(gate.maxWaves, Math.max(0, Math.floor(Number(source.waves?.[gate.id]) || 0)));
   }
+  // ✅ migration : ancien format 1 multiplicateur par gate -> 1 seul partagé (on garde le max).
+  let sharedMultiplier = Math.min(5, Math.max(1, Math.floor(Number(source.multiplier) || 1)));
+  let sharedArmed = source.multiplierArmed === true && sharedMultiplier > 1;
+  for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) {
+    const legacyValue = Math.min(5, Math.max(1, Math.floor(Number(source.multipliers?.[gate.id]) || 1)));
+    if (legacyValue > sharedMultiplier) sharedMultiplier = legacyValue;
+    if (source.multiplierArmed?.[gate.id] === true && legacyValue > 1) sharedArmed = true;
+  }
+  state.multiplier = sharedMultiplier;
+  state.multiplierArmed = sharedArmed && sharedMultiplier > 1;
   // ✅ la vague persistée de la gate active fait foi (vieilles saves sans `waves`).
   if (state.active && GALAXY_GATE_DEFINITIONS[state.active]) {
     if (state.waves[state.active] > 0) state.activeWave = Math.min(GALAXY_GATE_DEFINITIONS[state.active].maxWaves, state.waves[state.active]);
@@ -86,25 +95,20 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
     return gates[Math.min(gates.length - 1, Math.floor(Math.max(0, Math.min(0.999999, Number(rng()) || 0)) * gates.length))];
   };
   const registerDuplicate = (duplicateGate) => {
-    const current = state.multipliers[duplicateGate.id];
-    state.multipliers[duplicateGate.id] = Math.min(5, current + 1);
+    state.multiplier = Math.min(5, state.multiplier + 1);
     state.lastOpenedGate = duplicateGate.id;
-    if (state.multipliers[duplicateGate.id] >= 5) state.multiplierArmed[duplicateGate.id] = true;
-    rewards.duplicates.push({ gate: duplicateGate.id, multiplier: state.multipliers[duplicateGate.id] });
+    if (state.multiplier >= 5) state.multiplierArmed = true;
+    rewards.duplicates.push({ gate: duplicateGate.id, multiplier: state.multiplier });
   };
   const applyArmedMultiplier = (rewardType, rewardId, baseAmount, maximum = Infinity) => {
-    const candidates = [state.lastOpenedGate, gate.id, ...Object.keys(GALAXY_GATE_DEFINITIONS)];
-    const multiplierGateId = candidates.find((id, index) => candidates.indexOf(id) === index
-      && state.multiplierArmed[id] === true
-      && state.multipliers[id] > 1);
-    if (!multiplierGateId) return Math.min(baseAmount, maximum);
-    const multiplier = state.multipliers[multiplierGateId];
+    if (state.multiplierArmed !== true || state.multiplier <= 1) return Math.min(baseAmount, maximum);
+    const multiplier = state.multiplier;
     const amount = Math.min(baseAmount * multiplier, maximum);
-    const application = { gate: multiplierGateId, multiplier, spin: performed, rewardType, rewardId, amount };
+    const application = { gate: gate.id, multiplier, spin: performed, rewardType, rewardId, amount };
     rewards.multiplierApplied ||= application;
     rewards.multiplierApplications.push(application);
-    state.multiplierArmed[multiplierGateId] = false;
-    state.multipliers[multiplierGateId] = 1;
+    state.multiplierArmed = false;
+    state.multiplier = 1;
     return amount;
   };
 
@@ -175,9 +179,8 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
 
 export function setGalaxyGateMultiplierArmed(stateInput, gateId, armed = true) {
   const state = normalizeGalaxyGateState(stateInput);
-  const id = String(gateId || "").toLowerCase();
-  if (!GALAXY_GATE_DEFINITIONS[id] || state.multipliers[id] <= 1) return { ok: false, state };
-  state.multiplierArmed[id] = armed === true;
+  if (state.multiplier <= 1) return { ok: false, state };
+  state.multiplierArmed = armed === true;
   return { ok: true, state };
 }
 
