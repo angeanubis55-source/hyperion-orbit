@@ -55,6 +55,9 @@
   <button id="btnRefineryHub" class="gameDockIcon" data-window-id="refineryWindow" type="button" title="Raffinage" aria-label="Raffinage">
     <span><img src="ASSETS/UI/MENU/refinement.png" data-menu-icon="refinement" alt="" draggable="false"></span>
   </button>
+  <button id="btnBotHub" class="gameDockIcon" data-window-id="botWindow" type="button" title="Bot" aria-label="Bot">
+    <span><img src="ASSETS/UI/MENU/npc_event.png" data-menu-icon="npc_event" alt="" draggable="false"></span>
+  </button>
 </div>
   
 
@@ -395,6 +398,101 @@
 
     <div id="boosterWindow" class="panel boosterPanel">
       <div id="boosterList" class="boosterList"></div>
+    </div>
+
+    <div id="botWindow" class="panel botPanel botWide">
+      <div class="botBody">
+        <div class="botTopRow">
+          <button id="botPlayBtn" class="botPlayBtn" type="button" title="Démarrer / mettre en pause">▶</button>
+          <div class="botStatusWrap">
+            <strong id="botStatusTxt" class="botStatus">En pause</strong>
+            <small id="botTargetTxt" class="botTarget">—</small>
+          </div>
+          <div class="botStatsMini"><span>Kills <b id="botKillCount">0</b></span><span>Box <b id="botBoxCount">0</b></span></div>
+        </div>
+        <div class="botGrid">
+          <div class="botSection">
+            <div class="botSectionTitle">Mode</div>
+            <div class="botModeRow" id="botModeRow">
+              <label><input type="radio" name="botMode" value="collect" /><span>Collecte uniquement</span></label>
+              <label><input type="radio" name="botMode" value="kill" /><span>Kill NPC uniquement</span></label>
+              <label><input type="radio" name="botMode" value="both" checked /><span>Les 2 en simultané</span></label>
+            </div>
+            <label class="botField"><span>Priorité (mode mixte)</span>
+              <select id="botPriority">
+                <option value="npc">NPC le plus proche d'abord</option>
+                <option value="box">Box la plus proche d'abord</option>
+                <option value="nearest">Le plus proche (n'importe)</option>
+              </select>
+            </label>
+          </div>
+          <div class="botSection">
+            <div class="botSectionTitle">Carte cible</div>
+            <div class="botMapRow">
+              <select id="botMapSelect" aria-label="Carte cible du bot"></select>
+              <button id="botGoBtn" type="button" title="Aller sur la carte">Aller</button>
+            </div>
+            <label class="botCheck"><input id="botAutoTravel" type="checkbox" checked /><span>Voyager auto vers la carte</span></label>
+            <label class="botCheck"><input id="botAutoRepair" type="checkbox" checked /><span>Réparation auto si mort</span></label>
+            <label class="botField"><span>Réapparaître</span>
+              <select id="botRespawn">
+                <option value="base">À la base</option>
+                <option value="portal">Au portail le plus proche</option>
+                <option value="here">Sur place</option>
+              </select>
+            </label>
+          </div>
+          <div class="botSection">
+            <div class="botSectionTitle">Formations drones</div>
+            <label class="botField"><span>En déplacement</span><select id="botFormMove"></select></label>
+            <label class="botField"><span>En attaque</span><select id="botFormAttack"></select></label>
+            <label class="botField"><span>Voyage inter-maps</span><select id="botFormTravel"></select></label>
+          </div>
+          <div class="botSection">
+            <div class="botSectionTitle">Configurations (1 / 2)</div>
+            <label class="botField"><span>En attaque</span><select id="botCfgAttack"><option value="">— Ne pas changer —</option><option value="1">Configuration 1</option><option value="2">Configuration 2</option></select></label>
+            <label class="botField"><span>En déplacement (fly)</span><select id="botCfgFly"><option value="">— Ne pas changer —</option><option value="1">Configuration 1</option><option value="2">Configuration 2</option></select></label>
+            <label class="botField"><span>Voyage inter-maps</span><select id="botCfgTravel"><option value="">— Ne pas changer —</option><option value="1">Configuration 1</option><option value="2">Configuration 2</option></select></label>
+          </div>
+          <div class="botSection">
+            <div class="botSectionTitle">Combat &amp; survie</div>
+            <label class="botField"><span>REX pendant le bot</span>
+              <select id="botPetMode">
+                <option value="">Ne pas toucher</option>
+                <option value="passive">Passif</option>
+                <option value="combat">Combat (assiste)</option>
+              </select>
+            </label>
+            <label class="botCheck"><input id="botLock" type="checkbox" checked /><span>Ne pas changer de cible avant de l'avoir finie</span></label>
+            <label class="botCheck"><input id="botOrbit" type="checkbox" checked /><span>Tourner autour des NPC</span></label>
+            <label class="botField"><span>Distance d'orbite par défaut (m)</span><input id="botOrbitDist" type="number" min="200" max="2000" step="10" value="560" /></label>
+            <label class="botField"><span>Engagement max (m, 0 = portée laser)</span><input id="botEngageDist" type="number" min="0" max="3000" step="10" value="0" /></label>
+            <label class="botCheck"><input id="botFlee" type="checkbox" checked /><span>Fuir au portail pour se réparer sous</span></label>
+            <label class="botField"><span>Seuil de fuite (% coque)</span><input id="botFleePct" type="number" min="5" max="90" step="1" value="25" /></label>
+          </div>
+          <div class="botSection botSpan">
+            <div class="botSectionTitle botRowTitle"><span>NPC à tuer <small id="botNpcCount" class="botCount"></small></span><span class="botMiniActions"><button id="botNpcAll" type="button">Tout</button><button id="botNpcNone" type="button">Aucun</button></span></div>
+            <div class="botFilterRow">
+              <select id="botNpcMapFilter" aria-label="Filtrer les NPC par map"><option value="">Toutes les maps</option></select>
+              <label class="botCheck"><input id="botNpcUnknown" type="checkbox" /><span>Inclure les NPC non localisés</span></label>
+            </div>
+            <input id="botNpcSearch" class="botSearch" type="search" placeholder="Rechercher un NPC…" autocomplete="off" />
+            <div id="botNpcList" class="botCheckList botNpcList"></div>
+          </div>
+          <div class="botSection">
+            <div class="botSectionTitle botRowTitle"><span>Boîtes à collecter</span><span class="botMiniActions"><button id="botBoxAll" type="button">Tout</button><button id="botBoxNone" type="button">Aucun</button></span></div>
+            <div id="botBoxList" class="botCheckList"></div>
+          </div>
+          <div class="botSection">
+            <div class="botSectionTitle">Journal</div>
+            <div id="botLog" class="botLog" aria-live="polite"></div>
+          </div>
+          <div class="botSection">
+            <div class="botSectionTitle">Affichage (bot actif)</div>
+            <label class="botCheck"><input id="botOverlay" type="checkbox" checked /><span>Traits + portées + zones de non-agression</span></label>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div id="gameLogWindow" class="panel gameLogPanel">

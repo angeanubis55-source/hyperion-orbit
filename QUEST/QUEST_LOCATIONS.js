@@ -65,3 +65,28 @@ export async function loadNpcLocationIndex() {
   for (const maps of Object.values(locations)) maps.sort((a, b) => a.localeCompare(b, "fr", { numeric: true }));
   return locations;
 }
+
+// Graphe des portails entre maps zone : { "1-1": ["1-2", ...], ... }.
+// Sert au BOT pour voyager physiquement de portail en portail (BFS),
+// sans téléportation. Les Galaxy Gates (alpha/beta/...) sont exclues :
+// elles demandent une GG construite + un déploiement manuel.
+export async function loadPortalIndex() {
+  const index = {};
+  const mapIds = Object.keys(MAP_LOADERS).filter(mapId => !GATE_MAPS.has(mapId));
+  await Promise.all(mapIds.map(async mapId => {
+    try {
+      const module = await import(`../MAPS/${mapId}/SPAWNS.js`);
+      if (typeof module.getZonePortals !== "function") return;
+      const dests = new Set();
+      for (const portal of module.getZonePortals(WORLD_SAMPLE) || []) {
+        const to = String(portal?.toMap || "").toLowerCase();
+        if (!to || GATE_MAPS.has(to)) continue;
+        dests.add(to);
+      }
+      index[String(mapId).toLowerCase()] = [...dests].sort((a, b) => a.localeCompare(b, "fr", { numeric: true }));
+    } catch (error) {
+      console.warn(`[Portails] Indexation impossible pour la carte ${mapId}`, error);
+    }
+  }));
+  return index;
+}

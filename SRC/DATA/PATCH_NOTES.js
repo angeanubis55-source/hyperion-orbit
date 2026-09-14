@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.213",
+    "date": "2026-09-14T15:55:17+02:00",
+    "message": "leonov: +150% degats/bouclier/PV, roquettes x2.5, fix HUD vitesse et XP drones/PET"
+  },
+  {
     "version": "0.212",
     "date": "2026-09-14T15:51:40+02:00",
     "message": "pet: collecte rex alignee 0,2s + quetes insensibles casse + version"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.154",
     "date": "2026-09-11T17:25:18+02:00",
     "message": "Hangar minor fixes"
-  },
-  {
-    "version": "0.153",
-    "date": "2026-09-11T17:20:21+02:00",
-    "message": "Equipement: fix modules 1-par-couleur, remplacement au slot cible + message officiel"
   }
 ];
