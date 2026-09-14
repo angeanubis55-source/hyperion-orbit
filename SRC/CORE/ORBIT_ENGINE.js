@@ -8192,9 +8192,6 @@ const isSab = ammoKey === "sab";
 // ============================================================
 const petLocator = { enemyId: null, manualType: null, needsPick: true };
 
-// Durée de l'animation de collecte du P.E.T sur la box : 1 seconde.
-const PET_FETCH_HOLD = 1.0;
-
 function petFit() {
   const user = account.user;
   const hangar = (user?.hangars || []).find((h) => h?.active) || null;
@@ -8959,7 +8956,8 @@ function updatePet(dt) {
       petState.vx = 0;
       petState.vy = 0;
       petState.fetchHold = (petState.fetchHold || 0) + dt;
-      if (petState.fetchHold >= PET_FETCH_HOLD && petState.pickCd <= 0) {
+      // Même durée que le vaisseau (COLLECTABLE_PICKUP.holdDuration).
+      if (petState.fetchHold >= COLLECTABLE_PICKUP.holdDuration && petState.pickCd <= 0) {
         collectPetBox(fetchTarget);
         petState.fetchId = null;
         petState.fetchHold = 0;
@@ -10640,7 +10638,7 @@ function drawCollectBeam(c, ox, oy) {
   const isPlayerBox = collectableTargetId === c.id && c.armed === true;
   if (!isPetBox && !isPlayerBox) return;
 
-  const hold = isPetBox ? PET_FETCH_HOLD : Math.max(0.001, Number(COLLECTABLE_PICKUP.holdDuration || 0.2));
+  const hold = Math.max(0.001, Number(COLLECTABLE_PICKUP.holdDuration || 0.2));
   const p = clamp(((isPetBox ? petState.fetchHold : c.collectT) || 0) / hold, 0, 1);
 
   // visible uniquement pendant la phase de collecte
@@ -17386,6 +17384,13 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   // par le chargement). On marque dirty, le prochain portail / quit / filet
   // 15s persistera la nouvelle map sans freeze visible.
   markProgressDirty();
+  // ✅ Les quêtes "visite de map" doivent se valider à chaque arrivée,
+  // y compris lors d'un switch interne (portails sans reload de page).
+  // Sans cet appel, seules les arrivées via reload (startGame) validaient.
+  try {
+    advanceQuestProgress("visit", String(mapId));
+    saveProgressNow?.();
+  } catch {}
   return true;
 }
 

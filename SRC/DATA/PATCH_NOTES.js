@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.211",
+    "date": "2026-09-14T15:37:30+02:00",
+    "message": "sync complet: moteur effets vaisseaux + chantiers en cours"
+  },
+  {
     "version": "0.210",
     "date": "2026-09-14T15:36:58+02:00",
     "message": "vaisseaux: HEAT au visuel REX, +7% Goliath, Leonov XP/vitesse x2, textes effets"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.152",
     "date": "2026-09-11T17:12:04+02:00",
     "message": "Equipement: effet selection bleu vaisseau/drones/PET, modules roulette en lignes rarete, selection exclusive module/inventaire"
-  },
-  {
-    "version": "0.151",
-    "date": "2026-09-11T16:27:09+02:00",
-    "message": "Boot bloquant: drones + bases meres X-1/X-8, suppression preload a la mort"
   }
 ];

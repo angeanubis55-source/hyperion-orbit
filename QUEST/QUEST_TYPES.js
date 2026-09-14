@@ -339,11 +339,19 @@ export function canAcceptQuest(state, quest) { return !!quest && !state.complete
 export function acceptQuest(state, questId) { const quest = QUEST_DEFINITIONS.find(q => q.id === questId); if (!canAcceptQuest(state, quest)) return false; state.active[quest.id] = Object.fromEntries(getQuestObjectives(quest).map(o => [o.id, 0])); return true; }
 export function recordQuestProgress(state, kind, type, amount = 1, context = {}) {
   const advanced = [];
+  const sameId = (a, b) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
   for (const quest of QUEST_DEFINITIONS) {
     if (state.active[quest.id] == null) continue;
     let changed = false;
     for (const o of getQuestObjectives(quest)) {
-      if (o.kind !== kind || (o.type !== type && !(kind === "kill" && o.type === "*")) || (o.map && o.map !== context.map)) continue;
+      if (o.kind !== kind) continue;
+      // Les ids de map ("MAUDITE" vs "maudite", "1-1", "4-4.123"...) sont comparés
+      // sans tenir compte de la casse : le moteur envoie parfois en minuscules.
+      const typeMatches = kind === "visit" || kind === "gate"
+        ? sameId(o.type, type)
+        : (o.type === type || (kind === "kill" && o.type === "*"));
+      if (!typeMatches) continue;
+      if (o.map && !sameId(o.map, context.map)) continue;
       const before = Number(state.active[quest.id][o.id] || 0);
       state.active[quest.id][o.id] = Math.min(o.amount, before + Math.max(0, Number(amount) || 0));
       changed ||= before !== state.active[quest.id][o.id];
