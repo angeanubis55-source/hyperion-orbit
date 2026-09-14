@@ -30,6 +30,7 @@ import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
+import { getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
 import { SHIP_ITEM_DIR, SHIP_ITEM_FULL_IDS, SHIP_ITEM_TRAIT_IDS, SHIP_TRAIT_DIR } from "../SHIP/SHIP_ITEMS.js";
 import { escapeHtml } from "../UI/UI_DOM.js";
 import { PILOT_RANKS, calculateRankPoints, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo } from "../SRC/CORE/PROGRESSION.js";
@@ -2426,6 +2427,12 @@ if (isShipLike) {
     const basePack = getShipPack(it?.design?.base);
     statLine += `<p class="shopItemStat">Vaisseau de base : <strong>${escapeHtml(basePack?.name || it?.design?.base || "")}</strong></p>`;
   }
+  // Gains officiels : effet passif + compétence (ou "aucun" / "Aucune").
+  const shipBonus = isShipLike && shipId ? getShipBonusInfo(shipId) : null;
+  if (shipBonus) {
+    statLine += `<p class="shopItemStat">Effet : <strong>${escapeHtml(shipBonus.effet || "aucun")}</strong></p>`;
+    statLine += `<p class="shopItemStat">Compétence : <strong>${escapeHtml(shipBonus.competence || "Aucune")}</strong></p>`;
+  }
 } else if (it?.module?.type === "speed") {
   statLine = `<p class="shopItemStat">Vitesse par générateur <strong>+${formatNumber(it.module.bonusSpeed || 0)}</strong></p>`;
 } else if (it?.module?.type === "shield") {
@@ -2444,7 +2451,7 @@ if (isShipLike) {
   statLine = `<p class="shopItemStat">Bonus <strong>+${Number(it.petProtocol.pct) || 0} % ${escapeHtml(petProtocolStatLabel(it.petProtocol.key))}</strong> quand équipé sur le P.E.T (groupe PROTOCOLES).</p>`;
   if (req > 0) statLine += `<p class="shopItemStat">Nécessite le <strong>P.E.T niveau ${req}</strong> (officiel : palier 2 dès niv. 4, palier 3 dès niv. 8).</p>`;
 } else if (it?.petGear) {
-  statLine = `<p class="shopItemStat">Gear P.E.T — <strong>${escapeHtml(it.desc || "utilitaire")}</strong> (groupe GEARS, sans stats de combat pour l'instant).</p>`;
+  statLine = `<p class="shopItemStat">Gear P.E.T — <strong>${escapeHtml(it.desc || "utilitaire")}</strong> (groupe GEARS).</p>`;
 } else if (it?.booster?.id) {
   const boosterDef = getBooster(it.booster.id);
   statLine = `<p class="shopItemStat">${escapeHtml(it.desc || "")}</p>`;

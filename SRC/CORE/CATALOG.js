@@ -165,8 +165,10 @@ export const CATALOG = {
 
   // Gears P.E.T officiels (darkorbitwiki.com/p-e-t). Prix uridium → crédits (×1000).
   // Paliers officiels : niveau 2 dès P.E.T 4, niveau 3 dès P.E.T 8.
-  // Effets non simulés par le moteur (collecte, kamikaze...) : possédés +
-  // équipables en slot GEARS, stats dans desc. C-GM/C-SR absents (aucune icône officielle).
+  // Branchés dans le moteur : G-AL / G-AR (auto-collecte), G-EL
+  // (localisateur), G-REP (régén coque) — voir PET/PET_GEARS.js.
+  // Reste à brancher (lot suivant) : kamikaze, trader, lien HP, etc.
+  // C-GM/C-SR absents (aucune icône officielle).
   petGears: [
     { id: "gear_gal1", name: "G-AL1 · Auto-Loot", price: 7500000, icon: "/PET/PET_GEARS/G-AL1.png", petLevel: 0, petGear: { key: "al", level: 1 }, desc: "Collecte cargo + bonus boxes, portée 700." },
     { id: "gear_gal2", name: "G-AL2 · Auto-Loot", price: 17500000, icon: "/PET/PET_GEARS/G-AL1.png", petLevel: 4, petGear: { key: "al", level: 2 }, desc: "Collecte cargo + bonus boxes, portée 1500." },
@@ -174,18 +176,15 @@ export const CATALOG = {
     { id: "gear_gar1", name: "G-AR1 · Collecteur", price: 2500000, icon: "/PET/PET_GEARS/G-AR1.png", petLevel: 0, petGear: { key: "ar", level: 1 }, desc: "Collecte minerais, portée 700." },
     { id: "gear_gar2", name: "G-AR2 · Collecteur", price: 6000000, icon: "/PET/PET_GEARS/G-AR1.png", petLevel: 4, petGear: { key: "ar", level: 2 }, desc: "Collecte minerais, portée 1500." },
     { id: "gear_gar3", name: "G-AR3 · Collecteur", price: 17500000, icon: "/PET/PET_GEARS/G-AR1.png", petLevel: 8, petGear: { key: "ar", level: 3 }, desc: "Collecte minerais, portée 3000." },
-    { id: "gear_gel1", name: "G-EL1 · Localisateur ennemis", price: 6000000, icon: "/PET/PET_GEARS/G-EL1.png", petLevel: 0, petGear: { key: "el", level: 1 }, desc: "Localise un NPC, portée 2000." },
-    { id: "gear_gel2", name: "G-EL2 · Localisateur ennemis", price: 12500000, icon: "/PET/PET_GEARS/G-EL1.png", petLevel: 4, petGear: { key: "el", level: 2 }, desc: "Localise un NPC, portée 3000." },
-    { id: "gear_gel3", name: "G-EL3 · Localisateur ennemis", price: 37500000, icon: "/PET/PET_GEARS/G-EL1.png", petLevel: 8, petGear: { key: "el", level: 3 }, desc: "Localise un NPC, portée 5000." },
-    { id: "gear_grl1", name: "G-RL1 · Localisateur ressources", price: 2500000, icon: "/PET/PET_GEARS/G-RL1.png", petLevel: 0, petGear: { key: "rl", level: 1 }, desc: "Localise une ressource, portée 2000." },
-    { id: "gear_grl2", name: "G-RL2 · Localisateur ressources", price: 6000000, icon: "/PET/PET_GEARS/G-RL1.png", petLevel: 4, petGear: { key: "rl", level: 2 }, desc: "Localise une ressource, portée 3000." },
-    { id: "gear_grl3", name: "G-RL3 · Localisateur ressources", price: 17500000, icon: "/PET/PET_GEARS/G-RL1.png", petLevel: 8, petGear: { key: "rl", level: 3 }, desc: "Localise une ressource, portée 5000." },
+    { id: "gear_gel1", name: "G-EL1 · Localisateur ennemis", price: 6000000, icon: "/PET/PET_GEARS/G-EL1.png", petLevel: 0, petGear: { key: "el", level: 1 }, desc: "Localise un NPC, portée 1000." },
+    { id: "gear_gel2", name: "G-EL2 · Localisateur ennemis", price: 12500000, icon: "/PET/PET_GEARS/G-EL1.png", petLevel: 4, petGear: { key: "el", level: 2 }, desc: "Localise un NPC, portée 1500." },
+    { id: "gear_gel3", name: "G-EL3 · Localisateur ennemis", price: 37500000, icon: "/PET/PET_GEARS/G-EL1.png", petLevel: 8, petGear: { key: "el", level: 3 }, desc: "Localise un NPC, portée 2500." },
     { id: "gear_gtra1", name: "G-TRA1 · Cargo Trader", price: 6000000, icon: "/PET/PET_GEARS/G-TRA1.png", petLevel: 0, petGear: { key: "tra", level: 1 }, desc: "Vend les minerais hors base, bonus +5 %, cooldown 300 s." },
     { id: "gear_gtra2", name: "G-TRA2 · Cargo Trader", price: 12500000, icon: "/PET/PET_GEARS/G-TRA1.png", petLevel: 4, petGear: { key: "tra", level: 2 }, desc: "Vend les minerais hors base, bonus +15 %, cooldown 120 s." },
     { id: "gear_gtra3", name: "G-TRA3 · Cargo Trader", price: 37500000, icon: "/PET/PET_GEARS/G-TRA1.png", petLevel: 8, petGear: { key: "tra", level: 3 }, desc: "Vend les minerais hors base, bonus +30 %, cooldown 30 s." },
-    { id: "gear_grep1", name: "G-REP1 · Réparateur", price: 2500000, icon: "/PET/PET_GEARS/G-REP1.png", petLevel: 0, petGear: { key: "rep", level: 1 }, desc: "Régénère le P.E.T : 2000 HP/s." },
-    { id: "gear_grep2", name: "G-REP2 · Réparateur", price: 6000000, icon: "/PET/PET_GEARS/G-REP1.png", petLevel: 4, petGear: { key: "rep", level: 2 }, desc: "Régénère le P.E.T : 6000 HP/s." },
-    { id: "gear_grep3", name: "G-REP3 · Réparateur", price: 12500000, icon: "/PET/PET_GEARS/G-REP1.png", petLevel: 8, petGear: { key: "rep", level: 3 }, desc: "Régénère le P.E.T : 12000 HP/s." },
+    { id: "gear_grep1", name: "G-REP1 · Réparateur", price: 2500000, icon: "/PET/PET_GEARS/G-REP1.png", petLevel: 0, petGear: { key: "rep", level: 1 }, desc: "Régénère 3 % de la coque /s." },
+    { id: "gear_grep2", name: "G-REP2 · Réparateur", price: 6000000, icon: "/PET/PET_GEARS/G-REP1.png", petLevel: 4, petGear: { key: "rep", level: 2 }, desc: "Régénère 4 % de la coque /s." },
+    { id: "gear_grep3", name: "G-REP3 · Réparateur", price: 12500000, icon: "/PET/PET_GEARS/G-REP1.png", petLevel: 8, petGear: { key: "rep", level: 3 }, desc: "Régénère 5 % de la coque /s." },
     { id: "gear_gkk1", name: "G-KK1 · Kamikaze", price: 7500000, icon: "/PET/PET_GEARS/G-KK1.png", petLevel: 0, petGear: { key: "kk", level: 1 }, desc: "Explosion 25000 dégâts, portée 250, cooldown 120 s." },
     { id: "gear_gkk2", name: "G-KK2 · Kamikaze", price: 17500000, icon: "/PET/PET_GEARS/G-KK1.png", petLevel: 4, petGear: { key: "kk", level: 2 }, desc: "Explosion 50000 dégâts, portée 350, cooldown 60 s." },
     { id: "gear_gkk3", name: "G-KK3 · Kamikaze", price: 50000000, icon: "/PET/PET_GEARS/G-KK1.png", petLevel: 8, petGear: { key: "kk", level: 3 }, desc: "Explosion 75000 dégâts, portée 450, cooldown 30 s." },
@@ -196,7 +195,6 @@ export const CATALOG = {
     { id: "gear_ghr2", name: "G-HR2 · Consommation", price: 32000000, icon: "/PET/PET_GEARS/G-HR1.png", petLevel: 4, petGear: { key: "hr", level: 2 }, desc: "8750 dégâts/s 4 s, portée 175, réduit le HEAT." },
     { id: "gear_ghr3", name: "G-HR3 · Consommation", price: 55000000, icon: "/PET/PET_GEARS/G-HR1.png", petLevel: 8, petGear: { key: "hr", level: 3 }, desc: "13000 dégâts/s 4 s, portée 250, réduit le HEAT." },
     { id: "gear_ghpl1", name: "G-HPL1 · Lien HP", price: 10000000, icon: "/PET/PET_GEARS/G-HPL1.png", petLevel: 8, petGear: { key: "hpl", level: 1 }, desc: "Dégâts coque transférés au P.E.T, durée 20 s, cooldown 240 s." },
-    { id: "gear_grt1", name: "G-RT1 · Reciblage", price: 7500000, icon: "/PET/PET_GEARS/G-RT1.png", petLevel: 8, petGear: { key: "rt", level: 1 }, desc: "+50 % dégâts P.E.T, durée 30 s, cooldown 240 s." },
     { id: "gear_gmm1", name: "G-MM1 · Méga-mine", price: 50000000, icon: "/PET/PET_GEARS/G-MM1.png", petLevel: 8, petGear: { key: "mm", level: 1 }, desc: "Mine 75000 dégâts par pulse, durée 6 s, cooldown 240 s." },
     { id: "gear_gbc1", name: "G-BC1 · Bouée combat", price: 25000000, icon: "/PET/PET_GEARS/G-BC1.png", petLevel: 8, petGear: { key: "bc", level: 1 }, desc: "Bouée amplifiant les dégâts alliés (event)." },
     { id: "gear_gbh1", name: "G-BH1 · Bouée coque", price: 25000000, icon: "/PET/PET_GEARS/G-BH1.png", petLevel: 8, petGear: { key: "bh", level: 1 }, desc: "Bouée renforçant la coque alliée (event)." },

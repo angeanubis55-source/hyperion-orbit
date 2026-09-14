@@ -1,9 +1,9 @@
 ﻿"use strict";
 
 export const GALAXY_GATE_DEFINITIONS = Object.freeze({
-  alpha: Object.freeze({ id: "alpha", name: "Alpha", group: "ensemble", requiredParts: 34, maxWaves: 11, maxLives: 5, image: "ASSETS/ALPHA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 4000000, honor: 100000, credits: 4000000, x4: 20000 }), rewardScale: 1 }),
-  beta: Object.freeze({ id: "beta", name: "Beta", group: "ensemble", requiredParts: 48, maxWaves: 11, maxLives: 5, image: "ASSETS/BETA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 8000000, honor: 200000, credits: 8000000, x4: 40000 }), rewardScale: 2 }),
-  gamma: Object.freeze({ id: "gamma", name: "Gamma", group: "ensemble", requiredParts: 82, maxWaves: 11, maxLives: 5, image: "ASSETS/GAMMA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 12000000, honor: 300000, credits: 12000000, x4: 60000 }), rewardScale: 3 }),
+  alpha: Object.freeze({ id: "alpha", name: "Alpha", group: "ensemble", requiredParts: 34, maxWaves: 11, maxLives: 5, image: "ASSETS/ALPHA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 4000000, honor: 100000, credits: 12000000, x4: 20000 }), rewardScale: 1 }),
+  beta: Object.freeze({ id: "beta", name: "Beta", group: "ensemble", requiredParts: 48, maxWaves: 11, maxLives: 5, image: "ASSETS/BETA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 8000000, honor: 200000, credits: 24000000, x4: 40000 }), rewardScale: 2 }),
+  gamma: Object.freeze({ id: "gamma", name: "Gamma", group: "ensemble", requiredParts: 82, maxWaves: 11, maxLives: 5, image: "ASSETS/GAMMA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 12000000, honor: 300000, credits: 36000000, x4: 60000 }), rewardScale: 3 }),
 });
 
 export const GALAXY_SPIN_CREDIT_COST = 100000;

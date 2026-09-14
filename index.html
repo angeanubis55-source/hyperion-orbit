@@ -361,11 +361,17 @@
         <button id="petPlayBtn" type="button" title="Activer / désactiver le P.E.T">▶</button>
       </div>
       <label class="petModeRow"><span>Mode</span>
-        <select id="petModeSelect">
-          <option value="passive">Passif</option>
-          <option value="combat">Mode combat</option>
-        </select>
+        <div class="petDropdown" id="petModeDropdown">
+          <button type="button" id="petModeBtn">G-A · Passif</button>
+          <div class="petDropdownList" id="petModeList" hidden></div>
+        </div>
       </label>
+      <div class="petModeRow" id="petNpcRow" hidden><span>NPC</span>
+        <div class="petDropdown" id="petNpcDropdown">
+          <button type="button" id="petNpcBtn">— Choisir un NPC —</button>
+          <div class="petDropdownList" id="petNpcList" hidden></div>
+        </div>
+      </div>
       <div class="barWrap petMeters">
         <div class="petMeter">
           <div class="petMeterTop"><span class="petMeterLabel is-hp">Coque</span><span class="barValue" id="petHpTxt">0 / 0</span></div>

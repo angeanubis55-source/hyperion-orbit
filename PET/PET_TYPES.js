@@ -215,6 +215,7 @@ export function createPet(id = "niveau1", options = {}) {
     exp: 0,
     active: false,
     mode: "passive",
+    activeGear: null,
     hp: PET_LEVEL_HP[0],
     sh: null,
     fuel: PET_FUEL_MAX,

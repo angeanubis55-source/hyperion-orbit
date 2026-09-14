@@ -1,6 +1,26 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.207",
+    "date": "2026-09-14T12:41:53+02:00",
+    "message": "galaxy gates: tirage SAB, X6 rare, PLT-2021/3030, UBR-100, HSTRM-01, energie 0,1%"
+  },
+  {
+    "version": "0.206",
+    "date": "2026-09-14T07:25:27+02:00",
+    "message": "galaxy gates: multiplicateur unique partage, portail en fond, ui ggCore"
+  },
+  {
+    "version": "0.205",
+    "date": "2026-09-14T07:14:53+02:00",
+    "message": "galaxy gates: centrage ggCore, portail en fond, multiplicateur bouton, largeurs"
+  },
+  {
+    "version": "0.204",
+    "date": "2026-09-14T05:06:45+02:00",
+    "message": "galaxy gates harmonise (boutons, cartes, onglets) + historique d'origine restaure"
+  },
+  {
     "version": "0.203",
     "date": "2026-09-14T04:04:39+02:00",
     "message": "sync version 0.202 + patch-notes (hook post-push)"
@@ -279,25 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.148",
     "date": "2026-09-11T15:50:33+02:00",
     "message": "GG: alternance libre avec vagues persistées, retour base sans rechargement, sons portails, fix double respawn en gate"
-  },
-  {
-    "version": "0.147",
-    "date": "2026-09-11T13:31:57+02:00",
-    "message": "fixes de bug majeures"
-  },
-  {
-    "version": "0.146",
-    "date": "2026-09-11T13:30:47+02:00",
-    "message": "Slots hangar unifies vaisseau/drones/P.E.T + marquage P.E.T boutique, cleanup builder mort"
-  },
-  {
-    "version": "0.145",
-    "date": "2026-09-11T11:29:19+02:00",
-    "message": "Hangar brouillon + Apply base, portails PvP-only et spawn reload, fix dock X6"
-  },
-  {
-    "version": "0.144",
-    "date": "2026-09-11T11:02:49+02:00",
-    "message": "Hangar local-only + REX détaché, pirates 5-2, dock X6, cooldown X6/RCB partagé"
   }
 ];

@@ -3,6 +3,19 @@ import { measureGameTask } from "./PERFORMANCE_TIMINGS.js";
 import { NpcEngine } from "../../NPC/NPC_ENGINE_RENDERER.js";
 import { ShipEngine } from "../../SHIP/SHIP_ENGINE_RENDERER.js";
 import { PetEngine } from "../../PET/PET_ENGINE_RENDERER.js";
+import {
+  PET_GEAR_AUTOLOOT_TYPES,
+  PET_GEAR_ORE_TYPES,
+  PET_GEAR_PICK_DELAY,
+  PET_GEAR_TRADE_WINDOW_SEC,
+  listEquippedGearOptions,
+  getPetEquippedGearLevels,
+  getPetGearRange,
+  getPetRepairPct,
+  getPetTradeBonusPct,
+  getPetTradeCooldownSec,
+  pickNearestWithin,
+} from "../../PET/PET_GEARS.js";
 import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_TRAILS.js";
 "use strict";
 import {
@@ -31,6 +44,7 @@ import {
   getPetFit,
   getDroneFit,
   setPetActive,
+  setPetActiveGear,
   setPetMode,
   activateCurrentUserBooster,
 } from "./ACCOUNT.js";
@@ -209,6 +223,55 @@ function radiationDepth(x, y) {
   const dx = x < 0 ? -x : x > WORLD.w ? x - WORLD.w : 0;
   const dy = y < 0 ? -y : y > WORLD.h ? y - WORLD.h : 0;
   return Math.hypot(dx, dy);
+}
+
+// ✅ NPC vs radiation : nativement les NPC restent dans la map (0..WORLD).
+// Ils ne peuvent suivre le joueur en zone de radiation que s'ils sont
+// déjà aggro contre lui pendant que le joueur est dehors et vivant.
+// Si le joueur sort de radiation ou meurt dedans, ils rentrent en map.
+function isNpcOutsideWorld(e) {
+  return e.x < 0 || e.x > WORLD.w || e.y < 0 || e.y > WORLD.h;
+}
+
+function npcCanEnterRadiation(e) {
+  if (player.dead) return false;
+  if (!playerIsOutsideWorld()) return false;
+  return !!(e._aggro || e._attackedPlayerRecently);
+}
+
+function integrateNpcPosition(e, dt) {
+  const r = e.r || 18;
+  if (npcCanEnterRadiation(e)) {
+    e.x = clamp(e.x + e.vx * dt, r - RADIATION_SPAWN_MARGIN, WORLD.w - r + RADIATION_SPAWN_MARGIN);
+    e.y = clamp(e.y + e.vy * dt, r - RADIATION_SPAWN_MARGIN, WORLD.h - r + RADIATION_SPAWN_MARGIN);
+    return;
+  }
+  if (isNpcOutsideWorld(e)) {
+    if (player.dead) {
+      e._aggro = false;
+      e._aggroT = 0;
+      e._attackedPlayerRecently = false;
+      if (e.aiZ) e.aiZ.state = "wander";
+      if (e.aiZ) {
+        e.aiZ.wanderTarget = null;
+        e.aiZ.wanderT = 0;
+      }
+    }
+    const tx = clamp(e.x, r, WORLD.w - r);
+    const ty = clamp(e.y, r, WORLD.h - r);
+    const dx = tx - e.x;
+    const dy = ty - e.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 1) {
+      const spd = npcEffectiveSpeed(e);
+      setNpcVelocity(e, dx / d, dy / d, spd);
+    }
+    e.x = clamp(e.x + e.vx * dt, r - RADIATION_SPAWN_MARGIN, WORLD.w - r + RADIATION_SPAWN_MARGIN);
+    e.y = clamp(e.y + e.vy * dt, r - RADIATION_SPAWN_MARGIN, WORLD.h - r + RADIATION_SPAWN_MARGIN);
+    return;
+  }
+  e.x = clamp(e.x + e.vx * dt, r, WORLD.w - r);
+  e.y = clamp(e.y + e.vy * dt, r, WORLD.h - r);
 }
 
 function applyRadiation(dt) {
@@ -609,7 +672,11 @@ const ui = {
   petSprite: document.getElementById("petSprite"),
   petNameTxt: document.getElementById("petNameTxt"),
   petPlayBtn: document.getElementById("petPlayBtn"),
-  petModeSelect: document.getElementById("petModeSelect"),
+  petModeBtn: document.getElementById("petModeBtn"),
+  petModeList: document.getElementById("petModeList"),
+  petNpcRow: document.getElementById("petNpcRow"),
+  petNpcBtn: document.getElementById("petNpcBtn"),
+  petNpcList: document.getElementById("petNpcList"),
   petHpBar: document.getElementById("petHpBar"),
   petHpTxt: document.getElementById("petHpTxt"),
   petShBar: document.getElementById("petShBar"),
@@ -1985,15 +2052,117 @@ function wirePetWindow() {
     loadAccountUser();
     showToast(out.active ? "P.E.T activé" : "P.E.T désactivé", 1.2);
   });
-  ui.petModeSelect?.addEventListener("change", () => {
-    const out = setPetMode(ui.petModeSelect.value);
+  // Menus custom P.E.T : toggle à volonté, jamais fermés au clic ailleurs.
+  ui.petModeBtn?.addEventListener("click", () => {
+    if (ui.petModeBtn.disabled) return;
+    ui.petModeList.hidden = !ui.petModeList.hidden;
+    placePetDropdown(ui.petModeBtn, ui.petModeList);
+  });
+  ui.petNpcBtn?.addEventListener("click", () => {
+    if (ui.petNpcBtn.disabled) return;
+    ui.petNpcList.hidden = !ui.petNpcList.hidden;
+    placePetDropdown(ui.petNpcBtn, ui.petNpcList);
+  });
+  ui.petModeList?.addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-value]");
+    if (!btn || btn.disabled) return;
+    ui.petModeList.hidden = true;
+    applyPetModeValue(String(btn.dataset.value || "passive"));
+  });
+  ui.petNpcList?.addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-value]");
+    if (!btn || btn.disabled) return;
+    ui.petNpcList.hidden = true;
+    petLocator.manualType = btn.dataset.value || null;
+    petLocator.enemyId = null;
+  });
+}
+
+// Menus custom P.E.T : flottants (position fixe), recalculés pour suivre
+// la fenêtre (drag) et s'ouvrir vers le haut si le bas manque.
+function placePetDropdown(btn, list) {
+  if (!btn || !list || list.hidden) return;
+  const r = btn.getBoundingClientRect();
+  const h = list.offsetHeight || 200;
+  let top = r.bottom + 4;
+  if (top + h > window.innerHeight) top = Math.max(4, r.top - 4 - h);
+  list.style.left = `${Math.max(4, Math.min(r.left, window.innerWidth - 160))}px`;
+  list.style.top = `${top}px`;
+  list.style.width = `${Math.max(120, r.width)}px`;
+}
+
+// Un seul comportement à la fois : Passif, Mode combat ou un gear équipé.
+function applyPetModeValue(v) {
+    const pet = account.user?.pet?.owned === true ? account.user.pet : null;
+    if (!pet) return showToast("P.E.T non possédé.", 1.5);
+    v = String(v || "passive");
+    // Un seul comportement à la fois : Passif, Mode combat ou un gear équipé.
+    if (v.startsWith("gear:")) {
+      const key = v.slice("gear:".length).toLowerCase();
+      // Changer de comportement ferme le Trader (→ cooldown).
+      if (traWindowActive()) endTraSession();
+      if (key === "tra") {
+        const left = traCooldownLeftSec();
+        if (left > 0) {
+          showToast(`Cargo Trader prêt dans ${Math.ceil(left)} s`, 1.8);
+          loadAccountUser();
+          return;
+        }
+        // Mémorise le comportement courant pour y revenir après la session.
+        petTrader.prevMode = normalizePetMode(account.user?.pet?.mode);
+        const prevGear = String(account.user?.pet?.activeGear || "").toLowerCase() || null;
+        petTrader.prevGear = prevGear && prevGear !== "tra" ? prevGear : null;
+        const outMode = setPetMode("passive");
+        if (!outMode?.ok) return showToast(outMode?.error || "Impossible.", 1.5);
+        const out = setPetActiveGear("tra");
+        if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
+        const lvl = Math.floor(Number(petGearLevels().tra) || 0);
+        if (!(lvl > 0)) {
+          setPetActiveGear(null);
+          loadAccountUser();
+          return showToast("Gear déséquipé.", 1.5);
+        }
+        petTrader.level = lvl;
+        petTrader.until = performance.now() / 1000 + PET_GEAR_TRADE_WINDOW_SEC;
+        if (!openTraTradeWindow()) {
+          petTrader.until = 0;
+          petTrader.level = 0;
+          setPetActiveGear(null);
+          loadAccountUser();
+          return;
+        }
+        petLocator.manualType = null;
+        petLocator.enemyId = null;
+        petLocator.needsPick = true;
+        loadAccountUser();
+        showToast(`Cargo Trader : commerce ouvert 10 s (+${getPetTradeBonusPct(lvl)} %)`, 2);
+        return;
+      }
+      const outMode = setPetMode("passive");
+      if (!outMode?.ok) return showToast(outMode?.error || "Impossible.", 1.5);
+      const out = setPetActiveGear(key);
+      if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
+      petLocator.manualType = null;
+      petLocator.enemyId = null;
+      petLocator.needsPick = true;
+      loadAccountUser();
+      const label = petEquippedGearOptions().find((e) => e.key === key)?.label || key.toUpperCase();
+      showToast(`P.E.T : ${label} actif`, 1.2);
+      return;
+    }
+    // Changer de comportement ferme le Trader (→ cooldown).
+    if (traWindowActive()) endTraSession();
+    const out = setPetMode(v);
     if (!out?.ok) {
       showToast(out?.error || "Impossible.", 1.5);
       return;
     }
+    setPetActiveGear(null);
+    petLocator.manualType = null;
+    petLocator.enemyId = null;
+    petLocator.needsPick = true;
     loadAccountUser();
     showToast(out.mode === "combat" ? "P.E.T : mode combat" : "P.E.T : passif", 1.2);
-  });
 }
 
 function updatePetHud() {
@@ -2001,7 +2170,7 @@ function updatePetHud() {
   const has = !!pet;
   if (ui.petNoPet) ui.petNoPet.hidden = has;
   setHudDisabled(ui.petPlayBtn, !has);
-  setHudDisabled(ui.petModeSelect, !has);
+  if (ui.petModeBtn) ui.petModeBtn.disabled = !has;
 
   const level = has ? getPetLevel(pet.exp) : 0;
   const exp = has ? Math.max(0, Number(pet.exp) || 0) : 0;
@@ -2035,12 +2204,81 @@ function updatePetHud() {
     setHudAttr(ui.petPlayBtn, "title", pet?.active === true ? "Désactiver le P.E.T" : "Activer le P.E.T");
     setHudClass(ui.petPlayBtn, "isOn", pet?.active === true);
   }
-  if (ui.petModeSelect) {
+  // Menu custom Mode (+ gears équipés, noms boutique, un seul choix actif).
+  if (ui.petModeBtn && ui.petModeList) {
     const mode = normalizePetMode(pet?.mode);
-    if (document.activeElement !== ui.petModeSelect && ui.petModeSelect.value !== mode) {
-      ui.petModeSelect.value = mode;
+    const equipped = has ? petEquippedGearOptions() : [];
+    // G-TRA en cooldown : option grisée avec le compte à rebours (non cliquable).
+    const traLeft = Math.ceil(traCooldownLeftSec());
+    const opts = [{ value: "passive", label: "G-A · Passif" }, { value: "combat", label: "G-CM · Combat" }]
+      .concat(equipped.map((e) => ({
+        value: `gear:${e.key}`,
+        label: e.key === "tra" && traLeft > 0 ? `${e.label} (${traLeft} s)` : e.label,
+        disabled: e.key === "tra" && traLeft > 0,
+      })));
+    const activeKey = petActiveGearKey();
+    const want = activeKey ? `gear:${activeKey}` : mode;
+    const wantOpt = opts.find((o) => o.value === want) || opts[0];
+    const sig = `${mode}|${opts.map((o) => `${o.value}${o.disabled ? "!" : ""}`).join(",")}`;
+    if (sig !== lastPetModeSig) {
+      lastPetModeSig = sig;
+      ui.petModeList.innerHTML = opts.map((o) =>
+        `<button type="button" data-value="${escapeHtml(o.value)}"${o.disabled ? " disabled" : ""}>${escapeHtml(o.label)}</button>`
+      ).join("");
     }
+    for (const b of ui.petModeList.querySelectorAll("button[data-value]")) {
+      b.classList.toggle("isCurrent", b.dataset.value === wantOpt.value);
+    }
+    if (ui.petModeBtn.textContent !== wantOpt.label) ui.petModeBtn.textContent = wantOpt.label;
   }
+  // Liste des NPC de la carte : visible uniquement si le localisateur est actif.
+  const showPetNpc = has && pet?.active === true && petActiveGearKey() === "el";
+  if (ui.petNpcRow) ui.petNpcRow.hidden = !showPetNpc;
+  if (!showPetNpc) {
+    if (petLocator.manualType != null || petLocator.enemyId != null) {
+      petLocator.manualType = null;
+      petLocator.enemyId = null;
+    }
+    if (ui.petNpcList) ui.petNpcList.hidden = true;
+  } else if (ui.petNpcBtn && ui.petNpcList) {
+    const live = enemies.filter((e) => e && Number(e.hp) > 0);
+    // Une entrée par famille présente sur la carte.
+    const families = [...new Set(live.map((e) => String(e.type || "?")))].sort();
+    if (petLocator.manualType != null && !families.includes(petLocator.manualType)) {
+      petLocator.manualType = null;
+      petLocator.needsPick = true;
+    }
+    // Défaut : une famille au hasard dans la liste.
+    if (petLocator.manualType == null && petLocator.needsPick && families.length) {
+      petLocator.needsPick = false;
+      petLocator.manualType = families[Math.floor(Math.random() * families.length)];
+    }
+    const sig = families.join("|");
+    if (sig !== lastPetNpcSig) {
+      lastPetNpcSig = sig;
+      ui.petNpcList.innerHTML = '<button type="button" data-value="">— Choisir un NPC —</button>'
+        + families.map((type) => `<button type="button" data-value="${escapeHtml(type)}">${escapeHtml(String(NPC_TYPES[type]?.name || type))}</button>`).join("");
+    }
+    const wantNpc = petLocator.manualType != null ? String(petLocator.manualType) : "";
+    for (const b of ui.petNpcList.querySelectorAll("button[data-value]")) {
+      b.classList.toggle("isCurrent", (b.dataset.value || "") === wantNpc);
+    }
+    const wantLabel = petLocator.manualType != null
+      ? String(NPC_TYPES[petLocator.manualType]?.name || petLocator.manualType)
+      : "— Choisir un NPC —";
+    if (ui.petNpcBtn.textContent !== wantLabel) ui.petNpcBtn.textContent = wantLabel;
+  }
+  // Menus flottants : suivent la fenêtre (drag), fermés sans P.E.T.
+  if (!has) {
+    if (ui.petModeList) ui.petModeList.hidden = true;
+    if (ui.petNpcList) ui.petNpcList.hidden = true;
+  } else {
+    placePetDropdown(ui.petModeBtn, ui.petModeList);
+    if (showPetNpc) placePetDropdown(ui.petNpcBtn, ui.petNpcList);
+    else if (ui.petNpcList) ui.petNpcList.hidden = true;
+  }
+  // Cargo Trader (G-TRA) : expiration des 10 s ou fermeture manuelle → cooldown.
+  if (petTrader.until > 0 && (!isOreTradeWindowOpen() || !traWindowActive())) endTraSession();
   // Sprite de la fenêtre suit le palier de niveau (sans recharger en boucle).
   const stage = has ? getPetStage(level) : 0;
   if (stage !== lastPetHudStage) {
@@ -2055,6 +2293,8 @@ function updatePetHud() {
 }
 
 let lastPetHudStage = 0;
+let lastPetModeSig = "";
+let lastPetNpcSig = "";
 
 let selectedCraftingRecipeId = CRAFTING_RECIPES[0]?.id || null;
 
@@ -3974,7 +4214,7 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   ACTIVE_SHIP = pack;
 
   const hangar = getActiveHangarFromUser(u);
-  const stats = computeHangarStats(hangar, u);
+  const stats = computeHangarStats(hangar, u, { mapId: currentMapId() });
   player.dr = clamp(BASE_RUN.dr + Number(stats.formationEffects?.shieldAbsorptionPct || 0) / 100, 0, 1);
 
   // ✅ HP partagé entre les configs
@@ -3994,7 +4234,7 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   const shipBaseHP = Number(pack?.hp || 1);
   player.hpMax = Math.max(
     1,
-    Math.floor(shipBaseHP * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp)
+    Math.floor((shipBaseHP + (stats.bonusFlatHP || 0)) * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp)
   );
 
   player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield * playerUpgradeMults().shield));
@@ -6065,7 +6305,7 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
   const hangar = u ? getActiveHangarFromUser(u) : null;
   const fitNorm = normalizeFit(hangar?.fit, pack);
 
-  const stats = computeHangarStats(hangar, u);
+  const stats = computeHangarStats(hangar, u, { mapId: currentMapId() });
 
   player.dr = BASE_RUN.dr;
   player.dr = clamp(player.dr + Number(stats.formationEffects?.shieldAbsorptionPct || 0) / 100, 0, 1);
@@ -6080,7 +6320,7 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
   const oldHpPct = player.hpMax > 0 ? clamp(player.hp / player.hpMax, 0, 1) : 1;
   const oldShPct = player.shMax > 0 ? clamp(player.sh / player.shMax, 0, 1) : 1;
 
-  player.hpMax = Math.max(1, Math.floor(shipBaseHP * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp));
+  player.hpMax = Math.max(1, Math.floor((shipBaseHP + (stats.bonusFlatHP || 0)) * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp));
   player.hp = Math.max(1, Math.floor(player.hpMax * oldHpPct));
 
   player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield * playerUpgradeMults().shield));
@@ -6918,6 +7158,8 @@ function isPlayerNearTradeModule(module) {
 let activeTradeModule = null;
 
 function isTradeWindowAnchored() {
+  // Cargo Trader (G-TRA) : vente hors base pendant la session.
+  if (traWindowActive()) return true;
   if (!activeTradeModule) return false;
   if (!(zoneSafe?.modules || []).includes(activeTradeModule)) return false;
   return isPlayerNearTradeModule(activeTradeModule);
@@ -7641,7 +7883,7 @@ function drawEscortTargetLocks(ox, oy) {
 // aléatoire toutes les 1 s si plusieurs) en se mettant à portée,
 // sinon attaque seulement si on a nous-même lancé une attaque.
 // ============================================================
-const petState = { x: 0, y: 0, angle: 0, fireCd: 0, pickCd: 0, target: null, ready: false, returning: false, weaveT: 0, followT: 0, wpX: 0, wpY: 0, hasWp: false, attackers: new Map() };
+const petState = { x: 0, y: 0, angle: 0, fireCd: 0, pickCd: 0, fetchId: null, fetchHold: 0, target: null, ready: false, returning: false, weaveT: 0, followT: 0, wpX: 0, wpY: 0, hasWp: false, attackers: new Map() };
 
 // Règle générale : au-delà de 400px de nous, il revient vers nous quoi
 // qu'il fasse (attaque ou pas), quitte à repartir au combat après.
@@ -7789,15 +8031,244 @@ const isSab = ammoKey === "sab";
   }
 }
 
+// ============================================================
+// Gears passifs du P.E.T (G-AL / G-AR / G-EL / G-REP).
+// Définitions : PET/PET_GEARS.js. Les récompenses de collecte
+// passent par applyCollectableReward, comme une collecte joueur.
+// ============================================================
+const petLocator = { enemyId: null, manualType: null, needsPick: true };
+
+// Durée de l'animation de collecte du P.E.T sur la box : 1 seconde.
+const PET_FETCH_HOLD = 1.0;
+
+function petFit() {
+  const user = account.user;
+  const hangar = (user?.hangars || []).find((h) => h?.active) || null;
+  const hid = hangar ? String(hangar.id) : null;
+  const cfg = String(Number(hangar?.activeConfig) === 2 ? 2 : 1);
+  return hid ? getPetFit(user?.pet, hid, cfg) : null;
+}
+
+function petGearLevels() {
+  return getPetEquippedGearLevels(petFit(), findCatalogItem);
+}
+
+// Options du sélecteur (noms boutique, ex : "G-AL3 · Auto-Loot").
+function petEquippedGearOptions() {
+  return listEquippedGearOptions(petFit(), findCatalogItem);
+}
+
+// Gear actif unique (sélecteur fenêtre P.E.T) : null si aucun ou déséquipé.
+function petActiveGearKey() {
+  const want = String(account.user?.pet?.activeGear || "").toLowerCase();
+  if (!want) return null;
+  const levels = petGearLevels();
+  return Number(levels[want]) > 0 ? want : null;
+}
+
+// Cargo Trader (G-TRA) : fenêtre commerce hors base pendant 10 s, puis cooldown.
+// Fermée avant la fin (ou à l'expiration) : impossible de rouvrir avant le cooldown.
+// À la fin, retour au comportement d'avant (mode + gear), pas Passif forcé.
+const petTrader = { until: 0, cooldownUntil: 0, level: 0, prevMode: null, prevGear: null };
+
+function traWindowActive() {
+  return petTrader.until > 0 && performance.now() / 1000 < petTrader.until;
+}
+
+function traCooldownLeftSec() {
+  return Math.max(0, petTrader.cooldownUntil - performance.now() / 1000);
+}
+
+function openTraTradeWindow() {
+  if (!ui.oreTradeWindow) {
+    showToast("Fenêtre indisponible — recharge la page (Ctrl+F5)", 3);
+    return false;
+  }
+  // Hors base : aucun ancrage comptoir, les ventes restent autorisées
+  // via isTradeWindowAnchored() pendant la session.
+  renderOreTradeWindow();
+  if (window.GameWindowManager) window.GameWindowManager.restore("oreTradeWindow");
+  else ui.oreTradeWindow.style.display = "block";
+  return true;
+}
+
+function endTraSession() {
+  if (petTrader.until <= 0) return;
+  petTrader.until = 0;
+  if (isOreTradeWindowOpen()) closeOreTradeWindow();
+  petTrader.cooldownUntil = performance.now() / 1000 + getPetTradeCooldownSec(petTrader.level);
+  petTrader.level = 0;
+  if (String(account.user?.pet?.activeGear || "").toLowerCase() === "tra") {
+    setPetActiveGear(null);
+    // Retour au comportement d'avant la session (si toujours équipé).
+    if (petTrader.prevMode) setPetMode(petTrader.prevMode);
+    const pg = petTrader.prevGear;
+    if (pg && pg !== "tra" && Number(petGearLevels()[pg]) > 0) {
+      setPetActiveGear(pg);
+      if (pg === "el") {
+        petLocator.manualType = null;
+        petLocator.enemyId = null;
+        petLocator.needsPick = true;
+      }
+    }
+  }
+  petTrader.prevMode = null;
+  petTrader.prevGear = null;
+  loadAccountUser();
+  const wait = Math.round(traCooldownLeftSec());
+  showToast(`Cargo Trader terminé — cooldown ${wait} s`, 2);
+}
+
+// Gear actif unique sous forme filtrée { al, ar, el, rep, tra } (0 = inactif).
+function petActiveGears() {
+  const levels = petGearLevels();
+  const active = petActiveGearKey();
+  const gears = { al: 0, ar: 0, el: 0, rep: 0, tra: 0 };
+  if (active && Number(levels[active]) > 0) gears[active] = Math.floor(Number(levels[active]));
+  return gears;
+}
+
+// Box récoltable par le P.E.T : portée centrée sur le joueur, jamais celle
+// que le joueur est déjà en train de collecter lui-même.
+function isPetFetchEligible(c, gears, alRange, arRange) {
+  if (!c) return false;
+  if (collectableTargetId === c.id && c.armed === true) return false;
+  const type = String(c?.type || "");
+  const dp = Math.hypot(c.x - player.x, c.y - player.y);
+  if (gears.al > 0 && dp <= alRange && PET_GEAR_AUTOLOOT_TYPES.includes(type)) return true;
+  if (gears.ar > 0 && dp <= arRange && PET_GEAR_ORE_TYPES.includes(type)) return true;
+  return false;
+}
+
+// Cible de collecte du P.E.T (mémorisée par id) : valide l'en-cours seul.
+function validatePetFetch(gears) {
+  if (petState.fetchId == null) return null;
+  const cur = collectables.find((c) => c && c.id === petState.fetchId);
+  if (cur && isPetFetchEligible(cur, gears, getPetGearRange("al", gears.al), getPetGearRange("ar", gears.ar))) return cur;
+  petState.fetchId = null;
+  petState.fetchHold = 0;
+  return null;
+}
+
+// Nouveau scan : la box éligible la plus proche du joueur.
+function scanPetFetch(gears) {
+  const alRange = getPetGearRange("al", gears.al);
+  const arRange = getPetGearRange("ar", gears.ar);
+  if (Math.max(alRange, arRange) <= 0) return null;
+  const next = pickNearestWithin(
+    collectables, player.x, player.y, Math.max(alRange, arRange),
+    (c) => isPetFetchEligible(c, gears, alRange, arRange),
+  );
+  if (next) petState.fetchId = next.id;
+  return next;
+}
+
+// Récolte au contact, comme un clic joueur (mêmes récompenses).
+function collectPetBox(box) {
+  const res = applyCollectableReward(box);
+  if (res?.kept) {
+    // Soute pleine : la box reste — tenter à nouveau dans 10 s, sans spam sonore.
+    petState.pickCd = 10;
+    return;
+  }
+  SFX.play("collect", { cut: true, maxVoices: 3 });
+  takeCollectableInstance(box);
+  const idx = collectables.indexOf(box);
+  if (idx >= 0) collectables.splice(idx, 1);
+  petState.pickCd = PET_GEAR_PICK_DELAY;
+}
+
+function tickPetLocator(gears, dt) {
+  if (gears.el <= 0) {
+    petLocator.enemyId = null;
+    petLocator.manualType = null;
+    return;
+  }
+  // Famille choisie dans la liste : suit toujours le plus proche de nous,
+  // dans la portée du gear (1000 / 1500 / 2500).
+  if (petLocator.manualType == null) {
+    petLocator.enemyId = null;
+    return;
+  }
+  const range = getPetGearRange("el", gears.el);
+  const foe = pickNearestWithin(
+    enemies, player.x, player.y, range,
+    (e) => Number(e?.hp) > 0 && String(e.type || "?") === petLocator.manualType,
+  );
+  if (foe) {
+    petLocator.enemyId = foe.id;
+    return;
+  }
+  // Rien dans la portée : on garde la famille si elle existe encore
+  // (réacquise au rapprochement), sinon nouveau tirage.
+  petLocator.enemyId = null;
+  const anyLeft = enemies.some(
+    (e) => Number(e?.hp) > 0 && String(e.type || "?") === petLocator.manualType,
+  );
+  if (!anyLeft) {
+    petLocator.manualType = null;
+    petLocator.needsPick = true;
+  }
+}
+
+function tickPetPassiveGears(dt) {
+  const pet = account.user?.pet;
+  if (!pet || pet.active !== true || !petState.ready || player.dead || !started) return;
+  // Un seul gear actif à la fois (sélecteur fenêtre P.E.T).
+  const gears = petActiveGears();
+  // G-REP : 3 / 4 / 5 % de la coque max par pallier d'1 s, +X vert comme le vaisseau.
+  const repPct = getPetRepairPct(gears.rep);
+  if (repPct > 0) {
+    const max = getPetMaxHp(getPetLevel(pet.exp));
+    const cur = Number.isFinite(Number(pet.hp)) ? Number(pet.hp) : max;
+    if (cur < max - 0.01) {
+      petState.repTickT = (petState.repTickT || 0) + dt;
+      if (petState.repTickT >= 1.0) {
+        petState.repTickT -= 1.0;
+        const old = Number.isFinite(Number(pet.hp)) ? Number(pet.hp) : max;
+        pet.hp = Math.min(max, old + max * repPct / 100);
+        const gain = Math.round(pet.hp - old);
+        if (gain > 0) {
+          addFloatText(
+            petState.x + (Math.random() - 0.5) * 60,
+            petState.y - 90 - Math.random() * 20,
+            gain,
+            "rgba(80,255,125,0.98)",
+            { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+          );
+        }
+        markProgressDirty();
+      }
+    } else {
+      petState.repTickT = 0;
+    }
+  } else {
+    petState.repTickT = 0;
+  }
+  // La collecte (G-AL / G-AR) se fait en volant jusqu'à la box
+  // (voir updatePet) ; ici : réparation + localisateur uniquement.
+  tickPetLocator(gears, dt);
+}
+
 function updatePet(dt) {
   const pet = account.user?.pet;
-  if (!pet?.owned || pet?.active !== true) { petState.ready = false; petState.target = null; return; }
+  if (!pet?.owned || pet?.active !== true) {
+    petState.ready = false;
+    petState.target = null;
+    petState.fetchId = null;
+    petState.fetchHold = 0;
+    petLocator.enemyId = null;
+    petLocator.manualType = null;
+    return;
+  }
   if (!started || player.dead) return;
   if (!petState.ready) {
     petState.x = player.x - 90;
     petState.y = player.y + 70;
     petState.fireCd = 0;
     petState.pickCd = 0;
+    petState.fetchId = null;
+    petState.fetchHold = 0;
     petState.target = null;
     petState.returning = false;
     petState.weaveT = 0;
@@ -7833,15 +8304,20 @@ function updatePet(dt) {
     petState.graceRemaining = 0;
   }
   const finishingAttack = outsidePlayerRange && petState.graceRemaining > 0;
+  // Collecte G-AL / G-AR : cible connue avant le rappel — un REX en route
+  // vers sa box (ou déjà sur la suivante) ne doit pas faire demi-tour.
+  // La portée reste centrée sur le joueur : s'éloigner trop annule la cible.
+  const petGears = petActiveGears();
+  const preFetch = validatePetFetch(petGears) || scanPetFetch(petGears);
   const leash = Math.max(750, playerRange * 1.2) + (finishingAttack ? 600 : 0);
   // Inclure le rayon de combat : le cote oppose du NPC reste accessible.
   const ownerLeash = leash + PET_COMBAT_RADIUS;
-  if (ownerDistance > ownerLeash && !petState.returning) {
+  if (ownerDistance > ownerLeash && !petState.returning && preFetch == null) {
     petState.returning = true;
     petState.assistTarget = null;
     petState.escortX = undefined;
     petState.escortY = undefined;
-  } else if (ownerDistance <= PET_REST_RADIUS + 22) {
+  } else if (preFetch != null || ownerDistance <= PET_REST_RADIUS + 22) {
     petState.returning = false;
   }
   // Ne pas effacer a chaque image les nouveaux degats confirmes pendant le retour.
@@ -7921,6 +8397,15 @@ function updatePet(dt) {
   const weaving = !!target;
   const combat = target ? petCombatVelocity(petState, target, PET_COMBAT_RADIUS, dt, player) : null;
   const weaveVX = combat?.vx || 0, weaveVY = combat?.vy || 0;
+  // G-AL / G-AR : sans cible de combat et sans retour, le P.E.T vole
+  // jusqu'à la box et la récolte au contact, comme un clic joueur.
+  // (preFetch déjà scanné avant le rappel : enchaîne les boxes sans revenir.)
+  let fetchTarget = null;
+  if (!target && !petState.returning) fetchTarget = preFetch;
+  else {
+    petState.fetchId = null;
+    petState.fetchHold = 0;
+  }
   if (!target || petState.returning) {
     const escort = petEscortTarget(petState, player, dt, petState.returning ? PET_REST_RADIUS * 0.65 : PET_REST_RADIUS);
     destX = clamp(escort.x, 80, WORLD.w - 80);
@@ -7932,6 +8417,48 @@ function updatePet(dt) {
   if (weaving) {
     const scale = Math.min(1, followSpeed / (Math.hypot(weaveVX, weaveVY) || 1));
     stepPetMotion(petState, weaveVX * scale, weaveVY * scale, dt, WORLD);
+  } else if (fetchTarget) {
+    // Approche vivante (jamais de ligne droite parfaite ni de snap) :
+    // lacet pendant le trajet, micro-flottement pendant la seconde de collecte.
+    const collectX = clamp(fetchTarget.x + (COLLECTABLE_PICKUP.offsetX || 0), 80, WORLD.w - 80);
+    const collectY = clamp(fetchTarget.y + (COLLECTABLE_PICKUP.offsetY || 0), 80, WORLD.h - 80);
+    const t = performance.now() / 1000;
+    const dx0 = collectX - petState.x, dy0 = collectY - petState.y;
+    const trueDist = Math.hypot(dx0, dy0);
+    const arrived = trueDist <= COLLECTABLE_PICKUP.centerRadius + 6;
+    let aimX, aimY;
+    if (!arrived) {
+      petState.fetchHold = 0;
+      const wobble = Math.min(70, trueDist * 0.2);
+      const nx = dx0 / (trueDist || 1), ny = dy0 / (trueDist || 1);
+      const sway = Math.sin(t * 3.1) * wobble;
+      aimX = collectX - ny * sway;
+      aimY = collectY + nx * sway;
+    } else {
+      // Sur la box : cap figé + flottement amorti (sans stepPetMotion,
+      // dont les recalculs de cap feraient glitcher le sprite sur place).
+      aimX = collectX + Math.sin(t * 2.2) * 6;
+      aimY = collectY + Math.cos(t * 1.7) * 6;
+      const k = Math.min(1, 5 * dt);
+      petState.x = clamp(petState.x + (aimX - petState.x) * k, 80, WORLD.w - 80);
+      petState.y = clamp(petState.y + (aimY - petState.y) * k, 80, WORLD.h - 80);
+      petState.vx = 0;
+      petState.vy = 0;
+      petState.fetchHold = (petState.fetchHold || 0) + dt;
+      if (petState.fetchHold >= PET_FETCH_HOLD && petState.pickCd <= 0) {
+        collectPetBox(fetchTarget);
+        petState.fetchId = null;
+        petState.fetchHold = 0;
+        fetchTarget = null;
+      }
+    }
+    if (fetchTarget) {
+      // Vitesse du joueur, sans bonus de rattrapage (pas une fusée).
+      const vx = (aimX - petState.x) * 3, vy = (aimY - petState.y) * 3;
+      const speed = Math.hypot(vx, vy);
+      const scale = speed > 0 ? Math.min(1, ownerSpeed / speed) : 0;
+      stepPetMotion(petState, vx * scale, vy * scale, dt, WORLD);
+    }
   } else {
     const dx = destX - petState.x, dy = destY - petState.y;
     const dist = Math.hypot(dx, dy);
@@ -7949,7 +8476,10 @@ function updatePet(dt) {
     }
   }
   if (target) petState.angle = Math.atan2(target.y - petState.y, target.x - petState.x);
+  // Pas de verrouillage sur la box : le REX garde son orientation de vol.
   else orientPet(petState, dt);
+  // Gears passifs (collecte, réparation, localisateurs) : indépendants du combat.
+  tickPetPassiveGears(dt);
   // Le REX doit réellement rejoindre sa zone de combat avant de tirer. Cette
   // règle vaut aussi pour une riposte déclenchée par un dégât reçu.
   const inRangeToFire = target
@@ -9480,17 +10010,19 @@ player.y = collectY;
 
 function drawCollectBeam(c, ox, oy) {
   if (!c) return;
-  if (collectableTargetId !== c.id) return;
-  if (c.armed !== true) return;
+  // Faisceau du P.E.T vers sa box (même visuel que le joueur).
+  const isPetBox = petState.fetchId === c.id && (petState.fetchHold || 0) > 0;
+  const isPlayerBox = collectableTargetId === c.id && c.armed === true;
+  if (!isPetBox && !isPlayerBox) return;
 
-  const hold = Math.max(0.001, Number(COLLECTABLE_PICKUP.holdDuration || 0.2));
-  const p = clamp((c.collectT || 0) / hold, 0, 1);
+  const hold = isPetBox ? PET_FETCH_HOLD : Math.max(0.001, Number(COLLECTABLE_PICKUP.holdDuration || 0.2));
+  const p = clamp(((isPetBox ? petState.fetchHold : c.collectT) || 0) / hold, 0, 1);
 
   // visible uniquement pendant la phase de collecte
   if (p <= 0) return;
 
-  const shipX = player.x + ox;
-  const shipY = player.y + oy;
+  const shipX = (isPetBox ? petState.x : player.x) + ox;
+  const shipY = (isPetBox ? petState.y : player.y) + oy;
 
   const boxX = c.x + ox;
   const boxY = c.y + oy;
@@ -9636,6 +10168,74 @@ function drawCollectables(ox, oy) {
 
     ctx.restore();
   }
+}
+
+// Silhouettes jaunes des NPC localisés (clé type:frame), pour un contour
+// qui suit la sprite. Dessinées avant le sprite, qui passe par-dessus.
+const petLocatorOutlines = new Map();
+
+function petLocatorSilhouette(type, idx, img, w, h) {
+  const key = `${type}:${idx}`;
+  let entry = petLocatorOutlines.get(key);
+  if (!entry) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.ceil(w));
+    canvas.height = Math.max(1, Math.ceil(h));
+    const g = canvas.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, 0, 0, canvas.width, canvas.height);
+    g.globalCompositeOperation = "source-in";
+    g.fillStyle = "#ffe14d";
+    g.fillRect(0, 0, canvas.width, canvas.height);
+    entry = canvas;
+    petLocatorOutlines.set(key, entry);
+    if (petLocatorOutlines.size > 24) petLocatorOutlines.delete(petLocatorOutlines.keys().next().value);
+  }
+  return entry;
+}
+function drawPetLocator(ox, oy) {
+  const pet = account.user?.pet;
+  if (!pet?.owned || pet?.active !== true || !petState.ready || player.dead || !started) return;
+  if (petLocator.enemyId == null) return;
+  const foe = enemiesById.get(petLocator.enemyId);
+  if (!foe || !(foe.hp > 0)) return;
+  const sx = foe.x + ox, sy = foe.y + oy;
+  if (sx < -260 || sy < -260 || sx > innerWidth + 260 || sy > innerHeight + 260) return;
+  const t = performance.now() / 1000;
+  const pulse = 0.75 + Math.sin(t * 5) * 0.2;
+  const cfg = NPC_TYPES[foe.type];
+  const sp = cfg ? cfg.sprite : null;
+  if (sp && sp._imgs && sp._imgs.length && sp._ready) {
+    const idx = getEnemySpriteFrame(foe, cfg, sp);
+    const img = sp._imgs[idx] || sp._imgs[0];
+    if (isImgReady(img)) {
+      const baseW = sp.w ?? sp.size ?? 160;
+      const baseH = sp.h ?? sp.size ?? 160;
+      const w = foe.isBoss ? baseW * 1.05 : baseW;
+      const h = foe.isBoss ? baseH * 1.05 : baseH;
+      // Contour jaune qui suit la sprite (silhouette derrière, pulsée).
+      // Dessiné avant : la sprite du NPC passe par-dessus.
+      const outline = petLocatorSilhouette(foe.type, idx, img, w, h);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.3, Math.min(1, pulse));
+      ctx.shadowColor = "rgba(255,225,77,0.9)";
+      ctx.shadowBlur = 12;
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        ctx.drawImage(outline, sx - w / 2 + Math.cos(a) * 2, sy - h / 2 + Math.sin(a) * 2, w, h);
+      }
+      ctx.restore();
+      return;
+    }
+  }
+  // Repli : anneau + halo si la sprite n'est pas prête.
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,225,77,0.9)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(sx, sy, Math.max(8, ((foe.r || 30) + 12) * pulse), 0, TAU);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function makeEnemy(type, x, y) {
@@ -12847,6 +13447,12 @@ function drawMinimap() {
   mctx.setTransform(useCss ? dpr : 1, 0, 0, useCss ? dpr : 1, 0, 0);
   const petAccount = account.user?.pet;
   const isPetActive = !!petAccount?.owned && petAccount?.active === true && !player.dead;
+  // Marqueur du localisateur P.E.T (G-EL), résolu en direct.
+  const petLocatorMarkers = [];
+  if (isPetActive && petLocator.enemyId != null) {
+    const foe = enemiesById.get(petLocator.enemyId);
+    if (foe && foe.hp > 0) petLocatorMarkers.push({ x: foe.x, y: foe.y, color: "#ffe14d", pulse: true });
+  }
   renderMinimap(mctx, {
     width: useCss ? cssW : mini.width,
     height: useCss ? cssH : mini.height,
@@ -12854,6 +13460,7 @@ function drawMinimap() {
     player,
     enemies,
     allies: escortShips,
+    markers: petLocatorMarkers,
     pet: isPetActive
       ? {
           active: true,
@@ -13179,12 +13786,14 @@ ui.oreTradeWindow?.addEventListener("click", (event) => {
     return;
   }
   saveProgressNow();
-  const result = sellCurrentUserOre(button.dataset.oreSell);
+  // Cargo Trader : bonus de vente du niveau équipé pendant la session.
+  const traBonus = traWindowActive() ? getPetTradeBonusPct(petTrader.level) : 0;
+  const result = sellCurrentUserOre(button.dataset.oreSell, traBonus);
   if (!result.ok) return;
   account.user = result.user;
   player.credits = result.user.credits;
   setHudText(ui.shopCredits, formatInteger(player.credits));
-  showNotificationGroup([`Vente : ${formatInteger(result.quantity)} ${getResourceName(result.resourceId, result.quantity)} → +${formatInteger(result.gained)} crédits`], "reward", { whiteTerms: [`+${formatInteger(result.gained)}`] });
+  showNotificationGroup([`Vente : ${formatInteger(result.quantity)} ${getResourceName(result.resourceId, result.quantity)} → +${formatInteger(result.gained)} crédits${traBonus > 0 ? ` (+${traBonus} % Trader)` : ""}`], "reward", { whiteTerms: [`+${formatInteger(result.gained)}`] });
   renderOreTradeWindow();
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
@@ -14088,8 +14697,8 @@ function tickEmpWander(e, dt) {
     let tx = e.x + Math.cos(ang) * dist;
     let ty = e.y + Math.sin(ang) * dist;
 
-    tx = clamp(tx, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
-    ty = clamp(ty, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
+    tx = clamp(tx, e.r || 18, WORLD.w - (e.r || 18));
+    ty = clamp(ty, e.r || 18, WORLD.h - (e.r || 18));
 
     e.empAI.tx = tx;
     e.empAI.ty = ty;
@@ -14109,8 +14718,7 @@ function tickEmpWander(e, dt) {
 
   setNpcVelocity(e, nx, ny, spd);
 
-  e.x = clamp(e.x + e.vx * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.w - e.r + RADIATION_SPAWN_MARGIN);
-  e.y = clamp(e.y + e.vy * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.h - e.r + RADIATION_SPAWN_MARGIN);
+  integrateNpcPosition(e, dt);
 
   if (e.vx * e.vx + e.vy * e.vy > 25) {
     e.angle = Math.atan2(e.vy, e.vx);
@@ -14941,8 +15549,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
       if (e._cubikonDeathFlee) {
         e._cubikonDeathFleeT = Math.max(0, (e._cubikonDeathFleeT || 0) - dt);
-        e.x = clamp(e.x + e.vx * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.w - e.r + RADIATION_SPAWN_MARGIN);
-        e.y = clamp(e.y + e.vy * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.h - e.r + RADIATION_SPAWN_MARGIN);
+        integrateNpcPosition(e, dt);
+        
         if (e._cubikonDeathFleeT <= 0) {
           e._cubikonDeathFlee = false;
           e.vx = 0;
@@ -15018,8 +15626,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
               const rMax = e.anchorRMax ?? 700;
               const r = rand(rMin, rMax);
 
-              e.anchorTX = clamp(master.x + Math.cos(ang) * r, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
-              e.anchorTY = clamp(master.y + Math.sin(ang) * r, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
+              e.anchorTX = clamp(master.x + Math.cos(ang) * r, e.r || 18, WORLD.w - (e.r || 18));
+              e.anchorTY = clamp(master.y + Math.sin(ang) * r, e.r || 18, WORLD.h - (e.r || 18));
 
               e.anchorWanderT = 0.8 + Math.random() * 1.0;
             }
@@ -15034,8 +15642,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             const spdE = npcEffectiveSpeed(e);
             setNpcVelocity(e, mxv, myv, spdE);
 
-            e.x = clamp(e.x + e.vx * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.w - e.r + RADIATION_SPAWN_MARGIN);
-            e.y = clamp(e.y + e.vy * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.h - e.r + RADIATION_SPAWN_MARGIN);
+            integrateNpcPosition(e, dt);
+            
 
             if (e.vx * e.vx + e.vy * e.vy > 25) {
               e.angle = Math.atan2(e.vy, e.vx);
@@ -15084,8 +15692,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
               let tx = safeZoneX + nxOut * outDist + rand(-260, 260);
               let ty = safeZoneY + nyOut * outDist + rand(-260, 260);
 
-              tx = clamp(tx, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
-              ty = clamp(ty, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
+              tx = clamp(tx, e.r || 18, WORLD.w - (e.r || 18));
+              ty = clamp(ty, e.r || 18, WORLD.h - (e.r || 18));
 
               e.aiZ.wanderTarget = { x: tx, y: ty };
               e.aiZ.wanderT = 1.6 + Math.random() * 1.6;
@@ -15130,8 +15738,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             let tx = e.x + Math.cos(angle) * distance;
             let ty = e.y + Math.sin(angle) * distance;
 
-            tx = clamp(tx, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
-            ty = clamp(ty, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
+            tx = clamp(tx, e.r || 18, WORLD.w - (e.r || 18));
+            ty = clamp(ty, e.r || 18, WORLD.h - (e.r || 18));
 
             e.aiZ.wanderTarget = { x: tx, y: ty };
             e.aiZ.wanderT = 3 + Math.random() * 4;
@@ -15150,8 +15758,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
         const spdE = npcEffectiveSpeed(e);
         setNpcVelocity(e, mxv, myv, spdE);
 
-        e.x = clamp(e.x + e.vx * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.w - e.r + RADIATION_SPAWN_MARGIN);
-        e.y = clamp(e.y + e.vy * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.h - e.r + RADIATION_SPAWN_MARGIN);
+        integrateNpcPosition(e, dt);
+        
 
         const spd2N = e.vx * e.vx + e.vy * e.vy;
         if (e._aggro) {
@@ -15207,8 +15815,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
       e.angle = Math.atan2(e.vy, e.vx);
     }
 
-    e.x = clamp(e.x + e.vx * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.w - e.r + RADIATION_SPAWN_MARGIN);
-    e.y = clamp(e.y + e.vy * dt, e.r - RADIATION_SPAWN_MARGIN, WORLD.h - e.r + RADIATION_SPAWN_MARGIN);
+    integrateNpcPosition(e, dt);
+    
 
     const cfgTouch = NPC_TYPES[e.type] || {};
     if (!player.dead && cfgTouch.explodeOnTouch) {
@@ -15287,6 +15895,7 @@ if (GAME_SETTINGS.textures) {
   drawSafeModules(ox, oy);
   drawMoveTarget(ox, oy);
   drawCollectables(ox, oy);
+  drawPetLocator(ox, oy);
   drawEngineTrails(ox, oy);
   drawGateEscorts(ox, oy);
   drawPet(ox, oy);

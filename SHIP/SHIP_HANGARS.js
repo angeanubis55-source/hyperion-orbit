@@ -2,6 +2,8 @@
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { getActiveDroneFormation } from "../DRONE/DRONE_TYPES.js";
 import { getShipPackById } from "./SHIP_PACKS.js";
+import { getShipEffectStats } from "./SHIP_BONUSES.js";
+import { FACTIONS, normalizeFactionId } from "../SRC/CORE/FACTIONS.js";
 
 /**
  * calcule les bonus à partir d'un hangar + user.inventory.shipModules
@@ -11,7 +13,7 @@ import { getShipPackById } from "./SHIP_PACKS.js";
  * - extras => juste liste
  * - ✅ SHIP MODULES (roulette) => bonus % sur stats
  */
-export function computeHangarStats(hangar, user) {
+export function computeHangarStats(hangar, user, ctx = {}) {
   const activeConfig = Number(hangar?.activeConfig) === 2 ? "2" : "1";
 
 const fit =
@@ -185,6 +187,29 @@ const fit =
   bonusHonorPct += Number(formationEffects.honorPct || 0);
   bonusExpPct += Number(formationEffects.npcXpPct || 0);
 
+  // ✅ ÉTAPE 2bis : effet passif du vaisseau / design actif (boutique).
+  // h.shipId porte déjà le design actif (setHangarDesign l'y écrit).
+  const shipEffect = getShipEffectStats(hangar?.shipId);
+  bonusDamagePct += Number(shipEffect.damagePct || 0);
+  bonusShieldPct += Number(shipEffect.shieldPct || 0);
+  bonusHPPct += Number(shipEffect.hpPct || 0);
+  bonusExpPct += Number(shipEffect.expPct || 0);
+  bonusHonorPct += Number(shipEffect.honorPct || 0);
+  bonusPenetrationPct += Number(shipEffect.penPct || 0);
+
+  // ✅ Leonov : +100 % dégâts / bouclier / PV sur les cartes x-1 à x-4
+  // de SA firme (secteur MMO=1, EIC=2, VRU=3). Bonus recalculé à chaque
+  // chargement de map / changement de config (le moteur passe ctx.mapId).
+  if (String(hangar?.shipId || "").toLowerCase() === "leonov") {
+    const sector = FACTIONS[normalizeFactionId(user?.faction)]?.sector;
+    const mapId = String(ctx?.mapId || "").trim().toLowerCase();
+    if (sector && new RegExp(`^${sector}-[1234]$`).test(mapId)) {
+      bonusDamagePct += 100;
+      bonusShieldPct += 100;
+      bonusHPPct += 100;
+    }
+  }
+
   // Bonus d'ensemble des designs : actifs uniquement si tous les drones portent le même design.
   if (drones.length && drones.every(drone => /havoc|havok/.test(designId(drone)))) bonusDamagePct += 10;
   if (drones.length && drones.every(drone => designId(drone).includes("hercules"))) bonusHPPct += 20;
@@ -197,7 +222,8 @@ const fit =
   const totalLaserDamage = baseDamage * (1 + bonusDamagePct / 100);
   // The engine adds the hull speed: include its percentage bonus here too.
   const hullSpeed = Number(getShipPackById(hangar?.shipId)?.speed || 0);
-  const bonusSpeed = baseSpeed * (1 + bonusSpeedPct / 100) + hullSpeed * bonusSpeedPct / 100;
+  const bonusSpeed = baseSpeed * (1 + bonusSpeedPct / 100) + hullSpeed * bonusSpeedPct / 100
+    + Number(shipEffect.speedFlat || 0);
   const bonusShield = baseShield * (1 + bonusShieldPct / 100);
 
   return { 
@@ -205,6 +231,7 @@ const fit =
     bonusSpeed, 
     bonusShield, 
     bonusAbsorb,          // max des générateurs montés (0 = défaut 80 % moteur)
+    bonusFlatHP: Number(shipEffect.flatHp || 0), // PV fixes (ex : Yamato Ronin +40000)
     laserMods,            // détail canons du vaisseau (bonus vsMatch appliqués au tir)
     droneLaserMods,       // détail canons des drones (overdrive/vs/instable x nombre équipé)
     bonusHPPct,           // % à appliquer sur le HP du ship

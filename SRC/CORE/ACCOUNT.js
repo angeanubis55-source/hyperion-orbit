@@ -400,7 +400,12 @@ function petFitSlotError(itemId, group, petLevel) {
   if (!it) return "Objet introuvable.";
   if (group === "lasers" && it?.module?.type !== "laser") return "Emplacement laser : laser uniquement.";
   if (group === "generators" && it?.module?.type !== "shield") return "Emplacement générateur : bouclier uniquement.";
-  if (group === "gears" && !it?.petGear) return "Emplacement gear : gear P.E.T uniquement.";
+  if (group === "gears") {
+    if (!it?.petGear) return "Emplacement gear : gear P.E.T uniquement.";
+    const req = Math.max(0, Number(it.petLevel) || 0);
+    if (petLevel < req) return `Ce gear exige le P.E.T niveau ${req}.`;
+    return null;
+  }
   if (group === "protocols") {
     if (!it?.petProtocol) return "Emplacement protocole : protocole P.E.T uniquement.";
     const req = Math.max(0, Number(it.petLevel) || 0);
@@ -532,6 +537,10 @@ export function normalizeStarterShipIds(u) {
 
 // Items retirés du jeu (anciennes sauvegardes) : purge exacte, sans motif large.
 const REMOVED_ITEM_IDS = new Set([  "shd_mk4",
+  "gear_grl1",
+  "gear_grl2",
+  "gear_grl3",
+  "gear_grt1",
   "spd_mk4",
   "laser_radion",
   "shd_radion",
@@ -740,6 +749,8 @@ function ensureUserShape(u) {
     // État en jeu : actif ou non (bouton play/stop), mode passif/combat.
     u.pet.active = u.pet.active === true;
     u.pet.mode = normalizePetMode(u.pet.mode);
+    // Gear actif unique (sélecteur fenêtre P.E.T, null = aucun).
+    if (typeof u.pet.activeGear !== "string" || !u.pet.activeGear) u.pet.activeGear = null;
     // Fuel infini pour le moment : 50 000 / 50 000 fixe.
     u.pet.fuelMax = PET_FUEL_MAX;
     u.pet.fuel = PET_FUEL_MAX;
@@ -1714,6 +1725,19 @@ export function setPetMode(mode) {
   return { ok: true, user: u, mode: u.pet.mode };
 }
 
+// Sélecteur de gear de la fenêtre P.E.T en jeu (un seul actif à la fois).
+export function setPetActiveGear(key) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
+  const k = key == null || key === "" ? null : String(key).toLowerCase();
+  if (k != null && !["al", "ar", "el", "rep", "tra"].includes(k)) return { ok: false, error: "Gear inconnu." };
+  u.pet.activeGear = k;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, activeGear: u.pet.activeGear };
+}
+
 export function spinCurrentUserGalaxyGate(gateId, count = 1, rng = Math.random) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
@@ -2442,7 +2466,8 @@ export function refineCurrentUserOre(recipeId, requestedQuantity = 1) {
 }
 
 // Vente de minerais au comptoir pirate (prix fixes, tout le stock du minerai).
-export function sellCurrentUserOre(resourceId) {  const u = getCurrentUserFull();
+// bonusPct : bonus Cargo Trader du P.E.T (0 = plein tarif).
+export function sellCurrentUserOre(resourceId, bonusPct = 0) {  const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const id = String(resourceId || "");
   const price = Math.max(0, Math.floor(Number(ORE_SELL_PRICES[id]) || 0));
@@ -2451,7 +2476,7 @@ export function sellCurrentUserOre(resourceId) {  const u = getCurrentUserFull()
   u.inventory.resources ||= {};
   const owned = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0));
   if (owned <= 0) return { ok: false, error: "Stock vide.", user: u };
-  const gained = owned * price;
+  const gained = Math.floor(owned * price * (1 + Math.max(0, Number(bonusPct) || 0) / 100));
   u.inventory.resources[id] = 0;
   u.credits = Math.max(0, Number(u.credits || 0)) + gained;
   ensureUserShape(u);

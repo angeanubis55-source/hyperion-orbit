@@ -103,7 +103,7 @@ export function renderMinimap(context, options) {
   if (!context) return;
   const {
     width, height, world, player, enemies = [], allies = [], pet = null, portals = [], returnPortal = null,
-    isZoneMap = false, safeZone = null, moveTarget = null, ping = null,
+    isZoneMap = false, safeZone = null, moveTarget = null, ping = null, markers = [],
     camera, viewportWidth, viewportHeight, lockedNpc = null, shouldShowNpc = () => true,
   } = options;
   const staticLayer = getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height);
@@ -141,6 +141,38 @@ export function renderMinimap(context, options) {
     context.beginPath();
     context.arc(px, py, 1, 0, Math.PI * 2);
     context.fill();
+  }
+
+  // Marqueurs (localisateur P.E.T) : rond qui s'éloigne en boucle,
+  // comme le ping au clic mais plus discret et plus fin.
+  for (const marker of markers || []) {
+    if (!marker || !Number.isFinite(Number(marker.x)) || !Number.isFinite(Number(marker.y))) continue;
+    const mx = marker.x * scaleX;
+    const my = marker.y * scaleY;
+    if (marker.pulse) {
+      const period = 2;
+      const progress = ((performance.now() / 1000) % period) / period;
+      context.save();
+      context.globalAlpha = (1 - progress) * 0.9;
+      context.lineWidth = 1.5;
+      context.strokeStyle = marker.color || "#ffe14d";
+      context.beginPath();
+      context.arc(mx, my, 2 + 10 * progress, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
+      continue;
+    }
+    const s = 4;
+    context.save();
+    context.fillStyle = marker.color || "#ffe14d";
+    context.beginPath();
+    context.moveTo(mx, my - s);
+    context.lineTo(mx + s, my);
+    context.lineTo(mx, my + s);
+    context.lineTo(mx - s, my);
+    context.closePath();
+    context.fill();
+    context.restore();
   }
 
   // Joueur : lignes horizontale + verticale sur toute la mini-carte.
@@ -183,16 +215,11 @@ export function renderMinimap(context, options) {
 
   if (ping) {
     const progress = clamp(ping.t / ping.dur, 0, 1);
-    const radius = 6 + 20 * progress;
+    const radius = 3 + 10 * progress;
     context.save();
-    context.globalAlpha = 1 - progress;
-    context.lineWidth = 2.5;
+    context.globalAlpha = (1 - progress) * 0.7;
+    context.lineWidth = 1;
     context.strokeStyle = "rgba(255,210,122,0.95)";
-    context.beginPath();
-    context.arc(ping.x * scaleX, ping.y * scaleY, radius, 0, Math.PI * 2);
-    context.stroke();
-    context.globalAlpha = (1 - progress) * 0.25;
-    context.lineWidth = 6;
     context.beginPath();
     context.arc(ping.x * scaleX, ping.y * scaleY, radius, 0, Math.PI * 2);
     context.stroke();
