@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.201",
+    "date": "2026-09-14T03:55:37+02:00",
+    "message": "sync version 0.200 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.200",
     "date": "2026-09-14T03:55:01+02:00",
     "message": "fonds de carte supprimes (125Mo, vide spatial) + fusion css + stats absolues + mort/radiation/npc"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.142",
     "date": "2026-09-10T22:16:31+02:00",
     "message": "Pre-push roquettes"
-  },
-  {
-    "version": "0.141",
-    "date": "2026-09-10T17:15:42+02:00",
-    "message": "Anti-freeze sauvegardes: debounce 15s, save portail masquee, cache parse, historique borne a 30"
   }
 ];

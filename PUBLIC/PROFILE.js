@@ -5068,6 +5068,28 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
       return;
     }
 
+    // Brouillons de l'autre configuration : appliqués aussi, sinon ils sont perdus.
+    let otherApplied = 0;
+    if (fitState.stash) {
+      for (const otherNo of [1, 2]) {
+        if (otherNo === fitState.configNo) continue;
+        const stashed = fitState.stash[otherNo];
+        if (!stashed) continue;
+        const fresh = getCurrentUserFull();
+        const outOther = saveHangarLoadout(fitState.hangarId, {
+          ship: stashed.draft,
+          drones: stashed.droneDrafts || {},
+          pet: fresh?.pet?.owned === true ? stashed.petDraft : null,
+        }, otherNo);
+        if (!outOther.ok) {
+          showFitError(`Config ${otherNo} : ${outOther.error || "Sauvegarde impossible"}`);
+          return;
+        }
+        delete fitState.stash[otherNo];
+        otherApplied += 1;
+      }
+    }
+
     user = getCurrentUserFull();
     // La config appliquée devient le brouillon de référence (retours 1/2 cohérents).
     if (fitState.stash) delete fitState.stash[fitState.configNo];
@@ -5076,6 +5098,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
     setMsg(appliedLive
       ? `Configuration ${fitState.configNo} appliquée en jeu.`
       : `Configuration ${fitState.configNo} enregistrée. En jeu : configuration ${activeHangar?.activeConfig || 1}.`, true);
+    if (otherApplied > 0) setMsg(`Configurations 1 et 2 enregistrées.`, true);
 
     closeFitModal();
 
