@@ -15,7 +15,7 @@ import { getShipDesignBaseId } from "./SHIP_PACKS.js";
 const SHIP_BASE_INFO = {
   aegis: { effet: null, competence: "Réparation coque / bouclier / Pod" },
   basilisk: { effet: null, competence: "Nuage toxique / Valeur exaltée" },
-  berserker: { effet: "Berserk (+dégâts quand PV bas)", competence: "Lien de bouclier / Berserk / Représailles" },
+  berserker: { effet: null, competence: "Lien de bouclier / Berserk / Représailles" },
   bigboy: { effet: null, competence: null },
   centurion: { effet: null, competence: null }, // projets instables = modules, pas affichés
   citadel: { effet: null, competence: "Protection / Attraction / Fortification / Voyage" },
@@ -31,7 +31,7 @@ const SHIP_BASE_INFO = {
   holo: { effet: null, competence: "Inversion (soi / ennemi)" },
   hyperion: { effet: null, competence: "Ancre gravitationnelle" },
   keres: { effet: null, competence: "Propagation / Esquive" },
-  leonov: { effet: "+100% Bouclier, Dégâts, PV (cartes x-1 à x-4 de sa firme)", competence: null },
+  leonov: { effet: "+100% Dégâts/Bouclier/PV, roquettes/XP/vitesse x2 (cartes x-1 à x-4 de sa firme)", competence: null },
   liberator: { effet: null, competence: null },
   mimesis: { effet: "+10% Bouclier, +5% Pénétration", competence: "Brouillage / Sortie de phase" },
   nostromo: { effet: null, competence: null },
@@ -55,7 +55,7 @@ const SHIP_BASE_INFO = {
   zephyr: { effet: null, competence: "Élan / Triple barrage" },
   // Vaisseaux Plus
   liberator_plus: { effet: null, competence: "Auto-réparation" },
-  goliath_plus: { effet: "Amélioration HEAT (+1-5% stats P.E.T)", competence: "Amélioration HEAT" },
+  goliath_plus: { effet: "+10% Dégâts/PV/Bouclier REX par visuel (max +50%)", competence: "Amélioration HEAT" },
   citadel_plus: { effet: null, competence: "Attraction / Voyage / Protection / Fortification / Endurance prismatique" },
   solace_plus: { effet: null, competence: "Nano-réparateur Plus" },
   solaris_plus: { effet: null, competence: "Incinération Plus" },
@@ -80,9 +80,9 @@ const SHIP_DESIGN_INFO = {
   goliath_exalted: { effet: "+10% Honneur" },
   goliath_goal: { effet: "+10% XP" },
   goliath_kick: { effet: "+10% Bouclier" },
-  goliath_peacemaker: { effet: "+7% Dégâts (joueurs)" },
-  goliath_sovereign: { effet: "+7% Dégâts (joueurs)" },
-  goliath_vanquisher: { effet: "+7% Dégâts (joueurs)" },
+  goliath_peacemaker: { effet: "+7% Dégâts" },
+  goliath_sovereign: { effet: "+7% Dégâts" },
+  goliath_vanquisher: { effet: "+7% Dégâts" },
   goliath_referee: { effet: "+5% Dégâts" },
   goliath_saturn: { effet: "+20% PV" },
   goliath_surgeon: { effet: "+6% Dégâts, +6% Honneur, +6% XP" },
@@ -177,11 +177,9 @@ export function getShipBonusInfo(shipId) {
 // penPct. Tout ce qui est conditionnel ou dynamique est EXCLU (voir plus bas)
 // et reste affiché uniquement en boutique.
 // Exclus (affichage seul) :
-// - "+7% Dégâts (joueurs)" : bonus PVP, jeu 100 % NPC.
-// - Berserker "Berserk" : +1 % dégâts par -1 % PV perdu (dynamique).
-// - Goliath Plus "HEAT" : bonus P.E.T. (pas du vaisseau).
+// - Goliath Plus "HEAT" : bonus P.E.T. (géré à part dans ORBIT_ENGINE).
 // Le Leonov est géré à part dans computeHangarStats (bonus conditionnel
-// à la map courante : +100 % dégâts / bouclier / PV sur x-1 à x-4 de sa firme).
+// à la map courante).
 // ---------------------------------------------------------------------------
 const SHIP_EFFECT_STATS = {
   cyborg: { damagePct: 10 },
@@ -201,6 +199,9 @@ const SHIP_EFFECT_STATS = {
   goliath_exalted: { honorPct: 10 },
   goliath_goal: { expPct: 10 },
   goliath_kick: { shieldPct: 10 },
+  goliath_peacemaker: { damagePct: 7 },
+  goliath_sovereign: { damagePct: 7 },
+  goliath_vanquisher: { damagePct: 7 },
   goliath_referee: { damagePct: 5 },
   goliath_saturn: { hpPct: 20 },
   goliath_surgeon: { damagePct: 6, honorPct: 6, expPct: 6 },

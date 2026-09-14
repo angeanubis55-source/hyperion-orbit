@@ -197,16 +197,21 @@ const fit =
   bonusHonorPct += Number(shipEffect.honorPct || 0);
   bonusPenetrationPct += Number(shipEffect.penPct || 0);
 
-  // ✅ Leonov : +100 % dégâts / bouclier / PV sur les cartes x-1 à x-4
-  // de SA firme (secteur MMO=1, EIC=2, VRU=3). Bonus recalculé à chaque
-  // chargement de map / changement de config (le moteur passe ctx.mapId).
+  // ✅ Leonov : sur les cartes x-1 à x-4 de SA firme (secteur MMO=1,
+  // EIC=2, VRU=3) : +100 % dégâts / bouclier / PV + XP x2 + vitesse x2
+  // (roquettes x2 et XP x2 drones/P.E.T. gérés dans ORBIT_ENGINE).
+  // Bonus recalculé à chaque chargement de map / changement de config
+  // (le moteur passe ctx.mapId).
+  let leonovHome = false;
   if (String(hangar?.shipId || "").toLowerCase() === "leonov") {
     const sector = FACTIONS[normalizeFactionId(user?.faction)]?.sector;
     const mapId = String(ctx?.mapId || "").trim().toLowerCase();
     if (sector && new RegExp(`^${sector}-[1234]$`).test(mapId)) {
+      leonovHome = true;
       bonusDamagePct += 100;
       bonusShieldPct += 100;
       bonusHPPct += 100;
+      bonusExpPct += 100;
     }
   }
 
@@ -232,6 +237,8 @@ const fit =
     bonusShield, 
     bonusAbsorb,          // max des générateurs montés (0 = défaut 80 % moteur)
     bonusFlatHP: Number(shipEffect.flatHp || 0), // PV fixes (ex : Yamato Ronin +40000)
+    speedMult: leonovHome ? 2 : 1, // Leonov home : vitesse x2
+    leonovHome,                     // Leonov home : roquettes x2, XP x2 drones/P.E.T. (moteur)
     laserMods,            // détail canons du vaisseau (bonus vsMatch appliqués au tir)
     droneLaserMods,       // détail canons des drones (overdrive/vs/instable x nombre équipé)
     bonusHPPct,           // % à appliquer sur le HP du ship
