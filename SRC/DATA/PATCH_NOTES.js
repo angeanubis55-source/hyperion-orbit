@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.203",
+    "date": "2026-09-14T04:04:39+02:00",
+    "message": "sync version 0.202 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.202",
     "date": "2026-09-14T04:04:05+02:00",
     "message": "equipement: Appliquer enregistre les 2 configs (brouillons 1+2)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.144",
     "date": "2026-09-11T11:02:49+02:00",
     "message": "Hangar local-only + REX détaché, pirates 5-2, dock X6, cooldown X6/RCB partagé"
-  },
-  {
-    "version": "0.143",
-    "date": "2026-09-11T10:20:47+02:00",
-    "message": "Lasers: bonus xN vaisseau+drones, prix rebalancés + LF-5, fix sauts portails"
   }
 ];

@@ -10,7 +10,7 @@
     // Fenêtre de départ à chaque refresh : pas de bypass session (la classe
     // orbitSessionReady n'est plus posée, l'overlay reste visible avec DÉPART).
     </script>
-  <link rel="stylesheet" href="style.css?v=ui-refresh-7" />
+  <link rel="stylesheet" href="style.css?v=ui-refresh-8" />
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -297,10 +297,6 @@
 
     <div id="galaxyGateWindow" class="panel galaxyGatePanel">
       <div class="ggBody">
-        <div class="ggBalances">
-          <div><span>Énergie Galaxy</span><strong id="ggEnergy">0</strong></div>
-          <div><span>Crédits</span><strong id="ggCredits">0</strong></div>
-        </div>
         <div class="ggWorkspace">
           <nav class="ggGateNav">
             <span>Galaxy Gates</span>
@@ -332,10 +328,16 @@
               <button id="ggSpinBtn" type="button" data-gg-spin>Lancer le spin</button>
             </div>
           </div>
-          <section class="ggHistorySection">
-            <h3>Historique des spins</h3>
-            <div id="ggHistory" class="ggHistory"></div>
-          </section>
+          <div class="ggSide">
+            <section class="ggHistorySection">
+              <div class="ggBalances">
+                <div><span>Crédits</span><strong id="ggCredits">0</strong></div>
+                <div><span>Énergie</span><strong id="ggEnergy">0</strong></div>
+              </div>
+              <h3>Historique des spins</h3>
+              <div id="ggHistory" class="ggHistory"></div>
+            </section>
+          </div>
         </div>
       </div>
     </div>
@@ -842,6 +844,6 @@
 <script src="./UI/UI_WINDOW_MANAGER.js?v=hangar-win-2"></script>
 
 <script type="module" src="./PUBLIC/PROFILE.js?v=no-video-2"></script>
-<script type="module" src="./SRC/MAIN.js?v=gg-history-5"></script>
+<script type="module" src="./SRC/MAIN.js?v=gg-history-6"></script>
 </body>
 </html>
