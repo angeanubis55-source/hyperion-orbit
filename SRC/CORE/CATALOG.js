@@ -166,9 +166,8 @@ export const CATALOG = {
   // Gears P.E.T officiels (darkorbitwiki.com/p-e-t). Prix uridium → crédits (×1000).
   // Paliers officiels : niveau 2 dès P.E.T 4, niveau 3 dès P.E.T 8.
   // Branchés dans le moteur : G-AL / G-AR (auto-collecte), G-EL
-  // (localisateur), G-REP (régén coque), G-TRA (trader), G-FS (flamme),
-  // G-HPL (lien HP), G-BC / G-BH (bouées) — voir PET/PET_GEARS.js.
-  // Reste à brancher (lot suivant) : kamikaze.
+  // (localisateur), G-REP (régén coque), G-KK (kamikaze), G-TRA (trader),
+  // G-FS (flamme), G-HPL (lien HP), G-BC / G-BH (bouées) — voir PET/PET_GEARS.js.
   // C-GM/C-SR absents (aucune icône officielle).
   petGears: [
     { id: "gear_gal1", name: "G-AL1 · Auto-Loot", price: 7500000, icon: "/PET/PET_GEARS/G-AL1.png", petLevel: 0, petGear: { key: "al", level: 1 }, desc: "Collecte cargo + bonus boxes, portée 700." },

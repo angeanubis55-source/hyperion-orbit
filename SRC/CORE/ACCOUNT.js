@@ -765,9 +765,11 @@ function ensureUserShape(u) {
       hpl: Math.max(0, Number(gcd.hpl) || 0),
       bc: Math.max(0, Number(gcd.bc) || 0),
       bh: Math.max(0, Number(gcd.bh) || 0),
+      kk: Math.max(0, Number(gcd.kk) || 0),
     };
     // Les sessions à durée (trader, lien, bouées) ne survivent pas au refresh.
-    if (["tra", "hpl", "bc", "bh"].includes(String(u.pet.activeGear || "").toLowerCase())) {
+    // Le kamikaze (course à durée) ne persiste pas non plus comme gear actif.
+    if (["tra", "hpl", "bc", "bh", "kk"].includes(String(u.pet.activeGear || "").toLowerCase())) {
       u.pet.activeGear = null;
     }
     // Fuel infini pour le moment : 50 000 / 50 000 fixe.
@@ -1770,7 +1772,7 @@ export function setPetActiveGear(key) {
   if (!u) return { ok: false, error: "Non connecté." };
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
   const k = key == null || key === "" ? null : String(key).toLowerCase();
-  if (k != null && !["al", "ar", "el", "rep", "tra", "fs", "hpl", "bc", "bh"].includes(k)) return { ok: false, error: "Gear inconnu." };
+  if (k != null && !["al", "ar", "el", "rep", "kk", "tra", "fs", "hpl", "bc", "bh"].includes(k)) return { ok: false, error: "Gear inconnu." };
   u.pet.activeGear = k;
   ensureUserShape(u);
   saveUser(u);

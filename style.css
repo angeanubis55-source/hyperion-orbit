@@ -4603,6 +4603,20 @@ body.orbitNoFade #fpsOverlay{
 #ammoBar .formationActionSlot { display:grid !important; place-items:center; padding:2px !important; }
 #ammoBar .formationActionSlot img { width:40px; height:40px; object-fit:contain; }
 #ammoBar .formationActionSlot span { display:none; }
+#ammoBar .abilityQuickAction { border-color:rgba(180,120,255,.4); }
+#ammoBar .abilityQuickAction img { width:38px; height:38px; object-fit:contain; image-rendering:auto; }
+#ammoBar .abilityActionSlot { display:grid !important; place-items:center; padding:2px !important; }
+#ammoBar .abilityActionSlot img { width:40px; height:40px; object-fit:contain; }
+#ammoBar .abilityActionSlot span { display:none; }
+#ammoBar .actionPaletteItems.abilitiesView { display:block; overflow-x:hidden; overflow-y:auto; max-height:260px; }
+#ammoBar .abilityEmpty { padding:12px 6px; text-align:center; color:var(--muted); font-size:11px; }
+#ammoBar .abilityShipSection { margin:0; }
+#ammoBar .abilityShipSection + .abilityShipSection { margin-top:8px; }
+#ammoBar .abilityShipIcons { display:flex; gap:6px; flex-wrap:wrap; }
+#ammoBar .abilityShipIcons.abilitySingle { justify-content:center; }
+#ammoBar .abilityShipIcons .abilityQuickAction { flex:0 0 64px; min-height:70px; padding:4px; }
+#ammoBar .abilityShipIcons .abilityQuickAction img { width:38px; height:38px; }
+#ammoBar .abilityShipIcons .abilityQuickAction span { display:none; }
 #ammoBar.compactAmmoBar .actionSlot {
   width: 46px;
   height: 44px;

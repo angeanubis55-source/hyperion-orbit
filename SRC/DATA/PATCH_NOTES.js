@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.215",
+    "date": "2026-09-14T22:15:20+02:00",
+    "message": "bot: modules Quest/Galaxy Gates + onglets DarkBot + raffinage/soute/stats/securite"
+  },
+  {
     "version": "0.214",
     "date": "2026-09-14T17:10:07+02:00",
     "message": "Glow Uber"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.156",
     "date": "2026-09-11T17:43:46+02:00",
     "message": "Hangar PET/drones: compactage haut-gauche comme le vaisseau"
-  },
-  {
-    "version": "0.155",
-    "date": "2026-09-11T17:36:29+02:00",
-    "message": "Hangar minor fixes"
   }
 ];

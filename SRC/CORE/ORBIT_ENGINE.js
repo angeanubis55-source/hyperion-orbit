@@ -19,6 +19,9 @@ import {
   listEquippedGearOptions,
   getPetEquippedGearLevels,
   getPetGearRange,
+  getPetKamikazeCooldownSec,
+  getPetKamikazeDamage,
+  getPetKamikazeRadius,
   getPetRepairPct,
   getPetSacrificeCooldownSec,
   getPetTradeBonusPct,
@@ -72,7 +75,7 @@ import { CRAFTING_RECIPES, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
 import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
 import { GAME_VERSION } from "../DATA/VERSION.js";
-import { getShipPackById as getShipPackByIdData } from "../../SHIP/SHIP_PACKS.js";
+import { getShipPackById as getShipPackByIdData, getShipDesignBaseId } from "../../SHIP/SHIP_PACKS.js";
 import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath } from "../../DRONE/DRONE_TYPES.js";
 import { DRONE_FORMATION_POSITIONS } from "../../DRONE/DRONE_FORMATIONS.js";
 import { PET_XP_SHARE, PET_FUEL_MAX, getPetDamageBonus, getPetLevel, getPetLevelXp, getPetMaxHp, getPetNextLevelXp, getPetShieldBonus, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
@@ -761,6 +764,12 @@ const ACTION_BAR_LAYOUT_KEY = "orbit_action_bar_layout_v2";
 
 // Bascule du menu du dock rapide (palette), accessible au clavier (TAB par défaut).
 let toggleActionDockMenu = null;
+// Re-rend l'onglet actif de la palette (ex : Aptitudes après changement de vaisseau).
+let refreshActiveActionPalette = null;
+// Dernier vaisseau vu par l'onglet Aptitudes. Suivi indépendant car
+// readUsers() partage ses objets en cache : account.user est déjà muté
+// au moment de l'événement, donc prev/next y sont toujours égaux.
+let lastAbilityShipId = null;
 
 function initializeCustomActionBar() {
   const bar = document.getElementById("ammoBar");
@@ -770,7 +779,7 @@ function initializeCustomActionBar() {
   const palette = document.createElement("div");
   palette.className = "actionPalette";
   palette.hidden = true;
-  palette.innerHTML = `<nav><button class="active" data-action-category="ammo">Munitions</button><button data-action-category="rockets">Roquettes</button><button data-action-category="launchers">Lance-roquettes</button><button data-action-category="formations">Formations</button><button data-action-category="skills">Compétences</button></nav><div class="actionPaletteItems"></div>`;
+  palette.innerHTML = `<nav><button class="active" data-action-category="ammo">Munitions</button><button data-action-category="rockets">Roquettes</button><button data-action-category="launchers">Lance-roquettes</button><button data-action-category="formations">Formations</button><button data-action-category="skills">Compétences</button><button data-action-category="abilities">Aptitudes</button></nav><div class="actionPaletteItems"></div>`;
   const toggle = document.createElement("button");
   toggle.type = "button"; toggle.className = "actionPaletteToggle"; toggle.textContent = "⌃"; toggle.title = "Configurer la barre rapide";
   const byId = new Map(actions.map((button) => {
@@ -866,6 +875,88 @@ function initializeCustomActionBar() {
     byId.set(button.dataset.actionId, button);
     return button;
   });
+
+  // Onglet Aptitudes de la palette : les 65 icones de ASSETS/APTITUDES,
+  // regroupees par vaisseau. Un vaisseau sans aptitude n'affiche pas de
+  // section. Visuel seul pour l'instant (pas d'effet gameplay) : clic = notification.
+  const ABILITY_GROUPS = [
+    { ship: "Admin", ships: ["admin"], ids: ["ability_admin-ultimate-cloaking"] },
+    { ship: "Aegis", ships: ["aegis"], ids: ["ability_aegis_hp-repair", "ability_aegis_repair-pod", "ability_aegis_shield-repair"] },
+    { ship: "Basilisk", ships: ["basilisk"], ids: ["ability_basilisk_heightened-valour", "ability_basilisk_noxious-nebula"] },
+    { ship: "Berserker", ships: ["berserker"], ids: ["ability_berserker_bsk", "ability_berserker_rvg", "ability_berserker_shl"] },
+    { ship: "Citadel Plus", ships: ["citadel_plus"], ids: ["ability_citadel-plus_prismatic-endurance"] },
+    { ship: "Citadel", ships: ["citadel"], ids: ["ability_citadel_draw-fire", "ability_citadel_fortify", "ability_citadel_protection", "ability_citadel_travel"] },
+    { ship: "Diminisher", ships: ["diminisher"], ids: ["ability_diminisher"] },
+    { ship: "Disruptor", ships: ["disruptor"], ids: ["ability_disruptor_ddol", "ability_disruptor_redirect", "ability_disruptor_shield-disarray"] },
+    { ship: "Goliath X", ships: ["goliath_x"], ids: ["ability_goliath-x_frozen-claw"] },
+    { ship: "Hammerclaw Plus", ships: ["hammerclaw_plus"], ids: ["ability_hammerclaw-plus_reallocate"] },
+    { ship: "Hecate Plus", ships: ["hecate_plus"], ids: ["ability_hecate-plus_particle-beam-plus", "ability_hecate-plus_stockpile"] },
+    { ship: "Hecate", ships: ["hecate"], ids: ["ability_hecate_particle-beam"] },
+    { ship: "Holo", ships: ["holo"], ids: ["ability_holo_enemy-reversal", "ability_holo_self-reversal"] },
+    { ship: "Hyperion", ships: ["hyperion"], ids: ["ability_hyperion_ga", "ability_hyperion_qa"] },
+    { ship: "Keres", ships: ["keres"], ids: ["ability_keres_sle", "ability_keres_spr"] },
+    { ship: "Liberator Plus", ships: ["liberator_plus"], ids: ["ability_liberator-plus_self-repair"] },
+    { ship: "Lightning", ships: ["lightning", "vengeance_lightning"], ids: ["ability_lightning"] },
+    { ship: "Mimesis", ships: ["mimesis"], ids: ["ability_mimesis_hologram", "ability_mimesis_phase-out", "ability_mimesis_scramble"] },
+    { ship: "Orcus", ships: ["orcus"], ids: ["ability_orcus_assimilate"] },
+    { ship: "Paladin", ships: ["paladin"], ids: ["ability_paladin_last-stand", "ability_paladin_ripper"] },
+    { ship: "Pusat Plus", ships: ["pusat_plus"], ids: ["ability_pusat-plus_speed-sap"] },
+    { ship: "Retiarus Plus", ships: ["retiarus_plus"], ids: ["ability_retiarus-plus_chsp", "ability_retiarus-plus_spcp"] },
+    { ship: "Retiarus", ships: ["retiarus"], ids: ["ability_retiarus_chs", "ability_retiarus_spc"] },
+    { ship: "Sentinel", ships: ["sentinel"], ids: ["ability_sentinel"] },
+    { ship: "Solace Plus", ships: ["solace_plus"], ids: ["ability_solace-plus_nano-cluster-repairer-plus"] },
+    { ship: "Solace", ships: ["solace"], ids: ["ability_solace"] },
+    { ship: "Solaris Plus", ships: ["solaris_plus"], ids: ["ability_solaris-plus_incinerate-plus"] },
+    { ship: "Solaris", ships: ["solaris"], ids: ["ability_solaris_inc"] },
+    { ship: "Spearhead Plus", ships: ["spearhead_plus"], ids: ["ability_spearhead-plus_jamx-creed", "ability_spearhead-plus_neutralizing-marker"] },
+    { ship: "Spearhead", ships: ["spearhead"], ids: ["ability_spearhead_double-minimap", "ability_spearhead_jam-x", "ability_spearhead_target-marker", "ability_spearhead_ultimate-cloak"] },
+    { ship: "Spectrum Plus", ships: ["spectrum_plus"], ids: ["ability_spectrum-plus_prismatic-reflecting"] },
+    { ship: "Spectrum", ships: ["spectrum"], ids: ["ability_spectrum"] },
+    { ship: "Tartarus Plus", ships: ["tartarus_plus"], ids: ["ability_tartarus-plus_rapid-fire-plus", "ability_tartarus-plus_speed-boost-plus"] },
+    { ship: "Tartarus", ships: ["tartarus"], ids: ["ability_tartarus_rapid-fire", "ability_tartarus_speed-boost"] },
+    { ship: "Tempest", ships: ["tempest"], ids: ["ability_tempest_volt-backup", "ability_tempest_volt-discharge", "ability_tempest_voltage-link"] },
+    { ship: "Venom", ships: ["venom"], ids: ["ability_venom"] },
+    { ship: "Zephyr", ships: ["zephyr"], ids: ["ability_zephyr_mmt", "ability_zephyr_tbr"] },
+  ];
+  const abilityButtons = [];
+  for (const group of ABILITY_GROUPS) {
+    for (const name of group.ids) {
+      const label = name.replace(/^ability_/, "").replace(/[-_]+/g, " ");
+      const button = document.createElement("button");
+      button.className = "ammoBtn abilityActionSlot"; button.dataset.actionCategory = "abilities";
+      button.dataset.actionId = `ability:${name}`; button.dataset.ship = group.ship; button.draggable = true;
+      button.title = `${group.ship} — ${label}`;
+      button.innerHTML = `<img src="ASSETS/APTITUDES/${name}.png" alt=""><span>${escapeHtml(label)}</span>`;
+      const img = button.querySelector("img");
+      if (img) img.onerror = () => { img.onerror = null; img.style.display = "none"; };
+      button.onclick = () => {
+        showNotification(`${group.ship} : ${label} — aptitude visuelle (effet gameplay à venir)`, 2, "info");
+      };
+      button.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId); event.dataTransfer.effectAllowed = "move"; });
+      byId.set(button.dataset.actionId, button);
+      abilityButtons.push(button);
+    }
+  }
+
+  // Groupe d'aptitudes du vaisseau équipé (hangar actif), ou null.
+  // Designs résolus vers leur base (ex : vengeance_lightning_france -> vengeance).
+  function currentAbilityShipMatch() {
+    let rawShipId = "";
+    try { rawShipId = String(getActiveHangarFromUser(account?.user)?.shipId || "").toLowerCase(); } catch {}
+    let baseShipId = null;
+    try { baseShipId = getShipDesignBaseId(rawShipId); } catch {}
+    const candidates = [rawShipId, baseShipId, String(rawShipId).split("_").slice(0, 2).join("_")].filter(Boolean);
+    return ABILITY_GROUPS.find(group => group.ships.some(sid => candidates.includes(sid))) || null;
+  }
+  // Masque l'onglet Aptitudes si le vaisseau équipé n'a aucune aptitude.
+  // Retourne le groupe affiché (ou null).
+  function syncAbilitiesTabVisibility() {
+    const btn = palette.querySelector('[data-action-category="abilities"]');
+    if (!btn) return null;
+    const match = currentAbilityShipMatch();
+    btn.style.display = match ? "" : "none";
+    return match;
+  }
 
   // Bouton USE lance-roquettes : nœud permanent créé dès l'init pour que les
   // slots le retrouvent après un refresh. Contenu mis à jour à chaque appel.
@@ -1002,6 +1093,7 @@ function initializeCustomActionBar() {
   const paletteItems = palette.querySelector(".actionPaletteItems");
   function renderPalette(category) {
     paletteItems.replaceChildren();
+    paletteItems.classList.toggle("abilitiesView", category === "abilities");
     palette.querySelectorAll("[data-action-category]").forEach(button => button.classList.toggle("active", button.dataset.actionCategory === category));
     if (category === "rockets" || category === "launchers") {
       const onlyLaunchers = category === "launchers";
@@ -1081,7 +1173,35 @@ function initializeCustomActionBar() {
       refreshRocketPaletteCounts();
       return;
     }
-    if (category === "formations") formationButtons.forEach(button => {
+    if (category === "abilities") {
+      const match = currentAbilityShipMatch();
+      try { lastAbilityShipId = String(getActiveHangarFromUser(account?.user)?.shipId || "").toLowerCase(); } catch {}
+      // Uniquement les aptitudes du vaisseau équipé, en ligne et centrées.
+      // (L'onglet est masqué si le vaisseau n'en a aucune.)
+      const groupsToShow = match ? [match] : [];
+      if (!groupsToShow.length) {
+        const empty = document.createElement("div");
+        empty.className = "abilityEmpty";
+        empty.textContent = "Aucune aptitude sur ce vaisseau";
+        paletteItems.appendChild(empty);
+      }
+      for (const group of groupsToShow) {
+        const section = document.createElement("div");
+        section.className = "abilityShipSection";
+        const icons = document.createElement("div");
+        icons.className = "abilityShipIcons abilitySingle";
+        abilityButtons.filter(button => button.dataset.ship === group.ship).forEach(button => {
+          const clone = button.cloneNode(true); clone.className = "rocketQuickAction abilityQuickAction"; clone.draggable = true;
+          const cloneImg = clone.querySelector("img");
+          if (cloneImg) cloneImg.onerror = () => { cloneImg.onerror = null; cloneImg.style.display = "none"; };
+          clone.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", clone.dataset.actionId); });
+          clone.onclick = () => button.click(); icons.appendChild(clone);
+        });
+        section.appendChild(icons);
+        paletteItems.appendChild(section);
+      }
+    }
+    else if (category === "formations") formationButtons.forEach(button => {
       const clone = button.cloneNode(true); clone.className = "formationQuickAction"; clone.draggable = true;
       clone.classList.toggle("active", button.dataset.actionId === `formation:${account?.user?.drones?.activeFormation}`);
       clone.onclick = () => button.click();
@@ -1108,8 +1228,17 @@ function initializeCustomActionBar() {
     try { invalidateActionDockCache(); } catch {}
   }
   palette.querySelectorAll("[data-action-category]").forEach(button => button.onclick = () => renderPalette(button.dataset.actionCategory));
+  refreshActiveActionPalette = () => {
+    const match = syncAbilitiesTabVisibility();
+    if (palette.hidden) return;
+    let active = palette.querySelector("[data-action-category].active")?.dataset.actionCategory || "ammo";
+    if (active === "abilities" && !match) active = "ammo";
+    renderPalette(active);
+  };
+  try { lastAbilityShipId = String(getActiveHangarFromUser(account?.user)?.shipId || "").toLowerCase(); } catch {}
   const flipActionPalette = () => {
     palette.hidden = !palette.hidden;
+    if (!palette.hidden) syncAbilitiesTabVisibility();
     toggle.classList.toggle("active", !palette.hidden);
     toggle.textContent = palette.hidden ? "⌃" : "⌄";
     try { localStorage.setItem("orbit_palette_open", palette.hidden ? "0" : "1"); } catch {}
@@ -1134,6 +1263,7 @@ function initializeCustomActionBar() {
     paletteItems.scrollLeft += event.deltaY;
   }, { passive: false });
   renderPalette("ammo");
+  syncAbilitiesTabVisibility();
   // Restauration après le boot : sinon le panneau ouvert recouvre l'écran de chargement.
   const restorePalette = () => {
     try {
@@ -2147,6 +2277,18 @@ const Bot = {
   questsAccept: false,
   questsClaim: true,
   questT: 0,
+  ggSpin: false,
+  ggGate: "alpha",
+  ggSpins: 10,
+  ggAutoMult: true,
+  ggAutoEnter: true,
+  ggNearestSwitch: true,
+  ggFinishForm: "",
+  ggFinishCfg: "",
+  ggSpinT: 0,
+  ggUiT: 0,
+  ggJumpCd: 0,
+  ggSwitchCd: 0,
   rocketPrev: false,
   launcherPrev: false,
   selling: false,
@@ -2228,6 +2370,14 @@ function botSaveConfig() {
       launchers: Bot.launchers,
       questsAccept: Bot.questsAccept,
       questsClaim: Bot.questsClaim,
+      ggSpin: Bot.ggSpin,
+      ggGate: Bot.ggGate,
+      ggSpins: Bot.ggSpins,
+      ggAutoMult: Bot.ggAutoMult,
+      ggAutoEnter: Bot.ggAutoEnter,
+      ggNearestSwitch: Bot.ggNearestSwitch,
+      ggFinishForm: Bot.ggFinishForm,
+      ggFinishCfg: Bot.ggFinishCfg,
       kills: Bot.kills,
       boxes: Bot.boxes,
       tab: Bot.tab,
@@ -2322,6 +2472,18 @@ function botLoadConfig() {
     if (typeof data.launchers === "boolean") Bot.launchers = data.launchers;
     if (typeof data.questsAccept === "boolean") Bot.questsAccept = data.questsAccept;
     if (typeof data.questsClaim === "boolean") Bot.questsClaim = data.questsClaim;
+    if (typeof data.ggSpin === "boolean") Bot.ggSpin = data.ggSpin;
+    if (["alpha", "beta", "gamma"].includes(String(data.ggGate || "").toLowerCase())) Bot.ggGate = String(data.ggGate).toLowerCase();
+    {
+      const gs = Math.floor(Number(data.ggSpins));
+      if (Number.isFinite(gs)) Bot.ggSpins = Math.max(1, Math.min(100, gs));
+    }
+    if (typeof data.ggAutoMult === "boolean") Bot.ggAutoMult = data.ggAutoMult;
+    if (typeof data.ggAutoEnter === "boolean") Bot.ggAutoEnter = data.ggAutoEnter;
+    if (typeof data.ggNearestSwitch === "boolean") Bot.ggNearestSwitch = data.ggNearestSwitch;
+    if (typeof data.ggFinishForm === "string") Bot.ggFinishForm = data.ggFinishForm;
+    if (data.ggFinishCfg === "1" || data.ggFinishCfg === "2") Bot.ggFinishCfg = data.ggFinishCfg;
+    else if (typeof data.ggFinishCfg === "string") Bot.ggFinishCfg = "";
     const ed = Math.floor(Number(data.engageDist));
     Bot.engageDist = Number.isFinite(ed) ? Math.max(0, Math.min(3000, ed)) : 0;
     if (data.npcAmmo && typeof data.npcAmmo === "object") {
@@ -2356,7 +2518,7 @@ function botLog(text) {
 }
 
 // Onglets de la fenêtre : n'affiche que les sections de l'onglet actif.
-const BOT_TABS = ["general", "attack", "collect", "travel", "security", "npc", "rex", "stats", "log"];
+const BOT_TABS = ["general", "attack", "collect", "travel", "security", "npc", "rex", "galaxy", "stats", "log"];
 const BOT_TAB_LEGACY = Object.freeze({ combat: "attack", boxes: "collect" });
 function botSwitchTab(name) {
   if (!BOT_TABS.includes(name)) name = "general";
@@ -2438,6 +2600,10 @@ function botSetActive(on) {
   Bot.repairT = 0;
   Bot.travelCd = 0;
   Bot.jumpCd = 0;
+  Bot.ggSpinT = 0;
+  Bot.ggUiT = 0;
+  Bot.ggJumpCd = 0;
+  Bot.ggSwitchCd = 0;
   Bot.fleeing = false;
   Bot.selling = false;
   Bot.travelOverride = "";
@@ -3475,6 +3641,87 @@ function wireBotWindow() {
       questsClaimBox.addEventListener("change", () => { Bot.questsClaim = questsClaimBox.checked; botSaveConfig(); });
     }
   }
+  // Onglet Galaxy : spinner auto + gate + multiplicateur + formation de fin.
+  const ggSpinBox = document.getElementById("botGgSpin");
+  if (ggSpinBox) {
+    ggSpinBox.checked = Bot.ggSpin;
+    if (!ggSpinBox.dataset.wired) {
+      ggSpinBox.dataset.wired = "1";
+      ggSpinBox.addEventListener("change", () => {
+        Bot.ggSpin = ggSpinBox.checked;
+        Bot.ggSpinT = 0;
+        botSaveConfig();
+        botLog(Bot.ggSpin ? "GG spinner auto : ON" : "GG spinner auto : OFF");
+      });
+    } else ggSpinBox.checked = Bot.ggSpin;
+  }
+  const ggFinishCfgSel = document.getElementById("botGgFinishCfg");
+  if (ggFinishCfgSel) {
+    ggFinishCfgSel.value = Bot.ggFinishCfg || "";
+    if (!ggFinishCfgSel.dataset.wired) {
+      ggFinishCfgSel.dataset.wired = "1";
+      ggFinishCfgSel.addEventListener("change", () => {
+        const v = String(ggFinishCfgSel.value || "");
+        Bot.ggFinishCfg = v === "1" || v === "2" ? v : "";
+        ggFinishCfgSel.value = Bot.ggFinishCfg;
+        botSaveConfig();
+      });
+    } else ggFinishCfgSel.value = Bot.ggFinishCfg || "";
+  }
+  const ggSpinsInput = document.getElementById("botGgSpins");
+  if (ggSpinsInput) {
+    ggSpinsInput.value = Bot.ggSpins;
+    if (!ggSpinsInput.dataset.wired) {
+      ggSpinsInput.dataset.wired = "1";
+      ggSpinsInput.addEventListener("change", () => {
+        const v = Math.floor(Number(ggSpinsInput.value));
+        if (Number.isFinite(v)) {
+          Bot.ggSpins = Math.max(1, Math.min(100, v));
+          ggSpinsInput.value = Bot.ggSpins;
+          botSaveConfig();
+        }
+      });
+    } else ggSpinsInput.value = Bot.ggSpins;
+  }
+  const ggMultBox = document.getElementById("botGgAutoMult");
+  if (ggMultBox) {
+    ggMultBox.checked = Bot.ggAutoMult;
+    if (!ggMultBox.dataset.wired) {
+      ggMultBox.dataset.wired = "1";
+      ggMultBox.addEventListener("change", () => { Bot.ggAutoMult = ggMultBox.checked; botSaveConfig(); });
+    } else ggMultBox.checked = Bot.ggAutoMult;
+  }
+  const ggEnterBox = document.getElementById("botGgAutoEnter");
+  if (ggEnterBox) {
+    ggEnterBox.checked = Bot.ggAutoEnter;
+    if (!ggEnterBox.dataset.wired) {
+      ggEnterBox.dataset.wired = "1";
+      ggEnterBox.addEventListener("change", () => { Bot.ggAutoEnter = ggEnterBox.checked; botSaveConfig(); });
+    } else ggEnterBox.checked = Bot.ggAutoEnter;
+  }
+  const ggSwitchBox = document.getElementById("botGgNearestSwitch");
+  if (ggSwitchBox) {
+    ggSwitchBox.checked = Bot.ggNearestSwitch;
+    if (!ggSwitchBox.dataset.wired) {
+      ggSwitchBox.dataset.wired = "1";
+      ggSwitchBox.addEventListener("change", () => { Bot.ggNearestSwitch = ggSwitchBox.checked; botSaveConfig(); });
+    } else ggSwitchBox.checked = Bot.ggNearestSwitch;
+  }
+  const ggFinishSel = document.getElementById("botGgFinishForm");
+  if (ggFinishSel) {
+    if (!ggFinishSel.options.length) {
+      const opts = [`<option value="">— Ne pas changer —</option>`];
+      try {
+        for (const f of DRONE_FORMATIONS) opts.push(`<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)}</option>`);
+      } catch {}
+      ggFinishSel.innerHTML = opts.join("");
+    }
+    ggFinishSel.value = Bot.ggFinishForm || "";
+    if (!ggFinishSel.dataset.wired) {
+      ggFinishSel.dataset.wired = "1";
+      ggFinishSel.addEventListener("change", () => { Bot.ggFinishForm = String(ggFinishSel.value || ""); botSaveConfig(); });
+    } else ggFinishSel.value = Bot.ggFinishForm || "";
+  }
   const cargoBox = document.getElementById("botCargo");
   if (cargoBox) {
     cargoBox.checked = Bot.cargo;    if (!cargoBox.dataset.wired) {
@@ -3720,6 +3967,245 @@ function botFindRoute(from, to) {
   return null;
 }
 
+// Onglet Galaxy : switch adouci vers le plus proche en gate.
+// Délai minimum entre deux switchs volontaires + la nouvelle cible doit être
+// nettement plus proche (évite l'oscillation A↔B qui mitraille les cooldowns).
+const BOT_GG_SWITCH_DELAY = 1.5;
+const BOT_GG_SWITCH_CLOSER2 = 0.72; // (0.85)^2 : ~15 % plus proche en distance.
+
+// Formation / config de fin : UNIQUEMENT dès que le Cubikon est mort
+// (complétion en cours), jusqu'au renvoi sur la map mère. Pas pendant la
+// vague Cubikon : le combat se fait en formation d'attaque normale.
+function botGalaxyIsFinishWave() {
+  try {
+    return gateCompletionPending === true;
+  } catch { return false; }
+}
+
+function botApplyGalaxyFinishFormation() {
+  if (!botGalaxyIsFinishWave()) return;
+  try {
+    if (Bot.ggFinishForm) botApplyFormation(Bot.ggFinishForm);
+  } catch {}
+  try {
+    if (Bot.ggFinishCfg === "1" || Bot.ggFinishCfg === "2") botApplyConfig(Number(Bot.ggFinishCfg));
+  } catch {}
+}
+
+// Excursion radiation en gate : quand le kite est plaqué contre un bord
+// (cible clampée ≈ sur place) avec une menace proche, on autorise une sortie
+// courte hors map pour esquiver et se replacer au lieu de rester fixe contre
+// le mur. 5 s gratuites sans dégâts (on reste sous ~3,5 s d'exposition,
+// ~500 m de profondeur max), exposition remise à 0 dès la rentrée, et les
+// NPC suivent peu/nul dehors : respiration garantie.
+function botGateKiteTarget(rawX, rawY, threatClose) {
+  const inside = { x: clamp(rawX, 120, WORLD.w - 120), y: clamp(rawY, 120, WORLD.h - 120) };
+  try {
+    if (rules?.mode !== "gate") return inside;
+    let outside = false, exp = 0;
+    try { outside = playerIsOutsideWorld(); exp = Number(radiationSystem?.state?.exposure) || 0; } catch {}
+    if (outside) {
+      // Dehors : on y reste brièvement si menace proche et exposition faible,
+      // sinon on rentre aussitôt.
+      if (threatClose && exp < 2.5) {
+        return { x: clamp(rawX, -500, WORLD.w + 500), y: clamp(rawY, -500, WORLD.h + 500) };
+      }
+      return inside;
+    }
+    if (!threatClose) return inside;
+    const blocked = Math.hypot(inside.x - player.x, inside.y - player.y) < 150;
+    if (!blocked || exp > 3.5) return inside;
+    return { x: clamp(rawX, -500, WORLD.w + 500), y: clamp(rawY, -500, WORLD.h + 500) };
+  } catch { return inside; }
+}
+
+// Spinner auto hors gate (toutes les 100 ms) : multiplicateur auto puis
+// spins sur l'ensemble Alpha + Beta + Gamma (une seule roue). Déploie la
+// gate dès qu'elle est construite.
+function botTickGalaxySpin(dt) {
+  if (!Bot.ggSpin || Bot.module !== "galaxy" || rules?.mode === "gate") return false;
+  Bot.ggSpinT -= dt;
+  Bot.ggUiT -= dt;
+  if (Bot.ggSpinT > 0) return false;
+  Bot.ggSpinT = 0.1;
+  let user = null;
+  try { user = account.user || getCurrentUserFull(); } catch { user = null; }
+  const st = user?.galaxyGates;
+  if (!st) return false;
+  // Alpha / Beta / Gamma ne font qu'un (groupe "ensemble") : spinner Alpha.
+  const gateId = "alpha";
+  // Multiplicateur auto : on l'arme dès qu'il est disponible (x2+).
+  if (Bot.ggAutoMult && Number(st.multiplier) > 1 && st.multiplierArmed !== true) {
+    try {
+      const armed = armCurrentUserGalaxyGateMultiplier(gateId, true);
+      if (armed?.ok) {
+        account.user = armed.user;
+        loadAccountUser();
+        renderGalaxyGateWindow("Multiplicateur activé (bot).");
+        botLog(`GG ${gateId.toUpperCase()} : multiplicateur x${armed.state?.multiplier ?? st.multiplier} activé`);
+        user = armed.user;
+      }
+    } catch {}
+  }
+  const built = Number(user?.galaxyGates?.built?.[gateId] || 0);
+  if (built >= GALAXY_GATE_BUILD_LIMIT) return false;
+  const spins = Math.max(1, Math.min(100, Math.floor(Number(Bot.ggSpins) || 1)));
+  let result = null;
+  try { result = spinCurrentUserGalaxyGate(gateId, spins); } catch { result = null; }
+  if (!result) return false;
+  if (!result.ok) {
+    Bot.status = "Galaxy Gates";
+    Bot.target = String(result.error || "Spin impossible").slice(0, 60);
+    return true;
+  }
+  try {
+    account.user = result.user;
+    loadAccountUser();
+    player.credits = result.user.credits;
+    player.ammo.x2 = result.user.ammo.x2;
+    player.ammo.x3 = result.user.ammo.x3;
+    player.ammo.x4 = result.user.ammo.x4;
+    player.ammo.sab = result.user.ammo.sab;
+    player.ammo.x6 = result.user.ammo.x6;
+    player.rockets = player.rockets || {};
+    for (const [rocketId, amount] of Object.entries(result.user.rockets || {})) player.rockets[rocketId] = amount;
+    updateAmmoUI();
+  } catch {}
+  const builtNow = Number(result.state?.built?.[gateId] || 0);
+  const isBuilt = builtNow >= GALAXY_GATE_BUILD_LIMIT;
+  // À 10 passages/s on ne rebuild l'UI et le journal que toutes les ~2 s
+  // (ou dès qu'une gate est construite).
+  const uiDue = isBuilt || Bot.ggUiT <= 0;
+  if (uiDue) {
+    Bot.ggUiT = 2;
+    try { renderGalaxyGateWindow(`${result.performed} spin(s) auto (ensemble)`); } catch {}
+    if (!isBuilt) botLog(`GG spinner auto : +${result.performed} spin(s) (ensemble)`);
+  }
+  // La pièce peut avoir terminé Beta ou Gamma : on déploie la première
+  // gate construite de l'ensemble (ordre Alpha → Beta → Gamma).
+  const builtGate = ["alpha", "beta", "gamma"].find((id) => Number(result.state?.built?.[id] || 0) >= GALAXY_GATE_BUILD_LIMIT) || null;
+  if (builtGate) {
+    botLog(`GG ${builtGate.toUpperCase()} construite — déploiement…`);
+    try {
+      const dep = deployCurrentUserGalaxyGate(builtGate);
+      if (dep?.ok) {
+        account.user = dep.user;
+        loadAccountUser();
+        renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[builtGate].name} envoyée sur la map (bot).`);
+        botLog(`GG ${builtGate.toUpperCase()} déployée — direction le portail`);
+      }
+    } catch {}
+  }
+  return true;
+}
+
+// Retourne la gate à jouer : active en priorité, sinon la première
+// construite / déployée de l'ensemble (Alpha → Beta → Gamma).
+// Null = rien à entrer pour l'instant.
+function botPickReadyGalaxyGate() {
+  let st = null;
+  try { st = (account.user || getCurrentUserFull())?.galaxyGates; } catch { st = null; }
+  if (!st) return null;
+  const order = ["alpha", "beta", "gamma"];
+  if (st.active && GALAXY_GATE_DEFINITIONS[st.active]) return st.active;
+  for (const id of order) {
+    if (Number(st.built?.[id] || 0) >= GALAXY_GATE_BUILD_LIMIT || st.deployed?.[id] === true) return id;
+  }
+  return null;
+}
+
+// Hors gate, module Galaxy : vole vers la base mère puis vers le portail GG
+// déployé et saute dedans. Retourne true si ce comportement a pris la main.
+function botTickGalaxyEnter(dt) {
+  if (Bot.module !== "galaxy" || !Bot.ggAutoEnter) return false;
+  if (rules?.mode === "gate") return false;
+  if (Bot.selling || Bot.fleeing) return false;
+  const gateId = botPickReadyGalaxyGate();
+  if (!gateId) return false;
+  let st = null;
+  try { st = (account.user || getCurrentUserFull())?.galaxyGates; } catch { st = null; }
+  // Déploie si construite mais pas encore sur la map.
+  if (Number(st?.built?.[gateId] || 0) >= GALAXY_GATE_BUILD_LIMIT && st?.deployed?.[gateId] !== true && st?.active !== gateId) {
+    try {
+      const dep = deployCurrentUserGalaxyGate(gateId);
+      if (dep?.ok) {
+        account.user = dep.user;
+        loadAccountUser();
+        renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[gateId].name} envoyée sur la map (bot).`);
+        botLog(`GG ${gateId.toUpperCase()} déployée — direction le portail`);
+      }
+    } catch {}
+  }
+  const user = account.user || getCurrentUserFull();
+  const homeMap = String(getFactionHomeMap(user?.faction) || "").toLowerCase();
+  const curMap = String(window.__CURRENT_MAP_ID__ || "1-1").toLowerCase();
+  Bot.ggJumpCd -= dt;
+  botApplyFormation(Bot.formTravel || Bot.formMove);
+  botApplyConfig(Bot.cfgTravel || Bot.cfgFly);
+  // 1. Rejoindre la base mère (voyage physique portail par portail).
+  if (homeMap && curMap !== homeMap) {
+    if (!botPortalIndex) {
+      Bot.status = "Galaxy Gates";
+      Bot.target = `Retour base ${homeMap.toUpperCase()}…`;
+      botRefreshHudThrottled(dt);
+      return true;
+    }
+    const route = botFindRoute(curMap, homeMap);
+    if (!route) {
+      Bot.status = "Galaxy Gates";
+      Bot.target = `Base ${homeMap.toUpperCase()} inaccessible`;
+      botRefreshHudThrottled(dt);
+      return true;
+    }
+    const nextHop = route[1] || homeMap;
+    const portalStep = (zonePortals || []).find((p) => String(p.toMap || "").toLowerCase() === nextHop);
+    if (!portalStep) {
+      Bot.status = "Galaxy Gates";
+      Bot.target = `Portail vers ${nextHop.toUpperCase()} introuvable`;
+      botRefreshHudThrottled(dt);
+      return true;
+    }
+    Bot.status = `Galaxy Gates → ${gateId.toUpperCase()}`;
+    Bot.target = `Retour base (${Math.round(Math.hypot(portalStep.x - player.x, portalStep.y - player.y))}m)`;
+    if (attackActive) { try { stopAttack(); } catch {} }
+    try { cancelCollectableTarget(); } catch {}
+    moveTarget.active = true;
+    moveTarget.x = clamp(portalStep.x, 80, WORLD.w - 80);
+    moveTarget.y = clamp(portalStep.y, 80, WORLD.h - 80);
+    if (isPlayerNearPortal(portalStep) && mapPortalLock <= 0 && !portalStep.jumping && Bot.ggJumpCd <= 0) {
+      Bot.ggJumpCd = 3;
+      try { if (startZonePortalJump(portalStep)) botLog(`Galaxy : transit vers ${nextHop.toUpperCase()}`); } catch {}
+    }
+    botRefreshHudThrottled(dt);
+    return true;
+  }
+  // 2. Sur la base mère : foncer sur le portail GG et sauter dedans.
+  const ggPortal = (zonePortals || []).find((p) => String(p.toMap || "").toLowerCase() === gateId);
+  if (!ggPortal) {
+    Bot.status = "Galaxy Gates";
+    Bot.target = `Portail ${gateId.toUpperCase()} introuvable (spinner ?)`;
+    botRefreshHudThrottled(dt);
+    return true;
+  }
+  Bot.status = `Galaxy Gates → ${gateId.toUpperCase()}`;
+  Bot.target = `Portail GG (${Math.round(Math.hypot(ggPortal.x - player.x, ggPortal.y - player.y))}m)`;
+  if (attackActive) { try { stopAttack(); } catch {} }
+  try { cancelCollectableTarget(); } catch {}
+  try { if (Target.get()) Target.clear(); } catch {}
+  moveTarget.active = true;
+  moveTarget.x = clamp(ggPortal.x, 80, WORLD.w - 80);
+  moveTarget.y = clamp(ggPortal.y, 80, WORLD.h - 80);
+  if (isPlayerNearPortal(ggPortal) && mapPortalLock <= 0 && !ggPortal.jumping && Bot.ggJumpCd <= 0) {
+    Bot.ggJumpCd = 3;
+    try {
+      if (startZonePortalJump(ggPortal)) botLog(`Entrée GG ${gateId.toUpperCase()}…`);
+      else Bot.target = "Portail GG : spinner requis";
+    } catch {}
+  }
+  botRefreshHudThrottled(dt);
+  return true;
+}
+
 function tickBot(dt) {
   try { botRecordSightings(dt); } catch {}
   if (!Bot.active) return;
@@ -3836,6 +4322,43 @@ function tickBot(dt) {
         moveTarget.active = true;
         moveTarget.x = clamp(shelter.x, 80, WORLD.w - 80);
         moveTarget.y = clamp(shelter.y, 80, WORLD.h - 80);
+      } else if (rules?.mode === "gate") {
+        // En Galaxy Gate : pas de portail → kiting : on fuit les menaces en
+        // faisant le tour de la map (jamais planté au milieu), tirs coupés,
+        // jusqu'à repasser au-dessus du seuil de reprise.
+        if (attackActive) { try { stopAttack(); } catch {} }
+        try { if (Target.get()) Target.clear(); } catch {}
+        let fx = 0, fy = 0;
+        for (const e of enemies) {
+          if (!e || Number(e.hp) <= 0) continue;
+          const ex = player.x - e.x, ey = player.y - e.y;
+          const ed = Math.hypot(ex, ey) || 1;
+          const w = Math.min(1, 1400 / ed);
+          fx += (ex / ed) * w;
+          fy += (ey / ed) * w;
+        }
+        const fl = Math.hypot(fx, fy);
+        if (fl > 0.01) {
+          // Composante tangentielle pour tourner autour de la map au lieu
+          // de se coincer dans un coin (sortie radiation autorisée si plaqué).
+          const tx = -fy / fl, ty = fx / fl;
+          const rawX = player.x + fx / fl * 900 + tx * 550;
+          const rawY = player.y + fy / fl * 900 + ty * 550;
+          let nearestD = Infinity;
+          try {
+            for (const e of enemies) {
+              if (!e || Number(e.hp) <= 0) continue;
+              const dd = Math.hypot(player.x - e.x, player.y - e.y);
+              if (dd < nearestD) nearestD = dd;
+            }
+          } catch {}
+          const tgt = botGateKiteTarget(rawX, rawY, nearestD < 600);
+          moveTarget.active = true;
+          moveTarget.x = tgt.x;
+          moveTarget.y = tgt.y;
+        } else {
+          moveTarget.active = false;
+        }
       } else {
         // Pas de portail sur cette map : on tient position, tirs coupés.
         if (attackActive) { try { stopAttack(); } catch {} }
@@ -3910,8 +4433,9 @@ function tickBot(dt) {
   const effRaw = Bot.travelOverride || Bot.targetMap || "";
   const wantMap = String(effRaw).toLowerCase();
   const curMap = String(window.__CURRENT_MAP_ID__ || "1-1").toLowerCase();
-  // Module Galaxy Gates : on reste sur place (ni voyage, ni téléport).
-  if (wantMap && wantMap !== curMap && (Bot.autoTravel || Bot.travelOverride) && Bot.module !== "galaxy") {
+  // Module Galaxy Gates : le voyage manuel est désactivé (l'entrée GG gère
+  // elle-même le retour base + le saut), sauf override de vente.
+  if (wantMap && wantMap !== curMap && (Bot.autoTravel || Bot.travelOverride) && (Bot.module !== "galaxy" || Bot.travelOverride)) {
     Bot.travelCd -= dt;
     Bot.jumpCd -= dt;
     botApplyFormation(Bot.formTravel);
@@ -3986,8 +4510,11 @@ function tickBot(dt) {
   const gateMode = rules?.mode === "gate";
   if (Bot.module === "galaxy") {
     if (!gateMode) {
+      // Hors gate : spinner auto puis entrée auto dans la gate construite.
+      try { botTickGalaxySpin(dt); } catch {}
+      if (botTickGalaxyEnter(dt)) return;
       Bot.status = "Galaxy Gates";
-      Bot.target = "Entre dans une gate (spinner) pour démarrer";
+      Bot.target = Bot.ggSpin ? "Spinner auto… (aucune gate prête)" : "Active le spinner auto (onglet Galaxy)";
       if (attackActive) { try { stopAttack(); } catch {} }
       try { if (Target.get()) Target.clear(); } catch {}
       try { cancelCollectableTarget(); } catch {}
@@ -3995,24 +4522,57 @@ function tickBot(dt) {
       botRefreshHudThrottled(dt);
       return;
     }
-    // En gate : on garde la cible en cours si vivante, sinon le plus proche
-    // (vagues imposées, pas de filtre de sélection).
+    // Cubikon mort (complétion en cours) : formation + config de fin.
+    try { botApplyGalaxyFinishFormation(); } catch {}
+    // En gate : toujours le NPC le plus proche, switch immédiat si un plus
+    // proche apparaît. Sans risque côté dégâts : le cooldown de tir est
+    // conservé au switch (fix global Target.set), seuls les faux tirs
+    // visuels suivent la nouvelle cible.
     let cur = null;
     try {
       const t = Target.get();
       if (t && !t.isPetTarget && Number(t.hp) > 0 && enemies.includes(t)) cur = t;
     } catch { cur = null; }
-    const found = cur ? { npc: cur } : botNearestAnyNpc();
+    const nearest = botNearestAnyNpc();
+    let found = null;
+    if (Bot.ggNearestSwitch === false) {
+      found = cur ? { npc: cur } : nearest;
+    } else {
+      found = nearest;
+    }
     if (!found) {
-      // Vague terminée → suivante (throttlé, garde-fous internes).
-      Bot.status = "Galaxy Gates";
-      Bot.target = "Vague suivante…";
-      Bot.jumpCd -= dt;
-      if (Bot.jumpCd <= 0) {
-        Bot.jumpCd = 3;
-        try { tryStartNextWave(); } catch {}
-      }
+      // Entre les vagues : le bot vole jusqu'au portail "continuer" et saute
+      // dedans automatiquement (proximité + startGatePortalJump).
       if (attackActive) { try { stopAttack(); } catch {} }
+      try { if (Target.get()) Target.clear(); } catch {}
+      // Saut déjà en cours : on attend la vague suivante.
+      if (portal.jumping) {
+        Bot.status = "Galaxy Gates";
+        Bot.target = "Saut vers la vague suivante…";
+        moveTarget.active = false;
+        botRefreshHudThrottled(dt);
+        return;
+      }
+      if (betweenWaves && portal.active) {
+        Bot.status = "Galaxy Gates";
+        const d = Math.round(Math.hypot(portal.x - player.x, portal.y - player.y));
+        Bot.target = `Portail vague suivante (${d}m)`;
+        moveTarget.active = true;
+        moveTarget.x = clamp(portal.x, 80, WORLD.w - 80);
+        moveTarget.y = clamp(portal.y, 80, WORLD.h - 80);
+        if (isPlayerNearPortal(portal)) {
+          try { startGatePortalJump(portal, "continue"); } catch {}
+        }
+        botRefreshHudThrottled(dt);
+        return;
+      }
+      // Vague en cours d'apparition (spawns à venir) : on patiente.
+      // Si le Cubikon vient de mourir (complétion en cours), on garde la
+      // formation + config de fin jusqu'au renvoi sur la map mère.
+      try { botApplyGalaxyFinishFormation(); } catch {}
+      Bot.status = "Galaxy Gates";
+      Bot.target = "Vague en cours…";
+      moveTarget.active = false;
       botRefreshHudThrottled(dt);
       return;
     }
@@ -4123,21 +4683,100 @@ function tickBot(dt) {
     } else if (attackActive && d > engageMax) {
       try { stopAttack(); } catch {}
     }
-    // Orbite autour du NPC à la distance configurée (plafonnée à 90 % de
-    // la portée pour rester à portée de tir), sinon approche classique.
-    const orbitD = Math.min(Math.max(200, botNpcDist(npc.type)), playerRange * 0.9);
-    const orbitOn = Bot.orbit && botNpcOrbitOf(npc.type);
-    if (orbitOn && d <= orbitD * 1.4) {
-      Bot.orbitAng += dt * 0.7;
-      moveTarget.active = true;
-      moveTarget.x = clamp(npc.x + Math.cos(Bot.orbitAng) * orbitD, 80, WORLD.w - 80);
-      moveTarget.y = clamp(npc.y + Math.sin(Bot.orbitAng) * orbitD, 80, WORLD.h - 80);
-    } else if (d > playerRange * 0.7) {
-      moveTarget.active = true;
-      moveTarget.x = clamp(npc.x, 80, WORLD.w - 80);
-      moveTarget.y = clamp(npc.y, 80, WORLD.h - 80);
+    // En Galaxy Gate : pas d'orbite serrée ni de camping au milieu du paquet.
+    // On garde la distance de tir à la cible, on repousse tous les autres NPC
+    // proches (surtout les non-ciblés) et on strafe doucement pour ne jamais
+    // rester immobile sous les tirs.
+    const isGgCombat = Bot.module === "galaxy" && rules?.mode === "gate";
+    // Distance de sécurité : hors de portée de tir du NPC quand c'est
+    // possible (portée NPC + marge), sinon au max de notre portée.
+    // Évite de rester planté sous les tirs à 560 m face à un NPC qui tire à 700 m.
+    const npcShootR = Number(NPC_TYPES[npc.type]?.shootRange) || 0;
+    const safeD = npcShootR > 0 ? npcShootR + 200 : 0;
+    const standD = Math.min(Math.max(200, botNpcDist(npc.type), safeD), playerRange * 0.9);
+    if (isGgCombat) {
+      if (d > playerRange * 0.95) {
+        // Hors de portée : approche décalée (point à standD, pas le centre).
+        const ax = d > 1 ? (player.x - npc.x) / d : 1;
+        const ay = d > 1 ? (player.y - npc.y) / d : 0;
+        moveTarget.active = true;
+        moveTarget.x = clamp(npc.x + ax * standD, 80, WORLD.w - 80);
+        moveTarget.y = clamp(npc.y + ay * standD, 80, WORLD.h - 80);
+      } else {
+        // Kiting généralisé : on tire en reculant devant TOUS les NPC.
+        // Répulsion quadratique (les proches dominent), cible pondérée moins
+        // fort pour rester à portée de tir d'elle, + dérive tangentielle pour
+        // faire le tour de la map au lieu de se coincer. Jamais de camping,
+        // jamais de colle : le vaisseau est toujours en mouvement.
+        let kx = 0, ky = 0;
+        let closestD = Infinity, closestX = 0, closestY = 0;
+        for (const e of enemies) {
+          if (!e || Number(e.hp) <= 0) continue;
+          const ex = player.x - e.x, ey = player.y - e.y;
+          const ed = Math.hypot(ex, ey);
+          if (ed < closestD) { closestD = ed; closestX = ex; closestY = ey; }
+          const KR = 1600;
+          if (ed < KR && ed > 1) {
+            const w = 1 - ed / KR;
+            const push = w * w * (e === npc ? 420 : 1200);
+            kx += (ex / ed) * push;
+            ky += (ey / ed) * push;
+          }
+        }
+        if (closestD < 150 && closestD > 0.01) {
+          // Contact : fuite franche à ~45° du plus proche (radial + latéral).
+          const ax = closestX / closestD, ay = closestY / closestD;
+          kx = ax * 800 + -ay * 800;
+          ky = ay * 800 + ax * 800;
+        }
+        const kl = Math.hypot(kx, ky);
+        if (kl < 60) {
+          moveTarget.active = false; // rien à fuir : on tient et on tire
+        } else {
+          const tx = -ky / kl, ty = kx / kl;
+          const step = Math.min(kl, 800);
+          const rawX = player.x + kx / kl * step + tx * 350;
+          const rawY = player.y + ky / kl * step + ty * 350;
+          const tgt = botGateKiteTarget(rawX, rawY, closestD < 600);
+          moveTarget.active = true;
+          moveTarget.x = tgt.x;
+          moveTarget.y = tgt.y;
+        }
+      }
     } else {
-      moveTarget.active = false;
+      // Hors gate : même anti-colle que la gate (tous modes). L'approche ne
+      // vise jamais le centre exact et on ne reste jamais planté sous le NPC.
+      const orbitD = standD;
+      const orbitOn = Bot.orbit && botNpcOrbitOf(npc.type);
+      const gx = d > 1 ? (player.x - npc.x) / d : 1;
+      const gy = d > 1 ? (player.y - npc.y) / d : 0;
+      if (d < 160 && d > 0.01) {
+        // Contact : esquive latérale pure, le NPC dépasse.
+        moveTarget.active = true;
+        moveTarget.x = clamp(player.x + -gy * 1000, 80, WORLD.w - 80);
+        moveTarget.y = clamp(player.y + gx * 1000, 80, WORLD.h - 80);
+      } else if (orbitOn && d <= orbitD * 1.4) {
+        // Vitesse angulaire adaptative : on n'exige jamais plus de ~70 % de
+        // la vitesse du vaisseau en tangentiel, sinon il coupe les virages,
+        // spirale vers le centre du NPC et finit collé dessus.
+        const shipSpd = Math.max(10, Number(player.baseSpeed) || 0);
+        Bot.orbitAng += dt * Math.min(0.7, shipSpd / Math.max(1, orbitD) * 0.7);
+        moveTarget.active = true;
+        moveTarget.x = clamp(npc.x + Math.cos(Bot.orbitAng) * orbitD, 80, WORLD.w - 80);
+        moveTarget.y = clamp(npc.y + Math.sin(Bot.orbitAng) * orbitD, 80, WORLD.h - 80);
+      } else if (d > playerRange * 0.7) {
+        // Approche décalée : point à orbitD du NPC, pas son centre.
+        moveTarget.active = true;
+        moveTarget.x = clamp(npc.x + gx * orbitD, 80, WORLD.w - 80);
+        moveTarget.y = clamp(npc.y + gy * orbitD, 80, WORLD.h - 80);
+      } else if (d < orbitD * 0.8) {
+        // Trop près sans orbite : on recule à distance au lieu de camper dessus.
+        moveTarget.active = true;
+        moveTarget.x = clamp(player.x + gx * 400, 80, WORLD.w - 80);
+        moveTarget.y = clamp(player.y + gy * 400, 80, WORLD.h - 80);
+      } else {
+        moveTarget.active = false;
+      }
     }
   } else {
     const box = pick.ref;
@@ -4359,6 +4998,11 @@ function applyPetModeValue(v) {
     const pet = account.user?.pet?.owned === true ? account.user.pet : null;
     if (!pet) return showToast("P.E.T non possédé.", 1.5);
     v = String(v || "passive");
+    // Kamikaze en cours : course verrouillée, rien ne peut l'arrêter.
+    if (kkRunActive()) {
+      loadAccountUser();
+      return showToast("Kamikaze en cours — REX verrouillé.", 1.5);
+    }
     // Un seul comportement à la fois : Passif, Mode combat ou un gear équipé.
     if (v.startsWith("gear:")) {
       const key = v.slice("gear:".length).toLowerCase();
@@ -4411,6 +5055,16 @@ function applyPetModeValue(v) {
           return;
         }
         triggerSacrificeFlame();
+        return;
+      }
+      if (key === "kk") {
+        const left = kkCooldownLeftSec();
+        if (left > 0) {
+          showToast(`Kamikaze prêt dans ${Math.ceil(left)} s`, 1.8);
+          loadAccountUser();
+          return;
+        }
+        triggerPetKamikaze();
         return;
       }
       if (key === "hpl") {
@@ -4520,8 +5174,8 @@ function updatePetHud() {
   if (ui.petModeBtn && ui.petModeList) {
     const mode = normalizePetMode(pet?.mode);
     const equipped = has ? petEquippedGearOptions() : [];
-    // Gears à cooldown (TRA, FS, HPL, bouées) : option grisée + compte à rebours.
-    const cdLeft = { tra: Math.ceil(traCooldownLeftSec()), fs: Math.ceil(fsCooldownLeftSec()), hpl: Math.ceil(hplCooldownLeftSec()), bc: Math.ceil(buoyCooldownLeftSec("bc")), bh: Math.ceil(buoyCooldownLeftSec("bh")) };
+    // Gears à cooldown (TRA, FS, KK, HPL, bouées) : option grisée + compte à rebours.
+    const cdLeft = { tra: Math.ceil(traCooldownLeftSec()), fs: Math.ceil(fsCooldownLeftSec()), kk: Math.ceil(kkCooldownLeftSec()), hpl: Math.ceil(hplCooldownLeftSec()), bc: Math.ceil(buoyCooldownLeftSec("bc")), bh: Math.ceil(buoyCooldownLeftSec("bh")) };
     const opts = [{ value: "passive", label: "Passif" }, { value: "combat", label: "Combat" }]
       .concat(equipped.map((e) => {
         const left = Number(cdLeft[e.key]) || 0;
@@ -10585,6 +11239,7 @@ let petMapId = null;
 let wasPetOn = false;
 
 function resetPetSpawn() {
+  cancelKamikazeRun();
   petState.ready = false;
   petState.target = null;
   petState.fetchId = null;
@@ -10595,6 +11250,7 @@ function resetPetSpawn() {
 
 // Mort du REX : annule collecte, locator et lien visuel, purge fumée et réacteur.
 function onPetDestroyed() {
+  cancelKamikazeRun();
   petState.fetchId = null;
   petState.fetchHold = 0;
   petState.repTickT = 0;
@@ -10749,6 +11405,235 @@ function fsCooldownLeftSec() {
   return petGearCdLeftSec("fs");
 }
 
+function kkCooldownLeftSec() {
+  return petGearCdLeftSec("kk");
+}
+
+// Kamikaze (G-KK) : course suicide verrouillée.
+// Au déclenchement : cible = NPC verrouillé, sinon dernier attaquant récent.
+// Choix figé — les dégâts reçus ensuite ne changent plus la cible.
+// Le REX fonce tout droit ; au contact il se colle 1 s puis explose
+// (dégâts + rayon par niveau : 25000/250, 50000/350, 75000/450).
+// Explosion normale (pas de sprite géant) et le REX meurt avec.
+// Seule sa destruction prématurée interrompt la course (sans explosion
+// ni cooldown). Le cooldown part à l'explosion.
+const petKamikaze = { active: false, level: 0, targetId: null, targetRef: null, lastX: 0, lastY: 0, stickT: 0, age: 0 };
+const PET_KK_CONTACT_DIST = 70;
+const PET_KK_STICK_SEC = 1.0;
+const PET_KK_TIMEOUT_SEC = 25;
+
+function kkRunActive() {
+  return petKamikaze.active === true;
+}
+
+// Annule la course (sans explosion ni cooldown). Retourne true si annulée.
+function cancelKamikazeRun(reason) {
+  if (!petKamikaze.active) return false;
+  petKamikaze.active = false;
+  petKamikaze.targetRef = null;
+  petKamikaze.targetId = null;
+  petKamikaze.stickT = 0;
+  petKamikaze.age = 0;
+  if (String(account.user?.pet?.activeGear || "").toLowerCase() === "kk") {
+    try { setPetActiveGear(null); } catch {}
+  }
+  try { loadAccountUser(); } catch {}
+  if (reason === "destroyed") showToast("Kamikaze interrompu : REX détruit.", 1.8);
+  return true;
+}
+
+// Cible au déclenchement : lock vivant, sinon dernier attaquant récent.
+function pickKamikazeTarget() {
+  let locked = null;
+  try { locked = Target.get(); } catch { locked = null; }
+  if (locked && Number(locked.hp) > 0 && enemies.includes(locked)) return locked;
+  const nowS = performance.now() / 1000;
+  let best = null;
+  let bestT = -Infinity;
+  for (const record of petState.attackers.values()) {
+    const ref = record?.ref;
+    if (!ref || Number(ref.hp) <= 0 || !enemies.includes(ref)) continue;
+    if (!record?.pending) continue;
+    if (nowS - (Number(record.t) || -Infinity) > PET_ATTACKER_MEMORY) continue;
+    if (Number(record.t) > bestT) {
+      bestT = Number(record.t);
+      best = ref;
+    }
+  }
+  return best;
+}
+
+function triggerPetKamikaze() {
+  if (petKamikaze.active) {
+    loadAccountUser();
+    return showToast("Kamikaze déjà en cours.", 1.2);
+  }
+  const lvl = Math.floor(Number(petGearLevels().kk) || 0);
+  if (!(lvl > 0)) {
+    loadAccountUser();
+    return showToast("Gear déséquipé.", 1.5);
+  }
+  const left = kkCooldownLeftSec();
+  if (left > 0) {
+    loadAccountUser();
+    return showToast(`Kamikaze prêt dans ${Math.ceil(left)} s`, 1.8);
+  }
+  const pet = account.user?.pet;
+  if (pet?.owned !== true || pet?.active !== true) {
+    loadAccountUser();
+    return showToast("Kamikaze : REX désactivé.", 1.8);
+  }
+  if (!(Number(pet.hp) > 0)) {
+    loadAccountUser();
+    return showToast("Kamikaze : REX détruit, répare-le.", 1.8);
+  }
+  if (player.dead || !started) {
+    loadAccountUser();
+    return showToast("Kamikaze impossible pour le moment.", 1.5);
+  }
+  const target = pickKamikazeTarget();
+  if (!target) {
+    loadAccountUser();
+    return showToast("Kamikaze : verrouille une cible.", 1.8);
+  }
+  // Le kamikaze prend la main : ferme les sessions en cours.
+  if (traWindowActive()) endTraSession();
+  if (hplLinkActive()) endHplLink("gear");
+  if (buoySessionActive()) endBuoySession("gear");
+  petKamikaze.active = true;
+  petKamikaze.level = lvl;
+  petKamikaze.targetRef = target;
+  petKamikaze.targetId = target.id;
+  petKamikaze.lastX = Number(target.x);
+  petKamikaze.lastY = Number(target.y);
+  petKamikaze.stickT = 0;
+  petKamikaze.age = 0;
+  petState.fetchId = null;
+  petState.fetchHold = 0;
+  petState.returning = false;
+  petState.target = null;
+  petState.combatTarget = null;
+  setPetMode("passive");
+  setPetActiveGear("kk");
+  loadAccountUser();
+  showToast("Kamikaze enclenché !", 1.5);
+}
+
+// Fait voler le REX vers sa cible verrouillée. Retourne true si la course
+// a pris la main (updatePet saute alors le comportement normal).
+function tickPetKamikaze(dt) {
+  if (!petKamikaze.active) return false;
+  const pet = account.user?.pet;
+  if (!pet || pet.owned !== true || pet.active !== true || !(Number(pet.hp) > 0)) {
+    cancelKamikazeRun();
+    return true;
+  }
+  petKamikaze.age += Math.max(0, Number(dt) || 0);
+  const ref = petKamikaze.targetRef;
+  const live = ref && Number(ref.hp) > 0 && enemies.includes(ref) ? ref : null;
+  if (live) {
+    petKamikaze.lastX = Number(live.x);
+    petKamikaze.lastY = Number(live.y);
+  }
+  const tx = live ? Number(live.x) : petKamikaze.lastX;
+  const ty = live ? Number(live.y) : petKamikaze.lastY;
+  const dx = tx - petState.x;
+  const dy = ty - petState.y;
+  const dist = Math.hypot(dx, dy);
+  if (live && dist <= PET_KK_CONTACT_DIST) {
+    // Collé à la cible : converge en douceur vers elle (pas de snap),
+    // puis suit sa position pendant 1 s avant d'exploser.
+    const k = Math.min(1, 14 * Math.max(0, Number(dt) || 0));
+    petState.x = clamp(petState.x + dx * k, 80 - RADIATION_SPAWN_MARGIN, WORLD.w - 80 + RADIATION_SPAWN_MARGIN);
+    petState.y = clamp(petState.y + dy * k, 80 - RADIATION_SPAWN_MARGIN, WORLD.h - 80 + RADIATION_SPAWN_MARGIN);
+    petState.vx = Number(live.vx) || 0;
+    petState.vy = Number(live.vy) || 0;
+    if (dist > 1) petState.angle = Math.atan2(dy, dx);
+    if (dist <= 26) petKamikaze.stickT += Math.max(0, Number(dt) || 0);
+    if (petKamikaze.stickT >= PET_KK_STICK_SEC) detonatePetKamikaze();
+    return true;
+  }
+  if (!live && dist <= 60) {
+    // Cible perdue en route : explose sur son dernier point connu.
+    detonatePetKamikaze();
+    return true;
+  }
+  if (petKamikaze.age >= PET_KK_TIMEOUT_SEC) {
+    detonatePetKamikaze();
+    return true;
+  }
+  // Fonce tout droit sur le point visé.
+  const ownerSpeed = Math.max(260, getSpeedBreakdown().total);
+  const kkSpeed = Math.max(620, ownerSpeed * 2);
+  const n = dist || 1;
+  stepPetMotion(petState, (dx / n) * kkSpeed, (dy / n) * kkSpeed, dt, WORLD, RADIATION_SPAWN_MARGIN);
+  petState.angle = Math.atan2(dy, dx);
+  return true;
+}
+
+function detonatePetKamikaze() {
+  const lvl = Math.floor(Number(petKamikaze.level) || 0);
+  const ref = petKamikaze.targetRef;
+  const live = ref && Number(ref.hp) > 0 && enemies.includes(ref) ? ref : null;
+  const cx = live ? Number(live.x) : petState.x;
+  const cy = live ? Number(live.y) : petState.y;
+  petKamikaze.active = false;
+  petKamikaze.targetRef = null;
+  petKamikaze.targetId = null;
+  petKamikaze.stickT = 0;
+  petKamikaze.age = 0;
+  const dmg = getPetKamikazeDamage(lvl);
+  const radius = getPetKamikazeRadius(lvl);
+  if (!(dmg > 0) || !(radius > 0)) {
+    setPetActiveGear(null);
+    loadAccountUser();
+    return showToast("Gear déséquipé.", 1.5);
+  }
+  spawnExplosion(cx, cy, 1.0);
+  try { SFX.play("npcDeath", { maxVoices: 16, cooldown: 0 }); } catch {}
+  let hit = 0;
+  const r2 = radius * radius;
+  for (const e of [...enemies]) {
+    if (!e || !(Number(e.hp) > 0) || e._bossEncounter?.invulnerable) continue;
+    const ex = Number(e.x) - cx;
+    const ey = Number(e.y) - cy;
+    const d2 = ex * ex + ey * ey;
+    if (d2 > r2) continue;
+    // Falloff linéaire : 100 % au centre → 50 % au bord du rayon.
+    // Passe par damageEnemy : bouclier d'abord, puis coque (jamais direct vie).
+    const fall = 1 - 0.5 * (Math.sqrt(d2) / radius);
+    const out = damageEnemy(e, dmg * fall, 0, { chance: 0, mult: 1 });
+    if (out?.total > 0) {
+      hit++;
+      try { notePetPlayerDamage(e); } catch {}
+      addFloatText(
+        Number(e.x) + (Math.random() - 0.5) * 60,
+        Number(e.y) - 90 - Math.random() * 20,
+        Math.round(out.total),
+        "rgba(255,150,60,0.98)",
+        { size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+      );
+    }
+  }
+  markProgressDirty();
+  setPetGearCd("kk", getPetKamikazeCooldownSec(lvl));
+  // Le REX se sacrifie : sa propre explosion le détruit (réparation requise).
+  const pet = account.user?.pet;
+  if (pet) {
+    pet.sh = 0;
+    pet.hp = 0;
+    markProgressDirty();
+  }
+  onPetDestroyed();
+  if (petLink.until > 0) endHplLink("destroyed");
+  setPetMode("passive");
+  setPetActiveGear(null);
+  loadAccountUser();
+  showToast(hit > 0
+    ? `Kamikaze : ${formatInteger(Math.round(dmg))} dégâts (${hit} cible${hit > 1 ? "s" : ""}) — REX détruit.`
+    : "Kamikaze : explosion manquée — REX détruit.", 2);
+}
+
 function triggerSacrificeFlame() {
   const lvl = Math.floor(Number(petGearLevels().fs) || 0);
   if (!(lvl > 0)) {
@@ -10823,11 +11708,11 @@ function endTraSession() {
   showToast(`Cargo Trader terminé — cooldown ${wait} s`, 2);
 }
 
-// Gear actif unique sous forme filtrée { al, ar, el, rep, tra, fs, hpl, bc, bh } (0 = inactif).
+// Gear actif unique sous forme filtrée { al, ar, el, rep, kk, tra, fs, hpl, bc, bh } (0 = inactif).
 function petActiveGears() {
   const levels = petGearLevels();
   const active = petActiveGearKey();
-  const gears = { al: 0, ar: 0, el: 0, rep: 0, tra: 0, fs: 0, hpl: 0, bc: 0, bh: 0 };
+  const gears = { al: 0, ar: 0, el: 0, rep: 0, kk: 0, tra: 0, fs: 0, hpl: 0, bc: 0, bh: 0 };
   if (active && Number(levels[active]) > 0) gears[active] = Math.floor(Number(levels[active]));
   return gears;
 }
@@ -10959,8 +11844,15 @@ function tickPetRecovery(dt, pet, gears) {
     petState.repTickT = 0;
   }
   // Bouclier : recharge passive 5 %/s par pallier d'1 s, +X bleu comme le vaisseau.
+  // REX détruit : pas de recharge (ni visuel), le bouclier reste à zéro.
   const petShMax = petShieldMaxForHud(pet, account.user);
-  if (petShMax > 0) {
+  if (!(Number(pet.hp) > 0)) {
+    petState.shTickT = 0;
+    if (Number(pet.sh) > 0) {
+      pet.sh = 0;
+      markProgressDirty();
+    }
+  } else if (petShMax > 0) {
     const curSh = pet.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : petShMax;
     if (curSh < petShMax - 0.01) {
       petState.shTickT = (petState.shTickT || 0) + dt;
@@ -10994,6 +11886,7 @@ function tickPetRecovery(dt, pet, gears) {
 function updatePet(dt) {
   const pet = account.user?.pet;
   if (!pet?.owned || pet?.active !== true) {
+    cancelKamikazeRun();
     wasPetOn = false;
     petState.ready = false;
     petState.target = null;
@@ -11014,9 +11907,13 @@ function updatePet(dt) {
     wasPetOn = true;
     resetPetSpawn();
   }
-  if (!started || player.dead) return;
+  if (!started || player.dead) {
+    cancelKamikazeRun();
+    return;
+  }
   // REX détruit : seule la récupération tourne (revive via G-REP).
   if (!(Number(pet.hp) > 0)) {
+    cancelKamikazeRun("destroyed");
     if (petBuoy.until > 0) endBuoySession("destroyed");
     tickPetRecovery(dt, pet, petActiveGears());
     petState.target = null;
@@ -11042,6 +11939,13 @@ function updatePet(dt) {
     petState.outOfRangeTarget = null;
     petState.outOfRangeShots = 0;
     petState.ready = true;
+  }
+
+  // Kamikaze : course verrouillée, prioritaire sur tout le reste.
+  if (kkRunActive()) {
+    tickPetKamikaze(dt);
+    tickPetPassiveGears(dt);
+    return;
   }
 
   petState.fireCd = Math.max(0, petState.fireCd - dt);
@@ -11799,6 +12703,36 @@ function computeNpcCombatMove(e, d, nx, ny, ai, dt) {
   tickNpcCombatAI(ca, dt);
   return computeNpcSteering(e, d, nx, ny, ca, dt, NPC_COMBAT_MOVE.closeBrake);
 
+}
+
+// Fuite des NPC sous 10 % de PV : en Galaxy Gate (alpha/beta/gamma) ils se
+// regroupent dans un coin fixe de la map ; en map normale ils fuient loin de
+// leur cible. Pur mouvement (les tirs restent gérés par enemyShoot).
+// Vitesse plafonnée pour que le joueur reste un peu plus rapide : un fuyard
+// plus rapide que le vaisseau serait intouchable à jamais.
+const NPC_FLEE_HP_PCT = 10;
+const NPC_FLEE_ARRIVED_DIST = 80;
+function npcHpPct(e) {
+  const max = Math.max(0, Number(e.hpMax) || 0);
+  if (!(max > 0)) return 100;
+  return (Math.max(0, Number(e.hp) || 0) / max) * 100;
+}
+function npcShouldFlee(e) {
+  if (!e || Number(e.hp) <= 0) return false;
+  if ((NPC_TYPES[e.type] || {}).ai === "kamikaze") return false;
+  return npcHpPct(e) < NPC_FLEE_HP_PCT;
+}
+function npcFleeSpeed(e) {
+  const own = npcEffectiveSpeed(e);
+  const chase = Math.max(60, Number(player.baseSpeed || 0) * 0.92);
+  return Math.min(own, chase);
+}
+// Coin de fuite en gate : le plus proche entre (0,0) haut-gauche et
+// (W,H) bas-droite (les vrais coins de map).
+function npcGateFleeCorner(e) {
+  const dTL = Math.hypot(e.x, e.y);
+  const dBR = Math.hypot(WORLD.w - e.x, WORLD.h - e.y);
+  return dTL <= dBR ? { x: 0, y: 0 } : { x: WORLD.w, y: WORLD.h };
 }
 
 function applyNpcSeparation(dt) {
@@ -13164,19 +14098,68 @@ function makeEnemy(type, x, y) {
 // ============================================================
 // Targeting 100% MANUEL (aucun auto-lock)
 // ============================================================
+// Faux tirs de transition lors d'un switch de cible en plein combat :
+// purement visuels (dmg 0, sans son, sans conso de munition), ils couvrent
+// le cooldown conservé jusqu'au vrai tir pour qu'il n'y ait jamais de
+// "trou" sans laser. Le débit de dégâts reste cadencé par fireCooldown.
+function scheduleSwitchDecoys(target) {
+  try {
+    if (!target || Number(target.hp) <= 0) return;
+    if (player.dead || !started) return;
+    if (pendingSalvo.length > 0) return; // un stream est déjà en vol
+    const ammoKey = player.ammo.active || "x1";
+    if (isRsbLike(ammoKey)) return; // X6/RCB : on ne touche pas à leur rythme
+    const cd = Number(fireCooldown) || 0;
+    if (!(cd > 0)) return; // cooldown écoulé : le vrai tir suit aussitôt
+    const d2 = dist2(player.x, player.y, target.x, target.y);
+    if (d2 > playerRange * playerRange) return;
+    const dist = Math.sqrt(d2);
+    const speed = (player.baseBulletSpeed + dist * BASE_RUN.bulletSpeedDistGain)
+      * (ammoKey === "sab" ? SAB50.bulletSpeedMult : 1);
+    const life = bulletLifeForRange(playerRange, speed);
+    const isSabLike = ammoKey === "sab" || ammoKey === "cbo";
+    const volleySize = player.altShot ? 2 : 1;
+    const volleyId = volleySeq++;
+    const isRealPair = !!player.altShot && ammoKey !== "sab";
+    const pairItems = [[-SIDE_OFFSET, 0], [SIDE_OFFSET, 0]];
+    const singleItems = [[0, 0]];
+    // But : on couvre exactement l'attente restante (1 faux tir / 0,2 s).
+    const interval = 0.2;
+    const n = Math.max(1, Math.min(15, Math.ceil(cd / interval)));
+    const params = { targetId: target.id, speed, life, volleyId, volleySize: isSabLike ? 1 : volleySize, sabReverse: isSabLike };
+    for (let i = 1; i <= n; i++) {
+      const fakeIsPair = !isSabLike && (isRealPair ? i % 2 === 0 : i % 2 === 1);
+      scheduleSalvoPart(i * interval, { ...params, items: fakeIsPair ? pairItems : singleItems });
+    }
+  } catch {}
+}
 const Target = (() => {
   let cur = null;
 
   function set(e) {
     const next = e && e.hp > 0 ? e : null;
 
-    if (next !== cur && typeof attackActive !== "undefined" && attackActive) {
+    const wasAttacking = (typeof attackActive !== "undefined") && attackActive === true;
+    if (next !== cur && wasAttacking) {
       stopAttack();
     }
 
-    // ✅ changement de cible → cooldown de tir remis à zéro (tir immédiat)
+    // ✅ changement de cible : on ne touche PLUS au cooldown en cours.
+    // L'ancien reset (fireCooldown = 0 à chaque switch) offrait une salve
+    // réelle immédiate par switch : en oscillant vite entre A et B on
+    // contournait la cadence ~1 s et on mitraillait plusieurs NPC en
+    // parallèle. Le tir immédiat ne s'applique que si aucun tir vient
+    // d'être déclenché (cooldown déjà écoulé). Vaut pour le jeu manuel
+    // comme pour le bot (même Target.set).
     if (next !== cur && typeof fireCooldown !== "undefined") {
-      fireCooldown = 0;
+      if (!(typeof fireCooldown === "number" && fireCooldown > 0)) fireCooldown = 0;
+    }
+
+    // ✅ switch en plein combat : des faux tirs partent aussitôt vers la
+    // nouvelle cible et couvrent l'attente jusqu'au vrai tir (aucun trou
+    // visuel, aucun dégât supplémentaire).
+    if (next && next !== cur && wasAttacking) {
+      try { scheduleSwitchDecoys(next); } catch {}
     }
 
     cur = next;
@@ -14317,7 +15300,10 @@ function startAttack(ammoOverride = null) {
     if (!t) return;
     attackActive = true;
     announceLaserCombatRange(t);
-    tryFireOnce(null, true);
+    const fired = tryFireOnce(null, true);
+    // Vrai tir encore en cooldown (ex. switch après un kill) : on affiche
+    // des faux tirs jusqu'au vrai tir, aucun trou visuel.
+    if (!fired) { try { scheduleSwitchDecoys(t); } catch {} }
     return;
   }
 
@@ -14351,7 +15337,8 @@ function startAttack(ammoOverride = null) {
 
   attackActive = true;
   if (!wasAttackActive) announceLaserCombatRange(t);
-  tryFireOnce(null, true);
+  const firedAmmo = tryFireOnce(null, true);
+  if (!firedAmmo) { try { scheduleSwitchDecoys(t); } catch {} }
 }
 
 function stopAttack() {
@@ -18644,6 +19631,20 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           }
         }
 
+        // NPC sous 10 % de PV : il fuit loin de sa cible (rattrapable : voir
+        // npcFleeSpeed). Les tirs continuent via enemyShoot, seul le
+        // mouvement change.
+        if (npcShouldFlee(e)) {
+          e._fleeing = true;
+          setNpcVelocity(e, -nx, -ny, npcFleeSpeed(e));
+          integrateNpcPosition(e, dt);
+          if (e.vx * e.vx + e.vy * e.vy > 25) {
+            e.angle = Math.atan2(e.vy, e.vx);
+          }
+          continue;
+        }
+        e._fleeing = false;
+
         if (!e.aiZ) {
           e.aiZ = {
             state: "wander",
@@ -18774,16 +19775,33 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
         continue;
       } else {
-               if (!e.ai) e.ai = {};
+        // NPC sous 10 % de PV en gate : il file vers son coin le plus proche
+        // (0,0 ou max) où les fuyards se stackent (rattrapable : npcFleeSpeed).
+        // Arrivé : on coupe la poussée, sinon le NPC vibre sur place contre
+        // le clamp + la séparation.
+        if (npcShouldFlee(e)) {
+          e._fleeing = true;
+          const corner = npcGateFleeCorner(e);
+          const cx = corner.x - e.x, cy = corner.y - e.y;
+          const cd = Math.hypot(cx, cy);
+          if (cd < NPC_FLEE_ARRIVED_DIST) {
+            setNpcVelocity(e, 0, 0, 0);
+          } else {
+            setNpcVelocity(e, cx / (cd || 1), cy / (cd || 1), npcFleeSpeed(e));
+          }
+        } else {
+          e._fleeing = false;
+          if (!e.ai) e.ai = {};
 
-        const mv = computeNpcCombatMovement(e, d, nx, ny, e.ai, dt);
+          const mv = computeNpcCombatMovement(e, d, nx, ny, e.ai, dt);
 
-        let mxv = mv.mxv;
-        let myv = mv.myv;
+          let mxv = mv.mxv;
+          let myv = mv.myv;
 
-        const spdE = npcEffectiveSpeed(e);
+          const spdE = npcEffectiveSpeed(e);
 
-        setNpcVelocity(e, mxv, myv, spdE);
+          setNpcVelocity(e, mxv, myv, spdE);
+        }
       }
     }
 
@@ -19857,6 +20875,14 @@ window.addEventListener("orbit:user-updated", event => {
     && Number(previousHangar?.activeConfig) !== Number(nextHangar?.activeConfig);
   if (started && switched) saveShieldForConfig(previousHangar.activeConfig);
   account.user = refreshed;
+  // Changement de vaisseau : account.user est déjà muté ici (cache partagé
+  // de readUsers), on compare donc au dernier vaisseau vu par la palette.
+  let nowShipId = "";
+  try { nowShipId = String(getActiveHangarFromUser(account?.user)?.shipId || "").toLowerCase(); } catch {}
+  if (nowShipId !== lastAbilityShipId) {
+    lastAbilityShipId = nowShipId;
+    try { refreshActiveActionPalette?.(); } catch {}
+  }
   if (started) {
     applyCurrentConfigStats(false, switched ? nextHangar.activeConfig : null, true);
     updateConfigButtons();

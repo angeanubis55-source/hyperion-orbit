@@ -418,6 +418,7 @@
           <button class="botTab" data-bot-tab="security" type="button">Sécurité</button>
           <button class="botTab" data-bot-tab="npc" type="button">NPC</button>
           <button class="botTab" data-bot-tab="rex" type="button">REX</button>
+          <button class="botTab" data-bot-tab="galaxy" type="button">Galaxy</button>
           <button class="botTab" data-bot-tab="stats" type="button">Stats</button>
           <button class="botTab" data-bot-tab="log" type="button">Journal</button>
         </div>
@@ -555,6 +556,32 @@
               <div><span>XP</span><b id="botStatXp">+0</b></div>
               <div><span>XP/h</span><b id="botStatXpH">—</b></div>
             </div>
+          </div>
+          <div class="botSection" data-bot-section="galaxy">
+            <div class="botSectionTitle">Spinner automatique (Galaxy Gates)</div>
+            <label class="botCheck"><input id="botGgSpin" type="checkbox" /><span>Activer le GG spinner automatique</span></label>
+            <small class="botNote">Spin sur l'ensemble Alpha + Beta + Gamma (une seule roue).</small>
+            <label class="botField"><span>Spins par passage (1-100)</span><input id="botGgSpins" type="number" min="1" max="100" step="1" value="10" /></label>
+            <label class="botCheck"><input id="botGgAutoMult" type="checkbox" checked /><span>Activer le multiplicateur dès qu'il est dispo</span></label>
+            <small class="botNote">Spin auto hors gate (énergie puis crédits). Construit puis enchaîne les portails sans rien toucher.</small>
+          </div>
+          <div class="botSection" data-bot-section="galaxy">
+            <div class="botSectionTitle">Enchaînement auto des gates</div>
+            <label class="botCheck"><input id="botGgAutoEnter" type="checkbox" checked /><span>Entrer auto dès qu'une GG est construite</span></label>
+            <label class="botCheck"><input id="botGgNearestSwitch" type="checkbox" checked /><span>En gate : toujours le NPC le plus proche (switch si plus proche)</span></label>
+            <small class="botNote">En mode Galaxy le bot vole vers la base mère puis saute dans le portail GG déployé, et enchaîne les vagues.</small>
+          </div>
+          <div class="botSection" data-bot-section="galaxy">
+            <div class="botSectionTitle">Formation de fin (après Cubikon)</div>
+            <label class="botField"><span>Formation finale</span><select id="botGgFinishForm" aria-label="Formation de fin de GG"></select></label>
+            <label class="botField"><span>Config finale</span>
+              <select id="botGgFinishCfg" aria-label="Configuration de fin de GG">
+                <option value="">— Ne pas changer —</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+              </select>
+            </label>
+            <small class="botNote">Appliquées dès que le Cubikon est mort, jusqu'au retour sur la map mère. Vide = ne pas changer.</small>
           </div>
           <div class="botSection" data-bot-section="log">
             <div class="botSectionTitle">Journal</div>

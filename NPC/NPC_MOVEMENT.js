@@ -10,6 +10,9 @@ export function applyNpcSeparation(enemies, deltaTime, world, isZoneMap = false)
   if (isZoneMap || !NPC_SEPARATION.enable || enemies.length <= 1) return;
   separationIndex.forEachPair(enemies, (a, b, i, j) => {
     if (a.type === "npc_Cubikon" || b.type === "npc_Cubikon") return;
+    // Fuyards (< 10 % PV en gate) : on les laisse se stacker exactement les
+    // uns sur les autres dans le coin, sans les écarter.
+    if (a._fleeing && b._fleeing) return;
     const dx = b.x - a.x, dy = b.y - a.y;
     const ra = a.r || 18, rb = b.r || 18;
     const minimum = ra + rb + NPC_SEPARATION.extra;

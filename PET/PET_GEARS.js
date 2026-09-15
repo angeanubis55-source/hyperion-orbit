@@ -4,7 +4,8 @@
 // - G-AR (ar) : auto-collecte minerais / ressources.
 // - G-EL (el) : localisateur d'ennemis (minimap + marqueur monde).
 // - G-REP (rep) : régénération coque du P.E.T.
-// Les gears actifs (kk, tra...) seront branchés dans un lot suivant
+// - G-KK (kk) : course suicide verrouillée (fonce sur la cible, colle 1 s, explose).
+// Les autres gears actifs (tra...) sont branchés via applyPetModeValue
 // en réutilisant getPetEquippedGearLevels().
 "use strict";
 
@@ -31,6 +32,12 @@ export const PET_GEAR_TRADE_BONUS_PCT = Object.freeze([5, 15, 30]);
 // Flamme sacrificielle (G-FS, niveau unique) : transfère le bouclier du REX
 // vers le vaisseau (tout si besoin), cooldown 90 s.
 export const PET_GEAR_SACRIFICE_COOLDOWN_SEC = Object.freeze([90]);
+
+// Kamikaze (G-KK) : le REX fonce sur sa cible verrouillée puis explose.
+// Dégâts fixes + rayon + cooldown par niveau (voir CATALOG desc).
+export const PET_GEAR_KAMIKAZE_DAMAGE = Object.freeze([25000, 50000, 75000]);
+export const PET_GEAR_KAMIKAZE_RADIUS = Object.freeze([250, 350, 450]);
+export const PET_GEAR_KAMIKAZE_COOLDOWN_SEC = Object.freeze([120, 60, 30]);
 
 // Lien HP (G-HPL, niveau unique) : dégâts coque redirigés vers le REX,
 // durée 20 s, cooldown 240 s. Mixé au mode combat + éclair entre les deux.
@@ -83,7 +90,7 @@ export const PET_GEAR_LOCATOR_DELAY = 0.5;
  * @returns {object} ex : { al: 2, ar: 0, el: 1, rep: 3 } (0 = absent).
  */
 export function getPetEquippedGearLevels(fit, findItem) {
-  const levels = { al: 0, ar: 0, el: 0, rep: 0, tra: 0, fs: 0, hpl: 0, bc: 0, bh: 0 };
+  const levels = { al: 0, ar: 0, el: 0, rep: 0, kk: 0, tra: 0, fs: 0, hpl: 0, bc: 0, bh: 0 };
   if (!fit || typeof findItem !== "function") return levels;
   for (const itemId of fit.gears || []) {
     if (!itemId) continue;
@@ -135,6 +142,24 @@ export function getPetSacrificeCooldownSec(level) {
   return PET_GEAR_SACRIFICE_COOLDOWN_SEC[Math.min(l, PET_GEAR_SACRIFICE_COOLDOWN_SEC.length) - 1];
 }
 
+export function getPetKamikazeDamage(level) {
+  const l = Math.floor(Number(level) || 0);
+  if (l < 1) return 0;
+  return PET_GEAR_KAMIKAZE_DAMAGE[Math.min(l, PET_GEAR_KAMIKAZE_DAMAGE.length) - 1];
+}
+
+export function getPetKamikazeRadius(level) {
+  const l = Math.floor(Number(level) || 0);
+  if (l < 1) return 0;
+  return PET_GEAR_KAMIKAZE_RADIUS[Math.min(l, PET_GEAR_KAMIKAZE_RADIUS.length) - 1];
+}
+
+export function getPetKamikazeCooldownSec(level) {
+  const l = Math.floor(Number(level) || 0);
+  if (l < 1) return 0;
+  return PET_GEAR_KAMIKAZE_COOLDOWN_SEC[Math.min(l, PET_GEAR_KAMIKAZE_COOLDOWN_SEC.length) - 1];
+}
+
 /**
  * Plus proche élément d'une liste dans la portée (distance euclidienne).
  * @returns {object|null} l'élément le plus proche, ou null.
@@ -163,6 +188,7 @@ const PET_GEAR_SHORT_LABELS = Object.freeze({
   ar: "G-AR",
   el: "G-EL",
   rep: "G-REP",
+  kk: "G-KK",
   tra: "G-TRA",
   fs: "G-FS",
   hpl: "G-HPL",
@@ -171,7 +197,7 @@ const PET_GEAR_SHORT_LABELS = Object.freeze({
 });
 
 // Familles de gears passifs sélectionnables (un seul actif à la fois).
-export const PET_PASSIVE_GEAR_KEYS = Object.freeze(["al", "ar", "el", "rep", "tra", "fs", "hpl", "bc", "bh"]);
+export const PET_PASSIVE_GEAR_KEYS = Object.freeze(["al", "ar", "el", "rep", "kk", "tra", "fs", "hpl", "bc", "bh"]);
 
 /**
  * Gears équipés pour le sélecteur : [{ key, level, label }],
