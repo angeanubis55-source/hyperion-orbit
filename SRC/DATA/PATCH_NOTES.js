@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.216",
+    "date": "2026-09-15T18:59:58+02:00",
+    "message": "quetes: +100 missions, 58 exterminations x1000 (gain x1500), sync globale"
+  },
+  {
     "version": "0.215",
     "date": "2026-09-14T22:15:20+02:00",
     "message": "bot: modules Quest/Galaxy Gates + onglets DarkBot + raffinage/soute/stats/securite"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.157",
     "date": "2026-09-11T18:04:22+02:00",
     "message": "REX: pseudo + firme, balancement jeu, fenetre nommage achat, renommage 1M"
-  },
-  {
-    "version": "0.156",
-    "date": "2026-09-11T17:43:46+02:00",
-    "message": "Hangar PET/drones: compactage haut-gauche comme le vaisseau"
   }
 ];

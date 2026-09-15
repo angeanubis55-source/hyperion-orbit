@@ -69,7 +69,7 @@ export async function loadNpcLocationIndex() {
 // Graphe des portails entre maps zone : { "1-1": ["1-2", ...], ... }.
 // Sert au BOT pour voyager physiquement de portail en portail (BFS),
 // sans téléportation. Les Galaxy Gates (alpha/beta/...) sont exclues :
-// elles demandent une GG construite + un déploiement manuel.
+// elles demandent une GG construite (placement sur la map automatique).
 export async function loadPortalIndex() {
   const index = {};
   const mapIds = Object.keys(MAP_LOADERS).filter(mapId => !GATE_MAPS.has(mapId));

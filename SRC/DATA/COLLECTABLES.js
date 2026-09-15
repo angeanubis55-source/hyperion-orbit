@@ -32,6 +32,8 @@ export const COLLECTABLE_TYPES = Object.freeze({
   Bonus_Box: {
     name: "Bonus aléatoire",
     maps: "*",
+    // GG / Low / QZ : aucune box ambiente, uniquement cargo + drops NPC.
+    denyMaps: ["alpha", "beta", "gamma", "low", "qz"],
     qty: 50,
     spawnBatch: 50,
     minSpacing: 100,
@@ -66,6 +68,8 @@ export const COLLECTABLE_TYPES = Object.freeze({
   Green_Booty_Box: {
     name: "Bonus crédits",
     maps: "*",
+    // GG / Low / QZ : aucune box ambiente, uniquement cargo + drops NPC.
+    denyMaps: ["alpha", "beta", "gamma", "low", "qz"],
     qty: 10,
     spawnBatch: 10,
     minSpacing: 100,

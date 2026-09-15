@@ -2387,9 +2387,6 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 #ggSpinBtn em{ color:#ffd36b; font-style:normal; font-variant-numeric:tabular-nums; }
 #ggSpinBtn .ggSpinSep{ width:1px; align-self:stretch; background:rgba(124,240,255,.38); }
 #ggSpinBtn{ grid-template-columns:0.35fr auto 1fr; }
-.ggDeployBtn{ min-height:30px; padding:6px 10px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); font:750 11px/1.2 ui-sans-serif,system-ui; text-transform:none; cursor:pointer; transition:none; }.ggDeployBtn:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }.ggDeployBtn:disabled{ opacity:.35; cursor:not-allowed; }
-.ggDeployTop{ position:absolute; z-index:2; top:10px; right:12px; min-width:170px; min-height:34px; height:34px; }
-#ggDeployBtn{ display:none !important; }
 .ggResult{ min-height:34px; padding:9px 11px; box-sizing:border-box; text-align:center; border-left:3px solid #4edfff; background:rgba(5,27,42,.7); color:#bfeefa; font-size:11px; line-height:1.45; }
 .ggHistorySection{ min-width:0; min-height:0; height:100%; box-sizing:border-box; display:grid; grid-template-rows:auto minmax(0,1fr); gap:9px; padding:0 0 0 13px; border:none; border-left:1px solid rgba(124,240,255,.2); border-radius:0; background:none; overflow:hidden; }.ggHistorySection h3{ margin:0; padding-bottom:10px; border-bottom:1px solid rgba(124,240,255,.16); color:#87deef; font-size:12px; font-weight:900; text-align:center; }.ggHistory{ min-width:0; max-height:420px; overflow-y:auto; overflow-x:hidden; display:grid; align-content:start; gap:4px; padding-right:4px; }.ggHistoryRow{ position:relative; min-width:0; display:grid; gap:6px; padding:4px 10px 4px; box-sizing:border-box; overflow-wrap:anywhere; border:none; border-radius:0; background:none; text-align:center; }
 .ggHistoryRow:not(:last-child)::after{
@@ -2761,6 +2758,10 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   height:14px;
   display:block;
   filter:drop-shadow(0 0 4px rgba(0,217,255,.6));
+  pointer-events:none;
+}
+#petWindow #petPlayBtn svg *{
+  pointer-events:none;
 }
 
 #petWindow #petPlayBtn:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
@@ -3307,13 +3308,6 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   box-shadow:0 18px 42px rgba(0,0,0,.55), 0 0 26px rgba(0,217,255,.12) !important;
   animation:modalIn .22s ease-out;
 }
-.ggBuiltModal{
-  display:grid;
-  gap:14px;
-  justify-items:center;
-  text-align:center;
-}
-.ggBuiltModal .primaryBtn{ min-width:220px; }
 @keyframes modalIn{
   from{ opacity:0; transform:translateY(8px) scale(.98); }
   to{ opacity:1; transform:none; }

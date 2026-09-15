@@ -60,6 +60,17 @@ export function normalizeGalaxyGateState(raw) {
   }
   state.multiplier = sharedMultiplier;
   state.multiplierArmed = sharedArmed && sharedMultiplier > 1;
+  // ✅ migration : ancien format 1 multiplicateur par gate -> 1 seul partagé (on garde le max).
+  // ✅ auto-placement : une GG terminée est directement posée sur la map.
+  // Une sauvegarde legacy avec built=1 + deployed=false migre vers
+  // built=0 + deployed=true (sauf si la gate est en cours -> stock conservé).
+  for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) {
+    if (state.built[gate.id] > 0 && state.deployed[gate.id] !== true && state.active !== gate.id) {
+      state.built[gate.id]--;
+      state.deployed[gate.id] = true;
+      state.lives[gate.id] = gate.maxLives;
+    }
+  }
   // ✅ la vague persistée de la gate active fait foi (vieilles saves sans `waves`).
   if (state.active && GALAXY_GATE_DEFINITIONS[state.active]) {
     if (state.waves[state.active] > 0) state.activeWave = Math.min(GALAXY_GATE_DEFINITIONS[state.active].maxWaves, state.waves[state.active]);
@@ -191,6 +202,21 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
   if (!performed) return { ok: false, error: `Énergie insuffisante et ${GALAXY_SPIN_CREDIT_COST.toLocaleString("fr-FR")} crédits requis par spin.`, state, credits: balance };
   state.energy += rewards.energy;
   balance += rewards.credits;
+  // ✅ auto-placement : chaque GG terminée par ce spin est directement posée
+  // sur la map. Si un portail est déjà posé (ou la gate en cours), la GG
+  // reste en stock built=1/1 et sera posée à la fin de la gate en cours.
+  const autoDeployed = [];
+  for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) {
+    while (state.built[gate.id] > 0 && state.deployed[gate.id] !== true && state.active !== gate.id) {
+      state.built[gate.id]--;
+      state.deployed[gate.id] = true;
+      state.lives[gate.id] = gate.maxLives;
+      autoDeployed.push(gate.id);
+      // Une seule pose par gate et par spin suffit (built max = 1).
+      break;
+    }
+  }
+  rewards.autoDeployed = autoDeployed;
   state.history.push({ gate: gate.id, at: Date.now(), spins: performed, rewards });
   state.history = state.history.slice(-30);
   return { ok: true, state, credits: balance, performed, rewards };
@@ -261,7 +287,16 @@ export function completeActiveGalaxyGate(stateInput, gateId) {
   state.waves[id] = 0;
   state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
   state.completed[id]++;
-  return { ok: true, state };
+  // ✅ auto-placement du stock : si une GG était en stock 1/1 pendant le run,
+  // elle est posée automatiquement sur la map dès la fin de la gate.
+  let autoDeployed = null;
+  if (state.built[id] > 0 && state.deployed[id] !== true) {
+    state.built[id]--;
+    state.deployed[id] = true;
+    state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
+    autoDeployed = id;
+  }
+  return { ok: true, state, autoDeployed };
 }
 
 export function loseGalaxyGateLife(stateInput, gateId) {

@@ -926,7 +926,7 @@ function initializeCustomActionBar() {
       button.className = "ammoBtn abilityActionSlot"; button.dataset.actionCategory = "abilities";
       button.dataset.actionId = `ability:${name}`; button.dataset.ship = group.ship; button.draggable = true;
       button.title = `${group.ship} — ${label}`;
-      button.innerHTML = `<img src="ASSETS/APTITUDES/${name}.png" alt=""><span>${escapeHtml(label)}</span>`;
+      button.innerHTML = `<img src="ASSETS/APTITUDES/${String(name).toUpperCase()}.png" alt=""><span>${escapeHtml(label)}</span>`;
       const img = button.querySelector("img");
       if (img) img.onerror = () => { img.onerror = null; img.style.display = "none"; };
       button.onclick = () => {
@@ -2545,9 +2545,13 @@ function botRefreshHud() {
   }
   if (targetEl) targetEl.textContent = Bot.active ? Bot.target : "—";
   if (playEl) {
-    playEl.textContent = Bot.active ? "⏸" : "▶";
+    // ✅ ne remplace le nœud texte que sur changement d'état : sinon le
+    // remplacement à chaque refresh peut avaler un clic en cours.
+    const txt = Bot.active ? "⏸" : "▶";
+    if (playEl.textContent !== txt) playEl.textContent = txt;
     playEl.classList.toggle("running", Bot.active);
-    playEl.title = Bot.active ? "Mettre en pause" : "Démarrer";
+    const tip = Bot.active ? "Mettre en pause" : "Démarrer";
+    if (playEl.title !== tip) playEl.title = tip;
   }
   if (killEl) killEl.textContent = String(Bot.kills);
   if (boxEl) boxEl.textContent = String(Bot.boxes);
@@ -4020,8 +4024,9 @@ function botGateKiteTarget(rawX, rawY, threatClose) {
 }
 
 // Spinner auto hors gate (toutes les 100 ms) : multiplicateur auto puis
-// spins sur l'ensemble Alpha + Beta + Gamma (une seule roue). Déploie la
-// gate dès qu'elle est construite.
+// spins sur l'ensemble Alpha + Beta + Gamma (une seule roue). Le placement
+// sur la map est automatique (voir GALAXY_GATES.js) : la 2e GG reste en
+// stock 1/1 tant qu'un portail est déjà posé.
 function botTickGalaxySpin(dt) {
   if (!Bot.ggSpin || Bot.module !== "galaxy" || rules?.mode === "gate") return false;
   Bot.ggSpinT -= dt;
@@ -4071,31 +4076,32 @@ function botTickGalaxySpin(dt) {
     for (const [rocketId, amount] of Object.entries(result.user.rockets || {})) player.rockets[rocketId] = amount;
     updateAmmoUI();
   } catch {}
+  const autoPlaced = Array.isArray(result.rewards?.autoDeployed) ? result.rewards.autoDeployed : [];
   const builtNow = Number(result.state?.built?.[gateId] || 0);
-  const isBuilt = builtNow >= GALAXY_GATE_BUILD_LIMIT;
+  const isBuilt = builtNow >= GALAXY_GATE_BUILD_LIMIT || autoPlaced.length > 0;
   // À 10 passages/s on ne rebuild l'UI et le journal que toutes les ~2 s
-  // (ou dès qu'une gate est construite).
+  // (ou dès qu'une gate est construite / placée).
   const uiDue = isBuilt || Bot.ggUiT <= 0;
   if (uiDue) {
     Bot.ggUiT = 2;
     try { renderGalaxyGateWindow(`${result.performed} spin(s) auto (ensemble)`); } catch {}
     if (!isBuilt) botLog(`GG spinner auto : +${result.performed} spin(s) (ensemble)`);
   }
-  // La pièce peut avoir terminé Beta ou Gamma : on déploie la première
-  // gate construite de l'ensemble (ordre Alpha → Beta → Gamma).
-  const builtGate = ["alpha", "beta", "gamma"].find((id) => Number(result.state?.built?.[id] || 0) >= GALAXY_GATE_BUILD_LIMIT) || null;
-  if (builtGate) {
-    botLog(`GG ${builtGate.toUpperCase()} construite — déploiement…`);
-    try {
-      const dep = deployCurrentUserGalaxyGate(builtGate);
-      if (dep?.ok) {
-        account.user = dep.user;
-        loadAccountUser();
-        renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[builtGate].name} envoyée sur la map (bot).`);
-        botLog(`GG ${builtGate.toUpperCase()} déployée — direction le portail`);
-      }
-    } catch {}
+  // Sécurité legacy : une vieille sauvegarde avec built=1 + non déployée
+  // est posée sur la map (normalement déjà migrée par normalize).
+  for (const id of ["alpha", "beta", "gamma"]) {
+    if (Number(result.state?.built?.[id] || 0) >= GALAXY_GATE_BUILD_LIMIT && result.state?.deployed?.[id] !== true && result.state?.active !== id) {
+      try {
+        const dep = deployCurrentUserGalaxyGate(id);
+        if (dep?.ok) {
+          account.user = dep.user;
+          loadAccountUser();
+          renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[id].name} envoyée sur la map (bot).`);
+        }
+      } catch {}
+    }
   }
+  for (const id of autoPlaced) botLog(`GG ${String(id).toUpperCase()} placée sur la map — direction le portail`);
   return true;
 }
 
@@ -4124,7 +4130,7 @@ function botTickGalaxyEnter(dt) {
   if (!gateId) return false;
   let st = null;
   try { st = (account.user || getCurrentUserFull())?.galaxyGates; } catch { st = null; }
-  // Déploie si construite mais pas encore sur la map.
+  // Sécurité legacy : pose un stock restant non déployé (migration auto normale).
   if (Number(st?.built?.[gateId] || 0) >= GALAXY_GATE_BUILD_LIMIT && st?.deployed?.[gateId] !== true && st?.active !== gateId) {
     try {
       const dep = deployCurrentUserGalaxyGate(gateId);
@@ -5159,12 +5165,20 @@ function updatePetHud() {
 
   if (ui.petPlayBtn) {
     const destroyed = has && !(Number(pet.hp) > 0);
-    const label = destroyed
-      ? '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M11.5 1a3.5 3.5 0 0 0-4.6 4.6L1 11.5V15h3.5l5.9-5.9A3.5 3.5 0 0 0 15 4.5l-2.3 2.3-2.4-.6-.6-2.4L11.5 1z" fill="#eaffff"/></svg>'
-      : pet?.active === true
-        ? '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="3" y="2" width="4" height="12" rx="1" fill="#eaffff"/><rect x="9" y="2" width="4" height="12" rx="1" fill="#eaffff"/></svg>'
-        : '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 2 L13 8 L4 14 Z" fill="#eaffff"/></svg>';
-    if (ui.petPlayBtn.innerHTML !== label) ui.petPlayBtn.innerHTML = label;
+    // ✅ l'icône ne change que d'état (play / pause / clé) : on ne touche au
+    // DOM que sur changement. Avant, la comparaison innerHTML ne matchait
+    // jamais (sérialisation navigateur) donc le SVG était recréé à chaque
+    // frame et le clic tombait sur un nœud détruit entre mousedown/mouseup.
+    const iconKey = !has ? "none" : destroyed ? "wrench" : pet?.active === true ? "pause" : "play";
+    if (iconKey !== lastPetPlaySig) {
+      lastPetPlaySig = iconKey;
+      const label = iconKey === "wrench"
+        ? '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M11.5 1a3.5 3.5 0 0 0-4.6 4.6L1 11.5V15h3.5l5.9-5.9A3.5 3.5 0 0 0 15 4.5l-2.3 2.3-2.4-.6-.6-2.4L11.5 1z" fill="#eaffff"/></svg>'
+        : iconKey === "pause"
+          ? '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="3" y="2" width="4" height="12" rx="1" fill="#eaffff"/><rect x="9" y="2" width="4" height="12" rx="1" fill="#eaffff"/></svg>'
+          : '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 2 L13 8 L4 14 Z" fill="#eaffff"/></svg>';
+      ui.petPlayBtn.innerHTML = label;
+    }
     setHudAttr(ui.petPlayBtn, "title", destroyed
       ? "Réparer le REX — 10 000 crédits"
       : pet?.active === true ? "Désactiver le P.E.T" : "Activer le P.E.T");
@@ -5284,6 +5298,7 @@ function updatePetHud() {
 let lastPetHudStage = 0;
 let lastPetModeSig = "";
 let lastPetNpcSig = "";
+let lastPetPlaySig = "";
 
 let selectedCraftingRecipeId = CRAFTING_RECIPES[0]?.id || null;
 
@@ -5819,7 +5834,11 @@ function renderGalaxyGateWindow(message = "") {
     const actionLabel = ui.ggMultiplierBtn.querySelector(".ggMultiplierAction");
     if (actionLabel) actionLabel.textContent = armed ? "Activée" : "Désactivée";
   }
-  ui.ggBuilt.textContent = `${formatInteger(state.built[gate.id])} / ${GALAXY_GATE_BUILD_LIMIT}`;
+  const isActive = state.active === gate.id;
+  const isDeployed = state.deployed?.[gate.id] === true;
+  const stock = Math.max(0, Math.floor(Number(state.built[gate.id]) || 0));
+  const status = isActive ? "En cours" : isDeployed ? (stock > 0 ? `Sur la map + stock ${stock}/${GALAXY_GATE_BUILD_LIMIT}` : "Sur la map") : (stock > 0 ? `Stock ${stock}/${GALAXY_GATE_BUILD_LIMIT}` : "");
+  ui.ggBuilt.textContent = status ? `${formatInteger(stock)} / ${GALAXY_GATE_BUILD_LIMIT} · ${status}` : `${formatInteger(stock)} / ${GALAXY_GATE_BUILD_LIMIT}`;
   if (ui.ggCompleted) ui.ggCompleted.textContent = formatInteger(state.completed[gate.id]);
   if (ui.ggLives) ui.ggLives.textContent = `${formatInteger(state.lives?.[gate.id] ?? gate.maxLives)} / ${formatInteger(gate.maxLives)}`;
   const activeWave = state.active === gate.id
@@ -5828,14 +5847,11 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggWave.textContent = `${activeWave} / ${gate.maxWaves}`;
   const selectedSpinCount = Math.max(1, Number(ui.ggSpinCount?.value || 1));
   ui.ggCreditCost.textContent = formatInteger(GALAXY_SPIN_CREDIT_COST * selectedSpinCount);
-  const isActive = state.active === gate.id;
-  const isDeployed = state.deployed?.[gate.id] === true;
-  const isFull = state.built[gate.id] >= GALAXY_GATE_BUILD_LIMIT;
   ui.ggSpinBtn.hidden = false;
   ui.ggSpinBtn.disabled = false;
-  ui.ggDeployBtn.hidden = !isFull;
-  ui.ggDeployBtn.disabled = !isFull || isDeployed || state.active === gate.id;
-  ui.ggDeployBtn.textContent = isActive ? "Gate en cours" : isDeployed ? "Portail préparé" : "Préparer le portail";
+  // ✅ plus de bouton "Préparer" : le placement sur la map est automatique.
+  if (ui.ggDeployBtn) ui.ggDeployBtn.remove();
+  ui.ggDeployBtn = null;
   ui.ggTabs.innerHTML = Object.values(GALAXY_GATE_DEFINITIONS).map(item => {
     const parts = state.built[item.id] >= GALAXY_GATE_BUILD_LIMIT ? item.requiredParts : state.parts[item.id];
     return `<button type="button" data-gg-gate="${escapeHtml(item.id)}" class="${item.id === gate.id ? "active" : ""}">${escapeHtml(item.name)}<small>${parts}/${item.requiredParts}</small></button>`;
@@ -5920,19 +5936,9 @@ ui.ggMultiplierBtn?.addEventListener("click", () => {
 });
 
 ui.galaxyGateWindow?.addEventListener("click", event => {
-  const deployButton = event.target.closest("[data-gg-deploy]");
-  if (deployButton) {
-    saveProgressNow();
-    const result = deployCurrentUserGalaxyGate(selectedGalaxyGateId);
-    if (!result.ok) return renderGalaxyGateWindow(result.error);
-    account.user = result.user;
-    renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[selectedGalaxyGateId].name} envoyée sur la map.`);
-    return;
-  }
   const button = event.target.closest("[data-gg-spin]");
   if (!button) return;
   saveProgressNow();
-  const builtBeforeSpin = Number(getCurrentUserFull()?.galaxyGates?.built?.[selectedGalaxyGateId] || 0);
   const result = spinCurrentUserGalaxyGate(selectedGalaxyGateId, Number(ui.ggSpinCount?.value || 1));
   if (!result.ok) {
     renderGalaxyGateWindow(result.error);
@@ -5940,14 +5946,6 @@ ui.galaxyGateWindow?.addEventListener("click", event => {
   }
   account.user = result.user;
   if (GALAXY_GATE_DEFINITIONS[result.state.lastOpenedGate]) selectedGalaxyGateId = result.state.lastOpenedGate;
-  // GG terminee par ce spin et prete a etre placee : modale auto.
-  try {
-    const builtNow = Number(account.user?.galaxyGates?.built?.[selectedGalaxyGateId] || 0);
-    const gateDef = GALAXY_GATE_DEFINITIONS[selectedGalaxyGateId];
-    const deployed = account.user?.galaxyGates?.deployed?.[selectedGalaxyGateId] === true;
-    const active = account.user?.galaxyGates?.active === selectedGalaxyGateId;
-    if (gateDef && builtBeforeSpin < GALAXY_GATE_BUILD_LIMIT && builtNow >= GALAXY_GATE_BUILD_LIMIT && !deployed && !active) showGgBuiltModal(selectedGalaxyGateId);
-  } catch {}
   player.credits = result.user.credits;
   player.ammo.x2 = result.user.ammo.x2;
   player.ammo.x3 = result.user.ammo.x3;
@@ -5967,32 +5965,12 @@ ui.galaxyGateWindow?.addEventListener("click", event => {
     const label = key === "plt2021" ? "PLT-2021" : key === "plt3030" ? "PLT-3030" : key === "ubr100" ? "UBR-100" : key === "hstrm01" ? "HSTRM-01" : id.toUpperCase();
     return `${formatInteger(amount)} roquettes ${label}`;
   }).join(", ");
-  const extras = [reward.credits ? `${formatInteger(reward.credits)} crédits` : "", reward.energy ? `${reward.energy} énergie` : "", reward.built ? `${reward.built} Gate prête` : ""].filter(Boolean).join(", ");
+  const autoPlaced = Array.isArray(reward.autoDeployed) ? reward.autoDeployed.map((id) => `${GALAXY_GATE_DEFINITIONS[id]?.name || id} placée sur la map`) : [];
+  const stockInfo = (reward.built ? [`${reward.built} Gate(s) terminée(s)`] : []).concat(autoPlaced);
+  const extras = [reward.credits ? `${formatInteger(reward.credits)} crédits` : "", reward.energy ? `${reward.energy} énergie` : "", stockInfo.join(", ")].filter(Boolean).join(", ");
   renderGalaxyGateWindow([`${result.performed} spin(s)`, pieces, ammo, rocketGains, extras].filter(Boolean).join(" · "));
   window.dispatchEvent(new CustomEvent("orbit:galaxy-gates"));
 });
-
-function showGgBuiltModal(gateId) {
-  const overlay = document.getElementById("ggBuiltOverlay");
-  const title = document.getElementById("ggBuiltTitle");
-  const button = document.getElementById("ggBuiltDeployBtn");
-  if (!overlay || !title || !button) return;
-  const gate = GALAXY_GATE_DEFINITIONS[gateId];
-  title.textContent = `GG ${gate?.name || gateId} terminée`;
-  button.onclick = () => {
-    overlay.style.display = "none";
-    selectedGalaxyGateId = gateId;
-    renderGalaxyGateWindow();
-    ui.galaxyGateWindow?.querySelector("[data-gg-deploy]")?.click();
-    window.setTimeout(() => {
-      try {
-        const st = getCurrentUserFull()?.galaxyGates;
-        if (st && Number(st.built?.[gateId] || 0) >= GALAXY_GATE_BUILD_LIMIT && st.deployed?.[gateId] !== true && st.active !== gateId) showGgBuiltModal(gateId);
-      } catch {}
-    }, 600);
-  };
-  overlay.style.display = "grid";
-}
 
 renderGalaxyGateWindow();
 
@@ -8458,6 +8436,64 @@ function drawPulseFx(ox, oy) {
     ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
     ctx.restore();
   }
+}
+
+// ============================================================
+// ✅ SLOW EFFECT - sprite officiel sur toute cible ralentie
+// (PIB-100, DCR-250, K-300M) : boucle 30 frames 250x250.
+// ============================================================
+const SLOW_FX_PACK = {
+  path: "ASSETS/SLOW_EFFECT/",
+  frames: 30,
+  firstNumber: 1,
+  ext: ".png",
+  fps: 24,
+  // frames 1-15 = cible en mouvement, 16-30 = cible sur place.
+  moveFrames: 15,
+  // crop commun (union des contenus) pour une taille stable entre les 2 phases.
+  crop: { x: 19, y: 7, w: 210, h: 235 },
+};
+
+let slowFxImgs = [];
+let slowFxReady = false;
+
+function ensureSlowFxLoaded() {
+  if (SLOW_FX_PACK._promise) return SLOW_FX_PACK._promise;
+
+  SLOW_FX_PACK._imgs = new Array(SLOW_FX_PACK.frames);
+
+  SLOW_FX_PACK._promise = (async () => {
+    const jobs = [];
+    for (let i = 0; i < SLOW_FX_PACK.frames; i++) {
+      const src = `${SLOW_FX_PACK.path}${SLOW_FX_PACK.firstNumber + i}${SLOW_FX_PACK.ext}`;
+      jobs.push(
+        loadImage(src, { priority: false })
+          .then((img) => (SLOW_FX_PACK._imgs[i] = img))
+          .catch(() => (SLOW_FX_PACK._imgs[i] = null))
+      );
+    }
+    await Promise.all(jobs);
+    slowFxImgs = SLOW_FX_PACK._imgs;
+    slowFxReady = true;
+  })();
+
+  return SLOW_FX_PACK._promise;
+}
+
+// ============================================================
+// ✅ ICE EFFECT - image officielle sur toute cible gelée
+// (R-IC3, RC-100) : 300x300, contenu 252x226.
+// ============================================================
+const ICE_FX = { src: "ASSETS/SHOOT_EFFECT/ICE_EFFECT.png", crop: { x: 39, y: 43, w: 252, h: 226 } };
+
+let iceFxImg = null;
+
+function ensureIceFxLoaded() {
+  if (ICE_FX._promise) return ICE_FX._promise;
+  ICE_FX._promise = loadImage(ICE_FX.src, { priority: false })
+    .then((img) => (iceFxImg = img))
+    .catch(() => (iceFxImg = null));
+  return ICE_FX._promise;
 }
 
 // ============================================================
@@ -13055,6 +13091,26 @@ function currentCargo() {
 
 function collectableAllowedOnCurrentMap(cfg, mapId = currentMapId()) {
   const cur = String(mapId);
+  const curLow = cur.trim().toLowerCase();
+
+  // Exclusion explicite : aucune box ambiente sur les GG / Low / QZ,
+  // mais les drops NPC (cargo + ressources) restent autorisés car
+  // leurs configs n'ont pas de denyMaps.
+  const deny =
+    cfg.denyMaps ??
+    cfg.blockedMaps ??
+    cfg.disabledMaps ??
+    cfg.excludeMaps ??
+    null;
+  if (deny) {
+    const list = Array.isArray(deny) ? deny : [deny];
+    for (const m of list) {
+      const v = String(m || "").trim().toLowerCase();
+      if (!v) continue;
+      if (v === "*" || v === "all") return false;
+      if (v === curLow || v === cur) return false;
+    }
+  }
 
   const maps =
     cfg.maps ??
@@ -13065,12 +13121,13 @@ function collectableAllowedOnCurrentMap(cfg, mapId = currentMapId()) {
 
   if (!maps) return true;
   if (maps === "*" || maps === "all") return true;
+  if (String(maps).trim() === "*") return true;
 
   if (Array.isArray(maps)) {
-    return maps.map(String).includes(cur);
+    return maps.map((m) => String(m).trim().toLowerCase()).includes(curLow);
   }
 
-  return String(maps) === cur;
+  return String(maps).trim().toLowerCase() === curLow;
 }
 
 function collectableDefsList() {
@@ -15024,7 +15081,9 @@ function runOnKillAction(action, pos = null) {
         player.ammo.x4 = completion.user.ammo.x4;
         updateAmmoUI();
         markProgressDirty();
-        renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[currentGateId].name} terminée`);
+        // ✅ le stock 1/1 éventuel est déjà reposé sur la map par completeActiveGalaxyGate.
+        const autoMsg = completion.autoDeployed ? ` — stock replacé sur la map` : "";
+        renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[currentGateId].name} terminée${autoMsg}`);
         scheduleGalaxyGateCompletion(currentGateId, completion);
       }
       return;
@@ -17550,31 +17609,63 @@ function drawRocketDebuffEffect(e) {  const slowed = (e.rocketSlowT || 0) > 0;
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   if (frozen) {
-    const pulse = 0.7 + Math.sin(now * 5) * 0.2;
-    ctx.strokeStyle = `rgba(150,230,255,${pulse})`;
-    ctx.lineWidth = 4;
-    ctx.shadowColor = "rgba(150,230,255,1)";
-    ctx.shadowBlur = 16;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius + 10, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius + 18, now * 1.5, now * 1.5 + Math.PI * 1.5);
-    ctx.stroke();
+    // ✅ image officielle ICE_EFFECT à la place des anneaux.
+    ensureIceFxLoaded();
+    if (isImgReady(iceFxImg)) {
+      const c = ICE_FX.crop;
+      const dw = Math.max(radius * 6, 64);
+      const dh = dw * (c.h / c.w);
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.drawImage(iceFxImg, c.x, c.y, c.w, c.h, -dw / 2, -dh / 2, dw, dh);
+      ctx.restore();
+    } else {
+      const pulse = 0.7 + Math.sin(now * 5) * 0.2;
+      ctx.strokeStyle = `rgba(150,230,255,${pulse})`;
+      ctx.lineWidth = 4;
+      ctx.shadowColor = "rgba(150,230,255,1)";
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 10, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 18, now * 1.5, now * 1.5 + Math.PI * 1.5);
+      ctx.stroke();
+    }
   }
   if (slowed) {
-    const pulse = 0.75 + Math.sin(now * 7) * 0.15;
-    ctx.strokeStyle = `rgba(70,220,255,${pulse})`;
-    ctx.lineWidth = 3;
-    ctx.shadowColor = "rgba(70,220,255,0.95)";
-    ctx.shadowBlur = 14;
-    for (let i = 0; i < 3; i++) {
-      const direction = i % 2 ? -1 : 1;
-      const start = now * direction + i;
-      ctx.beginPath();
-      ctx.arc(0, 0, radius + 7 + i * 6, start, start + Math.PI * 1.25);
-      ctx.stroke();
+    // ✅ sprite officiel SLOW_EFFECT : frames 1-15 si la cible bouge,
+    // 16-30 si elle est sur place, cropé à la taille du contenu.
+    ensureSlowFxLoaded();
+    if (slowFxReady && slowFxImgs?.length) {
+      const moving = Math.hypot(Number(e.vx) || 0, Number(e.vy) || 0) > 5;
+      const base = moving ? 0 : SLOW_FX_PACK.moveFrames;
+      const idx = base + (Math.floor(now * SLOW_FX_PACK.fps) % SLOW_FX_PACK.moveFrames);
+      const img = slowFxImgs[idx];
+      if (isImgReady(img)) {
+        const c = SLOW_FX_PACK.crop;
+        const dw = Math.max(radius * 6, 64);
+        const dh = dw * (c.h / c.w);
+        // ✅ l'avant du sprite (masse vers le haut) suit l'avant du vaisseau.
+        ctx.save();
+        ctx.rotate((Number(e.angle) || 0) + Math.PI / 2);
+        ctx.drawImage(img, c.x, c.y, c.w, c.h, -dw / 2, -dh / 2, dw, dh);
+        ctx.restore();
+      }
+    } else {
+      const pulse = 0.75 + Math.sin(now * 7) * 0.15;
+      ctx.strokeStyle = `rgba(70,220,255,${pulse})`;
+      ctx.lineWidth = 3;
+      ctx.shadowColor = "rgba(70,220,255,0.95)";
+      ctx.shadowBlur = 14;
+      for (let i = 0; i < 3; i++) {
+        const direction = i % 2 ? -1 : 1;
+        const start = now * direction + i;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius + 7 + i * 6, start, start + Math.PI * 1.25);
+        ctx.stroke();
+      }
     }
   }
   if (disrupted) {
@@ -20397,7 +20488,7 @@ async function prepareGameAssets() {
     jobs.push(...await collectHomeBaseJobs());
     jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensurePulseFxLoaded(),
       ensureRepairOrbitLoaded(), ensureShipDamageLoaded(), ensureInstaShieldLoaded(),
-      ensureShieldShimmerLoaded());
+      ensureShieldShimmerLoaded(), ensureSlowFxLoaded(), ensureIceFxLoaded());
     jobs.push(...preloadCollectables());
     jobs.push(...preloadSafeModuleSprites(rules, WORLD));
     if (GAME_SETTINGS.shipEffect) {
