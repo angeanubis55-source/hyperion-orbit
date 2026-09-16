@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.217",
+    "date": "2026-09-15T23:50:16+02:00",
+    "message": "aptitudes: onglet palette par vaisseau (icones centrees, masque si aucune, refresh auto au changement)"
+  },
+  {
     "version": "0.216",
     "date": "2026-09-15T18:59:58+02:00",
     "message": "quetes: +100 missions, 58 exterminations x1000 (gain x1500), sync globale"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.158",
     "date": "2026-09-11T20:02:02+02:00",
     "message": "Raygun supprime : ni visuel ni degats"
-  },
-  {
-    "version": "0.157",
-    "date": "2026-09-11T18:04:22+02:00",
-    "message": "REX: pseudo + firme, balancement jeu, fenetre nommage achat, renommage 1M"
   }
 ];

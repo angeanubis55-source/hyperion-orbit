@@ -33,6 +33,7 @@ export function init() {
     rules: {
   mode: "zone",
   mapLabel: "1-10",
+  mapName: "Grande anomalie MMO",
   getZoneSpawns,
   getZonePortals, // ✅ ajout
 },

@@ -1015,7 +1015,7 @@ export const NPC_TYPES = {
     shootRate: 0.5,
   },
   npc_Explosif: {
-    name: "☢",
+    name: "-=[ Kamikaze ]=-",
     sprite: { path: "NPC/NPC_SPRITES/EXPLOSIF/", frames: 32, firstNumber: 1, ext: ".png", w: 300, h: 240 },
     playSprite: true,
     passiveNative: false,
@@ -1888,7 +1888,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 18, hp: 150000, shield: 100000, speed: 520, bulletDmg: 600, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Uber_Barracuda: {
     name: "-=[ Uber Barracuda ]=-",
@@ -1897,7 +1897,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 23, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 23, hp: 400000, shield: 250000, speed: 430, bulletDmg: 10000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Uber_Saboteur: {
     name: "-=[ Uber Saboteur ]=-",
@@ -1906,7 +1906,8 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 24, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 24, hp: 450000, shield: 350000, speed: 430, bulletDmg: 7000, bulletSpeed: 4500, shootRange: 550,
+    shootRate: 0.25,
   },
   npc_Uber_Annihilator: {
     name: "-=[ Uber Annihilator ]=-",
@@ -1915,7 +1916,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 51, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 51, hp: 700000, shield: 500000, speed: 350, bulletDmg: 25000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Uber_Battleray: {
     name: "-=[ Uber Battleray ]=-",

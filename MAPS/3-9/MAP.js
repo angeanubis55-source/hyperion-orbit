@@ -33,6 +33,7 @@ export function init() {
     rules: {
   mode: "zone",
   mapLabel: "3-9",
+  mapName: "Anomalie VRU",
   getZoneSpawns,
   getZonePortals, // ✅ ajout
 },

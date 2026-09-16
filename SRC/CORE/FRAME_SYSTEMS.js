@@ -1,7 +1,15 @@
 "use strict";
 
+// Ralenti du joueur (explosion Kamikaze, ...) : même échelle que les NPC
+// (rocketSlowT en secondes, rocketSlowPct en %). 1 = vitesse normale.
+export function playerSlowMult(player) {
+  if (!player || (Number(player.rocketSlowT) || 0) <= 0) return 1;
+  const pct = Math.min(95, Math.max(0, Number(player.rocketSlowPct) || 0));
+  return Math.max(0.05, 1 - pct / 100);
+}
+
 export function updatePlayerVelocity(player, direction, dt, options = {}) {
-  const maxSpeed = Math.max(10, Number(player.baseSpeed || 0));
+  const maxSpeed = Math.max(10, Number(player.baseSpeed || 0)) * playerSlowMult(player);
   if (!player.dead && (direction.x || direction.y)) {
     const length = Math.hypot(direction.x, direction.y) || 1;
     player.vx = direction.x / length * maxSpeed;

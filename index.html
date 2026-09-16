@@ -10,7 +10,7 @@
     // Fenêtre de départ à chaque refresh : pas de bypass session (la classe
     // orbitSessionReady n'est plus posée, l'overlay reste visible avec DÉPART).
     </script>
-  <link rel="stylesheet" href="style.css?v=ui-refresh-15" />
+  <link rel="stylesheet" href="style.css?v=ui-refresh-23" />
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -57,6 +57,9 @@
   </button>
   <button id="btnBotHub" class="gameDockIcon" data-window-id="botWindow" type="button" title="Bot" aria-label="Bot">
     <span><img src="ASSETS/UI/MENU/npc_event.png" data-menu-icon="npc_event" alt="" draggable="false"></span>
+  </button>
+  <button id="btnWikiHub" class="gameDockIcon" data-window-id="wikiWindow" type="button" title="Wiki / Aide" aria-label="Wiki / Aide">
+    <span><img src="ASSETS/UI/MENU/help.png" data-menu-icon="help" alt="" draggable="false"></span>
   </button>
 </div>
   
@@ -216,7 +219,6 @@
               <button class="keyBindRow" data-bind-action="switchConfig" type="button"><span>Changer configuration</span><kbd data-bind-value="switchConfig">C</kbd></button>
               <button class="keyBindRow" data-bind-action="toggleAttack" type="button"><span>Activer / arrêter le tir</span><kbd data-bind-value="toggleAttack">CTRL</kbd></button>
               <button class="keyBindRow" data-bind-action="fireRocket" type="button"><span>Tirer une roquette</span><kbd data-bind-value="fireRocket">ESPACE</kbd></button>
-              <button class="keyBindRow" data-bind-action="respawn" type="button"><span>Réapparaître si mort</span><kbd data-bind-value="respawn">R</kbd></button>
               <button class="keyBindRow" data-bind-action="toggleWindows" type="button"><span>Masquer / restaurer les fenêtres</span><kbd data-bind-value="toggleWindows">H</kbd></button>
             </div>
 
@@ -587,6 +589,89 @@
       </div>
     </div>
 
+    <div id="wikiWindow" class="panel wikiPanel">
+      <div class="wikiToolbar">
+        <label class="wikiSearch"><span>Rechercher</span><input id="wikiSearch" type="search" placeholder="Munition, raffinage, portail, P.E.T…" autocomplete="off" /></label>
+        <span id="wikiCount" class="wikiCount"></span>
+      </div>
+      <div class="wikiLayout">
+        <nav id="wikiTabs" class="wikiTabs" aria-label="Sections du wiki">
+          <button class="wikiTab active" data-wiki-tab="demarrage" type="button">Démarrage</button>
+          <button class="wikiTab" data-wiki-tab="controles" type="button">Contrôles</button>
+          <button class="wikiTab" data-wiki-tab="vaisseaux" type="button">Vaisseaux</button>
+          <button class="wikiTab" data-wiki-tab="equipement" type="button">Équipement</button>
+          <button class="wikiTab" data-wiki-tab="minerais" type="button">Minerais</button>
+          <button class="wikiTab" data-wiki-tab="maps" type="button">Maps &amp; NPC</button>
+          <button class="wikiTab" data-wiki-tab="quetes" type="button">Quêtes</button>
+          <button class="wikiTab" data-wiki-tab="galaxy" type="button">Galaxy Gates</button>
+          <button class="wikiTab" data-wiki-tab="pet" type="button">P.E.T</button>
+          <button class="wikiTab" data-wiki-tab="boosters" type="button">Boosters</button>
+          <button class="wikiTab" data-wiki-tab="compte" type="button">Compte</button>
+          <button class="wikiTab" data-wiki-tab="faq" type="button">FAQ</button>
+        </nav>
+        <div id="wikiPages" class="wikiPages">
+          <section class="wikiPage active" data-wiki-page="demarrage">
+            <details class="wikiArticle" open><summary>Bienvenue sur Hyperion Orbit</summary><p>Explore les secteurs, farm les NPC, vide les bonus-box, fais tes quêtes puis enchaîne les Galaxy Gates. Protège ta firme (MMO / EIC / VRU) : les maps X-1 sont sûres, le reste est hostile.</p><ul><li><b>Boucle conseillée :</b> quêtes de farm → minerais → raffinage → meilleure config → maps supérieures → GG.</li><li><b>Soute :</b> 3000 unités max pour les minerais. Vends au comptoir quand elle est pleine.</li><li><b>Mort :</b> réparation à la base, au portail le plus proche ou sur place (choix à la souris dans la fenêtre de réparation).</li></ul></details>
+            <details class="wikiArticle"><summary>Premier vol en 5 étapes</summary><ol><li>Choisis ton vaisseau et ta firme dans le profil.</li><li>Déplace-toi au clic, verrouille un NPC au clic et tire avec <kbd>CTRL</kbd>.</li><li>Ramasse les bonus-box et le cargo des NPC détruits.</li><li>Accepte les quêtes au terminal (missions tuer / collecter).</li><li>Raffine ton Prometium / Endurium puis charge tes lasers.</li></ol></details>
+            <details class="wikiArticle"><summary>Interface : les fenêtres</summary><p>Toutes les fenêtres se déplacent par leur barre de titre, se réduisent avec <b>−</b> et reviennent via le dock en bas. <kbd>H</kbd> masque / restaure tout. Le bouton <b>Réinitialiser les fenêtres</b> est dans Paramètres.</p><ul><li><b>Stats joueur :</b> crédits, XP, honneur, PDG, niveau.</li><li><b>État du vaisseau :</b> coque, bouclier, soute, vitesse, configuration 1/2.</li><li><b>Mini-carte :</b> position, nom de map, zoom + / −.</li><li><b>LOG :</b> historique filtrable des événements.</li></ul></details>
+          </section>
+          <section class="wikiPage" data-wiki-page="controles">
+            <details class="wikiArticle" open><summary>Déplacement et caméra</summary><ul><li><b>Clic gauche :</b> voler vers le point / verrouiller un NPC ou une box.</li><li><b>Marqueur de déplacement :</b> activable dans Paramètres → Visuels.</li><li><b>Mini-carte :</b> boutons + / − pour agrandir, fenêtre déplaçable.</li></ul></details>
+            <details class="wikiArticle"><summary>Combat</summary><ul><li><kbd>CTRL</kbd> : activer / arrêter le tir laser.</li><li><kbd>ESPACE</kbd> : tirer une roquette.</li><li><kbd>C</kbd> : changer de configuration (attaque / fuite).</li><li><kbd>1</kbd>…<kbd>0</kbd> puis <kbd>F1</kbd>…<kbd>F10</kbd> : barre rapide haute / basse (munitions, IEM, ISH, REP).</li><li><b>IEM :</b> paralyse les assaillants. <b>ISH :</b> bouclier d'urgence. <b>REP :</b> robot réparateur passif. IEM / ISH coûtent 30 000 crédits.</li></ul></details>
+            <details class="wikiArticle"><summary>Navigation et fenêtres</summary><ul><li><kbd>J</kbd> : portail / vague suivante (Galaxy Gates, portails de map).</li><li><kbd>H</kbd> : masquer / restaurer les fenêtres.</li><li><kbd>TAB</kbd> : ouvrir / fermer le menu du dock rapide.</li><li>Touches modifiables dans <b>Paramètres → Commandes</b> (clique une ligne puis appuie la touche).</li></ul></details>
+          </section>
+          <section class="wikiPage" data-wiki-page="vaisseaux">
+            <details class="wikiArticle" open><summary>Hangars et configurations</summary><p>Chaque hangar = un vaisseau + son équipement. Active un hangar dans <b>Hangars</b>. Chaque vaisseau a <b>2 configurations</b> : monte par ex. full lasers en config 1 (attaque) et full vitesse / bouclier en config 2 (fuite / voyage). Bascule avec <kbd>C</kbd> ou le bouton de l'état du vaisseau.</p></details>
+            <details class="wikiArticle"><summary>Coque, bouclier, vitesse</summary><ul><li><b>Coque (HP) :</b> si elle tombe à 0, tu exploses et dois te réparer.</li><li><b>Bouclier :</b> absorbe les dégâts avant la coque, se régénère.</li><li><b>Vitesse :</b> générateurs + minerai Duranium / Promerium chargé.</li><li><b>Soute :</b> 3000 minerais max partagés entre tous les minerais.</li></ul></details>
+            <details class="wikiArticle"><summary>Drones et formations</summary><p>Affiche tes drones dans Paramètres. Les formations modifient le compromis dégâts / défense / vitesse. Change-les selon attaque, exploration, fuite ou voyage.</p></details>
+          </section>
+          <section class="wikiPage" data-wiki-page="equipement">
+            <details class="wikiArticle" open><summary>Canons lasers et munitions</summary><ul><li><b>X1 :</b> illimitée, dégâts de base.</li><li><b>X2 / X3 / X4 / SAB :</b> dégâts croissants, à acheter en boutique.</li><li><b>X6 (RSB-75) :</b> très gros dégâts, rare et chère.</li><li><b>RCB, CBO, JOB, RB, PIB, IDB, VB, EMA, SBL, ABL :</b> munitions spéciales (PvP, NPC, boucliers). Sélection via la barre de munitions ou <kbd>1</kbd>…<kbd>0</kbd>.</li></ul></details>
+            <details class="wikiArticle"><summary>Roquettes et lance-roquettes</summary><p><kbd>ESPACE</kbd> tire la roquette équipée. Les lance-roquettes tirent en salve. Pense à recharger : sans roquettes en soute, le tir est impossible.</p></details>
+            <details class="wikiArticle"><summary>Générateurs et extras</summary><ul><li><b>Générateurs de bouclier :</b> capacité + régénération.</li><li><b>Générateurs de vitesse :</b> vitesse de vol.</li><li><b>Modules / extras :</b> CPU, protections, bonus passifs. Certains se chargent en minerai (voir Raffinage).</li></ul></details>
+            <details class="wikiArticle"><summary>Charger son équipement (Upgrade)</summary><p>Onglet Upgrade du raffinage : charge un minerai pour booster ton stuff. Coût : 100 unités par chargement.</p><ul><li><b>Lasers / roquettes :</b> Prometid +15 %, Promerium +30 %, Seprom +60 %, Osmium +50 %. 1 minerai = 10 tirs.</li><li><b>Vitesse :</b> Duranium +10 %, Promerium +20 %. 1 minerai = 10 min.</li><li><b>Bouclier :</b> Duranium +10 %, Promerium +20 %, Seprom +40 %, Osmium +50 %. 1 minerai = 10 min.</li></ul></details>
+          </section>
+          <section class="wikiPage" data-wiki-page="minerais">
+            <details class="wikiArticle" open><summary>Collecte et soute</summary><p>Les minerais tombent des NPC et des rochers / bonus-box. Soute limitée à <b>3000</b>. Quand elle est pleine, vends au comptoir ou raffine avant de repartir farmer.</p></details>
+            <details class="wikiArticle"><summary>Raffinage : les recettes</summary><ul><li><b>Prometid :</b> 20 Prometium + 10 Endurium → 1.</li><li><b>Duranium :</b> 10 Endurium + 20 Terbium → 1.</li><li><b>Promerium :</b> 10 Prometid + 10 Duranium + 1 Xenomit → 1.</li><li><b>Seprom :</b> 10 Promerium → 1.</li><li><b>Osmium :</b> 100 Seprom → 1.</li><li><b>Xenomit :</b> 100 Prometid + 100 Duranium → 10.</li></ul><p>Le bouton <b>Tout raffiner</b> enchaîne ce qui est possible. L'auto-raffinage le fait à chaque collecte.</p></details>
+            <details class="wikiArticle"><summary>Vente au comptoir</summary><ul><li>Prometium 20, Endurium 30, Terbium 50, Prometid 100, Duranium 150, Promerium 500, Seprom 750, Osmium 15 000 crédits / unité.</li><li><b>Palladium :</b> échange uniquement (x10 = énergie). <b>Xenomit :</b> invendable, garde-le pour le Promerium.</li></ul></details>
+          </section>
+          <section class="wikiPage" data-wiki-page="maps">
+            <details class="wikiArticle" open><summary>Progression des maps</summary><p>Chaque firme a ses maps <b>X-1 → X-8</b> : 1 = MMO, 2 = EIC, 3 = VRU. Difficulté croissante. Les portails relient les maps voisines et les maps Upper / Lower. Les maps spéciales (Alpha, Beta, Gamma, Low, QZ, Maudite, 4-x, 5-2) sont des zones d'événement ou de gates.</p><ul><li><b>X-1 :</b> zone débutant, NPC faibles (Streuner…).</li><li><b>X-2 → X-4 :</b> farm intermédiaire, premières bonnes récompenses.</li><li><b>X-5 → X-8 :</b> gros NPC, PvP, bases ennemies.</li></ul></details>
+            <details class="wikiArticle"><summary>NPC : qui farmer où</summary><p>Les Streuner dominent les X-1, puis viennent Lordakia, Mordon, Saimon, Devolarium, Sibelon, Lordakium, Kristallin, Kristallon et boss (Cubikon, boss maps). Règle simple : si tu tues lentement ou perds trop de coque, redescends d'une map et améliore lasers / bouclier / minerai chargé.</p></details>
+            <details class="wikiArticle"><summary>Portails et accès</summary><p>Vole dans un portail puis valide avec <kbd>J</kbd>. Certaines maps exigent un niveau minimum. En cas de mort, tu reviens à ta base ou au portail le plus proche selon ton choix de réparation.</p></details>
+          </section>
+          <section class="wikiPage" data-wiki-page="quetes">
+            <details class="wikiArticle" open><summary>Journal des missions</summary><p>Fenêtre <b>Missions</b> : intro, onglets par type, liste des objectifs (tuer X NPC, collecter, visiter). Les récompenses donnent crédits, XP, honneur et points de grade.</p></details>
+            <details class="wikiArticle"><summary>Terminal de quêtes</summary><p>Au terminal, accepte les quêtes de farm adaptées à ta map, rends celles terminées. Limite de quêtes actives : ne garde que celles que tu peux finir vite pour enchaîner les récompenses.</p></details>
+          </section>
+          <section class="wikiPage" data-wiki-page="galaxy">
+            <details class="wikiArticle" open><summary>Construire sa gate</summary><p>Fenêtre <b>Galaxy Gates</b> : choisis Alpha / Beta / Gamma, lance des <b>spins</b> (énergie puis crédits, 100 000 crédits le spin de base). Chaque spin pose des pièces ; à 100 % la gate est construite. Le <b>multiplicateur</b> accélère la construction quand il est disponible.</p></details>
+            <details class="wikiArticle"><summary>Enchaîner les vagues</summary><p>Entre avec <kbd>J</kbd> quand le portail est prêt. Vies limitées, vagues de NPC de plus en plus durs, boss final (ex. Cubikon). L'historique des spins et les balances crédits / énergie sont dans le panneau latéral.</p></details>
+          </section>
+          <section class="wikiPage" data-wiki-page="pet">
+            <details class="wikiArticle" open><summary>Acheter et activer ton P.E.T</summary><p>Achète ton P.E.T en boutique (onglet P.E.T, 10 M crédits), puis active-le avec <b>▶</b> dans la fenêtre P.E.T. Renomme-le depuis Compte → Pseudo du REX (1 M crédits).</p></details>
+            <details class="wikiArticle"><summary>Modes, carburant, niveau</summary><ul><li><b>Modes :</b> passif, garde, agressif… choisis selon farm ou voyage.</li><li><b>Carburant :</b> sans carburant, le P.E.T reste au hangar.</li><li><b>Niveau :</b> il gagne de l'XP à tes côtés, débloque PV / dégâts / bonus de bouclier.</li><li><b>Gears et protocoles :</b> équipements passifs à acheter en boutique (collecte, combat, réparation).</li></ul></details>
+          </section>
+          <section class="wikiPage" data-wiki-page="boosters">
+            <details class="wikiArticle" open><summary>À quoi servent les boosters</summary><p>Bonus temporaires : dégâts, bouclier, PV, XP, honneur, réparation, ressources, régénération, box, quêtes, XP du P.E.T. Active-les avant une grosse session de farm ou une gate.</p></details>
+            <details class="wikiArticle"><summary>Assemblage</summary><p>L'atelier transforme les drops d'assemblage (Scrap, Mucosum, Plasmide, Prismatium, Aurus, Bifenon, Tetrathrin, Kyhalon, Rinusk…) en équipements. Ces ressources ne passent pas par la soute des 3000.</p></details>
+          </section>
+          <section class="wikiPage" data-wiki-page="compte">
+            <details class="wikiArticle" open><summary>Profil, inventaire, patch-notes</summary><p>Onglet <b>Général</b> : actualités. <b>Inventaire</b> : tout ton compte avec recherche. <b>Patch-notes</b> : nouveautés des plus récentes aux plus anciennes.</p></details>
+            <details class="wikiArticle"><summary>Firmes et grades</summary><p>Firmes : <b>MMO / EIC / VRU</b>. Changer de firme coûte 1 Md de crédits + 50 % de l'honneur. Les <b>points de grade</b> viennent de l'XP et de l'honneur (XP ÷ 100 000 + honneur ÷ 100). L'onglet NPC &amp; Grades montre ton grade actuel, précédent / suivant et tes destructions par NPC.</p></details>
+            <details class="wikiArticle"><summary>Sécurité du compte</summary><p>Pseudo, email, mot de passe et renommage REX se gèrent dans <b>Compte</b>. Déconnexion / redémarrage via l'icône Session du dock.</p></details>
+          </section>
+          <section class="wikiPage" data-wiki-page="faq">
+            <details class="wikiArticle" open><summary>Je n'inflige aucun dégât</summary><p>Vérifie : cible verrouillée ? Laser chargé et munition sélectionnée ? Portée ? Tir activé (<kbd>CTRL</kbd>) ? Minerai chargé sur les mauvais slots ? Change de munition (X2+) et rapproche-toi.</p></details>
+            <details class="wikiArticle"><summary>Je meurs en boucle</summary><p>Redescends d'une map, passe en config fuite, charge Duranium / Promerium sur bouclier + vitesse, répare à la base, reviens avec full bouclier. Évite les packs et les maps PvP sans escorte.</p></details>
+            <details class="wikiArticle"><summary>Soute pleine / raffinage bloqué</summary><p>Vends le surplus au comptoir, raffine Prometid / Duranium / Promerium, puis recharge. L'Osmium demande 100 Seprom : ne le vise qu'avec un gros stock.</p></details>
+            <details class="wikiArticle"><summary>Fenêtre perdue / jeu flou / son trop fort</summary><p>Paramètres → <b>Réinitialiser les fenêtres</b>. Sons : volume général + volumes par effet dans l'onglet Son. <kbd>H</kbd> si tout a disparu (fenêtres masquées).</p></details>
+          </section>
+        </div>
+      </div>
+    </div>
+
     <div id="gameLogWindow" class="panel gameLogPanel">
       <div class="gameLogToolbar">
         <label class="gameLogSearch"><span>Rechercher</span><input id="gameLogSearch" type="search" placeholder="NPC, crédits, mission…" autocomplete="off" /></label>
@@ -611,23 +696,37 @@
 
     <!-- ✅ Respawn overlay (ZONE ONLY) -->
 <div id="respawnOverlay" class="overlay" style="display:none;">
-  <div class="modal" style="max-width: 980px;">
+  <div class="modal respawnModal" style="max-width: 980px;">
+    <div class="respawnHeader">
+      <img class="respawnLogo" src="ASSETS/UI/LOGO.png" alt="Hyperion Orbit" />
+      <div class="respawnHeaderTxt">
+        <h2>Vaisseau détruit</h2>
+        <p>Choisis ton lieu de réparation</p>
+      </div>
+    </div>
     <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap: 8px;">
       <div class="shopItem" style="padding:14px; cursor:pointer;" id="respawnBaseBtn">
         <h4>Réparée à la base</h4>
         <button class="primaryBtn" style="width:100%;">Aller base</button>
+        <small class="respawnPrice free">Gratuit</small>
+        <small class="respawnCd" id="respawnBaseCd"></small>
       </div>
 
       <div class="shopItem" style="padding:14px; cursor:pointer;" id="respawnPortalBtn">
         <h4>Réparée au portail</h4>
         <button class="primaryBtn" style="width:100%;">Aller portail</button>
+        <small class="respawnPrice" id="respawnPortalPrice">50 000 crédits</small>
+        <small class="respawnCd" id="respawnPortalCd"></small>
       </div>
 
       <div class="shopItem" style="padding:14px; cursor:pointer;" id="respawnHereBtn">
         <h4>Réparer sur place</h4>
         <button class="primaryBtn" style="width:100%;">Réparer ici</button>
+        <small class="respawnPrice" id="respawnHerePrice">75 000 crédits</small>
+        <small class="respawnCd" id="respawnHereCd"></small>
       </div>
     </div>
+    <div id="respawnHint" class="respawnHint"></div>
   </div>
 </div>
 
@@ -717,13 +816,13 @@
 
   <div class="ammoBtn skillBtn compactSkillBtn" data-skill="pulse" id="btnPulse" title="I.E.M">
     <strong>IEM</strong>
-    <small id="pulsePct">PRÊT</small>
+    <small id="pulsePct">PRET</small>
     <small id="pulsePrice" class="skillPriceMini">30k</small>
   </div>
 
   <div class="ammoBtn skillBtn compactSkillBtn" data-skill="ish" id="btnIsh" title="I.S.H">
     <strong>ISH</strong>
-    <small id="ishPct">PRÊT</small>
+    <small id="ishPct">PRET</small>
     <small id="ishPrice" class="skillPriceMini">30k</small>
   </div>
 

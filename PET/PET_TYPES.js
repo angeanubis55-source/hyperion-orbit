@@ -22,8 +22,33 @@ export const PET_MAX_LEVEL = 20;
 export const PET_XP_POST20 = 25000000;
 export const PET_XP_POST20_GROWTH = 1.15;
 export const PET_XP_SHARE = 0.05;
-// Carburant : 50 000 / 50 000 fixe pour le moment (fuel infini).
+// Carburant : réservoir 50 000, consommé en jeu (plus infini).
 export const PET_FUEL_MAX = 50000;
+// Tick carburant : 1 unité toutes les 2 s au repos, +1 par gear actif.
+// One-shot (kamikaze / sacrifice) : 3 unités d'un coup.
+export const PET_FUEL_TICK_SEC = 2;
+export const PET_FUEL_BASE_TICK = 1;
+export const PET_FUEL_GEAR_TICK = 1;
+export const PET_FUEL_ONESHOT = 3;
+// Essence P.E.T (boutique, section PET) : 100 crédits / unité.
+export const PET_FUEL_PRICE = 100;
+export const PET_FUEL_ICON = "/PET/pet-fuel_100x100.png";
+// Coque+ (boutique, section PET) : 10 achats max, +10 000 HP définitifs
+// chacun, prix exponentiel (×2) dès 50 000 crédits.
+export const PET_HULL_MAX_BUYS = 10;
+export const PET_HULL_HP_PER_BUY = 10000;
+export const PET_HULL_BASE_PRICE = 50000;
+export const PET_HULL_PRICE_GROWTH = 2;
+export const PET_HULL_ICON = "/PET/upgrade-g-hp1_100x100.png";
+export function getPetHullPrice(ownedCount) {
+  const n = Math.max(0, Math.floor(Number(ownedCount) || 0));
+  return Math.floor(PET_HULL_BASE_PRICE * Math.pow(PET_HULL_PRICE_GROWTH, n));
+}
+export function getPetHullBonusHp(pet) {
+  const n = Math.max(0, Math.floor(Number(pet?.hullUpgrades) || 0));
+  const legacy = Math.max(0, Math.floor(Number(pet?.bonusHp) || 0));
+  return n * PET_HULL_HP_PER_BUY + legacy;
+}
 // Modes officiels : passif (soutien) / combat (attaque).
 export const PET_MODES = Object.freeze({ passive: "Passif", combat: "Mode combat" });
 export function normalizePetMode(mode) {

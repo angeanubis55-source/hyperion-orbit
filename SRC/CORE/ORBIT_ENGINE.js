@@ -55,6 +55,7 @@ import {
   setCurrentUserDroneFormation,
   getPetFit,
   getDroneFit,
+  buyItem,
   setPetActive,
   setPetActiveGear,
   setPetMode,
@@ -76,9 +77,9 @@ import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
 import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
 import { GAME_VERSION } from "../DATA/VERSION.js";
 import { getShipPackById as getShipPackByIdData, getShipDesignBaseId } from "../../SHIP/SHIP_PACKS.js";
-import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath } from "../../DRONE/DRONE_TYPES.js";
+import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, formationDockIcon, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath, isClassicFormation } from "../../DRONE/DRONE_TYPES.js";
 import { DRONE_FORMATION_POSITIONS } from "../../DRONE/DRONE_FORMATIONS.js";
-import { PET_XP_SHARE, PET_FUEL_MAX, getPetDamageBonus, getPetLevel, getPetLevelXp, getPetMaxHp, getPetNextLevelXp, getPetShieldBonus, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
+import { PET_XP_SHARE, PET_FUEL_MAX, PET_FUEL_TICK_SEC, PET_FUEL_BASE_TICK, PET_FUEL_GEAR_TICK, PET_FUEL_ONESHOT, getPetDamageBonus, getPetHullBonusHp, getPetLevel, getPetLevelXp, getPetMaxHp, getPetNextLevelXp, getPetShieldBonus, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
 import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./COLLISION.js";
 import { createKeyboardState, createPointerState } from "./INPUT.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "../../COMBAT/COMBAT_RULES.js";
@@ -125,10 +126,11 @@ import {
 } from "../../UI/UI_CANVAS_HUD.js";
 import { renderMinimap } from "../../UI/UI_MINIMAP.js";
 import { drawWallLayer } from "./WORLD_LAYER_RENDERER.js";
-import { advancePlayerToTarget, attractPickups, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./FRAME_SYSTEMS.js";
+import { advancePlayerToTarget, attractPickups, playerSlowMult, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./FRAME_SYSTEMS.js";
 import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor } from "./PROGRESSION.js";
 import { formatInteger } from "./NUMBER_FORMAT.js";
 import { escapeHtml } from "../../UI/UI_DOM.js";
+import { wireWikiWindow } from "../../UI/UI_WIKI.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
 import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
 import { checkMapAccess } from "./MAP_ACCESS.js";
@@ -152,7 +154,7 @@ import { getResourceName, getResourceIcon, isOreResource, cargoAdd, cargoUsed, C
 import { PALLADIUM_PER_GALAXY_ENERGY, palladiumExchangeForEnergy } from "./GALAXY_GATES.js";
 import { getNpcCargoOres } from "../../NPC/NPC_CARGO.js";
 import { rollNpcAssemblyBox, rollNpcAssemblyDirect } from "../../NPC/NPC_ASSEMBLY.js";
-import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
+import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketDockIcon, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { SFX_SOUND_NAMES } from "./SFX.js";
 import { createWorldClock } from "../SIM/WORLD_CLOCK.js";
 import {
@@ -301,16 +303,21 @@ function applyRadiation(dt) {
   radiationActive = radiationSystem.state.active;
   if (radiationActive) {
     showToastFixed("Vous êtes en zone de radiations", { pulse: true });
-    // ✅ on attend 5 s avant de jouer le son de la zone de radiation
+    // ✅ on attend la fin de la grâce avant de jouer le son de la zone de radiation
+    // (reste de grâce si on revient d'un refresh, pas un nouveau 5 s).
     if (radiationSoundDelay <= 0 && !SFX.loops["radiationLoop"]) {
-      radiationSoundDelay = 5;
+      const warning = Number(radiationSystem?.config?.warningDuration) || 5;
+      radiationSoundDelay = Math.max(0, warning - (Number(radiationSystem.state.exposure) || 0));
+      if (radiationSoundDelay <= 0) SFX.loop("radiationLoop", { fadeIn: 0.3 });
     }
+    persistRadiationExposure();
   } else {
     if (toast?.fixed && toast.text === "Vous êtes en zone de radiations") {
       clearToastFixed();
     }
     radiationSoundDelay = 0;
     SFX.stopLoop("radiationLoop", { fadeOut: 0.7 });
+    clearPersistedRadiationExposure();
   }
   if (radiationSoundDelay > 0) {
     radiationSoundDelay -= dt;
@@ -333,6 +340,62 @@ function applyRadiation(dt) {
     player.hp = 0;
     die();
   }
+}
+
+// ✅ Anti-abus refresh en radiation : l'exposition (temps déjà écoulé) survit
+// au rechargement via sessionStorage. Sans ça, chaque refresh relançait les
+// 5 s de grâce → boucle refresh = immortalité en radiation.
+const RADIATION_EXPOSURE_KEY = "orbit_radiation_exposure";
+const RADIATION_EXPOSURE_MAX_AGE_MS = 10 * 60 * 1000;
+let lastRadiationPersistT = 0;
+
+function persistRadiationExposure() {
+  try {
+    const now = Date.now();
+    if (now - lastRadiationPersistT < 500) return;
+    lastRadiationPersistT = now;
+    sessionStorage.setItem(RADIATION_EXPOSURE_KEY, JSON.stringify({
+      map: window.__CURRENT_MAP_ID__ || "1-1",
+      exposure: Number(radiationSystem.state.exposure) || 0,
+      tick: Number(radiationSystem.state.tickAccumulator) || 0,
+      ts: now,
+    }));
+  } catch {}
+}
+
+function clearPersistedRadiationExposure() {
+  lastRadiationPersistT = 0;
+  try { sessionStorage.removeItem(RADIATION_EXPOSURE_KEY); } catch {}
+}
+
+// ✅ Au spawn : si on réapparaît dehors sur la même carte avec une exposition
+// en cours, on reprend le temps déjà écoulé (le temps de chargement compte
+// aussi, via ts). Si on spawn dedans ou sur une autre carte : reset.
+function restorePersistedRadiationExposure() {
+  let rec = null;
+  try {
+    const raw = sessionStorage.getItem(RADIATION_EXPOSURE_KEY);
+    if (raw) rec = JSON.parse(raw);
+  } catch { rec = null; }
+  if (!rec) return;
+  const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
+  if (String(rec.map || "") !== String(currentMap) || player.dead || !playerIsOutsideWorld()) {
+    clearPersistedRadiationExposure();
+    return;
+  }
+  const ageMs = Date.now() - (Number(rec.ts) || 0);
+  if (!(ageMs >= 0) || ageMs > RADIATION_EXPOSURE_MAX_AGE_MS) {
+    clearPersistedRadiationExposure();
+    return;
+  }
+  const resumed = Math.max(0, (Number(rec.exposure) || 0) + ageMs / 1000);
+  radiationSystem.state.exposure = resumed;
+  radiationSystem.state.tickAccumulator = Math.max(0, Number(rec.tick) || 0);
+  radiationSystem.state.active = true;
+  const warning = Number(radiationSystem?.config?.warningDuration) || 5;
+  if (resumed >= warning) radiationSystem.state.wasDamaging = true;
+  lastRadiationPersistT = 0;
+  persistRadiationExposure();
 }
 
 function drawRadiationWarning() {
@@ -468,6 +531,129 @@ function isBaseOnlyRespawnMap() {
   return rules?.mode === "gate" || rules?.baseRespawnOnly === true;
 }
 
+// ✅ Tarifs de réparation : base gratuite, portail 50k, sur place 75k.
+// CD anti-spam : démarrent dès qu'on utilise l'option payante une fois.
+const RESPAWN_PORTAL_COST = 50000;
+const RESPAWN_HERE_COST = 75000;
+const RESPAWN_PORTAL_CD_SEC = 60;
+const RESPAWN_HERE_CD_SEC = 120;
+const RESPAWN_CD_STORE_KEY = "hyperion_respawn_cd_v1";
+
+function getRespawnCdStore() {
+  try {
+    const raw = localStorage.getItem(RESPAWN_CD_STORE_KEY);
+    if (!raw) return { portalUntil: 0, hereUntil: 0 };
+    const rec = JSON.parse(raw);
+    return {
+      portalUntil: Math.max(0, Number(rec?.portalUntil) || 0),
+      hereUntil: Math.max(0, Number(rec?.hereUntil) || 0),
+    };
+  } catch {
+    return { portalUntil: 0, hereUntil: 0 };
+  }
+}
+
+function setRespawnCd(which, untilMs) {
+  try {
+    const store = getRespawnCdStore();
+    if (which === "portal") store.portalUntil = Math.max(0, Number(untilMs) || 0);
+    if (which === "here") store.hereUntil = Math.max(0, Number(untilMs) || 0);
+    localStorage.setItem(RESPAWN_CD_STORE_KEY, JSON.stringify(store));
+  } catch {}
+}
+
+function getRespawnCdLeft(which) {
+  const store = getRespawnCdStore();
+  const until = which === "portal" ? store.portalUntil : store.hereUntil;
+  return Math.max(0, Math.ceil((until - Date.now()) / 1000));
+}
+
+function formatCdLeft(sec) {
+  const s = Math.max(0, Math.ceil(Number(sec) || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return m > 0 ? `${m}:${String(r).padStart(2, "0")}` : `${r}s`;
+}
+
+let respawnShopTickId = 0;
+function stopRespawnShopTick() {
+  if (respawnShopTickId) {
+    clearInterval(respawnShopTickId);
+    respawnShopTickId = 0;
+  }
+}
+
+// ✅ Met à jour prix / CD / états des boutons de réparation.
+function refreshRespawnShop() {
+  if (!ui.respawnOverlay || ui.respawnOverlay.style.display === "none") return;
+  if (isBaseOnlyRespawnMap()) return;
+  const credits = Math.max(0, Math.floor(Number(player.credits) || 0));
+  const portalCd = getRespawnCdLeft("portal");
+  const hereCd = getRespawnCdLeft("here");
+
+  const portalPrice = document.getElementById("respawnPortalPrice");
+  if (portalPrice) portalPrice.textContent = `${formatInteger(RESPAWN_PORTAL_COST)} crédits`;
+  const herePrice = document.getElementById("respawnHerePrice");
+  if (herePrice) herePrice.textContent = `${formatInteger(RESPAWN_HERE_COST)} crédits`;
+
+  const portalCdEl = document.getElementById("respawnPortalCd");
+  if (portalCdEl) portalCdEl.textContent = portalCd > 0 ? `Disponible dans ${formatCdLeft(portalCd)}` : "";
+  const hereCdEl = document.getElementById("respawnHereCd");
+  if (hereCdEl) hereCdEl.textContent = hereCd > 0 ? `Disponible dans ${formatCdLeft(hereCd)}` : "";
+
+  const portalBtn = ui.respawnPortalBtn?.querySelector("button") || ui.respawnPortalBtn;
+  const hereBtn = ui.respawnHereBtn?.querySelector("button") || ui.respawnHereBtn;
+  const portalBlocked = portalCd > 0 || credits < RESPAWN_PORTAL_COST;
+  const hereBlocked = hereCd > 0 || credits < RESPAWN_HERE_COST;
+  if (portalBtn && portalBtn.tagName === "BUTTON") {
+    portalBtn.disabled = portalBlocked;
+    portalBtn.textContent = portalCd > 0 ? `Aller portail (${formatCdLeft(portalCd)})` : "Aller portail";
+  }
+  if (hereBtn && hereBtn.tagName === "BUTTON") {
+    hereBtn.disabled = hereBlocked;
+    hereBtn.textContent = hereCd > 0 ? `Réparer ici (${formatCdLeft(hereCd)})` : "Réparer ici";
+  }
+  ui.respawnPortalBtn?.classList.toggle("respawnDisabled", portalBlocked);
+  ui.respawnHereBtn?.classList.toggle("respawnDisabled", hereBlocked);
+
+  const hint = ui.respawnOverlay.querySelector("#respawnHint");
+  if (hint && !isBaseOnlyRespawnMap()) {
+    const missing = [];
+    if (credits < RESPAWN_PORTAL_COST) missing.push("portail");
+    if (credits < RESPAWN_HERE_COST) missing.push("sur place");
+    hint.innerHTML = missing.length
+      ? `Choisis ta réparation ci-dessus · Crédits insuffisants pour : <b>${missing.join(" · ")}</b> (${formatInteger(credits)} crédits).`
+      : "Choisis ta réparation ci-dessus.";
+  }
+}
+
+function startRespawnShopTick() {
+  stopRespawnShopTick();
+  refreshRespawnShop();
+  respawnShopTickId = setInterval(() => {
+    if (!ui.respawnOverlay || ui.respawnOverlay.style.display === "none") {
+      stopRespawnShopTick();
+      return;
+    }
+    refreshRespawnShop();
+  }, 500);
+}
+
+// ✅ Débite les crédits d'une réparation payante. Retourne false si refusé.
+function chargeRespawnCost(cost, label) {
+  const owned = Math.max(0, Math.floor(Number(player.credits) || 0));
+  if (owned < cost) {
+    showToast(`Pas assez de crédits (${label} : ${formatInteger(cost)})`, 1.6);
+    refreshRespawnShop();
+    return false;
+  }
+  player.credits = owned - cost;
+  if (account.user) account.user.credits = player.credits;
+  markProgressDirty();
+  saveProgressNow();
+  return true;
+}
+
 function showRespawnOverlay(show, { gateOnly = null } = {}) {
   if (!ui.respawnOverlay) return;
   if (show) {
@@ -491,8 +677,8 @@ function showRespawnOverlay(show, { gateOnly = null } = {}) {
     if (grid) grid.style.gridTemplateColumns = "1fr";
     const hint = ui.respawnOverlay.querySelector("#respawnHint");
     if (hint) hint.innerHTML = rules?.mode === "gate"
-      ? "En Galaxy Gate, seule la <b>réparation à la base</b> est possible (touche <b>R</b>)."
-      : "Sur cette carte, seule la <b>réparation à la base</b> est possible (touche <b>R</b>).";
+      ? "En Galaxy Gate, seule la <b>réparation à la base</b> est possible."
+      : "Sur cette carte, seule la <b>réparation à la base</b> est possible.";
   } else if (show) {
     if (ui.respawnPortalBtn) ui.respawnPortalBtn.style.display = "";
     if (ui.respawnHereBtn) ui.respawnHereBtn.style.display = "";
@@ -500,10 +686,12 @@ function showRespawnOverlay(show, { gateOnly = null } = {}) {
     const grid = ui.respawnOverlay.querySelector(".grid");
     if (grid) grid.style.gridTemplateColumns = "repeat(3, 1fr)";
     const hint = ui.respawnOverlay.querySelector("#respawnHint");
-    if (hint) hint.innerHTML = "Astuce : touche <b>R</b> = Réparée à la base (en zone)";
+    if (hint) hint.innerHTML = "Choisis ta réparation ci-dessus.";
   }
   ui.respawnOverlay.style.display = show ? "grid" : "none";
+  if (show) startRespawnShopTick();
   if (!show) {
+    stopRespawnShopTick();
     const veil = document.getElementById("deathVeil");
     if (veil) {
       veil.classList.remove("active");
@@ -526,7 +714,7 @@ function updateShipMoveSound() {
   }
 }
 
-// ✅ verrou anti double réapparition (double touche R, R + clic) :
+// ✅ verrou anti double réapparition (double-clic) :
 // armé dans startRespawn, lu dans startDeathSequence et respawn().
 let respawnRunning = false;
 
@@ -542,7 +730,7 @@ function startDeathSequence() {
     veil.classList.add("active");
   }
   setTimeout(() => {
-    // ✅ si le joueur a déjà lancé sa réapparition (touche R rapide) ou n'est
+    // ✅ si le joueur a déjà lancé sa réapparition (double-clic rapide) ou n'est
     // plus mort, on ne réaffiche pas la fenêtre de réparation par-dessus.
     if (!player.dead || respawnRunning) return;
     showRespawnOverlay(true);
@@ -771,6 +959,121 @@ let refreshActiveActionPalette = null;
 // au moment de l'événement, donc prev/next y sont toujours égaux.
 let lastAbilityShipId = null;
 
+// ============================================================
+// Camouflage ultime (Police / admin).
+// 30 s d'effet, 240 s de recharge. Invisible pour les NPC et la
+// mini-carte, rendu à 50 %, cassé par la moindre attaque.
+// ============================================================
+const POLICE_CLOAK_DURATION = 30;
+const POLICE_CLOAK_COOLDOWN = 240;
+// Aptitudes "camouflage" branchées sur le même effet (Police + 2 Spearhead).
+const CLOAK_ABILITY_IDS = new Set([
+  "ability_admin-ultimate-cloaking",
+  "ability_spearhead_ultimate-cloak",
+  "ability_spearhead-plus_ultimate-cloak",
+]);
+function isCloakAbility(abilityId) {
+  return CLOAK_ABILITY_IDS.has(String(abilityId || "").toLowerCase());
+}
+// Recharges persistantes (survivent au refresh) : échéances absolues en
+// localStorage, même convention que les gears P.E.T (timestamps).
+const PERSIST_CDS_KEY = "orbit_cooldowns_v1";
+function readPersistedCds() {
+  try { return JSON.parse(localStorage.getItem(PERSIST_CDS_KEY) || "{}") || {}; }
+  catch { return {}; }
+}
+function persistCdUntil(name, seconds) {
+  try {
+    const all = readPersistedCds();
+    if (Number(seconds) > 0) all[name] = Date.now() + Number(seconds) * 1000;
+    else delete all[name];
+    localStorage.setItem(PERSIST_CDS_KEY, JSON.stringify(all));
+  } catch {}
+}
+function persistedCdLeft(name) {
+  try {
+    return Math.max(0, (Number(readPersistedCds()[name] || 0) - Date.now()) / 1000);
+  } catch { return 0; }
+}
+// La recharge ne démarre qu'une fois l'aptitude finie ou coupée.
+// Visuellement, le voile reste plein pendant l'effet puis descend.
+function startPoliceCloakCooldown() {
+  player.cloakCd = POLICE_CLOAK_COOLDOWN;
+  persistCdUntil("cloakFx", 0);
+  persistCdUntil("cloak", POLICE_CLOAK_COOLDOWN);
+}
+function restorePersistedCds() {
+  // Camouflage coupé par un refresh : l'effet est perdu, la recharge démarre.
+  if (persistedCdLeft("cloakFx") > 0) {
+    player.cloakT = 0;
+    startPoliceCloakCooldown();
+  } else {
+    // Plafonné à la recharge : pendant l'effet le voile reste plein (figé).
+    player.cloakCd = Math.min(POLICE_CLOAK_COOLDOWN, Math.max(Number(player.cloakCd || 0), persistedCdLeft("cloak")));
+  }
+  pulseCd = Math.max(Number(pulseCd || 0), persistedCdLeft("pulse"));
+  ishCd = Math.max(Number(ishCd || 0), persistedCdLeft("ish"));
+}
+// Recharge d'une aptitude pour le voile de CD des slots (même système que
+// roquettes/formations : classe cdVeil + variable --cd). Les aptitudes non
+// branchées renvoient 0 (aucun voile).
+function getAbilityCooldown(abilityId) {
+  if (isCloakAbility(abilityId)) {
+    // Pendant l'effet : voile plein (figé). Après : la recharge descend.
+    if (isPlayerCloaked()) {
+      const total = POLICE_CLOAK_DURATION + POLICE_CLOAK_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.cloakCd || 0), max: POLICE_CLOAK_COOLDOWN };
+  }
+  return { left: 0, max: 0 };
+}
+// Texte du compteur d'aptitude : "45s" sous 60 s, "4:00" au-delà.
+function formatAbilityCd(left) {
+  const s = Math.max(0, Math.ceil(Number(left) || 0));
+  if (s >= 60) return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return `${s}s`;
+}
+function isPlayerCloaked() {
+  if (typeof player === "undefined" || !player || player.dead) return false;
+  return (player.cloakT || 0) > 0;
+}
+// Toute attaque réelle casse le camouflage (laser, roquette, salve) :
+// l'aptitude est coupée donc la recharge démarre.
+function breakPoliceCloak() {
+  if ((player.cloakT || 0) <= 0) return;
+  player.cloakT = 0;
+  startPoliceCloakCooldown();
+  showNotification("Camouflage ultime désactivé (attaque)", 2, "info");
+}
+function activatePoliceCloak() {
+  if (player.dead || !started) return;
+  const cd = Number(player.cloakCd || 0);
+  if (cd > 0) {
+    showNotification(`Camouflage ultime : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if (isPlayerCloaked()) return;
+  player.cloakT = POLICE_CLOAK_DURATION;
+  // Recharge posée dès l'activation mais figée : le voile reste plein
+  // pendant l'effet, il ne descend qu'à la fin ou à la coupure.
+  player.cloakCd = POLICE_CLOAK_DURATION + POLICE_CLOAK_COOLDOWN;
+  persistCdUntil("cloakFx", POLICE_CLOAK_DURATION);
+  persistCdUntil("cloak", POLICE_CLOAK_DURATION + POLICE_CLOAK_COOLDOWN);
+  // Les NPC perdent la cible : on efface l'aggro existante.
+  try {
+    for (const e of enemies) {
+      if (!e || e.hp <= 0) continue;
+      e._aggro = false;
+      e._aggroT = 0;
+      e._attackedPlayerRecently = false;
+      if (e._combatTargetId === "player") e._combatTargetId = null;
+      if (e.aiZ) e.aiZ.state = "wander";
+    }
+  } catch {}
+  showNotification("Camouflage ultime actif (30 s)", 2.5, "info");
+}
+
 function initializeCustomActionBar() {
   const bar = document.getElementById("ammoBar");
   if (!bar || bar.dataset.customized === "1") return;
@@ -779,7 +1082,7 @@ function initializeCustomActionBar() {
   const palette = document.createElement("div");
   palette.className = "actionPalette";
   palette.hidden = true;
-  palette.innerHTML = `<nav><button class="active" data-action-category="ammo">Munitions</button><button data-action-category="rockets">Roquettes</button><button data-action-category="launchers">Lance-roquettes</button><button data-action-category="formations">Formations</button><button data-action-category="skills">Compétences</button><button data-action-category="abilities">Aptitudes</button></nav><div class="actionPaletteItems"></div>`;
+  palette.innerHTML = `<nav><button class="active" data-action-category="ammo">Munitions</button><button data-action-category="rockets">Roquettes</button><button data-action-category="launchers">Lance-roquettes</button><button data-action-category="formations">Formations</button><button data-action-category="skills">Extras</button><button data-action-category="abilities">Aptitudes</button></nav><div class="actionPaletteItems"></div>`;
   const toggle = document.createElement("button");
   toggle.type = "button"; toggle.className = "actionPaletteToggle"; toggle.textContent = "⌃"; toggle.title = "Configurer la barre rapide";
   const byId = new Map(actions.map((button) => {
@@ -817,9 +1120,9 @@ function initializeCustomActionBar() {
   const slots = document.createElement("div"); slots.className = "actionSlots"; bar.appendChild(slots);
   const formationButtons = DRONE_FORMATIONS.map(formation => {
     const button = document.createElement("button");
-    button.className = "ammoBtn formationActionSlot"; button.dataset.actionCategory = "formations";
+    button.className = "ammoBtn formationActionSlot dockAction" + (isClassicFormation(formation.id) ? " formationClassic" : ""); button.dataset.actionCategory = "formations";
     button.dataset.actionId = `formation:${formation.id}`; button.draggable = true;
-    button.innerHTML = `<img src="${formation.icon}" alt=""><span>${formation.name.replace("Formation ", "")}</span>`;
+    button.innerHTML = `<img src="${formationDockIcon(formation) || formation.icon}" alt=""><span>${formation.name.replace("Formation ", "")}</span>`;
     button.onclick = () => {
       playDockSelectSound(getActiveDroneFormation(account.user).id !== formation.id);
       const result = setCurrentUserDroneFormation(formation.id);
@@ -838,10 +1141,10 @@ function initializeCustomActionBar() {
   const rocketButtons = ROCKET_IDS.map(id => {
     const r = getRocketType(id);
     const button = document.createElement("button");
-    button.className = "ammoBtn rocketActionSlot"; button.dataset.actionCategory = "rockets";
+    button.className = "ammoBtn rocketActionSlot dockAction"; button.dataset.actionCategory = "rockets";
     button.dataset.actionId = `rocket:${id}`; button.draggable = true;
     button.title = r?.name || id;
-    button.innerHTML = `<img src="${escapeHtml(rocketShopIcon(id) || "")}" alt=""><strong>${escapeHtml(r?.short || id)}</strong><small class="rocketCount">0</small>`;
+    button.innerHTML = `<img src="${escapeHtml(rocketDockIcon(id) || "")}" alt=""><strong>${escapeHtml(r?.short || id)}</strong><small class="rocketCount">0</small>`;
     const img = button.querySelector("img");
     if (img) img.onerror = () => { img.onerror = null; img.style.display = "none"; };
     button.onclick = () => {
@@ -880,7 +1183,7 @@ function initializeCustomActionBar() {
   // regroupees par vaisseau. Un vaisseau sans aptitude n'affiche pas de
   // section. Visuel seul pour l'instant (pas d'effet gameplay) : clic = notification.
   const ABILITY_GROUPS = [
-    { ship: "Admin", ships: ["admin"], ids: ["ability_admin-ultimate-cloaking"] },
+    { ship: "Police", ships: ["police"], ids: ["ability_admin-ultimate-cloaking"] },
     { ship: "Aegis", ships: ["aegis"], ids: ["ability_aegis_hp-repair", "ability_aegis_repair-pod", "ability_aegis_shield-repair"] },
     { ship: "Basilisk", ships: ["basilisk"], ids: ["ability_basilisk_heightened-valour", "ability_basilisk_noxious-nebula"] },
     { ship: "Berserker", ships: ["berserker"], ids: ["ability_berserker_bsk", "ability_berserker_rvg", "ability_berserker_shl"] },
@@ -908,7 +1211,7 @@ function initializeCustomActionBar() {
     { ship: "Solace", ships: ["solace"], ids: ["ability_solace"] },
     { ship: "Solaris Plus", ships: ["solaris_plus"], ids: ["ability_solaris-plus_incinerate-plus"] },
     { ship: "Solaris", ships: ["solaris"], ids: ["ability_solaris_inc"] },
-    { ship: "Spearhead Plus", ships: ["spearhead_plus"], ids: ["ability_spearhead-plus_jamx-creed", "ability_spearhead-plus_neutralizing-marker"] },
+    { ship: "Spearhead Plus", ships: ["spearhead_plus"], ids: ["ability_spearhead-plus_jamx-creed", "ability_spearhead-plus_neutralizing-marker", "ability_spearhead-plus_target-marker", "ability_spearhead-plus_ultimate-cloak"] },
     { ship: "Spearhead", ships: ["spearhead"], ids: ["ability_spearhead_double-minimap", "ability_spearhead_jam-x", "ability_spearhead_target-marker", "ability_spearhead_ultimate-cloak"] },
     { ship: "Spectrum Plus", ships: ["spectrum_plus"], ids: ["ability_spectrum-plus_prismatic-reflecting"] },
     { ship: "Spectrum", ships: ["spectrum"], ids: ["ability_spectrum"] },
@@ -918,6 +1221,16 @@ function initializeCustomActionBar() {
     { ship: "Venom", ships: ["venom"], ids: ["ability_venom"] },
     { ship: "Zephyr", ships: ["zephyr"], ids: ["ability_zephyr_mmt", "ability_zephyr_tbr"] },
   ];
+  // Icones de repli : aptitudes "Plus" qui partagent le visuel de base
+  // (aucun fichier Plus dédié dans ASSETS/APTITUDES/ICONS).
+  const ABILITY_ICON_OVERRIDES = {
+    "ability_spearhead-plus_target-marker": "ABILITY_SPEARHEAD_TARGET-MARKER.PNG",
+    "ability_spearhead-plus_ultimate-cloak": "ABILITY_SPEARHEAD_ULTIMATE-CLOAK.PNG",
+  };
+  function abilityIconSrc(name) {
+    const file = ABILITY_ICON_OVERRIDES[name] || `${String(name).toUpperCase()}.PNG`;
+    return `ASSETS/APTITUDES/ICONS/${file}`;
+  }
   const abilityButtons = [];
   for (const group of ABILITY_GROUPS) {
     for (const name of group.ids) {
@@ -926,10 +1239,14 @@ function initializeCustomActionBar() {
       button.className = "ammoBtn abilityActionSlot"; button.dataset.actionCategory = "abilities";
       button.dataset.actionId = `ability:${name}`; button.dataset.ship = group.ship; button.draggable = true;
       button.title = `${group.ship} — ${label}`;
-      button.innerHTML = `<img src="ASSETS/APTITUDES/${String(name).toUpperCase()}.png" alt=""><span>${escapeHtml(label)}</span>`;
+      button.innerHTML = `<img src="${abilityIconSrc(name)}" alt=""><span>${escapeHtml(label)}</span><small class="abilityCd"></small>`;
       const img = button.querySelector("img");
       if (img) img.onerror = () => { img.onerror = null; img.style.display = "none"; };
       button.onclick = () => {
+        if (isCloakAbility(name)) {
+          activatePoliceCloak();
+          return;
+        }
         showNotification(`${group.ship} : ${label} — aptitude visuelle (effet gameplay à venir)`, 2, "info");
       };
       button.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId); event.dataTransfer.effectAllowed = "move"; });
@@ -958,7 +1275,7 @@ function initializeCustomActionBar() {
     return match;
   }
 
-  // Bouton USE lance-roquettes : nœud permanent créé dès l'init pour que les
+  // Bouton USE lance-roquettes : nÅ“ud permanent créé dès l'init pour que les
   // slots le retrouvent après un refresh. Contenu mis à jour à chaque appel.
   // (La création est pure DOM car player n'existe pas encore à l'init.)
   let launcherUseBtn = null;
@@ -979,7 +1296,7 @@ function initializeCustomActionBar() {
     byId.set(launcherUseBtn.dataset.actionId, launcherUseBtn);
     // Contenu placeholder pour que les slots clonés ne soient jamais vides
     // (player n'existe pas encore à l'init ; updateLauncherUseBtn complète après).
-    launcherUseBtn.className = "rocketQuickAction launcherAutoBtn";
+    launcherUseBtn.className = "rocketQuickAction launcherAutoBtn dockAction";
     launcherUseBtn.title = "Utiliser la roquette sélectionnée";
     launcherUseBtn.innerHTML = `<strong>USE</strong><span class="launcherSquares"><span class="lsq">■</span><span class="lsq">■</span><span class="lsq">■</span><span class="lsq">■</span><span class="lsq">■</span></span><small class="launcherStock"><span class="launcherCount">0</span></small>`;
     return launcherUseBtn;
@@ -987,11 +1304,14 @@ function initializeCustomActionBar() {
   function updateLauncherUseBtn() {
     const btn = createLauncherUseBtn();
     const activeId = String(player.launcherActive || "eco10").toLowerCase();
-    const icon = rocketShopIcon(activeId) || rocketShopIcon("eco10");
+    const icon = rocketDockIcon(activeId) || rocketDockIcon("eco10");
     const lit = launcherLitNow();
-    btn.className = "rocketQuickAction launcherAutoBtn";
+    btn.className = "rocketQuickAction launcherAutoBtn dockAction";
     btn.title = "Utiliser la roquette sélectionnée";
+    // Recadrage du fond comme les <img> (contenu bas dans le PNG officiel).
+    const bgShift = { bdr1212: -6, eco10: -1, cbr: -2, sar01: -1, sar02: -1, ubr100: -1, pir100: 0, hstrm01: -2 }[activeId] ?? 0;
     btn.style.backgroundImage = icon ? `url("${icon}")` : "";
+    btn.style.setProperty("background-position", `50% calc(50% - ${bgShift}px)`, "important");
     btn.innerHTML = `<strong>USE</strong><span class="launcherSquares">${[0, 1, 2, 3, 4].map((i) => `<span class="lsq${i < lit ? " lit" : ""}">■</span>`).join("")}</span><small class="launcherStock"><span class="launcherCount">${formatRocketCount(rocketCount(activeId))}</span></small>`;
     // Marque l'état affiché (le refresh ne retouche que si ça change).
     launcherSquaresShown = lit;
@@ -1154,7 +1474,7 @@ function initializeCustomActionBar() {
           showNotification(`Lance-roquettes auto : ON — ${missing}`, 3, "info");
         };
         paletteItems.appendChild(toggleBtn);
-        // Bouton USE : nœud permanent (enregistré dans byId dès l'init) pour
+        // Bouton USE : nÅ“ud permanent (enregistré dans byId dès l'init) pour
         // que les slots le retrouvent après un refresh. Contenu rafraîchi ici.
         paletteItems.appendChild(getLauncherUseBtn());
       }
@@ -1202,7 +1522,7 @@ function initializeCustomActionBar() {
       }
     }
     else if (category === "formations") formationButtons.forEach(button => {
-      const clone = button.cloneNode(true); clone.className = "formationQuickAction"; clone.draggable = true;
+      const clone = button.cloneNode(true); clone.className = "formationQuickAction dockAction" + (button.classList.contains("formationClassic") ? " formationClassic" : ""); clone.draggable = true;
       clone.classList.toggle("active", button.dataset.actionId === `formation:${account?.user?.drones?.activeFormation}`);
       clone.onclick = () => button.click();
       clone.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId); event.dataTransfer.effectAllowed = "copy"; });
@@ -1222,7 +1542,7 @@ function initializeCustomActionBar() {
       clone.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", clone.dataset.actionId); });
       clone.onclick = () => button.click(); paletteItems.appendChild(clone);
     });
-    // Le DOM du dock a changé : le cache de sync pointe des nœuds détachés.
+    // Le DOM du dock a changé : le cache de sync pointe des nÅ“uds détachés.
     // Invalidation synchrone (l'observer MutationObserver ne passe qu'après).
     // À l'init les `let` du cache sont en TDZ : pas grave, cache déjà vide/dirty.
     try { invalidateActionDockCache(); } catch {}
@@ -1298,7 +1618,6 @@ const DEFAULT_KEYBINDS = {
   switchConfig: "KeyC",
   toggleAttack: "ControlLeft",
   fireRocket: "Space",
-  respawn: "KeyR",
 
   slot1: "Digit1",
   slot2: "Digit2",
@@ -1411,6 +1730,8 @@ function normalizeKeybinds(raw) {
       if (typeof raw[key] === "string" && raw[key]) normalized[key] = raw[key];
     }
   }
+  // ✅ migration : l'ancien raccourci de réparation directe est supprimé.
+  delete normalized.respawn;
   return normalized;
 }
 
@@ -1591,7 +1912,6 @@ const KEYBIND_LABELS = {
   switchConfig: "Changer configuration",
   toggleAttack: "Activer / arrêter le tir",
   fireRocket: "Tirer une roquette",
-  respawn: "Réapparition",
 
   slot1: "Slot 1", slot2: "Slot 2", slot3: "Slot 3", slot4: "Slot 4", slot5: "Slot 5",
   slot6: "Slot 6", slot7: "Slot 7", slot8: "Slot 8", slot9: "Slot 9", slot10: "Slot 10",
@@ -2035,8 +2355,10 @@ function registerHudWindows() {
   reg("refineryWindow", "Raffinage", menuIcon("refinement"), false);
   reg("boosterWindow", "Boosters", menuIcon("booster"), false);
   reg("botWindow", "BOT", menuIcon("npc_event"), false);
+  reg("wikiWindow", "Wiki / Aide", menuIcon("help"), false);
   reg("gygerimStatus", "État du boss", menuIcon("worldBoss"), true, { minimizable: false });
 wireSettingsWindow();
+wireWikiWindow();
 wirePetWindow();
 wireBoosterWindow();
 wireBotWindow();
@@ -2179,10 +2501,10 @@ function wireBoosterWindow() {
 // ============================================================
 const BOT_STORE_KEY = "orbit_bot_config_v1";
 const BOT_MAPS = [
-  "1-1", "1-2", "1-3", "1-4", "1-5", "1-6", "1-7", "1-8", "1-4.1", "1-9", "1-10",
-  "2-1", "2-2", "2-3", "2-4", "2-5", "2-6", "2-7", "2-8", "2-4.1", "2-9", "2-10",
-  "3-1", "3-2", "3-3", "3-4", "3-5", "3-6", "3-7", "3-8", "3-4.1", "3-9", "3-10",
-  "4-4.123", "4-5", "5-2", "MAUDITE",
+  "1-1", "1-2", "1-3", "1-4", "1-5", "1-6", "1-7", "1-8", "4-1", "1-9", "1-10",
+  "2-1", "2-2", "2-3", "2-4", "2-5", "2-6", "2-7", "2-8", "4-2", "2-9", "2-10",
+  "3-1", "3-2", "3-3", "3-4", "3-5", "3-6", "3-7", "3-8", "4-3", "3-9", "3-10",
+  "4-4", "4-5", "5-2", "MAUDITE",
 ];
 // Munitions laser sélectionnables par NPC (vide = auto / ne pas changer).
 const BOT_AMMO_IDS = ["x1", "x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl"];
@@ -2545,7 +2867,7 @@ function botRefreshHud() {
   }
   if (targetEl) targetEl.textContent = Bot.active ? Bot.target : "—";
   if (playEl) {
-    // ✅ ne remplace le nœud texte que sur changement d'état : sinon le
+    // ✅ ne remplace le nÅ“ud texte que sur changement d'état : sinon le
     // remplacement à chaque refresh peut avaler un clic en cours.
     const txt = Bot.active ? "⏸" : "▶";
     if (playEl.textContent !== txt) playEl.textContent = txt;
@@ -4917,8 +5239,38 @@ registerHudWindows();
 
 // ============================================================
 // ✅ Fenêtre P.E.T en jeu : play/stop, mode passif/combat, barres
-// HP / bouclier / XP / fuel (50 000 / 50 000 fixe pour le moment).
+// HP / bouclier / XP / fuel (réservoir 50 000, consommé en jeu).
 // ============================================================
+// Somme des % d'un protocole équipé sur le fit actif (chaleur ignorée :
+// supprimée du jeu). Ex : "cargo", "radar", "salvage", "shield",
+// "damage", "aim", "evasion", "hp", "alien", "eco".
+function getPetProtocolPct(pet, user, key) {
+  const want = String(key || "").toLowerCase();
+  if (!want || want === "heat") return 0;
+  const hangar = (user?.hangars || []).find((h) => h?.active) || null;
+  const hid = hangar ? String(hangar.id) : null;
+  const cfg = String(Number(hangar?.activeConfig) === 2 ? 2 : 1);
+  const fit = hid ? getPetFit(pet, hid, cfg) : null;
+  let total = 0;
+  for (const itemId of fit?.protocols || []) {
+    const item = itemId ? findCatalogItem(itemId) : null;
+    const k = String(item?.petProtocol?.key || "").toLowerCase();
+    if (!k || k === "heat" || k !== want) continue;
+    total += Number(item.petProtocol.pct) || 0;
+  }
+  return Math.max(0, total);
+}
+function petFuelEcoMult(pet, user) {
+  const eco = getPetProtocolPct(pet, user, "eco");
+  return Math.max(0, 1 - eco / 100);
+}
+// Portée d'un gear avec le protocole radar (+X % sur G-AL / G-AR / G-EL).
+function getPetGearRangeWithRadar(key, level, pet, user) {
+  const base = getPetGearRange(key, level);
+  if (!(base > 0)) return 0;
+  const radar = getPetProtocolPct(pet, user, "radar");
+  return radar > 0 ? base * (1 + radar / 100) : base;
+}
 function petShieldMaxForHud(pet, user) {
   const hangar = (user?.hangars || []).find((h) => h?.active) || null;
   const hid = hangar ? String(hangar.id) : null;
@@ -4930,6 +5282,9 @@ function petShieldMaxForHud(pet, user) {
     const item = itemId ? findCatalogItem(itemId) : null;
     if (item?.module?.type === "shield") max += Number(item.module.bonusShield || 0) * mult;
   }
+  // Protocole bouclier (AI-SM) : +X % sur le propre bouclier du REX.
+  const shieldPct = getPetProtocolPct(pet, user, "shield");
+  if (shieldPct > 0) max *= 1 + shieldPct / 100;
   return Math.max(0, Math.floor(max * (1 + goliathHeatPct() / 100)));
 }
 
@@ -4948,6 +5303,19 @@ function wirePetWindow() {
       markProgressDirty();
       window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
       return showToast("REX réparé (coque 10 %, bouclier 0).", 1.8);
+    }
+    // Panne sèche : la goutte achète +100 essence (10 000 crédits débités),
+    // sans activer le REX — le bouton repasse en play, à toi de l'allumer.
+    if (!(Math.max(0, Math.floor(Number(pet.fuel) || 0)) > 0)) {
+      const out = buyItem("pet_fuel", 100);
+      if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
+      account.user = out.user;
+      player.credits = out.user.credits;
+      setHudText(ui.shopCredits, formatInteger(player.credits));
+      loadAccountUser();
+      markProgressDirty();
+      window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+      return showToast(`+${formatInteger(out.quantity)} essence (${formatInteger(out.totalPrice)} crédits) — appuie sur play.`, 2);
     }
     const out = setPetActive(!pet.active);
     if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
@@ -5012,6 +5380,11 @@ function applyPetModeValue(v) {
     // Un seul comportement à la fois : Passif, Mode combat ou un gear équipé.
     if (v.startsWith("gear:")) {
       const key = v.slice("gear:".length).toLowerCase();
+      // Sans carburant, aucun gear ne peut s'activer.
+      if (!(Math.max(0, Math.floor(Number(account.user?.pet?.fuel) || 0)) > 0)) {
+        loadAccountUser();
+        return showToast("Plus de carburant — achète de l'essence P.E.T.", 1.8);
+      }
       // Changer de comportement ferme le Trader (→ cooldown) et coupe lien/bouée.
       if (traWindowActive()) endTraSession();
       if (hplLinkActive() && key !== "hpl") endHplLink("gear");
@@ -5160,29 +5533,39 @@ function updatePetHud() {
   setHudText(ui.petShTxt, `${formatInteger(sh)} / ${formatInteger(shMax)}`);
   setHudWidth(ui.petShBar, `${shMax > 0 ? (sh / shMax) * 100 : 0}%`);
   if (ui.petShBar?.parentElement) setHudDisplay(ui.petShBar.closest?.(".petMeter") || ui.petShBar.parentElement, shMax > 0 ? "" : "none");
-  setHudText(ui.petFuelTxt, `${formatInteger(PET_FUEL_MAX)} / ${formatInteger(PET_FUEL_MAX)}`);
-  setHudWidth(ui.petFuelBar, "100%");
+  const fuelMax = has ? Math.max(1, Math.floor(Number(pet.fuelMax) || PET_FUEL_MAX)) : PET_FUEL_MAX;
+  const fuel = has ? Math.max(0, Math.min(fuelMax, Math.floor(Number(pet.fuel) || 0))) : 0;
+  setHudText(ui.petFuelTxt, `${formatInteger(fuel)} / ${formatInteger(fuelMax)}`);
+  setHudWidth(ui.petFuelBar, `${fuelMax > 0 ? (fuel / fuelMax) * 100 : 0}%`);
 
   if (ui.petPlayBtn) {
     const destroyed = has && !(Number(pet.hp) > 0);
+    // À sec = éteint : jamais l'icône pause avec un réservoir vide,
+    // même pendant la frame où la désactivation se propage.
+    const outOfFuel = has && !(Math.max(0, Math.floor(Number(pet.fuel) || 0)) > 0);
+    const shownActive = pet?.active === true && !outOfFuel && !destroyed;
     // ✅ l'icône ne change que d'état (play / pause / clé) : on ne touche au
     // DOM que sur changement. Avant, la comparaison innerHTML ne matchait
     // jamais (sérialisation navigateur) donc le SVG était recréé à chaque
-    // frame et le clic tombait sur un nœud détruit entre mousedown/mouseup.
-    const iconKey = !has ? "none" : destroyed ? "wrench" : pet?.active === true ? "pause" : "play";
+    // frame et le clic tombait sur un nÅ“ud détruit entre mousedown/mouseup.
+    const iconKey = !has ? "none" : destroyed ? "wrench" : outOfFuel ? "fuel" : shownActive ? "pause" : "play";
     if (iconKey !== lastPetPlaySig) {
       lastPetPlaySig = iconKey;
       const label = iconKey === "wrench"
         ? '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M11.5 1a3.5 3.5 0 0 0-4.6 4.6L1 11.5V15h3.5l5.9-5.9A3.5 3.5 0 0 0 15 4.5l-2.3 2.3-2.4-.6-.6-2.4L11.5 1z" fill="#eaffff"/></svg>'
-        : iconKey === "pause"
+        : iconKey === "fuel"
+          ? '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M8 1.2C8 1.2 2.6 8.2 2.6 11.3a5.4 5.4 0 0 0 10.8 0C13.4 8.2 8 1.2 8 1.2z" fill="#7cf0ff"/></svg>'
+          : iconKey === "pause"
           ? '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="3" y="2" width="4" height="12" rx="1" fill="#eaffff"/><rect x="9" y="2" width="4" height="12" rx="1" fill="#eaffff"/></svg>'
           : '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 2 L13 8 L4 14 Z" fill="#eaffff"/></svg>';
       ui.petPlayBtn.innerHTML = label;
     }
     setHudAttr(ui.petPlayBtn, "title", destroyed
       ? "Réparer le REX — 10 000 crédits"
-      : pet?.active === true ? "Désactiver le P.E.T" : "Activer le P.E.T");
-    setHudClass(ui.petPlayBtn, "isOn", pet?.active === true && !destroyed);
+      : outOfFuel
+        ? "+100 essence — 10 000 crédits (sans activer le REX)"
+        : shownActive ? "Désactiver le P.E.T" : "Activer le P.E.T");
+    setHudClass(ui.petPlayBtn, "isOn", shownActive);
   }
   // Menu custom Mode (+ gears équipés, noms boutique, un seul choix actif).
   if (ui.petModeBtn && ui.petModeList) {
@@ -6385,7 +6768,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   }
 
   const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").trim().toLowerCase();
-  const combatRestrictedMap = /^[123]-4\.1$/.test(mapId) || mapId === "4-4.123" || mapId === "4-5";
+  const combatRestrictedMap = /^4-[123]$/.test(mapId) || mapId === "4-4" || mapId === "4-5";
   // Battle 4-x : les NPC ne bloquent jamais le saut, seul un joueur qui nous
   // attaque verrouille (pvpAttackT, posé par hurtPlayer avec source.byPlayer).
   const pvpCooldown = Number(player.pvpAttackT) || 0;
@@ -6989,7 +7372,7 @@ hangarState: !player.dead && started ? {
     shPct: savedShPct(),
   } : null,
 
-  // ⚠️ Ne pas sauvegarder ship ici non plus.
+  // ⚠ï¸ Ne pas sauvegarder ship ici non plus.
   ammo: {
     x1: Infinity,
     x2: player.ammo.x2 || 0,
@@ -8866,9 +9249,8 @@ function isRepairingNow() {
   if (player.repairT < REPAIR.cooldown) return false;
 
   const needHp = player.hp < player.hpMax - 0.5;
-  const needSh = player.sh < player.shMax - 0.5;
 
-  return needHp || needSh;
+  return needHp;
 }
 
 // Rotation du robot selon son coin (référence) :
@@ -9300,6 +9682,9 @@ const player = {
   baseSpeed: 0,
   accel: 0,
   friction: 0,
+  // Ralenti subi (explosion Kamikaze) : secondes restantes + %.
+  rocketSlowT: 0,
+  rocketSlowPct: 0,
 
   altShot: false,
 
@@ -9500,7 +9885,7 @@ function refreshRocketPaletteCounts() {
     el.textContent = formatRocketCount(rocketCount(player.launcherActive));
   }
   // Fond du bouton USE (palette + slots) : suit la sélection.
-  const launcherBgIcon = rocketShopIcon(String(player.launcherActive || "eco10").toLowerCase()) || rocketShopIcon("eco10") || "";
+  const launcherBgIcon = rocketDockIcon(String(player.launcherActive || "eco10").toLowerCase()) || rocketDockIcon("eco10") || "";
   const launcherBgWant = launcherBgIcon ? `url("${launcherBgIcon}")` : "";
   for (const el of bar.querySelectorAll(".launcherAutoBtn")) {
     if (el.style.backgroundImage !== launcherBgWant) el.style.backgroundImage = launcherBgWant;
@@ -9566,7 +9951,7 @@ function isTextOnlyMutation(records) {
 function ensureActionDockCache() {
   const bar = document.getElementById("ammoBar");
   if (!bar) return null;
-  const fresh = { bar, ammo: [], formations: [], skills: [], rockets: [] };
+  const fresh = { bar, ammo: [], formations: [], skills: [], rockets: [], abilities: [] };
   for (const button of bar.querySelectorAll("[data-ammo]")) {
     fresh.ammo.push({ button, ammo: button.dataset.ammo, small: button.querySelector("small") });
   }
@@ -9581,6 +9966,9 @@ function ensureActionDockCache() {
   }
   for (const button of bar.querySelectorAll("[data-skill]")) {
     fresh.skills.push({ button, skill: button.dataset.skill, small: button.querySelectorAll("small") });
+  }
+  for (const button of bar.querySelectorAll("[data-action-id^='ability:']")) {
+    fresh.abilities.push({ button, abilityId: String(button.dataset.actionId || "").slice("ability:".length) });
   }
   if (!actionDockObserver && typeof MutationObserver !== "undefined") {
     actionDockObserver = new MutationObserver((records) => {
@@ -9708,6 +10096,30 @@ function syncActionDockState() {
     }
   }
 
+  // Aptitudes : voile de recharge sur chaque slot d'aptitude (slots + palette),
+  // comme les roquettes (pas de flash). Branchées une par une via getAbilityCooldown.
+  for (const { button, abilityId } of actionDockCache.abilities) {
+    const cd = getAbilityCooldown(abilityId);
+    const cooling = Number(cd.left || 0) > 0 && Number(cd.max || 0) > 0;
+    const progress = cooling ? clamp(Number(cd.left) / Number(cd.max), 0, 1) : 0;
+    applyDockField(button, "cdVeil", cooling,
+      (v) => button.classList.toggle("cdVeil", v));
+    applyDockField(button, "cdProgress", progress.toFixed(3),
+      (v) => button.style.setProperty("--cd", v));
+    if (cooling) {
+      applyDockField(button, "cdEdge", getComputedStyle(button).borderColor,
+        (v) => button.style.setProperty("--cd-edge", v));
+    }
+    // Compteur en secondes : temps d'effet restant pendant l'effet, recharge sinon.
+    let cdText = "";
+    if (cooling) {
+      const fxLeft = isCloakAbility(abilityId) ? Number(player.cloakT || 0) : 0;
+      cdText = formatAbilityCd(fxLeft > 0 ? fxLeft : cd.left);
+    }
+    applyDockField(button, "cdText", cdText,
+      (v) => { const small = button.querySelector(".abilityCd"); if (small) small.textContent = v; });
+  }
+
   for (const { button, skill, small } of actionDockCache.skills) {
     if (skill === "pulse") {
       const progress = pulseCd > 0 ? clamp(pulseCd / PULSE_COOLDOWN, 0, 1) : 0;
@@ -9731,8 +10143,8 @@ function syncActionDockState() {
       applyDockField(button, "ready", canUse && !cooling,
         (v) => button.classList.toggle("ready", v));
       // Plus de compteur 0->100% : le voile circulaire montre la progression.
-      // On affiche le temps restant pendant la recharge, "PRÊT" une fois dispo.
-      applyDockField(button, "main", cooling ? `${pulseCd.toFixed(1)}s` : "PRÊT",
+      // On affiche le temps restant pendant la recharge, "PRET" une fois dispo.
+      applyDockField(button, "main", cooling ? `${pulseCd.toFixed(1)}s` : "PRET",
         (v) => { if (small[0]) small[0].textContent = v; });
       applyDockField(button, "cd", cooling ? "" : "30k",
         (v) => { if (small[1]) small[1].textContent = v; });
@@ -9757,8 +10169,8 @@ function syncActionDockState() {
         (v) => button.classList.toggle("disabled", v));
       applyDockField(button, "ready", ishCanUse && !ishCooling,
         (v) => button.classList.toggle("ready", v));
-      // Temps restant pendant la recharge, "PRÊT" une fois dispo.
-      applyDockField(button, "main", ishCooling ? `${ishCd.toFixed(1)}s` : "PRÊT",
+      // Temps restant pendant la recharge, "PRET" une fois dispo.
+      applyDockField(button, "main", ishCooling ? `${ishCd.toFixed(1)}s` : "PRET",
         (v) => { if (small[0]) small[0].textContent = v; });
       applyDockField(button, "cd", ishCooling ? "" : "30k",
         (v) => { if (small[1]) small[1].textContent = v; });
@@ -9822,6 +10234,13 @@ function resetRepairCooldown() {
   stopRepairSound({ fadeOut: 0 });
 }
 
+// Formations à drain (Papillon : -5 %/s...) : le bouclier drainé est le prix
+// de la formation. Le robot ne le remonte pas et ne le réclame pas
+// (ni son, ni HUD, ni floats) — seule la coque est réparée.
+function formationDrainsShield() {
+  return Number(getActiveDroneFormation(account.user)?.effects?.shieldDrainPct || 0) > 0;
+}
+
 function tickRepair(dt) {
   if (player.dead) {
     player.repairTickT = 0;
@@ -9848,8 +10267,8 @@ function tickRepair(dt) {
   // jamais franchir le seuil → on relance le son au réarmement si la boucle
   // n'est pas déjà en cours (repairSoundActive).
   if (!repairSoundActive) {
-    const needs = player.hp < player.hpMax - 0.01 || player.sh < player.shMax - 0.01;
-    if (needs) {
+    // Robot = coque uniquement : le bouclier ne le déclenche jamais.
+    if (player.hp < player.hpMax - 0.01) {
       SFX.play("repairStart");
       repairSoundActive = true;
       SFX.loop("repairLoop", { fadeIn: 0.25 });
@@ -9865,29 +10284,24 @@ function tickRepair(dt) {
   player.repairTickT -= tickCount * REPAIR.tickInterval;
 
   const oldHp = player.hp;
-  const oldSh = player.sh;
   const repairMult = playerBoosterMults().repair;
-  const sregMult = playerBoosterMults().sreg;
+  // Robot = coque uniquement. Le bouclier se recharge par tick passif
+  // (tickShield) : plus de réparation instantanée nulle part.
   player.hp = Math.min(player.hpMax, player.hp + player.hpMax * REPAIR.ratePct * repairMult * REPAIR.tickInterval * tickCount);
-  player.sh = Math.min(player.shMax, player.sh + player.shMax * REPAIR.ratePct * repairMult * sregMult * REPAIR.tickInterval * tickCount);
 
-  if (player.hp >= player.hpMax - 0.01 && player.sh >= player.shMax - 0.01) {
+  if (player.hp >= player.hpMax - 0.01) {
     stopRepairSound({ fadeOut: 0 });
   }
 
   const hpGain = Math.round(player.hp - oldHp);
-  const shGain = Math.round(player.sh - oldSh);
   if (hpGain > 0) {
     addPlayerCombatFloat(hpGain, "rgba(80,255,125,0.98)", "+");
-  }
-  if (shGain > 0) {
-    addPlayerCombatFloat(shGain, "rgba(70,180,255,0.98)", "+");
   }
 }
 
 function updateRepairUI() {
   const pct = REPAIR.cooldown <= 0 ? 1 : clamp(player.repairT / REPAIR.cooldown, 0, 1);
-  const needs = !player.dead && (player.hp < player.hpMax - 0.01 || player.sh < player.shMax - 0.01);
+  const needs = !player.dead && player.hp < player.hpMax - 0.01;
 
   const text = player.dead ? "OFF"
     : pct < 1 ? `${Math.floor(pct * 100)}%`
@@ -9970,11 +10384,6 @@ const used = [...boundKeys];
     keyboard.keyDown(e.code, e.repeat);
 
     if (e.repeat) return;
-
-    if (isKeybind("respawn", e.code)) {
-      if (player.dead) respawn();
-      return;
-    }
 
     if (isKeybind("portal", e.code)) {
       if (!isZoneMap && betweenWaves) {
@@ -10099,16 +10508,35 @@ function isTradeModule(module) {
   return module?.oreTrade === true;
 }
 
-function tickDroneFormationEffects(dt) {
-  if (player.dead || player.shMax <= 0) return;
+// Bouclier : recharge passive par tick d'1 s (base + regen de formation),
+// drain de formation par tick aussi — aucun regen continu nulle part.
+let shieldTickT = 0;
+function tickShield(dt) {
+  if (player.dead || !(player.shMax > 0)) { shieldTickT = 0; return; }
+  shieldTickT += Math.max(0, Number(dt) || 0);
+  if (shieldTickT < 1.0) return;
+  shieldTickT -= 1.0;
   const effects = getActiveDroneFormation(account.user).effects || {};
-  const regenPct = Number(effects.shieldRegenPct || 0);
-  const drainPct = Number(effects.shieldDrainPct || 0);
-  if (regenPct > 0) {
-    const perSecond = Math.min(Number(effects.shieldRegenCap || Infinity), player.shMax * regenPct / 100);
-    player.sh = Math.min(player.shMax, player.sh + perSecond * dt);
+  const oldSh = player.sh;
+  if (!formationDrainsShield()) {
+    // Même débit qu'avant (5 %/s + bonus) : seul le rythme change.
+    const sregMult = playerBoosterMults().sreg;
+    const repairMult = playerBoosterMults().repair;
+    const regenPct = Number(effects.shieldRegenPct || 0);
+    const perSecond = regenPct > 0
+      ? Math.min(Number(effects.shieldRegenCap || Infinity), player.shMax * regenPct / 100)
+      : 0;
+    player.sh = Math.min(player.shMax,
+      player.sh + player.shMax * REPAIR.ratePct * repairMult * sregMult + perSecond);
   }
-  if (drainPct > 0) player.sh = Math.max(0, player.sh - player.shMax * drainPct / 100 * dt);
+  const drainPct = Number(effects.shieldDrainPct || 0);
+  if (drainPct > 0) player.sh = Math.max(0, player.sh - player.shMax * drainPct / 100);
+  const shGain = Math.round(player.sh - oldSh);
+  if (shGain > 0) addPlayerCombatFloat(shGain, "rgba(70,180,255,0.98)", "+");
+}
+
+function tickDroneFormationEffects(dt) {
+  tickShield(dt);
 }
 
 function getQuestButtonPosition(module) {
@@ -11037,7 +11465,8 @@ function petVolleyDamage(pet, user, target) {
   const level = getPetLevel(pet?.exp);
   const mult = 1 + getPetDamageBonus(level) / 100;
   let base = 0;
-  let protoPct = 0;
+  let damagePct = 0;
+  let alienPct = 0;
   const lasers = [];
   const targetType = String(target?.type || "");
   for (const itemId of fit?.lasers || []) {
@@ -11054,12 +11483,23 @@ function petVolleyDamage(pet, user, target) {
   }
   for (const itemId of fit?.protocols || []) {
     const item = itemId ? findCatalogItem(itemId) : null;
+    const k = String(item?.petProtocol?.key || "").toLowerCase();
     const pct = Number(item?.petProtocol?.pct || 0);
-    if (item?.petProtocol && (item.petProtocol.key === "damage" || item.petProtocol.key === "alien") && pct) {
-      protoPct += pct;
-    }
+    if (!pct) continue;
+    // Laser (AI-LM) : dégâts globaux du REX (joueurs + NPC).
+    if (k === "damage") damagePct += pct;
+    // Alien (AI-AL) : dégâts vs NPC uniquement (pas vs joueurs).
+    else if (k === "alien") alienPct += pct;
   }
+  // Aperçu boutique (target null) : dégâts globaux seuls, sans le bonus Alien.
+  const isAlienTarget = !!target && target.isPetTarget !== true && target.isPlayer !== true;
+  const protoPct = damagePct + (isAlienTarget ? alienPct : 0);
   return { total: base * mult * (1 + protoPct / 100) * (1 + goliathHeatPct() / 100), count: lasers.length };
+}
+// Précision du REX : 15 % de MISS de base moins le protocole ciblage (AI-AIM).
+function petMissChance(pet, user) {
+  const aim = getPetProtocolPct(pet, user, "aim");
+  return Math.max(0, Math.min(1, PLAYER_SHOTS.missChance - aim / 100));
 }
 
 function firePetVolley(target) {
@@ -11095,7 +11535,7 @@ const isSab = ammoKey === "sab";
       r: 6, life, dmg: perShot,
       key: ammoKey, side: "player", targetId: target.id, homing: true,
       isSab,
-      miss: Math.random() < PLAYER_SHOTS.missChance,
+      miss: Math.random() < petMissChance(account.user?.pet, account.user),
       ownerEscortId: "pet", volleyId, volleySize: shotOffsets.length,
     }, ENTITY_LIMITS.playerBullets);
   }
@@ -11273,6 +11713,9 @@ function endHplLink(reason) {
 // Portail / play : le REX respawn à côté de nous au lieu de traverser la carte.
 let petMapId = null;
 let wasPetOn = false;
+// Refresh : une seule fois au boot, le REX reprend sa position persistée
+// (même map) au lieu de respawn à côté de nous.
+let petBootRestoreArmed = true;
 
 function resetPetSpawn() {
   cancelKamikazeRun();
@@ -11282,6 +11725,50 @@ function resetPetSpawn() {
   petState.fetchHold = 0;
   petLocator.enemyId = null;
   petLocator.manualType = null;
+}
+
+// Refresh : replace le REX où il était (même map uniquement). Retourne faux
+// si aucune position persistée (spawn normal à côté de nous).
+function restorePetSavedPosition(pet, mapId) {
+  const sx = Number(pet?.x), sy = Number(pet?.y);
+  if (!Number.isFinite(sx) || !Number.isFinite(sy)) return false;
+  if (String(pet?.map || "") !== String(mapId || "")) return false;
+  cancelKamikazeRun();
+  petState.x = clamp(sx, 80, WORLD.w - 80);
+  petState.y = clamp(sy, 80, WORLD.h - 80);
+  petState.fireCd = 0;
+  petState.pickCd = 0;
+  petState.fetchId = null;
+  petState.fetchHold = 0;
+  petState.target = null;
+  petState.returning = false;
+  petState.weaveT = 0;
+  petState.vx = 0;
+  petState.vy = 0;
+  petState.followAngle = player.angle || 0;
+  petState.hasWp = false;
+  petState.followWait = 0;
+  petState.combatTarget = null;
+  petState.assistTarget = null;
+  petState.outOfRangeTarget = null;
+  petState.outOfRangeShots = 0;
+  petState.ready = true;
+  petLocator.enemyId = null;
+  petLocator.manualType = null;
+  return true;
+}
+
+// Persistance de la position du REX (toutes les 5 s) : un refresh le
+// retrouve où il était, même en pleine collecte au loin.
+function savePetPosition(pet, mapId, dt) {
+  if (!pet || pet.owned !== true) return;
+  petState.posSaveT = (petState.posSaveT || 0) + Math.max(0, Number(dt) || 0);
+  if (petState.posSaveT < 5) return;
+  petState.posSaveT = 0;
+  pet.x = Math.round(petState.x);
+  pet.y = Math.round(petState.y);
+  pet.map = String(mapId || "");
+  markProgressDirty();
 }
 
 // Mort du REX : annule collecte, locator et lien visuel, purge fumée et réacteur.
@@ -11523,6 +12010,13 @@ function triggerPetKamikaze() {
     loadAccountUser();
     return showToast("Kamikaze : REX détruit, répare-le.", 1.8);
   }
+  // One-shot : 3 de carburant d'un coup (réduit par AI-ECO). Prélevé ici :
+  // la course détruit le REX, aucun gear ne reste actif derrière.
+  const kkFuel = consumePetOneshotFuel(pet, account.user);
+  if (!kkFuel.ok) {
+    loadAccountUser();
+    return showToast(`Kamikaze : carburant insuffisant (${kkFuel.cost} requis).`, 1.8);
+  }
   if (player.dead || !started) {
     loadAccountUser();
     return showToast("Kamikaze impossible pour le moment.", 1.5);
@@ -11693,6 +12187,13 @@ function triggerSacrificeFlame() {
     loadAccountUser();
     return showToast("Bouclier déjà plein.", 1.5);
   }
+  // One-shot : 3 de carburant d'un coup (réduit par AI-ECO). Prélevé ici,
+  // puis retour forcé au passif : le palier retombe à 1 / 2 s.
+  const fsFuel = consumePetOneshotFuel(pet, account.user);
+  if (!fsFuel.ok) {
+    loadAccountUser();
+    return showToast(`Flamme sacrificielle : carburant insuffisant (${fsFuel.cost} requis).`, 1.8);
+  }
   pet.sh = Math.max(0, rexSh - amount);
   player.sh = Math.min(player.shMax, player.sh + amount);
   addPlayerCombatFloat(amount, "rgba(70,180,255,0.98)", "+");
@@ -11768,8 +12269,9 @@ function isPetFetchEligible(c, gears, alRange, arRange) {
 // Cible de collecte du P.E.T (mémorisée par id) : valide l'en-cours seul.
 function validatePetFetch(gears) {
   if (petState.fetchId == null) return null;
+  const pet = account.user?.pet;
   const cur = collectables.find((c) => c && c.id === petState.fetchId);
-  if (cur && isPetFetchEligible(cur, gears, getPetGearRange("al", gears.al), getPetGearRange("ar", gears.ar))) return cur;
+  if (cur && isPetFetchEligible(cur, gears, getPetGearRangeWithRadar("al", gears.al, pet, account.user), getPetGearRangeWithRadar("ar", gears.ar, pet, account.user))) return cur;
   petState.fetchId = null;
   petState.fetchHold = 0;
   return null;
@@ -11777,8 +12279,9 @@ function validatePetFetch(gears) {
 
 // Nouveau scan : la box éligible la plus proche du joueur.
 function scanPetFetch(gears) {
-  const alRange = getPetGearRange("al", gears.al);
-  const arRange = getPetGearRange("ar", gears.ar);
+  const pet = account.user?.pet;
+  const alRange = getPetGearRangeWithRadar("al", gears.al, pet, account.user);
+  const arRange = getPetGearRangeWithRadar("ar", gears.ar, pet, account.user);
   if (Math.max(alRange, arRange) <= 0) return null;
   const next = pickNearestWithin(
     collectables, player.x, player.y, Math.max(alRange, arRange),
@@ -11789,8 +12292,17 @@ function scanPetFetch(gears) {
 }
 
 // Récolte au contact, comme un clic joueur (mêmes récompenses).
+// Récupération (AI-S) : bonus hors ressources si la box est éligible
+// (bonus boxes, cargos, booty — jamais scrap / minerais / assemblage).
 function collectPetBox(box) {
+  const salvagePct = getPetProtocolPct(account.user?.pet, account.user, "salvage");
+  const eligible = ["Bonus_Box", "Cargo_Box", "Green_Booty_Box", "Astral_Prime_Box"].includes(String(box?.type || ""));
+  try {
+    if (salvagePct > 0 && eligible) box._petSalvagePct = salvagePct;
+    else if (box) delete box._petSalvagePct;
+  } catch {}
   const res = applyCollectableReward(box);
+  try { if (box) delete box._petSalvagePct; } catch {}
   if (res?.kept) {
     // Soute pleine : la box reste — tenter à nouveau dans 10 s, sans spam sonore.
     petState.pickCd = 10;
@@ -11810,12 +12322,12 @@ function tickPetLocator(gears, dt) {
     return;
   }
   // Famille choisie dans la liste : suit toujours le plus proche de nous,
-  // dans la portée du gear (1000 / 1500 / 2500).
+  // dans la portée du gear (1000 / 1500 / 2500) + protocole radar.
   if (petLocator.manualType == null) {
     petLocator.enemyId = null;
     return;
   }
-  const range = getPetGearRange("el", gears.el);
+  const range = getPetGearRangeWithRadar("el", gears.el, account.user?.pet, account.user);
   const foe = pickNearestWithin(
     enemies, player.x, player.y, range,
     (e) => Number(e?.hp) > 0 && String(e.type || "?") === petLocator.manualType,
@@ -11919,8 +12431,74 @@ function tickPetRecovery(dt, pet, gears) {
   tickPetLocator(gears, dt);
 }
 
+// Carburant du REX : 1 unité toutes les 2 s +1 par gear actif continu,
+// le tout réduit par le protocole économie (AI-ECO). Les one-shot
+// (kamikaze / sacrifice : 3 d'un coup) sont prélevés à l'activation.
+// Le coût est recalculé à chaque palier depuis le gear réellement actif :
+// aucun état bloqué à 3 après un one-shot, le retour au passif / combat
+// retombe sur 1 / 2 s (ou 2 / 2 s avec un gear continu).
+function petFuelTickCost(pet, user) {
+  const active = petActiveGearKey();
+  // Gears continus : tout gear actif sauf les one-shot déjà consommés.
+  // Kamikaze (explosion + REX détruit) et sacrifice (transfert instantané)
+  // ne restent jamais actifs : coût de palier = base seule.
+  const continuous = active && active !== "kk" && active !== "fs" ? PET_FUEL_GEAR_TICK : 0;
+  return (PET_FUEL_BASE_TICK + continuous) * petFuelEcoMult(pet, user);
+}
+function tickPetFuel(dt) {
+  const pet = account.user?.pet;
+  if (!pet || pet.owned !== true || pet.active !== true) {
+    petState.fuelTickT = 0;
+    return;
+  }
+  if (!(Number(pet.hp) > 0) || !started || player.dead) return;
+  petState.fuelTickT = (petState.fuelTickT || 0) + Math.max(0, Number(dt) || 0);
+  if (petState.fuelTickT < PET_FUEL_TICK_SEC) return;
+  petState.fuelTickT -= PET_FUEL_TICK_SEC;
+  const cost = petFuelTickCost(pet, account.user);
+  if (!(cost > 0)) return;
+  // Carburant entier : on accumule les fractions via un reste.
+  petState.fuelRest = (petState.fuelRest || 0) + cost;
+  const take = Math.floor(petState.fuelRest);
+  if (take <= 0) return;
+  petState.fuelRest -= take;
+  pet.fuel = Math.max(0, Math.floor(Number(pet.fuel) || 0) - take);
+  markProgressDirty();
+  if (pet.fuel <= 0) {
+    pet.fuel = 0;
+    petState.fuelTickT = 0;
+    petState.fuelRest = 0;
+    try { setPetActive(false); } catch {}
+    try { setPetActiveGear(null); } catch {}
+    loadAccountUser();
+    showToast("REX à sec — achète de l'essence P.E.T.", 2.5);
+  }
+}
+// Prélèvement one-shot (kamikaze / sacrifice) : 3 × économie, min 1.
+function consumePetOneshotFuel(pet, user) {
+  if (!pet) return { ok: false };
+  const cost = Math.max(1, Math.round(PET_FUEL_ONESHOT * petFuelEcoMult(pet, user)));
+  const have = Math.max(0, Math.floor(Number(pet.fuel) || 0));
+  if (have < cost) return { ok: false, cost, have };
+  pet.fuel = have - cost;
+  markProgressDirty();
+  return { ok: true, cost, have: pet.fuel };
+}
+
 function updatePet(dt) {
   const pet = account.user?.pet;
+  // Panne sèche : coupure immédiate (sans attendre le palier de 2 s), pour
+  // ne jamais afficher un REX "actif" avec un réservoir vide.
+  if (pet?.owned === true && pet?.active === true && !(Math.max(0, Math.floor(Number(pet.fuel) || 0)) > 0)) {
+    cancelKamikazeRun();
+    petState.fuelTickT = 0;
+    petState.fuelRest = 0;
+    try { setPetActive(false); } catch {}
+    try { setPetActiveGear(null); } catch {}
+    loadAccountUser();
+    showToast("REX à sec — achète de l'essence P.E.T.", 2.5);
+    return;
+  }
   if (!pet?.owned || pet?.active !== true) {
     cancelKamikazeRun();
     wasPetOn = false;
@@ -11934,6 +12512,15 @@ function updatePet(dt) {
   }
   // Portail : respawn à côté de nous au lieu de traverser toute la carte.
   const petMap = currentMapId();
+  // Boot (refresh) : le REX reprend sa position persistée sur la même map.
+  // Portail et play gardent le rappel / respawn à côté de nous comme avant.
+  if (petBootRestoreArmed) {
+    petBootRestoreArmed = false;
+    if (pet?.owned === true && pet?.active === true && restorePetSavedPosition(pet, petMap)) {
+      petMapId = petMap;
+      wasPetOn = true;
+    }
+  }
   if (petMapId !== petMap) {
     petMapId = petMap;
     resetPetSpawn();
@@ -11947,6 +12534,7 @@ function updatePet(dt) {
     cancelKamikazeRun();
     return;
   }
+  savePetPosition(pet, petMap, dt);
   // REX détruit : seule la récupération tourne (revive via G-REP).
   if (!(Number(pet.hp) > 0)) {
     cancelKamikazeRun("destroyed");
@@ -11979,10 +12567,15 @@ function updatePet(dt) {
 
   // Kamikaze : course verrouillée, prioritaire sur tout le reste.
   if (kkRunActive()) {
+    tickPetFuel(dt);
+    // Panne sèche pendant la course : on annule proprement.
+    if (account.user?.pet?.active !== true) return;
     tickPetKamikaze(dt);
     tickPetPassiveGears(dt);
     return;
   }
+  tickPetFuel(dt);
+  if (account.user?.pet?.active !== true) return;
 
   petState.fireCd = Math.max(0, petState.fireCd - dt);
   petState.pickCd = Math.max(0, petState.pickCd - dt);
@@ -12089,7 +12682,7 @@ function updatePet(dt) {
     }
   }
   if (!target) petState.combatTarget = null;
-  const ownerSpeed = Math.max(260, getSpeedBreakdown().total);
+  const ownerSpeed = Math.max(260, getSpeedBreakdown().total) * playerSlowMult(player);
   // Close / intermediate / far zones blend continuously into catch-up speed.
   const catchup = clamp((ownerDistance - 220) / 680, 0, 1);
   const followSpeed = ownerSpeed * (1.1 + catchup * 0.65);
@@ -13029,9 +13622,13 @@ function goliathHeatPct() {
   return Math.min(50, Math.max(1, stage) * 10);
 }
 
-// PV max du REX avec le bonus HEAT du Goliath Plus.
+// PV max du REX : base niveau + Coque+ (définitif), puis protocole
+// coque (AI-HP, +X % sur ses propres HP), puis bonus HEAT du Goliath Plus.
 function petMaxHpWithHeat(pet) {
-  return Math.floor(getPetMaxHp(getPetLevel(pet?.exp)) * (1 + goliathHeatPct() / 100));
+  const base = getPetMaxHp(getPetLevel(pet?.exp)) + getPetHullBonusHp(pet);
+  const hpPct = getPetProtocolPct(pet, account.user, "hp");
+  const withProto = hpPct > 0 ? base * (1 + hpPct / 100) : base;
+  return Math.floor(withProto * (1 + goliathHeatPct() / 100));
 }
 
 // Soute lue depuis le compte en mémoire (pas de relecture storage à chaque frame).
@@ -13086,7 +13683,10 @@ function refreshUpgradeSlotDom(slot) {
 function currentCargo() {
   const resources = account.user?.inventory?.resources || {};
   const used = cargoUsed(resources);
-  return { used, capacity: CARGO_CAPACITY, free: Math.max(0, CARGO_CAPACITY - used) };
+  // Protocole cargo (AI-CR) : +X % de soute appliqué à notre vaisseau.
+  const cargoPct = getPetProtocolPct(account.user?.pet, account.user, "cargo");
+  const capacity = cargoPct > 0 ? Math.floor(CARGO_CAPACITY * (1 + cargoPct / 100)) : CARGO_CAPACITY;
+  return { used, capacity, free: Math.max(0, capacity - used) };
 }
 
 function collectableAllowedOnCurrentMap(cfg, mapId = currentMapId()) {
@@ -13507,7 +14107,12 @@ function applyCollectableReward(c) {
   const battleMapId = String(currentMapId());
   const isBattleMap = /^4(-|$|\.)/.test(battleMapId) || /-4\.1$/.test(battleMapId);
   const battleMult = (isBattleMap && String(c?.type || "") !== "Cargo_Box") ? 2 : 1;
-  const boxMult = (String(c?.type || "") === "Bonus_Box" ? playerBoosterMults().box : 1) * battleMult;
+  // Récupération P.E.T (AI-S) : +X % sur le contenu hors ressources
+  // (crédits, énergie GG, munitions, HP/bouclier) quand c'est le REX qui
+  // ramasse — jamais sur le minerai ni l'assemblage (scrap, mucosum...).
+  const petSalvagePct = Number(c?._petSalvagePct) > 0 ? Number(c._petSalvagePct) : 0;
+  const salvageMult = petSalvagePct > 0 ? 1 + petSalvagePct / 100 : 1;
+  const boxMult = (String(c?.type || "") === "Bonus_Box" ? playerBoosterMults().box : 1) * battleMult * salvageMult;
 
   let changed = false;
   let grantedAny = false;
@@ -13551,6 +14156,7 @@ function applyCollectableReward(c) {
   // Refus anticipé Cargo_Box : si aucun minerai du cargo ne rentre en soute,
   // on ne touche à rien (même pas les débris) et la box reste entière.
   let cargoRefuseUpfront = false;
+  const cargoCap = currentCargo().capacity;
   if (String(c?.type || "") === "Cargo_Box" && c?.fromNpc) {
     if (!account.user) loadAccountUser();
     const pendingUpfront = c.oreRemainder || getNpcCargoOres(c.fromNpc, currentMapId());
@@ -13558,7 +14164,7 @@ function applyCollectableReward(c) {
     if (upfrontIds.length && account.user) {
       const resUpfront = account.user.inventory?.resources || {};
       const multUpfront = playerBoosterMults().res;
-      const fits = upfrontIds.some(id => cargoAdd(resUpfront, id, Math.floor(Number(pendingUpfront[id]) * multUpfront)).added > 0);
+      const fits = upfrontIds.some(id => cargoAdd(resUpfront, id, Math.floor(Number(pendingUpfront[id]) * multUpfront), cargoCap).added > 0);
       if (!fits) cargoRefuseUpfront = true;
     }
   }
@@ -13574,9 +14180,9 @@ function applyCollectableReward(c) {
       for (const [resourceId, range] of Object.entries(reward.resources)) {
         const wanted = Math.floor((fixedAmount ?? rollValue(range, 0)) * resMult);
         if (wanted <= 0) continue;
-        // Minerais -> soute 3000 (plafonné, jamais de perte sèche ici : le refus est géré plus bas).
+        // Minerais -> soute bonus cargo inclus (plafonné, jamais de perte sèche ici : le refus est géré plus bas).
         if (isOreResource(resourceId)) {
-          const { added, blocked } = cargoAdd(account.user.inventory.resources, resourceId, wanted);
+          const { added, blocked } = cargoAdd(account.user.inventory.resources, resourceId, wanted, cargoCap);
           if (added > 0) {
             account.user.inventory.resources[resourceId] = Math.max(0, Number(account.user.inventory.resources[resourceId]) || 0) + added;
             parts.push(`+${formatInteger(added)} ${getResourceName(resourceId, added)}`);
@@ -13621,7 +14227,7 @@ function applyCollectableReward(c) {
         for (const resourceId of ids) {
           const wanted = Math.floor(Number(table[resourceId]) * resMult);
           if (wanted <= 0) continue;
-          const { added, blocked } = cargoAdd(account.user.inventory.resources, resourceId, wanted);
+          const { added, blocked } = cargoAdd(account.user.inventory.resources, resourceId, wanted, cargoCap);
           if (added > 0) {
             account.user.inventory.resources[resourceId] = Math.max(0, Number(account.user.inventory.resources[resourceId]) || 0) + added;
             parts.push(`+${formatInteger(added)} ${getResourceName(resourceId, added)}`);
@@ -13657,7 +14263,7 @@ function applyCollectableReward(c) {
     cargoRefused = true;
   }
 
-  const hpFlat = rollValue(reward.hp, 0);
+  const hpFlat = Math.floor(rollValue(reward.hp, 0) * salvageMult);
   if (hpFlat > 0) {
     player.hp = Math.min(player.hpMax, player.hp + hpFlat);
     parts.push(`+${hpFlat} HP`);
@@ -13666,13 +14272,13 @@ function applyCollectableReward(c) {
 
   const hpPct = Number(reward.hpPct || 0);
   if (hpPct > 0) {
-    const amount = Math.floor(player.hpMax * hpPct);
+    const amount = Math.floor(player.hpMax * hpPct * salvageMult);
     player.hp = Math.min(player.hpMax, player.hp + amount);
     parts.push(`+${amount} HP`);
     changed = true;
   }
 
-  const shFlat = rollValue(reward.shield ?? reward.sh, 0);
+  const shFlat = Math.floor(rollValue(reward.shield ?? reward.sh, 0) * salvageMult);
   if (shFlat > 0) {
     player.sh = Math.min(player.shMax, player.sh + shFlat);
     parts.push(`+${shFlat} bouclier`);
@@ -13681,7 +14287,7 @@ function applyCollectableReward(c) {
 
   const shPct = Number(reward.shieldPct ?? reward.shPct ?? 0);
   if (shPct > 0) {
-    const amount = Math.floor(player.shMax * shPct);
+    const amount = Math.floor(player.shMax * shPct * salvageMult);
     player.sh = Math.min(player.shMax, player.sh + amount);
     parts.push(`+${amount} bouclier`);
     changed = true;
@@ -14652,6 +15258,11 @@ function hurtPlayer(amount, source = null) {
   }
 }
 
+// Kamikaze NPC (x-4.1...) : son explosion ralentit le joueur ET son P.E.T
+// pendant 3 s (-30 %, sprite SLOW_EFFECT officiel), en plus des dégâts.
+const KAMIKAZE_SLOW_SEC = 3;
+const KAMIKAZE_SLOW_PCT = 30;
+
 function killRewards(e) {
   player.kills++;
   const credits = Math.max(0, Number(e.value) || 0);
@@ -15171,6 +15782,7 @@ function usePulse() {
 
   player.credits -= PULSE_COST;
   pulseCd = PULSE_COOLDOWN;
+  persistCdUntil("pulse", PULSE_COOLDOWN);
   // IEM (EMP-01) : coupe le lien HP du REX.
   if (hplLinkActive()) endHplLink("emp");
   spawnPulseFx(player.x, player.y, 1, true);
@@ -15216,6 +15828,7 @@ function useIsh() {
 
   player.credits -= ISH_COST;
   ishCd = ISH_COOLDOWN;
+  persistCdUntil("ish", ISH_COOLDOWN);
   startRespawnInstaShield();
   // L'ISH dure 3 s comme l'anim (même durée que l'invincibilité de réapparition).
   player.invincibleT = Math.max(Number(player.invincibleT) || 0, ISH_DURATION);
@@ -15472,6 +16085,8 @@ function tryFireRocket(opts = {}) {
   markProgressDirty();
   updateAmmoUI();
 
+  // Tir réel : toute attaque casse le camouflage ultime.
+  breakPoliceCloak();
   spawnRocketProjectile(rocket, t, { volleyId: volleySeq++, volleySize: 1 });
   return true;
 }
@@ -15576,6 +16191,8 @@ function tryFireSalvo(opts = {}) {
   markProgressDirty();
   updateAmmoUI();
 
+  // Salve réelle : toute attaque casse le camouflage ultime.
+  breakPoliceCloak();
   const volleyId = volleySeq++;
   const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (Number(player.laserHitBonusPct || 0) / 100));
   for (let i = 0; i < n; i++) {
@@ -16158,6 +16775,8 @@ function tryFireOnce(ammoOverride = null, silent = false) {
   // conditionnels (Demaners, Sibelons...). Voir COMBAT/AMMO_TYPES.js.
   const mult = resolveAmmoMult(ammoKey, t);
 
+  // Tir réel : toute attaque casse le camouflage ultime.
+  breakPoliceCloak();
   playPlayerShot(ammoKey);
 
   const activeKey = player.ammo.active || "x1";
@@ -16310,7 +16929,7 @@ addCappedProjectile(bullets, {
   const salvoShots = isRsbLike(ammoKey) ? 12 : 6;
   const salvoInterval = isRsbLike(ammoKey) ? 1 / 12 : 0.2;
 
-  // 🔫 salve : le vrai tir compte pour le premier éclair affiché (t=0).
+  // ðŸ”« salve : le vrai tir compte pour le premier éclair affiché (t=0).
   // Les éclairs restants s'affichent toutes les `salvoInterval` ms en
   // alternant toujours "les 2" (paire gauche/droite) puis "le seul" (central),
   // même pour les faux tirs. SAB inversé : que des centraux (cible→vaisseau).
@@ -16359,7 +16978,7 @@ function getCurrentZoneMapId() {
 
 function portalProvidesSafety(portal) {
   const mapId = getCurrentZoneMapId();
-  if (/^[123]-4\.1$/.test(mapId) || mapId === "4-4.123" || mapId === "4-5") return false;
+  if (/^4-[123]$/.test(mapId) || mapId === "4-4" || mapId === "4-5") return false;
   const sectorMatch = mapId.match(/^([123])-/);
   const playerSector = getFaction((account.user || getCurrentUserFull())?.faction).sector;
   if (sectorMatch && sectorMatch[1] !== playerSector) return false;
@@ -16689,7 +17308,7 @@ collectableSpawnT = 0;
   }
 
   resetPlayerToBase({ keepCredits: true });
-  // 🔥 fin du cold start : le cooldown réparateur repart désormais normalement
+  // ðŸ”¥ fin du cold start : le cooldown réparateur repart désormais normalement
   player.repairColdStart = false;
 
   if (u) {
@@ -16895,7 +17514,7 @@ jumpBaseFade: 1,
     const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
 
     // Whitelist : id portail/map limités à [A-Za-z0-9_-.], 64 chars max, map == carte courante.
-    // Le point est requis : maps 1-4.1 / 2-4.1 / 3-4.1 / 4-4.123 + portails p_..._to_....
+    // Le point est requis : maps 4-1 / 4-2 / 4-3 / 4-4 + portails p_..._to_....
     const isSafeId = (v) => typeof v === "string" || typeof v === "number"
       ? /^[A-Za-z0-9_\-.]{1,64}$/.test(String(v))
       : false;
@@ -16994,6 +17613,16 @@ jumpBaseFade: 1,
     player.y = clamp(Number(spawn.y ?? WORLD.h * Number(spawn.yRatio ?? 0.5)), 80, WORLD.h - 80);
   }
 
+  // ✅ Arrivée via un portail : le saut nettoie le combat (façon DO officiel).
+  // Sans ça, combatT (> 0 jusqu'à 5 s) bloquait safeZoneActive et le joueur
+  // qui spawnait au centre d'un portail sûr n'était pas mis directement
+  // en zone de non-agression (pas de toast, NPC toujours aggros, tirs reçus).
+  if (spawnedFromPortal) {
+    player.combatT = 0;
+    player.attackedT = 0;
+    player.pvpAttackT = 0;
+  }
+
   initializeGateEscorts();
 
   setTimeout(() => {
@@ -17009,6 +17638,10 @@ jumpBaseFade: 1,
 
   camera.x = player.x;
   camera.y = player.y;
+
+  // ✅ refresh en radiation : on reprend l'exposition déjà écoulée au lieu
+  // de relancer les 5 s de grâce (anti-abus boucle refresh).
+  restorePersistedRadiationExposure();
 
   const activeGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
   const savedGateWave = (rules?.mode === "gate" && account.user?.galaxyGates?.active === activeGateId)
@@ -17026,12 +17659,18 @@ function die() {
   laserCombatInRange = null;
   escapeWatch = null;
   player.dead = true;
+  // Mort = aptitude coupée : la recharge du camouflage démarre.
+  if ((player.cloakT || 0) > 0) {
+    player.cloakT = 0;
+    startPoliceCloakCooldown();
+  }
   player.vx = player.vy = 0;
   radiationSoundDelay = 0;
   triggerDeathShake();
 
   // Coupe immédiatement l'effet de radiation (son, glow rouge + texte pulsé) à la mort.
   radiationSystem.reset();
+  clearPersistedRadiationExposure();
   radiationActive = false;
   SFX.stopLoop("radiationLoop", { fadeOut: 0 });
   repairSoundActive = false;
@@ -17084,7 +17723,7 @@ function die() {
   if (rules?.mode === "gate") {
     // ✅ en Galaxy Gate on ne renvoie plus direct à la base mère :
     // on affiche la fenêtre de réparation (seul choix = base), le joueur
-    // clique (ou touche R) pour valider le retour.
+    // clique pour valider le retour.
     setCenterMsg(false);
     startDeathSequence();
     return;
@@ -17098,11 +17737,21 @@ function die() {
   respawnBase();
 }
 
-function getNearestPortalTo(x, y) {
+// ✅ Portails annexes (par destination) : jamais utilisés pour une
+// réapparition au portail — low, QZ, Galaxy Gates (aussi celles des X-1),
+// map maudite et 5-2 (portail central de 4-5).
+const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "maudite", "5-2"]);
+
+function isAnnexPortal(portal) {
+  return ANNEX_PORTAL_MAPS.has(String(portal?.toMap || "").trim().toLowerCase());
+}
+
+function getNearestPortalTo(x, y, { excludeAnnex = false } = {}) {
   if (!zonePortals || !zonePortals.length) return null;
   let best = null;
   let bestD2 = Infinity;
   for (const p of zonePortals) {
+    if (excludeAnnex && isAnnexPortal(p)) continue;
     const d2 = dist2(x, y, p.x, p.y);
     if (d2 < bestD2) {
       bestD2 = d2;
@@ -17253,7 +17902,7 @@ function respawnBaseGate() {
 // À la réapparition choisie, le menu et le voile noir disparaissent instantanément,
 // le son de réapparition joue, puis le respawn s'enchaîne directement.
 function startRespawn(action) {
-  // ✅ ignore les déclenchements multiples (double-clic, R + clic, R répété
+  // ✅ ignore les déclenchements multiples (double-clic, clics répétés
   // pendant le switch) : sinon sons en double et deux changements de map
   // concurrents qui se marchent dessus.
   if (respawnRunning) return;
@@ -17315,14 +17964,24 @@ function respawnNearestPortal() {
     respawnBaseGate();
     return;
   }
+  const portalCd = getRespawnCdLeft("portal");
+  if (portalCd > 0) {
+    showToast(`Portail en recharge (${formatCdLeft(portalCd)})`, 1.4);
+    refreshRespawnShop();
+    return;
+  }
   const curMap = window.__CURRENT_MAP_ID__ || "1-1";
-
-  const p = getNearestPortalTo(lastDeathPos.x, lastDeathPos.y);
+  // ✅ portails annexes exclus (low, QZ, GG/gates X-1, maudite, 5-2) :
+  // on réapparaît au portail normal le plus proche, sinon repli base.
+  const p = getNearestPortalTo(lastDeathPos.x, lastDeathPos.y, { excludeAnnex: true });
   if (!p) {
+    // ✅ pas de portail sur la carte : repli gratuit vers la base.
     respawnBase();
     return;
   }
+  if (!chargeRespawnCost(RESPAWN_PORTAL_COST, "Portail")) return;
 
+  setRespawnCd("portal", Date.now() + RESPAWN_PORTAL_CD_SEC * 1000);
   setRespawnOverride({ map: curMap, x: p.x, y: p.y, respawn: true });
   startRespawn(() => {
     resetRun({ randomSpawn: false });
@@ -17335,7 +17994,16 @@ function respawnHere() {
     respawnBaseGate();
     return;
   }
+  const hereCd = getRespawnCdLeft("here");
+  if (hereCd > 0) {
+    showToast(`Sur place en recharge (${formatCdLeft(hereCd)})`, 1.4);
+    refreshRespawnShop();
+    return;
+  }
+  if (!chargeRespawnCost(RESPAWN_HERE_COST, "Sur place")) return;
   const curMap = window.__CURRENT_MAP_ID__ || "1-1";
+
+  setRespawnCd("here", Date.now() + RESPAWN_HERE_CD_SEC * 1000);
 
   setRespawnOverride({
     map: curMap,
@@ -18540,9 +19208,10 @@ function drawPlayerBars(px, py) {
     return "rgb(255,255,255)";
   });
   const activeFormation = getActiveDroneFormation(account.user);
-  let droneFormationImage = activeFormation ? getCachedImage(activeFormation.icon) : null;
-  if (activeFormation && !isImgReady(droneFormationImage)) {
-    loadImage(activeFormation.icon, { priority: true });
+  const activeFormationDockIcon = activeFormation ? (formationDockIcon(activeFormation) || activeFormation.icon) : null;
+  let droneFormationImage = activeFormationDockIcon ? getCachedImage(activeFormationDockIcon) : null;
+  if (activeFormationDockIcon && !isImgReady(droneFormationImage)) {
+    loadImage(activeFormationDockIcon, { priority: true });
     droneFormationImage = null;
   }
   const activeHangar = getActiveHangarFromUser(account.user);
@@ -18585,7 +19254,7 @@ function playerIsInSafeZone() {
   if (zonePortals?.length) {
     for (const p of getInteractivePortals()) {
       if (!portalProvidesSafety(p)) continue;
-      const rr = DEFAULT_PORTAL_RADIUS;
+      const rr = DEFAULT_PORTAL_RADIUS + SAFE_ZONE_MARGIN;
       if (dist2(player.x, player.y, p.x, p.y) <= rr * rr) return true;
     }
   }
@@ -18606,6 +19275,12 @@ function enemyShoot(e, dt, combatTarget = player) {
 
   if (combatTarget === player && safeZoneActive && playerIsInSafeZone()) return;
 
+  // Camouflage ultime : les NPC ne voient plus le joueur, ils gardent le tir.
+  if (combatTarget === player && isPlayerCloaked()) {
+    e.shootCd = 0.5 + Math.random() * 0.6;
+    return;
+  }
+
   if (rules?.mode === "zone") {
     if (e.passiveNative && !e._provoked) return;
   }
@@ -18617,7 +19292,7 @@ function enemyShoot(e, dt, combatTarget = player) {
   if (e.type === "npc_Gygerim_Overlord") {
     e._farShotCd = Number.isFinite(e._farShotCd) ? e._farShotCd - dt : 5;
     if (e._farShotCd <= 0) {
-      const distantTargets = player.dead ? [] : [player];
+      const distantTargets = (!player.dead && !isPlayerCloaked()) ? [player] : [];
       distantTargets.push(...escortShips.filter(escort => escort.hp > 0));
       const farthest = distantTargets.reduce((best, candidate) => (
         !best || dist2(e.x, e.y, candidate.x, candidate.y) > dist2(e.x, e.y, best.x, best.y)
@@ -18776,6 +19451,17 @@ function update(dt) {
   player.pvpAttackT = Math.max(0, (player.pvpAttackT || 0) - dt);
   player.invincibleT = Math.max(0, (player.invincibleT || 0) - dt);
   player.portalLockT = Math.max(0, (player.portalLockT || 0) - dt);
+  // Camouflage ultime (Police) : durée + recharge. La recharge ne descend
+  // que hors effet (pendant l'effet le voile reste plein).
+  if ((player.cloakT || 0) > 0) {
+    player.cloakT = Math.max(0, player.cloakT - dt);
+    if (player.cloakT <= 0) {
+      startPoliceCloakCooldown();
+      showNotification("Camouflage ultime terminé", 2, "info");
+    }
+  } else {
+    player.cloakCd = Math.max(0, (player.cloakCd || 0) - dt);
+  }
 
   fireCooldown = Math.max(0, fireCooldown - dt);
   laserCd = Math.max(0, laserCd - dt);
@@ -18913,6 +19599,9 @@ updatePlayerVelocity(player, { x: mx, y: my }, dt);
   applyRadiation(dt);
 
   player.iFrames = Math.max(0, player.iFrames - dt);
+  // Fin du ralenti Kamikaze : on retombe à vitesse normale.
+  player.rocketSlowT = Math.max(0, Number(player.rocketSlowT || 0) - dt);
+  if (player.rocketSlowT <= 0) player.rocketSlowPct = 0;
   tickRepair(dt);
   tickDroneFormationEffects(dt);
   tickRepairOrbitFx(dt);
@@ -18942,11 +19631,38 @@ updatePlayerVelocity(player, { x: mx, y: my }, dt);
       }
     }
 
+    // Protection portail en rayon safe (portail + marge), indépendant du
+    // rayon d'interaction (450) qui pilote l'ouverture et le saut. Corrige
+    // deux bugs : la couronne 450-900 affichait le cercle violet (overlay
+    // et NPC en 900) sans protéger le joueur (450), et l'arrivée d'un saut
+    // n'activait pas la ZNA côté arrivée.
+    const noCombatForSafe = player.combatT <= 0 && !attackActive;
+    let safePortal = null;
     if (near) {
-      safeZoneX = near.x;
-      safeZoneY = near.y;
-      safeZoneR = DEFAULT_PORTAL_RADIUS;
-      safeZoneActive = portalProvidesSafety(near) && (player.combatT <= 0 && !attackActive);
+      try { if (portalProvidesSafety(near)) safePortal = near; } catch { safePortal = null; }
+    }
+    if (!safePortal) {
+      const pr = DEFAULT_PORTAL_RADIUS + SAFE_ZONE_MARGIN;
+      for (const p of getInteractivePortals()) {
+        try { if (!portalProvidesSafety(p)) continue; } catch { continue; }
+        if (dist2(player.x, player.y, p.x, p.y) <= pr * pr) {
+          safePortal = p;
+          break;
+        }
+      }
+    }
+
+    if (near) {
+      if (safePortal) {
+        safeZoneX = safePortal.x;
+        safeZoneY = safePortal.y;
+        safeZoneR = DEFAULT_PORTAL_RADIUS + SAFE_ZONE_MARGIN;
+      } else {
+        safeZoneX = near.x;
+        safeZoneY = near.y;
+        safeZoneR = DEFAULT_PORTAL_RADIUS;
+      }
+      safeZoneActive = !!safePortal && noCombatForSafe;
 
       if (
   near.autoOpen &&
@@ -18996,6 +19712,15 @@ if (
 ) {
   startZonePortalJump(near);
 }
+    } else if (safePortal) {
+      // Hors rayon d'interaction mais dans la couronne safe (450-900)
+      // d'un portail sûr : on reste protégé (cercle violet = protégé).
+      safeZoneX = safePortal.x;
+      safeZoneY = safePortal.y;
+      safeZoneR = DEFAULT_PORTAL_RADIUS + SAFE_ZONE_MARGIN;
+      safeZoneActive = noCombatForSafe;
+      if (safeZoneActive) showToastFixed("Zone de Non-Agression");
+      else if (toast?.fixed && toast.text === "Zone de Non-Agression") clearToastFixed();
     } else {
       safeZoneX = 0;
       safeZoneY = 0;
@@ -19151,7 +19876,12 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     // SAB = drain pur, zéro dégât coque.
     const pr = (player.r || 20) + (b.r || 6);
     if (segCircleHit(b._oldX, b._oldY, b.x, b.y, player.x, player.y, pr)) {
-      if (b.miss) {
+    // Protocole évasion (AI-E) : +X % de MISS quand on attaque le REX.
+    if (t.isPetTarget && !b.visual && !b.ownerEscortId && !b.miss) {
+      const evasionPct = getPetProtocolPct(account.user?.pet, account.user, "evasion");
+      if (evasionPct > 0 && Math.random() < Math.min(1, evasionPct / 100)) b.miss = true;
+    }
+    if (b.miss) {
         // ✅ SAB inversé : aucun son d'impact/d'absorption (même en MISS).
         showPlayerMissOnce(b, t);
         removeProjectile(bullets, i);
@@ -19786,7 +20516,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           }
         } else {
           if (!e.passiveNative || e._provoked) {
-            if (d <= aggroRange) {
+            // Camouflage ultime : pas de nouvelle aggro sur le joueur invisible.
+            if (d <= aggroRange && !isPlayerCloaked()) {
               e._aggro = true;
               e._aggroT = aggroHold;
             }
@@ -19799,7 +20530,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
         let mxv = 0, myv = 0;
 
-        if (!playerInSZ && e._aggro) {
+        // Camouflage ultime : le NPC ne poursuit plus le joueur invisible.
+        if (!playerInSZ && !isPlayerCloaked() && e._aggro) {
           e.aiZ.state = "aggro";
 
                   if (isKamikaze) {
@@ -19851,13 +20583,19 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           e.angle = Math.atan2(e.vy, e.vx);
         }
 
-        if (isKamikaze && !player.dead && cfgE.explodeOnTouch) {
+        if (isKamikaze && !player.dead && !isPlayerCloaked() && cfgE.explodeOnTouch) {
           const rrK = (cfgE.explodeRadius || 180);
           const d2K = dist2(e.x, e.y, player.x, player.y);
           if (d2K <= rrK * rrK) {
             spawnExplosion(e.x, e.y, 1.4);
             const dmgK = Number(cfgE.explodeDmg || 12000);
             hurtPlayer(dmgK);
+            // Souffle de l'explosion : ralenti 3 s (joueur + P.E.T via
+            // ownerSpeed), même sous iFrames, avec sprite SLOW_EFFECT.
+            player.rocketSlowT = Math.max(Number(player.rocketSlowT || 0), KAMIKAZE_SLOW_SEC);
+            player.rocketSlowPct = Math.max(Number(player.rocketSlowPct || 0), KAMIKAZE_SLOW_PCT);
+            showToast(`Kamikaze : vitesse -${KAMIKAZE_SLOW_PCT} % pendant ${KAMIKAZE_SLOW_SEC} s !`, 2);
+            addGameLog(`Kamikaze · explosion · vitesse -${KAMIKAZE_SLOW_PCT} % pendant ${KAMIKAZE_SLOW_SEC} s`, "info");
             notePetAttacker(e);
             e.hp = 0;
             e.sh = 0;
@@ -19884,7 +20622,10 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           e._fleeing = false;
           if (!e.ai) e.ai = {};
 
-          const mv = computeNpcCombatMovement(e, d, nx, ny, e.ai, dt);
+          // Camouflage ultime : le NPC reste sur place (cible invisible).
+          const mv = (combatTarget === player && isPlayerCloaked())
+            ? { mxv: 0, myv: 0 }
+            : computeNpcCombatMovement(e, d, nx, ny, e.ai, dt);
 
           let mxv = mv.mxv;
           let myv = mv.myv;
@@ -19906,7 +20647,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
     } else {
       const d2p = dist2(e.x, e.y, combatTarget.x, combatTarget.y);
       const r = (e.shootRange || 540);
-      shouldFacePlayer = d2p <= r * r;
+      // Camouflage ultime : le NPC ne fixe plus le joueur invisible.
+      shouldFacePlayer = d2p <= r * r && !(combatTarget === player && isPlayerCloaked());
     }
 
     if (shouldFacePlayer) {
@@ -20192,6 +20934,8 @@ if (GAME_SETTINGS.textures) {
   const px = player.x + ox, py = player.y + oy;
   if (!player.dead) {
     ctx.save();
+    // Camouflage ultime : vaisseau + drones à 50 % d'opacité.
+    if (isPlayerCloaked()) ctx.globalAlpha = 0.5;
     ctx.translate(px, py);
     
     const tt = performance.now() / 1000;
@@ -20230,6 +20974,9 @@ if (GAME_SETTINGS.textures) {
     // ✅ Halo de bouclier officiel rejoué à intervalle aléatoire
     drawShieldShimmer();
 
+    // ✅ Ralenti Kamikaze : sprite SLOW_EFFECT officiel autour du vaisseau.
+    if ((player.rocketSlowT || 0) > 0) drawRocketDebuffEffect(player);
+
     ctx.restore();
     ctx.globalAlpha = 1;
   }
@@ -20247,7 +20994,11 @@ if (GAME_SETTINGS.textures) {
     drawTargetMarker(t, ox, oy, performance.now() / 1000);
   }
 
+  // Nom + barres de vie + grade : 50 % d'opacité sous camouflage ultime.
+  ctx.save();
+  if (isPlayerCloaked()) ctx.globalAlpha = 0.5;
   drawPlayerBars(px, py);
+  ctx.restore();
   drawMinimap();
   drawToast();
   drawRadiationWarning();
@@ -20407,15 +21158,15 @@ updateConfigButtons();
 
   // IEM : pas de % qui remonte, la progression est montrée par le voile
   // circulaire du dock (voir syncActionDockState). Ici on affiche le temps
-  // restant pendant la recharge, "PRÊT" une fois disponible.
-  setHudText(ui.pulsePct, pulseCd > 0 ? `${pulseCd.toFixed(1)}s` : "PRÊT");
+  // restant pendant la recharge, "PRET" une fois disponible.
+  setHudText(ui.pulsePct, pulseCd > 0 ? `${pulseCd.toFixed(1)}s` : "PRET");
 
   if (ui.pulsePrice) {
     setHudText(ui.pulsePrice, pulseCd > 0 ? "" : "30k");
   }
 
-  // ISH : même affichage que l'IEM (temps restant / PRÊT + prix).
-  setHudText(ui.ishPct, ishCd > 0 ? `${ishCd.toFixed(1)}s` : "PRÊT");
+  // ISH : même affichage que l'IEM (temps restant / PRET + prix).
+  setHudText(ui.ishPct, ishCd > 0 ? `${ishCd.toFixed(1)}s` : "PRET");
 
   if (ui.ishPrice) {
     setHudText(ui.ishPrice, ishCd > 0 ? "" : "30k");
@@ -20427,7 +21178,7 @@ updateConfigButtons();
     started && !player.dead && ammoCount("x6") > 0 && rsbLikeCooldown("x6") <= 0
   );
 
-  setHudText(ui.miniMapName, `Map : ${rules?.mapLabel || "—"}`);
+  setHudText(ui.miniMapName, `Map : ${rules?.mapName || rules?.mapLabel || "—"}`);
   setHudText(ui.miniPos, `Pos : ${formatInteger(player.x)} / ${formatInteger(player.y)}`);
 
   setHudText(ui.versionTxt, `ALPHA v.${GAME_VERSION}`);
@@ -20552,6 +21303,11 @@ async function startGame() {
   }
 
   started = true;
+
+  // Le compte est chargé ici à coup sûr : restaure les recharges
+  // persistantes + resync l'onglet Aptitudes.
+  try { restorePersistedCds(); } catch {}
+  try { refreshActiveActionPalette?.(); } catch {}
 
   // Musique lancée uniquement ici (clic DÉPART = geste utilisateur).
   try { startFactionMusic(); } catch {}
@@ -20704,7 +21460,7 @@ updateCurrentUserProgress({
   drones: account.user.drones,
   pet: account.user.pet,
 
-  // ⚠️ Ne surtout pas sauvegarder ship ici.
+  // ⚠ï¸ Ne surtout pas sauvegarder ship ici.
   // Le vaisseau actif est géré par setActiveHangar().
   ammo: {
     x1: Infinity,
@@ -20968,12 +21724,12 @@ window.addEventListener("orbit:user-updated", event => {
   account.user = refreshed;
   // Changement de vaisseau : account.user est déjà muté ici (cache partagé
   // de readUsers), on compare donc au dernier vaisseau vu par la palette.
+  // Le refresh est systématique (pas seulement au changement) : au boot la
+  // palette s'initie souvent avant les données du compte et resterait masquée.
   let nowShipId = "";
   try { nowShipId = String(getActiveHangarFromUser(account?.user)?.shipId || "").toLowerCase(); } catch {}
-  if (nowShipId !== lastAbilityShipId) {
-    lastAbilityShipId = nowShipId;
-    try { refreshActiveActionPalette?.(); } catch {}
-  }
+  if (nowShipId !== lastAbilityShipId) lastAbilityShipId = nowShipId;
+  try { refreshActiveActionPalette?.(); } catch {}
   if (started) {
     applyCurrentConfigStats(false, switched ? nextHangar.activeConfig : null, true);
     updateConfigButtons();

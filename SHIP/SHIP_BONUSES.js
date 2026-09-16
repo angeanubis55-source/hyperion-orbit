@@ -153,6 +153,36 @@ function designEntryFor(shipId) {
 }
 
 /**
+ * true si le design apporte un effet propre (bonus passif à lui), en suivant
+ * les mêmes règles que l'affichage (entrée directe, override, préfixe).
+ * Un design cosmétique pur (héritage seul, aucun effet à lui) renvoie false :
+ * son bonus éventuel vient de sa coque, pas du design.
+ */
+export function designHasOwnEffect(shipId) {
+  const id = String(shipId || "");
+  if (!id) return false;
+  // Une coque n'est pas un design : aucun "effet de design" à elle.
+  if (!getShipDesignBaseId(id) && SHIP_BASE_INFO[id]) return false;
+  const hasEffet = (entry) => entry && entry.effet !== undefined && entry.effet !== null && String(entry.effet).trim() !== "";
+  // Stats numériques propres (hors stats de coque héritées).
+  const hasOwnStats = (key) => Boolean(key && SHIP_EFFECT_STATS[key] && !SHIP_BASE_INFO[key]);
+  if (SHIP_DESIGN_INFO[id] || SHIP_EFFECT_STATS[id]) {
+    return hasEffet(SHIP_DESIGN_INFO[id]) || hasOwnStats(id);
+  }
+  const override = SHIP_DESIGN_OVERRIDES[id];
+  if (override) {
+    return hasEffet(SHIP_DESIGN_INFO[override]) || hasOwnStats(override);
+  }
+  for (const [prefix, key] of SHIP_DESIGN_PREFIXES) {
+    if (id.startsWith(prefix)) {
+      // goliath_x_* hérite de la coque goliath_x : pas d'effet propre.
+      return hasEffet(SHIP_DESIGN_INFO[key]) || hasEffet(SHIP_PREFIX_INFO[key]) || hasOwnStats(key);
+    }
+  }
+  return false;
+}
+
+/**
  * Renvoie { effet, competence } pour un id de vaisseau ou de design.
  * - design à gain propre -> son effet + compétence de sa base.
  * - design cosmétique   -> effet + compétence de sa base.

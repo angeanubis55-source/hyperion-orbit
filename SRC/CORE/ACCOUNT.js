@@ -13,8 +13,9 @@ import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { getRefineryRecipe, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOT_ORES } from "../DATA/RESOURCES.js";
 import { ROCKET_TYPES } from "../../COMBAT/ROCKET_TYPES.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../../DRONE/DRONE_TYPES.js";
-import { createPet, emptyPetFit, getPetLevel, getPetMaxHp, getPetSlots, getPetShieldBonus, normalizePetMode, normalizePetPseudo, PET_DEFAULT_PSEUDO, PET_FUEL_MAX, PET_SLOTS } from "../../PET/PET_TYPES.js";
-import { getBooster, normalizeBoostersState } from "../DATA/BOOSTERS.js";
+import { createPet, emptyPetFit, getPetHullBonusHp, getPetHullPrice, getPetLevel, getPetMaxHp, getPetSlots, getPetShieldBonus, normalizePetMode, normalizePetPseudo, PET_DEFAULT_PSEUDO, PET_FUEL_MAX, PET_HULL_MAX_BUYS, PET_SLOTS } from "../../PET/PET_TYPES.js";
+import { activeBoosterMults, getBooster, normalizeBoostersState } from "../DATA/BOOSTERS.js";
+import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -432,6 +433,16 @@ function normalizePetFitValue(value, level = 0) {
       else if (t === "shield" && raw.generators.includes(null)) raw.generators[raw.generators.indexOf(null)] = id;
     }
   }
+  // Chaleur supprimée : purge les protocoles AI-AH encore équipés
+  // (items retirés du catalogue → findCatalogItem null, ou clé heat).
+  for (const id of [...raw.protocols]) {
+    if (!id) continue;
+    const pit = findCatalogItem(id);
+    if (!pit || String(pit?.petProtocol?.key || "").toLowerCase() === "heat") {
+      const idx = raw.protocols.indexOf(id);
+      if (idx >= 0) raw.protocols[idx] = null;
+    }
+  }
   // Comme le vaisseau : aucun trou, tout poussé en haut à gauche dans chaque groupe.
   return compactPetFit(raw, slots);
 }
@@ -772,11 +783,24 @@ function ensureUserShape(u) {
     if (["tra", "hpl", "bc", "bh", "kk"].includes(String(u.pet.activeGear || "").toLowerCase())) {
       u.pet.activeGear = null;
     }
-    // Fuel infini pour le moment : 50 000 / 50 000 fixe.
+    // Carburant : persisté (jamais réinitialisé). Le REX consomme 1 / 2 s
+    // +1 par gear actif ; les one-shot (kamikaze / sacrifice) coûtent 3.
     u.pet.fuelMax = PET_FUEL_MAX;
-    u.pet.fuel = PET_FUEL_MAX;
-    // HP persistés (pleins par défaut). Le max suit le niveau officiel.
-    const petHpMax = getPetMaxHp(u.pet.level);
+    const savedFuel = Number(u.pet.fuel);
+    u.pet.fuel = Number.isFinite(savedFuel)
+      ? Math.max(0, Math.min(PET_FUEL_MAX, Math.floor(savedFuel)))
+      : PET_FUEL_MAX;
+    // Panne sèche persistée : le REX ne reste jamais "actif" sans carburant.
+    if (!(u.pet.fuel > 0)) u.pet.active = false;
+    // Position persistée du REX (refresh : reprend où il était sur la même map).
+    const petX = Number(u.pet.x), petY = Number(u.pet.y);
+    u.pet.x = Number.isFinite(petX) ? petX : null;
+    u.pet.y = Number.isFinite(petY) ? petY : null;
+    u.pet.map = typeof u.pet.map === "string" && u.pet.map ? u.pet.map : null;
+    // Coque+ : 10 achats max, +10 000 HP définitifs chacun (persisté).
+    u.pet.hullUpgrades = Math.max(0, Math.min(PET_HULL_MAX_BUYS, Math.floor(Number(u.pet.hullUpgrades) || 0)));
+    // HP persistés (pleins par défaut). Le max suit le niveau + Coque+.
+    const petHpMax = getPetMaxHp(u.pet.level) + getPetHullBonusHp(u.pet);
     u.pet.hp = Number.isFinite(Number(u.pet.hp)) ? Math.max(0, Math.min(petHpMax, Math.floor(Number(u.pet.hp)))) : petHpMax;
     // Bouclier : null = plein (le max dépend de l'équipement du hangar actif).
     if (u.pet.sh != null && !Number.isFinite(Number(u.pet.sh))) u.pet.sh = null;
@@ -1397,9 +1421,40 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
   const isShip = !!item.ship?.id;
   const isDesign = !!item.design?.id;
   const isPet = !!item.pet?.id;
+  const isHull = !!item.petHull;
+  // Coque+ : 1 par 1 (prix exponentiel selon le nombre déjà possédé).
+  if (isHull) {
+    if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
+    const owned = Math.max(0, Math.min(PET_HULL_MAX_BUYS, Math.floor(Number(u.pet.hullUpgrades) || 0)));
+    if (owned >= PET_HULL_MAX_BUYS) return { ok: false, error: `Coque+ au maximum (${PET_HULL_MAX_BUYS}/10).` };
+    const hullPrice = getPetHullPrice(owned);
+    if (u.credits < hullPrice) return { ok: false, error: "Crédits insuffisants." };
+    u.credits -= hullPrice;
+    u.pet.hullUpgrades = owned + 1;
+    incCount(u, item.id, 1);
+    ensureUserShape(u);
+    saveUser(u);
+    return { ok: true, user: u, quantity: 1, totalPrice: hullPrice };
+  }
+  // Essence : recharge directe du réservoir (quantité 1..5000).
+  if (item.petFuel) {
+    if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
+    const qty = Math.min(5000, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
+    const space = Math.max(0, PET_FUEL_MAX - Math.max(0, Math.floor(Number(u.pet.fuel) || 0)));
+    if (space <= 0) return { ok: false, error: "Réservoir plein." };
+    const buyQty = Math.min(qty, space);
+    const fuelPrice = Math.max(0, Number(item.price || 0)) * buyQty;
+    if (u.credits < fuelPrice) return { ok: false, error: "Crédits insuffisants." };
+    u.credits -= fuelPrice;
+    u.pet.fuel = Math.min(PET_FUEL_MAX, Math.max(0, Math.floor(Number(u.pet.fuel) || 0)) + buyQty);
+    incCount(u, item.id, buyQty);
+    ensureUserShape(u);
+    saveUser(u);
+    return { ok: true, user: u, quantity: buyQty, totalPrice: fuelPrice };
+  }
   const quantity = (isShip || isDesign || isPet)
     ? 1
-    : Math.min(1000, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
+    : Math.min(5000, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
   const unitPrice = Math.max(0, Number(item.price || 0));
   const price = unitPrice * quantity;
   if (u.credits < price) return { ok: false, error: "Crédits insuffisants." };
@@ -1729,6 +1784,10 @@ export function setPetActive(active) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
+  if (active === true && !(Number(u.pet.hp) > 0)) return { ok: false, error: "REX détruit, répare-le." };
+  if (active === true && !(Math.max(0, Math.floor(Number(u.pet.fuel) || 0)) > 0)) {
+    return { ok: false, error: "Plus de carburant — achète de l'essence P.E.T." };
+  }
   u.pet.active = active === true;
   ensureUserShape(u);
   saveUser(u);
@@ -1747,7 +1806,7 @@ export function repairPet() {
     return { ok: false, error: `Il faut ${PET_REPAIR_COST} crédits.`, user: u };
   }
   u.credits = Math.max(0, Number(u.credits) || 0) - PET_REPAIR_COST;
-  u.pet.hp = Math.max(1, Math.floor(getPetMaxHp(getPetLevel(u.pet.exp)) * 0.1));
+  u.pet.hp = Math.max(1, Math.floor((getPetMaxHp(getPetLevel(u.pet.exp)) + getPetHullBonusHp(u.pet)) * 0.1));
   u.pet.sh = 0;
   u.pet.active = false;
   ensureUserShape(u);
@@ -1848,10 +1907,34 @@ export function completeCurrentUserGalaxyGate(gateId) {
   const reward = GALAXY_GATE_DEFINITIONS[String(gateId || "").toLowerCase()]?.completion;
   u.galaxyGates = result.state;
   if (reward) {
-    u.credits += reward.credits;
-    u.stats.exp += reward.exp;
-    u.stats.honor += reward.honor;
-    u.ammo.x4 += reward.x4;
+    // Tous les buffs comptent (boosters EP/HON + formation + modules/effet
+    // vaisseau), comme pour les kills NPC et les quêtes. Sans ça, un joueur
+    // boosté recevait la valeur standard — et l'affichage aussi.
+    const mults = activeBoosterMults(u.boosters, Date.now());
+    let moduleExpPct = 0;
+    let moduleHonorPct = 0;
+    try {
+      const hangars = Array.isArray(u.hangars) ? u.hangars : [];
+      const activeHangar = hangars.find((h) => h?.active) || hangars[0] || null;
+      if (activeHangar) {
+        const stats = computeHangarStats(activeHangar, u, {});
+        moduleExpPct = Math.max(0, Number(stats?.bonusExpPct || 0));
+        moduleHonorPct = Math.max(0, Number(stats?.bonusHonorPct || 0));
+      }
+    } catch { moduleExpPct = 0; moduleHonorPct = 0; }
+    const expGain = Math.max(0, Math.floor(Number(reward.exp || 0) * (1 + moduleExpPct / 100) * Math.max(0, Number(mults.exp || 1))));
+    const honorGain = Math.max(0, Math.floor(Number(reward.honor || 0) * (1 + moduleHonorPct / 100) * Math.max(0, Number(mults.honor || 1))));
+    u.credits = Math.max(0, Math.floor(Number(u.credits || 0))) + Math.max(0, Math.floor(Number(reward.credits || 0)));
+    u.stats ||= { honor: 0, exp: 0, rankPoints: 0 };
+    u.stats.exp = Math.max(0, Math.floor(Number(u.stats.exp || 0))) + expGain;
+    u.stats.honor = Math.max(0, Math.floor(Number(u.stats.honor || 0))) + honorGain;
+    u.stats.rankPoints = calculateRankPoints(u.stats);
+    u.ammo ||= {};
+    u.ammo.x4 = Math.max(0, Math.floor(Number(u.ammo.x4 || 0))) + Math.max(0, Math.floor(Number(reward.x4 || 0)));
+    ensureUserShape(u);
+    saveUser(u);
+    // Montants réels : l'affichage (notifications + log) suit automatiquement.
+    return { ok: true, user: u, reward: { ...reward, exp: expGain, honor: honorGain } };
   }
   ensureUserShape(u);
   saveUser(u);

@@ -30,7 +30,7 @@ import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
-import { getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
+import { designHasOwnEffect, getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
 import { SHIP_ITEM_DIR, SHIP_ITEM_FULL_IDS, SHIP_ITEM_TRAIT_IDS, SHIP_TRAIT_DIR } from "../SHIP/SHIP_ITEMS.js";
 import { escapeHtml } from "../UI/UI_DOM.js";
 import { PILOT_RANKS, calculateRankPoints, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo } from "../SRC/CORE/PROGRESSION.js";
@@ -43,7 +43,7 @@ import { getRocketType, rocketEffectLabel } from "../COMBAT/ROCKET_TYPES.js";
 import { getResourceName, getResourceIcon } from "../SRC/DATA/RESOURCES.js";
 import { getItemRarity, ITEM_RARITIES } from "../SRC/DATA/ITEM_RARITIES.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../DRONE/DRONE_TYPES.js";
-import { emptyPetFit, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLevelXp, getPetSlots, getPetSpritePath } from "../PET/PET_TYPES.js";
+import { emptyPetFit, getPetHullPrice, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLevelXp, getPetSlots, getPetSpritePath, PET_FUEL_MAX, PET_HULL_MAX_BUYS } from "../PET/PET_TYPES.js";
 import { MODULE_ALL_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 import { appendToFitSlots, compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
 import { rarityForCatalogItem } from "../SRC/DATA/CRAFTING.js";
@@ -129,6 +129,8 @@ if (storedTab === "hangars" && document.getElementById("hangarWindowPanel")) sto
 let tab = storedTab;
 let shopTab = localStorage.getItem("orbit_shop_tab") || "ammo";
 if (shopTab === "launchers") shopTab = "rockets"; // onglet fusionné
+// Recherche de l'onglet DESIGNS (conservée entre les re-renders).
+let designSearchQuery = "";
 let selectedShopItemId = null;
 let selectedHangarId = null;
 let shopRenderToken = 0;
@@ -308,11 +310,13 @@ function getShopListFor(cat) {
     }
     if (cat === "designs") {
       // groupe les designs par vaisseau de base (l'ordre du fichier est déjà cohérent)
-      return [...direct].sort((a, b) => {
+      const sorted = [...direct].sort((a, b) => {
         const ab = String(a.design?.base || a.id);
         const bb = String(b.design?.base || b.id);
         return ab.localeCompare(bb) || String(a.name).localeCompare(String(b.name));
       });
+      // Les designs sans effet propre (cosmétiques purs) ne sont pas affichés.
+      return sorted.filter((it) => designHasOwnEffect(itemShipId(it)));
     }
     if (cat === "petGears" || cat === "petProtocols") {
       return groupPetShopItems(direct);
@@ -328,7 +332,8 @@ function getShopListFor(cat) {
       const it = shipItems.find((x) => String(x.ship.id) === String(pack.id));
       if (it) out.push(it);
     }
-    return out.length ? out : shipItems;
+    // Vaisseaux triés par prix croissant.
+    return [...(out.length ? out : shipItems)].sort((a, b) => Number(a?.price || 0) - Number(b?.price || 0));
   }
 
   return [];
@@ -1638,6 +1643,33 @@ let lastShopListSignature = "";
 let refreshShopBalance = null;
 function currentProfileUser() { return user; }
 
+// Barre de recherche de l'onglet DESIGNS : sticky en haut de la liste,
+// elle reste visible pendant le scroll (voir .designSearchBar dans style.css).
+function buildDesignSearchBar() {
+  const bar = document.createElement("div");
+  bar.className = "designSearchBar";
+  const input = document.createElement("input");
+  input.id = "designSearchInput";
+  input.type = "search";
+  input.placeholder = "Rechercher un design…";
+  input.autocomplete = "off";
+  input.value = designSearchQuery;
+  input.setAttribute("aria-label", "Rechercher un design");
+  input.addEventListener("input", () => {
+    designSearchQuery = input.value;
+    renderShop(currentProfileUser());
+    // Le re-render reconstruit la barre : on lui rend le focus + curseur.
+    const again = document.getElementById("designSearchInput");
+    if (again) {
+      again.focus();
+      const end = again.value.length;
+      try { again.setSelectionRange(end, end); } catch {}
+    }
+  });
+  bar.appendChild(input);
+  return bar;
+}
+
 function renderShop(user) {
   return measureGameTask("ui.renderShop", () => renderShopMeasured(user));
 }
@@ -1648,7 +1680,8 @@ function renderShopMeasured(user) {
   const listSignature = JSON.stringify([shopTab, user.inventory?.ships,
     user.inventory?.shipDesigns, user.drones?.items?.map(drone => [drone.id, drone.type]),
     user.drones?.formations, user.drones?.activeFormation, user.rockets,
-    user.pet?.owned, user.pet?.level, Math.floor(Number(user.pet?.exp) || 0), user.inventory?.counts?.["pet_niveau1"]]);
+    user.pet?.owned, user.pet?.level, Math.floor(Number(user.pet?.exp) || 0), user.inventory?.counts?.["pet_niveau1"],
+    shopTab === "designs" ? designSearchQuery : ""]);
   if (shopTab !== "extras" && listSignature === lastShopListSignature && refreshShopBalance) {
     refreshShopBalance(user);
     return;
@@ -1681,14 +1714,24 @@ function renderShopMeasured(user) {
   // Toutes les catégories utilisent la même liste et le même panneau d'aperçu.
   shopList.innerHTML = "";
 
-  const list = getShopListFor(shopTab);
+  let list = getShopListFor(shopTab);
+  if (shopTab === "designs") {
+    // Filtre par nom du design ou de son vaisseau de base.
+    const q = designSearchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((it) =>
+        `${it?.name || ""} ${getShipPack(it?.design?.base)?.name || it?.design?.base || ""}`.toLowerCase().includes(q));
+    }
+    shopList.appendChild(buildDesignSearchBar());
+  }
   if (!Array.isArray(list) || !list.length) {
-    shopList.innerHTML = `
-      <div class="tile">
-        <h3>Aucun item</h3>
-        <p>Cette catégorie est vide.</p>
-      </div>
+    const empty = document.createElement("div");
+    empty.className = "tile";
+    empty.innerHTML = `
+      <h3>Aucun item</h3>
+      <p>${shopTab === "designs" && designSearchQuery.trim() ? "Aucun design pour cette recherche." : "Cette catégorie est vide."}</p>
     `;
+    shopList.appendChild(empty);
     shopPreview.innerHTML = `
       <div class="tile">
         <h3>—</h3>
@@ -1704,7 +1747,8 @@ function renderShopMeasured(user) {
 
   for (const it of list) {
     const ownedIris = user?.drones?.items?.filter(drone => drone.type === "iris").length || 0;
-    const price = it.drone?.type === "iris" ? getIrisPrice(ownedIris) : Number(it.price || 0);
+    const hullBuysRow = it?.petHull ? Math.max(0, Math.min(PET_HULL_MAX_BUYS, Math.floor(Number(user?.pet?.hullUpgrades) || 0))) : 0;
+    const price = it?.petHull ? getPetHullPrice(hullBuysRow) : it.drone?.type === "iris" ? getIrisPrice(ownedIris) : Number(it.price || 0);
     const isShipLike = shopTab === "ships" || shopTab === "designs";
     const ownedShip = isShipLike
       ? (shopTab === "designs" ? alreadyOwnsDesign(user, itemShipId(it)) : alreadyOwnsShip(user, it.ship?.id))
@@ -1712,6 +1756,7 @@ function renderShopMeasured(user) {
     const ownedDrone = it.drone ? (user?.drones?.items || []).filter(drone => drone.type === it.drone.type).length : 0;
     const ownedFormation = it.formation ? user?.drones?.formations?.includes(it.formation.id) : false;
     const ownedPet = it.pet ? (user?.pet?.owned === true || Number(user?.inventory?.counts?.[it.id] || 0) > 0) : false;
+    const ownedHullRow = it?.petHull ? hullBuysRow >= PET_HULL_MAX_BUYS : false;
     const groupLevels = Array.isArray(it?.levels) ? it.levels : null;
     const ownedPetGear = groupLevels
       ? groupLevels.reduce((sum, e) => sum + Number(user?.inventory?.counts?.[e.id] || 0), 0)
@@ -1730,6 +1775,7 @@ function renderShopMeasured(user) {
     img.style.imageRendering = (shopTab === "ships" || shopTab === "designs" || shopTab === "drones") ? "pixelated" : "auto";
     if (shopTab === "drones") img.classList.add("droneShopRowImage");
     if (shopTab === "formations") img.classList.add("formationShopRowImage");
+    if (it.pet) img.classList.add("petShopRowImage");
     img.onerror = () => {
       img.onerror = null;
       img.src = FALLBACK_ICON;
@@ -1740,7 +1786,7 @@ function renderShopMeasured(user) {
 
     const title = document.createElement("b");
     title.textContent = it.name || it.id;
-    if (it?.petOnly || it?.petGear || it?.petProtocol) {
+    if (it?.petOnly || it?.petGear || it?.petProtocol || it?.petFuel || it?.petHull) {
       const badge = document.createElement("span");
       badge.className = "shopPetBadge";
       badge.textContent = "P.E.T";
@@ -1762,9 +1808,10 @@ function renderShopMeasured(user) {
     const sub = document.createElement("span");
     sub.innerHTML = `${formatNumber(price)} crédits`
       + (shopTab === "designs" ? ` · ${getShipPack(it.design?.base)?.name || it.design?.base}` : "")
-      + (ownedShip || ownedFormation || ownedPet ? ` · <span style="color:#00ff88;">Possédé</span>` : "")
+      + (ownedShip || ownedFormation || ownedPet || ownedHullRow ? ` · <span style="color:#00ff88;">Possédé</span>` : "")
       + (it.drone ? ` · ${ownedDrone}/${it.drone.type === "iris" ? 8 : 1}` : "")
       + ((it.petGear || it.petProtocol) ? ` · ×${formatNumber(ownedPetGear)}${petGearReq > 0 ? ` · niv. P.E.T ${petGearReq}+` : ""}` : "")
+      + (it?.petHull ? ` · ${hullBuysRow}/${PET_HULL_MAX_BUYS}` : "")
       + (groupLevels ? ` · ×${formatNumber(ownedPetGear)} · Niveaux 1-${groupLevels.length}` : "");
 
     meta.appendChild(title);
@@ -2383,20 +2430,34 @@ function renderShopPreview(user, it, cat) {
     it = groupRef.levels.find((e) => petShopLevelOf(e) === sel) || groupRef.levels[0];
   }
   const ownedIris = user?.drones?.items?.filter(drone => drone.type === "iris").length || 0;
-  const price = it?.drone?.type === "iris" ? getIrisPrice(ownedIris) : Number(it?.price || 0);
+  const hullBuys = Math.max(0, Math.min(PET_HULL_MAX_BUYS, Math.floor(Number(user?.pet?.hullUpgrades) || 0)));
+  const hullPriceNow = getPetHullPrice(hullBuys);
+  const price = it?.petHull ? hullPriceNow : it?.drone?.type === "iris" ? getIrisPrice(ownedIris) : Number(it?.price || 0);
   const isShip = cat === "ships";
   const isDesign = cat === "designs";
   const isShipLike = isShip || isDesign;
   const isDrone = cat === "drones";
   const isFormation = cat === "formations";
-  const isPet = cat === "pets" || !!it?.pet;
+  const isPet = !!it?.pet?.id;
+  const isFuel = !!it?.petFuel;
+  const isHull = !!it?.petHull;
   const shipId = it?.ship?.id || it?.design?.id || null;
   const droneCount = isDrone ? (user?.drones?.items || []).filter(drone => drone.type === it?.drone?.type).length : 0;
   const droneLimit = it?.drone?.type === "iris" ? 8 : 1;
   const formationOwned = isFormation && user?.drones?.formations?.includes(it?.formation?.id);
   const petOwned = isPet && (user?.pet?.owned === true || Number(user?.inventory?.counts?.[it?.id] || 0) > 0);
-  const owned = isShipLike ? (isDesign ? alreadyOwnsDesign(user, shipId) : alreadyOwnsShip(user, shipId)) : isDrone ? droneCount >= droneLimit : isPet ? petOwned : Boolean(formationOwned);
-  const isUnique = isShipLike || isDrone || isFormation || isPet;
+  const fuelOwned = isFuel && user?.pet?.owned === true;
+  const hullOwned = isHull && hullBuys >= PET_HULL_MAX_BUYS;
+  const fuelNow = isFuel ? Math.max(0, Math.floor(Number(user?.pet?.fuel) || 0)) : 0;
+  // Place restante lue sur l'utilisateur courant (refreshShopBalance remplace
+  // `user` quand la boutique reste ouverte) : le bouton ne reste jamais figé.
+  const fuelSpaceNow = () => isFuel && user?.pet?.owned === true
+    ? Math.max(0, PET_FUEL_MAX - Math.max(0, Math.floor(Number(user?.pet?.fuel) || 0)))
+    : 0;
+  const fuelSpace = fuelSpaceNow();
+  const fuelFull = isFuel && user?.pet?.owned === true && fuelSpace <= 0;
+  const owned = isShipLike ? (isDesign ? alreadyOwnsDesign(user, shipId) : alreadyOwnsShip(user, shipId)) : isDrone ? droneCount >= droneLimit : isPet ? petOwned : isHull ? hullOwned : Boolean(formationOwned);
+  const isUnique = isShipLike || isDrone || isFormation || isPet || isHull;
 const counts = user?.inventory?.counts || {};
 const countOwned = Number(counts[it?.id] || 0);
 
@@ -2427,11 +2488,17 @@ if (isShipLike) {
     const basePack = getShipPack(it?.design?.base);
     statLine += `<p class="shopItemStat">Vaisseau de base : <strong>${escapeHtml(basePack?.name || it?.design?.base || "")}</strong></p>`;
   }
-  // Gains officiels : effet passif + compétence (ou "aucun" / "Aucune").
+  // Gains officiels : effet passif + compétence (vaisseaux uniquement :
+  // les designs n'apportent aucun effet actif, seulement un bonus passif).
   const shipBonus = isShipLike && shipId ? getShipBonusInfo(shipId) : null;
   if (shipBonus) {
-    statLine += `<p class="shopItemStat">Effet : <strong>${escapeHtml(shipBonus.effet || "aucun")}</strong></p>`;
-    statLine += `<p class="shopItemStat">Compétence : <strong>${escapeHtml(shipBonus.competence || "Aucune")}</strong></p>`;
+    // Ligne affichée seulement si le vaisseau/design a vraiment l'info.
+    if (shipBonus.effet) {
+      statLine += `<p class="shopItemStat">Effet : <strong>${escapeHtml(shipBonus.effet)}</strong></p>`;
+    }
+    if (!isDesign && shipBonus.competence) {
+      statLine += `<p class="shopItemStat">Compétence : <strong>${escapeHtml(shipBonus.competence)}</strong></p>`;
+    }
   }
 } else if (it?.module?.type === "speed") {
   statLine = `<p class="shopItemStat">Vitesse par générateur <strong>+${formatNumber(it.module.bonusSpeed || 0)}</strong></p>`;
@@ -2448,10 +2515,20 @@ if (isShipLike) {
   statLine = `<p class="shopItemStat">${escapeHtml(rocketEffectLabel(rocket))}</p>`;
 } else if (it?.petProtocol) {
   const req = Math.max(0, Number(it.petLevel) || 0);
-  statLine = `<p class="shopItemStat">Bonus <strong>+${Number(it.petProtocol.pct) || 0} % ${escapeHtml(petProtocolStatLabel(it.petProtocol.key))}</strong> quand équipé sur le P.E.T (groupe PROTOCOLES).</p>`;
-  if (req > 0) statLine += `<p class="shopItemStat">Nécessite le <strong>P.E.T niveau ${req}</strong> (officiel : palier 2 dès niv. 4, palier 3 dès niv. 8).</p>`;
+  statLine = `<p class="shopItemStat">Bonus <strong>+${Number(it.petProtocol.pct) || 0} % ${escapeHtml(petProtocolStatLabel(it.petProtocol.key))}</strong>.</p>`;
+  if (req > 0) statLine += `<p class="shopItemStat">Nécessite le <strong>P.E.T niveau ${req}</strong>.</p>`;
 } else if (it?.petGear) {
-  statLine = `<p class="shopItemStat">Gear P.E.T — <strong>${escapeHtml(it.desc || "utilitaire")}</strong> (groupe GEARS).</p>`;
+  const req = Math.max(0, Number(it.petLevel) || 0);
+  statLine = `<p class="shopItemStat">Gear P.E.T — <strong>${escapeHtml(it.desc || "utilitaire")}</strong>.</p>`;
+  if (req > 0) statLine += `<p class="shopItemStat">Nécessite le <strong>P.E.T niveau ${req}</strong>.</p>`;
+} else if (isFuel) {
+  statLine = `<p class="shopItemStat">Essence P.E.T — <strong>recharge +1 carburant / unité</strong> (100 crédits / unité).</p>`;
+  statLine += `<p class="shopItemStat">Nécessite le <strong>P.E.T</strong> (réservoir ${formatNumber(PET_FUEL_MAX)}).</p>`;
+} else if (isHull) {
+  statLine = `<p class="shopItemStat">Coque+ P.E.T — <strong>+10 000 HP définitifs</strong> au REX.</p>`;
+  statLine += hullOwned
+    ? `<p class="shopItemStat"><strong>Amélioration au maximum (${hullBuys}/${PET_HULL_MAX_BUYS}).</strong></p>`
+    : `<p class="shopItemStat">Prochain achat : <strong>${formatNumber(hullPriceNow)} crédits</strong> (${hullBuys}/${PET_HULL_MAX_BUYS}, prix ×2 à chaque achat).</p>`;
 } else if (it?.booster?.id) {
   const boosterDef = getBooster(it.booster.id);
   statLine = `<p class="shopItemStat">${escapeHtml(it.desc || "")}</p>`;
@@ -2473,6 +2550,15 @@ if (isDrone) {
   stockLine = petOwned
     ? `<p class="shopAmmoOwned">P.E.T possédé — Niveau ${petLevel} · ${formatNumber(Math.floor(petExp))} XP · ${escapeHtml(getPetLevelBonus(petLevel))}</p>`
     : `<p class="shopAmmoOwned">P.E.T non possédé — achat unique · gagne 5 % de ton XP</p>`;
+} else if (isFuel) {
+  const fuel = Math.max(0, Math.floor(Number(user?.pet?.fuel) || 0));
+  stockLine = user?.pet?.owned === true
+    ? `<p class="shopAmmoOwned">Réservoir : <strong data-shop-stock style="color: #00d9ff;">${formatNumber(fuel)} / ${formatNumber(PET_FUEL_MAX)}</strong></p>`
+    : `<p class="shopAmmoOwned">P.E.T non possédé — essence inutilisable sans REX</p>`;
+} else if (isHull) {
+  stockLine = user?.pet?.owned === true
+    ? `<p class="shopAmmoOwned">Coque+ : <strong data-shop-stock style="color: #00d9ff;">${hullBuys} / ${PET_HULL_MAX_BUYS}</strong></p>`
+    : `<p class="shopAmmoOwned">P.E.T non possédé — Coque+ inutilisable sans REX</p>`;
 } else if (isFormation) {
   const active = user?.drones?.activeFormation === it?.formation?.id;
   stockLine = `<p class="shopAmmoOwned">${formationOwned ? (active ? "Formation active" : "Formation possédée") : `Nécessite au moins ${it?.formation?.minDrones || 4} drones`}</p>`;
@@ -2492,11 +2578,12 @@ if (isDrone) {
   `;
 }
 
-  const imgSrc = isShipLike ? shipPreviewSrc(shipId) : iconForItem(it, cat);
+  const imgSrc = it?.preview || (isShipLike ? shipPreviewSrc(shipId) : iconForItem(it, cat));
 
   // Gears / protocoles P.E.T : P.E.T requis + palier de niveau officiel.
+  // Essence / Coque+ : P.E.T possédé requis (sans palier de niveau).
   const petReqLevel = Math.max(0, Number(it?.petLevel) || 0);
-  const needsPetGate = !!(it?.petGear || it?.petProtocol);
+  const needsPetGate = !!(it?.petGear || it?.petProtocol || isFuel || isHull);
   const petGateUnmetNow = () => needsPetGate && (user?.pet?.owned !== true || Math.max(0, Number(user?.pet?.level) || 0) < petReqLevel);
   const petGateLabel = () => user?.pet?.owned !== true ? "P.E.T requis" : `P.E.T niveau ${petReqLevel} requis`;
 
@@ -2521,14 +2608,18 @@ if (isDrone) {
       </div>
     `;
   } else {
+    const previewFallback = it?.preview ? ` onerror="this.onerror=null;this.src='${iconForItem(it, cat)}'"` : "";
     previewHtml = `
-      <img src="${imgSrc}" alt="${it?.name || it?.id}" class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "lasers", "extras", "petGears", "petProtocols", "boosters"].includes(cat) ? " equipShopImage" : ""}" />
+      <img src="${imgSrc}" alt="${it?.name || it?.id}"${previewFallback} class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "lasers", "extras", "pets", "petGears", "petProtocols", "boosters"].includes(cat) ? " equipShopImage" : ""}" />
     `;
   }
+  // Preview uniforme : card 105x105, item 100x100 centré (hors vaisseaux,
+  // qui gardent leur grand conteneur d'aperçu).
+  const previewCard = isShipLike ? previewHtml : `<div class="shopPreviewCard">${previewHtml}</div>`;
 
   shopPreview.innerHTML = `
     <div class="tile">
-      ${previewHtml}
+      ${previewCard}
 
       <h3>
         ${it?.name || it?.id} 
@@ -2562,7 +2653,7 @@ if (isDrone) {
           </select>
           ` : `
           <div class="shopQuantityBox">
-            <input id="shopBuyQuantity" type="number" min="1" max="1000" step="1" value="1" inputmode="numeric" aria-label="Quantité à acheter" />
+            <input id="shopBuyQuantity" type="number" min="1" max="5000" step="1" value="1" inputmode="numeric" aria-label="Quantité à acheter" />
             <select id="shopBuyQuantityPreset" aria-label="Quantités prédéfinies">
               <option value="1">1</option>
               <option value="5">5</option>
@@ -2570,6 +2661,9 @@ if (isDrone) {
               <option value="50">50</option>
               <option value="100">100</option>
               <option value="1000">1000</option>
+              <option value="2000">2000</option>
+              <option value="5000">5000</option>
+              <option value="max">Max</option>
             </select>
           </div>
           `}
@@ -2582,8 +2676,8 @@ if (isDrone) {
       </p>` : ""}
 
       <div class="shopBuySection">
-        <button id="btnBuyPreview" class="primary" style="width: 100%;" ${(Number(user?.credits || 0) < price || (owned && !formationOwned) || petGateUnmetNow()) ? "disabled" : ""}>
-          ${formationOwned ? (user?.drones?.activeFormation === it?.formation?.id ? 'Formation active' : 'Activer la formation') : petGateUnmetNow() ? petGateLabel() : owned ? 'Déjà possédé' : (isUnique ? `Acheter (${formatNumber(price)})` : 'Acheter')}
+        <button id="btnBuyPreview" class="primary" style="width: 100%;" ${(Number(user?.credits || 0) < price || (owned && !formationOwned) || petGateUnmetNow() || fuelFull) ? "disabled" : ""}>
+          ${formationOwned ? (user?.drones?.activeFormation === it?.formation?.id ? 'Formation active' : 'Activer la formation') : petGateUnmetNow() ? petGateLabel() : fuelFull ? 'Réservoir plein' : owned ? 'Déjà possédé' : (isUnique ? `Acheter (${formatNumber(price)})` : 'Acheter')}
         </button>
       </div>
     </div>
@@ -2596,28 +2690,45 @@ if (isDrone) {
   const quantityPreset = document.getElementById("shopBuyQuantityPreset");
   const levelInput = document.getElementById("shopBuyLevel");
   const totalEl = document.getElementById("shopPurchaseTotal");
+  // Quantité max : 5000 partout ; essence limitée aussi par la place restante.
+  const quantityCapNow = () => isFuel
+    ? Math.max(1, Math.min(5000, fuelSpaceNow() || 1))
+    : 5000;
+  const maxAffordableNow = () => {
+    if (!(price > 0)) return quantityCapNow();
+    const afford = Math.floor(Number(user?.credits || 0) / price);
+    return Math.max(1, Math.min(quantityCapNow(), afford || 1));
+  };
   const normalizeQuantity = () => groupRef
     ? 1
     : isUnique
       ? 1
-      : Math.min(1000, Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
+      : Math.min(quantityCapNow(), Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
   const updatePurchaseSummary = () => {
     const quantity = normalizeQuantity();
     const total = price * quantity;
-    if (quantityInput) quantityInput.value = String(quantity);
+    if (quantityInput) {
+      quantityInput.max = String(quantityCapNow());
+      quantityInput.value = String(quantity);
+    }
     if (totalEl) totalEl.textContent = formatNumber(total);
     const gateUnmet = petGateUnmetNow();
-    btn.disabled = (owned && !formationOwned) || (formationOwned && user?.drones?.activeFormation === it?.formation?.id) || (!formationOwned && Number(user?.credits || 0) < total) || gateUnmet;
+    const full = isFuel && user?.pet?.owned === true && fuelSpaceNow() <= 0;
+    btn.disabled = (owned && !formationOwned) || (formationOwned && user?.drones?.activeFormation === it?.formation?.id) || (!formationOwned && Number(user?.credits || 0) < total) || gateUnmet || full;
     if (!owned && !formationOwned) {
-      btn.textContent = gateUnmet ? petGateLabel() : (isUnique ? `Acheter (${formatNumber(total)})` : "Acheter");
+      btn.textContent = gateUnmet ? petGateLabel() : full ? "Réservoir plein" : (isUnique ? `Acheter (${formatNumber(total)})` : "Acheter");
     }
   };
 
   quantityInput?.addEventListener("input", updatePurchaseSummary);
   quantityInput?.addEventListener("change", updatePurchaseSummary);
-  // Le menu déroulant reporte son montant dans la zone de saisie libre.
+  // Le menu déroulant reporte son montant dans la zone de saisie libre
+  // ("Max" = le plus gros achat possible avec les crédits, jamais au-dessus
+  // de 5000 ni de la place restante pour l'essence).
   quantityPreset?.addEventListener("change", () => {
-    if (quantityInput && quantityPreset) quantityInput.value = quantityPreset.value;
+    if (quantityInput && quantityPreset) {
+      quantityInput.value = quantityPreset.value === "max" ? String(maxAffordableNow()) : quantityPreset.value;
+    }
     updatePurchaseSummary();
   });
   levelInput?.addEventListener("change", () => {
@@ -2628,9 +2739,13 @@ if (isDrone) {
   refreshShopBalance = freshUser => {
     user = freshUser;
     const stock = shopPreview.querySelector("[data-shop-stock]");
-    if (stock) stock.textContent = formatNumber(isAmmo
-      ? getAmmoQtyForShopItem(user, it)?.qty || 0
-      : user.inventory?.counts?.[it.id] || 0);
+    if (stock) stock.textContent = formatNumber(isFuel
+      ? Math.max(0, Math.floor(Number(user?.pet?.fuel) || 0))
+      : isHull
+        ? Math.max(0, Math.min(PET_HULL_MAX_BUYS, Math.floor(Number(user?.pet?.hullUpgrades) || 0)))
+        : isAmmo
+          ? getAmmoQtyForShopItem(user, it)?.qty || 0
+          : user.inventory?.counts?.[it.id] || 0);
     updatePurchaseSummary();
   };
   updatePurchaseSummary();
@@ -3196,7 +3311,6 @@ function petProtocolStatLabel(key) {
   if (key === "aim") return "précision";
   if (key === "evasion") return "évasion";
   if (key === "eco") return "économie fuel";
-  if (key === "heat") return "chaleur";
   return String(key || "");
 }
 

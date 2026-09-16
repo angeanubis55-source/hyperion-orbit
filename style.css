@@ -111,7 +111,7 @@ html.orbitSessionReady #loadingOverlay{
 }
 
 /* ============================================================
-   HUD â panneaux de jeu
+   HUD — panneaux de jeu
 ============================================================ */
 
 #boxWave{
@@ -486,7 +486,7 @@ html.orbitSessionReady #loadingOverlay{
   cursor:pointer;
 }
 .refineryAuto input:checked::after{
-  content:"â";
+  content:"✓";
   color:#eaffff;
   font-size:11px;
   font-weight:900;
@@ -689,7 +689,7 @@ html.orbitSessionReady #loadingOverlay{
   gap:0;
 }
 
-/* Boutons + / - collÃ©s l'un Ã  l'autre, mÃªme hauteur que le bouton rÃ©duire */
+/* Boutons + / - collés l'un à l'autre, même hauteur que le bouton réduire */
 .miniZoomActions .miniZoomBtn{
   width:26px !important;
   height:26px !important;
@@ -800,7 +800,7 @@ html.orbitSessionReady #loadingOverlay{
 }
 
 /* ============================================================
-   FenÃªtres HUD â style commun propre
+   Fenêtres HUD — style commun propre
 ============================================================ */
 
 .gameWindow{
@@ -844,7 +844,7 @@ html.orbitSessionReady #loadingOverlay{
 }
 
 /* ============================================================
-   Profil compact : vÃ©ritable fenÃªtre au-dessus du jeu
+   Profil compact : véritable fenêtre au-dessus du jeu
 ============================================================ */
 #profileOverlay{
   display:none;
@@ -1036,6 +1036,23 @@ html.orbitSessionReady #loadingOverlay{
 }
 #profileOverlay .shopList,
 #profileOverlay .shopPreview{ padding-right:6px; }
+/* Recherche DESIGNS : collée en haut de la liste, reste visible au scroll. */
+.shopList .designSearchBar{
+  position:sticky; top:0; z-index:5;
+  padding:6px; margin-bottom:6px;
+  background:rgba(2,10,20,.94);
+  border:1px solid rgba(124,240,255,.25); border-radius:8px;
+}
+.shopList .designSearchBar input{
+  width:100%; box-sizing:border-box;
+  padding:7px 10px; border-radius:6px;
+  border:1px solid rgba(124,240,255,.3);
+  background:rgba(0,20,35,.8); color:#eaffff;
+  font:600 12px/1.2 ui-sans-serif,system-ui;
+  outline:none;
+}
+.shopList .designSearchBar input::placeholder{ color:rgba(158,238,255,.45); }
+.shopList .designSearchBar input:focus{ border-color:#7cf0ff; box-shadow:0 0 10px rgba(0,217,255,.25); }
 #profileOverlay .shopRow{ gap:9px; padding:9px; border-radius:9px; }
 #profileOverlay .shopRow img{ width:42px; height:42px; }
 #profileOverlay .shopPreview .bigImg{
@@ -1083,7 +1100,7 @@ html.orbitSessionReady #loadingOverlay{
 }
 
 /* ============================================================
-   PROFIL V2 â composant HUD isolÃ©, sans flou
+   PROFIL V2 — composant HUD isolé, sans flou
 ============================================================ */
 body #profileOverlay{
   position:fixed !important;
@@ -1592,13 +1609,53 @@ body #profileOverlay .shopPreview .bigImg{
   border-radius:14px !important;
   background:radial-gradient(circle,rgba(0,180,230,.1),rgba(0,0,0,.28)) !important;
 }
-/* IcÃ´nes officielles 100x100 : taille rÃ©elle, nettes (pas d'upscale flou). */
+/* Icônes officielles 100x100 : taille réelle, nettes (pas d'upscale flou). */
 body #profileOverlay .shopPreview .bigImg.equipShopImage{
   width:100px !important;
   max-width:100px !important;
   height:100px !important;
   max-height:100px !important;
   padding:8px !important;
+}
+/* Preview uniforme : card 105x105, item 100x100 centré. */
+body #profileOverlay .shopPreviewCard{
+  width:105px !important;
+  height:105px !important;
+  margin:0 auto 16px !important;
+  display:grid !important;
+  place-items:center !important;
+  border-radius:12px !important;
+  background:rgba(0,0,0,.25) !important;
+  border:1px solid rgba(0,217,255,.3) !important;
+}
+body #profileOverlay .shopPreviewCard .bigImg{
+  width:100px !important;
+  max-width:100px !important;
+  height:100px !important;
+  max-height:100px !important;
+  margin:0 !important;
+  padding:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  object-fit:contain !important;
+}
+/* Preview : contenu stabilisé, bouton d'achat toujours au même endroit. */
+body #profileOverlay .shopPreview .tile{
+  display:flex !important;
+  flex-direction:column !important;
+  min-height:100% !important;
+  box-sizing:border-box !important;
+}
+body #profileOverlay .shopPreview .shopBuySection{
+  margin-top:auto !important;
+  padding-top:12px !important;
+}
+/* Preview P.E.T (render externe) : un peu plus grande que le 100x100. */
+body #profileOverlay .shopPreview .bigImg.petPreviewImage{
+  width:160px !important;
+  max-width:160px !important;
+  height:160px !important;
+  max-height:160px !important;
 }
 
 @media (max-width:820px){
@@ -1619,7 +1676,7 @@ body #profileOverlay .shopPreview .bigImg.equipShopImage{
   body #profileOverlay .profileMainCard{ grid-column:1 !important; grid-row:3 !important; padding:8px !important; }
 }
 
-/* Profil V5 : sections fixes, hangars liste + aperÃ§u, boutique claire */
+/* Profil V5 : sections fixes, hangars liste + aperçu, boutique claire */
 body #profileOverlay .profileTabs{
   flex:0 0 auto !important;
   min-height:0 !important;
@@ -1733,7 +1790,7 @@ body #profileOverlay #panel_shop .shopPreview .profileTile{ min-height:100% !imp
   body #profileOverlay .hangarWorkspace > .profileGrid{ overflow:visible !important; }
 }
 
-/* Profil V4 : intÃ©rieur aÃ©rÃ© et navigation par listes */
+/* Profil V4 : intérieur aéré et navigation par listes */
 body #profileOverlay #profileWindow{
   width:min(1100px,calc(100vw - 32px)) !important;
   height:min(720px,calc(100vh - 40px)) !important;
@@ -1932,7 +1989,7 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   body #profileOverlay .shopLayoutGrid{ grid-template-columns:1fr !important; }
 }
 
-/* Titres internes des fenÃªtres : 11px comme P.E.T */
+/* Titres internes des fenêtres : 11px comme P.E.T */
 html body #profileOverlay .profileHeaderTop .profileTitle,
 html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .modal h2{ font-size:11px !important; }
@@ -2019,7 +2076,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   flex-shrink:0 !important;
 }
 
-/* IcÃ´nes officielles DarkOrbit dans les barres de fenÃªtres */
+/* Icônes officielles DarkOrbit dans les barres de fenêtres */
 .gameWinIcon img.menuIconImg{
   width:28px !important;
   height:28px !important;
@@ -2069,7 +2126,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   cursor:default !important;
 }
 
-/* Boutons reduire : fleche â CSS (comme poignee LOG, sens haut-gauche) */
+/* Boutons reduire : fleche ↖ CSS (comme poignee LOG, sens haut-gauche) */
 .gameWindow > .gameWinBar > .gameWinMinBtn:not(.miniZoomBtn){
   position:relative;
   font-size:0 !important;
@@ -2116,9 +2173,9 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   filter:drop-shadow(0 0 4px rgba(0,217,255,.6));
 }
 
-/* Vrai bouton rÃ©duire : carrÃ© collÃ© dans l'angle haut-droit.
+/* Vrai bouton réduire : carré collé dans l'angle haut-droit.
    Les boutons zoom de la mini-carte (.miniZoomBtn) sont exclus :
-   ils gardent leur taille et leur place cÃ´te Ã  cÃ´te. */
+   ils gardent leur taille et leur place côte à côte. */
 .gameWindow > .gameWinBar > .gameWinMinBtn:not(.miniZoomBtn){
   width:26px !important;
   height:26px !important;
@@ -2126,7 +2183,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   border-radius:0 8px 0 0 !important;
 }
 
-/* Mini-carte : le bouton rÃ©duire est collÃ© aux boutons + / -
+/* Mini-carte : le bouton réduire est collé aux boutons + / -
    (compense le gap de 8px de la barre + fusion des bordures). */
 #minimap.gameWindow > .gameWinBar > .gameWinMinBtn:not(.miniZoomBtn){
   margin-left:-9px !important;
@@ -2456,7 +2513,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   box-shadow:0 0 16px rgba(0,217,255,.12);
 }
 
-/* FenÃªtre Boosters */
+/* Fenêtre Boosters */
 #boosterWindow{ padding-bottom:0 !important; }
 .boosterPanel{ width:280px !important; min-width:0 !important; max-width:min(280px, calc(100vw - 20px)) !important; }
 .boosterList{ display:grid; gap:0; padding:8px 12px; max-height:440px; overflow-y:auto; scrollbar-width:thin; }
@@ -2467,7 +2524,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .boosterList > .boosterSingle:not(:last-child),
 .boosterList > .boosterGroup:not(:last-child){ border-bottom:1px solid rgba(124,240,255,.2); padding-bottom:8px; margin-bottom:8px; }
 .boosterRow.compact img{ width:24px; height:24px; }
-/* Badge % individuel + groupes par icÃ´ne avec tiret couleur famille */
+/* Badge % individuel + groupes par icône avec tiret couleur famille */
 .boosterSingle{ display:grid; grid-template-columns:58px minmax(0,1fr); gap:6px; align-items:center; }
 .singleRail{ display:flex; align-items:center; justify-content:flex-end; gap:6px; }
 .singleBar{ width:0; height:18px; border-left:2px solid var(--boost, rgba(0,180,255,.9)); flex-shrink:0; }
@@ -2598,7 +2655,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   pointer-events:none;
 }
 
-/* FenÃªtre P.E.T en jeu : version fine et Ã©lÃ©gante. */
+/* Fenêtre P.E.T en jeu : version fine et élégante. */
 #petWindow.gameWindow{
   width:272px !important;
   max-width:calc(100vw - 28px) !important;
@@ -2790,7 +2847,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   text-transform:none;
 }
 
-/* LibellÃ©s Mode / NPC de mÃªme largeur : les deux listes sont alignÃ©es. */
+/* Libellés Mode / NPC de même largeur : les deux listes sont alignées. */
 #petWindow .petModeRow>span:first-child{
   min-width:38px;
 }
@@ -2800,7 +2857,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   display:none !important;
 }
 
-/* Menus dÃ©roulants custom P.E.T : restent ouverts au clic ailleurs. */
+/* Menus déroulants custom P.E.T : restent ouverts au clic ailleurs. */
 #petWindow .petDropdown{
   position:relative;
   flex:1 1 auto;
@@ -2918,7 +2975,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 }
 
 /* ============================================================
-   Dock des fenÃªtres rÃ©duites
+   Dock des fenêtres réduites
 ============================================================ */
 
 #gameWindowDock{
@@ -2972,7 +3029,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
 
-/* Ãtats portÃ©s par les images officielles (idle / hover / select dorÃ©),
+/* États portés par les images officielles (idle / hover / select doré),
    avec les effets CSS autour. */
 #gameWindowDock .gameDockIcon:hover:not(.dockIconActive){
   border-color:rgba(124,240,255,.82) !important;
@@ -2981,7 +3038,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
     0 0 24px rgba(0,217,255,.28) !important;
 }
 
-/* FenÃªtre ouverte : contour dorÃ© dans la barre des tÃ¢ches */
+/* Fenêtre ouverte : contour doré dans la barre des tâches */
 #gameWindowDock .gameDockIcon.dockIconActive{
   border-color:rgba(255,200,90,.95) !important;
   box-shadow:
@@ -2997,7 +3054,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   line-height:0 !important;
 }
 
-/* IcÃ´nes officielles DarkOrbit dans le dock (taille native 34x34) */
+/* Icônes officielles DarkOrbit dans le dock (taille native 34x34) */
 #gameWindowDock .gameDockIcon img{
   width:34px !important;
   height:34px !important;
@@ -3013,7 +3070,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 }
 
 /* ============================================================
-   Barre munitions / compÃ©tences
+   Barre munitions / compétences
 ============================================================ */
 
 #ammoBar{
@@ -3512,7 +3569,63 @@ body.orbitNoFade #fpsOverlay{
   background:rgba(255,255,255,.06);
 }
 
-/* RÃ©paration : sans cards, titres centrÃ©s, boutons style raffinage */
+/* Réparation : sans cards, titres centrés, boutons style raffinage */
+#respawnOverlay .respawnModal{
+  display:grid;
+  gap:12px;
+  justify-items:center;
+}
+#respawnOverlay .respawnHeader{
+  display:grid;
+  justify-items:center;
+  gap:6px;
+  text-align:center;
+}
+#respawnOverlay .respawnLogo{
+  width:min(220px, 60%);
+  height:auto;
+  image-rendering:auto;
+  filter:drop-shadow(0 0 18px rgba(0,217,255,.25));
+}
+#respawnOverlay .respawnHeaderTxt h2{
+  margin:0;
+  color:var(--accent);
+  font-size:18px;
+  font-weight:1000;
+  letter-spacing:.04em;
+}
+#respawnOverlay .respawnHeaderTxt p{
+  margin:0;
+  color:var(--muted);
+  font-size:12px;
+}
+#respawnOverlay .respawnPrice{
+  color:#ffd76a;
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.02em;
+}
+#respawnOverlay .respawnPrice.free{
+  color:#7dffb0;
+}
+#respawnOverlay .respawnCd{
+  min-height:14px;
+  color:#ff9d6b;
+  font-size:11px;
+  font-weight:800;
+}
+#respawnOverlay .respawnHint{
+  color:var(--muted);
+  font-size:11px;
+  text-align:center;
+  line-height:1.4;
+}
+#respawnOverlay .respawnDisabled{
+  opacity:.75;
+}
+#respawnOverlay .respawnDisabled button:disabled{
+  opacity:.45;
+}
 #respawnOverlay .shopItem{
   border:none;
   background:none;
@@ -3557,7 +3670,7 @@ body.orbitNoFade #fpsOverlay{
 }
 
 /* ============================================================
-   FenÃªtre ParamÃ¨tres
+   Fenêtre Paramètres
 ============================================================ */
 
 #settingsWindow{
@@ -4039,7 +4152,7 @@ body.orbitNoFade #fpsOverlay{
   border:1px solid rgba(0,217,255,.3);
 }
 
-/* IcÃ´nes officielles 100x100 : taille rÃ©elle, nettes (pas d'upscale flou). */
+/* Icônes officielles 100x100 : taille réelle, nettes (pas d'upscale flou). */
 .shopPreview .bigImg.equipShopImage{
   width:100px;
   max-width:100px;
@@ -4314,7 +4427,7 @@ body.orbitNoFade #fpsOverlay{
   }
 }
 /* ============================================================
-   â FIX MINI-MAP : empÃªche le canvas de dÃ©passer du cadre
+   ✅ FIX MINI-MAP : empêche le canvas de dépasser du cadre
 ============================================================ */
 
 #minimap.gameWindow{
@@ -4331,13 +4444,13 @@ body.orbitNoFade #fpsOverlay{
   margin-bottom: 3px !important;
 }
 
-/* SÃ©parateur */
+/* Séparateur */
 #minimap.gameWindow #miniDivider{
   margin: 0 12px !important;
   width: auto !important;
 }
 
-/* Canvas bien contenu dans la fenÃªtre */
+/* Canvas bien contenu dans la fenêtre */
 #minimap.gameWindow #miniCanvas{
   display: block !important;
 
@@ -4353,7 +4466,7 @@ body.orbitNoFade #fpsOverlay{
   border: 1px solid rgba(124,240,255,.22) !important;
 }
 
-/* La poignÃ©e de resize reste dans le cadre */
+/* La poignée de resize reste dans le cadre */
 #minimap.gameWindow .gameWinResizeHandle{
   right: 7px !important;
   bottom: 7px !important;
@@ -4480,7 +4593,7 @@ body.orbitNoFade #fpsOverlay{
   transform: translateY(-3px);
 }
 
-/* Petit Ã©cran */
+/* Petit écran */
 @media (max-width: 680px) {
   #ammoBar.compactAmmoBar {
     gap: 6px;
@@ -4524,7 +4637,7 @@ body.orbitNoFade #fpsOverlay{
   }
 }
 
-/* Barre rapide personnalisable : 12 petits emplacements rÃ©ordonnables. */
+/* Barre rapide personnalisable : 12 petits emplacements réordonnables. */
 #ammoBar.compactAmmoBar {
   display: flex;
   gap: 4px;
@@ -4622,8 +4735,8 @@ body.orbitNoFade #fpsOverlay{
   border-radius: 5px;
   background: rgba(3, 13, 21, .68);
 }
-/* Case Ã©quipÃ©e : le bouton (46Ã44) recouvre exactement la case ; on efface
-   le fond/bordure du slot pour une empreinte strictement identique Ã  vide. */
+/* Case équipée : le bouton (46×44) recouvre exactement la case ; on efface
+   le fond/bordure du slot pour une empreinte strictement identique à vide. */
 #ammoBar.compactAmmoBar .actionSlot:has(> .ammoBtn, > .rocketQuickAction, > .launcherAutoBtn):not(.dragTarget) {
   border-color: transparent;
   background: transparent;
@@ -4809,13 +4922,13 @@ body.orbitNoFade #fpsOverlay{
 #settingsWindow .settingsCheck span{min-width:0;overflow-wrap:anywhere}
 #settingsWindow .settingsCheck small{color:rgba(232,244,255,.58);font-size:10px}
 
-/* ParamÃ¨tres unifiÃ©s */
+/* Paramètres unifiés */
 #settingsWindow{
   width:min(980px,calc(100vw - 20px));
   height:min(720px,calc(100vh - 16px));
   transition:width .18s ease,height .18s ease,border-color .18s ease,box-shadow .18s ease;
 }
-/* Hauteur uniforme de tous les contrÃ´les de la fenÃªtre */
+/* Hauteur uniforme de tous les contrôles de la fenêtre */
 #settingsWindow .settingsCheck,
 #settingsWindow .settingsToggle,
 #settingsWindow .settingsResetBtn{height:34px;min-height:34px}
@@ -4898,7 +5011,7 @@ body.orbitNoFade #fpsOverlay{
 #settingsWindow .settingsPageFooter{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:8px;border-top:1px solid rgba(124,240,255,.11)}
 #settingsWindow .settingsPageFooter:has(> :only-child){grid-template-columns:1fr}
 #settingsWindow .settingsResetBtn{width:100%;margin:0;border-radius:8px;font-size:11px}
-/* Onglets des paramÃ¨tres : une seule page visible Ã  la fois */
+/* Onglets des paramètres : une seule page visible à la fois */
 #settingsWindow .settingsTabs{flex:0 0 auto;display:flex;gap:6px;padding:10px 14px 0}
 #settingsWindow .settingsTab{flex:1 1 0;min-width:0;height:32px;padding:0 8px;border:1px solid rgba(124,240,255,.22);border-radius:8px;color:rgba(204,228,241,.65);background:rgba(255,255,255,.03);font-size:11px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
 #settingsWindow .settingsTab:hover{color:#eaffff;border-color:rgba(124,240,255,.45)}
@@ -4920,9 +5033,9 @@ body.orbitNoFade #fpsOverlay{
 #settingsWindow .settingsBody::-webkit-scrollbar,
 #settingsWindow .settingsPage::-webkit-scrollbar,
 #settingsWindow .settingsKeyColumns::-webkit-scrollbar{display:none}
-/* CatÃ©gorie musique : une seule ligne, jamais scrollable ni rognÃ©e */
+/* Catégorie musique : une seule ligne, jamais scrollable ni rognée */
 #settingsWindow #musicList{flex:0 0 auto;min-height:fit-content;overflow:visible}
-/* Barre de dÃ©filement fine et visible pour la liste des sons */
+/* Barre de défilement fine et visible pour la liste des sons */
 #settingsWindow .sfxList{scrollbar-width:thin;scrollbar-color:rgba(124,240,255,.45) transparent}
 #settingsWindow .sfxList::-webkit-scrollbar{display:block;width:8px}
 #settingsWindow .sfxList::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:4px}
@@ -4937,7 +5050,7 @@ body.orbitNoFade #fpsOverlay{
   #settingsWindow .settingsSlotKeyColumns{grid-template-columns:1fr}
 }
 
-/* Profil : prioritÃ©s finales pour la navigation et les nouveaux panneaux */
+/* Profil : priorités finales pour la navigation et les nouveaux panneaux */
 body #profileOverlay .profileTabs{display:flex !important; flex-direction:column !important; gap:8px !important; padding:14px !important;}
 body #profileOverlay .profileTabs .tabBtn{display:flex !important; align-items:center !important; justify-content:flex-start !important; min-height:42px !important; padding:0 13px !important;}
 body #profileOverlay .hangarWorkspace{display:grid !important; grid-template-columns:250px minmax(0,1fr) !important; gap:14px !important; min-height:0 !important;}
@@ -4954,7 +5067,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 }
 @media (max-width:560px){body #profileOverlay .hangarWorkspace{grid-template-columns:1fr !important; overflow-y:auto !important;}}
 
-/* Barre rapide : dock carrÃ©, discret et entiÃ¨rement homogÃ¨ne. */
+/* Barre rapide : dock carré, discret et entièrement homogène. */
 #ammoBar.compactAmmoBar{gap:4px !important;padding:5px !important;border-radius:0 !important}
 #ammoBar .actionSlots{grid-template-columns:repeat(10,46px) !important;grid-template-rows:repeat(2,44px);gap:4px !important}
 #ammoBar.compactAmmoBar .actionSlot,
@@ -5041,6 +5154,69 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   overflow:hidden !important;
   padding:0 !important;
 }
+/* Roquettes : contenu decentre dans le PNG officiel -> recadrage (%) */
+#ammoBar img[src*="BDR-1212"]{transform:translateY(-14.5%) !important;}
+#ammoBar img[src*="BDR1212"]{transform:translateY(-14.5%) !important;}
+#ammoBar img[src*="BDR-1211"]{transform:translateY(-10.5%) !important;}
+#ammoBar img[src*="R-310"]{transform:translateY(-11.8%) !important;}
+#ammoBar img[src*="R-IC3"]{transform:translateY(-10.5%) !important;}
+#ammoBar img[src*="PLT-2026"]{transform:translateY(-9.2%) !important;}
+#ammoBar img[src*="PLT-2021"]{transform:translateY(-7.9%) !important;}
+#ammoBar img[src*="PLT-3030"]{transform:translateY(-6.6%) !important;}
+#ammoBar img[src*="DCR-250"]{transform:translateY(-6.6%) !important;}
+#ammoBar img[src*="PLD-8"]{transform:translateY(-6.6%) !important;}
+#ammoBar img[src*="HSTRM-01"]{transform:translateY(-3.9%) !important;}
+#ammoBar img[src*="CBR"]{transform:translateY(-5.3%) !important;}
+#ammoBar img[src*="ECO-10"]{transform:translateY(-2.6%) !important;}
+#ammoBar img[src*="SAR-01"]{transform:translateY(-2.6%) !important;}
+#ammoBar img[src*="SAR-02"]{transform:translateY(-2.6%) !important;}
+#ammoBar img[src*="SR-5"]{transform:translateY(-2.6%) !important;}
+#ammoBar img[src*="UBR-100"]{transform:translateY(-1.3%) !important;}
+#ammoBar img[src*="K-300M"]{transform:translateY(-1.3%) !important;}
+#ammoBar img[src*="SP-100X"]{transform:translateY(1.3%) !important;}
+#ammoBar img[src*="WIZ-X"]{transform:translate(2.6%,-11.8%) !important;}
+/* Formations : contenu decentre dans le PNG officiel -> recadrage */
+#ammoBar img[src*="FORMATION_DEFAULT"]{transform:translateY(-5px) !important;}
+#ammoBar img[src*="F-01-TU"]{transform:translateY(-3px) !important;}
+#ammoBar img[src*="F-02-AR"]{transform:translateY(-1px) !important;}
+#ammoBar img[src*="F-03-LA"]{transform:translateY(-3px) !important;}
+#ammoBar img[src*="F-04-ST"]{transform:translateY(-3px) !important;}
+#ammoBar img[src*="F-05-PI"]{transform:translateY(-5px) !important;}
+#ammoBar img[src*="F-06-DA"]{transform:translateY(-2px) !important;}
+#ammoBar img[src*="F-07-DI"]{transform:translateY(-3px) !important;}
+#ammoBar img[src*="F-08-CH"]{transform:translateY(-3px) !important;}
+#ammoBar img[src*="F-09-MO"]{transform:translateY(-4px) !important;}
+#ammoBar img[src*="F-10-CR"]{transform:translateY(-3px) !important;}
+#ammoBar img[src*="F-11-HE"]{transform:translateY(-3px) !important;}
+#ammoBar img[src*="F-12-BA"]{transform:translateY(-1px) !important;}
+#ammoBar img[src*="F-13-BT"]{transform:translateY(-4px) !important;}
+#ammoBar img[src*="F-3D-DM"]{transform:translateY(5.3%) !important;}
+#ammoBar img[src*="F-3D-DR"]{transform:translateY(3.9%) !important;}
+#ammoBar img[src*="F-3D-RG"]{transform:translateY(-1.3%) !important;}
+#ammoBar img[src*="F-3D-VT"]{transform:translateY(1.3%) !important;}
+#ammoBar img[src*="F-3D-WL"]{transform:translateY(3.9%) !important;}
+#ammoBar img[src*="F-3D-WV"]{transform:translateY(2.6%) !important;}
+#ammoBar img[src*="F-3D-X"]{transform:translateY(-2.6%) !important;}
+/* Slots : chaque image bien centrée (munitions, roquettes, lanceur, formations) */
+#ammoBar .actionSlot .rocketQuickAction,
+#ammoBar .actionSlot .formationQuickAction,
+#ammoBar .actionSlot .launcherAutoBtn,
+#ammoBar .rocketQuickAction,
+#ammoBar .formationQuickAction{
+  display:grid !important;
+  place-items:center !important;
+  place-content:center !important;
+}
+#ammoBar .actionSlot img,
+#ammoBar .rocketQuickAction img,
+#ammoBar .formationQuickAction img{
+  margin:auto !important;
+}
+#ammoBar .launcherAutoBtn{
+  background-position:center !important;
+  background-size:contain !important;
+  background-repeat:no-repeat !important;
+}
 #ammoBar .compactAmmoBtn[data-ammo]::before{
   content:"";
   position:absolute;
@@ -5055,22 +5231,22 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   image-rendering:auto;
   pointer-events:none;
 }
-#ammoBar .compactAmmoBtn[data-ammo="x1"]::before{background-image:url("ASSETS/ITEMS/AMMO_X1.png");background-size:76% auto}
-#ammoBar .compactAmmoBtn[data-ammo="x2"]::before{background-image:url("ASSETS/ITEMS/AMMO_X2.png")}
-#ammoBar .compactAmmoBtn[data-ammo="x3"]::before{background-image:url("ASSETS/ITEMS/AMMO_X3.png")}
-#ammoBar .compactAmmoBtn[data-ammo="x4"]::before{background-image:url("ASSETS/ITEMS/AMMO_X4.png")}
-#ammoBar .compactAmmoBtn[data-ammo="sab"]::before{background-image:url("ASSETS/ITEMS/AMMO_SAB.png")}
-#ammoBar .compactAmmoBtn[data-ammo="x6"]::before{background-image:url("ASSETS/ITEMS/AMMO_X6.png")}
-#ammoBar .compactAmmoBtn[data-ammo="rcb"]::before{background-image:url("ASSETS/ITEMS/AMMO_RCB.png")}
-#ammoBar .compactAmmoBtn[data-ammo="cbo"]::before{background-image:url("ASSETS/ITEMS/AMMO_CBO.png")}
-#ammoBar .compactAmmoBtn[data-ammo="job"]::before{background-image:url("ASSETS/ITEMS/AMMO_JOB.png")}
-#ammoBar .compactAmmoBtn[data-ammo="rb"]::before{background-image:url("ASSETS/ITEMS/AMMO_RB.png")}
-#ammoBar .compactAmmoBtn[data-ammo="pib"]::before{background-image:url("ASSETS/ITEMS/AMMO_PIB.png")}
-#ammoBar .compactAmmoBtn[data-ammo="idb"]::before{background-image:url("ASSETS/ITEMS/AMMO_IDB.png")}
-#ammoBar .compactAmmoBtn[data-ammo="vb"]::before{background-image:url("ASSETS/ITEMS/AMMO_VB.png")}
-#ammoBar .compactAmmoBtn[data-ammo="emaa"]::before{background-image:url("ASSETS/ITEMS/AMMO_EMAA.png")}
-#ammoBar .compactAmmoBtn[data-ammo="sbl"]::before{background-image:url("ASSETS/ITEMS/AMMO_SBL.png")}
-#ammoBar .compactAmmoBtn[data-ammo="abl"]::before{background-image:url("ASSETS/ITEMS/AMMO_ABL.png")}
+#ammoBar .compactAmmoBtn[data-ammo="x1"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_LCB-10.PNG");background-size:76% auto}
+#ammoBar .compactAmmoBtn[data-ammo="x2"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_MCB-25.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="x3"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_MCB-50.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="x4"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_UCB-100.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="sab"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_SAB-50.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="x6"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_RSB-75.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="rcb"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_RCB-140.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="cbo"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_CBO-100.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="job"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_JOB-100.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="rb"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_RB-214.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="pib"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_PIB-100.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="idb"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_IDB-125.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="vb"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_VB-142.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="emaa"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_EMAA-20.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="sbl"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_SBL-100.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="abl"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_A-BL.PNG")}
 #ammoBar .compactAmmoBtn[data-ammo] > strong{display:none !important}
 #ammoBar .compactAmmoBtn[data-ammo] > small{
   position:absolute;
@@ -5087,13 +5263,10 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   white-space:nowrap;
   text-overflow:ellipsis;
 }
-/* Compteurs munitions : taille + graisse comme coque (surcharge du 7px) */
 #ammoBar.compactAmmoBar .compactAmmoBtn[data-ammo] > small{
   font-size:10px !important;
   line-height:1 !important;
 }
-#ammoBar.compactAmmoBar .actionSlot .formationActionSlot img,
-#ammoBar.compactAmmoBar .actionSlot .rocketActionSlot img,
 #ammoBar .formationQuickAction img,
 #ammoBar .rocketQuickAction img{
   display:block !important;
@@ -5114,7 +5287,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar .formationQuickAction span,
 #ammoBar .actionPalette .slotKeyHint{display:none !important}
 #ammoBar .slotKeyHint{position:absolute;top:2px;left:3px;z-index:4;color:rgba(218,244,250,.66);font-size:7px;font-weight:900;line-height:1;pointer-events:none}
-/* MÃ©mos techniques des touches assignÃ©es (1, 2, Numpad1...) masquÃ©s */
+/* Mémos techniques des touches assignées (1, 2, Numpad1...) masqués */
 #ammoBar .slotKeyHint,
 #ammoBar .ammoKey,
 #ammoBar .keyHint{display:none !important}
@@ -5145,8 +5318,8 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar [data-skill="pulse"] > small,
 #ammoBar [data-skill="ish"] > small,
 #ammoBar [data-skill="repair"] > small{position:relative;z-index:3}
-/* IEM + rÃ©paration : textes strictement identiques aux compteurs
-   munitions/roquettes (mÃªme emplacement, taille, graisse, couleur). */
+/* IEM + réparation : textes strictement identiques aux compteurs
+   munitions/roquettes (même emplacement, taille, graisse, couleur). */
 #ammoBar #btnPulse{gap:0}
 #ammoBar #btnIsh{gap:0}
 #ammoBar #btnPulse > small,
@@ -5163,11 +5336,11 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar.compactAmmoBar #btnPulse > small,
 #ammoBar.compactAmmoBar #btnIsh > small,
 #ammoBar.compactAmmoBar #btnRepair > small{font-size:12px;line-height:1;opacity:.88}
-/* Le prix IEM/ISH reste masquÃ© en mode compact (comme avant) */
+/* Le prix IEM/ISH reste masqué en mode compact (comme avant) */
 #ammoBar.compactAmmoBar #btnPulse > small.skillPriceMini,
 #ammoBar.compactAmmoBar #btnIsh > small.skillPriceMini{display:none}
-/* Texte IEM : pareil que la rÃ©paration (en bas, minuscule).
-   SÃ©lecteur par attribut : les boutons visibles sont des clones sans id. */
+/* Texte IEM : pareil que la réparation (en bas, minuscule).
+   Sélecteur par attribut : les boutons visibles sont des clones sans id. */
 #ammoBar [data-skill="pulse"] > small,
 #ammoBar [data-skill="ish"] > small{
   position:absolute;
@@ -5187,8 +5360,8 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 }
 #ammoBar [data-skill="pulse"] > small.skillPriceMini,
 #ammoBar [data-skill="ish"] > small.skillPriceMini{bottom:11px}
-/* Texte rÃ©paration (OK / %) : en bas, minuscule comme les compteurs de
-   roquettes. MÃªme remarque : sÃ©lecteur par attribut pour les clones. */
+/* Texte réparation (OK / %) : en bas, minuscule comme les compteurs de
+   roquettes. Même remarque : sélecteur par attribut pour les clones. */
 #ammoBar [data-skill="repair"] > small{
   position:absolute;
   z-index:3;
@@ -5205,8 +5378,8 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   text-overflow:ellipsis;
   text-shadow:0 1px 3px #000, 0 0 6px #000;
 }
-/* Reste en bas aussi pendant le voile (la rÃ¨gle gÃ©nÃ©rique .cdVeil > small
-   repasserait sinon le texte en relatif = centrÃ©). */
+/* Reste en bas aussi pendant le voile (la règle générique .cdVeil > small
+   repasserait sinon le texte en relatif = centré). */
 /* Compteurs roquettes / lance-roquettes / competences : comme munitions */
 #ammoBar.compactAmmoBar .actionSlot .rocketActionSlot > small.rocketCount,
 #ammoBar.compactAmmoBar .rocketQuickAction > small.rocketCount,
@@ -5259,9 +5432,9 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 }
 .ggDetailsBottom .ggPartsBar{ border:none; background:none; border-radius:0; padding:0; }
 #ammoBar [data-skill="repair"].cdVeil > small{position:absolute}
-/* Robot rÃ©parateur : liserÃ© de balayage lime (couleur du robot) */
+/* Robot réparateur : liseré de balayage lime (couleur du robot) */
 #ammoBar [data-skill="repair"].cdVeil{--cd-edge:rgba(57,255,20,.9)}
-/* Robot rÃ©parateur : lime + contour en permanence */
+/* Robot réparateur : lime + contour en permanence */
 #ammoBar [data-skill="repair"]{
   border-color:color-mix(in srgb, var(--c) 60%, rgba(255,255,255,.12));
   background:
@@ -5269,10 +5442,10 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
     color-mix(in srgb, var(--c) 15%, rgba(255,255,255,.05));
   box-shadow:0 0 0 2px color-mix(in srgb, var(--c) 35%, transparent) inset;
 }
-/* IEM/ISH : voile de recharge carrÃ© plein rectangle, balayÃ© en arc depuis le haut.
-   Zone dÃ©jÃ  dÃ©voilÃ©e lumineuse (fond Ã©clairÃ© + contour), sans halo
-   extÃ©rieur pendant la recharge ; la lueur extÃ©rieure ne revient qu'une fois
-   prÃªte, avec le flash. */
+/* IEM/ISH : voile de recharge carré plein rectangle, balayé en arc depuis le haut.
+   Zone déjà dévoilée lumineuse (fond éclairé + contour), sans halo
+   extérieur pendant la recharge ; la lueur extérieure ne revient qu'une fois
+   prête, avec le flash. */
 #ammoBar [data-skill="pulse"].ready,
 #ammoBar [data-skill="pulse"].skillFeedback,
 #ammoBar [data-skill="ish"].ready,
@@ -5286,15 +5459,15 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   box-shadow:0 0 0 2px color-mix(in srgb, var(--c) 35%, transparent) inset,
     inset 0 1px 0 rgba(255,255,255,.28);
 }
-/* IEM/ISH prÃªte : lueur extÃ©rieure + flash */
+/* IEM/ISH prête : lueur extérieure + flash */
 #ammoBar [data-skill="pulse"].ready,
 #ammoBar [data-skill="ish"].ready,
 #ammoBar [data-skill="repair"].ready{
   box-shadow:0 0 12px color-mix(in srgb, var(--c) 55%, transparent),
     0 0 0 2px color-mix(in srgb, var(--c) 22%, transparent) inset;
 }
-/* Pendant la recharge le bouton porte aussi .disabled (clic bloquÃ©) mais on ne
-   veut pas son opacity:.45 qui Ã©teindrait la zone dÃ©voilÃ©e. */
+/* Pendant la recharge le bouton porte aussi .disabled (clic bloqué) mais on ne
+   veut pas son opacity:.45 qui éteindrait la zone dévoilée. */
 #ammoBar [data-skill="pulse"].skillFeedback.disabled,
 #ammoBar [data-skill="ish"].skillFeedback.disabled{opacity:1}
 #ammoBar [data-skill="pulse"].skillFeedback > small,
@@ -5306,9 +5479,9 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   z-index:2;
   pointer-events:none;
   opacity:1;
-  /* Voile restant = --skill-feedback (1 -> tout couvert, 0 -> tout dÃ©voilÃ©),
-     bien sombre pour un contraste net avec la zone dÃ©jÃ  dÃ©voilÃ©e,
-     avec un liserÃ© clair au bord de l'arc pour bien lire la progression. */
+  /* Voile restant = --skill-feedback (1 -> tout couvert, 0 -> tout dévoilé),
+     bien sombre pour un contraste net avec la zone déjà dévoilée,
+     avec un liseré clair au bord de l'arc pour bien lire la progression. */
   background:conic-gradient(from 0deg at 50% 50%,
     rgba(3,7,16,.8) 0deg calc(var(--skill-feedback,0) * 360deg),
     rgba(200,120,255,.9) calc(var(--skill-feedback,0) * 360deg) calc(var(--skill-feedback,0) * 360deg + 3deg),
@@ -5320,7 +5493,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   60%{box-shadow:0 0 22px 4px rgba(196,110,255,.55),0 0 0 3px rgba(196,110,255,.25)}
   100%{box-shadow:0 0 12px rgba(179,66,255,.55),0 0 0 0 rgba(196,110,255,0)}
 }
-/* ISH : mÃªme flash "prÃªte" mais en jaune lÃ©ger + liserÃ© de voile jaune */
+/* ISH : même flash "prête" mais en jaune léger + liseré de voile jaune */
 #ammoBar [data-skill="ish"].skillFeedback::after{
   background:conic-gradient(from 0deg at 50% 50%,
     rgba(3,7,16,.8) 0deg calc(var(--skill-feedback,0) * 360deg),
@@ -5347,9 +5520,9 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 }
 /* ============================================================
    Pastille orbitale de tir (x1-x4, sab ; X6 exclu) : point blanc qui tourne
-   sur la bordure de la munition en cours de tir, avec traÃ®nÃ©e (f2, f3).
-   PilotÃ© par la classe .firing (suit la sÃ©lection, disparaÃ®t Ã  l'arrÃªt).
-   Boutons visibles = 46Ã44 : le centre de la pastille suit ce rectangle.
+   sur la bordure de la munition en cours de tir, avec traînée (f2, f3).
+   Piloté par la classe .firing (suit la sélection, disparaît à l'arrêt).
+   Boutons visibles = 46×44 : le centre de la pastille suit ce rectangle.
    ============================================================ */
 #ammoBar [data-ammo] .fireOrbit{
   position:absolute;
@@ -5371,17 +5544,17 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 }
 #ammoBar [data-ammo].firing{position:relative}
 #ammoBar.compactAmmoBar [data-ammo].firing{overflow:visible !important}
-/* Une seule tÃªte (5px) + traÃ®nÃ©e en chapelet : -1px Ã  chaque fois,
-   collÃ©e Ã  1px derriÃ¨re la prÃ©cÃ©dente */
+/* Une seule tête (5px) + traînée en chapelet : -1px à chaque fois,
+   collée à 1px derrière la précédente */
 #ammoBar [data-ammo].firing .fireOrbit.f1{opacity:1;animation:fireOrbit 1s linear infinite}
 #ammoBar [data-ammo].firing .fireOrbit.f2{width:4px;height:4px;opacity:.65;animation:fireOrbit 1s linear infinite;animation-delay:.035s;animation-fill-mode:backwards}
 #ammoBar [data-ammo].firing .fireOrbit.f3{width:3px;height:3px;opacity:.4;animation:fireOrbit 1s linear infinite;animation-delay:.065s;animation-fill-mode:backwards}
 #ammoBar [data-ammo].firing .fireOrbit.f4{width:2px;height:2px;opacity:.2;animation:fireOrbit 1s linear infinite;animation-delay:.085s;animation-fill-mode:backwards}
 @keyframes fireOrbit{from{offset-distance:100%}to{offset-distance:0%}}
 /* ============================================================
-   Voile de recharge gÃ©nÃ©rique : roquettes standard + formations.
-   MÃªme principe que l'IEM (voile carrÃ© balayÃ© en arc, zone dÃ©voilÃ©e
-   nette, lueur "prÃªt"), teintÃ© par type via --cd-edge / --cd-glow.
+   Voile de recharge générique : roquettes standard + formations.
+   Même principe que l'IEM (voile carré balayé en arc, zone dévoilée
+   nette, lueur "prêt"), teinté par type via --cd-edge / --cd-glow.
    ============================================================ */
 #ammoBar .cdVeil{position:relative;overflow:hidden}
 #ammoBar .cdVeil > small,
@@ -5398,14 +5571,27 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
     var(--cd-edge,rgba(175,185,195,.9)) calc(var(--cd,0) * 360deg) calc(var(--cd,0) * 360deg + 3deg),
     transparent calc(var(--cd,0) * 360deg + 3deg));
 }
-/* LiserÃ© de balayage : couleur du type (gris classique uniquement sur X6).
-   (L'IEM garde son liserÃ© violet, couleur de son slot.) */
+/* Liseré de balayage : couleur du type (gris classique uniquement sur X6).
+   (L'IEM garde son liseré violet, couleur de son slot.) */
 #ammoBar .rocketActionSlot.cdVeil,
 #ammoBar .rocketQuickAction.cdVeil{--cd-edge:rgba(255,170,80,.9)}
 #ammoBar .formationActionSlot.cdVeil,
 #ammoBar .formationQuickAction.cdVeil{--cd-edge:rgba(232,196,106,.9)}
-/* "PrÃªt" X6 (l'IEM a le sien, violet) : une seule animation fluide 1,4 s
-   (montÃ©e + descente, sans coupure) : contour, fond et glow orange */
+#ammoBar .abilityActionSlot.cdVeil,
+#ammoBar .abilityQuickAction.cdVeil{--cd-edge:rgba(180,120,255,.9)}
+/* Compteur secondes des aptitudes : même style que les autres écritures,
+   visible seulement pendant la recharge (voile actif). */
+#ammoBar .abilityActionSlot .abilityCd,
+#ammoBar .abilityQuickAction .abilityCd{
+  position:absolute; left:0; right:0; bottom:3px; z-index:2;
+  display:none; text-align:center; pointer-events:none;
+  font:800 10px/1.2 ui-sans-serif,system-ui; color:#eaffff;
+  text-shadow:0 0 4px #000,0 0 4px #000;
+}
+#ammoBar .abilityActionSlot.cdVeil .abilityCd,
+#ammoBar .abilityQuickAction.cdVeil .abilityCd{display:block}
+/* "Prêt" X6 (l'IEM a le sien, violet) : une seule animation fluide 1,4 s
+   (montée + descente, sans coupure) : contour, fond et glow orange */
 #ammoBar [data-ammo="x6"].x6Ready{animation:x6ReadyFlash .45s ease-out}
 @keyframes x6ReadyFlash{
   35%{
@@ -5436,7 +5622,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 /* ============================================================
    FUSION : contenu de PROFILE_WINDOW.css (ordre inchange : apres style.css)
    ============================================================ */
-/* FenÃªtre Profil â feuille canonique chargÃ©e aprÃ¨s le thÃ¨me historique. */
+/* Fenêtre Profil — feuille canonique chargée après le thème historique. */
 #profileOverlay.profileOverlay {
   position: fixed !important;
   inset: 0 !important;
@@ -5482,7 +5668,7 @@ html body #profileOverlay #profileWindow.gameWindow:not(.floating) {
   top: 70px !important;
 }
 
-/* MÃªme barre de titre et mÃªme bouton de rÃ©duction que toutes les fenÃªtres HUD. */
+/* Même barre de titre et même bouton de réduction que toutes les fenêtres HUD. */
 #profileOverlay #profileWindow.gameWindow > .gameWinBar {
   grid-column: 1 / -1 !important;
   grid-row: 1 !important;
@@ -5991,7 +6177,7 @@ body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !i
 #profileOverlay .accountField input::placeholder { color: rgba(185,211,225,.34) !important; }
 #profileOverlay .accountCard > button { width: 100% !important; margin-top: auto !important; }
 
-/* Hangars : aperÃ§u fixe Ã  gauche, vraie liste Ã  droite. */
+/* Hangars : aperçu fixe à gauche, vraie liste à droite. */
 #profileOverlay .hangarWorkspace {
   flex: 1 1 auto !important;
   min-height: 0 !important;
@@ -6181,7 +6367,7 @@ body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !i
 #profileOverlay .hangarDesignRow.disabled { opacity: .55 !important; }
 #profileOverlay .hangarDesignRow.disabled .hangarDesignTrigger { cursor: not-allowed !important; }
 
-/* Panneau rÃ©fÃ©rencÃ© de la liste des designs (appendu au body) : 10 items max visibles, scroll. */
+/* Panneau référencé de la liste des designs (appendu au body) : 10 items max visibles, scroll. */
 .hangarDesignPanel {
   position: fixed !important;
   z-index: 1001000 !important;
@@ -6212,7 +6398,7 @@ body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !i
 .hangarDesignPanel .hangarDesignOption:hover:not(:disabled) { background: rgba(0,180,230,.22) !important; }
 .hangarDesignPanel .hangarDesignOption.selected { color: #7cf0ff !important; background: rgba(0,150,200,.18) !important; }
 .hangarDesignPanel .hangarDesignOption.locked { color: rgba(190,215,230,.45) !important; cursor: not-allowed !important; }
-/* Variante visuelle : grille de vignettes des designs possÃ©dÃ©s. */
+/* Variante visuelle : grille de vignettes des designs possédés. */
 .hangarDesignPanel.asImages {
   padding: 10px !important;
   display: grid !important;
@@ -6235,7 +6421,7 @@ body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !i
 .hangarDesignPanel .hangarDesignImageOption:hover { border-color: rgba(124,240,255,.55) !important; background: rgba(0,140,185,.18) !important; }
 .hangarDesignPanel .hangarDesignImageOption.selected { border-color: #7cf0ff !important; box-shadow: inset 3px 0 0 #69e9ff !important; }
 
-/* Boutique : barre compacte, catÃ©gories fixes, liste et fiche produit. */
+/* Boutique : barre compacte, catégories fixes, liste et fiche produit. */
 #profileOverlay .shopToolbar {
   flex: 0 0 auto !important;
   min-height: 54px !important;
@@ -6504,7 +6690,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 }
 
 /* =========================================================
-   Ãquipement du hangar
+   Équipement du hangar
    ========================================================= */
 #fitOverlay {
   position: absolute !important;
@@ -6709,7 +6895,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
   #fitCard .fitInventoryPane { min-height: 420px !important; }
 }
 
-/* Equipment theme â DarkOrbit military interface */
+/* Equipment theme — DarkOrbit military interface */
 #fitCard.fitWindow {
   --fit-military-cyan: #65dff5;
   --fit-military-cyan-dim: rgba(101, 223, 245, .22);
@@ -6925,7 +7111,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #fitCard .invGrid { gap: 8px !important; }
 #fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotGridModules { gap: 8px !important; }
 
-/* Equipment layout â full window, compact ship bar and two cards */
+/* Equipment layout — full window, compact ship bar and two cards */
 #fitOverlay { padding: 0 !important; }
 #fitCard.fitWindow {
   grid-template-rows: auto minmax(0, 1fr) !important;
@@ -7129,6 +7315,7 @@ body #profileOverlay .droneShopImage { width:74px !important; height:66px !impor
 body #profileOverlay .formationShopImage { width:min(420px,90%) !important; height:190px !important; object-fit:contain !important; image-rendering:auto !important; }
 body #profileOverlay .formationDescription { line-height:1.55; color:#d8c17c; }
 body #profileOverlay .shopRow img.droneShopRowImage { width:58px !important; height:52px !important; padding:0 !important; image-rendering:pixelated !important; }
+body #profileOverlay .shopRow img.petShopRowImage { width:48px !important; height:48px !important; padding:0 !important; object-fit:contain !important; }
 body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important; height:48px !important; padding:0 !important; object-fit:contain !important; }
 #fitCard.droneMode .fitLoadoutPane { grid-column:1 / -1 !important; }
 #fitCard .fitInventoryPane[hidden] { display:none !important; }
@@ -7146,7 +7333,7 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
 #fitCard .droneInventoryTray button span { position:absolute; right:3px; bottom:2px; color:#ffd56b; font-size:8px; }
 #confirmMessage { white-space: pre-line !important; }
 
-/* Drones : mÃªme composition que l'Ã©quipement du vaisseau, inventaire Ã  droite. */
+/* Drones : même composition que l'équipement du vaisseau, inventaire à droite. */
 #fitCard.droneMode .fitLoadoutPane{grid-column:1 !important;grid-row:2 !important}
 #fitCard.droneMode .fitInventoryPane{display:flex !important;grid-column:2 !important;grid-row:2 !important}
 #fitCard.droneMode .fitSlotsScroll{display:none !important}
@@ -7165,7 +7352,7 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
 #fitCard.droneMode .droneGlobalHint,
 #fitCard.droneMode .droneInventoryTray{display:none !important}
 
-/* Drones : mÃªme sÃ©lection que le vaisseau (contour bleu + point bleu) */
+/* Drones : même sélection que le vaisseau (contour bleu + point bleu) */
 #fitCard .droneFitSlot{position:relative !important;overflow:hidden !important}
 #fitCard .petFitSlot,
 #fitCard .droneDesignSlot{position:relative !important;overflow:hidden !important}
@@ -7175,7 +7362,7 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
 #fitCard .droneFitSlot.dragging{opacity:.45 !important}
 .inventoryPager { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; } .inventoryPager button:disabled { opacity: .4; cursor: default; }
 
-/* P.E.T : mÃªme mise en page que les drones (workspace dÃ©diÃ©, exclusif par hangar/config). */
+/* P.E.T : même mise en page que les drones (workspace dédié, exclusif par hangar/config). */
 #fitCard .fitPetWorkspace{height:100%;min-height:0 !important;min-width:0;padding:12px;box-sizing:border-box;display:block;overflow-y:auto;background:#07141e}
 #fitCard .fitPetWorkspace[hidden]{display:none !important}
 #fitCard.petMode .fitLoadoutPane{grid-column:1 !important;grid-row:2 !important}
@@ -7187,7 +7374,7 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
 #fitCard.petMode .fitPetWorkspace{display:block !important;height:100% !important;padding:10px !important;overflow-y:auto !important;background:transparent !important}
 #fitCard.petMode .droneCards{display:grid !important;gap:8px !important}
 #fitCard.petMode .droneEquipmentCard{min-height:108px !important;padding:10px 12px !important;grid-template-columns:72px minmax(150px,1fr) auto !important;grid-template-rows:minmax(70px,auto) 11px !important;gap:10px !important;border-radius:3px !important;background:linear-gradient(100deg,#0a1e2b,#071722) !important}
-/* P.E.T : 2 cartes â header 20 % (niveau/XP) + slots 80 % (lasers, gÃ©nÃ©rateurs, gears, protocoles). */
+/* P.E.T : 2 cartes — header 20 % (niveau/XP) + slots 80 % (lasers, générateurs, gears, protocoles). */
 #fitCard .petCards{display:flex !important;flex-direction:column !important;gap:8px !important;height:100% !important;min-height:0 !important}
 #fitCard .petHeaderCard{flex:1 1 20% !important;min-height:0 !important;overflow:hidden !important;padding:10px 12px !important;display:grid !important;grid-template-columns:64px minmax(0,1fr) !important;grid-template-rows:auto auto !important;gap:2px 10px !important;align-items:center !important;border:1px solid rgba(105,233,255,.17) !important;border-radius:5px !important;background:linear-gradient(100deg,#0a1e2b,#06121c) !important}
 #fitCard .petHeaderCard .droneCardSprite{width:56px !important;height:50px !important}
@@ -7210,7 +7397,7 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
 #fitCard .petGroup>label small{color:#789cac !important;font-weight:400 !important;letter-spacing:0 !important}
 #fitCard .petGroupSlots{display:flex !important;flex-wrap:wrap !important;gap:10px !important}
 #fitCard .petFitSlot{width:52px !important;height:52px !important;min-width:52px !important;padding:3px !important;box-sizing:border-box !important}
-/* P.E.T : mÃªmes Ã©tats que les drones (sÃ©lection, drag, point bleu). */
+/* P.E.T : mêmes états que les drones (sélection, drag, point bleu). */
 #fitCard .petFitSlot{position:relative !important;overflow:hidden !important}
 #fitCard .petFitSlot.selected{border-color:#70e7fa !important;background:radial-gradient(circle,rgba(33,157,184,.25),#09212c 75%) !important;box-shadow:inset 0 -2px #5adcf3,0 0 11px rgba(76,218,243,.18) !important}
 #fitCard .petFitSlot.selected::after{content:"" !important;position:absolute !important;z-index:3 !important;top:4px !important;right:4px !important;width:6px !important;height:6px !important;border-radius:50% !important;background:#69e9ff !important;box-shadow:0 0 7px #69e9ff !important}
@@ -7218,7 +7405,7 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
 #fitCard .petFitSlot.dragging{opacity:.45 !important}
 #fitCard .petFitSlot.dragTarget{border-color:#70e7fa !important;background:rgba(20,154,182,.22) !important}
 
-/* MÃªme cadre et mÃªmes Ã©tats visuels pour le vaisseau, les drones et le P.E.T. */
+/* Même cadre et mêmes états visuels pour le vaisseau, les drones et le P.E.T. */
 #fitCard .slotCell,
 #fitCard .droneFitSlot,
 #fitCard .petFitSlot,
@@ -7339,7 +7526,7 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
   letter-spacing: 1px !important;
   vertical-align: 1px !important;
 }
-/* Badge lance-roquettes : mÃªme carte que P.E.T, en orange. */
+/* Badge lance-roquettes : même carte que P.E.T, en orange. */
 .shopLauncherBadge {
   border-color: rgba(255, 161, 77, .6) !important;
   color: #ffa14d !important;
@@ -7362,9 +7549,9 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
   pointer-events: none !important;
 }
 
-/* SÃ©lection vaisseau / drones / P.E.T : mÃªme rendu que l'inventaire
+/* Sélection vaisseau / drones / P.E.T : même rendu que l'inventaire
    (contour bleu + surbrillance radiale + barre basse + point bleu).
-   Bloc final = spÃ©cificitÃ© max pour passer au-dessus du bloc unifiÃ©. */
+   Bloc final = spécificité max pour passer au-dessus du bloc unifié. */
 #fitOverlay #fitCard #fitSlotsLasers .slotCell.selected,
 #fitOverlay #fitCard #fitSlotsGens .slotCell.selected,
 #fitOverlay #fitCard #fitSlotsExtras .slotCell.selected,
@@ -7396,8 +7583,8 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
   pointer-events: none !important;
 }
 
-/* Modules Roulette : lignes longues avec dÃ©tail, idle en case grise classique,
-   sÃ©lection = effet bleu complet (contour + halo + barre + point). */
+/* Modules Roulette : lignes longues avec détail, idle en case grise classique,
+   sélection = effet bleu complet (contour + halo + barre + point). */
 #fitCard .fitShipModules {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) !important;
@@ -7466,9 +7653,9 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
   background: linear-gradient(145deg, rgba(140, 226, 244, .04), transparent 46%), #081620 !important;
 }
 
-/* Surbrillance drag gÃ©nÃ©ralisÃ©e (lasers / gÃ©nÃ©rateurs / extras / modules / drones / P.E.T).
-   Les slots concernÃ©s deviennent bleus pendant le glisser. Bloc final = prioritaire
-   (spÃ©cificitÃ© 3 IDs pour passer au-dessus du bloc unifiÃ©). */
+/* Surbrillance drag généralisée (lasers / générateurs / extras / modules / drones / P.E.T).
+   Les slots concernés deviennent bleus pendant le glisser. Bloc final = prioritaire
+   (spécificité 3 IDs pour passer au-dessus du bloc unifié). */
 #fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsLasers .slotCell,
 #fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsGens .slotCell,
 #fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsExtras .slotCell,
@@ -7495,9 +7682,9 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
 }
 
 /* =========================================================
-   Boutique orbitale â fenÃªtre dupliquÃ©e de l'Espace pilote.
-   MÃªmes dimensions / grille / sidebar que #profileWindow,
-   mais les onglets principaux SONT les catÃ©gories boutique.
+   Boutique orbitale — fenêtre dupliquée de l'Espace pilote.
+   Mêmes dimensions / grille / sidebar que #profileWindow,
+   mais les onglets principaux SONT les catégories boutique.
    ========================================================= */
 #shopOverlay.profileOverlay {
   position: fixed !important;
@@ -7627,7 +7814,7 @@ html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover
   gap: 8px !important;
   overflow: visible !important;
 }
-/* Onglets boutique : style portÃ© par le bloc gagnant plus bas
+/* Onglets boutique : style porté par le bloc gagnant plus bas
    (body #shopOverlay .profileTabs .tabBtn) + attrape-tout ci-dessus. */
 #shopOverlay .profileMainCard {
   grid-column: 2 !important;
@@ -7742,7 +7929,7 @@ html body #shopOverlay #shopWindowPanel .shopLayout.extrasMode .shopPreview { wi
   opacity: .35 !important;
   cursor: default !important;
 }
-/* Cartes : mÃªme base que #profileOverlay */
+/* Cartes : même base que #profileOverlay */
 #shopOverlay .tile,
 #shopOverlay .profileTile {
   box-sizing: border-box !important;
@@ -7758,11 +7945,25 @@ html body #shopOverlay .shopGroupHeader { flex: 0 0 auto !important; padding: 10
 #shopOverlay .shopMeta { flex: 1 !important; min-width: 0 !important; }
 #shopOverlay .shopMeta b { display: block !important; overflow: hidden !important; color: #e9f8ff !important; font-size: 11px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
 #shopOverlay .shopMeta span { color: rgba(204,228,241,.57) !important; font-size: 9px !important; }
-/* AperÃ§u droit : PAS de carte, transparent comme avant */
+/* Aperçu droit : PAS de carte, transparent comme avant */
 html body #shopOverlay #shopWindowPanel .shopPreview > .tile { min-height: 100% !important; padding: 18px !important; display: flex !important; flex-direction: column !important; align-items: stretch !important; justify-content: center !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
 html body #shopOverlay .shopPreview .bigImg { width: min(200px, 70%) !important; height: 180px !important; margin: 0 auto 12px !important; padding: 8px !important; display: block !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; object-fit: contain !important; }
 html body #shopOverlay .shopPreview .bigImg.ammoShopImage { width: 100px !important; height: 100px !important; padding: 0 !important; }
 html body #shopOverlay .shopPreview .bigImg.equipShopImage { width: 100px !important; max-width: 100px !important; height: 100px !important; max-height: 100px !important; padding: 8px !important; border: 0 !important; background: transparent !important; }
+html body #shopOverlay .shopPreview .bigImg.petPreviewImage { width: 160px !important; max-width: 160px !important; height: 160px !important; max-height: 160px !important; }
+html body #shopOverlay .shopPreviewCard {
+  width: 105px !important; height: 105px !important; margin: 0 auto 12px !important;
+  display: grid !important; place-items: center !important; border-radius: 12px !important;
+  background: rgba(0,0,0,.25) !important; border: 1px solid rgba(0,217,255,.3) !important;
+}
+html body #shopOverlay .shopPreviewCard .bigImg {
+  width: 100px !important; max-width: 100px !important; height: 100px !important; max-height: 100px !important;
+  margin: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; object-fit: contain !important;
+}
+html body #shopOverlay .shopPreview .tile {
+  display: flex !important; flex-direction: column !important; min-height: 100% !important; box-sizing: border-box !important;
+}
+html body #shopOverlay .shopPreview .shopBuySection { margin-top: auto !important; padding-top: 12px !important; }
 html body #shopOverlay .shopPreviewContainer,
 html body #shopOverlay .shipPreviewContainer { width: 100% !important; height: 210px !important; margin: 0 0 12px !important; display: flex !important; align-items: center !important; justify-content: center !important; overflow: hidden !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; }
 #shopOverlay .shipPreviewContainer img { width: auto !important; height: auto !important; max-width: 74% !important; max-height: 74% !important; transform: none !important; image-rendering: pixelated !important; object-fit: contain !important; }
@@ -7771,7 +7972,7 @@ html body #shopOverlay .shipPreviewContainer { width: 100% !important; height: 2
 #shopOverlay .shopPreview .shopItemStat { margin: 8px 0 !important; color: rgba(209,231,243,.72) !important; }
 #shopOverlay .shopPreview .shopItemStat strong { margin-left: 5px !important; color: #75e8ff !important; font-size: 13px !important; }
 #shopOverlay .shopAmmoOwned { margin: 8px 0 !important; color: rgba(225,241,249,.82) !important; font-size: 12px !important; }
-/* Ligne d'achat + quantitÃ© (saisie libre + menu dÃ©roulant) : identique Ã  avant */
+/* Ligne d'achat + quantité (saisie libre + menu déroulant) : identique à avant */
 #shopOverlay .shopPurchaseRow { margin: 14px 0 0 !important; padding: 14px 4px !important; display: grid !important; grid-template-columns: minmax(160px,1fr) 110px !important; align-items: center !important; gap: 18px !important; border-top: 1px solid rgba(124,240,255,.15) !important; }
 #shopOverlay .shopPurchaseInfo { min-width: 0 !important; display: grid !important; gap: 8px !important; }
 #shopOverlay .shopPurchaseInfo > label { color: rgba(225,241,249,.78) !important; font-size: 11px !important; font-weight: 850 !important; }
@@ -7789,7 +7990,7 @@ html body #shopOverlay .shipPreviewContainer { width: 100% !important; height: 2
 #shopOverlay .shopPurchasePrice strong { color: #72efff !important; font-size: 13px !important; white-space: nowrap !important; }
 #shopOverlay .shopBuySection { margin-top: 12px !important; padding-top: 12px !important; border-top: 1px solid rgba(124,240,255,.12) !important; }
 #shopOverlay #btnBuyPreview { margin-top: auto !important; width: 100% !important; }
-/* Roulette modules + historique : identique Ã  avant */
+/* Roulette modules + historique : identique à avant */
 #shopOverlay .extrasRoulettePanel { justify-content: flex-start !important; }
 #shopOverlay .extrasRouletteHeader { padding-bottom: 14px !important; display: flex !important; align-items: flex-start !important; justify-content: space-between !important; gap: 20px !important; border-bottom: 1px solid rgba(124,240,255,.12) !important; }
 #shopOverlay .extrasRouletteHeader h3 { margin-bottom: 5px !important; }
@@ -7811,11 +8012,12 @@ html body #shopOverlay .shipPreviewContainer { width: 100% !important; height: 2
 #shopOverlay .moduleHistoryMeta span:not(.moduleHistoryRarity) { overflow: hidden !important; color: rgba(204,228,241,.60) !important; font-size: 9px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
 #shopOverlay .moduleHistoryRow time { color: rgba(204,228,241,.38) !important; font-size: 8px !important; white-space: nowrap !important; }
 #shopOverlay .moduleHistoryEmpty { padding: 24px !important; color: rgba(204,228,241,.45) !important; font-size: 10px !important; text-align: center !important; }
-/* Images drones / formations : identique Ã  avant */
+/* Images drones / formations : identique à avant */
 body #shopOverlay .droneShopImage { width: 74px !important; height: 66px !important; object-fit: contain !important; image-rendering: pixelated !important; transform: scale(1.12); }
 body #shopOverlay .formationShopImage { width: min(420px,90%) !important; height: 190px !important; object-fit: contain !important; image-rendering: auto !important; }
 body #shopOverlay .formationDescription { line-height: 1.55; color: #d8c17c; }
 body #shopOverlay .shopRow img.droneShopRowImage { width: 58px !important; height: 52px !important; padding: 0 !important; image-rendering: pixelated !important; }
+body #shopOverlay .shopRow img.petShopRowImage { width: 48px !important; height: 48px !important; padding: 0 !important; object-fit: contain !important; }
 body #shopOverlay .shopRow img.formationShopRowImage { width: 72px !important; height: 48px !important; padding: 0 !important; object-fit: contain !important; }
 @media (max-width: 900px) {
   #shopOverlay #shopWindow.gameWindow { width: calc(100vw - 16px) !important; height: calc(100vh - 24px) !important; min-width: 0 !important; grid-template-columns: 240px minmax(0,1fr) !important; }
@@ -7833,13 +8035,13 @@ body #shopOverlay .shopRow img.formationShopRowImage { width: 72px !important; h
 }
 
 /* =========================================================
-   Miroir Boutique -> Espace pilote (fix transfert fenÃªtre).
+   Miroir Boutique -> Espace pilote (fix transfert fenêtre).
    La boutique vit dans #shopOverlay mais doit rendre EXACTEMENT
    comme #profileOverlay : sidebar arrondie/translucide (pas pleine
-   et droite), boutons avec le mÃªme effet, panneaux transparents.
-   Ce bloc est chargÃ© aprÃ¨s style.css donc il gagne Ã 
-   spÃ©cificitÃ© Ã©gale. Les `body #shopOverlay` battent aussi les
-   `#shopOverlay` plats dÃ©finis plus haut dans ce mÃªme fichier.
+   et droite), boutons avec le même effet, panneaux transparents.
+   Ce bloc est chargé après style.css donc il gagne à
+   spécificité égale. Les `body #shopOverlay` battent aussi les
+   `#shopOverlay` plats définis plus haut dans ce même fichier.
    ========================================================= */
 body #shopOverlay .profileHeaderCard{
   grid-column:1 !important;
@@ -7962,8 +8164,8 @@ body #shopOverlay .profilePanel.active{
   box-shadow:0 0 0 1px rgba(255,255,255,.02) inset !important;
   backdrop-filter:none !important;
 }
-/* IntÃ©rieur boutique : PAS de cartes en trop â on garde le design plat
-   d'origine (liste en lignes + aperÃ§u transparent), juste posÃ© sur le
+/* Intérieur boutique : PAS de cartes en trop — on garde le design plat
+   d'origine (liste en lignes + aperçu transparent), juste posé sur le
    panneau translucide ci-dessus. */
 html body #shopOverlay #shopWindowPanel .shopLayout{
   flex:1 1 auto !important;
@@ -8100,9 +8302,9 @@ html body #shopOverlay .moduleHistoryRerollBtn:hover:not(:disabled){
 html body #shopOverlay .moduleHistoryRerollBtn:disabled{ opacity:.35 !important; cursor:default !important; }
 
 /* =========================================================
-   Hangars & Ãquipement â fenÃªtre dÃ©diÃ©e, miroir exact de
-   l'Espace pilote (mÃªme grille, sidebar arrondie/translucide,
-   mÃªmes boutons et panneaux).
+   Hangars & Équipement — fenêtre dédiée, miroir exact de
+   l'Espace pilote (même grille, sidebar arrondie/translucide,
+   mêmes boutons et panneaux).
    ========================================================= */
 #hangarOverlay.profileOverlay {
   position: fixed !important;
@@ -8322,7 +8524,7 @@ body #hangarOverlay .profilePanel.active{
   box-shadow:0 0 0 1px rgba(255,255,255,.02) inset !important;
   backdrop-filter:none !important;
 }
-/* Contenu hangars : mÃªmes cartes/listes que l'Espace pilote. */
+/* Contenu hangars : mêmes cartes/listes que l'Espace pilote. */
 body #hangarOverlay .hangarWorkspace{
   flex:1 1 auto !important;
   min-height:0 !important;
@@ -8502,7 +8704,7 @@ body #hangarOverlay button.secondary:hover:not(:disabled){
   body #hangarOverlay .hangarWorkspace { grid-template-columns:1fr !important; overflow-y:auto !important; }
 }
 
-/* Surcharge finale : fleches â sur les boutons reduire (battent les blocs ci-dessus) */
+/* Surcharge finale : fleches ↖ sur les boutons reduire (battent les blocs ci-dessus) */
 html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn,
 html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn,
 html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn { font-size:0 !important; }
@@ -8586,3 +8788,104 @@ html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
 .botNpcRow input[type="checkbox"]{ accent-color:#00d9ff; }
 .botLog{ min-height:120px; max-height:180px; overflow-y:auto; padding:6px 8px; border:1px solid rgba(124,240,255,.12); border-radius:8px; background:rgba(0,0,0,.35); color:#9fc6d1; font-size:11px; line-height:1.45; }
 @media (max-width:800px){ .botGrid{ grid-template-columns:1fr; } .botWide .botNpcList{ grid-template-columns:1fr; } }
+
+/* ===== Wiki / Aide ===== */
+#wikiWindow.gameWindow:not(.floating){ left:calc(50% - 430px) !important; top:60px !important; }
+.wikiPanel{ width:min(860px, calc(100vw - 24px)); height:min(620px, calc(100vh - 30px)); max-height:calc(100vh - 30px); display:flex; flex-direction:column; overflow:hidden; }
+.wikiPanel.gameWindow:not(.gameWinMinimized){ display:flex !important; }
+.wikiToolbar{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid rgba(124,240,255,.12); flex-shrink:0; }
+.wikiSearch{ display:flex; align-items:center; gap:8px; flex:1; color:#83bbc8; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; }
+.wikiSearch input{ flex:1; height:30px; padding:0 10px; border:1px solid rgba(124,240,255,.3); border-radius:7px; background:#051521; color:#effcff; font:700 12px system-ui; text-transform:none; letter-spacing:0; }
+.wikiSearch input:focus{ border-color:#69e9ff; outline:none; }
+.wikiCount{ color:#5d96a5; font-size:11px; font-weight:800; white-space:nowrap; }
+.wikiLayout{ display:grid; grid-template-columns:180px minmax(0,1fr); min-height:0; flex:1; }
+.wikiTabs{ display:flex; flex-direction:column; gap:4px; padding:10px; overflow-y:auto; border-right:1px solid rgba(124,240,255,.12); background:rgba(0,10,22,.3); }
+.wikiTab{ padding:8px 10px; text-align:left; border:1px solid rgba(124,240,255,.15); border-radius:7px; background:rgba(8,35,52,.62); color:rgba(225,245,255,.8); font:800 12px system-ui; cursor:pointer; }
+.wikiTab:hover{ border-color:rgba(124,240,255,.5); color:#fff; }
+.wikiTab.active{ border-color:#7cf0ff; color:#fff; background:rgba(0,140,185,.28); }
+.wikiPages{ padding:12px; overflow-y:auto; min-width:0; }
+.wikiPage{ display:none; }
+.wikiPage.active{ display:grid; gap:10px; align-content:start; }
+.wikiPage.searchHit{ display:grid; gap:10px; align-content:start; }
+.wikiPage.active[data-empty="1"]{ display:none; }
+.wikiArticle{ border:1px solid rgba(124,240,255,.14); border-radius:8px; background:rgba(3,18,30,.5); overflow:hidden; }
+.wikiArticle summary{ padding:10px 12px; color:#eaffff; font:800 13px system-ui; cursor:pointer; list-style:none; }
+.wikiArticle summary::-webkit-details-marker{ display:none; }
+.wikiArticle summary:hover{ background:rgba(0,140,185,.18); }
+.wikiArticle p, .wikiArticle ul, .wikiArticle ol{ margin:0; padding:0 12px 10px; color:#cfe7ef; font-size:12px; line-height:1.55; }
+.wikiArticle ul, .wikiArticle ol{ padding-left:28px; }
+.wikiArticle li{ margin:3px 0; }
+.wikiArticle b{ color:#fff; }
+.wikiArticle kbd{ padding:1px 6px; border:1px solid rgba(124,240,255,.35); border-bottom-width:2px; border-radius:5px; background:#051521; color:#7cf0ff; font:800 11px system-ui; white-space:nowrap; }
+@media (max-width:800px){ .wikiLayout{ grid-template-columns:1fr; } .wikiTabs{ flex-direction:row; flex-wrap:wrap; border-right:none; border-bottom:1px solid rgba(124,240,255,.12); } .wikiTab{ flex:1 1 120px; } }
+
+/* HARMONISATION dock/slots : une seule reference pour toutes les icones d'actions.
+   Les boutons portent .dockAction (originaux + clones) : meme boite, meme
+   centrage, meme taille partout. Les recadrages par asset (translateY) restent. */
+#ammoBar.compactAmmoBar .actionSlot .dockAction img,
+#ammoBar .actionPalette .dockAction img,
+#ammoBar .dockAction img{
+  display:block !important;
+  width:40px !important;
+  height:40px !important;
+  max-width:none !important;
+  max-height:none !important;
+  margin:auto !important;
+  object-fit:contain !important;
+  object-position:center !important;
+}
+#ammoBar.compactAmmoBar .actionSlot .dockAction,
+#ammoBar .actionPalette .dockAction{
+  display:grid !important;
+  place-items:center !important;
+  place-content:center !important;
+}
+#ammoBar.compactAmmoBar .actionSlot .dockAction.formationClassic img,
+#ammoBar .actionPalette .dockAction.formationClassic img,
+#ammoBar .dockAction.formationClassic img{
+  width:40px !important;
+  height:47px !important;
+}
+
+/* Skills : image officielle centrée, cooldown en bas comme les munitions */
+#ammoBar .compactSkillBtn[data-skill="pulse"]::before,
+#ammoBar .compactSkillBtn[data-skill="ish"]::before,
+#ammoBar .compactSkillBtn[data-skill="repair"]::before{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:44%;
+  width:42px;
+  height:42px;
+  transform:translate(-50%,-50%);
+  background-position:center;
+  background-size:contain;
+  background-repeat:no-repeat;
+  pointer-events:none;
+}
+#ammoBar .compactSkillBtn[data-skill="pulse"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_SPECIALAMMO_EMP-01.PNG")}
+#ammoBar .compactSkillBtn[data-skill="ish"]::before{background-image:url("ASSETS/CONTROL_MENU/EQUIPMENT_EXTRA_CPU_ISH-01.PNG")}
+#ammoBar .compactSkillBtn[data-skill="repair"]::before{background-image:url("ASSETS/CONTROL_MENU/EQUIPMENT_EXTRA_REPBOT_REP-S.PNG")}
+#ammoBar .compactSkillBtn[data-skill="pulse"] > strong,
+#ammoBar .compactSkillBtn[data-skill="ish"] > strong,
+#ammoBar .compactSkillBtn[data-skill="repair"] > strong{display:none !important}
+#ammoBar .compactSkillBtn[data-skill="pulse"],
+#ammoBar .compactSkillBtn[data-skill="ish"],
+#ammoBar .compactSkillBtn[data-skill="repair"]{
+  position:relative;
+  overflow:hidden;
+}
+#ammoBar .compactSkillBtn[data-skill="pulse"] > small,
+#ammoBar .compactSkillBtn[data-skill="ish"] > small,
+#ammoBar .compactSkillBtn[data-skill="repair"] > small{
+  position:absolute;
+  z-index:3;
+  left:2px;
+  right:2px;
+  bottom:1px;
+  margin:0 !important;
+  overflow:hidden;
+  text-align:center;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}

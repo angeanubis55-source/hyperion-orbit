@@ -70,7 +70,7 @@ export const ORE_SELL_PRICES = Object.freeze({
   duranium: 150,
   promerium: 500,
   seprom: 750,
-  osmium: 100000,
+  osmium: 15000,
 });
 
 // Améliorations d'équipement (onglet Upgrade du vrai DO) : minerai chargé = bonus.
@@ -126,11 +126,12 @@ export function refineOreOutput(resources, recipe, quantity = 1) {
 }
 
 // Ajout plafonné par la soute. Les ressources non-minerais (atelier) ne passent pas par la soute.
-export function cargoAdd(resources, resourceId, amount) {
+export function cargoAdd(resources, resourceId, amount, capacity = CARGO_CAPACITY) {
+  const cap = Math.max(0, Math.floor(Number(capacity) || 0));
   const wanted = Math.max(0, Math.floor(Number(amount) || 0));
-  if (wanted <= 0) return { added: 0, blocked: 0, full: cargoFree(resources) <= 0 };
+  if (wanted <= 0) return { added: 0, blocked: 0, full: cargoFree(resources, cap) <= 0 };
   if (!isOreResource(resourceId)) return { added: wanted, blocked: 0, full: false };
-  const free = cargoFree(resources);
+  const free = cargoFree(resources, cap);
   const added = Math.min(wanted, free);
   return { added, blocked: wanted - added, full: free <= 0 };
 }

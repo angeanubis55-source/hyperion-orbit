@@ -528,6 +528,12 @@
       padding: 4px;
     }
 
+    .shopRow img.petShopRowImage{
+      width: 48px;
+      height: 48px;
+      padding: 0;
+    }
+
     .shopMeta{
       flex: 1;
       min-width: 0;
@@ -587,6 +593,40 @@
       height: 100px;
       max-height: 100px;
       padding: 8px;
+    }
+
+    /* Preview : contenu stabilisé, bouton d'achat toujours au même endroit. */
+    .shopPreview .tile{
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+      box-sizing: border-box;
+    }
+    .shopPreview .shopBuySection{
+      margin-top: auto;
+      padding-top: 12px;
+    }
+    /* Preview uniforme : card 105x105, item 100x100 centré. */
+    .shopPreviewCard{
+      width: 105px;
+      height: 105px;
+      margin: 0 auto 16px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: rgba(0,0,0,.25);
+      border: 1px solid rgba(0,217,255,.3);
+    }
+    .shopPreviewCard .bigImg{
+      width: 100px;
+      max-width: 100px;
+      height: 100px;
+      max-height: 100px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      object-fit: contain;
     }
 
     .shopPreview .shipPreviewContainer{

@@ -17,7 +17,8 @@
 // - Niv 17 : X-8 ennemi (tout débloqué)
 //
 // Maps customs du remake (sans équivalent officiel) :
-// - x-4.1 (arènes de combat) : 8, palier des maps PvP
+// - 4-1 / 4-2 / 4-3 (arènes de combat) : 8, palier des maps PvP
+// - 4-4 (hub central) : 9 comme la map PvP officielle
 // - x-9 / x-10 (contenu endgame) : 12 comme X-8, 17 en territoire ennemi
 // - 5-2 (pirates) : 12 comme les 5-x officiels
 // - MAUDITE (cimetière Cubikon, contenu niveau 4-5) : 12
@@ -29,11 +30,12 @@ const ENEMY_SECTOR_LEVELS = Object.freeze({ 1: 16, 2: 13, 3: 5, 4: 5, 5: 14, 6: 
 // X-8 et au-delà (dont les customs x-9 / x-10) : 12 chez soi, 17 chez l'ennemi.
 const OWN_DEEP_UPPER_LEVEL = 12;
 const ENEMY_DEEP_UPPER_LEVEL = 17;
-// Arènes de combat x-4.1 : même palier que les maps PvP 4-1 / 4-2 / 4-3.
-const BATTLE_ARENA_LEVEL = 8;
 
 const SPECIAL_MAP_LEVELS = Object.freeze({
-  "4-4.123": 9,
+  "4-1": 8,
+  "4-2": 8,
+  "4-3": 8,
+  "4-4": 9,
   "4-5": 12,
   "5-2": 12,
   maudite: 12,
@@ -45,9 +47,8 @@ const SPECIAL_MAP_LEVELS = Object.freeze({
 export function getMapRequiredLevel(mapId, playerSector = null) {
   const id = String(mapId || "").trim().toLowerCase();
   if (Object.hasOwn(SPECIAL_MAP_LEVELS, id)) return SPECIAL_MAP_LEVELS[id];
-  const match = id.match(/^([123])-(4\.1|\d+)$/);
+  const match = id.match(/^([123])-(\d+)$/);
   if (!match) return 1;
-  if (match[2] === "4.1") return BATTLE_ARENA_LEVEL;
   const zone = Number(match[2]);
   if (!Number.isFinite(zone)) return 1;
   const own = playerSector != null && String(playerSector) === match[1];

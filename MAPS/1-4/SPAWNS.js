@@ -95,12 +95,12 @@ export function getZonePortals(WORLD) {
       toPortal: "p_13_to_14",
     },
     {
-      id: "p_14_to_1-4.1",
+      id: "p_14_to_4-1",
       x: 10000,   // haut droite
       y: 3500,
       r: 260,
-      toMap: "1-4.1",
-      toPortal: "p_1-4.1_to_14",
+      toMap: "4-1",
+      toPortal: "p_4-1_to_14",
     },
     {
       id: "p_14_to_34",

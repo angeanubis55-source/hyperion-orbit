@@ -33,6 +33,7 @@ export function init() {
     rules: {
   mode: "zone",
   mapLabel: "2-9",
+  mapName: "Anomalie EIC",
   getZoneSpawns,
   getZonePortals, // ✅ ajout
 },

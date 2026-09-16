@@ -40,20 +40,20 @@ export const ROCKET_TYPES = Object.freeze({
   // Standards : tirables au lanceur natif (ESPACE).
   r310: def("r310", "Roquette R-310", "310", "R-310_100X100.png", 1000, 1.0, 30000),
   plt2021: def("plt2021", "Roquette PLT-2021", "021", "PLT-2021_100X100.png", 4000, 1.0, 60000),
-  plt2026: def("plt2026", "Roquette PLT-2026", "026", "PLT-2026_100X100.png", 2000, 1.0, 120000),
-  plt3030: def("plt3030", "Roquette PLT-3030", "030", "PLT-3030_100X100.png", 6000, 1.0, 300000),
+  plt2026: def("plt2026", "Roquette PLT-2026", "026", "PLT-2026_100X100.png", 2000, 1.0, 40000),
+  plt3030: def("plt3030", "Roquette PLT-3030", "030", "PLT-3030_100X100.png", 6000, 1.0, 170000),
   dcr250: def("dcr250", "Roquette DCR-250", "DCR", "DCR-250_100X100.png", 0, 1.0, 12000, true, 10, { slowPct: 30, duration: 5 }),
   pld8: def("pld8", "Roquette PLD-8", "PLD", "PLD-8_100X100.png", 0, 1.0, 90000, true, 10, { accuracyPenaltyPct: 40, duration: 5 }),
   bdr1211: def("bdr1211", "Roquette BDR-1211", "BDR", "BDR-1211_100X100.png", 7500, 1.0, 250000),
-  wizx: def("wizx", "Roquette WIZ-X", "WIZ", "WIZ-X_100X100.png", 0, 1.0, 50000, true, 10, { appearance: true }),
+  wizx: def("wizx", "Roquette WIZ-X", "WIZ", "WIZ-X_100X100.png", 0, 1.0, 20000, true, 10, { appearance: true }),
   ric3: def("ric3", "Roquette R-IC3", "IC3", "R-IC3_100X100.png", 0, 1.0, 150000, true, 10, { freezeSec: 2 }),
   rc100: def("rc100", "Roquette RC-100", "RC", "RC-100_100X100.png", 0, 1.0, 150000, true, 10, { freezeSec: 3 }),
-  sr5: def("sr5", "Roquette SR-5", "SR5", "SR-5_100X100.png", 0, 1.0, 400000, true, 10, { shieldDrain: 80000, leechPct: 0.5 }),
+  sr5: def("sr5", "Roquette SR-5", "SR5", "SR-5_100X100.png", 0, 1.0, 280000, true, 10, { shieldDrain: 80000, leechPct: 0.5 }),
   agt500: def("agt500", "Roquette AGT-500", "AGT", "AGT-500_100X100.png", 25000, 1.0, 350000),
   sp100x: def("sp100x", "Roquette SP-100X", "SPX", "SP-100X_100X100.png", 7200, 1.0, 200000, true, 10, { pierceShield: true }),
   k300m: def("k300m", "Roquette K-300M", "K3M", "K-300M_100X100.png", 0, 1.0, 120000, true, 10, { slowPct: 20, accuracyPenaltyPct: 5, duration: 2 }),
   // Lance-roquettes : pas de tir manuel pour l'instant (mécanique à venir).
-  eco10: def("eco10", "Roquette ECO-10", "ECO", "ECO-10_100X100.png", 2000, 3.0, 15000, false),
+  eco10: def("eco10", "Roquette ECO-10", "ECO", "ECO-10_100X100.png", 2000, 3.0, 30000, false),
   pir100: def("pir100", "Roquette PIR-100", "PIR", "PIR-100_100X100.png", 3500, 3.5, 180000, false, 10, { shieldDrain: 2500 }),
   bdr1212: def("bdr1212", "Roquette BDR-1212", "BD2", "BDR-1212_100X100.png", 4000, 3.5, 220000, false),
   shg01: def("shg01", "Roquette SHG-01", "SH1", "SHG-01_100X100.png", 5000, 3.5, 200000, false, 10, { piercePct: 0.5 }),
@@ -100,6 +100,38 @@ export function rocketEffectLabel(rocketOrId) {
 export function rocketShopIcon(id) {
   const r = getRocketType(id);
   return r ? `/COMBAT/ROCKET_SPRITES/${r.file}` : null;
+}
+
+// Icones CONTROL_MENU (officielles) pour dock/slots/HUD : la boutique garde
+// rocketShopIcon. Sans correspondance (SHG-01/02) -> fallback boutique.
+const ROCKET_DOCK_ICONS = Object.freeze({
+  r310: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKET_R-310.PNG",
+  plt2021: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKET_PLT-2021.PNG",
+  plt2026: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKET_PLT-2026.PNG",
+  plt3030: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKET_PLT-3030.PNG",
+  dcr250: "ASSETS/CONTROL_MENU/AMMUNITION_SPECIALAMMO_DCR-250.PNG",
+  pld8: "ASSETS/CONTROL_MENU/AMMUNITION_SPECIALAMMO_PLD-8.PNG",
+  bdr1211: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKET_BDR-1211.PNG",
+  wizx: "ASSETS/CONTROL_MENU/AMMUNITION_SPECIALAMMO_WIZ-X.PNG",
+  ric3: "ASSETS/CONTROL_MENU/AMMUNITION_SPECIALAMMO_R-IC3.PNG",
+  rc100: "ASSETS/CONTROL_MENU/AMMUNITION_SPECIALAMMO_RC-100.PNG",
+  sr5: "ASSETS/CONTROL_MENU/AMMUNITION_SPECIALAMMO_SR-5.PNG",
+  agt500: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKET_AGT-500.PNG",
+  sp100x: "ASSETS/CONTROL_MENU/AMMUNITION_SPECIALAMMO_SP-100X.PNG",
+  k300m: "ASSETS/CONTROL_MENU/AMMUNITION_SPECIALAMMO_K-300M.PNG",
+  eco10: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKETLAUNCHER_ECO-10.PNG",
+  pir100: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKETLAUNCHER_PIR-100.PNG",
+  bdr1212: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKET_BDR-1212.PNG",
+  ubr100: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKETLAUNCHER_UBR-100.PNG",
+  cbr: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKETLAUNCHER_CBR.PNG",
+  sar01: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKETLAUNCHER_SAR-01.PNG",
+  sar02: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKETLAUNCHER_SAR-02.PNG",
+  hstrm01: "ASSETS/CONTROL_MENU/AMMUNITION_ROCKETLAUNCHER_HSTRM-01.PNG",
+});
+
+export function rocketDockIcon(id) {
+  const key = String(id || "").toLowerCase();
+  return ROCKET_DOCK_ICONS[key] || rocketShopIcon(key);
 }
 
 export function rocketBulletSprite(id) {

@@ -78,12 +78,12 @@ export function getZoneSpawns(WORLD) {
 export function getZonePortals(WORLD) {
   return [
     {
-      id: "p_25_to_4-4.123",
+      id: "p_25_to_4-4",
       x: 1000,   // bas gauche
       y: 6000,
       r: 260,
-      toMap: "4-4.123",
-      toPortal: "p_4-4.123_to_25",
+      toMap: "4-4",
+      toPortal: "p_4-4_to_25",
     },
     {
       id: "p_25_to_26",
