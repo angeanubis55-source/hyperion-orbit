@@ -8,7 +8,7 @@ import { calculateRankPoints, getQuestHonorReward } from "./PROGRESSION.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.js";
 import { compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
-import { completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
+import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { getRefineryRecipe, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOT_ORES } from "../DATA/RESOURCES.js";
 import { ROCKET_TYPES } from "../../COMBAT/ROCKET_TYPES.js";
@@ -1956,10 +1956,53 @@ export function saveCurrentUserGalaxyGateWave(gateId, wave) {
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const id = String(gateId || "").toLowerCase();
   if (u.galaxyGates.active !== id) return { ok: false, error: "Galaxy Gate inactive." };
-  u.galaxyGates.activeWave = Math.max(1, Math.floor(Number(wave) || 1));
+  const w = Math.max(1, Math.floor(Number(wave) || 1));
+  const prevKills = getGalaxyGateWaveKills(u.galaxyGates, id);
+  u.galaxyGates.activeWave = w;
   // ✅ miroir persisté par gate (alternance Alpha/Beta/Gamma sans perte).
   u.galaxyGates.waves ||= {};
   u.galaxyGates.waves[id] = u.galaxyGates.activeWave;
+  // ✅ changement de vague = nouvelle vague : les kills intra-vague repartent
+  // de zéro (sinon un refresh appliquerait les kills de l'ancienne vague).
+  if (Number(prevKills.wave) !== w) {
+    const reset = resetGalaxyGateWaveKills(u.galaxyGates, id, w);
+    u.galaxyGates = reset.state;
+  }
+  saveUser(u);
+  return { ok: true, user: u };
+}
+
+// ✅ Enregistre 1 NPC du plan de vague éliminé (GG en cours).
+// Persistance immédiate (saveUser synchrone) : un refresh juste après le
+// kill doit retrouver le compteur, contrairement à markProgressDirty (15 s).
+export function recordCurrentUserGalaxyGateWaveKill(gateId, wave, count = 1) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const id = String(gateId || "").toLowerCase();
+  if (u.galaxyGates.active !== id) return { ok: false, error: "Galaxy Gate inactive." };
+  const result = recordGalaxyGateWaveKill(u.galaxyGates, id, wave, count);
+  if (!result.ok) return { ok: false, error: "Galaxy Gate inconnue." };
+  u.galaxyGates = result.state;
+  // ✅ source "progress" : le moteur ne recharge pas tout l'équipement à
+  // chaque kill (pas de freeze en combat), comme les sauvegardes périodiques.
+  saveUser(u, { source: "progress" });
+  return { ok: true, user: u, wave: result.wave, killed: result.killed };
+}
+
+// ✅ Lecture des kills intra-vague (0 si aucune progression).
+export function getCurrentUserGalaxyGateWaveKills(gateId) {
+  const u = getCurrentUserFull();
+  if (!u) return { wave: 0, killed: 0 };
+  return getGalaxyGateWaveKills(u.galaxyGates, String(gateId || "").toLowerCase());
+}
+
+// ✅ Purge explicite des kills intra-vague (sécurité, ex : reset manuel).
+export function clearCurrentUserGalaxyGateWaveKills(gateId) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const result = clearGalaxyGateWaveKills(u.galaxyGates, gateId);
+  if (!result.ok) return { ok: false, error: "Galaxy Gate inconnue." };
+  u.galaxyGates = result.state;
   saveUser(u);
   return { ok: true, user: u };
 }

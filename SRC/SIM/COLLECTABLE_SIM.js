@@ -190,6 +190,23 @@ export function removeCollectableDrop(store, mapId, uid) {
   return true;
 }
 
+// ✅ Purge complète d'une map (fin de Galaxy Gate) : supprime TOUS les drops
+// dynamiques (cargos + assemblage non ramassés) et les slots ambientes de la
+// map. Utilisé quand une GG se termine (récompense reçue) ou est perdue
+// (0 vie) pour éviter l'accumulation sur des runs enchaînés.
+// Retourne le nombre d'entrées supprimées.
+export function clearCollectableMap(store, mapId) {
+  if (!store || typeof store !== "object") throw new Error("Store collectables invalide");
+  if (!store.maps || typeof store.maps !== "object") return 0;
+  const entry = store.maps[String(mapId)];
+  if (!entry || typeof entry !== "object") return 0;
+  const removed = (Array.isArray(entry.drops) ? entry.drops.length : 0)
+    + (Array.isArray(entry.slots) ? entry.slots.length : 0);
+  entry.drops = [];
+  entry.slots = [];
+  return removed;
+}
+
 // Drops expirés (rattrape refresh/absence). Retourne les survivants.
 export function pruneExpiredDrops(store, mapId, nowMs) {
   const entry = getMapEntry(store, mapId, false);

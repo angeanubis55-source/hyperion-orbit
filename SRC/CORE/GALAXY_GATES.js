@@ -38,6 +38,11 @@ export function normalizeGalaxyGateState(raw) {
     // entre Alpha / Beta / Gamma sans perdre la vague atteinte.
     // 0 = jamais commencée, sinon dernière vague sauvegardée.
     waves: {},
+    // ✅ kills intra-vague persistés par gate : { [gateId]: { wave, killed } }.
+    // Permet de ne pas refaire respawn les NPC déjà tués de la vague en
+    // cours après un refresh ou une mort (re-entrée dans la GG).
+    // `killed` = nombre de NPC du plan de vague déjà éliminés.
+    waveKills: {},
     lastOpenedGate: GALAXY_GATE_DEFINITIONS[String(source.lastOpenedGate || "").toLowerCase()] ? String(source.lastOpenedGate).toLowerCase() : "alpha",
     history: Array.isArray(source.history) ? source.history.slice(-30) : [],
   };
@@ -49,6 +54,15 @@ export function normalizeGalaxyGateState(raw) {
     state.completed[gate.id] = Math.max(0, Math.floor(Number(source.completed?.[gate.id]) || 0));
     state.lives[gate.id] = Math.min(gate.maxLives, Math.max(0, Math.floor(Number(source.lives?.[gate.id]) || gate.maxLives)));
     state.waves[gate.id] = Math.min(gate.maxWaves, Math.max(0, Math.floor(Number(source.waves?.[gate.id]) || 0)));
+    // ✅ migration/validation des kills intra-vague (ancien format ignoré).
+    // On garde le marqueur de vague même à killed=0 (vague démarrée, aucun
+    // kill) : seul { wave: 0 } signifie « aucune progression ».
+    const rawKills = source.waveKills?.[gate.id];
+    const killWave = Math.min(gate.maxWaves, Math.max(0, Math.floor(Number(rawKills?.wave) || 0)));
+    const killed = Math.max(0, Math.floor(Number(rawKills?.killed) || 0));
+    state.waveKills[gate.id] = (rawKills && typeof rawKills === "object" && killWave >= 1)
+      ? { wave: killWave, killed }
+      : { wave: 0, killed: 0 };
   }
   // ✅ migration : ancien format 1 multiplicateur par gate -> 1 seul partagé (on garde le max).
   let sharedMultiplier = Math.min(5, Math.max(1, Math.floor(Number(source.multiplier) || 1)));
@@ -278,6 +292,57 @@ export function consumeBuiltGalaxyGate(stateInput, gateId) {
   return { ok: true, state };
 }
 
+export function getGalaxyGateWaveKills(stateInput, gateId) {
+  const state = normalizeGalaxyGateState(stateInput);
+  const id = String(gateId || "").toLowerCase();
+  if (!GALAXY_GATE_DEFINITIONS[id]) return { wave: 0, killed: 0 };
+  const entry = state.waveKills?.[id];
+  return {
+    wave: Math.max(0, Math.floor(Number(entry?.wave) || 0)),
+    killed: Math.max(0, Math.floor(Number(entry?.killed) || 0)),
+  };
+}
+
+// ✅ Incrémente les kills intra-vague (NPC du plan de vague éliminé).
+// Si la vague ne correspond pas à celle mémorisée, on repart de `count`
+// (nouvelle vague). Retourne le compteur à jour.
+export function recordGalaxyGateWaveKill(stateInput, gateId, wave, count = 1) {
+  const state = normalizeGalaxyGateState(stateInput);
+  const id = String(gateId || "").toLowerCase();
+  if (!GALAXY_GATE_DEFINITIONS[id]) return { ok: false, state };
+  const w = Math.max(1, Math.floor(Number(wave) || 1));
+  const delta = Math.max(1, Math.floor(Number(count) || 1));
+  state.waveKills ||= {};
+  const prev = state.waveKills[id];
+  if (prev && Number(prev.wave) === w) {
+    prev.killed = Math.max(0, Math.floor(Number(prev.killed) || 0)) + delta;
+  } else {
+    state.waveKills[id] = { wave: w, killed: delta };
+  }
+  return { ok: true, state, ...state.waveKills[id] };
+}
+
+// ✅ Reset des kills intra-vague (passage à la vague suivante).
+export function resetGalaxyGateWaveKills(stateInput, gateId, wave) {
+  const state = normalizeGalaxyGateState(stateInput);
+  const id = String(gateId || "").toLowerCase();
+  if (!GALAXY_GATE_DEFINITIONS[id]) return { ok: false, state };
+  const w = Math.max(1, Math.floor(Number(wave) || 1));
+  state.waveKills ||= {};
+  state.waveKills[id] = { wave: w, killed: 0 };
+  return { ok: true, state };
+}
+
+// ✅ Suppression des kills intra-vague (GG terminée ou perdue).
+export function clearGalaxyGateWaveKills(stateInput, gateId) {
+  const state = normalizeGalaxyGateState(stateInput);
+  const id = String(gateId || "").toLowerCase();
+  if (!GALAXY_GATE_DEFINITIONS[id]) return { ok: false, state };
+  state.waveKills ||= {};
+  state.waveKills[id] = { wave: 0, killed: 0 };
+  return { ok: true, state };
+}
+
 export function completeActiveGalaxyGate(stateInput, gateId) {
   const state = normalizeGalaxyGateState(stateInput);
   const id = String(gateId || "").toLowerCase();
@@ -285,6 +350,8 @@ export function completeActiveGalaxyGate(stateInput, gateId) {
   state.active = null;
   state.activeWave = 1;
   state.waves[id] = 0;
+  state.waveKills ||= {};
+  state.waveKills[id] = { wave: 0, killed: 0 };
   state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
   state.completed[id]++;
   // ✅ auto-placement du stock : si une GG était en stock 1/1 pendant le run,
@@ -309,6 +376,10 @@ export function loseGalaxyGateLife(stateInput, gateId) {
     state.active = null;
     state.activeWave = 1;
     state.waves[id] = 0;
+    // ✅ GG perdue : la progression intra-vague est effacée (prochain run
+    // repart de zéro) et les ressources non ramassées seront purgées côté moteur.
+    state.waveKills ||= {};
+    state.waveKills[id] = { wave: 0, killed: 0 };
   } else {
     state.waves[id] = Math.min(GALAXY_GATE_DEFINITIONS[id].maxWaves, Math.max(1, state.activeWave));
   }

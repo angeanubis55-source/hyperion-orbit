@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.218",
+    "date": "2026-09-16T03:17:53+02:00",
+    "message": "reequilibrage global: prix boutique/NPC/quetes, GG boostees, kamikaze ralentissant, maps 4-x, icones control-menu, fix mojibake"
+  },
+  {
     "version": "0.217",
     "date": "2026-09-15T23:50:16+02:00",
     "message": "aptitudes: onglet palette par vaisseau (icones centrees, masque si aucune, refresh auto au changement)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.159",
     "date": "2026-09-11T21:11:26+02:00",
     "message": "laser hit change"
-  },
-  {
-    "version": "0.158",
-    "date": "2026-09-11T20:02:02+02:00",
-    "message": "Raygun supprime : ni visuel ni degats"
   }
 ];
