@@ -92,7 +92,7 @@ import { addProjectile, advanceProjectile, blendVelocityDirection, guideLauncher
 import { createWaveSpawnState } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
-import { computeNpcCombatMove as computeNpcCombatMovement, setNpcVelocity } from "../../NPC/NPC_AI.js";
+import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, setNpcVelocity } from "../../NPC/NPC_AI.js";
 import { getNpcSensorRanges, shouldDetectNpc } from "../../NPC/NPC_SENSORS.js";
 import { shouldRunNpcFrame } from "../../NPC/NPC_ACTIVITY.js";
 import { NPC_SHOTS as NPC_SHOT_RULES } from "../../NPC/NPC_PROJECTILES.js";
@@ -969,6 +969,161 @@ let lastAbilityShipId = null;
 // ============================================================
 const POLICE_CLOAK_DURATION = 30;
 const POLICE_CLOAK_COOLDOWN = 240;
+// Pod de réparation (Aegis) : posé sous le vaisseau à l'activation, 10 s
+// d'effet (soin 18k/s dans un rayon de 300, halo vert), recharge 120 s qui
+// ne démarre qu'à la fin ou à la coupure. Le pod de la coque est caché
+// tant que la recharge n'est pas finie.
+const REPAIR_POD_DURATION = 10;
+const REPAIR_POD_COOLDOWN = 120;
+const REPAIR_POD_HEAL = 18000;
+const REPAIR_POD_RADIUS = 400;
+const REPAIR_POD_FRAMES = 15;
+const REPAIR_POD_FPS = 30;
+// Réparations Aegis : 280k PV répartis sur 7 s (40k/s), bouclier 125k
+// répartis sur 5 s (25k/s). Recharges démarrées à la fin ou à la coupure.
+// +X vert (coque) / bleu (bouclier) affichés chaque seconde, même à +0.
+const HP_REPAIR_DURATION = 7;
+const HP_REPAIR_COOLDOWN = 90;
+const HP_REPAIR_AMOUNT = 40000;
+const HP_REPAIR_SELF = 20000;
+const SH_REPAIR_DURATION = 5;
+const SH_REPAIR_COOLDOWN = 30;
+const SH_REPAIR_AMOUNT = 25000;
+const SH_REPAIR_SELF = 15000;
+// Nébuleuse toxique (Basilisk) : posée sous le vaisseau à l'activation,
+// 10 s, rayon 900. 1400 dégâts/s aux NPC dedans, +5 % exponentiel par
+// seconde passée dedans (stack par NPC) ; dehors le stack retombe de 5 %/s.
+// Recharge 180 s démarrée à la fin ou à la coupure.
+const NEBULA_DURATION = 10;
+const NEBULA_COOLDOWN = 180;
+const NEBULA_DMG = 14000;
+const NEBULA_RADIUS = 500;
+const NEBULA_FRAMES = 61;
+const NEBULA_FPS = 30;
+const NEBULA_RADIUS_FRAMES = 60;
+// Valeur exaltée (Basilisk) : +0,5 % de dégâts par seconde pendant 30 s,
+// plafonné à +10 %. Éclairs dorés légers autour du vaisseau.
+// Recharge 100 s démarrée à la fin ou à la coupure.
+const VALOUR_DURATION = 30;
+const VALOUR_COOLDOWN = 100;
+const VALOUR_STEP = 0.005;
+const VALOUR_MAX = 0.10;
+// Lien de bouclier (Berserker, officiel) : 60 s, recharge 10 s. Les dégâts
+// infligés au bouclier de la cible liée sont encaissés par nous à la place.
+// Cassé en sortant de portée, annulable à tout moment, cible avec bouclier.
+const SHL_DURATION = 60;
+const SHL_COOLDOWN = 10;
+// Berserker BSK : 30 s, tremblement croissant + anneau orange pulsé +
+// sprite, +1 % dégâts par 1 % PV manquant. Recharge 60 s.
+const BSK_DURATION = 30;
+const BSK_COOLDOWN = 60;
+const BSK_FRAMES = 83;
+const BSK_FPS = 30;
+// Berserker RVG : 6 s, 100 % des dégâts reçus renvoyés à la cible verrouillée.
+// Recharge 180 s.
+const RVG_DURATION = 6;
+const RVG_COOLDOWN = 180;
+// Draw Fire (Citadel / Citadel+) : 5 s de taunt de zone (rayon 600),
+// recharge 40 s. Tous les NPC dans le rayon verrouillent le joueur (leurs
+// attaques en cours sont redirigées, aucun nouveau lock ailleurs), re-scan
+// chaque seconde (entrants affectés, sortis libérés). Visuel : sprite
+// CITADEL_IGNIFUGE en boucle par-dessus le vaisseau + halo violet foncé
+// qui aspire (extérieur → intérieur).
+const DRAW_FIRE_DURATION = 5;
+const DRAW_FIRE_COOLDOWN = 60;
+const DRAW_FIRE_RADIUS = 600;
+const DRAW_FIRE_RESCAN = 1;
+const DRAW_FIRE_FRAMES = 10;
+const DRAW_FIRE_FPS = 24;
+// Protection (Citadel / Citadel+) : 10 s de halo, recharge 60 s. 25 % des
+// dégâts ennemis subis par les alliés dans un rayon de 600 sont redirigés
+// sur nous (dégâts classiques : ils passent par nos propres réductions).
+// Visuel : halo violet très clair, intérieur → extérieur.
+const PROTECTION_DURATION = 10;
+const PROTECTION_COOLDOWN = 60;
+const PROTECTION_RADIUS = 600;
+const PROTECTION_SHARE = 0.25;
+// Voyage (Citadel / Citadel+) : vitesse x2 pendant 5 s, recharge 45 s.
+// Visuel : speed buff effect à la place des réacteurs (montée/descente
+// 1→2→3→2→1, alternance 3↔2 à l'arrêt toutes les 100 ms).
+const TRAVEL_DURATION = 5;
+const TRAVEL_COOLDOWN = 60;
+// Fortification (Citadel / Citadel+, officiel) : 10 s, recharge 360 s.
+// -80 % de dégâts subis, vitesse plafonnée à 200, pas de saut (portails).
+// Visuel : contour uber blanc clignotant.
+const FORTIFY_DURATION = 10;
+const FORTIFY_COOLDOWN = 360;
+const FORTIFY_DR = 0.8;
+const FORTIFY_MAX_SPEED = 200;
+// Endurance prismatique (Citadel+ uniquement) : 25 s, recharge 200 s.
+// -80 % de dégâts subis, pénétration annulée (tout passe par le bouclier
+// puis la coque) sauf attaquant en formation papillon : 20 % traverse.
+// Visuel : sprite SPECTRUM_PRISMATIC_SHIELDING par-dessus le vaisseau.
+const PRISM_DURATION = 25;
+const PRISM_COOLDOWN = 200;
+const PRISM_DR = 0.8;
+const PRISM_PEN_BUTTERFLY = 0.2;
+const PRISM_FRAMES = 35;
+const PRISM_FPS = 30;
+// Affaiblissement (Diminisher, officiel) : +50 % de dégâts au bouclier
+// de la cible verrouillée. Contrecoup : -30 % de notre bouclier actuel
+// à l'expiration naturelle. Visuel : sprite joué par-dessus le vaisseau
+// de la cible.
+const DIMINISH_DURATION = 15;
+const DIMINISH_COOLDOWN = 90;
+const DIMINISH_WEAKEN = 0.5;
+const DIMINISH_BACKLASH = 0.3;
+// DDoL — Distributed Denial of Lasers (Disruptor, officiel) : 10 s,
+// recharge 60 s. Le cooldown des lasers de la cible verrouillée est
+// dérèglé entre 3 et 5 s (aléatoire). Visuel : sprite DISRUPTOR_DDOL joué
+// par-dessus le vaisseau de la cible.
+const DDOL_DURATION = 10;
+const DDOL_COOLDOWN = 60;
+const DDOL_FRAMES = 40;
+const DDOL_FPS = 30;
+// Redirect (Disruptor, officiel) : 5 s, recharge 40 s. Tous les dégâts
+// qu'on nous inflige partent sur la cible verrouillée (on ne prend rien),
+// lasers de la cible désactivés 4 s. Visuel : notre vaisseau clignote +
+// contour jaune poussin très léger.
+const REDIRECT_DURATION = 5;
+const REDIRECT_COOLDOWN = 40;
+const REDIRECT_SILENCE = 4;
+// Shield Disarray (Disruptor, officiel) : 5 s, recharge 120 s. Bouclier max
+// de la cible -50 % (actuel écrêté), le retiré revient par-dessus à la fin.
+// Visuel : cible bleue sur l'ennemi, à la taille de son sprite (en plus du lock).
+const DISARRAY_DURATION = 5;
+const DISARRAY_COOLDOWN = 120;
+// Griffe gelée (Goliath-X, officiel) : recharge 90 s. Le clic envoie
+// gratuitement une roquette R-IC3 (gel 2 s via son effet, dégâts 0) sur la
+// cible verrouillée. Pas d'effet temporel côté joueur : la recharge démarre
+// aussitôt. Passif du vaisseau (officiel) : +2 % dégâts laser, +2 % XP.
+const FROZEN_CLAW_COOLDOWN = 90;
+// Rayon à particules (Hecate / Hecate Plus, officiel) : canal sur la cible
+// lockée, 1 hit/s en dégâts croissants directs en coque (façon Venom),
+// ralenti -10 % pendant le canal. Lien rompu au-delà de 1000.
+// Base : 8050 + 6000/hit, 5 s, CD 85 s. Plus : 10000 + 6000/hit, 6 s, CD 120 s.
+// Visuel : singularité Venom en boucle par-dessus la cible.
+const HECATE_DURATION = 5;
+const HECATE_COOLDOWN = 85;
+const HECATE_START = 8050;
+const HECATE_STEP = 6000;
+const HECATE_PLUS_DURATION = 6;
+const HECATE_PLUS_COOLDOWN = 120;
+const HECATE_PLUS_START = 10000;
+const HECATE_PLUS_STEP = 6000;
+const HECATE_LINK_RANGE = 1000;
+function isHecatePlusBase() {
+  try {
+    const raw = String(getActiveHangarFromUser(account?.user)?.shipId || ACTIVE_SHIP?.id || "").toLowerCase();
+    return String(getShipDesignBaseId(raw) || raw).toLowerCase() === "hecate_plus";
+  } catch { return false; }
+}
+function hecateDur() { return isHecatePlusBase() ? HECATE_PLUS_DURATION : HECATE_DURATION; }
+function hecateCdVal() { return isHecatePlusBase() ? HECATE_PLUS_COOLDOWN : HECATE_COOLDOWN; }
+function hecateStart() { return isHecatePlusBase() ? HECATE_PLUS_START : HECATE_START; }
+function hecateStep() { return isHecatePlusBase() ? HECATE_PLUS_STEP : HECATE_STEP; }
+const DIMINISH_FRAMES = 27;
+const DIMINISH_FPS = 30;
 // Aptitudes "camouflage" branchées sur le même effet (Police + 2 Spearhead).
 const CLOAK_ABILITY_IDS = new Set([
   "ability_admin-ultimate-cloaking",
@@ -1005,6 +1160,704 @@ function startPoliceCloakCooldown() {
   persistCdUntil("cloakFx", 0);
   persistCdUntil("cloak", POLICE_CLOAK_COOLDOWN);
 }
+function valourDamageMult() {
+  return 1 + Math.max(0, Math.min(VALOUR_MAX, Number(player.valMult || 0)));
+}
+function berserkDamageMult() {
+  if ((player.bskT || 0) <= 0 || player.dead) return 1;
+  const max = Number(player.hpMax || 0);
+  if (!(max > 0)) return 1;
+  // 1 % de PV en moins = +1 % de dégâts.
+  return 1 + Math.max(0, Math.min(1, 1 - Number(player.hp || 0) / max));
+}
+// --- SHL : lien de bouclier avec la cible verrouillée (officiel).
+function startShlCooldown() {
+  player.shlCd = SHL_COOLDOWN;
+  player.linkTarget = null;
+  persistCdUntil("shlFx", 0);
+  persistCdUntil("shl", SHL_COOLDOWN);
+}
+function cancelShl() {
+  if ((player.shlT || 0) <= 0) return;
+  player.shlT = 0;
+  startShlCooldown();
+}
+function activateShl() {
+  if (player.dead || !started) return;
+  const cd = Number(player.shlCd || 0);
+  if (cd > 0) {
+    showNotification(`Lien : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  // Annulable à tout moment : réactiver coupe le lien (la recharge démarre).
+  if ((player.shlT || 0) > 0) {
+    cancelShl();
+    showNotification("Lien coupé", 2, "info");
+    return;
+  }
+  const tgt = Target.get();
+  if (!tgt || !(tgt.hp > 0)) {
+    showNotification("Lien : verrouille d'abord une cible (clic sur un NPC)", 2.5, "error");
+    return;
+  }
+  if (!(Number(tgt.shMax || 0) > 0)) {
+    showNotification("Lien : la cible doit avoir un bouclier", 2.5, "error");
+    return;
+  }
+  if (shlOutOfRange(tgt)) {
+    showNotification("Lien : cible hors de portée", 2.5, "error");
+    return;
+  }
+  player.shlT = SHL_DURATION;
+  player.linkTarget = tgt;
+  // Pas de recharge à l'activation : elle démarre à la fin ou à la coupure.
+  persistCdUntil("shlFx", SHL_DURATION);
+  showNotification("Lien établi (60 s) : dégâts bouclier de la cible encaissés par vous", 2.5, "info");
+}
+// Portée du lien : celle des lasers (hors de portée = pas d'activation,
+// lien brisé en cours d'effet).
+function shlOutOfRange(tgt) {
+  if (!tgt) return true;
+  try {
+    return dist2(player.x, player.y, tgt.x, tgt.y) > playerRange * playerRange;
+  } catch { return false; }
+}
+// --- BSK : tremblement + anneau orange + sprite, dégâts selon PV manquants.
+function startBskCooldown() {
+  player.bskCd = BSK_COOLDOWN;
+  persistCdUntil("bskFx", 0);
+  persistCdUntil("bsk", BSK_COOLDOWN);
+}
+function cancelBsk() {
+  if ((player.bskT || 0) <= 0) return;
+  player.bskT = 0;
+  startBskCooldown();
+}
+function activateBsk() {
+  if (player.dead || !started) return;
+  const cd = Number(player.bskCd || 0);
+  if (cd > 0) {
+    showNotification(`Berserk : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.bskT || 0) > 0) return;
+  player.bskT = BSK_DURATION;
+  persistCdUntil("bskFx", BSK_DURATION);
+  try {
+    for (let i = 1; i <= BSK_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/BERSERKER_BERSERK_EFFECT/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Berserk actif (30 s) : dégâts +1 % par PV manquant", 2.5, "info");
+}
+// --- RVG : renvoie 100 % des dégâts reçus à la cible verrouillée du moment.
+// Activable sans lock (sans cible verrouillée au moment des dégâts : rien renvoyé).
+function startRvgCooldown() {
+  player.rvgCd = RVG_COOLDOWN;
+  persistCdUntil("rvgFx", 0);
+  persistCdUntil("rvg", RVG_COOLDOWN);
+}
+function cancelRvg() {
+  if ((player.rvgT || 0) <= 0) return;
+  player.rvgT = 0;
+  startRvgCooldown();
+}
+function activateRvg() {
+  if (player.dead || !started) return;
+  const cd = Number(player.rvgCd || 0);
+  if (cd > 0) {
+    showNotification(`Représailles : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.rvgT || 0) > 0) return;
+  player.rvgT = RVG_DURATION;
+  persistCdUntil("rvgFx", RVG_DURATION);
+  showNotification("Représailles actives (6 s) : 100 % renvoyés", 2, "info");
+}
+// --- Draw Fire : taunt de zone (Citadel + Citadel+, même effet).
+// Ne déclenche aucune attaque : seuls la cible et l'aggro sont forcés sur
+// le joueur. Les tirs déjà en vol continuent sur leur cible d'origine.
+function startDrawFireCooldown() {
+  player.drawFireCd = DRAW_FIRE_COOLDOWN;
+  persistCdUntil("drawFireFx", 0);
+  persistCdUntil("drawFire", DRAW_FIRE_COOLDOWN);
+}
+function clearDrawFireLocks() {
+  // Fin du taunt : la vie reprend. On retire juste le verrou, sans purger
+  // l'aggro naturelle (les NPC restent agressifs quelques secondes puis repartent).
+  try {
+    for (const e of enemies) { if (e) delete e.drawFireLock; }
+  } catch {}
+}
+function drawFireRescan() {
+  if (player.dead) return;
+  const r2 = DRAW_FIRE_RADIUS * DRAW_FIRE_RADIUS;
+  try {
+    for (const e of enemies) {
+      if (!e || !(e.hp > 0)) continue;
+      if (dist2(e.x, e.y, player.x, player.y) <= r2) {
+        if (!e.drawFireLock) {
+          e.drawFireLock = true;
+          e._provoked = true;
+          e._aggro = true;
+          e._attackedPlayerRecently = true;
+        }
+        e._aggroT = Math.max(Number(e._aggroT || 0), DRAW_FIRE_RESCAN + 0.5);
+        e._combatTargetId = "player";
+      } else if (e.drawFireLock) {
+        delete e.drawFireLock;
+      }
+    }
+  } catch {}
+}
+function cancelDrawFire() {
+  if ((player.drawFireT || 0) <= 0) return;
+  player.drawFireT = 0;
+  player.drawFireAcc = 0;
+  clearDrawFireLocks();
+  startDrawFireCooldown();
+}
+function activateDrawFire() {
+  if (player.dead || !started) return;
+  const cd = Number(player.drawFireCd || 0);
+  if (cd > 0) {
+    showNotification(`Attraction : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.drawFireT || 0) > 0) return;
+  player.drawFireT = DRAW_FIRE_DURATION;
+  player.drawFireAcc = 0;
+  persistCdUntil("drawFireFx", DRAW_FIRE_DURATION);
+  try {
+    for (let i = 1; i <= DRAW_FIRE_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/CITADEL_IGNIFUGE/${i}.png`, { priority: true });
+    }
+  } catch {}
+  try { drawFireRescan(); } catch {}
+  showNotification("Attraction active (5 s) : les ennemis proches vous verrouillent", 2.5, "info");
+}
+// --- Protection : 25 % des dégâts ennemis subis par un allié proche partent
+// sur nous (via le circuit classique hurtPlayer). Seuls les dégâts de source
+// ennemie sont redirigés (pas nos propres effets de zone comme la nébuleuse).
+function startProtectionCooldown() {
+  player.protectionCd = PROTECTION_COOLDOWN;
+  persistCdUntil("protectionFx", 0);
+  persistCdUntil("protection", PROTECTION_COOLDOWN);
+}
+function cancelProtection() {
+  if ((player.protectionT || 0) <= 0) return;
+  player.protectionT = 0;
+  player.protectionPulseT = 0;
+  player.protectionLastPulseSec = -1;
+  startProtectionCooldown();
+}
+function redirectProtectionDamage(target, amount, source) {
+  const raw = Math.max(0, Number(amount) || 0);
+  if (raw <= 0) return 0;
+  if ((player.protectionT || 0) <= 0 || player.dead) return raw;
+  if (!target || target === player || !(target.hp > 0)) return raw;
+  if (dist2(target.x, target.y, player.x, player.y) > PROTECTION_RADIUS * PROTECTION_RADIUS) return raw;
+  const share = Math.round(raw * PROTECTION_SHARE);
+  if (share > 0) {
+    try { hurtPlayer(share, source); } catch {}
+  }
+  return raw - share;
+}
+function activateProtection() {
+  if (player.dead || !started) return;
+  const cd = Number(player.protectionCd || 0);
+  if (cd > 0) {
+    showNotification(`Protection : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.protectionT || 0) > 0) return;
+  player.protectionT = PROTECTION_DURATION;
+  player.protectionPulseT = 0;
+  player.protectionLastPulseSec = -1;
+  persistCdUntil("protectionFx", PROTECTION_DURATION);
+  showNotification("Protection active (10 s) : 25 % des dégâts alliés redirigés sur vous", 2.5, "info");
+}
+// --- Voyage : vitesse x2 (via playerSlowMult), aucun autre effet.
+function startTravelCooldown() {
+  player.travelCd = TRAVEL_COOLDOWN;
+  persistCdUntil("travelFx", 0);
+  persistCdUntil("travel", TRAVEL_COOLDOWN);
+}
+function cancelTravel() {
+  if ((player.travelT || 0) <= 0) return;
+  player.travelT = 0;
+  startTravelCooldown();
+}
+function activateTravel() {
+  if (player.dead || !started) return;
+  const cd = Number(player.travelCd || 0);
+  if (cd > 0) {
+    showNotification(`Voyage : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.travelT || 0) > 0) return;
+  player.travelT = TRAVEL_DURATION;
+  persistCdUntil("travelFx", TRAVEL_DURATION);
+  try {
+    for (let i = 1; i <= 3; i++) {
+      loadImage(`ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Voyage actif (5 s) : vitesse x2", 2, "info");
+}
+// --- Fortification (officiel) : -80 % de dégâts, vitesse plafonnée à 200,
+// pas de saut (portails). Les attaques et autres contrôles restent possibles.
+function startFortifyCooldown() {
+  player.fortifyCd = FORTIFY_COOLDOWN;
+  persistCdUntil("fortifyFx", 0);
+  persistCdUntil("fortify", FORTIFY_COOLDOWN);
+}
+function cancelFortify() {
+  if ((player.fortifyT || 0) <= 0) return;
+  player.fortifyT = 0;
+  startFortifyCooldown();
+}
+function activateFortify() {
+  if (player.dead || !started) return;
+  const cd = Number(player.fortifyCd || 0);
+  if (cd > 0) {
+    showNotification(`Fortification : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.fortifyT || 0) > 0) return;
+  player.fortifyT = FORTIFY_DURATION;
+  persistCdUntil("fortifyFx", FORTIFY_DURATION);
+  showNotification("Fortification active (10 s) : -80 % dégâts, vitesse 200 max", 2.5, "info");
+}
+// --- Endurance prismatique (Citadel+ uniquement).
+// Pénétration de l'attaquant : formation papillon = 20 % (comme
+// DRONE_TYPES butterfly penetrationPct:20). Les NPC n'ont pas de formation :
+// ils ne percent jamais, comportement actuel inchangé.
+function isButterflyAttacker(source) {
+  try {
+    if (!source) return false;
+    const fx = source.formationEffects || source.formation?.effects;
+    if (Number(fx?.penetrationPct || 0) > 0) return true;
+    const f = String(source.formation || source.formationId || "").toLowerCase();
+    return f === "butterfly" || f === "papillon";
+  } catch { return false; }
+}
+function attackerPenetration(source) {
+  try {
+    if (!source) return 0;
+    const fx = source?.formationEffects || source?.formation?.effects;
+    let pen = Number(fx?.penetrationPct || 0) / 100;
+    if (isButterflyAttacker(source)) pen = Math.max(pen, PRISM_PEN_BUTTERFLY);
+    return Math.max(0, Math.min(1, pen));
+  } catch { return 0; }
+}
+function startPrismCooldown() {
+  player.prismCd = PRISM_COOLDOWN;
+  persistCdUntil("prismFx", 0);
+  persistCdUntil("prism", PRISM_COOLDOWN);
+}
+function cancelPrism() {
+  if ((player.prismT || 0) <= 0) return;
+  player.prismT = 0;
+  startPrismCooldown();
+}
+function activatePrism() {
+  if (player.dead || !started) return;
+  const cd = Number(player.prismCd || 0);
+  if (cd > 0) {
+    showNotification(`Endurance prismatique : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.prismT || 0) > 0) return;
+  player.prismT = PRISM_DURATION;
+  persistCdUntil("prismFx", PRISM_DURATION);
+  try {
+    for (let i = 1; i <= PRISM_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/SPECTRUM_PRISMATIC_SHIELDING/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Endurance prismatique active (25 s) : -80 % dégâts, pénétration annulée", 2.5, "info");
+}
+// --- Affaiblissement (Diminisher, officiel) : le bouclier de la cible
+// verrouillée prend +50 % de dégâts pendant 15 s. Contrecoup : -30 % de
+// notre bouclier actuel à l'expiration naturelle (pas en cas d'annulation).
+function startDiminishCooldown() {
+  player.diminishCd = DIMINISH_COOLDOWN;
+  player.diminishTarget = null;
+  persistCdUntil("diminishFx", 0);
+  persistCdUntil("diminish", DIMINISH_COOLDOWN);
+}
+function cancelDiminish() {
+  if ((player.diminishT || 0) <= 0) return;
+  player.diminishT = 0;
+  player.diminishTarget = null;
+  startDiminishCooldown();
+}
+// La cible est-elle affaiblie (effet actif + bonne entité) ?
+function diminishWeakened(e) {
+  try {
+    if ((player.diminishT || 0) <= 0 || player.dead) return false;
+    if (!e || e.hp <= 0 || player.diminishTarget !== e) return false;
+    return true;
+  } catch { return false; }
+}
+function activateDiminish() {
+  if (player.dead || !started) return;
+  const cd = Number(player.diminishCd || 0);
+  if (cd > 0) {
+    showNotification(`Affaiblissement : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.diminishT || 0) > 0) return;
+  const t = Target.get();
+  if (!t) {
+    showNotification("Affaiblissement : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  player.diminishTarget = t;
+  player.diminishT = DIMINISH_DURATION;
+  persistCdUntil("diminishFx", DIMINISH_DURATION);
+  try {
+    for (let i = 1; i <= DIMINISH_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/DIMINISHER_WEAKEN_SHIELDS/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Affaiblissement actif (15 s) : +50 % de dégâts au bouclier de la cible", 2.5, "info");
+}
+// --- DDoL (Disruptor, officiel) : dérègle le cooldown des lasers de la
+// cible verrouillée (3 à 5 s aléatoires) pendant 10 s.
+function startDdolCooldown() {
+  player.ddolCd = DDOL_COOLDOWN;
+  player.ddolTarget = null;
+  persistCdUntil("ddolFx", 0);
+  persistCdUntil("ddol", DDOL_COOLDOWN);
+}
+function cancelDdol() {
+  if ((player.ddolT || 0) <= 0) return;
+  player.ddolT = 0;
+  player.ddolTarget = null;
+  startDdolCooldown();
+}
+function activateDdol() {
+  if (player.dead || !started) return;
+  const cd = Number(player.ddolCd || 0);
+  if (cd > 0) {
+    showNotification(`DDoL : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.ddolT || 0) > 0) return;
+  const t = Target.get();
+  if (!t) {
+    showNotification("DDoL : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  player.ddolTarget = t;
+  player.ddolT = DDOL_DURATION;
+  persistCdUntil("ddolFx", DDOL_DURATION);
+  try {
+    for (let i = 1; i <= DDOL_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/DISRUPTOR_DDOL/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("DDoL actif (10 s) : lasers ennemis dérèglés (3-5 s)", 2.5, "info");
+}
+// --- Redirect (Disruptor, officiel) : pendant 5 s, tous les dégâts qu'on
+// nous inflige partent sur la cible verrouillée (on ne prend rien), et ses
+// lasers sont désactivés 4 s.
+function startRedirectCooldown() {
+  player.redirectCd = REDIRECT_COOLDOWN;
+  player.redirectTarget = null;
+  persistCdUntil("redirectFx", 0);
+  persistCdUntil("redirect", REDIRECT_COOLDOWN);
+}
+function cancelRedirect() {
+  if ((player.redirectT || 0) <= 0) return;
+  player.redirectT = 0;
+  player.redirectTarget = null;
+  startRedirectCooldown();
+}
+function activateRedirect() {
+  if (player.dead || !started) return;
+  const cd = Number(player.redirectCd || 0);
+  if (cd > 0) {
+    showNotification(`Redirection : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.redirectT || 0) > 0) return;
+  const t = Target.get();
+  if (!t) {
+    showNotification("Redirection : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  player.redirectTarget = t;
+  player.redirectT = REDIRECT_DURATION;
+  try { t.redirectSilenceT = Math.max(Number(t.redirectSilenceT || 0), REDIRECT_SILENCE); } catch {}
+  persistCdUntil("redirectFx", REDIRECT_DURATION);
+  showNotification("Redirection active (5 s) : dégâts renvoyés sur la cible, ses lasers coupés 4 s", 2.5, "info");
+}
+// --- Shield Disarray (Disruptor, officiel) : bouclier max de la cible -50 %
+// pendant 5 s (actuel écrêté), le retiré revient par-dessus à la fin.
+function disarrayRestore(target) {
+  try {
+    if (!target || !target.disarrayRemoved) return;
+    const back = Number(target.disarrayRemoved || 0);
+    delete target.disarrayRemoved;
+    if (!(target.hp > 0) || back <= 0) return;
+    target.shMax = Number(target.shMax || 0) + back;
+    target.sh = Math.min(Number(target.shMax || 0), Number(target.sh || 0) + back);
+  } catch {}
+}
+function startDisarrayCooldown() {
+  player.disarrayCd = DISARRAY_COOLDOWN;
+  player.disarrayTarget = null;
+  persistCdUntil("disarrayFx", 0);
+  persistCdUntil("disarray", DISARRAY_COOLDOWN);
+}
+function cancelDisarray() {
+  if ((player.disarrayT || 0) <= 0) return;
+  player.disarrayT = 0;
+  try { disarrayRestore(player.disarrayTarget); } catch {}
+  player.disarrayTarget = null;
+  startDisarrayCooldown();
+}
+// --- Griffe gelée (Goliath-X, officiel) : une R-IC3 gratuite (gel 2 s,
+// dégâts 0) sur la cible verrouillée. Ni stock consommé, ni cooldown
+// roquette : seule la recharge 90 s de l'aptitude compte.
+function startFrozenClawCooldown() {
+  player.frozenClawCd = FROZEN_CLAW_COOLDOWN;
+  persistCdUntil("frozenClawFx", 0);
+  persistCdUntil("frozenClaw", FROZEN_CLAW_COOLDOWN);
+}
+function activateFrozenClaw() {
+  if (player.dead || !started) return;
+  const cd = Number(player.frozenClawCd || 0);
+  if (cd > 0) {
+    showNotification(`Griffe gelée : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  const t = Target.get();
+  if (!t) {
+    showNotification("Griffe gelée : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  const d2 = dist2(player.x, player.y, t.x, t.y);
+  if (d2 > playerRange * playerRange) {
+    showNotification("Cible hors de portée.", 1.5, "error");
+    return;
+  }
+  const rocket = getRocketType("ric3");
+  if (!rocket) return;
+  player.angle = Math.atan2(t.y - player.y, t.x - player.x);
+  SFX.play("sfx_shot_roquettes", { cooldown: 0.05, cut: true });
+  player.combatT = 5.0;
+  markProgressDirty();
+  // Tir réel : casse le camouflage ultime (mais rien n'est consommé).
+  breakPoliceCloak();
+  spawnRocketProjectile(rocket, t, { volleyId: volleySeq++, volleySize: 1 });
+  startFrozenClawCooldown();
+  showNotification("Griffe gelée : R-IC3 gratuite !", 2, "info");
+}
+// --- Passif Goliath-X (officiel, affiché en boutique) : +2 % dégâts laser,
+// +2 % XP de toutes sources. Designs résolus vers leur base.
+function isGoliathXBase() {
+  try {
+    const raw = String(getActiveHangarFromUser(account?.user)?.shipId || ACTIVE_SHIP?.id || "").toLowerCase();
+    return String(getShipDesignBaseId(raw) || raw).toLowerCase() === "goliath_x";
+  } catch { return false; }
+}
+function shipPassiveDamageMult() {
+  return isGoliathXBase() ? 1.02 : 1;
+}
+function shipPassiveXpMult() {
+  return isGoliathXBase() ? 1.02 : 1;
+}
+// --- Rayon à particules (Hecate / Hecate Plus, officiel) : canal 1 hit/s
+// en dégâts croissants directs en coque sur la cible lockée, ralenti -10 %
+// pendant le canal (via playerSlowMult). Lien rompu si cible morte ou à
+// plus de 1000 (la recharge démarre).
+function startHecateCooldown() {
+  player.hecateCd = hecateCdVal();
+  player.hecateTarget = null;
+  player.hecateHit = 0;
+  persistCdUntil("hecateFx", 0);
+  persistCdUntil("hecate", hecateCdVal());
+}
+function cancelHecate() {
+  if ((player.hecateT || 0) <= 0) return;
+  player.hecateT = 0;
+  player.hecateTarget = null;
+  player.hecateHit = 0;
+  startHecateCooldown();
+}
+function hecateOutOfRange(tgt) {
+  if (!tgt) return true;
+  try {
+    return dist2(player.x, player.y, tgt.x, tgt.y) > HECATE_LINK_RANGE * HECATE_LINK_RANGE;
+  } catch { return false; }
+}
+function hecateBeamTick() {
+  const tgt = player.hecateTarget;
+  if (!tgt || !(tgt.hp > 0)) return;
+  const dmg = Math.round(hecateStart() + hecateStep() * Number(player.hecateHit || 0));
+  player.hecateHit = Number(player.hecateHit || 0) + 1;
+  // Façon Venom : direct en coque (pénétration totale).
+  let out = null;
+  try { out = damageEnemy(tgt, dmg, 1.0); } catch {}
+  // Nombres de dégâts comme les lasers (sinon le rayon semble ne rien faire).
+  if (out && (out.total || 0) > 0) {
+    try { queueVolleyFloat(tgt, out, volleySeq++, 1); } catch {}
+  }
+}
+function activateHecate() {
+  if (player.dead || !started) return;
+  const cd = Number(player.hecateCd || 0);
+  if (cd > 0) {
+    showNotification(`Faisceau à particules : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.hecateT || 0) > 0) return;
+  const t = Target.get();
+  if (!t) {
+    showNotification("Faisceau : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  const d2 = dist2(player.x, player.y, t.x, t.y);
+  if (d2 > playerRange * playerRange) {
+    showNotification("Cible hors de portée.", 1.5, "error");
+    return;
+  }
+  player.hecateTarget = t;
+  player.hecateHit = 0;
+  player.hecateT = hecateDur();
+  player.hecateAcc = 0;
+  persistCdUntil("hecateFx", hecateDur());
+  try { hecateBeamTick(); } catch {}
+  showNotification(`Faisceau actif (${hecateDur()} s) : dégâts croissants en coque, vitesse -10 %`, 2.5, "info");
+}
+// --- Stockpile (Hecate Plus, 2e capacité) : jusqu'à 10 charges, +1 par PNJ
+// tué. Tant que Stockpile n'est pas activé : portée +5 par charge.
+// À l'activation : force du bouclier +0,2 % pendant 10 s, chaque charge
+// donnant 0,2 % de plus que la précédente (total triangulaire :
+// 0,2 % x n(n+1)/2, soit 11 % à 10 charges). Portée réinitialisée à
+// l'origine et charges remises à 0. Durée 10 s, recharge 0 s.
+// Visuel : sprite ASSETS/APTITUDES/HECATE_PLUS_STOCKPILE (25 frames) joué
+// en boucle sur le vaisseau pendant l'effet.
+const STOCKPILE_MAX = 10;
+const STOCKPILE_RANGE_PER = 5;
+const STOCKPILE_DURATION = 10;
+const STOCKPILE_COOLDOWN = 0;
+const STOCKPILE_FRAMES = 25;
+const STOCKPILE_FPS = 30;
+const STOCKPILE_SHIELD_STEP = 0.002;
+function stockCharges() { return Math.max(0, Math.min(STOCKPILE_MAX, Math.floor(Number(player.stockCharges || 0)))); }
+// Bonus bouclier triangulaire : charge i apporte i x 0,2 %.
+function stockShieldBonusFor(n) {
+  const c = Math.max(0, Math.min(STOCKPILE_MAX, Math.floor(Number(n) || 0)));
+  return STOCKPILE_SHIELD_STEP * c * (c + 1) / 2;
+}
+function stockUpdateRange() {
+  try {
+    if ((player.stockT || 0) > 0) { playerRange = BASE_RUN.range; return; }
+    const bonus = isHecatePlusBase() ? stockCharges() * STOCKPILE_RANGE_PER : 0;
+    playerRange = BASE_RUN.range + bonus;
+  } catch {}
+}
+function onStockpileNpcKill() {
+  try {
+    if (!isHecatePlusBase()) return;
+    if (player.dead || !started) return;
+    // Pas de cumul pendant l'effet : les charges repartent après.
+    if ((player.stockT || 0) > 0) return;
+    const cur = stockCharges();
+    if (cur >= STOCKPILE_MAX) return;
+    player.stockCharges = cur + 1;
+    stockUpdateRange();
+    showNotification(`Stockpile +1 (${player.stockCharges}/${STOCKPILE_MAX}) : portée +${player.stockCharges * STOCKPILE_RANGE_PER}`, 2, "info");
+  } catch {}
+}
+function activateStockpile() {
+  if (player.dead || !started) return;
+  if (!isHecatePlusBase()) {
+    showNotification("Stockpile : réservez au Hecate Plus", 2, "info");
+    return;
+  }
+  if ((player.stockT || 0) > 0) return;
+  const n = stockCharges();
+  const bonus = stockShieldBonusFor(n);
+  player.stockShieldPct = bonus;
+  player.stockT = STOCKPILE_DURATION;
+  // Portée réinitialisée à l'origine et charges remises à 0.
+  player.stockCharges = 0;
+  stockUpdateRange();
+  try {
+    for (let i = 1; i <= STOCKPILE_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/HECATE_PLUS_STOCKPILE/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification(
+    n > 0
+      ? `Stockpile actif (10 s) : bouclier +${(bonus * 100).toFixed(1)} % (${n} charge${n > 1 ? "s" : ""}), portée réinitialisée`
+      : "Stockpile actif (10 s) : aucune charge, portée réinitialisée",
+    2.5, "info");
+}
+function cancelStockpile() {
+  if ((player.stockT || 0) <= 0 && !(Number(player.stockShieldPct || 0) > 0)) return;
+  player.stockT = 0;
+  player.stockShieldPct = 0;
+  try { stockUpdateRange(); } catch {}
+}
+function activateDisarray() {
+  if (player.dead || !started) return;
+  const cd = Number(player.disarrayCd || 0);
+  if (cd > 0) {
+    showNotification(`Désordre : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.disarrayT || 0) > 0) return;
+  const t = Target.get();
+  if (!t) {
+    showNotification("Désordre : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  if (!(Number(t.shMax || 0) > 0)) {
+    showNotification("Désordre : la cible doit avoir un bouclier", 2, "info");
+    return;
+  }
+  const cut = Math.floor(Number(t.shMax || 0) / 2);
+  t.shMax = Number(t.shMax || 0) - cut;
+  t.sh = Math.min(Number(t.sh || 0), Number(t.shMax || 0));
+  t.disarrayRemoved = cut;
+  player.disarrayTarget = t;
+  player.disarrayT = DISARRAY_DURATION;
+  persistCdUntil("disarrayFx", DISARRAY_DURATION);
+  showNotification("Désordre actif (5 s) : bouclier max ennemi -50 %", 2.5, "info");
+}
+function startValourCooldown() {
+  player.valMult = 0;
+  player.valCd = VALOUR_COOLDOWN;
+  persistCdUntil("valFx", 0);
+  persistCdUntil("val", VALOUR_COOLDOWN);
+}
+function cancelValour() {
+  if ((player.valT || 0) <= 0) return;
+  player.valT = 0;
+  startValourCooldown();
+}
+function activateValour() {
+  if (player.dead || !started) return;
+  const cd = Number(player.valCd || 0);
+  if (cd > 0) {
+    showNotification(`Valeur exaltée : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.valT || 0) > 0) return;
+  player.valT = VALOUR_DURATION;
+  player.valMult = 0;
+  player.valAcc = 0;
+  // Pas de recharge à l'activation : elle démarre à la fin ou à la coupure.
+  persistCdUntil("valFx", VALOUR_DURATION);
+  showNotification("Valeur exaltée active (30 s)", 2, "info");
+}
 function restorePersistedCds() {
   // Camouflage coupé par un refresh : l'effet est perdu, la recharge démarre.
   if (persistedCdLeft("cloakFx") > 0) {
@@ -1014,8 +1867,712 @@ function restorePersistedCds() {
     // Plafonné à la recharge : pendant l'effet le voile reste plein (figé).
     player.cloakCd = Math.min(POLICE_CLOAK_COOLDOWN, Math.max(Number(player.cloakCd || 0), persistedCdLeft("cloak")));
   }
+  // Pod coupé par un refresh : posé perdu, la recharge démarre.
+  if (persistedCdLeft("podFx") > 0) {
+    player.podT = 0;
+    player.podX = null;
+    startRepairPodCooldown();
+  } else {
+    player.podCd = Math.min(REPAIR_POD_COOLDOWN, Math.max(Number(player.podCd || 0), persistedCdLeft("pod")));
+  }
+  // Réparations coupées par un refresh : recharges démarrées.
+  if (persistedCdLeft("hpRepFx") > 0) {
+    player.healHpT = 0;
+    startHpRepairCooldown();
+  } else {
+    player.healHpCd = Math.min(HP_REPAIR_COOLDOWN, Math.max(Number(player.healHpCd || 0), persistedCdLeft("hpRep")));
+  }
+  // Réparations Hammerclaw coupées par un refresh : recharges démarrées.
+  if (persistedCdLeft("hammerHpFx") > 0) {
+    player.hammerHpT = 0;
+    startHammerHpCooldown();
+  } else {
+    player.hammerHpCd = Math.min(hammerHpCdVal(), Math.max(Number(player.hammerHpCd || 0), persistedCdLeft("hammerHp")));
+  }
+  if (persistedCdLeft("hammerShFx") > 0) {
+    player.hammerShT = 0;
+    startHammerShCooldown();
+  } else {
+    player.hammerShCd = Math.min(hammerShCdVal(), Math.max(Number(player.hammerShCd || 0), persistedCdLeft("hammerSh")));
+  }
+  if (persistedCdLeft("hammerPodFx") > 0) {
+    player.hammerPodT = 0;
+    player.hammerPodX = null;
+    startHammerPodCooldown();
+  } else {
+    player.hammerPodCd = Math.min(hammerPodCdVal(), Math.max(Number(player.hammerPodCd || 0), persistedCdLeft("hammerPod")));
+  }
+  if (persistedCdLeft("shRepFx") > 0) {
+    player.healShT = 0;
+    startShRepairCooldown();
+  } else {
+    player.healShCd = Math.min(SH_REPAIR_COOLDOWN, Math.max(Number(player.healShCd || 0), persistedCdLeft("shRep")));
+  }
+  // Nébuleuse coupée par un refresh : posée perdue, la recharge démarre.
+  if (persistedCdLeft("nebFx") > 0) {
+    player.nebT = 0;
+    player.nebX = null;
+    startNebulaCooldown();
+  } else {
+    player.nebCd = Math.min(NEBULA_COOLDOWN, Math.max(Number(player.nebCd || 0), persistedCdLeft("neb")));
+  }
+  // Valeur exaltée coupée par un refresh : bonus perdu, la recharge démarre.
+  if (persistedCdLeft("valFx") > 0) {
+    player.valT = 0;
+    player.valMult = 0;
+    startValourCooldown();
+  } else {
+    player.valCd = Math.min(VALOUR_COOLDOWN, Math.max(Number(player.valCd || 0), persistedCdLeft("val")));
+  }
+  // Berserker coupés par un refresh : effets perdus, recharges démarrées.
+  if (persistedCdLeft("shlFx") > 0) {
+    player.shlT = 0;
+    player.linkTarget = null;
+    startShlCooldown();
+  } else {
+    player.shlCd = Math.min(SHL_COOLDOWN, Math.max(Number(player.shlCd || 0), persistedCdLeft("shl")));
+  }
+  if (persistedCdLeft("bskFx") > 0) {
+    player.bskT = 0;
+    startBskCooldown();
+  } else {
+    player.bskCd = Math.min(BSK_COOLDOWN, Math.max(Number(player.bskCd || 0), persistedCdLeft("bsk")));
+  }
+  if (persistedCdLeft("rvgFx") > 0) {
+    player.rvgT = 0;
+    startRvgCooldown();
+  } else {
+    player.rvgCd = Math.min(RVG_COOLDOWN, Math.max(Number(player.rvgCd || 0), persistedCdLeft("rvg")));
+  }
+  // Draw Fire coupé par un refresh : taunt perdu, la recharge démarre.
+  if (persistedCdLeft("drawFireFx") > 0) {
+    player.drawFireT = 0;
+    player.drawFireAcc = 0;
+    try { clearDrawFireLocks(); } catch {}
+    startDrawFireCooldown();
+  } else {
+    player.drawFireCd = Math.min(DRAW_FIRE_COOLDOWN, Math.max(Number(player.drawFireCd || 0), persistedCdLeft("drawFire")));
+  }
+  // Protection coupée par un refresh : halo perdu, la recharge démarre.
+  if (persistedCdLeft("protectionFx") > 0) {
+    player.protectionT = 0;
+    player.protectionPulseT = 0;
+    player.protectionLastPulseSec = -1;
+    startProtectionCooldown();
+  } else {
+    player.protectionCd = Math.min(PROTECTION_COOLDOWN, Math.max(Number(player.protectionCd || 0), persistedCdLeft("protection")));
+  }
+  // Voyage coupé par un refresh : boost perdu, la recharge démarre.
+  if (persistedCdLeft("travelFx") > 0) {
+    player.travelT = 0;
+    startTravelCooldown();
+  } else {
+    player.travelCd = Math.min(TRAVEL_COOLDOWN, Math.max(Number(player.travelCd || 0), persistedCdLeft("travel")));
+  }
+  // Fortification coupée par un refresh : effet perdu, la recharge démarre.
+  if (persistedCdLeft("fortifyFx") > 0) {
+    player.fortifyT = 0;
+    startFortifyCooldown();
+  } else {
+    player.fortifyCd = Math.min(FORTIFY_COOLDOWN, Math.max(Number(player.fortifyCd || 0), persistedCdLeft("fortify")));
+  }
+  // Prismatique coupée par un refresh : effet perdu, la recharge démarre.
+  if (persistedCdLeft("prismFx") > 0) {
+    player.prismT = 0;
+    startPrismCooldown();
+  } else {
+    player.prismCd = Math.min(PRISM_COOLDOWN, Math.max(Number(player.prismCd || 0), persistedCdLeft("prism")));
+  }
+  // Affaiblissement coupé par un refresh : cible perdue, la recharge démarre.
+  if (persistedCdLeft("diminishFx") > 0) {
+    player.diminishT = 0;
+    player.diminishTarget = null;
+    startDiminishCooldown();
+  } else {
+    player.diminishCd = Math.min(DIMINISH_COOLDOWN, Math.max(Number(player.diminishCd || 0), persistedCdLeft("diminish")));
+  }
+  // Disruptor coupés par un refresh : effets perdus, recharges démarrées
+  // (le bouclier retiré par Disarray est rendu).
+  if (persistedCdLeft("ddolFx") > 0) {
+    player.ddolT = 0;
+    player.ddolTarget = null;
+    startDdolCooldown();
+  } else {
+    player.ddolCd = Math.min(DDOL_COOLDOWN, Math.max(Number(player.ddolCd || 0), persistedCdLeft("ddol")));
+  }
+  if (persistedCdLeft("redirectFx") > 0) {
+    player.redirectT = 0;
+    player.redirectTarget = null;
+    startRedirectCooldown();
+  } else {
+    player.redirectCd = Math.min(REDIRECT_COOLDOWN, Math.max(Number(player.redirectCd || 0), persistedCdLeft("redirect")));
+  }
+  if (persistedCdLeft("disarrayFx") > 0) {
+    player.disarrayT = 0;
+    try { disarrayRestore(player.disarrayTarget); } catch {}
+    player.disarrayTarget = null;
+    startDisarrayCooldown();
+  } else {
+    player.disarrayCd = Math.min(DISARRAY_COOLDOWN, Math.max(Number(player.disarrayCd || 0), persistedCdLeft("disarray")));
+  }
+  // Reallocate coupée par un refresh : pot perdu, la recharge démarre.
+  if (persistedCdLeft("reallocFx") > 0) {
+    player.reallocT = 0;
+    player.reallocPool = 0;
+    startReallocCooldown();
+  } else {
+    player.reallocCd = Math.min(REALLOC_COOLDOWN, Math.max(Number(player.reallocCd || 0), persistedCdLeft("realloc")));
+  }
+  // Rayon Hecate coupé par un refresh : canal perdu, la recharge démarre.
+  if (persistedCdLeft("hecateFx") > 0) {
+    player.hecateT = 0;
+    player.hecateTarget = null;
+    player.hecateHit = 0;
+    startHecateCooldown();
+  } else {
+    player.hecateCd = Math.min(hecateCdVal(), Math.max(Number(player.hecateCd || 0), persistedCdLeft("hecate")));
+  }
+  // Griffe gelée : tir instantané, rien à perdre au refresh (juste la recharge).
+  player.frozenClawCd = Math.min(FROZEN_CLAW_COOLDOWN, Math.max(Number(player.frozenClawCd || 0), persistedCdLeft("frozenClaw")));
   pulseCd = Math.max(Number(pulseCd || 0), persistedCdLeft("pulse"));
   ishCd = Math.max(Number(ishCd || 0), persistedCdLeft("ish"));
+}
+// Recharge de la nébuleuse : ne démarre qu'une fois l'effet fini ou coupé.
+function startNebulaCooldown() {
+  player.nebCd = NEBULA_COOLDOWN;
+  persistCdUntil("nebFx", 0);
+  persistCdUntil("neb", NEBULA_COOLDOWN);
+}
+// Nébuleuse annulée (mort, changement de vaisseau) : la recharge démarre.
+function cancelNebula() {
+  if ((player.nebT || 0) <= 0) return;
+  player.nebT = 0;
+  player.nebX = null;
+  player.nebY = null;
+  clearNebulaStacks();
+  startNebulaCooldown();
+}
+// Fin d'effet : les stacks retombent (plus de buff à réinitialiser).
+function clearNebulaStacks() {
+  petNebulaMult = 1;
+  try {
+    for (const e of enemies) { if (e) delete e.nebulaMult; }
+    for (const esc of escortShips) { if (esc) delete esc.nebulaMult; }
+    if (typeof player !== "undefined" && player) delete player.nebulaMult;
+  } catch {}
+}
+function activateNebula() {
+  if (player.dead || !started) return;
+  const cd = Number(player.nebCd || 0);
+  if (cd > 0) {
+    showNotification(`Nébuleuse toxique : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.nebT || 0) > 0) return;
+  // Posée sous le vaisseau à l'instant du clic (même en mouvement).
+  player.nebX = player.x;
+  player.nebY = player.y;
+  player.nebT = NEBULA_DURATION;
+  player.nebAcc = 0;
+  // Pas de recharge à l'activation : elle démarre à la fin ou à la coupure.
+  persistCdUntil("nebFx", NEBULA_DURATION);
+  try {
+    for (let i = 1; i <= NEBULA_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/BASILISK_NOXIOUS_NEBULA/${i}.png`, { priority: true });
+    }
+    for (let i = 1; i <= NEBULA_RADIUS_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/BASILISK_NOXIOUS_NEBULA_RADIUS/${i}.png`, { priority: true });
+    }
+  } catch {}
+  try {
+    for (let i = 1; i <= NEBULA_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/BASILISK_NOXIOUS_NEBULA/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Nébuleuse toxique déployée (10 s)", 2, "info");
+}
+// DoT de la nébuleuse : 1400/s à TOUT LE MONDE dedans, sans exception
+// (NPC, escortes, nous via hurtPlayer, notre PET), +5 % exponentiel par seconde passée
+// dedans (stack par cible) ; dehors le stack retombe de 5 %/s.
+// "Dedans" = sur le sprite lui-même (collision au pixel de la frame
+// courante), plus aucun rayon : masques demi-résolution mis en cache.
+const nebulaMasks = new Map();
+let nebulaMaskCanvas = null;
+function nebulaFrameMask(frame) {
+  const hit = nebulaMasks.get(frame);
+  if (hit) return hit;
+  const src = `ASSETS/APTITUDES/BASILISK_NOXIOUS_NEBULA/${frame}.png`;
+  const image = getCachedImage(src);
+  if (!isImgReady(image)) return null;
+  try {
+    const w = 250, h = 146;
+    nebulaMaskCanvas = nebulaMaskCanvas || document.createElement("canvas");
+    nebulaMaskCanvas.width = w;
+    nebulaMaskCanvas.height = h;
+    const c = nebulaMaskCanvas.getContext("2d", { willReadFrequently: true });
+    c.clearRect(0, 0, w, h);
+    c.drawImage(image, 0, 0, w, h);
+    const px = c.getImageData(0, 0, w, h).data;
+    const data = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) data[i] = px[i * 4 + 3] > 8 ? 1 : 0;
+    const mask = { w, h, data };
+    if (nebulaMasks.size > 64) nebulaMasks.clear();
+    nebulaMasks.set(frame, mask);
+    return mask;
+  } catch { return null; }
+}
+let petNebulaMult = 1;
+function nebulaDamageTick() {
+  if (player.nebX == null || player.nebY == null) return;
+  const frame = (Math.floor(performance.now() / 1000 * NEBULA_FPS) % NEBULA_FRAMES) + 1;
+  const mask = nebulaFrameMask(frame);
+  const inside = (x, y) => {
+    if (!mask) return false;
+    const ix = Math.floor((x - player.nebX) / 500 * mask.w + mask.w / 2);
+    const iy = Math.floor((y - player.nebY) / 291 * mask.h + mask.h / 2);
+    if (ix < 0 || iy < 0 || ix >= mask.w || iy >= mask.h) return false;
+    return mask.data[iy * mask.w + ix] === 1;
+  };
+  const tickTarget = (t, applyDamage) => {
+    if (!t || !(t.hp > 0)) return;
+    if (!inside(t.x, t.y)) {
+      if (Number(t.nebulaMult || 0) > 1) {
+        const dec = Math.max(1, Number(t.nebulaMult) / 1.05);
+        if (dec <= 1) delete t.nebulaMult;
+        else t.nebulaMult = dec;
+      }
+      return;
+    }
+    const mult = Number(t.nebulaMult || 1);
+    try { applyDamage(t, Math.round(NEBULA_DMG * mult)); } catch {}
+    t.nebulaMult = mult * 1.05;
+  };
+  try {
+    for (const e of enemies) tickTarget(e, (t, dmg) => damageEnemy(t, dmg));
+    for (const esc of escortShips) {
+      tickTarget(esc, (t, dmg) => { t.hp = Math.max(0, Number(t.hp || 0) - dmg); });
+    }
+    // Nous : mêmes règles (stack + retombée), via le circuit normal.
+    tickTarget(player, (t, dmg) => hurtPlayer(dmg));
+    // Notre PET : mêmes règles, dégâts directs (stack suivi à part).
+    const pet = account.user?.pet;
+    if (pet?.owned === true && pet?.active === true && Number(pet.hp) > 0 && petState.ready) {
+      const petT = { x: petState.x, y: petState.y, hp: pet.hp, nebulaMult: petNebulaMult };
+      const before = petT.hp;
+      tickTarget(petT, (t, dmg) => { t.hp = Math.max(0, Number(t.hp || 0) - dmg); });
+      petNebulaMult = Number(petT.nebulaMult || 1);
+      pet.hp = petT.hp;
+      if (pet.hp !== before) markProgressDirty();
+    } else {
+      petNebulaMult = 1;
+    }
+  } catch {}
+}
+// Nébuleuse posée : sprite joué en boucle + surcouche radius (anneau de
+// zone), vraie taille (500x291). La taille du sprite définit la zone
+// de dégâts (rayon 500).
+// Apparition/disparition en fondu (1 s / 1,5 s), jamais de pop.
+function drawDeployedNebula(ox, oy) {
+  if ((player.nebT || 0) <= 0 || player.nebX == null || player.nebY == null) return;
+  const t = performance.now() / 1000;
+  const frame = (Math.floor(t * NEBULA_FPS) % NEBULA_FRAMES) + 1;
+  const src = `ASSETS/APTITUDES/BASILISK_NOXIOUS_NEBULA/${frame}.png`;
+  const image = getCachedImage(src);
+  const rFrame = (Math.floor(t * NEBULA_FPS) % NEBULA_RADIUS_FRAMES) + 1;
+  const rSrc = `ASSETS/APTITUDES/BASILISK_NOXIOUS_NEBULA_RADIUS/${rFrame}.png`;
+  const rImage = getCachedImage(rSrc);
+  const elapsed = NEBULA_DURATION - player.nebT;
+  const fade = Math.min(1, elapsed / 1) * Math.max(0, Math.min(1, player.nebT / 1.5));
+  if (fade <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = fade;
+  ctx.translate(player.nebX + ox, player.nebY + oy);
+  if (isImgReady(image)) {
+    drawCenteredImage(ctx, image, 500, 291);
+    // Deuxième nébuleuse en miroir gauche-droite (même frame, même taille).
+    ctx.save();
+    ctx.scale(-1, 1);
+    drawCenteredImage(ctx, image, 500, 291);
+    ctx.restore();
+  } else {
+    try { loadImage(src, { priority: true }); } catch {}
+  }
+  if (isImgReady(rImage)) {
+    drawCenteredImage(ctx, rImage, 500, 291);
+  } else {
+    try { loadImage(rSrc, { priority: true }); } catch {}
+  }
+  ctx.restore();
+}
+// Recharges des réparations : idem (fin ou coupure).
+function startHpRepairCooldown() {
+  player.healHpCd = HP_REPAIR_COOLDOWN;
+  persistCdUntil("hpRepFx", 0);
+  persistCdUntil("hpRep", HP_REPAIR_COOLDOWN);
+}
+function startShRepairCooldown() {
+  player.healShCd = SH_REPAIR_COOLDOWN;
+  persistCdUntil("shRepFx", 0);
+  persistCdUntil("shRep", SH_REPAIR_COOLDOWN);
+}
+function cancelRepairs() {
+  if ((player.healHpT || 0) > 0) {
+    player.healHpT = 0;
+    startHpRepairCooldown();
+  }
+  if ((player.healShT || 0) > 0) {
+    player.healShT = 0;
+    startShRepairCooldown();
+  }
+}
+function activateHpRepair() {
+  if (player.dead || !started) return;
+  const cd = Number(player.healHpCd || 0);
+  if (cd > 0) {
+    showNotification(`Réparation coque : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.healHpT || 0) > 0) return;
+  player.healHpT = HP_REPAIR_DURATION;
+  player.healHpAcc = 0;
+  // Pas de recharge à l'activation : elle démarre à la fin ou à la coupure.
+  persistCdUntil("hpRepFx", HP_REPAIR_DURATION);
+  showNotification("Réparation coque active (7 s)", 2, "info");
+}
+function activateShieldRepair() {
+  if (player.dead || !started) return;
+  const cd = Number(player.healShCd || 0);
+  if (cd > 0) {
+    showNotification(`Réparation bouclier : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.healShT || 0) > 0) return;
+  player.healShT = SH_REPAIR_DURATION;
+  player.healShAcc = 0;
+  persistCdUntil("shRepFx", SH_REPAIR_DURATION);
+  showNotification("Réparation bouclier active (5 s)", 2, "info");
+}
+// Recharge du pod : ne démarre qu'une fois l'effet fini ou coupé.
+function startRepairPodCooldown() {
+  player.podCd = REPAIR_POD_COOLDOWN;
+  persistCdUntil("podFx", 0);
+  persistCdUntil("pod", REPAIR_POD_COOLDOWN);
+}
+// Le pod posé est annulé (mort, changement de vaisseau) : la recharge démarre.
+function cancelRepairPod() {
+  if ((player.podT || 0) <= 0) return;
+  player.podT = 0;
+  player.podX = null;
+  player.podY = null;
+  startRepairPodCooldown();
+}
+function activateRepairPod() {
+  if (player.dead || !started) return;
+  const cd = Number(player.podCd || 0);
+  if (cd > 0) {
+    showNotification(`Pod de réparation : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.podT || 0) > 0) return;
+  // Posé sous le vaisseau à l'instant du clic (même en mouvement).
+  player.podX = player.x;
+  player.podY = player.y;
+  player.podT = REPAIR_POD_DURATION;
+  player.podPulseT = 0;
+  player.podLastPulseSec = -1;
+  player.podHealAcc = 0;
+  // Pas de recharge à l'activation : elle démarre à la fin ou à la coupure.
+  persistCdUntil("podFx", REPAIR_POD_DURATION);
+  try {
+    for (let i = 1; i <= REPAIR_POD_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/AEGIS_PODS/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Pod de réparation posé (10 s)", 2, "info");
+}
+// Soin du pod : 18k PV/s aux vaisseaux (joueur + escortes) dans le rayon.
+function healRepairPodTick() {
+  const r2 = REPAIR_POD_RADIUS * REPAIR_POD_RADIUS;
+  if (!player.dead && player.podX != null && dist2(player.x, player.y, player.podX, player.podY) <= r2) {
+    const old = Number(player.hp || 0);
+    player.hp = Math.min(Number(player.hpMax || 0), old + REPAIR_POD_HEAL);
+    const gain = Math.round(player.hp - old);
+    // +X vert sur le vaisseau, même à +0.
+    addFloatText(
+      player.x + (Math.random() - 0.5) * 60,
+      player.y - 90 - Math.random() * 20,
+      gain,
+      "rgba(80,255,125,0.98)",
+      { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+    );
+  }
+  try {
+    for (const esc of escortShips) {
+      if (!esc || !(esc.hp > 0) || player.podX == null) continue;
+      if (dist2(esc.x, esc.y, player.podX, player.podY) <= r2) {
+        esc.hp = Math.min(Number(esc.hpMax || 0), Number(esc.hp || 0) + REPAIR_POD_HEAL);
+      }
+    }
+  } catch {}
+}
+// Pod posé + halo vert (rayon 300), dessinés par-dessus tout.
+function drawDeployedPod(ox, oy) {
+  if ((player.podT || 0) <= 0 || player.podX == null || player.podY == null) return;
+  const frame = (Math.floor(performance.now() / 1000 * REPAIR_POD_FPS) % REPAIR_POD_FRAMES) + 1;
+  const src = `ASSETS/APTITUDES/AEGIS_PODS/${frame}.png`;
+  const image = getCachedImage(src);
+  if (isImgReady(image)) {
+    // Vraie taille du sprite (153x154).
+    ctx.save();
+    ctx.translate(player.podX + ox, player.podY + oy);
+    drawCenteredImage(ctx, image, 153, 154);
+    ctx.restore();
+  } else {
+    try { loadImage(src, { priority: true }); } catch {}
+  }
+  // Le halo est une pulsation discrète (voir spawnHaloPulse dans le tick).
+}
+// ---- Hammerclaw (base, officiel) : mêmes 3 soins que l'Aegis, valeurs
+// propres (soi uniquement, comme notre Aegis). HP : 350k/7 s (50k/s),
+// CD 150 s. Bouclier : 180k/3 s (60k/s), CD 60 s. Pod : 175k/10 s
+// (17,5k/s), CD 160 s. Mêmes visuels (halo vert, +X, pod posé).
+const HAMMER_HP_DURATION = 7;
+const HAMMER_HP_COOLDOWN = 150;
+const HAMMER_HP_AMOUNT = 50000;
+const HAMMER_HP_SELF = 25000;
+const HAMMER_SH_DURATION = 3;
+const HAMMER_SH_COOLDOWN = 60;
+const HAMMER_SH_AMOUNT = 60000;
+const HAMMER_SH_SELF = 40000;
+// Hammerclaw Plus (officiel) : mêmes durées/CD, montants supérieurs.
+// HP : 450k allié / 225k soi. Bouclier : 240k allié / 150k soi. Pod : 200k.
+const HAMMER_PLUS_HP_ALLY = 450000 / 7;
+const HAMMER_PLUS_HP_SELF = 225000 / 7;
+const HAMMER_PLUS_SH_ALLY = 240000 / 3;
+const HAMMER_PLUS_SH_SELF = 150000 / 3;
+const HAMMER_PLUS_POD_HEAL = 20000;
+function isHammerclawPlusBase() {
+  try {
+    const raw = String(getActiveHangarFromUser(account?.user)?.shipId || ACTIVE_SHIP?.id || "").toLowerCase();
+    return String(getShipDesignBaseId(raw) || raw).toLowerCase() === "hammerclaw_plus";
+  } catch { return false; }
+}
+// Soins Plus (officiel) : mêmes soins, durées/CD/rayon propres.
+// HP : 6 s / CD 160 s. Bouclier : 3 s / CD 80 s. Pod : 8 s / rayon 600 / CD 60 s.
+const HAMMER_PLUS_HP_DURATION = 6;
+const HAMMER_PLUS_HP_COOLDOWN = 160;
+const HAMMER_PLUS_SH_COOLDOWN = 80;
+const HAMMER_PLUS_POD_DURATION = 8;
+const HAMMER_PLUS_POD_COOLDOWN = 60;
+const HAMMER_PLUS_POD_RADIUS = 600;
+function hammerHpDur() { return isHammerclawPlusBase() ? HAMMER_PLUS_HP_DURATION : HAMMER_HP_DURATION; }
+function hammerHpCdVal() { return isHammerclawPlusBase() ? HAMMER_PLUS_HP_COOLDOWN : HAMMER_HP_COOLDOWN; }
+function hammerShCdVal() { return isHammerclawPlusBase() ? HAMMER_PLUS_SH_COOLDOWN : HAMMER_SH_COOLDOWN; }
+function hammerPodDur() { return isHammerclawPlusBase() ? HAMMER_PLUS_POD_DURATION : HAMMER_POD_DURATION; }
+function hammerPodCdVal() { return isHammerclawPlusBase() ? HAMMER_PLUS_POD_COOLDOWN : HAMMER_POD_COOLDOWN; }
+function hammerPodRadius() { return isHammerclawPlusBase() ? HAMMER_PLUS_POD_RADIUS : HAMMER_POD_RADIUS; }
+// Reallocate (Hammerclaw Plus, officiel) : 10 s, recharge 180 s. 20 % de
+// tous nos dégâts partent dans un pot commun, distribué équitablement en PV
+// à la fin entre nous et les escortes dans un rayon de 700 (en solo : 100 %
+// pour nous). Visuel : halo vert qui aspire (extérieur → intérieur).
+const REALLOC_DURATION = 10;
+const REALLOC_COOLDOWN = 180;
+const REALLOC_SHARE = 0.2;
+const REALLOC_RADIUS = 700;
+const HAMMER_POD_DURATION = 10;
+const HAMMER_POD_COOLDOWN = 160;
+const HAMMER_POD_HEAL = 17500;
+const HAMMER_POD_RADIUS = 400;
+function startHammerHpCooldown() {
+  player.hammerHpCd = hammerHpCdVal();
+  persistCdUntil("hammerHpFx", 0);
+  persistCdUntil("hammerHp", hammerHpCdVal());
+}
+function startHammerShCooldown() {
+  player.hammerShCd = hammerShCdVal();
+  persistCdUntil("hammerShFx", 0);
+  persistCdUntil("hammerSh", hammerShCdVal());
+}
+function cancelHammerRepairs() {
+  if ((player.hammerHpT || 0) > 0) {
+    player.hammerHpT = 0;
+    startHammerHpCooldown();
+  }
+  if ((player.hammerShT || 0) > 0) {
+    player.hammerShT = 0;
+    startHammerShCooldown();
+  }
+}
+function activateHammerHpRepair() {
+  if (player.dead || !started) return;
+  const cd = Number(player.hammerHpCd || 0);
+  if (cd > 0) {
+    showNotification(`Réparation coque : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.hammerHpT || 0) > 0) return;
+  player.hammerHpT = hammerHpDur();
+  player.hammerHpAcc = 0;
+  persistCdUntil("hammerHpFx", hammerHpDur());
+  showNotification(`Réparation coque active (${hammerHpDur()} s)`, 2, "info");
+}
+function activateHammerShRepair() {
+  if (player.dead || !started) return;
+  const cd = Number(player.hammerShCd || 0);
+  if (cd > 0) {
+    showNotification(`Réparation bouclier : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.hammerShT || 0) > 0) return;
+  player.hammerShT = HAMMER_SH_DURATION;
+  player.hammerShAcc = 0;
+  persistCdUntil("hammerShFx", HAMMER_SH_DURATION);
+  showNotification("Réparation bouclier active (3 s)", 2, "info");
+}
+function startHammerPodCooldown() {
+  player.hammerPodCd = hammerPodCdVal();
+  persistCdUntil("hammerPodFx", 0);
+  persistCdUntil("hammerPod", hammerPodCdVal());
+}
+function cancelHammerPod() {
+  if ((player.hammerPodT || 0) <= 0) return;
+  player.hammerPodT = 0;
+  player.hammerPodX = null;
+  player.hammerPodY = null;
+  startHammerPodCooldown();
+}
+// --- Reallocate (Hammerclaw Plus, officiel) : pot commun de 20 % de nos
+// dégâts pendant 10 s, distribué en PV à la fin (nous + escortes à 700,
+// en solo tout pour nous). Sans lock requis, effet de zone centré sur nous.
+function startReallocCooldown() {
+  player.reallocCd = REALLOC_COOLDOWN;
+  player.reallocPool = 0;
+  persistCdUntil("reallocFx", 0);
+  persistCdUntil("realloc", REALLOC_COOLDOWN);
+}
+function cancelRealloc() {
+  if ((player.reallocT || 0) <= 0) return;
+  player.reallocT = 0;
+  player.reallocPool = 0;
+  startReallocCooldown();
+}
+function reallocRecipients() {
+  const list = [];
+  try {
+    if (!player.dead && Number(player.hpMax || 0) > 0) list.push(player);
+    const r2 = REALLOC_RADIUS * REALLOC_RADIUS;
+    for (const esc of escortShips) {
+      if (!esc || !(esc.hp > 0) || !(Number(esc.hpMax || 0) > 0)) continue;
+      if (dist2(esc.x, esc.y, player.x, player.y) > r2) continue;
+      list.push(esc);
+    }
+  } catch {}
+  return list;
+}
+function reallocDistribute() {
+  const pool = Math.max(0, Math.floor(Number(player.reallocPool || 0)));
+  player.reallocPool = 0;
+  if (pool <= 0) {
+    showNotification("Réallocation terminée : aucun dégât cumulé", 2, "info");
+    return;
+  }
+  const list = reallocRecipients();
+  if (!list.length) {
+    showNotification("Réallocation terminée : aucun destinataire", 2, "info");
+    return;
+  }
+  const share = Math.floor(pool / list.length);
+  for (const dst of list) {
+    const old = Number(dst.hp || 0);
+    dst.hp = Math.min(Number(dst.hpMax || 0), old + share);
+    const gain = Math.round(dst.hp - old);
+    try {
+      addFloatText(
+        Number(dst.x || 0) + (Math.random() - 0.5) * 60,
+        Number(dst.y || 0) - 90 - Math.random() * 20,
+        gain,
+        "rgba(80,255,125,0.98)",
+        { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+      );
+    } catch {}
+  }
+  showNotification(`Réallocation : +${DMG_FMT.format(share)} PV à ${list.length} vaisseau${list.length > 1 ? "x" : ""}`, 2.5, "info");
+}
+function activateRealloc() {
+  if (player.dead || !started) return;
+  const cd = Number(player.reallocCd || 0);
+  if (cd > 0) {
+    showNotification(`Réallocation : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.reallocT || 0) > 0) return;
+  player.reallocT = REALLOC_DURATION;
+  player.reallocPool = 0;
+  persistCdUntil("reallocFx", REALLOC_DURATION);
+  showNotification("Réallocation active (10 s) : 20 % des dégâts en pot commun", 2.5, "info");
+}
+function activateHammerPod() {
+  if (player.dead || !started) return;
+  const cd = Number(player.hammerPodCd || 0);
+  if (cd > 0) {
+    showNotification(`Pod de réparation : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.hammerPodT || 0) > 0) return;
+  player.hammerPodX = player.x;
+  player.hammerPodY = player.y;
+  player.hammerPodT = hammerPodDur();
+  player.hammerPodPulseT = 0;
+  player.hammerPodLastPulseSec = -1;
+  player.hammerPodHealAcc = 0;
+  persistCdUntil("hammerPodFx", hammerPodDur());
+  try {
+    for (let i = 1; i <= REPAIR_POD_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/AEGIS_PODS/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification(`Pod de réparation posé (${hammerPodDur()} s)`, 2, "info");
+}
+// Soin du pod Hammerclaw : 17,5k PV/s aux vaisseaux (joueur + escortes),
+// 20k/s en Hammerclaw Plus (200k officiel).
+function healHammerPodTick() {
+  const pr = hammerPodRadius();
+  const r2 = pr * pr;
+  const amt = isHammerclawPlusBase() ? HAMMER_PLUS_POD_HEAL : HAMMER_POD_HEAL;
+  if (!player.dead && player.hammerPodX != null && dist2(player.x, player.y, player.hammerPodX, player.hammerPodY) <= r2) {
+    const old = Number(player.hp || 0);
+    player.hp = Math.min(Number(player.hpMax || 0), old + amt);
+    const gain = Math.round(player.hp - old);
+    addFloatText(
+      player.x + (Math.random() - 0.5) * 60,
+      player.y - 90 - Math.random() * 20,
+      gain,
+      "rgba(80,255,125,0.98)",
+      { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+    );
+  }
+  try {
+    for (const esc of escortShips) {
+      if (!esc || !(esc.hp > 0) || player.hammerPodX == null) continue;
+      if (dist2(esc.x, esc.y, player.hammerPodX, player.hammerPodY) <= r2) {
+        esc.hp = Math.min(Number(esc.hpMax || 0), Number(esc.hp || 0) + amt);
+      }
+    }
+  } catch {}
+}
+function drawDeployedHammerPod(ox, oy) {
+  if ((player.hammerPodT || 0) <= 0 || player.hammerPodX == null || player.hammerPodY == null) return;
+  const frame = (Math.floor(performance.now() / 1000 * REPAIR_POD_FPS) % REPAIR_POD_FRAMES) + 1;
+  const src = `ASSETS/APTITUDES/AEGIS_PODS/${frame}.png`;
+  const image = getCachedImage(src);
+  if (isImgReady(image)) {
+    ctx.save();
+    ctx.translate(player.hammerPodX + ox, player.hammerPodY + oy);
+    drawCenteredImage(ctx, image, 153, 154);
+    ctx.restore();
+  } else {
+    try { loadImage(src, { priority: true }); } catch {}
+  }
 }
 // Recharge d'une aptitude pour le voile de CD des slots (même système que
 // roquettes/formations : classe cdVeil + variable --cd). Les aptitudes non
@@ -1028,6 +2585,199 @@ function getAbilityCooldown(abilityId) {
       return { left: total, max: total };
     }
     return { left: Number(player.cloakCd || 0), max: POLICE_CLOAK_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_aegis_repair-pod") {
+    // Pendant les 10 s : voile plein (figé). Après : la recharge descend.
+    if ((player.podT || 0) > 0) {
+      const total = REPAIR_POD_DURATION + REPAIR_POD_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.podCd || 0), max: REPAIR_POD_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_hammerclaw_hp-repair") {
+    if ((player.hammerHpT || 0) > 0) {
+      const total = hammerHpDur() + hammerHpCdVal();
+      return { left: total, max: total };
+    }
+    return { left: Number(player.hammerHpCd || 0), max: hammerHpCdVal() };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_hammerclaw-plus_hp-repair") {
+    if ((player.hammerHpT || 0) > 0) {
+      const total = hammerHpDur() + hammerHpCdVal();
+      return { left: total, max: total };
+    }
+    return { left: Number(player.hammerHpCd || 0), max: hammerHpCdVal() };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_hammerclaw_shield-repair") {
+    if ((player.hammerShT || 0) > 0) {
+      const total = HAMMER_SH_DURATION + hammerShCdVal();
+      return { left: total, max: total };
+    }
+    return { left: Number(player.hammerShCd || 0), max: hammerShCdVal() };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_hammerclaw-plus_shield-repair") {
+    if ((player.hammerShT || 0) > 0) {
+      const total = HAMMER_SH_DURATION + hammerShCdVal();
+      return { left: total, max: total };
+    }
+    return { left: Number(player.hammerShCd || 0), max: hammerShCdVal() };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_hammerclaw_repair-pod") {
+    if ((player.hammerPodT || 0) > 0) {
+      const total = hammerPodDur() + hammerPodCdVal();
+      return { left: total, max: total };
+    }
+    return { left: Number(player.hammerPodCd || 0), max: hammerPodCdVal() };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_hammerclaw-plus_repair-pod") {
+    if ((player.hammerPodT || 0) > 0) {
+      const total = hammerPodDur() + hammerPodCdVal();
+      return { left: total, max: total };
+    }
+    return { left: Number(player.hammerPodCd || 0), max: hammerPodCdVal() };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_basilisk_noxious-nebula") {
+    if ((player.nebT || 0) > 0) {
+      const total = NEBULA_DURATION + NEBULA_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.nebCd || 0), max: NEBULA_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_basilisk_heightened-valour") {
+    if ((player.valT || 0) > 0) {
+      const total = VALOUR_DURATION + VALOUR_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.valCd || 0), max: VALOUR_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_berserker_shl") {
+    if ((player.shlT || 0) > 0) {
+      const total = SHL_DURATION + SHL_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.shlCd || 0), max: SHL_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_berserker_bsk") {
+    if ((player.bskT || 0) > 0) {
+      const total = BSK_DURATION + BSK_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.bskCd || 0), max: BSK_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_berserker_rvg") {
+    if ((player.rvgT || 0) > 0) {
+      const total = RVG_DURATION + RVG_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.rvgCd || 0), max: RVG_COOLDOWN };
+  }
+  const drawFireId = String(abilityId || "").toLowerCase();
+  if (drawFireId === "ability_citadel_draw-fire" || drawFireId === "ability_citadel-plus_draw-fire") {
+    if ((player.drawFireT || 0) > 0) {
+      const total = DRAW_FIRE_DURATION + DRAW_FIRE_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.drawFireCd || 0), max: DRAW_FIRE_COOLDOWN };
+  }
+  const protectionId = String(abilityId || "").toLowerCase();
+  if (protectionId === "ability_citadel_protection" || protectionId === "ability_citadel-plus_protection") {
+    if ((player.protectionT || 0) > 0) {
+      const total = PROTECTION_DURATION + PROTECTION_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.protectionCd || 0), max: PROTECTION_COOLDOWN };
+  }
+  const travelId = String(abilityId || "").toLowerCase();
+  if (travelId === "ability_citadel_travel" || travelId === "ability_citadel-plus_travel") {
+    if ((player.travelT || 0) > 0) {
+      const total = TRAVEL_DURATION + TRAVEL_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.travelCd || 0), max: TRAVEL_COOLDOWN };
+  }
+  const fortifyId = String(abilityId || "").toLowerCase();
+  if (fortifyId === "ability_citadel_fortify" || fortifyId === "ability_citadel-plus_fortify") {
+    if ((player.fortifyT || 0) > 0) {
+      const total = FORTIFY_DURATION + FORTIFY_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.fortifyCd || 0), max: FORTIFY_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_citadel-plus_prismatic-endurance") {
+    if ((player.prismT || 0) > 0) {
+      const total = PRISM_DURATION + PRISM_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.prismCd || 0), max: PRISM_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_diminisher") {
+    if ((player.diminishT || 0) > 0) {
+      const total = DIMINISH_DURATION + DIMINISH_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.diminishCd || 0), max: DIMINISH_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_disruptor_ddol") {
+    if ((player.ddolT || 0) > 0) {
+      const total = DDOL_DURATION + DDOL_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.ddolCd || 0), max: DDOL_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_disruptor_redirect") {
+    if ((player.redirectT || 0) > 0) {
+      const total = REDIRECT_DURATION + REDIRECT_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.redirectCd || 0), max: REDIRECT_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_disruptor_shield-disarray") {
+    if ((player.disarrayT || 0) > 0) {
+      const total = DISARRAY_DURATION + DISARRAY_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.disarrayCd || 0), max: DISARRAY_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_hammerclaw-plus_reallocate") {
+    if ((player.reallocT || 0) > 0) {
+      const total = REALLOC_DURATION + REALLOC_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.reallocCd || 0), max: REALLOC_COOLDOWN };
+  }
+  const hecateId = String(abilityId || "").toLowerCase();
+  if (hecateId === "ability_hecate_particle-beam" || hecateId === "ability_hecate-plus_particle-beam-plus") {
+    if ((player.hecateT || 0) > 0) {
+      const total = hecateDur() + hecateCdVal();
+      return { left: total, max: total };
+    }
+    return { left: Number(player.hecateCd || 0), max: hecateCdVal() };
+  }
+  // Stockpile : durée 10 s, recharge 0 s. Voile plein pendant l'effet.
+  if (String(abilityId || "").toLowerCase() === "ability_hecate-plus_stockpile") {
+    if ((player.stockT || 0) > 0) {
+      const total = STOCKPILE_DURATION + STOCKPILE_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: 0, max: 0 };
+  }
+  // Griffe gelée : pas d'effet temporel, juste la recharge 90 s.
+  if (String(abilityId || "").toLowerCase() === "ability_goliath-x_frozen-claw") {
+    return { left: Number(player.frozenClawCd || 0), max: FROZEN_CLAW_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_aegis_hp-repair") {
+    if ((player.healHpT || 0) > 0) {
+      const total = HP_REPAIR_DURATION + HP_REPAIR_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.healHpCd || 0), max: HP_REPAIR_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_aegis_shield-repair") {
+    if ((player.healShT || 0) > 0) {
+      const total = SH_REPAIR_DURATION + SH_REPAIR_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.healShCd || 0), max: SH_REPAIR_COOLDOWN };
   }
   return { left: 0, max: 0 };
 }
@@ -1190,12 +2940,13 @@ function initializeCustomActionBar() {
     { ship: "Aegis", ships: ["aegis"], ids: ["ability_aegis_hp-repair", "ability_aegis_repair-pod", "ability_aegis_shield-repair"] },
     { ship: "Basilisk", ships: ["basilisk"], ids: ["ability_basilisk_heightened-valour", "ability_basilisk_noxious-nebula"] },
     { ship: "Berserker", ships: ["berserker"], ids: ["ability_berserker_bsk", "ability_berserker_rvg", "ability_berserker_shl"] },
-    { ship: "Citadel Plus", ships: ["citadel_plus"], ids: ["ability_citadel-plus_prismatic-endurance"] },
+    { ship: "Citadel Plus", ships: ["citadel_plus"], ids: ["ability_citadel-plus_prismatic-endurance", "ability_citadel-plus_draw-fire", "ability_citadel-plus_fortify", "ability_citadel-plus_protection", "ability_citadel-plus_travel"] },
     { ship: "Citadel", ships: ["citadel"], ids: ["ability_citadel_draw-fire", "ability_citadel_fortify", "ability_citadel_protection", "ability_citadel_travel"] },
     { ship: "Diminisher", ships: ["diminisher"], ids: ["ability_diminisher"] },
     { ship: "Disruptor", ships: ["disruptor"], ids: ["ability_disruptor_ddol", "ability_disruptor_redirect", "ability_disruptor_shield-disarray"] },
     { ship: "Goliath X", ships: ["goliath_x"], ids: ["ability_goliath-x_frozen-claw"] },
-    { ship: "Hammerclaw Plus", ships: ["hammerclaw_plus"], ids: ["ability_hammerclaw-plus_reallocate"] },
+    { ship: "Hammerclaw", ships: ["hammerclaw"], ids: ["ability_hammerclaw_hp-repair", "ability_hammerclaw_shield-repair", "ability_hammerclaw_repair-pod"] },
+    { ship: "Hammerclaw Plus", ships: ["hammerclaw_plus"], ids: ["ability_hammerclaw-plus_reallocate", "ability_hammerclaw-plus_hp-repair", "ability_hammerclaw-plus_shield-repair", "ability_hammerclaw-plus_repair-pod"] },
     { ship: "Hecate Plus", ships: ["hecate_plus"], ids: ["ability_hecate-plus_particle-beam-plus", "ability_hecate-plus_stockpile"] },
     { ship: "Hecate", ships: ["hecate"], ids: ["ability_hecate_particle-beam"] },
     { ship: "Holo", ships: ["holo"], ids: ["ability_holo_enemy-reversal", "ability_holo_self-reversal"] },
@@ -1229,6 +2980,16 @@ function initializeCustomActionBar() {
   const ABILITY_ICON_OVERRIDES = {
     "ability_spearhead-plus_target-marker": "ABILITY_SPEARHEAD_TARGET-MARKER.PNG",
     "ability_spearhead-plus_ultimate-cloak": "ABILITY_SPEARHEAD_ULTIMATE-CLOAK.PNG",
+    "ability_hammerclaw_hp-repair": "ABILITY_AEGIS_HP-REPAIR.PNG",
+    "ability_hammerclaw_shield-repair": "ABILITY_AEGIS_SHIELD-REPAIR.PNG",
+    "ability_hammerclaw_repair-pod": "ABILITY_AEGIS_REPAIR-POD.PNG",
+    "ability_hammerclaw-plus_hp-repair": "ABILITY_AEGIS_HP-REPAIR.PNG",
+    "ability_hammerclaw-plus_shield-repair": "ABILITY_AEGIS_SHIELD-REPAIR.PNG",
+    "ability_hammerclaw-plus_repair-pod": "ABILITY_AEGIS_REPAIR-POD.PNG",
+    "ability_citadel-plus_draw-fire": "ABILITY_CITADEL_DRAW-FIRE.PNG",
+    "ability_citadel-plus_fortify": "ABILITY_CITADEL_FORTIFY.PNG",
+    "ability_citadel-plus_protection": "ABILITY_CITADEL_PROTECTION.PNG",
+    "ability_citadel-plus_travel": "ABILITY_CITADEL_TRAVEL.PNG",
   };
   function abilityIconSrc(name) {
     const file = ABILITY_ICON_OVERRIDES[name] || `${String(name).toUpperCase()}.PNG`;
@@ -1248,6 +3009,102 @@ function initializeCustomActionBar() {
       button.onclick = () => {
         if (isCloakAbility(name)) {
           activatePoliceCloak();
+          return;
+        }
+        if (name === "ability_aegis_repair-pod") {
+          activateRepairPod();
+          return;
+        }
+        if (name === "ability_basilisk_noxious-nebula") {
+          activateNebula();
+          return;
+        }
+        if (name === "ability_basilisk_heightened-valour") {
+          activateValour();
+          return;
+        }
+        if (name === "ability_berserker_shl") {
+          activateShl();
+          return;
+        }
+        if (name === "ability_berserker_bsk") {
+          activateBsk();
+          return;
+        }
+        if (name === "ability_berserker_rvg") {
+          activateRvg();
+          return;
+        }
+        if (name === "ability_citadel_draw-fire" || name === "ability_citadel-plus_draw-fire") {
+          activateDrawFire();
+          return;
+        }
+        if (name === "ability_citadel_protection" || name === "ability_citadel-plus_protection") {
+          activateProtection();
+          return;
+        }
+        if (name === "ability_citadel_travel" || name === "ability_citadel-plus_travel") {
+          activateTravel();
+          return;
+        }
+        if (name === "ability_citadel_fortify" || name === "ability_citadel-plus_fortify") {
+          activateFortify();
+          return;
+        }
+        if (name === "ability_citadel-plus_prismatic-endurance") {
+          activatePrism();
+          return;
+        }
+        if (name === "ability_diminisher") {
+          activateDiminish();
+          return;
+        }
+        if (name === "ability_disruptor_ddol") {
+          activateDdol();
+          return;
+        }
+        if (name === "ability_disruptor_redirect") {
+          activateRedirect();
+          return;
+        }
+        if (name === "ability_disruptor_shield-disarray") {
+          activateDisarray();
+          return;
+        }
+        if (name === "ability_hammerclaw-plus_reallocate") {
+          activateRealloc();
+          return;
+        }
+        if (name === "ability_hecate_particle-beam" || name === "ability_hecate-plus_particle-beam-plus") {
+          activateHecate();
+          return;
+        }
+        if (name === "ability_hecate-plus_stockpile") {
+          activateStockpile();
+          return;
+        }
+        if (name === "ability_goliath-x_frozen-claw") {
+          activateFrozenClaw();
+          return;
+        }
+        if (name === "ability_aegis_hp-repair") {
+          activateHpRepair();
+          return;
+        }
+        if (name === "ability_aegis_shield-repair") {
+          activateShieldRepair();
+          return;
+        }
+        if (name === "ability_hammerclaw_hp-repair" || name === "ability_hammerclaw-plus_hp-repair") {
+          activateHammerHpRepair();
+          return;
+        }
+        if (name === "ability_hammerclaw_shield-repair" || name === "ability_hammerclaw-plus_shield-repair") {
+          activateHammerShRepair();
+          return;
+        }
+        if (name === "ability_hammerclaw_repair-pod" || name === "ability_hammerclaw-plus_repair-pod") {
+          activateHammerPod();
           return;
         }
         showNotification(`${group.ship} : ${label} — aptitude visuelle (effet gameplay à venir)`, 2, "info");
@@ -1561,6 +3418,27 @@ function initializeCustomActionBar() {
         const item = slot.querySelector('[data-action-id^="ability:"]');
         if (item) { item.remove(); purged = true; }
       }
+      // Pod posé annulé au changement de vaisseau (la recharge démarre).
+      try { cancelRepairPod(); } catch {}
+      try { cancelRepairs(); } catch {}
+      try { cancelHammerPod(); } catch {}
+      try { cancelHammerRepairs(); } catch {}
+      try { cancelNebula(); } catch {}
+      try { cancelValour(); } catch {}
+      try { cancelShl(); } catch {}
+      try { cancelBsk(); } catch {}
+      try { cancelRvg(); } catch {}
+      try { cancelDrawFire(); } catch {}
+      try { cancelProtection(); } catch {}
+      try { cancelTravel(); } catch {}
+      try { cancelFortify(); } catch {}
+      try { cancelPrism(); } catch {}
+      try { cancelDiminish(); } catch {}
+      try { cancelDdol(); } catch {}
+      try { cancelRedirect(); } catch {}
+      try { cancelDisarray(); } catch {}
+      try { cancelRealloc(); } catch {}
+      try { cancelHecate(); } catch {}
       if (purged) {
         persist();
         updateHudKeyHints();
@@ -1684,6 +3562,8 @@ const DEFAULT_GAME_SETTINGS = {
   shipEffect: true,
   shipSmoke: true,
   moveMarker: true,
+  // FPS maximum : 0 = illimité (boucle libre sans vsync).
+  fpsLimit: 0,
   keybinds: { ...DEFAULT_KEYBINDS },
   // Volumes individuels (0..100) et muets par son, persistés comme le reste.
   sfxVolumes: { ...DEFAULT_SFX_VOLUMES },
@@ -1740,6 +3620,14 @@ function normalizeSfxMuted(raw) {
   return normalized;
 }
 
+// Paliers du limiteur FPS (0 = illimité, sans vsync).
+const FPS_LIMIT_STEPS = Object.freeze([0, 30, 60, 90, 120, 144, 240]);
+
+function normalizeFpsLimit(raw) {
+  const v = Math.floor(Number(raw) || 0);
+  return FPS_LIMIT_STEPS.includes(v) ? v : 0;
+}
+
 function normalizeKeybinds(raw) {
   const normalized = { ...DEFAULT_KEYBINDS };
   if (raw && typeof raw === "object") {
@@ -1765,6 +3653,7 @@ function loadGameSettings() {
       sfxMuted: normalizeSfxMuted(parsed?.sfxMuted),
     };
     settings.soundVolume = clamp(Math.round(Number(settings.soundVolume) || 0), 0, 100);
+    settings.fpsLimit = normalizeFpsLimit(settings.fpsLimit);
     if (!settings.sound || settings.soundVolume === 0) {
       settings.sound = false;
       settings.soundVolume = 0;
@@ -1857,6 +3746,19 @@ function setGameSetting(key, value) {
   if (key === "moveMarker") {
     showToast(GAME_SETTINGS.moveMarker ? "Marqueur de déplacement affiché" : "Marqueur de déplacement masqué", 1.1);
   }
+}
+
+// FPS maximum (0 = illimité, synchronisé sur l'écran). Nombre, pas booléen :
+// ne passe pas par setGameSetting (qui force en booléen).
+function setFpsLimit(value) {
+  GAME_SETTINGS.fpsLimit = normalizeFpsLimit(value);
+  saveGameSettings();
+  renderSettingsWindow();
+  restartFrameScheduler();
+  showToast(
+    GAME_SETTINGS.fpsLimit > 0 ? `FPS maximum : ${GAME_SETTINGS.fpsLimit}` : "FPS : illimité",
+    1.1
+  );
 }
 
 function setSoundVolume(value) {
@@ -2203,6 +4105,8 @@ function renderSettingsWindow() {
   if (shipSmoke) shipSmoke.checked = !!GAME_SETTINGS.shipSmoke;
   const moveMarker = document.getElementById("optMoveMarker");
   if (moveMarker) moveMarker.checked = !!GAME_SETTINGS.moveMarker;
+  const fpsLimit = document.getElementById("optFpsLimit");
+  if (fpsLimit) fpsLimit.value = String(normalizeFpsLimit(GAME_SETTINGS.fpsLimit));
 
   renderKeybindRows();
   renderSfxRows();
@@ -2228,6 +4132,7 @@ function wireSettingsWindow() {
   const shipEffect = document.getElementById("optShipEffect");
   const shipSmoke = document.getElementById("optShipSmoke");
   const moveMarker = document.getElementById("optMoveMarker");
+  const fpsLimitSel = document.getElementById("optFpsLimit");
   const settingsWindow = document.getElementById("settingsWindow");
 
   if (settingsWindow) {
@@ -2276,6 +4181,10 @@ function wireSettingsWindow() {
 
   moveMarker?.addEventListener("change", () => {
     setGameSetting("moveMarker", moveMarker.checked);
+  });
+
+  fpsLimitSel?.addEventListener("change", () => {
+    setFpsLimit(Number(fpsLimitSel.value));
   });
 
   document.querySelectorAll("#settingsWindow .keyBindRow").forEach((btn) => {
@@ -2531,7 +4440,8 @@ const BOT_MODULES = Object.freeze({
   kill: { mode: "kill", label: "Kill" },
   collect: { mode: "collect", label: "Collect" },
   quest: { mode: "both", label: "Quest" },
-  galaxy: { mode: "kill", label: "Galaxy Gates" },
+  galaxy: { mode: "kill", label: "Galaxy Gates" },
+
 });
 function botModeForModule(m) {
   return BOT_MODULES[String(m)]?.mode || "both";
@@ -2586,20 +4496,33 @@ const Bot = {
   statsT0: 0,
   credits0: 0,
   exp0: 0,
-  orbit: true,
   orbitDist: 560,
   npcDist: Object.create(null),
-  npcOrbit: Object.create(null),
   flee: true,
   fleePct: 25,
-
 
-
 
-
 
-
-
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   cargo: true,
   cargoPct: 95,
   sellBase: "auto",
@@ -2639,11 +4562,11 @@ const Bot = {
   lastNpcId: null,
   lastBoxId: null,
   lastFormation: "",
-  orbitAng: 0,
   fleeing: false,
   roamX: 0,
   roamY: 0,
   roamT: 0,
+  grabCd: 0,
   travelCd: 0,
   repairT: 0,
   jumpCd: 0,
@@ -2689,16 +4612,19 @@ function botSaveConfig() {
       fleeResume: Bot.fleeResume,
       maxDeaths: Bot.maxDeaths,
       reviveWait: Bot.reviveWait,
-      orbit: Bot.orbit,
       orbitDist: Bot.orbitDist,
       npcDist: Bot.npcDist,
-      npcOrbit: Bot.npcOrbit,
       engageDist: Bot.engageDist,
       npcAmmo: Bot.npcAmmo,
       npcIncludeUnknown: Bot.npcIncludeUnknown,
       npcSeen: Bot.npcSeen,
       flee: Bot.flee,
-      fleePct: Bot.fleePct,
+      fleePct: Bot.fleePct,
+
+
+
+
+
       cargo: Bot.cargo,
       cargoPct: Bot.cargoPct,
       sellBase: Bot.sellBase,
@@ -2755,7 +4681,6 @@ function botLoadConfig() {
     if (data.cfgFlee === "1" || data.cfgFlee === "2") Bot.cfgFlee = data.cfgFlee;
     if (typeof data.petMode === "string") Bot.petMode = data.petMode;
     if (typeof data.lock === "boolean") Bot.lock = data.lock;
-    if (typeof data.orbit === "boolean") Bot.orbit = data.orbit;
     if (typeof data.overlay === "boolean") Bot.overlay = data.overlay;
     const nid = Math.floor(Number(data.npcIgnoreDist));
     Bot.npcIgnoreDist = Number.isFinite(nid) ? Math.max(0, Math.min(20000, nid)) : 0;
@@ -2780,9 +4705,6 @@ function botLoadConfig() {
         const d = Math.floor(Number(v));
         if (Number.isFinite(d)) Bot.npcDist[String(k)] = Math.max(200, Math.min(2000, d));
       }
-    }
-    if (data.npcOrbit && typeof data.npcOrbit === "object") {
-      for (const [k, v] of Object.entries(data.npcOrbit)) Bot.npcOrbit[String(k)] = v !== false;
     }
     if (typeof data.flee === "boolean") Bot.flee = data.flee;
     const fp = Math.floor(Number(data.fleePct));
@@ -2980,6 +4902,7 @@ function botSetActive(on) {
     } catch { Bot.statsT0 = 0; Bot.credits0 = 0; Bot.exp0 = 0; }
     Bot.deaths = 0;
   Bot.wasDead = false;
+  Bot.grabCd = Math.max(0, (Bot.grabCd || 0) - dt);
 
     botApplyPetMode();
     botLog(`Bot démarré (${BOT_MODULES[Bot.module]?.label || Bot.module})`);
@@ -2994,16 +4917,10 @@ function botNpcPrio(type) {
   return Number.isFinite(p) ? Math.max(0, Math.min(99, p)) : 0;
 }
 
-// Distance d'orbite effective pour un type de NPC (surcharge perso ou défaut).
+// Distance de combat effective pour un type de NPC (surcharge perso ou défaut).
 function botNpcDist(type) {
   const d = Math.floor(Number(Bot.npcDist[String(type)]));
   return Number.isFinite(d) ? Math.max(200, Math.min(2000, d)) : Bot.orbitDist;
-}
-
-// Orbite autorisée pour un type de NPC (surcharge perso ou oui par défaut).
-function botNpcOrbitOf(type) {
-  const key = String(type);
-  return key in Bot.npcOrbit ? Bot.npcOrbit[key] !== false : true;
 }
 
 // Bascule silencieuse de configuration 1/2 (même logique que le bouton,
@@ -3017,7 +4934,7 @@ function botApplyConfig(want) {
     if (getConfigCooldownLeft() > 0) return;
     saveShieldForConfig(getActiveConfigNo());
     saveProgressNow();
-    const hangarId = SESSION_HANGAR_ID || getActiveHangarId();
+    const hangarId = getActiveHangarId() || SESSION_HANGAR_ID;
     const out = setActiveHangarConfig(hangarId, want);
     if (!out?.ok) return;
     applyCurrentConfigStats(false, want, true);
@@ -3157,7 +5074,7 @@ function botRestoreLoadout() {
     if (Bot.cfgPrev === 1 || Bot.cfgPrev === 2) {
       if (getActiveConfigNo() !== Bot.cfgPrev && getConfigCooldownLeft() <= 0 && !player.dead) {
         saveShieldForConfig(getActiveConfigNo());
-        const hangarId = SESSION_HANGAR_ID || getActiveHangarId();
+        const hangarId = getActiveHangarId() || SESSION_HANGAR_ID;
         const out = setActiveHangarConfig(hangarId, Bot.cfgPrev);
         if (out?.ok) {
           applyCurrentConfigStats(false, Bot.cfgPrev, true);
@@ -3442,7 +5359,7 @@ function botAmmoOptions(selected) {
 }
 
 // (Re)construit la liste NPC : triés par nom, filtrés par map + recherche,
-// avec distance d'orbite et toggle d'orbite par NPC.
+// avec distance de combat par NPC.
 function botRenderNpcList() {
   const list = document.getElementById("botNpcList");
   if (!list) return;
@@ -3468,7 +5385,6 @@ function botRenderNpcList() {
       }
     }
     const dist = botNpcDist(t);
-    const orbit = botNpcOrbitOf(t);
     const ammo = Bot.npcAmmo[String(t)] || "";
     const prio = botNpcPrio(t);
     const mapsFull = (maps || []).map(String).join(", ");
@@ -3477,9 +5393,8 @@ function botRenderNpcList() {
       `<input class="botNpcSel" type="checkbox" value="${escapeHtml(t)}"${Bot.npcAllow.has(t) ? " checked" : ""} title="Tuer ce NPC" />` +
       `<div class="botNpcId"><span class="botNpcName">${escapeHtml(name)}</span><small class="botNpcMaps" title="${escapeHtml(mapsFull || "Map inconnue")}">Maps : ${escapeHtml(mapsFull || "?")}</small></div>` +
       `<input class="botNpcPrio" type="number" data-type="${escapeHtml(t)}" value="${prio}" min="0" max="99" step="1" title="Priorité (plus haute = tuée d'abord)" />` +
-      `<input class="botNpcDist" type="number" data-type="${escapeHtml(t)}" value="${dist}" min="200" max="2000" step="10" title="Distance d'orbite (m)" />` +
+      `<input class="botNpcDist" type="number" data-type="${escapeHtml(t)}" value="${dist}" min="200" max="2000" step="10" title="Distance de combat (m)" />` +
       `<select class="botNpcAmmo" data-type="${escapeHtml(t)}" title="Munition pour ce NPC">${botAmmoOptions(ammo)}</select>` +
-      `<input class="botNpcOrbit" type="checkbox" data-type="${escapeHtml(t)}"${orbit ? " checked" : ""} title="Tourner autour de ce NPC" />` +
       `</div>`
     );
   }
@@ -3519,9 +5434,6 @@ function wireBotWindow() {
         if (el.checked) Bot.npcAllow.add(el.value);
         else Bot.npcAllow.delete(el.value);
         botUpdateNpcCount();
-        botSaveConfig();
-      } else if (el.classList.contains("botNpcOrbit")) {
-        Bot.npcOrbit[el.dataset.type] = el.checked;
         botSaveConfig();
       }
     });
@@ -3810,7 +5722,7 @@ function wireBotWindow() {
       if (Bot.active) botApplyPetMode();
     });
   }
-  // Verrouillage de cible, orbite, fuite, overlays.
+  // Verrouillage de cible, fuite, overlays.
   const lockBox = document.getElementById("botLock");
   if (lockBox) {
     lockBox.checked = Bot.lock;
@@ -3819,14 +5731,7 @@ function wireBotWindow() {
       lockBox.addEventListener("change", () => { Bot.lock = lockBox.checked; botSaveConfig(); });
     }
   }
-  const orbitBox = document.getElementById("botOrbit");
-  if (orbitBox) {
-    orbitBox.checked = Bot.orbit;
-    if (!orbitBox.dataset.wired) {
-      orbitBox.dataset.wired = "1";
-      orbitBox.addEventListener("change", () => { Bot.orbit = orbitBox.checked; botSaveConfig(); });
-    }
-  }
+
   const orbitDist = document.getElementById("botOrbitDist");
   if (orbitDist) {
     orbitDist.value = Bot.orbitDist;
@@ -4360,11 +6265,12 @@ function botEngageNpc(npc) {
 
 // Box a ramasser AU PASSAGE pendant un combat : autorisee, dans le rayon de
 // detour ET plus proche que le NPC. Module quest : box de quete uniquement.
-const BOT_GRAB_RADIUS = 800;
+const BOT_GRAB_RADIUS = 350;
 function botGrabBoxForFight(npcD2) {
   try {
     if (Bot.mode !== "both") return null;
     if (Bot.module === "galaxy") return null;
+    if ((Bot.grabCd || 0) > 0) return null;
     let questSet = null;
     if (Bot.module === "quest") {
       questSet = botQuestTargets().boxes;
@@ -4454,16 +6360,15 @@ function botApplyGalaxyFinishFormation() {
   } catch {}
 }
 
-// Excursion radiation en gate : quand le kite est plaqué contre un bord
+// Excursion radiation (gate + map) : quand le kite est plaqué contre un bord
 // (cible clampée ≈ sur place) avec une menace proche, on autorise une sortie
 // courte hors map pour esquiver et se replacer au lieu de rester fixe contre
-// le mur. 5 s gratuites sans dégâts (on reste sous ~3,5 s d'exposition,
-// ~500 m de profondeur max), exposition remise à 0 dès la rentrée, et les
-// NPC suivent peu/nul dehors : respiration garantie.
+// le mur ou coincé dans un coin. 5 s gratuites sans dégâts (on reste sous
+// ~3,5 s d'exposition, ~500 m de profondeur max), exposition remise à 0 dès
+// la rentrée, et les NPC suivent peu/nul dehors : respiration garantie.
 function botGateKiteTarget(rawX, rawY, threatClose) {
   const inside = { x: clamp(rawX, 120, WORLD.w - 120), y: clamp(rawY, 120, WORLD.h - 120) };
   try {
-    if (rules?.mode !== "gate") return inside;
     let outside = false, exp = 0;
     try { outside = playerIsOutsideWorld(); exp = Number(radiationSystem?.state?.exposure) || 0; } catch {}
     if (outside) {
@@ -4479,6 +6384,71 @@ function botGateKiteTarget(rawX, rawY, threatClose) {
     if (!blocked || exp > 3.5) return inside;
     return { x: clamp(rawX, -500, WORLD.w + 500), y: clamp(rawY, -500, WORLD.h + 500) };
   } catch { return inside; }
+}
+
+// ✅ Clamp des cibles de mouvement du bot en combat : en map (zone), on
+// autorise la marge de radiations au lieu de rester plaqué contre le mur ou
+// coincé dans un coin. En gate, on reste strictement dans la carte.
+function botClampMoveTarget(x, y) {
+  if (isZoneMap) {
+    const m = RADIATION_SPAWN_MARGIN;
+    return { x: clamp(x, -m, WORLD.w + m), y: clamp(y, -m, WORLD.h + m) };
+  }
+  return { x: clamp(x, 80, WORLD.w - 80), y: clamp(y, 80, WORLD.h - 80) };
+}
+
+// ✅ Kiting de combat (style Galaxy Gate, partout : gate + map) : approche
+// décalée hors de portée, sinon répulsion quadratique de TOUS les NPC
+// proches (les proches dominent, la cible moins fort pour rester à portée
+// de tir) + dérive tangentielle pour faire le tour au lieu de se coincer.
+// Jamais de camping, jamais de colle, jamais d'orbite en rond : le vaisseau
+// est toujours en mouvement.
+function botKiteCombatMove(npc, d, standD) {
+  if (!npc || Number(npc.hp) <= 0) { moveTarget.active = false; return; }
+  if (d > playerRange * 0.95) {
+    // Hors de portée : approche décalée (point à standD, pas le centre).
+    const ax = d > 1 ? (player.x - npc.x) / d : 1;
+    const ay = d > 1 ? (player.y - npc.y) / d : 0;
+    const tgt = botClampMoveTarget(npc.x + ax * standD, npc.y + ay * standD);
+    moveTarget.active = true;
+    moveTarget.x = tgt.x;
+    moveTarget.y = tgt.y;
+    return;
+  }
+  let kx = 0, ky = 0;
+  let closestD = Infinity, closestX = 0, closestY = 0;
+  for (const e of enemies) {
+    if (!e || Number(e.hp) <= 0) continue;
+    const ex = player.x - e.x, ey = player.y - e.y;
+    const ed = Math.hypot(ex, ey);
+    if (ed < closestD) { closestD = ed; closestX = ex; closestY = ey; }
+    const KR = 1600;
+    if (ed < KR && ed > 1) {
+      const w = 1 - ed / KR;
+      const push = w * w * (e === npc ? 420 : 1200);
+      kx += (ex / ed) * push;
+      ky += (ey / ed) * push;
+    }
+  }
+  if (closestD < 150 && closestD > 0.01) {
+    // Contact : fuite franche à ~45° du plus proche (radial + latéral).
+    const ax = closestX / closestD, ay = closestY / closestD;
+    kx = ax * 800 + -ay * 800;
+    ky = ay * 800 + ax * 800;
+  }
+  const kl = Math.hypot(kx, ky);
+  if (kl < 60) {
+    moveTarget.active = false; // rien à fuir : on tient et on tire
+  } else {
+    const tx = -ky / kl, ty = kx / kl;
+    const step = Math.min(kl, 800);
+    const rawX = player.x + kx / kl * step + tx * 350;
+    const rawY = player.y + ky / kl * step + ty * 350;
+    const tgt = botGateKiteTarget(rawX, rawY, closestD < 600);
+    moveTarget.active = true;
+    moveTarget.x = tgt.x;
+    moveTarget.y = tgt.y;
+  }
 }
 
 // Spinner auto hors gate (toutes les 100 ms) : multiplicateur auto puis
@@ -4718,6 +6688,7 @@ function tickBot(dt) {
     return;
   }
   Bot.wasDead = false;
+  Bot.grabCd = Math.max(0, (Bot.grabCd || 0) - dt);
 
   // Main manuelle récente : le joueur reprend la main, le bot attend.
   // Prioritaire sur tout (fuite et voyage compris).
@@ -5093,6 +7064,7 @@ function tickBot(dt) {
       botSaveConfig();
       const bc = document.getElementById("botBoxCount");
       if (bc) bc.textContent = String(Bot.boxes);
+      Bot.grabCd = 4;
     }
     Bot.lastBoxId = null;
   }
@@ -5136,10 +7108,6 @@ function tickBot(dt) {
 
   if (pick.kind === "npc") {
     const npc = pick.ref;
-    if (Bot.lastNpcId !== npc.id) {
-      // Nouvelle cible : on part de l'angle actuel pour orbiter sans à-coup.
-      Bot.orbitAng = Math.atan2(player.y - npc.y, player.x - npc.x);
-    }
     Bot.lastNpcId = npc.id;
     botApplyFormation(Bot.formAttack);
     botApplyConfig(Bot.cfgAttack);
@@ -5158,11 +7126,26 @@ function tickBot(dt) {
     } else if (attackActive && d > engageMax) {
       try { stopAttack(); } catch {}
     }
-    // Simultané : box au passage (plus proche que le NPC, dans le rayon de
-    // collecte en tuant) => on se décale la ramasser SANS couper le tir.
-    // Le tick de collecte pilote le vaisseau vers la box tout seul.
+    // Simultane : box au passage SANS couper le tir, avec garde-fous anti-derive :
+    // - uniquement a portee de tir du NPC (sinon on reste au combat),
+    // - box proche du vaisseau et plus proche que le NPC,
+    // - on ne change plus de box en cours de route, pas de chaine (grabCd).
     let grab = null;
-    try { grab = botGrabBoxForFight(d * d); } catch { grab = null; }
+    try {
+      const armed = collectableTargetId != null
+        ? collectables.find((c) => c && c.id === collectableTargetId)
+        : null;
+      if (armed) {
+        const ad2 = dist2(player.x, player.y, armed.x, armed.y);
+        if (ad2 <= BOT_GRAB_RADIUS * BOT_GRAB_RADIUS) grab = { box: armed, d2: ad2 };
+        else if (collectableTargetId === armed.id) { try { cancelCollectableTarget(); } catch {} }
+      } else if (d <= engageMax) grab = botGrabBoxForFight(d * d);
+    } catch { grab = null; }
+    if (grab && d > engageMax * 1.1) {
+      try { if (collectableTargetId === grab.box.id) cancelCollectableTarget(); } catch {}
+      Bot.lastBoxId = null;
+      grab = null;
+    }
     if (grab) {
       if (collectableTargetId !== grab.box.id) {
         collectableTargetId = grab.box.id;
@@ -5192,87 +7175,19 @@ function tickBot(dt) {
     const safeD = npcShootR > 0 ? npcShootR + 200 : 0;
     const standD = Math.min(Math.max(200, botNpcDist(npc.type), safeD), playerRange * 0.9);
     if (isGgCombat) {
-      if (d > playerRange * 0.95) {
-        // Hors de portée : approche décalée (point à standD, pas le centre).
-        const ax = d > 1 ? (player.x - npc.x) / d : 1;
-        const ay = d > 1 ? (player.y - npc.y) / d : 0;
-        moveTarget.active = true;
-        moveTarget.x = clamp(npc.x + ax * standD, 80, WORLD.w - 80);
-        moveTarget.y = clamp(npc.y + ay * standD, 80, WORLD.h - 80);
-      } else {
-        // Kiting généralisé : on tire en reculant devant TOUS les NPC.
-        // Répulsion quadratique (les proches dominent), cible pondérée moins
-        // fort pour rester à portée de tir d'elle, + dérive tangentielle pour
-        // faire le tour de la map au lieu de se coincer. Jamais de camping,
-        // jamais de colle : le vaisseau est toujours en mouvement.
-        let kx = 0, ky = 0;
-        let closestD = Infinity, closestX = 0, closestY = 0;
-        for (const e of enemies) {
-          if (!e || Number(e.hp) <= 0) continue;
-          const ex = player.x - e.x, ey = player.y - e.y;
-          const ed = Math.hypot(ex, ey);
-          if (ed < closestD) { closestD = ed; closestX = ex; closestY = ey; }
-          const KR = 1600;
-          if (ed < KR && ed > 1) {
-            const w = 1 - ed / KR;
-            const push = w * w * (e === npc ? 420 : 1200);
-            kx += (ex / ed) * push;
-            ky += (ey / ed) * push;
-          }
-        }
-        if (closestD < 150 && closestD > 0.01) {
-          // Contact : fuite franche à ~45° du plus proche (radial + latéral).
-          const ax = closestX / closestD, ay = closestY / closestD;
-          kx = ax * 800 + -ay * 800;
-          ky = ay * 800 + ax * 800;
-        }
-        const kl = Math.hypot(kx, ky);
-        if (kl < 60) {
-          moveTarget.active = false; // rien à fuir : on tient et on tire
-        } else {
-          const tx = -ky / kl, ty = kx / kl;
-          const step = Math.min(kl, 800);
-          const rawX = player.x + kx / kl * step + tx * 350;
-          const rawY = player.y + ky / kl * step + ty * 350;
-          const tgt = botGateKiteTarget(rawX, rawY, closestD < 600);
-          moveTarget.active = true;
-          moveTarget.x = tgt.x;
-          moveTarget.y = tgt.y;
-        }
-      }
+      botKiteCombatMove(npc, d, standD);
     } else {
-      // Hors gate : même anti-colle que la gate (tous modes). L'approche ne
-      // vise jamais le centre exact et on ne reste jamais planté sous le NPC.
-      const orbitD = standD;
-      const orbitOn = Bot.orbit && botNpcOrbitOf(npc.type);
+      // Hors gate : kiting comme en GG (plus d'orbite en rond, plus de
+      // camping). Contact : esquive latérale pure, le NPC dépasse.
       const gx = d > 1 ? (player.x - npc.x) / d : 1;
       const gy = d > 1 ? (player.y - npc.y) / d : 0;
       if (d < 160 && d > 0.01) {
-        // Contact : esquive latérale pure, le NPC dépasse.
+        const tgt = botClampMoveTarget(player.x + -gy * 1000, player.y + gx * 1000);
         moveTarget.active = true;
-        moveTarget.x = clamp(player.x + -gy * 1000, 80, WORLD.w - 80);
-        moveTarget.y = clamp(player.y + gx * 1000, 80, WORLD.h - 80);
-      } else if (orbitOn && d <= orbitD * 1.4) {
-        // Vitesse angulaire adaptative : on n'exige jamais plus de ~70 % de
-        // la vitesse du vaisseau en tangentiel, sinon il coupe les virages,
-        // spirale vers le centre du NPC et finit collé dessus.
-        const shipSpd = Math.max(10, Number(player.baseSpeed) || 0);
-        Bot.orbitAng += dt * Math.min(0.7, shipSpd / Math.max(1, orbitD) * 0.7);
-        moveTarget.active = true;
-        moveTarget.x = clamp(npc.x + Math.cos(Bot.orbitAng) * orbitD, 80, WORLD.w - 80);
-        moveTarget.y = clamp(npc.y + Math.sin(Bot.orbitAng) * orbitD, 80, WORLD.h - 80);
-      } else if (d > playerRange * 0.7) {
-        // Approche décalée : point à orbitD du NPC, pas son centre.
-        moveTarget.active = true;
-        moveTarget.x = clamp(npc.x + gx * orbitD, 80, WORLD.w - 80);
-        moveTarget.y = clamp(npc.y + gy * orbitD, 80, WORLD.h - 80);
-      } else if (d < orbitD * 0.8) {
-        // Trop près sans orbite : on recule à distance au lieu de camper dessus.
-        moveTarget.active = true;
-        moveTarget.x = clamp(player.x + gx * 400, 80, WORLD.w - 80);
-        moveTarget.y = clamp(player.y + gy * 400, 80, WORLD.h - 80);
+        moveTarget.x = tgt.x;
+        moveTarget.y = tgt.y;
       } else {
-        moveTarget.active = false;
+        botKiteCombatMove(npc, d, standD);
       }
     }
   } else {
@@ -7223,7 +9138,7 @@ function awardExperience(amount, source = "") {
   if (!account.user) return null;
   account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0 };
   const moduleBonus = Number(player?.expBonusPct || 0);
-  const raw = Number(amount || 0) * Math.max(0, 1 + moduleBonus / 100) * playerBoosterMults().exp;
+  const raw = Number(amount || 0) * Math.max(0, 1 + moduleBonus / 100) * playerBoosterMults().exp * shipPassiveXpMult();
   const result = grantExperience(account.user.stats, Math.max(0, Math.ceil(raw - Number.EPSILON)));
   if (result.gained <= 0) return result;
   for (const drone of account.user.drones?.items || []) {
@@ -7609,6 +9524,107 @@ window.giveHybridAlloy = function giveHybridAlloy(amount = 100) {
   return resources.hybrid_alloy;
 };
 
+// Commande locale de développement (F12, sans refresh) : 100 M de chaque
+// munition + roquette, +100 Mds de crédits. Sauvegardé immédiatement.
+window.giveMaxStock = function giveMaxStock() {
+  if (!account.user) loadAccountUser();
+  if (!account.user) throw new Error("Aucun pilote connecté.");
+  const AMOUNT = 100000000;
+  for (const key of ["x2", "x3", "x4", "sab", "x6", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl"]) {
+    player.ammo[key] = AMOUNT;
+  }
+  player.rockets ||= {};
+  for (const id of ROCKET_IDS) player.rockets[id] = AMOUNT;
+  player.credits = Math.max(0, Math.floor(Number(player.credits) || 0)) + 100000000000;
+  updateAmmoUI();
+  markProgressDirty();
+  saveProgressNow();
+  showNotification(`Stock max : ${formatInteger(AMOUNT)} munitions/roquettes de chaque + 100 Mds crédits`, 4, "reward");
+  return { ammo: AMOUNT, rockets: AMOUNT, credits: player.credits };
+};
+
+// Commande locale de développement (F12, sans refresh) : recharge complète
+// de toutes les compétences (IEM/ISH + aptitudes vaisseau + robot réparateur),
+// sans refresh et sans toucher aux effets en cours. À taper dans la console :
+//   resetAllSkills()
+window.resetAllSkills = function resetAllSkills() {
+  // IEM / ISH (déclarés plus bas en `let` : assignés ici à l'appel, donc initialisés).
+  try { pulseCd = 0; } catch {}
+  try { iemCd = 0; } catch {}
+  try { ishCd = 0; } catch {}
+  try { persistCdUntil("pulse", 0); } catch {}
+  try { persistCdUntil("ish", 0); } catch {}
+
+  // Aptitudes vaisseau : on ne vide que les recharges, jamais les effets actifs.
+  // (cloakT / podT / healHpT / healShT / nebT restent intacts si > 0.)
+  try { player.cloakCd = 0; } catch {}
+  try { player.podCd = 0; } catch {}
+  try { player.healHpCd = 0; } catch {}
+  try { player.healShCd = 0; } catch {}
+  try { player.hammerHpCd = 0; } catch {}
+  try { player.hammerShCd = 0; } catch {}
+  try { player.hammerPodCd = 0; } catch {}
+  try { player.nebCd = 0; } catch {}
+  try { player.drawFireCd = 0; } catch {}
+  try { player.protectionCd = 0; } catch {}
+  try { player.travelCd = 0; } catch {}
+  try { player.fortifyCd = 0; } catch {}
+  try { player.prismCd = 0; } catch {}
+  try { player.diminishCd = 0; } catch {}
+  try { player.ddolCd = 0; } catch {}
+  try { player.redirectCd = 0; } catch {}
+  try { player.disarrayCd = 0; } catch {}
+  try { player.reallocCd = 0; } catch {}
+  try { player.hecateCd = 0; } catch {}
+  try { player.frozenClawCd = 0; } catch {}
+  try { persistCdUntil("cloak", 0); } catch {}
+  try { persistCdUntil("pod", 0); } catch {}
+  try { persistCdUntil("hpRep", 0); } catch {}
+  try { persistCdUntil("shRep", 0); } catch {}
+  try { persistCdUntil("hammerHp", 0); } catch {}
+  try { persistCdUntil("hammerSh", 0); } catch {}
+  try { persistCdUntil("hammerPod", 0); } catch {}
+  try { persistCdUntil("neb", 0); } catch {}
+  try { persistCdUntil("drawFire", 0); } catch {}
+  try { persistCdUntil("protection", 0); } catch {}
+  try { persistCdUntil("travel", 0); } catch {}
+  try { persistCdUntil("fortify", 0); } catch {}
+  try { persistCdUntil("prism", 0); } catch {}
+  try { persistCdUntil("diminish", 0); } catch {}
+  try { persistCdUntil("ddol", 0); } catch {}
+  try { persistCdUntil("redirect", 0); } catch {}
+  try { persistCdUntil("disarray", 0); } catch {}
+  try { persistCdUntil("realloc", 0); } catch {}
+  try { persistCdUntil("hecate", 0); } catch {}
+  try { persistCdUntil("frozenClaw", 0); } catch {}
+
+  // Tir / roquettes : pour que tout soit réellement "rechargé".
+  try { fireCooldown = 0; } catch {}
+  try { laserCd = 0; } catch {}
+  try { rocketCooldown = 0; } catch {}
+  try { rsbCooldown = 0; } catch {}
+  try { rcbCooldown = 0; } catch {}
+
+  // Robot réparateur : prêt immédiatement (repairT plein = pas d'attente).
+  try {
+    const ready = Number(REPAIR?.cooldown || 6);
+    player.repairT = ready;
+    player.repairTickT = 0;
+  } catch {}
+
+  // Rafraîchit tous les HUD sans refresh.
+  try { updateSkillUI(); } catch {}
+  try { updateRepairUI(); } catch {}
+  try { updateAmmoUI(); } catch {}
+  try { syncActionDockState(); } catch {}
+  try { showNotification("Compétences rechargées : IEM / ISH / aptitudes / robot prêts", 3, "reward"); } catch {}
+  try { showToast("Compétences rechargées", 1.2); } catch {}
+  return true;
+};
+// Alias : même commande sous d'autres noms.
+window.reloadSkills = window.resetAllSkills;
+window.resetSkills = window.resetAllSkills;
+
 function savedHpPct() {
   return player.hpMax > 0 ? clamp(player.hp / player.hpMax, 0, 1) : null;
 }
@@ -7745,7 +9761,10 @@ function getSpeedBreakdown() {
   // ✅ Leonov home (x-1 à x-4 de sa firme) : vitesse x2, comme le moteur
   // de déplacement (player.baseSpeed) — sinon l'HUD affiche la moitié.
   const leonovHome = isLeonovHomeActive();
-  const total = Math.floor((base + genSpeed) * (1 + speedPct / 100) * playerUpgradeMults().speed * (leonovHome ? 1.2 : 1));
+  // ✅ Ralentis et boosts temporaires (IEM, kamikaze, Hecate, Voyage, RVG) :
+  // playerSlowMult central, comme le moteur de déplacement — sinon l'HUD
+  // affiche la vitesse de base (ex. 280 au lieu de 252 ralenti).
+  const total = Math.floor((base + genSpeed) * (1 + speedPct / 100) * playerUpgradeMults().speed * (leonovHome ? 1.2 : 1) * playerSlowMult(player));
 
   return {
     shipId,
@@ -7894,7 +9913,10 @@ saveShieldForConfig(current);
 
 saveProgressNow();
 
-const hangarId = SESSION_HANGAR_ID || getActiveHangarId();
+// ✅ Toujours la vérité stockage d'abord : SESSION_HANGAR_ID peut être périmé
+// après un changement de vaisseau sans refresh (overlay Espace pilote intégré).
+// Écrire la config sur l'ancien hangar mettait le CD mais restait sur la config.
+const hangarId = getActiveHangarId() || SESSION_HANGAR_ID;
 const out = setActiveHangarConfig(hangarId, nextConfig);
 
   if (!out?.ok) {
@@ -8798,8 +10820,45 @@ function updateShipEngineFx(dt) {
 }
 function drawShipEngineFx() {
   if (!GAME_SETTINGS.shipSmoke) return;
+  // Voyage (Citadel) : à la place des réacteurs, le speed buff effect.
+  if ((player.travelT || 0) > 0) { drawTravelEngineFx(); return; }
   const frame = getPlayerSpriteFrame();
   shipEngine.draw(ctx, player, ACTIVE_SHIP, isImgReady, frame);
+}
+// Voyage : frame du speed buff (1/2/3). En mouvement : montée 1→2→3 au
+// début, 3 en croisière, descente 3→2→1 à la fin. À l'arrêt : alternance
+// 3↔2 toutes les 100 ms (jamais figé sur une image).
+function travelBuffFrame() {
+  const moving = Math.hypot(Number(player.vx || 0), Number(player.vy || 0)) > 8;
+  if (!moving) return (Math.floor(performance.now() / 100) % 2) + 2;
+  const elapsed = TRAVEL_DURATION - Number(player.travelT || 0);
+  if (elapsed < 0.6) return Math.min(3, 1 + Math.floor(elapsed / 0.2));
+  if (Number(player.travelT || 0) < 0.6) return Math.max(1, Math.ceil(Number(player.travelT || 0) / 0.2));
+  return 3;
+}
+function drawTravelEngineFx() {
+  const frameIdx = travelBuffFrame();
+  const src = `ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${frameIdx}.png`;
+  const img = getCachedImage(src);
+  if (!isImgReady(img)) {
+    try { loadImage(src, { priority: true }); } catch {}
+    return;
+  }
+  const frame = getPlayerSpriteFrame();
+  const emitters = shipEngine.emitters(player, ACTIVE_SHIP, frame);
+  if (!emitters.length) return;
+  const angle = shipEngine.heading(player, ACTIVE_SHIP, frame);
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.globalCompositeOperation = "lighter";
+  for (const emitter of emitters) {
+    ctx.save();
+    ctx.translate(emitter.x, emitter.y);
+    ctx.rotate(angle + Math.PI);
+    ctx.drawImage(img, -46, -20, 125, 40);
+    ctx.restore();
+  }
+  ctx.restore();
 }
 
 // --- Effet de vaisseau (Ship_effet) superposé par-dessus le vaisseau ---
@@ -8882,6 +10941,27 @@ function ensurePackLoaded(pack) {
       const src = `${pack.path}${pack.firstNumber + i}${pack.ext}`;
       jobs.push(loadImage(src, { priority: false }).then((img) => (pack._imgs[i] = img)));
     }
+    // Aegis : le pod de réparation (32 frames) est chargé avec la coque,
+    // pour tous les designs (la base est résolue comme pour l'affichage).
+    // Frost : variante gelée en plus.
+    try {
+      const rawId = String(pack?.id || "").toLowerCase();
+      const baseId = String(getShipDesignBaseId(pack?.id) || pack?.id || "").toLowerCase();
+      if (baseId === "aegis") {
+        pack._podImgs = new Array(32);
+        for (let i = 0; i < 32; i++) {
+          const src = `ASSETS/APTITUDES/AEGIS_REPAIR_POD/${i + 1}.png`;
+          jobs.push(loadImage(src, { priority: false }).then((img) => (pack._podImgs[i] = img)));
+        }
+        if (rawId.includes("frost")) {
+          pack._podFrozenImgs = new Array(32);
+          for (let i = 0; i < 32; i++) {
+            const src = `ASSETS/APTITUDES/AEGIS_REPAIR_POD_FROZEN/${i + 1}.png`;
+            jobs.push(loadImage(src, { priority: false }).then((img) => (pack._podFrozenImgs[i] = img)));
+          }
+        }
+      }
+    } catch {}
     await Promise.all(jobs);
     pack._ready = true;
     return pack;
@@ -9813,7 +11893,7 @@ const BASE_RUN = {
   credits: 10000000,
   kills: 0,
   dr: 0,
-  shPen: 0.2,
+  shPen: 0,
   baseFireRate: 1,
   baseBulletSpeed: 4000,
   // ✅ +1 px/s de vitesse de tir par px de distance à la cible
@@ -9988,6 +12068,17 @@ player.friction = BASE_RUN.friction;
 
   player.ammo = { ...BASE_RUN.ammo };
   playerRange = BASE_RUN.range;
+  // Stockpile : hors Hecate Plus on purge charges + effet, sinon on
+  // réapplique le bonus de portée des charges conservées.
+  try {
+    if (!isHecatePlusBase()) {
+      player.stockCharges = 0;
+      player.stockT = 0;
+      player.stockShieldPct = 0;
+    } else {
+      stockUpdateRange();
+    }
+  } catch {}
 
   if (!keepCredits) player.credits = BASE_RUN.credits;
   else player.credits = creditsKeep;
@@ -10186,6 +12277,17 @@ function applyDockField(button, field, value, apply) {
   apply(value);
 }
 
+// Bordure d'un slot pour le liseré du voile : getComputedStyle force un
+// recalcul de style, on le limite à 4 Hz par bouton (les longues recharges
+// aptitude/roquette faisaient chuter les FPS).
+const cdEdgeAt = new WeakMap();
+function dockCdEdge(button) {
+  const nowMs = performance.now();
+  if (nowMs - (cdEdgeAt.get(button) || 0) < 250) return null;
+  cdEdgeAt.set(button, nowMs);
+  try { return getComputedStyle(button).borderColor; } catch { return null; }
+}
+
 function syncActionDockState() {
   if (!actionDockCache) {
     if (actionDockDirty) {
@@ -10233,7 +12335,7 @@ function syncActionDockState() {
         // le voile de recharge ressemble à une sélection (double-sélection
         // apparente avec la vraie munition active).
         const edgeColor = ammo === activeAmmo
-          ? getComputedStyle(button).borderColor
+          ? (dockCdEdge(button) || "rgba(120,130,140,.35)")
           : "rgba(120,130,140,.35)";
         applyDockField(button, "cdEdge", edgeColor,
           (v) => button.style.setProperty("--cd-edge", v));
@@ -10261,10 +12363,10 @@ function syncActionDockState() {
       (v) => button.classList.toggle("cdVeil", v));
     applyDockField(button, "cdProgress", progress.toFixed(3),
       (v) => button.style.setProperty("--cd", v));
-    // Liseré auto-adaptatif : suit la bordure du slot en continu (la sélection
-    // peut changer : doré sélectionnée, gris les autres).
+    // Liseré auto-adaptatif : suit la bordure du slot (4 Hz max, voir dockCdEdge).
     if (cooling) {
-      applyDockField(button, "cdEdge", getComputedStyle(button).borderColor,
+      const edge = dockCdEdge(button);
+      if (edge) applyDockField(button, "cdEdge", edge,
         (v) => button.style.setProperty("--cd-edge", v));
     }
   }
@@ -10278,10 +12380,10 @@ function syncActionDockState() {
       (v) => button.classList.toggle("cdVeil", v));
     applyDockField(button, "cdProgress", progress.toFixed(3),
       (v) => button.style.setProperty("--cd", v));
-    // Liseré auto-adaptatif : suit la bordure du slot en continu (la roquette
-    // active peut changer en cours de recharge : orange / gris).
+    // Liseré auto-adaptatif (4 Hz max, voir dockCdEdge).
     if (cooling) {
-      applyDockField(button, "cdEdge", getComputedStyle(button).borderColor,
+      const edge = dockCdEdge(button);
+      if (edge) applyDockField(button, "cdEdge", edge,
         (v) => button.style.setProperty("--cd-edge", v));
     }
   }
@@ -10296,14 +12398,43 @@ function syncActionDockState() {
       (v) => button.classList.toggle("cdVeil", v));
     applyDockField(button, "cdProgress", progress.toFixed(3),
       (v) => button.style.setProperty("--cd", v));
+    // Liseré auto-adaptatif (4 Hz max, voir dockCdEdge).
     if (cooling) {
-      applyDockField(button, "cdEdge", getComputedStyle(button).borderColor,
+      const edge = dockCdEdge(button);
+      if (edge) applyDockField(button, "cdEdge", edge,
         (v) => button.style.setProperty("--cd-edge", v));
     }
     // Compteur en secondes : temps d'effet restant pendant l'effet, recharge sinon.
     let cdText = "";
     if (cooling) {
-      const fxLeft = isCloakAbility(abilityId) ? Number(player.cloakT || 0) : 0;
+      const lowId = String(abilityId || "").toLowerCase();
+      const fxLeft = isCloakAbility(abilityId) ? Number(player.cloakT || 0)
+        : lowId === "ability_aegis_repair-pod" ? Number(player.podT || 0)
+        : lowId === "ability_basilisk_noxious-nebula" ? Number(player.nebT || 0)
+        : lowId === "ability_basilisk_heightened-valour" ? Number(player.valT || 0)
+        : lowId === "ability_berserker_shl" ? Number(player.shlT || 0)
+        : lowId === "ability_berserker_bsk" ? Number(player.bskT || 0)
+        : lowId === "ability_berserker_rvg" ? Number(player.rvgT || 0)
+        : lowId === "ability_citadel_draw-fire" || lowId === "ability_citadel-plus_draw-fire" ? Number(player.drawFireT || 0)
+        : lowId === "ability_citadel_protection" || lowId === "ability_citadel-plus_protection" ? Number(player.protectionT || 0)
+        : lowId === "ability_citadel_travel" || lowId === "ability_citadel-plus_travel" ? Number(player.travelT || 0)
+        : lowId === "ability_citadel_fortify" || lowId === "ability_citadel-plus_fortify" ? Number(player.fortifyT || 0)
+        : lowId === "ability_citadel-plus_prismatic-endurance" ? Number(player.prismT || 0)
+        : lowId === "ability_diminisher" ? Number(player.diminishT || 0)
+        : lowId === "ability_disruptor_ddol" ? Number(player.ddolT || 0)
+        : lowId === "ability_disruptor_redirect" ? Number(player.redirectT || 0)
+        : lowId === "ability_disruptor_shield-disarray" ? Number(player.disarrayT || 0)
+        : lowId === "ability_hammerclaw-plus_reallocate" ? Number(player.reallocT || 0)
+        : lowId === "ability_hecate_particle-beam" || lowId === "ability_hecate-plus_particle-beam-plus" ? Number(player.hecateT || 0)
+        : lowId === "ability_hecate-plus_stockpile" ? Number(player.stockT || 0)
+        : lowId === "ability_aegis_hp-repair" ? Number(player.healHpT || 0)
+        : lowId === "ability_aegis_shield-repair" ? Number(player.healShT || 0)
+        : lowId === "ability_hammerclaw_hp-repair" ? Number(player.hammerHpT || 0)
+        : lowId === "ability_hammerclaw-plus_hp-repair" ? Number(player.hammerHpT || 0)
+        : lowId === "ability_hammerclaw_shield-repair" ? Number(player.hammerShT || 0)
+        : lowId === "ability_hammerclaw-plus_shield-repair" ? Number(player.hammerShT || 0)
+        : lowId === "ability_hammerclaw_repair-pod" ? Number(player.hammerPodT || 0)
+        : lowId === "ability_hammerclaw-plus_repair-pod" ? Number(player.hammerPodT || 0) : 0;
       cdText = formatAbilityCd(fxLeft > 0 ? fxLeft : cd.left);
     }
     applyDockField(button, "cdText", cdText,
@@ -10708,7 +12839,10 @@ function tickShield(dt) {
   shieldTickT -= 1.0;
   const effects = getActiveDroneFormation(account.user).effects || {};
   const oldSh = player.sh;
-  if (!formationDrainsShield()) {
+  // ✅ Pas de régénération sous le feu : chaque coup reçu (hurtPlayer) met
+  // attackedT à 5 s ; le bouclier ne remonte que hors combat. Le drain de
+  // formation reste appliqué même sous le feu (c'est un coût, pas un soin).
+  if (!formationDrainsShield() && !((player.attackedT || 0) > 0)) {
     // Même débit qu'avant (5 %/s + bonus) : seul le rythme change.
     const sregMult = playerBoosterMults().sreg;
     const repairMult = playerBoosterMults().repair;
@@ -11278,6 +13412,12 @@ const pickups = [];
 const collectables = [];
 const sparks = [];
 const healerPulses = [];
+// Pulsations de halo génériques (pod Aegis, bouées pet) : même visuel que
+// le soigneur via drawHaloPulse, avec leurs propres couleurs.
+const haloPulses = [];
+function spawnHaloPulse(x, y, radius, life, fillRgb, edgeRgb, follow = null, alpha = 1, maxWidth = 6) {
+  haloPulses.push({ x, y, radius, t: 0, life, fill: fillRgb, edge: edgeRgb, follow, alpha, maxWidth });
+}
 const floatTexts = [];
 const lasers = [];
 const engineTrails = [];
@@ -13056,8 +15196,47 @@ function drawPetLink(ox, oy) {
   }
 }
 
-// Bouées (G-BC / G-BH) : gros halo continu de 500 autour du REX,
-// rouge dégâts / vert coque.
+// Halo "soigneur" (Streuner soigneur, pod Aegis, bouées pet) : glow radial
+// + anneau lumineux qui s'étend.
+// Perfs : le glow est précalculé UNE fois par couleur (pas de gradient ni
+// de shadowBlur recréés à chaque frame, les deux sont très coûteux).
+const haloGlowCache = new Map();
+function haloGlowSprite(fillRgb) {
+  let sprite = haloGlowCache.get(fillRgb);
+  if (sprite) return sprite;
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const g = c.getContext("2d");
+  const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  grad.addColorStop(0, `rgba(${fillRgb},0.5)`);
+  grad.addColorStop(0.72, `rgba(${fillRgb},0.25)`);
+  grad.addColorStop(1, `rgba(${fillRgb},0)`);
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 256, 256);
+  haloGlowCache.set(fillRgb, c);
+  return c;
+}
+function drawHaloPulse(x, y, radius, k, fillRgb, edgeRgb, alphaScale = 1, maxWidth = 6) {
+  const prog = Math.max(0, Math.min(1, Number(k) || 0));
+  const r = Math.max(1, radius * (0.2 + prog * 0.8));
+  const a = (1 - prog) * 0.78 * Math.max(0, Math.min(1, Number(alphaScale ?? 1)));
+  if (a <= 0.01) return;
+  ctx.save();
+  ctx.globalAlpha = a;
+  try {
+    ctx.drawImage(haloGlowSprite(fillRgb), x - r, y - r, r * 2, r * 2);
+  } catch {}
+  ctx.strokeStyle = `rgba(${edgeRgb},0.95)`;
+  ctx.lineWidth = Math.max(0.5, maxWidth - prog * (maxWidth / 2));
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Bouées (G-BC / G-BH) : halo de 500 autour du REX, rouge dégâts / vert coque.
+// Rond extérieur fixe retiré : vaguelette glow comme le soigneur.
 function drawPetBuoy(ox, oy) {
   if (!(petBuoy.key === "bc" || petBuoy.key === "bh")) return;
   if (petBuoy.until <= 0 || performance.now() / 1000 >= petBuoy.until) return;
@@ -13068,31 +15247,18 @@ function drawPetBuoy(ox, oy) {
   if (sx < -PET_BUOY_RADIUS || sy < -PET_BUOY_RADIUS
     || sx > innerWidth + PET_BUOY_RADIUS || sy > innerHeight + PET_BUOY_RADIUS) return;
   const t = performance.now() / 1000;
-  const pulse = 0.55 + Math.sin(t * 2.5) * 0.12;
-  const col = petBuoy.key === "bc" ? "255,70,80" : "80,255,150";
-  // Anneaux superposés, sans shadowBlur (coûteux sur un rayon de 500).
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  const rings = [[10, 0.10], [5, 0.28], [2, 0.65]];
-  for (const [w, a] of rings) {
-    ctx.strokeStyle = `rgba(${col},${(a * (0.7 + pulse)).toFixed(3)})`;
-    ctx.lineWidth = w;
-    ctx.beginPath();
-    ctx.arc(sx, sy, PET_BUOY_RADIUS, 0, TAU);
-    ctx.stroke();
+  // Rond extérieur fixe retiré : vaguelette glow comme le soigneur.
+  // Une pulsation par seconde, qui dure 1 s.
+  if (t - Number(drawPetBuoy.lastPulse ?? -10) >= 1) {
+    drawPetBuoy.lastPulse = t;
+    try {
+      // La bouée suit le pet : la pulsation voyage avec lui.
+      spawnHaloPulse(petState.x, petState.y, PET_BUOY_RADIUS, 1,
+        petBuoy.key === "bc" ? "255,70,80" : "55,255,125",
+        petBuoy.key === "bc" ? "255,110,120" : "80,255,145",
+        "pet");
+    } catch {}
   }
-  // Pulsation centre → extérieur : 2 vaguelettes en boucle.
-  const period = 2.2;
-  for (let k = 0; k < 2; k++) {
-    const p = (((t + k * period / 2) % period) + period) % period / period;
-    const rr = 40 + (PET_BUOY_RADIUS - 40) * p;
-    ctx.strokeStyle = `rgba(${col},${(0.35 * (1 - p)).toFixed(3)})`;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(sx, sy, rr, 0, TAU);
-    ctx.stroke();
-  }
-  ctx.restore();
 }
 
 function drawPet(ox, oy) {
@@ -13980,6 +16146,9 @@ function collectableRespawnDelayMs(type) {
 
 function pushAmbientCollectableInstance(slot, mapId) {
   const cfg = COLLECTABLE_DEFS[slot.type] || {};
+  // Type désactivé temporairement (ex : Green_Booty_Box) : aucun spawn,
+  // même si des slots persistent en sauvegarde (réactivables plus tard).
+  if (cfg.enabled === false) return;
   ensureCollectableLoaded(slot.type);
   const sp = cfg.sprite || {};
   const frames = Math.max(1, Number(sp.frames || 1));
@@ -14318,16 +16487,35 @@ function applyCollectableReward(c) {
   const parts = [];
   const goldTerms = [];
   // Booster Bonus Box : contenu doublé.
-  // Maps battle (4-x et x-4.1) : toutes les box sauf cargos doublées de base.
+  // Maps battle (4-x et x-4.1) : toutes les box sauf cargos à x1.5 (officiel).
   const battleMapId = String(currentMapId());
   const isBattleMap = /^4(-|$|\.)/.test(battleMapId) || /-4\.1$/.test(battleMapId);
-  const battleMult = (isBattleMap && String(c?.type || "") !== "Cargo_Box") ? 2 : 1;
+  const battleMult = (isBattleMap && String(c?.type || "") !== "Cargo_Box") ? 1.5 : 1;
   // Récupération P.E.T (AI-S) : +X % sur le contenu hors ressources
   // (crédits, énergie GG, munitions, HP/bouclier) quand c'est le REX qui
   // ramasse — jamais sur le minerai ni l'assemblage (scrap, mucosum...).
   const petSalvagePct = Number(c?._petSalvagePct) > 0 ? Number(c._petSalvagePct) : 0;
   const salvageMult = petSalvagePct > 0 ? 1 + petSalvagePct / 100 : 1;
-  const boxMult = (String(c?.type || "") === "Bonus_Box" ? playerBoosterMults().box : 1) * battleMult * salvageMult;
+  // Nerf X-1 officiel : sur la X-1 de sa firme, contenu réduit selon niveau
+  // (<6 : 100 %, 7 : 50 %, 8 : 25 %, 9 : 13 %, 10+ : rien).
+  let x1Mult = 1;
+  if (String(c?.type || "") === "Bonus_Box") {
+    const pilot = account.user || getCurrentUserFull();
+    const homeMap = String(getFactionHomeMap(pilot?.faction) || "").toLowerCase();
+    if (homeMap && battleMapId.trim().toLowerCase() === homeMap) {
+      const pilotLevel = getLevelInfo(Number(pilot?.stats?.exp || 0)).level;
+      x1Mult = pilotLevel < 7 ? 1 : pilotLevel === 7 ? 0.5 : pilotLevel === 8 ? 0.25 : pilotLevel === 9 ? 0.13 : 0;
+    }
+  }
+  const boxMult = (String(c?.type || "") === "Bonus_Box" ? playerBoosterMults().box : 1) * battleMult * salvageMult * x1Mult;
+
+  // X-1 + niveau 10 : box consommée mais vide (officiel).
+  if (x1Mult <= 0 && String(c?.type || "") === "Bonus_Box") {
+    addGameLog("Bonus box vide — niveau trop élevé pour la X-1 (récompenses dès la X-2)", "reward");
+    showToast("Bonus box vide", 1.0);
+    advanceQuestProgress("collect", c.type);
+    return { kept: false };
+  }
 
   let changed = false;
   let grantedAny = false;
@@ -14363,6 +16551,22 @@ function applyCollectableReward(c) {
 
       player.ammo[key] = Math.max(0, Number(player.ammo[key]) || 0) + amount;
       parts.push(`+${formatInteger(amount)} munitions type ${key.toUpperCase()}`);
+      changed = true;
+      grantedAny = true;
+    }
+  }
+
+  if (reward.rockets && typeof reward.rockets === "object") {
+    player.rockets ||= {};
+    for (const key in reward.rockets) {
+      const rocketId = String(key || "").toLowerCase();
+      if (!ROCKET_TYPES[rocketId]) continue;
+      const amount = Math.floor(rollValue(reward.rockets[key], 0) * boxMult);
+      if (amount <= 0) continue;
+
+      player.rockets[rocketId] = Math.max(0, Number(player.rockets[rocketId]) || 0) + amount;
+      const rocketName = getRocketType(rocketId)?.name || `Roquette ${rocketId.toUpperCase()}`;
+      parts.push(`+${formatInteger(amount)} ${rocketName}`);
       changed = true;
       grantedAny = true;
     }
@@ -15321,18 +17525,51 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
 // ============================================================
 // Combat
 // ============================================================
-function damageEnemy(e, dmg, shieldPenetration, crit) {
+function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (!e || e.hp <= 0) return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
   if (e._bossEncounter?.invulnerable) return emptyEnemyDamageResult();
 
+  // Affaiblissement (Diminisher, officiel) : +50 % de dégâts au bouclier
+  // de la cible verrouillée — lasers uniquement (pas les roquettes),
+  // pénétration normale par ailleurs.
+  let pen = shieldPenetration ?? player.shPen;
+  const weakened = !opts.noWeaken && diminishWeakened(e);
+  pen = Math.max(0, Math.min(1, Number(pen || 0)));
+  // Distribution officielle par alien ("shield spread", défaut 80/20) :
+  // surchargeable par type dans NPC_TYPES.
+  const spread = Number(NPC_TYPES[e.type]?.shieldSpread ?? 0.8);
   const result = damageEnemyLayers(e, dmg, {
-    shieldPenetration: shieldPenetration ?? player.shPen,
+    shieldPenetration: pen,
+    weakenShields: weakened ? DIMINISH_WEAKEN : 0,
+    shieldSpread: spread,
     critChance: crit?.chance ?? undefined,
     critMultiplier: crit?.mult ?? undefined,
   });
+  // Lien de bouclier (Berserker, officiel) : les dégâts infligés AU BOUCLIER
+  // de la cible liée sont encaissés par nous à la place (dégâts classiques :
+  // notre distribution + blocage regen, mort possible). La cible ne perd rien.
+  if ((player.shlT || 0) > 0 && player.linkTarget === e && result.sh > 0 && !player.dead) {
+    const shared = Math.round(result.sh);
+    e.sh = Math.min(Number(e.shMax || 0), Number(e.sh || 0) + shared);
+    result.sh = 0;
+    result.total = result.hp;
+    try {
+      const absorb = Number(player.shAbsorb) > 0 ? Number(player.shAbsorb) : 0.8;
+      damagePlayerLayers(player, shared, absorb);
+      player.attackedT = 5;
+      if (player.hp <= 0) {
+        player.hp = 0;
+        die();
+      }
+    } catch {}
+  }
   if (result.total > 0) {
     e._damagedByPlayer = true;
     if (e._cubikonDeathFlee) e.noRewards = false;
+  }
+  // Reallocate (Hammerclaw Plus) : 20 % de nos dégâts alimentent le pot commun.
+  if ((player.reallocT || 0) > 0 && result.total > 0) {
+    try { player.reallocPool = Number(player.reallocPool || 0) + result.total * REALLOC_SHARE; } catch {}
   }
   const shD = result.sh;
   const hpD = result.hp;
@@ -15382,7 +17619,7 @@ e._pendingSpawn = 20;
 function applyRocketHit(e, b, recipient = player) {
   if (!e || e.hp <= 0 || e._bossEncounter?.invulnerable) return emptyEnemyDamageResult();
   const effect = b.rocketEffect || null;
-  const direct = b.dmg > 0 ? damageEnemy(e, b.dmg, effect?.pierceShield ? 1 : effect?.piercePct) : emptyEnemyDamageResult();
+  const direct = b.dmg > 0 ? damageEnemy(e, b.dmg, effect?.pierceShield ? 1 : effect?.piercePct, undefined, { noWeaken: true }) : emptyEnemyDamageResult();
   const drained = effect?.shieldDrain > 0 && e.hp > 0
     ? drainShieldFromEnemy(e, effect.shieldDrain, recipient, effect?.leechPct)
     : emptyEnemyDamageResult();
@@ -15450,13 +17687,77 @@ function npcEffectiveSpeed(e, fallback = 320) {
 function hurtPlayer(amount, source = null) {
   if (player.dead || player.iFrames > 0 || (player.invincibleT || 0) > 0) return;
 
+  // Redirect (Disruptor, officiel) : tous les dégâts qu'on nous inflige
+  // partent sur la cible verrouillée (on ne prend rien). Sans destinataire
+  // valide, dégâts subis normalement.
+  if ((player.redirectT || 0) > 0) {
+    const dst = player.redirectTarget;
+    if (dst && dst.hp > 0) {
+      const rdmg = Math.max(0, Math.round(Number(amount) || 0));
+      if (rdmg > 0) {
+        try { damageEnemy(dst, rdmg); } catch {}
+        try {
+          addFloatText(
+            dst.x + (Math.random() - 0.5) * 60,
+            dst.y - 90 - Math.random() * 20,
+            rdmg,
+            "rgba(255,235,170,0.96)",
+            { text: `${DMG_FMT.format(rdmg)}`, size: 19, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+          );
+        } catch {}
+      }
+      player.attackedT = 5;
+      return;
+    }
+  }
+
+  // RVG (Berserker) : 100 % renvoyés à leur propriétaire (chaque attaquant
+  // prend ses propres dégâts). Rien subi, rien affiché sur nous : le chiffre
+  // part au-dessus du NPC touché.
+  if ((player.rvgT || 0) > 0) {
+    if (source && source.hp > 0) {
+      const rdmg = Math.max(0, Math.round(Number(amount) || 0));
+      try { damageEnemy(source, rdmg); } catch {}
+      addFloatText(
+        source.x + (Math.random() - 0.5) * 60,
+        source.y - 90 - Math.random() * 20,
+        rdmg,
+        "rgba(255,235,170,0.96)",
+        { text: `${DMG_FMT.format(rdmg)}`, size: 19, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+      );
+    }
+    player.attackedT = 5;
+    return;
+  }
+
   resetRepairCooldown();
   player.iFrames = 0.1;
   player.attackedT = 5;
   // Seul un joueur bloque les portails battle : les sources NPC passent null.
   if (source?.byPlayer === true) player.pvpAttackT = 5;
 
-  const dmgRes = damagePlayerLayers(player, amount, Number(player.shAbsorb) > 0 ? Number(player.shAbsorb) : 0.8);
+  // Fortification (Citadel) : -50 % de dégâts subis pendant l'effet.
+  if ((player.fortifyT || 0) > 0) {
+    amount = Math.max(0, Number(amount) || 0) * (1 - FORTIFY_DR);
+  }
+
+  // Endurance prismatique (Citadel+) : -80 % de dégâts subis. La pénétration
+  // de l'attaquant est annulée, sauf formation papillon (20 % traverse) —
+  // sinon tout passe par le bouclier puis la coque.
+  let shieldPenetration = attackerPenetration(source);
+  if ((player.prismT || 0) > 0) {
+    amount = Math.max(0, Number(amount) || 0) * (1 - PRISM_DR);
+    shieldPenetration = source && isButterflyAttacker(source) ? PRISM_PEN_BUTTERFLY : 0;
+  }
+
+  // Stockpile (Hecate Plus) : force du bouclier +X % pendant l'effet
+  // (réduction des dégâts subis, max 11 % à 10 charges).
+  if ((player.stockT || 0) > 0 && Number(player.stockShieldPct || 0) > 0) {
+    amount = Math.max(0, Number(amount) || 0) * (1 - Math.min(0.9, Number(player.stockShieldPct || 0)));
+  }
+
+  const dmgRes = damagePlayerLayers(player, amount, Number(player.shAbsorb) > 0 ? Number(player.shAbsorb) : 0.8, shieldPenetration);
+  // Lien HP : la part coque part sur le REX, le joueur ne garde que le reste.
   // Lien HP : la part coque part sur le REX, le joueur ne garde que le reste.
   let redirected = 0;
   if (dmgRes.hp > 0) {
@@ -15718,6 +18019,7 @@ if (e.type === "npc_Cubikon") {
     if (!e.noRewards) {
       advanceQuestProgress("kill", e.type);
       killRewards(e);
+      try { onStockpileNpcKill(); } catch {}
     }
 
     // ✅ progression intra-vague GG : chaque NPC du plan de vague éliminé
@@ -17050,7 +19352,7 @@ const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
   const dmgShot = isSab
     ? player.baseDamage * SAB50.drainMult * shotBoosterMults.dmg
-    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerUpgradeMults().laser * buoyDamageMult();
+    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * shipPassiveDamageMult();
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (shotHitBonusPct / 100));
 
@@ -17919,11 +20221,32 @@ function die() {
   laserCombatInRange = null;
   escapeWatch = null;
   player.dead = true;
-  // Mort = aptitude coupée : la recharge du camouflage démarre.
+  // Mort = aptitudes coupées : leurs recharges démarrent.
   if ((player.cloakT || 0) > 0) {
     player.cloakT = 0;
     startPoliceCloakCooldown();
   }
+  try { cancelRepairPod(); } catch {}
+  try { cancelRepairs(); } catch {}
+  try { cancelHammerPod(); } catch {}
+  try { cancelHammerRepairs(); } catch {}
+  try { cancelNebula(); } catch {}
+  try { cancelValour(); } catch {}
+  try { cancelShl(); } catch {}
+  try { cancelBsk(); } catch {}
+  try { cancelRvg(); } catch {}
+  try { cancelDrawFire(); } catch {}
+  try { cancelProtection(); } catch {}
+  try { cancelTravel(); } catch {}
+  try { cancelFortify(); } catch {}
+  try { cancelPrism(); } catch {}
+  try { cancelDiminish(); } catch {}
+  try { cancelDdol(); } catch {}
+  try { cancelRedirect(); } catch {}
+  try { cancelDisarray(); } catch {}
+  try { cancelRealloc(); } catch {}
+  try { cancelHecate(); } catch {}
+  try { cancelStockpile(); } catch {}
   player.vx = player.vy = 0;
   radiationSoundDelay = 0;
   triggerDeathShake();
@@ -18445,6 +20768,83 @@ function drawPlayerBody() {
   return true;
 }
 
+// Coque du hangar actif, résolue vers sa base (les designs héritent).
+function playerHullBaseId() {
+  try {
+    const sid = String(getActiveHangarFromUser(account?.user)?.shipId || ACTIVE_SHIP?.id || "").toLowerCase();
+    return getShipDesignBaseId(sid) || sid;
+  } catch { return ""; }
+}
+
+// Pod de réparation Aegis : fait partie de la coque (tous les Aegis).
+// Même direction que le vaisseau : la frame suit la frame directionnelle
+// du vaisseau (pas le temps), dessiné par-dessus la coque.
+const AEGIS_POD_FRAMES = 32;
+// Soins cibles (Aegis / Hammerclaw, officiel) : l’escorte alliee la plus
+// blessee a portee recoit le montant allie, sinon soi (montant soi, reduit).
+// Montants officiels : Aegis 280k/140k coque, 125k/75k bouclier ;
+// Hammerclaw 350k/175k coque, 180k/120k bouclier.
+const ALLY_HEAL_RADIUS = 1000;
+function pickHealAlly(isShield) {
+  try {
+    const r2 = ALLY_HEAL_RADIUS * ALLY_HEAL_RADIUS;
+    const key = isShield ? "sh" : "hp";
+    const maxKey = isShield ? "shMax" : "hpMax";
+    let best = null, bestPct = 1;
+    for (const esc of escortShips) {
+      if (!esc || !(esc.hp > 0)) continue;
+      const max = Number(esc[maxKey] || 0);
+      if (!(max > 0)) continue;
+      if (Number(esc[key] || 0) >= max) continue;
+      if (dist2(esc.x, esc.y, player.x, player.y) > r2) continue;
+      const pct = Number(esc[key] || 0) / max;
+      if (pct < bestPct) { bestPct = pct; best = esc; }
+    }
+    return best;
+  } catch { return null; }
+}
+function healAllyOrSelf(allyAmount, selfAmount, isShield) {
+  if (player.dead) return 0;
+  const color = isShield ? "rgba(70,180,255,0.98)" : "rgba(80,255,125,0.98)";
+  const yOff = isShield ? -110 : -90;
+  const key = isShield ? "sh" : "hp";
+  const maxKey = isShield ? "shMax" : "hpMax";
+  const ally = pickHealAlly(isShield);
+  const dst = ally || player;
+  const dx = (Number(dst.x || 0)) + (Math.random() - 0.5) * 60;
+  const dy = (Number(dst.y || 0)) + yOff - Math.random() * 20;
+  const old = Number(dst[key] || 0);
+  dst[key] = Math.min(Number(dst[maxKey] || 0), old + (ally ? allyAmount : selfAmount));
+  const gain = Math.round(dst[key] - old);
+  addFloatText(
+    dx, dy, gain, color,
+    { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+  );
+  return gain;
+}
+
+function drawAegisRepairPod() {
+  if (playerHullBaseId() !== "aegis") return;
+  // Pod posé : la coque reste sans pod jusqu'à la fin de la recharge.
+  if ((player.podT || 0) > 0 || (player.podCd || 0) > 0) return;
+  // Frost : variante gelée du pod, les autres Aegis gardent le normal.
+  let rawId = "";
+  try { rawId = String(getActiveHangarFromUser(account?.user)?.shipId || ACTIVE_SHIP?.id || "").toLowerCase(); } catch {}
+  const frozen = rawId.includes("frost");
+  const folder = frozen ? "AEGIS_REPAIR_POD_FROZEN" : "AEGIS_REPAIR_POD";
+  const shipFrameCount = Math.max(1, Number(ACTIVE_SHIP?.frames) || playerImgs.length || 1);
+  const shipFrame = getPlayerSpriteFrame();
+  const frame = (Math.floor(shipFrame * AEGIS_POD_FRAMES / shipFrameCount) % AEGIS_POD_FRAMES) + 1;
+  // Frame préchargée avec la coque si dispo, sinon chargement à la demande.
+  const pre = frozen ? ACTIVE_SHIP?._podFrozenImgs?.[frame - 1] : ACTIVE_SHIP?._podImgs?.[frame - 1];
+  const src = `ASSETS/APTITUDES/${folder}/${frame}.png`;
+  const image = (pre && isImgReady(pre)) ? pre : getCachedImage(src);
+  if (!isImgReady(image)) { try { loadImage(src, { priority: true }); } catch {} return; }
+  // Centré sur la coque, sans rotation : la frame encode déjà la direction.
+  // Vraie taille du sprite (188x166).
+  drawCenteredImage(ctx, image, 188, 166);
+}
+
 function getEnemySpriteFrame(e, cfg, sp) {
   return getNpcSpriteFrame(e, cfg, angleToFrameIndex);
 }
@@ -18485,6 +20885,18 @@ function drawEnemyBody(e, exactFrame = null) {
   ctx.imageSmoothingEnabled = false;
   drawCenteredImage(ctx, img, w, h);
   ctx.restore();
+}
+
+// Taille du sprite d'un NPC (même calcul que drawEnemyBody) : sert aux
+// overlays dimensionnés (cible bleue du Désordre).
+function enemySpriteSize(e) {
+  try {
+    const sp = NPC_TYPES[e?.type]?.sprite;
+    const baseW = sp?.w ?? sp?.size ?? 160;
+    const baseH = sp?.h ?? sp?.size ?? 160;
+    const k = e?.isBoss ? 1.05 : 1;
+    return { w: baseW * k, h: baseH * k };
+  } catch { return { w: 160, h: 160 }; }
 }
 
 // Contour d'un NPC (Ubers en rouge) : silhouette derrière la sprite.
@@ -18773,6 +21185,11 @@ ui.oreTradeWindow?.addEventListener("click", (event) => {
 
 function startGatePortalJump(ptl, action) {
   if (!ptl || ptl.jumping || !isPlayerNearPortal(ptl)) return;
+  // Fortification (officiel) : aucun saut pendant l'effet.
+  if ((player.fortifyT || 0) > 0) {
+    showNotification("Fortification : saut impossible pendant l'effet", 2, "info");
+    return;
+  }
   if (beginGatePortalJump(ptl, action, portal.switchDur)) {
     // ✅ mêmes sons que les portails de zone : saut possible puis saut en cours.
     SFX.play("swReady");
@@ -19550,6 +21967,8 @@ function playerIsInSafeZone() {
 function enemyShoot(e, dt, combatTarget = player) {
   if (!e || e.hp <= 0) return;
   if ((e.empT || 0) > 0) return;
+  // Redirect (Disruptor, officiel) : lasers de la cible désactivés 4 s.
+  if ((e.redirectSilenceT || 0) > 0) return;
 
   if (combatTarget === player && safeZoneActive && playerIsInSafeZone()) return;
 
@@ -19626,7 +22045,12 @@ function enemyShoot(e, dt, combatTarget = player) {
   }
 
   const baseCd = 1 / Math.max(0.001, e.shootRate || 1);
-  e.shootCd = baseCd * (0.85 + Math.random() * 0.3);
+  // DDoL (Disruptor, officiel) : cooldown lasers dérèglé entre 3 et 5 s.
+  if ((player.ddolT || 0) > 0 && player.ddolTarget === e && e.hp > 0) {
+    e.shootCd = 3 + Math.random() * 2;
+  } else {
+    e.shootCd = baseCd * (0.85 + Math.random() * 0.3);
+  }
 
   const ang0 = Math.atan2(combatTarget.y - e.y, combatTarget.x - e.x);
   const burst = Math.max(1, e.burst || 1);
@@ -19740,6 +22164,392 @@ function update(dt) {
   } else {
     player.cloakCd = Math.max(0, (player.cloakCd || 0) - dt);
   }
+  // Pod de réparation (Aegis) : 10 s d'effet, soin chaque seconde,
+  // recharge 120 s qui ne descend qu'après (voile plein pendant l'effet).
+  if ((player.podT || 0) > 0) {
+    player.podT = Math.max(0, player.podT - dt);
+    player.podPulseT = Number(player.podPulseT || 0) + dt;
+    // Une pulsation discrète par seconde, comme le soigneur.
+    const podSec = Math.floor(player.podPulseT);
+    if (podSec !== Number(player.podLastPulseSec ?? -1)) {
+      player.podLastPulseSec = podSec;
+      if (player.podX != null) {
+        try { spawnHaloPulse(player.podX, player.podY, REPAIR_POD_RADIUS, 0.9, "55,255,125", "80,255,145"); } catch {}
+      }
+    }
+    player.podHealAcc = Number(player.podHealAcc || 0) + dt;
+    if (player.podHealAcc >= 1) {
+      player.podHealAcc -= 1;
+      try { healRepairPodTick(); } catch {}
+    }
+    if (player.podT <= 0) {
+      player.podX = null;
+      player.podY = null;
+      startRepairPodCooldown();
+      showNotification("Pod de réparation récupéré", 2, "info");
+    }
+  } else {
+    player.podCd = Math.max(0, (player.podCd || 0) - dt);
+  }
+  // Pod Hammerclaw : mêmes règles, valeurs propres (17,5k/s, CD 160 s).
+  if ((player.hammerPodT || 0) > 0) {
+    player.hammerPodT = Math.max(0, player.hammerPodT - dt);
+    player.hammerPodPulseT = Number(player.hammerPodPulseT || 0) + dt;
+    const hammerPodSec = Math.floor(player.hammerPodPulseT);
+    if (hammerPodSec !== Number(player.hammerPodLastPulseSec ?? -1)) {
+      player.hammerPodLastPulseSec = hammerPodSec;
+      if (player.hammerPodX != null) {
+        try { spawnHaloPulse(player.hammerPodX, player.hammerPodY, hammerPodRadius(), 0.9, "55,255,125", "80,255,145"); } catch {}
+      }
+    }
+    player.hammerPodHealAcc = Number(player.hammerPodHealAcc || 0) + dt;
+    if (player.hammerPodHealAcc >= 1) {
+      player.hammerPodHealAcc -= 1;
+      try { healHammerPodTick(); } catch {}
+    }
+    if (player.hammerPodT <= 0) {
+      player.hammerPodX = null;
+      player.hammerPodY = null;
+      startHammerPodCooldown();
+      showNotification("Pod de réparation récupéré", 2, "info");
+    }
+  } else {
+    player.hammerPodCd = Math.max(0, (player.hammerPodCd || 0) - dt);
+  }
+  // Soins Hammerclaw (officiel) : allié 50k coque/s, soi 25k/s (175k/7 s).
+  // Plus : 450k allié / 225k soi (montants résolus au tick selon le vaisseau).
+  if ((player.hammerHpT || 0) > 0) {
+    player.hammerHpT = Math.max(0, player.hammerHpT - dt);
+    player.hammerHpAcc = Number(player.hammerHpAcc || 0) + dt;
+    if (player.hammerHpAcc >= 1) {
+      player.hammerHpAcc -= 1;
+      const plus = isHammerclawPlusBase();
+      try { healAllyOrSelf(plus ? HAMMER_PLUS_HP_ALLY : HAMMER_HP_AMOUNT, plus ? HAMMER_PLUS_HP_SELF : HAMMER_HP_SELF, false); } catch {}
+    }
+    if (player.hammerHpT <= 0) {
+      startHammerHpCooldown();
+      showNotification("Réparation coque terminée", 2, "info");
+    }
+  } else {
+    player.hammerHpCd = Math.max(0, (player.hammerHpCd || 0) - dt);
+  }
+  // Bouclier Hammerclaw (officiel) : allié 60k/s, soi 40k/s (120k/3 s).
+  // Plus : 240k allié / 150k soi (montants résolus au tick selon le vaisseau).
+  if ((player.hammerShT || 0) > 0) {
+    player.hammerShT = Math.max(0, player.hammerShT - dt);
+    player.hammerShAcc = Number(player.hammerShAcc || 0) + dt;
+    if (player.hammerShAcc >= 1) {
+      player.hammerShAcc -= 1;
+      const plus = isHammerclawPlusBase();
+      try { healAllyOrSelf(plus ? HAMMER_PLUS_SH_ALLY : HAMMER_SH_AMOUNT, plus ? HAMMER_PLUS_SH_SELF : HAMMER_SH_SELF, true); } catch {}
+    }
+    if (player.hammerShT <= 0) {
+      startHammerShCooldown();
+      showNotification("Réparation bouclier terminée", 2, "info");
+    }
+  } else {
+    player.hammerShCd = Math.max(0, (player.hammerShCd || 0) - dt);
+  }
+  // Valeur exaltée (Basilisk) : 30 s, +0,5 %/s plafonné +10 %.
+  if ((player.valT || 0) > 0) {
+    player.valT = Math.max(0, player.valT - dt);
+    player.valAcc = Number(player.valAcc || 0) + dt;
+    if (player.valAcc >= 1) {
+      player.valAcc -= 1;
+      player.valMult = Math.min(VALOUR_MAX, Number(player.valMult || 0) + VALOUR_STEP);
+    }
+    if (player.valT <= 0) {
+      player.valMult = 0;
+      startValourCooldown();
+      showNotification("Valeur exaltée terminée", 2, "info");
+    }
+  } else {
+    player.valCd = Math.max(0, (player.valCd || 0) - dt);
+  }
+  // SHL (Berserker, officiel) : lien 60 s (part bouclier encaissée par nous,
+  // gérée dans damageEnemy), cassé hors de portée, recharge 10 s.
+  if ((player.shlT || 0) > 0) {
+    player.shlT = Math.max(0, player.shlT - dt);
+    const tgt = player.linkTarget;
+    if (!tgt || !(tgt.hp > 0)) {
+      player.shlT = 0;
+      startShlCooldown();
+      showNotification("Lien rompu (cible détruite)", 2, "info");
+    } else if (shlOutOfRange(tgt)) {
+      player.shlT = 0;
+      startShlCooldown();
+      showNotification("Lien rompu (hors de portée)", 2, "info");
+    }
+    if ((player.shlT || 0) <= 0 && Number(player.shlCd || 0) <= 0) {
+      // Fin naturelle : recharge (déjà démarrée par les cas ci-dessus sinon).
+      startShlCooldown();
+      showNotification("Lien terminé", 2, "info");
+    }
+  } else {
+    player.shlCd = Math.max(0, (player.shlCd || 0) - dt);
+  }
+  // BSK (Berserker) : 30 s (tremblement + anneau + sprite gérés au rendu).
+  if ((player.bskT || 0) > 0) {
+    player.bskT = Math.max(0, player.bskT - dt);
+    if (player.bskT <= 0) {
+      startBskCooldown();
+      showNotification("Berserk terminé", 2, "info");
+    }
+  } else {
+    player.bskCd = Math.max(0, (player.bskCd || 0) - dt);
+  }
+  // RVG (Berserker) : 6 s (renvoi géré dans hurtPlayer).
+  if ((player.rvgT || 0) > 0) {
+    player.rvgT = Math.max(0, player.rvgT - dt);
+    if (player.rvgT <= 0) {
+      startRvgCooldown();
+      showNotification("Représailles terminées", 2, "info");
+    }
+  } else {
+    player.rvgCd = Math.max(0, (player.rvgCd || 0) - dt);
+  }
+  // Draw Fire (Citadel / Citadel+) : 5 s de taunt, re-scan chaque seconde,
+  // verrou maintenu sur le joueur (pas de nouveau lock ailleurs).
+  if ((player.drawFireT || 0) > 0) {
+    player.drawFireT = Math.max(0, player.drawFireT - dt);
+    player.drawFireAcc = Number(player.drawFireAcc || 0) + dt;
+    if (player.drawFireAcc >= DRAW_FIRE_RESCAN) {
+      player.drawFireAcc -= DRAW_FIRE_RESCAN;
+      try { drawFireRescan(); } catch {}
+    } else {
+      // Entre deux scans : le verrou ne doit pas tomber (gate, Overlord…).
+      try {
+        for (const e of enemies) {
+          if (!e || !(e.hp > 0) || !e.drawFireLock) continue;
+          e._combatTargetId = "player";
+          e._aggro = true;
+          e._aggroT = Math.max(Number(e._aggroT || 0), 0.5);
+        }
+      } catch {}
+    }
+    if (player.drawFireT <= 0) {
+      player.drawFireAcc = 0;
+      try { clearDrawFireLocks(); } catch {}
+      startDrawFireCooldown();
+      showNotification("Attraction terminée", 2, "info");
+    }
+  } else {
+    player.drawFireCd = Math.max(0, (player.drawFireCd || 0) - dt);
+  }
+  // Protection (Citadel / Citadel+) : 10 s de halo, une pulsation visible
+  // par seconde, recharge 60 s qui ne descend qu'après (voile plein pendant).
+  if ((player.protectionT || 0) > 0) {
+    player.protectionT = Math.max(0, player.protectionT - dt);
+    player.protectionPulseT = Number(player.protectionPulseT || 0) + dt;
+    const protSec = Math.floor(player.protectionPulseT);
+    if (protSec !== Number(player.protectionLastPulseSec ?? -1)) {
+      player.protectionLastPulseSec = protSec;
+      if (!player.dead) {
+        try { spawnHaloPulse(player.x, player.y, PROTECTION_RADIUS, 1.0, "200,170,255", "230,210,255", "player"); } catch {}
+      }
+    }
+    if (player.protectionT <= 0) {
+      player.protectionPulseT = 0;
+      player.protectionLastPulseSec = -1;
+      startProtectionCooldown();
+      showNotification("Protection terminée", 2, "info");
+    }
+  } else {
+    player.protectionCd = Math.max(0, (player.protectionCd || 0) - dt);
+  }
+  // Voyage (Citadel / Citadel+) : 5 s de vitesse x2 (multiplicateur dans
+  // playerSlowMult), recharge 45 s.
+  if ((player.travelT || 0) > 0) {
+    player.travelT = Math.max(0, player.travelT - dt);
+    if (player.travelT <= 0) {
+      startTravelCooldown();
+      showNotification("Voyage terminé", 2, "info");
+    }
+  } else {
+    player.travelCd = Math.max(0, (player.travelCd || 0) - dt);
+  }
+  // Fortification (Citadel / Citadel+) : 10 s (-50 % gérés dans hurtPlayer),
+  // recharge 360 s.
+  if ((player.fortifyT || 0) > 0) {
+    player.fortifyT = Math.max(0, player.fortifyT - dt);
+    if (player.fortifyT <= 0) {
+      startFortifyCooldown();
+      showNotification("Fortification terminée", 2, "info");
+    }
+  } else {
+    player.fortifyCd = Math.max(0, (player.fortifyCd || 0) - dt);
+  }
+  // Endurance prismatique (Citadel+) : 25 s (-80 % + pénétration gérées
+  // dans hurtPlayer), recharge 200 s.
+  if ((player.prismT || 0) > 0) {
+    player.prismT = Math.max(0, player.prismT - dt);
+    if (player.prismT <= 0) {
+      startPrismCooldown();
+      showNotification("Endurance prismatique terminée", 2, "info");
+    }
+  } else {
+    player.prismCd = Math.max(0, (player.prismCd || 0) - dt);
+  }
+  // Affaiblissement (Diminisher, officiel) : 15 s sur la cible verrouillée
+  // (weaken géré dans damageEnemy), recharge 90 s. Contrecoup officiel à
+  // l'expiration naturelle : -30 % de notre bouclier actuel.
+  if ((player.diminishT || 0) > 0) {
+    player.diminishT = Math.max(0, player.diminishT - dt);
+    // Cible détruite ou disparue : l'effet continue mais ne touche plus rien.
+    if (player.diminishTarget && !(player.diminishTarget.hp > 0)) player.diminishTarget = null;
+    if (player.diminishT <= 0) {
+      player.diminishTarget = null;
+      if (!player.dead && (player.sh || 0) > 0) {
+        const loss = Math.round(Number(player.sh || 0) * DIMINISH_BACKLASH);
+        player.sh = Math.max(0, Number(player.sh || 0) - loss);
+        showNotification(`Affaiblissement terminé : contrecoup -${formatInteger(loss)} bouclier`, 2.5, "info");
+      } else {
+        showNotification("Affaiblissement terminé", 2, "info");
+      }
+      startDiminishCooldown();
+    }
+  } else {
+    player.diminishCd = Math.max(0, (player.diminishCd || 0) - dt);
+  }
+  // DDoL (Disruptor) : 10 s sur la cible verrouillée (jam géré dans
+  // enemyShoot), recharge 60 s.
+  if ((player.ddolT || 0) > 0) {
+    player.ddolT = Math.max(0, player.ddolT - dt);
+    if (player.ddolTarget && !(player.ddolTarget.hp > 0)) player.ddolTarget = null;
+    if (player.ddolT <= 0) {
+      player.ddolTarget = null;
+      startDdolCooldown();
+      showNotification("DDoL terminé", 2, "info");
+    }
+  } else {
+    player.ddolCd = Math.max(0, (player.ddolCd || 0) - dt);
+  }
+  // Redirect (Disruptor) : 5 s (renvoi géré dans hurtPlayer), recharge 40 s.
+  // Sans destinataire valide, les dégâts sont subis normalement.
+  if ((player.redirectT || 0) > 0) {
+    player.redirectT = Math.max(0, player.redirectT - dt);
+    if (player.redirectTarget && !(player.redirectTarget.hp > 0)) player.redirectTarget = null;
+    if (player.redirectT <= 0) {
+      player.redirectTarget = null;
+      startRedirectCooldown();
+      showNotification("Redirection terminée", 2, "info");
+    }
+  } else {
+    player.redirectCd = Math.max(0, (player.redirectCd || 0) - dt);
+  }
+  // Shield Disarray (Disruptor) : 5 s, bouclier rendu à la fin (overlap),
+  // recharge 120 s.
+  if ((player.disarrayT || 0) > 0) {
+    player.disarrayT = Math.max(0, player.disarrayT - dt);
+    if (player.disarrayT <= 0) {
+      try { disarrayRestore(player.disarrayTarget); } catch {}
+      player.disarrayTarget = null;
+      startDisarrayCooldown();
+      showNotification("Désordre terminé : bouclier ennemi restauré", 2, "info");
+    }
+  } else {
+    player.disarrayCd = Math.max(0, (player.disarrayCd || 0) - dt);
+  }
+  // Reallocate (Hammerclaw Plus) : 10 s de cumul (pot alimenté dans
+  // damageEnemy), distribution à la fin, recharge 180 s.
+  if ((player.reallocT || 0) > 0) {
+    player.reallocT = Math.max(0, player.reallocT - dt);
+    if (player.reallocT <= 0) {
+      try { reallocDistribute(); } catch {}
+      startReallocCooldown();
+    }
+  } else {
+    player.reallocCd = Math.max(0, (player.reallocCd || 0) - dt);
+  }
+  // Rayon Hecate : canal 1 hit/s en dégâts croissants (lien rompu = fin).
+  if ((player.hecateT || 0) > 0) {
+    player.hecateT = Math.max(0, player.hecateT - dt);
+    // Ralenti -10 % officiel avec sprite (circuit rocketSlow, sans écraser
+    // un ralenti plus fort). Retombe seul à la fin du canal.
+    player.rocketSlowT = Math.max(Number(player.rocketSlowT || 0), 1.0);
+    player.rocketSlowPct = Math.max(Number(player.rocketSlowPct || 0), 10);
+    const htgt = player.hecateTarget;
+    if (!htgt || !(htgt.hp > 0) || hecateOutOfRange(htgt)) {
+      player.hecateT = 0;
+      player.hecateTarget = null;
+      player.hecateHit = 0;
+      startHecateCooldown();
+      showNotification(!htgt || !(htgt.hp > 0) ? "Faisceau terminé (cible détruite)" : "Faisceau rompu (hors de portée)", 2, "info");
+    } else {
+      player.hecateAcc = Number(player.hecateAcc || 0) + dt;
+      if (player.hecateAcc >= 1) {
+        player.hecateAcc -= 1;
+        try { hecateBeamTick(); } catch {}
+      }
+      if (player.hecateT <= 0) {
+        player.hecateTarget = null;
+        player.hecateHit = 0;
+        startHecateCooldown();
+        showNotification("Faisceau terminé", 2, "info");
+      }
+    }
+  } else {
+    player.hecateCd = Math.max(0, (player.hecateCd || 0) - dt);
+  }
+  // Stockpile (Hecate Plus) : 10 s de force bouclier, recharge 0 s.
+  // Les charges sont déjà à 0 (remises à l'activation) : à la fin on
+  // retombe sur la portée d'origine via stockUpdateRange.
+  if ((player.stockT || 0) > 0) {
+    player.stockT = Math.max(0, player.stockT - dt);
+    if (player.stockT <= 0) {
+      player.stockShieldPct = 0;
+      try { stockUpdateRange(); } catch {}
+      showNotification("Stockpile terminé", 2, "info");
+    }
+  }
+  // Nébuleuse toxique (Basilisk) : 10 s d'effet, dégâts chaque seconde.
+  if ((player.nebT || 0) > 0) {
+    player.nebT = Math.max(0, player.nebT - dt);
+    player.nebAcc = Number(player.nebAcc || 0) + dt;
+    if (player.nebAcc >= 1) {
+      player.nebAcc -= 1;
+      try { nebulaDamageTick(); } catch {}
+    }
+    if (player.nebT <= 0) {
+      player.nebX = null;
+      player.nebY = null;
+      clearNebulaStacks();
+      startNebulaCooldown();
+      showNotification("Nébuleuse dissipée", 2, "info");
+    }
+  } else {
+    player.nebCd = Math.max(0, (player.nebCd || 0) - dt);
+  }
+  // Réparation coque (Aegis, officiel) : allié 40k/s, soi 20k/s (140k/7 s).
+  if ((player.healHpT || 0) > 0) {
+    player.healHpT = Math.max(0, player.healHpT - dt);
+    player.healHpAcc = Number(player.healHpAcc || 0) + dt;
+    if (player.healHpAcc >= 1) {
+      player.healHpAcc -= 1;
+      try { healAllyOrSelf(HP_REPAIR_AMOUNT, HP_REPAIR_SELF, false); } catch {}
+    }
+    if (player.healHpT <= 0) {
+      startHpRepairCooldown();
+      showNotification("Réparation coque terminée", 2, "info");
+    }
+  } else {
+    player.healHpCd = Math.max(0, (player.healHpCd || 0) - dt);
+  }
+  // Réparation bouclier (Aegis, officiel) : allié 25k/s, soi 15k/s (75k/5 s).
+  if ((player.healShT || 0) > 0) {
+    player.healShT = Math.max(0, player.healShT - dt);
+    player.healShAcc = Number(player.healShAcc || 0) + dt;
+    if (player.healShAcc >= 1) {
+      player.healShAcc -= 1;
+      try { healAllyOrSelf(SH_REPAIR_AMOUNT, SH_REPAIR_SELF, true); } catch {}
+    }
+    if (player.healShT <= 0) {
+      startShRepairCooldown();
+      showNotification("Réparation bouclier terminée", 2, "info");
+    }
+  } else {
+    player.healShCd = Math.max(0, (player.healShCd || 0) - dt);
+  }
 
   fireCooldown = Math.max(0, fireCooldown - dt);
   laserCd = Math.max(0, laserCd - dt);
@@ -19848,7 +22658,16 @@ if (moveTarget.active && !player.dead) {
   }
 }
 
-updatePlayerVelocity(player, { x: mx, y: my }, dt);
+  updatePlayerVelocity(player, { x: mx, y: my }, dt);
+
+  // Fortification (officiel) : vitesse plafonnée à 200 pendant l'effet.
+  if ((player.fortifyT || 0) > 0) {
+    const spd = Math.hypot(Number(player.vx || 0), Number(player.vy || 0));
+    if (spd > FORTIFY_MAX_SPEED) {
+      player.vx *= FORTIFY_MAX_SPEED / spd;
+      player.vy *= FORTIFY_MAX_SPEED / spd;
+    }
+  }
 
   if (!player.dead) {
     advancePlayerToTarget(player, moveTarget, dt);
@@ -20213,8 +23032,8 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     if (b.isLauncherRocket && !b.visual) {
       launcherImpact = registerLauncherRocketImpact(b);
       if (!launcherImpact.final) {
-        if (b.miss && !b.ownerEscortId) playPlayerLaserHit();
-        else if (!b.ownerEscortId) playRocketImpactStaggered(b.volleyId);
+        // ✅ MISS = silencieux (ni laser ni roquette).
+        if (!b.miss && !b.ownerEscortId) playRocketImpactStaggered(b.volleyId);
         spawnExplosion(b.x, b.y, 0.2);
         removeProjectile(bullets, i);
         cleanupPlayerMissVolley(b);
@@ -20223,10 +23042,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     }
 
     if (b.miss) {
-      // ✅ MISS : le tir "touche" mais ne tue pas → son laser hit
-      // (jamais pour les escortes : impacts silencieux).
-      if (!b.visual && !b.ownerEscortId) playPlayerLaserHit();
-
+      // ✅ MISS = silencieux (ni laser ni roquette).
       showPlayerMissOnce(b, t);
 
       if (b.isRocket) spawnExplosion(b.x, b.y, 0.2);
@@ -20371,14 +23187,15 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
             b._bubblePlayed = true;
             spawnShipDamage(b.x, b.y);
           }
-          hurtPlayer(b.dmg);
+          hurtPlayer(b.dmg, b.ownerId != null ? enemies.find((x) => x?.id === b.ownerId) || null : null);
           // Dégâts réellement reçus → le P.E.T pourra riposter sur ce NPC.
           if (b.ownerId != null) {
             notePetAttacker(enemies.find((x) => x?.id === b.ownerId) || null);
           }
         }
         else {
-          damagePlayerLayers(bulletTarget, b.dmg);
+          const ownerNpc = b.ownerId != null ? enemies.find((x) => x?.id === b.ownerId) || null : null;
+          damagePlayerLayers(bulletTarget, redirectProtectionDamage(bulletTarget, b.dmg, ownerNpc));
           if (bulletTarget.hp <= 0) destroyEscort(bulletTarget);
         }
         if (b.isRocket) spawnExplosion(bulletTarget.x, bulletTarget.y, 0.25);
@@ -20408,7 +23225,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
     const radius = Number(config.healPulseRadius ?? 300);
     const radius2 = radius * radius;
     const amountPct = Number(config.healPulsePct ?? 0.1);
-    healerPulses.push({ x: healer.x, y: healer.y, radius, t: 0, life: 0.8 });
+    healerPulses.push({ x: healer.x, y: healer.y, radius, t: 0, life: 0.8, follow: healer });
     for (const ally of enemies) {
       if (!ally || ally === healer || ally.hp <= 0 || ally.type === "npc_Streuner_Aider") continue;
       const dx = ally.x - healer.x;
@@ -20418,7 +23235,20 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
       ally._healthRevealed = true;
     }
   }
+  // Les halos suivent leur source en mouvement (Aider, pet) : le pod posé
+  // reste fixe, lui.
+  for (const pulse of healerPulses) {
+    const src = pulse.follow;
+    if (!src) continue;
+    if (src.hp > 0) { pulse.x = src.x; pulse.y = src.y; }
+    else pulse.t = pulse.life;
+  }
+  for (const pulse of haloPulses) {
+    if (pulse.follow === "pet" && petState.ready) { pulse.x = petState.x; pulse.y = petState.y; }
+    else if (pulse.follow === "player" && !player.dead) { pulse.x = player.x; pulse.y = player.y; }
+  }
   tickLifetimeItems(healerPulses, dt, pulse => pulse.life);
+  tickLifetimeItems(haloPulses, dt, pulse => pulse.life);
   const lockedNpcForActivity = Target.get();
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
@@ -20641,6 +23471,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
     e.empT = Math.max(0, (e.empT || 0) - dt);
     const emp = (e.empT || 0) > 0;
+    // Redirect (Disruptor) : lasers désactivés (décrémenté comme l'IEM).
+    e.redirectSilenceT = Math.max(0, (e.redirectSilenceT || 0) - dt);
 
     e.rocketSlowT = Math.max(0, (e.rocketSlowT || 0) - dt);
     if (e.rocketSlowT <= 0) e.rocketSlowPct = 0;
@@ -20866,8 +23698,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           const d2K = dist2(e.x, e.y, player.x, player.y);
           if (d2K <= rrK * rrK) {
             spawnExplosion(e.x, e.y, 1.4);
-            const dmgK = Number(cfgE.explodeDmg || 12000);
-            hurtPlayer(dmgK);
+            const dmgK = Number(cfgTouch.explodeDmg || 12000);
+            hurtPlayer(dmgK, e);
             // Souffle de l'explosion : ralenti 3 s (joueur + P.E.T via
             // ownerSpeed), même sous iFrames, avec sprite SLOW_EFFECT.
             player.rocketSlowT = Math.max(Number(player.rocketSlowT || 0), KAMIKAZE_SLOW_SEC);
@@ -20949,7 +23781,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             spawnExplosion(e.x, e.y, 1.4);
 
             const dmg = Number(cfgTouch.explodeDmg || 12000);
-            hurtPlayer(dmg);
+            hurtPlayer(dmg, e);
         notePetAttacker(e);
 
         e.hp = 0;
@@ -21062,25 +23894,15 @@ if (GAME_SETTINGS.textures) {
     const y = pulse.y + oy;
     const k = clamp(pulse.t / pulse.life, 0, 1);
     if (x < -pulse.radius || y < -pulse.radius || x > innerWidth + pulse.radius || y > innerHeight + pulse.radius) continue;
-    ctx.save();
-    ctx.globalAlpha = (1 - k) * 0.78;
-    const innerRadius = pulse.radius * (0.2 + k * 0.8);
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, innerRadius);
-    gradient.addColorStop(0, `rgba(55,255,125,${0.48 * (1 - k)})`);
-    gradient.addColorStop(0.72, `rgba(55,255,125,${0.25 * (1 - k)})`);
-    gradient.addColorStop(1, "rgba(80,255,145,0)");
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(x, y, innerRadius, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(80,255,145,0.95)";
-    ctx.lineWidth = 6 - k * 3;
-    ctx.shadowColor = "rgba(80,255,145,0.8)";
-    ctx.shadowBlur = 16;
-    ctx.beginPath();
-    ctx.arc(x, y, innerRadius, 0, TAU);
-    ctx.stroke();
-    ctx.restore();
+    drawHaloPulse(x, y, pulse.radius, k, "55,255,125", "80,255,145");
+  }
+  // Pulsations génériques (pod Aegis, bouées pet) : mêmes règles d'affichage.
+  for (const pulse of haloPulses) {
+    const x = pulse.x + ox;
+    const y = pulse.y + oy;
+    const k = clamp(pulse.t / pulse.life, 0, 1);
+    if (x < -pulse.radius || y < -pulse.radius || x > innerWidth + pulse.radius || y > innerHeight + pulse.radius) continue;
+    drawHaloPulse(x, y, pulse.radius, k, pulse.fill, pulse.edge, pulse.alpha ?? 1, pulse.maxWidth ?? 6);
   }
   for (const e of enemies) {
     if (e.hp <= 0) continue;
@@ -21104,6 +23926,83 @@ if (GAME_SETTINGS.textures) {
     if (GAME_SETTINGS.shipSmoke) npcEngine.draw(ctx, e, enemyConfig, isImgReady, enemySpriteFrame);
     drawUberPirateGlow(e);
     drawRocketDebuffEffect(e);
+    // Affaiblissement (Diminisher) : sprite joué par-dessus le vaisseau
+    // de la cible verrouillée, en boucle pendant l'effet.
+    if ((player.diminishT || 0) > 0 && player.diminishTarget === e && e.hp > 0) {
+      const dFrame = (Math.floor(performance.now() / 1000 * DIMINISH_FPS) % DIMINISH_FRAMES) + 1;
+      const dSrc = `ASSETS/APTITUDES/DIMINISHER_WEAKEN_SHIELDS/${dFrame}.png`;
+      const dImg = getCachedImage(dSrc);
+      if (isImgReady(dImg)) {
+        drawCenteredImage(ctx, dImg, 200, 200);
+      } else {
+        try { loadImage(dSrc, { priority: true }); } catch {}
+      }
+    }
+    // DDoL (Disruptor) : sprite joué par-dessus le vaisseau de la cible
+    // verrouillée, en boucle pendant l'effet.
+    if ((player.ddolT || 0) > 0 && player.ddolTarget === e && e.hp > 0) {
+      const jFrame = (Math.floor(performance.now() / 1000 * DDOL_FPS) % DDOL_FRAMES) + 1;
+      const jSrc = `ASSETS/APTITUDES/DISRUPTOR_DDOL/${jFrame}.png`;
+      const jImg = getCachedImage(jSrc);
+      if (isImgReady(jImg)) {
+        drawCenteredImage(ctx, jImg, 250, 250);
+      } else {
+        try { loadImage(jSrc, { priority: true }); } catch {}
+      }
+    }
+    // Shield Disarray (Disruptor) : grosse cible bleue animée sur l'ennemi,
+    // à la taille de son sprite (en plus du lock) : anneau fixe + arcs
+    // contra-rotatifs + ticks orbitaux, en boucle pendant l'effet.
+    if ((player.disarrayT || 0) > 0 && player.disarrayTarget === e && e.hp > 0) {
+      const size = enemySpriteSize(e);
+      const r = Math.max(48, Math.max(size.w, size.h) / 2 + 30);
+      const t = performance.now() / 1000;
+      const pulse = 0.55 + petLocatorPulse() * 0.3;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, pulse));
+      ctx.strokeStyle = "rgba(90,170,255,0.95)";
+      // Anneau de base (fixe, fin).
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, TAU);
+      ctx.stroke();
+      // Arcs tournants (horaire) : pointillés qui défilent.
+      ctx.lineWidth = 5;
+      ctx.setLineDash([r * 0.5, r * 0.35]);
+      ctx.lineDashOffset = -t * r * 0.9;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, TAU);
+      ctx.stroke();
+      // Arcs contra-rotatifs (rayon intérieur).
+      ctx.lineWidth = 4;
+      ctx.setLineDash([r * 0.3, r * 0.45]);
+      ctx.lineDashOffset = t * r * 1.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.72, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // 4 ticks orbitaux (croix de visée tournante).
+      const a1 = t * 1.8;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      for (let k = 0; k < 4; k++) {
+        const a = a1 + k * Math.PI / 2;
+        const c = Math.cos(a), s = Math.sin(a);
+        ctx.moveTo(c * (r - 6), s * (r - 6));
+        ctx.lineTo(c * (r + 18), s * (r + 18));
+      }
+      ctx.stroke();
+      // 3 points orbitaux (sens inverse).
+      ctx.fillStyle = "rgba(140,200,255,0.95)";
+      const a2 = -t * 2.6;
+      for (let k = 0; k < 3; k++) {
+        const a = a2 + k * TAU / 3;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * r * 0.72, Math.sin(a) * r * 0.72, 4, 0, TAU);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
 
     drawNpcStatus(
       ctx,
@@ -21215,10 +24114,21 @@ if (GAME_SETTINGS.textures) {
     // Camouflage ultime : vaisseau + drones à 50 % d'opacité.
     if (isPlayerCloaked()) ctx.globalAlpha = 0.5;
     ctx.translate(px, py);
+    // Redirect (Disruptor) : le vaisseau clignote pendant l'effet.
+    if ((player.redirectT || 0) > 0) {
+      ctx.globalAlpha *= (Math.sin(performance.now() / 1000 * 14) > 0 ? 1 : 0.45);
+    }
     
     const tt = performance.now() / 1000;
     const bobY = Math.sin(tt * 4.0) * 2 * idleSway;
     ctx.translate(0, bobY);
+
+    // BSK (Berserker) : tremblement croissant avec la progression (30 s).
+    if ((player.bskT || 0) > 0) {
+      const bskProg = 1 - player.bskT / BSK_DURATION;
+      const mag = 1 + 5 * bskProg;
+      ctx.translate((Math.random() * 2 - 1) * mag, (Math.random() * 2 - 1) * mag);
+    }
 
     drawPlayerDrones();
     const ok = drawPlayerBody();
@@ -21240,6 +24150,80 @@ if (GAME_SETTINGS.textures) {
     // Comme dans le client officiel, la flamme recouvre sa sortie de réacteur.
     drawShipEngineFx();
 
+// Pod de réparation : complétion visuelle des coques Aegis, par-dessus.
+    drawAegisRepairPod();
+
+    // BSK (Berserker) : contour orange-rouge pulsé de plus en plus vite
+    // (même contour évidé que les ubers, corrélé au tremblement).
+    if ((player.bskT || 0) > 0) {
+      const bskProg = 1 - player.bskT / BSK_DURATION;
+      const bPack = ACTIVE_SHIP || SHIP_PACKS[0];
+      const bIdx = getPlayerSpriteFrame();
+      const bShipImg = (playerImgs[bIdx] || playerImgs[0]);
+      if (isImgReady(bShipImg)) {
+        const bw = bPack.w ?? 170, bh = bPack.h ?? 170;
+        // Contour évidé style ubers : silhouette teintée puis coque redessinée
+        // par-dessus (seul le liseré reste visible, pas le vaisseau entier).
+        const sil = outlineSilhouette(`ship:${bPack?.id || "player"}:${bIdx}`, bShipImg, bw, bh, "#ff4416");
+        const bPulse = 0.65 + Math.sin(performance.now() / 1000 * (5 + 9 * bskProg)) * 0.25;
+        strokeOutlineCentered(sil, bw, bh, "#ff4416", bPulse);
+        drawCenteredImage(ctx, bShipImg, bw, bh);
+      }
+    }
+
+    // RVG (Berserker) : même contour en bleu ciel / turquoise / cyan (6 s).
+    if ((player.rvgT || 0) > 0) {
+      const bPack = ACTIVE_SHIP || SHIP_PACKS[0];
+      const bIdx = getPlayerSpriteFrame();
+      const bShipImg = (playerImgs[bIdx] || playerImgs[0]);
+      if (isImgReady(bShipImg)) {
+        const bw = bPack.w ?? 170, bh = bPack.h ?? 170;
+        const sil = outlineSilhouette(`ship:${bPack?.id || "player"}:${bIdx}`, bShipImg, bw, bh, "#7cf0ff");
+        strokeOutlineCentered(sil, bw, bh, "#7cf0ff", petLocatorPulse());
+        drawCenteredImage(ctx, bShipImg, bw, bh);
+      }
+    }
+
+    // Fortification (Citadel / Citadel+) : contour uber blanc clignotant (10 s).
+    if ((player.fortifyT || 0) > 0) {
+      const fPack = ACTIVE_SHIP || SHIP_PACKS[0];
+      const fIdx = getPlayerSpriteFrame();
+      const fShipImg = (playerImgs[fIdx] || playerImgs[0]);
+      if (isImgReady(fShipImg)) {
+        const fw = fPack.w ?? 170, fh = fPack.h ?? 170;
+        const sil = outlineSilhouette(`ship:${fPack?.id || "player"}:${fIdx}`, fShipImg, fw, fh, "#ffffff");
+        const blink = Math.sin(performance.now() / 1000 * 10) > 0 ? 0.95 : 0.2;
+        strokeOutlineCentered(sil, fw, fh, "#ffffff", blink);
+        drawCenteredImage(ctx, fShipImg, fw, fh);
+      }
+    }
+
+    // Endurance prismatique (Citadel+) : sprite spectrum en boucle
+    // par-dessus le vaisseau (25 s).
+    if ((player.prismT || 0) > 0) {
+      const pFrame = (Math.floor(performance.now() / 1000 * PRISM_FPS) % PRISM_FRAMES) + 1;
+      const pSrc = `ASSETS/APTITUDES/SPECTRUM_PRISMATIC_SHIELDING/${pFrame}.png`;
+      const pImg = getCachedImage(pSrc);
+      if (isImgReady(pImg)) {
+        drawCenteredImage(ctx, pImg, 200, 200);
+      } else {
+        try { loadImage(pSrc, { priority: true }); } catch {}
+      }
+    }
+
+    // Redirect (Disruptor) : contour jaune poussin très léger (5 s).
+    if ((player.redirectT || 0) > 0) {
+      const rPack = ACTIVE_SHIP || SHIP_PACKS[0];
+      const rIdx = getPlayerSpriteFrame();
+      const rShipImg = (playerImgs[rIdx] || playerImgs[0]);
+      if (isImgReady(rShipImg)) {
+        const rw = rPack.w ?? 170, rh = rPack.h ?? 170;
+        const sil = outlineSilhouette(`ship:${rPack?.id || "player"}:${rIdx}`, rShipImg, rw, rh, "#ffedb0");
+        strokeOutlineCentered(sil, rw, rh, "#ffedb0", 0.3 + petLocatorPulse() * 0.15);
+        drawCenteredImage(ctx, rShipImg, rw, rh);
+      }
+    }
+
     // ✅ FX réparation par-dessus le vaisseau
     drawRepairOrbitFxLocal();
 
@@ -21255,6 +24239,78 @@ if (GAME_SETTINGS.textures) {
     // ✅ Ralenti Kamikaze : sprite SLOW_EFFECT officiel autour du vaisseau.
     if ((player.rocketSlowT || 0) > 0) drawRocketDebuffEffect(player);
 
+    // BSK (Berserker) : sprite 83 frames par-dessus le vaisseau et les effets.
+    if ((player.bskT || 0) > 0) {
+      const bFrame = (Math.floor(performance.now() / 1000 * BSK_FPS) % BSK_FRAMES) + 1;
+      const bSrc = `ASSETS/APTITUDES/BERSERKER_BERSERK_EFFECT/${bFrame}.png`;
+      const bImg = getCachedImage(bSrc);
+      if (isImgReady(bImg)) {
+        drawCenteredImage(ctx, bImg, 226, 226);
+      } else {
+        try { loadImage(bSrc, { priority: true }); } catch {}
+      }
+    }
+
+    // Stockpile (Hecate Plus) : sprite 25 frames en boucle sur le vaisseau
+    // pendant les 10 s d'effet.
+    if ((player.stockT || 0) > 0) {
+      const sFrame = (Math.floor(performance.now() / 1000 * STOCKPILE_FPS) % STOCKPILE_FRAMES) + 1;
+      const sSrc = `ASSETS/APTITUDES/HECATE_PLUS_STOCKPILE/${sFrame}.png`;
+      const sImg = getCachedImage(sSrc);
+      if (isImgReady(sImg)) {
+        drawCenteredImage(ctx, sImg, 256, 256);
+      } else {
+        try { loadImage(sSrc, { priority: true }); } catch {}
+      }
+    }
+
+    // Draw Fire (Citadel / Citadel+) : sprite ignifuge en boucle par-dessus
+    // le vaisseau + halo violet foncé qui aspire (extérieur → intérieur).
+    if ((player.drawFireT || 0) > 0) {
+      const dFrame = (Math.floor(performance.now() / 1000 * DRAW_FIRE_FPS) % DRAW_FIRE_FRAMES) + 1;
+      const dSrc = `ASSETS/APTITUDES/CITADEL_IGNIFUGE/${dFrame}.png`;
+      const dImg = getCachedImage(dSrc);
+      if (isImgReady(dImg)) {
+        drawCenteredImage(ctx, dImg, 256, 256);
+      } else {
+        try { loadImage(dSrc, { priority: true }); } catch {}
+      }
+      // Halo aspirant : une pulsation par seconde, l'anneau naît au bord du
+      // rayon (600) et se referme au centre du vaisseau (inverse du halo qui pulse).
+      const suckProg = (performance.now() / 1000) % 1;
+      const suckR = Math.max(4, DRAW_FIRE_RADIUS * (1 - suckProg));
+      const suckA = (0.25 + suckProg * 0.55);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, suckA));
+      try {
+        ctx.drawImage(haloGlowSprite("120,60,200"), -suckR, -suckR, suckR * 2, suckR * 2);
+      } catch {}
+      ctx.strokeStyle = "rgba(150,100,255,0.95)";
+      ctx.lineWidth = Math.max(0.5, 2 + suckProg * 4);
+      ctx.beginPath();
+      ctx.arc(0, 0, suckR, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Reallocate (Hammerclaw Plus) : halo vert qui aspire (extérieur →
+    // intérieur), une pulsation par seconde pendant l'effet.
+    if ((player.reallocT || 0) > 0) {
+      const rProg = (performance.now() / 1000) % 1;
+      const rR = Math.max(4, REALLOC_RADIUS * (1 - rProg));
+      const rA = (0.25 + rProg * 0.55);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, rA));
+      try {
+        ctx.drawImage(haloGlowSprite("55,255,125"), -rR, -rR, rR * 2, rR * 2);
+      } catch {}
+      ctx.strokeStyle = "rgba(80,255,145,0.95)";
+      ctx.lineWidth = Math.max(0.5, 2 + rProg * 4);
+      ctx.beginPath();
+      ctx.arc(0, 0, rR, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     ctx.restore();
     ctx.globalAlpha = 1;
   }
@@ -21262,6 +24318,123 @@ if (GAME_SETTINGS.textures) {
   // ✅ bubble d'impact PAR-DESSUS le vaisseau : elle reste visible même si
   // le point d'impact est sur la silhouette du vaisseau.
   drawShipDamages(ox, oy);
+
+  // Pod de réparation posé (Aegis) + halo vert.
+  try { drawDeployedPod(ox, oy); } catch {}
+  // Pod Hammerclaw : même sprite + halo vert, valeurs propres.
+  try { drawDeployedHammerPod(ox, oy); } catch {}
+  // Nébuleuse toxique posée (Basilisk).
+  try { drawDeployedNebula(ox, oy); } catch {}
+  // SHL (Berserker) : lien visible entre le vaisseau et la cible.
+  // Même zigzag électrique que le lien du REX, mais en violet.
+  try {
+    const linkTgt = player.linkTarget;
+    if ((player.shlT || 0) > 0 && linkTgt && linkTgt.hp > 0) {
+      const x1 = player.x + ox, y1 = player.y + oy;
+      const x2 = linkTgt.x + ox, y2 = linkTgt.y + oy;
+      const dx = x2 - x1, dy = y2 - y1;
+      const len = Math.hypot(dx, dy);
+      if (len >= 1) {
+        const nx = -dy / len, ny = dx / len;
+        const segs = 9;
+        const pass = (color, width, amp) => {
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          ctx.lineJoin = "round";
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 14;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          for (let i = 1; i < segs; i++) {
+            const t = i / segs;
+            const off = (Math.random() * 2 - 1) * amp * Math.sin(t * Math.PI);
+            ctx.lineTo(x1 + dx * t + nx * off, y1 + dy * t + ny * off);
+          }
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+          ctx.restore();
+        };
+        pass("rgba(190,120,255,0.85)", 5, 30);
+        pass("rgba(255,255,255,0.9)", 2, 30);
+        for (const [hx, hy] of [[x1, y1], [x2, y2]]) {
+          const glow = ctx.createRadialGradient(hx, hy, 0, hx, hy, 34);
+          glow.addColorStop(0, "rgba(200,150,255,0.5)");
+          glow.addColorStop(1, "rgba(200,150,255,0)");
+          ctx.save();
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(hx, hy, 34, 0, TAU);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+  } catch {}
+
+  // Rayon Hecate : faisceau canalisé entre nous et la cible (droit, avec
+  // flux d'énergie vers la cible + halos aux deux bouts).
+  try {
+    const hTgt = player.hecateTarget;
+    if ((player.hecateT || 0) > 0 && hTgt && hTgt.hp > 0) {
+      const x1 = player.x + ox, y1 = player.y + oy;
+      const x2 = hTgt.x + ox, y2 = hTgt.y + oy;
+      if (Math.hypot(x2 - x1, y2 - y1) >= 1) {
+        const t = performance.now() / 1000;
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.lineCap = "round";
+        // Halo large.
+        ctx.strokeStyle = "rgba(170,90,255,0.22)";
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        // Faisceau mid.
+        ctx.strokeStyle = "rgba(200,140,255,0.65)";
+        ctx.lineWidth = 4;
+        ctx.shadowColor = "rgba(180,110,255,1)";
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        // Flux d'énergie vers la cible (pointillés qui défilent).
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = "rgba(230,200,255,0.9)";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([16, 14]);
+        ctx.lineDashOffset = -t * 160;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Cœur blanc.
+        ctx.strokeStyle = "rgba(255,255,255,0.95)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.restore();
+        // Halos aux deux bouts.
+        for (const [hx, hy, rr] of [[x1, y1, 30], [x2, y2, 42]]) {
+          const glow = ctx.createRadialGradient(hx, hy, 0, hx, hy, rr);
+          glow.addColorStop(0, "rgba(190,130,255,0.55)");
+          glow.addColorStop(1, "rgba(190,130,255,0)");
+          ctx.save();
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(hx, hy, rr, 0, TAU);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+  } catch {}
 
   // L'IEM reste centrée sur le joueur et se dessine au-dessus du vaisseau.
   drawPulseFx(ox, oy);
@@ -21646,6 +24819,30 @@ const performanceMonitor = createPerformanceMonitor();
 let frameRequestId = 0;
 let backgroundFrameTimer = 0;
 let frameScheduleGeneration = 0;
+// Limiteur FPS : 0 = illimité (boucle libre sans vsync : dépasse les Hz,
+// tearing possible, c'est voulu). Un palier se fait en sautant des vsync
+// (pas de timer : stable, pas de drift, pas de tearing).
+let lastFrameStart = 0;
+// MessageChannel = pas de clamp 4 ms des setTimeout imbriqués, donc la boucle
+// libre monte bien au-delà des Hz (là où setTimeout plafonnerait vers 250).
+let fpsFreeChannel = null;
+let fpsFreePendingGeneration = 0;
+
+function ensureFpsFreeChannel() {
+  if (fpsFreeChannel || typeof MessageChannel === "undefined") return fpsFreeChannel;
+  try {
+    fpsFreeChannel = new MessageChannel();
+    fpsFreeChannel.port1.onmessage = () => {
+      frameRequestId = 0;
+      const generation = fpsFreePendingGeneration;
+      fpsFreePendingGeneration = 0;
+      if (generation === frameScheduleGeneration) frame(performance.now());
+    };
+  } catch {
+    fpsFreeChannel = null;
+  }
+  return fpsFreeChannel;
+}
 
 function scheduleNextFrame() {
   const generation = frameScheduleGeneration;
@@ -21656,22 +24853,48 @@ function scheduleNextFrame() {
     }, 33);
     return;
   }
+  const limit = normalizeFpsLimit(GAME_SETTINGS?.fpsLimit);
+  if (limit === 0) {
+    // Illimité : on ne passe plus par rAF (qui est calé sur les Hz).
+    const channel = ensureFpsFreeChannel();
+    if (channel) {
+      fpsFreePendingGeneration = generation;
+      frameRequestId = -1;
+      channel.port2.postMessage(0);
+    } else {
+      frameRequestId = setTimeout(() => {
+        frameRequestId = 0;
+        if (generation === frameScheduleGeneration) frame(performance.now());
+      }, 0);
+    }
+    return;
+  }
   frameRequestId = requestAnimationFrame((t) => {
     frameRequestId = 0;
-    if (generation === frameScheduleGeneration) frame(t);
+    if (generation !== frameScheduleGeneration) return;
+    if (t - lastFrameStart < 1000 / limit - 0.5) {
+      scheduleNextFrame();
+      return;
+    }
+    frame(t);
   });
 }
 
 function restartFrameScheduler() {
   frameScheduleGeneration++;
-  if (frameRequestId) cancelAnimationFrame(frameRequestId);
+  if (frameRequestId > 0) {
+    cancelAnimationFrame(frameRequestId);
+    clearTimeout(frameRequestId);
+  }
   if (backgroundFrameTimer) clearTimeout(backgroundFrameTimer);
   frameRequestId = 0;
   backgroundFrameTimer = 0;
+  fpsFreePendingGeneration = 0;
   scheduleNextFrame();
 }
 
 function frame(t) {
+  lastFrameStart = t;
   const realDt = Math.max(0, (t - last) / 1000);
   last = t;
   performanceMonitor.record(realDt);
@@ -21999,6 +25222,18 @@ window.addEventListener("orbit:user-updated", event => {
   const switched = previousHangar?.id === nextHangar?.id
     && Number(previousHangar?.activeConfig) !== Number(nextHangar?.activeConfig);
   if (started && switched) saveShieldForConfig(previousHangar.activeConfig);
+  // ✅ Changement de vaisseau sans refresh (overlay intégré) : resynchronise
+  // le hangar verrouillé de l'onglet et vide le cache de boucliers par config
+  // (il appartient à l'ancien vaisseau). Sans ça, le changement de config
+  // suivant écrivait sur l'ancien hangar : CD mis mais config inchangée.
+  try {
+    const nextHangarId = nextHangar?.id ?? null;
+    if (nextHangarId && nextHangarId !== SESSION_HANGAR_ID) {
+      SESSION_HANGAR_ID = nextHangarId;
+      CONFIG_SHIELDS["1"] = null;
+      CONFIG_SHIELDS["2"] = null;
+    }
+  } catch {}
   account.user = refreshed;
   // Changement de vaisseau : account.user est déjà muté ici (cache partagé
   // de readUsers), on compare donc au dernier vaisseau vu par la palette.

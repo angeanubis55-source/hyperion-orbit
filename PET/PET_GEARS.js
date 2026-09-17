@@ -47,7 +47,7 @@ export const PET_GEAR_HPLINK_COOLDOWN_SEC = 240;
 // Bouées (G-BC combat / G-BH coque, niveau unique) : le REX colle le joueur
 // en passif, halo continu de 500. Dedans : +5 % dégâts (rouge) / +5 % PV max (vert).
 // Durée 120 s, cooldown 240 s.
-export const PET_BUOY_RADIUS = 500;
+export const PET_BUOY_RADIUS = 400;
 export const PET_BUOY_DURATION_SEC = 120;
 export const PET_BUOY_COOLDOWN_SEC = 240;
 export const PET_BUOY_DAMAGE_PCT = 5;

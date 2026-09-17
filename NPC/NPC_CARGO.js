@@ -92,6 +92,29 @@ const BASE_CARGO = Object.freeze({
   npc_Styxus: Object.freeze({ ...tri(300, 300, 300), prometid: 128, duranium: 128, promerium: 16 }),
   npc_Charopos: Object.freeze({ ...tri(300, 300, 300), prometid: 128, duranium: 128, promerium: 16 }),
   npc_Lanatum: Object.freeze({ ...tri(300, 300, 300), prometid: 128, duranium: 128, promerium: 16 }),
+  // Hitac (échelle Ice_Meteoroid, ~ par durabilité).
+  npc_Hitac_2_0: Object.freeze({ ...tri(4800, 4800, 4800), prometid: 2048, duranium: 2048, promerium: 256, xenomit: 512 }),
+  npc_Hitac_2_5: Object.freeze({ ...tri(3600, 3600, 3600), prometid: 1536, duranium: 1536, promerium: 192, xenomit: 384 }),
+  npc_Hitac_Minion_2_0: Object.freeze({ ...tri(3600, 3600, 3600), prometid: 1536, duranium: 1536, promerium: 192, xenomit: 384 }),
+  npc_Hitac_Minion_2_5: Object.freeze({ ...tri(2400, 2400, 2400), prometid: 1024, duranium: 1024, promerium: 128, xenomit: 256 }),
+  npc_Hitac_Underling: Object.freeze({ ...tri(300, 300, 300), prometid: 128, duranium: 128, promerium: 16 }),
+  npc_Hitac_Underboss: Object.freeze({ ...tri(300, 300, 300), prometid: 128, duranium: 128, promerium: 16 }),
+  npc_I_Hitac: Object.freeze({ ...tri(300, 300, 300), prometid: 128, duranium: 128, promerium: 16 }),
+  // Skoll (~ niveau Ice_Meteoroid, xenomit réduit : pas de fiche wiki).
+  npc_Skoll: Object.freeze({ ...tri(4800, 4800, 4800), prometid: 2048, duranium: 2048, promerium: 256, xenomit: 512 }),
+  npc_Skoll_280: Object.freeze({ ...tri(4800, 4800, 4800), prometid: 2048, duranium: 2048, promerium: 256, xenomit: 512 }),
+  // Curcubitor (event, ~ niveau Kristallin).
+  npc_Curcubitor: Object.freeze({ ...tri(100, 100, 100), prometid: 16, duranium: 16, promerium: 1 }),
+  npc_Boss_Curcubitor: Object.freeze({ ...tri(400, 400, 400), prometid: 64, duranium: 64, promerium: 4, xenomit: 8 }),
+  npc_Frightful_Curcubitor: Object.freeze({ ...tri(300, 300, 300), prometid: 128, duranium: 128, promerium: 16 }),
+  // Plutus Warhead / Synk (~ niveau Lanternfish/Barb).
+  npc_Plutus_Warhead: Object.freeze({ ...tri(800, 800, 800), prometid: 128, duranium: 128, promerium: 8, xenomit: 16 }),
+  npc_Synk: Object.freeze({ ...tri(800, 800, 800), prometid: 128, duranium: 128, promerium: 8, xenomit: 16 }),
+  // Demaner Freighter (~ niveau Emperor_Sibelon / 2).
+  npc_Demaner_Freighter: Object.freeze({ ...tri(2400, 2400, 2400), prometid: 1024, duranium: 1024, promerium: 128, xenomit: 128 }),
+  // Éclaireurs / roquettes (~ niveau Sibelon).
+  npc_Streuner_Rocketeer: Object.freeze({ ...tri(200, 200, 200), prometid: 32, duranium: 32, promerium: 4 }),
+  npc_Seeker_Rocket: Object.freeze({ ...tri(200, 200, 200), prometid: 32, duranium: 32, promerium: 4 }),
   // Famille Cyborg custom (~ niveau Kristallin, pas de fiche wiki).
   npc_Troublemaker_Cyborg: Object.freeze({ ...tri(150, 150, 150), prometid: 24, duranium: 24, promerium: 3 }),
   npc_Cowering_Cyborg: Object.freeze({ ...tri(150, 150, 150), prometid: 24, duranium: 24, promerium: 3 }),

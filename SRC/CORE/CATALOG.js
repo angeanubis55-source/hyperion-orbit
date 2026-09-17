@@ -193,8 +193,8 @@ export const CATALOG = {
     { id: "gear_gkk3", name: "G-KK3 · Kamikaze", price: 50000000, icon: "/PET/PET_GEARS/G-KK1.png", petLevel: 8, petGear: { key: "kk", level: 3 }, desc: "Explosion 75000 dégâts, portée 450, cooldown 30 s." },
     { id: "gear_gfs1", name: "G-FS1 · Flamme sacrificielle", price: 9000000, icon: "/PET/PET_GEARS/G-FS1.png", petLevel: 0, petGear: { key: "fs", level: 1 }, desc: "Transfère le bouclier du REX vers ton vaisseau (tout si besoin), cooldown 90 s." },
     { id: "gear_ghpl1", name: "G-HPL1 · Lien HP", price: 10000000, icon: "/PET/PET_GEARS/G-HPL1.png", petLevel: 8, petGear: { key: "hpl", level: 1 }, desc: "Dégâts coque redirigés vers le REX, mix combat + éclair, 20 s, cooldown 240 s." },
-    { id: "gear_gbc1", name: "G-BC1 · Bouée combat", price: 35000000, icon: "/PET/PET_GEARS/G-BC1.png", petLevel: 8, petGear: { key: "bc", level: 1 }, desc: "Halo 500 : +5 % dégâts dedans, 120 s, cooldown 240 s." },
-    { id: "gear_gbh1", name: "G-BH1 · Bouée coque", price: 35000000, icon: "/PET/PET_GEARS/G-BH1.png", petLevel: 8, petGear: { key: "bh", level: 1 }, desc: "Halo 500 : +5 % PV max dedans, 120 s, cooldown 240 s." },
+    { id: "gear_gbc1", name: "G-BC1 · Bouée combat", price: 35000000, icon: "/PET/PET_GEARS/G-BC1.png", petLevel: 8, petGear: { key: "bc", level: 1 }, desc: "Halo 400 : +5 % dégâts dedans, 120 s, cooldown 240 s." },
+    { id: "gear_gbh1", name: "G-BH1 · Bouée coque", price: 35000000, icon: "/PET/PET_GEARS/G-BH1.png", petLevel: 8, petGear: { key: "bh", level: 1 }, desc: "Halo 400 : +5 % PV max dedans, 120 s, cooldown 240 s." },
   ],
 
   // Protocoles P.E.T officiels (IA). Chaleur (AI-AH) supprimée du jeu :

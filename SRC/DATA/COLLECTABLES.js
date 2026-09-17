@@ -39,8 +39,8 @@ export const COLLECTABLE_TYPES = Object.freeze({
     minSpacing: 100,
     avoidPlayer: 0,
     npcDespawnAfter: 0,
-    // Monde continu : délai avant réapparition après collecte (secondes).
-    respawnDelaySec: 60,
+    // Pas de délai de réapparition : respawn immédiat (même table en normal / battle).
+    respawnDelaySec: 0,
     r: 30,
     pickupRadius: 50,
     bob: 5,
@@ -57,16 +57,21 @@ export const COLLECTABLE_TYPES = Object.freeze({
       glow: false,
     },
     exclusiveRewards: [
-      { weight: 75, reward: { credits: [5000, 10000] } },
+      { weight: 15, reward: { credits: [5000, 10000] } },
       { weight: 10, reward: { galaxyEnergy: [1, 3] } },
-      { weight: 8, reward: { ammo: { x2: [20, 60] } } },
-      { weight: 5, reward: { ammo: { x3: [10, 30] } } },
-      { weight: 2, reward: { ammo: { x4: [5, 15] } } },
+      { weight: 28, reward: { ammo: { x2: [20, 60] } } },
+      { weight: 18, reward: { ammo: { x3: [10, 30] } } },
+      { weight: 14, reward: { ammo: { sab: [5, 25] } } },
+      { weight: 10, reward: { rockets: { plt2021: [2, 8] } } },
+      { weight: 3, reward: { ammo: { x4: [5, 15] } } },
+      { weight: 2, reward: { resources: { xenomit: [25, 75] } } },
     ],
   },
 
   Green_Booty_Box: {
     name: "Bonus crédits",
+    // Désactivée temporairement (aucun spawn ; réactiver en retirant la ligne).
+    enabled: false,
     maps: "*",
     // GG / Low / QZ : aucune box ambiente, uniquement cargo + drops NPC.
     denyMaps: ["alpha", "beta", "gamma", "low", "qz"],

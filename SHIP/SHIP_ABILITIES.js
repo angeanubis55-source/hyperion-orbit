@@ -18,6 +18,7 @@
 //   2. renseigner cooldownSec / durationSec,
 //   3. implémenter l'effet dans ORBIT_ENGINE (clic palette) en lisant
 //      getAbilityInfo(id).
+//   4. ajouter // ✅ en fin de ligne (marqueur des aptitudes branchées).
 
 export const ABILITY_ICON_DIR = "ASSETS/APTITUDES/ICONS";
 
@@ -49,126 +50,198 @@ export const ABILITIES = Object.freeze({
     notes: "",
     cooldownSec: 240,
     durationSec: 30,
-    status: "done",
+    status: "done", // ✅
   }),
+
+  // ---- Aegis ----
 
   // ---- Aegis ----
   "ability_aegis_hp-repair": A(
     "ability_aegis_hp-repair", "aegis", "Aegis", "Réparation coque", "self",
-    "Restaure progressivement la coque (PV) du vaisseau."
+    "+280k PV allié (140k soi) répartis sur 7 s (40k/20k par s), +X vert chaque seconde.",
+    "", "", 90, 7, "done" // ✅
   ),
   "ability_aegis_shield-repair": A(
     "ability_aegis_shield-repair", "aegis", "Aegis", "Réparation bouclier", "self",
-    "Restaure progressivement le bouclier du vaisseau."
+    "+125k bouclier allié (75k soi) répartis sur 5 s (25k/15k par s), +X bleu chaque seconde.",
+    "", "", 30, 5, "done" // ✅
   ),
   "ability_aegis_repair-pod": A(
     "ability_aegis_repair-pod", "aegis", "Aegis", "Pod de réparation", "zone",
-    "Déploie un pod qui soigne la coque des alliés proches."
+    "Pose le pod sous le vaisseau (position au clic) : 10 s, halo vert rayon 400, +18k PV/s aux vaisseaux dedans (180k max). Le pod de la coque est caché jusqu'à la fin de la recharge de 120 s.",
+    "", "", 120, 10, "done" // ✅
   ),
 
   // ---- Basilisk ----
   "ability_basilisk_heightened-valour": A(
     "ability_basilisk_heightened-valour", "basilisk", "Basilisk", "Valeur exaltée", "self",
-    "Augmente temporairement les dégâts infligés.",
-    "Bonus exact à confirmer en jeu."
+    "+0,5 % de dégâts par seconde pendant 30 s, plafonné +10 % (lasers). Sans visuel. Recharge 100 s.",
+    "", "", 100, 30, "done" // ✅
   ),
   "ability_basilisk_noxious-nebula": A(
     "ability_basilisk_noxious-nebula", "basilisk", "Basilisk", "Nuage toxique", "zone",
-    "Lâche un nuage qui endommage et ralentit les ennemis dedans."
+    "Posée sous le vaisseau : 10 s, sprite 500x291 joué en boucle. 14000 dégâts/s à TOUT LE MONDE sur le sprite (collision au pixel, plus de rayon : NPC, escortes, nous via hurtPlayer, notre PET), +5 % exponentiel par seconde (stack par cible, retombe dehors). Fondu d'apparition/disparition. Recharge 180 s.",
+    "", "", 180, 10, "done" // ✅
   ),
 
   // ---- Berserker ----
   "ability_berserker_bsk": A(
     "ability_berserker_bsk", "berserker", "Berserker", "Berserk", "self",
-    "Plus la coque est basse, plus les dégâts sont élevés."
+    "30 s : tremblement croissant + contour orange pulsé de plus en plus vite (style ubers) + sprite. +1 % dégâts par 1 % PV manquant (lasers). Recharge 60 s.",
+    "", "", 60, 30, "done" // ✅
   ),
   "ability_berserker_rvg": A(
     "ability_berserker_rvg", "berserker", "Berserker", "Représailles", "enemy",
-    "Marque l'attaquant et lui renvoie une partie des dégâts subis."
+    "6 s : 100 % des dégâts renvoyés à chaque attaquant (pas de lock requis, rien subi ni affiché sur nous) + contour cyan évidé, vitesse -5 %. Recharge 180 s.",
+    "", "", 180, 6, "done" // ✅
   ),
   "ability_berserker_shl": A(
-    "ability_berserker_shl", "berserker", "Berserker", "Lien de bouclier", "ally",
-    "Lie son bouclier à un allié pour le protéger.",
-    "Effet exact du lien à confirmer en jeu."
+    "ability_berserker_shl", "berserker", "Berserker", "Lien de bouclier", "enemy",
+    "60 s : les dégâts infligés au bouclier de la cible verrouillée sont encaissés par vous. Cassé hors de portée, annulable à tout moment.",
+    "", "", 10, 60, "done" // ✅
   ),
 
   // ---- Citadel ----
   "ability_citadel_draw-fire": A(
     "ability_citadel_draw-fire", "citadel", "Citadel", "Attraction", "self",
-    "Force les ennemis proches à le prendre pour cible."
+    "Force les ennemis proches à le prendre pour cible.",
+    "", "", 60, 5, "done" // ✅
   ),
   "ability_citadel_fortify": A(
     "ability_citadel_fortify", "citadel", "Citadel", "Fortification", "self",
-    "Gros bonus de bouclier mais vaisseau immobilisé pendant l'effet."
+    "-80 % de dégâts subis, vitesse plafonnée à 200, pas de saut.",
+    "", "", 360, 10, "done" // ✅
   ),
   "ability_citadel_protection": A(
     "ability_citadel_protection", "citadel", "Citadel", "Protection", "ally",
-    "Encaisse à la place d'un allié une partie des dégâts qu'il subit."
+    "Encaisse à la place d'un allié une partie des dégâts qu'il subit.",
+    "", "", 60, 10, "done" // ✅
   ),
   "ability_citadel_travel": A(
     "ability_citadel_travel", "citadel", "Citadel", "Voyage", "self",
-    "Boost de vitesse temporaire pour se déplacer vite."
+    "Boost de vitesse temporaire pour se déplacer vite.",
+    "", "", 60, 5, "done" // ✅
   ),
 
   // ---- Citadel Plus ----
+  // Le Citadel Plus garde son Endurance prismatique ET hérite des 4
+  // aptitudes du Citadel de base (mêmes effets, icônes réutilisées).
   "ability_citadel-plus_prismatic-endurance": A(
     "ability_citadel-plus_prismatic-endurance", "citadel_plus", "Citadel Plus", "Endurance prismatique", "self",
     "Renforce durablement la résistance de la coque et du bouclier.",
-    "Valeurs exactes à confirmer en jeu."
+    "Valeurs exactes à confirmer en jeu.", "", 200, 25, "done" // ✅
+  ),
+  "ability_citadel-plus_draw-fire": A(
+    "ability_citadel-plus_draw-fire", "citadel_plus", "Citadel Plus", "Attraction", "self",
+    "Force les ennemis proches à le prendre pour cible.",
+    "Héritée du Citadel de base.", "ABILITY_CITADEL_DRAW-FIRE.PNG", 60, 5, "done" // ✅
+  ),
+  "ability_citadel-plus_fortify": A(
+    "ability_citadel-plus_fortify", "citadel_plus", "Citadel Plus", "Fortification", "self",
+    "-80 % de dégâts subis, vitesse plafonnée à 200, pas de saut.",
+    "Héritée du Citadel de base.", "ABILITY_CITADEL_FORTIFY.PNG", 360, 10, "done" // ✅
+  ),
+  "ability_citadel-plus_protection": A(
+    "ability_citadel-plus_protection", "citadel_plus", "Citadel Plus", "Protection", "ally",
+    "Encaisse à la place d'un allié une partie des dégâts qu'il subit.",
+    "Héritée du Citadel de base.", "ABILITY_CITADEL_PROTECTION.PNG", 60, 10, "done" // ✅
+  ),
+  "ability_citadel-plus_travel": A(
+    "ability_citadel-plus_travel", "citadel_plus", "Citadel Plus", "Voyage", "self",
+    "Boost de vitesse temporaire pour se déplacer vite.",
+    "Héritée du Citadel de base.", "ABILITY_CITADEL_TRAVEL.PNG", 60, 5, "done" // ✅
   ),
 
   // ---- Diminisher ----
   "ability_diminisher": A(
     "ability_diminisher", "diminisher", "Diminisher", "Affaiblissement", "enemy",
-    "Réduit le bouclier de la cible ennemie."
+    "La cible verrouillée : son bouclier prend +50 % de dégâts de nos lasers pendant 15 s. Contrecoup : -30 % de notre bouclier à la fin.",
+    "", "", 90, 15, "done" // ✅
   ),
 
   // ---- Disruptor ----
   "ability_disruptor_ddol": A(
     "ability_disruptor_ddol", "disruptor", "Disruptor", "DDoL", "enemy",
-    "Surcharge les systèmes de la cible : dégâts + perturbation.",
-    "Effet exact à confirmer en jeu."
-  ),
+    "Dérègle le cooldown des lasers de la cible verrouillée (3 à 5 s aléatoires) pendant 10 s.",
+    "", "", 60, 10, "done"
+  ), // ✅
   "ability_disruptor_redirect": A(
     "ability_disruptor_redirect", "disruptor", "Disruptor", "Redirection", "self",
-    "Redirige une partie des dégâts subis.",
-    "Cible/effet exact à confirmer en jeu."
-  ),
+    "Pendant 5 s, tous les dégâts subis partent sur la cible verrouillée (rien subi), ses lasers sont désactivés 4 s.",
+    "", "", 40, 5, "done"
+  ), // ✅
   "ability_disruptor_shield-disarray": A(
     "ability_disruptor_shield-disarray", "disruptor", "Disruptor", "Désordre bouclier", "enemy",
-    "Désorganise le bouclier ennemi : absorption réduite.",
-    "Valeurs exactes à confirmer en jeu."
-  ),
+    "Bouclier max de la cible -50 % pendant 5 s (actuel écrêté), le retiré revient par-dessus à la fin.",
+    "", "", 120, 5, "done"
+  ), // ✅
 
   // ---- Goliath X ----
   "ability_goliath-x_frozen-claw": A(
     "ability_goliath-x_frozen-claw", "goliath_x", "Goliath X", "Griffe gelée", "enemy",
-    "Inflige des dégâts et ralentit fortement la cible."
-  ),
+    "Envoie gratuitement une R-IC3 sur la cible verrouillée (gel 2 s). Passif : +2 % dégâts laser, +2 % XP.",
+    "", "", 90, 2, "done"
+  ), // ✅
+
+  // ---- Hammerclaw (base, officiel : mêmes 3 soins que l'Aegis en plus fort) ----
+  "ability_hammerclaw_hp-repair": A(
+    "ability_hammerclaw_hp-repair", "hammerclaw", "Hammerclaw", "Réparation coque", "ally",
+    "Soigne un allié jusqu'à 350k PV (175k pour soi) répartis sur 7 s.",
+    "", "ABILITY_AEGIS_HP-REPAIR.PNG", 150, 7, "done"
+  ), // ✅
+  "ability_hammerclaw_shield-repair": A(
+    "ability_hammerclaw_shield-repair", "hammerclaw", "Hammerclaw", "Réparation bouclier", "ally",
+    "Répare le bouclier d'un allié jusqu'à 180k (120k pour soi) répartis sur 3 s.",
+    "", "ABILITY_AEGIS_SHIELD-REPAIR.PNG", 60, 3, "done"
+  ), // ✅
+  "ability_hammerclaw_repair-pod": A(
+    "ability_hammerclaw_repair-pod", "hammerclaw", "Hammerclaw", "Pod de réparation", "zone",
+    "Pose le pod : 10 s, +175k PV max aux vaisseaux dedans.",
+    "", "ABILITY_AEGIS_REPAIR-POD.PNG", 160, 10, "done"
+  ), // ✅
 
   // ---- Hammerclaw Plus ----
+  // Le Hammerclaw Plus garde sa Réallocation ET hérite des 3 soins du
+  // Hammerclaw de base (mêmes effets, icônes Aegis réutilisées).
   "ability_hammerclaw-plus_reallocate": A(
     "ability_hammerclaw-plus_reallocate", "hammerclaw_plus", "Hammerclaw Plus", "Réallocation", "self",
-    "Réalloue les ressources du vaisseau (bouclier/coque).",
-    "Sens exact de la réallocation à confirmer en jeu."
-  ),
+    "Pendant 10 s, 20 % des dégâts infligés partent en pot commun, distribué en PV à la fin (nous + escortes à 700).",
+    "", "", 180, 10, "done"
+  ), // ✅
+  "ability_hammerclaw-plus_hp-repair": A(
+    "ability_hammerclaw-plus_hp-repair", "hammerclaw_plus", "Hammerclaw Plus", "Réparation coque", "ally",
+    "Soigne un allié jusqu'à 450k PV (225k pour soi) répartis sur 6 s.",
+    "Héritée du Hammerclaw de base (montants/durée Plus).", "ABILITY_AEGIS_HP-REPAIR.PNG", 160, 6, "done"
+  ), // ✅
+  "ability_hammerclaw-plus_shield-repair": A(
+    "ability_hammerclaw-plus_shield-repair", "hammerclaw_plus", "Hammerclaw Plus", "Réparation bouclier", "ally",
+    "Répare le bouclier d'un allié jusqu'à 240k (150k pour soi) répartis sur 3 s.",
+    "Héritée du Hammerclaw de base (montants Plus).", "ABILITY_AEGIS_SHIELD-REPAIR.PNG", 80, 3, "done"
+  ), // ✅
+  "ability_hammerclaw-plus_repair-pod": A(
+    "ability_hammerclaw-plus_repair-pod", "hammerclaw_plus", "Hammerclaw Plus", "Pod de réparation", "zone",
+    "Pose le pod : 8 s, rayon 600, +200k PV max aux vaisseaux dedans.",
+    "Héritée du Hammerclaw de base (montant/durée/rayon Plus).", "ABILITY_AEGIS_REPAIR-POD.PNG", 60, 8, "done"
+  ), // ✅
 
   // ---- Hecate ----
   "ability_hecate_particle-beam": A(
     "ability_hecate_particle-beam", "hecate", "Hecate", "Faisceau à particules", "enemy",
-    "Rayon canalisé qui inflige des dégâts continus à la cible."
-  ),
+    "Canal sur la cible lockée : 8050 + 6000 dégâts/coque par hit pendant 5 s, vitesse -10 %.",
+    "", "", 85, 5, "done"
+  ), // ✅
 
   // ---- Hecate Plus ----
   "ability_hecate-plus_particle-beam-plus": A(
     "ability_hecate-plus_particle-beam-plus", "hecate_plus", "Hecate Plus", "Faisceau à particules Plus", "enemy",
-    "Version renforcée du faisceau à particules."
-  ),
+    "Canal sur la cible lockée : 10000 + 6000 dégâts/coque par hit pendant 6 s, vitesse -10 %.",
+    "", "", 120, 6, "done"
+  ), // ✅
   "ability_hecate-plus_stockpile": A(
-    "ability_hecate-plus_stockpile", "hecate_plus", "Hecate Plus", "Stock", "self",
-    "Accumule des charges qui renforcent le faisceau.",
-    "Nombre de charges et bonus à confirmer en jeu."
-  ),
+    "ability_hecate-plus_stockpile", "hecate_plus", "Hecate Plus", "Stockpile", "self",
+    "Tuer un PNJ ajoute une charge à Stockpile (max 10). Tant que Stockpile n'est pas activé : portée +5 par charge. À l'activation : force du bouclier augmentée pendant 10 s (+0,2 % par charge, chaque charge donnant 0,2 % de plus que la précédente, soit 11 % à 10 charges) + sprite HECATE_PLUS_STOCKPILE sur le vaisseau. Portée réinitialisée à l'origine et charges remises à 0.",
+    "", "", 0, 10, "done"
+  ), // ✅
 
   // ---- Holo ----
   "ability_holo_enemy-reversal": A(
@@ -324,7 +397,7 @@ export const ABILITIES = Object.freeze({
   "ability_spearhead_ultimate-cloak": A(
     "ability_spearhead_ultimate-cloak", "spearhead", "Spearhead", "Camouflage ultime", "self",
     "30 s invisible comme le Police (rendu 50 %, NPC aveugles). Recharge 240 s, cassée par attaque.",
-    "", "", 240, 30, "done"
+    "", "", 240, 30, "done" // ✅
   ),
 
   // ---- Spearhead Plus ----
@@ -345,7 +418,7 @@ export const ABILITIES = Object.freeze({
   "ability_spearhead-plus_ultimate-cloak": A(
     "ability_spearhead-plus_ultimate-cloak", "spearhead_plus", "Spearhead Plus", "Camouflage ultime", "self",
     "30 s invisible comme le Police (rendu 50 %, NPC aveugles). Recharge 240 s, cassée par attaque.",
-    "", "ABILITY_SPEARHEAD_ULTIMATE-CLOAK.PNG", 240, 30, "done"
+    "", "ABILITY_SPEARHEAD_ULTIMATE-CLOAK.PNG", 240, 30, "done" // ✅
   ),
 
   // ---- Spectrum ----

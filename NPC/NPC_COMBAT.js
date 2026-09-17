@@ -2,6 +2,9 @@
 import { dist2 } from "../SRC/CORE/COLLISION.js";
 
 export function selectNpcCombatTarget(enemy, player, escorts, { gateMode = false, getEscortById = () => null } = {}) {
+  // Draw Fire (Citadel) : NPC taunté = verrouillé sur le joueur, aucun
+  // nouveau lock ailleurs tant que le verrou est posé.
+  if (enemy?.drawFireLock && player && !(player.dead)) { enemy._combatTargetId = "player"; return player; }
   if (!gateMode || !escorts.length) { if (enemy) enemy._combatTargetId = "player"; return player; }
   const candidates = player.dead ? [] : [player];
   candidates.push(...escorts.filter(escort => escort.hp > 0));

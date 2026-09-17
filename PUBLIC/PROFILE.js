@@ -30,7 +30,7 @@ import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
-import { designHasOwnEffect, getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
+import { getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
 import { SHIP_ITEM_DIR, SHIP_ITEM_FULL_IDS, SHIP_ITEM_TRAIT_IDS, SHIP_TRAIT_DIR } from "../SHIP/SHIP_ITEMS.js";
 import { escapeHtml } from "../UI/UI_DOM.js";
 import { PILOT_RANKS, calculateRankPoints, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo } from "../SRC/CORE/PROGRESSION.js";
@@ -315,8 +315,9 @@ function getShopListFor(cat) {
         const bb = String(b.design?.base || b.id);
         return ab.localeCompare(bb) || String(a.name).localeCompare(String(b.name));
       });
-      // Les designs sans effet propre (cosmétiques purs) ne sont pas affichés.
-      return sorted.filter((it) => designHasOwnEffect(itemShipId(it)));
+      // Tous les designs sont affichés (y compris Plus et cosmétiques purs,
+      // qui héritent des stats de leur base). Aucun filtre ici.
+      return sorted;
     }
     if (cat === "petGears" || cat === "petProtocols") {
       return groupPetShopItems(direct);
@@ -435,6 +436,10 @@ function saveGameBeforeProfileAction() {
 // -------------------- Icons --------------------
 const ITEM_ICON_BASE = "/ASSETS/ITEMS/";
 const LASER_ICON_BASE = "/ASSETS/LASERS/";
+// Designs sans image items : fichier sprite imposé en aperçu (n° de fichier).
+const SHIP_PREVIEW_FILE_OVERRIDES = Object.freeze({
+  goliath_crimson: 20,
+});
 const FALLBACK_ICON = `data:image/svg+xml,${encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
     <rect width="64" height="64" rx="12" fill="#081b29"/>
@@ -709,11 +714,16 @@ function shipPreviewSrc(shipId, frameIndex = 28) {
   // Clé canonique via le pack (gère les alias comme PhoenixBleu).
   const pack = getShipPackById(shipId);
   const key = pack?.id || shipId;
-  if (key && SHIP_ITEM_FULL_IDS.has(String(key))) {
-    return `${SHIP_ITEM_DIR}${key}.png`;
-  }
-  if (key && SHIP_ITEM_TRAIT_IDS.has(String(key))) {
-    return `${SHIP_TRAIT_DIR}${key}.png`;
+  // Designs sans image items : fichier sprite imposé (n° de fichier, pas index).
+  // goliath_crimson n'a pas de png items -> frame 20.png en boutique.
+  const forcedFile = SHIP_PREVIEW_FILE_OVERRIDES[String(key || "").toLowerCase()];
+  if (forcedFile == null) {
+    if (key && SHIP_ITEM_FULL_IDS.has(String(key))) {
+      return `${SHIP_ITEM_DIR}${key}.png`;
+    }
+    if (key && SHIP_ITEM_TRAIT_IDS.has(String(key))) {
+      return `${SHIP_TRAIT_DIR}${key}.png`;
+    }
   }
   if (!pack) return FALLBACK_ICON;
 
@@ -724,7 +734,8 @@ function shipPreviewSrc(shipId, frameIndex = 28) {
   const base = String(pack.path || "");
   const absBase = base.startsWith("/") ? base : "/" + base;
 
-  return `${absBase}${first + idx}${ext}`;
+  const fileNo = forcedFile ?? (first + idx);
+  return `${absBase}${fileNo}${ext}`;
 }
 
 function getShipPack(shipId) {

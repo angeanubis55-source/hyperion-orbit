@@ -2,10 +2,17 @@
 
 // Ralenti du joueur (explosion Kamikaze, ...) : même échelle que les NPC
 // (rocketSlowT en secondes, rocketSlowPct en %). 1 = vitesse normale.
+// Voyage (Citadel) : x2 temporaire pendant travelT.
 export function playerSlowMult(player) {
-  if (!player || (Number(player.rocketSlowT) || 0) <= 0) return 1;
-  const pct = Math.min(95, Math.max(0, Number(player.rocketSlowPct) || 0));
-  return Math.max(0.05, 1 - pct / 100);
+  let mult = 1;
+  if (player && (Number(player.rocketSlowT) || 0) > 0) {
+    const pct = Math.min(95, Math.max(0, Number(player.rocketSlowPct) || 0));
+    mult *= Math.max(0.05, 1 - pct / 100);
+  }
+  if (player && (Number(player.travelT) || 0) > 0) mult *= 2;
+  // Représailles (Berserker, officiel) : -5 % de vitesse pendant l'effet.
+  if (player && (Number(player.rvgT) || 0) > 0) mult *= 0.95;
+  return mult;
 }
 
 export function updatePlayerVelocity(player, direction, dt, options = {}) {

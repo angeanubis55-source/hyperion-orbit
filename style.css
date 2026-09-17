@@ -4968,6 +4968,11 @@ body.orbitNoFade #fpsOverlay{
 #settingsWindow .settingsVisual .settingsCheck{padding:4px 8px;border-radius:8px;width:100%;box-sizing:border-box}
 #settingsWindow .settingsVisual .settingsCheck span{font-size:11px;overflow-wrap:anywhere}
 #settingsWindow .settingsVisual .settingsCheck input{width:14px;height:14px}
+#settingsWindow .settingsFpsRow{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:34px;height:34px;padding:4px 8px;border:1px solid rgba(124,240,255,.22);border-radius:8px;background:rgba(255,255,255,.055);cursor:pointer;box-sizing:border-box}
+#settingsWindow .settingsFpsRow span{display:grid;gap:2px;font-size:11px}
+#settingsWindow .settingsFpsRow small{color:rgba(232,244,255,.58);font-size:10px}
+#settingsWindow .settingsFpsRow select{background:#051521;color:#effcff;border:1px solid rgba(124,240,255,.38);border-radius:8px;height:26px;padding:0 8px;font:800 11px/1 ui-sans-serif,system-ui;cursor:pointer}
+#settingsWindow .settingsFpsRow select option{background:#071622;color:#effcff}
 #settingsWindow .settingsAudio{display:flex;flex-direction:column;justify-content:center;gap:6px;align-self:stretch}
 #settingsWindow .settingsAudio .settingsToggle{width:100%;justify-content:center;letter-spacing:.3px;font-size:11px;overflow:hidden;text-overflow:ellipsis}
 #settingsWindow .settingsAudio .settingsVolumeRow{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
@@ -8769,7 +8774,7 @@ html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
 .botRefineRow{ display:grid; grid-template-columns:minmax(0,1fr) 56px; gap:4px; }
 .botRefineRow select, .botRefineRow input{ height:28px; padding:0 6px; box-sizing:border-box; border:1px solid rgba(124,240,255,.3); border-radius:7px; background:#051521; color:#effcff; font:800 11px system-ui; min-width:0; }
 .botCount{ color:#5d96a5; font-weight:800; text-transform:none; }
-.botNpcRow{ display:grid; grid-template-columns:22px minmax(0,1fr) 44px 52px 60px 26px; gap:6px; align-items:center; }
+.botNpcRow{ display:grid; grid-template-columns:22px minmax(0,1fr) 44px 52px 60px; gap:6px; align-items:center; }
 .botNpcList{ max-height:none; overflow:visible; gap:4px; }
 .botWide .botNpcList{ grid-template-columns:repeat(2, minmax(0,1fr)); }
 .botNpcRow input.botNpcPrio{ width:44px; height:24px; padding:0 4px; box-sizing:border-box; border:1px solid rgba(124,240,255,.3); border-radius:6px; background:#051521; color:#ffd36b; font:800 11px system-ui; }

@@ -200,6 +200,7 @@
               <label class="settingsCheck" for="optMoveMarker"><input id="optMoveMarker" type="checkbox" /><span><b>Marqueur de déplacement</b></span></label>
               <label class="settingsCheck" for="optShipSmoke"><input id="optShipSmoke" type="checkbox" /><span><b>Fumées des vaisseaux</b></span></label>
             </div>
+            <label class="settingsFpsRow" for="optFpsLimit"><span><b>FPS maximum</b><small>Illimité = sans vsync, au-delà des Hz</small></span><select id="optFpsLimit"><option value="30">30 FPS</option><option value="60">60 FPS</option><option value="90">90 FPS</option><option value="120">120 FPS</option><option value="144">144 FPS</option><option value="240">240 FPS</option><option value="0">Illimité</option></select></label>
           </div>
 
           <label class="settingsCheck settingsPrefStandalone" for="optAutoStart">
@@ -494,8 +495,7 @@
           <div class="botSection" data-bot-section="attack">
             <div class="botSectionTitle">Combat &amp; survie</div>
             <label class="botCheck"><input id="botLock" type="checkbox" checked /><span>Ne pas changer de cible avant de l'avoir finie</span></label>
-            <label class="botCheck"><input id="botOrbit" type="checkbox" checked /><span>Tourner autour des NPC</span></label>
-            <label class="botField"><span>Distance d'orbite par défaut (m)</span><input id="botOrbitDist" type="number" min="200" max="2000" step="10" value="560" /></label>
+            <label class="botField"><span>Distance de combat par défaut (m)</span><input id="botOrbitDist" type="number" min="200" max="2000" step="10" value="560" /></label>
             <label class="botField"><span>Engagement max (m, 0 = portée laser)</span><input id="botEngageDist" type="number" min="0" max="3000" step="10" value="0" /></label>
             <label class="botField"><span>Ignorer NPC au-delà (m, 0 = illimité)</span><input id="botNpcIgnore" type="number" min="0" max="20000" step="100" value="0" /></label>
           </div>
@@ -1149,6 +1149,6 @@
 <script src="./UI/UI_WINDOW_MANAGER.js?v=hangar-win-2"></script>
 
 <script type="module" src="./PUBLIC/PROFILE.js?v=no-video-2"></script>
-<script type="module" src="./SRC/MAIN.js?v=gg-history-6"></script>
+  <script type="module" src="./SRC/MAIN.js?v=gg-history-6"></script>
 </body>
 </html>
