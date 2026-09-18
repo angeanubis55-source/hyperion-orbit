@@ -25,6 +25,7 @@ export const AMMO = {
 };
 
 export const PLAYER_BULLET_SPRITES = {
+  x0: { src: "COMBAT/MUNITIONS/X0.png", w: 56, h: 18, glow: true, rotateOffset: Math.PI },
   x1: { src: "COMBAT/MUNITIONS/X1.png", w: 52, h: 18, glow: true, rotateOffset: Math.PI },
   x2: { src: "COMBAT/MUNITIONS/X2.png", w: 54, h: 18, glow: true, rotateOffset: Math.PI },
   x3: { src: "COMBAT/MUNITIONS/X3.png", w: 56, h: 18, glow: true, rotateOffset: Math.PI },

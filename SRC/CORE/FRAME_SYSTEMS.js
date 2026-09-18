@@ -10,8 +10,16 @@ export function playerSlowMult(player) {
     mult *= Math.max(0.05, 1 - pct / 100);
   }
   if (player && (Number(player.travelT) || 0) > 0) mult *= 2;
+  // Postcombustion (Lightning) : x2 comme le Voyage Citadel.
+  if (player && (Number(player.lightT) || 0) > 0) mult *= 2;
   // Représailles (Berserker, officiel) : -5 % de vitesse pendant l'effet.
   if (player && (Number(player.rvgT) || 0) > 0) mult *= 0.95;
+  // Holo self : +10 % de vitesse pendant l'effet.
+  if (player && (Number(player.holoSelfT) || 0) > 0) mult *= 1.10;
+  // Keres Sleight : dash x5 vers la cible.
+  if (player && (Number(player.sleightT) || 0) > 0) mult *= 5;
+  // Mimesis Scramble : +25 % de vitesse pendant l'effet.
+  if (player && (Number(player.scrambleT) || 0) > 0) mult *= 1.25;
   return mult;
 }
 

@@ -1073,6 +1073,105 @@ const DIMINISH_DURATION = 15;
 const DIMINISH_COOLDOWN = 90;
 const DIMINISH_WEAKEN = 0.5;
 const DIMINISH_BACKLASH = 0.3;
+// Holo (simplifié jeu) : même sprite HOLO_SELF_REVERSAL (53 frames) par-dessus
+// le vaisseau. Self sur nous (+10 % dégâts laser, +10 % vitesse), enemy sur la
+// cible verrouillée (-10 % vitesse via slow, +10 % dégâts subis). CD partagé 15 s, effet 15 s.
+const HOLO_DURATION = 15;
+const HOLO_COOLDOWN = 15;
+const HOLO_FRAMES = 53;
+const HOLO_FPS = 30;
+const HOLO_BUFF = 0.10;
+const HOLO_WEAKEN = 0.10;
+const HOLO_SLOW_PCT = 10;
+// Hyperion GA : 10 s, recharge 300 s (5 min, officiel). Séquence sur la cible :
+// SHOT voyageur (5f, 100% touché), START (40f) + CONTINUED (30f) par-dessus dès
+// la frame 26, CONTINUED en boucle pour remplir, FINISH (15f) à la fin.
+// Slow 80 % map normale, 40 % battle (4-x, x-4.1).
+const GA_DURATION = 10;
+const GA_COOLDOWN = 300;
+const GA_SHOT_FRAMES = 5;
+const GA_START_FRAMES = 40;
+const GA_CONT_FRAMES = 30;
+const GA_FINISH_FRAMES = 15;
+const GA_FPS = 30;
+const GA_SHOT_TRAVEL = 0.6;
+const GA_START_OVERLAY_FROM = 26;
+const GA_SLOW_NORMAL = 80;
+const GA_SLOW_BATTLE = 40;
+// Hyperion QA : salve classique en X0 (gratuite) : base x6 x2.5,
+// critique garanti (critMult du joueur). Charge sonore (laser-charging sans
+// ses 3 dernières secondes) puis rafale pendant le blaster SFX_SHOT_X0.
+// Instant, recharge 90 s (à confirmer).
+const QA_COOLDOWN = 90;
+const QA_MULT = 2.5;
+const QA_CHARGE_TRIM = 3;
+const QA_CHARGE_FALLBACK = 2.5;
+// Keres SPR/Spread : slow 20 % 10 s par infecté, contagion à 200 (10 s
+// reparties), max 10 infectés par cast, un infecté ne peut pas être réinfecté
+// par le même cast (anti boucle infinie). Recharge 300 s (officiel).
+const SPR_DURATION = 10;
+const SPR_COOLDOWN = 300;
+const SPR_SLOW_PCT = 20;
+const SPR_RADIUS = 300;
+const SPR_MAX = 10;
+const SPR_SCAN = 0.5;
+// Keres SLE/Sleight : lock suffit, aucune limite de distance. Dash x5 jusqu'à
+// 200 de la cible, réacteurs remplacés par le speed buff du Citadel.
+// Recharge 120 s (à confirmer).
+const SLEIGHT_COOLDOWN = 120;
+const SLEIGHT_STOP = 200;
+const SLEIGHT_MULT = 5;
+// Liberator Plus Self Repair : 35k HP/s pendant 10 s (350k max) sur soi.
+// Sprite HEAL_EFFECT (18 frames) sur le vaisseau, +x/+0 comme les soins Aegis.
+// Durée 10 s, recharge 100 s.
+const LIBREP_DURATION = 10;
+const LIBREP_COOLDOWN = 100;
+const LIBREP_AMOUNT = 35000;
+const LIBREP_FRAMES = 18;
+const LIBREP_FPS = 30;
+// Orcus Assimilate : 80 % de TOUS les dégâts reçus (NPC + joueurs) convertis
+// en PV (+x verts). Sprite ORCUS_ASSIMILATE (42 frames) par-dessus nous.
+// JAMX branché plus tard (avec Spearhead). Durée 20 s, recharge 540 s.
+const ORCUS_DURATION = 20;
+const ORCUS_COOLDOWN = 540;
+const ORCUS_ABSORB = 0.8;
+const ORCUS_FRAMES = 42;
+const ORCUS_FPS = 30;
+// Mimesis Scramble : +65 % évasion, +25 % dégâts laser, +25 % vitesse,
+// -5 % shield max/s. Coupé à 0 shield ou au changement de config.
+// JAMX branché plus tard (avec Spearhead). Recharge 300 s, durée = bouclier.
+const SCRAMBLE_COOLDOWN = 300;
+const SCRAMBLE_EVA = 0.65;
+const SCRAMBLE_DMG = 0.25;
+const SCRAMBLE_SPD = 0.25;
+const SCRAMBLE_DRAIN = 0.05;
+// Mimesis Phase Out : TP 500u aléatoire (hors radiation, clamp monde).
+// Interdit : Galaxy Gates, LoW, UBA, maps pirates. Sans animation. CD 300 s.
+const PHASEOUT_COOLDOWN = 300;
+const PHASEOUT_DIST = 500;
+// Mimesis Hologram : son shaco puis fausse explosion PAR-DESSUS nous + 4 clones
+// identiques (sprite, barres, drones, pseudo, grade, firme) qui restent près de
+// nous (formation drones live comme la nôtre) puis explosent au bout de 3 s.
+// Clone tué : explosion standard NPC + rire (pas le son d'explosion).
+// CD 300 s (à confirmer), vie clones 3 s.
+const HOLOGRAM_COOLDOWN = 300;
+const HOLOGRAM_CLONES = 4;
+const HOLOGRAM_CLONE_LIFE = 3;
+const HOLOGRAM_SOUND_FALLBACK = 1.5;
+// Lightning Postcombustion : même système que le Voyage Citadel (vitesse x2,
+// réacteurs remplacés par le speed buff, flamme un peu plus en arrière).
+// Durée 10 s, recharge 60 s.
+const LIGHT_DURATION = 10;
+const LIGHT_COOLDOWN = 60;
+// Rafale : 12 éclairs à 12/s → ~1 s de tir pendant laquelle on reste face à la cible.
+const QA_BURST_TIME = 1.0;
+function qaChargeDuration() {
+  try {
+    const d = Number(SFX.duration("pShotX0Charge") || 0);
+    if (d > QA_CHARGE_TRIM + 0.5) return d - QA_CHARGE_TRIM;
+  } catch {}
+  return QA_CHARGE_FALLBACK;
+}
 // DDoL — Distributed Denial of Lasers (Disruptor, officiel) : 10 s,
 // recharge 60 s. Le cooldown des lasers de la cible verrouillée est
 // dérèglé entre 3 et 5 s (aléatoire). Visuel : sprite DISRUPTOR_DDOL joué
@@ -1478,6 +1577,74 @@ function activatePrism() {
   } catch {}
   showNotification("Endurance prismatique active (25 s) : -80 % dégâts, pénétration annulée", 2.5, "info");
 }
+// --- Cyborg Singularité II (officiel) : canal 1 hit/s en dégâts croissants
+// directs en coque sur la cible lockée (6900 + 300/hit, cap 13600, ~315k/30 s).
+// Pas de rupture de portée (continue jusqu'à mort ou fin). EMP/JAMX plus tard.
+// Visuel : NPC_SINGULARITY_CYBORG (32 frames, 250x200) en boucle sur la cible.
+const CYBORG_DURATION = 30;
+const CYBORG_COOLDOWN = 270;
+const CYBORG_START = 6900;
+const CYBORG_STEP = 300;
+const CYBORG_CAP = 13600;
+const CYBORG_FRAMES = 32;
+const CYBORG_FPS = 30;
+function startCyborgCooldown() {
+  player.cyborgCd = CYBORG_COOLDOWN;
+  player.cyborgTarget = null;
+  player.cyborgHit = 0;
+  persistCdUntil("cyborgFx", 0);
+  persistCdUntil("cyborg", CYBORG_COOLDOWN);
+}
+function cancelCyborg() {
+  if ((player.cyborgT || 0) <= 0) return;
+  player.cyborgT = 0;
+  player.cyborgTarget = null;
+  player.cyborgHit = 0;
+  startCyborgCooldown();
+}
+function cyborgBeamTick() {
+  const tgt = player.cyborgTarget;
+  if (!tgt || !(tgt.hp > 0)) return;
+  const dmg = Math.min(CYBORG_CAP, Math.round(CYBORG_START + CYBORG_STEP * Number(player.cyborgHit || 0)));
+  player.cyborgHit = Number(player.cyborgHit || 0) + 1;
+  // Direct en coque (pénétration totale), comme le faisceau Hecate.
+  let out = null;
+  try { out = damageEnemy(tgt, dmg, 1.0); } catch {}
+  if (out && (out.total || 0) > 0) {
+    try { queueVolleyFloat(tgt, out, volleySeq++, 1); } catch {}
+  }
+}
+function activateCyborg() {
+  if (player.dead || !started) return;
+  const cd = Number(player.cyborgCd || 0);
+  if (cd > 0) {
+    showNotification(`Singularité II : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.cyborgT || 0) > 0) return;
+  const t = Target.get();
+  if (!t || !(t.hp > 0)) {
+    showNotification("Singularité II : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  const d2 = dist2(player.x, player.y, t.x, t.y);
+  if (d2 > playerRange * playerRange) {
+    showNotification("Cible hors de portée.", 1.5, "error");
+    return;
+  }
+  player.cyborgTarget = t;
+  player.cyborgHit = 0;
+  player.cyborgT = CYBORG_DURATION;
+  player.cyborgAcc = 0;
+  persistCdUntil("cyborgFx", CYBORG_DURATION);
+  try {
+    for (let i = 1; i <= CYBORG_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/NPC_SINGULARITY_CYBORG/${i}.png`, { priority: true });
+    }
+  } catch {}
+  try { cyborgBeamTick(); } catch {}
+  showNotification("Singularité II active (30 s) : dégâts croissants en coque", 2.5, "info");
+}
 // --- Affaiblissement (Diminisher, officiel) : le bouclier de la cible
 // verrouillée prend +50 % de dégâts pendant 15 s. Contrecoup : -30 % de
 // notre bouclier actuel à l'expiration naturelle (pas en cas d'annulation).
@@ -1500,6 +1667,634 @@ function diminishWeakened(e) {
     if (!e || e.hp <= 0 || player.diminishTarget !== e) return false;
     return true;
   } catch { return false; }
+}
+// --- Holo : 2 capacités indépendantes, 15 s d'effet + 15 s de CD chacune.
+// Même sprite HOLO_SELF_REVERSAL des 2 côtés : self par-dessus nous,
+// enemy par-dessus la cible verrouillée.
+function holoDamageMult() {
+  if ((player.holoSelfT || 0) <= 0 || player.dead) return 1;
+  return 1 + HOLO_BUFF;
+}
+function holoEnemyWeakened(e) {
+  try {
+    if ((player.holoEnemyT || 0) <= 0 || player.dead) return false;
+    if (!e || e.hp <= 0 || player.holoEnemyTarget !== e) return false;
+    return true;
+  } catch { return false; }
+}
+function startHoloSelfCooldown() {
+  player.holoSelfCd = HOLO_COOLDOWN;
+  persistCdUntil("holoSelfFx", 0);
+  persistCdUntil("holoSelf", HOLO_COOLDOWN);
+}
+function startHoloEnemyCooldown() {
+  player.holoEnemyCd = HOLO_COOLDOWN;
+  player.holoEnemyTarget = null;
+  persistCdUntil("holoEnemyFx", 0);
+  persistCdUntil("holoEnemy", HOLO_COOLDOWN);
+}
+function cancelHoloSelf() {
+  if ((player.holoSelfT || 0) <= 0) return;
+  player.holoSelfT = 0;
+  startHoloSelfCooldown();
+}
+function cancelHoloEnemy() {
+  if ((player.holoEnemyT || 0) <= 0) return;
+  player.holoEnemyT = 0;
+  try { if (player.holoEnemyTarget) delete player.holoEnemyTarget.holoMarked; } catch {}
+  player.holoEnemyTarget = null;
+  startHoloEnemyCooldown();
+}
+function activateHoloSelf() {
+  if (player.dead || !started) return;
+  const cd = Number(player.holoSelfCd || 0);
+  if (cd > 0) {
+    showNotification(`Inversion (soi) : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.holoSelfT || 0) > 0) return;
+  player.holoSelfT = HOLO_DURATION;
+  persistCdUntil("holoSelfFx", HOLO_DURATION);
+  try {
+    for (let i = 1; i <= HOLO_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/HOLO_SELF_REVERSAL/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Inversion (soi) active (15 s) : +10 % dégâts, +10 % vitesse", 2.5, "info");
+}
+function activateHoloEnemy() {
+  if (player.dead || !started) return;
+  const cd = Number(player.holoEnemyCd || 0);
+  if (cd > 0) {
+    showNotification(`Inversion ennemie : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.holoEnemyT || 0) > 0) return;
+  const t = Target.get();
+  if (!t || !(t.hp > 0)) {
+    showNotification("Inversion ennemie : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  player.holoEnemyTarget = t;
+  // Marqueur stable même si le lock change : l'effet reste sur la cible d'origine.
+  try { t.holoMarked = true; } catch {}
+  player.holoEnemyT = HOLO_DURATION;
+  try {
+    t.rocketSlowPct = Math.max(Number(t.rocketSlowPct || 0), HOLO_SLOW_PCT);
+    t.rocketSlowT = Math.max(Number(t.rocketSlowT || 0), HOLO_DURATION);
+  } catch {}
+  persistCdUntil("holoEnemyFx", HOLO_DURATION);
+  try {
+    for (let i = 1; i <= HOLO_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/HOLO_SELF_REVERSAL/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Inversion ennemie active (15 s) : sprite sur la cible, ralentie 10 %, +10 % dégâts subis", 2.5, "info");
+}
+// --- Hyperion GA : 10 s sur la cible verrouillée (ralenti géré via slow),
+ // recharge 300 s. SHOT 100 % touché puis séquence START/CONTINUED/FINISH.
+function isHyperionBattleMap() {
+  try {
+    const mapId = String(window.__CURRENT_MAP_ID__ || "1-1").toLowerCase();
+    return /^4(-|$|\.)/.test(mapId) || /-4\.1$/.test(mapId);
+  } catch { return false; }
+}
+function startGaCooldown() {
+  player.gaCd = GA_COOLDOWN;
+  player.gaTarget = null;
+  persistCdUntil("gaFx", 0);
+  persistCdUntil("ga", GA_COOLDOWN);
+}
+function cancelGa() {
+  if ((player.gaT || 0) <= 0) return;
+  player.gaT = 0;
+  player.gaTarget = null;
+  startGaCooldown();
+}
+function activateGa() {
+  if (player.dead || !started) return;
+  const cd = Number(player.gaCd || 0);
+  if (cd > 0) {
+    showNotification(`Ancre gravitationnelle : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.gaT || 0) > 0) return;
+  const t = Target.get();
+  if (!t || !(t.hp > 0)) {
+    showNotification("Ancre gravitationnelle : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  const d2 = dist2(player.x, player.y, t.x, t.y);
+  if (d2 > playerRange * playerRange) {
+    showNotification("Cible hors de portée.", 1.5, "error");
+    return;
+  }
+  player.angle = Math.atan2(t.y - player.y, t.x - player.x);
+  player.gaTarget = t;
+  player.gaT = GA_DURATION;
+  player.gaX0 = player.x;
+  player.gaY0 = player.y;
+  // Slow posé dès l'activation pour couvrir les 10 s (décroît naturellement).
+  try {
+    t.rocketSlowPct = Math.max(Number(t.rocketSlowPct || 0), isHyperionBattleMap() ? GA_SLOW_BATTLE : GA_SLOW_NORMAL);
+    t.rocketSlowT = Math.max(Number(t.rocketSlowT || 0), GA_DURATION);
+  } catch {}
+  persistCdUntil("gaFx", GA_DURATION);
+  try {
+    for (let i = 1; i <= GA_SHOT_FRAMES; i++) loadImage(`ASSETS/APTITUDES/HYPERION_EFFECT_SHOT/${i}.png`, { priority: true });
+    for (let i = 1; i <= GA_START_FRAMES; i++) loadImage(`ASSETS/APTITUDES/HYPERION_EFFECT_START/${i}.png`, { priority: true });
+    for (let i = 1; i <= GA_CONT_FRAMES; i++) loadImage(`ASSETS/APTITUDES/HYPERION_EFFECT_CONTINUED/${i}.png`, { priority: true });
+    for (let i = 1; i <= GA_FINISH_FRAMES; i++) loadImage(`ASSETS/APTITUDES/HYPERION_EFFECT_FINISH/${i}.png`, { priority: true });
+  } catch {}
+  // Tir réel : casse le camouflage ultime (mais rien n'est consommé).
+  breakPoliceCloak();
+  player.combatT = 5.0;
+  showNotification("Ancre gravitationnelle active (10 s) : cible ralentie", 2.5, "info");
+}
+// --- Hyperion QA : salve gratuite façon RSB-75, x6 x2.5, critique garanti.
+function startQaCooldown() {
+  player.qaCd = QA_COOLDOWN;
+  persistCdUntil("qaFx", 0);
+  persistCdUntil("qa", QA_COOLDOWN);
+}
+function activateQa() {
+  if (player.dead || !started) return;
+  const cd = Number(player.qaCd || 0);
+  if (cd > 0) {
+    showNotification(`QA : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.qaChargeT || 0) > 0) return;
+  const t = Target.get();
+  if (!t || !(t.hp > 0)) {
+    showNotification("QA : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  const d2 = dist2(player.x, player.y, t.x, t.y);
+  if (d2 > playerRange * playerRange) {
+    showNotification("Cible hors de portée.", 1.5, "error");
+    return;
+  }
+  // Charge du tir : laser-charging (sans ses 3 dernières secondes),
+  // puis la rafale part pendant le blaster.
+  player.qaChargeTarget = t;
+  player.qaChargeDur = qaChargeDuration();
+  player.qaChargeT = player.qaChargeDur;
+  player.angle = Math.atan2(t.y - player.y, t.x - player.x);
+  try { SFX.play("pShotX0Charge", { cooldown: 0.05, cut: true }); } catch {}
+  showNotification("QA en charge...", 1.2, "info");
+}
+function cancelQaCharge() {
+  player.qaChargeT = 0;
+  player.qaChargeTarget = null;
+  try { SFX.stop("pShotX0Charge"); } catch {}
+}
+function fireQaSalvo(t) {
+  if (!t || !(t.hp > 0) || player.dead) return false;
+  const d2 = dist2(player.x, player.y, t.x, t.y);
+  if (d2 > playerRange * playerRange) return false;
+  player.angle = Math.atan2(t.y - player.y, t.x - player.x);
+  // Même base que le tir laser, munition x6, x2.5, sans rien consommer (x0).
+  let laserBase = player.baseDamage + laserFitVsExtra(player.laserMods, t, player.droneLaserMods);
+  try { laserBase += laserFitUnstableDelta(player.laserMods, player.droneLaserMods); } catch {}
+  const shotBoosterMults = playerBoosterMults();
+  const x6mult = resolveAmmoMult("x6", t);
+  const qaDmg = (laserBase) * x6mult * QA_MULT
+    * shotBoosterMults.dmg * playerUpgradeMults().laser * buoyDamageMult()
+    * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * shipPassiveDamageMult();
+  const distToTarget = Math.hypot(t.x - player.x, t.y - player.y);
+  const speed = (player.baseBulletSpeed + distToTarget * BASE_RUN.bulletSpeedDistGain);
+  const life = bulletLifeForRange(playerRange, speed);
+  const volleyId = volleySeq++;
+  const targetId = t.id;
+  const ang = player.angle;
+  const fx = Math.cos(ang), fy = Math.sin(ang);
+  const px = -fy, py = fx;
+  const muzzleX = player.x + fx * (player.r + 10);
+  const muzzleY = player.y + fy * (player.r + 10);
+  const mkShot = (sx, sy, dmg) => addCappedProjectile(bullets, {
+    x: sx, y: sy,
+    vx: (t.x - sx) / (Math.hypot(t.x - sx, t.y - sy) || 1) * speed,
+    vy: (t.y - sy) / (Math.hypot(t.x - sx, t.y - sy) || 1) * speed,
+    r: 6.0, life, dmg, key: "x0", side: "player", targetId,
+    homing: true, spd: speed, volleyId, volleySize: player.altShot ? 2 : 1,
+    miss: false, qaCrit: true,
+  }, ENTITY_LIMITS.playerBullets);
+  if (!player.altShot) {
+    mkShot(muzzleX, muzzleY, qaDmg);
+  } else {
+    const ox = px * SIDE_OFFSET, oy = py * SIDE_OFFSET;
+    mkShot(muzzleX + ox, muzzleY + oy, qaDmg * SIDE_DMG_SPLIT);
+    mkShot(muzzleX - ox, muzzleY - oy, qaDmg * SIDE_DMG_SPLIT);
+  }
+  // Salve x6 : 1 vrai tir + 11 décos X0 (rythme RSB, 12 éclairs/s),
+  // alternance paire/seule comme un tir normal. Seul le premier fait des dégâts.
+  const qaRealPair = !!player.altShot;
+  const qaPairItems = [[-SIDE_OFFSET, 0], [SIDE_OFFSET, 0]];
+  const qaSingleItems = [[0, 0]];
+  for (let i = 1; i < 12; i++) {
+    const qaFakePair = qaRealPair ? i % 2 === 0 : i % 2 === 1;
+    scheduleSalvoPart(i / 12, {
+      targetId, speed, life, volleyId, volleySize: qaRealPair ? 2 : 1,
+      key: "x0", forceKey: "x0",
+      items: qaFakePair ? qaPairItems : qaSingleItems,
+    });
+  }
+  player.altShot = !player.altShot;
+  breakPoliceCloak();
+  playPlayerShot("x0");
+  maybeTriggerLaser();
+  player.combatT = 5.0;
+  // Fenêtre de rafale : on reste face à la cible, tuée entre-temps = rafale annulée.
+  player.qaBurstTarget = t;
+  player.qaBurstVolley = volleyId;
+  player.qaBurstT = QA_BURST_TIME;
+  startQaCooldown();
+  showNotification("QA : salve critique x2.5 !", 2, "info");
+  return true;
+}
+function cancelQaBurst() {
+  // Purge les décos restants de la rafale QA (le vrai tir déjà parti garde ses dégâts).
+  try {
+    const vid = player.qaBurstVolley;
+    if (vid != null) {
+      for (let i = pendingSalvo.length - 1; i >= 0; i--) {
+        if (pendingSalvo[i]?.volleyId === vid) pendingSalvo.splice(i, 1);
+      }
+    }
+  } catch {}
+  player.qaBurstT = 0;
+  player.qaBurstTarget = null;
+  player.qaBurstVolley = null;
+}
+// --- Keres SPR/Spread : slow 20 % 10 s, contagion à 200, max 10, pas de
+// réinfection sur le même cast. Recharge 300 s.
+function keresSprCount() {
+  let n = 0;
+  try {
+    for (const e of enemies) { if (e && e.hp > 0 && (e.keresSprT || 0) > 0) n++; }
+  } catch {}
+  return n;
+}
+function keresSprInfect(e) {
+  if (!e || !(e.hp > 0)) return false;
+  const hit = Array.isArray(player.keresSprHit) ? player.keresSprHit : (player.keresSprHit = []);
+  if (hit.includes(e.id) || hit.length >= SPR_MAX) return false;
+  hit.push(e.id);
+  e.keresSprT = SPR_DURATION;
+  try {
+    e.rocketSlowPct = Math.max(Number(e.rocketSlowPct || 0), SPR_SLOW_PCT);
+    e.rocketSlowT = Math.max(Number(e.rocketSlowT || 0), SPR_DURATION);
+  } catch {}
+  return true;
+}
+function startSprCooldown() {
+  player.keresSprCd = SPR_COOLDOWN;
+  persistCdUntil("keresSprFx", 0);
+  persistCdUntil("keresSpr", SPR_COOLDOWN);
+}
+function cancelSpr() {
+  if (!player.keresSprActive) return;
+  try {
+    for (const e of enemies) { if (e) e.keresSprT = 0; }
+  } catch {}
+  player.keresSprActive = false;
+  player.keresSprHit = [];
+  player.keresSprN = 0;
+  startSprCooldown();
+}
+function activateSpr() {
+  if (player.dead || !started) return;
+  const cd = Number(player.keresSprCd || 0);
+  if (cd > 0) {
+    showNotification(`Spread : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if (player.keresSprActive) return;
+  const t = Target.get();
+  if (!t || !(t.hp > 0)) {
+    showNotification("Spread : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  const d2 = dist2(player.x, player.y, t.x, t.y);
+  if (d2 > playerRange * playerRange) {
+    showNotification("Cible hors de portée.", 1.5, "error");
+    return;
+  }
+  player.keresSprHit = [];
+  player.keresSprActive = true;
+  player.keresSprAcc = 0;
+  keresSprInfect(t);
+  player.keresSprN = keresSprCount();
+  persistCdUntil("keresSprFx", SPR_DURATION);
+  showNotification("Spread actif : cible ralentie 20 %, contagion à 200", 2.5, "info");
+}
+// --- Keres SLE/Sleight : lock suffit, aucune limite de distance. Dash x5
+// jusqu'à 200 de la cible, réacteurs remplacés par le speed buff Citadel.
+function startSleightCooldown() {
+  player.sleightCd = SLEIGHT_COOLDOWN;
+  player.sleightTarget = null;
+  persistCdUntil("sleightFx", 0);
+  persistCdUntil("sleight", SLEIGHT_COOLDOWN);
+}
+function cancelSleight() {
+  if ((player.sleightT || 0) <= 0 && !player.sleightTarget) return;
+  player.sleightT = 0;
+  player.sleightTarget = null;
+  player.sleightElapsed = 0;
+  try { if (moveTarget.active && player.sleightDrove) { moveTarget.active = false; } } catch {}
+  player.sleightDrove = false;
+  startSleightCooldown();
+}
+function activateSleight() {
+  if (player.dead || !started) return;
+  const cd = Number(player.sleightCd || 0);
+  if (cd > 0) {
+    showNotification(`Sleight : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.sleightT || 0) > 0) return;
+  const t = Target.get();
+  if (!t || !(t.hp > 0)) {
+    showNotification("Sleight : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  // Pas de limite de distance : lock suffit, même à l'autre bout de la carte.
+  player.sleightTarget = t;
+  player.sleightT = 1;
+  player.sleightElapsed = 0;
+  player.sleightDrove = false;
+  persistCdUntil("sleightFx", SLEIGHT_COOLDOWN);
+  try {
+    for (let i = 1; i <= 3; i++) loadImage(`ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${i}.png`, { priority: true });
+  } catch {}
+  showNotification("Sleight : dash vers la cible !", 2, "info");
+}
+// --- Mimesis Scramble : buffs tant que le bouclier tient.
+function scrambleDamageMult() {
+  if ((player.scrambleT || 0) <= 0 || player.dead) return 1;
+  return 1 + SCRAMBLE_DMG;
+}
+function startScrambleCooldown() {
+  player.scrambleT = 0;
+  player.scrambleCd = SCRAMBLE_COOLDOWN;
+  persistCdUntil("scrambleFx", 0);
+  persistCdUntil("scramble", SCRAMBLE_COOLDOWN);
+}
+function cancelScramble() {
+  if ((player.scrambleT || 0) <= 0) return;
+  startScrambleCooldown();
+}
+function activateScramble() {
+  if (player.dead || !started) return;
+  const cd = Number(player.scrambleCd || 0);
+  if (cd > 0) {
+    showNotification(`Brouillage : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.scrambleT || 0) > 0) return;
+  player.scrambleT = 1;
+  player.scrambleAcc = 0;
+  try { player.scrambleCfg = getActiveConfigNo(); } catch { player.scrambleCfg = null; }
+  persistCdUntil("scrambleFx", SCRAMBLE_COOLDOWN);
+  showNotification("Brouillage actif : +65 % évasion, +25 % dégâts/vitesse, -5 % shield/s", 2.5, "info");
+}
+// --- Mimesis Phase Out : TP 50u aléatoire, sans animation.
+function isPhaseOutBlocked() {
+  try {
+    if (rules?.mode === "gate") return true;
+    const mapId = String(window.__CURRENT_MAP_ID__ || "1-1").toLowerCase();
+    if (mapId.includes("low")) return true;
+    if (mapId.includes("uba")) return true;
+    if (/^5(-|$|\.)/.test(mapId)) return true;
+  } catch {}
+  return false;
+}
+function startPhaseOutCooldown() {
+  player.phaseOutCd = PHASEOUT_COOLDOWN;
+  persistCdUntil("phaseOut", PHASEOUT_COOLDOWN);
+}
+function activatePhaseOut() {
+  if (player.dead || !started) return;
+  const cd = Number(player.phaseOutCd || 0);
+  if (cd > 0) {
+    showNotification(`Sortie de phase : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if (isPhaseOutBlocked()) {
+    showNotification("Sortie de phase impossible ici (gates / LoW / UBA / pirates)", 2.5, "error");
+    return;
+  }
+  const ang = Math.random() * Math.PI * 2;
+  player.x = clamp(player.x + Math.cos(ang) * PHASEOUT_DIST, 80, WORLD.w - 80);
+  player.y = clamp(player.y + Math.sin(ang) * PHASEOUT_DIST, 80, WORLD.h - 80);
+  player.vx = 0;
+  player.vy = 0;
+  try { moveTarget.active = false; } catch {}
+  startPhaseOutCooldown();
+  showNotification("Sortie de phase !", 1.2, "info");
+}
+// --- Mimesis Hologram : son shaco → fausse explosion + 4 clones → dispersion → explosion.
+function hologramSoundDuration() {
+  try {
+    const d = Number(SFX.duration("mimesisHolo") || 0);
+    if (d > 0.3) return d;
+  } catch {}
+  return HOLOGRAM_SOUND_FALLBACK;
+}
+function startHologramCooldown() {
+  player.holoGramPhase = null;
+  player.holoGramT = 0;
+  player.holoGramCd = HOLOGRAM_COOLDOWN;
+  persistCdUntil("holoGramFx", 0);
+  persistCdUntil("holoGram", HOLOGRAM_COOLDOWN);
+}
+function cancelHologram() {
+  // Mort / changement vaisseau / refresh : son coupé, clones effacés, recharge.
+  try { SFX.stop("mimesisHolo"); } catch {}
+  player.holoGramBoomT = 0;
+  try {
+    for (let i = escortShips.length - 1; i >= 0; i--) {
+      if (escortShips[i]?.holo) escortShips.splice(i, 1);
+    }
+  } catch {}
+  if ((player.holoGramPhase || null) == null && Number(player.holoGramCd || 0) <= 0) return;
+  startHologramCooldown();
+}
+function activateHologram() {
+  if (player.dead || !started) return;
+  const cd = Number(player.holoGramCd || 0);
+  if (cd > 0) {
+    showNotification(`Hologramme : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if (player.holoGramPhase != null) return;
+  player.holoGramPhase = "sound";
+  player.holoGramT = hologramSoundDuration();
+  persistCdUntil("holoGramFx", hologramSoundDuration() + HOLOGRAM_CLONE_LIFE);
+  try { SFX.play("mimesisHolo", { cooldown: 0.05, cut: true }); } catch {}
+  showNotification("Hologramme...", 1.2, "info");
+}
+function hologramDetonate() {
+  // Fausse explosion PAR-DESSUS nous (overlay joueur, visuel seul).
+  player.holoGramBoomT = (EXPLOSION_PACK.frames || 40) / (EXPLOSION_PACK.fps || 40);
+  // Tous les locks sur nous sont effacés (comme le camouflage).
+  try {
+    for (const e of enemies) {
+      if (!e || e.hp <= 0) continue;
+      if (e._combatTargetId !== "player" && e._combatTarget !== player) continue;
+      e._aggro = false;
+      e._aggroT = 0;
+      e._attackedPlayerRecently = false;
+      e._combatTargetId = null;
+      e._combatTarget = null;
+      if (e.aiZ) e.aiZ.state = "wander";
+    }
+  } catch {}
+  // 4 clones identiques : spawn sur nous, même direction que notre vaisseau,
+  // puis libres dans un rayon de 1500 autour de nous, chacun son rythme
+  // (vitesse, pauses, rayon propres : pas de mouvement synchronisé).
+  // 1 PV + 1 bouclier : one-shot.
+  const holoSpd = Math.max(300, Number(player.baseSpeed || 300) * 0.9);
+  for (let i = 0; i < HOLOGRAM_CLONES; i++) {
+    const ang = Number(player.angle || 0);
+    const wa = Math.random() * Math.PI * 2;
+    const wd = 200 + Math.random() * 1300;
+    escortShips.push({
+      id: `holo_clone_${i}_${Date.now() % 100000}`,
+      holo: true,
+      x: Number(player.x || 0),
+      y: Number(player.y || 0),
+      vx: 0,
+      vy: 0,
+      angle: ang,
+      wx: clamp(Number(player.x || 0) + Math.cos(wa) * wd, 80, WORLD.w - 80),
+      wy: clamp(Number(player.y || 0) + Math.sin(wa) * wd, 80, WORLD.h - 80),
+      wt: Math.random() * 3,
+      wr: 300 + Math.random() * 1200,
+      pauseT: 0,
+      spd: holoSpd * (0.6 + Math.random() * 0.6),
+      r: Number(player.r || 18),
+      hp: 1,
+      hpMax: 1,
+      sh: 1,
+      shMax: 1,
+      t: HOLOGRAM_CLONE_LIFE,
+      pack: ACTIVE_SHIP,
+    });
+  }
+  player.holoGramPhase = "clones";
+  player.holoGramT = HOLOGRAM_CLONE_LIFE;
+  showNotification("Hologramme : les clones se dispersent !", 2, "info");
+}
+function killHoloClone(clone, silent = false) {
+  if (!clone) return;
+  try {
+    const idx = escortShips.indexOf(clone);
+    if (idx >= 0) escortShips.splice(idx, 1);
+  } catch {}
+  // Explosion standard comme un NPC tué, mais rire à la place du son d'explosion.
+  try { spawnExplosion(Number(clone.x || 0), Number(clone.y || 0), 1.0); } catch {}
+  if (!silent) {
+    try { SFX.play("mimesisLaugh", { cooldown: 0.05, cut: true }); } catch {}
+  }
+}
+// --- Liberator Plus Self Repair : 35k HP/s pendant 10 s (350k max), soi uniquement.
+function startLibRepCooldown() {
+  player.libRepCd = LIBREP_COOLDOWN;
+  persistCdUntil("libRepFx", 0);
+  persistCdUntil("libRep", LIBREP_COOLDOWN);
+}
+function cancelLibRep() {
+  if ((player.libRepT || 0) <= 0) return;
+  player.libRepT = 0;
+  startLibRepCooldown();
+}
+function libRepHealTick() {
+  if (player.dead) return;
+  const old = Number(player.hp || 0);
+  player.hp = Math.min(Number(player.hpMax || 0), old + LIBREP_AMOUNT);
+  const gain = Math.round(Number(player.hp || 0) - old);
+  try {
+    addFloatText(
+      Number(player.x || 0) + (Math.random() - 0.5) * 60,
+      Number(player.y || 0) - 90 - Math.random() * 20,
+      gain, "rgba(80,255,125,0.98)",
+      { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+    );
+  } catch {}
+}
+function activateLibRep() {
+  if (player.dead || !started) return;
+  const cd = Number(player.libRepCd || 0);
+  if (cd > 0) {
+    showNotification(`Auto-réparation : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.libRepT || 0) > 0) return;
+  player.libRepT = LIBREP_DURATION;
+  player.libRepAcc = 0;
+  persistCdUntil("libRepFx", LIBREP_DURATION);
+  try {
+    for (let i = 1; i <= LIBREP_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/HEAL_EFFECT/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Auto-réparation active (10 s) : +35k HP/s", 2.5, "info");
+}
+// --- Orcus Assimilate : 80 % des dégâts reçus convertis en PV.
+function startOrcusCooldown() {
+  player.orcusCd = ORCUS_COOLDOWN;
+  persistCdUntil("orcusFx", 0);
+  persistCdUntil("orcus", ORCUS_COOLDOWN);
+}
+function cancelOrcus() {
+  if ((player.orcusT || 0) <= 0) return;
+  player.orcusT = 0;
+  startOrcusCooldown();
+}
+function activateOrcus() {
+  if (player.dead || !started) return;
+  const cd = Number(player.orcusCd || 0);
+  if (cd > 0) {
+    showNotification(`Assimilation : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.orcusT || 0) > 0) return;
+  player.orcusT = ORCUS_DURATION;
+  persistCdUntil("orcusFx", ORCUS_DURATION);
+  try {
+    for (let i = 1; i <= ORCUS_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/ORCUS_ASSIMILATE/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Assimilation active (20 s) : 80 % des dégâts reçus convertis en PV", 2.5, "info");
+}
+// --- Lightning Postcombustion : comme le Voyage Citadel (vitesse x2, 5 s).
+function startLightCooldown() {
+  player.lightCd = LIGHT_COOLDOWN;
+  persistCdUntil("lightFx", 0);
+  persistCdUntil("light", LIGHT_COOLDOWN);
+}
+function cancelLight() {
+  if ((player.lightT || 0) <= 0) return;
+  player.lightT = 0;
+  startLightCooldown();
+}
+function activateLight() {
+  if (player.dead || !started) return;
+  const cd = Number(player.lightCd || 0);
+  if (cd > 0) {
+    showNotification(`Postcombustion : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.lightT || 0) > 0) return;
+  player.lightT = LIGHT_DURATION;
+  persistCdUntil("lightFx", LIGHT_DURATION);
+  try {
+    for (let i = 1; i <= 3; i++) loadImage(`ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${i}.png`, { priority: true });
+  } catch {}
+  showNotification("Postcombustion active (10 s) : vitesse x2", 2, "info");
 }
 function activateDiminish() {
   if (player.dead || !started) return;
@@ -1990,6 +2785,103 @@ function restorePersistedCds() {
     startDiminishCooldown();
   } else {
     player.diminishCd = Math.min(DIMINISH_COOLDOWN, Math.max(Number(player.diminishCd || 0), persistedCdLeft("diminish")));
+  }
+  // Liberator Plus coupé par un refresh : soin perdu, la recharge démarre.
+  if (persistedCdLeft("libRepFx") > 0) {
+    player.libRepT = 0;
+    startLibRepCooldown();
+  } else {
+    player.libRepCd = Math.min(LIBREP_COOLDOWN, Math.max(Number(player.libRepCd || 0), persistedCdLeft("libRep")));
+  }
+  // Postcombustion coupée par un refresh : boost perdu, la recharge démarre.
+  if (persistedCdLeft("lightFx") > 0) {
+    player.lightT = 0;
+    startLightCooldown();
+  } else {
+    player.lightCd = Math.min(LIGHT_COOLDOWN, Math.max(Number(player.lightCd || 0), persistedCdLeft("light")));
+  }
+  // Mimesis coupés par un refresh : Scramble/PhaseOut perdus (recharge),
+  // Hologramme perdu (son coupé, clones effacés, recharge).
+  if (persistedCdLeft("scrambleFx") > 0) {
+    player.scrambleT = 0;
+    startScrambleCooldown();
+  } else {
+    player.scrambleCd = Math.min(SCRAMBLE_COOLDOWN, Math.max(Number(player.scrambleCd || 0), persistedCdLeft("scramble")));
+  }
+  player.phaseOutCd = Math.min(PHASEOUT_COOLDOWN, Math.max(Number(player.phaseOutCd || 0), persistedCdLeft("phaseOut")));  if (persistedCdLeft("holoGramFx") > 0) {
+    try { SFX.stop("mimesisHolo"); } catch {}
+    try {
+      for (let i = escortShips.length - 1; i >= 0; i--) {
+        if (escortShips[i]?.holo) escortShips.splice(i, 1);
+      }
+    } catch {}
+    player.holoGramPhase = null;
+    player.holoGramT = 0;
+    startHologramCooldown();
+  } else {
+    player.holoGramCd = Math.min(HOLOGRAM_COOLDOWN, Math.max(Number(player.holoGramCd || 0), persistedCdLeft("holoGram")));
+  }
+  // Cyborg coupé par un refresh : canal perdu, la recharge démarre.
+  if (persistedCdLeft("cyborgFx") > 0) {
+    player.cyborgT = 0;
+    player.cyborgTarget = null;
+    player.cyborgHit = 0;
+    startCyborgCooldown();
+  } else {
+    player.cyborgCd = Math.min(CYBORG_COOLDOWN, Math.max(Number(player.cyborgCd || 0), persistedCdLeft("cyborg")));
+  }
+  // Orcus coupé par un refresh : effet perdu, la recharge démarre.
+  if (persistedCdLeft("orcusFx") > 0) {
+    player.orcusT = 0;
+    startOrcusCooldown();
+  } else {
+    player.orcusCd = Math.min(ORCUS_COOLDOWN, Math.max(Number(player.orcusCd || 0), persistedCdLeft("orcus")));
+  }
+  // Keres coupés par un refresh : Spread perdu (recharge), Sleight perdu (recharge).
+  if (persistedCdLeft("keresSprFx") > 0) {
+    try { for (const e of enemies) { if (e) e.keresSprT = 0; } } catch {}
+    player.keresSprActive = false;
+    player.keresSprHit = [];
+    player.keresSprN = 0;
+    startSprCooldown();
+  } else {
+    player.keresSprCd = Math.min(SPR_COOLDOWN, Math.max(Number(player.keresSprCd || 0), persistedCdLeft("keresSpr")));
+  }
+  if (persistedCdLeft("sleightFx") > 0) {
+    player.sleightT = 0;
+    player.sleightTarget = null;
+    player.sleightElapsed = 0;
+    player.sleightDrove = false;
+    startSleightCooldown();
+  } else {
+    player.sleightCd = Math.min(SLEIGHT_COOLDOWN, Math.max(Number(player.sleightCd || 0), persistedCdLeft("sleight")));
+  }
+  // Hyperion coupés par un refresh : GA perdue (recharge), QA instantanée (juste la recharge).
+  if (persistedCdLeft("gaFx") > 0) {
+    player.gaT = 0;
+    player.gaTarget = null;
+    startGaCooldown();
+  } else {
+    player.gaCd = Math.min(GA_COOLDOWN, Math.max(Number(player.gaCd || 0), persistedCdLeft("ga")));
+  }
+  player.qaCd = Math.min(QA_COOLDOWN, Math.max(Number(player.qaCd || 0), persistedCdLeft("qa")));
+  // Charge QA coupée par un refresh : pas de tir, pas de recharge.
+  player.qaChargeT = 0;
+  player.qaChargeTarget = null;
+  try { cancelQaBurst(); } catch {}
+  // Holo coupé par un refresh : effets perdus, recharges indépendantes démarrées.
+  if (persistedCdLeft("holoSelfFx") > 0) {
+    player.holoSelfT = 0;
+    startHoloSelfCooldown();
+  } else {
+    player.holoSelfCd = Math.min(HOLO_COOLDOWN, Math.max(Number(player.holoSelfCd || 0), persistedCdLeft("holoSelf")));
+  }
+  if (persistedCdLeft("holoEnemyFx") > 0) {
+    player.holoEnemyT = 0;
+    player.holoEnemyTarget = null;
+    startHoloEnemyCooldown();
+  } else {
+    player.holoEnemyCd = Math.min(HOLO_COOLDOWN, Math.max(Number(player.holoEnemyCd || 0), persistedCdLeft("holoEnemy")));
   }
   // Disruptor coupés par un refresh : effets perdus, recharges démarrées
   // (le bouclier retiré par Disarray est rendu).
@@ -2717,6 +3609,92 @@ function getAbilityCooldown(abilityId) {
     }
     return { left: Number(player.diminishCd || 0), max: DIMINISH_COOLDOWN };
   }
+  // Hyperion GA : pendant les 10 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_hyperion_ga") {
+    if ((player.gaT || 0) > 0) {
+      const total = GA_DURATION + GA_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.gaCd || 0), max: GA_COOLDOWN };
+  }
+  // Hyperion QA : tir instantané, juste la recharge 90 s.
+  if (String(abilityId || "").toLowerCase() === "ability_hyperion_qa") {
+    return { left: Number(player.qaCd || 0), max: QA_COOLDOWN };
+  }
+  // Keres Spread : voile plein tant qu'un infecté reste, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_keres_spr") {
+    if (player.keresSprActive) return { left: 1, max: 1 };
+    return { left: Number(player.keresSprCd || 0), max: SPR_COOLDOWN };
+  }
+  // Keres Sleight : voile plein pendant le dash, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_keres_sle") {
+    if ((player.sleightT || 0) > 0) return { left: 1, max: 1 };
+    return { left: Number(player.sleightCd || 0), max: SLEIGHT_COOLDOWN };
+  }
+  // Liberator Plus : pendant les 10 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_liberator-plus_self-repair") {
+    if ((player.libRepT || 0) > 0) {
+      const total = LIBREP_DURATION + LIBREP_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.libRepCd || 0), max: LIBREP_COOLDOWN };
+  }
+  // Lightning : pendant les 10 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_lightning") {
+    if ((player.lightT || 0) > 0) {
+      const total = LIGHT_DURATION + LIGHT_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.lightCd || 0), max: LIGHT_COOLDOWN };
+  }
+  // Mimesis Scramble : durée = bouclier, voile plein pendant l'effet.
+  if (String(abilityId || "").toLowerCase() === "ability_mimesis_scramble") {
+    if ((player.scrambleT || 0) > 0) return { left: 1, max: 1 };
+    return { left: Number(player.scrambleCd || 0), max: SCRAMBLE_COOLDOWN };
+  }
+  // Mimesis Phase Out : tir instantané, juste la recharge 300 s.
+  if (String(abilityId || "").toLowerCase() === "ability_mimesis_phase-out") {
+    return { left: Number(player.phaseOutCd || 0), max: PHASEOUT_COOLDOWN };
+  }
+  // Mimesis Hologram : voile plein (son + clones), après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_mimesis_hologram") {
+    if (player.holoGramPhase != null) {
+      const total = hologramSoundDuration() + HOLOGRAM_CLONE_LIFE + HOLOGRAM_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.holoGramCd || 0), max: HOLOGRAM_COOLDOWN };
+  }
+  // Orcus : pendant les 20 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_orcus_assimilate") {
+    if ((player.orcusT || 0) > 0) {
+      const total = ORCUS_DURATION + ORCUS_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.orcusCd || 0), max: ORCUS_COOLDOWN };
+  }
+  // Cyborg : pendant les 30 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_cyborg_singularity") {
+    if ((player.cyborgT || 0) > 0) {
+      const total = CYBORG_DURATION + CYBORG_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.cyborgCd || 0), max: CYBORG_COOLDOWN };
+  }
+  // Holo : 2 capacités indépendantes, voile plein pendant leur propre effet.
+  if (String(abilityId || "").toLowerCase() === "ability_holo_self-reversal") {
+    if ((player.holoSelfT || 0) > 0) {
+      const total = HOLO_DURATION + HOLO_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.holoSelfCd || 0), max: HOLO_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_holo_enemy-reversal") {
+    if ((player.holoEnemyT || 0) > 0) {
+      const total = HOLO_DURATION + HOLO_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.holoEnemyCd || 0), max: HOLO_COOLDOWN };
+  }
   if (String(abilityId || "").toLowerCase() === "ability_disruptor_ddol") {
     if ((player.ddolT || 0) > 0) {
       const total = DDOL_DURATION + DDOL_COOLDOWN;
@@ -2791,6 +3769,14 @@ function isPlayerCloaked() {
   if (typeof player === "undefined" || !player || player.dead) return false;
   return (player.cloakT || 0) > 0;
 }
+// Hologramme Mimesis : pendant les clones (3 s), on est invisible complet.
+function isPlayerHoloHidden() {
+  if (typeof player === "undefined" || !player || player.dead) return false;
+  return player.holoGramPhase === "clones";
+}
+// Inciblable par les NPC (camouflage ou hologramme) : ils arrêtent tir,
+// poursuite, aggro et kamikaze, et ne fixent plus le joueur.
+function isPlayerUntargetable() { return isPlayerCloaked() || isPlayerHoloHidden(); }
 // Toute attaque réelle casse le camouflage (laser, roquette, salve) :
 // l'aptitude est coupée donc la recharge démarre.
 function breakPoliceCloak() {
@@ -2942,6 +3928,7 @@ function initializeCustomActionBar() {
     { ship: "Berserker", ships: ["berserker"], ids: ["ability_berserker_bsk", "ability_berserker_rvg", "ability_berserker_shl"] },
     { ship: "Citadel Plus", ships: ["citadel_plus"], ids: ["ability_citadel-plus_prismatic-endurance", "ability_citadel-plus_draw-fire", "ability_citadel-plus_fortify", "ability_citadel-plus_protection", "ability_citadel-plus_travel"] },
     { ship: "Citadel", ships: ["citadel"], ids: ["ability_citadel_draw-fire", "ability_citadel_fortify", "ability_citadel_protection", "ability_citadel_travel"] },
+    { ship: "Cyborg", ships: ["cyborg"], ids: ["ability_cyborg_singularity"] },
     { ship: "Diminisher", ships: ["diminisher"], ids: ["ability_diminisher"] },
     { ship: "Disruptor", ships: ["disruptor"], ids: ["ability_disruptor_ddol", "ability_disruptor_redirect", "ability_disruptor_shield-disarray"] },
     { ship: "Goliath X", ships: ["goliath_x"], ids: ["ability_goliath-x_frozen-claw"] },
@@ -2978,6 +3965,7 @@ function initializeCustomActionBar() {
   // Icones de repli : aptitudes "Plus" qui partagent le visuel de base
   // (aucun fichier Plus dédié dans ASSETS/APTITUDES/ICONS).
   const ABILITY_ICON_OVERRIDES = {
+    "ability_cyborg_singularity": "ABILITY_VENOM.PNG",
     "ability_spearhead-plus_target-marker": "ABILITY_SPEARHEAD_TARGET-MARKER.PNG",
     "ability_spearhead-plus_ultimate-cloak": "ABILITY_SPEARHEAD_ULTIMATE-CLOAK.PNG",
     "ability_hammerclaw_hp-repair": "ABILITY_AEGIS_HP-REPAIR.PNG",
@@ -3057,6 +4045,58 @@ function initializeCustomActionBar() {
         }
         if (name === "ability_diminisher") {
           activateDiminish();
+          return;
+        }
+        if (name === "ability_holo_self-reversal") {
+          activateHoloSelf();
+          return;
+        }
+        if (name === "ability_holo_enemy-reversal") {
+          activateHoloEnemy();
+          return;
+        }
+        if (name === "ability_hyperion_ga") {
+          activateGa();
+          return;
+        }
+        if (name === "ability_hyperion_qa") {
+          activateQa();
+          return;
+        }
+        if (name === "ability_keres_spr") {
+          activateSpr();
+          return;
+        }
+        if (name === "ability_keres_sle") {
+          activateSleight();
+          return;
+        }
+        if (name === "ability_liberator-plus_self-repair") {
+          activateLibRep();
+          return;
+        }
+        if (name === "ability_lightning") {
+          activateLight();
+          return;
+        }
+        if (name === "ability_mimesis_scramble") {
+          activateScramble();
+          return;
+        }
+        if (name === "ability_mimesis_phase-out") {
+          activatePhaseOut();
+          return;
+        }
+        if (name === "ability_mimesis_hologram") {
+          activateHologram();
+          return;
+        }
+        if (name === "ability_orcus_assimilate") {
+          activateOrcus();
+          return;
+        }
+        if (name === "ability_cyborg_singularity") {
+          activateCyborg();
           return;
         }
         if (name === "ability_disruptor_ddol") {
@@ -3433,13 +4473,26 @@ function initializeCustomActionBar() {
       try { cancelTravel(); } catch {}
       try { cancelFortify(); } catch {}
       try { cancelPrism(); } catch {}
-      try { cancelDiminish(); } catch {}
-      try { cancelDdol(); } catch {}
-      try { cancelRedirect(); } catch {}
-      try { cancelDisarray(); } catch {}
-      try { cancelRealloc(); } catch {}
-      try { cancelHecate(); } catch {}
-      if (purged) {
+  try { cancelDiminish(); } catch {}
+  try { cancelDdol(); } catch {}
+  try { cancelHoloSelf(); } catch {}
+  try { cancelHoloEnemy(); } catch {}
+  try { cancelGa(); } catch {}
+  try { cancelQaCharge(); } catch {}
+  try { cancelQaBurst(); } catch {}
+  try { cancelSpr(); } catch {}
+  try { cancelSleight(); } catch {}
+  try { cancelLibRep(); } catch {}
+  try { cancelLight(); } catch {}
+  try { cancelScramble(); } catch {}
+  try { cancelHologram(); } catch {}
+  try { cancelOrcus(); } catch {}
+  try { cancelCyborg(); } catch {}
+  try { cancelRedirect(); } catch {}
+  try { cancelDisarray(); } catch {}
+  try { cancelRealloc(); } catch {}
+  try { cancelHecate(); } catch {}
+  if (purged) {
         persist();
         updateHudKeyHints();
         showNotification("Aptitudes retirées des slots (changement de vaisseau)", 2, "info");
@@ -9565,6 +10618,10 @@ window.resetAllSkills = function resetAllSkills() {
   try { player.hammerShCd = 0; } catch {}
   try { player.hammerPodCd = 0; } catch {}
   try { player.nebCd = 0; } catch {}
+  try { player.valCd = 0; } catch {}
+  try { player.shlCd = 0; } catch {}
+  try { player.bskCd = 0; } catch {}
+  try { player.rvgCd = 0; } catch {}
   try { player.drawFireCd = 0; } catch {}
   try { player.protectionCd = 0; } catch {}
   try { player.travelCd = 0; } catch {}
@@ -9577,6 +10634,19 @@ window.resetAllSkills = function resetAllSkills() {
   try { player.reallocCd = 0; } catch {}
   try { player.hecateCd = 0; } catch {}
   try { player.frozenClawCd = 0; } catch {}
+  try { player.holoSelfCd = 0; } catch {}
+  try { player.holoEnemyCd = 0; } catch {}
+  try { player.gaCd = 0; } catch {}
+  try { player.qaCd = 0; } catch {}
+  try { player.keresSprCd = 0; } catch {}
+  try { player.sleightCd = 0; } catch {}
+  try { player.libRepCd = 0; } catch {}
+  try { player.lightCd = 0; } catch {}
+  try { player.scrambleCd = 0; } catch {}
+  try { player.phaseOutCd = 0; } catch {}
+  try { player.holoGramCd = 0; } catch {}
+  try { player.orcusCd = 0; } catch {}
+  try { player.cyborgCd = 0; } catch {}
   try { persistCdUntil("cloak", 0); } catch {}
   try { persistCdUntil("pod", 0); } catch {}
   try { persistCdUntil("hpRep", 0); } catch {}
@@ -9585,6 +10655,10 @@ window.resetAllSkills = function resetAllSkills() {
   try { persistCdUntil("hammerSh", 0); } catch {}
   try { persistCdUntil("hammerPod", 0); } catch {}
   try { persistCdUntil("neb", 0); } catch {}
+  try { persistCdUntil("val", 0); } catch {}
+  try { persistCdUntil("shl", 0); } catch {}
+  try { persistCdUntil("bsk", 0); } catch {}
+  try { persistCdUntil("rvg", 0); } catch {}
   try { persistCdUntil("drawFire", 0); } catch {}
   try { persistCdUntil("protection", 0); } catch {}
   try { persistCdUntil("travel", 0); } catch {}
@@ -9597,6 +10671,19 @@ window.resetAllSkills = function resetAllSkills() {
   try { persistCdUntil("realloc", 0); } catch {}
   try { persistCdUntil("hecate", 0); } catch {}
   try { persistCdUntil("frozenClaw", 0); } catch {}
+  try { persistCdUntil("holoSelf", 0); } catch {}
+  try { persistCdUntil("holoEnemy", 0); } catch {}
+  try { persistCdUntil("ga", 0); } catch {}
+  try { persistCdUntil("qa", 0); } catch {}
+  try { persistCdUntil("keresSpr", 0); } catch {}
+  try { persistCdUntil("sleight", 0); } catch {}
+  try { persistCdUntil("libRep", 0); } catch {}
+  try { persistCdUntil("light", 0); } catch {}
+  try { persistCdUntil("scramble", 0); } catch {}
+  try { persistCdUntil("phaseOut", 0); } catch {}
+  try { persistCdUntil("holoGram", 0); } catch {}
+  try { persistCdUntil("orcus", 0); } catch {}
+  try { persistCdUntil("cyborg", 0); } catch {}
 
   // Tir / roquettes : pour que tout soit réellement "rechargé".
   try { fireCooldown = 0; } catch {}
@@ -10820,24 +11907,27 @@ function updateShipEngineFx(dt) {
 }
 function drawShipEngineFx() {
   if (!GAME_SETTINGS.shipSmoke) return;
-  // Voyage (Citadel) : à la place des réacteurs, le speed buff effect.
-  if ((player.travelT || 0) > 0) { drawTravelEngineFx(); return; }
+  // Voyage (Citadel), Postcombustion (Lightning) et Sleight (Keres) :
+  // à la place des réacteurs, le speed buff effect.
+  if ((player.travelT || 0) > 0) { drawTravelEngineFx(TRAVEL_DURATION - Number(player.travelT || 0), Number(player.travelT || 0), 24); return; }
+  if ((player.lightT || 0) > 0) { drawTravelEngineFx(LIGHT_DURATION - Number(player.lightT || 0), Number(player.lightT || 0), 24); return; }
+  if ((player.sleightT || 0) > 0) { drawTravelEngineFx(Number(player.sleightElapsed || 0), 1, 24); return; }
   const frame = getPlayerSpriteFrame();
   shipEngine.draw(ctx, player, ACTIVE_SHIP, isImgReady, frame);
 }
 // Voyage : frame du speed buff (1/2/3). En mouvement : montée 1→2→3 au
 // début, 3 en croisière, descente 3→2→1 à la fin. À l'arrêt : alternance
 // 3↔2 toutes les 100 ms (jamais figé sur une image).
-function travelBuffFrame() {
+// elapsed/remaining paramétrables (Sleight réutilise le même effet).
+function travelBuffFrame(elapsed = TRAVEL_DURATION - Number(player.travelT || 0), remaining = Number(player.travelT || 0)) {
   const moving = Math.hypot(Number(player.vx || 0), Number(player.vy || 0)) > 8;
   if (!moving) return (Math.floor(performance.now() / 100) % 2) + 2;
-  const elapsed = TRAVEL_DURATION - Number(player.travelT || 0);
   if (elapsed < 0.6) return Math.min(3, 1 + Math.floor(elapsed / 0.2));
-  if (Number(player.travelT || 0) < 0.6) return Math.max(1, Math.ceil(Number(player.travelT || 0) / 0.2));
+  if (remaining < 0.6) return Math.max(1, Math.ceil(remaining / 0.2));
   return 3;
 }
-function drawTravelEngineFx() {
-  const frameIdx = travelBuffFrame();
+function drawTravelEngineFx(elapsed, remaining, backOffset = 0) {
+  const frameIdx = travelBuffFrame(elapsed, remaining);
   const src = `ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${frameIdx}.png`;
   const img = getCachedImage(src);
   if (!isImgReady(img)) {
@@ -10855,7 +11945,7 @@ function drawTravelEngineFx() {
     ctx.save();
     ctx.translate(emitter.x, emitter.y);
     ctx.rotate(angle + Math.PI);
-    ctx.drawImage(img, -46, -20, 125, 40);
+    ctx.drawImage(img, -46 + backOffset, -20, 125, 40);
     ctx.restore();
   }
   ctx.restore();
@@ -12421,6 +13511,17 @@ function syncActionDockState() {
         : lowId === "ability_citadel_fortify" || lowId === "ability_citadel-plus_fortify" ? Number(player.fortifyT || 0)
         : lowId === "ability_citadel-plus_prismatic-endurance" ? Number(player.prismT || 0)
         : lowId === "ability_diminisher" ? Number(player.diminishT || 0)
+        : lowId === "ability_holo_self-reversal" ? Number(player.holoSelfT || 0)
+        : lowId === "ability_holo_enemy-reversal" ? Number(player.holoEnemyT || 0)
+        : lowId === "ability_hyperion_ga" ? Number(player.gaT || 0)
+        : lowId === "ability_keres_spr" ? (player.keresSprActive ? 1 : 0)
+        : lowId === "ability_keres_sle" ? (Number(player.sleightT || 0) > 0 ? 1 : 0)
+        : lowId === "ability_liberator-plus_self-repair" ? Number(player.libRepT || 0)
+        : lowId === "ability_lightning" ? Number(player.lightT || 0)
+        : lowId === "ability_mimesis_scramble" ? (Number(player.scrambleT || 0) > 0 ? 1 : 0)
+        : lowId === "ability_mimesis_hologram" ? (player.holoGramPhase != null ? 1 : 0)
+        : lowId === "ability_orcus_assimilate" ? Number(player.orcusT || 0)
+        : lowId === "ability_cyborg_singularity" ? Number(player.cyborgT || 0)
         : lowId === "ability_disruptor_ddol" ? Number(player.ddolT || 0)
         : lowId === "ability_disruptor_redirect" ? Number(player.redirectT || 0)
         : lowId === "ability_disruptor_shield-disarray" ? Number(player.disarrayT || 0)
@@ -12435,7 +13536,18 @@ function syncActionDockState() {
         : lowId === "ability_hammerclaw-plus_shield-repair" ? Number(player.hammerShT || 0)
         : lowId === "ability_hammerclaw_repair-pod" ? Number(player.hammerPodT || 0)
         : lowId === "ability_hammerclaw-plus_repair-pod" ? Number(player.hammerPodT || 0) : 0;
-      cdText = formatAbilityCd(fxLeft > 0 ? fxLeft : cd.left);
+      // Spread : compteur d'infectés pendant l'effet (pas un temps).
+      if (lowId === "ability_keres_spr" && player.keresSprActive) {
+        cdText = `x${Number(player.keresSprN || 0)}`;
+      } else if (lowId === "ability_keres_sle" && Number(player.sleightT || 0) > 0) {
+        cdText = ">>";
+      } else if (lowId === "ability_mimesis_scramble" && Number(player.scrambleT || 0) > 0) {
+        cdText = ">>";
+      } else if (lowId === "ability_mimesis_hologram" && player.holoGramPhase != null) {
+        cdText = formatAbilityCd(Number(player.holoGramT || 0));
+      } else {
+        cdText = formatAbilityCd(fxLeft > 0 ? fxLeft : cd.left);
+      }
     }
     applyDockField(button, "cdText", cdText,
       (v) => { const small = button.querySelector(".abilityCd"); if (small) small.textContent = v; });
@@ -12839,20 +13951,22 @@ function tickShield(dt) {
   shieldTickT -= 1.0;
   const effects = getActiveDroneFormation(account.user).effects || {};
   const oldSh = player.sh;
-  // ✅ Pas de régénération sous le feu : chaque coup reçu (hurtPlayer) met
-  // attackedT à 5 s ; le bouclier ne remonte que hors combat. Le drain de
+  // ✅ Pas de régénération de base sous le feu : chaque coup reçu (hurtPlayer)
+  // met attackedT à 5 s ; la base ne remonte que hors combat. Le drain de
   // formation reste appliqué même sous le feu (c'est un coût, pas un soin).
-  if (!formationDrainsShield() && !((player.attackedT || 0) > 0)) {
-    // Même débit qu'avant (5 %/s + bonus) : seul le rythme change.
-    const sregMult = playerBoosterMults().sreg;
-    const repairMult = playerBoosterMults().repair;
-    const regenPct = Number(effects.shieldRegenPct || 0);
-    const perSecond = regenPct > 0
-      ? Math.min(Number(effects.shieldRegenCap || Infinity), player.shMax * regenPct / 100)
-      : 0;
-    player.sh = Math.min(player.shMax,
-      player.sh + player.shMax * REPAIR.ratePct * repairMult * sregMult + perSecond);
-  }
+  // ✅ Regen de formation (ex Diamant +1 %/s) : s'applique QUOI QU'IL ARRIVE,
+  // même sous le feu (seule une formation à drain la neutralise).
+  const outOfCombat = !((player.attackedT || 0) > 0);
+  const sregMult = playerBoosterMults().sreg;
+  const repairMult = playerBoosterMults().repair;
+  const regenPct = Number(effects.shieldRegenPct || 0);
+  const perSecond = regenPct > 0 && !formationDrainsShield()
+    ? Math.min(Number(effects.shieldRegenCap || Infinity), player.shMax * regenPct / 100)
+    : 0;
+  const baseRegen = (!formationDrainsShield() && outOfCombat)
+    ? player.shMax * REPAIR.ratePct * repairMult * sregMult
+    : 0;
+  player.sh = Math.min(player.shMax, player.sh + baseRegen + perSecond);
   const drainPct = Number(effects.shieldDrainPct || 0);
   if (drainPct > 0) player.sh = Math.max(0, player.sh - player.shMax * drainPct / 100);
   const shGain = Math.round(player.sh - oldSh);
@@ -13579,6 +14693,7 @@ function fireEscortVolley(escort, target) {
 function updateGateEscorts(dt) {
   if (!escortShips.length) return;
   for (const escort of escortShips) {
+    if (escort.holo) continue; // Clones Mimesis : tick dédié (dispersion), pas de combat.
     if (escort.hp <= 0) {
       escort.respawnT = Math.max(0, Number(escort.respawnT ?? 5) - dt);
       if (escort.respawnT <= 0) {
@@ -13669,6 +14784,7 @@ function updateGateEscorts(dt) {
 
 function drawGateEscorts(ox, oy) {
   for (const escort of escortShips) {
+    if (escort.holo) continue; // Clones Mimesis : rendus dans drawHoloClones.
     if (escort.hp <= 0) continue;
     const x = escort.x + ox;
     const y = escort.y + oy;
@@ -13702,6 +14818,100 @@ function drawGateEscorts(ox, oy) {
     ctx.restore();
     ctx.fillStyle = "#7cf0ff";
     ctx.font = "800 11px system-ui"; ctx.textAlign = "center"; ctx.fillText("ESCORTE GOLIATH", x, y + 58);
+  }
+}
+
+// Clones d'hologramme (Mimesis) : identiques à nous (design, barres, drones,
+// pseudo, grade, firme). Rendu seul (sautés dans drawGateEscorts).
+function drawHoloClones(ox, oy) {
+  let has = false;
+  try {
+    for (const c of escortShips) { if (c?.holo && (c.hp || 0) > 0) { has = true; break; } }
+  } catch {}
+  if (!has) return;
+  const pack = ACTIVE_SHIP || SHIP_PACKS[0];
+  const frames = Math.max(1, Number(pack?.frames) || playerImgs.length || 1);
+  const pw = pack.w ?? 170, ph = pack.h ?? 170;
+  // Plaque identique à la nôtre (pseudo, grade, firme, drones, modules).
+  const stats = account.user?.stats || {};
+  let rankImage = null, factionImage = null;
+  try {
+    const rank = getRankInfo(calculateRankPoints(stats), stats.honor);
+    const ri = getCachedImage(rank.imagePath);
+    if (isImgReady(ri)) rankImage = ri; else loadImage(rank.imagePath, { priority: true });
+    const faction = getFaction(account.user?.faction);
+    const fi = getCachedImage(faction.imagePath);
+    if (isImgReady(fi)) factionImage = fi; else loadImage(faction.imagePath, { priority: true });
+  } catch {}
+  const droneIndicators = (account.user?.drones?.items || []).map(drone => {
+    const ability = drone?.fit?.ability;
+    const design = typeof ability === "string"
+      ? ability.toLowerCase()
+      : `${ability?.id || ""} ${ability?.name || ""}`.toLowerCase();
+    if (design.includes("hercules")) return "rgb(30,144,255)";
+    if (design.includes("havoc") || design.includes("havok")) return "rgb(255,45,55)";
+    if (drone?.type === "apis") return "rgb(90,180,255)";
+    if (drone?.type === "zeus") return "rgb(174,190,75)";
+    return "rgb(255,255,255)";
+  });
+  let formationImage = null;
+  try {
+    const af = getActiveDroneFormation(account.user);
+    const icon = af ? (formationDockIcon(af) || af.icon) : null;
+    if (icon) {
+      const fim = getCachedImage(icon);
+      if (isImgReady(fim)) formationImage = fim; else loadImage(icon, { priority: true });
+    }
+  } catch {}
+  const drones = account.user?.drones?.items || [];
+  // Même formation de drones que nous, en live (on change → les clones suivent).
+  let droneOffsets = [];
+  try {
+    const dState = account.user?.drones;
+    const afm = DRONE_FORMATIONS.find(entry => entry.id === dState?.activeFormation);
+    const fmId = (afm && drones.length >= Number(afm.minDrones || 0)) ? afm.id : "standard";
+    droneOffsets = getDroneFormationOffsets(drones.length, fmId) || [];
+  } catch { droneOffsets = []; }
+  const pseudo = account.user?.pseudo || "Pilote";
+  for (const c of escortShips) {
+    if (!c?.holo || (c.hp || 0) <= 0) continue;
+    const x = Number(c.x || 0) + ox, y = Number(c.y || 0) + oy;
+    if (x < -220 || y < -220 || x > innerWidth + 220 || y > innerHeight + 220) continue;
+    // Coque identique (frame selon son cap).
+    const idx = angleToFrameIndex(Number(c.angle || 0) + (pack?.angleOffset || 0), frames);
+    const img = playerImgs[idx] || playerImgs[0];
+    ctx.save();
+    ctx.translate(x, y);
+    if (isImgReady(img)) drawCenteredImage(ctx, img, pw, ph);
+    ctx.restore();
+    // Réacteurs identiques (vivants : état animé dans le tick).
+    try {
+      if (GAME_SETTINGS.shipSmoke) {
+        shipEngine.draw(ctx, c, ACTIVE_SHIP, isImgReady, idx);
+      }
+    } catch {}
+    // Drones identiques (formation standard autour du clone).
+    try {
+      if (GAME_SETTINGS.drones && drones.length && droneOffsets.length) {
+        const ca = Math.cos(Number(c.angle || 0) + Math.PI), sa = Math.sin(Number(c.angle || 0) + Math.PI);
+        const dframe = (Math.floor(idx * 32 / Math.max(1, frames)) % 32) + 1;
+        drones.forEach((drone, di) => {
+          const off = droneOffsets[di % droneOffsets.length];
+          const dx = off.x * ca - off.y * sa, dy = off.x * sa + off.y * ca;
+          const src = getDroneSpritePath({ ...drone, level: Math.max(1, Number(drone.level) || 1) }, dframe);
+          const dimg = getCachedImage(src);
+          if (!isImgReady(dimg)) { try { loadImage(src, { priority: true }); } catch {} return; }
+          ctx.save();
+          ctx.translate(x + dx, y + dy);
+          drawCenteredImage(ctx, dimg, 64, 56);
+          ctx.restore();
+        });
+      }
+    } catch {}
+    // Barres + plaque identiques (pseudo, grade, firme).
+    try {
+      drawPlayerStatus(ctx, { hp: c.hp, hpMax: c.hpMax, sh: c.sh, shMax: c.shMax, r: Number(c.r || 18) }, pseudo, x, y, rankImage, factionImage, droneIndicators, formationImage, []);
+    } catch {}
   }
 }
 
@@ -17534,6 +18744,9 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   // pénétration normale par ailleurs.
   let pen = shieldPenetration ?? player.shPen;
   const weakened = !opts.noWeaken && diminishWeakened(e);
+  // Holo inversion ennemie : +10 % dégâts totaux subis par la cible.
+  const holoWeak = !opts.noWeaken && holoEnemyWeakened(e);
+  if (holoWeak) dmg = Number(dmg || 0) * (1 + HOLO_WEAKEN);
   pen = Math.max(0, Math.min(1, Number(pen || 0)));
   // Distribution officielle par alien ("shield spread", défaut 80/20) :
   // surchargeable par type dans NPC_TYPES.
@@ -17728,6 +18941,26 @@ function hurtPlayer(amount, source = null) {
     }
     player.attackedT = 5;
     return;
+  }
+
+  // Orcus Assimilate : 80 % de tous les dégâts reçus (NPC + joueurs)
+  // convertis en PV (+x verts). Les 20 % restants passent normalement.
+  if ((player.orcusT || 0) > 0) {
+    const conv = Math.max(0, Math.round(Number(amount) || 0) * ORCUS_ABSORB);
+    if (conv > 0 && !player.dead) {
+      const oldHp = Number(player.hp || 0);
+      player.hp = Math.min(Number(player.hpMax || 0), oldHp + conv);
+      const gain = Math.round(Number(player.hp || 0) - oldHp);
+      try {
+        addFloatText(
+          Number(player.x || 0) + (Math.random() - 0.5) * 60,
+          Number(player.y || 0) - 90 - Math.random() * 20,
+          gain, "rgba(80,255,125,0.98)",
+          { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+        );
+      } catch {}
+    }
+    amount = Math.max(0, Number(amount) || 0) * (1 - ORCUS_ABSORB);
   }
 
   resetRepairCooldown();
@@ -18817,6 +20050,7 @@ const SIDE_OFFSET = 30;
 const SIDE_DMG_SPLIT = 0.5;
 
 const PLAYER_SHOT_SFX = {
+  x0: "pShotX0",
   x1: "pShotX1",
   x2: "pShotX2",
   x3: "pShotX3",
@@ -19032,7 +20266,8 @@ function spawnSalvoDecoy(e) {
   if (!t2) return;
   // ✅ munition active au moment du tir : si on a switché entre-temps,
   // le faux tir devient instantanément la nouvelle munition.
-  const key = player.ammo.active || e.key || "x1";
+  // (forceKey : salve verrouillée sur un visuel, ex QA Hyperion en X0.)
+  const key = e.forceKey || player.ammo.active || e.key || "x1";
   // ✅ SAB/CBO inversé : les faux tirs partent eux aussi de la cible vers le vaisseau.
   // (Si on a switché de munition entre-temps, retour au départ vaisseau classique.)
   if (e.sabReverse && (key === "sab" || key === "cbo")) {
@@ -19352,7 +20587,7 @@ const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
   const dmgShot = isSab
     ? player.baseDamage * SAB50.drainMult * shotBoosterMults.dmg
-    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * shipPassiveDamageMult();
+    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * shipPassiveDamageMult();
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (shotHitBonusPct / 100));
 
@@ -20242,6 +21477,19 @@ function die() {
   try { cancelPrism(); } catch {}
   try { cancelDiminish(); } catch {}
   try { cancelDdol(); } catch {}
+  try { cancelHoloSelf(); } catch {}
+  try { cancelHoloEnemy(); } catch {}
+  try { cancelGa(); } catch {}
+  try { cancelQaCharge(); } catch {}
+  try { cancelQaBurst(); } catch {}
+  try { cancelSpr(); } catch {}
+  try { cancelSleight(); } catch {}
+  try { cancelLibRep(); } catch {}
+  try { cancelLight(); } catch {}
+  try { cancelScramble(); } catch {}
+  try { cancelHologram(); } catch {}
+  try { cancelOrcus(); } catch {}
+  try { cancelCyborg(); } catch {}
   try { cancelRedirect(); } catch {}
   try { cancelDisarray(); } catch {}
   try { cancelRealloc(); } catch {}
@@ -21973,7 +23221,7 @@ function enemyShoot(e, dt, combatTarget = player) {
   if (combatTarget === player && safeZoneActive && playerIsInSafeZone()) return;
 
   // Camouflage ultime : les NPC ne voient plus le joueur, ils gardent le tir.
-  if (combatTarget === player && isPlayerCloaked()) {
+  if (combatTarget === player && isPlayerUntargetable()) {
     e.shootCd = 0.5 + Math.random() * 0.6;
     return;
   }
@@ -21989,7 +23237,7 @@ function enemyShoot(e, dt, combatTarget = player) {
   if (e.type === "npc_Gygerim_Overlord") {
     e._farShotCd = Number.isFinite(e._farShotCd) ? e._farShotCd - dt : 5;
     if (e._farShotCd <= 0) {
-      const distantTargets = (!player.dead && !isPlayerCloaked()) ? [player] : [];
+      const distantTargets = (!player.dead && !isPlayerUntargetable()) ? [player] : [];
       distantTargets.push(...escortShips.filter(escort => escort.hp > 0));
       const farthest = distantTargets.reduce((best, candidate) => (
         !best || dist2(e.x, e.y, candidate.x, candidate.y) > dist2(e.x, e.y, best.x, best.y)
@@ -22411,6 +23659,153 @@ function update(dt) {
   } else {
     player.diminishCd = Math.max(0, (player.diminishCd || 0) - dt);
   }
+  // Holo : 15 s d'effet chacune, CD 15 s indépendants. Self = buff nous, enemy = debuff cible.
+  if ((player.holoSelfT || 0) > 0) {
+    player.holoSelfT = Math.max(0, player.holoSelfT - dt);
+    if (player.holoSelfT <= 0) {
+      player.holoSelfT = 0;
+      startHoloSelfCooldown();
+      showNotification("Inversion (soi) terminée", 2, "info");
+    }
+  } else {
+    player.holoSelfCd = Math.max(0, (player.holoSelfCd || 0) - dt);
+  }
+  if ((player.holoEnemyT || 0) > 0) {
+    player.holoEnemyT = Math.max(0, player.holoEnemyT - dt);
+    if (player.holoEnemyTarget && !(player.holoEnemyTarget.hp > 0)) player.holoEnemyTarget = null;
+    if (player.holoEnemyT <= 0) {
+      player.holoEnemyT = 0;
+      try { if (player.holoEnemyTarget) delete player.holoEnemyTarget.holoMarked; } catch {}
+      startHoloEnemyCooldown();
+      showNotification("Inversion ennemie terminée", 2, "info");
+    }
+  } else {
+    player.holoEnemyCd = Math.max(0, (player.holoEnemyCd || 0) - dt);
+  }
+  // Hyperion GA : 10 s sur la cible (slow posé à l'activation), recharge 300 s.
+  if ((player.gaT || 0) > 0) {
+    player.gaT = Math.max(0, player.gaT - dt);
+    if (player.gaTarget && !(player.gaTarget.hp > 0)) player.gaTarget = null;
+    if (player.gaT <= 0) {
+      player.gaT = 0;
+      player.gaTarget = null;
+      startGaCooldown();
+      showNotification("Ancre gravitationnelle terminée", 2, "info");
+    }
+  } else {
+    player.gaCd = Math.max(0, (player.gaCd || 0) - dt);
+  }
+  // Hyperion QA : charge sonore puis tir réel. Cible perdue en charge = annulé, sans recharge.
+  if ((player.qaChargeT || 0) > 0) {
+    player.qaChargeT = Math.max(0, player.qaChargeT - dt);
+    const ct = player.qaChargeTarget;
+    if (!ct || !(ct.hp > 0)) {
+      cancelQaCharge();
+      showNotification("QA annulé (cible perdue)", 1.5, "info");
+    } else {
+      // On reste face à la cible pendant la charge.
+      try { player.angle = Math.atan2(ct.y - player.y, ct.x - player.x); } catch {}
+      if (player.qaChargeT <= 0) {
+        player.qaChargeT = 0;
+        player.qaChargeTarget = null;
+        try { SFX.stop("pShotX0Charge"); } catch {}
+        try {
+          if (!fireQaSalvo(ct)) showNotification("QA annulé (hors de portée)", 1.5, "info");
+        } catch {}
+      }
+    }
+  }
+  // Hyperion QA : pendant la rafale on reste face à la cible.
+  // Cible tuée entre-temps = compétence annulée (décos restants purgés).
+  if ((player.qaBurstT || 0) > 0) {
+    player.qaBurstT = Math.max(0, player.qaBurstT - dt);
+    const bt = player.qaBurstTarget;
+    if (!bt || !(bt.hp > 0)) {
+      cancelQaBurst();
+      showNotification("QA annulé (cible détruite)", 1.5, "info");
+    } else {
+      try { player.angle = Math.atan2(bt.y - player.y, bt.x - player.x); } catch {}
+      if (player.qaBurstT <= 0) {
+        player.qaBurstT = 0;
+        player.qaBurstTarget = null;
+        player.qaBurstVolley = null;
+      }
+    }
+  }
+  // Hyperion QA : instantané, juste la recharge qui descend.
+  player.qaCd = Math.max(0, (player.qaCd || 0) - dt);
+  // Keres Spread : timers par infecté + contagion à 200 toutes les 0,5 s.
+  // Fin du cast quand plus aucun infecté (pas de réinfection même cast).
+  if (player.keresSprActive) {
+    player.keresSprAcc = Number(player.keresSprAcc || 0) + dt;
+    const scan = player.keresSprAcc >= SPR_SCAN;
+    if (scan) player.keresSprAcc = 0;
+    const hit = Array.isArray(player.keresSprHit) ? player.keresSprHit : (player.keresSprHit = []);
+    let n = 0;
+    const r2 = SPR_RADIUS * SPR_RADIUS;
+    for (const e of enemies) {
+      if (!e || !(e.hp > 0) || !((e.keresSprT || 0) > 0)) continue;
+      e.keresSprT = Math.max(0, (e.keresSprT || 0) - dt);
+      // Maintient le slow 20 % pendant l'infection.
+      try {
+        e.rocketSlowPct = Math.max(Number(e.rocketSlowPct || 0), SPR_SLOW_PCT);
+        e.rocketSlowT = Math.max(Number(e.rocketSlowT || 0), 0.6);
+      } catch {}
+      if ((e.keresSprT || 0) <= 0) { e.keresSprT = 0; continue; }
+      n++;
+      if (scan && hit.length < SPR_MAX) {
+        for (const o of enemies) {
+          if (hit.length >= SPR_MAX) break;
+          if (!o || o === e || !(o.hp > 0) || ((o.keresSprT || 0) > 0)) continue;
+          if (hit.includes(o.id)) continue;
+          try {
+            if (dist2(e.x, e.y, o.x, o.y) > r2) continue;
+          } catch { continue; }
+          if (keresSprInfect(o)) n++;
+        }
+      }
+    }
+    player.keresSprN = n;
+    if (n <= 0) {
+      player.keresSprActive = false;
+      player.keresSprHit = [];
+      player.keresSprN = 0;
+      startSprCooldown();
+      showNotification("Spread terminé", 2, "info");
+    }
+  } else {
+    player.keresSprCd = Math.max(0, (player.keresSprCd || 0) - dt);
+  }
+  // Keres Sleight : dash x5 vers la cible jusqu'à 200 d'elle.
+  if ((player.sleightT || 0) > 0) {
+    player.sleightElapsed = Number(player.sleightElapsed || 0) + dt;
+    const st = player.sleightTarget;
+    if (!st || !(st.hp > 0)) {
+      cancelSleight();
+      showNotification("Sleight annulé (cible perdue)", 1.5, "info");
+    } else {
+      const d = Math.hypot(st.x - player.x, st.y - player.y);
+      if (d <= SLEIGHT_STOP) {
+        player.sleightT = 0;
+        player.sleightTarget = null;
+        player.sleightElapsed = 0;
+        try { if (moveTarget.active && player.sleightDrove) moveTarget.active = false; } catch {}
+        player.sleightDrove = false;
+        startSleightCooldown();
+        showNotification("Sleight arrivé (200)", 1.5, "info");
+      } else {
+        try {
+          moveTarget.active = true;
+          moveTarget.x = st.x;
+          moveTarget.y = st.y;
+          player.sleightDrove = true;
+          player.angle = Math.atan2(st.y - player.y, st.x - player.x);
+        } catch {}
+      }
+    }
+  } else {
+    player.sleightCd = Math.max(0, (player.sleightCd || 0) - dt);
+  }
   // DDoL (Disruptor) : 10 s sur la cible verrouillée (jam géré dans
   // enemyShoot), recharge 60 s.
   if ((player.ddolT || 0) > 0) {
@@ -22491,6 +23886,33 @@ function update(dt) {
   } else {
     player.hecateCd = Math.max(0, (player.hecateCd || 0) - dt);
   }
+  // Cyborg Singularité II : 1 hit/s en dégâts croissants, pas de rupture
+  // de portée (continue jusqu'à cible détruite ou fin des 30 s).
+  if ((player.cyborgT || 0) > 0) {
+    player.cyborgT = Math.max(0, player.cyborgT - dt);
+    const ctgt = player.cyborgTarget;
+    if (!ctgt || !(ctgt.hp > 0)) {
+      player.cyborgT = 0;
+      player.cyborgTarget = null;
+      player.cyborgHit = 0;
+      startCyborgCooldown();
+      showNotification("Singularité II terminée (cible détruite)", 2, "info");
+    } else {
+      player.cyborgAcc = Number(player.cyborgAcc || 0) + dt;
+      if (player.cyborgAcc >= 1) {
+        player.cyborgAcc -= 1;
+        try { cyborgBeamTick(); } catch {}
+      }
+      if (player.cyborgT <= 0) {
+        player.cyborgTarget = null;
+        player.cyborgHit = 0;
+        startCyborgCooldown();
+        showNotification("Singularité II terminée", 2, "info");
+      }
+    }
+  } else {
+    player.cyborgCd = Math.max(0, (player.cyborgCd || 0) - dt);
+  }
   // Stockpile (Hecate Plus) : 10 s de force bouclier, recharge 0 s.
   // Les charges sont déjà à 0 (remises à l'activation) : à la fin on
   // retombe sur la portée d'origine via stockUpdateRange.
@@ -22550,6 +23972,138 @@ function update(dt) {
   } else {
     player.healShCd = Math.max(0, (player.healShCd || 0) - dt);
   }
+  // Auto-réparation (Liberator Plus) : 35k HP/s sur soi pendant 10 s (350k max).
+  if ((player.libRepT || 0) > 0) {
+    player.libRepT = Math.max(0, player.libRepT - dt);
+    player.libRepAcc = Number(player.libRepAcc || 0) + dt;
+    if (player.libRepAcc >= 1) {
+      player.libRepAcc -= 1;
+      try { libRepHealTick(); } catch {}
+    }
+    if (player.libRepT <= 0) {
+      startLibRepCooldown();
+      showNotification("Auto-réparation terminée", 2, "info");
+    }
+  } else {
+    player.libRepCd = Math.max(0, (player.libRepCd || 0) - dt);
+  }
+  // Postcombustion (Lightning) : vitesse x2 pendant 10 s, recharge 60 s.
+  if ((player.lightT || 0) > 0) {
+    player.lightT = Math.max(0, player.lightT - dt);
+    if (player.lightT <= 0) {
+      startLightCooldown();
+      showNotification("Postcombustion terminée", 2, "info");
+    }
+  } else {
+    player.lightCd = Math.max(0, (player.lightCd || 0) - dt);
+  }
+  // Orcus Assimilate : 20 s de conversion, recharge 540 s.
+  if ((player.orcusT || 0) > 0) {
+    player.orcusT = Math.max(0, player.orcusT - dt);
+    if (player.orcusT <= 0) {
+      startOrcusCooldown();
+      showNotification("Assimilation terminée", 2, "info");
+    }
+  } else {
+    player.orcusCd = Math.max(0, (player.orcusCd || 0) - dt);
+  }
+  // Mimesis Scramble : -5 % shield max/s, coupé à 0 shield ou change config.
+  if ((player.scrambleT || 0) > 0) {
+    let cutReason = null;
+    try {
+      const curCfg = getActiveConfigNo();
+      if (player.scrambleCfg != null && curCfg !== player.scrambleCfg) cutReason = "config";
+    } catch {}
+    player.scrambleAcc = Number(player.scrambleAcc || 0) + dt;
+    if (player.scrambleAcc >= 1) {
+      player.scrambleAcc -= 1;
+      player.sh = Math.max(0, Number(player.sh || 0) - Number(player.shMax || 0) * SCRAMBLE_DRAIN);
+      if (Number(player.sh || 0) <= 0) cutReason = "bouclier vide";
+    }
+    if (cutReason) {
+      startScrambleCooldown();
+      showNotification(`Brouillage coupé (${cutReason})`, 2, "info");
+    }
+  } else {
+    player.scrambleCd = Math.max(0, (player.scrambleCd || 0) - dt);
+  }
+  player.phaseOutCd = Math.max(0, (player.phaseOutCd || 0) - dt);
+  // Mimesis Hologram : son puis clones qui se dispersent puis explosent.
+  if (player.holoGramPhase === "sound") {
+    player.holoGramT = Math.max(0, Number(player.holoGramT || 0) - dt);
+    if (player.holoGramT <= 0) {
+      try { hologramDetonate(); } catch {}
+    }
+  } else if (player.holoGramPhase === "clones") {
+    player.holoGramT = Math.max(0, Number(player.holoGramT || 0) - dt);
+    // Clones libres dans un rayon de 1500 autour de nous, chacun son rythme :
+    // waypoints propres, pauses aléatoires, vitesses différentes.
+    try {
+      for (let i = escortShips.length - 1; i >= 0; i--) {
+        const c = escortShips[i];
+        if (!c?.holo) continue;
+        c.pauseT = Math.max(0, Number(c.pauseT || 0) - dt);
+        c.wt = Number(c.wt || 0) - dt;
+        const dxw = Number(c.wx ?? c.x) - Number(c.x || 0);
+        const dyw = Number(c.wy ?? c.y) - Number(c.y || 0);
+        if (c.wt <= 0 || Math.hypot(dxw, dyw) < 60) {
+          // Parfois une pause (0,5 à 1,5 s) avant de repartir ailleurs.
+          if (Math.random() < 0.35) c.pauseT = 0.5 + Math.random();
+          const wa = Math.random() * Math.PI * 2;
+          const wd = 200 + Math.random() * Math.max(200, Number(c.wr || 1200));
+          c.wx = clamp(Number(player.x || 0) + Math.cos(wa) * wd, 80, WORLD.w - 80);
+          c.wy = clamp(Number(player.y || 0) + Math.sin(wa) * wd, 80, WORLD.h - 80);
+          c.wt = 2 + Math.random() * 3;
+        }
+        const dx = Number(c.wx ?? c.x) - Number(c.x || 0);
+        const dy = Number(c.wy ?? c.y) - Number(c.y || 0);
+        const dl = Math.hypot(dx, dy) || 1;
+        const px0 = Number(c.x || 0), py0 = Number(c.y || 0);
+        if ((c.pauseT || 0) > 0) {
+          c.vx = 0;
+          c.vy = 0;
+        } else {
+          const sp = Math.min(Number(c.spd || 300), dl * 2.5);
+          c.x = clamp(px0 + dx / dl * sp * dt, 80, WORLD.w - 80);
+          c.y = clamp(py0 + dy / dl * sp * dt, 80, WORLD.h - 80);
+        }
+        c.vx = dt > 0 ? (Number(c.x || 0) - px0) / dt : 0;
+        c.vy = dt > 0 ? (Number(c.y || 0) - py0) / dt : 0;
+        if (Math.hypot(Number(c.vx || 0), Number(c.vy || 0)) > 5) {
+          c.angle = Math.atan2(Number(c.vy || 0), Number(c.vx || 0));
+        }
+        // Réacteurs vivants comme les nôtres.
+        try { shipEngine.update(c, ACTIVE_SHIP, dt, GAME_SETTINGS.shipSmoke); } catch {}
+        c.t = Math.max(0, Number(c.t || 0) - dt);
+        if ((c.t || 0) <= 0) {
+          // Fin de vie : explosion normale (visuel + son standard).
+          try { spawnExplosion(Number(c.x || 0), Number(c.y || 0), 1.0); } catch {}
+          try { SFX.play("npcDeath", { maxVoices: 16, cooldown: 0 }); } catch {}
+          escortShips.splice(i, 1);
+        }
+      }
+    } catch {}
+    let left = 0;
+    try {
+      for (const c of escortShips) { if (c?.holo && (c.hp || 0) > 0) left++; }
+    } catch {}
+    if (player.holoGramT <= 0 || left <= 0) {
+      try {
+        for (let i = escortShips.length - 1; i >= 0; i--) {
+          if (!escortShips[i]?.holo) continue;
+          try { spawnExplosion(Number(escortShips[i].x || 0), Number(escortShips[i].y || 0), 1.0); } catch {}
+          escortShips.splice(i, 1);
+        }
+        try { SFX.play("npcDeath", { maxVoices: 16, cooldown: 0 }); } catch {}
+      } catch {}
+      startHologramCooldown();
+      showNotification("Hologramme terminé", 2, "info");
+    }
+  } else {
+    player.holoGramCd = Math.max(0, (player.holoGramCd || 0) - dt);
+  }
+  // Overlay fausse explosion (par-dessus nous) : 1 s.
+  player.holoGramBoomT = Math.max(0, Number(player.holoGramBoomT || 0) - dt);
 
   fireCooldown = Math.max(0, fireCooldown - dt);
   laserCd = Math.max(0, laserCd - dt);
@@ -22863,7 +24417,16 @@ for (const ptl of zonePortals) {
 
   const tAim = Target.get();
   if (!player.dead) {
-    if (attackActive && tAim) {
+    // QA Hyperion : pendant la charge et la rafale on reste face à la cible
+    // (prioritaire sur la visée auto et la direction de déplacement).
+    // Sleight (Keres) : idem pendant le dash.
+    const qaLock = ((player.qaChargeT || 0) > 0 && player.qaChargeTarget && player.qaChargeTarget.hp > 0) ? player.qaChargeTarget
+      : ((player.qaBurstT || 0) > 0 && player.qaBurstTarget && player.qaBurstTarget.hp > 0) ? player.qaBurstTarget
+      : ((player.sleightT || 0) > 0 && player.sleightTarget && player.sleightTarget.hp > 0) ? player.sleightTarget
+      : null;
+    if (qaLock) {
+      player.angle = Math.atan2(qaLock.y - player.y, qaLock.x - player.x);
+    } else if (attackActive && tAim) {
       player.angle = Math.atan2(tAim.y - player.y, tAim.x - player.x);
     } else if (moveTarget.active) {
       player.angle = Math.atan2(moveTarget.y - player.y, moveTarget.x - player.x);
@@ -23085,13 +24648,15 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       continue;
     }
     if (!b.visual) {
+      // QA Hyperion : critique garanti (critMult du joueur).
+      const qaCrit = b.qaCrit ? { chance: 1, mult: player.critMult } : undefined;
       out = b.isSab
         ? drainShieldFromEnemy(t, b.dmg, sabRecipient)
           : b.isRocket
             ? b.isLauncherRocket
               ? applyRocketVolleyHit(t, b, launcherImpact?.count || b.volleySize, sabRecipient)
               : applyRocketHit(t, b, sabRecipient)
-            : damageEnemy(t, b.dmg, undefined, (!b.ownerEscortId ? { chance: player.critChance, mult: player.critMult } : undefined));
+            : damageEnemy(t, b.dmg, undefined, qaCrit || (!b.ownerEscortId ? { chance: player.critChance, mult: player.critMult } : undefined));
 
       // ✅ CBO-100 (joueur) : dégâts normaux + vol de bouclier ×1, comme SAB.
       if (!b.isRocket && !b.isSab && b.key === "cbo" && t.hp > 0) {
@@ -23175,7 +24740,9 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
       const formationEvasion = bulletTarget === player
         ? Math.max(0, Number(getActiveDroneFormation(account.user).effects?.evasionPct || 0)) / 100
         : 0;
-      const effectiveMiss = b.miss || (formationEvasion > 0 && Math.random() < formationEvasion);
+      // Mimesis Scramble : +65 % d'évasion.
+      const scrambleEvasion = (bulletTarget === player && (player.scrambleT || 0) > 0 && !player.dead) ? SCRAMBLE_EVA : 0;
+      const effectiveMiss = b.miss || (formationEvasion + scrambleEvasion > 0 && Math.random() < Math.min(1, formationEvasion + scrambleEvasion));
       if (effectiveMiss) {
         if (bulletTarget === player) addMissText(player.x + (Math.random() - 0.5) * 50, player.y - 85 - Math.random() * 20);
         if (b.isRocket) spawnExplosion(bulletTarget.x, bulletTarget.y, 0.2);
@@ -23196,7 +24763,9 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
         else {
           const ownerNpc = b.ownerId != null ? enemies.find((x) => x?.id === b.ownerId) || null : null;
           damagePlayerLayers(bulletTarget, redirectProtectionDamage(bulletTarget, b.dmg, ownerNpc));
-          if (bulletTarget.hp <= 0) destroyEscort(bulletTarget);
+          // Clone Mimesis tué : explosion standard + rire (pas de respawn d'escorte).
+          if (bulletTarget.hp <= 0 && bulletTarget.holo) killHoloClone(bulletTarget);
+          else if (bulletTarget.hp <= 0) destroyEscort(bulletTarget);
         }
         if (b.isRocket) spawnExplosion(bulletTarget.x, bulletTarget.y, 0.25);
       }
@@ -23687,18 +25256,18 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
         
 
         const spd2N = e.vx * e.vx + e.vy * e.vy;
-        if (e._aggro) {
+        if (e._aggro && !isPlayerUntargetable()) {
           e.angle = Math.atan2(player.y - e.y, player.x - e.x);
         } else if (spd2N > 25) {
           e.angle = Math.atan2(e.vy, e.vx);
         }
 
-        if (isKamikaze && !player.dead && !isPlayerCloaked() && cfgE.explodeOnTouch) {
+        if (isKamikaze && !player.dead && !isPlayerUntargetable() && cfgE.explodeOnTouch) {
           const rrK = (cfgE.explodeRadius || 180);
           const d2K = dist2(e.x, e.y, player.x, player.y);
           if (d2K <= rrK * rrK) {
             spawnExplosion(e.x, e.y, 1.4);
-            const dmgK = Number(cfgTouch.explodeDmg || 12000);
+            const dmgK = Number(cfgE.explodeDmg || 12000);
             hurtPlayer(dmgK, e);
             // Souffle de l'explosion : ralenti 3 s (joueur + P.E.T via
             // ownerSpeed), même sous iFrames, avec sprite SLOW_EFFECT.
@@ -23733,7 +25302,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           if (!e.ai) e.ai = {};
 
           // Camouflage ultime : le NPC reste sur place (cible invisible).
-          const mv = (combatTarget === player && isPlayerCloaked())
+          const mv = (combatTarget === player && isPlayerUntargetable())
             ? { mxv: 0, myv: 0 }
             : computeNpcCombatMovement(e, d, nx, ny, e.ai, dt);
 
@@ -23758,7 +25327,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
       const d2p = dist2(e.x, e.y, combatTarget.x, combatTarget.y);
       const r = (e.shootRange || 540);
       // Camouflage ultime : le NPC ne fixe plus le joueur invisible.
-      shouldFacePlayer = d2p <= r * r && !(combatTarget === player && isPlayerCloaked());
+      shouldFacePlayer = d2p <= r * r && !(combatTarget === player && isPlayerUntargetable());
     }
 
     if (shouldFacePlayer) {
@@ -23851,6 +25420,7 @@ if (GAME_SETTINGS.textures) {
   drawPetLocator(ox, oy);
   drawEngineTrails(ox, oy);
   drawGateEscorts(ox, oy);
+  drawHoloClones(ox, oy);
   drawPet(ox, oy);
   drawPetLink(ox, oy);
   drawPetBuoy(ox, oy);
@@ -23922,6 +25492,30 @@ if (GAME_SETTINGS.textures) {
     const enemySpriteFrame = enemyConfig?.sprite ? getEnemySpriteFrame(e, enemyConfig, enemyConfig.sprite) : 0;
     // Tous les Ubers du jeu : contour rouge de base (comme le localisateur).
     if (/uber/i.test(String(e.type || ""))) drawEnemyContour(e, enemyConfig, enemySpriteFrame, "#ff4655");
+    // Keres Spread : même effet que le localisateur ennemi du PET (doré),
+    // en vert clignotant progressif, dessiné AVANT le corps (le sprite passe par-dessus).
+    if ((e.keresSprT || 0) > 0 && e.hp > 0) {
+      const ksp = enemyConfig?.sprite;
+      if (ksp && ksp._imgs && ksp._imgs.length && ksp._ready) {
+        const kimg = ksp._imgs[enemySpriteFrame] || ksp._imgs[0];
+        if (isImgReady(kimg)) {
+          const kbW = ksp.w ?? ksp.size ?? 160;
+          const kbH = ksp.h ?? ksp.size ?? 160;
+          const kw = e.isBoss ? kbW * 1.05 : kbW;
+          const kh = e.isBoss ? kbH * 1.05 : kbH;
+          const ksil = outlineSilhouette(`keres:${e.type}:${enemySpriteFrame}`, kimg, kw, kh, "#3dff5e");
+          const kpulse = 0.5 + 0.5 * Math.sin(performance.now() / 1000 * 7);
+          ctx.save();
+          ctx.globalAlpha = Math.max(0.25, Math.min(1, kpulse));
+          ctx.shadowColor = "rgba(61,255,94,1)";
+          ctx.shadowBlur = 26;
+          ctx.drawImage(ksil, -kw / 2, -kh / 2, kw, kh);
+          ctx.globalAlpha = Math.max(0.12, Math.min(0.6, kpulse * 0.6));
+          ctx.drawImage(ksil, -kw * 0.58, -kh * 0.58, kw * 1.16, kh * 1.16);
+          ctx.restore();
+        }
+      }
+    }
     drawEnemyBody(e, enemySpriteFrame);
     if (GAME_SETTINGS.shipSmoke) npcEngine.draw(ctx, e, enemyConfig, isImgReady, enemySpriteFrame);
     drawUberPirateGlow(e);
@@ -23938,6 +25532,68 @@ if (GAME_SETTINGS.textures) {
         try { loadImage(dSrc, { priority: true }); } catch {}
       }
     }
+    // Holo inversion ennemie : même sprite que self, par-dessus le vaisseau de la cible.
+    if ((player.holoEnemyT || 0) > 0 && player.holoEnemyTarget === e && e.hp > 0) {
+      const hFrame = (Math.floor(performance.now() / 1000 * HOLO_FPS) % HOLO_FRAMES) + 1;
+      const hSrc = `ASSETS/APTITUDES/HOLO_SELF_REVERSAL/${hFrame}.png`;
+      const hImg = getCachedImage(hSrc);
+      if (isImgReady(hImg)) {
+        drawCenteredImage(ctx, hImg, 220, 220);
+      } else {
+        try { loadImage(hSrc, { priority: true }); } catch {}
+      }
+    }
+    // Hyperion GA : SHOT voyageur 100% touché, puis START (+ CONTINUED dès
+    // frame 26), CONTINUED en boucle pour remplir 10 s, FINISH à la fin.
+    if ((player.gaT || 0) > 0 && player.gaTarget === e && e.hp > 0) {
+      const gaElapsed = GA_DURATION - Number(player.gaT || 0);
+      const gaStartDur = GA_START_FRAMES / GA_FPS;
+      const gaFinishDur = GA_FINISH_FRAMES / GA_FPS;
+      const gaShow = (src, size) => {
+        const img = getCachedImage(src);
+        if (isImgReady(img)) drawCenteredImage(ctx, img, size, size);
+        else { try { loadImage(src, { priority: true }); } catch {} }
+      };
+      if (gaElapsed < GA_SHOT_TRAVEL) {
+        // Voyage SHOT : position interpolée départ → cible actuelle (homing).
+        const k = Math.max(0, Math.min(1, gaElapsed / GA_SHOT_TRAVEL));
+        const sx = Number(player.gaX0 ?? player.x), sy = Number(player.gaY0 ?? player.y);
+        const wx = sx + (e.x - sx) * k, wy = sy + (e.y - sy) * k;
+        const sFrame = (Math.floor(gaElapsed * GA_FPS) % GA_SHOT_FRAMES) + 1;
+        ctx.save();
+        ctx.translate(wx - e.x, wy - e.y);
+        gaShow(`ASSETS/APTITUDES/HYPERION_EFFECT_SHOT/${sFrame}.png`, 140);
+        ctx.restore();
+      } else if (gaElapsed < GA_SHOT_TRAVEL + gaStartDur) {
+        const sElapsed = gaElapsed - GA_SHOT_TRAVEL;
+        const sFrame = Math.max(1, Math.min(GA_START_FRAMES, Math.floor(sElapsed * GA_FPS) + 1));
+        gaShow(`ASSETS/APTITUDES/HYPERION_EFFECT_START/${sFrame}.png`, 280);
+        if (sFrame >= GA_START_OVERLAY_FROM) {
+          const cFrame = Math.max(1, Math.min(GA_CONT_FRAMES,
+            Math.floor((sFrame - GA_START_OVERLAY_FROM) / (GA_START_FRAMES - GA_START_OVERLAY_FROM) * GA_CONT_FRAMES) + 1));
+          gaShow(`ASSETS/APTITUDES/HYPERION_EFFECT_CONTINUED/${cFrame}.png`, 280);
+        }
+      } else if (Number(player.gaT || 0) > gaFinishDur) {
+        const cElapsed = gaElapsed - GA_SHOT_TRAVEL - gaStartDur;
+        const cFrame = (Math.floor(cElapsed * GA_FPS) % GA_CONT_FRAMES) + 1;
+        gaShow(`ASSETS/APTITUDES/HYPERION_EFFECT_CONTINUED/${cFrame}.png`, 300);
+      } else {
+        const fElapsed = gaFinishDur - Number(player.gaT || 0);
+        const fFrame = Math.max(1, Math.min(GA_FINISH_FRAMES, Math.floor(fElapsed * GA_FPS) + 1));
+        gaShow(`ASSETS/APTITUDES/HYPERION_EFFECT_FINISH/${fFrame}.png`, 300);
+      }
+    }
+    // Cyborg Singularité II : sprite 250x200 en boucle par-dessus la cible.
+    if ((player.cyborgT || 0) > 0 && player.cyborgTarget === e && e.hp > 0) {
+      const cFrame = (Math.floor(performance.now() / 1000 * CYBORG_FPS) % CYBORG_FRAMES) + 1;
+      const cSrc = `ASSETS/APTITUDES/NPC_SINGULARITY_CYBORG/${cFrame}.png`;
+      const cImg = getCachedImage(cSrc);
+      if (isImgReady(cImg)) {
+        drawCenteredImage(ctx, cImg, 250, 200);
+      } else {
+        try { loadImage(cSrc, { priority: true }); } catch {}
+      }
+    }
     // DDoL (Disruptor) : sprite joué par-dessus le vaisseau de la cible
     // verrouillée, en boucle pendant l'effet.
     if ((player.ddolT || 0) > 0 && player.ddolTarget === e && e.hp > 0) {
@@ -23950,8 +25606,7 @@ if (GAME_SETTINGS.textures) {
         try { loadImage(jSrc, { priority: true }); } catch {}
       }
     }
-    // Shield Disarray (Disruptor) : grosse cible bleue animée sur l'ennemi,
-    // à la taille de son sprite (en plus du lock) : anneau fixe + arcs
+    // Shield Disarray (Disruptor) : grosse cible bleue animée sur l'ennemi,    // à la taille de son sprite (en plus du lock) : anneau fixe + arcs
     // contra-rotatifs + ticks orbitaux, en boucle pendant l'effet.
     if ((player.disarrayT || 0) > 0 && player.disarrayTarget === e && e.hp > 0) {
       const size = enemySpriteSize(e);
@@ -24111,8 +25766,8 @@ if (GAME_SETTINGS.textures) {
   const px = player.x + ox, py = player.y + oy;
   if (!player.dead) {
     ctx.save();
-    // Camouflage ultime : vaisseau + drones à 50 % d'opacité.
-    if (isPlayerCloaked()) ctx.globalAlpha = 0.5;
+    // Camouflage ultime + hologramme : vaisseau + drones à 50 % d'opacité.
+    if (isPlayerCloaked() || isPlayerHoloHidden()) ctx.globalAlpha = 0.5;
     ctx.translate(px, py);
     // Redirect (Disruptor) : le vaisseau clignote pendant l'effet.
     if ((player.redirectT || 0) > 0) {
@@ -24131,6 +25786,12 @@ if (GAME_SETTINGS.textures) {
     }
 
     drawPlayerDrones();
+    // Mimesis Scramble : vaisseau clignotant doucement (cycle ~1 s).
+    const scrambling = (player.scrambleT || 0) > 0 && !player.dead;
+    if (scrambling) {
+      ctx.save();
+      ctx.globalAlpha = 0.45 + 0.4 * (0.5 + 0.5 * Math.sin(performance.now() / 1000 * Math.PI * 2));
+    }
     const ok = drawPlayerBody();
     if (!ok) {
       ctx.rotate(player.angle);
@@ -24146,6 +25807,7 @@ if (GAME_SETTINGS.textures) {
       ctx.fill();
       ctx.stroke();
     }
+    if (scrambling) ctx.restore();
 
     // Comme dans le client officiel, la flamme recouvre sa sortie de réacteur.
     drawShipEngineFx();
@@ -24249,6 +25911,79 @@ if (GAME_SETTINGS.textures) {
       } else {
         try { loadImage(bSrc, { priority: true }); } catch {}
       }
+    }
+
+    // Holo self : même sprite 53 frames par-dessus notre vaisseau.
+    if ((player.holoSelfT || 0) > 0) {
+      const hFrame = (Math.floor(performance.now() / 1000 * HOLO_FPS) % HOLO_FRAMES) + 1;
+      const hSrc = `ASSETS/APTITUDES/HOLO_SELF_REVERSAL/${hFrame}.png`;
+      const hImg = getCachedImage(hSrc);
+      if (isImgReady(hImg)) {
+        drawCenteredImage(ctx, hImg, 220, 220);
+      } else {
+        try { loadImage(hSrc, { priority: true }); } catch {}
+      }
+    }
+
+    // Liberator Plus : sprite HEAL_EFFECT (100x100 natif) en boucle,
+    // légèrement au-dessus du vaisseau.
+    if ((player.libRepT || 0) > 0) {
+      const lFrame = (Math.floor(performance.now() / 1000 * LIBREP_FPS) % LIBREP_FRAMES) + 1;
+      const lSrc = `ASSETS/APTITUDES/HEAL_EFFECT/${lFrame}.png`;
+      const lImg = getCachedImage(lSrc);
+      if (isImgReady(lImg)) {
+        ctx.save();
+        ctx.translate(0, -35);
+        drawCenteredImage(ctx, lImg, 100, 100);
+        ctx.restore();
+      } else {
+        try { loadImage(lSrc, { priority: true }); } catch {}
+      }
+    }
+
+    // Mimesis Hologram : fausse explosion PAR-DESSUS nous (au-dessus de tout).
+    if ((player.holoGramBoomT || 0) > 0 && explosionReady && explosionImgs.length) {
+      const boomTotal = (EXPLOSION_PACK.frames || 40) / (EXPLOSION_PACK.fps || 40);
+      const boomEl = boomTotal - Number(player.holoGramBoomT || 0);
+      const boomIdx = Math.max(0, Math.min((EXPLOSION_PACK.frames || 40) - 1, Math.floor(boomEl * (EXPLOSION_PACK.fps || 40))));
+      const boomImg = explosionImgs[boomIdx];
+      if (isImgReady(boomImg)) {
+        drawCenteredImage(ctx, boomImg, EXPLOSION_PACK.w || 300, EXPLOSION_PACK.h || 300);
+      }
+    }
+
+    // Orcus : sprite ORCUS_ASSIMILATE (42 frames, 226px natif) par-dessus nous.
+    if ((player.orcusT || 0) > 0) {
+      const oFrame = (Math.floor(performance.now() / 1000 * ORCUS_FPS) % ORCUS_FRAMES) + 1;
+      const oSrc = `ASSETS/APTITUDES/ORCUS_ASSIMILATE/${oFrame}.png`;
+      const oImg = getCachedImage(oSrc);
+      if (isImgReady(oImg)) {
+        drawCenteredImage(ctx, oImg, 226, 226);
+      } else {
+        try { loadImage(oSrc, { priority: true }); } catch {}
+      }
+    }
+
+    // QA Hyperion : charge du tir — halo grossissant au canon pendant le son.
+    if ((player.qaChargeT || 0) > 0) {
+      const qaDur = Math.max(0.01, Number(player.qaChargeDur || qaChargeDuration()));
+      const qProg = Math.max(0, Math.min(1, 1 - Number(player.qaChargeT || 0) / qaDur));
+      const qAng = Number(player.angle || 0);
+      const qmx = Math.cos(qAng) * ((player.r || 18) + 10);
+      const qmy = Math.sin(qAng) * ((player.r || 18) + 10);
+      const qR = 8 + qProg * 26;
+      ctx.save();
+      ctx.translate(qmx, qmy);
+      ctx.globalAlpha = 0.35 + qProg * 0.55;
+      try {
+        ctx.drawImage(haloGlowSprite("255,255,255"), -qR, -qR, qR * 2, qR * 2);
+      } catch {}
+      ctx.strokeStyle = "rgba(255,220,120,0.95)";
+      ctx.lineWidth = 2 + qProg * 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, qR * 0.6, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
     }
 
     // Stockpile (Hecate Plus) : sprite 25 frames en boucle sur le vaisseau
@@ -24445,9 +26180,9 @@ if (GAME_SETTINGS.textures) {
     drawTargetMarker(t, ox, oy, performance.now() / 1000);
   }
 
-  // Nom + barres de vie + grade : 50 % d'opacité sous camouflage ultime.
+  // Nom + barres de vie + grade : 50 % d'opacité sous camouflage ultime / hologramme.
   ctx.save();
-  if (isPlayerCloaked()) ctx.globalAlpha = 0.5;
+  if (isPlayerCloaked() || isPlayerHoloHidden()) ctx.globalAlpha = 0.5;
   drawPlayerBars(px, py);
   ctx.restore();
   drawMinimap();

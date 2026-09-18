@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.221",
+    "date": "2026-09-17T18:51:23+02:00",
+    "message": "sync version 0.220 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.220",
     "date": "2026-09-17T18:51:03+02:00",
     "message": "aptitudes: vague gameplay Aegis/Basilisk/Berserker/Citadel/Diminisher/Disruptor/Goliath-X/Hammerclaw/Hecate + Stockpile, degats spread 80/20 + penetration, poison supprimes, tartarus/ignifuge, bonus box revues, limite fps (sync generale)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.162",
     "date": "2026-09-11T22:03:21+02:00",
     "message": "univers persistant: horloge monde, slots stables, tick fond multi-maps (hors GG), respawn instant sauf cubikon 60s"
-  },
-  {
-    "version": "0.161",
-    "date": "2026-09-11T21:44:29+02:00",
-    "message": "backup: securite avant univers persistant (0.160)"
   }
 ];

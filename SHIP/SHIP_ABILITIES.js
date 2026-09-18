@@ -54,8 +54,6 @@ export const ABILITIES = Object.freeze({
   }),
 
   // ---- Aegis ----
-
-  // ---- Aegis ----
   "ability_aegis_hp-repair": A(
     "ability_aegis_hp-repair", "aegis", "Aegis", "Réparation coque", "self",
     "+280k PV allié (140k soi) répartis sur 7 s (40k/20k par s), +X vert chaque seconde.",
@@ -124,8 +122,6 @@ export const ABILITIES = Object.freeze({
   ),
 
   // ---- Citadel Plus ----
-  // Le Citadel Plus garde son Endurance prismatique ET hérite des 4
-  // aptitudes du Citadel de base (mêmes effets, icônes réutilisées).
   "ability_citadel-plus_prismatic-endurance": A(
     "ability_citadel-plus_prismatic-endurance", "citadel_plus", "Citadel Plus", "Endurance prismatique", "self",
     "Renforce durablement la résistance de la coque et du bouclier.",
@@ -150,6 +146,15 @@ export const ABILITIES = Object.freeze({
     "ability_citadel-plus_travel", "citadel_plus", "Citadel Plus", "Voyage", "self",
     "Boost de vitesse temporaire pour se déplacer vite.",
     "Héritée du Citadel de base.", "ABILITY_CITADEL_TRAVEL.PNG", 60, 5, "done" // ✅
+  ),
+
+  // ---- Cyborg ----
+  // Singularité II : dégâts croissants directs en coque (6900 +300/hit, cap 13600,
+  // ~315k sur 30 s). Sprite NPC_SINGULARITY_CYBORG sur la cible. EMP/JAMX plus tard.
+  "ability_cyborg_singularity": A(
+    "ability_cyborg_singularity", "cyborg", "Cyborg", "Singularité II", "enemy",
+    "Dégâts croissants directs en coque sur la cible lockée : 6900 +300/hit (cap 13600) pendant 30 s.",
+    "Icône Venom réutilisée (pas d'icône Cyborg).", "ABILITY_VENOM.PNG", 270, 30, "done" // ✅
   ),
 
   // ---- Diminisher ----
@@ -201,8 +206,6 @@ export const ABILITIES = Object.freeze({
   ), // ✅
 
   // ---- Hammerclaw Plus ----
-  // Le Hammerclaw Plus garde sa Réallocation ET hérite des 3 soins du
-  // Hammerclaw de base (mêmes effets, icônes Aegis réutilisées).
   "ability_hammerclaw-plus_reallocate": A(
     "ability_hammerclaw-plus_reallocate", "hammerclaw_plus", "Hammerclaw Plus", "Réallocation", "self",
     "Pendant 10 s, 20 % des dégâts infligés partent en pot commun, distribué en PV à la fin (nous + escortes à 700).",
@@ -246,71 +249,76 @@ export const ABILITIES = Object.freeze({
   // ---- Holo ----
   "ability_holo_enemy-reversal": A(
     "ability_holo_enemy-reversal", "holo", "Holo", "Inversion ennemie", "enemy",
-    "Inverse la vitesse de l'ennemi ciblé.",
-    "Effet exact à confirmer en jeu."
+    "Cible verrouillée : sprite Holo sur elle, -10 % vitesse et +10 % dégâts subis pendant 15 s. CD 15 s.",
+    "", "", 15, 15, "done" // ✅
   ),
   "ability_holo_self-reversal": A(
     "ability_holo_self-reversal", "holo", "Holo", "Inversion (soi)", "self",
-    "Inverse sa propre vitesse (demi-tour éclair).",
-    "Effet exact à confirmer en jeu."
+    "+10 % dégâts laser et +10 % vitesse pendant 15 s. Sprite Holo sur notre vaisseau. CD 15 s.",
+    "", "", 15, 15, "done" // ✅
   ),
 
   // ---- Hyperion ----
   "ability_hyperion_ga": A(
     "ability_hyperion_ga", "hyperion", "Hyperion", "Ancre gravitationnelle", "enemy",
-    "Ancre la cible : vitesse réduite / immobilisée.",
-    "Effet exact à confirmer en jeu."
+    "Tir SHOT 100% touché sur cible verrouillée, puis START + CONTINUED (dès frame 26) + FINISH : 10 s au total. Cible ralentie 80% (40% en battle).",
+    "", "", 300, 10, "done" // ✅
   ),
+  // QA : salve classique en munition X0 (gratuite) : dégâts x6 x2.5, toujours critique.
   "ability_hyperion_qa": A(
     "ability_hyperion_qa", "hyperion", "Hyperion", "QA", "enemy",
-    "Seconde capacité offensive de l'Hyperion.",
-    "Effet exact à documenter en jeu."
+    "Salve classique en X0 (gratuite) : dégâts x6 x2.5, coup critique garanti.",
+    "CD à confirmer.", "", 90, 0, "done" // ✅
   ),
 
   // ---- Keres ----
   "ability_keres_sle": A(
-    "ability_keres_sle", "keres", "Keres", "SLE", "self",
-    "Capacité du Keres (type vitesse/esquive).",
-    "Effet exact à documenter en jeu."
+    "ability_keres_sle", "keres", "Keres", "Sleight", "enemy",
+    "Lock suffit (aucune limite de distance) : dash x5 jusqu'à 200 de la cible. Réacteurs remplacés par le speed buff Citadel.",
+    "CD à confirmer.", "", 120, 0, "done" // ✅
   ),
   "ability_keres_spr": A(
-    "ability_keres_spr", "keres", "Keres", "SPR", "self",
-    "Capacité du Keres (type vitesse/esquive).",
-    "Effet exact à documenter en jeu."
+    "ability_keres_spr", "keres", "Keres", "Spread", "enemy",
+    "Cible lockée ralentie 20% 10s, contour vert locator clignotant. Contagion à 300 : 10s reparties, max 10, pas de réinfection même cast.",
+    "", "", 300, 10, "done" // ✅
   ),
 
   // ---- Liberator Plus ----
   "ability_liberator-plus_self-repair": A(
     "ability_liberator-plus_self-repair", "liberator_plus", "Liberator Plus", "Auto-réparation", "self",
-    "Régénère progressivement la coque du vaisseau."
+    "Restaure 35.000 HP/s pendant 10 s (350.000 max). Sprite HEAL_EFFECT sur le vaisseau.",
+    "", "", 100, 10, "done" // ✅
   ),
 
   // ---- Lightning (Vengeance) ----
   "ability_lightning": A(
     "ability_lightning", "lightning", "Lightning", "Postcombustion", "self",
-    "Boost de vitesse bref (postcombustion)."
+    "Boost vitesse x2 pendant 10 s. Réacteurs remplacés par le speed buff (comme le Voyage Citadel).",
+    "", "", 60, 10, "done" // ✅
   ),
 
   // ---- Mimesis ----
   "ability_mimesis_hologram": A(
     "ability_mimesis_hologram", "mimesis", "Mimesis", "Hologramme", "self",
-    "Crée un leurre holographique pour tromper l'ennemi."
+    "Son puis fausse explosion par-dessus nous : 4 clones identiques qui restent près (formation drones live) et explosent à 3 s. Locks sur nous effacés.",
+    "CD à confirmer.", "", 300, 3, "done" // ✅
   ),
   "ability_mimesis_phase-out": A(
     "ability_mimesis_phase-out", "mimesis", "Mimesis", "Sortie de phase", "self",
-    "Sort de phase : insensible/invisible brièvement.",
-    "Effet exact à confirmer en jeu."
+    "Téléportation 500u aléatoire (hors radiation). Interdit gates/LoW/UBA/pirates. Sans animation.",
+    "", "", 300, 0, "done" // ✅
   ),
   "ability_mimesis_scramble": A(
-    "ability_mimesis_scramble", "mimesis", "Mimesis", "Brouillage", "enemy",
-    "Brouille le verrouillage de l'ennemi ciblé."
+    "ability_mimesis_scramble", "mimesis", "Mimesis", "Brouillage", "self",
+    "+65% évasion, +25% dégâts laser, +25% vitesse, -5% shield max/s. Coupé à 0 shield ou change config. Vaisseau clignotant.",
+    "", "", 300, 0, "done" // ✅
   ),
 
   // ---- Orcus ----
   "ability_orcus_assimilate": A(
-    "ability_orcus_assimilate", "orcus", "Orcus", "Assimilation", "enemy",
-    "Assimile la cible : vole bouclier/vie pour se renforcer.",
-    "Valeurs exactes à confirmer en jeu."
+    "ability_orcus_assimilate", "orcus", "Orcus", "Assimilation", "self",
+    "80% de tous les dégâts reçus convertis en PV pendant 20 s. Sprite Orcus par-dessus le vaisseau.",
+    "", "", 540, 20, "done" // ✅
   ),
 
   // ---- Paladin ----

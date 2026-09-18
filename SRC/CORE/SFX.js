@@ -43,6 +43,10 @@ export const SFX_SOUND_NAMES = Object.freeze([
   "escortX4",
   "escortX6",
   "escortSab",
+  "pShotX0",
+  "pShotX0Charge",
+  "mimesisHolo",
+  "mimesisLaugh",
 ]);
 
 export function createSFX() {
@@ -198,6 +202,10 @@ enabled: true,
         api.load("pShotX3", "AUDIO/SFX_SHOT_X3.mp3"),
         api.load("pShotX4", "AUDIO/SFX_SHOT_X4.mp3"),
         api.load("pShotX6", "AUDIO/SFX_SHOT_X6.mp3"),
+        api.load("pShotX0", "AUDIO/SFX_SHOT_X0.mp3"),
+        api.load("pShotX0Charge", "AUDIO/SFX_SHOT_X0_CHARGE.mp3"),
+        api.load("mimesisHolo", "AUDIO/MIMESIS_HOLOGRAM.mp3"),
+        api.load("mimesisLaugh", "AUDIO/MIMESIS_CLONE_LAUGH.mp3"),
         api.load("sfx_shot_roquettes", "AUDIO/SFX_SHOT_ROQUETTES.mp3"),
         api.load("sfx_shot_lance_roquettes", "AUDIO/SFX_SHOT_LANCE_ROQUETTES.mp3"),
         api.load("rocketsLoadStart", "AUDIO/ROCKETSLOADSTART.mp3"),
@@ -280,8 +288,7 @@ enabled: true,
     },
 
     // Coupe immédiatement toutes les instances en cours de lecture d'un son.
-    stop(name) {
-      const list = api.sources[name];
+    stop(name) {      const list = api.sources[name];
       if (!list) return;
       for (const n of Array.from(list)) {
         try {
@@ -291,6 +298,15 @@ enabled: true,
       }
       api.sources[name] = [];
       api.active[name] = 0;
+    },
+
+    // Durée en secondes d'un son décodé (0 si inconnu / pas encore chargé).
+    duration(name) {
+      try {
+        const buf = api.buffers[name];
+        const d = Number(buf?.duration || 0);
+        return d > 0 ? d : 0;
+      } catch { return 0; }
     },
 
     // Atténue toutes les instances en cours d'un son en fondu, sans coupure.
