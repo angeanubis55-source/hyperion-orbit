@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.222",
+    "date": "2026-09-18T09:17:06+02:00",
+    "message": "fix crash kamikaze cfgTouch + aptitudes Cyborg/Holo/Hyperion/Keres/Liberator/Lightning/Mimesis/Orcus, X0, SFX (sync generale)"
+  },
+  {
     "version": "0.221",
     "date": "2026-09-17T18:51:23+02:00",
     "message": "sync version 0.220 + patch-notes (hook post-push)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.163",
     "date": "2026-09-11T23:52:11+02:00",
     "message": "univers: respawn NPC random (sauf cubikon au camp), suppression tests sim + nettoyage bots"
-  },
-  {
-    "version": "0.162",
-    "date": "2026-09-11T22:03:21+02:00",
-    "message": "univers persistant: horloge monde, slots stables, tick fond multi-maps (hors GG), respawn instant sauf cubikon 60s"
   }
 ];
