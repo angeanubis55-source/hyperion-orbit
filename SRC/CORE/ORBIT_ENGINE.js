@@ -1310,52 +1310,52 @@ const INC_DPS = 25000;
 const INC_PLUS_COOLDOWN = 80;
 const INC_PLUS_RADIUS = 600;
 const INC_PLUS_DPS = 50000;
-function incIsPlus() {
-  try {
-    if ((player.incPlusT || 0) > 0) return true;
-    return isSolarisPlusBase();
-  } catch { return false; }
-}
-function startIncCooldown() {
-  if (incIsPlus()) {
+function startIncCooldown(plus) {
+  // Variante explicite (true = Plus, false = base) ; sans param = le vaisseau.
+  // Chaque bouton gère SA compétence : finir/couper l'une ne touche pas l'autre.
+  const p = plus === true ? true : plus === false ? false : isSolarisPlusBase();
+  if (p) {
+    player.incPlusT = 0;
+    player.incPlusAcc = 0;
     player.incPlusCd = INC_PLUS_COOLDOWN;
+    persistCdUntil("incPlusFx", 0);
     persistCdUntil("incPlus", INC_PLUS_COOLDOWN);
   } else {
+    player.incT = 0;
+    player.incAcc = 0;
     player.incCd = INC_COOLDOWN;
+    persistCdUntil("incFx", 0);
     persistCdUntil("inc", INC_COOLDOWN);
   }
-  player.incT = 0;
-  player.incPlusT = 0;
-  persistCdUntil("incFx", 0);
 }
 function cancelInc() {
-  if ((player.incT || 0) <= 0 && (player.incPlusT || 0) <= 0) return;
-  startIncCooldown();
+  if ((player.incT || 0) > 0) startIncCooldown(false);
+  if ((player.incPlusT || 0) > 0) startIncCooldown(true);
 }
-function activateInc() {
+function activateInc(forcePlus) {
   if (player.dead || !started) return;
-  const plus = isSolarisPlusBase();
-  // Toggle : re-clic pendant l'effet = arrêt, la recharge démarre.
-  if ((player.incT || 0) > 0 || (player.incPlusT || 0) > 0) {
-    startIncCooldown();
+  // Le bouton cliqué décide (Police a les deux) ; sinon le vaisseau.
+  const plus = forcePlus === true ? true : forcePlus === false ? false : isSolarisPlusBase();
+  // Toggle par bouton : re-clic sur la MÊME variante = on la coupe.
+  // L'autre variante tourne en parallèle sans être touchée.
+  if (plus ? (player.incPlusT || 0) > 0 : (player.incT || 0) > 0) {
+    startIncCooldown(plus);
     showNotification("Incinération coupée", 1.5, "info");
     return;
   }
   const cd = Number((plus ? player.incPlusCd : player.incCd) || 0);
   if (cd > 0) {
-    showNotification(`Incinération : recharge ${Math.ceil(cd)} s`, 2, "info");
+    showNotification(`Incinération${plus ? " Plus" : ""} : recharge ${Math.ceil(cd)} s`, 2, "info");
     return;
   }
-  if (plus) player.incPlusT = INC_DURATION;
-  else player.incT = INC_DURATION;
-  player.incAcc = 0;
-  persistCdUntil("incFx", INC_DURATION);
+  if (plus) { player.incPlusT = INC_DURATION; player.incPlusAcc = 0; }
+  else { player.incT = INC_DURATION; player.incAcc = 0; }
+  persistCdUntil(plus ? "incPlusFx" : "incFx", INC_DURATION);
   showNotification(plus ? "Halo 800" : "Halo 600", 2.5, "info");
 }
 // Tient un NPC : attaques coupees + aspire en orbite autour de nous.
-function incBurn() {
-  // 10k (300) ou 15k (600) par seconde a TOUS les ennemis autour.
-  const plus = (player.incPlusT || 0) > 0;
+function incBurn(plus) {
+  // Brûlure 1 hit/s à TOUS les ennemis autour (chaque variante son halo).
   const dmg = plus ? INC_PLUS_DPS : INC_DPS;
   const r2 = (plus ? INC_PLUS_RADIUS : INC_RADIUS) ** 2;
   for (const e of enemies) {
@@ -1847,10 +1847,10 @@ function isHecatePlusBase() {
     return String(getShipDesignBaseId(raw) || raw).toLowerCase() === "hecate_plus";
   } catch { return false; }
 }
-function hecateDur() { return isHecatePlusBase() ? HECATE_PLUS_DURATION : HECATE_DURATION; }
-function hecateCdVal() { return isHecatePlusBase() ? HECATE_PLUS_COOLDOWN : HECATE_COOLDOWN; }
-function hecateStart() { return isHecatePlusBase() ? HECATE_PLUS_START : HECATE_START; }
-function hecateStep() { return isHecatePlusBase() ? HECATE_PLUS_STEP : HECATE_STEP; }
+function hecateDur(over) { const p = over === true ? true : false; if (over !== true && over !== false) { try { return isHecatePlusBase() ? HECATE_PLUS_DURATION : HECATE_DURATION; } catch { return HECATE_DURATION; } } return p ? HECATE_PLUS_DURATION : HECATE_DURATION; }
+function hecateCdVal(over) { if (over !== true && over !== false) { try { return isHecatePlusBase() ? HECATE_PLUS_COOLDOWN : HECATE_COOLDOWN; } catch { return HECATE_COOLDOWN; } } return over ? HECATE_PLUS_COOLDOWN : HECATE_COOLDOWN; }
+function hecateStart(over) { if (over !== true && over !== false) { try { return isHecatePlusBase() ? HECATE_PLUS_START : HECATE_START; } catch { return HECATE_START; } } return over ? HECATE_PLUS_START : HECATE_START; }
+function hecateStep(over) { if (over !== true && over !== false) { try { return isHecatePlusBase() ? HECATE_PLUS_STEP : HECATE_STEP; } catch { return HECATE_STEP; } } return over ? HECATE_PLUS_STEP : HECATE_STEP; }
 const DIMINISH_FRAMES = 27;
 const DIMINISH_FPS = 30;
 // Aptitudes "camouflage" branchées sur le même effet (Police + 2 Spearhead).
@@ -1864,23 +1864,411 @@ function isCloakAbility(abilityId) {
 }
 // Recharges persistantes (survivent au refresh) : échéances absolues en
 // localStorage, même convention que les gears P.E.T (timestamps).
+// Isolation par vaisseau : chaque coque (base normalisée, ex : orcus vs
+// police) possède son propre espace de cooldowns. Ce qui est utilisé sur
+// un vaisseau reste sur ce vaisseau.
 const PERSIST_CDS_KEY = "orbit_cooldowns_v1";
+function abilityShipScope(scopeOverride) {
+  try {
+    const normalize = (raw) => {
+      const r = String(raw || "").toLowerCase();
+      if (!r) return "global";
+      try {
+        const base = getShipDesignBaseId(r);
+        if (base) return String(base || r).toLowerCase();
+      } catch {}
+      return r;
+    };
+    if (scopeOverride) return normalize(scopeOverride);
+    const raw = String(getActiveHangarFromUser(account?.user)?.shipId || ACTIVE_SHIP?.id || "").toLowerCase();
+    return normalize(raw);
+  } catch { return "global"; }
+}
+function scopedCdName(name, scope) {
+  return `${abilityShipScope(scope)}::${String(name || "")}`;
+}
 function readPersistedCds() {
   try { return JSON.parse(localStorage.getItem(PERSIST_CDS_KEY) || "{}") || {}; }
   catch { return {}; }
 }
-function persistCdUntil(name, seconds) {
+function writePersistedCds(all) {
+  try { localStorage.setItem(PERSIST_CDS_KEY, JSON.stringify(all || {})); } catch {}
+}
+function persistCdUntil(name, seconds, scopeOverride) {
   try {
     const all = readPersistedCds();
-    if (Number(seconds) > 0) all[name] = Date.now() + Number(seconds) * 1000;
-    else delete all[name];
-    localStorage.setItem(PERSIST_CDS_KEY, JSON.stringify(all));
+    const key = scopedCdName(name, scopeOverride);
+    if (Number(seconds) > 0) all[key] = Date.now() + Number(seconds) * 1000;
+    else delete all[key];
+    // Migration : l'ancienne clé globale ne doit plus fuiter entre vaisseaux.
+    if (Object.prototype.hasOwnProperty.call(all, name)) delete all[name];
+    writePersistedCds(all);
   } catch {}
 }
-function persistedCdLeft(name) {
+function persistedCdLeft(name, scopeOverride) {
   try {
-    return Math.max(0, (Number(readPersistedCds()[name] || 0) - Date.now()) / 1000);
+    const all = readPersistedCds();
+    const key = scopedCdName(name, scopeOverride);
+    let until = Number(all[key] || 0);
+    if (!(until > 0)) {
+      // Migration douce : une seule lecture de l'ancienne clé globale.
+      until = Number(all[name] || 0);
+    }
+    return Math.max(0, (until - Date.now()) / 1000);
   } catch { return 0; }
+}
+// Écriture / lecture forcée sur un scope explicite (snapshot inter-vaisseaux).
+function persistShipCdUntil(scope, name, seconds) {
+  persistCdUntil(name, seconds, scope);
+}
+function persistedShipCdLeft(scope, name) {
+  return persistedCdLeft(name, scope);
+}
+// Cibles / positions persistées pour reprendre l'effet après un refresh
+// (monde infini : l'effet continue en temps absolu, on se ré-accroche).
+const ABILITY_TARGET_KEY = "orbit_ability_targets_v1";
+function readAbilityTargets() {
+  try { return JSON.parse(localStorage.getItem(ABILITY_TARGET_KEY) || "{}") || {}; }
+  catch { return {}; }
+}
+function persistAbilityTarget(fxName, target, extra) {
+  try {
+    const scope = abilityShipScope();
+    const all = readAbilityTargets();
+    const key = `${scope}::${String(fxName || "")}`;
+    if (!target) { delete all[key]; }
+    else {
+      all[key] = {
+        uid: target.universeUid != null ? String(target.universeUid) : (target.id != null ? String(target.id) : null),
+        map: String(window.__CURRENT_MAP_ID__ || currentMapId() || ""),
+        at: Date.now(),
+        extra: extra || null,
+      };
+    }
+    localStorage.setItem(ABILITY_TARGET_KEY, JSON.stringify(all));
+  } catch {}
+}
+function readAbilityTarget(fxName, scopeOverride) {
+  try {
+    const all = readAbilityTargets();
+    return all[`${abilityShipScope(scopeOverride)}::${String(fxName || "")}`] || null;
+  } catch { return null; }
+}
+function clearAbilityTarget(fxName, scopeOverride) {
+  try {
+    const all = readAbilityTargets();
+    delete all[`${abilityShipScope(scopeOverride)}::${String(fxName || "")}`];
+    localStorage.setItem(ABILITY_TARGET_KEY, JSON.stringify(all));
+  } catch {}
+}
+// Chaque bouton normal/Plus a ses propres timers : la variante est portée
+// par les champs eux-mêmes (hecateT vs hecatePlusT...), aucun flag partagé.
+function findEnemyByPersistedTarget(saved) {
+  try {
+    if (!saved) return null;
+    const uid = saved.uid != null ? String(saved.uid) : null;
+    if (!uid) return null;
+    for (const e of enemies) {
+      if (!e || !(e.hp > 0)) continue;
+      if (e.universeUid != null && String(e.universeUid) === uid) return e;
+      if (String(e.id || "") === uid) return e;
+    }
+  } catch {}
+  return null;
+}
+// Snapshot continu (toutes les 2 s + pagehide) : cibles mono-cible +
+// debuffs NPC (mark/neutr/jamx/keres...). Sans ça, un refresh perdrait
+// l'accroche NPC alors que l'effet continue en temps absolu.
+function snapshotAbilityTargetsTick() {
+  try {
+    if (!started || player.dead) return;
+    const pairs = [
+      ["shlFx", player.linkTarget], ["diminishFx", player.diminishTarget],
+      ["cyborgFx", player.cyborgTarget], ["venomFx", player.venomTarget],
+      ["gaFx", player.gaTarget], ["holoEnemyFx", player.holoEnemyTarget],
+      ["ddolFx", player.ddolTarget], ["redirectFx", player.redirectTarget],
+      ["disarrayFx", player.disarrayTarget], ["sapFx", player.sapTarget],
+      ["chsFx", player.chsTarget], ["sleightFx", player.sleightTarget],
+      ["hecateFx", player.hecateTarget], ["hecatePlusFx", player.hecatePlusTarget],
+    ];
+    for (const [fx, tgt] of pairs) {
+      try {
+        if (tgt && tgt.hp > 0) persistAbilityTarget(fx, tgt);
+        else {
+          // Nettoie les cibles mortes (évite un ré-accrochage fantôme).
+          const saved = readAbilityTarget(fx);
+          if (saved) clearAbilityTarget(fx);
+        }
+      } catch {}
+    }
+    // Keres Spread : liste des infectés (pas de réinfection même cast).
+    try {
+      if (player.keresSprActive) {
+        const uids = [];
+        for (const e of enemies) {
+          if (e && (e.keresSprT || 0) > 0) {
+            uids.push(String(e.universeUid != null ? e.universeUid : e.id));
+          }
+        }
+        persistAbilityTarget("keresSprFx", enemies.find((e) => e && (e.keresSprT || 0) > 0) || null, { uids });
+      }
+    } catch {}
+    // Debuffs NPC en temps absolu (reprise animation côté NPC).
+    try {
+      const all = readAbilityTargets();
+      const scope = abilityShipScope();
+      const debuffs = [];
+      for (const e of enemies) {
+        if (!e || !(e.hp > 0)) continue;
+        const uid = String(e.universeUid != null ? e.universeUid : e.id);
+        const entry = { uid };
+        let any = false;
+        const put = (k, v) => { if (Number(v || 0) > 0.05) { entry[k] = Date.now() + Number(v) * 1000; any = true; } };
+        put("markT", e.markT); put("neutrT", e.neutrT);
+        put("jamxT", e.jamxT); put("creedT", e.creedT);
+        put("keresSprT", e.keresSprT);
+        put("sleightSlowT", e.sleightSlowT);
+        put("diminishT", (player.diminishTarget === e) ? player.diminishT : 0);
+        if (any) debuffs.push(entry);
+      }
+      all[`${scope}::npcDebuffs`] = debuffs;
+      localStorage.setItem(ABILITY_TARGET_KEY, JSON.stringify(all));
+    } catch {}
+  } catch {}
+}
+try {
+  if (!window.__abilityTargetSnapTimer) {
+    window.__abilityTargetSnapTimer = setInterval(snapshotAbilityTargetsTick, 2000);
+  }
+} catch {}
+try {
+  window.addEventListener("pagehide", () => { try { snapshotAbilityTargetsTick(); } catch {} });
+} catch {}
+// Ré-accrochage différé après un refresh (les NPC spawnent après nous) :
+// on ré-applique les cibles joueur + les debuffs NPC restants pour que
+// l'animation reprenne jusqu'à la fin, sans permettre de relancer.
+function scheduleAbilityResumeTargets(resumedFx) {
+  try {
+    const scope = abilityShipScope();
+    const targetFx = ["shlFx", "diminishFx", "cyborgFx", "venomFx", "gaFx", "holoEnemyFx", "ddolFx", "redirectFx", "disarrayFx", "sapFx", "chsFx", "sleightFx", "hecateFx", "hecatePlusFx"];
+    const hasTargetWork = targetFx.some((fx) => Number(resumedFx?.[fx] || 0) > 0.05);
+    let npcDebuffs = [];
+    try { npcDebuffs = readAbilityTargets()[`${scope}::npcDebuffs`] || []; } catch {}
+    const hasNpcWork = Array.isArray(npcDebuffs) && npcDebuffs.length > 0;
+    if (!hasTargetWork && !hasNpcWork) return;
+    let attempts = 0;
+    const timer = setInterval(() => {
+      attempts++;
+      try {
+        for (const fx of targetFx) {
+          if (!(Number(resumedFx?.[fx] || 0) > 0.05)) continue;
+          const saved = readAbilityTarget(fx);
+          const found = findEnemyByPersistedTarget(saved);
+          if (!found) continue;
+          try {
+            if (fx === "shlFx") { player.linkTarget = found; }
+            else if (fx === "diminishFx") { player.diminishTarget = found; }
+            else if (fx === "cyborgFx") { player.cyborgTarget = found; }
+            else if (fx === "venomFx") { player.venomTarget = found; }
+            else if (fx === "gaFx") { player.gaTarget = found; }
+            else if (fx === "holoEnemyFx") { player.holoEnemyTarget = found; try { found.holoMarked = true; } catch {} }
+            else if (fx === "ddolFx") { player.ddolTarget = found; }
+            else if (fx === "redirectFx") { player.redirectTarget = found; }
+            else if (fx === "disarrayFx") { player.disarrayTarget = found; }
+            else if (fx === "sapFx") { player.sapTarget = found; }
+            else if (fx === "hecateFx") { player.hecateTarget = found; }
+            else if (fx === "hecatePlusFx") { player.hecatePlusTarget = found; }
+            else if (fx === "chsFx") { player.chsTarget = found; }
+            else if (fx === "sleightFx") { player.sleightTarget = found; }
+            try { Target.set(found); } catch {}
+          } catch {}
+        }
+        // Debuffs NPC : ré-applique le restant (l'animation reprend).
+        if (Array.isArray(npcDebuffs)) {
+          for (const d of npcDebuffs) {
+            try {
+              const e = (() => {
+                for (const c of enemies) {
+                  if (!c || !(c.hp > 0)) continue;
+                  if (String(c.universeUid != null ? c.universeUid : c.id) === String(d.uid)) return c;
+                }
+                return null;
+              })();
+              if (!e) continue;
+              const left = (until) => Math.max(0, (Number(until || 0) - Date.now()) / 1000);
+              if (left(d.markT) > 0) e.markT = Math.max(Number(e.markT || 0), left(d.markT));
+              if (left(d.neutrT) > 0) e.neutrT = Math.max(Number(e.neutrT || 0), left(d.neutrT));
+              if (left(d.jamxT) > 0) e.jamxT = Math.max(Number(e.jamxT || 0), left(d.jamxT));
+              if (left(d.creedT) > 0) e.creedT = Math.max(Number(e.creedT || 0), left(d.creedT));
+              if (left(d.keresSprT) > 0) {
+                e.keresSprT = Math.max(Number(e.keresSprT || 0), left(d.keresSprT));
+                player.keresSprActive = true;
+              }
+              if (left(d.sleightSlowT) > 0) e.sleightSlowT = Math.max(Number(e.sleightSlowT || 0), left(d.sleightSlowT));
+            } catch {}
+          }
+        }
+      } catch {}
+      if (attempts >= 15) {
+        try { clearInterval(timer); } catch {}
+      }
+    }, 1000);
+  } catch {}
+}
+// Table timers joueurs : [fxName, cdName, tField, cdField, maxFx, maxCd].
+// Sert au snapshot inter-vaisseaux (l'ancien vaisseau garde ses temps,
+// le nouveau récupère les siens).
+function shipAbilityTimerMap() {
+  try {
+    return [
+      ["cloakFx", "cloak", "cloakT", "cloakCd", POLICE_CLOAK_DURATION, POLICE_CLOAK_COOLDOWN],
+      ["podFx", "pod", "podT", "podCd", REPAIR_POD_DURATION, REPAIR_POD_COOLDOWN],
+      ["hpRepFx", "hpRep", "healHpT", "healHpCd", HP_REPAIR_DURATION, HP_REPAIR_COOLDOWN],
+      ["shRepFx", "shRep", "healShT", "healShCd", SH_REPAIR_DURATION, SH_REPAIR_COOLDOWN],
+      ["hammerHpFx", "hammerHp", "hammerHpT", "hammerHpCd", HAMMER_HP_DURATION, HAMMER_HP_COOLDOWN],
+      ["hammerHpPlusFx", "hammerHpPlus", "hammerHpPlusT", "hammerHpPlusCd", HAMMER_PLUS_HP_DURATION, HAMMER_PLUS_HP_COOLDOWN],
+      ["hammerShFx", "hammerSh", "hammerShT", "hammerShCd", HAMMER_SH_DURATION, HAMMER_SH_COOLDOWN],
+      ["hammerShPlusFx", "hammerShPlus", "hammerShPlusT", "hammerShPlusCd", HAMMER_SH_DURATION, HAMMER_PLUS_SH_COOLDOWN],
+      ["hammerPodFx", "hammerPod", "hammerPodT", "hammerPodCd", HAMMER_POD_DURATION, HAMMER_POD_COOLDOWN],
+      ["hammerPodPlusFx", "hammerPodPlus", "hammerPodPlusT", "hammerPodPlusCd", HAMMER_PLUS_POD_DURATION, HAMMER_PLUS_POD_COOLDOWN],
+      ["nebFx", "neb", "nebT", "nebCd", NEBULA_DURATION, NEBULA_COOLDOWN],
+      ["valFx", "val", "valT", "valCd", VALOUR_DURATION, VALOUR_COOLDOWN],
+      ["shlFx", "shl", "shlT", "shlCd", SHL_DURATION, SHL_COOLDOWN],
+      ["bskFx", "bsk", "bskT", "bskCd", BSK_DURATION, BSK_COOLDOWN],
+      ["rvgFx", "rvg", "rvgT", "rvgCd", RVG_DURATION, RVG_COOLDOWN],
+      ["drawFireFx", "drawFire", "drawFireT", "drawFireCd", DRAW_FIRE_DURATION, DRAW_FIRE_COOLDOWN],
+      ["protectionFx", "protection", "protectionT", "protectionCd", PROTECTION_DURATION, PROTECTION_COOLDOWN],
+      ["travelFx", "travel", "travelT", "travelCd", TRAVEL_DURATION, TRAVEL_COOLDOWN],
+      ["fortifyFx", "fortify", "fortifyT", "fortifyCd", FORTIFY_DURATION, FORTIFY_COOLDOWN],
+      ["prismFx", "prism", "prismT", "prismCd", PRISM_DURATION, PRISM_COOLDOWN],
+      ["specFx", "spec", "specT", "specCd", SPEC_DURATION, SPEC_COOLDOWN],
+      ["specPlusFx", "specPlus", "specPlusT", "specPlusCd", SPECPLUS_DURATION, SPECPLUS_COOLDOWN],
+      [null, "tartRapid", null, "tartRapidCd", 0, TART_RAPID_CD],
+      ["tartRapidPlusFx", "tartRapidPlus", "tartRapidPlusT", "tartRapidPlusCd", TART_RAPIDPLUS_DURATION, TART_RAPIDPLUS_CD],
+      [null, "tartPlusBoost", null, "tartPlusBoostCd", 0, TARTPLUS_BOOST_SWITCH_CD],
+      ["diminishFx", "diminish", "diminishT", "diminishCd", DIMINISH_DURATION, DIMINISH_COOLDOWN],
+      ["libRepFx", "libRep", "libRepT", "libRepCd", LIBREP_DURATION, LIBREP_COOLDOWN],
+      ["lightFx", "light", "lightT", "lightCd", LIGHT_DURATION, LIGHT_COOLDOWN],
+      ["scrambleFx", "scramble", "scrambleT", "scrambleCd", SCRAMBLE_COOLDOWN, SCRAMBLE_COOLDOWN],
+      [null, "phaseOut", null, "phaseOutCd", 0, PHASEOUT_COOLDOWN],
+      ["holoGramFx", "holoGram", "holoGramT", "holoGramCd", null, HOLOGRAM_COOLDOWN],
+      ["cyborgFx", "cyborg", "cyborgT", "cyborgCd", CYBORG_DURATION, CYBORG_COOLDOWN],
+      ["venomFx", "venom", "venomT", "venomCd", VENOM_DURATION, VENOM_COOLDOWN],
+      ["orcusFx", "orcus", "orcusT", "orcusCd", ORCUS_DURATION, ORCUS_COOLDOWN],
+      ["sentFx", "sent", "sentT", "sentCd", SENT_DURATION, SENT_COOLDOWN],
+      ["reconFx", "recon", "reconT", "reconCd", RECON_DURATION, RECON_COOLDOWN],
+      ["incFx", "inc", "incT", "incCd", INC_DURATION, INC_COOLDOWN],
+      ["incPlusFx", "incPlus", "incPlusT", "incPlusCd", INC_DURATION, INC_PLUS_COOLDOWN],
+      ["sapFx", "sap", "sapT", "sapCd", SAP_DURATION, SAP_COOLDOWN],
+      ["spcFx", "spc", "spcT", "spcCd", SPC_DURATION, SPC_COOLDOWN],
+      ["spcPlusFx", "spcPlus", "spcPlusT", "spcPlusCd", SPCP_DURATION, SPCP_COOLDOWN],
+      [null, "chs", null, "chsCd", 0, CHS_COOLDOWN],
+      [null, "chsPlus", null, "chsPlusCd", 0, CHS_PLUS_COOLDOWN],
+      ["ripperFx", "ripper", "ripperT", "ripperCd", RIPPER_DURATION, RIPPER_COOLDOWN],
+      [null, "lastStand", null, "lastStandCd", 0, LASTSTAND_COOLDOWN],
+      ["tempestBackupFx", "tempestBackup", "tempestBackupT", "tempestBackupCd", TEMPEST_BACKUP_INVULN, TEMPEST_BACKUP_CD],
+      ["tempestDischFx", "tempestDisch", "tempestDischT", "tempestDischCd", TEMPEST_DISCH_DURATION, TEMPEST_DISCH_CD],
+      [null, "tempestLink", null, "tempestLinkCd", 0, TEMPEST_LINK_CD],
+      ["mmtFx", "mmt", "mmtT", "mmtCd", MMT_DURATION, MMT_COOLDOWN],
+      ["tbrFx", "tbr", "tbrT", "tbrCd", TBR_DURATION, TBR_COOLDOWN],
+      [null, "jamx", null, "jamxCd", 0, JAMX_CD],
+      [null, "creed", null, "creedCd", 0, CREED_CD],
+      [null, "mark", null, "markCd", 0, MARK_CD],
+      [null, "neutr", null, "neutrCd", 0, NEUTR_CD],
+      ["keresSprFx", "keresSpr", null, "keresSprCd", SPR_DURATION, SPR_COOLDOWN],
+      ["sleightFx", "sleight", "sleightT", "sleightCd", SLEIGHT_COOLDOWN, SLEIGHT_COOLDOWN],
+      ["gaFx", "ga", "gaT", "gaCd", GA_DURATION, GA_COOLDOWN],
+      [null, "qa", null, "qaCd", 0, QA_COOLDOWN],
+      ["holoSelfFx", "holoSelf", "holoSelfT", "holoSelfCd", HOLO_DURATION, HOLO_COOLDOWN],
+      ["holoEnemyFx", "holoEnemy", "holoEnemyT", "holoEnemyCd", HOLO_DURATION, HOLO_COOLDOWN],
+      ["ddolFx", "ddol", "ddolT", "ddolCd", DDOL_DURATION, DDOL_COOLDOWN],
+      ["redirectFx", "redirect", "redirectT", "redirectCd", REDIRECT_DURATION, REDIRECT_COOLDOWN],
+      ["disarrayFx", "disarray", "disarrayT", "disarrayCd", DISARRAY_DURATION, DISARRAY_COOLDOWN],
+      ["reallocFx", "realloc", "reallocT", "reallocCd", REALLOC_DURATION, REALLOC_COOLDOWN],
+      ["hecateFx", "hecate", "hecateT", "hecateCd", HECATE_DURATION, HECATE_COOLDOWN],
+      ["hecatePlusFx", "hecatePlus", "hecatePlusT", "hecatePlusCd", HECATE_PLUS_DURATION, HECATE_PLUS_COOLDOWN],
+      [null, "frozenClaw", null, "frozenClawCd", 0, FROZEN_CLAW_COOLDOWN],
+      [null, "sol", null, "solCd", 0, SOLACE_COOLDOWN],
+      [null, "solPlus", null, "solPlusCd", 0, SOLACE_PLUS_COOLDOWN],
+    ];
+  } catch { return []; }
+}
+// Sauve les temps restants du joueur vers un scope (ancien vaisseau),
+// puis recharge le scope du nouveau vaisseau. Le monde continue en temps
+// absolu : un refresh ou un aller-retour retrouve les temps restants.
+function saveShipTimersToScope(scope) {
+  try {
+    if (!scope) return;
+    for (const [fx, cd, tField, cdField] of shipAbilityTimerMap()) {
+      try {
+        if (tField) {
+          const left = Math.max(0, Number(player[tField] || 0));
+          if (left > 0.05) persistShipCdUntil(scope, fx, left);
+          else persistShipCdUntil(scope, fx, 0);
+        }
+        if (cdField) {
+          const cdLeft = Math.max(0, Number(player[cdField] || 0));
+          if (cdLeft > 0.05) persistShipCdUntil(scope, cd, cdLeft);
+        }
+      } catch {}
+    }
+    // Toggles : retombent à off, le switch est persisté.
+    try {
+      if (player.tartBoostOn === true) persistShipCdUntil(scope, "tartBoost", 0);
+      if (player.tartPlusBoostOn === true && Number(player.tartPlusBoostCd || 0) > 0) {
+        persistShipCdUntil(scope, "tartPlusBoost", Number(player.tartPlusBoostCd || 0));
+      }
+    } catch {}
+  } catch {}
+}
+function clearPlayerAbilityTimers() {
+  try {
+    for (const [, , tField, cdField] of shipAbilityTimerMap()) {
+      try { if (tField) player[tField] = 0; } catch {}
+      try { if (cdField) player[cdField] = 0; } catch {}
+    }
+    player.linkTarget = null; player.diminishTarget = null;
+    player.cyborgTarget = null; player.venomTarget = null;
+    player.gaTarget = null; player.holoEnemyTarget = null;
+    player.ddolTarget = null; player.redirectTarget = null;
+    player.disarrayTarget = null; player.sapTarget = null;
+    player.chsTarget = null; player.sleightTarget = null;
+    player.hecateTarget = null; player.hecatePlusTarget = null;
+    player.hammerPodX = null; player.hammerPodY = null;
+    player.hammerPodPlusX = null; player.hammerPodPlusY = null;
+    player.tartBoostOn = false; player.tartPlusBoostOn = false;
+  } catch {}
+}
+function loadShipTimersFromScope(scope) {
+  try {
+    if (!scope) return;
+    for (const [fx, cd, tField, cdField, maxFx, maxCd] of shipAbilityTimerMap()) {
+      try {
+        if (tField && fx) {
+          const left = persistedShipCdLeft(scope, fx);
+          player[tField] = left > 0 ? Math.min(Number(maxFx || left), left) : 0;
+        }
+        if (cdField && cd) {
+          const cdLeft = persistedShipCdLeft(scope, cd);
+          player[cdField] = cdLeft > 0 ? Math.min(Number(maxCd || cdLeft), cdLeft) : 0;
+        }
+      } catch {}
+    }
+    try {
+      player.tartBoostOn = false; player.tartPlusBoostOn = false;
+      player.tartPlusBoostCd = Math.min(TARTPLUS_BOOST_SWITCH_CD, persistedShipCdLeft(scope, "tartPlusBoost"));
+    } catch {}
+  } catch {}
+}
+function handleShipAbilitySwitch(prevScope, nextScope) {
+  try {
+    const prev = abilityShipScope(prevScope);
+    const next = abilityShipScope(nextScope);
+    if (!prev || !next || prev === next) return;
+    saveShipTimersToScope(prev);
+    clearPlayerAbilityTimers();
+    loadShipTimersFromScope(next);
+  } catch {}
 }
 // La recharge ne démarre qu'une fois l'aptitude finie ou coupée.
 // Visuellement, le voile reste plein pendant l'effet puis descend.
@@ -3851,19 +4239,33 @@ function shipPassiveXpMult() {
 // en dégâts croissants directs en coque sur la cible lockée, ralenti -10 %
 // pendant le canal (via playerSlowMult). Lien rompu si cible morte ou à
 // plus de 1000 (la recharge démarre).
-function startHecateCooldown() {
-  player.hecateCd = hecateCdVal();
-  player.hecateTarget = null;
-  player.hecateHit = 0;
-  persistCdUntil("hecateFx", 0);
-  persistCdUntil("hecate", hecateCdVal());
+// Normal et Plus sont deux compétences indépendantes (timers, recharges,
+// cibles) : elles peuvent tourner en parallèle, même sur Police.
+function startHecateCooldown(plus) {
+  // Variante explicite (true = Plus, false = base) ; sans param = le vaisseau.
+  const p = plus === true ? true : plus === false ? false : hecatePlusShip();
+  const cd = hecateCdVal(p);
+  if (p) {
+    player.hecatePlusT = 0;
+    player.hecatePlusTarget = null;
+    player.hecatePlusHit = 0;
+    player.hecatePlusAcc = 0;
+    player.hecatePlusCd = cd;
+    persistCdUntil("hecatePlusFx", 0);
+    persistCdUntil("hecatePlus", cd);
+  } else {
+    player.hecateT = 0;
+    player.hecateTarget = null;
+    player.hecateHit = 0;
+    player.hecateAcc = 0;
+    player.hecateCd = cd;
+    persistCdUntil("hecateFx", 0);
+    persistCdUntil("hecate", cd);
+  }
 }
 function cancelHecate() {
-  if ((player.hecateT || 0) <= 0) return;
-  player.hecateT = 0;
-  player.hecateTarget = null;
-  player.hecateHit = 0;
-  startHecateCooldown();
+  if ((player.hecateT || 0) > 0) startHecateCooldown(false);
+  if ((player.hecatePlusT || 0) > 0) startHecateCooldown(true);
 }
 function hecateOutOfRange(tgt) {
   if (!tgt) return true;
@@ -3871,11 +4273,12 @@ function hecateOutOfRange(tgt) {
     return dist2(player.x, player.y, tgt.x, tgt.y) > HECATE_LINK_RANGE * HECATE_LINK_RANGE;
   } catch { return false; }
 }
-function hecateBeamTick() {
-  const tgt = player.hecateTarget;
+function hecateBeamTick(plus) {
+  const tgt = plus ? player.hecatePlusTarget : player.hecateTarget;
   if (!tgt || !(tgt.hp > 0)) return;
-  const dmg = Math.round(hecateStart() + hecateStep() * Number(player.hecateHit || 0));
-  player.hecateHit = Number(player.hecateHit || 0) + 1;
+  const hitKey = plus ? "hecatePlusHit" : "hecateHit";
+  const dmg = Math.round(hecateStart(plus) + hecateStep(plus) * Number(player[hitKey] || 0));
+  player[hitKey] = Number(player[hitKey] || 0) + 1;
   // Façon Venom : direct en coque (pénétration totale).
   let out = null;
   try { out = damageEnemy(tgt, dmg, 1.0); } catch {}
@@ -3884,14 +4287,19 @@ function hecateBeamTick() {
     try { queueVolleyFloat(tgt, out, volleySeq++, 1); } catch {}
   }
 }
-function activateHecate() {
+function activateHecate(forcePlus) {
   if (player.dead || !started) return;
-  const cd = Number(player.hecateCd || 0);
+  // Le bouton cliqué décide (Police a les deux) ; sinon le vaisseau.
+  // Chaque faisceau gère SA compétence : l'autre tourne en parallèle.
+  const plus = forcePlus === true ? true : forcePlus === false ? false : hecatePlusShip();
+  const tKey = plus ? "hecatePlusT" : "hecateT";
+  const cdKey = plus ? "hecatePlusCd" : "hecateCd";
+  if ((player[tKey] || 0) > 0) return;
+  const cd = Number(player[cdKey] || 0);
   if (cd > 0) {
-    showNotification(`Faisceau à particules : recharge ${Math.ceil(cd)} s`, 2, "info");
+    showNotification(`Faisceau à particules${plus ? " Plus" : ""} : recharge ${Math.ceil(cd)} s`, 2, "info");
     return;
   }
-  if ((player.hecateT || 0) > 0) return;
   const t = Target.get();
   if (!t) {
     showNotification("Faisceau : verrouille d'abord une cible", 2, "info");
@@ -3902,13 +4310,21 @@ function activateHecate() {
     showNotification("Cible hors de portée.", 1.5, "error");
     return;
   }
-  player.hecateTarget = t;
-  player.hecateHit = 0;
-  player.hecateT = hecateDur();
-  player.hecateAcc = 0;
-  persistCdUntil("hecateFx", hecateDur());
-  try { hecateBeamTick(); } catch {}
-  showNotification(`Faisceau actif (${hecateDur()} s) : dégâts croissants en coque, vitesse -10 %`, 2.5, "info");
+  if (plus) {
+    player.hecatePlusTarget = t;
+    player.hecatePlusHit = 0;
+    player.hecatePlusT = hecateDur(true);
+    player.hecatePlusAcc = 0;
+    persistCdUntil("hecatePlusFx", hecateDur(true));
+  } else {
+    player.hecateTarget = t;
+    player.hecateHit = 0;
+    player.hecateT = hecateDur(false);
+    player.hecateAcc = 0;
+    persistCdUntil("hecateFx", hecateDur(false));
+  }
+  try { hecateBeamTick(plus); } catch {}
+  showNotification(`Faisceau actif (${hecateDur(plus)} s) : dégâts croissants en coque, vitesse -10 %`, 2.5, "info");
 }
 // --- Stockpile (Hecate Plus, 2e capacité) : jusqu'à 10 charges, +1 par PNJ
 // tué. Tant que Stockpile n'est pas activé : portée +5 par charge.
@@ -4037,6 +4453,33 @@ function activateValour() {
   showNotification("Valeur exaltée active (30 s)", 2, "info");
 }
 function restorePersistedCds() {
+  // Monde infini : un refresh ne doit NI annuler l'effet NI offrir un
+  // relaunch gratuit. L'effet continue en temps absolu (timestamps) : on
+  // restaure le temps restant et on reprend l'animation (joueur + NPC).
+  const __resumedFx = {};
+  try {
+    const pairs = shipAbilityTimerMap();
+    const fxNames = [...new Set(pairs.map((p) => p[0]).filter(Boolean))];
+    for (const fx of fxNames) {
+      try {
+        const left = persistedCdLeft(fx);
+        if (left > 0.05) __resumedFx[fx] = left;
+      } catch {}
+    }
+    // Retire les clés Fx pour que le code historique prenne la branche
+    // "recharge" (il ne doit plus annuler l'effet ni démarrer la recharge).
+    // Les T sont ré-appliqués après, et les Fx re-persistées.
+    if (Object.keys(__resumedFx).length) {
+      const all = readPersistedCds();
+      let touched = false;
+      for (const fx of Object.keys(__resumedFx)) {
+        const k = scopedCdName(fx);
+        if (k in all) { delete all[k]; touched = true; }
+        if (fx in all) { delete all[fx]; touched = true; }
+      }
+      if (touched) writePersistedCds(all);
+    }
+  } catch {}
   // Camouflage coupé par un refresh : l'effet est perdu, la recharge démarre.
   if (persistedCdLeft("cloakFx") > 0) {
     player.cloakT = 0;
@@ -4061,24 +4504,36 @@ function restorePersistedCds() {
     player.healHpCd = Math.min(HP_REPAIR_COOLDOWN, Math.max(Number(player.healHpCd || 0), persistedCdLeft("hpRep")));
   }
   // Réparations Hammerclaw coupées par un refresh : recharges démarrées.
-  if (persistedCdLeft("hammerHpFx") > 0) {
+  // (Branches Fx mortes : le préambule a déjà basculé en reprise d'effet.
+  // Les else rechargent juste les deux variantes.)
+  if (persistedCdLeft("hammerHpFx") > 0 || persistedCdLeft("hammerHpPlusFx") > 0) {
     player.hammerHpT = 0;
-    startHammerHpCooldown();
+    player.hammerHpPlusT = 0;
+    if ((player.hammerHpT || 0) > 0) startHammerHpCooldown(false);
+    if ((player.hammerHpPlusT || 0) > 0) startHammerHpCooldown(true);
   } else {
-    player.hammerHpCd = Math.min(hammerHpCdVal(), Math.max(Number(player.hammerHpCd || 0), persistedCdLeft("hammerHp")));
+    player.hammerHpCd = Math.min(HAMMER_HP_COOLDOWN, Math.max(Number(player.hammerHpCd || 0), persistedCdLeft("hammerHp")));
+    player.hammerHpPlusCd = Math.min(HAMMER_PLUS_HP_COOLDOWN, Math.max(Number(player.hammerHpPlusCd || 0), persistedCdLeft("hammerHpPlus")));
   }
-  if (persistedCdLeft("hammerShFx") > 0) {
+  if (persistedCdLeft("hammerShFx") > 0 || persistedCdLeft("hammerShPlusFx") > 0) {
     player.hammerShT = 0;
-    startHammerShCooldown();
+    player.hammerShPlusT = 0;
+    if ((player.hammerShT || 0) > 0) startHammerShCooldown(false);
+    if ((player.hammerShPlusT || 0) > 0) startHammerShCooldown(true);
   } else {
-    player.hammerShCd = Math.min(hammerShCdVal(), Math.max(Number(player.hammerShCd || 0), persistedCdLeft("hammerSh")));
+    player.hammerShCd = Math.min(HAMMER_SH_COOLDOWN, Math.max(Number(player.hammerShCd || 0), persistedCdLeft("hammerSh")));
+    player.hammerShPlusCd = Math.min(HAMMER_PLUS_SH_COOLDOWN, Math.max(Number(player.hammerShPlusCd || 0), persistedCdLeft("hammerShPlus")));
   }
-  if (persistedCdLeft("hammerPodFx") > 0) {
+  if (persistedCdLeft("hammerPodFx") > 0 || persistedCdLeft("hammerPodPlusFx") > 0) {
     player.hammerPodT = 0;
+    player.hammerPodPlusT = 0;
     player.hammerPodX = null;
-    startHammerPodCooldown();
+    player.hammerPodPlusX = null;
+    if ((player.hammerPodT || 0) > 0) startHammerPodCooldown(false);
+    if ((player.hammerPodPlusT || 0) > 0) startHammerPodCooldown(true);
   } else {
-    player.hammerPodCd = Math.min(hammerPodCdVal(), Math.max(Number(player.hammerPodCd || 0), persistedCdLeft("hammerPod")));
+    player.hammerPodCd = Math.min(HAMMER_POD_COOLDOWN, Math.max(Number(player.hammerPodCd || 0), persistedCdLeft("hammerPod")));
+    player.hammerPodPlusCd = Math.min(HAMMER_PLUS_POD_COOLDOWN, Math.max(Number(player.hammerPodPlusCd || 0), persistedCdLeft("hammerPodPlus")));
   }
   if (persistedCdLeft("shRepFx") > 0) {
     player.healShT = 0;
@@ -4271,11 +4726,13 @@ function restorePersistedCds() {
   } else {
     player.reconCd = Math.min(RECON_COOLDOWN, Math.max(Number(player.reconCd || 0), persistedCdLeft("recon")));
   }
-  // Incinération coupée par un refresh : brûlure perdue, la recharge démarre.
-  if (persistedCdLeft("incFx") > 0) {
+  // Incinération coupée par un refresh : brûlures perdues, recharges démarrées.
+  // (Branche Fx morte : le préambule a déjà basculé en reprise d'effet.)
+  if (persistedCdLeft("incFx") > 0 || persistedCdLeft("incPlusFx") > 0) {
     player.incT = 0;
     player.incPlusT = 0;
-    startIncCooldown();
+    player.incAcc = 0;
+    player.incPlusAcc = 0;
   } else {
     player.incCd = Math.min(INC_COOLDOWN, Math.max(Number(player.incCd || 0), persistedCdLeft("inc")));
     player.incPlusCd = Math.min(INC_PLUS_COOLDOWN, Math.max(Number(player.incPlusCd || 0), persistedCdLeft("incPlus")));
@@ -4440,19 +4897,130 @@ function restorePersistedCds() {
   } else {
     player.reallocCd = Math.min(REALLOC_COOLDOWN, Math.max(Number(player.reallocCd || 0), persistedCdLeft("realloc")));
   }
-  // Rayon Hecate coupé par un refresh : canal perdu, la recharge démarre.
-  if (persistedCdLeft("hecateFx") > 0) {
+  // Rayon Hecate coupé par un refresh : canaux perdus, recharges démarrées.
+  if (persistedCdLeft("hecateFx") > 0 || persistedCdLeft("hecatePlusFx") > 0) {
+    if ((player.hecateT || 0) > 0) startHecateCooldown(false);
+    if ((player.hecatePlusT || 0) > 0) startHecateCooldown(true);
     player.hecateT = 0;
+    player.hecatePlusT = 0;
     player.hecateTarget = null;
+    player.hecatePlusTarget = null;
     player.hecateHit = 0;
-    startHecateCooldown();
+    player.hecatePlusHit = 0;
   } else {
-    player.hecateCd = Math.min(hecateCdVal(), Math.max(Number(player.hecateCd || 0), persistedCdLeft("hecate")));
+    player.hecateCd = Math.min(HECATE_COOLDOWN, Math.max(Number(player.hecateCd || 0), persistedCdLeft("hecate")));
+    player.hecatePlusCd = Math.min(HECATE_PLUS_COOLDOWN, Math.max(Number(player.hecatePlusCd || 0), persistedCdLeft("hecatePlus")));
   }
   // Griffe gelée : tir instantané, rien à perdre au refresh (juste la recharge).
   player.frozenClawCd = Math.min(FROZEN_CLAW_COOLDOWN, Math.max(Number(player.frozenClawCd || 0), persistedCdLeft("frozenClaw")));
   pulseCd = Math.max(Number(pulseCd || 0), persistedCdLeft("pulse"));
   ishCd = Math.max(Number(ishCd || 0), persistedCdLeft("ish"));
+  // Reprise monde infini : ré-applique les temps d'effet restants (aucun
+  // relaunch gratuit : T > 0 bloque l'activation) et re-persiste les Fx
+  // pour un éventuel second refresh. Les rendus repartent car ils lisent T.
+  try {
+    const fxLeft = (n) => Number(__resumedFx[n] || 0);
+    const applyT = (fx, field, max) => {
+      const left = fxLeft(fx);
+      if (left > 0.05) {
+        player[field] = Math.min(Number(max || left), left);
+        persistCdUntil(fx, player[field]);
+        return true;
+      }
+      return false;
+    };
+    // Restaure d'abord les variantes Plus/base (les durées max en dépendent).
+    // (Les variantes normal/Plus ont chacune leurs timers : rien à router.)
+    applyT("cloakFx", "cloakT", POLICE_CLOAK_DURATION);
+    if (applyT("podFx", "podT", REPAIR_POD_DURATION)) {
+      if (player.podX == null) { player.podX = player.x; player.podY = player.y; }
+    }
+    applyT("hpRepFx", "healHpT", HP_REPAIR_DURATION);
+    applyT("shRepFx", "healShT", SH_REPAIR_DURATION);
+    if (applyT("hammerHpFx", "hammerHpT", HAMMER_HP_DURATION)) player.hammerHpAcc = 0;
+    if (applyT("hammerHpPlusFx", "hammerHpPlusT", HAMMER_PLUS_HP_DURATION)) player.hammerHpPlusAcc = 0;
+    if (applyT("hammerShFx", "hammerShT", HAMMER_SH_DURATION)) player.hammerShAcc = 0;
+    if (applyT("hammerShPlusFx", "hammerShPlusT", HAMMER_SH_DURATION)) player.hammerShPlusAcc = 0;
+    if (applyT("hammerPodFx", "hammerPodT", HAMMER_POD_DURATION)) {
+      if (player.hammerPodX == null) { player.hammerPodX = player.x; player.hammerPodY = player.y; }
+    }
+    if (applyT("hammerPodPlusFx", "hammerPodPlusT", HAMMER_PLUS_POD_DURATION)) {
+      if (player.hammerPodPlusX == null) { player.hammerPodPlusX = player.x; player.hammerPodPlusY = player.y; }
+    }
+    if (applyT("nebFx", "nebT", NEBULA_DURATION)) {
+      if (player.nebX == null) { player.nebX = player.x; player.nebY = player.y; }
+    }
+    applyT("valFx", "valT", VALOUR_DURATION);
+    applyT("shlFx", "shlT", SHL_DURATION);
+    applyT("bskFx", "bskT", BSK_DURATION);
+    applyT("rvgFx", "rvgT", RVG_DURATION);
+    applyT("drawFireFx", "drawFireT", DRAW_FIRE_DURATION);
+    applyT("protectionFx", "protectionT", PROTECTION_DURATION);
+    applyT("travelFx", "travelT", TRAVEL_DURATION);
+    applyT("fortifyFx", "fortifyT", FORTIFY_DURATION);
+    applyT("prismFx", "prismT", PRISM_DURATION);
+    applyT("specFx", "specT", SPEC_DURATION);
+    applyT("specPlusFx", "specPlusT", SPECPLUS_DURATION);
+    applyT("tartRapidPlusFx", "tartRapidPlusT", TART_RAPIDPLUS_DURATION);
+    applyT("diminishFx", "diminishT", DIMINISH_DURATION);
+    applyT("libRepFx", "libRepT", LIBREP_DURATION);
+    applyT("lightFx", "lightT", LIGHT_DURATION);
+    applyT("scrambleFx", "scrambleT", SCRAMBLE_COOLDOWN);
+    applyT("holoGramFx", "holoGramT", Number(__resumedFx.holoGramFx || 0));
+    applyT("cyborgFx", "cyborgT", CYBORG_DURATION);
+    applyT("venomFx", "venomT", VENOM_DURATION);
+    applyT("orcusFx", "orcusT", ORCUS_DURATION);
+    applyT("sentFx", "sentT", SENT_DURATION);
+    applyT("reconFx", "reconT", RECON_DURATION);
+    // Incinération : deux circuits indépendants (parallèle possible).
+    if (applyT("incFx", "incT", INC_DURATION)) player.incAcc = 0;
+    if (applyT("incPlusFx", "incPlusT", INC_DURATION)) player.incPlusAcc = 0;
+    applyT("sapFx", "sapT", SAP_DURATION);
+    applyT("spcFx", "spcT", SPC_DURATION);
+    applyT("spcPlusFx", "spcPlusT", SPCP_DURATION);
+    applyT("ripperFx", "ripperT", RIPPER_DURATION);
+    applyT("tempestBackupFx", "tempestBackupT", TEMPEST_BACKUP_INVULN);
+    applyT("tempestDischFx", "tempestDischT", TEMPEST_DISCH_DURATION);
+    applyT("mmtFx", "mmtT", MMT_DURATION);
+    try { if ((player.mmtT || 0) > 0) stockUpdateRange(); } catch {}
+    applyT("tbrFx", "tbrT", TBR_DURATION);
+    applyT("keresSprFx", "keresSprT", SPR_DURATION);
+    if (fxLeft("keresSprFx") > 0.05) {
+      player.keresSprActive = true;
+      try {
+        const savedIds = readAbilityTarget("keresSprFx")?.extra?.uids;
+        if (Array.isArray(savedIds)) player.keresSprHit = savedIds.map(String);
+      } catch {}
+    }
+    applyT("sleightFx", "sleightT", SLEIGHT_COOLDOWN);
+    applyT("gaFx", "gaT", GA_DURATION);
+    applyT("holoSelfFx", "holoSelfT", HOLO_DURATION);
+    applyT("holoEnemyFx", "holoEnemyT", HOLO_DURATION);
+    applyT("ddolFx", "ddolT", DDOL_DURATION);
+    applyT("redirectFx", "redirectT", REDIRECT_DURATION);
+    applyT("disarrayFx", "disarrayT", DISARRAY_DURATION);
+    applyT("reallocFx", "reallocT", REALLOC_DURATION);
+    if (applyT("hecateFx", "hecateT", HECATE_DURATION)) {
+      player.hecateHit = 0;
+      player.hecateAcc = 0;
+    }
+    if (applyT("hecatePlusFx", "hecatePlusT", HECATE_PLUS_DURATION)) {
+      player.hecatePlusHit = 0;
+      player.hecatePlusAcc = 0;
+    }
+    // Pendant l'effet : pas de recharge (le tick la démarrera à la fin).
+    try {
+      for (const [fx, cd, , cdField] of shipAbilityTimerMap()) {
+        if (fx && fxLeft(fx) > 0.05 && cdField) player[cdField] = 0;
+      }
+    } catch {}
+    // Ré-accrochage différé des cibles NPC (les ennemis respawnent après nous).
+    try { scheduleAbilityResumeTargets(__resumedFx); } catch {}
+    const resumedNames = Object.keys(__resumedFx);
+    if (resumedNames.length) {
+      try { showNotification(`Aptitude reprise (${resumedNames.length})`, 2, "info"); } catch {}
+    }
+  } catch {}
 }
 // Recharge de la nébuleuse : ne démarre qu'une fois l'effet fini ou coupé.
 function startNebulaCooldown() {
@@ -4785,12 +5353,13 @@ const HAMMER_PLUS_SH_COOLDOWN = 80;
 const HAMMER_PLUS_POD_DURATION = 8;
 const HAMMER_PLUS_POD_COOLDOWN = 60;
 const HAMMER_PLUS_POD_RADIUS = 600;
-function hammerHpDur() { return isHammerclawPlusBase() ? HAMMER_PLUS_HP_DURATION : HAMMER_HP_DURATION; }
-function hammerHpCdVal() { return isHammerclawPlusBase() ? HAMMER_PLUS_HP_COOLDOWN : HAMMER_HP_COOLDOWN; }
-function hammerShCdVal() { return isHammerclawPlusBase() ? HAMMER_PLUS_SH_COOLDOWN : HAMMER_SH_COOLDOWN; }
-function hammerPodDur() { return isHammerclawPlusBase() ? HAMMER_PLUS_POD_DURATION : HAMMER_POD_DURATION; }
-function hammerPodCdVal() { return isHammerclawPlusBase() ? HAMMER_PLUS_POD_COOLDOWN : HAMMER_POD_COOLDOWN; }
-function hammerPodRadius() { return isHammerclawPlusBase() ? HAMMER_PLUS_POD_RADIUS : HAMMER_POD_RADIUS; }
+function hammerPlusShip() { try { return isHammerclawPlusBase(); } catch { return false; } }
+function hammerHpDur(over) { const p = over === true ? true : over === false ? false : hammerPlusShip(); return p ? HAMMER_PLUS_HP_DURATION : HAMMER_HP_DURATION; }
+function hammerHpCdVal(over) { const p = over === true ? true : over === false ? false : hammerPlusShip(); return p ? HAMMER_PLUS_HP_COOLDOWN : HAMMER_HP_COOLDOWN; }
+function hammerShCdVal(over) { const p = over === true ? true : over === false ? false : hammerPlusShip(); return p ? HAMMER_PLUS_SH_COOLDOWN : HAMMER_SH_COOLDOWN; }
+function hammerPodDur(over) { const p = over === true ? true : over === false ? false : hammerPlusShip(); return p ? HAMMER_PLUS_POD_DURATION : HAMMER_POD_DURATION; }
+function hammerPodCdVal(over) { const p = over === true ? true : over === false ? false : hammerPlusShip(); return p ? HAMMER_PLUS_POD_COOLDOWN : HAMMER_POD_COOLDOWN; }
+function hammerPodRadius(over) { const p = over === true ? true : over === false ? false : hammerPlusShip(); return p ? HAMMER_PLUS_POD_RADIUS : HAMMER_POD_RADIUS; }
 // Reallocate (Hammerclaw Plus, officiel) : 10 s, recharge 180 s. 20 % de
 // tous nos dégâts partent dans un pot commun, distribué équitablement en PV
 // à la fin entre nous et les escortes dans un rayon de 700 (en solo : 100 %
@@ -4803,64 +5372,112 @@ const HAMMER_POD_DURATION = 10;
 const HAMMER_POD_COOLDOWN = 160;
 const HAMMER_POD_HEAL = 17500;
 const HAMMER_POD_RADIUS = 400;
-function startHammerHpCooldown() {
-  player.hammerHpCd = hammerHpCdVal();
-  persistCdUntil("hammerHpFx", 0);
-  persistCdUntil("hammerHp", hammerHpCdVal());
+function startHammerHpCooldown(plus) {
+  // Variante explicite (true = Plus, false = base) ; sans param = le vaisseau.
+  // Chaque bouton gère SA compétence : finir/couper l'une ne touche pas l'autre.
+  const p = plus === true ? true : plus === false ? false : hammerPlusShip();
+  const cd = hammerHpCdVal(p);
+  if (p) {
+    player.hammerHpPlusT = 0;
+    player.hammerHpPlusAcc = 0;
+    player.hammerHpPlusCd = cd;
+    persistCdUntil("hammerHpPlusFx", 0);
+    persistCdUntil("hammerHpPlus", cd);
+  } else {
+    player.hammerHpT = 0;
+    player.hammerHpAcc = 0;
+    player.hammerHpCd = cd;
+    persistCdUntil("hammerHpFx", 0);
+    persistCdUntil("hammerHp", cd);
+  }
 }
-function startHammerShCooldown() {
-  player.hammerShCd = hammerShCdVal();
-  persistCdUntil("hammerShFx", 0);
-  persistCdUntil("hammerSh", hammerShCdVal());
+function startHammerShCooldown(plus) {
+  const p = plus === true ? true : plus === false ? false : hammerPlusShip();
+  const cd = hammerShCdVal(p);
+  if (p) {
+    player.hammerShPlusT = 0;
+    player.hammerShPlusAcc = 0;
+    player.hammerShPlusCd = cd;
+    persistCdUntil("hammerShPlusFx", 0);
+    persistCdUntil("hammerShPlus", cd);
+  } else {
+    player.hammerShT = 0;
+    player.hammerShAcc = 0;
+    player.hammerShCd = cd;
+    persistCdUntil("hammerShFx", 0);
+    persistCdUntil("hammerSh", cd);
+  }
 }
 function cancelHammerRepairs() {
-  if ((player.hammerHpT || 0) > 0) {
-    player.hammerHpT = 0;
-    startHammerHpCooldown();
-  }
-  if ((player.hammerShT || 0) > 0) {
-    player.hammerShT = 0;
-    startHammerShCooldown();
-  }
+  if ((player.hammerHpT || 0) > 0) startHammerHpCooldown(false);
+  if ((player.hammerHpPlusT || 0) > 0) startHammerHpCooldown(true);
+  if ((player.hammerShT || 0) > 0) startHammerShCooldown(false);
+  if ((player.hammerShPlusT || 0) > 0) startHammerShCooldown(true);
 }
-function activateHammerHpRepair() {
+function activateHammerHpRepair(forcePlus) {
   if (player.dead || !started) return;
   if (tempestBackupHealBlocked()) return;
-  const cd = Number(player.hammerHpCd || 0);
+  // Le bouton cliqué décide (Police a les deux) ; sinon le vaisseau.
+  // Chaque bouton gère SA compétence : l'autre tourne en parallèle.
+  const plus = forcePlus === true ? true : forcePlus === false ? false : hammerPlusShip();
+  const tKey = plus ? "hammerHpPlusT" : "hammerHpT";
+  const cdKey = plus ? "hammerHpPlusCd" : "hammerHpCd";
+  const accKey = plus ? "hammerHpPlusAcc" : "hammerHpAcc";
+  if ((player[tKey] || 0) > 0) return;
+  const cd = Number(player[cdKey] || 0);
   if (cd > 0) {
-    showNotification(`Réparation coque : recharge ${Math.ceil(cd)} s`, 2, "info");
+    showNotification(`Réparation coque${plus ? " Plus" : ""} : recharge ${Math.ceil(cd)} s`, 2, "info");
     return;
   }
-  if ((player.hammerHpT || 0) > 0) return;
-  player.hammerHpT = hammerHpDur();
-  player.hammerHpAcc = 0;
-  persistCdUntil("hammerHpFx", hammerHpDur());
-  showNotification(`Réparation coque active (${hammerHpDur()} s)`, 2, "info");
+  player[tKey] = hammerHpDur(plus);
+  player[accKey] = 0;
+  persistCdUntil(plus ? "hammerHpPlusFx" : "hammerHpFx", hammerHpDur(plus));
+  showNotification(`Réparation coque active (${hammerHpDur(plus)} s)`, 2, "info");
 }
-function activateHammerShRepair() {
+function activateHammerShRepair(forcePlus) {
   if (player.dead || !started) return;
-  const cd = Number(player.hammerShCd || 0);
+  const plus = forcePlus === true ? true : forcePlus === false ? false : hammerPlusShip();
+  const tKey = plus ? "hammerShPlusT" : "hammerShT";
+  const cdKey = plus ? "hammerShPlusCd" : "hammerShCd";
+  const accKey = plus ? "hammerShPlusAcc" : "hammerShAcc";
+  if ((player[tKey] || 0) > 0) return;
+  const cd = Number(player[cdKey] || 0);
   if (cd > 0) {
-    showNotification(`Réparation bouclier : recharge ${Math.ceil(cd)} s`, 2, "info");
+    showNotification(`Réparation bouclier${plus ? " Plus" : ""} : recharge ${Math.ceil(cd)} s`, 2, "info");
     return;
   }
-  if ((player.hammerShT || 0) > 0) return;
-  player.hammerShT = HAMMER_SH_DURATION;
-  player.hammerShAcc = 0;
-  persistCdUntil("hammerShFx", HAMMER_SH_DURATION);
+  player[tKey] = HAMMER_SH_DURATION;
+  player[accKey] = 0;
+  persistCdUntil(plus ? "hammerShPlusFx" : "hammerShFx", HAMMER_SH_DURATION);
   showNotification("Réparation bouclier active (3 s)", 2, "info");
 }
-function startHammerPodCooldown() {
-  player.hammerPodCd = hammerPodCdVal();
-  persistCdUntil("hammerPodFx", 0);
-  persistCdUntil("hammerPod", hammerPodCdVal());
+function startHammerPodCooldown(plus) {
+  // Variante explicite (true = Plus, false = base) ; sans param = le vaisseau.
+  const p = plus === true ? true : plus === false ? false : hammerPlusShip();
+  const cd = hammerPodCdVal(p);
+  if (p) {
+    player.hammerPodPlusT = 0;
+    player.hammerPodPlusX = null;
+    player.hammerPodPlusY = null;
+    player.hammerPodPlusPulseT = 0;
+    player.hammerPodPlusHealAcc = 0;
+    player.hammerPodPlusCd = cd;
+    persistCdUntil("hammerPodPlusFx", 0);
+    persistCdUntil("hammerPodPlus", cd);
+  } else {
+    player.hammerPodT = 0;
+    player.hammerPodX = null;
+    player.hammerPodY = null;
+    player.hammerPodPulseT = 0;
+    player.hammerPodHealAcc = 0;
+    player.hammerPodCd = cd;
+    persistCdUntil("hammerPodFx", 0);
+    persistCdUntil("hammerPod", cd);
+  }
 }
 function cancelHammerPod() {
-  if ((player.hammerPodT || 0) <= 0) return;
-  player.hammerPodT = 0;
-  player.hammerPodX = null;
-  player.hammerPodY = null;
-  startHammerPodCooldown();
+  if ((player.hammerPodT || 0) > 0) startHammerPodCooldown(false);
+  if ((player.hammerPodPlusT || 0) > 0) startHammerPodCooldown(true);
 }
 // --- Reallocate (Hammerclaw Plus, officiel) : pot commun de 20 % de nos
 // dégâts pendant 10 s, distribué en PV à la fin (nous + escortes à 700,
@@ -4932,37 +5549,54 @@ function activateRealloc() {
   persistCdUntil("reallocFx", REALLOC_DURATION);
   showNotification("Réallocation active (10 s) : 20 % des dégâts en pot commun", 2.5, "info");
 }
-function activateHammerPod() {
+function activateHammerPod(forcePlus) {
   if (player.dead || !started) return;
   if (tempestBackupHealBlocked()) return;
-  const cd = Number(player.hammerPodCd || 0);
+  // Le bouton cliqué décide (Police a les deux) ; sinon le vaisseau.
+  // Chaque pod gère SA compétence : les deux peuvent coexister.
+  const plus = forcePlus === true ? true : forcePlus === false ? false : hammerPlusShip();
+  const tKey = plus ? "hammerPodPlusT" : "hammerPodT";
+  const cdKey = plus ? "hammerPodPlusCd" : "hammerPodCd";
+  if ((player[tKey] || 0) > 0) return;
+  const cd = Number(player[cdKey] || 0);
   if (cd > 0) {
-    showNotification(`Pod de réparation : recharge ${Math.ceil(cd)} s`, 2, "info");
+    showNotification(`Pod de réparation${plus ? " Plus" : ""} : recharge ${Math.ceil(cd)} s`, 2, "info");
     return;
   }
-  if ((player.hammerPodT || 0) > 0) return;
-  player.hammerPodX = player.x;
-  player.hammerPodY = player.y;
-  player.hammerPodT = hammerPodDur();
-  player.hammerPodPulseT = 0;
-  player.hammerPodLastPulseSec = -1;
-  player.hammerPodHealAcc = 0;
-  persistCdUntil("hammerPodFx", hammerPodDur());
+  if (plus) {
+    player.hammerPodPlusX = player.x;
+    player.hammerPodPlusY = player.y;
+    player.hammerPodPlusT = hammerPodDur(true);
+    player.hammerPodPlusPulseT = 0;
+    player.hammerPodPlusLastPulseSec = -1;
+    player.hammerPodPlusHealAcc = 0;
+    persistCdUntil("hammerPodPlusFx", hammerPodDur(true));
+  } else {
+    player.hammerPodX = player.x;
+    player.hammerPodY = player.y;
+    player.hammerPodT = hammerPodDur(false);
+    player.hammerPodPulseT = 0;
+    player.hammerPodLastPulseSec = -1;
+    player.hammerPodHealAcc = 0;
+    persistCdUntil("hammerPodFx", hammerPodDur(false));
+  }
   try {
     for (let i = 1; i <= REPAIR_POD_FRAMES; i++) {
       loadImage(`ASSETS/APTITUDES/AEGIS_PODS/${i}.png`, { priority: true });
     }
   } catch {}
-  showNotification(`Pod de réparation posé (${hammerPodDur()} s)`, 2, "info");
+  showNotification(`Pod de réparation posé (${hammerPodDur(plus)} s)`, 2, "info");
 }
 // Soin du pod Hammerclaw : 17,5k PV/s aux vaisseaux (joueur + escortes),
 // 20k/s en Hammerclaw Plus (200k officiel).
 // Volt Back-up actif : le joueur n'est pas soigné (les escortes si).
-function healHammerPodTick() {
-  const pr = hammerPodRadius();
+function healHammerPodTick(plus) {
+  const px = plus ? player.hammerPodPlusX : player.hammerPodX;
+  const py = plus ? player.hammerPodPlusY : player.hammerPodY;
+  const pr = hammerPodRadius(plus);
   const r2 = pr * pr;
-  const amt = isHammerclawPlusBase() ? HAMMER_PLUS_POD_HEAL : HAMMER_POD_HEAL;
-  if (!player.dead && (player.tempestBackupT || 0) <= 0 && player.hammerPodX != null && dist2(player.x, player.y, player.hammerPodX, player.hammerPodY) <= r2) {
+  const amt = plus ? HAMMER_PLUS_POD_HEAL : HAMMER_POD_HEAL;
+  if (!player.dead && (player.tempestBackupT || 0) <= 0 && px != null && py != null && dist2(player.x, player.y, px, py) <= r2) {
     const old = Number(player.hp || 0);
     player.hp = Math.min(Number(player.hpMax || 0), old + amt);
     const gain = Math.round(player.hp - old);
@@ -4976,21 +5610,24 @@ function healHammerPodTick() {
   }
   try {
     for (const esc of escortShips) {
-      if (!esc || !(esc.hp > 0) || player.hammerPodX == null) continue;
-      if (dist2(esc.x, esc.y, player.hammerPodX, player.hammerPodY) <= r2) {
+      if (!esc || !(esc.hp > 0) || px == null || py == null) continue;
+      if (dist2(esc.x, esc.y, px, py) <= r2) {
         esc.hp = Math.min(Number(esc.hpMax || 0), Number(esc.hp || 0) + amt);
       }
     }
   } catch {}
 }
-function drawDeployedHammerPod(ox, oy) {
-  if ((player.hammerPodT || 0) <= 0 || player.hammerPodX == null || player.hammerPodY == null) return;
+function drawDeployedHammerPod(ox, oy, plus) {
+  const pT = plus ? player.hammerPodPlusT : player.hammerPodT;
+  const pX = plus ? player.hammerPodPlusX : player.hammerPodX;
+  const pY = plus ? player.hammerPodPlusY : player.hammerPodY;
+  if ((pT || 0) <= 0 || pX == null || pY == null) return;
   const frame = (Math.floor(performance.now() / 1000 * REPAIR_POD_FPS) % REPAIR_POD_FRAMES) + 1;
   const src = `ASSETS/APTITUDES/AEGIS_PODS/${frame}.png`;
   const image = getCachedImage(src);
   if (isImgReady(image)) {
     ctx.save();
-    ctx.translate(player.hammerPodX + ox, player.hammerPodY + oy);
+    ctx.translate(pX + ox, pY + oy);
     drawCenteredImage(ctx, image, 153, 154);
     ctx.restore();
   } else {
@@ -5019,45 +5656,45 @@ function getAbilityCooldown(abilityId) {
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw_hp-repair") {
     if ((player.hammerHpT || 0) > 0) {
-      const total = hammerHpDur() + hammerHpCdVal();
+      const total = HAMMER_HP_DURATION + HAMMER_HP_COOLDOWN;
       return { left: total, max: total };
     }
-    return { left: Number(player.hammerHpCd || 0), max: hammerHpCdVal() };
+    return { left: Number(player.hammerHpCd || 0), max: HAMMER_HP_COOLDOWN };
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw-plus_hp-repair") {
-    if ((player.hammerHpT || 0) > 0) {
-      const total = hammerHpDur() + hammerHpCdVal();
+    if ((player.hammerHpPlusT || 0) > 0) {
+      const total = HAMMER_PLUS_HP_DURATION + HAMMER_PLUS_HP_COOLDOWN;
       return { left: total, max: total };
     }
-    return { left: Number(player.hammerHpCd || 0), max: hammerHpCdVal() };
+    return { left: Number(player.hammerHpPlusCd || 0), max: HAMMER_PLUS_HP_COOLDOWN };
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw_shield-repair") {
     if ((player.hammerShT || 0) > 0) {
-      const total = HAMMER_SH_DURATION + hammerShCdVal();
+      const total = HAMMER_SH_DURATION + HAMMER_SH_COOLDOWN;
       return { left: total, max: total };
     }
-    return { left: Number(player.hammerShCd || 0), max: hammerShCdVal() };
+    return { left: Number(player.hammerShCd || 0), max: HAMMER_SH_COOLDOWN };
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw-plus_shield-repair") {
-    if ((player.hammerShT || 0) > 0) {
-      const total = HAMMER_SH_DURATION + hammerShCdVal();
+    if ((player.hammerShPlusT || 0) > 0) {
+      const total = HAMMER_SH_DURATION + HAMMER_PLUS_SH_COOLDOWN;
       return { left: total, max: total };
     }
-    return { left: Number(player.hammerShCd || 0), max: hammerShCdVal() };
+    return { left: Number(player.hammerShPlusCd || 0), max: HAMMER_PLUS_SH_COOLDOWN };
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw_repair-pod") {
     if ((player.hammerPodT || 0) > 0) {
-      const total = hammerPodDur() + hammerPodCdVal();
+      const total = HAMMER_POD_DURATION + HAMMER_POD_COOLDOWN;
       return { left: total, max: total };
     }
-    return { left: Number(player.hammerPodCd || 0), max: hammerPodCdVal() };
+    return { left: Number(player.hammerPodCd || 0), max: HAMMER_POD_COOLDOWN };
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw-plus_repair-pod") {
-    if ((player.hammerPodT || 0) > 0) {
-      const total = hammerPodDur() + hammerPodCdVal();
+    if ((player.hammerPodPlusT || 0) > 0) {
+      const total = HAMMER_PLUS_POD_DURATION + HAMMER_PLUS_POD_COOLDOWN;
       return { left: total, max: total };
     }
-    return { left: Number(player.hammerPodCd || 0), max: hammerPodCdVal() };
+    return { left: Number(player.hammerPodPlusCd || 0), max: HAMMER_PLUS_POD_COOLDOWN };
   }
   if (String(abilityId || "").toLowerCase() === "ability_basilisk_noxious-nebula") {
     if ((player.nebT || 0) > 0) {
@@ -5443,12 +6080,19 @@ function getAbilityCooldown(abilityId) {
     return { left: Number(player.reallocCd || 0), max: REALLOC_COOLDOWN };
   }
   const hecateId = String(abilityId || "").toLowerCase();
-  if (hecateId === "ability_hecate_particle-beam" || hecateId === "ability_hecate-plus_particle-beam-plus") {
+  if (hecateId === "ability_hecate_particle-beam") {
     if ((player.hecateT || 0) > 0) {
-      const total = hecateDur() + hecateCdVal();
+      const total = HECATE_DURATION + HECATE_COOLDOWN;
       return { left: total, max: total };
     }
-    return { left: Number(player.hecateCd || 0), max: hecateCdVal() };
+    return { left: Number(player.hecateCd || 0), max: HECATE_COOLDOWN };
+  }
+  if (hecateId === "ability_hecate-plus_particle-beam-plus") {
+    if ((player.hecatePlusT || 0) > 0) {
+      const total = HECATE_PLUS_DURATION + HECATE_PLUS_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.hecatePlusCd || 0), max: HECATE_PLUS_COOLDOWN };
   }
   // Stockpile : durée 10 s, recharge 0 s. Voile plein pendant l'effet.
   if (String(abilityId || "").toLowerCase() === "ability_hecate-plus_stockpile") {
@@ -5944,8 +6588,12 @@ function initializeCustomActionBar() {
           activateRecon();
           return;
         }
-        if (name === "ability_solaris_inc" || name === "ability_solaris-plus_incinerate-plus") {
-          activateInc();
+        if (name === "ability_solaris_inc") {
+          activateInc(false);
+          return;
+        }
+        if (name === "ability_solaris-plus_incinerate-plus") {
+          activateInc(true);
           return;
         }
         if (name === "ability_solace") {
@@ -6004,8 +6652,12 @@ function initializeCustomActionBar() {
           activateRealloc();
           return;
         }
-        if (name === "ability_hecate_particle-beam" || name === "ability_hecate-plus_particle-beam-plus") {
-          activateHecate();
+        if (name === "ability_hecate_particle-beam") {
+          activateHecate(false);
+          return;
+        }
+        if (name === "ability_hecate-plus_particle-beam-plus") {
+          activateHecate(true);
           return;
         }
         if (name === "ability_hecate-plus_stockpile") {
@@ -6024,16 +6676,28 @@ function initializeCustomActionBar() {
           activateShieldRepair();
           return;
         }
-        if (name === "ability_hammerclaw_hp-repair" || name === "ability_hammerclaw-plus_hp-repair") {
-          activateHammerHpRepair();
+        if (name === "ability_hammerclaw_hp-repair") {
+          activateHammerHpRepair(false);
           return;
         }
-        if (name === "ability_hammerclaw_shield-repair" || name === "ability_hammerclaw-plus_shield-repair") {
-          activateHammerShRepair();
+        if (name === "ability_hammerclaw-plus_hp-repair") {
+          activateHammerHpRepair(true);
           return;
         }
-        if (name === "ability_hammerclaw_repair-pod" || name === "ability_hammerclaw-plus_repair-pod") {
-          activateHammerPod();
+        if (name === "ability_hammerclaw_shield-repair") {
+          activateHammerShRepair(false);
+          return;
+        }
+        if (name === "ability_hammerclaw-plus_shield-repair") {
+          activateHammerShRepair(true);
+          return;
+        }
+        if (name === "ability_hammerclaw_repair-pod") {
+          activateHammerPod(false);
+          return;
+        }
+        if (name === "ability_hammerclaw-plus_repair-pod") {
+          activateHammerPod(true);
           return;
         }
         showNotification(`${group.ship} : ${label} — aptitude visuelle (effet gameplay à venir)`, 2, "info");
@@ -12574,8 +13238,11 @@ window.resetAllSkills = function resetAllSkills() {
   try { player.healHpCd = 0; } catch {}
   try { player.healShCd = 0; } catch {}
   try { player.hammerHpCd = 0; } catch {}
+  try { player.hammerHpPlusCd = 0; } catch {}
   try { player.hammerShCd = 0; } catch {}
+  try { player.hammerShPlusCd = 0; } catch {}
   try { player.hammerPodCd = 0; } catch {}
+  try { player.hammerPodPlusCd = 0; } catch {}
   try { player.nebCd = 0; } catch {}
   try { player.valCd = 0; } catch {}
   try { player.shlCd = 0; } catch {}
@@ -12599,6 +13266,7 @@ window.resetAllSkills = function resetAllSkills() {
   try { player.disarrayCd = 0; } catch {}
   try { player.reallocCd = 0; } catch {}
   try { player.hecateCd = 0; } catch {}
+  try { player.hecatePlusCd = 0; } catch {}
   try { player.frozenClawCd = 0; } catch {}
   try { player.holoSelfCd = 0; } catch {}
   try { player.holoEnemyCd = 0; } catch {}
@@ -15580,16 +16248,17 @@ function syncActionDockState() {
         : lowId === "ability_disruptor_redirect" ? Number(player.redirectT || 0)
         : lowId === "ability_disruptor_shield-disarray" ? Number(player.disarrayT || 0)
         : lowId === "ability_hammerclaw-plus_reallocate" ? Number(player.reallocT || 0)
-        : lowId === "ability_hecate_particle-beam" || lowId === "ability_hecate-plus_particle-beam-plus" ? Number(player.hecateT || 0)
+        : lowId === "ability_hecate_particle-beam" ? Number(player.hecateT || 0)
+        : lowId === "ability_hecate-plus_particle-beam-plus" ? Number(player.hecatePlusT || 0)
         : lowId === "ability_hecate-plus_stockpile" ? Number(player.stockT || 0)
         : lowId === "ability_aegis_hp-repair" ? Number(player.healHpT || 0)
         : lowId === "ability_aegis_shield-repair" ? Number(player.healShT || 0)
         : lowId === "ability_hammerclaw_hp-repair" ? Number(player.hammerHpT || 0)
-        : lowId === "ability_hammerclaw-plus_hp-repair" ? Number(player.hammerHpT || 0)
+        : lowId === "ability_hammerclaw-plus_hp-repair" ? Number(player.hammerHpPlusT || 0)
         : lowId === "ability_hammerclaw_shield-repair" ? Number(player.hammerShT || 0)
-        : lowId === "ability_hammerclaw-plus_shield-repair" ? Number(player.hammerShT || 0)
+        : lowId === "ability_hammerclaw-plus_shield-repair" ? Number(player.hammerShPlusT || 0)
         : lowId === "ability_hammerclaw_repair-pod" ? Number(player.hammerPodT || 0)
-        : lowId === "ability_hammerclaw-plus_repair-pod" ? Number(player.hammerPodT || 0) : 0;
+        : lowId === "ability_hammerclaw-plus_repair-pod" ? Number(player.hammerPodPlusT || 0) : 0;
       // Spread : compteur d'infectés pendant l'effet (pas un temps).
       if (lowId === "ability_keres_spr" && player.keresSprActive) {
         cdText = `x${Number(player.keresSprN || 0)}`;
@@ -25826,64 +26495,84 @@ function update(dt) {
   } else {
     player.podCd = Math.max(0, (player.podCd || 0) - dt);
   }
-  // Pod Hammerclaw : mêmes règles, valeurs propres (17,5k/s, CD 160 s).
-  if ((player.hammerPodT || 0) > 0) {
-    player.hammerPodT = Math.max(0, player.hammerPodT - dt);
-    player.hammerPodPulseT = Number(player.hammerPodPulseT || 0) + dt;
-    const hammerPodSec = Math.floor(player.hammerPodPulseT);
-    if (hammerPodSec !== Number(player.hammerPodLastPulseSec ?? -1)) {
-      player.hammerPodLastPulseSec = hammerPodSec;
-      if (player.hammerPodX != null) {
-        try { spawnHaloPulse(player.hammerPodX, player.hammerPodY, hammerPodRadius(), 0.9, "55,255,125", "80,255,145"); } catch {}
+  // Pod Hammerclaw : mêmes règles, valeurs propres. Normal et Plus
+  // indépendants (peuvent coexister, chacun son halo et ses soins).
+  for (const podPlus of [false, true]) {
+    const pT = podPlus ? "hammerPodPlusT" : "hammerPodT";
+    const pCd = podPlus ? "hammerPodPlusCd" : "hammerPodCd";
+    const pX = podPlus ? "hammerPodPlusX" : "hammerPodX";
+    const pY = podPlus ? "hammerPodPlusY" : "hammerPodY";
+    const pPulse = podPlus ? "hammerPodPlusPulseT" : "hammerPodPulseT";
+    const pLast = podPlus ? "hammerPodPlusLastPulseSec" : "hammerPodLastPulseSec";
+    const pAcc = podPlus ? "hammerPodPlusHealAcc" : "hammerPodHealAcc";
+    if ((player[pT] || 0) > 0) {
+      player[pT] = Math.max(0, player[pT] - dt);
+      player[pPulse] = Number(player[pPulse] || 0) + dt;
+      const hammerPodSec = Math.floor(player[pPulse]);
+      if (hammerPodSec !== Number(player[pLast] ?? -1)) {
+        player[pLast] = hammerPodSec;
+        if (player[pX] != null) {
+          try { spawnHaloPulse(player[pX], player[pY], hammerPodRadius(podPlus), 0.9, "55,255,125", "80,255,145"); } catch {}
+        }
       }
+      player[pAcc] = Number(player[pAcc] || 0) + dt;
+      if (player[pAcc] >= 1) {
+        player[pAcc] -= 1;
+        try { healHammerPodTick(podPlus); } catch {}
+      }
+      if (player[pT] <= 0) {
+        player[pX] = null;
+        player[pY] = null;
+        startHammerPodCooldown(podPlus);
+        showNotification("Pod de réparation récupéré", 2, "info");
+      }
+    } else {
+      player[pCd] = Math.max(0, (player[pCd] || 0) - dt);
     }
-    player.hammerPodHealAcc = Number(player.hammerPodHealAcc || 0) + dt;
-    if (player.hammerPodHealAcc >= 1) {
-      player.hammerPodHealAcc -= 1;
-      try { healHammerPodTick(); } catch {}
-    }
-    if (player.hammerPodT <= 0) {
-      player.hammerPodX = null;
-      player.hammerPodY = null;
-      startHammerPodCooldown();
-      showNotification("Pod de réparation récupéré", 2, "info");
-    }
-  } else {
-    player.hammerPodCd = Math.max(0, (player.hammerPodCd || 0) - dt);
   }
   // Soins Hammerclaw (officiel) : allié 50k coque/s, soi 25k/s (175k/7 s).
-  // Plus : 450k allié / 225k soi (montants résolus au tick selon le vaisseau).
-  if ((player.hammerHpT || 0) > 0) {
-    player.hammerHpT = Math.max(0, player.hammerHpT - dt);
-    player.hammerHpAcc = Number(player.hammerHpAcc || 0) + dt;
-    if (player.hammerHpAcc >= 1) {
-      player.hammerHpAcc -= 1;
-      const plus = isHammerclawPlusBase();
-      try { healAllyOrSelf(plus ? HAMMER_PLUS_HP_ALLY : HAMMER_HP_AMOUNT, plus ? HAMMER_PLUS_HP_SELF : HAMMER_HP_SELF, false); } catch {}
+  // Plus : 450k allié / 225k soi. Normal et Plus indépendants (parallèle).
+  for (const hpPlus of [false, true]) {
+    const hT = hpPlus ? "hammerHpPlusT" : "hammerHpT";
+    const hCd = hpPlus ? "hammerHpPlusCd" : "hammerHpCd";
+    const hAcc = hpPlus ? "hammerHpPlusAcc" : "hammerHpAcc";
+    const hLabel = hpPlus ? "Réparation coque Plus terminée" : "Réparation coque terminée";
+    if ((player[hT] || 0) > 0) {
+      player[hT] = Math.max(0, player[hT] - dt);
+      player[hAcc] = Number(player[hAcc] || 0) + dt;
+      if (player[hAcc] >= 1) {
+        player[hAcc] -= 1;
+        try { healAllyOrSelf(hpPlus ? HAMMER_PLUS_HP_ALLY : HAMMER_HP_AMOUNT, hpPlus ? HAMMER_PLUS_HP_SELF : HAMMER_HP_SELF, false); } catch {}
+      }
+      if (player[hT] <= 0) {
+        startHammerHpCooldown(hpPlus);
+        showNotification(hLabel, 2, "info");
+      }
+    } else {
+      player[hCd] = Math.max(0, (player[hCd] || 0) - dt);
     }
-    if (player.hammerHpT <= 0) {
-      startHammerHpCooldown();
-      showNotification("Réparation coque terminée", 2, "info");
-    }
-  } else {
-    player.hammerHpCd = Math.max(0, (player.hammerHpCd || 0) - dt);
   }
   // Bouclier Hammerclaw (officiel) : allié 60k/s, soi 40k/s (120k/3 s).
-  // Plus : 240k allié / 150k soi (montants résolus au tick selon le vaisseau).
-  if ((player.hammerShT || 0) > 0) {
-    player.hammerShT = Math.max(0, player.hammerShT - dt);
-    player.hammerShAcc = Number(player.hammerShAcc || 0) + dt;
-    if (player.hammerShAcc >= 1) {
-      player.hammerShAcc -= 1;
-      const plus = isHammerclawPlusBase();
-      try { healAllyOrSelf(plus ? HAMMER_PLUS_SH_ALLY : HAMMER_SH_AMOUNT, plus ? HAMMER_PLUS_SH_SELF : HAMMER_SH_SELF, true); } catch {}
+  // Plus : 240k allié / 150k soi. Normal et Plus indépendants (parallèle).
+  for (const shPlus of [false, true]) {
+    const sT = shPlus ? "hammerShPlusT" : "hammerShT";
+    const sCd = shPlus ? "hammerShPlusCd" : "hammerShCd";
+    const sAcc = shPlus ? "hammerShPlusAcc" : "hammerShAcc";
+    const sLabel = shPlus ? "Réparation bouclier Plus terminée" : "Réparation bouclier terminée";
+    if ((player[sT] || 0) > 0) {
+      player[sT] = Math.max(0, player[sT] - dt);
+      player[sAcc] = Number(player[sAcc] || 0) + dt;
+      if (player[sAcc] >= 1) {
+        player[sAcc] -= 1;
+        try { healAllyOrSelf(shPlus ? HAMMER_PLUS_SH_ALLY : HAMMER_SH_AMOUNT, shPlus ? HAMMER_PLUS_SH_SELF : HAMMER_SH_SELF, true); } catch {}
+      }
+      if (player[sT] <= 0) {
+        startHammerShCooldown(shPlus);
+        showNotification(sLabel, 2, "info");
+      }
+    } else {
+      player[sCd] = Math.max(0, (player[sCd] || 0) - dt);
     }
-    if (player.hammerShT <= 0) {
-      startHammerShCooldown();
-      showNotification("Réparation bouclier terminée", 2, "info");
-    }
-  } else {
-    player.hammerShCd = Math.max(0, (player.hammerShCd || 0) - dt);
   }
   // Valeur exaltée (Basilisk) : 30 s, +0,5 %/s plafonné +10 %.
   if ((player.valT || 0) > 0) {
@@ -26458,34 +27147,43 @@ function update(dt) {
     player.reallocCd = Math.max(0, (player.reallocCd || 0) - dt);
   }
   // Rayon Hecate : canal 1 hit/s en dégâts croissants (lien rompu = fin).
-  if ((player.hecateT || 0) > 0) {
-    player.hecateT = Math.max(0, player.hecateT - dt);
-    // Ralenti -10 % officiel avec sprite (circuit rocketSlow, sans écraser
-    // un ralenti plus fort). Retombe seul à la fin du canal.
-    player.rocketSlowT = Math.max(Number(player.rocketSlowT || 0), 1.0);
-    player.rocketSlowPct = Math.max(Number(player.rocketSlowPct || 0), 10);
-    const htgt = player.hecateTarget;
-    if (!htgt || !(htgt.hp > 0) || hecateOutOfRange(htgt)) {
-      player.hecateT = 0;
-      player.hecateTarget = null;
-      player.hecateHit = 0;
-      startHecateCooldown();
-      showNotification(!htgt || !(htgt.hp > 0) ? "Faisceau terminé (cible détruite)" : "Faisceau rompu (hors de portée)", 2, "info");
+  // Normal et Plus indépendants (peuvent tourner en parallèle).
+  for (const hecPlus of [false, true]) {
+    const hecT = hecPlus ? "hecatePlusT" : "hecateT";
+    const hecCd = hecPlus ? "hecatePlusCd" : "hecateCd";
+    const hecTgt = hecPlus ? "hecatePlusTarget" : "hecateTarget";
+    const hecHit = hecPlus ? "hecatePlusHit" : "hecateHit";
+    const hecAcc = hecPlus ? "hecatePlusAcc" : "hecateAcc";
+    const hecLabel = hecPlus ? "Faisceau Plus" : "Faisceau";
+    if ((player[hecT] || 0) > 0) {
+      player[hecT] = Math.max(0, player[hecT] - dt);
+      // Ralenti -10 % officiel avec sprite (circuit rocketSlow, sans écraser
+      // un ralenti plus fort). Retombe seul à la fin du canal.
+      player.rocketSlowT = Math.max(Number(player.rocketSlowT || 0), 1.0);
+      player.rocketSlowPct = Math.max(Number(player.rocketSlowPct || 0), 10);
+      const htgt = player[hecTgt];
+      if (!htgt || !(htgt.hp > 0) || hecateOutOfRange(htgt)) {
+        player[hecT] = 0;
+        player[hecTgt] = null;
+        player[hecHit] = 0;
+        startHecateCooldown(hecPlus);
+        showNotification(!htgt || !(htgt.hp > 0) ? `${hecLabel} terminé (cible détruite)` : `${hecLabel} rompu (hors de portée)`, 2, "info");
+      } else {
+        player[hecAcc] = Number(player[hecAcc] || 0) + dt;
+        if (player[hecAcc] >= 1) {
+          player[hecAcc] -= 1;
+          try { hecateBeamTick(hecPlus); } catch {}
+        }
+        if (player[hecT] <= 0) {
+          player[hecTgt] = null;
+          player[hecHit] = 0;
+          startHecateCooldown(hecPlus);
+          showNotification(`${hecLabel} terminé`, 2, "info");
+        }
+      }
     } else {
-      player.hecateAcc = Number(player.hecateAcc || 0) + dt;
-      if (player.hecateAcc >= 1) {
-        player.hecateAcc -= 1;
-        try { hecateBeamTick(); } catch {}
-      }
-      if (player.hecateT <= 0) {
-        player.hecateTarget = null;
-        player.hecateHit = 0;
-        startHecateCooldown();
-        showNotification("Faisceau terminé", 2, "info");
-      }
+      player[hecCd] = Math.max(0, (player[hecCd] || 0) - dt);
     }
-  } else {
-    player.hecateCd = Math.max(0, (player.hecateCd || 0) - dt);
   }
   // Cyborg Singularité II : 1 hit/s en dégâts croissants, pas de rupture
   // de portée (continue jusqu'à cible détruite ou fin des 30 s).
@@ -26636,21 +27334,34 @@ function update(dt) {
   } else {
     player.orcusCd = Math.max(0, (player.orcusCd || 0) - dt);
   }
-  // Solaris officiel : 10 s de brulure 1 hit/s, toggle.
-  if ((player.incT || 0) > 0 || (player.incPlusT || 0) > 0) {
-    if ((player.incT || 0) > 0) player.incT = Math.max(0, player.incT - dt);
-    if ((player.incPlusT || 0) > 0) player.incPlusT = Math.max(0, player.incPlusT - dt);
+  // Solaris officiel : 10 s de brulure 1 hit/s, toggle par bouton.
+  // Normale et Plus sont indépendantes et peuvent tourner en parallèle.
+  if ((player.incT || 0) > 0) {
+    player.incT = Math.max(0, player.incT - dt);
     player.incAcc = Number(player.incAcc || 0) + dt;
     if (player.incAcc >= 1) {
       player.incAcc -= 1;
-      try { incBurn(); } catch {}
+      try { incBurn(false); } catch {}
     }
-    if ((player.incT || 0) <= 0 && (player.incPlusT || 0) <= 0) {
-      startIncCooldown();
+    if ((player.incT || 0) <= 0) {
+      startIncCooldown(false);
       showNotification("Incineration terminee", 2, "info");
     }
   } else {
     player.incCd = Math.max(0, (player.incCd || 0) - dt);
+  }
+  if ((player.incPlusT || 0) > 0) {
+    player.incPlusT = Math.max(0, player.incPlusT - dt);
+    player.incPlusAcc = Number(player.incPlusAcc || 0) + dt;
+    if (player.incPlusAcc >= 1) {
+      player.incPlusAcc -= 1;
+      try { incBurn(true); } catch {}
+    }
+    if ((player.incPlusT || 0) <= 0) {
+      startIncCooldown(true);
+      showNotification("Incineration Plus terminee", 2, "info");
+    }
+  } else {
     player.incPlusCd = Math.max(0, (player.incPlusCd || 0) - dt);
   }
   // Solace / Solace Plus : instantanés (overlay 1 s + boost 1 s pour le Plus).
@@ -29086,7 +29797,8 @@ if (GAME_SETTINGS.textures) {
   // Pod de réparation posé (Aegis) + halo vert.
   try { drawDeployedPod(ox, oy); } catch {}
   // Pod Hammerclaw : même sprite + halo vert, valeurs propres.
-  try { drawDeployedHammerPod(ox, oy); } catch {}
+  try { drawDeployedHammerPod(ox, oy, false); } catch {}
+  try { drawDeployedHammerPod(ox, oy, true); } catch {}
   // Nébuleuse toxique posée (Basilisk).
   try { drawDeployedNebula(ox, oy); } catch {}
   // SHL (Berserker) : lien visible entre le vaisseau et la cible.
@@ -29138,10 +29850,11 @@ if (GAME_SETTINGS.textures) {
   } catch {}
 
   // Rayon Hecate : faisceau canalisé entre nous et la cible (droit, avec
-  // flux d'énergie vers la cible + halos aux deux bouts).
+  // flux d'énergie vers la cible + halos aux deux bouts). Un par variante.
   try {
-    const hTgt = player.hecateTarget;
-    if ((player.hecateT || 0) > 0 && hTgt && hTgt.hp > 0) {
+    const hBeams = [[player.hecateT, player.hecateTarget], [player.hecatePlusT, player.hecatePlusTarget]];
+    for (const [hTcur, hTgt] of hBeams) {
+    if ((hTcur || 0) > 0 && hTgt && hTgt.hp > 0) {
       const x1 = player.x + ox, y1 = player.y + oy;
       const x2 = hTgt.x + ox, y2 = hTgt.y + oy;
       if (Math.hypot(x2 - x1, y2 - y1) >= 1) {
@@ -29197,6 +29910,7 @@ if (GAME_SETTINGS.textures) {
           ctx.restore();
         }
       }
+    }
     }
   } catch {}
 
@@ -30005,8 +30719,14 @@ window.addEventListener("orbit:user-updated", event => {
   // palette s'initie souvent avant les données du compte et resterait masquée.
   let nowShipId = "";
   try { nowShipId = String(getActiveHangarFromUser(account?.user)?.shipId || "").toLowerCase(); } catch {}
+  const prevShipId = String(lastAbilityShipId || "");
   const shipChanged = nowShipId !== lastAbilityShipId;
-  if (shipChanged) lastAbilityShipId = nowShipId;
+  if (shipChanged) {
+    // Isolation par vaisseau : l'ancien garde ses temps (effet + recharge),
+    // le nouveau récupère les siens. Fini le CD Orcus qui fuit sur Police.
+    try { if (started) handleShipAbilitySwitch(prevShipId, nowShipId); } catch {}
+    lastAbilityShipId = nowShipId;
+  }
   try { refreshActiveActionPalette?.(shipChanged); } catch {}
   if (started) {
     applyCurrentConfigStats(false, switched ? nextHangar.activeConfig : null, true);
