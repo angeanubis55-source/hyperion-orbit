@@ -6296,7 +6296,9 @@ function initializeCustomActionBar() {
       applyCurrentConfigStats(false, null, true);
       syncActionDockState();
       showNotification(`${formation.name} activée`, 2, "info", { goldTerms: [formation.name] });
-      renderPalette("formations");
+      // Ne force plus l'onglet Formations : rafraîchit l'onglet courant
+      // (ou rien si la palette est fermée).
+      try { refreshActiveActionPalette?.(); } catch {}
     };
     button.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId); event.dataTransfer.effectAllowed = "move"; });
     byId.set(button.dataset.actionId, button);
@@ -6326,7 +6328,8 @@ function initializeCustomActionBar() {
         }
         player.launcherActive = rid;
         markProgressDirty();
-        renderPalette("launchers");
+        // Idem : ne force plus l'onglet Lance-roquettes.
+        try { refreshActiveActionPalette?.(); } catch {}
         updateAmmoUI();
         return;
       }

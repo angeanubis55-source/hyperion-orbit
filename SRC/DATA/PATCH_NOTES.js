@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.231",
+    "date": "2026-09-20T00:52:16+02:00",
+    "message": "sync version 0.230 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.230",
     "date": "2026-09-20T00:51:45+02:00",
     "message": "pilotage: arbre des competences 25 talents, points via disques de log, reset payant, effets branches moteur"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.172",
     "date": "2026-09-13T00:14:59+02:00",
     "message": "pet/vitals: barres fines elegantes + fix ouverture fenetre parametres"
-  },
-  {
-    "version": "0.171",
-    "date": "2026-09-12T21:08:10+02:00",
-    "message": "minor fixes"
   }
 ];
