@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.229",
+    "date": "2026-09-19T22:35:11+02:00",
+    "message": "sync version 0.228 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.228",
     "date": "2026-09-19T22:34:47+02:00",
     "message": "encheres: 22 lots fixes par heure pile de Paris, timer dore, images vaisseaux, historique cycle exact, ticket 25M, fix gains en boucle"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.170",
     "date": "2026-09-12T20:13:14+02:00",
     "message": "boosters: couleurs lexique, icones famille, hauteur fenetre + config toggle unique"
-  },
-  {
-    "version": "0.169",
-    "date": "2026-09-12T16:08:54+02:00",
-    "message": "maps/ui: perfs fond+etoiles, ZNA controleurs x-4/x-5, niveaux acces facon DO, icones menu officielles, fix XP StreuneR8, dock taskbar, mini-carte"
   }
 ];

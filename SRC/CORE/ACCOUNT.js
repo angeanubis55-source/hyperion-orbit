@@ -21,6 +21,18 @@ import {
   normalizeAuctionState,
 } from "../DATA/AUCTION.js";
 import {
+  LOGDISK_PACK,
+  LOGDISK_PRICE,
+  LOGDISK_ROWS,
+  PILOT_MAX_POINTS,
+  canInvestPilotSkill,
+  getPilotSkill,
+  normalizePilotSkills,
+  pilotResetCost,
+  pilotSkillLevel,
+  pilotSkillMults,
+} from "../DATA/PILOT_SKILLS.js";
+import {
   SKYLAB_MAX_LEVEL,
   SKYLAB_MAX_ROBOTS,
   SKYLAB_INSTANT_TRANSPORT_COST,
@@ -868,6 +880,10 @@ function ensureUserShape(u) {
 
   // Skylab : production de ressources, améliorations, transport.
   u.skylab = normalizeSkylabState(u.skylab);
+
+  // Pilotage : points, talents dépensés, disques de log, resets.
+  u.pilotSkills = normalizePilotSkills(u.pilotSkills);
+  u.pilotSkills.disks = Math.max(0, Math.floor(Number(u.pilotSkills.disks) || 0));
 
   // Enchères : lots en cours + historique.
   // Normalisation EN PLACE (même objet conservé) : le tick des enchères
@@ -2837,8 +2853,9 @@ export function transportSkylabToShip(amounts, nowMs = Date.now()) {
   }
   const { moved, totalMoved } = moveSkyToShip(u, sky, wanted);
   if (totalMoved <= 0) {
-    const free = cargoFree(u.inventory.resources, CARGO_CAPACITY);
-    if (free <= 0) return { ok: false, error: "Soute pleine (3000).", user: u };
+    const cap = pilotCargoCapacity(u);
+    const free = cargoFree(u.inventory.resources, cap);
+    if (free <= 0) return { ok: false, error: `Soute pleine (${cap}).`, user: u };
     return { ok: false, error: "Stock Skylab vide pour ces ressources.", user: u };
   }
   sky.transportReadyAt = now + SKYLAB_TRANSPORT_COOLDOWN_SEC * 1000;
@@ -2926,7 +2943,7 @@ function moveSkyToShip(u, sky, wanted) {
   for (const [id, q] of Object.entries(wanted)) {
     const inSky = Math.floor(Number(sky.stock[id]) || 0);
     if (inSky <= 0) continue;
-    const { added } = cargoAdd(u.inventory.resources, id, Math.min(q, inSky), CARGO_CAPACITY);
+    const { added } = cargoAdd(u.inventory.resources, id, Math.min(q, inSky), pilotCargoCapacity(u));
     if (added <= 0) continue;
     sky.stock[id] = Math.max(0, Number(sky.stock[id]) || 0) - added;
     u.inventory.resources[id] = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0)) + added;
@@ -3158,6 +3175,92 @@ function settleAuctionLot(u, auction, lot) {
   }
   pushAuctionHistory(auction, { name: lot.name, result: "expired", amount: 0, by: "" });
   return { type: "expired", name: lot.name, amount: 0 };
+}
+
+// ---------------------------
+// Pilotage (arbre de talents façon DarkOrbit).
+// ---------------------------
+
+function ensurePilotSkills(u) {
+  u.pilotSkills = normalizePilotSkills(u.pilotSkills);
+  u.pilotSkills.disks = Math.max(0, Math.floor(Number(u.pilotSkills.disks) || 0));
+  return u.pilotSkills;
+}
+
+// Soute effective (base 3000 + Logistique).
+export function pilotCargoCapacity(u) {
+  let pct = 0;
+  try {
+    pct = Number(pilotSkillMults(u?.pilotSkills)?.cargoPct) || 0;
+  } catch {
+    pct = 0;
+  }
+  return Math.max(1, Math.floor(CARGO_CAPACITY * (1 + Math.max(0, pct) / 100)));
+}
+
+// Achat d'un pack de disques de log (boutique pilote).
+export function buyLogDiskPack() {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  const price = LOGDISK_PRICE * LOGDISK_PACK;
+  if (Math.floor(Number(u.credits || 0)) < price) return { ok: false, error: "Crédits insuffisants.", user: u };
+  u.credits = Math.max(0, Math.floor(Number(u.credits || 0)) - price);
+  ensurePilotSkills(u);
+  u.pilotSkills.disks += LOGDISK_PACK;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, disks: u.pilotSkills.disks };
+}
+
+// Échange de disques contre 1 point pilote (table officielle, max 35).
+export function exchangeLogDisksForPoint() {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  ensurePilotSkills(u);
+  const owned = Math.max(0, Math.floor(Number(u.pilotSkills.points) || 0));
+  if (owned >= PILOT_MAX_POINTS) return { ok: false, error: `Maximum de points atteint (${PILOT_MAX_POINTS}).`, user: u };
+  const need = LOGDISK_ROWS[owned];
+  if (!Number.isFinite(need)) return { ok: false, error: "Maximum de points atteint.", user: u };
+  const have = Math.max(0, Math.floor(Number(u.pilotSkills.disks) || 0));
+  if (have < need) return { ok: false, error: `Il faut ${need} disques de log (${have}).`, user: u };
+  u.pilotSkills.disks = have - need;
+  u.pilotSkills.points = owned + 1;
+  ensureUserShape(u);
+  saveUser(u);
+  const next = LOGDISK_ROWS[owned + 1];
+  return { ok: true, user: u, points: u.pilotSkills.points, disks: u.pilotSkills.disks, nextNeed: Number.isFinite(next) ? next : null };
+}
+
+// Investit 1 point pilote dans un talent (aucun autre coût).
+export function investPilotSkill(skillId) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  const skill = getPilotSkill(skillId);
+  if (!skill) return { ok: false, error: "Talent introuvable.", user: u };
+  ensurePilotSkills(u);
+  const chk = canInvestPilotSkill(u.pilotSkills, skill.id);
+  if (!chk.ok) return { ok: false, error: chk.reason, user: u };
+  const lvl = pilotSkillLevel(u.pilotSkills, skill.id);
+  if (lvl >= skill.max) return { ok: false, error: "Niveau max atteint.", user: u };
+  u.pilotSkills.spent[skill.id] = lvl + 1;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, skillId: skill.id, level: lvl + 1 };
+}
+
+// Reset de l'arbre (points conservés, coût doublé à chaque reset).
+export function resetPilotSkills() {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+  ensurePilotSkills(u);
+  const cost = pilotResetCost(u.pilotSkills.resets);
+  if (Math.floor(Number(u.credits || 0)) < cost) return { ok: false, error: "Crédits insuffisants.", user: u };
+  u.credits = Math.max(0, Math.floor(Number(u.credits || 0)) - cost);
+  u.pilotSkills.spent = {};
+  u.pilotSkills.resets = Math.max(0, Math.floor(Number(u.pilotSkills.resets) || 0)) + 1;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, resets: u.pilotSkills.resets, nextCost: pilotResetCost(u.pilotSkills.resets) };
 }
 
 // Fait avancer les enchères : règlement des lots échus + cycle fixe.

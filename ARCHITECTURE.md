@@ -40,6 +40,19 @@ Le jeu reste une application navigateur rendue avec Canvas. `ORBIT_ENGINE.js` co
 - `SRC/CORE/ACCOUNT.js` : persistance `user.skylab` + actions
   (`startSkylabUpgrade`, `buySkylabRobot`, `setSkylabModuleEnabled`,
   `transportSkylabToShip`, `tickCurrentUserSkylab`).
+- `SRC/DATA/PILOT_SKILLS.js` : arbre de pilotage façon DO (25 talents FR,
+  1 PP par niveau + prérequis PP officiels, 35 points max via disques
+  de log à 300 000/u, reset crédits doublés ; règles pures sans DOM
+  ni stockage).
+- `UI/UI_PILOT_SKILLS.js` : fenêtre Pilotage (3 panneaux façon menu11,
+  icônes découpées de SKILLTREE_TEXTURE.png, échange/reset).
+- `SRC/CORE/ACCOUNT.js` : persistance `user.pilotSkills` + actions
+  (`buyLogDiskPack`, `exchangeLogDisksForPoint`, `investPilotSkill`,
+  `resetPilotSkills`) et soute effective (Logistique).
+- Effets branchés moteur : PV, bouclier, résistance bouclier, réparation,
+  EXP, honneur, crédits, soute, butins, roquettes, vs aliens, précision
+  lasers, esquive (miss bleu), chance bonus box, réussite roquettes.
+  Restent non branchés : PvP (Bounty) et mines (Detonation/Explosifs).
 - `SRC/DATA/AUCTION.js` : enchères façon DO (22 lots fixes chaque heure pile de Paris, reset à :00 :
   x2/x3/x4 (1000), x6 (250), B02, G3N-7900, LF-2/3/4/5, iris, PLT-3030/2021 (x100),
   boosters B01 x10 (EP/DMG/HP/SHD), Goliath/Vengeance/Leonov + Iris +

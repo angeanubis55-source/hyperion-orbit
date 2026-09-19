@@ -74,7 +74,7 @@ export function drainShield(target, amount) {
   return drained;
 }
 
-export function damagePlayerLayers(player, amount, shieldAbsorb = 0.8, shieldPenetration = 0) {
+export function damagePlayerLayers(player, amount, shieldAbsorb = 0.8, shieldPenetration = 0, shieldTough = 0) {
   if (!player || player.invincibleT > 0) return { total: 0, sh: 0, hp: 0, bypass: 0 };
   const reduced = Math.max(0, Number(amount) || 0) * (1 - clamp(Number(player.dr || 0), 0, 1));
   let remaining = reduced;
@@ -88,8 +88,13 @@ export function damagePlayerLayers(player, amount, shieldAbsorb = 0.8, shieldPen
     bypassDamage = Math.min(player.hp, bypass);
     player.hp = Math.max(0, player.hp - bypassDamage);
   }
-  const absorbed = Math.min(Math.max(0, Number(player.sh) || 0), remaining * clamp(shieldAbsorb, 0, 1));
-  const hpDamage = remaining - absorbed;
+  // Mécanique bouclier (arbre pilote) : la part absorbée est réduite de
+  // shieldTough (0-0.9), la différence est annulée par le bouclier renforcé.
+  const tough = clamp(Number(shieldTough || 0), 0, 0.9);
+  const absorbedRaw = Math.min(Math.max(0, Number(player.sh) || 0), remaining * clamp(shieldAbsorb, 0, 1));
+  const negated = absorbedRaw * tough;
+  const absorbed = absorbedRaw - negated;
+  const hpDamage = remaining - absorbed - negated;
   player.sh -= absorbed;
   player.hp = Math.max(0, player.hp - hpDamage);
   return { total: absorbed + hpDamage + bypassDamage, sh: absorbed, hp: hpDamage + bypassDamage, bypass: bypassDamage };

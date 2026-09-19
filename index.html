@@ -59,10 +59,13 @@
     <span><img src="ASSETS/UI/MENU/skylab.png" data-menu-icon="skylab" alt="" draggable="false"></span>
   </button>
   <button id="btnAuctionHub" class="gameDockIcon" data-window-id="auctionWindow" type="button" title="Enchères" aria-label="Enchères">
-    <span><img src="ASSETS/UI/MENU/auction.png" data-menu-icon="auction" alt="" draggable="false"></span>
+    <span><img src="ASSETS/UI/MENU/mileageMarket.png" data-menu-icon="mileageMarket" alt="" draggable="false"></span>
+  </button>
+  <button id="btnPilotHub" class="gameDockIcon" data-window-id="pilotWindow" type="button" title="Arbre des compétences" aria-label="Arbre des compétences">
+    <span><img src="ASSETS/UI/MENU/update_engine.png" data-menu-icon="update_engine" alt="" draggable="false"></span>
   </button>
   <button id="btnBotHub" class="gameDockIcon" data-window-id="botWindow" type="button" title="Bot" aria-label="Bot">
-    <span><img src="ASSETS/UI/MENU/npc_event.png" data-menu-icon="npc_event" alt="" draggable="false"></span>
+    <span><img src="ASSETS/UI/MENU/payload_escort.png" data-menu-icon="payload_escort" alt="" draggable="false"></span>
   </button>
   <button id="btnWikiHub" class="gameDockIcon" data-window-id="wikiWindow" type="button" title="Wiki / Aide" aria-label="Wiki / Aide">
     <span><img src="ASSETS/UI/MENU/help.png" data-menu-icon="help" alt="" draggable="false"></span>
@@ -137,6 +140,21 @@
     <section class="auctionPage" data-auction-page="history">
       <div id="auctionHistory" class="auctionHistory"></div>
     </section>
+  </div>
+</div>
+
+<div id="pilotWindow" class="panel pilotPanel">
+  <div class="pilotBody">
+    <div class="pilotHead">
+      <div class="pilotStatus"><span id="pilotPoints" class="pilotPoints"></span><span class="pilotSep">-</span><span id="pilotAvail" class="pilotAvail"></span><span class="pilotSep">-</span><span id="pilotLeft" class="pilotLeft"></span><span class="pilotSep">-</span><span id="pilotDisks" class="pilotDisks"></span></div>
+      <span class="pilotHeadBtns">
+        <button id="pilotBuyDisks" type="button" title="Acheter 10 disques de log">+10 disques</button>
+        <button id="pilotExchange" type="button" title="Échanger des disques contre 1 point pilote">Échanger</button>
+        <button id="pilotReset" type="button" title="Réinitialiser l'arbre (points conservés)">Reset</button>
+      </span>
+    </div>
+    <div id="pilotPanels" class="pilotPanels"></div>
+    <div id="pilotDetail" class="pilotDetail"></div>
   </div>
 </div>
 

@@ -75,6 +75,7 @@ import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { findCatalogItem } from "./CATALOG.js";
 import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBoosterDuration, BOOSTERS } from "../DATA/BOOSTERS.js";
+import { pilotSkillMults } from "../DATA/PILOT_SKILLS.js";
 import { CRAFTING_RECIPES, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
 import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
@@ -137,6 +138,7 @@ import { escapeHtml } from "../../UI/UI_DOM.js";
 import { wireWikiWindow } from "../../UI/UI_WIKI.js";
 import { initSkylabUI, tickSkylabProduction } from "../../UI/UI_SKYLAB.js";
 import { initAuctionUI, renderAuctionWindow, tickAuctionDisplay } from "../../UI/UI_AUCTION.js";
+import { initPilotSkillsUI, renderPilotSkillsWindow, tickPilotSkillsDisplay } from "../../UI/UI_PILOT_SKILLS.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
 import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
 import { checkMapAccess } from "./MAP_ACCESS.js";
@@ -7960,9 +7962,10 @@ function registerHudWindows() {
   window.GameWindowManager?.close?.("oreTradeWindow");
   reg("refineryWindow", "Raffinage", menuIcon("refinement"), false);
   reg("skylabWindow", "Skylab", menuIcon("skylab"), false);
-  reg("auctionWindow", "Enchères", menuIcon("auction"), false);
+  reg("auctionWindow", "Enchères", menuIcon("mileageMarket"), false);
+  reg("pilotWindow", "Arbre des compétences", menuIcon("update_engine"), false);
   reg("boosterWindow", "Boosters", menuIcon("booster"), false);
-  reg("botWindow", "BOT", menuIcon("npc_event"), false);
+  reg("botWindow", "BOT", menuIcon("payload_escort"), false);
   reg("wikiWindow", "Wiki / Aide", menuIcon("help"), false);
   reg("gygerimStatus", "État du boss", menuIcon("worldBoss"), true, { minimizable: false });
 wireSettingsWindow();
@@ -7986,6 +7989,20 @@ initAuctionUI({
     markProgressDirty();
     saveProgressNow();
     window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+  },
+  toast: (text, dur = 2) => showToast(text, dur),
+  notify: (text, dur = 2.5, type = "info") => showNotification(text, dur, type),
+  markDirty: () => markProgressDirty(),
+});
+initPilotSkillsUI({
+  getUser: () => account.user,
+  afterAction: () => {
+    syncPlayerFromAccount();
+    markProgressDirty();
+    saveProgressNow();
+    window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+    try { applyCurrentConfigStats(true); } catch {}
+    try { renderPilotSkillsWindow(); } catch {}
   },
   toast: (text, dur = 2) => showToast(text, dur),
   notify: (text, dur = 2.5, type = "info") => showNotification(text, dur, type),
@@ -12850,7 +12867,7 @@ function awardExperience(amount, source = "") {
   if (!account.user) return null;
   account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0 };
   const moduleBonus = Number(player?.expBonusPct || 0);
-  const raw = Number(amount || 0) * Math.max(0, 1 + moduleBonus / 100) * playerBoosterMults().exp * shipPassiveXpMult();
+  const raw = Number(amount || 0) * Math.max(0, 1 + moduleBonus / 100) * playerBoosterMults().exp * playerPilotMults().exp * shipPassiveXpMult();
   const result = grantExperience(account.user.stats, Math.max(0, Math.ceil(raw - Number.EPSILON)));
   if (result.gained <= 0) return result;
   for (const drone of account.user.drones?.items || []) {
@@ -12884,7 +12901,7 @@ function awardHonor(amount) {
   account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
   const previousRank = getRankInfo(account.user.stats.rankPoints, account.user.stats.honor);
   const moduleBonus = Number(player?.honorBonusPct || 0);
-  const raw = Number(amount || 0) * Math.max(0, 1 + moduleBonus / 100) * playerBoosterMults().honor;
+  const raw = Number(amount || 0) * Math.max(0, 1 + moduleBonus / 100) * playerBoosterMults().honor * playerPilotMults().honor;
   const result = grantHonor(account.user.stats, Math.max(0, Math.ceil(raw - Number.EPSILON)));
   account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
   const nextRank = getRankInfo(account.user.stats.rankPoints, account.user.stats.honor);
@@ -13618,11 +13635,11 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   const shipBaseHP = Number(pack?.hp || 1);
   player.hpMax = Math.max(
     1,
-    Math.floor((shipBaseHP + (stats.bonusFlatHP || 0)) * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp)
+    Math.floor((shipBaseHP + (stats.bonusFlatHP || 0) + playerPilotMults().hpFlat) * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp)
   );
   refreshBuoyHpBase();
 
-  player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield * playerUpgradeMults().shield));
+  player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield * playerPilotMults().shield * playerUpgradeMults().shield));
   // Absorption officielle du générateur équipé (max monté), défaut 80 %.
   player.shAbsorb = Number(stats.bonusAbsorb) > 0 ? clamp(Number(stats.bonusAbsorb) / 100, 0, 1) : 0.8;
   // Détail des canons du vaisseau (bonus conditionnels vsMatch au tir).
@@ -15026,6 +15043,37 @@ function playerBoosterMults() {
   }
 }
 
+// Bonus passifs de l'arbre de pilotage (même convention que les boosters :
+// facteurs x pour les %, points additifs pour la précision, flat pour les PV).
+function playerPilotMults() {
+  let m = null;
+  try {
+    m = pilotSkillMults(account.user?.pilotSkills);
+  } catch {
+    m = null;
+  }
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const fac = (v) => 1 + Math.max(0, num(v)) / 100;
+  return {
+    hpFlat: Math.max(0, Math.floor(num(m?.hpFlat))),
+    repair: fac(m?.repairPct),
+    shield: fac(m?.shieldPct),
+    tough: Math.max(0, Math.min(90, num(m?.shieldToughPct))) / 100,
+    exp: fac(m?.expPct),
+    honor: fac(m?.honorPct),
+    credit: fac(m?.creditPct),
+    cargo: fac(m?.cargoPct),
+    cargoLoot: fac(m?.cargoLootPct),
+    bonusLoot: fac(m?.bonusLootPct),
+    rocketDmg: fac(m?.rocketDmgPct),
+    alienDmg: fac(m?.alienDmgPct),
+    laserHit: Math.max(0, num(m?.laserHitPct)),
+    evade: Math.max(0, Math.min(0.9, num(m?.evadePct) / 100)),
+    luck: fac(m?.luckPct),
+    rocketHit: Math.max(0, num(m?.rocketHitPct)),
+  };
+}
+
 let boosterPrevSignature = "";
 let boosterWindowRefreshT = 0;
 let boosterResyncT = 0;
@@ -15863,11 +15911,11 @@ function resetPlayerToBase({ keepCredits = false } = {}) {
   const oldHpPct = player.hpMax > 0 ? clamp(player.hp / player.hpMax, 0, 1) : 1;
   const oldShPct = player.shMax > 0 ? clamp(player.sh / player.shMax, 0, 1) : 1;
 
-  player.hpMax = Math.max(1, Math.floor((shipBaseHP + (stats.bonusFlatHP || 0)) * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp));
+  player.hpMax = Math.max(1, Math.floor((shipBaseHP + (stats.bonusFlatHP || 0) + playerPilotMults().hpFlat) * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp));
   player.hp = Math.max(1, Math.floor(player.hpMax * oldHpPct));
   refreshBuoyHpBase();
 
-  player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield * playerUpgradeMults().shield));
+  player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield * playerPilotMults().shield * playerUpgradeMults().shield));
   player.sh = Math.max(0, Math.floor(player.shMax * oldShPct));
   player.shAbsorb = Number(stats.bonusAbsorb) > 0 ? clamp(Number(stats.bonusAbsorb) / 100, 0, 1) : 0.8;
   player.laserMods = Array.isArray(stats.laserMods) ? stats.laserMods : [];
@@ -16510,7 +16558,7 @@ function tickRepair(dt) {
   player.repairTickT -= tickCount * REPAIR.tickInterval;
 
   const oldHp = player.hp;
-  const repairMult = playerBoosterMults().repair;
+  const repairMult = playerBoosterMults().repair * playerPilotMults().repair;
   // Robot = coque uniquement. Le bouclier se recharge par tick passif
   // (tickShield) : plus de réparation instantanée nulle part.
   player.hp = Math.min(player.hpMax, player.hp + player.hpMax * REPAIR.ratePct * repairMult * REPAIR.tickInterval * tickCount);
@@ -20311,7 +20359,9 @@ function currentCargo() {
   const used = cargoUsed(resources);
   // Protocole cargo (AI-CR) : +X % de soute appliqué à notre vaisseau.
   const cargoPct = getPetProtocolPct(account.user?.pet, account.user, "cargo");
-  const capacity = cargoPct > 0 ? Math.floor(CARGO_CAPACITY * (1 + cargoPct / 100)) : CARGO_CAPACITY;
+  const pilotCargoPct = Math.max(0, Number(playerPilotMults().cargo - 1) * 100 || 0);
+  const totalCargoPct = cargoPct + pilotCargoPct;
+  const capacity = totalCargoPct > 0 ? Math.floor(CARGO_CAPACITY * (1 + totalCargoPct / 100)) : CARGO_CAPACITY;
   return { used, capacity, free: Math.max(0, capacity - used) };
 }
 
@@ -20751,7 +20801,7 @@ function applyCollectableReward(c) {
       x1Mult = pilotLevel < 7 ? 1 : pilotLevel === 7 ? 0.5 : pilotLevel === 8 ? 0.25 : pilotLevel === 9 ? 0.13 : 0;
     }
   }
-  const boxMult = (String(c?.type || "") === "Bonus_Box" ? playerBoosterMults().box : 1) * battleMult * salvageMult * x1Mult;
+  const boxMult = (String(c?.type || "") === "Bonus_Box" ? playerBoosterMults().box * playerPilotMults().bonusLoot * playerPilotMults().luck : 1) * battleMult * salvageMult * x1Mult;
 
   // X-1 + niveau 10 : box consommée mais vide (officiel).
   if (x1Mult <= 0 && String(c?.type || "") === "Bonus_Box") {
@@ -20826,7 +20876,7 @@ function applyCollectableReward(c) {
     const upfrontIds = Object.keys(pendingUpfront);
     if (upfrontIds.length && account.user) {
       const resUpfront = account.user.inventory?.resources || {};
-      const multUpfront = playerBoosterMults().res;
+      const multUpfront = playerBoosterMults().res * playerPilotMults().cargoLoot;
       const fits = upfrontIds.some(id => cargoAdd(resUpfront, id, Math.floor(Number(pendingUpfront[id]) * multUpfront), cargoCap).added > 0);
       if (!fits) cargoRefuseUpfront = true;
     }
@@ -20837,8 +20887,9 @@ function applyCollectableReward(c) {
     if (account.user) {
       account.user.inventory ||= {};
       account.user.inventory.resources ||= {};
-      // Booster Ressources : +25 % sur les cargos venus de NPC.
-      const resMult = (c?.fromNpc ? playerBoosterMults().res : 1) * battleMult;
+      // Booster Ressources : +25 % sur les cargos venus de NPC (+ Rayon tracteur I).
+      const resMult = (c?.fromNpc ? playerBoosterMults().res : 1) * battleMult
+        * ((String(c?.type || "") === "Cargo_Box" && c?.fromNpc) ? playerPilotMults().cargoLoot : 1);
       const fixedAmount = c?.fixedAmount != null ? Math.max(0, Math.floor(Number(c.fixedAmount))) : null;
       for (const [resourceId, range] of Object.entries(reward.resources)) {
         const wanted = Math.floor((fixedAmount ?? rollValue(range, 0)) * resMult);
@@ -21806,7 +21857,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
     result.total = result.hp;
     try {
       const absorb = Number(player.shAbsorb) > 0 ? Number(player.shAbsorb) : 0.8;
-      damagePlayerLayers(player, shared, absorb);
+      damagePlayerLayers(player, shared, absorb, 0, playerPilotMults().tough);
       player.attackedT = 5;
       if (player.hp <= 0) {
         player.hp = 0;
@@ -21938,6 +21989,17 @@ function npcEffectiveSpeed(e, fallback = 320) {
 function hurtPlayer(amount, source = null) {
   if (player.dead || player.iFrames > 0 || (player.invincibleT || 0) > 0) return;
 
+  // Évasion (arbre pilote) : probabilité d'esquiver totalement le coup (miss bleu).
+  try {
+    const evade = Number(playerPilotMults().evade) || 0;
+    if (evade > 0 && Math.random() < evade) {
+      try {
+        addFloatText(player.x, player.y - 70, 0, "rgba(120,200,255,0.95)", { text: "ESQUIVE" });
+      } catch {}
+      return;
+    }
+  } catch {}
+
   // Redirect (Disruptor, officiel) : tous les dégâts qu'on nous inflige
   // partent sur la cible verrouillée (on ne prend rien). Sans destinataire
   // valide, dégâts subis normalement.
@@ -22058,7 +22120,7 @@ function hurtPlayer(amount, source = null) {
     amount = Math.max(0, Number(amount) || 0) * (1 - Math.min(0.9, Number(player.stockShieldPct || 0)));
   }
 
-  const dmgRes = damagePlayerLayers(player, amount, Number(player.shAbsorb) > 0 ? Number(player.shAbsorb) : 0.8, shieldPenetration);
+  const dmgRes = damagePlayerLayers(player, amount, Number(player.shAbsorb) > 0 ? Number(player.shAbsorb) : 0.8, shieldPenetration, playerPilotMults().tough);
   // Lien HP : la part coque part sur le REX, le joueur ne garde que le reste.
   // Lien HP : la part coque part sur le REX, le joueur ne garde que le reste.
   let redirected = 0;
@@ -22083,7 +22145,8 @@ const KAMIKAZE_SLOW_PCT = 30;
 
 function killRewards(e) {
   player.kills++;
-  const credits = Math.max(0, Number(e.value) || 0);
+  // Cupidité (arbre pilote) : +X % crédits par alien.
+  const credits = Math.max(0, Math.floor(Number(e.value || 0) * playerPilotMults().credit));
   player.credits += credits;
   const experience = getNpcExperienceReward(e, NPC_TYPES[e.type]);
   const honor = getNpcHonorReward(e, { ...NPC_TYPES[e.type], type: e.type });
@@ -22953,12 +23016,12 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
   const dmg = (rocket?.damage ?? 1000)
     * tartLauncherDmgMult(rocket?.manual === false)
     * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100)
-    * rocketBoosterMults.dmg * playerUpgradeMults().rocket
+    * rocketBoosterMults.dmg * playerPilotMults().rocketDmg * playerUpgradeMults().rocket
     * (isLeonovHomeActive() ? 2.5 : 1);
   consumeUpgradeStock("rocket");
   const shotMiss = typeof miss === "boolean"
     ? miss
-    : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.laserHitBonusPct || 0) + Number(rocketBoosterMults.hit || 0)) / 100));
+    : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.laserHitBonusPct || 0) + Number(rocketBoosterMults.hit || 0) + playerPilotMults().rocketHit) / 100));
   const ang = rocket.manual === false
     ? launcherRocketLaunchAngle(player.angle, arcDir, spread)
     : player.angle + spread;
@@ -23043,7 +23106,7 @@ function tryFireSalvo(opts = {}) {
   // Salve réelle : toute attaque casse le camouflage ultime.
   breakPoliceCloak();
   const volleyId = volleySeq++;
-  const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (Number(player.laserHitBonusPct || 0) / 100));
+  const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.laserHitBonusPct || 0) + playerPilotMults().rocketHit) / 100));
   for (let i = 0; i < n; i++) {
     // 1 son par roquette, en même temps.
     SFX.play("sfx_shot_lance_roquettes");
@@ -23670,9 +23733,9 @@ const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
   const dmgShot = isSab
     ? player.baseDamage * SAB50.drainMult * shotBoosterMults.dmg
-    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * shipPassiveDamageMult();
+    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerPilotMults().alienDmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * shipPassiveDamageMult();
 
-  const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (shotHitBonusPct / 100));
+  const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((shotHitBonusPct + playerPilotMults().laserHit) / 100));
 
   const ang = player.angle;
   const fx = Math.cos(ang), fy = Math.sin(ang);
@@ -27821,6 +27884,7 @@ if (moveTarget.active && !player.dead) {
   if (started) {
     try { tickSkylabProduction(dt); } catch (error) { console.warn("Skylab tick:", error); }
     try { tickAuctionDisplay(); } catch (error) { console.warn("Auction display:", error); }
+    try { tickPilotSkillsDisplay(); } catch (error) { console.warn("Pilot display:", error); }
     auctionTickT += dt;
     if (auctionTickT >= 2) {
       auctionTickT = 0;
