@@ -8906,3 +8906,98 @@ html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
   white-space:nowrap;
   text-overflow:ellipsis;
 }
+
+/* ================= Skylab (comme le vrai DO) ================= */
+.skylabPanel{ width:800px; min-width:min(760px,calc(100vw - 24px)); max-width:min(800px,calc(100vw - 24px)); }
+/* Le gestionnaire force min-width:0 sur .floating : on reprend la main. */
+#skylabWindow.gameWindow.floating{ min-width:min(760px,calc(100vw - 24px)) !important; }
+.skylabBody{ display:grid; gap:10px; padding:12px; color:#dff7ff; }
+.skylabMain{ display:grid; grid-template-columns:minmax(0,1fr); gap:10px; align-items:stretch; }
+.skylabMap{ position:relative; aspect-ratio:772 / 364; min-height:0; width:100%; max-width:772px; margin:0 auto; border:1px solid rgba(124,240,255,.22); border-radius:12px; overflow:hidden; background:url("ASSETS/SKYLAB/station.png") center top/100% 100% no-repeat, linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80)); }
+/* Barre des ressources façon vrai DO : nom coloré + quantité / capacité. */
+.skylabTopBar{ display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:6px; width:100%; max-width:772px; margin:0 auto; background:none; border:none; }
+.topCell{ display:grid; justify-items:center; gap:0; padding:4px 2px 5px; min-width:0; border:1px solid rgba(124,240,255,.22); border-radius:8px; background:rgba(255,255,255,.055); }
+.topCellName{ color:var(--res,#eaffff); font-size:11px; font-weight:900; white-space:nowrap; text-shadow:0 1px 2px #000; }
+.topCellVal{ color:#fff; font-size:10px; font-weight:900; font-variant-numeric:tabular-nums; white-space:nowrap; text-shadow:0 1px 2px #000; }
+.topCell.is-full .topCellVal{ color:#ffd36b; }
+/* Labels des modules comme le vrai DO : texte seul, ancre coin haut-gauche. */
+.skylabNode{ position:absolute; display:grid; justify-items:start; gap:0; padding:2px 4px; cursor:pointer; text-align:left; background:none; border:none; }
+.skylabNode .nodeName{ color:#f5ffff; font-size:clamp(9px,1.35vw,13px); font-weight:900; white-space:nowrap; text-shadow:0 1px 3px #000, 0 0 8px #000; pointer-events:none; }
+.skylabNode.is-inactive .nodeName{ color:#6f6f6f; }
+.skylabNode.selected .nodeName{ text-decoration:underline; text-shadow:0 0 10px rgba(124,240,255,.9), 0 1px 3px #000; }
+.skylabNode .nodeMeta{ display:flex; gap:8px; pointer-events:none; }
+.skylabNode .nodeLvl{ color:#65aae1; font-size:clamp(8px,1.15vw,11px); font-weight:900; white-space:nowrap; text-shadow:0 1px 2px #000; }
+.skylabNode .nodeEnergy{ color:#f1ec63; font-size:clamp(8px,1.15vw,11px); font-weight:900; font-variant-numeric:tabular-nums; white-space:nowrap; text-shadow:0 1px 2px #000; }
+.skylabNode .nodeRate{ color:#3dff7a; font-size:clamp(8px,1.15vw,11px); font-weight:900; font-variant-numeric:tabular-nums; white-space:nowrap; text-shadow:0 1px 2px #000; }
+.skylabNode .nodeRate.neg{ color:#ff5a5a; }
+.skylabNode .nodeTimer{ color:#ffb2bb; font-size:clamp(8px,1.15vw,11px); font-weight:900; font-variant-numeric:tabular-nums; white-space:nowrap; text-shadow:0 1px 2px #000; pointer-events:none; }
+.skylabNode .nodeBuilt{ color:#6f6f6f; font-size:clamp(8px,1.15vw,11px); font-weight:900; white-space:nowrap; text-shadow:0 1px 2px #000; pointer-events:none; }
+.skylabNode .nodeOff{ color:#ff3b3b; font-size:clamp(8px,1.15vw,11px); font-weight:900; white-space:nowrap; text-shadow:0 1px 2px #000; pointer-events:none; }
+.skylabNode.is-off{ opacity:.7; }
+.skylabNode.is-upgrading .nodeName{ color:#ffd36b; }
+.skylabLayer{ position:absolute; pointer-events:none; }
+.skylabEnergyLine{ position:absolute; left:8px; bottom:6px; color:#ffd36b; font-size:11px; font-weight:900; text-shadow:0 1px 3px #000; pointer-events:none; }
+.skylabPopupBody .detailImg{ width:100%; max-height:110px; object-fit:contain; border-radius:8px; background:rgba(0,0,0,.35); }
+.skylabDetail{ display:grid; gap:8px; align-content:start; padding:10px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); font-size:12px; }
+/* Popup temporaire du module (comme le vrai DO : .module_large centré). */
+.skylabPopup{ position:absolute; left:26%; top:14%; width:min(280px,42%); max-height:calc(100% - 8px); display:flex; flex-direction:column; z-index:5; border:1px solid rgba(124,240,255,.4); border-radius:12px; background:linear-gradient(180deg,rgba(6,18,32,.97),rgba(3,10,22,.97)); box-shadow:0 18px 42px rgba(0,0,0,.6), 0 0 26px rgba(0,217,255,.14); overflow:hidden; }
+.skylabPopup[hidden]{ display:none; }
+.skylabPopupHead{ display:flex; align-items:center; justify-content:space-between; gap:8px; height:26px; min-height:26px; padding:0 0 0 8px; border-bottom:1px solid rgba(124,240,255,.18); background:linear-gradient(90deg, rgba(0,217,255,.18), rgba(124,240,255,.05), rgba(255,255,255,.035)); }
+.skylabPopupHead b{ color:#eaffff; font-size:12px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.skylabPopupHead > .gameWinMinBtn{
+  position:relative !important;
+  width:30px !important;
+  height:26px !important;
+  margin:0 !important;
+  flex:none !important;
+  border:none !important;
+  border-left:1px solid rgba(124,240,255,.18) !important;
+  border-radius:0 11px 0 0 !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  font-size:0 !important;
+}
+.skylabPopupHead > .gameWinMinBtn::before{
+  content:"";
+  position:absolute;
+  left:4px;
+  top:6px;
+  width:9px;
+  height:9px;
+  border-top:2px solid #eaffff;
+  border-left:2px solid #eaffff;
+  border-radius:3px 0 0 0;
+  filter:drop-shadow(0 0 4px rgba(0,217,255,.6));
+}
+.skylabPopupBody{ display:grid; gap:8px; align-content:start; padding:10px; font-size:12px; min-height:0; max-height:min(52vh,330px); overflow-y:auto; }
+.skylabPopupBody .detailDesc{ color:#9fd4e6; font-size:11px; line-height:1.4; }
+.skylabPopupBody .detailRow{ display:flex; justify-content:space-between; gap:8px; color:#8fcddd; font-weight:700; }
+.skylabPopupBody .detailRow b{ color:#fff; font-variant-numeric:tabular-nums; }
+.skylabPopupBody .detailProgress{ display:grid; gap:2px; padding:6px 8px; border:1px solid rgba(124,240,255,.25); border-radius:8px; background:rgba(255,255,255,.04); color:#9fd4e6; font-weight:700; }
+.skylabPopupBody button{ min-height:30px; padding:6px 10px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); font:750 11px/1.2 ui-sans-serif,system-ui; cursor:pointer; }
+.skylabPopupBody button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
+.skylabPopupBody button:disabled{ opacity:.35; cursor:default; }
+.skylabPopupBody button.warnBtn{ border-color:rgba(255,154,165,.5); }
+.skylabPopupBody .robotRow{ display:flex; align-items:center; gap:8px; }
+.skylabPopupBody .robotRow img{ width:28px; height:28px; object-fit:contain; }
+.skylabTransport{ display:grid; gap:8px; padding:10px; border:1px solid rgba(124,240,255,.22); border-radius:12px; background:rgba(255,255,255,.055); }
+.skylabDirToggle{ width:100%; display:flex; align-items:center; justify-content:center; padding:3px 10px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); font:900 12px/1 ui-sans-serif,system-ui; text-align:center; cursor:pointer; }
+.skylabDirToggle b{ font-size:20px; font-weight:900; vertical-align:-2px; padding:0 4px; }
+.skylabDirToggle:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
+.skylabCargoLine{ text-align:right; color:#8fcddd; font-size:11px; font-weight:700; font-variant-numeric:tabular-nums; }
+.skyTransInputs{ display:grid; grid-template-columns:minmax(0,1fr); gap:4px; }
+.skyTransTopRow{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.skyTransInputs{ display:grid; gap:4px; }
+.skyTransActions{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.skyTransActions button{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; min-height:34px; padding:6px 12px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); font:900 11px/1.3 ui-sans-serif,system-ui; text-align:center; cursor:pointer; }
+.skyTransActions button span{ color:#ffd36b; font-weight:700; white-space:nowrap; }
+.skyTransActions button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
+.skyTransActions button:disabled{ opacity:.35; cursor:default; }
+.skyTransRow{ display:grid; grid-template-columns:minmax(0,1fr) 90px; align-items:center; gap:3px; color:#eaffff; font-size:10px; font-weight:900; white-space:nowrap; }
+.skyTransBox{ position:relative; width:90px; }
+.skyTransBox input{ width:100%; box-sizing:border-box; padding:2px 4px; outline:0; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#effcff; background:#051521; font:900 10px/1 ui-sans-serif,system-ui; text-align:center; }
+.skyTransBox input:focus{ border-color:rgba(124,240,255,.7); }
+/* Pas de flèches natives sur les champs nombre (skylab, boutique, bot). */
+input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+input[type=number]{ -moz-appearance:textfield; appearance:textfield; }
+.skylabTransportStatus{ color:#8fcddd; font-size:11px; font-weight:700; }
+@media (max-width:900px){ .skylabMain{ grid-template-columns:minmax(0,1fr); } }

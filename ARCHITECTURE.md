@@ -33,6 +33,14 @@ Le jeu reste une application navigateur rendue avec Canvas. `ORBIT_ENGINE.js` co
 - `SRC/CORE/ENGINE_TRAILS.js` : géométrie, simulation et rendu de la fumée des réacteurs.
 - `SRC/CORE/PROGRESSION.js` : courbe de niveaux, attribution d’expérience et barèmes configurables des NPC et quêtes.
 - `UI/UI_WINDOW_MANAGER.js` : déplacement, redimensionnement, réduction et restauration des fenêtres du HUD.
+- `SRC/DATA/SKYLAB.js` : données officielles du Skylab (production, stockage,
+  énergie, coûts/durées d'amélioration) et simulation pure (tick, robots,
+  transport). Échelle x60 : 1 h du vrai DO = 1 min en jeu.
+- `UI/UI_SKYLAB.js` : fenêtre Skylab (12 modules, construction/amélioration
+  jusqu'au niveau 20, robots des collecteurs, transporteur vers la soute).
+- `SRC/CORE/ACCOUNT.js` : persistance `user.skylab` + actions
+  (`startSkylabUpgrade`, `buySkylabRobot`, `setSkylabModuleEnabled`,
+  `transportSkylabToShip`, `tickCurrentUserSkylab`).
 
 Les insignes sont stockés dans `ASSETS/RANKS/` : `0.png` pour Paria, `1.png` à `21.png` pour les grades standards et `ADMIN.png` pour le grade Administrateur.
 - `SRC/CORE/IMAGE_LOADER.js` : chargement et cache des ressources graphiques.

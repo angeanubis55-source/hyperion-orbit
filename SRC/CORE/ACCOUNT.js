@@ -10,7 +10,23 @@ import { compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
-import { getRefineryRecipe, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOT_ORES } from "../DATA/RESOURCES.js";
+import { getRefineryRecipe, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
+import {
+  SKYLAB_MAX_LEVEL,
+  SKYLAB_MAX_ROBOTS,
+  SKYLAB_INSTANT_TRANSPORT_COST,
+  SKYLAB_RESOURCE_IDS,
+  SKYLAB_ROBOT_CREDIT_COST,
+  SKYLAB_ROBOT_LIFETIME_MS,
+  SKYLAB_TRANSPORT_COOLDOWN_SEC,
+  canStartSkylabUpgrade,
+  getSkylabModuleDef,
+  isCollectorModule,
+  normalizeSkylabState,
+  skylabRobotCount,
+  skylabStorageCap,
+  tickSkylabState,
+} from "../DATA/SKYLAB.js";
 import { ROCKET_TYPES } from "../../COMBAT/ROCKET_TYPES.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../../DRONE/DRONE_TYPES.js";
 import { createPet, emptyPetFit, getPetHullBonusHp, getPetHullPrice, getPetLevel, getPetMaxHp, getPetSlots, getPetShieldBonus, normalizePetMode, normalizePetPseudo, PET_DEFAULT_PSEUDO, PET_FUEL_MAX, PET_HULL_MAX_BUYS, PET_SLOTS } from "../../PET/PET_TYPES.js";
@@ -841,6 +857,9 @@ function ensureUserShape(u) {
     else delete u.inventory.resources[resourceId];
   }
 
+  // Skylab : production de ressources, améliorations, transport.
+  u.skylab = normalizeSkylabState(u.skylab);
+
   // modules roulette (instances uniques)
   if (!Array.isArray(u.inventory.shipModules)) u.inventory.shipModules = [];
   if (!Array.isArray(u.inventory.moduleRollHistory)) {
@@ -1357,6 +1376,7 @@ export function updateCurrentUserProgress(patch = {}) {
   }
   if (patch.drones && typeof patch.drones === "object") u.drones = structuredClone(patch.drones);
   if (patch.pet && typeof patch.pet === "object") u.pet = structuredClone(patch.pet);
+  if (patch.skylab && typeof patch.skylab === "object") u.skylab = normalizeSkylabState(patch.skylab);
 
   if (patch.hangarState && typeof patch.hangarState === "object") {
     const requestedId = String(patch.hangarState.id || "");
@@ -2690,5 +2710,217 @@ export function chargeShipUpgrade(slotId, oreId, oreAmount = 1) {
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u, slot, ore, stock: u.upgrades[slot].stock };
+}
+
+// ---------------------------
+// Skylab : améliorations, robots, transport (comme le vrai DO).
+// ---------------------------
+
+function ensureSkylab(u) {
+  u.skylab = normalizeSkylabState(u.skylab);
+  return u.skylab;
+}
+
+// Démarre la construction (niveau 1) ou l'amélioration d'un module.
+// Coûts : crédits du joueur + Prometium/Endurium/Terbium du stock Skylab.
+export function startSkylabUpgrade(moduleId, nowMs = Date.now()) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const now = Number(nowMs) || Date.now();
+  const sky = ensureSkylab(u);
+  tickSkylabState(sky, now, 0);
+  const check = canStartSkylabUpgrade(sky, moduleId, Number(u.credits || 0), now);
+  if (!check.ok) return { ok: false, error: check.error, user: u };
+  const { to, cost } = check;
+  u.credits = Math.max(0, Math.floor(Number(u.credits || 0) - cost.credits));
+  for (const [resId, need] of Object.entries(cost.resEach)) {
+    sky.stock[resId] = Math.max(0, Math.floor(Number(sky.stock[resId]) || 0) - need);
+  }
+  sky.modules[moduleId].upgrading = { to, finishesAt: now + cost.timeSecGame * 1000 };
+  sky.lastTickAt = now;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, moduleId, to, cost };
+}
+
+// Active / met en pause un module (collecteurs, raffineries, xeno).
+export function setSkylabModuleEnabled(moduleId, enabled) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const def = getSkylabModuleDef(moduleId);
+  if (!def) return { ok: false, error: "Module inconnu.", user: u };
+  if (["basic", "solar", "storage", "transport"].includes(String(moduleId))) {
+    return { ok: false, error: "Ce module reste toujours actif.", user: u };
+  }
+  const sky = ensureSkylab(u);
+  sky.modules[moduleId].enabled = enabled !== false;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, moduleId, enabled: sky.modules[moduleId].enabled };
+}
+
+// Achète le robot unique d'un collecteur (+5 %, 50 000 crédits, 48 h de vie).
+export function buySkylabRobot(moduleId, nowMs = Date.now()) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  if (!isCollectorModule(moduleId)) return { ok: false, error: "Robots réservés aux collecteurs.", user: u };
+  const now = Number(nowMs) || Date.now();
+  const sky = ensureSkylab(u);
+  tickSkylabState(sky, now, 0);
+  const m = sky.modules[moduleId];
+  if (Math.floor(Number(m.level) || 0) < 1) return { ok: false, error: "Construis d'abord ce collecteur.", user: u };
+  const count = skylabRobotCount(m, now);
+  if (count.total >= SKYLAB_MAX_ROBOTS) return { ok: false, error: `Maximum ${SKYLAB_MAX_ROBOTS} robots par collecteur.`, user: u };
+  const price = SKYLAB_ROBOT_CREDIT_COST;
+  if (Number(u.credits || 0) < price) return { ok: false, error: "Crédits insuffisants.", user: u };
+  u.credits = Math.max(0, Math.floor(Number(u.credits || 0) - price));
+  m.robots.push({ elite: false, expiresAt: now + SKYLAB_ROBOT_LIFETIME_MS });
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, moduleId, price };
+}
+
+// Envoie des ressources du Skylab vers la soute du vaisseau (transporteur).
+// amounts : { resourceId: quantiteDemandee }. Place limitée par la soute (3000).
+export function transportSkylabToShip(amounts, nowMs = Date.now()) {
+  const prep = prepareSkylabTransport(nowMs);
+  if (!prep.ok) return prep;
+  const { user: u, sky, now } = prep;
+  const wanted = wantedTransportAmounts(amounts);
+  if (!Object.keys(wanted).length) return { ok: false, error: "Choisis une quantité à envoyer.", user: u };
+  // Le Xenomit ne voyage pas (consommé sur place, comme sur DO).
+  if (wanted.xenomit) return { ok: false, error: "Le Xenomit ne peut pas être transporté.", user: u };
+  if (Number(sky.transportReadyAt) > now) {
+    const waitSec = Math.ceil((Number(sky.transportReadyAt) - now) / 1000);
+    return { ok: false, error: `Transporteur en vol (${waitSec}s).`, user: u };
+  }
+  const { moved, totalMoved } = moveSkyToShip(u, sky, wanted);
+  if (totalMoved <= 0) {
+    const free = cargoFree(u.inventory.resources, CARGO_CAPACITY);
+    if (free <= 0) return { ok: false, error: "Soute pleine (3000).", user: u };
+    return { ok: false, error: "Stock Skylab vide pour ces ressources.", user: u };
+  }
+  sky.transportReadyAt = now + SKYLAB_TRANSPORT_COOLDOWN_SEC * 1000;
+  sky.lastTickAt = now;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, moved, totalMoved };
+}
+
+// Charge des ressources de la soute du vaisseau vers le stock Skylab
+// (sens inverse du transporteur — débloque toute situation sans brut).
+// amounts : { resourceId: quantiteDemandee }. Place limitée par les hangars.
+export function loadSkylabFromShip(amounts, nowMs = Date.now()) {
+  const prep = prepareSkylabTransport(nowMs);
+  if (!prep.ok) return prep;
+  const { user: u, sky, now } = prep;
+  const wanted = wantedTransportAmounts(amounts);
+  if (!Object.keys(wanted).length) return { ok: false, error: "Choisis une quantité à charger.", user: u };
+  delete wanted.xenomit;
+  if (Number(sky.transportReadyAt) > now) {
+    const waitSec = Math.ceil((Number(sky.transportReadyAt) - now) / 1000);
+    return { ok: false, error: `Transporteur en vol (${waitSec}s).`, user: u };
+  }
+  const { moved, totalMoved } = moveShipToSky(u, sky, wanted);
+  if (totalMoved <= 0) {
+    return { ok: false, error: "Soute vide ou stock Skylab plein pour ces ressources.", user: u };
+  }
+  sky.transportReadyAt = now + SKYLAB_TRANSPORT_COOLDOWN_SEC * 1000;
+  sky.lastTickAt = now;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, moved, totalMoved };
+}
+
+// Envoi immédiat (comme sur DO) : pas d'attente, coûte des crédits.
+export function instantSkylabTransport(amounts, toSky = false, nowMs = Date.now()) {
+  const prep = prepareSkylabTransport(nowMs);
+  if (!prep.ok) return prep;
+  const { user: u, sky, now } = prep;
+  const wanted = wantedTransportAmounts(amounts);
+  if (!Object.keys(wanted).length) {
+    return { ok: false, error: toSky ? "Choisis une quantité à charger." : "Choisis une quantité à envoyer.", user: u };
+  }
+  delete wanted.xenomit;
+  if (Number(u.credits || 0) < SKYLAB_INSTANT_TRANSPORT_COST) {
+    return { ok: false, error: "Crédits insuffisants pour l'envoi immédiat.", user: u };
+  }
+  const { moved, totalMoved } = toSky ? moveShipToSky(u, sky, wanted) : moveSkyToShip(u, sky, wanted);
+  if (totalMoved <= 0) {
+    return { ok: false, error: "Rien à transporter (stocks vides ou pleins).", user: u };
+  }
+  u.credits = Math.max(0, Math.floor(Number(u.credits || 0) - SKYLAB_INSTANT_TRANSPORT_COST));
+  sky.lastTickAt = now;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, moved, totalMoved, cost: SKYLAB_INSTANT_TRANSPORT_COST };
+}
+
+function prepareSkylabTransport(nowMs = Date.now()) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const now = Number(nowMs) || Date.now();
+  const sky = ensureSkylab(u);
+  tickSkylabState(sky, now, 0);
+  if (Math.floor(Number(sky.modules?.transport?.level) || 0) < 1) {
+    return { ok: false, error: "Module de transport indisponible.", user: u };
+  }
+  u.inventory ||= {};
+  u.inventory.resources ||= {};
+  return { ok: true, user: u, sky, now };
+}
+
+function wantedTransportAmounts(amounts) {
+  const wanted = {};
+  for (const id of SKYLAB_RESOURCE_IDS) {
+    const q = Math.max(0, Math.floor(Number(amounts?.[id]) || 0));
+    if (q > 0) wanted[id] = q;
+  }
+  return wanted;
+}
+
+function moveSkyToShip(u, sky, wanted) {
+  const moved = {};
+  let totalMoved = 0;
+  for (const [id, q] of Object.entries(wanted)) {
+    const inSky = Math.floor(Number(sky.stock[id]) || 0);
+    if (inSky <= 0) continue;
+    const { added } = cargoAdd(u.inventory.resources, id, Math.min(q, inSky), CARGO_CAPACITY);
+    if (added <= 0) continue;
+    sky.stock[id] = Math.max(0, Number(sky.stock[id]) || 0) - added;
+    u.inventory.resources[id] = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0)) + added;
+    moved[id] = added;
+    totalMoved += added;
+  }
+  return { moved, totalMoved };
+}
+
+function moveShipToSky(u, sky, wanted) {
+  const moved = {};
+  let totalMoved = 0;
+  for (const [id, q] of Object.entries(wanted)) {
+    const inShip = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0));
+    if (inShip <= 0) continue;
+    const cap = skylabStorageCap(sky, id);
+    const room = Math.max(0, cap - Math.floor(Number(sky.stock[id]) || 0));
+    if (room <= 0) continue;
+    const qty = Math.min(q, inShip, room);
+    if (qty <= 0) continue;
+    u.inventory.resources[id] = inShip - qty;
+    if (u.inventory.resources[id] <= 0) delete u.inventory.resources[id];
+    sky.stock[id] = Math.max(0, Number(sky.stock[id]) || 0) + qty;
+    moved[id] = qty;
+    totalMoved += qty;
+  }
+  return { moved, totalMoved };
+}
+// Fait avancer la production du Skylab (appelée par la boucle de jeu + au chargement).
+export function tickCurrentUserSkylab(nowMs = Date.now(), dtRealSec = 1) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const now = Number(nowMs) || Date.now();
+  const sky = ensureSkylab(u);
+  const res = tickSkylabState(sky, now, dtRealSec);
+  return { ok: true, user: u, completed: res.completed };
 }
 

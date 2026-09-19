@@ -134,6 +134,7 @@ import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorR
 import { formatInteger } from "./NUMBER_FORMAT.js";
 import { escapeHtml } from "../../UI/UI_DOM.js";
 import { wireWikiWindow } from "../../UI/UI_WIKI.js";
+import { initSkylabUI, tickSkylabProduction } from "../../UI/UI_SKYLAB.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
 import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
 import { checkMapAccess } from "./MAP_ACCESS.js";
@@ -874,6 +875,9 @@ const ui = {
   upgAmountPreview: document.getElementById("upgAmountPreview"),
   upgAmountCancel: document.getElementById("upgAmountCancel"),
   upgAmountOk: document.getElementById("upgAmountOk"),
+  skylabWindow: document.getElementById("skylabWindow"),
+  skylabTopBar: document.getElementById("skylabTopBar"),
+  skylabPopup: document.getElementById("skylabPopup"),
   gameLogSearch: document.getElementById("gameLogSearch"),
   gameLogPrevious: document.getElementById("gameLogPrevious"),
   gameLogNext: document.getElementById("gameLogNext"),
@@ -7949,12 +7953,25 @@ function registerHudWindows() {
   ui.oreTradeWindow?.querySelector(".gameWinBar > button:last-child")?.addEventListener("click", closeOreTradeWindow);
   window.GameWindowManager?.close?.("oreTradeWindow");
   reg("refineryWindow", "Raffinage", menuIcon("refinement"), false);
+  reg("skylabWindow", "Skylab", menuIcon("skylab"), false);
   reg("boosterWindow", "Boosters", menuIcon("booster"), false);
   reg("botWindow", "BOT", menuIcon("npc_event"), false);
   reg("wikiWindow", "Wiki / Aide", menuIcon("help"), false);
   reg("gygerimStatus", "État du boss", menuIcon("worldBoss"), true, { minimizable: false });
 wireSettingsWindow();
 wireWikiWindow();
+initSkylabUI({
+  getUser: () => account.user,
+  afterAction: () => {
+    syncPlayerFromAccount();
+    markProgressDirty();
+    saveProgressNow();
+    window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+  },
+  toast: (text, dur = 2) => showToast(text, dur),
+  notify: (text, dur = 2.5, type = "info") => showNotification(text, dur, type),
+  markDirty: () => markProgressDirty(),
+});
 wirePetWindow();
 wireBoosterWindow();
 wireBotWindow();
@@ -13144,6 +13161,7 @@ function saveProgressNowMeasured() {
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
   drones: account.user.drones,
   pet: account.user.pet,
+  skylab: account.user.skylab,
 hangarState: !player.dead && started ? {
     id: SESSION_HANGAR_ID || null,
     x: player.x,
@@ -24186,7 +24204,7 @@ launcherPhaseT = 0;
         for (const c of freshCamps) {
           if (!tuningByType.has(String(c.type))) tuningByType.set(String(c.type), c);
         }
-        zoneCamps = stored.slice(0, 220).map((s, idx) => {
+        zoneCamps = stored.slice(0, Math.max(1, freshCamps.length)).map((s, idx) => {
           const tuning = tuningByType.get(String(s.type)) || freshCamps[idx] || freshCamps[0] || {};
           return {
             id: idx + 1,
@@ -27759,6 +27777,9 @@ if (moveTarget.active && !player.dead) {
   updateGateEscorts(dt);
   updatePet(dt);
   try { tickBot(dt); } catch (error) { console.warn("BOT tick:", error); }
+  if (started) {
+    try { tickSkylabProduction(dt); } catch (error) { console.warn("Skylab tick:", error); }
+  }
 
   mapPortalLock = Math.max(0, mapPortalLock - dt);
   portalHintCd = Math.max(0, portalHintCd - dt);
@@ -30438,6 +30459,7 @@ updateCurrentUserProgress({
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
   drones: account.user.drones,
   pet: account.user.pet,
+  skylab: account.user.skylab,
 
   // ⚠ï¸ Ne surtout pas sauvegarder ship ici.
   // Le vaisseau actif est géré par setActiveHangar().
