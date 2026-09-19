@@ -9000,4 +9000,41 @@ html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
 input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
 input[type=number]{ -moz-appearance:textfield; appearance:textfield; }
 .skylabTransportStatus{ color:#8fcddd; font-size:11px; font-weight:700; }
+
+/* ================= Enchères ================= */
+.auctionPanel{ width:560px; max-width:min(560px,calc(100vw - 24px)); }
+.auctionBody{ display:grid; gap:8px; padding:12px; color:#dff7ff; max-height:min(70vh,620px); overflow-y:auto; }
+.auctionHead{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.auctionCredits{ color:#ffd36b; font-size:12px; font-weight:900; font-variant-numeric:tabular-nums; }
+.auctionTimer{ color:#ffd36b; font-size:13px; font-weight:900; font-variant-numeric:tabular-nums; text-shadow:0 0 10px rgba(255,211,107,.4); white-space:nowrap; }
+.gameWinBar > .auctionTimer{ font-size:11px; margin-left:4px; flex-shrink:0; }
+.auctionHead small{ color:#8fcddd; font-size:10px; font-weight:700; }
+.auctionTabs{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.auctionTab{ min-height:32px; padding:0 8px; border:1px solid rgba(124,240,255,.22); border-radius:8px; color:rgba(204,228,241,.65); background:rgba(255,255,255,.03); font-size:11px; font-weight:900; white-space:nowrap; cursor:pointer; }
+.auctionTab.active{ color:#eaffff; border-color:rgba(124,240,255,.6); background:rgba(0,140,185,.25); }
+.auctionPage{ display:none; }
+.auctionPage.active{ display:block; }
+.auctionList{ display:grid; gap:0; }
+.auctionEmpty{ padding:10px; text-align:center; color:#8fcddd; font-size:11px; font-weight:700; }
+.auctionRow{ display:grid; grid-template-columns:40px minmax(0,1fr) auto auto; align-items:center; gap:8px; padding:8px 2px; border-bottom:1px solid rgba(124,240,255,.14); }
+.auctionRow:last-child{ border-bottom:none; }
+.auctionRow.leading{ border-bottom-color:rgba(255,211,107,.45); }
+.auctionRow img{ width:40px; height:40px; object-fit:contain; }
+.auctionMeta{ display:grid; gap:1px; min-width:0; }
+.auctionMeta b{ color:#fff; font-size:12px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.auctionMeta small{ color:#8fcddd; font-size:10px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.auctionBid{ display:grid; justify-items:end; gap:0; }
+.auctionBid b{ color:#fff; font-size:13px; font-weight:900; font-variant-numeric:tabular-nums; }
+.auctionRow.leading .auctionBid b{ color:#ffd36b; }
+.auctionAct{ display:grid; grid-template-columns:110px auto; gap:4px; align-items:center; }
+.auctionAct input{ width:100%; min-width:0; box-sizing:border-box; padding:4px 6px; outline:0; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#effcff; background:#051521; font:900 11px/1 ui-sans-serif,system-ui; text-align:center; }
+.auctionAct input:focus{ border-color:rgba(124,240,255,.7); }
+.auctionAct button{ padding:5px 10px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); font:800 11px/1.2 ui-sans-serif,system-ui; white-space:nowrap; cursor:pointer; }
+.auctionAct button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
+.auctionHistory{ display:grid; gap:4px; }
+.auctionHistRow{ display:flex; justify-content:space-between; gap:8px; padding:4px 8px; border-radius:6px; background:rgba(255,255,255,.04); font-size:11px; }
+.auctionHistRow b{ color:#eaffff; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.auctionHistRow span{ color:#8fcddd; font-weight:700; white-space:nowrap; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.auctionHistRow.won b{ color:#3dff7a; }
+.auctionHistRow.lost b{ color:#ff9aa5; }
 @media (max-width:900px){ .skylabMain{ grid-template-columns:minmax(0,1fr); } }

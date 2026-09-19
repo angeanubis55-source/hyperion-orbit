@@ -166,6 +166,11 @@ export const CATALOG = {
     { id: "pet_hull", name: "Coque+ P.E.T", price: 50000, icon: "/PET/upgrade-g-hp1_100x100.png", petHull: { hp: 10000 }, desc: "+10 000 HP définitifs au REX (10 achats max, prix ×2 à chaque achat)." },
   ],
 
+  // Tickets : relance gratuite à la roulette des modules (image fournie plus tard).
+  tickets: [
+    { id: "ticket_module_reroll", name: "Ticket relance module", price: 25000000, icon: "/ASSETS/ITEMS/TICKET_MODULE_REROLL.png", ticket: { kind: "module_reroll" }, desc: "Une relance gratuite à la roulette des modules." },
+  ],
+
   // Gears P.E.T officiels (darkorbitwiki.com/p-e-t). Prix uridium → crédits (×1000).
   // Paliers officiels : niveau 2 dès P.E.T 4, niveau 3 dès P.E.T 8.
   // Branchés dans le moteur : G-AL / G-AR (auto-collecte), G-EL

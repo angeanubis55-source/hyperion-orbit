@@ -58,6 +58,9 @@
   <button id="btnSkylabHub" class="gameDockIcon" data-window-id="skylabWindow" type="button" title="Skylab" aria-label="Skylab">
     <span><img src="ASSETS/UI/MENU/skylab.png" data-menu-icon="skylab" alt="" draggable="false"></span>
   </button>
+  <button id="btnAuctionHub" class="gameDockIcon" data-window-id="auctionWindow" type="button" title="Enchères" aria-label="Enchères">
+    <span><img src="ASSETS/UI/MENU/auction.png" data-menu-icon="auction" alt="" draggable="false"></span>
+  </button>
   <button id="btnBotHub" class="gameDockIcon" data-window-id="botWindow" type="button" title="Bot" aria-label="Bot">
     <span><img src="ASSETS/UI/MENU/npc_event.png" data-menu-icon="npc_event" alt="" draggable="false"></span>
   </button>
@@ -118,6 +121,22 @@
     <div class="skylabMain">
       <div id="skylabMap" class="skylabMap"><div id="skylabPopup" class="skylabPopup" hidden></div></div>
     </div>
+  </div>
+</div>
+
+<div id="auctionWindow" class="panel auctionPanel">
+  <div class="auctionBody">
+    <div class="auctionHead"><span id="auctionCredits" class="auctionCredits"></span><small>Enchères fixes · mise de départ −70 %</small><span id="auctionTimer" class="auctionTimer">—</span></div>
+    <nav class="auctionTabs">
+      <button class="auctionTab active" data-auction-tab="live" type="button">Enchères actuelles</button>
+      <button class="auctionTab" data-auction-tab="history" type="button">Dernières enchères</button>
+    </nav>
+    <section class="auctionPage active" data-auction-page="live">
+      <div id="auctionList" class="auctionList"></div>
+    </section>
+    <section class="auctionPage" data-auction-page="history">
+      <div id="auctionHistory" class="auctionHistory"></div>
+    </section>
   </div>
 </div>
 

@@ -63,6 +63,7 @@ import {
   setPetMode,
   repairPet,
   activateCurrentUserBooster,
+  tickCurrentUserAuction,
 } from "./ACCOUNT.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
@@ -135,6 +136,7 @@ import { formatInteger } from "./NUMBER_FORMAT.js";
 import { escapeHtml } from "../../UI/UI_DOM.js";
 import { wireWikiWindow } from "../../UI/UI_WIKI.js";
 import { initSkylabUI, tickSkylabProduction } from "../../UI/UI_SKYLAB.js";
+import { initAuctionUI, renderAuctionWindow, tickAuctionDisplay } from "../../UI/UI_AUCTION.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
 import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
 import { checkMapAccess } from "./MAP_ACCESS.js";
@@ -878,6 +880,10 @@ const ui = {
   skylabWindow: document.getElementById("skylabWindow"),
   skylabTopBar: document.getElementById("skylabTopBar"),
   skylabPopup: document.getElementById("skylabPopup"),
+  auctionWindow: document.getElementById("auctionWindow"),
+  auctionList: document.getElementById("auctionList"),
+  auctionHistory: document.getElementById("auctionHistory"),
+  auctionCredits: document.getElementById("auctionCredits"),
   gameLogSearch: document.getElementById("gameLogSearch"),
   gameLogPrevious: document.getElementById("gameLogPrevious"),
   gameLogNext: document.getElementById("gameLogNext"),
@@ -7954,6 +7960,7 @@ function registerHudWindows() {
   window.GameWindowManager?.close?.("oreTradeWindow");
   reg("refineryWindow", "Raffinage", menuIcon("refinement"), false);
   reg("skylabWindow", "Skylab", menuIcon("skylab"), false);
+  reg("auctionWindow", "Enchères", menuIcon("auction"), false);
   reg("boosterWindow", "Boosters", menuIcon("booster"), false);
   reg("botWindow", "BOT", menuIcon("npc_event"), false);
   reg("wikiWindow", "Wiki / Aide", menuIcon("help"), false);
@@ -7961,6 +7968,18 @@ function registerHudWindows() {
 wireSettingsWindow();
 wireWikiWindow();
 initSkylabUI({
+  getUser: () => account.user,
+  afterAction: () => {
+    syncPlayerFromAccount();
+    markProgressDirty();
+    saveProgressNow();
+    window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+  },
+  toast: (text, dur = 2) => showToast(text, dur),
+  notify: (text, dur = 2.5, type = "info") => showNotification(text, dur, type),
+  markDirty: () => markProgressDirty(),
+});
+initAuctionUI({
   getUser: () => account.user,
   afterAction: () => {
     syncPlayerFromAccount();
@@ -13162,6 +13181,7 @@ function saveProgressNowMeasured() {
   drones: account.user.drones,
   pet: account.user.pet,
   skylab: account.user.skylab,
+  auction: account.user.auction,
 hangarState: !player.dead && started ? {
     id: SESSION_HANGAR_ID || null,
     x: player.x,
@@ -15010,6 +15030,27 @@ let boosterPrevSignature = "";
 let boosterWindowRefreshT = 0;
 let boosterResyncT = 0;
 let upgradeDrainT = 0;
+let auctionTickT = 0;
+
+function tickAuctionLogic() {
+  if (!account.user) return;
+  let res;
+  try {
+    res = tickCurrentUserAuction();
+  } catch {
+    return;
+  }
+  if (!res?.ok) return;
+  if (res.changed) {
+    syncPlayerFromAccount();
+    markProgressDirty();
+    window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+    try { renderAuctionWindow(); } catch {}
+  }
+  for (const ev of res.events || []) {
+    if (ev?.type === "won") showNotification(`Enchère remportée : ${ev.name} !`, 3.5, "reward");
+  }
+}
 let refineryLiveT = 0;
 
 function boosterActiveSignature() {
@@ -27779,6 +27820,12 @@ if (moveTarget.active && !player.dead) {
   try { tickBot(dt); } catch (error) { console.warn("BOT tick:", error); }
   if (started) {
     try { tickSkylabProduction(dt); } catch (error) { console.warn("Skylab tick:", error); }
+    try { tickAuctionDisplay(); } catch (error) { console.warn("Auction display:", error); }
+    auctionTickT += dt;
+    if (auctionTickT >= 2) {
+      auctionTickT = 0;
+      try { tickAuctionLogic(); } catch (error) { console.warn("Auction tick:", error); }
+    }
   }
 
   mapPortalLock = Math.max(0, mapPortalLock - dt);
@@ -30460,6 +30507,7 @@ updateCurrentUserProgress({
   drones: account.user.drones,
   pet: account.user.pet,
   skylab: account.user.skylab,
+  auction: account.user.auction,
 
   // ⚠ï¸ Ne surtout pas sauvegarder ship ici.
   // Le vaisseau actif est géré par setActiveHangar().

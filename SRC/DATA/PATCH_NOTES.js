@@ -1,6 +1,16 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.227",
+    "date": "2026-09-19T18:24:31+02:00",
+    "message": "skylab: fenetre officielle 12 modules, production x10, ameliorations niv 20, robots, transporteur double sens + reset slots npc a la def"
+  },
+  {
+    "version": "0.226",
+    "date": "2026-09-19T13:37:24+02:00",
+    "message": "aptitudes: cooldowns isoles par vaisseau, effets repris apres refresh, variantes normal/Plus independantes (Solaris, Hecate, Hammerclaw)"
+  },
+  {
     "version": "0.225",
     "date": "2026-09-19T12:48:38+02:00",
     "message": "sync version 0.224 + patch-notes (hook post-push)"
@@ -289,15 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.168",
     "date": "2026-09-12T14:16:45+02:00",
     "message": "hangars: cartes compactes grille + preview animee retiree"
-  },
-  {
-    "version": "0.167",
-    "date": "2026-09-12T05:09:41+02:00",
-    "message": "hangars: suppression sidebar, fenetre pleine largeur"
-  },
-  {
-    "version": "0.166",
-    "date": "2026-09-12T05:06:15+02:00",
-    "message": "hangars: fenetre dediee hangars-equipement sortie de l'espace pilote"
   }
 ];

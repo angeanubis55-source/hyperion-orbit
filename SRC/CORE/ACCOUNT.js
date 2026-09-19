@@ -1,7 +1,7 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
-import { findCatalogItem } from "./CATALOG.js";
+import { findCatalogItem, CATALOG } from "./CATALOG.js";
 import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, getShipFamilyId } from "../../SHIP/SHIP_PACKS.js";
 import { normalizeQuestState, QUEST_DEFINITIONS } from "../../QUEST/QUEST_TYPES.js";
 import { calculateRankPoints, getQuestHonorReward } from "./PROGRESSION.js";
@@ -11,6 +11,15 @@ import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { getRefineryRecipe, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
+import {
+  AUCTION_ACTIVE_LOTS,
+  AUCTION_CYCLE_VERSION,
+  AUCTION_HISTORY_LEN,
+  auctionMinNextBid,
+  auctionTimeLeftMs,
+  buildHourlyLots,
+  normalizeAuctionState,
+} from "../DATA/AUCTION.js";
 import {
   SKYLAB_MAX_LEVEL,
   SKYLAB_MAX_ROBOTS,
@@ -860,6 +869,21 @@ function ensureUserShape(u) {
   // Skylab : production de ressources, améliorations, transport.
   u.skylab = normalizeSkylabState(u.skylab);
 
+  // Enchères : lots en cours + historique.
+  // Normalisation EN PLACE (même objet conservé) : le tick des enchères
+  // garde une référence sur u.auction pendant tout le règlement, et chaque
+  // gain (buyItem) repasse par ici. Remplacer l'objet détacherait le tick :
+  // lots jamais retirés -> gains en boucle, mises jamais réinitialisées,
+  // historique perdu.
+  if (!u.auction || typeof u.auction !== "object") {
+    u.auction = normalizeAuctionState(u.auction);
+  } else {
+    const normAuc = normalizeAuctionState(u.auction);
+    u.auction.v = normAuc.v;
+    u.auction.lots = normAuc.lots;
+    u.auction.history = normAuc.history;
+  }
+
   // modules roulette (instances uniques)
   if (!Array.isArray(u.inventory.shipModules)) u.inventory.shipModules = [];
   if (!Array.isArray(u.inventory.moduleRollHistory)) {
@@ -1377,6 +1401,7 @@ export function updateCurrentUserProgress(patch = {}) {
   if (patch.drones && typeof patch.drones === "object") u.drones = structuredClone(patch.drones);
   if (patch.pet && typeof patch.pet === "object") u.pet = structuredClone(patch.pet);
   if (patch.skylab && typeof patch.skylab === "object") u.skylab = normalizeSkylabState(patch.skylab);
+  if (patch.auction && typeof patch.auction === "object") u.auction = normalizeAuctionState(patch.auction);
 
   if (patch.hangarState && typeof patch.hangarState === "object") {
     const requestedId = String(patch.hangarState.id || "");
@@ -1476,8 +1501,9 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
     ? 1
     : Math.min(5000, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
   const unitPrice = Math.max(0, Number(item.price || 0));
-  const price = unitPrice * quantity;
-  if (u.credits < price) return { ok: false, error: "Crédits insuffisants." };
+  // Enchère remportée : gain sans paiement (les contrôles d'unicité restent).
+  const price = options.free === true ? 0 : unitPrice * quantity;
+  if (!options.free && u.credits < price) return { ok: false, error: "Crédits insuffisants." };
 
   // ships: unique
   if (item.ship?.id) {
@@ -1544,6 +1570,11 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
 
   // gears / protocoles P.E.T (multi)
   if (item.petGear || item.petProtocol) {
+    incCount(u, item.id, quantity);
+  }
+
+  // tickets (relance roulette, consommables)
+  if (item.ticket?.kind) {
     incCount(u, item.id, quantity);
   }
 
@@ -2461,6 +2492,16 @@ export function buyModuleRoll(cost = 250000) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
 
+  // Ticket de relance prioritaire : une roulette gratuite.
+  const tickets = Math.max(0, Math.floor(Number(u.inventory?.counts?.["ticket_module_reroll"]) || 0));
+  if (tickets > 0) {
+    incCount(u, "ticket_module_reroll", -1);
+    ensureUserShape(u);
+    saveUser(u);
+    writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+    return { ok: true, user: u, ticket: true };
+  }
+
   cost = Math.max(0, Number(cost || 0));
   if (u.credits < cost) return { ok: false, error: "Crédits insuffisants." };
 
@@ -2922,5 +2963,235 @@ export function tickCurrentUserSkylab(nowMs = Date.now(), dtRealSec = 1) {
   const sky = ensureSkylab(u);
   const res = tickSkylabState(sky, now, dtRealSec);
   return { ok: true, user: u, completed: res.completed };
+}
+
+// ---------------------------
+// Enchères façon DarkOrbit : lots fixes horaires, mise réservée.
+// ---------------------------
+
+function ensureAuction(u) {
+  u.auction = normalizeAuctionState(u.auction);
+  // Migration vers le cycle fixe : purge les anciens lots (roulement),
+  // rembourse les mises réservées dessus, puis le tick reconstruit en fixe.
+  if (u.auction.v !== AUCTION_CYCLE_VERSION) {
+    let refund = 0;
+    for (const lot of u.auction.lots) refund += Math.max(0, Math.floor(Number(lot?.myBid) || 0));
+    if (refund > 0) u.credits = Math.max(0, Math.floor(Number(u.credits || 0)) + refund);
+    u.auction.lots = [];
+    u.auction.v = AUCTION_CYCLE_VERSION;
+    ensureUserShape(u);
+    saveUser(u);
+  }
+  // Correctif non destructif (sans purge, mises conservées) : le ticket part
+  // de son prix de base (25 M, sans -70 %). Si une mise existe sous ce seuil,
+  // elle est remboursée et le lot repart à zéro.
+  try {
+    const ticketBase = Math.max(1, Math.floor(Number(findCatalogItem("ticket_module_reroll")?.price) || 25000000));
+    let patched = false;
+    for (const lot of u.auction.lots) {
+      if (String(lot?.catalogId) !== "ticket_module_reroll") continue;
+      if (Number(lot.shopPrice) === ticketBase && Number(lot.startPrice) === ticketBase && lot.noDiscount === true) continue;
+      lot.shopPrice = ticketBase;
+      lot.startPrice = ticketBase;
+      lot.noDiscount = true;
+      const my = Math.max(0, Math.floor(Number(lot.myBid) || 0));
+      if (my > 0 && my < ticketBase) {
+        u.credits = Math.max(0, Math.floor(Number(u.credits || 0)) + my);
+        lot.myBid = 0;
+        lot.topBid = 0;
+        lot.topBidder = "";
+      }
+      patched = true;
+    }
+    if (patched) {
+      ensureUserShape(u);
+      saveUser(u);
+    }
+  } catch {}
+  return u.auction;
+}
+
+// Lot éligible : item au catalogue, pas déjà possédé (uniques).
+function auctionFiltersFor(u) {
+  return {
+    hasPet: u?.pet?.owned === true,
+    ownedShips: new Set((u?.inventory?.ships || []).map(String)),
+    ownedDesigns: new Set((u?.inventory?.shipDesigns || []).map(String)),
+    ownedFormations: new Set((u?.drones?.formations || []).map(String)),
+    droneCounts: { iris: (u?.drones?.items || []).filter((d) => d?.type === "iris").length },
+  };
+}
+
+function fillAuctionLots(auction, u, now) {
+  if (auction.lots.length >= AUCTION_ACTIVE_LOTS) return false;
+  const fresh = buildHourlyLots(CATALOG, auctionFiltersFor(u), now);
+  const used = new Set(auction.lots.map((lot) => lot.catalogId));
+  // Garde-fou : un seul lot design max (le design est déterministe par heure,
+  // mais on ne doit jamais accumuler de designs au fil des ticks).
+  let hasDesign = auction.lots.some((lot) => String(lot?.catalogId || "").startsWith("design_"));
+  let added = false;
+  for (const lot of fresh) {
+    if (auction.lots.length >= AUCTION_ACTIVE_LOTS) break;
+    if (used.has(lot.catalogId)) continue;
+    if (String(lot.catalogId).startsWith("design_")) {
+      if (hasDesign) continue;
+      hasDesign = true;
+    }
+    used.add(lot.catalogId);
+    auction.lots.push(lot);
+    added = true;
+  }
+  return added;
+}
+
+function pushAuctionHistory(auction, entry) {
+  auction.history.push({
+    name: String(entry?.name || ""),
+    result: entry?.result === "won" ? "won" : (entry?.result === "expired" ? "expired" : "lost"),
+    amount: Math.max(0, Math.floor(Number(entry?.amount) || 0)),
+    at: Date.now(),
+    by: String(entry?.by || ""),
+  });
+  while (auction.history.length > AUCTION_HISTORY_LEN) auction.history.shift();
+}
+
+// Placer une mise (montant total, pas un ajout). Réserve immédiate en crédits.
+export function placeAuctionBid(lotId, amount, nowMs = Date.now()) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const auction = ensureAuction(u);
+  const lot = auction.lots.find((entry) => String(entry?.id) === String(lotId));
+  if (!lot) return { ok: false, error: "Lot introuvable.", user: u };
+  if (auctionTimeLeftMs(lot, nowMs) <= 0) return { ok: false, error: "Enchère terminée.", user: u };
+  const bid = Math.max(0, Math.floor(Number(amount) || 0));
+  const minimum = auctionMinNextBid(lot);
+  if (bid < minimum) return { ok: false, error: `Mise minimale : ${minimum.toLocaleString("fr-FR")} crédits.`, user: u };
+  // Rembourse l'ancienne mise puis réserve la nouvelle.
+  u.credits = Math.max(0, Math.floor(Number(u.credits || 0) + Math.max(0, Number(lot.myBid) || 0)));
+  if (Number(u.credits || 0) < bid) return { ok: false, error: "Crédits insuffisants.", user: u };
+  u.credits = Math.max(0, Math.floor(Number(u.credits || 0) - bid));
+  lot.myBid = bid;
+  lot.topBid = bid;
+  lot.topBidder = "you";
+  lot.bids = Math.max(0, Math.floor(Number(lot.bids) || 0)) + 1;
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, lotId: lot.id, bid };
+}
+
+// Attribution d'un lot remporté selon son type.
+function grantAuctionLot(u, lot) {
+  // Lot custom x6 250 : gain direct de munitions (hors pack boutique).
+  if ((lot?.kind === "ammo_custom" || lot?.ammoGive) && lot.ammoGive && typeof lot.ammoGive === "object") {
+    u.ammo ??= defaultAmmo();
+    for (const [key, qty] of Object.entries(lot.ammoGive)) {
+      if (key === "x1") continue;
+      const add = Math.max(1, Math.floor(Number(qty) || 0));
+      u.ammo[key] = Math.max(0, Number(u.ammo[key] || 0) + add);
+    }
+    incCount(u, lot.catalogId, 1);
+    ensureUserShape(u);
+    saveUser(u);
+    return { ok: true, user: u };
+  }
+  if (lot?.rocketsGive && typeof lot.rocketsGive === "object") {
+    u.rockets ??= {};
+    for (const [key, qty] of Object.entries(lot.rocketsGive)) {
+      const add = Math.max(1, Math.floor(Number(qty) || 0));
+      u.rockets[key] = Math.max(0, Math.floor(Number(u.rockets[key] || 0) + add));
+    }
+    incCount(u, lot.catalogId, 1);
+    ensureUserShape(u);
+    saveUser(u);
+    return { ok: true, user: u };
+  }
+  if (lot?.kind === "resources" && lot.resourcesGive && typeof lot.resourcesGive === "object") {
+    u.inventory ||= {};
+    u.inventory.resources ||= {};
+    for (const [id, qty] of Object.entries(lot.resourcesGive)) {
+      const q = Math.max(1, Math.floor(Number(qty) || 0));
+      u.inventory.resources[id] = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0)) + q;
+    }
+    ensureUserShape(u);
+    saveUser(u);
+    return { ok: true, user: u };
+  }
+  if (lot?.kind === "formation" && lot.formationId) {
+    const formation = DRONE_FORMATIONS.find((entry) => entry.id === lot.formationId);
+    if (!formation) return { ok: false, error: "Formation introuvable." };
+    u.drones ??= {};
+    if (!Array.isArray(u.drones.formations)) u.drones.formations = ["standard"];
+    if (u.drones.formations.includes(formation.id)) return { ok: false, error: "Formation déjà possédée." };
+    u.drones.formations.push(formation.id);
+    ensureUserShape(u);
+    saveUser(u);
+    return { ok: true, user: u };
+  }
+  if (lot?.kind === "drone" && lot.droneType) {
+    const definition = DRONE_TYPES[lot.droneType];
+    if (!definition) return { ok: false, error: "Drone introuvable." };
+    u.drones ??= {};
+    if (!Array.isArray(u.drones.items)) u.drones.items = [];
+    const owned = u.drones.items.filter((drone) => drone?.type === lot.droneType).length;
+    if (owned >= Number(definition.maxOwned) || 0) return { ok: false, error: "Limite de drones atteinte." };
+    u.drones.items.push(createDrone(lot.droneType, `drone_${uuid()}`));
+    ensureUserShape(u);
+    saveUser(u);
+    return { ok: true, user: u };
+  }
+  return buyItem(lot.catalogId, Math.max(1, lot.qty || 1), { free: true });
+}
+
+function settleAuctionLot(u, auction, lot) {
+  const bidder = String(u?.pseudo || "Joueur");
+  const won = lot.topBidder === "you" && Number(lot.myBid) > 0;
+  if (won) {
+    const grant = grantAuctionLot(u, lot);
+    if (!grant?.ok) {
+      // Gain impossible (ex : devenu possédé entre-temps) : rembourse la mise.
+      u.credits = Math.max(0, Math.floor(Number(u.credits || 0) + Math.max(0, Number(lot.myBid) || 0)));
+      pushAuctionHistory(auction, { name: lot.name, result: "lost", amount: Number(lot.myBid) || 0, by: bidder });
+      return { type: "lost", name: lot.name, amount: Number(lot.myBid) || 0, refunded: true };
+    }
+    pushAuctionHistory(auction, { name: lot.name, result: "won", amount: Number(lot.topBid) || 0, by: bidder });
+    return { type: "won", name: lot.name, amount: Number(lot.topBid) || 0 };
+  }
+  pushAuctionHistory(auction, { name: lot.name, result: "expired", amount: 0, by: "" });
+  return { type: "expired", name: lot.name, amount: 0 };
+}
+
+// Fait avancer les enchères : règlement des lots échus + cycle fixe.
+// Retourne { ok, user, events: [{ type: "won"|"expired", ... }] }.
+export function tickCurrentUserAuction(nowMs = Date.now()) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const now = Number(nowMs) || Date.now();
+  const auction = ensureAuction(u);
+  const events = [];
+  let changed = false;
+  if (fillAuctionLots(auction, u, now)) changed = true;
+  const remaining = [];
+  let settled = 0;
+  for (const lot of auction.lots) {
+    if (auctionTimeLeftMs(lot, now) > 0) {
+      remaining.push(lot);
+      continue;
+    }
+    events.push(settleAuctionLot(u, auction, lot));
+    settled++;
+    changed = true;
+  }
+  auction.lots = remaining;
+  if (remaining.length === 0 && settled > 0) {
+    // Renouvellement complet : "Dernières enchères" = exactement ce cycle
+    // (22 lots, y compris non misés), sans mélange avec les cycles précédents.
+    auction.history = auction.history.slice(-settled);
+  }
+  if (fillAuctionLots(auction, u, now)) changed = true;
+  if (changed) {
+    ensureUserShape(u);
+    saveUser(u);
+  }
+  return { ok: true, user: u, events, changed };
 }
 
