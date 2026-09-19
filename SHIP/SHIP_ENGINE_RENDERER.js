@@ -50,7 +50,18 @@ export class ShipEngine {
     const scaleX = image?.naturalWidth ? drawWidth / image.naturalWidth : 1;
     const scaleY = image?.naturalHeight ? drawHeight / image.naturalHeight : 1;
     return Object.values(outputs).flatMap(points => {
-      const point = points?.[frame % points.length];
+      let point = points?.[frame % points.length];
+      if (!point && points?.length) {
+        // game.xml officiel incomplet (Spectrum / Spectrum Plus : 31 paires
+        // pour 32 frames sur les listes latérales) : on referme la boucle au
+        // milieu du segment dernier→premier au lieu de couper le réacteur
+        // sur cette orientation.
+        const valid = points.filter(Boolean);
+        if (valid.length) {
+          const first = valid[0], last = valid[valid.length - 1];
+          point = [(first[0] + last[0]) / 2, (first[1] + last[1]) / 2];
+        }
+      }
       return point ? [{ x: point[0] * scaleX, y: point[1] * scaleY, calibrated: true }] : [];
     });
   }

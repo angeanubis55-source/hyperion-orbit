@@ -79,6 +79,7 @@ import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
 import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
 import { GAME_VERSION } from "../DATA/VERSION.js";
 import { getShipPackById as getShipPackByIdData, getShipDesignBaseId } from "../../SHIP/SHIP_PACKS.js";
+import { getAbilityInfo, formatAbilityTiming, policeAbilityIds, abilityIconFile } from "../../SHIP/SHIP_ABILITIES.js";
 import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, formationDockIcon, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath, isClassicFormation } from "../../DRONE/DRONE_TYPES.js";
 import { DRONE_FORMATION_POSITIONS } from "../../DRONE/DRONE_FORMATIONS.js";
 import { PET_XP_SHARE, PET_FUEL_MAX, PET_FUEL_TICK_SEC, PET_FUEL_BASE_TICK, PET_FUEL_GEAR_TICK, PET_FUEL_ONESHOT, getPetDamageBonus, getPetHullBonusHp, getPetLevel, getPetLevelXp, getPetMaxHp, getPetNextLevelXp, getPetShieldBonus, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
@@ -129,7 +130,7 @@ import {
 import { renderMinimap } from "../../UI/UI_MINIMAP.js";
 import { drawWallLayer } from "./WORLD_LAYER_RENDERER.js";
 import { advancePlayerToTarget, attractPickups, playerSlowMult, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./FRAME_SYSTEMS.js";
-import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor } from "./PROGRESSION.js";
+import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor, ADMIN_RANK } from "./PROGRESSION.js";
 import { formatInteger } from "./NUMBER_FORMAT.js";
 import { escapeHtml } from "../../UI/UI_DOM.js";
 import { wireWikiWindow } from "../../UI/UI_WIKI.js";
@@ -1065,6 +1066,87 @@ const PRISM_DR = 0.8;
 const PRISM_PEN_BUTTERFLY = 0.2;
 const PRISM_FRAMES = 35;
 const PRISM_FPS = 30;
+// Spectrum (officiel) : Blindage prismatique 10 s, recharge 180 s.
+// -90 % dégâts subis, -25 % dégâts laser infligés. Même visuel prismatique.
+// Spectrum Plus : Réflexion prismatique 8 s, recharge 180 s.
+// -70 % dégâts subis, 70 % réfléchis à chaque attaquant, -50 % infligés.
+const SPEC_DURATION = 10;
+const SPEC_COOLDOWN = 180;
+const SPEC_DR = 0.9;
+const SPEC_SELF_NERF = 0.25;
+const SPECPLUS_DURATION = 8;
+const SPECPLUS_COOLDOWN = 180;
+const SPECPLUS_DR = 0.7;
+const SPECPLUS_REFLECT = 0.7;
+const SPECPLUS_SELF_NERF = 0.5;
+// Tartarus : Tir rapide = balance directe 15 roquettes du lanceur actif
+// (gratuites, sans toucher stock ni chargeur). Plus : 30 roquettes +
+// overdrive +20 % dégâts lanceur pendant 3 s. Recharge 72 s les deux.
+// Speed Boost : toggle +30 % vitesse / -5 % laser (classique, CD 0),
+// +45 % / -25 % (Plus, 10 s entre on/off). Visuel speed_buff_effect, offset 24.
+const TART_RAPID_CD = 72;
+const TART_RAPIDPLUS_DURATION = 3;
+const TART_RAPIDPLUS_CD = 72;
+const TART_RAPIDPLUS_DMG = 0.2;
+const TART_BOOST_SPEED = 0.30;
+const TART_BOOST_NERF = 0.05;
+const TARTPLUS_BOOST_SPEED = 0.45;
+const TARTPLUS_BOOST_NERF = 0.25;
+const TARTPLUS_BOOST_SWITCH_CD = 10;
+const TARTPLUS_EXTRA_ROCKET = 0.2;
+// Tempest (custom) :
+// - Volt Back-up PASSIF (genre Paladin) : sprite VOLT_BACKUP en boucle quand
+//   prêt. À 0 HP : 1 HP + invincible 10 s (soin entre-temps = survie, sinon
+//   explosion), recharge 360 s. Actif : pas de sprite passif, contour
+//   arc-en-ciel + tremblement.
+// - Volt Discharge : +1 % dégâts laser par laser équipé (vaisseau + drones)
+//   pendant 20 s, recharge 60 s. Sprite VOLT_DISCHARGE en boucle.
+// - Voltage Link : chaîne jusqu'à 10 cibles, 50k −5 % par saut, stop 1 s
+//   (freezeT = image ICE comme R-IC3), lien bleu nuit entre maillons,
+//   LINK_STUN joué une fois par cible. CD 120 s.
+const TEMPEST_BACKUP_CD = 360;
+const TEMPEST_BACKUP_INVULN = 10;
+const TEMPEST_BACKUP_FRAMES = 60;
+const TEMPEST_BACKUP_FPS = 30;
+const TEMPEST_DISCH_CD = 60;
+const TEMPEST_DISCH_DURATION = 20;
+const TEMPEST_DISCH_FRAMES = 60;
+const TEMPEST_DISCH_FPS = 30;
+const TEMPEST_LINK_CD = 120;
+const TEMPEST_LINK_JUMPS = 10;
+const TEMPEST_LINK_DMG = 50000;
+const TEMPEST_LINK_DECAY = 0.95;
+const TEMPEST_LINK_STUN = 1;
+const TEMPEST_LINK_RADIUS = 660;
+const TEMPEST_LINK_FRAMES = 60;
+const TEMPEST_LINK_FPS = 30;
+const TEMPEST_LINK_BEAM_LIFE = 0.8;
+// Spearhead JAMX : brouille tout (capacités + extras) sauf déplacement et
+// tirs laser/roquettes, 500px, 3 s, recharge 180 s (wiki).
+// Spearhead Plus JAMX Creed : pareil en 1000px, 6 s, recharge 200 s (FAQ).
+// Champs génériques sur entité (NPC aujourd'hui, joueurs ennemis demain).
+const JAMX_CD = 180;
+const JAMX_RADIUS = 500;
+const JAMX_DURATION = 3;
+const CREED_CD = 200;
+const CREED_RADIUS = 1000;
+const CREED_DURATION = 6;
+const JAMX_SPR_FRAMES = 49;
+const JAMX_SPR_FPS = 30;
+// Target Marker (normal + Plus, identiques) : contour doré + pénétration
+// +10 % subie pendant 15 s, ralenti 10 % pendant 3 s. Recharge 360 s.
+// Neutralizing Marker (Plus) : contour blanc + modules neutralisés (mêmes
+// blocages que JAMX) pendant 3 s, ralenti 10 % pendant 3 s. Recharge 360 s.
+const MARK_CD = 360;
+const MARK_DURATION = 15;
+const MARK_SLOW = 3;
+const MARK_SLOW_PCT = 10;
+const MARK_PEN = 0.10;
+const NEUTR_CD = 360;
+const NEUTR_DURATION = 3;
+const NEUTR_SLOW_PCT = 10;
+const MARK_SPR_FRAMES = 24;
+const MARK_SPR_FPS = 30;
 // Affaiblissement (Diminisher, officiel) : +50 % de dégâts au bouclier
 // de la cible verrouillée. Contrecoup : -30 % de notre bouclier actuel
 // à l'expiration naturelle. Visuel : sprite joué par-dessus le vaisseau
@@ -1129,6 +1211,554 @@ const LIBREP_COOLDOWN = 100;
 const LIBREP_AMOUNT = 35000;
 const LIBREP_FRAMES = 18;
 const LIBREP_FPS = 30;
+// Solace / Solace Plus : même capacité, même sprite HEAL_EFFECT (18f, 100x100)
+// légèrement au-dessus du vaisseau. Instant, +x vert.
+// Solace : 35 % max HP, CD 90 s. Plus : 100 % max HP + boost vitesse 100 %
+// pendant 1 s (speed buff effect), CD 90 s.
+const SOLACE_PCT = 0.35;
+const SOLACE_COOLDOWN = 90;
+const SOLACE_PLUS_PCT = 1.0;
+const SOLACE_PLUS_COOLDOWN = 90;
+const SOLACE_PLUS_BOOST = 1.0;
+const SOLACE_FX_TIME = 1.0;
+function solHeal(pct) {
+  if (player.dead) return;
+  const old = Number(player.hp || 0);
+  player.hp = Math.min(Number(player.hpMax || 0), old + Number(player.hpMax || 0) * pct);
+  const gain = Math.round(Number(player.hp || 0) - old);
+  try {
+    addFloatText(
+      Number(player.x || 0) + (Math.random() - 0.5) * 60,
+      Number(player.y || 0) - 90 - Math.random() * 20,
+      gain, "rgba(80,255,125,0.98)",
+      { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+    );
+  } catch {}
+}
+function startSolCooldown() {
+  player.solCd = SOLACE_COOLDOWN;
+  persistCdUntil("sol", SOLACE_COOLDOWN);
+}
+function startSolPlusCooldown() {
+  player.solPlusCd = SOLACE_PLUS_COOLDOWN;
+  persistCdUntil("solPlus", SOLACE_PLUS_COOLDOWN);
+}
+function solFx() {
+  player.solFxT = SOLACE_FX_TIME;
+  try {
+    for (let i = 1; i <= LIBREP_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/HEAL_EFFECT/${i}.png`, { priority: true });
+    }
+  } catch {}
+}
+function activateSol() {
+  if (player.dead || !started) return;
+  if (tempestBackupHealBlocked()) return;
+  const cd = Number(player.solCd || 0);
+  if (cd > 0) {
+    showNotification(`Nano-réparateur : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  try { solHeal(SOLACE_PCT); } catch {}
+  solFx();
+  startSolCooldown();
+  showNotification("Nano-réparateur : +35 % HP", 2, "info");
+}
+function activateSolPlus() {
+  if (player.dead || !started) return;
+  if (tempestBackupHealBlocked()) return;
+  const cd = Number(player.solPlusCd || 0);
+  if (cd > 0) {
+    showNotification(`Nano-réparateur Plus : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  try { solHeal(SOLACE_PLUS_PCT); } catch {}
+  solFx();
+  player.solBoostT = SOLACE_PLUS_BOOST;
+  try {
+    for (let i = 1; i <= 3; i++) loadImage(`ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${i}.png`, { priority: true });
+  } catch {}
+  startSolPlusCooldown();
+  showNotification("Nano-réparateur Plus : +100 % HP, +100 % vitesse 1 s", 2, "info");
+}
+function drawFireRing(radius) {
+  // Cercle rond + un peu de glow, clignotant. Rien de plus.
+  const blink = 0.65 + 0.35 * Math.sin(performance.now() / 1000 * 6);
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.globalAlpha = 0.3 * blink;
+  ctx.strokeStyle = "rgba(255,110,25,1)";
+  ctx.lineWidth = 12;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, TAU);
+  ctx.stroke();
+  ctx.globalAlpha = 0.9 * blink;
+  ctx.strokeStyle = "rgba(255,170,60,1)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+// --- Solaris Incinerate officiel : 10 s, 10k dps dans 300 autour (100k).
+// Toggle (re-clic = arret + recharge). JAMX plus tard.
+// Solaris Plus : 15k dps dans 600 autour (150k), CD 80 s.
+const INC_DURATION = 10;
+const INC_COOLDOWN = 90;
+const INC_RADIUS = 300;
+const INC_DPS = 25000;
+const INC_PLUS_COOLDOWN = 80;
+const INC_PLUS_RADIUS = 600;
+const INC_PLUS_DPS = 50000;
+function incIsPlus() {
+  try {
+    if ((player.incPlusT || 0) > 0) return true;
+    return isSolarisPlusBase();
+  } catch { return false; }
+}
+function startIncCooldown() {
+  if (incIsPlus()) {
+    player.incPlusCd = INC_PLUS_COOLDOWN;
+    persistCdUntil("incPlus", INC_PLUS_COOLDOWN);
+  } else {
+    player.incCd = INC_COOLDOWN;
+    persistCdUntil("inc", INC_COOLDOWN);
+  }
+  player.incT = 0;
+  player.incPlusT = 0;
+  persistCdUntil("incFx", 0);
+}
+function cancelInc() {
+  if ((player.incT || 0) <= 0 && (player.incPlusT || 0) <= 0) return;
+  startIncCooldown();
+}
+function activateInc() {
+  if (player.dead || !started) return;
+  const plus = isSolarisPlusBase();
+  // Toggle : re-clic pendant l'effet = arrêt, la recharge démarre.
+  if ((player.incT || 0) > 0 || (player.incPlusT || 0) > 0) {
+    startIncCooldown();
+    showNotification("Incinération coupée", 1.5, "info");
+    return;
+  }
+  const cd = Number((plus ? player.incPlusCd : player.incCd) || 0);
+  if (cd > 0) {
+    showNotification(`Incinération : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if (plus) player.incPlusT = INC_DURATION;
+  else player.incT = INC_DURATION;
+  player.incAcc = 0;
+  persistCdUntil("incFx", INC_DURATION);
+  showNotification(plus ? "Halo 800" : "Halo 600", 2.5, "info");
+}
+// Tient un NPC : attaques coupees + aspire en orbite autour de nous.
+function incBurn() {
+  // 10k (300) ou 15k (600) par seconde a TOUS les ennemis autour.
+  const plus = (player.incPlusT || 0) > 0;
+  const dmg = plus ? INC_PLUS_DPS : INC_DPS;
+  const r2 = (plus ? INC_PLUS_RADIUS : INC_RADIUS) ** 2;
+  for (const e of enemies) {
+    if (!e || !(e.hp > 0)) continue;
+    try {
+      if (dist2(player.x, player.y, e.x, e.y) > r2) continue;
+    } catch { continue; }
+    let out = null;
+    try { out = damageEnemy(e, dmg); } catch {}
+    if (out && (out.total || 0) > 0) {
+      try { queueVolleyFloat(e, out, volleySeq++, 1); } catch {}
+    }
+  }
+}
+// Sentinel Forteresse : +10 % du précédent (composé) au max ET au courant
+// pendant 10 s (~x2,6 total), shimmer officiel en boucle + son chaque seconde.
+// -30 % vitesse. Actif que si bouclier (shMax), cassé au changement de config.
+// Bonus max retiré à la fin (courant écrêté). Durée 10 s, recharge 180 s (à confirmer).
+const SENT_DURATION = 10;
+const SENT_COOLDOWN = 180;
+const SENT_STEP = 0.10;
+function startSentCooldown() {
+  player.sentCd = SENT_COOLDOWN;
+  persistCdUntil("sentFx", 0);
+  persistCdUntil("sent", SENT_COOLDOWN);
+}
+function sentRevert() {
+  // Retire le bonus max ajouté (le courant est écrêté).
+  const bonus = Math.max(0, Number(player.sentBonus || 0));
+  if (bonus > 0) {
+    player.shMax = Math.max(0, Number(player.shMax || 0) - bonus);
+    player.sh = Math.min(Number(player.sh || 0), Number(player.shMax || 0));
+    player.sentBonus = 0;
+  }
+}
+function cancelSent() {
+  if ((player.sentT || 0) <= 0) return;
+  player.sentT = 0;
+  sentRevert();
+  startSentCooldown();
+}
+function sentShieldTick() {
+  if (player.dead) return;
+  // +10 % du précédent (composé) au max ET au courant.
+  const add = Number(player.shMax || 0) * SENT_STEP;
+  player.shMax = Number(player.shMax || 0) + add;
+  player.sh = Math.min(Number(player.shMax || 0), Number(player.sh || 0) + add);
+  player.sentBonus = Number(player.sentBonus || 0) + add;
+  const gain = Math.round(add);
+  try {
+    addFloatText(
+      Number(player.x || 0) + (Math.random() - 0.5) * 60,
+      Number(player.y || 0) - 110 - Math.random() * 20,
+      gain, "rgba(70,180,255,0.98)",
+      { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+    );
+  } catch {}
+  // Shimmer officiel rejoué + son, chaque seconde.
+  try {
+    shieldShimmerT = 0;
+    ensureShieldShimmerLoaded();
+    SFX.play("shieldSelected");
+  } catch {}
+}
+function activateSent() {
+  if (player.dead || !started) return;
+  const cd = Number(player.sentCd || 0);
+  if (cd > 0) {
+    showNotification(`Forteresse : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.sentT || 0) > 0) return;
+  if (!(Number(player.shMax || 0) > 0)) {
+    showNotification("Forteresse : aucun bouclier équipé", 2.5, "error");
+    return;
+  }
+  player.sentT = SENT_DURATION;
+  player.sentAcc = 0;
+  player.sentBonus = 0;
+  try { player.sentCfg = getActiveConfigNo(); } catch { player.sentCfg = null; }
+  persistCdUntil("sentFx", SENT_DURATION);
+  showNotification("Forteresse active (10 s) : +10 % bouclier/s, -30 % vitesse", 2.5, "info");
+}
+// --- Spearhead : Recon (minimap x2, 30 s, CD 90 s).
+const RECON_DURATION = 30;
+const RECON_COOLDOWN = 90;
+function startReconCooldown() {
+  player.reconCd = RECON_COOLDOWN;
+  persistCdUntil("reconFx", 0);
+  persistCdUntil("recon", RECON_COOLDOWN);
+}
+function cancelRecon() {
+  if ((player.reconT || 0) <= 0) return;
+  player.reconT = 0;
+  startReconCooldown();
+}
+function activateRecon() {
+  if (player.dead || !started) return;
+  const cd = Number(player.reconCd || 0);
+  if (cd > 0) {
+    showNotification(`Recon : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.reconT || 0) > 0) return;
+  player.reconT = RECON_DURATION;
+  persistCdUntil("reconFx", RECON_DURATION);
+  showNotification("Recon actif (30 s) : minimap x2", 2, "info");
+}
+// Retiarus Charge Shot : charge (son RETIARUS_CHARGE, -50 % vitesse nous,
+// -25 % cible avec sprite ralenti, sprite ralenti sur nous aussi) puis RAYGUN
+// (36f 512x256) de nous à la cible : 100 % de sa vie. Une fois lancé,
+// inannulable sauf mort de la cible (JAMX plus tard).
+// CD 20 min base / 18 min Plus.
+const CHS_COOLDOWN = 1200;
+const CHS_PLUS_COOLDOWN = 1080;
+const CHS_FALLBACK = 3.0;
+const CHS_SELF_SLOW = 0.5;
+const CHS_PLUS_SELF_SLOW = 0.75;
+const CHS_TARGET_SLOW_PCT = 25;
+const RAYGUN_FRAMES = 36;
+const RAYGUN_FPS = 30;
+// Retiarus Supercharge (base) : +10 % vitesse pendant 10 s, sans visuel. CD 240 s.
+// Retiarus Plus Supercharge : +20 % vitesse pendant 10 s, sans visuel. CD 240 s.
+const SPC_DURATION = 10;
+const SPC_COOLDOWN = 240;
+const SPCP_DURATION = 10;
+const SPCP_COOLDOWN = 240;
+function startSpcCooldown() {
+  player.spcCd = SPC_COOLDOWN;
+  persistCdUntil("spcFx", 0);
+  persistCdUntil("spc", SPC_COOLDOWN);
+}
+function cancelSpc() {
+  if ((player.spcT || 0) <= 0) return;
+  player.spcT = 0;
+  startSpcCooldown();
+}
+function activateSpc() {
+  if (player.dead || !started) return;
+  const cd = Number(player.spcCd || 0);
+  if (cd > 0) {
+    showNotification(`Supercharge : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.spcT || 0) > 0) return;
+  player.spcT = SPC_DURATION;
+  persistCdUntil("spcFx", SPC_DURATION);
+  showNotification("Supercharge active (10 s) : +10 % vitesse", 2, "info");
+}
+function chsChargeDuration() {
+  try {
+    const d = Number(SFX.duration("retiarusCharge") || 0);
+    if (d > 0.5) return d;
+  } catch {}
+  return CHS_FALLBACK;
+}
+function startChsCooldown() {
+  // Recharge sur le slot utilisé : 20 min base, 18 min Plus.
+  if (player.chsPlus) {
+    player.chsPlusCd = CHS_PLUS_COOLDOWN;
+    persistCdUntil("chsPlus", CHS_PLUS_COOLDOWN);
+  } else {
+    player.chsCd = CHS_COOLDOWN;
+    persistCdUntil("chs", CHS_COOLDOWN);
+  }
+  player.chsPlus = false;
+  persistCdUntil("chsFx", 0);
+}
+function cancelChsCharge() {
+  // Charge interrompue (cible morte, mort, refresh) : pas de recharge.
+  player.chsPhase = null;
+  player.chsT = 0;
+  player.chsTarget = null;
+  player.chsPlus = false;
+  try { SFX.stop("retiarusCharge"); } catch {}
+}
+function activateChs(isPlus = false) {
+  if (player.dead || !started) return;
+  const cd = Number((isPlus ? player.chsPlusCd : player.chsCd) || 0);
+  if (cd > 0) {
+    showNotification(`Tir ${isPlus ? "super-" : ""}chargé : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if (player.chsPhase != null) return;
+  const t = Target.get();
+  if (!t || !(t.hp > 0)) {
+    showNotification(`Tir ${isPlus ? "super-" : ""}chargé : verrouille d'abord une cible`, 2, "info");
+    return;
+  }
+  // Pas de limite de portée : lock suffit, même à l'autre bout de la carte.
+  player.chsPhase = "charge";
+  player.chsPlus = !!isPlus;
+  player.chsTarget = t;
+  player.chsDur = chsChargeDuration();
+  player.chsT = player.chsDur;
+  player.angle = Math.atan2(t.y - player.y, t.x - player.x);
+  // Cible ralentie 25 % dès la charge (sprite ralenti, base comme Plus).
+  try {
+    t.rocketSlowPct = Math.max(Number(t.rocketSlowPct || 0), CHS_TARGET_SLOW_PCT);
+    t.rocketSlowT = Math.max(Number(t.rocketSlowT || 0), player.chsDur);
+  } catch {}
+  persistCdUntil("chsFx", player.chsDur + 5);
+  try { SFX.play("retiarusCharge", { cooldown: 0.05, cut: true }); } catch {}
+  try {
+    for (let i = 1; i <= RAYGUN_FRAMES; i++) {
+      loadImage(`COMBAT/RAYGUN/RAYGUN1/${i}.png`, { priority: true });
+      if (!isPlus) loadImage(`COMBAT/RAYGUN/RAYGUN2/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification(isPlus ? "Tir super-chargé en charge... (-25 % vitesse)" : "Tir chargé en charge... (-50 % vitesse)", 1.5, "info");
+}
+function activateChsPlus() { activateChs(true); }
+function startSpcPlusCooldown() {
+  player.spcPlusCd = SPCP_COOLDOWN;
+  persistCdUntil("spcPlusFx", 0);
+  persistCdUntil("spcPlus", SPCP_COOLDOWN);
+}
+function cancelSpcPlus() {
+  if ((player.spcPlusT || 0) <= 0) return;
+  player.spcPlusT = 0;
+  startSpcPlusCooldown();
+}
+function activateSpcPlus() {
+  if (player.dead || !started) return;
+  const cd = Number(player.spcPlusCd || 0);
+  if (cd > 0) {
+    showNotification(`Supercharge Plus : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.spcPlusT || 0) > 0) return;
+  player.spcPlusT = SPCP_DURATION;
+  persistCdUntil("spcPlusFx", SPCP_DURATION);
+  showNotification("Supercharge Plus active (10 s) : +20 % vitesse", 2, "info");
+}
+function fireChsBeam(t) {
+  if (!t || !(t.hp > 0) || player.dead) return false;
+  player.angle = Math.atan2(t.y - player.y, t.x - player.x);
+  // Rayon instantané joué depuis notre vaisseau vers la cible (pas un projectile).
+  // Base : RAYGUN1 + RAYGUN2. Plus : RAYGUN1 doublé.
+  player.chsRayT = RAYGUN_FRAMES / RAYGUN_FPS;
+  player.chsRayFolders = player.chsPlus ? ["RAYGUN1", "RAYGUN1"] : ["RAYGUN1", "RAYGUN2"];
+  player.chsRayX0 = Number(player.x || 0);
+  player.chsRayY0 = Number(player.y || 0);
+  player.chsRayX1 = Number(t.x || 0);
+  player.chsRayY1 = Number(t.y || 0);
+  player.chsPhase = null;
+  player.chsTarget = null;
+  try { SFX.stop("retiarusCharge"); } catch {}
+  // 1x le son du X4, le même.
+  try { playPlayerShot("x4"); } catch {}
+  breakPoliceCloak();
+  player.combatT = 5.0;
+  // 100 % de la vie de la cible : one-shot (seul le passif Paladin survit).
+  // +10 % de marge : la variance de ±5 % des dégâts ne doit jamais le rater.
+  const dmg = Math.round((Number(t.sh || 0) + Number(t.hp || 0)) * 1.1);
+  let out = null;
+  try { out = damageEnemy(t, dmg, 1.0); } catch {}
+  if (out && (out.total || 0) > 0) {
+    try { queueVolleyFloat(t, out, volleySeq++, 1); } catch {}
+  }
+  startChsCooldown();
+  showNotification("Tir chargé : 100 % de la vie de la cible !", 1.5, "info");
+  return true;
+}
+// Pusat Plus Speed Sap : -10 % vitesse cible (sprite ralenti SLOW_EFFECT sur
+// elle via le circuit rocketSlow) et +10 % vitesse nous (sans visuel).
+// Durée 10 s, recharge 60 s.
+const SAP_DURATION = 10;
+const SAP_COOLDOWN = 60;
+const SAP_SLOW_PCT = 10;
+const SAP_SPEED_PCT = 0.10;
+function startSapCooldown() {
+  player.sapCd = SAP_COOLDOWN;
+  player.sapTarget = null;
+  persistCdUntil("sapFx", 0);
+  persistCdUntil("sap", SAP_COOLDOWN);
+}
+function cancelSap() {
+  if ((player.sapT || 0) <= 0) return;
+  player.sapT = 0;
+  player.sapTarget = null;
+  startSapCooldown();
+}
+function activateSap() {
+  if (player.dead || !started) return;
+  const cd = Number(player.sapCd || 0);
+  if (cd > 0) {
+    showNotification(`Siphon vitesse : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.sapT || 0) > 0) return;
+  const t = Target.get();
+  if (!t || !(t.hp > 0)) {
+    showNotification("Siphon vitesse : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  const d2 = dist2(player.x, player.y, t.x, t.y);
+  if (d2 > playerRange * playerRange) {
+    showNotification("Cible hors de portée.", 1.5, "error");
+    return;
+  }
+  player.sapTarget = t;
+  player.sapT = SAP_DURATION;
+  try {
+    t.rocketSlowPct = Math.max(Number(t.rocketSlowPct || 0), SAP_SLOW_PCT);
+    t.rocketSlowT = Math.max(Number(t.rocketSlowT || 0), SAP_DURATION);
+  } catch {}
+  persistCdUntil("sapFx", SAP_DURATION);
+  showNotification("Siphon vitesse actif (10 s) : cible -10 %, nous +10 %", 2.5, "info");
+}
+// Paladin Last Stand (passif, toujours actif sur coque Paladin) : effect
+// 250px en boucle ; au déclenchement (1 PV) : LAST_STAND 400px une fois,
+// full heal +x max. CD 600 s.
+const LASTSTAND_COOLDOWN = 600;
+const LASTSTAND_FRAMES = 50;
+const LASTSTAND_FPS = 30;
+const LASTSTAND_FX_FRAMES = 40;
+const LASTSTAND_FX_FPS = 30;
+// Paladin Ripper : 3 s, halo jaune 600 de rayon (le sprite est moche),
+// 10k +300 % laser/s à tous dedans, -50 % dégâts subis pendant. CD 60 s.
+const RIPPER_DURATION = 3;
+const RIPPER_COOLDOWN = 60;
+const RIPPER_RADIUS = 600;
+const RIPPER_FLAT = 10000;
+const RIPPER_LASER_PCT = 3.0;
+const RIPPER_DR = 0.5;
+const RIPPER_FRAMES = 85;
+const RIPPER_FPS = 30;
+function isPaladinHull() {
+  try { return String(playerHullBaseId() || "").toLowerCase() === "paladin"; }
+  catch { return false; }
+}
+function startRipperCooldown() {
+  player.ripperCd = RIPPER_COOLDOWN;
+  persistCdUntil("ripperFx", 0);
+  persistCdUntil("ripper", RIPPER_COOLDOWN);
+}
+function cancelRipper() {
+  if ((player.ripperT || 0) <= 0) return;
+  player.ripperT = 0;
+  startRipperCooldown();
+}
+function activateRipper() {
+  if (player.dead || !started) return;
+  const cd = Number(player.ripperCd || 0);
+  if (cd > 0) {
+    showNotification(`Éventreur : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.ripperT || 0) > 0) return;
+  player.ripperT = RIPPER_DURATION;
+  player.ripperAcc = 0;
+  persistCdUntil("ripperFx", RIPPER_DURATION);
+  try {
+    for (let i = 1; i <= RIPPER_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/PALADIN_RIPPER/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Éventreur actif (3 s) : 10k +300 % laser/s dans 600, -50 % subis", 2.5, "info");
+}
+function ripperTick() {
+  // 10k + 300 % de nos dégâts laser de base, à TOUS les ennemis dans 600.
+  const dmg = Math.round(RIPPER_FLAT + Number(player.baseDamage || 0) * RIPPER_LASER_PCT);
+  const r2 = RIPPER_RADIUS * RIPPER_RADIUS;
+  for (const e of enemies) {
+    if (!e || !(e.hp > 0)) continue;
+    try {
+      if (dist2(player.x, player.y, e.x, e.y) > r2) continue;
+    } catch { continue; }
+    let out = null;
+    try { out = damageEnemy(e, dmg); } catch {}
+    if (out && (out.total || 0) > 0) {
+      try { queueVolleyFloat(e, out, volleySeq++, 1); } catch {}
+    }
+  }
+}
+// Dernier rempart : intercepte TOUTES les morts (lasers, kamikaze, radiation...).
+// À 1 PV : full heal +x max, anim LAST_STAND une fois, effect repris après.
+function tryLastStand() {
+  if (player.dead) return false;
+  if (!isPaladinHull()) return false;
+  if (Number(player.lastStandCd || 0) > 0) return false;
+  player.hp = Number(player.hpMax || 0);
+  player.lastStandAnimT = LASTSTAND_FRAMES / LASTSTAND_FPS;
+  player.lastStandCd = LASTSTAND_COOLDOWN;
+  // Effect coupé jusqu'à la fin de la recharge (revient tout seul à 600 s).
+  player.lastStandFxOff = true;
+  persistCdUntil("lastStand", LASTSTAND_COOLDOWN);
+  try {
+    for (let i = 1; i <= LASTSTAND_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/PALADIN_LAST_STAND/${i}.png`, { priority: true });
+    }
+  } catch {}
+  try {
+    addFloatText(
+      Number(player.x || 0), Number(player.y || 0) - 90,
+      Number(player.hpMax || 0), "rgba(80,255,125,0.98)",
+      { text: `+${DMG_FMT.format(Math.round(Number(player.hpMax || 0)))}`, size: 24, pop: 0.3, shake: 0.6, life: 1.2, glow: 1, weight: 900, impact: true },
+    );
+  } catch {}
+  showNotification("Dernier rempart : coque restaurée !", 2.5, "info");
+  return true;
+}
 // Orcus Assimilate : 80 % de TOUS les dégâts reçus (NPC + joueurs) convertis
 // en PV (+x verts). Sprite ORCUS_ASSIMILATE (42 frames) par-dessus nous.
 // JAMX branché plus tard (avec Spearhead). Durée 20 s, recharge 540 s.
@@ -1577,17 +2207,677 @@ function activatePrism() {
   } catch {}
   showNotification("Endurance prismatique active (25 s) : -80 % dégâts, pénétration annulée", 2.5, "info");
 }
+// --- Spectrum : Blindage prismatique (officiel) : 10 s, recharge 180 s.
+// -90 % dégâts subis, -25 % dégâts laser infligés. Même visuel prismatique.
+function startSpecCooldown() {
+  player.specCd = SPEC_COOLDOWN;
+  persistCdUntil("specFx", 0);
+  persistCdUntil("spec", SPEC_COOLDOWN);
+}
+function cancelSpec() {
+  if ((player.specT || 0) <= 0) return;
+  player.specT = 0;
+  startSpecCooldown();
+}
+function activateSpec() {
+  if (player.dead || !started) return;
+  const cd = Number(player.specCd || 0);
+  if (cd > 0) {
+    showNotification(`Blindage prismatique : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.specT || 0) > 0) return;
+  player.specT = SPEC_DURATION;
+  persistCdUntil("specFx", SPEC_DURATION);
+  try {
+    for (let i = 1; i <= PRISM_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/SPECTRUM_PRISMATIC_SHIELDING/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Blindage prismatique actif (10 s) : -90 % dégâts subis, -25 % infligés", 2.5, "info");
+}
+// --- Spectrum Plus : Réflexion prismatique : 8 s, recharge 180 s.
+// -70 % dégâts subis, 70 % réfléchis à chaque attaquant, -50 % infligés.
+function startSpecPlusCooldown() {
+  player.specPlusCd = SPECPLUS_COOLDOWN;
+  persistCdUntil("specPlusFx", 0);
+  persistCdUntil("specPlus", SPECPLUS_COOLDOWN);
+}
+function cancelSpecPlus() {
+  if ((player.specPlusT || 0) <= 0) return;
+  player.specPlusT = 0;
+  startSpecPlusCooldown();
+}
+function activateSpecPlus() {
+  if (player.dead || !started) return;
+  const cd = Number(player.specPlusCd || 0);
+  if (cd > 0) {
+    showNotification(`Réflexion prismatique : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.specPlusT || 0) > 0) return;
+  player.specPlusT = SPECPLUS_DURATION;
+  persistCdUntil("specPlusFx", SPECPLUS_DURATION);
+  try {
+    for (let i = 1; i <= PRISM_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/SPECTRUM_PRISMATIC_SHIELDING/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Réflexion prismatique active (8 s) : -70 % subis, 70 % réfléchis, -50 % infligés", 2.5, "info");
+}
+// Malus de dégâts laser pendant Spectrum / Spectrum Plus (officiel).
+function specDamageMult() {
+  if (player.dead) return 1;
+  if ((player.specPlusT || 0) > 0) return 1 - SPECPLUS_SELF_NERF;
+  if ((player.specT || 0) > 0) return 1 - SPEC_SELF_NERF;
+  return 1;
+}
+// --- Tartarus / Tartarus Plus.
+// Tir rapide : refill instant du chargeur lance-roquettes au max (2 salves
+// d'affilée). Plus : overdrive +20 % dégâts lanceur pendant 3 s.
+// Speed Boost : toggle de vitesse (+ laser nerf), visuel speed_buff_effect.
+function isTartarusPlusBase() {
+  try {
+    const hangar = getActiveHangarFromUser(account?.user);
+    const raw = String(hangar?.shipId || "").toLowerCase();
+    return String(getShipDesignBaseId(raw) || raw).toLowerCase() === "tartarus_plus";
+  } catch { return false; }
+}
+function tartFireBurst(count) {
+  // Salve d'aptitude : N roquettes du lanceur actif sur la cible verrouillée,
+  // gratuites (sans toucher le stock ni le chargeur), jamais MISS, départ
+  // échelonné 1 toutes les 100 ms via la file (tick). Homing comme les salves.
+  if (player.dead || !started) return false;
+  const t = Target.get();
+  if (!t || !(t.hp > 0)) {
+    showNotification("Tir rapide : verrouille d'abord une cible", 2, "info");
+    return false;
+  }
+  if (dist2(player.x, player.y, t.x, t.y) > playerRange * playerRange) {
+    showNotification("Cible hors de portée.", 1.5, "error");
+    return false;
+  }
+  const id = String(player.launcherActive || "eco10").toLowerCase();
+  const rocket = getRocketType(id);
+  if (!rocket || rocket.manual !== false) return false;
+  player.angle = Math.atan2(t.y - player.y, t.x - player.x);
+  player.combatT = 5.0;
+  markProgressDirty();
+  breakPoliceCloak();
+  const volleyId = volleySeq++;
+  for (let i = 0; i < count; i++) {
+    tartBurstQueue.push({ rocket, target: t, volleyId, volleySize: count, index: i, total: count });
+  }
+  return true;
+}
+// File des roquettes d'aptitude : 1 départ toutes les 100 ms.
+let tartBurstQueue = [];
+let tartBurstAcc = 0;
+function tickTartBurstQueue(dt) {
+  if (!tartBurstQueue.length) {
+    tartBurstAcc = 0;
+    return;
+  }
+  if (player.dead || !started) {
+    tartBurstQueue.length = 0;
+    tartBurstAcc = 0;
+    return;
+  }
+  tartBurstAcc += dt;
+  while (tartBurstAcc >= 0.1 && tartBurstQueue.length) {
+    tartBurstAcc -= 0.1;
+    const entry = tartBurstQueue.shift();
+    const t = entry.target;
+    if (!t || !(t.hp > 0)) continue;
+    SFX.play("sfx_shot_lance_roquettes");
+    const i = entry.index, count = entry.total;
+    const dirSign = i % 2 === 0 ? -1 : 1;
+    const scale = 1.8 + 1.2 * (count > 1 ? i / (count - 1) : 0.5);
+    spawnRocketProjectile(entry.rocket, t, { spread: (i - (count - 1) / 2) * 0.08, volleyId: entry.volleyId, volleySize: count, arcDir: dirSign, arcScale: scale, arcBoost: 15, miss: false });
+  }
+}
+function startTartRapidCooldown() {
+  player.tartRapidCd = TART_RAPID_CD;
+  persistCdUntil("tartRapid", TART_RAPID_CD);
+}
+function activateTartRapid() {
+  if (player.dead || !started) return;
+  const cd = Number(player.tartRapidCd || 0);
+  if (cd > 0) {
+    showNotification(`Tir rapide : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if (!tartFireBurst(15)) return;
+  startTartRapidCooldown();
+  showNotification("Tir rapide : 15 roquettes !", 2.5, "info");
+}
+function startTartRapidPlusCooldown() {
+  player.tartRapidPlusCd = TART_RAPIDPLUS_CD;
+  persistCdUntil("tartRapidPlusFx", 0);
+  persistCdUntil("tartRapidPlus", TART_RAPIDPLUS_CD);
+}
+function cancelTartRapidPlus() {
+  if ((player.tartRapidPlusT || 0) <= 0) return;
+  player.tartRapidPlusT = 0;
+  startTartRapidPlusCooldown();
+}
+function activateTartRapidPlus() {
+  if (player.dead || !started) return;
+  const cd = Number(player.tartRapidPlusCd || 0);
+  if (cd > 0) {
+    showNotification(`Tir rapide Plus : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.tartRapidPlusT || 0) > 0) return;
+  player.tartRapidPlusT = TART_RAPIDPLUS_DURATION;
+  persistCdUntil("tartRapidPlusFx", TART_RAPIDPLUS_DURATION);
+  if (!tartFireBurst(30)) {
+    player.tartRapidPlusT = 0;
+    persistCdUntil("tartRapidPlusFx", 0);
+    return;
+  }
+  showNotification("Tir rapide Plus : 30 roquettes + overdrive +20 % (3 s)", 2.5, "info");
+}
+// Overdrive +20 % dégâts du lance-roquettes pendant Tir rapide Plus.
+function tartLauncherDmgMult(isLauncherRocket) {
+  if (!isLauncherRocket) return 1;
+  if (player.dead) return 1;
+  if ((player.tartRapidPlusT || 0) > 0) return 1 + TART_RAPIDPLUS_DMG;
+  return 1;
+}
+// Malus laser des Speed Boost Tartarus (toggle).
+function tartBoostLaserMult() {
+  if (player.dead) return 1;
+  if (player.tartPlusBoostOn === true) return 1 - TARTPLUS_BOOST_NERF;
+  if (player.tartBoostOn === true) return 1 - TART_BOOST_NERF;
+  return 1;
+}
+function activateTartBoost() {
+  if (player.dead || !started) return;
+  player.tartBoostOn = player.tartBoostOn !== true;
+  if (player.tartBoostOn === true) {
+    player.tartBoostElapsed = 0;
+    try {
+      for (let i = 1; i <= 3; i++) loadImage(`ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${i}.png`, { priority: true });
+    } catch {}
+    showNotification("Boost vitesse actif : +30 % vitesse, -5 % laser (re-clic pour couper)", 2.5, "info");
+  } else {
+    showNotification("Boost vitesse coupé", 2, "info");
+  }
+}
+function activateTartPlusBoost() {
+  if (player.dead || !started) return;
+  // OFF toujours possible (même sous switch) : seul le ON est bloqué par le CD.
+  const turningOn = player.tartPlusBoostOn !== true;
+  if (turningOn) {
+    const cd = Number(player.tartPlusBoostCd || 0);
+    if (cd > 0) {
+      showNotification(`Boost vitesse Plus : recharge ${formatAbilityCd(cd)}`, 2, "info");
+      return;
+    }
+  }
+  player.tartPlusBoostOn = player.tartPlusBoostOn !== true;
+  player.tartPlusBoostCd = TARTPLUS_BOOST_SWITCH_CD;
+  persistCdUntil("tartPlusBoost", TARTPLUS_BOOST_SWITCH_CD);
+  if (player.tartPlusBoostOn === true) {
+    player.tartPlusBoostElapsed = 0;
+    try {
+      for (let i = 1; i <= 3; i++) loadImage(`ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${i}.png`, { priority: true });
+    } catch {}
+    showNotification("Boost vitesse Plus actif : +45 % vitesse, -25 % laser (re-clic pour couper)", 2.5, "info");
+  } else {
+    showNotification("Boost vitesse Plus coupé", 2, "info");
+  }
+}
+function isTempestHull() {
+  try { return String(playerHullBaseId() || "").toLowerCase() === "tempest"; }
+  catch { return false; }
+}
+// Volt Back-up actif : aucune réparation coque sur nous (sinon trop facile).
+// Blocage aux activations (notif, pas de CD consommé) + aux effets (silencieux).
+function tempestBackupHealBlocked() {
+  if ((player.tempestBackupT || 0) <= 0) return false;
+  showNotification("Réparation impossible sous Volt Back-up", 2, "error");
+  return true;
+}
+// --- Volt Back-up (passif, genre Dernier rempart) : intercepte la mort.
+// À 0 HP : 1 HP + invincible 10 s. Soigné entre-temps (HP > 1) = survie,
+// sinon explosion à la fin. Recharge 360 s, sprite passif éteint pendant.
+function startTempestBackupCooldown() {
+  player.tempestBackupCd = TEMPEST_BACKUP_CD;
+  persistCdUntil("tempestBackupFx", 0);
+  persistCdUntil("tempestBackup", TEMPEST_BACKUP_CD);
+}
+function cancelTempestBackup() {
+  if ((player.tempestBackupT || 0) <= 0) return;
+  player.tempestBackupT = 0;
+  startTempestBackupCooldown();
+}
+function tryTempestBackup() {
+  if (player.dead) return false;
+  if (!isTempestHull()) return false;
+  if (Number(player.tempestBackupCd || 0) > 0) return false;
+  if ((player.tempestBackupT || 0) > 0) return false;
+  player.hp = 1;
+  player.tempestBackupT = TEMPEST_BACKUP_INVULN;
+  player.invincibleT = Math.max(Number(player.invincibleT || 0), TEMPEST_BACKUP_INVULN);
+  player.tempestBackupCd = TEMPEST_BACKUP_CD;
+  persistCdUntil("tempestBackupFx", TEMPEST_BACKUP_INVULN);
+  persistCdUntil("tempestBackup", TEMPEST_BACKUP_CD);
+  try {
+    for (let i = 1; i <= TEMPEST_BACKUP_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/TEMPEST_VOLT_BACKUP/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Volt Back-up : invincible 10 s — soigne-toi vite !", 3, "info");
+  return true;
+}
+// --- Volt Discharge : +1 % laser par laser équipé (vaisseau + drones).
+function tempestDischargeMult() {
+  if (player.dead) return 1;
+  if ((player.tempestDischT || 0) > 0) return 1 + Number(player.tempestDischPct || 0);
+  return 1;
+}
+function startTempestDischCooldown() {
+  player.tempestDischCd = TEMPEST_DISCH_CD;
+  persistCdUntil("tempestDischFx", 0);
+  persistCdUntil("tempestDisch", TEMPEST_DISCH_CD);
+}
+function cancelTempestDisch() {
+  if ((player.tempestDischT || 0) <= 0) return;
+  player.tempestDischT = 0;
+  startTempestDischCooldown();
+}
+function activateTempestDisch() {
+  if (player.dead || !started) return;
+  const cd = Number(player.tempestDischCd || 0);
+  if (cd > 0) {
+    showNotification(`Décharge volt : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.tempestDischT || 0) > 0) return;
+  const n = countPlayerLasers();
+  player.tempestDischPct = n * 0.01;
+  player.tempestDischT = TEMPEST_DISCH_DURATION;
+  persistCdUntil("tempestDischFx", TEMPEST_DISCH_DURATION);
+  try {
+    for (let i = 1; i <= TEMPEST_DISCH_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/TEMPEST_VOLT_DISCHARGE/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification(`Décharge volt active (20 s) : +${n} % dégâts laser (${n} canons)`, 2.5, "info");
+}
+// --- Voltage Link : chaîne jusqu'à 10 cibles, 50k −5 % par saut, stop 1 s.
+// Lien bleu nuit entre maillons, LINK_STUN une fois par cible.
+function startTempestLinkCooldown() {
+  player.tempestLinkCd = TEMPEST_LINK_CD;
+  persistCdUntil("tempestLink", TEMPEST_LINK_CD);
+}
+function activateTempestLink() {
+  if (player.dead || !started) return;
+  const cd = Number(player.tempestLinkCd || 0);
+  if (cd > 0) {
+    showNotification(`Lien volt : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  const t = Target.get();
+  if (!t || !(t.hp > 0)) {
+    showNotification("Lien volt : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  if (dist2(player.x, player.y, t.x, t.y) > playerRange * playerRange) {
+    showNotification("Cible hors de portée.", 1.5, "error");
+    return;
+  }
+  try {
+    for (let i = 1; i <= TEMPEST_LINK_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/TEMPEST_VOLTAGE_LINK_STUN/${i}.png`, { priority: true });
+    }
+  } catch {}
+  const now = performance.now() / 1000;
+  if (!Array.isArray(player.tempestLinkFx)) player.tempestLinkFx = [];
+  if (!Array.isArray(player.tempestLinkBeams)) player.tempestLinkBeams = [];
+  const hit = new Set();
+  let current = t;
+  let prev = player;
+  let dmg = TEMPEST_LINK_DMG;
+  let radius = TEMPEST_LINK_RADIUS;
+  let n = 0;
+  while (current && !(hit.has(current)) && n < TEMPEST_LINK_JUMPS) {
+    if (!(current.hp > 0)) break;
+    hit.add(current);
+    n++;
+    const rdmg = Math.max(1, Math.round(dmg));
+    let out = null;
+    try { out = damageEnemy(current, rdmg); } catch {}
+    if (out && (out.total || 0) > 0) {
+      try { queueVolleyFloat(current, out, volleySeq++, 1); } catch {}
+    }
+    // Stop 1 s : image ICE officielle comme les R-IC3 (via drawRocketDebuffEffect).
+    try { current.freezeT = Math.max(Number(current.freezeT || 0), TEMPEST_LINK_STUN); } catch {}
+    player.tempestLinkFx.push({ target: current, start: now });
+    player.tempestLinkBeams.push({ a: prev, b: current, until: now + TEMPEST_LINK_BEAM_LIFE });
+    dmg *= TEMPEST_LINK_DECAY;
+    prev = current;
+    current = nearestTempestLinkNext(prev, hit, radius);
+  }
+  startTempestLinkCooldown();
+  showNotification(n > 1 ? `Lien volt : ${n} cibles enchaînées !` : "Lien volt : cible frappée", 2.5, "info");
+}
+// --- Zephyr MMT : distance d'attaque x2 pendant 10 s (portée 700 -> 1400).
+// Via stockUpdateRange : lasers, roquettes, salves, aptitudes et HUD suivent.
+function startMmtCooldown() {
+  player.mmtCd = MMT_COOLDOWN;
+  persistCdUntil("mmtFx", 0);
+  persistCdUntil("mmt", MMT_COOLDOWN);
+}
+function cancelMmt() {
+  if ((player.mmtT || 0) <= 0) return;
+  player.mmtT = 0;
+  try { stockUpdateRange(); } catch {}
+  startMmtCooldown();
+}
+function activateMmt() {
+  if (player.dead || !started) return;
+  const cd = Number(player.mmtCd || 0);
+  if (cd > 0) {
+    showNotification(`MMT : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.mmtT || 0) > 0) return;
+  player.mmtT = MMT_DURATION;
+  persistCdUntil("mmtFx", MMT_DURATION);
+  try { stockUpdateRange(); } catch {}
+  showNotification("MMT actif (10 s) : distance d'attaque x2", 2.5, "info");
+}
+// PET apte aux clones TBR : possédé, actif, vivant, prêt, joueur en vie.
+function tbrPetOk() {
+  const pet = account.user?.pet;
+  return !!(pet?.owned && pet?.active === true && Number(pet.hp) > 0 && petState.ready && !player.dead && started);
+}
+function startTbrCooldown() {
+  player.tbrCd = TBR_COOLDOWN;
+  player.tbrT = 0;
+  player.tbrClones = [];
+  persistCdUntil("tbrFx", 0);
+  persistCdUntil("tbr", TBR_COOLDOWN);
+}
+function cancelTbr() {
+  if ((player.tbrT || 0) <= 0 && !(Array.isArray(player.tbrClones) && player.tbrClones.length)) return;
+  player.tbrT = 0;
+  player.tbrClones = [];
+  startTbrCooldown();
+}
+// Fin liée : les clones explosent avec le PET (ou disparaissent en fin normale).
+function endTbrLinked(destroyFx) {
+  const clones = Array.isArray(player.tbrClones) ? player.tbrClones : [];
+  if (destroyFx) {
+    for (const c of clones) {
+      try { spawnExplosion(Number(c.x || 0), Number(c.y || 0), 0.35); } catch {}
+    }
+    try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
+  }
+  player.tbrT = 0;
+  player.tbrClones = [];
+  startTbrCooldown();
+}
+function activateTbr() {
+  if (player.dead || !started) return;
+  const cd = Number(player.tbrCd || 0);
+  if (cd > 0) {
+    showNotification(`Triple barrage : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.tbrT || 0) > 0) return;
+  if (!tbrPetOk()) {
+    showNotification("Triple barrage : active d'abord ton PET (vivant)", 2, "info");
+    return;
+  }
+  const pet = account.user.pet;
+  let hpMax = Number(pet.hp) || 1;
+  try { hpMax = Math.max(1, Math.round(Number(petMaxHpWithHeat(pet)) || hpMax)); } catch {}
+  player.tbrClones = [0, 1].map((i) => ({
+    id: `tbr${i}`,
+    x: Number(player.x || 0) + (i === 0 ? -150 : 150),
+    y: Number(player.y || 0) + 90,
+    angle: Number(player.angle || 0),
+    hp: Number(pet.hp) || 1,
+    hpMax,
+    fireCd: 0.5 + i * 0.5,
+  }));
+  player.tbrT = TBR_DURATION;
+  persistCdUntil("tbrFx", TBR_DURATION);
+  showNotification("Triple barrage : 2 clones PET (60 s) !", 2.5, "info");
+}
+// Tir d'un clone : mêmes dégâts/précision que le PET, depuis sa position.
+// Pas de conso munitions (l'original consomme déjà pour lui).
+function tbrCloneFire(c) {
+  const pet = account.user?.pet;
+  const tgt = petState.target;
+  if (!tgt || !(tgt.hp > 0)) return;
+  try { if (!enemies.includes(tgt)) return; } catch { return; }
+  if (dist2(c.x, c.y, tgt.x, tgt.y) > 305 * 305) return;
+  const { total } = petVolleyDamage(pet, account.user, tgt);
+  if (!(total > 0)) return;
+  let ammoKey = player.ammo.active || "x1";
+  // SAB/CBO : effet drain sans destinataire clone → tir X1 simple.
+  if (ammoKey === "sab" || ammoKey === "cbo") ammoKey = "x1";
+  const ammoCfg = AMMO[ammoKey] || AMMO.x1;
+  const angle = Math.atan2(tgt.y - c.y, tgt.x - c.x);
+  c.angle = angle;
+  const speed = Math.max(900, Number(BASE_RUN.baseBulletSpeed) || 4000);
+  const stage = getPetStage(getPetLevel(pet?.exp));
+  const shots = stage >= 4 ? [-SIDE_OFFSET, SIDE_OFFSET] : [0];
+  const volleyId = volleySeq++;
+  const perShot = (total * (ammoCfg.mult || 1)) / shots.length;
+  const life = bulletLifeForRange(playerRange, speed);
+  const perp = angle + Math.PI / 2;
+  for (const off of shots) {
+    const sx = c.x + Math.cos(angle) * 50 + Math.cos(perp) * off;
+    const sy = c.y + Math.sin(angle) * 50 + Math.sin(perp) * off;
+    const dx = tgt.x - sx, dy = tgt.y - sy;
+    const len = Math.hypot(dx, dy) || 1;
+    addCappedProjectile(bullets, {
+      x: sx, y: sy, vx: dx / len * speed, vy: dy / len * speed, spd: speed,
+      r: 6, life, dmg: perShot,
+      key: ammoKey, side: "player", targetId: tgt.id, homing: true,
+      isSab: false,
+      miss: Math.random() < petMissChance(pet, account.user),
+      ownerEscortId: c.id, volleyId, volleySize: shots.length,
+    }, ENTITY_LIMITS.playerBullets);
+  }
+  playEscortShot(ammoKey);
+}
+function nearestTempestLinkNext(from, hit, radius) {
+  let best = null;
+  let bestD2 = radius * radius;
+  try {
+    for (const e of enemies) {
+      if (!e || !(e.hp > 0) || hit.has(e)) continue;
+      if (e.isPetTarget) continue;
+      const d2 = dist2(from.x, from.y, e.x, e.y);
+      if (d2 <= bestD2) {
+        // Premier candidat dans le rayon, sinon le plus proche.
+        best = e;
+        bestD2 = d2;
+      }
+    }
+  } catch {}
+  return best;
+}
+// Brouillage JAMX/Creed/Neutralizing : bloque capacités + extras, jamais
+// déplacement ni tirs laser/roquettes. Champs génériques sur entité
+// (NPC + futurs joueurs).
+function isEntityJammed(e) {
+  try { return ((e.jamxT || 0) > 0) || ((e.creedT || 0) > 0) || ((e.neutrT || 0) > 0); }
+  catch { return false; }
+}
+// Applique le brouillage aux ennemis dans le rayon + purge leurs capacités
+// en cours (spawn cubikon, renforts onKill). Retourne le nombre touché.
+function applyJamxToEnemies(radius, dur, isCreed) {
+  const r2 = radius * radius;
+  let n = 0;
+  for (const e of enemies) {
+    if (!e || !(e.hp > 0)) continue;
+    try { if (dist2(player.x, player.y, e.x, e.y) > r2) continue; } catch { continue; }
+    if (isCreed) e.creedT = Math.max(Number(e.creedT || 0), dur);
+    else e.jamxT = Math.max(Number(e.jamxT || 0), dur);
+    try { e._pendingSpawn = 0; e._animPhase = null; } catch {}
+    try { e._onKill = null; } catch {}
+    n++;
+  }
+  return n;
+}
+// Halo arc-en-ciel expansif au cast (liste animée dans le tick aptitudes).
+function jamxHalo(radius) {
+  if (!Array.isArray(player.jamxHalos)) player.jamxHalos = [];
+  player.jamxHalos.push({ x: Number(player.x || 0), y: Number(player.y || 0), r: 40, max: radius });
+  try {
+    for (let i = 1; i <= JAMX_SPR_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/SPEARHEAD_PLUS_JAMX_CREED_REVERSAL_IMMUNITY/${i}.png`, { priority: true });
+    }
+  } catch {}
+}
+function startJamxCooldown() {
+  player.jamxCd = JAMX_CD;
+  persistCdUntil("jamx", JAMX_CD);
+}
+function activateJamx() {
+  if (player.dead || !started) return;
+  const cd = Number(player.jamxCd || 0);
+  if (cd > 0) {
+    showNotification(`JAMX : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  const n = applyJamxToEnemies(JAMX_RADIUS, JAMX_DURATION, false);
+  jamxHalo(JAMX_RADIUS);
+  startJamxCooldown();
+  showNotification(n > 0 ? `JAMX : ${n} vaisseau${n > 1 ? "x" : ""} brouillé${n > 1 ? "s" : ""} (3 s)` : "JAMX : personne à portée (500)", 2.5, "info");
+}
+function startCreedCooldown() {
+  player.creedCd = CREED_CD;
+  persistCdUntil("creed", CREED_CD);
+}
+function activateCreed() {
+  if (player.dead || !started) return;
+  const cd = Number(player.creedCd || 0);
+  if (cd > 0) {
+    showNotification(`JAMX Creed : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  const n = applyJamxToEnemies(CREED_RADIUS, CREED_DURATION, true);
+  jamxHalo(CREED_RADIUS);
+  startCreedCooldown();
+  showNotification(n > 0 ? `JAMX Creed : ${n} vaisseau${n > 1 ? "x" : ""} brouillé${n > 1 ? "s" : ""} (6 s)` : "JAMX Creed : personne à portée (1000)", 2.5, "info");
+}
+// Ralenti 10 % (sprite SLOW officiel via drawRocketDebuffEffect).
+function applyMarkSlow(e, dur) {
+  e.rocketSlowT = Math.max(Number(e.rocketSlowT || 0), dur);
+  e.rocketSlowPct = Math.max(Number(e.rocketSlowPct || 0), MARK_SLOW_PCT);
+}
+function startMarkCooldown() {
+  player.markCd = MARK_CD;
+  persistCdUntil("markFx", 0);
+  persistCdUntil("mark", MARK_CD);
+}
+function cancelMark() {
+  // Effet porté par l'ennemi (e.markT) : rien à couper côté joueur.
+  player.markTgtObj = null;
+}
+// Target Marker (normal + Plus) : lock requis, contour doré + pénétration
+// +10 % pendant 15 s, ralenti 10 % pendant 3 s.
+function activateMark() {
+  if (player.dead || !started) return;
+  const cd = Number(player.markCd || 0);
+  if (cd > 0) {
+    showNotification(`Marqueur : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  const t = Target.get();
+  if (!t || !(t.hp > 0) || t.isPetTarget) {
+    showNotification("Marqueur : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  if (dist2(player.x, player.y, t.x, t.y) > playerRange * playerRange) {
+    showNotification("Cible hors de portée.", 1.5, "error");
+    return;
+  }
+  t.markT = MARK_DURATION;
+  try { applyMarkSlow(t, MARK_SLOW); } catch {}
+  player.markTgtObj = t;
+  persistCdUntil("markFx", MARK_DURATION);
+  try {
+    for (let i = 1; i <= MARK_SPR_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/SPEARHEAD_PLUS_NEUTRALIZING_MARKER/${i}.png`, { priority: true });
+    }
+  } catch {}
+  startMarkCooldown();
+  showNotification("Cible marquée (15 s) : +10 % pénétration, ralenti 3 s", 2.5, "info");
+}
+function startNeutrCooldown() {
+  player.neutrCd = NEUTR_CD;
+  persistCdUntil("neutrFx", 0);
+  persistCdUntil("neutr", NEUTR_CD);
+}
+// Neutralizing Marker (Plus) : lock requis, modules neutralisés (mêmes
+// blocages que JAMX) + contour blanc pendant 3 s, ralenti 10 % pendant 3 s.
+function activateNeutr() {
+  if (player.dead || !started) return;
+  const cd = Number(player.neutrCd || 0);
+  if (cd > 0) {
+    showNotification(`Marqueur neutralisant : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  const t = Target.get();
+  if (!t || !(t.hp > 0) || t.isPetTarget) {
+    showNotification("Marqueur neutralisant : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  if (dist2(player.x, player.y, t.x, t.y) > playerRange * playerRange) {
+    showNotification("Cible hors de portée.", 1.5, "error");
+    return;
+  }
+  t.neutrT = NEUTR_DURATION;
+  try { applyMarkSlow(t, NEUTR_DURATION); } catch {}
+  persistCdUntil("neutrFx", NEUTR_DURATION);
+  try {
+    for (let i = 1; i <= MARK_SPR_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/SPEARHEAD_PLUS_NEUTRALIZING_MARKER/${i}.png`, { priority: true });
+    }
+  } catch {}
+  startNeutrCooldown();
+  showNotification("Cible neutralisée (3 s) : modules coupés, ralenti 3 s", 2.5, "info");
+}
 // --- Cyborg Singularité II (officiel) : canal 1 hit/s en dégâts croissants
 // directs en coque sur la cible lockée (6900 + 300/hit, cap 13600, ~315k/30 s).
 // Pas de rupture de portée (continue jusqu'à mort ou fin). EMP/JAMX plus tard.
-// Visuel : NPC_SINGULARITY_CYBORG (32 frames, 250x200) en boucle sur la cible.
+// Visuel : VENOM_SINGULARITY (35 frames, 300x300) en boucle sur la cible.
 const CYBORG_DURATION = 30;
 const CYBORG_COOLDOWN = 270;
 const CYBORG_START = 6900;
 const CYBORG_STEP = 300;
 const CYBORG_CAP = 13600;
-const CYBORG_FRAMES = 32;
+const CYBORG_FRAMES = 35;
 const CYBORG_FPS = 30;
+// Exécution de fin : sous le seuil à la fin de l'apti = one-shot direct coque.
+const CYBORG_EXECUTE = 150000;
+// Venom Singularité (officiel) : 1500 +200/hit jusqu'à 8500 (~180k/35 s),
+// durée 35 s, recharge 120 s. Même sprite VENOM_SINGULARITY que le Cyborg.
+const VENOM_DURATION = 35;
+const VENOM_COOLDOWN = 120;
+const VENOM_START = 1500;
+const VENOM_STEP = 200;
+const VENOM_CAP = 8500;
+const VENOM_EXECUTE = 100000;
+// Zephyr MMT : distance d'attaque x2 (portée 700 -> 1400, lasers + roquettes
+// + salves via playerRange) pendant 10 s, recharge 360 s.
+const MMT_DURATION = 10;
+const MMT_COOLDOWN = 360;
+// Zephyr TBR : 2 clones du PET pendant 60 s (même sprite, tir, pseudo/firme,
+// PV). Mort liée (1 meurt = les 3 meurent), PET désactivé = aptitude cassée.
+// Recharge 600 s.
+const TBR_DURATION = 60;
+const TBR_COOLDOWN = 600;
 function startCyborgCooldown() {
   player.cyborgCd = CYBORG_COOLDOWN;
   player.cyborgTarget = null;
@@ -1613,6 +2903,22 @@ function cyborgBeamTick() {
   if (out && (out.total || 0) > 0) {
     try { queueVolleyFloat(tgt, out, volleySeq++, 1); } catch {}
   }
+  // Exécution dès que la cible passe sous 150k HP.
+  if (tgt.hp > 0 && Number(tgt.hp || 0) < CYBORG_EXECUTE) {
+    try { singularityExecute(tgt, CYBORG_EXECUTE, "Singularité II"); } catch {}
+  }
+}
+// Exécution de fin de singularité : cible sous le seuil = one-shot direct coque.
+function singularityExecute(tgt, threshold, label) {
+  if (!tgt || !(tgt.hp > 0)) return false;
+  if (Number(tgt.hp || 0) >= threshold) return false;
+  let out = null;
+  try { out = damageEnemy(tgt, 99999999, 1.0); } catch {}
+  if (out && (out.total || 0) > 0) {
+    try { queueVolleyFloat(tgt, out, volleySeq++, 1); } catch {}
+  }
+  showNotification(`${label} : exécution (< ${formatInteger(threshold)} HP) !`, 2.5, "info");
+  return true;
 }
 function activateCyborg() {
   if (player.dead || !started) return;
@@ -1627,11 +2933,7 @@ function activateCyborg() {
     showNotification("Singularité II : verrouille d'abord une cible", 2, "info");
     return;
   }
-  const d2 = dist2(player.x, player.y, t.x, t.y);
-  if (d2 > playerRange * playerRange) {
-    showNotification("Cible hors de portée.", 1.5, "error");
-    return;
-  }
+  // Pas de limite de distance : le lock suffit (canal sans rupture de portée).
   player.cyborgTarget = t;
   player.cyborgHit = 0;
   player.cyborgT = CYBORG_DURATION;
@@ -1639,11 +2941,69 @@ function activateCyborg() {
   persistCdUntil("cyborgFx", CYBORG_DURATION);
   try {
     for (let i = 1; i <= CYBORG_FRAMES; i++) {
-      loadImage(`ASSETS/APTITUDES/NPC_SINGULARITY_CYBORG/${i}.png`, { priority: true });
+      loadImage(`ASSETS/APTITUDES/VENOM_SINGULARITY/${i}.png`, { priority: true });
     }
   } catch {}
   try { cyborgBeamTick(); } catch {}
   showNotification("Singularité II active (30 s) : dégâts croissants en coque", 2.5, "info");
+}
+// --- Venom Singularité (officiel) : même canal que le Cyborg en plus faible
+// (1500 +200/hit, cap 8500, ~180k/35 s). Exécution < 100k HP à la fin.
+function startVenomCooldown() {
+  player.venomCd = VENOM_COOLDOWN;
+  player.venomTarget = null;
+  player.venomHit = 0;
+  persistCdUntil("venomFx", 0);
+  persistCdUntil("venom", VENOM_COOLDOWN);
+}
+function cancelVenom() {
+  if ((player.venomT || 0) <= 0) return;
+  player.venomT = 0;
+  player.venomTarget = null;
+  player.venomHit = 0;
+  startVenomCooldown();
+}
+function venomBeamTick() {
+  const tgt = player.venomTarget;
+  if (!tgt || !(tgt.hp > 0)) return;
+  const dmg = Math.min(VENOM_CAP, Math.round(VENOM_START + VENOM_STEP * Number(player.venomHit || 0)));
+  player.venomHit = Number(player.venomHit || 0) + 1;
+  let out = null;
+  try { out = damageEnemy(tgt, dmg, 1.0); } catch {}
+  if (out && (out.total || 0) > 0) {
+    try { queueVolleyFloat(tgt, out, volleySeq++, 1); } catch {}
+  }
+  // Exécution dès que la cible passe sous 100k HP.
+  if (tgt.hp > 0 && Number(tgt.hp || 0) < VENOM_EXECUTE) {
+    try { singularityExecute(tgt, VENOM_EXECUTE, "Singularité"); } catch {}
+  }
+}
+function activateVenom() {
+  if (player.dead || !started) return;
+  const cd = Number(player.venomCd || 0);
+  if (cd > 0) {
+    showNotification(`Singularité : recharge ${formatAbilityCd(cd)}`, 2, "info");
+    return;
+  }
+  if ((player.venomT || 0) > 0) return;
+  const t = Target.get();
+  if (!t || !(t.hp > 0)) {
+    showNotification("Singularité : verrouille d'abord une cible", 2, "info");
+    return;
+  }
+  // Pas de limite de distance : le lock suffit (canal sans rupture de portée).
+  player.venomTarget = t;
+  player.venomHit = 0;
+  player.venomT = VENOM_DURATION;
+  player.venomAcc = 0;
+  persistCdUntil("venomFx", VENOM_DURATION);
+  try {
+    for (let i = 1; i <= CYBORG_FRAMES; i++) {
+      loadImage(`ASSETS/APTITUDES/VENOM_SINGULARITY/${i}.png`, { priority: true });
+    }
+  } catch {}
+  try { venomBeamTick(); } catch {}
+  showNotification("Singularité active (35 s) : dégâts croissants en coque", 2.5, "info");
 }
 // --- Affaiblissement (Diminisher, officiel) : le bouclier de la cible
 // verrouillée prend +50 % de dégâts pendant 15 s. Contrecoup : -30 % de
@@ -1861,7 +3221,7 @@ function fireQaSalvo(t) {
   const x6mult = resolveAmmoMult("x6", t);
   const qaDmg = (laserBase) * x6mult * QA_MULT
     * shotBoosterMults.dmg * playerUpgradeMults().laser * buoyDamageMult()
-    * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * shipPassiveDamageMult();
+    * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * tartBoostLaserMult() * tempestDischargeMult() * shipPassiveDamageMult();
   const distToTarget = Math.hypot(t.x - player.x, t.y - player.y);
   const speed = (player.baseBulletSpeed + distToTarget * BASE_RUN.bulletSpeedDistGain);
   const life = bulletLifeForRange(playerRange, speed);
@@ -2212,6 +3572,8 @@ function cancelLibRep() {
 }
 function libRepHealTick() {
   if (player.dead) return;
+  // Volt Back-up actif : aucun soin coque.
+  if ((player.tempestBackupT || 0) > 0) return;
   const old = Number(player.hp || 0);
   player.hp = Math.min(Number(player.hpMax || 0), old + LIBREP_AMOUNT);
   const gain = Math.round(Number(player.hp || 0) - old);
@@ -2226,6 +3588,7 @@ function libRepHealTick() {
 }
 function activateLibRep() {
   if (player.dead || !started) return;
+  if (tempestBackupHealBlocked()) return;
   const cd = Number(player.libRepCd || 0);
   if (cd > 0) {
     showNotification(`Auto-réparation : recharge ${Math.ceil(cd)} s`, 2, "info");
@@ -2460,8 +3823,26 @@ function isGoliathXBase() {
     return String(getShipDesignBaseId(raw) || raw).toLowerCase() === "goliath_x";
   } catch { return false; }
 }
+// --- Solaris Plus (base résolue vers elle) pour Locked and Loaded.
+function isSolarisPlusBase() {
+  try {
+    const raw = String(getActiveHangarFromUser(account?.user)?.shipId || ACTIVE_SHIP?.id || "").toLowerCase();
+    return String(getShipDesignBaseId(raw) || raw).toLowerCase() === "solaris_plus";
+  } catch { return false; }
+}
 function shipPassiveDamageMult() {
-  return isGoliathXBase() ? 1.02 : 1;
+  let mult = isGoliathXBase() ? 1.02 : 1;
+  // Solaris Plus Locked and Loaded : +3 % dégâts par module équipé (max +12 %).
+  if (isSolarisPlusBase()) {
+    try {
+      const hangar = getActiveHangarFromUser(account?.user);
+      const cfg = String(Number(hangar?.activeConfig) === 2 ? 2 : 1);
+      const fit = hangar?.fits?.[cfg] || hangar?.fit || {};
+      const n = Array.isArray(fit.shipMods) ? fit.shipMods.length : 0;
+      mult *= 1 + Math.min(0.12, 0.03 * n);
+    } catch {}
+  }
+  return mult;
 }
 function shipPassiveXpMult() {
   return isGoliathXBase() ? 1.02 : 1;
@@ -2552,6 +3933,8 @@ function stockShieldBonusFor(n) {
 }
 function stockUpdateRange() {
   try {
+    // Zephyr MMT : portée x2 pendant l'effet (prioritaire sur tout).
+    if ((player.mmtT || 0) > 0) { playerRange = BASE_RUN.range * 2; return; }
     if ((player.stockT || 0) > 0) { playerRange = BASE_RUN.range; return; }
     const bonus = isHecatePlusBase() ? stockCharges() * STOCKPILE_RANGE_PER : 0;
     playerRange = BASE_RUN.range + bonus;
@@ -2778,6 +4161,33 @@ function restorePersistedCds() {
   } else {
     player.prismCd = Math.min(PRISM_COOLDOWN, Math.max(Number(player.prismCd || 0), persistedCdLeft("prism")));
   }
+  // Spectrum coupé par un refresh : effet perdu, la recharge démarre.
+  if (persistedCdLeft("specFx") > 0) {
+    player.specT = 0;
+    startSpecCooldown();
+  } else {
+    player.specCd = Math.min(SPEC_COOLDOWN, Math.max(Number(player.specCd || 0), persistedCdLeft("spec")));
+  }
+  // Spectrum Plus coupé par un refresh : effet perdu, la recharge démarre.
+  if (persistedCdLeft("specPlusFx") > 0) {
+    player.specPlusT = 0;
+    startSpecPlusCooldown();
+  } else {
+    player.specPlusCd = Math.min(SPECPLUS_COOLDOWN, Math.max(Number(player.specPlusCd || 0), persistedCdLeft("specPlus")));
+  }
+  // Tartarus Tir rapide : pas d'effet temporel, juste la recharge 72 s.
+  player.tartRapidCd = Math.min(TART_RAPID_CD, Math.max(Number(player.tartRapidCd || 0), persistedCdLeft("tartRapid")));
+  // Tartarus Plus Tir rapide coupé par un refresh : overdrive perdu, recharge.
+  if (persistedCdLeft("tartRapidPlusFx") > 0) {
+    player.tartRapidPlusT = 0;
+    startTartRapidPlusCooldown();
+  } else {
+    player.tartRapidPlusCd = Math.min(TART_RAPIDPLUS_CD, Math.max(Number(player.tartRapidPlusCd || 0), persistedCdLeft("tartRapidPlus")));
+  }
+  // Tartarus Speed Boost : toggles retombés à off au refresh, switch restauré.
+  player.tartBoostOn = false;
+  player.tartPlusBoostOn = false;
+  player.tartPlusBoostCd = Math.min(TARTPLUS_BOOST_SWITCH_CD, Math.max(Number(player.tartPlusBoostCd || 0), persistedCdLeft("tartPlusBoost")));
   // Affaiblissement coupé par un refresh : cible perdue, la recharge démarre.
   if (persistedCdLeft("diminishFx") > 0) {
     player.diminishT = 0;
@@ -2830,6 +4240,15 @@ function restorePersistedCds() {
   } else {
     player.cyborgCd = Math.min(CYBORG_COOLDOWN, Math.max(Number(player.cyborgCd || 0), persistedCdLeft("cyborg")));
   }
+  // Venom coupé par un refresh : canal perdu, la recharge démarre.
+  if (persistedCdLeft("venomFx") > 0) {
+    player.venomT = 0;
+    player.venomTarget = null;
+    player.venomHit = 0;
+    startVenomCooldown();
+  } else {
+    player.venomCd = Math.min(VENOM_COOLDOWN, Math.max(Number(player.venomCd || 0), persistedCdLeft("venom")));
+  }
   // Orcus coupé par un refresh : effet perdu, la recharge démarre.
   if (persistedCdLeft("orcusFx") > 0) {
     player.orcusT = 0;
@@ -2837,6 +4256,112 @@ function restorePersistedCds() {
   } else {
     player.orcusCd = Math.min(ORCUS_COOLDOWN, Math.max(Number(player.orcusCd || 0), persistedCdLeft("orcus")));
   }
+  // Forteresse coupée par un refresh : bonus retiré, la recharge démarre.
+  if (persistedCdLeft("sentFx") > 0) {
+    player.sentT = 0;
+    sentRevert();
+    startSentCooldown();
+  } else {
+    player.sentCd = Math.min(SENT_COOLDOWN, Math.max(Number(player.sentCd || 0), persistedCdLeft("sent")));
+  }
+  // Spearhead coupés par un refresh : effets perdus, recharges démarrées.
+  if (persistedCdLeft("reconFx") > 0) {
+    player.reconT = 0;
+    startReconCooldown();
+  } else {
+    player.reconCd = Math.min(RECON_COOLDOWN, Math.max(Number(player.reconCd || 0), persistedCdLeft("recon")));
+  }
+  // Incinération coupée par un refresh : brûlure perdue, la recharge démarre.
+  if (persistedCdLeft("incFx") > 0) {
+    player.incT = 0;
+    player.incPlusT = 0;
+    startIncCooldown();
+  } else {
+    player.incCd = Math.min(INC_COOLDOWN, Math.max(Number(player.incCd || 0), persistedCdLeft("inc")));
+    player.incPlusCd = Math.min(INC_PLUS_COOLDOWN, Math.max(Number(player.incPlusCd || 0), persistedCdLeft("incPlus")));
+  }
+  // Siphon vitesse coupé par un refresh : effet perdu, la recharge démarre.
+  if (persistedCdLeft("sapFx") > 0) {
+    player.sapT = 0;
+    player.sapTarget = null;
+    startSapCooldown();
+  } else {
+    player.sapCd = Math.min(SAP_COOLDOWN, Math.max(Number(player.sapCd || 0), persistedCdLeft("sap")));
+  }
+  // Retiarus coupés par un refresh : Supercharge perdue (recharge),
+  // charge/rayon perdus sans recharge (tir jamais parti).
+  if (persistedCdLeft("spcFx") > 0) {
+    player.spcT = 0;
+    startSpcCooldown();
+  } else {
+    player.spcCd = Math.min(SPC_COOLDOWN, Math.max(Number(player.spcCd || 0), persistedCdLeft("spc")));
+  }
+  if (persistedCdLeft("spcPlusFx") > 0) {
+    player.spcPlusT = 0;
+    startSpcPlusCooldown();
+  } else {
+    player.spcPlusCd = Math.min(SPCP_COOLDOWN, Math.max(Number(player.spcPlusCd || 0), persistedCdLeft("spcPlus")));
+  }
+  player.chsPhase = null;
+  player.chsT = 0;
+  player.chsTarget = null;
+  player.chsPlus = false;
+  player.chsRayT = 0;
+  player.chsCd = Math.min(CHS_COOLDOWN, Math.max(Number(player.chsCd || 0), persistedCdLeft("chs")));
+  player.chsPlusCd = Math.min(CHS_PLUS_COOLDOWN, Math.max(Number(player.chsPlusCd || 0), persistedCdLeft("chsPlus")));
+  // Ripper coupé par un refresh : dégâts stoppés, la recharge démarre.
+  // Dernier rempart : passif, juste la recharge (l'anim éventuelle est perdue).
+  if (persistedCdLeft("ripperFx") > 0) {
+    player.ripperT = 0;
+    startRipperCooldown();
+  } else {
+    player.ripperCd = Math.min(RIPPER_COOLDOWN, Math.max(Number(player.ripperCd || 0), persistedCdLeft("ripper")));
+  }
+  player.lastStandAnimT = 0;
+  player.lastStandCd = Math.min(LASTSTAND_COOLDOWN, Math.max(Number(player.lastStandCd || 0), persistedCdLeft("lastStand")));
+  // Effect coupé si la recharge est en cours (déclenché avant le refresh).
+  player.lastStandFxOff = Number(player.lastStandCd || 0) > 0;
+  // Tempest Volt Back-up coupé par un refresh : phase perdue, recharge démarre.
+  if (persistedCdLeft("tempestBackupFx") > 0) {
+    player.tempestBackupT = 0;
+    startTempestBackupCooldown();
+  } else {
+    player.tempestBackupCd = Math.min(TEMPEST_BACKUP_CD, Math.max(Number(player.tempestBackupCd || 0), persistedCdLeft("tempestBackup")));
+  }
+  // Tempest Décharge coupée par un refresh : buff perdu, la recharge démarre.
+  if (persistedCdLeft("tempestDischFx") > 0) {
+    player.tempestDischT = 0;
+    startTempestDischCooldown();
+  } else {
+    player.tempestDischCd = Math.min(TEMPEST_DISCH_CD, Math.max(Number(player.tempestDischCd || 0), persistedCdLeft("tempestDisch")));
+  }
+  // Tempest Lien volt : instant, juste la recharge. One-shots non persistés.
+  player.tempestLinkCd = Math.min(TEMPEST_LINK_CD, Math.max(Number(player.tempestLinkCd || 0), persistedCdLeft("tempestLink")));
+  player.tempestLinkFx = [];
+  player.tempestLinkBeams = [];
+  // Zephyr MMT coupé par un refresh : portée perdue, la recharge démarre.
+  if (persistedCdLeft("mmtFx") > 0) {
+    player.mmtT = 0;
+    try { stockUpdateRange(); } catch {}
+    startMmtCooldown();
+  } else {
+    player.mmtCd = Math.min(MMT_COOLDOWN, Math.max(Number(player.mmtCd || 0), persistedCdLeft("mmt")));
+  }
+  // Zephyr TBR coupé par un refresh : clones perdus, la recharge démarre.
+  if (persistedCdLeft("tbrFx") > 0) {
+    player.tbrT = 0;
+    player.tbrClones = [];
+    startTbrCooldown();
+  } else {
+    player.tbrCd = Math.min(TBR_COOLDOWN, Math.max(Number(player.tbrCd || 0), persistedCdLeft("tbr")));
+  }
+  // Spearhead JAMX / Creed : instantanés, juste les recharges.
+  player.jamxCd = Math.min(JAMX_CD, Math.max(Number(player.jamxCd || 0), persistedCdLeft("jamx")));
+  player.creedCd = Math.min(CREED_CD, Math.max(Number(player.creedCd || 0), persistedCdLeft("creed")));
+  player.jamxHalos = [];
+  // Spearhead Markers : instantanés, juste les recharges.
+  player.markCd = Math.min(MARK_CD, Math.max(Number(player.markCd || 0), persistedCdLeft("mark")));
+  player.neutrCd = Math.min(NEUTR_CD, Math.max(Number(player.neutrCd || 0), persistedCdLeft("neutr")));
   // Keres coupés par un refresh : Spread perdu (recharge), Sleight perdu (recharge).
   if (persistedCdLeft("keresSprFx") > 0) {
     try { for (const e of enemies) { if (e) e.keresSprT = 0; } } catch {}
@@ -3119,6 +4644,7 @@ function cancelRepairs() {
 }
 function activateHpRepair() {
   if (player.dead || !started) return;
+  if (tempestBackupHealBlocked()) return;
   const cd = Number(player.healHpCd || 0);
   if (cd > 0) {
     showNotification(`Réparation coque : recharge ${Math.ceil(cd)} s`, 2, "info");
@@ -3160,6 +4686,7 @@ function cancelRepairPod() {
 }
 function activateRepairPod() {
   if (player.dead || !started) return;
+  if (tempestBackupHealBlocked()) return;
   const cd = Number(player.podCd || 0);
   if (cd > 0) {
     showNotification(`Pod de réparation : recharge ${Math.ceil(cd)} s`, 2, "info");
@@ -3183,9 +4710,10 @@ function activateRepairPod() {
   showNotification("Pod de réparation posé (10 s)", 2, "info");
 }
 // Soin du pod : 18k PV/s aux vaisseaux (joueur + escortes) dans le rayon.
+// Volt Back-up actif : le joueur n'est pas soigné (les escortes si).
 function healRepairPodTick() {
   const r2 = REPAIR_POD_RADIUS * REPAIR_POD_RADIUS;
-  if (!player.dead && player.podX != null && dist2(player.x, player.y, player.podX, player.podY) <= r2) {
+  if (!player.dead && (player.tempestBackupT || 0) <= 0 && player.podX != null && dist2(player.x, player.y, player.podX, player.podY) <= r2) {
     const old = Number(player.hp || 0);
     player.hp = Math.min(Number(player.hpMax || 0), old + REPAIR_POD_HEAL);
     const gain = Math.round(player.hp - old);
@@ -3297,6 +4825,7 @@ function cancelHammerRepairs() {
 }
 function activateHammerHpRepair() {
   if (player.dead || !started) return;
+  if (tempestBackupHealBlocked()) return;
   const cd = Number(player.hammerHpCd || 0);
   if (cd > 0) {
     showNotification(`Réparation coque : recharge ${Math.ceil(cd)} s`, 2, "info");
@@ -3405,6 +4934,7 @@ function activateRealloc() {
 }
 function activateHammerPod() {
   if (player.dead || !started) return;
+  if (tempestBackupHealBlocked()) return;
   const cd = Number(player.hammerPodCd || 0);
   if (cd > 0) {
     showNotification(`Pod de réparation : recharge ${Math.ceil(cd)} s`, 2, "info");
@@ -3427,11 +4957,12 @@ function activateHammerPod() {
 }
 // Soin du pod Hammerclaw : 17,5k PV/s aux vaisseaux (joueur + escortes),
 // 20k/s en Hammerclaw Plus (200k officiel).
+// Volt Back-up actif : le joueur n'est pas soigné (les escortes si).
 function healHammerPodTick() {
   const pr = hammerPodRadius();
   const r2 = pr * pr;
   const amt = isHammerclawPlusBase() ? HAMMER_PLUS_POD_HEAL : HAMMER_POD_HEAL;
-  if (!player.dead && player.hammerPodX != null && dist2(player.x, player.y, player.hammerPodX, player.hammerPodY) <= r2) {
+  if (!player.dead && (player.tempestBackupT || 0) <= 0 && player.hammerPodX != null && dist2(player.x, player.y, player.hammerPodX, player.hammerPodY) <= r2) {
     const old = Number(player.hp || 0);
     player.hp = Math.min(Number(player.hpMax || 0), old + amt);
     const gain = Math.round(player.hp - old);
@@ -3602,6 +5133,95 @@ function getAbilityCooldown(abilityId) {
     }
     return { left: Number(player.prismCd || 0), max: PRISM_COOLDOWN };
   }
+  if (String(abilityId || "").toLowerCase() === "ability_spectrum") {
+    if ((player.specT || 0) > 0) {
+      const total = SPEC_DURATION + SPEC_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.specCd || 0), max: SPEC_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_spectrum-plus_prismatic-reflecting") {
+    if ((player.specPlusT || 0) > 0) {
+      const total = SPECPLUS_DURATION + SPECPLUS_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.specPlusCd || 0), max: SPECPLUS_COOLDOWN };
+  }
+  // Tartarus Tir rapide : instant, juste la recharge 72 s.
+  if (String(abilityId || "").toLowerCase() === "ability_tartarus_rapid-fire") {
+    return { left: Number(player.tartRapidCd || 0), max: TART_RAPID_CD };
+  }
+  // Tartarus Plus Tir rapide : pendant 3 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_tartarus-plus_rapid-fire-plus") {
+    if ((player.tartRapidPlusT || 0) > 0) {
+      const total = TART_RAPIDPLUS_DURATION + TART_RAPIDPLUS_CD;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.tartRapidPlusCd || 0), max: TART_RAPIDPLUS_CD };
+  }
+  // Tartarus Speed Boost (toggle) : actif = voile plein, inactif = rien (CD 0).
+  if (String(abilityId || "").toLowerCase() === "ability_tartarus_speed-boost") {
+    if (player.tartBoostOn === true) return { left: 1, max: 1 };
+    return { left: 0, max: 0 };
+  }
+  // Tartarus Plus Speed Boost (toggle) : actif = voile plein, sinon switch 10 s.
+  if (String(abilityId || "").toLowerCase() === "ability_tartarus-plus_speed-boost-plus") {
+    if (player.tartPlusBoostOn === true) return { left: 1, max: 1 };
+    return { left: Number(player.tartPlusBoostCd || 0), max: TARTPLUS_BOOST_SWITCH_CD };
+  }
+  // Tempest Volt Back-up (passif) : pendant les 10 s voile plein, après la recharge.
+  if (String(abilityId || "").toLowerCase() === "ability_tempest_volt-backup") {
+    if ((player.tempestBackupT || 0) > 0) {
+      const total = TEMPEST_BACKUP_INVULN + TEMPEST_BACKUP_CD;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.tempestBackupCd || 0), max: TEMPEST_BACKUP_CD };
+  }
+  // Tempest Décharge : pendant 20 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_tempest_volt-discharge") {
+    if ((player.tempestDischT || 0) > 0) {
+      const total = TEMPEST_DISCH_DURATION + TEMPEST_DISCH_CD;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.tempestDischCd || 0), max: TEMPEST_DISCH_CD };
+  }
+  // Tempest Lien volt : instant, juste la recharge 120 s.
+  if (String(abilityId || "").toLowerCase() === "ability_tempest_voltage-link") {
+    return { left: Number(player.tempestLinkCd || 0), max: TEMPEST_LINK_CD };
+  }
+  // Zephyr MMT : pendant 10 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_zephyr_mmt") {
+    if ((player.mmtT || 0) > 0) {
+      const total = MMT_DURATION + MMT_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.mmtCd || 0), max: MMT_COOLDOWN };
+  }
+  // Zephyr TBR : pendant 10 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_zephyr_tbr") {
+    if ((player.tbrT || 0) > 0) {
+      const total = TBR_DURATION + TBR_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.tbrCd || 0), max: TBR_COOLDOWN };
+  }
+  // Spearhead JAMX : instant, juste la recharge 180 s.
+  if (String(abilityId || "").toLowerCase() === "ability_spearhead_jam-x") {
+    return { left: Number(player.jamxCd || 0), max: JAMX_CD };
+  }
+  // Spearhead Plus JAMX Creed : instant, juste la recharge 200 s.
+  if (String(abilityId || "").toLowerCase() === "ability_spearhead-plus_jamx-creed") {
+    return { left: Number(player.creedCd || 0), max: CREED_CD };
+  }
+  // Spearhead Target Marker : instant, juste la recharge 360 s.
+  if (String(abilityId || "").toLowerCase() === "ability_spearhead_target-marker"
+    || String(abilityId || "").toLowerCase() === "ability_spearhead-plus_target-marker") {
+    return { left: Number(player.markCd || 0), max: MARK_CD };
+  }
+  // Spearhead Plus Neutralizing Marker : instant, juste la recharge 360 s.
+  if (String(abilityId || "").toLowerCase() === "ability_spearhead-plus_neutralizing-marker") {
+    return { left: Number(player.neutrCd || 0), max: NEUTR_CD };
+  }
   if (String(abilityId || "").toLowerCase() === "ability_diminisher") {
     if ((player.diminishT || 0) > 0) {
       const total = DIMINISH_DURATION + DIMINISH_COOLDOWN;
@@ -3679,6 +5299,105 @@ function getAbilityCooldown(abilityId) {
       return { left: total, max: total };
     }
     return { left: Number(player.cyborgCd || 0), max: CYBORG_COOLDOWN };
+  }
+  // Venom : pendant les 35 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_venom") {
+    if ((player.venomT || 0) > 0) {
+      const total = VENOM_DURATION + VENOM_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.venomCd || 0), max: VENOM_COOLDOWN };
+  }
+  // Sentinel : pendant les 10 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_sentinel") {
+    if ((player.sentT || 0) > 0) {
+      const total = SENT_DURATION + SENT_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.sentCd || 0), max: SENT_COOLDOWN };
+  }
+  // Spearhead Recon : pendant les 30 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_spearhead_double-minimap"
+    || String(abilityId || "").toLowerCase() === "ability_spearhead-plus_recon") {
+    if ((player.reconT || 0) > 0) {
+      const total = RECON_DURATION + RECON_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.reconCd || 0), max: RECON_COOLDOWN };
+  }
+  // Solaris / Plus : pendant les 10 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_solaris_inc") {
+    if ((player.incT || 0) > 0) {
+      const total = INC_DURATION + INC_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.incCd || 0), max: INC_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_solaris-plus_incinerate-plus") {
+    if ((player.incPlusT || 0) > 0) {
+      const total = INC_DURATION + INC_PLUS_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.incPlusCd || 0), max: INC_PLUS_COOLDOWN };
+  }
+  // Solace / Solace Plus : instantanés, juste la recharge.
+  if (String(abilityId || "").toLowerCase() === "ability_solace") {
+    return { left: Number(player.solCd || 0), max: SOLACE_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_solace-plus_nano-cluster-repairer-plus") {
+    return { left: Number(player.solPlusCd || 0), max: SOLACE_PLUS_COOLDOWN };
+  }
+  // Pusat Plus : pendant les 10 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_pusat-plus_speed-sap") {
+    if ((player.sapT || 0) > 0) {
+      const total = SAP_DURATION + SAP_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.sapCd || 0), max: SAP_COOLDOWN };
+  }
+  // Retiarus Supercharge : pendant les 10 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_retiarus_spc") {
+    if ((player.spcT || 0) > 0) {
+      const total = SPC_DURATION + SPC_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.spcCd || 0), max: SPC_COOLDOWN };
+  }
+  // Retiarus Charge Shot : voile plein (charge + rayon), après la recharge descend.
+  // Base 20 min, Plus 18 min, chacun sa recharge.
+  if (String(abilityId || "").toLowerCase() === "ability_retiarus_chs") {
+    if (player.chsPhase != null && !player.chsPlus) {
+      const total = chsChargeDuration() + 5 + CHS_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.chsCd || 0), max: CHS_COOLDOWN };
+  }
+  if (String(abilityId || "").toLowerCase() === "ability_retiarus-plus_chsp") {
+    if (player.chsPhase != null && player.chsPlus) {
+      const total = chsChargeDuration() + 5 + CHS_PLUS_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.chsPlusCd || 0), max: CHS_PLUS_COOLDOWN };
+  }
+  // Retiarus Supercharge Plus : pendant les 10 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_retiarus-plus_spcp") {
+    if ((player.spcPlusT || 0) > 0) {
+      const total = SPCP_DURATION + SPCP_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.spcPlusCd || 0), max: SPCP_COOLDOWN };
+  }
+  // Paladin Éventreur : pendant les 3 s voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_paladin_ripper") {
+    if ((player.ripperT || 0) > 0) {
+      const total = RIPPER_DURATION + RIPPER_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.ripperCd || 0), max: RIPPER_COOLDOWN };
+  }
+  // Paladin Dernier rempart (passif) : juste la recharge 600 s, pas d'effet temporel.
+  if (String(abilityId || "").toLowerCase() === "ability_paladin_last-stand") {
+    return { left: Number(player.lastStandCd || 0), max: LASTSTAND_COOLDOWN };
   }
   // Holo : 2 capacités indépendantes, voile plein pendant leur propre effet.
   if (String(abilityId || "").toLowerCase() === "ability_holo_self-reversal") {
@@ -3813,6 +5532,49 @@ function activatePoliceCloak() {
   showNotification("Camouflage ultime actif (30 s)", 2.5, "info");
 }
 
+// Survol des slots du dock : ce que fait chaque bouton (portée module pour
+// la sync par frame, le rendu palette et les refreshs de compteurs).
+// Munitions : "Munitions X4 / Quantité : 1 000 000". Idem roquettes.
+function ammoTip(key) {
+  const code = String(key || "x1").toUpperCase();
+  const qty = String(key || "").toLowerCase() === "x1" ? "∞" : formatInteger(ammoCount(key));
+  return `Munitions ${code}\nQuantité : ${qty}`;
+}
+function rocketTip(rid) {
+  const r = getRocketType(rid);
+  return `${r?.name || rid}\nQuantité : ${formatInteger(rocketCount(rid))}`;
+}
+const FORMATION_EFFECT_LABELS = Object.freeze({
+  shieldPct: "bouclier", laserDamagePct: "dégâts laser", rocketDamagePct: "dégâts roquettes",
+  mineDamagePct: "dégâts mines", evasionPct: "esquive", rocketCooldownPct: "recharge roquettes",
+  playerLaserDamagePct: "dégâts joueurs", honorPct: "honneur", penetrationPct: "pénétration",
+  shieldRegenPct: "régén. bouclier/s", hpPct: "vie", shieldAbsorptionPct: "absorption",
+  npcDamagePct: "dégâts NPC", npcXpPct: "XP NPC", shieldDrainPct: "bouclier/s",
+  speedPct: "vitesse",
+});
+// Formations : "Formation Vétéran / Buff : ... / Nerf : ...".
+function formationTip(f) {
+  if (!f) return "";
+  const buffs = [], nerfs = [];
+  for (const [k, v] of Object.entries(f.effects || {})) {
+    const n = Number(v);
+    if (!(n > 0) && !(n < 0)) continue;
+    // Drain bouclier : valeur positive mais malus (pompe ton bouclier).
+    if (k === "shieldDrainPct") {
+      nerfs.push(`-${String(n).replace(".", ",")} % bouclier/s`);
+      continue;
+    }
+    let txt;
+    if (k === "shieldRegenCap") txt = `cap ${formatInteger(n)}`;
+    else txt = `${n > 0 ? "+" : ""}${String(n).replace(".", ",")} % ${FORMATION_EFFECT_LABELS[k] || k}`;
+    (n >= 0 ? buffs : nerfs).push(txt);
+  }
+  let tip = String(f.name || "");
+  if (buffs.length) tip += `\nBuff : ${buffs.join(" · ")}`;
+  if (nerfs.length) tip += `\nNerf : ${nerfs.join(" · ")}`;
+  return tip;
+}
+
 function initializeCustomActionBar() {
   const bar = document.getElementById("ammoBar");
   if (!bar || bar.dataset.customized === "1") return;
@@ -3843,8 +5605,15 @@ function initializeCustomActionBar() {
   }));
   // ✅ Munitions (dont les nouvelles : RCB, CBO, JOB...) : câblage des
   // ORIGINAUX (les clones des slots/palette redirigent vers eux via .click()).
+  const SKILL_TIPS = Object.freeze({
+    pulse: "IEM (30k) : les NPC qui t'attaquent perdent ta trace (3 s). CD 10 s.",
+    ish: "ISH (30k) : invincible 3 s. CD 10 s.",
+    repair: "Réparation : le robot répare la coque au fil du temps.",
+  });
   for (const button of actions) {
     const key = String(button.dataset.ammo || "").toLowerCase();
+    const sk = String(button.dataset.skill || "").toLowerCase();
+    if (sk && SKILL_TIPS[sk]) button.title = SKILL_TIPS[sk];
     if (!key || button.dataset.ammoWired === "1") continue;
     button.dataset.ammoWired = "1";
     button.addEventListener("click", () => { playDockSelectSound(player.ammo.active !== key); startAttack(key); });
@@ -3861,6 +5630,7 @@ function initializeCustomActionBar() {
     const button = document.createElement("button");
     button.className = "ammoBtn formationActionSlot dockAction" + (isClassicFormation(formation.id) ? " formationClassic" : ""); button.dataset.actionCategory = "formations";
     button.dataset.actionId = `formation:${formation.id}`; button.draggable = true;
+    button.title = formationTip(formation) || formation.name;
     button.innerHTML = `<img src="${formationDockIcon(formation) || formation.icon}" alt=""><span>${formation.name.replace("Formation ", "")}</span>`;
     button.onclick = () => {
       playDockSelectSound(getActiveDroneFormation(account.user).id !== formation.id);
@@ -3882,8 +5652,7 @@ function initializeCustomActionBar() {
     const button = document.createElement("button");
     button.className = "ammoBtn rocketActionSlot dockAction"; button.dataset.actionCategory = "rockets";
     button.dataset.actionId = `rocket:${id}`; button.draggable = true;
-    button.title = r?.name || id;
-    button.innerHTML = `<img src="${escapeHtml(rocketDockIcon(id) || "")}" alt=""><strong>${escapeHtml(r?.short || id)}</strong><small class="rocketCount">0</small>`;
+    button.title = r?.name || id;    button.innerHTML = `<img src="${escapeHtml(rocketDockIcon(id) || "")}" alt=""><strong>${escapeHtml(r?.short || id)}</strong><small class="rocketCount">0</small>`;
     const img = button.querySelector("img");
     if (img) img.onerror = () => { img.onerror = null; img.style.display = "none"; };
     button.onclick = () => {
@@ -3922,7 +5691,7 @@ function initializeCustomActionBar() {
   // regroupees par vaisseau. Un vaisseau sans aptitude n'affiche pas de
   // section. Visuel seul pour l'instant (pas d'effet gameplay) : clic = notification.
   const ABILITY_GROUPS = [
-    { ship: "Police", ships: ["police"], ids: ["ability_admin-ultimate-cloaking"] },
+    { ship: "Police", ships: ["police"], ids: policeAbilityIds() },
     { ship: "Aegis", ships: ["aegis"], ids: ["ability_aegis_hp-repair", "ability_aegis_repair-pod", "ability_aegis_shield-repair"] },
     { ship: "Basilisk", ships: ["basilisk"], ids: ["ability_basilisk_heightened-valour", "ability_basilisk_noxious-nebula"] },
     { ship: "Berserker", ships: ["berserker"], ids: ["ability_berserker_bsk", "ability_berserker_rvg", "ability_berserker_shl"] },
@@ -3952,7 +5721,7 @@ function initializeCustomActionBar() {
     { ship: "Solace", ships: ["solace"], ids: ["ability_solace"] },
     { ship: "Solaris Plus", ships: ["solaris_plus"], ids: ["ability_solaris-plus_incinerate-plus"] },
     { ship: "Solaris", ships: ["solaris"], ids: ["ability_solaris_inc"] },
-    { ship: "Spearhead Plus", ships: ["spearhead_plus"], ids: ["ability_spearhead-plus_jamx-creed", "ability_spearhead-plus_neutralizing-marker", "ability_spearhead-plus_target-marker", "ability_spearhead-plus_ultimate-cloak"] },
+    { ship: "Spearhead Plus", ships: ["spearhead_plus"], ids: ["ability_spearhead-plus_jamx-creed", "ability_spearhead-plus_neutralizing-marker", "ability_spearhead-plus_target-marker", "ability_spearhead-plus_recon", "ability_spearhead-plus_ultimate-cloak"] },
     { ship: "Spearhead", ships: ["spearhead"], ids: ["ability_spearhead_double-minimap", "ability_spearhead_jam-x", "ability_spearhead_target-marker", "ability_spearhead_ultimate-cloak"] },
     { ship: "Spectrum Plus", ships: ["spectrum_plus"], ids: ["ability_spectrum-plus_prismatic-reflecting"] },
     { ship: "Spectrum", ships: ["spectrum"], ids: ["ability_spectrum"] },
@@ -3962,26 +5731,8 @@ function initializeCustomActionBar() {
     { ship: "Venom", ships: ["venom"], ids: ["ability_venom"] },
     { ship: "Zephyr", ships: ["zephyr"], ids: ["ability_zephyr_mmt", "ability_zephyr_tbr"] },
   ];
-  // Icones de repli : aptitudes "Plus" qui partagent le visuel de base
-  // (aucun fichier Plus dédié dans ASSETS/APTITUDES/ICONS).
-  const ABILITY_ICON_OVERRIDES = {
-    "ability_cyborg_singularity": "ABILITY_VENOM.PNG",
-    "ability_spearhead-plus_target-marker": "ABILITY_SPEARHEAD_TARGET-MARKER.PNG",
-    "ability_spearhead-plus_ultimate-cloak": "ABILITY_SPEARHEAD_ULTIMATE-CLOAK.PNG",
-    "ability_hammerclaw_hp-repair": "ABILITY_AEGIS_HP-REPAIR.PNG",
-    "ability_hammerclaw_shield-repair": "ABILITY_AEGIS_SHIELD-REPAIR.PNG",
-    "ability_hammerclaw_repair-pod": "ABILITY_AEGIS_REPAIR-POD.PNG",
-    "ability_hammerclaw-plus_hp-repair": "ABILITY_AEGIS_HP-REPAIR.PNG",
-    "ability_hammerclaw-plus_shield-repair": "ABILITY_AEGIS_SHIELD-REPAIR.PNG",
-    "ability_hammerclaw-plus_repair-pod": "ABILITY_AEGIS_REPAIR-POD.PNG",
-    "ability_citadel-plus_draw-fire": "ABILITY_CITADEL_DRAW-FIRE.PNG",
-    "ability_citadel-plus_fortify": "ABILITY_CITADEL_FORTIFY.PNG",
-    "ability_citadel-plus_protection": "ABILITY_CITADEL_PROTECTION.PNG",
-    "ability_citadel-plus_travel": "ABILITY_CITADEL_TRAVEL.PNG",
-  };
   function abilityIconSrc(name) {
-    const file = ABILITY_ICON_OVERRIDES[name] || `${String(name).toUpperCase()}.PNG`;
-    return `ASSETS/APTITUDES/ICONS/${file}`;
+    return `ASSETS/APTITUDES/ICONS/${abilityIconFile(name)}`;
   }
   const abilityButtons = [];
   for (const group of ABILITY_GROUPS) {
@@ -3990,7 +5741,22 @@ function initializeCustomActionBar() {
       const button = document.createElement("button");
       button.className = "ammoBtn abilityActionSlot"; button.dataset.actionCategory = "abilities";
       button.dataset.actionId = `ability:${name}`; button.dataset.ship = group.ship; button.draggable = true;
-      button.title = `${group.ship} — ${label}`;
+      // Survol : Nom / description / buff / nerf / temps / CD (comme formations).
+      const abilityInfo = getAbilityInfo(name);
+      if (abilityInfo) {
+        const dur = Number(abilityInfo.durationSec);
+        const cd = Number(abilityInfo.cooldownSec);
+        let tip = `${abilityInfo.name}\n${abilityInfo.description}`;
+        if (abilityInfo.buff) tip += `\nBuff : ${abilityInfo.buff}`;
+        if (abilityInfo.nerf) tip += `\nNerf : ${abilityInfo.nerf}`;
+        if (Number.isFinite(dur) && dur > 0) tip += `\nTemps : ${dur} s`;
+        else if (dur === 0) tip += `\nImmédiat`;
+        if (Number.isFinite(cd) && cd > 0) tip += `\nCD : ${cd} s`;
+        else if (cd === 0) tip += `\nSans recharge`;
+        button.title = tip;
+      } else {
+        button.title = `${group.ship} — ${label}`;
+      }
       button.innerHTML = `<img src="${abilityIconSrc(name)}" alt=""><span>${escapeHtml(label)}</span><small class="abilityCd"></small>`;
       const img = button.querySelector("img");
       if (img) img.onerror = () => { img.onerror = null; img.style.display = "none"; };
@@ -4041,6 +5807,73 @@ function initializeCustomActionBar() {
         }
         if (name === "ability_citadel-plus_prismatic-endurance") {
           activatePrism();
+          return;
+        }
+        if (name === "ability_spectrum") {
+          activateSpec();
+          return;
+        }
+        if (name === "ability_spectrum-plus_prismatic-reflecting") {
+          activateSpecPlus();
+          return;
+        }
+        if (name === "ability_tartarus_rapid-fire") {
+          activateTartRapid();
+          return;
+        }
+        if (name === "ability_tartarus-plus_rapid-fire-plus") {
+          activateTartRapidPlus();
+          return;
+        }
+        if (name === "ability_tartarus_speed-boost") {
+          activateTartBoost();
+          return;
+        }
+        if (name === "ability_tartarus-plus_speed-boost-plus") {
+          activateTartPlusBoost();
+          return;
+        }
+        if (name === "ability_tempest_volt-backup") {
+          // Passif : le clic affiche juste l'état.
+          const cd = Number(player.tempestBackupCd || 0);
+          const active = Number(player.tempestBackupT || 0) > 0;
+          showNotification(active
+            ? `Volt Back-up actif : invincible ${Math.ceil(Number(player.tempestBackupT || 0))} s — soigne-toi !`
+            : cd > 0
+              ? `Volt Back-up (passif) : recharge ${formatAbilityCd(cd)}`
+              : "Volt Back-up (passif) : prêt — se déclenche à 0 HP", 2, "info");
+          return;
+        }
+        if (name === "ability_tempest_volt-discharge") {
+          activateTempestDisch();
+          return;
+        }
+        if (name === "ability_tempest_voltage-link") {
+          activateTempestLink();
+          return;
+        }
+        if (name === "ability_zephyr_mmt") {
+          activateMmt();
+          return;
+        }
+        if (name === "ability_zephyr_tbr") {
+          activateTbr();
+          return;
+        }
+        if (name === "ability_spearhead_jam-x") {
+          activateJamx();
+          return;
+        }
+        if (name === "ability_spearhead-plus_jamx-creed") {
+          activateCreed();
+          return;
+        }
+        if (name === "ability_spearhead_target-marker" || name === "ability_spearhead-plus_target-marker") {
+          activateMark();
+          return;
+        }
+        if (name === "ability_spearhead-plus_neutralizing-marker") {
+          activateNeutr();
           return;
         }
         if (name === "ability_diminisher") {
@@ -4097,6 +5930,62 @@ function initializeCustomActionBar() {
         }
         if (name === "ability_cyborg_singularity") {
           activateCyborg();
+          return;
+        }
+        if (name === "ability_venom") {
+          activateVenom();
+          return;
+        }
+        if (name === "ability_sentinel") {
+          activateSent();
+          return;
+        }
+        if (name === "ability_spearhead_double-minimap" || name === "ability_spearhead-plus_recon") {
+          activateRecon();
+          return;
+        }
+        if (name === "ability_solaris_inc" || name === "ability_solaris-plus_incinerate-plus") {
+          activateInc();
+          return;
+        }
+        if (name === "ability_solace") {
+          activateSol();
+          return;
+        }
+        if (name === "ability_solace-plus_nano-cluster-repairer-plus") {
+          activateSolPlus();
+          return;
+        }
+        if (name === "ability_pusat-plus_speed-sap") {
+          activateSap();
+          return;
+        }
+        if (name === "ability_retiarus_spc") {
+          activateSpc();
+          return;
+        }
+        if (name === "ability_retiarus_chs") {
+          activateChs(false);
+          return;
+        }
+        if (name === "ability_retiarus-plus_chsp") {
+          activateChs(true);
+          return;
+        }
+        if (name === "ability_retiarus-plus_spcp") {
+          activateSpcPlus();
+          return;
+        }
+        if (name === "ability_paladin_ripper") {
+          activateRipper();
+          return;
+        }
+        if (name === "ability_paladin_last-stand") {
+          // Passif : le clic affiche juste l'état.
+          const cd = Number(player.lastStandCd || 0);
+          showNotification(cd > 0
+            ? `Dernier rempart (passif) : recharge ${formatAbilityCd(cd)}`
+            : "Dernier rempart (passif) : prêt — se déclenche à 1 PV", 2, "info");
           return;
         }
         if (name === "ability_disruptor_ddol") {
@@ -4197,7 +6086,7 @@ function initializeCustomActionBar() {
     // Contenu placeholder pour que les slots clonés ne soient jamais vides
     // (player n'existe pas encore à l'init ; updateLauncherUseBtn complète après).
     launcherUseBtn.className = "rocketQuickAction launcherAutoBtn dockAction";
-    launcherUseBtn.title = "Utiliser la roquette sélectionnée";
+    launcherUseBtn.title = "Lance-roquettes : salve";
     launcherUseBtn.innerHTML = `<strong>USE</strong><span class="launcherSquares"><span class="lsq">■</span><span class="lsq">■</span><span class="lsq">■</span><span class="lsq">■</span><span class="lsq">■</span></span><small class="launcherStock"><span class="launcherCount">0</span></small>`;
     return launcherUseBtn;
   }
@@ -4207,7 +6096,7 @@ function initializeCustomActionBar() {
     const icon = rocketDockIcon(activeId) || rocketDockIcon("eco10");
     const lit = launcherLitNow();
     btn.className = "rocketQuickAction launcherAutoBtn dockAction";
-    btn.title = "Utiliser la roquette sélectionnée";
+    btn.title = `${rocketTip(activeId)}\nClic : salve`;
     // Recadrage du fond comme les <img> (contenu bas dans le PNG officiel).
     const bgShift = { bdr1212: -6, eco10: -1, cbr: -2, sar01: -1, sar02: -1, ubr100: -1, pir100: 0, hstrm01: -2 }[activeId] ?? 0;
     btn.style.backgroundImage = icon ? `url("${icon}")` : "";
@@ -4230,6 +6119,9 @@ function initializeCustomActionBar() {
       const original = byId.get(id);
       const instance = original.cloneNode(true);
       instance.removeAttribute("id");
+      // Le "ready" de l'original (ex : X6 dispo) partage le style selected :
+      // les slots gèrent actif/tir/voile eux-mêmes, on le retire.
+      instance.classList.remove("ready");
       instance.dataset.actionId = id;
       instance.onclick = () => original.click();
       instance.addEventListener("dragstart", event => {
@@ -4261,6 +6153,7 @@ function initializeCustomActionBar() {
         // Copie depuis la palette : remplacement direct en 1 coup.
         const button = original.cloneNode(true);
         button.removeAttribute("id");
+        button.classList.remove("ready");
         button.dataset.actionId = actionId;
         button.draggable = true;
         button.onclick = () => original.click();
@@ -4285,6 +6178,7 @@ function initializeCustomActionBar() {
       const id = `ammo:${original.dataset.ammo}`;
       const instance = original.cloneNode(true);
       instance.removeAttribute("id");
+      instance.classList.remove("ready");
       instance.dataset.actionId = id;
       instance.onclick = () => original.click();
       instance.addEventListener("dragstart", event => {
@@ -4379,7 +6273,14 @@ function initializeCustomActionBar() {
         paletteItems.appendChild(getLauncherUseBtn());
       }
       rocketButtons
-        .filter((button) => (getRocketType(String(button.dataset.actionId || "").slice("rocket:".length))?.manual === false) === onlyLaunchers)
+        .filter((button) => {
+          const rid = String(button.dataset.actionId || "").slice("rocket:".length);
+          const r = getRocketType(rid);
+          if (!r || (r.manual === false) !== onlyLaunchers) return false;
+          // Stock 0 : masqué (comme munitions et formations).
+          try { if (rocketCount(rid) <= 0) return false; } catch {}
+          return true;
+        })
         .forEach(button => {
         const clone = button.cloneNode(true); clone.className = "rocketQuickAction"; clone.draggable = button.draggable;
         clone.title = button.title;
@@ -4408,9 +6309,23 @@ function initializeCustomActionBar() {
       for (const group of groupsToShow) {
         const section = document.createElement("div");
         section.className = "abilityShipSection";
+        const clones = abilityButtons.filter(button => button.dataset.ship === group.ship);
+        // Nombreuses aptitudes (Police) : 2 lignes équilibrées (moitié/moitié).
+        // Entrelacé pour un remplissage en colonnes : ligne 1 = 1re moitié.
+        let ordered = clones;
+        const duo = clones.length > 12;
+        if (duo) {
+          const half = Math.ceil(clones.length / 2);
+          const h1 = clones.slice(0, half), h2 = clones.slice(half);
+          ordered = [];
+          for (let i = 0; i < Math.max(h1.length, h2.length); i++) {
+            if (h1[i]) ordered.push(h1[i]);
+            if (h2[i]) ordered.push(h2[i]);
+          }
+        }
         const icons = document.createElement("div");
-        icons.className = "abilityShipIcons abilitySingle";
-        abilityButtons.filter(button => button.dataset.ship === group.ship).forEach(button => {
+        icons.className = "abilityShipIcons abilitySingle" + (duo ? " abilityDuo" : "");
+        ordered.forEach(button => {
           const clone = button.cloneNode(true); clone.className = "rocketQuickAction abilityQuickAction"; clone.draggable = true;
           const cloneImg = clone.querySelector("img");
           if (cloneImg) cloneImg.onerror = () => { cloneImg.onerror = null; cloneImg.style.display = "none"; };
@@ -4421,15 +6336,38 @@ function initializeCustomActionBar() {
         paletteItems.appendChild(section);
       }
     }
-    else if (category === "formations") formationButtons.forEach(button => {
+    else if (category === "formations") {
+      // Formations non possédées : masquées (classiques toujours visibles).
+      let ownedFormations = null;
+      let activeFormationId = "";
+      try { ownedFormations = new Set(account.user?.drones?.formations || []); } catch { ownedFormations = null; }
+      try { activeFormationId = getActiveDroneFormation(account.user).id; } catch {}
+      formationButtons.filter((button) => {
+        const fid = String(button.dataset.actionId || "").slice("formation:".length);
+        if (fid && fid === activeFormationId) return true;
+        try { if (isClassicFormation(fid)) return true; } catch {}
+        return !!ownedFormations && ownedFormations.has(fid);
+      }).forEach(button => {
       const clone = button.cloneNode(true); clone.className = "formationQuickAction dockAction" + (button.classList.contains("formationClassic") ? " formationClassic" : ""); clone.draggable = true;
       clone.classList.toggle("active", button.dataset.actionId === `formation:${account?.user?.drones?.activeFormation}`);
       clone.onclick = () => button.click();
       clone.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId); event.dataTransfer.effectAllowed = "copy"; });
       paletteItems.appendChild(clone);
-    });
-    else actions.filter(button => category === "ammo" ? !!button.dataset.ammo : !!button.dataset.skill).forEach(button => {
+      });
+    }
+    else actions.filter((button) => {
+      if (category === "ammo") {
+        if (!button.dataset.ammo) return false;
+        // Stock 0 : masqué (X1 infini toujours visible).
+        if (String(button.dataset.ammo).toLowerCase() === "x1") return true;
+        try { return ammoCount(button.dataset.ammo) > 0; } catch { return true; }
+      }
+      return !!button.dataset.skill;
+    }).forEach(button => {
       const clone = button.cloneNode(true); clone.removeAttribute("id"); clone.draggable = true; clone.dataset.actionId = button.dataset.actionId;
+      // Pas de "ready" hérité de l'original (même style que selected) :
+      // la palette gère "active" elle-même juste après.
+      clone.classList.remove("ready");
       // État actif explicite : cloneNode copiait l'état au moment du rendu, sans
       // resync ensuite (le cache du dock peut encore pointer les clones détachés
       // de la catégorie précédente quand on change vite de catégorie).
@@ -4438,6 +6376,7 @@ function initializeCustomActionBar() {
         try {
           clone.classList.toggle("active", String(button.dataset.ammo).toLowerCase() === String(player.ammo.active || "x1").toLowerCase());
         } catch {}
+        try { clone.title = ammoTip(button.dataset.ammo); } catch {}
       }
       clone.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", clone.dataset.actionId); });
       clone.onclick = () => button.click(); paletteItems.appendChild(clone);
@@ -4472,7 +6411,15 @@ function initializeCustomActionBar() {
       try { cancelProtection(); } catch {}
       try { cancelTravel(); } catch {}
       try { cancelFortify(); } catch {}
-      try { cancelPrism(); } catch {}
+  try { cancelPrism(); } catch {}
+  try { cancelSpec(); } catch {}
+  try { cancelSpecPlus(); } catch {}
+  try { cancelTartRapidPlus(); } catch {}
+  try { cancelTempestBackup(); } catch {}
+  try { cancelTempestDisch(); } catch {}
+  try { player.tempestLinkFx = []; player.tempestLinkBeams = []; } catch {}
+  try { player.tartBoostOn = false; } catch {}
+  try { player.tartPlusBoostOn = false; } catch {}
   try { cancelDiminish(); } catch {}
   try { cancelDdol(); } catch {}
   try { cancelHoloSelf(); } catch {}
@@ -4488,6 +6435,18 @@ function initializeCustomActionBar() {
   try { cancelHologram(); } catch {}
   try { cancelOrcus(); } catch {}
   try { cancelCyborg(); } catch {}
+  try { cancelVenom(); } catch {}
+  try { cancelMmt(); } catch {}
+  try { cancelTbr(); } catch {}
+  try { cancelRipper(); } catch {}
+  try { cancelSap(); } catch {}
+  try { cancelSpc(); } catch {}
+  try { cancelSpcPlus(); } catch {}
+  try { cancelChsCharge(); } catch {}
+  try { cancelSent(); } catch {}
+  try { cancelInc(); } catch {}
+  try { player.kamiRex = []; player.kamiQueue = []; } catch {}
+  try { cancelRecon(); } catch {}
   try { cancelRedirect(); } catch {}
   try { cancelDisarray(); } catch {}
   try { cancelRealloc(); } catch {}
@@ -10627,6 +12586,13 @@ window.resetAllSkills = function resetAllSkills() {
   try { player.travelCd = 0; } catch {}
   try { player.fortifyCd = 0; } catch {}
   try { player.prismCd = 0; } catch {}
+  try { player.specCd = 0; } catch {}
+  try { player.specPlusCd = 0; } catch {}
+  try { player.tartRapidCd = 0; } catch {}
+  try { player.tartRapidPlusCd = 0; } catch {}
+  try { player.tartBoostOn = false; } catch {}
+  try { player.tartPlusBoostOn = false; } catch {}
+  try { player.tartPlusBoostCd = 0; } catch {}
   try { player.diminishCd = 0; } catch {}
   try { player.ddolCd = 0; } catch {}
   try { player.redirectCd = 0; } catch {}
@@ -10647,6 +12613,40 @@ window.resetAllSkills = function resetAllSkills() {
   try { player.holoGramCd = 0; } catch {}
   try { player.orcusCd = 0; } catch {}
   try { player.cyborgCd = 0; } catch {}
+  try { player.venomCd = 0; } catch {}
+  try { player.ripperCd = 0; } catch {}
+  try { player.lastStandCd = 0; } catch {}
+  // Dernier rempart : l'effect passif revient avec le reset.
+  try { player.lastStandAnimT = 0; } catch {}
+  try { player.lastStandFxOff = false; } catch {}
+  try { player.tempestBackupCd = 0; } catch {}
+  try { player.tempestBackupT = 0; } catch {}
+  try { player.tempestDischCd = 0; } catch {}
+  try { player.tempestDischT = 0; } catch {}
+  try { player.tempestLinkCd = 0; } catch {}
+  try { player.tempestLinkFx = []; player.tempestLinkBeams = []; } catch {}
+  try { player.mmtCd = 0; } catch {}
+  try { player.mmtT = 0; } catch {}
+  try { player.tbrCd = 0; } catch {}
+  try { player.tbrT = 0; } catch {}
+  try { player.tbrClones = []; } catch {}
+  try { player.jamxCd = 0; } catch {}
+  try { player.creedCd = 0; } catch {}
+  try { player.jamxHalos = []; } catch {}
+  try { player.markCd = 0; } catch {}
+  try { player.neutrCd = 0; } catch {}
+  try { player.sapCd = 0; } catch {}
+  try { player.spcCd = 0; } catch {}
+  try { player.spcPlusCd = 0; } catch {}
+  try { player.chsCd = 0; } catch {}
+  try { player.chsPlusCd = 0; } catch {}
+  try { player.sentCd = 0; } catch {}
+  try { player.reconCd = 0; } catch {}
+  try { player.solCd = 0; } catch {}
+  try { player.solPlusCd = 0; } catch {}
+  try { player.incCd = 0; } catch {}
+  try { player.incPlusCd = 0; } catch {}
+  try { persistCdUntil("cloak", 0); } catch {}
   try { persistCdUntil("cloak", 0); } catch {}
   try { persistCdUntil("pod", 0); } catch {}
   try { persistCdUntil("hpRep", 0); } catch {}
@@ -10684,6 +12684,19 @@ window.resetAllSkills = function resetAllSkills() {
   try { persistCdUntil("holoGram", 0); } catch {}
   try { persistCdUntil("orcus", 0); } catch {}
   try { persistCdUntil("cyborg", 0); } catch {}
+  try { persistCdUntil("ripper", 0); } catch {}
+  try { persistCdUntil("lastStand", 0); } catch {}
+  try { persistCdUntil("sap", 0); } catch {}
+  try { persistCdUntil("spc", 0); } catch {}
+  try { persistCdUntil("spcPlus", 0); } catch {}
+  try { persistCdUntil("chs", 0); } catch {}
+  try { persistCdUntil("chsPlus", 0); } catch {}
+  try { persistCdUntil("sent", 0); } catch {}
+  try { persistCdUntil("recon", 0); } catch {}
+  try { persistCdUntil("sol", 0); } catch {}
+  try { persistCdUntil("solPlus", 0); } catch {}
+  try { persistCdUntil("inc", 0); } catch {}
+  try { persistCdUntil("incPlus", 0); } catch {}
 
   // Tir / roquettes : pour que tout soit réellement "rechargé".
   try { fireCooldown = 0; } catch {}
@@ -11911,7 +13924,11 @@ function drawShipEngineFx() {
   // à la place des réacteurs, le speed buff effect.
   if ((player.travelT || 0) > 0) { drawTravelEngineFx(TRAVEL_DURATION - Number(player.travelT || 0), Number(player.travelT || 0), 24); return; }
   if ((player.lightT || 0) > 0) { drawTravelEngineFx(LIGHT_DURATION - Number(player.lightT || 0), Number(player.lightT || 0), 24); return; }
+  if ((player.solBoostT || 0) > 0) { drawTravelEngineFx(SOLACE_PLUS_BOOST - Number(player.solBoostT || 0), Number(player.solBoostT || 0), 24); return; }
   if ((player.sleightT || 0) > 0) { drawTravelEngineFx(Number(player.sleightElapsed || 0), 1, 24); return; }
+  // Tartarus Speed Boost (toggle) : même speed_buff_effect, même décalage 24.
+  if (player.tartBoostOn === true) { drawTravelEngineFx(Number(player.tartBoostElapsed || 0), 1, 24); return; }
+  if (player.tartPlusBoostOn === true) { drawTravelEngineFx(Number(player.tartPlusBoostElapsed || 0), 1, 24); return; }
   const frame = getPlayerSpriteFrame();
   shipEngine.draw(ctx, player, ACTIVE_SHIP, isImgReady, frame);
 }
@@ -13240,6 +15257,8 @@ function refreshRocketPaletteCounts() {
     if (count) count.textContent = formatRocketCount(rocketCount(id));
     const isLauncher = getRocketType(id)?.manual === false;
     el.classList.toggle("active", el.dataset.actionId === (isLauncher ? activeLauncher : activeStd));
+    // Survol : nom + quantité live (standards comme lance-roquettes).
+    try { el.title = rocketTip(id); } catch {}
   }
   // Carrés du bouton USE : chargeur (1/s jusqu'à min(5, stock)).
   // On ne retouche que si ça a changé (laisse la charge jouer entre deux).
@@ -13395,6 +15414,12 @@ function syncActionDockState() {
       (v) => button.classList.toggle("active", v));
     applyDockField(button, "text", value,
       (v) => { if (small) small.textContent = v; });
+    // Survol : nom + quantité live.
+    try {
+      const tip = ammoTip(ammo);
+      applyDockField(button, "tip", tip,
+        (v) => { button.title = v; });
+    } catch {}
     // Pastille orbitale blanche pendant le tir (x1-x4, sab, spéciales ; X6/RCB exclus).
     // Suit la munition active : change de slot avec elle, disparaît à l'arrêt.
     const firing = attackActive && !player.dead && ammo === activeAmmo && !isRsbLike(ammo);
@@ -13408,12 +15433,15 @@ function syncActionDockState() {
       const cooling = cd > 0;
       const progress = cooling ? clamp(cd / cdMax, 0, 1) : 0;
       const wasCooling = button.dataset.x6Cooling === "1";
-      if (wasCooling && !cooling) {
-        // Fin du voile : animation "prêt" unique (pas de double système).
+      if (wasCooling && !cooling && ammo === activeAmmo) {
+        // Flash "prêt" uniquement si X6/RCB est la munition active : sinon
+        // il ressemble à une sélection permanente.
         button.classList.remove("x6Ready");
         void button.offsetWidth;
         button.classList.add("x6Ready");
         setTimeout(() => button.classList.remove("x6Ready"), 500);
+      } else if (wasCooling && !cooling) {
+        button.classList.remove("x6Ready");
       }
       button.dataset.x6Cooling = cooling ? "1" : "0";
       applyDockField(button, "cdVeil", cooling,
@@ -13463,8 +15491,14 @@ function syncActionDockState() {
 
   // Roquettes standard : cooldown partagé, voile sur chaque slot de roquette.
   // (Pas de flash : ~1 s en tir soutenu = trop de clignotement.)
-  for (const { button } of actionDockCache.rockets) {
+  for (const { button, rocketId } of actionDockCache.rockets) {
     const cooling = rocketCooldown > 0;
+    // Survol : nom + quantité live.
+    try {
+      const tip = rocketTip(rocketId);
+      applyDockField(button, "tip", tip,
+        (v) => { button.title = v; });
+    } catch {}
     const progress = cooling ? clamp(rocketCooldown / (rocketCooldownMax || 1), 0, 1) : 0;
     applyDockField(button, "cdVeil", cooling,
       (v) => button.classList.toggle("cdVeil", v));
@@ -13510,6 +15544,15 @@ function syncActionDockState() {
         : lowId === "ability_citadel_travel" || lowId === "ability_citadel-plus_travel" ? Number(player.travelT || 0)
         : lowId === "ability_citadel_fortify" || lowId === "ability_citadel-plus_fortify" ? Number(player.fortifyT || 0)
         : lowId === "ability_citadel-plus_prismatic-endurance" ? Number(player.prismT || 0)
+        : lowId === "ability_spectrum" ? Number(player.specT || 0)
+        : lowId === "ability_spectrum-plus_prismatic-reflecting" ? Number(player.specPlusT || 0)
+        : lowId === "ability_tartarus-plus_rapid-fire-plus" ? Number(player.tartRapidPlusT || 0)
+        : lowId === "ability_tartarus_speed-boost" ? (player.tartBoostOn === true ? 1 : 0)
+        : lowId === "ability_tartarus-plus_speed-boost-plus" ? (player.tartPlusBoostOn === true ? 1 : 0)
+        : lowId === "ability_tempest_volt-backup" ? Number(player.tempestBackupT || 0)
+        : lowId === "ability_tempest_volt-discharge" ? Number(player.tempestDischT || 0)
+        : lowId === "ability_zephyr_mmt" ? Number(player.mmtT || 0)
+        : lowId === "ability_zephyr_tbr" ? Number(player.tbrT || 0)
         : lowId === "ability_diminisher" ? Number(player.diminishT || 0)
         : lowId === "ability_holo_self-reversal" ? Number(player.holoSelfT || 0)
         : lowId === "ability_holo_enemy-reversal" ? Number(player.holoEnemyT || 0)
@@ -13522,6 +15565,17 @@ function syncActionDockState() {
         : lowId === "ability_mimesis_hologram" ? (player.holoGramPhase != null ? 1 : 0)
         : lowId === "ability_orcus_assimilate" ? Number(player.orcusT || 0)
         : lowId === "ability_cyborg_singularity" ? Number(player.cyborgT || 0)
+        : lowId === "ability_venom" ? Number(player.venomT || 0)
+        : lowId === "ability_sentinel" ? Number(player.sentT || 0)
+        : lowId === "ability_spearhead_double-minimap" || lowId === "ability_spearhead-plus_recon" ? Number(player.reconT || 0)
+        : lowId === "ability_solaris_inc" ? Number(player.incT || 0)
+        : lowId === "ability_solaris-plus_incinerate-plus" ? Number(player.incPlusT || 0)
+        : lowId === "ability_pusat-plus_speed-sap" ? Number(player.sapT || 0)
+        : lowId === "ability_retiarus_spc" ? Number(player.spcT || 0)
+        : lowId === "ability_retiarus-plus_spcp" ? Number(player.spcPlusT || 0)
+        : lowId === "ability_retiarus_chs" ? (player.chsPhase != null && !player.chsPlus ? 1 : 0)
+        : lowId === "ability_retiarus-plus_chsp" ? (player.chsPhase != null && player.chsPlus ? 1 : 0)
+        : lowId === "ability_paladin_ripper" ? Number(player.ripperT || 0)
         : lowId === "ability_disruptor_ddol" ? Number(player.ddolT || 0)
         : lowId === "ability_disruptor_redirect" ? Number(player.redirectT || 0)
         : lowId === "ability_disruptor_shield-disarray" ? Number(player.disarrayT || 0)
@@ -13545,6 +15599,10 @@ function syncActionDockState() {
         cdText = ">>";
       } else if (lowId === "ability_mimesis_hologram" && player.holoGramPhase != null) {
         cdText = formatAbilityCd(Number(player.holoGramT || 0));
+      } else if (lowId === "ability_retiarus_chs" && (player.chsPhase != null && !player.chsPlus)) {
+        cdText = ">>";
+      } else if (lowId === "ability_retiarus-plus_chsp" && (player.chsPhase != null && player.chsPlus)) {
+        cdText = ">>";
       } else {
         cdText = formatAbilityCd(fxLeft > 0 ? fxLeft : cd.left);
       }
@@ -13676,6 +15734,13 @@ function formationDrainsShield() {
 
 function tickRepair(dt) {
   if (player.dead) {
+    player.repairTickT = 0;
+    stopRepairSound({ fadeOut: 0 });
+    return;
+  }
+
+  // Volt Back-up actif : robot de réparation coupé (aucun soin coque).
+  if ((player.tempestBackupT || 0) > 0) {
     player.repairTickT = 0;
     stopRepairSound({ fadeOut: 0 });
     return;
@@ -15006,7 +17071,7 @@ function damagePetFromPlayer(dmg) {
   if (pet.hp <= 0) {
     // Destruction par nos tirs : explosion + son comme un NPC.
     spawnExplosion(petState.x, petState.y, 1.0);
-    SFX.play("npcDeath", { maxVoices: 16, cooldown: 0 });
+    SFX.play("npcDeath", { cooldown: 0 });
     onPetDestroyed();
     showToast("REX détruit.", 1.8);
     if (petLink.until > 0) endHplLink("destroyed");
@@ -15357,28 +17422,41 @@ function onPetDestroyed() {
 }
 
 // Part coque redirigée vers le REX (toutes sources). Retourne le reste au joueur.
+// Triple barrage : la part est encaissée d'abord par le PET puis par chaque
+// clone vivant (3 liens HP). Un clone à 0 = mort liée (gérée par le tick TBR).
 function absorbPetLinkDamage(hpAmount) {
   if (!(hpAmount > 0) || !hplLinkActive()) return hpAmount;
   const pet = account.user?.pet;
   if (!pet || !(Number(pet.hp) > 0)) return hpAmount;
-  const taken = Math.min(Number(pet.hp), hpAmount);
-  pet.hp = Number(pet.hp) - taken;
-  markProgressDirty();
-  if (taken >= 1) {
-    addFloatText(
-      petState.x + (Math.random() - 0.5) * 60,
-      petState.y - 90 - Math.random() * 20,
-      Math.round(taken),
-      "rgba(255,80,100,0.95)",
-      { size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
-    );
+  let rest = hpAmount;
+  const takers = [{ isClone: false, get hp() { return Number(pet.hp); }, set hp(v) { pet.hp = v; }, x: petState.x, y: petState.y }];
+  if ((player.tbrT || 0) > 0 && Array.isArray(player.tbrClones)) {
+    for (const c of player.tbrClones) {
+      if (c && Number(c.hp) > 0) takers.push(c);
+    }
+  }
+  for (const tk of takers) {
+    if (!(rest > 0)) break;
+    const taken = Math.min(Number(tk.hp) || 0, rest);
+    tk.hp = Number(tk.hp) - taken;
+    rest -= taken;
+    markProgressDirty();
+    if (taken >= 1) {
+      addFloatText(
+        Number(tk.x || 0) + (Math.random() - 0.5) * 60,
+        Number(tk.y || 0) - 90 - Math.random() * 20,
+        Math.round(taken),
+        "rgba(255,80,100,0.95)",
+        { size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+      );
+    }
   }
   if (pet.hp <= 0) {
     pet.hp = 0;
     onPetDestroyed();
     endHplLink("destroyed");
   }
-  return hpAmount - taken;
+  return rest;
 }
 
 // Bouées (G-BC combat / G-BH coque, niveau unique) : 120 s, cooldown 240 s.
@@ -15397,7 +17475,15 @@ function buoyCooldownLeftSec(key) {
 
 function buoyPlayerInside() {
   if (!buoySessionActive() || !petState.ready || player.dead || !started) return false;
-  return Math.hypot(player.x - petState.x, player.y - petState.y) <= PET_BUOY_RADIUS;
+  if (Math.hypot(player.x - petState.x, player.y - petState.y) <= PET_BUOY_RADIUS) return true;
+  // Triple barrage : un halo de bouée par REX vivant.
+  if ((player.tbrT || 0) > 0 && Array.isArray(player.tbrClones)) {
+    for (const c of player.tbrClones) {
+      if (!c || !(Number(c.hp) > 0)) continue;
+      if (Math.hypot(player.x - Number(c.x || 0), player.y - Number(c.y || 0)) <= PET_BUOY_RADIUS) return true;
+    }
+  }
+  return false;
 }
 
 // × dégâts du joueur dans le halo rouge.
@@ -15686,7 +17772,7 @@ function detonatePetKamikaze() {
     return showToast("Gear déséquipé.", 1.5);
   }
   spawnExplosion(cx, cy, 1.0);
-  try { SFX.play("npcDeath", { maxVoices: 16, cooldown: 0 }); } catch {}
+  try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
   let hit = 0;
   const r2 = radius * radius;
   for (const e of [...enemies]) {
@@ -15856,11 +17942,35 @@ function scanPetFetch(gears) {
   if (next) petState.fetchId = next.id;
   return next;
 }
+// Collecte des clones TBR : chacun sa box (jamais celle du PET ni d'un autre
+// clone). Portées et éligibilité identiques au PET, scan depuis le clone.
+function validateTbrFetch(c, gears) {
+  if (c.fetchId == null) return null;
+  const pet = account.user?.pet;
+  const cur = collectables.find((b) => b && b.id === c.fetchId);
+  if (cur && isPetFetchEligible(cur, gears, getPetGearRangeWithRadar("al", gears.al, pet, account.user), getPetGearRangeWithRadar("ar", gears.ar, pet, account.user))) return cur;
+  c.fetchId = null;
+  c.fetchHold = 0;
+  return null;
+}
+function scanTbrFetch(c, gears, exclude) {
+  const pet = account.user?.pet;
+  const alRange = getPetGearRangeWithRadar("al", gears.al, pet, account.user);
+  const arRange = getPetGearRangeWithRadar("ar", gears.ar, pet, account.user);
+  if (Math.max(alRange, arRange) <= 0) return null;
+  const next = pickNearestWithin(
+    collectables, Number(c.x || 0), Number(c.y || 0), Math.max(alRange, arRange),
+    (b) => !exclude.has(b?.id) && isPetFetchEligible(b, gears, alRange, arRange),
+  );
+  if (next) c.fetchId = next.id;
+  return next;
+}
 
 // Récolte au contact, comme un clic joueur (mêmes récompenses).
 // Récupération (AI-S) : bonus hors ressources si la box est éligible
 // (bonus boxes, cargos, booty — jamais scrap / minerais / assemblage).
-function collectPetBox(box) {
+// st = état porteur du cooldown (petState ou clone TBR).
+function collectPetBox(box, st = petState) {
   const salvagePct = getPetProtocolPct(account.user?.pet, account.user, "salvage");
   const eligible = ["Bonus_Box", "Cargo_Box", "Green_Booty_Box", "Astral_Prime_Box"].includes(String(box?.type || ""));
   try {
@@ -15871,14 +17981,14 @@ function collectPetBox(box) {
   try { if (box) delete box._petSalvagePct; } catch {}
   if (res?.kept) {
     // Soute pleine : la box reste — tenter à nouveau dans 10 s, sans spam sonore.
-    petState.pickCd = 10;
+    st.pickCd = 10;
     return;
   }
-  SFX.play("collect", { cut: true, maxVoices: 3 });
+  SFX.play("collect", { cut: true });
   takeCollectableInstance(box);
   const idx = collectables.indexOf(box);
   if (idx >= 0) collectables.splice(idx, 1);
-  petState.pickCd = PET_GEAR_PICK_DELAY;
+  st.pickCd = PET_GEAR_PICK_DELAY;
 }
 
 function tickPetLocator(gears, dt) {
@@ -16364,8 +18474,18 @@ function getPetSpriteFrame() {
 // réparateur. Retracé à chaque frame (scintillement électrique).
 function drawPetLink(ox, oy) {
   if (!hplLinkActive() || !petState.ready || player.dead || !started) return;
-  const x1 = player.x + ox, y1 = player.y + oy;
-  const x2 = petState.x + ox, y2 = petState.y + oy;
+  petLinkBeam(player.x + ox, player.y + oy, petState.x + ox, petState.y + oy);
+  // Triple barrage : un lien HP par REX (joueur <-> chaque clone).
+  if ((player.tbrT || 0) > 0 && Array.isArray(player.tbrClones)) {
+    for (const c of player.tbrClones) {
+      if (!c || !(Number(c.hp) > 0)) continue;
+      petLinkBeam(player.x + ox, player.y + oy, Number(c.x || 0) + ox, Number(c.y || 0) + oy);
+    }
+  }
+}
+
+// Un éclair de lien HP (tracé brisé 2 passes + halos), entre 2 points écran.
+function petLinkBeam(x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const len = Math.hypot(dx, dy);
   if (len < 1) return;
@@ -16403,6 +18523,91 @@ function drawPetLink(ox, oy) {
     ctx.arc(hx, hy, 34, 0, TAU);
     ctx.fill();
     ctx.restore();
+  }
+}
+
+// JAMX / Creed : halo arc-en-ciel expansif, version simple (1 anneau fin,
+// pas de shadowBlur pour les perfs, teinte qui tourne).
+function drawJamxHalos(ox, oy) {
+  const halos = player?.jamxHalos;
+  if (!Array.isArray(halos) || !halos.length || player.dead || !started) return;
+  const t = performance.now() / 1000;
+  const hue = Math.floor(t * 10) % 360;
+  for (const h of halos) {
+    if (!h) continue;
+    const r = Number(h.r || 0);
+    if (r <= 0) continue;
+    const x = Number(h.x || 0) + ox, y = Number(h.y || 0) + oy;
+    if (x < -r || y < -r || x > innerWidth + r || y > innerHeight + r) continue;
+    const fade = Math.max(0, Math.min(1, 1 - r / Math.max(1, Number(h.max || 1))));
+    ctx.save();
+    ctx.globalAlpha = 0.8 * fade;
+    ctx.strokeStyle = `hsl(${hue},100%,60%)`;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// Voltage Link (Tempest) : éclairs bleu nuit entre les maillons de la chaîne
+// (même tracé brisé que le lien PET), flash 0.8 s par maillon.
+function drawTempestLinks(ox, oy) {
+
+  const beams = player?.tempestLinkBeams;
+  if (!Array.isArray(beams) || !beams.length || player.dead || !started) return;
+  const now = performance.now() / 1000;
+  for (const bm of beams) {
+    if (!bm) continue;
+    const left = Number(bm.until || 0) - now;
+    if (left <= 0) continue;
+    const a = bm.a, b = bm.b;
+    if (!a || !b) continue;
+    if (a !== player && !(a.hp > 0)) continue;
+    if (b !== player && !(b.hp > 0)) continue;
+    const fade = Math.max(0, Math.min(1, left / TEMPEST_LINK_BEAM_LIFE));
+    const x1 = a.x + ox, y1 = a.y + oy;
+    const x2 = b.x + ox, y2 = b.y + oy;
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) continue;
+    const nx = -dy / len, ny = dx / len;
+    const segs = 9;
+    const pass = (color, width, amp) => {
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineJoin = "round";
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      for (let i = 1; i < segs; i++) {
+        const t = i / segs;
+        const off = (Math.random() * 2 - 1) * amp * Math.sin(t * Math.PI);
+        ctx.lineTo(x1 + dx * t + nx * off, y1 + dy * t + ny * off);
+      }
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      ctx.restore();
+    };
+    pass("rgba(30,50,180,0.85)", 5, 30);
+    pass("rgba(160,190,255,0.9)", 2, 30);
+    for (const [hx, hy] of [[x1, y1], [x2, y2]]) {
+      const glow = ctx.createRadialGradient(hx, hy, 0, hx, hy, 34);
+      glow.addColorStop(0, "rgba(70,100,230,0.5)");
+      glow.addColorStop(1, "rgba(70,100,230,0)");
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 34, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
   }
 }
 
@@ -16453,21 +18658,28 @@ function drawPetBuoy(ox, oy) {
   const pet = account.user?.pet;
   if (!pet?.owned || pet?.active !== true || !(Number(pet.hp) > 0)) return;
   if (!petState.ready || player.dead || !started) return;
-  const sx = petState.x + ox, sy = petState.y + oy;
-  if (sx < -PET_BUOY_RADIUS || sy < -PET_BUOY_RADIUS
-    || sx > innerWidth + PET_BUOY_RADIUS || sy > innerHeight + PET_BUOY_RADIUS) return;
   const t = performance.now() / 1000;
   // Rond extérieur fixe retiré : vaguelette glow comme le soigneur.
-  // Une pulsation par seconde, qui dure 1 s.
+  // Une pulsation par seconde, qui dure 1 s. Triple barrage : une
+  // pulsation par REX vivant (la bouée voyage avec chacun).
   if (t - Number(drawPetBuoy.lastPulse ?? -10) >= 1) {
     drawPetBuoy.lastPulse = t;
-    try {
-      // La bouée suit le pet : la pulsation voyage avec lui.
-      spawnHaloPulse(petState.x, petState.y, PET_BUOY_RADIUS, 1,
-        petBuoy.key === "bc" ? "255,70,80" : "55,255,125",
-        petBuoy.key === "bc" ? "255,110,120" : "80,255,145",
-        "pet");
-    } catch {}
+    const spots = [{ x: petState.x, y: petState.y }];
+    if ((player.tbrT || 0) > 0 && Array.isArray(player.tbrClones)) {
+      for (const c of player.tbrClones) {
+        if (c && Number(c.hp) > 0) spots.push({ x: Number(c.x || 0), y: Number(c.y || 0) });
+      }
+    }
+    for (const s of spots) {
+      if (s.x + ox < -PET_BUOY_RADIUS || s.y + oy < -PET_BUOY_RADIUS
+        || s.x + ox > innerWidth + PET_BUOY_RADIUS || s.y + oy > innerHeight + PET_BUOY_RADIUS) continue;
+      try {
+        spawnHaloPulse(s.x, s.y, PET_BUOY_RADIUS, 1,
+          petBuoy.key === "bc" ? "255,70,80" : "55,255,125",
+          petBuoy.key === "bc" ? "255,110,120" : "80,255,145",
+          "pet");
+      } catch {}
+    }
   }
 }
 
@@ -16548,6 +18760,86 @@ function drawPet(ox, oy) {
     }
   } catch {}
   ctx.restore();
+}
+
+// Clones TBR (Zephyr) : même sprite, pseudo et firme que le PET, + moteurs.
+// Durée de vie gérée par le tick (10 s, mort liée, PET off = fin).
+function drawTbrClones(ox, oy) {
+  const clones = player?.tbrClones;
+  if (!Array.isArray(clones) || !clones.length) return;
+  if (player.dead || !started) return;
+  const pet = account.user?.pet;
+  if (!pet?.owned || pet?.active !== true) return;
+  const level = getPetLevel(pet.exp);
+  const petPseudo = String(pet?.pseudo || "REX");
+  const petFaction = getFaction(pet?.faction || account.user?.faction);
+  for (const c of clones) {
+    if (!c || !(Number(c.hp) > 0)) continue;
+    const x = Number(c.x || 0) + ox;
+    const y = Number(c.y || 0) + oy;
+    if (x < -160 || y < -160 || x > innerWidth + 160 || y > innerHeight + 160) continue;
+    const frame = ((angleToFrameIndex(Number(c.angle || 0), 32) + 16) % 32) + 1;
+    const image = getCachedImage(`${getPetStageBase(level)}${frame}.png`);
+    const baseImage = getPetStage(level) >= 6
+      ? getCachedImage(`/PET/PET_SPRITES/NIVEAU5/${frame}.png`)
+      : null;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    const petTt = performance.now() / 1000;
+    const petBobY = Math.sin(petTt * 4.0) * 2 * idleSway;
+    ctx.save();
+    ctx.translate(0, petBobY);
+    let sprite = image;
+    if (baseImage) {
+      sprite = petCombinedFrames.get(frame);
+      if (!sprite && isImgReady(baseImage) && isImgReady(image)) {
+        sprite = document.createElement("canvas");
+        sprite.width = PET_DRAW_W;
+        sprite.height = PET_DRAW_H;
+        const composite = sprite.getContext("2d");
+        composite.imageSmoothingEnabled = false;
+        composite.drawImage(baseImage, 0, 0, PET_DRAW_W, PET_DRAW_H);
+        composite.drawImage(image, 0, 0, PET_DRAW_W, PET_DRAW_H);
+        petCombinedFrames.set(frame, sprite);
+      }
+      if (!sprite) sprite = isImgReady(baseImage) ? baseImage : null;
+    }
+    if (sprite && (baseImage || isImgReady(sprite))) {
+      drawCenteredImage(ctx, sprite, PET_DRAW_W, PET_DRAW_H);
+      // Clé = le clone lui-même (objet stable) pour l'anim des réacteurs.
+      if (GAME_SETTINGS.shipSmoke) {
+        try { petEngine.draw(ctx, c, sprite, frame, isImgReady); } catch {}
+      }
+    }
+    else { ctx.fillStyle = "#79f5ff"; ctx.beginPath(); ctx.arc(0, 0, 20, 0, TAU); ctx.fill(); }
+    ctx.restore();
+    try {
+      let petFactionImage = getCachedImage(petFaction.imagePath);
+      if (!isImgReady(petFactionImage)) {
+        loadImage(petFaction.imagePath, { priority: true });
+        petFactionImage = null;
+      }
+      ctx.font = "900 13px ui-sans-serif, system-ui";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      const petNameY = PET_DRAW_H / 2 + 10;
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.fillText(petPseudo, 0, petNameY);
+      if (petFactionImage?.complete && petFactionImage.naturalWidth > 0) {
+        const petTextWidth = ctx.measureText(petPseudo).width;
+        ctx.drawImage(
+          petFactionImage,
+          petTextWidth / 2 + 5,
+          petNameY,
+          petFactionImage.naturalWidth,
+          petFactionImage.naturalHeight,
+        );
+      }
+    } catch {}
+    ctx.restore();
+  }
 }
 
 const ENTITY_LIMITS = Object.freeze({
@@ -16635,6 +18927,20 @@ function tickEngineTrails(dt) {
     const petFrame = getPetSpriteFrame();
     const petSprite = getCachedImage(`${getPetStageBase(getPetLevel(pet.exp))}${petFrame}.png`);
     emitEngineTrail(petState, { sprite: { w: PET_DRAW_W, h: PET_DRAW_H }, speed: 320 }, dt, null, "pet", petFrame, petSprite);
+  }
+  // Clones TBR : mêmes réacteurs (anim + traînées) que le PET.
+  if ((player.tbrT || 0) > 0 && Array.isArray(player.tbrClones) && player.tbrClones.length) {
+    const tbrOn = GAME_SETTINGS.shipSmoke && pet?.owned && pet?.active === true && Number(pet.hp) > 0 && !player.dead;
+    let tbrLevel = 1;
+    try { tbrLevel = getPetLevel(pet.exp); } catch {}
+    for (const c of player.tbrClones) {
+      if (!c || !(Number(c.hp) > 0)) continue;
+      try { petEngine.update(c, dt, tbrOn); } catch {}
+      if (!tbrOn) continue;
+      const cFrame = ((angleToFrameIndex(Number(c.angle || 0), 32) + 16) % 32) + 1;
+      const cSprite = getCachedImage(`${getPetStageBase(tbrLevel)}${cFrame}.png`);
+      emitEngineTrail(c, { sprite: { w: PET_DRAW_W, h: PET_DRAW_H }, speed: 320 }, dt, null, "pet", cFrame, cSprite);
+    }
   }
 
   const lockedNpc = Target.get();
@@ -17893,14 +20199,15 @@ function applyCollectableReward(c) {
   }
 
   const hpFlat = Math.floor(rollValue(reward.hp, 0) * salvageMult);
-  if (hpFlat > 0) {
+  // Volt Back-up actif : les box ne soignent pas la coque.
+  if (hpFlat > 0 && (player.tempestBackupT || 0) <= 0) {
     player.hp = Math.min(player.hpMax, player.hp + hpFlat);
     parts.push(`+${hpFlat} HP`);
     changed = true;
   }
 
   const hpPct = Number(reward.hpPct || 0);
-  if (hpPct > 0) {
+  if (hpPct > 0 && (player.tempestBackupT || 0) <= 0) {
     const amount = Math.floor(player.hpMax * hpPct * salvageMult);
     player.hp = Math.min(player.hpMax, player.hp + amount);
     parts.push(`+${amount} HP`);
@@ -18048,7 +20355,7 @@ const isSelected = collectableTargetId === c.id && c.armed === true;
       const rr = player.r + (c.pickupRadius || c.r || 32);
 
       if (dist2(player.x, player.y, c.x, c.y) <= rr * rr) {
-        SFX.play("collect", { cut: true, maxVoices: 3 });
+        SFX.play("collect", { cut: true });
         const autoRes = applyCollectableReward(c);
         if (!autoRes?.kept) {
           takeCollectableInstance(c);
@@ -18098,7 +20405,7 @@ player.y = collectY;
 
     // ✅ Attente de 1 seconde avant collecte
     if (c.collectT >= COLLECTABLE_PICKUP.holdDuration) {
-      SFX.play("collect", { cut: true, maxVoices: 3 });
+      SFX.play("collect", { cut: true });
       const collectRes = applyCollectableReward(c);
 
       collectableTargetId = null;
@@ -18275,6 +20582,8 @@ function drawCollectables(ox, oy) {
 // Silhouettes colorées (clé libre, ex type:frame) pour un contour qui suit
 // la sprite. Cache 24 max. Dessinées avant la sprite, qui passe par-dessus.
 const petLocatorOutlines = new Map();
+// Dernières frames prêtes des icônes d'aptitude (anti-coupure pendant charge).
+const contSpriteCache = {};
 
 function outlineSilhouette(cacheKey, img, w, h, color) {
   const key = `${color}:${cacheKey}`;
@@ -18447,12 +20756,11 @@ const Target = (() => {
       if (!(typeof fireCooldown === "number" && fireCooldown > 0)) fireCooldown = 0;
     }
 
-    // ✅ switch en plein combat : des faux tirs partent aussitôt vers la
-    // nouvelle cible et couvrent l'attente jusqu'au vrai tir (aucun trou
-    // visuel, aucun dégât supplémentaire).
-    if (next && next !== cur && wasAttacking) {
-      try { scheduleSwitchDecoys(next); } catch {}
-    }
+    // ✅ changement de cible en plein combat : l'attaque est coupée
+    // (ciblage 100 % manuel) donc aucun faux tir vers la nouvelle cible
+    // tant que l'attaque n'est pas ré-enclenchée (CTRL). Les faux tirs
+    // de transition ne sont programmés que par startAttack, quand
+    // l'attaque continue / reprend avec un cooldown restant.
 
     cur = next;
   }
@@ -18704,7 +21012,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
       }
     }
 
-    if (!e._spawnedOnce) {
+    if (!e._spawnedOnce && !isEntityJammed(e)) {
       e._spawnedOnce = true;
 
       e._animPhase = "delay";
@@ -18747,6 +21055,8 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   // Holo inversion ennemie : +10 % dégâts totaux subis par la cible.
   const holoWeak = !opts.noWeaken && holoEnemyWeakened(e);
   if (holoWeak) dmg = Number(dmg || 0) * (1 + HOLO_WEAKEN);
+  // Target Marker (Spearhead) : +10 % de pénétration sur la cible marquée.
+  if (!opts.noWeaken && e && (e.markT || 0) > 0) pen = Number(pen || 0) + MARK_PEN;
   pen = Math.max(0, Math.min(1, Number(pen || 0)));
   // Distribution officielle par alien ("shield spread", défaut 80/20) :
   // surchargeable par type dans NPC_TYPES.
@@ -18809,7 +21119,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
       }
     }
 
-   if (!e._spawnedOnce && (shD + hpD) > 0) {
+   if (!e._spawnedOnce && (shD + hpD) > 0 && !isEntityJammed(e)) {
   e._spawnedOnce = true;
 
   e._animPhase = "delay";
@@ -18973,6 +21283,10 @@ function hurtPlayer(amount, source = null) {
   if ((player.fortifyT || 0) > 0) {
     amount = Math.max(0, Number(amount) || 0) * (1 - FORTIFY_DR);
   }
+  // Éventreur (Paladin) : -50 % de dégâts subis pendant les 3 s.
+  if ((player.ripperT || 0) > 0) {
+    amount = Math.max(0, Number(amount) || 0) * (1 - RIPPER_DR);
+  }
 
   // Endurance prismatique (Citadel+) : -80 % de dégâts subis. La pénétration
   // de l'attaquant est annulée, sauf formation papillon (20 % traverse) —
@@ -18981,6 +21295,33 @@ function hurtPlayer(amount, source = null) {
   if ((player.prismT || 0) > 0) {
     amount = Math.max(0, Number(amount) || 0) * (1 - PRISM_DR);
     shieldPenetration = source && isButterflyAttacker(source) ? PRISM_PEN_BUTTERFLY : 0;
+  }
+
+  // Spectrum (officiel) : Blindage prismatique, -90 % dégâts subis.
+  if ((player.specT || 0) > 0) {
+    amount = Math.max(0, Number(amount) || 0) * (1 - SPEC_DR);
+  }
+
+  // Spectrum Plus : -70 % dégâts subis + 70 % du brut réfléchi à chaque
+  // attaquant (le vrai `source`, pas la cible lockée — même pattern que RVG).
+  // Renvoi arrondi à l'entier (pas de virgule) : % appliqué sur chiffre rond.
+  if ((player.specPlusT || 0) > 0) {
+    if (source && source.hp > 0) {
+      const rdmg = Math.max(0, Math.round(Number(Number(amount) || 0) * SPECPLUS_REFLECT));
+      if (rdmg > 0) {
+        try { damageEnemy(source, rdmg); } catch {}
+        try {
+          addFloatText(
+            source.x + (Math.random() - 0.5) * 60,
+            source.y - 90 - Math.random() * 20,
+            rdmg,
+            "rgba(255,235,170,0.96)",
+            { text: `${DMG_FMT.format(rdmg)}`, size: 19, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+          );
+        } catch {}
+      }
+    }
+    amount = Math.max(0, Number(amount) || 0) * (1 - SPECPLUS_DR);
   }
 
   // Stockpile (Hecate Plus) : force du bouclier +X % pendant l'effet
@@ -19068,6 +21409,8 @@ function triggerBossEncounterPhase(boss, damageDone) {
   const phaseTypes = Array.isArray(config?.phaseTypes) ? config.phaseTypes : [];
   const phaseCount = phaseGroups?.length || phaseTypes.length;
   if (!state || state.invulnerable || damageDone <= 0 || state.phase >= phaseCount) return false;
+  // Brouillé : la phase attend la fin du brouillage (re-testée à chaque hit).
+  if (isEntityJammed(boss)) return false;
 
   const durabilityMax = Math.max(1, Number(boss.hpMax || 0) + Number(boss.shMax || 0));
   const durability = Math.max(0, Number(boss.hp || 0) + Number(boss.sh || 0));
@@ -19139,7 +21482,7 @@ function processDeathsMeasured() {
       SFX.fadeOut("pShotX4", { dur: 0.25, to: 0.3 });
       SFX.fadeOut("pShotX6", { dur: 0.25, to: 0.3 });
       SFX.fadeOut("pShotSab", { dur: 0.25, to: 0.3 });
-      SFX.play("npcDeath", { maxVoices: 16, cooldown: 0 });
+      SFX.play("npcDeath", { cooldown: 0 });
     }
 
 let dropType = "Cargo_Box";
@@ -19203,11 +21546,14 @@ if (!e.noRewards) {
 }
 
     if (e._onKill) {
-      runOnKillAction(e._onKill, {
-        x: e.x,
-        y: e.y,
-        bossMasterId: e._bossPhaseMinion ? e.masterId : null,
-      });
+      // Brouillé : pas de renforts à sa mort.
+      if (!isEntityJammed(e)) {
+        runOnKillAction(e._onKill, {
+          x: e.x,
+          y: e.y,
+          bossMasterId: e._bossPhaseMinion ? e.masterId : null,
+        });
+      }
       e._onKill = null;
     }
 if (e.type === "npc_Cubikon") {
@@ -19877,6 +22223,7 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
   // Boosters dégâts : tous les dégâts infligés (officiel), roquettes comprises.
   const rocketBoosterMults = playerBoosterMults();
   const dmg = (rocket?.damage ?? 1000)
+    * tartLauncherDmgMult(rocket?.manual === false)
     * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100)
     * rocketBoosterMults.dmg * playerUpgradeMults().rocket
     * (isLeonovHomeActive() ? 2.5 : 1);
@@ -19971,12 +22318,20 @@ function tryFireSalvo(opts = {}) {
   const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (Number(player.laserHitBonusPct || 0) / 100));
   for (let i = 0; i < n; i++) {
     // 1 son par roquette, en même temps.
-    SFX.play("sfx_shot_lance_roquettes", { maxVoices: 8 });
+    SFX.play("sfx_shot_lance_roquettes");
     // Éventail large : sens alterné + grande ampleur → 5 grands C distincts.
     const dirSign = i % 2 === 0 ? -1 : 1;
     const scale = 1.8 + 1.2 * (n > 1 ? i / (n - 1) : 0.5);
     spawnRocketProjectile(rocket, t, { spread: (i - (n - 1) / 2) * 0.12, volleyId, volleySize: n, arcDir: dirSign, arcScale: scale, arcBoost: 15, miss: volleyMiss });
   }
+  // Passif Tartarus Plus (officiel) : 1 salve sur 5 tire une roquette lanceur
+  // extra gratuite (même type, même sans stock d'inventaire).
+  try {
+    if (isTartarusPlusBase() && Math.random() < TARTPLUS_EXTRA_ROCKET && t && t.hp > 0) {
+      SFX.play("sfx_shot_lance_roquettes");
+      spawnRocketProjectile(rocket, t, { spread: 0, volleyId, volleySize: n + 1, arcDir: 1, arcScale: 2.4, arcBoost: 15, miss: volleyMiss });
+    }
+  } catch {}
   return true;
 }
 
@@ -20111,7 +22466,7 @@ function playEscortShot(ammoKey) {
   const id = ESCORT_SHOT_SFX[ammoKey] || ESCORT_SHOT_SFX.x1;
   const RATE_VARIANTS = [0.9, 1.0, 1.1];
   const rate = RATE_VARIANTS[Math.floor(Math.random() * RATE_VARIANTS.length)];
-  SFX.play(id, { rate, cooldown: 0.05, maxVoices: 2 });
+  SFX.play(id, { rate, cooldown: 0.05 });
 }
 
 // ✅ quand un vrai tir touche sa cible (dégâts, sans dégâts ou MISS),
@@ -20120,7 +22475,7 @@ const PLAYER_LASER_HIT_SFX = ["laserHit1", "laserHit2", "laserHit3"];
 
 function playPlayerLaserHit() {
   const id = PLAYER_LASER_HIT_SFX[Math.floor(Math.random() * PLAYER_LASER_HIT_SFX.length)];
-  SFX.play(id, { cooldown: 0.04, maxVoices: 4 });
+  SFX.play(id, { cooldown: 0.04 });
 }
 
 // Impacts d'une même volée : 1er immédiat, suivants décalés de 100 ms.
@@ -20218,7 +22573,7 @@ function tickLauncherCharger(dt) {
   // Mémorise le plein affiché pour la salve auto.
   const lit = launcherLitNow();
   for (let loaded = previousLit + 1; loaded <= lit; loaded++) {
-    SFX.play(loaded === 5 ? "rocketsLoaded" : "rocketLoad", { maxVoices: 5 });
+    SFX.play(loaded === 5 ? "rocketsLoaded" : "rocketLoad");
   }
   if (lit >= full) launcherFullT += dt;
   else launcherFullT = 0;
@@ -20587,7 +22942,7 @@ const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
   const dmgShot = isSab
     ? player.baseDamage * SAB50.drainMult * shotBoosterMults.dmg
-    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * shipPassiveDamageMult();
+    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * shipPassiveDamageMult();
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - (shotHitBonusPct / 100));
 
@@ -21452,6 +23807,10 @@ jumpBaseFade: 1,
 }
 
 function die() {
+  // Paladin Dernier rempart (passif) : à 1 PV, full heal au lieu de mourir.
+  try { if (tryLastStand()) return; } catch {}
+  // Tempest Volt Back-up (passif) : à 0 HP, 1 HP + invincible 10 s.
+  try { if (tryTempestBackup()) return; } catch {}
   attackActive = false;
   laserCombatInRange = null;
   escapeWatch = null;
@@ -21490,6 +23849,18 @@ function die() {
   try { cancelHologram(); } catch {}
   try { cancelOrcus(); } catch {}
   try { cancelCyborg(); } catch {}
+  try { cancelVenom(); } catch {}
+  try { cancelMmt(); } catch {}
+  try { cancelTbr(); } catch {}
+  try { cancelRipper(); } catch {}
+  try { cancelSap(); } catch {}
+  try { cancelSpc(); } catch {}
+  try { cancelSpcPlus(); } catch {}
+  try { cancelChsCharge(); } catch {}
+  try { cancelSent(); } catch {}
+  try { cancelInc(); } catch {}
+  try { player.kamiRex = []; player.kamiQueue = []; } catch {}
+  try { cancelRecon(); } catch {}
   try { cancelRedirect(); } catch {}
   try { cancelDisarray(); } catch {}
   try { cancelRealloc(); } catch {}
@@ -21971,7 +24342,8 @@ function drawMinimap() {
     viewportWidth: innerWidth,
     viewportHeight: innerHeight,
     lockedNpc: Target.get(),
-    shouldShowNpc: (source, enemy, locked) => shouldDetectNpc(source, enemy, NPC_SENSOR_RANGES.radar, locked),
+    // Spearhead Recon : radar minimap x2 pendant l'effet.
+    shouldShowNpc: (source, enemy, locked) => shouldDetectNpc(source, enemy, ((player.reconT || 0) > 0 ? NPC_SENSOR_RANGES.radar * 2 : NPC_SENSOR_RANGES.radar), locked),
   });
 }
 
@@ -22059,6 +24431,8 @@ function healAllyOrSelf(allyAmount, selfAmount, isShield) {
   const maxKey = isShield ? "shMax" : "hpMax";
   const ally = pickHealAlly(isShield);
   const dst = ally || player;
+  // Volt Back-up actif : pas de soin coque sur nous (les alliés sont soignés).
+  if (!isShield && dst === player && (player.tempestBackupT || 0) > 0) return 0;
   const dx = (Number(dst.x || 0)) + (Math.random() - 0.5) * 60;
   const dy = (Number(dst.y || 0)) + yOff - Math.random() * 20;
   const old = Number(dst[key] || 0);
@@ -22148,7 +24522,8 @@ function enemySpriteSize(e) {
 }
 
 // Contour d'un NPC (Ubers en rouge) : silhouette derrière la sprite.
-function drawEnemyContour(e, cfg, exactFrame, color) {
+// alpha optionnel (défaut : pulsation douce du localisateur).
+function drawEnemyContour(e, cfg, exactFrame, color, alpha = petLocatorPulse()) {
   const sp = cfg?.sprite;
   if (!sp || !sp._imgs || !sp._imgs.length || !sp._ready) return;
   const idx = exactFrame ?? getEnemySpriteFrame(e, cfg, sp);
@@ -22159,7 +24534,7 @@ function drawEnemyContour(e, cfg, exactFrame, color) {
   const w = e.isBoss ? baseW * 1.05 : baseW;
   const h = e.isBoss ? baseH * 1.05 : baseH;
   const sil = outlineSilhouette(`npc:${e.type}:${idx}`, img, w, h, color);
-  strokeOutlineCentered(sil, w, h, color, petLocatorPulse());
+  strokeOutlineCentered(sil, w, h, color, alpha);
 }
 
 // Ubers pirates (5-2) : anneau rouge pulsé tout autour pour les repérer.
@@ -22240,9 +24615,15 @@ function drawRocketDebuffEffect(e) {  const slowed = (e.rocketSlowT || 0) > 0;
         const c = SLOW_FX_PACK.crop;
         const dw = Math.max(radius * 6, 64);
         const dh = dw * (c.h / c.w);
-        // ✅ l'avant du sprite (masse vers le haut) suit l'avant du vaisseau.
+        // ✅ l'avant du sprite (masse vers le haut) suit la DIRECTION du vaisseau
+        // (vélocité), pas son orientation : on regarde à droite mais on va à
+        // gauche → le sprite regarde à gauche. À l'arrêt : orientation coque.
         ctx.save();
-        ctx.rotate((Number(e.angle) || 0) + Math.PI / 2);
+        const debuffSpd = Math.hypot(Number(e.vx) || 0, Number(e.vy) || 0);
+        const debuffAng = debuffSpd > 5
+          ? Math.atan2(Number(e.vy) || 0, Number(e.vx) || 0)
+          : (Number(e.angle) || 0);
+        ctx.rotate(debuffAng + Math.PI / 2);
         ctx.drawImage(img, c.x, c.y, c.w, c.h, -dw / 2, -dh / 2, dw, dh);
         ctx.restore();
       }
@@ -23127,7 +25508,11 @@ function drawLaserBeam(L, ox, oy) {
 
 function drawPlayerBars(px, py) {
   const stats = account.user?.stats || {};
-  const rank = getRankInfo(calculateRankPoints(stats), stats.honor);
+  // Vaisseau Police : grade admin automatique.
+  const isPolice = String(ACTIVE_SHIP?.id || "").toLowerCase() === "police";
+  const rank = isPolice
+    ? { ...ADMIN_RANK, imagePath: `ASSETS/RANKS/${ADMIN_RANK.image.replace(/^[^.]+/, (name) => name.toUpperCase())}` }
+    : getRankInfo(calculateRankPoints(stats), stats.honor);
   let rankImage = getCachedImage(rank.imagePath);
   if (!isImgReady(rankImage)) {
     loadImage(rank.imagePath, { priority: true });
@@ -23178,6 +25563,7 @@ function drawPlayerBars(px, py) {
     droneIndicators,
     droneFormationImage,
     moduleIndicators,
+    String(ACTIVE_SHIP?.id || "").toLowerCase() === "police",
   );
 }
 
@@ -23257,7 +25643,7 @@ function enemyShoot(e, dt, combatTarget = player) {
           spd: projectileSpeed,
           r: e.bulletR ?? 7,
           life: Math.max(2.5, distance / projectileSpeed + 1.5),
-          dmg: Math.max(1, Math.round(vary(e.bulletDmg ?? 10, 0.05))),
+          dmg: Math.max(1, Math.round(vary(e.bulletDmg ?? 10, 0.05) * (isEntityJammed(e) ? 0.9 : 1))),
           key: "x1",
           scale: e.bulletScale ?? 1.5,
           sprite: e.bulletSprite || null,
@@ -23318,7 +25704,8 @@ function enemyShoot(e, dt, combatTarget = player) {
     const muzzle = (e.r || 18) + 12;
 
     const baseDmg = e.bulletDmg ?? 10;
-    const shotDmg = Math.max(1, Math.round(vary(baseDmg, 0.05)));
+    // Brouillé (JAMX) : -10 % de dégâts infligés.
+    const shotDmg = Math.max(1, Math.round(vary(baseDmg, 0.05) * (isEntityJammed(e) ? 0.9 : 1)));
 
     addCappedProjectile(enemyBullets, {
       x: e.x + Math.cos(ang) * muzzle,
@@ -23638,6 +26025,220 @@ function update(dt) {
   } else {
     player.prismCd = Math.max(0, (player.prismCd || 0) - dt);
   }
+  // Spectrum : 10 s (-90 % subis gérés dans hurtPlayer, -25 % infligés via
+  // specDamageMult), recharge 180 s.
+  if ((player.specT || 0) > 0) {
+    player.specT = Math.max(0, player.specT - dt);
+    if (player.specT <= 0) {
+      startSpecCooldown();
+      showNotification("Blindage prismatique terminé", 2, "info");
+    }
+  } else {
+    player.specCd = Math.max(0, (player.specCd || 0) - dt);
+  }
+  // Spectrum Plus : 8 s (-70 % + reflect gérés dans hurtPlayer, -50 % via
+  // specDamageMult), recharge 180 s.
+  if ((player.specPlusT || 0) > 0) {
+    player.specPlusT = Math.max(0, player.specPlusT - dt);
+    if (player.specPlusT <= 0) {
+      startSpecPlusCooldown();
+      showNotification("Réflexion prismatique terminée", 2, "info");
+    }
+  } else {
+    player.specPlusCd = Math.max(0, (player.specPlusCd || 0) - dt);
+  }
+  // Tartarus Tir rapide : instant, juste la recharge 72 s qui descend.
+  player.tartRapidCd = Math.max(0, (player.tartRapidCd || 0) - dt);
+  // Tartarus Plus Tir rapide : overdrive +20 % pendant 3 s, recharge 72 s.
+  if ((player.tartRapidPlusT || 0) > 0) {
+    player.tartRapidPlusT = Math.max(0, player.tartRapidPlusT - dt);
+    if (player.tartRapidPlusT <= 0) {
+      startTartRapidPlusCooldown();
+      showNotification("Tir rapide Plus terminé", 2, "info");
+    }
+  } else {
+    player.tartRapidPlusCd = Math.max(0, (player.tartRapidPlusCd || 0) - dt);
+  }
+  // Tartarus Speed Boost (toggle) : elapsed pour l'anim du speed_buff_effect.
+  if (player.tartBoostOn === true) player.tartBoostElapsed = Number(player.tartBoostElapsed || 0) + dt;
+  // File des roquettes d'aptitude : 1 départ toutes les 100 ms.
+  try { tickTartBurstQueue(dt); } catch {}
+  // Tartarus Plus Speed Boost (toggle) : switch 10 s qui descend quand coupé.
+  if (player.tartPlusBoostOn === true) {
+    player.tartPlusBoostElapsed = Number(player.tartPlusBoostElapsed || 0) + dt;
+  } else {
+    player.tartPlusBoostCd = Math.max(0, (player.tartPlusBoostCd || 0) - dt);
+  }
+  // Tempest Volt Back-up : invincible 10 s forcée, puis survie si soigné
+  // (HP > 1), sinon explosion. Recharge 360 s derrière.
+  if ((player.tempestBackupT || 0) > 0) {
+    player.tempestBackupT = Math.max(0, player.tempestBackupT - dt);
+    player.invincibleT = Math.max(Number(player.invincibleT || 0), Number(player.tempestBackupT || 0));
+    if (player.tempestBackupT <= 0) {
+      player.tempestBackupT = 0;
+      if (Number(player.hp || 0) > 1) {
+        showNotification("Volt Back-up : sauvé de justesse !", 2.5, "info");
+      } else {
+        player.hp = 0;
+        die();
+      }
+    }
+  } else {
+    player.tempestBackupCd = Math.max(0, (player.tempestBackupCd || 0) - dt);
+  }
+  // Tempest Décharge : 20 s de buff, recharge 60 s.
+  if ((player.tempestDischT || 0) > 0) {
+    player.tempestDischT = Math.max(0, player.tempestDischT - dt);
+    if (player.tempestDischT <= 0) {
+      player.tempestDischT = 0;
+      startTempestDischCooldown();
+      showNotification("Décharge volt terminée", 2, "info");
+    }
+  } else {
+    player.tempestDischCd = Math.max(0, (player.tempestDischCd || 0) - dt);
+  }
+  // Tempest Lien volt : purge les one-shots (2 s) et les faisceaux (0.8 s).
+  if (Array.isArray(player.tempestLinkFx) && player.tempestLinkFx.length) {
+    const now = performance.now() / 1000;
+    player.tempestLinkFx = player.tempestLinkFx.filter(f => f && f.target && (f.target.hp > 0)
+      && (now - Number(f.start || 0)) * TEMPEST_LINK_FPS < TEMPEST_LINK_FRAMES);
+  }
+  if (Array.isArray(player.tempestLinkBeams) && player.tempestLinkBeams.length) {
+    const now = performance.now() / 1000;
+    player.tempestLinkBeams = player.tempestLinkBeams.filter(bm => bm && now < Number(bm.until || 0)
+      && bm.a && bm.b && (bm.a === player || bm.a.hp > 0) && (bm.b === player || bm.b.hp > 0));
+  }
+  // Zephyr MMT : 10 s de portée x2, recharge 360 s. Retour portée normale
+  // via stockUpdateRange (gère aussi le bonus Stockpile).
+  if ((player.mmtT || 0) > 0) {
+    player.mmtT = Math.max(0, player.mmtT - dt);
+    if (player.mmtT <= 0) {
+      player.mmtT = 0;
+      try { stockUpdateRange(); } catch {}
+      startMmtCooldown();
+      showNotification("MMT terminé", 2, "info");
+    }
+  } else {
+    player.mmtCd = Math.max(0, (player.mmtCd || 0) - dt);
+  }
+  // Zephyr TBR : 2 clones PET 60 s. PET off/mort = mort liée (tout explose).
+  // Clone à 0 (défensif, non ciblables) = PET à 0 = les 3 meurent. Fin
+  // normale : les clones disparaissent, recharge 600 s.
+  if ((player.tbrT || 0) > 0) {
+    player.tbrT = Math.max(0, player.tbrT - dt);
+    const clones = Array.isArray(player.tbrClones) ? player.tbrClones : [];
+    if (!tbrPetOk()) {
+      endTbrLinked(true);
+      showNotification("Triple barrage brisé (PET perdu) !", 2.5, "error");
+    } else if (clones.some((c) => !c || !(Number(c.hp) > 0))) {
+      try {
+        const pet = account.user?.pet;
+        if (pet) { pet.hp = 0; try { onPetDestroyed(); } catch {} }
+      } catch {}
+      endTbrLinked(true);
+      showNotification("Triple barrage : les 3 REX sont tombés !", 2.5, "error");
+    } else if (player.tbrT <= 0) {
+      endTbrLinked(false);
+      showNotification("Triple barrage terminé", 2, "info");
+    } else {
+      // Clones autonomes (même schéma que le PET) : weave de combat autour
+      // de la cible du REX, sinon collecte chacun sur sa box (G-AL/G-AR),
+      // sinon escorte du REX. Cap : cible en combat, direction de vol sinon.
+      const ownerSpeed = Math.max(260, getSpeedBreakdown().total) * playerSlowMult(player);
+      const followSpeed = ownerSpeed * 1.1;
+      const tgt = petState.target && petState.target.hp > 0 ? petState.target : null;
+      const tbrGears = petActiveGears();
+      // Run kamikaze : les clones collent le REX (pas de loot ni de tir),
+      // puis explosent avec lui à la détonation (mort liée).
+      const kkRun = petKamikaze.active === true;
+      const claimed = new Set([petState.fetchId, ...clones.map((k) => k?.fetchId)].filter((id) => id != null));
+      clones.forEach((c, i) => {
+        c.pickCd = Math.max(0, Number(c.pickCd || 0) - dt);
+        // En combat : pas de collecte, comme le PET. Ni pendant le run kamikaze.
+        let fetch = tgt || kkRun || petState.returning
+          ? (c.fetchId = null, c.fetchHold = 0, null)
+          : validateTbrFetch(c, tbrGears) || scanTbrFetch(c, tbrGears, claimed);
+        if (fetch) claimed.add(fetch.id);
+        if (tgt && !kkRun) {
+          try {
+            const wv = petCombatVelocity(c, tgt, PET_COMBAT_RADIUS, dt, player);
+            const sc = Math.min(1, followSpeed / (Math.hypot(wv.vx, wv.vy) || 1));
+            stepPetMotion(c, wv.vx * sc, wv.vy * sc, dt, WORLD, RADIATION_SPAWN_MARGIN);
+          } catch {}
+          c.angle = Math.atan2(tgt.y - Number(c.y || 0), tgt.x - Number(c.x || 0));
+        } else if (fetch) {
+          // Vol vers sa box (lacet comme le PET), collecte au contact.
+          const t = performance.now() / 1000;
+          const collectX = clamp(fetch.x + (COLLECTABLE_PICKUP.offsetX || 0), 80, WORLD.w - 80);
+          const collectY = clamp(fetch.y + (COLLECTABLE_PICKUP.offsetY || 0), 80, WORLD.h - 80);
+          const dx0 = collectX - Number(c.x || 0), dy0 = collectY - Number(c.y || 0);
+          const trueDist = Math.hypot(dx0, dy0);
+          if (trueDist <= COLLECTABLE_PICKUP.centerRadius + 6) {
+            c.vx = 0;
+            c.vy = 0;
+            c.fetchHold = Number(c.fetchHold || 0) + dt;
+            if (c.fetchHold >= COLLECTABLE_PICKUP.holdDuration && (c.pickCd || 0) <= 0) {
+              try { collectPetBox(fetch, c); } catch {}
+              c.fetchId = null;
+              c.fetchHold = 0;
+              fetch = null;
+            }
+          } else {
+            c.fetchHold = 0;
+            const wobble = Math.min(70, trueDist * 0.2);
+            const nx = dx0 / (trueDist || 1), ny = dy0 / (trueDist || 1);
+            const sway = Math.sin(t * 3.1 + i * 2.1) * wobble;
+            const aimX = collectX - ny * sway, aimY = collectY + nx * sway;
+            const vx = (aimX - Number(c.x || 0)) * 3, vy = (aimY - Number(c.y || 0)) * 3;
+            const speed = Math.hypot(vx, vy);
+            const sc = speed > 0 ? Math.min(1, ownerSpeed / speed) : 0;
+            try { stepPetMotion(c, vx * sc, vy * sc, dt, WORLD, RADIATION_SPAWN_MARGIN); } catch {}
+            c.angle = Math.atan2(vy, vx);
+          }
+        } else {
+          // Suivi : flancs du REX, ou collé à lui pendant son run kamikaze
+          // (même vitesse de pointe pour ne pas le perdre).
+          const peta = Number(petState.angle || 0);
+          const pca = Math.cos(peta), psa = Math.sin(peta);
+          const ox = kkRun ? (i === 0 ? -40 : 40) : (i === 0 ? -95 : 95);
+          const oy = kkRun ? 30 : 60;
+          const ax = Number(petState.x || 0) + ox * pca - oy * psa;
+          const ay = Number(petState.y || 0) + ox * psa + oy * pca;
+          const dx = ax - Number(c.x || 0), dy = ay - Number(c.y || 0);
+          const dist = Math.hypot(dx, dy);
+          let vx = dist < 22 ? 0 : dx * 3;
+          let vy = dist < 22 ? 0 : dy * 3;
+          const cap = kkRun ? Math.max(620, ownerSpeed * 2) : followSpeed;
+          const speed = Math.hypot(vx, vy);
+          const sc = speed > 0 ? Math.min(1, cap / speed) : 0;
+          try { stepPetMotion(c, vx * sc, vy * sc, dt, WORLD, RADIATION_SPAWN_MARGIN); } catch {}
+          try { orientPet(c); } catch {}
+        }
+        c.fireCd = Math.max(0, Number(c.fireCd || 0) - dt);
+        if (tgt && !kkRun && Math.hypot(tgt.x - Number(c.x || 0), tgt.y - Number(c.y || 0)) <= PET_COMBAT_RADIUS + 5 && c.fireCd <= 0) {
+          c.fireCd = 1 / Math.max(0.001, player.baseFireRate * player.fireRateMult);
+          try { tbrCloneFire(c); } catch {}
+        }
+      });
+    }
+  } else {
+    player.tbrCd = Math.max(0, (player.tbrCd || 0) - dt);
+  }
+  // Spearhead JAMX / Creed : instantanés, juste les recharges qui descendent.
+  player.jamxCd = Math.max(0, (player.jamxCd || 0) - dt);
+  player.creedCd = Math.max(0, (player.creedCd || 0) - dt);
+  player.markCd = Math.max(0, (player.markCd || 0) - dt);
+  player.neutrCd = Math.max(0, (player.neutrCd || 0) - dt);
+  // Halos arc-en-ciel : expansion rapide jusqu'au rayon max puis disparition.
+  if (Array.isArray(player.jamxHalos) && player.jamxHalos.length) {
+    player.jamxHalos = player.jamxHalos.filter((h) => {
+      if (!h) return false;
+      h.r = Number(h.r || 0) + Number(h.max || 0) * 2.2 * dt;
+      h.x = Number(player.x || 0);
+      h.y = Number(player.y || 0);
+      return h.r < Number(h.max || 0);
+    });
+  }
   // Affaiblissement (Diminisher, officiel) : 15 s sur la cible verrouillée
   // (weaken géré dans damageEnemy), recharge 90 s. Contrecoup officiel à
   // l'expiration naturelle : -30 % de notre bouclier actuel.
@@ -23888,6 +26489,7 @@ function update(dt) {
   }
   // Cyborg Singularité II : 1 hit/s en dégâts croissants, pas de rupture
   // de portée (continue jusqu'à cible détruite ou fin des 30 s).
+  // Exécution : cible < 150k HP à la fin naturelle = one-shot.
   if ((player.cyborgT || 0) > 0) {
     player.cyborgT = Math.max(0, player.cyborgT - dt);
     const ctgt = player.cyborgTarget;
@@ -23912,6 +26514,33 @@ function update(dt) {
     }
   } else {
     player.cyborgCd = Math.max(0, (player.cyborgCd || 0) - dt);
+  }
+  // Venom Singularité : même canal en plus faible (1500 +200, cap 8500).
+  // Exécution : cible < 100k HP à la fin naturelle = one-shot.
+  if ((player.venomT || 0) > 0) {
+    player.venomT = Math.max(0, player.venomT - dt);
+    const vtgt = player.venomTarget;
+    if (!vtgt || !(vtgt.hp > 0)) {
+      player.venomT = 0;
+      player.venomTarget = null;
+      player.venomHit = 0;
+      startVenomCooldown();
+      showNotification("Singularité terminée (cible détruite)", 2, "info");
+    } else {
+      player.venomAcc = Number(player.venomAcc || 0) + dt;
+      if (player.venomAcc >= 1) {
+        player.venomAcc -= 1;
+        try { venomBeamTick(); } catch {}
+      }
+      if (player.venomT <= 0) {
+        player.venomTarget = null;
+        player.venomHit = 0;
+        startVenomCooldown();
+        showNotification("Singularité terminée", 2, "info");
+      }
+    }
+  } else {
+    player.venomCd = Math.max(0, (player.venomCd || 0) - dt);
   }
   // Stockpile (Hecate Plus) : 10 s de force bouclier, recharge 0 s.
   // Les charges sont déjà à 0 (remises à l'activation) : à la fin on
@@ -24007,6 +26636,161 @@ function update(dt) {
   } else {
     player.orcusCd = Math.max(0, (player.orcusCd || 0) - dt);
   }
+  // Solaris officiel : 10 s de brulure 1 hit/s, toggle.
+  if ((player.incT || 0) > 0 || (player.incPlusT || 0) > 0) {
+    if ((player.incT || 0) > 0) player.incT = Math.max(0, player.incT - dt);
+    if ((player.incPlusT || 0) > 0) player.incPlusT = Math.max(0, player.incPlusT - dt);
+    player.incAcc = Number(player.incAcc || 0) + dt;
+    if (player.incAcc >= 1) {
+      player.incAcc -= 1;
+      try { incBurn(); } catch {}
+    }
+    if ((player.incT || 0) <= 0 && (player.incPlusT || 0) <= 0) {
+      startIncCooldown();
+      showNotification("Incineration terminee", 2, "info");
+    }
+  } else {
+    player.incCd = Math.max(0, (player.incCd || 0) - dt);
+    player.incPlusCd = Math.max(0, (player.incPlusCd || 0) - dt);
+  }
+  // Solace / Solace Plus : instantanés (overlay 1 s + boost 1 s pour le Plus).
+  player.solFxT = Math.max(0, Number(player.solFxT || 0) - dt);
+  player.solBoostT = Math.max(0, Number(player.solBoostT || 0) - dt);
+  player.solCd = Math.max(0, (player.solCd || 0) - dt);
+  player.solPlusCd = Math.max(0, (player.solPlusCd || 0) - dt);
+  // Sentinel Forteresse : +3 %/s 10 s, cassée au changement de config.
+  if ((player.sentT || 0) > 0) {
+    player.sentT = Math.max(0, player.sentT - dt);
+    let sentCut = false;
+    try {
+      if (player.sentCfg != null && getActiveConfigNo() !== player.sentCfg) sentCut = true;
+    } catch {}
+    if (sentCut) {
+      cancelSent();
+      showNotification("Forteresse coupée (changement de config)", 2, "info");
+    } else {
+      player.sentAcc = Number(player.sentAcc || 0) + dt;
+      if (player.sentAcc >= 1) {
+        player.sentAcc -= 1;
+        try { sentShieldTick(); } catch {}
+      }
+      if (player.sentT <= 0) {
+        sentRevert();
+        startSentCooldown();
+        showNotification("Forteresse terminée", 2, "info");
+      }
+    }
+  } else {
+    player.sentCd = Math.max(0, (player.sentCd || 0) - dt);
+  }
+  // Spearhead Recon : 30 s de radar x2, recharge 90 s.
+  if ((player.reconT || 0) > 0) {
+    player.reconT = Math.max(0, player.reconT - dt);
+    if (player.reconT <= 0) {
+      startReconCooldown();
+      showNotification("Recon terminé", 2, "info");
+    }
+  } else {
+    player.reconCd = Math.max(0, (player.reconCd || 0) - dt);
+  }
+  // Pusat Plus Speed Sap : 10 s (-10 % cible maintenu, +10 % nous), recharge 60 s.
+  if ((player.sapT || 0) > 0) {
+    player.sapT = Math.max(0, player.sapT - dt);
+    // Maintient le ralenti sur la cible tant qu'elle vit.
+    if (player.sapTarget && player.sapTarget.hp > 0) {
+      try {
+        player.sapTarget.rocketSlowPct = Math.max(Number(player.sapTarget.rocketSlowPct || 0), SAP_SLOW_PCT);
+        player.sapTarget.rocketSlowT = Math.max(Number(player.sapTarget.rocketSlowT || 0), 0.6);
+      } catch {}
+    } else {
+      player.sapTarget = null;
+    }
+    if (player.sapT <= 0) {
+      player.sapTarget = null;
+      startSapCooldown();
+      showNotification("Siphon vitesse terminé", 2, "info");
+    }
+  } else {
+    player.sapCd = Math.max(0, (player.sapCd || 0) - dt);
+  }
+  // Retiarus Supercharge : 10 s à +10 %, recharge 240 s.
+  if ((player.spcT || 0) > 0) {
+    player.spcT = Math.max(0, player.spcT - dt);
+    if (player.spcT <= 0) {
+      startSpcCooldown();
+      showNotification("Supercharge terminée", 2, "info");
+    }
+  } else {
+    player.spcCd = Math.max(0, (player.spcCd || 0) - dt);
+  }
+  // Retiarus Charge Shot : charge (cible en vie requise, ralentis maintenus) puis rayon.
+  // Une fois lancé, inannulable sauf mort de la cible.
+  if (player.chsPhase === "charge") {
+    player.chsT = Math.max(0, Number(player.chsT || 0) - dt);
+    const chsTgt = player.chsTarget;
+    // Sprite ralenti sur nous aussi pendant la charge (visuel seul : pct 0,
+    // le vrai -50/-25 % est déjà dans playerSlowMult, un ralenti réel est gardé).
+    if (!player.dead) {
+      try { player.rocketSlowT = Math.max(Number(player.rocketSlowT || 0), 0.6); } catch {}
+    }
+    if (!chsTgt || !(chsTgt.hp > 0)) {
+      cancelChsCharge();
+      showNotification("Tir chargé annulé (cible perdue)", 1.5, "info");
+    } else {
+      // Ralenti 25 % maintenu sur la cible pendant la charge (base comme Plus).
+      try {
+        chsTgt.rocketSlowPct = Math.max(Number(chsTgt.rocketSlowPct || 0), CHS_TARGET_SLOW_PCT);
+        chsTgt.rocketSlowT = Math.max(Number(chsTgt.rocketSlowT || 0), 0.6);
+      } catch {}
+      if (player.chsT <= 0) {
+        try {
+          if (!fireChsBeam(chsTgt)) showNotification("Tir chargé annulé", 1.5, "info");
+        } catch { cancelChsCharge(); }
+      }
+    }
+  }
+  // Rayon Retiarus : ~1,2 s d'affichage après le tir instantané.
+  player.chsRayT = Math.max(0, Number(player.chsRayT || 0) - dt);
+  player.chsCd = Math.max(0, (player.chsCd || 0) - dt);
+  player.chsPlusCd = Math.max(0, (player.chsPlusCd || 0) - dt);
+  // Retiarus Plus Supercharge : 10 s à +20 %, recharge 240 s.
+  if ((player.spcPlusT || 0) > 0) {
+    player.spcPlusT = Math.max(0, player.spcPlusT - dt);
+    if (player.spcPlusT <= 0) {
+      startSpcPlusCooldown();
+      showNotification("Supercharge Plus terminée", 2, "info");
+    }
+  } else {
+    player.spcPlusCd = Math.max(0, (player.spcPlusCd || 0) - dt);
+  }
+  // Paladin Éventreur : 3 s de dégâts de zone + halo jaune, recharge 60 s.
+  if ((player.ripperT || 0) > 0) {
+    player.ripperT = Math.max(0, player.ripperT - dt);
+    player.ripperAcc = Number(player.ripperAcc || 0) + dt;
+    if (player.ripperAcc >= 1) {
+      player.ripperAcc -= 1;
+      try { ripperTick(); } catch {}
+      // Une pulsation jaune visible par seconde, comme la Protection.
+      if (!player.dead) {
+        try { spawnHaloPulse(player.x, player.y, RIPPER_RADIUS, 1.0, "255,210,80", "255,240,170", "player"); } catch {}
+      }
+    }
+    if (player.ripperT <= 0) {
+      startRipperCooldown();
+      showNotification("Éventreur terminé", 2, "info");
+    }
+  } else {
+    player.ripperCd = Math.max(0, (player.ripperCd || 0) - dt);
+  }
+  // Paladin Dernier rempart : anim du déclenchement + recharge passive.
+  // L'effect passif reste coupé jusqu'à la fin des 600 s, puis revient seul.
+  player.lastStandAnimT = Math.max(0, Number(player.lastStandAnimT || 0) - dt);
+  const lsPrevCd = Number(player.lastStandCd || 0);
+  player.lastStandCd = Math.max(0, lsPrevCd - dt);
+  if (lsPrevCd > 0 && player.lastStandCd <= 0 && player.lastStandFxOff) {
+    player.lastStandFxOff = false;
+    showNotification("Dernier rempart rechargé", 2, "info");
+  }
   // Mimesis Scramble : -5 % shield max/s, coupé à 0 shield ou change config.
   if ((player.scrambleT || 0) > 0) {
     let cutReason = null;
@@ -24078,7 +26862,7 @@ function update(dt) {
         if ((c.t || 0) <= 0) {
           // Fin de vie : explosion normale (visuel + son standard).
           try { spawnExplosion(Number(c.x || 0), Number(c.y || 0), 1.0); } catch {}
-          try { SFX.play("npcDeath", { maxVoices: 16, cooldown: 0 }); } catch {}
+          try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
           escortShips.splice(i, 1);
         }
       }
@@ -24094,7 +26878,7 @@ function update(dt) {
           try { spawnExplosion(Number(escortShips[i].x || 0), Number(escortShips[i].y || 0), 1.0); } catch {}
           escortShips.splice(i, 1);
         }
-        try { SFX.play("npcDeath", { maxVoices: 16, cooldown: 0 }); } catch {}
+        try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
       } catch {}
       startHologramCooldown();
       showNotification("Hologramme terminé", 2, "info");
@@ -24419,10 +27203,11 @@ for (const ptl of zonePortals) {
   if (!player.dead) {
     // QA Hyperion : pendant la charge et la rafale on reste face à la cible
     // (prioritaire sur la visée auto et la direction de déplacement).
-    // Sleight (Keres) : idem pendant le dash.
+    // Sleight (Keres) : idem pendant le dash. Charge Retiarus : idem.
     const qaLock = ((player.qaChargeT || 0) > 0 && player.qaChargeTarget && player.qaChargeTarget.hp > 0) ? player.qaChargeTarget
       : ((player.qaBurstT || 0) > 0 && player.qaBurstTarget && player.qaBurstTarget.hp > 0) ? player.qaBurstTarget
       : ((player.sleightT || 0) > 0 && player.sleightTarget && player.sleightTarget.hp > 0) ? player.sleightTarget
+      : (player.chsPhase === "charge" && player.chsTarget && player.chsTarget.hp > 0) ? player.chsTarget
       : null;
     if (qaLock) {
       player.angle = Math.atan2(qaLock.y - player.y, qaLock.x - player.x);
@@ -24787,6 +27572,8 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
   separateNpcEntities(enemies, dt, WORLD, isZoneMap);
   for (const healer of enemies) {
     if (!healer || healer.hp <= 0 || !healer.isHealer) continue;
+    // JAMX / Creed : heal NPC bloqué pendant l'effet.
+    if ((healer.jamxT || 0) > 0 || (healer.creedT || 0) > 0) continue;
     const config = NPC_TYPES[healer.type] || {};
     healer.healPulseT = Math.max(0, (healer.healPulseT || 0) - dt);
     if (healer.healPulseT > 0) continue;
@@ -24900,10 +27687,10 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
     e._holdLastT -= dt;
 
     if (e._holdLastT <= 0) {
-      // ✅ Spawn ici (pendant la frame ouverte)
+      // ✅ Spawn ici (pendant la frame ouverte). Brouillé : pas de spawn.
       const n = e._pendingSpawn || 20;
       e._pendingSpawn = 0;
-      spawnProtegitOnCubikonHit(e, n);
+      if (n > 0 && !isEntityJammed(e)) spawnProtegitOnCubikonHit(e, n);
 
       // ✅ commence fermeture (reverse)
       e._animPhase = "close";
@@ -24936,7 +27723,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
       if (e._minionDespawning == null) e._minionDespawning = false;
 
-      if (e._sinceHit >= CUBIKON_RESET.idleDelay) {
+      // Brouillé : pas de reset/regen idle.
+      if (e._sinceHit >= CUBIKON_RESET.idleDelay && !isEntityJammed(e)) {
         e._resetting = true;
 
         const hpHeal = e.hpMax * CUBIKON_RESET.healPct * dt;
@@ -25047,6 +27835,12 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
     if (e.rocketSlowT <= 0) e.rocketSlowPct = 0;
     e.rocketAccuracyT = Math.max(0, (e.rocketAccuracyT || 0) - dt);
     if (e.rocketAccuracyT <= 0) e.rocketAccuracyPenaltyPct = 0;
+    // Spearhead JAMX / Creed / confusion : décomptes par NPC.
+    e.jamxT = Math.max(0, (e.jamxT || 0) - dt);
+    e.creedT = Math.max(0, (e.creedT || 0) - dt);
+    e.markT = Math.max(0, (e.markT || 0) - dt);
+    e.neutrT = Math.max(0, (e.neutrT || 0) - dt);
+    e.confuseT = Math.max(0, (e.confuseT || 0) - dt);
 
     if (e.type === "npc_Cubikon") {
       e._hitSpawnCd = Math.max(0, (e._hitSpawnCd || 0) - dt);
@@ -25262,7 +28056,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           e.angle = Math.atan2(e.vy, e.vx);
         }
 
-        if (isKamikaze && !player.dead && !isPlayerUntargetable() && cfgE.explodeOnTouch) {
+        // JAMX / Creed : kamikaze NPC bloqué pendant l'effet.
+        if (isKamikaze && !player.dead && !isPlayerUntargetable() && !((e.jamxT || 0) > 0) && !((e.creedT || 0) > 0) && cfgE.explodeOnTouch) {
           const rrK = (cfgE.explodeRadius || 180);
           const d2K = dist2(e.x, e.y, player.x, player.y);
           if (d2K <= rrK * rrK) {
@@ -25334,6 +28129,13 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
       e.angle = Math.atan2(combatTarget.y - e.y, combatTarget.x - e.x);
     } else if (spd2 > 25) {
       e.angle = Math.atan2(e.vy, e.vx);
+    }
+
+    // JAMX Creed : contrôles inversés (vélocité inversée) pendant l'effet.
+    if ((e.confuseT || 0) > 0) {
+      e.vx = -(Number(e.vx || 0));
+      e.vy = -(Number(e.vy || 0));
+      e.angle = Math.atan2(Number(e.vy || 0), Number(e.vx || 0));
     }
 
     integrateNpcPosition(e, dt);
@@ -25422,7 +28224,10 @@ if (GAME_SETTINGS.textures) {
   drawGateEscorts(ox, oy);
   drawHoloClones(ox, oy);
   drawPet(ox, oy);
+  drawTbrClones(ox, oy);
   drawPetLink(ox, oy);
+  drawTempestLinks(ox, oy);
+  drawJamxHalos(ox, oy);
   drawPetBuoy(ox, oy);
 
   for (const pck of pickups) {
@@ -25532,6 +28337,60 @@ if (GAME_SETTINGS.textures) {
         try { loadImage(dSrc, { priority: true }); } catch {}
       }
     }
+    // JAMX / Creed : sprite reversal immunity à droite de la barre de vie
+    // (barre HP : largeur r*2.6 en y=-r-39) pendant le brouillage.
+    // Marqueur / Neutralizing : même sprite marker au slot suivant (côte à côte).
+    // En continu : si la frame courante charge encore, on rejoue la dernière
+    // prête au lieu de couper.
+    if (e.hp > 0 && ((((e.jamxT || 0) > 0) || ((e.creedT || 0) > 0)) || ((e.markT || 0) > 0) || ((e.neutrT || 0) > 0))) {
+      let slot = 0;
+      const iconAt = (src, frame, storeKey) => {
+        const img = getCachedImage(src.replace("{F}", String(frame)));
+        let draw = null;
+        if (isImgReady(img)) {
+          draw = img;
+          contSpriteCache[storeKey] = img;
+        } else {
+          try { loadImage(src.replace("{F}", String(frame)), { priority: true }); } catch {}
+          const cached = contSpriteCache[storeKey];
+          if (isImgReady(cached)) draw = cached;
+        }
+        if (draw) {
+          ctx.save();
+          ctx.translate(Number(e.r || 24) * 1.3 + 26 + slot * 48, -Number(e.r || 24) - 39);
+          drawCenteredImage(ctx, draw, 44, 44);
+          ctx.restore();
+        }
+        slot++;
+      };
+      if (((e.jamxT || 0) > 0) || ((e.creedT || 0) > 0)) {
+        iconAt(`ASSETS/APTITUDES/SPEARHEAD_PLUS_JAMX_CREED_REVERSAL_IMMUNITY/{F}.png`,
+          (Math.floor(performance.now() / 1000 * JAMX_SPR_FPS) % JAMX_SPR_FRAMES) + 1, "jamx");
+      }
+      if (((e.markT || 0) > 0) || ((e.neutrT || 0) > 0)) {
+        iconAt(`ASSETS/APTITUDES/SPEARHEAD_PLUS_NEUTRALIZING_MARKER/{F}.png`,
+          (Math.floor(performance.now() / 1000 * MARK_SPR_FPS) % MARK_SPR_FRAMES) + 1, "mark");
+      }
+    }
+    // JAMX / Creed : contour gris évidé clignotant pendant le brouillage.
+    if ((((e.jamxT || 0) > 0) || ((e.creedT || 0) > 0)) && e.hp > 0) {
+      const blink = 0.3 + 0.65 * (0.5 + 0.5 * Math.sin(performance.now() / 1000 * 10));
+      try { drawEnemyContour(e, enemyConfig, enemySpriteFrame, "#9aa0a8", blink); } catch {}
+      try { drawEnemyBody(e, enemySpriteFrame); } catch {}
+    }
+    // Target Marker : contour doré évidé (style ubers/berserker),
+    // clignotant très fort (15 s). Coque redessinée par-dessus.
+    if ((e.markT || 0) > 0 && e.hp > 0) {
+      const blink = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(performance.now() / 1000 * 14));
+      try { drawEnemyContour(e, enemyConfig, enemySpriteFrame, "#ffd700", blink); } catch {}
+      try { drawEnemyBody(e, enemySpriteFrame); } catch {}
+    }
+    // Neutralizing Marker : contour blanc évidé clignotant (3 s).
+    if ((e.neutrT || 0) > 0 && e.hp > 0) {
+      const blink = 0.3 + 0.65 * (0.5 + 0.5 * Math.sin(performance.now() / 1000 * 10));
+      try { drawEnemyContour(e, enemyConfig, enemySpriteFrame, "#ffffff", blink); } catch {}
+      try { drawEnemyBody(e, enemySpriteFrame); } catch {}
+    }
     // Holo inversion ennemie : même sprite que self, par-dessus le vaisseau de la cible.
     if ((player.holoEnemyT || 0) > 0 && player.holoEnemyTarget === e && e.hp > 0) {
       const hFrame = (Math.floor(performance.now() / 1000 * HOLO_FPS) % HOLO_FRAMES) + 1;
@@ -25541,6 +28400,23 @@ if (GAME_SETTINGS.textures) {
         drawCenteredImage(ctx, hImg, 220, 220);
       } else {
         try { loadImage(hSrc, { priority: true }); } catch {}
+      }
+    }
+    // Voltage Link (Tempest) : LINK_STUN joué une fois sur chaque cible touchée.
+    if (Array.isArray(player.tempestLinkFx) && player.tempestLinkFx.length && e.hp > 0) {
+      const fx = player.tempestLinkFx.find(f => f && f.target === e);
+      if (fx) {
+        const elapsed = performance.now() / 1000 - Number(fx.start || 0);
+        const lFrame = Math.floor(elapsed * TEMPEST_LINK_FPS) + 1;
+        if (lFrame >= 1 && lFrame <= TEMPEST_LINK_FRAMES) {
+          const lSrc = `ASSETS/APTITUDES/TEMPEST_VOLTAGE_LINK_STUN/${lFrame}.png`;
+          const lImg = getCachedImage(lSrc);
+          if (isImgReady(lImg)) {
+            drawCenteredImage(ctx, lImg, 220, 220);
+          } else {
+            try { loadImage(lSrc, { priority: true }); } catch {}
+          }
+        }
       }
     }
     // Hyperion GA : SHOT voyageur 100% touché, puis START (+ CONTINUED dès
@@ -25583,15 +28459,33 @@ if (GAME_SETTINGS.textures) {
         gaShow(`ASSETS/APTITUDES/HYPERION_EFFECT_FINISH/${fFrame}.png`, 300);
       }
     }
-    // Cyborg Singularité II : sprite 250x200 en boucle par-dessus la cible.
+    // Cyborg Singularité II : sprite 300x300 en boucle, effet recentré sur la cible
+    // (mesuré : bbox de l'effet centrée en ~94,99 au lieu de 150,150).
     if ((player.cyborgT || 0) > 0 && player.cyborgTarget === e && e.hp > 0) {
       const cFrame = (Math.floor(performance.now() / 1000 * CYBORG_FPS) % CYBORG_FRAMES) + 1;
-      const cSrc = `ASSETS/APTITUDES/NPC_SINGULARITY_CYBORG/${cFrame}.png`;
+      const cSrc = `ASSETS/APTITUDES/VENOM_SINGULARITY/${cFrame}.png`;
       const cImg = getCachedImage(cSrc);
       if (isImgReady(cImg)) {
-        drawCenteredImage(ctx, cImg, 250, 200);
+        ctx.save();
+        ctx.translate(56, 51);
+        drawCenteredImage(ctx, cImg, 300, 300);
+        ctx.restore();
       } else {
         try { loadImage(cSrc, { priority: true }); } catch {}
+      }
+    }
+    // Venom Singularité : même sprite sur la cible (canal plus faible).
+    if ((player.venomT || 0) > 0 && player.venomTarget === e && e.hp > 0) {
+      const vFrame = (Math.floor(performance.now() / 1000 * CYBORG_FPS) % CYBORG_FRAMES) + 1;
+      const vSrc = `ASSETS/APTITUDES/VENOM_SINGULARITY/${vFrame}.png`;
+      const vImg = getCachedImage(vSrc);
+      if (isImgReady(vImg)) {
+        ctx.save();
+        ctx.translate(56, 51);
+        drawCenteredImage(ctx, vImg, 300, 300);
+        ctx.restore();
+      } else {
+        try { loadImage(vSrc, { priority: true }); } catch {}
       }
     }
     // DDoL (Disruptor) : sprite joué par-dessus le vaisseau de la cible
@@ -25671,6 +28565,38 @@ if (GAME_SETTINGS.textures) {
   }
 
   drawExplosions(ox, oy);
+
+  // RAYGUN Retiarus : rayon instantané joué depuis nous vers la cible
+  // (dossiers du tir utilisé, étirés sur la distance, ~1,2 s).
+  if ((player.chsRayT || 0) > 0) {
+    const rayTotal = RAYGUN_FRAMES / RAYGUN_FPS;
+    const rayEl = rayTotal - Number(player.chsRayT || 0);
+    const rayFrame = (Math.floor(rayEl * RAYGUN_FPS) % RAYGUN_FRAMES) + 1;
+    const rayFolders = Array.isArray(player.chsRayFolders) && player.chsRayFolders.length
+      ? player.chsRayFolders : ["RAYGUN1", "RAYGUN2"];
+    const x0 = Number(player.chsRayX0 || 0) + ox, y0 = Number(player.chsRayY0 || 0) + oy;
+    const x1 = Number(player.chsRayX1 || 0) + ox, y1 = Number(player.chsRayY1 || 0) + oy;
+    const rdx = x1 - x0, rdy = y1 - y0;
+    const rlen = Math.hypot(rdx, rdy) || 1;
+    const rAng = Math.atan2(rdy, rdx) + Math.PI;
+    if (x0 > -rlen && y0 > -rlen && x0 < innerWidth + rlen && y0 < innerHeight + rlen) {
+      for (const folder of rayFolders) {
+        const rSrc = `COMBAT/RAYGUN/${folder}/${rayFrame}.png`;
+        const rImg = getCachedImage(rSrc);
+        if (isImgReady(rImg)) {
+          ctx.save();
+          ctx.translate((x0 + x1) / 2, (y0 + y1) / 2);
+          ctx.rotate(rAng);
+          ctx.imageSmoothingEnabled = false;
+          // Étiré sur la distance (hauteur native gardée).
+          ctx.drawImage(rImg, -rlen / 2, -128, rlen, 256);
+          ctx.restore();
+        } else {
+          try { loadImage(rSrc, { priority: true }); } catch {}
+        }
+      }
+    }
+  }
 
   // Raygun désactivé : aucun faisceau laser affiché.
   // for (const L of lasers) drawLaserBeam(L, ox, oy);
@@ -25846,6 +28772,19 @@ if (GAME_SETTINGS.textures) {
       }
     }
 
+    // Spectrum Plus : même contour bleu que RVG pendant la réflexion (8 s).
+    if ((player.specPlusT || 0) > 0) {
+      const sPack = ACTIVE_SHIP || SHIP_PACKS[0];
+      const sIdx = getPlayerSpriteFrame();
+      const sShipImg = (playerImgs[sIdx] || playerImgs[0]);
+      if (isImgReady(sShipImg)) {
+        const sw = sPack.w ?? 170, sh = sPack.h ?? 170;
+        const sil = outlineSilhouette(`ship:${sPack?.id || "player"}:${sIdx}`, sShipImg, sw, sh, "#7cf0ff");
+        strokeOutlineCentered(sil, sw, sh, "#7cf0ff", petLocatorPulse());
+        drawCenteredImage(ctx, sShipImg, sw, sh);
+      }
+    }
+
     // Fortification (Citadel / Citadel+) : contour uber blanc clignotant (10 s).
     if ((player.fortifyT || 0) > 0) {
       const fPack = ACTIVE_SHIP || SHIP_PACKS[0];
@@ -25860,9 +28799,9 @@ if (GAME_SETTINGS.textures) {
       }
     }
 
-    // Endurance prismatique (Citadel+) : sprite spectrum en boucle
-    // par-dessus le vaisseau (25 s).
-    if ((player.prismT || 0) > 0) {
+    // Endurance prismatique (Citadel+) / Blindage (Spectrum) / Réflexion
+    // (Spectrum Plus) : même sprite spectrum en boucle par-dessus le vaisseau.
+    if ((player.prismT || 0) > 0 || (player.specT || 0) > 0 || (player.specPlusT || 0) > 0) {
       const pFrame = (Math.floor(performance.now() / 1000 * PRISM_FPS) % PRISM_FRAMES) + 1;
       const pSrc = `ASSETS/APTITUDES/SPECTRUM_PRISMATIC_SHIELDING/${pFrame}.png`;
       const pImg = getCachedImage(pSrc);
@@ -25870,6 +28809,48 @@ if (GAME_SETTINGS.textures) {
         drawCenteredImage(ctx, pImg, 200, 200);
       } else {
         try { loadImage(pSrc, { priority: true }); } catch {}
+      }
+    }
+
+    // Volt Back-up passif (Tempest) : VOLT_BACKUP en boucle quand prêt
+    // (pas pendant les 10 s actives, pas pendant la recharge).
+    if (isTempestHull() && (player.tempestBackupT || 0) <= 0 && Number(player.tempestBackupCd || 0) <= 0) {
+      const vFrame = (Math.floor(performance.now() / 1000 * TEMPEST_BACKUP_FPS) % TEMPEST_BACKUP_FRAMES) + 1;
+      const vSrc = `ASSETS/APTITUDES/TEMPEST_VOLT_BACKUP/${vFrame}.png`;
+      const vImg = getCachedImage(vSrc);
+      if (isImgReady(vImg)) {
+        drawCenteredImage(ctx, vImg, 200, 200);
+      } else {
+        try { loadImage(vSrc, { priority: true }); } catch {}
+      }
+    }
+
+    // Volt Back-up actif (10 s) : contour arc-en-ciel (12 teintes, style BSK)
+    // + tremblement du vaisseau, sprite passif coupé.
+    if ((player.tempestBackupT || 0) > 0) {
+      ctx.translate((Math.random() * 2 - 1) * 3, (Math.random() * 2 - 1) * 3);
+      const tPack = ACTIVE_SHIP || SHIP_PACKS[0];
+      const tIdx = getPlayerSpriteFrame();
+      const tShipImg = (playerImgs[tIdx] || playerImgs[0]);
+      if (isImgReady(tShipImg)) {
+        const tw = tPack.w ?? 170, th = tPack.h ?? 170;
+        const hue = (Math.floor(performance.now() / 100) % 12) * 30;
+        const rainbow = `hsl(${hue},100%,60%)`;
+        const sil = outlineSilhouette(`ship:${tPack?.id || "player"}:${tIdx}`, tShipImg, tw, th, rainbow);
+        strokeOutlineCentered(sil, tw, th, rainbow, 0.95);
+        drawCenteredImage(ctx, tShipImg, tw, th);
+      }
+    }
+
+    // Volt Discharge : sprite en boucle par-dessus le vaisseau (20 s).
+    if ((player.tempestDischT || 0) > 0) {
+      const dFrame = (Math.floor(performance.now() / 1000 * TEMPEST_DISCH_FPS) % TEMPEST_DISCH_FRAMES) + 1;
+      const dSrc = `ASSETS/APTITUDES/TEMPEST_VOLT_DISCHARGE/${dFrame}.png`;
+      const dImg = getCachedImage(dSrc);
+      if (isImgReady(dImg)) {
+        drawCenteredImage(ctx, dImg, 220, 220);
+      } else {
+        try { loadImage(dSrc, { priority: true }); } catch {}
       }
     }
 
@@ -25941,6 +28922,21 @@ if (GAME_SETTINGS.textures) {
       }
     }
 
+    // Solace / Solace Plus : même sprite HEAL_EFFECT 1 s au-dessus du vaisseau.
+    if ((player.solFxT || 0) > 0) {
+      const sFrame = (Math.floor(performance.now() / 1000 * LIBREP_FPS) % LIBREP_FRAMES) + 1;
+      const sSrc = `ASSETS/APTITUDES/HEAL_EFFECT/${sFrame}.png`;
+      const sImg = getCachedImage(sSrc);
+      if (isImgReady(sImg)) {
+        ctx.save();
+        ctx.translate(0, -35);
+        drawCenteredImage(ctx, sImg, 100, 100);
+        ctx.restore();
+      } else {
+        try { loadImage(sSrc, { priority: true }); } catch {}
+      }
+    }
+
     // Mimesis Hologram : fausse explosion PAR-DESSUS nous (au-dessus de tout).
     if ((player.holoGramBoomT || 0) > 0 && explosionReady && explosionImgs.length) {
       const boomTotal = (EXPLOSION_PACK.frames || 40) / (EXPLOSION_PACK.fps || 40);
@@ -25964,7 +28960,40 @@ if (GAME_SETTINGS.textures) {
       }
     }
 
-    // QA Hyperion : charge du tir — halo grossissant au canon pendant le son.
+    // Paladin Dernier rempart : déclenchement (400px, joué une fois) puis
+    // effect passif (250px, boucle) — coupé jusqu'à la fin de la recharge.
+    // Effect seulement sur coque Paladin.
+    if ((player.lastStandAnimT || 0) > 0) {
+      const animTotal = LASTSTAND_FRAMES / LASTSTAND_FPS;
+      const animEl = animTotal - Number(player.lastStandAnimT || 0);
+      const aFrame = Math.max(1, Math.min(LASTSTAND_FRAMES, Math.floor(animEl * LASTSTAND_FPS) + 1));
+      const aSrc = `ASSETS/APTITUDES/PALADIN_LAST_STAND/${aFrame}.png`;
+      const aImg = getCachedImage(aSrc);
+      if (isImgReady(aImg)) {
+        drawCenteredImage(ctx, aImg, 400, 400);
+      } else {
+        try { loadImage(aSrc, { priority: true }); } catch {}
+      }
+    } else if (isPaladinHull() && !player.dead && !player.lastStandFxOff) {
+      const fFrame = (Math.floor(performance.now() / 1000 * LASTSTAND_FX_FPS) % LASTSTAND_FX_FRAMES) + 1;
+      const fSrc = `ASSETS/APTITUDES/PALADIN_LAST_STAND_EFFECT/${fFrame}.png`;
+      const fImg = getCachedImage(fSrc);
+      if (isImgReady(fImg)) {
+        drawCenteredImage(ctx, fImg, 250, 250);
+      } else {
+        try { loadImage(fSrc, { priority: true }); } catch {}
+      }
+    }
+
+    // Paladin Éventreur : visuel = pulsations jaunes seules (1/s, tick).
+
+    // Solaris officiel : anneau de feu rouge/orange stylé (300 / 600).
+    if ((player.incT || 0) > 0) {
+      drawFireRing(INC_RADIUS);
+    }
+    if ((player.incPlusT || 0) > 0) {
+      drawFireRing(INC_PLUS_RADIUS);
+    }
     if ((player.qaChargeT || 0) > 0) {
       const qaDur = Math.max(0.01, Number(player.qaChargeDur || qaChargeDuration()));
       const qProg = Math.max(0, Math.min(1, 1 - Number(player.qaChargeT || 0) / qaDur));

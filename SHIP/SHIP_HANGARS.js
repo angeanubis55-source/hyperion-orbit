@@ -229,7 +229,9 @@ const fit =
   const hullSpeed = Number(getShipPackById(hangar?.shipId)?.speed || 0);
   const bonusSpeed = baseSpeed * (1 + bonusSpeedPct / 100) + hullSpeed * bonusSpeedPct / 100
     + Number(shipEffect.speedFlat || 0);
-  const bonusShield = baseShield * (1 + bonusShieldPct / 100);
+  // Police : bouclier x500 les valeurs de chaque générateur équipé.
+  const isPoliceHull = String(hangar?.shipId || "").toLowerCase() === "police";
+  const bonusShield = isPoliceHull ? baseShield * 500 : baseShield * (1 + bonusShieldPct / 100);
 
   return { 
     totalLaserDamage, 

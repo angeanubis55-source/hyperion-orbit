@@ -47,6 +47,7 @@ export const SFX_SOUND_NAMES = Object.freeze([
   "pShotX0Charge",
   "mimesisHolo",
   "mimesisLaugh",
+  "retiarusCharge",
 ]);
 
 export function createSFX() {
@@ -206,6 +207,7 @@ enabled: true,
         api.load("pShotX0Charge", "AUDIO/SFX_SHOT_X0_CHARGE.mp3"),
         api.load("mimesisHolo", "AUDIO/MIMESIS_HOLOGRAM.mp3"),
         api.load("mimesisLaugh", "AUDIO/MIMESIS_CLONE_LAUGH.mp3"),
+        api.load("retiarusCharge", "AUDIO/RETIARUS_CHARGE.mp3"),
         api.load("sfx_shot_roquettes", "AUDIO/SFX_SHOT_ROQUETTES.mp3"),
         api.load("sfx_shot_lance_roquettes", "AUDIO/SFX_SHOT_LANCE_ROQUETTES.mp3"),
         api.load("rocketsLoadStart", "AUDIO/ROCKETSLOADSTART.mp3"),
@@ -248,7 +250,7 @@ enabled: true,
       const buf = api.buffers[name];
       if (!buf) return;
 
-      const { vol = 1, rate = 1, detune = 0, cooldown = 0, maxVoices = 4, cut = false } = opts;
+      const { vol = 1, rate = 1, detune = 0, cooldown = 0, maxVoices = Infinity, cut = false } = opts;
       const now = api.ctx.currentTime;
 
       const last = api.last[name] ?? -999;

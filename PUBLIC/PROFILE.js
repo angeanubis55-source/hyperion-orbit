@@ -31,6 +31,7 @@ import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 import { getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
+import { getAbilitiesForShip, getAbilityInfo, policeAbilityIds, abilityShipKeyFor, formatAbilityTiming } from "../SHIP/SHIP_ABILITIES.js";
 import { SHIP_ITEM_DIR, SHIP_ITEM_FULL_IDS, SHIP_ITEM_TRAIT_IDS, SHIP_TRAIT_DIR } from "../SHIP/SHIP_ITEMS.js";
 import { escapeHtml } from "../UI/UI_DOM.js";
 import { PILOT_RANKS, calculateRankPoints, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo } from "../SRC/CORE/PROGRESSION.js";
@@ -2507,8 +2508,41 @@ if (isShipLike) {
     if (shipBonus.effet) {
       statLine += `<p class="shopItemStat">Effet : <strong>${escapeHtml(shipBonus.effet)}</strong></p>`;
     }
-    if (!isDesign && shipBonus.competence) {
-      statLine += `<p class="shopItemStat">Compétence : <strong>${escapeHtml(shipBonus.competence)}</strong></p>`;
+    if (shipBonus.competence) {
+      // Vaisseaux : clé directe. Designs (ex : vengeance_lightning[_frost...]
+      // -> "lightning") via abilityShipKeyFor, jamais la base du préfixe.
+      // Police : toutes les aptitudes du jeu.
+      const abilityKey = String(shipId || "").toLowerCase() === "police" ? "@police" : abilityShipKeyFor(shipId);
+      // Détail par compétence : image - nom : description (temps).
+      // Police : ses aptitudes (sans passives, sans doublons, Plus en priorité).
+      const shipAbilities = abilityKey === "@police" ? policeAbilityIds().map(getAbilityInfo).filter(Boolean) : (abilityKey ? getAbilitiesForShip(abilityKey) : []);
+      if (shipAbilities.length > 6) {
+        // Nombreuses aptitudes (Police) : toutes les icônes côte à côte,
+        // retour à la ligne vers le bas (pas de scroll), détail au survol.
+        statLine += `<p class="shopItemStat">Compétence : <strong>${escapeHtml(shipBonus.competence)}</strong></p>`;
+        statLine += `<div class="shopAbilitiesGrid">`;
+        for (const ab of shipAbilities) {
+          const timing = formatAbilityTiming(ab);
+          const tip = `${ab.name} — ${ab.description}${timing ? ` (${timing})` : ""}`;
+          statLine += `<img src="${escapeHtml(ab.icon)}" alt="${escapeHtml(ab.name)}" title="${escapeHtml(tip)}">`;
+        }
+        statLine += `</div>`;
+      } else if (shipAbilities.length) {
+        statLine += `<p class="shopItemStat">Compétence :</p>`;
+        for (const ab of shipAbilities) {
+          const timing = formatAbilityTiming(ab);
+          statLine += `<p class="shopItemStat shopAbility"><img src="${escapeHtml(ab.icon)}" alt=""> - <strong>${escapeHtml(ab.name)}</strong> : ${escapeHtml(ab.description)}${timing ? ` <em>(${escapeHtml(timing)})</em>` : ""}</p>`;
+        }
+      } else if (!isDesign) {
+        statLine += `<p class="shopItemStat">Compétence : <strong>${escapeHtml(shipBonus.competence)}</strong></p>`;
+      }
+    }
+    // Designs : si le vaisseau de base a des aptitudes, on rassure.
+    if (isDesign && shipId) {
+      const baseKey = abilityShipKeyFor(getShipDesignBaseId(shipId) || "");
+      if (baseKey && getAbilitiesForShip(baseKey).length) {
+        statLine += `<p class="shopItemStat shopAbilityInherit">Ce design hérite des aptitudes du vaisseau de base.</p>`;
+      }
     }
   }
 } else if (it?.module?.type === "speed") {

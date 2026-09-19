@@ -20,6 +20,22 @@ export function playerSlowMult(player) {
   if (player && (Number(player.sleightT) || 0) > 0) mult *= 5;
   // Mimesis Scramble : +25 % de vitesse pendant l'effet.
   if (player && (Number(player.scrambleT) || 0) > 0) mult *= 1.25;
+  // Pusat Plus Speed Sap : +10 % de vitesse pendant l'effet.
+  if (player && (Number(player.sapT) || 0) > 0) mult *= 1.10;
+  // Sentinel Forteresse : -30 % de vitesse pendant l'effet.
+  if (player && (Number(player.sentT) || 0) > 0) mult *= 0.70;
+  // Retiarus Supercharge : +10 % de vitesse pendant l'effet.
+  if (player && (Number(player.spcT) || 0) > 0) mult *= 1.10;
+  // Retiarus Plus Supercharge : +20 % de vitesse pendant l'effet.
+  if (player && (Number(player.spcPlusT) || 0) > 0) mult *= 1.20;
+  // Retiarus Charge Shot : -50 % de vitesse pendant la charge (-25 % en Plus).
+  if (player && player.chsPhase === "charge") mult *= player.chsPlus ? 0.75 : 0.5;
+  // Solace Plus : +100 % de vitesse pendant 1 s.
+  if (player && (Number(player.solBoostT) || 0) > 0) mult *= 2;
+  // Tartarus Speed Boost (toggle) : +30 % de vitesse.
+  if (player && player.tartBoostOn === true) mult *= 1 + 0.30;
+  // Tartarus Plus Speed Boost (toggle) : +45 % de vitesse.
+  if (player && player.tartPlusBoostOn === true) mult *= 1 + 0.45;
   return mult;
 }
 

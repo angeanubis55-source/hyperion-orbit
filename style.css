@@ -4719,7 +4719,8 @@ body.orbitNoFade #fpsOverlay{
 #ammoBar .abilityEmpty { padding:12px 6px; text-align:center; color:var(--muted); font-size:11px; }
 #ammoBar .abilityShipSection { margin:0; }
 #ammoBar .abilityShipSection + .abilityShipSection { margin-top:8px; }
-#ammoBar .abilityShipIcons { display:flex; gap:6px; flex-wrap:wrap; }
+#ammoBar .abilityShipIcons.abilityDuo { display:grid; grid-template-rows:repeat(2,auto); grid-auto-flow:column; gap:4px; justify-content:start; overflow-x:auto; }
+#ammoBar .abilityShipIcons { display:flex; gap:4px; flex-wrap:wrap; }
 #ammoBar .abilityShipIcons.abilitySingle { justify-content:center; }
 #ammoBar .abilityShipIcons .abilityQuickAction { flex:0 0 64px; min-height:70px; padding:4px; }
 #ammoBar .abilityShipIcons .abilityQuickAction img { width:38px; height:38px; }
@@ -5092,6 +5093,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar .actionPaletteToggle.active{transform:none !important;background:#0d4052 !important}
 #ammoBar .actionPalette{right:0 !important;width:max-content !important;max-width:calc(100vw - 24px) !important;bottom:100% !important;padding:7px !important}
 #ammoBar .actionPaletteItems{gap:4px !important}
+#ammoBar .actionPaletteItems button{cursor:pointer}
 #ammoBar .actionPaletteItems>.ammoBtn,
 #ammoBar .formationQuickAction{flex:0 0 46px !important;width:46px !important;min-width:46px !important;height:44px !important;min-height:44px !important;padding:2px !important}
 #ammoBar .actionPaletteItems>.ammoBtn,
@@ -5606,7 +5608,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
       0 0 0 2px color-mix(in srgb, var(--c) 45%, transparent) inset;
   }
 }
-#ammoBar [data-skill="repair"]{cursor:default !important}
+#ammoBar [data-skill="repair"]{cursor:pointer !important}
 #settingsWindow .settingsKeyColumns{grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr) !important}
 #settingsWindow .settingsSlotKeys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px 8px}
 #settingsWindow .settingsSlotKeyColumns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 10px}
@@ -6521,6 +6523,11 @@ html body #profileOverlay .shipPreviewContainer { width: 100% !important; height
 #profileOverlay .shopPreview p { color: rgba(209,231,243,.68) !important; font-size: 11px !important; line-height: 1.45 !important; }
 #profileOverlay .shopPreview .shopItemStat { margin: 8px 0 !important; color: rgba(209,231,243,.72) !important; }
 #profileOverlay .shopPreview .shopItemStat strong { margin-left: 5px !important; color: #75e8ff !important; font-size: 13px !important; }
+#profileOverlay .shopPreview .shopItemStat.shopAbility img { width: 26px !important; height: 26px !important; object-fit: contain !important; vertical-align: middle !important; }
+#profileOverlay .shopPreview .shopItemStat.shopAbility em { color: rgba(180,200,220,.75) !important; }
+#profileOverlay .shopPreview .shopAbilitiesGrid { display: flex !important; flex-wrap: wrap !important; gap: 4px !important; padding: 4px 2px !important; }
+#profileOverlay .shopPreview .shopAbilitiesGrid img { width: 30px !important; height: 30px !important; object-fit: contain !important; }
+#profileOverlay .shopPreview .shopAbilityInherit { color: rgba(140,220,150,.85) !important; font-style: italic !important; }
 #profileOverlay .shopAmmoOwned { margin: 8px 0 !important; color: rgba(225,241,249,.82) !important; font-size: 12px !important; }
 #profileOverlay .shopPurchaseRow { margin: 14px 0 0 !important; padding: 14px 4px !important; display: grid !important; grid-template-columns: minmax(160px,1fr) 110px !important; align-items: center !important; gap: 18px !important; border-top: 1px solid rgba(124,240,255,.15) !important; }
 #profileOverlay .shopPurchaseInfo { min-width: 0 !important; display: grid !important; gap: 8px !important; }
@@ -7976,6 +7983,11 @@ html body #shopOverlay .shipPreviewContainer { width: 100% !important; height: 2
 #shopOverlay .shopPreview p { color: rgba(209,231,243,.68) !important; font-size: 11px !important; line-height: 1.45 !important; }
 #shopOverlay .shopPreview .shopItemStat { margin: 8px 0 !important; color: rgba(209,231,243,.72) !important; }
 #shopOverlay .shopPreview .shopItemStat strong { margin-left: 5px !important; color: #75e8ff !important; font-size: 13px !important; }
+#shopOverlay .shopPreview .shopItemStat.shopAbility img { width: 26px !important; height: 26px !important; object-fit: contain !important; vertical-align: middle !important; }
+#shopOverlay .shopPreview .shopItemStat.shopAbility em { color: rgba(180,200,220,.75) !important; }
+#shopOverlay .shopPreview .shopAbilitiesGrid { display: flex !important; flex-wrap: wrap !important; gap: 4px !important; padding: 4px 2px !important; }
+#shopOverlay .shopPreview .shopAbilitiesGrid img { width: 30px !important; height: 30px !important; object-fit: contain !important; }
+#shopOverlay .shopPreview .shopAbilityInherit { color: rgba(140,220,150,.85) !important; font-style: italic !important; }
 #shopOverlay .shopAmmoOwned { margin: 8px 0 !important; color: rgba(225,241,249,.82) !important; font-size: 12px !important; }
 /* Ligne d'achat + quantité (saisie libre + menu déroulant) : identique à avant */
 #shopOverlay .shopPurchaseRow { margin: 14px 0 0 !important; padding: 14px 4px !important; display: grid !important; grid-template-columns: minmax(160px,1fr) 110px !important; align-items: center !important; gap: 18px !important; border-top: 1px solid rgba(124,240,255,.15) !important; }

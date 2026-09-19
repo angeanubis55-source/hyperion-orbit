@@ -58,7 +58,7 @@ export function drawTargetLock(context, entity, image, sprite, offsetX, offsetY,
   context.restore();
 }
 
-export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null, moduleIndicators = []) {
+export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null, moduleIndicators = [], adminTag = false) {
   if (!context || !player || player.dead) return;
   const width = 120;
   const height = 4;
@@ -116,9 +116,38 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
   context.textBaseline = "top";
   const displayName = playerName || "Pilote";
   const nameY = y + player.r + 90;
+  // Vaisseau Police : anonymat — ni pseudo ni firme. Tag [ADMIN] arc-en-ciel
+  // (balayage animé de gauche à droite) + grade admin, centrés.
+  if (adminTag === true) {
+    const adminText = "[ADMIN]";
+    context.font = "900 16px ui-sans-serif, system-ui";
+    const tagW = context.measureText(adminText).width;
+    const startX = x - tagW / 2;
+    const sweep = (performance.now() / 1000 * 180) % 360;
+    let ax = startX;
+    const prevAlign = context.textAlign;
+    context.textAlign = "left";
+    for (let i = 0; i < adminText.length; i++) {
+      context.fillStyle = `hsl(${(sweep + i * 38) % 360},100%,62%)`;
+      context.fillText(adminText[i], ax, nameY);
+      ax += context.measureText(adminText[i]).width;
+    }
+    context.textAlign = prevAlign;
+    if (rankImage?.complete && rankImage.naturalWidth > 0) {
+      context.drawImage(
+        rankImage,
+        startX - rankImage.naturalWidth - 5,
+        nameY,
+        rankImage.naturalWidth,
+        rankImage.naturalHeight,
+      );
+    }
+    context.restore();
+    return;
+  }
+  const textWidth = context.measureText(displayName).width;
   context.fillStyle = "rgba(255,255,255,0.95)";
   context.fillText(displayName, x, nameY);
-  const textWidth = context.measureText(displayName).width;
   context.imageSmoothingEnabled = false;
   if (rankImage?.complete && rankImage.naturalWidth > 0) {
     context.drawImage(
