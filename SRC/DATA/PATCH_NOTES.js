@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.224",
+    "date": "2026-09-19T12:48:18+02:00",
+    "message": "aptitudes: vague gameplay Paladin/Pusat+/Retiarus/Sentinel/Solace/Solaris/Spearhead/Spectrum/Tartarus/Tempest/Venom/Zephyr + Cyborg exec, Police admin (12M HP, bouclier x500, toutes aptitudes, tag ADMIN), boutique detail aptitudes, SFX Retiarus, fix reacteur Spectrum (sync generale)"
+  },
+  {
     "version": "0.223",
     "date": "2026-09-18T09:17:20+02:00",
     "message": "sync version 0.222 + patch-notes (hook post-push)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.165",
     "date": "2026-09-12T04:45:15+02:00",
     "message": "Fixes mineurs"
-  },
-  {
-    "version": "0.164",
-    "date": "2026-09-12T04:44:24+02:00",
-    "message": "boutique: fenetre dediee alignee pilote, images officielles uniformes, historique modules en carte"
   }
 ];
