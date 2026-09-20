@@ -453,6 +453,67 @@ wss.on("connection", (ws) => {
       } catch {}
       return;
     }
+    if (msg.t === "pvpPetHit") {
+      // Degats PvP sur le PET : pool dedie, meme arbitrage que les vaisseaux.
+      // Pas de recompenses, pas d'anti-farm : juste destruction + toast.
+      try {
+        const room = rooms.get(mapId);
+        if (!room || !room.has(id)) return;
+        const foe = room.get(String(msg.target));
+        const me = room.get(id);
+        if (!foe || !me) return;
+        if (foe.state.peta !== 1) return;
+        const now = Date.now();
+        if (now - Number(me.state.pvpPetWinT || 0) > 1000) { me.state.pvpPetWinT = now; me.state.pvpPetN = 0; }
+        me.state.pvpPetN = Number(me.state.pvpPetN || 0) + 1;
+        if (me.state.pvpPetN > 80) return;
+        const dmg = Number(msg.dmg);
+        if (!Number.isFinite(dmg) || dmg <= 0 || dmg > 1e7) return;
+        if (foe.state.petDead === true) return;
+        let wasPetAlive = Number(foe.state.petPoolHp) > 0;
+        if (!(Number(foe.state.petPoolHp) > 0)) {
+          wasPetAlive = true;
+          const hm = Math.max(1, Number(foe.state.petHpM) || 1);
+          const sm = Math.max(0, Number(foe.state.petShM) || 0);
+          foe.state.petPoolHp = Math.max(0, Math.min(hm, hm * Math.max(0, Math.min(1, Number(foe.state.petHp ?? 1)))));
+          foe.state.petPoolSh = Math.max(0, Math.min(sm, sm * Math.max(0, Math.min(1, Number(foe.state.petSh ?? 1)))));
+        }
+        const reach = (Number(me.state.range) || 800) + 800;
+        const dx = Number(foe.state.petx ?? foe.state.x) - Number(me.state.x);
+        const dy = Number(foe.state.pety ?? foe.state.y) - Number(me.state.y);
+        if (dx * dx + dy * dy > reach * reach) return;
+        const pen = Math.max(0, Math.min(1, Number(msg.pen ?? 0)));
+        const pool = { hp: Number(foe.state.petPoolHp) || 0, sh: Number(foe.state.petPoolSh) || 0 };
+        let applied = 0;
+        if (msg.kind === "sab") {
+          const drained = Math.min(Math.max(0, pool.sh), dmg);
+          pool.sh = Math.max(0, pool.sh - drained);
+          applied = drained;
+        } else {
+          const res = damagePlayerLayers(pool, dmg, 0.8, pen, 0);
+          applied = Number(res?.total) || 0;
+        }
+        foe.state.petPoolHp = Math.max(0, Number(pool.hp) || 0);
+        foe.state.petPoolSh = Math.max(0, Number(pool.sh) || 0);
+        if (applied > 0) {
+          const fkey = `${foe.state.id}|pet|${id}`;
+          let feed = pvpFeeds.get(mapId);
+          if (!feed) { feed = new Map(); pvpFeeds.set(mapId, feed); }
+          const prev = feed.get(fkey);
+          feed.set(fkey, { uid: `pet:${String(foe.state.id)}`, by: String(id), total: Math.round((prev?.total || 0) + applied) });
+        }
+        if (Number(foe.state.petPoolHp) <= 0 && wasPetAlive !== false) {
+          foe.state.petDead = true;
+          try {
+            const killer = room.get(id);
+            if (killer && killer.ws && killer.ws.readyState === 1) {
+              killer.ws.send(JSON.stringify({ t: "pvpPetKill", victim: String(foe.state.pseudo || "Pilote").slice(0, 20), pet: String(foe.state.petn || "REX").slice(0, 32) }));
+            }
+          } catch {}
+        }
+      } catch {}
+      return;
+    }
     if (msg.t === "shot" || msg.t === "rshot") {      // Tirs allies : retransmis tels quels a la room (aucun etat).
       try {
         const room = rooms.get(mapId);
@@ -655,6 +716,35 @@ wss.on("connection", (ws) => {
       if (Number.isFinite(Number(msg.petd))) state.petd = Math.round(Number(msg.petd) * 100) / 100;
       if (typeof msg.petn === "string") state.petn = String(msg.petn).slice(0, 32);
       if (typeof msg.petf === "string") state.petf = String(msg.petf).slice(0, 16);
+      // PV du PET (lock info allie) : 0..1 declare, jamais de montee serveur.
+      if (Number.isFinite(Number(msg.petHp))) state.petHp = Math.max(0, Math.min(1, Number(msg.petHp)));
+      if (Number.isFinite(Number(msg.petSh))) state.petSh = Math.max(0, Math.min(1, Number(msg.petSh)));
+      // Pool PV du PET (degats PvP) : meme regles que le pool joueur.
+      if (Number.isFinite(Number(msg.petHpMax)) && Number(msg.petHpMax) > 0) {
+        const phm = Math.min(50_000_000, Math.round(Number(msg.petHpMax)));
+        const psm = Math.min(50_000_000, Math.round(Number(msg.petShMax) || 0));
+        const cPHp = Math.max(0, Math.min(phm, phm * Math.max(0, Math.min(1, Number(msg.petHp ?? 1)))));
+        const cPSh = Math.max(0, Math.min(psm, psm * Math.max(0, Math.min(1, Number(msg.petSh ?? 1)))));
+        if (!state._petInit || phm !== state.petHpM || psm !== state.petShM) {
+          state.petHpM = phm;
+          state.petShM = psm;
+          state.petPoolHp = cPHp;
+          state.petPoolSh = cPSh;
+          state._petInit = true;
+          state.petDead = false;
+        } else if (!(cPHp > 0)) {
+          state.petPoolHp = 0;
+          state.petPoolSh = 0;
+        } else if (!(state.petPoolHp > 0)) {
+          // Reparation du PET : le client est en vie avec des PV.
+          state.petPoolHp = cPHp;
+          state.petPoolSh = cPSh;
+          state.petDead = false;
+        } else {
+          if (cPHp < state.petPoolHp) state.petPoolHp = cPHp;
+          if (cPSh < state.petPoolSh) state.petPoolSh = cPSh;
+        }
+      }
       if (typeof msg.map === "string" && msg.map.toLowerCase() !== mapId) {
         removeFromAllRooms(id);
         mapId = String(msg.map).toLowerCase();
@@ -731,6 +821,11 @@ setInterval(() => {
         petx: Math.round(Number(s.petx) || 0), pety: Math.round(Number(s.pety) || 0),
         petd: Math.round(Number(s.petd || 0) * 100) / 100,
         petn: String(s.petn || "").slice(0, 32), petf: String(s.petf || "").slice(0, 16),
+        petHp: Number.isFinite(Number(s.petHp)) ? Math.max(0, Math.min(1, Number(s.petHp))) : 1,
+        petSh: Number.isFinite(Number(s.petSh)) ? Math.max(0, Math.min(1, Number(s.petSh))) : 1,
+        // Pool PV du PET (adoption cote proprietaire).
+        pvpPetHp: Math.max(0, Math.round(Number(s.petPoolHp ?? 1) || 0)),
+        pvpPetSh: Math.max(0, Math.round(Number(s.petPoolSh ?? 0) || 0)),
         safe: s.safe === true });
     }
     const payload = JSON.stringify({ t: "snapshot", map: key, players, npc, host: roomHostId(room) });

@@ -105,7 +105,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, drainNetPvpKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect } from "./NETPLAY.js";
+import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, sendPvpPetHit, getNetSelf, suspendNetplay, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -14414,6 +14414,25 @@ function pickEnemyAtScreen(sx, sy) {
     } catch {}
   }
 
+  // Multi PvP : verrouiller le PET d'un autre joueur (voir ses PV,
+  // lui tirer dessus). Apres le vaisseau : ne vole pas le lock.
+  if (!best && netplayNpcActive()) {
+    try {
+      const hw = PET_DRAW_W / 2, hh = PET_DRAW_H / 2;
+      for (const e of netPetProxies.values()) {
+        if (!e || !(e.hp > 0)) continue;
+        const dx = w.x - e.x;
+        const dy = w.y - e.y;
+        if (Math.abs(dx) > hw || Math.abs(dy) > hh) continue;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) {
+          best = e;
+          bestD2 = d2;
+        }
+      }
+    } catch {}
+  }
+
   return best;
 }
 
@@ -22033,10 +22052,31 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
 
   // Multi PvP : drain sur un joueur — prevision locale + gain conserve,
   // serveur tranche (bouclier seul).
-  if (e._netPlayer && netplayNpcActive()) {
-    const stolen = Math.min(Math.max(0, Number(e.sh) || 0), raw);
+  if (e._netPlayer && netplayNpcActive()) {    const stolen = Math.min(Math.max(0, Number(e.sh) || 0), raw);
     if (stolen > 0) {
       try { sendPvpHit({ target: e._netPlayer, kind: "sab", dmg: raw }); } catch {}
+      const gain = stolen * (Number(transferPct) >= 0 ? Number(transferPct) : SAB50.transferPct);
+      if (recipient?.hp > 0) {
+        recipient.sh = Math.min(recipient.shMax, recipient.sh + gain);
+      }
+    }
+    return {
+      total: stolen,
+      sh: stolen,
+      hp: 0,
+      bypass: 0,
+      isCrit,
+      rawDamage: stolen,
+      sab: true,
+    };
+  }
+
+  // Multi PvP : drain sur le PET d'un joueur — prevision locale + gain,
+  // serveur tranche (bouclier seul).
+  if (e._netPet && netplayNpcActive()) {
+    const stolen = Math.min(Math.max(0, Number(e.sh) || 0), raw);
+    if (stolen > 0) {
+      try { sendPvpPetHit({ target: e._netPet, kind: "sab", dmg: raw }); } catch {}
       const gain = stolen * (Number(transferPct) >= 0 ? Number(transferPct) : SAB50.transferPct);
       if (recipient?.hp > 0) {
         recipient.sh = Math.min(recipient.shMax, recipient.sh + gain);
@@ -22138,6 +22178,16 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
     const amount = Math.max(0, Math.round(Number(dmg) || 0));
     try {
       sendPvpHit({ target: e._netPlayer, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult });
+    } catch {}
+    return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
+  }
+
+  // Multi PvP : degats sur le PET d'un joueur — prediction locale (chiffres),
+  // le serveur tranche. Pas de recompenses ni d'effets NPC.
+  if (e._netPet && netplayNpcActive()) {
+    const amount = Math.max(0, Math.round(Number(dmg) || 0));
+    try {
+      sendPvpPetHit({ target: e._netPet, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult });
     } catch {}
     return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
   }
@@ -24573,12 +24623,14 @@ function netNpcCombatTarget(e) {
 // Multi PvP : avatars des joueurs distants (hors tableau `enemies` pour ne
 // perturber aucun systeme NPC : ils vivent dans enemiesById pour le homing).
 const netPlayerProxies = new Map(); // clientId -> entite cible
+const netPetProxies = new Map(); // clientId -> proxy du PET allie (lock + degats PvP)
 let lastPvpAdoptAt = 0;
 function syncNetPlayers() {
   let remotes = null;
   try { remotes = getNetplayRemotes(); } catch { remotes = null; }
   try { tickNetplayRemotes(0.016); } catch {}
   const seen = new Set();
+  const petSeen = new Set();
   if (remotes && netplayNpcActive()) {
     for (const [rid, r] of remotes) {
       if (!r) continue;
@@ -24621,7 +24673,35 @@ function syncNetPlayers() {
       e.hp = Math.max(0, Math.min(hm, hm * Number(r.hpPct ?? 1)));
       e.sh = Math.max(0, Math.min(sm, sm * Number(r.shPct ?? 1)));
       e._netSafe = r.safe === true;
+      // PET allie : proxy lockable (barres live). Degats PvP via pvpPetHit.
+      if (r.peta === 1) {
+        petSeen.add(rid);
+        let pe = netPetProxies.get(rid);
+        if (!pe) {
+          pe = {
+            id: `netpet:${rid}`, _netPet: String(rid), type: "pet",
+            name: String(r.petn || "REX"),
+            x: 0, y: 0, r: 24, angle: 0,
+            hp: 100, hpMax: 100, sh: 100, shMax: 100,
+          };
+          netPetProxies.set(rid, pe);
+          try { enemiesById.set(pe.id, pe); } catch {}
+        }
+        pe.name = String(r.petn || "REX");
+        pe.x = Number(r.petrx ?? r.petx);
+        pe.y = Number(r.petry ?? r.pety);
+        pe.angle = Number(r.petd ?? r.angle) || 0;
+        pe.hpMax = 100; pe.shMax = 100;
+        pe.hp = Math.max(0, Math.min(100, Math.round(Number(r.petHp ?? 1) * 100)));
+        pe.sh = Math.max(0, Math.min(100, Math.round(Number(r.petSh ?? 1) * 100)));
+      }
     }
+  }
+  for (const [rid, pe] of [...netPetProxies]) {
+    if (petSeen.has(rid)) continue;
+    netPetProxies.delete(rid);
+    try { enemiesById.delete(pe.id); } catch {}
+    try { if (Target.get() === pe) Target.clear(); } catch {}
   }
   for (const [rid, e] of [...netPlayerProxies]) {
     if (seen.has(rid)) continue;
@@ -24830,6 +24910,11 @@ function syncNetNpcs(dt) {
         queueVolleyFloat(player, { total: f.total, sh: 0, hp: f.total, rawDamage: f.total }, `netdmg${(Math.random() * 1e9) | 0}`, 1, VOLLEY_FLOAT_TIMEOUT);
         continue;
       }
+      // Degats subis par notre PET : chiffres sur le REX.
+      if (myId && String(f.uid) === `pet:${String(myId)}`) {
+        queueVolleyFloat(petState, { total: f.total, sh: 0, hp: f.total, rawDamage: f.total }, `netdmg${(Math.random() * 1e9) | 0}`, 1, VOLLEY_FLOAT_TIMEOUT);
+        continue;
+      }
       if (!lockedUid || String(f.uid) !== String(lockedUid)) continue;
       let e = null;
       for (const c of enemies) {
@@ -24854,6 +24939,10 @@ function syncNetNpcs(dt) {
       } catch {}
       const farmed = Number(k.mult) > 0 && Number(k.mult) < 1 ? " (rendement réduit : même victime)" : "";
       showToast(`Vaisseau de ${k.victim} détruit : +${formatInteger(gainedHo)} honneur, +${formatInteger(gainedXp)} XP${farmed}`, 3.2);
+    }
+    for (const k of drainNetPvpPetKillInbox()) {
+      if (!k) continue;
+      showToast(`REX de ${k.victim} détruit !`, 2.6);
     }
   } catch {}
   // Cargo du vaincu : copies sur les autres ecrans + effacement au ramassage.
@@ -29321,6 +29410,33 @@ if (moveTarget.active && !player.dead) {
       }
     }
   } catch {}
+  // Multi PvP : pool PET autoritaire serveur — on n'adopte que les baisses.
+  // Destruction a 0 (explosion + toast comme en solo).
+  try {
+    if (netplayNpcActive()) {
+      const self = getNetSelf();
+      const pet = account.user?.pet;
+      if (self && pet && pet.owned === true && Number.isFinite(Number(self.petHp))) {
+        const pHpM = Math.max(1, Number(petMaxHpWithHeat(pet)) || 1);
+        const pShM = Math.max(0, Number(petShieldMaxForHud(pet, account.user)) || 0);
+        const before = Number(pet.hp ?? pHpM);
+        pet.hp = Math.max(0, Math.min(Number(pet.hp ?? pHpM), Math.min(pHpM, Number(self.petHp))));
+        if (pShM > 0 && Number.isFinite(Number(self.petSh))) {
+          const curSh = pet.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : pShM;
+          pet.sh = Math.max(0, Math.min(curSh, Math.min(pShM, Number(self.petSh))));
+        }
+        if (pet.hp !== before) { try { markProgressDirty(); } catch {} }
+        if (pet.hp <= 0 && !pet._netDeadDone) {
+          pet._netDeadDone = true;
+          try { spawnExplosion(petState.x, petState.y, 1.0); } catch {}
+          try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
+          try { onPetDestroyed(); } catch {}
+          try { showToast("REX détruit par un autre joueur.", 2.4); } catch {}
+        }
+        if (pet.hp > 0) pet._netDeadDone = false;
+      }
+    }
+  } catch {}
   updateBossEncounters();
   updateGateEscorts(dt);
   updatePet(dt);
@@ -32154,6 +32270,10 @@ function frame(t) {
         shMax: Math.max(0, Math.round(Number(player.shMax) || 0)),
         range: Math.max(200, Math.min(5000, Math.round(Number(playerRange) || 800))),
         peta: petA, petl: petL, petx: petX, pety: petY, petd: petD, petn: petN, petf: petF,
+        petHp: (function () { try { const p = account.user?.pet; if (!p) return 1; const m = Math.max(1, Number(petMaxHpWithHeat(p)) || 1); return Math.max(0, Math.min(1, Number(p.hp) / m)); } catch { return 1; } })(),
+        petSh: (function () { try { const p = account.user?.pet; if (!p) return 1; const m = Math.max(0, Number(petShieldMaxForHud(p, account.user)) || 0); if (!(m > 0)) return 1; const c = p.sh != null && Number.isFinite(Number(p.sh)) ? Number(p.sh) : m; return Math.max(0, Math.min(1, c / m)); } catch { return 1; } })(),
+        petHpMax: (function () { try { const p = account.user?.pet; return Math.max(1, Math.round(Number(petMaxHpWithHeat(p)) || 1)); } catch { return 1; } })(),
+        petShMax: (function () { try { const p = account.user?.pet; return Math.max(0, Math.round(Number(petShieldMaxForHud(p, account.user)) || 0)); } catch { return 0; } })(),
         vmax: (function () { try { return Math.max(50, Math.round(Number(getSpeedBreakdown()?.total) || Number(player.baseSpeed) || 300)); } catch { return 300; } })(),
       });
     } catch {}

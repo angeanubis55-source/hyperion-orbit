@@ -28,6 +28,7 @@ export function suspendNetplay(v) {
     netDmgInbox.length = 0;
     netShotInbox.length = 0;
     netPvpKillInbox.length = 0;
+    netPvpPetKillInbox.length = 0;
     netPvpLootInbox.length = 0;
     netPvpLootTakeInbox.length = 0;
     netAdminKickInbox.length = 0;
@@ -118,6 +119,12 @@ export function sendPvpLootTake(ev) {
 }
 // Recompenses PvP du serveur : { exp, honneur, mult, victim } a appliquer.
 const netPvpKillInbox = [];
+// PET detruit : { victim, pet } pour le toast du tueur.
+const netPvpPetKillInbox = [];
+export function drainNetPvpPetKillInbox() {
+  if (!netPvpPetKillInbox.length) return [];
+  return netPvpPetKillInbox.splice(0, netPvpPetKillInbox.length);
+}
 export function drainNetPvpKillInbox() {
   if (!netPvpKillInbox.length) return [];
   return netPvpKillInbox.splice(0, netPvpKillInbox.length);
@@ -261,6 +268,14 @@ export function ensureNetplayConnection() {
       });
       return;
     }
+    if (msg.t === "pvpPetKill") {
+      if (netPvpPetKillInbox.length > 8) netPvpPetKillInbox.shift();
+      netPvpPetKillInbox.push({
+        victim: String(msg.victim || "Pilote").slice(0, 20),
+        pet: String(msg.pet || "REX").slice(0, 32),
+      });
+      return;
+    }
     if (msg.t === "chatHistory" && Array.isArray(msg.list)) {
       for (const m of msg.list.slice(-30)) pushChatMessage(m);
       return;
@@ -332,6 +347,7 @@ export function ensureNetplayConnection() {
           selfServ = {
             hp: Number(p.pvpHp), sh: Number(p.pvpSh), pvpAt: Number(p.pvpAt) || 0,
             pvpFrom: p.pvpFrom != null ? String(p.pvpFrom) : null,
+            petHp: Number(p.pvpPetHp), petSh: Number(p.pvpPetSh),
             at: now,
           };
           continue;
@@ -385,6 +401,8 @@ export function ensureNetplayConnection() {
           petd: Number(p.petd) || 0,
           petn: String(p.petn || "").slice(0, 32),
           petf: String(p.petf || "").slice(0, 16),
+          petHp: Number.isFinite(Number(p.petHp)) ? Math.max(0, Math.min(1, Number(p.petHp))) : 1,
+          petSh: Number.isFinite(Number(p.petSh)) ? Math.max(0, Math.min(1, Number(p.petSh))) : 1,
           lastSeen: now,
           // Position de rendu (interpolee vers x/y pour eviter les sauts).
           rx: prev ? Number(prev.rx ?? prev.x ?? p.x) : Number(p.x) || 0,
@@ -517,6 +535,10 @@ function sendNow(local, force = false) {
       petd: Number(local.petd) || 0,
       petn: String(local.petn || "").slice(0, 32),
       petf: String(local.petf || "").slice(0, 16),
+      petHp: Number.isFinite(Number(local.petHp)) ? Math.max(0, Math.min(1, Number(local.petHp))) : 1,
+      petSh: Number.isFinite(Number(local.petSh)) ? Math.max(0, Math.min(1, Number(local.petSh))) : 1,
+      petHpMax: Math.max(1, Math.round(Number(local.petHpMax) || 1)),
+      petShMax: Math.max(0, Math.round(Number(local.petShMax) || 0)),
     }));
   } catch {}
 }
@@ -634,6 +656,25 @@ export function netNpcFresh() {
   } catch { return false; }
 }
 
+// Degats PvP sur PET vers le serveur (cible = id joueur proprietaire).
+export function sendPvpPetHit(hit) {
+  if (suspended) return;
+  if (!ws || ws.readyState !== 1 || !hit || !hit.target) return;
+  try {
+    const h = { t: "pvpPetHit", target: String(hit.target) };
+    if (hit.kind === "sab") {
+      h.kind = "sab";
+      h.dmg = Math.max(0, Number(hit.dmg) || 0);
+    } else {
+      h.dmg = Math.max(0, Number(hit.dmg) || 0);
+      h.pen = Math.max(0, Math.min(1, Number(hit.pen ?? 0)));
+      if (Number.isFinite(Number(hit.critChance))) h.critChance = Number(hit.critChance);
+      if (Number.isFinite(Number(hit.critMult))) h.critMult = Number(hit.critMult);
+    }
+    if (!(h.dmg > 0) || h.dmg > 1e7) return;
+    ws.send(JSON.stringify(h));
+  } catch {}
+}
 // Degats PvP vers le serveur (cible = id joueur distant).
 export function sendPvpHit(hit) {
   if (suspended) return;
@@ -702,7 +743,7 @@ export function tickNetplayRemotes(dt = 0.016) {
 // Ce module ne fait que le reseau : envoi 10 Hz + snapshots + interpolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetPvpKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect };
+  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;
