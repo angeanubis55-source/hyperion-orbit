@@ -77,9 +77,21 @@ function handleAdminApi(request, response, pathname) {
         if (!pid) { adminJson(response, 400, { ok: false, error: "Id manquant." }); return; }
         if (pathname === "/api/admin/kick") {
           let found = false;
-          for (const room of rooms.values()) {
+          const reason = String(body?.reason || "Comportement inapproprié.").slice(0, 200);
+          for (const [map, room] of rooms) {
             const entry = room.get(pid);
-            if (entry && entry.ws) { found = true; try { entry.ws.close(); } catch {} }
+            if (!entry || !entry.ws) continue;
+            found = true;
+            // La victime pète (visible par tous) puis est déconnectée
+            // avec le motif. Fermeture différée : laisse passer les messages.
+            try {
+              if (entry.ws.readyState === 1) entry.ws.send(JSON.stringify({ t: "adminKick", reason }));
+            } catch {}
+            try {
+              broadcastRoom(room, JSON.stringify({ t: "adminBoom", id: pid, x: Math.round(Number(entry.state?.x) || 0), y: Math.round(Number(entry.state?.y) || 0) }), pid);
+            } catch {}
+            const victimWs = entry.ws;
+            setTimeout(() => { try { victimWs.close(); } catch {} }, 500);
           }
           adminJson(response, 200, { ok: !!found });
           return;

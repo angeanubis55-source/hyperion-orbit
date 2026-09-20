@@ -30,6 +30,8 @@ export function suspendNetplay(v) {
     netPvpKillInbox.length = 0;
     netPvpLootInbox.length = 0;
     netPvpLootTakeInbox.length = 0;
+    netAdminKickInbox.length = 0;
+    netAdminBoomInbox.length = 0;
     lastNpcSnapMs = 0;
     netBoxHostId = null;
     try { if (ws && ws.readyState === 1) ws.close(); } catch {}
@@ -67,6 +69,25 @@ export function getNetSelf() {
 const netDmgInbox = [];
 // Cargo du vaincu PvP : apparition a relayer + collectes a effacer.
 const netPvpLootInbox = [];
+// Kick admin : { reason } + explosions d'exclusion a afficher.
+const netAdminKickInbox = [];
+const netAdminBoomInbox = [];
+export function drainNetAdminKickInbox() {
+  if (!netAdminKickInbox.length) return [];
+  return netAdminKickInbox.splice(0, netAdminKickInbox.length);
+}
+export function drainNetAdminBoomInbox() {
+  if (!netAdminBoomInbox.length) return [];
+  return netAdminBoomInbox.splice(0, netAdminBoomInbox.length);
+}
+// Deconnexion volontaire (kick) : ferme sans reconnect auto.
+let noReconnect = false;
+export function netDisconnect() {
+  noReconnect = true;
+  try { if (ws && ws.readyState === 1) ws.close(); } catch {}
+  ws = null;
+  connected = false;
+}
 const netPvpLootTakeInbox = [];
 export function drainNetPvpLootInbox() {
   if (!netPvpLootInbox.length) return [];
@@ -183,6 +204,7 @@ export function ensureNetplayConnection() {
   ws.onclose = () => {
     connected = false;
     netAuthed = false;
+    if (noReconnect) return;
     // Reconnect douce apres 3 s (serveur maison qui redemarre).
     setTimeout(() => {
       connectTried = false;
@@ -202,6 +224,16 @@ export function ensureNetplayConnection() {
     }
     if (msg.t === "chatMsg") {
       pushChatMessage(msg);
+      return;
+    }
+    if (msg.t === "adminKick") {
+      if (netAdminKickInbox.length > 4) netAdminKickInbox.shift();
+      netAdminKickInbox.push({ reason: String(msg.reason || "Comportement inapproprié.").slice(0, 200) });
+      return;
+    }
+    if (msg.t === "adminBoom" && Number.isFinite(Number(msg.x)) && Number.isFinite(Number(msg.y))) {
+      if (netAdminBoomInbox.length > 8) netAdminBoomInbox.shift();
+      netAdminBoomInbox.push({ x: Math.round(Number(msg.x)), y: Math.round(Number(msg.y)) });
       return;
     }
     if (msg.t === "pvpLoot" && typeof msg.uid === "string" && msg.uid.startsWith("pvploot_")) {
@@ -670,7 +702,7 @@ export function tickNetplayRemotes(dt = 0.016) {
 // Ce module ne fait que le reseau : envoi 10 Hz + snapshots + interpolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetPvpKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox };
+  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetPvpKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;

@@ -105,7 +105,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, drainNetPvpKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox } from "./NETPLAY.js";
+import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, drainNetPvpKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -24876,6 +24876,20 @@ function syncNetNpcs(dt) {
       if (i < 0) continue;
       try { takeCollectableInstance(collectables[i], { fromNet: true }); } catch {}
       collectables.splice(i, 1);
+    }
+  } catch {}
+  // Kick admin : explosion visible par tous + message a la victime.
+  try {
+    for (const B of drainNetAdminBoomInbox()) {
+      if (!B) continue;
+      try { spawnExplosion(Number(B.x) || 0, Number(B.y) || 0, 1.4); } catch {}
+      try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
+    }
+    for (const K of drainNetAdminKickInbox()) {
+      try { spawnExplosion(player.x, player.y, 1.4); } catch {}
+      try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
+      try { netDisconnect(); } catch {}
+      try { setCenterMsg(true, "Exclu par l'administrateur", escapeHtml(K?.reason || "Comportement inapproprié."), "Rafraîchis la page (Ctrl+F5) pour revenir en jeu."); } catch {}
     }
   } catch {}
   try {

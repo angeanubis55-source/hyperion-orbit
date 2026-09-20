@@ -121,7 +121,12 @@
         const td = tr.lastChild;
         const kick = document.createElement("button");
         kick.type = "button"; kick.className = "small danger"; kick.textContent = "Kick";
-        kick.onclick = async () => { if (!confirm(`Kicker ${p.pseudo} ?`)) return; await call("/api/admin/kick", { method: "POST", body: JSON.stringify({ id: p.id }) }); refresh(); };
+        kick.onclick = async () => {
+          const reason = prompt(`Kicker ${p.pseudo} ?\nMotif affiché au joueur (explosion + déconnexion) :`, "Comportement inapproprié.");
+          if (reason == null) return;
+          await call("/api/admin/kick", { method: "POST", body: JSON.stringify({ id: p.id, reason: String(reason).slice(0, 200) }) });
+          refresh();
+        };
         const mute = document.createElement("button");
         mute.type = "button"; mute.className = "small"; mute.textContent = p.muted ? "Unmute" : "Mute";
         mute.style.marginLeft = "6px";
