@@ -84,7 +84,7 @@ import { GAME_VERSION } from "../DATA/VERSION.js";
 import { getShipPackById as getShipPackByIdData, getShipDesignBaseId } from "../../SHIP/SHIP_PACKS.js";
 import { getAbilityInfo, formatAbilityTiming, policeAbilityIds, abilityIconFile } from "../../SHIP/SHIP_ABILITIES.js";
 import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, formationDockIcon, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath, isClassicFormation } from "../../DRONE/DRONE_TYPES.js";
-import { DRONE_FORMATION_POSITIONS } from "../../DRONE/DRONE_FORMATIONS.js";
+import { getOfficialDroneFormationPositions } from "../../DRONE/DRONE_FORMATIONS.js";
 import { PET_XP_SHARE, PET_FUEL_MAX, PET_FUEL_TICK_SEC, PET_FUEL_BASE_TICK, PET_FUEL_GEAR_TICK, PET_FUEL_ONESHOT, getPetDamageBonus, getPetHullBonusHp, getPetLevel, getPetLevelXp, getPetMaxHp, getPetNextLevelXp, getPetShieldBonus, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
 import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./COLLISION.js";
 import { createKeyboardState, createPointerState } from "./INPUT.js";
@@ -106,7 +106,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, sendPvpPetHit, getNetSelf, suspendNetplay, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect } from "./NETPLAY.js";
+import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendNetAbility, drainNetAbilityInbox, sendPvpHit, sendPvpPetHit, getNetSelf, suspendNetplay, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -5160,7 +5160,10 @@ function nebulaDamageTick() {
       tickTarget(petT, (t, dmg) => { t.hp = Math.max(0, Number(t.hp || 0) - dmg); });
       petNebulaMult = Number(petT.nebulaMult || 1);
       pet.hp = petT.hp;
-      if (pet.hp !== before) markProgressDirty();
+      if (pet.hp !== before) {
+        onPetTookDamage();
+        markProgressDirty();
+      }
     } else {
       petNebulaMult = 1;
     }
@@ -11322,6 +11325,10 @@ function applyPetModeValue(v) {
         startBuoySession(key);
         return;
       }
+      // Les helpers de compte relisent le store : pousse d'abord les PV et le
+      // bouclier live pour qu'un changement de gear ne restaure pas une valeur
+      // ancienne (souvent 0 juste apres un combat).
+      try { if (account.user) saveUser(account.user, { notify: false }); } catch {}
       const outMode = setPetMode("passive");
       if (!outMode?.ok) return showToast(outMode?.error || "Impossible.", 1.5);
       const out = setPetActiveGear(key);
@@ -11338,6 +11345,7 @@ function applyPetModeValue(v) {
     if (traWindowActive()) endTraSession();
     if (hplLinkActive()) endHplLink("gear");
     if (buoySessionActive()) endBuoySession("gear");
+    try { if (account.user) saveUser(account.user, { notify: false }); } catch {}
     const out = setPetMode(v);
     if (!out?.ok) {
       showToast(out?.error || "Impossible.", 1.5);
@@ -17933,7 +17941,7 @@ function notePetAttacker(enemy) {
 // Dégâts du joueur sur son propre REX (bouclier puis coque, comme un NPC).
 function damagePetFromPlayer(dmg) {
   const pet = account.user?.pet;
-  const out = { total: 0, sh: 0, hp: 0 };
+  const out = { total: 0, sh: 0, hp: 0, rawDamage: 0, isCrit: false };
   const amount = Math.max(0, Number(dmg) || 0);
   if (!pet || !(Number(pet.hp) > 0) || !(amount > 0)) return out;
   let remaining = amount;
@@ -17953,6 +17961,8 @@ function damagePetFromPlayer(dmg) {
     out.hp = Math.min(remaining, hpBefore);
   }
   out.total = out.sh + out.hp;
+  out.rawDamage = out.total;
+  if (out.total > 0) onPetTookDamage();
   markProgressDirty();
   if (pet.hp <= 0) {
     // Destruction par nos tirs : explosion + son comme un NPC.
@@ -17963,6 +17973,25 @@ function damagePetFromPlayer(dmg) {
     if (petLink.until > 0) endHplLink("destroyed");
   }
   return out;
+}
+
+// Un degat bloque la recharge bouclier 5 s. G-REP est interrompu et le REX
+// revient en passif ; il faudra reactiver le module pour reparer la coque.
+function onPetTookDamage() {
+  const pet = account.user?.pet;
+  if (!pet?.owned) return;
+  petState.shRegenBlockT = 5;
+  petState.shTickT = 0;
+  petState.repTickT = 0;
+  if (String(pet.activeGear || "").toLowerCase() === "rep") {
+    pet.activeGear = null;
+    pet.mode = "passive";
+    petState.assistTarget = null;
+    petState.combatTarget = null;
+    markProgressDirty();
+    try { saveUser(account.user, { notify: false }); } catch {}
+    try { showToast("REX touché : réparation interrompue", 1.6); } catch {}
+  }
 }
 
 // Autorise l'assistance sur cette cible seulement après un dégât confirmé du
@@ -17980,7 +18009,7 @@ function notePetPlayerDamage(enemy) {
 function petTargetStillValid(ref) {
   if (!ref || !(ref.hp > 0)) return false;
   try { if (Array.isArray(enemies) && enemies.includes(ref)) return true; } catch {}
-  if (ref._netPlayer != null) {
+  if (ref._netPlayer != null || ref._netPet != null) {
     try { return getEnemyById(ref.id) === ref; } catch { return true; }
   }
   return false;
@@ -18076,6 +18105,8 @@ const isSab = ammoKey === "sab";
   try {
     sendShotEvent({
       t: "shot", key: ammoKey, n: shotOffsets.length,
+      petSource: true,
+      petTarget: target?.isPetTarget === true ? "owner" : (target?._netPet || undefined),
       x: Math.round(petState.x), y: Math.round(petState.y), ang: Number(angle) || 0,
       tx: Math.round(target.x), ty: Math.round(target.y), spd: Math.round(speed), sab: isSab === true,
       miss: petMissRolls.some(Boolean), v: volleyId,
@@ -18315,6 +18346,16 @@ function savePetPosition(pet, mapId, dt) {
 
 // Mort du REX : annule collecte, locator et lien visuel, purge fumée et réacteur.
 function onPetDestroyed() {
+  // Une destruction coupe reellement le REX : aucun gear ne doit pouvoir le
+  // faire reapparaitre sans une reparation puis un nouveau clic sur Play.
+  const destroyedPet = account.user?.pet;
+  if (destroyedPet?.owned === true && destroyedPet.active === true) {
+    // Modifie l'objet live. setPetActive() relit la sauvegarde et pouvait
+    // restaurer ici les PV precedant de quelques frames le kill reseau.
+    destroyedPet.active = false;
+    destroyedPet.activeGear = null;
+    markProgressDirty();
+  }
   cancelKamikazeRun();
   petState.fetchId = null;
   petState.fetchHold = 0;
@@ -18351,6 +18392,7 @@ function absorbPetLinkDamage(hpAmount) {
     const taken = Math.min(Number(tk.hp) || 0, rest);
     tk.hp = Number(tk.hp) - taken;
     rest -= taken;
+    if (!tk.isClone && taken > 0) onPetTookDamage();
     markProgressDirty();
     if (taken >= 1) {
       addFloatText(
@@ -18983,12 +19025,15 @@ function tickPetRecovery(dt, pet, gears) {
   // Bouclier : recharge passive 5 %/s par pallier d'1 s, +X bleu comme le vaisseau.
   // REX détruit : pas de recharge (ni visuel), le bouclier reste à zéro.
   const petShMax = petShieldMaxForHud(pet, account.user);
+  petState.shRegenBlockT = Math.max(0, Number(petState.shRegenBlockT || 0) - Math.max(0, Number(dt) || 0));
   if (!(Number(pet.hp) > 0)) {
     petState.shTickT = 0;
     if (Number(pet.sh) > 0) {
       pet.sh = 0;
       markProgressDirty();
     }
+  } else if (petState.shRegenBlockT > 0) {
+    petState.shTickT = 0;
   } else if (petShMax > 0) {
     const curSh = pet.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : petShMax;
     if (curSh < petShMax - 0.01) {
@@ -19649,7 +19694,8 @@ function drawPet(ox, oy) {
   else { ctx.fillStyle = "#79f5ff"; ctx.beginPath(); ctx.arc(0, 0, 20, 0, TAU); ctx.fill(); }
   ctx.restore();
   // Barres coque / bouclier quand on le lock, comme un NPC.
-  if (Target.get() === petTargetProxy) drawNpcStatus(ctx, petTargetProxy, String(pet?.pseudo || "REX"), true);
+  // Barres uniquement au lock : le pseudo normal est deja affiche sous le REX.
+  if (Target.get() === petTargetProxy) drawNpcStatus(ctx, petTargetProxy, "", true);
   // Étiquette du REX : pseudo + firme à droite, comme le vaisseau — fixe, sans balancement.
   try {
     const petPseudo = String(pet?.pseudo || "REX");
@@ -19770,7 +19816,7 @@ const ENTITY_LIMITS = Object.freeze({
   engineTrails: 420,
 });
 
-function emitEngineTrail(entity, config, dt, ownerNpcId = null, engineKind = "ship", exactFrame = null, spriteImage = null) {
+function emitEngineTrail(entity, config, dt, ownerNpcId = null, engineKind = "ship", exactFrame = null, spriteImage = null, ownerRemoteId = null) {
   const speed = Math.hypot(entity.vx || 0, entity.vy || 0);
   if (speed < 35 || !isOnScreenWorld(entity.x, entity.y, 180)) {
     entity._trailAcc = 0;
@@ -19817,6 +19863,7 @@ function emitEngineTrail(entity, config, dt, ownerNpcId = null, engineKind = "sh
       pushBounded(engineTrails, {
         ownerNpcId,
         ownerPet: engineKind === "pet",
+        ownerRemoteId,
         x: entity.x + (emitter.x || 0) - fx * rear + px * ((emitter.side || 0) + jitter),
         y: entity.y + (emitter.y || 0) - fy * rear + py * ((emitter.side || 0) + jitter),
         vx: (entity.vx || 0) * 0.12 - fx * (25 + Math.random() * 30) + px * jitter,
@@ -19887,7 +19934,10 @@ function tickEngineTrails(dt) {
         return true;
       }
     }
-    if (particle.ownerPet && (!account.user?.pet?.active || !petState.ready || player.dead)) return true;
+    if (particle.ownerRemoteId != null) {
+      const remote = getNetplayRemotes().get(String(particle.ownerRemoteId));
+      if (!remote || remote.dead || (particle.ownerPet && remote.peta !== 1)) return true;
+    } else if (particle.ownerPet && (!account.user?.pet?.active || !petState.ready || player.dead)) return true;
     return false;
   });
 }
@@ -21810,7 +21860,13 @@ const Target = (() => {
   let cur = null;
 
   function set(e) {
-    const next = e && e.hp > 0 ? e : null;
+    let next = e && e.hp > 0 ? e : null;
+    // IEM distant : apres la rupture du lock, le joueur reste impossible a
+    // reverrouiller pendant les 3 secondes de l'effet visuel.
+    if (next?._netPlayer != null) {
+      const blockedUntil = Number(netRemoteIemUntil.get(String(next._netPlayer))) || 0;
+      if (performance.now() / 1000 < blockedUntil) next = null;
+    }
 
     const wasAttacking = (typeof attackActive !== "undefined") && attackActive === true;
     if (next !== cur && wasAttacking) {
@@ -21855,6 +21911,14 @@ const Target = (() => {
     // (dans enemiesById) : lock valide tant qu'ils sont en vie.
     if (cur._netPlayer) {
       if (!(cur.hp > 0)) {
+        cur = null;
+        return null;
+      }
+      return cur;
+    }
+    // Comme les joueurs distants, les PET distants vivent hors de `enemies`.
+    if (cur._netPet) {
+      if (!(cur.hp > 0) || getEnemyById(cur.id) !== cur) {
         cur = null;
         return null;
       }
@@ -22181,7 +22245,8 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (e._netPlayer && netplayNpcActive()) {
     const amount = Math.max(0, Math.round(Number(dmg) || 0));
     try {
-      sendPvpHit({ target: e._netPlayer, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult });
+      sendPvpHit({ target: e._netPlayer, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult,
+        slowPct: opts.slowPct, slowSec: opts.slowSec, freezeSec: opts.freezeSec });
     } catch {}
     return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
   }
@@ -22296,6 +22361,9 @@ e._pendingSpawn = 20;
         critChance: crit?.chance,
         critMult: crit?.mult,
         weaken: weakened ? DIMINISH_WEAKEN : 0,
+        slowPct: opts.slowPct,
+        slowSec: opts.slowSec,
+        freezeSec: opts.freezeSec,
       });
     } catch {}
   }
@@ -22306,7 +22374,9 @@ e._pendingSpawn = 20;
 function applyRocketHit(e, b, recipient = player) {
   if (!e || e.hp <= 0 || e._bossEncounter?.invulnerable) return emptyEnemyDamageResult();
   const effect = b.rocketEffect || null;
-  const direct = b.dmg > 0 ? damageEnemy(e, b.dmg, effect?.pierceShield ? 1 : effect?.piercePct, undefined, { noWeaken: true }) : emptyEnemyDamageResult();
+  const direct = b.dmg > 0 ? damageEnemy(e, b.dmg, effect?.pierceShield ? 1 : effect?.piercePct, undefined, {
+    noWeaken: true, slowPct: effect?.slowPct, slowSec: effect?.duration, freezeSec: effect?.freezeSec,
+  }) : emptyEnemyDamageResult();
   const drained = effect?.shieldDrain > 0 && e.hp > 0
     ? drainShieldFromEnemy(e, effect.shieldDrain, recipient, effect?.leechPct)
     : emptyEnemyDamageResult();
@@ -22321,6 +22391,15 @@ function applyRocketHit(e, b, recipient = player) {
   }
   if (effect?.freezeSec > 0) {
     e.freezeT = Math.max(Number(e.freezeT || 0), Number(effect.freezeSec));
+  }
+  // Les roquettes de controle ont 0 degat : leur impact d'etat doit tout de
+  // meme atteindre le serveur (joueur distant ou NPC partage).
+  if (!(b.dmg > 0) && (effect?.slowPct > 0 || effect?.freezeSec > 0)) {
+    const status = { dmg: 0, slowPct: effect?.slowPct, slowSec: effect?.duration, freezeSec: effect?.freezeSec };
+    try {
+      if (e._netPlayer) sendPvpHit({ target: e._netPlayer, ...status });
+      else if (e._netUid) sendNetHit({ uid: e._netUid, ...status });
+    } catch {}
   }
   if (effect) {
     e._damagedByPlayer = true;
@@ -23101,6 +23180,7 @@ function usePulse() {
   if (hplLinkActive()) endHplLink("emp");
   spawnPulseFx(player.x, player.y, 1, true);
   SFX.play("pulseIEM");
+  try { sendNetAbility("iem"); } catch {}
 
   markProgressDirty();
 
@@ -23146,6 +23226,7 @@ function useIsh() {
   startRespawnInstaShield();
   // L'ISH dure 3 s comme l'anim (même durée que l'invincibilité de réapparition).
   player.invincibleT = Math.max(Number(player.invincibleT) || 0, ISH_DURATION);
+  try { sendNetAbility("ish"); } catch {}
   SFX.play("ishShield");
 
   markProgressDirty();
@@ -23467,11 +23548,10 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
     miss: shotMiss,
   }, ENTITY_LIMITS.playerBullets);
   // Multi : evenement roquette exact pour les allies (arc + MISS identiques).
-  // Sauf sur notre propre REX (affaire privee).
-  if (!t || t.isPetTarget !== true) {
   try {
     sendShotEvent({
       t: "rshot", kind: rocket.id,
+      petTarget: t?.isPetTarget === true ? "owner" : (t?._netPet || undefined),
       x: Math.round(player.x), y: Math.round(player.y), ang,
       tx: Math.round(t.x), ty: Math.round(t.y), spd: Math.round(speed),
       arcDir: arcDirEff, arcScale: Number(arcScale) || 1, arcBoost: Number(arcBoost) || 0,
@@ -23479,7 +23559,6 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
       miss: shotMiss === true, v: volleyId,
     });
   } catch {}
-  }
 }
 
 // Salve du lance-roquettes : N = carrés bleus (chargeur), tir possible à tout
@@ -23803,6 +23882,9 @@ function rebuildEnemyIndex() {
     for (const e of netPlayerProxies.values()) {
       if (e && e.hp > 0) enemiesById.set(e.id, e);
     }
+    for (const e of netPetProxies.values()) {
+      if (e && e.hp > 0) enemiesById.set(e.id, e);
+    }
   } catch {}
 }
 
@@ -23859,6 +23941,7 @@ function spawnSalvoDecoy(e) {
     try {
       sendShotEvent({
         t: "shot", key, n: e.items.length,
+        petTarget: t2.isPetTarget === true ? "owner" : (t2._netPet || undefined),
         x: Math.round(startX), y: Math.round(startY), ang: baseAng,
         tx: Math.round(t2.x), ty: Math.round(t2.y), spd: Math.round(e.speed), sab: true,
         miss: false, v: e.volleyId,
@@ -23900,6 +23983,7 @@ function spawnSalvoDecoy(e) {
   try {
     sendShotEvent({
       t: "shot", key, n: e.items.length,
+      petTarget: t2.isPetTarget === true ? "owner" : (t2._netPet || undefined),
       x: Math.round(player.x), y: Math.round(player.y), ang: ang2,
       tx: Math.round(t2.x), ty: Math.round(t2.y), spd: Math.round(e.speed), sab: false,
       miss: false, v: e.volleyId,
@@ -23971,6 +24055,8 @@ function spawnEscortSalvoDecoy(e) {
     try {
       sendShotEvent({
         t: "shot", key: e.key || "x1", n: (e.items || []).length || 1,
+        petSource: true,
+        petTarget: t2.isPetTarget === true ? "owner" : (t2._netPet || undefined),
         x: Math.round(escort.x), y: Math.round(escort.y),
         ang: Math.atan2(t2.y - escort.y, t2.x - escort.x),
         tx: Math.round(t2.x), ty: Math.round(t2.y), spd: Math.round(e.speed || 4000), sab: false,
@@ -24202,18 +24288,15 @@ const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBooste
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((shotHitBonusPct + playerPilotMults().laserHit) / 100));
   // Multi : evenement de tir exact pour les allies (vrais tirs, MISS inclus).
-  // Sauf tirs sur notre propre REX (affaire privee : evite de faire croire
-  // a l'allie qu'on lui tire dessus).
-  if (!t || t.isPetTarget !== true) {
   try {
     sendShotEvent({
       t: "shot", key: ammoKey, n: isSabLike ? 1 : volleySize,
+      petTarget: t?.isPetTarget === true ? "owner" : (t?._netPet || undefined),
       x: Math.round(player.x), y: Math.round(player.y), ang: Number(player.angle) || 0,
       tx: Math.round(t.x), ty: Math.round(t.y), spd: Math.round(speed), sab: isSabLike,
       miss: shotMiss === true, v: volleyId,
     });
   } catch {}
-  }
 
   const ang = player.angle;
   const fx = Math.cos(ang), fy = Math.sin(ang);
@@ -24599,7 +24682,7 @@ function netSelfSafe() {
   try { return safeZoneActive && playerIsInSafeZone(); } catch { return false; }
 }
 function netPvpBlocked(t) {
-  if (!t || !t._netPlayer || !netplayNpcActive()) return false;
+  if (!t || (!t._netPlayer && !t._netPet) || !netplayNpcActive()) return false;
   let foeSafe = false;
   try { foeSafe = t._netSafe === true; } catch {}
   if (!foeSafe && !netSelfSafe()) return false;
@@ -24685,6 +24768,9 @@ function syncNetPlayers() {
       e.hp = Math.max(0, Math.min(hm, hm * Number(r.hpPct ?? 1)));
       e.sh = Math.max(0, Math.min(sm, sm * Number(r.shPct ?? 1)));
       e._netSafe = r.safe === true;
+      e.rocketSlowPct = Number(r.rocketSlowPct) || 0;
+      e.rocketSlowT = Number(r.rocketSlowT) || 0;
+      e.freezeT = Number(r.freezeT) || 0;
       // PET allie : proxy lockable (barres live). Degats PvP via pvpPetHit.
       if (r.peta === 1) {
         petSeen.add(rid);
@@ -24703,6 +24789,7 @@ function syncNetPlayers() {
         pe.x = Number(r.petrx ?? r.petx);
         pe.y = Number(r.petry ?? r.pety);
         pe.angle = Number(r.petd ?? r.angle) || 0;
+        pe._netSafe = r.safe === true;
         // Barres = pool serveur (verite), pas le local du proprio (regenere).
         pe.hpMax = Math.max(1, Math.round(Number(r.petHpM) || 100));
         pe.shMax = Math.max(0, Math.round(Number(r.petShM) || 0));
@@ -24899,6 +24986,9 @@ function syncNetNpcs(dt) {
       e.sh = e.shMax > 0 ? Math.max(0, Math.min(e.shMax, Math.round(Number(s.sh)))) : Math.max(0, Math.round(Number(s.sh)));
     }
     e._netAggro = s.aggro != null ? String(s.aggro) : null;
+    e.rocketSlowPct = Number(s.rocketSlowPct) || 0;
+    e.rocketSlowT = Number(s.rocketSlowT) || 0;
+    e.freezeT = Number(s.freezeT) || 0;
     // Parite solo : le flag "m'a attaque recemment" (qui force l'affichage
     // radar/minimap) suit l'aggro partagee, sinon les NPC tires restent
     // visibles au loin pour toujours (leur boucle locale est sautee).
@@ -26144,6 +26234,10 @@ const netplayEngines = new Map();
 // Etats moteurs (reacteurs) des PET distants, par id joueur.
 // Cle stable (holder) pour petEngine (WeakMap) + vitesse estimee pour les flames/trails.
 const netplayPetEngines = new Map();
+// Debut (performance.now/1000) de l'animation ISH pour chaque joueur distant.
+const netRemoteIsh = new Map();
+// Fin de l'interdiction de lock provoquee par l'IEM distant.
+const netRemoteIemUntil = new Map();
 let netplayLastOx = 0, netplayLastOy = 0;
 try {
   window.__NETPETDIAG__ = () => {
@@ -26242,8 +26336,20 @@ function netShotTarget(tx, ty, range) {
 
 // Multi : cible visuelle = NPC, joueur distant, ou nous-meme (tirs allies
 // recus : homing + impact visible, zero degat).
-function netVisualTarget(tx, ty, range) {
+function netVisualTarget(tx, ty, range, ev = null) {
   try {
+    const petTarget = typeof ev?.petTarget === "string" ? ev.petTarget : "";
+    if (petTarget) {
+      if (petTarget === "owner") {
+        const ownersPet = netPetProxies.get(String(ev?.by || ""));
+        if (ownersPet?.hp > 0) return ownersPet.id;
+      } else if (petTarget === String(netMyId())) {
+        if (petLockValid()) return "pet";
+      } else {
+        const remotePet = netPetProxies.get(petTarget);
+        if (remotePet?.hp > 0) return remotePet.id;
+      }
+    }
     let best = null, bestD2 = range * range;
     const consider = (id, x, y) => {
       const dx = x - tx, dy = y - ty;
@@ -26258,28 +26364,48 @@ function netVisualTarget(tx, ty, range) {
       if (!e || !(e.hp > 0)) continue;
       consider(e.id, e.x, e.y);
     }
+    for (const e of netPetProxies.values()) {
+      if (!e || !(e.hp > 0)) continue;
+      consider(e.id, e.x, e.y);
+    }
+    // Un tir distant sur notre PET doit finir sur le REX, pas etre rattache
+    // par proximite a notre vaisseau ou a un NPC.
+    if (petLockValid()) consider("pet", petState.x, petState.y);
     if (!player.dead && player.hp > 0) consider("self", player.x, player.y);
     return best;
   } catch { return null; }
 }
 
+function netVisualShotOrigin(ev) {
+  const fallback = { x: Number(ev?.x), y: Number(ev?.y) };
+  try {
+    const remote = getNetplayRemotes().get(String(ev?.by || ""));
+    if (!remote) return fallback;
+    if (ev?.petSource === true) {
+      return { x: Number(remote.petrx ?? remote.petx), y: Number(remote.petry ?? remote.pety) };
+    }
+    return { x: Number(remote.rx ?? remote.x), y: Number(remote.ry ?? remote.y) };
+  } catch { return fallback; }
+}
+
 function spawnNetShotVisual(ev) {
   const tx = Number(ev.tx), ty = Number(ev.ty);
-  const sx0 = Number(ev.x), sy0 = Number(ev.y);
+  const origin = netVisualShotOrigin(ev);
+  const sx0 = Number(origin.x), sy0 = Number(origin.y);
   if (!Number.isFinite(tx) || !Number.isFinite(ty)) return;
   if (!Number.isFinite(sx0) || !Number.isFinite(sy0)) return;
   const spd = Math.max(500, Math.min(20000, Number(ev.spd) || 4000));
   const key = String(ev.key || "x1").toLowerCase();
   const ammo = (typeof PLAYER_BULLET_SPRITES !== "undefined" && PLAYER_BULLET_SPRITES[key]) ? key : "x1";
   const n = Math.max(1, Math.min(2, Math.round(Number(ev.n) || 1)));
-  const tgtId = netVisualTarget(tx, ty, 400);
+  const tgtId = netVisualTarget(tx, ty, 400, ev);
   if (tgtId == null) return;
   const sab = ev.sab === true;
   // SAB inverse : part de la cible vers le vaisseau (comme en local),
   // en ligne droite (pas de homing vers nous).
   const ox = sab ? tx : sx0, oy = sab ? ty : sy0;
   const ax = sab ? sx0 : tx, ay = sab ? sy0 : ty;
-  const ang = Number.isFinite(Number(ev.ang)) ? Number(ev.ang) : Math.atan2(ay - oy, ax - ox);
+  const ang = Math.atan2(ay - oy, ax - ox);
   const fx = Math.cos(ang), fy = Math.sin(ang);
   const px = -fy, py = fx;
   const starts = n > 1
@@ -26311,7 +26437,8 @@ function spawnNetShotVisual(ev) {
 
 function spawnNetRocketVisual(ev) {
   const tx = Number(ev.tx), ty = Number(ev.ty);
-  const sx0 = Number(ev.x), sy0 = Number(ev.y);
+  const origin = netVisualShotOrigin(ev);
+  const sx0 = Number(origin.x), sy0 = Number(origin.y);
   if (!Number.isFinite(tx) || !Number.isFinite(ty)) return;
   if (!Number.isFinite(sx0) || !Number.isFinite(sy0)) return;
   const kind = String(ev.kind || "r310").toLowerCase();
@@ -26321,9 +26448,9 @@ function spawnNetRocketVisual(ev) {
   const spd = Math.max(500, Math.min(20000, Number(ev.spd) || 1500));
   const dist = Math.hypot(tx - sx0, ty - sy0);
   if (!(dist > 40) || dist > 5000) return;
-  const tgtId = netVisualTarget(tx, ty, 500);
+  const tgtId = netVisualTarget(tx, ty, 500, ev);
   if (tgtId == null) return;
-  const ang = Number.isFinite(Number(ev.ang)) ? Number(ev.ang) : Math.atan2(ty - sy0, tx - sx0);
+  const ang = Math.atan2(ty - sy0, tx - sx0);
   const prange = Math.max(200, Number(ev.prange) || 1000);
   const arcDir = Number(ev.arcDir) < 0 ? -1 : 1;
   const arcScale = Number.isFinite(Number(ev.arcScale)) ? Number(ev.arcScale) : 1;
@@ -26363,6 +26490,67 @@ function tickNetplayVisuals(dt) {
     } catch {}
   }
 }
+
+function drawRemoteInstaShield(remoteId) {
+  const startedAt = netRemoteIsh.get(String(remoteId));
+  if (!Number.isFinite(Number(startedAt))) return;
+  const elapsed = performance.now() / 1000 - Number(startedAt);
+  if (elapsed < 0 || elapsed >= INSTA_SHIELD_PACK.dur) {
+    netRemoteIsh.delete(String(remoteId));
+    return;
+  }
+  if (!instaShieldReady || !instaShieldImgs?.length) return;
+  const frames = INSTA_SHIELD_PACK.frames || instaShieldImgs.length;
+  const idx = Math.min(frames - 1, Math.floor((elapsed / INSTA_SHIELD_PACK.dur) * frames));
+  const img = instaShieldImgs[idx];
+  if (!isImgReady(img)) return;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.globalAlpha = 1;
+  ctx.drawImage(img, -INSTA_SHIELD_PACK.w / 2, -INSTA_SHIELD_PACK.h / 2, INSTA_SHIELD_PACK.w, INSTA_SHIELD_PACK.h);
+  ctx.restore();
+}
+
+function tickNetAbilityEvents() {
+  let events = [];
+  try { events = drainNetAbilityInbox(); } catch { return; }
+  for (const ev of events) {
+    if (!ev?.by || (ev.ability !== "iem" && ev.ability !== "ish")) continue;
+    const by = String(ev.by);
+    const remote = getNetplayRemotes().get(by);
+    if (ev.ability === "ish") {
+      netRemoteIsh.set(by, performance.now() / 1000);
+      try { ensureInstaShieldLoaded(); } catch {}
+      continue;
+    }
+    netRemoteIemUntil.set(by, performance.now() / 1000 + 3);
+    // L'impulsion distante suit la position interpolee du vaisseau au moment
+    // de l'activation, exactement comme l'effet local centre sur le joueur.
+    if (remote) {
+      const showRemotePulse = () => spawnPulseFx(Number(remote.rx ?? remote.x), Number(remote.ry ?? remote.y), 1, false);
+      if (pulseReady) showRemotePulse();
+      else { try { ensurePulseLoaded().then(showRemotePulse).catch(() => {}); } catch {} }
+    }
+    const locked = Target.get();
+    if (locked?._netPlayer != null && String(locked._netPlayer) === by) {
+      Target.clear();
+      stopAttack();
+      clearPendingSalvo();
+    }
+    // Le REX perd lui aussi le joueur masque par l'IEM. Un nouveau degat du
+    // proprietaire sera necessaire pour recreer l'assistance combat.
+    for (const key of ["assistTarget", "combatTarget", "target"]) {
+      const target = petState[key];
+      if (target?._netPlayer != null && String(target._netPlayer) === by) petState[key] = null;
+    }
+    if (petState.attackers instanceof Map) {
+      for (const [key, record] of petState.attackers) {
+        if (record?.ref?._netPlayer != null && String(record.ref._netPlayer) === by) petState.attackers.delete(key);
+      }
+    }
+  }
+}
 function drawNetplayRemotes(ox, oy) {
   let remotes = null;
   try { remotes = getNetplayRemotes(); } catch { return; }
@@ -26377,6 +26565,12 @@ function drawNetplayRemotes(ox, oy) {
     }
     for (const id of [...netplayPetEngines.keys()]) {
       if (!remotes.has(id)) netplayPetEngines.delete(id);
+    }
+    for (const id of [...netRemoteIsh.keys()]) {
+      if (!remotes.has(id)) netRemoteIsh.delete(id);
+    }
+    for (const id of [...netRemoteIemUntil.keys()]) {
+      if (!remotes.has(id)) netRemoteIemUntil.delete(id);
     }
     for (const id of [...netShipDamages.keys()]) {
       if (!remotes.has(id)) netShipDamages.delete(id);
@@ -26435,6 +26629,9 @@ function drawNetplayRemotes(ox, oy) {
       ctx.stroke();
       ctx.rotate(-(Number(r.angle) || 0));
     }
+    // ISH distant : meme sprites, meme duree et centre que sur le client actif.
+    try { drawRemoteInstaShield(r.id); } catch {}
+    try { drawRocketDebuffEffect(r); } catch {}
     // Reacteurs du copain (memes flammes que la coque locale).
     try {
       let eng = netplayEngines.get(r.id);
@@ -26447,10 +26644,18 @@ function drawNetplayRemotes(ox, oy) {
       eng.dead = false;
       eng.vx = (wx - eng.px) * 10;
       eng.vy = (wy - eng.py) * 10;
+      eng.x = wx;
+      eng.y = wy;
       eng.px = wx;
       eng.py = wy;
       shipEngine.update(eng, pack, 0.016, GAME_SETTINGS.shipSmoke);
       shipEngine.draw(ctx, eng, pack, isImgReady, remoteFrame);
+      // Les flammes seules etaient dessinees auparavant. Le meme emetteur de
+      // particules que le vaisseau local produit maintenant la trainee monde,
+      // avec un accumulateur persistant dans `eng`.
+      if (GAME_SETTINGS.shipSmoke) {
+        emitEngineTrail(eng, pack, 0.016, null, "ship", remoteFrame);
+      }
     } catch {}
     // Anneaux Ship_damage du copain : degats NPC (spawnNetShipDamage a
     // l'arrivee du tir) + degats PvP (pvpAt du snapshot, angle vers l'attaquant).
@@ -26562,6 +26767,18 @@ function drawNetplayRemotes(ox, oy) {
         const prx = Number(r.petrx ?? r.petx) + ox, pry = Number(r.petry ?? r.pety) + oy;
         // Meme marge que le vaisseau (260) : pas de clipping au bord.
         if (prx > -260 && pry > -260 && prx < innerWidth + 260 && pry < innerHeight + 260) {
+          // Le proxy contient les pools autoritaires du serveur. Comme pour
+          // notre REX, sa coque et son bouclier ne s'affichent que lorsqu'il
+          // est verrouille.
+          const remotePetProxy = netPetProxies.get(String(r.id));
+          if (remotePetProxy && Target.get() === remotePetProxy && remotePetProxy.hp > 0) {
+            ctx.save();
+            ctx.translate(prx - x, pry - y);
+            // Barres uniquement : le pseudo normal du PET est deja dessine
+            // avec sa firme sous le sprite, inutile de le doubler en rouge.
+            drawNpcStatus(ctx, remotePetProxy, "", true);
+            ctx.restore();
+          }
           const pframe = ((angleToFrameIndex(Number(r.petd ?? r.angle) || 0, 32) + 16) % 32) + 1;
           const psrc = `${getPetStageBase(Number(r.petl) || 1)}${pframe}.png`;
           const pimg = getCachedImage(psrc);
@@ -26587,6 +26804,8 @@ function drawNetplayRemotes(ox, oy) {
             const wx = Number(r.petrx ?? r.petx), wy = Number(r.petry ?? r.pety);
             peng.holder.vx = (wx - peng.px) * 10;
             peng.holder.vy = (wy - peng.py) * 10;
+            peng.holder.x = wx;
+            peng.holder.y = wy;
             peng.px = wx; peng.py = wy;
             try { petEngine.update(peng.holder, 0.016, GAME_SETTINGS.shipSmoke); } catch {}
             ctx.save();
@@ -26625,8 +26844,7 @@ function drawNetplayRemotes(ox, oy) {
             // Trails reacteur du PET distant (memes particules que le notre).
             try {
               if (GAME_SETTINGS.shipSmoke) {
-                const trailEntity = { x: wx, y: wy, vx: peng.holder.vx, vy: peng.holder.vy };
-                emitEngineTrail(trailEntity, { sprite: { w: PET_DRAW_W, h: PET_DRAW_H }, speed: 320 }, 0.016, null, "pet", pframe, pimg);
+                emitEngineTrail(peng.holder, { sprite: { w: PET_DRAW_W, h: PET_DRAW_H }, speed: 320 }, 0.016, null, "pet", pframe, pimg, r.id);
               }
             } catch {}
           } else {
@@ -26658,12 +26876,21 @@ function drawNetplayRemotes(ox, oy) {
       }
       const dind = String(r.dind || "").split("|").map(s => s.trim()).filter(Boolean);
       const mind = String(r.mind || "").split("|").map(s => s.trim()).filter(Boolean);
+      const remotePlayerProxy = netPlayerProxies.get(String(r.id));
+      const showRemoteDetails = !!remotePlayerProxy && Target.get() === remotePlayerProxy;
       drawPlayerStatus(
         ctx,
-        { hp: Number(r.hpPct ?? 1), hpMax: 1, sh: Number(r.shPct ?? 1), shMax: 1, r: 20, dead: false },
+        {
+          hp: Number(r.hpPct ?? 1), hpMax: 1,
+          sh: Number(r.shPct ?? 0),
+          // Ne jamais inventer un bouclier : 0 max = aucune barre bleue.
+          shMax: Number(r.shMax) > 0 ? 1 : 0,
+          r: 20, dead: false,
+        },
         String(r.pseudo || "Pilote"), 0, 0,
         rRank, rFact, dind, rFicon, mind,
         String(r.shipId || "").toLowerCase() === "police",
+        showRemoteDetails,
       );
     } catch {}
     ctx.restore();
@@ -27123,10 +27350,7 @@ function startGatePortalJump(ptl, action) {
 }
 
 function getDroneFormationOffsets(count, formationId) {
-  const n = Math.max(0, Math.floor(Number(count) || 0));
-  if (!n) return [];
-  const reference = DRONE_FORMATION_POSITIONS[formationId] || DRONE_FORMATION_POSITIONS.standard;
-  return Array.from({ length: n }, (_, index) => ({ ...reference[index % reference.length] }));
+  return getOfficialDroneFormationPositions(count, formationId);
 }
 const droneVisualStates = new Map();
 
@@ -29361,6 +29585,7 @@ if (moveTarget.active && !player.dead) {
   // Fin du ralenti Kamikaze : on retombe à vitesse normale.
   player.rocketSlowT = Math.max(0, Number(player.rocketSlowT || 0) - dt);
   if (player.rocketSlowT <= 0) player.rocketSlowPct = 0;
+  player.freezeT = Math.max(0, Number(player.freezeT || 0) - dt);
   tickRepair(dt);
   tickDroneFormationEffects(dt);
   tickRepairOrbitFx(dt);
@@ -29375,6 +29600,11 @@ if (moveTarget.active && !player.dead) {
   // (le serveur ne soigne jamais : regen et soins restent locaux).
   try {
     const self = getNetSelf();
+    if (self) {
+      player.rocketSlowPct = Number(self.slowPct) || 0;
+      player.rocketSlowT = Math.max(Number(player.rocketSlowT) || 0, Number(self.slowT) || 0);
+      player.freezeT = Math.max(Number(player.freezeT) || 0, Number(self.freezeT) || 0);
+    }
     if (self && Number(self.pvpAt) > 0 && Number(self.pvpAt) !== lastPvpAdoptAt) {
       lastPvpAdoptAt = Number(self.pvpAt);
       if (player.hpMax > 0 && Number.isFinite(Number(self.hp))) {
@@ -29432,17 +29662,25 @@ if (moveTarget.active && !player.dead) {
     if (netplayNpcActive()) {
       const self = getNetSelf();
       const pet = account.user?.pet;
-      if (self && Number(self.petPvpAt) > 0 && Number(self.petPvpAt) !== lastPetPvpAdoptAt
-        && pet && pet.owned === true && Number.isFinite(Number(self.petHp))) {
+      const serverPetHp = Number(self?.petHp);
+      const hasNewPetRevision = Number(self?.petPvpAt) > 0
+        && Number(self.petPvpAt) !== lastPetPvpAdoptAt;
+      // Les baisses ne sont adoptees qu'a la reception d'une nouvelle revision
+      // de degats. Comparer le pool serveur a chaque frame annulait aussitot
+      // les +X de G-REP avant que le client puisse publier la regeneration.
+      if (self && hasNewPetRevision
+        && pet && pet.owned === true && Number.isFinite(serverPetHp)) {
         lastPetPvpAdoptAt = Number(self.petPvpAt);
         const pHpM = Math.max(1, Number(petMaxHpWithHeat(pet)) || 1);
         const pShM = Math.max(0, Number(petShieldMaxForHud(pet, account.user)) || 0);
         const before = Number(pet.hp ?? pHpM);
+        const beforeSh = pet.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : pShM;
         pet.hp = Math.max(0, Math.min(Number(pet.hp ?? pHpM), Math.min(pHpM, Number(self.petHp))));
         if (pShM > 0 && Number.isFinite(Number(self.petSh))) {
           const curSh = pet.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : pShM;
           pet.sh = Math.max(0, Math.min(curSh, Math.min(pShM, Number(self.petSh))));
         }
+        if (pet.hp < before || Number(pet.sh) < beforeSh) onPetTookDamage();
         if (pet.hp !== before) { try { markProgressDirty(); } catch {} }
         if (pet.hp <= 0 && !pet._netDeadDone) {
           pet._netDeadDone = true;
@@ -29863,6 +30101,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
         const drained = Math.min(Math.max(0, avail), Math.max(0, Number(b.dmg) || 0));
         if (pet && drained > 0) {
           pet.sh = Math.max(0, avail - drained);
+          onPetTookDamage();
           player.sh = Math.min(player.shMax, player.sh + drained);
           markProgressDirty();
           out = { total: drained, sh: drained, hp: 0 };
@@ -29891,7 +30130,8 @@ for (let i = bullets.length - 1; i >= 0; i--) {
             ? b.isLauncherRocket
               ? applyRocketVolleyHit(t, b, launcherImpact?.count || b.volleySize, sabRecipient)
               : applyRocketHit(t, b, sabRecipient)
-            : damageEnemy(t, b.dmg, undefined, qaCrit || (!b.ownerEscortId ? { chance: player.critChance, mult: player.critMult } : undefined));
+            : damageEnemy(t, b.dmg, undefined, qaCrit || (!b.ownerEscortId ? { chance: player.critChance, mult: player.critMult } : undefined),
+              b.key === "pib" ? { slowPct: 10, slowSec: 15 } : undefined);
 
       // ✅ CBO-100 (joueur) : dégâts normaux + vol de bouclier ×1, comme SAB.
       // Visuels allies : aucun effet (dmg 0 de toute facon).
@@ -29965,9 +30205,11 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
     const fspd = Math.max(120, b.spd || 900);
     b.vx = (fdx / fd) * fspd;
     b.vy = (fdy / fd) * fspd;
-    if (b._oldX != null && segCircleHit(b._oldX, b._oldY, b.x, b.y, fPos.x, fPos.y, (b.r || 7) + 18)) {
-      // Observateur : anneau Ship_damage autour du copain, face au tir recu.
-      try { spawnNetShipDamage(String(b._netFriend), Math.atan2(b.y - fPos.y, b.x - fPos.x), fRad, "npc"); } catch {}
+    if (b._oldX != null && segCircleHit(b._oldX, b._oldY, b.x, b.y, fPos.x, fPos.y, fRad)) {
+      // Meme repere que chez la victime : dernier point AVANT l'entree dans
+      // le cercle. Utiliser b.x/b.y apres depassement pouvait inverser l'angle
+      // de PI et placer l'impact de l'autre cote chez l'observateur.
+      try { spawnNetShipDamage(String(b._netFriend), Math.atan2(b._oldY - fPos.y, b._oldX - fPos.x), fRad, "npc"); } catch {}
       removeProjectile(enemyBullets, i);
       continue;
     }
@@ -31060,7 +31302,7 @@ if (GAME_SETTINGS.textures) {
       ctx,
       e,
       npcLabelFor(e),
-      NPC_SENSOR_RANGES.allVisible || shouldShowNpcBars(e, selectedEnemyForBars),
+      shouldShowNpcBars(e, selectedEnemyForBars),
     );
 
     ctx.restore();
@@ -31383,7 +31625,7 @@ if (GAME_SETTINGS.textures) {
     drawShieldShimmer();
 
     // ✅ Ralenti Kamikaze : sprite SLOW_EFFECT officiel autour du vaisseau.
-    if ((player.rocketSlowT || 0) > 0) drawRocketDebuffEffect(player);
+    if ((player.rocketSlowT || 0) > 0 || (player.freezeT || 0) > 0) drawRocketDebuffEffect(player);
 
     // BSK (Berserker) : sprite 83 frames par-dessus le vaisseau et les effets.
     if ((player.bskT || 0) > 0) {
@@ -32296,6 +32538,7 @@ function frame(t) {
       });
     } catch {}
     // Multi : projectiles visuels des allies (memes sprites, zero degat).
+    try { tickNetAbilityEvents(); } catch {}
     try { tickNetplayVisuals(Math.min(0.1, realDt)); } catch {}
 
     if (document.visibilityState !== "hidden") {

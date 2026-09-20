@@ -27,6 +27,7 @@ export function suspendNetplay(v) {
     netBoxInbox.length = 0;
     netDmgInbox.length = 0;
     netShotInbox.length = 0;
+    netAbilityInbox.length = 0;
     netPvpKillInbox.length = 0;
     netPvpPetKillInbox.length = 0;
     netPvpLootInbox.length = 0;
@@ -131,6 +132,17 @@ export function drainNetPvpKillInbox() {
 }
 // Tirs allies exacts (vrais + faux) : { t:shot/rshot, ... } a jouer aussitot.
 const netShotInbox = [];
+const netAbilityInbox = [];
+export function drainNetAbilityInbox() {
+  if (!netAbilityInbox.length) return [];
+  return netAbilityInbox.splice(0, netAbilityInbox.length);
+}
+export function sendNetAbility(kind) {
+  if (suspended || !ws || ws.readyState !== 1) return false;
+  const ability = String(kind || "").toLowerCase();
+  if (ability !== "iem" && ability !== "ish") return false;
+  try { ws.send(JSON.stringify({ t: "ability", ability })); return true; } catch { return false; }
+}
 // Chat global : { from, text, at } recus ou rejoues (historique).
 const netChatInbox = [];
 export function drainNetChatInbox() {
@@ -290,6 +302,11 @@ export function ensureNetplayConnection() {
       netShotInbox.push(msg);
       return;
     }
+    if (msg.t === "ability" && (msg.ability === "iem" || msg.ability === "ish")) {
+      if (netAbilityInbox.length > 16) netAbilityInbox.shift();
+      netAbilityInbox.push({ ability: msg.ability, by: String(msg.by || "") });
+      return;
+    }
     if (msg.t === "boxesSync" && Array.isArray(msg.boxes)) {
       // Etat complet pour le nouveau venu (meme map uniquement).
       try {
@@ -349,6 +366,9 @@ export function ensureNetplayConnection() {
             pvpFrom: p.pvpFrom != null ? String(p.pvpFrom) : null,
             petHp: Number(p.pvpPetHp), petSh: Number(p.pvpPetSh),
             petPvpAt: Number(p.petPvpAt) || 0,
+            slowPct: Math.max(0, Math.min(95, Number(p.slowPct) || 0)),
+            slowT: Math.max(0, Number(p.slowT) || 0),
+            freezeT: Math.max(0, Number(p.freezeT) || 0),
             at: now,
           };
           continue;
@@ -394,6 +414,9 @@ export function ensureNetplayConnection() {
           range: Math.max(200, Math.min(5000, Number(p.range) || 800)),
           pvpAt: Number(p.pvpAt) || 0,
           pvpFrom: p.pvpFrom != null ? String(p.pvpFrom) : null,
+          rocketSlowPct: Math.max(0, Math.min(95, Number(p.slowPct) || 0)),
+          rocketSlowT: Math.max(0, Number(p.slowT) || 0),
+          freezeT: Math.max(0, Number(p.freezeT) || 0),
           // PET allie : actif, niveau, position.
           peta: p.peta === 1 ? 1 : 0,
           petl: Math.max(1, Math.min(32, Math.round(Number(p.petl) || 1))),
@@ -460,6 +483,9 @@ export function ensureNetplayConnection() {
             cause: String(n.cause || "gun").slice(0, 8),
             seq: Number(n.seq) || 0,
             aggro: n.aggro != null ? String(n.aggro) : null,
+            rocketSlowPct: Math.max(0, Math.min(95, Number(n.slowPct) || 0)),
+            rocketSlowT: Math.max(0, Number(n.slowT) || 0),
+            freezeT: Math.max(0, Number(n.freezeT) || 0),
             lastSeen: now,
             rx: prev ? Number(prev.rx ?? prev.x ?? n.x) : Number(n.x) || 0,
             ry: prev ? Number(prev.ry ?? prev.y ?? n.y) : Number(n.y) || 0,
@@ -610,6 +636,8 @@ export function sendShotEvent(ev) {
     const o = { t: ev.t === "rshot" ? "rshot" : "shot" };
     if (typeof ev.key === "string") o.key = String(ev.key).slice(0, 16);
     if (typeof ev.kind === "string") o.kind = String(ev.kind).slice(0, 16);
+    if (typeof ev.petTarget === "string") o.petTarget = String(ev.petTarget).slice(0, 64);
+    if (ev.petSource === true) o.petSource = true;
     for (const k of ["x", "y", "ang", "tx", "ty", "spd", "arcScale", "arcBoost", "prange"]) {
       if (Number.isFinite(Number(ev[k]))) o[k] = Number(ev[k]);
     }
@@ -676,8 +704,12 @@ export function sendPvpPetHit(hit) {
       h.pen = Math.max(0, Math.min(1, Number(hit.pen ?? 0)));
       if (Number.isFinite(Number(hit.critChance))) h.critChance = Number(hit.critChance);
       if (Number.isFinite(Number(hit.critMult))) h.critMult = Number(hit.critMult);
+      if (Number(hit.slowPct) > 0) h.slowPct = Math.min(95, Number(hit.slowPct));
+      if (Number(hit.slowSec) > 0) h.slowSec = Math.min(30, Number(hit.slowSec));
+      if (Number(hit.freezeSec) > 0) h.freezeSec = Math.min(5, Number(hit.freezeSec));
     }
-    if (!(h.dmg > 0) || h.dmg > 1e7) return;
+    const hasStatus = (h.slowPct > 0 && h.slowSec > 0) || h.freezeSec > 0;
+    if ((!(h.dmg > 0) && !hasStatus) || h.dmg > 1e7) return;
     ws.send(JSON.stringify(h));
   } catch {}
 }
@@ -695,8 +727,12 @@ export function sendPvpHit(hit) {
       h.pen = Math.max(0, Math.min(1, Number(hit.pen ?? 0)));
       if (Number.isFinite(Number(hit.critChance))) h.critChance = Number(hit.critChance);
       if (Number.isFinite(Number(hit.critMult))) h.critMult = Number(hit.critMult);
+      if (Number(hit.slowPct) > 0) h.slowPct = Math.min(95, Number(hit.slowPct));
+      if (Number(hit.slowSec) > 0) h.slowSec = Math.min(30, Number(hit.slowSec));
+      if (Number(hit.freezeSec) > 0) h.freezeSec = Math.min(5, Number(hit.freezeSec));
     }
-    if (!(h.dmg > 0) || h.dmg > 1e7) return;
+    const hasStatus = (h.slowPct > 0 && h.slowSec > 0) || h.freezeSec > 0;
+    if ((!(h.dmg > 0) && !hasStatus) || h.dmg > 1e7) return;
     ws.send(JSON.stringify(h));
   } catch {}
 }
@@ -717,8 +753,12 @@ export function sendNetHit(hit) {
       if (Number.isFinite(Number(hit.critChance))) h.critChance = Number(hit.critChance);
       if (Number.isFinite(Number(hit.critMult))) h.critMult = Number(hit.critMult);
       if (Number(hit.weaken) > 0) h.weaken = Number(hit.weaken);
+      if (Number(hit.slowPct) > 0) h.slowPct = Math.min(95, Number(hit.slowPct));
+      if (Number(hit.slowSec) > 0) h.slowSec = Math.min(30, Number(hit.slowSec));
+      if (Number(hit.freezeSec) > 0) h.freezeSec = Math.min(5, Number(hit.freezeSec));
     }
-    if (!(h.dmg > 0)) return;
+    const hasStatus = (h.slowPct > 0 && h.slowSec > 0) || h.freezeSec > 0;
+    if (!(h.dmg > 0) && !hasStatus) return;
     ws.send(JSON.stringify(h));
     // Diagnostic multi (console) : hits envoyes par type.
     try {
@@ -749,7 +789,7 @@ export function tickNetplayRemotes(dt = 0.016) {
 // Ce module ne fait que le reseau : envoi 10 Hz + snapshots + interpolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect };
+  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendNetAbility, drainNetAbilityInbox, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;

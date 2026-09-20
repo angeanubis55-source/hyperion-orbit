@@ -87,12 +87,28 @@ export class ZoneNpcSim {
 
   setPlayer(clientId, x, y, flags = {}) {
     const f = (flags && typeof flags === "object") ? flags : { dead: flags };
+    const previous = this.players.get(String(clientId));
     this.players.set(String(clientId), {
       x: Number(x) || 0, y: Number(y) || 0,
       dead: f.dead === true,
       safe: f.safe === true,
       hidden: f.hidden === true,
+      empUntil: Number(previous?.empUntil) || 0,
     });
+  }
+
+  empPlayer(clientId, durationMs = 3000) {
+    const id = String(clientId);
+    const player = this.players.get(id);
+    if (player) player.empUntil = Date.now() + Math.max(0, Number(durationMs) || 0);
+    for (const e of this.entries.values()) {
+      if (!e) continue;
+      if (String(e.aggroBy || "") === id) {
+        e.aggroBy = null;
+        e.aggroUntil = 0;
+      }
+      if (String(e.chaseId || "") === id) e.chaseId = null;
+    }
   }
 
   inSafe(x, y) {
@@ -122,7 +138,7 @@ export class ZoneNpcSim {
 
   // Cible valide : vivante, visible (pas de camouflage) et hors zone sure.
   validTarget(p) {
-    return !!p && !p.dead && !p.hidden && !p.safe;
+    return !!p && !p.dead && !p.hidden && !p.safe && Date.now() >= Number(p.empUntil || 0);
   }
 
   removePlayer(clientId) {
@@ -185,6 +201,15 @@ export class ZoneNpcSim {
     // Premier attaquant = credit du kill (pas le coup de grace).
     if (entry.firstBy == null) entry.firstBy = String(clientId);
     entry.lastHitBy = String(clientId);
+    const nowMs = Date.now();
+    const slowPct = clamp(Number(hit?.slowPct) || 0, 0, 95);
+    const slowSec = clamp(Number(hit?.slowSec) || 0, 0, 30);
+    const freezeSec = clamp(Number(hit?.freezeSec) || 0, 0, 5);
+    if (slowPct > 0 && slowSec > 0) {
+      entry.slowPct = Math.max(Number(entry.slowPct) || 0, slowPct);
+      entry.slowUntil = Math.max(Number(entry.slowUntil) || 0, nowMs + slowSec * 1000);
+    }
+    if (freezeSec > 0) entry.freezeUntil = Math.max(Number(entry.freezeUntil) || 0, nowMs + freezeSec * 1000);
     let applied = 0;
     if (hit?.kind === "sab") {
       // Drain bouclier seul (miroir drainShield) : jamais de coque.
@@ -254,6 +279,10 @@ export class ZoneNpcSim {
     // - sinon : derive. En poursuite proche : orbite, jamais statique.
     for (const e of this.entries.values()) {
       if (!(e.hp > 0)) continue;
+      const frozen = nowMs < Number(e.freezeUntil || 0);
+      const slowMult = nowMs < Number(e.slowUntil || 0)
+        ? Math.max(0.05, 1 - clamp(Number(e.slowPct) || 0, 0, 95) / 100)
+        : 1;
       // Kamikaze au contact : explose, la victime touche la recompense.
       if (e.kamikaze && e.explodeOnTouch) {
         let victim = null, victimD2 = e.explodeRadius * e.explodeRadius;
@@ -323,6 +352,8 @@ export class ZoneNpcSim {
         mx = dx / d; my = dy / d; spd = e.speed * 0.55;
         if (spd > 0) e.angle = Math.atan2(dy, dx);
       }
+      if (frozen) spd = 0;
+      else spd *= slowMult;
       e.x = clamp(e.x + mx * spd * dt, 80, this.world.w - 80);
       e.y = clamp(e.y + my * spd * dt, 80, this.world.h - 80);
     }
@@ -348,6 +379,9 @@ export class ZoneNpcSim {
           angle: Math.round(e.angle * 100) / 100,
           hp: Math.max(1, Math.round(e.hp)), sh: Math.max(0, Math.round(e.sh)),
           hpMax: e.hpMax, shMax: e.shMax, alive: true, seq: e.seq || 0,
+          slowPct: nowMs < Number(e.slowUntil || 0) ? Number(e.slowPct) || 0 : 0,
+          slowT: Math.max(0, (Number(e.slowUntil) || 0) - nowMs) / 1000,
+          freezeT: Math.max(0, (Number(e.freezeUntil) || 0) - nowMs) / 1000,
           // Cible partagee : la poursuite en cours si elle est encore valide
           // (tous les ecrans voient le NPC tirer le meme joueur).
           aggro: (() => {

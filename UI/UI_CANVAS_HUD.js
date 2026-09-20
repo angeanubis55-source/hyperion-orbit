@@ -58,7 +58,7 @@ export function drawTargetLock(context, entity, image, sprite, offsetX, offsetY,
   context.restore();
 }
 
-export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null, moduleIndicators = [], adminTag = false) {
+export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null, moduleIndicators = [], adminTag = false, showDetails = true) {
   if (!context || !player || player.dead) return;
   const width = 120;
   const height = 4;
@@ -67,6 +67,7 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
   const hpPercent = clamp(player.hp / player.hpMax, 0, 1);
   const shieldPercent = player.shMax > 0 ? clamp(player.sh / player.shMax, 0, 1) : 0;
   context.save();
+  if (showDetails) {
   context.globalAlpha = 0.95;
   context.fillStyle = "rgba(0,0,0,0.45)";
   context.fillRect(barX, barY, width, height);
@@ -110,6 +111,7 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
     context.fillRect(barX, shieldY, width * shieldPercent, height);
     context.strokeStyle = "rgba(255,255,255,0.22)";
     context.strokeRect(barX - 0.5, shieldY - 0.5, width + 1, height + 1);
+  }
   }
   context.font = "900 16px ui-sans-serif, system-ui";
   context.textAlign = "center";

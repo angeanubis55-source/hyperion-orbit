@@ -4,6 +4,7 @@
 // (rocketSlowT en secondes, rocketSlowPct en %). 1 = vitesse normale.
 // Voyage (Citadel) : x2 temporaire pendant travelT.
 export function playerSlowMult(player) {
+  if (player && (Number(player.freezeT) || 0) > 0) return 0;
   let mult = 1;
   if (player && (Number(player.rocketSlowT) || 0) > 0) {
     const pct = Math.min(95, Math.max(0, Number(player.rocketSlowPct) || 0));
@@ -41,6 +42,11 @@ export function playerSlowMult(player) {
 
 export function updatePlayerVelocity(player, direction, dt, options = {}) {
   const maxSpeed = Math.max(10, Number(player.baseSpeed || 0)) * playerSlowMult(player);
+  if ((Number(player?.freezeT) || 0) > 0) {
+    player.vx = 0;
+    player.vy = 0;
+    return;
+  }
   if (!player.dead && (direction.x || direction.y)) {
     const length = Math.hypot(direction.x, direction.y) || 1;
     player.vx = direction.x / length * maxSpeed;

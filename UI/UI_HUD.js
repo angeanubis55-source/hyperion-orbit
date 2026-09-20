@@ -70,5 +70,7 @@ export function updateWaveHud(ui, { started, wave, remaining, alive }) {
 }
 
 export function shouldShowNpcBars(entity, selectedEntity) {
-  return !!entity && (entity === selectedEntity || entity._healthRevealed === true);
+  // Les degats passes ne gardent jamais une barre ouverte : une seule cible,
+  // celle qui est actuellement verrouillee, peut afficher ses jauges.
+  return !!entity && entity === selectedEntity;
 }

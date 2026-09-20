@@ -349,6 +349,23 @@ wss.on("connection", (ws) => {
       } catch {}
       return;
     }
+    if (msg.t === "ability" && (msg.ability === "iem" || msg.ability === "ish")) {
+      try {
+        const room = rooms.get(mapId);
+        const me = room?.get(id);
+        if (!room || !me) return;
+        const now = Date.now();
+        if (msg.ability === "ish") {
+          me.state.ishUntil = Math.max(Number(me.state.ishUntil) || 0, now + 3000);
+        } else {
+          const sim = npcSims.get(mapId);
+          if (sim && typeof sim.empPlayer === "function") sim.empPlayer(id, 3000);
+        }
+        // Effet visuel distant ; pour l'IEM cet evenement casse aussi le lock.
+        broadcastRoom(room, JSON.stringify({ t: "ability", ability: msg.ability, by: id }), id);
+      } catch {}
+      return;
+    }
     if (msg.t === "pvpHit") {
       // PvP : degats d'un joueur sur un autre, tranches ici.
       try {
@@ -363,8 +380,11 @@ wss.on("connection", (ws) => {
         me.state.pvpN = Number(me.state.pvpN || 0) + 1;
         if (me.state.pvpN > 80) return;
         const dmg = Number(msg.dmg);
-        if (!Number.isFinite(dmg) || dmg <= 0 || dmg > 1e7) return;
+        const hasStatus = (Number(msg.slowPct) > 0 && Number(msg.slowSec) > 0) || Number(msg.freezeSec) > 0;
+        if (!Number.isFinite(dmg) || dmg < 0 || dmg > 1e7 || (dmg === 0 && !hasStatus)) return;
         if (foe.state.dead) return;
+        // ISH : immunite serveur, donc aucun client ne peut contourner les 3 s.
+        if (now < Number(foe.state.ishUntil || 0)) return;
         // Deja tue (pos de mort pas encore arrivee) : pas de double kill.
         if (foe.state.pvpDead === true) return;
         let wasAlive = Number(foe.state.hp) > 0;
@@ -394,6 +414,14 @@ wss.on("connection", (ws) => {
           foe.state.sh = Math.max(0, Number(foe.state.sh) || 0);
         }
         foe.state.pvpAt = now;
+        const slowPct = Math.max(0, Math.min(95, Number(msg.slowPct) || 0));
+        const slowSec = Math.max(0, Math.min(30, Number(msg.slowSec) || 0));
+        const freezeSec = Math.max(0, Math.min(5, Number(msg.freezeSec) || 0));
+        if (slowPct > 0 && slowSec > 0) {
+          foe.state.slowPct = Math.max(Number(foe.state.slowPct) || 0, slowPct);
+          foe.state.slowUntil = Math.max(Number(foe.state.slowUntil) || 0, now + slowSec * 1000);
+        }
+        if (freezeSec > 0) foe.state.freezeUntil = Math.max(Number(foe.state.freezeUntil) || 0, now + freezeSec * 1000);
         // Feed degats : la victime voit les chiffres (comme les NPC).
         if (applied > 0) {
           const fkey = `${foe.state.id}|${id}`;
@@ -464,6 +492,8 @@ wss.on("connection", (ws) => {
         if (!foe || !me) return;
         if (foe.state.peta !== 1) return;
         const now = Date.now();
+        // Le PET beneficie de la zone de non-agression de son proprietaire.
+        if (foe.state.safe === true || me.state.safe === true) return;
         if (now - Number(me.state.pvpPetWinT || 0) > 1000) { me.state.pvpPetWinT = now; me.state.pvpPetN = 0; }
         me.state.pvpPetN = Number(me.state.pvpPetN || 0) + 1;
         if (me.state.pvpPetN > 80) return;
@@ -495,7 +525,13 @@ wss.on("connection", (ws) => {
         }
         foe.state.petPoolHp = Math.max(0, Number(pool.hp) || 0);
         foe.state.petPoolSh = Math.max(0, Number(pool.sh) || 0);
-        foe.state.petPvpAt = now;
+        // Revision strictement croissante : plusieurs impacts d'une meme
+        // salve peuvent tomber dans la meme milliseconde. Avec Date.now()
+        // seul, le proprietaire pouvait ignorer le dernier impact (celui a 0).
+        foe.state.petPvpAt = Math.max(now, Number(foe.state.petPvpAt || 0) + 1);
+        foe.state._petHpRegenBudget = 0;
+        foe.state._petShRegenBudget = 0;
+        foe.state._petRegenAt = now;
         if (applied > 0) {
           const fkey = `${foe.state.id}|pet|${id}`;
           let feed = pvpFeeds.get(mapId);
@@ -522,6 +558,8 @@ wss.on("connection", (ws) => {
         const out = { t: msg.t, by: id, map: mapId };
         if (typeof msg.key === "string") out.key = String(msg.key).slice(0, 16);
         if (typeof msg.kind === "string") out.kind = String(msg.kind).slice(0, 16);
+        if (typeof msg.petTarget === "string") out.petTarget = String(msg.petTarget).slice(0, 64);
+        if (msg.petSource === true) out.petSource = true;
         for (const k of ["x", "y", "ang", "tx", "ty", "spd", "arcScale", "arcBoost", "prange"]) {
           if (Number.isFinite(Number(msg[k]))) out[k] = Number(msg[k]);
         }
@@ -744,6 +782,26 @@ wss.on("connection", (ws) => {
         } else {
           if (cPHp < state.petPoolHp) state.petPoolHp = cPHp;
           if (cPSh < state.petPoolSh) state.petPoolSh = cPSh;
+          // Regeneration legitime du REX : G-REP repare jusqu'a 5 %/s et le
+          // bouclier recharge a 5 %/s. Les valeurs arrivent par paliers de
+          // 1 s, donc on utilise un petit budget accumule plutot qu'un cliquet
+          // strictement descendant qui figeait les barres multijoueur.
+          const syncNow = Date.now();
+          const syncDt = Math.max(0, Math.min(2, (syncNow - Number(state._petRegenAt || syncNow)) / 1000));
+          state._petRegenAt = syncNow;
+          state._petHpRegenBudget = Math.min(phm * 0.055, Math.max(0, Number(state._petHpRegenBudget) || 0) + phm * 0.055 * syncDt);
+          state._petShRegenBudget = Math.min(psm * 0.055, Math.max(0, Number(state._petShRegenBudget) || 0) + psm * 0.055 * syncDt);
+          if (cPHp > state.petPoolHp && state._petHpRegenBudget > 0) {
+            const gain = Math.min(cPHp - state.petPoolHp, state._petHpRegenBudget);
+            state.petPoolHp += gain;
+            state._petHpRegenBudget -= gain;
+          }
+          if (cPSh > state.petPoolSh && state._petShRegenBudget > 0
+            && syncNow - Number(state.petPvpAt || 0) >= 5000) {
+            const gain = Math.min(cPSh - state.petPoolSh, state._petShRegenBudget);
+            state.petPoolSh += gain;
+            state._petShRegenBudget -= gain;
+          }
         }
       }
       if (typeof msg.map === "string" && msg.map.toLowerCase() !== mapId) {
@@ -816,6 +874,9 @@ setInterval(() => {
       players.push({ id: s.id, pseudo: s.pseudo, shipId: s.shipId, x: Math.round(s.x), y: Math.round(s.y), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
         // PvP : PV autoritaires + date du dernier coup recu + attaquant (anneau Ship_damage).
         pvpAt: Number(s.pvpAt) || 0, pvpFrom: s.pvpFrom != null ? String(s.pvpFrom) : null, pvpHp: Math.max(0, Math.round(Number(s.hp) || 0)), pvpSh: Math.max(0, Math.round(Number(s.sh) || 0)),
+        slowPct: Date.now() < Number(s.slowUntil || 0) ? Number(s.slowPct) || 0 : 0,
+        slowT: Math.max(0, (Number(s.slowUntil) || 0) - Date.now()) / 1000,
+        freezeT: Math.max(0, (Number(s.freezeUntil) || 0) - Date.now()) / 1000,
         hpMax: Math.max(1, Math.round(Number(s.hpMax) || 1)), shMax: Math.max(0, Math.round(Number(s.shMax) || 0)),
         range: Math.max(200, Math.min(5000, Number(s.range) || 800)),
         peta: s.peta === 1 ? 1 : 0, petl: Math.max(1, Math.min(32, Math.round(Number(s.petl) || 1))),
