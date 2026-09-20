@@ -26439,6 +26439,11 @@ function drawNetplayRemotes(ox, oy) {
           const pframe = ((angleToFrameIndex(Number(r.petd ?? r.angle) || 0, 32) + 16) % 32) + 1;
           const psrc = `${getPetStageBase(Number(r.petl) || 1)}${pframe}.png`;
           const pimg = getCachedImage(psrc);
+          if (!isImgReady(pimg)) {
+            // Sprite jamais vu sur cet ecran : on le charge (sinon le PET
+            // de l'allie reste invisible alors que tout est recu).
+            try { loadImage(psrc, { priority: true }); } catch {}
+          }
           if (isImgReady(pimg)) {
             // Etat moteur stable par joueur (vitesse estimee depuis l'interpolation).
             let peng = netplayPetEngines.get(r.id);
