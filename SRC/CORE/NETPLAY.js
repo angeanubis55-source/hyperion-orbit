@@ -348,6 +348,7 @@ export function ensureNetplayConnection() {
             hp: Number(p.pvpHp), sh: Number(p.pvpSh), pvpAt: Number(p.pvpAt) || 0,
             pvpFrom: p.pvpFrom != null ? String(p.pvpFrom) : null,
             petHp: Number(p.pvpPetHp), petSh: Number(p.pvpPetSh),
+            petPvpAt: Number(p.petPvpAt) || 0,
             at: now,
           };
           continue;

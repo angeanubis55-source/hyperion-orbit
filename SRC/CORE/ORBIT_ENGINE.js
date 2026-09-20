@@ -24625,6 +24625,7 @@ function netNpcCombatTarget(e) {
 const netPlayerProxies = new Map(); // clientId -> entite cible
 const netPetProxies = new Map(); // clientId -> proxy du PET allie (lock + degats PvP)
 let lastPvpAdoptAt = 0;
+let lastPetPvpAdoptAt = 0;
 function syncNetPlayers() {
   let remotes = null;
   try { remotes = getNetplayRemotes(); } catch { remotes = null; }
@@ -29412,13 +29413,17 @@ if (moveTarget.active && !player.dead) {
       }
     }
   } catch {}
-  // Multi PvP : pool PET autoritaire serveur — on n'adopte que les baisses.
+  // Multi PvP : pool PET autoritaire serveur — on n'adopte que les baisses,
+  // et seulement sur nouveau coup (comme le vaisseau : sinon chaque
+  // reparation locale serait ecrasee avant que le serveur la voie).
   // Destruction a 0 (explosion + toast comme en solo).
   try {
     if (netplayNpcActive()) {
       const self = getNetSelf();
       const pet = account.user?.pet;
-      if (self && pet && pet.owned === true && Number.isFinite(Number(self.petHp))) {
+      if (self && Number(self.petPvpAt) > 0 && Number(self.petPvpAt) !== lastPetPvpAdoptAt
+        && pet && pet.owned === true && Number.isFinite(Number(self.petHp))) {
+        lastPetPvpAdoptAt = Number(self.petPvpAt);
         const pHpM = Math.max(1, Number(petMaxHpWithHeat(pet)) || 1);
         const pShM = Math.max(0, Number(petShieldMaxForHud(pet, account.user)) || 0);
         const before = Number(pet.hp ?? pHpM);

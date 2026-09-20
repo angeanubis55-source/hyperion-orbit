@@ -495,6 +495,7 @@ wss.on("connection", (ws) => {
         }
         foe.state.petPoolHp = Math.max(0, Number(pool.hp) || 0);
         foe.state.petPoolSh = Math.max(0, Number(pool.sh) || 0);
+        foe.state.petPvpAt = now;
         if (applied > 0) {
           const fkey = `${foe.state.id}|pet|${id}`;
           let feed = pvpFeeds.get(mapId);
@@ -826,6 +827,7 @@ setInterval(() => {
         // Pool PV du PET (adoption cote proprietaire).
         pvpPetHp: Math.max(0, Math.round(Number(s.petPoolHp ?? 1) || 0)),
         pvpPetSh: Math.max(0, Math.round(Number(s.petPoolSh ?? 0) || 0)),
+        petPvpAt: Number(s.petPvpAt) || 0,
         petHpM: Math.max(1, Math.round(Number(s.petHpM) || 1)),
         petShM: Math.max(0, Math.round(Number(s.petShM) || 0)),
         safe: s.safe === true });
