@@ -32153,7 +32153,7 @@ function frame(t) {
         hpMax: Math.max(1, Math.round(Number(player.hpMax) || 1)),
         shMax: Math.max(0, Math.round(Number(player.shMax) || 0)),
         range: Math.max(200, Math.min(5000, Math.round(Number(playerRange) || 800))),
-        peta: petA, petl: petL, petx: petX, petY: petY, petd: petD, petn: petN, petf: petF,
+        peta: petA, petl: petL, petx: petX, pety: petY, petd: petD, petn: petN, petf: petF,
         vmax: (function () { try { return Math.max(50, Math.round(Number(getSpeedBreakdown()?.total) || Number(player.baseSpeed) || 300)); } catch { return 300; } })(),
       });
     } catch {}
