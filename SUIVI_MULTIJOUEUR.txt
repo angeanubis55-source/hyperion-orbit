@@ -1,0 +1,151 @@
+================================================================
+SUIVI MULTIJOUEUR — Hyperion Orbit (Darkorbit LOL)
+Dernière mise à jour : 2026 (session multi + comptes serveur)
+================================================================
+
+BUT DU PROJET : passer du jeu solo local à un vrai jeu en ligne :
+mêmes NPC pour tous, vaisseaux visibles, tirs visibles, morts partagées,
+comptes sur serveur. Testé à 2 (navigateur normal + navigation privée).
+
+----------------------------------------------------------------
+1) BASE RESEAU (joueurs qui se voient)
+----------------------------------------------------------------
+- Serveur : SCRIPTS/MULTI_SERVER.js (HTTP statique + WebSocket /ws).
+  Lancement : npm run server:multi  (port 8080 par défaut, --port= possible)
+  Dépendance ajoutée : ws (package.json).
+- Client : SRC/CORE/NETPLAY.js (envoi position 10 Hz, snapshots, interpolation).
+- Moteur : SRC/CORE/ORBIT_ENGINE.js (16 lignes au début, puis extensions) :
+  envoi état local chaque frame + dessin des distants.
+- Protocole pos : x, y, angle, shipId, pseudo, dead, hpPct, shPct, atk,
+  tx/ty (point visé), ammo, drones/dform/dslots, safe/hidden, rank/firm,
+  dind/ficon/mind (+ anciens champs shots/alt/fint/bspd/rseq/rkind/rspd
+  encore relayés mais plus utilisés depuis les événements de tir).
+- Rendu distant : vrai sprite vaisseau (bon sens via angleOffset),
+  réacteurs (ShipEngine), drones (vrais sprites + formation), balancement
+  à l'arrêt, plaque complète via drawPlayerStatus (grade + nom + firme en
+  dessous ; barres HP/shield + carrés drones + carrés modules + formation
+  au-dessus), minimap (point bleu même firme, rouge sinon, taille NPC +
+  portée radar comme les NPC).
+- Solo-safe : sans WS joignable, le jeu reste 100 % solo.
+
+----------------------------------------------------------------
+2) TIRS VISUELS (événements exacts, zéro dégât)
+----------------------------------------------------------------
+- Le tireur envoie chaque salve matérialisée (vraies + faux tirs de
+  transition) : {t:"shot", key, n(1|2), x, y, ang, tx, ty, spd, sab}
+  depuis tryFireOnce et spawnSalvoDecoy.
+- Roquettes : {t:"rshot", kind, x, y, ang, tx, ty, spd, arcDir, arcScale,
+  arcBoost, prange} depuis spawnRocketProjectile (arcs identiques,
+  lance-roquettes inclus, fumées auto via isRocket).
+- Serveur : retransmet tels quels à la room (sauf l'envoyeur), sans état.
+- Receveur (tickNetplayVisuals) : projectiles visuels (mêmes sprites,
+  homing + impacts silencieux, SAB inversé comme en local).
+- Ancien système (compteur shots + faisceau violet) supprimé côté réception.
+
+----------------------------------------------------------------
+3) NPC PARTAGES (serveur autoritaire)
+----------------------------------------------------------------
+- Serveur : SCRIPTS/NPC_ROOM.js (ZoneNpcSim). Réutilise les modules purs :
+  UNIVERSE_SIM (slots/respawn), NPC_TYPES (stats), COMBAT_RULES
+  (damageEnemyLayers), MAPS/<id>/SPAWNS.js + WORLD.js (camps, zones sûres).
+- Tick 10 Hz : respawn, dérive/orbite/poursuite/fuite, kamikazes.
+- Client : prédiction locale + snapshots serveur (10 Hz) qui corrigent.
+  Hook unique dégâts dans damageEnemy + drainShieldFromEnemy -> sendNetHit.
+- Morts : journal des kills (2,5 s) + n° d'incarnation (seq) anti-confusion
+  avec le respawn instantané. Kill = PREMIER attaquant (firstBy, repli
+  dernier si parti). Killer seul : explosion + cargo + crédits/XP/quêtes.
+  Autre : explosion + retrait silencieux. Lock libéré à la mort.
+- Aggro partagée (snapshot) : les 2 écrans voient le NPC tirer la même
+  cible. Tirs vers le copain = visuels (vol droit, disparition silencieuse,
+  zéro dégât). Flag _attackedPlayerRecently synchronisé (sinon points
+  rouges persistants au loin sur la minimap).
+- Comportements parité solo : dérive, orbite en poursuite proche (jamais
+  statique), poursuite agresseur + proximité (rayon camp), passifs
+  (provoqués seulement), zone sûre (aucune poursuite/tir, sortie + spawn
+  et dérive hors zone, glissade anti-glitch aux bords), fuite <10 % PV
+  (rattrapable, tirs continuent), kamikaze (explosion + dégâts de zone +
+  récompense victime), camouflage (ignorés).
+- Boucle mouvement locale sautée pour les NPC réseau (positions serveur),
+  tirs NPC locaux conservés. Purge des doublons locaux (universeUid).
+- Repli solo : si snapshots >3 s ou map non-zone, spawner local reprend.
+
+----------------------------------------------------------------
+4) DEGATS PARTAGES VISIBLES
+----------------------------------------------------------------
+- Serveur : feed dégâts agrégés par (npc, attaquant) et par tick,
+  inclus dans le snapshot (dmg:[{uid, by, total}], max 24).
+- Client : chiffres flottants via queueVolleyFloat UNIQUEMENT si on locke
+  la même cible (Target._netUid === uid). Les barres HP suivent toujours
+  le snapshot dans tous les cas.
+- One-shot : pas de chiffres (mort immédiate), normal (explosion + loot).
+
+----------------------------------------------------------------
+5) BONUS BOX PARTAGEES
+----------------------------------------------------------------
+- Hôte élu = plus petit id de la room (champ host du snapshot).
+- Hôte seul spawne (store local) + publie sa liste chaque seconde.
+- Autres : aucun spawn, instances miroirs (_netBox, sans store).
+- Collecte : récompense personnelle + event immédiat ; premier arrivé.
+  L'hôte tue aussi son slot (respawn partagé à venir).
+- Serveur : set par room, boxesSync à l'arrivée, events collect/list,
+  unspawn au départ, anti-spoof (seul l'hôte publie).
+- Cargos de NPC : PAS partagés (seul le tueur les voit) — voulu pour l'instant.
+- Diagnostic : window.__NETBOXDBG__ (hôte, tailles, listes envoyées).
+
+----------------------------------------------------------------
+6) COMPTES SERVEUR (SQLite, zéro dépendance)
+----------------------------------------------------------------
+- Serveur : SCRIPTS/ACCOUNT_SERVER.js, DB SERVER_DATA/orbit.db (GITIGNORE,
+  à SAUVEGARDER sur le serveur maison !). node:sqlite (expérimental Node 24).
+- API : GET /api/ping · POST /api/register {pseudo,email,password,faction,
+  migrate?} · POST /api/login · GET /api/me · POST /api/save {user} ·
+  POST /api/logout. Tokens Bearer 30 jours. Rate-limit 20/min/IP.
+- Mots de passe : même format que le client (v1$salt$SHA256). Casse pseudo
+  préservée (colonne pseudo_norm unique). Révision strictement croissante
+  (409 stale + canon si en retard, anti-écrasement). Conflit pseudo/email :
+  200 + canon partiel (le serveur tranche).
+- Migration unique : inscription avec même pseudo/email + mot de passe
+  prouve la possession du compte local -> progression importée.
+- Client : SRC/CORE/ACCOUNT_NET.js (token orbit_token + cache orbit_user_cache
+  + debounce save 2 s + flush pagehide + refresh /api/me au boot).
+  ACCOUNT.js : readUsers/writeUsers/readCurrent/writeCurrent branchent
+  serveur si token (saveUser et tout le jeu inchangés). Logout coupe le token.
+  PUBLIC/AUTH.js : mode en ligne si serveur joignable (sinon local 100 %
+  comme avant) + import local à l'inscription.
+- Validé : 14 checks API (doublons, 401/403/404/409, isolation A/B,
+  migration, casse) + tests navigateur (2 comptes, persistance après
+  fermeture navigateur, indépendance). Solo sans serveur : intact.
+
+----------------------------------------------------------------
+PROCEDURE DE TEST LOCALE (à 2)
+----------------------------------------------------------------
+1. npm run server:multi  (Ctrl+C + relance SEULEMENT si SCRIPTS/ change)
+2. 2 fenêtres : normale + privée, http://127.0.0.1:8080/?map=1-1
+3. 2 comptes différents (firme différente conseillée pour la minimap)
+4. Ctrl+F5 des 2 côtés à chaque changement client (pas besoin sinon)
+5. Diagnostic console : window.__NETBOXDBG__ (box), window.__NETHITS__
+   (hits envoyés), window.__NETPLAY__.netplayStatus()
+6. Console serveur : [multi:npc] hits reçus toutes les 30 s
+
+----------------------------------------------------------------
+RESTE A FAIRE (prochaines étapes proposées)
+----------------------------------------------------------------
+[ ] Transférer sur le serveur maison (Xeon 24x, 44 Go) : dossier + npm
+    install + port 8080 + test à 2 vrais PC. SAUVEGARDER SERVER_DATA/.
+[ ] Validation serveur des dégâts SUBIS (clients immortels impossibles).
+[ ] Fluidité : tick 20 Hz + extrapolation (mouvements moins saccadés).
+[ ] PvP (tirs entre joueurs réels) + chat.
+[ ] Galaxy Gates / quêtes coop / cargos partagés.
+[ ] Durcissement anti-triche (vitesses, cadences, positions).
+
+----------------------------------------------------------------
+FICHIERS CLES
+----------------------------------------------------------------
+Créés : SCRIPTS/MULTI_SERVER.js, SCRIPTS/NPC_ROOM.js,
+  SCRIPTS/ACCOUNT_SERVER.js, SRC/CORE/NETPLAY.js, SRC/CORE/ACCOUNT_NET.js
+Modifiés : SRC/CORE/ORBIT_ENGINE.js (hooks multi), SRC/CORE/ACCOUNT.js
+  (backend net), PUBLIC/AUTH.js (en ligne d'abord), UI/UI_MINIMAP.js
+  (points alliés), package.json (ws + script server:multi), .gitignore
+  (SERVER_DATA/).
+Runtime (non git) : SERVER_DATA/orbit.db, node_modules/.
+================================================================

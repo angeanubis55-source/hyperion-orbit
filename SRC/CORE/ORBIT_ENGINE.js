@@ -105,6 +105,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
+import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -138,6 +139,7 @@ import { escapeHtml } from "../../UI/UI_DOM.js";
 import { wireWikiWindow } from "../../UI/UI_WIKI.js";
 import { initSkylabUI, tickSkylabProduction } from "../../UI/UI_SKYLAB.js";
 import { initAuctionUI, renderAuctionWindow, tickAuctionDisplay } from "../../UI/UI_AUCTION.js";
+import { initChatUI } from "../../UI/UI_CHAT.js";
 import { initPilotSkillsUI, renderPilotSkillsWindow, tickPilotSkillsDisplay } from "../../UI/UI_PILOT_SKILLS.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
 import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
@@ -3052,7 +3054,7 @@ function tbrCloneFire(c) {
   const pet = account.user?.pet;
   const tgt = petState.target;
   if (!tgt || !(tgt.hp > 0)) return;
-  try { if (!enemies.includes(tgt)) return; } catch { return; }
+  try { if (!petTargetStillValid(tgt)) return; } catch { return; }
   if (dist2(c.x, c.y, tgt.x, tgt.y) > 305 * 305) return;
   const { total } = petVolleyDamage(pet, account.user, tgt);
   if (!(total > 0)) return;
@@ -7948,6 +7950,7 @@ function registerHudWindows() {
   window.GameWindowManager?.close?.("questOfferWindow");
   reg("galaxyGateWindow", "Galaxy Gates", menuIcon("ggBuilder"), false);
   reg("gameLogWindow", "LOG", menuIcon("log"), false);
+  reg("chatWindow", "Chat", menuIcon("chat"), true);
   // Assemblage (voir CRAFTING_ENABLED) : icône dock + fenêtre si activé.
   if (CRAFTING_ENABLED) reg("craftingWindow", "Assemblage", menuIcon("assembly"), false);
   else {
@@ -7970,6 +7973,7 @@ function registerHudWindows() {
   reg("gygerimStatus", "État du boss", menuIcon("worldBoss"), true, { minimizable: false });
 wireSettingsWindow();
 wireWikiWindow();
+initChatUI();
 initSkylabUI({
   getUser: () => account.user,
   afterAction: () => {
@@ -14390,6 +14394,23 @@ function pickEnemyAtScreen(sx, sy) {
     }
   }
 
+  // Multi PvP : verrouiller le vaisseau d'un autre joueur (taille coque).
+  if (!best && netplayNpcActive()) {
+    try {
+      for (const e of netPlayerProxies.values()) {
+        if (!e || !(e.hp > 0)) continue;
+        const dx = w.x - e.x;
+        const dy = w.y - e.y;
+        if (Math.abs(dx) > 85 || Math.abs(dy) > 85) continue;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) {
+          best = e;
+          bestD2 = d2;
+        }
+      }
+    } catch {}
+  }
+
   return best;
 }
 
@@ -17105,9 +17126,12 @@ if (tradeButton) {
 }
 
    const enemy = pickEnemyAtScreen(e.clientX, e.clientY);
-if (enemy) {
   // ✅ On lock le NPC
   // ✅ Mais on ne touche PAS à l'ordre de collecte de box
+  try {
+    if (netPlayerProxies.size) console.info("[pick] clic:", enemy ? (enemy._netPlayer ? `joueur:${enemy._netPlayer}` : `npc:${enemy.type}`) : "rien");
+  } catch {}
+if (enemy) {
   Target.set(enemy);
   try { botNotifyManual(); } catch {}
 
@@ -17924,6 +17948,18 @@ function notePetPlayerDamage(enemy) {
   petState.assistTarget = enemy;
 }
 
+// Multi PvP : les joueurs distants vivent dans netPlayerProxies / enemiesById,
+// PAS dans `enemies` (réservé aux NPC). Ce helper valide les deux, pour que le
+// REX assiste / riposte aussi contre les joueurs verrouillés.
+function petTargetStillValid(ref) {
+  if (!ref || !(ref.hp > 0)) return false;
+  try { if (Array.isArray(enemies) && enemies.includes(ref)) return true; } catch {}
+  if (ref._netPlayer != null) {
+    try { return getEnemyById(ref.id) === ref; } catch { return true; }
+  }
+  return false;
+}
+
 function petVolleyDamage(pet, user, target) {
   const hangar = (user?.hangars || []).find((h) => h?.active) || null;
   const hid = hangar ? String(hangar.id) : null;
@@ -17991,7 +18027,10 @@ const isSab = ammoKey === "sab";
   const perShot = volleyDamage / shotOffsets.length;
   const life = bulletLifeForRange(playerRange, speed);
   const perp = angle + Math.PI / 2;
-  for (const off of shotOffsets) {
+  // MISS tires a l'avance (1 roll par canon) : le 2e ecran affiche MISS
+  // si au moins un canon rate (meme regle d'affichage unique par volley).
+  const petMissRolls = shotOffsets.map(() => Math.random() < petMissChance(account.user?.pet, account.user));
+  shotOffsets.forEach((off, idx) => {
     const sx = muzzleX + Math.cos(perp) * off;
     const sy = muzzleY + Math.sin(perp) * off;
     const dx = target.x - sx;
@@ -18002,10 +18041,20 @@ const isSab = ammoKey === "sab";
       r: 6, life, dmg: perShot,
       key: ammoKey, side: "player", targetId: target.id, homing: true,
       isSab,
-      miss: Math.random() < petMissChance(account.user?.pet, account.user),
+      miss: petMissRolls[idx] === true,
       ownerEscortId: "pet", volleyId, volleySize: shotOffsets.length,
     }, ENTITY_LIMITS.playerBullets);
-  }
+  });
+  // Multi : le vrai tir du PET part de sa position (pas du vaisseau) pour
+  // que le 2e compte voie le laser sortir du REX (MISS inclus).
+  try {
+    sendShotEvent({
+      t: "shot", key: ammoKey, n: shotOffsets.length,
+      x: Math.round(petState.x), y: Math.round(petState.y), ang: Number(angle) || 0,
+      tx: Math.round(target.x), ty: Math.round(target.y), spd: Math.round(speed), sab: isSab === true,
+      miss: petMissRolls.some(Boolean), v: volleyId,
+    });
+  } catch {}
   // Comme dans DarkOrbit, les lasers du REX puisent dans la réserve choisie
   // par le joueur. Le X1 reste naturellement illimité.
   consumeAmmo(count);
@@ -18457,13 +18506,13 @@ function cancelKamikazeRun(reason) {
 function pickKamikazeTarget() {
   let locked = null;
   try { locked = Target.get(); } catch { locked = null; }
-  if (locked && Number(locked.hp) > 0 && enemies.includes(locked)) return locked;
+  if (locked && petTargetStillValid(locked)) return locked;
   const nowS = performance.now() / 1000;
   let best = null;
   let bestT = -Infinity;
   for (const record of petState.attackers.values()) {
     const ref = record?.ref;
-    if (!ref || Number(ref.hp) <= 0 || !enemies.includes(ref)) continue;
+    if (!petTargetStillValid(ref)) continue;
     if (!record?.pending) continue;
     if (nowS - (Number(record.t) || -Infinity) > PET_ATTACKER_MEMORY) continue;
     if (Number(record.t) > bestT) {
@@ -18548,7 +18597,7 @@ function tickPetKamikaze(dt) {
   }
   petKamikaze.age += Math.max(0, Number(dt) || 0);
   const ref = petKamikaze.targetRef;
-  const live = ref && Number(ref.hp) > 0 && enemies.includes(ref) ? ref : null;
+  const live = ref && Number(ref.hp) > 0 && petTargetStillValid(ref) ? ref : null;
   if (live) {
     petKamikaze.lastX = Number(live.x);
     petKamikaze.lastY = Number(live.y);
@@ -18592,7 +18641,7 @@ function tickPetKamikaze(dt) {
 function detonatePetKamikaze() {
   const lvl = Math.floor(Number(petKamikaze.level) || 0);
   const ref = petKamikaze.targetRef;
-  const live = ref && Number(ref.hp) > 0 && enemies.includes(ref) ? ref : null;
+  const live = ref && Number(ref.hp) > 0 && petTargetStillValid(ref) ? ref : null;
   const cx = live ? Number(live.x) : petState.x;
   const cy = live ? Number(live.y) : petState.y;
   petKamikaze.active = false;
@@ -18611,7 +18660,9 @@ function detonatePetKamikaze() {
   try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
   let hit = 0;
   const r2 = radius * radius;
-  for (const e of [...enemies]) {
+  let pvpProxies = [];
+  try { pvpProxies = [...netPlayerProxies.values()]; } catch { pvpProxies = []; }
+  for (const e of [...enemies, ...pvpProxies]) {
     if (!e || !(Number(e.hp) > 0) || e._bossEncounter?.invulnerable) continue;
     const ex = Number(e.x) - cx;
     const ey = Number(e.y) - cy;
@@ -19095,7 +19146,7 @@ function updatePet(dt) {
   const ownerDistance = Math.hypot(player.x - petState.x, player.y - petState.y);
   const selectedPetTarget = attackActive ? Target.get() : null;
   const continuingAssist = !!selectedPetTarget && petState.assistTarget === selectedPetTarget
-    && selectedPetTarget.hp > 0 && enemies.includes(selectedPetTarget);
+    && petTargetStillValid(selectedPetTarget);
   const outsidePlayerRange = continuingAssist
     && Math.hypot(selectedPetTarget.x - player.x, selectedPetTarget.y - player.y) > playerRange;
   if (outsidePlayerRange) {
@@ -19147,7 +19198,7 @@ function updatePet(dt) {
     let playerTargetHitUs = false;
     for (const [id, record] of petState.attackers) {
       const valid = record.pending && nowS - record.t <= PET_ATTACKER_MEMORY
-        && record.ref?.hp > 0 && enemies.includes(record.ref);
+        && petTargetStillValid(record.ref);
       if (!valid) {
         petState.attackers.delete(id);
       } else {
@@ -19178,7 +19229,11 @@ function updatePet(dt) {
     }
   }
   if (!petCombatMode) petState.assistTarget = null;
-  if (target && (!(target.hp > 0) || !enemies.includes(target)
+  // Multi PvP : pas de tir REX en zone de non-agression (parité avec le joueur).
+  if (target && target._netPlayer != null) {
+    try { if (netPvpBlocked(target)) target = null; } catch {}
+  }
+  if (target && (!(target.hp > 0) || !petTargetStillValid(target)
     || Math.hypot(target.x - player.x, target.y - player.y) > leash)) {
     // Sortir de la zone annule aussi l'autorisation obtenue par un ancien
     // dégât : en se rapprochant, le joueur devra réellement toucher à nouveau.
@@ -20498,6 +20553,33 @@ function collectableRespawnDelayMs(type) {
   return Math.max(0, Math.floor((Number.isFinite(sec) ? sec : 60) * 1000));
 }
 
+// Multi : instance d'une box partagee (le slot appartient au serveur,
+// aucune ecriture store). Meme forme que les ambiantes pour la collecte.
+// Pas de filtre map ici (comme pushAmbient) : l'hote a deja filtre.
+function pushNetBoxInstance(box) {
+  const cfg = COLLECTABLE_DEFS[box.type] || {};
+  if (!cfg || cfg.enabled === false) return false;
+  ensureCollectableLoaded(box.type);
+  const sp = cfg.sprite || {};
+  const frames = Math.max(1, Number(sp.frames || 1));
+  collectables.push({
+    id: newId(),
+    type: box.type,
+    map: currentMapId(),
+    x: clamp(Number(box.x) || 0, 80, WORLD.w - 80),
+    y: clamp(Number(box.y) || 0, 80, WORLD.h - 80),
+    r: Number(cfg.r ?? cfg.radius ?? 32),
+    pickupRadius: Number(cfg.pickupRadius ?? cfg.r ?? cfg.radius ?? 42),
+    armed: false,
+    slotUid: String(box.uid),
+    dropUid: null,
+    _netBox: true,
+    t: 0,
+    frameAcc: sp.randomStart ? rand(0, frames) : 0,
+  });
+  return true;
+}
+
 function pushAmbientCollectableInstance(slot, mapId) {
   const cfg = COLLECTABLE_DEFS[slot.type] || {};
   // Type désactivé temporairement (ex : Green_Booty_Box) : aucun spawn,
@@ -20627,8 +20709,14 @@ function spawnCollectableAtRestored(drop, elapsedSec) {
 }
 
 // Retire une instance : slot -> mort programmée, drop -> enregistrement supprimé.
-function takeCollectableInstance(c) {
+function takeCollectableInstance(c, opts = {}) {
   if (!c) return;
+  // Multi : box partagee — le serveur possede le slot, on lui signale la
+  // collecte (premier arrive) sans toucher au store local.
+  if (c._netBox) {
+    try { sendBoxEvent({ op: "collect", uid: String(c.slotUid) }); } catch {}
+    return;
+  }
   const mapId = String(c.map || currentMapId());
   try {
     if (c.slotUid) {
@@ -20639,6 +20727,10 @@ function takeCollectableInstance(c) {
     }
     persistCollectables();
   } catch {}
+  // Multi : l'hote signale aussitot ses collectes (les autres effacent).
+  if (!opts.fromNet && c.slotUid && netplayNpcActive()) {
+    try { if (netBoxHost()) sendBoxEvent({ op: "collect", uid: String(c.slotUid) }); } catch {}
+  }
 }
 
 function rollValue(v, fallback = 0) {
@@ -21111,6 +21203,101 @@ document.addEventListener("click", event => {
   }
 });
 
+// Multi : bonus box partagees.
+// - hote (elu par le serveur) : spawne en local + publie la liste (1 s) ;
+//   les collectes distantes tuent aussi son slot (respawn partage) ;
+// - autres : aucun spawn, instances miroirs + collectes immediates.
+// Les recompenses restent personnelles (premier arrive).
+let netBoxListT = 0;
+function syncNetBoxes(dt) {
+  const curMap = currentMapId();
+  try {
+    window.__NETBOXDBG__ = window.__NETBOXDBG__ || {};
+    const dbg = window.__NETBOXDBG__;
+    dbg.map = curMap;
+    dbg.active = netplayNpcActive();
+    dbg.isHost = netBoxHost();
+    try { dbg.myId = netMyId(); } catch {}
+    try { dbg.status = netplayStatus(); } catch {}
+    let knownSize = -1;
+    try { const k = getNetBoxes(); knownSize = k ? k.size : -1; } catch {}
+    dbg.knownSize = knownSize;
+    let amb = 0, netc = 0;
+    try {
+      for (const c of collectables) {
+        if (c && c.slotUid && !c.dropUid) { amb++; if (c._netBox) netc++; }
+      }
+    } catch {}
+    dbg.ambientLocal = amb;
+    dbg.netCount = netc;
+  } catch {}
+  if (!netplayNpcActive()) {
+    let purged = false;
+    for (let i = collectables.length - 1; i >= 0; i--) {
+      if (collectables[i]?._netBox) { collectables.splice(i, 1); purged = true; }
+    }
+    if (purged && collectableTargetId != null) {
+      const still = collectables.some(c => c && c.id === collectableTargetId);
+      if (!still) { try { cancelCollectableTarget(); } catch {} moveTarget.active = false; collectableTargetId = null; }
+    }
+    try { clearNetBoxes(); } catch {}
+    netBoxListT = 0;
+    return;
+  }
+  // Collectes distantes : disparition immediate (+ slot mort chez l'hote).
+  let evs = [];
+  try { evs = drainNetBoxInbox(); } catch {}
+  for (const ev of evs) {
+    if (!ev || ev.op !== "collect" || !ev.uid) continue;
+    for (let i = collectables.length - 1; i >= 0; i--) {
+      const c = collectables[i];
+      if (c && String(c.slotUid) === String(ev.uid)) {
+        if (collectableTargetId === c.id) { try { cancelCollectableTarget(); } catch {} moveTarget.active = false; collectableTargetId = null; }
+        if (c._netBox) collectables.splice(i, 1);
+        else { try { takeCollectableInstance(c, { fromNet: true }); } catch {} collectables.splice(i, 1); }
+      }
+    }
+  }
+  if (netBoxHost()) {
+    netBoxListT -= dt;
+    if (netBoxListT <= 0) {
+      netBoxListT = 1;
+      try {
+        const boxes = [];
+        for (const c of collectables) {
+          if (c && c.slotUid && String(c.map || curMap) === curMap && boxes.length < 200) {
+            boxes.push({ uid: String(c.slotUid), type: String(c.type), x: Math.round(Number(c.x)), y: Math.round(Number(c.y)) });
+          }
+        }
+        sendBoxEvent({ op: "list", boxes });
+        try {
+          window.__NETBOXDBG__.listsSent = (window.__NETBOXDBG__.listsSent || 0) + 1;
+          window.__NETBOXDBG__.lastListSize = boxes.length;
+        } catch {}
+      } catch {}
+    }
+    return;
+  }
+  // Miroir serveur : ajoute les manquantes, vire les inconnues.
+  let known = null;
+  try { known = getNetBoxes(); } catch {}
+  if (!known) return;
+  for (let i = collectables.length - 1; i >= 0; i--) {
+    const c = collectables[i];
+    if (c && c.slotUid && !c.dropUid && !known.has(String(c.slotUid))) {
+      if (collectableTargetId === c.id) { try { cancelCollectableTarget(); } catch {} moveTarget.active = false; collectableTargetId = null; }
+      collectables.splice(i, 1);
+    }
+  }
+  for (const [uid, b] of known) {
+    let exists = false;
+    for (const c of collectables) {
+      if (c && String(c.slotUid) === String(uid)) { exists = true; break; }
+    }
+    if (!exists) { try { pushNetBoxInstance({ uid, type: b.type, x: b.x, y: b.y }); } catch {} }
+  }
+}
+
 function tickCollectables(dt) {
   if (!started || player.dead) return;
   if (COLLECTABLE_CFG.enabled === false) return;
@@ -21125,7 +21312,9 @@ function tickCollectables(dt) {
 
   collectableSpawnT -= dt;
 
-  if (collectableSpawnT <= 0) {
+  // Multi : seul l'hote spawne les ambiantes (les autres recoivent le relay).
+  const netBoxActive = netplayNpcActive();
+  if (collectableSpawnT <= 0 && (!netBoxActive || netBoxHost())) {
     collectableSpawnT = Math.max(0.1, Number(COLLECTABLE_CFG.interval || 1.0));
 
     try {
@@ -21618,6 +21807,15 @@ const Target = (() => {
       }
       return cur;
     }
+    // Multi PvP : les avatars joueurs vivent hors tableau `enemies`
+    // (dans enemiesById) : lock valide tant qu'ils sont en vie.
+    if (cur._netPlayer) {
+      if (!(cur.hp > 0)) {
+        cur = null;
+        return null;
+      }
+      return cur;
+    }
     if (!enemies.includes(cur) || cur.hp <= 0) {
       cur = null;
       return null;
@@ -21812,6 +22010,28 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
   const isCrit = Math.random() < 0.05;
   const raw = baseDamage * variance * (isCrit ? 1.5 : 1);
 
+  // Multi PvP : drain sur un joueur — prevision locale + gain conserve,
+  // serveur tranche (bouclier seul).
+  if (e._netPlayer && netplayNpcActive()) {
+    const stolen = Math.min(Math.max(0, Number(e.sh) || 0), raw);
+    if (stolen > 0) {
+      try { sendPvpHit({ target: e._netPlayer, kind: "sab", dmg: raw }); } catch {}
+      const gain = stolen * (Number(transferPct) >= 0 ? Number(transferPct) : SAB50.transferPct);
+      if (recipient?.hp > 0) {
+        recipient.sh = Math.min(recipient.shMax, recipient.sh + gain);
+      }
+    }
+    return {
+      total: stolen,
+      sh: stolen,
+      hp: 0,
+      bypass: 0,
+      isCrit,
+      rawDamage: stolen,
+      sab: true,
+    };
+  }
+
   // ✅ La SAB ne touche QUE le bouclier.
   const stolen = drainShield(e, raw);
 
@@ -21868,6 +22088,11 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
     }
   }
 
+  // Multi : NPC partage — drain predit en local, serveur tranche (bouclier seul).
+  if (e._netUid && stolen > 0) {
+    try { sendNetHit({ uid: e._netUid, kind: "sab", dmg: raw }); } catch {}
+  }
+
   return {
     total: stolen,
     sh: stolen,
@@ -21885,6 +22110,16 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
 function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (!e || e.hp <= 0) return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
   if (e._bossEncounter?.invulnerable) return emptyEnemyDamageResult();
+
+  // Multi PvP : degats sur un joueur — prediction locale, le serveur tranche.
+  // (recompenses/effets speciaux NPC ignores : la cible n'est pas un NPC).
+  if (e._netPlayer && netplayNpcActive()) {
+    const amount = Math.max(0, Math.round(Number(dmg) || 0));
+    try {
+      sendPvpHit({ target: e._netPlayer, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult });
+    } catch {}
+    return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
+  }
 
   // Affaiblissement (Diminisher, officiel) : +50 % de dégâts au bouclier
   // de la cible verrouillée — lasers uniquement (pas les roquettes),
@@ -21973,6 +22208,21 @@ e._pendingSpawn = 20;
 
   e.angle = 0;
 }
+  }
+
+  // Multi : NPC partage — prediction locale deja appliquee ci-dessus,
+  // le serveur tranche avec les memes entrees effectives (le snapshot corrige).
+  if (e._netUid && result.total > 0) {
+    try {
+      sendNetHit({
+        uid: e._netUid,
+        dmg: Number(dmg) || 0,
+        pen,
+        critChance: crit?.chance,
+        critMult: crit?.mult,
+        weaken: weakened ? DIMINISH_WEAKEN : 0,
+      });
+    } catch {}
   }
 
   return result;
@@ -22322,7 +22572,19 @@ function processDeaths() {
 function processDeathsMeasured() {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
-    if (e.hp > 0) continue;
+    if (e._netUid) {
+      // Mort reseau : seul le serveur tranche (snapshot alive + killer).
+      // Prediction locale trop tot : on maintient a 1 PV en attendant.
+      if (e.hp > 0) continue;
+      if (e._netKiller == null) { e.hp = 1; e._netWaiting = true; continue; }
+      if (e._netKiller === false) e._netSilent = true;
+    } else if (e.hp > 0) continue;
+
+    // Multi : kill partage — libere le lock (pas de report sur le respawn,
+    // donc pas de point rouge persistant au loin sur la minimap).
+    if (e._netUid) {
+      try { if (Target.get() === e) Target.clear(); } catch {}
+    }
 
     if (!e.suppressDeathExplosion) {
       spawnExplosion(e.x, e.y, e.isBoss ? 1.6 : 1.0);
@@ -22334,6 +22596,12 @@ function processDeathsMeasured() {
       SFX.fadeOut("pShotX6", { dur: 0.25, to: 0.3 });
       SFX.fadeOut("pShotSab", { dur: 0.25, to: 0.3 });
       SFX.play("npcDeath", { cooldown: 0 });
+    }
+
+    // Multi : kill d'un autre joueur — explosion vue, mais ni butin ni recompenses.
+    if (e._netSilent) {
+      enemies.splice(i, 1);
+      continue;
     }
 
 let dropType = "Cargo_Box";
@@ -23038,6 +23306,8 @@ function tryFireRocket(opts = {}) {
   const t = Target.get();
   if (!t) return false;
 
+  if (netPvpBlocked(t)) return false;
+
   const d2 = dist2(player.x, player.y, t.x, t.y);
   if (d2 > playerRange * playerRange) {
     notify("Cible hors de portée.", 1.5, "error");
@@ -23085,6 +23355,8 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
   const ang = rocket.manual === false
     ? launcherRocketLaunchAngle(player.angle, arcDir, spread)
     : player.angle + spread;
+  // Multi : direction d'arc fige pour l'evenement allie (memes courbes).
+  const arcDirEff = arcDir ?? (Math.random() < 0.5 ? -1 : 1);
 
   addCappedProjectile(bullets, {
     x: player.x,
@@ -23114,11 +23386,22 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
     // En salve : sens alterné + ampleur propre à chaque roquette (éventail, pas de superposition).
     arcDist0: distToTarget,
     arcT: 0,
-    arcKick0: (arcDir ?? (Math.random() < 0.5 ? -1 : 1)) * arcScale * speed * Math.tan((70 + arcBoost - Math.min(1, distToTarget / playerRange) * 25) * Math.PI / 180),
+    arcKick0: arcDirEff * arcScale * speed * Math.tan((70 + arcBoost - Math.min(1, distToTarget / playerRange) * 25) * Math.PI / 180),
     smokeT: 0,
     smokeHue: Math.floor(Math.random() * 360),
     miss: shotMiss,
   }, ENTITY_LIMITS.playerBullets);
+  // Multi : evenement roquette exact pour les allies (arc + MISS identiques).
+  try {
+    sendShotEvent({
+      t: "rshot", kind: rocket.id,
+      x: Math.round(player.x), y: Math.round(player.y), ang,
+      tx: Math.round(t.x), ty: Math.round(t.y), spd: Math.round(speed),
+      arcDir: arcDirEff, arcScale: Number(arcScale) || 1, arcBoost: Number(arcBoost) || 0,
+      prange: Math.round(playerRange),
+      miss: shotMiss === true, v: volleyId,
+    });
+  } catch {}
 }
 
 // Salve du lance-roquettes : N = carrés bleus (chargeur), tir possible à tout
@@ -23145,6 +23428,8 @@ function tryFireSalvo(opts = {}) {
 
   const t = Target.get();
   if (!t) return false;
+
+  if (netPvpBlocked(t)) return false;
 
   if (dist2(player.x, player.y, t.x, t.y) > playerRange * playerRange) {
     notify("Cible hors de portée.", 1.5, "error");
@@ -23434,11 +23719,20 @@ const enemiesById = new Map();
 
 function rebuildEnemyIndex() {
   rebuildIdIndex(enemiesById, enemies);
+  // Multi PvP : le rebuild écrase tout — réinscrit les avatars joueurs
+  // (hors tableau `enemies`, sinon les tirs à tête chercheuse les perdent).
+  try {
+    for (const e of netPlayerProxies.values()) {
+      if (e && e.hp > 0) enemiesById.set(e.id, e);
+    }
+  } catch {}
 }
 
 function getEnemyById(id) {
   if (id == null) return null;
   if (id === "pet") return petLockValid() ? petTargetProxy : null;
+  // Multi PvP : "self" = notre vaisseau (impacts visuels des tirs allies).
+  if (id === "self") return !player.dead && player.hp > 0 ? player : null;
   const enemy = enemiesById.get(id);
   return enemy?.hp > 0 ? enemy : null;
 }
@@ -23483,6 +23777,15 @@ function spawnSalvoDecoy(e) {
     const startX = t2.x + rnx * ((t2.r || 18) + 6);
     const startY = t2.y + rny * ((t2.r || 18) + 6);
     const baseAng = Math.atan2(rny, rnx);
+    // Multi : faux tirs exacts pour les allies (jamais MISS, meme volley).
+    try {
+      sendShotEvent({
+        t: "shot", key, n: e.items.length,
+        x: Math.round(startX), y: Math.round(startY), ang: baseAng,
+        tx: Math.round(t2.x), ty: Math.round(t2.y), spd: Math.round(e.speed), sab: true,
+        miss: false, v: e.volleyId,
+      });
+    } catch {}
     const qx = -rny, qy = rnx;
     for (const [off, aOff] of e.items) {
       addCappedProjectile(bullets, {
@@ -23515,6 +23818,15 @@ function spawnSalvoDecoy(e) {
   const px2 = -fy2, py2 = fx2;
   const muzzle2X = player.x + fx2 * (player.r + 10);
   const muzzle2Y = player.y + fy2 * (player.r + 10);
+  // Multi : faux tirs exacts pour les allies (jamais MISS, meme volley).
+  try {
+    sendShotEvent({
+      t: "shot", key, n: e.items.length,
+      x: Math.round(player.x), y: Math.round(player.y), ang: ang2,
+      tx: Math.round(t2.x), ty: Math.round(t2.y), spd: Math.round(e.speed), sab: false,
+      miss: false, v: e.volleyId,
+    });
+  } catch {}
   for (const [off, aOff] of e.items) {
     addCappedProjectile(bullets, {
       x: muzzle2X + px2 * off,
@@ -23570,10 +23882,24 @@ function spawnEscortSalvoDecoy(e) {
   const isPet = e.escortId === "pet";
   if (isPet && (!account.user?.pet?.active || !petState.ready || player.dead)) return;
   if (isPet && (petState.returning || petState.target?.id !== e.targetId
-    || normalizePetMode(account.user?.pet?.mode) !== "combat")) return;
+    || (normalizePetMode(account.user?.pet?.mode) !== "combat" && !hplLinkActive()))) return;
   const escort = isPet ? petState : getEscortById(e.escortId);
   const t2 = getEnemyById(e.targetId);
   if (!escort || (isPet ? account.user?.pet?.hp <= 0 : escort.hp <= 0) || !t2 || t2.hp <= 0) return;
+  // Multi : faux tirs du PET visibles par le 2e compte (origine = PET).
+  // Les escortes non-PET restent locales (pas de position partagee).
+  // Jamais MISS, meme volley (deduplique l'affichage MISS distant).
+  if (isPet) {
+    try {
+      sendShotEvent({
+        t: "shot", key: e.key || "x1", n: (e.items || []).length || 1,
+        x: Math.round(escort.x), y: Math.round(escort.y),
+        ang: Math.atan2(t2.y - escort.y, t2.x - escort.x),
+        tx: Math.round(t2.x), ty: Math.round(t2.y), spd: Math.round(e.speed || 4000), sab: false,
+        miss: false, v: e.volleyId,
+      });
+    } catch {}
+  }
   const ang2 = Math.atan2(t2.y - escort.y, t2.x - escort.x);
   const fx2 = Math.cos(ang2), fy2 = Math.sin(ang2);
   const px2 = -fy2, py2 = fx2;
@@ -23721,6 +24047,7 @@ function tryFireOnce(ammoOverride = null, silent = false) {
 
   const t = Target.get();
   if (!t) return false;
+  if (netPvpBlocked(t)) return false;
 
   const volleyId = volleySeq++;
   const volleySize = player.altShot ? 2 : 1;
@@ -23796,6 +24123,15 @@ const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBooste
     : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerPilotMults().alienDmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * shipPassiveDamageMult();
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((shotHitBonusPct + playerPilotMults().laserHit) / 100));
+  // Multi : evenement de tir exact pour les allies (vrais tirs, MISS inclus).
+  try {
+    sendShotEvent({
+      t: "shot", key: ammoKey, n: isSabLike ? 1 : volleySize,
+      x: Math.round(player.x), y: Math.round(player.y), ang: Number(player.angle) || 0,
+      tx: Math.round(t.x), ty: Math.round(t.y), spd: Math.round(speed), sab: isSabLike,
+      miss: shotMiss === true, v: volleyId,
+    });
+  } catch {}
 
   const ang = player.angle;
   const fx = Math.cos(ang), fy = Math.sin(ang);
@@ -24160,9 +24496,330 @@ if (waveSpawns.remaining > 0 && enemies.length < MAX_ALIVE) {
   }
 }
 
+// Multi : kamikaze partage — degats a moi si je suis dans le rayon,
+// une seule fois (comme l'explosion locale en solo).
+function netBoomSelfDamage(c, cause, x, y) {
+  if (cause !== "boom" || c._netBoomDone) return;
+  c._netBoomDone = true;
+  try {
+    const cfg = NPC_TYPES[c.type] || {};
+    const rr = Number(cfg.explodeRadius ?? 180);
+    if (!player.dead && dist2(player.x, player.y, x, y) <= rr * rr) {
+      hurtPlayer(Number(cfg.explodeDmg ?? 12000), c);
+    }
+  } catch {}
+}
+
+// Multi PvP : pas de tir si l'un des deux est en zone de non-agression
+// (parite solo : on ne se bat pas dans les zones sures).
+let lastPvpSafeToastAt = 0;
+function netSelfSafe() {
+  try { return safeZoneActive && playerIsInSafeZone(); } catch { return false; }
+}
+function netPvpBlocked(t) {
+  if (!t || !t._netPlayer || !netplayNpcActive()) return false;
+  let foeSafe = false;
+  try { foeSafe = t._netSafe === true; } catch {}
+  if (!foeSafe && !netSelfSafe()) return false;
+  try {
+    const nowMs = performance.now();
+    if (nowMs - lastPvpSafeToastAt > 3000) {
+      lastPvpSafeToastAt = nowMs;
+      showToast("Zone de non-agression", 1.4);
+    }
+  } catch {}
+  return true;
+}
+
+// Multi : cible de tir partagee d'un NPC serveur.
+// - aggro == moi : le joueur local (vrais tirs, vrais degats) ;
+// - aggro == copain : sa position interpolee (tirs visuels, zero degat :
+//   enemyShoot les marque "escort" avec un targetId introuvable, ils volent
+//   droit et expirent sans collision) ;
+// - sinon : null (pas de tir, le NPC est calme).
+function netNpcCombatTarget(e) {
+  const aggro = e._netAggro;
+  if (aggro == null) return null;
+  if (String(aggro) === String(netMyId())) return player.dead ? null : player;
+  try {
+    const remotes = getNetplayRemotes();
+    const f = remotes ? remotes.get(String(aggro)) : null;
+    if (!f || f.dead) return null;
+    return { x: Number(f.rx ?? f.x), y: Number(f.ry ?? f.y), hp: 1, r: 18, _netVisual: true };
+  } catch { return null; }
+}
+
+// Multi PvP : avatars des joueurs distants (hors tableau `enemies` pour ne
+// perturber aucun systeme NPC : ils vivent dans enemiesById pour le homing).
+const netPlayerProxies = new Map(); // clientId -> entite cible
+let lastPvpAdoptAt = 0;
+function syncNetPlayers() {
+  let remotes = null;
+  try { remotes = getNetplayRemotes(); } catch { remotes = null; }
+  try { tickNetplayRemotes(0.016); } catch {}
+  const seen = new Set();
+  if (remotes && netplayNpcActive()) {
+    for (const [rid, r] of remotes) {
+      if (!r || r.dead) continue;
+      seen.add(rid);
+      let e = netPlayerProxies.get(rid);
+      if (!e) {
+        e = {
+          id: `netp:${rid}`, _netPlayer: String(rid), type: "player",
+          name: String(r.pseudo || "Pilote"),
+          x: 0, y: 0, vx: 0, vy: 0, r: 20, angle: 0,
+          hp: 1, hpMax: 1, sh: 0, shMax: 0,
+          _previousX: 0, _previousY: 0,
+        };
+        netPlayerProxies.set(rid, e);
+        try { enemiesById.set(e.id, e); } catch {}
+      }
+      e.name = String(r.pseudo || "Pilote");
+      e.x = Number(r.rx ?? r.x);
+      e.y = Number(r.ry ?? r.y);
+      e._previousX = e.x;
+      e._previousY = e.y;
+      e.angle = Number(r.angle) || 0;
+      const hm = Math.max(1, Number(r.hpMax) || 1);
+      const sm = Math.max(0, Number(r.shMax) || 0);
+      e.hpMax = hm;
+      e.shMax = sm;
+      e.hp = Math.max(0, Math.min(hm, hm * Number(r.hpPct ?? 1)));
+      e.sh = Math.max(0, Math.min(sm, sm * Number(r.shPct ?? 1)));
+      e._netSafe = r.safe === true;
+    }
+  }
+  for (const [rid, e] of [...netPlayerProxies]) {
+    if (seen.has(rid)) continue;
+    netPlayerProxies.delete(rid);
+    try { enemiesById.delete(e.id); } catch {}
+    try { if (Target.get() === e) Target.clear(); } catch {}
+  }
+}
+
+try {
+  window.__PVP__ = {
+    proxies: () => { try { return netPlayerProxies.size; } catch { return -1; } },
+    lockedNetPlayer: () => { try { return Target.get()?._netPlayer || null; } catch { return null; } },
+    lockState: () => {
+      try {
+        const t = Target.get();
+        if (!t) return "no-lock";
+        if (t._netPlayer) return `locked:player:${t._netPlayer}`;
+        return `locked:npc:${t.type || "?"}:${t.id ?? "?"}`;
+      } catch (err) { return `err:${String(err && err.message || err)}`; }
+    },
+    probe: () => {
+      try {
+        const list = [...netPlayerProxies.values()].map((e) => ({ hp: e.hp, hpMax: e.hpMax, x: Math.round(e.x), y: Math.round(e.y) }));
+        return { active: netplayNpcActive(), me: { x: Math.round(player.x), y: Math.round(player.y) }, proxies: list };
+      } catch (err) { return { err: String(err && err.message || err) }; }
+    },
+    selfTest: () => {
+      // Rejoue le clic exact au centre du proxy : doit retrouver le proxy.
+      try {
+        const e = [...netPlayerProxies.values()][0];
+        if (!e) return { result: "no-proxy" };
+        const s = worldToScreenPoint(e.x, e.y, camera, innerWidth, innerHeight);
+        let found = null;
+        try { found = pickEnemyAtScreen(s.x, s.y); } catch (err) { return { result: "pick-threw", err: String(err && err.message || err) }; }
+        if (!found) return { result: "pick-null", screen: { x: Math.round(s.x), y: Math.round(s.y) }, proxyHp: e.hp, active: netplayNpcActive() };
+        if (found._netPlayer) return { result: "OK-pick-works" };
+        return { result: `found-npc-instead:${found.type}` };
+      } catch (err) { return { result: "err", err: String(err && err.message || err) }; }
+    },
+    testFire: () => {
+      // Force un tir laser sur le lock courant et rapporte chaque etape.
+      try {
+        const t = Target.get();
+        const info = {
+          locked: t ? (t._netPlayer ? `player:${t._netPlayer}` : `npc:${t.type}`) : null,
+          dist: t ? Math.round(Math.hypot(t.x - player.x, t.y - player.y)) : null,
+          range: Math.round(playerRange),
+          attackActive,
+          fireCooldown: Number(fireCooldown) || 0,
+          bulletsBefore: bullets.length,
+        };
+        info.tryFireOnce = tryFireOnce(null, true);
+        info.bulletsAfter = bullets.length;
+        return JSON.stringify(info);
+      } catch (err) { return `ERR:${String(err && err.message || err)}`; }
+    },
+    testRocket: () => {
+      // Force une roquette sur le lock courant et rapporte chaque etape.
+      try {
+        const t = Target.get();
+        const info = {
+          locked: t ? (t._netPlayer ? `player:${t._netPlayer}` : `npc:${t.type}`) : null,
+          stock: rocketCount(player.rocketActive),
+          cd: Number(rocketCooldown) || 0,
+          bulletsBefore: bullets.length,
+        };
+        info.fired = tryFireRocket({});
+        info.bulletsAfter = bullets.length;
+        return JSON.stringify(info);
+      } catch (err) { return `ERR:${String(err && err.message || err)}`; }
+    },
+  };
+} catch {}
+
+// Multi : reconcilie les entites locales avec les snapshots NPC serveur.
+// - apparition / positions (interpolees) / HP / angle depuis le serveur ;
+// - mort + killer depuis le serveur (processDeaths tranche les recompenses) ;
+// - repli solo : purge les entites reseau, le spawner local reprend.
+function syncNetNpcs(dt) {
+  let remotes = null;
+  try { remotes = getNetNpcs(); } catch { remotes = null; }
+  if (!netplayNpcActive() || !remotes) {
+    let purged = false;
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      if (enemies[i]?._netUid) { enemies.splice(i, 1); purged = true; }
+    }
+    if (purged) { try { if (Target.get()?._netUid) Target.clear(); } catch {} }
+    return;
+  }
+  const k = Math.max(0, Math.min(1, (Number(dt) || 0.016) * 6));
+  const seen = new Set();
+  const now = performance.now();
+  // Doublons locaux (spawnes avant le premier snapshot ou pendant une
+  // coupure) : le serveur possede les spawns de zone, on les retire pour
+  // ne garder que les entites partagees. Les speciaux (Protegit, vagues...)
+  // n'ont pas d'universeUid et sont conserves.
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const c = enemies[i];
+    if (c && !c._netUid && c.universeUid) enemies.splice(i, 1);
+  }
+  // Journal des kills serveur D'ABORD : il tranche les morts de l'incarnation
+  // courante, meme si la prediction locale la croyait encore en vie (les
+  // degats du copain ont fait la difference). HP force a 0 pour que
+  // processDeaths tranche les recompenses. Le seq protege la nouvelle
+  // incarnation d'un vieux kill.
+  try {
+    const deaths = getNetDeaths();
+    if (deaths && deaths.size) {
+      for (const c of enemies) {
+        if (!c || !c._netUid || c._netKiller != null) continue;
+        const d = deaths.get(c._netUid);
+        if (d && (Number(d.seq) || 0) === (c._netSeq || 0)) {
+          c._netKiller = String(d.killer) === String(netMyId());
+          c._netWaiting = false;
+          c.hp = 0;
+          c.sh = 0;
+          netBoomSelfDamage(c, d.cause, Number(d.x) || c.x, Number(d.y) || c.y);
+        }
+      }
+    }
+  } catch {}
+  for (const s of remotes.values()) {
+    if (!s || !s.uid) continue;
+    seen.add(s.uid);
+    let e = null;
+    for (const c of enemies) {
+      if (c && c._netUid === s.uid) { e = c; break; }
+    }
+    if (s.alive === false) {
+      if (e && (e._netSeq || 0) === (Number(s.seq) || 0)) {
+        e.hp = 0;
+        e.sh = 0;
+        if (e._netKiller == null && s.killer != null) {
+          e._netKiller = String(s.killer) === String(netMyId());
+        }
+        netBoomSelfDamage(e, s.cause, e.x, e.y);
+      }
+      continue;
+    }
+    if (!e) {
+      e = makeEnemy(s.type, Number(s.x) || 0, Number(s.y) || 0);
+      if (!e) continue;
+      e._netUid = String(s.uid);
+      e._netSeq = Number(s.seq) || 0;
+      e.wanderMode = true;
+      e._previousX = e.x;
+      e._previousY = e.y;
+      e._netSeenT = now;
+      enemies.push(e);
+    } else if ((e._netSeq || 0) !== (Number(s.seq) || 0)) {
+      // Nouvelle incarnation (respawn).
+      if (e._netKiller != null) {
+        // Mort tranchee en attente de processDeaths : on garde l'entite
+        // mourante telle quelle, la nouvelle incarnation spawnera apres.
+        continue;
+      }
+      // Reset l'etat de mort precedent.
+      e._netSeq = Number(s.seq) || 0;
+      e._netKiller = null;
+      e._netWaiting = false;
+      e._netSilent = false;
+    }
+    const snapX = Number(s.x) || 0, snapY = Number(s.y) || 0;
+    const dx = snapX - e.x, dy = snapY - e.y;
+    if (dx * dx + dy * dy > 2000 * 2000) { e.x = snapX; e.y = snapY; e.vx = 0; e.vy = 0; }
+    else {
+      e.x += dx * k; e.y += dy * k;
+      // Vitesse reconstituée : flammes reacteurs + trainees du NPC.
+      const vdt = Math.max(1e-3, Number(dt) || 0.016);
+      e.vx = Math.max(-2000, Math.min(2000, (dx * k) / vdt));
+      e.vy = Math.max(-2000, Math.min(2000, (dy * k) / vdt));
+    }
+    e._previousX = e.x;
+    e._previousY = e.y;
+    if (Number.isFinite(Number(s.angle))) e.angle = Number(s.angle);
+    if (Number.isFinite(Number(s.hp))) {
+      e.hp = e.hpMax > 0 ? Math.max(1, Math.min(e.hpMax, Math.round(Number(s.hp)))) : Math.max(1, Math.round(Number(s.hp)));
+    }
+    if (Number.isFinite(Number(s.sh))) {
+      e.sh = e.shMax > 0 ? Math.max(0, Math.min(e.shMax, Math.round(Number(s.sh)))) : Math.max(0, Math.round(Number(s.sh)));
+    }
+    e._netAggro = s.aggro != null ? String(s.aggro) : null;
+    // Parite solo : le flag "m'a attaque recemment" (qui force l'affichage
+    // radar/minimap) suit l'aggro partagee, sinon les NPC tires restent
+    // visibles au loin pour toujours (leur boucle locale est sautee).
+    e._attackedPlayerRecently = s.aggro != null && String(s.aggro) === String(netMyId());
+    e._netSeenT = now;
+  }
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    if (!e || !e._netUid || seen.has(e._netUid)) continue;
+    if (now - Number(e._netSeenT || 0) > 5000) enemies.splice(i, 1);
+  }
+  // Degats de l'allie : chiffres flottants (sans effet, le snapshot fait
+  // foi pour les HP). NPC : uniquement si on locke la meme cible.
+  // Subis (uid = moi) : toujours (laser / roquette / lance-roquettes).
+  try {
+    const feed = drainNetDmgInbox();
+    const lockedUid = Target.get()?._netUid || null;
+    let myId = null;
+    try { myId = netMyId(); } catch {}
+    for (const f of feed) {
+      if (!f || !(f.total > 0)) continue;
+      if (myId && String(f.uid) === String(myId)) {
+        queueVolleyFloat(player, { total: f.total, sh: 0, hp: f.total, rawDamage: f.total }, `netdmg${(Math.random() * 1e9) | 0}`, 1, VOLLEY_FLOAT_TIMEOUT);
+        continue;
+      }
+      if (!lockedUid || String(f.uid) !== String(lockedUid)) continue;
+      let e = null;
+      for (const c of enemies) {
+        if (c && c._netUid === f.uid && c.hp > 0) { e = c; break; }
+      }
+      if (!e) continue;
+      queueVolleyFloat(e, { total: f.total, sh: 0, hp: f.total, rawDamage: f.total }, `netdmg${(Math.random() * 1e9) | 0}`, 1, VOLLEY_FLOAT_TIMEOUT);
+    }
+  } catch {}
+  try {
+    const t = Target.get();
+    if (t && t._netUid && !seen.has(t._netUid)) Target.clear();
+    else if (t && !t._netUid && t.universeUid && netplayNpcActive()) Target.clear();
+    // Lock fantome : la cible reseau a ete retiree (mort) meme si un
+    // homonyme (respawn, meme uid) est present.
+    else if (t && t._netUid && !enemies.includes(t)) Target.clear();
+  } catch {}
+}
+
 function zoneController(dt) {
   if (!started || player.dead) return;
   if (!isZoneMap) return;
+  // Multi : le serveur possede les NPC (spawn, HP, mort). Le local ne touche a rien.
+  if (netplayNpcActive()) return;
 
   const curMap = currentMapId();
 
@@ -25152,6 +25809,27 @@ mini.addEventListener("pointerup", (e) => {
   try { mini.releasePointerCapture(e.pointerId); } catch {}
 }, { passive: true });
 
+// Multi : allies minimap = escortes + joueurs distants (bleu meme firme,
+// rouge autre firme).
+function minimapAllies() {
+  try {
+    const remotes = getNetplayRemotes();
+    if (!remotes || !remotes.size) return escortShips;
+    const myFirm = String(account.user?.faction || "").toLowerCase();
+    const dots = [];
+    for (const rr of remotes.values()) {
+      if (!rr || rr.dead) continue;
+      const firm = String(rr.firm || "").toLowerCase();
+      const same = myFirm !== "" && firm === myFirm;
+      dots.push({
+        x: Number(rr.rx ?? rr.x), y: Number(rr.ry ?? rr.y), hp: 1, r: 18, _net: true,
+        color: same ? "rgba(80,160,255,0.95)" : "rgba(255,70,90,0.95)",
+      });
+    }
+    return dots.length ? escortShips.concat(dots) : escortShips;
+  } catch { return escortShips; }
+}
+
 function drawMinimap() {
   // Rendu en pixels CSS (bitmap = CSS × DPR, voir applyMinimapProportions) :
   // net à toutes les tailles, même après +.
@@ -25174,7 +25852,7 @@ function drawMinimap() {
     world: WORLD,
     player,
     enemies,
-    allies: escortShips,
+    allies: minimapAllies(),
     markers: petLocatorMarkers,
     pet: isPetActive
       ? {
@@ -25237,6 +25915,511 @@ function drawPlayerBody() {
   }
 
   return true;
+}
+
+// Multi : autres joueurs de la meme map avec leur vrai vaisseau + leur laser.
+// Les packs sont charges a la demande (comme la coque locale) ; en attendant,
+// repli triangle + pseudo (meme style que l'etape 1).
+// Multi : NPC partages actifs si map zone + snapshots serveur frais.
+// Sinon le spawner local reprend (solo ou coupure).
+function netplayNpcActive() {
+  try { return isZoneMap && netNpcFresh(); } catch { return false; }
+}
+const netplaySpriteCache = new Map();
+// Etats moteurs (flammes) des vaisseaux distants, par id joueur.
+const netplayEngines = new Map();
+// Etats moteurs (reacteurs) des PET distants, par id joueur.
+// Cle stable (holder) pour petEngine (WeakMap) + vitesse estimee pour les flames/trails.
+const netplayPetEngines = new Map();
+// Anneaux Ship_damage autour des joueurs distants (degats NPC + PvP vus
+// par l'observateur). Meme sprite que le notre, ancre au copain.
+const netShipDamages = new Map(); // remoteId -> [{ ang, rad, rot, t }]
+const netPvpAtSeen = new Map(); // remoteId -> dernier pvpAt affiche
+let netShipDamageLastT = 0;
+// dt reel (comme l'anneau local) : le pas fixe 0.016 rendait l'anim 2x trop
+// rapide sur les ecrans 120/144 Hz.
+function netShipDamageDt() {
+  let dt = 0.016;
+  try {
+    const now = performance.now();
+    if (netShipDamageLastT > 0) dt = Math.max(0.001, Math.min(0.1, (now - netShipDamageLastT) / 1000));
+    netShipDamageLastT = now;
+  } catch {}
+  return dt;
+}
+function spawnNetShipDamage(remoteId, ang, rad, why = "") {
+  if (remoteId == null || !Number.isFinite(Number(ang))) return;
+  const key = String(remoteId);
+  let list = netShipDamages.get(key);
+  if (!list) { list = []; netShipDamages.set(key, list); }
+  list.push({
+    ang: Number(ang) || 0,
+    rad: Math.max(10, Number(rad) || 30),
+    rot: Number(ang) || 0,
+    t: 0,
+    // Meme echelle que l'anneau local (sans ca : w = 320 * undefined = NaN,
+    // drawImage ne dessine rien et l'anneau distant reste invisible).
+    scale: Number(SHIP_DAMAGE_PACK.scale) || 0.4,
+  });
+  while (list.length > 8) list.shift();
+  try {
+    window.__NETRING__ = window.__NETRING__ || { spawn: 0, drawn: 0, lastWhy: "" };
+    window.__NETRING__.spawn++;
+    if (why) window.__NETRING__.lastWhy = String(why).slice(0, 32);
+  } catch {}
+}
+function tickNetShipDamages(dt) {
+  if (!netShipDamages.size) return;
+  const fps = SHIP_DAMAGE_PACK.fps || 30;
+  const frames = SHIP_DAMAGE_PACK.frames || 9;
+  const dur = frames / fps;
+  for (const [key, list] of netShipDamages) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      list[i].t += dt;
+      if (list[i].t >= dur) list.splice(i, 1);
+    }
+    if (!list.length) { netShipDamages.delete(key); }
+  }
+}
+function netplayPackFor(shipId) {
+  const key = String(shipId || "").toLowerCase() || "__default__";
+  if (netplaySpriteCache.has(key)) return netplaySpriteCache.get(key);
+  let pack = null;
+  try { pack = getShipPackByIdData(shipId) || null; } catch { pack = null; }
+  if (!pack) pack = SHIP_PACKS[0];
+  netplaySpriteCache.set(key, pack);
+  return pack;
+}
+// Multi : projectiles visuels de l'allie, joues a la reception des
+// evenements exacts du tireur (vrais + faux tirs, roquettes avec arcs).
+// Zero degat : memes sprites et trajectoires, pas de sons ni de chiffres.
+function netShotTarget(tx, ty, range) {
+  try {
+    let best = null, bestD2 = range * range;
+    for (const c of enemies) {
+      if (!c || !(c.hp > 0)) continue;
+      const dx = c.x - tx, dy = c.y - ty;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) { bestD2 = d2; best = c.id; }
+    }
+    return best;
+  } catch { return null; }
+}
+
+// Multi : cible visuelle = NPC, joueur distant, ou nous-meme (tirs allies
+// recus : homing + impact visible, zero degat).
+function netVisualTarget(tx, ty, range) {
+  try {
+    let best = null, bestD2 = range * range;
+    const consider = (id, x, y) => {
+      const dx = x - tx, dy = y - ty;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) { bestD2 = d2; best = id; }
+    };
+    for (const c of enemies) {
+      if (!c || !(c.hp > 0)) continue;
+      consider(c.id, c.x, c.y);
+    }
+    for (const e of netPlayerProxies.values()) {
+      if (!e || !(e.hp > 0)) continue;
+      consider(e.id, e.x, e.y);
+    }
+    if (!player.dead && player.hp > 0) consider("self", player.x, player.y);
+    return best;
+  } catch { return null; }
+}
+
+function spawnNetShotVisual(ev) {
+  const tx = Number(ev.tx), ty = Number(ev.ty);
+  const sx0 = Number(ev.x), sy0 = Number(ev.y);
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) return;
+  if (!Number.isFinite(sx0) || !Number.isFinite(sy0)) return;
+  const spd = Math.max(500, Math.min(20000, Number(ev.spd) || 4000));
+  const key = String(ev.key || "x1").toLowerCase();
+  const ammo = (typeof PLAYER_BULLET_SPRITES !== "undefined" && PLAYER_BULLET_SPRITES[key]) ? key : "x1";
+  const n = Math.max(1, Math.min(2, Math.round(Number(ev.n) || 1)));
+  const tgtId = netVisualTarget(tx, ty, 400);
+  if (tgtId == null) return;
+  const sab = ev.sab === true;
+  // SAB inverse : part de la cible vers le vaisseau (comme en local),
+  // en ligne droite (pas de homing vers nous).
+  const ox = sab ? tx : sx0, oy = sab ? ty : sy0;
+  const ax = sab ? sx0 : tx, ay = sab ? sy0 : ty;
+  const ang = Number.isFinite(Number(ev.ang)) ? Number(ev.ang) : Math.atan2(ay - oy, ax - ox);
+  const fx = Math.cos(ang), fy = Math.sin(ang);
+  const px = -fy, py = fx;
+  const starts = n > 1
+    ? [[ox + fx * 28 + px * SIDE_OFFSET, oy + fy * 28 + py * SIDE_OFFSET],
+       [ox + fx * 28 - px * SIDE_OFFSET, oy + fy * 28 - py * SIDE_OFFSET]]
+    : [[ox + fx * 28, oy + fy * 28]];
+  // MISS distant : meme texte que le tireur (volley namespace par expediteur
+  // pour ne pas collisionner avec nos propres volleyId).
+  const netMiss = ev.miss === true;
+  const netVolley = Number.isFinite(Number(ev.v))
+    ? `net:${String(ev.by || "?")}:${Math.floor(Number(ev.v))}`
+    : `net:${String(ev.by || "?")}:${Math.floor(Math.random() * 1e9)}`;
+  for (const [sx, sy] of starts) {
+    const mdx = ax - sx, mdy = ay - sy;
+    const md = Math.hypot(mdx, mdy) || 1;
+    try {
+      addCappedProjectile(bullets, {
+        x: sx, y: sy,
+        vx: (mdx / md) * spd, vy: (mdy / md) * spd,
+        r: 6.0, life: md / spd + 0.3,
+        dmg: 0, key: ammo, side: "player", targetId: tgtId,
+        homing: !sab, visual: true, spd, sabReverse: false,
+        volleyId: netVolley, volleySize: starts.length,
+        miss: netMiss, _netVisual: true,
+      }, ENTITY_LIMITS.playerBullets);
+    } catch { break; }
+  }
+}
+
+function spawnNetRocketVisual(ev) {
+  const tx = Number(ev.tx), ty = Number(ev.ty);
+  const sx0 = Number(ev.x), sy0 = Number(ev.y);
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) return;
+  if (!Number.isFinite(sx0) || !Number.isFinite(sy0)) return;
+  const kind = String(ev.kind || "r310").toLowerCase();
+  const rkey = (typeof PLAYER_BULLET_SPRITES !== "undefined" && PLAYER_BULLET_SPRITES[kind]) ? kind : "r310";
+  let isLauncher = false;
+  try { isLauncher = getRocketType(kind)?.manual === false; } catch {}
+  const spd = Math.max(500, Math.min(20000, Number(ev.spd) || 1500));
+  const dist = Math.hypot(tx - sx0, ty - sy0);
+  if (!(dist > 40) || dist > 5000) return;
+  const tgtId = netVisualTarget(tx, ty, 500);
+  if (tgtId == null) return;
+  const ang = Number.isFinite(Number(ev.ang)) ? Number(ev.ang) : Math.atan2(ty - sy0, tx - sx0);
+  const prange = Math.max(200, Number(ev.prange) || 1000);
+  const arcDir = Number(ev.arcDir) < 0 ? -1 : 1;
+  const arcScale = Number.isFinite(Number(ev.arcScale)) ? Number(ev.arcScale) : 1;
+  const arcBoost = Number.isFinite(Number(ev.arcBoost)) ? Number(ev.arcBoost) : 0;
+  // MISS distant (roquette) : meme texte que le tireur.
+  const netMissR = ev.miss === true;
+  const netVolleyR = Number.isFinite(Number(ev.v))
+    ? `net:${String(ev.by || "?")}:${Math.floor(Number(ev.v))}`
+    : `net:${String(ev.by || "?")}:${Math.floor(Math.random() * 1e9)}`;
+  try {
+    addCappedProjectile(bullets, {
+      x: sx0, y: sy0,
+      vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+      r: 8.0, life: dist / spd + 1.5,
+      dmg: 0, key: rkey, side: "player", targetId: tgtId,
+      homing: true, visual: true, spd,
+      volleyId: netVolleyR, volleySize: 1,
+      miss: netMissR, isSab: false, isRocket: true, isLauncherRocket: isLauncher,
+      launcherDepartureX: Math.cos(ang), launcherDepartureY: Math.sin(ang), launcherDepartureT: 0,
+      arcDist0: dist, arcT: 0,
+      arcKick0: arcDir * arcScale * spd * Math.tan((70 + arcBoost - Math.min(1, dist / prange) * 25) * Math.PI / 180),
+      smokeT: 0, smokeHue: Math.floor(Math.random() * 360),
+      _netVisual: true,
+    }, ENTITY_LIMITS.playerBullets);
+  } catch {}
+}
+
+function tickNetplayVisuals(dt) {
+  let evs = [];
+  try { evs = drainNetShotEvents(); } catch {}
+  if (!evs.length) return;
+  for (const ev of evs.slice(0, 32)) {
+    try {
+      if (!ev || (ev.t !== "shot" && ev.t !== "rshot")) continue;
+      if (ev.t === "rshot") spawnNetRocketVisual(ev);
+      else spawnNetShotVisual(ev);
+    } catch {}
+  }
+}
+function drawNetplayRemotes(ox, oy) {
+  let remotes = null;
+  try { remotes = getNetplayRemotes(); } catch { return; }
+  if (!remotes || !remotes.size) return;
+  try { tickNetplayRemotes(0.016); } catch {}
+  try { tickNetShipDamages(netShipDamageDt()); } catch {}
+  // Nettoie les etats moteurs des joueurs partis.
+  try {
+    for (const id of [...netplayEngines.keys()]) {
+      if (!remotes.has(id)) netplayEngines.delete(id);
+    }
+    for (const id of [...netplayPetEngines.keys()]) {
+      if (!remotes.has(id)) netplayPetEngines.delete(id);
+    }
+    for (const id of [...netShipDamages.keys()]) {
+      if (!remotes.has(id)) netShipDamages.delete(id);
+    }
+    for (const id of [...netPvpAtSeen.keys()]) {
+      if (!remotes.has(id)) netPvpAtSeen.delete(id);
+    }
+  } catch {}
+  for (const r of remotes.values()) {
+    if (!r || r.dead) continue;
+    // Balancement comme notre vaisseau (ampleur reduite en mouvement).
+    let swayBob = 0;
+    try {
+      const pe = netplayEngines.get(r.id);
+      const spd = pe ? Math.hypot(pe.vx || 0, pe.vy || 0) : 999;
+      const swayAmt = spd < 60 ? 1 : 0.3;
+      swayBob = Math.sin(performance.now() / 1000 * 4 + (String(r.id).charCodeAt(0) || 0)) * 2 * swayAmt;
+    } catch {}
+    const x = Number(r.rx ?? r.x) + ox, y = Number(r.ry ?? r.y) + oy + swayBob;
+    if (x < -260 || y < -260 || x > innerWidth + 260 || y > innerHeight + 260) continue;
+    // Tirs de l'allie : vrais projectiles visuels (tickNetplayVisuals),
+    // pas de faisceau.
+    ctx.save();
+    ctx.translate(x, y);
+    const pack = netplayPackFor(r.shipId);
+    let drawn = false;
+    let remoteFrame = 0;
+    try {
+      if (pack && pack._ready && pack._imgs && pack._imgs.length) {
+        const frames = Math.max(1, Number(pack.frames) || pack._imgs.length || 1);
+        // Meme convention que la coque locale : angle + angleOffset du pack.
+        const idx = angleToFrameIndex((Number(r.angle) || 0) + (pack?.angleOffset || 0), frames);
+        remoteFrame = idx;
+        const img = pack._imgs[idx] || pack._imgs[0];
+        if (isImgReady(img)) {
+          ctx.imageSmoothingEnabled = false;
+          drawCenteredImage(ctx, img, pack.w ?? 170, pack.h ?? 170);
+          drawn = true;
+        }
+      } else if (pack && !pack._promise) {
+        try { ensurePackLoaded(pack); } catch {}
+      }
+    } catch {}
+    if (!drawn) {
+      ctx.rotate(Number(r.angle) || 0);
+      ctx.fillStyle = "rgba(124,240,255,0.92)";
+      ctx.strokeStyle = "rgba(10,20,40,0.9)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(18, 0);
+      ctx.lineTo(-12, -11);
+      ctx.lineTo(-6, 0);
+      ctx.lineTo(-12, 11);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.rotate(-(Number(r.angle) || 0));
+    }
+    // Reacteurs du copain (memes flammes que la coque locale).
+    try {
+      let eng = netplayEngines.get(r.id);
+      if (!eng) {
+        eng = { angle: 0, vx: 0, vy: 0, dead: false, px: Number(r.rx ?? r.x), py: Number(r.ry ?? r.y) };
+        netplayEngines.set(r.id, eng);
+      }
+      const wx = Number(r.rx ?? r.x), wy = Number(r.ry ?? r.y);
+      eng.angle = Number(r.angle) || 0;
+      eng.dead = false;
+      eng.vx = (wx - eng.px) * 10;
+      eng.vy = (wy - eng.py) * 10;
+      eng.px = wx;
+      eng.py = wy;
+      shipEngine.update(eng, pack, 0.016, GAME_SETTINGS.shipSmoke);
+      shipEngine.draw(ctx, eng, pack, isImgReady, remoteFrame);
+    } catch {}
+    // Anneaux Ship_damage du copain : degats NPC (spawnNetShipDamage a
+    // l'arrivee du tir) + degats PvP (pvpAt du snapshot, angle vers l'attaquant).
+    try {
+      const curAt = Number(r.pvpAt) || 0;
+      if (!netPvpAtSeen.has(r.id)) {
+        netPvpAtSeen.set(r.id, curAt);
+      } else if (curAt !== netPvpAtSeen.get(r.id)) {
+        netPvpAtSeen.set(r.id, curAt);
+        if (curAt > 0) {
+          let ax = null, ay = null;
+          try {
+            const from = r.pvpFrom != null ? String(r.pvpFrom) : null;
+            const wx = Number(r.rx ?? r.x), wy = Number(r.ry ?? r.y);
+            if (from && from === String(netMyId())) { ax = player.x; ay = player.y; }
+            else if (from) {
+              const foe = getNetplayRemotes().get(from);
+              if (foe && !foe.dead) { ax = Number(foe.rx ?? foe.x); ay = Number(foe.ry ?? foe.y); }
+            }
+            if (ax == null) {
+              // Repli (serveur sans pvpFrom) : c'est MOI qui le frappe si mon
+              // lock = son proxy + attaque en cours.
+              try {
+                const locked = Target.get();
+                if (locked && locked._netPlayer && String(locked._netPlayer) === String(r.id) && attackActive === true) {
+                  ax = player.x; ay = player.y;
+                }
+              } catch {}
+            }
+            if (ax != null && (ax !== wx || ay !== wy)) {
+              let prad = 0;
+              try { prad = Math.max(Number(pack?.w) || 170, Number(pack?.h) || 170) / 6; } catch {}
+              if (!(prad > 0)) prad = shipDamageBubbleRadius();
+              spawnNetShipDamage(r.id, Math.atan2(ay - wy, ax - wx), prad, "pvp");
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+    // Dessin des anneaux (relatif au centre du copain, comme son sprite).
+    try {
+      const list = netShipDamages.get(r.id);
+      if (list && list.length && shipDamageReady && shipDamageImgs && shipDamageImgs.length) {
+        const fps = SHIP_DAMAGE_PACK.fps || 30;
+        const frames = SHIP_DAMAGE_PACK.frames || shipDamageImgs.length || 1;
+        for (const sd of list) {
+          const idx = Math.min(frames - 1, Math.floor(sd.t * fps));
+          const img = shipDamageImgs[idx];
+          if (!isImgReady(img)) continue;
+          const sc = Number(sd.scale) || Number(SHIP_DAMAGE_PACK.scale) || 0.4;
+          const w = (SHIP_DAMAGE_PACK.w || (img.naturalWidth || img.width || 128)) * sc;
+          const h = (SHIP_DAMAGE_PACK.h || (img.naturalHeight || img.height || 128)) * sc;
+          if (!(w > 0) || !(h > 0)) continue;
+          ctx.save();
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          ctx.translate(Math.cos(sd.ang) * sd.rad, Math.sin(sd.ang) * sd.rad);
+          ctx.rotate(sd.rot || 0);
+          ctx.globalAlpha = 1;
+          ctx.drawImage(img, -w / 2, -h / 2, w, h);
+          ctx.restore();
+          try { if (window.__NETRING__) window.__NETRING__.drawn++; } catch {}
+        }
+      }
+    } catch {}
+    // Drones du copain : vrais sprites (type + niveau), positions officielles.
+    try {
+      const slots = String(r.dslots || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 12);
+      const dc = slots.length || Math.max(0, Math.min(12, Number(r.drones) || 0));
+      if (dc > 0 && GAME_SETTINGS.drones) {
+        let offsets = null;
+        try { offsets = getDroneFormationOffsets(dc, String(r.dform || "standard")); } catch { offsets = null; }
+        const heading = shipEngine.heading({ angle: Number(r.angle) || 0 }, pack, remoteFrame);
+        const fa = heading + Math.PI, ca = Math.cos(fa), sa = Math.sin(fa);
+        const frames = Math.max(1, Number(pack?.frames) || 1);
+        const dframe = Math.floor(remoteFrame * 32 / frames) % 32 + 1;
+        for (let i = 0; i < dc; i++) {
+          const o = offsets?.[i] || { x: Math.cos(i / dc * TAU) * 70, y: Math.sin(i / dc * TAU) * 70 };
+          const ddx = o.x * ca - o.y * sa, ddy = o.x * sa + o.y * ca;
+          const spec = slots[i] || "";
+          const sep = spec.lastIndexOf(":");
+          const dtype = sep > 0 ? spec.slice(0, sep) : "iris";
+          const dlevel = sep > 0 ? Math.max(1, Number(spec.slice(sep + 1)) || 1) : 1;
+          let dimg = null;
+          try {
+            const src = getDroneSpritePath({ type: dtype, level: dlevel }, dframe);
+            const cimg = getCachedImage(src);
+            if (isImgReady(cimg)) dimg = cimg;
+            else { try { loadImage(src, { priority: true }); } catch {} }
+          } catch {}
+          ctx.save();
+          ctx.translate(ddx, ddy);
+          if (dimg) {
+            ctx.imageSmoothingEnabled = false;
+            drawCenteredImage(ctx, dimg, 64, 56);
+          } else {
+            ctx.fillStyle = "rgba(124,240,255,0.9)";
+            ctx.rotate(Math.PI / 4);
+            ctx.fillRect(-4, -4, 8, 8);
+          }
+          ctx.restore();
+        }
+      }
+    } catch {}
+    // PET de l'allie : sprite de son niveau a sa position interpolee,
+    // oriente comme chez lui (+ flottement + reacteurs + trails comme le notre).
+    try {
+      if (r.peta === 1) {
+        const prx = Number(r.petrx ?? r.petx) + ox, pry = Number(r.petry ?? r.pety) + oy;
+        if (prx > -160 && pry > -160 && prx < innerWidth + 160 && pry < innerHeight + 160) {
+          const pframe = ((angleToFrameIndex(Number(r.petd ?? r.angle) || 0, 32) + 16) % 32) + 1;
+          const psrc = `${getPetStageBase(Number(r.petl) || 1)}${pframe}.png`;
+          const pimg = getCachedImage(psrc);
+          if (isImgReady(pimg)) {
+            // Etat moteur stable par joueur (vitesse estimee depuis l'interpolation).
+            let peng = netplayPetEngines.get(r.id);
+            if (!peng) {
+              peng = { holder: { vx: 0, vy: 0 }, px: Number(r.petrx ?? r.petx), py: Number(r.petry ?? r.pety) };
+              netplayPetEngines.set(r.id, peng);
+            }
+            const wx = Number(r.petrx ?? r.petx), wy = Number(r.petry ?? r.pety);
+            peng.holder.vx = (wx - peng.px) * 10;
+            peng.holder.vy = (wy - peng.py) * 10;
+            peng.px = wx; peng.py = wy;
+            try { petEngine.update(peng.holder, 0.016, GAME_SETTINGS.shipSmoke); } catch {}
+            ctx.save();
+            ctx.translate(prx - x, pry - y);
+            ctx.translate(0, Math.sin(performance.now() / 1000 * 4) * 2);
+            ctx.imageSmoothingEnabled = false;
+            drawCenteredImage(ctx, pimg, PET_DRAW_W, PET_DRAW_H);
+            try { if (GAME_SETTINGS.shipSmoke) petEngine.draw(ctx, peng.holder, pimg, pframe, isImgReady); } catch {}
+            // Etiquette du REX distant : pseudo + firme, comme sur son ecran.
+            try {
+              const petPseudo = String(r.petn || "REX");
+              const petFaction = getFaction(r.petf || r.firm);
+              let petFactionImage = getCachedImage(petFaction.imagePath);
+              if (!isImgReady(petFactionImage)) {
+                loadImage(petFaction.imagePath, { priority: true });
+                petFactionImage = null;
+              }
+              ctx.font = "900 13px ui-sans-serif, system-ui";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "top";
+              const petNameY = PET_DRAW_H / 2 + 10;
+              ctx.fillStyle = "rgba(255,255,255,0.95)";
+              ctx.fillText(petPseudo, 0, petNameY);
+              if (petFactionImage?.complete && petFactionImage.naturalWidth > 0) {
+                const petTextWidth = ctx.measureText(petPseudo).width;
+                ctx.drawImage(
+                  petFactionImage,
+                  petTextWidth / 2 + 5,
+                  petNameY,
+                  petFactionImage.naturalWidth,
+                  petFactionImage.naturalHeight,
+                );
+              }
+            } catch {}
+            ctx.restore();
+            // Trails reacteur du PET distant (memes particules que le notre).
+            try {
+              if (GAME_SETTINGS.shipSmoke) {
+                const trailEntity = { x: wx, y: wy, vx: peng.holder.vx, vy: peng.holder.vy };
+                emitEngineTrail(trailEntity, { sprite: { w: PET_DRAW_W, h: PET_DRAW_H }, speed: 320 }, 0.016, null, "pet", pframe, pimg);
+              }
+            } catch {}
+          } else {
+            try { loadImage(psrc, { priority: true }); } catch {}
+          }
+        }
+      }
+    } catch {}
+    // Plaque complete comme la notre : barres HP/shield, drones, modules,
+    // formation a gauche, grade + nom + firme en dessous.
+    try {
+      let rRank = null, rFact = null, rFicon = null;
+      if (r.rank) {
+        const ri = getCachedImage(r.rank);
+        if (isImgReady(ri)) rRank = ri; else { try { loadImage(r.rank, { priority: true }); } catch {} }
+      }
+      if (r.firm) {
+        try {
+          const fp = getFaction(r.firm)?.imagePath;
+          if (fp) {
+            const fi = getCachedImage(fp);
+            if (isImgReady(fi)) rFact = fi; else { try { loadImage(fp, { priority: true }); } catch {} }
+          }
+        } catch {}
+      }
+      if (r.ficon) {
+        const gi = getCachedImage(r.ficon);
+        if (isImgReady(gi)) rFicon = gi; else { try { loadImage(r.ficon, { priority: true }); } catch {} }
+      }
+      const dind = String(r.dind || "").split("|").map(s => s.trim()).filter(Boolean);
+      const mind = String(r.mind || "").split("|").map(s => s.trim()).filter(Boolean);
+      drawPlayerStatus(
+        ctx,
+        { hp: Number(r.hpPct ?? 1), hpMax: 1, sh: Number(r.shPct ?? 1), shMax: 1, r: 20, dead: false },
+        String(r.pseudo || "Pilote"), 0, 0,
+        rRank, rFact, dind, rFicon, mind,
+        String(r.shipId || "").toLowerCase() === "police",
+      );
+    } catch {}
+    ctx.restore();
+  }
 }
 
 // Coque du hangar actif, résolue vers sa base (les designs héritent).
@@ -27934,9 +29117,65 @@ if (moveTarget.active && !player.dead) {
   tickDroneFormationEffects(dt);
   tickRepairOrbitFx(dt);
   tickCollectables(dt);
+  try { syncNetBoxes(dt); } catch {}
 
   if (!isZoneMap) waveController(dt);
   else zoneController(dt);
+  syncNetNpcs(dt);
+  try { syncNetPlayers(); } catch {}
+  // Multi PvP : PV autoritaires serveur — on n'adopte que les baisses
+  // (le serveur ne soigne jamais : regen et soins restent locaux).
+  try {
+    const self = getNetSelf();
+    if (self && Number(self.pvpAt) > 0 && Number(self.pvpAt) !== lastPvpAdoptAt) {
+      lastPvpAdoptAt = Number(self.pvpAt);
+      if (player.hpMax > 0 && Number.isFinite(Number(self.hp))) {
+        player.hp = Math.max(0, Math.min(player.hp, Math.min(player.hpMax, Number(self.hp))));
+      }
+      if (player.shMax > 0 && Number.isFinite(Number(self.sh))) {
+        player.sh = Math.max(0, Math.min(player.sh, Math.min(player.shMax, Number(self.sh))));
+      }
+      // Sous le feu ennemi : pas de regen ni de reparation (comme hurtPlayer).
+      // Ca bloque aussi la zone de non-agression (safe = hors combat).
+      player.attackedT = 5;
+      try { resetRepairCooldown(); } catch {}
+      // Victime PvP : anneau Ship_damage face a l'attaquant (comme un tir NPC).
+      // + le REX enregistre l'agresseur pour riposter en mode combat.
+      try {
+        let ax = null, ay = null;
+        let foeRid = null;
+        const from = self.pvpFrom != null ? String(self.pvpFrom) : null;
+        if (from && from !== String(netMyId())) {
+          const foe = getNetplayRemotes().get(from);
+          if (foe && !foe.dead) { ax = Number(foe.rx ?? foe.x); ay = Number(foe.ry ?? foe.y); foeRid = String(from); }
+        }
+        if (ax == null) {
+          // Repli : le remote en train d'attaquer le plus proche de nous.
+          let best = null, bestD2 = Infinity;
+          let bestRid = null;
+          try {
+            for (const [rid, ro] of getNetplayRemotes()) {
+              if (!ro || ro.dead || ro.atk !== true) continue;
+              const dx = Number(ro.rx ?? ro.x) - player.x, dy = Number(ro.ry ?? ro.y) - player.y;
+              const d2 = dx * dx + dy * dy;
+              if (d2 < bestD2) { bestD2 = d2; best = ro; bestRid = String(rid); }
+            }
+          } catch {}
+          if (best) { ax = Number(best.rx ?? best.x); ay = Number(best.ry ?? best.y); foeRid = bestRid; }
+        }
+        if (foeRid) {
+          try {
+            const proxy = netPlayerProxies.get(foeRid);
+            if (proxy) notePetAttacker(proxy);
+          } catch {}
+        }
+        if (ax != null && (ax !== player.x || ay !== player.y)) spawnShipDamage(ax, ay);
+      } catch {}
+      if (player.hp <= 0 && !player.dead) {
+        try { die(); } catch {}
+      }
+    }
+  } catch {}
   updateBossEncounters();
   updateGateEscorts(dt);
   updatePet(dt);
@@ -28222,6 +29461,35 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     // Le drain est prélevé sur la cible `t` (qui doit toujours exister).
     // CBO = dégâts normaux (×3 déjà dans b.dmg) + vol de bouclier ×1 ;
     // SAB = drain pur, zéro dégât coque.
+    // Multi PvP : SAB sur un joueur — test contre la cible (pas contre nous).
+    if (t && t._netPlayer && !b.visual && !b.ownerEscortId && !b.miss) {
+      const prp = (t.r || 20) + (b.r || 6);
+      if (segCircleHit(b._oldX, b._oldY, b.x, b.y, t.x, t.y, prp)) {
+        let outp = { total: 0 };
+        if (b.key === "cbo") {
+          outp = damageEnemy(t, b.dmg);
+          if (t.hp > 0) {
+            const leech = drainShieldFromEnemy(t, b.dmg / 3, player);
+            outp.total += leech.total || 0;
+            outp.sh += leech.sh || 0;
+          }
+        } else {
+          outp = drainShieldFromEnemy(t, b.dmg, player);
+        }
+        if (outp.total > 0) {
+          queueVolleyFloat(t, outp, b.volleyId, 1, VOLLEY_FLOAT_TIMEOUT);
+          try { notePetPlayerDamage(t); } catch {}
+        }
+        removeProjectile(bullets, i);
+        cleanupPlayerMissVolley(b);
+        continue;
+      }
+      if (expired) {
+        removeProjectile(bullets, i);
+        cleanupPlayerMissVolley(b);
+      }
+      continue;
+    }
     const pr = (player.r || 20) + (b.r || 6);
     if (segCircleHit(b._oldX, b._oldY, b.x, b.y, player.x, player.y, pr)) {
     // Protocole évasion (AI-E) : +X % de MISS quand on attaque le REX.
@@ -28347,13 +29615,15 @@ for (let i = bullets.length - 1; i >= 0; i--) {
             : damageEnemy(t, b.dmg, undefined, qaCrit || (!b.ownerEscortId ? { chance: player.critChance, mult: player.critMult } : undefined));
 
       // ✅ CBO-100 (joueur) : dégâts normaux + vol de bouclier ×1, comme SAB.
-      if (!b.isRocket && !b.isSab && b.key === "cbo" && t.hp > 0) {
+      // Visuels allies : aucun effet (dmg 0 de toute facon).
+      if (!b.visual && !b.isRocket && !b.isSab && b.key === "cbo" && t.hp > 0) {
         const leech = drainShieldFromEnemy(t, b.dmg / 3, sabRecipient);
         out.total += leech.total || 0;
         out.sh += leech.sh || 0;
       }
       // ✅ PIB-100 (joueur) : infecte la cible (vitesse −10 % pendant 15 s).
-      if (!b.isRocket && !b.isSab && b.key === "pib" && t.hp > 0) {
+      // Visuels allies : pas de debuff reel.
+      if (!b.visual && !b.isRocket && !b.isSab && b.key === "pib" && t.hp > 0) {
         t.rocketSlowPct = Math.max(Number(t.rocketSlowPct || 0), 10);
         t.rocketSlowT = Math.max(Number(t.rocketSlowT || 0), 15);
       }
@@ -28385,6 +29655,9 @@ for (let i = bullets.length - 1; i >= 0; i--) {
   }
 
   if (expired) {
+    // Visuel allie (ex : SAB distant qui s'eloigne de la cible) : le MISS
+    // n'a pas d'impact physique, on l'affiche a l'expiration du vol.
+    if (b._netVisual && b.miss && t) showPlayerMissOnce(b, t);
     removeProjectile(bullets, i);
     cleanupPlayerMissVolley(b);
   }
@@ -28392,6 +29665,34 @@ for (let i = bullets.length - 1; i >= 0; i--) {
 
 for (let i = enemyBullets.length - 1; i >= 0; i--) {
   const b = enemyBullets[i];
+  // Multi : tir NPC vers le copain — homing visuel, disparition silencieuse
+  // a l'arrivee (zero degat, les vrais degats sont sur l'ecran de la cible).
+  if (b._netFriend) {
+    let fPos = null, fRad = 0;
+    try {
+      const fr = getNetplayRemotes().get(String(b._netFriend));
+      if (fr && !fr.dead) {
+        fPos = { x: Number(fr.rx ?? fr.x), y: Number(fr.ry ?? fr.y) };
+        try {
+          const fpack = netplayPackFor(fr.shipId);
+          fRad = Math.max(Number(fpack?.w) || 170, Number(fpack?.h) || 170) / 6;
+        } catch { fRad = 0; }
+        if (!(fRad > 0)) fRad = shipDamageBubbleRadius();
+      }
+    } catch {}
+    if (!fPos) { removeProjectile(enemyBullets, i); continue; }
+    const fdx = fPos.x - b.x, fdy = fPos.y - b.y;
+    const fd = Math.hypot(fdx, fdy) || 1;
+    const fspd = Math.max(120, b.spd || 900);
+    b.vx = (fdx / fd) * fspd;
+    b.vy = (fdy / fd) * fspd;
+    if (b._oldX != null && segCircleHit(b._oldX, b._oldY, b.x, b.y, fPos.x, fPos.y, (b.r || 7) + 18)) {
+      // Observateur : anneau Ship_damage autour du copain, face au tir recu.
+      try { spawnNetShipDamage(String(b._netFriend), Math.atan2(b.y - fPos.y, b.x - fPos.x), fRad, "npc"); } catch {}
+      removeProjectile(enemyBullets, i);
+      continue;
+    }
+  }
   const bulletTarget = b.target === "escort" ? getEscortById(b.targetId) : player;
 
   // Le tir NPC recalcule sa direction vers le joueur.
@@ -28754,8 +30055,28 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
     e.freezeT = Math.max(0, (e.freezeT || 0) - dt);
     const frozen = e.freezeT > 0;
 
-    const combatTarget = getNpcCombatTarget(e);
-    if (!frozen) enemyShoot(e, dt, combatTarget);
+    let combatTarget = getNpcCombatTarget(e);
+    // Multi : NPC partage — cible imposee par le serveur (meme echange de
+    // tirs sur les 2 ecrans). Sans cible partagee : pas de tir (le calme
+    // serveur s'applique). Vers le copain : tirs purement visuels.
+    if (e._netUid) {
+      try { combatTarget = netNpcCombatTarget(e); } catch { combatTarget = null; }
+      if (combatTarget && !frozen) {
+        const beforeVisual = enemyBullets.length;
+        enemyShoot(e, dt, combatTarget);
+        // Tirs vers le copain : marques visuels (impact client, zero degat).
+        if (combatTarget._netVisual) {
+          const fid = String(e._netAggro || "");
+          for (let bi = beforeVisual; bi < enemyBullets.length; bi++) {
+            if (enemyBullets[bi]) enemyBullets[bi]._netFriend = fid;
+          }
+        }
+      }
+    }
+    else if (!frozen) enemyShoot(e, dt, combatTarget);
+
+    // Multi : NPC partage — position/angle/HPico du serveur, seul le tir reste local.
+    if (e._netUid) continue;
 
     if (e._stationaryBoss) {
       e.vx = 0;
@@ -29982,6 +31303,9 @@ if (GAME_SETTINGS.textures) {
     ctx.globalAlpha = 1;
   }
 
+  // Multi etape 1 : autres joueurs de la meme map (interpole, triangle + pseudo).
+  try { drawNetplayRemotes(ox, oy); } catch {}
+
   // ✅ bubble d'impact PAR-DESSUS le vaisseau : elle reste visible même si
   // le point d'impact est sur la silhouette du vaisseau.
   drawShipDamages(ox, oy);
@@ -30586,6 +31910,109 @@ function frame(t) {
       update(dt);
       remainingDt -= dt;
     } while (remainingDt > 0.0001);
+
+    // Multi etape 1 : envoie position locale 10 Hz (solo-safe si WS absent).
+    // Hors maps zone (ex : Galaxy Gates = instances perso) : multi suspendu.
+    try { suspendNetplay(!isZoneMap); } catch {}
+    try {
+      const atkTgt = Target.get();
+      let dformId = "standard";
+      try {
+        const ds = account?.user?.drones;
+        const df = DRONE_FORMATIONS.find(entry => entry.id === ds?.activeFormation);
+        dformId = (ds?.items?.length || 0) >= Number(df?.minDrones || 0) ? (df?.id || "standard") : "standard";
+      } catch {}
+      // Cadence + vitesse : inutiles (les tirs partent en evenements exacts).
+      const ammoKeyNow = player.ammo.active || "x1";
+      let dslotsNow = "";
+      try {
+        const items = account?.user?.drones?.items || [];
+        dslotsNow = items.slice(0, 12).map(d => `${String(d?.type || "iris").slice(0, 24)}:${Math.max(1, Number(d?.level) || 1)}`).join(",");
+      } catch {}
+      // Zone sure / camouflage : le serveur calme les NPC (parite solo).
+      let netSafe = false, netHidden = false;
+      try { netSafe = safeZoneActive && playerIsInSafeZone(); } catch {}
+      try { netHidden = isPlayerUntargetable(); } catch {}
+      // Plaque alliee (grade, firme, drones, modules, formation).
+      let rankPathNow = "", firmNow = "", dindNow = "", ficonNow = "", mindNow = "";
+      try {
+        const stats = account.user?.stats || {};
+        const isPolice = String(ACTIVE_SHIP?.id || "").toLowerCase() === "police";
+        const rk = isPolice
+          ? { ...ADMIN_RANK, imagePath: `ASSETS/RANKS/${ADMIN_RANK.image.replace(/^[^.]+/, (name) => name.toUpperCase())}` }
+          : getRankInfo(calculateRankPoints(stats), stats.honor);
+        rankPathNow = String(rk?.imagePath || "");
+      } catch {}
+      try { firmNow = String(account.user?.faction || ""); } catch {}
+      try {
+        dindNow = (account.user?.drones?.items || []).map(drone => {
+          const ability = drone?.fit?.ability;
+          const design = typeof ability === "string"
+            ? ability.toLowerCase()
+            : `${ability?.id || ""} ${ability?.name || ""}`.toLowerCase();
+          if (design.includes("hercules")) return "rgb(30,144,255)";
+          if (design.includes("havoc") || design.includes("havok")) return "rgb(255,45,55)";
+          if (drone?.type === "apis") return "rgb(90,180,255)";
+          if (drone?.type === "zeus") return "rgb(174,190,75)";
+          return "rgb(255,255,255)";
+        }).join("|");
+      } catch {}
+      try {
+        const af = getActiveDroneFormation(account.user);
+        ficonNow = String((af ? (formationDockIcon(af) || af.icon) : "") || "");
+      } catch {}
+      try {
+        const activeHangar = getActiveHangarFromUser(account.user);
+        const activeFit = activeHangar?.fits?.[String(Number(activeHangar.activeConfig) === 2 ? 2 : 1)] || activeHangar?.fit || {};
+        const equippedModules = (account.user?.inventory?.shipModules || []).filter(module => (activeFit.shipMods || []).includes(module?.id));
+        const moduleColorByType = { hp: "rgb(70,210,105)", shd: "rgb(45,150,255)", dmg: "rgb(255,70,70)", spc: "rgb(255,215,70)" };
+        mindNow = equippedModules.map(module => moduleColorByType[module.type]).filter(Boolean).join("|");
+      } catch {}
+      // PET allie : actif, niveau, position + direction (rendu miroir).
+      // + pseudo et firme pour l'etiquette distante (comme sur notre ecran).
+      let petA = 0, petL = 1, petX = 0, petY = 0, petD = 0, petN = "", petF = "";
+      try {
+        const pet = account.user?.pet;
+        if (pet && pet.owned && pet.active === true && petState.ready && !player.dead) {
+          petA = 1;
+          petL = Math.max(1, Math.min(32, getPetLevel(pet.exp) || 1));
+          petX = Math.round(Number(petState.x) || 0);
+          petY = Math.round(Number(petState.y) || 0);
+          petD = Math.round((Number(petState.angle) || 0) * 100) / 100;
+          petN = String(pet.pseudo || "REX").slice(0, 32);
+          petF = String(pet.faction || account.user?.faction || "").slice(0, 16);
+        }
+      } catch {}
+      // Cadence + vitesse : inutiles (les tirs partent en evenements exacts).
+      pushNetplayLocal({
+        x: player.x, y: player.y, angle: player.angle,
+        shipId: (typeof ACTIVE_SHIP !== "undefined" && ACTIVE_SHIP?.id) || "",
+        pseudo: account?.user?.pseudo || "Pilote",
+        dead: player.dead === true,
+        hpPct: player.hpMax > 0 ? player.hp / player.hpMax : 1,
+        shPct: player.shMax > 0 ? player.sh / player.shMax : 1,
+        atk: attackActive === true && !!atkTgt && !player.dead,
+        tx: Number(atkTgt?.x) || 0,
+        ty: Number(atkTgt?.y) || 0,
+        ammo: ammoKeyNow,
+        drones: account?.user?.drones?.items?.length || 0,
+        dform: dformId,
+        dslots: dslotsNow,
+        safe: netSafe,
+        hidden: netHidden,
+        rank: rankPathNow.slice(0, 64),
+        firm: firmNow.slice(0, 16),
+        dind: dindNow.slice(0, 256),
+        ficon: ficonNow.slice(0, 128),
+        mind: mindNow.slice(0, 128),
+        hpMax: Math.max(1, Math.round(Number(player.hpMax) || 1)),
+        shMax: Math.max(0, Math.round(Number(player.shMax) || 0)),
+        range: Math.max(200, Math.min(5000, Math.round(Number(playerRange) || 800))),
+        peta: petA, petl: petL, petx: petX, pety: petY, petd: petD, petn: petN, petf: petF,
+      });
+    } catch {}
+    // Multi : projectiles visuels des allies (memes sprites, zero degat).
+    try { tickNetplayVisuals(Math.min(0.1, realDt)); } catch {}
 
     if (document.visibilityState !== "hidden") {
       draw();

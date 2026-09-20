@@ -121,9 +121,17 @@ export function renderMinimap(context, options) {
     context.fillRect(enemy.x * scaleX - size / 2, enemy.y * scaleY - size / 2, size, size);
   }
 
-  context.fillStyle = "rgba(80,255,145,0.95)";
   for (const ally of allies) {
     if (!ally || ally.hp <= 0) continue;
+    // Joueur distant : meme taille qu'un NPC + meme portee radar.
+    if (ally._net) {
+      if (!shouldShowNpc(player, ally, lockedNpc)) continue;
+      const size = clamp((ally.r || 18) / 12, 2, 6);
+      context.fillStyle = ally.color || "rgba(80,160,255,0.95)";
+      context.fillRect(ally.x * scaleX - size / 2, ally.y * scaleY - size / 2, size, size);
+      continue;
+    }
+    context.fillStyle = "rgba(80,255,145,0.95)";
     context.beginPath();
     context.arc(ally.x * scaleX, ally.y * scaleY, 2.6, 0, Math.PI * 2);
     context.fill();

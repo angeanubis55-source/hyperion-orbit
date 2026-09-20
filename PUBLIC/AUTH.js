@@ -1,6 +1,7 @@
 "use strict";
 
-import { register, login, getCurrentUserPublic } from "../SRC/CORE/ACCOUNT.js";
+import { register, login, getCurrentUserPublic, findLocalUserForMigration } from "../SRC/CORE/ACCOUNT.js";
+import { serverOnline, apiRegister, apiLogin } from "../SRC/CORE/ACCOUNT_NET.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -35,6 +36,17 @@ function goProfile() {
 // Check if already logged in
 const cur = getCurrentUserPublic();
 if (cur) goProfile();
+
+// Multi : serveur de comptes joignable ? (sinon 100 % local comme avant)
+let netServer = false;
+try {
+  showMsg("Connexion…", true);
+  netServer = await serverOnline(1500);
+  showMsg(netServer ? "Mode en ligne : comptes sur le serveur." : "Mode local : serveur injoignable.", netServer);
+  setTimeout(() => { if (!msgEl.textContent.startsWith("⚠️") && !msgEl.textContent.startsWith("❌")) { msgEl.textContent = ""; msgEl.className = "msg"; } }, 2500);
+} catch {
+  netServer = false;
+}
 
 // Tab switching
 function setTab(which) {
@@ -88,7 +100,7 @@ try {
 } catch {}
 
 // LOGIN
-$("btnLogin").addEventListener("click", (e) => {
+$("btnLogin").addEventListener("click", async (e) => {
   e.preventDefault();
   try {
     const pseudo = loginUser.value.trim();
@@ -96,6 +108,27 @@ $("btnLogin").addEventListener("click", (e) => {
 
     if (!pseudo || !password) {
       showMsg("⚠️ Remplis pseudo et mot de passe", false);
+      return;
+    }
+
+    if (netServer) {
+      showMsg("Connexion au serveur…", true);
+      $("btnLogin").disabled = true;
+      try {
+        const out = await apiLogin(pseudo, password);
+        if (!out || out.ok === false) {
+          showMsg(out?.error || "❌ Échec de connexion", false);
+          return;
+        }
+        try {
+          if (rememberMe && rememberMe.checked) localStorage.setItem(REMEMBER_KEY, pseudo);
+          else localStorage.removeItem(REMEMBER_KEY);
+        } catch {}
+        showMsg("✅ Session active - Bienvenue pilote! (En ligne)", true);
+        setTimeout(goProfile, 800);
+      } finally {
+        $("btnLogin").disabled = false;
+      }
       return;
     }
 
@@ -119,7 +152,7 @@ $("btnLogin").addEventListener("click", (e) => {
 });
 
 // REGISTER
-$("btnRegister").addEventListener("click", (e) => {
+$("btnRegister").addEventListener("click", async (e) => {
   e.preventDefault();
   try {
     const pseudo = regUser.value.trim();
@@ -142,6 +175,27 @@ $("btnRegister").addEventListener("click", (e) => {
     }
     if (p1 !== p2) {
       showMsg("⚠️ Les mots de passe ne correspondent pas", false);
+      return;
+    }
+
+    if (netServer) {
+      showMsg("Création du compte sur le serveur…", true);
+      $("btnRegister").disabled = true;
+      try {
+        // Migration unique : progression locale reprise si meme pseudo.
+        let migrate = null;
+        try { migrate = findLocalUserForMigration(pseudo); } catch {}
+        if (migrate && String(migrate.email || "").trim().toLowerCase() !== email.trim().toLowerCase()) migrate = null;
+        const out = await apiRegister({ pseudo, email, password: p1, faction, migrate });
+        if (!out || out.ok === false) {
+          showMsg(out?.error || "❌ Échec de création", false);
+          return;
+        }
+        showMsg(migrate ? "✅ Compte créé - progression locale importée! (En ligne)" : "✅ Compte pilote créé - Session active! (En ligne)", true);
+        setTimeout(goProfile, 800);
+      } finally {
+        $("btnRegister").disabled = false;
+      }
       return;
     }
 

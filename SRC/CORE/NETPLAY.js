@@ -1,0 +1,600 @@
+// SRC/CORE/NETPLAY.js — Etape 1 multi : se voir a 2 sur la meme map.
+// Solo-safe : si le WS est injoignable, le jeu continue en solo sans erreur.
+// Protocole compatible SCRIPTS/MULTI_SERVER.js (rooms par map, snapshot 10 Hz).
+
+let ws = null;
+let myId = "";
+let connected = false;
+// Instance privee (ex : Galaxy Gates) : ni envoi ni etat partage.
+let suspended = false;
+export function suspendNetplay(v) {
+  const nv = v === true;
+  if (nv === suspended) return;
+  suspended = nv;
+  if (nv) {
+    remotes.clear();
+    netNpcs.clear();
+    netDeaths.clear();
+    netBoxes.clear();
+    netBoxInbox.length = 0;
+    netDmgInbox.length = 0;
+    netShotInbox.length = 0;
+    lastNpcSnapMs = 0;
+    netBoxHostId = null;
+    try { if (ws && ws.readyState === 1) ws.close(); } catch {}
+    ws = null;
+    connectTried = false;
+    connected = false;
+    netChatInbox.length = 0;
+  }
+}
+export function netSuspended() {
+  return suspended;
+}
+let lastSendMs = 0;
+let pendingLocal = null;
+let lastMapSent = "";
+const remotes = new Map(); // id -> { ...state, rx, ry, lastSeen }
+// NPC partages (serveur autoritaire) : uid -> snapshot + interpolation.
+const netNpcs = new Map();
+// Journal des kills serveur : uid -> { killer, at }. Survit au respawn
+// instantane pour trancher les recompenses (le killer touche, l'autre non).
+const netDeaths = new Map();
+let lastNpcSnapMs = 0;
+// Bonus box partagees : miroir du set serveur + file d'evenements.
+// Hote = plus petit id de la room (elus par le serveur) : seul lui spawne.
+const netBoxes = new Map(); // slotUid -> { type, x, y }
+const netBoxInbox = [];
+let netBoxHostId = null;
+// Echo de soi pour le PvP (PV autoritaires serveur).
+let selfServ = null;
+export function getNetSelf() {
+  return selfServ;
+}
+// Feed degats allies : { uid, by, total } (chiffres sur la cible, sans effet).
+const netDmgInbox = [];
+// Tirs allies exacts (vrais + faux) : { t:shot/rshot, ... } a jouer aussitot.
+const netShotInbox = [];
+// Chat global : { from, text, at } recus ou rejoues (historique).
+const netChatInbox = [];
+export function drainNetChatInbox() {
+  if (!netChatInbox.length) return [];
+  return netChatInbox.splice(0, netChatInbox.length);
+}
+export function sendChat(text) {
+  if (suspended) return false;
+  if (!ws || ws.readyState !== 1) return false;
+  const clean = String(text || "").replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!clean) return false;
+  try {
+    ws.send(JSON.stringify({ t: "chat", text: clean }));
+    return true;
+  } catch { return false; }
+}
+function pushChatMessage(m) {
+  if (!m || typeof m !== "object") return;
+  const from = String(m.from || "Pilote").slice(0, 20);
+  const text = String(m.text || "").slice(0, 200);
+  if (!text) return;
+  if (netChatInbox.length > 100) netChatInbox.shift();
+  netChatInbox.push({ from, text, at: Number(m.at) || Date.now(), by: m.by != null ? String(m.by) : "" });
+}
+let connectTried = false;
+
+function currentMapId() {
+  try {
+    return String(window.__CURRENT_MAP_ID__ || "1-1").toLowerCase();
+  } catch { return "1-1"; }
+}
+
+function wsUrl() {
+  try {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${location.host}/ws`;
+  } catch { return ""; }
+}
+
+export function netplayStatus() {
+  return { connected, myId, count: remotes.size, boxHost: netBoxHostId, boxCount: netBoxes.size };
+}
+
+function prune() {
+  const now = performance.now();
+  for (const [id, r] of remotes) {
+    if (now - Number(r.lastSeen || 0) > 8000) remotes.delete(id);
+  }
+}
+
+export function ensureNetplayConnection() {
+  if (connectTried) return;
+  // file:// ou preview sans serveur : reste en solo.
+  try {
+    if (!/^https?:$/.test(location.protocol)) return;
+  } catch { return; }
+  const url = wsUrl();
+  if (!url) return;
+  connectTried = true;
+  try {
+    ws = new WebSocket(url);
+  } catch { ws = null; return; }
+
+  ws.onopen = () => {
+    connected = true;
+    lastMapSent = "";
+    try {
+      ws.send(JSON.stringify({
+        t: "hello",
+        map: currentMapId(),
+        pseudo: pendingLocal?.pseudo || "",
+        shipId: pendingLocal?.shipId || "",
+      }));
+      lastMapSent = currentMapId();
+    } catch {}
+  };
+  ws.onclose = () => {
+    connected = false;
+    // Reconnect douce apres 3 s (serveur maison qui redemarre).
+    setTimeout(() => {
+      connectTried = false;
+      ensureNetplayConnection();
+      if (pendingLocal) sendNow(pendingLocal, true);
+    }, 3000);
+  };
+  ws.onerror = () => { try { ws.close(); } catch {} };
+  ws.onmessage = (ev) => {
+    let msg = null;
+    try { msg = JSON.parse(String(ev.data)); } catch { return; }
+    if (!msg || typeof msg !== "object") return;
+    if (msg.t === "welcome") {
+      myId = String(msg.id || "");
+      return;
+    }
+    if (msg.t === "chatMsg") {
+      pushChatMessage(msg);
+      return;
+    }
+    if (msg.t === "chatHistory" && Array.isArray(msg.list)) {
+      for (const m of msg.list.slice(-30)) pushChatMessage(m);
+      return;
+    }
+    if (msg.t === "shot" || msg.t === "rshot") {
+      // Tir allie : joue aussitot (map du tireur requise).
+      try {
+        const shotMap = String(msg.map || "").toLowerCase();
+        if (shotMap && shotMap !== currentMapId()) return;
+      } catch {}
+      if (netShotInbox.length > 96) netShotInbox.shift();
+      netShotInbox.push(msg);
+      return;
+    }
+    if (msg.t === "boxesSync" && Array.isArray(msg.boxes)) {
+      // Etat complet pour le nouveau venu (meme map uniquement).
+      try {
+        const syncMap = String(msg.map || "").toLowerCase();
+        if (syncMap && syncMap !== currentMapId()) return;
+      } catch {}
+      netBoxes.clear();
+      for (const b of msg.boxes.slice(0, 200)) {
+        if (!b || typeof b.uid !== "string" || typeof b.type !== "string") continue;
+        if (!Number.isFinite(Number(b.x)) || !Number.isFinite(Number(b.y))) continue;
+        netBoxes.set(b.uid.slice(0, 64), { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)) });
+      }
+      return;
+    }
+    if (msg.t === "box" && msg.op) {
+      if (msg.op === "collect" && typeof msg.uid === "string") {
+        const uid = msg.uid.slice(0, 64);
+        netBoxes.delete(uid);
+        netBoxInbox.push({ op: "collect", uid });
+      } else if (msg.op === "list" && Array.isArray(msg.boxes)) {
+        const by = msg.by != null ? String(msg.by) : null;
+        if (by != null && netBoxHostId != null && by !== netBoxHostId) {
+          // Liste d'un non-hote (passation en cours) : ignore.
+          return;
+        }
+        netBoxes.clear();
+        for (const b of msg.boxes.slice(0, 200)) {
+          if (!b || typeof b.uid !== "string" || typeof b.type !== "string") continue;
+          if (!Number.isFinite(Number(b.x)) || !Number.isFinite(Number(b.y))) continue;
+          const uid = b.uid.slice(0, 64);
+          netBoxes.set(uid, { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)) });
+        }
+      } else if (msg.op === "unspawn" && Array.isArray(msg.uids)) {
+        for (const u of msg.uids.slice(0, 200)) {
+          if (typeof u !== "string") continue;
+          netBoxes.delete(u.slice(0, 64));
+        }
+      }
+      return;
+    }
+    if (msg.t === "snapshot" && Array.isArray(msg.players)) {
+      if (msg.host != null) netBoxHostId = String(msg.host);
+      // Snapshot d'une autre map (changement en cours) : ignore.
+      try {
+        const snapMap = String(msg.map || "").toLowerCase();
+        if (snapMap && snapMap !== currentMapId()) return;
+      } catch {}
+      const now = performance.now();
+      const seen = new Set();
+      for (const p of msg.players) {
+        if (!p || typeof p !== "object") continue;
+        const id = String(p.id || "");
+        // Echo de soi (PvP) : PV autoritaires + date du dernier coup recu.
+        if (id && id === myId) {
+          selfServ = {
+            hp: Number(p.pvpHp), sh: Number(p.pvpSh), pvpAt: Number(p.pvpAt) || 0,
+            pvpFrom: p.pvpFrom != null ? String(p.pvpFrom) : null,
+            at: now,
+          };
+          continue;
+        }
+        if (!id) continue;
+        seen.add(id);
+        const prev = remotes.get(id);
+        const entry = {
+          id,
+          pseudo: String(p.pseudo || "Pilote").slice(0, 20),
+          shipId: String(p.shipId || ""),
+          x: Number(p.x) || 0,
+          y: Number(p.y) || 0,
+          angle: Number(p.angle) || 0,
+          dead: p.dead === true,
+          hpPct: Number.isFinite(Number(p.hpPct)) ? Math.max(0, Math.min(1, Number(p.hpPct))) : 1,
+          shPct: Number.isFinite(Number(p.shPct)) ? Math.max(0, Math.min(1, Number(p.shPct))) : 1,
+          // Tir en cours + point vise (monde) : rend le laser du copain.
+          atk: p.atk === true,
+          tx: Number(p.tx) || 0,
+          ty: Number(p.ty) || 0,
+          ammo: String(p.ammo || "x1").slice(0, 16),
+          drones: Math.max(0, Math.min(12, Number(p.drones) || 0)),
+          dform: String(p.dform || "standard").slice(0, 32),
+          // Cadence + vitesse pour les vrais projectiles visuels de l'allie.
+          fint: Number(p.fint) > 0 ? Number(p.fint) : 0.25,
+          bspd: Number(p.bspd) > 0 ? Number(p.bspd) : 4000,
+          dslots: String(p.dslots || "").slice(0, 256),
+          alt: p.alt === true,
+          shots: Math.max(0, Math.floor(Number(p.shots) || 0)),
+          rank: String(p.rank || "").slice(0, 64),
+          firm: String(p.firm || "").slice(0, 16),
+          dind: String(p.dind || "").slice(0, 256),
+          ficon: String(p.ficon || "").slice(0, 128),
+          mind: String(p.mind || "").slice(0, 128),
+          rseq: Math.max(0, Math.floor(Number(p.rseq) || 0)),
+          rkind: String(p.rkind || "r310").slice(0, 16),
+          rspd: Number(p.rspd) > 0 ? Number(p.rspd) : 1500,
+          safe: p.safe === true,
+          // PvP : max pour la cible + portee + dernier coup recu (anneau Ship_damage).
+          hpMax: Math.max(1, Math.round(Number(p.hpMax) || 1)),
+          shMax: Math.max(0, Math.round(Number(p.shMax) || 0)),
+          range: Math.max(200, Math.min(5000, Number(p.range) || 800)),
+          pvpAt: Number(p.pvpAt) || 0,
+          pvpFrom: p.pvpFrom != null ? String(p.pvpFrom) : null,
+          // PET allie : actif, niveau, position.
+          peta: p.peta === 1 ? 1 : 0,
+          petl: Math.max(1, Math.min(32, Math.round(Number(p.petl) || 1))),
+          petx: Number(p.petx) || 0,
+          pety: Number(p.pety) || 0,
+          petd: Number(p.petd) || 0,
+          petn: String(p.petn || "").slice(0, 32),
+          petf: String(p.petf || "").slice(0, 16),
+          lastSeen: now,
+          // Position de rendu (interpolee vers x/y pour eviter les sauts).
+          rx: prev ? Number(prev.rx ?? prev.x ?? p.x) : Number(p.x) || 0,
+          ry: prev ? Number(prev.ry ?? prev.y ?? p.y) : Number(p.y) || 0,
+          petrx: prev ? Number(prev.petrx ?? prev.petx ?? p.petx) : Number(p.petx) || 0,
+          petry: prev ? Number(prev.petry ?? prev.pety ?? p.pety) : Number(p.pety) || 0,
+        };
+        remotes.set(id, entry);
+      }
+      // Retire ceux qui ont quitte la map (absents du snapshot).
+      for (const id of [...remotes.keys()]) {
+        if (!seen.has(id)) {
+          const r = remotes.get(id);
+          if (r && now - Number(r.lastSeen || 0) > 3000) remotes.delete(id);
+        }
+      }
+      // NPC partages (serveur autoritaire). Les morts restent avec leur
+      // killer jusqu'au respawn pour trancher les recompenses.
+      // Le journal `deaths` survit au respawn instantane des NPC normaux.
+      if (msg.npc && typeof msg.npc === "object") {
+        lastNpcSnapMs = now;
+        if (!Array.isArray(msg.npc) && Array.isArray(msg.npc.dmg)) {
+          for (const d of msg.npc.dmg.slice(0, 24)) {
+            if (!d || !d.uid || !(Number(d.total) > 0)) continue;
+            if (d.by != null && String(d.by) === String(myId)) continue;
+            if (netDmgInbox.length > 48) netDmgInbox.shift();
+            netDmgInbox.push({ uid: String(d.uid), by: d.by != null ? String(d.by) : "", total: Math.round(Number(d.total)) });
+          }
+        }
+        const list = Array.isArray(msg.npc) ? msg.npc : msg.npc.list;
+        const seenNpc = new Set();
+        for (const n of (Array.isArray(list) ? list : [])) {
+          if (!n || typeof n !== "object" || !n.uid) continue;
+          const uid = String(n.uid);
+          seenNpc.add(uid);
+          const prev = netNpcs.get(uid);
+          netNpcs.set(uid, {
+            uid,
+            type: String(n.type || ""),
+            x: Number(n.x) || 0,
+            y: Number(n.y) || 0,
+            angle: Number(n.angle) || 0,
+            hp: Number(n.hp) || 0,
+            sh: Number(n.sh) || 0,
+            hpMax: Number(n.hpMax) || 1,
+            shMax: Number(n.shMax) || 0,
+            alive: n.alive !== false,
+            killer: n.killer != null ? String(n.killer) : null,
+            cause: String(n.cause || "gun").slice(0, 8),
+            seq: Number(n.seq) || 0,
+            aggro: n.aggro != null ? String(n.aggro) : null,
+            lastSeen: now,
+            rx: prev ? Number(prev.rx ?? prev.x ?? n.x) : Number(n.x) || 0,
+            ry: prev ? Number(prev.ry ?? prev.y ?? n.y) : Number(n.y) || 0,
+          });
+        }
+        for (const uid of [...netNpcs.keys()]) {
+          if (!seenNpc.has(uid)) netNpcs.delete(uid);
+        }
+        if (Array.isArray(msg.npc.deaths)) {
+          for (const d of msg.npc.deaths) {
+            if (!d || !d.uid || d.killer == null) continue;
+            netDeaths.set(String(d.uid), {
+              killer: String(d.killer), seq: Number(d.seq) || 0,
+              cause: String(d.cause || "gun").slice(0, 8),
+              x: Number(d.x) || 0, y: Number(d.y) || 0,
+              at: now,
+            });
+          }
+        }
+        for (const [uid, d] of [...netDeaths.entries()]) {
+          if (now - Number(d.at || 0) > 10000) netDeaths.delete(uid);
+        }
+      }
+    }
+  };
+}
+
+function sendNow(local, force = false) {
+  if (!ws || ws.readyState !== 1) return;
+  const now = performance.now();
+  if (!force && now - lastSendMs < 100) return; // 10 Hz max
+  lastSendMs = now;
+  const map = currentMapId();
+  try {
+    if (map !== lastMapSent) {
+      ws.send(JSON.stringify({ t: "map", map }));
+      lastMapSent = map;
+    }
+    ws.send(JSON.stringify({
+      t: "pos",
+      map,
+      x: Math.round(Number(local.x) || 0),
+      y: Math.round(Number(local.y) || 0),
+      angle: Number(local.angle) || 0,
+      shipId: String(local.shipId || ""),
+      pseudo: String(local.pseudo || "Pilote").slice(0, 20),
+      dead: local.dead === true,
+      hpPct: Number.isFinite(Number(local.hpPct)) ? local.hpPct : 1,
+      shPct: Number.isFinite(Number(local.shPct)) ? local.shPct : 1,
+      safe: local.safe === true,
+      hidden: local.hidden === true,
+      atk: local.atk === true,
+      tx: Math.round(Number(local.tx) || 0),
+      ty: Math.round(Number(local.ty) || 0),
+      ammo: String(local.ammo || "x1").slice(0, 16),
+      drones: Math.max(0, Math.min(12, Number(local.drones) || 0)),
+      dform: String(local.dform || "standard").slice(0, 32),
+      fint: Number(local.fint) > 0 ? Number(local.fint) : 0.25,
+      bspd: Number(local.bspd) > 0 ? Number(local.bspd) : 4000,
+      dslots: String(local.dslots || "").slice(0, 256),
+      alt: local.alt === true,
+      shots: Math.max(0, Math.floor(Number(local.shots) || 0)),
+      rank: String(local.rank || "").slice(0, 64),
+      firm: String(local.firm || "").slice(0, 16),
+      dind: String(local.dind || "").slice(0, 256),
+      ficon: String(local.ficon || "").slice(0, 128),
+      mind: String(local.mind || "").slice(0, 128),
+      rseq: Math.max(0, Math.floor(Number(local.rseq) || 0)),
+      rkind: String(local.rkind || "r310").slice(0, 16),
+      rspd: Number(local.rspd) > 0 ? Number(local.rspd) : 1500,
+      hpMax: Math.max(1, Math.round(Number(local.hpMax) || 1)),
+      shMax: Math.max(0, Math.round(Number(local.shMax) || 0)),
+      range: Math.max(200, Math.min(5000, Number(local.range) || 800)),
+      peta: local.peta === 1 ? 1 : 0,
+      petl: Math.max(1, Math.min(32, Math.round(Number(local.petl) || 1))),
+      petx: Math.round(Number(local.petx) || 0),
+      pety: Math.round(Number(local.pety) || 0),
+      petd: Number(local.petd) || 0,
+      petn: String(local.petn || "").slice(0, 32),
+      petf: String(local.petf || "").slice(0, 16),
+    }));
+  } catch {}
+}
+
+// Appele a chaque frame par ORBIT_ENGINE (cout negligeable, envoi throttle 10 Hz).
+export function pushNetplayLocal(local) {
+  if (!local || suspended) return;
+  pendingLocal = local;
+  try {
+    const p = String(local.pseudo || "").slice(0, 20);
+    if (p) myPseudo = p;
+  } catch {}
+  ensureNetplayConnection();
+  sendNow(local);
+  if ((prune._n = (prune._n || 0) + 1) % 60 === 0) prune();
+}
+
+export function getNetplayRemotes() {
+  return remotes;
+}
+
+export function getNetNpcs() {
+  return netNpcs;
+}
+
+export function getNetDeaths() {
+  return netDeaths;
+}
+
+export function getNetBoxes() {
+  return netBoxes;
+}
+
+export function netBoxHost() {
+  if (!connected || !netBoxHostId) return false;
+  return String(netBoxHostId) === String(myId);
+}
+
+export function drainNetBoxInbox() {
+  if (!netBoxInbox.length) return [];
+  return netBoxInbox.splice(0, netBoxInbox.length);
+}
+
+export function drainNetDmgInbox() {
+  if (!netDmgInbox.length) return [];
+  return netDmgInbox.splice(0, netDmgInbox.length);
+}
+
+export function drainNetShotEvents() {
+  if (!netShotInbox.length) return [];
+  return netShotInbox.splice(0, netShotInbox.length);
+}
+
+export function clearNetShots() {
+  netShotInbox.length = 0;
+}
+
+// Evenement de tir exact vers le serveur (retransmis a la room, sans etat).
+export function sendShotEvent(ev) {
+  if (suspended) return;
+  if (!ws || ws.readyState !== 1 || !ev || typeof ev !== "object") return;
+  try {
+    const o = { t: ev.t === "rshot" ? "rshot" : "shot" };
+    if (typeof ev.key === "string") o.key = String(ev.key).slice(0, 16);
+    if (typeof ev.kind === "string") o.kind = String(ev.kind).slice(0, 16);
+    for (const k of ["x", "y", "ang", "tx", "ty", "spd", "arcScale", "arcBoost", "prange"]) {
+      if (Number.isFinite(Number(ev[k]))) o[k] = Number(ev[k]);
+    }
+    if (Number.isFinite(Number(ev.n))) o.n = Math.max(1, Math.min(4, Math.round(Number(ev.n))));
+    if (Number.isFinite(Number(ev.arcDir))) o.arcDir = Number(ev.arcDir) < 0 ? -1 : 1;
+    if (ev.sab === true) o.sab = true;
+    // MISS partage : le 2e ecran affiche MISS comme le tireur (meme cible lockee).
+    if (ev.miss === true) o.miss = true;
+    // Volley du tireur (deduplique l'affichage MISS, namespace par expediteur).
+    if (Number.isFinite(Number(ev.v))) o.v = Math.max(0, Math.floor(Number(ev.v)));
+    ws.send(JSON.stringify(o));
+  } catch {}
+}
+
+export function clearNetBoxes() {
+  netBoxes.clear();
+  netBoxInbox.length = 0;
+  netBoxHostId = null;
+}
+
+// Evenement box vers le serveur (collecte immediate / liste de l'hote).
+export function sendBoxEvent(op) {
+  if (suspended) return;
+  if (!ws || ws.readyState !== 1 || !op || typeof op !== "object") return;
+  try {
+    if (op.op === "collect" && op.uid) {
+      ws.send(JSON.stringify({ t: "box", op: "collect", uid: String(op.uid).slice(0, 64) }));
+    } else if (op.op === "list" && Array.isArray(op.boxes)) {
+      const boxes = op.boxes.slice(0, 200);
+      ws.send(JSON.stringify({ t: "box", op: "list", boxes }));
+    }
+  } catch {}
+}
+
+export function netMyId() {
+  return myId;
+}
+
+// Dernier pseudo envoye au serveur (stable entre deux refresh, contrairement a l'id).
+let myPseudo = "";
+export function netMyPseudo() {
+  return myPseudo;
+}
+
+// NPC serveur sains : connecte + snapshot recent (< 3 s).
+export function netNpcFresh() {
+  if (!connected) return false;
+  try {
+    return performance.now() - lastNpcSnapMs < 3000;
+  } catch { return false; }
+}
+
+// Degats PvP vers le serveur (cible = id joueur distant).
+export function sendPvpHit(hit) {
+  if (suspended) return;
+  if (!ws || ws.readyState !== 1 || !hit || !hit.target) return;
+  try {
+    const h = { t: "pvpHit", target: String(hit.target) };
+    if (hit.kind === "sab") {
+      h.kind = "sab";
+      h.dmg = Math.max(0, Number(hit.dmg) || 0);
+    } else {
+      h.dmg = Math.max(0, Number(hit.dmg) || 0);
+      h.pen = Math.max(0, Math.min(1, Number(hit.pen ?? 0)));
+      if (Number.isFinite(Number(hit.critChance))) h.critChance = Number(hit.critChance);
+      if (Number.isFinite(Number(hit.critMult))) h.critMult = Number(hit.critMult);
+    }
+    if (!(h.dmg > 0) || h.dmg > 1e7) return;
+    ws.send(JSON.stringify(h));
+  } catch {}
+}
+
+// Degats sur NPC partage : le serveur tranche (HP, mort, killer).
+// La prediction locale reste affichee, le snapshot corrige a 10 Hz.
+export function sendNetHit(hit) {
+  if (suspended) return;
+  if (!ws || ws.readyState !== 1 || !hit || !hit.uid) return;
+  try {
+    const h = { t: "hit", uid: String(hit.uid) };
+    if (hit.kind === "sab") {
+      h.kind = "sab";
+      h.dmg = Math.max(0, Number(hit.dmg) || 0);
+    } else {
+      h.dmg = Math.max(0, Number(hit.dmg) || 0);
+      h.pen = Math.max(0, Math.min(1, Number(hit.pen ?? 0)));
+      if (Number.isFinite(Number(hit.critChance))) h.critChance = Number(hit.critChance);
+      if (Number.isFinite(Number(hit.critMult))) h.critMult = Number(hit.critMult);
+      if (Number(hit.weaken) > 0) h.weaken = Number(hit.weaken);
+    }
+    if (!(h.dmg > 0)) return;
+    ws.send(JSON.stringify(h));
+    // Diagnostic multi (console) : hits envoyes par type.
+    try {
+      window.__NETHITS__ = window.__NETHITS__ || { sent: 0, sab: 0, direct: 0, lastDmg: 0, lastUid: "" };
+      window.__NETHITS__.sent++;
+      if (h.kind === "sab") window.__NETHITS__.sab++;
+      else window.__NETHITS__.direct++;
+      window.__NETHITS__.lastDmg = h.dmg;
+      window.__NETHITS__.lastUid = h.uid;
+    } catch {}
+  } catch {}
+}
+
+// Interpolation douce vers la position serveur (appele avant le dessin).
+export function tickNetplayRemotes(dt = 0.016) {
+  const k = Math.max(0, Math.min(1, Number(dt) * 8));
+  for (const r of remotes.values()) {
+    const rx = Number(r.rx ?? r.x), ry = Number(r.ry ?? r.y);
+    r.rx = rx + (Number(r.x) - rx) * k;
+    r.ry = ry + (Number(r.y) - ry) * k;
+    const prx = Number(r.petrx ?? r.petx), pry = Number(r.petry ?? r.pety);
+    r.petrx = prx + (Number(r.petx) - prx) * k;
+    r.petry = pry + (Number(r.pety) - pry) * k;
+  }
+}
+
+// Le rendu des autres joueurs est dans ORBIT_ENGINE (acces aux sprites).
+// Ce module ne fait que le reseau : envoi 10 Hz + snapshots + interpolation.
+
+try {
+  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat };
+  window.__NETPLAY_REMOTES__ = remotes;
+  window.__NETPLAY_NPCS__ = netNpcs;
+  window.__NETPLAY_BOXES__ = netBoxes;
+} catch {}

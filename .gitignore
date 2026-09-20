@@ -22,4 +22,8 @@ TEST/LOGS/
 TEST/AUDITS/
 *.lck
 
+# Serveur multi local (comptes, sessions) : jamais dans git
+SERVER_DATA/
+
+
 

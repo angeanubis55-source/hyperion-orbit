@@ -27,6 +27,7 @@ import {
 } from "../SRC/CORE/ACCOUNT.js";
 
 import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
+import { apiPseudoFree, netActive } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
@@ -1363,9 +1364,20 @@ function renderAccount(u) {
 }
 
 function wireAccountSettingsOnce() {
-  btnSavePseudo?.addEventListener("click", () => {
+  btnSavePseudo?.addEventListener("click", async () => {
     const pseudo = accountPseudo?.value.trim() || "";
     const currentPassword = pseudoCurrentPassword?.value || "";
+    // En ligne : le controle local ne voit que mon compte, on demande au
+    // serveur si le pseudo est libre avant d'appliquer (anti-doublon).
+    try {
+      if (netActive()) {
+        setMsg("Vérification du pseudo…", true);
+        const check = await apiPseudoFree(pseudo);
+        if (check && check.ok && check.free === false) {
+          return setMsg("Ce pseudo est déjà utilisé par un autre pilote.", false);
+        }
+      }
+    } catch {}
     const out = updateCurrentUserPseudo(pseudo, currentPassword);
     if (!out?.ok) return setMsg(out?.error || "Impossible de changer le pseudo.", false);
 

@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "server": "node SCRIPTS/GAME_SERVER.js",
+    "server:multi": "node SCRIPTS/MULTI_SERVER.js",
     "benchmark": "node SCRIPTS/BENCHMARK_SPATIAL.js",
     "assets:manifest": "node SCRIPTS/GENERATE_ASSET_MANIFEST.js",
     "version:sync": "node SCRIPTS/VERSION_SYNC.js",
@@ -13,5 +14,8 @@
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
   }
 }

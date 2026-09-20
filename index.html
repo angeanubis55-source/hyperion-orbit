@@ -734,6 +734,15 @@
       <div id="gameLogResizeHandle" class="gameLogResizeHandle" title="Redimensionner" data-no-drag></div>
     </div>
 
+    <div id="chatWindow" class="panel chatPanel">
+      <div id="chatStatus" class="chatStatus">Connexion…</div>
+      <div id="chatEntries" class="chatEntries"><div class="chatEmpty">Aucun message. Dis bonjour !</div></div>
+      <form id="chatForm" class="chatForm" autocomplete="off">
+        <input id="chatInput" type="text" placeholder="Écris ton message…" maxlength="200" autocomplete="off" />
+        <button id="chatSend" type="submit">Envoyer</button>
+      </form>
+    </div>
+
     <div id="centerMsg" class="panel">
       <h2 id="centerTitle"></h2>
       <p id="centerBody"></p>

@@ -1,6 +1,10 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
+import { bootNetFromCache, netActive, netCurrent, netList, netSetCurrent, netStore } from "./ACCOUNT_NET.js";
+// Multi : session serveur restauree au chargement (token + cache local),
+// puis refresh async via /api/me (revision canonique).
+try { bootNetFromCache(); } catch {}
 import { findCatalogItem, CATALOG } from "./CATALOG.js";
 import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, getShipFamilyId } from "../../SHIP/SHIP_PACKS.js";
 import { normalizeQuestState, QUEST_DEFINITIONS } from "../../QUEST/QUEST_TYPES.js";
@@ -85,6 +89,8 @@ function safeParse(raw, fallback) {
 }
 
 function readUsers() {
+  // Multi : comptes serveur en memoire (push debounce vers /api/save).
+  try { if (netActive()) return netList(); } catch {}
   const raw = localStorage.getItem(USERS_KEY);
   // Cache mémoire : évite un JSON.parse de ~1.6MB à chaque lecture
   // (getCurrentUserFull est appelé à chaque frame de sauvegarde).
@@ -97,6 +103,8 @@ function readUsers() {
 }
 
 function writeUsers(users) {
+  // Multi : memoire + push serveur (memes garde-fous que le legacy).
+  try { if (netActive()) { netStore(Array.isArray(users) ? users : []); return; } } catch {}
   const list = Array.isArray(users) ? users : [];
   // Borne l'historique de roulette avant sérialisation : c'est ce qui
   // faisait gonfler orbit_users à 1.6MB -> 600ms de freeze par save.
@@ -115,6 +123,7 @@ function writeUsers(users) {
 }
 
 function readCurrent() {
+  try { if (netActive()) return netCurrent(); } catch {}
   const cur = safeParse(localStorage.getItem(CUR_KEY), null);
   // Validation schéma minimale : sans id valide, on ignore (save corrompue / manuelle).
   if (!cur || typeof cur !== "object" || Array.isArray(cur)) return null;
@@ -125,8 +134,28 @@ function readCurrent() {
 }
 
 function writeCurrent(cur) {
+  // Multi : nulle = logout (coupe token + session serveur + session locale).
+  // Non nulle en mode net : ignore (la session derive de l'utilisateur).
+  try { netSetCurrent(cur); } catch {}
+  if (netActive()) return;
   if (!cur) localStorage.removeItem(CUR_KEY);
   else localStorage.setItem(CUR_KEY, JSON.stringify(cur));
+}
+
+// Trouve un compte LOCAL pour migration unique vers le serveur (AUTH).
+// Ne touche jamais au mode net : lit localStorage directement.
+export function findLocalUserForMigration(pseudo) {
+  try {
+    const key = String(pseudo ?? "").trim().toLowerCase();
+    if (!key) return null;
+    const raw = localStorage.getItem(USERS_KEY);
+    const arr = safeParse(raw, []);
+    if (!Array.isArray(arr)) return null;
+    const found = arr.find((u) => u && String(u.pseudo ?? "").trim().toLowerCase() === key);
+    return found && typeof found === "object" ? JSON.parse(JSON.stringify(found)) : null;
+  } catch {
+    return null;
+  }
 }
 
 function norm(s) {

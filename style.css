@@ -2535,6 +2535,23 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .gameLogSearch{ min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:10px; color:rgba(180,210,255,.64); font-size:12px; font-weight:800; text-transform:none; }.gameLogSearch input{ min-width:0; width:100%; height:30px; box-sizing:border-box; padding:0 9px; outline:0; border:1px solid rgba(124,240,255,.30); border-radius:7px; color:#effcff; background:#051521; font:900 12px/1 ui-sans-serif,system-ui; }.gameLogSearch input:focus{ border-color:#69e9ff; }
 .gameLogEntries{ height:calc(100% - 116px); overflow-y:auto; display:grid; align-content:start; gap:5px; padding:9px; box-sizing:border-box; }.gameLogEntry{ display:grid; grid-template-columns:126px minmax(0,1fr); gap:9px; padding:7px 8px; border:none; background:none; color:#bcdde5; font-size:10px; font-weight:800; line-height:1.35; }.gameLogEntry time{ color:#5d96a5; font-size:10px; white-space:nowrap; }.gameLogEntry.reward{ color:#f3dda9; }.gameLogEntry.error{ color:#ffc4cb; }.gameLogEmpty{ padding:20px; text-align:center; color:#5c8290; font-size:10px; font-weight:800; }
 .gameLogPagination{ width:100%; height:39px; display:grid; grid-template-columns:minmax(0,82px) minmax(46px,60px) minmax(0,82px); justify-content:center; align-items:center; gap:8px; padding:5px 9px; box-sizing:border-box; overflow:hidden; border-top:1px solid rgba(124,240,255,.14); }.gameLogPagination button{ min-width:0; width:100%; height:27px; padding:0 5px; box-sizing:border-box; overflow:hidden; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); cursor:pointer; font:800 12px/1.2 ui-sans-serif,system-ui; text-transform:none; text-overflow:ellipsis; transition:none; }.gameLogPagination button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }.gameLogPagination button:disabled{ opacity:.35; cursor:default; }.gameLogPagination span{ min-width:0; color:#83bbc8; text-align:center; font:800 12px ui-sans-serif,system-ui; text-transform:uppercase; }
+/* Fenêtre Chat global */
+.chatPanel{ width:380px; min-width:280px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
+.chatStatus{ padding:7px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#75e8ff; font-size:11px; font-weight:800; text-transform:uppercase; }
+.chatStatus.offline{ color:#ff9aa5; }
+.chatEntries{ height:300px; min-height:160px; overflow-y:auto; display:grid; align-content:start; gap:4px; padding:9px 11px; box-sizing:border-box; }
+.chatRow{ color:#bcdde5; font-size:12px; font-weight:600; line-height:1.4; overflow-wrap:anywhere; }
+.chatRow.chatMine .chatFrom{ color:#ffd36b; }
+.chatRow.chatMine .chatText{ color:#effcff; }
+.chatTime{ color:#5d96a5; font-size:11px; }
+.chatFrom{ color:#75e8ff; font-weight:800; }
+.chatSep{ color:#5d96a5; }
+.chatEmpty{ padding:20px; text-align:center; color:#5c8290; font-size:11px; font-weight:800; }
+.chatForm{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; padding:8px 11px; box-sizing:border-box; border-top:1px solid rgba(124,240,255,.14); }
+.chatForm input{ min-width:0; width:100%; height:30px; box-sizing:border-box; padding:0 9px; outline:0; border:1px solid rgba(124,240,255,.30); border-radius:7px; color:#effcff; background:#051521; font:600 12px/1 ui-sans-serif,system-ui; }
+.chatForm input:focus{ border-color:#69e9ff; }
+.chatForm button{ height:30px; padding:0 14px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 12px/1.2 ui-sans-serif,system-ui; }
+.chatForm button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
 .performanceActions{ display:grid; gap:9px; margin-top:14px; }
 .performanceButton{
   width:100%; box-sizing:border-box; min-height:36px; padding:8px 12px; border:1px solid rgba(124,240,255,.28);
