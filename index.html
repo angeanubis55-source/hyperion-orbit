@@ -165,20 +165,20 @@
   </div>
 </div>
 
-<div id="craftingWindow" class="panel craftingWindow assemblyWindow">
-  <div class="craftingLayout assemblyLayout">
-    <div id="craftingRecipes" class="craftingRecipes assemblyLeft"></div>
-    <section id="craftingDetail" class="craftingDetail assemblyDetail"></section>
+<div id="craftingWindow" class="panel assemblyPanel">
+  <div class="assemblyBody">
+    <div class="assemblyStripCard">
+      <div id="craftingRecipes" class="assemblyStrip" role="listbox" aria-label="Recettes"></div>
+    </div>
+    <section id="craftingDetail" class="assemblyDetail" aria-live="polite"></section>
+    <div class="assemblyFooter">
+      <label class="assemblyQty" for="craftingQuantity"><span>Quantité</span>
+        <select id="craftingQuantity"><option value="1">×1</option><option value="5">×5</option><option value="10">×10</option><option value="50">×50</option><option value="100">×100</option></select>
+      </label>
+      <button id="craftingBuildBtn" class="assemblyBuildBtn" type="button">Assembler</button>
+    </div>
+    <div id="craftingMessage" class="assemblyMessage" aria-live="polite"></div>
   </div>
-  <div class="craftingActions assemblyActions">
-    <label for="craftingQuantity">Quantité</label>
-    <select id="craftingQuantity"><option value="1">1</option><option value="5">5</option><option value="10">10</option></select>
-    <button id="craftingBuildBtn" type="button">ASSEMBLER</button>
-  </div>
-  <div id="craftingProgress" class="craftingProgress" hidden>
-    <div><i id="craftingProgressBar"></i></div><strong id="craftingProgressPct">0 %</strong>
-  </div>
-  <div id="craftingMessage" class="craftingMessage" aria-live="polite"></div>
 </div>
 
 <div id="boxMeta" class="panel">

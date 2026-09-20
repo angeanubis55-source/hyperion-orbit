@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.233",
+    "date": "2026-09-20T00:58:38+02:00",
+    "message": "sync version 0.232 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.232",
     "date": "2026-09-20T00:58:19+02:00",
     "message": "slots: clic formation et lance-roquettes ne switch plus d'onglet palette"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.174",
     "date": "2026-09-13T10:44:55+02:00",
     "message": "minerais: 8 ressources + soute cargo 3000 + cargos NPC (lexique FR)"
-  },
-  {
-    "version": "0.173",
-    "date": "2026-09-13T00:15:17+02:00",
-    "message": "version: bump auto 0.172 + patch notes"
   }
 ];

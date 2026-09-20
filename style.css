@@ -168,73 +168,60 @@ html.orbitSessionReady #loadingOverlay{
 #gygerimStatus.gameWindow > .gameWinBar{ margin:0 -11px 8px !important; }
 #gygerimStatus.gameWindow .gygerimTitle{ cursor:default; touch-action:auto; }
 
-#craftingWindow{ display:none; width:860px; max-height:620px; padding:0 12px 10px; pointer-events:auto; }
-#craftingWindow.gameWindow > .gameWinBar{ margin:0 -12px 12px !important; }
-.craftingLayout{ height:440px; min-height:0; display:flex; flex-direction:column; gap:10px; }
-.craftingRecipes{ min-height:0; display:flex; flex-direction:column; gap:8px; overflow:visible; padding-right:2px; }
-.craftingRecipe{ padding:8px; display:flex; align-items:center; gap:10px; border:1px solid rgba(124,240,255,.14); border-left:3px solid var(--rarity,#a9bcc7); color:#dcecf5; background:#061521; text-align:left; cursor:pointer; }
-.craftingRecipe img{ width:42px; height:42px; object-fit:contain; background:#020b12; border:1px solid rgba(124,240,255,.18); flex:none; }
-.craftingRecipe.active{ background:#0a2637; box-shadow:inset 0 0 18px rgba(0,217,255,.12); border-color:rgba(0,217,255,.45); }
-.craftingRecipe.cantAfford img{ filter:grayscale(.6); opacity:.75; }
-.assemblyTop{ display:flex; gap:8px; align-items:stretch; }
-.assemblyStrip{ flex:1; min-width:0; display:flex; gap:8px; overflow-x:auto; padding:8px; border:1px solid rgba(124,240,255,.14); background:#040e16; scrollbar-width:none; -ms-overflow-style:none; }
-.assemblyStrip::-webkit-scrollbar{ display:none; height:0; }
-.assemblyStrip.noScrollbar{ scrollbar-width:none; }
-.assemblySquare{ width:62px; height:62px; flex:none; display:grid; place-items:center; padding:4px; background:#061521; border:2px solid var(--rarity,#a9bcc7); cursor:pointer; }
-.assemblySquare img{ width:50px; height:50px; object-fit:contain; }
-.assemblySquare.active{ background:#0a2c42; box-shadow:0 0 0 2px rgba(0,217,255,.6), inset 0 0 14px rgba(0,217,255,.15); }
-.assemblySquare.cantAfford img{ filter:grayscale(.6); opacity:.75; }
-.assemblySquare.ownedLimit{ opacity:.45; filter:grayscale(1); }
-.assemblyArrow{ width:36px; flex:none; border:1px solid rgba(124,240,255,.3); background:#082436; color:#7df0ff; font-size:15px; cursor:pointer; }
-.assemblyArrow:hover{ background:#0d3a54; }
-.craftingDetail{ flex:1; min-height:0; }
-.assemblyItemMeta{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
-.assemblyItemName{ font-size:12px; font-weight:800; color:#eaf6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.assemblyItemMeta small{ font-size:9px; text-transform:uppercase; letter-spacing:.6px; }
-.assemblyDot{ width:9px; height:9px; border-radius:50%; background:#5a6d78; flex:none; }
-.assemblyDot.ok{ background:#35e07a; box-shadow:0 0 8px rgba(53,224,122,.7); }
-.assemblyHead{ display:flex; gap:14px; align-items:center; margin-bottom:12px; padding:10px; border:1px solid rgba(124,240,255,.14); background:rgba(0,0,0,.22); }
-.assemblyMainIcon{ width:76px; height:76px; object-fit:contain; background:#020b12; border:2px solid var(--rarity,#a9bcc7); padding:4px; flex:none; }
-.craftingRecipe small,.craftingRarity{ color:var(--rarity,#a9bcc7); font-weight:900; }
-.craftingDetail{ min-height:0; padding:14px; overflow-y:auto; border:1px solid rgba(124,240,255,.17); background:linear-gradient(145deg,#071b29,#04111b); }
-.craftingDetail h3{ margin:2px 0 4px; font-size:19px; color:#f0f9ff; }
-.craftingDuration{ display:block; color:#7897a9; font-size:10px; }
-.craftingRarity{ text-transform:uppercase; letter-spacing:1px; font-size:9px; }
-.craftingColumns{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.craftingColumns > div{ padding:12px; border:1px solid rgba(124,240,255,.12); background:rgba(0,0,0,.16); }
-.craftingColumns h4{ margin:0 0 8px; color:#6fdff5; font-size:10px; }
-.craftingColumns ul{ margin:0; padding:0; list-style:none; }
-.craftingColumns li{ display:flex; justify-content:space-between; gap:8px; padding:5px 0; color:#a9bfcd; border-bottom:1px solid rgba(255,255,255,.05); font-size:11px; }
-.craftingColumns li strong{ color:#ffd56a; }
-.craftingColumns li strong.enough{ color:#9deab4; }.craftingColumns li strong.missing{ color:#ff8799; }
-.craftingActions{ display:grid; grid-template-columns:auto 90px 1fr; gap:8px; align-items:center; margin-top:10px; padding:9px; border:1px solid rgba(124,240,255,.14); }
-.craftingActions label{ color:#8eabbc; font-size:10px; font-weight:900; }
-.craftingActions select,.craftingActions button{ height:36px; border:1px solid rgba(124,240,255,.3); color:#eaf8ff; background:#082436; }
-.craftingActions button{ font-weight:1000; letter-spacing:1px; background:linear-gradient(180deg,#0d3a54,#082436); border-color:rgba(0,217,255,.5); cursor:pointer; }
-.craftingActions button:hover:not(:disabled){ background:linear-gradient(180deg,#12547a,#0a3249); }
-.craftingActions button:disabled{ opacity:.38; }
-.assemblyCosts,.assemblyResults{ display:flex; flex-direction:column; gap:6px; }
-.assemblyCostRow,.assemblyResultRow{ display:grid; grid-template-columns:38px 1fr auto; gap:8px; align-items:center; padding:6px; border:1px solid rgba(255,255,255,.06); background:rgba(255,255,255,.02); }
-.assemblyCostRow img,.assemblyResultRow img{ width:36px; height:36px; object-fit:contain; background:#020b12; border:1px solid rgba(124,240,255,.16); }
-.assemblyCostRow.enough{ border-color:rgba(53,224,122,.25); }
-.assemblyCostRow.missing{ border-color:rgba(255,90,120,.35); }
-.assemblyCostRow strong,.assemblyResultRow strong{ font-size:11px; }
+/* ================= Assemblage (atelier) — style moderne cards/boutons ================= */
+#craftingWindow{ display:none; width:min(920px,calc(100vw - 24px)); max-height:min(760px,calc(100vh - 24px)); padding:0; pointer-events:auto; overflow:hidden; }
+#craftingWindow.gameWindow > .gameWinBar{ margin:0 !important; }
+.assemblyPanel{ min-width:min(620px,calc(100vw - 24px)); }
+.assemblyBody{ display:grid; gap:10px; padding:12px; color:#dff7ff; overflow:visible; }
+.assemblyStripCard{ min-width:0; max-width:100%; padding:10px; border:1px solid rgba(124,240,255,.22); border-radius:10px; background:rgba(255,255,255,.03); }
+.assemblyStrip{ display:flex; gap:8px; padding:2px 2px 12px; min-height:60px; overflow-x:scroll; overflow-y:hidden; scrollbar-width:thin; scrollbar-color:rgba(124,240,255,.4) transparent; }
+.assemblyStrip::-webkit-scrollbar{ height:8px; }
+.assemblyStrip::-webkit-scrollbar-thumb{ background:rgba(124,240,255,.35); border-radius:999px; }
+.assemblyStrip::-webkit-scrollbar-track{ background:rgba(0,0,0,.3); border-radius:999px; }
+.assemblyThumb{ flex:none; width:52px; height:52px; display:grid; place-items:center; padding:4px; box-sizing:border-box; border:1px solid rgba(124,240,255,.18); border-radius:8px; background:rgba(0,0,0,.4); cursor:pointer; }
+.assemblyThumb img{ width:100%; height:100%; object-fit:contain; border-radius:6px; pointer-events:none; }
+.assemblyThumb:hover:not(:disabled){ border-color:rgba(124,240,255,.5); }
+.assemblyThumb.active{ border-color:rgba(124,240,255,.65); background:rgba(0,140,185,.25); box-shadow:0 0 16px rgba(0,217,255,.14); }
+.assemblyThumb.cantAfford img{ filter:grayscale(.6); opacity:.75; }
+.assemblyThumb.ownedLimit{ opacity:.55; }
+.assemblyThumb:disabled{ cursor:default; }
+.assemblyEmpty{ padding:26px 14px; text-align:center; border:1px dashed rgba(124,240,255,.22); border-radius:10px; background:rgba(255,255,255,.02); color:#8fcddd; font-size:11px; font-weight:700; display:grid; gap:6px; justify-items:center; }
+.assemblyEmpty b{ color:#eaffff; font-size:12px; }
+.assemblyEmpty code{ color:#ffd36b; font-size:10px; }
+.assemblyDetail{ min-width:0; max-width:100%; min-height:200px; }
+.assemblyDetailCard{ display:grid; gap:10px; min-width:0; max-width:100%; padding:12px; border:1px solid rgba(124,240,255,.22); border-radius:10px; background:rgba(255,255,255,.03); }
+.assemblyDetailHead{ display:grid; grid-template-columns:76px minmax(0,1fr); gap:12px; align-items:center; }
+.assemblyMainIcon{ width:76px; height:76px; object-fit:contain; border-radius:10px; background:rgba(0,0,0,.45); border:1px solid var(--rarity,#a9bcc7); padding:6px; box-sizing:border-box; }
+.assemblyTitleRow{ display:grid; gap:3px; min-width:0; }
+.assemblyRarity{ font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:1px; color:var(--rarity,#a9bcc7); }
+.assemblyDetailHead h3{ margin:0; font-size:17px; font-weight:900; color:#f0f9ff; overflow-wrap:anywhere; }
+
+.assemblyCols{ display:grid; grid-template-columns:1fr 1fr; gap:10px; min-width:0; }
+.assemblySubCard{ border:1px solid rgba(124,240,255,.16); border-radius:8px; padding:10px; background:rgba(255,255,255,.02); display:grid; gap:8px; align-content:start; min-width:0; }
+.assemblySubCard > h4{ margin:0; color:#7cf0ff; font-size:11px; font-weight:900; letter-spacing:.5px; text-transform:uppercase; }
+.assemblySubCard ul{ margin:0; padding:0; list-style:none; display:grid; gap:6px; }
+.assemblyCostRow,.assemblyResultRow{ display:grid; grid-template-columns:36px minmax(0,1fr) auto; gap:8px; align-items:center; padding:6px; border:1px solid rgba(255,255,255,.06); border-radius:8px; background:rgba(255,255,255,.02); }
+.assemblyCostRow img,.assemblyResultRow img{ width:36px; height:36px; object-fit:contain; border-radius:6px; background:rgba(0,0,0,.45); border:1px solid rgba(124,240,255,.16); }
+.assemblyCostRow.enough{ border-color:rgba(53,224,122,.3); }
+.assemblyCostRow.missing{ border-color:rgba(255,90,120,.4); }
+.assemblyCostRow strong{ font-size:11px; font-variant-numeric:tabular-nums; }
 .assemblyCostRow.enough strong{ color:#9deab4; }
 .assemblyCostRow.missing strong{ color:#ff8799; }
-.assemblyResultRow strong{ color:#ffd56a; }
-.assemblyCostMeta{ display:flex; flex-direction:column; gap:4px; min-width:0; }
-.assemblyCostName{ font-size:11px; color:#cfe8f5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.assemblyCostBar{ display:block; height:6px; border-radius:999px; background:#03101a; border:1px solid rgba(124,240,255,.18); overflow:hidden; }
-.assemblyCostBar i{ display:block; height:100%; background:linear-gradient(90deg,#08a9d4,#6eeaff); }
-.assemblyCostRow.missing .assemblyCostBar i{ background:linear-gradient(90deg,#b32040,#ff7a95); }
-.assemblyCreditIcon{ width:36px; height:36px; display:grid; place-items:center; font-weight:1000; color:#ffd56a; background:#020b12; border:1px solid rgba(255,213,106,.35); }
-.craftingMessage{ min-height:15px; padding-top:7px; color:#89a9ba; font-size:10px; text-align:center; }
-.craftingProgress{ grid-template-columns:1fr 48px; gap:9px; align-items:center; margin-top:8px; }
-.craftingProgress:not([hidden]){ display:grid; }
-.craftingProgress > div{ height:9px; overflow:hidden; border:1px solid rgba(124,240,255,.22); border-radius:999px; background:#03101a; }
-.craftingProgress i{ display:block; width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,#08a9d4,#6eeaff); box-shadow:0 0 10px rgba(0,217,255,.45); transition:width .08s linear; }
-.craftingProgress strong{ color:#dff8ff; font-size:10px; text-align:right; }
+.assemblyResultRow strong{ color:#ffd56a; font-size:11px; font-variant-numeric:tabular-nums; }
+.assemblyCostMeta{ display:flex; flex-direction:column; gap:4px; min-width:0; justify-content:center; }
+.assemblyCostName{ font-size:11px; font-weight:700; color:#cfe8f5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.assemblyCreditIcon{ width:36px; height:36px; display:grid; place-items:center; font-weight:1000; border-radius:6px; color:#ffd56a; background:rgba(0,0,0,.45); border:1px solid rgba(255,213,106,.35); }
+.assemblyFooter{ display:grid; grid-template-columns:minmax(110px,140px) minmax(0,1fr); gap:8px; align-items:stretch; min-width:0; max-width:100%; }
+.assemblyQty{ display:flex; align-items:center; gap:8px; min-height:30px; box-sizing:border-box; padding:0 6px 0 12px; border:1px solid rgba(124,240,255,.38); border-radius:8px; background:#051521; color:#eaffff; font-size:12px; font-weight:800; }
+.assemblyQty select{ flex:1; height:100%; min-height:28px; border:none; outline:0; color:#effcff; background:transparent; font:900 12px/1 ui-sans-serif,system-ui; cursor:pointer; }
+.assemblyQty select option{ color:#effcff; background:#071622; }
+.assemblyBuildBtn{ min-height:30px; padding:4px 14px; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.03); font:900 12px/1.2 ui-sans-serif,system-ui; letter-spacing:1px; text-transform:uppercase; cursor:pointer; }
+.assemblyBuildBtn:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
+.assemblyBuildBtn:disabled{ opacity:.38; cursor:default; }
+.assemblyMessage{ min-height:16px; color:#8fcddd; font-size:11px; font-weight:700; text-align:center; }
+.assemblyMessage:empty{ display:none; }
 .rarity-common{ --rarity:#a9bcc7; }.rarity-rare{ --rarity:#45bfff; }.rarity-epic{ --rarity:#ba72ff; }.rarity-legendary{ --rarity:#ffd15c; }
+@media (max-width:760px){ .assemblyCols{ grid-template-columns:1fr; } }
 
 #escortWindow{ display:none; width:330px; padding:0 9px 9px; pointer-events:auto; }
 #escortWindow.gameWindow > .gameWinBar{ margin:0 -9px 9px !important; }

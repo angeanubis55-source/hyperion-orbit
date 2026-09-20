@@ -2634,6 +2634,9 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
   if (Object.keys(recipe.output?.ships || {}).length && quantity !== 1) {
     return { ok: false, error: "Un vaisseau se fabrique un par un." };
   }
+  if (Object.keys(recipe.output?.pet || {}).length && quantity !== 1) {
+    return { ok: false, error: "Un P.E.T se fabrique un par un." };
+  }
   for (const shipId of Object.keys(recipe.output?.ships || {})) {
     if (u.inventory?.ships?.includes(shipId)) return { ok: false, error: "Ce vaisseau est déjà possédé." };
   }
@@ -2644,6 +2647,9 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
   }
   for (const formationId of Object.keys(recipe.output?.formations || {})) {
     if (u.drones.formations.includes(formationId)) return { ok: false, error: "Formation déjà possédée." };
+  }
+  if (Object.keys(recipe.output?.pet || {}).length && u.pet?.owned === true) {
+    return { ok: false, error: "P.E.T déjà possédé." };
   }
   const creditCost = Math.max(0, Number(recipe.costs?.credits || 0)) * quantity;
   if (Number(u.credits || 0) < creditCost) return { ok: false, error: "Crédits insuffisants." };
@@ -2656,10 +2662,53 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
       return { ok: false, error: `Ressource insuffisante : ${resourceId}.` };
     }
   }
+  // Coûts en objets du catalogue (ex : 1x LF-4 de base pour les variantes).
+  // Comme la vente : on ne consomme jamais sous le nombre d'exemplaires équipés.
+  for (const [itemId, unitCost] of Object.entries(recipe.costs?.items || {})) {
+    const required = Math.max(0, Math.floor(Number(unitCost || 0))) * quantity;
+    if (getOwnedCount(u, itemId) < required) {
+      return { ok: false, error: `Objet insuffisant : ${findCatalogItem(itemId)?.name || itemId}.` };
+    }
+    let reserved = 0;
+    for (const h of u.hangars || []) {
+      for (const cfg of ["1", "2"]) {
+        const fit = h.fits?.[cfg] || {};
+        const equipped = [...(fit.lasers || []), ...(fit.gens || []), ...(fit.extras || [])];
+        for (const drone of u.drones.items) equipped.push(...getDroneFit(drone, h.id, cfg).equipment);
+        if (u.pet?.owned === true) {
+          const pet = getPetFit(u.pet, h.id, cfg);
+          for (const group of ["lasers", "generators", "gears", "protocols"]) equipped.push(...pet[group]);
+        }
+        reserved = Math.max(reserved, equipped.filter(id => id === itemId).length);
+      }
+    }
+    if (getOwnedCount(u, itemId) - required < reserved) {
+      return { ok: false, error: "Objet équipé : retire-le et applique les changements avant de l'assembler." };
+    }
+  }
+  // Coûts en disques de log (arbre des compétences pilote).
+  const logDiskCost = Math.max(0, Math.floor(Number(recipe.costs?.logDisks || 0))) * quantity;
+  if (logDiskCost > 0) {
+    u.pilotSkills = normalizePilotSkills(u.pilotSkills);
+    const haveDisks = Math.max(0, Math.floor(Number(u.pilotSkills.disks) || 0));
+    if (haveDisks < logDiskCost) {
+      return { ok: false, error: `Disques de log insuffisants : ${haveDisks} / ${logDiskCost}.` };
+    }
+  }
 
   u.credits -= creditCost;
   for (const [resourceId, unitCost] of Object.entries(recipe.costs?.resources || {})) {
     u.inventory.resources[resourceId] = Math.max(0, Number(u.inventory.resources[resourceId] || 0) - Number(unitCost || 0) * quantity);
+  }
+  for (const [itemId, unitCost] of Object.entries(recipe.costs?.items || {})) {
+    incCount(u, itemId, -Math.max(0, Math.floor(Number(unitCost || 0))) * quantity);
+    if (u.inventory?.counts?.[itemId] <= 0) delete u.inventory.counts[itemId];
+    if (Array.isArray(u.inventory?.modules) && !u.inventory.counts?.[itemId]) {
+      u.inventory.modules = u.inventory.modules.filter((x) => x !== itemId);
+    }
+  }
+  if (logDiskCost > 0) {
+    u.pilotSkills.disks = Math.max(0, Math.floor(Number(u.pilotSkills.disks) || 0) - logDiskCost);
   }
   for (const [resourceId, unitAmount] of Object.entries(recipe.output?.resources || {})) {
     u.inventory.resources[resourceId] = Math.max(0, Number(u.inventory.resources[resourceId] || 0) + Number(unitAmount || 0) * quantity);
@@ -2680,6 +2729,23 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
     for (let index = 0; index < count; index++) u.drones.items.push(createDrone(type, `drone_${uuid()}`));
   }
   for (const formationId of Object.keys(recipe.output?.formations || {})) u.drones.formations.push(formationId);
+  // P.E.T (collection unique, comme l'achat boutique).
+  for (const petCatalogId of Object.keys(recipe.output?.pet || {})) {
+    const petItem = findCatalogItem(petCatalogId);
+    if (!petItem?.pet?.id) continue;
+    incCount(u, petItem.id, 1);
+    const fresh = createPet(String(petItem.pet.id), { faction: u.faction });
+    u.pet ??= {};
+    u.pet.owned = true;
+    u.pet.id = fresh.id;
+    u.pet.pseudo = normalizePetPseudo(fresh.pseudo, PET_DEFAULT_PSEUDO);
+    u.pet.faction = normalizeFactionId(fresh.faction ?? u.faction, normalizeFactionId(u.faction));
+    if (typeof u.pet.exp !== "number") u.pet.exp = 0;
+    if (typeof u.pet.level !== "number") u.pet.level = getPetLevel(u.pet.exp);
+    if (!u.pet.fits) u.pet.fits = fresh.fits;
+    if (!u.pet.fit) u.pet.fit = fresh.fit;
+    if (!u.pet.fitsByHangar) u.pet.fitsByHangar = {};
+  }
   u.ammo ??= defaultAmmo();
   for (const [ammoId, unitAmount] of Object.entries(recipe.output?.ammo || {})) {
     if (ammoId !== "x1") u.ammo[ammoId] = Math.max(0, Number(u.ammo[ammoId] || 0) + Number(unitAmount || 0) * quantity);

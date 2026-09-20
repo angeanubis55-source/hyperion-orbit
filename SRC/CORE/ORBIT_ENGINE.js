@@ -863,9 +863,6 @@ const ui = {
   craftingQuantity: document.getElementById("craftingQuantity"),
   craftingBuildBtn: document.getElementById("craftingBuildBtn"),
   craftingMessage: document.getElementById("craftingMessage"),
-  craftingProgress: document.getElementById("craftingProgress"),
-  craftingProgressBar: document.getElementById("craftingProgressBar"),
-  craftingProgressPct: document.getElementById("craftingProgressPct"),
   refineryWindow: document.getElementById("refineryWindow"),
   refineryStock: document.getElementById("refineryStock"),
   refineryRecipes: document.getElementById("refineryRecipes"),
@@ -7951,7 +7948,7 @@ function registerHudWindows() {
   window.GameWindowManager?.close?.("questOfferWindow");
   reg("galaxyGateWindow", "Galaxy Gates", menuIcon("ggBuilder"), false);
   reg("gameLogWindow", "LOG", menuIcon("log"), false);
-  // Assemblage désactivé (voir CRAFTING_ENABLED) : pas d'icône dock, code conservé.
+  // Assemblage (voir CRAFTING_ENABLED) : icône dock + fenêtre si activé.
   if (CRAFTING_ENABLED) reg("craftingWindow", "Assemblage", menuIcon("assembly"), false);
   else {
     document.getElementById("craftingWindow")?.style.setProperty("display", "none", "important");
@@ -11527,14 +11524,56 @@ function craftingResourceAmount(user, resourceId) {
   return Math.max(0, Number(user?.inventory?.resources?.[resourceId] || 0));
 }
 
-const CRAFTING_DURATION_BY_RARITY = Object.freeze({ common: 2, rare: 5, epic: 10, legendary: 20 });
-let craftingJob = null;
+const CRAFTING_LOGDISK_ICON = "/ASSETS/CPU/LOGFILE_100X100.png";
+
+function craftingItemAmount(user, catalogItemId) {
+  return Math.max(0, Math.floor(Number(user?.inventory?.counts?.[catalogItemId] || 0)));
+}
+
+function craftingLogDiskAmount(user) {
+  return Math.max(0, Math.floor(Number(user?.pilotSkills?.disks || 0)));
+}
+
+// Un craft est faisable : crédits + ressources + objets + disques de log.
+function canAffordCraftingRecipe(user, recipe, quantity = 1) {
+  if (Number(user?.credits || 0) < Number(recipe?.costs?.credits || 0) * quantity) return false;
+  for (const [id, amount] of Object.entries(recipe?.costs?.resources || {})) {
+    if (craftingResourceAmount(user, id) < Number(amount) * quantity) return false;
+  }
+  for (const [id, amount] of Object.entries(recipe?.costs?.items || {})) {
+    if (craftingItemAmount(user, id) < Number(amount) * quantity) return false;
+  }
+  if (craftingLogDiskAmount(user) < Math.max(0, Math.floor(Number(recipe?.costs?.logDisks || 0))) * quantity) return false;
+  return true;
+}
 
 const CRAFTING_FALLBACK_ICON = "/ASSETS/CPU/MICRO_TRANSISTORS_100X100.png";
 
 function craftingAmmoIcon(ammoId) {
   const key = String(ammoId || "").toUpperCase();
   return `/ASSETS/ITEMS/AMMO_${key}.png`;
+}
+
+// Vignette d'un vaisseau (même frame que les enchères).
+function craftingShipIcon(shipId) {
+  try {
+    const pack = getShipPackByIdData(shipId);
+    if (!pack) return CRAFTING_FALLBACK_ICON;
+    const frames = Math.max(1, Number(pack.frames || 1));
+    const base = String(pack.path || "");
+    const absBase = base.startsWith("/") ? base : `/${base}`;
+    return `${absBase}${Number(pack.firstNumber || 1) + (28 % frames)}${pack.ext || ".png"}`;
+  } catch {
+    return CRAFTING_FALLBACK_ICON;
+  }
+}
+
+function craftingShipName(shipId) {
+  try {
+    return getShipPackByIdData(shipId)?.name || String(shipId || "Vaisseau");
+  } catch {
+    return String(shipId || "Vaisseau");
+  }
 }
 
 function craftingItemIcon(catalogItemId) {
@@ -11569,8 +11608,14 @@ function craftingRecipeMainIcon(recipe) {
     const formation = DRONE_FORMATIONS.find(entry => entry.id === formationId);
     if (formation?.icon) return formation.icon;
   }
+  const shipId = Object.keys(out.ships || {})[0];
+  if (shipId) return craftingShipIcon(shipId);
   const itemId = Object.keys(out.items || {})[0] || recipe?.catalogItemId;
   if (itemId) return craftingItemIcon(itemId);
+  const petCatalogId = Object.keys(out.pet || {})[0];
+  if (petCatalogId) {
+    try { return findCatalogItem(petCatalogId)?.icon || CRAFTING_FALLBACK_ICON; } catch { return CRAFTING_FALLBACK_ICON; }
+  }
   return CRAFTING_FALLBACK_ICON;
 }
 
@@ -11588,6 +11633,9 @@ function getCraftingOwnershipBlock(user, recipe, quantity = 1) {
       return `Limite de ${definition?.name || type} atteinte.`;
     }
   }
+  for (const petId of Object.keys(recipe?.output?.pet || {})) {
+    if (user?.pet?.owned === true) return "P.E.T déjà possédé.";
+  }
   return "";
 }
 
@@ -11595,22 +11643,38 @@ function describeCraftingCosts(user, recipe, quantity) {
   const rows = Object.entries(recipe.costs?.resources || {}).map(([id, amount]) => {
     const required = Number(amount) * quantity;
     const owned = craftingResourceAmount(user, id);
-    const pct = required > 0 ? Math.min(100, Math.round((owned / required) * 100)) : 100;
     const ok = owned >= required;
     return `<li class="assemblyCostRow${ok ? " enough" : " missing"}">`
       + `<img src="${escapeHtml(getResourceIcon(id))}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
-      + `<span class="assemblyCostMeta"><span class="assemblyCostName">${escapeHtml(getResourceName(id, required))}</span>`
-      + `<span class="assemblyCostBar"><i style="width:${pct}%"></i></span></span>`
+      + `<span class="assemblyCostMeta"><span class="assemblyCostName">${escapeHtml(getResourceName(id, required))}</span></span>`
       + `<strong>${formatInteger(owned)} / ${formatInteger(required)}</strong></li>`;
   });
+  const itemRows = Object.entries(recipe.costs?.items || {}).map(([id, amount]) => {
+    const required = Number(amount) * quantity;
+    const owned = craftingItemAmount(user, id);
+    const ok = owned >= required;
+    const def = findCatalogItem(id);
+    return `<li class="assemblyCostRow${ok ? " enough" : " missing"}">`
+      + `<img src="${escapeHtml(craftingItemIcon(id))}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
+      + `<span class="assemblyCostMeta"><span class="assemblyCostName">${escapeHtml(def?.name || id)}</span></span>`
+      + `<strong>${formatInteger(owned)} / ${formatInteger(required)}</strong></li>`;
+  });
+  const logDiskRequired = Math.max(0, Math.floor(Number(recipe.costs?.logDisks || 0))) * quantity;
+  const logDiskRows = logDiskRequired > 0 ? (() => {
+    const owned = craftingLogDiskAmount(user);
+    const ok = owned >= logDiskRequired;
+    return [`<li class="assemblyCostRow${ok ? " enough" : " missing"}">`
+      + `<img src="${escapeHtml(CRAFTING_LOGDISK_ICON)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
+      + `<span class="assemblyCostMeta"><span class="assemblyCostName">Disques de log</span></span>`
+      + `<strong>${formatInteger(owned)} / ${formatInteger(logDiskRequired)}</strong></li>`];
+  })() : [];
+  rows.push(...itemRows, ...logDiskRows);
   const creditRequired = Number(recipe.costs?.credits || 0) * quantity;
   const creditOwned = Number(user.credits || 0);
-  const creditPct = creditRequired > 0 ? Math.min(100, Math.round((creditOwned / creditRequired) * 100)) : 100;
   const creditOk = creditOwned >= creditRequired;
   rows.push(`<li class="assemblyCostRow${creditOk ? " enough" : " missing"}">`
     + `<span class="assemblyCreditIcon">¢</span>`
-    + `<span class="assemblyCostMeta"><span class="assemblyCostName">Crédits</span>`
-    + `<span class="assemblyCostBar"><i style="width:${creditPct}%"></i></span></span>`
+    + `<span class="assemblyCostMeta"><span class="assemblyCostName">Crédits</span></span>`
     + `<strong>${formatInteger(creditOwned)} / ${formatInteger(creditRequired)}</strong></li>`);
   return rows.join("");
 }
@@ -11648,11 +11712,18 @@ function describeCraftingOutputs(recipe, quantity) {
     const formation = DRONE_FORMATIONS.find(entry => entry.id === id);
     rows.push(describeCraftingOutputRow(formation?.icon || CRAFTING_FALLBACK_ICON, formation?.name || `Formation ${id}`, Number(amount) * quantity));
   }
+  for (const [id, amount] of Object.entries(out.pet || {})) {
+    const def = findCatalogItem(id);
+    rows.push(describeCraftingOutputRow(def?.icon || CRAFTING_FALLBACK_ICON, def?.name || "P.E.T", Number(amount) * quantity));
+  }
+  for (const [id, amount] of Object.entries(out.ships || {})) {
+    rows.push(describeCraftingOutputRow(craftingShipIcon(id), craftingShipName(id), Number(amount) * quantity));
+  }
   return rows.join("");
 }
 
 function renderCraftingWindow(message = "") {
-  // Assemblage désactivé : on masque la fenêtre, code conservé pour réactivation.
+  // Assemblage coupé (CRAFTING_ENABLED=false) : on masque la fenêtre.
   if (!CRAFTING_ENABLED) {
     document.getElementById("craftingWindow")?.style.setProperty("display", "none", "important");
     window.GameWindowManager?.close?.("craftingWindow");
@@ -11670,98 +11741,84 @@ function renderCraftingWindow(message = "") {
   if (!visibleRecipes.some(entry => entry.id === selectedCraftingRecipeId)) {
     selectedCraftingRecipeId = visibleRecipes[0]?.id || CRAFTING_RECIPES[0]?.id || null;
   }
-  ui.craftingRecipes.innerHTML = `<div class="assemblyTop"><button type="button" class="assemblyArrow" data-assembly-scroll="-1" aria-label="Précédent">◀</button>`
-    + `<div class="assemblyStrip noScrollbar">` + visibleRecipes.map(recipe => {
-    const rarity = ITEM_RARITIES[recipe.rarity] || ITEM_RARITIES.common;
-    const ownershipBlock = getCraftingOwnershipBlock(user, recipe, 1);
-    const icon = craftingRecipeMainIcon(recipe);
-    const affordable = Object.entries(recipe.costs?.resources || {}).every(([id, amount]) => craftingResourceAmount(user, id) >= Number(amount))
-      && Number(user.credits || 0) >= Number(recipe.costs?.credits || 0);
-    return `<button type="button" class="assemblySquare rarity-${rarity.id}${recipe.id === selectedCraftingRecipeId ? " active" : ""}${ownershipBlock ? " ownedLimit" : ""}${affordable && !ownershipBlock ? "" : " cantAfford"}" data-recipe-id="${escapeHtml(recipe.id)}" title="${escapeHtml(ownershipBlock ? `${recipe.name} — ${ownershipBlock}` : recipe.name)}"${craftingJob ? " disabled" : ""}>`
-      + `<img src="${escapeHtml(icon)}" alt="${escapeHtml(recipe.name)}" loading="lazy" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'"></button>`;
-  }).join("") + `</div><button type="button" class="assemblyArrow" data-assembly-scroll="1" aria-label="Suivant">▶</button></div>`;
+  // Bandeau haut : images seules, scroll horizontal.
+  if (!visibleRecipes.length) {
+    ui.craftingRecipes.innerHTML = `<div class="assemblyEmpty"><b>Aucune recette pour le moment</b></div>`;
+  } else {
+    ui.craftingRecipes.innerHTML = visibleRecipes.map(recipe => {
+      const rarity = ITEM_RARITIES[recipe.rarity] || ITEM_RARITIES.common;
+      const ownershipBlock = getCraftingOwnershipBlock(user, recipe, 1);
+      const icon = craftingRecipeMainIcon(recipe);
+      const affordable = canAffordCraftingRecipe(user, recipe, 1);
+      return `<button type="button" role="option" aria-selected="${recipe.id === selectedCraftingRecipeId ? "true" : "false"}" class="assemblyThumb rarity-${rarity.id}${recipe.id === selectedCraftingRecipeId ? " active" : ""}${ownershipBlock ? " ownedLimit" : ""}${affordable && !ownershipBlock ? "" : " cantAfford"}" data-recipe-id="${escapeHtml(recipe.id)}" title="${escapeHtml(recipe.name)}">`
+        + `<img src="${escapeHtml(icon)}" alt="${escapeHtml(recipe.name)}" loading="lazy" draggable="false" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'"></button>`;
+    }).join("");
+  }
   queueMicrotask(() => {
-    const active = ui.craftingRecipes?.querySelector(".assemblySquare.active");
+    const active = ui.craftingRecipes?.querySelector(".assemblyThumb.active");
     active?.scrollIntoView({ block: "nearest", inline: "center" });
   });
-  const recipe = CRAFTING_RECIPES.find(entry => entry.id === selectedCraftingRecipeId) || visibleRecipes[0] || CRAFTING_RECIPES[0];
-  if (!recipe) return;
+  const recipe = CRAFTING_RECIPES.find(entry => entry.id === selectedCraftingRecipeId) || visibleRecipes[0];
+  if (!recipe) {
+    if (ui.craftingDetail) ui.craftingDetail.innerHTML = `<div class="assemblyDetailCard"><div class="assemblyEmpty"><b>En attente de recettes</b><span>Dès qu'une recette existe, son coût et son résultat s'affichent ici.</span></div></div>`;
+    if (ui.craftingBuildBtn) ui.craftingBuildBtn.disabled = true;
+    if (ui.craftingQuantity) ui.craftingQuantity.disabled = true;
+    if (ui.craftingMessage) ui.craftingMessage.textContent = message || "Aucune recette pour le moment.";
+    return;
+  }
   selectedCraftingRecipeId = recipe.id;
   const rarity = ITEM_RARITIES[recipe.rarity] || ITEM_RARITIES.common;
   const costs = describeCraftingCosts(user, recipe, quantity);
   const outputs = describeCraftingOutputs(recipe, quantity);
   const mainIcon = craftingRecipeMainIcon(recipe);
-  const baseDuration = CRAFTING_DURATION_BY_RARITY[rarity.id] || 2;
-  const duration = baseDuration * quantity;
-  ui.craftingDetail.innerHTML = `<div class="assemblyHead">`
-    + `<img class="assemblyMainIcon rarity-${rarity.id}" src="${escapeHtml(mainIcon)}" alt="" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
-    + `<div><div class="craftingRarity rarity-${rarity.id}">${escapeHtml(rarity.name)}</div><h3>${escapeHtml(recipe.name)}</h3>`
-    + `<small class="craftingDuration">Temps d'assemblage : ${duration.toFixed(duration % 1 ? 1 : 0)} s</small></div></div>`
-    + `<div class="craftingColumns assemblyColumns"><div><h4>CO&Ucirc;T</h4><ul class="assemblyCosts">${costs}</ul></div>`
-    + `<div><h4>R&Eacute;SULTAT</h4><ul class="assemblyResults">${outputs}</ul></div></div>`;
-  const canAfford = Number(user.credits || 0) >= Number(recipe.costs?.credits || 0) * quantity
-    && Object.entries(recipe.costs?.resources || {}).every(([id, amount]) => craftingResourceAmount(user, id) >= Number(amount) * quantity);
+  ui.craftingDetail.innerHTML = `<div class="assemblyDetailCard rarity-${rarity.id}">`
+    + `<div class="assemblyDetailHead">`
+    + `<img class="assemblyMainIcon" src="${escapeHtml(mainIcon)}" alt="" loading="lazy" draggable="false" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
+    + `<div class="assemblyTitleRow"><span class="assemblyRarity">${escapeHtml(rarity.name)}</span><h3>${escapeHtml(recipe.name)}</h3></div></div>`
+    + `<div class="assemblyCols"><div class="assemblySubCard"><h4>Coût ×${formatInteger(quantity)}</h4><ul class="assemblyCosts">${costs}</ul></div>`
+    + `<div class="assemblySubCard"><h4>Résultat ×${formatInteger(quantity)}</h4><ul class="assemblyResults">${outputs}</ul></div></div>`
+    + `</div>`;
+  const canAfford = canAffordCraftingRecipe(user, recipe, quantity);
   const ownershipBlock = getCraftingOwnershipBlock(user, recipe, quantity);
-  if (ui.craftingBuildBtn) ui.craftingBuildBtn.disabled = !canAfford || Boolean(craftingJob) || Boolean(ownershipBlock);
-  if (ui.craftingQuantity) ui.craftingQuantity.disabled = Boolean(craftingJob);
-  if (ui.craftingMessage) ui.craftingMessage.textContent = message || (craftingJob ? "Assemblage en cours..." : ownershipBlock || (canAfford ? "Prêt à assembler." : "Ressources insuffisantes."));
+  if (ui.craftingBuildBtn) ui.craftingBuildBtn.disabled = !canAfford || Boolean(ownershipBlock);
+  if (ui.craftingMessage) ui.craftingMessage.textContent = message || ownershipBlock || (!canAfford ? "Ressources insuffisantes." : "");
 }
 
 ui.craftingRecipes?.addEventListener("click", event => {
-  const scrollBtn = event.target.closest("[data-assembly-scroll]");
-  if (scrollBtn) {
-    const strip = ui.craftingRecipes?.querySelector(".assemblyStrip");
-    const dir = Number(scrollBtn.dataset.assemblyScroll || 1);
-    strip?.scrollBy({ left: dir * 320, behavior: "smooth" });
-    return;
-  }
   const button = event.target.closest("[data-recipe-id]");
   if (!button) return;
   selectedCraftingRecipeId = button.dataset.recipeId;
   renderCraftingWindow();
 });
+// Molette sur le bandeau : défile horizontalement (la molette verticale
+// ne scrollerait rien sinon, le bandeau n'ayant pas de scroll vertical).
+ui.craftingRecipes?.addEventListener("wheel", event => {
+  const strip = ui.craftingRecipes;
+  if (!strip || strip.scrollWidth <= strip.clientWidth + 1) return;
+  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  if (!delta) return;
+  event.preventDefault();
+  strip.scrollLeft += delta;
+}, { passive: false });
 ui.craftingQuantity?.addEventListener("change", () => renderCraftingWindow());
 ui.craftingBuildBtn?.addEventListener("click", () => {
   if (!CRAFTING_ENABLED) return renderCraftingWindow("Assemblage désactivé.");
-  if (craftingJob) return;
   const recipe = CRAFTING_RECIPES.find(entry => entry.id === selectedCraftingRecipeId);
   if (!recipe) return;
   const quantity = Math.max(1, Number(ui.craftingQuantity?.value || 1));
   const user = getCurrentUserFull();
   const ownershipBlock = getCraftingOwnershipBlock(user, recipe, quantity);
   if (ownershipBlock) return renderCraftingWindow(ownershipBlock);
-  const canAfford = Number(user?.credits || 0) >= Number(recipe.costs?.credits || 0) * quantity
-    && Object.entries(recipe.costs?.resources || {}).every(([id, amount]) => craftingResourceAmount(user, id) >= Number(amount) * quantity);
+  const canAfford = canAffordCraftingRecipe(user, recipe, quantity);
   if (!canAfford) return renderCraftingWindow("Ressources insuffisantes.");
-  const baseDuration = CRAFTING_DURATION_BY_RARITY[recipe.rarity] || 2;
-  const durationMs = baseDuration * quantity * 1000;
-  craftingJob = { recipe, quantity, startedAt: performance.now(), durationMs };
-  if (ui.craftingProgress) ui.craftingProgress.hidden = false;
-  renderCraftingWindow("Assemblage en cours...");
-  const timer = setInterval(() => {
-    if (!craftingJob) return clearInterval(timer);
-    const progress = clamp((performance.now() - craftingJob.startedAt) / craftingJob.durationMs, 0, 1);
-    const percent = Math.round(progress * 100);
-    if (ui.craftingProgressBar) ui.craftingProgressBar.style.width = `${percent}%`;
-    if (ui.craftingProgressPct) ui.craftingProgressPct.textContent = `${percent} %`;
-    if (progress < 1) return;
-    clearInterval(timer);
-    const completed = craftingJob;
-    craftingJob = null;
-    const result = craftCurrentUserRecipe(completed.recipe.id, completed.quantity);
-    if (!result.ok) {
-      if (ui.craftingProgress) ui.craftingProgress.hidden = true;
-      if (ui.craftingProgressBar) ui.craftingProgressBar.style.width = "0%";
-      return renderCraftingWindow(result.error);
-    }
-    account.user = result.user;
-    syncPlayerFromAccount();
-    window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
-    showNotification(`${result.recipe.name} assemblé`, 2.5, "reward", { goldTerms: [result.recipe.name] });
-    if (ui.craftingProgress) ui.craftingProgress.hidden = true;
-    if (ui.craftingProgressBar) ui.craftingProgressBar.style.width = "0%";
-    renderCraftingWindow(`${result.quantity} assemblage${result.quantity > 1 ? "s" : ""} terminé${result.quantity > 1 ? "s" : ""}.`);
-  }, 80);
+  // Craft instantané : pas de timer, pas de progress bar.
+  const result = craftCurrentUserRecipe(recipe.id, quantity);
+  if (!result.ok) return renderCraftingWindow(result.error);
+  account.user = result.user;
+  syncPlayerFromAccount();
+  window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+  showNotification(`${result.recipe.name} assemblé`, 2.5, "reward", { goldTerms: [result.recipe.name] });
+  renderCraftingWindow();
 });
 
 // ============================================================

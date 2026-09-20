@@ -967,32 +967,57 @@ function buildInventorySections(u) {
     }
   }
 
-  const modules = (u?.inventory?.shipModules || []).map((module, index) => {
+  // Modules strictement identiques (mêmes stats) groupés en un slot ×n.
+  const moduleGroups = new Map();
+  (u?.inventory?.shipModules || []).forEach((module, index) => {
     const compatibleShip = getShipPack(module?.shipId);
     const rarityMeta = moduleRarityMeta(module);
-    return {
+    const key = JSON.stringify({ t: module?.type || "", tier: module?.tier || "", ship: module?.shipId || "", b: module?.bonuses || [] });
+    const existing = moduleGroups.get(key);
+    if (existing) {
+      existing.quantity += 1;
+      return;
+    }
+    moduleGroups.set(key, {
       id: module?.id || `module-${index}`, kind: "module", module,
       name: `${String(module?.type || "module").toUpperCase()} ${String(module?.tier || "").toUpperCase()}`.trim(), quantity: 1,
       detail: (module?.bonuses || []).map((bonus) => `${formatNumber(bonus?.pct || 0)}% ${formatStatLabel(bonus?.stat)}`).join(" · ") || "Module de vaisseau",
       rarityId: rarityMeta.id,
       searchText: `${module?.shipId || ""} ${compatibleShip?.name || ""} ${getShipFamilyName(moduleFamilyId(module))} ${rarityMeta.name}`,
-    };
+    });
   });
+  const modules = [...moduleGroups.values()];
 
-  const ships = (u?.inventory?.ships || []).map((shipId) => {
+  const shipGroups = new Map();
+  for (const shipId of (u?.inventory?.ships || [])) {
+    const key = String(shipId);
+    const existing = shipGroups.get(key);
+    if (existing) {
+      existing.quantity += 1;
+      continue;
+    }
     const pack = getShipPack(shipId);
-    return { id: String(shipId), kind: "ship", name: pack?.name || String(shipId), quantity: 1, detail: "Vaisseau possédé" };
-  });
+    shipGroups.set(key, { id: key, kind: "ship", name: pack?.name || key, quantity: 1, detail: "Vaisseau possédé" });
+  }
+  const ships = [...shipGroups.values()];
 
-  const shipDesigns = (u?.inventory?.shipDesigns || []).map((shipId) => {
+  const shipDesignGroups = new Map();
+  for (const shipId of (u?.inventory?.shipDesigns || [])) {
+    const key = String(shipId);
+    const existing = shipDesignGroups.get(key);
+    if (existing) {
+      existing.quantity += 1;
+      continue;
+    }
     const pack = getShipPack(shipId);
     const baseId = getShipDesignBaseId(shipId) || shipId;
     const baseName = getShipPack(baseId)?.name || baseId;
-    return {
-      id: String(shipId), kind: "shipDesign", name: pack?.name || String(shipId), quantity: 1,
+    shipDesignGroups.set(key, {
+      id: key, kind: "shipDesign", name: pack?.name || key, quantity: 1,
       detail: `Design de ${baseName}`,
-    };
-  });
+    });
+  }
+  const shipDesigns = [...shipDesignGroups.values()];
 
   const drones = (u?.drones?.items || []).map((drone, index) => ({
     id: drone.id || `drone-${index}`,
@@ -1183,7 +1208,7 @@ function renderInventoryMeasured(u) {
   if (!inventoryPager) {
     inventoryPager = document.createElement("nav");
     inventoryPager.className = "inventoryPager";
-    inventoryPager.setAttribute("aria-label", "Pages de l?inventaire");
+    inventoryPager.setAttribute("aria-label", "Pages de l'inventaire");
     inventorySections.before(inventoryPager);
     inventoryPager.addEventListener("click", event => {
       const button = event.target.closest("[data-inventory-page]");
@@ -1193,12 +1218,12 @@ function renderInventoryMeasured(u) {
       inventorySections.scrollTop = 0;
     });
   }
-  inventoryPager.innerHTML = `<button data-inventory-page="-1" ${result.page === 0 ? "disabled" : ""}>Pr?c?dent</button>
-    <span role="status">Page ${result.page + 1} / ${result.pages} ? ${formatNumber(result.total)} emplacements</span>
+  inventoryPager.innerHTML = `<button data-inventory-page="-1" ${result.page === 0 ? "disabled" : ""}>Précédent</button>
+    <span role="status">Page ${result.page + 1} / ${result.pages} – ${formatNumber(result.total)} emplacements</span>
     <button data-inventory-page="1" ${result.page + 1 === result.pages ? "disabled" : ""}>Suivant</button>`;
   inventoryTooltip?.classList.remove("visible");
   inventorySections.innerHTML = slots.length ? slots.map((entry) => {
-      const stacked = entry.stacked !== false && !["module", "ship", "equipment", "drone", "pet", "droneDesign", "droneFormation"].includes(entry.kind);
+      const stacked = entry.stacked !== false && !["drone", "pet", "droneDesign", "droneFormation"].includes(entry.kind);
       const quantity = entry.quantityLabel || inventoryQuantityLabel(entry.quantity);
       const rarity = inventoryEntryRarity(entry);
       entry.rarity = rarity;
