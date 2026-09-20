@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hyperion Orbit — Admin</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; padding: 24px; background: radial-gradient(1200px 800px at 50% -10%, #0a2a3a 0%, #040d14 60%, #020608 100%); color: #cfeef7; font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  h1 { margin: 0 0 4px; font-size: 20px; letter-spacing: .5px; color: #effcff; }
+  .sub { margin: 0 0 18px; color: #5d96a5; font-size: 12px; }
+  .card { max-width: 980px; margin: 0 auto 16px; padding: 16px 18px; border: 1px solid rgba(124,240,255,.22); border-radius: 12px; background: rgba(4,18,28,.75); box-shadow: 0 0 24px rgba(0,217,255,.06); }
+  .card h2 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #75e8ff; }
+  input[type=password], input[type=text] { height: 34px; padding: 0 10px; border: 1px solid rgba(124,240,255,.3); border-radius: 8px; background: #051521; color: #effcff; font-size: 13px; outline: 0; }
+  input:focus { border-color: #69e9ff; }
+  button { height: 34px; padding: 0 16px; border: 1px solid rgba(124,240,255,.38); border-radius: 8px; background: linear-gradient(135deg, rgba(0,145,190,.38), rgba(0,70,100,.34)); color: #eaffff; font-weight: 800; font-size: 13px; cursor: pointer; }
+  button:hover { border-color: rgba(124,240,255,.62); background: rgba(0,140,185,.3); }
+  button.danger { border-color: rgba(255,110,120,.5); background: linear-gradient(135deg, rgba(190,30,40,.4), rgba(100,20,30,.35)); }
+  button.small { height: 26px; padding: 0 10px; font-size: 12px; }
+  button:disabled { opacity: .4; cursor: default; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 6px 8px; color: #5d96a5; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid rgba(124,240,255,.16); }
+  td { padding: 6px 8px; border-bottom: 1px solid rgba(124,240,255,.07); }
+  tr.me td { color: #ffd36b; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11px; font-weight: 800; }
+  .badge.ok { background: rgba(70,210,105,.15); color: #7be495; border: 1px solid rgba(70,210,105,.4); }
+  .badge.guest { background: rgba(255,211,107,.12); color: #ffd36b; border: 1px solid rgba(255,211,107,.4); }
+  .badge.muted { background: rgba(255,110,120,.15); color: #ff9aa5; border: 1px solid rgba(255,110,120,.4); }
+  .badge.dead { background: rgba(120,120,120,.15); color: #999; border: 1px solid rgba(120,120,120,.4); }
+  .row { display: flex; gap: 8px; }
+  .row input { flex: 1; }
+  .msg { min-height: 20px; margin: 8px 0 0; font-size: 13px; }
+  .msg.err { color: #ff9aa5; }
+  .msg.ok { color: #7be495; }
+  #loginBox { max-width: 420px; margin: 8vh auto; }
+  #loginBox .row { margin-top: 10px; }
+  #app { display: none; }
+  .mutedRow { opacity: .55; }
+</style>
+</head>
+<body>
+<div id="loginBox" class="card">
+  <h1>Hyperion Orbit — Admin</h1>
+  <p class="sub">Mot de passe du panneau (ORBIT_ADMIN_PASS ou console serveur).</p>
+  <div class="row"><input id="passInput" type="password" placeholder="Mot de passe admin" autocomplete="off"><button id="loginBtn" type="button">Entrer</button></div>
+  <p id="loginMsg" class="msg"></p>
+</div>
+<div id="app">
+  <div class="card">
+    <h1>Hyperion Orbit — Admin <span id="peerCount" class="badge ok">0</span></h1>
+    <p class="sub">Actualisation auto toutes les 3 s. Ne partage jamais ce mot de passe.</p>
+  </div>
+  <div class="card">
+    <h2>Annonce globale</h2>
+    <div class="row"><input id="bcInput" type="text" placeholder="Message à tous les joueurs…" maxlength="200" autocomplete="off"><button id="bcBtn" type="button">Envoyer</button></div>
+    <p id="bcMsg" class="msg"></p>
+  </div>
+  <div class="card">
+    <h2>Connectés</h2>
+    <table>
+      <thead><tr><th>Pseudo</th><th>Compte</th><th>Map</th><th>Position</th><th>État</th><th>Co</th><th>Actions</th></tr></thead>
+      <tbody id="peerRows"><tr><td colspan="7">Chargement…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+  let token = "";
+  try { token = sessionStorage.getItem("orbit_admin_token") || ""; } catch {}
+  const headers = () => ({ "content-type": "application/json", "x-admin-token": token });
+  async function call(path, opts) {
+    const res = await fetch(path, { ...(opts || {}), headers: headers() });
+    const out = await res.json().catch(() => ({}));
+    if (res.status === 401) { logout(); throw new Error("Mot de passe invalide."); }
+    return out;
+  }
+  function logout() {
+    token = "";
+    try { sessionStorage.removeItem("orbit_admin_token"); } catch {}
+    $("app").style.display = "none";
+    $("loginBox").style.display = "block";
+  }
+  async function login() {
+    token = $("passInput").value.trim();
+    $("loginMsg").textContent = "";
+    $("loginMsg").className = "msg";
+    if (!token) return;
+    try {
+      const out = await call("/api/admin/peers");
+      if (!out || out.ok !== true) throw new Error("Refusé.");
+      try { sessionStorage.setItem("orbit_admin_token", token); } catch {}
+      $("loginBox").style.display = "none";
+      $("app").style.display = "block";
+      refresh();
+    } catch (e) {
+      $("loginMsg").textContent = e?.message || "Erreur.";
+      $("loginMsg").className = "msg err";
+    }
+  }
+  async function refresh() {
+    if (!$("app") || $("app").style.display === "none") return;
+    try {
+      const out = await call("/api/admin/peers");
+      const peers = (out && out.peers) || [];
+      $("peerCount").textContent = String(peers.length);
+      const tb = $("peerRows");
+      tb.innerHTML = "";
+      if (!peers.length) tb.innerHTML = `<tr><td colspan="7">Personne en ligne.</td></tr>`;
+      for (const p of peers) {
+        const tr = document.createElement("tr");
+        if (p.muted) tr.className = "mutedRow";
+        const badges = [(p.authed ? `<span class="badge ok">compte</span>` : `<span class="badge guest">invité</span>`),
+          (p.dead ? ` <span class="badge dead">mort</span>` : ""),
+          (p.muted ? ` <span class="badge muted">muté</span>` : "")].join("");
+        tr.innerHTML = `<td>${esc(p.pseudo)}</td><td>${badges}</td><td>${esc(p.map)}</td>` +
+          `<td>${esc(p.x)}, ${esc(p.y)}</td><td>${esc(p.dead ? "mort" : "en vie")}</td><td>${esc(p.connectedSec)}s</td><td></td>`;
+        const td = tr.lastChild;
+        const kick = document.createElement("button");
+        kick.type = "button"; kick.className = "small danger"; kick.textContent = "Kick";
+        kick.onclick = async () => { if (!confirm(`Kicker ${p.pseudo} ?`)) return; await call("/api/admin/kick", { method: "POST", body: JSON.stringify({ id: p.id }) }); refresh(); };
+        const mute = document.createElement("button");
+        mute.type = "button"; mute.className = "small"; mute.textContent = p.muted ? "Unmute" : "Mute";
+        mute.style.marginLeft = "6px";
+        mute.onclick = async () => { await call("/api/admin/mute", { method: "POST", body: JSON.stringify({ id: p.id, muted: !p.muted }) }); refresh(); };
+        td.appendChild(kick); td.appendChild(mute);
+        tb.appendChild(tr);
+      }
+    } catch {}
+  }
+  async function broadcast() {
+    const text = $("bcInput").value.trim();
+    $("bcMsg").textContent = "";
+    $("bcMsg").className = "msg";
+    if (!text) return;
+    try {
+      const out = await call("/api/admin/broadcast", { method: "POST", body: JSON.stringify({ text }) });
+      if (!out || out.ok !== true) throw new Error("Échec.");
+      $("bcInput").value = "";
+      $("bcMsg").textContent = "Annonce envoyée.";
+      $("bcMsg").className = "msg ok";
+    } catch (e) {
+      $("bcMsg").textContent = e?.message || "Erreur.";
+      $("bcMsg").className = "msg err";
+    }
+  }
+  $("loginBtn").onclick = login;
+  $("passInput").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+  $("bcBtn").onclick = broadcast;
+  $("bcInput").addEventListener("keydown", (e) => { if (e.key === "Enter") broadcast(); });
+  setInterval(refresh, 3000);
+  if (token) login();
+})();
+</script>
+</body>
+</html>

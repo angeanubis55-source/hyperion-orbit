@@ -42,7 +42,7 @@ export function initChatUI() {
     // reconnait aussi par le pseudo (stable).
     const mine = (m.by && m.by === netMyId()) || (m.from && netMyPseudo() && m.from === netMyPseudo());
     const row = document.createElement("div");
-    row.className = mine ? "chatRow chatMine" : "chatRow";
+    row.className = "chatRow" + (mine ? " chatMine" : "") + (m.from === "[ADMIN]" ? " chatAdmin" : "");
     row.innerHTML = `<span class="chatTime">${escapeHtml(fmtTime(m.at))}</span> <span class="chatFrom">${escapeHtml(m.from)}</span><span class="chatSep"> : </span><span class="chatText">${escapeHtml(m.text)}</span>`;
     entries.appendChild(row);
     while (entries.children.length > MAX_SHOWN) entries.removeChild(entries.firstChild);

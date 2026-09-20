@@ -5,6 +5,14 @@
 let ws = null;
 let myId = "";
 let connected = false;
+// Authentifie (token compte envoye au hello) : id stable, pseudo du compte.
+let netAuthed = false;
+export function netIsAuthed() {
+  return netAuthed;
+}
+function netToken() {
+  try { return String(localStorage.getItem("orbit_token") || ""); } catch { return ""; }
+}
 // Instance privee (ex : Galaxy Gates) : ni envoi ni etat partage.
 let suspended = false;
 export function suspendNetplay(v) {
@@ -19,12 +27,16 @@ export function suspendNetplay(v) {
     netBoxInbox.length = 0;
     netDmgInbox.length = 0;
     netShotInbox.length = 0;
+    netPvpKillInbox.length = 0;
+    netPvpLootInbox.length = 0;
+    netPvpLootTakeInbox.length = 0;
     lastNpcSnapMs = 0;
     netBoxHostId = null;
     try { if (ws && ws.readyState === 1) ws.close(); } catch {}
     ws = null;
     connectTried = false;
     connected = false;
+    netAuthed = false;
     netChatInbox.length = 0;
   }
 }
@@ -53,6 +65,42 @@ export function getNetSelf() {
 }
 // Feed degats allies : { uid, by, total } (chiffres sur la cible, sans effet).
 const netDmgInbox = [];
+// Cargo du vaincu PvP : apparition a relayer + collectes a effacer.
+const netPvpLootInbox = [];
+const netPvpLootTakeInbox = [];
+export function drainNetPvpLootInbox() {
+  if (!netPvpLootInbox.length) return [];
+  return netPvpLootInbox.splice(0, netPvpLootInbox.length);
+}
+export function drainNetPvpLootTakeInbox() {
+  if (!netPvpLootTakeInbox.length) return [];
+  return netPvpLootTakeInbox.splice(0, netPvpLootTakeInbox.length);
+}
+export function sendPvpLoot(ev) {
+  if (suspended) return;
+  if (!ws || ws.readyState !== 1 || !ev || typeof ev !== "object") return;
+  try {
+    const x = Math.round(Number(ev.x)), y = Math.round(Number(ev.y));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (typeof ev.uid !== "string" || !ev.uid.startsWith("pvploot_")) return;
+    if (typeof ev.onlyBy !== "string" || !ev.onlyBy) return;
+    ws.send(JSON.stringify({ t: "pvpLoot", uid: ev.uid.slice(0, 64), x, y, onlyBy: String(ev.onlyBy).slice(0, 64) }));
+  } catch {}
+}
+export function sendPvpLootTake(ev) {
+  if (suspended) return;
+  if (!ws || ws.readyState !== 1 || !ev || typeof ev !== "object") return;
+  try {
+    if (typeof ev.uid !== "string" || !ev.uid.startsWith("pvploot_")) return;
+    ws.send(JSON.stringify({ t: "pvpLootTake", uid: ev.uid.slice(0, 64) }));
+  } catch {}
+}
+// Recompenses PvP du serveur : { exp, honneur, mult, victim } a appliquer.
+const netPvpKillInbox = [];
+export function drainNetPvpKillInbox() {
+  if (!netPvpKillInbox.length) return [];
+  return netPvpKillInbox.splice(0, netPvpKillInbox.length);
+}
 // Tirs allies exacts (vrais + faux) : { t:shot/rshot, ... } a jouer aussitot.
 const netShotInbox = [];
 // Chat global : { from, text, at } recus ou rejoues (historique).
@@ -95,7 +143,7 @@ function wsUrl() {
 }
 
 export function netplayStatus() {
-  return { connected, myId, count: remotes.size, boxHost: netBoxHostId, boxCount: netBoxes.size };
+  return { connected, authed: netAuthed, myId, count: remotes.size, boxHost: netBoxHostId, boxCount: netBoxes.size };
 }
 
 function prune() {
@@ -127,12 +175,14 @@ export function ensureNetplayConnection() {
         map: currentMapId(),
         pseudo: pendingLocal?.pseudo || "",
         shipId: pendingLocal?.shipId || "",
+        token: netToken() || undefined,
       }));
       lastMapSent = currentMapId();
     } catch {}
   };
   ws.onclose = () => {
     connected = false;
+    netAuthed = false;
     // Reconnect douce apres 3 s (serveur maison qui redemarre).
     setTimeout(() => {
       connectTried = false;
@@ -147,10 +197,36 @@ export function ensureNetplayConnection() {
     if (!msg || typeof msg !== "object") return;
     if (msg.t === "welcome") {
       myId = String(msg.id || "");
+      if (msg.authed === true) netAuthed = true;
       return;
     }
     if (msg.t === "chatMsg") {
       pushChatMessage(msg);
+      return;
+    }
+    if (msg.t === "pvpLoot" && typeof msg.uid === "string" && msg.uid.startsWith("pvploot_")) {
+      if (netPvpLootInbox.length > 8) netPvpLootInbox.shift();
+      netPvpLootInbox.push({
+        uid: String(msg.uid).slice(0, 64),
+        x: Math.round(Number(msg.x) || 0),
+        y: Math.round(Number(msg.y) || 0),
+        onlyBy: typeof msg.onlyBy === "string" ? String(msg.onlyBy).slice(0, 64) : "",
+      });
+      return;
+    }
+    if (msg.t === "pvpLootTake" && typeof msg.uid === "string" && msg.uid.startsWith("pvploot_")) {
+      if (netPvpLootTakeInbox.length > 16) netPvpLootTakeInbox.shift();
+      netPvpLootTakeInbox.push(String(msg.uid).slice(0, 64));
+      return;
+    }
+    if (msg.t === "pvpKill") {
+      if (netPvpKillInbox.length > 8) netPvpKillInbox.shift();
+      netPvpKillInbox.push({
+        exp: Math.max(0, Math.floor(Number(msg.exp) || 0)),
+        honneur: Math.max(0, Math.floor(Number(msg.honneur) || 0)),
+        mult: Number(msg.mult) > 0 ? Number(msg.mult) : 1,
+        victim: String(msg.victim || "Pilote").slice(0, 20),
+      });
       return;
     }
     if (msg.t === "chatHistory" && Array.isArray(msg.list)) {
@@ -403,6 +479,7 @@ function sendNow(local, force = false) {
       range: Math.max(200, Math.min(5000, Number(local.range) || 800)),
       peta: local.peta === 1 ? 1 : 0,
       petl: Math.max(1, Math.min(32, Math.round(Number(local.petl) || 1))),
+      vmax: Math.max(50, Math.min(5000, Math.round(Number(local.vmax) || 300))),
       petx: Math.round(Number(local.petx) || 0),
       pety: Math.round(Number(local.pety) || 0),
       petd: Number(local.petd) || 0,
@@ -593,7 +670,7 @@ export function tickNetplayRemotes(dt = 0.016) {
 // Ce module ne fait que le reseau : envoi 10 Hz + snapshots + interpolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat };
+  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetPvpKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;

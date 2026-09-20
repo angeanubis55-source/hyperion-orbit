@@ -105,7 +105,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus } from "./NETPLAY.js";
+import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, drainNetPvpKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -140,6 +140,7 @@ import { wireWikiWindow } from "../../UI/UI_WIKI.js";
 import { initSkylabUI, tickSkylabProduction } from "../../UI/UI_SKYLAB.js";
 import { initAuctionUI, renderAuctionWindow, tickAuctionDisplay } from "../../UI/UI_AUCTION.js";
 import { initChatUI } from "../../UI/UI_CHAT.js";
+import { initRankingsUI } from "../../UI/UI_RANKINGS.js";
 import { initPilotSkillsUI, renderPilotSkillsWindow, tickPilotSkillsDisplay } from "../../UI/UI_PILOT_SKILLS.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
 import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
@@ -7951,6 +7952,7 @@ function registerHudWindows() {
   reg("galaxyGateWindow", "Galaxy Gates", menuIcon("ggBuilder"), false);
   reg("gameLogWindow", "LOG", menuIcon("log"), false);
   reg("chatWindow", "Chat", menuIcon("chat"), true);
+  reg("rankingWindow", "Classement", menuIcon("highscoregate"), false);
   // Assemblage (voir CRAFTING_ENABLED) : icône dock + fenêtre si activé.
   if (CRAFTING_ENABLED) reg("craftingWindow", "Assemblage", menuIcon("assembly"), false);
   else {
@@ -7974,6 +7976,7 @@ function registerHudWindows() {
 wireSettingsWindow();
 wireWikiWindow();
 initChatUI();
+initRankingsUI();
 initSkylabUI({
   getUser: () => account.user,
   afterAction: () => {
@@ -20731,6 +20734,10 @@ function takeCollectableInstance(c, opts = {}) {
   if (!opts.fromNet && c.slotUid && netplayNpcActive()) {
     try { if (netBoxHost()) sendBoxEvent({ op: "collect", uid: String(c.slotUid) }); } catch {}
   }
+  // Multi : cargo du vaincu ramasse -> les autres effacent leur copie.
+  if (!opts.fromNet && typeof c.id === "string" && c.id.startsWith("pvploot_")) {
+    try { sendPvpLootTake({ uid: String(c.id).slice(0, 64) }); } catch {}
+  }
 }
 
 function rollValue(v, fallback = 0) {
@@ -20828,7 +20835,7 @@ function spawnCollectableAt(type, x, y, opts = {}) {
   const despawnAfter = Math.max(0, Number(opts.despawnAfter || 0));
 
   const instance = {
-    id: newId(),
+    id: opts.uid != null ? String(opts.uid).slice(0, 64) : newId(),
     type,
     map: currentMapId(),
 
@@ -20846,6 +20853,9 @@ function spawnCollectableAt(type, x, y, opts = {}) {
 
     // ✅ contenu minerai impose (epave du joueur : 1 prometium)
     oreRemainder: opts.oreRemainder || null,
+
+    // ✅ reserve au tueur (cargo du vaincu PvP : id reseau du killer, memoire uniquement)
+    onlyBy: opts.onlyBy != null ? String(opts.onlyBy) : null,
 
     // ✅ recompense de base remplacee (epave du joueur : rien d'autre)
     rewardOverride: opts.rewardOverride || null,
@@ -20928,6 +20938,17 @@ function updateCollectableCursor(sx, sy) {
 function applyCollectableReward(c) {
   const cfg = COLLECTABLE_DEFS[c.type];
   if (!cfg) return;
+  // Cargo du vaincu PvP : seul le tueur peut ramasser (les autres le voient).
+  try {
+    if (c.onlyBy && String(c.onlyBy) !== String(netMyId())) {
+      const nowMs = Date.now();
+      if (nowMs - Number(applyCollectableReward._duelToast || 0) > 4000) {
+        applyCollectableReward._duelToast = nowMs;
+        showToast("Ce cargo appartient au vainqueur du duel.", 1.6);
+      }
+      return { kept: true };
+    }
+  } catch {}
 
   const reward = c.rewardOverride || pickExclusiveCollectableReward(cfg.exclusiveRewards) || cfg.reward || cfg.rewards || {};
   const parts = [];
@@ -24560,7 +24581,20 @@ function syncNetPlayers() {
   const seen = new Set();
   if (remotes && netplayNpcActive()) {
     for (const [rid, r] of remotes) {
-      if (!r || r.dead) continue;
+      if (!r) continue;
+      // Mort d'un joueur distant : explosion comme les NPC (une fois),
+      // puis purge du proxy. Disparition sans mort (deco/changement
+      // de map) : suppression silencieuse, sans explosion.
+      if (r.dead) {
+        const gone = netPlayerProxies.get(rid);
+        if (gone && !gone._netDeadBoom) {
+          gone._netDeadBoom = true;
+          try { spawnExplosion(Number(r.rx ?? r.x) || gone.x, Number(r.ry ?? r.y) || gone.y, 1.0); } catch {}
+          try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
+          try { if (Target.get() === gone) Target.clear(); } catch {}
+        }
+        continue;
+      }
       seen.add(rid);
       let e = netPlayerProxies.get(rid);
       if (!e) {
@@ -24803,6 +24837,45 @@ function syncNetNpcs(dt) {
       }
       if (!e) continue;
       queueVolleyFloat(e, { total: f.total, sh: 0, hp: f.total, rawDamage: f.total }, `netdmg${(Math.random() * 1e9) | 0}`, 1, VOLLEY_FLOAT_TIMEOUT);
+    }
+  } catch {}
+  // Recompenses PvP (serveur) : xp + honneur du kill, tueur uniquement.
+  try {
+    const kills = drainNetPvpKillInbox();
+    for (const k of kills) {
+      const gainedXp = awardExperience(Math.max(0, k.exp || 0), "pvp")?.gained ?? 0;
+      const gainedHo = awardHonor(Math.max(0, k.honneur || 0))?.gained ?? 0;
+      try {
+        if (account.user) {
+          account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
+          account.user.stats.lifetimeKills = Math.max(0, Number(account.user.stats.lifetimeKills || 0)) + 1;
+          markProgressDirty();
+        }
+      } catch {}
+      const farmed = Number(k.mult) > 0 && Number(k.mult) < 1 ? " (rendement réduit : même victime)" : "";
+      showToast(`Vaisseau de ${k.victim} détruit : +${formatInteger(gainedHo)} honneur, +${formatInteger(gainedXp)} XP${farmed}`, 3.2);
+    }
+  } catch {}
+  // Cargo du vaincu : copies sur les autres ecrans + effacement au ramassage.
+  try {
+    for (const L of drainNetPvpLootInbox()) {
+      if (!L || !L.uid || !L.onlyBy) continue;
+      if (collectables.some((c) => c && c.id === L.uid)) continue;
+      spawnCollectableAt("Cargo_Box", Number(L.x) || 0, Number(L.y) || 0, {
+        armed: false,
+        fromNpc: null,
+        despawnAfter: 30,
+        rewardOverride: { resources: {} },
+        oreRemainder: { prometium: 1, endurium: 1, terbium: 1, prometid: 1, duranium: 1, promerium: 1, seprom: 1 },
+        onlyBy: String(L.onlyBy),
+        uid: String(L.uid),
+      });
+    }
+    for (const uid of drainNetPvpLootTakeInbox()) {
+      const i = collectables.findIndex((c) => c && c.id === uid);
+      if (i < 0) continue;
+      try { takeCollectableInstance(collectables[i], { fromNet: true }); } catch {}
+      collectables.splice(i, 1);
     }
   } catch {}
   try {
@@ -25400,14 +25473,37 @@ function die() {
   // ✅ explosion facon NPC sur le joueur.
   spawnExplosion(player.x, player.y, 1.0);
 
-  // ✅ epave du joueur : cargo box de 1 prometium a l'endroit de la mort.
-  spawnCollectableAt("Cargo_Box", player.x, player.y, {
-    armed: false,
-    fromNpc: null,
-    despawnAfter: 300,
-    rewardOverride: { resources: {} },
-    oreRemainder: { prometium: 1 },
-  });
+  // ✅ epave du joueur : cargo box a l'endroit de la mort.
+  // Mort PvP : le cargo du vaincu (1x chaque minerai de base, sans osmium),
+  // ramassable par le tueur uniquement. Sinon : 1 prometium pour tous.
+  let wreckOres = { prometium: 1 };
+  let wreckOnlyBy = null;
+  let wreckUid = null;
+  try {
+    const self = getNetSelf();
+    if (self && self.pvpFrom && Date.now() - Number(self.pvpAt || 0) < 8000) {
+      wreckOres = { prometium: 1, endurium: 1, terbium: 1, prometid: 1, duranium: 1, promerium: 1, seprom: 1 };
+      wreckOnlyBy = String(self.pvpFrom);
+      wreckUid = `pvploot_${Date.now().toString(36)}${((Math.random() * 1e6) | 0).toString(36)}`;
+    }
+  } catch {}
+  if (wreckOnlyBy && wreckUid) {
+    // Mort PvP : annonce aux autres (tueur + temoins), mais pas de copie
+    // locale — la victime ne voit pas le butin du tueur.
+    try {
+      sendPvpLoot({ uid: wreckUid, x: Math.round(player.x), y: Math.round(player.y), onlyBy: wreckOnlyBy });
+    } catch {}
+  } else {
+    spawnCollectableAt("Cargo_Box", player.x, player.y, {
+      armed: false,
+      fromNpc: null,
+      despawnAfter: 30,
+      rewardOverride: { resources: {} },
+      oreRemainder: wreckOres,
+      onlyBy: wreckOnlyBy,
+      uid: wreckUid,
+    });
+  }
 
   const defeatedGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
   if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[defeatedGateId]) {
@@ -32008,7 +32104,8 @@ function frame(t) {
         hpMax: Math.max(1, Math.round(Number(player.hpMax) || 1)),
         shMax: Math.max(0, Math.round(Number(player.shMax) || 0)),
         range: Math.max(200, Math.min(5000, Math.round(Number(playerRange) || 800))),
-        peta: petA, petl: petL, petx: petX, pety: petY, petd: petD, petn: petN, petf: petF,
+        peta: petA, petl: petL, petx: petX, petY: petY, petd: petD, petn: petN, petf: petF,
+        vmax: (function () { try { return Math.max(50, Math.round(Number(getSpeedBreakdown()?.total) || Number(player.baseSpeed) || 300)); } catch { return 300; } })(),
       });
     } catch {}
     // Multi : projectiles visuels des allies (memes sprites, zero degat).

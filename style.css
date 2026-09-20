@@ -2543,6 +2543,8 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .chatRow{ color:#bcdde5; font-size:12px; font-weight:600; line-height:1.4; overflow-wrap:anywhere; }
 .chatRow.chatMine .chatFrom{ color:#ffd36b; }
 .chatRow.chatMine .chatText{ color:#effcff; }
+.chatRow.chatAdmin .chatFrom{ color:#ff7b8a; }
+.chatRow.chatAdmin .chatText{ color:#ffe9ec; font-weight:700; }
 .chatTime{ color:#5d96a5; font-size:11px; }
 .chatFrom{ color:#75e8ff; font-weight:800; }
 .chatSep{ color:#5d96a5; }
@@ -2552,6 +2554,22 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .chatForm input:focus{ border-color:#69e9ff; }
 .chatForm button{ height:30px; padding:0 14px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 12px/1.2 ui-sans-serif,system-ui; }
 .chatForm button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
+/* Fenêtre Classement PvP */
+.rankingPanel{ width:560px; min-width:420px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
+.rankingStatus{ padding:7px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#75e8ff; font-size:11px; font-weight:800; text-transform:uppercase; }
+.rankingHead,.rankingRow{ display:grid; grid-template-columns:34px 40px minmax(0,1fr) 52px 70px 70px 64px; gap:6px; align-items:center; padding:5px 11px; box-sizing:border-box; }
+.rankingHead{ color:#5d96a5; font-size:11px; font-weight:800; text-transform:uppercase; border-bottom:1px solid rgba(124,240,255,.16); }
+.rankingRows{ height:320px; min-height:160px; overflow-y:auto; display:grid; align-content:start; box-sizing:border-box; padding:4px 0; }
+.rankingRow{ color:#bcdde5; font-size:12px; font-weight:600; }
+.rankingRow:nth-child(even){ background:rgba(124,240,255,.04); }
+.rankingRow.rankingMe{ background:rgba(255,211,107,.10); }
+.rankingRow.rankingMe .rankingName{ color:#ffd36b; font-weight:800; }
+.rankingPos{ color:#5d96a5; font-weight:800; }
+.rankingGrade{ width:28px; height:28px; object-fit:contain; }
+.rankingName{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#effcff; font-weight:700; }
+.rankingNum{ text-align:right; font-variant-numeric:tabular-nums; }
+.rankingPts{ text-align:right; color:#ffd36b; font-weight:800; font-variant-numeric:tabular-nums; }
+.rankingEmpty{ padding:20px; text-align:center; color:#5c8290; font-size:11px; font-weight:800; }
 .performanceActions{ display:grid; gap:9px; margin-top:14px; }
 .performanceButton{
   width:100%; box-sizing:border-box; min-height:36px; padding:8px 12px; border:1px solid rgba(124,240,255,.28);

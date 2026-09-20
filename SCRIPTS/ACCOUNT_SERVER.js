@@ -92,6 +92,13 @@ export function initAccountDb() {
       expires_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE TABLE IF NOT EXISTS pvp_stats (
+      user_id TEXT PRIMARY KEY,
+      kills INTEGER NOT NULL DEFAULT 0,
+      xp INTEGER NOT NULL DEFAULT 0,
+      honneur INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL DEFAULT 0
+    );
   `);
   // Menage des sessions expirees (toutes les heures).
   const purge = () => {
@@ -143,6 +150,40 @@ function newSession(userId) {
   db.prepare("INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
     .run(token, userId, now, now + TOKEN_TTL_MS);
   return token;
+}
+
+// PvP : stats persistantes du tueur (classement). Retourne la ligne ou null.
+export function recordPvpKill(accountId, exp, honneur) {
+  try {
+    initAccountDb();
+    const uid = String(accountId || "");
+    if (!uid) return null;
+    const exists = db.prepare("SELECT 1 FROM users WHERE id = ?").get(uid);
+    if (!exists) return null;
+    const e = Math.max(0, Math.floor(Number(exp) || 0));
+    const h = Math.max(0, Math.floor(Number(honneur) || 0));
+    db.prepare("INSERT INTO pvp_stats (user_id, kills, xp, honneur, updated_at) VALUES (?, 1, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET kills = kills + 1, xp = xp + excluded.xp, honneur = honneur + excluded.honneur, updated_at = excluded.updated_at")
+      .run(uid, e, h, Date.now());
+    return db.prepare("SELECT kills, xp, honneur FROM pvp_stats WHERE user_id = ?").get(uid);
+  } catch { return null; }
+}
+
+// WS multi : verifie un token de compte hors HTTP (hello).
+// Retourne { id, pseudo } ou null (invite / token mort).
+export function verifyWsToken(token) {
+  try {
+    const t = String(token || "").slice(0, 128);
+    if (!t) return null;
+    initAccountDb();
+    const s = db.prepare("SELECT user_id, expires_at FROM sessions WHERE token = ?").get(t);
+    if (!s || Number(s.expires_at) < Date.now()) {
+      if (s) { try { db.prepare("DELETE FROM sessions WHERE token = ?").run(t); } catch {} }
+      return null;
+    }
+    const u = db.prepare("SELECT id, pseudo FROM users WHERE id = ?").get(s.user_id);
+    if (!u) return null;
+    return { id: String(u.id), pseudo: String(u.pseudo || "Pilote").slice(0, 20) };
+  } catch { return null; }
 }
 
 function json(res, code, obj) {
@@ -341,6 +382,36 @@ export function handleAccountApi(req, res) {
     const me = authUser(req);
     if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
     return json(res, 200, { ok: true, user: rowToPublic(me) });
+  }
+  if (pathname === "/api/rankings" && req.method === "GET") {
+    // Classement PvP public : grade + pseudo + kills + xp + honneur + points.
+    // Points comme le grade (xp/1e5 + honneur/100), +10 par kill.
+    try {
+      if (rateLimited(`${ip}:/api/rankings`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+      const rows = db.prepare("SELECT s.user_id, s.kills, s.xp, s.honneur, u.pseudo, u.data FROM pvp_stats s JOIN users u ON u.id = s.user_id ORDER BY s.kills DESC LIMIT 200").all();
+      const list = [];
+      for (const r of rows) {
+        const kills = Math.max(0, Math.floor(Number(r.kills) || 0));
+        const xp = Math.max(0, Math.floor(Number(r.xp) || 0));
+        const honneur = Math.max(0, Math.floor(Number(r.honneur) || 0));
+        let rankPoints = 0, honor = 0;
+        try {
+          const data = JSON.parse(r.data || "{}");
+          rankPoints = Math.max(0, Math.floor(Number(data?.stats?.rankPoints) || 0));
+          honor = Math.max(0, Math.floor(Number(data?.stats?.honor) || 0));
+        } catch {}
+        list.push({
+          pseudo: String(r.pseudo || "Pilote").slice(0, 20),
+          kills, xp, honneur,
+          points: kills * 10 + Math.floor(xp / 100000 + honneur / 100),
+          rankPoints, honor,
+        });
+      }
+      list.sort((a, b) => b.points - a.points || b.kills - a.kills);
+      return json(res, 200, { ok: true, list: list.slice(0, 100) });
+    } catch {
+      return json(res, 500, { ok: false, error: "Erreur serveur." });
+    }
   }
   if (pathname === "/api/pseudo-free" && req.method === "GET") {
     // Disponibilite d'un pseudo (renommage) : hors soi, insensible a la casse.

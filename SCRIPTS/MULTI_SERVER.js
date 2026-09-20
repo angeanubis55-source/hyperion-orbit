@@ -1,14 +1,102 @@
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
+import { randomBytes } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, verifyWsToken, recordPvpKill } from "./ACCOUNT_SERVER.js";
 
 const root = resolve(process.cwd());
 const portArg = process.argv.find((arg) => arg.startsWith("--port="))?.slice(7);
 const PORT = Number(portArg || process.env.PORT || 8080) || 8080;
+
+// --- Panneau admin (/admin.html) : mot de passe via ORBIT_ADMIN_PASS,
+// sinon genere aleatoirement et affiche dans la console (jamais dans git).
+const ADMIN_PASS = String(process.env.ORBIT_ADMIN_PASS || "").trim() || `admin_${randomBytes(8).toString("hex")}`;
+const chatMutes = new Set(); // ids prives de chat (persistants, ids stables)
+function adminAuthed(request) {
+  const tok = String(request.headers?.["x-admin-token"] || "").trim();
+  return tok !== "" && tok.length <= 256 && tok === ADMIN_PASS;
+}
+function adminJson(response, code, obj) {
+  response.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  response.end(JSON.stringify(obj));
+}
+function readJsonBody(request) {
+  return new Promise((resolve) => {
+    let size = 0;
+    const chunks = [];
+    request.on("data", (c) => {
+      size += c.length;
+      if (size > 100_000) { resolve(null); try { request.destroy(); } catch {} return; }
+      chunks.push(c);
+    });
+    request.on("end", () => {
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); }
+      catch { resolve(null); }
+    });
+    request.on("error", () => resolve(null));
+  });
+}
+function handleAdminApi(request, response, pathname) {
+  if (!pathname.startsWith("/api/admin/")) return false;
+  if (!adminAuthed(request)) { adminJson(response, 401, { ok: false, error: "Non autorise." }); return true; }
+  const now = Date.now();
+  if (pathname === "/api/admin/peers" && request.method === "GET") {
+    const peers = [];
+    for (const [map, room] of rooms) {
+      for (const [pid, entry] of room) {
+        const s = entry?.state || {};
+        peers.push({
+          id: String(pid), pseudo: String(s.pseudo || "Pilote").slice(0, 20),
+          authed: String(pid).startsWith("u_"), map,
+          x: Math.round(Number(s.x) || 0), y: Math.round(Number(s.y) || 0),
+          dead: s.dead === true, muted: chatMutes.has(String(pid)),
+          connectedSec: Math.max(0, Math.round((now - Number(s.connectedAt || now)) / 1000)),
+        });
+      }
+    }
+    adminJson(response, 200, { ok: true, peers, count: peers.length });
+    return true;
+  }
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute") && request.method === "POST") {
+    readJsonBody(request).then((body) => {
+      try {
+        if (pathname === "/api/admin/broadcast") {
+          const text = String(body?.text || "").replace(/\s+/g, " ").trim().slice(0, 200);
+          if (!text) { adminJson(response, 400, { ok: false, error: "Message vide." }); return; }
+          const entry = { from: "[ADMIN]", text, at: Date.now(), by: "admin" };
+          chatHistory.push(entry);
+          if (chatHistory.length > 40) chatHistory.splice(0, chatHistory.length - 40);
+          broadcastAll(JSON.stringify({ t: "chatMsg", ...entry }));
+          adminJson(response, 200, { ok: true });
+          return;
+        }
+        const pid = String(body?.id || "");
+        if (!pid) { adminJson(response, 400, { ok: false, error: "Id manquant." }); return; }
+        if (pathname === "/api/admin/kick") {
+          let found = false;
+          for (const room of rooms.values()) {
+            const entry = room.get(pid);
+            if (entry && entry.ws) { found = true; try { entry.ws.close(); } catch {} }
+          }
+          adminJson(response, 200, { ok: !!found });
+          return;
+        }
+        // mute
+        if (body?.muted === false) chatMutes.delete(pid);
+        else chatMutes.add(pid);
+        adminJson(response, 200, { ok: true, muted: chatMutes.has(pid) });
+      } catch {
+        adminJson(response, 500, { ok: false, error: "Erreur serveur." });
+      }
+    });
+    return true;
+  }
+  adminJson(response, 404, { ok: false, error: "Inconnu." });
+  return true;
+}
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -34,6 +122,16 @@ const server = createServer(async (request, response) => {
   try {
     // Laisse passer les upgrades WS vers le WebSocketServer (noServer)
     if (request.headers.upgrade) return;
+    // Panneau admin : /api/admin/* (token ORBIT_ADMIN_PASS, avant /api/*).
+    try {
+      const adminPath = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
+      if (handleAdminApi(request, response, adminPath)) return;
+    } catch (e) {
+      console.error("[admin]", e?.message || e);
+      response.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ ok: false, error: "Erreur serveur." }));
+      return;
+    }
     // Comptes serveur : /api/* (register, login, me, save, logout, ping).
     try {
       if (handleAccountApi(request, response)) return;
@@ -79,6 +177,7 @@ const rooms = new Map(); // mapId(lower) -> Map(id -> { ws, state })
 const npcSims = new Map(); // mapId(lower) -> ZoneNpcSim | null | Promise
 const boxRooms = new Map(); // mapId(lower) -> Map(uid -> { type, x, y, by })
 const pvpFeeds = new Map(); // mapId(lower) -> Map("victime|attaquant" -> { uid, by, total })
+const pvpFarm = new Map(); // anti-farm : "tueur|victime" -> { n, t0 } (rendement decroissant 60 min)
 const chatHistory = []; // global : [{ from, text, at }] (40 derniers)
 const chatLastById = new Map(); // anti-spam : id -> timestamp dernier message
 const hitStats = { count: 0, byMap: new Map() }; // diagnostic multi
@@ -178,13 +277,17 @@ server.on("upgrade", (request, socket, head) => {
 });
 
 wss.on("connection", (ws) => {
-  const id = `p${nextId++}`;
+  // Invite par defaut ; le hello authentifie (token compte) et fige
+  // l'identite stable `u_<accountId>` (meme id apres refresh/restart).
+  let id = `p${nextId++}`;
+  let authed = false;
+  let accountId = null;
   let mapId = "1-1";
-  let state = { id, pseudo: "Pilote", shipId: "", x: 0, y: 0, angle: 0, dead: false, hpPct: 1, shPct: 1, atk: false, tx: 0, ty: 0, updatedAt: Date.now(),
+  let state = { id, pseudo: "Pilote", shipId: "", x: 0, y: 0, angle: 0, dead: false, hpPct: 1, shPct: 1, atk: false, tx: 0, ty: 0, updatedAt: Date.now(), connectedAt: Date.now(),
     // PvP : PV autoritaires (init depuis la fiche vaisseau, sinon 1/1).
     hpMax: 1, shMax: 0, hp: 1, sh: 0, range: 800, pvpAt: 0, pvpFrom: null, pvpWin: 0, pvpWinT: 0 };
   roomFor(mapId).set(id, { ws, state });
-  ws.send(JSON.stringify({ t: "welcome", id }));
+  ws.send(JSON.stringify({ t: "welcome", id, authed: false }));
 
   ws.on("message", (raw) => {
     let msg = null;
@@ -250,8 +353,12 @@ wss.on("connection", (ws) => {
         const dmg = Number(msg.dmg);
         if (!Number.isFinite(dmg) || dmg <= 0 || dmg > 1e7) return;
         if (foe.state.dead) return;
+        // Deja tue (pos de mort pas encore arrivee) : pas de double kill.
+        if (foe.state.pvpDead === true) return;
+        let wasAlive = Number(foe.state.hp) > 0;
         // Revive rate (reparation entre le pos et le tir) : rebase d'abord.
         if (!(Number(foe.state.hp) > 0)) {
+          wasAlive = true; // le client est vivant : le kill compte si ce coup tue.
           const hm = Math.max(1, Number(foe.state.hpMax) || 1);
           const sm = Math.max(0, Number(foe.state.shMax) || 0);
           foe.state.hp = Math.max(0, Math.min(hm, hm * Math.max(0, Math.min(1, Number(foe.state.hpPct ?? 1)))));
@@ -286,11 +393,55 @@ wss.on("connection", (ws) => {
         // Dernier attaquant : affichage de l'anneau de degats (Ship_damage)
         // sur les autres ecrans (victime + observateurs).
         foe.state.pvpFrom = id;
+        // Kill PvP : la cible passe sous 0 PV sur ce coup (etait en vie).
+        try {
+          if (Number(foe.state.hp) <= 0 && wasAlive !== false) {
+            foe.state.pvpDead = true;
+            const total = Math.max(1, Number(foe.state.hpMax) || 1) + Math.max(0, Number(foe.state.shMax) || 0);
+            // Anti-farm meme victime : 100 % / 50 % / 25 % / 0 sur 60 min.
+            const fkey = `${id}|${foe.state.id}`;
+            let farm = pvpFarm.get(fkey);
+            if (!farm || now - Number(farm.t0 || 0) > 3600_000) farm = { n: 0, t0: now };
+            farm.n++;
+            pvpFarm.set(fkey, farm);
+            const mult = farm.n <= 1 ? 1 : farm.n === 2 ? 0.5 : farm.n === 3 ? 0.25 : 0;
+            const exp = Math.round(total / 50 * mult);
+            const honneur = Math.round(total / 500 * mult);
+            // Stats persistantes du tueur (classement), si compte authentifie.
+            try {
+              if (String(id).startsWith("u_")) recordPvpKill(String(id).slice(2), exp, honneur);
+            } catch {}
+            // Gains au tueur connecte (xp/honneur appliques par son client).
+            try {
+              const killer = room.get(id);
+              if (killer && killer.ws && killer.ws.readyState === 1) {
+                killer.ws.send(JSON.stringify({ t: "pvpKill", exp, honneur, mult, victim: String(foe.state.pseudo || "Pilote").slice(0, 20) }));
+              }
+            } catch {}
+          }
+        } catch {}
       } catch {}
       return;
     }
-    if (msg.t === "shot" || msg.t === "rshot") {
-      // Tirs allies : retransmis tels quels a la room (aucun etat).
+    if (msg.t === "pvpLoot" || msg.t === "pvpLootTake") {
+      // Cargo du vaincu : la victime annonce, les autres affichent ;
+      // le ramassage du tueur efface les copies (uid partage).
+      try {
+        const room = rooms.get(mapId);
+        if (!room || !room.has(id)) return;
+        if (typeof msg.uid !== "string" || !msg.uid.startsWith("pvploot_")) return;
+        if (msg.t === "pvpLootTake") {
+          broadcastRoom(room, JSON.stringify({ t: "pvpLootTake", uid: msg.uid.slice(0, 64) }), id);
+          return;
+        }
+        const x = Math.round(Number(msg.x)), y = Math.round(Number(msg.y));
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        if (typeof msg.onlyBy !== "string" || !msg.onlyBy) return;
+        broadcastRoom(room, JSON.stringify({ t: "pvpLoot", uid: msg.uid.slice(0, 64), x, y, onlyBy: String(msg.onlyBy).slice(0, 64) }), id);
+      } catch {}
+      return;
+    }
+    if (msg.t === "shot" || msg.t === "rshot") {      // Tirs allies : retransmis tels quels a la room (aucun etat).
       try {
         const room = rooms.get(mapId);
         if (!room || !room.has(id)) return;
@@ -311,16 +462,46 @@ wss.on("connection", (ws) => {
       return;
     }
     if (msg.t === "hello" || msg.t === "map") {
+      // Authentification (hello) : token compte -> identite stable.
+      // Le pseudo du compte fait foi (anti-usurpation), l'id devient
+      // `u_<accountId>` (stable entre refresh). Sans token : invite.
+      if (msg.t === "hello" && !authed && typeof msg.token === "string" && msg.token) {
+        try {
+          const who = verifyWsToken(msg.token);
+          if (who && who.id) {
+            const stableId = `u_${String(who.id).slice(0, 64)}`;
+            const room = rooms.get(mapId);
+            if (room) {
+              if (room.has(id) && room.get(id)?.ws === ws) room.delete(id);
+              const prev = room.get(stableId);
+              if (prev && prev.ws !== ws) { try { prev.ws.close(); } catch {} }
+              room.delete(stableId);
+              state.id = stableId;
+              id = stableId;
+              room.set(id, { ws, state });
+            } else {
+              state.id = stableId;
+              id = stableId;
+            }
+            accountId = String(who.id);
+            authed = true;
+            state.pseudo = String(who.pseudo || "Pilote").slice(0, 20);
+            try { ws.send(JSON.stringify({ t: "welcome", id, authed: true })); } catch {}
+          }
+        } catch {}
+      }
       const nextMap = String(msg.map || mapId || "1-1").toLowerCase();
       if (nextMap !== mapId) {
         removeFromAllRooms(id);
         mapId = nextMap;
+        state._teleSkip = true; // portail : saut legitime
         roomFor(mapId).set(id, { ws, state });
         ensureNpcSim(mapId);
       } else {
         ensureNpcSim(mapId);
       }
-      if (typeof msg.pseudo === "string" && msg.pseudo.trim()) state.pseudo = String(msg.pseudo).slice(0, 20);
+      // Authentifie : pseudo du compte uniquement (declare ignore).
+      if (!authed && typeof msg.pseudo === "string" && msg.pseudo.trim()) state.pseudo = String(msg.pseudo).slice(0, 20);
       if (typeof msg.shipId === "string" && msg.shipId) state.shipId = String(msg.shipId).slice(0, 64);
       state.updatedAt = Date.now();
       // Etat des box pour le nouveau venu.
@@ -337,7 +518,9 @@ wss.on("connection", (ws) => {
     }
     if (msg.t === "chat") {
       // Chat global : 1 message / 800 ms, 200 caracteres, pseudo du pos.
+      // Mute admin : ignore silencieux.
       try {
+        if (chatMutes.has(id)) return;
         const now = Date.now();
         if (now - Number(chatLastById.get(id) || 0) < 800) return;
         const text = String(msg.text || "").replace(/\s+/g, " ").trim().slice(0, 200);
@@ -351,11 +534,37 @@ wss.on("connection", (ws) => {
       return;
     }
     if (msg.t === "pos") {
-      if (Number.isFinite(Number(msg.x))) state.x = Number(msg.x);
-      if (Number.isFinite(Number(msg.y))) state.y = Number(msg.y);
+      // Anti-cheat positions : deplacement credible vs vmax declaree
+      // (plafonnee). Rejet doux (on garde l'ancienne position) + log,
+      // jamais de kick (lags = faux positifs).
+      if (Number.isFinite(Number(msg.vmax))) state.vmax = Math.max(50, Math.min(5000, Math.round(Number(msg.vmax))));
+      const nx = Number(msg.x), ny = Number(msg.y);
+      if (Number.isFinite(nx) && Number.isFinite(ny)) {
+        const legitJump = state._teleSkip === true || state._posOk !== true || (state.dead === true && msg.dead !== true);
+        state._teleSkip = false;
+        if (legitJump) {
+          state.x = nx;
+          state.y = ny;
+          state._posOk = true;
+        } else {
+          const dt = Math.max(0.05, Math.min(3, (Date.now() - Number(state.updatedAt || 0)) / 1000));
+          const vmax = Math.max(50, Math.min(5000, Number(state.vmax) || 400));
+          const allowed = vmax * dt * 1.6 + 600;
+          const dx = nx - Number(state.x), dy = ny - Number(state.y);
+          if (dx * dx + dy * dy <= allowed * allowed) {
+            state.x = nx;
+            state.y = ny;
+          } else {
+            state.teleWarn = Number(state.teleWarn || 0) + 1;
+            if (state.teleWarn % 20 === 1) {
+              try { console.log(`[multi:anticheat] teleport suspect ${state.pseudo} (${Math.round(Math.hypot(dx, dy))}u en ${Math.round(dt * 1000)}ms, vmax ${vmax})`); } catch {}
+            }
+          }
+        }
+      }
       if (Number.isFinite(Number(msg.angle))) state.angle = Number(msg.angle);
       if (typeof msg.shipId === "string" && msg.shipId) state.shipId = String(msg.shipId).slice(0, 64);
-      if (typeof msg.pseudo === "string" && msg.pseudo.trim()) state.pseudo = String(msg.pseudo).slice(0, 20);
+      if (!authed && typeof msg.pseudo === "string" && msg.pseudo.trim()) state.pseudo = String(msg.pseudo).slice(0, 20);
       if (typeof msg.dead === "boolean") state.dead = msg.dead;
       if (typeof msg.safe === "boolean") state.safe = msg.safe;
       if (typeof msg.hidden === "boolean") state.hidden = msg.hidden;
@@ -394,6 +603,7 @@ wss.on("connection", (ws) => {
           state.hp = cHp;
           state.sh = cSh;
           state._init = true;
+          state.pvpDead = false;
         } else if (state.dead === true) {
           state.hp = 0;
           state.sh = 0;
@@ -401,6 +611,7 @@ wss.on("connection", (ws) => {
           // Revive (reparation) : le client est vivant avec des PV.
           state.hp = cHp;
           state.sh = cSh;
+          state.pvpDead = false;
         } else {
           if (cHp < state.hp) state.hp = cHp;
           if (cSh < state.sh) state.sh = cSh;
@@ -417,6 +628,7 @@ wss.on("connection", (ws) => {
       if (typeof msg.map === "string" && msg.map.toLowerCase() !== mapId) {
         removeFromAllRooms(id);
         mapId = String(msg.map).toLowerCase();
+        state._teleSkip = true; // portail : saut legitime
         roomFor(mapId).set(id, { ws, state });
         try {
           const set = boxRooms.get(mapId);
@@ -497,6 +709,8 @@ setInterval(() => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[multi] HTTP+WS sur http://0.0.0.0:${PORT}/  (WS: /ws)`);
+  if (process.env.ORBIT_ADMIN_PASS) console.log("[multi] Panneau admin : /admin.html (pass ORBIT_ADMIN_PASS)");
+  else console.log(`[multi] Panneau admin : /admin.html (mot de passe : ${ADMIN_PASS})`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
