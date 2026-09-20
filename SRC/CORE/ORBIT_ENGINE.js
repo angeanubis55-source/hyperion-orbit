@@ -26443,6 +26443,13 @@ function drawNetplayRemotes(ox, oy) {
             // Sprite jamais vu sur cet ecran : on le charge (sinon le PET
             // de l'allie reste invisible alors que tout est recu).
             try { loadImage(psrc, { priority: true }); } catch {}
+            // En attendant : losange de repli (comme les drones).
+            ctx.save();
+            ctx.translate(prx - x, pry - y);
+            ctx.rotate(Math.PI / 4);
+            ctx.fillStyle = "rgba(124,240,255,0.9)";
+            ctx.fillRect(-6, -6, 12, 12);
+            ctx.restore();
           }
           if (isImgReady(pimg)) {
             // Etat moteur stable par joueur (vitesse estimee depuis l'interpolation).
