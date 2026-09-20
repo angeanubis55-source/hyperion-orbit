@@ -62,6 +62,7 @@ import {
   setPetActiveGear,
   setPetMode,
   repairPet,
+  saveUser,
   activateCurrentUserBooster,
   tickCurrentUserAuction,
 } from "./ACCOUNT.js";
@@ -11136,6 +11137,9 @@ function wirePetWindow() {
     if (!pet) return showToast("P.E.T non possédé.", 1.5);
     // REX détruit : la clé répare (10 000 crédits, coque pleine).
     if (!(Number(pet.hp) > 0)) {
+      // Flush memoire -> store : sinon la reparation lit un store perime
+      // (kill recent pas encore sauvegarde) et repond "REX intact." a tort.
+      try { if (account.user) saveUser(account.user, { notify: false }); } catch {}
       const out = repairPet();
       if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
       account.user = out.user;
@@ -23463,6 +23467,8 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
     miss: shotMiss,
   }, ENTITY_LIMITS.playerBullets);
   // Multi : evenement roquette exact pour les allies (arc + MISS identiques).
+  // Sauf sur notre propre REX (affaire privee).
+  if (!t || t.isPetTarget !== true) {
   try {
     sendShotEvent({
       t: "rshot", kind: rocket.id,
@@ -23473,6 +23479,7 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
       miss: shotMiss === true, v: volleyId,
     });
   } catch {}
+  }
 }
 
 // Salve du lance-roquettes : N = carrés bleus (chargeur), tir possible à tout
@@ -24195,6 +24202,9 @@ const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBooste
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((shotHitBonusPct + playerPilotMults().laserHit) / 100));
   // Multi : evenement de tir exact pour les allies (vrais tirs, MISS inclus).
+  // Sauf tirs sur notre propre REX (affaire privee : evite de faire croire
+  // a l'allie qu'on lui tire dessus).
+  if (!t || t.isPetTarget !== true) {
   try {
     sendShotEvent({
       t: "shot", key: ammoKey, n: isSabLike ? 1 : volleySize,
@@ -24203,6 +24213,7 @@ const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBooste
       miss: shotMiss === true, v: volleyId,
     });
   } catch {}
+  }
 
   const ang = player.angle;
   const fx = Math.cos(ang), fy = Math.sin(ang);

@@ -1105,8 +1105,7 @@ function petShieldCapacity(user) {
   }, 0) * multiplier));
 }
 
-function saveUser(user, options = {}) {
-  user.schemaVersion = STORAGE_SCHEMA_VERSION;
+export function saveUser(user, options = {}) {  user.schemaVersion = STORAGE_SCHEMA_VERSION;
   user.updatedAt = Date.now();
   user.revision = Math.max(0, Math.floor(Number(user.revision) || 0)) + 1;
   const users = readUsers();
