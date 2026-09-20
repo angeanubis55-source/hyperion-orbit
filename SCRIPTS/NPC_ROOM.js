@@ -129,6 +129,18 @@ export class ZoneNpcSim {
     this.players.delete(String(clientId));
   }
 
+  // Menage : vire les joueurs qui ne sont plus dans la room (deco, kick,
+  // changement de map, migration d'id) pour ne pas laisser de fantomes
+  // que les NPC pourchasseraient eternellement.
+  prunePlayers(keepIds) {
+    try {
+      const keep = new Set((Array.isArray(keepIds) ? keepIds : []).map(String));
+      for (const pid of [...this.players.keys()]) {
+        if (!keep.has(pid)) this.players.delete(pid);
+      }
+    } catch {}
+  }
+
   randomPos(pad = 80) {
     // Les NPC peuvent aller partout sur la map, meme sur la base.
     // Aucune exclusion de zone sure (evite les stacks aux bords).

@@ -696,6 +696,9 @@ setInterval(() => {
           const s = entry?.state;
           if (s) sim.setPlayer(pid, s.x, s.y, { dead: s.dead === true, safe: s.safe === true, hidden: s.hidden === true });
         }
+        if (typeof sim.prunePlayers === "function") {
+          try { sim.prunePlayers([...room.keys()]); } catch {}
+        }
         sim.tick(0.1);
         npc = sim.snapshot();
       } else if (sim === undefined) {
