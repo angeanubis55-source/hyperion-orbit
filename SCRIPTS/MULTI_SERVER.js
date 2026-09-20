@@ -537,6 +537,9 @@ wss.on("connection", (ws) => {
       // Anti-cheat positions : deplacement credible vs vmax declaree
       // (plafonnee). Rejet doux (on garde l'ancienne position) + log,
       // jamais de kick (lags = faux positifs).
+      // Auto-guerison : un point rejete mais STABLE 5x de suite (= 0.5 s,
+      // reaparition base/portail same-map que le serveur n'a pas vue)
+      // est accepte. Un speed-hacker (jamais stable) reste bloque.
       if (Number.isFinite(Number(msg.vmax))) state.vmax = Math.max(50, Math.min(5000, Math.round(Number(msg.vmax))));
       const nx = Number(msg.x), ny = Number(msg.y);
       if (Number.isFinite(nx) && Number.isFinite(ny)) {
@@ -546,6 +549,7 @@ wss.on("connection", (ws) => {
           state.x = nx;
           state.y = ny;
           state._posOk = true;
+          state._rejPos = null;
         } else {
           const dt = Math.max(0.05, Math.min(3, (Date.now() - Number(state.updatedAt || 0)) / 1000));
           const vmax = Math.max(50, Math.min(5000, Number(state.vmax) || 400));
@@ -554,10 +558,24 @@ wss.on("connection", (ws) => {
           if (dx * dx + dy * dy <= allowed * allowed) {
             state.x = nx;
             state.y = ny;
+            state._rejPos = null;
           } else {
-            state.teleWarn = Number(state.teleWarn || 0) + 1;
-            if (state.teleWarn % 20 === 1) {
-              try { console.log(`[multi:anticheat] teleport suspect ${state.pseudo} (${Math.round(Math.hypot(dx, dy))}u en ${Math.round(dt * 1000)}ms, vmax ${vmax})`); } catch {}
+            const prev = state._rejPos;
+            const sameSpot = prev && (nx - prev.x) * (nx - prev.x) + (ny - prev.y) * (ny - prev.y) <= 300 * 300;
+            const n = sameSpot ? Number(prev.n || 0) + 1 : 1;
+            if (n >= 5) {
+              // Stable : reaparition legitime ratee, on resynchronise.
+              state.x = nx;
+              state.y = ny;
+              state._rejPos = null;
+              state.teleHeal = Number(state.teleHeal || 0) + 1;
+              try { console.log(`[multi:anticheat] resync ${state.pseudo} (${Math.round(Math.hypot(dx, dy))}u, stable)`); } catch {}
+            } else {
+              state._rejPos = { x: nx, y: ny, n };
+              state.teleWarn = Number(state.teleWarn || 0) + 1;
+              if (state.teleWarn % 20 === 1) {
+                try { console.log(`[multi:anticheat] teleport suspect ${state.pseudo} (${Math.round(Math.hypot(dx, dy))}u en ${Math.round(dt * 1000)}ms, vmax ${vmax})`); } catch {}
+              }
             }
           }
         }
