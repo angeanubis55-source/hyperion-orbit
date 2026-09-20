@@ -26041,6 +26041,26 @@ const netplayEngines = new Map();
 // Etats moteurs (reacteurs) des PET distants, par id joueur.
 // Cle stable (holder) pour petEngine (WeakMap) + vitesse estimee pour les flames/trails.
 const netplayPetEngines = new Map();
+let netplayLastOx = 0, netplayLastOy = 0;
+try {
+  window.__NETPETDIAG__ = () => {
+    const out = [];
+    try {
+      for (const r of getNetplayRemotes().values()) {
+        const prx = Number(r.petrx ?? r.petx) + netplayLastOx;
+        const pry = Number(r.petry ?? r.pety) + netplayLastOy;
+        out.push({
+          pseudo: String(r.pseudo || "?"),
+          peta: r.peta, petl: r.petl,
+          petx: Math.round(Number(r.petx) || 0), petrx: Math.round(Number(r.petrx) || 0),
+          shipX: Math.round(Number(r.rx ?? r.x) || 0),
+          onScreen: prx > -160 && pry > -160 && prx < innerWidth + 160 && pry < innerHeight + 160,
+        });
+      }
+    } catch (e) { out.push({ err: String(e?.message || e) }); }
+    return out;
+  };
+} catch {}
 // Anneaux Ship_damage autour des joueurs distants (degats NPC + PvP vus
 // par l'observateur). Meme sprite que le notre, ancre au copain.
 const netShipDamages = new Map(); // remoteId -> [{ ang, rad, rot, t }]
@@ -26243,6 +26263,7 @@ function drawNetplayRemotes(ox, oy) {
   let remotes = null;
   try { remotes = getNetplayRemotes(); } catch { return; }
   if (!remotes || !remotes.size) return;
+  try { netplayLastOx = ox; netplayLastOy = oy; } catch {}
   try { tickNetplayRemotes(0.016); } catch {}
   try { tickNetShipDamages(netShipDamageDt()); } catch {}
   // Nettoie les etats moteurs des joueurs partis.
