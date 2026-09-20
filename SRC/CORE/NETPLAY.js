@@ -403,6 +403,11 @@ export function ensureNetplayConnection() {
           petf: String(p.petf || "").slice(0, 16),
           petHp: Number.isFinite(Number(p.petHp)) ? Math.max(0, Math.min(1, Number(p.petHp))) : 1,
           petSh: Number.isFinite(Number(p.petSh)) ? Math.max(0, Math.min(1, Number(p.petSh))) : 1,
+          petHpM: Math.max(1, Math.round(Number(p.petHpM) || 1)),
+          petShM: Math.max(0, Math.round(Number(p.petShM) || 0)),
+          // Pool PV du PET (barres du proxy = verite serveur, pas le local regenere).
+          pvpPetHp: Math.max(0, Math.round(Number(p.pvpPetHp) || 0)),
+          pvpPetSh: Math.max(0, Math.round(Number(p.pvpPetSh) || 0)),
           lastSeen: now,
           // Position de rendu (interpolee vers x/y pour eviter les sauts).
           rx: prev ? Number(prev.rx ?? prev.x ?? p.x) : Number(p.x) || 0,

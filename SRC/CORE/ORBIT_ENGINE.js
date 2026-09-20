@@ -24691,9 +24691,11 @@ function syncNetPlayers() {
         pe.x = Number(r.petrx ?? r.petx);
         pe.y = Number(r.petry ?? r.pety);
         pe.angle = Number(r.petd ?? r.angle) || 0;
-        pe.hpMax = 100; pe.shMax = 100;
-        pe.hp = Math.max(0, Math.min(100, Math.round(Number(r.petHp ?? 1) * 100)));
-        pe.sh = Math.max(0, Math.min(100, Math.round(Number(r.petSh ?? 1) * 100)));
+        // Barres = pool serveur (verite), pas le local du proprio (regenere).
+        pe.hpMax = Math.max(1, Math.round(Number(r.petHpM) || 100));
+        pe.shMax = Math.max(0, Math.round(Number(r.petShM) || 0));
+        pe.hp = Math.max(0, Math.min(pe.hpMax, Math.round(Number(r.pvpPetHp ?? r.petHp * pe.hpMax) || 0)));
+        pe.sh = pe.shMax > 0 ? Math.max(0, Math.min(pe.shMax, Math.round(Number(r.pvpPetSh ?? r.petSh * pe.shMax) || 0))) : 0;
       }
     }
   }

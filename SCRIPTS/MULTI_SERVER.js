@@ -826,6 +826,8 @@ setInterval(() => {
         // Pool PV du PET (adoption cote proprietaire).
         pvpPetHp: Math.max(0, Math.round(Number(s.petPoolHp ?? 1) || 0)),
         pvpPetSh: Math.max(0, Math.round(Number(s.petPoolSh ?? 0) || 0)),
+        petHpM: Math.max(1, Math.round(Number(s.petHpM) || 1)),
+        petShM: Math.max(0, Math.round(Number(s.petShM) || 0)),
         safe: s.safe === true });
     }
     const payload = JSON.stringify({ t: "snapshot", map: key, players, npc, host: roomHostId(room) });
