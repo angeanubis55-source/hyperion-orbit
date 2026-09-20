@@ -26054,7 +26054,8 @@ try {
           peta: r.peta, petl: r.petl,
           petx: Math.round(Number(r.petx) || 0), petrx: Math.round(Number(r.petrx) || 0),
           shipX: Math.round(Number(r.rx ?? r.x) || 0),
-          onScreen: prx > -160 && pry > -160 && prx < innerWidth + 160 && pry < innerHeight + 160,
+          shipScreenX: Math.round(Number(r.rx ?? r.x) + netplayLastOx),
+          onScreen: prx > -260 && pry > -260 && prx < innerWidth + 260 && pry < innerHeight + 260,
         });
       }
     } catch (e) { out.push({ err: String(e?.message || e) }); }
@@ -26456,7 +26457,8 @@ function drawNetplayRemotes(ox, oy) {
     try {
       if (r.peta === 1) {
         const prx = Number(r.petrx ?? r.petx) + ox, pry = Number(r.petry ?? r.pety) + oy;
-        if (prx > -160 && pry > -160 && prx < innerWidth + 160 && pry < innerHeight + 160) {
+        // Meme marge que le vaisseau (260) : pas de clipping au bord.
+        if (prx > -260 && pry > -260 && prx < innerWidth + 260 && pry < innerHeight + 260) {
           const pframe = ((angleToFrameIndex(Number(r.petd ?? r.angle) || 0, 32) + 16) % 32) + 1;
           const psrc = `${getPetStageBase(Number(r.petl) || 1)}${pframe}.png`;
           const pimg = getCachedImage(psrc);
