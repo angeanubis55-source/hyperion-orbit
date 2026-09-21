@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.262",
+    "date": "2026-09-21T23:07:58+02:00",
+    "message": "multi: fin des reloads forces (resync live) + stocks depuis le compte (plus de BASE_RUN) + scripts GIVE_AMMO/INSPECT"
+  },
+  {
     "version": "0.261",
     "date": "2026-09-21T22:33:29+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.203",
     "date": "2026-09-14T04:04:39+02:00",
     "message": "sync version 0.202 + patch-notes (hook post-push)"
-  },
-  {
-    "version": "0.202",
-    "date": "2026-09-14T04:04:05+02:00",
-    "message": "equipement: Appliquer enregistre les 2 configs (brouillons 1+2)"
   }
 ];

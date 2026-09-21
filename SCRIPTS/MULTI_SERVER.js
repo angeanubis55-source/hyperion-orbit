@@ -558,6 +558,10 @@ wss.on("connection", (ws) => {
           foe.state.sh = Math.max(0, Number(foe.state.sh) || 0);
         }
         foe.state.pvpAt = now;
+        // Blackout remontées : un soin (pos) qui arrive juste après ce coup
+        // ne doit pas l'effacer avant que la victime l'ait adopté (sinon
+        // le tireur voit des chiffres mais la barre ne bouge pas).
+        if (Number(msg.dmg) > 0) foe.state.dmgBlockUntil = now + 500;
         const slowPct = Math.max(0, Math.min(95, Number(msg.slowPct) || 0));
         const slowSec = Math.max(0, Math.min(30, Number(msg.slowSec) || 0));
         const freezeSec = Math.max(0, Math.min(5, Number(msg.freezeSec) || 0));
@@ -981,8 +985,15 @@ wss.on("connection", (ws) => {
           state.sh = cSh;
           state.pvpDead = false;
         } else {
+          // Blackout : un coup vient d'être appliqué (dmgBlockUntil) — les
+          // remontées sont ignorées le temps que la victime l'adopte
+          // (snapshot 20 Hz). Sinon un soin effacerait le coup avant son
+          // adoption : chiffres affichés côté tireur, barre immobile.
+          // Les baisses restent acceptées. Cohérent avec le jeu (pas de
+          // soin efficace sous le feu direct).
+          const blocked = Date.now() < Number(state.dmgBlockUntil || 0);
           if (cHp < state.hp) state.hp = cHp;
-          else if (cHp > state.hp) {
+          else if (cHp > state.hp && !blocked) {
             if (cHp - state.hp > hm * 0.5) {
               state.healWarn = Number(state.healWarn || 0) + 1;
               if (state.healWarn % 10 === 1) {
@@ -992,7 +1003,7 @@ wss.on("connection", (ws) => {
             state.hp = Math.min(hm, cHp);
           }
           if (cSh < state.sh) state.sh = cSh;
-          else if (cSh > state.sh) {
+          else if (cSh > state.sh && !blocked) {
             if (sm > 0 && cSh - state.sh > sm * 0.5) {
               state.healWarn = Number(state.healWarn || 0) + 1;
               if (state.healWarn % 10 === 1) {
@@ -1178,6 +1189,9 @@ setInterval(() => {
             s.hp = Math.max(0, Number(s.hp) || 0);
             s.sh = Math.max(0, Number(s.sh) || 0);
             s.npcAt = hitNow;
+            // Blackout remontées (comme en PvP) : le coup doit survivre
+            // aux soins qui arrivent avant son adoption par la victime.
+            s.dmgBlockUntil = hitNow + 500;
             s.npcFrom = String(hit?.npcUid || "").slice(0, 64);
             s.npcDamage = Math.max(0, Math.round(Number(result?.total) || 0));
             if (s.hp <= 0) s.pvpDead = true;
