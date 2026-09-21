@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.252",
+    "date": "2026-09-21T16:42:45+02:00",
+    "message": "sync version 0.251 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.251",
     "date": "2026-09-21T16:42:15+02:00",
     "message": "multi: escadrilles (max 10, auto) + amis avec demandes + murmures /w"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.193",
     "date": "2026-09-14T01:12:22+02:00",
     "message": "raffinage: log/pet/stats/minimap/dock palette (pastilles, compteurs, persistance) + boutique onglets"
-  },
-  {
-    "version": "0.192",
-    "date": "2026-09-13T22:54:02+02:00",
-    "message": "sync version 0.191 + patch-notes (hook post-push)"
   }
 ];
