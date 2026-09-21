@@ -1,6 +1,91 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.251",
+    "date": "2026-09-21T16:42:15+02:00",
+    "message": "multi: escadrilles (max 10, auto) + amis avec demandes + murmures /w"
+  },
+  {
+    "version": "0.250",
+    "date": "2026-09-21T15:31:54+02:00",
+    "message": "Synchronise le multijoueur et les encheres"
+  },
+  {
+    "version": "0.249",
+    "date": "2026-09-21T00:34:42+02:00",
+    "message": "backup: multiplayer pet abilities effects and formations"
+  },
+  {
+    "version": "0.248",
+    "date": "2026-09-20T23:08:31+02:00",
+    "message": "multi: flush memoire avant reparation REX + tirs PET local non relayes"
+  },
+  {
+    "version": "0.247",
+    "date": "2026-09-20T22:52:09+02:00",
+    "message": "multi: adoption PET sur nouveau coup (reparation plus ecrasee)"
+  },
+  {
+    "version": "0.246",
+    "date": "2026-09-20T22:21:30+02:00",
+    "message": "multi: barres proxy PET sur pool serveur (verite, pas regen locale)"
+  },
+  {
+    "version": "0.245",
+    "date": "2026-09-20T22:14:34+02:00",
+    "message": "multi: PET allie lockable + degats PvP (lasers/roquettes/chiffres)"
+  },
+  {
+    "version": "0.244",
+    "date": "2026-09-20T21:53:55+02:00",
+    "message": "multi: purge joueurs fantomes de la sim NPC (fini les stacks)"
+  },
+  {
+    "version": "0.243",
+    "date": "2026-09-20T21:44:24+02:00",
+    "message": "multi: fix casse petY->pety (PET allie bloque a y=0)"
+  },
+  {
+    "version": "0.242",
+    "date": "2026-09-20T21:41:34+02:00",
+    "message": "multi: PET allie meme marge ecran que vaisseau + diag complete"
+  },
+  {
+    "version": "0.241",
+    "date": "2026-09-20T21:39:39+02:00",
+    "message": "multi: diag PET allie console"
+  },
+  {
+    "version": "0.240",
+    "date": "2026-09-20T21:35:12+02:00",
+    "message": "multi: PET allie repli visible + cache-bust modules"
+  },
+  {
+    "version": "0.239",
+    "date": "2026-09-20T21:30:37+02:00",
+    "message": "multi: charge le sprite du PET allie si absent du cache (sinon invisible)"
+  },
+  {
+    "version": "0.238",
+    "date": "2026-09-20T21:23:16+02:00",
+    "message": "multi: kick admin avec explosion + message d'avertissement"
+  },
+  {
+    "version": "0.237",
+    "date": "2026-09-20T21:17:58+02:00",
+    "message": "multi: anticheat auto-guerison (saut stable = reaparition legitime)"
+  },
+  {
+    "version": "0.236",
+    "date": "2026-09-20T21:15:04+02:00",
+    "message": "multi: auth WS + recompenses PvP + classement + anticheat positions + panneau admin"
+  },
+  {
+    "version": "0.235",
+    "date": "2026-09-20T19:18:04+02:00",
+    "message": "multi: PvP autoritaire + chat global + comptes serveur + pseudos uniques (socle avant auth WS)"
+  },
+  {
     "version": "0.234",
     "date": "2026-09-20T02:12:36+02:00",
     "message": "assemblage: refonte visuelle + 30 recettes + craft instantane; inventaire: stack modules/vaisseaux/designs + fix pager"
@@ -214,90 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.192",
     "date": "2026-09-13T22:54:02+02:00",
     "message": "sync version 0.191 + patch-notes (hook post-push)"
-  },
-  {
-    "version": "0.191",
-    "date": "2026-09-13T22:53:28+02:00",
-    "message": "boutons style raffinage partout (config, pet, reduire, reparation, boutique) + pastille bleue + suppression dossier TEST"
-  },
-  {
-    "version": "0.190",
-    "date": "2026-09-13T21:46:42+02:00",
-    "message": "boutique roquettes fusionnees (badges R/LR) + fenetres 8px + hover reduire + titre espace pilote"
-  },
-  {
-    "version": "0.189",
-    "date": "2026-09-13T19:54:44+02:00",
-    "message": "drops assemblage NPC (box 25% + direct) + collectables monde continu + icones ressources + purge vieux items"
-  },
-  {
-    "version": "0.188",
-    "date": "2026-09-13T17:19:24+02:00",
-    "message": "double-clic maison via pointerup + dblclick natif desactive"
-  },
-  {
-    "version": "0.187",
-    "date": "2026-09-13T16:53:44+02:00",
-    "message": "vitesse upgrade via breakdown + icones lf3/plt3030 + slot instantane"
-  },
-  {
-    "version": "0.186",
-    "date": "2026-09-13T16:47:31+02:00",
-    "message": "sync"
-  },
-  {
-    "version": "0.185",
-    "date": "2026-09-13T16:46:29+02:00",
-    "message": "ameliorations equipement: cartes drag-drop + usure + comptoir centre + quetes bouton monde"
-  },
-  {
-    "version": "0.184",
-    "date": "2026-09-13T15:17:53+02:00",
-    "message": "box battle x2 (4-x, x-4.1) + terminal quetes bouton monde + synchro journal"
-  },
-  {
-    "version": "0.183",
-    "date": "2026-09-13T14:47:53+02:00",
-    "message": "comptoir vente: boutons bases X-8 comme X-1"
-  },
-  {
-    "version": "0.182",
-    "date": "2026-09-13T14:46:18+02:00",
-    "message": "comptoir pirate: fenetre vente classique + boutons bases + affichage recompenses quetes corrige"
-  },
-  {
-    "version": "0.181",
-    "date": "2026-09-13T13:15:05+02:00",
-    "message": "spawn: refresh restaure la position sauvegardee (spawn URL consomme) + autosave position 3s"
-  },
-  {
-    "version": "0.180",
-    "date": "2026-09-13T12:49:22+02:00",
-    "message": "launcher: updater securise (version-skip, validation, sauvegarde, rollback)"
-  },
-  {
-    "version": "0.179",
-    "date": "2026-09-13T12:16:44+02:00",
-    "message": "launcher: .bat ne se remplace plus lui-meme, plus de blocs if multilignes"
-  },
-  {
-    "version": "0.178",
-    "date": "2026-09-13T12:03:31+02:00",
-    "message": "launcher: .bat mise a jour seule (wipe, zip github, sans lancement)"
-  },
-  {
-    "version": "0.177",
-    "date": "2026-09-13T11:56:14+02:00",
-    "message": "raffinage: styles cartes/boutons + temps reel + auto immediat + tout raffiner"
-  },
-  {
-    "version": "0.176",
-    "date": "2026-09-13T11:54:13+02:00",
-    "message": "launcher: script .bat mise a jour + lancement (wipe, zip github, serveur local)"
-  },
-  {
-    "version": "0.175",
-    "date": "2026-09-13T11:12:47+02:00",
-    "message": "raffinage: fenetre + recettes officielles + soute pleine refuse/partiel + palladium ressource"
   }
 ];
