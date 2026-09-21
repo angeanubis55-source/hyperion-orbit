@@ -13870,7 +13870,10 @@ function syncPlayerFromAccount() {
   // ✅ crédits toujours synchronisés avec le compte
   player.credits = Math.max(0, Number(fresh.credits || 0));
 
-  // ✅ munitions synchronisées aussi si achat en boutique profil
+  // ✅ munitions synchronisées aussi si achat en boutique profil.
+  // Max par type (jamais d'écrasement vers le bas) : le compte persisté
+  // peut être en retard sur la session (tirs entre deux saves) — un sync
+  // aveugle effaçait du stock, voire tout si le snapshot était vide.
   const a = fresh.ammo || {};
   // Préfère la sélection persistée (fresh), sinon garde celle en mémoire.
   const rawActive = String(fresh.ammoActive ?? fresh.ammo?.active ?? player.ammo?.active ?? "x1").toLowerCase();
@@ -13880,28 +13883,31 @@ function syncPlayerFromAccount() {
     ...player.ammo,
     active,
     x1: Infinity,
-    x2: Math.max(0, Number(a.x2 || 0)),
-    x3: Math.max(0, Number(a.x3 || 0)),
-    x4: Math.max(0, Number(a.x4 || 0)),
-    x6: Math.max(0, Number(a.x6 || 0)),
-    sab: Math.max(0, Number(a.sab || 0)),
-    rcb: Math.max(0, Number(a.rcb || 0)),
-    cbo: Math.max(0, Number(a.cbo || 0)),
-    job: Math.max(0, Number(a.job || 0)),
-    rb: Math.max(0, Number(a.rb || 0)),
-    pib: Math.max(0, Number(a.pib || 0)),
-    idb: Math.max(0, Number(a.idb || 0)),
-    vb: Math.max(0, Number(a.vb || 0)),
-    emaa: Math.max(0, Number(a.emaa || 0)),
-    sbl: Math.max(0, Number(a.sbl || 0)),
-    abl: Math.max(0, Number(a.abl || 0)),
+    x2: Math.max(Math.max(0, Number(player.ammo?.x2 || 0)), Math.max(0, Number(a.x2 || 0))),
+    x3: Math.max(Math.max(0, Number(player.ammo?.x3 || 0)), Math.max(0, Number(a.x3 || 0))),
+    x4: Math.max(Math.max(0, Number(player.ammo?.x4 || 0)), Math.max(0, Number(a.x4 || 0))),
+    x6: Math.max(Math.max(0, Number(player.ammo?.x6 || 0)), Math.max(0, Number(a.x6 || 0))),
+    sab: Math.max(Math.max(0, Number(player.ammo?.sab || 0)), Math.max(0, Number(a.sab || 0))),
+    rcb: Math.max(Math.max(0, Number(player.ammo?.rcb || 0)), Math.max(0, Number(a.rcb || 0))),
+    cbo: Math.max(Math.max(0, Number(player.ammo?.cbo || 0)), Math.max(0, Number(a.cbo || 0))),
+    job: Math.max(Math.max(0, Number(player.ammo?.job || 0)), Math.max(0, Number(a.job || 0))),
+    rb: Math.max(Math.max(0, Number(player.ammo?.rb || 0)), Math.max(0, Number(a.rb || 0))),
+    pib: Math.max(Math.max(0, Number(player.ammo?.pib || 0)), Math.max(0, Number(a.pib || 0))),
+    idb: Math.max(Math.max(0, Number(player.ammo?.idb || 0)), Math.max(0, Number(a.idb || 0))),
+    vb: Math.max(Math.max(0, Number(player.ammo?.vb || 0)), Math.max(0, Number(a.vb || 0))),
+    emaa: Math.max(Math.max(0, Number(player.ammo?.emaa || 0)), Math.max(0, Number(a.emaa || 0))),
+    sbl: Math.max(Math.max(0, Number(player.ammo?.sbl || 0)), Math.max(0, Number(a.sbl || 0))),
+    abl: Math.max(Math.max(0, Number(player.ammo?.abl || 0)), Math.max(0, Number(a.abl || 0))),
   };
 
-  // ✅ roquettes synchronisées aussi si achat en boutique profil
+  // ✅ roquettes synchronisées aussi si achat en boutique profil (max aussi).
   const rk = fresh.rockets || {};
   const nextRockets = { ...player.rockets };
   for (const id of ROCKET_IDS) {
-    nextRockets[id] = Math.max(0, Math.floor(Number(rk[id] || 0)));
+    nextRockets[id] = Math.max(
+      Math.max(0, Math.floor(Number(player.rockets?.[id] || 0))),
+      Math.max(0, Math.floor(Number(rk[id] || 0))),
+    );
   }
   player.rockets = nextRockets;
   if (ROCKET_TYPES[String(fresh.rocketActive || "").toLowerCase()]) {
@@ -16255,6 +16261,9 @@ function consumeAmmo(shots) {
   if (k === "x1") return;
   player.ammo[k] = Math.max(0, (player.ammo[k] || 0) - shots);
   if (player.ammo[k] <= 0) player.ammo.active = "x1";
+  // Persiste la consommation (sinon un save entre deux syncs
+  // réécrivait l'ancien stock et les tirs semblaient "annulés").
+  try { markProgressDirty(); } catch {}
   updateAmmoUI();
 }
 
@@ -29782,7 +29791,7 @@ if (moveTarget.active && !player.dead) {
   syncNetNpcs(dt);
   try { syncNetPlayers(); } catch {}
   // Multi PvP : PV autoritaires serveur — on n'adopte que les baisses
-  // (le serveur ne soigne jamais : regen et soins restent locaux).
+  // (les soins locaux remontent au serveur via les pos, qui les suit).
   try {
     const self = getNetSelf();
     if (self) {

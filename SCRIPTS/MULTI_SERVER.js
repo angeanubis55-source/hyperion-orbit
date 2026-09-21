@@ -917,8 +917,14 @@ wss.on("connection", (ws) => {
       if (typeof msg.rkind === "string" && msg.rkind) state.rkind = String(msg.rkind).slice(0, 16);
       if (Number.isFinite(Number(msg.rspd))) state.rspd = Math.max(500, Math.min(20000, Math.round(Number(msg.rspd))));
       // PvP : PV serveur autoritaires.
-      // - Jamais de montee via pos (anti-triche), sauf revive et nouveau max.
-      // - Cliquet bas : les degats NPC locaux repercutent (sinon dieu du PvP).
+      // - Les BAISSES via pos sont adoptees aussitot (cliquet bas : les
+      //   degats NPC locaux repercutent, sinon dieu du PvP).
+      // - Les MONTEES (robot reparateur, reparations, regen bouclier) sont
+      //   aussi suivies (plafonnees au max) : sans ca, le pool serveur
+      //   restait bas apres un soin local et le prochain coup NPC
+      //   reimposait l'ancien pool au client (vie "qui revient en arriere
+      //   apres reparation"). Montees suspectes (>50 % du max hors revive)
+      //   loggees, sans kick (serveur prive : pas de faux positif).
       if (Number.isFinite(Number(msg.hpMax)) && Number(msg.hpMax) > 0) {
         const hm = Math.min(50_000_000, Math.round(Number(msg.hpMax)));
         const sm = Math.min(50_000_000, Math.round(Number(msg.shMax) || 0));
@@ -941,7 +947,25 @@ wss.on("connection", (ws) => {
           state.pvpDead = false;
         } else {
           if (cHp < state.hp) state.hp = cHp;
+          else if (cHp > state.hp) {
+            if (cHp - state.hp > hm * 0.5) {
+              state.healWarn = Number(state.healWarn || 0) + 1;
+              if (state.healWarn % 10 === 1) {
+                try { console.log(`[multi:anticheat] soin suspect ${state.pseudo} (+${Math.round(cHp - state.hp)} HP en un pos, max ${hm})`); } catch {}
+              }
+            }
+            state.hp = Math.min(hm, cHp);
+          }
           if (cSh < state.sh) state.sh = cSh;
+          else if (cSh > state.sh) {
+            if (sm > 0 && cSh - state.sh > sm * 0.5) {
+              state.healWarn = Number(state.healWarn || 0) + 1;
+              if (state.healWarn % 10 === 1) {
+                try { console.log(`[multi:anticheat] soin suspect ${state.pseudo} (+${Math.round(cSh - state.sh)} SH en un pos, max ${sm})`); } catch {}
+              }
+            }
+            state.sh = Math.min(sm, cSh);
+          }
         }
       }
       if (Number.isFinite(Number(msg.range))) state.range = Math.max(200, Math.min(5000, Number(msg.range)));
@@ -1104,8 +1128,8 @@ setInterval(() => {
         }
         sim.tick(0.05);
         // Les tirs NPC partages retirent les PV dans le meme pool autoritaire
-        // que le PvP. Les valeurs hpPct/shPct du client ne peuvent pas annuler
-        // ces baisses (le pool serveur fonctionne comme un cliquet descendant).
+        // que le PvP. Les soins du client (reparateur, regen) remontent ce
+        // pool via les pos ; les degats serveur restent prioritaires.
         if (typeof sim.drainPlayerHits === "function") {
           for (const hit of sim.drainPlayerHits()) {
             const victim = room.get(String(hit?.playerId));
