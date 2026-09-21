@@ -1190,5 +1190,12 @@ server.listen(PORT, "0.0.0.0", () => {
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, () => server.close(() => process.exit(0)));
+  // Arrêt franc : coupe les connexions (sinon server.close attend les
+  // joueurs connectés et le reboot/Ctrl+C reste bloqué 90 s).
+  process.on(signal, () => {
+    try { server.closeAllConnections?.(); } catch {}
+    try { wss.close?.(() => {}); } catch {}
+    try { server.close(() => process.exit(0)); } catch { process.exit(0); }
+    setTimeout(() => process.exit(0), 2000).unref?.();
+  });
 }
