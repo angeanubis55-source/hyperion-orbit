@@ -16038,7 +16038,6 @@ let radiationSoundDelay = 0;
 
 const BASE_RUN = {
   range: 700,
-  credits: 10000000,
   kills: 0,
   dr: 0,
   shPen: 0,
@@ -16050,7 +16049,9 @@ const BASE_RUN = {
   laserDmgMult: 1.0,
   accel: 3200,
   friction: 0.86,
-  ammo: { active: "x1", x1: Infinity, x2: 2000, x3: 1000, x4: 500, x6: 10, sab: 2000, rcb: 0, cbo: 0, job: 0, rb: 0, pib: 0, idb: 0, vb: 0, emaa: 0, sbl: 0, abl: 0 },
+  // NOTE : plus de credits/ammo ici. Les stocks viennent UNIQUEMENT du
+  // compte (restorePlayerStockFromUser) : les valeurs BASE transitoires
+  // (10M + kit) ont déjà écrasé une progression via un save mal placé.
 };
 
 let playerRange = BASE_RUN.range;
@@ -16147,9 +16148,7 @@ function normalizeFit(fit, pack) {
   return { lasers, gens, extras, slots: { lasers: L, gens: G, extras: E } };
 }
 
-function resetPlayerToBase({ keepCredits = false } = {}) {
-  const creditsKeep = player.credits;
-
+function resetPlayerToBase() {
   player.dead = false;
   player.iFrames = 1.0;
 
@@ -16214,7 +16213,11 @@ player.friction = BASE_RUN.friction;
   player.repairTickT = 0;
   player.altShot = false;
 
-  player.ammo = { ...BASE_RUN.ammo };
+  // ✅ Crédits / munitions / roquettes : restaurés depuis le compte,
+  // JAMAIS depuis des valeurs par défaut. Avant, player contenait 10M +
+  // kit de base entre ce reset et le restore suivant : un save parti dans
+  // cette fenêtre écrasait la vraie progression (cas constaté en multi).
+  restorePlayerStockFromUser(u);
   playerRange = BASE_RUN.range;
   // Stockpile : hors Hecate Plus on purge charges + effet, sinon on
   // réapplique le bonus de portée des charges conservées.
@@ -16228,15 +16231,54 @@ player.friction = BASE_RUN.friction;
     }
   } catch {}
 
-  if (!keepCredits) player.credits = BASE_RUN.credits;
-  else player.credits = creditsKeep;
-
   player.kills = BASE_RUN.kills;
   player.vx = 0;
   player.vy = 0;
 
-  setAmmo("x1");
   updateAmmoUI();
+}
+
+// Source unique des stocks : le compte. Sans compte (cas limite), on garde
+// l'état mémoire tel quel — jamais de valeurs inventées persistables.
+function restorePlayerStockFromUser(u) {
+  if (!u) return false;
+  player.credits = Math.max(0, Math.floor(Number(u.credits) || 0));
+  const a = (u.ammo && typeof u.ammo === "object") ? u.ammo : {};
+  player.ammo = {
+    active: player.ammo.active || "x1",
+    x1: Infinity,
+    x2: Math.max(0, Number(a.x2 || 0)),
+    x3: Math.max(0, Number(a.x3 || 0)),
+    x4: Math.max(0, Number(a.x4 || 0)),
+    sab: Math.max(0, Number(a.sab || 0)),
+    x6: Math.max(0, Number(a.x6 || 0)),
+    rcb: Math.max(0, Number(a.rcb || 0)),
+    cbo: Math.max(0, Number(a.cbo || 0)),
+    job: Math.max(0, Number(a.job || 0)),
+    rb: Math.max(0, Number(a.rb || 0)),
+    pib: Math.max(0, Number(a.pib || 0)),
+    idb: Math.max(0, Number(a.idb || 0)),
+    vb: Math.max(0, Number(a.vb || 0)),
+    emaa: Math.max(0, Number(a.emaa || 0)),
+    sbl: Math.max(0, Number(a.sbl || 0)),
+    abl: Math.max(0, Number(a.abl || 0)),
+  };
+  const rk0 = (u.rockets && typeof u.rockets === "object") ? u.rockets : {};
+  player.rockets = Object.fromEntries(ROCKET_IDS.map((id) => [id, Math.max(0, Math.floor(Number(rk0[id] || 0)))]));
+  player.rocketActive = ROCKET_TYPES[String(u.rocketActive || "").toLowerCase()] ? String(u.rocketActive).toLowerCase() : "r310";
+  player.rocketAuto = u.rocketAuto === true;
+  player.launcherActive = ROCKET_TYPES[String(u.launcherActive || "").toLowerCase()] ? String(u.launcherActive).toLowerCase() : "eco10";
+  player.launcherAuto = u.launcherAuto === true;
+  rocketCooldown = 0;
+  launcherReloadT = 0;
+  launcherFullT = 0;
+  launcherPhase = "reload";
+  launcherPhaseT = 0;
+  // Restaure la munition du dock rapide (sinon retour x1).
+  // setAmmo valide le stock et marque dirty uniquement si changement.
+  setAmmo(String(u.ammoActive ?? u.ammo?.active ?? player.ammo.active ?? "x1").toLowerCase());
+  updateAmmoUI();
+  return true;
 }
 
 function ammoCount(key) {
@@ -25417,47 +25459,13 @@ collectableSpawnT = 0;
     if (found) ACTIVE_SHIP = found;
   }
 
-  resetPlayerToBase({ keepCredits: true });
-  // ðŸ”¥ fin du cold start : le cooldown réparateur repart désormais normalement
+  resetPlayerToBase();
+  // 🔥 fin du cold start : le cooldown réparateur repart désormais normalement
   player.repairColdStart = false;
 
+  // Stocks déjà restaurés depuis le compte par resetPlayerToBase
+  // (restorePlayerStockFromUser) : rien de plus à faire ici.
   if (u) {
-    player.credits = Number(u.credits || 0);
-
-const a = u.ammo || {};
-player.ammo = {
-  active: "x1",
-  x1: Infinity,
-  x2: Number(a.x2 || 0),
-  x3: Number(a.x3 || 0),
-  x4: Number(a.x4 || 0),
-  sab: Number(a.sab || 0),
-  x6: Number(a.x6 || 0),
-  rcb: Number(a.rcb || 0),
-  cbo: Number(a.cbo || 0),
-  job: Number(a.job || 0),
-  rb: Number(a.rb || 0),
-  pib: Number(a.pib || 0),
-  idb: Number(a.idb || 0),
-  vb: Number(a.vb || 0),
-  emaa: Number(a.emaa || 0),
-  sbl: Number(a.sbl || 0),
-  abl: Number(a.abl || 0),
-};
-const rk0 = u.rockets || {};
-player.rockets = Object.fromEntries(ROCKET_IDS.map((id) => [id, Math.max(0, Math.floor(Number(rk0[id] || 0)))]));
-player.rocketActive = ROCKET_TYPES[String(u.rocketActive || "").toLowerCase()] ? String(u.rocketActive).toLowerCase() : "r310";
-player.rocketAuto = u.rocketAuto === true;
-player.launcherActive = ROCKET_TYPES[String(u.launcherActive || "").toLowerCase()] ? String(u.launcherActive).toLowerCase() : "eco10";
-player.launcherAuto = u.launcherAuto === true;
-rocketCooldown = 0;
-launcherReloadT = 0;
-launcherFullT = 0;
-launcherPhase = "reload";
-launcherPhaseT = 0;
-    // Restaure la munition du dock rapide (sinon retour x1 au refresh).
-    // setAmmo valide le stock et marque dirty uniquement si changement.
-    setAmmo(String(u.ammoActive ?? u.ammo?.active ?? "x1").toLowerCase());
     updateAmmoUI();
   }
 
@@ -33106,6 +33114,26 @@ window.addEventListener("storage", (e) => {
   if (started && SESSION_HANGAR_ID && nowActive && nowActive !== SESSION_HANGAR_ID) {
     location.reload();
   }
+});
+
+// Le serveur a une version plus récente du compte (give admin, 2e onglet
+// avec le même compte...) : on re-synchronise le joueur SANS recharger
+// la page (fini les refresh forcés). L'état mémoire est repoussé juste
+// après pour converger (les crédits d'un give apparaissent en direct).
+let lastNetAdoptToast = 0;
+window.addEventListener("orbit:net-adopted", () => {
+  try {
+    if (!account.user) loadAccountUser();
+    if (!account.user) return;
+    if (syncPlayerFromAccount()) {
+      markProgressDirty();
+      const now = Date.now();
+      if (now - lastNetAdoptToast > 30000) {
+        lastNetAdoptToast = now;
+        showNotification("Progression synchronisée avec le serveur.", 2.5, "info");
+      }
+    }
+  } catch {}
 });
 
 window.addEventListener("orbit:user-updated", event => {

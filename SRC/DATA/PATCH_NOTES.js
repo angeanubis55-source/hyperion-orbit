@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.261",
+    "date": "2026-09-21T22:33:29+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.260",
     "date": "2026-09-21T22:19:44+02:00",
     "message": "multi: pool PV serveur suit les soins (fix rollback apres reparation) + sync munitions en max (anti-wipe)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.202",
     "date": "2026-09-14T04:04:05+02:00",
     "message": "equipement: Appliquer enregistre les 2 configs (brouillons 1+2)"
-  },
-  {
-    "version": "0.201",
-    "date": "2026-09-14T03:55:37+02:00",
-    "message": "sync version 0.200 + patch-notes (hook post-push)"
   }
 ];

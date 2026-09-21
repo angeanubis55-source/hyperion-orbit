@@ -205,15 +205,13 @@ async function pushNow() {
     return out;
   }
   if (out && out.status === 409 && out.stale && out.user) {
-    // Plus recent ailleurs : on adopte puis recharge (une fois/session).
+    // Plus recent ailleurs (2e onglet, give admin...) : on adopte le canon
+    // SANS recharger la page (fini les refresh forcés surprises).
+    // Le moteur re-synchronise via l'événement orbit:net-adopted puis
+    // repousse l'état mémoire : convergence, jamais de reload.
     memUser = out.user;
     writeCache(memUser);
-    try {
-      if (!sessionStorage.getItem("orbit_net_reloaded")) {
-        sessionStorage.setItem("orbit_net_reloaded", "1");
-        location.reload();
-      }
-    } catch {}
+    try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "stale" } })); } catch {}
     return out;
   }
   if (out && out.status === 401) {
@@ -250,14 +248,11 @@ async function refreshNetUser() {
   const srvRev = Math.floor(Number(out.user.revision) || 0);
   const memRev = Math.floor(Number(memUser?.revision) || 0);
   if (srvRev > memRev) {
+    // Serveur plus récent qu'au boot : on adopte sans recharger
+    // (le moteur vivant se resynchronise via orbit:net-adopted).
     memUser = out.user;
     writeCache(memUser);
-    try {
-      if (!sessionStorage.getItem("orbit_net_reloaded")) {
-        sessionStorage.setItem("orbit_net_reloaded", "1");
-        location.reload();
-      }
-    } catch {}
+    try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "refresh" } })); } catch {}
   }
 }
 
