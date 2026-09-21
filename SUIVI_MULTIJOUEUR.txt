@@ -206,11 +206,66 @@ RESTE A FAIRE (prochaines étapes proposées)
   sans erreur JS.
 
 ----------------------------------------------------------------
+10) ESCADRILLES (groupes) + AMIS + MURMURES
+----------------------------------------------------------------
+- Groupes éphémères cross-map (max 10, chef = créateur) :
+  SCRIPTS/SOCIAL_ROOM.js (pur, injecté). Solo = pas de groupe (pas de
+  bouton Créer) : l'invitation crée l'escadrille auto, et retomber à 1
+  membre (départ/kick/refus/quit) la clôture (tout le monde en solo).
+  Invites 60 s par pseudo, accepter/refuser, quitter, kick (chef seul),
+  succession auto au départ du chef, chat de groupe (500 ms anti-spam).
+  Avis rejoints/quittés/invitation supprimés (seuls restent les erreurs
+  utiles : plein, chef seul, refus, exclusion).
+- Serveur (MULTI_SERVER.js) : relais group*/whisper avant les autres
+  handlers ; registre instancePeers (joueurs en gate joignables pour les
+  messages dirigés) ; findByPseudo/describePeer/sendToPeer (rooms +
+  instances) ; resync groupUpdate au hello/map ; purge groupe au close,
+  à l'expire 10 s et au kick admin ; présence amis (friendsSync au hello
+  authentifié + friendOnline aux abonnés à chaque connexion/cut).
+- Amis façon DO (ACCOUNT_SERVER.js, comptes uniquement) : tables friends
+  + friend_requests (persistées : un hors-ligne retrouve ses demandes).
+  Demande -> acceptation -> amitié mutuelle (les 2 sens) ; demande
+  croisée = amitié immédiate ; retrait bilatéral. Routes : GET/POST/
+  DELETE /api/friends (POST = demande, plus d'ajout direct),
+  GET /api/friends/requests, POST /api/friends/accept|decline
+  (rate-limit 60/min).
+- Murmures : {t:"whisper", to, text} (800 ms anti-spam), livrés même en
+  gate, accusé whisperSent à l'envoyeur.
+- Client : NETPLAY.js (getNetGroup/getNetFriendsOnline + inboxes +
+  sendGroup*/sendWhisper ; groupMsg et MP miroirs dans le tchat avec
+  préfixes [Groupe]/[MP]).
+- Fenêtre Groupe (UI/UI_GROUP.js, groupWindow, icône group.png) : statut
+  escadrille, membres + carte + 👑 + exclusion (chef), créer/quitter,
+  invitation par pseudo, invitations reçues (Rejoindre/Refuser), avis
+  système. Pas de champ d'envoi (volontaire) : on parle depuis le tchat.
+  Même fabrication que le tchat (Panel/Status/Entries/Empty + reg + init).
+- Fenêtre Amis (UI/UI_FRIENDS.js, friendsWindow, icône contacts.png) :
+  liste + pastille en ligne live, champ d'ajout (clic sur un nom le
+  pré-remplit : lignes Amis, membres du Groupe, et vaisseau du joueur
+  directement sur la carte au moment du lock), section "Demandes
+  reçues" avec Accepter/Refuser, MP (pré-remplit /w dans le tchat),
+  +Grp (invite escadrille). L'autre est notifié live (WS friendRequest
+  vérifié en base + ligne [Amis] dans son tchat) et via le poll.
+  Refresh 30 s + à la réouverture (comme le classement).
+- Murmures façon DO : commande /w pseudo message dans le tchat
+  (UI_CHAT.js -> sendWhisper), visibles comme MP entrants/sortants.
+- index.html (groupWindow + friendsWindow) + style.css (.group* +
+  .friends*) + ORBIT_ENGINE (2x reg + init). Solo sans serveur : intact.
+- Validé : 11 checks WS live groupes (create/invite/accept/chat/whisper/
+  leave/inconnue/kick, 2 invités) + 14 checks intégration amis en serveur
+  isolé (demande/doublon/soi/inconnu/demande visible/live notify/accept
+  mutuel + notify/déjà-amis/retrait bilatéral/refus/croisée). Boot
+  navigateur à confirmer à 2 (procédure § TEST ci-dessous).
+- Limites V1 : pas de partage XP/butin de groupe, pas de pastilles
+  groupe sur minimap (la map des membres est déjà dans groupUpdate).
+
+----------------------------------------------------------------
 FICHIERS CLES
 ----------------------------------------------------------------
 Créés : SCRIPTS/MULTI_SERVER.js, SCRIPTS/NPC_ROOM.js,
-  SCRIPTS/ACCOUNT_SERVER.js, SCRIPTS/AUCTION_ROOM.js,
-  SRC/CORE/NETPLAY.js, SRC/CORE/ACCOUNT_NET.js, SRC/CORE/AUCTION_NET.js
+  SCRIPTS/ACCOUNT_SERVER.js, SCRIPTS/AUCTION_ROOM.js, SCRIPTS/SOCIAL_ROOM.js,
+  SRC/CORE/NETPLAY.js, SRC/CORE/ACCOUNT_NET.js, SRC/CORE/AUCTION_NET.js,
+  UI/UI_GROUP.js, UI/UI_FRIENDS.js
 Modifiés : SRC/CORE/ORBIT_ENGINE.js (hooks multi), SRC/CORE/ACCOUNT.js
   (backend net), PUBLIC/AUTH.js (en ligne d'abord), UI/UI_MINIMAP.js
   (points alliés), UI/UI_AUCTION.js (pseudos en direct),

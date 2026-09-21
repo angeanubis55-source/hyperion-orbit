@@ -5,7 +5,8 @@ import { randomBytes } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, verifyWsToken, recordPvpKill } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, verifyWsToken, recordPvpKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest } from "./ACCOUNT_SERVER.js";
+import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 
 const root = resolve(process.cwd());
@@ -193,6 +194,7 @@ const pvpFeeds = new Map(); // mapId(lower) -> Map("victime|attaquant" -> { uid,
 const pvpFarm = new Map(); // anti-farm : "tueur|victime" -> { n, t0 } (rendement decroissant 60 min)
 const chatHistory = []; // global : [{ from, text, at }] (40 derniers)
 const chatLastById = new Map(); // anti-spam : id -> timestamp dernier message
+const friendPingLast = new Map(); // anti-spam demandes d'ami : id -> timestamp
 const hitStats = { count: 0, byMap: new Map() }; // diagnostic multi
 setInterval(() => {
   if (hitStats.count > 0) {
@@ -232,6 +234,80 @@ function broadcastAll(payload) {
   for (const ws of allWs) {
     try { if (ws.readyState === 1) ws.send(payload); } catch {}
   }
+}
+
+// Joueurs en instance perso (hors room) : suivis ici pour les messages
+// dirigés (murmures, groupes) et la présence amis, cross-map.
+const instancePeers = new Map(); // pid -> { ws, state, mapId }
+
+// Recherche d'un pilote connecté par pseudo (rooms + instances).
+function findPeerByPseudo(pseudo) {
+  const key = String(pseudo || "").trim().toLowerCase();
+  if (!key) return null;
+  for (const [, room] of rooms) {
+    for (const [pid, entry] of room) {
+      if (String(entry?.state?.pseudo || "").trim().toLowerCase() === key) {
+        return { id: String(pid), pseudo: String(entry.state.pseudo || "Pilote").slice(0, 20) };
+      }
+    }
+  }
+  for (const [pid, entry] of instancePeers) {
+    if (String(entry?.state?.pseudo || "").trim().toLowerCase() === key) {
+      return { id: String(pid), pseudo: String(entry.state.pseudo || "Pilote").slice(0, 20) };
+    }
+  }
+  return null;
+}
+
+// Fiche d'un pilote connecté (pseudo + map, même en instance).
+function describePeer(pid) {
+  const id = String(pid);
+  for (const [mkey, room] of rooms) {
+    const e = room.get(id);
+    if (e) return { id, pseudo: String(e.state?.pseudo || "Pilote").slice(0, 20), map: mkey, online: true };
+  }
+  const ie = instancePeers.get(id);
+  if (ie) return { id, pseudo: String(ie.state?.pseudo || "Pilote").slice(0, 20), map: String(ie.mapId || ""), online: true };
+  return null;
+}
+
+function sendToPeer(pid, obj) {
+  const id = String(pid);
+  let payload = null;
+  try { payload = JSON.stringify(obj); } catch { return false; }
+  for (const [, room] of rooms) {
+    const e = room.get(id);
+    if (e?.ws) {
+      try { if (e.ws.readyState === 1) e.ws.send(payload); return true; } catch {}
+    }
+  }
+  const ie = instancePeers.get(id);
+  if (ie?.ws) {
+    try { if (ie.ws.readyState === 1) ie.ws.send(payload); return true; } catch {}
+  }
+  return false;
+}
+
+// Présence amis : prévient les abonnés connectés + sync initiale au hello.
+function notifyFriendPresence(accountId, online) {
+  try {
+    const selfPid = `u_${String(accountId)}`;
+    let selfPseudo = "Pilote";
+    try { selfPseudo = describePeer(selfPid)?.pseudo || selfPseudo; } catch {}
+    for (const followerId of friendFollowers(accountId)) {
+      const fpid = `u_${String(followerId)}`;
+      if (fpid === selfPid) continue;
+      sendToPeer(fpid, { t: "friendOnline", id: selfPid, pseudo: selfPseudo, online: online === true });
+    }
+  } catch {}
+}
+function sendFriendsSync(ws, accountId) {
+  try {
+    const online = listFriends(accountId)
+      .filter((f) => describePeer(`u_${String(f.id)}`))
+      .map((f) => ({ id: `u_${String(f.id)}`, pseudo: f.pseudo }));
+    try { ws.send(JSON.stringify({ t: "friendsSync", online })); } catch {}
+  } catch {}
 }
 
 // Retire les box posees par un joueur parti + previent la room.
@@ -276,6 +352,7 @@ function removeFromAllRooms(id) {
   for (const [mkey, room] of rooms) {
     if (room.delete(id)) dropPlayerBoxes(mkey, id);
   }
+  instancePeers.delete(String(id));
   // Menage : set de box vide si room vide.
   for (const [mkey, room] of rooms) {
     if (!room.size) boxRooms.delete(mkey);
@@ -339,6 +416,49 @@ wss.on("connection", (ws) => {
             boxes: [...next].slice(0, 200).map(([uid, b]) => ({ uid, type: b.type, x: b.x, y: b.y })),
           }), id);
         }
+      } catch {}
+      return;
+    }
+    // Demande d'ami envoyée (HTTP) : notification live au destinataire
+    // connecté. Vérifiée en base (anti-usurpation : la demande doit exister).
+    if (msg.t === "friendPing") {
+      try {
+        if (!authed || !accountId) return;
+        const now = Date.now();
+        if (now - Number(friendPingLast.get(id) || 0) < 1000) return;
+        friendPingLast.set(id, now);
+        const target = String(msg.to || "").trim().slice(0, 20);
+        if (!target) return;
+        const who = findUserByPseudo(target);
+        if (!who || !hasFriendRequest(accountId, who.id)) return;
+        const peer = findPeerByPseudo(who.pseudo);
+        if (peer) sendToPeer(peer.id, { t: "friendRequest", from: id, fromPseudo: String(state.pseudo || "Pilote").slice(0, 20), at: now });
+        try { if (ws.readyState === 1) ws.send(JSON.stringify({ t: "friendPingAck", to: who.pseudo })); } catch {}
+      } catch {}
+      return;
+    }
+    // Réponse à une demande (HTTP accept/decline) : l'autre rafraîchit.
+    if (msg.t === "friendResponded") {
+      try {
+        if (!authed || !accountId) return;
+        const target = String(msg.to || "").trim().slice(0, 20);
+        if (!target) return;
+        const peer = findPeerByPseudo(target);
+        if (peer) sendToPeer(peer.id, { t: "friendsChanged" });
+      } catch {}
+      return;
+    }
+    // Groupes + murmures : messages dirigés cross-map (rooms + instances).
+    if (msg.t === "groupCreate" || msg.t === "groupInvite" || msg.t === "groupAccept" || msg.t === "groupDecline"
+      || msg.t === "groupLeave" || msg.t === "groupKick" || msg.t === "groupChat" || msg.t === "groupSync" || msg.t === "whisper") {
+      try {
+        handleSocialMessage({
+          id, state, authed,
+          send: (obj) => { try { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch {} },
+          sendTo: (pid, obj) => sendToPeer(pid, obj),
+          findByPseudo: (pseudo) => findPeerByPseudo(pseudo),
+          describe: (pid) => describePeer(pid),
+        }, msg);
       } catch {}
       return;
     }
@@ -593,6 +713,13 @@ wss.on("connection", (ws) => {
         } catch {}
       }
       const nextMap = String(msg.map || mapId || "1-1").toLowerCase();
+      const socialCtx = () => ({
+        id, state, authed,
+        send: (obj) => { try { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch {} },
+        sendTo: (pid, obj) => sendToPeer(pid, obj),
+        findByPseudo: (pseudo) => findPeerByPseudo(pseudo),
+        describe: (pid) => describePeer(pid),
+      });
       // Instance perso (Galaxy Gates) : hors room (invisible, pas de NPC
       // partagés, pas de PvP) mais socket gardé pour les canaux globaux
       // (tchat, enchères). Gameplay 100 % local comme avant.
@@ -601,15 +728,23 @@ wss.on("connection", (ws) => {
         mapId = nextMap;
         state.instance = true;
         state.updatedAt = Date.now();
+        instancePeers.set(id, { ws, state, mapId });
         try {
           ws.send(JSON.stringify({ t: "chatHistory", list: chatHistory.slice(-30) }));
         } catch {}
         try {
           ws.send(JSON.stringify(getAuctionSync()));
         } catch {}
+        // Groupe + amis : état perso renvoyé (membres voient la map gate).
+        try {
+          ws.send(JSON.stringify({ t: "groupUpdate", group: socialDescribeGroup(id, socialCtx()) }));
+        } catch {}
+        if (authed && accountId) sendFriendsSync(ws, accountId);
+        try { socialPeerChanged(id, socialCtx()); } catch {}
         return;
       }
       state.instance = false;
+      instancePeers.delete(id);
       if (nextMap !== mapId) {
         removeFromAllRooms(id);
         mapId = nextMap;
@@ -637,6 +772,15 @@ wss.on("connection", (ws) => {
       try {
         ws.send(JSON.stringify(getAuctionSync()));
       } catch {}
+      // Groupe : resync après (re)connexion ou changement de map.
+      try {
+        ws.send(JSON.stringify({ t: "groupUpdate", group: socialDescribeGroup(id, socialCtx()) }));
+      } catch {}
+      if (authed && accountId) {
+        sendFriendsSync(ws, accountId);
+        try { notifyFriendPresence(accountId, true); } catch {}
+      }
+      try { socialPeerChanged(id, socialCtx()); } catch {}
       return;
     }
     if (msg.t === "ping") {
@@ -872,8 +1016,21 @@ wss.on("connection", (ws) => {
     }
   });
 
-  ws.on("close", () => { allWs.delete(ws); chatLastById.delete(id); removeFromAllRooms(id); });
-  ws.on("error", () => { try { ws.close(); } catch {} allWs.delete(ws); chatLastById.delete(id); removeFromAllRooms(id); });
+  // Groupes : départ propre + amis : présence hors ligne.
+  const onPeerGone = () => {
+    try {
+      socialPeerGone(id, {
+        id, state, authed,
+        send: () => {},
+        sendTo: (pid, obj) => sendToPeer(pid, obj),
+        findByPseudo: (pseudo) => findPeerByPseudo(pseudo),
+        describe: (pid) => describePeer(pid),
+      });
+    } catch {}
+    try { if (authed && accountId) notifyFriendPresence(accountId, false); } catch {}
+  };
+  ws.on("close", () => { allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); onPeerGone(); removeFromAllRooms(id); });
+  ws.on("error", () => { try { ws.close(); } catch {} allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); onPeerGone(); removeFromAllRooms(id); });
 });
 
 // Enchères partagées : clôture à chaque heure pile de Paris (:00),
@@ -908,6 +1065,22 @@ setInterval(() => {
       if (now - Number(entry?.state?.updatedAt || 0) > 10000) {
         room.delete(pid);
         dropPlayerBoxes(key, pid);
+        try {
+          const goneState = entry?.state || {};
+          socialPeerGone(String(pid), {
+            id: String(pid), state: goneState, authed: String(pid).startsWith("u_"),
+            send: () => {},
+            sendTo: (to, obj) => sendToPeer(to, obj),
+            findByPseudo: (pseudo) => findPeerByPseudo(pseudo),
+            // Pair déjà retiré de la room : fiche locale d'abord.
+            describe: (p) => (String(p) === String(pid)
+              ? { id: String(pid), pseudo: String(goneState.pseudo || "Pilote").slice(0, 20), map: key, online: false }
+              : describePeer(p)),
+          });
+        } catch {}
+        try {
+          if (String(pid).startsWith("u_")) notifyFriendPresence(String(pid).slice(2), false);
+        } catch {}
       }
     }
     if (!room.size) continue;

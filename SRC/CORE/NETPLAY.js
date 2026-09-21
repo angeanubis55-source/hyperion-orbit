@@ -34,6 +34,13 @@ export function suspendNetplay(v) {
     netAdminKickInbox.length = 0;
     netAdminBoomInbox.length = 0;
     netAuctionInbox.length = 0;
+    netGroup = null;
+    netGroupInviteInbox.length = 0;
+    netGroupNoticeInbox.length = 0;
+    netWhisperInbox.length = 0;
+    netFriendRequestInbox.length = 0;
+    netFriendsDirty = false;
+    netFriendsOnline = [];
     lastNpcSnapMs = 0;
     netBoxHostId = null;
     try { if (ws && ws.readyState === 1) ws.close(); } catch {}
@@ -265,6 +272,98 @@ function pushChatMessage(m) {
   if (netChatInbox.length > 100) netChatInbox.shift();
   netChatInbox.push({ from, text, at: Number(m.at) || Date.now(), by: m.by != null ? String(m.by) : "" });
 }
+// Groupes + murmures + amis : canaux globaux comme le tchat
+// (vivants même en Galaxy Gate, coupés seulement en suspend).
+let netGroup = null; // null | { id, leader, members:[{id,pseudo,map,online}] }
+const netGroupInviteInbox = [];
+const netGroupNoticeInbox = [];
+const netWhisperInbox = []; // { from, fromPseudo, toPseudo, text, at, mine }
+let netFriendsOnline = []; // [{ id, pseudo }] (comptes suivis, en ligne)
+export function getNetGroup() {
+  return netGroup;
+}
+export function getNetFriendsOnline() {
+  return netFriendsOnline.slice();
+}
+export function drainNetGroupInviteInbox() {
+  if (!netGroupInviteInbox.length) return [];
+  return netGroupInviteInbox.splice(0, netGroupInviteInbox.length);
+}
+export function drainNetGroupNoticeInbox() {
+  if (!netGroupNoticeInbox.length) return [];
+  return netGroupNoticeInbox.splice(0, netGroupNoticeInbox.length);
+}
+export function drainNetWhisperInbox() {
+  if (!netWhisperInbox.length) return [];
+  return netWhisperInbox.splice(0, netWhisperInbox.length);
+}
+function sendSocialMsg(obj) {
+  if (suspended) return false;
+  if (!ws || ws.readyState !== 1 || !obj || typeof obj !== "object") return false;
+  try { ws.send(JSON.stringify(obj)); return true; } catch { return false; }
+}
+export function sendGroupCreate() {
+  return sendSocialMsg({ t: "groupCreate" });
+}
+export function sendGroupInvite(to) {
+  const target = String(to || "").trim().slice(0, 20);
+  if (!target) return false;
+  return sendSocialMsg({ t: "groupInvite", to: target });
+}
+export function sendGroupAccept() {
+  return sendSocialMsg({ t: "groupAccept" });
+}
+export function sendGroupDecline() {
+  return sendSocialMsg({ t: "groupDecline" });
+}
+export function sendGroupLeave() {
+  const had = !!netGroup;
+  netGroup = null;
+  sendSocialMsg({ t: "groupLeave" });
+  return had;
+}
+export function sendGroupKick(target) {
+  const id = String(target || "").slice(0, 64);
+  if (!id) return false;
+  return sendSocialMsg({ t: "groupKick", target: id });
+}
+export function sendGroupChat(text) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!clean) return false;
+  return sendSocialMsg({ t: "groupChat", text: clean });
+}
+export function sendGroupSync() {
+  return sendSocialMsg({ t: "groupSync" });
+}
+export function sendWhisper(to, text) {
+  const target = String(to || "").trim().slice(0, 20);
+  const clean = String(text || "").replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!target || !clean) return false;
+  return sendSocialMsg({ t: "whisper", to: target, text: clean });
+}
+// Demandes d'ami : notification live après le POST HTTP (la demande est
+// vérifiée en base côté serveur) + rafraîchissement après accept/refus.
+const netFriendRequestInbox = [];
+let netFriendsDirty = false;
+export function drainNetFriendRequestInbox() {
+  if (!netFriendRequestInbox.length) return [];
+  return netFriendRequestInbox.splice(0, netFriendRequestInbox.length);
+}
+export function consumeFriendsDirty() {
+  const v = netFriendsDirty;
+  netFriendsDirty = false;
+  return v;
+}
+export function sendFriendPing(to) {
+  const target = String(to || "").trim().slice(0, 20);
+  if (!target) return false;
+  return sendSocialMsg({ t: "friendPing", to: target });
+}
+export function sendFriendResponded(to) {
+  const target = String(to || "").trim().slice(0, 20);
+  if (!target) return false;
+  return sendSocialMsg({ t: "friendResponded", to: target });
+}
 // Enchères partagées (comme le tchat) : sync/update/settle/reject bruts,
 // fusionnés dans user.auction par SRC/CORE/AUCTION_NET.js.
 const netAuctionInbox = [];
@@ -365,6 +464,106 @@ export function ensureNetplayConnection() {
     }
     if (msg.t === "chatMsg") {
       pushChatMessage(msg);
+      return;
+    }
+    // Groupes + murmures + présence amis (miroir tchat pour l'affichage).
+    if (msg.t === "groupUpdate") {
+      netGroup = msg.group && typeof msg.group === "object" ? msg.group : null;
+      return;
+    }
+    if (msg.t === "groupInvite") {
+      if (netGroupInviteInbox.length > 4) netGroupInviteInbox.shift();
+      netGroupInviteInbox.push({
+        from: String(msg.from || "").slice(0, 64),
+        fromPseudo: String(msg.fromPseudo || "Pilote").slice(0, 20),
+        groupId: String(msg.groupId || "").slice(0, 16),
+      });
+      return;
+    }
+    if (msg.t === "groupNotice") {
+      if (netGroupNoticeInbox.length > 20) netGroupNoticeInbox.shift();
+      netGroupNoticeInbox.push({ text: String(msg.text || "").slice(0, 160) });
+      pushChatMessage({ from: "[Groupe]", text: String(msg.text || "").slice(0, 160), at: Date.now() });
+      return;
+    }
+    if (msg.t === "groupMsg") {
+      pushChatMessage({
+        from: `[Groupe] ${String(msg.fromPseudo || "Pilote").slice(0, 20)}`,
+        text: String(msg.text || "").slice(0, 200),
+        at: Number(msg.at) || Date.now(),
+        by: msg.from != null ? String(msg.from) : "",
+      });
+      return;
+    }
+    if (msg.t === "whisperMsg") {
+      const entry = {
+        from: String(msg.from || "").slice(0, 64),
+        fromPseudo: String(msg.fromPseudo || "Pilote").slice(0, 20),
+        text: String(msg.text || "").slice(0, 200),
+        at: Number(msg.at) || Date.now(),
+        mine: false,
+      };
+      if (netWhisperInbox.length > 60) netWhisperInbox.shift();
+      netWhisperInbox.push(entry);
+      pushChatMessage({ from: `[MP] ${entry.fromPseudo}`, text: entry.text, at: entry.at, by: entry.from });
+      return;
+    }
+    if (msg.t === "whisperSent") {
+      const entry = {
+        toPseudo: String(msg.toPseudo || "Pilote").slice(0, 20),
+        text: String(msg.text || "").slice(0, 200),
+        at: Number(msg.at) || Date.now(),
+        mine: true,
+      };
+      if (netWhisperInbox.length > 60) netWhisperInbox.shift();
+      netWhisperInbox.push(entry);
+      pushChatMessage({ from: `[MP → ${entry.toPseudo}]`, text: entry.text, at: entry.at, by: myId });
+      return;
+    }
+    if (msg.t === "whisperNotice") {
+      if (netGroupNoticeInbox.length > 20) netGroupNoticeInbox.shift();
+      netGroupNoticeInbox.push({ text: String(msg.text || "").slice(0, 160) });
+      return;
+    }
+    // Demande d'ami reçue : inbox + ligne tchat (accepter : fenêtre Amis).
+    if (msg.t === "friendRequest") {
+      const entry = {
+        from: String(msg.from || "").slice(0, 64),
+        fromPseudo: String(msg.fromPseudo || "Pilote").slice(0, 20),
+        at: Number(msg.at) || Date.now(),
+      };
+      if (!netFriendRequestInbox.some((r) => r.from === entry.from)) {
+        if (netFriendRequestInbox.length > 8) netFriendRequestInbox.shift();
+        netFriendRequestInbox.push(entry);
+      }
+      netFriendsDirty = true;
+      pushChatMessage({ from: "[Amis]", text: `Demande d'ami de ${entry.fromPseudo} (fenêtre Amis pour accepter).`, at: entry.at, by: entry.from });
+      return;
+    }
+    if (msg.t === "friendPingAck") {
+      pushChatMessage({ from: "[Amis]", text: `Demande envoyée à ${String(msg.to || "Pilote").slice(0, 20)}.`, at: Date.now(), by: myId });
+      return;
+    }
+    if (msg.t === "friendsChanged") {
+      netFriendsDirty = true;
+      return;
+    }
+    if (msg.t === "friendsSync" && Array.isArray(msg.online)) {
+      netFriendsOnline = msg.online.slice(0, 200)
+        .filter((f) => f && typeof f === "object")
+        .map((f) => ({ id: String(f.id || "").slice(0, 64), pseudo: String(f.pseudo || "Pilote").slice(0, 20) }));
+      return;
+    }
+    if (msg.t === "friendOnline") {
+      const fid = String(msg.id || "").slice(0, 64);
+      if (!fid) return;
+      if (msg.online === true) {
+        if (!netFriendsOnline.some((f) => f.id === fid)) {
+          netFriendsOnline.push({ id: fid, pseudo: String(msg.pseudo || "Pilote").slice(0, 20) });
+        }
+      } else {
+        netFriendsOnline = netFriendsOnline.filter((f) => f.id !== fid);
+      }
       return;
     }
     if (msg.t === "pong") {
@@ -976,7 +1175,7 @@ export function tickNetplayRemotes(dt = 0.016) {
 // Ce module ne fait que le reseau : envoi 20 Hz + snapshots + extrapolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, forceNetReconnect, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect };
+  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, forceNetReconnect, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;

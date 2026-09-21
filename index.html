@@ -758,6 +758,29 @@
       <div id="rankingRows" class="rankingRows"><div class="rankingEmpty">Chargement…</div></div>
     </div>
 
+    <div id="groupWindow" class="panel groupPanel">
+      <div id="groupStatus" class="groupStatus">Solo</div>
+      <div id="groupMembers" class="groupEntries"><div class="groupEmpty">Personne avec toi pour l'instant.</div></div>
+      <div class="groupActions">
+        <button id="groupLeaveBtn" type="button" style="display:none;">Quitter</button>
+        <input id="groupInviteInput" type="text" placeholder="Pseudo à inviter…" maxlength="20" autocomplete="off" />
+        <button id="groupInviteBtn" type="button">Inviter</button>
+      </div>
+      <div id="groupInvites" class="groupEntries"><div class="groupEmpty">Aucune invitation.</div></div>
+      <div id="groupNotices" class="groupNotices"></div>
+    </div>
+
+    <div id="friendsWindow" class="panel friendsPanel">
+      <div id="friendsStatus" class="friendsStatus">Chargement…</div>
+      <div id="friendsList" class="friendsRows"><div class="friendsEmpty">Chargement…</div></div>
+      <form id="friendAddForm" class="friendsForm" autocomplete="off">
+        <input id="friendAddInput" type="text" placeholder="Pseudo ami…" maxlength="20" autocomplete="off" />
+        <button id="friendAddBtn" type="submit">Ajouter</button>
+      </form>
+      <div class="friendsSub">Demandes reçues</div>
+      <div id="friendsRequests" class="friendsRows friendsRequests"><div class="friendsEmpty">Aucune demande.</div></div>
+    </div>
+
     <div id="centerMsg" class="panel">
       <h2 id="centerTitle"></h2>
       <p id="centerBody"></p>

@@ -99,6 +99,19 @@ export function initAccountDb() {
       honneur INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS friends (
+      user_id TEXT NOT NULL,
+      friend_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, friend_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_friends_user ON friends(user_id);
+    CREATE TABLE IF NOT EXISTS friend_requests (
+      from_id TEXT NOT NULL,
+      to_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (from_id, to_id)
+    );
   `);
   // Menage des sessions expirees (toutes les heures).
   const purge = () => {
@@ -166,6 +179,146 @@ export function recordPvpKill(accountId, exp, honneur) {
       .run(uid, e, h, Date.now());
     return db.prepare("SELECT kills, xp, honneur FROM pvp_stats WHERE user_id = ?").get(uid);
   } catch { return null; }
+}
+
+// --- Amis façon DO (comptes uniquement) : demande -> acceptation ->
+// amitié mutuelle. Les demandes en attente persistent (joueur hors ligne
+// les retrouve à la connexion).
+// listFriends : [{ id, pseudo }] triés par pseudo.
+export function listFriends(userId) {
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    if (!uid) return [];
+    return db.prepare("SELECT u.id AS id, u.pseudo AS pseudo FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ? ORDER BY u.pseudo COLLATE NOCASE").all(uid)
+      .map((r) => ({ id: String(r.id), pseudo: String(r.pseudo || "Pilote").slice(0, 20) }));
+  } catch { return []; }
+}
+
+// Recherche d'un compte par pseudo (insensible à la casse).
+export function findUserByPseudo(pseudo) {
+  try {
+    initAccountDb();
+    const row = db.prepare("SELECT id, pseudo FROM users WHERE pseudo_norm = ?").get(norm(pseudo));
+    if (!row) return null;
+    return { id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20) };
+  } catch { return null; }
+}
+
+export function areFriends(a, b) {
+  try {
+    initAccountDb();
+    return !!db.prepare("SELECT 1 FROM friends WHERE user_id = ? AND friend_id = ?").get(String(a), String(b));
+  } catch { return false; }
+}
+
+export function hasFriendRequest(fromId, toId) {
+  try {
+    initAccountDb();
+    return !!db.prepare("SELECT 1 FROM friend_requests WHERE from_id = ? AND to_id = ?").get(String(fromId), String(toId));
+  } catch { return false; }
+}
+
+// Demande d'ami : l'autre doit accepter (voir getFriendRequests).
+// Erreurs : NOT_FOUND, SELF, ALREADY (déjà amis), SENT (déjà envoyée).
+// Demande croisée (l'autre t'a déjà invité) : amitié immédiate (mutual).
+export function sendFriendRequest(fromId, pseudo) {
+  try {
+    initAccountDb();
+    const uid = String(fromId || "");
+    const target = findUserByPseudo(pseudo);
+    if (!uid || !target) return { ok: false, error: "NOT_FOUND" };
+    if (target.id === uid) return { ok: false, error: "SELF" };
+    if (areFriends(uid, target.id)) return { ok: false, error: "ALREADY" };
+    if (hasFriendRequest(uid, target.id)) return { ok: false, error: "SENT", to: target };
+    if (hasFriendRequest(target.id, uid)) {
+      const r = acceptFriendRequest(uid, target.id);
+      if (r.ok) return { ok: true, mutual: true, to: target };
+      return { ok: false, error: "SERVER" };
+    }
+    db.prepare("INSERT INTO friend_requests (from_id, to_id, created_at) VALUES (?, ?, ?)").run(uid, target.id, Date.now());
+    return { ok: true, to: target };
+  } catch { return { ok: false, error: "SERVER" }; }
+}
+
+// Demandes reçues : [{ fromId, pseudo, at }].
+export function getFriendRequests(userId) {
+  try {
+    initAccountDb();
+    return db.prepare("SELECT r.from_id AS fromId, u.pseudo AS pseudo, r.created_at AS at FROM friend_requests r JOIN users u ON u.id = r.from_id WHERE r.to_id = ? ORDER BY r.created_at").all(String(userId))
+      .map((r) => ({ fromId: String(r.fromId), pseudo: String(r.pseudo || "Pilote").slice(0, 20), at: Number(r.at) || 0 }));
+  } catch { return []; }
+}
+
+function resolvePeerId(t) {
+  const s = String(t || "").trim();
+  if (!s) return null;
+  const hit = findUserByPseudo(s);
+  if (hit) return hit.id;
+  try {
+    initAccountDb();
+    const row = db.prepare("SELECT id FROM users WHERE id = ?").get(s);
+    return row ? String(row.id) : null;
+  } catch { return null; }
+}
+
+// Accepter : amitié mutuelle (les deux sens), demande supprimée.
+export function acceptFriendRequest(userId, target) {
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    const sid = resolvePeerId(target);
+    if (!uid || !sid || sid === uid) return { ok: false, error: "NONE" };
+    if (!hasFriendRequest(sid, uid)) return { ok: false, error: "NONE" };
+    const now = Date.now();
+    db.prepare("DELETE FROM friend_requests WHERE from_id = ? AND to_id = ?").run(sid, uid);
+    db.prepare("DELETE FROM friend_requests WHERE from_id = ? AND to_id = ?").run(uid, sid);
+    db.prepare("INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?)").run(uid, sid, now);
+    db.prepare("INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?)").run(sid, uid, now);
+    const who = db.prepare("SELECT pseudo FROM users WHERE id = ?").get(sid);
+    return { ok: true, friend: { id: sid, pseudo: String(who?.pseudo || "Pilote").slice(0, 20) } };
+  } catch { return { ok: false, error: "SERVER" }; }
+}
+
+// Refuser : demande supprimée, sans amitié.
+export function declineFriendRequest(userId, target) {
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    const sid = resolvePeerId(target);
+    if (!uid || !sid) return { ok: false };
+    db.prepare("DELETE FROM friend_requests WHERE from_id = ? AND to_id = ?").run(sid, uid);
+    return { ok: true };
+  } catch { return { ok: false }; }
+}
+
+// Abonnés : ids des comptes qui suivent userId (pour la présence en ligne).
+export function friendFollowers(userId) {
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    if (!uid) return [];
+    return db.prepare("SELECT user_id FROM friends WHERE friend_id = ?").all(uid).map((r) => String(r.user_id));
+  } catch { return []; }
+}
+
+// Retrait d'ami par pseudo ou id (les deux sens, idempotent).
+export function removeFriend(userId, target) {
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    const t = String(target || "").trim();
+    if (!uid || !t) return { ok: false };
+    let fid = t;
+    if (!fid.startsWith("u_") && fid.length < 60) {
+      // Pseudo ou id brut : on tente les deux formes.
+      const row = db.prepare("SELECT id FROM users WHERE pseudo_norm = ? OR id = ?").get(norm(t), t);
+      if (row) fid = String(row.id);
+    } else if (fid.startsWith("u_")) fid = fid.slice(2);
+    db.prepare("DELETE FROM friends WHERE user_id = ? AND friend_id = ?").run(uid, fid);
+    db.prepare("DELETE FROM friends WHERE user_id = ? AND friend_id = ?").run(fid, uid);
+    return { ok: true };
+  } catch { return { ok: false }; }
 }
 
 // WS multi : verifie un token de compte hors HTTP (hello).
@@ -435,6 +588,62 @@ export function handleAccountApi(req, res) {
   if (pathname === "/api/save" && req.method === "POST") {
     readBody(req, res, (body) => {
       try { handleSave(req, body, res); } catch {
+        json(res, 500, { ok: false, error: "Erreur serveur." });
+      }
+    });
+    return true;
+  }
+  if (pathname === "/api/friends" && (req.method === "GET" || req.method === "POST" || req.method === "DELETE")) {
+    if (rateLimited(`${ip}:/api/friends`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    if (req.method === "GET") {
+      return json(res, 200, { ok: true, friends: listFriends(me.id) });
+    }
+    readBody(req, res, (body) => {
+      try {
+        if (req.method === "POST") {
+          // Demande d'ami : l'autre doit accepter (pas d'ajout direct).
+          const r = sendFriendRequest(me.id, body?.pseudo);
+          if (!r.ok) {
+            const msg = r.error === "NOT_FOUND" ? "Pilote introuvable."
+              : r.error === "SELF" ? "Tu ne peux pas t'ajouter toi-même."
+              : r.error === "ALREADY" ? "Déjà dans tes amis."
+              : r.error === "SENT" ? "Demande déjà envoyée." : "Erreur serveur.";
+            const code = r.error === "NOT_FOUND" ? 404 : r.error === "SELF" ? 400 : 409;
+            return json(res, code, { ok: false, error: msg });
+          }
+          return json(res, 200, { ok: true, to: r.to, mutual: r.mutual === true ? true : undefined });
+        }
+        const r = removeFriend(me.id, body?.pseudo ?? body?.id);
+        return json(res, 200, { ok: true });
+      } catch {
+        json(res, 500, { ok: false, error: "Erreur serveur." });
+      }
+    });
+    return true;
+  }
+  if (pathname === "/api/friends/requests" && req.method === "GET") {
+    if (rateLimited(`${ip}:/api/friends`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    return json(res, 200, { ok: true, requests: getFriendRequests(me.id) });
+  }
+  if ((pathname === "/api/friends/accept" || pathname === "/api/friends/decline") && req.method === "POST") {
+    if (rateLimited(`${ip}:/api/friends`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    readBody(req, res, (body) => {
+      try {
+        const target = body?.pseudo ?? body?.id ?? body?.fromId;
+        if (pathname === "/api/friends/accept") {
+          const r = acceptFriendRequest(me.id, target);
+          if (!r.ok) return json(res, 404, { ok: false, error: "Demande introuvable." });
+          return json(res, 200, { ok: true, friend: r.friend });
+        }
+        declineFriendRequest(me.id, target);
+        return json(res, 200, { ok: true });
+      } catch {
         json(res, 500, { ok: false, error: "Erreur serveur." });
       }
     });

@@ -142,6 +142,8 @@ import { wireWikiWindow } from "../../UI/UI_WIKI.js";
 import { initSkylabUI, tickSkylabProduction } from "../../UI/UI_SKYLAB.js";
 import { initAuctionUI, renderAuctionWindow, tickAuctionDisplay } from "../../UI/UI_AUCTION.js";
 import { initChatUI } from "../../UI/UI_CHAT.js";
+import { initGroupUI } from "../../UI/UI_GROUP.js";
+import { initFriendsUI } from "../../UI/UI_FRIENDS.js";
 import { initRankingsUI } from "../../UI/UI_RANKINGS.js";
 import { initPilotSkillsUI, renderPilotSkillsWindow, tickPilotSkillsDisplay } from "../../UI/UI_PILOT_SKILLS.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
@@ -7957,6 +7959,8 @@ function registerHudWindows() {
   reg("galaxyGateWindow", "Galaxy Gates", menuIcon("ggBuilder"), false);
   reg("gameLogWindow", "LOG", menuIcon("log"), false);
   reg("chatWindow", "Chat", menuIcon("chat"), true);
+  reg("groupWindow", "Groupe", menuIcon("group"), false);
+  reg("friendsWindow", "Amis", menuIcon("contacts"), false);
   reg("rankingWindow", "Classement", menuIcon("highscoregate"), false);
   // Assemblage (voir CRAFTING_ENABLED) : icône dock + fenêtre si activé.
   if (CRAFTING_ENABLED) reg("craftingWindow", "Assemblage", menuIcon("assembly"), false);
@@ -7981,6 +7985,8 @@ function registerHudWindows() {
 wireSettingsWindow();
 wireWikiWindow();
 initChatUI();
+initGroupUI();
+initFriendsUI();
 initRankingsUI();
 initSkylabUI({
   getUser: () => account.user,
@@ -17306,6 +17312,21 @@ if (tradeButton) {
 if (enemy) {
   Target.set(enemy);
   try { botNotifyManual(); } catch {}
+  try {
+    // Clic sur le vaisseau d'un joueur : pré-remplit l'ajout d'ami
+    // et l'invitation d'escadrille avec son pseudo.
+    const rid = enemy._netPlayer != null ? String(enemy._netPlayer) : "";
+    if (rid) {
+      let rpseudo = "";
+      try { rpseudo = String(getNetplayRemotes().get(rid)?.pseudo || "").slice(0, 20); } catch {}
+      if (rpseudo) {
+        const fi = document.getElementById("friendAddInput");
+        if (fi) fi.value = rpseudo;
+        const gi = document.getElementById("groupInviteInput");
+        if (gi) gi.value = rpseudo;
+      }
+    }
+  } catch {}
 
   pointer.downOnEnemy = true;
   pointer.dragArmed = false;

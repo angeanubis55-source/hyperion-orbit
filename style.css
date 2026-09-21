@@ -2554,6 +2554,41 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .chatForm input:focus{ border-color:#69e9ff; }
 .chatForm button{ height:30px; padding:0 14px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 12px/1.2 ui-sans-serif,system-ui; }
 .chatForm button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
+/* Fenêtre Groupe (escadrille) */
+.groupPanel{ width:380px; min-width:280px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
+.groupStatus{ padding:7px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#75e8ff; font-size:11px; font-weight:800; text-transform:uppercase; }
+.groupEntries{ max-height:170px; min-height:60px; overflow-y:auto; display:grid; align-content:start; gap:4px; padding:9px 11px; box-sizing:border-box; }
+.groupRow{ display:flex; align-items:center; gap:6px; color:#bcdde5; font-size:12px; font-weight:600; }
+.groupName{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.groupMap{ color:#5d96a5; font-size:11px; margin-left:auto; }
+.groupEmpty{ padding:12px; text-align:center; color:#5c8290; font-size:11px; font-weight:800; }
+.groupActions{ display:flex; flex-wrap:wrap; gap:6px; padding:0 11px 8px; box-sizing:border-box; }
+.groupActions input{ min-width:0; flex:1; height:28px; box-sizing:border-box; padding:0 9px; outline:0; border:1px solid rgba(124,240,255,.30); border-radius:7px; color:#effcff; background:#051521; font:600 12px/1 ui-sans-serif,system-ui; }
+.groupActions input:focus{ border-color:#69e9ff; }
+.groupActions button,.groupRow button,.groupInvite button{ height:26px; padding:0 10px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:7px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 11px/1.2 ui-sans-serif,system-ui; white-space:nowrap; }
+.groupActions button:hover,.groupRow button:hover,.groupInvite button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
+.groupInvite{ display:flex; align-items:center; justify-content:space-between; gap:6px; padding:5px 7px; border:1px solid rgba(255,211,107,.4); border-radius:7px; color:#f3dda9; font-size:12px; }
+.groupNotices{ display:grid; gap:3px; padding:0 11px 8px; box-sizing:border-box; }
+.groupNotice{ color:#8fa8b3; font-size:11px; font-style:italic; }
+/* Fenêtre Amis */
+.friendsPanel{ width:380px; min-width:280px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
+.friendsStatus{ padding:7px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#75e8ff; font-size:11px; font-weight:800; text-transform:uppercase; }
+.friendsRows{ height:260px; min-height:140px; overflow-y:auto; display:grid; align-content:start; gap:4px; padding:9px 11px; box-sizing:border-box; }
+.friendsRow{ display:flex; align-items:center; gap:8px; color:#bcdde5; font-size:12px; font-weight:600; }
+.friendsDot{ width:9px; height:9px; border-radius:50%; background:#5c8290; flex:none; }
+.friendsDot.on{ background:#5bff8f; box-shadow:0 0 6px rgba(91,255,143,.7); }
+.friendsName{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.friendsBtns{ margin-left:auto; display:flex; gap:4px; flex:none; }
+.friendsBtns button{ height:24px; padding:0 8px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:7px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 11px/1.2 ui-sans-serif,system-ui; white-space:nowrap; }
+.friendsBtns button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
+.friendsEmpty{ padding:20px; text-align:center; color:#5c8290; font-size:11px; font-weight:800; }
+.friendsSub{ padding:6px 11px 0; box-sizing:border-box; color:#5d96a5; font-size:11px; font-weight:800; text-transform:uppercase; border-top:1px solid rgba(124,240,255,.14); }
+.friendsRequests{ height:120px; min-height:80px; }
+.friendsForm{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; padding:8px 11px; box-sizing:border-box; border-top:1px solid rgba(124,240,255,.14); }
+.friendsForm input{ min-width:0; width:100%; height:30px; box-sizing:border-box; padding:0 9px; outline:0; border:1px solid rgba(124,240,255,.30); border-radius:7px; color:#effcff; background:#051521; font:600 12px/1 ui-sans-serif,system-ui; }
+.friendsForm input:focus{ border-color:#69e9ff; }
+.friendsForm button{ height:30px; padding:0 14px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 12px/1.2 ui-sans-serif,system-ui; }
+.friendsForm button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
 /* Fenêtre Classement PvP */
 .rankingPanel{ width:560px; min-width:420px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
 .rankingStatus{ padding:7px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#75e8ff; font-size:11px; font-weight:800; text-transform:uppercase; }

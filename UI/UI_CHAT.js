@@ -1,6 +1,6 @@
 "use strict";
 
-import { drainNetChatInbox, sendChat, netMyId, netMyPseudo, netplayStatus } from "../SRC/CORE/NETPLAY.js";
+import { drainNetChatInbox, sendChat, sendWhisper, netMyId, netMyPseudo, netplayStatus } from "../SRC/CORE/NETPLAY.js";
 import { escapeHtml } from "./UI_DOM.js";
 
 const MAX_SHOWN = 60;
@@ -66,6 +66,20 @@ export function initChatUI() {
   function submit() {
     const text = input.value.replace(/\s+/g, " ").trim().slice(0, 200);
     if (!text) return;
+    // Murmure façon DarkOrbit : /w pseudo message.
+    const whisper = /^\/w\s+(\S+)\s+([\s\S]+)$/.exec(text);
+    if (whisper) {
+      if (!sendWhisper(whisper[1], whisper[2])) {
+        if (status) {
+          status.textContent = "Hors ligne : murmure non envoyé";
+          status.classList.add("offline");
+        }
+        return;
+      }
+      input.value = "";
+      input.focus();
+      return;
+    }
     if (!sendChat(text)) {
       if (status) {
         status.textContent = "Hors ligne : message non envoyé";
