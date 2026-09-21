@@ -28,6 +28,7 @@
   .badge.guest { background: rgba(255,211,107,.12); color: #ffd36b; border: 1px solid rgba(255,211,107,.4); }
   .badge.muted { background: rgba(255,110,120,.15); color: #ff9aa5; border: 1px solid rgba(255,110,120,.4); }
   .badge.dead { background: rgba(120,120,120,.15); color: #999; border: 1px solid rgba(120,120,120,.4); }
+  .badge.gate { background: rgba(180,120,255,.15); color: #cfa8ff; border: 1px solid rgba(180,120,255,.4); }
   .row { display: flex; gap: 8px; }
   .row input { flex: 1; }
   .msg { min-height: 20px; margin: 8px 0 0; font-size: 13px; }
@@ -114,6 +115,7 @@
         const tr = document.createElement("tr");
         if (p.muted) tr.className = "mutedRow";
         const badges = [(p.authed ? `<span class="badge ok">compte</span>` : `<span class="badge guest">invité</span>`),
+          (p.instance ? ` <span class="badge gate">gate</span>` : ""),
           (p.dead ? ` <span class="badge dead">mort</span>` : ""),
           (p.muted ? ` <span class="badge muted">muté</span>` : "")].join("");
         tr.innerHTML = `<td>${esc(p.pseudo)}</td><td>${badges}</td><td>${esc(p.map)}</td>` +

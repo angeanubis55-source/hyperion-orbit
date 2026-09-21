@@ -76,6 +76,19 @@ function handleAdminApi(request, response, pathname) {
         });
       }
     }
+    // Joueurs en instance perso (Galaxy Gates : alpha/beta/gamma) : hors
+    // room mais connectés — visibles ici avec le badge gate.
+    for (const [pid, entry] of instancePeers) {
+      const s = entry?.state || {};
+      peers.push({
+        id: String(pid), pseudo: String(s.pseudo || "Pilote").slice(0, 20),
+        authed: String(pid).startsWith("u_"), map: String(entry.mapId || s.map || "?"),
+        x: Math.round(Number(s.x) || 0), y: Math.round(Number(s.y) || 0),
+        dead: s.dead === true, muted: chatMutes.has(String(pid)),
+        connectedSec: Math.max(0, Math.round((now - Number(s.connectedAt || now)) / 1000)),
+        instance: true,
+      });
+    }
     adminJson(response, 200, { ok: true, peers, count: peers.length });
     return true;
   }
@@ -129,6 +142,19 @@ function handleAdminApi(request, response, pathname) {
             } catch {}
             const victimWs = entry.ws;
             setTimeout(() => { try { victimWs.close(); } catch {} }, 500);
+          }
+          // Joueur en instance perso (gate) : même sanction (pas d'explosion
+          // visible, il est seul sur sa map).
+          if (!found) {
+            const entry = instancePeers.get(pid);
+            if (entry?.ws) {
+              found = true;
+              try {
+                if (entry.ws.readyState === 1) entry.ws.send(JSON.stringify({ t: "adminKick", reason }));
+              } catch {}
+              const victimWs = entry.ws;
+              setTimeout(() => { try { victimWs.close(); } catch {} }, 500);
+            }
           }
           adminJson(response, 200, { ok: !!found });
           return;

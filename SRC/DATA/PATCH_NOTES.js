@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.264",
+    "date": "2026-09-21T23:47:01+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.263",
     "date": "2026-09-21T23:17:46+02:00",
     "message": "multi: blackout remontees pool 500ms apres degat (coups effaces par les soins)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.205",
     "date": "2026-09-14T07:14:53+02:00",
     "message": "galaxy gates: centrage ggCore, portail en fond, multiplicateur bouton, largeurs"
-  },
-  {
-    "version": "0.204",
-    "date": "2026-09-14T05:06:45+02:00",
-    "message": "galaxy gates harmonise (boutons, cartes, onglets) + historique d'origine restaure"
   }
 ];
