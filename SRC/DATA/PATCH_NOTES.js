@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.266",
+    "date": "2026-09-21T23:55:57+02:00",
+    "message": "multi: auto-refresh client a la mise a jour (version serveur via pong)"
+  },
+  {
     "version": "0.265",
     "date": "2026-09-21T23:51:37+02:00",
     "message": "admin: lister les joueurs en gate (alpha/beta/gamma) + kick compatible"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.207",
     "date": "2026-09-14T12:41:53+02:00",
     "message": "galaxy gates: tirage SAB, X6 rare, PLT-2021/3030, UBR-100, HSTRM-01, energie 0,1%"
-  },
-  {
-    "version": "0.206",
-    "date": "2026-09-14T07:25:27+02:00",
-    "message": "galaxy gates: multiplicateur unique partage, portail en fond, ui ggCore"
   }
 ];
