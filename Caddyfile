@@ -1,0 +1,34 @@
+# Hyperion Orbit — HTTPS automatique via Caddy (recommandé, Windows)
+#
+# Principe : Caddy écoute sur 80 + 443, obtient tout seul un certificat
+# Let's Encrypt pour ton domaine DuckDNS, et redirige vers ton serveur
+# de jeu qui tourne en HTTP sur 127.0.0.1:8080 (WebSocket /ws inclus).
+# Ton URL devient : https://hyperion-orbit.duckdns.org  (sans :8080 !)
+# Le client passe tout seul en wss:// quand la page est en https://.
+#
+# Pré-requis (une fois) :
+#   1. DuckDNS pointe vers ton IP publique (vérifie sur duckdns.org).
+#   2. Ta box redirige les ports 80 et 443 (TCP) vers ce PC.
+#      Le port 8080 n'a plus besoin d'être exposé (mieux : ferme-le).
+#   3. Le jeu tourne :  npm run server:multi  (port 8080, 0.0.0.0 ou 127.0.0.1)
+#   4. Lance Caddy avec ce fichier :  caddy run --config Caddyfile --adapter caddyfile
+#
+# Note : le :8080 disparaît de l'URL. https://...:8080 existerait seulement
+# si tu servais du TLS natif Node sur 8080 (option --tls-*, voir MULTI_SERVER.js).
+
+{
+	# Email pour Let's Encrypt (alertes expiration). Mets le tien.
+	email admin@example.com
+}
+
+hyperion-orbit.duckdns.org {
+	# Jeu + WebSocket : tout est relayé tel quel vers Node.
+	reverse_proxy 127.0.0.1:8080
+
+	# Sécurité de base.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}

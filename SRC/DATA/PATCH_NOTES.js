@@ -1,6 +1,16 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.260",
+    "date": "2026-09-21T22:19:44+02:00",
+    "message": "multi: pool PV serveur suit les soins (fix rollback apres reparation) + sync munitions en max (anti-wipe)"
+  },
+  {
+    "version": "0.259",
+    "date": "2026-09-21T18:40:58+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.258",
     "date": "2026-09-21T18:34:15+02:00",
     "message": "minor fixes"
@@ -289,15 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.201",
     "date": "2026-09-14T03:55:37+02:00",
     "message": "sync version 0.200 + patch-notes (hook post-push)"
-  },
-  {
-    "version": "0.200",
-    "date": "2026-09-14T03:55:01+02:00",
-    "message": "fonds de carte supprimes (125Mo, vide spatial) + fusion css + stats absolues + mort/radiation/npc"
-  },
-  {
-    "version": "0.199",
-    "date": "2026-09-14T02:12:41+02:00",
-    "message": "sync version 0.198 + patch-notes (hook post-push)"
   }
 ];

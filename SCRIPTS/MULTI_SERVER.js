@@ -1,11 +1,12 @@
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { extname, join, normalize, resolve } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, extname, join, normalize, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, verifyWsToken, recordPvpKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, verifyWsToken, recordPvpKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits } from "./ACCOUNT_SERVER.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 
@@ -14,8 +15,24 @@ const portArg = process.argv.find((arg) => arg.startsWith("--port="))?.slice(7);
 const PORT = Number(portArg || process.env.PORT || 8080) || 8080;
 
 // --- Panneau admin (/admin.html) : mot de passe via ORBIT_ADMIN_PASS,
-// sinon genere aleatoirement et affiche dans la console (jamais dans git).
-const ADMIN_PASS = String(process.env.ORBIT_ADMIN_PASS || "").trim() || `admin_${randomBytes(8).toString("hex")}`;
+// sinon genere une fois et persiste dans SERVER_DATA/.admin_pass
+// (retrouvable en SSH via `cat SERVER_DATA/.admin_pass`, jamais dans git).
+const ADMIN_PASS_FILE = join(root, "SERVER_DATA", ".admin_pass");
+function loadOrCreateAdminPass() {
+  const env = String(process.env.ORBIT_ADMIN_PASS || "").trim();
+  if (env) return { pass: env, fromFile: false };
+  try {
+    const saved = String(readFileSync(ADMIN_PASS_FILE, "utf8") || "").trim();
+    if (saved && saved.length <= 256) return { pass: saved, fromFile: true };
+  } catch {}
+  const gen = `admin_${randomBytes(8).toString("hex")}`;
+  try {
+    mkdirSync(dirname(ADMIN_PASS_FILE), { recursive: true });
+    writeFileSync(ADMIN_PASS_FILE, gen, { mode: 0o600 });
+  } catch {}
+  return { pass: gen, fromFile: true };
+}
+const { pass: ADMIN_PASS, fromFile: ADMIN_PASS_PERSISTED } = loadOrCreateAdminPass();
 const chatMutes = new Set(); // ids prives de chat (persistants, ids stables)
 function adminAuthed(request) {
   const tok = String(request.headers?.["x-admin-token"] || "").trim();
@@ -62,9 +79,27 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, peers, count: peers.length });
     return true;
   }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute") && request.method === "POST") {
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
+        if (pathname === "/api/admin/give") {
+          // GiveCredit : pseudo + quantité (négatif = retirer). Notifie le
+          // joueur s'il est connecté ; sinon récupéré à sa prochaine synchro.
+          const res = adminGiveCredits(String(body?.pseudo || ""), body?.amount);
+          if (!res || res.ok !== true) {
+            adminJson(response, res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Montant invalide." });
+            return;
+          }
+          try {
+            const peer = findPeerByPseudo(res.pseudo);
+            if (peer) {
+              const txt = `L'admin t'a ${res.given > 0 ? "donné" : "retiré"} ${Math.abs(res.given).toLocaleString("fr-FR")} crédits. Nouveau solde : ${res.after.toLocaleString("fr-FR")}.`;
+              sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
+            }
+          } catch {}
+          adminJson(response, 200, res);
+          return;
+        }
         if (pathname === "/api/admin/broadcast") {
           const text = String(body?.text || "").replace(/\s+/g, " ").trim().slice(0, 200);
           if (!text) { adminJson(response, 400, { ok: false, error: "Message vide." }); return; }
@@ -1210,7 +1245,7 @@ server.listen(PORT, "0.0.0.0", () => {
     console.log(`[multi:auction] cycle ${st.cycle} (${st.lots} lots partagés${st.withBids ? `, ${st.withBids} avec mises` : ""}).`);
   } catch {}
   if (process.env.ORBIT_ADMIN_PASS) console.log("[multi] Panneau admin : /admin.html (pass ORBIT_ADMIN_PASS)");
-  else console.log(`[multi] Panneau admin : /admin.html (mot de passe : ${ADMIN_PASS})`);
+  else console.log(`[multi] Panneau admin : /admin.html (mot de passe : ${ADMIN_PASS}${ADMIN_PASS_PERSISTED ? ", persisté dans SERVER_DATA/.admin_pass" : ""})`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

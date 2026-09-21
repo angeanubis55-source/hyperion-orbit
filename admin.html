@@ -131,7 +131,22 @@
         mute.type = "button"; mute.className = "small"; mute.textContent = p.muted ? "Unmute" : "Mute";
         mute.style.marginLeft = "6px";
         mute.onclick = async () => { await call("/api/admin/mute", { method: "POST", body: JSON.stringify({ id: p.id, muted: !p.muted }) }); refresh(); };
-        td.appendChild(kick); td.appendChild(mute);
+        const give = document.createElement("button");
+        give.type = "button"; give.className = "small"; give.textContent = "Crédits";
+        give.style.marginLeft = "6px";
+        give.onclick = async () => {
+          const raw = prompt(`Crédits pour ${p.pseudo} ?\nQuantité à AJOUTER (négatif = retirer, espaces acceptés) :`, "1000000");
+          if (raw == null) return;
+          try {
+            const out = await call("/api/admin/give", { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, amount: String(raw).replace(/[\s_]/g, "") }) });
+            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+            alert(`${out.pseudo} : ${out.before.toLocaleString("fr-FR")} → ${out.after.toLocaleString("fr-FR")} crédits.`);
+          } catch (e) {
+            alert(e?.message || "Erreur.");
+          }
+          refresh();
+        };
+        td.appendChild(kick); td.appendChild(mute); td.appendChild(give);
         tb.appendChild(tr);
       }
     } catch {}

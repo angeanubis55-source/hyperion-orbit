@@ -26,7 +26,7 @@ export function initRankingsUI() {
       const me = netMyPseudo();
       body.innerHTML = "";
       if (!out.list.length) {
-        body.innerHTML = `<div class="rankingEmpty">Aucun kill PvP pour l'instant. Sois le premier !</div>`;
+        body.innerHTML = `<div class="rankingEmpty">Aucun pilote classé pour l'instant.</div>`;
       }
       out.list.forEach((row, i) => {
         const rank = getRankInfo(Number(row.rankPoints) || 0, Number(row.honor) || 0);

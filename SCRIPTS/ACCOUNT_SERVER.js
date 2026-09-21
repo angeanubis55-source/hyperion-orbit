@@ -181,6 +181,34 @@ export function recordPvpKill(accountId, exp, honneur) {
   } catch { return null; }
 }
 
+// Admin (panneau /api/admin/give, meme effet que SCRIPTS/GIVE_CREDITS.js) :
+// ajoute/retire des crédits à un compte par pseudo. Révision bumpée :
+// le client adopte la version serveur à sa prochaine synchro.
+export function adminGiveCredits(pseudo, amount) {
+  try {
+    initAccountDb();
+    const key = norm(pseudo);
+    if (!key) return { ok: false, error: "Pseudo manquant." };
+    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const delta = Math.floor(Number(String(amount ?? "").replace(/[\s_]/g, "")) || 0);
+    if (!Number.isFinite(delta) || delta === 0) return { ok: false, error: "Montant invalide (entier non nul)." };
+    if (Math.abs(delta) > 1e12) return { ok: false, error: "Montant trop grand (max 1 000 Mds)." };
+    let data = {};
+    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    const before = Math.max(0, Math.floor(Number(data.credits) || 0));
+    const after = Math.max(0, before + delta);
+    const now = Date.now();
+    const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data.credits = after;
+    data.revision = newRev;
+    data.updatedAt = now;
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(data), newRev, now, row.id);
+    return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), before, after, given: delta, revision: newRev };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
 // --- Amis façon DO (comptes uniquement) : demande -> acceptation ->
 // amitié mutuelle. Les demandes en attente persistent (joueur hors ligne
 // les retrouve à la connexion).
@@ -537,18 +565,18 @@ export function handleAccountApi(req, res) {
     return json(res, 200, { ok: true, user: rowToPublic(me) });
   }
   if (pathname === "/api/rankings" && req.method === "GET") {
-    // Classement PvP public : grade + pseudo + points UNIQUEMENT
-    // (kills/xp/honneur restent cachés côté client).
-    // Points = kills * 10 (inchangé) + xp_total / 1000 + honneur_total / 100.
+    // Classement GENERAL public : tous les comptes (grade + pseudo +
+    // points UNIQUEMENT, kills/xp/honneur restent cachés côté client).
+    // Points = kills PvP * 10 (0 si aucun) + xp_total / 1000 + honneur_total / 100.
     try {
       if (rateLimited(`${ip}:/api/rankings`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
-      const rows = db.prepare("SELECT s.user_id, s.kills, s.xp, s.honneur, u.pseudo, u.data FROM pvp_stats s JOIN users u ON u.id = s.user_id ORDER BY s.kills DESC LIMIT 200").all();
+      const rows = db.prepare("SELECT u.pseudo, u.data, s.kills FROM users u LEFT JOIN pvp_stats s ON s.user_id = u.id LIMIT 2000").all();
       const list = [];
       for (const r of rows) {
         const kills = Math.max(0, Math.floor(Number(r.kills) || 0));
         let rankPoints = 0, honor = 0;
-        let totalExp = Math.max(0, Math.floor(Number(r.xp) || 0));
-        let totalHonneur = Math.max(0, Math.floor(Number(r.honneur) || 0));
+        let totalExp = 0;
+        let totalHonneur = 0;
         try {
           const data = JSON.parse(r.data || "{}");
           rankPoints = Math.max(0, Math.floor(Number(data?.stats?.rankPoints) || 0));
