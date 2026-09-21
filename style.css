@@ -4851,6 +4851,10 @@ body.orbitNoFade #fpsOverlay{
 .linkBox p{ margin:0; color:#8fcddd; font:700 13px/1.4 ui-sans-serif,system-ui; }
 .linkSpin{ width:34px; height:34px; border-radius:50%; border:3px solid rgba(124,240,255,.2); border-top-color:#7cf0ff; animation:linkSpin 0.9s linear infinite; }
 @keyframes linkSpin{ to{ transform:rotate(360deg); } }
+/* Kick admin : popup bloquante (motif + retour via refresh manuel). */
+.linkBox .kickTitle{ color:#ff8f9d; }
+.kickReloadBtn{ height:38px; padding:0 26px; border:1px solid rgba(124,240,255,.45); border-radius:9px; background:linear-gradient(135deg,rgba(0,145,190,.45),rgba(0,70,100,.4)); color:#eaffff; font:800 14px/1 ui-sans-serif,system-ui; cursor:pointer; }
+.kickReloadBtn:hover{ border-color:rgba(124,240,255,.7); background:rgba(0,140,185,.35); }
 
 .loadingLogo{
   position:absolute;

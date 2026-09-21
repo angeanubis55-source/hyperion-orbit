@@ -59,9 +59,14 @@
     <p class="sub">Actualisation auto toutes les 3 s. Ne partage jamais ce mot de passe.</p>
   </div>
   <div class="card">
-    <h2>Annonce globale</h2>
+    <h2>Tchat en direct</h2>
     <div id="adminChatLog" class="chatLog"><div class="chatEmpty">Aucun message.</div></div>
-    <div class="row"><input id="bcInput" type="text" placeholder="Message à tous les joueurs… (réponse tchat ou annonce)" maxlength="200" autocomplete="off"><button id="bcBtn" type="button">Envoyer</button></div>
+    <div class="row"><input id="chatReplyInput" type="text" placeholder="Répondre dans le tchat (visible par tous)…" maxlength="200" autocomplete="off"><button id="chatReplyBtn" type="button">Répondre</button></div>
+    <p id="chatReplyMsg" class="msg"></p>
+  </div>
+  <div class="card">
+    <h2>Annonce globale</h2>
+    <div class="row"><input id="bcInput" type="text" placeholder="Annonce in game (bannière à l'écran)…" maxlength="200" autocomplete="off"><button id="bcBtn" type="button">Envoyer</button></div>
     <p id="bcMsg" class="msg"></p>
   </div>
   <div class="card">
@@ -69,6 +74,13 @@
     <table>
       <thead><tr><th>Pseudo</th><th>Compte</th><th>Map</th><th>Position</th><th>État</th><th>Co</th><th>Actions</th></tr></thead>
       <tbody id="peerRows"><tr><td colspan="7">Chargement…</td></tr></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Bannis</h2>
+    <table>
+      <thead><tr><th>Pseudo</th><th>Motif</th><th>Jusqu'au</th><th>Actions</th></tr></thead>
+      <tbody id="banRows"><tr><td colspan="4">Aucun bannissement.</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -115,6 +127,7 @@
       const out = await call("/api/admin/peers");
       const peers = (out && out.peers) || [];
       try { await refreshChat(); } catch {}
+      try { await refreshBans(); } catch {}
       $("peerCount").textContent = String(peers.length);
       const tb = $("peerRows");
       tb.innerHTML = "";
@@ -156,7 +169,28 @@
           }
           refresh();
         };
-        td.appendChild(kick); td.appendChild(mute); td.appendChild(give);
+        const ban = document.createElement("button");
+        ban.type = "button"; ban.className = "small danger"; ban.textContent = "Ban";
+        ban.style.marginLeft = "6px";
+        ban.onclick = async () => {
+          const dur = prompt(`Bannir ${p.pseudo} ?\nDurée (connexion bloquée) : 1j, 3j, 7j, 30j ou indefini :`, "7j");
+          if (dur == null) return;
+          const D = { "1j": 86400000, "1d": 86400000, "3j": 3 * 86400000, "7j": 7 * 86400000, "1s": 7 * 86400000, "30j": 30 * 86400000, "1m": 30 * 86400000, "indefini": null, "indef": null, "inf": null };
+          const key = String(dur).trim().toLowerCase();
+          if (!(key in D)) { alert("Durée invalide (1j, 3j, 7j, 30j ou indefini)."); return; }
+          const reason = prompt("Motif du bannissement :", "Comportement inapproprié.");
+          if (reason == null) return;
+          try {
+            const out = await call("/api/admin/ban", { method: "POST", body: JSON.stringify({ id: p.id, durationMs: D[key], reason: String(reason).slice(0, 200) }) });
+            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+            const until = out.until != null ? new Date(Number(out.until)).toLocaleString("fr-FR") : "définitif";
+            alert(`${out.pseudo} banni (${until}). Motif : ${out.reason}`);
+          } catch (e) {
+            alert(e?.message || "Erreur.");
+          }
+          refresh();
+        };
+        td.appendChild(kick); td.appendChild(mute); td.appendChild(ban); td.appendChild(give);
         tb.appendChild(tr);
       }
     } catch {}
@@ -182,27 +216,62 @@
     }
     box.scrollTop = box.scrollHeight;
   }
-  async function broadcast() {
-    const text = $("bcInput").value.trim();
-    $("bcMsg").textContent = "";
-    $("bcMsg").className = "msg";
+  async function refreshBans() {
+    const tb = $("banRows");
+    if (!tb) return;
+    const out = await call("/api/admin/bans");
+    const list = (out && Array.isArray(out.bans)) ? out.bans : [];
+    tb.innerHTML = "";
+    if (!list.length) tb.innerHTML = `<tr><td colspan="4">Aucun bannissement.</td></tr>`;
+    for (const b of list) {
+      const tr = document.createElement("tr");
+      const until = b.until != null ? new Date(Number(b.until)).toLocaleString("fr-FR") : "Définitif";
+      tr.innerHTML = `<td>${esc(b.pseudo)}</td><td>${esc(b.reason)}</td><td>${esc(until)}</td><td></td>`;
+      const td = tr.lastChild;
+      const unban = document.createElement("button");
+      unban.type = "button"; unban.className = "small"; unban.textContent = "Débannir";
+      unban.onclick = async () => {
+        try {
+          const res = await call("/api/admin/unban", { method: "POST", body: JSON.stringify({ key: b.key }) });
+          if (!res || res.ok !== true) throw new Error("Échec.");
+        } catch (e) {
+          alert(e?.message || "Erreur.");
+        }
+        refresh();
+      };
+      td.appendChild(unban);
+      tb.appendChild(tr);
+    }
+  }
+  async function sendAdminMessage(inputId, msgId) {
+    const text = $(inputId).value.trim();
+    $(msgId).textContent = "";
+    $(msgId).className = "msg";
     if (!text) return;
     try {
       const out = await call("/api/admin/broadcast", { method: "POST", body: JSON.stringify({ text }) });
       if (!out || out.ok !== true) throw new Error("Échec.");
-      $("bcInput").value = "";
-      $("bcMsg").textContent = "Annonce envoyée.";
-      $("bcMsg").className = "msg ok";
+      $(inputId).value = "";
+      $(msgId).textContent = "Message envoyé.";
+      $(msgId).className = "msg ok";
       try { await refreshChat(); } catch {}
     } catch (e) {
-      $("bcMsg").textContent = e?.message || "Erreur.";
-      $("bcMsg").className = "msg err";
+      $(msgId).textContent = e?.message || "Erreur.";
+      $(msgId).className = "msg err";
     }
+  }
+  async function broadcast() {
+    await sendAdminMessage("bcInput", "bcMsg");
+  }
+  async function replyChat() {
+    await sendAdminMessage("chatReplyInput", "chatReplyMsg");
   }
   $("loginBtn").onclick = login;
   $("passInput").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
   $("bcBtn").onclick = broadcast;
   $("bcInput").addEventListener("keydown", (e) => { if (e.key === "Enter") broadcast(); });
+  $("chatReplyBtn").onclick = replyChat;
+  $("chatReplyInput").addEventListener("keydown", (e) => { if (e.key === "Enter") replyChat(); });
   setInterval(refresh, 3000);
   if (token) login();
 })();

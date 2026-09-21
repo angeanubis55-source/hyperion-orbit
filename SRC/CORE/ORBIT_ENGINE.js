@@ -107,7 +107,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect } from "./NETPLAY.js";
+  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -15288,6 +15288,28 @@ function setLinkOverlay(visible, text) {
   } catch {}
 }
 
+// Kick admin : déconnexion + popup bloquante avec le motif. Retour
+// UNIQUEMENT via refresh manuel (bouton) : aucun retry auto, le joueur
+// ne revient jamais tout seul (le heartbeat l'ignore tant que c'est armé).
+let kickedReason = null;
+function setKickOverlay(reason, title) {
+  try {
+    kickedReason = typeof reason === "string" && reason ? reason : null;
+    const el = document.getElementById("kickOverlay");
+    if (!el) return;
+    if (kickedReason != null) {
+      const label = el.querySelector("[data-kick-reason]");
+      if (label) label.textContent = kickedReason;
+      const heading = el.querySelector("[data-kick-title]");
+      if (heading && typeof title === "string" && title) heading.textContent = title;
+      try { setLinkOverlay(false); } catch {}
+      el.style.display = "flex";
+    } else {
+      el.style.display = "none";
+    }
+  } catch {}
+}
+
 function enterLinkDead() {
   if (linkDead) return;
   linkDead = true;
@@ -15301,6 +15323,11 @@ function enterLinkDead() {
 
 function tickLinkHeartbeat(realDt) {
   if (!started || starting) return;
+  // Kické : popup bloquante, aucun retry, aucun masquage auto.
+  if (kickedReason != null) {
+    try { setKickOverlay(kickedReason); } catch {}
+    return;
+  }
   if (!linkDead) {
     pingAcc += realDt;
     if (pingAcc >= 3) {
@@ -15342,6 +15369,8 @@ let versionCheckT = 0;
 let versionReloadArmed = false;
 function tickGameVersionCheck(dt) {
   if (versionReloadArmed) return;
+  // Kické : on ne recharge jamais tout seul (retour via refresh manuel).
+  if (kickedReason != null) return;
   versionCheckT += Math.max(0, Number(dt) || 0);
   if (versionCheckT < 5) return;
   versionCheckT = 0;
@@ -25335,7 +25364,18 @@ function syncNetNpcs(dt) {
       try { spawnExplosion(player.x, player.y, 1.4); } catch {}
       try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
       try { netDisconnect(); } catch {}
-      try { setCenterMsg(true, "Exclu par l'administrateur", escapeHtml(K?.reason || "Comportement inapproprié."), "Rafraîchis la page (Ctrl+F5) pour revenir en jeu."); } catch {}
+      // Popup bloquante (motif) : refresh manuel obligatoire pour revenir.
+      try { setKickOverlay(K?.reason || "Comportement inapproprié.", "Exclu par l'administrateur"); } catch {}
+    }
+    for (const B of drainNetBannedInbox()) {
+      try { netDisconnect(); } catch {}
+      // Banni : popup bloquante (motif + date de retour), refresh manuel.
+      // Aucun retry auto (validation heartbeat) tant que c'est armé.
+      const until = Number(B?.until);
+      const dateTxt = Number.isFinite(until) && until > 0
+        ? ` Vous pourrez vous reconnecter à partir du ${new Date(until).toLocaleString("fr-FR")}.`
+        : " Bannissement définitif.";
+      try { setKickOverlay(`Vous avez été banni. Motif : ${B?.reason || "Comportement inapproprié."}.${dateTxt}`, "Banni par l'administrateur"); } catch {}
     }
   } catch {}
   try {
@@ -33188,19 +33228,39 @@ window.addEventListener("storage", (e) => {
 // la page (fini les refresh forcés). L'état mémoire est repoussé juste
 // après pour converger (les crédits d'un give apparaissent en direct).
 let lastNetAdoptToast = 0;
-window.addEventListener("orbit:net-adopted", () => {
+let lastNetConflictWarn = 0;
+window.addEventListener("orbit:net-adopted", (e) => {
   try {
     if (!account.user) loadAccountUser();
     if (!account.user) return;
     if (syncPlayerFromAccount()) {
       markProgressDirty();
       const now = Date.now();
-      if (now - lastNetAdoptToast > 30000) {
+      const conflicts = Math.max(0, Math.floor(Number(e?.detail?.conflicts) || 0));
+      // Rafale de conflits : 2 writers sur le même compte (2e onglet ou
+      // fenêtre avec le même compte ?). Chaque camp écrase les gains non
+      // poussés de l'autre : XP qui ne monte pas, bonus perdus... On le dit.
+      if (conflicts >= 3 && now - lastNetConflictWarn > 300000) {
+        lastNetConflictWarn = now;
+        try {
+          showNotificationGroup(["Conflit de sauvegarde : compte ouvert ailleurs ?", "Fermez les autres onglets/fenêtres avec ce compte, sinon XP et bonus peuvent être perdus."], "info", {});
+        } catch {}
+        try { showToast("Compte ouvert ailleurs ? Progression en danger", 6); } catch {}
+      } else if (now - lastNetAdoptToast > 30000) {
         lastNetAdoptToast = now;
         showNotification("Progression synchronisée avec le serveur.", 2.5, "info");
       }
     }
   } catch {}
+});
+// Session expirée en cours de jeu : sans compte, les kills donnent des
+// crédits (mémoire) mais l'XP/honneur partent dans le vide. On l'affiche
+// en grand au lieu de perdre la progression en silence.
+window.addEventListener("orbit:net-fallback", () => {
+  try {
+    showNotificationGroup(["Session expirée — reconnecte-toi", "Tes gains ne sont plus sauvegardés en attendant."], "info", {});
+  } catch {}
+  try { showToast("Session expirée — reconnecte-toi", 6); } catch {}
 });
 
 window.addEventListener("orbit:user-updated", event => {

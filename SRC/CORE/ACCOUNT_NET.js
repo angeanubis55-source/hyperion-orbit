@@ -186,6 +186,18 @@ function schedulePush() {
   saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, 2000);
 }
 
+// Conflits d'écriture (409) : normaux isolément (give admin...), mais en
+// rafale ils signalent 2 writers sur le même compte (2e onglet/fenêtre) :
+// chaque adopt écrase alors les gains non poussés de l'autre côté
+// (XP qui ne monte pas, bonus de gate perdus...). On compte sur 120 s.
+let conflictTimes = [];
+function noteConflict() {
+  const now = Date.now();
+  conflictTimes.push(now);
+  while (conflictTimes.length && now - conflictTimes[0] > 120000) conflictTimes.shift();
+  return conflictTimes.length;
+}
+
 // Champs strictement croissants (aucune mécanique légitime ne les fait
 // baisser : que des +=) : lors d'une adoption du canon serveur (409,
 // refresh), on garde le MAX pour ne pas annuler les gains locaux non
@@ -258,9 +270,10 @@ async function pushNow() {
     // mergeProgressiveFields : les gains d'XP locaux non poussés survivent.
     // Le moteur re-synchronise via l'événement orbit:net-adopted puis
     // repousse l'état mémoire : convergence, jamais de reload.
+    const conflicts = noteConflict();
     memUser = mergeProgressiveFields(memUser, out.user);
     writeCache(memUser);
-    try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "stale" } })); } catch {}
+    try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "stale", conflicts } })); } catch {}
     return out;
   }
   if (out && out.status === 401) {
@@ -307,6 +320,7 @@ async function refreshNetUser() {
 }
 
 function enterLocalFallback() {
+  const wasActive = netActive();
   memUser = null;
   memToken = null;
   try { clearTimeout(saveTimer); } catch {}
@@ -314,6 +328,12 @@ function enterLocalFallback() {
   lsSet(TOKEN_KEY, null);
   lsSet(CACHE_KEY, null);
   lsSet(CUR_KEY, null);
+  // Session morte en cours de jeu (401) : on prévient, sinon le joueur
+  // continue sans compte et les gains (XP/honneur) partent dans le vide
+  // pendant que les crédits (mémoire) semblent normaux.
+  if (wasActive) {
+    try { window.dispatchEvent(new CustomEvent("orbit:net-fallback", { detail: { at: Date.now() } })); } catch {}
+  }
 }
 
 try {

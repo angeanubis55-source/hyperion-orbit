@@ -35,6 +35,49 @@ function loadOrCreateAdminPass() {
 }
 const { pass: ADMIN_PASS, fromFile: ADMIN_PASS_PERSISTED } = loadOrCreateAdminPass();
 const chatMutes = new Set(); // ids prives de chat (persistants, ids stables)
+
+// --- Bannissements temporaires (panneau admin) : bloques par compte (id
+// stable) + par pseudo (anti-evasion par deconnexion). Persistes dans
+// SERVER_DATA/bans.json, expiration paresseuse (nettoyes a la lecture).
+const BANS_FILE = join(root, "SERVER_DATA", "bans.json");
+let bans = new Map(); // key -> { key, pseudo, reason, until (ms|null), at }
+try {
+  const raw = JSON.parse(readFileSync(BANS_FILE, "utf8") || "{}");
+  if (raw && typeof raw === "object") {
+    for (const [k, v] of Object.entries(raw)) {
+      if (!v || typeof v !== "object") continue;
+      bans.set(String(k).slice(0, 128), {
+        key: String(k).slice(0, 128),
+        pseudo: String(v.pseudo || "?").slice(0, 20),
+        reason: String(v.reason || "Comportement inapproprié.").slice(0, 200),
+        until: v.until == null ? null : Math.max(0, Number(v.until) || 0),
+        at: Math.max(0, Number(v.at) || 0),
+      });
+    }
+  }
+} catch {}
+function saveBans() {
+  try { writeFileSync(BANS_FILE, JSON.stringify(Object.fromEntries(bans))); } catch {}
+}
+function banKeysFor(id, pseudo) {
+  const keys = [];
+  if (String(id || "").startsWith("u_")) keys.push(String(id).slice(0, 128));
+  const pn = String(pseudo || "").trim().toLowerCase();
+  if (pn) keys.push(`pseudo:${pn}`.slice(0, 128));
+  return keys;
+}
+function getActiveBan(id, pseudo) {
+  const now = Date.now();
+  let changed = false, found = null;
+  for (const k of banKeysFor(id, pseudo)) {
+    const b = bans.get(k);
+    if (!b) continue;
+    if (b.until != null && Number(b.until) <= now) { bans.delete(k); changed = true; continue; }
+    if (!found) found = b;
+  }
+  if (changed) saveBans();
+  return found;
+}
 function adminAuthed(request) {
   const tok = String(request.headers?.["x-admin-token"] || "").trim();
   return tok !== "" && tok.length <= 256 && tok === ADMIN_PASS;
@@ -99,7 +142,13 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, list: chatHistory.slice(-40) });
     return true;
   }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give") && request.method === "POST") {
+  if (pathname === "/api/admin/bans" && request.method === "GET") {
+    // Liste des bannissements actifs (expirés purgés).
+    getActiveBan("", "");
+    adminJson(response, 200, { ok: true, bans: [...bans.values()] });
+    return true;
+  }
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
         if (pathname === "/api/admin/give") {
@@ -128,6 +177,77 @@ function handleAdminApi(request, response, pathname) {
           if (chatHistory.length > 40) chatHistory.splice(0, chatHistory.length - 40);
           broadcastAll(JSON.stringify({ t: "chatMsg", ...entry }));
           adminJson(response, 200, { ok: true });
+          return;
+        }
+        if (pathname === "/api/admin/unban") {
+          const key = String(body?.key || "").slice(0, 128);
+          const removed = key ? bans.delete(key) : false;
+          if (removed) saveBans();
+          if (key && key.startsWith("u_")) chatMutes.delete(key);
+          adminJson(response, 200, { ok: removed });
+          return;
+        }
+        if (pathname === "/api/admin/ban") {
+          // Bannissement temporaire : id (connecté) ou pseudo (connecté ou
+          // non). Bloque la CONNEXION jusqu'à expiration (null = définitif).
+          // Victime déconnectée aussitôt (popup motif + date), message
+          // [Système] public, persistance bans.json.
+          let targetId = String(body?.id || "").slice(0, 128);
+          let targetPseudo = String(body?.pseudo || "").trim().slice(0, 20);
+          let peerWs = null;
+          if (targetId || targetPseudo) {
+            outer: {
+              for (const [, room] of rooms) {
+                for (const [pid, entry] of room) {
+                  if ((targetId && String(pid) === targetId)
+                    || (targetPseudo && String(entry?.state?.pseudo || "").trim().toLowerCase() === targetPseudo.toLowerCase())) {
+                    targetId = String(pid);
+                    targetPseudo = String(entry?.state?.pseudo || targetPseudo || "Pilote").slice(0, 20);
+                    peerWs = entry?.ws || null;
+                    break outer;
+                  }
+                }
+              }
+              for (const [pid, entry] of instancePeers) {
+                if ((targetId && String(pid) === targetId)
+                  || (targetPseudo && String(entry?.state?.pseudo || "").trim().toLowerCase() === targetPseudo.toLowerCase())) {
+                  targetId = String(pid);
+                  targetPseudo = String(entry?.state?.pseudo || targetPseudo || "Pilote").slice(0, 20);
+                  peerWs = entry?.ws || null;
+                  break outer;
+                }
+              }
+            }
+          }
+          const keys = banKeysFor(targetId.startsWith("u_") ? targetId : "", targetPseudo);
+          if (!keys.length) { adminJson(response, 400, { ok: false, error: "Pseudo ou id manquant." }); return; }
+          let durationMs = body?.durationMs == null ? null : Math.floor(Number(body.durationMs));
+          if (durationMs != null) {
+            if (!Number.isFinite(durationMs) || durationMs <= 0) { adminJson(response, 400, { ok: false, error: "Durée invalide." }); return; }
+            durationMs = Math.min(durationMs, 5 * 365 * 86400_000); // plafond 5 ans
+          }
+          const reason = String(body?.reason || "Comportement inapproprié.").replace(/\s+/g, " ").trim().slice(0, 200) || "Comportement inapproprié.";
+          const until = durationMs == null ? null : Date.now() + durationMs;
+          for (const k of keys) {
+            bans.set(k, { key: k, pseudo: targetPseudo || k, reason, until, at: Date.now() });
+          }
+          saveBans();
+          if (targetId) chatMutes.add(targetId);
+          // Déconnexion immédiate si connecté (popup motif + date côté client).
+          if (peerWs) {
+            try {
+              if (peerWs.readyState === 1) peerWs.send(JSON.stringify({ t: "banned", reason, until }));
+            } catch {}
+            if (targetId) removeFromAllRooms(targetId);
+            const victimWs = peerWs;
+            setTimeout(() => { try { victimWs.close(); } catch {} }, 800);
+          }
+          // Message [Système] public (tchat seul, pas de bannière).
+          const sysEntry = { from: "[Système]", text: `Un joueur a été banni. Motif : ${reason}`, at: Date.now(), by: "admin" };
+          chatHistory.push(sysEntry);
+          if (chatHistory.length > 40) chatHistory.splice(0, chatHistory.length - 40);
+          broadcastAll(JSON.stringify({ t: "chatMsg", ...sysEntry }));
+          adminJson(response, 200, { ok: true, pseudo: targetPseudo, reason, until });
           return;
         }
         const pid = String(body?.id || "");
@@ -784,6 +904,28 @@ wss.on("connection", (ws) => {
           }
         } catch {}
       }
+      // Banni : rejet avec motif + date, sans rejoindre (ni room ni gate).
+      try {
+        const claimed = (!authed && typeof msg.pseudo === "string" && String(msg.pseudo).trim())
+          ? String(msg.pseudo).slice(0, 20)
+          : String(state.pseudo || "Pilote").slice(0, 20);
+        const ban = getActiveBan(id, claimed);
+        if (ban) {
+          try {
+            if (ws.readyState === 1) {
+              ws.send(JSON.stringify({
+                t: "banned",
+                reason: String(ban.reason || "Comportement inapproprié.").slice(0, 200),
+                until: ban.until != null ? Number(ban.until) : null,
+              }));
+            }
+          } catch {}
+          removeFromAllRooms(id);
+          const bannedWs = ws;
+          setTimeout(() => { try { bannedWs.close(); } catch {} }, 800);
+          return;
+        }
+      } catch {}
       const nextMap = String(msg.map || mapId || "1-1").toLowerCase();
       const socialCtx = () => ({
         id, state, authed,
