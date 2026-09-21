@@ -384,31 +384,37 @@ export function handleAccountApi(req, res) {
     return json(res, 200, { ok: true, user: rowToPublic(me) });
   }
   if (pathname === "/api/rankings" && req.method === "GET") {
-    // Classement PvP public : grade + pseudo + kills + xp + honneur + points.
-    // Points comme le grade (xp/1e5 + honneur/100), +10 par kill.
+    // Classement PvP public : grade + pseudo + points UNIQUEMENT
+    // (kills/xp/honneur restent cachés côté client).
+    // Points = kills * 10 (inchangé) + xp_total / 1000 + honneur_total / 100.
     try {
       if (rateLimited(`${ip}:/api/rankings`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
       const rows = db.prepare("SELECT s.user_id, s.kills, s.xp, s.honneur, u.pseudo, u.data FROM pvp_stats s JOIN users u ON u.id = s.user_id ORDER BY s.kills DESC LIMIT 200").all();
       const list = [];
       for (const r of rows) {
         const kills = Math.max(0, Math.floor(Number(r.kills) || 0));
-        const xp = Math.max(0, Math.floor(Number(r.xp) || 0));
-        const honneur = Math.max(0, Math.floor(Number(r.honneur) || 0));
         let rankPoints = 0, honor = 0;
+        let totalExp = Math.max(0, Math.floor(Number(r.xp) || 0));
+        let totalHonneur = Math.max(0, Math.floor(Number(r.honneur) || 0));
         try {
           const data = JSON.parse(r.data || "{}");
           rankPoints = Math.max(0, Math.floor(Number(data?.stats?.rankPoints) || 0));
           honor = Math.max(0, Math.floor(Number(data?.stats?.honor) || 0));
+          // XP / honneur TOTAUX du compte pour les points de classement.
+          const te = Math.floor(Number(data?.stats?.exp));
+          if (Number.isFinite(te) && te >= 0) totalExp = te;
+          const th = Math.floor(Number(data?.stats?.honor));
+          if (Number.isFinite(th) && th >= 0) totalHonneur = th;
         } catch {}
         list.push({
           pseudo: String(r.pseudo || "Pilote").slice(0, 20),
-          kills, xp, honneur,
-          points: kills * 10 + Math.floor(xp / 100000 + honneur / 100),
+          points: kills * 10 + Math.floor(totalExp / 1000 + totalHonneur / 100),
           rankPoints, honor,
+          _kills: kills,
         });
       }
-      list.sort((a, b) => b.points - a.points || b.kills - a.kills);
-      return json(res, 200, { ok: true, list: list.slice(0, 100) });
+      list.sort((a, b) => b.points - a.points || b._kills - a._kills);
+      return json(res, 200, { ok: true, list: list.slice(0, 100).map(({ pseudo, points, rankPoints, honor }) => ({ pseudo, points, rankPoints, honor })) });
     } catch {
       return json(res, 500, { ok: false, error: "Erreur serveur." });
     }

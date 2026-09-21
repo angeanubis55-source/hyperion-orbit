@@ -6,6 +6,7 @@ import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { handleAccountApi, verifyWsToken, recordPvpKill } from "./ACCOUNT_SERVER.js";
+import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 
 const root = resolve(process.cwd());
 const portArg = process.argv.find((arg) => arg.startsWith("--port="))?.slice(7);
@@ -178,12 +179,12 @@ const server = createServer(async (request, response) => {
   }
 });
 
-// --- Multi minimal Etape 1 : rooms par map, broadcast positions 10 Hz ---
+// --- Multi minimal Etape 1 : rooms par map, broadcast positions 20 Hz ---
 // Etape 3 : simu NPC serveur par map zone (positions, HP, mort, killer).
 // Protocole (JSON) :
 //  client -> serveur : { t:"hello", map, pseudo, shipId } puis { t:"pos", x,y,angle,shipId,pseudo,dead,hpPct,shPct,atk,tx,ty },
 //    { t:"map", map } et { t:"hit", uid, dmg, pen, critChance, critMult, weaken, kind }
-//  serveur -> client : { t:"welcome", id } puis { t:"snapshot", players:[...], npc:[...] } 10x/s
+//  serveur -> client : { t:"welcome", id } puis { t:"snapshot", players:[...], npc:[...] } 20x/s
 const wss = new WebSocketServer({ noServer: true });
 const rooms = new Map(); // mapId(lower) -> Map(id -> { ws, state })
 const npcSims = new Map(); // mapId(lower) -> ZoneNpcSim | null | Promise
@@ -224,9 +225,13 @@ function broadcastRoom(room, payload, excludeId = null) {
   }
 }
 
-// Chat global : toutes les maps (le salon est commun au serveur).
+// Canaux globaux (tchat, enchères, annonces admin) : TOUS les sockets,
+// y compris les joueurs en instance perso (Galaxy Gates, hors room).
+const allWs = new Set();
 function broadcastAll(payload) {
-  for (const room of rooms.values()) broadcastRoom(room, payload);
+  for (const ws of allWs) {
+    try { if (ws.readyState === 1) ws.send(payload); } catch {}
+  }
 }
 
 // Retire les box posees par un joueur parti + previent la room.
@@ -297,8 +302,9 @@ wss.on("connection", (ws) => {
   let mapId = "1-1";
   let state = { id, pseudo: "Pilote", shipId: "", x: 0, y: 0, angle: 0, dead: false, hpPct: 1, shPct: 1, atk: false, tx: 0, ty: 0, updatedAt: Date.now(), connectedAt: Date.now(),
     // PvP : PV autoritaires (init depuis la fiche vaisseau, sinon 1/1).
-    hpMax: 1, shMax: 0, hp: 1, sh: 0, range: 800, pvpAt: 0, pvpFrom: null, pvpWin: 0, pvpWinT: 0 };
+    hpMax: 1, shMax: 0, hp: 1, sh: 0, range: 800, pvpAt: 0, pvpFrom: null, npcAt: 0, npcFrom: null, pvpWin: 0, pvpWinT: 0 };
   roomFor(mapId).set(id, { ws, state });
+  allWs.add(ws);
   ws.send(JSON.stringify({ t: "welcome", id, authed: false }));
 
   ws.on("message", (raw) => {
@@ -339,6 +345,8 @@ wss.on("connection", (ws) => {
     if (msg.t === "hit") {
       // Degats sur NPC partage : le serveur tranche (HP, mort, killer).
       try {
+        const shooter = rooms.get(mapId)?.get(id)?.state;
+        if (!shooter || shooter.pvpDead === true || !(Number(shooter.hp) > 0)) return;
         const sim = npcSims.get(mapId);
         if (sim && typeof sim.applyHit === "function") {
           sim.applyHit(id, msg);
@@ -346,23 +354,6 @@ wss.on("connection", (ws) => {
           hitStats.count++;
           hitStats.byMap.set(mapId, (hitStats.byMap.get(mapId) || 0) + 1);
         }
-      } catch {}
-      return;
-    }
-    if (msg.t === "ability" && (msg.ability === "iem" || msg.ability === "ish")) {
-      try {
-        const room = rooms.get(mapId);
-        const me = room?.get(id);
-        if (!room || !me) return;
-        const now = Date.now();
-        if (msg.ability === "ish") {
-          me.state.ishUntil = Math.max(Number(me.state.ishUntil) || 0, now + 3000);
-        } else {
-          const sim = npcSims.get(mapId);
-          if (sim && typeof sim.empPlayer === "function") sim.empPlayer(id, 3000);
-        }
-        // Effet visuel distant ; pour l'IEM cet evenement casse aussi le lock.
-        broadcastRoom(room, JSON.stringify({ t: "ability", ability: msg.ability, by: id }), id);
       } catch {}
       return;
     }
@@ -383,8 +374,6 @@ wss.on("connection", (ws) => {
         const hasStatus = (Number(msg.slowPct) > 0 && Number(msg.slowSec) > 0) || Number(msg.freezeSec) > 0;
         if (!Number.isFinite(dmg) || dmg < 0 || dmg > 1e7 || (dmg === 0 && !hasStatus)) return;
         if (foe.state.dead) return;
-        // ISH : immunite serveur, donc aucun client ne peut contourner les 3 s.
-        if (now < Number(foe.state.ishUntil || 0)) return;
         // Deja tue (pos de mort pas encore arrivee) : pas de double kill.
         if (foe.state.pvpDead === true) return;
         let wasAlive = Number(foe.state.hp) > 0;
@@ -552,6 +541,7 @@ wss.on("connection", (ws) => {
       return;
     }
     if (msg.t === "shot" || msg.t === "rshot") {      // Tirs allies : retransmis tels quels a la room (aucun etat).
+      if (state.instance === true) return; // gate : tirs 100 % locaux.
       try {
         const room = rooms.get(mapId);
         if (!room || !room.has(id)) return;
@@ -603,6 +593,23 @@ wss.on("connection", (ws) => {
         } catch {}
       }
       const nextMap = String(msg.map || mapId || "1-1").toLowerCase();
+      // Instance perso (Galaxy Gates) : hors room (invisible, pas de NPC
+      // partagés, pas de PvP) mais socket gardé pour les canaux globaux
+      // (tchat, enchères). Gameplay 100 % local comme avant.
+      if (msg.instance === true) {
+        removeFromAllRooms(id);
+        mapId = nextMap;
+        state.instance = true;
+        state.updatedAt = Date.now();
+        try {
+          ws.send(JSON.stringify({ t: "chatHistory", list: chatHistory.slice(-30) }));
+        } catch {}
+        try {
+          ws.send(JSON.stringify(getAuctionSync()));
+        } catch {}
+        return;
+      }
+      state.instance = false;
       if (nextMap !== mapId) {
         removeFromAllRooms(id);
         mapId = nextMap;
@@ -626,6 +633,18 @@ wss.on("connection", (ws) => {
       try {
         ws.send(JSON.stringify({ t: "chatHistory", list: chatHistory.slice(-30) }));
       } catch {}
+      // Enchères partagées : état complet du cycle pour le nouveau venu.
+      try {
+        ws.send(JSON.stringify(getAuctionSync()));
+      } catch {}
+      return;
+    }
+    if (msg.t === "ping") {
+      // Heartbeat client (3 s) : preuve de vie, reprise après coupure.
+      // Ne touche PAS updatedAt (l'expiration des silencieux reste à 10 s).
+      try {
+        ws.send(JSON.stringify({ t: "pong", t0: Math.max(0, Number(msg.t0) || 0) }));
+      } catch {}
       return;
     }
     if (msg.t === "chat") {
@@ -645,7 +664,34 @@ wss.on("connection", (ws) => {
       } catch {}
       return;
     }
+    if (msg.t === "auctionBid") {
+      // Enchère partagée : compte authentifié uniquement, montant mini,
+      // gagnant diffusé à tous (comme les messages du tchat).
+      try {
+        const res = handleAuctionBid(
+          { key: msg.key, amount: msg.amount },
+          { id, pseudo: state.pseudo, authed },
+        );
+        if (res.status === "ok") {
+          broadcastAll(JSON.stringify(res.update));
+        } else {
+          try {
+            ws.send(JSON.stringify({
+              t: "auctionBidReject",
+              key: String(msg.key || "").slice(0, 64),
+              amount: Math.max(0, Math.floor(Number(msg.amount) || 0)),
+              reason: String(res.reason || "Mise refusée."),
+              lot: res.lot || null,
+            }));
+          } catch {}
+        }
+      } catch {}
+      return;
+    }
     if (msg.t === "pos") {
+      // Instance perso : aucune présence partagée (le client ne devrait
+      // déjà plus envoyer de pos en gate).
+      if (state.instance === true) return;
       // Anti-cheat positions : deplacement credible vs vmax declaree
       // (plafonnee). Rejet doux (on garde l'ancienne position) + log,
       // jamais de kick (lags = faux positifs).
@@ -653,6 +699,14 @@ wss.on("connection", (ws) => {
       // reaparition base/portail same-map que le serveur n'a pas vue)
       // est accepte. Un speed-hacker (jamais stable) reste bloque.
       if (Number.isFinite(Number(msg.vmax))) state.vmax = Math.max(50, Math.min(5000, Math.round(Number(msg.vmax))));
+      const declaredVmax = Math.max(50, Math.min(5000, Number(state.vmax) || 400));
+      const nextVx = Number(msg.vx), nextVy = Number(msg.vy);
+      if (Number.isFinite(nextVx) && Number.isFinite(nextVy)) {
+        const speed = Math.hypot(nextVx, nextVy);
+        const scale = speed > declaredVmax * 1.25 ? (declaredVmax * 1.25) / speed : 1;
+        state.vx = nextVx * scale;
+        state.vy = nextVy * scale;
+      }
       const nx = Number(msg.x), ny = Number(msg.y);
       if (Number.isFinite(nx) && Number.isFinite(ny)) {
         const legitJump = state._teleSkip === true || state._posOk !== true || (state.dead === true && msg.dead !== true);
@@ -697,7 +751,6 @@ wss.on("connection", (ws) => {
       if (!authed && typeof msg.pseudo === "string" && msg.pseudo.trim()) state.pseudo = String(msg.pseudo).slice(0, 20);
       if (typeof msg.dead === "boolean") state.dead = msg.dead;
       if (typeof msg.safe === "boolean") state.safe = msg.safe;
-      if (typeof msg.hidden === "boolean") state.hidden = msg.hidden;
       if (Number.isFinite(Number(msg.hpPct))) state.hpPct = Math.max(0, Math.min(1, Number(msg.hpPct)));
       if (Number.isFinite(Number(msg.shPct))) state.shPct = Math.max(0, Math.min(1, Number(msg.shPct)));
       if (typeof msg.atk === "boolean") state.atk = msg.atk;
@@ -819,11 +872,33 @@ wss.on("connection", (ws) => {
     }
   });
 
-  ws.on("close", () => { chatLastById.delete(id); removeFromAllRooms(id); });
-  ws.on("error", () => { try { ws.close(); } catch {} chatLastById.delete(id); removeFromAllRooms(id); });
+  ws.on("close", () => { allWs.delete(ws); chatLastById.delete(id); removeFromAllRooms(id); });
+  ws.on("error", () => { try { ws.close(); } catch {} allWs.delete(ws); chatLastById.delete(id); removeFromAllRooms(id); });
 });
 
-// Broadcast + simu NPC 10 Hz par room, uniquement aux sockets ouvertes.
+// Enchères partagées : clôture à chaque heure pile de Paris (:00),
+// gagnants diffusés puis nouveau cycle pour tous.
+setInterval(() => {
+  try {
+    const rolled = pollAuctionCycle();
+    if (!rolled) return;
+    broadcastAll(JSON.stringify(rolled.settle));
+    broadcastAll(JSON.stringify(rolled.sync));
+    console.log(`[multi:auction] cycle ${rolled.settle.cycle} clôturé (${rolled.settle.results.filter((r) => r.amount > 0).length} lots vendus).`);
+  } catch (err) {
+    console.warn("[multi:auction]", err?.message || err);
+  }
+}, 5000);
+
+// Enchères partagées : heartbeat 60 s (garde-fou : les clients en
+// instance perso restent synchronisés même sans mises dans l'heure).
+setInterval(() => {
+  try {
+    broadcastAll(JSON.stringify(getAuctionSync()));
+  } catch {}
+}, 60000);
+
+// Broadcast + simu NPC 20 Hz par room, uniquement aux sockets ouvertes.
 setInterval(() => {
   const now = Date.now();
   for (const [key, room] of rooms) {
@@ -843,12 +918,39 @@ setInterval(() => {
       if (sim && typeof sim.tick === "function") {
         for (const [pid, entry] of room) {
           const s = entry?.state;
-          if (s) sim.setPlayer(pid, s.x, s.y, { dead: s.dead === true, safe: s.safe === true, hidden: s.hidden === true });
+          // Anti-fantôme : jamais positionné (chargement, pas de pos)
+          // = ignoré par la simu NPC (ni poursuite ni ciblage).
+          if (s && s._posOk === true) {
+            const serverSafe = typeof sim.inSafe === "function" ? sim.inSafe(s.x, s.y) : false;
+            const serverDead = s.pvpDead === true || !(Number(s.hp) > 0);
+            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: serverSafe });
+          }
         }
         if (typeof sim.prunePlayers === "function") {
           try { sim.prunePlayers([...room.keys()]); } catch {}
         }
-        sim.tick(0.1);
+        sim.tick(0.05);
+        // Les tirs NPC partages retirent les PV dans le meme pool autoritaire
+        // que le PvP. Les valeurs hpPct/shPct du client ne peuvent pas annuler
+        // ces baisses (le pool serveur fonctionne comme un cliquet descendant).
+        if (typeof sim.drainPlayerHits === "function") {
+          for (const hit of sim.drainPlayerHits()) {
+            const victim = room.get(String(hit?.playerId));
+            const s = victim?.state;
+            if (!s || s.pvpDead === true || !(Number(s.hp) > 0)) continue;
+            if (typeof sim.inSafe === "function" && sim.inSafe(s.x, s.y)) continue;
+            const hitNow = Date.now();
+            const damage = Math.max(0, Math.min(1e8, Number(hit?.damage) || 0));
+            if (!(damage > 0)) continue;
+            const result = damagePlayerLayers(s, damage, 0.8, 0, 0);
+            s.hp = Math.max(0, Number(s.hp) || 0);
+            s.sh = Math.max(0, Number(s.sh) || 0);
+            s.npcAt = hitNow;
+            s.npcFrom = String(hit?.npcUid || "").slice(0, 64);
+            s.npcDamage = Math.max(0, Math.round(Number(result?.total) || 0));
+            if (s.hp <= 0) s.pvpDead = true;
+          }
+        }
         npc = sim.snapshot();
       } else if (sim === undefined) {
         ensureNpcSim(key);
@@ -871,9 +973,12 @@ setInterval(() => {
     for (const [, entry] of room) {
       const s = entry?.state;
       if (!s) continue;
-      players.push({ id: s.id, pseudo: s.pseudo, shipId: s.shipId, x: Math.round(s.x), y: Math.round(s.y), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
+      // Anti-fantôme : pas de pos envoyée = invisible pour les autres.
+      if (s._posOk !== true) continue;
+      players.push({ id: s.id, pseudo: s.pseudo, shipId: s.shipId, x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, vmax: Math.max(50, Math.min(5000, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
         // PvP : PV autoritaires + date du dernier coup recu + attaquant (anneau Ship_damage).
         pvpAt: Number(s.pvpAt) || 0, pvpFrom: s.pvpFrom != null ? String(s.pvpFrom) : null, pvpHp: Math.max(0, Math.round(Number(s.hp) || 0)), pvpSh: Math.max(0, Math.round(Number(s.sh) || 0)),
+        npcAt: Number(s.npcAt) || 0, npcFrom: s.npcFrom != null ? String(s.npcFrom) : null, npcDamage: Math.max(0, Math.round(Number(s.npcDamage) || 0)),
         slowPct: Date.now() < Number(s.slowUntil || 0) ? Number(s.slowPct) || 0 : 0,
         slowT: Math.max(0, (Number(s.slowUntil) || 0) - Date.now()) / 1000,
         freezeT: Math.max(0, (Number(s.freezeUntil) || 0) - Date.now()) / 1000,
@@ -898,10 +1003,15 @@ setInterval(() => {
       try { if (entry.ws.readyState === 1) entry.ws.send(payload); } catch {}
     }
   }
-}, 100);
+}, 50);
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[multi] HTTP+WS sur http://0.0.0.0:${PORT}/  (WS: /ws)`);
+  try {
+    getAuctionSync();
+    const st = auctionRoomStatus();
+    console.log(`[multi:auction] cycle ${st.cycle} (${st.lots} lots partagés${st.withBids ? `, ${st.withBids} avec mises` : ""}).`);
+  } catch {}
   if (process.env.ORBIT_ADMIN_PASS) console.log("[multi] Panneau admin : /admin.html (pass ORBIT_ADMIN_PASS)");
   else console.log(`[multi] Panneau admin : /admin.html (mot de passe : ${ADMIN_PASS})`);
 });

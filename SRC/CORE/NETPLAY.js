@@ -1,6 +1,6 @@
 // SRC/CORE/NETPLAY.js — Etape 1 multi : se voir a 2 sur la meme map.
 // Solo-safe : si le WS est injoignable, le jeu continue en solo sans erreur.
-// Protocole compatible SCRIPTS/MULTI_SERVER.js (rooms par map, snapshot 10 Hz).
+// Protocole compatible SCRIPTS/MULTI_SERVER.js (rooms par map, snapshot 20 Hz).
 
 let ws = null;
 let myId = "";
@@ -27,13 +27,13 @@ export function suspendNetplay(v) {
     netBoxInbox.length = 0;
     netDmgInbox.length = 0;
     netShotInbox.length = 0;
-    netAbilityInbox.length = 0;
     netPvpKillInbox.length = 0;
     netPvpPetKillInbox.length = 0;
     netPvpLootInbox.length = 0;
     netPvpLootTakeInbox.length = 0;
     netAdminKickInbox.length = 0;
     netAdminBoomInbox.length = 0;
+    netAuctionInbox.length = 0;
     lastNpcSnapMs = 0;
     netBoxHostId = null;
     try { if (ws && ws.readyState === 1) ws.close(); } catch {}
@@ -47,6 +47,101 @@ export function suspendNetplay(v) {
 export function netSuspended() {
   return suspended;
 }
+// Instance perso (Galaxy Gates) : socket GARDÉ pour les canaux globaux
+// (tchat, enchères), gameplay partagé coupé (pas de présence, pas de
+// NPC/PvP distants). Le gameplay gate reste 100 % local comme avant.
+let instanceMode = false;
+export function netInInstance() {
+  return instanceMode === true;
+}
+export function netConnected() {
+  try {
+    return connected === true && !!ws && ws.readyState === 1;
+  } catch {
+    return false;
+  }
+}
+// Heartbeat (vrai jeu multi) : ping 3 s serveur -> pong.
+// lastPongMs = preuve de vie ; lastHelloAckMs = hello traité (sas d'entrée).
+let lastPongMs = 0;
+let lastHelloAckMs = 0;
+export function netPongAge() {
+  try {
+    if (!lastPongMs) return Infinity;
+    return Math.max(0, Date.now() - lastPongMs);
+  } catch {
+    return Infinity;
+  }
+}
+export function netHelloAckAge() {
+  try {
+    if (!lastHelloAckMs) return Infinity;
+    return Math.max(0, Date.now() - lastHelloAckMs);
+  } catch {
+    return Infinity;
+  }
+}
+export function sendPing() {
+  if (suspended) return false;
+  if (!ws || ws.readyState !== 1) return false;
+  try {
+    ws.send(JSON.stringify({ t: "ping", t0: Date.now() }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+// Reconnexion volontaire (sas / écran de reconnexion) : casse le socket
+// douteux puis relance le cycle (hello auto à l'ouverture).
+export function forceNetReconnect() {
+  try {
+    connectTried = false;
+    connected = false;
+    netAuthed = false;
+    try {
+      if (ws) ws.close();
+    } catch {}
+    ws = null;
+  } catch {}
+  try {
+    ensureNetplayConnection();
+  } catch {}
+}
+// Purge du gameplay partagé à l'entrée en instance (distants, NPC, box,
+// tirs, PvP) : tchat + enchères conservés, socket conservé.
+function clearInstanceGameplay() {
+  remotes.clear();
+  netNpcs.clear();
+  netDeaths.clear();
+  netBoxes.clear();
+  netBoxInbox.length = 0;
+  netDmgInbox.length = 0;
+  netShotInbox.length = 0;
+  netPvpKillInbox.length = 0;
+  netPvpPetKillInbox.length = 0;
+  netPvpLootInbox.length = 0;
+  netPvpLootTakeInbox.length = 0;
+  netAdminKickInbox.length = 0;
+  netAdminBoomInbox.length = 0;
+  selfServ = null;
+  lastNpcSnapMs = 0;
+  netBoxHostId = null;
+}
+export function setNetInstanceMode(v) {
+  const nv = v === true;
+  if (nv === instanceMode) return;
+  instanceMode = nv;
+  if (nv) {
+    try {
+      clearInstanceGameplay();
+    } catch {}
+    // Force l'annonce {t:"map", instance:true} au prochain envoi.
+    lastMapSent = "";
+  } else {
+    // Au retour : la room est rejointe via le prochain {t:"map"}.
+    lastMapSent = "";
+  }
+}
 let lastSendMs = 0;
 let pendingLocal = null;
 let lastMapSent = "";
@@ -57,6 +152,20 @@ const netNpcs = new Map();
 // instantane pour trancher les recompenses (le killer touche, l'autre non).
 const netDeaths = new Map();
 let lastNpcSnapMs = 0;
+const NET_SEND_INTERVAL_MS = 50;
+const NET_EXTRAPOLATION_MS = 50;
+const NET_MAX_ESTIMATED_SPEED = 1500;
+
+function estimateVelocity(prev, x, y, now, xKey = "x", yKey = "y") {
+  if (!prev) return { vx: 0, vy: 0 };
+  const elapsed = Math.max(1, now - Number(prev.sampleAt || prev.lastSeen || now)) / 1000;
+  const vx = (x - Number(prev[xKey] ?? x)) / elapsed;
+  const vy = (y - Number(prev[yKey] ?? y)) / elapsed;
+  const speed = Math.hypot(vx, vy);
+  if (!(speed > NET_MAX_ESTIMATED_SPEED)) return { vx, vy };
+  const scale = NET_MAX_ESTIMATED_SPEED / speed;
+  return { vx: vx * scale, vy: vy * scale };
+}
 // Bonus box partagees : miroir du set serveur + file d'evenements.
 // Hote = plus petit id de la room (elus par le serveur) : seul lui spawne.
 const netBoxes = new Map(); // slotUid -> { type, x, y }
@@ -132,17 +241,6 @@ export function drainNetPvpKillInbox() {
 }
 // Tirs allies exacts (vrais + faux) : { t:shot/rshot, ... } a jouer aussitot.
 const netShotInbox = [];
-const netAbilityInbox = [];
-export function drainNetAbilityInbox() {
-  if (!netAbilityInbox.length) return [];
-  return netAbilityInbox.splice(0, netAbilityInbox.length);
-}
-export function sendNetAbility(kind) {
-  if (suspended || !ws || ws.readyState !== 1) return false;
-  const ability = String(kind || "").toLowerCase();
-  if (ability !== "iem" && ability !== "ish") return false;
-  try { ws.send(JSON.stringify({ t: "ability", ability })); return true; } catch { return false; }
-}
 // Chat global : { from, text, at } recus ou rejoues (historique).
 const netChatInbox = [];
 export function drainNetChatInbox() {
@@ -167,6 +265,29 @@ function pushChatMessage(m) {
   if (netChatInbox.length > 100) netChatInbox.shift();
   netChatInbox.push({ from, text, at: Number(m.at) || Date.now(), by: m.by != null ? String(m.by) : "" });
 }
+// Enchères partagées (comme le tchat) : sync/update/settle/reject bruts,
+// fusionnés dans user.auction par SRC/CORE/AUCTION_NET.js.
+const netAuctionInbox = [];
+export function drainNetAuctionInbox() {
+  if (!netAuctionInbox.length) return [];
+  return netAuctionInbox.splice(0, netAuctionInbox.length);
+}
+function pushAuctionEvent(m) {
+  if (!m || typeof m !== "object") return;
+  if (netAuctionInbox.length > 24) netAuctionInbox.shift();
+  netAuctionInbox.push(m);
+}
+export function sendAuctionBid(key, amount) {
+  if (suspended) return false;
+  if (!ws || ws.readyState !== 1) return false;
+  const k = String(key || "").slice(0, 64);
+  const bid = Math.max(0, Math.floor(Number(amount) || 0));
+  if (!k || !(bid > 0)) return false;
+  try {
+    ws.send(JSON.stringify({ t: "auctionBid", key: k, amount: bid }));
+    return true;
+  } catch { return false; }
+}
 let connectTried = false;
 
 function currentMapId() {
@@ -183,7 +304,7 @@ function wsUrl() {
 }
 
 export function netplayStatus() {
-  return { connected, authed: netAuthed, myId, count: remotes.size, boxHost: netBoxHostId, boxCount: netBoxes.size };
+  return { connected, authed: netAuthed, myId, count: remotes.size, boxHost: netBoxHostId, boxCount: netBoxes.size, instance: instanceMode === true };
 }
 
 function prune() {
@@ -213,6 +334,7 @@ export function ensureNetplayConnection() {
       ws.send(JSON.stringify({
         t: "hello",
         map: currentMapId(),
+        instance: instanceMode === true ? true : undefined,
         pseudo: pendingLocal?.pseudo || "",
         shipId: pendingLocal?.shipId || "",
         token: netToken() || undefined,
@@ -243,6 +365,15 @@ export function ensureNetplayConnection() {
     }
     if (msg.t === "chatMsg") {
       pushChatMessage(msg);
+      return;
+    }
+    if (msg.t === "pong") {
+      lastPongMs = Date.now();
+      return;
+    }
+    if (msg.t === "auctionSync" || msg.t === "auctionUpdate" || msg.t === "auctionSettle" || msg.t === "auctionBidReject") {
+      if (msg.t === "auctionSync") lastHelloAckMs = Date.now();
+      pushAuctionEvent(msg);
       return;
     }
     if (msg.t === "adminKick") {
@@ -302,11 +433,6 @@ export function ensureNetplayConnection() {
       netShotInbox.push(msg);
       return;
     }
-    if (msg.t === "ability" && (msg.ability === "iem" || msg.ability === "ish")) {
-      if (netAbilityInbox.length > 16) netAbilityInbox.shift();
-      netAbilityInbox.push({ ability: msg.ability, by: String(msg.by || "") });
-      return;
-    }
     if (msg.t === "boxesSync" && Array.isArray(msg.boxes)) {
       // Etat complet pour le nouveau venu (meme map uniquement).
       try {
@@ -364,6 +490,9 @@ export function ensureNetplayConnection() {
           selfServ = {
             hp: Number(p.pvpHp), sh: Number(p.pvpSh), pvpAt: Number(p.pvpAt) || 0,
             pvpFrom: p.pvpFrom != null ? String(p.pvpFrom) : null,
+            npcAt: Number(p.npcAt) || 0,
+            npcFrom: p.npcFrom != null ? String(p.npcFrom) : null,
+            npcDamage: Math.max(0, Number(p.npcDamage) || 0),
             petHp: Number(p.pvpPetHp), petSh: Number(p.pvpPetSh),
             petPvpAt: Number(p.petPvpAt) || 0,
             slowPct: Math.max(0, Math.min(95, Number(p.slowPct) || 0)),
@@ -376,12 +505,25 @@ export function ensureNetplayConnection() {
         if (!id) continue;
         seen.add(id);
         const prev = remotes.get(id);
+        const x = Number(p.x) || 0, y = Number(p.y) || 0;
+        const vmax = Math.max(50, Math.min(5000, Number(p.vmax) || 400));
+        const rawVx = Number(p.vx) || 0, rawVy = Number(p.vy) || 0;
+        const rawSpeed = Math.hypot(rawVx, rawVy);
+        const velocityScale = rawSpeed > vmax * 1.25 ? (vmax * 1.25) / rawSpeed : 1;
+        const positionChanged = !prev || x !== Number(prev.x) || y !== Number(prev.y)
+          || Math.abs(rawVx * velocityScale - Number(prev.vx || 0)) > 1
+          || Math.abs(rawVy * velocityScale - Number(prev.vy || 0)) > 1;
+        const petx = Number(p.petx) || 0, pety = Number(p.pety) || 0;
+        const petVelocity = estimateVelocity(prev, petx, pety, now, "petx", "pety");
+        const petPositionChanged = !prev || petx !== Number(prev.petx) || pety !== Number(prev.pety);
         const entry = {
           id,
           pseudo: String(p.pseudo || "Pilote").slice(0, 20),
           shipId: String(p.shipId || ""),
-          x: Number(p.x) || 0,
-          y: Number(p.y) || 0,
+          x, y,
+          vx: p.dead === true ? 0 : rawVx * velocityScale,
+          vy: p.dead === true ? 0 : rawVy * velocityScale,
+          vmax,
           angle: Number(p.angle) || 0,
           dead: p.dead === true,
           hpPct: Number.isFinite(Number(p.hpPct)) ? Math.max(0, Math.min(1, Number(p.hpPct))) : 1,
@@ -414,14 +556,18 @@ export function ensureNetplayConnection() {
           range: Math.max(200, Math.min(5000, Number(p.range) || 800)),
           pvpAt: Number(p.pvpAt) || 0,
           pvpFrom: p.pvpFrom != null ? String(p.pvpFrom) : null,
+          npcAt: Number(p.npcAt) || 0,
+          npcFrom: p.npcFrom != null ? String(p.npcFrom) : null,
+          npcDamage: Math.max(0, Number(p.npcDamage) || 0),
           rocketSlowPct: Math.max(0, Math.min(95, Number(p.slowPct) || 0)),
           rocketSlowT: Math.max(0, Number(p.slowT) || 0),
           freezeT: Math.max(0, Number(p.freezeT) || 0),
           // PET allie : actif, niveau, position.
           peta: p.peta === 1 ? 1 : 0,
           petl: Math.max(1, Math.min(32, Math.round(Number(p.petl) || 1))),
-          petx: Number(p.petx) || 0,
-          pety: Number(p.pety) || 0,
+          petx, pety,
+          petvx: p.peta === 1 ? (petPositionChanged ? petVelocity.vx : Number(prev?.petvx || 0)) : 0,
+          petvy: p.peta === 1 ? (petPositionChanged ? petVelocity.vy : Number(prev?.petvy || 0)) : 0,
           petd: Number(p.petd) || 0,
           petn: String(p.petn || "").slice(0, 32),
           petf: String(p.petf || "").slice(0, 16),
@@ -433,6 +579,7 @@ export function ensureNetplayConnection() {
           pvpPetHp: Math.max(0, Math.round(Number(p.pvpPetHp) || 0)),
           pvpPetSh: Math.max(0, Math.round(Number(p.pvpPetSh) || 0)),
           lastSeen: now,
+          sampleAt: positionChanged ? now : Number(prev?.sampleAt || now),
           // Position de rendu (interpolee vers x/y pour eviter les sauts).
           rx: prev ? Number(prev.rx ?? prev.x ?? p.x) : Number(p.x) || 0,
           ry: prev ? Number(prev.ry ?? prev.y ?? p.y) : Number(p.y) || 0,
@@ -468,11 +615,15 @@ export function ensureNetplayConnection() {
           const uid = String(n.uid);
           seenNpc.add(uid);
           const prev = netNpcs.get(uid);
+          const x = Number(n.x) || 0, y = Number(n.y) || 0;
+          const velocity = estimateVelocity(prev, x, y, now);
+          const positionChanged = !prev || x !== Number(prev.x) || y !== Number(prev.y);
           netNpcs.set(uid, {
             uid,
             type: String(n.type || ""),
-            x: Number(n.x) || 0,
-            y: Number(n.y) || 0,
+            x, y,
+            vx: n.alive === false ? 0 : (positionChanged ? velocity.vx : Number(prev?.vx || 0)),
+            vy: n.alive === false ? 0 : (positionChanged ? velocity.vy : Number(prev?.vy || 0)),
             angle: Number(n.angle) || 0,
             hp: Number(n.hp) || 0,
             sh: Number(n.sh) || 0,
@@ -487,6 +638,7 @@ export function ensureNetplayConnection() {
             rocketSlowT: Math.max(0, Number(n.slowT) || 0),
             freezeT: Math.max(0, Number(n.freezeT) || 0),
             lastSeen: now,
+            sampleAt: positionChanged ? now : Number(prev?.sampleAt || now),
             rx: prev ? Number(prev.rx ?? prev.x ?? n.x) : Number(n.x) || 0,
             ry: prev ? Number(prev.ry ?? prev.y ?? n.y) : Number(n.y) || 0,
           });
@@ -516,19 +668,28 @@ export function ensureNetplayConnection() {
 function sendNow(local, force = false) {
   if (!ws || ws.readyState !== 1) return;
   const now = performance.now();
-  if (!force && now - lastSendMs < 100) return; // 10 Hz max
+  if (!force && now - lastSendMs < NET_SEND_INTERVAL_MS) return; // 20 Hz max
   lastSendMs = now;
   const map = currentMapId();
+  // Changement de map : annonce (+ flag instance pour les gates).
+  // En instance : annonce seule, JAMAIS de pos (aucune présence).
   try {
     if (map !== lastMapSent) {
-      ws.send(JSON.stringify({ t: "map", map }));
+      const out = { t: "map", map };
+      if (instanceMode === true) out.instance = true;
+      ws.send(JSON.stringify(out));
       lastMapSent = map;
     }
+  } catch {}
+  if (instanceMode === true) return;
+  try {
     ws.send(JSON.stringify({
       t: "pos",
       map,
       x: Math.round(Number(local.x) || 0),
       y: Math.round(Number(local.y) || 0),
+      vx: Math.round((Number(local.vx) || 0) * 100) / 100,
+      vy: Math.round((Number(local.vy) || 0) * 100) / 100,
       angle: Number(local.angle) || 0,
       shipId: String(local.shipId || ""),
       pseudo: String(local.pseudo || "Pilote").slice(0, 20),
@@ -536,7 +697,6 @@ function sendNow(local, force = false) {
       hpPct: Number.isFinite(Number(local.hpPct)) ? local.hpPct : 1,
       shPct: Number.isFinite(Number(local.shPct)) ? local.shPct : 1,
       safe: local.safe === true,
-      hidden: local.hidden === true,
       atk: local.atk === true,
       tx: Math.round(Number(local.tx) || 0),
       ty: Math.round(Number(local.ty) || 0),
@@ -575,7 +735,9 @@ function sendNow(local, force = false) {
   } catch {}
 }
 
-// Appele a chaque frame par ORBIT_ENGINE (cout negligeable, envoi throttle 10 Hz).
+// Appele a chaque frame par ORBIT_ENGINE (cout negligeable, envoi throttle 20 Hz).
+// En instance (gate) : socket gardé (tchat/enchères), annonce map seule,
+// aucune présence partagée.
 export function pushNetplayLocal(local) {
   if (!local || suspended) return;
   pendingLocal = local;
@@ -584,6 +746,17 @@ export function pushNetplayLocal(local) {
     if (p) myPseudo = p;
   } catch {}
   ensureNetplayConnection();
+  if (instanceMode === true) {
+    // Annonce {t:"map", instance:true} si besoin, sans pos.
+    try {
+      const map = currentMapId();
+      if (ws && ws.readyState === 1 && map !== lastMapSent) {
+        ws.send(JSON.stringify({ t: "map", map, instance: true }));
+        lastMapSent = map;
+      }
+    } catch {}
+    return;
+  }
   sendNow(local);
   if ((prune._n = (prune._n || 0) + 1) % 60 === 0) prune();
 }
@@ -630,7 +803,7 @@ export function clearNetShots() {
 
 // Evenement de tir exact vers le serveur (retransmis a la room, sans etat).
 export function sendShotEvent(ev) {
-  if (suspended) return;
+  if (suspended || instanceMode === true) return;
   if (!ws || ws.readyState !== 1 || !ev || typeof ev !== "object") return;
   try {
     const o = { t: ev.t === "rshot" ? "rshot" : "shot" };
@@ -660,7 +833,7 @@ export function clearNetBoxes() {
 
 // Evenement box vers le serveur (collecte immediate / liste de l'hote).
 export function sendBoxEvent(op) {
-  if (suspended) return;
+  if (suspended || instanceMode === true) return;
   if (!ws || ws.readyState !== 1 || !op || typeof op !== "object") return;
   try {
     if (op.op === "collect" && op.uid) {
@@ -692,7 +865,7 @@ export function netNpcFresh() {
 
 // Degats PvP sur PET vers le serveur (cible = id joueur proprietaire).
 export function sendPvpPetHit(hit) {
-  if (suspended) return;
+  if (suspended || instanceMode === true) return;
   if (!ws || ws.readyState !== 1 || !hit || !hit.target) return;
   try {
     const h = { t: "pvpPetHit", target: String(hit.target) };
@@ -715,7 +888,7 @@ export function sendPvpPetHit(hit) {
 }
 // Degats PvP vers le serveur (cible = id joueur distant).
 export function sendPvpHit(hit) {
-  if (suspended) return;
+  if (suspended || instanceMode === true) return;
   if (!ws || ws.readyState !== 1 || !hit || !hit.target) return;
   try {
     const h = { t: "pvpHit", target: String(hit.target) };
@@ -738,9 +911,9 @@ export function sendPvpHit(hit) {
 }
 
 // Degats sur NPC partage : le serveur tranche (HP, mort, killer).
-// La prediction locale reste affichee, le snapshot corrige a 10 Hz.
+// La prediction locale reste affichee, le snapshot corrige a 20 Hz.
 export function sendNetHit(hit) {
-  if (suspended) return;
+  if (suspended || instanceMode === true) return;
   if (!ws || ws.readyState !== 1 || !hit || !hit.uid) return;
   try {
     const h = { t: "hit", uid: String(hit.uid) };
@@ -772,24 +945,38 @@ export function sendNetHit(hit) {
   } catch {}
 }
 
-// Interpolation douce vers la position serveur (appele avant le dessin).
+// Interpolation + courte extrapolation vers la position predite (avant dessin).
 export function tickNetplayRemotes(dt = 0.016) {
-  const k = Math.max(0, Math.min(1, Number(dt) * 8));
+  const k = Math.max(0, Math.min(1, Number(dt) * 16));
+  const now = performance.now();
   for (const r of remotes.values()) {
+    const lead = Math.min(NET_EXTRAPOLATION_MS, Math.max(0, now - Number(r.sampleAt || now))) / 1000;
+    const targetX = Number(r.x) + Number(r.vx || 0) * lead;
+    const targetY = Number(r.y) + Number(r.vy || 0) * lead;
     const rx = Number(r.rx ?? r.x), ry = Number(r.ry ?? r.y);
-    r.rx = rx + (Number(r.x) - rx) * k;
-    r.ry = ry + (Number(r.y) - ry) * k;
+    r.rx = rx + (targetX - rx) * k;
+    r.ry = ry + (targetY - ry) * k;
+    const petTargetX = Number(r.petx) + Number(r.petvx || 0) * lead;
+    const petTargetY = Number(r.pety) + Number(r.petvy || 0) * lead;
     const prx = Number(r.petrx ?? r.petx), pry = Number(r.petry ?? r.pety);
-    r.petrx = prx + (Number(r.petx) - prx) * k;
-    r.petry = pry + (Number(r.pety) - pry) * k;
+    r.petrx = prx + (petTargetX - prx) * k;
+    r.petry = pry + (petTargetY - pry) * k;
+  }
+  for (const n of netNpcs.values()) {
+    const lead = Math.min(NET_EXTRAPOLATION_MS, Math.max(0, now - Number(n.sampleAt || now))) / 1000;
+    const targetX = Number(n.x) + Number(n.vx || 0) * lead;
+    const targetY = Number(n.y) + Number(n.vy || 0) * lead;
+    const rx = Number(n.rx ?? n.x), ry = Number(n.ry ?? n.y);
+    n.rx = rx + (targetX - rx) * k;
+    n.ry = ry + (targetY - ry) * k;
   }
 }
 
 // Le rendu des autres joueurs est dans ORBIT_ENGINE (acces aux sprites).
-// Ce module ne fait que le reseau : envoi 10 Hz + snapshots + interpolation.
+// Ce module ne fait que le reseau : envoi 20 Hz + snapshots + extrapolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendNetAbility, drainNetAbilityInbox, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect };
+  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, forceNetReconnect, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;

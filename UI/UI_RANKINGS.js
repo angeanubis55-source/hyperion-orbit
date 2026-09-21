@@ -36,9 +36,6 @@ export function initRankingsUI() {
           `<span class="rankingPos">${i + 1}</span>` +
           `<img class="rankingGrade" src="${escapeHtml(rank.imagePath)}" alt="${escapeHtml(rank.name)}" title="${escapeHtml(rank.name)}" draggable="false">` +
           `<span class="rankingName">${escapeHtml(row.pseudo)}</span>` +
-          `<span class="rankingNum">${formatInteger(Number(row.kills) || 0)}</span>` +
-          `<span class="rankingNum">${formatInteger(Number(row.xp) || 0)}</span>` +
-          `<span class="rankingNum">${formatInteger(Number(row.honneur) || 0)}</span>` +
           `<span class="rankingPts">${formatInteger(Number(row.points) || 0)}</span>`;
         body.appendChild(div);
       });

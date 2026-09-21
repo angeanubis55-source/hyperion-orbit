@@ -3168,6 +3168,7 @@ function pushAuctionHistory(auction, entry) {
 
 // Placer une mise (montant total, pas un ajout). Réserve immédiate en crédits.
 export function placeAuctionBid(lotId, amount, nowMs = Date.now()) {
+  if (sharedAuctionMode === true) return { ok: false, shared: true, error: "Enchères partagées : mise via le serveur." };
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const auction = ensureAuction(u);
@@ -3359,7 +3360,83 @@ export function resetPilotSkills() {
 
 // Fait avancer les enchères : règlement des lots échus + cycle fixe.
 // Retourne { ok, user, events: [{ type: "won"|"expired", ... }] }.
+// ---------------------------
+// Enchères partagées (multi, comme le tchat) : le serveur tranche les
+// mises et désigne le gagnant. En mode partagé, le tick local est
+// suspendu (ni lots locaux ni règlement local) et les mises passent
+// par le réseau (SRC/CORE/AUCTION_NET.js).
+// ---------------------------
+let sharedAuctionMode = false;
+export function setSharedAuctionMode(active) {
+  sharedAuctionMode = active === true;
+}
+export function isSharedAuctionMode() {
+  return sharedAuctionMode === true;
+}
+
+// Gain d'un lot partagé remporté : même attribution que le local,
+// historique "Remporté par <pseudo>".
+export function applySharedAuctionWin(entry) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false };
+  const amount = Math.max(0, Math.floor(Number(entry?.amount) || 0));
+  const by = String(entry?.by || u?.pseudo || "Joueur").slice(0, 20);
+  const lot = {
+    catalogId: String(entry?.catalogId || ""),
+    name: String(entry?.name || entry?.catalogId || "Lot"),
+    qty: Math.max(1, Math.floor(Number(entry?.qty) || 1)),
+    kind: String(entry?.kind || "catalog"),
+    droneType: String(entry?.droneType || ""),
+    formationId: String(entry?.formationId || ""),
+    ammoGive: entry?.ammoGive && typeof entry.ammoGive === "object" ? { ...entry.ammoGive } : null,
+    rocketsGive: entry?.rocketsGive && typeof entry.rocketsGive === "object" ? { ...entry.rocketsGive } : null,
+    resourcesGive: entry?.resourcesGive && typeof entry.resourcesGive === "object" ? { ...entry.resourcesGive } : null,
+    topBid: amount,
+    myBid: 0,
+  };
+  const auction = ensureAuction(u);
+  const grant = grantAuctionLot(u, lot);
+  if (!grant?.ok) {
+    u.credits = Math.max(0, Math.floor(Number(u.credits || 0) + amount));
+    pushAuctionHistory(auction, { name: lot.name, result: "lost", amount, by });
+    ensureUserShape(u);
+    saveUser(u);
+    return { ok: false, refunded: true, user: u };
+  }
+  pushAuctionHistory(auction, { name: lot.name, result: "won", amount, by });
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, name: lot.name, amount };
+}
+
+// Surenchère subie sur un lot partagé : mise réservée remboursée,
+// historique "Perdu".
+export function applySharedAuctionLoss(entry) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false };
+  const amount = Math.max(0, Math.floor(Number(entry?.amount) || 0));
+  const by = String(entry?.by || "").slice(0, 20);
+  if (amount > 0) u.credits = Math.max(0, Math.floor(Number(u.credits || 0) + amount));
+  const auction = ensureAuction(u);
+  pushAuctionHistory(auction, { name: String(entry?.name || "Lot"), result: "lost", amount, by });
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u };
+}
+
+// Lot partagé sans mise : historique "Expiré" (comme le local).
+export function pushSharedAuctionExpired(name) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false };
+  const auction = ensureAuction(u);
+  pushAuctionHistory(auction, { name: String(name || "Lot"), result: "expired", amount: 0, by: "" });
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u };
+}
+
 export function tickCurrentUserAuction(nowMs = Date.now()) {
+  if (sharedAuctionMode === true) return { ok: true, user: null, events: [], changed: false, shared: true };
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const now = Number(nowMs) || Date.now();

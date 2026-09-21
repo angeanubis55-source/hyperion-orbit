@@ -135,6 +135,8 @@ export function createAuctionLot(spec, nowMs = Date.now(), rng = null) {
     topBidder: "",
     myBid: 0,
     bids: 0,
+    // Multi : derniers miseurs ({ pseudo, amount, at }, "qui a parié").
+    recent: [],
   };
 }
 
@@ -295,6 +297,11 @@ export function normalizeAuctionState(raw) {
         topBidder: String(lot.topBidder || ""),
         myBid: Math.max(0, Math.floor(Number(lot.myBid) || 0)),
         bids: Math.max(0, Math.floor(Number(lot.bids) || 0)),
+        recent: Array.isArray(lot.recent) ? lot.recent.filter((r) => r && typeof r === "object").slice(-8).map((r) => ({
+          pseudo: String(r.pseudo || "").slice(0, 20),
+          amount: Math.max(0, Math.floor(Number(r.amount) || 0)),
+          at: Math.max(0, Number(r.at) || 0),
+        })) : [],
       });
     }
   }

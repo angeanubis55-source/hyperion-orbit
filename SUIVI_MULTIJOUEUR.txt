@@ -13,7 +13,7 @@ comptes sur serveur. Testé à 2 (navigateur normal + navigation privée).
 - Serveur : SCRIPTS/MULTI_SERVER.js (HTTP statique + WebSocket /ws).
   Lancement : npm run server:multi  (port 8080 par défaut, --port= possible)
   Dépendance ajoutée : ws (package.json).
-- Client : SRC/CORE/NETPLAY.js (envoi position 10 Hz, snapshots, interpolation).
+- Client : SRC/CORE/NETPLAY.js (envoi position 20 Hz, snapshots, extrapolation courte).
 - Moteur : SRC/CORE/ORBIT_ENGINE.js (16 lignes au début, puis extensions) :
   envoi état local chaque frame + dessin des distants.
 - Protocole pos : x, y, angle, shipId, pseudo, dead, hpPct, shPct, atk,
@@ -48,8 +48,8 @@ comptes sur serveur. Testé à 2 (navigateur normal + navigation privée).
 - Serveur : SCRIPTS/NPC_ROOM.js (ZoneNpcSim). Réutilise les modules purs :
   UNIVERSE_SIM (slots/respawn), NPC_TYPES (stats), COMBAT_RULES
   (damageEnemyLayers), MAPS/<id>/SPAWNS.js + WORLD.js (camps, zones sûres).
-- Tick 10 Hz : respawn, dérive/orbite/poursuite/fuite, kamikazes.
-- Client : prédiction locale + snapshots serveur (10 Hz) qui corrigent.
+- Tick 20 Hz : respawn, dérive/orbite/poursuite/fuite, kamikazes.
+- Client : prédiction locale + snapshots serveur (20 Hz) qui corrigent.
   Hook unique dégâts dans damageEnemy + drainShieldFromEnemy -> sendNetHit.
 - Morts : journal des kills (2,5 s) + n° d'incarnation (seq) anti-confusion
   avec le respawn instantané. Kill = PREMIER attaquant (firstBy, repli
@@ -132,20 +132,89 @@ RESTE A FAIRE (prochaines étapes proposées)
 ----------------------------------------------------------------
 [ ] Transférer sur le serveur maison (Xeon 24x, 44 Go) : dossier + npm
     install + port 8080 + test à 2 vrais PC. SAUVEGARDER SERVER_DATA/.
-[ ] Validation serveur des dégâts SUBIS (clients immortels impossibles).
-[ ] Fluidité : tick 20 Hz + extrapolation (mouvements moins saccadés).
+[x] Dégâts NPC partagés subis validés côté serveur (pool PV/bouclier autoritaire).
+[x] Défenses serveur : ISH, Représailles, Fortification, Endurance prismatique,
+    Spectrum/Plus, Éventreur, Assimilation et Dernier rempart.
+[x] Fluidité : tick 20 Hz + vitesse réelle des joueurs, extrapolation plafonnée à 50 ms.
 [ ] PvP (tirs entre joueurs réels) + chat.
 [ ] Galaxy Gates / quêtes coop / cargos partagés.
 [ ] Durcissement anti-triche (vitesses, cadences, positions).
 
 ----------------------------------------------------------------
+7) ENCHERES PARTAGEES (comme le tchat global)
+----------------------------------------------------------------
+- Serveur : SCRIPTS/AUCTION_ROOM.js (lots canoniques 22/heure Paris,
+  mises temps réel, règlement à :00, persistances
+  SERVER_DATA/auction_state.json). Compte authentifié requis pour miser
+  (anti-usurpation), mini +2 % (+1000), anti-spam 800 ms, pseudos des
+  miseurs conservés (8 derniers/lot, "qui a parié").
+- MULTI_SERVER.js : auctionSync au hello, auctionBid -> broadcast
+  auctionUpdate / reject, clôture toutes les 5 s (settle + nouveau sync).
+- Client : SRC/CORE/AUCTION_NET.js (fusion état serveur dans
+  user.auction.lots, remboursement si surenchère, règlement gains via
+  ACCOUNT.js, repli solo si serveur muet >2 min). NETPLAY.js : inbox +
+  sendAuctionBid. ORBIT_ENGINE.js : pompe partagée avant le tick local
+  (tick local suspendu en partagé). UI : pseudos en direct + "Aussi
+  misé : ..." + nb mises, déjà-possédés masqués, ligne dorée recent.
+- Crédits réservés côté client (même confiance qu'avant, pas de
+  débit serveur). Solo sans serveur : intact.
+- Validé : 10 checks live (2 comptes + invité : sync, mini, surenchère
+  visible, recents, anti-spam) + boot navigateur sans erreur JS.
+  SMOKE_BROWSER minimaliste échoue déjà sans ces changements
+  (404 /api/rankings + /ws) : pré-existant, non lié.
+
+----------------------------------------------------------------
+8) GATES = INSTANCES PERSO CONNECTÉES (tchat + enchères en gate)
+----------------------------------------------------------------
+- Avant : socket coupé en gate (suspendNetplay). Maintenant : socket
+  gardé, canaux globaux vivants, gameplay 100 % local comme avant.
+- Serveur : flag instance:true (hello/map) -> hors room (invisible,
+  pas de NPC partagés, pas de PvP, pos/tirs ignorés) ; broadcastAll
+  vers TOUS les sockets (tchat + enchères + annonces admin même en
+  gate) ; heartbeat enchères 60 s ; log boot (22 lots).
+- Client : setNetInstanceMode(!isZoneMap) : purge gameplay (distants,
+  NPC, box, tirs, PvP) à l'entrée, aucun envoi gameplay en gate
+  (pos/tirs/hits/loot/box/abilités), tchat + mises toujours envoyés.
+  Repli solo enchères seulement si socket coupé (plus en gate calme).
+- Classement + sauvegarde déjà HTTP : inchangés, OK en gate.
+- Limite : panneau admin /peers ne liste pas les joueurs en gate
+  (roomless) ; mute/tchat les couvrent quand même.
+- Validé : 8 checks live (visible avant, invisible en gate, tchat x2,
+  enchères x2 avec pseudos, pos/tirs ignorés, revisible en sortie)
+  + boot navigateur sans erreur JS.
+
+----------------------------------------------------------------
+9) VRAI JEU MULTI : SAS D'ENTRÉE + HEARTBEAT (bloquant, fini le solo)
+----------------------------------------------------------------
+- Sas DÉPART : bouton CONNEXION… jusqu'au hello traité (auctionSync),
+  sinon RÉESSAYER + "Serveur injoignable". Pas de pos avant started
+  (client) + serveur ignore les jamais-positionnés (_posOk) des
+  snapshots et de la simu NPC : fini les spawns fantômes (ni vu,
+  ni aggro, ni dégâts avant apparition).
+- Heartbeat : ping 3 s / pong ; mort déclarée si socket coupé ou
+  silence >9 s (pas quand l'onglet est masqué). Liaison morte =
+  overlay #linkOverlay bloquant + simulation gelée (ni mouvement
+  ni mort), reconnexion forcée toutes les 3 s jusqu'au succès, puis
+  reprise (room rejointe via le hello). Enchères gelées aussi (pas
+  de repli solo : les mises orphelines sont remboursées au re-sync).
+- Valide aussi en gates (socket gardé) : tchat/enchères continuent,
+  gameplay gate gelé si la liaison tombe.
+- Conséquence : server:multi OBLIGATOIRE pour jouer, même seul.
+- Validé : entrée bloquée sans serveur (navigateur), entrée OK +
+  overlay à la coupure + reprise au restart (navigateur), fantôme
+  invisible puis visible après pos + ping/pong (protocole), boot
+  sans erreur JS.
+
+----------------------------------------------------------------
 FICHIERS CLES
 ----------------------------------------------------------------
 Créés : SCRIPTS/MULTI_SERVER.js, SCRIPTS/NPC_ROOM.js,
-  SCRIPTS/ACCOUNT_SERVER.js, SRC/CORE/NETPLAY.js, SRC/CORE/ACCOUNT_NET.js
+  SCRIPTS/ACCOUNT_SERVER.js, SCRIPTS/AUCTION_ROOM.js,
+  SRC/CORE/NETPLAY.js, SRC/CORE/ACCOUNT_NET.js, SRC/CORE/AUCTION_NET.js
 Modifiés : SRC/CORE/ORBIT_ENGINE.js (hooks multi), SRC/CORE/ACCOUNT.js
   (backend net), PUBLIC/AUTH.js (en ligne d'abord), UI/UI_MINIMAP.js
-  (points alliés), package.json (ws + script server:multi), .gitignore
+  (points alliés), UI/UI_AUCTION.js (pseudos en direct),
+  SRC/DATA/AUCTION.js (champ recent), package.json (ws + script server:multi), .gitignore
   (SERVER_DATA/).
-Runtime (non git) : SERVER_DATA/orbit.db, node_modules/.
+Runtime (non git) : SERVER_DATA/orbit.db, SERVER_DATA/auction_state.json, node_modules/.
 ================================================================

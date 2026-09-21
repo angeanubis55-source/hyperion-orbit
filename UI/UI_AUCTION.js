@@ -13,6 +13,13 @@ import { getResourceIcon, getResourceName } from "../SRC/DATA/RESOURCES.js";
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 import { placeAuctionBid } from "../SRC/CORE/ACCOUNT.js";
+import {
+  auctionNetDirty,
+  clearAuctionNetDirty,
+  isLotMaskedForUser,
+  isSharedAuction,
+  placeSharedBid,
+} from "../SRC/CORE/AUCTION_NET.js";
 import { getShipPackById } from "../SHIP/SHIP_PACKS.js";
 import {
   SHIP_ITEM_DIR,
@@ -132,6 +139,15 @@ function refreshAuctionTimer() {
   if (timer.textContent !== next) timer.textContent = next;
 }
 
+// Libellé du plus offrant : "Pseudo a placé la meilleure offre"
+// ("Pseudo (toi)..." si c'est toi). Une seule ligne, même à 52 miseurs.
+function bidderLabel(lot, pseudo) {
+  const hasBid = Number(lot?.topBid) > 0;
+  if (!hasBid) return "Aucune enchère pour le moment";
+  const who = lot?.topBidder === "you" ? `${pseudo} (toi)` : (lot?.topBidder || "Enchère");
+  return `${who} a placé la meilleure offre`;
+}
+
 function liveAuction() {
   let user = null;
   try {
@@ -196,6 +212,12 @@ export function renderAuctionWindow() {
   } catch {
     user = null;
   }
+  let shared = false;
+  try {
+    shared = isSharedAuction();
+  } catch {
+    shared = false;
+  }
   const now = Date.now();
   const saved = {};
   for (const input of list.querySelectorAll("input[data-auction-bid]")) {
@@ -205,7 +227,16 @@ export function renderAuctionWindow() {
     const next = `${formatInteger(Math.max(0, Math.floor(Number(user?.credits) || 0)))} crédits`;
     if (credits.textContent !== next) credits.textContent = next;
   }
-  const lots = [...(auction.lots || [])].sort((a, b) => Number(a?.endsAt) - Number(b?.endsAt));
+  const lots = [...(auction.lots || [])]
+    .filter((lot) => {
+      // Enchères partagées : masque localement les déjà-possédés
+      // (comme les filtres solo).
+      try {
+        if (shared && isLotMaskedForUser(lot, user)) return false;
+      } catch {}
+      return true;
+    })
+    .sort((a, b) => Number(a?.endsAt) - Number(b?.endsAt));
   if (!lots.length) {
     list.innerHTML = `<div class="auctionEmpty">Prochain cycle dans quelques instants.</div>`;
   } else {
@@ -221,16 +252,12 @@ export function renderAuctionWindow() {
         if (entries.length) displayName = getResourceName(entries[0][0], Number(entries[0][1]) || 1);
       }
       const displayQty = lotPackQty(lot) > 0 ? lotPackQty(lot) : (Number(lot.qty) > 1 ? Number(lot.qty) : 0);
-      // Statut d'enchère sous le nom de l'item : pseudo du plus offrant,
-      // "Pseudo (toi)" si c'est toi, sinon "Aucune enchère pour le moment".
-      const hasBid = Number(lot.topBid) > 0;
-      const bidder = !hasBid
-        ? "Aucune enchère pour le moment"
-        : (lot.topBidder === "you" ? `${pseudo} (toi)` : (lot.topBidder || "Enchère"));
+      const bidder = bidderLabel(lot, pseudo);
+      const bidderCls = Number(lot.topBid) > 0 ? ` class="auctionRecent"` : "";
       return `<div class="auctionRow${leading ? " leading" : ""}" data-auction-lot="${escapeHtml(lot.id)}">`
         + `<img src="${escapeHtml(lotIcon(lot))}" alt="" loading="lazy" draggable="false" onerror="this.onerror=null;this.src='${AUCTION_FALLBACK_ICON}'">`
         + `<span class="auctionMeta"><b>${escapeHtml(displayName)}${displayQty > 0 ? ` ×${formatInteger(displayQty)}` : ""}</b>`
-        + `<small>${escapeHtml(bidder)}</small></span>`
+        + `<small${bidderCls}>${escapeHtml(bidder)}</small></span>`
         + `<span class="auctionBid"><b>${formatInteger(current)}</b></span>`
         + `<span class="auctionAct"><input data-auction-bid="${escapeHtml(lot.id)}" type="number" min="${minimum}" step="100" inputmode="numeric" value="${escapeHtml(saved[lot.id] ?? "")}" placeholder="min ${formatInteger(minimum)}" aria-label="Mise pour ${escapeHtml(lot.name)}">`
         + `<button type="button" data-auction-place="${escapeHtml(lot.id)}">Enchérir</button></span></div>`;
@@ -290,7 +317,15 @@ function onAuctionClick(event) {
   if (!btn) return;
   const { list } = els();
   const input = list?.querySelector(`input[data-auction-bid="${btn.dataset.auctionPlace || ""}"]`);
-  const res = placeAuctionBid(btn.dataset.auctionPlace, Number(input?.value) || 0);
+  let shared = false;
+  try {
+    shared = isSharedAuction();
+  } catch {
+    shared = false;
+  }
+  const res = shared
+    ? placeSharedBid(btn.dataset.auctionPlace, Number(input?.value) || 0)
+    : placeAuctionBid(btn.dataset.auctionPlace, Number(input?.value) || 0);
   if (!res?.ok) {
     ctx?.toast?.(res?.error || "Impossible.", 2.2);
     return;
@@ -315,16 +350,99 @@ function onAuctionKeydown(event) {
   btn?.click();
 }
 
+// Patch live (1 s, panneau ouvert, partagé) : met à jour mises/pseudos
+// ligne par ligne SANS reconstruire (scroll + saisies préservés).
+// Retourne false si la structure a changé (re-rendu complet requis).
+function refreshAuctionRowsInPlace(auction, user, shared) {
+  const { list } = els();
+  if (!list) return true;
+  const pseudo = String(user?.pseudo || "Joueur");
+  const lots = [...(auction?.lots || [])].filter((lot) => {
+    try {
+      if (shared && isLotMaskedForUser(lot, user)) return false;
+    } catch {}
+    return true;
+  });
+  for (const lot of lots) {
+    let row = null;
+    try {
+      const sel = (typeof CSS !== "undefined" && CSS.escape)
+        ? CSS.escape(String(lot.id))
+        : String(lot.id).replace(/["\\]/g, "");
+      row = list.querySelector(`[data-auction-lot="${sel}"]`);
+    } catch {
+      row = null;
+    }
+    if (!row) return false;
+    const minimum = auctionMinNextBid(lot);
+    const current = Number(lot.topBid) > 0 ? Number(lot.topBid) : Number(lot.startPrice) || 0;
+    const bidB = row.querySelector(":scope .auctionBid b");
+    if (bidB) {
+      const next = formatInteger(current);
+      if (bidB.textContent !== next) bidB.textContent = next;
+    }
+    const bidderSmall = row.querySelector(":scope .auctionMeta small");
+    if (bidderSmall) {
+      const next = bidderLabel(lot, pseudo);
+      if (bidderSmall.textContent !== next) bidderSmall.textContent = next;
+      bidderSmall.classList.toggle("auctionRecent", Number(lot.topBid) > 0);
+    }
+    const input = row.querySelector(":scope input[data-auction-bid]");
+    if (input) {
+      if (String(input.min || "") !== String(minimum)) input.min = String(minimum);
+      const ph = `min ${formatInteger(minimum)}`;
+      if (input.placeholder !== ph && !document.activeElement?.isSameNode?.(input)) input.placeholder = ph;
+    }
+    const leading = lot.topBidder === "you" && Number(lot.myBid) > 0;
+    row.classList.toggle("leading", leading);
+  }
+  if (rowCountMismatch(list, lots)) return false;
+  return true;
+}
+
+function rowCountMismatch(list, lots) {
+  try {
+    return list.querySelectorAll(":scope [data-auction-lot]").length !== lots.length;
+  } catch {
+    return false;
+  }
+}
+
 // Boucle (appelée par le moteur) : juste le rafraîchissement d'affichage.
-// Les mises rivales et règlements passent par tickCurrentUserAuction côté moteur.
+// Les mises rivales et règlements passent par tickCurrentUserAuction côté moteur
+// (solo) ou pumpSharedAuction (partagé : re-rendu sur dirty serveur +
+// patch live chaque seconde panneau ouvert).
 export function tickAuctionDisplay() {
   if (!ctx) return;
+  try {
+    if (auctionNetDirty()) {
+      clearAuctionNetDirty();
+      renderAuctionWindow();
+      return;
+    }
+  } catch {}
   const now = Date.now();
   if (now - lastDynamicRefresh < 1000) return;
   lastDynamicRefresh = now;
   try { refreshAuctionDynamic(); } catch {}
   // Le timer défile chaque seconde (maj texte seule, sans re-rendu).
   try { refreshAuctionTimer(); } catch {}
+  try {
+    const { root } = els();
+    const visible = root && root.style.display !== "none" && !root.classList.contains("gameWinMinimized");
+    if (visible && isSharedAuction()) {
+      let user = null;
+      try {
+        user = ctx?.getUser?.();
+      } catch {
+        user = null;
+      }
+      const auction = liveAuction();
+      if (auction && user && refreshAuctionRowsInPlace(auction, user, true) === false) {
+        renderAuctionWindow();
+      }
+    }
+  } catch {}
 }
 
 export function initAuctionUI(context) {

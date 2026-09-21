@@ -1,7 +1,7 @@
 // SCRIPTS/NPC_ROOM.js — Simulation NPC serveur pour les maps zone.
 // Reutilise les modules purs du jeu : UNIVERSE_SIM (slots/respawn),
 // NPC_TYPES (stats), COMBAT_RULES (degats), MAPS/<id>/SPAWNS+WORLD (camps).
-// Le client predit les degats en local ; le serveur tranche (HP, mort, killer).
+// Le serveur tranche les PV des NPC et les degats qu'ils infligent aux joueurs.
 
 import { createUniverse, ensureMapSlots, markDead, markAlive, getSlot, slotUid } from "../SRC/SIM/UNIVERSE_SIM.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
@@ -24,6 +24,11 @@ function statsFor(type) {
     explodeOnTouch: !!cfg.explodeOnTouch,
     explodeRadius: Number(cfg.explodeRadius ?? 180),
     explodeDmg: Number(cfg.explodeDmg ?? 12000),
+    canShoot: cfg.canShoot !== false,
+    shootRange: Math.max(0, Number(cfg.shootRange ?? 500)),
+    shootRate: Math.max(0, Number(cfg.shootRate ?? 1)),
+    bulletDmg: Math.max(0, Number(cfg.bulletDmg ?? 10)),
+    burst: Math.max(1, Math.floor(Number(cfg.burst ?? 1))),
   };
 }
 
@@ -38,6 +43,7 @@ export class ZoneNpcSim {
     this.players = new Map(); // clientId -> { x, y, dead, safe, hidden }
     this.safe = []; // cercles de non-agression { x, y, r }
     this.feed = new Map(); // "uid|by" -> { uid, by, total } (degats du tick)
+    this.playerHits = []; // impacts NPC autoritaires a appliquer par MULTI_SERVER
     // Journal des kills (2.5 s) : le respawn instantane des NPC normaux
     // effacerait sinon la mort avant le snapshot — le killer perdrait sa recompense.
     this.deaths = []; // { uid, type, x, y, killer, at }
@@ -66,6 +72,15 @@ export class ZoneNpcSim {
             safe = [{ x: Number(z.x) || 0, y: Number(z.y) || 0, r: Number(z.r) }];
           }
         }
+        if (typeof spawns?.getZonePortals === "function") {
+          for (const portal of spawns.getZonePortals(world) || []) {
+            if (!portal) continue;
+            const destination = String(portal.toMap || "").trim().toLowerCase();
+            // Les portails de Galaxy Gates ne fournissent jamais de zone sure.
+            if (["alpha", "beta", "gamma"].includes(destination)) continue;
+            safe.push({ x: Number(portal.x) || 0, y: Number(portal.y) || 0, r: 900 });
+          }
+        }
       } catch {}
       // Meme identite que le client (ORBIT_ENGINE init zone : id = idx + 1).
       const camps = defs.map((c, idx) => ({
@@ -87,28 +102,11 @@ export class ZoneNpcSim {
 
   setPlayer(clientId, x, y, flags = {}) {
     const f = (flags && typeof flags === "object") ? flags : { dead: flags };
-    const previous = this.players.get(String(clientId));
     this.players.set(String(clientId), {
       x: Number(x) || 0, y: Number(y) || 0,
       dead: f.dead === true,
       safe: f.safe === true,
-      hidden: f.hidden === true,
-      empUntil: Number(previous?.empUntil) || 0,
     });
-  }
-
-  empPlayer(clientId, durationMs = 3000) {
-    const id = String(clientId);
-    const player = this.players.get(id);
-    if (player) player.empUntil = Date.now() + Math.max(0, Number(durationMs) || 0);
-    for (const e of this.entries.values()) {
-      if (!e) continue;
-      if (String(e.aggroBy || "") === id) {
-        e.aggroBy = null;
-        e.aggroUntil = 0;
-      }
-      if (String(e.chaseId || "") === id) e.chaseId = null;
-    }
   }
 
   inSafe(x, y) {
@@ -136,9 +134,9 @@ export class ZoneNpcSim {
     };
   }
 
-  // Cible valide : vivante, visible (pas de camouflage) et hors zone sure.
+  // Cible valide : vivante et hors zone sure.
   validTarget(p) {
-    return !!p && !p.dead && !p.hidden && !p.safe && Date.now() >= Number(p.empUntil || 0);
+    return !!p && !p.dead && !p.safe;
   }
 
   removePlayer(clientId) {
@@ -184,12 +182,20 @@ export class ZoneNpcSim {
       speed: stats.speed, dr: stats.dr, spread: stats.spread,
       passive: !!stats.passive, kamikaze: !!stats.kamikaze,
       explodeOnTouch: !!stats.explodeOnTouch, explodeRadius: stats.explodeRadius, explodeDmg: stats.explodeDmg,
+      canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,
+      bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.2 + Math.random() * 0.5,
       aggroRange: camp.aggroRange, aggroHoldMs: Math.max(1000, (camp.aggroHold ?? 3.5) * 1000),
       aggroBy: null, aggroUntil: 0,
       tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
       orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
       seq: (Number(prev?.seq) || 0) + 1, // incarnation : anti-confusion au respawn
     });
+  }
+
+
+  drainPlayerHits() {
+    if (!this.playerHits.length) return [];
+    return this.playerHits.splice(0, this.playerHits.length);
   }
 
   applyHit(clientId, hit) {
@@ -292,6 +298,7 @@ export class ZoneNpcSim {
           if (d2 < victimD2) { victimD2 = d2; victim = pid; }
         }
         if (victim != null) {
+          this.playerHits.push({ playerId: String(victim), npcUid: e.uid, damage: Math.max(0, Number(e.explodeDmg) || 0), kind: "boom" });
           e.hp = 0; e.sh = 0; e.killer = String(victim); e.cause = "boom";
           try { markDead(this.universe, this.mapId, e.uid, nowMs); } catch {}
           this.deaths.push({ uid: e.uid, type: e.type, x: Math.round(e.x), y: Math.round(e.y), killer: String(victim), cause: "boom", seq: e.seq || 0, at: nowMs });
@@ -356,6 +363,21 @@ export class ZoneNpcSim {
       else spd *= slowMult;
       e.x = clamp(e.x + mx * spd * dt, 80, this.world.w - 80);
       e.y = clamp(e.y + my * spd * dt, 80, this.world.h - 80);
+
+      // Tirs NPC autoritaires. Le client conserve les projectiles visuels,
+      // mais seul cet impact serveur retire effectivement PV/bouclier.
+      e.shootCd = Math.max(0, Number(e.shootCd || 0) - dt);
+      if (!frozen && e.canShoot !== false && e.shootRate > 0 && chase && this.validTarget(this.players.get(String(chase.id)))) {
+        const distance = Math.hypot(chase.x - e.x, chase.y - e.y);
+        if (distance <= e.shootRange && e.shootCd <= 0) {
+          e.shootCd = (1 / Math.max(0.001, e.shootRate)) * (0.85 + Math.random() * 0.3);
+          for (let shot = 0; shot < e.burst; shot++) {
+            if (Math.random() < 0.15) continue;
+            const damage = Math.max(1, Math.round(e.bulletDmg * (0.95 + Math.random() * 0.1)));
+            this.playerHits.push({ playerId: String(chase.id), npcUid: e.uid, damage, kind: "laser" });
+          }
+        }
+      }
     }
   }
 

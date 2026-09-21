@@ -66,6 +66,7 @@ import {
   activateCurrentUserBooster,
   tickCurrentUserAuction,
 } from "./ACCOUNT.js";
+import { pumpSharedAuction } from "./AUCTION_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
   GALAXY_GATE_DEFINITIONS,
@@ -106,7 +107,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendNetAbility, drainNetAbilityInbox, sendPvpHit, sendPvpPetHit, getNetSelf, suspendNetplay, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect } from "./NETPLAY.js";
+import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netPongAge, netHelloAckAge, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -15195,8 +15196,145 @@ let boosterResyncT = 0;
 let upgradeDrainT = 0;
 let auctionTickT = 0;
 
+// Liaison serveur (vrai jeu multi) : entrée + vie.
+// - Sas d'entrée : pas de spawn sans hello traité (anti-fantôme).
+// - Heartbeat 3 s : sans pong récent = liaison morte -> overlay
+//   bloquant + simulation gelée, reconnexion jusqu'au succès.
+let linkDead = false;
+let pingAcc = 0;
+let retryAcc = 0;
+let retryCount = 0;
+
+function netLinkReadyForEntry() {
+  try {
+    if (!netConnected()) return false;
+    if (netHelloAckAge() > 15000) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function waitNetLink(timeoutMs) {
+  const limit = Math.max(1000, Number(timeoutMs) || 15000);
+  const t0 = Date.now();
+  return new Promise((resolve) => {
+    const step = () => {
+      let ok = false;
+      try {
+        ok = netLinkReadyForEntry();
+      } catch {
+        ok = false;
+      }
+      if (ok) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() - t0 > limit) {
+        resolve(false);
+        return;
+      }
+      setTimeout(step, 100);
+    };
+    step();
+  });
+}
+
+function netLinkAliveInGame() {
+  try {
+    if (!netConnected()) return false;
+    if (netPongAge() < 9000) return true;
+    if (netHelloAckAge() < 9000) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function setLinkOverlay(visible, text) {
+  try {
+    let el = document.getElementById("linkOverlay");
+    if (!el) return;
+    if (visible) {
+      const label = el.querySelector("[data-link-label]");
+      if (label && typeof text === "string" && text) label.textContent = text;
+      el.style.display = "flex";
+    } else {
+      el.style.display = "none";
+    }
+  } catch {}
+}
+
+function enterLinkDead() {
+  if (linkDead) return;
+  linkDead = true;
+  retryAcc = 0;
+  retryCount = 0;
+  try {
+    forceNetReconnect();
+  } catch {}
+  setLinkOverlay(true, "Connexion perdue — reconnexion…");
+}
+
+function tickLinkHeartbeat(realDt) {
+  if (!started || starting) return;
+  if (!linkDead) {
+    pingAcc += realDt;
+    if (pingAcc >= 3) {
+      pingAcc = 0;
+      try {
+        sendPing();
+      } catch {}
+    }
+    // Onglet masqué : timers étranglés, on ne déclare pas la mort
+    // (vérification reprise au retour).
+    try {
+      if (document.visibilityState === "hidden") return;
+    } catch {}
+    if (!netLinkAliveInGame()) enterLinkDead();
+    return;
+  }
+  // Liaison morte : réessaie jusqu'au succès (bloquant, comme un vrai MMO).
+  retryAcc += realDt;
+  if (retryAcc >= 3) {
+    retryAcc = 0;
+    retryCount++;
+    setLinkOverlay(true, `Connexion perdue — reconnexion… (tentative ${retryCount})`);
+    try {
+      forceNetReconnect();
+    } catch {}
+  }
+  if (netLinkReadyForEntry()) {
+    linkDead = false;
+    pingAcc = 0;
+    retryAcc = 0;
+    setLinkOverlay(false);
+  }
+}
+
 function tickAuctionLogic() {
   if (!account.user) return;
+  // Liaison morte : enchères gelées (pas de repli solo, reprise au retour).
+  if (linkDead) return;
+  // Enchères partagées d'abord (comme le tchat) : le serveur tranche.
+  try {
+    const pump = pumpSharedAuction();
+    if (pump && pump.shared) {
+      if (pump.profileDirty) {
+        syncPlayerFromAccount();
+        markProgressDirty();
+        window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+      }
+      if (pump.dirty) {
+        try { renderAuctionWindow(); } catch {}
+      }
+      for (const ev of pump.events || []) {
+        if (ev?.type === "won") showNotification(`Enchère remportée : ${ev.name} !`, 3.5, "reward");
+        else if (ev?.type === "toast" && ev.text) showNotification(ev.text, 2.5, "info");
+      }
+      return;
+    }
+  } catch {}
   let res;
   try {
     res = tickCurrentUserAuction();
@@ -21863,11 +22001,6 @@ const Target = (() => {
     let next = e && e.hp > 0 ? e : null;
     // IEM distant : apres la rupture du lock, le joueur reste impossible a
     // reverrouiller pendant les 3 secondes de l'effet visuel.
-    if (next?._netPlayer != null) {
-      const blockedUntil = Number(netRemoteIemUntil.get(String(next._netPlayer))) || 0;
-      if (performance.now() / 1000 < blockedUntil) next = null;
-    }
-
     const wasAttacking = (typeof attackActive !== "undefined") && attackActive === true;
     if (next !== cur && wasAttacking) {
       stopAttack();
@@ -23180,7 +23313,6 @@ function usePulse() {
   if (hplLinkActive()) endHplLink("emp");
   spawnPulseFx(player.x, player.y, 1, true);
   SFX.play("pulseIEM");
-  try { sendNetAbility("iem"); } catch {}
 
   markProgressDirty();
 
@@ -23226,7 +23358,6 @@ function useIsh() {
   startRespawnInstaShield();
   // L'ISH dure 3 s comme l'anim (même durée que l'invincibilité de réapparition).
   player.invincibleT = Math.max(Number(player.invincibleT) || 0, ISH_DURATION);
-  try { sendNetAbility("ish"); } catch {}
   SFX.play("ishShield");
 
   markProgressDirty();
@@ -24719,6 +24850,7 @@ function netNpcCombatTarget(e) {
 const netPlayerProxies = new Map(); // clientId -> entite cible
 const netPetProxies = new Map(); // clientId -> proxy du PET allie (lock + degats PvP)
 let lastPvpAdoptAt = 0;
+let lastNpcDamageAdoptAt = 0;
 let lastPetPvpAdoptAt = 0;
 function syncNetPlayers() {
   let remotes = null;
@@ -24966,7 +25098,7 @@ function syncNetNpcs(dt) {
       e._netWaiting = false;
       e._netSilent = false;
     }
-    const snapX = Number(s.x) || 0, snapY = Number(s.y) || 0;
+    const snapX = Number(s.rx ?? s.x) || 0, snapY = Number(s.ry ?? s.y) || 0;
     const dx = snapX - e.x, dy = snapY - e.y;
     if (dx * dx + dy * dy > 2000 * 2000) { e.x = snapX; e.y = snapY; e.vx = 0; e.vy = 0; }
     else {
@@ -25019,6 +25151,7 @@ function syncNetNpcs(dt) {
         queueVolleyFloat(petState, { total: f.total, sh: 0, hp: f.total, rawDamage: f.total }, `netdmg${(Math.random() * 1e9) | 0}`, 1, VOLLEY_FLOAT_TIMEOUT);
         continue;
       }
+      // Les degats allies ne s'affichent que sur la cible verrouillee.
       if (!lockedUid || String(f.uid) !== String(lockedUid)) continue;
       let e = null;
       for (const c of enemies) {
@@ -26234,10 +26367,6 @@ const netplayEngines = new Map();
 // Etats moteurs (reacteurs) des PET distants, par id joueur.
 // Cle stable (holder) pour petEngine (WeakMap) + vitesse estimee pour les flames/trails.
 const netplayPetEngines = new Map();
-// Debut (performance.now/1000) de l'animation ISH pour chaque joueur distant.
-const netRemoteIsh = new Map();
-// Fin de l'interdiction de lock provoquee par l'IEM distant.
-const netRemoteIemUntil = new Map();
 let netplayLastOx = 0, netplayLastOy = 0;
 try {
   window.__NETPETDIAG__ = () => {
@@ -26263,6 +26392,7 @@ try {
 // par l'observateur). Meme sprite que le notre, ancre au copain.
 const netShipDamages = new Map(); // remoteId -> [{ ang, rad, rot, t }]
 const netPvpAtSeen = new Map(); // remoteId -> dernier pvpAt affiche
+const netNpcAtSeen = new Map(); // remoteId -> dernier impact NPC affiche
 let netShipDamageLastT = 0;
 // dt reel (comme l'anneau local) : le pas fixe 0.016 rendait l'anim 2x trop
 // rapide sur les ecrans 120/144 Hz.
@@ -26491,66 +26621,6 @@ function tickNetplayVisuals(dt) {
   }
 }
 
-function drawRemoteInstaShield(remoteId) {
-  const startedAt = netRemoteIsh.get(String(remoteId));
-  if (!Number.isFinite(Number(startedAt))) return;
-  const elapsed = performance.now() / 1000 - Number(startedAt);
-  if (elapsed < 0 || elapsed >= INSTA_SHIELD_PACK.dur) {
-    netRemoteIsh.delete(String(remoteId));
-    return;
-  }
-  if (!instaShieldReady || !instaShieldImgs?.length) return;
-  const frames = INSTA_SHIELD_PACK.frames || instaShieldImgs.length;
-  const idx = Math.min(frames - 1, Math.floor((elapsed / INSTA_SHIELD_PACK.dur) * frames));
-  const img = instaShieldImgs[idx];
-  if (!isImgReady(img)) return;
-  ctx.save();
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.globalAlpha = 1;
-  ctx.drawImage(img, -INSTA_SHIELD_PACK.w / 2, -INSTA_SHIELD_PACK.h / 2, INSTA_SHIELD_PACK.w, INSTA_SHIELD_PACK.h);
-  ctx.restore();
-}
-
-function tickNetAbilityEvents() {
-  let events = [];
-  try { events = drainNetAbilityInbox(); } catch { return; }
-  for (const ev of events) {
-    if (!ev?.by || (ev.ability !== "iem" && ev.ability !== "ish")) continue;
-    const by = String(ev.by);
-    const remote = getNetplayRemotes().get(by);
-    if (ev.ability === "ish") {
-      netRemoteIsh.set(by, performance.now() / 1000);
-      try { ensureInstaShieldLoaded(); } catch {}
-      continue;
-    }
-    netRemoteIemUntil.set(by, performance.now() / 1000 + 3);
-    // L'impulsion distante suit la position interpolee du vaisseau au moment
-    // de l'activation, exactement comme l'effet local centre sur le joueur.
-    if (remote) {
-      const showRemotePulse = () => spawnPulseFx(Number(remote.rx ?? remote.x), Number(remote.ry ?? remote.y), 1, false);
-      if (pulseReady) showRemotePulse();
-      else { try { ensurePulseLoaded().then(showRemotePulse).catch(() => {}); } catch {} }
-    }
-    const locked = Target.get();
-    if (locked?._netPlayer != null && String(locked._netPlayer) === by) {
-      Target.clear();
-      stopAttack();
-      clearPendingSalvo();
-    }
-    // Le REX perd lui aussi le joueur masque par l'IEM. Un nouveau degat du
-    // proprietaire sera necessaire pour recreer l'assistance combat.
-    for (const key of ["assistTarget", "combatTarget", "target"]) {
-      const target = petState[key];
-      if (target?._netPlayer != null && String(target._netPlayer) === by) petState[key] = null;
-    }
-    if (petState.attackers instanceof Map) {
-      for (const [key, record] of petState.attackers) {
-        if (record?.ref?._netPlayer != null && String(record.ref._netPlayer) === by) petState.attackers.delete(key);
-      }
-    }
-  }
-}
 function drawNetplayRemotes(ox, oy) {
   let remotes = null;
   try { remotes = getNetplayRemotes(); } catch { return; }
@@ -26566,17 +26636,14 @@ function drawNetplayRemotes(ox, oy) {
     for (const id of [...netplayPetEngines.keys()]) {
       if (!remotes.has(id)) netplayPetEngines.delete(id);
     }
-    for (const id of [...netRemoteIsh.keys()]) {
-      if (!remotes.has(id)) netRemoteIsh.delete(id);
-    }
-    for (const id of [...netRemoteIemUntil.keys()]) {
-      if (!remotes.has(id)) netRemoteIemUntil.delete(id);
-    }
     for (const id of [...netShipDamages.keys()]) {
       if (!remotes.has(id)) netShipDamages.delete(id);
     }
     for (const id of [...netPvpAtSeen.keys()]) {
       if (!remotes.has(id)) netPvpAtSeen.delete(id);
+    }
+    for (const id of [...netNpcAtSeen.keys()]) {
+      if (!remotes.has(id)) netNpcAtSeen.delete(id);
     }
   } catch {}
   for (const r of remotes.values()) {
@@ -26629,8 +26696,6 @@ function drawNetplayRemotes(ox, oy) {
       ctx.stroke();
       ctx.rotate(-(Number(r.angle) || 0));
     }
-    // ISH distant : meme sprites, meme duree et centre que sur le client actif.
-    try { drawRemoteInstaShield(r.id); } catch {}
     try { drawRocketDebuffEffect(r); } catch {}
     // Reacteurs du copain (memes flammes que la coque locale).
     try {
@@ -26692,6 +26757,35 @@ function drawNetplayRemotes(ox, oy) {
               spawnNetShipDamage(r.id, Math.atan2(ay - wy, ax - wx), prad, "pvp");
             }
           } catch {}
+        }
+      }
+    } catch {}
+    // Degats NPC autoritaires recus par le copain : chiffre flottant rouge
+    // et anneau oriente vers le NPC source.
+    try {
+      const curNpcAt = Number(r.npcAt) || 0;
+      if (!netNpcAtSeen.has(r.id)) {
+        netNpcAtSeen.set(r.id, curNpcAt);
+      } else if (curNpcAt !== netNpcAtSeen.get(r.id)) {
+        netNpcAtSeen.set(r.id, curNpcAt);
+        if (curNpcAt > 0) {
+          const wx = Number(r.rx ?? r.x), wy = Number(r.ry ?? r.y);
+          const sourceUid = r.npcFrom != null ? String(r.npcFrom) : "";
+          const source = sourceUid ? enemies.find((enemy) => String(enemy?._netUid || "") === sourceUid) : null;
+          if (source) {
+            let prad = 0;
+            try { prad = Math.max(Number(pack?.w) || 170, Number(pack?.h) || 170) / 6; } catch {}
+            if (!(prad > 0)) prad = shipDamageBubbleRadius();
+            spawnNetShipDamage(r.id, Math.atan2(source.y - wy, source.x - wx), prad, "npc");
+          }
+          const shown = Math.max(0, Math.round(Number(r.npcDamage) || 0));
+          const locked = Target.get();
+          const isLockedRemote = locked?._netPlayer != null
+            && String(locked._netPlayer) === String(r.id);
+          if (shown > 0 && isLockedRemote) {
+            addFloatText(wx + (Math.random() - 0.5) * 50, wy - 85, shown, "rgba(255,90,90,0.98)",
+              { size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+          }
         }
       }
     } catch {}
@@ -29653,6 +29747,30 @@ if (moveTarget.active && !player.dead) {
         try { die(); } catch {}
       }
     }
+    if (self && Number(self.npcAt) > 0 && Number(self.npcAt) !== lastNpcDamageAdoptAt) {
+      lastNpcDamageAdoptAt = Number(self.npcAt);
+      if (player.hpMax > 0 && Number.isFinite(Number(self.hp))) {
+        player.hp = Math.max(0, Math.min(player.hp, Math.min(player.hpMax, Number(self.hp))));
+      }
+      if (player.shMax > 0 && Number.isFinite(Number(self.sh))) {
+        player.sh = Math.max(0, Math.min(player.sh, Math.min(player.shMax, Number(self.sh))));
+      }
+      player.attackedT = 5;
+      try { resetRepairCooldown(); } catch {}
+      try {
+        const sourceUid = self.npcFrom != null ? String(self.npcFrom) : "";
+        const source = sourceUid ? enemies.find((enemy) => String(enemy?._netUid || "") === sourceUid) : null;
+        if (source) {
+          spawnShipDamage(source.x, source.y);
+          notePetAttacker(source);
+        }
+        const shown = Math.max(0, Math.round(Number(self.npcDamage) || 0));
+        if (shown > 0) addFloatText(player.x + (Math.random() - 0.5) * 50, player.y - 85, shown, "rgba(255,90,90,0.98)");
+      } catch {}
+      if (player.hp <= 0 && !player.dead) {
+        try { die(); } catch {}
+      }
+    }
   } catch {}
   // Multi PvP : pool PET autoritaire serveur — on n'adopte que les baisses,
   // et seulement sur nouveau coup (comme le vaisseau : sinon chaque
@@ -30264,7 +30382,10 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
             b._bubblePlayed = true;
             spawnShipDamage(b.x, b.y);
           }
-          hurtPlayer(b.dmg, b.ownerId != null ? enemies.find((x) => x?.id === b.ownerId) || null : null);
+          const ownerNpc = b.ownerId != null ? enemies.find((x) => x?.id === b.ownerId) || null : null;
+          // Sur les maps partagees, le projectile reste visuel : le pool
+          // hp/sh est deja retire par la simulation NPC autoritaire serveur.
+          if (!(ownerNpc?._netUid && netplayNpcActive())) hurtPlayer(b.dmg, ownerNpc);
           // Dégâts réellement reçus → le P.E.T pourra riposter sur ce NPC.
           if (b.ownerId != null) {
             notePetAttacker(enemies.find((x) => x?.id === b.ownerId) || null);
@@ -32248,6 +32369,37 @@ async function startGame() {
   if (starting || started) return;
   starting = true;
 
+  // Sas d'entrée (vrai jeu multi) : pas de spawn sans serveur.
+  // Le bouton DÉPART attend le hello traité (anti-fantôme : personne
+  // ne peut nous voir ni nous toucher avant notre apparition).
+  const setDepartStatus = (text) => {
+    try {
+      const el = document.querySelector(".loadingOverlay .loadingHint") || document.querySelector(".loadingHint");
+      if (el) el.textContent = String(text || "");
+    } catch {}
+  };
+  try {
+    if (ui.loadingStartBtn) {
+      ui.loadingStartBtn.disabled = true;
+      ui.loadingStartBtn.textContent = "CONNEXION…";
+    }
+    setDepartStatus("Connexion au serveur…");
+    try {
+      ensureNetplayConnection();
+    } catch {}
+    const linked = await waitNetLink(15000);
+    if (!linked) {
+      starting = false;
+      if (ui.loadingStartBtn) {
+        ui.loadingStartBtn.disabled = false;
+        ui.loadingStartBtn.textContent = "RÉESSAYER";
+      }
+      setDepartStatus("Serveur injoignable. Relance le serveur puis réessaie.");
+      return;
+    }
+    setDepartStatus("Connecté. Apparition…");
+  } catch {}
+
   SFX.preload();
   preloadPlayerBulletSprites();
   preloadPetSprites();
@@ -32423,19 +32575,28 @@ function frame(t) {
   }
 
   try {
-    // Les navigateurs ralentissent les timers des onglets masqués. Découper
-    // le temps écoulé garde la simulation stable sans perdre cette durée.
-    let remainingDt = Math.min(realDt, 1.25);
-    do {
-      const dt = Math.min(0.033, remainingDt);
-      update(dt);
-      remainingDt -= dt;
-    } while (remainingDt > 0.0001);
+    // Liaison morte : simulation gelée (on ne peut ni bouger ni mourir),
+    // overlay bloquant + reconnexion jusqu'au succès.
+    if (!linkDead) {
+      // Les navigateurs ralentissent les timers des onglets masqués. Découper
+      // le temps écoulé garde la simulation stable sans perdre cette durée.
+      let remainingDt = Math.min(realDt, 1.25);
+      do {
+        const dt = Math.min(0.033, remainingDt);
+        update(dt);
+        remainingDt -= dt;
+      } while (remainingDt > 0.0001);
+    }
 
-    // Multi etape 1 : envoie position locale 10 Hz (solo-safe si WS absent).
-    // Hors maps zone (ex : Galaxy Gates = instances perso) : multi suspendu.
-    try { suspendNetplay(!isZoneMap); } catch {}
-    try {
+    // Heartbeat serveur (3 s) + reconnexion bloquante si besoin.
+    try { tickLinkHeartbeat(realDt); } catch {}
+
+    // Multi : envoie position locale 20 Hz (bloqué avant DÉPART et si
+    // liaison morte : aucune présence fantôme).
+    // En gate (instance perso) : socket GARDÉ pour tchat + enchères,
+    // gameplay partagé coupé (invisible, NPC/PvP 100 % locaux).
+    try { setNetInstanceMode(!isZoneMap); } catch {}
+    if (started && !linkDead) try {
       const atkTgt = Target.get();
       let dformId = "standard";
       try {
@@ -32450,10 +32611,9 @@ function frame(t) {
         const items = account?.user?.drones?.items || [];
         dslotsNow = items.slice(0, 12).map(d => `${String(d?.type || "iris").slice(0, 24)}:${Math.max(1, Number(d?.level) || 1)}`).join(",");
       } catch {}
-      // Zone sure / camouflage : le serveur calme les NPC (parite solo).
-      let netSafe = false, netHidden = false;
+      // Zone sure : le serveur calme les NPC.
+      let netSafe = false;
       try { netSafe = safeZoneActive && playerIsInSafeZone(); } catch {}
-      try { netHidden = isPlayerUntargetable(); } catch {}
       // Plaque alliee (grade, firme, drones, modules, formation).
       let rankPathNow = "", firmNow = "", dindNow = "", ficonNow = "", mindNow = "";
       try {
@@ -32507,6 +32667,7 @@ function frame(t) {
       // Cadence + vitesse : inutiles (les tirs partent en evenements exacts).
       pushNetplayLocal({
         x: player.x, y: player.y, angle: player.angle,
+        vx: player.vx, vy: player.vy,
         shipId: (typeof ACTIVE_SHIP !== "undefined" && ACTIVE_SHIP?.id) || "",
         pseudo: account?.user?.pseudo || "Pilote",
         dead: player.dead === true,
@@ -32520,7 +32681,6 @@ function frame(t) {
         dform: dformId,
         dslots: dslotsNow,
         safe: netSafe,
-        hidden: netHidden,
         rank: rankPathNow.slice(0, 64),
         firm: firmNow.slice(0, 16),
         dind: dindNow.slice(0, 256),
@@ -32538,7 +32698,6 @@ function frame(t) {
       });
     } catch {}
     // Multi : projectiles visuels des allies (memes sprites, zero degat).
-    try { tickNetAbilityEvents(); } catch {}
     try { tickNetplayVisuals(Math.min(0.1, realDt)); } catch {}
 
     if (document.visibilityState !== "hidden") {
