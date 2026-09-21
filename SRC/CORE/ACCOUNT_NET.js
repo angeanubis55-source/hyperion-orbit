@@ -259,8 +259,21 @@ async function pushNow() {
   }
   if (out && out.ok) {
     if (out.user && typeof out.user === "object") {
-      memUser = out.user;
-      writeCache(memUser);
+      const sentRev = Math.max(0, Math.floor(Number(snapshot?.revision) || 0));
+      const liveRev = Math.max(0, Math.floor(Number(memUser?.revision) || 0));
+      if (liveRev <= sentRev) {
+        // Aucun changement local pendant la requete : la reponse peut devenir
+        // le nouvel etat canonique.
+        memUser = out.user;
+        writeCache(memUser);
+      } else {
+        // Une recompense (notamment le bonus de fin de Galaxy Gate) a ete
+        // ajoutee pendant que cette ancienne sauvegarde etait en vol. Ne
+        // jamais la remplacer par la reponse correspondant au vieux snapshot;
+        // programme plutot l'envoi de la revision locale plus recente.
+        writeCache(memUser);
+        schedulePush();
+      }
     }
     return out;
   }

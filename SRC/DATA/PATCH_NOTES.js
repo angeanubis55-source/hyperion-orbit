@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.270",
+    "date": "2026-09-22T01:40:42+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.269",
     "date": "2026-09-22T01:32:54+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.211",
     "date": "2026-09-14T15:37:30+02:00",
     "message": "sync complet: moteur effets vaisseaux + chantiers en cours"
-  },
-  {
-    "version": "0.210",
-    "date": "2026-09-14T15:36:58+02:00",
-    "message": "vaisseaux: HEAT au visuel REX, +7% Goliath, Leonov XP/vitesse x2, textes effets"
   }
 ];
