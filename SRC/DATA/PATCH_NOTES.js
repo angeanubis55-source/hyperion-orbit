@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.263",
+    "date": "2026-09-21T23:17:46+02:00",
+    "message": "multi: blackout remontees pool 500ms apres degat (coups effaces par les soins)"
+  },
+  {
     "version": "0.262",
     "date": "2026-09-21T23:07:58+02:00",
     "message": "multi: fin des reloads forces (resync live) + stocks depuis le compte (plus de BASE_RUN) + scripts GIVE_AMMO/INSPECT"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.204",
     "date": "2026-09-14T05:06:45+02:00",
     "message": "galaxy gates harmonise (boutons, cartes, onglets) + historique d'origine restaure"
-  },
-  {
-    "version": "0.203",
-    "date": "2026-09-14T04:04:39+02:00",
-    "message": "sync version 0.202 + patch-notes (hook post-push)"
   }
 ];

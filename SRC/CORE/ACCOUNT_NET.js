@@ -186,6 +186,54 @@ function schedulePush() {
   saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, 2000);
 }
 
+// Champs strictement croissants (aucune mécanique légitime ne les fait
+// baisser : que des +=) : lors d'une adoption du canon serveur (409,
+// refresh), on garde le MAX pour ne pas annuler les gains locaux non
+// encore poussés (ex : XP d'un kill juste avant un give admin). Sans ça :
+// XP qui monte (gain local) puis redescend (adopt du canon sans le gain).
+// Volontairement limité à l'XP/compteurs : crédits, munitions et honneur
+// (pénalité -50 % au changement de firme) peuvent baisser légitimement.
+function mergeProgressiveFields(prev, next) {
+  if (!prev || !next || typeof next !== "object") return next;
+  try {
+    if (prev.stats && next.stats && typeof next.stats === "object") {
+      if (Number(prev.stats.exp) > Number(next.stats.exp || 0)) {
+        next.stats.exp = Math.max(0, Math.floor(Number(prev.stats.exp)));
+      }
+      if (Number(prev.stats.lifetimeKills) > Number(next.stats.lifetimeKills || 0)) {
+        next.stats.lifetimeKills = Math.max(0, Math.floor(Number(prev.stats.lifetimeKills)));
+      }
+      const pKills = prev.stats.npcKills, nKills = next.stats.npcKills;
+      if (pKills && nKills && typeof pKills === "object" && typeof nKills === "object"
+        && !Array.isArray(pKills) && !Array.isArray(nKills)) {
+        for (const [type, count] of Object.entries(pKills)) {
+          if (Number(count) > Number(nKills[type] || 0)) {
+            nKills[type] = Math.max(0, Math.floor(Number(count)));
+          }
+        }
+      }
+    }
+    if (Array.isArray(prev.drones?.items) && Array.isArray(next.drones?.items)) {
+      const byId = new Map();
+      for (const d of next.drones.items) {
+        if (d && d.id != null) byId.set(String(d.id), d);
+      }
+      for (const pd of prev.drones.items) {
+        if (!pd || pd.id == null) continue;
+        const nd = byId.get(String(pd.id));
+        if (!nd) continue;
+        if (Number(pd.exp) > Number(nd.exp || 0)) nd.exp = Math.max(0, Number(pd.exp));
+        if (Number(pd.level) > Number(nd.level || 0)) nd.level = Math.max(0, Math.floor(Number(pd.level)));
+      }
+    }
+    if (prev.pet && next.pet && typeof next.pet === "object") {
+      if (Number(prev.pet.exp) > Number(next.pet.exp || 0)) next.pet.exp = Math.max(0, Number(prev.pet.exp));
+      if (Number(prev.pet.level) > Number(next.pet.level || 0)) next.pet.level = Math.max(0, Math.floor(Number(prev.pet.level)));
+    }
+  } catch {}
+  return next;
+}
+
 async function pushNow() {
   saveTimer = null;
   if (!netActive()) return { ok: false };
@@ -207,9 +255,10 @@ async function pushNow() {
   if (out && out.status === 409 && out.stale && out.user) {
     // Plus recent ailleurs (2e onglet, give admin...) : on adopte le canon
     // SANS recharger la page (fini les refresh forcés surprises).
+    // mergeProgressiveFields : les gains d'XP locaux non poussés survivent.
     // Le moteur re-synchronise via l'événement orbit:net-adopted puis
     // repousse l'état mémoire : convergence, jamais de reload.
-    memUser = out.user;
+    memUser = mergeProgressiveFields(memUser, out.user);
     writeCache(memUser);
     try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "stale" } })); } catch {}
     return out;
@@ -250,7 +299,8 @@ async function refreshNetUser() {
   if (srvRev > memRev) {
     // Serveur plus récent qu'au boot : on adopte sans recharger
     // (le moteur vivant se resynchronise via orbit:net-adopted).
-    memUser = out.user;
+    // mergeProgressiveFields : les gains d'XP locaux survivent.
+    memUser = mergeProgressiveFields(memUser, out.user);
     writeCache(memUser);
     try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "refresh" } })); } catch {}
   }
