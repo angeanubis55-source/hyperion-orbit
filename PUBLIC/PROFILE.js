@@ -568,18 +568,18 @@ const FALLBACK_ICONS = {
 };
 
 const MODULE_ICONS = {
-  "hp-x1": ITEM_ICON_BASE + "hpx1.png",
-  "hp-x2": ITEM_ICON_BASE + "hpx2.png",
-  "hp-x3": ITEM_ICON_BASE + "hpx3.png",
-  "shd-x1": ITEM_ICON_BASE + "shdx1.png",
-  "shd-x2": ITEM_ICON_BASE + "shdx2.png",
-  "shd-x3": ITEM_ICON_BASE + "shdx3.png",
-  "dmg-x1": ITEM_ICON_BASE + "dmgx1.png",
-  "dmg-x2": ITEM_ICON_BASE + "dmgx2.png",
-  "dmg-x3": ITEM_ICON_BASE + "dmgx3.png",
-  "spc-x1": ITEM_ICON_BASE + "spcx1.png",
-  "spc-x2": ITEM_ICON_BASE + "spcx2.png",
-  "spc-x3": ITEM_ICON_BASE + "spcx3.png",
+  "hp-x1": ITEM_ICON_BASE + "HPX1.png",
+  "hp-x2": ITEM_ICON_BASE + "HPX2.png",
+  "hp-x3": ITEM_ICON_BASE + "HPX3.png",
+  "shd-x1": ITEM_ICON_BASE + "SHDX1.png",
+  "shd-x2": ITEM_ICON_BASE + "SHDX2.png",
+  "shd-x3": ITEM_ICON_BASE + "SHDX3.png",
+  "dmg-x1": ITEM_ICON_BASE + "DMGX1.png",
+  "dmg-x2": ITEM_ICON_BASE + "DMGX2.png",
+  "dmg-x3": ITEM_ICON_BASE + "DMGX3.png",
+  "spc-x1": ITEM_ICON_BASE + "SPCX1.png",
+  "spc-x2": ITEM_ICON_BASE + "SPCX2.png",
+  "spc-x3": ITEM_ICON_BASE + "SPCX3.png",
 };
 
 function moduleIconSrc(type, tier) {
