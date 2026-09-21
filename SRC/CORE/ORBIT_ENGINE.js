@@ -26001,15 +26001,46 @@ function preloadAllDroneSprites() {
   } catch {}
 }
 
-// ✅ Assets des 2 bases mères de la firme (X-1 + X-8) : chargés au boot pour
-// une « Réparée à la base » instantanée, sans préchargement à la mort.
-async function collectHomeBaseJobs() {
+// ✅ Boot allégé : uniquement les sprites des drones possédés (type + niveau
+// réels du joueur), au lieu des 576 images (3 types × 6 niveaux × 32 frames).
+// Les autres niveaux/types arrivent en fond après le DÉPART (ou à la demande).
+function collectOwnedDroneSpriteJobs() {
+  const jobs = [];
+  try {
+    const wanted = new Set();
+    const items = (account.user || getCurrentUserFull())?.drones?.items || [];
+    for (const d of items) {
+      const type = DRONE_TYPES[d?.type] || null;
+      if (!type?.path) continue;
+      const lvl = Math.max(0, Math.min(DRONE_MAX_LEVEL - 1, Math.floor(Number(d?.level) || 1) - 1));
+      wanted.add(`${type.path}${lvl}/`);
+    }
+    // Sans drone (nouveau joueur) : l'iris de base, visible en boutique/HUD.
+    if (!wanted.size && DRONE_TYPES.iris?.path) wanted.add(`${DRONE_TYPES.iris.path}0/`);
+    for (const base of wanted) {
+      for (let frame = 1; frame <= 32; frame++) {
+        jobs.push(loadImage(`${base}${frame}.png`, { priority: true }));
+      }
+    }
+  } catch {}
+  return jobs;
+}
+
+// ✅ Assets des 2 bases mères de la firme (X-1 + X-8). Au boot on ne bloque
+// que sur les bases utiles : la map actuelle est déjà chargée par le chemin
+// normal, donc `skipCurrentMap` l'exclut (zéro doublon). Le reste part en
+// fond après le DÉPART (préchargement ciblé à la mort toujours actif).
+async function collectHomeBaseJobs({ skipCurrentMap = false } = {}) {
   const jobs = [];
   try {
     const faction = (account.user || getCurrentUserFull())?.faction;
     const ids = [getFactionHomeMap(faction), getFactionUpperBaseMap(faction)];
+    const currentId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
     for (const id of ids) {
       if (!id) continue;
+      // La map actuelle est déjà couverte par le chargement du secteur :
+      // inutile de la recharger en double au boot.
+      if (skipCurrentMap && String(id).toLowerCase() === currentId) continue;
       try {
         const [spawnsMod, worldMod] = await Promise.all([
           import(`../../MAPS/${id}/SPAWNS.js`),
@@ -26037,6 +26068,31 @@ async function collectHomeBaseJobs() {
     }
   } catch {}
   return jobs;
+}
+
+// ✅ Fond après DÉPART : bases mères restantes (X-1/X-8 non couvertes au boot)
+// + FX secondaires + effet de vaisseau. Le cache d'images déduplique : ce qui
+// est déjà chargé ne coûte rien, et tout est prêt avant usage (pas de pop-in).
+async function preloadDeferredHomeBaseAssets() {
+  try {
+    await Promise.allSettled(await collectHomeBaseJobs());
+  } catch {}
+}
+
+function preloadDeferredFx() {
+  try {
+    Promise.allSettled([
+      ensurePulseFxLoaded(), ensureRepairOrbitLoaded(), ensureInstaShieldLoaded(),
+      ensureShieldShimmerLoaded(), ensureSlowFxLoaded(), ensureIceFxLoaded(),
+    ]).then(() => true);
+  } catch {}
+}
+
+function preloadShipEffectBackground() {
+  try {
+    if (!GAME_SETTINGS.shipEffect) return;
+    loadShipEffect(ACTIVE_SHIP.id);
+  } catch {}
 }
 
 // ✅ Changement de map sans rechargement de page quand c'est possible :
@@ -32356,20 +32412,18 @@ async function prepareGameAssets() {
     const jobs = [ensurePackLoaded(ACTIVE_SHIP), loadImage(WALL_TEX.src, { priority: true })];
     jobs.push(...preloadPlayerBulletSprites());
     jobs.push(...preloadPetSprites());
-    // ✅ drones dans le chargement bloquant : aucune saccade aux premiers virages.
-    jobs.push(...collectDroneSpriteJobs());
-    // ✅ bases mères (X-1 + X-8) dans le chargement bloquant : retour base
-    // instantané, sans préchargement à la mort.
-    jobs.push(...await collectHomeBaseJobs());
-    jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensurePulseFxLoaded(),
-      ensureRepairOrbitLoaded(), ensureShipDamageLoaded(), ensureInstaShieldLoaded(),
-      ensureShieldShimmerLoaded(), ensureSlowFxLoaded(), ensureIceFxLoaded());
+    // ✅ drones possédés uniquement au boot (le reste en fond) : DÉPART plus
+    // rapide, leurs sprites étant déjà là aux premiers virages.
+    jobs.push(...collectOwnedDroneSpriteJobs());
+    // ✅ bases mères : seule celle hors map actuelle part en fond (la map
+    // actuelle est déjà couverte ci-dessous) : retour base instantané, sans
+    // bloquer le DÉPART (préchargement ciblé à la mort toujours actif).
+    jobs.push(...await collectHomeBaseJobs({ skipCurrentMap: true }));
+    // ✅ FX essentiels au boot (laser/explosion/dégâts) ; les secondaires
+    // (pulse, réparation, boucliers, ralentissement, glace) en fond.
+    jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensureShipDamageLoaded());
     jobs.push(...preloadCollectables());
     jobs.push(...preloadSafeModuleSprites(rules, WORLD));
-    if (GAME_SETTINGS.shipEffect) {
-      loadShipEffect(ACTIVE_SHIP.id);
-      jobs.push(shipEffectPromise);
-    }
     for (const type of npcTypesForCurrentSector()) {
       if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
     }
@@ -32392,12 +32446,19 @@ async function prepareGameAssets() {
   } finally {
     stopProgress();
   }
-  // ✅ charge aussi les maps mères + tous les drones en fond (sans bloquer
-  // le DÉPART) pour une « Réparée à la base » sans rechargement et des
-  // drones sans saccades. Le préchargement ciblé à chaque mort reste actif.
+  // ✅ charge en fond (sans bloquer le DÉPART) : maps mères, tous les drones,
+  // bases mères restantes, FX secondaires et effet de vaisseau. « Réparée à
+  // la base » sans rechargement, drones sans saccades, zéro pop-in.
+  // Le préchargement ciblé à chaque mort reste actif.
   try {
     const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1500));
-    idle(() => { preloadHomeMaps(); preloadAllDroneSprites(); });
+    idle(() => {
+      preloadHomeMaps();
+      preloadAllDroneSprites();
+      preloadDeferredHomeBaseAssets();
+      preloadDeferredFx();
+      preloadShipEffectBackground();
+    });
   } catch {}
   if (GAME_SETTINGS.autoStart) await startGame();
 }
@@ -32500,11 +32561,18 @@ if (ui.startHint) {
   // choisi), on le garde mort et on rejoue l'animation + le son d'explosion.
   tryReplayPendingDeath();
 
-  // ✅ après le DÉPART : maps mères + drones en fond pour un respawn base
-  // instantané (switch interne) et des drones sans saccades.
+  // ✅ après le DÉPART : maps mères + drones + bases restantes + FX
+  // secondaires + effet de vaisseau en fond (respawn base instantané,
+  // drones sans saccades, zéro pop-in).
   try {
     const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 2000));
-    idle(() => { preloadHomeMaps(); preloadAllDroneSprites(); });
+    idle(() => {
+      preloadHomeMaps();
+      preloadAllDroneSprites();
+      preloadDeferredHomeBaseAssets();
+      preloadDeferredFx();
+      preloadShipEffectBackground();
+    });
   } catch {}
 
   starting = false;
