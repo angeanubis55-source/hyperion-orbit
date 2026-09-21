@@ -22929,6 +22929,18 @@ function killRewards(e) {
     account.user.stats.npcKills ||= {};
     account.user.stats.npcKills[e.type] = Math.max(0, Number(account.user.stats.npcKills[e.type] || 0)) + 1;
   }
+  // Diagnostic XP (console : JSON.stringify(window.__XPDIAG__)) : gains
+  // attribués + totaux mémoire après chaque kill. À comparer avec le
+  // profil/serveur pour situer une perte éventuelle (calcul/mémoire/push).
+  try {
+    const d = window.__XPDIAG__ || (window.__XPDIAG__ = {});
+    d.kills = Math.max(0, Number(d.kills) || 0) + 1;
+    d.givenExp = Math.max(0, Number(d.givenExp) || 0) + Math.max(0, Math.floor(Number(gainedXp) || 0));
+    d.givenHonor = Math.max(0, Number(d.givenHonor) || 0) + Math.max(0, Math.floor(Number(gainedHonor) || 0));
+    d.memExp = Math.max(0, Math.floor(Number(account.user?.stats?.exp) || 0));
+    d.memHonor = Math.max(0, Math.floor(Number(account.user?.stats?.honor) || 0));
+    d.lastKillAt = Date.now();
+  } catch {}
 
   markProgressDirty();
   // La sauvegarde temporisée regroupe les destructions rapprochées et évite
@@ -23168,7 +23180,10 @@ if (e.type === "npc_Cubikon") {
         if (Array.isArray(planTypes)) {
           for (const spawn of planTypes) {
             if (spawn && String(spawn.type) === String(e.type)) {
-              const recorded = recordCurrentUserGalaxyGateWaveKill(killedGateId, wave, 1);
+              // Passe l'etat vivant du moteur : il contient deja les credits,
+              // l'XP et l'honneur de ce kill. La copie du cache reseau peut
+              // avoir jusqu'a 15 s de retard et ne doit jamais les ecraser.
+              const recorded = recordCurrentUserGalaxyGateWaveKill(killedGateId, wave, 1, account.user);
               if (recorded.ok) account.user = recorded.user;
               break;
             }
@@ -23359,7 +23374,7 @@ function runOnKillAction(action, pos = null) {
   if (tp?.toMap || tp?.factionBase) {
     const currentGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
     if (rules?.mode === "gate" && tp.factionBase && GALAXY_GATE_DEFINITIONS[currentGateId]) {
-      const completion = completeCurrentUserGalaxyGate(currentGateId);
+      const completion = completeCurrentUserGalaxyGate(currentGateId, account.user);
       if (completion.ok) {
         advanceQuestProgress("gate", currentGateId);
         account.user = completion.user;
@@ -25973,7 +25988,7 @@ function die() {
 
   const defeatedGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
   if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[defeatedGateId]) {
-    const lifeResult = loseCurrentUserGalaxyGateLife(defeatedGateId);
+    const lifeResult = loseCurrentUserGalaxyGateLife(defeatedGateId, account.user);
     if (lifeResult.ok) {
       account.user = lifeResult.user;
       const gateName = GALAXY_GATE_DEFINITIONS[defeatedGateId].name;
@@ -27730,7 +27745,7 @@ function tickGatePortalJumps(dt) {
     wave++;
     const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
     if (GALAXY_GATE_DEFINITIONS[gateId]) {
-      const saved = saveCurrentUserGalaxyGateWave(gateId, wave);
+      const saved = saveCurrentUserGalaxyGateWave(gateId, wave, account.user);
       if (saved.ok) {
         account.user = saved.user;
         renderGalaxyGateWindow();
@@ -27755,7 +27770,7 @@ function tickGatePortalJumps(dt) {
   } else {
     const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
     if (GALAXY_GATE_DEFINITIONS[gateId]) {
-      const saved = saveCurrentUserGalaxyGateWave(gateId, wave + 1);
+      const saved = saveCurrentUserGalaxyGateWave(gateId, wave + 1, account.user);
       if (saved.ok) {
         account.user = saved.user;
         renderGalaxyGateWindow();

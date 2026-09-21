@@ -1490,6 +1490,17 @@ export function updateCurrentUserProgress(patch = {}) {
   }
 
   ensureUserShape(u);
+  // Diagnostic XP (console : JSON.stringify(window.__XPDIAG__)) : dernières
+  // valeurs XP/honneur poussées vers la persistance + révision.
+  try {
+    window.__XPDIAG__ = {
+      ...(window.__XPDIAG__ || {}),
+      pushedExp: Math.max(0, Math.floor(Number(u?.stats?.exp) || 0)),
+      pushedHonor: Math.max(0, Math.floor(Number(u?.stats?.honor) || 0)),
+      pushedRev: Math.max(0, Math.floor(Number(u?.revision) || 0)),
+      pushedAt: Date.now(),
+    };
+  } catch {}
   saveUser(u, { source: "progress" });
 
   return { ok: true, user: u };
@@ -1994,8 +2005,12 @@ export function deployCurrentUserGalaxyGate(gateId) {
   return { ok: true, user: u };
 }
 
-export function completeCurrentUserGalaxyGate(gateId) {
-  const u = getCurrentUserFull();
+export function completeCurrentUserGalaxyGate(gateId, currentUser = null) {
+  // Le moteur peut avoir des gains de combat encore uniquement dans son
+  // objet courant (sauvegarde differee). Utiliser cet objet evite qu'une
+  // mutation de Gate reparte d'une copie reseau plus ancienne et efface
+  // l'XP/l'honneur gagnes pendant la derniere vague.
+  const u = currentUser || getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const result = completeActiveGalaxyGate(u.galaxyGates, gateId);
   if (!result.ok) return { ok: false, error: "Aucune Galaxy Gate active correspondante." };
@@ -2036,8 +2051,8 @@ export function completeCurrentUserGalaxyGate(gateId) {
   return { ok: true, user: u, reward };
 }
 
-export function loseCurrentUserGalaxyGateLife(gateId) {
-  const u = getCurrentUserFull();
+export function loseCurrentUserGalaxyGateLife(gateId, currentUser = null) {
+  const u = currentUser || getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const result = loseGalaxyGateLife(u.galaxyGates, gateId);
   if (!result.ok) return { ok: false, error: "Aucune Galaxy Gate active correspondante.", ...result };
@@ -2046,8 +2061,8 @@ export function loseCurrentUserGalaxyGateLife(gateId) {
   return { ...result, user: u };
 }
 
-export function saveCurrentUserGalaxyGateWave(gateId, wave) {
-  const u = getCurrentUserFull();
+export function saveCurrentUserGalaxyGateWave(gateId, wave, currentUser = null) {
+  const u = currentUser || getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const id = String(gateId || "").toLowerCase();
   if (u.galaxyGates.active !== id) return { ok: false, error: "Galaxy Gate inactive." };
@@ -2070,8 +2085,8 @@ export function saveCurrentUserGalaxyGateWave(gateId, wave) {
 // ✅ Enregistre 1 NPC du plan de vague éliminé (GG en cours).
 // Persistance immédiate (saveUser synchrone) : un refresh juste après le
 // kill doit retrouver le compteur, contrairement à markProgressDirty (15 s).
-export function recordCurrentUserGalaxyGateWaveKill(gateId, wave, count = 1) {
-  const u = getCurrentUserFull();
+export function recordCurrentUserGalaxyGateWaveKill(gateId, wave, count = 1, currentUser = null) {
+  const u = currentUser || getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const id = String(gateId || "").toLowerCase();
   if (u.galaxyGates.active !== id) return { ok: false, error: "Galaxy Gate inactive." };

@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.269",
+    "date": "2026-09-22T01:32:54+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.268",
     "date": "2026-09-22T00:49:25+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.210",
     "date": "2026-09-14T15:36:58+02:00",
     "message": "vaisseaux: HEAT au visuel REX, +7% Goliath, Leonov XP/vitesse x2, textes effets"
-  },
-  {
-    "version": "0.209",
-    "date": "2026-09-14T14:23:22+02:00",
-    "message": "sync version 0.208 + patch-notes (hook post-push)"
   }
 ];
