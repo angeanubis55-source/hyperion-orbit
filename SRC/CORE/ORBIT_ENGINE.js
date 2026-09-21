@@ -13982,6 +13982,16 @@ function getGateReturnMap() {
 }
 
 let toast = null;
+// Bannière d'annonce admin : même typo/hauteur que le toast de zone
+// ("Zone de Non-Agression"), affichée juste au-dessus, 10 s.
+let adminBanner = null; // { text, t }
+try {
+  window.addEventListener("orbit:admin-announce", (e) => {
+    const text = String(e?.detail?.text || "").slice(0, 200);
+    if (!text) return;
+    adminBanner = { text, t: 0 };
+  });
+} catch {}
 let startHintT = 0;
 const sessionGameLog = [];
 const GAME_LOG_PAGE_SIZE = 100;
@@ -28145,6 +28155,33 @@ function drawSafeModules(ox, oy) {
 
 function drawToast() {
   drawToastMessage(ctx, toast, innerWidth, innerHeight);
+  // Bannière admin : même typo/hauteur que le toast de zone, juste au-dessus.
+  if (adminBanner && adminBanner.text) {
+    const dur = 10;
+    const p = Math.max(0, Math.min(1, Number(adminBanner.t || 0) / dur));
+    const alpha = Math.min(1, Number(adminBanner.t || 0) * 3) * (p >= 0.85 ? Math.max(0, 1 - (p - 0.85) / 0.15) : 1);
+    if (alpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      let size = 22;
+      ctx.font = `900 ${size}px ui-sans-serif, system-ui`;
+      const maxW = innerWidth * 0.9;
+      try {
+        const w = ctx.measureText(adminBanner.text).width;
+        if (w > maxW) size = Math.max(14, Math.floor(size * maxW / w));
+        ctx.font = `900 ${size}px ui-sans-serif, system-ui`;
+      } catch {}
+      ctx.lineWidth = 0;
+      ctx.strokeStyle = "rgba(5,8,20,0.85)";
+      const y = innerHeight * 0.35 - 36;
+      ctx.strokeText(adminBanner.text, innerWidth / 2, y);
+      ctx.fillStyle = "rgba(255,211,107,0.98)";
+      ctx.fillText(adminBanner.text, innerWidth / 2, y);
+      ctx.restore();
+    }
+  }
 }
 
 function drawMoveTarget(ox, oy) {
@@ -29736,6 +29773,11 @@ if (startHintT > 0) {
   if (miniPing) {
     miniPing.t += dt;
     if (miniPing.t >= miniPing.dur) miniPing = null;
+  }
+
+  if (adminBanner) {
+    adminBanner.t += dt;
+    if (adminBanner.t >= 10) adminBanner = null;
   }
 
   if (portal.active) {

@@ -281,7 +281,7 @@ function pushChatMessage(m) {
   const text = String(m.text || "").slice(0, 200);
   if (!text) return;
   if (netChatInbox.length > 100) netChatInbox.shift();
-  netChatInbox.push({ from, text, at: Number(m.at) || Date.now(), by: m.by != null ? String(m.by) : "" });
+  netChatInbox.push({ from, text, at: Number(m.at) || Date.now(), by: m.by != null ? String(m.by) : "", adminBlast: m.adminBlast === true });
 }
 // Groupes + murmures + amis : canaux globaux comme le tchat
 // (vivants même en Galaxy Gate, coupés seulement en suspend).

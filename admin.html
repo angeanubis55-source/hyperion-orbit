@@ -31,6 +31,12 @@
   .badge.gate { background: rgba(180,120,255,.15); color: #cfa8ff; border: 1px solid rgba(180,120,255,.4); }
   .row { display: flex; gap: 8px; }
   .row input { flex: 1; }
+  .chatLog { max-height: 220px; overflow-y: auto; display: grid; align-content: start; gap: 3px; padding: 9px 11px; margin-bottom: 8px; border: 1px solid rgba(124,240,255,.14); border-radius: 8px; background: rgba(2,10,17,.6); font-size: 13px; }
+  .chatLog .chatEmpty { color: #5d96a5; }
+  .chatLog .chatTime { color: #5d96a5; font-size: 11px; margin-right: 4px; }
+  .chatLog .chatFrom { color: #75e8ff; font-weight: 800; }
+  .chatLog .chatAdmin .chatFrom { color: #ff7b8a; }
+  .chatLog .chatAdmin .chatText { color: #ffe9ec; font-weight: 700; }
   .msg { min-height: 20px; margin: 8px 0 0; font-size: 13px; }
   .msg.err { color: #ff9aa5; }
   .msg.ok { color: #7be495; }
@@ -54,7 +60,8 @@
   </div>
   <div class="card">
     <h2>Annonce globale</h2>
-    <div class="row"><input id="bcInput" type="text" placeholder="Message à tous les joueurs…" maxlength="200" autocomplete="off"><button id="bcBtn" type="button">Envoyer</button></div>
+    <div id="adminChatLog" class="chatLog"><div class="chatEmpty">Aucun message.</div></div>
+    <div class="row"><input id="bcInput" type="text" placeholder="Message à tous les joueurs… (réponse tchat ou annonce)" maxlength="200" autocomplete="off"><button id="bcBtn" type="button">Envoyer</button></div>
     <p id="bcMsg" class="msg"></p>
   </div>
   <div class="card">
@@ -107,6 +114,7 @@
     try {
       const out = await call("/api/admin/peers");
       const peers = (out && out.peers) || [];
+      try { await refreshChat(); } catch {}
       $("peerCount").textContent = String(peers.length);
       const tb = $("peerRows");
       tb.innerHTML = "";
@@ -153,6 +161,27 @@
       }
     } catch {}
   }
+  function fmtTime(at) {
+    try {
+      const d = new Date(Number(at) || Date.now());
+      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    } catch { return ""; }
+  }
+  async function refreshChat() {
+    const box = $("adminChatLog");
+    if (!box) return;
+    const out = await call("/api/admin/chat");
+    const list = (out && Array.isArray(out.list)) ? out.list.slice(-40) : [];
+    box.innerHTML = "";
+    if (!list.length) box.innerHTML = `<div class="chatEmpty">Aucun message.</div>`;
+    for (const m of list) {
+      const row = document.createElement("div");
+      row.className = String(m.from || "") === "[ADMIN]" ? "chatAdmin" : "";
+      row.innerHTML = `<span class="chatTime">${esc(fmtTime(m.at))}</span> <span class="chatFrom">${esc(m.from)}</span> : <span class="chatText">${esc(m.text)}</span>`;
+      box.appendChild(row);
+    }
+    box.scrollTop = box.scrollHeight;
+  }
   async function broadcast() {
     const text = $("bcInput").value.trim();
     $("bcMsg").textContent = "";
@@ -164,6 +193,7 @@
       $("bcInput").value = "";
       $("bcMsg").textContent = "Annonce envoyée.";
       $("bcMsg").className = "msg ok";
+      try { await refreshChat(); } catch {}
     } catch (e) {
       $("bcMsg").textContent = e?.message || "Erreur.";
       $("bcMsg").className = "msg err";

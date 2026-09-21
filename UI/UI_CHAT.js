@@ -46,13 +46,17 @@ export function initChatUI() {
     row.innerHTML = `<span class="chatTime">${escapeHtml(fmtTime(m.at))}</span> <span class="chatFrom">${escapeHtml(m.from)}</span><span class="chatSep"> : </span><span class="chatText">${escapeHtml(m.text)}</span>`;
     entries.appendChild(row);
     while (entries.children.length > MAX_SHOWN) entries.removeChild(entries.firstChild);
+    // Annonce admin : bannière en jeu (au-dessus du toast de zone),
+    // même en gate. Ignorée si vieille (> 60 s : rejeu d'historique).
+    if (m.adminBlast === true && m.from === "[ADMIN]" && Date.now() - Number(m.at || 0) < 60000) {
+      try { window.dispatchEvent(new CustomEvent("orbit:admin-announce", { detail: { text: String(m.text || "") } })); } catch {}
+    }
   }
 
   function poll() {
     try {
       const st = netplayStatus();
       setOnline(!!st.connected);
-      if (!st.connected && shown === 0) return;
       const inbox = drainNetChatInbox();
       if (!inbox.length) return;
       const empty = entries.querySelector(".chatEmpty");

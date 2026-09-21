@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.267",
+    "date": "2026-09-21T23:57:34+02:00",
+    "message": "test de synchronisation"
+  },
+  {
     "version": "0.266",
     "date": "2026-09-21T23:55:57+02:00",
     "message": "multi: auto-refresh client a la mise a jour (version serveur via pong)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.208",
     "date": "2026-09-14T14:23:02+02:00",
     "message": "gates: credits finaux x3 + npc confines map sauf poursuite radiation"
-  },
-  {
-    "version": "0.207",
-    "date": "2026-09-14T12:41:53+02:00",
-    "message": "galaxy gates: tirage SAB, X6 rare, PLT-2021/3030, UBR-100, HSTRM-01, energie 0,1%"
   }
 ];

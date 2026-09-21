@@ -93,6 +93,12 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, peers, count: peers.length });
     return true;
   }
+  if (pathname === "/api/admin/chat" && request.method === "GET") {
+    // Tchat en direct pour le panneau admin (lire l'historique global).
+    // Répondre = POST /api/admin/broadcast (message [ADMIN] à tous).
+    adminJson(response, 200, { ok: true, list: chatHistory.slice(-40) });
+    return true;
+  }
   if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
@@ -117,7 +123,7 @@ function handleAdminApi(request, response, pathname) {
         if (pathname === "/api/admin/broadcast") {
           const text = String(body?.text || "").replace(/\s+/g, " ").trim().slice(0, 200);
           if (!text) { adminJson(response, 400, { ok: false, error: "Message vide." }); return; }
-          const entry = { from: "[ADMIN]", text, at: Date.now(), by: "admin" };
+          const entry = { from: "[ADMIN]", text, at: Date.now(), by: "admin", adminBlast: true };
           chatHistory.push(entry);
           if (chatHistory.length > 40) chatHistory.splice(0, chatHistory.length - 40);
           broadcastAll(JSON.stringify({ t: "chatMsg", ...entry }));
