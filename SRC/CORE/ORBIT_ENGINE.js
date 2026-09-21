@@ -17116,8 +17116,20 @@ function updateQuestButtonCursor(clientX, clientY) {
   return Boolean(hoveredModule);
 }
 
+function isPlayerNearBaseModule(module, extraMargin = 320) {
+  // Le bouton flotte au-dessus de la base (parfois à 500+ px du centre
+  // pour les grosses bases) : le joueur posé sur la base doit quand même
+  // avoir accès au terminal / comptoir, sinon la fenêtre refuse de
+  // s'ouvrir ou se referme aussitôt.
+  if (!module) return false;
+  const hw = Number(module.w || 0) / 2 + extraMargin;
+  const hh = Number(module.h || 0) / 2 + extraMargin;
+  return Math.abs(player.x - module.x) <= hw && Math.abs(player.y - module.y) <= hh;
+}
+
 function isPlayerNearQuestModule(module) {
   if (!module) return false;
+  if (isPlayerNearBaseModule(module)) return true;
   const pos = getQuestButtonPosition(module);
   const radius = Number(QUEST_BUTTON.proximityRadius || 450);
   return dist2(player.x, player.y, pos.x, pos.y) <= radius * radius;
@@ -17171,6 +17183,7 @@ function updateTradeButtonCursor(clientX, clientY) {
 
 function isPlayerNearTradeModule(module) {
   if (!module) return false;
+  if (isPlayerNearBaseModule(module)) return true;
   const pos = getTradeButtonPosition(module);
   const radius = Number(TRADE_BUTTON.proximityRadius || 250);
   return dist2(player.x, player.y, pos.x, pos.y) <= radius * radius;

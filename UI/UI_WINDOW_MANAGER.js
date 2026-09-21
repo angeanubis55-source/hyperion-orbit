@@ -83,8 +83,14 @@ function loadWindowPosition(id) {
 
 function saveWindowPosition(id, card) {
   if (!id || !card) return;
-
+  // Ne jamais persister une géométrie mesurée pendant une animation
+  // d'ouverture/fermeture (scale) : ça figerait une largeur écrasée
+  // ("trait") restaurée ensuite à chaque ouverture.
+  try {
+    if (card.classList.contains("gameWinOpening") || card.classList.contains("gameWinClosing")) return;
+  } catch {}
   const r = card.getBoundingClientRect();
+  if (!(r.width >= 160) || !(r.height >= 40)) return;
 
   try {
     localStorage.setItem(
@@ -105,10 +111,15 @@ function applySavedWindowPosition(id, card) {
   const saved = loadWindowPosition(id);
   if (!saved) return false;
 
-  const width = Math.max(
-    140,
-    Math.min(saved.width || card.getBoundingClientRect().width, window.innerWidth - 20)
-  );
+  // Auto-réparation : une largeur sauvegardée anormalement petite
+  // (mesurée écrasée par le passé) est ignorée, le CSS reprend la main.
+  const savedWidth = Number(saved.width);
+  const width = Number.isFinite(savedWidth) && savedWidth >= 200
+    ? Math.max(
+      140,
+      Math.min(savedWidth, window.innerWidth - 20)
+    )
+    : null;
 
   const p = clampToScreen(
     card,
@@ -123,9 +134,15 @@ function applySavedWindowPosition(id, card) {
   card.style.top = `${Math.round(p.top)}px`;
   card.style.right = "auto";
   card.style.bottom = "auto";
-  card.style.width = `${Math.round(width)}px`;
-  card.style.minWidth = "0";
-  card.style.maxWidth = "none";
+  if (width !== null) {
+    card.style.width = `${Math.round(width)}px`;
+    card.style.minWidth = "0";
+    card.style.maxWidth = "none";
+  } else {
+    card.style.width = "";
+    card.style.minWidth = "";
+    card.style.maxWidth = "";
+  }
   card.style.boxSizing = "border-box";
   bringWindowToFront(card);
 
@@ -311,10 +328,17 @@ function prepareFloating(card) {
   card.style.right = "auto";
   card.style.bottom = "auto";
 
-  // ✅ largeur verrouillée pour éviter l'étirement
-  card.style.width = `${Math.round(r.width)}px`;
-  card.style.minWidth = "0";
-  card.style.maxWidth = "none";
+  // ✅ largeur verrouillée pour éviter l'étirement (jamais une mesure
+  // écrasée : une largeur suspecte laisse le CSS dimensionner).
+  if (r.width >= 160) {
+    card.style.width = `${Math.round(r.width)}px`;
+    card.style.minWidth = "0";
+    card.style.maxWidth = "none";
+  } else {
+    card.style.width = "";
+    card.style.minWidth = "";
+    card.style.maxWidth = "";
+  }
   card.style.boxSizing = "border-box";
 
   bringWindowToFront(card);

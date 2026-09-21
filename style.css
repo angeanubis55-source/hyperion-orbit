@@ -426,6 +426,9 @@ html.orbitSessionReady #loadingOverlay{
 }
 
 .oreTradePanel{ width:max-content; max-width:min(640px,calc(100vw - 24px)); }
+/* Garde-fou : la fenêtre Commerce ne doit jamais s'écraser en un trait
+   (largeur inline corrompue ou mesurée pendant une animation). */
+#oreTradeWindow.gameWindow{ min-width:min(320px,calc(100vw - 24px)) !important; min-height:120px !important; }
 .oreTradeBody{ display:grid; gap:0; padding:12px; }
 .oreTradeRows{ display:grid; gap:0; }
 .oreTradeRows .refineryRow, #otPalladiumRow{ justify-content:center; border:none; border-bottom:1px solid rgba(124,240,255,.2); border-radius:0; background:none; }
@@ -2275,6 +2278,9 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   padding:0 !important;
   overflow:hidden;
 }
+/* Garde-fou : le Terminal ne doit jamais s'écraser en un trait
+   (largeur inline corrompue ou mesurée pendant une animation). */
+#questOfferWindow.gameWindow{ min-width:min(480px,calc(100vw - 30px)) !important; min-height:200px !important; }
 .questOfferLayout{ display:grid; grid-template-columns:minmax(0,1fr) 280px; height:calc(100% - 30px); min-height:0; }
 .questOfferDetail{ height:100%; padding:18px 20px; overflow-y:auto; min-width:0; box-sizing:border-box; background:rgba(3,14,25,.22); }
 .questOfferList{ padding:10px; overflow-y:auto; border-left:1px solid rgba(124,240,255,.16); background:rgba(0,10,22,.3); }
