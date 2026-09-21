@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.265",
+    "date": "2026-09-21T23:51:37+02:00",
+    "message": "admin: lister les joueurs en gate (alpha/beta/gamma) + kick compatible"
+  },
+  {
     "version": "0.264",
     "date": "2026-09-21T23:47:01+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.206",
     "date": "2026-09-14T07:25:27+02:00",
     "message": "galaxy gates: multiplicateur unique partage, portail en fond, ui ggCore"
-  },
-  {
-    "version": "0.205",
-    "date": "2026-09-14T07:14:53+02:00",
-    "message": "galaxy gates: centrage ggCore, portail en fond, multiplicateur bouton, largeurs"
   }
 ];

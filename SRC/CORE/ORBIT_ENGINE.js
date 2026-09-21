@@ -107,7 +107,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect } from "./NETPLAY.js";
+  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -15325,6 +15325,30 @@ function tickLinkHeartbeat(realDt) {
   }
 }
 
+// Mise à jour déployée (git pull + restart serveur) : le pong porte la
+// version serveur. Si elle diffère de celle du boot, on prévient 5 s
+// puis on recharge (sauvegarde d'abord : position + progression).
+let versionCheckT = 0;
+let versionReloadArmed = false;
+function tickGameVersionCheck(dt) {
+  if (versionReloadArmed) return;
+  versionCheckT += Math.max(0, Number(dt) || 0);
+  if (versionCheckT < 5) return;
+  versionCheckT = 0;
+  let srv = "";
+  try { srv = String(netServerVersion() || ""); } catch { return; }
+  const mine = String(GAME_VERSION || "");
+  if (!srv || !mine || srv === mine) return;
+  versionReloadArmed = true;
+  try { showNotification(`Mise à jour du jeu reçue (v${mine} → v${srv}) — actualisation dans 5 s…`, 5, "info"); } catch {}
+  setTimeout(() => {
+    try { saveStateImmediate(); } catch {}
+    try { saveProgressNow(); } catch {}
+    // Laisse le push réseau partir avant de couper.
+    setTimeout(() => { try { location.reload(); } catch {} }, 1500);
+  }, 5000);
+}
+
 function tickAuctionLogic() {
   if (!account.user) return;
   // Liaison morte : enchères gelées (pas de repli solo, reprise au retour).
@@ -29932,6 +29956,7 @@ if (moveTarget.active && !player.dead) {
       auctionTickT = 0;
       try { tickAuctionLogic(); } catch (error) { console.warn("Auction tick:", error); }
     }
+    try { tickGameVersionCheck(dt); } catch (error) { console.warn("Version tick:", error); }
   }
 
   mapPortalLock = Math.max(0, mapPortalLock - dt);

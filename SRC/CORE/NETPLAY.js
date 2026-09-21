@@ -74,6 +74,12 @@ export function netConnected() {
 let lastPongMs = 0;
 let lastHelloAckMs = 0;
 let lastLatencyMs = null;
+// Version du serveur (pong) : le moteur recharge la page si elle diffère
+// de celle du boot (mise à jour déployée : git pull + restart serveur).
+let srvVersionSeen = "";
+export function netServerVersion() {
+  return srvVersionSeen;
+}
 export function netLatencyMs() {
   return netConnected() && Number.isFinite(lastLatencyMs) ? lastLatencyMs : null;
 }
@@ -581,6 +587,7 @@ export function ensureNetplayConnection() {
       if (Number.isFinite(sentAt) && sentAt > 0 && sentAt <= now) {
         lastLatencyMs = Math.max(0, Math.round(now - sentAt));
       }
+      if (typeof msg.v === "string" && msg.v) srvVersionSeen = msg.v.slice(0, 32);
       return;
     }
     if (msg.t === "auctionSync" || msg.t === "auctionUpdate" || msg.t === "auctionSettle" || msg.t === "auctionBidReject") {
@@ -1188,7 +1195,7 @@ export function tickNetplayRemotes(dt = 0.016) {
 // Ce module ne fait que le reseau : envoi 20 Hz + snapshots + extrapolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, forceNetReconnect, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
+  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;

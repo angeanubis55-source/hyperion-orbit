@@ -9,6 +9,7 @@ import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { handleAccountApi, verifyWsToken, recordPvpKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits } from "./ACCOUNT_SERVER.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
+import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 
 const root = resolve(process.cwd());
 const portArg = process.argv.find((arg) => arg.startsWith("--port="))?.slice(7);
@@ -851,8 +852,10 @@ wss.on("connection", (ws) => {
     if (msg.t === "ping") {
       // Heartbeat client (3 s) : preuve de vie, reprise après coupure.
       // Ne touche PAS updatedAt (l'expiration des silencieux reste à 10 s).
+      // Le pong porte la version serveur : le client recharge tout seul
+      // quand le jeu a été mis à jour (git pull + restart).
       try {
-        ws.send(JSON.stringify({ t: "pong", t0: Math.max(0, Number(msg.t0) || 0) }));
+        ws.send(JSON.stringify({ t: "pong", t0: Math.max(0, Number(msg.t0) || 0), v: String(GAME_VERSION || "") }));
       } catch {}
       return;
     }
