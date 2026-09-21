@@ -48,6 +48,7 @@ export function suspendNetplay(v) {
     connectTried = false;
     connected = false;
     netAuthed = false;
+    lastLatencyMs = null;
     netChatInbox.length = 0;
   }
 }
@@ -72,6 +73,10 @@ export function netConnected() {
 // lastPongMs = preuve de vie ; lastHelloAckMs = hello traité (sas d'entrée).
 let lastPongMs = 0;
 let lastHelloAckMs = 0;
+let lastLatencyMs = null;
+export function netLatencyMs() {
+  return netConnected() && Number.isFinite(lastLatencyMs) ? lastLatencyMs : null;
+}
 export function netPongAge() {
   try {
     if (!lastPongMs) return Infinity;
@@ -428,6 +433,7 @@ export function ensureNetplayConnection() {
 
   ws.onopen = () => {
     connected = true;
+    lastLatencyMs = null;
     lastMapSent = "";
     try {
       ws.send(JSON.stringify({
@@ -439,11 +445,13 @@ export function ensureNetplayConnection() {
         token: netToken() || undefined,
       }));
       lastMapSent = currentMapId();
+      sendPing();
     } catch {}
   };
   ws.onclose = () => {
     connected = false;
     netAuthed = false;
+    lastLatencyMs = null;
     if (noReconnect) return;
     // Reconnect douce apres 3 s (serveur maison qui redemarre).
     setTimeout(() => {
@@ -567,7 +575,12 @@ export function ensureNetplayConnection() {
       return;
     }
     if (msg.t === "pong") {
-      lastPongMs = Date.now();
+      const now = Date.now();
+      lastPongMs = now;
+      const sentAt = Number(msg.t0);
+      if (Number.isFinite(sentAt) && sentAt > 0 && sentAt <= now) {
+        lastLatencyMs = Math.max(0, Math.round(now - sentAt));
+      }
       return;
     }
     if (msg.t === "auctionSync" || msg.t === "auctionUpdate" || msg.t === "auctionSettle" || msg.t === "auctionBidReject") {

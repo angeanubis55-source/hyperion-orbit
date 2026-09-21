@@ -5,6 +5,8 @@ import { dirname, join } from "node:path";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const out = join(__dir, "..", "SRC", "DATA", "VERSION.js");
+// The commit introducing the private beta is release 0.1.
+const BETA_BASE_CHANGE_COUNT = 256;
 
 // A push can contain several commits: Git does not store a push counter.
 // Count changes on the main history, excluding generated version-only commits.
@@ -15,7 +17,8 @@ const subjects = execFileSync("git", ["log", "--first-parent", "--format=%s", "H
 }).trim().split(/\r?\n/).filter(Boolean);
 const changes = subjects.filter(subject => !/^Version auto\s*:/i.test(subject)).length;
 if (!changes) throw new Error("Aucun commit de modification trouvé pour calculer la version");
-const version = `0.${changes}`;
+const betaRevision = Math.max(1, changes - BETA_BASE_CHANGE_COUNT + 1);
+const version = `0.${betaRevision}`;
 
 const content = `export const GAME_VERSION = ${JSON.stringify(version)};\n`;
 writeFileSync(out, content);

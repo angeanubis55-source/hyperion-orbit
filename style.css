@@ -313,6 +313,7 @@ html.orbitSessionReady #loadingOverlay{
 #credits,
 #lvlTxt,
 #spdTxt,
+#pingTxt,
 #fpsTxt{
   color:#7cf0ff;
 }
@@ -5304,22 +5305,22 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   image-rendering:auto;
   pointer-events:none;
 }
-#ammoBar .compactAmmoBtn[data-ammo="x1"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_LCB-10.PNG");background-size:76% auto}
-#ammoBar .compactAmmoBtn[data-ammo="x2"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_MCB-25.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="x3"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_MCB-50.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="x4"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_UCB-100.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="sab"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_SAB-50.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="x6"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_RSB-75.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="rcb"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_RCB-140.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="cbo"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_CBO-100.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="job"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_JOB-100.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="rb"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_RB-214.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="pib"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_PIB-100.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="idb"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_IDB-125.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="vb"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_VB-142.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="emaa"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_EMAA-20.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="sbl"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_SBL-100.PNG")}
-#ammoBar .compactAmmoBtn[data-ammo="abl"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_LASER_A-BL.PNG")}
+#ammoBar .compactAmmoBtn[data-ammo="x1"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_lcb-10.png");background-size:76% auto}
+#ammoBar .compactAmmoBtn[data-ammo="x2"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_mcb-25.png")}
+#ammoBar .compactAmmoBtn[data-ammo="x3"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_mcb-50.png")}
+#ammoBar .compactAmmoBtn[data-ammo="x4"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_ucb-100.png")}
+#ammoBar .compactAmmoBtn[data-ammo="sab"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_sab-50.png")}
+#ammoBar .compactAmmoBtn[data-ammo="x6"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_rsb-75.png")}
+#ammoBar .compactAmmoBtn[data-ammo="rcb"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_rcb-140.png")}
+#ammoBar .compactAmmoBtn[data-ammo="cbo"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_cbo-100.png")}
+#ammoBar .compactAmmoBtn[data-ammo="job"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_job-100.png")}
+#ammoBar .compactAmmoBtn[data-ammo="rb"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_rb-214.png")}
+#ammoBar .compactAmmoBtn[data-ammo="pib"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_pib-100.png")}
+#ammoBar .compactAmmoBtn[data-ammo="idb"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_idb-125.png")}
+#ammoBar .compactAmmoBtn[data-ammo="vb"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_vb-142.png")}
+#ammoBar .compactAmmoBtn[data-ammo="emaa"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_emaa-20.png")}
+#ammoBar .compactAmmoBtn[data-ammo="sbl"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_sbl-100.png")}
+#ammoBar .compactAmmoBtn[data-ammo="abl"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_a-bl.png")}
 #ammoBar .compactAmmoBtn[data-ammo] > strong{display:none !important}
 #ammoBar .compactAmmoBtn[data-ammo] > small{
   position:absolute;
@@ -8946,9 +8947,9 @@ html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
   background-repeat:no-repeat;
   pointer-events:none;
 }
-#ammoBar .compactSkillBtn[data-skill="pulse"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_SPECIALAMMO_EMP-01.PNG")}
-#ammoBar .compactSkillBtn[data-skill="ish"]::before{background-image:url("ASSETS/CONTROL_MENU/EQUIPMENT_EXTRA_CPU_ISH-01.PNG")}
-#ammoBar .compactSkillBtn[data-skill="repair"]::before{background-image:url("ASSETS/CONTROL_MENU/EQUIPMENT_EXTRA_REPBOT_REP-S.PNG")}
+#ammoBar .compactSkillBtn[data-skill="pulse"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_specialammo_emp-01.png")}
+#ammoBar .compactSkillBtn[data-skill="ish"]::before{background-image:url("ASSETS/CONTROL_MENU/equipment_extra_cpu_ish-01.png")}
+#ammoBar .compactSkillBtn[data-skill="repair"]::before{background-image:url("ASSETS/CONTROL_MENU/equipment_extra_repbot_rep-s.png")}
 #ammoBar .compactSkillBtn[data-skill="pulse"] > strong,
 #ammoBar .compactSkillBtn[data-skill="ish"] > strong,
 #ammoBar .compactSkillBtn[data-skill="repair"] > strong{display:none !important}

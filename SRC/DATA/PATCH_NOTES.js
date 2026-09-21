@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.255",
+    "date": "2026-09-21T17:20:57+02:00",
+    "message": "sync version 0.254 + patch-notes (hook post-push)"
+  },
+  {
     "version": "0.254",
     "date": "2026-09-21T17:20:45+02:00",
     "message": "multi: arret franc du serveur (reboot/Ctrl+C instantane)"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.196",
     "date": "2026-09-14T01:48:00+02:00",
     "message": "boosters 12px + separateurs categories + dock palette (largeur auto, pastilles onglets)"
-  },
-  {
-    "version": "0.195",
-    "date": "2026-09-14T01:40:48+02:00",
-    "message": "commerce/raffinage: textes 12px, compteurs sans espace, palette dock, onglets pastilles"
   }
 ];

@@ -107,7 +107,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netPongAge, netHelloAckAge, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect } from "./NETPLAY.js";
+import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, netDisconnect } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -829,6 +829,7 @@ const ui = {
   ishPrice: document.getElementById("ishPrice"),
 
   fpsTxt: document.getElementById("fpsTxt"),
+  pingTxt: document.getElementById("pingTxt"),
   versionTxt: document.getElementById("versionTxt"),
 
   boxWave: document.getElementById("boxWave"),
@@ -32289,7 +32290,9 @@ updateConfigButtons();
   setHudText(ui.miniMapName, `Map : ${rules?.mapName || rules?.mapLabel || "—"}`);
   setHudText(ui.miniPos, `Pos : ${formatInteger(player.x)} / ${formatInteger(player.y)}`);
 
-  setHudText(ui.versionTxt, `ALPHA v.${GAME_VERSION}`);
+  setHudText(ui.versionTxt, `BETA PRIVEE v${GAME_VERSION}`);
+  const latency = netLatencyMs();
+  setHudText(ui.pingTxt, latency == null ? "—" : String(latency));
   if (ui.fpsTxt) {
     const perf = performanceMonitor.snapshot();
     setHudText(ui.fpsTxt, String(fpsValue || perf.fps || 0));
