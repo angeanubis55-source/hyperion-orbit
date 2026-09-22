@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.271",
+    "date": "2026-09-22T01:53:54+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.270",
     "date": "2026-09-22T01:40:42+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.212",
     "date": "2026-09-14T15:51:40+02:00",
     "message": "pet: collecte rex alignee 0,2s + quetes insensibles casse + version"
-  },
-  {
-    "version": "0.211",
-    "date": "2026-09-14T15:37:30+02:00",
-    "message": "sync complet: moteur effets vaisseaux + chantiers en cours"
   }
 ];

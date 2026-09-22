@@ -67,6 +67,7 @@ import {
   tickCurrentUserAuction,
 } from "./ACCOUNT.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
+import { flushNetUser } from "./ACCOUNT_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
   GALAXY_GATE_DEFINITIONS,
@@ -23112,17 +23113,6 @@ if (!e.noRewards) {
   }
 }
 
-    if (e._onKill) {
-      // Brouillé : pas de renforts à sa mort.
-      if (!isEntityJammed(e)) {
-        runOnKillAction(e._onKill, {
-          x: e.x,
-          y: e.y,
-          bossMasterId: e._bossPhaseMinion ? e.masterId : null,
-        });
-      }
-      e._onKill = null;
-    }
 if (e.type === "npc_Cubikon") {
   for (const m of enemies) {
     if (!m || m.hp <= 0) continue;
@@ -23191,6 +23181,22 @@ if (e.type === "npc_Cubikon") {
         }
       }
     } catch {}
+
+    // Le dernier kill est recompense et la vague est enregistree avant la
+    // cloture : le bonus final et le Cubikon forment une seule transaction.
+    if (e._onKill) {
+      const onKillAction = e._onKill;
+      e._onKill = null;
+      const completesGate = !!onKillAction?.tp?.factionBase || !!onKillAction?.completeSpecialGate;
+      // Un brouillage peut supprimer des renforts, jamais bloquer la fin GG.
+      if (!isEntityJammed(e) || completesGate) {
+        runOnKillAction(onKillAction, {
+          x: e.x,
+          y: e.y,
+          bossMasterId: e._bossPhaseMinion ? e.masterId : null,
+        });
+      }
+    }
 
     if (e.type === "npc_Protegit" && e.masterId) {
       const cub = getEnemyById(e.masterId);
@@ -23374,6 +23380,9 @@ function runOnKillAction(action, pos = null) {
   if (tp?.toMap || tp?.factionBase) {
     const currentGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
     if (rules?.mode === "gate" && tp.factionBase && GALAXY_GATE_DEFINITIONS[currentGateId]) {
+      // Les credits de combat sont portes par le joueur jusqu'a la prochaine
+      // sauvegarde. Les inclure avant d'ajouter le bonus evite un total stale.
+      if (account.user) account.user.credits = Math.max(0, Math.floor(Number(player.credits) || 0));
       const completion = completeCurrentUserGalaxyGate(currentGateId, account.user);
       if (completion.ok) {
         advanceQuestProgress("gate", currentGateId);
@@ -23382,6 +23391,10 @@ function runOnKillAction(action, pos = null) {
         player.ammo.x4 = completion.user.ammo.x4;
         updateAmmoUI();
         markProgressDirty();
+        // Point critique multijoueur : persiste et envoie immediatement le
+        // dernier kill + le bonus avant le retour automatique a la base.
+        saveProgressNow();
+        flushNetUser().catch(() => {});
         // ✅ le stock 1/1 éventuel est déjà reposé sur la map par completeActiveGalaxyGate.
         const autoMsg = completion.autoDeployed ? ` — stock replacé sur la map` : "";
         renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[currentGateId].name} terminée${autoMsg}`);
