@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.276",
+    "date": "2026-09-22T18:52:51+02:00",
+    "message": "corrige les impacts NPC multijoueur"
+  },
+  {
     "version": "0.275",
     "date": "2026-09-22T13:43:31+02:00",
     "message": "durcit le serveur multijoueur et les comptes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.217",
     "date": "2026-09-15T23:50:16+02:00",
     "message": "aptitudes: onglet palette par vaisseau (icones centrees, masque si aucune, refresh auto au changement)"
-  },
-  {
-    "version": "0.216",
-    "date": "2026-09-15T18:59:58+02:00",
-    "message": "quetes: +100 missions, 58 exterminations x1000 (gain x1500), sync globale"
   }
 ];
