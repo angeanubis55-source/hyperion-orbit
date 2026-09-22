@@ -181,6 +181,28 @@ export async function apiPseudoFree(pseudo) {
   }
 }
 
+export async function apiAccountIdentity(kind, value, currentPassword) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  const allowed = new Set(["pseudo", "email", "password"]);
+  const key = String(kind || "").toLowerCase();
+  if (!allowed.has(key)) return { ok: false, error: "Modification inconnue." };
+  try {
+    const out = await api(`/api/account/${key}`, {
+      method: "POST",
+      body: { value, currentPassword },
+      token: memToken,
+    });
+    if (out?.ok && out.user) {
+      memUser = out.user;
+      writeCache(memUser);
+      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "account" } })); } catch {}
+    }
+    return out || { ok: false, error: "Réponse serveur invalide." };
+  } catch {
+    return { ok: false, error: "Réseau." };
+  }
+}
+
 function schedulePush() {
   try { clearTimeout(saveTimer); } catch {}
   saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, 2000);

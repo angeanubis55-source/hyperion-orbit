@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.274",
+    "date": "2026-09-22T13:28:11+02:00",
+    "message": "checkpoint avant durcissement securite multijoueur"
+  },
+  {
     "version": "0.273",
     "date": "2026-09-22T02:33:34+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.215",
     "date": "2026-09-14T22:15:20+02:00",
     "message": "bot: modules Quest/Galaxy Gates + onglets DarkBot + raffinage/soute/stats/securite"
-  },
-  {
-    "version": "0.214",
-    "date": "2026-09-14T17:10:07+02:00",
-    "message": "Glow Uber"
   }
 ];

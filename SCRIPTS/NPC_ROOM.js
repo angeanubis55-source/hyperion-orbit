@@ -202,8 +202,13 @@ export class ZoneNpcSim {
     const uid = String(hit?.uid || "");
     const entry = this.entries.get(uid);
     if (!entry || !(entry.hp > 0)) return;
+    const shooter = this.players.get(String(clientId));
+    if (!shooter || shooter.dead || shooter.safe) return;
+    const dx = Number(entry.x) - Number(shooter.x);
+    const dy = Number(entry.y) - Number(shooter.y);
+    if (dx * dx + dy * dy > 6500 * 6500) return;
     const raw = Number(hit?.dmg);
-    if (!Number.isFinite(raw) || raw < 0 || raw > 1e8) return;
+    if (!Number.isFinite(raw) || raw < 0 || raw > 1e7) return;
     // Premier attaquant = credit du kill (pas le coup de grace).
     if (entry.firstBy == null) entry.firstBy = String(clientId);
     entry.lastHitBy = String(clientId);

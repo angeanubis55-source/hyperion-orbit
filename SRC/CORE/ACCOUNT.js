@@ -1173,7 +1173,7 @@ export function register({ pseudo, email, password, faction }) {
     return { ok: false, error: "Choisis une firme valide." };
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email)) return { ok: false, error: "Adresse email invalide." };
-  if (password.length < 4) return { ok: false, error: "Mot de passe trop court (4 caractères minimum)." };
+  if (password.length < 10) return { ok: false, error: "Mot de passe trop court (10 caractères minimum)." };
 
   const users = readUsers();
   const keyP = norm(pseudo);
@@ -1307,7 +1307,7 @@ export function changeCurrentUserPassword(currentPassword, newPassword) {
   }
 
   const nextPassword = String(newPassword || "");
-  if (nextPassword.length < 4) return { ok: false, error: "Le nouveau mot de passe doit contenir au moins 4 caractères." };
+  if (nextPassword.length < 10) return { ok: false, error: "Le nouveau mot de passe doit contenir au moins 10 caractères." };
   if (verifyPassword(u.password, nextPassword)) return { ok: false, error: "Choisis un mot de passe différent de l'ancien." };
 
   u.password = createPasswordHash(nextPassword);

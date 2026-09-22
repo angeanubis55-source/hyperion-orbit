@@ -27,7 +27,7 @@ import {
 } from "../SRC/CORE/ACCOUNT.js";
 
 import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
-import { apiPseudoFree, netActive } from "../SRC/CORE/ACCOUNT_NET.js";
+import { apiAccountIdentity, apiPseudoFree, netActive } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
@@ -1378,7 +1378,9 @@ function wireAccountSettingsOnce() {
         }
       }
     } catch {}
-    const out = updateCurrentUserPseudo(pseudo, currentPassword);
+    const out = netActive()
+      ? await apiAccountIdentity("pseudo", pseudo, currentPassword)
+      : updateCurrentUserPseudo(pseudo, currentPassword);
     if (!out?.ok) return setMsg(out?.error || "Impossible de changer le pseudo.", false);
 
     if (pseudoCurrentPassword) pseudoCurrentPassword.value = "";
@@ -1407,10 +1409,12 @@ function wireAccountSettingsOnce() {
     );
   });
 
-  btnSaveEmail?.addEventListener("click", () => {
+  btnSaveEmail?.addEventListener("click", async () => {
     const email = accountEmail?.value.trim() || "";
     const currentPassword = emailCurrentPassword?.value || "";
-    const out = updateCurrentUserEmail(email, currentPassword);
+    const out = netActive()
+      ? await apiAccountIdentity("email", email, currentPassword)
+      : updateCurrentUserEmail(email, currentPassword);
     if (!out?.ok) return setMsg(out?.error || "Impossible de modifier l'adresse email.", false);
 
     if (emailCurrentPassword) emailCurrentPassword.value = "";
@@ -1420,14 +1424,16 @@ function wireAccountSettingsOnce() {
     setMsg("Adresse email enregistrée.", true);
   });
 
-  btnChangePassword?.addEventListener("click", () => {
+  btnChangePassword?.addEventListener("click", async () => {
     const currentPassword = passwordCurrent?.value || "";
     const nextPassword = passwordNew?.value || "";
     if (nextPassword !== (passwordConfirm?.value || "")) {
       return setMsg("Les nouveaux mots de passe ne correspondent pas.", false);
     }
 
-    const out = changeCurrentUserPassword(currentPassword, nextPassword);
+    const out = netActive()
+      ? await apiAccountIdentity("password", nextPassword, currentPassword)
+      : changeCurrentUserPassword(currentPassword, nextPassword);
     if (!out?.ok) return setMsg(out?.error || "Impossible de changer le mot de passe.", false);
 
     if (passwordCurrent) passwordCurrent.value = "";

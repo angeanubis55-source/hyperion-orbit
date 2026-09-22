@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, normalize, resolve } from "node:path";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
@@ -14,6 +14,25 @@ import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 const root = resolve(process.cwd());
 const portArg = process.argv.find((arg) => arg.startsWith("--port="))?.slice(7);
 const PORT = Number(portArg || process.env.PORT || 8080) || 8080;
+const PUBLIC_DIRS = new Set(["ASSETS", "AUDIO", "COMBAT", "DRONE", "MAPS", "NPC", "PET", "PUBLIC", "QUEST", "SHIP", "SRC", "UI"]);
+const PUBLIC_FILES = new Set(["index.html", "admin.html", "style.css", "ASSETS_MANIFEST.json"]);
+
+function publicRelativePath(pathname) {
+  const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  const parts = relative.split(/[\\/]+/).filter(Boolean);
+  if (!parts.length) return "index.html";
+  if (!PUBLIC_FILES.has(parts[0]) && !PUBLIC_DIRS.has(parts[0])) throw new Error("Private path");
+  if (parts.some((part) => part.startsWith(".") || part === "node_modules" || part === "SERVER_DATA" || part === "SCRIPTS")) throw new Error("Private path");
+  return relative;
+}
+
+function setSecurityHeaders(response) {
+  response.setHeader("x-content-type-options", "nosniff");
+  response.setHeader("referrer-policy", "same-origin");
+  response.setHeader("x-frame-options", "DENY");
+  response.setHeader("permissions-policy", "camera=(), microphone=(), geolocation=()");
+  response.setHeader("cross-origin-resource-policy", "same-origin");
+}
 
 // --- Panneau admin (/admin.html) : mot de passe via ORBIT_ADMIN_PASS,
 // sinon genere une fois et persiste dans SERVER_DATA/.admin_pass
@@ -34,6 +53,7 @@ function loadOrCreateAdminPass() {
   return { pass: gen, fromFile: true };
 }
 const { pass: ADMIN_PASS, fromFile: ADMIN_PASS_PERSISTED } = loadOrCreateAdminPass();
+const adminFailures = new Map();
 const chatMutes = new Set(); // ids prives de chat (persistants, ids stables)
 
 // --- Bannissements temporaires (panneau admin) : bloques par compte (id
@@ -79,8 +99,26 @@ function getActiveBan(id, pseudo) {
   return found;
 }
 function adminAuthed(request) {
+  const ip = String(request.socket?.remoteAddress || "unknown");
+  const now = Date.now();
+  const failure = adminFailures.get(ip);
+  if (failure && now < failure.reset && failure.count >= 10) return false;
   const tok = String(request.headers?.["x-admin-token"] || "").trim();
-  return tok !== "" && tok.length <= 256 && tok === ADMIN_PASS;
+  let ok = false;
+  if (tok !== "" && tok.length <= 256) {
+    try {
+      const actual = Buffer.from(tok, "utf8");
+      const expected = Buffer.from(ADMIN_PASS, "utf8");
+      ok = actual.length === expected.length && timingSafeEqual(actual, expected);
+    } catch {}
+  }
+  if (ok) {
+    adminFailures.delete(ip);
+    return true;
+  }
+  if (!failure || now >= failure.reset) adminFailures.set(ip, { count: 1, reset: now + 60_000 });
+  else failure.count++;
+  return false;
 }
 function adminJson(response, code, obj) {
   response.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -322,6 +360,7 @@ const mimeTypes = {
 // --- HTTP statique (meme comportement que GAME_SERVER.js) + API comptes ---
 const server = createServer(async (request, response) => {
   try {
+    setSecurityHeaders(response);
     // Laisse passer les upgrades WS vers le WebSocketServer (noServer)
     if (request.headers.upgrade) return;
     // Panneau admin : /api/admin/* (token ORBIT_ADMIN_PASS, avant /api/*).
@@ -344,7 +383,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
-    const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+    const relative = publicRelativePath(pathname);
     const file = normalize(join(root, relative));
     if (file !== root && !file.startsWith(`${root}\\`) && !file.startsWith(`${root}/`)) throw new Error("Invalid path");
     const info = await stat(file);
@@ -374,7 +413,7 @@ const server = createServer(async (request, response) => {
 //  client -> serveur : { t:"hello", map, pseudo, shipId } puis { t:"pos", x,y,angle,shipId,pseudo,dead,hpPct,shPct,atk,tx,ty },
 //    { t:"map", map } et { t:"hit", uid, dmg, pen, critChance, critMult, weaken, kind }
 //  serveur -> client : { t:"welcome", id } puis { t:"snapshot", players:[...], npc:[...] } 20x/s
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 const rooms = new Map(); // mapId(lower) -> Map(id -> { ws, state })
 const npcSims = new Map(); // mapId(lower) -> ZoneNpcSim | null | Promise
 const boxRooms = new Map(); // mapId(lower) -> Map(uid -> { type, x, y, by })
@@ -553,6 +592,18 @@ server.on("upgrade", (request, socket, head) => {
     socket.destroy();
     return;
   }
+  // Un navigateur ne peut ouvrir le WS que depuis la meme origine. Les
+  // clients non navigateur sans Origin restent autorises (outils/admin).
+  const origin = String(request.headers.origin || "");
+  if (origin) {
+    let originHost = "";
+    try { originHost = new URL(origin).host; } catch {}
+    if (!originHost || originHost !== String(request.headers.host || "")) {
+      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+  }
   wss.handleUpgrade(request, socket, head, (ws) => {
     wss.emit("connection", ws, request);
   });
@@ -573,6 +624,16 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify({ t: "welcome", id, authed: false }));
 
   ws.on("message", (raw) => {
+    const rateNow = Date.now();
+    if (rateNow - Number(state._msgRateAt || 0) >= 1000) {
+      state._msgRateAt = rateNow;
+      state._msgRateCount = 0;
+    }
+    state._msgRateCount = Number(state._msgRateCount || 0) + 1;
+    if (state._msgRateCount > 250) {
+      try { ws.close(1008, "Message rate exceeded"); } catch {}
+      return;
+    }
     let msg = null;
     try { msg = JSON.parse(String(raw)); } catch { return; }
     if (!msg || typeof msg !== "object") return;
@@ -653,8 +714,13 @@ wss.on("connection", (ws) => {
     if (msg.t === "hit") {
       // Degats sur NPC partage : le serveur tranche (HP, mort, killer).
       try {
+        if (!authed || !accountId) return;
         const shooter = rooms.get(mapId)?.get(id)?.state;
         if (!shooter || shooter.pvpDead === true || !(Number(shooter.hp) > 0)) return;
+        const now = Date.now();
+        if (now - Number(shooter.npcHitWinT || 0) > 1000) { shooter.npcHitWinT = now; shooter.npcHitN = 0; }
+        shooter.npcHitN = Number(shooter.npcHitN || 0) + 1;
+        if (shooter.npcHitN > 100) return;
         const sim = npcSims.get(mapId);
         if (sim && typeof sim.applyHit === "function") {
           sim.applyHit(id, msg);
@@ -668,6 +734,7 @@ wss.on("connection", (ws) => {
     if (msg.t === "pvpHit") {
       // PvP : degats d'un joueur sur un autre, tranches ici.
       try {
+        if (!authed || !accountId) return;
         const room = rooms.get(mapId);
         if (!room || !room.has(id)) return;
         const foe = room.get(String(msg.target));
@@ -768,6 +835,7 @@ wss.on("connection", (ws) => {
       // Cargo du vaincu : la victime annonce, les autres affichent ;
       // le ramassage du tueur efface les copies (uid partage).
       try {
+        if (!authed || !accountId) return;
         const room = rooms.get(mapId);
         if (!room || !room.has(id)) return;
         if (typeof msg.uid !== "string" || !msg.uid.startsWith("pvploot_")) return;
@@ -786,6 +854,7 @@ wss.on("connection", (ws) => {
       // Degats PvP sur le PET : pool dedie, meme arbitrage que les vaisseaux.
       // Pas de recompenses, pas d'anti-farm : juste destruction + toast.
       try {
+        if (!authed || !accountId) return;
         const room = rooms.get(mapId);
         if (!room || !room.has(id)) return;
         const foe = room.get(String(msg.target));
@@ -1436,7 +1505,7 @@ server.listen(PORT, "0.0.0.0", () => {
     console.log(`[multi:auction] cycle ${st.cycle} (${st.lots} lots partagés${st.withBids ? `, ${st.withBids} avec mises` : ""}).`);
   } catch {}
   if (process.env.ORBIT_ADMIN_PASS) console.log("[multi] Panneau admin : /admin.html (pass ORBIT_ADMIN_PASS)");
-  else console.log(`[multi] Panneau admin : /admin.html (mot de passe : ${ADMIN_PASS}${ADMIN_PASS_PERSISTED ? ", persisté dans SERVER_DATA/.admin_pass" : ""})`);
+  else console.log(`[multi] Panneau admin : /admin.html (mot de passe généré${ADMIN_PASS_PERSISTED ? " dans SERVER_DATA/.admin_pass" : ""}, valeur non affichée)`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

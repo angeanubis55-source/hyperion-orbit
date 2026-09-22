@@ -169,8 +169,8 @@ $("btnRegister").addEventListener("click", async (e) => {
       showMsg("⚠️ Entre une adresse email valide", false);
       return;
     }
-    if (p1.length < 4) {
-      showMsg("⚠️ Mot de passe trop court (min. 4)", false);
+    if (p1.length < 10) {
+      showMsg("⚠️ Mot de passe trop court (min. 10)", false);
       return;
     }
     if (p1 !== p2) {

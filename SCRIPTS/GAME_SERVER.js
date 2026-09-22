@@ -3,6 +3,25 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 
 const root = resolve(process.cwd());
+const PUBLIC_DIRS = new Set(["ASSETS", "AUDIO", "COMBAT", "DRONE", "MAPS", "NPC", "PET", "PUBLIC", "QUEST", "SHIP", "SRC", "UI"]);
+const PUBLIC_FILES = new Set(["index.html", "admin.html", "style.css", "ASSETS_MANIFEST.json"]);
+
+function publicRelativePath(pathname) {
+  const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  const parts = relative.split(/[\\/]+/).filter(Boolean);
+  if (!parts.length) return "index.html";
+  if (!PUBLIC_FILES.has(parts[0]) && !PUBLIC_DIRS.has(parts[0])) throw new Error("Private path");
+  if (parts.some((part) => part.startsWith(".") || part === "node_modules" || part === "SERVER_DATA" || part === "SCRIPTS")) throw new Error("Private path");
+  return relative;
+}
+
+function setSecurityHeaders(response) {
+  response.setHeader("x-content-type-options", "nosniff");
+  response.setHeader("referrer-policy", "same-origin");
+  response.setHeader("x-frame-options", "DENY");
+  response.setHeader("permissions-policy", "camera=(), microphone=(), geolocation=()");
+  response.setHeader("cross-origin-resource-policy", "same-origin");
+}
 const requestedPort = Number(process.argv.find((arg) => arg.startsWith("--port="))?.slice(7) || 0);
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -25,8 +44,9 @@ const mimeTypes = {
 
 const server = createServer(async (request, response) => {
   try {
+    setSecurityHeaders(response);
     const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
-    const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+    const relative = publicRelativePath(pathname);
     const file = normalize(join(root, relative));
     if (file !== root && !file.startsWith(`${root}\\`) && !file.startsWith(`${root}/`)) throw new Error("Invalid path");
     const info = await stat(file);

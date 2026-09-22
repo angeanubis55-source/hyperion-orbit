@@ -4,7 +4,7 @@
 // horodate et protege les revisions (anti-ecrasement silencieux).
 // Le client local continue de sanitizer (plafond historique, sentinelle Infinity).
 
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -35,15 +35,29 @@ function sha256hex(str) {
   return createHash("sha256").update(String(str ?? ""), "utf8").digest("hex");
 }
 function isHash(v) {
-  return typeof v === "string" && v.startsWith("v1$");
+  return typeof v === "string" && (v.startsWith("v1$") || v.startsWith("v2$"));
 }
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimits) if (!entry || now > Number(entry.reset || 0) + 60_000) rateLimits.delete(key);
+}, 60_000).unref?.();
 function hashPassword(plain) {
   const salt = randomBytes(16).toString("hex");
-  return `v1$${salt}$${sha256hex(`${salt}::${String(plain ?? "")}`)}`;
+  const derived = scryptSync(String(plain ?? ""), salt, 64).toString("hex");
+  return `v2$${salt}$${derived}`;
 }
 function verifyPassword(stored, candidate) {
   const c = String(candidate ?? "");
-  if (isHash(stored)) {
+  if (typeof stored === "string" && stored.startsWith("v2$")) {
+    const parts = String(stored).split("$");
+    if (parts.length !== 3 || !parts[1] || !parts[2]) return false;
+    try {
+      const actual = scryptSync(c, parts[1], 64);
+      const expected = Buffer.from(parts[2], "hex");
+      return actual.length === expected.length && timingSafeEqual(actual, expected);
+    } catch { return false; }
+  }
+  if (typeof stored === "string" && stored.startsWith("v1$")) {
     const parts = String(stored).split("$");
     if (parts.length !== 3 || !parts[1] || !parts[2]) return false;
     const a = sha256hex(`${parts[1]}::${c}`);
@@ -145,12 +159,25 @@ function bearerToken(req) {
   return m ? m[1].slice(0, 128) : "";
 }
 
+function sessionKey(token) {
+  return sha256hex(`session::${String(token || "")}`);
+}
+
+function findSession(token) {
+  const raw = String(token || "").slice(0, 128);
+  if (!raw) return null;
+  // Compatibilite avec les sessions historiques en clair. Toute nouvelle
+  // session est stockee sous forme d'empreinte non reutilisable.
+  return db.prepare("SELECT token, user_id, expires_at FROM sessions WHERE token = ? OR token = ? LIMIT 1")
+    .get(sessionKey(raw), raw) || null;
+}
+
 function authUser(req) {
   const token = bearerToken(req);
   if (!token) return null;
-  const s = db.prepare("SELECT user_id, expires_at FROM sessions WHERE token = ?").get(token);
+  const s = findSession(token);
   if (!s || Number(s.expires_at) < Date.now()) {
-    if (s) { try { db.prepare("DELETE FROM sessions WHERE token = ?").run(token); } catch {} }
+    if (s) { try { db.prepare("DELETE FROM sessions WHERE token = ?").run(s.token); } catch {} }
     return null;
   }
   const u = db.prepare("SELECT * FROM users WHERE id = ?").get(s.user_id);
@@ -161,7 +188,7 @@ function newSession(userId) {
   const token = `tok_${randomBytes(32).toString("hex")}`;
   const now = Date.now();
   db.prepare("INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
-    .run(token, userId, now, now + TOKEN_TTL_MS);
+    .run(sessionKey(token), userId, now, now + TOKEN_TTL_MS);
   return token;
 }
 
@@ -356,9 +383,9 @@ export function verifyWsToken(token) {
     const t = String(token || "").slice(0, 128);
     if (!t) return null;
     initAccountDb();
-    const s = db.prepare("SELECT user_id, expires_at FROM sessions WHERE token = ?").get(t);
+    const s = findSession(t);
     if (!s || Number(s.expires_at) < Date.now()) {
-      if (s) { try { db.prepare("DELETE FROM sessions WHERE token = ?").run(t); } catch {} }
+      if (s) { try { db.prepare("DELETE FROM sessions WHERE token = ?").run(s.token); } catch {} }
       return null;
     }
     const u = db.prepare("SELECT id, pseudo FROM users WHERE id = ?").get(s.user_id);
@@ -405,7 +432,7 @@ function handleRegister(body, res) {
   if (pseudo.length > 64) return json(res, 400, { ok: false, error: "Pseudo trop long (64 max)." });
   if (!FACTIONS.has(faction)) return json(res, 400, { ok: false, error: "Choisis une firme valide." });
   if (!EMAIL_RE.test(email)) return json(res, 400, { ok: false, error: "Adresse email invalide." });
-  if (password.length < 4) return json(res, 400, { ok: false, error: "Mot de passe trop court (4 caractères minimum)." });
+  if (password.length < 10) return json(res, 400, { ok: false, error: "Mot de passe trop court (10 caractères minimum)." });
   const keyP = norm(pseudo), keyE = norm(email);
   const clash = db.prepare("SELECT id FROM users WHERE pseudo_norm = ? OR email = ?").get(keyP, keyE);
   if (clash) return json(res, 409, { ok: false, error: "Pseudo ou email déjà utilisé." });
@@ -452,10 +479,9 @@ function handleLogin(body, res) {
   const pass = String(body?.password || "");
   if (!key || !pass) return json(res, 400, { ok: false, error: "Champs manquants." });
   const u = db.prepare("SELECT * FROM users WHERE pseudo_norm = ? OR email = ?").get(key, key);
-  if (!u) return json(res, 404, { ok: false, error: "Compte introuvable." });
-  if (!verifyPassword(u.password_hash, pass)) return json(res, 403, { ok: false, error: "Mot de passe incorrect." });
+  if (!u || !verifyPassword(u.password_hash, pass)) return json(res, 401, { ok: false, error: "Identifiants incorrects." });
   // Migration clair -> hash.
-  if (!isHash(u.password_hash)) {
+  if (!String(u.password_hash || "").startsWith("v2$")) {
     const h = hashPassword(pass);
     try {
       const data = JSON.parse(u.data || "{}");
@@ -467,6 +493,58 @@ function handleLogin(body, res) {
   }
   const token = newSession(u.id);
   return json(res, 200, { ok: true, token, user: rowToPublic(u) });
+}
+
+function handleAccountIdentity(req, body, res, kind) {
+  const me = authUser(req);
+  if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+  const currentPassword = String(body?.currentPassword || "");
+  if (!verifyPassword(me.password_hash, currentPassword)) {
+    return json(res, 403, { ok: false, error: "Mot de passe actuel incorrect." });
+  }
+  let data = {};
+  try { data = JSON.parse(me.data || "{}") || {}; } catch {}
+  let pseudo = String(me.pseudo || "Pilote");
+  let email = norm(me.email);
+  let passwordHash = String(me.password_hash || "");
+  if (kind === "pseudo") {
+    const next = String(body?.value || "").trim();
+    if (next.length < 3 || next.length > 32 || !/^[\p{L}\p{N}_ -]+$/u.test(next)) {
+      return json(res, 400, { ok: false, error: "Le pseudo doit contenir entre 3 et 32 caractères autorisés." });
+    }
+    const clash = db.prepare("SELECT 1 FROM users WHERE pseudo_norm = ? AND id != ?").get(norm(next), me.id);
+    if (clash) return json(res, 409, { ok: false, error: "Ce pseudo est déjà utilisé." });
+    pseudo = next;
+  } else if (kind === "email") {
+    const next = norm(body?.value);
+    if (!EMAIL_RE.test(next)) return json(res, 400, { ok: false, error: "Adresse email invalide." });
+    const clash = db.prepare("SELECT 1 FROM users WHERE email = ? AND id != ?").get(next, me.id);
+    if (clash) return json(res, 409, { ok: false, error: "Cette adresse email est déjà utilisée." });
+    email = next;
+  } else if (kind === "password") {
+    const next = String(body?.value || "");
+    if (next.length < 10) return json(res, 400, { ok: false, error: "Le nouveau mot de passe doit contenir au moins 10 caractères." });
+    if (verifyPassword(passwordHash, next)) return json(res, 400, { ok: false, error: "Choisis un mot de passe différent de l'ancien." });
+    passwordHash = hashPassword(next);
+    // Un changement de mot de passe invalide toutes les autres sessions.
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(me.id);
+    const bearer = bearerToken(req);
+    if (bearer) {
+      const now = Date.now();
+      db.prepare("INSERT OR REPLACE INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
+        .run(sessionKey(bearer), me.id, now, now + TOKEN_TTL_MS);
+    }
+  } else return json(res, 400, { ok: false, error: "Modification inconnue." });
+  const revision = Math.max(0, Number(me.revision) || 0) + 1;
+  data.id = me.id;
+  data.pseudo = pseudo;
+  data.email = email;
+  data.password = passwordHash;
+  data.revision = revision;
+  data.updatedAt = Date.now();
+  db.prepare("UPDATE users SET pseudo = ?, pseudo_norm = ?, email = ?, password_hash = ?, data = ?, revision = ?, updated_at = ? WHERE id = ?")
+    .run(pseudo, norm(pseudo), email, passwordHash, JSON.stringify(data), revision, data.updatedAt, me.id);
+  return json(res, 200, { ok: true, user: rowToPublic({ id: me.id, pseudo, email, faction: me.faction, data: JSON.stringify(data) }) });
 }
 
 // POST /api/save { user } — plein blob, revision strictement croissante.
@@ -519,7 +597,7 @@ function handleSave(req, body, res) {
   // volontaire -> on le re-hache. Un hash entrant est ignore.
   let pwHash = me.password_hash;
   if (typeof data.password === "string" && data.password && !isHash(data.password)) {
-    if (data.password.length < 4) return json(res, 400, { ok: false, error: "Mot de passe trop court." });
+    if (data.password.length < 10) return json(res, 400, { ok: false, error: "Mot de passe trop court (10 caractères minimum)." });
     pwHash = hashPassword(data.password);
   }
   data.password = pwHash;
@@ -556,7 +634,9 @@ export function handleAccountApi(req, res) {
   }
   if (pathname === "/api/logout" && req.method === "POST") {
     const token = bearerToken(req);
-    if (token) { try { db.prepare("DELETE FROM sessions WHERE token = ?").run(token); } catch {} }
+    if (token) {
+      try { db.prepare("DELETE FROM sessions WHERE token = ? OR token = ?").run(sessionKey(token), token); } catch {}
+    }
     return json(res, 200, { ok: true });
   }
   if (pathname === "/api/me" && req.method === "GET") {
@@ -614,10 +694,20 @@ export function handleAccountApi(req, res) {
     return json(res, 200, { ok: true, free: !clash });
   }
   if (pathname === "/api/save" && req.method === "POST") {
+    if (rateLimited(`${ip}:/api/save`, 120)) return json(res, 429, { ok: false, error: "Trop de sauvegardes, reessaie dans un instant." });
     readBody(req, res, (body) => {
       try { handleSave(req, body, res); } catch {
         json(res, 500, { ok: false, error: "Erreur serveur." });
       }
+    });
+    return true;
+  }
+  const identityMatch = /^\/api\/account\/(pseudo|email|password)$/.exec(pathname);
+  if (identityMatch && req.method === "POST") {
+    if (rateLimited(`${ip}:${pathname}`, 10)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+    readBody(req, res, (body) => {
+      try { handleAccountIdentity(req, body, res, identityMatch[1]); }
+      catch { json(res, 500, { ok: false, error: "Erreur serveur." }); }
     });
     return true;
   }
