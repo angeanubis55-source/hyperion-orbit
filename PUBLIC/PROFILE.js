@@ -50,7 +50,6 @@ import { MODULE_ALL_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, M
 import { appendToFitSlots, compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
 import { rarityForCatalogItem } from "../SRC/DATA/CRAFTING.js";
 import { getBooster, formatBoosterDuration } from "../SRC/DATA/BOOSTERS.js";
-import { PATCH_NOTES } from "../SRC/DATA/PATCH_NOTES.js";
 
 // ✅ détecte si index.html (le jeu) est ouvert
 function isGameOpen() {
@@ -126,6 +125,7 @@ const btnRestartGame = $("btnRestartGame");
 // state
 let user = null;
 let storedTab = localStorage.getItem("orbit_profile_tab") || "stats";
+if (storedTab === "patchnotes") storedTab = "stats";
 if (storedTab === "shop" && document.getElementById("shopWindowPanel")) storedTab = "stats";
 if (storedTab === "hangars" && document.getElementById("hangarWindowPanel")) storedTab = "stats";
 let tab = storedTab;
@@ -784,8 +784,6 @@ function setTab(next) {
   tab = next;
   localStorage.setItem("orbit_profile_tab", tab);
 
-  if (tab === "patchnotes") renderPatchNotes();
-
   document.querySelectorAll("#profileWindow .tabBtn[data-tab], .tabs .tabBtn[data-tab]").forEach((b) => {
     b.classList.toggle("active", b.dataset.tab === tab);
   });
@@ -1314,25 +1312,6 @@ function renderNpcStats(u) {
     const missionRankPoints = calculateRankPoints(totals);
     missionRewardSummary.innerHTML = `<div class="npcRewardRow missionRewardRow"><span class="npcRewardName">Missions effectuées</span><strong>${formatNumber(completed.length)}</strong><span>${formatNumber(totals.exp)}</span><span>${formatNumber(totals.honor)}</span><span>${formatNumber(totals.credits)}</span><span>${formatNumber(missionRankPoints)}</span></div>`;
   }
-}
-
-function renderPatchNotes() {
-  const list = document.getElementById("patchNotesList");
-  if (!list) return;
-  const notes = Array.isArray(PATCH_NOTES) ? PATCH_NOTES : [];
-  if (notes.length === 0) {
-    list.innerHTML = "";
-    return;
-  }
-  const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
-    timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short",
-  });
-  list.innerHTML = notes.map((entry) =>
-    `<div class="patchNoteCard">
-      <div class="patchNoteVersion">BETA PRIVEE v.${escapeHtml(entry.version)} — <time datetime="${escapeHtml(entry.date)}">${escapeHtml(dateFormatter.format(new Date(entry.date)))}</time></div>
-      <div class="patchNoteBody">${escapeHtml(entry.message)}</div>
-    </div>`
-  ).join("");
 }
 
 function renderAccount(u) {

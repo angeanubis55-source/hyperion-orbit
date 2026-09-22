@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.286",
+    "date": "2026-09-23T00:12:52+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.285",
     "date": "2026-09-23T00:01:15+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.227",
     "date": "2026-09-19T18:24:31+02:00",
     "message": "skylab: fenetre officielle 12 modules, production x10, ameliorations niv 20, robots, transporteur double sens + reset slots npc a la def"
-  },
-  {
-    "version": "0.226",
-    "date": "2026-09-19T13:37:24+02:00",
-    "message": "aptitudes: cooldowns isoles par vaisseau, effets repris apres refresh, variantes normal/Plus independantes (Solaris, Hecate, Hammerclaw)"
   }
 ];

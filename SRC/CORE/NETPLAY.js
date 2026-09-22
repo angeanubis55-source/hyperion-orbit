@@ -1003,6 +1003,7 @@ function sendNow(local, force = false) {
       safe: local.safe === true,
       atk: local.atk === true,
       combat: local.combat === "player" ? "player" : (local.combat === "npc" ? "npc" : ""),
+      targetName: String(local.targetName || "").slice(0, 64),
       targetHpPct: Math.max(0, Math.min(1, Number(local.targetHpPct) || 0)),
       targetShPct: Math.max(0, Math.min(1, Number(local.targetShPct) || 0)),
       tx: Math.round(Number(local.tx) || 0),

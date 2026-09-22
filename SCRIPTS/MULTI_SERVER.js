@@ -499,6 +499,7 @@ function describePeer(pid) {
         hpMax: Number(s.hpMax) || 1, shMax: Number(s.shMax) || 0, dead: s.dead === true,
         shipId: String(s.shipId || "").slice(0, 64), petActive: s.peta === 1,
         combat: s.atk === true ? String(s.combat || "npc") : "",
+        targetName: String(s.targetName || "").slice(0, 64),
         targetHpPct: Number(s.targetHpPct ?? 0), targetShPct: Number(s.targetShPct ?? 0),
       };
     }
@@ -1220,6 +1221,7 @@ wss.on("connection", (ws) => {
       if (Number.isFinite(Number(msg.shPct))) state.shPct = Math.max(0, Math.min(1, Number(msg.shPct)));
       if (typeof msg.atk === "boolean") state.atk = msg.atk;
       if (msg.combat === "npc" || msg.combat === "player" || msg.combat === "") state.combat = msg.combat;
+      if (typeof msg.targetName === "string") state.targetName = String(msg.targetName).slice(0, 64);
       if (Number.isFinite(Number(msg.targetHpPct))) state.targetHpPct = Math.max(0, Math.min(1, Number(msg.targetHpPct)));
       if (Number.isFinite(Number(msg.targetShPct))) state.targetShPct = Math.max(0, Math.min(1, Number(msg.targetShPct)));
       if (Number.isFinite(Number(msg.tx))) state.tx = Math.round(Number(msg.tx));

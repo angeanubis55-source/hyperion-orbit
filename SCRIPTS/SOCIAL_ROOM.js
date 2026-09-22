@@ -48,6 +48,7 @@ function publicGroup(gid, ctx) {
         hpMax: Math.max(1, Number(d.hpMax) || 1), shMax: Math.max(0, Number(d.shMax) || 0),
         dead: d.dead === true, shipId: String(d.shipId || "").slice(0, 64), petActive: d.petActive === true,
         combat: d.combat === "player" ? "player" : (d.combat === "npc" ? "npc" : ""),
+        targetName: String(d.targetName || "").slice(0, 64),
         targetHpPct: Math.max(0, Math.min(1, Number(d.targetHpPct ?? 0))),
         targetShPct: Math.max(0, Math.min(1, Number(d.targetShPct ?? 0))),
       };

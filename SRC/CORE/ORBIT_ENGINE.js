@@ -17344,18 +17344,6 @@ let lastClickAtMs = 0;
 let lastClickEnemyId = null;
 
 const moveTarget = { active: false, x: 0, y: 0 };
-let groupJoinReadyAt = 0;
-window.addEventListener("orbit:group-join", (event) => {
-  const member = event?.detail || {};
-  const now = Date.now();
-  if (now < groupJoinReadyAt || player.dead) return;
-  if (String(member.map || "") !== String(window.__CURRENT_MAP_ID__ || "") || member.instance === true) return;
-  moveTarget.active = true;
-  moveTarget.x = clamp(Number(member.x) || player.x, 0, WORLD.w);
-  moveTarget.y = clamp(Number(member.y) || player.y, 0, WORLD.h);
-  miniPing = { x: moveTarget.x, y: moveTarget.y, t: 0, dur: 0.75 };
-  groupJoinReadyAt = now + 3000;
-});
 
 const pointer = createPointerState();
 const DRAG_THRESHOLD = 8;
@@ -33126,6 +33114,9 @@ function frame(t) {
         shPct: player.shMax > 0 ? player.sh / player.shMax : 1,
         atk: attackActive === true && !!atkTgt && !player.dead,
         combat: attackActive === true && atkTgt ? (atkTgt._netPlayer != null ? "player" : "npc") : "",
+        targetName: attackActive === true && atkTgt && atkTgt._netPlayer == null
+          ? String(NPC_TYPES[atkTgt.type]?.name || atkTgt.name || atkTgt.type || "NPC").replace(/^npc_/i, "")
+          : "",
         targetHpPct: atkTgt && Number(atkTgt.hpMax) > 0 ? Number(atkTgt.hp) / Number(atkTgt.hpMax) : 0,
         targetShPct: atkTgt && Number(atkTgt.shMax) > 0 ? Number(atkTgt.sh) / Number(atkTgt.shMax) : 0,
         tx: Number(atkTgt?.x) || 0,

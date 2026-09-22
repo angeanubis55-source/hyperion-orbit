@@ -951,41 +951,6 @@ html.orbitSessionReady #loadingOverlay{
   animation:profilePanelEnter .18s ease both;
 }
 
-#profileOverlay .patchNotesIntro{
-  margin:0 0 14px;
-  font-size:11px;
-  color:rgba(184,214,235,.75);
-}
-
-#profileOverlay .patchNotesList{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-}
-
-#profileOverlay .patchNoteCard{
-  border:1px solid rgba(255,215,94,.4);
-  border-radius:10px;
-  background:linear-gradient(145deg,rgba(40,28,4,.4),rgba(14,10,20,.7));
-  box-shadow:0 4px 18px rgba(0,0,0,.4);
-  padding:11px 14px;
-}
-
-#profileOverlay .patchNoteCard .patchNoteVersion{
-  font-size:15px;
-  font-weight:1000;
-  color:#ffd75e;
-  letter-spacing:.03em;
-  text-shadow:0 2px 10px rgba(0,0,0,.7);
-  margin-bottom:4px;
-}
-
-#profileOverlay .patchNoteCard .patchNoteBody{
-  font-size:12.5px;
-  color:#d8e6f5;
-  line-height:1.35;
-}
-
 #profileOverlay .statsRow{
   grid-template-columns:repeat(4,minmax(130px,1fr));
   gap:9px;
@@ -2574,15 +2539,22 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .groupActions input:focus{ border-color:#69e9ff; }
 .groupActions button,.groupRow button,.groupInvite button{ height:26px; padding:0 10px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:7px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 11px/1.2 ui-sans-serif,system-ui; white-space:nowrap; }
 .groupActions button:hover,.groupRow button:hover,.groupInvite button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
+.groupActions .groupIconBtn{width:30px;padding:4px;display:grid;place-items:center}
+.groupActions .groupIconBtn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#groupKickModeBtn.active{border-color:#ff6578;color:#ff9aa7;background:rgba(180,30,52,.28)}
 .groupInvite{ display:flex; align-items:center; justify-content:space-between; gap:6px; padding:5px 7px; border:1px solid rgba(255,211,107,.4); border-radius:7px; color:#f3dda9; font-size:12px; }
 .groupNotices{ display:grid; gap:3px; padding:0 11px 8px; box-sizing:border-box; }
 .groupNotice{ color:#8fa8b3; font-size:11px; font-style:italic; }
-.groupMember{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 8px;padding:7px;border:1px solid rgba(124,240,255,.14);border-radius:7px;background:rgba(2,18,29,.55)}
+.groupMember{display:grid;grid-template-columns:minmax(0,1fr);gap:5px;padding:7px;border:1px solid rgba(124,240,255,.14);border-radius:7px;background:rgba(2,18,29,.55)}
+.groupMember.kickSelectable{cursor:crosshair;border-color:rgba(255,88,108,.62);box-shadow:inset 0 0 14px rgba(255,55,80,.08)}
+.groupMember.kickSelectable:hover{background:rgba(120,18,34,.32);border-color:#ff6578}
 .groupMemberHead,.groupMemberActions{display:flex;align-items:center;gap:6px}
 .groupMemberHead{grid-column:1 / -1}.groupCombatBars{display:grid;grid-template-columns:1fr 1fr;gap:12px;min-width:0}
 .groupVitals{display:grid;gap:3px;min-width:0}.groupVitals i{display:block;width:100%;height:5px;overflow:hidden;border-radius:4px;background:rgba(0,0,0,.55)}
 .groupVitals b{display:block;height:100%;border-radius:inherit}.groupVitals .hp{background:#42d66d}.groupVitals .sh{background:#3599ff}
+.groupPlayerVitals{padding-top:15px}
 .groupNpcVitals{border-left:1px solid rgba(255,190,75,.25);padding-left:12px}.groupNpcVitals.empty{visibility:hidden}
+.groupNpcName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f0c45e;font-size:10px;line-height:12px}
 .groupMemberActions{justify-content:flex-end}.groupInviteTimer{color:#ffcf58;font-style:normal;font-weight:900}
 /* Fenêtre Amis */
 .friendsPanel{ width:380px; min-width:280px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
