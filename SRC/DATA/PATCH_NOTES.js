@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.275",
+    "date": "2026-09-22T13:43:31+02:00",
+    "message": "durcit le serveur multijoueur et les comptes"
+  },
+  {
     "version": "0.274",
     "date": "2026-09-22T13:28:11+02:00",
     "message": "checkpoint avant durcissement securite multijoueur"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.216",
     "date": "2026-09-15T18:59:58+02:00",
     "message": "quetes: +100 missions, 58 exterminations x1000 (gain x1500), sync globale"
-  },
-  {
-    "version": "0.215",
-    "date": "2026-09-14T22:15:20+02:00",
-    "message": "bot: modules Quest/Galaxy Gates + onglets DarkBot + raffinage/soute/stats/securite"
   }
 ];
