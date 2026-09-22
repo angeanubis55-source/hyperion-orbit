@@ -106,6 +106,7 @@ export class ZoneNpcSim {
       x: Number(x) || 0, y: Number(y) || 0,
       dead: f.dead === true,
       safe: f.safe === true,
+      untargetableUntil: Math.max(0, Number(f.untargetableUntil) || 0),
     });
   }
 
@@ -136,7 +137,20 @@ export class ZoneNpcSim {
 
   // Cible valide : vivante et hors zone sure.
   validTarget(p) {
-    return !!p && !p.dead && !p.safe;
+    return !!p && !p.dead && !p.safe && Date.now() >= Number(p.untargetableUntil || 0);
+  }
+
+  breakPlayerLocks(clientId, untilMs) {
+    const pid = String(clientId);
+    const p = this.players.get(pid);
+    if (p) p.untargetableUntil = Math.max(Number(p.untargetableUntil || 0), Number(untilMs) || 0);
+    for (const e of this.entries.values()) {
+      if (String(e.aggroBy || "") === pid) {
+        e.aggroBy = null;
+        e.aggroUntil = 0;
+      }
+      if (String(e.chaseId || "") === pid) e.chaseId = null;
+    }
   }
 
   removePlayer(clientId) {
@@ -250,8 +264,12 @@ export class ZoneNpcSim {
       this.feed.set(key, { uid, by: String(clientId), total: Math.round((this.feed.get(key)?.total || 0) + applied) });
     }
     // Provoque : poursuit son agresseur quelques secondes (comme en solo).
-    entry.aggroBy = String(clientId);
-    entry.aggroUntil = Date.now() + (Number(entry.aggroHoldMs) || 3500);
+    // Pendant l'IEM, ses tirs peuvent continuer a toucher le NPC mais ne
+    // doivent pas recreer silencieusement l'ancien lock.
+    if (this.validTarget(shooter)) {
+      entry.aggroBy = String(clientId);
+      entry.aggroUntil = Date.now() + (Number(entry.aggroHoldMs) || 3500);
+    }
     if (!(entry.hp > 0)) {
       entry.hp = 0;
       entry.sh = 0;

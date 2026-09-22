@@ -108,7 +108,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect } from "./NETPLAY.js";
+  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -14439,6 +14439,7 @@ function pickEnemyAtScreen(sx, sy) {
     try {
       for (const e of netPlayerProxies.values()) {
         if (!e || !(e.hp > 0)) continue;
+        if (Number(e._netIemT || 0) > 0) continue;
         const dx = w.x - e.x;
         const dy = w.y - e.y;
         if (Math.abs(dx) > 85 || Math.abs(dy) > 85) continue;
@@ -15020,6 +15021,7 @@ function spawnPulseFx(x, y, scale = 1, followPlayer = false) {
     t: 0,
     scale: Math.max(0.2, Number(scale) || 1),
     followPlayer: followPlayer === true,
+    followNetId: typeof followPlayer === "string" ? followPlayer : null,
   }, ENTITY_LIMITS.pulseFxs);
 }
 
@@ -15046,8 +15048,10 @@ function drawPulseFx(ox, oy) {
     const img = pulseImgs[idx];
     if (!isImgReady(img)) continue;
 
-    const x = (fx.followPlayer ? player.x : fx.x) + ox;
-    const y = (fx.followPlayer ? player.y : fx.y) + oy;
+    let fxTarget = null;
+    try { if (fx.followNetId) fxTarget = getNetplayRemotes()?.get(String(fx.followNetId)); } catch {}
+    const x = (fx.followPlayer ? player.x : (fxTarget ? Number(fxTarget.rx ?? fxTarget.x) : fx.x)) + ox;
+    const y = (fx.followPlayer ? player.y : (fxTarget ? Number(fxTarget.ry ?? fxTarget.y) : fx.y)) + oy;
 
     const w = (PULSE_PACK.w || (img.naturalWidth || img.width || 256)) * fx.scale;
     const h = (PULSE_PACK.h || (img.naturalHeight || img.height || 256)) * fx.scale;
@@ -23512,6 +23516,7 @@ function usePulse() {
   // IEM (EMP-01) : coupe le lien HP du REX.
   if (hplLinkActive()) endHplLink("emp");
   spawnPulseFx(player.x, player.y, 1, true);
+  try { sendSkillUse("iem"); } catch {}
   SFX.play("pulseIEM");
 
   markProgressDirty();
@@ -23556,6 +23561,7 @@ function useIsh() {
   ishCd = ISH_COOLDOWN;
   persistCdUntil("ish", ISH_COOLDOWN);
   startRespawnInstaShield();
+  try { sendSkillUse("ish"); } catch {}
   // L'ISH dure 3 s comme l'anim (même durée que l'invincibilité de réapparition).
   player.invincibleT = Math.max(Number(player.invincibleT) || 0, ISH_DURATION);
   SFX.play("ishShield");
@@ -25103,6 +25109,11 @@ function syncNetPlayers() {
       e.rocketSlowPct = Number(r.rocketSlowPct) || 0;
       e.rocketSlowT = Number(r.rocketSlowT) || 0;
       e.freezeT = Number(r.freezeT) || 0;
+      e._netIemT = Number(r.iemT) || 0;
+      if (e._netIemT > 0 && Target.get() === e) {
+        Target.clear();
+        attackActive = false;
+      }
       // PET allie : proxy lockable (barres live). Degats PvP via pvpPetHit.
       if (r.peta === 1) {
         petSeen.add(rid);
@@ -26842,6 +26853,21 @@ function spawnNetRocketVisual(ev) {
 }
 
 function tickNetplayVisuals(dt) {
+  try {
+    for (const ev of drainNetSkillInbox()) {
+      if (!ev?.by) continue;
+      if (String(ev.by) === String(netMyId())) continue;
+      const remote = getNetplayRemotes()?.get(String(ev.by));
+      if (ev.skill === "iem") {
+        if (remote) spawnPulseFx(Number(remote.rx ?? remote.x), Number(remote.ry ?? remote.y), 1, String(ev.by));
+        const locked = Target.get();
+        if (locked?._netPlayer != null && String(locked._netPlayer) === String(ev.by)) {
+          Target.clear();
+          attackActive = false;
+        }
+      }
+    }
+  } catch {}
   let evs = [];
   try { evs = drainNetShotEvents(); } catch {}
   if (!evs.length) return;
@@ -26930,6 +26956,18 @@ function drawNetplayRemotes(ox, oy) {
       ctx.rotate(-(Number(r.angle) || 0));
     }
     try { drawRocketDebuffEffect(r); } catch {}
+    // ISH distant : meme animation de bouclier instantane que localement.
+    try {
+      if (Number(r.ishT) > 0 && instaShieldReady && instaShieldImgs?.length) {
+        const progress = clamp(1 - Number(r.ishT) / ISH_DURATION, 0, 0.999);
+        const idx = Math.min(instaShieldImgs.length - 1, Math.floor(progress * instaShieldImgs.length));
+        const shieldImg = instaShieldImgs[idx];
+        if (isImgReady(shieldImg)) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(shieldImg, -INSTA_SHIELD_PACK.w / 2, -INSTA_SHIELD_PACK.h / 2, INSTA_SHIELD_PACK.w, INSTA_SHIELD_PACK.h);
+        }
+      }
+    } catch {}
     // Reacteurs du copain (memes flammes que la coque locale).
     try {
       let eng = netplayEngines.get(r.id);

@@ -265,6 +265,13 @@ export function drainNetPvpKillInbox() {
 }
 // Tirs allies exacts (vrais + faux) : { t:shot/rshot, ... } a jouer aussitot.
 const netShotInbox = [];
+// IEM / ISH synchronises : evenement immediat pour casser les locks et
+// demarrer les animations sans attendre le prochain snapshot.
+const netSkillInbox = [];
+export function drainNetSkillInbox() {
+  if (!netSkillInbox.length) return [];
+  return netSkillInbox.splice(0, netSkillInbox.length);
+}
 // Chat global : { from, text, at } recus ou rejoues (historique).
 const netChatInbox = [];
 export function drainNetChatInbox() {
@@ -666,6 +673,16 @@ export function ensureNetplayConnection() {
       netShotInbox.push(msg);
       return;
     }
+    if (msg.t === "skillFx" && (msg.skill === "iem" || msg.skill === "ish")) {
+      if (netSkillInbox.length > 24) netSkillInbox.shift();
+      netSkillInbox.push({
+        skill: msg.skill,
+        by: String(msg.by || "").slice(0, 64),
+        until: Math.max(0, Number(msg.until) || 0),
+        at: Math.max(0, Number(msg.at) || Date.now()),
+      });
+      return;
+    }
     if (msg.t === "boxesSync" && Array.isArray(msg.boxes)) {
       // Etat complet pour le nouveau venu (meme map uniquement).
       try {
@@ -731,6 +748,8 @@ export function ensureNetplayConnection() {
             slowPct: Math.max(0, Math.min(95, Number(p.slowPct) || 0)),
             slowT: Math.max(0, Number(p.slowT) || 0),
             freezeT: Math.max(0, Number(p.freezeT) || 0),
+            iemT: Math.max(0, Number(p.iemT) || 0),
+            ishT: Math.max(0, Number(p.ishT) || 0),
             at: now,
           };
           continue;
@@ -795,6 +814,8 @@ export function ensureNetplayConnection() {
           rocketSlowPct: Math.max(0, Math.min(95, Number(p.slowPct) || 0)),
           rocketSlowT: Math.max(0, Number(p.slowT) || 0),
           freezeT: Math.max(0, Number(p.freezeT) || 0),
+          iemT: Math.max(0, Number(p.iemT) || 0),
+          ishT: Math.max(0, Number(p.ishT) || 0),
           // PET allie : actif, niveau, position.
           peta: p.peta === 1 ? 1 : 0,
           petl: Math.max(1, Math.min(32, Math.round(Number(p.petl) || 1))),
@@ -1203,6 +1224,17 @@ export function tickNetplayRemotes(dt = 0.016) {
     n.rx = rx + (targetX - rx) * k;
     n.ry = ry + (targetY - ry) * k;
   }
+}
+
+export function sendSkillUse(skill) {
+  if (suspended || instanceMode === true) return false;
+  if (!ws || ws.readyState !== 1) return false;
+  const key = String(skill || "").toLowerCase();
+  if (key !== "iem" && key !== "ish") return false;
+  try {
+    ws.send(JSON.stringify({ t: "skillUse", skill: key }));
+    return true;
+  } catch { return false; }
 }
 
 // Le rendu des autres joueurs est dans ORBIT_ENGINE (acces aux sprites).

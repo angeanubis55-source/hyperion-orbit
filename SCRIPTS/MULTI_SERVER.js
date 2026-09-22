@@ -731,6 +731,29 @@ wss.on("connection", (ws) => {
       } catch {}
       return;
     }
+    if (msg.t === "skillUse") {
+      try {
+        if (!authed || !accountId || state.instance === true) return;
+        const room = rooms.get(mapId);
+        if (!room || !room.has(id)) return;
+        const skill = String(msg.skill || "").toLowerCase();
+        if (skill !== "iem" && skill !== "ish") return;
+        const now = Date.now();
+        const cdKey = skill === "iem" ? "iemCdUntil" : "ishCdUntil";
+        if (now < Number(state[cdKey] || 0)) return;
+        state[cdKey] = now + 10_000;
+        const until = now + 3_000;
+        if (skill === "iem") {
+          state.iemUntil = until;
+          const sim = npcSims.get(mapId);
+          if (sim && typeof sim.breakPlayerLocks === "function") sim.breakPlayerLocks(id, until);
+        } else {
+          state.ishUntil = until;
+        }
+        broadcastRoom(room, JSON.stringify({ t: "skillFx", skill, by: id, at: now, until }));
+      } catch {}
+      return;
+    }
     if (msg.t === "pvpHit") {
       // PvP : degats d'un joueur sur un autre, tranches ici.
       try {
@@ -749,6 +772,8 @@ wss.on("connection", (ws) => {
         const hasStatus = (Number(msg.slowPct) > 0 && Number(msg.slowSec) > 0) || Number(msg.freezeSec) > 0;
         if (!Number.isFinite(dmg) || dmg < 0 || dmg > 1e7 || (dmg === 0 && !hasStatus)) return;
         if (foe.state.dead) return;
+        if (now < Number(foe.state.ishUntil || 0)) return;
+        if (now < Number(foe.state.iemUntil || 0)) return;
         // Deja tue (pos de mort pas encore arrivee) : pas de double kill.
         if (foe.state.pvpDead === true) return;
         let wasAlive = Number(foe.state.hp) > 0;
@@ -1412,7 +1437,7 @@ setInterval(() => {
           if (s && s._posOk === true) {
             const serverSafe = typeof sim.inSafe === "function" ? sim.inSafe(s.x, s.y) : false;
             const serverDead = s.pvpDead === true || !(Number(s.hp) > 0);
-            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: serverSafe });
+            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: serverSafe, untargetableUntil: s.iemUntil });
           }
         }
         if (typeof sim.prunePlayers === "function") {
@@ -1427,6 +1452,7 @@ setInterval(() => {
             const victim = room.get(String(hit?.playerId));
             const s = victim?.state;
             if (!s || s.pvpDead === true || !(Number(s.hp) > 0)) continue;
+            if (Date.now() < Number(s.ishUntil || 0) || Date.now() < Number(s.iemUntil || 0)) continue;
             if (typeof sim.inSafe === "function" && sim.inSafe(s.x, s.y)) continue;
             const hitNow = Date.now();
             const damage = Math.max(0, Math.min(1e8, Number(hit?.damage) || 0));
@@ -1488,7 +1514,9 @@ setInterval(() => {
         petPvpAt: Number(s.petPvpAt) || 0,
         petHpM: Math.max(1, Math.round(Number(s.petHpM) || 1)),
         petShM: Math.max(0, Math.round(Number(s.petShM) || 0)),
-        safe: s.safe === true });
+        safe: s.safe === true,
+        iemT: Math.max(0, (Number(s.iemUntil) || 0) - Date.now()) / 1000,
+        ishT: Math.max(0, (Number(s.ishUntil) || 0) - Date.now()) / 1000 });
     }
     const payload = JSON.stringify({ t: "snapshot", map: key, players, npc, host: roomHostId(room) });
     for (const [, entry] of room) {
