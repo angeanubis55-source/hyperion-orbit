@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.279",
+    "date": "2026-09-22T19:31:42+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.278",
     "date": "2026-09-22T19:11:49+02:00",
     "message": "iem & ish"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.220",
     "date": "2026-09-17T18:51:03+02:00",
     "message": "aptitudes: vague gameplay Aegis/Basilisk/Berserker/Citadel/Diminisher/Disruptor/Goliath-X/Hammerclaw/Hecate + Stockpile, degats spread 80/20 + penetration, poison supprimes, tartarus/ignifuge, bonus box revues, limite fps (sync generale)"
-  },
-  {
-    "version": "0.219",
-    "date": "2026-09-16T15:38:32+02:00",
-    "message": "bot: kill & collect simultane (lock/tir en collecte, box au passage en combat) + depart auto reactive (sync generale)"
   }
 ];

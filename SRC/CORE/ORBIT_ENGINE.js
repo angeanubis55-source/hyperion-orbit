@@ -25311,6 +25311,14 @@ function syncNetNpcs(dt) {
       e._netKiller = null;
       e._netWaiting = false;
       e._netSilent = false;
+      // Nouvelle incarnation : aucun trajet entre le cadavre et le nouveau
+      // spawn. L'interpolation reprend seulement a partir de cette position.
+      e.x = Number(s.x) || 0;
+      e.y = Number(s.y) || 0;
+      e.vx = 0;
+      e.vy = 0;
+      e._previousX = e.x;
+      e._previousY = e.y;
     }
     const snapX = Number(s.rx ?? s.x) || 0, snapY = Number(s.ry ?? s.y) || 0;
     const dx = snapX - e.x, dy = snapY - e.y;

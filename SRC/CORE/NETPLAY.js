@@ -882,13 +882,16 @@ export function ensureNetplayConnection() {
           const uid = String(n.uid);
           seenNpc.add(uid);
           const prev = netNpcs.get(uid);
+          const respawned = !!prev && n.alive !== false
+            && (Number(prev.seq) || 0) !== (Number(n.seq) || 0);
           const x = Number(n.x) || 0, y = Number(n.y) || 0;
-          const rawVelocity = estimateVelocity(prev, x, y, now, "x", "y", sourceAt);
-          const velocity = prev ? {
+          const motionPrev = respawned ? null : prev;
+          const rawVelocity = estimateVelocity(motionPrev, x, y, now, "x", "y", sourceAt);
+          const velocity = motionPrev ? {
             vx: Number(prev.vx || 0) * 0.5 + rawVelocity.vx * 0.5,
             vy: Number(prev.vy || 0) * 0.5 + rawVelocity.vy * 0.5,
           } : rawVelocity;
-          const positionChanged = !prev || x !== Number(prev.x) || y !== Number(prev.y);
+          const positionChanged = !motionPrev || x !== Number(prev.x) || y !== Number(prev.y);
           netNpcs.set(uid, {
             uid,
             type: String(n.type || ""),
@@ -911,8 +914,8 @@ export function ensureNetplayConnection() {
             lastSeen: now,
             sampleAt: positionChanged ? now : Number(prev?.sampleAt || now),
             sourceAt,
-            rx: prev ? Number(prev.rx ?? prev.x ?? n.x) : Number(n.x) || 0,
-            ry: prev ? Number(prev.ry ?? prev.y ?? n.y) : Number(n.y) || 0,
+            rx: motionPrev ? Number(prev.rx ?? prev.x ?? n.x) : x,
+            ry: motionPrev ? Number(prev.ry ?? prev.y ?? n.y) : y,
           });
         }
         for (const uid of [...netNpcs.keys()]) {
