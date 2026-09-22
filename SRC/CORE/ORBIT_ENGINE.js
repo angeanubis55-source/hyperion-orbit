@@ -99,7 +99,7 @@ import { createWaveSpawnState } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
 import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, setNpcVelocity } from "../../NPC/NPC_AI.js";
-import { getNpcSensorRanges, shouldDetectNpc } from "../../NPC/NPC_SENSORS.js";
+import { DEFAULT_NPC_RADAR_FADE_START, getNpcSensorRanges, npcSensorOpacity, shouldDetectNpc } from "../../NPC/NPC_SENSORS.js";
 import { shouldRunNpcFrame } from "../../NPC/NPC_ACTIVITY.js";
 import { NPC_SHOTS as NPC_SHOT_RULES } from "../../NPC/NPC_PROJECTILES.js";
 import { applyNpcSeparation as separateNpcEntities } from "../../NPC/NPC_MOVEMENT.js";
@@ -23044,6 +23044,8 @@ function processDeathsMeasured() {
 
     if (!e.suppressDeathExplosion) {
       spawnExplosion(e.x, e.y, e.isBoss ? 1.6 : 1.0);
+      const audibleDeath = !e._netUid || netAudioVolume(e.x, e.y) > 0;
+      if (audibleDeath) {
       // Atténue les lasers avant le son de mort pour une destruction réelle.
       SFX.fadeOut("pShotX1", { dur: 0.25, to: 0.3 });
       SFX.fadeOut("pShotX2", { dur: 0.25, to: 0.3 });
@@ -23051,7 +23053,9 @@ function processDeathsMeasured() {
       SFX.fadeOut("pShotX4", { dur: 0.25, to: 0.3 });
       SFX.fadeOut("pShotX6", { dur: 0.25, to: 0.3 });
       SFX.fadeOut("pShotSab", { dur: 0.25, to: 0.3 });
-      SFX.play("npcDeath", { cooldown: 0 });
+      if (e._netUid) playNetSpatialSound("npcDeath", e.x, e.y, { cooldown: 0 });
+      else SFX.play("npcDeath", { cooldown: 0 });
+      }
     }
 
     // Multi : kill d'un autre joueur — explosion vue, mais ni butin ni recompenses.
@@ -25003,6 +25007,25 @@ if (waveSpawns.remaining > 0 && enemies.length < MAX_ALIVE) {
 
 // Multi : kamikaze partage — degats a moi si je suis dans le rayon,
 // une seule fois (comme l'explosion locale en solo).
+const NET_AUDIO_RADIUS = 1200;
+const NET_AUDIO_FULL_RADIUS = 250;
+
+function netAudioVolume(x, y) {
+  const distance = Math.hypot(Number(x) - Number(player.x), Number(y) - Number(player.y));
+  if (!Number.isFinite(distance) || distance >= NET_AUDIO_RADIUS) return 0;
+  if (distance <= NET_AUDIO_FULL_RADIUS) return 1;
+  return clamp(1 - (distance - NET_AUDIO_FULL_RADIUS) / (NET_AUDIO_RADIUS - NET_AUDIO_FULL_RADIUS), 0, 1);
+}
+
+function playNetSpatialSound(name, x, y, options = {}) {
+  const spatialVolume = netAudioVolume(x, y);
+  if (!(spatialVolume > 0)) return false;
+  try {
+    SFX.play(name, { ...options, vol: spatialVolume * Math.max(0, Number(options.vol ?? 1)) });
+    return true;
+  } catch { return false; }
+}
+
 function netBoomSelfDamage(c, cause, x, y) {
   if (cause !== "boom" || c._netBoomDone) return;
   c._netBoomDone = true;
@@ -25077,8 +25100,10 @@ function syncNetPlayers(dt = 0.016) {
         const gone = netPlayerProxies.get(rid);
         if (gone && !gone._netDeadBoom) {
           gone._netDeadBoom = true;
-          try { spawnExplosion(Number(r.rx ?? r.x) || gone.x, Number(r.ry ?? r.y) || gone.y, 1.0); } catch {}
-          try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
+          const deathX = Number(r.rx ?? r.x) || gone.x;
+          const deathY = Number(r.ry ?? r.y) || gone.y;
+          try { spawnExplosion(deathX, deathY, 1.0); } catch {}
+          playNetSpatialSound("npcDeath", deathX, deathY, { cooldown: 0 });
           try { if (Target.get() === gone) Target.clear(); } catch {}
         }
         continue;
@@ -26514,6 +26539,7 @@ function minimapAllies() {
       const same = myFirm !== "" && firm === myFirm;
       dots.push({
         x: Number(rr.rx ?? rr.x), y: Number(rr.ry ?? rr.y), hp: 1, r: 18, _net: true,
+        _netPlayer: String(rr.id),
         color: same ? "rgba(80,160,255,0.95)" : "rgba(255,70,90,0.95)",
       });
     }
@@ -26564,6 +26590,10 @@ function drawMinimap() {
     lockedNpc: Target.get(),
     // Spearhead Recon : radar minimap x2 pendant l'effet.
     shouldShowNpc: (source, enemy, locked) => shouldDetectNpc(source, enemy, ((player.reconT || 0) > 0 ? NPC_SENSOR_RANGES.radar * 2 : NPC_SENSOR_RANGES.radar), locked),
+    npcOpacity: (source, enemy, locked) => {
+      const recon = (player.reconT || 0) > 0 ? 2 : 1;
+      return npcSensorOpacity(source, enemy, DEFAULT_NPC_RADAR_FADE_START * recon, NPC_SENSOR_RANGES.radar * recon, locked);
+    },
   });
 }
 
@@ -26786,6 +26816,8 @@ function spawnNetShotVisual(ev) {
   const tgtId = netVisualTarget(tx, ty, 400, ev);
   if (tgtId == null) return;
   const sab = ev.sab === true;
+  const shotSound = sab ? PLAYER_SHOT_SFX.sab : (PLAYER_SHOT_SFX[key] || PLAYER_SHOT_SFX.x1);
+  playNetSpatialSound(shotSound, sx0, sy0, { cooldown: 0.03, maxVoices: 5 });
   // SAB inverse : part de la cible vers le vaisseau (comme en local),
   // en ligne droite (pas de homing vers nous).
   const ox = sab ? tx : sx0, oy = sab ? ty : sy0;
@@ -26830,6 +26862,10 @@ function spawnNetRocketVisual(ev) {
   const rkey = (typeof PLAYER_BULLET_SPRITES !== "undefined" && PLAYER_BULLET_SPRITES[kind]) ? kind : "r310";
   let isLauncher = false;
   try { isLauncher = getRocketType(kind)?.manual === false; } catch {}
+  playNetSpatialSound(isLauncher ? "sfx_shot_lance_roquettes" : "sfx_shot_roquettes", sx0, sy0, {
+    cooldown: isLauncher ? 0.08 : 0.05,
+    maxVoices: 5,
+  });
   const spd = Math.max(500, Math.min(20000, Number(ev.spd) || 1500));
   const dist = Math.hypot(tx - sx0, ty - sy0);
   if (!(dist > 40) || dist > 5000) return;
@@ -26869,6 +26905,12 @@ function tickNetplayVisuals(dt) {
       if (!ev?.by) continue;
       if (String(ev.by) === String(netMyId())) continue;
       const remote = getNetplayRemotes()?.get(String(ev.by));
+      if (remote) {
+        playNetSpatialSound(ev.skill === "iem" ? "pulseIEM" : "ishShield", Number(remote.rx ?? remote.x), Number(remote.ry ?? remote.y), {
+          cooldown: 0.05,
+          maxVoices: 4,
+        });
+      }
       if (ev.skill === "iem") {
         if (remote) spawnPulseFx(Number(remote.rx ?? remote.x), Number(remote.ry ?? remote.y), 1, String(ev.by));
         const locked = Target.get();

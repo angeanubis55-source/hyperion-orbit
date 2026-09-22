@@ -104,7 +104,7 @@ export function renderMinimap(context, options) {
   const {
     width, height, world, player, enemies = [], allies = [], pet = null, portals = [], returnPortal = null,
     isZoneMap = false, safeZone = null, moveTarget = null, ping = null, markers = [],
-    camera, viewportWidth, viewportHeight, lockedNpc = null, shouldShowNpc = () => true,
+    camera, viewportWidth, viewportHeight, lockedNpc = null, shouldShowNpc = () => true, npcOpacity = () => 1,
   } = options;
   const staticLayer = getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height);
   // La couche statique contient un fond blanc translucide. Sans effacer le
@@ -117,7 +117,9 @@ export function renderMinimap(context, options) {
   for (const enemy of enemies) {
     if (!enemy || enemy.hp <= 0 || !shouldShowNpc(player, enemy, lockedNpc)) continue;
     const size = clamp((enemy.r || 18) / 12, 2, 6);
-    context.fillStyle = "rgba(255,107,122,0.80)";
+    const opacity = clamp(Number(npcOpacity(player, enemy, lockedNpc)) || 0, 0, 1);
+    if (opacity <= 0) continue;
+    context.fillStyle = `rgba(255,107,122,${(0.8 * opacity).toFixed(3)})`;
     context.fillRect(enemy.x * scaleX - size / 2, enemy.y * scaleY - size / 2, size, size);
   }
 
