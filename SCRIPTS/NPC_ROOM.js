@@ -149,6 +149,7 @@ export class ZoneNpcSim {
         e.aggroBy = null;
         e.aggroUntil = 0;
       }
+      if (String(e.pendingAggroBy || "") === pid) e.pendingAggroBy = null;
       if (String(e.chaseId || "") === pid) e.chaseId = null;
     }
   }
@@ -269,6 +270,12 @@ export class ZoneNpcSim {
     if (this.validTarget(shooter)) {
       entry.aggroBy = String(clientId);
       entry.aggroUntil = Date.now() + (Number(entry.aggroHoldMs) || 3500);
+      entry.pendingAggroBy = null;
+      entry.retreating = false;
+    } else if (shooter.safe && Date.now() >= Number(shooter.untargetableUntil || 0)) {
+      // Le tir depuis une ZNA est memorise : le NPC attend que le pilote
+      // perde sa protection avant de reagir.
+      entry.pendingAggroBy = String(clientId);
     }
     if (!(entry.hp > 0)) {
       entry.hp = 0;
@@ -335,9 +342,30 @@ export class ZoneNpcSim {
       }
       // Agresseur provoque (encore valide).
       let attacker = null;
-      if (e.aggroBy && nowMs < Number(e.aggroUntil || 0)) {
+      if (e.pendingAggroBy) {
+        const pending = this.players.get(String(e.pendingAggroBy));
+        if (this.validTarget(pending)) {
+          e.aggroBy = String(e.pendingAggroBy);
+          e.aggroUntil = nowMs + (Number(e.aggroHoldMs) || 3500);
+          e.pendingAggroBy = null;
+          e.retreating = false;
+        }
+      }
+      if (e.aggroBy) {
         const p = this.players.get(e.aggroBy);
-        if (this.validTarget(p)) attacker = { id: e.aggroBy, x: p.x, y: p.y };
+        if (nowMs < Number(e.aggroUntil || 0) && this.validTarget(p)) attacker = { id: e.aggroBy, x: p.x, y: p.y };
+        else if (p?.safe) {
+          e.retreating = true;
+          e.retreatUntil = nowMs + 3000;
+          e.shieldRegenAt = nowMs + 5000;
+          e.retreatFromX = p.x;
+          e.retreatFromY = p.y;
+          e.aggroBy = null;
+          e.aggroUntil = 0;
+        } else if (nowMs >= Number(e.aggroUntil || 0)) {
+          e.aggroBy = null;
+          e.aggroUntil = 0;
+        }
       }
       // Proximite : rayon du camp (passifs : seulement si provoques).
       let close = null, closeD = Number(e.aggroRange) || 700;
@@ -349,7 +377,18 @@ export class ZoneNpcSim {
         }
       }
       const chase = attacker || close;
+      if (chase) e.retreating = false;
       e.chaseId = chase ? chase.id : null;
+      // Desengage par une ZNA : le NPC s'eloigne et recharge seulement son
+      // bouclier. Sa coque ne se regenere jamais lors de ce repli.
+      if (e.retreating && !chase) {
+        if (nowMs >= Number(e.shieldRegenAt || 0)) {
+          e.sh = Math.min(e.shMax, e.sh + e.shMax * 0.10 * dt);
+        }
+        if (e.sh >= e.shMax && nowMs >= Math.max(Number(e.retreatUntil || 0), Number(e.shieldRegenAt || 0))) {
+          e.retreating = false;
+        }
+      }
       // Les NPC peuvent aller partout sur la map, meme sur la base :
       // aucune repulsion / glissade autour des zones sures (c'etait ca
       // qui les faisait se stacker en haut / a gauche de la base).
@@ -375,6 +414,11 @@ export class ZoneNpcSim {
           const s = e.orbitDir || 1;
           mx = (-dy / d) * s; my = (dx / d) * s; spd = e.speed * 0.5;
         }
+      } else if (e.retreating) {
+        const dx = e.x - Number(e.retreatFromX || 0), dy = e.y - Number(e.retreatFromY || 0);
+        const d = Math.hypot(dx, dy) || 1;
+        mx = dx / d; my = dy / d; spd = e.speed * 0.75;
+        e.angle = Math.atan2(dy, dx);
       } else {
         if (e.tx == null || Math.hypot(e.tx - e.x, e.ty - e.y) < 100) {
           // Derive libre sur toute la map, base incluse.

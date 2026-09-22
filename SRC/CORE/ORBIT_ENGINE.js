@@ -22470,6 +22470,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
     if (e.passiveNative) e._provoked = true;
     e._aggroT = e.aggroHold ?? 3.5;
     e._aggro = true;
+    if (playerIsInSafeZone()) e._pendingSafeAggro = true;
   }
 
   // ✅ Si tu tapes le Cubikon à la SAB, ça déclenche aussi ses Protegit.
@@ -22604,6 +22605,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
     if (e.passiveNative) e._provoked = true;
     e._aggroT = e.aggroHold ?? 3.5;
     e._aggro = true;
+    if (playerIsInSafeZone()) e._pendingSafeAggro = true;
   }
 
   if (e.type === "npc_Cubikon") {
@@ -22696,6 +22698,7 @@ function applyRocketHit(e, b, recipient = player) {
     if (e.passiveNative) e._provoked = true;
     e._aggroT = e.aggroHold ?? 3.5;
     e._aggro = true;
+    if (playerIsInSafeZone()) e._pendingSafeAggro = true;
   }
 
   return {
@@ -25058,10 +25061,10 @@ const netPetProxies = new Map(); // clientId -> proxy du PET allie (lock + degat
 let lastPvpAdoptAt = 0;
 let lastNpcDamageAdoptAt = 0;
 let lastPetPvpAdoptAt = 0;
-function syncNetPlayers() {
+function syncNetPlayers(dt = 0.016) {
   let remotes = null;
   try { remotes = getNetplayRemotes(); } catch { remotes = null; }
-  try { tickNetplayRemotes(0.016); } catch {}
+  try { tickNetplayRemotes(dt); } catch {}
   const seen = new Set();
   const petSeen = new Set();
   if (remotes && netplayNpcActive()) {
@@ -25098,7 +25101,7 @@ function syncNetPlayers() {
       e.y = Number(r.ry ?? r.y);
       e._previousX = e.x;
       e._previousY = e.y;
-      e.angle = Number(r.angle) || 0;
+      e.angle = Number(r.rangle ?? r.angle) || 0;
       const hm = Math.max(1, Number(r.hpMax) || 1);
       const sm = Math.max(0, Number(r.shMax) || 0);
       e.hpMax = hm;
@@ -26885,7 +26888,6 @@ function drawNetplayRemotes(ox, oy) {
   try { remotes = getNetplayRemotes(); } catch { return; }
   if (!remotes || !remotes.size) return;
   try { netplayLastOx = ox; netplayLastOy = oy; } catch {}
-  try { tickNetplayRemotes(0.016); } catch {}
   try { tickNetShipDamages(netShipDamageDt()); } catch {}
   // Nettoie les etats moteurs des joueurs partis.
   try {
@@ -26928,7 +26930,7 @@ function drawNetplayRemotes(ox, oy) {
       if (pack && pack._ready && pack._imgs && pack._imgs.length) {
         const frames = Math.max(1, Number(pack.frames) || pack._imgs.length || 1);
         // Meme convention que la coque locale : angle + angleOffset du pack.
-        const idx = angleToFrameIndex((Number(r.angle) || 0) + (pack?.angleOffset || 0), frames);
+        const idx = angleToFrameIndex((Number(r.rangle ?? r.angle) || 0) + (pack?.angleOffset || 0), frames);
         remoteFrame = idx;
         const img = pack._imgs[idx] || pack._imgs[0];
         if (isImgReady(img)) {
@@ -26941,7 +26943,7 @@ function drawNetplayRemotes(ox, oy) {
       }
     } catch {}
     if (!drawn) {
-      ctx.rotate(Number(r.angle) || 0);
+      ctx.rotate(Number(r.rangle ?? r.angle) || 0);
       ctx.fillStyle = "rgba(124,240,255,0.92)";
       ctx.strokeStyle = "rgba(10,20,40,0.9)";
       ctx.lineWidth = 2;
@@ -26953,7 +26955,7 @@ function drawNetplayRemotes(ox, oy) {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      ctx.rotate(-(Number(r.angle) || 0));
+      ctx.rotate(-(Number(r.rangle ?? r.angle) || 0));
     }
     try { drawRocketDebuffEffect(r); } catch {}
     // ISH distant : meme animation de bouclier instantane que localement.
@@ -26976,7 +26978,7 @@ function drawNetplayRemotes(ox, oy) {
         netplayEngines.set(r.id, eng);
       }
       const wx = Number(r.rx ?? r.x), wy = Number(r.ry ?? r.y);
-      eng.angle = Number(r.angle) || 0;
+      eng.angle = Number(r.rangle ?? r.angle) || 0;
       eng.dead = false;
       eng.vx = (wx - eng.px) * 10;
       eng.vy = (wy - eng.py) * 10;
@@ -27093,7 +27095,7 @@ function drawNetplayRemotes(ox, oy) {
       if (dc > 0 && GAME_SETTINGS.drones) {
         let offsets = null;
         try { offsets = getDroneFormationOffsets(dc, String(r.dform || "standard")); } catch { offsets = null; }
-        const heading = shipEngine.heading({ angle: Number(r.angle) || 0 }, pack, remoteFrame);
+        const heading = shipEngine.heading({ angle: Number(r.rangle ?? r.angle) || 0 }, pack, remoteFrame);
         const fa = heading + Math.PI, ca = Math.cos(fa), sa = Math.sin(fa);
         const frames = Math.max(1, Number(pack?.frames) || 1);
         const dframe = Math.floor(remoteFrame * 32 / frames) % 32 + 1;
@@ -29992,7 +29994,7 @@ if (moveTarget.active && !player.dead) {
   if (!isZoneMap) waveController(dt);
   else zoneController(dt);
   syncNetNpcs(dt);
-  try { syncNetPlayers(); } catch {}
+  try { syncNetPlayers(dt); } catch {}
   // Multi PvP : PV autoritaires serveur — on n'adopte que les baisses
   // (les soins locaux remontent au serveur via les pos, qui les suit).
   try {
@@ -31123,13 +31125,40 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
         const aggroRange = e.aggroRange ?? 700;
         const aggroHold = e.aggroHold ?? 3.5;
 
-        const playerInSZ = (safeZoneActive && playerIsInSafeZone());
+        // La ZNA ne protege le joueur que lorsqu'elle est effectivement
+        // active. Tirer depuis le portail la fait perdre : le NPC reagit donc
+        // meme si le vaisseau est encore dans le cercle du portail.
+        const playerInSZ = safeZoneActive && playerIsInSafeZone();
         const npcInSZ = npcIsInSafeZone(e);
 
         if (playerInSZ) {
+          const wasEngaged = e._aggro === true || e.aiZ?.state === "aggro" || e._attackedPlayerRecently === true;
+          if (wasEngaged) {
+            e._safeRetreat = true;
+            e._safeRetreatT = 3;
+            e._safeShieldRegenDelay = 5;
+            const awayX = e.x - player.x, awayY = e.y - player.y;
+            const awayD = Math.hypot(awayX, awayY) || 1;
+            e.aiZ.wanderTarget = {
+              x: clamp(e.x + awayX / awayD * 900, e.r || 18, WORLD.w - (e.r || 18)),
+              y: clamp(e.y + awayY / awayD * 900, e.r || 18, WORLD.h - (e.r || 18)),
+            };
+            e.aiZ.wanderT = 2.5;
+          }
           e._aggro = false;
           e._aggroT = 0;
           e._attackedPlayerRecently = false;
+
+          if (e._safeRetreat) {
+            e._safeRetreatT = Math.max(0, Number(e._safeRetreatT || 0) - dt);
+            e._safeShieldRegenDelay = Math.max(0, Number(e._safeShieldRegenDelay || 0) - dt);
+            if (e._safeShieldRegenDelay <= 0) {
+              e.sh = Math.min(e.shMax, Number(e.sh || 0) + Number(e.shMax || 0) * 0.10 * dt);
+            }
+            if (e.sh >= e.shMax && e._safeRetreatT <= 0 && e._safeShieldRegenDelay <= 0) {
+              e._safeRetreat = false;
+            }
+          }
 
           if (npcInSZ) {
             e.aiZ.state = "wander";
@@ -31158,6 +31187,12 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             e.aiZ.state = "wander";
           }
         } else {
+          if (e._pendingSafeAggro) {
+            e._pendingSafeAggro = false;
+            e._safeRetreat = false;
+            e._aggro = true;
+            e._aggroT = aggroHold;
+          }
           if (!e.passiveNative || e._provoked) {
             // Camouflage ultime : pas de nouvelle aggro sur le joueur invisible.
             if (d <= aggroRange && !isPlayerCloaked()) {

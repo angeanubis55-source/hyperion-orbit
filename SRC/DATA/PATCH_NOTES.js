@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.278",
+    "date": "2026-09-22T19:11:49+02:00",
+    "message": "iem & ish"
+  },
+  {
     "version": "0.277",
     "date": "2026-09-22T18:53:58+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.219",
     "date": "2026-09-16T15:38:32+02:00",
     "message": "bot: kill & collect simultane (lock/tir en collecte, box au passage en combat) + depart auto reactive (sync generale)"
-  },
-  {
-    "version": "0.218",
-    "date": "2026-09-16T03:17:53+02:00",
-    "message": "reequilibrage global: prix boutique/NPC/quetes, GG boostees, kamikaze ralentissant, maps 4-x, icones control-menu, fix mojibake"
   }
 ];

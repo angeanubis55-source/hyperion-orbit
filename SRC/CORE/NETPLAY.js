@@ -135,6 +135,7 @@ function clearInstanceGameplay() {
   netBoxInbox.length = 0;
   netDmgInbox.length = 0;
   netShotInbox.length = 0;
+  netSkillInbox.length = 0;
   netPvpKillInbox.length = 0;
   netPvpPetKillInbox.length = 0;
   netPvpLootInbox.length = 0;
@@ -171,12 +172,17 @@ const netNpcs = new Map();
 const netDeaths = new Map();
 let lastNpcSnapMs = 0;
 const NET_SEND_INTERVAL_MS = 50;
-const NET_EXTRAPOLATION_MS = 50;
+// A 20 Hz, un snapshot arrive toutes les 50 ms. Une marge de 150 ms masque
+// deux paquets retardes sans laisser un joueur partir loin en prediction.
+const NET_EXTRAPOLATION_MS = 150;
 const NET_MAX_ESTIMATED_SPEED = 1500;
 
-function estimateVelocity(prev, x, y, now, xKey = "x", yKey = "y") {
+function estimateVelocity(prev, x, y, now, xKey = "x", yKey = "y", sourceAt = now) {
   if (!prev) return { vx: 0, vy: 0 };
-  const elapsed = Math.max(1, now - Number(prev.sampleAt || prev.lastSeen || now)) / 1000;
+  // L'horloge serveur evite les pics quand plusieurs snapshots retardes
+  // arrivent en rafale dans la meme milliseconde sur le client.
+  const previousAt = Number(prev.sourceAt || prev.sampleAt || prev.lastSeen || sourceAt);
+  const elapsed = Math.max(1, Number(sourceAt) - previousAt) / 1000;
   const vx = (x - Number(prev[xKey] ?? x)) / elapsed;
   const vy = (y - Number(prev[yKey] ?? y)) / elapsed;
   const speed = Math.hypot(vx, vy);
@@ -731,6 +737,7 @@ export function ensureNetplayConnection() {
         if (snapMap && snapMap !== currentMapId()) return;
       } catch {}
       const now = performance.now();
+      const sourceAt = Number.isFinite(Number(msg.at)) ? Number(msg.at) : now;
       const seen = new Set();
       for (const p of msg.players) {
         if (!p || typeof p !== "object") continue;
@@ -766,7 +773,11 @@ export function ensureNetplayConnection() {
           || Math.abs(rawVx * velocityScale - Number(prev.vx || 0)) > 1
           || Math.abs(rawVy * velocityScale - Number(prev.vy || 0)) > 1;
         const petx = Number(p.petx) || 0, pety = Number(p.pety) || 0;
-        const petVelocity = estimateVelocity(prev, petx, pety, now, "petx", "pety");
+        const rawPetVelocity = estimateVelocity(prev, petx, pety, now, "petx", "pety", sourceAt);
+        const petVelocity = prev ? {
+          vx: Number(prev.petvx || 0) * 0.5 + rawPetVelocity.vx * 0.5,
+          vy: Number(prev.petvy || 0) * 0.5 + rawPetVelocity.vy * 0.5,
+        } : rawPetVelocity;
         const petPositionChanged = !prev || petx !== Number(prev.petx) || pety !== Number(prev.pety);
         const entry = {
           id,
@@ -834,9 +845,11 @@ export function ensureNetplayConnection() {
           pvpPetSh: Math.max(0, Math.round(Number(p.pvpPetSh) || 0)),
           lastSeen: now,
           sampleAt: positionChanged ? now : Number(prev?.sampleAt || now),
+          sourceAt,
           // Position de rendu (interpolee vers x/y pour eviter les sauts).
           rx: prev ? Number(prev.rx ?? prev.x ?? p.x) : Number(p.x) || 0,
           ry: prev ? Number(prev.ry ?? prev.y ?? p.y) : Number(p.y) || 0,
+          rangle: prev ? Number(prev.rangle ?? prev.angle ?? p.angle) : Number(p.angle) || 0,
           petrx: prev ? Number(prev.petrx ?? prev.petx ?? p.petx) : Number(p.petx) || 0,
           petry: prev ? Number(prev.petry ?? prev.pety ?? p.pety) : Number(p.pety) || 0,
         };
@@ -870,7 +883,11 @@ export function ensureNetplayConnection() {
           seenNpc.add(uid);
           const prev = netNpcs.get(uid);
           const x = Number(n.x) || 0, y = Number(n.y) || 0;
-          const velocity = estimateVelocity(prev, x, y, now);
+          const rawVelocity = estimateVelocity(prev, x, y, now, "x", "y", sourceAt);
+          const velocity = prev ? {
+            vx: Number(prev.vx || 0) * 0.5 + rawVelocity.vx * 0.5,
+            vy: Number(prev.vy || 0) * 0.5 + rawVelocity.vy * 0.5,
+          } : rawVelocity;
           const positionChanged = !prev || x !== Number(prev.x) || y !== Number(prev.y);
           netNpcs.set(uid, {
             uid,
@@ -893,6 +910,7 @@ export function ensureNetplayConnection() {
             freezeT: Math.max(0, Number(n.freezeT) || 0),
             lastSeen: now,
             sampleAt: positionChanged ? now : Number(prev?.sampleAt || now),
+            sourceAt,
             rx: prev ? Number(prev.rx ?? prev.x ?? n.x) : Number(n.x) || 0,
             ry: prev ? Number(prev.ry ?? prev.y ?? n.y) : Number(n.y) || 0,
           });
@@ -929,6 +947,14 @@ function sendNow(local, force = false) {
   // En instance : annonce seule, JAMAIS de pos (aucune présence).
   try {
     if (map !== lastMapSent) {
+      // Retire l'ancienne room avant le premier rendu de la nouvelle carte.
+      // Sans cette purge, syncNetNpcs pouvait recreer pendant quelques
+      // images les NPC du secteur precedent (les "NPC fantomes").
+      clearInstanceGameplay();
+      // Pendant l'attente du premier snapshot, conserve le mode NPC serveur :
+      // le spawner local ne doit pas fabriquer une population provisoire qui
+      // disparaitrait 50 ms plus tard. Le repli solo revient apres 3 secondes.
+      if (instanceMode !== true) lastNpcSnapMs = performance.now();
       const out = { t: "map", map };
       if (instanceMode === true) out.instance = true;
       ws.send(JSON.stringify(out));
@@ -1201,7 +1227,9 @@ export function sendNetHit(hit) {
 
 // Interpolation + courte extrapolation vers la position predite (avant dessin).
 export function tickNetplayRemotes(dt = 0.016) {
-  const k = Math.max(0, Math.min(1, Number(dt) * 16));
+  // Lissage independant des FPS.
+  const frameDt = Math.max(0, Math.min(0.1, Number(dt) || 0));
+  const k = 1 - Math.exp(-18 * frameDt);
   const now = performance.now();
   for (const r of remotes.values()) {
     const lead = Math.min(NET_EXTRAPOLATION_MS, Math.max(0, now - Number(r.sampleAt || now))) / 1000;
@@ -1210,6 +1238,10 @@ export function tickNetplayRemotes(dt = 0.016) {
     const rx = Number(r.rx ?? r.x), ry = Number(r.ry ?? r.y);
     r.rx = rx + (targetX - rx) * k;
     r.ry = ry + (targetY - ry) * k;
+    const renderedAngle = Number(r.rangle ?? r.angle) || 0;
+    const targetAngle = Number(r.angle) || 0;
+    const angleDelta = Math.atan2(Math.sin(targetAngle - renderedAngle), Math.cos(targetAngle - renderedAngle));
+    r.rangle = renderedAngle + angleDelta * k;
     const petTargetX = Number(r.petx) + Number(r.petvx || 0) * lead;
     const petTargetY = Number(r.pety) + Number(r.petvy || 0) * lead;
     const prx = Number(r.petrx ?? r.petx), pry = Number(r.petry ?? r.pety);

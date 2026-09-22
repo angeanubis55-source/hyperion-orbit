@@ -1436,8 +1436,9 @@ setInterval(() => {
           // = ignoré par la simu NPC (ni poursuite ni ciblage).
           if (s && s._posOk === true) {
             const serverSafe = typeof sim.inSafe === "function" ? sim.inSafe(s.x, s.y) : false;
+            s.serverSafe = serverSafe && s.safe === true;
             const serverDead = s.pvpDead === true || !(Number(s.hp) > 0);
-            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: serverSafe, untargetableUntil: s.iemUntil });
+            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: s.iemUntil });
           }
         }
         if (typeof sim.prunePlayers === "function") {
@@ -1453,7 +1454,7 @@ setInterval(() => {
             const s = victim?.state;
             if (!s || s.pvpDead === true || !(Number(s.hp) > 0)) continue;
             if (Date.now() < Number(s.ishUntil || 0) || Date.now() < Number(s.iemUntil || 0)) continue;
-            if (typeof sim.inSafe === "function" && sim.inSafe(s.x, s.y)) continue;
+            if (s.serverSafe === true) continue;
             const hitNow = Date.now();
             const damage = Math.max(0, Math.min(1e8, Number(hit?.damage) || 0));
             if (!(damage > 0)) continue;
@@ -1518,7 +1519,7 @@ setInterval(() => {
         iemT: Math.max(0, (Number(s.iemUntil) || 0) - Date.now()) / 1000,
         ishT: Math.max(0, (Number(s.ishUntil) || 0) - Date.now()) / 1000 });
     }
-    const payload = JSON.stringify({ t: "snapshot", map: key, players, npc, host: roomHostId(room) });
+    const payload = JSON.stringify({ t: "snapshot", map: key, at: Date.now(), players, npc, host: roomHostId(room) });
     for (const [, entry] of room) {
       try { if (entry.ws.readyState === 1) entry.ws.send(payload); } catch {}
     }
