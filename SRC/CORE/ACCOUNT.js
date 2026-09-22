@@ -2005,7 +2005,7 @@ export function deployCurrentUserGalaxyGate(gateId) {
   return { ok: true, user: u };
 }
 
-export function completeCurrentUserGalaxyGate(gateId, currentUser = null) {
+export function completeCurrentUserGalaxyGate(gateId, currentUser = null, options = {}) {
   // Le moteur peut avoir des gains de combat encore uniquement dans son
   // objet courant (sauvegarde differee). Utiliser cet objet evite qu'une
   // mutation de Gate reparte d'une copie reseau plus ancienne et efface
@@ -2016,6 +2016,14 @@ export function completeCurrentUserGalaxyGate(gateId, currentUser = null) {
   if (!result.ok) return { ok: false, error: "Aucune Galaxy Gate active correspondante." };
   const reward = GALAXY_GATE_DEFINITIONS[String(gateId || "").toLowerCase()]?.completion;
   u.galaxyGates = result.state;
+  // Le moteur GG affiche un premier decompte avant le message de recompense.
+  // Dans ce mode, on valide la Gate maintenant mais il distribuera le gain
+  // exactement au moment du message (puis le sauvegardera immediatement).
+  if (options.deferReward === true) {
+    ensureUserShape(u);
+    saveUser(u);
+    return { ok: true, user: u, reward, rewardDeferred: true, autoDeployed: result.autoDeployed };
+  }
   if (reward) {
     // Tous les buffs comptent (boosters EP/HON + formation + modules/effet
     // vaisseau), comme pour les kills NPC et les quêtes. Sans ça, un joueur

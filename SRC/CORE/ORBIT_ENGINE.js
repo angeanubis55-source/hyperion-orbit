@@ -23239,7 +23239,7 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
   player.vy = 0;
   moveTarget.active = false;
   const gate = GALAXY_GATE_DEFINITIONS[gateId];
-  const reward = completion.reward || gate?.completion;
+  let reward = completion.reward || gate?.completion;
   const user = account.user || getCurrentUserFull();
   const destinationMap = getFactionRespawnMap(user?.faction, gateId, { gate: true });
   const destinationReady = Promise.resolve(window.__PRELOAD_MAP__?.(destinationMap)).catch((error) => {
@@ -23259,6 +23259,29 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
 
   setTimeout(() => {
     if (!stillInCompletedGate() || !reward) return;
+    if (completion.rewardDeferred === true) {
+      const baseReward = reward;
+      const credits = Math.max(0, Math.floor(Number(baseReward.credits) || 0));
+      const x4 = Math.max(0, Math.floor(Number(baseReward.x4) || 0));
+      player.credits += credits;
+      player.ammo.x4 += x4;
+      const xpResult = awardExperience(Math.max(0, Number(baseReward.exp) || 0), "gate");
+      const honorResult = awardHonor(Math.max(0, Number(baseReward.honor) || 0));
+      reward = {
+        ...baseReward,
+        credits,
+        x4,
+        exp: xpResult?.gained ?? Math.max(0, Math.floor(Number(baseReward.exp) || 0)),
+        honor: honorResult?.gained ?? Math.max(0, Math.floor(Number(baseReward.honor) || 0)),
+      };
+      completion.reward = reward;
+      completion.rewardDeferred = false;
+      if (account.user) account.user.credits = player.credits;
+      updateAmmoUI();
+      markProgressDirty();
+      saveProgressNow();
+      flushNetUser().catch(() => {});
+    }
     const messages = [
       `Vous avez gagné ${formatInteger(reward.exp)} XP`,
       `Vous avez gagné ${formatInteger(reward.honor)} honneur`,
@@ -23383,7 +23406,7 @@ function runOnKillAction(action, pos = null) {
       // Les credits de combat sont portes par le joueur jusqu'a la prochaine
       // sauvegarde. Les inclure avant d'ajouter le bonus evite un total stale.
       if (account.user) account.user.credits = Math.max(0, Math.floor(Number(player.credits) || 0));
-      const completion = completeCurrentUserGalaxyGate(currentGateId, account.user);
+      const completion = completeCurrentUserGalaxyGate(currentGateId, account.user, { deferReward: true });
       if (completion.ok) {
         advanceQuestProgress("gate", currentGateId);
         account.user = completion.user;
@@ -23391,8 +23414,8 @@ function runOnKillAction(action, pos = null) {
         player.ammo.x4 = completion.user.ammo.x4;
         updateAmmoUI();
         markProgressDirty();
-        // Point critique multijoueur : persiste et envoie immediatement le
-        // dernier kill + le bonus avant le retour automatique a la base.
+        // Sauvegarde d'abord la validation de la Gate. Le bonus sera ajoute,
+        // sauvegarde et envoye pendant le message de recompense (a 3 s).
         saveProgressNow();
         flushNetUser().catch(() => {});
         // ✅ le stock 1/1 éventuel est déjà reposé sur la map par completeActiveGalaxyGate.
