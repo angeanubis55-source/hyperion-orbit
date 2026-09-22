@@ -10,18 +10,18 @@ export function initGroupUI() {
   function renderGroup() {
     let g = null; try { g = getNetGroup(); } catch {}
     const leave = document.getElementById("groupLeaveBtn"), lock = document.getElementById("groupInviteLockBtn"), rally = document.getElementById("groupRallyBtn");
-    if (!g) { if (status) status.textContent = "Solo — invite un pilote pour former une escadrille."; members.innerHTML = `<div class="groupEmpty">Personne avec toi pour l'instant.</div>`; for (const b of [leave, lock, rally]) if (b) b.style.display = "none"; return; }
+    if (!g) { if (status) status.textContent = "Solo — invite un pilote pour former une escadrille."; members.innerHTML = `<div class="groupEmpty">Personne avec toi pour l'instant.</div>`; invites.style.display = ""; for (const b of [leave, lock, rally]) if (b) b.style.display = "none"; return; }
     const leader = String(g.leader), leaderMode = myId() === leader, self = g.members.find(m => String(m.id) === myId()), chief = g.members.find(m => String(m.id) === leader);
     if (status) status.textContent = `Escadrille (${g.members.length}/10) — chef : ${chief?.pseudo || "?"}`;
+    invites.style.display = "none";
     members.innerHTML = g.members.map(m => {
       const id = escapeHtml(String(m.id)), sameMap = self && String(self.map) === String(m.map) && !m.instance;
-      const distance = sameMap ? `${Math.round(Math.hypot(Number(m.x) - Number(self.x), Number(m.y) - Number(self.y)))} u` : "";
-      const state = !m.online ? "Déconnecté" : m.instance ? "Galaxy Gate" : m.dead ? "Détruit" : "Vivant";
-      const combat = m.combat === "player" ? "Combat joueur" : m.combat === "npc" ? "Combat NPC" : "Hors combat";
       const hp = Math.round(Math.max(0, Math.min(1, Number(m.hpPct ?? 1))) * 100), sh = Math.round(Math.max(0, Math.min(1, Number(m.shPct ?? 1))) * 100);
+      const targetHp = Math.round(Math.max(0, Math.min(1, Number(m.targetHpPct || 0))) * 100), targetSh = Math.round(Math.max(0, Math.min(1, Number(m.targetShPct || 0))) * 100);
       const join = sameMap && String(m.id) !== myId() && !m.dead ? `<button type="button" data-join="${id}">Rejoindre</button>` : "";
       const kick = leaderMode && String(m.id) !== leader ? `<button type="button" data-kick="${id}" title="Exclure">×</button>` : "";
-      return `<div class="groupRow groupMember"><div class="groupMemberHead"><span class="groupName">${escapeHtml(m.pseudo || "Pilote")}${String(m.id) === leader ? " 👑" : ""}</span><span class="groupMap">${escapeHtml(m.map || "?")}${distance ? ` · ${distance}` : ""}</span></div><div class="groupMeta">${state} · ${escapeHtml(m.shipId || "Vaisseau")} · PET ${m.petActive ? "actif" : "inactif"}</div><div class="groupBars"><span>Coque ${hp}%</span><i class="hp" style="width:${hp}%"></i><span>Bouclier ${sh}%</span><i class="sh" style="width:${sh}%"></i></div><div class="groupTarget ${escapeHtml(m.combat || "")}">${combat}${m.combat ? ` · cible ${Math.round(Number(m.targetHpPct || 0) * 100)}% / ${Math.round(Number(m.targetShPct || 0) * 100)}%` : ""}</div><div class="groupMemberActions">${join}${kick}</div></div>`;
+      const targetBars = m.combat === "npc" ? `<div class="groupVitals groupNpcVitals" title="Cible NPC"><i><b class="hp" style="width:${targetHp}%"></b></i><i><b class="sh" style="width:${targetSh}%"></b></i></div>` : `<div class="groupVitals groupNpcVitals empty"></div>`;
+      return `<div class="groupRow groupMember"><div class="groupMemberHead"><span class="groupName">${escapeHtml(m.pseudo || "Pilote")}${String(m.id) === leader ? " 👑" : ""}</span><span class="groupMap">${escapeHtml(m.map || "?")}</span></div><div class="groupCombatBars"><div class="groupVitals groupPlayerVitals"><i><b class="hp" style="width:${hp}%"></b></i><i><b class="sh" style="width:${sh}%"></b></i></div>${targetBars}</div><div class="groupMemberActions">${join}${kick}</div></div>`;
     }).join("");
     if (leave) leave.style.display = "";
     if (lock) { lock.style.display = leaderMode ? "" : "none"; lock.textContent = g.invitesLocked ? "Déverrouiller invitations" : "Verrouiller invitations"; }

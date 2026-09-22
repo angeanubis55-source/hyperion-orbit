@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.285",
+    "date": "2026-09-23T00:01:15+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.284",
     "date": "2026-09-22T23:58:33+02:00",
     "message": "Fix player name colors and stale NPC transitions"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.226",
     "date": "2026-09-19T13:37:24+02:00",
     "message": "aptitudes: cooldowns isoles par vaisseau, effets repris apres refresh, variantes normal/Plus independantes (Solaris, Hecate, Hammerclaw)"
-  },
-  {
-    "version": "0.225",
-    "date": "2026-09-19T12:48:38+02:00",
-    "message": "sync version 0.224 + patch-notes (hook post-push)"
   }
 ];

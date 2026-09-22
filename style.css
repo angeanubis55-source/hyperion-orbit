@@ -2562,9 +2562,9 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .chatForm button{ height:30px; padding:0 14px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 12px/1.2 ui-sans-serif,system-ui; }
 .chatForm button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
 /* Fenêtre Groupe (escadrille) */
-.groupPanel{ width:380px; min-width:280px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
+.groupPanel{ width:420px; min-width:320px; max-width:calc(100vw - 20px); height:auto; max-height:none; display:flex; flex-direction:column; overflow:visible; }
 .groupStatus{ padding:7px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#75e8ff; font-size:11px; font-weight:800; text-transform:uppercase; }
-.groupEntries{ max-height:170px; min-height:60px; overflow-y:auto; display:grid; align-content:start; gap:4px; padding:9px 11px; box-sizing:border-box; }
+.groupEntries{ max-height:none; min-height:0; overflow:visible; display:grid; align-content:start; gap:4px; padding:9px 11px; box-sizing:border-box; }
 .groupRow{ display:flex; align-items:center; gap:6px; color:#bcdde5; font-size:12px; font-weight:600; }
 .groupName{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .groupMap{ color:#5d96a5; font-size:11px; margin-left:auto; }
@@ -2577,12 +2577,12 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .groupInvite{ display:flex; align-items:center; justify-content:space-between; gap:6px; padding:5px 7px; border:1px solid rgba(255,211,107,.4); border-radius:7px; color:#f3dda9; font-size:12px; }
 .groupNotices{ display:grid; gap:3px; padding:0 11px 8px; box-sizing:border-box; }
 .groupNotice{ color:#8fa8b3; font-size:11px; font-style:italic; }
-.groupMember{display:grid;gap:5px;padding:7px;border:1px solid rgba(124,240,255,.14);border-radius:7px;background:rgba(2,18,29,.55)}
+.groupMember{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 8px;padding:7px;border:1px solid rgba(124,240,255,.14);border-radius:7px;background:rgba(2,18,29,.55)}
 .groupMemberHead,.groupMemberActions{display:flex;align-items:center;gap:6px}
-.groupMeta,.groupTarget{color:#7899a5;font-size:10px}
-.groupTarget.npc{color:#f0c45e}.groupTarget.player{color:#ff788a}
-.groupBars{display:grid;grid-template-columns:58px minmax(30px,1fr) 66px minmax(30px,1fr);gap:4px;align-items:center;font-size:9px;color:#9ab3bc}
-.groupBars i{display:block;height:5px;border-radius:4px}.groupBars .hp{background:#42d66d}.groupBars .sh{background:#3599ff}
+.groupMemberHead{grid-column:1 / -1}.groupCombatBars{display:grid;grid-template-columns:1fr 1fr;gap:12px;min-width:0}
+.groupVitals{display:grid;gap:3px;min-width:0}.groupVitals i{display:block;width:100%;height:5px;overflow:hidden;border-radius:4px;background:rgba(0,0,0,.55)}
+.groupVitals b{display:block;height:100%;border-radius:inherit}.groupVitals .hp{background:#42d66d}.groupVitals .sh{background:#3599ff}
+.groupNpcVitals{border-left:1px solid rgba(255,190,75,.25);padding-left:12px}.groupNpcVitals.empty{visibility:hidden}
 .groupMemberActions{justify-content:flex-end}.groupInviteTimer{color:#ffcf58;font-style:normal;font-weight:900}
 /* Fenêtre Amis */
 .friendsPanel{ width:380px; min-width:280px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }

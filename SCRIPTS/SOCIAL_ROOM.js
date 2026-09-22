@@ -59,6 +59,9 @@ function pushGroup(gid, ctx, extra = {}) {
   const pub = publicGroup(gid, ctx);
   const g = groups.get(gid);
   if (!g) return;
+  // Un groupe à un seul membre est seulement une préparation d'invitation :
+  // il ne devient visible qu'au moment où un second joueur accepte.
+  if (g.members.length <= 1) return;
   for (const pid of g.members) {
     try { ctx.sendTo(pid, { t: "groupUpdate", group: pub, ...extra }); } catch {}
   }
@@ -116,6 +119,7 @@ export function socialGroupOf(pid) {
 export function socialDescribeGroup(pid, ctx) {
   const gid = memberGroup.get(String(pid));
   if (!gid) return null;
+  if ((groups.get(gid)?.members?.length || 0) <= 1) return null;
   return publicGroup(gid, ctx);
 }
 
@@ -183,7 +187,6 @@ export function handleSocialMessage(ctx, msg) {
         gid = `g${nextGroup++}`;
         groups.set(gid, { id: gid, leader: me, members: [me], created: Date.now(), invitesLocked: false, rally: null });
         memberGroup.set(me, gid);
-        pushGroup(gid, ctx);
       }
       const g = groups.get(gid);
       if (g.invitesLocked === true && String(g.leader) !== me) { ctx.send({ t: "groupNotice", text: "Les invitations sont verrouillées par le chef." }); return true; }
@@ -193,7 +196,6 @@ export function handleSocialMessage(ctx, msg) {
       const expiresAt = Date.now() + INVITE_TTL_MS;
       ctx.sendTo(String(target.id), { t: "groupInvite", from: me, fromPseudo: cleanPseudo(ctx.state?.pseudo), groupId: gid, expiresAt });
       ctx.send({ t: "groupInviteSent", toPseudo: cleanPseudo(target.pseudo), expiresAt });
-      pushGroup(gid, ctx);
       return true;
     }
     if (t === "groupAccept") {
