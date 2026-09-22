@@ -58,7 +58,7 @@ export function drawTargetLock(context, entity, image, sprite, offsetX, offsetY,
   context.restore();
 }
 
-export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null, moduleIndicators = [], adminTag = false, showDetails = true) {
+export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null, moduleIndicators = [], adminTag = false, showDetails = true, nameColor = "rgba(255,255,255,0.95)") {
   if (!context || !player || player.dead) return;
   const width = 120;
   const height = 4;
@@ -148,7 +148,7 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
     return;
   }
   const textWidth = context.measureText(displayName).width;
-  context.fillStyle = "rgba(255,255,255,0.95)";
+  context.fillStyle = nameColor;
   context.fillText(displayName, x, nameY);
   context.imageSmoothingEnabled = false;
   if (rankImage?.complete && rankImage.naturalWidth > 0) {

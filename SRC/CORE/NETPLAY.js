@@ -190,6 +190,15 @@ function estimateVelocity(prev, x, y, now, xKey = "x", yKey = "y", sourceAt = no
   const scale = NET_MAX_ESTIMATED_SPEED / speed;
   return { vx: vx * scale, vy: vy * scale };
 }
+
+// Appelé par le moteur dès qu'un saut/respawn change de carte. La purge ne
+// doit pas attendre le prochain paquet 20 Hz, sinon l'ancien snapshot peut
+// être rendu une image sur la nouvelle carte.
+export function clearNetplayGameplay() {
+  clearInstanceGameplay();
+  lastNpcSnapMs = performance.now();
+  lastMapSent = "";
+}
 // Bonus box partagees : miroir du set serveur + file d'evenements.
 // Hote = plus petit id de la room (elus par le serveur) : seul lui spawne.
 const netBoxes = new Map(); // slotUid -> { type, x, y }
