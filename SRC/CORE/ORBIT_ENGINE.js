@@ -20763,11 +20763,18 @@ function currentMapId() {
 
 // ✅ Leonov : bonus actif si le vaisseau actif est le Leonov ET que la map
 // courante est une carte mère x-1 à x-4 de SA firme (secteur MMO=1, EIC=2, VRU=3).
-function isLeonovHomeActive() {
-  if (String(account.user?.ship || "").toLowerCase() !== "leonov") return false;
-  const sector = getFaction(account.user?.faction)?.sector;
+function isLeonovHomeShip(shipId, faction) {
+  const rawShipId = String(shipId || "").toLowerCase();
+  let baseShipId = rawShipId;
+  try { baseShipId = String(getShipDesignBaseId(rawShipId) || rawShipId).toLowerCase(); } catch {}
+  if (baseShipId !== "leonov") return false;
+  const sector = getFaction(faction)?.sector;
   if (!sector) return false;
   return new RegExp(`^${sector}-[1234]$`).test(currentMapId().trim().toLowerCase());
+}
+
+function isLeonovHomeActive() {
+  return isLeonovHomeShip(account.user?.ship, account.user?.faction);
 }
 
 // ✅ Goliath Plus (HEAT) : +10 % dégâts / PV / bouclier du REX par VISUEL
@@ -23064,6 +23071,8 @@ function processDeathsMeasured() {
       continue;
     }
 
+const ownsNpcLoot = !e._netUid || e._netLootOwner === true;
+
 let dropType = "Cargo_Box";
 
 if (e.type === "npc_Blighted_Gygerthrall") {
@@ -23071,6 +23080,7 @@ if (e.type === "npc_Blighted_Gygerthrall") {
 }
 
 if (
+  ownsNpcLoot &&
   !e.noRewards &&
   e.type !== "npc_Protegit"
 ) {
@@ -23089,7 +23099,7 @@ if (
 // - Box à collecter (scrap, mucosum, plasmide, prismatium, aurus, bifenon,
 //   tetrathrin, kyhalon) : spawn à côté du cargo.
 // - Direct inventaire (rinusk, trace, cerebrum) : sans collecte.
-if (!e.noRewards) {
+if (ownsNpcLoot && !e.noRewards) {
   const asmBox = rollNpcAssemblyBox(e.type);
   if (asmBox && COLLECTABLE_DEFS[asmBox.box]) {
     // Box d'assemblage : reste au sol indéfiniment (comme les bonus box),
@@ -25288,8 +25298,10 @@ function syncNetNpcs(dt) {
         const d = deaths.get(c._netUid);
         if (d && (Number(d.seq) || 0) === (c._netSeq || 0)) {
           const killerId = String(d.killer);
+          const ownsKill = killerId === String(netMyId());
           const groupMate = rules?.mode !== "gate" && getNetGroup()?.members?.some((m) => String(m.id) === killerId && String(m.map) === String(window.__CURRENT_MAP_ID__ || "") && m.instance !== true);
-          c._netKiller = killerId === String(netMyId()) || groupMate === true;
+          c._netKiller = ownsKill || groupMate === true;
+          c._netLootOwner = ownsKill;
           c._netWaiting = false;
           c.hp = 0;
           c.sh = 0;
@@ -25311,8 +25323,10 @@ function syncNetNpcs(dt) {
         e.sh = 0;
         if (e._netKiller == null && s.killer != null) {
           const killerId = String(s.killer);
+          const ownsKill = killerId === String(netMyId());
           const groupMate = rules?.mode !== "gate" && getNetGroup()?.members?.some((m) => String(m.id) === killerId && String(m.map) === String(window.__CURRENT_MAP_ID__ || "") && m.instance !== true);
-          e._netKiller = killerId === String(netMyId()) || groupMate === true;
+          e._netKiller = ownsKill || groupMate === true;
+          e._netLootOwner = ownsKill;
         }
         netBoomSelfDamage(e, s.cause, e.x, e.y);
       }
@@ -25338,6 +25352,7 @@ function syncNetNpcs(dt) {
       // Reset l'etat de mort precedent.
       e._netSeq = Number(s.seq) || 0;
       e._netKiller = null;
+      e._netLootOwner = false;
       e._netWaiting = false;
       e._netSilent = false;
       // Nouvelle incarnation : aucun trajet entre le cadavre et le nouveau
@@ -26624,8 +26639,8 @@ function drawPlayerBody() {
   const h = pack.h ?? 170;
   // Leonov sur ses maps natives (boosts) : contour turquoise de base.
   if (isLeonovHomeActive()) {
-    const sil = outlineSilhouette(`ship:${pack?.id || "player"}:${idx}`, img, w, h, "#5ff2ff");
-    strokeOutlineCentered(sil, w, h, "#5ff2ff", petLocatorPulse());
+    const sil = outlineSilhouette(`ship:${pack?.id || "player"}:${idx}`, img, w, h, "#259abb");
+    strokeOutlineCentered(sil, w, h, "#259abb", petLocatorPulse());
   }
   drawCenteredImage(ctx, img, w, h);
 
@@ -27018,6 +27033,12 @@ function drawNetplayRemotes(ox, oy) {
         const img = pack._imgs[idx] || pack._imgs[0];
         if (isImgReady(img)) {
           ctx.imageSmoothingEnabled = false;
+          if (isLeonovHomeShip(r.shipId, r.firm)) {
+            const w = pack.w ?? 170;
+            const h = pack.h ?? 170;
+            const sil = outlineSilhouette(`net-ship:${r.id}:${pack?.id || r.shipId}:${idx}`, img, w, h, "#259abb");
+            strokeOutlineCentered(sil, w, h, "#259abb", petLocatorPulse());
+          }
           drawCenteredImage(ctx, img, pack.w ?? 170, pack.h ?? 170);
           drawn = true;
         }
@@ -33119,6 +33140,8 @@ function frame(t) {
           : "",
         targetHpPct: atkTgt && Number(atkTgt.hpMax) > 0 ? Number(atkTgt.hp) / Number(atkTgt.hpMax) : 0,
         targetShPct: atkTgt && Number(atkTgt.shMax) > 0 ? Number(atkTgt.sh) / Number(atkTgt.shMax) : 0,
+        targetHpMax: atkTgt ? Math.max(0, Math.round(Number(atkTgt.hpMax) || 0)) : 0,
+        targetShMax: atkTgt ? Math.max(0, Math.round(Number(atkTgt.shMax) || 0)) : 0,
         tx: Number(atkTgt?.x) || 0,
         ty: Number(atkTgt?.y) || 0,
         ammo: ammoKeyNow,

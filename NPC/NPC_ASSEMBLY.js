@@ -5,25 +5,25 @@
 //   prismatium, aurus, bifenon, tetrathrin, kyhalon.
 // - Direct inventaire à la mort (sans collecte) : rinusk, blacklight_trace,
 //   mindfire_cerebrum.
-// Taux : 25 % partout (choix maison, plus généreux que l'officiel).
+// Taux : 7,5 % partout.
 // Quantités : 1 régulier, 2 boss, 3 uber.
 
-// Taux uniformes 25 %.
-const RATE_25 = Object.freeze({ regular: 0.25, boss: 0.25, uber: 0.25 });
+// Taux uniformes 7,5 %.
+const RATE_075 = Object.freeze({ regular: 0.075, boss: 0.075, uber: 0.075 });
 const SCRAP_RATES = Object.freeze({
-  npc_Saimon: RATE_25,
-  npc_Mordon: RATE_25,
+  npc_Saimon: RATE_075,
+  npc_Mordon: RATE_075,
 });
 const AURUS_RATES = Object.freeze({
-  npc_Interceptor: RATE_25,
-  npc_Barracuda: RATE_25,
-  npc_Saboteur: RATE_25,
-  npc_Annihilator: RATE_25,
-  npc_Battleray: RATE_25,
+  npc_Interceptor: RATE_075,
+  npc_Barracuda: RATE_075,
+  npc_Saboteur: RATE_075,
+  npc_Annihilator: RATE_075,
+  npc_Battleray: RATE_075,
 });
 
 // Échelle uniforme pour les autres ressources.
-const STD_RATES = RATE_25;
+const STD_RATES = RATE_075;
 
 // Box à collecter : { ressource, box, familles NPC -> taux }.
 export const ASSEMBLY_BOX_TABLE = Object.freeze([
@@ -50,23 +50,23 @@ export const ASSEMBLY_BOX_TABLE = Object.freeze([
   Object.freeze({
     resource: "bifenon", box: "Bifenon_Box",
     rates: Object.freeze({
-      npc_Interceptor: RATE_25,
-      npc_Barracuda: RATE_25,
-      npc_Saboteur: RATE_25,
-      npc_Annihilator: RATE_25,
-      npc_Battleray: RATE_25,
-      npc_Kristallon: Object.freeze({ regular: 0, boss: 0, uber: 0.25 }),
-      npc_Kristallin: Object.freeze({ regular: 0, boss: 0, uber: 0.25 }),
-      npc_Cubikon: RATE_25,
+      npc_Interceptor: RATE_075,
+      npc_Barracuda: RATE_075,
+      npc_Saboteur: RATE_075,
+      npc_Annihilator: RATE_075,
+      npc_Battleray: RATE_075,
+      npc_Kristallon: Object.freeze({ regular: 0, boss: 0, uber: 0.075 }),
+      npc_Kristallin: Object.freeze({ regular: 0, boss: 0, uber: 0.075 }),
+      npc_Cubikon: RATE_075,
     }),
   }),
   Object.freeze({
     resource: "tetrathrin", box: "Tetrathrin_Box",
     rates: Object.freeze({
-      npc_Interceptor: Object.freeze({ regular: 0, boss: 0, uber: 0.25 }),
-      npc_Barracuda: Object.freeze({ regular: 0, boss: 0, uber: 0.25 }),
-      npc_Saboteur: Object.freeze({ regular: 0, boss: 0, uber: 0.25 }),
-      npc_Annihilator: Object.freeze({ regular: 0, boss: 0, uber: 0.25 }),
+      npc_Interceptor: Object.freeze({ regular: 0, boss: 0, uber: 0.075 }),
+      npc_Barracuda: Object.freeze({ regular: 0, boss: 0, uber: 0.075 }),
+      npc_Saboteur: Object.freeze({ regular: 0, boss: 0, uber: 0.075 }),
+      npc_Annihilator: Object.freeze({ regular: 0, boss: 0, uber: 0.075 }),
     }),
   }),
   // Kyhalon n'a officiellement AUCUNE source NPC (missions/GG) : choix maison,
@@ -74,7 +74,7 @@ export const ASSEMBLY_BOX_TABLE = Object.freeze([
   Object.freeze({
     resource: "kyhalon", box: "Kyhalon_Box",
     rates: Object.freeze({
-      npc_Mindfire_Behemoth: Object.freeze({ regular: 0.25, boss: 0.25, uber: 0.25 }),
+      npc_Mindfire_Behemoth: RATE_075,
     }),
   }),
 ]);

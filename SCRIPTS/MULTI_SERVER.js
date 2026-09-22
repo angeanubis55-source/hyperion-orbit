@@ -501,6 +501,7 @@ function describePeer(pid) {
         combat: s.atk === true ? String(s.combat || "npc") : "",
         targetName: String(s.targetName || "").slice(0, 64),
         targetHpPct: Number(s.targetHpPct ?? 0), targetShPct: Number(s.targetShPct ?? 0),
+        targetHpMax: Number(s.targetHpMax) || 0, targetShMax: Number(s.targetShMax) || 0,
       };
     }
   }
@@ -1224,6 +1225,8 @@ wss.on("connection", (ws) => {
       if (typeof msg.targetName === "string") state.targetName = String(msg.targetName).slice(0, 64);
       if (Number.isFinite(Number(msg.targetHpPct))) state.targetHpPct = Math.max(0, Math.min(1, Number(msg.targetHpPct)));
       if (Number.isFinite(Number(msg.targetShPct))) state.targetShPct = Math.max(0, Math.min(1, Number(msg.targetShPct)));
+      if (Number.isFinite(Number(msg.targetHpMax))) state.targetHpMax = Math.max(0, Math.min(1e12, Math.round(Number(msg.targetHpMax))));
+      if (Number.isFinite(Number(msg.targetShMax))) state.targetShMax = Math.max(0, Math.min(1e12, Math.round(Number(msg.targetShMax))));
       if (Number.isFinite(Number(msg.tx))) state.tx = Math.round(Number(msg.tx));
       if (Number.isFinite(Number(msg.ty))) state.ty = Math.round(Number(msg.ty));
       if (typeof msg.ammo === "string" && msg.ammo) state.ammo = String(msg.ammo).slice(0, 16);

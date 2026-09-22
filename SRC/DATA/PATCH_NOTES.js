@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.287",
+    "date": "2026-09-23T00:26:23+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.286",
     "date": "2026-09-23T00:12:52+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.228",
     "date": "2026-09-19T22:34:47+02:00",
     "message": "encheres: 22 lots fixes par heure pile de Paris, timer dore, images vaisseaux, historique cycle exact, ticket 25M, fix gains en boucle"
-  },
-  {
-    "version": "0.227",
-    "date": "2026-09-19T18:24:31+02:00",
-    "message": "skylab: fenetre officielle 12 modules, production x10, ameliorations niv 20, robots, transporteur double sens + reset slots npc a la def"
   }
 ];

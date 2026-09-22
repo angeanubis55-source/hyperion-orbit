@@ -51,6 +51,8 @@ function publicGroup(gid, ctx) {
         targetName: String(d.targetName || "").slice(0, 64),
         targetHpPct: Math.max(0, Math.min(1, Number(d.targetHpPct ?? 0))),
         targetShPct: Math.max(0, Math.min(1, Number(d.targetShPct ?? 0))),
+        targetHpMax: Math.max(0, Number(d.targetHpMax) || 0),
+        targetShMax: Math.max(0, Number(d.targetShMax) || 0),
       };
     }),
   };

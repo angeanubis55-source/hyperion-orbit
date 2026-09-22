@@ -1006,6 +1006,8 @@ function sendNow(local, force = false) {
       targetName: String(local.targetName || "").slice(0, 64),
       targetHpPct: Math.max(0, Math.min(1, Number(local.targetHpPct) || 0)),
       targetShPct: Math.max(0, Math.min(1, Number(local.targetShPct) || 0)),
+      targetHpMax: Math.max(0, Math.round(Number(local.targetHpMax) || 0)),
+      targetShMax: Math.max(0, Math.round(Number(local.targetShMax) || 0)),
       tx: Math.round(Number(local.tx) || 0),
       ty: Math.round(Number(local.ty) || 0),
       ammo: String(local.ammo || "x1").slice(0, 16),
