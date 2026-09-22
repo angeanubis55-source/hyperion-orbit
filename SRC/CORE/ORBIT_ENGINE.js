@@ -108,7 +108,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect } from "./NETPLAY.js";
+  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -17344,6 +17344,18 @@ let lastClickAtMs = 0;
 let lastClickEnemyId = null;
 
 const moveTarget = { active: false, x: 0, y: 0 };
+let groupJoinReadyAt = 0;
+window.addEventListener("orbit:group-join", (event) => {
+  const member = event?.detail || {};
+  const now = Date.now();
+  if (now < groupJoinReadyAt || player.dead) return;
+  if (String(member.map || "") !== String(window.__CURRENT_MAP_ID__ || "") || member.instance === true) return;
+  moveTarget.active = true;
+  moveTarget.x = clamp(Number(member.x) || player.x, 0, WORLD.w);
+  moveTarget.y = clamp(Number(member.y) || player.y, 0, WORLD.h);
+  miniPing = { x: moveTarget.x, y: moveTarget.y, t: 0, dur: 0.75 };
+  groupJoinReadyAt = now + 3000;
+});
 
 const pointer = createPointerState();
 const DRAG_THRESHOLD = 8;
@@ -25287,7 +25299,9 @@ function syncNetNpcs(dt) {
         if (!c || !c._netUid || c._netKiller != null) continue;
         const d = deaths.get(c._netUid);
         if (d && (Number(d.seq) || 0) === (c._netSeq || 0)) {
-          c._netKiller = String(d.killer) === String(netMyId());
+          const killerId = String(d.killer);
+          const groupMate = rules?.mode !== "gate" && getNetGroup()?.members?.some((m) => String(m.id) === killerId && String(m.map) === String(window.__CURRENT_MAP_ID__ || "") && m.instance !== true);
+          c._netKiller = killerId === String(netMyId()) || groupMate === true;
           c._netWaiting = false;
           c.hp = 0;
           c.sh = 0;
@@ -25308,7 +25322,9 @@ function syncNetNpcs(dt) {
         e.hp = 0;
         e.sh = 0;
         if (e._netKiller == null && s.killer != null) {
-          e._netKiller = String(s.killer) === String(netMyId());
+          const killerId = String(s.killer);
+          const groupMate = rules?.mode !== "gate" && getNetGroup()?.members?.some((m) => String(m.id) === killerId && String(m.map) === String(window.__CURRENT_MAP_ID__ || "") && m.instance !== true);
+          e._netKiller = killerId === String(netMyId()) || groupMate === true;
         }
         netBoomSelfDamage(e, s.cause, e.x, e.y);
       }
@@ -26803,6 +26819,31 @@ function netVisualShotOrigin(ev) {
   } catch { return fallback; }
 }
 
+// Une vraie salve reseau porte un identifiant `v`. Les projectiles visuels
+// supplementaires reutilisent ce meme identifiant : leur image est jouee,
+// mais jamais leur son une seconde fois.
+const netVolleySoundsSeen = new Map();
+function shouldPlayNetVolleySound(ev) {
+  if (!Number.isFinite(Number(ev?.v))) return true;
+  const key = `${String(ev?.t || "shot")}:${String(ev?.by || "?")}:${Math.floor(Number(ev.v))}`;
+  if (netVolleySoundsSeen.has(key)) return false;
+  const now = performance.now();
+  netVolleySoundsSeen.set(key, now);
+  if (netVolleySoundsSeen.size > 512) {
+    for (const [oldKey, at] of netVolleySoundsSeen) {
+      if (now - Number(at || 0) > 10_000 || netVolleySoundsSeen.size > 480) netVolleySoundsSeen.delete(oldKey);
+      if (netVolleySoundsSeen.size <= 480) break;
+    }
+  }
+  try {
+    const rally = getNetGroup()?.rally;
+    if (rally && Number(rally.expiresAt) > Date.now() && String(rally.map) === String(window.__CURRENT_MAP_ID__ || "")) {
+      petLocatorMarkers.push({ x: Number(rally.x) || 0, y: Number(rally.y) || 0, color: "#ff3b4f", pulse: true, cross: true });
+    }
+  } catch {}
+  return true;
+}
+
 function spawnNetShotVisual(ev) {
   const tx = Number(ev.tx), ty = Number(ev.ty);
   const origin = netVisualShotOrigin(ev);
@@ -26817,7 +26858,9 @@ function spawnNetShotVisual(ev) {
   if (tgtId == null) return;
   const sab = ev.sab === true;
   const shotSound = sab ? PLAYER_SHOT_SFX.sab : (PLAYER_SHOT_SFX[key] || PLAYER_SHOT_SFX.x1);
-  playNetSpatialSound(shotSound, sx0, sy0, { cooldown: 0.03, maxVoices: 5 });
+  if (shouldPlayNetVolleySound(ev)) {
+    playNetSpatialSound(shotSound, sx0, sy0, { cooldown: 0.03, maxVoices: 5 });
+  }
   // SAB inverse : part de la cible vers le vaisseau (comme en local),
   // en ligne droite (pas de homing vers nous).
   const ox = sab ? tx : sx0, oy = sab ? ty : sy0;
@@ -26862,10 +26905,12 @@ function spawnNetRocketVisual(ev) {
   const rkey = (typeof PLAYER_BULLET_SPRITES !== "undefined" && PLAYER_BULLET_SPRITES[kind]) ? kind : "r310";
   let isLauncher = false;
   try { isLauncher = getRocketType(kind)?.manual === false; } catch {}
-  playNetSpatialSound(isLauncher ? "sfx_shot_lance_roquettes" : "sfx_shot_roquettes", sx0, sy0, {
-    cooldown: isLauncher ? 0.08 : 0.05,
-    maxVoices: 5,
-  });
+  if (shouldPlayNetVolleySound(ev)) {
+    playNetSpatialSound(isLauncher ? "sfx_shot_lance_roquettes" : "sfx_shot_roquettes", sx0, sy0, {
+      cooldown: isLauncher ? 0.08 : 0.05,
+      maxVoices: 5,
+    });
+  }
   const spd = Math.max(500, Math.min(20000, Number(ev.spd) || 1500));
   const dist = Math.hypot(tx - sx0, ty - sy0);
   if (!(dist > 40) || dist > 5000) return;
@@ -33077,6 +33122,9 @@ function frame(t) {
         hpPct: player.hpMax > 0 ? player.hp / player.hpMax : 1,
         shPct: player.shMax > 0 ? player.sh / player.shMax : 1,
         atk: attackActive === true && !!atkTgt && !player.dead,
+        combat: attackActive === true && atkTgt ? (atkTgt._netPlayer != null ? "player" : "npc") : "",
+        targetHpPct: atkTgt && Number(atkTgt.hpMax) > 0 ? Number(atkTgt.hp) / Number(atkTgt.hpMax) : 0,
+        targetShPct: atkTgt && Number(atkTgt.shMax) > 0 ? Number(atkTgt.sh) / Number(atkTgt.shMax) : 0,
         tx: Number(atkTgt?.x) || 0,
         ty: Number(atkTgt?.y) || 0,
         ammo: ammoKeyNow,

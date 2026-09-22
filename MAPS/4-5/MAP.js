@@ -33,6 +33,7 @@ export function init() {
     rules: {
   mode: "zone",
   mapLabel: "4-5",
+  respawnBase: "upper",
   getZoneSpawns,
   getZonePortals, // ✅ ajout
 },

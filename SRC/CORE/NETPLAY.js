@@ -357,6 +357,12 @@ export function sendGroupKick(target) {
   if (!id) return false;
   return sendSocialMsg({ t: "groupKick", target: id });
 }
+export function sendGroupInviteLock(locked) {
+  return sendSocialMsg({ t: "groupInviteLock", locked: locked === true });
+}
+export function sendGroupRally() {
+  return sendSocialMsg({ t: "groupRally" });
+}
 export function sendGroupChat(text) {
   const clean = String(text || "").replace(/\s+/g, " ").trim().slice(0, 200);
   if (!clean) return false;
@@ -510,7 +516,13 @@ export function ensureNetplayConnection() {
         from: String(msg.from || "").slice(0, 64),
         fromPseudo: String(msg.fromPseudo || "Pilote").slice(0, 20),
         groupId: String(msg.groupId || "").slice(0, 16),
+        expiresAt: Math.max(Date.now(), Number(msg.expiresAt) || (Date.now() + 15_000)),
       });
+      return;
+    }
+    if (msg.t === "groupInviteSent") {
+      if (netGroupNoticeInbox.length > 20) netGroupNoticeInbox.shift();
+      netGroupNoticeInbox.push({ text: `Invitation envoyée à ${String(msg.toPseudo || "Pilote").slice(0, 20)}.`, expiresAt: Number(msg.expiresAt) || (Date.now() + 15_000) });
       return;
     }
     if (msg.t === "groupNotice") {
@@ -981,6 +993,9 @@ function sendNow(local, force = false) {
       shPct: Number.isFinite(Number(local.shPct)) ? local.shPct : 1,
       safe: local.safe === true,
       atk: local.atk === true,
+      combat: local.combat === "player" ? "player" : (local.combat === "npc" ? "npc" : ""),
+      targetHpPct: Math.max(0, Math.min(1, Number(local.targetHpPct) || 0)),
+      targetShPct: Math.max(0, Math.min(1, Number(local.targetShPct) || 0)),
       tx: Math.round(Number(local.tx) || 0),
       ty: Math.round(Number(local.ty) || 0),
       ammo: String(local.ammo || "x1").slice(0, 16),

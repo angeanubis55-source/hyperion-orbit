@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.282",
+    "date": "2026-09-22T22:59:47+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.281",
     "date": "2026-09-22T22:14:12+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.223",
     "date": "2026-09-18T09:17:20+02:00",
     "message": "sync version 0.222 + patch-notes (hook post-push)"
-  },
-  {
-    "version": "0.222",
-    "date": "2026-09-18T09:17:06+02:00",
-    "message": "fix crash kamikaze cfgTouch + aptitudes Cyborg/Holo/Hyperion/Keres/Liberator/Lightning/Mimesis/Orcus, X0, SFX (sync generale)"
   }
 ];

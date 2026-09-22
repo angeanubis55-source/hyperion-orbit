@@ -1,150 +1,47 @@
 "use strict";
-
-// UI/UI_GROUP.js — Fenêtre Groupe (escadrille) façon DarkOrbit.
-// Membres + carte, invitation par pseudo, créer/quitter, invitations reçues
-// (Rejoindre/Refuser), avis système.
-// (Pas de champ d'envoi : on parle à l'escadrille depuis le tchat.)
-
-import {
-  getNetGroup,
-  drainNetGroupInviteInbox, drainNetGroupNoticeInbox,
-  sendGroupInvite, sendGroupAccept, sendGroupDecline,
-  sendGroupLeave, sendGroupKick, sendGroupSync,
-  netMyId, netplayStatus,
-} from "../SRC/CORE/NETPLAY.js";
+import { getNetGroup, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupSync, sendGroupInviteLock, sendGroupRally, netMyId, netplayStatus } from "../SRC/CORE/NETPLAY.js";
 import { escapeHtml } from "./UI_DOM.js";
-
 let started = false;
-
 export function initGroupUI() {
-  if (started) return;
-  started = true;
-  const status = document.getElementById("groupStatus");
-  const members = document.getElementById("groupMembers");
-  const invites = document.getElementById("groupInvites");
-  const notices = document.getElementById("groupNotices");
-  const inviteInput = document.getElementById("groupInviteInput");
+  if (started) return; started = true;
+  const status = document.getElementById("groupStatus"), members = document.getElementById("groupMembers"), invites = document.getElementById("groupInvites"), notices = document.getElementById("groupNotices"), input = document.getElementById("groupInviteInput");
   if (!members || !invites) return;
-
-  function myId() {
-    try { return String(netMyId() || ""); } catch { return ""; }
-  }
-
+  const myId = () => { try { return String(netMyId() || ""); } catch { return ""; } };
   function renderGroup() {
-    let g = null;
-    try { g = getNetGroup(); } catch {}
-    if (status) {
-      if (!g) status.textContent = "Solo — invite un pilote par pseudo pour former une escadrille.";
-      else {
-        const chief = g.members.find((m) => String(m.id) === String(g.leader));
-        status.textContent = `Escadrille (${g.members.length}/10) — chef : ${chief?.pseudo || "?"}`;
-      }
-    }
-    if (!g) {
-      members.innerHTML = `<div class="groupEmpty">Personne avec toi pour l'instant.</div>`;
-    } else {
-      const leader = String(g.leader);
-      const iAmLeader = myId() !== "" && myId() === leader;
-      members.innerHTML = g.members.map((m) => {
-        const mid = escapeHtml(String(m.id));
-        const mp = escapeHtml(String(m.pseudo || "Pilote"));
-        const map = escapeHtml(String(m.map || "?"));
-        const crown = String(m.id) === leader ? " 👑" : "";
-        const kick = (iAmLeader && String(m.id) !== leader)
-          ? `<button type="button" data-kick="${mid}" title="Exclure">✕</button>` : "";
-        return `<div class="groupRow"><span class="groupName">${mp}${crown}</span>`
-          + `<span class="groupMap">${map}</span>${kick}</div>`;
-      }).join("");
-    }
-    const leaveBtn = document.getElementById("groupLeaveBtn");
-    if (leaveBtn) leaveBtn.style.display = g ? "" : "none";
+    let g = null; try { g = getNetGroup(); } catch {}
+    const leave = document.getElementById("groupLeaveBtn"), lock = document.getElementById("groupInviteLockBtn"), rally = document.getElementById("groupRallyBtn");
+    if (!g) { if (status) status.textContent = "Solo — invite un pilote pour former une escadrille."; members.innerHTML = `<div class="groupEmpty">Personne avec toi pour l'instant.</div>`; for (const b of [leave, lock, rally]) if (b) b.style.display = "none"; return; }
+    const leader = String(g.leader), leaderMode = myId() === leader, self = g.members.find(m => String(m.id) === myId()), chief = g.members.find(m => String(m.id) === leader);
+    if (status) status.textContent = `Escadrille (${g.members.length}/10) — chef : ${chief?.pseudo || "?"}`;
+    members.innerHTML = g.members.map(m => {
+      const id = escapeHtml(String(m.id)), sameMap = self && String(self.map) === String(m.map) && !m.instance;
+      const distance = sameMap ? `${Math.round(Math.hypot(Number(m.x) - Number(self.x), Number(m.y) - Number(self.y)))} u` : "";
+      const state = !m.online ? "Déconnecté" : m.instance ? "Galaxy Gate" : m.dead ? "Détruit" : "Vivant";
+      const combat = m.combat === "player" ? "Combat joueur" : m.combat === "npc" ? "Combat NPC" : "Hors combat";
+      const hp = Math.round(Math.max(0, Math.min(1, Number(m.hpPct ?? 1))) * 100), sh = Math.round(Math.max(0, Math.min(1, Number(m.shPct ?? 1))) * 100);
+      const join = sameMap && String(m.id) !== myId() && !m.dead ? `<button type="button" data-join="${id}">Rejoindre</button>` : "";
+      const kick = leaderMode && String(m.id) !== leader ? `<button type="button" data-kick="${id}" title="Exclure">×</button>` : "";
+      return `<div class="groupRow groupMember"><div class="groupMemberHead"><span class="groupName">${escapeHtml(m.pseudo || "Pilote")}${String(m.id) === leader ? " 👑" : ""}</span><span class="groupMap">${escapeHtml(m.map || "?")}${distance ? ` · ${distance}` : ""}</span></div><div class="groupMeta">${state} · ${escapeHtml(m.shipId || "Vaisseau")} · PET ${m.petActive ? "actif" : "inactif"}</div><div class="groupBars"><span>Coque ${hp}%</span><i class="hp" style="width:${hp}%"></i><span>Bouclier ${sh}%</span><i class="sh" style="width:${sh}%"></i></div><div class="groupTarget ${escapeHtml(m.combat || "")}">${combat}${m.combat ? ` · cible ${Math.round(Number(m.targetHpPct || 0) * 100)}% / ${Math.round(Number(m.targetShPct || 0) * 100)}%` : ""}</div><div class="groupMemberActions">${join}${kick}</div></div>`;
+    }).join("");
+    if (leave) leave.style.display = "";
+    if (lock) { lock.style.display = leaderMode ? "" : "none"; lock.textContent = g.invitesLocked ? "Déverrouiller invitations" : "Verrouiller invitations"; }
+    if (rally) rally.style.display = leaderMode ? "" : "none";
   }
-
   function renderInvites() {
-    let list = [];
-    try { list = drainNetGroupInviteInbox(); } catch {}
-    for (const inv of list) {
-      if (invites.querySelector(`[data-inv-from="${escapeHtml(String(inv.from))}"]`)) continue;
-      const div = document.createElement("div");
-      div.className = "groupInvite";
-      div.dataset.invFrom = String(inv.from);
-      div.innerHTML = `<span>Escadrille de <b>${escapeHtml(inv.fromPseudo || "Pilote")}</b></span>`
-        + `<span><button type="button" data-accept="1">Rejoindre</button> `
-        + `<button type="button" data-decline="1">Refuser</button></span>`;
-      invites.appendChild(div);
-    }
-    const empty = invites.querySelector(".groupEmpty");
-    if (invites.children.length > 1 && empty) empty.remove();
+    let list = []; try { list = drainNetGroupInviteInbox(); } catch {}
+    for (const inv of list) { if (invites.querySelector(`[data-inv-from="${CSS.escape(String(inv.from))}"]`)) continue; const d = document.createElement("div"); d.className = "groupInvite"; d.dataset.invFrom = String(inv.from); d.dataset.expiresAt = String(Number(inv.expiresAt) || Date.now() + 15000); d.innerHTML = `<em class="groupInviteTimer">15s</em><span>Escadrille de <b>${escapeHtml(inv.fromPseudo || "Pilote")}</b></span><span><button data-accept="1">Rejoindre</button> <button data-decline="1">Refuser</button></span>`; invites.appendChild(d); }
+    invites.querySelector(".groupEmpty")?.remove();
+    for (const row of invites.querySelectorAll("[data-expires-at]")) { const left = Math.max(0, Math.ceil((Number(row.dataset.expiresAt) - Date.now()) / 1000)); const timer = row.querySelector(".groupInviteTimer"); if (timer) timer.textContent = `${left}s`; if (!left) row.remove(); }
     if (!invites.children.length) invites.innerHTML = `<div class="groupEmpty">Aucune invitation.</div>`;
   }
-
-  function pollNotices() {
-    try {
-      const inbox = drainNetGroupNoticeInbox();
-      if (!inbox.length || !notices) return;
-      for (const n of inbox) {
-        const div = document.createElement("div");
-        div.className = "groupNotice";
-        div.textContent = String(n.text || "");
-        notices.prepend(div);
-        while (notices.children.length > 5) notices.removeChild(notices.lastChild);
-      }
-    } catch {}
-  }
-
-  let lastSig = "";
-  let lastSync = 0;
-  function poll() {
-    try {
-      const st = netplayStatus();
-      if (st.connected) {
-        const now = Date.now();
-        if (now - lastSync > 10000) { lastSync = now; try { sendGroupSync(); } catch {} }
-      }
-      renderInvites();
-      pollNotices();
-      const sig = (() => { try { return JSON.stringify(getNetGroup()); } catch { return "null"; } })();
-      if (sig !== lastSig) { lastSig = sig; renderGroup(); }
-    } catch {}
-  }
-
-  document.getElementById("groupLeaveBtn")?.addEventListener("click", () => { try { sendGroupLeave(); } catch {} lastSig = ""; });
-  document.getElementById("groupInviteBtn")?.addEventListener("click", () => {
-    const v = inviteInput?.value.trim();
-    if (!v) return;
-    try { sendGroupInvite(v); } catch {}
-    if (inviteInput) inviteInput.value = "";
-  });
-  invites.addEventListener("click", (e) => {
-    const btn = e.target.closest("button");
-    if (!btn) return;
-    const row = e.target.closest("[data-inv-from]");
-    try {
-      if (btn.dataset.accept) sendGroupAccept();
-      else sendGroupDecline();
-    } catch {}
-    row?.remove();
-    if (!invites.children.length) invites.innerHTML = `<div class="groupEmpty">Aucune invitation.</div>`;
-    lastSig = "";
-  });
-  members.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-kick]");
-    if (btn) {
-      try { sendGroupKick(btn.dataset.kick); } catch {}
-      return;
-    }
-    // Clic sur le nom : pré-remplit l'ajout d'ami (fenêtre Amis).
-    const name = e.target.closest(".groupName");
-    if (!name) return;
-    const pseudo = name.textContent.replace(" 👑", "").trim();
-    if (!pseudo) return;
-    try {
-      const input = document.getElementById("friendAddInput");
-      if (input) input.value = pseudo;
-      window.GameWindowManager?.restore?.("friendsWindow");
-    } catch {}
-  });
-  renderGroup();
-  setInterval(poll, 500);
-  poll();
+  function pollNotices() { try { for (const n of drainNetGroupNoticeInbox()) { const d = document.createElement("div"); d.className = "groupNotice"; d.dataset.text = String(n.text || ""); if (n.expiresAt) d.dataset.expiresAt = String(n.expiresAt); d.textContent = d.dataset.text; notices?.prepend(d); while (notices?.children.length > 5) notices.removeChild(notices.lastChild); } for (const d of notices?.querySelectorAll("[data-expires-at]") || []) { const left = Math.max(0, Math.ceil((Number(d.dataset.expiresAt) - Date.now()) / 1000)); d.textContent = `${d.dataset.text} (${left}s)`; if (!left) d.remove(); } } catch {} }
+  let sig = "", syncAt = 0;
+  function poll() { try { if (netplayStatus().connected && Date.now() - syncAt > 2000) { syncAt = Date.now(); sendGroupSync(); } renderInvites(); pollNotices(); const next = JSON.stringify(getNetGroup()); if (next !== sig) { sig = next; renderGroup(); } } catch {} }
+  document.getElementById("groupLeaveBtn")?.addEventListener("click", () => { sendGroupLeave(); sig = ""; });
+  document.getElementById("groupInviteBtn")?.addEventListener("click", () => { const v = input?.value.trim(); if (v) sendGroupInvite(v); if (input) input.value = ""; });
+  document.getElementById("groupInviteLockBtn")?.addEventListener("click", () => sendGroupInviteLock(!getNetGroup()?.invitesLocked));
+  document.getElementById("groupRallyBtn")?.addEventListener("click", sendGroupRally);
+  invites.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.accept) sendGroupAccept(); else if (b.dataset.decline) sendGroupDecline(); b.closest("[data-inv-from]")?.remove(); sig = ""; });
+  members.addEventListener("click", e => { const join = e.target.closest("button[data-join]"); if (join) { const m = getNetGroup()?.members?.find(x => String(x.id) === String(join.dataset.join)); if (m) window.dispatchEvent(new CustomEvent("orbit:group-join", { detail: m })); return; } const kick = e.target.closest("button[data-kick]"); if (kick) sendGroupKick(kick.dataset.kick); });
+  renderGroup(); setInterval(poll, 500); poll();
 }

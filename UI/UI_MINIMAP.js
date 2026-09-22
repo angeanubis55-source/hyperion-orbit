@@ -159,6 +159,19 @@ export function renderMinimap(context, options) {
     if (!marker || !Number.isFinite(Number(marker.x)) || !Number.isFinite(Number(marker.y))) continue;
     const mx = marker.x * scaleX;
     const my = marker.y * scaleY;
+    if (marker.cross) {
+      const blink = Math.floor(performance.now() / 250) % 2 === 0;
+      if (!blink) continue;
+      context.save();
+      context.strokeStyle = marker.color || "#ff3b4f";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(mx - 5, my - 5); context.lineTo(mx + 5, my + 5);
+      context.moveTo(mx + 5, my - 5); context.lineTo(mx - 5, my + 5);
+      context.stroke();
+      context.restore();
+      continue;
+    }
     if (marker.pulse) {
       const period = 2;
       const progress = ((performance.now() / 1000) % period) / period;

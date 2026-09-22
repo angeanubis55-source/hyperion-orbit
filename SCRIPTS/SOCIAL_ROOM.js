@@ -15,7 +15,9 @@
 //   }
 
 const GROUP_MAX = 10;
-const INVITE_TTL_MS = 60_000;
+const INVITE_TTL_MS = 15_000;
+const DISCONNECT_GRACE_MS = 3_000;
+const RALLY_TTL_MS = 3_000;
 const WHISPER_MIN_MS = 800;
 const GROUP_CHAT_MIN_MS = 500;
 
@@ -25,6 +27,7 @@ const memberGroup = new Map(); // pid -> gid
 const invites = new Map(); // targetPid -> { gid, from, fromPseudo, at }
 const whisperLast = new Map(); // pid -> timestamp
 const groupChatLast = new Map(); // pid -> timestamp
+const disconnectTimers = new Map(); // pid -> timeout
 
 const cleanPseudo = (s) => String(s || "").replace(/\s+/g, " ").trim().slice(0, 20);
 
@@ -34,9 +37,20 @@ function publicGroup(gid, ctx) {
   return {
     id: gid,
     leader: String(g.leader),
+    invitesLocked: g.invitesLocked === true,
+    rally: g.rally && Number(g.rally.expiresAt) > Date.now() ? { ...g.rally } : null,
     members: g.members.map((pid) => {
       const d = ctx.describe(pid) || {};
-      return { id: String(pid), pseudo: cleanPseudo(d.pseudo) || "Pilote", map: String(d.map || ""), online: !!d.online };
+      return {
+        id: String(pid), pseudo: cleanPseudo(d.pseudo) || "Pilote", map: String(d.map || ""), online: !!d.online,
+        instance: d.instance === true, x: Number(d.x) || 0, y: Number(d.y) || 0,
+        hpPct: Math.max(0, Math.min(1, Number(d.hpPct ?? 1))), shPct: Math.max(0, Math.min(1, Number(d.shPct ?? 1))),
+        hpMax: Math.max(1, Number(d.hpMax) || 1), shMax: Math.max(0, Number(d.shMax) || 0),
+        dead: d.dead === true, shipId: String(d.shipId || "").slice(0, 64), petActive: d.petActive === true,
+        combat: d.combat === "player" ? "player" : (d.combat === "npc" ? "npc" : ""),
+        targetHpPct: Math.max(0, Math.min(1, Number(d.targetHpPct ?? 0))),
+        targetShPct: Math.max(0, Math.min(1, Number(d.targetShPct ?? 0))),
+      };
     }),
   };
 }
@@ -108,6 +122,8 @@ export function socialDescribeGroup(pid, ctx) {
 // Changement de map / pseudo : rafraîchit la fiche groupe des coéquipiers.
 export function socialPeerChanged(pid, ctx) {
   try {
+    const timer = disconnectTimers.get(String(pid));
+    if (timer) { clearTimeout(timer); disconnectTimers.delete(String(pid)); }
     const gid = memberGroup.get(String(pid));
     if (gid && groups.has(gid)) pushGroup(gid, ctx);
   } catch {}
@@ -120,14 +136,21 @@ export function socialPeerGone(pid, ctx) {
     for (const [target, inv] of invites) {
       if (String(target) === String(pid) || String(inv?.from) === String(pid)) invites.delete(target);
     }
-    leaveGroup(String(pid), ctx);
+    const key = String(pid);
+    const previous = disconnectTimers.get(key);
+    if (previous) clearTimeout(previous);
+    disconnectTimers.set(key, setTimeout(() => {
+      disconnectTimers.delete(key);
+      try { leaveGroup(key, ctx); } catch {}
+    }, DISCONNECT_GRACE_MS));
   } catch {}
 }
 
 export function handleSocialMessage(ctx, msg) {
   const t = msg?.t;
   if (t !== "groupCreate" && t !== "groupInvite" && t !== "groupAccept" && t !== "groupDecline"
-    && t !== "groupLeave" && t !== "groupKick" && t !== "groupChat" && t !== "groupSync" && t !== "whisper") {
+    && t !== "groupLeave" && t !== "groupKick" && t !== "groupChat" && t !== "groupSync"
+    && t !== "groupInviteLock" && t !== "groupRally" && t !== "whisper") {
     return false;
   }
   const me = String(ctx.id);
@@ -136,7 +159,7 @@ export function handleSocialMessage(ctx, msg) {
       ctx.send({ t: "groupUpdate", group: socialDescribeGroup(me, ctx) });
       const inv = invites.get(me);
       if (inv && Date.now() - Number(inv.at || 0) <= INVITE_TTL_MS) {
-        ctx.send({ t: "groupInvite", from: String(inv.from), fromPseudo: cleanPseudo(inv.fromPseudo), groupId: String(inv.gid) });
+        ctx.send({ t: "groupInvite", from: String(inv.from), fromPseudo: cleanPseudo(inv.fromPseudo), groupId: String(inv.gid), expiresAt: Number(inv.at) + INVITE_TTL_MS });
       }
       return true;
     }
@@ -145,7 +168,7 @@ export function handleSocialMessage(ctx, msg) {
       // pour compatibilité protocole, silencieux.
       if (memberGroup.has(me)) { ctx.send({ t: "groupNotice", text: "Tu es déjà dans un groupe." }); return true; }
       const gid = `g${nextGroup++}`;
-      groups.set(gid, { id: gid, leader: me, members: [me], created: Date.now() });
+      groups.set(gid, { id: gid, leader: me, members: [me], created: Date.now(), invitesLocked: false, rally: null });
       memberGroup.set(me, gid);
       pushGroup(gid, ctx);
       return true;
@@ -158,16 +181,18 @@ export function handleSocialMessage(ctx, msg) {
       let gid = memberGroup.get(me);
       if (!gid) {
         gid = `g${nextGroup++}`;
-        groups.set(gid, { id: gid, leader: me, members: [me], created: Date.now() });
+        groups.set(gid, { id: gid, leader: me, members: [me], created: Date.now(), invitesLocked: false, rally: null });
         memberGroup.set(me, gid);
         pushGroup(gid, ctx);
       }
       const g = groups.get(gid);
-      if (String(g.leader) !== me) { ctx.send({ t: "groupNotice", text: "Seul le chef peut inviter." }); return true; }
+      if (g.invitesLocked === true && String(g.leader) !== me) { ctx.send({ t: "groupNotice", text: "Les invitations sont verrouillées par le chef." }); return true; }
       if (g.members.length >= GROUP_MAX) { ctx.send({ t: "groupNotice", text: `Groupe plein (${GROUP_MAX} max).` }); return true; }
       if (memberGroup.get(String(target.id))) { ctx.send({ t: "groupNotice", text: `${target.pseudo} est déjà dans un groupe.` }); return true; }
       invites.set(String(target.id), { gid, from: me, fromPseudo: cleanPseudo(ctx.state?.pseudo), at: Date.now() });
-      ctx.sendTo(String(target.id), { t: "groupInvite", from: me, fromPseudo: cleanPseudo(ctx.state?.pseudo), groupId: gid });
+      const expiresAt = Date.now() + INVITE_TTL_MS;
+      ctx.sendTo(String(target.id), { t: "groupInvite", from: me, fromPseudo: cleanPseudo(ctx.state?.pseudo), groupId: gid, expiresAt });
+      ctx.send({ t: "groupInviteSent", toPseudo: cleanPseudo(target.pseudo), expiresAt });
       pushGroup(gid, ctx);
       return true;
     }
@@ -213,6 +238,24 @@ export function handleSocialMessage(ctx, msg) {
       try { ctx.sendTo(target, { t: "groupNotice", text: "Tu as été exclu du groupe." }); } catch {}
       if (g.members.length <= 1) dissolveGroup(gid, ctx);
       else pushGroup(gid, ctx);
+      return true;
+    }
+    if (t === "groupInviteLock") {
+      const gid = memberGroup.get(me);
+      const g = gid ? groups.get(gid) : null;
+      if (!g || String(g.leader) !== me) { ctx.send({ t: "groupNotice", text: "Seul le chef peut régler les invitations." }); return true; }
+      g.invitesLocked = msg.locked === true;
+      pushGroup(gid, ctx);
+      return true;
+    }
+    if (t === "groupRally") {
+      const gid = memberGroup.get(me);
+      const g = gid ? groups.get(gid) : null;
+      if (!g || String(g.leader) !== me) { ctx.send({ t: "groupNotice", text: "Seul le chef peut poser un rassemblement." }); return true; }
+      const d = ctx.describe(me) || {};
+      if (d.instance === true) { ctx.send({ t: "groupNotice", text: "Rassemblement indisponible en Galaxy Gate." }); return true; }
+      g.rally = { map: String(d.map || ""), x: Math.round(Number(d.x) || 0), y: Math.round(Number(d.y) || 0), expiresAt: Date.now() + RALLY_TTL_MS };
+      pushGroup(gid, ctx);
       return true;
     }
     if (t === "groupChat") {

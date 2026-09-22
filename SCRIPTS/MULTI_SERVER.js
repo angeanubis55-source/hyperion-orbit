@@ -491,10 +491,20 @@ function describePeer(pid) {
   const id = String(pid);
   for (const [mkey, room] of rooms) {
     const e = room.get(id);
-    if (e) return { id, pseudo: String(e.state?.pseudo || "Pilote").slice(0, 20), map: mkey, online: true };
+    if (e) {
+      const s = e.state || {};
+      return {
+        id, pseudo: String(s.pseudo || "Pilote").slice(0, 20), map: mkey, online: true, instance: false,
+        x: Number(s.x) || 0, y: Number(s.y) || 0, hpPct: Number(s.hpPct ?? 1), shPct: Number(s.shPct ?? 1),
+        hpMax: Number(s.hpMax) || 1, shMax: Number(s.shMax) || 0, dead: s.dead === true,
+        shipId: String(s.shipId || "").slice(0, 64), petActive: s.peta === 1,
+        combat: s.atk === true ? String(s.combat || "npc") : "",
+        targetHpPct: Number(s.targetHpPct ?? 0), targetShPct: Number(s.targetShPct ?? 0),
+      };
+    }
   }
   const ie = instancePeers.get(id);
-  if (ie) return { id, pseudo: String(ie.state?.pseudo || "Pilote").slice(0, 20), map: String(ie.mapId || ""), online: true };
+  if (ie) return { id, pseudo: String(ie.state?.pseudo || "Pilote").slice(0, 20), map: String(ie.mapId || ""), online: true, instance: true, dead: ie.state?.dead === true, shipId: String(ie.state?.shipId || "").slice(0, 64), petActive: ie.state?.peta === 1 };
   return null;
 }
 
@@ -699,7 +709,8 @@ wss.on("connection", (ws) => {
     }
     // Groupes + murmures : messages dirigés cross-map (rooms + instances).
     if (msg.t === "groupCreate" || msg.t === "groupInvite" || msg.t === "groupAccept" || msg.t === "groupDecline"
-      || msg.t === "groupLeave" || msg.t === "groupKick" || msg.t === "groupChat" || msg.t === "groupSync" || msg.t === "whisper") {
+      || msg.t === "groupLeave" || msg.t === "groupKick" || msg.t === "groupChat" || msg.t === "groupSync"
+      || msg.t === "groupInviteLock" || msg.t === "groupRally" || msg.t === "whisper") {
       try {
         handleSocialMessage({
           id, state, authed,
@@ -1208,6 +1219,9 @@ wss.on("connection", (ws) => {
       if (Number.isFinite(Number(msg.hpPct))) state.hpPct = Math.max(0, Math.min(1, Number(msg.hpPct)));
       if (Number.isFinite(Number(msg.shPct))) state.shPct = Math.max(0, Math.min(1, Number(msg.shPct)));
       if (typeof msg.atk === "boolean") state.atk = msg.atk;
+      if (msg.combat === "npc" || msg.combat === "player" || msg.combat === "") state.combat = msg.combat;
+      if (Number.isFinite(Number(msg.targetHpPct))) state.targetHpPct = Math.max(0, Math.min(1, Number(msg.targetHpPct)));
+      if (Number.isFinite(Number(msg.targetShPct))) state.targetShPct = Math.max(0, Math.min(1, Number(msg.targetShPct)));
       if (Number.isFinite(Number(msg.tx))) state.tx = Math.round(Number(msg.tx));
       if (Number.isFinite(Number(msg.ty))) state.ty = Math.round(Number(msg.ty));
       if (typeof msg.ammo === "string" && msg.ammo) state.ammo = String(msg.ammo).slice(0, 16);
