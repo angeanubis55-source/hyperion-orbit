@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.284",
+    "date": "2026-09-22T23:58:33+02:00",
+    "message": "Fix player name colors and stale NPC transitions"
+  },
+  {
     "version": "0.283",
     "date": "2026-09-22T23:54:00+02:00",
     "message": "Improve multiplayer groups and shared NPC progression"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.225",
     "date": "2026-09-19T12:48:38+02:00",
     "message": "sync version 0.224 + patch-notes (hook post-push)"
-  },
-  {
-    "version": "0.224",
-    "date": "2026-09-19T12:48:18+02:00",
-    "message": "aptitudes: vague gameplay Paladin/Pusat+/Retiarus/Sentinel/Solace/Solaris/Spearhead/Spectrum/Tartarus/Tempest/Venom/Zephyr + Cyborg exec, Police admin (12M HP, bouclier x500, toutes aptitudes, tag ADMIN), boutique detail aptitudes, SFX Retiarus, fix reacteur Spectrum (sync generale)"
   }
 ];

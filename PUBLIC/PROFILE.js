@@ -1329,7 +1329,7 @@ function renderPatchNotes() {
   });
   list.innerHTML = notes.map((entry) =>
     `<div class="patchNoteCard">
-      <div class="patchNoteVersion">ALPHA v.${escapeHtml(entry.version)} — <time datetime="${escapeHtml(entry.date)}">${escapeHtml(dateFormatter.format(new Date(entry.date)))}</time></div>
+      <div class="patchNoteVersion">BETA PRIVEE v.${escapeHtml(entry.version)} — <time datetime="${escapeHtml(entry.date)}">${escapeHtml(dateFormatter.format(new Date(entry.date)))}</time></div>
       <div class="patchNoteBody">${escapeHtml(entry.message)}</div>
     </div>`
   ).join("");
