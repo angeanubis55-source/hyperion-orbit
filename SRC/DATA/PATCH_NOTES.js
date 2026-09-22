@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.273",
+    "date": "2026-09-22T02:33:34+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.272",
     "date": "2026-09-22T02:14:08+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.214",
     "date": "2026-09-14T17:10:07+02:00",
     "message": "Glow Uber"
-  },
-  {
-    "version": "0.213",
-    "date": "2026-09-14T15:55:17+02:00",
-    "message": "leonov: +150% degats/bouclier/PV, roquettes x2.5, fix HUD vitesse et XP drones/PET"
   }
 ];
