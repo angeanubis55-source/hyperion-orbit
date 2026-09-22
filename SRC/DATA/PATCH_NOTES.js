@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.280",
+    "date": "2026-09-22T19:36:59+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.279",
     "date": "2026-09-22T19:31:42+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.221",
     "date": "2026-09-17T18:51:23+02:00",
     "message": "sync version 0.220 + patch-notes (hook post-push)"
-  },
-  {
-    "version": "0.220",
-    "date": "2026-09-17T18:51:03+02:00",
-    "message": "aptitudes: vague gameplay Aegis/Basilisk/Berserker/Citadel/Diminisher/Disruptor/Goliath-X/Hammerclaw/Hecate + Stockpile, degats spread 80/20 + penetration, poison supprimes, tartarus/ignifuge, bonus box revues, limite fps (sync generale)"
   }
 ];

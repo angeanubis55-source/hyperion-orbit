@@ -71,6 +71,18 @@ export class ZoneNpcSim {
           if (z && String(z.kind || "circle") === "circle" && Number.isFinite(Number(z.r))) {
             safe = [{ x: Number(z.x) || 0, y: Number(z.y) || 0, r: Number(z.r) }];
           }
+          // Modules autonomes (controleurs de missions x-4 / x-5). Les x-5
+          // n'ont volontairement aucune `zone` globale : leur `safeRadius`
+          // est donc la seule source de verite pour la ZNA serveur.
+          for (const module of mods?.modules || []) {
+            const radius = Number(module?.safeRadius || 0);
+            if (!(radius > 0)) continue;
+            safe.push({
+              x: Number(module.x) || 0,
+              y: Number(module.y) || 0,
+              r: radius,
+            });
+          }
         }
         if (typeof spawns?.getZonePortals === "function") {
           for (const portal of spawns.getZonePortals(world) || []) {
