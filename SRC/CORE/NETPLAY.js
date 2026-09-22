@@ -812,6 +812,8 @@ export function ensureNetplayConnection() {
           dead: p.dead === true,
           hpPct: Number.isFinite(Number(p.hpPct)) ? Math.max(0, Math.min(1, Number(p.hpPct))) : 1,
           shPct: Number.isFinite(Number(p.shPct)) ? Math.max(0, Math.min(1, Number(p.shPct))) : 1,
+          collectUid: String(p.collectUid || "").slice(0, 64),
+          collectPet: p.collectPet === true,
           // Tir en cours + point vise (monde) : rend le laser du copain.
           atk: p.atk === true,
           tx: Number(p.tx) || 0,
@@ -1000,6 +1002,8 @@ function sendNow(local, force = false) {
       dead: local.dead === true,
       hpPct: Number.isFinite(Number(local.hpPct)) ? local.hpPct : 1,
       shPct: Number.isFinite(Number(local.shPct)) ? local.shPct : 1,
+      collectUid: String(local.collectUid || "").slice(0, 64),
+      collectPet: local.collectPet === true,
       safe: local.safe === true,
       atk: local.atk === true,
       combat: local.combat === "player" ? "player" : (local.combat === "npc" ? "npc" : ""),

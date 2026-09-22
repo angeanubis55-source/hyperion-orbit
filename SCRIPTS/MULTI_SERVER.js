@@ -498,7 +498,7 @@ function describePeer(pid) {
         x: Number(s.x) || 0, y: Number(s.y) || 0, hpPct: Number(s.hpPct ?? 1), shPct: Number(s.shPct ?? 1),
         hpMax: Number(s.hpMax) || 1, shMax: Number(s.shMax) || 0, dead: s.dead === true,
         shipId: String(s.shipId || "").slice(0, 64), petActive: s.peta === 1,
-        combat: s.atk === true ? String(s.combat || "npc") : "",
+        combat: s.combat === "npc" || s.combat === "player" ? s.combat : "",
         targetName: String(s.targetName || "").slice(0, 64),
         targetHpPct: Number(s.targetHpPct ?? 0), targetShPct: Number(s.targetShPct ?? 0),
         targetHpMax: Number(s.targetHpMax) || 0, targetShMax: Number(s.targetShMax) || 0,
@@ -1220,6 +1220,8 @@ wss.on("connection", (ws) => {
       if (typeof msg.safe === "boolean") state.safe = msg.safe;
       if (Number.isFinite(Number(msg.hpPct))) state.hpPct = Math.max(0, Math.min(1, Number(msg.hpPct)));
       if (Number.isFinite(Number(msg.shPct))) state.shPct = Math.max(0, Math.min(1, Number(msg.shPct)));
+      if (typeof msg.collectUid === "string") state.collectUid = String(msg.collectUid).slice(0, 64);
+      if (typeof msg.collectPet === "boolean") state.collectPet = msg.collectPet;
       if (typeof msg.atk === "boolean") state.atk = msg.atk;
       if (msg.combat === "npc" || msg.combat === "player" || msg.combat === "") state.combat = msg.combat;
       if (typeof msg.targetName === "string") state.targetName = String(msg.targetName).slice(0, 64);
@@ -1513,7 +1515,7 @@ setInterval(() => {
       if (!s) continue;
       // Anti-fantôme : pas de pos envoyée = invisible pour les autres.
       if (s._posOk !== true) continue;
-      players.push({ id: s.id, pseudo: s.pseudo, shipId: s.shipId, x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, vmax: Math.max(50, Math.min(5000, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
+      players.push({ id: s.id, pseudo: s.pseudo, shipId: s.shipId, x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, vmax: Math.max(50, Math.min(5000, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
         // PvP : PV autoritaires + date du dernier coup recu + attaquant (anneau Ship_damage).
         pvpAt: Number(s.pvpAt) || 0, pvpFrom: s.pvpFrom != null ? String(s.pvpFrom) : null, pvpHp: Math.max(0, Math.round(Number(s.hp) || 0)), pvpSh: Math.max(0, Math.round(Number(s.sh) || 0)),
         npcAt: Number(s.npcAt) || 0, npcFrom: s.npcFrom != null ? String(s.npcFrom) : null, npcDamage: Math.max(0, Math.round(Number(s.npcDamage) || 0)),

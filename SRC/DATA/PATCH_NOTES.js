@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.288",
+    "date": "2026-09-23T00:44:38+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.287",
     "date": "2026-09-23T00:26:23+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.229",
     "date": "2026-09-19T22:35:11+02:00",
     "message": "sync version 0.228 + patch-notes (hook post-push)"
-  },
-  {
-    "version": "0.228",
-    "date": "2026-09-19T22:34:47+02:00",
-    "message": "encheres: 22 lots fixes par heure pile de Paris, timer dore, images vaisseaux, historique cycle exact, ticket 25M, fix gains en boucle"
   }
 ];

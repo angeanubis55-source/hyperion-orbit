@@ -21840,6 +21840,7 @@ player.y = collectY;
 
 function drawCollectBeam(c, ox, oy) {
   if (!c) return;
+  drawRemoteCollectBeams(c, ox, oy);
   // Faisceau du P.E.T vers sa box (même visuel que le joueur).
   const isPetBox = petState.fetchId === c.id && (petState.fetchHold || 0) > 0;
   const isPlayerBox = collectableTargetId === c.id && c.armed === true;
@@ -22904,13 +22905,78 @@ function hurtPlayer(amount, source = null) {
 const KAMIKAZE_SLOW_SEC = 3;
 const KAMIKAZE_SLOW_PCT = 30;
 
+function groupNpcRewardPercent(enemy) {
+  if (!enemy?._netUid || rules?.mode === "gate") return 100;
+  const group = getNetGroup();
+  const me = String(netMyId());
+  const mapId = String(window.__CURRENT_MAP_ID__ || "");
+  const eligible = (group?.members || [])
+    .filter(member => member?.online !== false && member?.instance !== true && String(member.map) === mapId)
+    .map(member => String(member.id))
+    .sort();
+  if (eligible.length <= 1 || !eligible.includes(me)) return 100;
+  const base = Math.floor(100 / eligible.length);
+  const remainder = 100 - base * eligible.length;
+  let seed = 2166136261;
+  const key = `${enemy._netUid}:${enemy._netSeq || 0}`;
+  for (let i = 0; i < key.length; i++) {
+    seed ^= key.charCodeAt(i);
+    seed = Math.imul(seed, 16777619);
+  }
+  const start = (seed >>> 0) % eligible.length;
+  const myIndex = eligible.indexOf(me);
+  const distance = (myIndex - start + eligible.length) % eligible.length;
+  return base + (distance < remainder ? 1 : 0);
+}
+
+function drawRemoteCollectBeams(c, ox, oy) {
+  if (!c?.slotUid) return;
+  let remotes = null;
+  try { remotes = getNetplayRemotes(); } catch { return; }
+  if (!remotes?.size) return;
+  const now = performance.now() / 1000;
+  for (const remote of remotes.values()) {
+    if (!remote || String(remote.collectUid || "") !== String(c.slotUid)) continue;
+    const petCollect = remote.collectPet === true && remote.peta === 1;
+    const sourceX = Number(petCollect ? (remote.petrx ?? remote.petx) : (remote.rx ?? remote.x)) + ox;
+    const sourceY = Number(petCollect ? (remote.petry ?? remote.pety) : (remote.ry ?? remote.y)) + oy;
+    const boxX = Number(c.x) + ox, boxY = Number(c.y) + oy;
+    const dx = sourceX - boxX, dy = sourceY - boxY, distance = Math.hypot(dx, dy);
+    if (!(distance > 8)) continue;
+    const nx = dx / distance, ny = dy / distance, sideX = -ny, sideY = nx;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
+    for (let i = 0; i < 18; i++) {
+      const travel = (now * 4.5 + i / 18) % 1;
+      const spread = Math.sin(now * 12 + i * 1.37) * 8;
+      const x = boxX + dx * travel + sideX * spread;
+      const y = boxY + dy * travel + sideY * spread;
+      ctx.globalAlpha = 0.35 + travel * 0.55;
+      ctx.strokeStyle = "rgba(120,240,255,0.95)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x - nx * 5, y - ny * 5);
+      ctx.lineTo(x + nx * 7, y + ny * 7);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "rgba(120,240,255,0.9)";
+    ctx.beginPath();
+    ctx.arc(boxX, boxY, 18 + Math.sin(now * 18) * 4, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 function killRewards(e) {
   player.kills++;
   // Cupidité (arbre pilote) : +X % crédits par alien.
-  const credits = Math.max(0, Math.floor(Number(e.value || 0) * playerPilotMults().credit));
+  const rewardPct = groupNpcRewardPercent(e);
+  const credits = Math.max(0, Math.floor(Number(e.value || 0) * rewardPct / 100 * playerPilotMults().credit));
   player.credits += credits;
-  const experience = getNpcExperienceReward(e, NPC_TYPES[e.type]);
-  const honor = getNpcHonorReward(e, { ...NPC_TYPES[e.type], type: e.type });
+  const experience = Math.max(0, Math.floor(getNpcExperienceReward(e, NPC_TYPES[e.type]) * rewardPct / 100));
+  const honor = Math.max(0, Math.floor(getNpcHonorReward(e, { ...NPC_TYPES[e.type], type: e.type }) * rewardPct / 100));
   const xpResult = awardExperience(experience, "npc");
   const honorResult = awardHonor(honor);
   const gainedXp = xpResult?.gained ?? experience;
@@ -27362,9 +27428,11 @@ function drawNetplayRemotes(ox, oy) {
         rRank, rFact, dind, rFicon, mind,
         String(r.shipId || "").toLowerCase() === "police",
         showRemoteDetails,
-        normalizeFactionId(r.firm) === normalizeFactionId(account.user?.faction)
-          ? "rgba(80,225,255,0.98)"
-          : "rgba(255,65,82,0.98)",
+        getNetGroup()?.members?.some(member => String(member.id) === String(r.id))
+          ? "rgba(255,229,138,0.98)"
+          : (normalizeFactionId(r.firm) === normalizeFactionId(account.user?.faction)
+            ? "rgba(80,225,255,0.98)"
+            : "rgba(255,65,82,0.98)"),
       );
     } catch {}
     ctx.restore();
@@ -33125,6 +33193,9 @@ function frame(t) {
         }
       } catch {}
       // Cadence + vitesse : inutiles (les tirs partent en evenements exacts).
+      const petCollectable = (petState.fetchHold || 0) > 0 ? collectables.find(c => c?.id === petState.fetchId) : null;
+      const playerCollectable = collectables.find(c => c?.id === collectableTargetId && (c.collectT || 0) > 0);
+      const activeCollectable = petCollectable || playerCollectable;
       pushNetplayLocal({
         x: player.x, y: player.y, angle: player.angle,
         vx: player.vx, vy: player.vy,
@@ -33133,9 +33204,11 @@ function frame(t) {
         dead: player.dead === true,
         hpPct: player.hpMax > 0 ? player.hp / player.hpMax : 1,
         shPct: player.shMax > 0 ? player.sh / player.shMax : 1,
+        collectUid: activeCollectable?.slotUid ? String(activeCollectable.slotUid) : "",
+        collectPet: !!petCollectable,
         atk: attackActive === true && !!atkTgt && !player.dead,
-        combat: attackActive === true && atkTgt ? (atkTgt._netPlayer != null ? "player" : "npc") : "",
-        targetName: attackActive === true && atkTgt && atkTgt._netPlayer == null
+        combat: atkTgt ? (atkTgt._netPlayer != null ? "player" : "npc") : "",
+        targetName: atkTgt && atkTgt._netPlayer == null
           ? String(NPC_TYPES[atkTgt.type]?.name || atkTgt.name || atkTgt.type || "NPC").replace(/^npc_/i, "")
           : "",
         targetHpPct: atkTgt && Number(atkTgt.hpMax) > 0 ? Number(atkTgt.hp) / Number(atkTgt.hpMax) : 0,

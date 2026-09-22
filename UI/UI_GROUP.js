@@ -26,18 +26,23 @@ export function initGroupUI() {
   function renderGroup() {
     let group = null;
     try { group = getNetGroup(); } catch {}
-    const leave = document.getElementById("groupLeaveBtn"), lock = document.getElementById("groupInviteLockBtn"), rally = document.getElementById("groupRallyBtn"), kickBtn = document.getElementById("groupKickModeBtn"), inviteBtn = document.getElementById("groupInviteBtn");
+    const leave = document.getElementById("groupLeaveBtn"), lock = document.getElementById("groupInviteLockBtn"), rally = document.getElementById("groupRallyBtn"), kickBtn = document.getElementById("groupKickModeBtn"), inviteBtn = document.getElementById("groupInviteBtn"), actions = document.querySelector("#groupWindow .groupActions");
     if (!group) {
       kickMode = false;
       if (status) status.textContent = "Solo — invite un pilote pour former une escadrille.";
-      members.innerHTML = `<div class="groupEmpty">Personne avec toi pour l'instant.</div>`;
+      members.innerHTML = "";
+      members.style.display = "none";
       invites.style.display = "";
       if (input) { input.disabled = false; input.placeholder = "Pseudo à inviter…"; }
       if (inviteBtn) inviteBtn.disabled = false;
+      actions?.classList.remove("groupLeaderMode", "groupMemberMode");
       for (const button of [leave, lock, rally, kickBtn]) if (button) button.style.display = "none";
       return;
     }
     const leader = String(group.leader), leaderMode = myId() === leader, chief = group.members.find(member => String(member.id) === leader);
+    actions?.classList.toggle("groupLeaderMode", leaderMode);
+    actions?.classList.toggle("groupMemberMode", !leaderMode);
+    members.style.display = "";
     if (status) status.textContent = `Escadrille (${group.members.length}/10) — chef : ${chief?.pseudo || "?"}`;
     invites.style.display = "none";
     members.innerHTML = group.members.map(member => {
@@ -49,7 +54,8 @@ export function initGroupUI() {
       const targetHpTitle = `Coque : ${amount(targetHpMax * targetHp / 100)} / ${amount(targetHpMax)}`, targetShTitle = `Bouclier : ${amount(targetShMax * targetSh / 100)} / ${amount(targetShMax)}`;
       const kickTarget = leaderMode && String(member.id) !== leader ? ` data-kick-member="${id}"` : "";
       const targetBars = member.combat === "npc" ? `<div class="groupVitals groupNpcVitals"><span class="groupNpcName">${escapeHtml(member.targetName || "NPC")}</span><i title="${targetHpTitle}"><b class="hp" style="width:${targetHp}%"></b></i><i title="${targetShTitle}"><b class="sh" style="width:${targetSh}%"></b></i></div>` : `<div class="groupVitals groupNpcVitals empty"></div>`;
-      return `<div class="groupRow groupMember${kickMode && kickTarget ? " kickSelectable" : ""}"${kickTarget}><div class="groupMemberHead"><span class="groupName">${escapeHtml(member.pseudo || "Pilote")}${String(member.id) === leader ? CROWN_SVG : ""}</span><span class="groupMap">${escapeHtml(member.map || "?")}</span></div><div class="groupCombatBars"><div class="groupVitals groupPlayerVitals"><span class="groupShipName">${escapeHtml(shipTypeName(member.shipId))}</span><i title="${hpTitle}"><b class="hp" style="width:${hp}%"></b></i><i title="${shTitle}"><b class="sh" style="width:${sh}%"></b></i></div>${targetBars}</div></div>`;
+      const allyNameClass = String(member.id) !== myId() ? " groupAllyName" : "";
+      return `<div class="groupRow groupMember${kickMode && kickTarget ? " kickSelectable" : ""}"${kickTarget}><div class="groupMemberHead"><span class="groupName${allyNameClass}">${escapeHtml(member.pseudo || "Pilote")}${String(member.id) === leader ? CROWN_SVG : ""}</span><span class="groupMap">${escapeHtml(member.map || "?")}</span></div><div class="groupCombatBars"><div class="groupVitals groupPlayerVitals"><span class="groupShipName">${escapeHtml(shipTypeName(member.shipId))}</span><i title="${hpTitle}"><b class="hp" style="width:${hp}%"></b></i><i title="${shTitle}"><b class="sh" style="width:${sh}%"></b></i></div>${targetBars}</div></div>`;
     }).join("");
     if (leave) leave.style.display = "";
     if (lock) { const label = group.invitesLocked ? "Déverrouiller les invitations" : "Verrouiller les invitations"; lock.style.display = leaderMode ? "" : "none"; lock.innerHTML = group.invitesLocked ? LOCK_CLOSED_SVG : LOCK_OPEN_SVG; lock.title = label; lock.setAttribute("aria-label", label); }
