@@ -598,6 +598,36 @@ function handleLogin(body, res) {
   return json(res, 200, { ok: true, token, user: rowToPublic(u) });
 }
 
+// Admin : ajoute/retire de l'EXP au compte et recalcule immediatement les
+// points de grade. Comme pour les credits, la revision force la prochaine
+// synchronisation client a adopter la valeur serveur.
+export function adminGiveExperience(pseudo, amount) {
+  try {
+    initAccountDb();
+    const key = norm(pseudo);
+    if (!key) return { ok: false, error: "Pseudo manquant." };
+    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const delta = Math.floor(Number(String(amount ?? "").replace(/[\s_]/g, "")) || 0);
+    if (!Number.isFinite(delta) || delta === 0) return { ok: false, error: "Montant invalide (entier non nul)." };
+    if (Math.abs(delta) > 1e12) return { ok: false, error: "Montant trop grand (max 1 000 Mds)." };
+    let data = {};
+    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    data.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
+    const before = Math.max(0, Math.floor(Number(data.stats.exp) || 0));
+    const after = Math.max(0, before + delta);
+    const now = Date.now();
+    const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data.stats.exp = after;
+    data.stats.rankPoints = calculateRankPoints(data.stats);
+    data.revision = newRev;
+    data.updatedAt = now;
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(data), newRev, now, row.id);
+    return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), before, after, given: delta, revision: newRev };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
 function handleAccountIdentity(req, body, res, kind) {
   const me = authUser(req);
   if (!me) return json(res, 401, { ok: false, error: "Session invalide." });

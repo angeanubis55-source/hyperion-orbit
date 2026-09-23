@@ -6,7 +6,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits, adminGiveExperience } from "./ACCOUNT_SERVER.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
@@ -191,7 +191,7 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, bans: [...bans.values()] });
     return true;
   }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban") && request.method === "POST") {
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
         if (pathname === "/api/admin/give") {
@@ -762,6 +762,22 @@ wss.on("connection", (ws) => {
           }
           // Le demandeur ne touche la recompense qu'apres cette confirmation.
           try { ws.send(JSON.stringify({ t: "box", op: "claim", uid, ok: accepted, box: !accepted && box ? { uid, type: box.type, x: box.x, y: box.y } : undefined })); } catch {}
+          return;
+        }
+        if (pathname === "/api/admin/give-exp") {
+          const res = adminGiveExperience(String(body?.pseudo || ""), body?.amount);
+          if (!res || res.ok !== true) {
+            adminJson(response, res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Montant invalide." });
+            return;
+          }
+          try {
+            const peer = findPeerByPseudo(res.pseudo);
+            if (peer) {
+              const txt = `L'admin t'a ${res.given > 0 ? "donne" : "retire"} ${Math.abs(res.given).toLocaleString("fr-FR")} EXP. Nouveau total : ${res.after.toLocaleString("fr-FR")}.`;
+              sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
+            }
+          } catch {}
+          adminJson(response, 200, res);
           return;
         }
       } catch {}

@@ -169,6 +169,21 @@
           }
           refresh();
         };
+        const giveExp = document.createElement("button");
+        giveExp.type = "button"; giveExp.className = "small"; giveExp.textContent = "EXP";
+        giveExp.style.marginLeft = "6px";
+        giveExp.onclick = async () => {
+          const raw = prompt(`EXP pour ${p.pseudo} ?\nQuantite a AJOUTER (negatif = retirer, espaces acceptes) :`, "1000000");
+          if (raw == null) return;
+          try {
+            const out = await call("/api/admin/give-exp", { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, amount: String(raw).replace(/[\s_]/g, "") }) });
+            if (!out || out.ok !== true) throw new Error(out?.error || "Echec.");
+            alert(`${out.pseudo} : ${out.before.toLocaleString("fr-FR")} -> ${out.after.toLocaleString("fr-FR")} EXP.`);
+          } catch (e) {
+            alert(e?.message || "Erreur.");
+          }
+          refresh();
+        };
         const ban = document.createElement("button");
         ban.type = "button"; ban.className = "small danger"; ban.textContent = "Ban";
         ban.style.marginLeft = "6px";
@@ -190,7 +205,7 @@
           }
           refresh();
         };
-        td.appendChild(kick); td.appendChild(mute); td.appendChild(ban); td.appendChild(give);
+        td.appendChild(kick); td.appendChild(mute); td.appendChild(ban); td.appendChild(give); td.appendChild(giveExp);
         tb.appendChild(tr);
       }
     } catch {}

@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.297",
+    "date": "2026-09-23T21:46:31+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.296",
     "date": "2026-09-23T21:30:42+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.238",
     "date": "2026-09-20T21:23:16+02:00",
     "message": "multi: kick admin avec explosion + message d'avertissement"
-  },
-  {
-    "version": "0.237",
-    "date": "2026-09-20T21:17:58+02:00",
-    "message": "multi: anticheat auto-guerison (saut stable = reaparition legitime)"
   }
 ];
