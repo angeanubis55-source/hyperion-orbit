@@ -13005,7 +13005,10 @@ function awardHonor(amount) {
   account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
   const previousRank = getRankInfo(account.user.stats.rankPoints, account.user.stats.honor);
   const moduleBonus = Number(player?.honorBonusPct || 0);
-  const raw = Number(amount || 0) * Math.max(0, 1 + moduleBonus / 100) * playerBoosterMults().honor * playerPilotMults().honor;
+  const zeroHonorFormation = String(getActiveDroneFormation(account.user)?.id || "").toLowerCase() === "x";
+  const raw = zeroHonorFormation
+    ? 0
+    : Number(amount || 0) * Math.max(0, 1 + moduleBonus / 100) * playerBoosterMults().honor * playerPilotMults().honor;
   const result = grantHonor(account.user.stats, Math.max(0, Math.ceil(raw - Number.EPSILON)));
   account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
   const nextRank = getRankInfo(account.user.stats.rankPoints, account.user.stats.honor);
@@ -13720,7 +13723,7 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
 
   const hangar = getActiveHangarFromUser(u);
   const stats = computeHangarStats(hangar, u, { mapId: currentMapId() });
-  player.dr = clamp(BASE_RUN.dr + Number(stats.formationEffects?.shieldAbsorptionPct || 0) / 100, 0, 1);
+  player.dr = BASE_RUN.dr;
 
   // ✅ HP partagé entre les configs
   const oldHpPct =
@@ -13745,7 +13748,12 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
 
   player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield * playerPilotMults().shield * playerUpgradeMults().shield));
   // Absorption officielle du générateur équipé (max monté), défaut 80 %.
-  player.shAbsorb = Number(stats.bonusAbsorb) > 0 ? clamp(Number(stats.bonusAbsorb) / 100, 0, 1) : 0.8;
+  player.shAbsorb = clamp(
+    (Number(stats.bonusAbsorb) > 0 ? Number(stats.bonusAbsorb) / 100 : 0.8)
+      + Number(stats.formationEffects?.shieldAbsorptionPct || 0) / 100,
+    0,
+    1,
+  );
   // Détail des canons du vaisseau (bonus conditionnels vsMatch au tir).
   player.laserMods = Array.isArray(stats.laserMods) ? stats.laserMods : [];
   // Drones : bonus par canon aussi (overdrive/vs/instable x nombre équipé).
@@ -16251,7 +16259,7 @@ function resetPlayerToBase() {
   const stats = computeHangarStats(hangar, u, { mapId: currentMapId() });
 
   player.dr = BASE_RUN.dr;
-  player.dr = clamp(player.dr + Number(stats.formationEffects?.shieldAbsorptionPct || 0) / 100, 0, 1);
+  player.dr = BASE_RUN.dr;
   player.shPen = BASE_RUN.shPen + ((stats.bonusPenetrationPct || 0) / 100);
 
   const shipBaseHP = Number(pack?.hp || 1);
@@ -16269,7 +16277,12 @@ function resetPlayerToBase() {
 
   player.shMax = Math.max(0, Math.floor((Number(stats.bonusShield) || 0) * playerBoosterMults().shield * playerPilotMults().shield * playerUpgradeMults().shield));
   player.sh = Math.max(0, Math.floor(player.shMax * oldShPct));
-  player.shAbsorb = Number(stats.bonusAbsorb) > 0 ? clamp(Number(stats.bonusAbsorb) / 100, 0, 1) : 0.8;
+  player.shAbsorb = clamp(
+    (Number(stats.bonusAbsorb) > 0 ? Number(stats.bonusAbsorb) / 100 : 0.8)
+      + Number(stats.formationEffects?.shieldAbsorptionPct || 0) / 100,
+    0,
+    1,
+  );
   player.laserMods = Array.isArray(stats.laserMods) ? stats.laserMods : [];
   player.droneLaserMods = Array.isArray(stats.droneLaserMods) ? stats.droneLaserMods : [];
   let oslCount = 0;
@@ -16665,14 +16678,16 @@ function syncActionDockState() {
   // Roquettes standard : cooldown partagé, voile sur chaque slot de roquette.
   // (Pas de flash : ~1 s en tir soutenu = trop de clignotement.)
   for (const { button, rocketId } of actionDockCache.rockets) {
-    const cooling = rocketCooldown > 0;
+    const cooldownLeft = rocketCooldownLeft(rocketId);
+    const cooldownMax = rocketCooldownMaxFor(rocketId);
+    const cooling = cooldownLeft > 0;
     // Survol : nom + quantité live.
     try {
       const tip = rocketTip(rocketId);
       applyDockField(button, "tip", tip,
         (v) => { button.title = v; });
     } catch {}
-    const progress = cooling ? clamp(rocketCooldown / (rocketCooldownMax || 1), 0, 1) : 0;
+    const progress = cooling ? clamp(cooldownLeft / cooldownMax, 0, 1) : 0;
     applyDockField(button, "cdVeil", cooling,
       (v) => button.classList.toggle("cdVeil", v));
     applyDockField(button, "cdProgress", progress.toFixed(3),
@@ -23923,6 +23938,29 @@ function activeRocket() {
   return getRocketType(player.rocketActive) || getRocketType("r310");
 }
 
+function activeFormationEffects() {
+  return getActiveDroneFormation(account.user)?.effects || {};
+}
+
+function formationRocketDamageMult() {
+  return Math.max(0, 1 + Number(activeFormationEffects().rocketDamagePct || 0) / 100);
+}
+
+function formationRocketCooldownMult() {
+  return Math.max(0.05, 1 + Number(activeFormationEffects().rocketCooldownPct || 0) / 100);
+}
+
+function formationNpcDamageMult(target) {
+  const isNpc = target && !target._netPlayer && !target._netPet;
+  return isNpc ? Math.max(0, 1 + Number(activeFormationEffects().npcDamagePct || 0) / 100) : 1;
+}
+
+function formationPlayerLaserDamageMult(target) {
+  return target?._netPlayer
+    ? Math.max(0, 1 + Number(activeFormationEffects().playerLaserDamagePct || 0) / 100)
+    : 1;
+}
+
 function rocketCount(id = player.rocketActive) {
   const key = String(id || "r310").toLowerCase();
   return Math.max(0, Math.floor(Number(player.rockets?.[key] || 0)));
@@ -23950,7 +23988,7 @@ function tryFireRocket(opts = {}) {
     notify("Plus de roquettes — boutique > Roquettes.", 2.5, "error");
     return false;
   }
-  if (rocketCooldown > 0) return false;
+  if (rocketCooldownLeft(rocket.id) > 0) return false;
 
   const t = Target.get();
   if (!t) return false;
@@ -23968,8 +24006,12 @@ function tryFireRocket(opts = {}) {
   SFX.play("sfx_shot_roquettes", { cooldown: 0.05, cut: true });
 
   player.rockets[rocket.id] = rocketCount(rocket.id) - 1;
-  rocketCooldownMax = rocket?.cooldown || 1.0;
-  rocketCooldown = rocketCooldownMax;
+  if (PERSONAL_ROCKET_COOLDOWN_IDS.has(String(rocket.id || "").toLowerCase())) {
+    personalRocketCooldowns.set(String(rocket.id).toLowerCase(), PERSONAL_ROCKET_COOLDOWN_SEC);
+  } else {
+    rocketCooldownMax = (rocket?.cooldown || 1.0) * formationRocketCooldownMult();
+    rocketCooldown = rocketCooldownMax;
+  }
   // Arme comme les lasers : lève la zone de non-agression pendant 5 s.
   player.combatT = 5.0;
   markProgressDirty();
@@ -23994,7 +24036,8 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
   const rocketBoosterMults = playerBoosterMults();
   const dmg = (rocket?.damage ?? 1000)
     * tartLauncherDmgMult(rocket?.manual === false)
-    * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100)
+    * formationRocketDamageMult()
+    * formationNpcDamageMult(t)
     * rocketBoosterMults.dmg * playerPilotMults().rocketDmg * playerUpgradeMults().rocket
     * (isLeonovHomeActive() ? 2.5 : 1);
   consumeUpgradeStock("rocket");
@@ -24313,8 +24356,23 @@ function rsbLikeCooldown(key) {
 
 // Roquettes R-310 : tir manuel à tête chercheuse, stock consommable.
 let rocketCooldown = 0;
-// Durée de référence du cooldown en cours (pour le voile du dock).
 let rocketCooldownMax = 1.0;
+const PERSONAL_ROCKET_COOLDOWN_SEC = 30;
+const PERSONAL_ROCKET_COOLDOWN_IDS = new Set(["dcr250", "pld8", "ric3", "rc100", "agt500", "sp100x", "k300m"]);
+const personalRocketCooldowns = new Map();
+
+function rocketCooldownLeft(rocketId) {
+  const id = String(rocketId || "").toLowerCase();
+  return PERSONAL_ROCKET_COOLDOWN_IDS.has(id)
+    ? Math.max(0, Number(personalRocketCooldowns.get(id)) || 0)
+    : Math.max(0, Number(rocketCooldown) || 0);
+}
+
+function rocketCooldownMaxFor(rocketId) {
+  return PERSONAL_ROCKET_COOLDOWN_IDS.has(String(rocketId || "").toLowerCase())
+    ? PERSONAL_ROCKET_COOLDOWN_SEC
+    : Math.max(0.05, Number(rocketCooldownMax) || 1);
+}
 // Lance-roquettes : chargeur 5 coups à 1/s, tir quand on veut (même partiel),
 // 2 s de pause après chaque salve avant la recharge. Pas d'autre blocage.
 let launcherReloadT = 0;
@@ -24345,7 +24403,7 @@ function tickLauncherCharger(dt) {
   }
   if (launcherPhase === "cooldown") {
     launcherPhaseT += dt;
-    if (launcherPhaseT >= 2) {
+    if (launcherPhaseT >= 2 * formationRocketCooldownMult()) {
       launcherPhase = "reload";
       launcherReloadT = 0;
       SFX.play("rocketsLoadStart", { cut: true });
@@ -24355,7 +24413,7 @@ function tickLauncherCharger(dt) {
   }
   // reload : +1/s. Le tir est possible à tout moment (même partiel).
   const previousLit = launcherLitNow();
-  launcherReloadT = Math.min(5, launcherReloadT + dt);
+  launcherReloadT = Math.min(5, launcherReloadT + dt / formationRocketCooldownMult());
   // Mémorise le plein affiché pour la salve auto.
   const lit = launcherLitNow();
   for (let loaded = previousLit + 1; loaded <= lit; loaded++) {
@@ -24777,7 +24835,7 @@ const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
   const dmgShot = isSab
     ? player.baseDamage * SAB50.drainMult * shotBoosterMults.dmg
-    : (laserBase + overdrive) * mult * (1 + Number(getActiveDroneFormation(account.user).effects?.npcDamagePct || 0) / 100) * shotBoosterMults.dmg * playerPilotMults().alienDmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * shipPassiveDamageMult();
+    : (laserBase + overdrive) * mult * formationNpcDamageMult(t) * formationPlayerLaserDamageMult(t) * shotBoosterMults.dmg * playerPilotMults().alienDmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * shipPassiveDamageMult();
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((shotHitBonusPct + playerPilotMults().laserHit) / 100));
   // Multi : evenement de tir exact pour les allies (vrais tirs, MISS inclus).
@@ -25388,7 +25446,7 @@ try {
         const info = {
           locked: t ? (t._netPlayer ? `player:${t._netPlayer}` : `npc:${t.type}`) : null,
           stock: rocketCount(player.rocketActive),
-          cd: Number(rocketCooldown) || 0,
+          cd: rocketCooldownLeft(player.rocketActive),
           bulletsBefore: bullets.length,
         };
         info.fired = tryFireRocket({});
@@ -30092,8 +30150,17 @@ function update(dt) {
   rcbCooldown = Math.max(0, rcbCooldown - dt);
   const rocketWasCooling = rocketCooldown > 0;
   rocketCooldown = Math.max(0, rocketCooldown - dt);
+  let personalRocketReady = false;
+  for (const [id, left] of personalRocketCooldowns) {
+    const next = Math.max(0, (Number(left) || 0) - dt);
+    if (next > 0) personalRocketCooldowns.set(id, next);
+    else {
+      personalRocketCooldowns.delete(id);
+      personalRocketReady = true;
+    }
+  }
   // Fin de recharge roquette : rafraîchir le bouton une fois.
-  if (rocketWasCooling && rocketCooldown <= 0) updateAmmoUI();
+  if ((rocketWasCooling && rocketCooldown <= 0) || personalRocketReady) updateAmmoUI();
   // Chargeur lance-roquettes : refresh à chaque carré gagné/perdu.
   if (started && !player.dead) {
     const before = launcherLitNow();
@@ -33322,6 +33389,8 @@ function frame(t) {
         mind: mindNow.slice(0, 128),
         hpMax: Math.max(1, Math.round(Number(player.hpMax) || 1)),
         shMax: Math.max(0, Math.round(Number(player.shMax) || 0)),
+        absorb: Math.max(0, Math.min(1, Number(player.shAbsorb) || 0.8)),
+        evade: Math.max(0, Math.min(0.9, Number(activeFormationEffects().evasionPct || 0) / 100)),
         range: Math.max(200, Math.min(5000, Math.round(Number(playerRange) || 800))),
         peta: petA, petl: petL, petx: petX, pety: petY, petd: petD, petn: petN, petf: petF,
         petHp: (function () { try { const p = account.user?.pet; if (!p) return 1; const m = Math.max(1, Number(petMaxHpWithHeat(p)) || 1); return Math.max(0, Math.min(1, Number(p.hp) / m)); } catch { return 1; } })(),

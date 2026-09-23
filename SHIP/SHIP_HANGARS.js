@@ -231,7 +231,9 @@ const fit =
     + Number(shipEffect.speedFlat || 0);
   // Police : bouclier x500 les valeurs de chaque générateur équipé.
   const isPoliceHull = String(hangar?.shipId || "").toLowerCase() === "police";
-  const bonusShield = isPoliceHull ? baseShield * 500 : baseShield * (1 + bonusShieldPct / 100);
+  const bonusShield = isPoliceHull
+    ? baseShield * 500 * Math.max(0, 1 + bonusShieldPct / 100)
+    : baseShield * Math.max(0, 1 + bonusShieldPct / 100);
 
   return { 
     totalLaserDamage, 

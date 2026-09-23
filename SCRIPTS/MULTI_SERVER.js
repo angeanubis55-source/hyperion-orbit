@@ -897,7 +897,8 @@ wss.on("connection", (ws) => {
           foe.state.sh = Math.max(0, Number(foe.state.sh) - drained);
           applied = drained;
         } else {
-          const res = damagePlayerLayers(foe.state, dmg, 0.8, pen, 0);
+          if (Math.random() < Math.max(0, Math.min(0.9, Number(foe.state.evade) || 0))) return;
+          const res = damagePlayerLayers(foe.state, dmg, Math.max(0, Math.min(1, Number(foe.state.absorb) || 0.8)), pen, 0);
           applied = Number(res?.total) || 0;
           foe.state.hp = Math.max(0, Number(foe.state.hp) || 0);
           foe.state.sh = Math.max(0, Number(foe.state.sh) || 0);
@@ -1319,6 +1320,8 @@ wss.on("connection", (ws) => {
       if (Number.isFinite(Number(msg.targetShPct))) state.targetShPct = Math.max(0, Math.min(1, Number(msg.targetShPct)));
       if (Number.isFinite(Number(msg.targetHpMax))) state.targetHpMax = Math.max(0, Math.min(1e12, Math.round(Number(msg.targetHpMax))));
       if (Number.isFinite(Number(msg.targetShMax))) state.targetShMax = Math.max(0, Math.min(1e12, Math.round(Number(msg.targetShMax))));
+      if (Number.isFinite(Number(msg.absorb))) state.absorb = Math.max(0, Math.min(1, Number(msg.absorb)));
+      if (Number.isFinite(Number(msg.evade))) state.evade = Math.max(0, Math.min(0.9, Number(msg.evade)));
       if (Number.isFinite(Number(msg.tx))) state.tx = Math.round(Number(msg.tx));
       if (Number.isFinite(Number(msg.ty))) state.ty = Math.round(Number(msg.ty));
       if (typeof msg.ammo === "string" && msg.ammo) state.ammo = String(msg.ammo).slice(0, 16);
@@ -1587,10 +1590,11 @@ setInterval(() => {
             if (!s || s.pvpDead === true || !(Number(s.hp) > 0)) continue;
             if (Date.now() < Number(s.ishUntil || 0) || Date.now() < Number(s.iemUntil || 0)) continue;
             if (s.serverSafe === true) continue;
+            if (Math.random() < Math.max(0, Math.min(0.9, Number(s.evade) || 0))) continue;
             const hitNow = Date.now();
             const damage = Math.max(0, Math.min(1e8, Number(hit?.damage) || 0));
             if (!(damage > 0)) continue;
-            const result = damagePlayerLayers(s, damage, 0.8, 0, 0);
+            const result = damagePlayerLayers(s, damage, Math.max(0, Math.min(1, Number(s.absorb) || 0.8)), 0, 0);
             s.hp = Math.max(0, Number(s.hp) || 0);
             s.sh = Math.max(0, Number(s.sh) || 0);
             if (!npcHitVictims.has(s)) {

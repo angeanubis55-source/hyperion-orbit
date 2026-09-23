@@ -27,7 +27,7 @@ export const DRONE_FORMATIONS=Object.freeze([
   makeFormation("veteran","Formation Vétéran",150000000,{honorPct:20,laserDamagePct:-20,shieldPct:-20,hpPct:-20},"+20 % honneur · -20 % laser/bouclier/vie"),
   makeFormation("dome","Formation Dôme",150000000,{shieldPct:30,shieldRegenPct:.5,speedPct:-50,laserDamagePct:-50,rocketCooldownPct:25},"+30 % bouclier · régénération · -50 % vitesse/laser"),
   makeFormation("wheel","Formation Roue",150000000,{speedPct:5,laserDamagePct:-20,shieldDrainPct:5},"+5 % vitesse · -20 % laser · -5 % bouclier/s"),
-  makeFormation("x","Formation X",200000000,{npcDamagePct:5,npcXpPct:5,hpPct:8,playerLaserDamagePct:-100,honorPct:-100},"+5 % dégâts/XP NPC · +8 % vie · aucun dégât joueur"),
+  makeFormation("x","Formation X",200000000,{npcDamagePct:5,npcXpPct:5,hpPct:8,honorPct:-100},"+5 % dégâts/XP NPC · +8 % vie · 0 honneur"),
   makeFormation("wave","Formation Vague",500000),
 ]);
 export function getIrisPrice(n){return IRIS_BASE_PRICE*(2**Math.max(0,Math.min(7,Math.floor(Number(n)||0))));}

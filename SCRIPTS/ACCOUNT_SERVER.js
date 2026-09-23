@@ -209,7 +209,7 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
     try { boosters = activeBoosterMults(data.boosters, Date.now()); } catch {}
     let pilot = {};
     try { pilot = pilotSkillMults(data.pilotSkills) || {}; } catch {}
-    const factor = (v) => 1 + Math.max(0, Number(v) || 0) / 100;
+    const factor = (v) => Math.max(0, 1 + (Number(v) || 0) / 100);
     const baseCredits = Math.max(0, Math.floor(Number(reward.credits) * pct / 100));
     const baseExp = Math.max(0, Math.floor(Number(reward.exp) * pct / 100));
     const baseHonor = Math.max(0, Math.floor(Number(reward.honor) * pct / 100));
@@ -217,7 +217,10 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
     const shipXp = String(getShipDesignBaseId(rawShipId) || rawShipId).toLowerCase() === "goliath_x" ? 1.02 : 1;
     const credits = Math.max(0, Math.floor(baseCredits * factor(pilot.creditPct)));
     const exp = Math.max(0, Math.ceil(baseExp * factor(equipment.bonusExpPct) * Math.max(0, Number(boosters.exp) || 1) * factor(pilot.expPct) * shipXp - Number.EPSILON));
-    const honor = Math.max(0, Math.ceil(baseHonor * factor(equipment.bonusHonorPct) * Math.max(0, Number(boosters.honor) || 1) * factor(pilot.honorPct) - Number.EPSILON));
+    const zeroHonorFormation = String(data?.drones?.activeFormation || "").toLowerCase() === "x";
+    const honor = zeroHonorFormation
+      ? 0
+      : Math.max(0, Math.ceil(baseHonor * factor(equipment.bonusHonorPct) * Math.max(0, Number(boosters.honor) || 1) * factor(pilot.honorPct) - Number.EPSILON));
     data.credits = Math.max(0, Math.floor(Number(data.credits) || 0)) + credits;
     data.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
     data.stats.exp = Math.max(0, Math.floor(Number(data.stats.exp) || 0)) + exp;
