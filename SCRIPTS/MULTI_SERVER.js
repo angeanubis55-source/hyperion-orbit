@@ -212,6 +212,22 @@ function handleAdminApi(request, response, pathname) {
           adminJson(response, 200, res);
           return;
         }
+        if (pathname === "/api/admin/give-exp") {
+          const res = adminGiveExperience(String(body?.pseudo || ""), body?.amount);
+          if (!res || res.ok !== true) {
+            adminJson(response, res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Montant invalide." });
+            return;
+          }
+          try {
+            const peer = findPeerByPseudo(res.pseudo);
+            if (peer) {
+              const txt = `L'admin t'a ${res.given > 0 ? "donné" : "retiré"} ${Math.abs(res.given).toLocaleString("fr-FR")} EXP. Nouveau total : ${res.after.toLocaleString("fr-FR")}.`;
+              sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
+            }
+          } catch {}
+          adminJson(response, 200, res);
+          return;
+        }
         if (pathname === "/api/admin/broadcast") {
           const text = String(body?.text || "").replace(/\s+/g, " ").trim().slice(0, 200);
           if (!text) { adminJson(response, 400, { ok: false, error: "Message vide." }); return; }
@@ -762,22 +778,6 @@ wss.on("connection", (ws) => {
           }
           // Le demandeur ne touche la recompense qu'apres cette confirmation.
           try { ws.send(JSON.stringify({ t: "box", op: "claim", uid, ok: accepted, box: !accepted && box ? { uid, type: box.type, x: box.x, y: box.y } : undefined })); } catch {}
-          return;
-        }
-        if (pathname === "/api/admin/give-exp") {
-          const res = adminGiveExperience(String(body?.pseudo || ""), body?.amount);
-          if (!res || res.ok !== true) {
-            adminJson(response, res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Montant invalide." });
-            return;
-          }
-          try {
-            const peer = findPeerByPseudo(res.pseudo);
-            if (peer) {
-              const txt = `L'admin t'a ${res.given > 0 ? "donne" : "retire"} ${Math.abs(res.given).toLocaleString("fr-FR")} EXP. Nouveau total : ${res.after.toLocaleString("fr-FR")}.`;
-              sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
-            }
-          } catch {}
-          adminJson(response, 200, res);
           return;
         }
       } catch {}
