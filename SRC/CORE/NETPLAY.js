@@ -25,6 +25,7 @@ export function suspendNetplay(v) {
     netDeaths.clear();
     netBoxes.clear();
     netBoxInbox.length = 0;
+    pendingNetBoxClaims.clear();
     netDmgInbox.length = 0;
     netShotInbox.length = 0;
     netPvpKillInbox.length = 0;
@@ -203,6 +204,9 @@ export function clearNetplayGameplay() {
 // Hote = plus petit id de la room (elus par le serveur) : seul lui spawne.
 const netBoxes = new Map(); // slotUid -> { type, x, y }
 const netBoxInbox = [];
+// Une collecte reste reservee localement jusqu'a la reponse autoritaire du
+// serveur. Cela empeche une liste retardee de faire reapparaitre la box.
+const pendingNetBoxClaims = new Set();
 let netBoxHostId = null;
 // Echo de soi pour le PvP (PV autoritaires serveur).
 let selfServ = null;
@@ -721,12 +725,19 @@ export function ensureNetplayConnection() {
       for (const b of msg.boxes.slice(0, 200)) {
         if (!b || typeof b.uid !== "string" || typeof b.type !== "string") continue;
         if (!Number.isFinite(Number(b.x)) || !Number.isFinite(Number(b.y))) continue;
-        netBoxes.set(b.uid.slice(0, 64), { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)) });
+        const uid = b.uid.slice(0, 64);
+        if (pendingNetBoxClaims.has(uid)) continue;
+        netBoxes.set(uid, { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)) });
       }
       return;
     }
     if (msg.t === "box" && msg.op) {
-      if (msg.op === "collect" && typeof msg.uid === "string") {
+      if (msg.op === "claim" && typeof msg.uid === "string") {
+        const uid = msg.uid.slice(0, 64);
+        pendingNetBoxClaims.delete(uid);
+        netBoxes.delete(uid);
+        netBoxInbox.push({ op: "claim", uid, ok: msg.ok === true });
+      } else if (msg.op === "collect" && typeof msg.uid === "string") {
         const uid = msg.uid.slice(0, 64);
         netBoxes.delete(uid);
         netBoxInbox.push({ op: "collect", uid });
@@ -741,6 +752,7 @@ export function ensureNetplayConnection() {
           if (!b || typeof b.uid !== "string" || typeof b.type !== "string") continue;
           if (!Number.isFinite(Number(b.x)) || !Number.isFinite(Number(b.y))) continue;
           const uid = b.uid.slice(0, 64);
+          if (pendingNetBoxClaims.has(uid)) continue;
           netBoxes.set(uid, { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)) });
         }
       } else if (msg.op === "unspawn" && Array.isArray(msg.uids)) {
@@ -1143,7 +1155,26 @@ export function sendShotEvent(ev) {
 export function clearNetBoxes() {
   netBoxes.clear();
   netBoxInbox.length = 0;
+  pendingNetBoxClaims.clear();
+  pendingNetBoxClaims.clear();
   netBoxHostId = null;
+}
+
+// Reserve immediatement la box cote client, puis demande au serveur qui a
+// gagne la course. La recompense ne doit etre versee qu'apres l'ack `claim`.
+export function claimNetBox(uidValue) {
+  if (suspended || instanceMode === true || !ws || ws.readyState !== 1) return false;
+  const uid = String(uidValue || "").slice(0, 64);
+  if (!uid || pendingNetBoxClaims.has(uid)) return false;
+  pendingNetBoxClaims.add(uid);
+  netBoxes.delete(uid);
+  try {
+    ws.send(JSON.stringify({ t: "box", op: "collect", uid }));
+    return true;
+  } catch {
+    pendingNetBoxClaims.delete(uid);
+    return false;
+  }
 }
 
 // Evenement box vers le serveur (collecte immediate / liste de l'hote).

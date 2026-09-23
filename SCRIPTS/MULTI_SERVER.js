@@ -417,6 +417,9 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 const rooms = new Map(); // mapId(lower) -> Map(id -> { ws, state })
 const npcSims = new Map(); // mapId(lower) -> ZoneNpcSim | null | Promise
 const boxRooms = new Map(); // mapId(lower) -> Map(uid -> { type, x, y, by })
+// Protege contre une liste d'hote partie avant la collecte mais recue apres.
+// Sans ce tombstone, une box supprimee peut etre recreee pendant un lag.
+const boxClaimTombstones = new Map(); // "map|uid" -> expiration ms
 const pvpFeeds = new Map(); // mapId(lower) -> Map("victime|attaquant" -> { uid, by, total })
 const pvpFarm = new Map(); // anti-farm : "tueur|victime" -> { n, t0 } (rendement decroissant 60 min)
 const chatHistory = []; // global : [{ from, text, at }] (40 derniers)
@@ -661,18 +664,28 @@ wss.on("connection", (ws) => {
         const set = boxSet(mapId);
         if (msg.op === "collect" && typeof msg.uid === "string") {
           const uid = msg.uid.slice(0, 64);
-          if (set.delete(uid)) {
+          const accepted = set.delete(uid);
+          if (accepted) {
+            boxClaimTombstones.set(`${mapId}|${uid}`, Date.now() + 10000);
             broadcastRoom(room, JSON.stringify({ t: "box", op: "collect", uid }), id);
           }
+          // Le demandeur ne touche la recompense qu'apres cette confirmation.
+          try { ws.send(JSON.stringify({ t: "box", op: "claim", uid, ok: accepted })); } catch {}
           return;
         }
         if (roomHostId(room) !== id) return;
         if (msg.op === "list" && Array.isArray(msg.boxes)) {
           const next = new Map();
+          const nowMs = Date.now();
           for (const b of msg.boxes.slice(0, 200)) {
             if (!b || typeof b.uid !== "string" || typeof b.type !== "string") continue;
             if (!Number.isFinite(Number(b.x)) || !Number.isFinite(Number(b.y))) continue;
-            next.set(b.uid.slice(0, 64), { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)), by: id });
+            const uid = b.uid.slice(0, 64);
+            const tombstoneKey = `${mapId}|${uid}`;
+            const tombstoneUntil = Number(boxClaimTombstones.get(tombstoneKey) || 0);
+            if (tombstoneUntil > nowMs) continue;
+            if (tombstoneUntil) boxClaimTombstones.delete(tombstoneKey);
+            next.set(uid, { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)), by: id });
           }
           boxRooms.set(mapId, next);
           broadcastRoom(room, JSON.stringify({

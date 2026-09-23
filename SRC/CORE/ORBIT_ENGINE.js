@@ -108,7 +108,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
+  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, claimNetBox, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -21089,7 +21089,6 @@ function takeCollectableInstance(c, opts = {}) {
   // Multi : box partagee — le serveur possede le slot, on lui signale la
   // collecte (premier arrive) sans toucher au store local.
   if (c._netBox) {
-    try { sendBoxEvent({ op: "collect", uid: String(c.slotUid) }); } catch {}
     return;
   }
   const mapId = String(c.map || currentMapId());
@@ -21103,7 +21102,7 @@ function takeCollectableInstance(c, opts = {}) {
     persistCollectables();
   } catch {}
   // Multi : l'hote signale aussitot ses collectes (les autres effacent).
-  if (!opts.fromNet && c.slotUid && netplayNpcActive()) {
+  if (!opts.fromNet && !c._netClaimRequested && c.slotUid && netplayNpcActive()) {
     try { if (netBoxHost()) sendBoxEvent({ op: "collect", uid: String(c.slotUid) }); } catch {}
   }
   // Multi : cargo du vaincu ramasse -> les autres effacent leur copie.
@@ -21310,6 +21309,18 @@ function updateCollectableCursor(sx, sy) {
 function applyCollectableReward(c) {
   const cfg = COLLECTABLE_DEFS[c.type];
   if (!cfg) return;
+  // En multi, une box ambiante disparait tout de suite visuellement, mais son
+  // contenu n'est verse qu'au client qui recoit l'accord unique du serveur.
+  if (c.slotUid && !c.dropUid && netplayNpcActive() && c._netClaimGranted !== true) {
+    const uid = String(c.slotUid);
+    let requested = false;
+    try { requested = claimNetBox(uid); } catch {}
+    if (requested) {
+      c._netClaimRequested = true;
+      pendingNetCollectableRewards.set(uid, { ...c, _netClaimRequested: false, _netClaimGranted: true });
+    }
+    return { pending: true };
+  }
   // Cargo du vaincu PvP : seul le tueur peut ramasser (les autres le voient).
   try {
     if (c.onlyBy && String(c.onlyBy) !== String(netMyId())) {
@@ -21602,6 +21613,7 @@ document.addEventListener("click", event => {
 // - autres : aucun spawn, instances miroirs + collectes immediates.
 // Les recompenses restent personnelles (premier arrive).
 let netBoxListT = 0;
+const pendingNetCollectableRewards = new Map();
 function syncNetBoxes(dt) {
   const curMap = currentMapId();
   try {
@@ -21625,6 +21637,7 @@ function syncNetBoxes(dt) {
     dbg.netCount = netc;
   } catch {}
   if (!netplayNpcActive()) {
+    pendingNetCollectableRewards.clear();
     let purged = false;
     for (let i = collectables.length - 1; i >= 0; i--) {
       if (collectables[i]?._netBox) { collectables.splice(i, 1); purged = true; }
@@ -21641,7 +21654,16 @@ function syncNetBoxes(dt) {
   let evs = [];
   try { evs = drainNetBoxInbox(); } catch {}
   for (const ev of evs) {
-    if (!ev || ev.op !== "collect" || !ev.uid) continue;
+    if (!ev || !ev.uid) continue;
+    if (ev.op === "claim") {
+      const pendingReward = pendingNetCollectableRewards.get(String(ev.uid));
+      pendingNetCollectableRewards.delete(String(ev.uid));
+      if (ev.ok === true && pendingReward) {
+        try { applyCollectableReward(pendingReward); } catch {}
+      }
+      continue;
+    }
+    if (ev.op !== "collect") continue;
     for (let i = collectables.length - 1; i >= 0; i--) {
       const c = collectables[i];
       if (c && String(c.slotUid) === String(ev.uid)) {
@@ -22998,15 +23020,28 @@ function killRewards(e) {
   const whiteTerms = [];
   const violetTerms = [];
   const npcName = String(NPC_TYPES[e.type]?.name || e.type || "NPC").replace(/^npc_/i, "");
-  addGameLog(`${npcName} détruit · +${formatInteger(credits)} crédits · +${xpText} · +${honorText}`, "reward");
+  const isSharedGroupKill = !!e._netUid && e._netLootOwner !== true;
+  const groupKiller = isSharedGroupKill
+    ? getNetGroup()?.members?.find(member => String(member.id) === String(e._netKillerId || ""))
+    : null;
+  const killerPseudo = String(e._netKillerPseudo || groupKiller?.pseudo || "Pilote");
+  const killLabel = isSharedGroupKill
+    ? `Le pilote ${killerPseudo} a tué ${npcName}`
+    : `${npcName} éliminé`;
+  addGameLog(`${killLabel} · +${formatInteger(credits)} crédits · +${xpText} · +${honorText}`, "reward");
   showNotificationGroup([
-    `${npcName} éliminé`,
+    killLabel,
     `Vous avez reçu ${formatInteger(credits)} crédits`,
     `Vous avez gagné ${xpText}`,
     `Vous avez gagné ${honorText}`,
   ], "info", { whiteTerms, violetTerms });
-  if (account.user?.stats) account.user.stats.lifetimeKills = Math.max(0, Number(account.user.stats.lifetimeKills || 0)) + 1;
-  if (account.user?.stats && e.type) {
+  // Le groupe partage les recompenses et les objectifs de quete, mais la
+  // fiche "NPC & Grades" reste personnelle : seul le tueur est credite.
+  const ownsNpcStatKill = !e._netUid || e._netLootOwner === true;
+  if (ownsNpcStatKill && account.user?.stats) {
+    account.user.stats.lifetimeKills = Math.max(0, Number(account.user.stats.lifetimeKills || 0)) + 1;
+  }
+  if (ownsNpcStatKill && account.user?.stats && e.type) {
     account.user.stats.npcKills ||= {};
     account.user.stats.npcKills[e.type] = Math.max(0, Number(account.user.stats.npcKills[e.type] || 0)) + 1;
   }
@@ -25367,6 +25402,8 @@ function syncNetNpcs(dt) {
           const ownsKill = killerId === String(netMyId());
           const groupMate = rules?.mode !== "gate" && getNetGroup()?.members?.some((m) => String(m.id) === killerId && String(m.map) === String(window.__CURRENT_MAP_ID__ || "") && m.instance !== true);
           c._netKiller = ownsKill || groupMate === true;
+          c._netKillerId = killerId;
+          c._netKillerPseudo = getNetGroup()?.members?.find((m) => String(m.id) === killerId)?.pseudo || "";
           c._netLootOwner = ownsKill;
           c._netWaiting = false;
           c.hp = 0;
@@ -25392,6 +25429,8 @@ function syncNetNpcs(dt) {
           const ownsKill = killerId === String(netMyId());
           const groupMate = rules?.mode !== "gate" && getNetGroup()?.members?.some((m) => String(m.id) === killerId && String(m.map) === String(window.__CURRENT_MAP_ID__ || "") && m.instance !== true);
           e._netKiller = ownsKill || groupMate === true;
+          e._netKillerId = killerId;
+          e._netKillerPseudo = getNetGroup()?.members?.find((m) => String(m.id) === killerId)?.pseudo || "";
           e._netLootOwner = ownsKill;
         }
         netBoomSelfDamage(e, s.cause, e.x, e.y);
@@ -25418,6 +25457,8 @@ function syncNetNpcs(dt) {
       // Reset l'etat de mort precedent.
       e._netSeq = Number(s.seq) || 0;
       e._netKiller = null;
+      e._netKillerId = null;
+      e._netKillerPseudo = "";
       e._netLootOwner = false;
       e._netWaiting = false;
       e._netSilent = false;

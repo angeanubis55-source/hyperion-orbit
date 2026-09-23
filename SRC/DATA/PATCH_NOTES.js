@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.290",
+    "date": "2026-09-23T02:13:52+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.289",
     "date": "2026-09-23T00:59:38+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.231",
     "date": "2026-09-20T00:52:16+02:00",
     "message": "sync version 0.230 + patch-notes (hook post-push)"
-  },
-  {
-    "version": "0.230",
-    "date": "2026-09-20T00:51:45+02:00",
-    "message": "pilotage: arbre des competences 25 talents, points via disques de log, reset payant, effets branches moteur"
   }
 ];
