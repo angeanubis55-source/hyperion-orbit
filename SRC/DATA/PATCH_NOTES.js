@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.295",
+    "date": "2026-09-23T20:36:25+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.294",
     "date": "2026-09-23T20:23:58+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.236",
     "date": "2026-09-20T21:15:04+02:00",
     "message": "multi: auth WS + recompenses PvP + classement + anticheat positions + panneau admin"
-  },
-  {
-    "version": "0.235",
-    "date": "2026-09-20T19:18:04+02:00",
-    "message": "multi: PvP autoritaire + chat global + comptes serveur + pseudos uniques (socle avant auth WS)"
   }
 ];

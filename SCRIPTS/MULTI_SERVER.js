@@ -17,6 +17,10 @@ const portArg = process.argv.find((arg) => arg.startsWith("--port="))?.slice(7);
 const PORT = Number(portArg || process.env.PORT || 8080) || 8080;
 const PUBLIC_DIRS = new Set(["ASSETS", "AUDIO", "COMBAT", "DRONE", "MAPS", "NPC", "PET", "PUBLIC", "QUEST", "SHIP", "SRC", "UI"]);
 const PUBLIC_FILES = new Set(["index.html", "admin.html", "style.css", "ASSETS_MANIFEST.json"]);
+// Les vaisseaux speciaux (notamment Police) depassent largement l'ancien
+// plafond de 50 M. Le pool combat serveur doit couvrir leurs vraies stats,
+// sinon le premier impact remplace leur bouclier par le pool tronque.
+const MAX_PLAYER_COMBAT_LAYER = 1_000_000_000;
 
 function publicRelativePath(pathname) {
   const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
@@ -1343,8 +1347,8 @@ wss.on("connection", (ws) => {
       //   apres reparation"). Montees suspectes (>50 % du max hors revive)
       //   loggees, sans kick (serveur prive : pas de faux positif).
       if (Number.isFinite(Number(msg.hpMax)) && Number(msg.hpMax) > 0) {
-        const hm = Math.min(50_000_000, Math.round(Number(msg.hpMax)));
-        const sm = Math.min(50_000_000, Math.round(Number(msg.shMax) || 0));
+        const hm = Math.min(MAX_PLAYER_COMBAT_LAYER, Math.round(Number(msg.hpMax)));
+        const sm = Math.min(MAX_PLAYER_COMBAT_LAYER, Math.round(Number(msg.shMax) || 0));
         const cHp = Math.max(0, Math.min(hm, hm * Math.max(0, Math.min(1, Number(msg.hpPct ?? 1)))));
         const cSh = Math.max(0, Math.min(sm, sm * Math.max(0, Math.min(1, Number(msg.shPct ?? 1)))));
         if (!state._init || hm !== state.hpMax || sm !== state.shMax) {
@@ -1576,6 +1580,7 @@ setInterval(() => {
         // que le PvP. Les soins du client (reparateur, regen) remontent ce
         // pool via les pos ; les degats serveur restent prioritaires.
         if (typeof sim.drainPlayerHits === "function") {
+          const npcHitVictims = new Set();
           for (const hit of sim.drainPlayerHits()) {
             const victim = room.get(String(hit?.playerId));
             const s = victim?.state;
@@ -1588,13 +1593,27 @@ setInterval(() => {
             const result = damagePlayerLayers(s, damage, 0.8, 0, 0);
             s.hp = Math.max(0, Number(s.hp) || 0);
             s.sh = Math.max(0, Number(s.sh) || 0);
+            if (!npcHitVictims.has(s)) {
+              npcHitVictims.add(s);
+              s.npcDamage = 0;
+              s.npcHpDamage = 0;
+              s.npcShDamage = 0;
+            }
             s.npcAt = hitNow;
             // Blackout remontées (comme en PvP) : le coup doit survivre
             // aux soins qui arrivent avant son adoption par la victime.
             s.dmgBlockUntil = hitNow + 500;
             s.npcFrom = String(hit?.npcUid || "").slice(0, 64);
-            s.npcDamage = Math.max(0, Math.round(Number(result?.total) || 0));
+            s.npcDamage += Math.max(0, Number(result?.total) || 0);
+            s.npcHpDamage += Math.max(0, Number(result?.hp) || 0);
+            s.npcShDamage += Math.max(0, Number(result?.sh) || 0);
             if (s.hp <= 0) s.pvpDead = true;
+          }
+          for (const s of npcHitVictims) {
+            s.npcSeq = Math.max(0, Math.floor(Number(s.npcSeq) || 0)) + 1;
+            s.npcDamage = Math.max(0, Math.round(Number(s.npcDamage) || 0));
+            s.npcHpDamage = Math.max(0, Math.round(Number(s.npcHpDamage) || 0));
+            s.npcShDamage = Math.max(0, Math.round(Number(s.npcShDamage) || 0));
           }
         }
         npc = sim.snapshot();
@@ -1628,7 +1647,8 @@ setInterval(() => {
       players.push({ id: s.id, pseudo: s.pseudo, shipId: s.shipId, x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, vmax: Math.max(50, Math.min(5000, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
         // PvP : PV autoritaires + date du dernier coup recu + attaquant (anneau Ship_damage).
         pvpAt: Number(s.pvpAt) || 0, pvpFrom: s.pvpFrom != null ? String(s.pvpFrom) : null, pvpHp: Math.max(0, Math.round(Number(s.hp) || 0)), pvpSh: Math.max(0, Math.round(Number(s.sh) || 0)),
-        npcAt: Number(s.npcAt) || 0, npcFrom: s.npcFrom != null ? String(s.npcFrom) : null, npcDamage: Math.max(0, Math.round(Number(s.npcDamage) || 0)),
+        npcAt: Number(s.npcAt) || 0, npcSeq: Math.max(0, Math.floor(Number(s.npcSeq) || 0)), npcFrom: s.npcFrom != null ? String(s.npcFrom) : null,
+        npcDamage: Math.max(0, Math.round(Number(s.npcDamage) || 0)), npcHpDamage: Math.max(0, Math.round(Number(s.npcHpDamage) || 0)), npcShDamage: Math.max(0, Math.round(Number(s.npcShDamage) || 0)),
         slowPct: Date.now() < Number(s.slowUntil || 0) ? Number(s.slowPct) || 0 : 0,
         slowT: Math.max(0, (Number(s.slowUntil) || 0) - Date.now()) / 1000,
         freezeT: Math.max(0, (Number(s.freezeUntil) || 0) - Date.now()) / 1000,

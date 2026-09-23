@@ -25232,6 +25232,7 @@ const netPlayerProxies = new Map(); // clientId -> entite cible
 const netPetProxies = new Map(); // clientId -> proxy du PET allie (lock + degats PvP)
 let lastPvpAdoptAt = 0;
 let lastNpcDamageAdoptAt = 0;
+let lastNpcDamageAdoptSeq = 0;
 let lastPetPvpAdoptAt = 0;
 function syncNetPlayers(dt = 0.016) {
   let remotes = null;
@@ -30306,13 +30307,26 @@ if (moveTarget.active && !player.dead) {
         try { die(); } catch {}
       }
     }
-    if (self && Number(self.npcAt) > 0 && Number(self.npcAt) !== lastNpcDamageAdoptAt) {
+    const npcDamageSeq = Math.max(0, Math.floor(Number(self?.npcSeq) || 0));
+    if (self && Number(self.npcAt) > 0 && (
+      (npcDamageSeq > 0 && npcDamageSeq !== lastNpcDamageAdoptSeq)
+      || (npcDamageSeq === 0 && Number(self.npcAt) !== lastNpcDamageAdoptAt)
+    )) {
       lastNpcDamageAdoptAt = Number(self.npcAt);
-      if (player.hpMax > 0 && Number.isFinite(Number(self.hp))) {
-        player.hp = Math.max(0, Math.min(player.hp, Math.min(player.hpMax, Number(self.hp))));
-      }
-      if (player.shMax > 0 && Number.isFinite(Number(self.sh))) {
-        player.sh = Math.max(0, Math.min(player.sh, Math.min(player.shMax, Number(self.sh))));
+      lastNpcDamageAdoptSeq = npcDamageSeq;
+      const npcHpDamage = Math.max(0, Number(self.npcHpDamage) || 0);
+      const npcShDamage = Math.max(0, Number(self.npcShDamage) || 0);
+      if (npcHpDamage > 0 || npcShDamage > 0) {
+        player.hp = Math.max(0, player.hp - npcHpDamage);
+        player.sh = Math.max(0, player.sh - npcShDamage);
+      } else {
+        // Compatibilite avec un serveur plus ancien, sans detail des couches.
+        if (player.hpMax > 0 && Number.isFinite(Number(self.hp))) {
+          player.hp = Math.max(0, Math.min(player.hp, Math.min(player.hpMax, Number(self.hp))));
+        }
+        if (player.shMax > 0 && Number.isFinite(Number(self.sh))) {
+          player.sh = Math.max(0, Math.min(player.sh, Math.min(player.shMax, Number(self.sh))));
+        }
       }
       player.attackedT = 5;
       try { resetRepairCooldown(); } catch {}
