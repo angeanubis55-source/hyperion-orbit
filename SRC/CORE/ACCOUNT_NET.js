@@ -264,6 +264,27 @@ function mergeProgressiveFields(prev, next) {
       if (Number(prev.pet.exp) > Number(next.pet.exp || 0)) next.pet.exp = Math.max(0, Number(prev.pet.exp));
       if (Number(prev.pet.level) > Number(next.pet.level || 0)) next.pet.level = Math.max(0, Math.floor(Number(prev.pet.level)));
     }
+    // Une recompense NPC est maintenant ecrite par le serveur avant que le
+    // kill local ait forcement pousse sa quete. Lors de l'adoption de cette
+    // revision, garde le maximum de chaque objectif et les missions terminees.
+    const pQuests = prev.quests, nQuests = next.quests;
+    if (pQuests && nQuests && typeof pQuests === "object" && typeof nQuests === "object") {
+      const completed = new Set([...(Array.isArray(nQuests.completed) ? nQuests.completed : []), ...(Array.isArray(pQuests.completed) ? pQuests.completed : [])].map(String));
+      nQuests.completed = [...completed];
+      nQuests.active ||= {};
+      for (const [questId, previousProgress] of Object.entries(pQuests.active || {})) {
+        if (completed.has(String(questId))) { delete nQuests.active[questId]; continue; }
+        if (!nQuests.active[questId] || typeof nQuests.active[questId] !== "object") {
+          nQuests.active[questId] = { ...(previousProgress || {}) };
+          continue;
+        }
+        for (const [objectiveId, count] of Object.entries(previousProgress || {})) {
+          if (Number(count) > Number(nQuests.active[questId][objectiveId] || 0)) {
+            nQuests.active[questId][objectiveId] = Math.max(0, Math.floor(Number(count) || 0));
+          }
+        }
+      }
+    }
   } catch {}
   return next;
 }

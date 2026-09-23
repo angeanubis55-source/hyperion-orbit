@@ -12905,6 +12905,22 @@ const account = {
 };
 let questState = normalizeQuestState(getCurrentUserFull()?.quests);
 
+function mergeQuestProgress(localState, persistedState) {
+  const local = normalizeQuestState(localState);
+  const persisted = normalizeQuestState(persistedState);
+  const completed = new Set([...persisted.completed, ...local.completed]);
+  const active = { ...persisted.active };
+  for (const [questId, localProgress] of Object.entries(local.active)) {
+    if (completed.has(questId)) { delete active[questId]; continue; }
+    const target = active[questId] || (active[questId] = {});
+    for (const [objectiveId, count] of Object.entries(localProgress || {})) {
+      target[objectiveId] = Math.max(Number(target[objectiveId]) || 0, Number(count) || 0);
+    }
+  }
+  for (const questId of completed) delete active[questId];
+  return normalizeQuestState({ active, completed: [...completed] });
+}
+
 function loadAccountUser() {
   const previousId = account.user?.id || null;
   account.user = getCurrentUserFull();
@@ -13863,7 +13879,10 @@ function syncPlayerFromAccount() {
   account.user = fresh;
   // Synchronise aussi le journal des missions lors d'un refresh ou d'une
   // reconnexion (le moteur peut avoir été créé avant le compte).
-  questState = normalizeQuestState(fresh.quests);
+  // Ne jamais faire redescendre un objectif vivant lorsqu'une recompense NPC
+  // vient de creer une revision serveur avant la sauvegarde differee du kill.
+  questState = mergeQuestProgress(questState, fresh.quests);
+  account.user.quests = normalizeQuestState(questState);
   if (!questState.active[selectedQuestId]) {
     selectedQuestId = Object.keys(questState.active)[0] || null;
   }

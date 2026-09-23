@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.294",
+    "date": "2026-09-23T20:23:58+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.293",
     "date": "2026-09-23T20:03:26+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.235",
     "date": "2026-09-20T19:18:04+02:00",
     "message": "multi: PvP autoritaire + chat global + comptes serveur + pseudos uniques (socle avant auth WS)"
-  },
-  {
-    "version": "0.234",
-    "date": "2026-09-20T02:12:36+02:00",
-    "message": "assemblage: refonte visuelle + 30 recettes + craft instantane; inventaire: stack modules/vaisseaux/designs + fix pager"
   }
 ];
