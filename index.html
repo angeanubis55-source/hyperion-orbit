@@ -790,13 +790,17 @@
 
     <div id="friendsWindow" class="panel friendsPanel">
       <div id="friendsStatus" class="friendsStatus">Chargement…</div>
-      <div id="friendsList" class="friendsRows"><div class="friendsEmpty">Chargement…</div></div>
+      <div class="friendsTabs" role="tablist">
+        <button class="active" type="button" data-friends-tab="friends">Amis</button>
+        <button type="button" data-friends-tab="requests">Demandes <span id="friendsRequestBadge" hidden>0</span></button>
+      </div>
+      <div class="friendsToolbar"><input id="friendsSearch" type="search" placeholder="Rechercher un ami…" autocomplete="off" hidden /></div>
+      <div id="friendsList" class="friendsRows friendsPane active" data-friends-pane="friends"><div class="friendsEmpty">Chargement…</div></div>
+      <div id="friendsRequests" class="friendsRows friendsRequests friendsPane" data-friends-pane="requests"><div class="friendsEmpty">Aucune demande.</div></div>
       <form id="friendAddForm" class="friendsForm" autocomplete="off">
-        <input id="friendAddInput" type="text" placeholder="Pseudo ami…" maxlength="20" autocomplete="off" />
+        <input id="friendAddInput" type="text" placeholder="Ajouter par pseudo…" maxlength="20" autocomplete="off" />
         <button id="friendAddBtn" type="submit">Ajouter</button>
       </form>
-      <div class="friendsSub">Demandes reçues</div>
-      <div id="friendsRequests" class="friendsRows friendsRequests"><div class="friendsEmpty">Aucune demande.</div></div>
     </div>
 
     <div id="centerMsg" class="panel">

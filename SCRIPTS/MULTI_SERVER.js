@@ -7,7 +7,7 @@ import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { handleAccountApi, verifyWsToken, recordPvpKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits } from "./ACCOUNT_SERVER.js";
-import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup } from "./SOCIAL_ROOM.js";
+import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 
@@ -532,19 +532,22 @@ function notifyFriendPresence(accountId, online) {
   try {
     const selfPid = `u_${String(accountId)}`;
     let selfPseudo = "Pilote";
-    try { selfPseudo = describePeer(selfPid)?.pseudo || selfPseudo; } catch {}
+    let presence = null;
+    try { presence = describePeer(selfPid); selfPseudo = presence?.pseudo || selfPseudo; } catch {}
     for (const followerId of friendFollowers(accountId)) {
       const fpid = `u_${String(followerId)}`;
       if (fpid === selfPid) continue;
-      sendToPeer(fpid, { t: "friendOnline", id: selfPid, pseudo: selfPseudo, online: online === true });
+      sendToPeer(fpid, { t: "friendOnline", id: selfPid, pseudo: selfPseudo, online: online === true, map: String(presence?.map || ""), shipId: String(presence?.shipId || ""), instance: presence?.instance === true, inGroup: !!socialGroupOf(selfPid) });
     }
   } catch {}
 }
 function sendFriendsSync(ws, accountId) {
   try {
-    const online = listFriends(accountId)
-      .filter((f) => describePeer(`u_${String(f.id)}`))
-      .map((f) => ({ id: `u_${String(f.id)}`, pseudo: f.pseudo }));
+    const online = listFriends(accountId).map((f) => {
+      const id = `u_${String(f.id)}`;
+      const d = describePeer(id);
+      return d ? { id, pseudo: f.pseudo, map: String(d.map || ""), shipId: String(d.shipId || ""), instance: d.instance === true, inGroup: !!socialGroupOf(id) } : null;
+    }).filter(Boolean);
     try { ws.send(JSON.stringify({ t: "friendsSync", online })); } catch {}
   } catch {}
 }
@@ -1060,7 +1063,10 @@ wss.on("connection", (ws) => {
         try {
           ws.send(JSON.stringify({ t: "groupUpdate", group: socialDescribeGroup(id, socialCtx()) }));
         } catch {}
-        if (authed && accountId) sendFriendsSync(ws, accountId);
+        if (authed && accountId) {
+          sendFriendsSync(ws, accountId);
+          try { notifyFriendPresence(accountId, true); } catch {}
+        }
         try { socialPeerChanged(id, socialCtx()); } catch {}
         return;
       }
@@ -1112,6 +1118,10 @@ wss.on("connection", (ws) => {
       try {
         ws.send(JSON.stringify({ t: "pong", t0: Math.max(0, Number(msg.t0) || 0), v: String(GAME_VERSION || "") }));
       } catch {}
+      if (authed && accountId && Date.now() - Number(state._friendsSyncAt || 0) >= 15_000) {
+        state._friendsSyncAt = Date.now();
+        sendFriendsSync(ws, accountId);
+      }
       return;
     }
     if (msg.t === "chat") {

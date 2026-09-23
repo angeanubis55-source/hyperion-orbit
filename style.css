@@ -2534,7 +2534,6 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .groupName{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; align-items:center; gap:5px; }
 .groupMap{ color:#ffd45f; font-size:11px; font-weight:900; margin-left:auto; text-shadow:0 0 7px rgba(255,190,40,.48); }
 .groupLeaderCrown{width:15px;height:15px;flex:0 0 auto;fill:#ffc83d;stroke:#fff0a1;stroke-width:1.5;stroke-linejoin:round;filter:drop-shadow(0 0 4px rgba(255,190,35,.55))}
-.groupAllyName{color:#ffe58a;text-shadow:0 0 6px rgba(255,220,100,.32)}
 .groupEmpty{ padding:12px; text-align:center; color:#5c8290; font-size:11px; font-weight:800; }
 .groupActions{ display:grid; gap:6px; padding:0 11px 8px; box-sizing:border-box; }
 .groupControlRow,.groupInviteRow{display:flex;align-items:center;gap:6px;width:100%}
@@ -2567,20 +2566,29 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .groupNpcName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f0c45e;font-size:10px;line-height:12px}
 .groupMemberActions{justify-content:flex-end}.groupInviteTimer{color:#ffcf58;font-style:normal;font-weight:900}
 /* Fenêtre Amis */
-.friendsPanel{ width:380px; min-width:280px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
-.friendsStatus{ padding:7px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#75e8ff; font-size:11px; font-weight:800; text-transform:uppercase; }
-.friendsRows{ height:260px; min-height:140px; overflow-y:auto; display:grid; align-content:start; gap:4px; padding:9px 11px; box-sizing:border-box; }
-.friendsRow{ display:flex; align-items:center; gap:8px; color:#bcdde5; font-size:12px; font-weight:600; }
-.friendsDot{ width:9px; height:9px; border-radius:50%; background:#5c8290; flex:none; }
-.friendsDot.on{ background:#5bff8f; box-shadow:0 0 6px rgba(91,255,143,.7); }
-.friendsName{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.friendsBtns{ margin-left:auto; display:flex; gap:4px; flex:none; }
-.friendsBtns button{ height:24px; padding:0 8px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:7px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 11px/1.2 ui-sans-serif,system-ui; white-space:nowrap; }
-.friendsBtns button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
-.friendsEmpty{ padding:20px; text-align:center; color:#5c8290; font-size:11px; font-weight:800; }
-.friendsSub{ padding:6px 11px 0; box-sizing:border-box; color:#5d96a5; font-size:11px; font-weight:800; text-transform:uppercase; border-top:1px solid rgba(124,240,255,.14); }
-.friendsRequests{ height:120px; min-height:80px; }
-.friendsForm{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; padding:8px 11px; box-sizing:border-box; border-top:1px solid rgba(124,240,255,.14); }
+.friendsPanel{width:440px;min-width:320px;max-width:calc(100vw - 20px);height:auto;max-height:calc(100vh - 20px);display:flex;flex-direction:column;overflow:hidden}
+.friendsStatus{padding:8px 12px;box-sizing:border-box;border-bottom:1px solid rgba(124,240,255,.16);color:#75e8ff;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.35px}
+.friendsTabs{display:grid;grid-template-columns:1fr 1fr;padding:7px 10px 0;gap:5px}
+.friendsTabs button{height:29px;border:0;border-bottom:2px solid transparent;color:#6f929e;background:transparent;cursor:pointer;font:800 11px/1 ui-sans-serif,system-ui;text-transform:uppercase}
+.friendsTabs button.active{color:#dffaff;border-bottom-color:#63ddf8;background:linear-gradient(180deg,transparent,rgba(70,210,245,.08))}
+.friendsTabs span{display:inline-grid;place-items:center;min-width:17px;height:17px;margin-left:4px;padding:0 4px;border-radius:9px;color:#241600;background:#ffcf58;font-size:10px}
+.friendsToolbar{padding:6px 11px 0}.friendsToolbar:has(input[hidden]){display:none}
+.friendsToolbar input{width:100%;height:28px;box-sizing:border-box;padding:0 9px;outline:0;border:1px solid rgba(124,240,255,.25);border-radius:7px;color:#effcff;background:#051521;font:600 11px/1 ui-sans-serif,system-ui}
+.friendsPane{display:none}.friendsPane.active{display:grid}
+.friendsRows{max-height:min(430px,calc(100vh - 210px));min-height:72px;overflow-y:auto;align-content:start;gap:6px;padding:9px 11px;box-sizing:border-box}
+.friendCard{display:grid;grid-template-columns:10px minmax(0,1fr) auto auto;align-items:center;gap:9px;padding:8px 9px;border:1px solid rgba(124,240,255,.13);border-radius:8px;background:linear-gradient(115deg,rgba(4,25,38,.92),rgba(4,15,25,.75));color:#bcdde5}
+.friendCard.online{border-color:rgba(92,255,145,.19)}.friendCard.offline{opacity:.72}
+.friendsDot{width:9px;height:9px;border-radius:50%;background:#536e78;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.friendsDot.on{background:#5bff8f;box-shadow:0 0 7px rgba(91,255,143,.7)}
+.friendIdentity{display:grid;min-width:0;gap:2px}.friendIdentity strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#dff7fb;font-size:12px}.friendIdentity small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#7395a1;font-size:10px;text-transform:capitalize}
+.friendState{padding:3px 6px;border-radius:8px;color:#6ee99a;background:rgba(50,180,100,.09);font-size:9px;font-weight:900;text-transform:uppercase;white-space:nowrap}.friendState.gate{color:#ffd364;background:rgba(220,160,40,.11)}.friendCard.offline .friendState{color:#708992;background:rgba(100,120,130,.08)}
+.friendsBtns{display:flex;gap:4px}.friendsBtns button{width:27px;height:25px;padding:4px;display:grid;place-items:center;border:1px solid rgba(124,240,255,.28);border-radius:7px;color:#dffaff;background:rgba(13,76,99,.32);cursor:pointer}
+.friendsBtns button:hover{border-color:rgba(124,240,255,.65);background:rgba(0,140,185,.3)}.friendsBtns button:disabled{opacity:.25;cursor:not-allowed}.friendsBtns button.danger:hover{color:#ff8998;border-color:#ff6578;background:rgba(160,25,45,.25)}.friendsBtns button.accept{color:#77f3a3}
+.friendsBtns svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.friendRequestIcon{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;color:#241600;background:#ffcf58;font:900 11px/1 ui-sans-serif,system-ui}.friendCard.request{grid-template-columns:18px minmax(0,1fr) auto}
+.friendsEmpty{padding:22px;text-align:center;color:#5c8290;font-size:11px;font-weight:800}
+.friendsForm{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:9px 11px;box-sizing:border-box;border-top:1px solid rgba(124,240,255,.14)}
+.friendsForm.muted{opacity:.55}
 .friendsForm input{ min-width:0; width:100%; height:30px; box-sizing:border-box; padding:0 9px; outline:0; border:1px solid rgba(124,240,255,.30); border-radius:7px; color:#effcff; background:#051521; font:600 12px/1 ui-sans-serif,system-ui; }
 .friendsForm input:focus{ border-color:#69e9ff; }
 .friendsForm button{ height:30px; padding:0 14px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 12px/1.2 ui-sans-serif,system-ui; }
