@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.292",
+    "date": "2026-09-23T13:59:43+02:00",
+    "message": "bigger fixes"
+  },
+  {
     "version": "0.291",
     "date": "2026-09-23T02:33:39+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.233",
     "date": "2026-09-20T00:58:38+02:00",
     "message": "sync version 0.232 + patch-notes (hook post-push)"
-  },
-  {
-    "version": "0.232",
-    "date": "2026-09-20T00:58:19+02:00",
-    "message": "slots: clic formation et lance-roquettes ne switch plus d'onglet palette"
   }
 ];

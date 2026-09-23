@@ -6,7 +6,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, verifyWsToken, recordPvpKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits } from "./ACCOUNT_SERVER.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
@@ -426,6 +426,8 @@ const chatHistory = []; // global : [{ from, text, at }] (40 derniers)
 const chatLastById = new Map(); // anti-spam : id -> timestamp dernier message
 const friendPingLast = new Map(); // anti-spam demandes d'ami : id -> timestamp
 const hitStats = { count: 0, byMap: new Map() }; // diagnostic multi
+const rewardedNpcDeaths = new Map(); // map:uid:seq -> timestamp (anti-double diffusion)
+const serverRunId = randomBytes(8).toString("hex");
 setInterval(() => {
   if (hitStats.count > 0) {
     const detail = [...hitStats.byMap.entries()].map(([m, n]) => `${m}:${n}`).join(" ");
@@ -629,6 +631,58 @@ function removeFromAllRooms(id) {
     room.delete(id);
   }
   instancePeers.delete(String(id));
+}
+
+function npcRewardShares(killerId, mapId, death) {
+  let eligible = [String(killerId)];
+  try {
+    const group = socialDescribeGroup(killerId, { describe: (pid) => describePeer(pid) });
+    const grouped = (group?.members || [])
+      .filter((m) => m?.online !== false && m?.instance !== true && String(m.map).toLowerCase() === String(mapId).toLowerCase())
+      .map((m) => String(m.id))
+      .filter((pid) => pid.startsWith("u_"))
+      .sort();
+    if (grouped.includes(String(killerId))) eligible = grouped;
+  } catch {}
+  const base = Math.floor(100 / eligible.length);
+  const remainder = 100 - base * eligible.length;
+  let seed = 2166136261;
+  const hashKey = `${death.uid}:${death.seq || 0}`;
+  for (let i = 0; i < hashKey.length; i++) {
+    seed ^= hashKey.charCodeAt(i);
+    seed = Math.imul(seed, 16777619);
+  }
+  const start = (seed >>> 0) % eligible.length;
+  return eligible.map((pid, index) => ({
+    pid,
+    percent: base + (((index - start + eligible.length) % eligible.length) < remainder ? 1 : 0),
+  }));
+}
+
+function awardNpcDeaths(mapId, deaths) {
+  const now = Date.now();
+  for (const [key, at] of rewardedNpcDeaths) if (now - at > 10 * 60_000) rewardedNpcDeaths.delete(key);
+  for (const death of Array.isArray(deaths) ? deaths : []) {
+    const killerId = String(death?.killer || "");
+    if (!killerId.startsWith("u_") || death?.cause !== "gun") continue;
+    const deathKey = `${String(mapId).toLowerCase()}:${String(death.uid)}:${Number(death.seq) || 0}`;
+    if (rewardedNpcDeaths.has(deathKey)) continue;
+    let complete = true;
+    for (const share of npcRewardShares(killerId, mapId, death)) {
+      const accountId = share.pid.slice(2);
+      const txKey = `npc:${serverRunId}:${deathKey}:${accountId}`;
+      const reward = awardNpcKill(accountId, death.type, mapId, share.percent, share.pid === killerId, txKey);
+      if (!reward) { complete = false; continue; }
+      if (reward.duplicate) continue;
+      sendToPeer(share.pid, {
+        t: "npcReward", map: String(mapId), uid: String(death.uid), seq: Number(death.seq) || 0,
+        killer: killerId, percent: share.percent, ...reward,
+      });
+    }
+    // Une erreur SQLite transitoire sera retentee au tick suivant. Les parts
+    // deja commitees sont protegees par npc_reward_tx et ne doublent jamais.
+    if (complete) rewardedNpcDeaths.set(deathKey, now);
+  }
 }
 
 server.on("upgrade", (request, socket, head) => {
@@ -1544,6 +1598,10 @@ setInterval(() => {
           }
         }
         npc = sim.snapshot();
+        // Le message de recompense est envoye avant le snapshot de mort sur
+        // le meme WebSocket : le client possede donc les montants autoritaires
+        // lorsque processDeaths affiche et applique le gain.
+        awardNpcDeaths(key, npc.deaths);
       } else if (sim === undefined) {
         ensureNpcSim(key);
       }

@@ -108,7 +108,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
+  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -22976,15 +22976,48 @@ function drawRemoteCollectBeams(c, ox, oy) {
 function killRewards(e) {
   player.kills++;
   // Cupidité (arbre pilote) : +X % crédits par alien.
-  const rewardPct = groupNpcRewardPercent(e);
-  const credits = Math.max(0, Math.floor(Number(e.value || 0) * rewardPct / 100 * playerPilotMults().credit));
-  player.credits += credits;
-  const experience = Math.max(0, Math.floor(getNpcExperienceReward(e, NPC_TYPES[e.type]) * rewardPct / 100));
-  const honor = Math.max(0, Math.floor(getNpcHonorReward(e, { ...NPC_TYPES[e.type], type: e.type }) * rewardPct / 100));
-  const xpResult = awardExperience(experience, "npc");
-  const honorResult = awardHonor(honor);
-  const gainedXp = xpResult?.gained ?? experience;
-  const gainedHonor = honorResult?.gained ?? honor;
+  const serverReward = e._netUid ? e._netReward : null;
+  const rewardPct = serverReward ? Number(serverReward.percent) || 100 : groupNpcRewardPercent(e);
+  let credits, experience, honor, gainedXp, gainedHonor;
+  if (serverReward) {
+    credits = Math.max(0, Math.floor(Number(serverReward.credits) || 0));
+    experience = Math.max(0, Math.floor(Number(serverReward.baseExp) || 0));
+    honor = Math.max(0, Math.floor(Number(serverReward.baseHonor) || 0));
+    gainedXp = Math.max(0, Math.floor(Number(serverReward.exp) || 0));
+    gainedHonor = Math.max(0, Math.floor(Number(serverReward.honor) || 0));
+    player.credits += credits;
+    if (!account.user) loadAccountUser();
+    if (account.user) {
+      account.user.credits = Math.max(0, Math.floor(Number(account.user.credits) || 0)) + credits;
+      account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
+      account.user.stats.exp = Math.max(0, Math.floor(Number(account.user.stats.exp) || 0)) + gainedXp;
+      account.user.stats.honor = Math.max(0, Math.floor(Number(account.user.stats.honor) || 0)) + gainedHonor;
+      if (serverReward.ownsKill === true) {
+        account.user.stats.lifetimeKills = Math.max(0, Math.floor(Number(account.user.stats.lifetimeKills) || 0)) + 1;
+        account.user.stats.npcKills ||= {};
+        account.user.stats.npcKills[e.type] = Math.max(0, Math.floor(Number(account.user.stats.npcKills[e.type]) || 0)) + 1;
+      }
+      account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
+      for (const drone of account.user.drones?.items || []) {
+        drone.exp = Math.max(0, Number(drone.exp) || 0) + gainedXp * DRONE_XP_SHARE;
+        drone.level = getDroneLevel(drone.exp);
+      }
+      if (account.user.pet?.owned === true && account.user.pet.active === true) {
+        account.user.pet.exp = Math.max(0, Number(account.user.pet.exp) || 0) + Math.max(0, Number(serverReward.petExp) || 0);
+        account.user.pet.level = getPetLevel(account.user.pet.exp);
+      }
+      account.user.revision = Math.max(Math.floor(Number(account.user.revision) || 0), Math.floor(Number(serverReward.revision) || 0));
+    }
+  } else {
+    credits = Math.max(0, Math.floor(Number(e.value || 0) * rewardPct / 100 * playerPilotMults().credit));
+    player.credits += credits;
+    experience = Math.max(0, Math.floor(getNpcExperienceReward(e, NPC_TYPES[e.type]) * rewardPct / 100));
+    honor = Math.max(0, Math.floor(getNpcHonorReward(e, { ...NPC_TYPES[e.type], type: e.type }) * rewardPct / 100));
+    const xpResult = awardExperience(experience, "npc");
+    const honorResult = awardHonor(honor);
+    gainedXp = xpResult?.gained ?? experience;
+    gainedHonor = honorResult?.gained ?? honor;
+  }
   const formation = getActiveDroneFormation(account.user) || {};
   const formationName = String(formation?.name || "").replace(/^Formation\s+/i, "");
   const xpFormationPct = Number(formation?.effects?.npcXpPct || 0);
@@ -23019,11 +23052,11 @@ function killRewards(e) {
   ], "info", { whiteTerms, violetTerms });
   // Le groupe partage les recompenses et les objectifs de quete, mais la
   // fiche "NPC & Grades" reste personnelle : seul le tueur est credite.
-  const ownsNpcStatKill = !e._netUid || e._netLootOwner === true;
-  if (ownsNpcStatKill && account.user?.stats) {
+  const ownsNpcStatKill = !e._netUid || (serverReward ? serverReward.ownsKill === true : e._netLootOwner === true);
+  if (!serverReward && ownsNpcStatKill && account.user?.stats) {
     account.user.stats.lifetimeKills = Math.max(0, Number(account.user.stats.lifetimeKills || 0)) + 1;
   }
-  if (ownsNpcStatKill && account.user?.stats && e.type) {
+  if (!serverReward && ownsNpcStatKill && account.user?.stats && e.type) {
     account.user.stats.npcKills ||= {};
     account.user.stats.npcKills[e.type] = Math.max(0, Number(account.user.stats.npcKills[e.type] || 0)) + 1;
   }
@@ -23124,6 +23157,10 @@ function processDeathsMeasured() {
       if (e.hp > 0) continue;
       if (e._netKiller == null) { e.hp = 1; e._netWaiting = true; continue; }
       if (e._netKiller === false) e._netSilent = true;
+      if (e._netKiller === true && !e._netReward) {
+        e._netReward = takeNetNpcReward(window.__CURRENT_MAP_ID__, e._netUid, e._netSeq);
+        if (!e._netReward) { e.hp = 0; continue; }
+      }
     } else if (e.hp > 0) continue;
 
     // Multi : kill partage — libere le lock (pas de report sur le respawn,
@@ -25586,10 +25623,10 @@ function syncNetNpcs(dt) {
   } catch {}
   try {
     const t = Target.get();
-    if (t && t._netUid && !seen.has(t._netUid)) Target.clear();
-    else if (t && !t._netUid && t.universeUid && netplayNpcActive()) Target.clear();
+    if (t && !t._netUid && t.universeUid && netplayNpcActive()) Target.clear();
     // Lock fantome : la cible reseau a ete retiree (mort) meme si un
-    // homonyme (respawn, meme uid) est present.
+    // homonyme (respawn, meme uid) est present. Une simple absence dans un
+    // snapshot ne suffit plus : l'entite beneficie du delai reseau ci-dessus.
     else if (t && t._netUid && !enemies.includes(t)) Target.clear();
   } catch {}
 }

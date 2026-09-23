@@ -8,6 +8,14 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypt
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { computeHangarStats } from "../SHIP/SHIP_HANGARS.js";
+import { activeBoosterMults } from "../SRC/DATA/BOOSTERS.js";
+import { pilotSkillMults } from "../SRC/DATA/PILOT_SKILLS.js";
+import { calculateRankPoints } from "../SRC/CORE/PROGRESSION.js";
+import { getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
+import { DRONE_XP_SHARE, getDroneLevel } from "../DRONE/DRONE_TYPES.js";
+import { PET_XP_SHARE, getPetLevel } from "../PET/PET_TYPES.js";
+import { NPC_REWARDS } from "../NPC/NPC_BALANCE.js";
 
 const DB_DIR = resolve(process.cwd(), "SERVER_DATA");
 const DB_PATH = join(DB_DIR, "orbit.db");
@@ -113,6 +121,12 @@ export function initAccountDb() {
       honneur INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS npc_reward_tx (
+      tx_key TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_npc_reward_tx_created ON npc_reward_tx(created_at);
     CREATE TABLE IF NOT EXISTS friends (
       user_id TEXT NOT NULL,
       friend_id TEXT NOT NULL,
@@ -130,6 +144,7 @@ export function initAccountDb() {
   // Menage des sessions expirees (toutes les heures).
   const purge = () => {
     try { db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(Date.now()); } catch {}
+    try { db.prepare("DELETE FROM npc_reward_tx WHERE created_at < ?").run(Date.now() - 7 * 24 * 3600_000); } catch {}
   };
   purge();
   setInterval(purge, 3600_000).unref?.();
@@ -157,6 +172,84 @@ function bearerToken(req) {
   const h = req.headers?.authorization || "";
   const m = /^Bearer\s+(.+)$/i.exec(String(h).trim());
   return m ? m[1].slice(0, 128) : "";
+}
+
+// Kill NPC de zone : transaction persistante et idempotente. Le serveur lit
+// lui-meme l'equipement, les boosters et l'arbre pilote du compte ; aucun
+// montant annonce par le navigateur n'est accepte.
+export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill, txKey) {
+  initAccountDb();
+  const uid = String(accountId || "");
+  const type = String(npcType || "");
+  const key = String(txKey || "").slice(0, 240);
+  const reward = NPC_REWARDS[type];
+  if (!uid || !key || !reward) return null;
+  const pct = Math.max(0, Math.min(100, Math.floor(Number(rewardPercent) || 0)));
+  if (pct <= 0) return null;
+  let inTx = false;
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    inTx = true;
+    const inserted = db.prepare("INSERT OR IGNORE INTO npc_reward_tx (tx_key, user_id, created_at) VALUES (?, ?, ?)")
+      .run(key, uid, Date.now());
+    if (!(Number(inserted?.changes) > 0)) {
+      db.exec("ROLLBACK");
+      return { duplicate: true };
+    }
+    const row = db.prepare("SELECT * FROM users WHERE id = ?").get(uid);
+    if (!row) throw new Error("Compte introuvable");
+    let data = {};
+    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    const hangars = Array.isArray(data.hangars) ? data.hangars : [];
+    const hangar = hangars.find((h) => h?.active) || hangars[0] || null;
+    let equipment = { bonusExpPct: 0, bonusHonorPct: 0 };
+    try { if (hangar) equipment = computeHangarStats(hangar, data, { mapId }) || equipment; } catch {}
+    let boosters = { exp: 1, honor: 1, petXp: 1 };
+    try { boosters = activeBoosterMults(data.boosters, Date.now()); } catch {}
+    let pilot = {};
+    try { pilot = pilotSkillMults(data.pilotSkills) || {}; } catch {}
+    const factor = (v) => 1 + Math.max(0, Number(v) || 0) / 100;
+    const baseCredits = Math.max(0, Math.floor(Number(reward.credits) * pct / 100));
+    const baseExp = Math.max(0, Math.floor(Number(reward.exp) * pct / 100));
+    const baseHonor = Math.max(0, Math.floor(Number(reward.honor) * pct / 100));
+    const rawShipId = String(hangar?.shipId || data.ship || "");
+    const shipXp = String(getShipDesignBaseId(rawShipId) || rawShipId).toLowerCase() === "goliath_x" ? 1.02 : 1;
+    const credits = Math.max(0, Math.floor(baseCredits * factor(pilot.creditPct)));
+    const exp = Math.max(0, Math.ceil(baseExp * factor(equipment.bonusExpPct) * Math.max(0, Number(boosters.exp) || 1) * factor(pilot.expPct) * shipXp - Number.EPSILON));
+    const honor = Math.max(0, Math.ceil(baseHonor * factor(equipment.bonusHonorPct) * Math.max(0, Number(boosters.honor) || 1) * factor(pilot.honorPct) - Number.EPSILON));
+    data.credits = Math.max(0, Math.floor(Number(data.credits) || 0)) + credits;
+    data.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
+    data.stats.exp = Math.max(0, Math.floor(Number(data.stats.exp) || 0)) + exp;
+    data.stats.honor = Math.max(0, Math.floor(Number(data.stats.honor) || 0)) + honor;
+    if (ownsKill === true) {
+      data.stats.lifetimeKills = Math.max(0, Math.floor(Number(data.stats.lifetimeKills) || 0)) + 1;
+      data.stats.npcKills ||= {};
+      data.stats.npcKills[type] = Math.max(0, Math.floor(Number(data.stats.npcKills[type]) || 0)) + 1;
+    }
+    data.stats.rankPoints = calculateRankPoints(data.stats);
+    for (const drone of data.drones?.items || []) {
+      drone.exp = Math.max(0, Number(drone.exp) || 0) + exp * DRONE_XP_SHARE;
+      drone.level = getDroneLevel(drone.exp);
+    }
+    let petExp = 0;
+    if (data.pet?.owned === true && data.pet.active === true) {
+      petExp = exp * PET_XP_SHARE * Math.max(0, Number(boosters.petXp) || 1);
+      data.pet.exp = Math.max(0, Number(data.pet.exp) || 0) + petExp;
+      data.pet.level = getPetLevel(data.pet.exp);
+    }
+    const now = Date.now();
+    const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data.revision = revision;
+    data.updatedAt = now;
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(data), revision, now, uid);
+    db.exec("COMMIT");
+    inTx = false;
+    return { credits, exp, honor, baseExp, baseHonor, petExp, revision, ownsKill: ownsKill === true, type, txKey: key };
+  } catch {
+    if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
+    return null;
+  }
 }
 
 function sessionKey(token) {

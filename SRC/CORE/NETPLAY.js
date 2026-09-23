@@ -29,6 +29,7 @@ export function suspendNetplay(v) {
     netDmgInbox.length = 0;
     netShotInbox.length = 0;
     netPvpKillInbox.length = 0;
+    netNpcRewardInbox.clear();
     netPvpPetKillInbox.length = 0;
     netPvpLootInbox.length = 0;
     netPvpLootTakeInbox.length = 0;
@@ -137,6 +138,7 @@ function clearInstanceGameplay() {
   netShotInbox.length = 0;
   netSkillInbox.length = 0;
   netPvpKillInbox.length = 0;
+  netNpcRewardInbox.clear();
   netPvpPetKillInbox.length = 0;
   netPvpLootInbox.length = 0;
   netPvpLootTakeInbox.length = 0;
@@ -268,6 +270,13 @@ export function sendPvpLootTake(ev) {
 }
 // Recompenses PvP du serveur : { exp, honneur, mult, victim } a appliquer.
 const netPvpKillInbox = [];
+const netNpcRewardInbox = new Map();
+export function takeNetNpcReward(mapId, uid, seq) {
+  const key = `${String(mapId || "").toLowerCase()}:${String(uid || "")}:${Number(seq) || 0}`;
+  const reward = netNpcRewardInbox.get(key) || null;
+  if (reward) netNpcRewardInbox.delete(key);
+  return reward;
+}
 // PET detruit : { victim, pet } pour le toast du tueur.
 const netPvpPetKillInbox = [];
 export function drainNetPvpPetKillInbox() {
@@ -701,6 +710,22 @@ export function ensureNetplayConnection() {
       netShotInbox.push(msg);
       return;
     }
+    if (msg.t === "npcReward") {
+      const key = `${String(msg.map || "").toLowerCase()}:${String(msg.uid || "")}:${Number(msg.seq) || 0}`;
+      netNpcRewardInbox.set(key, {
+        credits: Math.max(0, Math.floor(Number(msg.credits) || 0)),
+        exp: Math.max(0, Math.floor(Number(msg.exp) || 0)),
+        honor: Math.max(0, Math.floor(Number(msg.honor) || 0)),
+        baseExp: Math.max(0, Math.floor(Number(msg.baseExp) || 0)),
+        baseHonor: Math.max(0, Math.floor(Number(msg.baseHonor) || 0)),
+        petExp: Math.max(0, Number(msg.petExp) || 0),
+        revision: Math.max(0, Math.floor(Number(msg.revision) || 0)),
+        ownsKill: msg.ownsKill === true,
+        percent: Math.max(0, Math.min(100, Math.floor(Number(msg.percent) || 0))),
+      });
+      if (netNpcRewardInbox.size > 64) netNpcRewardInbox.delete(netNpcRewardInbox.keys().next().value);
+      return;
+    }
     if (msg.t === "skillFx" && (msg.skill === "iem" || msg.skill === "ish")) {
       if (netSkillInbox.length > 24) netSkillInbox.shift();
       netSkillInbox.push({
@@ -894,7 +919,9 @@ export function ensureNetplayConnection() {
       for (const id of [...remotes.keys()]) {
         if (!seen.has(id)) {
           const r = remotes.get(id);
-          if (r && now - Number(r.lastSeen || 0) > 3000) remotes.delete(id);
+          // Un trou reseau ne doit pas faire disparaitre le joueur ni casser
+          // le lock. Le serveur expire lui-meme les pairs silencieux a 10 s.
+          if (r && now - Number(r.lastSeen || 0) > 8000) remotes.delete(id);
         }
       }
       // NPC partages (serveur autoritaire). Les morts restent avec leur
@@ -953,8 +980,10 @@ export function ensureNetplayConnection() {
             ry: motionPrev ? Number(prev.ry ?? prev.y ?? n.y) : y,
           });
         }
-        for (const uid of [...netNpcs.keys()]) {
-          if (!seenNpc.has(uid)) netNpcs.delete(uid);
+        for (const [uid, npc] of [...netNpcs.entries()]) {
+          // Une seule liste incomplete ou retardee ne doit jamais delocker un
+          // NPC encore vivant. Les morts sont, elles, envoyees explicitement.
+          if (!seenNpc.has(uid) && now - Number(npc?.lastSeen || 0) > 8000) netNpcs.delete(uid);
         }
         if (Array.isArray(msg.npc.deaths)) {
           for (const d of msg.npc.deaths) {
@@ -1179,11 +1208,12 @@ export function netMyPseudo() {
   return myPseudo;
 }
 
-// NPC serveur sains : connecte + snapshot recent (< 3 s).
+// NPC serveur sains : snapshot recent. Une tolerance de 8 s absorbe les
+// micro-coupures sans purger les entites ni casser les locks en combat.
 export function netNpcFresh() {
-  if (!connected) return false;
+  if (suspended || instanceMode === true || !lastNpcSnapMs) return false;
   try {
-    return performance.now() - lastNpcSnapMs < 3000;
+    return performance.now() - lastNpcSnapMs < 8000;
   } catch { return false; }
 }
 

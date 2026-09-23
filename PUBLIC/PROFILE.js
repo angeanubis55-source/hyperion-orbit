@@ -4253,8 +4253,6 @@ function renderInventoryPalette() {
   }
 
   const filter = String(sel?.value || "all");
-  grid.innerHTML = "";
-
   fitState.used = computeUsage(fitState.draft);
 
   if (sellBtn) {
@@ -4319,6 +4317,29 @@ function renderInventoryPalette() {
       (a.it?.name || a.itemId).localeCompare(b.it?.name || b.itemId)
   );
 
+  // Les quantites/types ne changent pas pendant un simple placement dans le
+  // brouillon. Reutilise alors les cases, images et listeners existants : on
+  // ne met a jour que disponibilite + selection. Une case par exemplaire est
+  // conservee, sans reconstruire tout l'inventaire a chaque clic/drop.
+  const paletteSignature = `${fitState.section}|${filter}|${filtered.map((e) => `${e.itemId}:${e.cnt}`).join("|")}`;
+  if (grid.dataset.paletteSignature === paletteSignature && grid.querySelector(".invCell")) {
+    for (const cell of grid.querySelectorAll(".invCell")) {
+      const itemId = String(cell.dataset.itemId || "");
+      const copyIndex = Math.max(0, Math.floor(Number(cell.dataset.copyIndex) || 0));
+      const owned = Math.max(0, Number(counts[itemId]) || 0);
+      const used = Math.max(0, Number(fitState.used?.[itemId]) || 0);
+      const available = copyIndex < Math.max(0, owned - used);
+      cell.classList.toggle("selected", fitState.selectedCopies.has(cell.dataset.copyKey));
+      cell.classList.toggle("disabled", !available);
+      cell.draggable = available;
+      cell.setAttribute("aria-disabled", String(!available));
+    }
+    return;
+  }
+
+  grid.innerHTML = "";
+  grid.dataset.paletteSignature = paletteSignature;
+
   for (const e of filtered) {
     const used = Number(fitState.used?.[e.itemId] || 0);
     const left = Math.max(0, e.cnt - used);
@@ -4330,6 +4351,7 @@ function renderInventoryPalette() {
       const cell = document.createElement("div");
       cell.dataset.copyKey = copyKey;
       cell.dataset.itemId = e.itemId;
+      cell.dataset.copyIndex = String(i);
       cell.className =
         "invCell" +
         (fitState.selectedCopies.has(copyKey) ? " selected" : "") +
@@ -4356,7 +4378,7 @@ function renderInventoryPalette() {
       cell.title = `${e.it?.name || e.itemId} · ${rarity.name} (${i + 1}/${e.cnt})${isPetOnlyItem(e.it) ? " · P.E.T uniquement" : ""}`;
 
       cell.addEventListener("click", (event) => {
-        if (!isAvailableCopy) {
+        if (cell.classList.contains("disabled")) {
           showFitError("Plus de stock disponible (dés-équipe d'abord)");
           return;
         }
@@ -4395,14 +4417,14 @@ function renderInventoryPalette() {
 
       cell.addEventListener("dblclick", (event) => {
         event.preventDefault();
-        if (!isAvailableCopy) return;
+        if (cell.classList.contains("disabled")) return;
         if (!fitState.selectedCopies.has(copyKey)) fitState.selectedCopies.set(copyKey, e.itemId);
         equipSelectedInventoryItems();
       });
 
       cell.draggable = isAvailableCopy;
       cell.addEventListener("dragstart", (ev) => {
-        if (!isAvailableCopy) return ev.preventDefault();
+        if (cell.classList.contains("disabled")) return ev.preventDefault();
         if (!fitState.selectedCopies.has(copyKey)) {
           clearFitSelection();
           fitState.selectedCopies.set(copyKey, e.itemId);
