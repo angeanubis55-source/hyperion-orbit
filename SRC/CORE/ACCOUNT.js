@@ -62,7 +62,7 @@ import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 const USERS_KEY = "orbit_users";
 const CUR_KEY = "orbit_current_user";
 const STORAGE_SCHEMA_VERSION = 4;
-const STARTER_CREDITS = 1000000;
+const STARTER_CREDITS = 55000000;
 const NPC_KILL_BREAKDOWN_VERSION = 1;
 const QUEST_HONOR_VERSION = 1;
 const GALAXY_GATE_DATA_RESET_VERSION = 1;

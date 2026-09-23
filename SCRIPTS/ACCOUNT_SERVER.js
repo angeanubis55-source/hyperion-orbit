@@ -24,6 +24,7 @@ const FACTIONS = new Set(["mmo", "eic", "vru"]);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 const TOKEN_TTL_MS = 30 * 24 * 3600 * 1000;
 const BODY_LIMIT = 6_000_000;
+const STARTER_CREDITS = 55_000_000;
 
 // Anti-bourrinage register/login : 20/min/IP.
 const rateLimits = new Map();
@@ -546,6 +547,12 @@ function handleRegister(body, res) {
     }
     try { data = JSON.parse(JSON.stringify(migrate)); } catch { data = {}; }
     revision = Math.max(1, Math.floor(Number(data.revision) || 1));
+  }
+  // Dotation uniquement pour une creation neuve. Une migration conserve
+  // strictement le solde et le marqueur du compte local importe.
+  if (!(migrate && typeof migrate === "object" && !Array.isArray(migrate))) {
+    data.credits = STARTER_CREDITS;
+    data._starterCreditsGiven = true;
   }
   data.id = id;
   data.pseudo = pseudo;
