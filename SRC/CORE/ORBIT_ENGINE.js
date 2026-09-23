@@ -26865,12 +26865,13 @@ function drawPlayerBody() {
     drawShipEffectOverlay();
   }
 
-  drawZbliMusicNotes(pack?.id, account.user?.id || "self");
+  drawCustomDesignParticles(pack?.id, account.user?.id || "self");
 
   return true;
 }
 
-// Pusat Plus ZBLI : pluie permanente de notes SVG multicolores. L'animation
+// Pusat Plus ZBLI : notes SVG multicolores. Goliath Plus STIFLER : petits
+// coeurs SVG roses/violets. L'animation permanente
 // est calculée uniquement à partir du temps et d'une graine stable : elle est
 // donc visible sur notre vaisseau comme sur les joueurs distants sans ajouter
 // le moindre message réseau.
@@ -26888,17 +26889,30 @@ const zbliNoteImgs = ZBLI_NOTE_COLORS.map((color, index) => {
   return img;
 });
 
-function zbliSeed(value) {
+const STIFLER_HEART_COLORS = Object.freeze(["#ff4fa3", "#ff79c6", "#d85cff", "#9e55ff"]);
+const stiflerHeartImgs = STIFLER_HEART_COLORS.map((color) => {
+  const img = new Image();
+  const shape = `<path fill="${color}" d="M19 33C15.5 29.8 5 22.1 5 13.3 5 7.7 9.1 4 14 4c2.8 0 4.6 1.4 5 3.2C19.4 5.4 21.2 4 24 4c4.9 0 9 3.7 9 9.3 0 8.8-10.5 16.5-14 19.7z"/>`;
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 38">${shape}</svg>`)}`;
+  return img;
+});
+
+function designParticleSeed(value) {
   const text = String(value || "zbli");
   let hash = 2166136261;
   for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
   return (hash >>> 0) / 4294967296;
 }
 
-function drawZbliMusicNotes(shipId, ownerId = "self") {
-  if (String(shipId || "").toLowerCase() !== "pusat_plus_zbli") return;
+function drawCustomDesignParticles(shipId, ownerId = "self") {
+  const designId = String(shipId || "").toLowerCase();
+  const notes = designId === "pusat_plus_zbli";
+  const hearts = designId === "goliath_plus_stifler";
+  if (!notes && !hearts) return;
+  const colors = hearts ? STIFLER_HEART_COLORS : ZBLI_NOTE_COLORS;
+  const images = hearts ? stiflerHeartImgs : zbliNoteImgs;
   const now = performance.now() / 1000;
-  const seed = zbliSeed(ownerId);
+  const seed = designParticleSeed(ownerId);
   const count = 24;
   for (let i = 0; i < count; i++) {
     const lane = (i + seed * count) / count;
@@ -26910,13 +26924,13 @@ function drawZbliMusicNotes(shipId, ownerId = "self") {
     const y = Math.sin(angle) * radius + Math.sin(angle + Math.PI / 2) * drift;
     const alpha = Math.sin(Math.PI * progress) * 0.92;
     const size = 12 + (1 - progress) * 10;
-    const img = zbliNoteImgs[i % zbliNoteImgs.length];
+    const img = images[i % images.length];
     if (!isImgReady(img) || alpha <= 0.02) continue;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle + Math.sin(now * 2.8 + i) * 0.45);
     ctx.globalAlpha *= alpha;
-    ctx.shadowColor = ZBLI_NOTE_COLORS[i % ZBLI_NOTE_COLORS.length];
+    ctx.shadowColor = colors[i % colors.length];
     ctx.shadowBlur = 8;
     ctx.drawImage(img, -size / 2, -size / 2, size, size);
     ctx.restore();
@@ -27306,7 +27320,7 @@ function drawNetplayRemotes(ox, oy) {
             strokeOutlineCentered(sil, w, h, "#259abb", petLocatorPulse());
           }
           drawCenteredImage(ctx, img, pack.w ?? 170, pack.h ?? 170);
-          drawZbliMusicNotes(r.shipId, r.id);
+          drawCustomDesignParticles(r.shipId, r.id);
           drawn = true;
         }
       } else if (pack && !pack._promise) {

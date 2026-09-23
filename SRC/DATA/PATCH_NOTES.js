@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.303",
+    "date": "2026-09-23T23:52:52+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.302",
     "date": "2026-09-23T23:31:48+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.244",
     "date": "2026-09-20T21:53:55+02:00",
     "message": "multi: purge joueurs fantomes de la sim NPC (fini les stacks)"
-  },
-  {
-    "version": "0.243",
-    "date": "2026-09-20T21:44:24+02:00",
-    "message": "multi: fix casse petY->pety (PET allie bloque a y=0)"
   }
 ];
