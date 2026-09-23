@@ -26865,7 +26865,62 @@ function drawPlayerBody() {
     drawShipEffectOverlay();
   }
 
+  drawZbliMusicNotes(pack?.id, account.user?.id || "self");
+
   return true;
+}
+
+// Pusat Plus ZBLI : pluie permanente de notes SVG multicolores. L'animation
+// est calculée uniquement à partir du temps et d'une graine stable : elle est
+// donc visible sur notre vaisseau comme sur les joueurs distants sans ajouter
+// le moindre message réseau.
+const ZBLI_NOTE_COLORS = Object.freeze([
+  "#ff3f78", "#ff9f2f", "#ffe14a", "#66ef72",
+  "#35dcff", "#5d82ff", "#bd66ff", "#ff63dc",
+]);
+const zbliNoteImgs = ZBLI_NOTE_COLORS.map((color, index) => {
+  const img = new Image();
+  const doubleNote = index % 2 === 1;
+  const shape = doubleNote
+    ? `<path fill="${color}" d="M7 3v20.2a6 6 0 1 0 3 5.2V11l13-3v11.2a6 6 0 1 0 3 5.2V2L7 6.3V3z"/>`
+    : `<path fill="${color}" d="M11 2v20.1a6.2 6.2 0 1 0 3.4 5.5V10.2L27 7v11.1a6.2 6.2 0 1 0 3.4 5.5V2.5L11 7.2V2z"/>`;
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 38">${shape}</svg>`)}`;
+  return img;
+});
+
+function zbliSeed(value) {
+  const text = String(value || "zbli");
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+  return (hash >>> 0) / 4294967296;
+}
+
+function drawZbliMusicNotes(shipId, ownerId = "self") {
+  if (String(shipId || "").toLowerCase() !== "pusat_plus_zbli") return;
+  const now = performance.now() / 1000;
+  const seed = zbliSeed(ownerId);
+  const count = 24;
+  for (let i = 0; i < count; i++) {
+    const lane = (i + seed * count) / count;
+    const progress = (now * 0.34 + lane) % 1;
+    const angle = i * 2.399963 + seed * Math.PI * 2 + Math.sin(now * 1.7 + i) * 0.16;
+    const radius = 8 + progress * 150;
+    const drift = Math.sin(now * 2.2 + i * 1.73) * 10 * progress;
+    const x = Math.cos(angle) * radius + Math.cos(angle + Math.PI / 2) * drift;
+    const y = Math.sin(angle) * radius + Math.sin(angle + Math.PI / 2) * drift;
+    const alpha = Math.sin(Math.PI * progress) * 0.92;
+    const size = 12 + (1 - progress) * 10;
+    const img = zbliNoteImgs[i % zbliNoteImgs.length];
+    if (!isImgReady(img) || alpha <= 0.02) continue;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.sin(now * 2.8 + i) * 0.45);
+    ctx.globalAlpha *= alpha;
+    ctx.shadowColor = ZBLI_NOTE_COLORS[i % ZBLI_NOTE_COLORS.length];
+    ctx.shadowBlur = 8;
+    ctx.drawImage(img, -size / 2, -size / 2, size, size);
+    ctx.restore();
+  }
 }
 
 // Multi : autres joueurs de la meme map avec leur vrai vaisseau + leur laser.
@@ -27251,6 +27306,7 @@ function drawNetplayRemotes(ox, oy) {
             strokeOutlineCentered(sil, w, h, "#259abb", petLocatorPulse());
           }
           drawCenteredImage(ctx, img, pack.w ?? 170, pack.h ?? 170);
+          drawZbliMusicNotes(r.shipId, r.id);
           drawn = true;
         }
       } else if (pack && !pack._promise) {
