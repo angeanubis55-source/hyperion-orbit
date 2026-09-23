@@ -10,6 +10,7 @@ import { handleAccountApi, verifyWsToken, recordPvpKill, listFriends, friendFoll
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
+import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 
 const root = resolve(process.cwd());
 const portArg = process.argv.find((arg) => arg.startsWith("--port="))?.slice(7);
@@ -416,10 +417,9 @@ const server = createServer(async (request, response) => {
 const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 const rooms = new Map(); // mapId(lower) -> Map(id -> { ws, state })
 const npcSims = new Map(); // mapId(lower) -> ZoneNpcSim | null | Promise
-const boxRooms = new Map(); // mapId(lower) -> Map(uid -> { type, x, y, by })
-// Protege contre une liste d'hote partie avant la collecte mais recue apres.
-// Sans ce tombstone, une box supprimee peut etre recreee pendant un lag.
-const boxClaimTombstones = new Map(); // "map|uid" -> expiration ms
+const boxRooms = new Map(); // mapId(lower) -> Map(uid -> { type, x, y })
+const boxRoomLoads = new Map(); // mapId -> Promise<Map>
+const boxRespawns = new Map(); // mapId -> [{ uid, type, at }]
 const pvpFeeds = new Map(); // mapId(lower) -> Map("victime|attaquant" -> { uid, by, total })
 const pvpFarm = new Map(); // anti-farm : "tueur|victime" -> { n, t0 } (rendement decroissant 60 min)
 const chatHistory = []; // global : [{ from, text, at }] (40 derniers)
@@ -436,18 +436,67 @@ setInterval(() => {
 }, 30000);
 let nextId = 1;
 
-function roomHostId(room) {
-  let best = null;
-  for (const pid of room.keys()) {
-    if (best == null || String(pid) < String(best)) best = pid;
+function collectableAllowedOnMap(cfg, mapId) {
+  const id = String(mapId || "").toLowerCase();
+  const deny = cfg?.denyMaps ?? cfg?.blockedMaps ?? cfg?.disabledMaps ?? cfg?.excludeMaps;
+  for (const value of (Array.isArray(deny) ? deny : deny != null ? [deny] : [])) {
+    const denied = String(value || "").toLowerCase();
+    if (denied === "*" || denied === "all" || denied === id) return false;
   }
-  return best;
+  const maps = cfg?.maps ?? cfg?.map ?? cfg?.onlyMaps ?? cfg?.allowedMaps;
+  if (maps == null || maps === "*" || maps === "all") return true;
+  return (Array.isArray(maps) ? maps : [maps]).some((value) => String(value || "").toLowerCase() === id);
 }
 
-function boxSet(mapId) {
+function randomBoxPosition(sim, taken, minSpacing) {
+  const world = sim?.world || { w: 11000, h: 7000 };
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const pos = { x: Math.round(80 + Math.random() * Math.max(1, world.w - 160)), y: Math.round(80 + Math.random() * Math.max(1, world.h - 160)) };
+    if (typeof sim?.inSafe === "function" && sim.inSafe(pos.x, pos.y)) continue;
+    if (minSpacing > 0 && taken.some((other) => Math.hypot(pos.x - other.x, pos.y - other.y) < minSpacing)) continue;
+    return pos;
+  }
+  return { x: Math.round(80 + Math.random() * Math.max(1, world.w - 160)), y: Math.round(80 + Math.random() * Math.max(1, world.h - 160)) };
+}
+
+function ensureBoxRoom(mapId) {
   const key = String(mapId || "1-1").toLowerCase();
-  if (!boxRooms.has(key)) boxRooms.set(key, new Map());
-  return boxRooms.get(key);
+  if (boxRooms.has(key)) return Promise.resolve(boxRooms.get(key));
+  if (boxRoomLoads.has(key)) return boxRoomLoads.get(key);
+  const pending = Promise.resolve(ensureNpcSim(key)).then((sim) => {
+    const boxes = new Map(), taken = [];
+    for (const [type, cfg] of Object.entries(COLLECTABLE_TYPES)) {
+      if (!cfg || cfg.enabled === false || !collectableAllowedOnMap(cfg, key)) continue;
+      const qty = Math.max(0, Math.min(1200, Math.floor(Number(cfg.qty ?? cfg.count ?? cfg.amount ?? cfg.maxAlive) || 0)));
+      const spacing = Math.max(0, Number(cfg.minSpacing) || 0);
+      for (let index = 0; index < qty; index++) {
+        const pos = randomBoxPosition(sim, taken, spacing);
+        taken.push(pos);
+        boxes.set(`${type}#${index}`, { type, ...pos });
+      }
+    }
+    boxRooms.set(key, boxes);
+    boxRoomLoads.delete(key);
+    const room = rooms.get(key);
+    if (room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "list", boxes: [...boxes].map(([uid, b]) => ({ uid, ...b })) }));
+    return boxes;
+  }).catch(() => {
+    boxRoomLoads.delete(key);
+    const boxes = new Map();
+    boxRooms.set(key, boxes);
+    return boxes;
+  });
+  boxRoomLoads.set(key, pending);
+  return pending;
+}
+
+function sendBoxSync(ws, mapId) {
+  const key = String(mapId || "1-1").toLowerCase();
+  ensureBoxRoom(key).then((set) => {
+    try {
+      if (ws.readyState === 1) ws.send(JSON.stringify({ t: "boxesSync", map: key, boxes: [...set].map(([uid, b]) => ({ uid, ...b })) }));
+    } catch {}
+  });
 }
 
 function broadcastRoom(room, payload, excludeId = null) {
@@ -555,24 +604,6 @@ function sendFriendsSync(ws, accountId) {
   } catch {}
 }
 
-// Retire les box posees par un joueur parti + previent la room.
-function dropPlayerBoxes(mapId, pid) {
-  try {
-    const set = boxRooms.get(String(mapId || "").toLowerCase());
-    if (!set) return;
-    const gone = [];
-    for (const [uid, b] of set) {
-      if (String(b?.by) === String(pid)) { set.delete(uid); gone.push(uid); }
-    }
-    if (gone.length) {
-      const room = rooms.get(String(mapId || "").toLowerCase());
-      if (room && room.size) {
-        broadcastRoom(room, JSON.stringify({ t: "box", op: "unspawn", uids: gone.slice(0, 200) }));
-      }
-    }
-  } catch {}
-}
-
 function ensureNpcSim(mapId) {
   const key = String(mapId || "1-1").toLowerCase();
   if (npcSims.has(key)) return npcSims.get(key);
@@ -595,13 +626,9 @@ function roomFor(mapId) {
 
 function removeFromAllRooms(id) {
   for (const [mkey, room] of rooms) {
-    if (room.delete(id)) dropPlayerBoxes(mkey, id);
+    room.delete(id);
   }
   instancePeers.delete(String(id));
-  // Menage : set de box vide si room vide.
-  for (const [mkey, room] of rooms) {
-    if (!room.size) boxRooms.delete(mkey);
-  }
 }
 
 server.on("upgrade", (request, socket, head) => {
@@ -656,42 +683,28 @@ wss.on("connection", (ws) => {
     try { msg = JSON.parse(String(raw)); } catch { return; }
     if (!msg || typeof msg !== "object") return;
     if (msg.t === "box") {
-      // Bonus box partagees : l'hote (plus petit id) publie la liste,
-      // n'importe qui signale une collecte (premier arrive).
+      // Box ambiantes entierement autoritaires : le serveur genere, valide la
+      // distance, tranche le premier collecteur et programme le respawn.
       try {
         const room = rooms.get(mapId);
         if (!room || !room.has(id)) return;
-        const set = boxSet(mapId);
         if (msg.op === "collect" && typeof msg.uid === "string") {
           const uid = msg.uid.slice(0, 64);
-          const accepted = set.delete(uid);
+          const set = boxRooms.get(mapId);
+          const box = set?.get(uid) || null;
+          const shipDist = box && state._posOk === true ? Math.hypot(Number(state.x) - box.x, Number(state.y) - box.y) : Infinity;
+          const petDist = box && state.peta === 1 ? Math.hypot(Number(state.petx ?? state.x) - box.x, Number(state.pety ?? state.y) - box.y) : Infinity;
+          const accepted = !!box && Math.min(shipDist, petDist) <= 260 && set.delete(uid);
           if (accepted) {
-            boxClaimTombstones.set(`${mapId}|${uid}`, Date.now() + 10000);
             broadcastRoom(room, JSON.stringify({ t: "box", op: "collect", uid }), id);
+            const cfg = COLLECTABLE_TYPES[box.type] || {};
+            const delayMs = Math.max(250, Math.floor((Number(cfg.respawnDelaySec ?? 60) || 0) * 1000));
+            if (!boxRespawns.has(mapId)) boxRespawns.set(mapId, []);
+            boxRespawns.get(mapId).push({ uid, type: box.type, at: Date.now() + delayMs });
           }
           // Le demandeur ne touche la recompense qu'apres cette confirmation.
-          try { ws.send(JSON.stringify({ t: "box", op: "claim", uid, ok: accepted })); } catch {}
+          try { ws.send(JSON.stringify({ t: "box", op: "claim", uid, ok: accepted, box: !accepted && box ? { uid, type: box.type, x: box.x, y: box.y } : undefined })); } catch {}
           return;
-        }
-        if (roomHostId(room) !== id) return;
-        if (msg.op === "list" && Array.isArray(msg.boxes)) {
-          const next = new Map();
-          const nowMs = Date.now();
-          for (const b of msg.boxes.slice(0, 200)) {
-            if (!b || typeof b.uid !== "string" || typeof b.type !== "string") continue;
-            if (!Number.isFinite(Number(b.x)) || !Number.isFinite(Number(b.y))) continue;
-            const uid = b.uid.slice(0, 64);
-            const tombstoneKey = `${mapId}|${uid}`;
-            const tombstoneUntil = Number(boxClaimTombstones.get(tombstoneKey) || 0);
-            if (tombstoneUntil > nowMs) continue;
-            if (tombstoneUntil) boxClaimTombstones.delete(tombstoneKey);
-            next.set(uid, { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)), by: id });
-          }
-          boxRooms.set(mapId, next);
-          broadcastRoom(room, JSON.stringify({
-            t: "box", op: "list", by: id,
-            boxes: [...next].slice(0, 200).map(([uid, b]) => ({ uid, type: b.type, x: b.x, y: b.y })),
-          }), id);
         }
       } catch {}
       return;
@@ -1099,11 +1112,7 @@ wss.on("connection", (ws) => {
       if (typeof msg.shipId === "string" && msg.shipId) state.shipId = String(msg.shipId).slice(0, 64);
       state.updatedAt = Date.now();
       // Etat des box pour le nouveau venu.
-      try {
-        const set = boxRooms.get(mapId);
-        const boxes = set ? [...set].slice(0, 200).map(([uid, b]) => ({ uid, type: b.type, x: b.x, y: b.y })) : [];
-        ws.send(JSON.stringify({ t: "boxesSync", map: mapId, boxes }));
-      } catch {}
+      sendBoxSync(ws, mapId);
       // Historique du chat global pour le nouveau venu.
       try {
         ws.send(JSON.stringify({ t: "chatHistory", list: chatHistory.slice(-30) }));
@@ -1391,11 +1400,7 @@ wss.on("connection", (ws) => {
         mapId = String(msg.map).toLowerCase();
         state._teleSkip = true; // portail : saut legitime
         roomFor(mapId).set(id, { ws, state });
-        try {
-          const set = boxRooms.get(mapId);
-          const boxes = set ? [...set].slice(0, 200).map(([uid, b]) => ({ uid, type: b.type, x: b.x, y: b.y })) : [];
-          ws.send(JSON.stringify({ t: "boxesSync", map: mapId, boxes }));
-        } catch {}
+        sendBoxSync(ws, mapId);
       }
       state.updatedAt = Date.now();
     }
@@ -1440,6 +1445,31 @@ setInterval(() => {
   } catch {}
 }, 60000);
 
+// Respawn des box gere meme si aucun joueur n'est present sur la carte.
+setInterval(() => {
+  const now = Date.now();
+  for (const [mapId, queue] of boxRespawns) {
+    const set = boxRooms.get(mapId);
+    if (!set) continue;
+    const sim = npcSims.get(mapId);
+    const taken = [...set.values()].map((b) => ({ x: b.x, y: b.y }));
+    for (let i = queue.length - 1; i >= 0; i--) {
+      const pending = queue[i];
+      if (!pending || Number(pending.at) > now) continue;
+      queue.splice(i, 1);
+      if (set.has(pending.uid)) continue;
+      const cfg = COLLECTABLE_TYPES[pending.type] || {};
+      const pos = randomBoxPosition(sim && typeof sim.then !== "function" ? sim : null, taken, Math.max(0, Number(cfg.minSpacing) || 0));
+      taken.push(pos);
+      const box = { type: pending.type, ...pos };
+      set.set(pending.uid, box);
+      const room = rooms.get(mapId);
+      if (room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "spawn", box: { uid: pending.uid, ...box } }));
+    }
+    if (!queue.length) boxRespawns.delete(mapId);
+  }
+}, 250);
+
 // Broadcast + simu NPC 20 Hz par room, uniquement aux sockets ouvertes.
 setInterval(() => {
   const now = Date.now();
@@ -1449,7 +1479,6 @@ setInterval(() => {
     for (const [pid, entry] of room) {
       if (now - Number(entry?.state?.updatedAt || 0) > 10000) {
         room.delete(pid);
-        dropPlayerBoxes(key, pid);
         try {
           const goneState = entry?.state || {};
           socialPeerGone(String(pid), {
@@ -1563,7 +1592,7 @@ setInterval(() => {
         iemT: Math.max(0, (Number(s.iemUntil) || 0) - Date.now()) / 1000,
         ishT: Math.max(0, (Number(s.ishUntil) || 0) - Date.now()) / 1000 });
     }
-    const payload = JSON.stringify({ t: "snapshot", map: key, at: Date.now(), players, npc, host: roomHostId(room) });
+    const payload = JSON.stringify({ t: "snapshot", map: key, at: Date.now(), players, npc });
     for (const [, entry] of room) {
       try { if (entry.ws.readyState === 1) entry.ws.send(payload); } catch {}
     }

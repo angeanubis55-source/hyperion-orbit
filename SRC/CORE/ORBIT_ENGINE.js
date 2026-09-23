@@ -108,7 +108,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, netBoxHost, claimNetBox, sendBoxEvent, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
+  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -21101,10 +21101,6 @@ function takeCollectableInstance(c, opts = {}) {
     }
     persistCollectables();
   } catch {}
-  // Multi : l'hote signale aussitot ses collectes (les autres effacent).
-  if (!opts.fromNet && !c._netClaimRequested && c.slotUid && netplayNpcActive()) {
-    try { if (netBoxHost()) sendBoxEvent({ op: "collect", uid: String(c.slotUid) }); } catch {}
-  }
   // Multi : cargo du vaincu ramasse -> les autres effacent leur copie.
   if (!opts.fromNet && typeof c.id === "string" && c.id.startsWith("pvploot_")) {
     try { sendPvpLootTake({ uid: String(c.id).slice(0, 64) }); } catch {}
@@ -21607,12 +21603,9 @@ document.addEventListener("click", event => {
   }
 });
 
-// Multi : bonus box partagees.
-// - hote (elu par le serveur) : spawne en local + publie la liste (1 s) ;
-//   les collectes distantes tuent aussi son slot (respawn partage) ;
-// - autres : aucun spawn, instances miroirs + collectes immediates.
-// Les recompenses restent personnelles (premier arrive).
-let netBoxListT = 0;
+// Multi : le serveur genere, place, supprime et fait reapparaitre toutes les
+// box ambiantes. Le client ne conserve qu'un miroir visuel ; les recompenses
+// restent personnelles au premier collecteur confirme.
 const pendingNetCollectableRewards = new Map();
 function syncNetBoxes(dt) {
   const curMap = currentMapId();
@@ -21621,7 +21614,7 @@ function syncNetBoxes(dt) {
     const dbg = window.__NETBOXDBG__;
     dbg.map = curMap;
     dbg.active = netplayNpcActive();
-    dbg.isHost = netBoxHost();
+    dbg.authority = "server";
     try { dbg.myId = netMyId(); } catch {}
     try { dbg.status = netplayStatus(); } catch {}
     let knownSize = -1;
@@ -21647,10 +21640,9 @@ function syncNetBoxes(dt) {
       if (!still) { try { cancelCollectableTarget(); } catch {} moveTarget.active = false; collectableTargetId = null; }
     }
     try { clearNetBoxes(); } catch {}
-    netBoxListT = 0;
     return;
   }
-  // Collectes distantes : disparition immediate (+ slot mort chez l'hote).
+  // Collectes distantes : disparition immediate du miroir local.
   let evs = [];
   try { evs = drainNetBoxInbox(); } catch {}
   for (const ev of evs) {
@@ -21673,26 +21665,6 @@ function syncNetBoxes(dt) {
       }
     }
   }
-  if (netBoxHost()) {
-    netBoxListT -= dt;
-    if (netBoxListT <= 0) {
-      netBoxListT = 1;
-      try {
-        const boxes = [];
-        for (const c of collectables) {
-          if (c && c.slotUid && String(c.map || curMap) === curMap && boxes.length < 200) {
-            boxes.push({ uid: String(c.slotUid), type: String(c.type), x: Math.round(Number(c.x)), y: Math.round(Number(c.y)) });
-          }
-        }
-        sendBoxEvent({ op: "list", boxes });
-        try {
-          window.__NETBOXDBG__.listsSent = (window.__NETBOXDBG__.listsSent || 0) + 1;
-          window.__NETBOXDBG__.lastListSize = boxes.length;
-        } catch {}
-      } catch {}
-    }
-    return;
-  }
   // Miroir serveur : ajoute les manquantes, vire les inconnues.
   let known = null;
   try { known = getNetBoxes(); } catch {}
@@ -21705,11 +21677,15 @@ function syncNetBoxes(dt) {
     }
   }
   for (const [uid, b] of known) {
-    let exists = false;
+    let existing = null;
     for (const c of collectables) {
-      if (c && String(c.slotUid) === String(uid)) { exists = true; break; }
+      if (c && String(c.slotUid) === String(uid)) { existing = c; break; }
     }
-    if (!exists) { try { pushNetBoxInstance({ uid, type: b.type, x: b.x, y: b.y }); } catch {} }
+    if (existing) {
+      existing.x = Number(b.x) || 0;
+      existing.y = Number(b.y) || 0;
+      existing._netBox = true;
+    } else { try { pushNetBoxInstance({ uid, type: b.type, x: b.x, y: b.y }); } catch {} }
   }
 }
 
@@ -21723,13 +21699,19 @@ function tickCollectables(dt) {
   if (collectablesWorldMap !== curMap) {
     collectablesWorldMap = curMap;
     try { initCollectableWorld(curMap); } catch {}
+    // En carte multijoueur, aucune ancienne ambiance locale ne doit survivre
+    // avant l'arrivee de l'etat serveur. Les drops NPC restent intacts.
+    if (rules?.mode === "zone") {
+      for (let i = collectables.length - 1; i >= 0; i--) {
+        if (collectables[i]?.slotUid && !collectables[i]?.dropUid) collectables.splice(i, 1);
+      }
+    }
   }
 
   collectableSpawnT -= dt;
 
-  // Multi : seul l'hote spawne les ambiantes (les autres recoivent le relay).
-  const netBoxActive = netplayNpcActive();
-  if (collectableSpawnT <= 0 && (!netBoxActive || netBoxHost())) {
+  // En multi les ambiantes viennent exclusivement du serveur.
+  if (collectableSpawnT <= 0 && rules?.mode !== "zone") {
     collectableSpawnT = Math.max(0.1, Number(COLLECTABLE_CFG.interval || 1.0));
 
     try {
@@ -23026,7 +23008,7 @@ function killRewards(e) {
     : null;
   const killerPseudo = String(e._netKillerPseudo || groupKiller?.pseudo || "Pilote");
   const killLabel = isSharedGroupKill
-    ? `Le pilote ${killerPseudo} a tué ${npcName}`
+    ? `Le pilote ${killerPseudo} a éliminé ${npcName}`
     : `${npcName} éliminé`;
   addGameLog(`${killLabel} · +${formatInteger(credits)} crédits · +${xpText} · +${honorText}`, "reward");
   showNotificationGroup([

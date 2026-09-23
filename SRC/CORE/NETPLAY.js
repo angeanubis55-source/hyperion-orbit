@@ -43,7 +43,6 @@ export function suspendNetplay(v) {
     netFriendsDirty = false;
     netFriendsOnline = [];
     lastNpcSnapMs = 0;
-    netBoxHostId = null;
     try { if (ws && ws.readyState === 1) ws.close(); } catch {}
     ws = null;
     connectTried = false;
@@ -145,7 +144,6 @@ function clearInstanceGameplay() {
   netAdminBoomInbox.length = 0;
   selfServ = null;
   lastNpcSnapMs = 0;
-  netBoxHostId = null;
 }
 export function setNetInstanceMode(v) {
   const nv = v === true;
@@ -200,14 +198,12 @@ export function clearNetplayGameplay() {
   lastNpcSnapMs = performance.now();
   lastMapSent = "";
 }
-// Bonus box partagees : miroir du set serveur + file d'evenements.
-// Hote = plus petit id de la room (elus par le serveur) : seul lui spawne.
+// Box ambiantes : miroir de l'etat entierement autoritaire du serveur.
 const netBoxes = new Map(); // slotUid -> { type, x, y }
 const netBoxInbox = [];
 // Une collecte reste reservee localement jusqu'a la reponse autoritaire du
 // serveur. Cela empeche une liste retardee de faire reapparaitre la box.
 const pendingNetBoxClaims = new Set();
-let netBoxHostId = null;
 // Echo de soi pour le PvP (PV autoritaires serveur).
 let selfServ = null;
 export function getNetSelf() {
@@ -452,7 +448,7 @@ function wsUrl() {
 }
 
 export function netplayStatus() {
-  return { connected, authed: netAuthed, myId, count: remotes.size, boxHost: netBoxHostId, boxCount: netBoxes.size, instance: instanceMode === true };
+  return { connected, authed: netAuthed, myId, count: remotes.size, boxAuthority: "server", boxCount: netBoxes.size, instance: instanceMode === true };
 }
 
 function prune() {
@@ -722,7 +718,7 @@ export function ensureNetplayConnection() {
         if (syncMap && syncMap !== currentMapId()) return;
       } catch {}
       netBoxes.clear();
-      for (const b of msg.boxes.slice(0, 200)) {
+      for (const b of msg.boxes.slice(0, 1200)) {
         if (!b || typeof b.uid !== "string" || typeof b.type !== "string") continue;
         if (!Number.isFinite(Number(b.x)) || !Number.isFinite(Number(b.y))) continue;
         const uid = b.uid.slice(0, 64);
@@ -736,23 +732,27 @@ export function ensureNetplayConnection() {
         const uid = msg.uid.slice(0, 64);
         pendingNetBoxClaims.delete(uid);
         netBoxes.delete(uid);
+        const b = msg.box;
+        if (msg.ok !== true && b && typeof b.type === "string" && Number.isFinite(Number(b.x)) && Number.isFinite(Number(b.y))) {
+          netBoxes.set(uid, { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)) });
+        }
         netBoxInbox.push({ op: "claim", uid, ok: msg.ok === true });
       } else if (msg.op === "collect" && typeof msg.uid === "string") {
         const uid = msg.uid.slice(0, 64);
         netBoxes.delete(uid);
         netBoxInbox.push({ op: "collect", uid });
       } else if (msg.op === "list" && Array.isArray(msg.boxes)) {
-        const by = msg.by != null ? String(msg.by) : null;
-        if (by != null && netBoxHostId != null && by !== netBoxHostId) {
-          // Liste d'un non-hote (passation en cours) : ignore.
-          return;
-        }
         netBoxes.clear();
-        for (const b of msg.boxes.slice(0, 200)) {
+        for (const b of msg.boxes.slice(0, 1200)) {
           if (!b || typeof b.uid !== "string" || typeof b.type !== "string") continue;
           if (!Number.isFinite(Number(b.x)) || !Number.isFinite(Number(b.y))) continue;
           const uid = b.uid.slice(0, 64);
           if (pendingNetBoxClaims.has(uid)) continue;
+          netBoxes.set(uid, { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)) });
+        }
+      } else if (msg.op === "spawn" && msg.box && typeof msg.box.uid === "string") {
+        const b = msg.box, uid = b.uid.slice(0, 64);
+        if (!pendingNetBoxClaims.has(uid) && typeof b.type === "string" && Number.isFinite(Number(b.x)) && Number.isFinite(Number(b.y))) {
           netBoxes.set(uid, { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)) });
         }
       } else if (msg.op === "unspawn" && Array.isArray(msg.uids)) {
@@ -764,7 +764,6 @@ export function ensureNetplayConnection() {
       return;
     }
     if (msg.t === "snapshot" && Array.isArray(msg.players)) {
-      if (msg.host != null) netBoxHostId = String(msg.host);
       // Snapshot d'une autre map (changement en cours) : ignore.
       try {
         const snapMap = String(msg.map || "").toLowerCase();
@@ -1104,11 +1103,6 @@ export function getNetBoxes() {
   return netBoxes;
 }
 
-export function netBoxHost() {
-  if (!connected || !netBoxHostId) return false;
-  return String(netBoxHostId) === String(myId);
-}
-
 export function drainNetBoxInbox() {
   if (!netBoxInbox.length) return [];
   return netBoxInbox.splice(0, netBoxInbox.length);
@@ -1156,8 +1150,6 @@ export function clearNetBoxes() {
   netBoxes.clear();
   netBoxInbox.length = 0;
   pendingNetBoxClaims.clear();
-  pendingNetBoxClaims.clear();
-  netBoxHostId = null;
 }
 
 // Reserve immediatement la box cote client, puis demande au serveur qui a
@@ -1175,20 +1167,6 @@ export function claimNetBox(uidValue) {
     pendingNetBoxClaims.delete(uid);
     return false;
   }
-}
-
-// Evenement box vers le serveur (collecte immediate / liste de l'hote).
-export function sendBoxEvent(op) {
-  if (suspended || instanceMode === true) return;
-  if (!ws || ws.readyState !== 1 || !op || typeof op !== "object") return;
-  try {
-    if (op.op === "collect" && op.uid) {
-      ws.send(JSON.stringify({ t: "box", op: "collect", uid: String(op.uid).slice(0, 64) }));
-    } else if (op.op === "list" && Array.isArray(op.boxes)) {
-      const boxes = op.boxes.slice(0, 200);
-      ws.send(JSON.stringify({ t: "box", op: "list", boxes }));
-    }
-  } catch {}
 }
 
 export function netMyId() {
@@ -1339,7 +1317,7 @@ export function sendSkillUse(skill) {
 // Ce module ne fait que le reseau : envoi 20 Hz + snapshots + extrapolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, netBoxHost, sendBoxEvent, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
+  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, claimNetBox, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;
