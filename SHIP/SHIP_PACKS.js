@@ -146,6 +146,7 @@ export const SHIP_PACKS = [
   { id: "diminisher_ullrin", name: "Diminisher Ullrin", path: "SHIP/SHIP_SPRITES/SHIP_DIMINISHER_ULLRIN/", frames: 32, firstNumber: 1, ext: ".png", w: 161, h: 143, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 40000000, hp: 356000, speed: 300, angleOffset: Math.PI },
   { id: "diminisher_violet", name: "Diminisher Violet", path: "SHIP/SHIP_SPRITES/SHIP_DIMINISHER_VIOLET/", frames: 32, firstNumber: 1, ext: ".png", w: 161, h: 143, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 40000000, hp: 356000, speed: 300, angleOffset: Math.PI },
   { id: "dinde", name: "Dinde", path: "SHIP/SHIP_SPRITES/SHIP_DINDE/", frames: 32, firstNumber: 1, ext: ".png", w: 190, h: 163, slots: { lasers: 5, gens: 22, extras: 3, shipMods: 4 }, price: 11000000, hp: 200000, speed: 430, angleOffset: Math.PI },
+  { id: "dinde_autruche", name: "Autruche", path: "SHIP/SHIP_SPRITES/SHIP_AUTRUCHE/", frames: 32, firstNumber: 1, ext: ".png", w: 190, h: 163, slots: { lasers: 5, gens: 22, extras: 3, shipMods: 4 }, price: 11000000, hp: 200000, speed: 430, angleOffset: Math.PI },
   { id: "disruptor", name: "Disruptor", path: "SHIP/SHIP_SPRITES/SHIP_DISRUPTOR/", frames: 32, firstNumber: 1, ext: ".png", w: 180, h: 144, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 20000000, hp: 356000, speed: 300, angleOffset: Math.PI },
   { id: "disruptor_arios", name: "Disruptor Arios", path: "SHIP/SHIP_SPRITES/SHIP_DISRUPTOR_ARIOS/", frames: 32, firstNumber: 1, ext: ".png", w: 180, h: 144, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 20000000, hp: 356000, speed: 300, angleOffset: Math.PI },
   { id: "disruptor_frost", name: "Disruptor Frost", path: "SHIP/SHIP_SPRITES/SHIP_DISRUPTOR_FROST/", frames: 32, firstNumber: 1, ext: ".png", w: 180, h: 144, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 20000000, hp: 356000, speed: 300, angleOffset: Math.PI },
@@ -720,6 +721,7 @@ const SHIP_REMOVED_IDS = new Set([]);
 // Cas particuliers : ids dont le préfixe ne correspond pas à une base connue.
 const SHIP_DESIGN_BASE_OVERRIDES = {
   "c_elite_ullrin": "citadel",                       // Citadel Elite Ullrin
+  "dinde_autruche": "dinde",                         // Design Autruche de la Dinde
   "g_champion_design_g_champion_ireland": "goliath", // Goliath Champion Ireland
 };
 
