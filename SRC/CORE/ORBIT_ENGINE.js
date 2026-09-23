@@ -13739,7 +13739,8 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
 
   player.shPen = BASE_RUN.shPen + ((stats.bonusPenetrationPct || 0) / 100);
 
-  const shipBaseHP = Number(pack?.hp || 1);
+  const isPoliceHull = String(getShipDesignBaseId(pack?.id) || pack?.id || "").toLowerCase() === "police";
+  const shipBaseHP = Number(pack?.hp || 1) + (isPoliceHull ? 0 : 100_000);
   player.hpMax = Math.max(
     1,
     Math.floor((shipBaseHP + (stats.bonusFlatHP || 0) + playerPilotMults().hpFlat) * (1 + (stats.bonusHPPct || 0) / 100) * playerBoosterMults().hp)
@@ -16126,7 +16127,7 @@ function drawShipDamages(ox, oy) {
 // ============================================================
 // BASE / PLAYER
 // ============================================================
-const REPAIR = { cooldown: 6.0, ratePct: 0.05, tickInterval: 1.0 };
+const REPAIR = { cooldown: 10.0, ratePct: 0.05, tickInterval: 1.0 };
 let repairSoundActive = false;
 let shipMoveSoundActive = false;
 let radiationSoundDelay = 0;
@@ -16259,10 +16260,10 @@ function resetPlayerToBase() {
   const stats = computeHangarStats(hangar, u, { mapId: currentMapId() });
 
   player.dr = BASE_RUN.dr;
-  player.dr = BASE_RUN.dr;
   player.shPen = BASE_RUN.shPen + ((stats.bonusPenetrationPct || 0) / 100);
 
-  const shipBaseHP = Number(pack?.hp || 1);
+  const isPoliceHull = String(getShipDesignBaseId(pack?.id) || pack?.id || "").toLowerCase() === "police";
+  const shipBaseHP = Number(pack?.hp || 1) + (isPoliceHull ? 0 : 100_000);
 
   // ✅ Aucun soin au changement de carte/portail/URL : on garde le même
   // pourcentage de vie et de bouclier. Seul le robot réparateur régénère.
@@ -26005,7 +26006,7 @@ jumpBaseFade: 1,
       if (ov.respawn === true) {
         player.hp = Math.max(1, Math.ceil(player.hpMax * 0.1));
         player.sh = player.shMax > 0 ? Math.max(1, Math.ceil(player.shMax * 0.1)) : 0;
-        player.repairT = Math.max(0, REPAIR.cooldown - 5);
+        player.repairT = 0;
         player.repairTickT = 0;
       }
       spawnedFromPortal = true;

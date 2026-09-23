@@ -3637,6 +3637,26 @@ body.orbitNoFade #fpsOverlay{
   gap:12px;
   justify-items:center;
 }
+
+/* La reparation doit toujours rester au-dessus des fenetres flottantes,
+   palettes et overlays encore presents au moment de la mort. */
+#respawnOverlay{
+  z-index:2147483000 !important;
+  pointer-events:auto !important;
+  isolation:isolate;
+}
+#respawnOverlay .respawnModal{
+  position:relative;
+  z-index:1;
+  pointer-events:auto !important;
+  max-height:calc(100vh - 24px);
+  overflow:auto;
+}
+#respawnOverlay .shopItem,
+#respawnOverlay .shopItem button{
+  pointer-events:auto !important;
+  touch-action:manipulation;
+}
 #respawnOverlay .respawnHeader{
   display:grid;
   justify-items:center;
