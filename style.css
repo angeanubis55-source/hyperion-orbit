@@ -9179,3 +9179,56 @@ input[type=number]{ -moz-appearance:textfield; appearance:textfield; }
 .pilotDetail button:disabled{ opacity:.45; cursor:not-allowed; }
 .pilotDetail button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
 @media (max-width:900px){ .skylabMain{ grid-template-columns:minmax(0,1fr); } }
+
+/* ================= Paramètres — cockpit unifié ================= */
+#settingsWindow{ width:min(960px,calc(100vw - 24px)); height:min(700px,calc(100vh - 24px)); max-width:none; }
+#settingsWindow .settingsBody{ display:grid; grid-template-columns:190px minmax(0,1fr); height:calc(100% - 30px); min-height:0; padding:0; overflow:hidden; color:#dff7ff; background:linear-gradient(145deg,rgba(3,18,29,.98),rgba(3,10,18,.98)); }
+#settingsWindow .settingsTabs{ display:flex; flex-direction:column; gap:5px; min-width:0; padding:14px 10px; border:0; border-right:1px solid rgba(124,240,255,.18); background:linear-gradient(180deg,rgba(9,39,57,.72),rgba(3,15,25,.7)); overflow-y:auto; }
+#settingsWindow .settingsNavHead{ display:grid; gap:2px; padding:4px 8px 15px; margin-bottom:3px; border-bottom:1px solid rgba(124,240,255,.12); }
+#settingsWindow .settingsNavHead b{ color:#fff; font:900 15px/1.2 ui-sans-serif,system-ui; letter-spacing:.2px; }
+#settingsWindow .settingsNavHead span{ color:#72aabe; font:700 9px/1.25 ui-sans-serif,system-ui; }
+#settingsWindow .settingsTab{ position:relative; display:flex; flex:none; align-items:center; justify-content:flex-start; gap:9px; width:100%; min-height:39px; padding:0 11px; border:1px solid transparent; border-radius:8px; color:#8fbaca; background:transparent; font:800 11px/1 ui-sans-serif,system-ui; text-align:left; cursor:pointer; transition:.16s ease; }
+#settingsWindow .settingsTab:hover{ color:#eaffff; background:rgba(124,240,255,.06); }
+#settingsWindow .settingsTab.active{ color:#eaffff; border-color:rgba(82,221,255,.32); background:linear-gradient(90deg,rgba(0,156,205,.28),rgba(0,110,150,.08)); box-shadow:inset 3px 0 #4de4ff,0 0 15px rgba(0,179,224,.07); }
+#settingsWindow .settingsTabIcon{ display:grid; place-items:center; width:20px; color:#62e7ff; font-size:15px; }
+#settingsWindow .settingsPage{ display:none; grid-column:2; min-width:0; min-height:0; padding:18px; overflow-y:auto; align-content:start; gap:14px; scrollbar-width:thin; scrollbar-color:rgba(72,207,238,.5) rgba(0,0,0,.15); }
+#settingsWindow .settingsPage.active{ display:flex; flex-direction:column; }
+#settingsWindow .settingsPageIntro{ display:grid; gap:3px; padding:0 2px 12px; border-bottom:1px solid rgba(124,240,255,.14); }
+#settingsWindow .settingsPageIntro b{ color:#fff; font:900 17px/1.2 ui-sans-serif,system-ui; }
+#settingsWindow .settingsPageIntro span{ color:#81afbf; font:700 10px/1.35 ui-sans-serif,system-ui; }
+#settingsWindow .settingsCardGrid{ display:grid; gap:12px; align-items:start; }
+#settingsWindow .settingsCardGridTwo{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+#settingsWindow .settingsCard{ display:grid; align-content:start; gap:10px; min-width:0; padding:13px; border:1px solid rgba(124,240,255,.16); border-radius:11px; background:linear-gradient(145deg,rgba(17,45,61,.5),rgba(4,18,29,.72)); box-shadow:inset 0 1px rgba(255,255,255,.025); }
+#settingsWindow .settingsCardHead{ display:flex; align-items:center; gap:9px; padding-bottom:9px; border-bottom:1px solid rgba(124,240,255,.1); }
+#settingsWindow .settingsCardHead>span{ display:grid; place-items:center; flex:0 0 31px; height:27px; border:1px solid rgba(84,224,255,.3); border-radius:7px; color:#63e8ff; background:rgba(0,151,195,.13); font:900 9px/1 ui-sans-serif,system-ui; }
+#settingsWindow .settingsCardHead>div{ display:grid; gap:2px; min-width:0; }
+#settingsWindow .settingsCardHead b{ color:#f2fcff; font:900 11px/1.2 ui-sans-serif,system-ui; }
+#settingsWindow .settingsCardHead small{ color:#719eae; font:700 9px/1.2 ui-sans-serif,system-ui; }
+#settingsWindow .settingsOptionGrid{ display:grid; gap:7px; }
+#settingsWindow .settingsCheck{ display:flex; align-items:flex-start !important; gap:9px; height:auto !important; min-height:52px !important; box-sizing:border-box; margin:0; padding:8px 9px; border:1px solid rgba(124,240,255,.1); border-radius:8px; background:rgba(0,0,0,.13); cursor:pointer; transition:.15s ease; }
+#settingsWindow .settingsCheck:hover{ border-color:rgba(124,240,255,.3); background:rgba(67,210,239,.055); }
+#settingsWindow .settingsCheck input{ flex:0 0 auto; margin-top:3px; accent-color:#35d9f5; }
+#settingsWindow .settingsCheck>span{ display:grid; gap:2px; min-width:0; }
+#settingsWindow .settingsCheck b{ color:#e9faff; font:800 10px/1.25 ui-sans-serif,system-ui; }
+#settingsWindow .settingsCheck small{ color:#739dad; font:650 9px/1.35 ui-sans-serif,system-ui; }
+#settingsWindow .settingsPerformanceCard{ gap:7px; }
+#settingsWindow .settingsPerformanceCard>span{ color:#c9e4ed; font-size:10px; font-weight:800; }
+#settingsWindow select{ width:100%; box-sizing:border-box; padding:8px 9px; border:1px solid rgba(124,240,255,.28); border-radius:8px; outline:none; color:#eaffff; background:#061b29; font:800 10px/1 ui-sans-serif,system-ui; }
+#settingsWindow .settingsHint{ margin:0; color:#6f9aaa; font:650 9px/1.4 ui-sans-serif,system-ui; }
+#settingsWindow .settingsResetBtn{ min-height:34px; margin:0; border:1px solid rgba(124,240,255,.28); border-radius:8px; color:#dcf8ff; background:linear-gradient(135deg,rgba(0,135,177,.22),rgba(4,40,57,.4)); font:800 10px/1.2 ui-sans-serif,system-ui; cursor:pointer; }
+#settingsWindow .settingsResetBtn:hover{ border-color:rgba(124,240,255,.55); background:rgba(0,140,185,.25); }
+#settingsWindow .settingsDangerBtn{ border-color:rgba(255,118,118,.28); color:#ffc5c5; background:rgba(115,24,34,.2); }
+#settingsWindow .settingsDangerBtn:hover{ border-color:rgba(255,118,118,.58); background:rgba(150,31,43,.28); }
+#settingsWindow .settingsKeyColumns{ min-height:0; }
+#settingsWindow .settingsAudio{ min-height:0; }
+
+@media (max-width:760px){
+  #settingsWindow{ width:calc(100vw - 16px); height:calc(100vh - 16px); }
+  #settingsWindow .settingsBody{ grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); }
+  #settingsWindow .settingsTabs{ grid-row:1; display:flex; flex-direction:row; gap:4px; padding:7px; border-right:0; border-bottom:1px solid rgba(124,240,255,.18); overflow-x:auto; overflow-y:hidden; }
+  #settingsWindow .settingsNavHead{ display:none; }
+  #settingsWindow .settingsTab{ justify-content:center; min-width:96px; width:auto; min-height:34px; padding:0 8px; box-shadow:none; }
+  #settingsWindow .settingsTabIcon{ width:auto; }
+  #settingsWindow .settingsPage{ grid-column:1; grid-row:2; padding:12px; }
+  #settingsWindow .settingsCardGridTwo{ grid-template-columns:1fr; }
+}

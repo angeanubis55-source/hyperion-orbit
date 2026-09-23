@@ -7258,9 +7258,13 @@ const DEFAULT_GAME_SETTINGS = {
   musicVolume: 1,
   textures: true,
   drones: true,
+  remoteDrones: true,
+  combatText: true,
   autoStart: false,
   shipEffect: true,
   shipSmoke: true,
+  npcEngineEffects: true,
+  customDesignEffects: true,
   moveMarker: true,
   // FPS maximum : 0 = illimité (boucle libre sans vsync).
   fpsLimit: 0,
@@ -7640,8 +7644,8 @@ function renderKeybindRows() {
 function switchSettingsTab(name) {
   const window_ = document.getElementById("settingsWindow");
   if (!window_) return;
-  const valid = ["visual", "controls", "sound"];
-  const target = valid.includes(name) ? name : "visual";
+  const valid = ["general", "display", "interface", "controls", "sound"];
+  const target = valid.includes(name) ? name : "general";
   window_.querySelectorAll("[data-settings-tab]").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.settingsTab === target);
   });
@@ -7796,13 +7800,23 @@ function renderSettingsWindow() {
   renderMusicRow();
 
   const autoStart = document.getElementById("optAutoStart");
+  const textures = document.getElementById("optTextures");
   if (autoStart) autoStart.checked = !!GAME_SETTINGS.autoStart;
+  if (textures) textures.checked = !!GAME_SETTINGS.textures;
   const drones = document.getElementById("optDrones");
   if (drones) drones.checked = !!GAME_SETTINGS.drones;
+  const remoteDrones = document.getElementById("optRemoteDrones");
+  if (remoteDrones) remoteDrones.checked = !!GAME_SETTINGS.remoteDrones;
+  const combatText = document.getElementById("optCombatText");
+  if (combatText) combatText.checked = !!GAME_SETTINGS.combatText;
   const shipEffect = document.getElementById("optShipEffect");
   if (shipEffect) shipEffect.checked = !!GAME_SETTINGS.shipEffect;
   const shipSmoke = document.getElementById("optShipSmoke");
   if (shipSmoke) shipSmoke.checked = !!GAME_SETTINGS.shipSmoke;
+  const npcEngineEffects = document.getElementById("optNpcEngineEffects");
+  if (npcEngineEffects) npcEngineEffects.checked = !!GAME_SETTINGS.npcEngineEffects;
+  const customDesignEffects = document.getElementById("optCustomDesignEffects");
+  if (customDesignEffects) customDesignEffects.checked = !!GAME_SETTINGS.customDesignEffects;
   const moveMarker = document.getElementById("optMoveMarker");
   if (moveMarker) moveMarker.checked = !!GAME_SETTINGS.moveMarker;
   const fpsLimit = document.getElementById("optFpsLimit");
@@ -7817,7 +7831,7 @@ function normalizeSettingsWindow() {
   const settingsWindow = document.getElementById("settingsWindow");
   if (settingsWindow) {
     settingsWindow.classList.remove("settingsControlsOpen");
-    settingsWindow.style.width = `${Math.min(940, innerWidth - 24)}px`;
+    settingsWindow.style.removeProperty("width");
   }
 }
 
@@ -7829,8 +7843,12 @@ function wireSettingsWindow() {
   const texBtn = document.getElementById("optTextures");
   const autoStart = document.getElementById("optAutoStart");
   const drones = document.getElementById("optDrones");
+  const remoteDrones = document.getElementById("optRemoteDrones");
+  const combatText = document.getElementById("optCombatText");
   const shipEffect = document.getElementById("optShipEffect");
   const shipSmoke = document.getElementById("optShipSmoke");
+  const npcEngineEffects = document.getElementById("optNpcEngineEffects");
+  const customDesignEffects = document.getElementById("optCustomDesignEffects");
   const moveMarker = document.getElementById("optMoveMarker");
   const fpsLimitSel = document.getElementById("optFpsLimit");
   const settingsWindow = document.getElementById("settingsWindow");
@@ -7859,8 +7877,8 @@ function wireSettingsWindow() {
     setMusicVolume(musicVolume.value);
   });
 
-  texBtn?.addEventListener("click", () => {
-    setGameSetting("textures", !GAME_SETTINGS.textures);
+  texBtn?.addEventListener("change", () => {
+    setGameSetting("textures", texBtn.checked);
   });
 
   autoStart?.addEventListener("change", () => {
@@ -7871,12 +7889,28 @@ function wireSettingsWindow() {
     setGameSetting("drones", drones.checked);
   });
 
+  remoteDrones?.addEventListener("change", () => {
+    setGameSetting("remoteDrones", remoteDrones.checked);
+  });
+
+  combatText?.addEventListener("change", () => {
+    setGameSetting("combatText", combatText.checked);
+  });
+
   shipEffect?.addEventListener("change", () => {
     setGameSetting("shipEffect", shipEffect.checked);
   });
 
   shipSmoke?.addEventListener("change", () => {
     setGameSetting("shipSmoke", shipSmoke.checked);
+  });
+
+  npcEngineEffects?.addEventListener("change", () => {
+    setGameSetting("npcEngineEffects", npcEngineEffects.checked);
+  });
+
+  customDesignEffects?.addEventListener("change", () => {
+    setGameSetting("customDesignEffects", customDesignEffects.checked);
   });
 
   moveMarker?.addEventListener("change", () => {
@@ -7905,7 +7939,7 @@ document.getElementById("btnResetSfx")?.addEventListener("click", () => {
     btn.addEventListener("click", () => switchSettingsTab(btn.dataset.settingsTab));
   });
   buildSfxRows();
-  switchSettingsTab("visual");
+  switchSettingsTab("general");
 
 document.getElementById("btnResetWindows")?.addEventListener("click", () => {
   if (window.GameWindowManager?.resetPositions) {
@@ -7914,6 +7948,20 @@ document.getElementById("btnResetWindows")?.addEventListener("click", () => {
   } else {
     showToast("Gestionnaire de fenêtres introuvable", 1.5);
   }
+});
+document.getElementById("btnResetAllSettings")?.addEventListener("click", () => {
+  Object.assign(GAME_SETTINGS, DEFAULT_GAME_SETTINGS, {
+    keybinds: { ...DEFAULT_KEYBINDS },
+    sfxVolumes: { ...DEFAULT_SFX_VOLUMES },
+    sfxMuted: {},
+  });
+  saveGameSettings();
+  applySfxSettings();
+  SFX?.setMasterVolume?.(GAME_SETTINGS.soundVolume / 100);
+  updateMusicPlayback();
+  restartFrameScheduler();
+  renderSettingsWindow();
+  showToast("Paramètres restaurés", 1.3);
 });
   renderSettingsWindow();
 }
@@ -20235,7 +20283,7 @@ function tickEngineTrails(dt) {
   }
 
   const lockedNpc = Target.get();
-  if (GAME_SETTINGS.shipSmoke) {
+  if (GAME_SETTINGS.npcEngineEffects) {
     for (const enemy of enemies) {
       if (enemy?.hp <= 0) continue;
       npcEngine.update(enemy, dt, true);
@@ -26888,7 +26936,6 @@ const zbliNoteImgs = ZBLI_NOTE_COLORS.map((color, index) => {
   img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 38">${shape}</svg>`)}`;
   return img;
 });
-
 const STIFLER_HEART_COLORS = Object.freeze(["#ff4fa3", "#ff79c6", "#d85cff", "#9e55ff"]);
 const stiflerHeartImgs = STIFLER_HEART_COLORS.map((color) => {
   const img = new Image();
@@ -26905,6 +26952,7 @@ function designParticleSeed(value) {
 }
 
 function drawCustomDesignParticles(shipId, ownerId = "self") {
+  if (!GAME_SETTINGS.customDesignEffects) return;
   const designId = String(shipId || "").toLowerCase();
   const notes = designId === "pusat_plus_zbli";
   const hearts = designId === "goliath_plus_stifler";
@@ -27477,7 +27525,7 @@ function drawNetplayRemotes(ox, oy) {
     try {
       const slots = String(r.dslots || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 12);
       const dc = slots.length || Math.max(0, Math.min(12, Number(r.drones) || 0));
-      if (dc > 0 && GAME_SETTINGS.drones) {
+      if (dc > 0 && GAME_SETTINGS.remoteDrones) {
         let offsets = null;
         try { offsets = getDroneFormationOffsets(dc, String(r.dform || "standard")); } catch { offsets = null; }
         const heading = shipEngine.heading({ angle: Number(r.rangle ?? r.angle) || 0 }, pack, remoteFrame);
@@ -31939,7 +31987,7 @@ if (GAME_SETTINGS.textures) {
       }
     }
     drawEnemyBody(e, enemySpriteFrame);
-    if (GAME_SETTINGS.shipSmoke) npcEngine.draw(ctx, e, enemyConfig, isImgReady, enemySpriteFrame);
+    if (GAME_SETTINGS.npcEngineEffects) npcEngine.draw(ctx, e, enemyConfig, isImgReady, enemySpriteFrame);
     drawUberPirateGlow(e);
     drawRocketDebuffEffect(e);
     // Affaiblissement (Diminisher) : sprite joué par-dessus le vaisseau
@@ -32267,7 +32315,7 @@ if (GAME_SETTINGS.textures) {
     ctx.globalAlpha = 1;
   }
 
-  for (const ft of floatTexts) {
+  for (const ft of GAME_SETTINGS.combatText ? floatTexts : []) {
     const p = clamp(ft.t / ft.life, 0, 1);
     const a = 1 - p;
 

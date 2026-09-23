@@ -254,28 +254,64 @@
     <div id="settingsWindow" class="panel gameSettingsPanel">
       <div class="settingsBody">
         <nav class="settingsTabs">
-          <button class="settingsTab active" data-settings-tab="visual" type="button">Visuels et performances</button>
-          <button class="settingsTab" data-settings-tab="controls" type="button">Commandes</button>
-          <button class="settingsTab" data-settings-tab="sound" type="button">Son</button>
+          <div class="settingsNavHead"><b>Paramètres</b><span>Personnalise ton expérience</span></div>
+          <button class="settingsTab active" data-settings-tab="general" type="button"><span class="settingsTabIcon">⌂</span><span>Général</span></button>
+          <button class="settingsTab" data-settings-tab="display" type="button"><span class="settingsTabIcon">◉</span><span>Affichage</span></button>
+          <button class="settingsTab" data-settings-tab="interface" type="button"><span class="settingsTabIcon">▦</span><span>Interface</span></button>
+          <button class="settingsTab" data-settings-tab="controls" type="button"><span class="settingsTabIcon">⌨</span><span>Commandes</span></button>
+          <button class="settingsTab" data-settings-tab="sound" type="button"><span class="settingsTabIcon">♫</span><span>Audio</span></button>
         </nav>
-        <section class="settingsPage active" data-settings-page="visual">
-          <div class="settingsPageIntro"><b>Visuels et performances</b><span>Affichage et démarrage</span></div>
-          <div class="settingsVisual">
-            <div class="settingsVisualGrid">
-              <label class="settingsCheck" for="optShipEffect"><input id="optShipEffect" type="checkbox" /><span><b>Effet du vaisseau</b></span></label>
-              <label class="settingsCheck" for="optDrones"><input id="optDrones" type="checkbox" /><span><b>Afficher les drones</b></span></label>
-              <label class="settingsCheck" for="optMoveMarker"><input id="optMoveMarker" type="checkbox" /><span><b>Marqueur de déplacement</b></span></label>
-              <label class="settingsCheck" for="optShipSmoke"><input id="optShipSmoke" type="checkbox" /><span><b>Fumées des vaisseaux</b></span></label>
-            </div>
-            <label class="settingsFpsRow" for="optFpsLimit"><span><b>FPS maximum</b><small>Illimité = sans vsync, au-delà des Hz</small></span><select id="optFpsLimit"><option value="30">30 FPS</option><option value="60">60 FPS</option><option value="90">90 FPS</option><option value="120">120 FPS</option><option value="144">144 FPS</option><option value="240">240 FPS</option><option value="0">Illimité</option></select></label>
+        <section class="settingsPage active" data-settings-page="general">
+          <div class="settingsPageIntro"><b>Général</b><span>Démarrage, comportement global et maintenance de l'interface</span></div>
+          <div class="settingsCardGrid settingsCardGridTwo">
+            <article class="settingsCard">
+              <div class="settingsCardHead"><span>01</span><div><b>Démarrage</b><small>Accès rapide au jeu</small></div></div>
+              <label class="settingsCheck" for="optAutoStart"><input id="optAutoStart" type="checkbox" /><span><b>Démarrage automatique</b><small>Lance directement la partie après le chargement.</small></span></label>
+            </article>
+            <article class="settingsCard">
+              <div class="settingsCardHead"><span>02</span><div><b>Disposition</b><small>Fenêtres et préférences</small></div></div>
+              <button id="btnResetWindows" class="settingsResetBtn" type="button">Réinitialiser les fenêtres</button>
+              <button id="btnResetAllSettings" class="settingsResetBtn settingsDangerBtn" type="button">Restaurer tous les paramètres</button>
+            </article>
           </div>
-
-          <label class="settingsCheck settingsPrefStandalone" for="optAutoStart">
-            <input id="optAutoStart" type="checkbox" />
-            <span><b>Démarrage automatique</b></span>
-          </label>
-          <div class="settingsPageFooter">
-            <button id="btnResetWindows" class="settingsResetBtn settingsResetWindowsBtn" type="button">Réinitialiser les fenêtres</button>
+        </section>
+        <section class="settingsPage" data-settings-page="display">
+          <div class="settingsPageIntro"><b>Affichage et performances</b><span>Ajuste la qualité visuelle selon la puissance de ton appareil</span></div>
+          <div class="settingsCardGrid settingsCardGridTwo">
+            <article class="settingsCard">
+              <div class="settingsCardHead"><span>FX</span><div><b>Qualité graphique</b><small>Décor et effets du monde</small></div></div>
+              <div class="settingsOptionGrid">
+                <label class="settingsCheck" for="optTextures"><input id="optTextures" type="checkbox" /><span><b>Textures des maps</b><small>Arrière-plans et décors détaillés.</small></span></label>
+                <label class="settingsCheck" for="optShipEffect"><input id="optShipEffect" type="checkbox" /><span><b>Effets des vaisseaux</b><small>Superpositions animées des coques.</small></span></label>
+                <label class="settingsCheck" for="optShipSmoke"><input id="optShipSmoke" type="checkbox" /><span><b>Moteurs et fumées</b><small>Vaisseaux, P.E.T et traînées distantes.</small></span></label>
+                <label class="settingsCheck" for="optNpcEngineEffects"><input id="optNpcEngineEffects" type="checkbox" /><span><b>Effets moteurs des NPC</b><small>Flammes et animation moteur des aliens.</small></span></label>
+                <label class="settingsCheck" for="optCustomDesignEffects"><input id="optCustomDesignEffects" type="checkbox" /><span><b>Effets des designs</b><small>Notes, cœurs et cosmétiques spéciaux.</small></span></label>
+              </div>
+            </article>
+            <article class="settingsCard settingsPerformanceCard">
+              <div class="settingsCardHead"><span>FPS</span><div><b>Performances</b><small>Limite de rafraîchissement</small></div></div>
+              <label class="settingsFpsRow" for="optFpsLimit"><span><b>FPS maximum</b><small>Une limite basse réduit l'utilisation du processeur et de la batterie.</small></span><select id="optFpsLimit"><option value="30">30 FPS</option><option value="60">60 FPS</option><option value="90">90 FPS</option><option value="120">120 FPS</option><option value="144">144 FPS</option><option value="240">240 FPS</option><option value="0">Illimité</option></select></label>
+              <p class="settingsHint">Pour gagner des performances : coupe d'abord les moteurs/fumées, les effets NPC puis les effets des designs.</p>
+            </article>
+          </div>
+        </section>
+        <section class="settingsPage" data-settings-page="interface">
+          <div class="settingsPageIntro"><b>Interface de jeu</b><span>Choisis les informations affichées autour des entités</span></div>
+          <div class="settingsCardGrid settingsCardGridTwo">
+            <article class="settingsCard">
+              <div class="settingsCardHead"><span>HUD</span><div><b>Informations</b><small>Lecture du combat et navigation</small></div></div>
+              <div class="settingsOptionGrid">
+                <label class="settingsCheck" for="optMoveMarker"><input id="optMoveMarker" type="checkbox" /><span><b>Marqueur de déplacement</b><small>Affiche la destination de ton clic.</small></span></label>
+                <label class="settingsCheck" for="optCombatText"><input id="optCombatText" type="checkbox" /><span><b>Chiffres de combat</b><small>Dégâts, soins, esquives et récompenses flottantes.</small></span></label>
+              </div>
+            </article>
+            <article class="settingsCard">
+              <div class="settingsCardHead"><span>DR</span><div><b>Drones</b><small>Visibilité locale et multijoueur</small></div></div>
+              <div class="settingsOptionGrid">
+                <label class="settingsCheck" for="optDrones"><input id="optDrones" type="checkbox" /><span><b>Mes drones</b><small>Affiche tes Iris, Apis et Zeus.</small></span></label>
+                <label class="settingsCheck" for="optRemoteDrones"><input id="optRemoteDrones" type="checkbox" /><span><b>Drones des autres joueurs</b><small>Réduit l'encombrement en multijoueur.</small></span></label>
+              </div>
+            </article>
           </div>
         </section>
         <section class="settingsPage" data-settings-page="controls">
@@ -332,7 +368,7 @@
           </div>
         </section>
         <section class="settingsPage" data-settings-page="sound">
-          <div class="settingsPageIntro"><b>Son</b><span>Volume général et volume de chaque son du jeu</span></div>
+          <div class="settingsPageIntro"><b>Audio</b><span>Volume général, musique et mixage détaillé de chaque famille de sons</span></div>
           <div class="settingsAudio settingsSoundControl">
             <button id="optSound" class="settingsToggle" type="button">Sons généraux : activés</button>
             <span class="settingsVolumeRow"><input id="optVolume" class="settingsVolumeSlider" type="range" min="0" max="100" step="1" value="5" /><output id="optVolumeValue" class="settingsVolumeValue">5 %</output></span>
