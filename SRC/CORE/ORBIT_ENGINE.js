@@ -17207,7 +17207,7 @@ function tickShield(dt) {
   const effects = getActiveDroneFormation(account.user).effects || {};
   const oldSh = player.sh;
   // ✅ Pas de régénération de base sous le feu : chaque coup reçu (hurtPlayer)
-  // met attackedT à 5 s ; la base ne remonte que hors combat. Le drain de
+  // relance le même délai de 10 s que la réparation ; la base ne remonte que hors combat. Le drain de
   // formation reste appliqué même sous le feu (c'est un coût, pas un soin).
   // ✅ Regen de formation (ex Diamant +1 %/s) : s'applique QUOI QU'IL ARRIVE,
   // même sous le feu (seule une formation à drain la neutralise).
@@ -22628,7 +22628,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
     try {
       const absorb = Number(player.shAbsorb) > 0 ? Number(player.shAbsorb) : 0.8;
       damagePlayerLayers(player, shared, absorb, 0, playerPilotMults().tough);
-      player.attackedT = 5;
+      player.attackedT = REPAIR.cooldown;
       if (player.hp <= 0) {
         player.hp = 0;
         die();
@@ -22820,7 +22820,7 @@ function hurtPlayer(amount, source = null) {
           );
         } catch {}
       }
-      player.attackedT = 5;
+      player.attackedT = REPAIR.cooldown;
       return;
     }
   }
@@ -22840,7 +22840,7 @@ function hurtPlayer(amount, source = null) {
         { text: `${DMG_FMT.format(rdmg)}`, size: 19, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
       );
     }
-    player.attackedT = 5;
+    player.attackedT = REPAIR.cooldown;
     return;
   }
 
@@ -22866,7 +22866,7 @@ function hurtPlayer(amount, source = null) {
 
   resetRepairCooldown();
   player.iFrames = 0.1;
-  player.attackedT = 5;
+  player.attackedT = REPAIR.cooldown;
   // Seul un joueur bloque les portails battle : les sources NPC passent null.
   if (source?.byPlayer === true) player.pvpAttackT = 5;
 
@@ -23685,6 +23685,12 @@ function usePulse() {
   player.credits -= PULSE_COST;
   pulseCd = PULSE_COOLDOWN;
   persistCdUntil("pulse", PULSE_COOLDOWN);
+  // L'IEM purge immédiatement tous les effets de ralentissement et de gel.
+  // Le serveur efface également leur état autoritaire afin qu'ils ne soient
+  // pas réappliqués au prochain snapshot multijoueur.
+  player.rocketSlowPct = 0;
+  player.rocketSlowT = 0;
+  player.freezeT = 0;
   // IEM (EMP-01) : coupe le lien HP du REX.
   if (hplLinkActive()) endHplLink("emp");
   spawnPulseFx(player.x, player.y, 1, true);
@@ -30337,7 +30343,7 @@ if (moveTarget.active && !player.dead) {
       }
       // Sous le feu ennemi : pas de regen ni de reparation (comme hurtPlayer).
       // Ca bloque aussi la zone de non-agression (safe = hors combat).
-      player.attackedT = 5;
+      player.attackedT = REPAIR.cooldown;
       try { resetRepairCooldown(); } catch {}
       // Victime PvP : anneau Ship_damage face a l'attaquant (comme un tir NPC).
       // + le REX enregistre l'agresseur pour riposter en mode combat.
@@ -30396,7 +30402,7 @@ if (moveTarget.active && !player.dead) {
           player.sh = Math.max(0, Math.min(player.sh, Math.min(player.shMax, Number(self.sh))));
         }
       }
-      player.attackedT = 5;
+      player.attackedT = REPAIR.cooldown;
       try { resetRepairCooldown(); } catch {}
       try {
         const sourceUid = self.npcFrom != null ? String(self.npcFrom) : "";

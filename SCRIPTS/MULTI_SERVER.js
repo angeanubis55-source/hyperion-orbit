@@ -6,7 +6,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits, adminGiveExperience } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits, adminGiveExperience, adminGiveHonor } from "./ACCOUNT_SERVER.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
@@ -191,7 +191,7 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, bans: [...bans.values()] });
     return true;
   }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban") && request.method === "POST") {
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
         if (pathname === "/api/admin/give") {
@@ -222,6 +222,22 @@ function handleAdminApi(request, response, pathname) {
             const peer = findPeerByPseudo(res.pseudo);
             if (peer) {
               const txt = `L'admin t'a ${res.given > 0 ? "donné" : "retiré"} ${Math.abs(res.given).toLocaleString("fr-FR")} EXP. Nouveau total : ${res.after.toLocaleString("fr-FR")}.`;
+              sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
+            }
+          } catch {}
+          adminJson(response, 200, res);
+          return;
+        }
+        if (pathname === "/api/admin/give-honor") {
+          const res = adminGiveHonor(String(body?.pseudo || ""), body?.amount);
+          if (!res || res.ok !== true) {
+            adminJson(response, res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Montant invalide." });
+            return;
+          }
+          try {
+            const peer = findPeerByPseudo(res.pseudo);
+            if (peer) {
+              const txt = `L'admin t'a ${res.given > 0 ? "donné" : "retiré"} ${Math.abs(res.given).toLocaleString("fr-FR")} honneur. Nouveau total : ${res.after.toLocaleString("fr-FR")}.`;
               sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
             }
           } catch {}
@@ -861,6 +877,12 @@ wss.on("connection", (ws) => {
         const until = now + 3_000;
         if (skill === "iem") {
           state.iemUntil = until;
+          // L'IEM dissipe les ralentissements et gels déjà actifs. Ces champs
+          // sont autoritaires : leur remise à zéro empêche un ancien effet de
+          // revenir dans le snapshot suivant.
+          state.slowPct = 0;
+          state.slowUntil = 0;
+          state.freezeUntil = 0;
           const sim = npcSims.get(mapId);
           if (sim && typeof sim.breakPlayerLocks === "function") sim.breakPlayerLocks(id, until);
         } else {

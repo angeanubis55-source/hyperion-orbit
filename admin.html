@@ -184,6 +184,21 @@
           }
           refresh();
         };
+        const giveHonor = document.createElement("button");
+        giveHonor.type = "button"; giveHonor.className = "small"; giveHonor.textContent = "Honneur";
+        giveHonor.style.marginLeft = "6px";
+        giveHonor.onclick = async () => {
+          const raw = prompt(`Honneur pour ${p.pseudo} ?\nQuantité à AJOUTER (négatif = retirer, espaces acceptés) :`, "100000");
+          if (raw == null) return;
+          try {
+            const out = await call("/api/admin/give-honor", { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, amount: String(raw).replace(/[\s_]/g, "") }) });
+            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+            alert(`${out.pseudo} : ${out.before.toLocaleString("fr-FR")} → ${out.after.toLocaleString("fr-FR")} honneur.`);
+          } catch (e) {
+            alert(e?.message || "Erreur.");
+          }
+          refresh();
+        };
         const ban = document.createElement("button");
         ban.type = "button"; ban.className = "small danger"; ban.textContent = "Ban";
         ban.style.marginLeft = "6px";
@@ -205,7 +220,7 @@
           }
           refresh();
         };
-        td.appendChild(kick); td.appendChild(mute); td.appendChild(ban); td.appendChild(give); td.appendChild(giveExp);
+        td.appendChild(kick); td.appendChild(mute); td.appendChild(ban); td.appendChild(give); td.appendChild(giveExp); td.appendChild(giveHonor);
         tb.appendChild(tr);
       }
     } catch {}
