@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.305",
+    "date": "2026-09-24T00:27:10+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.304",
     "date": "2026-09-24T00:05:52+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.246",
     "date": "2026-09-20T22:21:30+02:00",
     "message": "multi: barres proxy PET sur pool serveur (verite, pas regen locale)"
-  },
-  {
-    "version": "0.245",
-    "date": "2026-09-20T22:14:34+02:00",
-    "message": "multi: PET allie lockable + degats PvP (lasers/roquettes/chiffres)"
   }
 ];

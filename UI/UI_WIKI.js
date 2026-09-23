@@ -40,7 +40,9 @@ export function wireWikiWindow() {
       if (query) page.classList.toggle("searchHit", pageVisible > 0);
       else page.classList.remove("searchHit");
     }
-    if (count) count.textContent = query ? `${visible} résultat${visible > 1 ? "s" : ""}` : "";
+    if (count) count.textContent = query
+      ? `${visible} résultat${visible > 1 ? "s" : ""}`
+      : `${total} article${total > 1 ? "s" : ""}`;
     // Si la page active est vide en recherche, bascule vers la première page avec un hit.
     if (query) {
       const active = pages.find((p) => p.classList.contains("active"));
@@ -64,4 +66,6 @@ export function wireWikiWindow() {
       search?.focus?.();
     }
   });
+
+  applySearch();
 }
