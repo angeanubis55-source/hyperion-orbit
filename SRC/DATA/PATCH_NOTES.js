@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.301",
+    "date": "2026-09-23T23:23:30+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.300",
     "date": "2026-09-23T22:33:41+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.242",
     "date": "2026-09-20T21:41:34+02:00",
     "message": "multi: PET allie meme marge ecran que vaisseau + diag complete"
-  },
-  {
-    "version": "0.241",
-    "date": "2026-09-20T21:39:39+02:00",
-    "message": "multi: diag PET allie console"
   }
 ];

@@ -327,7 +327,10 @@ async function pushNow() {
     // Le moteur re-synchronise via l'événement orbit:net-adopted puis
     // repousse l'état mémoire : convergence, jamais de reload.
     const conflicts = noteConflict();
-    memUser = mergeProgressiveFields(memUser, out.user);
+    // Une écriture admin (crédits/EXP/honneur) doit être adoptée exactement,
+    // y compris lorsqu'elle diminue une valeur. La fusion par maximum, utile
+    // pour les conflits ordinaires de gains, annulerait sinon les retraits.
+    memUser = out.adminConflict === true ? out.user : mergeProgressiveFields(memUser, out.user);
     writeCache(memUser);
     try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "stale", conflicts } })); } catch {}
     return out;
@@ -368,8 +371,13 @@ async function refreshNetUser() {
   if (srvRev > memRev) {
     // Serveur plus récent qu'au boot : on adopte sans recharger
     // (le moteur vivant se resynchronise via orbit:net-adopted).
-    // mergeProgressiveFields : les gains d'XP locaux survivent.
-    memUser = mergeProgressiveFields(memUser, out.user);
+    // Un nouveau token signale une attribution/retrait admin : adoption
+    // exacte, sinon le MAX de l'EXP annulerait notamment un retrait.
+    const serverAdminToken = String(out.user?._adminWriteToken || "");
+    const localAdminToken = String(memUser?._adminWriteToken || "");
+    memUser = serverAdminToken && serverAdminToken !== localAdminToken
+      ? out.user
+      : mergeProgressiveFields(memUser, out.user);
     writeCache(memUser);
     try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "refresh" } })); } catch {}
   }

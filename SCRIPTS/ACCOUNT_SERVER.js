@@ -325,6 +325,7 @@ export function adminGiveCredits(pseudo, amount) {
     const now = Date.now();
     const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
     data.credits = after;
+    data._adminWriteToken = randomBytes(12).toString("hex");
     data.revision = newRev;
     data.updatedAt = now;
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
@@ -620,6 +621,7 @@ export function adminGiveExperience(pseudo, amount) {
     const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
     data.stats.exp = after;
     data.stats.rankPoints = calculateRankPoints(data.stats);
+    data._adminWriteToken = randomBytes(12).toString("hex");
     data.revision = newRev;
     data.updatedAt = now;
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
@@ -648,6 +650,7 @@ export function adminGiveHonor(pseudo, amount) {
     const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
     data.stats.honor = after;
     data.stats.rankPoints = calculateRankPoints(data.stats);
+    data._adminWriteToken = randomBytes(12).toString("hex");
     data.revision = newRev;
     data.updatedAt = now;
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
@@ -718,6 +721,23 @@ function handleSave(req, body, res) {
   }
   if (String(blob.id || "") !== String(me.id)) {
     return json(res, 403, { ok: false, error: "Compte refuse." });
+  }
+  // Une attribution admin peut arriver pendant que le joueur possède déjà
+  // plusieurs sauvegardes locales en attente. Leur revision peut être plus
+  // grande que celle du serveur tout en transportant les anciens totaux.
+  // Le token oblige alors le client à adopter une fois l'état admin exact
+  // avant qu'une nouvelle sauvegarde complète soit acceptée.
+  let serverData = {};
+  try { serverData = JSON.parse(me.data || "{}") || {}; } catch { serverData = {}; }
+  const adminWriteToken = String(serverData._adminWriteToken || "");
+  if (adminWriteToken && String(blob._adminWriteToken || "") !== adminWriteToken) {
+    return json(res, 409, {
+      ok: false,
+      stale: true,
+      adminConflict: true,
+      error: "Modification administrateur plus recente.",
+      user: rowToPublic(me),
+    });
   }
   const incomingRev = Math.floor(Number(blob.revision) || 0);
   if (!(incomingRev > Number(me.revision) || 0)) {
