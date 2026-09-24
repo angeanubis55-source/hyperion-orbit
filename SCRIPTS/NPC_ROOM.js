@@ -402,13 +402,17 @@ export class ZoneNpcSim {
   tick(dtSec = 0.1) {
     const nowMs = Date.now();
     const dt = Math.max(0.01, Math.min(0.5, Number(dtSec) || 0.1));
-    // 1) Respawns.
-    for (const camp of this.camps) {
-      let alive = 0;
-      for (const e of this.entries.values()) {
-        if (e.campId === camp.id && e.hp > 0) alive++;
+    // 1) Respawns. Comptage vivant par camp en UNE passe (l'ancienne double
+    // boucle camps x entrees coutait ~5 ms/tick sur MAUDITE et bloquait la
+    // boucle 50 ms -> pics de ping pour tout le monde).
+    const aliveByCamp = new Map();
+    for (const e of this.entries.values()) {
+      if (e && e.campId != null && e.hp > 0) {
+        aliveByCamp.set(e.campId, (aliveByCamp.get(e.campId) || 0) + 1);
       }
-      if (alive >= camp.maxAlive) continue;
+    }
+    for (const camp of this.camps) {
+      if ((aliveByCamp.get(camp.id) || 0) >= camp.maxAlive) continue;
       const cd = (this.campT.get(camp.id) || 0) - dt;
       if (cd > 0) { this.campT.set(camp.id, cd); continue; }
       const slot = getSlot(this.universe, this.mapId, slotUid(this.mapId, camp.id));

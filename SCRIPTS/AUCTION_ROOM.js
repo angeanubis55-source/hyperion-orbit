@@ -187,7 +187,20 @@ export function pollAuctionCycle(nowMs = Date.now()) {
     };
   });
   const oldCycle = cycle;
-  buildCycle(now);
+  // Commit le rollover AVANT de reconstruire : si buildCycle leve (lot
+  // corrompu...), on ne doit JAMAIS re-diffuser le meme settle au poll
+  // suivant (= double attribution des gains chez les gagnants).
+  cycle = parisHourSeed(now);
+  try {
+    buildCycle(now);
+  } catch (err) {
+    try { console.warn("[multi:auction] buildCycle en echec, lots vides pour ce cycle :", err?.message || err); } catch {}
+    try {
+      lotsMeta = [];
+      bids = new Map();
+      cycle = parisHourSeed(now);
+    } catch {}
+  }
   persist();
   return {
     settle: { t: "auctionSettle", cycle: oldCycle, results },

@@ -253,9 +253,30 @@ function applyUpdate(msg, now) {
   return { events };
 }
 
+// Cycles deja regles (anti double-attribution : le meme settle recu deux
+// fois — double diffusion, reconnexion, double onglet — ne doit jamais
+// payer deux fois). Persiste en local (12 derniers), partage entre onglets.
+const SETTLED_KEY = "orbit_auction_settled_v1";
+function settledCycles() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SETTLED_KEY) || "[]");
+    return new Set(Array.isArray(raw) ? raw.map(String).slice(-12) : []);
+  } catch { return new Set(); }
+}
+function markCycleSettled(cycleId) {
+  try {
+    const set = settledCycles();
+    set.add(String(cycleId));
+    const arr = [...set].slice(-12);
+    localStorage.setItem(SETTLED_KEY, JSON.stringify(arr));
+  } catch {}
+}
 function applySettle(msg) {
   const u = getCurrentUserFull();
   if (!u || sharedActive !== true) return { events: [], profileDirty: false };
+  const cycleId = String(msg?.cycle ?? "");
+  if (cycleId && settledCycles().has(cycleId)) return { events: [], profileDirty: false };
+  if (cycleId) markCycleSettled(cycleId);
   const events = [];
   let profileDirty = false;
   const me = meId();

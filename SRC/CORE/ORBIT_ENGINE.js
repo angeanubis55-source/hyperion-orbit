@@ -27613,12 +27613,30 @@ function spawnNetShotVisual(ev) {
         vx: (mdx / md) * spd, vy: (mdy / md) * spd,
         r: 6.0, life: md / spd + 0.3,
         dmg: 0, key: ammo, side: "player", targetId: tgtId,
-        homing: !sab, visual: true, spd, sabReverse: false,
+        // SAB allie : comme en local, homing vers le vaisseau du tireur +
+        // absorption a l'arrivee (voir tick : branche _netVisual). Sans ca,
+        // le tir file droit vers la position figee du tireur et le depasse
+        // loin derriere des qu'il bouge.
+        homing: true, visual: true, spd, sabReverse: sab,
+        sabHomeBy: sab ? String(ev.by || "") : "",
         volleyId: netVolley, volleySize: starts.length,
         miss: netMiss, _netVisual: true,
       }, ENTITY_LIMITS.playerBullets);
     } catch { break; }
   }
+}
+
+// Vaisseau allie d'ou part un SAB affiche (proxy interpole). Le SAB visuel
+// le poursuit et s'y absorbe ; s'il disparait (mort/deco), le tir s'eteint.
+function netVisualSabHome(by) {
+  try {
+    const id = String(by || "");
+    if (!id) return null;
+    for (const e of netPlayerProxies.values()) {
+      if (e && String(e._netPlayer) === id && Number(e.hp) > 0) return e;
+    }
+  } catch {}
+  return null;
 }
 
 function spawnNetRocketVisual(ev) {
@@ -27975,12 +27993,34 @@ function drawNetplayRemotes(ox, oy) {
             ctx.restore();
           }
           const pframe = ((angleToFrameIndex(Number(r.petd ?? r.angle) || 0, 32) + 16) % 32) + 1;
-          const psrc = `${getPetStageBase(Number(r.petl) || 1)}${pframe}.png`;
+          const plevel = Math.max(1, Number(r.petl) || 1);
+          const psrc = `${getPetStageBase(plevel)}${pframe}.png`;
           const pimg = getCachedImage(psrc);
-          if (!isImgReady(pimg)) {
+          // Dernier palier : comme notre REX, la couche NIVEAU6_5 ne contient
+          // que les pieces a superposer a la base NIVEAU5 (sinon l'allie ne
+          // voit que la 6_5).
+          const pbaseSrc = `/PET/PET_SPRITES/NIVEAU5/${pframe}.png`;
+          const pbase = getPetStage(plevel) >= 6 ? getCachedImage(pbaseSrc) : null;
+          let psprite = pimg;
+          if (pbase) {
+            psprite = petCombinedFrames.get(pframe);
+            if (!psprite && isImgReady(pbase) && isImgReady(pimg)) {
+              psprite = document.createElement("canvas");
+              psprite.width = PET_DRAW_W;
+              psprite.height = PET_DRAW_H;
+              const pcomposite = psprite.getContext("2d");
+              pcomposite.imageSmoothingEnabled = false;
+              pcomposite.drawImage(pbase, 0, 0, PET_DRAW_W, PET_DRAW_H);
+              pcomposite.drawImage(pimg, 0, 0, PET_DRAW_W, PET_DRAW_H);
+              petCombinedFrames.set(pframe, psprite);
+            }
+            if (!psprite) psprite = isImgReady(pbase) ? pbase : null;
+          }
+          if (!isImgReady(pimg) || (pbase && !isImgReady(pbase) && !petCombinedFrames.get(pframe))) {
             // Sprite jamais vu sur cet ecran : on le charge (sinon le PET
             // de l'allie reste invisible alors que tout est recu).
             try { loadImage(psrc, { priority: true }); } catch {}
+            try { if (pbase) loadImage(pbaseSrc, { priority: true }); } catch {}
             // En attendant : losange de repli (comme les drones).
             ctx.save();
             ctx.translate(prx - x, pry - y);
@@ -27989,7 +28029,7 @@ function drawNetplayRemotes(ox, oy) {
             ctx.fillRect(-6, -6, 12, 12);
             ctx.restore();
           }
-          if (isImgReady(pimg)) {
+          if (psprite && (pbase || isImgReady(psprite))) {
             // Etat moteur stable par joueur (vitesse estimee depuis l'interpolation).
             let peng = netplayPetEngines.get(r.id);
             if (!peng) {
@@ -28007,8 +28047,8 @@ function drawNetplayRemotes(ox, oy) {
             ctx.translate(prx - x, pry - y);
             ctx.translate(0, Math.sin(performance.now() / 1000 * 4) * 2);
             ctx.imageSmoothingEnabled = false;
-            drawCenteredImage(ctx, pimg, PET_DRAW_W, PET_DRAW_H);
-            try { if (GAME_SETTINGS.shipSmoke) petEngine.draw(ctx, peng.holder, pimg, pframe, isImgReady); } catch {}
+            drawCenteredImage(ctx, psprite, PET_DRAW_W, PET_DRAW_H);
+            try { if (GAME_SETTINGS.shipSmoke) petEngine.draw(ctx, peng.holder, psprite, pframe, isImgReady); } catch {}
             // Etiquette du REX distant : pseudo + firme, comme sur son ecran.
             try {
               const petPseudo = String(r.petn || "REX");
@@ -31178,16 +31218,31 @@ for (let i = bullets.length - 1; i >= 0; i--) {
   if (b.homing) {
     if (b.sabReverse) {
       // ✅ SAB inversé : poursuit le JOUEUR (absorption), pas la cible.
-      if (player.dead || (player.hp || 0) <= 0) {
-        removeProjectile(bullets, i);
-        cleanupPlayerMissVolley(b);
-        continue;
+      // Tir allie (visuel) : poursuit le vaisseau du copain, pas le notre.
+      if (b._netVisual) {
+        const home = netVisualSabHome(b.sabHomeBy);
+        if (!home) {
+          removeProjectile(bullets, i);
+          cleanupPlayerMissVolley(b);
+          continue;
+        }
+        const hdx = home.x - b.x, hdy = home.y - b.y;
+        const hd = Math.hypot(hdx, hdy) || 1;
+        const hspd = Math.max(120, Number(b.spd) || Math.hypot(b.vx, b.vy) || 120);
+        b.vx = (hdx / hd) * hspd;
+        b.vy = (hdy / hd) * hspd;
+      } else {
+        if (player.dead || (player.hp || 0) <= 0) {
+          removeProjectile(bullets, i);
+          cleanupPlayerMissVolley(b);
+          continue;
+        }
+        const pdx = player.x - b.x, pdy = player.y - b.y;
+        const pd = Math.hypot(pdx, pdy) || 1;
+        const pspd = Math.max(120, Number(b.spd) || Math.hypot(b.vx, b.vy) || 120);
+        b.vx = (pdx / pd) * pspd;
+        b.vy = (pdy / pd) * pspd;
       }
-      const pdx = player.x - b.x, pdy = player.y - b.y;
-      const pd = Math.hypot(pdx, pdy) || 1;
-      const pspd = Math.max(120, Number(b.spd) || Math.hypot(b.vx, b.vy) || 120);
-      b.vx = (pdx / pd) * pspd;
-      b.vy = (pdy / pd) * pspd;
     } else {
     const dx = t.x - b.x;
     const dy = t.y - b.y;
@@ -31262,6 +31317,29 @@ for (let i = bullets.length - 1; i >= 0; i--) {
   const expired = advanceProjectile(b, dt);
 
   if (b.sabReverse) {
+    // Tir SAB allie (visuel seul) : absorption sur le vaisseau du copain,
+    // sans degats ni chiffres. Le homing ci-dessus le fait suivre le copain
+    // en mouvement au lieu de filer droit loin derriere lui.
+    if (b._netVisual) {
+      const home = netVisualSabHome(b.sabHomeBy);
+      if (!home) {
+        removeProjectile(bullets, i);
+        cleanupPlayerMissVolley(b);
+        continue;
+      }
+      const hr = (home.r || 20) + (b.r || 6);
+      if (segCircleHit(b._oldX, b._oldY, b.x, b.y, home.x, home.y, hr)) {
+        if (b.miss) showPlayerMissOnce(b, home);
+        removeProjectile(bullets, i);
+        cleanupPlayerMissVolley(b);
+        continue;
+      }
+      if (expired) {
+        removeProjectile(bullets, i);
+        cleanupPlayerMissVolley(b);
+      }
+      continue;
+    }
     // ✅ SAB/CBO inversé : l'impact a lieu à l'ARRIVÉE AU VAISSEAU (absorption).
     // Le drain est prélevé sur la cible `t` (qui doit toujours exister).
     // CBO = dégâts normaux (×3 déjà dans b.dmg) + vol de bouclier ×1 ;
@@ -34054,6 +34132,13 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   isZoneMap = rules.mode === "zone";
 
   window.__CURRENT_MAP_ID__ = String(mapId);
+  // Re-purge d'arrivée : pendant le préchargement (await ci-dessus),
+  // l'ancien __CURRENT_MAP_ID__ laissait encore passer les snapshots de
+  // l'ancienne carte, qui repeuplaient NPC/joueurs distants (+ tirs ennemis)
+  // affichés ensuite comme fantômes sur la nouvelle carte. On re-purge ici ;
+  // les snapshots 20 Hz de la nouvelle carte repeuplent dans la foulée.
+  try { clearNetplayGameplay(); } catch {}
+  try { purgeNpcsForJump(); } catch {}
   addGameLog(`Entrée sur la carte ${mapId}`, "info");
   window.__SPAWN_PORTAL_ID__ = spawnId;
   window.__ORBIT_MAP_TRANSITION__ = true;

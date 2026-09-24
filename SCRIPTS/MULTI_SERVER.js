@@ -709,10 +709,33 @@ function npcRewardShares(killerId, mapId, death) {
   }));
 }
 
+// Recompenses NPC : ~8 ms de SQLite synchrone PAR PART. Execute dans la
+// boucle 50 ms, quelques kills simultanes bloquaient l'event loop des
+// dizaines de ms -> pong en retard -> pics de ping pour tout le monde.
+// Les morts sont donc filees ici et traitees par lot hors boucle chaude
+// (le client attend la recompense avant d'afficher le gain, delai invisible).
+const pendingNpcRewards = []; // { mapId, death }
+function queueNpcDeaths(mapId, deaths) {
+  if (!Array.isArray(deaths) || !deaths.length) return;
+  for (const death of deaths) {
+    if (!death || typeof death !== "object") continue;
+    const killerId = String(death.killer || "");
+    if (!killerId.startsWith("u_") || death.cause !== "gun") continue;
+    if (pendingNpcRewards.length >= 500) pendingNpcRewards.shift();
+    pendingNpcRewards.push({ mapId: String(mapId), death });
+  }
+}
 function awardNpcDeaths(mapId, deaths) {
+  queueNpcDeaths(mapId, deaths);
+}
+function pumpNpcRewards(budgetMs = 12) {
+  const start = Date.now();
   const now = Date.now();
   for (const [key, at] of rewardedNpcDeaths) if (now - at > 10 * 60_000) rewardedNpcDeaths.delete(key);
-  for (const death of Array.isArray(deaths) ? deaths : []) {
+  while (pendingNpcRewards.length && Date.now() - start < budgetMs) {
+    const item = pendingNpcRewards.shift();
+    if (!item) continue;
+    const { mapId, death } = item;
     const killerId = String(death?.killer || "");
     if (!killerId.startsWith("u_") || death?.cause !== "gun") continue;
     const deathKey = `${String(mapId).toLowerCase()}:${String(death.uid)}:${Number(death.seq) || 0}`;
@@ -728,12 +751,24 @@ function awardNpcDeaths(mapId, deaths) {
         t: "npcReward", map: String(mapId), uid: String(death.uid), seq: Number(death.seq) || 0,
         killer: killerId, percent: share.percent, ...reward,
       });
+      // Une part SQLite (~8 ms) peut deja depasser le budget : on sort pour
+      // laisser respirer l'event loop, la suite passe au prochain tour.
+      if (Date.now() - start >= budgetMs) { complete = false; break; }
     }
-    // Une erreur SQLite transitoire sera retentee au tick suivant. Les parts
-    // deja commitees sont protegees par npc_reward_tx et ne doublent jamais.
+    // Une erreur SQLite transitoire sera retentee au tour suivant (en fin de
+    // file pour ne pas bloquer les autres). Les parts deja commitees sont
+    // protegees par npc_reward_tx et ignorees via duplicate.
     if (complete) rewardedNpcDeaths.set(deathKey, now);
+    else pendingNpcRewards.push({ mapId, death });
+  }
+  if (pendingNpcRewards.length > 400) {
+    try { console.log(`[multi:npc] file recompenses saturee (${pendingNpcRewards.length}), delestage des plus anciennes`); } catch {}
+    pendingNpcRewards.splice(0, pendingNpcRewards.length - 400);
   }
 }
+setInterval(() => {
+  try { pumpNpcRewards(12); } catch {}
+}, 100);
 
 server.on("upgrade", (request, socket, head) => {
   const url = new URL(request.url || "/ws", "http://localhost");
@@ -1674,9 +1709,8 @@ setInterval(() => {
           }
         }
         npc = sim.snapshot();
-        // Le message de recompense est envoye avant le snapshot de mort sur
-        // le meme WebSocket : le client possede donc les montants autoritaires
-        // lorsque processDeaths affiche et applique le gain.
+        // Recompenses filees hors boucle chaude (SQLite ~8 ms/part) : le
+        // client attend le gain avant d'afficher l'explosion, delai invisible.
         awardNpcDeaths(key, npc.deaths);
       } else if (sim === undefined) {
         ensureNpcSim(key);
