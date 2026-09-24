@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.309",
+    "date": "2026-09-24T02:51:09+02:00",
+    "message": "bigger improvements"
+  },
+  {
     "version": "0.308",
     "date": "2026-09-24T02:02:48+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.250",
     "date": "2026-09-21T15:31:54+02:00",
     "message": "Synchronise le multijoueur et les encheres"
-  },
-  {
-    "version": "0.249",
-    "date": "2026-09-21T00:34:42+02:00",
-    "message": "backup: multiplayer pet abilities effects and formations"
   }
 ];
