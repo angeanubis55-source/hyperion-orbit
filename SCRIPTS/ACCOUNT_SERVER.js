@@ -838,6 +838,7 @@ export function handleAccountApi(req, res) {
         let rankPoints = 0, honor = 0;
         let totalExp = 0;
         let totalHonneur = 0;
+        let faction = "";
         try {
           const data = JSON.parse(r.data || "{}");
           rankPoints = Math.max(0, Math.floor(Number(data?.stats?.rankPoints) || 0));
@@ -847,16 +848,18 @@ export function handleAccountApi(req, res) {
           if (Number.isFinite(te) && te >= 0) totalExp = te;
           const th = Math.floor(Number(data?.stats?.honor));
           if (Number.isFinite(th) && th >= 0) totalHonneur = th;
+          const fa = String(data?.faction || "").toLowerCase();
+          if (fa === "mmo" || fa === "eic" || fa === "vru") faction = fa;
         } catch {}
         list.push({
           pseudo: String(r.pseudo || "Pilote").slice(0, 20),
           points: kills * 10 + Math.floor(totalExp / 1000 + totalHonneur / 100),
-          rankPoints, honor,
+          rankPoints, honor, faction,
           _kills: kills,
         });
       }
       list.sort((a, b) => b.points - a.points || b._kills - a._kills);
-      return json(res, 200, { ok: true, list: list.slice(0, 100).map(({ pseudo, points, rankPoints, honor }) => ({ pseudo, points, rankPoints, honor })) });
+      return json(res, 200, { ok: true, list: list.slice(0, 100).map(({ pseudo, points, rankPoints, honor, faction }) => ({ pseudo, points, rankPoints, honor, faction })) });
     } catch {
       return json(res, 500, { ok: false, error: "Erreur serveur." });
     }

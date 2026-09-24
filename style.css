@@ -2610,7 +2610,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 /* Fenêtre Classement PvP */
 .rankingPanel{ width:560px; min-width:420px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
 .rankingStatus{ padding:7px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#75e8ff; font-size:11px; font-weight:800; text-transform:uppercase; }
-.rankingHead,.rankingRow{ display:grid; grid-template-columns:34px 40px minmax(0,1fr) 80px; gap:6px; align-items:center; padding:5px 11px; box-sizing:border-box; }
+.rankingHead,.rankingRow{ display:grid; grid-template-columns:34px 40px 56px minmax(0,1fr) 80px; gap:6px; align-items:center; padding:5px 11px; box-sizing:border-box; }
 .rankingHead{ color:#5d96a5; font-size:11px; font-weight:800; text-transform:uppercase; border-bottom:1px solid rgba(124,240,255,.16); }
 .rankingRows{ height:320px; min-height:160px; overflow-y:auto; display:grid; align-content:start; box-sizing:border-box; padding:4px 0; }
 .rankingRow{ color:#bcdde5; font-size:12px; font-weight:600; }
@@ -2619,6 +2619,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .rankingRow.rankingMe .rankingName{ color:#ffd36b; font-weight:800; }
 .rankingPos{ color:#5d96a5; font-weight:800; }
 .rankingGrade{ width:28px; height:28px; object-fit:contain; }
+.rankingFirm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; color:#75e8ff; font-size:11px; font-weight:800; }
 .rankingName{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#effcff; font-weight:700; }
 .rankingHead span:last-child{ text-align:center; }
 .rankingNum{ text-align:right; font-variant-numeric:tabular-nums; }

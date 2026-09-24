@@ -2,6 +2,7 @@
 
 import { netMyPseudo } from "../SRC/CORE/NETPLAY.js";
 import { getRankInfo } from "../SRC/CORE/PROGRESSION.js";
+import { getFaction } from "../SRC/CORE/FACTIONS.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 import { escapeHtml } from "./UI_DOM.js";
 
@@ -30,11 +31,13 @@ export function initRankingsUI() {
       }
       out.list.forEach((row, i) => {
         const rank = getRankInfo(Number(row.rankPoints) || 0, Number(row.honor) || 0);
+        const firm = getFaction(row.faction)?.shortName || "—";
         const div = document.createElement("div");
         div.className = "rankingRow" + (me && row.pseudo === me ? " rankingMe" : "");
         div.innerHTML =
           `<span class="rankingPos">${i + 1}</span>` +
           `<img class="rankingGrade" src="${escapeHtml(rank.imagePath)}" alt="${escapeHtml(rank.name)}" title="${escapeHtml(rank.name)}" draggable="false">` +
+          `<span class="rankingFirm" title="${escapeHtml(getFaction(row.faction)?.name || "")}">${escapeHtml(firm)}</span>` +
           `<span class="rankingName">${escapeHtml(row.pseudo)}</span>` +
           `<span class="rankingPts">${formatInteger(Number(row.points) || 0)}</span>`;
         body.appendChild(div);
