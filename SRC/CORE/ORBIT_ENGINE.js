@@ -14591,6 +14591,18 @@ function setCenterMsg(show, title, body, hint) {
 // ============================================================
 const camera = { x: WORLD.w / 2, y: WORLD.h / 2 };
 
+// Telephone uniquement (body.phone-layout pose par UI_TOUCH_CONTROLS) :
+// le monde est dezoome de 50 % (vaisseaux, portails, NPC...), l'UI DOM
+// (boutons, menus) garde sa taille. PC : toujours 1.
+function phoneWorldZoom() {
+  try {
+    return document.body.classList.contains("phone-layout") ? 0.5 : 1;
+  } catch { return 1; }
+}
+// Quand le monde est dezoome, le culling manuel (coordonnees ecran non
+// zoomees) est faux : on dessine tout, la zone visible etant 4x plus grande.
+let worldNoCull = false;
+
 // Tremblement d'écran déclenché à la mort : fort au début, puis amorti
 // très doucement jusqu'au retour à zéro.
 let camShake = null; // { t, dur, max }
@@ -14606,15 +14618,15 @@ function tickCamShake(dt) {
 }
 
 function screenToWorld(sx, sy) {
-  return screenToWorldPoint(sx, sy, camera, innerWidth, innerHeight);
+  return screenToWorldPoint(sx, sy, camera, innerWidth, innerHeight, phoneWorldZoom());
 }
 
 function worldToScreen(x, y) {
-  return worldToScreenPoint(x, y, camera, innerWidth, innerHeight);
+  return worldToScreenPoint(x, y, camera, innerWidth, innerHeight, phoneWorldZoom());
 }
 
 function isOnScreenWorld(x, y, margin = 120) {
-  return isWorldPointVisible(x, y, camera, innerWidth, innerHeight, margin);
+  return isWorldPointVisible(x, y, camera, innerWidth, innerHeight, margin, phoneWorldZoom());
 }
 
 function pickEnemyAtScreen(sx, sy) {
@@ -17610,6 +17622,108 @@ function refreshHoldMoveTarget() {
   setMoveTargetFromScreen(pointer.clientX, pointer.clientY);
 }
 
+// ============================================================
+// Controles tactiles telephone (UI_TOUCH_CONTROLS) : le joystick
+// gauche ecrit window.__TouchStick { active, dx, dy } (direction
+// normalisee). On vise un point devant le vaisseau chaque frame,
+// comme un clic maintenu : le modele moveTarget existant fait le reste.
+// ============================================================
+let touchStickWasActive = false;
+function tickTouchStick() {
+  let stick = null;
+  try { stick = window.__TouchStick || null; } catch { stick = null; }
+  if (!stick || stick.active !== true || player.dead || !started) {
+    if (touchStickWasActive) {
+      touchStickWasActive = false;
+      try { moveTarget.active = false; } catch {}
+    }
+    return;
+  }
+  const dx = Number(stick.dx) || 0, dy = Number(stick.dy) || 0;
+  if (dx * dx + dy * dy < 0.04) return;
+  if (!touchStickWasActive) {
+    touchStickWasActive = true;
+    try { cancelCollectableTarget(); } catch {}
+    try { botNotifyManual(); } catch {}
+  }
+  const reach = 1600;
+  moveTarget.active = true;
+  moveTarget.x = clamp(player.x + dx * reach, 80, WORLD.w - 80);
+  moveTarget.y = clamp(player.y + dy * reach, 80, WORLD.h - 80);
+}
+
+// Bouton TGT tactile : verrouille le NPC vivant le plus proche, puis
+// cycle vers le suivant a chaque appui (a portee d'abord, sinon global).
+function touchCycleTarget() {
+  if (player.dead || !started) return null;
+  const alive = [];
+  try {
+    for (const e of enemies) {
+      if (!e || !(e.hp > 0)) continue;
+      alive.push(e);
+    }
+    for (const e of netPlayerProxies.values()) {
+      if (!e || !(e.hp > 0)) continue;
+      alive.push(e);
+    }
+  } catch { return null; }
+  if (!alive.length) return null;
+  alive.sort((a, b) => (Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y)));
+  const inRange = alive.filter((e) => Math.hypot(e.x - player.x, e.y - player.y) <= playerRange * 1.2);
+  const pool = inRange.length ? inRange : alive.slice(0, 12);
+  const cur = Target.get();
+  let idx = pool.indexOf(cur);
+  idx = idx < 0 ? 0 : (idx + 1) % pool.length;
+  try { Target.set(pool[idx]); } catch { return null; }
+  return pool[idx];
+}
+
+// Bouton MUN tactile : passe a la prochaine munition disponible
+// (meme appel que les boutons du dock : switch + attaque si lock).
+function touchCycleAmmo() {
+  if (player.dead || !started) return null;
+  const order = Array.isArray(BOT_AMMO_IDS) && BOT_AMMO_IDS.length ? BOT_AMMO_IDS : ["x1", "x2", "x3", "x4", "sab"];
+  const avail = order.filter((k) => k === "x1" || ammoCount(k) > 0);
+  if (!avail.length) return null;
+  const cur = String(player.ammo.active || "x1").toLowerCase();
+  let idx = avail.indexOf(cur);
+  idx = idx < 0 ? 0 : (idx + 1) % avail.length;
+  const next = avail[idx];
+  try { startAttack(next); } catch { return null; }
+  return next;
+}
+
+try {
+  window.__TouchHooks = {
+    toggleFire() {
+      try {
+        if (player.dead || !started) return false;
+        if (!Target.get()) touchCycleTarget();
+        toggleAttack();
+        return attackActive === true;
+      } catch { return false; }
+    },
+    cycleTarget: touchCycleTarget,
+    cycleAmmo: touchCycleAmmo,
+    stopStick() {
+      try { moveTarget.active = false; } catch {}
+      touchStickWasActive = false;
+    },
+    getState() {
+      try {
+        const t = Target.get();
+        return {
+          attackActive: attackActive === true,
+          ammo: String(player.ammo.active || "x1"),
+          targetName: t ? String(t.name || t.type || "?").slice(0, 24) : "",
+          started: started === true,
+          dead: player.dead === true,
+        };
+      } catch { return { attackActive: false, ammo: "x1", targetName: "", started: false, dead: false }; }
+    },
+  };
+} catch {}
+
 canvas.addEventListener(
   "pointerdown",
   (e) => {
@@ -18357,7 +18471,7 @@ function drawHoloClones(ox, oy) {
   for (const c of escortShips) {
     if (!c?.holo || (c.hp || 0) <= 0) continue;
     const x = Number(c.x || 0) + ox, y = Number(c.y || 0) + oy;
-    if (x < -220 || y < -220 || x > innerWidth + 220 || y > innerHeight + 220) continue;
+    if (!worldNoCull && (x < -220 || y < -220 || x > innerWidth + 220 || y > innerHeight + 220)) continue;
     // Coque identique (frame selon son cap).
     const idx = angleToFrameIndex(Number(c.angle || 0) + (pack?.angleOffset || 0), frames);
     const img = playerImgs[idx] || playerImgs[0];
@@ -22192,7 +22306,7 @@ function drawCollectables(ox, oy) {
     const y = c.y + oy;
 
     const maxSize = Math.max(sp.w || 64, sp.h || 64) * (sp.scale || 1);
-    if (x < -maxSize || y < -maxSize || x > innerWidth + maxSize || y > innerHeight + maxSize) {
+    if (!worldNoCull && (x < -maxSize || y < -maxSize || x > innerWidth + maxSize || y > innerHeight + maxSize)) {
       continue;
     }
 
@@ -22291,7 +22405,7 @@ function drawPetLocator(ox, oy) {
   const foe = enemiesById.get(petLocator.enemyId);
   if (!foe || !(foe.hp > 0)) return;
   const sx = foe.x + ox, sy = foe.y + oy;
-  if (sx < -260 || sy < -260 || sx > innerWidth + 260 || sy > innerHeight + 260) return;
+  if (!worldNoCull && (sx < -260 || sy < -260 || sx > innerWidth + 260 || sy > innerHeight + 260)) return;
   const t = performance.now() / 1000;
   const pulse = 0.75 + Math.sin(t * 5) * 0.2;
   const cfg = NPC_TYPES[foe.type];
@@ -25656,7 +25770,7 @@ try {
       try {
         const e = [...netPlayerProxies.values()][0];
         if (!e) return { result: "no-proxy" };
-        const s = worldToScreenPoint(e.x, e.y, camera, innerWidth, innerHeight);
+        const s = worldToScreenPoint(e.x, e.y, camera, innerWidth, innerHeight, phoneWorldZoom());
         let found = null;
         try { found = pickEnemyAtScreen(s.x, s.y); } catch (err) { return { result: "pick-threw", err: String(err && err.message || err) }; }
         if (!found) return { result: "pick-null", screen: { x: Math.round(s.x), y: Math.round(s.y) }, proxyHp: e.hp, active: netplayNpcActive() };
@@ -27595,7 +27709,7 @@ function drawNetplayRemotes(ox, oy) {
       swayBob = Math.sin(performance.now() / 1000 * 4 + (String(r.id).charCodeAt(0) || 0)) * 2 * swayAmt;
     } catch {}
     const x = Number(r.rx ?? r.x) + ox, y = Number(r.ry ?? r.y) + oy + swayBob;
-    if (x < -260 || y < -260 || x > innerWidth + 260 || y > innerHeight + 260) continue;
+    if (!worldNoCull && (x < -260 || y < -260 || x > innerWidth + 260 || y > innerHeight + 260)) continue;
     // Tirs de l'allie : vrais projectiles visuels (tickNetplayVisuals),
     // pas de faisceau.
     ctx.save();
@@ -27817,7 +27931,7 @@ function drawNetplayRemotes(ox, oy) {
       if (r.peta === 1) {
         const prx = Number(r.petrx ?? r.petx) + ox, pry = Number(r.petry ?? r.pety) + oy;
         // Meme marge que le vaisseau (260) : pas de clipping au bord.
-        if (prx > -260 && pry > -260 && prx < innerWidth + 260 && pry < innerHeight + 260) {
+        if (worldNoCull || (prx > -260 && pry > -260 && prx < innerWidth + 260 && pry < innerHeight + 260)) {
           // Le proxy contient les pools autoritaires du serveur. Comme pour
           // notre REX, sa coque et son bouclier ne s'affichent que lorsqu'il
           // est verrouille.
@@ -29037,8 +29151,8 @@ function drawLaserBeam(L, ox, oy) {
   const endX = x + Math.cos(L.ang) * (start + visualLen);
   const endY = y + Math.sin(L.ang) * (start + visualLen);
   const margin = Math.max(40, L.width * 2);
-  if (Math.max(x, endX) < -margin || Math.min(x, endX) > innerWidth + margin ||
-      Math.max(y, endY) < -margin || Math.min(y, endY) > innerHeight + margin) return;
+  if (!worldNoCull && (Math.max(x, endX) < -margin || Math.min(x, endX) > innerWidth + margin ||
+      Math.max(y, endY) < -margin || Math.min(y, endY) > innerHeight + margin)) return;
 
   if (!ok) {
     ctx.save();
@@ -30631,6 +30745,7 @@ if (startHintT > 0) {
   }
 
   refreshHoldMoveTarget();
+  tickTouchStick();
   let mx = 0, my = 0;
 
 if (moveTarget.active && !player.dead) {
@@ -32149,6 +32264,18 @@ function draw() {
     }
   }
 
+  // Dezoom monde sur telephone : tout le dessin monde (ox/oy) est reduit
+  // de moitie autour du centre ecran. Le HUD canvas (barres, minimap,
+  // toasts) est dessine APRES le restore, taille normale.
+  const worldZoom = phoneWorldZoom();
+  worldNoCull = worldZoom !== 1;
+  if (worldNoCull) {
+    ctx.save();
+    ctx.translate(innerWidth / 2, innerHeight / 2);
+    ctx.scale(worldZoom, worldZoom);
+    ctx.translate(-innerWidth / 2, -innerHeight / 2);
+  }
+
 if (GAME_SETTINGS.textures) {
   drawZoneWalls(ox, oy);
 }
@@ -32207,7 +32334,7 @@ if (GAME_SETTINGS.textures) {
     const x = pulse.x + ox;
     const y = pulse.y + oy;
     const k = clamp(pulse.t / pulse.life, 0, 1);
-    if (x < -pulse.radius || y < -pulse.radius || x > innerWidth + pulse.radius || y > innerHeight + pulse.radius) continue;
+    if (!worldNoCull && (x < -pulse.radius || y < -pulse.radius || x > innerWidth + pulse.radius || y > innerHeight + pulse.radius)) continue;
     drawHaloPulse(x, y, pulse.radius, k, "55,255,125", "80,255,145");
   }
   // Pulsations génériques (pod Aegis, bouées pet) : mêmes règles d'affichage.
@@ -32215,7 +32342,7 @@ if (GAME_SETTINGS.textures) {
     const x = pulse.x + ox;
     const y = pulse.y + oy;
     const k = clamp(pulse.t / pulse.life, 0, 1);
-    if (x < -pulse.radius || y < -pulse.radius || x > innerWidth + pulse.radius || y > innerHeight + pulse.radius) continue;
+    if (!worldNoCull && (x < -pulse.radius || y < -pulse.radius || x > innerWidth + pulse.radius || y > innerHeight + pulse.radius)) continue;
     drawHaloPulse(x, y, pulse.radius, k, pulse.fill, pulse.edge, pulse.alpha ?? 1, pulse.maxWidth ?? 6);
   }
   for (const e of enemies) {
@@ -32223,7 +32350,7 @@ if (GAME_SETTINGS.textures) {
     if (!shouldDetectNpc(player, e, NPC_SENSOR_RANGES.visibility, selectedEnemyForBars)) continue;
 
     const x = e.x + ox, y = e.y + oy;
-    if (x < -220 || y < -220 || x > innerWidth + 220 || y > innerHeight + 220) continue;
+    if (!worldNoCull && (x < -220 || y < -220 || x > innerWidth + 220 || y > innerHeight + 220)) continue;
 
     ctx.save();
     ctx.translate(x, y);
@@ -32518,7 +32645,7 @@ if (GAME_SETTINGS.textures) {
     const rdx = x1 - x0, rdy = y1 - y0;
     const rlen = Math.hypot(rdx, rdy) || 1;
     const rAng = Math.atan2(rdy, rdx) + Math.PI;
-    if (x0 > -rlen && y0 > -rlen && x0 < innerWidth + rlen && y0 < innerHeight + rlen) {
+    if (worldNoCull || (x0 > -rlen && y0 > -rlen && x0 < innerWidth + rlen && y0 < innerHeight + rlen)) {
       for (const folder of rayFolders) {
         const rSrc = `COMBAT/RAYGUN/${folder}/${rayFrame}.png`;
         const rImg = getCachedImage(rSrc);
@@ -32542,7 +32669,7 @@ if (GAME_SETTINGS.textures) {
 
   for (const b of bullets) {
     const x = b.x + ox, y = b.y + oy;
-    if (x < -90 || y < -90 || x > innerWidth + 90 || y > innerHeight + 90) continue;
+    if (!worldNoCull && (x < -90 || y < -90 || x > innerWidth + 90 || y > innerHeight + 90)) continue;
     // Filet fin derrière les roquettes : gris pour le lanceur, arc-en-ciel
     // pour les roquettes normales.
     if (b.isRocket && b.trail?.length > 1) {
@@ -32567,7 +32694,7 @@ if (GAME_SETTINGS.textures) {
 
   for (const b of enemyBullets) {
     const x = b.x + ox, y = b.y + oy;
-    if (x < -120 || y < -120 || x > innerWidth + 120 || y > innerHeight + 120) continue;
+    if (!worldNoCull && (x < -120 || y < -120 || x > innerWidth + 120 || y > innerHeight + 120)) continue;
     const ang = Math.atan2(b.vy, b.vx);
     const scale = b.scale ?? 1.5;
     drawBulletSprite(x, y, ang, b.key || "x1", "npc", scale, b.sprite || null);
@@ -32578,7 +32705,7 @@ if (GAME_SETTINGS.textures) {
   for (const s of sparks) {
     if (!s.smoke) continue;
     const x = s.x + ox, y = s.y + oy;
-    if (x < -40 || y < -40 || x > innerWidth + 40 || y > innerHeight + 40) continue;
+    if (!worldNoCull && (x < -40 || y < -40 || x > innerWidth + 40 || y > innerHeight + 40)) continue;
     const lifeSpan = 1;
     const a = 1 - clamp(s.t / lifeSpan, 0, 1);
     ctx.globalAlpha = a * 0.55;
@@ -32595,7 +32722,7 @@ if (GAME_SETTINGS.textures) {
 
     const sx = ft.x + ox;
     const sy = ft.y + oy;
-    if (sx < -120 || sy < -80 || sx > innerWidth + 120 || sy > innerHeight + 80) continue;
+    if (!worldNoCull && (sx < -120 || sy < -80 || sx > innerWidth + 120 || sy > innerHeight + 80)) continue;
 
     const popK = Math.exp(-p * 10);
     const sc = 1 + (ft.pop || 0) * popK;
@@ -33152,6 +33279,13 @@ if (GAME_SETTINGS.textures) {
   drawEscortTargetLocks(ox, oy);
   if (t) {
     drawTargetMarker(t, ox, oy, performance.now() / 1000);
+  }
+
+  // Fin de la zone monde dezoomee (telephone) : le HUD canvas retrouve
+  // sa taille normale.
+  if (worldNoCull) {
+    try { ctx.restore(); } catch {}
+    worldNoCull = false;
   }
 
   // Nom + barres de vie + grade : 50 % d'opacité sous camouflage ultime / hologramme.

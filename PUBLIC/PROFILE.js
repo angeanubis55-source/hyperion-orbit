@@ -121,6 +121,7 @@ const btnLogout = $("btnLogout");
 const btnSessionMenu = $("btnSessionMenu");
 const sessionMenu = $("sessionMenu");
 const btnRestartGame = $("btnRestartGame");
+const btnFullscreen = $("btnFullscreen");
 
 // state
 let user = null;
@@ -5706,6 +5707,73 @@ btnRestartGame?.addEventListener("click", async () => {
   }
   location.reload();
 });
+
+// Plein écran (PC + mobile) depuis le menu Session. API Fullscreen quand
+// dispo (tous PC, Android, iPad), repli orientation paysage sur iPhone
+// (Safari iOS ne propose pas le vrai plein écran générique).
+function sessionFullscreenSupported() {
+  try {
+    const el = document.documentElement;
+    return !!(el.requestFullscreen || el.webkitRequestFullscreen);
+  } catch { return false; }
+}
+function sessionIsFullscreen() {
+  try {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement);
+  } catch { return false; }
+}
+function refreshFullscreenLabel() {
+  if (!btnFullscreen) return;
+  if (!sessionFullscreenSupported()) {
+    btnFullscreen.textContent = "Plein écran (paysage)";
+    return;
+  }
+  btnFullscreen.textContent = sessionIsFullscreen() ? "Quitter plein écran" : "Plein écran";
+}
+async function toggleSessionFullscreen() {
+  try {
+    if (sessionIsFullscreen()) {
+      if (document.exitFullscreen) await document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      return;
+    }
+    const el = document.documentElement;
+    if (el.requestFullscreen) {
+      try {
+        await el.requestFullscreen({ navigationUI: "hide" });
+      } catch {
+        await el.requestFullscreen();
+      }
+    } else if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen();
+    } else {
+      // Repli mobile (iPhone) : verrouille le paysage si possible.
+      try {
+        if (screen.orientation?.lock) await screen.orientation.lock("landscape").catch(() => {});
+      } catch {}
+    }
+    // Sur mobile, le paysage immersif aide aussi quand le plein écran passe.
+    try {
+      if (screen.orientation?.lock && /Android|Mobile/i.test(navigator.userAgent || "")) {
+        await screen.orientation.lock("landscape").catch(() => {});
+      }
+    } catch {}
+  } catch (error) {
+    console.warn("Plein écran indisponible", error);
+  }
+}
+btnFullscreen?.addEventListener("click", async (event) => {
+  event.stopPropagation();
+  await toggleSessionFullscreen();
+  refreshFullscreenLabel();
+  sessionMenu?.classList.remove("open");
+  btnSessionMenu?.setAttribute("aria-expanded", "false");
+});
+try {
+  document.addEventListener("fullscreenchange", refreshFullscreenLabel);
+  document.addEventListener("webkitfullscreenchange", refreshFullscreenLabel);
+} catch {}
+refreshFullscreenLabel();
 
 btnStart?.addEventListener("click", () => {
   closeProfileOverlay();

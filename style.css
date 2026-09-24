@@ -9946,3 +9946,132 @@ input[type=number]{ -moz-appearance:textfield; appearance:textfield; }
 img[src*="pusat_plus_zbli" i],
 img[src*="goliath_plus_stifler" i],
 img[src*="autruche" i]{ transform:scaleX(-1); }
+
+/* ============================================================
+   TELEPHONE UNIQUEMENT (body.phone-layout, pose par
+   UI_TOUCH_CONTROLS : tactile grossier + petit ecran).
+   Jamais actif sur PC : tout est sous ce selecteur.
+   ============================================================ */
+
+/* --- Controles tactiles : joystick gauche + cluster droit --- */
+#touchControls{ display:none; }
+body.phone-layout #touchControls{ display:block; }
+#touchControls .touchStick{
+  position:fixed;
+  left:0; bottom:118px;
+  width:42vw; height:38vh;
+  z-index:94000;
+  touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+}
+#touchControls .touchStickBase{
+  position:fixed;
+  width:112px; height:112px;
+  margin:-56px 0 0 -56px;
+  border:2px solid rgba(124,240,255,.45);
+  border-radius:50%;
+  background:radial-gradient(circle, rgba(0,60,90,.25) 0%, rgba(0,30,50,.45) 100%);
+  box-shadow:0 0 18px rgba(0,217,255,.18), inset 0 0 18px rgba(0,217,255,.10);
+  left:-200px; top:-200px;
+  pointer-events:none;
+}
+#touchControls .touchStickKnob{
+  position:absolute;
+  left:50%; top:50%;
+  width:52px; height:52px;
+  margin:-26px 0 0 -26px;
+  border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, rgba(180,245,255,.95), rgba(0,160,210,.85) 60%, rgba(0,90,130,.9));
+  box-shadow:0 0 14px rgba(0,217,255,.5);
+}
+#touchControls .touchCluster{
+  position:fixed;
+  right:calc(10px + env(safe-area-inset-right, 0px));
+  bottom:calc(118px + env(safe-area-inset-bottom, 0px));
+  z-index:94000;
+  display:grid;
+  grid-template-columns:auto auto;
+  grid-template-areas:"ammo tgt" "fire fire";
+  gap:10px;
+  align-items:end;
+  touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+}
+#touchControls .touchBtn{
+  border:2px solid rgba(124,240,255,.5);
+  border-radius:50%;
+  color:#eaffff;
+  background:radial-gradient(circle at 35% 30%, rgba(0,120,170,.55), rgba(0,50,80,.75));
+  box-shadow:0 0 16px rgba(0,217,255,.22), inset 0 0 12px rgba(0,217,255,.12);
+  font:800 13px/1 ui-sans-serif, system-ui;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:2px;
+  cursor:pointer;
+  touch-action:none;
+}
+#touchControls .touchBtn:active{ filter:brightness(1.35); }
+#touchControls .touchFire{
+  grid-area:fire;
+  width:84px; height:84px;
+  font-size:17px;
+  border-color:rgba(255,120,120,.65);
+  background:radial-gradient(circle at 35% 30%, rgba(200,60,60,.6), rgba(110,20,20,.8));
+  box-shadow:0 0 18px rgba(255,80,80,.3), inset 0 0 12px rgba(255,120,120,.15);
+}
+#touchControls .touchFire.touchActive{
+  background:radial-gradient(circle at 35% 30%, rgba(255,120,120,.85), rgba(170,30,30,.9));
+  box-shadow:0 0 24px rgba(255,80,80,.6);
+}
+#touchControls .touchSmall{ width:60px; height:60px; }
+#touchControls #touchAmmoBtn{ grid-area:ammo; }
+#touchControls #touchTargetBtn{ grid-area:tgt; }
+#touchControls .touchAmmoValue{ font-size:10px; opacity:.85; }
+#touchControls .touchBtn.touchMiss{ border-color:#ff4655; }
+
+/* --- La barre de munitions laisse la place aux sticks --- */
+body.phone-layout #ammoBar{
+  max-width:52vw !important;
+  bottom:8px !important;
+  padding:4px !important;
+  gap:3px !important;
+}
+
+/* --- Fenetres et menus : plein ecran sur telephone ---
+   Le HUD permanent (stats, vitals, minimap, chat, boss) reste flottant,
+   seuls les menus ouverts passent plein ecran. */
+body.phone-layout .gameWindow:not(.gameWinMinimized):not(#boxMeta):not(#boxVitals):not(#minimap):not(#chatWindow):not(#gygerimStatus){
+  position:fixed !important;
+  left:0 !important;
+  top:0 !important;
+  width:100vw !important;
+  height:100vh !important;
+  height:100dvh !important;
+  max-width:none !important;
+  max-height:none !important;
+  margin:0 !important;
+  border-radius:0 !important;
+  z-index:96500 !important;
+}
+body.phone-layout .gameWindow > .gameWinBar{ touch-action:auto; }
+body.phone-layout #profileOverlay,
+body.phone-layout #shopOverlay,
+body.phone-layout #hangarOverlay{
+  position:fixed !important;
+  inset:0 !important;
+  padding:0 !important;
+  z-index:96500 !important;
+}
+body.phone-layout #profileOverlay .gameWindow,
+body.phone-layout #shopOverlay .gameWindow,
+body.phone-layout #hangarOverlay .gameWindow{
+  position:relative !important;
+  width:100% !important;
+  height:100% !important;
+  height:100dvh !important;
+  max-width:none !important;
+  max-height:none !important;
+  border-radius:0 !important;
+}

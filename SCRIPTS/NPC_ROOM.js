@@ -275,7 +275,7 @@ export class ZoneNpcSim {
         aggroRange: 700, aggroHoldMs: 3500,
         aggroBy: null, aggroUntil: 0,
         tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
-        masterKiller: null, decaying: false, decayPerSec: 0,
+        masterKiller: null, decaying: false, decayPerSec: 0, decayAge: 0,
         fleeVx: 0, fleeVy: 0, deadAt: 0,
         orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
         seq,
@@ -283,8 +283,9 @@ export class ZoneNpcSim {
     }
   }
 
-  // A la mort du Cubikon, ses Protegits fuient puis perdent 5 % de leur vie
-  // max par seconde (parite solo), au lieu de poursuivre les joueurs.
+  // A la mort du Cubikon, ses Protegits fuient en ligne droite pendant 3 s
+  // puis errent comme les autres NPC (agro + tirs) tout en continuant de
+  // perdre 5 % de leur vie max par seconde, meme sous le feu ennemi.
   releaseCubikonMinions(cub, nowMs) {
     if (!cub) return;
     const killer = cub.killer != null ? String(cub.killer) : null;
@@ -294,6 +295,7 @@ export class ZoneNpcSim {
       const fleeSpeed = Math.max(650, Number(e.speed) || 650);
       e.decaying = true;
       e.decayPerSec = Math.max(1, Number(e.hpMax) || 1) * 0.05;
+      e.decayAge = 0;
       e.masterKiller = killer;
       e.aggroBy = null;
       e.aggroUntil = 0;
@@ -467,15 +469,12 @@ export class ZoneNpcSim {
     // - sinon : derive. En poursuite proche : orbite, jamais statique.
     for (const e of this.entries.values()) {
       if (!(e.hp > 0)) continue;
-      // Minion orphelin (Cubikon mort) : fuit en ligne droite et perd
-      // 5 % de sa vie max par seconde, sans poursuivre ni tirer.
+      // Minion orphelin (Cubikon mort) : perd 5 % de sa vie max par seconde
+      // jusqu'a la mort, meme sous le feu ennemi. Fuite en ligne droite
+      // pendant 3 s, puis errance + agro comme les autres NPC (tirs inclus).
       if (e.decaying) {
-        e.aggroBy = null;
-        e.aggroUntil = 0;
-        e.chaseId = null;
+        e.decayAge = (Number(e.decayAge) || 0) + dt;
         e.hp -= Math.max(1, Number(e.decayPerSec) || 0) * dt;
-        e.x = clamp(e.x + Number(e.fleeVx || 0) * dt, 80, this.world.w - 80);
-        e.y = clamp(e.y + Number(e.fleeVy || 0) * dt, 80, this.world.h - 80);
         if (!(e.hp > 0)) {
           e.hp = 0; e.sh = 0; e.deadAt = nowMs;
           const kb = (e.firstBy != null && this.players.has(e.firstBy))
@@ -483,8 +482,18 @@ export class ZoneNpcSim {
           e.killer = String(kb || "");
           e.cause = "gun";
           this.deaths.push({ uid: e.uid, type: e.type, x: Math.round(e.x), y: Math.round(e.y), killer: e.killer, cause: "gun", seq: e.seq || 0, at: nowMs });
+          continue;
         }
-        continue;
+        if (e.decayAge < 3) {
+          e.aggroBy = null;
+          e.aggroUntil = 0;
+          e.chaseId = null;
+          e.x = clamp(e.x + Number(e.fleeVx || 0) * dt, 80, this.world.w - 80);
+          e.y = clamp(e.y + Number(e.fleeVy || 0) * dt, 80, this.world.h - 80);
+          continue;
+        }
+        // Apres 3 s : comportement NPC normal ci-dessous (poursuite + tirs),
+        // la perte de vie continue a chaque tick.
       }
       const frozen = nowMs < Number(e.freezeUntil || 0);
       const slowMult = nowMs < Number(e.slowUntil || 0)
@@ -564,9 +573,13 @@ export class ZoneNpcSim {
       const cubeMaster = e.masterUid ? this.entries.get(e.masterUid) : null;
       const cubeAnchored = !!e.masterUid && cubeMaster && cubeMaster.hp > 0
         && Number(cubeMaster.seq || 0) === Number(e.masterSeq || 0);
-      if (!cubeAnchored && e.masterUid) {
-        // Maitre mort ou reincarne : le minion se desagrege sur place.
+      if (!cubeAnchored && e.masterUid && !e.decaying) {
+        // Maitre mort ou reincarne : le minion bascule en desagregation
+        // (une seule fois : fuite 3 s puis errance + agro, perte continue).
+        // Sans ce garde, le chase recalcule juste au-dessus serait efface
+        // a chaque tick et le minion n'agroterait jamais.
         e.decaying = true;
+        e.decayAge = Number(e.decayAge) || 0;
         e.decayPerSec = Math.max(1, Number(e.hpMax) || 1) * 0.05;
         e.masterKiller = e.masterKiller || (cubeMaster ? (cubeMaster.killer != null ? String(cubeMaster.killer) : null) : null);
         e.aggroBy = null;
