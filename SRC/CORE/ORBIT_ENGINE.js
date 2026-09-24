@@ -6338,6 +6338,7 @@ function initializeCustomActionBar() {
         }
         player.launcherActive = rid;
         markProgressDirty();
+        saveProgressNow();
         // Idem : ne force plus l'onglet Lance-roquettes.
         try { refreshActiveActionPalette?.(); } catch {}
         updateAmmoUI();
@@ -6346,6 +6347,7 @@ function initializeCustomActionBar() {
       playDockSelectSound(String(player.rocketActive || "").toLowerCase() !== String(id).toLowerCase());
       player.rocketActive = id;
       markProgressDirty();
+      saveProgressNow();
       refreshRocketPaletteCounts();
       updateAmmoUI();
       // Clic = tir immédiat de la sélection (strict : pas de bascule), auto ou pas.
@@ -24081,6 +24083,12 @@ function tryFireRocket(opts = {}) {
       const fallback = ROCKET_IDS.filter((id) => getRocketType(id)?.manual !== false).find((id) => rocketCount(id) > 0);
       if (fallback) {
         player.rocketActive = fallback;
+        markProgressDirty();
+        refreshRocketPaletteCounts();
+        updateAmmoUI();
+        // Bascule visible : une seule notification par changement (pas de spam
+        // en mode AUTO, les tirs suivants utilisent déjà la nouvelle sélection).
+        showNotification(`Bascule auto : ${getRocketType(fallback)?.name || fallback} (plus de ${rocket?.name || "roquettes"}).`, 2.5, "info");
         return tryFireRocket(opts);
       }
     }
