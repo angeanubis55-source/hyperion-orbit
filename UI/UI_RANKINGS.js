@@ -31,13 +31,16 @@ export function initRankingsUI() {
       }
       out.list.forEach((row, i) => {
         const rank = getRankInfo(Number(row.rankPoints) || 0, Number(row.honor) || 0);
-        const firm = getFaction(row.faction)?.shortName || "—";
+        const faction = getFaction(row.faction);
+        const firmCell = faction
+          ? `<img class="rankingFirm" src="${escapeHtml(faction.imagePath)}" alt="${escapeHtml(faction.shortName)}" title="${escapeHtml(`${faction.shortName} — ${faction.name}`)}" draggable="false">`
+          : `<span class="rankingFirm rankingFirmNone">—</span>`;
         const div = document.createElement("div");
         div.className = "rankingRow" + (me && row.pseudo === me ? " rankingMe" : "");
         div.innerHTML =
           `<span class="rankingPos">${i + 1}</span>` +
           `<img class="rankingGrade" src="${escapeHtml(rank.imagePath)}" alt="${escapeHtml(rank.name)}" title="${escapeHtml(rank.name)}" draggable="false">` +
-          `<span class="rankingFirm" title="${escapeHtml(getFaction(row.faction)?.name || "")}">${escapeHtml(firm)}</span>` +
+          firmCell +
           `<span class="rankingName">${escapeHtml(row.pseudo)}</span>` +
           `<span class="rankingPts">${formatInteger(Number(row.points) || 0)}</span>`;
         body.appendChild(div);
