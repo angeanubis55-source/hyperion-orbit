@@ -9885,3 +9885,10 @@ input[type=number]{ -moz-appearance:textfield; appearance:textfield; }
   flex-direction:column !important;
   align-items:flex-start !important;
 }
+
+/* Miroir designs ZBLI / STIFLER / Autruche sur toutes leurs images (boutique,
+   preview, hangar, inventaire...). Sans !important : le style inline garde
+   la priorité là où il combine déjà miroir + zoom. */
+img[src*="pusat_plus_zbli" i],
+img[src*="goliath_plus_stifler" i],
+img[src*="autruche" i]{ transform:scaleX(-1); }
