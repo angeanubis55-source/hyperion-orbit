@@ -9,24 +9,18 @@ export function cameraOffset(camera, viewportWidth, viewportHeight) {
   };
 }
 
-export function screenToWorldPoint(screenX, screenY, camera, viewportWidth, viewportHeight, zoom = 1) {
-  const z = Number(zoom) > 0 ? Number(zoom) : 1;
+export function screenToWorldPoint(screenX, screenY, camera, viewportWidth, viewportHeight) {
   const offset = cameraOffset(camera, viewportWidth, viewportHeight);
-  if (z === 1) return { x: screenX - offset.x, y: screenY - offset.y };
-  const cx = viewportWidth / 2, cy = viewportHeight / 2;
-  return { x: camera.x + (screenX - cx) / z, y: camera.y + (screenY - cy) / z };
+  return { x: screenX - offset.x, y: screenY - offset.y };
 }
 
-export function worldToScreenPoint(worldX, worldY, camera, viewportWidth, viewportHeight, zoom = 1) {
-  const z = Number(zoom) > 0 ? Number(zoom) : 1;
+export function worldToScreenPoint(worldX, worldY, camera, viewportWidth, viewportHeight) {
   const offset = cameraOffset(camera, viewportWidth, viewportHeight);
-  if (z === 1) return { x: worldX + offset.x, y: worldY + offset.y };
-  const cx = viewportWidth / 2, cy = viewportHeight / 2;
-  return { x: cx + (worldX - camera.x) * z, y: cy + (worldY - camera.y) * z };
+  return { x: worldX + offset.x, y: worldY + offset.y };
 }
 
-export function isWorldPointVisible(worldX, worldY, camera, viewportWidth, viewportHeight, margin = 120, zoom = 1) {
-  const screen = worldToScreenPoint(worldX, worldY, camera, viewportWidth, viewportHeight, zoom);
+export function isWorldPointVisible(worldX, worldY, camera, viewportWidth, viewportHeight, margin = 120) {
+  const screen = worldToScreenPoint(worldX, worldY, camera, viewportWidth, viewportHeight);
   return screen.x >= -margin && screen.y >= -margin &&
     screen.x <= viewportWidth + margin && screen.y <= viewportHeight + margin;
 }

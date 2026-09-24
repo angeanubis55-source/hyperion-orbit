@@ -84,12 +84,6 @@ function loadWindowPosition(id) {
 
 function saveWindowPosition(id, card) {
   if (!id || !card) return;
-  // Telephone (phone-layout) : les fenetres sont forcees plein ecran en CSS,
-  // on ne persiste jamais ce rectangle plein ecran (sinon la version PC
-  // restaurerait une geometrie plein ecran).
-  try {
-    if (document.body.classList.contains("phone-layout")) return;
-  } catch {}
   // Ne jamais persister une géométrie mesurée pendant une animation
   // d'ouverture/fermeture (scale) : ça figerait une largeur écrasée
   // ("trait") restaurée ensuite à chaque ouverture.
