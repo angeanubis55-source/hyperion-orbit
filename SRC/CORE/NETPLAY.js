@@ -184,10 +184,21 @@ export function drainNetGone() {
 }
 let lastNpcSnapMs = 0;
 const NET_SEND_INTERVAL_MS = 50;
-// A 20 Hz, un snapshot arrive toutes les 50 ms. Une marge de 150 ms masque
-// deux paquets retardes sans laisser un joueur partir loin en prediction.
-const NET_EXTRAPOLATION_MS = 150;
+// Prediction visuelle des mouvements distants. Pleine vitesse pendant les
+// petits trous reseau, puis freinage progressif : le joueur ne se fige pas
+// net et ne repart pas par bonds lorsque sa connexion fluctue.
+const NET_PREDICTION_FULL_MS = 150;
+const NET_PREDICTION_BRAKE_MS = 350;
 const NET_MAX_ESTIMATED_SPEED = 1500;
+
+function predictionLeadSeconds(sampleAgeMs) {
+  const age = Math.max(0, Number(sampleAgeMs) || 0);
+  if (age <= NET_PREDICTION_FULL_MS) return age / 1000;
+  const extra = Math.min(NET_PREDICTION_BRAKE_MS, age - NET_PREDICTION_FULL_MS);
+  // Integrale d'une vitesse qui descend lineairement de 100 % a 0 %.
+  const easedExtra = extra * (1 - extra / (2 * NET_PREDICTION_BRAKE_MS));
+  return (NET_PREDICTION_FULL_MS + easedExtra) / 1000;
+}
 
 function estimateVelocity(prev, x, y, now, xKey = "x", yKey = "y", sourceAt = now) {
   if (!prev) return { vx: 0, vy: 0 };
@@ -846,6 +857,7 @@ export function ensureNetplayConnection() {
         seen.add(id);
         const prev = remotes.get(id);
         const x = Number(p.x) || 0, y = Number(p.y) || 0;
+        const revived = !!prev && prev.dead === true && p.dead !== true;
         const vmax = Math.max(50, Math.min(5000, Number(p.vmax) || 400));
         const rawVx = Number(p.vx) || 0, rawVy = Number(p.vy) || 0;
         const rawSpeed = Math.hypot(rawVx, rawVy);
@@ -939,9 +951,9 @@ export function ensureNetplayConnection() {
           sampleAt: positionChanged ? now : Number(prev?.sampleAt || now),
           sourceAt,
           // Position de rendu (interpolee vers x/y pour eviter les sauts).
-          rx: prev ? Number(prev.rx ?? prev.x ?? p.x) : Number(p.x) || 0,
-          ry: prev ? Number(prev.ry ?? prev.y ?? p.y) : Number(p.y) || 0,
-          rangle: prev ? Number(prev.rangle ?? prev.angle ?? p.angle) : Number(p.angle) || 0,
+          rx: prev && !revived ? Number(prev.rx ?? prev.x ?? p.x) : Number(p.x) || 0,
+          ry: prev && !revived ? Number(prev.ry ?? prev.y ?? p.y) : Number(p.y) || 0,
+          rangle: prev && !revived ? Number(prev.rangle ?? prev.angle ?? p.angle) : Number(p.angle) || 0,
           petrx: prev ? Number(prev.petrx ?? prev.petx ?? p.petx) : Number(p.petx) || 0,
           petry: prev ? Number(prev.petry ?? prev.pety ?? p.pety) : Number(p.pety) || 0,
         };
@@ -1358,12 +1370,22 @@ export function tickNetplayRemotes(dt = 0.016) {
   const k = 1 - Math.exp(-18 * frameDt);
   const now = performance.now();
   for (const r of remotes.values()) {
-    const lead = Math.min(NET_EXTRAPOLATION_MS, Math.max(0, now - Number(r.sampleAt || now))) / 1000;
+    const lead = predictionLeadSeconds(now - Number(r.sampleAt || now));
     const targetX = Number(r.x) + Number(r.vx || 0) * lead;
     const targetY = Number(r.y) + Number(r.vy || 0) * lead;
     const rx = Number(r.rx ?? r.x), ry = Number(r.ry ?? r.y);
-    r.rx = rx + (targetX - rx) * k;
-    r.ry = ry + (targetY - ry) * k;
+    const correctionX = targetX - rx, correctionY = targetY - ry;
+    const correctionDistance = Math.hypot(correctionX, correctionY);
+    // Un trou reseau peut faire arriver une correction importante d'un coup.
+    // Le lissage exponentiel seul en absorbait ~26 % sur la premiere frame,
+    // donnant l'impression d'une teleportation. Le plafond ne touche que le
+    // rendu : positions serveur, portee et impacts restent autoritaires.
+    const maxCorrection = Math.max(1800, Number(r.vmax) * 2) * frameDt;
+    const correctionK = correctionDistance > 0
+      ? Math.min(k, maxCorrection / correctionDistance)
+      : k;
+    r.rx = rx + correctionX * correctionK;
+    r.ry = ry + correctionY * correctionK;
     const renderedAngle = Number(r.rangle ?? r.angle) || 0;
     const targetAngle = Number(r.angle) || 0;
     const angleDelta = Math.atan2(Math.sin(targetAngle - renderedAngle), Math.cos(targetAngle - renderedAngle));
@@ -1375,7 +1397,7 @@ export function tickNetplayRemotes(dt = 0.016) {
     r.petry = pry + (petTargetY - pry) * k;
   }
   for (const n of netNpcs.values()) {
-    const lead = Math.min(NET_EXTRAPOLATION_MS, Math.max(0, now - Number(n.sampleAt || now))) / 1000;
+    const lead = predictionLeadSeconds(now - Number(n.sampleAt || now));
     const targetX = Number(n.x) + Number(n.vx || 0) * lead;
     const targetY = Number(n.y) + Number(n.vy || 0) * lead;
     const rx = Number(n.rx ?? n.x), ry = Number(n.ry ?? n.y);
