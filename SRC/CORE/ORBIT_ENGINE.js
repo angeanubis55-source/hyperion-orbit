@@ -108,7 +108,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
+  import { pushNetplayLocal, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -27407,6 +27407,7 @@ const netplayEngines = new Map();
 // Cle stable (holder) pour petEngine (WeakMap) + vitesse estimee pour les flames/trails.
 const netplayPetEngines = new Map();
 let netplayLastOx = 0, netplayLastOy = 0;
+let netplayCacheCleanupAt = 0;
 try {
   window.__NETPETDIAG__ = () => {
     const out = [];
@@ -27742,20 +27743,24 @@ function drawNetplayRemotes(ox, oy) {
   try { tickNetShipDamages(netShipDamageDt()); } catch {}
   // Nettoie les etats moteurs des joueurs partis.
   try {
-    for (const id of [...netplayEngines.keys()]) {
-      if (!remotes.has(id)) netplayEngines.delete(id);
-    }
-    for (const id of [...netplayPetEngines.keys()]) {
-      if (!remotes.has(id)) netplayPetEngines.delete(id);
-    }
-    for (const id of [...netShipDamages.keys()]) {
-      if (!remotes.has(id)) netShipDamages.delete(id);
-    }
-    for (const id of [...netPvpAtSeen.keys()]) {
-      if (!remotes.has(id)) netPvpAtSeen.delete(id);
-    }
-    for (const id of [...netNpcAtSeen.keys()]) {
-      if (!remotes.has(id)) netNpcAtSeen.delete(id);
+    const cleanupNow = performance.now();
+    if (cleanupNow - netplayCacheCleanupAt >= 1000) {
+      netplayCacheCleanupAt = cleanupNow;
+      for (const id of netplayEngines.keys()) {
+        if (!remotes.has(id)) netplayEngines.delete(id);
+      }
+      for (const id of netplayPetEngines.keys()) {
+        if (!remotes.has(id)) netplayPetEngines.delete(id);
+      }
+      for (const id of netShipDamages.keys()) {
+        if (!remotes.has(id)) netShipDamages.delete(id);
+      }
+      for (const id of netPvpAtSeen.keys()) {
+        if (!remotes.has(id)) netPvpAtSeen.delete(id);
+      }
+      for (const id of netNpcAtSeen.keys()) {
+        if (!remotes.has(id)) netNpcAtSeen.delete(id);
+      }
     }
   } catch {}
   for (const r of remotes.values()) {
@@ -27948,7 +27953,7 @@ function drawNetplayRemotes(ox, oy) {
     } catch {}
     // Drones du copain : vrais sprites (type + niveau), positions officielles.
     try {
-      const slots = String(r.dslots || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 12);
+      const slots = Array.isArray(r.droneSlots) ? r.droneSlots : [];
       const dc = slots.length || Math.max(0, Math.min(12, Number(r.drones) || 0));
       if (dc > 0 && GAME_SETTINGS.remoteDrones) {
         let offsets = null;
@@ -28121,8 +28126,8 @@ function drawNetplayRemotes(ox, oy) {
         const gi = getCachedImage(r.ficon);
         if (isImgReady(gi)) rFicon = gi; else { try { loadImage(r.ficon, { priority: true }); } catch {} }
       }
-      const dind = String(r.dind || "").split("|").map(s => s.trim()).filter(Boolean);
-      const mind = String(r.mind || "").split("|").map(s => s.trim()).filter(Boolean);
+      const dind = Array.isArray(r.droneIndicators) ? r.droneIndicators : [];
+      const mind = Array.isArray(r.moduleIndicators) ? r.moduleIndicators : [];
       const remotePlayerProxy = netPlayerProxies.get(String(r.id));
       const showRemoteDetails = !!remotePlayerProxy && Target.get() === remotePlayerProxy;
       drawPlayerStatus(
@@ -33911,7 +33916,7 @@ function frame(t) {
     // En gate (instance perso) : socket GARDÉ pour tchat + enchères,
     // gameplay partagé coupé (invisible, NPC/PvP 100 % locaux).
     try { setNetInstanceMode(!isZoneMap); } catch {}
-    if (started && !linkDead) try {
+    if (started && !linkDead && netplayLocalUpdateDue()) try {
       const atkTgt = Target.get();
       let dformId = "standard";
       try {

@@ -451,6 +451,9 @@ const server = createServer(async (request, response) => {
 //    { t:"map", map } et { t:"hit", uid, dmg, pen, critChance, critMult, weaken, kind }
 //  serveur -> client : { t:"welcome", id } puis { t:"snapshot", players:[...], npc:[...] } 20x/s
 const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+// Un snapshot complet est remplace 50 ms plus tard : ne jamais empiler des
+// etats obsoletes pour un client dont la connexion ne suit plus.
+const SNAPSHOT_BACKPRESSURE_LIMIT = 256 * 1024;
 const rooms = new Map(); // mapId(lower) -> Map(id -> { ws, state })
 const npcSims = new Map(); // mapId(lower) -> ZoneNpcSim | null | Promise
 const boxRooms = new Map(); // mapId(lower) -> Map(uid -> { type, x, y })
@@ -1763,7 +1766,9 @@ setInterval(() => {
     }
     const payload = JSON.stringify({ t: "snapshot", map: key, at: now, players, npc });
     for (const [, entry] of room) {
-      try { if (entry.ws.readyState === 1) entry.ws.send(payload); } catch {}
+      try {
+        if (entry.ws.readyState === 1 && entry.ws.bufferedAmount < SNAPSHOT_BACKPRESSURE_LIMIT) entry.ws.send(payload);
+      } catch {}
     }
   }
 }, 50);

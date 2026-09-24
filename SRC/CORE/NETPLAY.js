@@ -165,6 +165,7 @@ export function setNetInstanceMode(v) {
   }
 }
 let lastSendMs = 0;
+let lastLocalBuildMs = -Infinity;
 let pendingLocal = null;
 let lastMapSent = "";
 const remotes = new Map(); // id -> { ...state, rx, ry, lastSeen }
@@ -884,6 +885,9 @@ export function ensureNetplayConnection() {
           fint: Number(p.fint) > 0 ? Number(p.fint) : 0.25,
           bspd: Number(p.bspd) > 0 ? Number(p.bspd) : 4000,
           dslots: String(p.dslots || "").slice(0, 256),
+          droneSlots: prev && prev.dslots === String(p.dslots || "").slice(0, 256)
+            ? prev.droneSlots
+            : String(p.dslots || "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 12),
           alt: p.alt === true,
           shots: Math.max(0, Math.floor(Number(p.shots) || 0)),
           rank: String(p.rank || "").slice(0, 64),
@@ -891,6 +895,12 @@ export function ensureNetplayConnection() {
           dind: String(p.dind || "").slice(0, 256),
           ficon: String(p.ficon || "").slice(0, 128),
           mind: String(p.mind || "").slice(0, 128),
+          droneIndicators: prev && prev.dind === String(p.dind || "").slice(0, 256)
+            ? prev.droneIndicators
+            : String(p.dind || "").split("|").map((s) => s.trim()).filter(Boolean),
+          moduleIndicators: prev && prev.mind === String(p.mind || "").slice(0, 128)
+            ? prev.moduleIndicators
+            : String(p.mind || "").split("|").map((s) => s.trim()).filter(Boolean),
           rseq: Math.max(0, Math.floor(Number(p.rseq) || 0)),
           rkind: String(p.rkind || "r310").slice(0, 16),
           rspd: Number(p.rspd) > 0 ? Number(p.rspd) : 1500,
@@ -1128,6 +1138,7 @@ function sendNow(local, force = false) {
 // aucune présence partagée.
 export function pushNetplayLocal(local) {
   if (!local || suspended) return;
+  lastLocalBuildMs = performance.now();
   pendingLocal = local;
   try {
     const p = String(local.pseudo || "").slice(0, 20);
@@ -1163,6 +1174,14 @@ export function getNetDeaths() {
 
 export function getNetBoxes() {
   return netBoxes;
+}
+
+// Evite au moteur de reconstruire l'etat reseau complet a chaque frame.
+// La cadence d'envoi reste strictement identique (20 Hz maximum).
+export function netplayLocalUpdateDue() {
+  if (suspended) return false;
+  const now = performance.now();
+  return !pendingLocal || now - lastLocalBuildMs >= NET_SEND_INTERVAL_MS;
 }
 
 export function drainNetBoxInbox() {
@@ -1380,7 +1399,7 @@ export function sendSkillUse(skill) {
 // Ce module ne fait que le reseau : envoi 20 Hz + snapshots + extrapolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, claimNetBox, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
+  window.__NETPLAY__ = { pushNetplayLocal, netplayLocalUpdateDue, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, claimNetBox, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;
