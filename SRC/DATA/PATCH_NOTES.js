@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.307",
+    "date": "2026-09-24T01:55:09+02:00",
+    "message": "minor fixes"
+  },
+  {
     "version": "0.306",
     "date": "2026-09-24T01:37:31+02:00",
     "message": "minor fixes"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.248",
     "date": "2026-09-20T23:08:31+02:00",
     "message": "multi: flush memoire avant reparation REX + tirs PET local non relayes"
-  },
-  {
-    "version": "0.247",
-    "date": "2026-09-20T22:52:09+02:00",
-    "message": "multi: adoption PET sur nouveau coup (reparation plus ecrasee)"
   }
 ];

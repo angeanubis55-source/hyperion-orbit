@@ -9232,3 +9232,134 @@ input[type=number]{ -moz-appearance:textfield; appearance:textfield; }
   #settingsWindow .settingsPage{ grid-column:1; grid-row:2; padding:12px; }
   #settingsWindow .settingsCardGridTwo{ grid-template-columns:1fr; }
 }
+
+/* Paramètres : mêmes surfaces et contrôles que la boutique */
+#settingsWindow .settingsCard,
+#settingsWindow .settingsKeyGroup{
+  border:1px solid rgba(100,200,255,.20);
+  background:linear-gradient(135deg,rgba(255,255,255,.055),rgba(100,200,255,.025));
+  box-shadow:none;
+}
+#settingsWindow .settingsCard{ padding:15px; border-radius:12px; }
+#settingsWindow .settingsCardHead>span{
+  border-color:rgba(100,200,255,.22);
+  color:#87dff4;
+  background:rgba(255,255,255,.045);
+}
+#settingsWindow .settingsCheck,
+#settingsWindow .sfxRow{
+  border-color:rgba(100,200,255,.16);
+  background:rgba(255,255,255,.035);
+}
+#settingsWindow .settingsCheck:hover,
+#settingsWindow .sfxRow:hover{
+  border-color:rgba(0,217,255,.42);
+  background:rgba(0,217,255,.075);
+}
+#settingsWindow .settingsToggle,
+#settingsWindow .settingsResetBtn,
+#settingsWindow .keyBindRow{
+  border:1px solid rgba(124,240,255,.30);
+  color:#eaffff;
+  background:linear-gradient(135deg,rgba(0,145,190,.25),rgba(0,70,100,.20));
+  box-shadow:none !important;
+}
+#settingsWindow .settingsToggle:hover,
+#settingsWindow .settingsResetBtn:hover,
+#settingsWindow .keyBindRow:hover{
+  border-color:rgba(124,240,255,.58);
+  background:rgba(0,140,185,.25);
+}
+#settingsWindow .settingsDangerBtn{
+  border-color:rgba(255,118,118,.30);
+  color:#ffc5c5;
+  background:rgba(115,24,34,.18);
+}
+
+/* Bloc FPS : libellé, explication et sélection ne se compressent plus. */
+#settingsWindow .settingsPerformanceCard{ gap:14px; }
+#settingsWindow .settingsFpsRow{
+  display:grid;
+  grid-template-columns:1fr;
+  align-items:start;
+  gap:13px;
+  height:auto;
+  min-height:0;
+  padding:13px;
+  border:1px solid rgba(100,200,255,.16);
+  border-radius:9px;
+  background:rgba(255,255,255,.035);
+  cursor:default;
+}
+#settingsWindow .settingsFpsRow>span{ display:grid; gap:5px; }
+#settingsWindow .settingsFpsRow>span b{ color:#effbff; font-size:11px; }
+#settingsWindow .settingsFpsRow>span small{ color:#79a4b4; font-size:9px; line-height:1.45; }
+#settingsWindow .settingsFpsRow select{
+  width:100%;
+  height:34px;
+  padding:0 10px;
+  border-color:rgba(124,240,255,.34);
+  background:#071b28;
+}
+#settingsWindow .settingsHint{
+  padding:10px 11px;
+  border-left:2px solid rgba(124,240,255,.38);
+  background:rgba(0,0,0,.12);
+  line-height:1.5;
+}
+
+/* Commandes : jeu et barre rapide sont deux panneaux autonomes. */
+#settingsWindow .settingsKeyColumns{
+  grid-template-columns:minmax(210px,.65fr) minmax(0,1.35fr) !important;
+  gap:14px;
+  padding:1px;
+}
+#settingsWindow .settingsKeyGroup{
+  gap:7px;
+  padding:13px;
+  border-radius:12px;
+}
+#settingsWindow .settingsKeyGroup>.settingsSectionSub{
+  margin:0 0 5px;
+  padding:0 2px 10px;
+  color:#eafaff;
+  font-size:11px;
+  letter-spacing:.45px;
+}
+#settingsWindow .settingsSlotKeyGroup>.keyBindRow{ margin-bottom:5px; }
+#settingsWindow .settingsSlotKeyColumns{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  margin-top:2px;
+}
+#settingsWindow .settingsSlotKeyCol{
+  min-width:0;
+  padding:10px;
+  border:1px solid rgba(100,200,255,.15);
+  border-radius:9px;
+  background:rgba(0,0,0,.14);
+}
+#settingsWindow .settingsSlotKeyCol>.settingsSectionSub{
+  margin:0 0 8px;
+  padding:0 0 8px;
+  color:#7cecff;
+  font-size:9px;
+  text-align:center;
+  letter-spacing:.5px;
+}
+#settingsWindow .settingsSlotKeyCol .settingsSlotKeys{
+  grid-template-columns:1fr;
+  gap:5px;
+}
+#settingsWindow .keyBindRow{ min-height:34px; height:34px; }
+#settingsWindow .keyBindRow kbd{
+  border:1px solid rgba(124,240,255,.22);
+  background:rgba(0,0,0,.24);
+}
+
+@media (max-width:880px){
+  #settingsWindow .settingsKeyColumns{ grid-template-columns:1fr !important; }
+}
+@media (max-width:560px){
+  #settingsWindow .settingsSlotKeyColumns{ grid-template-columns:1fr; }
+}
