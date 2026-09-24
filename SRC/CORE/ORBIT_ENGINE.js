@@ -12843,6 +12843,26 @@ function requestResourceGateConfirmation(ptl) {
   return true;
 }
 
+// Purge d'avant-saut : les NPC de l'ancienne carte sont retirés dès le
+// départ du saut (plus de fuite visuelle de l'autre côté, plus de
+// disparition brutale à l'arrivée — la nouvelle carte respawn les siens).
+// Les tirs ennemis en vol partent aussi, et un verrou NPC est libéré.
+function purgeNpcsForJump() {
+  try {
+    const locked = Target.get();
+    if (locked && enemies.includes(locked) && !locked._netPlayer && !locked._netPet && !locked.isPetTarget) {
+      try { Target.clear(); } catch {}
+    }
+  } catch {}
+  try {
+    for (const e of enemies) {
+      try { if (e && e.id != null) enemiesById.delete(e.id); } catch {}
+    }
+  } catch {}
+  try { enemies.length = 0; } catch {}
+  try { enemyBullets.length = 0; } catch {}
+}
+
 function startZonePortalJump(ptl, entryConfirmed = false) {
   if (!ptl || ptl.jumping) return false;
   if (!isPlayerNearPortal(ptl)) {
@@ -12963,6 +12983,11 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   // ✅ on mémorise l'état visuel actuel du portail
   // comme ça le jump part de l'état open sans cassure
   ptl.jumpBaseFade = Math.max(0, getPortalOpenFade(ptl));
+
+  // ✅ purge d'avant-saut : les NPC de l'ancienne carte partent dès le
+  // départ (pas de fuite visuelle de l'autre côté, pas de disparition
+  // brutale à l'arrivée).
+  purgeNpcsForJump();
 
   ptl.jumping = true;
   ptl.jumpT = 0;
@@ -22376,6 +22401,24 @@ function scheduleSwitchDecoys(target) {
 const Target = (() => {
   let cur = null;
 
+  // Jumeau snapshot d'une cible purgée/recréée (doublon local retiré,
+  // entité réseau revenue après un trou) : même NPC, autre objet.
+  // Suivre le jumeau évite le délock en plein tir alors qu'il n'est pas mort.
+  function findNpcTwin(t) {
+    if (!t || !(t.hp > 0)) return null;
+    const netUid = t._netUid != null ? String(t._netUid) : null;
+    const uniUid = t.universeUid != null ? String(t.universeUid) : null;
+    const id = t.id != null ? String(t.id) : null;
+    if (!netUid && !uniUid && !id) return null;
+    for (const x of enemies) {
+      if (!x || x === t || !(x.hp > 0)) continue;
+      if (netUid && x._netUid != null && String(x._netUid) === netUid) return x;
+      if (uniUid && (String(x.universeUid) === uniUid || (x._netUid != null && String(x._netUid) === uniUid))) return x;
+      if (!netUid && !uniUid && id && x.id != null && String(x.id) === id) return x;
+    }
+    return null;
+  }
+
   function set(e) {
     let next = e && e.hp > 0 ? e : null;
     // IEM distant : apres la rupture du lock, le joueur reste impossible a
@@ -22437,8 +22480,11 @@ const Target = (() => {
       return cur;
     }
     if (!enemies.includes(cur) || cur.hp <= 0) {
-      cur = null;
-      return null;
+      // Purge/respawn snapshot : la cible vit sous un autre objet (jumeau
+      // même uid) → on la suit sans casser le verrou ni l'attaque en cours.
+      const twin = cur && cur.hp > 0 ? findNpcTwin(cur) : null;
+      cur = twin;
+      return cur;
     }
     return cur;
   }
@@ -25890,14 +25936,10 @@ function syncNetNpcs(dt) {
       try { setKickOverlay(`Vous avez été banni. Motif : ${B?.reason || "Comportement inapproprié."}.${dateTxt}`, "Banni par l'administrateur"); } catch {}
     }
   } catch {}
-  try {
-    const t = Target.get();
-    if (t && !t._netUid && t.universeUid && netplayNpcActive()) Target.clear();
-    // Lock fantome : la cible reseau a ete retiree (mort) meme si un
-    // homonyme (respawn, meme uid) est present. Une simple absence dans un
-    // snapshot ne suffit plus : l'entite beneficie du delai reseau ci-dessus.
-    else if (t && t._netUid && !enemies.includes(t)) Target.clear();
-  } catch {}
+  // Verrou fantôme : géré par Target.get() qui suit le jumeau snapshot
+  // (même uid) au lieu de casser le verrou en plein tir. Pas de clear ici :
+  // la cible purgée puis réapparue reste verrouillée, la vraie mort (hp 0)
+  // ou disparition (aucun jumeau) délocke normalement.
 }
 
 function zoneController(dt) {
@@ -28270,6 +28312,9 @@ function startGatePortalJump(ptl, action) {
     return;
   }
   if (beginGatePortalJump(ptl, action, portal.switchDur)) {
+    // ✅ purge d'avant-saut : comme les portails de zone, aucun NPC de
+    // l'ancienne carte ne fuit de l'autre côté.
+    purgeNpcsForJump();
     // ✅ mêmes sons que les portails de zone : saut possible puis saut en cours.
     SFX.play("swReady");
     window.setTimeout(() => {

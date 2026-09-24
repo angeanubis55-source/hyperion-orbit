@@ -63,6 +63,17 @@ button{
   user-select:none;
 }
 
+/* Anti-dérapage souris : aucun texte sélectionnable sur la page de jeu.
+   Champs de saisie exclus (on doit pouvoir y sélectionner/copier). */
+html.orbitNoSelect, html.orbitNoSelect body, body{
+  -webkit-user-select:none;
+  user-select:none;
+}
+input, select, textarea, [contenteditable="true"]{
+  -webkit-user-select:text;
+  user-select:text;
+}
+
 html.orbitBooting body > :not(#loadingOverlay):not(script){
   visibility:hidden !important;
 }
@@ -6154,6 +6165,11 @@ body > .inventoryTooltip {
   transition: opacity .12s ease !important;
 }
 body > .inventoryTooltip.visible { opacity: 1 !important; visibility: visible !important; }
+/* Infobulle riche des modules : texte plus gros, + verts / − rouges. */
+body > .inventoryTooltip .ttModName{ color:#eaffff !important; font-size:14px !important; font-weight:900 !important; margin-bottom:2px !important; }
+body > .inventoryTooltip .ttModLine{ color:rgba(221,241,250,.78) !important; font-size:12px !important; font-weight:700 !important; }
+body > .inventoryTooltip .ttModPos{ color:#00ff88 !important; font-size:12px !important; font-weight:800 !important; }
+body > .inventoryTooltip .ttModNeg{ color:#ff5566 !important; font-size:12px !important; font-weight:800 !important; }
 
 #profileOverlay .inventorySlot[class*="rarity-"] {
   border-color: color-mix(in srgb, var(--rarity) 48%, transparent) !important;

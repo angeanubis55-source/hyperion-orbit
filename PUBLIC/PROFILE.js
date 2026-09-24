@@ -834,7 +834,9 @@ function wireMainTabsOnce() {
   inventorySections?.addEventListener("pointermove", (event) => {
     const slot = event.target.closest(".inventorySlot");
     if (!slot || !inventoryTooltip) return;
-    inventoryTooltip.textContent = slot.dataset.tooltip || "";
+    const richTip = slot.dataset.tooltipHtml || "";
+    if (richTip) inventoryTooltip.innerHTML = richTip;
+    else inventoryTooltip.textContent = slot.dataset.tooltip || "";
     inventoryTooltip.classList.add("visible");
     const margin = 14;
     const tooltipRect = inventoryTooltip.getBoundingClientRect();
@@ -1175,6 +1177,32 @@ function inventoryTooltipText(entry) {
   return lines.filter(Boolean).join("\n");
 }
 
+// Infobulle riche des modules (inventaire) : texte plus gros, bonus
+// positifs en vert et malus en rouge, un par ligne.
+function inventoryModuleTooltipHtml(entry) {
+  const module = entry?.module || {};
+  const parts = [];
+  parts.push(`<div class="ttModName">${escapeHtml(entry?.name || "Module")}</div>`);
+  if (module.shipId) {
+    const rarityMeta = moduleRarityMeta(module);
+    parts.push(`<div class="ttModLine">Famille : ${escapeHtml(getShipFamilyName(moduleFamilyId(module)))} (${escapeHtml(rarityMeta.name)})</div>`);
+    parts.push(`<div class="ttModLine">Vaisseau : ${escapeHtml(getShipPack(module.shipId)?.name || module.shipId)}</div>`);
+  }
+  for (const bonus of (module.bonuses || [])) {
+    const pct = Number(bonus?.pct || 0);
+    const sign = pct > 0 ? "+" : "";
+    const cls = pct > 0 ? "ttModPos" : pct < 0 ? "ttModNeg" : "ttModLine";
+    parts.push(`<div class="${cls}">${escapeHtml(`${sign}${formatNumber(pct)}% ${formatStatLabel(bonus?.stat)}`)}</div>`);
+  }
+  return parts.join("");
+}
+
+// Encode un fragment HTML pour un attribut data-* : les textes sont déjà
+// échappés en amont (entités présentes), on ne protège que les guillemets.
+function htmlForDataAttr(html) {
+  return String(html || "").replace(/"/g, "&quot;");
+}
+
 function inventoryEntryRarity(entry) {
   if (entry.rarityId) return ITEM_RARITIES[entry.rarityId] || ITEM_RARITIES.common;
 
@@ -1240,7 +1268,8 @@ function renderInventoryMeasured(u) {
       const quantity = entry.quantityLabel || inventoryQuantityLabel(entry.quantity);
       const rarity = inventoryEntryRarity(entry);
       entry.rarity = rarity;
-      return `<article class="inventorySlot rarity-${escapeHtml(rarity.id)}" data-rarity="${escapeHtml(rarity.id)}" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(inventoryTooltipText(entry))}" tabindex="0" aria-label="${escapeHtml(inventoryTooltipText(entry).replace(/\n/g, ". "))}">
+      const richTip = entry.kind === "module" ? htmlForDataAttr(inventoryModuleTooltipHtml(entry)) : "";
+      return `<article class="inventorySlot rarity-${escapeHtml(rarity.id)}" data-rarity="${escapeHtml(rarity.id)}" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(inventoryTooltipText(entry))}"${richTip ? ` data-tooltip-html="${richTip}"` : ""} tabindex="0" aria-label="${escapeHtml(inventoryTooltipText(entry).replace(/\n/g, ". "))}">
         <img src="${escapeHtml(inventoryItemIcon(entry))}" alt="" />
         ${stacked ? `<span class="inventorySlotQuantity">${escapeHtml(quantity)}</span>` : ""}
       </article>`;
