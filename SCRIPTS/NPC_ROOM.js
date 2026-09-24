@@ -43,6 +43,7 @@ export class ZoneNpcSim {
     this.players = new Map(); // clientId -> { x, y, dead, safe, hidden }
     this.safe = []; // cercles de non-agression { x, y, r }
     this.feed = new Map(); // "uid|by" -> { uid, by, total } (degats du tick)
+    this.recentGone = []; // uids retires sans mort (despawn vague) : purge immediate cote client
     this.playerHits = []; // impacts NPC autoritaires a appliquer par MULTI_SERVER
     // Journal des kills (2.5 s) : le respawn instantane des NPC normaux
     // effacerait sinon la mort avant le snapshot — le killer perdrait sa recompense.
@@ -225,6 +226,85 @@ export class ZoneNpcSim {
     return this.playerHits.splice(0, this.playerHits.length);
   }
 
+  // --- Vague Cubikon partagee (parite solo, visible par tous) ---
+  // Le premier impact sur un Cubikon declenche son animation d'ouverture
+  // (delay 2 s -> open -> hold 2 s) puis le serveur fait apparaitre jusqu'a
+  // 20 Protegits ancres au Cubikon. Sans nouveau coup pendant 10 s, les
+  // minions sont retires silencieusement et la vague est re-armee.
+  static CUBIKON_WAVE_SIZE = 20;
+  static CUBIKON_WAVE_MAX = 80;
+
+  countCubikonMinions(cubUid) {
+    let n = 0;
+    for (const e of this.entries.values()) {
+      if (e && e.masterUid === cubUid && e.hp > 0) n++;
+    }
+    return n;
+  }
+
+  spawnCubikonWave(cub, nowMs) {
+    if (!cub || !(cub.hp > 0)) return;
+    const stats = statsFor("npc_Protegit");
+    if (!stats) return;
+    const linked = this.countCubikonMinions(cub.uid);
+    const toSpawn = Math.min(
+      ZoneNpcSim.CUBIKON_WAVE_SIZE,
+      Math.max(0, ZoneNpcSim.CUBIKON_WAVE_MAX - linked)
+    );
+    for (let i = 0; i < toSpawn; i++) {
+      const ang = Math.random() * TAU;
+      const dist = 130 + Math.random() * 520;
+      const n = (cub.minionSeq = (Number(cub.minionSeq) || 0) + 1);
+      const uid = `${cub.uid}:pg${n}`;
+      // Seq unique meme entre deux vies du Cubikon (respawn = meme uid) :
+      // le client ne confond jamais deux incarnations (recompenses, locks).
+      const seq = n + (Number(cub.seq) || 0) * 100000;
+      const x = clamp(cub.x + Math.cos(ang) * dist, 80, this.world.w - 80);
+      const y = clamp(cub.y + Math.sin(ang) * dist, 80, this.world.h - 80);
+      this.entries.set(uid, {
+        uid, campId: null, type: "npc_Protegit",
+        masterUid: cub.uid, masterSeq: Number(cub.seq) || 0,
+        x, y, angle: Math.random() * TAU,
+        hp: stats.hpMax, sh: stats.shMax,
+        hpMax: stats.hpMax, shMax: stats.shMax,
+        speed: stats.speed, dr: stats.dr, spread: stats.spread,
+        passive: false, kamikaze: false,
+        explodeOnTouch: false, explodeRadius: 0, explodeDmg: 0,
+        canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,
+        bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.2 + Math.random() * 0.5,
+        aggroRange: 700, aggroHoldMs: 3500,
+        aggroBy: null, aggroUntil: 0,
+        tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+        masterKiller: null, decaying: false, decayPerSec: 0,
+        fleeVx: 0, fleeVy: 0, deadAt: 0,
+        orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
+        seq,
+      });
+    }
+  }
+
+  // A la mort du Cubikon, ses Protegits fuient puis perdent 5 % de leur vie
+  // max par seconde (parite solo), au lieu de poursuivre les joueurs.
+  releaseCubikonMinions(cub, nowMs) {
+    if (!cub) return;
+    const killer = cub.killer != null ? String(cub.killer) : null;
+    for (const e of this.entries.values()) {
+      if (!e || e.masterUid !== cub.uid || !(e.hp > 0) || e.decaying) continue;
+      const fleeAngle = Math.random() * TAU;
+      const fleeSpeed = Math.max(650, Number(e.speed) || 650);
+      e.decaying = true;
+      e.decayPerSec = Math.max(1, Number(e.hpMax) || 1) * 0.05;
+      e.masterKiller = killer;
+      e.aggroBy = null;
+      e.aggroUntil = 0;
+      e.pendingAggroBy = null;
+      e.chaseId = null;
+      e.fleeVx = Math.cos(fleeAngle) * fleeSpeed;
+      e.fleeVy = Math.sin(fleeAngle) * fleeSpeed;
+      e.angle = fleeAngle;
+    }
+  }
+
   applyHit(clientId, hit) {
     const uid = String(hit?.uid || "");
     const entry = this.entries.get(uid);
@@ -289,6 +369,17 @@ export class ZoneNpcSim {
       // perde sa protection avant de reagir.
       entry.pendingAggroBy = String(clientId);
     }
+    if (entry.type === "npc_Cubikon") {
+      // Premier impact de l'engagement : animation + vague partagees.
+      // (Si le coup est fatal, la mort ci-dessous libere les minions.)
+      entry.lastCubeHitAt = nowMs;
+      if (entry.hp > 0 && !entry.cubeArmed && !entry.cube) {
+        if (this.countCubikonMinions(uid) < ZoneNpcSim.CUBIKON_WAVE_MAX) {
+          entry.cubeArmed = true;
+          entry.cube = { phase: "delay", until: nowMs + 2000, spawnAt: nowMs + 4600 };
+        }
+      }
+    }
     if (!(entry.hp > 0)) {
       entry.hp = 0;
       entry.sh = 0;
@@ -296,6 +387,11 @@ export class ZoneNpcSim {
       const kb = entry.firstBy != null && this.players.has(entry.firstBy) ? entry.firstBy : entry.lastHitBy;
       entry.killer = String(kb || clientId);
       entry.cause = "gun";
+      entry.cube = null;
+      if (entry.masterUid) entry.deadAt = nowMs;
+      if (entry.type === "npc_Cubikon") {
+        try { this.releaseCubikonMinions(entry, nowMs); } catch {}
+      }
       try { markDead(this.universe, this.mapId, uid, Date.now()); } catch {}
       this.deaths.push({ uid, type: entry.type, x: Math.round(entry.x), y: Math.round(entry.y), killer: entry.killer, cause: "gun", seq: entry.seq || 0, at: Date.now() });
     }
@@ -323,6 +419,45 @@ export class ZoneNpcSim {
       this.spawnFor(camp, nowMs);
       this.campT.set(camp.id, camp.respawn);
     }
+    // 1bis) Vagues Cubikon : transitions d'animation, spawn partage,
+    // dechet des minions orphelins et re-armement apres 10 s sans coup.
+    for (const [muid, m] of [...this.entries]) {
+      if (!m) continue;
+      if (m.type === "npc_Cubikon" && m.cube) {
+        if (!(m.hp > 0)) { m.cube = null; continue; }
+        if (nowMs >= Number(m.cube.until) || 0) {
+          if (m.cube.phase === "delay") {
+            m.cube = { phase: "open", until: nowMs + 1000, spawnAt: Number(m.cube.spawnAt) || (nowMs + 2600) };
+          } else if (m.cube.phase === "open") {
+            m.cube = { phase: "hold", until: Number(m.cube.spawnAt) || (nowMs + 2000), spawnAt: Number(m.cube.spawnAt) || (nowMs + 2000) };
+          } else if (m.cube.phase === "hold") {
+            try { this.spawnCubikonWave(m, nowMs); } catch {}
+            m.cube = null;
+          } else {
+            m.cube = null;
+          }
+        }
+      }
+      // Minion mort : purge apres diffusion du journal (3 s).
+      if (m.masterUid && !(m.hp > 0) && nowMs - Number(m.deadAt || 0) > 3000) {
+        this.entries.delete(muid);
+        continue;
+      }
+      // Cubikon vivant sans coup depuis 10 s : minions retires
+      // silencieusement (parite solo : despawn 0.5 s, sans recompense),
+      // la prochaine salve re-arme la vague.
+      if (m.type === "npc_Cubikon" && m.cubeArmed && (m.hp > 0)
+        && nowMs - Number(m.lastCubeHitAt || 0) > 10000) {
+        for (const [muid2, m2] of [...this.entries]) {
+          if (m2 && m2.masterUid === m.uid && m2.hp > 0 && !m2.decaying) {
+            this.entries.delete(muid2);
+            if (this.recentGone.length < 200) this.recentGone.push(muid2);
+          }
+        }
+        m.cubeArmed = false;
+        m.cube = null;
+      }
+    }
     // 2) Mouvements — parite solo :
     // - provocations (tirs) : poursuit l'agresseur quelques secondes ;
     // - proximite : rayon du camp (jamais les passifs non provoques) ;
@@ -332,6 +467,25 @@ export class ZoneNpcSim {
     // - sinon : derive. En poursuite proche : orbite, jamais statique.
     for (const e of this.entries.values()) {
       if (!(e.hp > 0)) continue;
+      // Minion orphelin (Cubikon mort) : fuit en ligne droite et perd
+      // 5 % de sa vie max par seconde, sans poursuivre ni tirer.
+      if (e.decaying) {
+        e.aggroBy = null;
+        e.aggroUntil = 0;
+        e.chaseId = null;
+        e.hp -= Math.max(1, Number(e.decayPerSec) || 0) * dt;
+        e.x = clamp(e.x + Number(e.fleeVx || 0) * dt, 80, this.world.w - 80);
+        e.y = clamp(e.y + Number(e.fleeVy || 0) * dt, 80, this.world.h - 80);
+        if (!(e.hp > 0)) {
+          e.hp = 0; e.sh = 0; e.deadAt = nowMs;
+          const kb = (e.firstBy != null && this.players.has(e.firstBy))
+            ? e.firstBy : (e.masterKiller || e.lastHitBy);
+          e.killer = String(kb || "");
+          e.cause = "gun";
+          this.deaths.push({ uid: e.uid, type: e.type, x: Math.round(e.x), y: Math.round(e.y), killer: e.killer, cause: "gun", seq: e.seq || 0, at: nowMs });
+        }
+        continue;
+      }
       const frozen = nowMs < Number(e.freezeUntil || 0);
       const slowMult = nowMs < Number(e.slowUntil || 0)
         ? Math.max(0.05, 1 - clamp(Number(e.slowPct) || 0, 0, 95) / 100)
@@ -405,10 +559,39 @@ export class ZoneNpcSim {
       // aucune repulsion / glissade autour des zones sures (c'etait ca
       // qui les faisait se stacker en haut / a gauche de la base).
       // La zone sure reste une protection d'aggro (validTarget), pas un mur.
+      // Minion de Cubikon (maitre en vie) : ancre autour du Cubikon, jamais
+      // de poursuite a travers la map. Les tirs ci-dessous restent actifs.
+      const cubeMaster = e.masterUid ? this.entries.get(e.masterUid) : null;
+      const cubeAnchored = !!e.masterUid && cubeMaster && cubeMaster.hp > 0
+        && Number(cubeMaster.seq || 0) === Number(e.masterSeq || 0);
+      if (!cubeAnchored && e.masterUid) {
+        // Maitre mort ou reincarne : le minion se desagrege sur place.
+        e.decaying = true;
+        e.decayPerSec = Math.max(1, Number(e.hpMax) || 1) * 0.05;
+        e.masterKiller = e.masterKiller || (cubeMaster ? (cubeMaster.killer != null ? String(cubeMaster.killer) : null) : null);
+        e.aggroBy = null;
+        e.aggroUntil = 0;
+        e.chaseId = null;
+        const fleeAngle = Math.random() * TAU;
+        const fleeSpeed = Math.max(650, Number(e.speed) || 650);
+        e.fleeVx = Math.cos(fleeAngle) * fleeSpeed;
+        e.fleeVy = Math.sin(fleeAngle) * fleeSpeed;
+        e.angle = fleeAngle;
+      }
       let mx = 0, my = 0, spd = 0;
       const fleeing = !e.kamikaze && e.hpMax > 0 && e.hp / e.hpMax < 0.10;
       const from = attacker || close;
-      if (fleeing && from) {
+      if (cubeAnchored) {
+        if (e.tx == null || Math.hypot(e.tx - e.x, e.ty - e.y) < 100) {
+          const a = Math.random() * TAU, dist = 200 + Math.random() * 500;
+          e.tx = clamp(cubeMaster.x + Math.cos(a) * dist, 80, this.world.w - 80);
+          e.ty = clamp(cubeMaster.y + Math.sin(a) * dist, 80, this.world.h - 80);
+        }
+        const dx = e.tx - e.x, dy = e.ty - e.y;
+        const d = Math.hypot(dx, dy) || 1;
+        mx = dx / d; my = dy / d; spd = e.speed * 0.55;
+        if (spd > 0) e.angle = Math.atan2(dy, dx);
+      } else if (fleeing && from) {
         // Fuite : s'eloigne de la menace, rattrapable.
         const dx = e.x - from.x, dy = e.y - from.y;
         const d = Math.hypot(dx, dy) || 1;
@@ -495,11 +678,20 @@ export class ZoneNpcSim {
             const p = this.players.get(e.chaseId);
             return this.validTarget(p) ? e.chaseId : null;
           })(),
+          // Animation d'ouverture du Cubikon : phase + temps restant pour
+          // que tous les ecrans jouent l'ouverture en meme temps.
+          cube: (e.type === "npc_Cubikon" && e.cube && e.cube.phase) ? String(e.cube.phase) : null,
+          cubeT: (e.type === "npc_Cubikon" && e.cube && e.cube.phase)
+            ? Math.max(0, (Number(e.cube.until) || 0) - nowMs) / 1000 : 0,
         });
       } else if (e.killer != null) {
         list.push({ uid: e.uid, type: e.type, alive: false, killer: e.killer, cause: e.cause || "gun", seq: e.seq || 0 });
       }
     }
-    return { list, deaths: this.deaths.slice(), dmg };
+    // Retraits sans mort (despawn de vague) : le client purge sur-le-champ,
+    // sans explosion ni delai. Le WS etant fiable, on vide apres envoi.
+    const gone = this.recentGone.slice(-200);
+    this.recentGone.length = 0;
+    return { list, deaths: this.deaths.slice(), dmg, gone };
   }
 }

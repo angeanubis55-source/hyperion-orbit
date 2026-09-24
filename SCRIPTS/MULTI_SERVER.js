@@ -662,7 +662,21 @@ function roomFor(mapId) {
   return rooms.get(key);
 }
 
+// Depart immediat (portail / changement de map) : previent l'ancienne room
+// pour que les observateurs suppriment le vaisseau sur-le-champ au lieu de
+// le garder en extrapolation jusqu'au timeout (le "clone" de 2-3 secondes).
+function announceLeave(id) {
+  const key = String(id);
+  let payload = null;
+  try { payload = JSON.stringify({ t: "leave", id: key }); } catch { return; }
+  for (const [, room] of rooms) {
+    if (!room.has(key)) continue;
+    try { broadcastRoom(room, payload, key); } catch {}
+  }
+}
+
 function removeFromAllRooms(id) {
+  try { announceLeave(id); } catch {}
   for (const [mkey, room] of rooms) {
     room.delete(id);
   }
@@ -1577,6 +1591,7 @@ setInterval(() => {
     // Expire les joueurs silencieux depuis > 10 s (onglet ferme sans close propre).
     for (const [pid, entry] of room) {
       if (now - Number(entry?.state?.updatedAt || 0) > 10000) {
+        try { announceLeave(pid); } catch {}
         room.delete(pid);
         try {
           const goneState = entry?.state || {};

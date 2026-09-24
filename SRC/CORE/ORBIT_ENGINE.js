@@ -108,7 +108,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
+  import { pushNetplayLocal, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -22745,10 +22745,13 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
   }
 
   // ✅ Si tu tapes le Cubikon à la SAB, ça déclenche aussi ses Protegit.
+  // Multi : NPC partage — la vague est serveur (visible par tous), le
+  // serveur pilote aussi l'animation via le snapshot. Pas de declenchement
+  // local ici, sinon chaque ecran verrait sa propre vague fantome.
   if (e.type === "npc_Cubikon") {
     e._sinceHit = 0;
 
-    if (e._resetting) {
+    if (!(e._netUid && netplayNpcActive()) && e._resetting) {
       e._resetting = false;
       for (const m of enemies) {
         if (!m || m.hp <= 0) continue;
@@ -22759,7 +22762,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
       }
     }
 
-    if (!e._spawnedOnce && !isEntityJammed(e)) {
+    if (!e._spawnedOnce && !isEntityJammed(e) && !(e._netUid && netplayNpcActive())) {
       e._spawnedOnce = true;
 
       e._animPhase = "delay";
@@ -22879,10 +22882,12 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
     if (playerIsInSafeZone()) e._pendingSafeAggro = true;
   }
 
+  // Multi : NPC partage — vague + animation pilotees par le serveur
+  // (snapshot). Pas de declenchement local, sinon vague fantome par ecran.
   if (e.type === "npc_Cubikon") {
     e._sinceHit = 0;
 
-    if (e._resetting) {
+    if (!(e._netUid && netplayNpcActive()) && e._resetting) {
       e._resetting = false;
       for (const m of enemies) {
         if (!m || m.hp <= 0) continue;
@@ -22893,7 +22898,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
       }
     }
 
-   if (!e._spawnedOnce && (shD + hpD) > 0 && !isEntityJammed(e)) {
+   if (!e._spawnedOnce && (shD + hpD) > 0 && !isEntityJammed(e) && !(e._netUid && netplayNpcActive())) {
   e._spawnedOnce = true;
 
   e._animPhase = "delay";
@@ -25714,12 +25719,37 @@ function syncNetNpcs(dt) {
   const now = performance.now();
   // Doublons locaux (spawnes avant le premier snapshot ou pendant une
   // coupure) : le serveur possede les spawns de zone, on les retire pour
-  // ne garder que les entites partagees. Les speciaux (Protegit, vagues...)
-  // n'ont pas d'universeUid et sont conserves.
+  // ne garder que les entites partagees. Les speciaux (vagues de boss...)
+  // n'ont pas d'universeUid et sont conserves — SAUF les Protegit de
+  // Cubikon : la vague est desormais serveur (visible par tous), les
+  // copies locales seraient des fantomes (poursuite infinie, sans partage).
   for (let i = enemies.length - 1; i >= 0; i--) {
     const c = enemies[i];
-    if (c && !c._netUid && c.universeUid) enemies.splice(i, 1);
+    if (!c || c._netUid) continue;
+    if (c.universeUid) {
+      try { if (Target.get() === c) Target.clear(); } catch {}
+      enemies.splice(i, 1);
+    } else if (c.type === "npc_Protegit" && c.masterId && !c._bossPhaseMinion) {
+      try { if (Target.get() === c) Target.clear(); } catch {}
+      enemies.splice(i, 1);
+    }
   }
+  // Retraits serveur sans mort (despawn de vague Cubikon) : purge immediate,
+  // silencieuse (ni explosion ni recompense), lock libere.
+  try {
+    const gone = drainNetGone();
+    if (gone.length) {
+      for (const gid of gone) {
+        for (let i = enemies.length - 1; i >= 0; i--) {
+          const c = enemies[i];
+          if (c && c._netUid === gid) {
+            try { if (Target.get() === c) Target.clear(); } catch {}
+            enemies.splice(i, 1);
+          }
+        }
+      }
+    }
+  } catch {}
   // Journal des kills serveur D'ABORD : il tranche les morts de l'incarnation
   // courante, meme si la prediction locale la croyait encore en vie (les
   // degats du copain ont fait la difference). HP force a 0 pour que
@@ -25832,6 +25862,49 @@ function syncNetNpcs(dt) {
     // radar/minimap) suit l'aggro partagee, sinon les NPC tires restent
     // visibles au loin pour toujours (leur boucle locale est sautee).
     e._attackedPlayerRecently = s.aggro != null && String(s.aggro) === String(netMyId());
+    // Cubikon partage : le serveur pilote l'animation d'ouverture pour que
+    // tous les ecrans la voient en meme temps. La machine locale (delay ->
+    // open -> hold -> close) joue les sprites ; le spawn est inhibe en
+    // multi (les Protegit arrivent via snapshot).
+    if (e.type === "npc_Cubikon" && (s.cube === "delay" || s.cube === "open" || s.cube === "hold")) {
+      const remain = Math.max(0, Number(s.cubeT) || 0);
+      // Ordre delay < open < hold : si la machine locale a de l'avance sur
+      // le snapshot (retard reseau), on ne revient jamais en arriere —
+      // elle finit son cycle toute seule, sans rejouer l'ouverture.
+      const cubeRank = s.cube === "hold" ? 2 : s.cube === "open" ? 1 : 0;
+      const localRank = e._animPhase === "hold" ? 2 : e._animPhase === "open" ? 1 : e._animPhase === "delay" ? 0 : -1;
+      if (e._animPhase !== s.cube && cubeRank >= localRank) {
+        e._spawnedOnce = true;
+        e._pendingSpawn = 0;
+        e._animPhase = s.cube;
+        e.spriteAcc = 0;
+        if (s.cube === "delay") {
+          e.spritePlay = false;
+          e.spriteDir = 1;
+          e.spriteIdx = 0;
+          e._openDelayT = Math.max(0.1, remain);
+          e._holdLastT = 0;
+          e.angle = 0;
+        } else if (s.cube === "open") {
+          e.spritePlay = true;
+          e.spriteDir = 1;
+          e.spriteIdx = 0;
+          e.angle = 0;
+        } else if (s.cube === "hold") {
+          try {
+            const sp = NPC_TYPES[e.type]?.sprite;
+            const frames = sp?.frames || sp?._imgs?.length || 1;
+            e.spriteIdx = Math.max(0, frames - 1);
+          } catch { e.spriteIdx = 12; }
+          e.spritePlay = false;
+          e._holdLastT = Math.max(0.1, remain);
+        }
+      } else if (s.cube === "delay") {
+        e._openDelayT = Math.max(Number(e._openDelayT) || 0, remain);
+      } else if (s.cube === "hold") {
+        e._holdLastT = Math.max(Number(e._holdLastT) || 0, remain);
+      }
+    }
     e._netSeenT = now;
   }
   for (let i = enemies.length - 1; i >= 0; i--) {
@@ -31487,9 +31560,11 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
     if (e._holdLastT <= 0) {
       // ✅ Spawn ici (pendant la frame ouverte). Brouillé : pas de spawn.
+      // Multi : NPC partage — les Protegit viennent du serveur (snapshot),
+      // jamais en local (sinon fantomes visibles par le seul tireur).
       const n = e._pendingSpawn || 20;
       e._pendingSpawn = 0;
-      if (n > 0 && !isEntityJammed(e)) spawnProtegitOnCubikonHit(e, n);
+      if (n > 0 && !isEntityJammed(e) && !(e._netUid && netplayNpcActive())) spawnProtegitOnCubikonHit(e, n);
 
       // ✅ commence fermeture (reverse)
       e._animPhase = "close";
@@ -31517,7 +31592,10 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
     if (!e || e.hp <= 0) continue;
 
-    if (e.type === "npc_Cubikon") {
+    // Multi : NPC partage — le reset idle (regen + despawn) est serveur.
+    // En local on ne toucherait que des fantomes et on ferait flicker la
+    // barre de vie (regen locale ecrasee par le snapshot 20 Hz).
+    if (e.type === "npc_Cubikon" && !(e._netUid && netplayNpcActive())) {
       e._sinceHit = (e._sinceHit ?? 999) + dt;
 
       if (e._minionDespawning == null) e._minionDespawning = false;

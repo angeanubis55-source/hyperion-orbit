@@ -23,6 +23,7 @@ export function suspendNetplay(v) {
     remotes.clear();
     netNpcs.clear();
     netDeaths.clear();
+    netGone = [];
     netBoxes.clear();
     netBoxInbox.length = 0;
     pendingNetBoxClaims.clear();
@@ -132,6 +133,7 @@ function clearInstanceGameplay() {
   remotes.clear();
   netNpcs.clear();
   netDeaths.clear();
+  netGone = [];
   netBoxes.clear();
   netBoxInbox.length = 0;
   netDmgInbox.length = 0;
@@ -171,6 +173,14 @@ const netNpcs = new Map();
 // Journal des kills serveur : uid -> { killer, at }. Survit au respawn
 // instantane pour trancher les recompenses (le killer touche, l'autre non).
 const netDeaths = new Map();
+// Retraits sans mort (despawn de vague Cubikon) : purge immediate cote client.
+let netGone = [];
+export function drainNetGone() {
+  if (!netGone.length) return [];
+  const out = netGone;
+  netGone = [];
+  return out;
+}
 let lastNpcSnapMs = 0;
 const NET_SEND_INTERVAL_MS = 50;
 // A 20 Hz, un snapshot arrive toutes les 50 ms. Une marge de 150 ms masque
@@ -517,6 +527,15 @@ export function ensureNetplayConnection() {
     if (msg.t === "welcome") {
       myId = String(msg.id || "");
       if (msg.authed === true) netAuthed = true;
+      return;
+    }
+    // Depart immediat (portail / changement de map) : supprime le vaisseau
+    // sur-le-champ au lieu d'attendre le timeout de 8 s (le "clone" fantome).
+    if (msg.t === "leave") {
+      try {
+        const goneId = String(msg.id || "");
+        if (goneId) remotes.delete(goneId);
+      } catch {}
       return;
     }
     if (msg.t === "chatMsg") {
@@ -932,6 +951,13 @@ export function ensureNetplayConnection() {
       // Le journal `deaths` survit au respawn instantane des NPC normaux.
       if (msg.npc && typeof msg.npc === "object") {
         lastNpcSnapMs = now;
+        if (Array.isArray(msg.npc.gone)) {
+          for (const g of msg.npc.gone.slice(0, 200)) {
+            if (typeof g !== "string" || !g) continue;
+            netNpcs.delete(g.slice(0, 128));
+            if (netGone.length < 200) netGone.push(g.slice(0, 128));
+          }
+        }
         if (!Array.isArray(msg.npc) && Array.isArray(msg.npc.dmg)) {
           for (const d of msg.npc.dmg.slice(0, 24)) {
             if (!d || !d.uid || !(Number(d.total) > 0)) continue;
@@ -973,6 +999,10 @@ export function ensureNetplayConnection() {
             cause: String(n.cause || "gun").slice(0, 8),
             seq: Number(n.seq) || 0,
             aggro: n.aggro != null ? String(n.aggro) : null,
+            // Animation d'ouverture du Cubikon (vague partagee) : phase +
+            // temps restant, miroir dans ORBIT_ENGINE (syncNetNpcs).
+            cube: (n.cube === "delay" || n.cube === "open" || n.cube === "hold") ? String(n.cube) : null,
+            cubeT: Math.max(0, Number(n.cubeT) || 0),
             rocketSlowPct: Math.max(0, Math.min(95, Number(n.slowPct) || 0)),
             rocketSlowT: Math.max(0, Number(n.slowT) || 0),
             freezeT: Math.max(0, Number(n.freezeT) || 0),
