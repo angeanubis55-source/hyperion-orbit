@@ -8390,6 +8390,16 @@ const Bot = {
   exp0: 0,
   orbitDist: 560,
   npcDist: Object.create(null),
+  orbit: true,
+  safeNpc: true,
+  autoSab: true,
+  autoX6: true,
+  orbitDir: 1,
+  orbitFlipAt: 0,
+  orbitId: null,
+  specialPrev: "",
+  x6Armed: false,
+  x6ArmedAt: 0,
   flee: true,
   fleePct: 25,
 
@@ -8506,6 +8516,10 @@ function botSaveConfig() {
       reviveWait: Bot.reviveWait,
       orbitDist: Bot.orbitDist,
       npcDist: Bot.npcDist,
+      orbit: Bot.orbit,
+      safeNpc: Bot.safeNpc,
+      autoSab: Bot.autoSab,
+      autoX6: Bot.autoX6,
       engageDist: Bot.engageDist,
       npcAmmo: Bot.npcAmmo,
       npcIncludeUnknown: Bot.npcIncludeUnknown,
@@ -8592,6 +8606,10 @@ function botLoadConfig() {
     Bot.reviveWait = Number.isFinite(rw) ? Math.max(0, Math.min(60, rw)) : 3;
     const od = Math.floor(Number(data.orbitDist));
     if (Number.isFinite(od)) Bot.orbitDist = Math.max(200, Math.min(2000, od));
+    if (typeof data.orbit === "boolean") Bot.orbit = data.orbit;
+    if (typeof data.safeNpc === "boolean") Bot.safeNpc = data.safeNpc;
+    if (typeof data.autoSab === "boolean") Bot.autoSab = data.autoSab;
+    if (typeof data.autoX6 === "boolean") Bot.autoX6 = data.autoX6;
     if (data.npcDist && typeof data.npcDist === "object") {
       for (const [k, v] of Object.entries(data.npcDist)) {
         const d = Math.floor(Number(v));
@@ -8783,6 +8801,7 @@ function botSetActive(on) {
     Bot.target = "—";
     botRestorePetMode();
     botRestoreLoadout();
+    try { botClearSpecialAmmo(); } catch {}
     // On ne coupe pas une attaque manuelle en cours : juste on arrête de piloter.
   } else {
     Bot.status = "Démarré";
@@ -9623,6 +9642,17 @@ function wireBotWindow() {
       lockBox.addEventListener("change", () => { Bot.lock = lockBox.checked; botSaveConfig(); });
     }
   }
+  // Orbite map, NPC en zone sure, SAB/X6 auto : même câblage, défauts actifs.
+  for (const [boxId, key] of [["botOrbit", "orbit"], ["botSafeNpc", "safeNpc"], ["botAutoSab", "autoSab"], ["botAutoX6", "autoX6"]]) {
+    const box = document.getElementById(boxId);
+    if (!box) continue;
+    box.checked = Bot[key] !== false;
+    Bot[key] = box.checked;
+    if (!box.dataset.wired) {
+      box.dataset.wired = "1";
+      box.addEventListener("change", () => { Bot[key] = box.checked; botSaveConfig(); });
+    }
+  }
 
   const orbitDist = document.getElementById("botOrbitDist");
   if (orbitDist) {
@@ -10023,7 +10053,7 @@ function botNearestQuestNpc(set) {
     if (e.isPetTarget) continue;
     if (Bot.npcAllow.size && !Bot.npcAllow.has(String(e.type))) continue;
     if (!any && !set.has(String(e.type))) continue;
-    try { if (typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
+    try { if (Bot.safeNpc !== true && typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
     if (ignore2 > 0 && d2 > ignore2) continue;
     const pr = botNpcPrio(e.type);
@@ -10069,7 +10099,7 @@ function botNearestNpc() {
     if (!e || Number(e.hp) <= 0) continue;
     if (e.isPetTarget) continue;
     if (Bot.npcAllow.size && !Bot.npcAllow.has(String(e.type))) continue;
-    try { if (typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
+    try { if (Bot.safeNpc !== true && typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
     if (ignore2 > 0 && d2 > ignore2) continue;
     const pr = botNpcPrio(e.type);
@@ -10096,7 +10126,7 @@ function botNearestNpcInRange(maxD) {
     if (!e || Number(e.hp) <= 0) continue;
     if (e.isPetTarget) continue;
     if (Bot.npcAllow.size && !Bot.npcAllow.has(String(e.type))) continue;
-    try { if (typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
+    try { if (Bot.safeNpc !== true && typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
     if (ignore2 > 0 && d2 > ignore2) continue;
     if (d2 > lim2) continue;
@@ -10115,6 +10145,68 @@ function botApplyNpcAmmo(npc) {
   }
 }
 
+// Munitions speciales auto en combat : SAB pour vider le bouclier puis
+// retour a la munition precedente, X6 en burst des que son cooldown est
+// pret. Ne coupe jamais l'attaque (switch differents uniquement).
+function botAutoSpecialAmmo(npc, d, engageMax) {
+  if (!npc || Number(npc.hp) <= 0 || player.dead || !started) return;
+  const cur = String(player.ammo.active || "x1").toLowerCase();
+  const inRange = d <= engageMax;
+  const shMax = Math.max(0, Number(npc.shMax) || 0);
+  const shRatio = shMax > 0 ? Math.max(0, Number(npc.sh) || 0) / shMax : 0;
+
+  // X6 : burst des que pret et a portee (prioritaire sur le SAB).
+  if (Bot.autoX6 && inRange && !Bot.x6Armed && cur !== "x6"
+    && ammoCount("x6") > 0) {
+    try {
+      if (rsbLikeCooldown("x6") <= 0) {
+        Bot.specialPrev = cur;
+        Bot.x6Armed = true;
+        Bot.x6ArmedAt = Date.now();
+        try { startAttack("x6"); } catch {}
+        return;
+      }
+    } catch {}
+  }
+  // Salve X6 partie (cooldown actif) ou delai depasse : retour au precedent.
+  if (Bot.x6Armed) {
+    let fired = false;
+    try { fired = rsbLikeCooldown("x6") > 0; } catch {}
+    if (fired || Date.now() - Number(Bot.x6ArmedAt || 0) > 3000) {
+      Bot.x6Armed = false;
+      const back = Bot.specialPrev && AMMO[Bot.specialPrev] ? Bot.specialPrev : "";
+      Bot.specialPrev = "";
+      if (back && back !== String(player.ammo.active || "").toLowerCase()) {
+        try { startAttack(back); } catch {}
+      }
+      return;
+    }
+    return; // salve en cours : on ne touche a rien d'autre.
+  }
+
+  // SAB : tant que le bouclier est consistant, puis retour au precedent.
+  if (Bot.autoSab && AMMO.sab) {
+    if (cur !== "sab" && shMax > 0 && shRatio > 0.25 && ammoCount("sab") > 0) {
+      Bot.specialPrev = cur;
+      try { startAttack("sab"); } catch {}
+      return;
+    }
+    if (cur === "sab" && (shMax <= 0 || shRatio < 0.08 || ammoCount("sab") <= 0)) {
+      const back = Bot.specialPrev && AMMO[Bot.specialPrev] ? Bot.specialPrev : "";
+      Bot.specialPrev = "";
+      if (back && back !== String(player.ammo.active || "").toLowerCase()) {
+        try { startAttack(back); } catch {}
+      }
+    }
+  }
+}
+
+function botClearSpecialAmmo() {
+  Bot.specialPrev = "";
+  Bot.x6Armed = false;
+  Bot.x6ArmedAt = 0;
+}
+
 // NPC a engager EN PARALLELE d'une collecte (sans toucher au mouvement) :
 // cible verrouillee d'abord (respect du lock), sinon le plus proche a portee.
 // Module quest : uniquement les NPC de quete. Autres modes que both : rien.
@@ -10123,7 +10215,7 @@ function botConcurrentNpc(engageMax, locked) {
   const okTarget = (e) => {
     if (!e || e.isPetTarget || Number(e.hp) <= 0) return false;
     try { if (!enemies.includes(e)) return false; } catch { return false; }
-    try { if (typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) return false; } catch {}
+    try { if (Bot.safeNpc !== true && typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) return false; } catch {}
     try { return dist2(player.x, player.y, e.x, e.y) <= lim2; } catch { return false; }
   };
   try {
@@ -10341,6 +10433,50 @@ function botKiteCombatMove(npc, d, standD) {
     moveTarget.x = tgt.x;
     moveTarget.y = tgt.y;
   }
+}
+
+// Orbite de combat (maps, style classique) : le vaisseau tourne autour de
+// sa cible a standD en corrigeant le rayon, sens inverse toutes les ~3 s
+// pour ne pas etre predictible. Contact : esquive laterale pure.
+function botOrbitCombatMove(npc, d, standD) {
+  if (!npc || Number(npc.hp) <= 0) { moveTarget.active = false; return; }
+  if (d > playerRange * 0.95) {
+    // Hors de portee : approche directe sur le point a standD.
+    const ax = d > 1 ? (player.x - npc.x) / d : 1;
+    const ay = d > 1 ? (player.y - npc.y) / d : 0;
+    const tgt = botClampMoveTarget(npc.x + ax * standD, npc.y + ay * standD);
+    moveTarget.active = true;
+    moveTarget.x = tgt.x;
+    moveTarget.y = tgt.y;
+    return;
+  }
+  const dx = d > 1 ? (npc.x - player.x) / d : 1;
+  const dy = d > 1 ? (npc.y - player.y) / d : 0;
+  if (d < 160 && d > 0.01) {
+    // Contact : on s'ecarte sur le cote, le NPC depasse.
+    const tgt = botClampMoveTarget(player.x + -dy * 1000, player.y + dx * 1000);
+    moveTarget.active = true;
+    moveTarget.x = tgt.x;
+    moveTarget.y = tgt.y;
+    return;
+  }
+  // Nouvelle cible ou timer ecoule : (re)tire le sens de rotation.
+  const nowMs = performance.now();
+  if (Bot.orbitId !== npc.id || nowMs >= (Number(Bot.orbitFlipAt) || 0)) {
+    if (Bot.orbitId !== npc.id) Bot.orbitDir = Math.random() < 0.5 ? -1 : 1;
+    else Bot.orbitDir = -(Number(Bot.orbitDir) || 1);
+    Bot.orbitId = npc.id;
+    Bot.orbitFlipAt = nowMs + 2500 + Math.random() * 2500;
+  }
+  const s = Number(Bot.orbitDir) || 1;
+  const radial = Math.max(-1, Math.min(1, (d - standD) / Math.max(1, standD)));
+  let mx = -dy * s + dx * radial * 1.4;
+  let my = dx * s + dy * radial * 1.4;
+  const ml = Math.hypot(mx, my) || 1;
+  const tgt = botClampMoveTarget(player.x + (mx / ml) * 900, player.y + (my / ml) * 900);
+  moveTarget.active = true;
+  moveTarget.x = tgt.x;
+  moveTarget.y = tgt.y;
 }
 
 // Spinner auto hors gate (toutes les 100 ms) : multiplicateur auto puis
@@ -10827,7 +10963,7 @@ function tickBot(dt) {
       const cur = Target.get();
       if (cur && !cur.isPetTarget && Number(cur.hp) > 0 && enemies.includes(cur)
         && (!Bot.npcAllow.size || Bot.npcAllow.has(String(cur.type)))
-        && typeof npcIsInSafeZone === "function" && !npcIsInSafeZone(cur)) {
+        && (Bot.safeNpc === true || typeof npcIsInSafeZone !== "function" || !npcIsInSafeZone(cur))) {
         lockedNpc = cur;
       }
     } catch { lockedNpc = null; }
@@ -10964,6 +11100,8 @@ function tickBot(dt) {
   if (!pick) {
     // Patrouille : waypoint (on reste dessus jusqu'à l'atteindre si configuré,
     // style DarkBot, avec sécurité anti-blocage à 30 s).
+    // Fin d'engagement : on oublie la munition speciale en cours.
+    try { botClearSpecialAmmo(); } catch {}
     botApplyFormation(Bot.formMove);
     botApplyConfig(Bot.cfgFly);
     Bot.roamT -= dt;
@@ -11018,6 +11156,8 @@ function tickBot(dt) {
     } else if (attackActive && d > engageMax) {
       try { stopAttack(); } catch {}
     }
+    // Munitions speciales auto (SAB bouclier / X6 burst).
+    try { botAutoSpecialAmmo(npc, d, engageMax); } catch {}
     // Simultane : box au passage SANS couper le tir, avec garde-fous anti-derive :
     // - uniquement a portee de tir du NPC (sinon on reste au combat),
     // - box proche du vaisseau et plus proche que le NPC,
@@ -11068,6 +11208,10 @@ function tickBot(dt) {
     const standD = Math.min(Math.max(200, botNpcDist(npc.type), safeD), playerRange * 0.9);
     if (isGgCombat) {
       botKiteCombatMove(npc, d, standD);
+    } else if (Bot.orbit !== false) {
+      // Hors gate : orbite autour de la cible (rotation classique),
+      // plus de kiting GG.
+      botOrbitCombatMove(npc, d, standD);
     } else {
       // Hors gate : kiting comme en GG (plus d'orbite en rond, plus de
       // camping). Contact : esquive latérale pure, le NPC dépasse.
