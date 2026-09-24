@@ -1874,15 +1874,6 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   order:-2000;
 }
 #btnSettingsHub{ order:-1900 !important; }
-#gameWindowDock .gameDockSeparator{
-  align-self:stretch;
-  width:1px;
-  min-width:1px;
-  margin:5px 2px;
-  order:-1500;
-  background:linear-gradient(180deg,transparent,rgba(124,240,255,.42),transparent);
-  box-shadow:0 0 8px rgba(0,217,255,.12);
-}
 #gameWindowDock .sessionMenu{
   position:absolute;
   left:0;
@@ -1890,30 +1881,40 @@ body #profileOverlay button.secondary:hover:not(:disabled){
   top:calc(100% + 10px);
   bottom:auto;
   z-index:100020;
-  width:150px;
-  padding:6px;
+  width:172px;
+  padding:8px;
   display:none;
-  gap:4px;
-  border:1px solid rgba(124,240,255,.24);
-  border-radius:7px;
-  background:#071723;
-  box-shadow:0 14px 36px rgba(0,0,0,.62);
+  gap:6px;
+  border:1px solid rgba(124,240,255,.24) !important;
+  border-radius:12px !important;
+  background:linear-gradient(135deg,rgba(10,18,36,.94),rgba(3,8,20,.90)) !important;
+  box-shadow:
+    0 18px 42px rgba(0,0,0,.55),
+    0 0 26px rgba(0,217,255,.12),
+    inset 0 0 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter:blur(12px) !important;
 }
 #gameWindowDock .sessionMenu.open{ display:grid; }
 #gameWindowDock .sessionMenu button{
   width:100%;
-  min-height:32px;
-  padding:7px 10px;
-  border:1px solid rgba(124,240,255,.13);
-  border-radius:5px;
-  color:#dceff5;
-  background:#0a2230;
-  font:800 10px/1.2 system-ui;
-  text-align:left;
+  min-height:34px;
+  padding:0 12px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:8px;
+  color:#eaffff;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+  font:750 11px/1 ui-sans-serif,system-ui;
+  text-transform:none;
+  line-height:1;
+  text-align:center;
   cursor:pointer;
 }
-#gameWindowDock .sessionMenu button:hover{ border-color:rgba(124,240,255,.35); background:#0d3041; }
-#gameWindowDock .sessionMenu #btnLogout{ color:#ffd2d8; border-color:rgba(255,107,122,.22); }
+#gameWindowDock .sessionMenu button:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
+#gameWindowDock .sessionMenu button:disabled{ opacity:.35; cursor:default; }
+#gameWindowDock .sessionMenu #btnLogout{ color:#ffc5c5; }
 
 @media (max-width:820px){
   body #profileOverlay #profileWindow,
@@ -2417,7 +2418,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .ggHistoryGains small{ white-space:nowrap; }
 .questOfferItem.locked{ color:#708994; border-color:rgba(116,143,153,.18); background:rgba(18,27,34,.72); }.questSeriesInfo{ padding:7px 9px; border-left:2px solid rgba(255,196,84,.48); color:#a9c5cf; background:rgba(44,32,10,.28); font-size:10px; line-height:1.45; }.questSeriesInfo b{ color:#ffd071; }
 @media (max-width:900px){.galaxyGatePanel{min-width:calc(100vw - 24px)}.ggWorkspace{grid-template-columns:1fr}.ggGateNav .ggTabs{grid-template-columns:repeat(3,1fr)}.ggHistory{max-height:180px}.ggCore{grid-template-columns:1fr 1fr}.ggSpinControls{grid-template-columns:1fr 1fr}.ggSpinControls label{grid-column:1}.ggSpinControls select{grid-column:2}.ggSpinControls #ggSpinBtn{grid-column:1/-1}}
-.orbitNotifications{ position:fixed; z-index:12000; top:2px; left:50%; width:min(620px,calc(100vw - 30px)); height:190px; transform:translateX(-50%); display:flex; flex-direction:column; justify-content:flex-start; align-items:center; gap:0; overflow:hidden; pointer-events:none; }
+.orbitNotifications{ position:fixed; z-index:12000; top:70px; left:50%; width:min(620px,calc(100vw - 30px)); height:190px; transform:translateX(-50%); display:flex; flex-direction:column; justify-content:flex-start; align-items:center; gap:0; overflow:hidden; pointer-events:none; }
 .orbitNotification{ max-width:100%; max-height:var(--notice-height,24px); box-sizing:border-box; overflow:hidden; padding:1px 6px; border:0; color:#fff; background:transparent; text-shadow:0 1px 3px #000,0 0 6px rgba(0,0,0,.8); box-shadow:none; font:700 12px/1.22 ui-sans-serif,system-ui; text-align:center; animation:orbitNoticeIn .25s ease-out both; }
 .orbitNotification.reward,.orbitNotification.error{ border:0; color:#fff; }
 .orbitNotificationAmount{ color:#ffd36b; font-weight:900; text-shadow:0 0 7px rgba(255,184,43,.28),0 1px 3px #000; }
@@ -3060,10 +3061,10 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   overflow:visible !important;
   scrollbar-width:none;
   -ms-overflow-style:none;
-  border-radius:8px !important;
-  background:rgba(3,8,20,.35) !important;
-  border:1px solid rgba(124,240,255,.12) !important;
-  box-shadow:0 12px 32px rgba(0,0,0,.35) !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  border:1px solid transparent !important;
+  box-shadow:none !important;
   pointer-events:auto !important;
 }
 
@@ -9838,4 +9839,49 @@ input[type=number]{ -moz-appearance:textfield; appearance:textfield; }
   #settingsWindow .settingsKeyColumns{ grid-template-columns:1fr !important; }
   #settingsWindow .settingsSlotKeyColumns{ grid-template-columns:1fr !important; }
   #settingsWindow .settingsPageFooter{ grid-template-columns:1fr !important; }
+}
+
+/* ============================================================
+   Dock : bouton disposition SVG + modes ligne / nid d'abeille / colonne
+   ============================================================ */
+#gameWindowDock .dockLayoutBtn{
+  order:9999 !important;
+  align-self:flex-end !important;
+  flex:0 0 auto !important;
+  width:24px !important;
+  height:24px !important;
+  min-width:24px !important;
+  padding:0 !important;
+  display:grid !important;
+  place-items:center !important;
+  border:1px solid rgba(124,240,255,.30) !important;
+  border-radius:6px !important;
+  background:rgba(3,8,20,.55) !important;
+  cursor:pointer !important;
+}
+#gameWindowDock .dockLayoutBtn svg{ width:14px !important; height:14px !important; display:block !important; pointer-events:none !important; }
+#gameWindowDock .dockLayoutBtn:hover{ border-color:rgba(124,240,255,.62) !important; box-shadow:0 0 12px rgba(0,217,255,.15) !important; }
+/* Nid d'abeille ligne : 3 rangées vers le bas, une sur deux décalée (placement JS, sans chevauchement) */
+#gameWindowDock.mode-honey-row{
+  display:grid !important;
+  grid-template-columns:repeat(5,42px) !important;
+  justify-content:start !important;
+  align-content:start !important;
+  gap:2px !important;
+}
+/* Nid d'abeille colonne : colonnes de 3, une sur deux décalée vers le bas */
+#gameWindowDock.mode-honey-col{
+  display:grid !important;
+  grid-template-rows:repeat(4,42px) !important;
+  grid-auto-flow:column !important;
+  justify-content:start !important;
+  align-content:start !important;
+  gap:2px !important;
+}
+#gameWindowDock.mode-honey-row .dockLayoutBtn,
+#gameWindowDock.mode-honey-col .dockLayoutBtn{ place-self:center !important; }
+/* Colonne collée à gauche */
+#gameWindowDock.mode-col{
+  flex-direction:column !important;
+  align-items:flex-start !important;
 }

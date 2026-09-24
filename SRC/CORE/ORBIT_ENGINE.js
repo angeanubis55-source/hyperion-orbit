@@ -7266,7 +7266,7 @@ const DEFAULT_GAME_SETTINGS = {
   npcEngineEffects: true,
   customDesignEffects: true,
   moveMarker: true,
-  // FPS maximum : 0 = illimité (boucle libre sans vsync).
+  // FPS maximum : 0 = auto (vsync, calé sur les Hz de l'écran).
   fpsLimit: 0,
   keybinds: { ...DEFAULT_KEYBINDS },
   // Volumes individuels (0..100) et muets par son, persistés comme le reste.
@@ -7325,8 +7325,8 @@ function normalizeSfxMuted(raw) {
   return normalized;
 }
 
-// Paliers du limiteur FPS (0 = illimité, sans vsync).
-const FPS_LIMIT_STEPS = Object.freeze([0, 30, 60, 90, 120, 144, 240]);
+// Paliers du limiteur FPS (0 = auto : vsync simple, calé sur les Hz de l'écran).
+const FPS_LIMIT_STEPS = Object.freeze([0, 30, 60, 90, 120, 144, 240, 360]);
 
 function normalizeFpsLimit(raw) {
   const v = Math.floor(Number(raw) || 0);
@@ -7453,15 +7453,15 @@ function setGameSetting(key, value) {
   }
 }
 
-// FPS maximum (0 = illimité, synchronisé sur l'écran). Nombre, pas booléen :
-// ne passe pas par setGameSetting (qui force en booléen).
+// FPS maximum (0 = auto : synchronisé sur les Hz de l'écran, défaut). Nombre,
+// pas booléen : ne passe pas par setGameSetting (qui force en booléen).
 function setFpsLimit(value) {
   GAME_SETTINGS.fpsLimit = normalizeFpsLimit(value);
   saveGameSettings();
   renderSettingsWindow();
   restartFrameScheduler();
   showToast(
-    GAME_SETTINGS.fpsLimit > 0 ? `FPS maximum : ${GAME_SETTINGS.fpsLimit}` : "FPS : illimité",
+    GAME_SETTINGS.fpsLimit > 0 ? `FPS maximum : ${GAME_SETTINGS.fpsLimit}` : "FPS : auto (écran)",
     1.1
   );
 }
@@ -7951,6 +7951,14 @@ document.getElementById("btnResetWindows")?.addEventListener("click", () => {
     showToast("Fenêtres réinitialisées", 1.2);
   } else {
     showToast("Gestionnaire de fenêtres introuvable", 1.5);
+  }
+});
+document.getElementById("btnResetDock")?.addEventListener("click", () => {
+  if (typeof window.resetDockLayout === "function") {
+    window.resetDockLayout();
+    showToast("Dock réinitialisé", 1.2);
+  } else {
+    showToast("Dock introuvable", 1.5);
   }
 });
 document.getElementById("btnResetAllSettings")?.addEventListener("click", () => {
@@ -20410,6 +20418,12 @@ function showSabZeroOnce(b, t) {
 }
 
 function showPlayerMissOnce(b, t) {
+  // Visuel distant (tir d'un allié) : MISS affiché seulement si on a la même
+  // cible lockée, comme les chiffres de dégâts (cf. queueVolleyFloat).
+  // Sinon on verrait les MISS des autres sans avoir le NPC en lock.
+  try {
+    if (b && b._netVisual && typeof Target !== "undefined" && Target.get && Target.get() !== t) return;
+  } catch {}
   const key = b.volleyId ?? `solo_${Math.random()}`;
 
   if (playerMissVolleysShown.has(key)) return;
@@ -33303,9 +33317,9 @@ const performanceMonitor = createPerformanceMonitor();
 let frameRequestId = 0;
 let backgroundFrameTimer = 0;
 let frameScheduleGeneration = 0;
-// Limiteur FPS : 0 = illimité (boucle libre sans vsync : dépasse les Hz,
-// tearing possible, c'est voulu). Un palier se fait en sautant des vsync
-// (pas de timer : stable, pas de drift, pas de tearing).
+// Limiteur FPS : 0 = auto (vsync simple, calé sur les Hz de l'écran).
+// Un palier se fait en sautant des vsync (pas de timer : stable, pas de
+// drift, pas de tearing).
 let lastFrameStart = 0;
 // MessageChannel = pas de clamp 4 ms des setTimeout imbriqués, donc la boucle
 // libre monte bien au-delà des Hz (là où setTimeout plafonnerait vers 250).
@@ -33339,18 +33353,12 @@ function scheduleNextFrame() {
   }
   const limit = normalizeFpsLimit(GAME_SETTINGS?.fpsLimit);
   if (limit === 0) {
-    // Illimité : on ne passe plus par rAF (qui est calé sur les Hz).
-    const channel = ensureFpsFreeChannel();
-    if (channel) {
-      fpsFreePendingGeneration = generation;
-      frameRequestId = -1;
-      channel.port2.postMessage(0);
-    } else {
-      frameRequestId = setTimeout(() => {
-        frameRequestId = 0;
-        if (generation === frameScheduleGeneration) frame(performance.now());
-      }, 0);
-    }
+    // Auto : rAF simple, calé sur les Hz de l'écran, sans bridage.
+    frameRequestId = requestAnimationFrame((t) => {
+      frameRequestId = 0;
+      if (generation !== frameScheduleGeneration) return;
+      frame(t);
+    });
     return;
   }
   frameRequestId = requestAnimationFrame((t) => {
@@ -33836,29 +33844,13 @@ window.addEventListener("storage", (e) => {
 // avec le même compte...) : on re-synchronise le joueur SANS recharger
 // la page (fini les refresh forcés). L'état mémoire est repoussé juste
 // après pour converger (les crédits d'un give apparaissent en direct).
-let lastNetAdoptToast = 0;
-let lastNetConflictWarn = 0;
+// Volontairement silencieux : aucun message affiché aux utilisateurs.
 window.addEventListener("orbit:net-adopted", (e) => {
   try {
     if (!account.user) loadAccountUser();
     if (!account.user) return;
     if (syncPlayerFromAccount()) {
       markProgressDirty();
-      const now = Date.now();
-      const conflicts = Math.max(0, Math.floor(Number(e?.detail?.conflicts) || 0));
-      // Rafale de conflits : 2 writers sur le même compte (2e onglet ou
-      // fenêtre avec le même compte ?). Chaque camp écrase les gains non
-      // poussés de l'autre : XP qui ne monte pas, bonus perdus... On le dit.
-      if (conflicts >= 3 && now - lastNetConflictWarn > 300000) {
-        lastNetConflictWarn = now;
-        try {
-          showNotificationGroup(["Conflit de sauvegarde : compte ouvert ailleurs ?", "Fermez les autres onglets/fenêtres avec ce compte, sinon XP et bonus peuvent être perdus."], "info", {});
-        } catch {}
-        try { showToast("Compte ouvert ailleurs ? Progression en danger", 6); } catch {}
-      } else if (now - lastNetAdoptToast > 30000) {
-        lastNetAdoptToast = now;
-        showNotification("Progression synchronisée avec le serveur.", 2.5, "info");
-      }
     }
   } catch {}
 });

@@ -301,6 +301,12 @@ function itemShipId(it) {
   return String(it?.ship?.id || it?.design?.id || "");
 }
 
+// Designs affichés en miroir (flip horizontal) en boutique : image ET preview.
+const MIRRORED_SHIP_IDS = new Set(["pusat_plus_zbli", "goliath_plus_stifler", "dinde_autruche"]);
+function isMirroredShip(shipId) {
+  return MIRRORED_SHIP_IDS.has(String(shipId || "").toLowerCase());
+}
+
 function getShopListFor(cat) {
   // Ancien onglet "Lance-roquettes" fusionné dans "Roquettes" (compat saved tab).
   if (cat === "launchers") cat = "rockets";
@@ -1807,6 +1813,7 @@ function renderShopMeasured(user) {
     img.alt = it.name || it.id;
     img.loading = "lazy";
     img.style.imageRendering = (shopTab === "ships" || shopTab === "designs" || shopTab === "drones") ? "pixelated" : "auto";
+    if (isMirroredShip(itemShipId(it))) img.style.transform = "scaleX(-1)";
     if (shopTab === "drones") img.classList.add("droneShopRowImage");
     if (shopTab === "formations") img.classList.add("formationShopRowImage");
     if (it.pet) img.classList.add("petShopRowImage");
@@ -2667,11 +2674,12 @@ if (isDrone) {
     
     // Calculer le scale pour que le vaisseau rentre dans le container
     const scale = Math.min(containerSize / shipW, containerSize / shipH, 1) * 0.8; // 0.8 pour laisser un peu de marge
-    
+    const mirrorCss = isMirroredShip(shipId) ? " scaleX(-1)" : "";
+
     previewHtml = `
       <div class="shipPreviewContainer">
         <img src="${imgSrc}" alt="${it?.name || it?.id}"
-             style="width: ${shipW}px; height: ${shipH}px; transform: scale(${scale});" />
+             style="width: ${shipW}px; height: ${shipH}px; transform: scale(${scale})${mirrorCss};" />
       </div>
     `;
   } else {
