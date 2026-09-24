@@ -2,9 +2,9 @@
 
 import { dist2 } from "../SRC/CORE/COLLISION.js";
 
-export const DEFAULT_NPC_VISIBILITY_RADIUS = 1200;
+export const DEFAULT_NPC_VISIBILITY_RADIUS = 1800;
 export const DEFAULT_NPC_RADAR_RADIUS = 1800;
-export const DEFAULT_NPC_RADAR_FADE_START = 1700;
+export const DEFAULT_NPC_RADAR_FADE_START = 1800;
 
 export function getNpcSensorRanges(rules = {}) {
   if (rules.mode === "gate") {

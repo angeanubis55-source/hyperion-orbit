@@ -190,6 +190,10 @@ const NET_SEND_INTERVAL_MS = 50;
 const NET_PREDICTION_FULL_MS = 150;
 const NET_PREDICTION_BRAKE_MS = 350;
 const NET_MAX_ESTIMATED_SPEED = 1500;
+const netPerf = {
+  messages: 0, snapshots: 0, bytes: 0, snapshotPlayers: 0, snapshotNpcs: 0,
+  maxCorrection: 0, startedAt: Date.now(),
+};
 
 function predictionLeadSeconds(sampleAgeMs) {
   const age = Math.max(0, Number(sampleAgeMs) || 0);
@@ -533,6 +537,8 @@ export function ensureNetplayConnection() {
   };
   ws.onerror = () => { try { ws.close(); } catch {} };
   ws.onmessage = (ev) => {
+    netPerf.messages++;
+    netPerf.bytes += typeof ev.data === "string" ? ev.data.length : Number(ev.data?.byteLength || 0);
     let msg = null;
     try { msg = JSON.parse(String(ev.data)); } catch { return; }
     if (!msg || typeof msg !== "object") return;
@@ -820,6 +826,9 @@ export function ensureNetplayConnection() {
       return;
     }
     if (msg.t === "snapshot" && Array.isArray(msg.players)) {
+      netPerf.snapshots++;
+      netPerf.snapshotPlayers += msg.players.length;
+      netPerf.snapshotNpcs += Array.isArray(msg.npc?.list) ? msg.npc.list.length : 0;
       // Snapshot d'une autre map (changement en cours) : ignore.
       try {
         const snapMap = String(msg.map || "").toLowerCase();
@@ -872,10 +881,11 @@ export function ensureNetplayConnection() {
           vy: Number(prev.petvy || 0) * 0.5 + rawPetVelocity.vy * 0.5,
         } : rawPetVelocity;
         const petPositionChanged = !prev || petx !== Number(prev.petx) || pety !== Number(prev.pety);
-        const entry = {
+        const entry = prev || {};
+        Object.assign(entry, {
           id,
-          pseudo: String(p.pseudo || "Pilote").slice(0, 20),
-          shipId: String(p.shipId || ""),
+          pseudo: String(p.pseudo ?? prev?.pseudo ?? "Pilote").slice(0, 20),
+          shipId: String(p.shipId ?? prev?.shipId ?? ""),
           x, y,
           vx: p.dead === true ? 0 : rawVx * velocityScale,
           vy: p.dead === true ? 0 : rawVy * velocityScale,
@@ -891,26 +901,32 @@ export function ensureNetplayConnection() {
           tx: Number(p.tx) || 0,
           ty: Number(p.ty) || 0,
           ammo: String(p.ammo || "x1").slice(0, 16),
-          drones: Math.max(0, Math.min(12, Number(p.drones) || 0)),
-          dform: String(p.dform || "standard").slice(0, 32),
+          drones: Math.max(0, Math.min(12, Number(p.drones ?? prev?.drones) || 0)),
+          dform: String(p.dform ?? prev?.dform ?? "standard").slice(0, 32),
           // Cadence + vitesse pour les vrais projectiles visuels de l'allie.
           fint: Number(p.fint) > 0 ? Number(p.fint) : 0.25,
           bspd: Number(p.bspd) > 0 ? Number(p.bspd) : 4000,
-          dslots: String(p.dslots || "").slice(0, 256),
-          droneSlots: prev && prev.dslots === String(p.dslots || "").slice(0, 256)
+          dslots: String(p.dslots ?? prev?.dslots ?? "").slice(0, 256),
+          droneSlots: prev && p.dslots == null
+            ? prev.droneSlots
+            : prev && prev.dslots === String(p.dslots || "").slice(0, 256)
             ? prev.droneSlots
             : String(p.dslots || "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 12),
           alt: p.alt === true,
           shots: Math.max(0, Math.floor(Number(p.shots) || 0)),
-          rank: String(p.rank || "").slice(0, 64),
-          firm: String(p.firm || "").slice(0, 16),
-          dind: String(p.dind || "").slice(0, 256),
-          ficon: String(p.ficon || "").slice(0, 128),
-          mind: String(p.mind || "").slice(0, 128),
-          droneIndicators: prev && prev.dind === String(p.dind || "").slice(0, 256)
+          rank: String(p.rank ?? prev?.rank ?? "").slice(0, 64),
+          firm: String(p.firm ?? prev?.firm ?? "").slice(0, 16),
+          dind: String(p.dind ?? prev?.dind ?? "").slice(0, 256),
+          ficon: String(p.ficon ?? prev?.ficon ?? "").slice(0, 128),
+          mind: String(p.mind ?? prev?.mind ?? "").slice(0, 128),
+          droneIndicators: prev && p.dind == null
+            ? prev.droneIndicators
+            : prev && prev.dind === String(p.dind || "").slice(0, 256)
             ? prev.droneIndicators
             : String(p.dind || "").split("|").map((s) => s.trim()).filter(Boolean),
-          moduleIndicators: prev && prev.mind === String(p.mind || "").slice(0, 128)
+          moduleIndicators: prev && p.mind == null
+            ? prev.moduleIndicators
+            : prev && prev.mind === String(p.mind || "").slice(0, 128)
             ? prev.moduleIndicators
             : String(p.mind || "").split("|").map((s) => s.trim()).filter(Boolean),
           rseq: Math.max(0, Math.floor(Number(p.rseq) || 0)),
@@ -933,13 +949,13 @@ export function ensureNetplayConnection() {
           ishT: Math.max(0, Number(p.ishT) || 0),
           // PET allie : actif, niveau, position.
           peta: p.peta === 1 ? 1 : 0,
-          petl: Math.max(1, Math.min(32, Math.round(Number(p.petl) || 1))),
+          petl: Math.max(1, Math.min(32, Math.round(Number(p.petl ?? prev?.petl) || 1))),
           petx, pety,
           petvx: p.peta === 1 ? (petPositionChanged ? petVelocity.vx : Number(prev?.petvx || 0)) : 0,
           petvy: p.peta === 1 ? (petPositionChanged ? petVelocity.vy : Number(prev?.petvy || 0)) : 0,
           petd: Number(p.petd) || 0,
-          petn: String(p.petn || "").slice(0, 32),
-          petf: String(p.petf || "").slice(0, 16),
+          petn: String(p.petn ?? prev?.petn ?? "").slice(0, 32),
+          petf: String(p.petf ?? prev?.petf ?? "").slice(0, 16),
           petHp: Number.isFinite(Number(p.petHp)) ? Math.max(0, Math.min(1, Number(p.petHp))) : 1,
           petSh: Number.isFinite(Number(p.petSh)) ? Math.max(0, Math.min(1, Number(p.petSh))) : 1,
           petHpM: Math.max(1, Math.round(Number(p.petHpM) || 1)),
@@ -956,8 +972,9 @@ export function ensureNetplayConnection() {
           rangle: prev && !revived ? Number(prev.rangle ?? prev.angle ?? p.angle) : Number(p.angle) || 0,
           petrx: prev ? Number(prev.petrx ?? prev.petx ?? p.petx) : Number(p.petx) || 0,
           petry: prev ? Number(prev.petry ?? prev.pety ?? p.pety) : Number(p.pety) || 0,
-        };
-        remotes.set(id, entry);
+          _assetWarmSignature: prev?._assetWarmSignature || "",
+        });
+        if (!prev) remotes.set(id, entry);
       }
       // Retire ceux qui ont quitte la map (absents du snapshot).
       for (const id of [...remotes.keys()]) {
@@ -1005,7 +1022,8 @@ export function ensureNetplayConnection() {
             vy: Number(prev.vy || 0) * 0.5 + rawVelocity.vy * 0.5,
           } : rawVelocity;
           const positionChanged = !motionPrev || x !== Number(prev.x) || y !== Number(prev.y);
-          netNpcs.set(uid, {
+          const npcEntry = prev || {};
+          Object.assign(npcEntry, {
             uid,
             type: String(n.type || ""),
             x, y,
@@ -1034,6 +1052,7 @@ export function ensureNetplayConnection() {
             rx: motionPrev ? Number(prev.rx ?? prev.x ?? n.x) : x,
             ry: motionPrev ? Number(prev.ry ?? prev.y ?? n.y) : y,
           });
+          if (!prev) netNpcs.set(uid, npcEntry);
         }
         for (const [uid, npc] of [...netNpcs.entries()]) {
           // Une seule liste incomplete ou retardee ne doit jamais delocker un
@@ -1376,6 +1395,7 @@ export function tickNetplayRemotes(dt = 0.016) {
     const rx = Number(r.rx ?? r.x), ry = Number(r.ry ?? r.y);
     const correctionX = targetX - rx, correctionY = targetY - ry;
     const correctionDistance = Math.hypot(correctionX, correctionY);
+    if (correctionDistance > netPerf.maxCorrection) netPerf.maxCorrection = Math.round(correctionDistance);
     // Un trou reseau peut faire arriver une correction importante d'un coup.
     // Le lissage exponentiel seul en absorbait ~26 % sur la premiere frame,
     // donnant l'impression d'une teleportation. Le plafond ne touche que le
@@ -1425,4 +1445,5 @@ try {
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;
+  window.__NETPERF__ = netPerf;
 } catch {}

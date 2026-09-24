@@ -23556,6 +23556,19 @@ function processDeaths() {
   return measureGameTask("processDeaths", processDeathsMeasured);
 }
 
+function playNpcDeathFxOnce(enemy) {
+  if (!enemy || enemy._deathFxPlayed === true || enemy.suppressDeathExplosion) return;
+  enemy._deathFxPlayed = true;
+  spawnExplosion(enemy.x, enemy.y, enemy.isBoss ? 1.6 : 1.0);
+  const audibleDeath = !enemy._netUid || netAudioVolume(enemy.x, enemy.y) > 0;
+  if (!audibleDeath) return;
+  for (const sound of ["pShotX1", "pShotX2", "pShotX3", "pShotX4", "pShotX6", "pShotSab"]) {
+    SFX.fadeOut(sound, { dur: 0.25, to: 0.3 });
+  }
+  if (enemy._netUid) playNetSpatialSound("npcDeath", enemy.x, enemy.y, { cooldown: 0 });
+  else SFX.play("npcDeath", { cooldown: 0 });
+}
+
 function processDeathsMeasured() {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
@@ -23565,6 +23578,7 @@ function processDeathsMeasured() {
       if (e.hp > 0) continue;
       if (e._netKiller == null) { e.hp = 1; e._netWaiting = true; continue; }
       if (e._netKiller === false) e._netSilent = true;
+      playNpcDeathFxOnce(e);
       if (e._netKiller === true && !e._netReward) {
         e._netReward = takeNetNpcReward(window.__CURRENT_MAP_ID__, e._netUid, e._netSeq);
         if (!e._netReward) { e.hp = 0; continue; }
@@ -23577,7 +23591,7 @@ function processDeathsMeasured() {
       try { if (Target.get() === e) Target.clear(); } catch {}
     }
 
-    if (!e.suppressDeathExplosion) {
+    if (!e.suppressDeathExplosion && e._deathFxPlayed !== true) {
       spawnExplosion(e.x, e.y, e.isBoss ? 1.6 : 1.0);
       const audibleDeath = !e._netUid || netAudioVolume(e.x, e.y) > 0;
       if (audibleDeath) {
@@ -25689,6 +25703,7 @@ function syncNetPlayers(dt = 0.016) {
   if (remotes && netplayNpcActive()) {
     for (const [rid, r] of remotes) {
       if (!r) continue;
+      try { warmNetplayRemoteAssets(r); } catch {}
       // Mort d'un joueur distant : explosion comme les NPC (une fois),
       // puis purge du proxy. Disparition sans mort (deco/changement
       // de map) : suppression silencieuse, sans explosion.
@@ -25985,6 +26000,7 @@ function syncNetNpcs(dt) {
       e._netLootOwner = false;
       e._netWaiting = false;
       e._netSilent = false;
+      e._deathFxPlayed = false;
       // Nouvelle incarnation : aucun trajet entre le cadavre et le nouveau
       // spawn. L'interpolation reprend seulement a partir de cette position.
       e.x = Number(s.x) || 0;
@@ -27487,6 +27503,34 @@ function netplayPackFor(shipId) {
   if (!pack) pack = SHIP_PACKS[0];
   netplaySpriteCache.set(key, pack);
   return pack;
+}
+
+function warmNetplayRemoteAssets(remote) {
+  if (!remote || remote.dead) return;
+  const dx = Number(remote.x) - Number(player.x), dy = Number(remote.y) - Number(player.y);
+  if (dx * dx + dy * dy > 3600 * 3600) return;
+  const signature = [remote.shipId, remote.rank, remote.firm, remote.ficon, remote.petl, remote.peta, remote.dslots].join("|");
+  if (remote._assetWarmSignature === signature) return;
+  remote._assetWarmSignature = signature;
+  try {
+    const pack = netplayPackFor(remote.shipId);
+    if (pack && !pack._ready && !pack._promise) ensurePackLoaded(pack);
+  } catch {}
+  for (const path of [remote.rank, remote.ficon]) {
+    if (!path) continue;
+    try { loadImage(String(path), { priority: true }); } catch {}
+  }
+  try {
+    const factionPath = getFaction(remote.firm)?.imagePath;
+    if (factionPath) loadImage(factionPath, { priority: true });
+  } catch {}
+  if (remote.peta === 1) {
+    try {
+      const frame = ((angleToFrameIndex(Number(remote.petd ?? remote.angle) || 0, 32) + 16) % 32) + 1;
+      loadImage(`${getPetStageBase(Math.max(1, Number(remote.petl) || 1))}${frame}.png`, { priority: true });
+      if (getPetStage(remote.petl) >= 6) loadImage(`/PET/PET_SPRITES/NIVEAU5/${frame}.png`, { priority: true });
+    } catch {}
+  }
 }
 // Multi : projectiles visuels de l'allie, joues a la reception des
 // evenements exacts du tireur (vrais + faux tirs, roquettes avec arcs).
