@@ -10,7 +10,7 @@
     // Fenêtre de départ à chaque refresh : pas de bypass session (la classe
     // orbitSessionReady n'est plus posée, l'overlay reste visible avec DÉPART).
     </script>
-  <link rel="stylesheet" href="style.css?v=ui-refresh-25" />
+  <link rel="stylesheet" href="style.css?v=ui-refresh-26" />
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -357,8 +357,7 @@
             <button id="optSound" class="settingsToggle" type="button">Sons généraux : activés</button>
             <span class="settingsVolumeRow"><input id="optVolume" class="settingsVolumeSlider" type="range" min="0" max="100" step="1" value="5" /><output id="optVolumeValue" class="settingsVolumeValue">5 %</output></span>
           </div>
-          <div class="settingsSectionSub">MUSIQUES DU JEU</div>
-          <div id="musicList" class="sfxList">
+          <div id="sfxList" class="sfxList">
             <label class="sfxRow" data-music-row="ambiance">
               <input id="optMusic" type="checkbox" checked title="Activer / couper la musique" />
               <span class="sfxName">Musique</span>
@@ -366,8 +365,6 @@
               <output id="optMusicVolumeValue" class="settingsVolumeValue">1 %</output>
             </label>
           </div>
-          <div class="settingsSectionSub">Sons du jeu</div>
-          <div id="sfxList" class="sfxList"></div>
           <button id="btnResetSfx" class="settingsResetBtn" type="button">Réinitialiser les sons</button>
           </article>
         </section>

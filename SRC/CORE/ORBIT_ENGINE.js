@@ -1435,7 +1435,7 @@ function sentShieldTick() {
   try {
     shieldShimmerT = 0;
     ensureShieldShimmerLoaded();
-    SFX.play("shieldSelected");
+    SFX.play("shieldShimmer");
   } catch {}
 }
 function activateSent() {
@@ -7246,7 +7246,7 @@ const DEFAULT_SFX_VOLUMES = Object.freeze({
   npcDeath: 25,
   collect: 30,
   laserHit1: 10, laserHit2: 10, laserHit3: 10,
-  selectNew: 15, selectAgain: 15, shieldSelected: 15,
+  selectNew: 15, selectAgain: 15, shieldSelected: 15, shieldShimmer: 15,
   outOfRange: 30,
   escortX1: 5, escortX2: 5, escortX3: 5, escortX4: 5, escortX6: 5, escortSab: 5,
 });
@@ -7294,6 +7294,7 @@ const SFX_ROWS = [
   { id: "hits", label: "Impacts laser", members: ["laserHit1", "laserHit2", "laserHit3"] },
   { id: "range", label: "Portée / Hors de portée", members: ["outOfRange"] },
   { id: "menuSelect", label: "Sélection des menus", members: ["selectNew", "selectAgain", "shieldSelected"] },
+  { id: "shieldShimmer", label: "Bouclier (reflet)", members: ["shieldShimmer"] },
 ];
 
 function getSfxRow(id) {
@@ -7659,7 +7660,9 @@ function buildSfxRows() {
   const list = document.getElementById("sfxList");
   if (!list || list.dataset.built === "1") return;
   list.dataset.built = "1";
-  list.replaceChildren();
+  // La ligne musique (codée en dur dans le HTML) est conservée et replacée en fin de liste.
+  const musicRow = list.querySelector(":scope > [data-music-row]");
+  list.querySelectorAll(":scope > [data-sfx-row]").forEach((el) => el.remove());
   for (const row of SFX_ROWS) {
     const el = document.createElement("label");
     el.className = "sfxRow";
@@ -7692,6 +7695,7 @@ function buildSfxRows() {
     el.append(mute, title, slider, value);
     list.appendChild(el);
   }
+  if (musicRow) list.appendChild(musicRow);
   renderSfxRows();
 }
 
@@ -15685,7 +15689,7 @@ function tickShieldShimmer(dt) {
     shieldShimmerT = 0;
     shieldShimmerNext = 10 + Math.random() * 20;
     ensureShieldShimmerLoaded();
-    SFX.play("shieldSelected");
+    SFX.play("shieldShimmer");
   }
 }
 

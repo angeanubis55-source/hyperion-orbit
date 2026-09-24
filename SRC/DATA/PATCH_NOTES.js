@@ -1,6 +1,11 @@
 // Généré automatiquement à chaque push. Ne pas modifier à la main.
 export const PATCH_NOTES = [
   {
+    "version": "0.310",
+    "date": "2026-09-24T02:56:46+02:00",
+    "message": "Synchronisation server"
+  },
+  {
     "version": "0.309",
     "date": "2026-09-24T02:51:09+02:00",
     "message": "bigger improvements"
@@ -294,10 +299,5 @@ export const PATCH_NOTES = [
     "version": "0.251",
     "date": "2026-09-21T16:42:15+02:00",
     "message": "multi: escadrilles (max 10, auto) + amis avec demandes + murmures /w"
-  },
-  {
-    "version": "0.250",
-    "date": "2026-09-21T15:31:54+02:00",
-    "message": "Synchronise le multijoueur et les encheres"
   }
 ];
