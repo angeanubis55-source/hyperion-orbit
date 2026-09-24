@@ -308,6 +308,86 @@ function integrateNpcPosition(e, dt) {
   e.y = clamp(e.y + e.vy * dt, r, WORLD.h - r);
 }
 
+// Rayon de courtoisie autour des portails actifs : un NPC non engagé
+// n'y aggro ni n'y tire, et en sort de lui-même (aucune téléportation,
+// aucune répulsion en combat — la ZNA garde son comportement d'avant).
+const NPC_PORTAL_KEEPOUT_RADIUS = 600;
+
+function interactivePortalList() {
+  try {
+    const list = getInteractivePortals();
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
+// Distance au portail actif le plus proche (Infinity si aucun).
+function npcPortalDist(e) {
+  if (!e) return Infinity;
+  let best = Infinity;
+  for (const ptl of interactivePortalList()) {
+    if (!ptl || ptl.active === false) continue;
+    const px = Number(ptl.x), py = Number(ptl.y);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+    const d = Math.hypot(e.x - px, e.y - py);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+// true si le NPC est déjà en combat contre le joueur (il reste normal,
+// sans répulsion, même dans le rayon).
+function npcEngagedWithPlayer(e) {
+  if (!e) return false;
+  return e._aggro === true
+    || e._provoked === true
+    || e._attackedPlayerRecently === true
+    || e.drawFireLock === true
+    || e.aiZ?.state === "aggro";
+}
+
+// true si le NPC est dans le rayon sans être engagé : pas de nouvel aggro,
+// pas de tir, sortie naturelle.
+function npcPortalCalm(e) {
+  return !npcEngagedWithPlayer(e) && npcPortalDist(e) < NPC_PORTAL_KEEPOUT_RADIUS;
+}
+
+// Direction de sortie du rayon (radiale portail -> NPC).
+function npcPortalExitDir(e) {
+  let bx = 1, by = 0, bd = -1;
+  for (const ptl of interactivePortalList()) {
+    if (!ptl || ptl.active === false) continue;
+    const px = Number(ptl.x), py = Number(ptl.y);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+    const dx = e.x - px, dy = e.y - py;
+    const d = Math.hypot(dx, dy);
+    if (d < NPC_PORTAL_KEEPOUT_RADIUS && (bd < 0 || d < bd)) {
+      bd = d;
+      bx = d > 0.01 ? dx / d : 1;
+      by = d > 0.01 ? dy / d : 0;
+    }
+  }
+  return { x: bx, y: by };
+}
+
+// Repousse une destination errante hors des zones portails (évite que le
+// NPC patine sur le cercle : il vise directement l'extérieur).
+function pushPointOutsidePortals(pt) {
+  if (!pt) return pt;
+  for (const ptl of interactivePortalList()) {
+    if (!ptl || ptl.active === false) continue;
+    const px = Number(ptl.x), py = Number(ptl.y);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+    const dx = pt.x - px, dy = pt.y - py;
+    const d = Math.hypot(dx, dy);
+    if (!(d < NPC_PORTAL_KEEPOUT_RADIUS + 100)) continue;
+    const nx = d > 0.01 ? dx / d : 1;
+    const ny = d > 0.01 ? dy / d : 0;
+    pt.x = px + nx * (NPC_PORTAL_KEEPOUT_RADIUS + 100);
+    pt.y = py + ny * (NPC_PORTAL_KEEPOUT_RADIUS + 100);
+  }
+  return pt;
+}
+
 function applyRadiation(dt) {
   if ((player.invincibleT || 0) > 0) return;
   const dmg = radiationSystem.update(dt, {
@@ -29000,6 +29080,12 @@ function enemyShoot(e, dt, combatTarget = player) {
 
   if (combatTarget === player && safeZoneActive && playerIsInSafeZone()) return;
 
+  // Portails : un NPC non engagé dans le rayon ne tire pas sur le joueur.
+  if (combatTarget === player && npcPortalCalm(e)) {
+    e.shootCd = 0.5 + Math.random() * 0.6;
+    return;
+  }
+
   // Camouflage ultime : les NPC ne voient plus le joueur, ils gardent le tir.
   if (combatTarget === player && isPlayerUntargetable()) {
     e.shootCd = 0.5 + Math.random() * 0.6;
@@ -31696,7 +31782,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
               tx = clamp(tx, e.r || 18, WORLD.w - (e.r || 18));
               ty = clamp(ty, e.r || 18, WORLD.h - (e.r || 18));
 
-              e.aiZ.wanderTarget = { x: tx, y: ty };
+              e.aiZ.wanderTarget = pushPointOutsidePortals({ x: tx, y: ty });
               e.aiZ.wanderT = 1.6 + Math.random() * 1.6;
             }
           } else {
@@ -31711,7 +31797,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           }
           if (!e.passiveNative || e._provoked) {
             // Camouflage ultime : pas de nouvelle aggro sur le joueur invisible.
-            if (d <= aggroRange && !isPlayerCloaked()) {
+            // Portails : pas de nouvel aggro dans le rayon (sortie naturelle).
+            if (d <= aggroRange && !isPlayerCloaked() && !npcPortalCalm(e)) {
               e._aggro = true;
               e._aggroT = aggroHold;
             }
@@ -31750,7 +31837,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             tx = clamp(tx, e.r || 18, WORLD.w - (e.r || 18));
             ty = clamp(ty, e.r || 18, WORLD.h - (e.r || 18));
 
-            e.aiZ.wanderTarget = { x: tx, y: ty };
+            e.aiZ.wanderTarget = pushPointOutsidePortals({ x: tx, y: ty });
             e.aiZ.wanderT = 3 + Math.random() * 4;
           }
 
@@ -31824,6 +31911,14 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
           let mxv = mv.mxv;
           let myv = mv.myv;
+
+          // Portails : non engagé dans le rayon -> sortie naturelle vers
+          // l'extérieur (pas de poursuite). Engagé : comportement inchangé.
+          if (npcPortalCalm(e)) {
+            const exit = npcPortalExitDir(e);
+            mxv = exit.x * 0.65;
+            myv = exit.y * 0.65;
+          }
 
           const spdE = npcEffectiveSpeed(e);
 
