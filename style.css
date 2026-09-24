@@ -1009,6 +1009,19 @@ html.orbitSessionReady #loadingOverlay{
 }
 .shopList .designSearchBar input::placeholder{ color:rgba(158,238,255,.45); }
 .shopList .designSearchBar input:focus{ border-color:#7cf0ff; box-shadow:0 0 10px rgba(0,217,255,.25); }
+/* Recherche par vaisseau (historique des modules) : label + champ, sans carte. */
+.shopPreview .moduleHistorySearchField{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.shopPreview .moduleHistorySearchField > span{ flex:0 0 auto; color:#fff; font-size:11px; font-weight:700; white-space:nowrap; }
+.shopPreview .moduleHistorySearchField input{
+  flex:1 1 auto; min-width:0; box-sizing:border-box;
+  padding:7px 10px; border-radius:6px;
+  border:1px solid rgba(124,240,255,.3);
+  background:rgba(0,20,35,.8); color:#eaffff;
+  font:600 12px/1.2 ui-sans-serif,system-ui;
+  outline:none;
+}
+.shopPreview .moduleHistorySearchField input::placeholder{ color:rgba(158,238,255,.45); }
+.shopPreview .moduleHistorySearchField input:focus{ border-color:#7cf0ff; box-shadow:0 0 10px rgba(0,217,255,.25); }
 #profileOverlay .shopRow{ gap:9px; padding:9px; border-radius:9px; }
 #profileOverlay .shopRow img{ width:42px; height:42px; }
 #profileOverlay .shopPreview .bigImg{
@@ -2894,6 +2907,29 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 #petWindow #petPlayBtn.isOn:hover:not(:disabled){ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); box-shadow:0 0 16px rgba(0,217,255,.12); }
 
 #petWindow #petPlayBtn:disabled{
+  opacity:.35;
+  cursor:default;
+}
+
+#petWindow .petFuelBuyBtn{
+  width:100%;
+  margin-top:6px;
+  padding:6px 8px;
+  border-radius:8px;
+  border:1px solid rgba(124,240,255,.38);
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+  color:#eaffff;
+  font:750 11px/1.2 ui-sans-serif,system-ui;
+  cursor:pointer;
+  white-space:nowrap;
+}
+#petWindow .petFuelBuyBtn:hover:not(:disabled){
+  border-color:rgba(124,240,255,.62);
+  background:rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(0,217,255,.12);
+}
+#petWindow .petFuelBuyBtn:disabled{
   opacity:.35;
   cursor:default;
 }

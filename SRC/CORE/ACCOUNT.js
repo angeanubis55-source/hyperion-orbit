@@ -74,6 +74,7 @@ const FIT_SLOTS = {
   lasers: 15,
   gens: 15, // vitesse OU bouclier dans les mêmes slots
   extras: 15,
+  shipMods: 4, // tous les vaisseaux équipent 4 modules
 };
 
 // ---------------------------
@@ -315,7 +316,7 @@ function getShipSlots(shipId) {
     lasers: Number(s?.lasers ?? FIT_SLOTS.lasers),
     gens: Number(s?.gens ?? FIT_SLOTS.gens),
     extras: Number(s?.extras ?? FIT_SLOTS.extras),
-    shipMods: Number(s?.shipMods ?? 1),
+    shipMods: Number(s?.shipMods ?? FIT_SLOTS.shipMods),
   };
 }
 
@@ -1061,7 +1062,7 @@ function clampFitToSlots(shipId, fit) {
     lasers: normArr(fit?.lasers, slots.lasers),
     gens: normArr(fit?.gens, slots.gens),
     extras: normArr(fit?.extras, slots.extras),
-    shipMods: normArr(fit?.shipMods, slots.shipMods || 1),
+    shipMods: normArr(fit?.shipMods, slots.shipMods || FIT_SLOTS.shipMods),
   };
 }
 

@@ -914,6 +914,7 @@ const ui = {
   petXpTxt: document.getElementById("petXpTxt"),
   petFuelBar: document.getElementById("petFuelBar"),
   petFuelTxt: document.getElementById("petFuelTxt"),
+  petFuelBuyBtn: document.getElementById("petFuelBuyBtn"),
   petNoPet: document.getElementById("petNoPet"),
 
   honorTxt: document.getElementById("honorTxt"),
@@ -11240,6 +11241,20 @@ function wirePetWindow() {
     loadAccountUser();
     showToast(out.active ? "P.E.T activé" : "P.E.T désactivé", 1.2);
   });
+  // Achat rapide d'essence : bouton permanent (même réservoir non vide).
+  ui.petFuelBuyBtn?.addEventListener("click", () => {
+    const pet = account.user?.pet?.owned === true ? account.user.pet : null;
+    if (!pet) return showToast("P.E.T non possédé.", 1.5);
+    const out = buyItem("pet_fuel", 100);
+    if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
+    account.user = out.user;
+    player.credits = out.user.credits;
+    setHudText(ui.shopCredits, formatInteger(player.credits));
+    loadAccountUser();
+    markProgressDirty();
+    window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+    showToast(`+${formatInteger(out.quantity)} essence (${formatInteger(out.totalPrice)} crédits).`, 2);
+  });
   // Menus custom P.E.T : toggle à volonté, jamais fermés au clic ailleurs.
   ui.petModeBtn?.addEventListener("click", () => {
     if (ui.petModeBtn.disabled) return;
@@ -11460,6 +11475,15 @@ function updatePetHud() {
   const fuel = has ? Math.max(0, Math.min(fuelMax, Math.floor(Number(pet.fuel) || 0))) : 0;
   setHudText(ui.petFuelTxt, `${formatInteger(fuel)} / ${formatInteger(fuelMax)}`);
   setHudWidth(ui.petFuelBar, `${fuelMax > 0 ? (fuel / fuelMax) * 100 : 0}%`);
+  // Achat rapide permanent : visible dès que le P.E.T est possédé,
+  // désactivé seulement si le réservoir est déjà plein.
+  if (ui.petFuelBuyBtn) {
+    setHudDisplay(ui.petFuelBuyBtn, has ? "" : "none");
+    setHudDisabled(ui.petFuelBuyBtn, !has || fuel >= fuelMax);
+    setHudAttr(ui.petFuelBuyBtn, "title", fuel >= fuelMax
+      ? "Réservoir plein"
+      : "+100 essence — 10 000 crédits");
+  }
 
   if (ui.petPlayBtn) {
     const destroyed = has && !(Number(pet.hp) > 0);
@@ -22169,13 +22193,13 @@ function drawPetLocator(ox, oy) {
       const baseH = sp.h ?? sp.size ?? 160;
       const w = foe.isBoss ? baseW * 1.05 : baseW;
       const h = foe.isBoss ? baseH * 1.05 : baseH;
-      // Contour jaune qui suit la sprite (silhouette derrière, pulsée).
+      // Contour rouge qui suit la sprite (silhouette derrière, pulsée).
       // Dessiné avant : la sprite du NPC passe par-dessus.
-      const outline = outlineSilhouette(`pet:${foe.type}:${idx}`, img, w, h, "#ffe14d");
+      const outline = outlineSilhouette(`pet:${foe.type}:${idx}`, img, w, h, "#ff2e4d");
       ctx.save();
       ctx.globalAlpha = Math.max(0.3, Math.min(1, pulse));
-      ctx.shadowColor = "rgba(255,225,77,0.9)";
-      ctx.shadowBlur = 12;
+      ctx.shadowColor = "rgba(255,46,77,0.95)";
+      ctx.shadowBlur = 16;
       for (let k = 0; k < 8; k++) {
         const a = (k / 8) * Math.PI * 2;
         ctx.drawImage(outline, sx - w / 2 + Math.cos(a) * 2, sy - h / 2 + Math.sin(a) * 2, w, h);
@@ -22186,8 +22210,10 @@ function drawPetLocator(ox, oy) {
   }
   // Repli : anneau + halo si la sprite n'est pas prête.
   ctx.save();
-  ctx.strokeStyle = "rgba(255,225,77,0.9)";
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(255,46,77,0.95)";
+  ctx.lineWidth = 3;
+  ctx.shadowColor = "rgba(255,46,77,0.9)";
+  ctx.shadowBlur = 14;
   ctx.beginPath();
   ctx.arc(sx, sy, Math.max(8, ((foe.r || 30) + 12) * pulse), 0, TAU);
   ctx.stroke();
@@ -26857,7 +26883,7 @@ function drawMinimap() {
   const petLocatorMarkers = [];
   if (isPetActive && petLocator.enemyId != null) {
     const foe = enemiesById.get(petLocator.enemyId);
-    if (foe && foe.hp > 0) petLocatorMarkers.push({ x: foe.x, y: foe.y, color: "#ffe14d", pulse: true });
+    if (foe && foe.hp > 0) petLocatorMarkers.push({ x: foe.x, y: foe.y, color: "#ff2e4d", pulse: true });
   }
   renderMinimap(mctx, {
     width: useCss ? cssW : mini.width,

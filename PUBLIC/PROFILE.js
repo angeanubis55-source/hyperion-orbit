@@ -133,6 +133,8 @@ let shopTab = localStorage.getItem("orbit_shop_tab") || "ammo";
 if (shopTab === "launchers") shopTab = "rockets"; // onglet fusionné
 // Recherche de l'onglet DESIGNS (conservée entre les re-renders).
 let designSearchQuery = "";
+// Recherche par vaisseau dans l'historique des modules (conservée entre les re-renders).
+let moduleHistoryShipQuery = "";
 let selectedShopItemId = null;
 let selectedHangarId = null;
 let shopRenderToken = 0;
@@ -329,6 +331,10 @@ function getShopListFor(cat) {
     }
     if (cat === "petGears" || cat === "petProtocols") {
       return groupPetShopItems(direct);
+    }
+    if (cat === "ships") {
+      // Vaisseaux triés par prix croissant (l'ordre du fichier est alphabétique).
+      return [...direct].sort((a, b) => Number(a?.price || 0) - Number(b?.price || 0));
     }
     return direct;
   }
@@ -757,7 +763,7 @@ function getShipSlots(shipId) {
     lasers: Number(s?.lasers ?? 15),
     gens: Number(s?.gens ?? 15),
     extras: Number(s?.extras ?? 15),
-    shipMods: Number(s?.shipMods ?? 1),
+    shipMods: Number(s?.shipMods ?? 4),
   };
 }
 
@@ -1902,7 +1908,7 @@ function renderShipsGrid(user) {
   gridContainer.innerHTML = "";
   gridContainer.scrollTop = 0;
 
-  const list = getShopListFor("ships");
+  const list = [...(getShopListFor("ships") || [])].sort((a, b) => Number(a?.price || 0) - Number(b?.price || 0));
   if (!Array.isArray(list) || !list.length) {
     gridContainer.innerHTML = `
       <div class="tile">
@@ -2042,12 +2048,37 @@ function renderExtrasRoulette(user) {
 
   let historyPage = 0;
   let historyUser = user;
-  function renderModuleHistory(currentUser) {
-    historyUser = currentUser;
+  // Recherche par vaisseau dans l'historique des modules (nom de famille,
+  // id de vaisseau ou type de module). Persistée pendant la session roulette.
+  let historyShipQuery = moduleHistoryShipQuery || "";
+  function moduleHistoryMatches(module, q) {
+    const query = String(q || "").trim().toLowerCase();
+    if (!query) return true;
+    const familyId = moduleFamilyId(module);
+    const haystack = [
+      module?.shipId || "",
+      getShipFamilyName(familyId) || "",
+      familyId || "",
+      `${module?.type || ""}-${module?.tier || ""}`,
+      module?.type || "",
+    ].join(" ").toLowerCase();
+    return query.split(/\s+/).every((word) => word && haystack.includes(word));
+  }
+  function filteredModuleHistory(currentUser) {
     const history = Array.isArray(currentUser?.inventory?.moduleRollHistory)
       ? currentUser.inventory.moduleRollHistory
       : [];
-    if (!history.length) return `<div class="moduleHistoryEmpty">Aucun module obtenu pour le moment.</div>`;
+    return history.filter((module) => moduleHistoryMatches(module, historyShipQuery));
+  }
+  function renderModuleHistory(currentUser) {
+    historyUser = currentUser;
+    const history = filteredModuleHistory(currentUser);
+    if (!history.length) {
+      const total = Array.isArray(currentUser?.inventory?.moduleRollHistory)
+        ? currentUser.inventory.moduleRollHistory.length
+        : 0;
+      return `<div class="moduleHistoryEmpty">${total ? "Aucun module pour cette recherche." : "Aucun module obtenu pour le moment."}</div>`;
+    }
 
     const pages = Math.max(1, Math.ceil(history.length / 4));
     historyPage = Math.max(0, Math.min(historyPage, pages - 1));
@@ -2091,9 +2122,7 @@ function renderExtrasRoulette(user) {
     }).join("");
   }
   function renderModuleHistoryPager(currentUser) {
-    const history = Array.isArray(currentUser?.inventory?.moduleRollHistory)
-      ? currentUser.inventory.moduleRollHistory
-      : [];
+    const history = filteredModuleHistory(currentUser);
     if (!history.length) return "";
     const pages = Math.max(1, Math.ceil(history.length / 4));
     historyPage = Math.max(0, Math.min(historyPage, pages - 1));
@@ -2133,6 +2162,11 @@ function renderExtrasRoulette(user) {
         </div>
       </div>
       <div id="moduleHistoryView" style="display:none;flex-direction:column;flex:1 1 auto;">
+        <label class="moduleHistorySearchField" for="moduleHistorySearchInput">
+          <span>Recherche de vaisseaux :</span>
+          <input id="moduleHistorySearchInput" type="search" placeholder="Rechercher un vaisseau…" autocomplete="off"
+            aria-label="Rechercher un vaisseau dans l'historique" value="${escapeHtml(historyShipQuery)}" />
+        </label>
         <div id="moduleRollHistory" class="moduleHistoryList" style="border:0;">${renderModuleHistory(user)}</div>
         <div style="margin-top:auto;padding:12px 0 2px;position:sticky;bottom:0;background:linear-gradient(180deg,rgba(5,14,25,0),rgba(5,14,25,.92) 45%);display:grid;gap:8px;">
           <div id="moduleHistoryPager">${renderModuleHistoryPager(user)}</div>
@@ -2166,6 +2200,13 @@ function renderExtrasRoulette(user) {
   };
   historyBtn?.addEventListener("click", showHistory);
   document.getElementById("btnBackRoulette")?.addEventListener("click", showRoulette);
+  // Recherche par vaisseau : filtre l'historique sans perdre le focus.
+  document.getElementById("moduleHistorySearchInput")?.addEventListener("input", (event) => {
+    historyShipQuery = String(event?.target?.value ?? "");
+    moduleHistoryShipQuery = historyShipQuery;
+    historyPage = 0;
+    updateModuleHistory(historyUser || user);
+  });
 
   document.getElementById("moduleHistoryPager").onclick = event => {
     const button = event.target.closest("[data-history-page]");
@@ -2953,7 +2994,7 @@ function buildFitWindow() {
             <div id="fitSlotsExtras" class="slotGrid"></div>
           </section>
           <section class="fitSlotGroup" data-slot-type="shipMods">
-            <div class="fitGroupTitle"><span>MODULES</span><small><span id="shipModsCount">1</span></small></div>
+            <div class="fitGroupTitle"><span>MODULES</span><small><span id="shipModsCount">4</span></small></div>
             <div id="fitSlotsShipMods" class="slotGrid slotGridModules"></div>
           </section>
         </div>
@@ -3272,7 +3313,7 @@ let fitState = {
   // Brouillons mis de côté par config (1/2) quand on bascule sans appliquer.
   stash: null,
   used: null,
-  slots: { lasers: 15, gens: 15, extras: 15, shipMods: 1 },
+  slots: { lasers: 15, gens: 15, extras: 15, shipMods: 4 },
   section: "ship",
   droneId: null,
 };
@@ -4662,7 +4703,7 @@ function renderSlots() {
   }
 
   // ShipMods (slots dynamiques)
-  const SM = Number(fitState?.slots?.shipMods ?? 1);
+  const SM = Number(fitState?.slots?.shipMods ?? 4);
   
   for (let i = 0; i < SM; i++) {
     const slotType = "shipMods";

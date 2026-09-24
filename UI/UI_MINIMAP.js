@@ -173,15 +173,44 @@ export function renderMinimap(context, options) {
       continue;
     }
     if (marker.pulse) {
-      const period = 2;
-      const progress = ((performance.now() / 1000) % period) / period;
+      // Localisateur P.E.T : ping ennemi XXL — double anneau + pastille + croix.
+      const now = performance.now() / 1000;
+      const fast = (now % 1.2) / 1.2;
+      const slow = (now % 2.4) / 2.4;
+      const color = marker.color || "#ff2e4d";
       context.save();
-      context.globalAlpha = (1 - progress) * 0.9;
-      context.lineWidth = 1.5;
-      context.strokeStyle = marker.color || "#ffe14d";
+      // Halo extérieur lent, épais.
+      context.globalAlpha = (1 - slow) * 0.95;
+      context.lineWidth = 3;
+      context.strokeStyle = color;
       context.beginPath();
-      context.arc(mx, my, 2 + 10 * progress, 0, Math.PI * 2);
+      context.arc(mx, my, 4 + 16 * slow, 0, Math.PI * 2);
       context.stroke();
+      // Anneau intérieur rapide.
+      context.globalAlpha = (1 - fast) * 0.95;
+      context.lineWidth = 2.5;
+      context.beginPath();
+      context.arc(mx, my, 3 + 9 * fast, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
+      // Pastille centrale pleine + contour blanc : repère fixe bien visible.
+      context.save();
+      context.fillStyle = color;
+      context.beginPath();
+      context.arc(mx, my, 3.5, 0, Math.PI * 2);
+      context.fill();
+      context.lineWidth = 1.5;
+      context.strokeStyle = "rgba(255,255,255,0.95)";
+      context.stroke();
+      // Croix blanche clignotante par-dessus.
+      if (Math.floor(now * 4) % 2 === 0) {
+        context.lineWidth = 2;
+        context.strokeStyle = "#ffffff";
+        context.beginPath();
+        context.moveTo(mx - 6, my - 6); context.lineTo(mx + 6, my + 6);
+        context.moveTo(mx + 6, my - 6); context.lineTo(mx - 6, my + 6);
+        context.stroke();
+      }
       context.restore();
       continue;
     }
