@@ -23733,7 +23733,9 @@ if (e.type === "npc_Cubikon") {
 
     // Le dernier kill est recompense et la vague est enregistree avant la
     // cloture : le bonus final et le Cubikon forment une seule transaction.
-    if (e._onKill) {
+    // Multi : NPC partage — les renforts onKill viennent du serveur
+    // (snapshot, visibles par tous). Pas de doublons locaux.
+    if (e._onKill && !(e._netUid && netplayNpcActive())) {
       const onKillAction = e._onKill;
       e._onKill = null;
       const completesGate = !!onKillAction?.tp?.factionBase || !!onKillAction?.completeSpecialGate;
@@ -25876,6 +25878,13 @@ function syncNetNpcs(dt) {
     } else if (c.type === "npc_Protegit" && c.masterId && !c._bossPhaseMinion) {
       try { if (Target.get() === c) Target.clear(); } catch {}
       enemies.splice(i, 1);
+    } else if (!c.isPetTarget && typeof c.type === "string" && c.type.startsWith("npc_")
+      && !c.masterId && !c._bossPhaseMinion) {
+      // Renforts onKill locaux (vagues Gygerthrall...) : la vague est
+      // desormais serveur en multi, ces copies fantomes (une par ecran,
+      // recompenses locales = farm infini) sont purgees.
+      try { if (Target.get() === c) Target.clear(); } catch {}
+      enemies.splice(i, 1);
     }
   }
   // Retraits serveur sans mort (despawn de vague Cubikon) : purge immediate,
@@ -25921,13 +25930,18 @@ function syncNetNpcs(dt) {
       }
     }
   } catch {}
+  // Index uid -> entite (une passe) : la recherche lineaire par snapshot
+  // coutait O(n2) par frame (~0.2 ms a 220 NPC, quadratique au-dela).
+  const netUidToEnemy = new Map();
+  try {
+    for (const c of enemies) {
+      if (c && c._netUid != null) netUidToEnemy.set(c._netUid, c);
+    }
+  } catch {}
   for (const s of remotes.values()) {
     if (!s || !s.uid) continue;
     seen.add(s.uid);
-    let e = null;
-    for (const c of enemies) {
-      if (c && c._netUid === s.uid) { e = c; break; }
-    }
+    let e = netUidToEnemy.get(s.uid) || null;
     if (s.alive === false) {
       if (e && (e._netSeq || 0) === (Number(s.seq) || 0)) {
         e.hp = 0;
@@ -25955,6 +25969,7 @@ function syncNetNpcs(dt) {
       e._previousY = e.y;
       e._netSeenT = now;
       enemies.push(e);
+      try { netUidToEnemy.set(e._netUid, e); } catch {}
     } else if ((e._netSeq || 0) !== (Number(s.seq) || 0)) {
       // Nouvelle incarnation (respawn).
       if (e._netKiller != null) {
@@ -26077,11 +26092,8 @@ function syncNetNpcs(dt) {
       }
       // Les degats allies ne s'affichent que sur la cible verrouillee.
       if (!lockedUid || String(f.uid) !== String(lockedUid)) continue;
-      let e = null;
-      for (const c of enemies) {
-        if (c && c._netUid === f.uid && c.hp > 0) { e = c; break; }
-      }
-      if (!e) continue;
+      const e = netUidToEnemy.get(f.uid) || null;
+      if (!e || !(e.hp > 0)) continue;
       queueVolleyFloat(e, { total: f.total, sh: 0, hp: f.total, rawDamage: f.total }, `netdmg${(Math.random() * 1e9) | 0}`, 1, VOLLEY_FLOAT_TIMEOUT);
     }
   } catch {}

@@ -1740,9 +1740,9 @@ setInterval(() => {
         pvpAt: Number(s.pvpAt) || 0, pvpFrom: s.pvpFrom != null ? String(s.pvpFrom) : null, pvpHp: Math.max(0, Math.round(Number(s.hp) || 0)), pvpSh: Math.max(0, Math.round(Number(s.sh) || 0)),
         npcAt: Number(s.npcAt) || 0, npcSeq: Math.max(0, Math.floor(Number(s.npcSeq) || 0)), npcFrom: s.npcFrom != null ? String(s.npcFrom) : null,
         npcDamage: Math.max(0, Math.round(Number(s.npcDamage) || 0)), npcHpDamage: Math.max(0, Math.round(Number(s.npcHpDamage) || 0)), npcShDamage: Math.max(0, Math.round(Number(s.npcShDamage) || 0)),
-        slowPct: Date.now() < Number(s.slowUntil || 0) ? Number(s.slowPct) || 0 : 0,
-        slowT: Math.max(0, (Number(s.slowUntil) || 0) - Date.now()) / 1000,
-        freezeT: Math.max(0, (Number(s.freezeUntil) || 0) - Date.now()) / 1000,
+        slowPct: now < Number(s.slowUntil || 0) ? Number(s.slowPct) || 0 : 0,
+        slowT: Math.max(0, (Number(s.slowUntil) || 0) - now) / 1000,
+        freezeT: Math.max(0, (Number(s.freezeUntil) || 0) - now) / 1000,
         hpMax: Math.max(1, Math.round(Number(s.hpMax) || 1)), shMax: Math.max(0, Math.round(Number(s.shMax) || 0)),
         range: Math.max(200, Math.min(5000, Number(s.range) || 800)),
         peta: s.peta === 1 ? 1 : 0, petl: Math.max(1, Math.min(32, Math.round(Number(s.petl) || 1))),
@@ -1758,10 +1758,10 @@ setInterval(() => {
         petHpM: Math.max(1, Math.round(Number(s.petHpM) || 1)),
         petShM: Math.max(0, Math.round(Number(s.petShM) || 0)),
         safe: s.safe === true,
-        iemT: Math.max(0, (Number(s.iemUntil) || 0) - Date.now()) / 1000,
-        ishT: Math.max(0, (Number(s.ishUntil) || 0) - Date.now()) / 1000 });
+        iemT: Math.max(0, (Number(s.iemUntil) || 0) - now) / 1000,
+        ishT: Math.max(0, (Number(s.ishUntil) || 0) - now) / 1000 });
     }
-    const payload = JSON.stringify({ t: "snapshot", map: key, at: Date.now(), players, npc });
+    const payload = JSON.stringify({ t: "snapshot", map: key, at: now, players, npc });
     for (const [, entry] of room) {
       try { if (entry.ws.readyState === 1) entry.ws.send(payload); } catch {}
     }

@@ -283,6 +283,67 @@ export class ZoneNpcSim {
     }
   }
 
+  // Vague onKill partagee (parite solo) : a la mort d'un NPC dont le type
+  // declare onKill.spawn (ex : Blighted Kristallon -> 3 Blighted
+  // Gygerthrall), le serveur fait apparaitre les renforts pour TOUS les
+  // joueurs. Sans ca, chaque ecran fabriquait ses propres fantomes locaux
+  // (invisibles aux autres, recompenses locales = farm infini).
+  // Les renforts sont independants (pas d'ancre) : ils chassent comme les
+  // autres NPC. Plafond de securite : 200 entites hors-camp vivantes / map.
+  static WAVELESS_MAX = 200;
+
+  countCamplessAlive() {
+    let n = 0;
+    for (const e of this.entries.values()) {
+      if (e && e.campId == null && e.hp > 0) n++;
+    }
+    return n;
+  }
+
+  spawnOnKillWave(dead, nowMs) {
+    if (!dead || !(dead.hp <= 0)) return;
+    const cfg = NPC_TYPES[dead.type];
+    const spawns = cfg?.onKill?.spawn;
+    if (!Array.isArray(spawns) || !spawns.length) return;
+    // Credit du kill parent pour le journal : premier attaquant, sinon tueur.
+    // (Les renforts eux-memes creditent leur propre tueur via firstBy.)
+    for (const s of spawns) {
+      const type = String(s?.type || "");
+      const stats = statsFor(type);
+      if (!type || !stats) continue;
+      const count = Math.max(1, Math.min(15, Math.floor(Number(s?.count) || 1)));
+      const radius = Math.max(40, Number(s?.radius) || 260);
+      for (let i = 0; i < count; i++) {
+        if (this.countCamplessAlive() >= ZoneNpcSim.WAVELESS_MAX) return;
+        const ang = Math.random() * TAU;
+        const dist = 60 + Math.random() * radius;
+        const seq = (this.waveSeq = (Number(this.waveSeq) || 0) + 1) + (Number(dead.seq) || 0) * 100000;
+        const uid = `${this.mapId}#wave${Number(this.waveSeq) || 0}`;
+        const x = clamp(dead.x + Math.cos(ang) * dist, 80, this.world.w - 80);
+        const y = clamp(dead.y + Math.sin(ang) * dist, 80, this.world.h - 80);
+        this.entries.set(uid, {
+          uid, campId: null, type,
+          masterUid: null, masterSeq: 0,
+          x, y, angle: Math.random() * TAU,
+          hp: stats.hpMax, sh: stats.shMax,
+          hpMax: stats.hpMax, shMax: stats.shMax,
+          speed: stats.speed, dr: stats.dr, spread: stats.spread,
+          passive: !!stats.passive, kamikaze: !!stats.kamikaze,
+          explodeOnTouch: !!stats.explodeOnTouch, explodeRadius: stats.explodeRadius, explodeDmg: stats.explodeDmg,
+          canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,
+          bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.2 + Math.random() * 0.5,
+          aggroRange: 700, aggroHoldMs: 3500,
+          aggroBy: null, aggroUntil: 0,
+          tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+          masterKiller: null, decaying: false, decayPerSec: 0, decayAge: 0,
+          fleeVx: 0, fleeVy: 0, deadAt: 0,
+          orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
+          seq,
+        });
+      }
+    }
+  }
+
   // A la mort du Cubikon, ses Protegits fuient en ligne droite pendant 3 s
   // puis errent comme les autres NPC (agro + tirs) tout en continuant de
   // perdre 5 % de leur vie max par seconde, meme sous le feu ennemi.
@@ -390,10 +451,11 @@ export class ZoneNpcSim {
       entry.killer = String(kb || clientId);
       entry.cause = "gun";
       entry.cube = null;
-      if (entry.masterUid) entry.deadAt = nowMs;
+      if (!entry.campId) entry.deadAt = nowMs;
       if (entry.type === "npc_Cubikon") {
         try { this.releaseCubikonMinions(entry, nowMs); } catch {}
       }
+      try { this.spawnOnKillWave(entry, nowMs); } catch {}
       try { markDead(this.universe, this.mapId, uid, Date.now()); } catch {}
       this.deaths.push({ uid, type: entry.type, x: Math.round(entry.x), y: Math.round(entry.y), killer: entry.killer, cause: "gun", seq: entry.seq || 0, at: Date.now() });
     }
@@ -444,8 +506,9 @@ export class ZoneNpcSim {
           }
         }
       }
-      // Minion mort : purge apres diffusion du journal (3 s).
-      if (m.masterUid && !(m.hp > 0) && nowMs - Number(m.deadAt || 0) > 3000) {
+      // Entite hors-camp morte (minion ou vague onKill) : purge apres
+      // diffusion du journal (3 s).
+      if (!m.campId && !(m.hp > 0) && nowMs - Number(m.deadAt || 0) > 3000) {
         this.entries.delete(muid);
         continue;
       }
@@ -514,6 +577,9 @@ export class ZoneNpcSim {
         if (victim != null) {
           this.playerHits.push({ playerId: String(victim), npcUid: e.uid, damage: Math.max(0, Number(e.explodeDmg) || 0), kind: "boom" });
           e.hp = 0; e.sh = 0; e.killer = String(victim); e.cause = "boom";
+          e.cube = null;
+          if (!e.campId) e.deadAt = nowMs;
+          try { this.spawnOnKillWave(e, nowMs); } catch {}
           try { markDead(this.universe, this.mapId, e.uid, nowMs); } catch {}
           this.deaths.push({ uid: e.uid, type: e.type, x: Math.round(e.x), y: Math.round(e.y), killer: String(victim), cause: "boom", seq: e.seq || 0, at: nowMs });
           continue;
@@ -679,6 +745,14 @@ export class ZoneNpcSim {
     const list = [];
     for (const e of this.entries.values()) {
       if (e.hp > 0) {
+        // Cible partagee : la poursuite en cours si elle est encore valide
+        // (tous les ecrans voient le NPC tirer le meme joueur). Sans
+        // closure allouee par entree (pression GC a 20 Hz).
+        let aggroId = null;
+        if (e.chaseId) {
+          const ap = this.players.get(e.chaseId);
+          if (this.validTarget(ap)) aggroId = e.chaseId;
+        }
         list.push({
           uid: e.uid, type: e.type,
           x: Math.round(e.x), y: Math.round(e.y),
@@ -688,13 +762,7 @@ export class ZoneNpcSim {
           slowPct: nowMs < Number(e.slowUntil || 0) ? Number(e.slowPct) || 0 : 0,
           slowT: Math.max(0, (Number(e.slowUntil) || 0) - nowMs) / 1000,
           freezeT: Math.max(0, (Number(e.freezeUntil) || 0) - nowMs) / 1000,
-          // Cible partagee : la poursuite en cours si elle est encore valide
-          // (tous les ecrans voient le NPC tirer le meme joueur).
-          aggro: (() => {
-            if (!e.chaseId) return null;
-            const p = this.players.get(e.chaseId);
-            return this.validTarget(p) ? e.chaseId : null;
-          })(),
+          aggro: aggroId,
           // Animation d'ouverture du Cubikon : phase + temps restant pour
           // que tous les ecrans jouent l'ouverture en meme temps.
           cube: (e.type === "npc_Cubikon" && e.cube && e.cube.phase) ? String(e.cube.phase) : null,
