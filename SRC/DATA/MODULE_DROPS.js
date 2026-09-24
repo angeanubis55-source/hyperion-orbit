@@ -64,12 +64,13 @@ export const MODULE_TIER_MALUS = Object.freeze({
 //   🟢 vert (hp)  -> PV 32 %
 //   🔵 bleu (shd) -> Bouclier 30 %
 //   🔴 rouge (dmg)-> Dégâts 20 %
-//   🟡 jaune (spc)-> Chance de réussite laser 10 %, Pénétration 12 %, Vitesse 12 %
+//   🟡 jaune (spc)-> Chance de réussite laser 10 %, Pénétration 12 %, Vitesse 12 %,
+//                   Précision roquettes 10 %, Évitement 12 %
 export const MODULE_STAT_MAX_BY_COLOR = Object.freeze({
   hp: Object.freeze({ hp: 32 }),
   shd: Object.freeze({ shield: 30 }),
   dmg: Object.freeze({ damage: 20 }),
-  spc: Object.freeze({ laser_hit: 10, penetration: 12, speed: 12 }),
+  spc: Object.freeze({ laser_hit: 10, penetration: 12, speed: 12, rocket_hit: 10, evasion: 12 }),
 });
 
 // Stats "toutes couleurs" : même cap quel que soit le module.
@@ -101,6 +102,8 @@ export const MODULE_ALL_STATS = Object.freeze([
   "speed",
   "penetration",
   "laser_hit",
+  "rocket_hit",
+  "evasion",
   "exp",
   "honor",
 ]);
@@ -110,6 +113,8 @@ export const MODULE_SPC_STATS = Object.freeze([
   "penetration",
   "speed",
   "laser_hit",
+  "rocket_hit",
+  "evasion",
   "exp",
   "honor",
 ]);

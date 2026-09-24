@@ -264,6 +264,33 @@ function mergeProgressiveFields(prev, next) {
       if (Number(prev.pet.exp) > Number(next.pet.exp || 0)) next.pet.exp = Math.max(0, Number(prev.pet.exp));
       if (Number(prev.pet.level) > Number(next.pet.level || 0)) next.pet.level = Math.max(0, Math.floor(Number(prev.pet.level)));
     }
+    // Vaisseaux/designs/hangars possédés localement mais absents du canon
+    // serveur (achat boutique pas encore poussé lors d'un 409) : union.
+    // Un achat validé localement ne doit jamais disparaître avec l'illusion
+    // d'un remboursement. Les vaisseaux ne se revendent pas : l'union ne
+    // ressuscite aucun bien vendu.
+    if (prev.inventory && next.inventory && typeof next.inventory === "object") {
+      for (const key of ["ships", "shipDesigns"]) {
+        if (Array.isArray(prev.inventory[key]) && Array.isArray(next.inventory[key])) {
+          const have = new Set(next.inventory[key].map(String));
+          for (const id of prev.inventory[key]) {
+            if (id != null && !have.has(String(id))) {
+              next.inventory[key].push(id);
+              have.add(String(id));
+            }
+          }
+        }
+      }
+    }
+    if (Array.isArray(prev.hangars) && Array.isArray(next.hangars)) {
+      const have = new Set(next.hangars.filter(Boolean).map((h) => String(h?.shipId)));
+      for (const h of prev.hangars) {
+        if (h && typeof h === "object" && !have.has(String(h?.shipId))) {
+          next.hangars.push(h);
+          have.add(String(h?.shipId));
+        }
+      }
+    }
     // Une recompense NPC est maintenant ecrite par le serveur avant que le
     // kill local ait forcement pousse sa quete. Lors de l'adoption de cette
     // revision, garde le maximum de chaque objectif et les missions terminees.

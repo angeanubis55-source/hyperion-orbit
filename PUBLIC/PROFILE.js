@@ -621,6 +621,8 @@ function formatStatLabel(stat) {
   if (stat === "penetration") return "Pénétration";
   if (stat === "speed") return "Vitesse";
   if (stat === "laser_hit") return "Chance de réussite laser";
+  if (stat === "rocket_hit") return "Précision roquettes";
+  if (stat === "evasion") return "Évitement";
   if (stat === "exp") return "Expérience";
   if (stat === "honor") return "Honneur";
   return stat;

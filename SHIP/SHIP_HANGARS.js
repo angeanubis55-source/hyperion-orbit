@@ -145,6 +145,8 @@ const fit =
   let bonusHPPct = 0;
   let bonusPenetrationPct = 0;
   let bonusLaserHitPct = 0;
+  let bonusRocketHitPct = 0;
+  let bonusEvasionPct = 0;
   let bonusExpPct = 0;
   let bonusHonorPct = 0;
   const formationEffects = getActiveDroneFormation(user).effects || {};
@@ -171,6 +173,8 @@ const fit =
       if (stat === "speed") bonusSpeedPct += pct;
       if (stat === "penetration") bonusPenetrationPct += pct;
       if (stat === "laser_hit") bonusLaserHitPct += pct;
+      if (stat === "rocket_hit") bonusRocketHitPct += pct;
+      if (stat === "evasion") bonusEvasionPct += pct;
       if (stat === "exp") bonusExpPct += pct;
       if (stat === "honor") bonusHonorPct += pct;
     }
@@ -255,6 +259,8 @@ const fit =
     bonusHPPct,           // % à appliquer sur le HP du ship
     bonusPenetrationPct,  // % absolu de pénétration
     bonusLaserHitPct,     // % de réduction du taux de MISS du joueur
+    bonusRocketHitPct,    // % de réduction du taux de MISS des roquettes
+    bonusEvasionPct,      // % de chance d'esquiver totalement un coup reçu
     bonusExpPct,          // % d'XP gagné en plus
     bonusHonorPct,        // % d'honneur gagné en plus
     extras,

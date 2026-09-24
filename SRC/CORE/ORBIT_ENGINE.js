@@ -13879,6 +13879,8 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
 
   player.laserHitBonusPct = clamp(Number(stats.bonusLaserHitPct || 0), -100, 100);
+  player.rocketHitBonusPct = clamp(Number(stats.bonusRocketHitPct || 0), -100, 100);
+  player.evasionBonusPct = clamp(Number(stats.bonusEvasionPct || 0), -100, 90);
   player.expBonusPct = Number(stats.bonusExpPct || 0);
   player.honorBonusPct = Number(stats.bonusHonorPct || 0);
 
@@ -16380,6 +16382,8 @@ function resetPlayerToBase() {
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
 
   player.laserHitBonusPct = clamp(Number(stats.bonusLaserHitPct || 0), -100, 100);
+  player.rocketHitBonusPct = clamp(Number(stats.bonusRocketHitPct || 0), -100, 100);
+  player.evasionBonusPct = clamp(Number(stats.bonusEvasionPct || 0), -100, 90);
   player.expBonusPct = Number(stats.bonusExpPct || 0);
   player.honorBonusPct = Number(stats.bonusHonorPct || 0);
 
@@ -22884,9 +22888,9 @@ function npcEffectiveSpeed(e, fallback = 320) {
 function hurtPlayer(amount, source = null) {
   if (player.dead || player.iFrames > 0 || (player.invincibleT || 0) > 0) return;
 
-  // Évasion (arbre pilote) : probabilité d'esquiver totalement le coup (miss bleu).
+  // Évasion (arbre pilote + modules) : probabilité d'esquiver totalement le coup (miss bleu).
   try {
-    const evade = Number(playerPilotMults().evade) || 0;
+    const evade = Math.min(0.9, Math.max(0, (Number(playerPilotMults().evade) || 0) + (Number(player.evasionBonusPct || 0) / 100)));
     if (evade > 0 && Math.random() < evade) {
       try {
         addFloatText(player.x, player.y - 70, 0, "rgba(120,200,255,0.95)", { text: "ESQUIVE" });
@@ -24150,7 +24154,7 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
   consumeUpgradeStock("rocket");
   const shotMiss = typeof miss === "boolean"
     ? miss
-    : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.laserHitBonusPct || 0) + Number(rocketBoosterMults.hit || 0) + playerPilotMults().rocketHit) / 100));
+    : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.laserHitBonusPct || 0) + Number(player.rocketHitBonusPct || 0) + Number(rocketBoosterMults.hit || 0) + playerPilotMults().rocketHit) / 100));
   const ang = rocket.manual === false
     ? launcherRocketLaunchAngle(player.angle, arcDir, spread)
     : player.angle + spread;
@@ -24251,7 +24255,7 @@ function tryFireSalvo(opts = {}) {
   // Salve réelle : toute attaque casse le camouflage ultime.
   breakPoliceCloak();
   const volleyId = volleySeq++;
-  const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.laserHitBonusPct || 0) + playerPilotMults().rocketHit) / 100));
+  const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.laserHitBonusPct || 0) + Number(player.rocketHitBonusPct || 0) + playerPilotMults().rocketHit) / 100));
   for (let i = 0; i < n; i++) {
     // 1 son par roquette, en même temps.
     SFX.play("sfx_shot_lance_roquettes");

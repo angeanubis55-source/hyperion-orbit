@@ -1,7 +1,7 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
-import { bootNetFromCache, netActive, netCurrent, netList, netSetCurrent, netStore } from "./ACCOUNT_NET.js";
+import { bootNetFromCache, flushNetUser, netActive, netCurrent, netList, netSetCurrent, netStore } from "./ACCOUNT_NET.js";
 // Multi : session serveur restauree au chargement (token + cache local),
 // puis refresh async via /api/me (revision canonique).
 try { bootNetFromCache(); } catch {}
@@ -1688,6 +1688,11 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
 
   ensureUserShape(u);
   saveUser(u);
+  // Biens durables uniques : poussée serveur immédiate (sans le debounce 2 s)
+  // pour qu'un 409 ultérieur ne puisse pas effacer l'achat.
+  if ((isShip || isDesign) && netActive()) {
+    try { const p = flushNetUser(); if (p && typeof p.catch === "function") p.catch(() => {}); } catch {}
+  }
   return { ok: true, user: u, quantity, totalPrice: price };
 }
 
