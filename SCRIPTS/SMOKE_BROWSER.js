@@ -157,7 +157,7 @@ try {
         }
         await page.click("#btnShopHub");
         await page.waitForSelector("#shopWindow", { state: "visible", timeout: 10_000 });
-        for (const category of ["ammo", "speedGen", "shieldGen", "lasers", "extras", "ships"]) {
+        for (const category of ["ammo", "generators", "lasers", "extras", "ships"]) {
           await page.click(`#shopWindowTabs .tabBtn[data-shop="${category}"]`);
           if (captureProfile && category === "extras") {
             await page.screenshot({ path: join(root, "profile-extras-preview.png"), fullPage: false });

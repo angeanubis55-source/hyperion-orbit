@@ -7693,6 +7693,33 @@ body #profileOverlay .shopRow img.formationShopRowImage { width:72px !important;
   color: #ffa14d !important;
   background: rgba(255, 154, 60, .08) !important;
 }
+/* Onglet fusionné GEARS + PROTOCOLES : mêmes petites cartes que P.E.T. */
+.shopGearBadge {
+  border-color: rgba(112, 231, 250, .6) !important;
+  color: #70e7fa !important;
+  background: rgba(0, 217, 255, .08) !important;
+}
+.shopProtoBadge {
+  border-color: rgba(196, 141, 255, .6) !important;
+  color: #c48dff !important;
+  background: rgba(150, 80, 255, .10) !important;
+}
+/* Badges noms complets : pas de wrap, taille réduite pour tenir dans le titre ellipsis. */
+.shopWideBadge {
+  white-space: nowrap !important;
+  letter-spacing: 0.5px !important;
+}
+/* Onglet fusionné GÉNÉRATEURS : VITESSE en vert, BOUCLIER en bleu. */
+.shopSpeedBadge {
+  border-color: rgba(0, 255, 136, .55) !important;
+  color: #00ff88 !important;
+  background: rgba(0, 255, 136, .08) !important;
+}
+.shopShieldBadge {
+  border-color: rgba(0, 150, 255, .6) !important;
+  color: #4da6ff !important;
+  background: rgba(0, 120, 255, .10) !important;
+}
 #fitCard .invCell .petOnlyBadge {
   position: absolute !important;
   left: 3px !important;

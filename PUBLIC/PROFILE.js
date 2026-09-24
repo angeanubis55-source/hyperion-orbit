@@ -132,6 +132,8 @@ if (storedTab === "hangars" && document.getElementById("hangarWindowPanel")) sto
 let tab = storedTab;
 let shopTab = localStorage.getItem("orbit_shop_tab") || "ammo";
 if (shopTab === "launchers") shopTab = "rockets"; // onglet fusionné
+if (shopTab === "petGears" || shopTab === "petProtocols" || shopTab === "petGearProto") shopTab = "petEquipment"; // GEARS + PROTOCOLES fusionnés
+if (shopTab === "speedGen" || shopTab === "shieldGen") shopTab = "generators"; // générateurs fusionnés
 // Recherche de l'onglet DESIGNS (conservée entre les re-renders).
 let designSearchQuery = "";
 // Recherche par vaisseau dans l'historique des modules (conservée entre les re-renders).
@@ -313,6 +315,20 @@ function isMirroredShip(shipId) {
 function getShopListFor(cat) {
   // Ancien onglet "Lance-roquettes" fusionné dans "Roquettes" (compat saved tab).
   if (cat === "launchers") cat = "rockets";
+  // Anciens onglets GEARS / PROTOCOLES fusionnés en "petEquipment" (compat saved tab).
+  if (cat === "petGears" || cat === "petProtocols" || cat === "petGearProto") cat = "petEquipment";
+  // Anciens onglets générateurs fusionnés en "generators" (compat saved tab).
+  if (cat === "speedGen" || cat === "shieldGen") cat = "generators";
+  // Onglet fusionné GÉNÉRATEURS : vitesse d'abord, boucliers ensuite.
+  if (cat === "generators") {
+    return [...(CATALOG?.speedGen || []), ...(CATALOG?.shieldGen || [])];
+  }
+  // Onglet fusionné GEARS + PROTOCOLES : groupes gears d'abord, protocoles ensuite.
+  if (cat === "petEquipment") {
+    const gears = groupPetShopItems(CATALOG?.petGears || [], "gear");
+    const protos = groupPetShopItems(CATALOG?.petProtocols || [], "protocol");
+    return [...gears, ...protos];
+  }
   const direct = CATALOG?.[cat];
   if (Array.isArray(direct) && direct.length) {
     // Onglet Roquettes : manuelles d'abord, lance-roquettes ensuite.
@@ -331,7 +347,7 @@ function getShopListFor(cat) {
       return sorted;
     }
     if (cat === "petGears" || cat === "petProtocols") {
-      return groupPetShopItems(direct);
+      return groupPetShopItems(direct, cat === "petGears" ? "gear" : "protocol");
     }
     if (cat === "ships") {
       // Vaisseaux triés par prix croissant (l'ordre du fichier est alphabétique).
@@ -363,24 +379,27 @@ const petShopLevelSel = {};
 function petShopLevelOf(entry) {
   return Number(entry?.petGear?.level ?? entry?.petProtocol?.level ?? 1) || 1;
 }
-function groupPetShopItems(direct) {
+function groupPetShopItems(direct, kind = "") {
   const groups = new Map();
   for (const it of direct) {
     const k = it?.petGear?.key || it?.petProtocol?.key || it?.id;
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(it);
+    const gk = kind ? `${kind}:${k}` : String(k);
+    if (!groups.has(gk)) groups.set(gk, { key: k, items: [] });
+    groups.get(gk).items.push(it);
   }
   const out = [];
-  for (const [k, levels] of groups) {
+  for (const [, { key: k, items: levels }] of groups) {
     levels.sort((a, b) => petShopLevelOf(a) - petShopLevelOf(b));
     const first = levels[0];
     const famName = String(first?.name || k).replace(/^([A-Z]+-[A-Z]+)\d+/, "$1");
+    const entryKind = kind || (first?.petGear ? "gear" : first?.petProtocol ? "protocol" : "");
     out.push({
-      id: `petgrp_${k}`,
+      id: `petgrp_${entryKind ? `${entryKind}_` : ""}${k}`,
       name: famName,
       icon: first?.icon,
       price: Number(first?.price || 0),
       levels,
+      kind: entryKind,
     });
   }
   return out;
@@ -574,6 +593,7 @@ const FALLBACK_ICONS = {
   launchers: "/COMBAT/ROCKET_SPRITES/HSTRM-01_100X100.png",
   speedGen: ITEM_ICON_BASE + "G3N-1010.png",
   shieldGen: ITEM_ICON_BASE + "SG3N-A01.png",
+  generators: ITEM_ICON_BASE + "G3N-1010.png",
   lasers: LASER_ICON_BASE + "lf_1_100x100.png",
   speed: ITEM_ICON_BASE + "G3N-1010.png",
   shield: ITEM_ICON_BASE + "SG3N-A01.png",
@@ -860,6 +880,9 @@ function wireShopTabsOnce() {
 
 function setShopTab(next) {
   if (!next) return;
+  if (next === "launchers") next = "rockets";
+  if (next === "petGears" || next === "petProtocols" || next === "petGearProto") next = "petEquipment";
+  if (next === "speedGen" || next === "shieldGen") next = "generators";
   shopTab = next;
   localStorage.setItem("orbit_shop_tab", shopTab);
   document.querySelectorAll("#shopWindowTabs .tabBtn, #shopTabs .subtabBtn").forEach((button) => {
@@ -958,7 +981,7 @@ function buildInventorySections(u) {
     // Le P.E.T a sa propre section (niveau/XP) : pas de doublon dans Équipements.
     if (found?.category === "pets") continue;
     if (found && found.category !== "ammo" && found.category !== "ships") {
-      let detail = ({ lasers: "Laser", speedGen: "Générateur de vitesse", shieldGen: "Générateur de bouclier", extras: "Extra", rockets: "Roquettes", launchers: "Lance-roquettes", petGears: "Gear P.E.T", petProtocols: "Protocole P.E.T" })[found.category] || "Équipement";
+      let detail = ({ lasers: "Laser", speedGen: "Générateur de vitesse", shieldGen: "Générateur de bouclier", generators: "Générateur", extras: "Extra", rockets: "Roquettes", launchers: "Lance-roquettes", petGears: "Gear P.E.T", petProtocols: "Protocole P.E.T" })[found.category] || "Équipement";
       if (found.item.petProtocol) detail = `Protocole P.E.T · +${Number(found.item.petProtocol.pct) || 0} % ${petProtocolStatLabel(found.item.petProtocol.key)}`;
       if (found.item.petGear) detail = `Gear P.E.T · ${found.item.desc || found.item.name}`;
       equipment.push({
@@ -1865,21 +1888,54 @@ function renderShopMeasured(user) {
 
     const title = document.createElement("b");
     title.textContent = it.name || it.id;
-    if (it?.petOnly || it?.petGear || it?.petProtocol || it?.petFuel || it?.petHull) {
+    // Onglet fusionné GEARS + PROTOCOLES : petites cartes comme P.E.T,
+    // mais "GEAR" sur les gears et "PROTO" sur les protocoles.
+    const mergedPetKind = (() => {
+      if (shopTab !== "petEquipment") return "";
+      if (it?.kind === "gear" || it?.kind === "protocol") return it.kind;
+      const lv0 = Array.isArray(it?.levels) ? it.levels[0] : it;
+      if (lv0?.petGear) return "gear";
+      if (lv0?.petProtocol) return "protocol";
+      if (it?.petGear) return "gear";
+      if (it?.petProtocol) return "protocol";
+      return "";
+    })();
+    if (mergedPetKind) {
+      const badge = document.createElement("span");
+      const isProto = mergedPetKind === "protocol";
+      badge.className = "shopPetBadge" + (isProto ? " shopProtoBadge" : " shopGearBadge");
+      badge.textContent = isProto ? "PROTO" : "GEAR";
+      badge.title = isProto ? "Protocole P.E.T" : "Gear P.E.T";
+      title.appendChild(document.createTextNode(" "));
+      title.appendChild(badge);
+    } else if (it?.petOnly || it?.petGear || it?.petProtocol || it?.petFuel || it?.petHull) {
       const badge = document.createElement("span");
       badge.className = "shopPetBadge";
       badge.textContent = "P.E.T";
       title.appendChild(document.createTextNode(" "));
       title.appendChild(badge);
     }
-    // Onglet Roquettes fusionné : petite carte comme P.E.T (SG3N-P01).
-    // Badges courts (R / LR) : le titre rogne en ellipsis, le long est coupé.
+    // Onglet Roquettes fusionné : petite carte comme P.E.T.
+    // Noms complets : "ROQUETTE" / "LANCE-ROQUETTE".
     if (shopTab === "rockets") {
       const badge = document.createElement("span");
       const isLauncher = it.manual === false;
-      badge.className = "shopPetBadge" + (isLauncher ? " shopLauncherBadge" : "");
-      badge.textContent = isLauncher ? "LR" : "R";
+      badge.className = "shopPetBadge shopWideBadge" + (isLauncher ? " shopLauncherBadge" : "");
+      badge.textContent = isLauncher ? "LANCE-ROQUETTE" : "ROQUETTE";
       badge.title = isLauncher ? "Lance-roquettes" : "Roquette manuelle";
+      title.appendChild(document.createTextNode(" "));
+      title.appendChild(badge);
+    }
+    // Onglet Générateurs fusionné : petites cartes "VITESSE" / "BOUCLIER".
+    if (shopTab === "generators") {
+      const modType = it?.module?.type
+        || (String(it?.id || "").startsWith("shd_") ? "shield"
+          : String(it?.id || "").startsWith("spd_") ? "speed" : "");
+      const isShield = modType === "shield";
+      const badge = document.createElement("span");
+      badge.className = "shopPetBadge shopWideBadge" + (isShield ? " shopShieldBadge" : " shopSpeedBadge");
+      badge.textContent = isShield ? "BOUCLIER" : "VITESSE";
+      badge.title = isShield ? "Générateur de bouclier" : "Générateur de vitesse";
       title.appendChild(document.createTextNode(" "));
       title.appendChild(badge);
     }
@@ -2758,7 +2814,7 @@ if (isDrone) {
   } else {
     const previewFallback = it?.preview ? ` onerror="this.onerror=null;this.src='${iconForItem(it, cat)}'"` : "";
     previewHtml = `
-      <img src="${imgSrc}" alt="${it?.name || it?.id}"${previewFallback} class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "lasers", "extras", "pets", "petGears", "petProtocols", "boosters"].includes(cat) ? " equipShopImage" : ""}" />
+      <img src="${imgSrc}" alt="${it?.name || it?.id}"${previewFallback} class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "generators", "lasers", "extras", "pets", "petGears", "petProtocols", "petEquipment", "boosters"].includes(cat) ? " equipShopImage" : ""}" />
     `;
   }
   // Preview uniforme : card 105x105, item 100x100 centré (hors vaisseaux,

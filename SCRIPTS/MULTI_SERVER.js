@@ -454,6 +454,7 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 // Un snapshot complet est remplace 50 ms plus tard : ne jamais empiler des
 // etats obsoletes pour un client dont la connexion ne suit plus.
 const SNAPSHOT_BACKPRESSURE_LIMIT = 256 * 1024;
+const NPC_NEAR_PLAYER_RADIUS = 2600;
 const rooms = new Map(); // mapId(lower) -> Map(id -> { ws, state })
 const npcSims = new Map(); // mapId(lower) -> ZoneNpcSim | null | Promise
 const boxRooms = new Map(); // mapId(lower) -> Map(uid -> { type, x, y })
@@ -1622,8 +1623,12 @@ setInterval(() => {
 }, 250);
 
 // Broadcast + simu NPC 20 Hz par room, uniquement aux sockets ouvertes.
+// Les NPC loin de tous les joueurs voyagent a 10 Hz ; leur simulation reste
+// a 20 Hz et les NPC actifs/proches restent toujours dans chaque snapshot.
+let snapshotTick = 0;
 setInterval(() => {
   const now = Date.now();
+  const fullNpcTick = (++snapshotTick & 1) === 0;
   for (const [key, room] of rooms) {
     if (!room.size) continue;
     // Expire les joueurs silencieux depuis > 10 s (onglet ferme sans close propre).
@@ -1764,7 +1769,23 @@ setInterval(() => {
         iemT: Math.max(0, (Number(s.iemUntil) || 0) - now) / 1000,
         ishT: Math.max(0, (Number(s.ishUntil) || 0) - now) / 1000 });
     }
-    const payload = JSON.stringify({ t: "snapshot", map: key, at: now, players, npc });
+    let npcForNetwork = npc;
+    if (!fullNpcTick && Array.isArray(npc?.list) && npc.list.length) {
+      const nearRadiusSq = NPC_NEAR_PLAYER_RADIUS * NPC_NEAR_PLAYER_RADIUS;
+      const damaged = new Set(Array.isArray(npc.dmg) ? npc.dmg.map((entry) => String(entry?.uid || "")) : []);
+      const activeList = npc.list.filter((entry) => {
+        if (!entry || entry.alive === false || entry.aggro != null || entry.cube || damaged.has(String(entry.uid || ""))) return true;
+        if (Number(entry.slowT) > 0 || Number(entry.freezeT) > 0) return true;
+        const nx = Number(entry.x) || 0, ny = Number(entry.y) || 0;
+        for (const playerState of players) {
+          const dx = nx - Number(playerState.x || 0), dy = ny - Number(playerState.y || 0);
+          if (dx * dx + dy * dy <= nearRadiusSq) return true;
+        }
+        return false;
+      });
+      npcForNetwork = { ...npc, list: activeList };
+    }
+    const payload = JSON.stringify({ t: "snapshot", map: key, at: now, players, npc: npcForNetwork });
     for (const [, entry] of room) {
       try {
         if (entry.ws.readyState === 1 && entry.ws.bufferedAmount < SNAPSHOT_BACKPRESSURE_LIMIT) entry.ws.send(payload);

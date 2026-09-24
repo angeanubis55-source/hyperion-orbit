@@ -534,6 +534,39 @@
       padding: 0;
     }
 
+    /* Petites cartes boutique : P.E.T / GEAR / PROTO (même base). */
+    .shopPetBadge{
+      display: inline-block;
+      padding: 1px 6px;
+      border: 1px solid rgba(112, 231, 250, .6);
+      border-radius: 3px;
+      color: #70e7fa;
+      background: rgba(0, 217, 255, .08);
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      vertical-align: 1px;
+    }
+    .shopProtoBadge{
+      border-color: rgba(196, 141, 255, .6);
+      color: #c48dff;
+      background: rgba(150, 80, 255, .10);
+    }
+    .shopWideBadge{
+      white-space: nowrap;
+      letter-spacing: 0.5px;
+    }
+    .shopSpeedBadge{
+      border-color: rgba(0, 255, 136, .55);
+      color: #00ff88;
+      background: rgba(0, 255, 136, .08);
+    }
+    .shopShieldBadge{
+      border-color: rgba(0, 150, 255, .6);
+      color: #4da6ff;
+      background: rgba(0, 120, 255, .10);
+    }
+
     .shopMeta{
       flex: 1;
       min-width: 0;
@@ -938,16 +971,14 @@
 
           <div class="subtabs" id="shopTabs">
             <button class="subtabBtn active" data-shop="ammo">Munitions lasers</button>
-            <button class="subtabBtn" data-shop="speedGen">Générateur de vitesse</button>
-            <button class="subtabBtn" data-shop="shieldGen">Générateur de bouclier</button>
+            <button class="subtabBtn" data-shop="generators">Générateurs</button>
             <button class="subtabBtn" data-shop="lasers">Canons lasers</button>
             <button class="subtabBtn" data-shop="extras">Extras</button>
             <button class="subtabBtn" data-shop="boosters">Boosters</button>
             <button class="subtabBtn" data-shop="ships">Vaisseaux</button>
             <button class="subtabBtn" data-shop="designs">Designs</button>
             <button class="subtabBtn" data-shop="pets">P.E.T</button>
-            <button class="subtabBtn" data-shop="petGears">Gears P.E.T</button>
-            <button class="subtabBtn" data-shop="petProtocols">Protocoles P.E.T</button>
+            <button class="subtabBtn" data-shop="petEquipment">Gears & Protocoles P.E.T</button>
           </div>
 
           <div class="shopLayout">
