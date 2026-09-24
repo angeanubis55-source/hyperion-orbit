@@ -9363,3 +9363,430 @@ input[type=number]{ -moz-appearance:textfield; appearance:textfield; }
 @media (max-width:560px){
   #settingsWindow .settingsSlotKeyColumns{ grid-template-columns:1fr; }
 }
+
+/* ============================================================
+   Paramètres V2 — intérieur refait style Boutique / Assemblage
+   - plus de colonne gauche opaque : hero + onglets top type boutique
+   - fonds transparents, cards glass comme shop / assembly
+   ============================================================ */
+#settingsWindow{ width:min(980px,calc(100vw - 24px)); height:min(720px,calc(100vh - 24px)); max-width:none; }
+#settingsWindow .settingsBody{
+  display:flex !important;
+  flex-direction:column !important;
+  grid-template-columns:none !important;
+  grid-template-rows:none !important;
+  height:calc(100% - 30px) !important;
+  min-height:0 !important;
+  padding:0 !important;
+  overflow:hidden !important;
+  color:#dff7ff !important;
+  background:transparent !important;
+}
+/* ---- Header : titre + onglets, tout transparent ---- */
+#settingsWindow .settingsTabs{
+  flex:0 0 auto !important;
+  display:grid !important;
+  grid-template-columns:none !important;
+  gap:10px !important;
+  min-width:0 !important;
+  padding:14px 14px 12px !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  overflow:visible !important;
+}
+#settingsWindow .settingsNavHead{
+  display:flex !important;
+  align-items:baseline !important;
+  gap:10px !important;
+  margin:0 !important;
+  padding:0 2px !important;
+  border:0 !important;
+  background:transparent !important;
+}
+#settingsWindow .settingsNavHead b{
+  font-size:20px !important;
+  font-weight:900 !important;
+  letter-spacing:.2px !important;
+  background:linear-gradient(135deg,#ffffff,#00d9ff) !important;
+  -webkit-background-clip:text !important;
+  background-clip:text !important;
+  -webkit-text-fill-color:transparent !important;
+  color:#fff !important;
+}
+#settingsWindow .settingsNavHead span{
+  color:rgba(232,244,255,.6) !important;
+  font-size:12px !important;
+  font-weight:600 !important;
+}
+#settingsWindow .settingsTabRow{
+  display:flex !important;
+  gap:8px !important;
+  flex-wrap:wrap !important;
+  min-width:0 !important;
+}
+#settingsWindow .settingsTabIcon{ display:none !important; }
+/* Tous les boutons paramètres réutilisent le style du bouton play du PET (#petPlayBtn) — copie conforme */
+#settingsWindow .settingsTab{
+  flex:1 1 0 !important;
+  min-width:120px !important;
+  width:auto !important;
+  min-height:36px !important;
+  height:36px !important;
+  display:grid !important;
+  place-items:center !important;
+  text-align:center !important;
+  gap:0 !important;
+  padding:0 12px !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  line-height:1 !important;
+  letter-spacing:normal !important;
+  white-space:nowrap !important;
+  cursor:pointer !important;
+  transition:none !important;
+  transform:none !important;
+}
+#settingsWindow .settingsTab:hover:not(:disabled){ border-color:rgba(124,240,255,.62) !important; background:rgba(0,140,185,.3) !important; box-shadow:0 0 16px rgba(0,217,255,.12) !important; }
+#settingsWindow .settingsTab.active{
+  color:#eaffff !important;
+  border-color:rgba(124,240,255,.62) !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03),0 0 16px rgba(0,217,255,.12) !important;
+}
+#settingsWindow .settingsTab:disabled{ opacity:.35 !important; cursor:default !important; }
+#settingsWindow .settingsTab>span{ display:block !important; width:100% !important; justify-self:center !important; text-align:center !important; }
+/* ---- Pages : transparentes, scroll interne ---- */
+#settingsWindow .settingsPage{
+  display:none !important;
+  grid-column:auto !important;
+  grid-row:auto !important;
+  flex:1 1 auto !important;
+  min-height:0 !important;
+  min-width:0 !important;
+  height:auto !important;
+  box-sizing:border-box !important;
+  padding:14px !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  background:transparent !important;
+  border:0 !important;
+  scrollbar-width:thin !important;
+  scrollbar-color:rgba(124,240,255,.4) transparent !important;
+}
+#settingsWindow .settingsPage.active{ display:flex !important; flex-direction:column !important; gap:12px !important; align-content:start !important; }
+#settingsWindow .settingsPage::-webkit-scrollbar{ width:8px !important; display:block !important; }
+#settingsWindow .settingsPage::-webkit-scrollbar-track{ background:rgba(0,0,0,.3) !important; border-radius:999px !important; }
+#settingsWindow .settingsPage::-webkit-scrollbar-thumb{ background:rgba(124,240,255,.35) !important; border-radius:999px !important; }
+#settingsWindow .settingsPageIntro{
+  display:grid !important;
+  gap:2px !important;
+  margin:0 !important;
+  padding:0 2px 10px !important;
+  border:0 !important;
+  border-bottom:1px solid rgba(100,200,255,.14) !important;
+  background:transparent !important;
+}
+#settingsWindow .settingsPageIntro b{ color:#f0f9ff !important; font-size:15px !important; font-weight:900 !important; }
+#settingsWindow .settingsPageIntro span{ color:rgba(232,244,255,.6) !important; font-size:11px !important; }
+/* ---- Cards façon boutique .statCard / assemblage .assemblySubCard ---- */
+#settingsWindow .settingsCardGrid{ display:grid !important; gap:12px !important; align-items:start !important; }
+#settingsWindow .settingsPage[data-settings-page="general"] .settingsCardGrid{ grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:8px !important; align-items:start !important; }
+#settingsWindow .settingsPage[data-settings-page="general"] .settingsCol{ display:grid !important; gap:8px !important; align-content:start !important; min-width:0 !important; }
+#settingsWindow .settingsCardGridTwo{ grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+#settingsWindow .settingsCard,
+#settingsWindow .settingsKeyGroup,
+#settingsWindow .settingsVisual,
+#settingsWindow .settingsAudio{
+  display:grid !important;
+  align-content:start !important;
+  gap:10px !important;
+  min-width:0 !important;
+  margin:0 !important;
+  padding:14px !important;
+  border:1px solid rgba(100,200,255,.2) !important;
+  border-radius:14px !important;
+  background:linear-gradient(135deg,rgba(0,217,255,.08),rgba(138,43,226,.05)) !important;
+  box-shadow:0 4px 12px rgba(0,0,0,.3) !important;
+  backdrop-filter:blur(12px) !important;
+}
+#settingsWindow .settingsCardHead{
+  display:flex !important;
+  align-items:center !important;
+  gap:10px !important;
+  margin:0 !important;
+  padding:0 0 10px !important;
+  border:0 !important;
+  border-bottom:1px solid rgba(100,200,255,.14) !important;
+  background:transparent !important;
+}
+#settingsWindow .settingsCardHead>span{
+  flex:0 0 auto !important;
+  min-width:34px !important;
+  height:28px !important;
+  display:grid !important;
+  place-items:center !important;
+  padding:0 8px !important;
+  border:1px solid rgba(0,217,255,.3) !important;
+  border-radius:8px !important;
+  color:#7cf0ff !important;
+  background:rgba(0,0,0,.25) !important;
+  font-size:10px !important;
+  font-weight:900 !important;
+  letter-spacing:.6px !important;
+  box-shadow:none !important;
+}
+#settingsWindow .settingsCardHead>div{ display:grid !important; gap:2px !important; min-width:0 !important; }
+#settingsWindow .settingsCardHead b{ color:#f2fcff !important; font-size:13px !important; font-weight:900 !important; }
+#settingsWindow .settingsCardHead small{ color:rgba(232,244,255,.6) !important; font-size:11px !important; }
+#settingsWindow .settingsOptionGrid{ display:grid !important; gap:8px !important; }
+/* ---- Lignes d'options façon .shopRow ---- */
+#settingsWindow .settingsCheck,
+#settingsWindow .sfxRow,
+#settingsWindow .settingsFpsRow{
+  display:flex !important;
+  align-items:center !important;
+  gap:10px !important;
+  height:auto !important;
+  min-height:46px !important;
+  box-sizing:border-box !important;
+  margin:0 !important;
+  padding:8px 12px !important;
+  border:1px solid rgba(100,200,255,.16) !important;
+  border-radius:12px !important;
+  background:rgba(255,255,255,.035) !important;
+  box-shadow:none !important;
+  cursor:pointer !important;
+  transition:border-color .15s ease,background .15s ease !important;
+}
+#settingsWindow .settingsCheck:hover,
+#settingsWindow .sfxRow:hover{ border-color:rgba(0,217,255,.42) !important; background:rgba(0,217,255,.075) !important; }
+#settingsWindow .settingsCheck input{ flex:0 0 auto !important; width:16px !important; height:16px !important; margin:0 !important; accent-color:#00d9ff !important; cursor:pointer !important; }
+/* Toutes les checkbox paramètres = style checkbox raffinage (.refineryAuto input) */
+#settingsWindow .settingsCheck input[type="checkbox"],
+#settingsWindow .sfxRow input[type="checkbox"]{
+  appearance:none !important;
+  -webkit-appearance:none !important;
+  flex:0 0 auto !important;
+  width:17px !important;
+  height:17px !important;
+  margin:0 !important;
+  display:grid !important;
+  place-items:center !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:6px !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  accent-color:unset !important;
+  cursor:pointer !important;
+}
+#settingsWindow .settingsCheck input[type="checkbox"]:checked::after,
+#settingsWindow .sfxRow input[type="checkbox"]:checked::after{
+  content:"✓" !important;
+  color:#eaffff !important;
+  font-size:11px !important;
+  font-weight:900 !important;
+  line-height:1 !important;
+}
+#settingsWindow .settingsCheck input[type="checkbox"]:hover,
+#settingsWindow .sfxRow input[type="checkbox"]:hover{ border-color:rgba(124,240,255,.62) !important; }
+/* Sliders volume assortis aux checkbox raffinage */
+#settingsWindow .settingsVolumeSlider{
+  -webkit-appearance:none !important;
+  appearance:none !important;
+  height:10px !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:6px !important;
+  background:rgba(0,0,0,.45) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  outline:none !important;
+  cursor:pointer !important;
+}
+#settingsWindow .settingsVolumeSlider::-webkit-slider-thumb{
+  -webkit-appearance:none !important;
+  appearance:none !important;
+  width:16px !important;
+  height:16px !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:6px !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  cursor:pointer !important;
+}
+#settingsWindow .settingsVolumeSlider::-moz-range-track{
+  height:10px !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:6px !important;
+  background:rgba(0,0,0,.45) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#settingsWindow .settingsVolumeSlider::-moz-range-progress{
+  height:8px !important;
+  border-radius:6px !important;
+  background:rgba(0,217,255,.35) !important;
+}
+#settingsWindow .settingsVolumeSlider::-moz-range-thumb{
+  width:14px !important;
+  height:14px !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:6px !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  cursor:pointer !important;
+}
+#settingsWindow .settingsVolumeSlider:hover{ border-color:rgba(124,240,255,.62) !important; }
+#settingsWindow .settingsVolumeSlider:hover::-webkit-slider-thumb{ border-color:rgba(124,240,255,.62) !important; box-shadow:inset 0 0 0 1px rgba(255,255,255,.03),0 0 10px rgba(0,217,255,.35) !important; }
+#settingsWindow .settingsVolumeSlider:hover::-moz-range-thumb{ border-color:rgba(124,240,255,.62) !important; }
+#settingsWindow .settingsCheck>span{ display:grid !important; gap:2px !important; min-width:0 !important; }
+#settingsWindow .settingsCheck b{ color:#e9faff !important; font-size:12px !important; font-weight:800 !important; }
+#settingsWindow .settingsCheck small{ color:rgba(232,244,255,.6) !important; font-size:11px !important; }
+/* ---- Tous les boutons paramètres = style bouton play du PET (copie conforme) ---- */
+#settingsWindow .settingsToggle,
+#settingsWindow .settingsResetBtn{
+  min-height:36px !important;
+  height:auto !important;
+  width:100% !important;
+  box-sizing:border-box !important;
+  display:grid !important;
+  place-items:center !important;
+  text-align:center !important;
+  margin:0 !important;
+  padding:0 12px !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  line-height:1 !important;
+  letter-spacing:normal !important;
+  cursor:pointer !important;
+  transition:none !important;
+  transform:none !important;
+}
+#settingsWindow .keyBindRow{
+  min-height:36px !important;
+  height:auto !important;
+  width:100% !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:10px !important;
+  margin:0 !important;
+  padding:0 12px !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  line-height:1 !important;
+  letter-spacing:normal !important;
+  cursor:pointer !important;
+  transition:none !important;
+  transform:none !important;
+}
+#settingsWindow .settingsToggle:hover:not(:disabled),
+#settingsWindow .settingsResetBtn:hover:not(:disabled),
+#settingsWindow .keyBindRow:hover:not(:disabled){ border-color:rgba(124,240,255,.62) !important; background:rgba(0,140,185,.3) !important; box-shadow:0 0 16px rgba(0,217,255,.12) !important; }
+#settingsWindow .settingsToggle:disabled,
+#settingsWindow .settingsResetBtn:disabled,
+#settingsWindow .keyBindRow:disabled{ opacity:.35 !important; cursor:default !important; }
+#settingsWindow .settingsToggle.isOn{ border:1px solid rgba(124,240,255,.38) !important; color:#eaffff !important; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important; box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important; }
+#settingsWindow .settingsToggle.isOn:hover:not(:disabled){ border-color:rgba(124,240,255,.62) !important; background:rgba(0,140,185,.3) !important; box-shadow:0 0 16px rgba(0,217,255,.12) !important; }
+#settingsWindow .settingsToggle.isOff{ border:1px solid rgba(124,240,255,.38) !important; color:#eaffff !important; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important; box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important; }
+#settingsWindow .settingsDangerBtn{ color:#eaffff !important; }
+#settingsWindow .settingsPageFooter{ display:grid !important; grid-template-columns:1fr 1fr !important; gap:10px !important; margin:0 !important; padding:12px 2px 0 !important; border:0 !important; border-top:1px solid rgba(100,200,255,.14) !important; background:transparent !important; }
+#settingsWindow .settingsPageFooter:has(> :only-child){ grid-template-columns:1fr !important; }
+#settingsWindow .settingsPage[data-settings-page="controls"] .settingsPageFooter{ border-top:0 !important; }
+/* ---- Commandes / Audio : détails transparents ---- */
+#settingsWindow .settingsKeyColumns{ display:grid !important; grid-template-columns:minmax(210px,.65fr) minmax(0,1.35fr) !important; gap:12px !important; align-items:start !important; overflow:visible !important; background:transparent !important; }
+#settingsWindow .settingsKeyGroup>.settingsSectionSub,
+#settingsWindow .settingsSectionSub{
+  margin:0 !important;
+  padding:0 2px 8px !important;
+  border:0 !important;
+  border-bottom:1px solid rgba(100,200,255,.14) !important;
+  color:#7cecff !important;
+  background:transparent !important;
+  font-size:10px !important;
+  font-weight:900 !important;
+  text-transform:uppercase !important;
+  letter-spacing:.7px !important;
+}
+#settingsWindow .keyBindRow{ min-height:34px !important; font-size:11px !important; }
+#settingsWindow .keyBindRow>span{ flex:1 !important; min-width:0 !important; text-align:left !important; line-height:1.25 !important; }
+#settingsWindow .keyBindRow kbd{
+  flex:0 0 auto !important;
+  min-width:44px !important;
+  height:24px !important;
+  display:grid !important;
+  place-items:center !important;
+  padding:0 8px !important;
+  border:1px solid rgba(124,240,255,.28) !important;
+  border-radius:8px !important;
+  color:#7cf0ff !important;
+  background:rgba(0,0,0,.45) !important;
+  font-family:inherit !important;
+  font-size:11px !important;
+  font-weight:900 !important;
+}
+#settingsWindow .keyBindRow.waiting{ border-color:rgba(255,210,122,.75) !important; background:rgba(255,210,122,.12) !important; }
+#settingsWindow .settingsSlotKeyColumns{ display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:10px !important; }
+#settingsWindow .settingsSlotKeyCol{ min-width:0 !important; display:grid !important; gap:6px !important; align-content:start !important; padding:10px !important; border:1px solid rgba(100,200,255,.15) !important; border-radius:10px !important; background:rgba(0,0,0,.18) !important; }
+#settingsWindow .settingsSlotKeys{ display:grid !important; gap:6px !important; }
+#settingsWindow .sfxList{ display:flex !important; flex-direction:column !important; gap:6px !important; overflow-y:auto !important; background:transparent !important; }
+#settingsWindow .sfxRow{ display:grid !important; grid-template-columns:auto minmax(110px,1fr) minmax(110px,1.4fr) auto !important; cursor:default !important; }
+#settingsWindow .sfxRow .sfxName{ color:#dceef4 !important; font-size:11px !important; font-weight:700 !important; overflow:hidden !important; text-overflow:ellipsis !important; white-space:nowrap !important; }
+#settingsWindow .settingsVolumeSlider{ accent-color:#00d9ff !important; }
+#settingsWindow .settingsVolumeValue{
+  color:#7cf0ff !important; font-size:10px !important; font-weight:900 !important;
+  background:rgba(0,217,255,.1) !important; border:1px solid rgba(0,217,255,.25) !important;
+  padding:2px 8px !important; border-radius:6px !important; white-space:nowrap !important;
+}
+#settingsWindow select{ width:100% !important; height:34px !important; box-sizing:border-box !important; padding:0 10px !important; border:1px solid rgba(124,240,255,.34) !important; border-radius:8px !important; color:#eaffff !important; background:#071b28 !important; font-size:11px !important; font-weight:800 !important; outline:none !important; }
+#settingsWindow .settingsHint{ margin:0 !important; padding:10px 11px !important; border:0 !important; border-left:2px solid rgba(0,217,255,.5) !important; border-radius:0 8px 8px 0 !important; color:rgba(232,244,255,.6) !important; background:rgba(0,0,0,.18) !important; font-size:11px !important; line-height:1.5 !important; }
+#settingsWindow .settingsAudio.settingsSoundControl{ display:flex !important; flex-direction:row !important; align-items:center !important; gap:10px !important; }
+#settingsWindow .settingsAudio.settingsSoundControl .settingsToggle{ flex:0 0 auto !important; width:auto !important; }
+#settingsWindow .settingsAudio.settingsSoundControl .settingsVolumeRow{ flex:1 !important; display:flex !important; align-items:center !important; gap:8px !important; }
+/* ---- Audio compact : une seule card, lignes en 2 colonnes, pas de scroll ---- */
+#settingsWindow .settingsPage[data-settings-page="sound"]{ align-content:start !important; }
+#settingsWindow .settingsAudioCard{ gap:8px !important; flex:1 1 auto !important; display:flex !important; flex-direction:column !important; }
+#settingsWindow .settingsPage[data-settings-page="sound"] .settingsAudio{
+  border:0 !important; border-radius:0 !important; background:transparent !important;
+  box-shadow:none !important; backdrop-filter:none !important; padding:0 !important;
+}
+#settingsWindow .settingsPage[data-settings-page="sound"] .settingsSectionSub{ padding-bottom:2px !important; }
+#settingsWindow .settingsPage[data-settings-page="sound"] .sfxList{
+  display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:5px !important; overflow:visible !important; flex:none !important; align-content:start !important;
+}
+#settingsWindow .settingsPage[data-settings-page="sound"] #sfxList{ flex:1 1 auto !important; grid-auto-rows:1fr !important; min-height:0 !important; }
+#settingsWindow .settingsPage[data-settings-page="sound"] #musicList .sfxRow{ grid-column:1 / -1 !important; }
+#settingsWindow .settingsPage[data-settings-page="sound"] .sfxRow{
+  display:grid !important;
+  grid-template-columns:auto minmax(80px,1fr) minmax(80px,1.2fr) auto !important;
+  gap:8px !important; min-height:32px !important; padding:3px 10px !important;
+}
+@media (max-width:760px){
+  #settingsWindow .settingsPage[data-settings-page="sound"] .sfxList{ grid-template-columns:1fr !important; }
+}
+@media (max-width:760px){
+  #settingsWindow{ width:calc(100vw - 16px) !important; height:calc(100vh - 16px) !important; }
+  #settingsWindow .settingsTabs{ padding:12px 12px 10px !important; }
+  #settingsWindow .settingsTab{ min-width:calc(50% - 4px) !important; flex:1 1 calc(50% - 4px) !important; }
+  #settingsWindow .settingsPage{ padding:12px !important; }
+  #settingsWindow .settingsCardGridTwo{ grid-template-columns:1fr !important; }
+  #settingsWindow .settingsKeyColumns{ grid-template-columns:1fr !important; }
+  #settingsWindow .settingsSlotKeyColumns{ grid-template-columns:1fr !important; }
+  #settingsWindow .settingsPageFooter{ grid-template-columns:1fr !important; }
+}

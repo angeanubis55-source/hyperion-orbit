@@ -7644,7 +7644,7 @@ function renderKeybindRows() {
 function switchSettingsTab(name) {
   const window_ = document.getElementById("settingsWindow");
   if (!window_) return;
-  const valid = ["general", "display", "interface", "controls", "sound"];
+  const valid = ["general", "controls", "sound"];
   const target = valid.includes(name) ? name : "general";
   window_.querySelectorAll("[data-settings-tab]").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.settingsTab === target);
