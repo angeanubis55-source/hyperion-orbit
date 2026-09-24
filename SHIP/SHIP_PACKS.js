@@ -336,6 +336,7 @@ export const SHIP_PACKS = [
   { id: "orcus_nobilis", name: "Orcus Nobilis", path: "SHIP/SHIP_SPRITES/SHIP_ORCUS_NOBILIS/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 30000000, hp: 300000, speed: 280, angleOffset: Math.PI },
   { id: "orcus_osiris", name: "Orcus Osiris", path: "SHIP/SHIP_SPRITES/SHIP_ORCUS_OSIRIS/", frames: 32, firstNumber: 1, ext: ".png", w: 300, h: 244, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 30000000, hp: 300000, speed: 280, angleOffset: Math.PI },
   { id: "orcus_phantasm", name: "Orcus Phantasm", path: "SHIP/SHIP_SPRITES/SHIP_ORCUS_PHANTASM/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 30000000, hp: 300000, speed: 280, angleOffset: Math.PI },
+  { id: "orcus_plus", name: "Orcus Plus", path: "SHIP/SHIP_SPRITES/SHIP_ORCUS_PLUS/", frames: 32, firstNumber: 1, ext: ".png", w: 350, h: 280, slots: { lasers: 18, gens: 18, extras: 3, shipMods: 4 }, price: 225000000, hp: 300000, speed: 330, angleOffset: Math.PI },
   { id: "orcus_prometheus", name: "Orcus Prometheus", path: "SHIP/SHIP_SPRITES/SHIP_ORCUS_PROMETHEUS/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 30000000, hp: 300000, speed: 280, angleOffset: Math.PI },
   { id: "orcus_psyche", name: "Orcus Psyche", path: "SHIP/SHIP_SPRITES/SHIP_ORCUS_PSYCHE/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 30000000, hp: 300000, speed: 280, angleOffset: Math.PI },
   { id: "orcus_seraph", name: "Orcus Seraph", path: "SHIP/SHIP_SPRITES/SHIP_ORCUS_SERAPH/", frames: 32, firstNumber: 1, ext: ".png", w: 250, h: 200, slots: { lasers: 15, gens: 15, extras: 3, shipMods: 4 }, price: 30000000, hp: 300000, speed: 280, angleOffset: Math.PI },
@@ -711,6 +712,7 @@ const SHIP_BASE_IDS = new Set([
   "liberator_plus", "goliath_plus", "citadel_plus", "solace_plus",
   "solaris_plus", "pusat_plus", "hammerclaw_plus", "hecate_plus",
   "spearhead_plus", "tartarus_plus", "spectrum_plus", "retiarus_plus",
+  "orcus_plus",
 ]);
 
 // Plus aucune entrée retirée : les designs Poison ont été supprimés

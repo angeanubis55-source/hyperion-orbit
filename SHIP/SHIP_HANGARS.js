@@ -1,7 +1,7 @@
 "use strict";
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { getActiveDroneFormation } from "../DRONE/DRONE_TYPES.js";
-import { getShipPackById } from "./SHIP_PACKS.js";
+import { getShipDesignBaseId, getShipPackById } from "./SHIP_PACKS.js";
 import { getShipEffectStats } from "./SHIP_BONUSES.js";
 import { FACTIONS, normalizeFactionId } from "../SRC/CORE/FACTIONS.js";
 
@@ -20,6 +20,13 @@ const fit =
   hangar?.fits?.[activeConfig] ||
   hangar?.fit ||
   { lasers: [], gens: [], extras: [], shipMods: [] };
+
+  // Orcus / Orcus Plus : seuls les % des modules roulette équipés sont
+  // multipliés (x1.5 / x2, ex : +30% PV -> +45% / +60%). Les designs
+  // cosmétiques héritent de leur base. Lasers, générateurs, drones,
+  // formations et effets passifs non concernés.
+  const hullBaseId = getShipDesignBaseId(hangar?.shipId) || String(hangar?.shipId || "").toLowerCase();
+  const hullModuleMult = hullBaseId === "orcus_plus" ? 2 : hullBaseId === "orcus" ? 1.5 : 1;
   
   // ✅ ÉTAPE 1 : calculer les stats de BASE (avant modules %)
   let baseDamage = 0;
@@ -153,10 +160,10 @@ const fit =
     const mod = shipModules.find(m => m?.id === modId);
     if (!mod) continue;
 
-    // CUMULER les % de chaque stat
+    // CUMULER les % de chaque stat (x1.5 sur Orcus, x2 sur Orcus Plus).
     for (const bonus of (mod.bonuses || [])) {
       const stat = bonus.stat;
-      const pct = Number(bonus.pct || 0);
+      const pct = Number(bonus.pct || 0) * hullModuleMult;
 
       if (stat === "hp") bonusHPPct += pct;
       if (stat === "shield") bonusShieldPct += pct;
