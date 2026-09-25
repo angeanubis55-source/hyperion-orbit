@@ -22714,14 +22714,13 @@ function spawnProtegitOnCubikonHit(cub, count = 20) {
   if (!cub || cub.hp <= 0) return;
   if (cub.type !== "npc_Cubikon") return;
 
-  // ✅ Vague normale : 20 Protegit. 25 % de chance de jackpot à 160.
-  const MAX_MINIONS = 160;
+  // ✅ Vague fixe : 20 Protegit max liés à ce Cubikon.
+  const MAX_MINIONS = 20;
 
   const current = (cub._minionIds?.length || 0);
   if (current >= MAX_MINIONS) return;
 
-  let wanted = Math.max(0, Math.floor(Number(count) || 20));
-  if (wanted <= 20 && Math.random() < 0.25) wanted = 160;
+  const wanted = Math.max(0, Math.floor(Number(count) || 20));
   const toSpawn = Math.min(wanted, MAX_MINIONS - current);
 
   for (let i = 0; i < toSpawn; i++) {
@@ -22741,6 +22740,11 @@ function spawnProtegitOnCubikonHit(cub, count = 20) {
     m.anchorWanderT = 0;
     m.anchorTX = sx;
     m.anchorTY = sy;
+
+    // Minion de Cubikon : plus agressif (détecte de plus loin, lâche moins
+    // vite), ancre et stats inchangées.
+    m.aggroRange = 1000;
+    m.aggroHold = 6;
 
     m.passiveNative = true;
     m._provoked = true;

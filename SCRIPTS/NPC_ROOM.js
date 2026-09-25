@@ -230,13 +230,10 @@ export class ZoneNpcSim {
   // --- Vague Cubikon partagee (parite solo, visible par tous) ---
   // Le premier impact sur un Cubikon declenche son animation d'ouverture
   // (delay 2 s -> open -> hold 2 s) puis le serveur fait apparaitre 20
-  // Protegits ancres au Cubikon (25 % de chance de jackpot à 160).
-  // Sans nouveau coup pendant 10 s, les minions sont retires
-  // silencieusement et la vague est re-armee.
+  // Protegits ancres au Cubikon. Sans nouveau coup pendant 10 s, les
+  // minions sont retires silencieusement et la vague est re-armee.
   static CUBIKON_WAVE_SIZE = 20;
-  static CUBIKON_JACKPOT_SIZE = 160;
-  static CUBIKON_JACKPOT_CHANCE = 0.25;
-  static CUBIKON_WAVE_MAX = 160;
+  static CUBIKON_WAVE_MAX = 20;
 
   countCubikonMinions(cubUid) {
     let n = 0;
@@ -251,12 +248,8 @@ export class ZoneNpcSim {
     const stats = statsFor("npc_Protegit");
     if (!stats) return;
     const linked = this.countCubikonMinions(cub.uid);
-    // 25 % de chance de jackpot : 160 Protegit au lieu de 20.
-    const waveSize = Math.random() < ZoneNpcSim.CUBIKON_JACKPOT_CHANCE
-      ? ZoneNpcSim.CUBIKON_JACKPOT_SIZE
-      : ZoneNpcSim.CUBIKON_WAVE_SIZE;
     const toSpawn = Math.min(
-      waveSize,
+      ZoneNpcSim.CUBIKON_WAVE_SIZE,
       Math.max(0, ZoneNpcSim.CUBIKON_WAVE_MAX - linked)
     );
     for (let i = 0; i < toSpawn; i++) {
@@ -279,8 +272,10 @@ export class ZoneNpcSim {
         passive: false, kamikaze: false,
         explodeOnTouch: false, explodeRadius: 0, explodeDmg: 0,
         canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,
-        bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.2 + Math.random() * 0.5,
-        aggroRange: 700, aggroHoldMs: 3500,
+        bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.1 + Math.random() * 0.3,
+        // Minion de Cubikon : plus agressif que la normale (détection élargie,
+        // tient l'aggro plus longtemps), mais toujours ancré au Cubikon.
+        aggroRange: 1000, aggroHoldMs: 6000,
         aggroBy: null, aggroUntil: 0,
         tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
         masterKiller: null, decaying: false, decayPerSec: 0, decayAge: 0,
@@ -552,8 +547,12 @@ export class ZoneNpcSim {
         e.hp -= Math.max(1, Number(e.decayPerSec) || 0) * dt;
         if (!(e.hp > 0)) {
           e.hp = 0; e.sh = 0; e.deadAt = nowMs;
+          // Mort par décomposition (Cubikon tué) sans aucun tir joueur : aucune
+          // récompense (parité solo : noRewards = !damagedByPlayer). Le
+          // masterKiller ne crédite que si le minion a été tapé.
+          const damagedByPlayer = e.firstBy != null || e.lastHitBy != null;
           const kb = (e.firstBy != null && this.players.has(e.firstBy))
-            ? e.firstBy : (e.masterKiller || e.lastHitBy);
+            ? e.firstBy : (damagedByPlayer ? (e.masterKiller || e.lastHitBy) : null);
           e.killer = String(kb || "");
           e.cause = "gun";
           this.deaths.push({ uid: e.uid, type: e.type, x: Math.round(e.x), y: Math.round(e.y), killer: e.killer, cause: "gun", seq: e.seq || 0, at: nowMs });
@@ -680,7 +679,7 @@ export class ZoneNpcSim {
         }
         const dx = e.tx - e.x, dy = e.ty - e.y;
         const d = Math.hypot(dx, dy) || 1;
-        mx = dx / d; my = dy / d; spd = e.speed * 0.55;
+        mx = dx / d; my = dy / d; spd = e.speed * 0.7;
         if (spd > 0) e.angle = Math.atan2(dy, dx);
       } else if (fleeing && from) {
         // Fuite : s'eloigne de la menace, rattrapable.

@@ -146,7 +146,7 @@ export const CATALOG = {
     { id: "laser_lf5al", name: "laser LF-5 Anchorlock", price: 72000000, icon: "/ASSETS/LASERS/lf_5_al_100x100.png", module: { type: "laser", damage: 245 }, desc: "245 dégâts, bonus PVP + ralentissements (sans effet vs aliens)." },
     { id: "laser_prl", name: "laser PR-L Prometheus", price: 150000000, icon: "/ASSETS/LASERS/pr_l_100x100.png", module: { type: "laser", damage: 210, vsMatch: [/Invoke/, /Mindfire/], vsMult: 3.5, vsLabel: "aliens Blacklight", overdrive: 200 }, desc: "210 dégâts, +200/canon tous les 5 tirs (ex : 35 = +7000), ×3,5 vs aliens Blacklight." },
     { id: "laser_osl", name: "laser OS-L Odysseus", price: 380000000, icon: "/ASSETS/LASERS/os_l_100x100.png", module: { type: "laser", damage: 220, critPct: 3 }, desc: "220 dégâts, critique à 200 % : +3 % de chance par canon, +9 % dès 3 montés." },
-    { id: "laser_lf5mf", name: "laser LF-5 Mortifier", price: 850000000, icon: "/ASSETS/LASERS/lf_5_mf_100x100.png", module: { type: "laser", damage: 452, mf: true }, desc: "452 dégâts, dégâts globaux +10 % à +50 % dès 3 montés." },
+    { id: "laser_lf5mf", name: "laser LF-5 Mortifier", price: 850000000, icon: "/ASSETS/LASERS/lf_5_mf_100x100.png", module: { type: "laser", damage: 295, mf: true }, desc: "295 dégâts, dégâts globaux +1 % à +7 % dès 3 montés." },
     ],
 
   extras: [
