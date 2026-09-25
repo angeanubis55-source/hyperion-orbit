@@ -25963,6 +25963,11 @@ function syncNetNpcs(dt) {
     if (!s || !s.uid) continue;
     seen.add(s.uid);
     let e = netUidToEnemy.get(s.uid) || null;
+    // Lors du premier snapshot apres un changement de carte, `s.x/y` peut
+    // deja contenir la position serveur suivante tandis que `s.rx/ry` est la
+    // position de rendu lissee. Creer le NPC sur x/y puis le ramener vers
+    // rx/ry dans la meme frame produisait le petit dash collectif au portail.
+    const snapX = Number(s.rx ?? s.x) || 0, snapY = Number(s.ry ?? s.y) || 0;
     if (s.alive === false) {
       if (e && (e._netSeq || 0) === (Number(s.seq) || 0)) {
         e.hp = 0;
@@ -25981,7 +25986,7 @@ function syncNetNpcs(dt) {
       continue;
     }
     if (!e) {
-      e = makeEnemy(s.type, Number(s.x) || 0, Number(s.y) || 0);
+      e = makeEnemy(s.type, snapX, snapY);
       if (!e) continue;
       e._netUid = String(s.uid);
       e._netSeq = Number(s.seq) || 0;
@@ -26016,7 +26021,6 @@ function syncNetNpcs(dt) {
       e._previousX = e.x;
       e._previousY = e.y;
     }
-    const snapX = Number(s.rx ?? s.x) || 0, snapY = Number(s.ry ?? s.y) || 0;
     const dx = snapX - e.x, dy = snapY - e.y;
     if (dx * dx + dy * dy > 2000 * 2000) { e.x = snapX; e.y = snapY; e.vx = 0; e.vy = 0; }
     else {
@@ -34048,6 +34052,7 @@ function frame(t) {
         shPct: player.shMax > 0 ? player.sh / player.shMax : 1,
         collectUid: activeCollectable?.slotUid ? String(activeCollectable.slotUid) : "",
         collectPet: !!petCollectable,
+        background: document.visibilityState === "hidden" && Bot.active === true,
         atk: attackActive === true && !!atkTgt && !player.dead,
         combat: atkTgt ? (atkTgt._netPlayer != null ? "player" : "npc") : "",
         targetName: atkTgt && atkTgt._netPlayer == null

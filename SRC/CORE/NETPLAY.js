@@ -947,6 +947,7 @@ export function ensureNetplayConnection() {
           shPct: Number.isFinite(Number(p.shPct)) ? Math.max(0, Math.min(1, Number(p.shPct))) : 1,
           collectUid: String(p.collectUid || "").slice(0, 64),
           collectPet: p.collectPet === true,
+          background: p.bg === true,
           // Tir en cours + point vise (monde) : rend le laser du copain.
           atk: p.atk === true,
           tx: Number(p.tx) || 0,
@@ -1170,6 +1171,7 @@ function sendNow(local, force = false) {
       shPct: Number.isFinite(Number(local.shPct)) ? local.shPct : 1,
       collectUid: String(local.collectUid || "").slice(0, 64),
       collectPet: local.collectPet === true,
+      bg: local.background === true,
       safe: local.safe === true,
       atk: local.atk === true,
       combat: local.combat === "player" ? "player" : (local.combat === "npc" ? "npc" : ""),
@@ -1444,7 +1446,7 @@ export function tickNetplayRemotes(dt = 0.016) {
     // a 1 Hz (onglet reduit) depasse systematiquement sa vraie cadence puis
     // revient en arriere a chaque paquet (dent de scie = teleportations).
     const updateInterval = Math.max(50, Math.min(2000, Number(r.updateInterval || 60)));
-    const leadCap = (updateInterval + 120) / 1000;
+    const leadCap = r.background === true ? 1.3 : (updateInterval + 120) / 1000;
     const lead = Math.min(predictionLeadSeconds(now - Number(r.sampleAt || now)), leadCap);
     const vx = Number(r.vx || 0), vy = Number(r.vy || 0);
     const spd = Math.hypot(vx, vy);
