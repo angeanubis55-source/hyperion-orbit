@@ -13128,14 +13128,29 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   // comme ça le jump part de l'état open sans cassure
   ptl.jumpBaseFade = Math.max(0, getPortalOpenFade(ptl));
 
-  // ✅ purge d'avant-saut : les NPC de l'ancienne carte partent dès le
-  // départ (pas de fuite visuelle de l'autre côté, pas de disparition
-  // brutale à l'arrivée).
-  purgeNpcsForJump();
+  // ✅ PAS de purge d'avant-saut ici : vider `enemies` au clic puis les
+  // recréer via syncNetNpcs / zoneController pendant les ~2 s d'animation
+  // produisait le freeze puis le dash collectif des NPC. Les NPC de
+  // l'ancienne carte restent visibles et continuent leur IA pendant le
+  // saut ; la vraie purge a lieu dans switchMapConfig (début + fin du
+  // préchargement). On libère juste le lock NPC et les tirs en vol, et on
+  // protège le joueur pendant l'animation (iFrames) puisqu'il peut encore
+  // être touché.
+  try {
+    const locked = Target.get();
+    if (locked && enemies.includes(locked) && !locked._netPlayer && !locked._netPet && !locked.isPetTarget) {
+      try { Target.clear(); } catch {}
+    }
+  } catch {}
+  try { enemyBullets.length = 0; } catch {}
 
   ptl.jumping = true;
   ptl.jumpT = 0;
   ptl.jumpDur = Math.max(0.1, Number(ptl.jumpDur ?? 2));
+
+  // ✅ invulnérable pendant l'animation : les NPC restent visibles et
+  // peuvent encore tirer, mais le saut ne doit jamais tuer.
+  try { player.iFrames = Math.max(Number(player.iFrames) || 0, ptl.jumpDur + 0.3); } catch {}
 
   // ✅ verrouille le robot réparateur pendant le saut : cooldown à 0
   player.repairJumpLock = true;
@@ -28641,9 +28656,17 @@ function startGatePortalJump(ptl, action) {
     return;
   }
   if (beginGatePortalJump(ptl, action, portal.switchDur)) {
-    // ✅ purge d'avant-saut : comme les portails de zone, aucun NPC de
-    // l'ancienne carte ne fuit de l'autre côté.
-    purgeNpcsForJump();
+    // ✅ Même logique que les portails de zone : pas de purge d'avant-saut
+    // (freeze puis dash des NPC pendant l'animation). On libère juste le
+    // lock + tirs en vol et on protège le joueur.
+    try {
+      const locked = Target.get();
+      if (locked && enemies.includes(locked) && !locked._netPlayer && !locked._netPet && !locked.isPetTarget) {
+        try { Target.clear(); } catch {}
+      }
+    } catch {}
+    try { enemyBullets.length = 0; } catch {}
+    try { player.iFrames = Math.max(Number(player.iFrames) || 0, Math.max(0.1, Number(ptl.jumpDur || 2)) + 0.3); } catch {}
     // ✅ mêmes sons que les portails de zone : saut possible puis saut en cours.
     SFX.play("swReady");
     window.setTimeout(() => {
