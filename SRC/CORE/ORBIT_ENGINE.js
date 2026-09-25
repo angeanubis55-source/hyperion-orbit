@@ -7349,6 +7349,8 @@ const DEFAULT_GAME_SETTINGS = {
   npcEngineEffects: true,
   customDesignEffects: true,
   moveMarker: true,
+  // Attaque au double-clic sur un NPC/joueur. Désactivable dans Général.
+  doubleClickAttack: true,
   // FPS maximum : 0 = auto (vsync, calé sur les Hz de l'écran).
   fpsLimit: 0,
   keybinds: { ...DEFAULT_KEYBINDS },
@@ -7906,6 +7908,8 @@ function renderSettingsWindow() {
   if (customDesignEffects) customDesignEffects.checked = !!GAME_SETTINGS.customDesignEffects;
   const moveMarker = document.getElementById("optMoveMarker");
   if (moveMarker) moveMarker.checked = !!GAME_SETTINGS.moveMarker;
+  const doubleClickAttack = document.getElementById("optDoubleClickAttack");
+  if (doubleClickAttack) doubleClickAttack.checked = GAME_SETTINGS.doubleClickAttack !== false;
   const fpsLimit = document.getElementById("optFpsLimit");
   if (fpsLimit) fpsLimit.value = String(normalizeFpsLimit(GAME_SETTINGS.fpsLimit));
 
@@ -8002,6 +8006,11 @@ function wireSettingsWindow() {
 
   moveMarker?.addEventListener("change", () => {
     setGameSetting("moveMarker", moveMarker.checked);
+  });
+
+  const doubleClickAttack = document.getElementById("optDoubleClickAttack");
+  doubleClickAttack?.addEventListener("change", () => {
+    setGameSetting("doubleClickAttack", doubleClickAttack.checked);
   });
 
   fpsLimitSel?.addEventListener("change", () => {
@@ -17737,6 +17746,10 @@ canvas.addEventListener(
 // Le dblclick natif est désactivé pour éviter les doubles attaques.
 let lastClickAtMs = 0;
 let lastClickEnemyId = null;
+let lastClickX = 0;
+let lastClickY = 0;
+const DOUBLE_CLICK_MAX_MS = 350;
+const DOUBLE_CLICK_MAX_DIST = 14;
 
 const moveTarget = { active: false, x: 0, y: 0 };
 
@@ -17982,18 +17995,29 @@ canvas.addEventListener(
     }
 
     // Double-clic maison (fiable sur cibles mobiles) : 2 relâchés sur le même
-    // ennemi à moins de 500 ms -> verrouille + attaque. Pas de re-visée.
-    if (e.button === 0 && !e.shiftKey) {
+    // ennemi à moins de 350 ms ET à moins de 14 px l'un de l'autre ->
+    // verrouille + attaque. Pas de re-visée. Désactivable dans Général.
+    if (e.button === 0 && !e.shiftKey && GAME_SETTINGS.doubleClickAttack !== false) {
       const nowMs = performance.now();
       const releasedEnemy = pickEnemyAtScreen(e.clientX, e.clientY);
-      if (releasedEnemy && releasedEnemy.hp > 0 && lastClickEnemyId === releasedEnemy.id && nowMs - lastClickAtMs < 500) {
-        lastClickAtMs = 0;
-        lastClickEnemyId = null;
-        Target.set(releasedEnemy);
-        stopAttack();
-        startAttack();
+      if (releasedEnemy && releasedEnemy.hp > 0 && lastClickEnemyId === releasedEnemy.id && nowMs - lastClickAtMs < DOUBLE_CLICK_MAX_MS) {
+        const mdx = e.clientX - lastClickX, mdy = e.clientY - lastClickY;
+        if (mdx * mdx + mdy * mdy <= DOUBLE_CLICK_MAX_DIST * DOUBLE_CLICK_MAX_DIST) {
+          lastClickAtMs = 0;
+          lastClickEnemyId = null;
+          Target.set(releasedEnemy);
+          stopAttack();
+          startAttack();
+        } else {
+          lastClickAtMs = nowMs;
+          lastClickX = e.clientX;
+          lastClickY = e.clientY;
+          lastClickEnemyId = releasedEnemy.id;
+        }
       } else if (releasedEnemy && releasedEnemy.hp > 0) {
         lastClickAtMs = nowMs;
+        lastClickX = e.clientX;
+        lastClickY = e.clientY;
         lastClickEnemyId = releasedEnemy.id;
       } else {
         lastClickAtMs = 0;
