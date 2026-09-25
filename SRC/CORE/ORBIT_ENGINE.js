@@ -221,6 +221,7 @@ let {
   PLAYER_BULLET_SPRITES,
   NPC_TYPES,
   LOCK_SPR,
+  LOCK_GREY_SPR = null,
   PORTAL_IDLE_SPR,
   PORTAL_OPEN_SPR,
   PORTAL_JUMP_SPR = null,
@@ -26053,6 +26054,7 @@ function syncNetNpcs(dt) {
       e._netKillerId = null;
       e._netKillerPseudo = "";
       e._netLootOwner = false;
+      e._netLockBy = null;
       e._netWaiting = false;
       e._netSilent = false;
       e._deathFxPlayed = false;
@@ -26084,6 +26086,7 @@ function syncNetNpcs(dt) {
       e.sh = e.shMax > 0 ? Math.max(0, Math.min(e.shMax, Math.round(Number(s.sh)))) : Math.max(0, Math.round(Number(s.sh)));
     }
     e._netAggro = s.aggro != null ? String(s.aggro) : null;
+    e._netLockBy = s.lock != null ? String(s.lock) : null;
     e.rocketSlowPct = Number(s.rocketSlowPct) || 0;
     e.rocketSlowT = Number(s.rocketSlowT) || 0;
     e.freezeT = Number(s.freezeT) || 0;
@@ -28534,6 +28537,7 @@ function drawRocketDebuffEffect(e) {  const slowed = (e.rocketSlowT || 0) > 0;
 // Portal / Toast / MoveTarget / Target (PNG)
 // ============================================================
 loadImage(LOCK_SPR.src, { priority: true });
+loadImage((LOCK_GREY_SPR || { src: "ASSETS/UI/LOCK_DEJAPRIS.png" }).src, { priority: true });
 loadImage(ESCORT_LOCK_SPR.src, { priority: true });
 loadImage(PORTAL_IDLE_SPR.src, { priority: true });
 loadImage(PORTAL_OPEN_SPR.src, { priority: true });
@@ -29325,9 +29329,32 @@ function drawMoveTarget(ox, oy) {
 
 function drawTargetMarker(e, ox, oy, time) {
   if (!e || e.hp <= 0) return;
-  const img = getCachedImage(LOCK_SPR.src);
+  const spr = targetLockSprite(e);
+  const img = getCachedImage(spr.src);
   if (!isImgReady(img)) return;
-  drawTargetLock(ctx, e, img, LOCK_SPR, ox, oy, time);
+  drawTargetLock(ctx, e, img, spr, ox, oy, time);
+}
+
+// Lock partagé : gris si le NPC est revendiqué par un autre joueur hors
+// groupe (pas de récompense pour nous), rouge sinon — premier attaquant,
+// NPC libre, membre du groupe, ou solo (pas de _netUid).
+function targetLockSprite(e) {
+  try {
+    if (e && e._netUid && !e._netPlayer && !e._netPet && e._netLockBy != null) {
+      const holder = String(e._netLockBy);
+      if (holder !== String(netMyId())) {
+        const mate = rules?.mode !== "gate" && getNetGroup()?.members?.some(
+          (m) => String(m.id) === holder
+            && String(m.map) === String(window.__CURRENT_MAP_ID__ || "")
+            && m.instance !== true,
+        );
+        if (mate !== true) {
+          return LOCK_GREY_SPR || { ...LOCK_SPR, src: "ASSETS/UI/LOCK_DEJAPRIS.png" };
+        }
+      }
+    }
+  } catch {}
+  return LOCK_SPR;
 }
 
 function drawLaserBeam(L, ox, oy) {

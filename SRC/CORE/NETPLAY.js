@@ -1091,6 +1091,8 @@ export function ensureNetplayConnection() {
             cause: String(n.cause || "gun").slice(0, 8),
             seq: Number(n.seq) || 0,
             aggro: n.aggro != null ? String(n.aggro) : null,
+            // Lock premier attaquant (visuel rouge / gris) : id du détenteur.
+            lock: n.lock != null ? String(n.lock) : null,
             // Animation d'ouverture du Cubikon (vague partagee) : phase +
             // temps restant, miroir dans ORBIT_ENGINE (syncNetNpcs).
             cube: (n.cube === "delay" || n.cube === "open" || n.cube === "hold") ? String(n.cube) : null,
@@ -1494,8 +1496,25 @@ export function tickNetplayRemotes(dt = 0.016) {
     const petTargetX = Number(r.petx) + Number(r.petvx || 0) * lead;
     const petTargetY = Number(r.pety) + Number(r.petvy || 0) * lead;
     const prx = Number(r.petrx ?? r.petx), pry = Number(r.petry ?? r.pety);
-    r.petrx = prx + (petTargetX - prx) * k;
-    r.petry = pry + (petTargetY - pry) * k;
+    // Téléport du PET (recall vers le proprio, réactivation, changement de
+    // map, position périmée) : on snappe direct. Sinon le lissage borné
+    // ci-dessous mettrait plusieurs secondes à traverser l'écran en dash.
+    if (Math.hypot(Number(r.petx) - prx, Number(r.pety) - pry) > 1500) {
+      r.petrx = Number(r.petx);
+      r.petry = Number(r.pety);
+    } else {
+      // Parité vaisseaux : plafond de correction par frame, sinon un trou
+      // réseau ou une vitesse estimée en pic donne des gros dashs + allers-
+      // retours instables (le lissage seul absorbe ~26 % par frame).
+      const petCorrectionX = petTargetX - prx, petCorrectionY = petTargetY - pry;
+      const petCorrectionDistance = Math.hypot(petCorrectionX, petCorrectionY);
+      const petMaxCorrection = Math.max(1800, NET_MAX_ESTIMATED_SPEED * 2) * frameDt;
+      const petK = petCorrectionDistance > 0
+        ? Math.min(k, petMaxCorrection / petCorrectionDistance)
+        : k;
+      r.petrx = prx + petCorrectionX * petK;
+      r.petry = pry + petCorrectionY * petK;
+    }
   }
   for (const n of netNpcs.values()) {
     const lead = predictionLeadSeconds(now - Number(n.sampleAt || now));

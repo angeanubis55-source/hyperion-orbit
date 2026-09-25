@@ -216,13 +216,14 @@ export class ZoneNpcSim {
       aggroRange: camp.aggroRange, aggroHoldMs: Math.max(1000, (camp.aggroHold ?? 3.5) * 1000),
       aggroBy: null, aggroUntil: 0,
       tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+      lockBy: null, lockHitAt: 0, lockReleaseAt: 0,
       orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
       seq: (Number(prev?.seq) || 0) + 1, // incarnation : anti-confusion au respawn
     });
   }
 
 
-  drainPlayerHits() {
+drainPlayerHits() {
     if (!this.playerHits.length) return [];
     return this.playerHits.splice(0, this.playerHits.length);
   }
@@ -234,6 +235,14 @@ export class ZoneNpcSim {
   // minions sont retires silencieusement et la vague est re-armee.
   static CUBIKON_WAVE_SIZE = 20;
   static CUBIKON_WAVE_MAX = 20;
+
+  // --- Lock premier attaquant (visuel rouge / gris) ---
+  // Le détenteur garde le rouge tant qu'il inflige des dégâts, reste en vie
+  // et hors ZNA. Sinon grace de 5 s (un nouveau dégât du détenteur l'annule,
+  // "re bon"), puis lock libre : le premier qui re-tape prend le rouge et
+  // firstBy suit pour que la récompense aille au rouge.
+  static LOCK_IDLE_MS = 5000;
+  static LOCK_GRACE_MS = 5000;
 
   countCubikonMinions(cubUid) {
     let n = 0;
@@ -278,6 +287,7 @@ export class ZoneNpcSim {
         aggroRange: 1000, aggroHoldMs: 6000,
         aggroBy: null, aggroUntil: 0,
         tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+        lockBy: null, lockHitAt: 0, lockReleaseAt: 0,
         masterKiller: null, decaying: false, decayPerSec: 0, decayAge: 0,
         fleeVx: 0, fleeVy: 0, deadAt: 0,
         orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
@@ -338,6 +348,7 @@ export class ZoneNpcSim {
           aggroRange: 700, aggroHoldMs: 3500,
           aggroBy: null, aggroUntil: 0,
           tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+          lockBy: null, lockHitAt: 0, lockReleaseAt: 0,
           masterKiller: null, decaying: false, decayPerSec: 0, decayAge: 0,
           fleeVx: 0, fleeVy: 0, deadAt: 0,
           orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
@@ -391,6 +402,16 @@ export class ZoneNpcSim {
     if (entry.firstBy == null) entry.firstBy = String(clientId);
     entry.lastHitBy = String(clientId);
     const nowMs = Date.now();
+    // Lock premier attaquant : prise si libre (le premier qui tape prend le
+    // rouge), refresh si détenteur (un dégât annule la grace, "re bon").
+    if (entry.lockBy == null) {
+      entry.lockBy = String(clientId);
+      entry.lockHitAt = nowMs;
+      entry.lockReleaseAt = 0;
+    } else if (String(entry.lockBy) === String(clientId)) {
+      entry.lockHitAt = nowMs;
+      entry.lockReleaseAt = 0;
+    }
     const slowPct = clamp(Number(hit?.slowPct) || 0, 0, 95);
     const slowSec = clamp(Number(hit?.slowSec) || 0, 0, 30);
     const freezeSec = clamp(Number(hit?.freezeSec) || 0, 0, 5);
@@ -539,6 +560,25 @@ export class ZoneNpcSim {
     // - sinon : derive. En poursuite proche : orbite, jamais statique.
     for (const e of this.entries.values()) {
       if (!(e.hp > 0)) continue;
+      // Lock premier attaquant : le détenteur le perd s'il est mort, en ZNA
+      // ou sans dégât depuis 5 s. Grace de 5 s (un dégât du détenteur
+      // l'annule, voir applyHit), puis lock libre : firstBy suit pour que
+      // la récompense aille au nouveau rouge.
+      if (e.lockBy != null) {
+        const holder = this.players.get(String(e.lockBy));
+        const holderOut = !holder || holder.dead === true || holder.safe === true;
+        const holderIdle = nowMs - Number(e.lockHitAt || 0) > ZoneNpcSim.LOCK_IDLE_MS;
+        if (holderOut || holderIdle) {
+          if (!e.lockReleaseAt) e.lockReleaseAt = nowMs + ZoneNpcSim.LOCK_GRACE_MS;
+          else if (nowMs >= Number(e.lockReleaseAt) || 0) {
+            e.lockBy = null;
+            e.firstBy = null;
+            e.lockReleaseAt = 0;
+          }
+        } else {
+          e.lockReleaseAt = 0;
+        }
+      }
       // Minion orphelin (Cubikon mort) : perd 5 % de sa vie max par seconde
       // jusqu'a la mort, meme sous le feu ennemi. Fuite en ligne droite
       // pendant 3 s, puis errance + agro comme les autres NPC (tirs inclus).
@@ -770,6 +810,8 @@ export class ZoneNpcSim {
           slowT: Math.max(0, (Number(e.slowUntil) || 0) - nowMs) / 1000,
           freezeT: Math.max(0, (Number(e.freezeUntil) || 0) - nowMs) / 1000,
           aggro: aggroId,
+          // Lock premier attaquant (visuel rouge / gris) : id du détenteur.
+          lock: e.lockBy != null ? String(e.lockBy) : null,
           // Animation d'ouverture du Cubikon : phase + temps restant pour
           // que tous les ecrans jouent l'ouverture en meme temps.
           cube: (e.type === "npc_Cubikon" && e.cube && e.cube.phase) ? String(e.cube.phase) : null,
