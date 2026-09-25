@@ -198,10 +198,6 @@ const NET_MAX_ESTIMATED_SPEED = 1500;
 // Taux de virage max pris en compte pour la prediction en arc (rad/s) :
 // une orbite de farm typique tourne a ~1-2,5 rad/s.
 const NET_MAX_TURN_RATE = 4;
-const netPerf = {
-  messages: 0, snapshots: 0, bytes: 0, snapshotPlayers: 0, snapshotNpcs: 0,
-  maxCorrection: 0, startedAt: Date.now(),
-};
 
 function predictionLeadSeconds(sampleAgeMs) {
   const age = Math.max(0, Number(sampleAgeMs) || 0);
@@ -545,8 +541,6 @@ export function ensureNetplayConnection() {
   };
   ws.onerror = () => { try { ws.close(); } catch {} };
   ws.onmessage = (ev) => {
-    netPerf.messages++;
-    netPerf.bytes += typeof ev.data === "string" ? ev.data.length : Number(ev.data?.byteLength || 0);
     let msg = null;
     try { msg = JSON.parse(String(ev.data)); } catch { return; }
     if (!msg || typeof msg !== "object") return;
@@ -834,9 +828,6 @@ export function ensureNetplayConnection() {
       return;
     }
     if (msg.t === "snapshot" && Array.isArray(msg.players)) {
-      netPerf.snapshots++;
-      netPerf.snapshotPlayers += msg.players.length;
-      netPerf.snapshotNpcs += Array.isArray(msg.npc?.list) ? msg.npc.list.length : 0;
       // Snapshot d'une autre map (changement en cours) : ignore.
       try {
         const snapMap = String(msg.map || "").toLowerCase();
@@ -929,7 +920,7 @@ export function ensureNetplayConnection() {
           vy: Number(prev.petvy || 0) * 0.5 + rawPetVelocity.vy * 0.5,
         } : rawPetVelocity;
         const petPositionChanged = !prev || petx !== Number(prev.petx) || pety !== Number(prev.pety);
-        const entry = prev || {};
+        const entry = {};
         Object.assign(entry, {
           id,
           pseudo: String(p.pseudo ?? prev?.pseudo ?? "Pilote").slice(0, 20),
@@ -1024,9 +1015,8 @@ export function ensureNetplayConnection() {
           rangle: prev && !revived ? Number(prev.rangle ?? prev.angle ?? p.angle) : Number(p.angle) || 0,
           petrx: prev ? Number(prev.petrx ?? prev.petx ?? p.petx) : Number(p.petx) || 0,
           petry: prev ? Number(prev.petry ?? prev.pety ?? p.pety) : Number(p.pety) || 0,
-          _assetWarmSignature: prev?._assetWarmSignature || "",
         });
-        if (!prev) remotes.set(id, entry);
+        remotes.set(id, entry);
       }
       // Retire ceux qui ont quitte la map (absents du snapshot).
       for (const id of [...remotes.keys()]) {
@@ -1074,7 +1064,7 @@ export function ensureNetplayConnection() {
             vy: Number(prev.vy || 0) * 0.5 + rawVelocity.vy * 0.5,
           } : rawVelocity;
           const positionChanged = !motionPrev || x !== Number(prev.x) || y !== Number(prev.y);
-          const npcEntry = prev || {};
+          const npcEntry = {};
           Object.assign(npcEntry, {
             uid,
             type: String(n.type || ""),
@@ -1104,7 +1094,7 @@ export function ensureNetplayConnection() {
             rx: motionPrev ? Number(prev.rx ?? prev.x ?? n.x) : x,
             ry: motionPrev ? Number(prev.ry ?? prev.y ?? n.y) : y,
           });
-          if (!prev) netNpcs.set(uid, npcEntry);
+          netNpcs.set(uid, npcEntry);
         }
         for (const [uid, npc] of [...netNpcs.entries()]) {
           // Une seule liste incomplete ou retardee ne doit jamais delocker un
@@ -1476,7 +1466,6 @@ export function tickNetplayRemotes(dt = 0.016) {
     const rx = Number(r.rx ?? r.x), ry = Number(r.ry ?? r.y);
     const correctionX = targetX - rx, correctionY = targetY - ry;
     const correctionDistance = Math.hypot(correctionX, correctionY);
-    if (correctionDistance > netPerf.maxCorrection) netPerf.maxCorrection = Math.round(correctionDistance);
     // Un trou reseau peut faire arriver une correction importante d'un coup.
     // Le lissage exponentiel seul en absorbait ~26 % sur la premiere frame,
     // donnant l'impression d'une teleportation. Le plafond ne touche que le
@@ -1526,5 +1515,4 @@ try {
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;
-  window.__NETPERF__ = netPerf;
 } catch {}

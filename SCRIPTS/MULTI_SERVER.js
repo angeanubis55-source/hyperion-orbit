@@ -455,8 +455,6 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 // etats obsoletes pour un client dont la connexion ne suit plus.
 const SNAPSHOT_BACKPRESSURE_LIMIT = 256 * 1024;
 const NPC_NEAR_PLAYER_RADIUS = 2600;
-const PLAYER_NEAR_PLAYER_RADIUS = 2600;
-const PLAYER_STATIC_REFRESH_TICKS = 10; // garde-fou de resynchronisation : 500 ms
 const rooms = new Map(); // mapId(lower) -> Map(id -> { ws, state })
 const npcSims = new Map(); // mapId(lower) -> ZoneNpcSim | null | Promise
 const boxRooms = new Map(); // mapId(lower) -> Map(uid -> { type, x, y })
@@ -1632,8 +1630,6 @@ let snapshotTick = 0;
 setInterval(() => {
   const now = Date.now();
   const fullNpcTick = (++snapshotTick & 1) === 0;
-  const fullPlayerTick = fullNpcTick;
-  const includePlayerStatic = snapshotTick % PLAYER_STATIC_REFRESH_TICKS === 0;
   for (const [key, room] of rooms) {
     if (!room.size) continue;
     // Expire les joueurs silencieux depuis > 10 s (onglet ferme sans close propre).
@@ -1771,54 +1767,8 @@ setInterval(() => {
         petHpM: Math.max(1, Math.round(Number(s.petHpM) || 1)),
         petShM: Math.max(0, Math.round(Number(s.petShM) || 0)),
         safe: s.safe === true,
-        combat: s.combat === "player" ? "player" : (s.combat === "npc" ? "npc" : ""),
         iemT: Math.max(0, (Number(s.iemUntil) || 0) - now) / 1000,
         ishT: Math.max(0, (Number(s.ishUntil) || 0) - now) / 1000 });
-      const output = players[players.length - 1];
-      const staticSignature = [output.pseudo, output.shipId, output.drones, output.dform, output.dslots,
-        output.rank, output.firm, output.dind, output.ficon, output.mind, output.petl, output.petn, output.petf].join("|");
-      output._staticChanged = staticSignature !== s._lastStaticSignature;
-      output._staticSignature = staticSignature;
-    }
-    let playersForNetwork = players;
-    if (!fullPlayerTick && players.length > 1) {
-      const nearRadiusSq = PLAYER_NEAR_PLAYER_RADIUS * PLAYER_NEAR_PLAYER_RADIUS;
-      playersForNetwork = players.filter((entry, index) => {
-        if (entry.dead || entry.atk || entry.combat === "player"
-          || Number(entry.slowT) > 0 || Number(entry.freezeT) > 0
-          || Number(entry.iemT) > 0 || Number(entry.ishT) > 0) return true;
-        for (let otherIndex = 0; otherIndex < players.length; otherIndex++) {
-          if (otherIndex === index) continue;
-          const other = players[otherIndex];
-          const dx = Number(entry.x) - Number(other.x), dy = Number(entry.y) - Number(other.y);
-          if (dx * dx + dy * dy <= nearRadiusSq) return true;
-        }
-        return false;
-      });
-    }
-    // Les donnees d'apparence changent rarement. Elles sont rafraichies a
-    // faible cadence ; le client conserve entre-temps sa derniere valeur.
-    for (const entry of playersForNetwork) {
-      if (!includePlayerStatic && entry._staticChanged !== true) {
-        delete entry.pseudo;
-        delete entry.shipId;
-        delete entry.drones;
-        delete entry.dform;
-        delete entry.dslots;
-        delete entry.rank;
-        delete entry.firm;
-        delete entry.dind;
-        delete entry.ficon;
-        delete entry.mind;
-        delete entry.petl;
-        delete entry.petn;
-        delete entry.petf;
-      } else {
-        const sourceState = room.get(String(entry.id))?.state;
-        if (sourceState) sourceState._lastStaticSignature = entry._staticSignature;
-      }
-      delete entry._staticChanged;
-      delete entry._staticSignature;
     }
     let npcForNetwork = npc;
     if (!fullNpcTick && Array.isArray(npc?.list) && npc.list.length) {
@@ -1836,7 +1786,7 @@ setInterval(() => {
       });
       npcForNetwork = { ...npc, list: activeList };
     }
-    const payload = JSON.stringify({ t: "snapshot", map: key, at: now, players: playersForNetwork, npc: npcForNetwork });
+    const payload = JSON.stringify({ t: "snapshot", map: key, at: now, players, npc: npcForNetwork });
     for (const [, entry] of room) {
       try {
         if (entry.ws.readyState === 1 && entry.ws.bufferedAmount < SNAPSHOT_BACKPRESSURE_LIMIT) entry.ws.send(payload);
