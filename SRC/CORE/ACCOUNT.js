@@ -3336,7 +3336,7 @@ export function buyLogDiskPack() {
   return { ok: true, user: u, disks: u.pilotSkills.disks };
 }
 
-// Échange de disques contre 1 point pilote (table officielle, max 35).
+// Échange de disques contre 1 point pilote (table officielle, max 50).
 export function exchangeLogDisksForPoint() {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };

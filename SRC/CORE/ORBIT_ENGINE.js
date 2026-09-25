@@ -22710,17 +22710,18 @@ function petLockValid() {
     && petState.ready && !player.dead && started && Number(pet.hp) > 0;
 }
 
-function spawnProtegitOnCubikonHit(cub, count = 30) {
+function spawnProtegitOnCubikonHit(cub, count = 20) {
   if (!cub || cub.hp <= 0) return;
   if (cub.type !== "npc_Cubikon") return;
 
-  // ✅ Maximum de Protegit actifs liés à ce Cubikon
-  const MAX_MINIONS = 80;
+  // ✅ Vague normale : 20 Protegit. 25 % de chance de jackpot à 160.
+  const MAX_MINIONS = 160;
 
   const current = (cub._minionIds?.length || 0);
   if (current >= MAX_MINIONS) return;
 
-  const wanted = Math.max(0, Math.floor(Number(count) || 30));
+  let wanted = Math.max(0, Math.floor(Number(count) || 20));
+  if (wanted <= 20 && Math.random() < 0.25) wanted = 160;
   const toSpawn = Math.min(wanted, MAX_MINIONS - current);
 
   for (let i = 0; i < toSpawn; i++) {

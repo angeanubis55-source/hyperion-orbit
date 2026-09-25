@@ -228,11 +228,14 @@ export class ZoneNpcSim {
 
   // --- Vague Cubikon partagee (parite solo, visible par tous) ---
   // Le premier impact sur un Cubikon declenche son animation d'ouverture
-  // (delay 2 s -> open -> hold 2 s) puis le serveur fait apparaitre jusqu'a
-  // 20 Protegits ancres au Cubikon. Sans nouveau coup pendant 10 s, les
-  // minions sont retires silencieusement et la vague est re-armee.
+  // (delay 2 s -> open -> hold 2 s) puis le serveur fait apparaitre 20
+  // Protegits ancres au Cubikon (25 % de chance de jackpot à 160).
+  // Sans nouveau coup pendant 10 s, les minions sont retires
+  // silencieusement et la vague est re-armee.
   static CUBIKON_WAVE_SIZE = 20;
-  static CUBIKON_WAVE_MAX = 80;
+  static CUBIKON_JACKPOT_SIZE = 160;
+  static CUBIKON_JACKPOT_CHANCE = 0.25;
+  static CUBIKON_WAVE_MAX = 160;
 
   countCubikonMinions(cubUid) {
     let n = 0;
@@ -247,8 +250,12 @@ export class ZoneNpcSim {
     const stats = statsFor("npc_Protegit");
     if (!stats) return;
     const linked = this.countCubikonMinions(cub.uid);
+    // 25 % de chance de jackpot : 160 Protegit au lieu de 20.
+    const waveSize = Math.random() < ZoneNpcSim.CUBIKON_JACKPOT_CHANCE
+      ? ZoneNpcSim.CUBIKON_JACKPOT_SIZE
+      : ZoneNpcSim.CUBIKON_WAVE_SIZE;
     const toSpawn = Math.min(
-      ZoneNpcSim.CUBIKON_WAVE_SIZE,
+      waveSize,
       Math.max(0, ZoneNpcSim.CUBIKON_WAVE_MAX - linked)
     );
     for (let i = 0; i < toSpawn; i++) {

@@ -7,26 +7,27 @@
 // (cases 0-3 vides, 4-28 = les 25 icônes). Mapping vérifié contre les
 // icônes officielles du wiki (cases "?" = à confirmer visuellement).
 // Adaptations au jeu (pas d'uridium, pas de log-disks lootés, 100 % NPC) :
-// - 35 points pilote max (officiel 50) via disques de log achetés ;
+// - 50 points pilote max (officiel 50) via disques de log achetés ;
 // - 1 disque = 300 000 crédits (300 uridium officiel x1000), requis
-//   par point repris de la table officielle (30, 33, 36... 766) ;
+//   par point repris de la table officielle (30, 33, 36... 3202) ;
 // - reset en crédits doublés (1M, 2M, 4M...) ;
 // - skills sans cible dans le moteur gardés avec leurs VRAIS effets
 //   affichés (branchés plus tard) : Bounty I/II (PvP), Detonation I/II +
 //   Explosifs (mines).
 // Ce module ne touche ni DOM ni stockage.
 
-export const PILOT_MAX_POINTS = 35;
+export const PILOT_MAX_POINTS = 50;
 export const PILOT_PP_PER_LEVEL = 1;
 export const LOGDISK_PRICE = 300000; // 1 disque de log
 export const LOGDISK_PACK = 10; // pack boutique (3 000 000 crédits)
 export const PILOT_RESET_BASE = 1000000; // reset 1 : 1M, puis x2 à chaque reset
 
-// Disques requis par point (table officielle, points 1 à 35).
+// Disques requis par point (table officielle, points 1 à 50).
 export const LOGDISK_ROWS = Object.freeze([
   30, 33, 36, 40, 44, 48, 53, 58, 64, 71, 78, 86, 94, 104, 114, 125,
   138, 152, 167, 183, 202, 222, 244, 269, 295, 325, 358, 393, 433,
-  476, 523, 576, 633, 697, 766,
+  476, 523, 576, 633, 697, 766, 843, 927, 1020, 1122, 1234, 1358,
+  1494, 1643, 1807, 1988, 2187, 2405, 2646, 2911, 3202,
 ]);
 
 export function pilotResetCost(resetsDone) {

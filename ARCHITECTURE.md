@@ -41,7 +41,7 @@ Le jeu reste une application navigateur rendue avec Canvas. `ORBIT_ENGINE.js` co
   (`startSkylabUpgrade`, `buySkylabRobot`, `setSkylabModuleEnabled`,
   `transportSkylabToShip`, `tickCurrentUserSkylab`).
 - `SRC/DATA/PILOT_SKILLS.js` : arbre de pilotage façon DO (25 talents FR,
-  1 PP par niveau + prérequis PP officiels, 35 points max via disques
+  1 PP par niveau + prérequis PP officiels, 50 points max via disques
   de log à 300 000/u, reset crédits doublés ; règles pures sans DOM
   ni stockage).
 - `UI/UI_PILOT_SKILLS.js` : fenêtre Pilotage (3 panneaux façon menu11,
