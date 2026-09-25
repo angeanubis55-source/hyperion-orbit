@@ -25709,6 +25709,7 @@ function syncNetPlayers(dt = 0.016) {
   if (remotes && netplayNpcActive()) {
     for (const [rid, r] of remotes) {
       if (!r) continue;
+      try { warmNetplayRemoteAssets(r); } catch {}
       // Mort d'un joueur distant : explosion comme les NPC (une fois),
       // puis purge du proxy. Disparition sans mort (deco/changement
       // de map) : suppression silencieuse, sans explosion.
@@ -27512,6 +27513,34 @@ function netplayPackFor(shipId) {
   if (!pack) pack = SHIP_PACKS[0];
   netplaySpriteCache.set(key, pack);
   return pack;
+}
+
+function warmNetplayRemoteAssets(remote) {
+  if (!remote || remote.dead) return;
+  const dx = Number(remote.x) - Number(player.x), dy = Number(remote.y) - Number(player.y);
+  if (dx * dx + dy * dy > 3600 * 3600) return;
+  const signature = [remote.shipId, remote.rank, remote.firm, remote.ficon, remote.petl, remote.peta, remote.dslots].join("|");
+  if (remote._assetWarmSignature === signature) return;
+  remote._assetWarmSignature = signature;
+  try {
+    const pack = netplayPackFor(remote.shipId);
+    if (pack && !pack._ready && !pack._promise) ensurePackLoaded(pack);
+  } catch {}
+  for (const path of [remote.rank, remote.ficon]) {
+    if (!path) continue;
+    try { loadImage(String(path), { priority: true }); } catch {}
+  }
+  try {
+    const factionPath = getFaction(remote.firm)?.imagePath;
+    if (factionPath) loadImage(factionPath, { priority: true });
+  } catch {}
+  if (remote.peta === 1) {
+    try {
+      const frame = ((angleToFrameIndex(Number(remote.petd ?? remote.angle) || 0, 32) + 16) % 32) + 1;
+      loadImage(`${getPetStageBase(Math.max(1, Number(remote.petl) || 1))}${frame}.png`, { priority: true });
+      if (getPetStage(remote.petl) >= 6) loadImage(`/PET/PET_SPRITES/NIVEAU5/${frame}.png`, { priority: true });
+    } catch {}
+  }
 }
 
 // Multi : projectiles visuels de l'allie, joues a la reception des
