@@ -1244,6 +1244,15 @@ export function pushNetplayLocal(local) {
   if ((prune._n = (prune._n || 0) + 1) % 60 === 0) prune();
 }
 
+// Firefox prive peut suspendre les timers des le changement d'onglet.
+// Envoie l'etat d'arriere-plan sans attendre la prochaine frame du moteur.
+export function sendNetplayBackgroundState(background) {
+  if (!pendingLocal || suspended || instanceMode === true) return false;
+  pendingLocal.background = background === true;
+  sendNow(pendingLocal, true);
+  return true;
+}
+
 export function getNetplayRemotes() {
   return remotes;
 }
