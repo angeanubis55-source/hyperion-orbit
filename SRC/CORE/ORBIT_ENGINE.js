@@ -16728,13 +16728,19 @@ function ammoCount(key) {
 function setAmmo(key) {
   if (!AMMO[key]) return;
   if (key !== "x1" && ammoCount(key) <= 0) key = "x1";
-  if (player.ammo.active === key) {
-    updateAmmoUI();
-    return;
-  }
-  player.ammo.active = key;
+  if (player.ammo.active !== key) player.ammo.active = key;
   // Persiste la sélection du dock rapide (sinon refresh => retour x1).
   markProgressDirty();
+  // Écriture immédiate de la sélection dans le compte : sans ça, un sync
+  // (boutique, craft, enchères, net-adopted...) relit l'ancien ammoActive
+  // persisté et réécrit l'ancienne munition par-dessus (ex. x4 → retour x3).
+  // updateCurrentUserProgress ne touche qu'ammoActive et publie en
+  // source "progress" (ignorée par le listener orbit:user-updated) : pas de
+  // boucle de resync.
+  try {
+    const out = updateCurrentUserProgress({ ammoActive: key });
+    if (out?.ok && out.user && account) account.user = out.user;
+  } catch {}
   updateAmmoUI();
 }
 

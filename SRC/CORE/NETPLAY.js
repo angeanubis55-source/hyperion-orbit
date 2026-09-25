@@ -187,8 +187,13 @@ const NET_SEND_INTERVAL_MS = 50;
 // Prediction visuelle des mouvements distants. Pleine vitesse pendant les
 // petits trous reseau, puis freinage progressif : le joueur ne se fige pas
 // net et ne repart pas par bonds lorsque sa connexion fluctue.
-const NET_PREDICTION_FULL_MS = 150;
-const NET_PREDICTION_BRAKE_MS = 350;
+// Fenetre elargie pour les onglets en arriere-plan : un navigateur bride les
+// timers d'un onglet masque (~1 Hz), donc les positions d'un joueur qui farme
+// en onglet reduit arrivent 1x/s. Sans prediction longue, son vaisseau se fige
+// puis "teleporte" a chaque paquet. A 20 Hz sain, l'age des samples reste
+// sous ~150 ms : cet elargissement ne change rien pour les connexions saines.
+const NET_PREDICTION_FULL_MS = 1100;
+const NET_PREDICTION_BRAKE_MS = 900;
 const NET_MAX_ESTIMATED_SPEED = 1500;
 const netPerf = {
   messages: 0, snapshots: 0, bytes: 0, snapshotPlayers: 0, snapshotNpcs: 0,
