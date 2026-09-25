@@ -1022,8 +1022,11 @@ export function ensureNetplayConnection() {
           rx: prev && !revived ? Number(prev.rx ?? prev.x ?? p.x) : Number(p.x) || 0,
           ry: prev && !revived ? Number(prev.ry ?? prev.y ?? p.y) : Number(p.y) || 0,
           rangle: prev && !revived ? Number(prev.rangle ?? prev.angle ?? p.angle) : Number(p.angle) || 0,
-          petrx: prev ? Number(prev.petrx ?? prev.petx ?? p.petx) : Number(p.petx) || 0,
-          petry: prev ? Number(prev.petry ?? prev.pety ?? p.pety) : Number(p.pety) || 0,
+          // PET : snap à l'activation (pas de lerp depuis une vieille
+          // position : le tick tirait petrx vers (0,0) quand peta=0, puis
+          // dash au retour). Tant qu'inactif, petrx = petx (0, proxy caché).
+          petrx: (!prev || Number(prev.peta) !== 1) ? petx : Number(prev.petrx ?? prev.petx ?? petx),
+          petry: (!prev || Number(prev.peta) !== 1) ? pety : Number(prev.petry ?? prev.pety ?? pety),
           _assetWarmSignature: prev?._assetWarmSignature || "",
         });
         if (!prev) remotes.set(id, entry);
@@ -1493,8 +1496,14 @@ export function tickNetplayRemotes(dt = 0.016) {
     const targetAngle = Number(r.angle) || 0;
     const angleDelta = Math.atan2(Math.sin(targetAngle - renderedAngle), Math.cos(targetAngle - renderedAngle));
     r.rangle = renderedAngle + angleDelta * k;
-    const petTargetX = Number(r.petx) + Number(r.petvx || 0) * lead;
-    const petTargetY = Number(r.pety) + Number(r.petvy || 0) * lead;
+    // PET : quasi pas d'extrapolation. Le PET tournoie autour de son
+    // proprio (collecte, weave de combat) : predire loin devant avec la
+    // vitesse estimee fait osciller le rendu en dashs dans tous les sens,
+    // surtout si l'emetteur est à ~1 Hz (onglet reduit). On vise la position
+    // snapshot, le lissage borne fait le reste.
+    const petLead = Math.min(lead, 0.12);
+    const petTargetX = Number(r.petx) + Number(r.petvx || 0) * petLead;
+    const petTargetY = Number(r.pety) + Number(r.petvy || 0) * petLead;
     const prx = Number(r.petrx ?? r.petx), pry = Number(r.petry ?? r.pety);
     // Téléport du PET (recall vers le proprio, réactivation, changement de
     // map, position périmée) : on snappe direct. Sinon le lissage borné
@@ -1512,8 +1521,21 @@ export function tickNetplayRemotes(dt = 0.016) {
       const petK = petCorrectionDistance > 0
         ? Math.min(k, petMaxCorrection / petCorrectionDistance)
         : k;
-      r.petrx = prx + petCorrectionX * petK;
-      r.petry = pry + petCorrectionY * petK;
+      let nprx = prx + petCorrectionX * petK;
+      let npry = pry + petCorrectionY * petK;
+      // Garde-fou final : le PET distant ne dépasse JAMAIS 1500 px/s au
+      // rendu (vitesse max réelle : ~1,75x celle du vaisseau). Tout dépassement
+      // est un artefact réseau : il devient un rattrapage rapide mais fluide,
+      // jamais un dash éclair. Fini les allers-retours instables.
+      const stepX = nprx - prx, stepY = npry - pry;
+      const stepD = Math.hypot(stepX, stepY);
+      const maxStep = NET_MAX_ESTIMATED_SPEED * frameDt;
+      if (stepD > maxStep && stepD > 0) {
+        nprx = prx + (stepX / stepD) * maxStep;
+        npry = pry + (stepY / stepD) * maxStep;
+      }
+      r.petrx = nprx;
+      r.petry = npry;
     }
   }
   for (const n of netNpcs.values()) {

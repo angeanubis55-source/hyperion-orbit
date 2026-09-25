@@ -216,7 +216,7 @@ export class ZoneNpcSim {
       aggroRange: camp.aggroRange, aggroHoldMs: Math.max(1000, (camp.aggroHold ?? 3.5) * 1000),
       aggroBy: null, aggroUntil: 0,
       tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
-      lockBy: null, lockHitAt: 0, lockReleaseAt: 0,
+      lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
       orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
       seq: (Number(prev?.seq) || 0) + 1, // incarnation : anti-confusion au respawn
     });
@@ -239,10 +239,41 @@ drainPlayerHits() {
   // --- Lock premier attaquant (visuel rouge / gris) ---
   // Le détenteur garde le rouge tant qu'il inflige des dégâts, reste en vie
   // et hors ZNA. Sinon grace de 5 s (un nouveau dégât du détenteur l'annule,
-  // "re bon"), puis lock libre : le premier qui re-tape prend le rouge et
-  // firstBy suit pour que la récompense aille au rouge.
+  // "re bon"), puis TRANSFERT AUTO au prétendant le plus récent (un autre
+  // attaquant qui engage le NPC, hit ≤ 5 s) : pas besoin de taper pour
+  // passer rouge. firstBy suit pour que la récompense aille au rouge.
+  // Le transfert est "non confirmé" (lockHitAt = 0) : le nouveau détenteur
+  // doit taper pour confirmer ; sinon n'importe quel hit le lui reprend
+  // instantanément (ex : l'ancien qui re-tape). Pas de ping-pong : le voleur
+  // est toujours confirmé + frais, le vol suivant exige 5 s de silence.
   static LOCK_IDLE_MS = 5000;
   static LOCK_GRACE_MS = 5000;
+  static LOCK_HISTORY_MAX = 6;
+
+  // Mémorise le hit (ordre = récence). Appelé pour tout impact accepté.
+  static lockNoteHit(entry, clientId, nowMs) {
+    const id = String(clientId);
+    const h = Array.isArray(entry.hitHist) ? entry.hitHist : (entry.hitHist = []);
+    for (let i = h.length - 1; i >= 0; i--) {
+      if (String(h[i]?.id) === id) h.splice(i, 1);
+    }
+    h.push({ id, at: nowMs });
+    while (h.length > ZoneNpcSim.LOCK_HISTORY_MAX) h.shift();
+  }
+
+  // Prétendant au transfert : attaquant le plus récent (hit ≤ 5 s, connecté),
+  // hors détenteur sortant. null = personne : le lock devient libre.
+  static lockContender(entry, excludeId, nowMs, players) {
+    const h = Array.isArray(entry.hitHist) ? entry.hitHist : [];
+    for (let i = h.length - 1; i >= 0; i--) {
+      const c = h[i];
+      if (!c || String(c.id) === String(excludeId)) continue;
+      if (nowMs - Number(c.at || 0) > ZoneNpcSim.LOCK_IDLE_MS) continue;
+      if (!players.has(String(c.id))) continue;
+      return String(c.id);
+    }
+    return null;
+  }
 
   countCubikonMinions(cubUid) {
     let n = 0;
@@ -287,7 +318,7 @@ drainPlayerHits() {
         aggroRange: 1000, aggroHoldMs: 6000,
         aggroBy: null, aggroUntil: 0,
         tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
-        lockBy: null, lockHitAt: 0, lockReleaseAt: 0,
+        lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
         masterKiller: null, decaying: false, decayPerSec: 0, decayAge: 0,
         fleeVx: 0, fleeVy: 0, deadAt: 0,
         orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
@@ -348,7 +379,7 @@ drainPlayerHits() {
           aggroRange: 700, aggroHoldMs: 3500,
           aggroBy: null, aggroUntil: 0,
           tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
-          lockBy: null, lockHitAt: 0, lockReleaseAt: 0,
+          lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
           masterKiller: null, decaying: false, decayPerSec: 0, decayAge: 0,
           fleeVx: 0, fleeVy: 0, deadAt: 0,
           orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
@@ -404,11 +435,20 @@ drainPlayerHits() {
     const nowMs = Date.now();
     // Lock premier attaquant : prise si libre (le premier qui tape prend le
     // rouge), refresh si détenteur (un dégât annule la grace, "re bon").
+    // Détenteur non confirmé (transfert auto, jamais tapé depuis) : le hit
+    // vole le lock instantanément — ex : l'ancien qui re-tape repasse rouge
+    // et l'autre gris, sans avoir à attendre.
+    ZoneNpcSim.lockNoteHit(entry, clientId, nowMs);
     if (entry.lockBy == null) {
       entry.lockBy = String(clientId);
       entry.lockHitAt = nowMs;
       entry.lockReleaseAt = 0;
     } else if (String(entry.lockBy) === String(clientId)) {
+      entry.lockHitAt = nowMs;
+      entry.lockReleaseAt = 0;
+    } else if (!Number(entry.lockHitAt)) {
+      entry.lockBy = String(clientId);
+      entry.firstBy = String(clientId);
       entry.lockHitAt = nowMs;
       entry.lockReleaseAt = 0;
     }
@@ -562,8 +602,9 @@ drainPlayerHits() {
       if (!(e.hp > 0)) continue;
       // Lock premier attaquant : le détenteur le perd s'il est mort, en ZNA
       // ou sans dégât depuis 5 s. Grace de 5 s (un dégât du détenteur
-      // l'annule, voir applyHit), puis lock libre : firstBy suit pour que
-      // la récompense aille au nouveau rouge.
+      // l'annule, voir applyHit), puis TRANSFERT AUTO au prétendant le plus
+      // récent (pas besoin de taper pour passer rouge) ; personne → libre.
+      // firstBy suit pour que la récompense aille au nouveau rouge.
       if (e.lockBy != null) {
         const holder = this.players.get(String(e.lockBy));
         const holderOut = !holder || holder.dead === true || holder.safe === true;
@@ -571,8 +612,11 @@ drainPlayerHits() {
         if (holderOut || holderIdle) {
           if (!e.lockReleaseAt) e.lockReleaseAt = nowMs + ZoneNpcSim.LOCK_GRACE_MS;
           else if (nowMs >= Number(e.lockReleaseAt) || 0) {
-            e.lockBy = null;
-            e.firstBy = null;
+            const ex = String(e.lockBy);
+            const next = ZoneNpcSim.lockContender(e, ex, nowMs, this.players);
+            e.lockBy = next;
+            e.firstBy = next;
+            e.lockHitAt = 0; // non confirmé : doit taper pour confirmer
             e.lockReleaseAt = 0;
           }
         } else {
