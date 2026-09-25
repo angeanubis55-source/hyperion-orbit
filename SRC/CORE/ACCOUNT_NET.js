@@ -291,10 +291,25 @@ function mergeProgressiveFields(prev, next) {
         }
       }
     }
+    // Boosters : chaque achat ne fait que PROLONGER le timer actif (jamais de
+    // baisse légitime). En plein fight, une récompense NPC écrite côté serveur
+    // fait échouer le push de l'achat (409) : sans ce MAX, le canon serveur
+    // (sans l'achat) écrase le timer local = achat "crédité puis rollback".
+    // Les crédits gardent le canon serveur (peuvent baisser légitimement).
+    if (prev.boosters && next.boosters && typeof next.boosters === "object") {
+      const pActive = prev.boosters.active, nActive = next.boosters.active;
+      if (pActive && nActive && typeof pActive === "object" && typeof nActive === "object"
+        && !Array.isArray(pActive) && !Array.isArray(nActive)) {
+        for (const [id, expiresAt] of Object.entries(pActive)) {
+          if (Number(expiresAt) > Number(nActive[id] || 0)) {
+            nActive[id] = Math.max(0, Number(expiresAt));
+          }
+        }
+      }
+    }
     // Une recompense NPC est maintenant ecrite par le serveur avant que le
     // kill local ait forcement pousse sa quete. Lors de l'adoption de cette
-    // revision, garde le maximum de chaque objectif et les missions terminees.
-    const pQuests = prev.quests, nQuests = next.quests;
+    // revision, garde le maximum de chaque objectif et les missions terminees.    const pQuests = prev.quests, nQuests = next.quests;
     if (pQuests && nQuests && typeof pQuests === "object" && typeof nQuests === "object") {
       const completed = new Set([...(Array.isArray(nQuests.completed) ? nQuests.completed : []), ...(Array.isArray(pQuests.completed) ? pQuests.completed : [])].map(String));
       nQuests.completed = [...completed];

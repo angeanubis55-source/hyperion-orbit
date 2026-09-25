@@ -104,6 +104,7 @@ export class ZoneNpcSim {
         aggroRange: Number(c?.aggroRange ?? 700),
         respawn: Number(c?.respawn ?? 1.5),
         maxAlive: Math.max(1, Number(c?.maxAlive ?? 1)),
+        speed: (c?.speed ?? null),
       }));
       const sim = new ZoneNpcSim(id, world, camps);
       sim.safe = safe;
@@ -207,7 +208,7 @@ export class ZoneNpcSim {
       angle: Math.random() * TAU,
       hp: stats.hpMax, sh: stats.shMax,
       hpMax: stats.hpMax, shMax: stats.shMax,
-      speed: stats.speed, dr: stats.dr, spread: stats.spread,
+      speed: (camp.speed ?? stats.speed), dr: stats.dr, spread: stats.spread,
       passive: !!stats.passive, kamikaze: !!stats.kamikaze,
       explodeOnTouch: !!stats.explodeOnTouch, explodeRadius: stats.explodeRadius, explodeDmg: stats.explodeDmg,
       canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,

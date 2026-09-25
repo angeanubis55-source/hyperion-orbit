@@ -1521,6 +1521,7 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
 
   const isShip = !!item.ship?.id;
   const isDesign = !!item.design?.id;
+  const isBooster = !!item.booster?.id;
   const isPet = !!item.pet?.id;
   const isHull = !!item.petHull;
   // Coque+ : 1 par 1 (prix exponentiel selon le nombre déjà possédé).
@@ -1688,9 +1689,12 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
 
   ensureUserShape(u);
   saveUser(u);
-  // Biens durables uniques : poussée serveur immédiate (sans le debounce 2 s)
-  // pour qu'un 409 ultérieur ne puisse pas effacer l'achat.
-  if ((isShip || isDesign) && netActive()) {
+  // Biens durables uniques + boosters : poussée serveur immédiate (sans le debounce 2 s)
+  // pour qu'un 409 ultérieur ne puisse pas effacer l'achat. En plein fight, chaque
+  // récompense NPC bump la révision serveur : sans flush immédiat, l'achat local
+  // (crédits débités + timer prolongé) est écrasé par le canon serveur = l'achat
+  // semble crédité puis rollback/remboursé.
+  if ((isShip || isDesign || isBooster) && netActive()) {
     try { const p = flushNetUser(); if (p && typeof p.catch === "function") p.catch(() => {}); } catch {}
   }
   return { ok: true, user: u, quantity, totalPrice: price };

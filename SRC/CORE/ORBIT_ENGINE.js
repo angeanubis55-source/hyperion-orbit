@@ -26306,6 +26306,8 @@ for (let i = collectables.length - 1; i >= 0; i--) {
         e.wanderMode = true;
         e.aggroRange = camp.aggroRange ?? 700;
         e.aggroHold = camp.aggroHold ?? 3.5;
+        // Override de vitesse du camp (ex : Cubikon x-6 immobile).
+        if (camp.speed != null && Number.isFinite(Number(camp.speed))) e.speed = Math.max(0, Number(camp.speed));
 
         // Respawn random : fige la nouvelle position (full life).
         if (scatter && slot) {
@@ -26423,6 +26425,7 @@ collectableSpawnT = 0;
             radius: tuning.radius ?? 350,
             respawn: tuning.respawn ?? 1.5,
             maxAlive: tuning.maxAlive ?? 1,
+            speed: tuning.speed ?? null,
             aggroRange: tuning.aggroRange ?? 700,
             leashRange: tuning.leashRange ?? 1700,
             aggroHold: tuning.aggroHold ?? 4,

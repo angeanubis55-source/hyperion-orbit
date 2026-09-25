@@ -62,6 +62,7 @@ export function getZoneSpawns(WORLD) {
       radius: 0,            // pas besoin de random autour
       respawn: c.respawn,   // ✅ temps exact de repop
       maxAlive: 1,
+      speed: 0,             // ✅ Cubikon immobile (position fixe)
       aggroRange: 750,
       leashRange: 1700,
       aggroHold: 4,
