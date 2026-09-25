@@ -118,16 +118,16 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
   context.textBaseline = "top";
   const displayName = playerName || "Pilote";
   const nameY = y + player.r + 90;
-  // Titre Beta : juste au-dessus du pseudo, jaune clair, visible pour
+  // Titre Beta : juste en dessous du pseudo, visible pour
   // tous (chaque client dessine la plaque de chaque joueur).
   // Exception : ZbliShit affiche "< Joueur de la Alpha >" en rouge foncé.
   context.font = "800 12px ui-sans-serif, system-ui";
   if (String(displayName).toLowerCase() === "zblishit") {
     context.fillStyle = "rgba(190,25,35,0.95)";
-    context.fillText("< Joueur de la Alpha >", x, nameY - 15);
+    context.fillText("< Joueur de la Alpha >", x, nameY + 20);
   } else {
     context.fillStyle = "rgba(255,243,176,0.95)";
-    context.fillText("< Joueur de la Beta >", x, nameY - 15);
+    context.fillText("< Joueur de la Beta >", x, nameY + 20);
   }
   // Vaisseau Police : anonymat — ni pseudo ni firme. Tag [ADMIN] arc-en-ciel
   // (balayage animé de gauche à droite) + grade admin, centrés.
