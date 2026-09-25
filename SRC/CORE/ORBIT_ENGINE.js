@@ -34379,9 +34379,40 @@ addEventListener("visibilitychange", () => {
     try { persistUniverse({ force: true }); } catch {}
     try { persistCollectables({ force: true }); } catch {}
     try { localStorage.setItem("orbit_game_open", String(Date.now())); } catch {}
+    // Fenetre reduite + bot : passe ~1 Hz (normal), mais apres ~5 min masquee
+    // Chrome bride les timers a ~1/min ("intensive throttling") : les positions
+    // ne partent presque plus et les autres voient le vaisseau teleporter.
+    // Tenir un Web Lock exempte la page de ce bridage (opt-out documente) :
+    // les timers restent a ~1 Hz et les positions continuent de partir a
+    // rythme regulier (rendu lisse par la prediction netplay). Nom unique par
+    // onglet pour ne jamais bloquer un 2e onglet du jeu. Sans effet si
+    // l'API est absente.
+    holdBackgroundActivityLock();
+  } else {
+    releaseBackgroundActivityLock();
   }
   restartFrameScheduler();
 });
+
+// Voir visibilitychange ci-dessus. Le resolve garde en vie tant que la
+// promesse est pendante ; le lock est rendu a la re-ouverture de la fenetre.
+let bgActivityLockName = "";
+let bgActivityRelease = null;
+function holdBackgroundActivityLock() {
+  try {
+    if (bgActivityRelease || !navigator?.locks?.request) return;
+    if (!bgActivityLockName) {
+      bgActivityLockName = `hyperion-orbit.activity.${Math.random().toString(36).slice(2, 10)}`;
+    }
+    navigator.locks.request(bgActivityLockName, { mode: "exclusive" }, () => new Promise((resolve) => {
+      bgActivityRelease = resolve;
+    })).catch(() => { bgActivityRelease = null; });
+  } catch { bgActivityRelease = null; }
+}
+function releaseBackgroundActivityLock() {
+  try { if (bgActivityRelease) bgActivityRelease(); } catch {}
+  bgActivityRelease = null;
+}
 
 window.addEventListener("storage", (e) => {
   if (e.key !== "orbit_sync") return;
