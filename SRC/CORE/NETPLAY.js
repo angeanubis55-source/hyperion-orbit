@@ -195,6 +195,9 @@ const NET_SEND_INTERVAL_MS = 50;
 const NET_PREDICTION_FULL_MS = 1100;
 const NET_PREDICTION_BRAKE_MS = 900;
 const NET_MAX_ESTIMATED_SPEED = 1500;
+// Taux de virage max pris en compte pour la prediction en arc (rad/s) :
+// une orbite de farm typique tourne a ~1-2,5 rad/s.
+const NET_MAX_TURN_RATE = 4;
 const netPerf = {
   messages: 0, snapshots: 0, bytes: 0, snapshotPlayers: 0, snapshotNpcs: 0,
   maxCorrection: 0, startedAt: Date.now(),
@@ -879,6 +882,46 @@ export function ensureNetplayConnection() {
         const positionChanged = !prev || x !== Number(prev.x) || y !== Number(prev.y)
           || Math.abs(rawVx * velocityScale - Number(prev.vx || 0)) > 1
           || Math.abs(rawVy * velocityScale - Number(prev.vy || 0)) > 1;
+        const svx = p.dead === true ? 0 : rawVx * velocityScale;
+        const svy = p.dead === true ? 0 : rawVy * velocityScale;
+        // Cadence d'envoi observee (ms entre snapshots DISTINCTS, lissee) :
+        // ~50 ms onglet ouvert, ~1000 ms onglet reduit. Les snapshots repetes
+        // par le serveur (20 Hz, memes valeurs) ne touchent a rien.
+        let updateInterval = Number(prev?.updateInterval || 60);
+        if (!prev) {
+          updateInterval = 60;
+        } else if (positionChanged) {
+          const gap = Math.max(1, now - Number(prev.sampleAt || now));
+          const est = Math.max(50, Math.min(2000, updateInterval));
+          // Monte vite (onglet qu'on reduit), descend doucement (retour a
+          // 20 Hz : un plafond trop large ne gene pas, l'age reste < 50 ms).
+          const kUp = gap > est ? 0.5 : 0.15;
+          updateInterval = Math.max(50, Math.min(2000, est + (gap - est) * kUp));
+        }
+        // Taux de virage (rad/s) depuis la rotation du vecteur VITESSE entre
+        // deux snapshots distincts (surtout pas l'angle du sprite : le
+        // vaisseau regarde sa cible pendant qu'il orbite). Un bot en fenetre
+        // reduite n'envoie qu'~1 Hz en tournant sans arret : predire en arc
+        // plutot qu'en ligne droite supprime les sauts a chaque paquet.
+        // Date a l'horloge serveur (stable en rafale), comme estimateVelocity.
+        const prevVx = Number(prev?.vx || 0), prevVy = Number(prev?.vy || 0);
+        let turn = Number(prev?.turn || 0);
+        let headingAt = Number(prev?.headingAt || sourceAt);
+        if (!prev) {
+          turn = 0;
+          headingAt = Number(sourceAt);
+        } else if (positionChanged && Math.hypot(prevVx, prevVy) > 50 && Math.hypot(svx, svy) > 50) {
+          const dH = Math.atan2(prevVx * svy - prevVy * svx, prevVx * svx + prevVy * svy);
+          const dtH = Math.max(0.05, (Number(sourceAt) - headingAt) / 1000);
+          if (Math.abs(dH) > 0.02) {
+            const rawTurn = Math.max(-NET_MAX_TURN_RATE, Math.min(NET_MAX_TURN_RATE, dH / dtH));
+            turn = turn * 0.4 + rawTurn * 0.6;
+            headingAt = Number(sourceAt);
+          } else {
+            // Direction stable : dissipe l'estimee (pas d'arc fantome en ligne droite).
+            turn = turn * Math.exp(-3 * dtH);
+          }
+        }
         const petx = Number(p.petx) || 0, pety = Number(p.pety) || 0;
         const rawPetVelocity = estimateVelocity(prev, petx, pety, now, "petx", "pety", sourceAt);
         const petVelocity = prev ? {
@@ -892,8 +935,11 @@ export function ensureNetplayConnection() {
           pseudo: String(p.pseudo ?? prev?.pseudo ?? "Pilote").slice(0, 20),
           shipId: String(p.shipId ?? prev?.shipId ?? ""),
           x, y,
-          vx: p.dead === true ? 0 : rawVx * velocityScale,
-          vy: p.dead === true ? 0 : rawVy * velocityScale,
+          vx: svx,
+          vy: svy,
+          turn,
+          headingAt,
+          updateInterval,
           vmax,
           angle: Number(p.angle) || 0,
           dead: p.dead === true,
@@ -1394,9 +1440,28 @@ export function tickNetplayRemotes(dt = 0.016) {
   const k = 1 - Math.exp(-18 * frameDt);
   const now = performance.now();
   for (const r of remotes.values()) {
-    const lead = predictionLeadSeconds(now - Number(r.sampleAt || now));
-    const targetX = Number(r.x) + Number(r.vx || 0) * lead;
-    const targetY = Number(r.y) + Number(r.vy || 0) * lead;
+    // Plafond adapte a la cadence observee de l'emetteur : sans lui, un flux
+    // a 1 Hz (onglet reduit) depasse systematiquement sa vraie cadence puis
+    // revient en arriere a chaque paquet (dent de scie = teleportations).
+    const updateInterval = Math.max(50, Math.min(2000, Number(r.updateInterval || 60)));
+    const leadCap = (updateInterval + 120) / 1000;
+    const lead = Math.min(predictionLeadSeconds(now - Number(r.sampleAt || now)), leadCap);
+    const vx = Number(r.vx || 0), vy = Number(r.vy || 0);
+    const spd = Math.hypot(vx, vy);
+    const turn = Math.max(-NET_MAX_TURN_RATE, Math.min(NET_MAX_TURN_RATE, Number(r.turn || 0)));
+    // Virage regulier (orbite de farm) : prediction en arc de cercle au lieu
+    // de la ligne droite, qui raterait chaque virage. Ligne droite sinon.
+    let targetX, targetY;
+    if (Math.abs(turn) > 0.08 && spd > 60) {
+      const th0 = Math.atan2(vy, vx);
+      const th1 = th0 + turn * lead;
+      const radius = spd / turn;
+      targetX = Number(r.x) + radius * (Math.sin(th1) - Math.sin(th0));
+      targetY = Number(r.y) + radius * (Math.cos(th0) - Math.cos(th1));
+    } else {
+      targetX = Number(r.x) + vx * lead;
+      targetY = Number(r.y) + vy * lead;
+    }
     const rx = Number(r.rx ?? r.x), ry = Number(r.ry ?? r.y);
     const correctionX = targetX - rx, correctionY = targetY - ry;
     const correctionDistance = Math.hypot(correctionX, correctionY);
