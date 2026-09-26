@@ -6,13 +6,10 @@ import { getShipDesignBaseId, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 let started = false;
 const GROUP_AUTOACCEPT_KEY = "orbit_group_autoaccept";
 function loadGroupAutoAccept() {
-  try { return localStorage.getItem(GROUP_AUTOACCEPT_KEY) === "1"; } catch { return false; }
+  try { return localStorage.getItem(GROUP_AUTOACCEPT_KEY) !== "0"; } catch { return true; }
 }
 function saveGroupAutoAccept(value) {
-  try {
-    if (value) localStorage.setItem(GROUP_AUTOACCEPT_KEY, "1");
-    else localStorage.removeItem(GROUP_AUTOACCEPT_KEY);
-  } catch {}
+  try { localStorage.setItem(GROUP_AUTOACCEPT_KEY, value ? "1" : "0"); } catch {}
 }
 const LOCK_CLOSED_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>`;
 const LOCK_OPEN_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M16 10V7a4 4 0 0 0-7.7-1.5"/></svg>`;
