@@ -8,7 +8,8 @@ try { bootNetFromCache(); } catch {}
 import { findCatalogItem, CATALOG } from "./CATALOG.js";
 import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, getShipFamilyId } from "../../SHIP/SHIP_PACKS.js";
 import { normalizeQuestState, QUEST_DEFINITIONS } from "../../QUEST/QUEST_TYPES.js";
-import { calculateRankPoints, getQuestHonorReward } from "./PROGRESSION.js";
+import { QUEST_REWARD_BASELINE_2026 } from "../../QUEST/QUEST_REWARD_BASELINE.js";
+import { calculateRankPoints, getQuestExperienceReward, getQuestHonorReward } from "./PROGRESSION.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.js";
 import { compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
@@ -65,6 +66,7 @@ const STORAGE_SCHEMA_VERSION = 4;
 const STARTER_CREDITS = 55000000;
 const NPC_KILL_BREAKDOWN_VERSION = 1;
 const QUEST_HONOR_VERSION = 1;
+const QUEST_REWARD_VERSION = 1;
 const GALAXY_GATE_DATA_RESET_VERSION = 1;
 
 const STARTER_SHIP_ID = "PhoenixBleu";
@@ -883,6 +885,32 @@ function ensureUserShape(u) {
   }
 
   u.quests = normalizeQuestState(u.quests);
+  // Rattrapage du reequilibrage 2026 : les quetes terminees avant la mise a jour
+  // n'ont verse que les anciens montants. On verse la difference positive, une
+  // seule fois. Les differences negatives ne sont JAMAIS retirees (pas de
+  // sanction retroactive : seul le plafond d'honneur de 5 contrats trophées
+  // affiche moins qu'avant, et ces contrats sont quasi inatteignables).
+  const honorAlreadyBackfilled = Number(u.stats.questHonorVersion || 0) >= QUEST_HONOR_VERSION;
+  if (Number(u.stats.questRewardVersion || 0) < QUEST_REWARD_VERSION) {
+    const rebalanced = new Set(u.quests.completed);
+    for (const quest of QUEST_DEFINITIONS) {
+      if (!rebalanced.has(quest.id)) continue;
+      const baseline = QUEST_REWARD_BASELINE_2026[quest.id];
+      if (!baseline) continue;
+      const creditDiff = Math.max(0, Math.floor(Number(quest.reward?.credits) || 0) - Math.max(0, Math.floor(Number(baseline[0]) || 0)));
+      const expDiff = Math.max(0, getQuestExperienceReward(quest) - Math.max(0, Math.floor(Number(baseline[1]) || 0)));
+      if (creditDiff > 0) u.credits = Math.max(0, Math.floor(Number(u.credits) || 0)) + creditDiff;
+      if (expDiff > 0) u.stats.exp = Math.max(0, Math.floor(Number(u.stats.exp) || 0)) + expDiff;
+      // Honneur : uniquement si le rattrapage honneur avait deja eu lieu avec les
+      // anciens montants (sinon le bloc ci-dessous verse deja les nouveaux).
+      if (honorAlreadyBackfilled) {
+        const honorDiff = Math.max(0, getQuestHonorReward(quest) - Math.max(0, Math.floor(Number(baseline[2]) || 0)));
+        if (honorDiff > 0) u.stats.honor = Math.max(0, Math.floor(Number(u.stats.honor) || 0)) + honorDiff;
+      }
+    }
+    u.stats.rankPoints = calculateRankPoints(u.stats);
+    u.stats.questRewardVersion = QUEST_REWARD_VERSION;
+  }
   if (Number(u.stats.questHonorVersion || 0) < QUEST_HONOR_VERSION) {
     const completed = new Set(u.quests.completed);
     u.stats.honor += QUEST_DEFINITIONS

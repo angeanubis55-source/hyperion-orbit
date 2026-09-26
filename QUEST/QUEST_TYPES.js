@@ -8,6 +8,50 @@ const C = (id, type, amount, label, map) => ({ id, kind: "collect", type, amount
 const V = map => ({ id: `visit_${map}`, kind: "visit", type: map, amount: 1, label: `Visiter la carte ${map}` });
 const G = (type, amount = 1) => ({ id: `gate_${type}`, kind: "gate", type, amount, label: `Terminer la Galaxy Gate ${type[0].toUpperCase()}${type.slice(1)}` });
 const Q = (id, title, description, objectives, credits, exp, honor, requires) => ({ id, title, description, objectives, reward: { credits, exp, honor }, ...(requires ? { requires } : {}) });
+// ---------------------------------------------------------------------------
+// Moteur de rééquilibrage (audit 2026).
+// Constat : les récompenses manuelles variaient de 0.01x à 43x la valeur farm
+// des kills demandés (ex : 1000 Cubikons = 500M mais 3500 Cubikons = 150M).
+// Règle unique pour les contrats kill : la quête verse ~150% du farm en bonus
+// (le joueur touche déjà le farm en tuant), plus un plancher par kill qui
+// revalorise les petites quêtes, plus un forfait d'aventure. Plafonds hauts
+// uniquement en garde-fou (la finale "dernière marche" reste au sommet).
+// Conséquence garantie : à cibles égales, plus de kills = plus de récompense.
+// ---------------------------------------------------------------------------
+const QUEST_KILL_MULT = 1.5;
+const QUEST_FLOOR_PER_KILL = { credits: 15000, exp: 7500, honor: 30 };
+const QUEST_FLOOR_CAP = { credits: 5000000, exp: 2500000, honor: 100000 };
+const QUEST_FLAT_BONUS = { credits: 250000, exp: 125000, honor: 500 };
+const QUEST_REWARD_CAP = { credits: 8000000000, exp: 4000000000, honor: 25000000 };
+const balancedKillReward = objectives => {
+  let kills = 0, farmC = 0, farmE = 0, farmH = 0;
+  for (const objective of objectives || []) {
+    if (objective?.kind !== "kill") continue;
+    const amount = Math.max(0, Math.floor(Number(objective.amount) || 0));
+    kills += amount;
+    const rate = NPC_REWARDS[objective.type];
+    if (!rate) continue; // type "*" ou inconnu : seul le plancher s'applique
+    farmC += Number(rate.credits || 0) * amount;
+    farmE += Number(rate.exp || 0) * amount;
+    farmH += Number(rate.honor || 0) * amount;
+  }
+  const round1k = value => Math.floor(value / 1000) * 1000;
+  const round100 = value => Math.floor(value / 100) * 100;
+  const credits = Math.min(QUEST_REWARD_CAP.credits, round1k(farmC * QUEST_KILL_MULT + Math.min(kills * QUEST_FLOOR_PER_KILL.credits, QUEST_FLOOR_CAP.credits) + QUEST_FLAT_BONUS.credits));
+  const exp = Math.min(QUEST_REWARD_CAP.exp, round1k(farmE * QUEST_KILL_MULT + Math.min(kills * QUEST_FLOOR_PER_KILL.exp, QUEST_FLOOR_CAP.exp) + QUEST_FLAT_BONUS.exp));
+  const honor = Math.min(QUEST_REWARD_CAP.honor, round100(farmH * QUEST_KILL_MULT + Math.min(kills * QUEST_FLOOR_PER_KILL.honor, QUEST_FLOOR_CAP.honor) + QUEST_FLAT_BONUS.honor));
+  return { credits, exp, honor };
+};
+// Construit une quête à dominante kill dont la récompense est calculée.
+// `extra` ajoute un bonus fixe (collectes, visites, danger particulier).
+const KQ = (id, title, description, objectives, requires, extra) => {
+  const base = balancedKillReward(objectives);
+  const bonus = extra || {};
+  const credits = Math.min(QUEST_REWARD_CAP.credits, base.credits + Math.max(0, Math.floor(Number(bonus.credits) || 0)));
+  const exp = Math.min(QUEST_REWARD_CAP.exp, base.exp + Math.max(0, Math.floor(Number(bonus.exp) || 0)));
+  const honor = Math.min(QUEST_REWARD_CAP.honor, base.honor + Math.max(0, Math.floor(Number(bonus.honor) || 0)));
+  return Q(id, title, description, objectives, credits, exp, honor, requires);
+};
 const AQ = (id, title, description, objectives, credits, exp, honor, ammo, requires) => ({ ...Q(id, title, description, objectives, credits, exp, honor, requires), reward: { credits, exp, honor, ammo } });
 const EQ = (id, title, description, objectives, credits, exp, honor, galaxyEnergy, requires) => ({ ...Q(id, title, description, objectives, credits, exp, honor, requires), reward: { credits, exp, honor, galaxyEnergy } });
 const CEQ = (id, title, description, objectives, credits, exp, honor, ammo, galaxyEnergy, requires) => ({ ...Q(id, title, description, objectives, credits, exp, honor, requires), reward: { credits, exp, honor, ammo, galaxyEnergy } });
@@ -46,8 +90,8 @@ const ELITE_FAMILIES = [
 ];
 const GENERATED_ELITE_HUNTS = ELITE_FAMILIES.flatMap(([id, name, bossType, uberType, credits]) => [
   { ...Q(`elite_${id}_1`, `Meute ${name}`, `Première étape de la série élite ${name}.`, [K("boss", bossType, 3, `Éliminer des Boss ${name}s`)], credits, credits / 2, credits * 0.002), difficulty: "Facile" },
-  { ...Q(`elite_${id}_2`, `Boucherie ${name}`, `Deuxième étape de la série élite ${name}.`, [K("boss", bossType, 15, `Éliminer des Boss ${name}s`), K("uber", uberType, 5, `Éliminer des Uber ${name}s`)], credits * 5, credits * 2.5, credits * 0.01, `elite_${id}_1`), difficulty: "Moyenne" },
-  { ...Q(`elite_${id}_3`, `Génocide ${name}`, `Dernière étape de la série élite ${name}.`, [K("boss", bossType, 50, `Éliminer des Boss ${name}s`), K("uber", uberType, 25, `Éliminer des Uber ${name}s`)], credits * 18, credits * 9, credits * 0.036, `elite_${id}_2`), difficulty: "Difficile" },
+  { ...Q(`elite_${id}_2`, `Boucherie ${name}`, `Deuxième étape de la série élite ${name}.`, [K("boss", bossType, 15, `Éliminer des Boss ${name}s`), K("uber", uberType, 5, `Éliminer des Uber ${name}s`)], credits * 7, credits * 3.5, credits * 0.014, `elite_${id}_1`), difficulty: "Moyenne" },
+  { ...Q(`elite_${id}_3`, `Génocide ${name}`, `Dernière étape de la série élite ${name}.`, [K("boss", bossType, 50, `Éliminer des Boss ${name}s`), K("uber", uberType, 25, `Éliminer des Uber ${name}s`)], credits * 30, credits * 15, credits * 0.06, `elite_${id}_2`), difficulty: "Difficile" },
 ]);
 
 const GENERATED_ROUTES = [
@@ -67,51 +111,51 @@ const GENERATED_ROUTES = [
 const GENERATED_COLLECTIONS = [
   ["boxes_easy", "Rafale express", "Bonus_Box", 25, 300000, "Facile"],
   ["boxes_medium", "Gros filets", "Bonus_Box", 150, 2000000, "Moyenne"],
-  ["boxes_hard", "Trésor de guerre", "Bonus_Box", 750, 8000000, "Difficile"],
+  ["boxes_hard", "Trésor de guerre", "Bonus_Box", 750, 12000000, "Difficile"],
   ["cargo_easy", "Petites ferrailles", "Cargo_Box", 20, 400000, "Facile"],
-  ["cargo_medium", "Roi de la ferraille", "Cargo_Box", 120, 1500000, "Moyenne"],
-  ["cargo_hard", "Seigneur des épaves", "Cargo_Box", 600, 10000000, "Difficile"],
+  ["cargo_medium", "Roi de la ferraille", "Cargo_Box", 120, 2400000, "Moyenne"],
+  ["cargo_hard", "Seigneur des épaves", "Cargo_Box", 600, 14000000, "Difficile"],
   ["palladium_easy", "Premier pactole", "Palladium_Ore", 30, 500000, "Facile"],
   ["palladium_medium", "Convoi doré", "Palladium_Ore", 250, 5000000, "Moyenne"],
-  ["palladium_hard", "Coffre du pirate", "Palladium_Ore", 1500, 30000000, "Difficile"],
+  ["palladium_hard", "Coffre du pirate", "Palladium_Ore", 1500, 36000000, "Difficile"],
 ].map(([id, title, type, amount, credits, difficulty], index, rows) => ({
   ...Q(id, title, `Contrat de collecte de difficulté ${difficulty.toLowerCase()}.`, [C("collect", type, amount, `Collecter ${amount} ${type.replaceAll("_", " ")}`)], credits, Math.floor(credits * 0.5), Math.floor(credits * 0.002), index % 3 ? rows[index - 1][0] : null),
   difficulty,
 }));
 
 const GENERATED_GATE_CONTRACTS = [
-  ["gate_alpha_repeat_5", "Marathon Alpha", "alpha", 5, 8000000, "gate_alpha"],
-  ["gate_beta_repeat_5", "Marathon Beta", "beta", 5, 12000000, "gate_beta"],
-  ["gate_gamma_repeat_5", "Marathon Gamma", "gamma", 5, 18000000, "gate_gamma"],
-  ["gate_alpha_repeat_10", "Domination Alpha", "alpha", 10, 20000000, "gate_alpha_repeat_5"],
-  ["gate_beta_repeat_10", "Domination Beta", "beta", 10, 30000000, "gate_beta_repeat_5"],
-  ["gate_gamma_repeat_10", "Domination Gamma", "gamma", 10, 45000000, "gate_gamma_repeat_5"],
-  ["gate_alpha_repeat_25", "Maîtrise Alpha", "alpha", 25, 60000000, "gate_alpha_repeat_10"],
-  ["gate_beta_repeat_25", "Maîtrise Beta", "beta", 25, 90000000, "gate_beta_repeat_10"],
-  ["gate_gamma_repeat_25", "Maîtrise Gamma", "gamma", 25, 135000000, "gate_gamma_repeat_10"],
-  ["gate_alpha_repeat_50", "Légende Alpha", "alpha", 50, 160000000, "gate_alpha_repeat_25"],
-  ["gate_beta_repeat_50", "Légende Beta", "beta", 50, 240000000, "gate_beta_repeat_25"],
-  ["gate_gamma_repeat_50", "Légende Gamma", "gamma", 50, 360000000, "gate_gamma_repeat_25"],
-  ["gate_alpha_repeat_100", "Centenaire Alpha", "alpha", 100, 750000000, "gate_alpha_repeat_50"],
-  ["gate_beta_repeat_100", "Centenaire Beta", "beta", 100, 1000000000, "gate_beta_repeat_50"],
-  ["gate_gamma_repeat_100", "Centenaire Gamma", "gamma", 100, 1500000000, "gate_gamma_repeat_50"],
+  ["gate_alpha_repeat_5", "Marathon Alpha", "alpha", 5, 12000000, "gate_alpha"],
+  ["gate_beta_repeat_5", "Marathon Beta", "beta", 5, 18000000, "gate_beta"],
+  ["gate_gamma_repeat_5", "Marathon Gamma", "gamma", 5, 27000000, "gate_gamma"],
+  ["gate_alpha_repeat_10", "Domination Alpha", "alpha", 10, 30000000, "gate_alpha_repeat_5"],
+  ["gate_beta_repeat_10", "Domination Beta", "beta", 10, 45000000, "gate_beta_repeat_5"],
+  ["gate_gamma_repeat_10", "Domination Gamma", "gamma", 10, 68000000, "gate_gamma_repeat_5"],
+  ["gate_alpha_repeat_25", "Maîtrise Alpha", "alpha", 25, 90000000, "gate_alpha_repeat_10"],
+  ["gate_beta_repeat_25", "Maîtrise Beta", "beta", 25, 135000000, "gate_beta_repeat_10"],
+  ["gate_gamma_repeat_25", "Maîtrise Gamma", "gamma", 25, 200000000, "gate_gamma_repeat_10"],
+  ["gate_alpha_repeat_50", "Légende Alpha", "alpha", 50, 240000000, "gate_alpha_repeat_25"],
+  ["gate_beta_repeat_50", "Légende Beta", "beta", 50, 360000000, "gate_beta_repeat_25"],
+  ["gate_gamma_repeat_50", "Légende Gamma", "gamma", 50, 540000000, "gate_gamma_repeat_25"],
+  ["gate_alpha_repeat_100", "Centenaire Alpha", "alpha", 100, 1100000000, "gate_alpha_repeat_50"],
+  ["gate_beta_repeat_100", "Centenaire Beta", "beta", 100, 1500000000, "gate_beta_repeat_50"],
+  ["gate_gamma_repeat_100", "Centenaire Gamma", "gamma", 100, 2200000000, "gate_gamma_repeat_50"],
 ].map(([id, title, type, amount, credits, requires]) => ({ ...Q(id, title, `Termine ${amount} fois la Galaxy Gate ${type}.`, [G(type, amount)], credits, Math.floor(credits * 0.35), Math.floor(credits * 0.0015), requires) }));
 
 const PIRATE_CAMPAIGNS = [
-  Q("pirate_marauder_raid", "Raid Marauder", "Réduis les patrouilles Marauder.", [K("marauder", "npc_Marauder", 100, "Éliminer des Marauders")], 2500000, 1250000, 5000, "pirate_entry"),
-  Q("pirate_outlaw_mix", "Coalition hors-la-loi", "Démantèle plusieurs bandes pirates.", [K("vagrant", "npc_Vagrant", 100, "Éliminer des Vagrants"), K("outcast", "npc_Outcast", 100, "Éliminer des Outcasts"), K("convict", "npc_Convict", 75, "Éliminer des Convicts"), K("hooligan", "npc_Hooligan", 75, "Éliminer des Hooligans")], 8000000, 4000000, 16000, "pirate_cleanup"),
-  Q("pirate_ravager_line", "Ligne de feu : Ravager", "Écrase l’avant-garde Ravager.", [K("ravager", "npc_Ravager", 150, "Éliminer des Ravagers"), K("corsair", "npc_Corsair", 100, "Éliminer des Corsairs")], 12000000, 6000000, 24000, "pirate_outlaw_mix"),
-  Q("pirate_interceptor_500", "Essaim d’Interceptors", "Neutralise une flotte complète d’Interceptors.", [K("interceptor", "npc_Interceptor", 500, "Éliminer des Interceptors")], 25000000, 12500000, 50000, "pirate_elite"),
-  Q("pirate_barracuda_300", "Morsure du Barracuda", "Chasse les Barracudas des routes pirates.", [K("barracuda", "npc_Barracuda", 300, "Éliminer des Barracudas")], 30000000, 15000000, 60000, "pirate_elite"),
-  Q("pirate_saboteur_250", "Contre-sabotage", "Élimine les premières cellules Saboteur.", [K("saboteur", "npc_Saboteur", 250, "Éliminer des Saboteurs")], 35000000, 17500000, 70000, "pirate_elite"),
-  Q("pirate_annihilator_100", "Directive Annihilator", "Détruis les unités lourdes Annihilator.", [K("annihilator", "npc_Annihilator", 100, "Éliminer des Annihilators")], 45000000, 22500000, 90000, "pirate_elite"),
+  Q("pirate_marauder_raid", "Raid Marauder", "Réduis les patrouilles Marauder.", [K("marauder", "npc_Marauder", 100, "Éliminer des Marauders")], 13000000, 6500000, 26000, "pirate_entry"),
+  Q("pirate_outlaw_mix", "Coalition hors-la-loi", "Démantèle plusieurs bandes pirates.", [K("vagrant", "npc_Vagrant", 100, "Éliminer des Vagrants"), K("outcast", "npc_Outcast", 100, "Éliminer des Outcasts"), K("convict", "npc_Convict", 75, "Éliminer des Convicts"), K("hooligan", "npc_Hooligan", 75, "Éliminer des Hooligans")], 40000000, 20000000, 80000, "pirate_cleanup"),
+  Q("pirate_ravager_line", "Ligne de feu : Ravager", "Écrase l’avant-garde Ravager.", [K("ravager", "npc_Ravager", 150, "Éliminer des Ravagers"), K("corsair", "npc_Corsair", 100, "Éliminer des Corsairs")], 40000000, 20000000, 80000, "pirate_outlaw_mix"),
+  Q("pirate_interceptor_500", "Essaim d’Interceptors", "Neutralise une flotte complète d’Interceptors.", [K("interceptor", "npc_Interceptor", 500, "Éliminer des Interceptors")], 30000000, 15000000, 60000, "pirate_elite"),
+  Q("pirate_barracuda_300", "Morsure du Barracuda", "Chasse les Barracudas des routes pirates.", [K("barracuda", "npc_Barracuda", 300, "Éliminer des Barracudas")], 60000000, 30000000, 120000, "pirate_elite"),
+  Q("pirate_saboteur_250", "Contre-sabotage", "Élimine les premières cellules Saboteur.", [K("saboteur", "npc_Saboteur", 250, "Éliminer des Saboteurs")], 70000000, 35000000, 140000, "pirate_elite"),
+  Q("pirate_annihilator_100", "Directive Annihilator", "Détruis les unités lourdes Annihilator.", [K("annihilator", "npc_Annihilator", 100, "Éliminer des Annihilators")], 55000000, 27500000, 110000, "pirate_elite"),
   Q("pirate_battleray_25", "Chasse au Battleray", "Affronte les prédateurs majeurs du territoire pirate.", [K("battleray", "npc_Battleray", 25, "Éliminer des Battlerays")], 50000000, 25000000, 100000, "pirate_annihilator_100"),
   Q("pirate_falcon_10", "Le Faucon du siècle", "Fais tomber plusieurs Century Falcons.", [K("falcon", "npc_Century_Falcon", 10, "Éliminer des Century Falcons")], 60000000, 30000000, 120000, "pirate_battleray_25"),
-  Q("pirate_armada", "Armada à couler", "Détruis toutes les classes principales d’une armada.", [K("interceptor", "npc_Interceptor", 1000, "Éliminer des Interceptors"), K("barracuda", "npc_Barracuda", 500, "Éliminer des Barracudas"), K("saboteur", "npc_Saboteur", 500, "Éliminer des Saboteurs"), K("annihilator", "npc_Annihilator", 250, "Éliminer des Annihilators")], 150000000, 75000000, 300000, "pirate_falcon_10"),
-  Q("pirate_saboteur_2500", "Guerre de l’ombre", "Poursuis la campagne contre les Saboteurs.", [K("saboteur", "npc_Saboteur", 2500, "Éliminer des Saboteurs")], 180000000, 90000000, 360000, "pirate_saboteur_250"),
-  Q("pirate_saboteur_7500", "Réseau fantôme", "Détruis l’essentiel du réseau Saboteur.", [K("saboteur", "npc_Saboteur", 7500, "Éliminer des Saboteurs")], 350000000, 175000000, 700000, "pirate_saboteur_2500"),
-  Q("pirate_saboteur_17500", "Extinction des Saboteurs", "Contrat pirate de très longue durée.", [K("saboteur", "npc_Saboteur", 17500, "Éliminer des Saboteurs")], 750000000, 375000000, 1500000),
-  Q("pirate_palladium_5000", "Tout le Palladium", "Accumule une réserve massive de Palladium.", [C("palladium", "Palladium_Ore", 5000, "Collecter du Palladium", "5-2")], 120000000, 60000000, 240000, "palladium_industry"),
+  Q("pirate_armada", "Armada à couler", "Détruis toutes les classes principales d’une armada.", [K("interceptor", "npc_Interceptor", 1000, "Éliminer des Interceptors"), K("barracuda", "npc_Barracuda", 500, "Éliminer des Barracudas"), K("saboteur", "npc_Saboteur", 500, "Éliminer des Saboteurs"), K("annihilator", "npc_Annihilator", 250, "Éliminer des Annihilators")], 400000000, 200000000, 800000, "pirate_falcon_10"),
+  Q("pirate_saboteur_2500", "Guerre de l’ombre", "Poursuis la campagne contre les Saboteurs.", [K("saboteur", "npc_Saboteur", 2500, "Éliminer des Saboteurs")], 500000000, 250000000, 1000000, "pirate_saboteur_250"),
+  Q("pirate_saboteur_7500", "Réseau fantôme", "Détruis l’essentiel du réseau Saboteur.", [K("saboteur", "npc_Saboteur", 7500, "Éliminer des Saboteurs")], 1200000000, 600000000, 2400000, "pirate_saboteur_2500"),
+  Q("pirate_saboteur_17500", "Extinction des Saboteurs", "Contrat pirate de très longue durée.", [K("saboteur", "npc_Saboteur", 17500, "Éliminer des Saboteurs")], 2500000000, 1250000000, 5000000),
+  Q("pirate_palladium_5000", "Tout le Palladium", "Accumule une réserve massive de Palladium.", [C("palladium", "Palladium_Ore", 5000, "Collecter du Palladium", "5-2")], 150000000, 75000000, 300000, "palladium_industry"),
 ];
 
 const SPECIAL_CAMPAIGNS = [
@@ -119,25 +163,25 @@ const SPECIAL_CAMPAIGNS = [
 ];
 
 const PERMANENT_ELITE_CONTRACTS = [
-  Q("elite_cube_3500", "Faucheuse à Cubikons", "Contrat permanent contre les Cubikons.", [K("cubikon", "npc_Cubikon", 3500, "Détruire des Cubikons")], 150000000, 150000000, 6000000),
-  Q("elite_protegit_35000", "Marée de Protegits", "Élimine une population entière de Protegits.", [K("protegit", "npc_Protegit", 35000, "Éliminer des Protegits")], 85000000, 85000000, 3500000),
-  Q("elite_interceptor_65000", "Fléau des Interceptors", "Contrat permanent contre les flottes Interceptor.", [K("interceptor", "npc_Interceptor", 65000, "Éliminer des Interceptors")], 85000000, 85000000, 3500000),
-  Q("elite_annihilator_10500", "Requiem des Annihilators", "Élimine les unités Annihilator à très grande échelle.", [K("annihilator", "npc_Annihilator", 10500, "Éliminer des Annihilators")], 70000000, 70000000, 4000000),
+  KQ("elite_cube_3500", "Faucheuse à Cubikons", "Contrat permanent contre les Cubikons.", [K("cubikon", "npc_Cubikon", 3500, "Détruire des Cubikons")]),
+  KQ("elite_protegit_35000", "Marée de Protegits", "Élimine une population entière de Protegits.", [K("protegit", "npc_Protegit", 35000, "Éliminer des Protegits")]),
+  KQ("elite_interceptor_65000", "Fléau des Interceptors", "Contrat permanent contre les flottes Interceptor.", [K("interceptor", "npc_Interceptor", 65000, "Éliminer des Interceptors")]),
+  KQ("elite_annihilator_10500", "Requiem des Annihilators", "Élimine les unités Annihilator à très grande échelle.", [K("annihilator", "npc_Annihilator", 10500, "Éliminer des Annihilators")]),
 ];
 
 const AMMO_CONTRACTS = [
   AQ("ammo_x2_easy", "Miettes X2", "Premier contrat de ravitaillement laser.", [K("streuner", "npc_Streuner", 25, "Éliminer des Streuners")], 120000, 60000, 240, { x2: 2000 }),
   AQ("ammo_x2_medium", "Butin X2", "Constitue une réserve X2 plus importante.", [K("lordakia", "npc_Lordakia", 150, "Éliminer des Lordakias"), K("saimon", "npc_Saimon", 100, "Éliminer des Saimons")], 750000, 375000, 1500, { x2: 10000 }, "ammo_x2_easy"),
-  AQ("ammo_x2_hard", "Arsenal X2", "Contrat d’endurance pour un stock X2 durable.", [K("mordon", "npc_Mordon", 500, "Éliminer des Mordons"), K("devolarium", "npc_Devolarium", 150, "Éliminer des Devolariums")], 3500000, 1750000, 7000, { x2: 40000 }, "ammo_x2_medium"),
+  AQ("ammo_x2_hard", "Arsenal X2", "Contrat d’endurance pour un stock X2 durable.", [K("mordon", "npc_Mordon", 500, "Éliminer des Mordons"), K("devolarium", "npc_Devolarium", 150, "Éliminer des Devolariums")], 10000000, 5000000, 20000, { x2: 40000 }, "ammo_x2_medium"),
   AQ("ammo_x3_easy", "Miettes X3", "Débloque une première cargaison X3.", [K("mordon", "npc_Mordon", 50, "Éliminer des Mordons")], 375000, 187500, 750, { x3: 2000 }),
   AQ("ammo_x3_medium", "Butin X3", "Sécurise une cargaison moyenne de X3.", [K("sibelonit", "npc_Sibelonit", 250, "Éliminer des Sibelonits"), K("sibelon", "npc_Sibelon", 75, "Éliminer des Sibelons")], 2000000, 1000000, 4000, { x3: 10000 }, "ammo_x3_easy"),
-  AQ("ammo_x3_hard", "Arsenal X3", "Constitue une réserve avancée de X3.", [K("kristallin", "npc_Kristallin", 1000, "Éliminer des Kristallins"), K("kristallon", "npc_Kristallon", 100, "Éliminer des Kristallons")], 9000000, 4500000, 18000, { x3: 30000 }, "ammo_x3_medium"),
+  AQ("ammo_x3_hard", "Arsenal X3", "Constitue une réserve avancée de X3.", [K("kristallin", "npc_Kristallin", 1000, "Éliminer des Kristallins"), K("kristallon", "npc_Kristallon", 100, "Éliminer des Kristallons")], 25000000, 12500000, 50000, { x3: 30000 }, "ammo_x3_medium"),
   AQ("ammo_x4_easy", "Miettes UCB", "Gagne une petite réserve de munitions X4.", [K("kristallon", "npc_Kristallon", 10, "Éliminer des Kristallons")], 750000, 375000, 1500, { x4: 1000 }),
-  AQ("ammo_x4_medium", "Butin UCB", "Renforce ta réserve de munitions X4.", [K("boss", "npc_Boss_Kristallon", 20, "Éliminer des Boss Kristallons"), K("cubikon", "npc_Cubikon", 5, "Détruire des Cubikons")], 3500000, 1750000, 7000, { x4: 5000 }, "ammo_x4_easy"),
-  AQ("ammo_x4_hard", "Arsenal UCB-100", "Contrat difficile pour une réserve X4 maîtrisée.", [K("kristallon", "npc_Kristallon", 500, "Éliminer des Kristallons"), K("cubikon", "npc_Cubikon", 50, "Détruire des Cubikons")], 18000000, 9000000, 36000, { x4: 20000 }, "ammo_x4_medium"),
+  AQ("ammo_x4_medium", "Butin UCB", "Renforce ta réserve de munitions X4.", [K("boss", "npc_Boss_Kristallon", 20, "Éliminer des Boss Kristallons"), K("cubikon", "npc_Cubikon", 5, "Détruire des Cubikons")], 10000000, 5000000, 20000, { x4: 5000 }, "ammo_x4_easy"),
+  AQ("ammo_x4_hard", "Arsenal UCB-100", "Contrat difficile pour une réserve X4 maîtrisée.", [K("kristallon", "npc_Kristallon", 500, "Éliminer des Kristallons"), K("cubikon", "npc_Cubikon", 50, "Détruire des Cubikons")], 100000000, 50000000, 200000, { x4: 20000 }, "ammo_x4_medium"),
   AQ("ammo_sab_easy", "Miettes SAB", "Récupère une petite cargaison de SAB.", [K("sibelon", "npc_Sibelon", 25, "Éliminer des Sibelons")], 600000, 300000, 1200, { sab: 1000 }),
-  AQ("ammo_sab_medium", "Butin SAB", "Augmente ta réserve de munitions absorbantes.", [K("lordakium", "npc_Lordakium", 100, "Éliminer des Lordakiums"), K("sibelon", "npc_Sibelon", 150, "Éliminer des Sibelons")], 3000000, 1500000, 6000, { sab: 5000 }, "ammo_sab_easy"),
-  AQ("ammo_sab_hard", "Arsenal SAB", "Contrat difficile de ravitaillement SAB.", [K("boss_lordakium", "npc_Boss_Lordakium", 100, "Éliminer des Boss Lordakiums"), K("uber_sibelon", "npc_Uber_Sibelon", 50, "Éliminer des Uber Sibelons")], 14000000, 7000000, 28000, { sab: 15000 }, "ammo_sab_medium"),
+  AQ("ammo_sab_medium", "Butin SAB", "Augmente ta réserve de munitions absorbantes.", [K("lordakium", "npc_Lordakium", 100, "Éliminer des Lordakiums"), K("sibelon", "npc_Sibelon", 150, "Éliminer des Sibelons")], 15000000, 7500000, 30000, { sab: 5000 }, "ammo_sab_easy"),
+  AQ("ammo_sab_hard", "Arsenal SAB", "Contrat difficile de ravitaillement SAB.", [K("boss_lordakium", "npc_Boss_Lordakium", 100, "Éliminer des Boss Lordakiums"), K("uber_sibelon", "npc_Uber_Sibelon", 50, "Éliminer des Uber Sibelons")], 40000000, 20000000, 80000, { sab: 15000 }, "ammo_sab_medium"),
 ];
 
 const GALAXY_ENERGY_CONTRACTS = [
@@ -146,8 +190,8 @@ const GALAXY_ENERGY_CONTRACTS = [
   EQ("energy_heavy_salvage", "Gros démontage", "Démonte des unités blindées et récupère leurs cellules intactes.", [K("devolarium", "npc_Devolarium", 25, "Éliminer des Devolariums"), K("sibelon", "npc_Sibelon", 25, "Éliminer des Sibelons")], 750000, 375000, 750, 20, "energy_border_patrol"),
   EQ("energy_crystal_reserve", "Cœur de cristal", "Affronte les forces cristallines pour constituer une réserve durable.", [K("kristallin", "npc_Kristallin", 200, "Éliminer des Kristallins"), K("kristallon", "npc_Kristallon", 30, "Éliminer des Kristallons")], 2500000, 1250000, 2500, 35, "energy_heavy_salvage"),
   EQ("energy_pirate_cells", "Marché noir", "Intercepte une cargaison énergétique en territoire pirate.", [K("interceptor", "npc_Interceptor", 150, "Éliminer des Interceptors", "5-2"), C("palladium", "Palladium_Ore", 250, "Collecter du Palladium", "5-2")], 5000000, 2500000, 5000, 50, "energy_crystal_reserve"),
-  EQ("energy_cube_core", "Cœurs à prendre", "Brise les défenses Cubikon et récupère leurs noyaux les plus stables.", [K("cubikon", "npc_Cubikon", 20, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 400, "Éliminer des Protegits")], 10000000, 5000000, 10000, 75, "energy_pirate_cells"),
-  EQ("energy_gate_trinity", "Triple saut", "Termine une fois chaque portail de l’ensemble Alpha, Beta et Gamma.", [G("alpha"), G("beta"), G("gamma")], 12000000, 6000000, 12000, 100, "energy_cube_core"),
+  EQ("energy_cube_core", "Cœurs à prendre", "Brise les défenses Cubikon et récupère leurs noyaux les plus stables.", [K("cubikon", "npc_Cubikon", 20, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 400, "Éliminer des Protegits")], 60000000, 30000000, 120000, 75, "energy_pirate_cells"),
+  EQ("energy_gate_trinity", "Triple saut", "Termine une fois chaque portail de l’ensemble Alpha, Beta et Gamma.", [G("alpha"), G("beta"), G("gamma")], 35000000, 17500000, 35000, 100, "energy_cube_core"),
   EQ("energy_ultimate_stock", "Coffre du vétéran", "Prouve ton endurance dans les Gates et contre les unités d’élite.", [G("alpha", 5), G("beta", 3), G("gamma", 2), K("uber", "npc_Uber_Kristallon", 50, "Éliminer des Uber Kristallons", "4-5")], 50000000, 25000000, 50000, 250, "energy_gate_trinity"),
 ];
 
@@ -162,7 +206,7 @@ const CURSED_MAP_CONTRACTS = [
 ];
 
 const LEGENDARY_KILL_CONTRACTS = [
-  CEQ("legend_million_npcs", "Million de cadavres", "Élimine un million de NPC, toutes espèces et toutes cartes confondues.", [K("all_npcs", "*", 1000000, "Éliminer des NPC")], 500000000, 500000000, 2500000, { x4: 50000, x6: 5000, sab: 20000 }, 50),
+  CEQ("legend_million_npcs", "Million de cadavres", "Élimine un million de NPC, toutes espèces et toutes cartes confondues.", [K("all_npcs", "*", 1000000, "Éliminer des NPC")], 2000000000, 1000000000, 10000000, { x4: 50000, x6: 5000, sab: 20000 }, 50),
 ];
 
 const SUPPLY_CONTRACTS = [
@@ -176,13 +220,13 @@ const SUPPLY_CONTRACTS = [
 
   AQ("supply_x4_starter", "Premiers UCB", "Détruis quelques unités cristallines pour recevoir une petite quantité de X4.", [K("kristallin", "npc_Kristallin", 50, "Éliminer des Kristallins")], 375000, 150000, 750, { x4: 500 }),
   AQ("supply_x4_patrol", "UCB de patrouille", "Affronte les unités lourdes pour agrandir ta réserve X4.", [K("kristallon", "npc_Kristallon", 20, "Éliminer des Kristallons"), K("boss", "npc_Boss_Kristallin", 10, "Éliminer des Boss Kristallins")], 1800000, 720000, 3600, { x4: 2500 }, "supply_x4_starter"),
-  AQ("supply_x4_cube", "Convoi du cube", "Brise une défense Cubikon pour obtenir une cargaison X4 intermédiaire.", [K("cubikon", "npc_Cubikon", 5, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 100, "Éliminer des Protegits")], 6000000, 2400000, 12000, { x4: 10000 }, "supply_x4_patrol"),
+  AQ("supply_x4_cube", "Convoi du cube", "Brise une défense Cubikon pour obtenir une cargaison X4 intermédiaire.", [K("cubikon", "npc_Cubikon", 5, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 100, "Éliminer des Protegits")], 15000000, 7500000, 30000, { x4: 10000 }, "supply_x4_patrol"),
 
   EQ("supply_energy_boxes", "Étincelles de départ", "Collecte quelques Bonus Boxes pour alimenter le générateur.", [C("bonus", "Bonus_Box", 10, "Collecter des Bonus Boxes")], 60000, 24000, 120, 3),
   EQ("supply_energy_cargo", "Cellules de récup", "Récupère des cargaisons abandonnées contenant des cellules énergétiques.", [C("cargo", "Cargo_Box", 25, "Collecter des Cargo Boxes")], 250000, 100000, 500, 8, "supply_energy_boxes"),
   EQ("supply_energy_patrol", "Patrouille aux cellules", "Nettoie les secteurs intermédiaires pour recevoir un lot d’énergies.", [K("mordon", "npc_Mordon", 75, "Éliminer des Mordons"), K("sibelonit", "npc_Sibelonit", 100, "Éliminer des Sibelonits")], 1200000, 480000, 2400, 15, "supply_energy_cargo"),
   EQ("supply_energy_crystal", "Cristal en cellules", "Détruis des forces cristallines afin de stabiliser davantage d’énergies.", [K("kristallin", "npc_Kristallin", 200, "Éliminer des Kristallins"), K("kristallon", "npc_Kristallon", 25, "Éliminer des Kristallons")], 3500000, 1400000, 7000, 30, "supply_energy_patrol"),
-  EQ("supply_energy_cube", "Noyaux à saisir", "Récupère les noyaux de plusieurs Cubikons pour le générateur Galaxy Gate.", [K("cubikon", "npc_Cubikon", 10, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 200, "Éliminer des Protegits")], 9000000, 3600000, 18000, 50, "supply_energy_crystal"),
+  EQ("supply_energy_cube", "Noyaux à saisir", "Récupère les noyaux de plusieurs Cubikons pour le générateur Galaxy Gate.", [K("cubikon", "npc_Cubikon", 10, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 200, "Éliminer des Protegits")], 30000000, 15000000, 60000, 50, "supply_energy_crystal"),
 ];
 
 const HUNDRED_MISSION_CHAIN = [
@@ -204,9 +248,10 @@ const HUNDRED_MISSION_CHAIN = [
 ].map(([id, title, objectives], index, rows) => {
   const navigationOnly = objectives.every(objective => objective.kind === "visit");
   const firstEliteStep = id === "century_001";
-  const credits = navigationOnly ? 5000000 : firstEliteStep ? 60000000 : 160000000;
-  const exp = navigationOnly ? 2500000 : firstEliteStep ? 60000000 : 160000000;
-  const honor = navigationOnly ? 10000 : firstEliteStep ? 25000 : 75000;
+  const cubikonStep = id === "century_015";
+  const credits = navigationOnly ? 5000000 : firstEliteStep ? 60000000 : cubikonStep ? 800000000 : 160000000;
+  const exp = navigationOnly ? 2500000 : firstEliteStep ? 60000000 : cubikonStep ? 400000000 : 160000000;
+  const honor = navigationOnly ? 10000 : firstEliteStep ? 25000 : cubikonStep ? 1600000 : 75000;
   return Q(id, title, "Mission élite de longue durée adaptée aux systèmes disponibles.", objectives, credits, exp, honor, index ? rows[index - 1][0] : "pirate_saboteur_17500");
 });
 
@@ -217,30 +262,30 @@ const HUNDRED_MISSION_CHAIN = [
 // ---------------------------------------------------------------------------
 
 const FIRME_PATROLS = [
-  Q("firme_mmo_01", "MMO — Chair fraîche", "Sécurise les abords de la base MMO et ramasse les bonus.", [K("streuner", "npc_Streuner", 15, "Éliminer des Streuners"), C("bonus", "Bonus_Box", 5, "Collecter des Bonus Boxes")], 150000, 75000, 300),
-  Q("firme_mmo_02", "MMO — Seconds couteaux", "Encadre les recrues et leurs accompagnateurs.", [K("recruit", "npc_Streuner_Recruit", 15, "Éliminer des Streuner Recruits"), K("aider", "npc_Streuner_Aider", 10, "Éliminer des Streuner Aiders")], 300000, 150000, 600, "firme_mmo_01"),
-  Q("firme_mmo_03", "MMO — Yeux crevés", "Repousse les éclaireurs Lordakia et Saimon.", [K("lordakia", "npc_Lordakia", 25, "Éliminer des Lordakias"), K("saimon", "npc_Saimon", 20, "Éliminer des Saimons")], 500000, 250000, 1000, "firme_mmo_02"),
-  Q("firme_mmo_04", "MMO — Terrain conquis", "Cartographie deux secteurs MMO puis brise la ligne Mordon.", [V("1-2"), V("1-3"), K("mordon", "npc_Mordon", 15, "Éliminer des Mordons")], 750000, 375000, 1500, "firme_mmo_03"),
-  Q("firme_mmo_05", "MMO — Nid de vipères", "Contiens l'essaim Sibelonit et son commandant.", [K("sibelonit", "npc_Sibelonit", 30, "Éliminer des Sibelonits"), K("boss_sibelonit", "npc_Boss_Sibelonit", 3, "Éliminer des Boss Sibelonits")], 500000, 250000, 1000, "firme_mmo_04"),
-  Q("firme_mmo_06", "MMO — Tenir la ligne", "Repousse les Lordakiums des voies MMO.", [K("lordakium", "npc_Lordakium", 12, "Éliminer des Lordakiums"), K("sibelonit", "npc_Sibelonit", 25, "Éliminer des Sibelonits")], 750000, 375000, 1500, "firme_mmo_05"),
-  Q("firme_mmo_07", "MMO — Moisson de glace", "Réduis l'avant-garde Kristallin et récupère les cargaisons.", [K("kristallin", "npc_Kristallin", 40, "Éliminer des Kristallins"), C("cargo", "Cargo_Box", 10, "Récupérer des Cargo Boxes")], 1000000, 500000, 2000, "firme_mmo_06"),
-  Q("firme_mmo_08", "MMO — Prime aux chefs", "Traque les Boss des secteurs bas côté MMO.", [K("boss_lordakia", "npc_Boss_Lordakia", 5, "Éliminer des Boss Lordakias"), K("boss_saimon", "npc_Boss_Saimon", 5, "Éliminer des Boss Saimons"), K("boss_mordon", "npc_Boss_Mordon", 5, "Éliminer des Boss Mordons")], 1400000, 700000, 2800, "firme_mmo_07"),
-  Q("firme_eic_01", "EIC — Chair fraîche", "Sécurise les abords de la base EIC et ramasse les bonus.", [K("streuner", "npc_Streuner", 15, "Éliminer des Streuners"), C("bonus", "Bonus_Box", 5, "Collecter des Bonus Boxes")], 150000, 75000, 300, "cadet_contact"),
-  Q("firme_eic_02", "EIC — Seconds couteaux", "Encadre les recrues et leurs accompagnateurs.", [K("recruit", "npc_Streuner_Recruit", 15, "Éliminer des Streuner Recruits"), K("aider", "npc_Streuner_Aider", 10, "Éliminer des Streuner Aiders")], 300000, 150000, 600, "firme_eic_01"),
-  Q("firme_eic_03", "EIC — Yeux crevés", "Repousse les éclaireurs Lordakia et Saimon.", [K("lordakia", "npc_Lordakia", 25, "Éliminer des Lordakias"), K("saimon", "npc_Saimon", 20, "Éliminer des Saimons")], 500000, 250000, 1000, "firme_eic_02"),
-  Q("firme_eic_04", "EIC — Terrain conquis", "Cartographie deux secteurs EIC puis brise la ligne Mordon.", [V("2-2"), V("2-3"), K("mordon", "npc_Mordon", 15, "Éliminer des Mordons")], 750000, 375000, 1500, "firme_eic_03"),
-  Q("firme_eic_05", "EIC — Nid de vipères", "Contiens l'essaim Sibelonit et son commandant.", [K("sibelonit", "npc_Sibelonit", 30, "Éliminer des Sibelonits"), K("boss_sibelonit", "npc_Boss_Sibelonit", 3, "Éliminer des Boss Sibelonits")], 500000, 250000, 1000, "firme_eic_04"),
-  Q("firme_eic_06", "EIC — Tenir la ligne", "Repousse les Lordakiums des voies EIC.", [K("lordakium", "npc_Lordakium", 12, "Éliminer des Lordakiums"), K("sibelonit", "npc_Sibelonit", 25, "Éliminer des Sibelonits")], 750000, 375000, 1500, "firme_eic_05"),
-  Q("firme_eic_07", "EIC — Moisson de glace", "Réduis l'avant-garde Kristallin et récupère les cargaisons.", [K("kristallin", "npc_Kristallin", 40, "Éliminer des Kristallins"), C("cargo", "Cargo_Box", 10, "Récupérer des Cargo Boxes")], 1000000, 500000, 2000, "firme_eic_06"),
-  Q("firme_eic_08", "EIC — Prime aux chefs", "Traque les Boss des secteurs bas côté EIC.", [K("boss_lordakia", "npc_Boss_Lordakia", 5, "Éliminer des Boss Lordakias"), K("boss_saimon", "npc_Boss_Saimon", 5, "Éliminer des Boss Saimons"), K("boss_mordon", "npc_Boss_Mordon", 5, "Éliminer des Boss Mordons")], 1400000, 700000, 2800, "firme_eic_07"),
-  Q("firme_vru_01", "VRU — Chair fraîche", "Sécurise les abords de la base VRU et ramasse les bonus.", [K("streuner", "npc_Streuner", 15, "Éliminer des Streuners"), C("bonus", "Bonus_Box", 5, "Collecter des Bonus Boxes")], 150000, 75000, 300, "cadet_contact"),
-  Q("firme_vru_02", "VRU — Seconds couteaux", "Encadre les recrues et leurs accompagnateurs.", [K("recruit", "npc_Streuner_Recruit", 15, "Éliminer des Streuner Recruits"), K("aider", "npc_Streuner_Aider", 10, "Éliminer des Streuner Aiders")], 300000, 150000, 600, "firme_vru_01"),
-  Q("firme_vru_03", "VRU — Yeux crevés", "Repousse les éclaireurs Lordakia et Saimon.", [K("lordakia", "npc_Lordakia", 25, "Éliminer des Lordakias"), K("saimon", "npc_Saimon", 20, "Éliminer des Saimons")], 500000, 250000, 1000, "firme_vru_02"),
-  Q("firme_vru_04", "VRU — Terrain conquis", "Cartographie deux secteurs VRU puis brise la ligne Mordon.", [V("3-2"), V("3-3"), K("mordon", "npc_Mordon", 15, "Éliminer des Mordons")], 750000, 375000, 1500, "firme_vru_03"),
-  Q("firme_vru_05", "VRU — Nid de vipères", "Contiens l'essaim Sibelonit et son commandant.", [K("sibelonit", "npc_Sibelonit", 30, "Éliminer des Sibelonits"), K("boss_sibelonit", "npc_Boss_Sibelonit", 3, "Éliminer des Boss Sibelonits")], 500000, 250000, 1000, "firme_vru_04"),
-  Q("firme_vru_06", "VRU — Tenir la ligne", "Repousse les Lordakiums des voies VRU.", [K("lordakium", "npc_Lordakium", 12, "Éliminer des Lordakiums"), K("sibelonit", "npc_Sibelonit", 25, "Éliminer des Sibelonits")], 750000, 375000, 1500, "firme_vru_05"),
-  Q("firme_vru_07", "VRU — Moisson de glace", "Réduis l'avant-garde Kristallin et récupère les cargaisons.", [K("kristallin", "npc_Kristallin", 40, "Éliminer des Kristallins"), C("cargo", "Cargo_Box", 10, "Récupérer des Cargo Boxes")], 1000000, 500000, 2000, "firme_vru_06"),
-  Q("firme_vru_08", "VRU — Prime aux chefs", "Traque les Boss des secteurs bas côté VRU.", [K("boss_lordakia", "npc_Boss_Lordakia", 5, "Éliminer des Boss Lordakias"), K("boss_saimon", "npc_Boss_Saimon", 5, "Éliminer des Boss Saimons"), K("boss_mordon", "npc_Boss_Mordon", 5, "Éliminer des Boss Mordons")], 1400000, 700000, 2800, "firme_vru_07"),
+  KQ("firme_mmo_01", "MMO — Chair fraîche", "Sécurise les abords de la base MMO et ramasse les bonus.", [K("streuner", "npc_Streuner", 15, "Éliminer des Streuners"), C("bonus", "Bonus_Box", 5, "Collecter des Bonus Boxes")], null, { credits: 50000, exp: 25000, honor: 100 }),
+  KQ("firme_mmo_02", "MMO — Seconds couteaux", "Encadre les recrues et leurs accompagnateurs.", [K("recruit", "npc_Streuner_Recruit", 15, "Éliminer des Streuner Recruits"), K("aider", "npc_Streuner_Aider", 10, "Éliminer des Streuner Aiders")], "firme_mmo_01"),
+  KQ("firme_mmo_03", "MMO — Yeux crevés", "Repousse les éclaireurs Lordakia et Saimon.", [K("lordakia", "npc_Lordakia", 25, "Éliminer des Lordakias"), K("saimon", "npc_Saimon", 20, "Éliminer des Saimons")], "firme_mmo_02"),
+  KQ("firme_mmo_04", "MMO — Terrain conquis", "Cartographie deux secteurs MMO puis brise la ligne Mordon.", [V("1-2"), V("1-3"), K("mordon", "npc_Mordon", 15, "Éliminer des Mordons")], "firme_mmo_03", { credits: 450000, exp: 225000, honor: 900 }),
+  KQ("firme_mmo_05", "MMO — Nid de vipères", "Contiens l'essaim Sibelonit et son commandant.", [K("sibelonit", "npc_Sibelonit", 30, "Éliminer des Sibelonits"), K("boss_sibelonit", "npc_Boss_Sibelonit", 3, "Éliminer des Boss Sibelonits")], "firme_mmo_04"),
+  KQ("firme_mmo_06", "MMO — Tenir la ligne", "Repousse les Lordakiums des voies MMO.", [K("lordakium", "npc_Lordakium", 12, "Éliminer des Lordakiums"), K("sibelonit", "npc_Sibelonit", 25, "Éliminer des Sibelonits")], "firme_mmo_05"),
+  KQ("firme_mmo_07", "MMO — Moisson de glace", "Réduis l'avant-garde Kristallin et récupère les cargaisons.", [K("kristallin", "npc_Kristallin", 40, "Éliminer des Kristallins"), C("cargo", "Cargo_Box", 10, "Récupérer des Cargo Boxes")], "firme_mmo_06", { credits: 150000, exp: 75000, honor: 300 }),
+  KQ("firme_mmo_08", "MMO — Prime aux chefs", "Traque les Boss des secteurs bas côté MMO.", [K("boss_lordakia", "npc_Boss_Lordakia", 5, "Éliminer des Boss Lordakias"), K("boss_saimon", "npc_Boss_Saimon", 5, "Éliminer des Boss Saimons"), K("boss_mordon", "npc_Boss_Mordon", 5, "Éliminer des Boss Mordons")], "firme_mmo_07", { credits: 1500000, exp: 750000, honor: 3000 }),
+  KQ("firme_eic_01", "EIC — Chair fraîche", "Sécurise les abords de la base EIC et ramasse les bonus.", [K("streuner", "npc_Streuner", 15, "Éliminer des Streuners"), C("bonus", "Bonus_Box", 5, "Collecter des Bonus Boxes")], "cadet_contact", { credits: 50000, exp: 25000, honor: 100 }),
+  KQ("firme_eic_02", "EIC — Seconds couteaux", "Encadre les recrues et leurs accompagnateurs.", [K("recruit", "npc_Streuner_Recruit", 15, "Éliminer des Streuner Recruits"), K("aider", "npc_Streuner_Aider", 10, "Éliminer des Streuner Aiders")], "firme_eic_01"),
+  KQ("firme_eic_03", "EIC — Yeux crevés", "Repousse les éclaireurs Lordakia et Saimon.", [K("lordakia", "npc_Lordakia", 25, "Éliminer des Lordakias"), K("saimon", "npc_Saimon", 20, "Éliminer des Saimons")], "firme_eic_02"),
+  KQ("firme_eic_04", "EIC — Terrain conquis", "Cartographie deux secteurs EIC puis brise la ligne Mordon.", [V("2-2"), V("2-3"), K("mordon", "npc_Mordon", 15, "Éliminer des Mordons")], "firme_eic_03", { credits: 450000, exp: 225000, honor: 900 }),
+  KQ("firme_eic_05", "EIC — Nid de vipères", "Contiens l'essaim Sibelonit et son commandant.", [K("sibelonit", "npc_Sibelonit", 30, "Éliminer des Sibelonits"), K("boss_sibelonit", "npc_Boss_Sibelonit", 3, "Éliminer des Boss Sibelonits")], "firme_eic_04"),
+  KQ("firme_eic_06", "EIC — Tenir la ligne", "Repousse les Lordakiums des voies EIC.", [K("lordakium", "npc_Lordakium", 12, "Éliminer des Lordakiums"), K("sibelonit", "npc_Sibelonit", 25, "Éliminer des Sibelonits")], "firme_eic_05"),
+  KQ("firme_eic_07", "EIC — Moisson de glace", "Réduis l'avant-garde Kristallin et récupère les cargaisons.", [K("kristallin", "npc_Kristallin", 40, "Éliminer des Kristallins"), C("cargo", "Cargo_Box", 10, "Récupérer des Cargo Boxes")], "firme_eic_06", { credits: 150000, exp: 75000, honor: 300 }),
+  KQ("firme_eic_08", "EIC — Prime aux chefs", "Traque les Boss des secteurs bas côté EIC.", [K("boss_lordakia", "npc_Boss_Lordakia", 5, "Éliminer des Boss Lordakias"), K("boss_saimon", "npc_Boss_Saimon", 5, "Éliminer des Boss Saimons"), K("boss_mordon", "npc_Boss_Mordon", 5, "Éliminer des Boss Mordons")], "firme_eic_07", { credits: 1500000, exp: 750000, honor: 3000 }),
+  KQ("firme_vru_01", "VRU — Chair fraîche", "Sécurise les abords de la base VRU et ramasse les bonus.", [K("streuner", "npc_Streuner", 15, "Éliminer des Streuners"), C("bonus", "Bonus_Box", 5, "Collecter des Bonus Boxes")], "cadet_contact", { credits: 50000, exp: 25000, honor: 100 }),
+  KQ("firme_vru_02", "VRU — Seconds couteaux", "Encadre les recrues et leurs accompagnateurs.", [K("recruit", "npc_Streuner_Recruit", 15, "Éliminer des Streuner Recruits"), K("aider", "npc_Streuner_Aider", 10, "Éliminer des Streuner Aiders")], "firme_vru_01"),
+  KQ("firme_vru_03", "VRU — Yeux crevés", "Repousse les éclaireurs Lordakia et Saimon.", [K("lordakia", "npc_Lordakia", 25, "Éliminer des Lordakias"), K("saimon", "npc_Saimon", 20, "Éliminer des Saimons")], "firme_vru_02"),
+  KQ("firme_vru_04", "VRU — Terrain conquis", "Cartographie deux secteurs VRU puis brise la ligne Mordon.", [V("3-2"), V("3-3"), K("mordon", "npc_Mordon", 15, "Éliminer des Mordons")], "firme_vru_03", { credits: 450000, exp: 225000, honor: 900 }),
+  KQ("firme_vru_05", "VRU — Nid de vipères", "Contiens l'essaim Sibelonit et son commandant.", [K("sibelonit", "npc_Sibelonit", 30, "Éliminer des Sibelonits"), K("boss_sibelonit", "npc_Boss_Sibelonit", 3, "Éliminer des Boss Sibelonits")], "firme_vru_04"),
+  KQ("firme_vru_06", "VRU — Tenir la ligne", "Repousse les Lordakiums des voies VRU.", [K("lordakium", "npc_Lordakium", 12, "Éliminer des Lordakiums"), K("sibelonit", "npc_Sibelonit", 25, "Éliminer des Sibelonits")], "firme_vru_05"),
+  KQ("firme_vru_07", "VRU — Moisson de glace", "Réduis l'avant-garde Kristallin et récupère les cargaisons.", [K("kristallin", "npc_Kristallin", 40, "Éliminer des Kristallins"), C("cargo", "Cargo_Box", 10, "Récupérer des Cargo Boxes")], "firme_vru_06", { credits: 150000, exp: 75000, honor: 300 }),
+  KQ("firme_vru_08", "VRU — Prime aux chefs", "Traque les Boss des secteurs bas côté VRU.", [K("boss_lordakia", "npc_Boss_Lordakia", 5, "Éliminer des Boss Lordakias"), K("boss_saimon", "npc_Boss_Saimon", 5, "Éliminer des Boss Saimons"), K("boss_mordon", "npc_Boss_Mordon", 5, "Éliminer des Boss Mordons")], "firme_vru_07", { credits: 1500000, exp: 750000, honor: 3000 }),
 ];
 
 const UBER_45_CAMPAIGN = [
@@ -264,28 +309,28 @@ const UBER_45_CAMPAIGN = [
   Q("uber45_18", "4-5 — Second round : Sibelonit", "Deuxième vague contre l'essaim Sibelonit.", [K("boss", "npc_Boss_Sibelonit", 20, "Éliminer des Boss Sibelonits", "4-5"), K("uber", "npc_Uber_Sibelonit", 20, "Éliminer des Uber Sibelonits", "4-5")], 9000000, 4500000, 18000, "uber45_17"),
   Q("uber45_19", "4-5 — Second round : Lordakium", "Deuxième vague contre les Lordakiums lourds.", [K("boss", "npc_Boss_Lordakium", 20, "Éliminer des Boss Lordakiums", "4-5"), K("uber", "npc_Uber_Lordakium", 20, "Éliminer des Uber Lordakiums", "4-5")], 9500000, 4750000, 19000, "uber45_18"),
   Q("uber45_20", "4-5 — Revanche de cristal", "Deuxième vague contre les forces cristallines lourdes.", [K("boss_kristallin", "npc_Boss_Kristallin", 20, "Éliminer des Boss Kristallins", "4-5"), K("uber_kristallin", "npc_Uber_Kristallin", 20, "Éliminer des Uber Kristallins", "4-5"), K("boss_kristallon", "npc_Boss_Kristallon", 15, "Éliminer des Boss Kristallons", "4-5"), K("uber_kristallon", "npc_Uber_Kristallon", 15, "Éliminer des Uber Kristallons", "4-5")], 15000000, 7500000, 30000, "uber45_19"),
-  Q("uber45_21", "4-5 — Verrou R8", "Verrouille la campagne StreuneR8 en 4-5.", [K("boss", "npc_Boss_StreuneR8", 20, "Éliminer des Boss StreuneR8", "4-5"), K("uber", "npc_Uber_StreuneR8", 20, "Éliminer des Uber StreuneR8", "4-5")], 12000000, 6000000, 24000, "uber45_20"),
+  Q("uber45_21", "4-5 — Verrou R8", "Verrouille la campagne StreuneR8 en 4-5.", [K("boss", "npc_Boss_StreuneR8", 20, "Éliminer des Boss StreuneR8", "4-5"), K("uber", "npc_Uber_StreuneR8", 20, "Éliminer des Uber StreuneR8", "4-5")], 18000000, 9000000, 36000, "uber45_20"),
   Q("uber45_22", "4-5 — Domination totale", "Domine toutes les lignées lourdes de 4-5.", [K("boss_mordon", "npc_Boss_Mordon", 30, "Éliminer des Boss Mordons", "4-5"), K("boss_sibelon", "npc_Boss_Sibelon", 25, "Éliminer des Boss Sibelons", "4-5"), K("boss_lordakium", "npc_Boss_Lordakium", 20, "Éliminer des Boss Lordakiums", "4-5"), K("boss_kristallon", "npc_Boss_Kristallon", 15, "Éliminer des Boss Kristallons", "4-5")], 30000000, 15000000, 60000, "uber45_21"),
 ];
 
 const CRYSTAL_R8_EXPEDITION = [
-  Q("crystal_r8_01", "Premiers éclats de haine", "Ouvre l'expédition cristalline.", [K("kristallin", "npc_Kristallin", 60, "Éliminer des Kristallins"), K("sibelonit", "npc_Sibelonit", 30, "Éliminer des Sibelonits")], 1000000, 500000, 2000, "ice_fragments"),
+  Q("crystal_r8_01", "Premiers éclats de haine", "Ouvre l'expédition cristalline.", [K("kristallin", "npc_Kristallin", 60, "Éliminer des Kristallins"), K("sibelonit", "npc_Sibelonit", 30, "Éliminer des Sibelonits")], 1500000, 750000, 3000, "ice_fragments"),
   Q("crystal_r8_02", "Cuirassés de glace", "Affronte les premiers Kristallons.", [K("kristallon", "npc_Kristallon", 15, "Éliminer des Kristallons"), K("kristallin", "npc_Kristallin", 60, "Éliminer des Kristallins")], 1500000, 750000, 3000, "crystal_r8_01"),
   Q("crystal_r8_03", "Têtes de cristal", "Traque les Boss cristallins.", [K("boss_kristallin", "npc_Boss_Kristallin", 8, "Éliminer des Boss Kristallins"), K("boss_kristallon", "npc_Boss_Kristallon", 5, "Éliminer des Boss Kristallons")], 2200000, 1100000, 4400, "crystal_r8_02"),
-  Q("crystal_r8_04", "Souverains à genoux", "Défie les Empereurs cristallins et Lordakium.", [K("emperor_kristallon", "npc_Emperor_Kristallon", 2, "Éliminer des Emperor Kristallons"), K("emperor_lordakium", "npc_Emperor_Lordakium", 2, "Éliminer des Emperor Lordakiums")], 4000000, 2000000, 8000, "crystal_r8_03"),
+  Q("crystal_r8_04", "Souverains à genoux", "Défie les Empereurs cristallins et Lordakium.", [K("emperor_kristallon", "npc_Emperor_Kristallon", 2, "Éliminer des Emperor Kristallons"), K("emperor_lordakium", "npc_Emperor_Lordakium", 2, "Éliminer des Emperor Lordakiums")], 100000000, 50000000, 200000, "crystal_r8_03"),
   Q("crystal_r8_05", "Nuée R8", "Nettoie la nuée StreuneR8.", [K("r8", "npc_StreuneR8", 60, "Éliminer des StreuneR8"), K("boss_r8", "npc_Boss_StreuneR8", 10, "Éliminer des Boss StreuneR8")], 3500000, 1750000, 7000, "crystal_r8_04"),
   Q("crystal_r8_06", "Essaim enragé", "Poursuis la campagne R8.", [K("r8", "npc_StreuneR8", 150, "Éliminer des StreuneR8"), K("boss_r8", "npc_Boss_StreuneR8", 25, "Éliminer des Boss StreuneR8")], 7000000, 3500000, 14000, "crystal_r8_05"),
   Q("crystal_r8_07", "Foyers à éteindre", "Endigue les Blighted Kristallins et Kristallons.", [K("blighted_kristallin", "npc_Blighted_Kristallin", 60, "Éliminer des Blighted Kristallins"), K("blighted_kristallon", "npc_Blighted_Kristallon", 30, "Éliminer des Blighted Kristallons")], 5000000, 2500000, 10000, "crystal_r8_06"),
   Q("crystal_r8_08", "Chasse au Gygerthrall", "Provoque l'apparition des Gygerthralls en détruisant des Blighted.", [K("blighted_kristallon", "npc_Blighted_Kristallon", 60, "Éliminer des Blighted Kristallons"), K("gyger", "npc_Blighted_Gygerthrall", 60, "Éliminer des Blighted Gygerthralls")], 8000000, 4000000, 16000, "crystal_r8_07"),
   Q("crystal_r8_09", "Marée contaminée", "Affronte une vague massive de contaminés.", [K("blighted_kristallin", "npc_Blighted_Kristallin", 200, "Éliminer des Blighted Kristallins"), K("blighted_kristallon", "npc_Blighted_Kristallon", 120, "Éliminer des Blighted Kristallons"), K("gyger", "npc_Blighted_Gygerthrall", 120, "Éliminer des Blighted Gygerthralls")], 14000000, 7000000, 28000, "crystal_r8_08"),
-  Q("crystal_r8_10", "Triade à abattre", "Affronte les trois Empereurs.", [K("sibelon", "npc_Emperor_Sibelon", 3, "Éliminer des Emperor Sibelons"), K("lordakium", "npc_Emperor_Lordakium", 3, "Éliminer des Emperor Lordakiums"), K("kristallon", "npc_Emperor_Kristallon", 3, "Éliminer des Emperor Kristallons")], 12000000, 6000000, 24000, "crystal_r8_09"),
+  Q("crystal_r8_10", "Triade à abattre", "Affronte les trois Empereurs.", [K("sibelon", "npc_Emperor_Sibelon", 3, "Éliminer des Emperor Sibelons"), K("lordakium", "npc_Emperor_Lordakium", 3, "Éliminer des Emperor Lordakiums"), K("kristallon", "npc_Emperor_Kristallon", 3, "Éliminer des Emperor Kristallons")], 200000000, 100000000, 400000, "crystal_r8_09"),
   Q("crystal_r8_11", "Avant-garde de givre", "Traque les Ubers cristallins de 4-5.", [K("uber_kristallin", "npc_Uber_Kristallin", 15, "Éliminer des Uber Kristallins", "4-5"), K("uber_kristallon", "npc_Uber_Kristallon", 10, "Éliminer des Uber Kristallons", "4-5")], 9000000, 4500000, 18000, "crystal_r8_10"),
   Q("crystal_r8_12", "Verrou R8", "Verrouille la lignée R8 en 4-5.", [K("boss_r8", "npc_Boss_StreuneR8", 10, "Éliminer des Boss StreuneR8", "4-5"), K("uber_r8", "npc_Uber_StreuneR8", 10, "Éliminer des Uber StreuneR8", "4-5")], 9000000, 4500000, 18000, "crystal_r8_11"),
   Q("crystal_r8_13", "Moisson d’alliages", "Récupère des alliages hybrides sur les contaminés.", [K("blighted_kristallon", "npc_Blighted_Kristallon", 40, "Éliminer des Blighted Kristallons"), C("alloy", "Hybrid_Alloy_Box", 40, "Collecter des Hybrid Alloy Boxes")], 7000000, 3500000, 14000, "crystal_r8_12"),
   Q("crystal_r8_14", "Stock de guerre", "Constitue un stock d'alliages.", [K("gyger", "npc_Blighted_Gygerthrall", 100, "Éliminer des Blighted Gygerthralls"), C("alloy", "Hybrid_Alloy_Box", 100, "Collecter des Hybrid Alloy Boxes")], 11000000, 5500000, 22000, "crystal_r8_13"),
   Q("crystal_r8_15", "Cap au nord", "Visite les secteurs avancés MMO, EIC et VRU.", [V("1-8"), V("2-8"), V("3-8")], 3000000, 1500000, 6000, "crystal_r8_14"),
   Q("crystal_r8_16", "Guerre du cristal : acte I", "Lance une campagne démesurée contre le cristal.", [K("kristallin", "npc_Kristallin", 300, "Éliminer des Kristallins"), K("kristallon", "npc_Kristallon", 80, "Éliminer des Kristallons")], 18000000, 9000000, 36000, "crystal_r8_15"),
-  Q("crystal_r8_17", "Guerre du cristal : acte II", "Poursuis contre les commandants et souverains.", [K("boss_kristallin", "npc_Boss_Kristallin", 30, "Éliminer des Boss Kristallins"), K("boss_kristallon", "npc_Boss_Kristallon", 20, "Éliminer des Boss Kristallons"), K("emperor_kristallon", "npc_Emperor_Kristallon", 3, "Éliminer des Emperor Kristallons")], 25000000, 12500000, 50000, "crystal_r8_16"),
+  Q("crystal_r8_17", "Guerre du cristal : acte II", "Poursuis contre les commandants et souverains.", [K("boss_kristallin", "npc_Boss_Kristallin", 30, "Éliminer des Boss Kristallins"), K("boss_kristallon", "npc_Boss_Kristallon", 20, "Éliminer des Boss Kristallons"), K("emperor_kristallon", "npc_Emperor_Kristallon", 3, "Éliminer des Emperor Kristallons")], 150000000, 75000000, 300000, "crystal_r8_16"),
   Q("crystal_r8_18", "Bûcher de cristal", "Achève l'expédition cristalline.", [K("kristallin", "npc_Kristallin", 500, "Éliminer des Kristallins"), K("kristallon", "npc_Kristallon", 150, "Éliminer des Kristallons"), K("blighted_kristallon", "npc_Blighted_Kristallon", 100, "Éliminer des Blighted Kristallons")], 40000000, 20000000, 80000, "crystal_r8_17"),
 ];
 
@@ -295,7 +340,7 @@ const PIRATE_52_OPERATIONS = [
   Q("pirate52_03", "5-2 — Saboteurs à terre", "Élimine les premières cellules Saboteur.", [K("saboteur", "npc_Saboteur", 15, "Éliminer des Saboteurs", "5-2"), K("barracuda", "npc_Barracuda", 20, "Éliminer des Barracudas", "5-2")], 4500000, 2250000, 9000, "pirate52_02"),
   Q("pirate52_04", "5-2 — Lourds à couler", "Détruis les unités lourdes Annihilator.", [K("annihilator", "npc_Annihilator", 10, "Éliminer des Annihilators", "5-2"), K("saboteur", "npc_Saboteur", 15, "Éliminer des Saboteurs", "5-2")], 6000000, 3000000, 12000, "pirate52_03"),
   Q("pirate52_05", "5-2 — Patrouille éventrée", "Démantèle une patrouille mixte.", [K("interceptor", "npc_Interceptor", 60, "Éliminer des Interceptors", "5-2"), K("barracuda", "npc_Barracuda", 30, "Éliminer des Barracudas", "5-2"), K("saboteur", "npc_Saboteur", 20, "Éliminer des Saboteurs", "5-2"), K("annihilator", "npc_Annihilator", 10, "Éliminer des Annihilators", "5-2")], 9000000, 4500000, 18000, "pirate52_04"),
-  Q("pirate52_06", "5-2 — Premiers lingots", "Constitue une première réserve de Palladium.", [C("palladium", "Palladium_Ore", 100, "Collecter du Palladium", "5-2"), K("interceptor", "npc_Interceptor", 30, "Éliminer des Interceptors", "5-2")], 5000000, 2500000, 10000, "pirate52_05"),
+  Q("pirate52_06", "5-2 — Premiers lingots", "Constitue une première réserve de Palladium.", [C("palladium", "Palladium_Ore", 100, "Collecter du Palladium", "5-2"), K("interceptor", "npc_Interceptor", 30, "Éliminer des Interceptors", "5-2")], 7000000, 3500000, 14000, "pirate52_05"),
   Q("pirate52_07", "5-2 — Convoi saigné", "Sécurise un convoi de Palladium.", [C("palladium", "Palladium_Ore", 250, "Collecter du Palladium", "5-2"), K("barracuda", "npc_Barracuda", 30, "Éliminer des Barracudas", "5-2")], 8000000, 4000000, 16000, "pirate52_06"),
   Q("pirate52_08", "5-2 — Chasse aux Ubers", "Affronte les versions Uber des pirates.", [K("uber_interceptor", "npc_Uber_Interceptor", 3, "Éliminer des Uber Interceptors", "5-2"), K("uber_barracuda", "npc_Uber_Barracuda", 3, "Éliminer des Uber Barracudas", "5-2"), K("uber_saboteur", "npc_Uber_Saboteur", 3, "Éliminer des Uber Saboteurs", "5-2"), K("uber_annihilator", "npc_Uber_Annihilator", 2, "Éliminer des Uber Annihilators", "5-2")], 15000000, 7500000, 30000, "pirate52_07"),
   Q("pirate52_09", "5-2 — Essaim noyé", "Neutralise un essaim d'Interceptors.", [K("interceptor", "npc_Interceptor", 200, "Éliminer des Interceptors", "5-2")], 12000000, 6000000, 24000, "pirate52_08"),
@@ -325,10 +370,10 @@ const SALVAGE_GATE_OPERATIONS = [
 
 const ANCIENT_CURSED_EXTENSION = [
   Q("ancient_cursed_01", "Anciens — Bêtes volatiles", "Ouvre l'extension anciens et maudits.", [K("styxus", "npc_Styxus", 5, "Éliminer des Styxus"), K("charopos", "npc_Charopos", 5, "Éliminer des Charopos"), K("lanatum", "npc_Lanatum", 10, "Éliminer des Lanatums")], 15000000, 7500000, 30000, "ancient_trio"),
-  Q("ancient_cursed_02", "Braises à éteindre", "Affronte les braises de 1-9.", [K("magma", "npc_Magma_Stalker", 80, "Éliminer des Magma Stalkers"), K("pyrospire", "npc_Pyrospire", 3, "Éliminer des Pyrospires"), V("1-9")], 12000000, 6000000, 24000, "ancient_cursed_01"),
-  Q("ancient_cursed_03", "4-1 — Zone de mort", "Nettoie la zone explosive 4-1.", [K("explosif", "npc_Explosif", 40, "Éliminer des Kamikazes"), V("4-1")], 6000000, 3000000, 12000, "ancient_cursed_02"),
-  Q("ancient_cursed_04", "Siège du premier cœur", "Frappe les dispositifs Cubikon.", [K("cubikon", "npc_Cubikon", 5, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 100, "Éliminer des Protegits")], 10000000, 5000000, 20000, "cubikon_siege"),
-  Q("ancient_cursed_05", "Cœur lourd", "Mène une lourde campagne Cubikon.", [K("cubikon", "npc_Cubikon", 20, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 400, "Éliminer des Protegits")], 25000000, 12500000, 50000, "ancient_cursed_04"),
+  Q("ancient_cursed_02", "Braises à éteindre", "Affronte les braises de 1-9.", [K("magma", "npc_Magma_Stalker", 80, "Éliminer des Magma Stalkers"), K("pyrospire", "npc_Pyrospire", 3, "Éliminer des Pyrospires"), V("1-9")], 18000000, 9000000, 36000, "ancient_cursed_01"),
+  Q("ancient_cursed_03", "4-1 — Zone de mort", "Nettoie la zone explosive 4-1.", [K("explosif", "npc_Explosif", 40, "Éliminer des Kamikazes"), V("4-1")], 12000000, 6000000, 24000, "ancient_cursed_02"),
+  Q("ancient_cursed_04", "Siège du premier cœur", "Frappe les dispositifs Cubikon.", [K("cubikon", "npc_Cubikon", 5, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 100, "Éliminer des Protegits")], 15000000, 7500000, 30000, "cubikon_siege"),
+  Q("ancient_cursed_05", "Cœur lourd", "Mène une lourde campagne Cubikon.", [K("cubikon", "npc_Cubikon", 20, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 400, "Éliminer des Protegits")], 60000000, 30000000, 120000, "ancient_cursed_04"),
   Q("ancient_cursed_06", "Au-delà du voile", "Survis au secteur maudit et récolte l'astral.", [V("MAUDITE"), K("protegit", "npc_Protegit", 50, "Éliminer des Protegits", "MAUDITE"), C("astral", "Astral_Prime_Box", 25, "Collecter des Astral Prime Boxes", "MAUDITE")], 30000000, 30000000, 150000, "cursed_first_contact"),
   Q("ancient_cursed_07", "Le suzerain tombe", "Neutralise la souche virale et ses overlords.", [K("viral_kristallon", "npc_Viral_Kristallon", 40, "Éliminer des Viral Kristallons"), K("viral_gyger", "npc_Viral_Gygerthrall", 60, "Éliminer des Viral Gygerthralls"), K("overlord", "npc_Gygerim_Overlord", 3, "Éliminer des Gygerim Overlords")], 35000000, 17500000, 70000, "viral_outbreak"),
   Q("ancient_cursed_08", "L’épreuve finale", "Termine l'extension par une épreuve complète.", [K("styxus", "npc_Styxus", 10, "Éliminer des Styxus"), K("charopos", "npc_Charopos", 10, "Éliminer des Charopos"), K("lanatum", "npc_Lanatum", 25, "Éliminer des Lanatums"), K("cubikon", "npc_Cubikon", 10, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 250, "Éliminer des Protegits")], 80000000, 40000000, 160000, "ancient_cursed_07"),
@@ -399,64 +444,58 @@ const EXTERMINATION_1000_DATA = [
   ["exterm1000_magma_stalker", "Magma Stalker", "npc_Magma_Stalker"],
   ["exterm1000_pyrospire", "Pyrospire", "npc_Pyrospire"],
 ];
-const EXTERMINATION_1000 = EXTERMINATION_1000_DATA.map(([id, name, type]) => {
-  const reward = NPC_REWARDS[type] || { credits: 0, exp: 0, honor: 0 };
-  // Plafond endgame (full crédits, sans uridium) : 1000 kills ne doivent jamais
-  // acheter le endgame d'un coup. Le facteur reste 1500x mais écrêté.
-  const credits = Math.min(500000000, Math.floor(Number(reward.credits || 0) * 1500));
-  const exp = Math.min(250000000, Math.floor(Number(reward.exp || 0) * 1500));
-  const honor = Math.floor(Number(reward.honor || 0) * 1500);
-  return Q(id, `Anéantissement : 1000 ${name}`, `Contrat d'extermination : détruis 1000 ${name}.`, [K("kill", type, 1000, `Éliminer 1000 ${name}`)], credits, exp, honor);
-});
+const EXTERMINATION_1000 = EXTERMINATION_1000_DATA.map(([id, name, type]) =>
+  KQ(id, `Anéantissement : 1000 ${name}`, `Contrat d'extermination : détruis 1000 ${name}.`, [K("kill", type, 1000, `Éliminer 1000 ${name}`)])
+);
 
 // Inspiré des familles de missions DarkOrbit, mais limité aux contenus jouables
 // du projet et rédigé avec des titres/descriptions originaux.
 const QUEST_CATALOG = [
-  AQ("cadet_contact", "Baptême du vide", "Nettoie la route de départ et récupère les ressources abandonnées.", [K("streuner", "npc_Streuner", 5, "Éliminer des Streuners"), C("bonus", "Bonus_Box", 3, "Collecter des Bonus Boxes")], 100000, 40000, 200, { x2: 500 }),
-  Q("cadet_lordakia", "Chiens de garde", "Écarte les éclaireurs qui menacent les voies commerciales.", [K("lordakia", "npc_Lordakia", 10, "Éliminer des Lordakias"), C("cargo", "Cargo_Box", 5, "Récupérer des Cargo Boxes")], 200000, 80000, 400, "cadet_contact"),
-  AQ("cadet_saimon", "Chasse aux ombres", "Intercepte les Saimons et sécurise les balises.", [K("saimon", "npc_Saimon", 12, "Éliminer des Saimons"), C("bonus", "Bonus_Box", 5, "Collecter des Bonus Boxes")], 350000, 140000, 700, { x2: 1000 }, "cadet_lordakia"),
-  Q("cadet_mordon", "Briser la ligne", "Brise la première ligne lourde des envahisseurs.", [K("mordon", "npc_Mordon", 10, "Éliminer des Mordons"), K("saimon", "npc_Saimon", 15, "Éliminer des Saimons")], 600000, 240000, 1200, "cadet_saimon"),
-  AQ("cadet_devolarium", "Épreuve du blindé", "Affronte une cible blindée et rapporte ses cargaisons.", [K("devolarium", "npc_Devolarium", 6, "Éliminer des Devolariums"), C("cargo", "Cargo_Box", 8, "Récupérer des Cargo Boxes")], 1000000, 400000, 2000, { x3: 500 }, "cadet_mordon"),
-  Q("low_mix", "Purge orbitale", "Réduis plusieurs populations hostiles des secteurs bas.", [K("lordakia", "npc_Lordakia", 40, "Éliminer des Lordakias"), K("saimon", "npc_Saimon", 30, "Éliminer des Saimons"), K("mordon", "npc_Mordon", 20, "Éliminer des Mordons")], 1000000, 400000, 2000),
-  Q("low_bosses", "Décapitation", "Traque les variantes Boss des espèces des secteurs bas.", [K("streuner", "npc_Boss_Streuner", 5, "Éliminer des Boss Streuners"), K("lordakia", "npc_Boss_Lordakia", 5, "Éliminer des Boss Lordakias"), K("saimon", "npc_Boss_Saimon", 5, "Éliminer des Boss Saimons")], 1500000, 600000, 3000),
-  Q("sibelon_front", "Front de sang", "Démantèle une formation Sibelon et son escorte.", [K("sibelon", "npc_Sibelon", 15, "Éliminer des Sibelons"), K("sibelonit", "npc_Sibelonit", 30, "Éliminer des Sibelonits")], 750000, 375000, 1500),
-  Q("lordakium_pressure", "L’étau se resserre", "Repousse les unités des secteurs avancés.", [K("lordakium", "npc_Lordakium", 15, "Éliminer des Lordakiums"), K("sibelonit", "npc_Sibelonit", 35, "Éliminer des Sibelonits")], 950000, 475000, 1900, "sibelon_front"),
-  Q("ice_fragments", "Éclats de haine", "Réduis l’essaim Kristallin avant l’arrivée des unités lourdes.", [K("kristallin", "npc_Kristallin", 50, "Éliminer des Kristallins"), C("cargo", "Cargo_Box", 15, "Récupérer des Cargo Boxes")], 1100000, 550000, 2200),
-  Q("kristallon_hunt", "Chasse aux cuirassés", "Neutralise les cuirassés cristallins et leur escorte.", [K("kristallon", "npc_Kristallon", 12, "Éliminer des Kristallons"), K("kristallin", "npc_Kristallin", 60, "Éliminer des Kristallins")], 1600000, 800000, 3200, "ice_fragments"),
-  Q("cubikon_siege", "Siège du cœur", "Frappe le cœur d’un dispositif Cubikon.", [K("cubikon", "npc_Cubikon", 2, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 30, "Éliminer des Protegits")], 3000000, 1500000, 6000, "kristallon_hunt"),
-  Q("cubikon_campaign", "Abattre le cœur", "Mène une longue opération contre les structures Cubikon.", [K("cubikon", "npc_Cubikon", 10, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 150, "Éliminer des Protegits")], 12000000, 6000000, 24000, "cubikon_siege"),
+  AQ("cadet_contact", "Baptême du vide", "Nettoie la route de départ et récupère les ressources abandonnées.", [K("streuner", "npc_Streuner", 5, "Éliminer des Streuners"), C("bonus", "Bonus_Box", 3, "Collecter des Bonus Boxes")], 300000, 150000, 600, { x2: 500 }),
+  Q("cadet_lordakia", "Chiens de garde", "Écarte les éclaireurs qui menacent les voies commerciales.", [K("lordakia", "npc_Lordakia", 10, "Éliminer des Lordakias"), C("cargo", "Cargo_Box", 5, "Récupérer des Cargo Boxes")], 500000, 250000, 1000, "cadet_contact"),
+  AQ("cadet_saimon", "Chasse aux ombres", "Intercepte les Saimons et sécurise les balises.", [K("saimon", "npc_Saimon", 12, "Éliminer des Saimons"), C("bonus", "Bonus_Box", 5, "Collecter des Bonus Boxes")], 900000, 450000, 1800, { x2: 1000 }, "cadet_lordakia"),
+  Q("cadet_mordon", "Briser la ligne", "Brise la première ligne lourde des envahisseurs.", [K("mordon", "npc_Mordon", 10, "Éliminer des Mordons"), K("saimon", "npc_Saimon", 15, "Éliminer des Saimons")], 1500000, 750000, 3000, "cadet_saimon"),
+  AQ("cadet_devolarium", "Épreuve du blindé", "Affronte une cible blindée et rapporte ses cargaisons.", [K("devolarium", "npc_Devolarium", 6, "Éliminer des Devolariums"), C("cargo", "Cargo_Box", 8, "Récupérer des Cargo Boxes")], 2500000, 1250000, 5000, { x3: 500 }, "cadet_mordon"),
+  Q("low_mix", "Purge orbitale", "Réduis plusieurs populations hostiles des secteurs bas.", [K("lordakia", "npc_Lordakia", 40, "Éliminer des Lordakias"), K("saimon", "npc_Saimon", 30, "Éliminer des Saimons"), K("mordon", "npc_Mordon", 20, "Éliminer des Mordons")], 1500000, 750000, 3000),
+  Q("low_bosses", "Décapitation", "Traque les variantes Boss des espèces des secteurs bas.", [K("streuner", "npc_Boss_Streuner", 5, "Éliminer des Boss Streuners"), K("lordakia", "npc_Boss_Lordakia", 5, "Éliminer des Boss Lordakias"), K("saimon", "npc_Boss_Saimon", 5, "Éliminer des Boss Saimons")], 2000000, 1000000, 4000),
+  Q("sibelon_front", "Front de sang", "Démantèle une formation Sibelon et son escorte.", [K("sibelon", "npc_Sibelon", 15, "Éliminer des Sibelons"), K("sibelonit", "npc_Sibelonit", 30, "Éliminer des Sibelonits")], 3200000, 1600000, 6400),
+  Q("lordakium_pressure", "L’étau se resserre", "Repousse les unités des secteurs avancés.", [K("lordakium", "npc_Lordakium", 15, "Éliminer des Lordakiums"), K("sibelonit", "npc_Sibelonit", 35, "Éliminer des Sibelonits")], 5500000, 2750000, 11000, "sibelon_front"),
+  Q("ice_fragments", "Éclats de haine", "Réduis l’essaim Kristallin avant l’arrivée des unités lourdes.", [K("kristallin", "npc_Kristallin", 50, "Éliminer des Kristallins"), C("cargo", "Cargo_Box", 15, "Récupérer des Cargo Boxes")], 1500000, 750000, 3000),
+  Q("kristallon_hunt", "Chasse aux cuirassés", "Neutralise les cuirassés cristallins et leur escorte.", [K("kristallon", "npc_Kristallon", 12, "Éliminer des Kristallons"), K("kristallin", "npc_Kristallin", 60, "Éliminer des Kristallins")], 9000000, 4500000, 18000, "ice_fragments"),
+  Q("cubikon_siege", "Siège du cœur", "Frappe le cœur d’un dispositif Cubikon.", [K("cubikon", "npc_Cubikon", 2, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 30, "Éliminer des Protegits")], 6000000, 3000000, 12000, "kristallon_hunt"),
+  Q("cubikon_campaign", "Abattre le cœur", "Mène une longue opération contre les structures Cubikon.", [K("cubikon", "npc_Cubikon", 10, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 150, "Éliminer des Protegits")], 30000000, 15000000, 60000, "cubikon_siege"),
 
-  Q("mmo_route", "Marche MMO", "Reconnais les secteurs bas de la zone MMO.", [V("1-2"), V("1-3"), V("1-4")], 150000, 75000, 300),
-  Q("eic_route", "Marche EIC", "Reconnais les secteurs bas de la zone EIC.", [V("2-2"), V("2-3"), V("2-4")], 150000, 75000, 300),
-  Q("vru_route", "Marche VRU", "Reconnais les secteurs bas de la zone VRU.", [V("3-2"), V("3-3"), V("3-4")], 150000, 75000, 300),
-  Q("upper_tour", "Au-delà du mur", "Traverse les trois grands secteurs supérieurs.", [V("1-8"), V("2-8"), V("3-8")], 400000, 200000, 800),
-  Q("dangerous_crossroads", "Carrefour des damnés", "Cartographie les zones les plus hostiles du centre galactique.", [V("4-4"), V("4-5"), V("5-2")], 300000, 150000, 300, "upper_tour"),
+  Q("mmo_route", "Marche MMO", "Reconnais les secteurs bas de la zone MMO.", [V("1-2"), V("1-3"), V("1-4")], 300000, 150000, 600),
+  Q("eic_route", "Marche EIC", "Reconnais les secteurs bas de la zone EIC.", [V("2-2"), V("2-3"), V("2-4")], 300000, 150000, 600),
+  Q("vru_route", "Marche VRU", "Reconnais les secteurs bas de la zone VRU.", [V("3-2"), V("3-3"), V("3-4")], 300000, 150000, 600),
+  Q("upper_tour", "Au-delà du mur", "Traverse les trois grands secteurs supérieurs.", [V("1-8"), V("2-8"), V("3-8")], 800000, 400000, 1600),
+  Q("dangerous_crossroads", "Carrefour des damnés", "Cartographie les zones les plus hostiles du centre galactique.", [V("4-4"), V("4-5"), V("5-2")], 1500000, 750000, 3000, "upper_tour"),
   Q("uber_vanguard", "Premiers damnés", "Affronte les variantes Uber légères de 4-5.", [K("streuner", "npc_Uber_Streuner", 10, "Éliminer des Uber Streuners", "4-5"), K("lordakia", "npc_Uber_Lordakia", 10, "Éliminer des Uber Lordakias", "4-5"), K("saimon", "npc_Uber_Saimon", 10, "Éliminer des Uber Saimons", "4-5")], 3500000, 1750000, 7000, "dangerous_crossroads"),
   Q("uber_heavy", "Chair lourde", "Élimine les unités Uber blindées de 4-5.", [K("mordon", "npc_Uber_Mordon", 15, "Éliminer des Uber Mordons", "4-5"), K("sibelon", "npc_Uber_Sibelon", 10, "Éliminer des Uber Sibelons", "4-5"), K("devo", "npc_Uber_Devolarium", 10, "Éliminer des Uber Devolariums", "4-5")], 6000000, 3000000, 12000, "uber_vanguard"),
   Q("uber_ice", "Âge de sang", "Survis aux prédateurs les plus dangereux de 4-5.", [K("kristallin", "npc_Uber_Kristallin", 25, "Éliminer des Uber Kristallins", "4-5"), K("kristallon", "npc_Uber_Kristallon", 10, "Éliminer des Uber Kristallons", "4-5"), K("lordakium", "npc_Uber_Lordakium", 10, "Éliminer des Uber Lordakiums", "4-5")], 10000000, 5000000, 20000, "uber_heavy"),
 
-  Q("pirate_entry", "Enfer 5-2", "Ouvre une route et constitue une première réserve de Palladium.", [V("5-2"), K("marauder", "npc_Marauder", 15, "Éliminer des Marauders"), C("palladium", "Palladium_Ore", 50, "Collecter du Palladium", "5-2")], 2000000, 1000000, 4000),
-  Q("pirate_cleanup", "Purifier par le feu", "Affronte les bandes qui contrôlent les routes de contrebande.", [K("vagrant", "npc_Vagrant", 25, "Éliminer des Vagrants"), K("outcast", "npc_Outcast", 25, "Éliminer des Outcasts"), K("corsair", "npc_Corsair", 15, "Éliminer des Corsairs")], 3500000, 1750000, 7000, "pirate_entry"),
-  Q("pirate_elite", "Gibier d’élite", "Détruis les unités pirates spécialisées.", [K("interceptor", "npc_Interceptor", 40, "Éliminer des Interceptors"), K("barracuda", "npc_Barracuda", 25, "Éliminer des Barracudas"), K("saboteur", "npc_Saboteur", 20, "Éliminer des Saboteurs"), K("annihilator", "npc_Annihilator", 10, "Éliminer des Annihilators")], 8000000, 4000000, 16000, "pirate_cleanup"),
-  Q("palladium_industry", "Fièvre du Palladium", "Constitue une réserve stratégique en territoire pirate.", [C("palladium", "Palladium_Ore", 500, "Collecter du Palladium", "5-2"), K("marauder", "npc_Marauder", 50, "Éliminer des Marauders")], 9000000, 4500000, 18000, "pirate_entry"),
+  Q("pirate_entry", "Enfer 5-2", "Ouvre une route et constitue une première réserve de Palladium.", [V("5-2"), K("marauder", "npc_Marauder", 15, "Éliminer des Marauders"), C("palladium", "Palladium_Ore", 50, "Collecter du Palladium", "5-2")], 3000000, 1500000, 6000),
+  Q("pirate_cleanup", "Purifier par le feu", "Affronte les bandes qui contrôlent les routes de contrebande.", [K("vagrant", "npc_Vagrant", 25, "Éliminer des Vagrants"), K("outcast", "npc_Outcast", 25, "Éliminer des Outcasts"), K("corsair", "npc_Corsair", 15, "Éliminer des Corsairs")], 12000000, 6000000, 24000, "pirate_entry"),
+  Q("pirate_elite", "Gibier d’élite", "Détruis les unités pirates spécialisées.", [K("interceptor", "npc_Interceptor", 40, "Éliminer des Interceptors"), K("barracuda", "npc_Barracuda", 25, "Éliminer des Barracudas"), K("saboteur", "npc_Saboteur", 20, "Éliminer des Saboteurs"), K("annihilator", "npc_Annihilator", 10, "Éliminer des Annihilators")], 18000000, 9000000, 36000, "pirate_cleanup"),
+  Q("palladium_industry", "Fièvre du Palladium", "Constitue une réserve stratégique en territoire pirate.", [C("palladium", "Palladium_Ore", 500, "Collecter du Palladium", "5-2"), K("marauder", "npc_Marauder", 50, "Éliminer des Marauders")], 20000000, 10000000, 40000, "pirate_entry"),
 
   Q("blighted_sample", "Prélèvements interdits", "Prélève des alliages sur les créatures contaminées.", [K("kristallon", "npc_Blighted_Kristallon", 20, "Éliminer des Blighted Kristallons"), K("gyger", "npc_Blighted_Gygerthrall", 50, "Éliminer des Blighted Gygerthralls"), C("alloy", "Hybrid_Alloy_Box", 30, "Collecter des Hybrid Alloy Boxes")], 6000000, 3000000, 12000),
-  Q("blighted_epidemic", "Feu de contagion", "Endigue une vague massive de contaminés.", [K("kristallon", "npc_Blighted_Kristallon", 100, "Éliminer des Blighted Kristallons"), K("kristallin", "npc_Blighted_Kristallin", 200, "Éliminer des Blighted Kristallins"), K("gyger", "npc_Blighted_Gygerthrall", 300, "Éliminer des Blighted Gygerthralls")], 30000000, 15000000, 60000, "blighted_sample"),
-  Q("viral_outbreak", "Souche zéro", "Neutralise les formes virales avant leur dissémination.", [K("kristallon", "npc_Viral_Kristallon", 25, "Éliminer des Viral Kristallons"), K("gyger", "npc_Viral_Gygerthrall", 75, "Éliminer des Viral Gygerthralls"), K("overlord", "npc_Gygerim_Overlord", 3, "Éliminer des Gygerim Overlords")], 18000000, 9000000, 36000, "blighted_sample"),
+  Q("blighted_epidemic", "Feu de contagion", "Endigue une vague massive de contaminés.", [K("kristallon", "npc_Blighted_Kristallon", 100, "Éliminer des Blighted Kristallons"), K("kristallin", "npc_Blighted_Kristallin", 200, "Éliminer des Blighted Kristallins"), K("gyger", "npc_Blighted_Gygerthrall", 300, "Éliminer des Blighted Gygerthralls")], 80000000, 40000000, 160000, "blighted_sample"),
+  Q("viral_outbreak", "Souche zéro", "Neutralise les formes virales avant leur dissémination.", [K("kristallon", "npc_Viral_Kristallon", 25, "Éliminer des Viral Kristallons"), K("gyger", "npc_Viral_Gygerthrall", 75, "Éliminer des Viral Gygerthralls"), K("overlord", "npc_Gygerim_Overlord", 3, "Éliminer des Gygerim Overlords")], 20000000, 10000000, 40000, "blighted_sample"),
 
-  Q("gate_alpha", "Gueule Alpha", "Termine la Galaxy Gate Alpha.", [G("alpha")], 1000000, 350000, 1000),
-  Q("gate_beta", "Gueule Beta", "Termine la Galaxy Gate Beta.", [G("beta")], 1500000, 525000, 1500, "gate_alpha"),
-  Q("gate_gamma", "Gueule Gamma", "Termine la Galaxy Gate Gamma.", [G("gamma")], 2250000, 800000, 2250, "gate_beta"),
-  Q("gate_trinity", "Trinité de feu", "Achève les trois Gates de l’ensemble Alpha, Beta et Gamma.", [G("alpha"), G("beta"), G("gamma")], 6000000, 2100000, 6000, "gate_gamma"),
-  Q("gate_veteran", "Vétéran des gouffres", "Répète les Gates jusqu’à maîtriser leurs vagues.", [G("alpha", 3), G("beta", 2), G("gamma", 2)], 15000000, 5250000, 15000, "gate_trinity"),
+  Q("gate_alpha", "Gueule Alpha", "Termine la Galaxy Gate Alpha.", [G("alpha")], 1500000, 525000, 1500),
+  Q("gate_beta", "Gueule Beta", "Termine la Galaxy Gate Beta.", [G("beta")], 2250000, 800000, 2250, "gate_alpha"),
+  Q("gate_gamma", "Gueule Gamma", "Termine la Galaxy Gate Gamma.", [G("gamma")], 3400000, 1200000, 3400, "gate_beta"),
+  Q("gate_trinity", "Trinité de feu", "Achève les trois Gates de l’ensemble Alpha, Beta et Gamma.", [G("alpha"), G("beta"), G("gamma")], 9000000, 3150000, 9000, "gate_gamma"),
+  Q("gate_veteran", "Vétéran des gouffres", "Répète les Gates jusqu’à maîtriser leurs vagues.", [G("alpha", 3), G("beta", 2), G("gamma", 2)], 22500000, 8000000, 22500, "gate_trinity"),
 
   Q("collector_route", "La grande rafle", "Récupère toutes les formes de cargaisons courantes.", [C("bonus", "Bonus_Box", 100, "Collecter des Bonus Boxes"), C("cargo", "Cargo_Box", 100, "Collecter des Cargo Boxes"), C("booty", "Green_Booty_Box", 10, "Collecter des Green Booty Boxes")], 5000000, 2500000, 10000),
   Q("astral_reserves", "Poussière d’étoiles", "Récupère les caches les plus rares disponibles.", [C("astral", "Astral_Prime_Box", 10, "Collecter des Astral Prime Boxes"), C("alloy", "Hybrid_Alloy_Box", 25, "Collecter des Hybrid Alloy Boxes")], 12000000, 6000000, 24000),
   Q("boss_extermination", "Têtes couronnées", "Élimine les commandants des principales espèces.", [K("mordon", "npc_Boss_Mordon", 25, "Éliminer des Boss Mordons"), K("sibelon", "npc_Boss_Sibelon", 20, "Éliminer des Boss Sibelons"), K("lordakium", "npc_Boss_Lordakium", 15, "Éliminer des Boss Lordakiums"), K("kristallon", "npc_Boss_Kristallon", 10, "Éliminer des Boss Kristallons")], 15000000, 7500000, 30000),
-  Q("emperor_protocol", "Régicide", "Affronte les trois souverains extraterrestres.", [K("sibelon", "npc_Emperor_Sibelon", 3, "Éliminer des Emperor Sibelons"), K("lordakium", "npc_Emperor_Lordakium", 3, "Éliminer des Emperor Lordakiums"), K("kristallon", "npc_Emperor_Kristallon", 3, "Éliminer des Emperor Kristallons")], 30000000, 15000000, 60000, "boss_extermination"),
+  Q("emperor_protocol", "Régicide", "Affronte les trois souverains extraterrestres.", [K("sibelon", "npc_Emperor_Sibelon", 3, "Éliminer des Emperor Sibelons"), K("lordakium", "npc_Emperor_Lordakium", 3, "Éliminer des Emperor Lordakiums"), K("kristallon", "npc_Emperor_Kristallon", 3, "Éliminer des Emperor Kristallons")], 200000000, 100000000, 400000, "boss_extermination"),
   Q("extreme_streuner", "Océan de débris", "Contrat d’endurance pour les pilotes qui ne reculent jamais.", [K("streuner", "npc_Streuner", 1000, "Éliminer des Streuners"), K("boss", "npc_Boss_Streuner", 100, "Éliminer des Boss Streuners"), K("uber", "npc_Uber_Streuner", 50, "Éliminer des Uber Streuners")], 50000000, 25000000, 100000),
-  Q("extreme_crystal", "Cristal et cendres", "Une campagne démesurée contre les forces cristallines.", [K("kristallin", "npc_Kristallin", 1000, "Éliminer des Kristallins"), K("kristallon", "npc_Kristallon", 300, "Éliminer des Kristallons"), K("boss", "npc_Boss_Kristallon", 50, "Éliminer des Boss Kristallons"), K("uber", "npc_Uber_Kristallon", 25, "Éliminer des Uber Kristallons")], 30000000, 15000000, 60000, "uber_ice"),
-  Q("extreme_cube", "Briseur de mondes", "Un contrat excessif réservé aux escadrons les plus puissants.", [K("cubikon", "npc_Cubikon", 100, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 2000, "Éliminer des Protegits")], 50000000, 25000000, 100000, "cubikon_campaign"),
+  Q("extreme_crystal", "Cristal et cendres", "Une campagne démesurée contre les forces cristallines.", [K("kristallin", "npc_Kristallin", 1000, "Éliminer des Kristallins"), K("kristallon", "npc_Kristallon", 300, "Éliminer des Kristallons"), K("boss", "npc_Boss_Kristallon", 50, "Éliminer des Boss Kristallons"), K("uber", "npc_Uber_Kristallon", 25, "Éliminer des Uber Kristallons")], 150000000, 75000000, 300000, "uber_ice"),
+  Q("extreme_cube", "Briseur de mondes", "Un contrat excessif réservé aux escadrons les plus puissants.", [K("cubikon", "npc_Cubikon", 100, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 2000, "Éliminer des Protegits")], 300000000, 150000000, 600000, "cubikon_campaign"),
   Q("galactic_legend", "Légende vivante", "Traverse la galaxie, écrase ses menaces et domine les Gates.", [V("4-5"), V("5-2"), K("cubikon", "npc_Cubikon", 50, "Détruire des Cubikons"), K("uber", "npc_Uber_Kristallon", 50, "Éliminer des Uber Kristallons", "4-5"), G("alpha", 5), G("beta", 5), G("gamma", 5)], 50000000, 25000000, 100000, "gate_veteran"),
   ...GENERATED_HUNTS,
   ...GENERATED_ELITE_HUNTS,
@@ -482,7 +521,7 @@ const QUEST_CATALOG = [
 ];
 
 const FINAL_QUEST = {
-  ...CEQ("ultimate_all_missions", "La dernière marche", "Après avoir accompli toutes les missions du jeu, élimine simplement un Streuner.", [K("last_streuner", "npc_Streuner", 1, "Éliminer un Streuner")], 5000000000, 5000000000, 50000000, { x4: 500000, x6: 50000, sab: 250000 }, 500),
+  ...CEQ("ultimate_all_missions", "La dernière marche", "Après avoir accompli toutes les missions du jeu, élimine simplement un Streuner.", [K("last_streuner", "npc_Streuner", 1, "Éliminer un Streuner")], 10000000000, 10000000000, 60000000, { x4: 500000, x6: 50000, sab: 250000 }, 500),
   requiresAll: QUEST_CATALOG.map(quest => quest.id),
 };
 
