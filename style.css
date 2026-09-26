@@ -6840,7 +6840,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #fitCard .shipModRow { position: relative !important; min-height: 58px !important; padding: 8px 5px !important; box-sizing: border-box !important; }
 #fitCard .shipModRow.equipped { opacity: .36 !important; filter: grayscale(1) !important; cursor: not-allowed !important; }
 #fitCard .shipModRow.equipped:hover { background: transparent !important; }
-#fitCard .shipModEquippedBadge { margin-left: auto !important; padding: 4px 6px !important; border: 1px solid rgba(174, 202, 210, .25) !important; border-radius: 3px !important; color: rgba(216, 232, 237, .78) !important; font-size: 7px !important; font-weight: 900 !important; letter-spacing: .5px !important; }
+#fitCard .shipModEquippedBadge { margin-left: auto !important; padding: 5px 9px !important; border: 1px solid rgba(174, 202, 210, .25) !important; border-radius: 3px !important; color: rgba(216, 232, 237, .78) !important; font-size: 9px !important; font-weight: 900 !important; letter-spacing: .5px !important; white-space: nowrap !important; }
 
 @media (max-width: 650px) {
   #profileOverlay #profileWindow.gameWindow { grid-template-columns: 1fr !important; grid-template-rows: 26px auto minmax(0,1fr) !important; }
@@ -8715,17 +8715,15 @@ body #hangarOverlay .profilePanel.active{
   width:100% !important;
   min-width:0 !important;
   min-height:0 !important;
-  padding:20px !important;
+  padding:4px !important;
   box-sizing:border-box !important;
   display:flex !important;
   flex-direction:column !important;
   overflow:hidden auto !important;
-  border:1px solid rgba(124,240,255,.16) !important;
-  border-radius:12px !important;
-  background:
-    radial-gradient(circle at 90% 0,rgba(0,180,225,.08),transparent 34%),
-    linear-gradient(145deg,rgba(8,28,45,.72),rgba(3,11,22,.82)) !important;
-  box-shadow:0 0 0 1px rgba(255,255,255,.02) inset !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
   backdrop-filter:none !important;
 }
 /* Contenu hangars : mêmes cartes/listes que l'Espace pilote. */
@@ -9978,11 +9976,770 @@ input[type=number]{ -moz-appearance:textfield; appearance:textfield; }
   align-items:flex-start !important;
 }
 
-/* Miroir designs ZBLI / STIFLER / Autruche sur toutes leurs images (boutique,
-   preview, hangar, inventaire...). Sans !important : le style inline garde
-   la priorité là où il combine déjà miroir + zoom. */
-img[src*="pusat_plus_zbli" i],
-img[src*="goliath_plus_stifler" i],
-img[src*="autruche" i]{ transform:scaleX(-1); }
+/* Miroir designs ZBLI / STIFLER / Autruche : uniquement la grande preview
+   (gérée en inline via isMirroredShip). Plus de miroir global : les listes,
+   le hangar et l'inventaire affichent la frame 20 à l'endroit. */
+
+/* =========================================================
+   Équipement — style Paramètres (boutons / cases / cards).
+   Bloc final = prioritaire sur les règles #fitCard précédentes.
+   ========================================================= */
+/* Boutons : comme #settingsWindow .settingsToggle */
+#fitOverlay #fitCard button{
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  font-weight:750 !important;
+  transition:none !important;
+  transform:none !important;
+}
+#fitOverlay #fitCard button:hover:not(:disabled),
+#fitOverlay #fitCard button:active:not(:disabled){
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+  transform:none !important;
+}
+#fitOverlay #fitCard button:disabled{ opacity:.35 !important; cursor:default !important; }
+#fitOverlay #fitCard button.primary{
+  border-color:rgba(124,240,255,.55) !important;
+  background:linear-gradient(135deg,rgba(0,170,220,.5),rgba(0,90,125,.45)) !important;
+}
+#fitOverlay #fitCard .fitConfigBar .fitCfgBtn.active{
+  border-color:#69e9ff !important;
+  color:#effcff !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#fitOverlay #fitCard .fitSellButton{
+  border-color:rgba(235,177,76,.45) !important;
+  color:#f0d19b !important;
+  background:linear-gradient(135deg,rgba(120,70,20,.45),rgba(60,35,10,.4)) !important;
+}
+/* Cases (slots vaisseau / drones / P.E.T / inventaire) : comme les checkbox paramètres */
+#fitOverlay #fitCard .slotCell,
+#fitOverlay #fitCard .invCell,
+#fitOverlay #fitCard .droneFitSlot,
+#fitOverlay #fitCard .droneDesignSlot,
+#fitOverlay #fitCard .petFitSlot{
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.22),rgba(0,70,100,.22)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#fitOverlay #fitCard .slotCell:hover,
+#fitOverlay #fitCard .invCell:hover,
+#fitOverlay #fitCard .droneFitSlot:hover,
+#fitOverlay #fitCard .droneDesignSlot:hover,
+#fitOverlay #fitCard .petFitSlot:hover{ border-color:rgba(124,240,255,.62) !important; }
+#fitOverlay #fitCard .slotCell.filled,
+#fitOverlay #fitCard .invCell.selected,
+#fitOverlay #fitCard .droneFitSlot.filled,
+#fitOverlay #fitCard .petFitSlot.filled{
+  border-color:#69e9ff !important;
+  background:linear-gradient(135deg,rgba(0,170,220,.35),rgba(0,90,125,.3)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),0 0 16px rgba(0,217,255,.12) !important;
+}
+#fitOverlay #fitCard .slotCell.dragging{ opacity:.35 !important; }
+#fitOverlay #fitCard .fitSlotsScroll .slotCell.dragTarget{
+  border-color:#69e9ff !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.2) !important;
+}
+/* Cards (panneaux) : comme #settingsWindow .settingsCheck */
+#fitOverlay #fitCard .fitShipPane,
+#fitOverlay #fitCard .fitLoadoutPane,
+#fitOverlay #fitCard .fitInventoryPane,
+#fitOverlay #fitCard .fitPresetWindow{
+  border:1px solid rgba(100,200,255,.16) !important;
+  border-radius:12px !important;
+  background:rgba(255,255,255,.035) !important;
+  box-shadow:none !important;
+}
+#fitOverlay #fitCard .fitPresetOverlay{ background:rgba(1,6,12,.86) !important; }
+/* Champs (selects / inputs) : bordure cyan, fond sombre */
+#fitOverlay #fitCard .fitSelect,
+#fitOverlay #fitCard .fitInput{
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  color:#eaffff !important;
+  background:#051521 !important;
+}
+#fitOverlay #fitCard .fitSelect:focus,
+#fitOverlay #fitCard .fitInput:focus{ border-color:rgba(124,240,255,.62) !important; }
+#fitOverlay #fitCard .fitSelect option{ color:#eaffff !important; background:#071622 !important; }
+
+/* =========================================================
+   Équipement — nettoyage : wrappers inutiles aplatis (transparent),
+   cartes restantes au style Paramètres. Bloc final = prioritaire.
+   ========================================================= */
+/* Wrappers structurels : plus de fond ni bordure (anti cartes-dans-cartes) */
+#fitOverlay #fitCard .fitDroneWorkspace,
+#fitOverlay #fitCard .fitPetWorkspace,
+#fitOverlay #fitCard .fitInventoryTools,
+#fitOverlay #fitCard .droneInventoryTray,
+#fitOverlay #fitCard .fitReturnHint,
+#fitOverlay #fitCard .fitSlotGroup,
+#fitOverlay #fitCard .petGroup{
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+/* Cartes items (drones / P.E.T / roster / détail) : style Paramètres */
+#fitOverlay #fitCard .droneEquipmentCard,
+#fitOverlay #fitCard .petHeaderCard,
+#fitOverlay #fitCard .petSlotsCard,
+#fitOverlay #fitCard .droneFitDetail,
+#fitOverlay #fitCard .droneRosterItem{
+  border:1px solid rgba(100,200,255,.16) !important;
+  border-radius:12px !important;
+  background:rgba(255,255,255,.035) !important;
+  box-shadow:none !important;
+}
+/* Barre du dessus (vaisseau) : pas de card, contenu en direct */
+#fitOverlay #fitCard .fitShipPane{
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+/* Petites barres lumineuses (séparateurs d'actions) : retirées */
+#fitOverlay #fitCard .fitActionSeparator{
+  display:none !important;
+}
+/* Barres d'accent lumineuses des panneaux (dont pleine hauteur) : retirées */
+#fitOverlay #fitCard .fitShipPane::before,
+#fitOverlay #fitCard .fitLoadoutPane::before,
+#fitOverlay #fitCard .fitInventoryPane::before{
+  display:none !important;
+}
+/* Équipement ouvert : masque tout l'arrière-plan sauf barre de titre + overlay.
+   En !important car les display:flex !important des panneaux battraient
+   un display:none inline. */
+#hangarOverlay #hangarWindow.fit-open > :not(.gameWinBar):not(#fitOverlay){
+  display:none !important;
+}
+#panel_hangars.fit-hidden{
+  display:none !important;
+}
+/* Équipement ouvert : pas de bouton réduire (Sauvegarder / Annuler / Retour
+   gèrent la sortie, réduire jetterait les brouillons) */
+html body #hangarOverlay #hangarWindow.gameWindow.fit-open > .gameWinBar .gameWinMinBtn,
+html body #profileOverlay #profileWindow.gameWindow.fit-open > .gameWinBar .gameWinMinBtn{
+  display:none !important;
+}
+/* Boutons Retour / Sauvegarder fusionnés dans l'angle (même style que réduire) */
+#hangarOverlay #hangarWindow > .gameWinBar .fitTitlebarGroup,
+#profileOverlay #profileWindow > .gameWinBar .fitTitlebarGroup{
+  display:flex !important;
+  align-items:stretch !important;
+  gap:0 !important;
+  margin:0 -8px 0 auto !important;
+  align-self:stretch !important;
+}
+#hangarOverlay #hangarWindow > .gameWinBar .fitTitlebarBtn,
+#profileOverlay #profileWindow > .gameWinBar .fitTitlebarBtn{
+  height:26px !important;
+  min-height:26px !important;
+  padding:0 14px !important;
+  display:grid !important;
+  place-items:center !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:0 !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  font:750 11px/1 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  cursor:pointer !important;
+}
+#hangarOverlay #hangarWindow > .gameWinBar #fitTitlebarSave,
+#profileOverlay #profileWindow > .gameWinBar #fitTitlebarSave{
+  border-radius:0 8px 0 0 !important;
+  margin-left:-1px !important;
+}
+#hangarOverlay #hangarWindow > .gameWinBar .fitTitlebarBtn:hover:not(:disabled),
+#profileOverlay #profileWindow > .gameWinBar .fitTitlebarBtn:hover:not(:disabled){
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#hangarOverlay #hangarWindow > .gameWinBar .fitTitlebarBtn:disabled,
+#profileOverlay #profileWindow > .gameWinBar .fitTitlebarBtn:disabled{
+  opacity:.35 !important;
+  cursor:default !important;
+}
+/* Barre d'actions équipement : tout collé à droite */
+#fitOverlay #fitCard .fitWindowActions{
+  justify-content:flex-end !important;
+  margin-left:auto !important;
+}
+#fitOverlay #fitCard .fitActionsLeft,
+#fitOverlay #fitCard .fitActionsRight{
+  display:flex !important;
+  align-items:center !important;
+  gap:6px !important;
+  min-width:0 !important;
+}
+/* Équipement : pas de grandes cards (vaisseau / drones / P.E.T / inventaire),
+   séparateurs fins à la place. Seul le preset garde sa card. */
+#fitOverlay #fitCard .fitLoadoutPane,
+#fitOverlay #fitCard .fitInventoryPane,
+#fitOverlay #fitCard .droneEquipmentCard,
+#fitOverlay #fitCard .petHeaderCard,
+#fitOverlay #fitCard .petSlotsCard,
+#fitOverlay #fitCard .droneFitDetail,
+#fitOverlay #fitCard .droneRosterItem{
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+/* Séparateurs : haut + gauche de l'inventaire, haut du chargement */
+#fitOverlay #fitCard .fitInventoryPane{
+  border-top:1px solid rgba(124,240,255,.14) !important;
+  border-left:1px solid rgba(124,240,255,.14) !important;
+}
+#fitOverlay #fitCard .fitLoadoutPane{
+  border-top:1px solid rgba(124,240,255,.14) !important;
+}
+/* Séparateurs entre les lignes drones / P.E.T */
+#fitOverlay #fitCard .droneEquipmentCard,
+#fitOverlay #fitCard .petHeaderCard,
+#fitOverlay #fitCard .petSlotsCard{
+  border-bottom:1px solid rgba(124,240,255,.14) !important;
+}
+#fitOverlay #fitCard .droneEquipmentCard:last-child,
+#fitOverlay #fitCard .petSlotsCard:last-child{
+  border-bottom:0 !important;
+}
+#fitOverlay #fitCard .fitActionsLeft,
+#fitOverlay #fitCard .fitActionsRight{
+  display:flex !important;
+  align-items:center !important;
+  gap:6px !important;
+  min-width:0 !important;
+}
+
+/* Fenêtre hangar : cadre classique comme les autres fenêtres */
+#hangarOverlay #hangarWindow.gameWindow{
+  border:1px solid rgba(124,240,255,.24) !important;
+  border-radius:8px !important;
+  background:linear-gradient(135deg,rgba(10,18,36,.88),rgba(3,8,20,.80)) !important;
+  box-shadow:0 18px 42px rgba(0,0,0,.55),0 0 26px rgba(0,217,255,.12),inset 0 0 0 1px rgba(255,255,255,.04) !important;
+}
+#hangarOverlay #hangarWindow.gameWindow:hover{
+  border-color:rgba(124,240,255,.42) !important;
+  box-shadow:0 18px 42px rgba(0,0,0,.50),0 0 28px rgba(0,217,255,.16),inset 0 0 0 1px rgba(255,255,255,.05) !important;
+}
+#hangarOverlay #hangarWindow.gameWindow > .gameWinBar{
+  border:0 !important;
+  border-bottom:1px solid rgba(124,240,255,.18) !important;
+  border-radius:0 !important;
+  background:linear-gradient(90deg,rgba(0,217,255,.18),rgba(124,240,255,.05),rgba(255,255,255,.035)) !important;
+  box-shadow:none !important;
+}
+#fitOverlay #fitCard .droneRosterItem.active{
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+/* États selected : glow paramètres (remplace les radiaux opaques) */
+#fitOverlay #fitCard .slotCell.selected,
+#fitOverlay #fitCard .droneFitSlot.selected,
+#fitOverlay #fitCard .petFitSlot.selected,
+#fitOverlay #fitCard .fitShipModules .shipModRow.selected{
+  border-color:#69e9ff !important;
+  background:linear-gradient(135deg,rgba(0,170,220,.35),rgba(0,90,125,.3)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),0 0 16px rgba(0,217,255,.12) !important;
+}
+#fitOverlay #fitCard .fitShipModules .shipModRow:hover{
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+}
+/* Pastille ? et son tooltip : style paramètres */
+#fitOverlay #fitCard .fitHelpTooltip{
+  border:1px solid rgba(124,240,255,.38) !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#fitOverlay #fitCard .fitHelpTooltip > span{
+  border:1px solid rgba(100,200,255,.16) !important;
+  border-radius:12px !important;
+  background:rgba(10,20,32,.96) !important;
+}
+/* Onglet section actif + zone de vente : cohérence paramètres */
+#fitOverlay #fitCard .fitSectionBtn.active{
+  border-color:rgba(124,240,255,.62) !important;
+  color:#effcff !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#fitOverlay #fitCard .fitSellDrop{ border-radius:8px !important; }
+
+/* =========================================================
+   Équipement — comme les autres fenêtres : fond transparent,
+   cards translucides, slots façon boutons. Bloc final.
+   ========================================================= */
+/* Fond fenêtre transparent (fini le #06111c opaque + teinte) */
+#fitOverlay{
+  background:transparent !important;
+  backdrop-filter:none !important;
+}
+#fitOverlay #fitCard.fitWindow{
+  background:transparent !important;
+  box-shadow:none !important;
+}
+#fitOverlay #fitCard .fitWorkspace{ background:transparent !important; }
+/* Cards principales : preset seul en card raffinage, panes à plat
+   (voir bloc séparateurs ci-dessous) */
+#fitOverlay #fitCard .fitLoadoutPane,
+#fitOverlay #fitCard .fitInventoryPane{
+  background:transparent !important;
+  border:0 !important;
+  border-radius:0 !important;
+  backdrop-filter:none !important;
+  box-shadow:none !important;
+}
+#fitOverlay #fitCard .fitPresetWindow{
+  background:rgba(255,255,255,.055) !important;
+  border:1px solid rgba(124,240,255,.22) !important;
+  border-radius:12px !important;
+  backdrop-filter:none !important;
+  box-shadow:none !important;
+}
+/* Séparateurs (après l'aplatissement pour gagner) */
+#fitOverlay #fitCard .fitInventoryPane{
+  border-top:1px solid rgba(124,240,255,.14) !important;
+  border-left:1px solid rgba(124,240,255,.14) !important;
+}
+#fitOverlay #fitCard .fitLoadoutPane{
+  border-top:1px solid rgba(124,240,255,.14) !important;
+}
+/* Slots (vaisseau, modules, drones, P.E.T, inventaire) : comme les boutons */
+#fitOverlay #fitCard .slotCell,
+#fitOverlay #fitCard .invCell,
+#fitOverlay #fitCard .droneFitSlot,
+#fitOverlay #fitCard .droneDesignSlot,
+#fitOverlay #fitCard .petFitSlot{
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#fitOverlay #fitCard .slotCell:hover,
+#fitOverlay #fitCard .invCell:hover,
+#fitOverlay #fitCard .droneFitSlot:hover,
+#fitOverlay #fitCard .droneDesignSlot:hover,
+#fitOverlay #fitCard .petFitSlot:hover{
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#fitOverlay #fitCard .slotCell.filled,
+#fitOverlay #fitCard .droneFitSlot.filled,
+#fitOverlay #fitCard .petFitSlot.filled,
+#fitOverlay #fitCard .invCell.selected,
+#fitOverlay #fitCard .slotCell.selected,
+#fitOverlay #fitCard .droneFitSlot.selected,
+#fitOverlay #fitCard .petFitSlot.selected,
+#fitOverlay #fitCard .fitShipModules .shipModRow.selected{
+  border-color:#69e9ff !important;
+  background:linear-gradient(135deg,rgba(0,170,220,.5),rgba(0,90,125,.45)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),0 0 16px rgba(0,217,255,.12) !important;
+}
+/* Drones / P.E.T : pas de double card — lignes à plat dans la pane,
+   séparées comme les lignes boutique */
+#fitOverlay #fitCard .droneEquipmentCard,
+#fitOverlay #fitCard .petHeaderCard,
+#fitOverlay #fitCard .petSlotsCard,
+#fitOverlay #fitCard .droneFitDetail,
+#fitOverlay #fitCard .droneRosterItem{
+  border:0 !important;
+  border-bottom:1px solid rgba(124,240,255,.09) !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+#fitOverlay #fitCard .droneEquipmentCard:last-child,
+#fitOverlay #fitCard .petSlotsCard:last-child{
+  border-bottom:0 !important;
+}
+/* Tous les slots (vaisseau / drones / P.E.T) comme ceux des modules :
+   même style bouton (tailles inchangées), spécificité renforcée pour
+   passer au-dessus du bloc unifié historique. */
+#fitOverlay #fitCard #fitSlotsLasers .slotCell,
+#fitOverlay #fitCard #fitSlotsGens .slotCell,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell,
+#fitOverlay #fitCard .droneFitSlot,
+#fitOverlay #fitCard .droneDesignSlot,
+#fitOverlay #fitCard .petFitSlot,
+#fitOverlay #fitCard .invCell{
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell::before,
+#fitOverlay #fitCard #fitSlotsGens .slotCell::before,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell::before,
+#fitOverlay #fitCard .droneFitSlot::before,
+#fitOverlay #fitCard .droneDesignSlot::before,
+#fitOverlay #fitCard .petFitSlot::before{
+  display:none !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell:hover,
+#fitOverlay #fitCard #fitSlotsGens .slotCell:hover,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell:hover,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell:hover,
+#fitOverlay #fitCard .droneFitSlot:hover,
+#fitOverlay #fitCard .droneDesignSlot:hover,
+#fitOverlay #fitCard .petFitSlot:hover,
+#fitOverlay #fitCard .invCell:hover{
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled,
+#fitOverlay #fitCard #fitSlotsGens .slotCell.filled,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell.filled,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled,
+#fitOverlay #fitCard .droneFitSlot.filled,
+#fitOverlay #fitCard .petFitSlot.filled,
+#fitOverlay #fitCard .invCell.selected,
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.selected,
+#fitOverlay #fitCard #fitSlotsGens .slotCell.selected,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell.selected,
+#fitOverlay #fitCard .droneFitSlot.selected,
+#fitOverlay #fitCard .petFitSlot.selected{
+  border-color:#69e9ff !important;
+  background:linear-gradient(135deg,rgba(0,170,220,.5),rgba(0,90,125,.45)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),0 0 16px rgba(0,217,255,.12) !important;
+}
+/* Drones / P.E.T : même spécificité (workspace) que le bloc historique */
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot,
+#fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot{
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot::before,
+#fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot::before,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot::before{
+  display:none !important;
+}
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot:hover,
+#fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot:hover,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot:hover{
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.selected,
+#fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot.selected,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.selected{
+  border-color:#69e9ff !important;
+  background:linear-gradient(135deg,rgba(0,170,220,.5),rgba(0,90,125,.45)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),0 0 16px rgba(0,217,255,.12) !important;
+}
+/* Petite encoche design sur tous les slots (vaisseau / modules / drones /
+   P.E.T / inventaire) */
+#fitOverlay #fitCard #fitSlotsLasers .slotCell::before,
+#fitOverlay #fitCard #fitSlotsGens .slotCell::before,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell::before,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell::before,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot::before,
+#fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot::before,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot::before,
+#fitOverlay #fitCard .invCell::before{
+  content:"" !important;
+  display:block !important;
+  position:absolute !important;
+  top:3px !important;
+  left:3px !important;
+  width:7px !important;
+  height:7px !important;
+  border-top:1px solid rgba(116,222,242,.38) !important;
+  border-left:1px solid rgba(116,222,242,.38) !important;
+  pointer-events:none !important;
+}
+/* Rareté : fond dégradé teinté + bordure + encoche à la couleur.
+   Même style bouton, hue par rareté (common/rare/epic/legendary). */
+#fitOverlay #fitCard .slotCell.filled[class*="rarity-"]::before,
+#fitOverlay #fitCard .invCell[class*="rarity-"]::before{
+  border-top-color:var(--rarity) !important;
+  border-left-color:var(--rarity) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled.rarity-common,
+#fitOverlay #fitCard #fitSlotsGens .slotCell.filled.rarity-common,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell.filled.rarity-common,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled.rarity-common,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled.rarity-common,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled.rarity-common,
+#fitOverlay #fitCard .invCell.rarity-common{
+  border-color:#a9bcc7 !important;
+  background:linear-gradient(135deg,rgba(169,188,199,.38),rgba(169,188,199,.15)) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled.rarity-rare,
+#fitOverlay #fitCard #fitSlotsGens .slotCell.filled.rarity-rare,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell.filled.rarity-rare,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled.rarity-rare,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled.rarity-rare,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled.rarity-rare,
+#fitOverlay #fitCard .invCell.rarity-rare{
+  border-color:#45bfff !important;
+  background:linear-gradient(135deg,rgba(69,191,255,.38),rgba(69,191,255,.15)) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled.rarity-epic,
+#fitOverlay #fitCard #fitSlotsGens .slotCell.filled.rarity-epic,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell.filled.rarity-epic,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled.rarity-epic,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled.rarity-epic,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled.rarity-epic,
+#fitOverlay #fitCard .invCell.rarity-epic{
+  border-color:#ba72ff !important;
+  background:linear-gradient(135deg,rgba(186,114,255,.38),rgba(186,114,255,.15)) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled.rarity-legendary,
+#fitOverlay #fitCard #fitSlotsGens .slotCell.filled.rarity-legendary,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell.filled.rarity-legendary,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled.rarity-legendary,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled.rarity-legendary,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled.rarity-legendary,
+#fitOverlay #fitCard .invCell.rarity-legendary{
+  border-color:#ffd15c !important;
+  background:linear-gradient(135deg,rgba(255,209,92,.38),rgba(255,209,92,.15)) !important;
+}
+/* Slots modules sur le vaisseau : ligne horizontale — petite image, gros texte */
+#fitOverlay #fitCard #fitSlotsShipMods.slotGridModules{
+  grid-template-columns:repeat(auto-fill,minmax(170px,1fr)) !important;
+}
+/* Compteur modules intégré au titre (remplace l'ancien total seul) */
+#fitOverlay #fitCard #shipModsCount{ display:none !important; }
+/* Hangars : cards comme le raffinage */
+body #hangarOverlay .hangarListItem{
+  border:1px solid rgba(124,240,255,.22) !important;
+  border-radius:12px !important;
+  background:rgba(255,255,255,.055) !important;
+  box-shadow:none !important;
+}
+/* Hangars : boutons standard */
+body #hangarOverlay .hangarListItem .tileActions button{
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  font-weight:750 !important;
+}
+body #hangarOverlay .hangarListItem .tileActions button:hover:not(:disabled){
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+body #hangarOverlay .hangarListItem .tileActions button:disabled{
+  opacity:.35 !important;
+  cursor:default !important;
+}
+/* Icône module (liste inventaire) : sans fond (fini la petite card sombre) */
+#fitOverlay #fitCard .fitShipModules .shipModRow img{
+  background:transparent !important;
+}
+/* Drag & drop : animations coupées pendant le glisser */
+#fitOverlay #fitCard.fitDragging,
+#fitOverlay #fitCard.fitDragging *,
+#fitOverlay #fitCard.fitDragging *::before,
+#fitOverlay #fitCard.fitDragging *::after{
+  transition:none !important;
+  animation:none !important;
+}
+/* Perf drag : le blur plein écran de l'overlay est re-calculé à chaque frame
+   sous le jeu animé + le fantôme de drag = saccades. Coupé le temps du drag. */
+#hangarOverlay:has(#fitCard.fitDragging),
+#profileOverlay:has(#fitCard.fitDragging){
+  backdrop-filter:none !important;
+}
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.shipModSlot{
+  display:flex !important;
+  align-items:center !important;
+  gap:8px !important;
+  aspect-ratio:auto !important;
+  min-height:52px !important;
+  padding:6px 8px !important;
+}
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.shipModSlot img{
+  width:30px !important;
+  height:30px !important;
+  flex:0 0 auto !important;
+}
+#fitOverlay #fitCard .shipModSlotDetails{ gap:2px !important; }
+#fitOverlay #fitCard .shipModSlotDetails b{ font-size:12px !important; }
+#fitOverlay #fitCard .shipModSlotDetails span{ display:block !important; font-size:12px !important; white-space:normal !important; }
+#fitOverlay #fitCard .shipModSlotDetails span strong{ font-size:12px !important; }
+/* Groupe modules : slots hauts fixes (pas d'étirement), le haut reste intact */
+#fitOverlay #fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotGridModules{
+  align-items:start !important;
+  align-content:start !important;
+  height:auto !important;
+}
+#fitOverlay #fitCard #fitSlotsShipMods.slotGridModules{
+  grid-auto-rows:auto !important;
+}
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.shipModSlot{
+  min-height:110px !important;
+  height:110px !important;
+}
+#fitOverlay #fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotCell{
+  height:110px !important;
+}
+/* Slots vides (vaisseau / modules / drones / P.E.T) : fond gris */
+#fitOverlay #fitCard #fitSlotsLasers .slotCell:not(.filled),
+#fitOverlay #fitCard #fitSlotsGens .slotCell:not(.filled),
+#fitOverlay #fitCard #fitSlotsExtras .slotCell:not(.filled),
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell:not(.filled),
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot:not(.filled),
+#fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot:not(.filled),
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot:not(.filled){
+  border-color:rgba(169,188,199,.35) !important;
+  background:linear-gradient(135deg,rgba(169,188,199,.16),rgba(169,188,199,.07)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+/* Lignes modules roulette : même survol que le reste (fini le #0b2430 opaque) */
+#fitOverlay #fitCard .fitShipModules .shipModRow:hover{
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#fitOverlay #fitCard .fitShipModules .shipModRow.equipped:hover{
+  background:rgba(0,140,185,.12) !important;
+}
+/* Lignes modules : 1 seule colonne dans l'inventaire */
+#fitOverlay #fitCard .fitShipModules{
+  grid-template-columns:minmax(0,1fr) !important;
+}
+/* Lignes modules : petite encoche haut-gauche comme les slots */
+#fitOverlay #fitCard .fitShipModules .shipModRow{
+  position:relative !important;
+}
+/* Assemblage : fini les cards coût / résultat / détail — séparateurs.
+   Seule la barre des recettes en haut garde sa card. */
+.assemblyDetailCard{
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  padding:12px 2px !important;
+}
+.assemblySubCard{
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  padding:10px 2px !important;
+}
+.assemblyCols{
+  border-top:1px solid rgba(124,240,255,.14) !important;
+  padding-top:10px !important;
+}
+@media (min-width:761px){
+  .assemblyCols > .assemblySubCard + .assemblySubCard{
+    border-left:1px solid rgba(124,240,255,.14) !important;
+    padding-left:16px !important;
+  }
+}
+@media (max-width:760px){
+  .assemblyCols > .assemblySubCard + .assemblySubCard{
+    border-top:1px solid rgba(124,240,255,.14) !important;
+    padding-top:10px !important;
+  }
+}
+/* Encoches : grises si vide, couleur rareté si rempli (vaisseau/drones/P.E.T) */
+#fitOverlay #fitCard #fitSlotsLasers .slotCell:not(.filled)::before,
+#fitOverlay #fitCard #fitSlotsGens .slotCell:not(.filled)::before,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell:not(.filled)::before,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell:not(.filled)::before,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot:not(.filled)::before,
+#fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot:not(.filled)::before,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot:not(.filled)::before{
+  border-top-color:rgba(169,188,199,.45) !important;
+  border-left-color:rgba(169,188,199,.45) !important;
+}
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled[class*="rarity-"]::before,
+#fitOverlay #fitCard #fitSlotsGens .slotCell.filled[class*="rarity-"]::before,
+#fitOverlay #fitCard #fitSlotsExtras .slotCell.filled[class*="rarity-"]::before,
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled[class*="rarity-"]::before,
+#fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled[class*="rarity-"]::before,
+#fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled[class*="rarity-"]::before{
+  border-top-color:var(--rarity) !important;
+  border-left-color:var(--rarity) !important;
+}
+#fitOverlay #fitCard .fitShipModules .shipModRow::before{
+  content:"" !important;
+  display:block !important;
+  position:absolute !important;
+  top:3px !important;
+  left:3px !important;
+  width:7px !important;
+  height:7px !important;
+  border-top:1px solid var(--rarity, rgba(116,222,242,.38)) !important;
+  border-left:1px solid var(--rarity, rgba(116,222,242,.38)) !important;
+  pointer-events:none !important;
+}
+/* Inventaire : image + nom plus petits */
+#fitOverlay #fitCard .fitShipModules .shipModRow img{
+  width:28px !important;
+  height:28px !important;
+  flex-basis:28px !important;
+}
+#fitOverlay #fitCard .fitShipModules .shipModRow > div > div:first-child{
+  font-size:12px !important;
+}
+/* Vaisseau : image collée à gauche (centrée vertical), texte centré */
+#fitOverlay #fitCard #fitSlotsShipMods .slotCell.shipModSlot{
+  justify-content:flex-start !important;
+}
+#fitOverlay #fitCard .shipModSlotDetails{
+  flex:1 !important;
+  text-align:center !important;
+}
+/* Lignes modules : comme des slots normaux — bord arrondi complet (fini la
+   barre du bas), fond teinté rareté en dégradé bouton */
+#fitOverlay #fitCard .fitShipModules{ gap:8px !important; }
+#fitOverlay #fitCard .fitShipModules .shipModRow{
+  padding:8px 10px !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#fitOverlay #fitCard .fitShipModules .shipModRow.rarity-common{
+  border-color:#a9bcc7 !important;
+  background:linear-gradient(135deg,rgba(169,188,199,.38),rgba(169,188,199,.15)) !important;
+}
+#fitOverlay #fitCard .fitShipModules .shipModRow.rarity-rare{
+  border-color:#45bfff !important;
+  background:linear-gradient(135deg,rgba(69,191,255,.38),rgba(69,191,255,.15)) !important;
+}
+#fitOverlay #fitCard .fitShipModules .shipModRow.rarity-epic{
+  border-color:#ba72ff !important;
+  background:linear-gradient(135deg,rgba(186,114,255,.38),rgba(186,114,255,.15)) !important;
+}
+#fitOverlay #fitCard .fitShipModules .shipModRow.rarity-legendary{
+  border-color:#ffd15c !important;
+  background:linear-gradient(135deg,rgba(255,209,92,.38),rgba(255,209,92,.15)) !important;
+}
 
 

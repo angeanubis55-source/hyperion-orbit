@@ -218,7 +218,7 @@ function renderStock(sky) {
     const full = cap > 0 && amount >= cap;
     return `<div class="topCell${full ? " is-full" : ""}" style="--res:${color}" title="${escapeHtml(getResourceName(id))}">`
       + `<span class="topCellName">${escapeHtml(getResourceName(id))}</span>`
-      + `<span class="topCellVal">${formatInteger(amount)} / ${formatInteger(cap)}</span></div>`;
+      + `<span class="topCellVal">${formatInteger(amount)}</span></div>`;
   }).join("");
 }
 
