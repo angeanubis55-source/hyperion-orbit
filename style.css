@@ -2575,6 +2575,8 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .groupActions button:disabled{opacity:.42;cursor:not-allowed;border-color:rgba(130,150,158,.22);background:#0b1820}
 .groupActions .groupIconBtn{width:30px;padding:4px;display:grid;place-items:center}
 .groupActions .groupIconBtn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.groupAutoAccept{ display:flex; align-items:center; gap:8px; color:#cfe7ef; font-size:12px; font-weight:700; cursor:pointer; }
+.groupAutoAccept input{ flex:none; width:auto; height:auto; accent-color:#00d9ff; }
 #groupKickModeBtn.active{border-color:#ff6578;color:#ff9aa7;background:rgba(180,30,52,.28)}
 .groupInvite{ display:flex; align-items:center; justify-content:space-between; gap:6px; padding:5px 7px; border:1px solid rgba(255,211,107,.4); border-radius:7px; color:#f3dda9; font-size:12px; }
 .groupNotices{ display:grid; gap:3px; padding:0 11px 8px; box-sizing:border-box; }

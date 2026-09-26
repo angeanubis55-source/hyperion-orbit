@@ -4,6 +4,16 @@ import { escapeHtml } from "./UI_DOM.js";
 import { getShipDesignBaseId, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 
 let started = false;
+const GROUP_AUTOACCEPT_KEY = "orbit_group_autoaccept";
+function loadGroupAutoAccept() {
+  try { return localStorage.getItem(GROUP_AUTOACCEPT_KEY) === "1"; } catch { return false; }
+}
+function saveGroupAutoAccept(value) {
+  try {
+    if (value) localStorage.setItem(GROUP_AUTOACCEPT_KEY, "1");
+    else localStorage.removeItem(GROUP_AUTOACCEPT_KEY);
+  } catch {}
+}
 const LOCK_CLOSED_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>`;
 const LOCK_OPEN_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M16 10V7a4 4 0 0 0-7.7-1.5"/></svg>`;
 const CROWN_SVG = `<svg class="groupLeaderCrown" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 4.5 4L12 4l4.5 7L21 7l-2 11H5L3 7Z"/><path d="M5 18h14"/></svg>`;
@@ -18,8 +28,12 @@ function shipTypeName(shipId) {
 export function initGroupUI() {
   if (started) return;
   started = true;
-  const status = document.getElementById("groupStatus"), members = document.getElementById("groupMembers"), invites = document.getElementById("groupInvites"), notices = document.getElementById("groupNotices"), input = document.getElementById("groupInviteInput");
+  const status = document.getElementById("groupStatus"), members = document.getElementById("groupMembers"), invites = document.getElementById("groupInvites"), notices = document.getElementById("groupNotices"), input = document.getElementById("groupInviteInput"), autoAccept = document.getElementById("groupAutoAccept"), autoAcceptRow = document.getElementById("groupAutoAcceptRow");
   if (!members || !invites) return;
+  if (autoAccept) {
+    autoAccept.checked = loadGroupAutoAccept();
+    autoAccept.addEventListener("change", () => saveGroupAutoAccept(autoAccept.checked));
+  }
   let kickMode = false;
   const myId = () => { try { return String(netMyId() || ""); } catch { return ""; } };
 
@@ -35,6 +49,7 @@ export function initGroupUI() {
       invites.style.display = "";
       if (input) { input.disabled = false; input.placeholder = "Pseudo à inviter…"; }
       if (inviteBtn) inviteBtn.disabled = false;
+      if (autoAcceptRow) autoAcceptRow.style.display = "";
       actions?.classList.remove("groupLeaderMode", "groupMemberMode");
       for (const button of [leave, lock, rally, kickBtn]) if (button) button.style.display = "none";
       return;
@@ -45,6 +60,7 @@ export function initGroupUI() {
     members.style.display = "";
     if (status) status.textContent = `Escadrille (${group.members.length}/10) — chef : ${chief?.pseudo || "?"}`;
     invites.style.display = "none";
+    if (autoAcceptRow) autoAcceptRow.style.display = "none";
     members.innerHTML = group.members.map(member => {
       const id = escapeHtml(String(member.id));
       const hp = Math.round(Math.max(0, Math.min(1, Number(member.hpPct ?? 1))) * 100), sh = Math.round(Math.max(0, Math.min(1, Number(member.shPct ?? 1))) * 100);
@@ -68,6 +84,17 @@ export function initGroupUI() {
   function renderInvites() {
     let list = [];
     try { list = drainNetGroupInviteInbox(); } catch {}
+    // Acceptation auto (solo + case cochée) : rejoint la 1re invitation
+    // sans l'afficher. Les autres éventuelles s'affichent normalement.
+    try {
+      if (list.length && autoAccept?.checked && !getNetGroup()) {
+        const first = list.shift();
+        if (first) {
+          sendGroupAccept();
+          signature = "";
+        }
+      }
+    } catch {}
     for (const invite of list) {
       if (invites.querySelector(`[data-inv-from="${CSS.escape(String(invite.from))}"]`)) continue;
       const row = document.createElement("div");
