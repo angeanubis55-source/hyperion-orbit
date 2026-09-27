@@ -63,6 +63,7 @@ export function initClanUI() {
   if (!createPane || !managePane) return;
   let clan = null, clans = [], mine = [], rels = { active: [], incoming: [], outgoing: [] };
   let activeTab = "infos";
+  let lastInClan = null;
 
   function appliedTags() {
     try { return new Set(mine.map((a) => String(a.tag || "").toUpperCase())); } catch { return new Set(); }
@@ -98,6 +99,20 @@ export function initClanUI() {
     const inClan = !!clan;
     createPane.classList.toggle("active", !inClan);
     managePane.classList.toggle("active", inClan);
+    // Le window manager réapplique une largeur inline sauvegardée qui écrase
+    // le CSS : on impose la largeur voulue uniquement lors du changement
+    // d'état (les redimensionnements manuels entre-temps sont préservés).
+    if (inClan !== lastInClan) {
+      lastInClan = inClan;
+      try {
+        const card = document.getElementById("clanWindow");
+        if (card) {
+          card.style.width = inClan ? "1000px" : "700px";
+          card.style.minWidth = "0";
+          card.style.maxWidth = "calc(100vw - 20px)";
+        }
+      } catch {}
+    }
     if (!inClan) {
       if (allList) {
         const applied = appliedTags();
