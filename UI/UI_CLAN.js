@@ -12,13 +12,11 @@
 // les annonces diplomatie (comme les Amis).
 
 import {
-  consumeClanDirty, sendClanNotify, sendDiploNotify, setNetDiplo, sendGroupInvite, netMyId,
+  consumeClanDirty, sendClanNotify, sendDiploNotify, setNetDiplo, netMyId,
 } from "../SRC/CORE/NETPLAY.js";
 import { escapeHtml } from "./UI_DOM.js";
 
 let started = false;
-const ICON_MESSAGE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4V5Z"/><path d="M8 9h8M8 12h5"/></svg>`;
-const ICON_GROUP = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 18c.5-3 2.3-4.5 5.5-4.5s5 1.5 5.5 4.5M18 7v6M15 10h6"/></svg>`;
 const ICON_REMOVE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>`;
 const ICON_ACCEPT = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>`;
 const CROWN_SVG = `<svg class="clanLeaderCrown" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 4.5 4L12 4l4.5 7L21 7l-2 11H5L3 7Z"/><path d="M5 18h14"/></svg>`;
@@ -110,7 +108,7 @@ export function initClanUI() {
       try {
         const card = document.getElementById("clanWindow");
         if (card) {
-          card.style.width = inClan ? "850px" : "600px";
+          card.style.width = inClan ? "500px" : "400px";
           card.style.minWidth = "0";
           card.style.maxWidth = "calc(100vw - 20px)";
         }
@@ -195,8 +193,6 @@ export function initClanUI() {
         const kickable = rights.kick && !targetIsLeader && (rights.isLeader || String(member.role) === "member" || String(member.role).toLowerCase() === "membre");
         return `<article class="clanCard" data-pseudo="${pseudo}" data-role="${escapeHtml(role)}">`
           + `<span class="clanIdentity"><strong>${pseudo}${targetIsLeader ? CROWN_SVG : ""}</strong><small>${escapeHtml(role)}</small></span>`
-          + `<span class="clanBtns"><button type="button" data-act="whisper" title="Message privé" aria-label="Message privé">${ICON_MESSAGE}</button>`
-          + `<button type="button" data-act="invite" title="Inviter dans le groupe" aria-label="Inviter dans le groupe">${ICON_GROUP}</button>`
           + (leader && !targetIsLeader && rankNames.length ? `<select data-assign="${pseudo}" title="Rang" aria-label="Rang">${rankNames.map((n) => `<option value="${escapeHtml(n)}"${String(n).toLowerCase() === String(role).toLowerCase() ? " selected" : ""}>${escapeHtml(n)}</option>`).join("")}</select>` : "")
           + (kickable ? `<button class="danger" type="button" data-act="kick" title="Exclure du clan" aria-label="Exclure du clan">${ICON_REMOVE}</button>` : "")
           + (leader && !targetIsLeader ? `<button type="button" data-act="transfer" title="Transférer le chef" aria-label="Transférer le chef">${ICON_TRANSFER}</button>` : "")
@@ -426,13 +422,6 @@ export function initClanUI() {
         try { await apiClan("/api/clans/transfer", "POST", { pseudo }); } catch {}
         try { sendClanNotify(pseudo); } catch {}
         await load();
-      } else if (act === "whisper" && row) {
-        const pseudo = row.dataset.pseudo || "";
-        const chatInput = document.getElementById("chatInput");
-        if (chatInput) { chatInput.value = `/w ${pseudo} `; chatInput.focus(); }
-        window.GameWindowManager?.restore?.("chatWindow");
-      } else if (act === "invite" && row) {
-        try { sendGroupInvite(row.dataset.pseudo || ""); updateHeader(`Invitation de groupe envoyée à ${row.dataset.pseudo || ""}.`); } catch {}
       } else if (act === "rank-del" && rankRow) {
         if (!window.confirm(`Supprimer le rang ${rankRow.dataset.rank} ?`)) return;
         await apiClan("/api/clans/rank-manage", "POST", { action: "delete", name: rankRow.dataset.rank });
