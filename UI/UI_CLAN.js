@@ -22,6 +22,9 @@ const ICON_GROUP = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" c
 const ICON_REMOVE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>`;
 const ICON_ACCEPT = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>`;
 const CROWN_SVG = `<svg class="clanLeaderCrown" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 4.5 4L12 4l4.5 7L21 7l-2 11H5L3 7Z"/><path d="M5 18h14"/></svg>`;
+const ICON_TRANSFER = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 4.5 4L12 4l4.5 7L21 7l-2 11H5L3 7Z"/><path d="M5 18h14"/></svg>`;
+const ICON_TRASH = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V5h6v2M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg>`;
+const ICON_EXIT = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h9"/></svg>`;
 
 const RIGHT_LABELS = [["apps", "Candidatures"], ["kick", "Exclusion"], ["diplo", "Diplomatie"], ["edit", "Édition"]];
 const DIPLO_LABEL = { alliance: "Alliance", nap: "NAP", war: "Guerre" };
@@ -196,20 +199,16 @@ export function initClanUI() {
           + `<button type="button" data-act="invite" title="Inviter dans le groupe" aria-label="Inviter dans le groupe">${ICON_GROUP}</button>`
           + (leader && !targetIsLeader && rankNames.length ? `<select data-assign="${pseudo}" title="Rang" aria-label="Rang">${rankNames.map((n) => `<option value="${escapeHtml(n)}"${String(n).toLowerCase() === String(role).toLowerCase() ? " selected" : ""}>${escapeHtml(n)}</option>`).join("")}</select>` : "")
           + (kickable ? `<button class="danger" type="button" data-act="kick" title="Exclure du clan" aria-label="Exclure du clan">${ICON_REMOVE}</button>` : "")
-          + (leader && targetIsLeader ? `<button class="danger" type="button" data-act="dissolve" title="Dissoudre le clan" aria-label="Dissoudre le clan">Dissoudre</button>` : "")
-          + (isMe ? `<button type="button" data-act="leave" title="Quitter le clan" aria-label="Quitter le clan">Quitter</button>` : "")
+          + (leader && !targetIsLeader ? `<button type="button" data-act="transfer" title="Transférer le chef" aria-label="Transférer le chef">${ICON_TRANSFER}</button>` : "")
+          + (leader && targetIsLeader ? `<button class="danger" type="button" data-act="dissolve" title="Dissoudre le clan" aria-label="Dissoudre le clan">${ICON_TRASH}</button>` : "")
+          + (isMe ? `<button type="button" data-act="leave" title="Quitter le clan" aria-label="Quitter le clan">${ICON_EXIT}</button>` : "")
           + `</span></article>`;
       }).join("");
     }
-    // Pied de l'onglet Membres : transfert (chef), quitter (tous),
-    // dissoudre (chef). Plus rien de tout ça dans Infos.
+    // Pied de l'onglet Membres : plus rien (transfert, quitter et
+    // dissoudre sont des boutons sur chaque ligne). Masqué.
     const foot = document.getElementById("clanMemberFoot");
-    if (foot) {
-      foot.hidden = !leader;
-      foot.innerHTML = leader
-        ? `<form id="clanTransferForm" class="clanForm clanTransferForm" autocomplete="off"><input id="clanTransferInput" type="text" placeholder="Pseudo du successeur…" maxlength="20" autocomplete="off" /><button type="submit">Transférer le chef</button></form>`
-        : "";
-    }
+    if (foot) { foot.hidden = true; foot.innerHTML = ""; }
     // --- Rangs ---
     if (ranksList) {
       const ranks = Array.isArray(clan.ranks) ? clan.ranks : [];
@@ -421,6 +420,12 @@ export function initClanUI() {
         try { await apiClan("/api/clans/kick", "POST", { pseudo }); } catch {}
         try { sendClanNotify(pseudo); } catch {}
         await load();
+      } else if (act === "transfer" && row) {
+        const pseudo = row.dataset.pseudo || "";
+        if (!window.confirm(`Transférer le chef à ${pseudo} ? Tu deviendras simple membre.`)) return;
+        try { await apiClan("/api/clans/transfer", "POST", { pseudo }); } catch {}
+        try { sendClanNotify(pseudo); } catch {}
+        await load();
       } else if (act === "whisper" && row) {
         const pseudo = row.dataset.pseudo || "";
         const chatInput = document.getElementById("chatInput");
@@ -503,20 +508,7 @@ export function initClanUI() {
       await load("Description mise à jour.");
     } catch (error) { updateHeader(String(error?.message || "Description impossible.")); }
   });
-  managePane?.addEventListener("submit", async (event) => {
-    // Formulaires recréés à chaque rendu (transfert) : délégation obligatoire.
-    if (event.target?.id !== "clanTransferForm") return;
-    event.preventDefault(); event.stopPropagation();
-    const input = document.getElementById("clanTransferInput");
-    const value = input?.value.trim();
-    if (!value) return;
-    if (!window.confirm(`Transférer la chefferie à ${value} ? Tu deviendras simple membre.`)) return;
-    try {
-      await apiClan("/api/clans/transfer", "POST", { pseudo: value });
-      try { sendClanNotify(value); } catch {}
-      await load();
-    } catch (error) { updateHeader(String(error?.message || "Transfert impossible.")); }
-  });
+
   document.getElementById("clanDiploForm")?.addEventListener("submit", async (event) => {
     event.preventDefault(); event.stopPropagation();
     const tag = document.getElementById("clanDiploTagInput")?.value.trim() || "";

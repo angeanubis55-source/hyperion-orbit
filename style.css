@@ -2688,7 +2688,8 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .clanDangerZone{display:flex;gap:6px;flex-wrap:wrap}
 .clanDangerZone button.danger{border-color:rgba(255,101,120,.45);color:#ff9aa7;background:rgba(160,25,45,.22)}
 .clanDangerZone button.danger:hover{border-color:#ff6578;background:rgba(160,25,45,.35)}
-.clanCard select{min-width:0;max-width:110px;height:25px;box-sizing:border-box;padding:0 4px;border:1px solid rgba(124,240,255,.28);border-radius:7px;color:#dffaff;background:#051521;font:700 11px/1 ui-sans-serif,system-ui}
+.clanCard select{min-width:0;max-width:110px;height:30px;box-sizing:border-box;padding:0 4px;border:1px solid rgba(124,240,255,.28);border-radius:7px;color:#dffaff;background:#051521;font:700 11px/1 ui-sans-serif,system-ui}
+.clanBtns button[data-act="transfer"]{color:#ffd364}
 .clanRank{grid-template-columns:minmax(0,1fr) auto auto}
 .clanRankChecks{display:flex;gap:8px;flex-wrap:wrap}
 .clanRankChecks label{display:inline-flex;align-items:center;gap:4px;color:#9fc3cf;font-size:10px;font-weight:700;cursor:pointer}
