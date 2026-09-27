@@ -26012,7 +26012,7 @@ function syncNetPlayers(dt = 0.016) {
       if (!e) {
         e = {
           id: `netp:${rid}`, _netPlayer: String(rid), type: "player",
-          name: String(r.pseudo || "Pilote") + (r.clan ? ` [${r.clan}]` : ""),
+          name: (r.clan ? `[${r.clan}] ` : "") + String(r.pseudo || "Pilote"),
           x: 0, y: 0, vx: 0, vy: 0, r: 20, angle: 0,
           hp: 1, hpMax: 1, sh: 0, shMax: 0,
           _previousX: 0, _previousY: 0,
@@ -26020,7 +26020,7 @@ function syncNetPlayers(dt = 0.016) {
         netPlayerProxies.set(rid, e);
         try { enemiesById.set(e.id, e); } catch {}
       }
-      e.name = String(r.pseudo || "Pilote") + (r.clan ? ` [${r.clan}]` : "");
+      e.name = (r.clan ? `[${r.clan}] ` : "") + String(r.pseudo || "Pilote");
       e.x = Number(r.rx ?? r.x);
       e.y = Number(r.ry ?? r.y);
       e._previousX = e.x;
@@ -28486,7 +28486,7 @@ function drawNetplayRemotes(ox, oy) {
           shMax: Number(r.shMax) > 0 ? 1 : 0,
           r: 20, dead: false,
         },
-        String(r.pseudo || "Pilote") + (r.clan ? ` [${r.clan}]` : ""), 0, 0,
+        (r.clan ? `[${r.clan}] ` : "") + String(r.pseudo || "Pilote"), 0, 0,
         rRank, rFact, dind, rFicon, mind,
         String(r.shipId || "").toLowerCase() === "police",
         showRemoteDetails,
@@ -29730,7 +29730,7 @@ function drawPlayerBars(px, py) {
   drawPlayerStatus(
     ctx,
     player,
-    (account.user?.pseudo || "Pilote") + (myClanTag ? ` [${myClanTag}]` : ""),
+    (myClanTag ? `[${myClanTag}] ` : "") + (account.user?.pseudo || "Pilote"),
     px,
     py,
     rankImage,

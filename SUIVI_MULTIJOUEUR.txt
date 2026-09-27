@@ -291,8 +291,8 @@ RESTE A FAIRE (prochaines étapes proposées)
   Postuler/Retirer, membres + rangs + exclusion/promotion (chef),
   candidatures reçues à accepter/refuser (chef/officier),
   description (chef), quitter. Tchat : /c message (UI_CHAT.js).
-- Affichage : `pseudo [TAG]` sur les vaisseaux distants, le lock et
-  soi-même (ORBIT_ENGINE.js). Membres du clan en VERT (pseudo + tag
+- Affichage : `[TAG] pseudo` sur les vaisseaux distants, le lock et
+  soi-même (ORBIT_ENGINE.js). Membres du clan en VERT (tag + pseudo
   sur la carte, point minimap), prioritaire sur groupe (jaune) et
   firme (bleu/rouge).
 - Solo sans serveur : intact (fenêtre "connecte-toi").
