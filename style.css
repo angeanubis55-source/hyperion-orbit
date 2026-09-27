@@ -2644,6 +2644,12 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .clanBtns button:not(:has(svg)){width:auto;min-width:30px;padding:0 12px;white-space:nowrap}
 .clanBtns button:hover{border-color:rgba(124,240,255,.65);background:rgba(0,140,185,.3)}.clanBtns button.danger:hover{color:#ff8998;border-color:#ff6578;background:rgba(160,25,45,.25)}.clanBtns button.accept{color:#77f3a3}
 .clanBtns svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+/* Filet de sécurité : tout SVG dans une carte clan reste à 15px même
+hors .clanBtns (ex. anciennes lignes Membres non re-rendues). */
+.clanCard button{width:30px;height:30px;padding:4px;display:grid;place-items:center;box-sizing:border-box;overflow:hidden}
+.clanCard button svg{width:15px;height:15px;max-width:15px;max-height:15px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.clanCard button:not(:has(svg)){width:auto;min-width:30px}
+.clanIdentity strong svg{width:15px;height:15px;flex:0 0 auto}
 .clanEmpty{padding:22px;text-align:center;color:#5c8290;font-size:11px;font-weight:800}
 .clanBrowse{grid-template-columns:auto minmax(0,1fr) auto}
 .clanBrowse .clanBtns button{width:auto;height:28px;padding:0 14px;font-size:11px}
@@ -2692,6 +2698,8 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .clanCard select{min-width:0;max-width:110px;height:30px;box-sizing:border-box;padding:0 4px;border:1px solid rgba(124,240,255,.28);border-radius:7px;color:#dffaff;background:#051521;font:700 11px/1 ui-sans-serif,system-ui}
 .clanBtns button[data-act="transfer"]{color:#ffd364}
 .clanRank{grid-template-columns:minmax(0,1fr) auto auto}
+#clanList .clanCard{grid-template-columns:minmax(0,1fr) auto auto}
+#clanList .clanCard .clanBtns{grid-column:-1;justify-self:end}
 .clanRankChecks{display:flex;gap:8px;flex-wrap:wrap}
 .clanRankChecks label{display:inline-flex;align-items:center;gap:4px;color:#9fc3cf;font-size:10px;font-weight:700;cursor:pointer}
 /* Mêmes checkbox que les paramètres */

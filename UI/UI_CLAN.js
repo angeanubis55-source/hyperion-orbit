@@ -20,7 +20,7 @@ let started = false;
 const ICON_REMOVE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>`;
 const ICON_ACCEPT = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>`;
 const CROWN_SVG = `<svg class="clanLeaderCrown" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 4.5 4L12 4l4.5 7L21 7l-2 11H5L3 7Z"/><path d="M5 18h14"/></svg>`;
-const ICON_TRANSFER = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 4.5 4L12 4l4.5 7L21 7l-2 11H5L3 7Z"/><path d="M5 18h14"/></svg>`;
+const ICON_TRANSFER = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg>`;
 const ICON_TRASH = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V5h6v2M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg>`;
 const ICON_EXIT = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h9"/></svg>`;
 
@@ -191,14 +191,15 @@ export function initClanUI() {
       let isMe = false;
       try { isMe = String(netMyId() || "") === `u_${String(member.id || "")}`; } catch { isMe = false; }
         const kickable = rights.kick && !targetIsLeader && (rights.isLeader || String(member.role) === "member" || String(member.role).toLowerCase() === "membre");
+        const actions = (kickable ? `<button class="danger" type="button" data-act="kick" title="Exclure du clan" aria-label="Exclure du clan">${ICON_REMOVE}</button>` : "")
+          + (leader && !targetIsLeader ? `<button type="button" data-act="transfer" title="Transférer le chef" aria-label="Transférer le chef">${ICON_TRANSFER}</button>` : "")
+          + (leader && targetIsLeader ? `<button class="danger" type="button" data-act="dissolve" title="Dissoudre le clan" aria-label="Dissoudre le clan">${ICON_TRASH}</button>` : "")
+          + (isMe ? `<button type="button" data-act="leave" title="Quitter le clan" aria-label="Quitter le clan">${ICON_EXIT}</button>` : "");
         return `<article class="clanCard" data-pseudo="${pseudo}" data-role="${escapeHtml(role)}">`
           + `<span class="clanIdentity"><strong>${pseudo}${targetIsLeader ? CROWN_SVG : ""}</strong><small>${escapeHtml(role)}</small></span>`
           + (leader && !targetIsLeader && rankNames.length ? `<select data-assign="${pseudo}" title="Rang" aria-label="Rang">${rankNames.map((n) => `<option value="${escapeHtml(n)}"${String(n).toLowerCase() === String(role).toLowerCase() ? " selected" : ""}>${escapeHtml(n)}</option>`).join("")}</select>` : "")
-          + (kickable ? `<button class="danger" type="button" data-act="kick" title="Exclure du clan" aria-label="Exclure du clan">${ICON_REMOVE}</button>` : "")
-          + (leader && !targetIsLeader ? `<button type="button" data-act="transfer" title="Transférer le chef" aria-label="Transférer le chef">${ICON_TRANSFER}</button>` : "")
-          + (leader && targetIsLeader ? `<button class="danger" type="button" data-act="dissolve" title="Dissoudre le clan" aria-label="Dissoudre le clan">${ICON_TRASH}</button>` : "")
-          + (isMe ? `<button type="button" data-act="leave" title="Quitter le clan" aria-label="Quitter le clan">${ICON_EXIT}</button>` : "")
-          + `</span></article>`;
+          + (actions ? `<span class="clanBtns">${actions}</span>` : "")
+          + `</article>`;
       }).join("");
     }
     // Pied de l'onglet Membres : plus rien (transfert, quitter et
@@ -234,8 +235,11 @@ export function initClanUI() {
     return { active: find(rels.active), incoming: find(rels.incoming), outgoing: find(rels.outgoing) };
   }
 
-  // Onglet Guerre : TOUS les clans du jeu. La guerre est immédiate
+  // Onglet Diplomatie : TOUS les clans du jeu. La guerre est immédiate
   // (pas de demande) ; NAP/Alliance = proposition à accepter.
+  // Paix en guerre = DEMANDE (pending war) : la guerre ne se termine que
+  // si l'autre clan accepte (jamais en 1 clic). La demande coexiste avec
+  // la guerre active, donc on affiche les deux états ensemble.
   function renderDiploClans(rights) {
     if (!diploClans) return;
     const others = clans.filter((c) => String(c.tag || "").toUpperCase() !== String(clan?.tag || "").toUpperCase());
@@ -247,19 +251,31 @@ export function initClanUI() {
       const badge = rel ? ` diplo-${rel.kind}` : "";
       let detail = `${Number(c.memberCount) || 0} membres`;
       let buttons = "";
-      if (st.active) {
+      if (st.active && st.active.kind === "war") {
+        detail += ` · <b>GUERRE ${Number(st.active.killsMine) || 0}–${Number(st.active.killsTheirs) || 0}</b> · ${st.active.daysLeft ?? "?"} j restants`;
+        const peaceIn = st.incoming && st.incoming.kind === "war" ? st.incoming : null;
+        const peaceOut = st.outgoing && st.outgoing.kind === "war" ? st.outgoing : null;
+        if (peaceIn) detail += ` · <b>demande de paix reçue</b>`;
+        else if (peaceOut) detail += ` · <b>paix demandée — en attente</b>`;
+        if (peaceIn) {
+          buttons = `<button class="accept" type="button" data-act="diplo-accept" data-rel="${escapeHtml(peaceIn.id)}" title="Accepter la paix (termine la guerre)" aria-label="Accepter la paix">${ICON_ACCEPT}</button><button class="danger" type="button" data-act="diplo-decline" data-rel="${escapeHtml(peaceIn.id)}" title="Refuser la paix" aria-label="Refuser la paix">${ICON_REMOVE}</button>`;
+        } else if (peaceOut) {
+          buttons = `<button type="button" data-act="diplo-end" data-rel="${escapeHtml(peaceOut.id)}" title="Retirer ma demande de paix" aria-label="Retirer ma demande de paix">Retirer</button>`;
+        } else if (rights.diplo) {
+          buttons = `<button class="danger" type="button" data-act="diplo-end" data-rel="${escapeHtml(st.active.id)}" title="Demander la paix (l'autre clan doit accepter)" aria-label="Demander la paix">Paix</button>`;
+        }
+      } else if (st.active) {
         const label = DIPLO_LABEL[st.active.kind] || st.active.kind;
-        if (st.active.kind === "war") detail += ` · <b>GUERRE ${Number(st.active.killsMine) || 0}–${Number(st.active.killsTheirs) || 0}</b> · ${st.active.daysLeft ?? "?"} j restants`;
-        else detail += ` · <b>${label}</b>`;
-        buttons = `<button class="danger" type="button" data-act="diplo-end" data-rel="${escapeHtml(st.active.id)}" title="${st.active.kind === "war" ? "Proposer la fin de guerre" : "Rompre"}" aria-label="Rompre">${st.active.kind === "war" ? "Paix" : "Rompre"}</button>`;
+        detail += ` · <b>${label}</b>`;
+        buttons = rights.diplo ? `<button class="danger" type="button" data-act="diplo-end" data-rel="${escapeHtml(st.active.id)}" title="Rompre" aria-label="Rompre">Rompre</button>` : "";
       } else if (st.incoming) {
         const label = DIPLO_LABEL[st.incoming.kind] || st.incoming.kind;
         detail += st.incoming.kind === "war" ? ` · <b>demande de paix reçue</b>` : ` · <b>${label} demandée</b>`;
         buttons = `<button class="accept" type="button" data-act="diplo-accept" data-rel="${escapeHtml(st.incoming.id)}" title="Accepter" aria-label="Accepter">${ICON_ACCEPT}</button><button class="danger" type="button" data-act="diplo-decline" data-rel="${escapeHtml(st.incoming.id)}" title="Refuser" aria-label="Refuser">${ICON_REMOVE}</button>`;
       } else if (st.outgoing) {
         const label = DIPLO_LABEL[st.outgoing.kind] || st.outgoing.kind;
-        detail += st.outgoing.kind === "war" ? ` · <b>fin proposée</b>` : ` · <b>${label} proposée</b>`;
-        buttons = `<button class="danger" type="button" data-act="diplo-end" data-rel="${escapeHtml(st.outgoing.id)}" title="Retirer" aria-label="Retirer">${ICON_REMOVE}</button>`;
+        detail += st.outgoing.kind === "war" ? ` · <b>paix demandée — en attente</b>` : ` · <b>${label} proposée</b>`;
+        buttons = `<button type="button" data-act="diplo-end" data-rel="${escapeHtml(st.outgoing.id)}" title="Retirer" aria-label="Retirer">${st.outgoing.kind === "war" ? "Retirer" : ICON_REMOVE}</button>`;
       } else if (rights.diplo) {
         buttons = `<button class="danger" type="button" data-act="war-now" data-tag="${tag}" title="Déclarer la guerre (immédiat)" aria-label="Guerre">Guerre</button>`
           + `<button type="button" data-act="diplo-propose" data-kind="nap" data-tag="${tag}" title="Proposer un NAP" aria-label="NAP">NAP</button>`
@@ -376,15 +392,19 @@ export function initClanUI() {
     } catch (error) { updateHeader(String(error?.message || "Candidature impossible.")); render(); }
   });
   // Délégation globale du panneau (infos / membres / rangs / diplo).
+  // Anti double-clic : un seul appel diplo à la fois (évite de devoir
+  // cliquer plusieurs fois / les requêtes en double qui semblaient "buggées").
+  let diploBusy = false;
   managePane?.addEventListener("click", async (event) => {
     const button = event.target.closest("button[data-act]");
     const select = event.target.closest("select[data-assign]");
     if (select && event.type === "click") return;
-    if (!button || !clan) return;
+    if (!button || !clan || button.disabled) return;
     const act = button.dataset.act;
     const row = button.closest("[data-pseudo]");
     const rankRow = button.closest("[data-rank]");
     const relId = button.dataset.rel || button.closest("[data-rel]")?.dataset.rel || "";
+    if ((act === "diplo-accept" || act === "diplo-decline" || act === "diplo-end" || act === "war-now" || act === "diplo-propose") && diploBusy) return;
     try {
       if (act === "toggle-open") {
         await apiClan("/api/clans/open", "POST", { open: clan.open === false });
@@ -428,31 +448,49 @@ export function initClanUI() {
         try { sendClanNotify(); } catch {}
         await load();
       } else if (act === "diplo-accept" && relId) {
-        await apiClan("/api/clans/diplo/respond", "POST", { id: relId, accept: true });
-        try { sendDiploNotify(null, ""); } catch {}
-        await load();
+        diploBusy = true; button.disabled = true;
+        try {
+          const r = await apiClan("/api/clans/diplo/respond", "POST", { id: relId, accept: true });
+          try { sendDiploNotify(null, ""); } catch {}
+          await load(r?.ended ? "Paix acceptée — guerre terminée." : "Proposition acceptée.");
+        } finally { diploBusy = false; }
       } else if (act === "diplo-decline" && relId) {
-        await apiClan("/api/clans/diplo/respond", "POST", { id: relId, accept: false });
-        try { sendDiploNotify(null, ""); } catch {}
-        await load();
+        diploBusy = true; button.disabled = true;
+        try {
+          await apiClan("/api/clans/diplo/respond", "POST", { id: relId, accept: false });
+          try { sendDiploNotify(null, ""); } catch {}
+          await load("Demande de paix refusée — guerre toujours en cours.");
+        } finally { diploBusy = false; }
       } else if (act === "diplo-end" && relId) {
-        await apiClan("/api/clans/diplo/end", "POST", { id: relId });
-        try { sendDiploNotify(null, ""); } catch {}
-        await load();
+        diploBusy = true; button.disabled = true;
+        try {
+          const r = await apiClan("/api/clans/diplo/end", "POST", { id: relId });
+          try { sendDiploNotify(null, ""); } catch {}
+          if (r?.requested) await load("Demande de paix envoyée — l'autre clan doit accepter.");
+          else if (r?.retracted) await load("Demande de paix retirée.");
+          else if (r?.ended) await load("Relation terminée.");
+          else await load();
+        } finally { diploBusy = false; }
       } else if (act === "war-now" && button.dataset.tag) {
         const tag = button.dataset.tag;
         if (!window.confirm(`Déclarer la guerre à [${tag}] ? Effet immédiat, 100 jours max.`)) return;
-        const data = await apiClan("/api/clans/diplo", "POST", { tag, kind: "war" });
-        try { sendDiploNotify(data.rel?.otherTag || tag, `Guerre déclarée à [${data.rel?.otherTag || tag}] !`); } catch {}
-        await load(`Guerre contre [${tag}] !`);
+        diploBusy = true; button.disabled = true;
+        try {
+          const data = await apiClan("/api/clans/diplo", "POST", { tag, kind: "war" });
+          try { sendDiploNotify(data.rel?.otherTag || tag, `Guerre déclarée à [${data.rel?.otherTag || tag}] !`); } catch {}
+          await load(`Guerre contre [${tag}] !`);
+        } finally { diploBusy = false; }
       } else if (act === "diplo-propose" && button.dataset.tag) {
         const tag = button.dataset.tag, kind = button.dataset.kind === "alliance" ? "alliance" : "nap";
         const label = kind === "alliance" ? "alliance" : "NAP";
-        const data = await apiClan("/api/clans/diplo", "POST", { tag, kind });
-        try { sendDiploNotify(data.rel?.otherTag || tag, `${label} proposée à [${data.rel?.otherTag || tag}].`); } catch {}
-        await load(`${label} proposée à [${tag}].`);
+        diploBusy = true; button.disabled = true;
+        try {
+          const data = await apiClan("/api/clans/diplo", "POST", { tag, kind });
+          try { sendDiploNotify(data.rel?.otherTag || tag, `${label} proposée à [${data.rel?.otherTag || tag}].`); } catch {}
+          await load(`${label} proposée à [${tag}].`);
+        } finally { diploBusy = false; }
       }
-    } catch (error) { updateHeader(String(error?.message || "Action impossible.")); }
+    } catch (error) { updateHeader(String(error?.message || "Action impossible.")); diploBusy = false; }
   });
   managePane?.addEventListener("change", async (event) => {
     const checkbox = event.target.closest('input[type="checkbox"][data-right]');

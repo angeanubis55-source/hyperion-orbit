@@ -1301,8 +1301,10 @@ export function respondDiplo(actorId, relId, accept) {
   } catch { return { ok: false, error: "SERVER" }; }
 }
 
-// Rompre alliance/NAP aussitôt ; guerre : demande de fin (l'autre accepte)
-// ou fin mutuelle si une demande existe déjà dans l'autre sens.
+// Rompre alliance/NAP aussitôt ; guerre : DEMANDE de paix uniquement.
+// Cliquer "Paix" ne termine JAMAIS la guerre : ça crée une demande
+// (pending) que l'autre clan doit accepter via respondDiplo. Même si les
+// deux clans demandent, la guerre continue jusqu'à acceptation explicite.
 export function endDiplo(actorId, relId) {
   try {
     initAccountDb();
@@ -1334,15 +1336,8 @@ export function endDiplo(actorId, relId) {
       }
       return { ok: false, error: "NONE" };
     }
-    // Fin mutuelle UNIQUEMENT si la demande vient de l'autre clan.
-    // Cliquer 2 fois ne termine jamais la guerre seul (c'est une demande).
-    const theirs = db.prepare("SELECT id FROM clan_diplo WHERE kind = 'war' AND status = 'pending' AND from_clan = ? AND to_clan = ?").get(otherId, clanId);
-    if (theirs) {
-      db.prepare("DELETE FROM clan_diplo WHERE kind = 'war' AND ((from_clan = ? AND to_clan = ?) OR (from_clan = ? AND to_clan = ?))").run(clanId, otherId, otherId, clanId);
-      addClanLog(clanId, `Guerre contre [${theirTag}] terminée.`);
-      addClanLog(otherId, `Guerre contre [${myTag}] terminée.`);
-      return { ok: true, ended: true };
-    }
+    // Ne JAMAIS terminer la guerre ici : même si l'autre clan a déjà
+    // demandé la paix, il faut passer par Accepter (respondDiplo).
     const myReq = db.prepare("SELECT id FROM clan_diplo WHERE kind = 'war' AND status = 'pending' AND from_clan = ? AND to_clan = ?").get(clanId, otherId);
     if (myReq) return { ok: true, requested: true };
     db.prepare("INSERT INTO clan_diplo (id, from_clan, to_clan, kind, status, kills_from, kills_to, created_at, ends_at) VALUES (?, ?, ?, 'war', 'pending', 0, 0, ?, NULL)").run(uuid(), clanId, otherId, Date.now());
