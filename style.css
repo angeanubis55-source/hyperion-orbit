@@ -2625,7 +2625,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .friendsForm button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
 /* Fenêtre Clan */
 .clanPanel{width:700px;min-width:360px;max-width:calc(100vw - 20px);height:auto;max-height:calc(100vh - 20px);display:flex;flex-direction:column;overflow:hidden}
-#clanWindow:has(#clanManagePane.active){width:1000px;max-width:calc(100vw - 20px)}
+#clanWindow:has(#clanManagePane.active){width:850px;max-width:calc(100vw - 20px)}
 .clanStatus{padding:8px 12px;box-sizing:border-box;border-bottom:1px solid rgba(124,240,255,.16);color:#75e8ff;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.35px}
 .clanPane{display:none;flex-direction:column;min-height:0}.clanPane.active{display:flex}
 .clanSubHead{padding:8px 12px 0;color:#8fcddd;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px}

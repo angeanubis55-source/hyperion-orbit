@@ -107,7 +107,7 @@ export function initClanUI() {
       try {
         const card = document.getElementById("clanWindow");
         if (card) {
-          card.style.width = inClan ? "1000px" : "700px";
+          card.style.width = inClan ? "850px" : "700px";
           card.style.minWidth = "0";
           card.style.maxWidth = "calc(100vw - 20px)";
         }
