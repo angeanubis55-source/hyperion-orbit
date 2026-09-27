@@ -108,7 +108,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getMyClanTag } from "./NETPLAY.js";
+  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getMyClanTag, getClanRelation } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -27523,8 +27523,8 @@ mini.addEventListener("pointerup", (e) => {
   try { mini.releasePointerCapture(e.pointerId); } catch {}
 }, { passive: true });
 
-// Multi : allies minimap = escortes + joueurs distants (vert meme clan,
-// bleu meme firme, rouge autre firme).
+// Multi : allies minimap = escortes + joueurs distants (vert clan/allié,
+// jaune NAP, rouge guerre, bleu meme firme, rouge autre firme).
 function minimapAllies() {
   try {
     const remotes = getNetplayRemotes();
@@ -27537,11 +27537,21 @@ function minimapAllies() {
       if (!rr || rr.dead) continue;
       const firm = String(rr.firm || "").toLowerCase();
       const same = myFirm !== "" && firm === myFirm;
-      const sameClan = myClan !== "" && String(rr.clan || "").toUpperCase() === myClan;
+      const tag = String(rr.clan || "").toUpperCase().slice(0, 5);
+      let color = same ? "rgba(80,160,255,0.95)" : "rgba(255,70,90,0.95)";
+      if (myClan !== "" && tag === myClan) color = "rgba(105,255,140,0.95)";
+      else if (tag) {
+        try {
+          const rel = getClanRelation(tag);
+          if (rel === "war") color = "rgba(255,70,90,0.95)";
+          else if (rel === "nap") color = "rgba(255,225,90,0.95)";
+          else if (rel === "ally") color = "rgba(105,255,140,0.95)";
+        } catch {}
+      }
       dots.push({
         x: Number(rr.rx ?? rr.x), y: Number(rr.ry ?? rr.y), hp: 1, r: 18, _net: true,
         _netPlayer: String(rr.id),
-        color: sameClan ? "rgba(105,255,140,0.95)" : (same ? "rgba(80,160,255,0.95)" : "rgba(255,70,90,0.95)"),
+        color,
       });
     }
     return dots.length ? escortShips.concat(dots) : escortShips;
@@ -28490,13 +28500,24 @@ function drawNetplayRemotes(ox, oy) {
         rRank, rFact, dind, rFicon, mind,
         String(r.shipId || "").toLowerCase() === "police",
         showRemoteDetails,
-        (myClanTagForColor && String(r.clan || "").toUpperCase() === myClanTagForColor)
-          ? "rgba(105,255,140,0.98)"
-          : (getNetGroup()?.members?.some(member => String(member.id) === String(r.id))
-            ? "rgba(255,229,138,0.98)"
-            : (normalizeFactionId(r.firm) === normalizeFactionId(account.user?.faction)
-              ? "rgba(80,225,255,0.98)"
-              : "rgba(255,65,82,0.98)")),
+        (() => {
+          // Clan : vert. Diplomatie façon DO : guerre rouge, NAP jaune,
+          // alliance verte. Puis escadrille (jaune) et firme (bleu/rouge).
+          const tag = String(r.clan || "").toUpperCase().slice(0, 5);
+          if (myClanTagForColor && tag === myClanTagForColor) return "rgba(105,255,140,0.98)";
+          if (tag) {
+            try {
+              const rel = getClanRelation(tag);
+              if (rel === "war") return "rgba(255,65,82,0.98)";
+              if (rel === "nap") return "rgba(255,229,138,0.98)";
+              if (rel === "ally") return "rgba(105,255,140,0.98)";
+            } catch {}
+          }
+          if (getNetGroup()?.members?.some(member => String(member.id) === String(r.id))) return "rgba(255,229,138,0.98)";
+          return normalizeFactionId(r.firm) === normalizeFactionId(account.user?.faction)
+            ? "rgba(80,225,255,0.98)"
+            : "rgba(255,65,82,0.98)";
+        })(),
       );
     } catch {}
     ctx.restore();

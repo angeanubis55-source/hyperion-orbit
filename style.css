@@ -2642,6 +2642,35 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .clanBrowse{grid-template-columns:auto minmax(0,1fr) auto}
 .clanBrowse .clanBtns button{width:auto;height:28px;padding:0 14px;font-size:11px}
 .clanBrowse .clanBtns button:disabled{opacity:.4;cursor:not-allowed}
+.clanTabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:7px 10px 0;gap:5px}
+.clanTabs button{height:29px;border:0;border-bottom:2px solid transparent;color:#6f929e;background:transparent;cursor:pointer;font:800 11px/1 ui-sans-serif,system-ui;text-transform:uppercase}
+.clanTabs button.active{color:#dffaff;border-bottom-color:#63ddf8;background:linear-gradient(180deg,transparent,rgba(70,210,245,.08))}
+.clanInfoBox{padding:9px 11px 0;box-sizing:border-box;display:grid;gap:8px}
+.clanInfoGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.clanInfoGrid>div{display:grid;gap:2px;padding:7px 8px;border:1px solid rgba(124,240,255,.13);border-radius:8px;background:rgba(2,18,29,.55)}
+.clanInfoGrid span{color:#7395a1;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.5px}
+.clanInfoGrid strong{color:#dff7fb;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clanInfoGrid strong.open{color:#77f3a3}.clanInfoGrid strong.closed{color:#ff9aa7}
+.clanDesc{margin:0;padding:8px 9px;border-left:2px solid rgba(124,240,255,.35);color:#cfe7ef;font-size:12px;font-style:italic}
+.clanInfoActions{display:flex;gap:6px}
+.clanInfoActions button,.clanDangerZone button{height:28px;padding:0 12px;box-sizing:border-box;border:1px solid rgba(124,240,255,.38);border-radius:8px;color:#eaffff;background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));cursor:pointer;font:800 11px/1.2 ui-sans-serif,system-ui}
+.clanInfoActions button:hover,.clanDangerZone button:hover{border-color:rgba(124,240,255,.62);background:rgba(0,140,185,.3)}
+.clanLog{display:grid;gap:3px;max-height:130px;overflow-y:auto;padding:7px 9px;border:1px solid rgba(124,240,255,.13);border-radius:8px;background:rgba(2,18,29,.55)}
+.clanLogRow{color:#8fa8b3;font-size:11px}
+.clanDangerZone{display:flex;gap:6px;flex-wrap:wrap}
+.clanDangerZone button.danger{border-color:rgba(255,101,120,.45);color:#ff9aa7;background:rgba(160,25,45,.22)}
+.clanDangerZone button.danger:hover{border-color:#ff6578;background:rgba(160,25,45,.35)}
+.clanCard select{min-width:0;max-width:110px;height:25px;box-sizing:border-box;padding:0 4px;border:1px solid rgba(124,240,255,.28);border-radius:7px;color:#dffaff;background:#051521;font:700 11px/1 ui-sans-serif,system-ui}
+.clanRank{grid-template-columns:minmax(0,1fr) auto auto}
+.clanRankChecks{display:flex;gap:8px;flex-wrap:wrap}
+.clanRankChecks label{display:inline-flex;align-items:center;gap:4px;color:#9fc3cf;font-size:10px;font-weight:700;cursor:pointer}
+.clanRankChecks input{accent-color:#00d9ff}
+.clanDiplo{grid-template-columns:auto minmax(0,1fr) auto}
+.clanTagBadge.diplo-war{color:#ff8998;background:rgba(160,25,45,.25)}
+.clanTagBadge.diplo-alliance{color:#77f3a3;background:rgba(50,180,100,.12)}
+.clanTagBadge.diplo-nap{color:#ffd364;background:rgba(220,160,40,.12)}
+#clanWindow .clanForm select{height:30px;box-sizing:border-box;padding:0 8px;border:1px solid rgba(124,240,255,.30);border-radius:7px;color:#effcff;background:#051521;font:700 12px/1 ui-sans-serif,system-ui}
+#clanDiploForm{grid-template-columns:minmax(0,1fr) auto auto}
 #clanAppsBlock .clanSubHead{color:#ffcf58}
 #clanAppsList{max-height:180px;min-height:0}
 .clanForm{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:9px 11px;box-sizing:border-box;border-top:1px solid rgba(124,240,255,.14)}

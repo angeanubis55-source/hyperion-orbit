@@ -262,46 +262,58 @@ RESTE A FAIRE (prochaines étapes proposées)
 ----------------------------------------------------------------
 11) CLANS façon DO (création [TAG], candidatures, rangs, tchat de clan)
 ----------------------------------------------------------------
-- Serveur (ACCOUNT_SERVER.js, comptes uniquement) : tables clans +
-  clan_members + clan_applications (persistées : un hors-ligne
-  retrouve ses candidatures). Création nom (3 min) + tag unique 2-5
-  lettres/chiffres (30 membres max), rôles leader/officer/member
-  (accept/refus : leader + officier ; kick : leader partout, officier
-  sur membres ; rangs + description : leader). PAS d'invitations :
-  c'est le joueur qui postule (apply), le clan accepte ou refuse.
-  Départ du chef = succession (officier le plus ancien, sinon plus
-  ancien membre) ; dernier membre = dissolution. Accepter purge les
-  autres candidatures du joueur. Suppression admin : départ propre
-  (succession/dissolution + notifs).
-- Routes : GET /api/clans/me · POST /api/clans {name, tag} ·
-  GET /api/clans/list (tous les clans) · GET /api/clans/my-applications
-  · POST /api/clans/apply|cancel|accept|decline|
-  leave|kick|rank|description · GET /api/clans/info?tag= (publique).
+- Serveur (ACCOUNT_SERVER.js, comptes uniques) : tables clans (+ open)
+  + clan_members + clan_applications + clan_ranks + clan_diplo +
+  clan_log. Création nom (3 min) + tag unique 2-5 lettres/chiffres
+  (30 membres max), 300 000 crédits de fondation ; candidature =
+  1 500 crédits prélevés à l'acceptation. PAS d'invitations : c'est
+  le joueur qui postule (apply), le clan accepte ou refuse.
+  Recrutement Ouvert/Fermé (droit édition) : fermé = plus de
+  candidatures, badge dans la liste. Rangs personnalisables (chef
+  uniquement) avec 4 droits : candidatures, exclusion, diplomatie,
+  édition (Chef 15, Officier 3, Membre 0 par défaut). Kick : droit
+  requis, jamais le chef, non-chef = simples membres seulement.
+  Transfert de chefferie + dissolution (chef). Départ = succession
+  (officier le plus ancien, sinon plus ancien) ; dernier = dissolution
+  totale (rangs, diplo, log purgés). Journal de clan (30 entrées :
+  fondation, arrivées, départs, diplo). Suppression admin : départ
+  propre + notifs.
+- Diplomatie : alliance / NAP (proposition + acceptation, rupture
+  immédiate par un camp) / guerre (déclaration unilatérale immédiate,
+  100 jours max avec jours restants, fin sur demande acceptée ou
+  mutuelle). Score de kills PvP par guerre (recordClanWarKill branché
+  sur le kill PvP serveur). Une seule relation par paire.
+- Routes : GET /api/clans/me|list|my-applications|relations ·
+  POST /api/clans {name, tag} · POST apply|cancel|accept|decline|
+  leave|kick|assign|rank-manage|open|transfer|dissolve|
+  diplo|diplo/respond|diplo/end|description · GET info?tag=.
   Rate-limit 60/min.
-- MULTI_SERVER.js :   tchat de clan {t:"clanChat"} (500 ms anti-spam, 200 caractères,
-  rooms + instances comme le global) ->
-  {t:"clanMsg"} aux membres connectés (tag en mémoire, rafraîchi au
-  hello + ping 15 s) ; {t:"clanNotify"} (notif post-HTTP, `to`
-  optionnel pour un exclu/invité) -> {t:"clanChanged"} aux membres ;
-  {t:"clanRefresh"} -> {t:"clanTag"}. Tag `clan` dans les snapshots
-  (champ statique basse cadence comme pseudo/rank/firm) + describePeer.
-- Client : NETPLAY.js (miroir tchat `[Clan] pseudo`, clanChanged ->
-  dirty, clanTag -> tag local). UI/UI_CLAN.js (clanWindow, icône
-  clan.png) : création, liste publique de TOUS les clans avec
-  Postuler/Retirer, membres + rangs + exclusion/promotion (chef),
-  candidatures reçues à accepter/refuser (chef/officier),
-  description (chef), quitter. Tchat : /c message (UI_CHAT.js).
-- Affichage : `[TAG] pseudo` sur les vaisseaux distants, le lock et
-  soi-même (ORBIT_ENGINE.js). Membres du clan en VERT (tag + pseudo
-  sur la carte, point minimap), prioritaire sur groupe (jaune) et
-  firme (bleu/rouge).
+- MULTI_SERVER.js : tchat de clan {t:"clanChat"} (500 ms anti-spam,
+  200 caractères, rooms + instances) -> {t:"clanMsg"} aux membres ;
+  {t:"clanNotify"} (`to` optionnel) -> {t:"clanChanged"} ;
+  {t:"diploNotify"} {tag, text} -> {t:"clanChanged"} aux DEUX clans +
+  annonce {t:"clanMsg"} `[Diplomatie]` aux deux ; {t:"clanRefresh"}
+  -> {t:"clanTag"}. Tag `clan` dans les snapshots (statique basse
+  cadence) + describePeer. Tag rafraîchi au hello + ping 15 s.
+- Client : NETPLAY.js (miroir `[Clan]`, clanChanged -> dirty, clanTag,
+  setNetDiplo/getClanRelation). UI/UI_CLAN.js (clanWindow) : sans
+  clan = création + liste publique (statut, Postuler/Retirer) ; en
+  clan = onglets Infos (recrutement, description, journal, transfert,
+  dissolution) / Membres (rangs via liste déroulante, kick, MP,
+  groupe, candidatures) / Rangs (créer, droits par cases, supprimer)
+  / Guerre = Diplomatie (relations + score + jours restants, demandes,
+  proposition alliance/NAP/guerre). Tchat : /c message (UI_CHAT.js).
+- Affichage : `[TAG] pseudo` partout (distants, lock, soi). Couleurs
+  façon DO : clan VERT, guerre ROUGE, NAP JAUNE, alliance VERTE,
+  puis escadrille (jaune) et firme (bleu/rouge) — nameplates ET
+  points minimap (ORBIT_ENGINE.js + UI_MINIMAP via minimapAllies).
 - Solo sans serveur : intact (fenêtre "connecte-toi").
-- Validé : 25 checks unitaires (création, liste, postuler, unicité,
-  droits, succession, dissolution, purge admin) + 11 checks E2E live
-  (HTTP + 2 WS : liste, candidature, accept, tchat, tag snapshot,
-  clanChanged).
-- Limites V1 : pas de chat d'alliance/diplomatie, pas de pastille
-  clan sur minimap, pas de classement clans.
+- Validé : 52 checks unitaires (frais, ouvert/fermé, rangs + droits,
+  transfert, dissolution, NAP/alliance/guerre, score, expiration
+  100 j, purge admin, journal) + 12 checks E2E live (2 WS : NAP,
+  guerre, notifs, annonces [Diplomatie], fin mutuelle).
+- Limites V2 : pas de trésorerie/taxe/payouts, pas de messagerie
+  clan interne (le /c couvre), pas de logo, pas de classement clans.
 
 ----------------------------------------------------------------
 FICHIERS CLES

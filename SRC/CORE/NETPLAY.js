@@ -47,6 +47,9 @@ export function suspendNetplay(v) {
     netFriendsOnline = [];
     netClanDirty = false;
     netMyClanTag = "";
+    netDiploAlly.clear();
+    netDiploNap.clear();
+    netDiploWar.clear();
     lastNpcSnapMs = 0;
     try { if (ws && ws.readyState === 1) ws.close(); } catch {}
     ws = null;
@@ -487,6 +490,46 @@ export function sendClanNotify(to) {
 }
 export function sendClanRefresh() {
   return sendSocialMsg({ t: "clanRefresh" });
+}
+// Diplomatie : relations connues (tags en majuscules) pour colorer les
+// vaisseaux distants (vert allié, jaune NAP, rouge guerre, façon DO).
+// Alimenté par UI_CLAN.js depuis /api/clans/relations.
+const netDiploAlly = new Set();
+const netDiploNap = new Set();
+const netDiploWar = new Set();
+export function setNetDiplo(ally, nap, war) {
+  try {
+    netDiploAlly.clear(); netDiploNap.clear(); netDiploWar.clear();
+    for (const tag of (Array.isArray(ally) ? ally : [])) {
+      const clean = String(tag || "").toUpperCase().slice(0, 5);
+      if (clean) netDiploAlly.add(clean);
+    }
+    for (const tag of (Array.isArray(nap) ? nap : [])) {
+      const clean = String(tag || "").toUpperCase().slice(0, 5);
+      if (clean) netDiploNap.add(clean);
+    }
+    for (const tag of (Array.isArray(war) ? war : [])) {
+      const clean = String(tag || "").toUpperCase().slice(0, 5);
+      if (clean) netDiploWar.add(clean);
+    }
+  } catch {}
+}
+export function getClanRelation(tag) {
+  try {
+    const clean = String(tag || "").toUpperCase().slice(0, 5);
+    if (!clean) return null;
+    if (netDiploWar.has(clean)) return "war";
+    if (netDiploNap.has(clean)) return "nap";
+    if (netDiploAlly.has(clean)) return "ally";
+    return null;
+  } catch { return null; }
+}
+// Après une mutation diplo HTTP : resync les deux clans + annonce.
+export function sendDiploNotify(tag, text) {
+  const other = String(tag || "").toUpperCase().slice(0, 5);
+  const clean = String(text || "").replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!other && !clean) return sendSocialMsg({ t: "diploNotify" });
+  return sendSocialMsg({ t: "diploNotify", tag: other || undefined, text: clean || undefined });
 }
 // Enchères partagées (comme le tchat) : sync/update/settle/reject bruts,
 // fusionnés dans user.auction par SRC/CORE/AUCTION_NET.js.

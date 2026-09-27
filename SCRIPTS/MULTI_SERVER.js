@@ -6,7 +6,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminListAccounts, adminDeleteAccount } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminListAccounts, adminDeleteAccount } from "./ACCOUNT_SERVER.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
@@ -1101,6 +1101,31 @@ wss.on("connection", (ws) => {
       } catch {}
       return;
     }
+    // Diplomatie : après une mutation HTTP, prévient les deux clans
+    // (rechargent relations + roster via /api) + annonce système.
+    if (msg.t === "diploNotify") {
+      try {
+        if (!authed || !accountId) return;
+        const now = Date.now();
+        if (now - Number(clanChatLast.get(`${id}:diplo`) || 0) < 500) return;
+        clanChatLast.set(`${id}:diplo`, now);
+        const tag = refreshClanTag(state, accountId);
+        try {
+          if (ws.readyState === 1) ws.send(JSON.stringify({ t: "clanTag", tag: String(tag || "") }));
+        } catch {}
+        const other = String(msg.tag || "").toUpperCase().slice(0, 5);
+        const text = String(msg.text || "").replace(/\s+/g, " ").trim().slice(0, 200);
+        if (tag) {
+          broadcastToClan(tag, { t: "clanChanged", tag });
+          if (text) broadcastToClan(tag, { t: "clanMsg", from: "", fromPseudo: "[Diplomatie]", tag, text, at: now });
+        }
+        if (other && other !== String(tag || "").toUpperCase()) {
+          broadcastToClan(other, { t: "clanChanged", tag: other });
+          if (text) broadcastToClan(other, { t: "clanMsg", from: "", fromPseudo: "[Diplomatie]", tag: other, text, at: now });
+        }
+      } catch {}
+      return;
+    }
     // Groupes + murmures : messages dirigés cross-map (rooms + instances).
     if (msg.t === "groupCreate" || msg.t === "groupInvite" || msg.t === "groupAccept" || msg.t === "groupDecline"
       || msg.t === "groupLeave" || msg.t === "groupKick" || msg.t === "groupChat" || msg.t === "groupSync"
@@ -1255,6 +1280,13 @@ wss.on("connection", (ws) => {
             // Stats persistantes du tueur (classement), si compte authentifie.
             try {
               if (String(id).startsWith("u_")) recordPvpKill(String(id).slice(2), exp, honneur);
+            } catch {}
+            // Guerres de clans : +1 au score si les deux clans sont en guerre.
+            try {
+              const victimPid = String(foe.state.id || "");
+              if (String(id).startsWith("u_") && victimPid.startsWith("u_")) {
+                recordClanWarKill(String(id).slice(2), victimPid.slice(2));
+              }
             } catch {}
             // Gains au tueur connecte (xp/honneur appliques par son client).
             try {
@@ -1797,8 +1829,8 @@ wss.on("connection", (ws) => {
     } catch {}
     try { if (authed && accountId) notifyFriendPresence(accountId, false); } catch {}
   };
-  ws.on("close", () => { allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); clanChatLast.delete(id); clanChatLast.delete(`${id}:notify`); onPeerGone(); removeFromAllRooms(id); });
-  ws.on("error", () => { try { ws.close(); } catch {} allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); clanChatLast.delete(id); clanChatLast.delete(`${id}:notify`); onPeerGone(); removeFromAllRooms(id); });
+  ws.on("close", () => { allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); clanChatLast.delete(id); clanChatLast.delete(`${id}:notify`); clanChatLast.delete(`${id}:diplo`); onPeerGone(); removeFromAllRooms(id); });
+  ws.on("error", () => { try { ws.close(); } catch {} allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); clanChatLast.delete(id); clanChatLast.delete(`${id}:notify`); clanChatLast.delete(`${id}:diplo`); onPeerGone(); removeFromAllRooms(id); });
 });
 
 // Enchères partagées : clôture à chaque heure pile de Paris (:00),

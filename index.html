@@ -871,21 +871,56 @@
         <form id="clanCreateForm" class="clanForm" autocomplete="off">
           <input id="clanNameInput" type="text" placeholder="Nom du clan (3 min)…" maxlength="30" autocomplete="off" />
           <input id="clanTagInput" type="text" placeholder="Tag (2-5 lettres/chiffres)…" maxlength="5" autocomplete="off" />
-          <button id="clanCreateBtn" type="submit">Créer le clan</button>
+          <button id="clanCreateBtn" type="submit">Créer (300k)</button>
         </form>
-        <div class="clanSubHead">Tous les clans — postule pour rejoindre</div>
+        <div class="clanSubHead">Tous les clans — postule pour rejoindre (1 500 crédits)</div>
         <div id="clanAllList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
       </div>
       <div id="clanManagePane" class="clanPane">
-        <div id="clanAppsBlock" hidden>
-          <div class="clanSubHead">Candidatures reçues</div>
-          <div id="clanAppsList" class="clanRows"></div>
+        <div class="clanTabs" role="tablist">
+          <button class="active" type="button" data-clan-tab="infos">Infos</button>
+          <button type="button" data-clan-tab="members">Membres</button>
+          <button type="button" data-clan-tab="ranks">Rangs</button>
+          <button type="button" data-clan-tab="diplo">Guerre</button>
         </div>
-        <div id="clanList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
-        <form id="clanDescForm" class="clanForm" autocomplete="off">
-          <input id="clanDescInput" type="text" placeholder="Description du clan…" maxlength="200" autocomplete="off" />
-          <button id="clanDescBtn" type="submit">OK</button>
-        </form>
+        <div class="clanPane active" data-clan-pane="infos">
+          <div id="clanInfoBox" class="clanInfoBox"><div class="clanEmpty">Chargement…</div></div>
+          <form id="clanDescForm" class="clanForm" autocomplete="off">
+            <input id="clanDescInput" type="text" placeholder="Description du clan…" maxlength="200" autocomplete="off" />
+            <button id="clanDescBtn" type="submit">OK</button>
+          </form>
+        </div>
+        <div class="clanPane" data-clan-pane="members">
+          <div id="clanAppsBlock" hidden>
+            <div class="clanSubHead">Candidatures reçues</div>
+            <div id="clanAppsList" class="clanRows"></div>
+          </div>
+          <div id="clanList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
+        </div>
+        <div class="clanPane" data-clan-pane="ranks">
+          <form id="clanRankCreateForm" class="clanForm" autocomplete="off">
+            <input id="clanRankNameInput" type="text" placeholder="Nouveau rang…" maxlength="20" autocomplete="off" />
+            <button id="clanRankCreateBtn" type="submit">Créer</button>
+          </form>
+          <div id="clanRanksList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
+        </div>
+        <div class="clanPane" data-clan-pane="diplo">
+          <form id="clanDiploForm" class="clanForm" autocomplete="off">
+            <input id="clanDiploTagInput" type="text" placeholder="Tag du clan…" maxlength="5" autocomplete="off" />
+            <select id="clanDiploKindSelect">
+              <option value="nap">NAP</option>
+              <option value="alliance">Alliance</option>
+              <option value="war">Guerre</option>
+            </select>
+            <button id="clanDiploBtn" type="submit">Proposer</button>
+          </form>
+          <div class="clanSubHead">Relations actives</div>
+          <div id="clanDiploActive" class="clanRows"><div class="clanEmpty">Aucune relation.</div></div>
+          <div id="clanDiploBlock" hidden>
+            <div class="clanSubHead">Demandes</div>
+            <div id="clanDiploIncoming" class="clanRows"></div>
+          </div>
+        </div>
         <div class="clanLeaveRow"><button id="clanLeaveBtn" type="button">Quitter le clan</button></div>
       </div>
     </div>
