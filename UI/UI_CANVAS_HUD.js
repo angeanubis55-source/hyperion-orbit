@@ -159,8 +159,24 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
     return;
   }
   const textWidth = context.measureText(displayName).width;
-  context.fillStyle = nameColor;
-  context.fillText(displayName, x, nameY);
+  // Tag de clan [TAG] toujours en blanc, pseudo dans la couleur relationnelle
+  // (vert clan, rouge guerre, jaune NAP/escadrille, bleu firme...).
+  const clanSplit = /^\[([A-Z0-9]{2,5})\] ([\s\S]+)$/.exec(displayName);
+  if (clanSplit) {
+    const tagPart = `[${clanSplit[1]}] `;
+    const prevAlign = context.textAlign;
+    context.textAlign = "left";
+    let tx = x - textWidth / 2;
+    context.fillStyle = "rgba(255,255,255,0.95)";
+    context.fillText(tagPart, tx, nameY);
+    tx += context.measureText(tagPart).width;
+    context.fillStyle = nameColor;
+    context.fillText(clanSplit[2], tx, nameY);
+    context.textAlign = prevAlign;
+  } else {
+    context.fillStyle = nameColor;
+    context.fillText(displayName, x, nameY);
+  }
   context.imageSmoothingEnabled = false;
   if (rankImage?.complete && rankImage.naturalWidth > 0) {
     context.drawImage(
