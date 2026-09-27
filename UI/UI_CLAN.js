@@ -513,6 +513,11 @@ export function initClanUI() {
       await load(announce);
     } catch (error) { updateHeader(String(error?.message || "Diplomatie impossible.")); }
   });
-  setTab("infos"); load(); setInterval(load, 5000); setInterval(poll, 1000); poll();
+  setTab("infos"); load();
+  // Auto-refresh 5 s, mais jamais pendant que la souris est sur la fenêtre
+  // (sinon la liste se re-rend sous les doigts : clics ratés, select qui
+  // se referme). Les notifs live (poll) rechargent quand même.
+  setInterval(() => { try { if (!document.querySelector("#clanWindow:hover")) load(); } catch { load(); } }, 5000);
+  setInterval(poll, 1000); poll();
   window.addEventListener("orbit:window-restored", (event) => { if (event?.detail?.id === "clanWindow") load(); });
 }
