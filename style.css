@@ -2658,9 +2658,11 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 #clanAllList .clanBtns button.accept{color:#eafff3;border-color:rgba(110,255,170,.55);background:linear-gradient(135deg,rgba(0,190,120,.5),rgba(0,90,60,.45));box-shadow:0 0 16px rgba(60,255,150,.18)}
 #clanAllList .clanBtns button.accept:hover{background:rgba(0,180,110,.45);box-shadow:0 0 24px rgba(60,255,150,.32)}
 #clanAllList .clanBtns button:not(.accept){border-color:rgba(255,190,120,.4);color:#ffe1b8;background:rgba(120,70,10,.25)}
-.clanBrowseSub{color:#7395a1;font-size:11px}
+.clanBrowseSub{color:#7395a1;font-size:11px;min-width:0;overflow-wrap:anywhere}
 .clanSep{border:0;border-top:1px solid rgba(124,240,255,.18);margin:3px 0}
-.clanBrowseDesc{margin:0;color:#cfe7ef;font-size:12px;font-style:italic;line-height:1.5}
+.clanBrowseDesc{margin:0;min-width:0;color:#cfe7ef;font-size:12px;font-style:italic;line-height:1.5;white-space:normal;overflow-wrap:anywhere;word-break:break-word}
+#clanAllList .clanBrowse{min-width:0}
+#clanAllList .clanBrowseHead{min-width:0}
 .clanTabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));padding:7px 10px 0;gap:5px}
 .clanTabs button{height:29px;border:0;border-bottom:2px solid transparent;color:#6f929e;background:transparent;cursor:pointer;font:800 11px/1 ui-sans-serif,system-ui;text-transform:uppercase}
 .clanTabs button.active{color:#dffaff;border-bottom-color:#63ddf8;background:linear-gradient(180deg,transparent,rgba(70,210,245,.08))}
