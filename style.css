@@ -2670,6 +2670,9 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .clanInfoGrid span{color:#7395a1;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.5px}
 .clanInfoGrid strong{color:#dff7fb;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .clanInfoGrid strong.open{color:#77f3a3}.clanInfoGrid strong.closed{color:#ff9aa7}
+.clanRecruitCell{grid-column:1 / -1;display:flex;align-items:center;gap:10px}
+.clanRecruitCell button{margin-left:auto;height:26px;padding:0 14px;box-sizing:border-box;border:1px solid rgba(124,240,255,.38);border-radius:7px;color:#eaffff;background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));cursor:pointer;font:800 11px/1.2 ui-sans-serif,system-ui}
+.clanRecruitCell button:hover{border-color:rgba(124,240,255,.62);background:rgba(0,140,185,.3)}
 .clanDesc{margin:0;padding:8px 9px;border-left:2px solid rgba(124,240,255,.35);color:#cfe7ef;font-size:12px;font-style:italic}
 .clanInfoActions{display:flex;gap:6px}
 .clanInfoActions button,.clanDangerZone button{height:28px;padding:0 12px;box-sizing:border-box;border:1px solid rgba(124,240,255,.38);border-radius:8px;color:#eaffff;background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));cursor:pointer;font:800 11px/1.2 ui-sans-serif,system-ui}

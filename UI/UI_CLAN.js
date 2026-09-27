@@ -159,10 +159,9 @@ export function initClanUI() {
         + `<div><span>Nom</span><strong>${escapeHtml(clan.name)}</strong></div>`
         + `<div><span>Chef</span><strong>${escapeHtml(chief?.pseudo || "?")}</strong></div>`
         + `<div><span>Membres</span><strong>${clan.members.length}/30</strong></div>`
-        + `<div><span>Recrutement</span><strong class="${clan.open === false ? "closed" : "open"}">${clan.open === false ? "Fermé" : "Ouvert"}</strong></div>`
+        + `<div class="clanRecruitCell"><span>Recrutement</span><strong class="${clan.open === false ? "closed" : "open"}">${clan.open === false ? "Fermé" : "Ouvert"}</strong>${rights.edit ? `<button type="button" data-act="toggle-open">${clan.open === false ? "Ouvrir" : "Fermer"}</button>` : ""}</div>`
         + `</div>`
-        + (clan.description ? `<p class="clanDesc">${escapeHtml(clan.description)}</p>` : "")
-        + (rights.edit ? `<div class="clanInfoActions"><button type="button" data-act="toggle-open">${clan.open === false ? "Ouvrir le recrutement" : "Fermer le recrutement"}</button></div>` : "");
+        + (clan.description ? `<p class="clanDesc">${escapeHtml(clan.description)}</p>` : "");
     }
     // --- Membres + candidatures ---
     if (appsBlock && appsList) {
