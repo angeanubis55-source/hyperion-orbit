@@ -131,7 +131,7 @@ export function initClanUI() {
           const closed = c.open === false;
           return `<article class="clanCard clanBrowse" data-clan-tag="${tag}">`
             + `<div class="clanBrowseHead"><span class="clanTagBadge">[${tag}]</span>`
-            + `<strong class="clanBrowseName">Nom du clan : ${name}</strong>`
+            + `<strong class="clanBrowseName">${name}</strong>`
             + `<span class="clanBtns">${isApplied
               ? `<button type="button" data-act="cancel" title="Retirer ma candidature" aria-label="Retirer ma candidature">Retirer</button>`
               : `<button class="accept" type="button" data-act="apply" title="Postuler" aria-label="Postuler"${(full || closed) ? " disabled" : ""}>${full ? "Plein" : (closed ? "Fermé" : "Postuler")}</button>`}</span></div>`
