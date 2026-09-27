@@ -12,7 +12,7 @@
 // les annonces diplomatie (comme les Amis).
 
 import {
-  consumeClanDirty, sendClanNotify, sendDiploNotify, setNetDiplo, sendGroupInvite,
+  consumeClanDirty, sendClanNotify, sendDiploNotify, setNetDiplo, sendGroupInvite, netMyId,
 } from "../SRC/CORE/NETPLAY.js";
 import { escapeHtml } from "./UI_DOM.js";
 
@@ -184,9 +184,11 @@ export function initClanUI() {
     if (list) {
       const rankNames = (Array.isArray(clan.ranks) ? clan.ranks : []).map((x) => x.name).filter((n) => n && n.toLowerCase() !== "chef" && n.toLowerCase() !== "leader");
       list.innerHTML = clan.members.map((member) => {
-        const pseudo = escapeHtml(member.pseudo || "Pilote");
-        const role = rankNameOf(clan, member);
-        const targetIsLeader = String(member.role) === "leader";
+      const pseudo = escapeHtml(member.pseudo || "Pilote");
+      const role = rankNameOf(clan, member);
+      const targetIsLeader = String(member.role) === "leader";
+      let isMe = false;
+      try { isMe = String(netMyId() || "") === `u_${String(member.id || "")}`; } catch { isMe = false; }
         const kickable = rights.kick && !targetIsLeader && (rights.isLeader || String(member.role) === "member" || String(member.role).toLowerCase() === "membre");
         return `<article class="clanCard" data-pseudo="${pseudo}" data-role="${escapeHtml(role)}">`
           + `<span class="clanIdentity"><strong>${pseudo}${targetIsLeader ? CROWN_SVG : ""}</strong><small>${escapeHtml(role)}</small></span>`
@@ -195,6 +197,7 @@ export function initClanUI() {
           + (leader && !targetIsLeader && rankNames.length ? `<select data-assign="${pseudo}" title="Rang" aria-label="Rang">${rankNames.map((n) => `<option value="${escapeHtml(n)}"${String(n).toLowerCase() === String(role).toLowerCase() ? " selected" : ""}>${escapeHtml(n)}</option>`).join("")}</select>` : "")
           + (kickable ? `<button class="danger" type="button" data-act="kick" title="Exclure du clan" aria-label="Exclure du clan">${ICON_REMOVE}</button>` : "")
           + (leader && targetIsLeader ? `<button class="danger" type="button" data-act="dissolve" title="Dissoudre le clan" aria-label="Dissoudre le clan">Dissoudre</button>` : "")
+          + (isMe ? `<button type="button" data-act="leave" title="Quitter le clan" aria-label="Quitter le clan">Quitter</button>` : "")
           + `</span></article>`;
       }).join("");
     }
@@ -202,9 +205,9 @@ export function initClanUI() {
     // dissoudre (chef). Plus rien de tout ça dans Infos.
     const foot = document.getElementById("clanMemberFoot");
     if (foot) {
+      foot.hidden = !leader;
       foot.innerHTML = `<div class="clanDangerZone">`
         + (leader ? `<button type="button" data-act="transfer-open">Transférer la chefferie</button>` : "")
-        + `<button type="button" data-act="leave">Quitter le clan</button>`
         + `</div>`
         + (leader ? `<form id="clanTransferForm" class="clanForm clanTransferForm" autocomplete="off" hidden><input id="clanTransferInput" type="text" placeholder="Pseudo du successeur…" maxlength="20" autocomplete="off" /><button type="submit">Transférer</button></form>` : "");
     }
