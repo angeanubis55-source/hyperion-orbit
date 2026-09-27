@@ -1326,15 +1326,25 @@ export function endDiplo(actorId, relId) {
       addClanLog(otherId, `${DIPLO_LABEL[String(rel.kind)]} avec [${myTag}] rompue.`);
       return { ok: true, ended: true };
     }
-    if (String(rel.status) !== "active") return { ok: false, error: "NONE" };
-    const pending = db.prepare("SELECT id FROM clan_diplo WHERE kind = 'war' AND status = 'pending' AND ((from_clan = ? AND to_clan = ?) OR (from_clan = ? AND to_clan = ?))").get(clanId, otherId, otherId, clanId);
-    if (pending) {
-      // Les deux camps veulent la paix : fin immédiate.
+    if (String(rel.status) !== "active") {
+      // Retrait de ma propre demande de fin de guerre en attente.
+      if (String(rel.kind) === "war" && String(rel.status) === "pending" && String(rel.from_clan) === String(clanId)) {
+        db.prepare("DELETE FROM clan_diplo WHERE id = ?").run(String(rel.id));
+        return { ok: true, retracted: true };
+      }
+      return { ok: false, error: "NONE" };
+    }
+    // Fin mutuelle UNIQUEMENT si la demande vient de l'autre clan.
+    // Cliquer 2 fois ne termine jamais la guerre seul (c'est une demande).
+    const theirs = db.prepare("SELECT id FROM clan_diplo WHERE kind = 'war' AND status = 'pending' AND from_clan = ? AND to_clan = ?").get(otherId, clanId);
+    if (theirs) {
       db.prepare("DELETE FROM clan_diplo WHERE kind = 'war' AND ((from_clan = ? AND to_clan = ?) OR (from_clan = ? AND to_clan = ?))").run(clanId, otherId, otherId, clanId);
       addClanLog(clanId, `Guerre contre [${theirTag}] terminée.`);
       addClanLog(otherId, `Guerre contre [${myTag}] terminée.`);
       return { ok: true, ended: true };
     }
+    const myReq = db.prepare("SELECT id FROM clan_diplo WHERE kind = 'war' AND status = 'pending' AND from_clan = ? AND to_clan = ?").get(clanId, otherId);
+    if (myReq) return { ok: true, requested: true };
     db.prepare("INSERT INTO clan_diplo (id, from_clan, to_clan, kind, status, kills_from, kills_to, created_at, ends_at) VALUES (?, ?, ?, 'war', 'pending', 0, 0, ?, NULL)").run(uuid(), clanId, otherId, Date.now());
     addClanLog(clanId, `Fin de guerre proposée à [${theirTag}].`);
     return { ok: true, requested: true };
