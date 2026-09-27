@@ -162,9 +162,7 @@ export function initClanUI() {
         + `<div><span>Recrutement</span><strong class="${clan.open === false ? "closed" : "open"}">${clan.open === false ? "Fermé" : "Ouvert"}</strong></div>`
         + `</div>`
         + (clan.description ? `<p class="clanDesc">${escapeHtml(clan.description)}</p>` : "")
-        + (rights.edit ? `<div class="clanInfoActions"><button type="button" data-act="toggle-open">${clan.open === false ? "Ouvrir le recrutement" : "Fermer le recrutement"}</button></div>` : "")
-        + (leader ? `<div class="clanDangerZone"><button type="button" data-act="transfer-open">Transférer la chefferie</button><button type="button" data-act="dissolve" class="danger">Dissoudre le clan</button></div>
-        <form id="clanTransferForm" class="clanForm clanTransferForm" autocomplete="off" hidden><input id="clanTransferInput" type="text" placeholder="Pseudo du successeur…" maxlength="20" autocomplete="off" /><button type="submit">Transférer</button></form>` : "");
+        + (rights.edit ? `<div class="clanInfoActions"><button type="button" data-act="toggle-open">${clan.open === false ? "Ouvrir le recrutement" : "Fermer le recrutement"}</button></div>` : "");
     }
     // --- Membres + candidatures ---
     if (appsBlock && appsList) {
@@ -190,6 +188,17 @@ export function initClanUI() {
           + (kickable ? `<button class="danger" type="button" data-act="kick" title="Exclure du clan" aria-label="Exclure du clan">${ICON_REMOVE}</button>` : "")
           + `</span></article>`;
       }).join("");
+    }
+    // Pied de l'onglet Membres : transfert (chef), quitter (tous),
+    // dissoudre (chef). Plus rien de tout ça dans Infos.
+    const foot = document.getElementById("clanMemberFoot");
+    if (foot) {
+      foot.innerHTML = `<div class="clanDangerZone">`
+        + (leader ? `<button type="button" data-act="transfer-open">Transférer la chefferie</button>` : "")
+        + `<button type="button" data-act="leave">Quitter le clan</button>`
+        + (leader ? `<button type="button" data-act="dissolve" class="danger">Dissoudre le clan</button>` : "")
+        + `</div>`
+        + (leader ? `<form id="clanTransferForm" class="clanForm clanTransferForm" autocomplete="off" hidden><input id="clanTransferInput" type="text" placeholder="Pseudo du successeur…" maxlength="20" autocomplete="off" /><button type="submit">Transférer</button></form>` : "");
     }
     // --- Rangs ---
     if (ranksList) {
@@ -379,6 +388,13 @@ export function initClanUI() {
       } else if (act === "transfer-open") {
         const form = document.getElementById("clanTransferForm");
         if (form) form.hidden = !form.hidden;
+      } else if (act === "leave") {
+        if (!clan || !window.confirm(`Quitter le clan [${clan.tag}] ${clan.name} ?`)) return;
+        try { sendClanNotify(); } catch {}
+        try { await apiClan("/api/clans/leave", "POST", {}); } catch {}
+        clan = null;
+        try { const { sendClanRefresh } = await import("../SRC/CORE/NETPLAY.js"); sendClanRefresh(); } catch {}
+        await load();
       } else if (act === "dissolve") {
         if (!window.confirm(`Dissoudre le clan [${clan.tag}] ${clan.name} ? Tous les membres seront exclus.`)) return;
         try { sendClanNotify(); } catch {}
@@ -509,15 +525,6 @@ export function initClanUI() {
       await load(announce);
     } catch (error) { updateHeader(String(error?.message || "Diplomatie impossible.")); }
   });
-  document.getElementById("clanLeaveBtn")?.addEventListener("click", async () => {
-    if (!clan || !window.confirm(`Quitter le clan [${clan.tag}] ${clan.name} ?`)) return;
-    try { sendClanNotify(); } catch {}
-    try { await apiClan("/api/clans/leave", "POST", {}); } catch {}
-    clan = null;
-    try { const { sendClanRefresh } = await import("../SRC/CORE/NETPLAY.js"); sendClanRefresh(); } catch {}
-    await load();
-  });
-
   setTab("infos"); load(); setInterval(load, 5000); setInterval(poll, 1000); poll();
   window.addEventListener("orbit:window-restored", (event) => { if (event?.detail?.id === "clanWindow") load(); });
 }
