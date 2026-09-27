@@ -58,7 +58,7 @@ export function drawTargetLock(context, entity, image, sprite, offsetX, offsetY,
   context.restore();
 }
 
-export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null, moduleIndicators = [], adminTag = false, showDetails = true, nameColor = "rgba(255,255,255,0.95)") {
+export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null, moduleIndicators = [], adminTag = false, showDetails = true, nameColor = "rgba(255,255,255,0.95)", tagColor = null) {
   if (!context || !player || player.dead) return;
   const width = 120;
   const height = 4;
@@ -159,7 +159,8 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
     return;
   }
   const textWidth = context.measureText(displayName).width;
-  // Tag de clan [TAG] toujours en blanc, pseudo dans la couleur relationnelle
+  // Tag de clan [TAG] en blanc (ou couleur diplo : rouge guerre, jaune
+  // foncé NAP, vert alliance), pseudo dans la couleur relationnelle
   // (vert clan, rouge guerre, jaune NAP/escadrille, bleu firme...).
   const clanSplit = /^\[([A-Z0-9]{2,5})\] ([\s\S]+)$/.exec(displayName);
   if (clanSplit) {
@@ -167,7 +168,7 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
     const prevAlign = context.textAlign;
     context.textAlign = "left";
     let tx = x - textWidth / 2;
-    context.fillStyle = "rgba(255,255,255,0.95)";
+    context.fillStyle = tagColor || "rgba(255,255,255,0.95)";
     context.fillText(tagPart, tx, nameY);
     tx += context.measureText(tagPart).width;
     context.fillStyle = nameColor;

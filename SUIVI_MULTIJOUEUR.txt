@@ -306,11 +306,12 @@ RESTE A FAIRE (prochaines étapes proposées)
   / Guerre = TOUS les clans (Guerre immédiate en 1 clic, NAP/Alliance
   = demande, score + jours restants, accepter/refuser/rompre) /
   Journal (événements du clan). Tchat : /c message (UI_CHAT.js).
-- Affichage : `[TAG] pseudo` partout (distants, lock, soi) avec le
-  tag TOUJOURS EN BLANC et le pseudo en couleur relationnelle.
-  Couleurs façon DO : clan VERT, guerre ROUGE, NAP JAUNE, alliance
-  VERTE, puis escadrille (jaune) et firme (bleu/rouge) — nameplates
-  (UI_CANVAS_HUD.js) ET points minimap (minimapAllies).
+- Affichage : `[TAG] pseudo` partout (distants, lock, soi). Tag
+  blanc (clan, neutres), ROUGE en guerre, JAUNE FONCÉ en NAP, VERT
+  en alliance — comme le pseudo. Couleurs façon DO : clan VERT,
+  guerre ROUGE, NAP JAUNE, alliance VERTE, puis escadrille (jaune)
+  et firme (bleu/rouge) — nameplates (UI_CANVAS_HUD.js) ET points
+  minimap (minimapAllies).
 - Solo sans serveur : intact (fenêtre "connecte-toi").
 - Validé : 52 checks unitaires (frais, ouvert/fermé, rangs + droits,
   transfert, dissolution, NAP/alliance/guerre, score, expiration

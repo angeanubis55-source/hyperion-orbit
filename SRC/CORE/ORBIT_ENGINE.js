@@ -28487,6 +28487,27 @@ function drawNetplayRemotes(ox, oy) {
       const mind = Array.isArray(r.moduleIndicators) ? r.moduleIndicators : [];
       const remotePlayerProxy = netPlayerProxies.get(String(r.id));
       const showRemoteDetails = !!remotePlayerProxy && Target.get() === remotePlayerProxy;
+      // Couleurs pseudo + tag : clan vert (tag blanc), guerre rouge,
+      // NAP jaune (tag jaune foncé), alliance verte, puis escadrille
+      // (jaune) et firme (bleu/rouge).
+      const remoteColors = (() => {
+        const plain = { name: "rgba(255,255,255,0.95)", tag: null };
+        const tag = String(r.clan || "").toUpperCase().slice(0, 5);
+        if (myClanTagForColor && tag === myClanTagForColor) return { name: "rgba(105,255,140,0.98)", tag: null };
+        if (tag) {
+          try {
+            const rel = getClanRelation(tag);
+            if (rel === "war") return { name: "rgba(255,65,82,0.98)", tag: "rgba(255,65,82,0.98)" };
+            if (rel === "nap") return { name: "rgba(255,229,138,0.98)", tag: "rgba(200,160,40,0.98)" };
+            if (rel === "ally") return { name: "rgba(105,255,140,0.98)", tag: "rgba(105,255,140,0.98)" };
+          } catch {}
+        }
+        if (getNetGroup()?.members?.some(member => String(member.id) === String(r.id))) return { name: "rgba(255,229,138,0.98)", tag: null };
+        plain.name = normalizeFactionId(r.firm) === normalizeFactionId(account.user?.faction)
+          ? "rgba(80,225,255,0.98)"
+          : "rgba(255,65,82,0.98)";
+        return plain;
+      })();
       drawPlayerStatus(
         ctx,
         {
@@ -28500,24 +28521,8 @@ function drawNetplayRemotes(ox, oy) {
         rRank, rFact, dind, rFicon, mind,
         String(r.shipId || "").toLowerCase() === "police",
         showRemoteDetails,
-        (() => {
-          // Clan : vert. Diplomatie façon DO : guerre rouge, NAP jaune,
-          // alliance verte. Puis escadrille (jaune) et firme (bleu/rouge).
-          const tag = String(r.clan || "").toUpperCase().slice(0, 5);
-          if (myClanTagForColor && tag === myClanTagForColor) return "rgba(105,255,140,0.98)";
-          if (tag) {
-            try {
-              const rel = getClanRelation(tag);
-              if (rel === "war") return "rgba(255,65,82,0.98)";
-              if (rel === "nap") return "rgba(255,229,138,0.98)";
-              if (rel === "ally") return "rgba(105,255,140,0.98)";
-            } catch {}
-          }
-          if (getNetGroup()?.members?.some(member => String(member.id) === String(r.id))) return "rgba(255,229,138,0.98)";
-          return normalizeFactionId(r.firm) === normalizeFactionId(account.user?.faction)
-            ? "rgba(80,225,255,0.98)"
-            : "rgba(255,65,82,0.98)";
-        })(),
+        remoteColors.name,
+        remoteColors.tag,
       );
     } catch {}
     ctx.restore();
