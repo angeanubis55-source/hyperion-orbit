@@ -629,7 +629,7 @@ export function removeFriend(userId, target) {
 }
 
 // --- Clans façon DO (comptes uniquement) : création [TAG] (300 000
-// crédits), candidatures joueur -> clan (1 500 crédits à l'acceptation),
+// crédits), candidatures joueur -> clan gratuites,
 // rangs personnalisables avec droits, recrutement ouvert/fermé,
 // diplomatie alliance / NAP / guerre (100 jours max, score de kills),
 // journal de clan. Tchat via MULTI_SERVER.
@@ -639,7 +639,6 @@ export const CLAN_MAX_MEMBERS = 30;
 export const CLAN_RIGHTS = Object.freeze({ APPS: 1, KICK: 2, DIPLO: 4, EDIT: 8 });
 const CLAN_TAG_RE = /^[A-Z0-9]{2,5}$/;
 const CLAN_CREATE_COST = 300000;
-const CLAN_APPLY_FEE = 1500;
 const CLAN_WAR_MAX_MS = 100 * 24 * 3600_000;
 const CLAN_LOG_MAX = 30;
 const CLAN_RANK_NAME_RE = /^[\p{L}\p{N}_ -]{2,20}$/u;
@@ -928,10 +927,10 @@ export function leaveClan(userId) {
   } catch { return { ok: false, error: "SERVER" }; }
 }
 
-// Candidature : c'est le joueur qui postule (plus d'invitations).
-// Recrutement fermé = refus. 1 500 crédits requis pour postuler.
+// Candidature gratuite : c'est le joueur qui postule (plus d'invitations).
+// Recrutement fermé = refus.
 // Erreurs : AUTH, INCLAN (déjà en clan), NONE (clan inconnu),
-// CLOSED, APPLIED (déjà postulée), FULL (clan plein), NOCASH.
+// CLOSED, APPLIED (déjà postulée), FULL (clan plein).
 export function applyToClan(userId, tag) {
   try {
     initAccountDb();
@@ -945,11 +944,6 @@ export function applyToClan(userId, tag) {
       try { return Number(db.prepare("SELECT COUNT(*) AS n FROM clan_members WHERE clan_id = ?").get(String(clan.id))?.n) || 0; } catch { return 0; }
     })();
     if (count >= CLAN_MAX_MEMBERS) return { ok: false, error: "FULL" };
-    try {
-      const row = db.prepare("SELECT data FROM users WHERE id = ?").get(uid);
-      const credits = Math.max(0, Math.floor(Number(JSON.parse(row?.data || "{}")?.credits) || 0));
-      if (credits < CLAN_APPLY_FEE) return { ok: false, error: "NOCASH" };
-    } catch { return { ok: false, error: "SERVER" }; }
     const dup = (() => {
       try { return !!db.prepare("SELECT 1 FROM clan_applications WHERE clan_id = ? AND user_id = ?").get(String(clan.id), uid); } catch { return false; }
     })();
@@ -975,8 +969,8 @@ export function cancelApplication(userId, tag) {
   } catch { return { ok: false }; }
 }
 
-// Accepter une candidature (droit candidatures) : le postulant rejoint
-// (1 500 crédits prélevés façon DO), ses autres candidatures purgées.
+// Accepter une candidature (droit candidatures) : le postulant rejoint,
+// ses autres candidatures sont purgées.
 export function acceptClanApplication(actorId, pseudo) {
   try {
     initAccountDb();
@@ -998,7 +992,6 @@ export function acceptClanApplication(actorId, pseudo) {
       try { return Number(db.prepare("SELECT COUNT(*) AS n FROM clan_members WHERE clan_id = ?").get(clanId)?.n) || 0; } catch { return 0; }
     })();
     if (count >= CLAN_MAX_MEMBERS) return { ok: false, error: "FULL" };
-    adjustCredits(target.id, -CLAN_APPLY_FEE);
     db.prepare("INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)").run(clanId, target.id, Date.now());
     try { db.prepare("DELETE FROM clan_applications WHERE user_id = ?").run(target.id); } catch {}
     addClanLog(clanId, `${target.pseudo} a rejoint le clan.`);
@@ -1921,7 +1914,6 @@ export function handleAccountApi(req, res) {
               : r.error === "APPLIED" ? "Candidature déjà envoyée."
               : r.error === "FULL" ? "Clan plein (30 max)."
               : r.error === "CLOSED" ? "Recrutement fermé pour ce clan."
-              : r.error === "NOCASH" ? "Il te faut 1 500 crédits pour postuler."
               : r.error === "NONE" ? "Clan introuvable." : "Erreur serveur.";
             const code = r.error === "NONE" ? 404 : (r.error === "INCLAN" || r.error === "APPLIED" || r.error === "FULL") ? 409 : 400;
             return json(res, code, { ok: false, error: msg });

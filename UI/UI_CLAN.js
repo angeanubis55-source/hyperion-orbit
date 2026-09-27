@@ -245,36 +245,49 @@ export function initClanUI() {
       : `<div class="clanEmpty">Aucun événement.</div>`;
   }
 
+  let loading = false;
   async function load(message = "") {
+    // Rafraîchi toutes les 5 s : garde anti-chevauchement (finally),
+    // les champs de saisie ne sont jamais réécrits (seules les listes).
+    if (loading) return;
+    loading = true;
     try {
-      if (!authHeaders()) { clan = null; clans = []; mine = []; rels = { active: [], incoming: [], outgoing: [] }; updateHeader("Connecte-toi pour gérer ton clan."); render(); return; }
-      const [meData, listData, mineData] = await Promise.all([
-        apiClan("/api/clans/me", "GET"),
-        apiClan("/api/clans/list", "GET").catch(() => ({ clans: [] })),
-        apiClan("/api/clans/my-applications", "GET").catch(() => ({ applications: [] })),
-      ]);
-      clan = meData.clan && typeof meData.clan === "object" ? meData.clan : null;
-      clans = Array.isArray(listData.clans) ? listData.clans : [];
-      mine = Array.isArray(mineData.applications) ? mineData.applications : [];
-      rels = { active: [], incoming: [], outgoing: [] };
-      if (clan) {
-        try {
-          const relData = await apiClan("/api/clans/relations", "GET");
-          rels = { active: relData.active || [], incoming: relData.incoming || [], outgoing: relData.outgoing || [] };
-          try {
-            setNetDiplo(
-              rels.active.filter((x) => x.kind === "alliance").map((x) => x.otherTag),
-              rels.active.filter((x) => x.kind === "nap").map((x) => x.otherTag),
-              rels.active.filter((x) => x.kind === "war").map((x) => x.otherTag),
-            );
-          } catch {}
-        } catch {}
+      if (!authHeaders()) {
+        clan = null; clans = []; mine = []; rels = { active: [], incoming: [], outgoing: [] };
+        updateHeader("Connecte-toi pour gérer ton clan.");
       } else {
-        try { setNetDiplo([], [], []); } catch {}
+        try {
+          const [meData, listData, mineData] = await Promise.all([
+            apiClan("/api/clans/me", "GET"),
+            apiClan("/api/clans/list", "GET").catch(() => ({ clans: [] })),
+            apiClan("/api/clans/my-applications", "GET").catch(() => ({ applications: [] })),
+          ]);
+          clan = meData.clan && typeof meData.clan === "object" ? meData.clan : null;
+          clans = Array.isArray(listData.clans) ? listData.clans : [];
+          mine = Array.isArray(mineData.applications) ? mineData.applications : [];
+          rels = { active: [], incoming: [], outgoing: [] };
+          if (clan) {
+            try {
+              const relData = await apiClan("/api/clans/relations", "GET");
+              rels = { active: relData.active || [], incoming: relData.incoming || [], outgoing: relData.outgoing || [] };
+              try {
+                setNetDiplo(
+                  rels.active.filter((x) => x.kind === "alliance").map((x) => x.otherTag),
+                  rels.active.filter((x) => x.kind === "nap").map((x) => x.otherTag),
+                  rels.active.filter((x) => x.kind === "war").map((x) => x.otherTag),
+                );
+              } catch {}
+            } catch {}
+          } else {
+            try { setNetDiplo([], [], []); } catch {}
+          }
+          updateHeader(message);
+        } catch { updateHeader("Hors ligne — serveur injoignable"); }
       }
-      updateHeader(message);
-    } catch { updateHeader("Hors ligne — serveur injoignable"); }
-    render();
+      render();
+    } finally {
+      loading = false;
+    }
   }
 
   function poll() {
@@ -307,7 +320,7 @@ export function initClanUI() {
       if (button.dataset.act === "apply") {
         await apiClan("/api/clans/apply", "POST", { tag });
         try { sendClanNotify(); } catch {}
-        await load(`Candidature envoyée à [${tag}] (1 500 crédits à l'acceptation).`);
+        await load(`Candidature envoyée à [${tag}].`);
       } else if (button.dataset.act === "cancel") {
         await apiClan("/api/clans/cancel", "POST", { tag });
         try { sendClanNotify(); } catch {}
@@ -472,6 +485,6 @@ export function initClanUI() {
     await load();
   });
 
-  setTab("infos"); load(); setInterval(load, 30000); setInterval(poll, 1000); poll();
+  setTab("infos"); load(); setInterval(load, 5000); setInterval(poll, 1000); poll();
   window.addEventListener("orbit:window-restored", (event) => { if (event?.detail?.id === "clanWindow") load(); });
 }

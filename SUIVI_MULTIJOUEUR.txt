@@ -263,11 +263,12 @@ RESTE A FAIRE (prochaines étapes proposées)
 11) CLANS façon DO (création [TAG], candidatures, rangs, tchat de clan)
 ----------------------------------------------------------------
 - Serveur (ACCOUNT_SERVER.js, comptes uniques) : tables clans (+ open)
-  + clan_members + clan_applications + clan_ranks + clan_diplo +
+  +   clan_members + clan_applications + clan_ranks + clan_diplo +
   clan_log. Création nom (3 min) + tag unique 2-5 lettres/chiffres
-  (30 membres max), 300 000 crédits de fondation ; candidature =
-  1 500 crédits prélevés à l'acceptation. PAS d'invitations : c'est
-  le joueur qui postule (apply), le clan accepte ou refuse.
+  (30 membres max), 300 000 crédits de fondation ; candidatures
+  gratuites. PAS d'invitations : c'est le joueur qui postule
+  (apply), le clan accepte ou refuse. Liste auto-rafraîchie
+  toutes les 5 s.
   Recrutement Ouvert/Fermé (droit édition) : fermé = plus de
   candidatures, badge dans la liste. Rangs personnalisables (chef
   uniquement) avec 4 droits : candidatures, exclusion, diplomatie,
