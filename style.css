@@ -2649,8 +2649,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .clanBrowse .clanBtns button:disabled{opacity:.4;cursor:not-allowed}
 /* Vitrine des clans (sans clan) : cartes étagées et aérées */
 #clanAllList{gap:10px;max-height:min(480px,calc(100vh - 260px))}
-#clanAllList .clanBrowse{display:grid;grid-template-columns:minmax(0,1fr);gap:5px;padding:14px 16px;border-radius:14px;background:linear-gradient(115deg,rgba(8,45,66,.95),rgba(6,20,32,.9));border:1px solid rgba(124,240,255,.28);box-shadow:0 2px 14px rgba(0,0,0,.35);transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}
-#clanAllList .clanBrowse:hover{transform:translateY(-2px);border-color:rgba(124,240,255,.65);box-shadow:0 6px 26px rgba(0,217,255,.18)}
+#clanAllList .clanBrowse{display:grid;grid-template-columns:minmax(0,1fr);gap:5px;padding:14px 16px;border-radius:14px;background:linear-gradient(115deg,rgba(8,45,66,.95),rgba(6,20,32,.9));border:1px solid rgba(124,240,255,.28);box-shadow:0 2px 14px rgba(0,0,0,.35)}
 .clanBrowseHead{display:flex;align-items:center;gap:10px}
 #clanAllList .clanTagBadge{font-size:12px;padding:4px 9px;border-radius:8px;letter-spacing:.5px}
 .clanBrowseName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#dff7fb;font-size:15px}
