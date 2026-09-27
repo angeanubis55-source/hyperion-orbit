@@ -6,7 +6,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminListAccounts, adminDeleteAccount } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminListAccounts, adminDeleteAccount } from "./ACCOUNT_SERVER.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
@@ -589,6 +589,41 @@ const pvpFeeds = new Map(); // mapId(lower) -> Map("victime|attaquant" -> { uid,
 const pvpFarm = new Map(); // anti-farm : "tueur|victime" -> { n, t0 } (rendement decroissant 60 min)
 const chatHistory = []; // global : [{ from, text, at }] (40 derniers)
 const chatLastById = new Map(); // anti-spam : id -> timestamp dernier message
+const clanChatLast = new Map(); // anti-spam tchat de clan : id -> timestamp
+
+// Tchat de clan : diffusé aux membres connectés (rooms + instances).
+// Comparaison sur le tag en mémoire (rafraîchi au hello + ping 15 s).
+function broadcastToClan(tag, obj, excludeId = null) {
+  const clean = String(tag || "").toUpperCase().slice(0, 5);
+  if (!clean) return 0;
+  let payload = null;
+  try { payload = JSON.stringify(obj); } catch { return 0; }
+  let n = 0;
+  const matches = (s) => String(s?.clanTag || "").toUpperCase().slice(0, 5) === clean;
+  for (const [, room] of rooms) {
+    for (const [pid, entry] of room) {
+      if (excludeId != null && String(pid) === String(excludeId)) continue;
+      if (!matches(entry?.state)) continue;
+      try { if (entry.ws.readyState === 1) { entry.ws.send(payload); n++; } } catch {}
+    }
+  }
+  for (const [pid, entry] of instancePeers) {
+    if (excludeId != null && String(pid) === String(excludeId)) continue;
+    if (!matches(entry?.state)) continue;
+    try { if (entry.ws.readyState === 1) { entry.ws.send(payload); n++; } } catch {}
+  }
+  return n;
+}
+
+// Rafraîchit le tag de clan en mémoire depuis la base (mutations HTTP).
+function refreshClanTag(state, accountId) {
+  try {
+    if (!accountId) { state.clanTag = ""; return ""; }
+    const tag = clanTagOfUser(accountId) || "";
+    state.clanTag = String(tag).slice(0, 5);
+    return state.clanTag;
+  } catch { return String(state?.clanTag || ""); }
+}
 const friendPingLast = new Map(); // anti-spam demandes d'ami : id -> timestamp
 const hitStats = { count: 0, byMap: new Map() }; // diagnostic multi
 const rewardedNpcDeaths = new Map(); // map:uid:seq -> timestamp (anti-double diffusion)
@@ -713,7 +748,7 @@ function describePeer(pid) {
     if (e) {
       const s = e.state || {};
       return {
-        id, pseudo: String(s.pseudo || "Pilote").slice(0, 20), map: mkey, online: true, instance: false,
+        id, pseudo: String(s.pseudo || "Pilote").slice(0, 20), map: mkey, online: true, instance: false, clanTag: String(s.clanTag || "").slice(0, 5),
         x: Number(s.x) || 0, y: Number(s.y) || 0, hpPct: Number(s.hpPct ?? 1), shPct: Number(s.shPct ?? 1),
         hpMax: Number(s.hpMax) || 1, shMax: Number(s.shMax) || 0, dead: s.dead === true,
         shipId: String(s.shipId || "").slice(0, 64), petActive: s.peta === 1,
@@ -1015,6 +1050,54 @@ wss.on("connection", (ws) => {
         if (!target) return;
         const peer = findPeerByPseudo(target);
         if (peer) sendToPeer(peer.id, { t: "friendsChanged" });
+      } catch {}
+      return;
+    }
+    // Clan : tchat réservé aux membres (rooms + instances, comme le
+    // tchat global). 1 message / 500 ms, 200 caractères.
+    if (msg.t === "clanChat") {
+      try {
+        if (!authed || !accountId) return;
+        const now = Date.now();
+        if (now - Number(clanChatLast.get(id) || 0) < 500) return;
+        const text = String(msg.text || "").replace(/\s+/g, " ").trim().slice(0, 200);
+        if (!text) return;
+        const tag = refreshClanTag(state, accountId);
+        if (!tag) return;
+        clanChatLast.set(id, now);
+        broadcastToClan(tag, { t: "clanMsg", from: id, fromPseudo: String(state.pseudo || "Pilote").slice(0, 20), tag, text, at: now });
+      } catch {}
+      return;
+    }
+    // Clan : après une mutation HTTP (invite, accept, kick, leave, rang),
+    // le client prévient les membres connectés (rechargent via /api).
+    if (msg.t === "clanNotify") {
+      try {
+        if (!authed || !accountId) return;
+        const now = Date.now();
+        if (now - Number(clanChatLast.get(`${id}:notify`) || 0) < 500) return;
+        clanChatLast.set(`${id}:notify`, now);
+        const tag = refreshClanTag(state, accountId);
+        try {
+          if (ws.readyState === 1) ws.send(JSON.stringify({ t: "clanTag", tag: String(tag || "") }));
+        } catch {}
+        if (tag) broadcastToClan(tag, { t: "clanChanged", tag }, id);
+        const target = String(msg.to || "").trim().slice(0, 20);
+        if (target) {
+          const peer = findPeerByPseudo(target);
+          if (peer && String(peer.id) !== String(id)) sendToPeer(peer.id, { t: "clanChanged", tag: String(tag || "") });
+        }
+      } catch {}
+      return;
+    }
+    // Clan : resync du tag en mémoire (après accept/kick/leave).
+    if (msg.t === "clanRefresh") {
+      try {
+        if (!authed || !accountId) return;
+        const tag = refreshClanTag(state, accountId);
+        try {
+          if (ws.readyState === 1) ws.send(JSON.stringify({ t: "clanTag", tag: String(tag || "") }));
+        } catch {}
       } catch {}
       return;
     }
@@ -1323,6 +1406,7 @@ wss.on("connection", (ws) => {
             accountId = String(who.id);
             authed = true;
             state.pseudo = String(who.pseudo || "Pilote").slice(0, 20);
+            refreshClanTag(state, accountId);
             try { ws.send(JSON.stringify({ t: "welcome", id, authed: true })); } catch {}
           }
         } catch {}
@@ -1430,6 +1514,10 @@ wss.on("connection", (ws) => {
       if (authed && accountId && Date.now() - Number(state._friendsSyncAt || 0) >= 15_000) {
         state._friendsSyncAt = Date.now();
         sendFriendsSync(ws, accountId);
+        try {
+          const tag = refreshClanTag(state, accountId);
+          if (ws.readyState === 1) ws.send(JSON.stringify({ t: "clanTag", tag: String(tag || "") }));
+        } catch {}
       }
       return;
     }
@@ -1709,8 +1797,8 @@ wss.on("connection", (ws) => {
     } catch {}
     try { if (authed && accountId) notifyFriendPresence(accountId, false); } catch {}
   };
-  ws.on("close", () => { allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); onPeerGone(); removeFromAllRooms(id); });
-  ws.on("error", () => { try { ws.close(); } catch {} allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); onPeerGone(); removeFromAllRooms(id); });
+  ws.on("close", () => { allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); clanChatLast.delete(id); clanChatLast.delete(`${id}:notify`); onPeerGone(); removeFromAllRooms(id); });
+  ws.on("error", () => { try { ws.close(); } catch {} allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); clanChatLast.delete(id); clanChatLast.delete(`${id}:notify`); onPeerGone(); removeFromAllRooms(id); });
 });
 
 // Enchères partagées : clôture à chaque heure pile de Paris (:00),
@@ -1883,7 +1971,7 @@ setInterval(() => {
       if (!s) continue;
       // Anti-fantôme : pas de pos envoyée = invisible pour les autres.
       if (s._posOk !== true) continue;
-      players.push({ id: s.id, pseudo: s.pseudo, shipId: s.shipId, x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, vmax: Math.max(50, Math.min(5000, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
+      players.push({ id: s.id, pseudo: s.pseudo, clan: String(s.clanTag || "").slice(0, 5), shipId: s.shipId, x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, vmax: Math.max(50, Math.min(5000, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
         // PvP : PV autoritaires + date du dernier coup recu + attaquant (anneau Ship_damage).
         pvpAt: Number(s.pvpAt) || 0, pvpFrom: s.pvpFrom != null ? String(s.pvpFrom) : null, pvpHp: Math.max(0, Math.round(Number(s.hp) || 0)), pvpSh: Math.max(0, Math.round(Number(s.sh) || 0)),
         npcAt: Number(s.npcAt) || 0, npcSeq: Math.max(0, Math.floor(Number(s.npcSeq) || 0)), npcFrom: s.npcFrom != null ? String(s.npcFrom) : null,
@@ -1910,7 +1998,7 @@ setInterval(() => {
         iemT: Math.max(0, (Number(s.iemUntil) || 0) - now) / 1000,
         ishT: Math.max(0, (Number(s.ishUntil) || 0) - now) / 1000 });
       const output = players[players.length - 1];
-      const staticSignature = [output.pseudo, output.shipId, output.drones, output.dform, output.dslots,
+      const staticSignature = [output.pseudo, output.clan, output.shipId, output.drones, output.dform, output.dslots,
         output.rank, output.firm, output.dind, output.ficon, output.mind, output.petl, output.petn, output.petf].join("|");
       output._staticChanged = staticSignature !== s._lastStaticSignature;
       output._staticSignature = staticSignature;
@@ -1936,6 +2024,7 @@ setInterval(() => {
     for (const entry of playersForNetwork) {
       if (!includePlayerStatic && entry._staticChanged !== true) {
         delete entry.pseudo;
+        delete entry.clan;
         delete entry.shipId;
         delete entry.drones;
         delete entry.dform;

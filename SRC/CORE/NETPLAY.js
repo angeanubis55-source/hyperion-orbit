@@ -45,6 +45,8 @@ export function suspendNetplay(v) {
     netFriendRequestInbox.length = 0;
     netFriendsDirty = false;
     netFriendsOnline = [];
+    netClanDirty = false;
+    netMyClanTag = "";
     lastNpcSnapMs = 0;
     try { if (ws && ws.readyState === 1) ws.close(); } catch {}
     ws = null;
@@ -459,6 +461,33 @@ export function sendFriendResponded(to) {
   if (!target) return false;
   return sendSocialMsg({ t: "friendResponded", to: target });
 }
+// Clans (canal global comme le tchat : vivant même en Galaxy Gate).
+// Le roster passe par HTTP (/api/clans/me) ; le WS transporte le tchat,
+// les notifications de changement et le tag en mémoire du serveur.
+let netClanDirty = false;
+let netMyClanTag = "";
+export function consumeClanDirty() {
+  const v = netClanDirty;
+  netClanDirty = false;
+  return v;
+}
+export function getMyClanTag() {
+  return netMyClanTag;
+}
+export function sendClanChat(text) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!clean) return false;
+  return sendSocialMsg({ t: "clanChat", text: clean });
+}
+// Après une mutation HTTP : prévient les membres connectés (+ `to` pour
+// un exclu ou un invité) et resynchronise le tag en mémoire du serveur.
+export function sendClanNotify(to) {
+  const target = String(to || "").trim().slice(0, 20);
+  return sendSocialMsg(target ? { t: "clanNotify", to: target } : { t: "clanNotify" });
+}
+export function sendClanRefresh() {
+  return sendSocialMsg({ t: "clanRefresh" });
+}
 // Enchères partagées (comme le tchat) : sync/update/settle/reject bruts,
 // fusionnés dans user.auction par SRC/CORE/AUCTION_NET.js.
 const netAuctionInbox = [];
@@ -661,6 +690,25 @@ export function ensureNetplayConnection() {
     }
     if (msg.t === "friendsChanged") {
       netFriendsDirty = true;
+      return;
+    }
+    // Tchat de clan : miroir tchat avec préfixe [Clan] (comme [MP]/[Groupe]).
+    if (msg.t === "clanMsg") {
+      pushChatMessage({
+        from: `[Clan] ${String(msg.fromPseudo || "Pilote").slice(0, 20)}`,
+        text: String(msg.text || "").slice(0, 200),
+        at: Number(msg.at) || Date.now(),
+        by: msg.from != null ? String(msg.from) : "",
+      });
+      return;
+    }
+    if (msg.t === "clanChanged") {
+      netClanDirty = true;
+      return;
+    }
+    if (msg.t === "clanTag") {
+      netMyClanTag = String(msg.tag || "").toUpperCase().slice(0, 5);
+      netClanDirty = true;
       return;
     }
     if (msg.t === "friendsSync" && Array.isArray(msg.online)) {
@@ -943,6 +991,7 @@ export function ensureNetplayConnection() {
         Object.assign(entry, {
           id,
           pseudo: String(p.pseudo ?? prev?.pseudo ?? "Pilote").slice(0, 20),
+          clan: String(p.clan ?? prev?.clan ?? "").toUpperCase().slice(0, 5),
           shipId: String(p.shipId ?? prev?.shipId ?? ""),
           x, y,
           vx: svx,

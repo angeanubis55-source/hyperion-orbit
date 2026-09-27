@@ -108,7 +108,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
+  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getMyClanTag } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -145,6 +145,7 @@ import { initAuctionUI, renderAuctionWindow, tickAuctionDisplay } from "../../UI
 import { initChatUI } from "../../UI/UI_CHAT.js";
 import { initGroupUI } from "../../UI/UI_GROUP.js";
 import { initFriendsUI } from "../../UI/UI_FRIENDS.js";
+import { initClanUI } from "../../UI/UI_CLAN.js";
 import { initRankingsUI } from "../../UI/UI_RANKINGS.js";
 import { initPilotSkillsUI, renderPilotSkillsWindow, tickPilotSkillsDisplay } from "../../UI/UI_PILOT_SKILLS.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
@@ -8113,6 +8114,7 @@ function registerHudWindows() {
   reg("chatWindow", "Chat", menuIcon("chat"), true);
   reg("groupWindow", "Groupe", menuIcon("group"), false);
   reg("friendsWindow", "Amis", menuIcon("contacts"), false);
+  reg("clanWindow", "Clan", menuIcon("clan"), false);
   reg("rankingWindow", "Classement", menuIcon("highscoregate"), false);
   // Assemblage (voir CRAFTING_ENABLED) : icône dock + fenêtre si activé.
   if (CRAFTING_ENABLED) reg("craftingWindow", "Assemblage", menuIcon("assembly"), false);
@@ -8121,7 +8123,7 @@ function registerHudWindows() {
     window.GameWindowManager?.close?.("craftingWindow");
   }
   reg("petWindow", "P.E.T", menuIcon("pet"), false);
-  reg("oreTradeWindow", "Commerce", menuIcon("ore_trade"), false);
+  reg("oreTradeWindow", "Commerce", menuIcon("ore_trade"), false, { dock: false });
   window.GameWindowManager?.close?.("oreTradeWindow");
   reg("refineryWindow", "Raffinage", menuIcon("refinement"), false);
   reg("skylabWindow", "Skylab", menuIcon("skylab"), false);
@@ -8136,6 +8138,7 @@ wireWikiWindow();
 initChatUI();
 initGroupUI();
 initFriendsUI();
+initClanUI();
 initRankingsUI();
 initSkylabUI({
   getUser: () => account.user,
@@ -18080,6 +18083,8 @@ if (enemy) {
         if (fi) fi.value = rpseudo;
         const gi = document.getElementById("groupInviteInput");
         if (gi) gi.value = rpseudo;
+        const ci = document.getElementById("clanInviteInput");
+        if (ci) ci.value = rpseudo;
       }
     }
   } catch {}
@@ -26009,7 +26014,7 @@ function syncNetPlayers(dt = 0.016) {
       if (!e) {
         e = {
           id: `netp:${rid}`, _netPlayer: String(rid), type: "player",
-          name: String(r.pseudo || "Pilote"),
+          name: String(r.pseudo || "Pilote") + (r.clan ? ` [${r.clan}]` : ""),
           x: 0, y: 0, vx: 0, vy: 0, r: 20, angle: 0,
           hp: 1, hpMax: 1, sh: 0, shMax: 0,
           _previousX: 0, _previousY: 0,
@@ -26017,7 +26022,7 @@ function syncNetPlayers(dt = 0.016) {
         netPlayerProxies.set(rid, e);
         try { enemiesById.set(e.id, e); } catch {}
       }
-      e.name = String(r.pseudo || "Pilote");
+      e.name = String(r.pseudo || "Pilote") + (r.clan ? ` [${r.clan}]` : "");
       e.x = Number(r.rx ?? r.x);
       e.y = Number(r.ry ?? r.y);
       e._previousX = e.x;
@@ -28478,7 +28483,7 @@ function drawNetplayRemotes(ox, oy) {
           shMax: Number(r.shMax) > 0 ? 1 : 0,
           r: 20, dead: false,
         },
-        String(r.pseudo || "Pilote"), 0, 0,
+        String(r.pseudo || "Pilote") + (r.clan ? ` [${r.clan}]` : ""), 0, 0,
         rRank, rFact, dind, rFicon, mind,
         String(r.shipId || "").toLowerCase() === "police",
         showRemoteDetails,
@@ -29716,10 +29721,11 @@ function drawPlayerBars(px, py) {
     spc: "rgb(255,215,70)",
   };
   const moduleIndicators = equippedModules.map(module => moduleColorByType[module.type]).filter(Boolean);
+  const myClanTag = (() => { try { return String(getMyClanTag() || ""); } catch { return ""; } })();
   drawPlayerStatus(
     ctx,
     player,
-    account.user?.pseudo || "Pilote",
+    (account.user?.pseudo || "Pilote") + (myClanTag ? ` [${myClanTag}]` : ""),
     px,
     py,
     rankImage,

@@ -2623,6 +2623,32 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .friendsForm input:focus{ border-color:#69e9ff; }
 .friendsForm button{ height:30px; padding:0 14px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 12px/1.2 ui-sans-serif,system-ui; }
 .friendsForm button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
+/* Fenêtre Clan */
+.clanPanel{width:440px;min-width:320px;max-width:calc(100vw - 20px);height:auto;max-height:calc(100vh - 20px);display:flex;flex-direction:column;overflow:hidden}
+.clanStatus{padding:8px 12px;box-sizing:border-box;border-bottom:1px solid rgba(124,240,255,.16);color:#75e8ff;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.35px}
+.clanPane{display:none;flex-direction:column;min-height:0}.clanPane.active{display:flex}
+.clanSubHead{padding:8px 12px 0;color:#8fcddd;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px}
+.clanSubHead span{display:inline-grid;place-items:center;min-width:17px;height:17px;margin-left:4px;padding:0 4px;border-radius:9px;color:#241600;background:#ffcf58;font-size:10px}
+.clanRows{max-height:min(380px,calc(100vh - 260px));min-height:72px;overflow-y:auto;display:grid;align-content:start;gap:6px;padding:9px 11px;box-sizing:border-box}
+.clanCard{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:9px;padding:8px 9px;border:1px solid rgba(124,240,255,.13);border-radius:8px;background:linear-gradient(115deg,rgba(4,25,38,.92),rgba(4,15,25,.75));color:#bcdde5}
+.clanCard.request{grid-template-columns:auto minmax(0,1fr) auto}
+.clanIdentity{display:grid;min-width:0;gap:2px}.clanIdentity strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:5px;color:#dff7fb;font-size:12px}.clanIdentity small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#7395a1;font-size:10px}
+.clanLeaderCrown{width:15px;height:15px;flex:0 0 auto;fill:#ffc83d;stroke:#fff0a1;stroke-width:1.5;stroke-linejoin:round;filter:drop-shadow(0 0 4px rgba(255,190,35,.55))}
+.clanTagBadge{padding:3px 7px;border-radius:7px;color:#ffd364;background:rgba(220,160,40,.12);font-size:11px;font-weight:900;white-space:nowrap}
+.clanBtns{display:flex;gap:4px}.clanBtns button{width:27px;height:25px;padding:4px;display:grid;place-items:center;border:1px solid rgba(124,240,255,.28);border-radius:7px;color:#dffaff;background:rgba(13,76,99,.32);cursor:pointer;font:900 13px/1 ui-sans-serif,system-ui}
+.clanBtns button:hover{border-color:rgba(124,240,255,.65);background:rgba(0,140,185,.3)}.clanBtns button.danger:hover{color:#ff8998;border-color:#ff6578;background:rgba(160,25,45,.25)}.clanBtns button.accept{color:#77f3a3}
+.clanBtns svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.clanEmpty{padding:22px;text-align:center;color:#5c8290;font-size:11px;font-weight:800}
+.clanOutgoing{margin:9px 11px 0;padding:7px 9px;border:1px solid rgba(255,211,107,.35);border-radius:8px;color:#f3dda9;font-size:11px;font-weight:700}
+.clanForm{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:9px 11px;box-sizing:border-box;border-top:1px solid rgba(124,240,255,.14)}
+#clanCreateForm{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;border-top:0}
+.clanForm input{min-width:0;width:100%;height:30px;box-sizing:border-box;padding:0 9px;outline:0;border:1px solid rgba(124,240,255,.30);border-radius:7px;color:#effcff;background:#051521;font:600 12px/1 ui-sans-serif,system-ui}
+.clanForm input:focus{border-color:#69e9ff}
+.clanForm button{height:30px;padding:0 14px;box-sizing:border-box;border:1px solid rgba(124,240,255,.38);border-radius:8px;color:#eaffff;background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));cursor:pointer;font:800 12px/1.2 ui-sans-serif,system-ui;white-space:nowrap}
+.clanForm button:hover{border-color:rgba(124,240,255,.62);background:rgba(0,140,185,.3)}
+.clanLeaveRow{display:flex;justify-content:flex-end;padding:0 11px 10px;box-sizing:border-box}
+.clanLeaveRow button{height:28px;padding:0 12px;border:1px solid rgba(255,101,120,.45);border-radius:8px;color:#ff9aa7;background:rgba(160,25,45,.22);cursor:pointer;font:800 11px/1.2 ui-sans-serif,system-ui}
+.clanLeaveRow button:hover{border-color:#ff6578;background:rgba(160,25,45,.35)}
 /* Fenêtre Classement PvP */
 .rankingPanel{ width:560px; min-width:420px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
 .rankingStatus{ padding:7px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#75e8ff; font-size:11px; font-weight:800; text-transform:uppercase; }

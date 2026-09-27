@@ -260,12 +260,50 @@ RESTE A FAIRE (prochaines étapes proposées)
   groupe sur minimap (la map des membres est déjà dans groupUpdate).
 
 ----------------------------------------------------------------
+11) CLANS façon DO (création [TAG], rangs, tchat de clan)
+----------------------------------------------------------------
+- Serveur (ACCOUNT_SERVER.js, comptes uniquement) : tables clans +
+  clan_members + clan_invites (persistées : un hors-ligne retrouve ses
+  invitations). Création nom (3 min) + tag unique 2-5 lettres/chiffres
+  (30 membres max), rôles leader/officer/member (invite : leader +
+  officier ; kick : leader partout, officier sur membres ; rangs +
+  description : leader). Départ du chef = succession (officier le plus
+  ancien, sinon plus ancien membre) ; dernier membre = dissolution.
+  Création/accept purgent les invitations reçues. Suppression admin :
+  départ propre (succession/dissolution + notifs).
+- Routes : GET /api/clans/me · POST /api/clans {name, tag} ·
+  GET /api/clans/invites · POST /api/clans/invite|accept|decline|
+  leave|kick|rank|description · GET /api/clans/info?tag= (publique).
+  Rate-limit 60/min.
+- MULTI_SERVER.js :   tchat de clan {t:"clanChat"} (500 ms anti-spam, 200 caractères,
+  rooms + instances comme le global) ->
+  {t:"clanMsg"} aux membres connectés (tag en mémoire, rafraîchi au
+  hello + ping 15 s) ; {t:"clanNotify"} (notif post-HTTP, `to`
+  optionnel pour un exclu/invité) -> {t:"clanChanged"} aux membres ;
+  {t:"clanRefresh"} -> {t:"clanTag"}. Tag `clan` dans les snapshots
+  (champ statique basse cadence comme pseudo/rank/firm) + describePeer.
+- Client : NETPLAY.js (miroir tchat `[Clan] pseudo`, clanChanged ->
+  dirty, clanTag -> tag local). UI/UI_CLAN.js (clanWindow, icône
+  clan.png) : création, membres + rangs + exclusion/promotion (chef),
+  invitations reçues (Rejoindre/Refuser), invitations envoyées
+  (chef/officier), description (chef), quitter. Clic sur un vaisseau
+  pré-remplit aussi l'invitation clan. Tchat : /c message (UI_CHAT.js).
+- Affichage : `pseudo [TAG]` sur les vaisseaux distants, le lock et
+  soi-même (ORBIT_ENGINE.js).
+- Solo sans serveur : intact (fenêtre "connecte-toi").
+- Validé : 28 checks unitaires (création, unicité, droits, succession,
+  dissolution, purge admin) + 11 checks E2E live (HTTP + 2 WS : tchat,
+  tag snapshot, anti-spam, clanChanged).
+- Limites V1 : pas de chat d'alliance/diplomatie, pas de pastille
+  clan sur minimap, pas de classement clans.
+
+----------------------------------------------------------------
 FICHIERS CLES
 ----------------------------------------------------------------
 Créés : SCRIPTS/MULTI_SERVER.js, SCRIPTS/NPC_ROOM.js,
   SCRIPTS/ACCOUNT_SERVER.js, SCRIPTS/AUCTION_ROOM.js, SCRIPTS/SOCIAL_ROOM.js,
   SRC/CORE/NETPLAY.js, SRC/CORE/ACCOUNT_NET.js, SRC/CORE/AUCTION_NET.js,
-  UI/UI_GROUP.js, UI/UI_FRIENDS.js
+  UI/UI_GROUP.js, UI/UI_FRIENDS.js, UI/UI_CLAN.js
 Modifiés : SRC/CORE/ORBIT_ENGINE.js (hooks multi), SRC/CORE/ACCOUNT.js
   (backend net), PUBLIC/AUTH.js (en ligne d'abord), UI/UI_MINIMAP.js
   (points alliés), UI/UI_AUCTION.js (pseudos en direct),

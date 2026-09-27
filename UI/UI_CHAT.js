@@ -1,6 +1,6 @@
 "use strict";
 
-import { drainNetChatInbox, sendChat, sendWhisper, netMyId, netMyPseudo, netplayStatus } from "../SRC/CORE/NETPLAY.js";
+import { drainNetChatInbox, sendChat, sendWhisper, sendClanChat, netMyId, netMyPseudo, netplayStatus } from "../SRC/CORE/NETPLAY.js";
 import { escapeHtml } from "./UI_DOM.js";
 
 const MAX_SHOWN = 60;
@@ -76,6 +76,20 @@ export function initChatUI() {
       if (!sendWhisper(whisper[1], whisper[2])) {
         if (status) {
           status.textContent = "Hors ligne : murmure non envoyé";
+          status.classList.add("offline");
+        }
+        return;
+      }
+      input.value = "";
+      input.focus();
+      return;
+    }
+    // Tchat de clan façon DarkOrbit : /c message.
+    const clan = /^\/c\s+([\s\S]+)$/.exec(text);
+    if (clan) {
+      if (!sendClanChat(clan[1])) {
+        if (status) {
+          status.textContent = "Hors ligne ou sans clan : message non envoyé";
           status.classList.add("offline");
         }
         return;

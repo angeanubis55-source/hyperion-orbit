@@ -141,6 +141,32 @@ export function initAccountDb() {
       created_at INTEGER NOT NULL,
       PRIMARY KEY (from_id, to_id)
     );
+    CREATE TABLE IF NOT EXISTS clans (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      tag TEXT NOT NULL,
+      tag_norm TEXT NOT NULL DEFAULT '',
+      leader_id TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_clans_tag ON clans(tag_norm);
+    CREATE TABLE IF NOT EXISTS clan_members (
+      clan_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      joined_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_clan_members_clan ON clan_members(clan_id);
+    CREATE TABLE IF NOT EXISTS clan_invites (
+      clan_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      from_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (clan_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_clan_invites_user ON clan_invites(user_id);
   `);
   // Menage des sessions expirees (toutes les heures).
   const purge = () => {
@@ -402,10 +428,18 @@ export function adminDeleteAccount(target) {
     try { db.prepare("DELETE FROM npc_reward_tx WHERE user_id = ?").run(uid); } catch {}
     try { db.prepare("DELETE FROM friends WHERE user_id = ? OR friend_id = ?").run(uid, uid); } catch {}
     try { db.prepare("DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?").run(uid, uid); } catch {}
+    // Clan : départ propre (succession du chef ou dissolution si dernier).
+    let clanAffected = [];
+    try {
+      const r = clanLeaveCore(uid);
+      clanAffected = Array.isArray(r?.affected) ? r.affected : [];
+    } catch {}
+    try { db.prepare("DELETE FROM clan_invites WHERE from_id = ?").run(uid); } catch {}
     let deleted = 0;
     try { deleted = Number(db.prepare("DELETE FROM users WHERE id = ?").run(uid)?.changes) || 0; } catch {}
     try { db.exec("COMMIT"); } catch {}
     if (!deleted) { try { db.exec("ROLLBACK"); } catch {} return { ok: false, error: "Compte introuvable." }; }
+    for (const cid of clanAffected) if (cid && !affected.includes(cid)) affected.push(cid);
     return { ok: true, id: uid, pid: `u_${uid}`.slice(0, 128), pseudo, affected };
   } catch { try { db.exec("ROLLBACK"); } catch {} return { ok: false, error: "Erreur serveur." }; }
 }
@@ -548,6 +582,279 @@ export function removeFriend(userId, target) {
     db.prepare("DELETE FROM friends WHERE user_id = ? AND friend_id = ?").run(fid, uid);
     return { ok: true };
   } catch { return { ok: false }; }
+}
+
+// --- Clans façon DO (comptes uniquement) : création [TAG], invites,
+// rangs (leader / officer / member), chat de clan via MULTI_SERVER.
+// Un pilote = un seul clan. Le tag est unique (2-5 caractères affichés
+// en majuscules). Taille max 30 membres.
+export const CLAN_MAX_MEMBERS = 30;
+const CLAN_TAG_RE = /^[A-Z0-9]{2,5}$/;
+
+function cleanClanName(s) {
+  return String(s || "").replace(/\s+/g, " ").trim().slice(0, 30);
+}
+function cleanClanTag(s) {
+  return String(s || "").replace(/\s+/g, "").trim().toUpperCase().slice(0, 5);
+}
+function cleanClanDesc(s) {
+  return String(s || "").replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
+export function clanIdOfUser(userId) {
+  try {
+    initAccountDb();
+    const row = db.prepare("SELECT clan_id FROM clan_members WHERE user_id = ?").get(String(userId || ""));
+    return row ? String(row.clan_id) : null;
+  } catch { return null; }
+}
+
+export function clanTagOfUser(userId) {
+  try {
+    initAccountDb();
+    const row = db.prepare("SELECT c.tag AS tag FROM clan_members m JOIN clans c ON c.id = m.clan_id WHERE m.user_id = ?").get(String(userId || ""));
+    return row ? String(row.tag || "").slice(0, 5) : "";
+  } catch { return ""; }
+}
+
+function clanRoleOf(userId, clanId) {
+  try {
+    initAccountDb();
+    const row = db.prepare("SELECT role FROM clan_members WHERE user_id = ? AND clan_id = ?").get(String(userId), String(clanId));
+    return row ? String(row.role || "member") : null;
+  } catch { return null; }
+}
+
+// Fiche complète : { id, name, tag, description, leader, role, members: [{id,pseudo,role}], invites: [{pseudo}] (sortantes, leader/officer) }.
+export function getMyClan(userId) {
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    if (!uid) return null;
+    const clan = db.prepare("SELECT c.*, m.role AS my_role FROM clan_members m JOIN clans c ON c.id = m.clan_id WHERE m.user_id = ?").get(uid);
+    if (!clan) return null;
+    const members = db.prepare("SELECT m.user_id AS id, u.pseudo AS pseudo, m.role AS role FROM clan_members m JOIN users u ON u.id = m.user_id WHERE m.clan_id = ? ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'officer' THEN 1 ELSE 2 END, m.joined_at").all(String(clan.id))
+      .map((r) => ({ id: String(r.id), pseudo: String(r.pseudo || "Pilote").slice(0, 20), role: String(r.role || "member") }));
+    const out = {
+      id: String(clan.id), name: String(clan.name || "Clan").slice(0, 30), tag: String(clan.tag || "").slice(0, 5),
+      description: String(clan.description || "").slice(0, 200),
+      leader: String(clan.leader_id || ""), role: String(clan.my_role || "member"), members,
+    };
+    if (out.role === "leader" || out.role === "officer") {
+      try {
+        out.invites = db.prepare("SELECT u.pseudo AS pseudo FROM clan_invites i JOIN users u ON u.id = i.user_id WHERE i.clan_id = ? ORDER BY i.created_at").all(String(clan.id))
+          .map((r) => ({ pseudo: String(r.pseudo || "Pilote").slice(0, 20) }));
+      } catch { out.invites = []; }
+    }
+    return out;
+  } catch { return null; }
+}
+
+// Invitations reçues : [{ clanId, name, tag, fromPseudo, at }].
+export function getClanInvites(userId) {
+  try {
+    initAccountDb();
+    return db.prepare("SELECT i.clan_id AS clanId, c.name AS name, c.tag AS tag, u.pseudo AS fromPseudo, i.created_at AS at FROM clan_invites i JOIN clans c ON c.id = i.clan_id JOIN users u ON u.id = i.from_id WHERE i.user_id = ? ORDER BY i.created_at").all(String(userId))
+      .map((r) => ({ clanId: String(r.clanId), name: String(r.name || "Clan").slice(0, 30), tag: String(r.tag || "").slice(0, 5), fromPseudo: String(r.fromPseudo || "Pilote").slice(0, 20), at: Number(r.at) || 0 }));
+  } catch { return []; }
+}
+
+// Info publique d'un clan par tag : { name, tag, leader, memberCount, members: [pseudo] }.
+export function getClanInfo(tag) {
+  try {
+    initAccountDb();
+    const row = db.prepare("SELECT * FROM clans WHERE tag_norm = ?").get(String(tag || "").trim().toLowerCase());
+    if (!row) return null;
+    const members = db.prepare("SELECT u.pseudo AS pseudo, m.role AS role FROM clan_members m JOIN users u ON u.id = m.user_id WHERE m.clan_id = ? ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'officer' THEN 1 ELSE 2 END, m.joined_at").all(String(row.id))
+      .map((r) => ({ pseudo: String(r.pseudo || "Pilote").slice(0, 20), role: String(r.role || "member") }));
+    let leaderPseudo = "?";
+    try {
+      const lr = db.prepare("SELECT pseudo FROM users WHERE id = ?").get(String(row.leader_id));
+      if (lr) leaderPseudo = String(lr.pseudo || "Pilote").slice(0, 20);
+    } catch {}
+    return { id: String(row.id), name: String(row.name || "Clan").slice(0, 30), tag: String(row.tag || "").slice(0, 5), description: String(row.description || "").slice(0, 200), leader: leaderPseudo, memberCount: members.length, members };
+  } catch { return null; }
+}
+
+export function createClan(userId, name, tag) {
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    if (!uid) return { ok: false, error: "AUTH" };
+    if (clanIdOfUser(uid)) return { ok: false, error: "ALREADY" };
+    const cleanName = cleanClanName(name);
+    const cleanTag = cleanClanTag(tag);
+    if (cleanName.length < 3) return { ok: false, error: "NAME" };
+    if (!CLAN_TAG_RE.test(cleanTag)) return { ok: false, error: "TAG" };
+    const clash = db.prepare("SELECT 1 FROM clans WHERE tag_norm = ?").get(cleanTag.toLowerCase());
+    if (clash) return { ok: false, error: "TAKEN" };
+    const id = uuid();
+    const now = Date.now();
+    db.prepare("INSERT INTO clans (id, name, tag, tag_norm, leader_id, description, created_at) VALUES (?, ?, ?, ?, ?, '', ?)").run(id, cleanName, cleanTag, cleanTag.toLowerCase(), uid, now);
+    db.prepare("INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'leader', ?)").run(id, uid, now);
+    // Une création annule les invitations reçues en attente.
+    try { db.prepare("DELETE FROM clan_invites WHERE user_id = ?").run(uid); } catch {}
+    return { ok: true, clan: getMyClan(uid) };
+  } catch { return { ok: false, error: "SERVER" }; }
+}
+
+// Noyau de départ (quitter / kick / suppression admin) : succession ou
+// dissolution. Retourne { dissolved, clanId, affected: [userId] }.
+function clanLeaveCore(uid) {
+  const clanId = clanIdOfUser(uid);
+  if (!clanId) return { dissolved: false, clanId: null, affected: [] };
+  let affected = [];
+  try {
+    affected = db.prepare("SELECT user_id FROM clan_members WHERE clan_id = ? AND user_id != ?").all(clanId, uid).map((r) => String(r.user_id));
+  } catch {}
+  db.prepare("DELETE FROM clan_members WHERE clan_id = ? AND user_id = ?").run(clanId, uid);
+  try { db.prepare("DELETE FROM clan_invites WHERE user_id = ?").run(uid); } catch {}
+  const rest = (() => {
+    try { return db.prepare("SELECT user_id, role, joined_at FROM clan_members WHERE clan_id = ? ORDER BY joined_at").all(clanId); } catch { return []; }
+  })();
+  if (!rest.length) {
+    try { db.prepare("DELETE FROM clans WHERE id = ?").run(clanId); } catch {}
+    try { db.prepare("DELETE FROM clan_invites WHERE clan_id = ?").run(clanId); } catch {}
+    return { dissolved: true, clanId, affected: [] };
+  }
+  try {
+    const clan = db.prepare("SELECT leader_id FROM clans WHERE id = ?").get(clanId);
+    if (clan && String(clan.leader_id) === String(uid)) {
+      const successor = rest.find((m) => String(m.role) === "officer") || rest[0];
+      const sid = String(successor.user_id);
+      db.prepare("UPDATE clan_members SET role = 'leader' WHERE clan_id = ? AND user_id = ?").run(clanId, sid);
+      db.prepare("UPDATE clans SET leader_id = ? WHERE id = ?").run(sid, clanId);
+    }
+  } catch {}
+  return { dissolved: false, clanId, affected };
+}
+
+export function leaveClan(userId) {
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    if (!uid || !clanIdOfUser(uid)) return { ok: false, error: "NONE" };
+    return { ok: true, ...clanLeaveCore(uid) };
+  } catch { return { ok: false, error: "SERVER" }; }
+}
+
+export function inviteToClan(fromId, pseudo) {
+  try {
+    initAccountDb();
+    const uid = String(fromId || "");
+    const clanId = clanIdOfUser(uid);
+    if (!clanId) return { ok: false, error: "NOCLAN" };
+    const role = clanRoleOf(uid, clanId);
+    if (role !== "leader" && role !== "officer") return { ok: false, error: "RIGHTS" };
+    const target = findUserByPseudo(pseudo);
+    if (!target) return { ok: false, error: "NOT_FOUND" };
+    if (target.id === uid) return { ok: false, error: "SELF" };
+    if (clanIdOfUser(target.id)) return { ok: false, error: "INCLAN" };
+    const count = (() => {
+      try { return Number(db.prepare("SELECT COUNT(*) AS n FROM clan_members WHERE clan_id = ?").get(clanId)?.n) || 0; } catch { return 0; }
+    })();
+    if (count >= CLAN_MAX_MEMBERS) return { ok: false, error: "FULL" };
+    const dup = (() => {
+      try { return !!db.prepare("SELECT 1 FROM clan_invites WHERE clan_id = ? AND user_id = ?").get(clanId, target.id); } catch { return false; }
+    })();
+    if (dup) return { ok: false, error: "SENT" };
+    db.prepare("INSERT INTO clan_invites (clan_id, user_id, from_id, created_at) VALUES (?, ?, ?, ?)").run(clanId, target.id, uid, Date.now());
+    return { ok: true, to: target };
+  } catch { return { ok: false, error: "SERVER" }; }
+}
+
+export function acceptClanInvite(userId, tag) {
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    if (!uid) return { ok: false, error: "AUTH" };
+    if (clanIdOfUser(uid)) return { ok: false, error: "INCLAN" };
+    const clan = db.prepare("SELECT * FROM clans WHERE tag_norm = ?").get(String(tag || "").trim().toLowerCase());
+    if (!clan) return { ok: false, error: "NONE" };
+    const inv = (() => {
+      try { return db.prepare("SELECT 1 FROM clan_invites WHERE clan_id = ? AND user_id = ?").get(String(clan.id), uid); } catch { return null; }
+    })();
+    if (!inv) return { ok: false, error: "NONE" };
+    const count = (() => {
+      try { return Number(db.prepare("SELECT COUNT(*) AS n FROM clan_members WHERE clan_id = ?").get(String(clan.id))?.n) || 0; } catch { return 0; }
+    })();
+    if (count >= CLAN_MAX_MEMBERS) return { ok: false, error: "FULL" };
+    db.prepare("INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)").run(String(clan.id), uid, Date.now());
+    try { db.prepare("DELETE FROM clan_invites WHERE user_id = ?").run(uid); } catch {}
+    return { ok: true, clan: getMyClan(uid), clanId: String(clan.id) };
+  } catch { return { ok: false, error: "SERVER" }; }
+}
+
+export function declineClanInvite(userId, tag) {
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    if (!uid) return { ok: false };
+    const clan = db.prepare("SELECT id FROM clans WHERE tag_norm = ?").get(String(tag || "").trim().toLowerCase());
+    if (!clan) {
+      try { db.prepare("DELETE FROM clan_invites WHERE user_id = ?").run(uid); } catch {}
+      return { ok: true };
+    }
+    db.prepare("DELETE FROM clan_invites WHERE clan_id = ? AND user_id = ?").run(String(clan.id), uid);
+    return { ok: true };
+  } catch { return { ok: false }; }
+}
+
+export function kickClanMember(actorId, pseudo) {
+  try {
+    initAccountDb();
+    const uid = String(actorId || "");
+    const clanId = clanIdOfUser(uid);
+    if (!clanId) return { ok: false, error: "NOCLAN" };
+    const role = clanRoleOf(uid, clanId);
+    const target = findUserByPseudo(pseudo);
+    if (!target) return { ok: false, error: "NOT_FOUND" };
+    if (target.id === uid) return { ok: false, error: "SELF" };
+    const targetRole = clanRoleOf(target.id, clanId);
+    if (!targetRole) return { ok: false, error: "NOMEMBER" };
+    if (role === "officer" && targetRole !== "member") return { ok: false, error: "RIGHTS" };
+    if (role !== "leader" && role !== "officer") return { ok: false, error: "RIGHTS" };
+    db.prepare("DELETE FROM clan_members WHERE clan_id = ? AND user_id = ?").run(clanId, target.id);
+    return { ok: true, kicked: target, clanId };
+  } catch { return { ok: false, error: "SERVER" }; }
+}
+
+// Promotion / rétrogradation (leader uniquement) : member <-> officer.
+export function setClanRank(actorId, pseudo, officer) {
+  try {
+    initAccountDb();
+    const uid = String(actorId || "");
+    const clanId = clanIdOfUser(uid);
+    if (!clanId) return { ok: false, error: "NOCLAN" };
+    if (clanRoleOf(uid, clanId) !== "leader") return { ok: false, error: "RIGHTS" };
+    const target = findUserByPseudo(pseudo);
+    if (!target) return { ok: false, error: "NOT_FOUND" };
+    if (target.id === uid) return { ok: false, error: "SELF" };
+    if (!clanRoleOf(target.id, clanId)) return { ok: false, error: "NOMEMBER" };
+    db.prepare("UPDATE clan_members SET role = ? WHERE clan_id = ? AND user_id = ?").run(officer === true ? "officer" : "member", clanId, target.id);
+    return { ok: true, member: target, clanId };
+  } catch { return { ok: false, error: "SERVER" }; }
+}
+
+export function setClanDescription(userId, description) {
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    const clanId = clanIdOfUser(uid);
+    if (!clanId) return { ok: false, error: "NOCLAN" };
+    if (clanRoleOf(uid, clanId) !== "leader") return { ok: false, error: "RIGHTS" };
+    db.prepare("UPDATE clans SET description = ? WHERE id = ?").run(cleanClanDesc(description), clanId);
+    return { ok: true, clanId };
+  } catch { return { ok: false, error: "SERVER" }; }
+}
+
+// Ids des comptes membres d'un clan (notifs live + chat).
+export function clanMemberUserIds(clanId) {
+  try {
+    initAccountDb();
+    if (!clanId) return [];
+    return db.prepare("SELECT user_id FROM clan_members WHERE clan_id = ?").all(String(clanId)).map((r) => String(r.user_id));
+  } catch { return []; }
 }
 
 // WS multi : verifie un token de compte hors HTTP (hello).
@@ -1024,6 +1331,112 @@ export function handleAccountApi(req, res) {
       } catch {
         json(res, 500, { ok: false, error: "Erreur serveur." });
       }
+    });
+    return true;
+  }
+  // --- Clans : fiche, création, invitations, rangs ---
+  if (pathname === "/api/clans/me" && req.method === "GET") {
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    return json(res, 200, { ok: true, clan: getMyClan(me.id) });
+  }
+  if (pathname === "/api/clans/info" && req.method === "GET") {
+    if (rateLimited(`${ip}:/api/clans`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    let tag = "";
+    try { tag = String(new URL(req.url, "http://localhost").searchParams.get("tag") || ""); } catch {}
+    const info = getClanInfo(tag);
+    if (!info) return json(res, 404, { ok: false, error: "Clan introuvable." });
+    return json(res, 200, { ok: true, clan: info });
+  }
+  if (pathname === "/api/clans/invites" && req.method === "GET") {
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    return json(res, 200, { ok: true, invites: getClanInvites(me.id) });
+  }
+  if (pathname === "/api/clans" && req.method === "POST") {
+    if (rateLimited(`${ip}:/api/clans`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    readBody(req, res, (body) => {
+      try {
+        const r = createClan(me.id, body?.name, body?.tag);
+        if (!r.ok) {
+          const msg = r.error === "ALREADY" ? "Tu es déjà dans un clan."
+            : r.error === "NAME" ? "Nom de clan invalide (3 lettres minimum)."
+            : r.error === "TAG" ? "Tag invalide (2 à 5 lettres/chiffres)."
+            : r.error === "TAKEN" ? "Ce tag est déjà pris." : "Erreur serveur.";
+          return json(res, r.error === "TAKEN" || r.error === "ALREADY" ? 409 : 400, { ok: false, error: msg });
+        }
+        return json(res, 200, { ok: true, clan: r.clan });
+      } catch { json(res, 500, { ok: false, error: "Erreur serveur." }); }
+    });
+    return true;
+  }
+  if ((pathname === "/api/clans/invite" || pathname === "/api/clans/accept" || pathname === "/api/clans/decline"
+    || pathname === "/api/clans/leave" || pathname === "/api/clans/kick" || pathname === "/api/clans/rank"
+    || pathname === "/api/clans/description") && req.method === "POST") {
+    if (rateLimited(`${ip}:/api/clans`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    readBody(req, res, (body) => {
+      try {
+        if (pathname === "/api/clans/invite") {
+          const r = inviteToClan(me.id, body?.pseudo);
+          if (!r.ok) {
+            const msg = r.error === "NOT_FOUND" ? "Pilote introuvable."
+              : r.error === "SELF" ? "Tu ne peux pas t'inviter toi-même."
+              : r.error === "INCLAN" ? "Ce pilote est déjà dans un clan."
+              : r.error === "SENT" ? "Invitation déjà envoyée."
+              : r.error === "FULL" ? "Clan plein (30 max)."
+              : r.error === "RIGHTS" ? "Seuls le chef et les officiers invitent."
+              : r.error === "NOCLAN" ? "Tu n'es dans aucun clan." : "Erreur serveur.";
+            const code = r.error === "NOT_FOUND" ? 404 : (r.error === "INCLAN" || r.error === "SENT" || r.error === "FULL") ? 409 : 400;
+            return json(res, code, { ok: false, error: msg });
+          }
+          return json(res, 200, { ok: true, to: r.to });
+        }
+        if (pathname === "/api/clans/accept") {
+          const r = acceptClanInvite(me.id, body?.tag);
+          if (!r.ok) {
+            const msg = r.error === "INCLAN" ? "Tu es déjà dans un clan."
+              : r.error === "FULL" ? "Clan plein (30 max)."
+              : "Invitation introuvable.";
+            return json(res, r.error === "INCLAN" || r.error === "FULL" ? 409 : 404, { ok: false, error: msg });
+          }
+          return json(res, 200, { ok: true, clan: r.clan });
+        }
+        if (pathname === "/api/clans/decline") {
+          declineClanInvite(me.id, body?.tag);
+          return json(res, 200, { ok: true });
+        }
+        if (pathname === "/api/clans/leave") {
+          const r = leaveClan(me.id);
+          if (!r.ok) return json(res, 404, { ok: false, error: "Tu n'es dans aucun clan." });
+          return json(res, 200, { ok: true, dissolved: r.dissolved === true });
+        }
+        if (pathname === "/api/clans/kick") {
+          const r = kickClanMember(me.id, body?.pseudo);
+          if (!r.ok) {
+            const msg = r.error === "NOT_FOUND" ? "Pilote introuvable."
+              : r.error === "SELF" ? "Tu ne peux pas t'exclure toi-même (quitte le clan)."
+              : r.error === "NOMEMBER" ? "Pas membre de ton clan."
+              : r.error === "RIGHTS" ? "Droits insuffisants."
+              : "Erreur serveur.";
+            return json(res, r.error === "NOT_FOUND" || r.error === "NOMEMBER" ? 404 : 400, { ok: false, error: msg });
+          }
+          return json(res, 200, { ok: true, kicked: r.kicked });
+        }
+        if (pathname === "/api/clans/rank") {
+          const r = setClanRank(me.id, body?.pseudo, body?.officer === true);
+          if (!r.ok) return json(res, 400, { ok: false, error: "Promotion impossible (chef uniquement)." });
+          return json(res, 200, { ok: true, member: r.member });
+        }
+        const r = setClanDescription(me.id, body?.description);
+        if (!r.ok) return json(res, 400, { ok: false, error: "Description impossible (chef uniquement)." });
+        return json(res, 200, { ok: true });
+      } catch { json(res, 500, { ok: false, error: "Erreur serveur." }); }
     });
     return true;
   }

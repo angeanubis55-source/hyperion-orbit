@@ -33,6 +33,10 @@ Le jeu reste une application navigateur rendue avec Canvas. `ORBIT_ENGINE.js` co
 - `SRC/CORE/ENGINE_TRAILS.js` : géométrie, simulation et rendu de la fumée des réacteurs.
 - `SRC/CORE/PROGRESSION.js` : courbe de niveaux, attribution d’expérience et barèmes configurables des NPC et quêtes.
 - `UI/UI_WINDOW_MANAGER.js` : déplacement, redimensionnement, réduction et restauration des fenêtres du HUD.
+- `SCRIPTS/ACCOUNT_SERVER.js` (tables `clans`, `clan_members`, `clan_invites`) + `UI/UI_CLAN.js` : clans façon DO
+  (création nom + tag unique, rangs leader/officer/member, invitations persistantes, succession/dissolution,
+  tchat `/c`, tag `[TAG]` sur les vaisseaux et le lock) ; relais WS dans `SCRIPTS/MULTI_SERVER.js`
+  (`clanChat`/`clanNotify`/`clanRefresh`, tag `clan` dans les snapshots).
 - `SRC/DATA/SKYLAB.js` : données officielles du Skylab (production, stockage,  énergie, coûts/durées d'amélioration) et simulation pure (tick, robots,
   transport). Échelle x60 : 1 h du vrai DO = 1 min en jeu.
 - `UI/UI_SKYLAB.js` : fenêtre Skylab (12 modules, construction/amélioration
