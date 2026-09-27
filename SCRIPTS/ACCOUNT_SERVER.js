@@ -650,7 +650,7 @@ function cleanClanTag(s) {
   return String(s || "").replace(/\s+/g, "").trim().toUpperCase().slice(0, 5);
 }
 function cleanClanDesc(s) {
-  return String(s || "").replace(/\s+/g, " ").trim().slice(0, 3000);
+  return String(s || "").replace(/\s+/g, " ").trim().slice(0, 250);
 }
 function cleanRankName(s) {
   return String(s || "").replace(/\s+/g, " ").trim().slice(0, 20);
@@ -797,7 +797,7 @@ export function getMyClan(userId) {
       .map((r) => ({ id: String(r.id), pseudo: String(r.pseudo || "Pilote").slice(0, 20), role: String(r.role || "member") }));
     const out = {
       id: String(clan.id), name: String(clan.name || "Clan").slice(0, 30), tag: String(clan.tag || "").slice(0, 5),
-      description: String(clan.description || "").slice(0, 3000),
+      description: String(clan.description || "").slice(0, 250),
       leader: String(clan.leader_id || ""), role: String(clan.my_role || "member"), members,
       open: Number(clan.open ?? 1) !== 0,
       ranks: clanRanks(String(clan.id)),
@@ -821,7 +821,7 @@ export function listClans() {
     return db.prepare("SELECT c.id AS id, c.name AS name, c.tag AS tag, c.description AS description, c.open AS open, u.pseudo AS leader, (SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = c.id) AS n FROM clans c LEFT JOIN users u ON u.id = c.leader_id ORDER BY n DESC, c.name COLLATE NOCASE LIMIT 200").all()
       .map((r) => ({
         id: String(r.id), name: String(r.name || "Clan").slice(0, 30), tag: String(r.tag || "").slice(0, 5),
-        description: String(r.description || "").slice(0, 3000),
+        description: String(r.description || "").slice(0, 250),
         leader: String(r.leader || "Pilote").slice(0, 20), memberCount: Math.max(0, Number(r.n) || 0),
         open: Number(r.open ?? 1) !== 0,
       }));
@@ -850,7 +850,7 @@ export function getClanInfo(tag) {
       const lr = db.prepare("SELECT pseudo FROM users WHERE id = ?").get(String(row.leader_id));
       if (lr) leaderPseudo = String(lr.pseudo || "Pilote").slice(0, 20);
     } catch {}
-    return { id: String(row.id), name: String(row.name || "Clan").slice(0, 30), tag: String(row.tag || "").slice(0, 5), description: String(row.description || "").slice(0, 3000), leader: leaderPseudo, memberCount: members.length, members };
+    return { id: String(row.id), name: String(row.name || "Clan").slice(0, 30), tag: String(row.tag || "").slice(0, 5), description: String(row.description || "").slice(0, 250), leader: leaderPseudo, memberCount: members.length, members };
   } catch { return null; }
 }
 
