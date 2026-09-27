@@ -147,6 +147,12 @@ export function initClanUI() {
       return;
     }
     const rights = myRights(), leader = isLeader();
+    // Onglet Rangs réservé au chef.
+    const ranksTab = document.querySelector('#clanManagePane [data-clan-tab="ranks"]');
+    const ranksPane = document.querySelector('#clanManagePane [data-clan-pane="ranks"]');
+    if (ranksTab) ranksTab.style.display = leader ? "" : "none";
+    if (ranksPane && !leader) ranksPane.classList.remove("active");
+    if (!leader && activeTab === "ranks") setTab("infos");
     const descInputEl = document.getElementById("clanDescInput");
     const descBtnEl = document.getElementById("clanDescBtn");
     if (descInputEl) descInputEl.style.display = rights.edit ? "" : "none";
@@ -188,6 +194,7 @@ export function initClanUI() {
           + `<button type="button" data-act="invite" title="Inviter dans le groupe" aria-label="Inviter dans le groupe">${ICON_GROUP}</button>`
           + (leader && !targetIsLeader && rankNames.length ? `<select data-assign="${pseudo}" title="Rang" aria-label="Rang">${rankNames.map((n) => `<option value="${escapeHtml(n)}"${String(n).toLowerCase() === String(role).toLowerCase() ? " selected" : ""}>${escapeHtml(n)}</option>`).join("")}</select>` : "")
           + (kickable ? `<button class="danger" type="button" data-act="kick" title="Exclure du clan" aria-label="Exclure du clan">${ICON_REMOVE}</button>` : "")
+          + (leader && targetIsLeader ? `<button class="danger" type="button" data-act="dissolve" title="Dissoudre le clan" aria-label="Dissoudre le clan">Dissoudre</button>` : "")
           + `</span></article>`;
       }).join("");
     }
@@ -198,7 +205,6 @@ export function initClanUI() {
       foot.innerHTML = `<div class="clanDangerZone">`
         + (leader ? `<button type="button" data-act="transfer-open">Transférer la chefferie</button>` : "")
         + `<button type="button" data-act="leave">Quitter le clan</button>`
-        + (leader ? `<button type="button" data-act="dissolve" class="danger">Dissoudre le clan</button>` : "")
         + `</div>`
         + (leader ? `<form id="clanTransferForm" class="clanForm clanTransferForm" autocomplete="off" hidden><input id="clanTransferInput" type="text" placeholder="Pseudo du successeur…" maxlength="20" autocomplete="off" /><button type="submit">Transférer</button></form>` : "");
     }
