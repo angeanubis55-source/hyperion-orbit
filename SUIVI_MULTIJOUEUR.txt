@@ -298,9 +298,11 @@ RESTE A FAIRE (prochaines étapes proposées)
 - Client : NETPLAY.js (miroir `[Clan]`, clanChanged -> dirty, clanTag,
   setNetDiplo/getClanRelation). UI/UI_CLAN.js (clanWindow 600px) :
   sans clan = création + liste publique (statut, Postuler/Retirer) ;
-  en clan = onglets Infos (recrutement, description, transfert,
+  en   clan = onglets Infos (recrutement, description, transfert,
   dissolution) / Membres (rangs via liste déroulante, kick, MP,
   groupe, candidatures) / Rangs (créer, droits par cases, supprimer)
+  ; fenêtre 700px, vitrine des clans en grosses cartes (hover + gros
+  bouton Postuler)
   / Guerre = TOUS les clans (Guerre immédiate en 1 clic, NAP/Alliance
   = demande, score + jours restants, accepter/refuser/rompre) /
   Journal (événements du clan). Tchat : /c message (UI_CHAT.js).
