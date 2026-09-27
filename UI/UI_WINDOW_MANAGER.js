@@ -161,6 +161,17 @@ function clearSavedWindowPositions() {
   } catch {}
 }
 
+function clearSavedWindowStates() {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(WIN_STATE_PREFIX)) {
+        localStorage.removeItem(k);
+      }
+    }
+  } catch {}
+}
+
   function getDock() {
     let dock = document.getElementById("gameWindowDock");
 
@@ -183,6 +194,7 @@ function clearSavedWindowPositions() {
       a,
       canvas,
       .gameWinIcon,
+      .gameWinCloseBtn,
       .slot,
       .slotBox,
       .itemRow,
@@ -683,6 +695,7 @@ if (barIcon && minimizable !== false) {
         card,
         bar,
         minimizable,
+        defaultOpen: !!defaultOpen,
         lastDisplay: state.lastDisplay || "grid",
       });
 
@@ -844,6 +857,7 @@ restore(id) {
 
     resetPositions() {
   clearSavedWindowPositions();
+  clearSavedWindowStates();
 
   const dock = getDock();
 
@@ -852,14 +866,14 @@ restore(id) {
 
     const card = w.card;
     const root = w.root;
+    clearTimeout(w.animationTimer);
+    clearTimeout(w.animationIconTimer);
+    card.classList.remove("gameWinOpening");
+    card.classList.remove("gameWinClosing");
 
-    root.classList.remove("gameWinMinimized");
-    card.classList.remove("gameWinMinimized");
+    // Géométrie effacée pour toutes les fenêtres (sinon la prochaine
+    // ouverture reprendrait une position perdue).
     card.classList.remove("floating");
-
-    root.style.display = "block";
-    card.style.display = "block";
-
     card.style.position = "";
     card.style.left = "";
     card.style.top = "";
@@ -872,6 +886,33 @@ restore(id) {
     card.style.transform = "";
     card.style.visibility = "visible";
     card.style.opacity = "1";
+
+    // "Réinitialiser" = retrouver la disposition par défaut : les fenêtres
+    // fermées par défaut (terminal de quêtes, commerce, paramètres...)
+    // restent fermées au lieu d'être toutes ouvertes de force.
+    const shouldOpen = w.minimizable === false ? true : !!w.defaultOpen;
+    if (!shouldOpen) {
+      root.classList.add("gameWinMinimized");
+      card.classList.add("gameWinMinimized");
+      root.style.display = "none";
+      card.style.display = "none";
+      if (w.minimizable === false) {
+        const dockBtn = dock.querySelector(`[data-window-id="${id}"]`);
+        if (dockBtn) dockBtn.remove();
+      } else {
+        const btn2 = makeDockIcon(id, w.title, w.icon);
+        btn2?.classList.remove("dockIconActive");
+        refreshDockIcon(btn2);
+      }
+      continue;
+    }
+
+    root.classList.remove("gameWinMinimized");
+    card.classList.remove("gameWinMinimized");
+
+    root.style.display = "block";
+    card.style.display = "block";
+
     bringWindowToFront(card);
 
     const dockBtn = dock.querySelector(`[data-window-id="${id}"]`);
