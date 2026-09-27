@@ -159,7 +159,7 @@ export function initClanUI() {
         + `<div><span>Nom</span><strong>${escapeHtml(clan.name)}</strong></div>`
         + `<div><span>Chef</span><strong>${escapeHtml(chief?.pseudo || "?")}</strong></div>`
         + `<div><span>Membres</span><strong>${clan.members.length}/30</strong></div>`
-        + `<div class="clanRecruitCell"><span>Recrutement</span><strong class="${clan.open === false ? "closed" : "open"}">${clan.open === false ? "Fermé" : "Ouvert"}</strong>${rights.edit ? `<button type="button" data-act="toggle-open">${clan.open === false ? "Ouvrir" : "Fermer"}</button>` : ""}</div>`
+        + `<div class="clanRecruitCell"><span class="clanRecruitStack"><span>Recrutement</span><strong class="${clan.open === false ? "closed" : "open"}">${clan.open === false ? "Fermé" : "Ouvert"}</strong></span>${rights.edit ? `<button type="button" data-act="toggle-open">${clan.open === false ? "Ouvrir" : "Fermer"}</button>` : ""}</div>`
         + `</div>`
         + (clan.description ? `<p class="clanDesc">${escapeHtml(clan.description)}</p>` : "");
     }
