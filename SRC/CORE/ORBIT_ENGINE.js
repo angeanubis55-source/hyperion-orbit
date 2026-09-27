@@ -27523,22 +27523,25 @@ mini.addEventListener("pointerup", (e) => {
   try { mini.releasePointerCapture(e.pointerId); } catch {}
 }, { passive: true });
 
-// Multi : allies minimap = escortes + joueurs distants (bleu meme firme,
-// rouge autre firme).
+// Multi : allies minimap = escortes + joueurs distants (vert meme clan,
+// bleu meme firme, rouge autre firme).
 function minimapAllies() {
   try {
     const remotes = getNetplayRemotes();
     if (!remotes || !remotes.size) return escortShips;
     const myFirm = String(account.user?.faction || "").toLowerCase();
+    let myClan = "";
+    try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch { myClan = ""; }
     const dots = [];
     for (const rr of remotes.values()) {
       if (!rr || rr.dead) continue;
       const firm = String(rr.firm || "").toLowerCase();
       const same = myFirm !== "" && firm === myFirm;
+      const sameClan = myClan !== "" && String(rr.clan || "").toUpperCase() === myClan;
       dots.push({
         x: Number(rr.rx ?? rr.x), y: Number(rr.ry ?? rr.y), hp: 1, r: 18, _net: true,
         _netPlayer: String(rr.id),
-        color: same ? "rgba(80,160,255,0.95)" : "rgba(255,70,90,0.95)",
+        color: sameClan ? "rgba(105,255,140,0.95)" : (same ? "rgba(80,160,255,0.95)" : "rgba(255,70,90,0.95)"),
       });
     }
     return dots.length ? escortShips.concat(dots) : escortShips;
@@ -28105,6 +28108,8 @@ function drawNetplayRemotes(ox, oy) {
       }
     }
   } catch {}
+  // Membres du clan : pseudo + tag en vert (avant groupe/firme).
+  const myClanTagForColor = (() => { try { return String(getMyClanTag() || "").toUpperCase(); } catch { return ""; } })();
   for (const r of remotes.values()) {
     if (!r || r.dead) continue;
     // Balancement comme notre vaisseau (ampleur reduite en mouvement).
@@ -28485,11 +28490,13 @@ function drawNetplayRemotes(ox, oy) {
         rRank, rFact, dind, rFicon, mind,
         String(r.shipId || "").toLowerCase() === "police",
         showRemoteDetails,
-        getNetGroup()?.members?.some(member => String(member.id) === String(r.id))
-          ? "rgba(255,229,138,0.98)"
-          : (normalizeFactionId(r.firm) === normalizeFactionId(account.user?.faction)
-            ? "rgba(80,225,255,0.98)"
-            : "rgba(255,65,82,0.98)"),
+        (myClanTagForColor && String(r.clan || "").toUpperCase() === myClanTagForColor)
+          ? "rgba(105,255,140,0.98)"
+          : (getNetGroup()?.members?.some(member => String(member.id) === String(r.id))
+            ? "rgba(255,229,138,0.98)"
+            : (normalizeFactionId(r.firm) === normalizeFactionId(account.user?.faction)
+              ? "rgba(80,225,255,0.98)"
+              : "rgba(255,65,82,0.98)")),
       );
     } catch {}
     ctx.restore();
