@@ -12,7 +12,7 @@
   .sub { margin: 0 0 18px; color: #5d96a5; font-size: 12px; }
   .card { max-width: 980px; margin: 0 auto 16px; padding: 16px 18px; border: 1px solid rgba(124,240,255,.22); border-radius: 12px; background: rgba(4,18,28,.75); box-shadow: 0 0 24px rgba(0,217,255,.06); }
   .card h2 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #75e8ff; }
-  input[type=password], input[type=text] { height: 34px; padding: 0 10px; border: 1px solid rgba(124,240,255,.3); border-radius: 8px; background: #051521; color: #effcff; font-size: 13px; outline: 0; }
+  input[type=password], input[type=text], input[type=number] { height: 34px; padding: 0 10px; border: 1px solid rgba(124,240,255,.3); border-radius: 8px; background: #051521; color: #effcff; font-size: 13px; outline: 0; }
   input:focus { border-color: #69e9ff; }
   button { height: 34px; padding: 0 16px; border: 1px solid rgba(124,240,255,.38); border-radius: 8px; background: linear-gradient(135deg, rgba(0,145,190,.38), rgba(0,70,100,.34)); color: #eaffff; font-weight: 800; font-size: 13px; cursor: pointer; }
   button:hover { border-color: rgba(124,240,255,.62); background: rgba(0,140,185,.3); }
@@ -48,6 +48,24 @@
   #loginBox .row { margin-top: 10px; }
   #app { display: none; }
   .mutedRow { opacity: .55; }
+  /* --- Modale custom + toast (remplace prompt/alert natifs) --- */
+  #modalOverlay { display: none; position: fixed; inset: 0; z-index: 50; background: rgba(1,6,10,.72); backdrop-filter: blur(2px); align-items: center; justify-content: center; padding: 16px; }
+  #modalOverlay.open { display: flex; }
+  #modalBox { width: 100%; max-width: 440px; padding: 18px; border: 1px solid rgba(124,240,255,.3); border-radius: 12px; background: #06141f; box-shadow: 0 0 40px rgba(0,217,255,.12); }
+  #modalBox.danger { border-color: rgba(255,110,120,.5); box-shadow: 0 0 40px rgba(255,60,70,.12); }
+  #modalTitle { margin: 0 0 4px; font-size: 16px; color: #effcff; }
+  #modalSub { margin: 0 0 12px; font-size: 12px; color: #5d96a5; }
+  #modalBody input[type=text], #modalBody input[type=number] { width: 100%; margin-bottom: 10px; }
+  #modalBody .bigInput { height: 42px; font-size: 16px; font-weight: 800; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chips button { height: 26px; padding: 0 10px; font-size: 12px; }
+  .chips button.sel { border-color: #7be495; color: #7be495; }
+  #modalActions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  #modalErr { min-height: 18px; margin: 4px 0 0; font-size: 12px; color: #ff9aa5; }
+  #toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(20px); z-index: 60; max-width: 90vw; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; border: 1px solid rgba(124,240,255,.35); background: rgba(4,18,28,.95); color: #eaffff; }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.ok { border-color: rgba(70,210,105,.5); color: #7be495; }
+  #toast.err { border-color: rgba(255,110,120,.5); color: #ff9aa5; }
 </style>
 </head>
 <body>
@@ -74,14 +92,7 @@
     <p id="bcMsg" class="msg"></p>
   </div>
   <div class="card">
-    <h2>Connectés</h2>
-    <table>
-      <thead><tr><th>Pseudo</th><th>Compte</th><th>Map</th><th>Position</th><th>État</th><th>Co</th><th>Actions</th></tr></thead>
-      <tbody id="peerRows"><tr><td colspan="7">Chargement…</td></tr></tbody>
-    </table>
-  </div>
-  <div class="card">
-    <h2>Tous les joueurs (connectés + hors ligne) <span id="accountCount" class="badge off">0</span></h2>
+    <h2>Joueurs <span id="accountCount" class="badge off">0</span></h2>
     <div class="searchRow"><input id="accountSearch" type="text" placeholder="Rechercher un pseudo…" maxlength="20" autocomplete="off"></div>
     <table>
       <thead><tr><th>Pseudo</th><th>Statut</th><th>Map</th><th>Crédits</th><th>EXP</th><th>Honneur</th><th>Actions</th></tr></thead>
@@ -96,11 +107,20 @@
     </table>
   </div>
 </div>
+<div id="modalOverlay"><div id="modalBox">
+  <h3 id="modalTitle"></h3>
+  <p id="modalSub"></p>
+  <div id="modalBody"></div>
+  <p id="modalErr"></p>
+  <div id="modalActions"></div>
+</div></div>
+<div id="toast"></div>
 <script>
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
   const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+  const fmtN = (v) => Number(v || 0).toLocaleString("fr-FR");
   let token = "";
   try { token = sessionStorage.getItem("orbit_admin_token") || ""; } catch {}
   const headers = () => ({ "content-type": "application/json", "x-admin-token": token });
@@ -122,7 +142,7 @@
     $("loginMsg").className = "msg";
     if (!token) return;
     try {
-      const out = await call("/api/admin/peers");
+      const out = await call("/api/admin/accounts");
       if (!out || out.ok !== true) throw new Error("Refusé.");
       try { sessionStorage.setItem("orbit_admin_token", token); } catch {}
       $("loginBox").style.display = "none";
@@ -133,101 +153,225 @@
       $("loginMsg").className = "msg err";
     }
   }
+  /* ---------- Toast (remplace alert) ---------- */
+  let toastT = 0;
+  function toast(msg, kind) {
+    const el = $("toast");
+    el.textContent = String(msg || "");
+    el.className = "show " + (kind === "ok" ? "ok" : kind === "err" ? "err" : "");
+    clearTimeout(toastT);
+    toastT = setTimeout(() => { el.className = ""; }, 3500);
+  }
+  /* ---------- Modale custom (remplace prompt) ---------- */
+  function closeModal() {
+    $("modalOverlay").classList.remove("open");
+    $("modalBox").classList.remove("danger");
+    $("modalBody").innerHTML = "";
+    $("modalActions").innerHTML = "";
+    $("modalErr").textContent = "";
+  }
+  function openModal({ title, sub, bodyHTML, danger, actions }) {
+    $("modalTitle").textContent = String(title || "");
+    $("modalSub").textContent = String(sub || "");
+    $("modalBody").innerHTML = bodyHTML || "";
+    $("modalErr").textContent = "";
+    $("modalBox").classList.toggle("danger", danger === true);
+    const box = $("modalActions");
+    box.innerHTML = "";
+    for (const a of (actions || [])) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = a.label;
+      if (a.danger) b.className = "danger";
+      if (a.disabled) b.disabled = true;
+      if (a.id) b.id = a.id;
+      b.onclick = () => { try { a.onClick && a.onClick(); } catch (e) { modalError(e?.message || "Erreur."); } };
+      box.appendChild(b);
+    }
+    $("modalOverlay").classList.add("open");
+    const first = $("modalBody").querySelector("input");
+    if (first) { try { first.focus(); first.select && first.select(); } catch {} }
+  }
+  function modalError(msg) { $("modalErr").textContent = String(msg || "Erreur."); }
+  $("modalOverlay").addEventListener("mousedown", (e) => { if (e.target === $("modalOverlay")) closeModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("modalOverlay").classList.contains("open")) closeModal(); });
   function mkBtn(label, danger) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "small" + (danger ? " danger" : ""); b.textContent = label;
     b.style.marginLeft = "6px";
     return b;
   }
-  async function doGive(kind, pseudo) {
-    const labels = { credits: ["Crédits", "/api/admin/give", "crédits"], exp: ["EXP", "/api/admin/give-exp", "EXP"], honor: ["Honneur", "/api/admin/give-honor", "honneur"] };
-    const [title, path, unit] = labels[kind] || labels.credits;
-    const raw = prompt(`${title} pour ${pseudo} ?\nQuantité à AJOUTER (négatif = retirer, espaces acceptés) :`, "1000000");
-    if (raw == null) return;
-    try {
-      const out = await call(path, { method: "POST", body: JSON.stringify({ pseudo, amount: String(raw).replace(/[\s_]/g, "") }) });
-      if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-      alert(`${out.pseudo} : ${Number(out.before).toLocaleString("fr-FR")} → ${Number(out.after).toLocaleString("fr-FR")} ${unit}.`);
-    } catch (e) {
-      alert(e?.message || "Erreur.");
-    }
-    refresh();
+  /* ---------- Crédits / EXP / Honneur : vraie box + montants rapides ---------- */
+  const GIVE_DEFS = {
+    credits: { title: "Crédits", path: "/api/admin/give", unit: "crédits", field: "credits" },
+    exp: { title: "EXP", path: "/api/admin/give-exp", unit: "EXP", field: "exp" },
+    honor: { title: "Honneur", path: "/api/admin/give-honor", unit: "honneur", field: "honor" },
+  };
+  const GIVE_CHIPS = [1000000, 10000000, 100000000, 1000000000];
+  function openGiveModal(kind, p) {
+    const def = GIVE_DEFS[kind] || GIVE_DEFS.credits;
+    const current = p && typeof p[def.field] === "number" ? p[def.field] : null;
+    const chipsAdd = GIVE_CHIPS.map((v) => `<button type="button" data-amt="${v}">+${fmtN(v)}</button>`).join("");
+    const chipsSub = GIVE_CHIPS.map((v) => `<button type="button" data-amt="${-v}">−${fmtN(v)}</button>`).join("");
+    openModal({
+      title: `${def.title} — ${p.pseudo}`,
+      sub: current == null ? "Montant à ajouter (négatif = retirer)." : `Solde actuel : ${fmtN(current)} ${def.unit}. Montant à ajouter (négatif = retirer).`,
+      bodyHTML: `<input id="giveAmt" class="bigInput" type="text" inputmode="numeric" value="1 000 000" autocomplete="off">` +
+        `<div class="chips" id="giveChipsAdd">${chipsAdd}</div>` +
+        `<div class="chips" id="giveChipsSub">${chipsSub}</div>`,
+      actions: [
+        { label: "Annuler", onClick: closeModal },
+        { label: "Valider", onClick: async () => {
+          const raw = ($("giveAmt").value || "").replace(/[\s_]/g, "");
+          if (!/^-?\d+$/.test(raw)) { modalError("Montant invalide (entier)."); return; }
+          try {
+            const out = await call(def.path, { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, amount: raw }) });
+            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+            closeModal();
+            toast(`${out.pseudo} : ${fmtN(out.before)} → ${fmtN(out.after)} ${def.unit}.`, "ok");
+          } catch (e) { modalError(e?.message || "Erreur."); return; }
+          refresh();
+        } },
+      ],
+    });
+    const setAmt = (v) => { $("giveAmt").value = fmtN(v); };
+    $("giveChipsAdd").querySelectorAll("button").forEach((b) => { b.onclick = () => setAmt(Number(b.dataset.amt)); });
+    $("giveChipsSub").querySelectorAll("button").forEach((b) => { b.onclick = () => setAmt(Number(b.dataset.amt)); });
+    $("giveAmt").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("modalActions").lastChild.click();
+    });
   }
-  async function doBan(p) {
-    const dur = prompt(`Bannir ${p.pseudo} ?\nDurée (connexion bloquée) : 1j, 3j, 7j, 30j ou indefini :`, "7j");
-    if (dur == null) return;
-    const D = { "1j": 86400000, "1d": 86400000, "3j": 3 * 86400000, "7j": 7 * 86400000, "1s": 7 * 86400000, "30j": 30 * 86400000, "1m": 30 * 86400000, "indefini": null, "indef": null, "inf": null };
-    const key = String(dur).trim().toLowerCase();
-    if (!(key in D)) { alert("Durée invalide (1j, 3j, 7j, 30j ou indefini)."); return; }
-    const reason = prompt("Motif du bannissement :", "Comportement inapproprié.");
-    if (reason == null) return;
-    try {
-      const out = await call("/api/admin/ban", { method: "POST", body: JSON.stringify({ id: p.id, pseudo: p.pseudo, durationMs: D[key], reason: String(reason).slice(0, 200) }) });
-      if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-      const until = out.until != null ? new Date(Number(out.until)).toLocaleString("fr-FR") : "définitif";
-      alert(`${out.pseudo} banni (${until}). Motif : ${out.reason}`);
-    } catch (e) {
-      alert(e?.message || "Erreur.");
-    }
-    refresh();
+  /* ---------- Ban : boutons rapides de durée + motif ---------- */
+  const BAN_DURATIONS = [
+    { label: "1 jour", ms: 86400000 },
+    { label: "3 jours", ms: 3 * 86400000 },
+    { label: "7 jours", ms: 7 * 86400000 },
+    { label: "30 jours", ms: 30 * 86400000 },
+    { label: "Définitif", ms: null },
+  ];
+  function openBanModal(p) {
+    let durMs = 7 * 86400000;
+    const chips = BAN_DURATIONS.map((d, i) => `<button type="button" data-i="${i}" class="${i === 2 ? "sel" : ""}">${esc(d.label)}</button>`).join("");
+    openModal({
+      title: `Bannir ${p.pseudo}`,
+      sub: p.online === true ? "Le joueur sera déconnecté aussitôt." : "Hors ligne : bloqué à sa prochaine connexion.",
+      bodyHTML: `<div class="chips" id="banChips">${chips}</div>` +
+        `<input id="banReason" type="text" placeholder="Motif du bannissement…" maxlength="200" value="Comportement inapproprié." autocomplete="off">`,
+      danger: true,
+      actions: [
+        { label: "Annuler", onClick: closeModal },
+        { label: "Bannir", danger: true, onClick: async () => {
+          const reason = ($("banReason").value || "").replace(/\s+/g, " ").trim().slice(0, 200) || "Comportement inapproprié.";
+          try {
+            const out = await call("/api/admin/ban", { method: "POST", body: JSON.stringify({ id: p.id, pseudo: p.pseudo, durationMs: durMs, reason }) });
+            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+            closeModal();
+            const until = out.until != null ? new Date(Number(out.until)).toLocaleString("fr-FR") : "définitif";
+            toast(`${out.pseudo} banni (${until}).`, "ok");
+          } catch (e) { modalError(e?.message || "Erreur."); return; }
+          refresh();
+        } },
+      ],
+    });
+    $("banChips").querySelectorAll("button").forEach((b) => {
+      b.onclick = () => {
+        $("banChips").querySelectorAll("button").forEach((x) => x.classList.remove("sel"));
+        b.classList.add("sel");
+        durMs = BAN_DURATIONS[Number(b.dataset.i)].ms;
+      };
+    });
+    $("banReason").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("modalActions").lastChild.click();
+    });
   }
-  // Mêmes fonctions pour connectés et hors ligne. Kick uniquement si en ligne
-  // (le serveur ne peut pas kicker un hors ligne). Mute/ban/give par id/pseudo.
-  function appendAdminActions(td, p, online) {
+  /* ---------- Kick : vraie box motif ---------- */
+  function openKickModal(p) {
+    openModal({
+      title: `Kicker ${p.pseudo}`,
+      sub: "Explosion visible par tous + déconnexion avec le motif.",
+      bodyHTML: `<input id="kickReason" type="text" placeholder="Motif affiché au joueur…" maxlength="200" value="Comportement inapproprié." autocomplete="off">`,
+      danger: true,
+      actions: [
+        { label: "Annuler", onClick: closeModal },
+        { label: "Kicker", danger: true, onClick: async () => {
+          const reason = ($("kickReason").value || "").slice(0, 200);
+          const out = await call("/api/admin/kick", { method: "POST", body: JSON.stringify({ id: p.id, reason }) });
+          if (!out || out.ok !== true) { closeModal(); toast("Joueur déjà parti.", "err"); refresh(); return; }
+          closeModal();
+          toast(`${p.pseudo} kické.`, "ok");
+          refresh();
+        } },
+      ],
+    });
+    $("kickReason").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("modalActions").lastChild.click();
+    });
+  }
+  /* ---------- Suppression définitive : confirme en tapant le pseudo ---------- */
+  function openDeleteModal(p) {
+    openModal({
+      title: `Supprimer ${p.pseudo} ?`,
+      sub: "DÉFINITIF : compte, amis (des deux côtés), demandes, stats, classement, sessions, bannissements liés. Comme s'il n'avait jamais existé.",
+      bodyHTML: `<input id="delConfirm" type="text" placeholder="Tape « ${esc(p.pseudo)} » pour confirmer" autocomplete="off">`,
+      danger: true,
+      actions: [
+        { label: "Annuler", onClick: closeModal },
+        { label: "Supprimer définitivement", danger: true, id: "delBtn", disabled: true, onClick: async () => {
+          try {
+            const out = await call("/api/admin/delete", { method: "POST", body: JSON.stringify({ id: p.id, pseudo: p.pseudo }) });
+            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+            closeModal();
+            toast(`Compte ${out.pseudo} supprimé définitivement.`, "ok");
+          } catch (e) { modalError(e?.message || "Erreur."); return; }
+          refresh();
+        } },
+      ],
+    });
+    $("delConfirm").addEventListener("input", () => {
+      const ok = ($("delConfirm").value || "").trim() === p.pseudo;
+      $("delBtn").disabled = !ok;
+    });
+    $("delConfirm").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !$("delBtn").disabled) $("delBtn").click();
+    });
+  }
+  // Mêmes fonctions pour connectés et hors ligne. Kick uniquement si en ligne.
+  // Mute/ban/give par id/pseudo. Supprimer = comptes uniquement (pas invités).
+  function appendAdminActions(td, p, online, isGuest) {
     let first = true;
     const add = (b) => { if (!first) b.style.marginLeft = "6px"; first = false; td.appendChild(b); };
     if (online) {
       const kick = mkBtn("Kick", true); kick.style.marginLeft = "0px";
-      kick.onclick = async () => {
-        const reason = prompt(`Kicker ${p.pseudo} ?\nMotif affiché au joueur (explosion + déconnexion) :`, "Comportement inapproprié.");
-        if (reason == null) return;
-        const out = await call("/api/admin/kick", { method: "POST", body: JSON.stringify({ id: p.id, reason: String(reason).slice(0, 200) }) });
-        if (!out || out.ok !== true) alert("Joueur déjà parti.");
-        refresh();
-      };
+      kick.onclick = () => openKickModal(p);
       add(kick);
     }
     const mute = mkBtn(p.muted ? "Unmute" : "Mute"); if (first) mute.style.marginLeft = "0px";
     mute.onclick = async () => { await call("/api/admin/mute", { method: "POST", body: JSON.stringify({ id: p.id, muted: !p.muted }) }); refresh(); };
     add(mute);
     const ban = mkBtn(p.banned ? "Banni" : "Ban", true);
-    ban.onclick = async () => { await doBan(p); };
+    ban.onclick = () => openBanModal(p);
     add(ban);
-    const give = mkBtn("Crédits");
-    give.onclick = async () => { await doGive("credits", p.pseudo); };
-    add(give);
-    const giveExp = mkBtn("EXP");
-    giveExp.onclick = async () => { await doGive("exp", p.pseudo); };
-    add(giveExp);
-    const giveHonor = mkBtn("Honneur");
-    giveHonor.onclick = async () => { await doGive("honor", p.pseudo); };
-    add(giveHonor);
+    if (!isGuest) {
+      const give = mkBtn("Crédits");
+      give.onclick = () => openGiveModal("credits", p);
+      add(give);
+      const giveExp = mkBtn("EXP");
+      giveExp.onclick = () => openGiveModal("exp", p);
+      add(giveExp);
+      const giveHonor = mkBtn("Honneur");
+      giveHonor.onclick = () => openGiveModal("honor", p);
+      add(giveHonor);
+      const del = mkBtn("Supprimer", true);
+      del.onclick = () => openDeleteModal(p);
+      add(del);
+    }
   }
   async function refresh() {
     if (!$("app") || $("app").style.display === "none") return;
     try {
-      const out = await call("/api/admin/peers");
-      const peers = (out && out.peers) || [];
       try { await refreshChat(); } catch {}
       try { await refreshBans(); } catch {}
       try { await refreshAccounts(); } catch {}
-      $("peerCount").textContent = String(peers.length);
-      const tb = $("peerRows");
-      tb.innerHTML = "";
-      if (!peers.length) tb.innerHTML = `<tr><td colspan="7">Personne en ligne.</td></tr>`;
-      for (const p of peers) {
-        const tr = document.createElement("tr");
-        if (p.muted) tr.className = "mutedRow";
-        const badges = [(p.authed ? `<span class="badge ok">compte</span>` : `<span class="badge guest">invité</span>`),
-          (p.instance ? ` <span class="badge gate">gate</span>` : ""),
-          (p.dead ? ` <span class="badge dead">mort</span>` : ""),
-          (p.muted ? ` <span class="badge muted">muté</span>` : "")].join("");
-        tr.innerHTML = `<td>${esc(p.pseudo)}</td><td>${badges}</td><td>${esc(p.map)}</td>` +
-          `<td>${esc(p.x)}, ${esc(p.y)}</td><td>${esc(p.dead ? "mort" : "en vie")}</td><td>${esc(p.connectedSec)}s</td><td></td>`;
-        const td = tr.lastChild;
-        appendAdminActions(td, p, true);
-        tb.appendChild(tr);
-      }
     } catch {}
   }
   async function refreshAccounts() {
@@ -237,6 +381,7 @@
     const accounts = (out && out.accounts) || [];
     const guests = (out && out.guests) || [];
     const onlineCount = Number(out?.onlineCount ?? 0);
+    $("peerCount").textContent = String(onlineCount);
     $("accountCount").textContent = `${String(accounts.length)} comptes · ${String(onlineCount)} en ligne`;
     const q = ($("accountSearch")?.value || "").trim().toLowerCase();
     const rows = accounts.filter((a) => !q || String(a.pseudo || "").toLowerCase().includes(q));
@@ -255,10 +400,10 @@
         (a.muted ? ` <span class="badge muted">muté</span>` : "")].join("");
       const mapCell = a.online ? esc(a.map) : `<span style="color:#5d96a5">—</span>`;
       tr.innerHTML = `<td>${esc(a.pseudo)}</td><td>${status}${extra}</td><td>${mapCell}</td>` +
-        `<td class="num">${Number(a.credits || 0).toLocaleString("fr-FR")}</td>` +
-        `<td class="num">${Number(a.exp || 0).toLocaleString("fr-FR")}</td>` +
-        `<td class="num">${Number(a.honor || 0).toLocaleString("fr-FR")}</td><td></td>`;
-      appendAdminActions(tr.lastChild, a, a.online === true);
+        `<td class="num">${fmtN(a.credits)}</td>` +
+        `<td class="num">${fmtN(a.exp)}</td>` +
+        `<td class="num">${fmtN(a.honor)}</td><td></td>`;
+      appendAdminActions(tr.lastChild, a, a.online === true, false);
       tb.appendChild(tr);
     }
     for (const g of guests) {
@@ -267,7 +412,7 @@
       tr.innerHTML = `<td>${esc(g.pseudo)} <span class="badge guest">invité</span></td>` +
         `<td><span class="badge ok">en ligne</span></td><td>${esc(g.map)}</td>` +
         `<td class="num">—</td><td class="num">—</td><td class="num">—</td><td></td>`;
-      appendAdminActions(tr.lastChild, g, true);
+      appendAdminActions(tr.lastChild, g, true, true);
       tb.appendChild(tr);
     }
   }
@@ -310,8 +455,9 @@
         try {
           const res = await call("/api/admin/unban", { method: "POST", body: JSON.stringify({ key: b.key }) });
           if (!res || res.ok !== true) throw new Error("Échec.");
+          toast("Débanni.", "ok");
         } catch (e) {
-          alert(e?.message || "Erreur.");
+          toast(e?.message || "Erreur.", "err");
         }
         refresh();
       };

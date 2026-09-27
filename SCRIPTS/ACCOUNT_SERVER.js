@@ -363,6 +363,53 @@ export function adminListAccounts() {
   } catch { return []; }
 }
 
+// Admin : suppression DEFINITIVE d'un compte (id u_xxx / brut ou pseudo).
+// Efface tout : ligne users (= classement, profil), sessions, pvp_stats,
+// npc_reward_tx, amis (les deux sens), demandes d'ami (les deux sens).
+// Comme s'il n'avait jamais existé. Retourne les ids amis impactés pour
+// notification live côté MULTI_SERVER.
+export function adminDeleteAccount(target) {
+  try {
+    initAccountDb();
+    const t = String(target || "").trim();
+    if (!t) return { ok: false, error: "Pseudo ou id manquant." };
+    let row = null;
+    const rawId = t.startsWith("u_") ? t.slice(2) : t;
+    try { row = db.prepare("SELECT id, pseudo FROM users WHERE id = ?").get(rawId) || null; } catch {}
+    if (!row) {
+      try { row = db.prepare("SELECT id, pseudo FROM users WHERE pseudo_norm = ?").get(norm(t)) || null; } catch {}
+    }
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const uid = String(row.id);
+    const pseudo = String(row.pseudo || "Pilote").slice(0, 20);
+    // Amis impactés (avant suppression) pour refresh live de leur liste.
+    let affected = [];
+    try {
+      const rows = db.prepare("SELECT user_id, friend_id FROM friends WHERE user_id = ? OR friend_id = ?").all(uid, uid);
+      const set = new Set();
+      for (const r of rows) {
+        const a = String(r.user_id), b = String(r.friend_id);
+        if (a && a !== uid) set.add(a);
+        if (b && b !== uid) set.add(b);
+      }
+      affected = [...set].slice(0, 5000);
+    } catch {}
+    try { db.exec("BEGIN IMMEDIATE"); } catch {}
+    try {
+      db.prepare("DELETE FROM sessions WHERE user_id = ?").run(uid);
+    } catch {}
+    try { db.prepare("DELETE FROM pvp_stats WHERE user_id = ?").run(uid); } catch {}
+    try { db.prepare("DELETE FROM npc_reward_tx WHERE user_id = ?").run(uid); } catch {}
+    try { db.prepare("DELETE FROM friends WHERE user_id = ? OR friend_id = ?").run(uid, uid); } catch {}
+    try { db.prepare("DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?").run(uid, uid); } catch {}
+    let deleted = 0;
+    try { deleted = Number(db.prepare("DELETE FROM users WHERE id = ?").run(uid)?.changes) || 0; } catch {}
+    try { db.exec("COMMIT"); } catch {}
+    if (!deleted) { try { db.exec("ROLLBACK"); } catch {} return { ok: false, error: "Compte introuvable." }; }
+    return { ok: true, id: uid, pid: `u_${uid}`.slice(0, 128), pseudo, affected };
+  } catch { try { db.exec("ROLLBACK"); } catch {} return { ok: false, error: "Erreur serveur." }; }
+}
+
 // --- Amis façon DO (comptes uniquement) : demande -> acceptation ->
 // amitié mutuelle. Les demandes en attente persistent (joueur hors ligne
 // les retrouve à la connexion).

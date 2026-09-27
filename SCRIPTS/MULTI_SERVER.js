@@ -6,7 +6,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminListAccounts } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminListAccounts, adminDeleteAccount } from "./ACCOUNT_SERVER.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
@@ -246,9 +246,77 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, accounts: out, guests, onlineCount, total: out.length });
     return true;
   }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban") && request.method === "POST") {
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
+        if (pathname === "/api/admin/delete") {
+          // Suppression DEFINITIVE d'un compte : users, sessions, pvp_stats,
+          // npc_reward_tx, amis + demandes (les deux sens). Le classement et
+          // les listes d'amis sont dérivés de ces tables : le joueur
+          // disparaît partout comme s'il n'avait jamais existé.
+          const res = adminDeleteAccount(String(body?.id || body?.pseudo || ""));
+          if (!res || res.ok !== true) {
+            adminJson(response, 404, res || { ok: false, error: "Compte introuvable." });
+            return;
+          }
+          try {
+            const pid = String(res.pid || "");
+            const pseudoNorm = String(res.pseudo || "").trim().toLowerCase();
+            // Purge bannissements + mute liés au compte supprimé.
+            let bansChanged = false;
+            if (pid && bans.delete(pid)) bansChanged = true;
+            const pseudoKey = pseudoNorm ? `pseudo:${pseudoNorm}`.slice(0, 128) : "";
+            if (pseudoKey && bans.delete(pseudoKey)) bansChanged = true;
+            if (bansChanged) saveBans();
+            if (pid) chatMutes.delete(pid);
+            // Déconnexion live si connecté (rooms + instances).
+            let victimWs = null;
+            for (const [, room] of rooms) {
+              const entry = room.get(pid);
+              if (entry?.ws) { victimWs = entry.ws; break; }
+            }
+            if (!victimWs) {
+              const ie = instancePeers.get(pid);
+              if (ie?.ws) victimWs = ie.ws;
+            }
+            if (victimWs) {
+              try {
+                if (victimWs.readyState === 1) victimWs.send(JSON.stringify({ t: "adminKick", reason: "Compte supprimé par l'admin." }));
+              } catch {}
+            }
+            if (pid) removeFromAllRooms(pid);
+            if (victimWs) {
+              const ws = victimWs;
+              setTimeout(() => { try { ws.close(); } catch {} }, 500);
+            }
+            // Groupes : éjecte le fantôme des groupes en mémoire.
+            try {
+              socialPeerGone(pid, {
+                id: pid, state: { pseudo: res.pseudo }, authed: true,
+                send: () => {},
+                sendTo: (to, obj) => sendToPeer(to, obj),
+                findByPseudo: (pseudo) => findPeerByPseudo(pseudo),
+                describe: (p) => (String(p) === pid
+                  ? { id: pid, pseudo: String(res.pseudo || "Pilote").slice(0, 20), online: false }
+                  : describePeer(p)),
+              });
+            } catch {}
+            // Amis : refresh live de leur liste + présence hors ligne.
+            try {
+              for (const fid of (res.affected || [])) {
+                const fpid = `u_${String(fid)}`;
+                sendToPeer(fpid, { t: "friendsChanged" });
+                sendToPeer(fpid, { t: "friendOnline", id: pid, pseudo: String(res.pseudo || "Pilote").slice(0, 20), online: false, map: "", shipId: "", instance: false, inGroup: false });
+              }
+            } catch {}
+            try {
+              const rawUid = String(res.id || "");
+              if (rawUid) notifyFriendPresence(rawUid, false);
+            } catch {}
+          } catch {}
+          adminJson(response, 200, res);
+          return;
+        }
         if (pathname === "/api/admin/give") {
           // GiveCredit : pseudo + quantité (négatif = retirer). Notifie le
           // joueur s'il est connecté ; sinon récupéré à sa prochaine synchro.
