@@ -207,7 +207,7 @@ export function initClanUI() {
     if (foot) {
       foot.hidden = !leader;
       foot.innerHTML = leader
-        ? `<form id="clanTransferForm" class="clanForm clanTransferForm" autocomplete="off"><input id="clanTransferInput" type="text" placeholder="Pseudo du successeur…" maxlength="20" autocomplete="off" /><button type="submit">Transférer la chefferie</button></form>`
+        ? `<form id="clanTransferForm" class="clanForm clanTransferForm" autocomplete="off"><input id="clanTransferInput" type="text" placeholder="Pseudo du successeur…" maxlength="20" autocomplete="off" /><button type="submit">Transférer le chef</button></form>`
         : "";
     }
     // --- Rangs ---
