@@ -147,8 +147,12 @@ export function initClanUI() {
       return;
     }
     const rights = myRights(), leader = isLeader();
-    const descForm = document.getElementById("clanDescForm");
-    if (descForm) descForm.style.display = rights.edit ? "" : "none";
+    const descInputEl = document.getElementById("clanDescInput");
+    const descBtnEl = document.getElementById("clanDescBtn");
+    if (descInputEl) descInputEl.style.display = rights.edit ? "" : "none";
+    if (descBtnEl) descBtnEl.style.display = rights.edit ? "" : "none";
+    const descCurrent = document.getElementById("clanDescCurrent");
+    if (descCurrent) descCurrent.textContent = clan.description || "Aucune description.";
     const rankForm = document.getElementById("clanRankCreateForm");
     if (rankForm) rankForm.style.display = leader ? "" : "none";
     // --- Infos ---
@@ -160,8 +164,7 @@ export function initClanUI() {
         + `<div><span>Chef</span><strong>${escapeHtml(chief?.pseudo || "?")}</strong></div>`
         + `<div><span>Membres</span><strong>${clan.members.length}/30</strong></div>`
         + `<div class="clanRecruitCell"><span class="clanRecruitStack"><span>Recrutement</span><strong class="${clan.open === false ? "closed" : "open"}">${clan.open === false ? "Fermé" : "Ouvert"}</strong></span>${rights.edit ? `<button type="button" data-act="toggle-open">${clan.open === false ? "Ouvrir le recrutement" : "Fermer le recrutement"}</button>` : ""}</div>`
-        + `</div>`
-        + (clan.description ? `<p class="clanDesc">${escapeHtml(clan.description)}</p>` : "");
+        + `</div>`;
     }
     // --- Membres + candidatures ---
     if (appsBlock && appsList) {

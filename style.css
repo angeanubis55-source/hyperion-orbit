@@ -2676,6 +2676,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .clanRecruitCell button:hover{border-color:rgba(124,240,255,.62);background:rgba(0,140,185,.3)}
 .clanDesc{margin:0;padding:8px 9px;border-left:2px solid rgba(124,240,255,.35);color:#cfe7ef;font-size:12px;font-style:italic}
 #clanDescForm{margin:0 11px 10px;padding:10px;border:1px solid rgba(124,240,255,.22);border-radius:10px;background:rgba(2,18,29,.55)}
+#clanDescForm .clanDescCurrent{grid-column:1 / -1;margin:0 0 2px;padding:8px 9px;border-left:2px solid rgba(124,240,255,.35);color:#cfe7ef;font-size:12px;font-style:italic}
 .clanInfoActions{display:flex;gap:6px}
 .clanInfoActions button,.clanDangerZone button{height:28px;padding:0 12px;box-sizing:border-box;border:1px solid rgba(124,240,255,.38);border-radius:8px;color:#eaffff;background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));cursor:pointer;font:800 11px/1.2 ui-sans-serif,system-ui}
 .clanInfoActions button:hover,.clanDangerZone button:hover{border-color:rgba(124,240,255,.62);background:rgba(0,140,185,.3)}
