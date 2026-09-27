@@ -28487,14 +28487,14 @@ function drawNetplayRemotes(ox, oy) {
       const mind = Array.isArray(r.moduleIndicators) ? r.moduleIndicators : [];
       const remotePlayerProxy = netPlayerProxies.get(String(r.id));
       const showRemoteDetails = !!remotePlayerProxy && Target.get() === remotePlayerProxy;
-      // Couleurs pseudo + tag : clan vert (tag blanc), guerre rouge,
-      // NAP orange unifié (tag + pseudo, loin du jaune escadrille),
-      // alliance = tag vert seul (pseudo couleur normale), puis
-      // escadrille (jaune) et firme (bleu/rouge).
+      // Seuls les TAGS se colorent (guerre rouge, NAP orange, alliance
+      // vert), les pseudos gardent leur couleur normale — sauf même
+      // clan : tag + pseudo verts. Puis escadrille (jaune) et firme
+      // (bleu/rouge) pour les pseudos.
       const remoteColors = (() => {
         const plain = { name: "rgba(255,255,255,0.95)", tag: null };
         const tag = String(r.clan || "").toUpperCase().slice(0, 5);
-        if (myClanTagForColor && tag === myClanTagForColor) return { name: "rgba(105,255,140,0.98)", tag: null };
+        if (myClanTagForColor && tag === myClanTagForColor) return { name: "rgba(105,255,140,0.98)", tag: "rgba(105,255,140,0.98)" };
         const normalName = () => {
           if (getNetGroup()?.members?.some(member => String(member.id) === String(r.id))) return "rgba(255,229,138,0.98)";
           return normalizeFactionId(r.firm) === normalizeFactionId(account.user?.faction)
@@ -28504,8 +28504,8 @@ function drawNetplayRemotes(ox, oy) {
         if (tag) {
           try {
             const rel = getClanRelation(tag);
-            if (rel === "war") return { name: "rgba(255,65,82,0.98)", tag: "rgba(255,65,82,0.98)" };
-            if (rel === "nap") return { name: "rgba(255,160,60,0.98)", tag: "rgba(255,160,60,0.98)" };
+            if (rel === "war") return { name: normalName(), tag: "rgba(255,65,82,0.98)" };
+            if (rel === "nap") return { name: normalName(), tag: "rgba(255,160,60,0.98)" };
             if (rel === "ally") return { name: normalName(), tag: "rgba(105,255,140,0.98)" };
           } catch {}
         }
