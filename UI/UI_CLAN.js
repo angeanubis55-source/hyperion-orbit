@@ -212,7 +212,7 @@ export function initClanUI() {
         const bits = Number(rk.rights) || 0;
         const locked = rk.builtin === "leader" || !leader;
         return `<article class="clanCard clanRank" data-rank="${escapeHtml(rk.name)}">`
-          + `<span class="clanIdentity"><strong>${escapeHtml(rk.name)}${rk.builtin === "leader" ? CROWN_SVG : ""}</strong><small>${rk.builtin ? "Rang de base" : "Rang personnalisé"}</small></span>`
+          + `<span class="clanIdentity"><strong>${escapeHtml(rk.name)}${rk.builtin === "leader" ? CROWN_SVG : ""}</strong></span>`
           + `<span class="clanRankChecks">${RIGHT_LABELS.map(([key, label]) => {
             const bit = key === "apps" ? 1 : key === "kick" ? 2 : key === "diplo" ? 4 : 8;
             return `<label title="${label}"><input type="checkbox" data-right="${bit}"${(bits & bit) ? " checked" : ""}${locked || (rk.builtin !== "" && rk.builtin !== "officer" && rk.builtin !== "member") ? " disabled" : ""} />${label}</label>`;

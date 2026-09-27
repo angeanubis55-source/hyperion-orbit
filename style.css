@@ -2694,7 +2694,11 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .clanRank{grid-template-columns:minmax(0,1fr) auto auto}
 .clanRankChecks{display:flex;gap:8px;flex-wrap:wrap}
 .clanRankChecks label{display:inline-flex;align-items:center;gap:4px;color:#9fc3cf;font-size:10px;font-weight:700;cursor:pointer}
-.clanRankChecks input{accent-color:#00d9ff}
+/* Mêmes checkbox que les paramètres */
+#clanRanksList .clanRankChecks input[type="checkbox"]{appearance:none;-webkit-appearance:none;flex:0 0 auto;width:17px;height:17px;margin:0;padding:0;display:grid;place-items:center;border:1px solid rgba(124,240,255,.38);border-radius:6px;background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);accent-color:unset;cursor:pointer}
+#clanRanksList .clanRankChecks input[type="checkbox"]:checked::after{content:"✓";color:#eaffff;font-size:11px;font-weight:900;line-height:1}
+#clanRanksList .clanRankChecks input[type="checkbox"]:hover{border-color:rgba(124,240,255,.62)}
+#clanRanksList .clanRankChecks input[type="checkbox"]:disabled{opacity:.35;cursor:default}
 .clanDiplo{grid-template-columns:auto minmax(0,1fr) auto}
 .clanTagBadge.diplo-war{color:#ff8998;background:rgba(160,25,45,.25)}
 .clanTagBadge.diplo-alliance{color:#77f3a3;background:rgba(50,180,100,.12)}
