@@ -868,13 +868,22 @@
     <div id="clanWindow" class="panel clanPanel">
       <div id="clanStatus" class="clanStatus">Chargement…</div>
       <div id="clanCreatePane" class="clanPane active">
-        <form id="clanCreateForm" class="clanForm" autocomplete="off">
-          <input id="clanNameInput" type="text" placeholder="Nom du clan (3 min)…" maxlength="30" autocomplete="off" />
-          <input id="clanTagInput" type="text" placeholder="Tag (2-5 lettres/chiffres)…" maxlength="5" autocomplete="off" />
-          <button id="clanCreateBtn" type="submit">Créer (300k)</button>
-        </form>
-        <div class="clanSubHead">Tous les clans — postule pour rejoindre</div>
-        <div id="clanAllList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
+        <div class="clanTabs clanBrowseTabs" role="tablist">
+          <button class="active" type="button" data-browse-tab="create">Créer</button>
+          <button type="button" data-browse-tab="join">Rejoindre</button>
+        </div>
+        <div class="clanPane active" data-browse-pane="create">
+          <form id="clanCreateForm" class="clanForm clanCreateGrid" autocomplete="off">
+            <input id="clanNameInput" type="text" placeholder="Nom du clan (3 min)…" maxlength="30" autocomplete="off" />
+            <input id="clanTagInput" type="text" placeholder="Tag (2-5 lettres/chiffres)…" maxlength="5" autocomplete="off" />
+            <input id="clanDescCreateInput" type="text" placeholder="Description du clan…" maxlength="200" autocomplete="off" />
+            <button id="clanCreateBtn" type="submit">Créer (300k)</button>
+          </form>
+        </div>
+        <div class="clanPane" data-browse-pane="join">
+          <div class="clanSubHead">Tous les clans — postule pour rejoindre</div>
+          <div id="clanAllList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
+        </div>
       </div>
       <div id="clanManagePane" class="clanPane">
         <div class="clanTabs" role="tablist">

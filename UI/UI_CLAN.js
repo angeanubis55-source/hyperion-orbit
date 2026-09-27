@@ -101,7 +101,13 @@ export function initClanUI() {
     if (!inClan) {
       if (allList) {
         const applied = appliedTags();
-        allList.innerHTML = clans.length ? clans.map((c) => {
+        const shown = clans.slice(0, 10);
+        const extra = clans.length - shown.length;
+        let browseHtml = "";
+        if (!shown.length) {
+          browseHtml = `<div class="clanEmpty">Aucun clan pour l'instant — crée le tien (300 000 crédits).</div>`;
+        } else {
+          browseHtml = shown.map((c) => {
           const tag = escapeHtml(c.tag || "?"), name = escapeHtml(c.name || "Clan");
           const leader = escapeHtml(c.leader || "?"), desc = escapeHtml(c.description || "");
           const isApplied = applied.has(String(c.tag || "").toUpperCase());
@@ -118,7 +124,10 @@ export function initClanUI() {
             + `<hr class="clanSep" />`
             + `<p class="clanBrowseDesc">${desc || "Aucune description."}</p>`
             + `</article>`;
-        }).join("") : `<div class="clanEmpty">Aucun clan pour l'instant — crée le tien (300 000 crédits).</div>`;
+        }).join("");
+          if (extra > 0) browseHtml += `<div class="clanEmpty">+ ${extra} autre${extra > 1 ? "s" : ""} clan${extra > 1 ? "s" : ""}…</div>`;
+        }
+        allList.innerHTML = browseHtml;
       }
       return;
     }
@@ -300,13 +309,22 @@ export function initClanUI() {
     const button = event.target.closest("[data-clan-tab]");
     if (button) setTab(button.dataset.clanTab);
   });
+  // Onglets Créer / Rejoindre (vue sans clan, indépendants des onglets clan).
+  document.querySelector("#clanCreatePane .clanBrowseTabs")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-browse-tab]");
+    if (!button) return;
+    const tab = button.dataset.browseTab;
+    for (const b of document.querySelectorAll("#clanCreatePane [data-browse-tab]")) b.classList.toggle("active", b === button);
+    for (const pane of document.querySelectorAll("#clanCreatePane [data-browse-pane]")) pane.classList.toggle("active", pane.dataset.browsePane === tab);
+  });
   document.getElementById("clanCreateForm")?.addEventListener("submit", async (event) => {
     event.preventDefault(); event.stopPropagation();
     const name = document.getElementById("clanNameInput")?.value.trim() || "";
     const tag = document.getElementById("clanTagInput")?.value.trim() || "";
+    const description = document.getElementById("clanDescCreateInput")?.value.trim() || "";
     if (!name || !tag) return;
     try {
-      const data = await apiClan("/api/clans", "POST", { name, tag });
+      const data = await apiClan("/api/clans", "POST", { name, tag, description });
       clan = data.clan || null;
       try { sendClanNotify(); } catch {}
       await load(clan ? `Clan [${clan.tag}] ${clan.name} créé. Parle avec /c message.` : "");

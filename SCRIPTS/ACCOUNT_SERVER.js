@@ -854,7 +854,7 @@ export function getClanInfo(tag) {
   } catch { return null; }
 }
 
-export function createClan(userId, name, tag) {
+export function createClan(userId, name, tag, description) {
   try {
     initAccountDb();
     const uid = String(userId || "");
@@ -871,7 +871,7 @@ export function createClan(userId, name, tag) {
     if (!paid.ok) return { ok: false, error: "NOCASH" };
     const id = uuid();
     const now = Date.now();
-    db.prepare("INSERT INTO clans (id, name, tag, tag_norm, leader_id, description, open, created_at) VALUES (?, ?, ?, ?, ?, '', 1, ?)").run(id, cleanName, cleanTag, cleanTag.toLowerCase(), uid, now);
+    db.prepare("INSERT INTO clans (id, name, tag, tag_norm, leader_id, description, open, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)").run(id, cleanName, cleanTag, cleanTag.toLowerCase(), uid, cleanClanDesc(description), now);
     db.prepare("INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'leader', ?)").run(id, uid, now);
     clanRanks(id);
     addClanLog(id, `Clan fondé par ${pseudoOf(uid)}.`);
@@ -1876,7 +1876,7 @@ export function handleAccountApi(req, res) {
     if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
     readBody(req, res, (body) => {
       try {
-        const r = createClan(me.id, body?.name, body?.tag);
+        const r = createClan(me.id, body?.name, body?.tag, body?.description);
         if (!r.ok) {
           const msg = r.error === "ALREADY" ? "Tu es déjà dans un clan."
             : r.error === "NAME" ? "Nom de clan invalide (3 lettres minimum)."
