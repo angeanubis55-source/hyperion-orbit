@@ -260,19 +260,22 @@ RESTE A FAIRE (prochaines étapes proposées)
   groupe sur minimap (la map des membres est déjà dans groupUpdate).
 
 ----------------------------------------------------------------
-11) CLANS façon DO (création [TAG], rangs, tchat de clan)
+11) CLANS façon DO (création [TAG], candidatures, rangs, tchat de clan)
 ----------------------------------------------------------------
 - Serveur (ACCOUNT_SERVER.js, comptes uniquement) : tables clans +
-  clan_members + clan_invites (persistées : un hors-ligne retrouve ses
-  invitations). Création nom (3 min) + tag unique 2-5 lettres/chiffres
-  (30 membres max), rôles leader/officer/member (invite : leader +
-  officier ; kick : leader partout, officier sur membres ; rangs +
-  description : leader). Départ du chef = succession (officier le plus
-  ancien, sinon plus ancien membre) ; dernier membre = dissolution.
-  Création/accept purgent les invitations reçues. Suppression admin :
-  départ propre (succession/dissolution + notifs).
+  clan_members + clan_applications (persistées : un hors-ligne
+  retrouve ses candidatures). Création nom (3 min) + tag unique 2-5
+  lettres/chiffres (30 membres max), rôles leader/officer/member
+  (accept/refus : leader + officier ; kick : leader partout, officier
+  sur membres ; rangs + description : leader). PAS d'invitations :
+  c'est le joueur qui postule (apply), le clan accepte ou refuse.
+  Départ du chef = succession (officier le plus ancien, sinon plus
+  ancien membre) ; dernier membre = dissolution. Accepter purge les
+  autres candidatures du joueur. Suppression admin : départ propre
+  (succession/dissolution + notifs).
 - Routes : GET /api/clans/me · POST /api/clans {name, tag} ·
-  GET /api/clans/invites · POST /api/clans/invite|accept|decline|
+  GET /api/clans/list (tous les clans) · GET /api/clans/my-applications
+  · POST /api/clans/apply|cancel|accept|decline|
   leave|kick|rank|description · GET /api/clans/info?tag= (publique).
   Rate-limit 60/min.
 - MULTI_SERVER.js :   tchat de clan {t:"clanChat"} (500 ms anti-spam, 200 caractères,
@@ -284,16 +287,17 @@ RESTE A FAIRE (prochaines étapes proposées)
   (champ statique basse cadence comme pseudo/rank/firm) + describePeer.
 - Client : NETPLAY.js (miroir tchat `[Clan] pseudo`, clanChanged ->
   dirty, clanTag -> tag local). UI/UI_CLAN.js (clanWindow, icône
-  clan.png) : création, membres + rangs + exclusion/promotion (chef),
-  invitations reçues (Rejoindre/Refuser), invitations envoyées
-  (chef/officier), description (chef), quitter. Clic sur un vaisseau
-  pré-remplit aussi l'invitation clan. Tchat : /c message (UI_CHAT.js).
+  clan.png) : création, liste publique de TOUS les clans avec
+  Postuler/Retirer, membres + rangs + exclusion/promotion (chef),
+  candidatures reçues à accepter/refuser (chef/officier),
+  description (chef), quitter. Tchat : /c message (UI_CHAT.js).
 - Affichage : `pseudo [TAG]` sur les vaisseaux distants, le lock et
   soi-même (ORBIT_ENGINE.js).
 - Solo sans serveur : intact (fenêtre "connecte-toi").
-- Validé : 28 checks unitaires (création, unicité, droits, succession,
-  dissolution, purge admin) + 11 checks E2E live (HTTP + 2 WS : tchat,
-  tag snapshot, anti-spam, clanChanged).
+- Validé : 25 checks unitaires (création, liste, postuler, unicité,
+  droits, succession, dissolution, purge admin) + 11 checks E2E live
+  (HTTP + 2 WS : liste, candidature, accept, tchat, tag snapshot,
+  clanChanged).
 - Limites V1 : pas de chat d'alliance/diplomatie, pas de pastille
   clan sur minimap, pas de classement clans.
 

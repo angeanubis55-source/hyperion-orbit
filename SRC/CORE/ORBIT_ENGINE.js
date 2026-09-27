@@ -18083,8 +18083,6 @@ if (enemy) {
         if (fi) fi.value = rpseudo;
         const gi = document.getElementById("groupInviteInput");
         if (gi) gi.value = rpseudo;
-        const ci = document.getElementById("clanInviteInput");
-        if (ci) ci.value = rpseudo;
       }
     }
   } catch {}

@@ -873,16 +873,15 @@
           <input id="clanTagInput" type="text" placeholder="Tag (2-5 lettres/chiffres)…" maxlength="5" autocomplete="off" />
           <button id="clanCreateBtn" type="submit">Créer le clan</button>
         </form>
-        <div class="clanSubHead">Invitations reçues <span id="clanRequestBadge" hidden>0</span></div>
-        <div id="clanRequests" class="clanRows"><div class="clanEmpty">Aucune invitation.</div></div>
+        <div class="clanSubHead">Tous les clans — postule pour rejoindre</div>
+        <div id="clanAllList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
       </div>
       <div id="clanManagePane" class="clanPane">
-        <div id="clanOutgoing" class="clanOutgoing" hidden></div>
+        <div id="clanAppsBlock" hidden>
+          <div class="clanSubHead">Candidatures reçues</div>
+          <div id="clanAppsList" class="clanRows"></div>
+        </div>
         <div id="clanList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
-        <form id="clanInviteForm" class="clanForm" autocomplete="off">
-          <input id="clanInviteInput" type="text" placeholder="Inviter par pseudo…" maxlength="20" autocomplete="off" />
-          <button id="clanInviteBtn" type="submit">Inviter</button>
-        </form>
         <form id="clanDescForm" class="clanForm" autocomplete="off">
           <input id="clanDescInput" type="text" placeholder="Description du clan…" maxlength="200" autocomplete="off" />
           <button id="clanDescBtn" type="submit">OK</button>

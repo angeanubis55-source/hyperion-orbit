@@ -167,6 +167,13 @@ export function initAccountDb() {
       PRIMARY KEY (clan_id, user_id)
     );
     CREATE INDEX IF NOT EXISTS idx_clan_invites_user ON clan_invites(user_id);
+    CREATE TABLE IF NOT EXISTS clan_applications (
+      clan_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (clan_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_clan_applications_user ON clan_applications(user_id);
   `);
   // Menage des sessions expirees (toutes les heures).
   const purge = () => {
@@ -434,7 +441,7 @@ export function adminDeleteAccount(target) {
       const r = clanLeaveCore(uid);
       clanAffected = Array.isArray(r?.affected) ? r.affected : [];
     } catch {}
-    try { db.prepare("DELETE FROM clan_invites WHERE from_id = ?").run(uid); } catch {}
+    try { db.prepare("DELETE FROM clan_applications WHERE user_id = ?").run(uid); } catch {}
     let deleted = 0;
     try { deleted = Number(db.prepare("DELETE FROM users WHERE id = ?").run(uid)?.changes) || 0; } catch {}
     try { db.exec("COMMIT"); } catch {}
@@ -625,7 +632,8 @@ function clanRoleOf(userId, clanId) {
   } catch { return null; }
 }
 
-// Fiche complète : { id, name, tag, description, leader, role, members: [{id,pseudo,role}], invites: [{pseudo}] (sortantes, leader/officer) }.
+// Fiche complète : { id, name, tag, description, leader, role, members: [{id,pseudo,role}],
+// applications: [{pseudo, at}] (candidatures reçues, leader/officer) }.
 export function getMyClan(userId) {
   try {
     initAccountDb();
@@ -642,20 +650,34 @@ export function getMyClan(userId) {
     };
     if (out.role === "leader" || out.role === "officer") {
       try {
-        out.invites = db.prepare("SELECT u.pseudo AS pseudo FROM clan_invites i JOIN users u ON u.id = i.user_id WHERE i.clan_id = ? ORDER BY i.created_at").all(String(clan.id))
-          .map((r) => ({ pseudo: String(r.pseudo || "Pilote").slice(0, 20) }));
-      } catch { out.invites = []; }
+        out.applications = db.prepare("SELECT u.pseudo AS pseudo, a.created_at AS at FROM clan_applications a JOIN users u ON u.id = a.user_id WHERE a.clan_id = ? ORDER BY a.created_at").all(String(clan.id))
+          .map((r) => ({ pseudo: String(r.pseudo || "Pilote").slice(0, 20), at: Number(r.at) || 0 }));
+      } catch { out.applications = []; }
     }
     return out;
   } catch { return null; }
 }
 
-// Invitations reçues : [{ clanId, name, tag, fromPseudo, at }].
-export function getClanInvites(userId) {
+// Liste publique de tous les clans : [{ id, name, tag, description,
+// leader, memberCount }] triés par taille puis nom.
+export function listClans() {
   try {
     initAccountDb();
-    return db.prepare("SELECT i.clan_id AS clanId, c.name AS name, c.tag AS tag, u.pseudo AS fromPseudo, i.created_at AS at FROM clan_invites i JOIN clans c ON c.id = i.clan_id JOIN users u ON u.id = i.from_id WHERE i.user_id = ? ORDER BY i.created_at").all(String(userId))
-      .map((r) => ({ clanId: String(r.clanId), name: String(r.name || "Clan").slice(0, 30), tag: String(r.tag || "").slice(0, 5), fromPseudo: String(r.fromPseudo || "Pilote").slice(0, 20), at: Number(r.at) || 0 }));
+    return db.prepare("SELECT c.id AS id, c.name AS name, c.tag AS tag, c.description AS description, u.pseudo AS leader, (SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = c.id) AS n FROM clans c LEFT JOIN users u ON u.id = c.leader_id ORDER BY n DESC, c.name COLLATE NOCASE LIMIT 200").all()
+      .map((r) => ({
+        id: String(r.id), name: String(r.name || "Clan").slice(0, 30), tag: String(r.tag || "").slice(0, 5),
+        description: String(r.description || "").slice(0, 200),
+        leader: String(r.leader || "Pilote").slice(0, 20), memberCount: Math.max(0, Number(r.n) || 0),
+      }));
+  } catch { return []; }
+}
+
+// Candidatures envoyées par le joueur : [{ clanId, name, tag, at }].
+export function getMyApplications(userId) {
+  try {
+    initAccountDb();
+    return db.prepare("SELECT a.clan_id AS clanId, c.name AS name, c.tag AS tag, a.created_at AS at FROM clan_applications a JOIN clans c ON c.id = a.clan_id WHERE a.user_id = ? ORDER BY a.created_at").all(String(userId))
+      .map((r) => ({ clanId: String(r.clanId), name: String(r.name || "Clan").slice(0, 30), tag: String(r.tag || "").slice(0, 5), at: Number(r.at) || 0 }));
   } catch { return []; }
 }
 
@@ -692,8 +714,8 @@ export function createClan(userId, name, tag) {
     const now = Date.now();
     db.prepare("INSERT INTO clans (id, name, tag, tag_norm, leader_id, description, created_at) VALUES (?, ?, ?, ?, ?, '', ?)").run(id, cleanName, cleanTag, cleanTag.toLowerCase(), uid, now);
     db.prepare("INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'leader', ?)").run(id, uid, now);
-    // Une création annule les invitations reçues en attente.
-    try { db.prepare("DELETE FROM clan_invites WHERE user_id = ?").run(uid); } catch {}
+    // Une création annule les candidatures envoyées en attente.
+    try { db.prepare("DELETE FROM clan_applications WHERE user_id = ?").run(uid); } catch {}
     return { ok: true, clan: getMyClan(uid) };
   } catch { return { ok: false, error: "SERVER" }; }
 }
@@ -708,13 +730,13 @@ function clanLeaveCore(uid) {
     affected = db.prepare("SELECT user_id FROM clan_members WHERE clan_id = ? AND user_id != ?").all(clanId, uid).map((r) => String(r.user_id));
   } catch {}
   db.prepare("DELETE FROM clan_members WHERE clan_id = ? AND user_id = ?").run(clanId, uid);
-  try { db.prepare("DELETE FROM clan_invites WHERE user_id = ?").run(uid); } catch {}
+  try { db.prepare("DELETE FROM clan_applications WHERE user_id = ?").run(uid); } catch {}
   const rest = (() => {
     try { return db.prepare("SELECT user_id, role, joined_at FROM clan_members WHERE clan_id = ? ORDER BY joined_at").all(clanId); } catch { return []; }
   })();
   if (!rest.length) {
     try { db.prepare("DELETE FROM clans WHERE id = ?").run(clanId); } catch {}
-    try { db.prepare("DELETE FROM clan_invites WHERE clan_id = ?").run(clanId); } catch {}
+    try { db.prepare("DELETE FROM clan_applications WHERE clan_id = ?").run(clanId); } catch {}
     return { dissolved: true, clanId, affected: [] };
   }
   try {
@@ -738,32 +760,10 @@ export function leaveClan(userId) {
   } catch { return { ok: false, error: "SERVER" }; }
 }
 
-export function inviteToClan(fromId, pseudo) {
-  try {
-    initAccountDb();
-    const uid = String(fromId || "");
-    const clanId = clanIdOfUser(uid);
-    if (!clanId) return { ok: false, error: "NOCLAN" };
-    const role = clanRoleOf(uid, clanId);
-    if (role !== "leader" && role !== "officer") return { ok: false, error: "RIGHTS" };
-    const target = findUserByPseudo(pseudo);
-    if (!target) return { ok: false, error: "NOT_FOUND" };
-    if (target.id === uid) return { ok: false, error: "SELF" };
-    if (clanIdOfUser(target.id)) return { ok: false, error: "INCLAN" };
-    const count = (() => {
-      try { return Number(db.prepare("SELECT COUNT(*) AS n FROM clan_members WHERE clan_id = ?").get(clanId)?.n) || 0; } catch { return 0; }
-    })();
-    if (count >= CLAN_MAX_MEMBERS) return { ok: false, error: "FULL" };
-    const dup = (() => {
-      try { return !!db.prepare("SELECT 1 FROM clan_invites WHERE clan_id = ? AND user_id = ?").get(clanId, target.id); } catch { return false; }
-    })();
-    if (dup) return { ok: false, error: "SENT" };
-    db.prepare("INSERT INTO clan_invites (clan_id, user_id, from_id, created_at) VALUES (?, ?, ?, ?)").run(clanId, target.id, uid, Date.now());
-    return { ok: true, to: target };
-  } catch { return { ok: false, error: "SERVER" }; }
-}
-
-export function acceptClanInvite(userId, tag) {
+// Candidature : c'est le joueur qui postule (plus d'invitations).
+// Erreurs : AUTH, INCLAN (déjà en clan), NONE (clan inconnu),
+// APPLIED (déjà postulée), FULL (clan plein).
+export function applyToClan(userId, tag) {
   try {
     initAccountDb();
     const uid = String(userId || "");
@@ -771,33 +771,79 @@ export function acceptClanInvite(userId, tag) {
     if (clanIdOfUser(uid)) return { ok: false, error: "INCLAN" };
     const clan = db.prepare("SELECT * FROM clans WHERE tag_norm = ?").get(String(tag || "").trim().toLowerCase());
     if (!clan) return { ok: false, error: "NONE" };
-    const inv = (() => {
-      try { return db.prepare("SELECT 1 FROM clan_invites WHERE clan_id = ? AND user_id = ?").get(String(clan.id), uid); } catch { return null; }
-    })();
-    if (!inv) return { ok: false, error: "NONE" };
     const count = (() => {
       try { return Number(db.prepare("SELECT COUNT(*) AS n FROM clan_members WHERE clan_id = ?").get(String(clan.id))?.n) || 0; } catch { return 0; }
     })();
     if (count >= CLAN_MAX_MEMBERS) return { ok: false, error: "FULL" };
-    db.prepare("INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)").run(String(clan.id), uid, Date.now());
-    try { db.prepare("DELETE FROM clan_invites WHERE user_id = ?").run(uid); } catch {}
-    return { ok: true, clan: getMyClan(uid), clanId: String(clan.id) };
+    const dup = (() => {
+      try { return !!db.prepare("SELECT 1 FROM clan_applications WHERE clan_id = ? AND user_id = ?").get(String(clan.id), uid); } catch { return false; }
+    })();
+    if (dup) return { ok: false, error: "APPLIED" };
+    db.prepare("INSERT INTO clan_applications (clan_id, user_id, created_at) VALUES (?, ?, ?)").run(String(clan.id), uid, Date.now());
+    return { ok: true, clan: { id: String(clan.id), name: String(clan.name || "Clan").slice(0, 30), tag: String(clan.tag || "").slice(0, 5) } };
   } catch { return { ok: false, error: "SERVER" }; }
 }
 
-export function declineClanInvite(userId, tag) {
+// Retrait d'une candidature par le candidat lui-même.
+export function cancelApplication(userId, tag) {
   try {
     initAccountDb();
     const uid = String(userId || "");
     if (!uid) return { ok: false };
     const clan = db.prepare("SELECT id FROM clans WHERE tag_norm = ?").get(String(tag || "").trim().toLowerCase());
     if (!clan) {
-      try { db.prepare("DELETE FROM clan_invites WHERE user_id = ?").run(uid); } catch {}
+      try { db.prepare("DELETE FROM clan_applications WHERE user_id = ?").run(uid); } catch {}
       return { ok: true };
     }
-    db.prepare("DELETE FROM clan_invites WHERE clan_id = ? AND user_id = ?").run(String(clan.id), uid);
+    db.prepare("DELETE FROM clan_applications WHERE clan_id = ? AND user_id = ?").run(String(clan.id), uid);
     return { ok: true };
   } catch { return { ok: false }; }
+}
+
+// Accepter une candidature (leader/officier) : le postulant rejoint,
+// ses autres candidatures sont purgées.
+export function acceptClanApplication(actorId, pseudo) {
+  try {
+    initAccountDb();
+    const uid = String(actorId || "");
+    const clanId = clanIdOfUser(uid);
+    if (!clanId) return { ok: false, error: "NOCLAN" };
+    const role = clanRoleOf(uid, clanId);
+    if (role !== "leader" && role !== "officer") return { ok: false, error: "RIGHTS" };
+    const target = findUserByPseudo(pseudo);
+    if (!target) return { ok: false, error: "NOT_FOUND" };
+    if (clanIdOfUser(target.id)) {
+      try { db.prepare("DELETE FROM clan_applications WHERE clan_id = ? AND user_id = ?").run(clanId, target.id); } catch {}
+      return { ok: false, error: "INCLAN" };
+    }
+    const app = (() => {
+      try { return db.prepare("SELECT 1 FROM clan_applications WHERE clan_id = ? AND user_id = ?").get(clanId, target.id); } catch { return null; }
+    })();
+    if (!app) return { ok: false, error: "NONE" };
+    const count = (() => {
+      try { return Number(db.prepare("SELECT COUNT(*) AS n FROM clan_members WHERE clan_id = ?").get(clanId)?.n) || 0; } catch { return 0; }
+    })();
+    if (count >= CLAN_MAX_MEMBERS) return { ok: false, error: "FULL" };
+    db.prepare("INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)").run(clanId, target.id, Date.now());
+    try { db.prepare("DELETE FROM clan_applications WHERE user_id = ?").run(target.id); } catch {}
+    return { ok: true, member: target, clanId };
+  } catch { return { ok: false, error: "SERVER" }; }
+}
+
+// Refuser une candidature (leader/officier).
+export function declineClanApplication(actorId, pseudo) {
+  try {
+    initAccountDb();
+    const uid = String(actorId || "");
+    const clanId = clanIdOfUser(uid);
+    if (!clanId) return { ok: false, error: "NOCLAN" };
+    const role = clanRoleOf(uid, clanId);
+    if (role !== "leader" && role !== "officer") return { ok: false, error: "RIGHTS" };
+    const target = findUserByPseudo(pseudo);
+    if (!target) return { ok: false, error: "NOT_FOUND" };
+    db.prepare("DELETE FROM clan_applications WHERE clan_id = ? AND user_id = ?").run(clanId, target.id);
+    return { ok: true, member: target, clanId };
+  } catch { return { ok: false, error: "SERVER" }; }
 }
 
 export function kickClanMember(actorId, pseudo) {
@@ -1334,11 +1380,22 @@ export function handleAccountApi(req, res) {
     });
     return true;
   }
-  // --- Clans : fiche, création, invitations, rangs ---
+  // --- Clans : fiche, création, candidatures, rangs ---
   if (pathname === "/api/clans/me" && req.method === "GET") {
     const me = authUser(req);
     if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
     return json(res, 200, { ok: true, clan: getMyClan(me.id) });
+  }
+  if (pathname === "/api/clans/list" && req.method === "GET") {
+    if (rateLimited(`${ip}:/api/clans`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    return json(res, 200, { ok: true, clans: listClans() });
+  }
+  if (pathname === "/api/clans/my-applications" && req.method === "GET") {
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    return json(res, 200, { ok: true, applications: getMyApplications(me.id) });
   }
   if (pathname === "/api/clans/info" && req.method === "GET") {
     if (rateLimited(`${ip}:/api/clans`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
@@ -1349,11 +1406,6 @@ export function handleAccountApi(req, res) {
     const info = getClanInfo(tag);
     if (!info) return json(res, 404, { ok: false, error: "Clan introuvable." });
     return json(res, 200, { ok: true, clan: info });
-  }
-  if (pathname === "/api/clans/invites" && req.method === "GET") {
-    const me = authUser(req);
-    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
-    return json(res, 200, { ok: true, invites: getClanInvites(me.id) });
   }
   if (pathname === "/api/clans" && req.method === "POST") {
     if (rateLimited(`${ip}:/api/clans`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
@@ -1374,7 +1426,7 @@ export function handleAccountApi(req, res) {
     });
     return true;
   }
-  if ((pathname === "/api/clans/invite" || pathname === "/api/clans/accept" || pathname === "/api/clans/decline"
+  if ((pathname === "/api/clans/apply" || pathname === "/api/clans/cancel" || pathname === "/api/clans/accept" || pathname === "/api/clans/decline"
     || pathname === "/api/clans/leave" || pathname === "/api/clans/kick" || pathname === "/api/clans/rank"
     || pathname === "/api/clans/description") && req.method === "POST") {
     if (rateLimited(`${ip}:/api/clans`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
@@ -1382,34 +1434,40 @@ export function handleAccountApi(req, res) {
     if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
     readBody(req, res, (body) => {
       try {
-        if (pathname === "/api/clans/invite") {
-          const r = inviteToClan(me.id, body?.pseudo);
-          if (!r.ok) {
-            const msg = r.error === "NOT_FOUND" ? "Pilote introuvable."
-              : r.error === "SELF" ? "Tu ne peux pas t'inviter toi-même."
-              : r.error === "INCLAN" ? "Ce pilote est déjà dans un clan."
-              : r.error === "SENT" ? "Invitation déjà envoyée."
-              : r.error === "FULL" ? "Clan plein (30 max)."
-              : r.error === "RIGHTS" ? "Seuls le chef et les officiers invitent."
-              : r.error === "NOCLAN" ? "Tu n'es dans aucun clan." : "Erreur serveur.";
-            const code = r.error === "NOT_FOUND" ? 404 : (r.error === "INCLAN" || r.error === "SENT" || r.error === "FULL") ? 409 : 400;
-            return json(res, code, { ok: false, error: msg });
-          }
-          return json(res, 200, { ok: true, to: r.to });
-        }
-        if (pathname === "/api/clans/accept") {
-          const r = acceptClanInvite(me.id, body?.tag);
+        if (pathname === "/api/clans/apply") {
+          const r = applyToClan(me.id, body?.tag);
           if (!r.ok) {
             const msg = r.error === "INCLAN" ? "Tu es déjà dans un clan."
+              : r.error === "APPLIED" ? "Candidature déjà envoyée."
               : r.error === "FULL" ? "Clan plein (30 max)."
-              : "Invitation introuvable.";
-            return json(res, r.error === "INCLAN" || r.error === "FULL" ? 409 : 404, { ok: false, error: msg });
+              : r.error === "NONE" ? "Clan introuvable." : "Erreur serveur.";
+            const code = r.error === "NONE" ? 404 : (r.error === "INCLAN" || r.error === "APPLIED" || r.error === "FULL") ? 409 : 400;
+            return json(res, code, { ok: false, error: msg });
           }
           return json(res, 200, { ok: true, clan: r.clan });
         }
-        if (pathname === "/api/clans/decline") {
-          declineClanInvite(me.id, body?.tag);
+        if (pathname === "/api/clans/cancel") {
+          cancelApplication(me.id, body?.tag);
           return json(res, 200, { ok: true });
+        }
+        if (pathname === "/api/clans/accept") {
+          const r = acceptClanApplication(me.id, body?.pseudo);
+          if (!r.ok) {
+            const msg = r.error === "NOT_FOUND" ? "Pilote introuvable."
+              : r.error === "INCLAN" ? "Ce pilote est déjà dans un clan."
+              : r.error === "FULL" ? "Clan plein (30 max)."
+              : r.error === "RIGHTS" ? "Seuls le chef et les officiers acceptent."
+              : r.error === "NOCLAN" ? "Tu n'es dans aucun clan."
+              : "Candidature introuvable.";
+            const code = r.error === "NOT_FOUND" || r.error === "NONE" ? 404 : (r.error === "INCLAN" || r.error === "FULL") ? 409 : 400;
+            return json(res, code, { ok: false, error: msg });
+          }
+          return json(res, 200, { ok: true, member: r.member });
+        }
+        if (pathname === "/api/clans/decline") {
+          const r = declineClanApplication(me.id, body?.pseudo);
+          if (!r.ok) return json(res, 400, { ok: false, error: "Refus impossible." });
+          return json(res, 200, { ok: true, member: r.member });
         }
         if (pathname === "/api/clans/leave") {
           const r = leaveClan(me.id);

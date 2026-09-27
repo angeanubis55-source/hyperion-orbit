@@ -2639,7 +2639,11 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .clanBtns button:hover{border-color:rgba(124,240,255,.65);background:rgba(0,140,185,.3)}.clanBtns button.danger:hover{color:#ff8998;border-color:#ff6578;background:rgba(160,25,45,.25)}.clanBtns button.accept{color:#77f3a3}
 .clanBtns svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .clanEmpty{padding:22px;text-align:center;color:#5c8290;font-size:11px;font-weight:800}
-.clanOutgoing{margin:9px 11px 0;padding:7px 9px;border:1px solid rgba(255,211,107,.35);border-radius:8px;color:#f3dda9;font-size:11px;font-weight:700}
+.clanBrowse{grid-template-columns:auto minmax(0,1fr) auto}
+.clanBrowse .clanBtns button{width:auto;height:28px;padding:0 14px;font-size:11px}
+.clanBrowse .clanBtns button:disabled{opacity:.4;cursor:not-allowed}
+#clanAppsBlock .clanSubHead{color:#ffcf58}
+#clanAppsList{max-height:180px;min-height:0}
 .clanForm{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:9px 11px;box-sizing:border-box;border-top:1px solid rgba(124,240,255,.14)}
 #clanCreateForm{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;border-top:0}
 .clanForm input{min-width:0;width:100%;height:30px;box-sizing:border-box;padding:0 9px;outline:0;border:1px solid rgba(124,240,255,.30);border-radius:7px;color:#effcff;background:#051521;font:600 12px/1 ui-sans-serif,system-ui}
