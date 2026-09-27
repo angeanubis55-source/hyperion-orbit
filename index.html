@@ -882,6 +882,7 @@
           <button type="button" data-clan-tab="members">Membres</button>
           <button type="button" data-clan-tab="ranks">Rangs</button>
           <button type="button" data-clan-tab="diplo">Guerre</button>
+          <button type="button" data-clan-tab="log">Journal</button>
         </div>
         <div class="clanPane active" data-clan-pane="infos">
           <div id="clanInfoBox" class="clanInfoBox"><div class="clanEmpty">Chargement…</div></div>
@@ -914,12 +915,11 @@
             </select>
             <button id="clanDiploBtn" type="submit">Proposer</button>
           </form>
-          <div class="clanSubHead">Relations actives</div>
-          <div id="clanDiploActive" class="clanRows"><div class="clanEmpty">Aucune relation.</div></div>
-          <div id="clanDiploBlock" hidden>
-            <div class="clanSubHead">Demandes</div>
-            <div id="clanDiploIncoming" class="clanRows"></div>
-          </div>
+          <div class="clanSubHead">Tous les clans — la guerre est immédiate, NAP/Alliance = demande</div>
+          <div id="clanDiploClans" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
+        </div>
+        <div class="clanPane" data-clan-pane="log">
+          <div id="clanLogList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
         </div>
         <div class="clanLeaveRow"><button id="clanLeaveBtn" type="button">Quitter le clan</button></div>
       </div>

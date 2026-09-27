@@ -296,13 +296,14 @@ RESTE A FAIRE (prochaines étapes proposées)
   -> {t:"clanTag"}. Tag `clan` dans les snapshots (statique basse
   cadence) + describePeer. Tag rafraîchi au hello + ping 15 s.
 - Client : NETPLAY.js (miroir `[Clan]`, clanChanged -> dirty, clanTag,
-  setNetDiplo/getClanRelation). UI/UI_CLAN.js (clanWindow) : sans
-  clan = création + liste publique (statut, Postuler/Retirer) ; en
-  clan = onglets Infos (recrutement, description, journal, transfert,
+  setNetDiplo/getClanRelation). UI/UI_CLAN.js (clanWindow 600px) :
+  sans clan = création + liste publique (statut, Postuler/Retirer) ;
+  en clan = onglets Infos (recrutement, description, transfert,
   dissolution) / Membres (rangs via liste déroulante, kick, MP,
   groupe, candidatures) / Rangs (créer, droits par cases, supprimer)
-  / Guerre = Diplomatie (relations + score + jours restants, demandes,
-  proposition alliance/NAP/guerre). Tchat : /c message (UI_CHAT.js).
+  / Guerre = TOUS les clans (Guerre immédiate en 1 clic, NAP/Alliance
+  = demande, score + jours restants, accepter/refuser/rompre) /
+  Journal (événements du clan). Tchat : /c message (UI_CHAT.js).
 - Affichage : `[TAG] pseudo` partout (distants, lock, soi) avec le
   tag TOUJOURS EN BLANC et le pseudo en couleur relationnelle.
   Couleurs façon DO : clan VERT, guerre ROUGE, NAP JAUNE, alliance

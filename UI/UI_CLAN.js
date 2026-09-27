@@ -58,9 +58,8 @@ export function initClanUI() {
   const appsBlock = document.getElementById("clanAppsBlock");
   const appsList = document.getElementById("clanAppsList");
   const ranksList = document.getElementById("clanRanksList");
-  const diploActive = document.getElementById("clanDiploActive");
-  const diploIncoming = document.getElementById("clanDiploIncoming");
-  const diploBlock = document.getElementById("clanDiploBlock");
+  const diploClans = document.getElementById("clanDiploClans");
+  const logList = document.getElementById("clanLogList");
   if (!createPane || !managePane) return;
   let clan = null, clans = [], mine = [], rels = { active: [], incoming: [], outgoing: [] };
   let activeTab = "infos";
@@ -135,10 +134,8 @@ export function initClanUI() {
         + `</div>`
         + (clan.description ? `<p class="clanDesc">${escapeHtml(clan.description)}</p>` : "")
         + (rights.edit ? `<div class="clanInfoActions"><button type="button" data-act="toggle-open">${clan.open === false ? "Ouvrir le recrutement" : "Fermer le recrutement"}</button></div>` : "")
-        + `<div class="clanSubHead">Journal du clan</div>`
-        + `<div class="clanLog">${(Array.isArray(clan.log) && clan.log.length ? clan.log.map((e) => `<div class="clanLogRow">${escapeHtml(e.text)}</div>`).join("") : `<div class="clanEmpty">Aucun événement.</div>`)}</div>`
-        + (leader ? `<div class="clanDangerZone"><button type="button" data-act="transfer-open">Transférer la chefferie…</button><button type="button" data-act="dissolve" class="danger">Dissoudre le clan</button></div>
-        <form id="clanTransferForm" class="clanForm" autocomplete="off" hidden><input id="clanTransferInput" type="text" placeholder="Pseudo du successeur…" maxlength="20" autocomplete="off" /><button type="submit">Transférer</button></form>` : "");
+        + (leader ? `<div class="clanDangerZone"><button type="button" data-act="transfer-open">Transférer la chefferie</button><button type="button" data-act="dissolve" class="danger">Dissoudre le clan</button></div>
+        <form id="clanTransferForm" class="clanForm clanTransferForm" autocomplete="off" hidden><input id="clanTransferInput" type="text" placeholder="Pseudo du successeur…" maxlength="20" autocomplete="off" /><button type="submit">Transférer</button></form>` : "");
     }
     // --- Membres + candidatures ---
     if (appsBlock && appsList) {
@@ -181,37 +178,66 @@ export function initClanUI() {
           + `</article>`;
       }).join("");
     }
-    // --- Diplomatie ---
-    renderDiplo(rights);
+    // --- Diplomatie (tous les clans) + Journal ---
+    renderDiploClans(rights);
+    renderLog();
   }
 
-  function diploRow(rel, incoming) {
-    const label = DIPLO_LABEL[rel.kind] || rel.kind;
-    const score = rel.kind === "war" ? ` · <b>${Number(rel.killsMine) || 0} – ${Number(rel.killsTheirs) || 0}</b>` : "";
-    const days = rel.kind === "war" && rel.daysLeft != null ? ` · ${rel.daysLeft} j restants` : "";
-    const status = rel.status === "pending" ? (incoming ? " · demande reçue" : rel.kind === "war" ? " · fin proposée" : " · en attente") : "";
-    return `<article class="clanCard clanDiplo" data-rel="${escapeHtml(rel.id)}">`
-      + `<span class="clanTagBadge diplo-${escapeHtml(rel.kind)}">[${escapeHtml(rel.otherTag)}]</span>`
-      + `<span class="clanIdentity"><strong>${escapeHtml(rel.otherName)} — ${label}</strong><small>${Number(rel.otherMembers) || 0} membres${score}${days}${status}</small></span>`
-      + `<span class="clanBtns">${incoming
-        ? `<button class="accept" type="button" data-act="diplo-accept" title="Accepter" aria-label="Accepter">${ICON_ACCEPT}</button><button class="danger" type="button" data-act="diplo-decline" title="Refuser" aria-label="Refuser">${ICON_REMOVE}</button>`
-        : `<button class="danger" type="button" data-act="diplo-end" title="${rel.kind === "war" ? "Proposer la fin de guerre" : "Rompre"}" aria-label="Rompre">${ICON_REMOVE}</button>`}</span></article>`;
+  function relsFor(tag) {
+    const clean = String(tag || "").toUpperCase();
+    const mine = String(clan?.tag || "").toUpperCase();
+    if (!clean || clean === mine) return { active: null, incoming: null, outgoing: null };
+    const find = (list) => list.find((x) => String(x.otherTag || "").toUpperCase() === clean) || null;
+    return { active: find(rels.active), incoming: find(rels.incoming), outgoing: find(rels.outgoing) };
   }
 
-  function renderDiplo(rights) {
-    if (!diploActive || !diploIncoming) return;
-    diploActive.innerHTML = rels.active.length ? rels.active.map((rel) => diploRow(rel, false)).join("") : `<div class="clanEmpty">Aucune relation.</div>`;
-    const pending = [...rels.incoming, ...rels.outgoing];
-    if (diploBlock) diploBlock.hidden = !pending.length;
-    diploIncoming.innerHTML = pending.map((rel) => {
-      const incoming = rels.incoming.some((x) => x.id === rel.id);
-      if (!incoming) {
-        return `<article class="clanCard clanDiplo" data-rel="${escapeHtml(rel.id)}"><span class="clanTagBadge diplo-${escapeHtml(rel.kind)}">[${escapeHtml(rel.otherTag)}]</span><span class="clanIdentity"><strong>${escapeHtml(rel.otherName)} — ${DIPLO_LABEL[rel.kind] || rel.kind}</strong><small>Proposition envoyée · en attente</small></span><span class="clanBtns"><button class="danger" type="button" data-act="diplo-end" title="Retirer" aria-label="Retirer">${ICON_REMOVE}</button></span></article>`;
+  // Onglet Guerre : TOUS les clans du jeu. La guerre est immédiate
+  // (pas de demande) ; NAP/Alliance = proposition à accepter.
+  function renderDiploClans(rights) {
+    if (!diploClans) return;
+    const others = clans.filter((c) => String(c.tag || "").toUpperCase() !== String(clan?.tag || "").toUpperCase());
+    if (!others.length) { diploClans.innerHTML = `<div class="clanEmpty">Aucun autre clan.</div>`; return; }
+    diploClans.innerHTML = others.map((c) => {
+      const tag = escapeHtml(c.tag || "?"), name = escapeHtml(c.name || "Clan");
+      const st = relsFor(c.tag);
+      const rel = st.active || st.incoming || st.outgoing;
+      const badge = rel ? ` diplo-${rel.kind}` : "";
+      let detail = `${Number(c.memberCount) || 0} membres`;
+      let buttons = "";
+      if (st.active) {
+        const label = DIPLO_LABEL[st.active.kind] || st.active.kind;
+        if (st.active.kind === "war") detail += ` · <b>GUERRE ${Number(st.active.killsMine) || 0}–${Number(st.active.killsTheirs) || 0}</b> · ${st.active.daysLeft ?? "?"} j restants`;
+        else detail += ` · <b>${label}</b>`;
+        buttons = `<button class="danger" type="button" data-act="diplo-end" data-rel="${escapeHtml(st.active.id)}" title="${st.active.kind === "war" ? "Proposer la fin de guerre" : "Rompre"}" aria-label="Rompre">${st.active.kind === "war" ? "Paix" : "Rompre"}</button>`;
+      } else if (st.incoming) {
+        const label = DIPLO_LABEL[st.incoming.kind] || st.incoming.kind;
+        detail += st.incoming.kind === "war" ? ` · <b>demande de paix reçue</b>` : ` · <b>${label} demandée</b>`;
+        buttons = `<button class="accept" type="button" data-act="diplo-accept" data-rel="${escapeHtml(st.incoming.id)}" title="Accepter" aria-label="Accepter">${ICON_ACCEPT}</button><button class="danger" type="button" data-act="diplo-decline" data-rel="${escapeHtml(st.incoming.id)}" title="Refuser" aria-label="Refuser">${ICON_REMOVE}</button>`;
+      } else if (st.outgoing) {
+        const label = DIPLO_LABEL[st.outgoing.kind] || st.outgoing.kind;
+        detail += st.outgoing.kind === "war" ? ` · <b>fin proposée</b>` : ` · <b>${label} proposée</b>`;
+        buttons = `<button class="danger" type="button" data-act="diplo-end" data-rel="${escapeHtml(st.outgoing.id)}" title="Retirer" aria-label="Retirer">${ICON_REMOVE}</button>`;
+      } else if (rights.diplo) {
+        buttons = `<button class="danger" type="button" data-act="war-now" data-tag="${tag}" title="Déclarer la guerre (immédiat)" aria-label="Guerre">Guerre</button>`
+          + `<button type="button" data-act="diplo-propose" data-kind="nap" data-tag="${tag}" title="Proposer un NAP" aria-label="NAP">NAP</button>`
+          + `<button type="button" data-act="diplo-propose" data-kind="alliance" data-tag="${tag}" title="Proposer une alliance" aria-label="Alliance">Alliance</button>`;
       }
-      return diploRow(rel, true);
+      return `<article class="clanCard clanDiplo">`
+        + `<span class="clanTagBadge${badge}">[${tag}]</span>`
+        + `<span class="clanIdentity"><strong>${name}</strong><small>${detail}</small></span>`
+        + (buttons ? `<span class="clanBtns">${buttons}</span>` : "")
+        + `</article>`;
     }).join("");
     const form = document.getElementById("clanDiploForm");
     if (form) form.style.display = rights.diplo ? "" : "none";
+  }
+
+  function renderLog() {
+    if (!logList) return;
+    const entries = Array.isArray(clan?.log) ? clan.log : [];
+    logList.innerHTML = entries.length
+      ? entries.map((e) => `<div class="clanLogRow">${escapeHtml(e.text)}</div>`).join("")
+      : `<div class="clanEmpty">Aucun événement.</div>`;
   }
 
   async function load(message = "") {
@@ -293,7 +319,7 @@ export function initClanUI() {
     const act = button.dataset.act;
     const row = button.closest("[data-pseudo]");
     const rankRow = button.closest("[data-rank]");
-    const relRow = button.closest("[data-rel]");
+    const relId = button.dataset.rel || button.closest("[data-rel]")?.dataset.rel || "";
     try {
       if (act === "toggle-open") {
         await apiClan("/api/clans/open", "POST", { open: clan.open === false });
@@ -333,18 +359,30 @@ export function initClanUI() {
         await apiClan("/api/clans/rank-manage", "POST", { action: "delete", name: rankRow.dataset.rank });
         try { sendClanNotify(); } catch {}
         await load();
-      } else if (act === "diplo-accept" && relRow) {
-        await apiClan("/api/clans/diplo/respond", "POST", { id: relRow.dataset.rel, accept: true });
+      } else if (act === "diplo-accept" && relId) {
+        await apiClan("/api/clans/diplo/respond", "POST", { id: relId, accept: true });
         try { sendDiploNotify(null, ""); } catch {}
         await load();
-      } else if (act === "diplo-decline" && relRow) {
-        await apiClan("/api/clans/diplo/respond", "POST", { id: relRow.dataset.rel, accept: false });
+      } else if (act === "diplo-decline" && relId) {
+        await apiClan("/api/clans/diplo/respond", "POST", { id: relId, accept: false });
         try { sendDiploNotify(null, ""); } catch {}
         await load();
-      } else if (act === "diplo-end" && relRow) {
-        await apiClan("/api/clans/diplo/end", "POST", { id: relRow.dataset.rel });
+      } else if (act === "diplo-end" && relId) {
+        await apiClan("/api/clans/diplo/end", "POST", { id: relId });
         try { sendDiploNotify(null, ""); } catch {}
         await load();
+      } else if (act === "war-now" && button.dataset.tag) {
+        const tag = button.dataset.tag;
+        if (!window.confirm(`Déclarer la guerre à [${tag}] ? Effet immédiat, 100 jours max.`)) return;
+        const data = await apiClan("/api/clans/diplo", "POST", { tag, kind: "war" });
+        try { sendDiploNotify(data.rel?.otherTag || tag, `Guerre déclarée à [${data.rel?.otherTag || tag}] !`); } catch {}
+        await load(`Guerre contre [${tag}] !`);
+      } else if (act === "diplo-propose" && button.dataset.tag) {
+        const tag = button.dataset.tag, kind = button.dataset.kind === "alliance" ? "alliance" : "nap";
+        const label = kind === "alliance" ? "alliance" : "NAP";
+        const data = await apiClan("/api/clans/diplo", "POST", { tag, kind });
+        try { sendDiploNotify(data.rel?.otherTag || tag, `${label} proposée à [${data.rel?.otherTag || tag}].`); } catch {}
+        await load(`${label} proposée à [${tag}].`);
       }
     } catch (error) { updateHeader(String(error?.message || "Action impossible.")); }
   });
@@ -391,7 +429,9 @@ export function initClanUI() {
       await load("Description mise à jour.");
     } catch (error) { updateHeader(String(error?.message || "Description impossible.")); }
   });
-  document.getElementById("clanTransferForm")?.addEventListener("submit", async (event) => {
+  managePane?.addEventListener("submit", async (event) => {
+    // Formulaires recréés à chaque rendu (transfert) : délégation obligatoire.
+    if (event.target?.id !== "clanTransferForm") return;
     event.preventDefault(); event.stopPropagation();
     const input = document.getElementById("clanTransferInput");
     const value = input?.value.trim();

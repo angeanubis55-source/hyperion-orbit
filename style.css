@@ -2624,12 +2624,17 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .friendsForm button{ height:30px; padding:0 14px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 12px/1.2 ui-sans-serif,system-ui; }
 .friendsForm button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
 /* Fenêtre Clan */
-.clanPanel{width:440px;min-width:320px;max-width:calc(100vw - 20px);height:auto;max-height:calc(100vh - 20px);display:flex;flex-direction:column;overflow:hidden}
+.clanPanel{width:600px;min-width:340px;max-width:calc(100vw - 20px);height:auto;max-height:calc(100vh - 20px);display:flex;flex-direction:column;overflow:hidden}
 .clanStatus{padding:8px 12px;box-sizing:border-box;border-bottom:1px solid rgba(124,240,255,.16);color:#75e8ff;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.35px}
 .clanPane{display:none;flex-direction:column;min-height:0}.clanPane.active{display:flex}
 .clanSubHead{padding:8px 12px 0;color:#8fcddd;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px}
 .clanSubHead span{display:inline-grid;place-items:center;min-width:17px;height:17px;margin-left:4px;padding:0 4px;border-radius:9px;color:#241600;background:#ffcf58;font-size:10px}
-.clanRows{max-height:min(380px,calc(100vh - 260px));min-height:72px;overflow-y:auto;display:grid;align-content:start;gap:6px;padding:9px 11px;box-sizing:border-box}
+.clanRows{max-height:min(420px,calc(100vh - 260px));min-height:72px;overflow-y:auto;display:grid;align-content:start;gap:6px;padding:9px 11px;box-sizing:border-box}
+.clanBtns{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.clanBtns button{width:auto;min-width:27px;min-height:25px}
+.clanDangerZone{display:flex;gap:6px;flex-wrap:wrap}
+.clanDangerZone button{flex:1 1 auto;min-height:30px;white-space:normal}
+.clanTransferForm{grid-template-columns:minmax(0,1fr) auto;border-top:0;padding-left:0;padding-right:0}
 .clanCard{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:9px;padding:8px 9px;border:1px solid rgba(124,240,255,.13);border-radius:8px;background:linear-gradient(115deg,rgba(4,25,38,.92),rgba(4,15,25,.75));color:#bcdde5}
 .clanCard.request{grid-template-columns:auto minmax(0,1fr) auto}
 .clanIdentity{display:grid;min-width:0;gap:2px}.clanIdentity strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:5px;color:#dff7fb;font-size:12px}.clanIdentity small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#7395a1;font-size:10px}
@@ -2642,7 +2647,7 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .clanBrowse{grid-template-columns:auto minmax(0,1fr) auto}
 .clanBrowse .clanBtns button{width:auto;height:28px;padding:0 14px;font-size:11px}
 .clanBrowse .clanBtns button:disabled{opacity:.4;cursor:not-allowed}
-.clanTabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:7px 10px 0;gap:5px}
+.clanTabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));padding:7px 10px 0;gap:5px}
 .clanTabs button{height:29px;border:0;border-bottom:2px solid transparent;color:#6f929e;background:transparent;cursor:pointer;font:800 11px/1 ui-sans-serif,system-ui;text-transform:uppercase}
 .clanTabs button.active{color:#dffaff;border-bottom-color:#63ddf8;background:linear-gradient(180deg,transparent,rgba(70,210,245,.08))}
 .clanInfoBox{padding:9px 11px 0;box-sizing:border-box;display:grid;gap:8px}
