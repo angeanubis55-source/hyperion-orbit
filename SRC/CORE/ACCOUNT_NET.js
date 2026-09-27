@@ -281,6 +281,29 @@ function mergeProgressiveFields(prev, next) {
           }
         }
       }
+      // Modules vaisseaux + historique roulette : union par id. Un tirage
+      // validé localement ne doit jamais disparaître quand le canon serveur
+      // (récompense NPC, give admin, 2e onglet...) est adopté après un 409.
+      // Sans ça : module "comme si on l'avait pas eu" (ni inventaire, ni
+      // historique). L'historique reste plafonné à 500 (garde les + récents,
+      // dont le tirage qui vient d'être fait).
+      for (const key of ["shipModules", "moduleRollHistory"]) {
+        if (Array.isArray(prev.inventory[key]) && Array.isArray(next.inventory[key])) {
+          const have = new Set();
+          for (const m of next.inventory[key]) {
+            if (m && m.id != null) have.add(String(m.id));
+          }
+          for (const m of prev.inventory[key]) {
+            if (m && m.id != null && !have.has(String(m.id))) {
+              next.inventory[key].push(m);
+              have.add(String(m.id));
+            }
+          }
+          if (key === "moduleRollHistory" && next.inventory[key].length > 500) {
+            next.inventory[key] = next.inventory[key].slice(-500);
+          }
+        }
+      }
     }
     if (Array.isArray(prev.hangars) && Array.isArray(next.hangars)) {
       const have = new Set(next.hangars.filter(Boolean).map((h) => String(h?.shipId)));

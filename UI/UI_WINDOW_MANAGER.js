@@ -888,6 +888,10 @@ restore(id) {
         applyMinimapProportions(card, card.getBoundingClientRect().width || 250);
       });
     }
+
+    // Positions effacées ci-dessus : recentre chaque fenêtre
+    // (keepWindowInsideViewport seule les recalerait juste à l'écran).
+    keepWindowInsideViewport(card, { centerIfUnpositioned: true });
   }
 },
 

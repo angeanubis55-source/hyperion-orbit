@@ -8106,8 +8106,8 @@ function registerHudWindows() {
   reg("minimap", "Mini-carte", menuIcon("minimap"));
   reg("settingsWindow", "Paramètres", menuIcon("settings"), false);
   reg("questWindow", "Missions", menuIcon("quests"), false);
-  reg("questOfferWindow", "Terminal de quêtes", menuIcon("quests"), false, { minimizable: false });
-  // Terminal : comme le comptoir, juste une croix qui fait disparaître (jamais de dock).
+  reg("questOfferWindow", "Terminal de quêtes", menuIcon("quests"), false);
+  // Terminal : croix = fermer, − et icône dock = réduire/restaurer comme les autres fenêtres.
   ui.questOfferWindow?.querySelector(".gameWinBar")?.insertAdjacentHTML("beforeend", `<button class="gameWinMinBtn" type="button" title="Fermer">✕</button>`);
   ui.questOfferWindow?.querySelector(".gameWinBar > button:last-child")?.addEventListener("click", closeQuestTerminal);
   window.GameWindowManager?.close?.("questOfferWindow");
@@ -8124,8 +8124,8 @@ function registerHudWindows() {
     window.GameWindowManager?.close?.("craftingWindow");
   }
   reg("petWindow", "P.E.T", menuIcon("pet"), false);
-  reg("oreTradeWindow", "Commerce", menuIcon("ore_trade"), false, { minimizable: false });
-  // Comptoir : juste une croix qui fait disparaître (jamais de dock).
+  reg("oreTradeWindow", "Commerce", menuIcon("ore_trade"), false);
+  // Comptoir : croix = fermer, − et icône dock = réduire/restaurer comme les autres fenêtres.
   ui.oreTradeWindow?.querySelector(".gameWinBar")?.insertAdjacentHTML("beforeend", `<button class="gameWinMinBtn" type="button" title="Fermer">✕</button>`);
   ui.oreTradeWindow?.querySelector(".gameWinBar > button:last-child")?.addEventListener("click", closeOreTradeWindow);
   window.GameWindowManager?.close?.("oreTradeWindow");
@@ -33821,7 +33821,10 @@ function setHudWidth(element, width) {
 
 function setHudDisplay(element, display) {
   if (!element) return;
-  if (hudLastDisplay.get(element) === display) return;
+  // Le cache seul ne suffit pas : resetPositions() et le manager écrivent
+  // style.display directement (ex : état du boss resté visible après un
+  // reset). Revérifie le DOM réel avant de sauter l'écriture.
+  if (hudLastDisplay.get(element) === display && element.style.display === display) return;
   hudLastDisplay.set(element, display);
   element.style.display = display;
 }

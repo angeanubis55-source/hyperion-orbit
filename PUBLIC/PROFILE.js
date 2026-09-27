@@ -14,6 +14,8 @@ import {
   buyModuleRoll,
   addShipModule,
   replaceShipModule,
+  buyAndAddShipModule,
+  buyAndReplaceShipModule,
   updateCurrentUserEmail,
   updateCurrentUserPseudo,
   updateCurrentUserPetPseudo,
@@ -2468,49 +2470,52 @@ function renderExtrasRoulette(user) {
     requestAnimationFrame(frame);
   };
 
-  // 🎰 TIRAGE DE BASE
+  // 🎰 TIRAGE DE BASE — sauvegarde ATOMIQUE avant l'animation : si l'onglet
+  // se ferme / la boutique se réduit pendant les 900 ms de la roue, le module
+  // est déjà persisté (inventaire + historique). L'arrêt ne fait qu'afficher.
   const handleBaseRoll = () => {
     if (rolling) return;
-    rolling = true;
     moduleReroll = null; // un nouveau tirage de base "casse" la possibilité de reroll
+
+    const u2 = getCurrentUserFull();
+    if (!u2) { setMsg("Non connecté.", false); return; }
+    const mod = generateShipModule(u2);
+    mod.rerolls = 0;
+
+    const saved = buyAndAddShipModule(MODULE_ROLL_COST, mod);
+    if (!saved?.ok) {
+      setMsg(saved?.error || "Achat impossible.", false);
+      return;
+    }
+    user = getCurrentUserFull() || saved.user;
+
+    // Le nouveau tirage doit toujours être visible : on lève le filtre
+    // de recherche qui pouvait le masquer ("Aucun module pour cette recherche").
+    historyShipQuery = "";
+    moduleHistoryShipQuery = "";
+    const searchInput = document.getElementById("moduleHistorySearchInput");
+    if (searchInput) searchInput.value = "";
+
+    rolling = true;
+    moduleReroll = {
+      shipId: mod.shipId,
+      familyId: moduleFamilyId(mod),
+      type: mod.type,
+      tier: mod.tier,
+      statCount: mod.bonuses.length,
+      currentId: mod.id,
+      cost: nextModuleRerollCost(0),
+      rerolls: 0,
+    };
 
     const resOut = document.getElementById("rollResult");
     if (resOut) resOut.textContent = "";
     const rerollRowOut = document.getElementById("rerollRow");
     if (rerollRowOut) { rerollRowOut.innerHTML = ""; rerollRowOut.style.display = "none"; }
 
-    // ✅ La roue démarre INSTANTANÉMENT : aucune écriture localStorage ni
-    // re-rendu avant l'animation (tout est délégué à l'arrêt).
-    const u2 = getCurrentUserFull();
-    const mod = generateShipModule(u2);
-    mod.rerolls = 0;
-
     const finishRoll = () => {
-      const pay = buyModuleRoll(MODULE_ROLL_COST);
-      if (!pay?.ok) {
-        setMsg(pay?.error || "Achat impossible.", false);
-        rolling = false;
-        return;
-      }
-      const add = addShipModule(mod);
-      if (!add?.ok) {
-        setMsg(add?.error || "Erreur stockage module.", false);
-        rolling = false;
-        return;
-      }
-
-      user = getCurrentUserFull();
-      // Active la possibilité de REROLLER ce module (x5, puis x5 à chaque fois).
-      moduleReroll = {
-        shipId: mod.shipId,
-        familyId: moduleFamilyId(mod),
-        type: mod.type,
-        tier: mod.tier,
-        statCount: mod.bonuses.length,
-        currentId: mod.id,
-        cost: nextModuleRerollCost(0),
-        rerolls: 0,
-      };
+      // Relecture fraîche : la sauvegarde a déjà eu lieu avant le spin.
+      user = getCurrentUserFull() || user;
       renderRollResultCard(mod);
       refreshAfterModule(user);
       rolling = false;
@@ -2529,17 +2534,51 @@ function renderExtrasRoulette(user) {
 
   // 🔁 REROLL du module courant : même type/tier/rareté/vaisseau/famille,
   // seuls les % changent. Prix multiplié par 5 à chaque relance.
+  // Sauvegarde ATOMIQUE avant l'animation (même raison que le tirage).
   const handleReroll = () => {
     if (rolling || !moduleReroll) return;
-    rolling = true;
 
     const cost = moduleReroll.cost;
+    const oldId = moduleReroll.currentId;
+    const oldRerolls = Number(moduleReroll.rerolls) || 0;
+    const snap = {
+      shipId: moduleReroll.shipId,
+      familyId: moduleReroll.familyId,
+      type: moduleReroll.type,
+      tier: moduleReroll.tier,
+      statCount: moduleReroll.statCount,
+    };
     user = getCurrentUserFull();
-    if (Number(user?.credits || 0) < cost) {
-      setMsg("Crédits insuffisants pour relancer.", false);
-      rolling = false;
+    if (!user) { setMsg("Non connecté.", false); return; }
+    const owned = (user?.inventory?.shipModules || []).some((m) => String(m?.id) === String(oldId));
+    if (!owned) { setMsg("Module plus en inventaire : relance impossible.", false); return; }
+
+    const newMod = generateShipModule(user, {
+      shipId: snap.shipId,
+      familyId: snap.familyId,
+      type: snap.type,
+      tier: snap.tier,
+      statCount: snap.statCount,
+    });
+    // Le compteur de relances est persisté sur le module lui-même.
+    newMod.rerolls = oldRerolls + 1;
+
+    const repl = buyAndReplaceShipModule(cost, oldId, newMod);
+    if (!repl?.ok) {
+      setMsg(repl?.error || "Achat impossible.", false);
       return;
     }
+    user = getCurrentUserFull() || repl.user;
+    moduleReroll.currentId = newMod.id;
+    moduleReroll.rerolls = newMod.rerolls;
+    moduleReroll.cost = nextModuleRerollCost(newMod.rerolls);
+
+    historyShipQuery = "";
+    moduleHistoryShipQuery = "";
+    const searchInput2 = document.getElementById("moduleHistorySearchInput");
+    if (searchInput2) searchInput2.value = "";
+
+    rolling = true;
 
     // On referme la carte pendant la relance : elle se rouvre avec les
     // nouveaux éléments à l'arrêt (pas d'affichage prématuré de l'ancien).
@@ -2549,34 +2588,7 @@ function renderExtrasRoulette(user) {
     if (rerollRowClear) { rerollRowClear.innerHTML = ""; rerollRowClear.style.display = "none"; }
 
     const onStop = () => {
-      const pay = buyModuleRoll(cost);
-      if (!pay?.ok) {
-        setMsg(pay?.error || "Achat impossible.", false);
-        rolling = false;
-        return;
-      }
-      user = pay.user;
-      const newMod = generateShipModule(user, {
-        shipId: moduleReroll.shipId,
-        familyId: moduleReroll.familyId,
-        type: moduleReroll.type,
-        tier: moduleReroll.tier,
-        statCount: moduleReroll.statCount,
-      });
-      // Le compteur de relances est persisté sur le module lui-même.
-      newMod.rerolls = (Number(moduleReroll.rerolls) || 0) + 1;
-      const repl = replaceShipModule(moduleReroll.currentId, newMod);
-      if (!repl?.ok) {
-        setMsg(repl?.error || "Erreur stockage module.", false);
-        rolling = false;
-        return;
-      }
-
-      user = getCurrentUserFull();
-      moduleReroll.currentId = newMod.id;
-      moduleReroll.rerolls = newMod.rerolls;
-      moduleReroll.cost = nextModuleRerollCost(newMod.rerolls);
-
+      user = getCurrentUserFull() || user;
       // La CARD ne se ferme pas : elle attend le nouveau tirage puis se met à jour.
       renderRollResultCard(newMod);
       refreshAfterModule(user, `Reroll réussi (${formatNumber(cost)} crédits).`);
@@ -2585,11 +2597,11 @@ function renderExtrasRoulette(user) {
 
     spinWheel(
       (railLen) => {
-        const uniform = { type: moduleReroll.type, tier: moduleReroll.tier };
+        const uniform = { type: snap.type, tier: snap.tier };
         rouletteRailCells = Array.from({ length: railLen }, () => ({ ...uniform }));
         return rouletteRailCells.slice(0, railLen);
       },
-      { type: moduleReroll.type, tier: moduleReroll.tier },
+      { type: snap.type, tier: snap.tier },
       onStop
     );
   };

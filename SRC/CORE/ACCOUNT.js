@@ -2639,7 +2639,9 @@ export function addShipModule(moduleObj) {
   return { ok: true, user: u };
 }
 
-// ✅ Reroll : remplace le module précédent (même chaine de rerolls)
+// ✅ Reroll : remplace le module précédent en inventaire, mais l'historique
+// reste APPEND-ONLY (on ne supprime jamais l'ancien tirage : la pastille
+// reroll est simplement désactivée quand le module n'est plus possédé).
 export function replaceShipModule(oldId, newModule) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
@@ -2652,7 +2654,6 @@ export function replaceShipModule(oldId, newModule) {
 
   if (oldId) {
     u.inventory.shipModules = u.inventory.shipModules.filter((m) => m?.id !== oldId);
-    u.inventory.moduleRollHistory = u.inventory.moduleRollHistory.filter((h) => h?.id !== oldId);
   }
 
   u.inventory.shipModules.push(newModule);
@@ -2662,6 +2663,79 @@ export function replaceShipModule(oldId, newModule) {
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
 
   return { ok: true, user: u };
+}
+
+// ✅ Tirage ATOMIQUE (1 seule sauvegarde) : paiement + ajout du module.
+// A appeler AVANT l'animation de la roue : si l'onglet se ferme pendant
+// l'animation, le module est déjà persisté (inventaire + historique).
+export function buyAndAddShipModule(cost, moduleObj) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+
+  if (!moduleObj || typeof moduleObj !== "object") {
+    return { ok: false, error: "Module invalide." };
+  }
+
+  ensureUserShape(u);
+  if (!Array.isArray(u.inventory.shipModules)) u.inventory.shipModules = [];
+  if (!Array.isArray(u.inventory.moduleRollHistory)) u.inventory.moduleRollHistory = [];
+
+  const tickets = Math.max(0, Math.floor(Number(u.inventory?.counts?.["ticket_module_reroll"]) || 0));
+  let usedTicket = false;
+  if (tickets > 0) {
+    incCount(u, "ticket_module_reroll", -1);
+    usedTicket = true;
+  } else {
+    cost = Math.max(0, Number(cost || 0));
+    if (u.credits < cost) return { ok: false, error: "Crédits insuffisants." };
+    u.credits -= cost;
+  }
+
+  u.inventory.shipModules.push(moduleObj);
+  u.inventory.moduleRollHistory.push({ ...moduleObj });
+
+  saveUser(u);
+  writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+
+  return { ok: true, user: u, ticket: usedTicket };
+}
+
+// ✅ Reroll ATOMIQUE (1 seule sauvegarde) : paiement + remplacement.
+// Historique append-only : l'ancien tirage reste visible.
+export function buyAndReplaceShipModule(cost, oldId, newModule) {
+  const u = getCurrentUserFull();
+  if (!u) return { ok: false, error: "Non connecté." };
+
+  if (!newModule || typeof newModule !== "object") {
+    return { ok: false, error: "Module invalide." };
+  }
+
+  ensureUserShape(u);
+  if (!Array.isArray(u.inventory.shipModules)) u.inventory.shipModules = [];
+  if (!Array.isArray(u.inventory.moduleRollHistory)) u.inventory.moduleRollHistory = [];
+
+  const tickets = Math.max(0, Math.floor(Number(u.inventory?.counts?.["ticket_module_reroll"]) || 0));
+  let usedTicket = false;
+  if (tickets > 0) {
+    incCount(u, "ticket_module_reroll", -1);
+    usedTicket = true;
+  } else {
+    cost = Math.max(0, Number(cost || 0));
+    if (u.credits < cost) return { ok: false, error: "Crédits insuffisants." };
+    u.credits -= cost;
+  }
+
+  if (oldId) {
+    u.inventory.shipModules = u.inventory.shipModules.filter((m) => m?.id !== oldId);
+  }
+
+  u.inventory.shipModules.push(newModule);
+  u.inventory.moduleRollHistory.push({ ...newModule });
+
+  saveUser(u);
+  writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+
+  return { ok: true, user: u, ticket: usedTicket };
 }
 
 // ✅ Hangar ID (verrou de session)

@@ -2228,8 +2228,6 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   top:60px !important;
 }
 
-#gameWindowDock [data-window-id="questOfferWindow"]{ display:none !important; }
-
 .questPanel{
   width:min(500px, calc(100vw - 24px));
   height:auto;
