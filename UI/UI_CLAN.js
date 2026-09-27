@@ -206,10 +206,9 @@ export function initClanUI() {
     const foot = document.getElementById("clanMemberFoot");
     if (foot) {
       foot.hidden = !leader;
-      foot.innerHTML = `<div class="clanDangerZone">`
-        + (leader ? `<button type="button" data-act="transfer-open">Transférer la chefferie</button>` : "")
-        + `</div>`
-        + (leader ? `<form id="clanTransferForm" class="clanForm clanTransferForm" autocomplete="off" hidden><input id="clanTransferInput" type="text" placeholder="Pseudo du successeur…" maxlength="20" autocomplete="off" /><button type="submit">Transférer</button></form>` : "");
+      foot.innerHTML = leader
+        ? `<form id="clanTransferForm" class="clanForm clanTransferForm" autocomplete="off"><input id="clanTransferInput" type="text" placeholder="Pseudo du successeur…" maxlength="20" autocomplete="off" /><button type="submit">Transférer la chefferie</button></form>`
+        : "";
     }
     // --- Rangs ---
     if (ranksList) {
@@ -396,9 +395,6 @@ export function initClanUI() {
         await apiClan("/api/clans/open", "POST", { open: clan.open === false });
         try { sendClanNotify(); } catch {}
         await load();
-      } else if (act === "transfer-open") {
-        const form = document.getElementById("clanTransferForm");
-        if (form) form.hidden = !form.hidden;
       } else if (act === "leave") {
         if (!clan || !window.confirm(`Quitter le clan [${clan.tag}] ${clan.name} ?`)) return;
         try { sendClanNotify(); } catch {}
