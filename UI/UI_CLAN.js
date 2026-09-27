@@ -305,7 +305,7 @@ export function initClanUI() {
     } catch {}
   }
 
-  document.querySelector("#clanWindow .clanTabs")?.addEventListener("click", (event) => {
+  document.querySelector("#clanManagePane .clanTabs")?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-clan-tab]");
     if (button) setTab(button.dataset.clanTab);
   });
