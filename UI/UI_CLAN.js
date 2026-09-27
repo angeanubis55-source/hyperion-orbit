@@ -108,11 +108,16 @@ export function initClanUI() {
           const full = Number(c.memberCount) >= 30;
           const closed = c.open === false;
           return `<article class="clanCard clanBrowse" data-clan-tag="${tag}">`
-            + `<span class="clanTagBadge">[${tag}]</span>`
-            + `<span class="clanIdentity"><strong>${name}</strong><small>Chef : ${leader} · ${Number(c.memberCount) || 0}/30 · ${closed ? "Fermé" : "Ouvert"}${desc ? ` · ${desc}` : ""}</small></span>`
+            + `<div class="clanBrowseHead"><span class="clanTagBadge">[${tag}]</span>`
+            + `<strong class="clanBrowseName">Clan de : ${name}</strong>`
             + `<span class="clanBtns">${isApplied
               ? `<button type="button" data-act="cancel" title="Retirer ma candidature" aria-label="Retirer ma candidature">Retirer</button>`
-              : `<button class="accept" type="button" data-act="apply" title="Postuler" aria-label="Postuler"${(full || closed) ? " disabled" : ""}>${full ? "Plein" : (closed ? "Fermé" : "Postuler")}</button>`}</span></article>`;
+              : `<button class="accept" type="button" data-act="apply" title="Postuler" aria-label="Postuler"${(full || closed) ? " disabled" : ""}>${full ? "Plein" : (closed ? "Fermé" : "Postuler")}</button>`}</span></div>`
+            + `<div class="clanBrowseSub">Chef : ${leader}</div>`
+            + `<div class="clanBrowseSub">${Number(c.memberCount) || 0}/30 membres · ${closed ? "Fermé" : "Ouvert"}</div>`
+            + `<hr class="clanSep" />`
+            + `<p class="clanBrowseDesc">${desc || "Aucune description."}</p>`
+            + `</article>`;
         }).join("") : `<div class="clanEmpty">Aucun clan pour l'instant — crée le tien (300 000 crédits).</div>`;
       }
       return;
