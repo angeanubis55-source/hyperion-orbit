@@ -194,7 +194,6 @@ function clearSavedWindowStates() {
       a,
       canvas,
       .gameWinIcon,
-      .gameWinCloseBtn,
       .slot,
       .slotBox,
       .itemRow,
@@ -856,84 +855,84 @@ restore(id) {
     },
 
     resetPositions() {
+  // Séquence : purge positions + états -> TOUT ouvrir recentré ->
+  // tout refermer -> refresh. Le reload recharge la disposition par
+  // défaut (positions purgées = centrées, états purgés = defaultOpen).
+  // Les phases ouvrir/fermer ne persistent rien (pas de saveWindowOpenState
+  // ni saveWindowPosition) : seul le reload final applique le défaut.
   clearSavedWindowPositions();
   clearSavedWindowStates();
 
   const dock = getDock();
+  const list = [...windows.values()].filter((w) => w && w.card && w.root);
 
-  for (const [id, w] of windows.entries()) {
-    if (!w || !w.card || !w.root) continue;
+  const showAll = () => {
+    for (const w of list) {
+      const card = w.card;
+      const root = w.root;
+      clearTimeout(w.animationTimer);
+      clearTimeout(w.animationIconTimer);
+      card.classList.remove("gameWinOpening");
+      card.classList.remove("gameWinClosing");
+      card.classList.remove("floating");
+      card.style.position = "";
+      card.style.left = "";
+      card.style.top = "";
+      card.style.right = "";
+      card.style.bottom = "";
+      card.style.width = "";
+      card.style.minWidth = "";
+      card.style.maxWidth = "";
+      card.style.margin = "";
+      card.style.transform = "";
+      card.style.visibility = "visible";
+      card.style.opacity = "1";
 
-    const card = w.card;
-    const root = w.root;
-    clearTimeout(w.animationTimer);
-    clearTimeout(w.animationIconTimer);
-    card.classList.remove("gameWinOpening");
-    card.classList.remove("gameWinClosing");
+      root.classList.remove("gameWinMinimized");
+      card.classList.remove("gameWinMinimized");
+      root.style.display = "block";
+      card.style.display = "block";
+      bringWindowToFront(card);
 
-    // Géométrie effacée pour toutes les fenêtres (sinon la prochaine
-    // ouverture reprendrait une position perdue).
-    card.classList.remove("floating");
-    card.style.position = "";
-    card.style.left = "";
-    card.style.top = "";
-    card.style.right = "";
-    card.style.bottom = "";
-    card.style.width = "";
-    card.style.minWidth = "";
-    card.style.maxWidth = "";
-    card.style.margin = "";
-    card.style.transform = "";
-    card.style.visibility = "visible";
-    card.style.opacity = "1";
-
-    // "Réinitialiser" = retrouver la disposition par défaut : les fenêtres
-    // fermées par défaut (terminal de quêtes, commerce, paramètres...)
-    // restent fermées au lieu d'être toutes ouvertes de force.
-    const shouldOpen = w.minimizable === false ? true : !!w.defaultOpen;
-    if (!shouldOpen) {
-      root.classList.add("gameWinMinimized");
-      card.classList.add("gameWinMinimized");
-      root.style.display = "none";
-      card.style.display = "none";
       if (w.minimizable === false) {
-        const dockBtn = dock.querySelector(`[data-window-id="${id}"]`);
+        const dockBtn = dock.querySelector(`[data-window-id="${w.id}"]`);
         if (dockBtn) dockBtn.remove();
       } else {
-        const btn2 = makeDockIcon(id, w.title, w.icon);
-        btn2?.classList.remove("dockIconActive");
+        const btn2 = makeDockIcon(w.id, w.title, w.icon);
+        btn2?.classList.add("dockIconActive");
         refreshDockIcon(btn2);
       }
-      continue;
-    }
 
-    root.classList.remove("gameWinMinimized");
-    card.classList.remove("gameWinMinimized");
-
-    root.style.display = "block";
-    card.style.display = "block";
-
-    bringWindowToFront(card);
-
-    const dockBtn = dock.querySelector(`[data-window-id="${id}"]`);
-    if (w.minimizable === false) {
-      if (dockBtn) dockBtn.remove();
-    } else {
-      const btn2 = makeDockIcon(id, w.title, w.icon);
-      btn2?.classList.add("dockIconActive");
-      refreshDockIcon(btn2);
-    }
-
-    if (id === "minimap" && typeof applyMinimapProportions === "function") {
-      requestAnimationFrame(() => {
+      if (w.id === "minimap" && typeof applyMinimapProportions === "function") {
         applyMinimapProportions(card, card.getBoundingClientRect().width || 250);
-      });
+      }
+      keepWindowInsideViewport(card, { centerIfUnpositioned: true });
     }
+  };
 
-    // Positions effacées ci-dessus : recentre chaque fenêtre
-    // (keepWindowInsideViewport seule les recalerait juste à l'écran).
-    keepWindowInsideViewport(card, { centerIfUnpositioned: true });
-  }
+  const hideAll = () => {
+    for (const w of list) {
+      clearTimeout(w.animationTimer);
+      clearTimeout(w.animationIconTimer);
+      w.card.classList.remove("gameWinOpening");
+      w.card.classList.remove("gameWinClosing");
+      w.root.classList.add("gameWinMinimized");
+      w.card.classList.add("gameWinMinimized");
+      w.root.style.display = "none";
+      w.card.style.display = "none";
+      const btn2 = dock.querySelector(`[data-window-id="${w.id}"]`);
+      if (w.minimizable === false) {
+        if (btn2) btn2.remove();
+      } else if (btn2) {
+        btn2.classList.remove("dockIconActive");
+        refreshDockIcon(btn2);
+      }
+    }
+  };
+
+  showAll();
+  setTimeout(hideAll, 700);
+  setTimeout(() => { try { location.reload(); } catch {} }, 1200);
 },
 
     close(id) {

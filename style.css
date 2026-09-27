@@ -2107,44 +2107,6 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
   cursor:default !important;
 }
 
-/* Croix "Fermer" (terminal de quêtes, commerce) : même gabarit que réduire
-   mais garde son glyphe ✕ (jamais la flèche ↖ des .gameWinMinBtn). */
-.gameWinCloseBtn{
-  width:22px !important;
-  height:22px !important;
-  display:grid !important;
-  place-items:center !important;
-  flex-shrink:0 !important;
-  border-radius:0 !important;
-  border:1px solid rgba(255,130,130,.45) !important;
-  background:linear-gradient(135deg,rgba(190,45,45,.45),rgba(100,20,20,.40)) !important;
-  color:#ffecec !important;
-  font:750 12px/1 ui-sans-serif,system-ui !important;
-  text-transform:none !important;
-  line-height:1 !important;
-  cursor:pointer !important;
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
-  transition:none !important;
-}
-
-.gameWinCloseBtn:hover:not(:disabled){
-  border-color:rgba(255,130,130,.75) !important;
-  background:rgba(185,45,45,.4) !important;
-  box-shadow:0 0 16px rgba(255,80,80,.20) !important;
-}
-
-.gameWindow > .gameWinBar > .gameWinCloseBtn{
-  width:26px !important;
-  height:26px !important;
-  margin:0 -8px 0 0 !important;
-  border-radius:0 8px 0 0 !important;
-}
-
-/* Quand la croix suit le bouton réduire, c'est elle qui prend l'angle. */
-.gameWindow > .gameWinBar > .gameWinMinBtn:has(+ .gameWinCloseBtn){
-  border-radius:0 !important;
-}
-
 /* Boutons reduire : fleche ↖ CSS (comme poignee LOG, sens haut-gauche) */
 .gameWindow > .gameWinBar > .gameWinMinBtn:not(.miniZoomBtn){
   position:relative;

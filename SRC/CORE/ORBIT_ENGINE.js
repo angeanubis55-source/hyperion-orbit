@@ -8101,26 +8101,12 @@ function registerHudWindows() {
   // Icônes officielles DarkOrbit (extraites de featuresMenu_texture).
   const menuIcon = (name) => `<img class="menuIconImg" src="ASSETS/UI/MENU/${name}.png" alt="" draggable="false">`;
 
-  // Croix "Fermer" (classe dédiée gameWinCloseBtn, pas gameWinMinBtn : sinon
-  // le CSS la transforme en flèche ↖ et on dirait 2x "réduire"). Idempotent :
-  // ne rajoute rien si la croix existe déjà.
-  const ensureCloseBtn = (root, onClose) => {
-    const bar = root?.querySelector(":scope > .gameWinBar");
-    if (!bar || bar.querySelector(":scope > .gameWinCloseBtn")) return;
-    bar.insertAdjacentHTML("beforeend", `<button class="gameWinCloseBtn" type="button" title="Fermer" data-no-drag>✕</button>`);
-    const btn = bar.querySelector(":scope > .gameWinCloseBtn");
-    btn?.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
-    btn?.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onClose(); });
-  };
-
   reg("boxMeta", "Stats joueur", menuIcon("pilotSheet"));
   reg("boxVitals", "État du vaisseau", menuIcon("ship"));
   reg("minimap", "Mini-carte", menuIcon("minimap"));
   reg("settingsWindow", "Paramètres", menuIcon("settings"), false);
   reg("questWindow", "Missions", menuIcon("quests"), false);
   reg("questOfferWindow", "Terminal de quêtes", menuIcon("quests"), false);
-  // Terminal : croix = fermer, − et icône dock = réduire/restaurer comme les autres fenêtres.
-  ensureCloseBtn(ui.questOfferWindow, closeQuestTerminal);
   window.GameWindowManager?.close?.("questOfferWindow");
   reg("galaxyGateWindow", "Galaxy Gates", menuIcon("ggBuilder"), false);
   reg("gameLogWindow", "LOG", menuIcon("log"), false);
@@ -8136,8 +8122,6 @@ function registerHudWindows() {
   }
   reg("petWindow", "P.E.T", menuIcon("pet"), false);
   reg("oreTradeWindow", "Commerce", menuIcon("ore_trade"), false);
-  // Comptoir : croix = fermer, − et icône dock = réduire/restaurer comme les autres fenêtres.
-  ensureCloseBtn(ui.oreTradeWindow, closeOreTradeWindow);
   window.GameWindowManager?.close?.("oreTradeWindow");
   reg("refineryWindow", "Raffinage", menuIcon("refinement"), false);
   reg("skylabWindow", "Skylab", menuIcon("skylab"), false);
