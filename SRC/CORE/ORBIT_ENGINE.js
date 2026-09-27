@@ -8106,7 +8106,7 @@ function registerHudWindows() {
   reg("minimap", "Mini-carte", menuIcon("minimap"));
   reg("settingsWindow", "Paramètres", menuIcon("settings"), false);
   reg("questWindow", "Missions", menuIcon("quests"), false);
-  reg("questOfferWindow", "Terminal de quêtes", menuIcon("quests"), false);
+  reg("questOfferWindow", "Terminal de quêtes", menuIcon("quests"), false, { dock: false });
   window.GameWindowManager?.close?.("questOfferWindow");
   reg("galaxyGateWindow", "Galaxy Gates", menuIcon("ggBuilder"), false);
   reg("gameLogWindow", "LOG", menuIcon("log"), false);

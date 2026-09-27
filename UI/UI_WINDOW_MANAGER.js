@@ -635,8 +635,11 @@ function makeMinimapResizable(id, card) {
   }
 
   window.GameWindowManager = {
-    register({ id, title, icon = "▣", root, card, defaultOpen = true, minimizable = true }) {
+    register({ id, title, icon = "▣", root, card, defaultOpen = true, minimizable = true, dock = true }) {
       if (!id || !root || !card) return null;
+      // dock:false = jamais d'icône dans le dock (ex : terminal de quêtes :
+      // il s'ouvre à proximité et se réduit sans passer par le dock).
+      const wantDock = dock !== false;
 
 card.classList.add("gameWindow");
 card.dataset.gameWindowId = id;
@@ -695,6 +698,7 @@ if (barIcon && minimizable !== false) {
         bar,
         minimizable,
         defaultOpen: !!defaultOpen,
+        dock: wantDock,
         lastDisplay: state.lastDisplay || "grid",
       });
 
@@ -707,20 +711,26 @@ if (barIcon && minimizable !== false) {
         card.style.display = "block";
         requestAnimationFrame(() => keepWindowInsideViewport(card, { centerIfUnpositioned: true }));
         // Barre des tâches : l'icône reste visible, état actif.
-        if (minimizable !== false) {
+        if (minimizable !== false && wantDock) {
           const dockBtn = makeDockIcon(id, title, icon);
           dockBtn?.classList.add("dockIconActive");
           refreshDockIcon(dockBtn);
+        } else {
+          const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);
+          if (dockBtn) dockBtn.remove();
         }
       } else {
         root.classList.add("gameWinMinimized");
         card.classList.add("gameWinMinimized");
         root.style.display = "none";
         card.style.display = "none";
-        if (minimizable !== false) {
+        if (minimizable !== false && wantDock) {
           const dockBtn = makeDockIcon(id, title, icon);
           dockBtn?.classList.remove("dockIconActive");
           refreshDockIcon(dockBtn);
+        } else {
+          const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);
+          if (dockBtn) dockBtn.remove();
         }
       }
 
@@ -739,12 +749,22 @@ minimize(id) {
   w.card.classList.add("gameWinClosing");
   // Barre des tâches : si l'icône est déjà rangée dans le dock, on ne
   // rejoue pas son animation d'arrivée (ça faisait glitcher).
-  const preExistingBtn = getDock().querySelector(`[data-window-id="${id}"]`);
-  const dockBtn = makeDockIcon(id, w.title, w.icon);
-  dockBtn.classList.remove("dockIconActive");
-  refreshDockIcon(dockBtn);
+  // Sans dock (terminal de quêtes) : aucune icône créée, l'animation vise
+  // simplement le bas de l'écran.
+  let dockBtn = null;
+  if (w.dock !== false) {
+    const preExistingBtn = getDock().querySelector(`[data-window-id="${id}"]`);
+    dockBtn = makeDockIcon(id, w.title, w.icon);
+    dockBtn.classList.remove("dockIconActive");
+    refreshDockIcon(dockBtn);
+    w.dockBtnAnimated = !preExistingBtn;
+  } else {
+    const stale = getDock().querySelector(`[data-window-id="${id}"]`);
+    if (stale) stale.remove();
+    w.dockBtnAnimated = false;
+  }
   const cardRect = w.card.getBoundingClientRect();
-  const dockRect = dockBtn.getBoundingClientRect();
+  const dockRect = dockBtn ? dockBtn.getBoundingClientRect() : getDock().getBoundingClientRect();
   w.card.style.setProperty("--dock-x", `${dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)}px`);
   w.card.style.setProperty("--dock-y", `${dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)}px`);
   w.card.style.setProperty("--dock-scale", String(Math.max(0.08, Math.min(0.25, dockRect.width / cardRect.width))));
@@ -754,8 +774,7 @@ minimize(id) {
   w.card.style.setProperty("--dock-y-mid", `${(dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)) * 0.58}px`);
   w.card.style.setProperty("--dock-x-near", `${(dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)) * 0.68}px`);
   w.card.style.setProperty("--dock-y-near", `${(dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)) * 0.68}px`);
-  w.dockBtnAnimated = !preExistingBtn;
-  if (w.dockBtnAnimated) {
+  if (w.dockBtnAnimated && dockBtn) {
     dockBtn.classList.add("dockIconFromWindow");
     dockBtn.style.setProperty("--icon-start-x", `${cardRect.left + cardRect.width / 2 - dockRect.width / 2}px`);
     dockBtn.style.setProperty("--icon-start-y", `${cardRect.top + cardRect.height / 2 - dockRect.height / 2}px`);
@@ -773,7 +792,7 @@ minimize(id) {
 
   w.root.style.display = "none";
     w.card.style.display = "none";
-    if (w.dockBtnAnimated) {
+    if (w.dockBtnAnimated && dockBtn) {
       dockBtn.classList.remove("dockIconFromWindow");
       dockBtn.removeAttribute("style");
     }
@@ -894,7 +913,7 @@ restore(id) {
       card.style.display = "block";
       bringWindowToFront(card);
 
-      if (w.minimizable === false) {
+      if (w.minimizable === false || w.dock === false) {
         const dockBtn = dock.querySelector(`[data-window-id="${w.id}"]`);
         if (dockBtn) dockBtn.remove();
       } else {
@@ -921,7 +940,7 @@ restore(id) {
       w.root.style.display = "none";
       w.card.style.display = "none";
       const btn2 = dock.querySelector(`[data-window-id="${w.id}"]`);
-      if (w.minimizable === false) {
+      if (w.minimizable === false || w.dock === false) {
         if (btn2) btn2.remove();
       } else if (btn2) {
         btn2.classList.remove("dockIconActive");
