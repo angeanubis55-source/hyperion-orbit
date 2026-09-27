@@ -1,8 +1,9 @@
 ﻿"use strict";
 
 import { NPC_REWARDS } from "../NPC/NPC_BALANCE.js";
+import { getMapRequiredLevel } from "../SRC/CORE/MAP_ACCESS.js";
 
-export const MAX_ACTIVE_QUESTS = 5;
+export const MAX_ACTIVE_QUESTS = 10;
 const K = (id, type, amount, label, map) => ({ id, kind: "kill", type, amount, label, ...(map ? { map } : {}) });
 const C = (id, type, amount, label, map) => ({ id, kind: "collect", type, amount, label, ...(map ? { map } : {}) });
 const V = map => ({ id: `visit_${map}`, kind: "visit", type: map, amount: 1, label: `Visiter la carte ${map}` });
@@ -444,8 +445,28 @@ const EXTERMINATION_1000_DATA = [
   ["exterm1000_magma_stalker", "Magma Stalker", "npc_Magma_Stalker"],
   ["exterm1000_pyrospire", "Pyrospire", "npc_Pyrospire"],
 ];
+const extermTitleFor = (name) => {
+  const raw = String(name || "").trim();
+  const lower = raw.toLowerCase();
+  const rest = (prefix) => raw.slice(prefix.length).trim() || raw;
+  if (lower.startsWith("emperor ")) return `Régicide : ${rest("Emperor ")}`;
+  if (lower.startsWith("uber ")) return `Cauchemar Uber : ${rest("Uber ")}`;
+  if (lower.startsWith("boss ")) return `Prime au commandant : ${rest("Boss ")}`;
+  if (lower.includes("blighted") || lower.includes("gygerthrall") || lower.includes("viral")) return `Endiguement contagion : ${raw}`;
+  if (lower.includes("recruit") || lower.includes("aider")) return `Bizutage sanglant : ${raw}`;
+  if (lower.includes("interceptor") || lower.includes("barracuda") || lower.includes("saboteur") || lower.includes("annihilator") || lower.includes("marauder") || lower.includes("vagrant") || lower.includes("outcast") || lower.includes("corsair") || lower.includes("convict") || lower.includes("hooligan") || lower.includes("ravager")) return `Nettoyage pirate : ${raw}`;
+  if (lower.includes("styxus") || lower.includes("charopos") || lower.includes("lanatum")) return `Chasse ancienne : ${raw}`;
+  if (lower.includes("magma") || lower.includes("pyrospire") || lower.includes("kamikaze") || lower.includes("explosif")) return `Zone à risque : ${raw}`;
+  if (lower.includes("protegit") || lower.includes("cubikon")) return `Siège du cœur : ${raw}`;
+  if (lower.includes("streuner8") || lower.includes("streuner")) return `Battue du vide : ${raw}`;
+  if (lower.includes("kristall")) return `Bris de cristal : ${raw}`;
+  if (lower.includes("sibelon")) return `Front de sang : ${raw}`;
+  if (lower.includes("lordaki")) return `Pression de l'étau : ${raw}`;
+  if (lower.includes("saimon") || lower.includes("mordon") || lower.includes("devolarium")) return `Purge des bas-fonds : ${raw}`;
+  return `Purge : ${raw}`;
+};
 const EXTERMINATION_1000 = EXTERMINATION_1000_DATA.map(([id, name, type]) =>
-  KQ(id, `Anéantissement : 1000 ${name}`, `Contrat d'extermination : détruis 1000 ${name}.`, [K("kill", type, 1000, `Éliminer 1000 ${name}`)])
+  KQ(id, extermTitleFor(name), `Contrat d'extermination : détruis 1000 ${name}.`, [K("kill", type, 1000, `Éliminer 1000 ${name}`)])
 );
 
 // Inspiré des familles de missions DarkOrbit, mais limité aux contenus jouables
@@ -568,6 +589,95 @@ export function getQuestObjectives(quest) {
   const source = Array.isArray(quest?.objectives) && quest.objectives.length ? quest.objectives : quest?.target ? [quest.target] : [];
   return source.map((objective, index) => ({ ...objective, id: String(objective.id || `objective_${index + 1}`), kind: objective.kind || "kill", amount: Math.max(1, Math.floor(Number(objective.amount) || 1)) }));
 }
+
+// Niveau requis = niveau de la map la plus exigeante des objectifs.
+// - visit/kill/collect avec map explicite : cette map.
+// - visit/gate sans map : type = map (gates = niv. 1).
+// - kill sans map : map la plus accessible où le NPC apparaît
+//   (ex : un Uber qui ne spawn qu'en 4-5 vaut niv. 12, pas 1).
+// - collect sans map : même logique via la définition du collectable.
+// Sans info : 1 (faisable partout).
+const PIRATE_NPC_PATTERN = /interceptor|barracuda|saboteur|annihilator|marauder|vagrant|outcast|corsair|convict|hooligan|ravager|battleray|century_falcon/i;
+const HIGH_MAP_NPC_PATTERN = /uber_|maudite|cubikon_maudite|protegit_maudite|astral/i;
+function easiestMapLevel(maps, playerSector) {
+  let best = null;
+  for (const mapId of maps || []) {
+    const id = String(mapId || "").trim();
+    if (!id || /^gate\s/i.test(id)) continue; // Gates : accès par construction, pas par niveau
+    try {
+      // Secteur inconnu : niveau le plus favorable parmi les 3 firmes
+      // (un Streuner en 1-2 vaut niv. 1 pour un MMO, pas 13).
+      const lv = mapLevelFavoring(id, playerSector);
+      best = best == null ? lv : Math.min(best, lv);
+    } catch {}
+  }
+  return best;
+}
+function mapLevelFavoring(mapId, playerSector) {
+  // Secteur inconnu : niveau le plus favorable parmi les 3 firmes
+  // (un Streuner en 1-2 vaut niv. 1 pour un MMO, pas 13).
+  if (playerSector != null) return getMapRequiredLevel(mapId, playerSector);
+  return Math.min(getMapRequiredLevel(mapId, "1"), getMapRequiredLevel(mapId, "2"), getMapRequiredLevel(mapId, "3"));
+}
+function fallbackNpcLevel(type) {
+  const name = String(type || "");
+  if (HIGH_MAP_NPC_PATTERN.test(name) || PIRATE_NPC_PATTERN.test(name)) return 12;
+  return 1;
+}
+export function getQuestRequiredLevel(quest, playerSector = null, context = {}) {
+  const npcLocations = context?.npcLocations || null;
+  const collectables = context?.collectables || null;
+  let level = 1;
+  for (const objective of getQuestObjectives(quest)) {
+    const map = objective?.map
+      || (objective?.kind === "visit" || objective?.kind === "gate" ? objective?.type : null);
+    if (map) {
+      try {
+        level = Math.max(level, mapLevelFavoring(map, playerSector));
+      } catch {}
+      continue;
+    }
+    if (objective?.kind === "kill" && objective?.type && objective.type !== "*") {
+      const maps = npcLocations?.[objective.type];
+      if (Array.isArray(maps) && maps.length) {
+        const easiest = easiestMapLevel(maps, playerSector);
+        if (easiest != null) level = Math.max(level, easiest);
+        else level = Math.max(level, fallbackNpcLevel(objective.type));
+      } else {
+        level = Math.max(level, fallbackNpcLevel(objective.type));
+      }
+      continue;
+    }
+    if (objective?.kind === "collect" && objective?.type) {
+      const definition = collectables?.[objective.type];
+      const maps = definition?.maps;
+      if (maps === "*") continue; // disponible partout
+      if (Array.isArray(maps) && maps.length) {
+        const easiest = easiestMapLevel(maps, playerSector);
+        if (easiest != null) level = Math.max(level, easiest);
+      } else if (typeof maps === "string" && maps) {
+        try {
+          level = Math.max(level, mapLevelFavoring(maps, playerSector));
+        } catch {}
+      }
+      continue;
+    }
+  }
+  return Math.max(1, Math.floor(Number(level) || 1));
+}
+
+// Sections du terminal par tranches de niveaux (1-5, 6-10, 11-15, 16+).
+export const QUEST_LEVEL_SECTIONS = Object.freeze([
+  Object.freeze({ id: "1-5", min: 1, max: 5 }),
+  Object.freeze({ id: "6-10", min: 6, max: 10 }),
+  Object.freeze({ id: "11-15", min: 11, max: 15 }),
+  Object.freeze({ id: "16+", min: 16, max: 99 }),
+]);
+
+export function questLevelSectionId(level) {
+  const lv = Math.max(1, Math.floor(Number(level) || 1));
+  return (QUEST_LEVEL_SECTIONS.find((s) => lv >= s.min && lv <= s.max) || QUEST_LEVEL_SECTIONS[0]).id;
+}
 export function isQuestComplete(state, quest) { const progress = state?.active?.[quest?.id]; return !!quest && progress != null && getQuestObjectives(quest).every(o => Number(progress[o.id] || 0) >= o.amount); }
 export function normalizeQuestState(raw) {
   const active = {};
@@ -577,13 +687,23 @@ export function normalizeQuestState(raw) {
     active[quest.id] = Object.fromEntries(getQuestObjectives(quest).map((o, i) => [o.id, Math.max(0, Math.min(o.amount, Math.floor(Number(typeof saved === "number" ? (i ? 0 : saved) : saved?.[o.id]) || 0)))]));
   }
   const valid = new Set(QUEST_DEFINITIONS.map(q => q.id));
-  return { active, completed: [...new Set(Array.isArray(raw?.completed) ? raw.completed : [])].filter(id => valid.has(id)) };
+  const completed = [...new Set(Array.isArray(raw?.completed) ? raw.completed : [])].filter(id => valid.has(id));
+  // Tombstones d'abandon : survivent à la normalisation pour que les fusions
+  // "max-gagnant" ne ressuscitent jamais une progression abandonnée.
+  // Ni terminées ni actives : une quête reprise repart de zéro.
+  const abandoned = {};
+  if (raw?.abandoned && typeof raw.abandoned === "object") {
+    for (const id of Object.keys(raw.abandoned)) {
+      if (valid.has(id) && !completed.includes(id) && active[id] == null) abandoned[id] = 1;
+    }
+  }
+  return { active, completed, abandoned };
 }
 export function getQuestPrerequisiteIds(quest) {
   return [...new Set([...(quest?.requires ? [quest.requires] : []), ...(Array.isArray(quest?.requiresAll) ? quest.requiresAll : [])])];
 }
 export function canAcceptQuest(state, quest) { return !!quest && !state.completed.includes(quest.id) && state.active[quest.id] == null && Object.keys(state.active).length < MAX_ACTIVE_QUESTS && getQuestPrerequisiteIds(quest).every(id => state.completed.includes(id)); }
-export function acceptQuest(state, questId) { const quest = QUEST_DEFINITIONS.find(q => q.id === questId); if (!canAcceptQuest(state, quest)) return false; state.active[quest.id] = Object.fromEntries(getQuestObjectives(quest).map(o => [o.id, 0])); return true; }
+export function acceptQuest(state, questId) { const quest = QUEST_DEFINITIONS.find(q => q.id === questId); if (!canAcceptQuest(state, quest)) return false; if (state.abandoned) delete state.abandoned[quest.id]; state.active[quest.id] = Object.fromEntries(getQuestObjectives(quest).map(o => [o.id, 0])); return true; }
 export function recordQuestProgress(state, kind, type, amount = 1, context = {}) {
   const advanced = [];
   const sameId = (a, b) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
@@ -611,5 +731,5 @@ export const recordQuestKill = (state, type, context) => recordQuestProgress(sta
 export const recordQuestCollect = (state, type, context) => recordQuestProgress(state, "collect", type, 1, context);
 export const recordQuestVisit = (state, map) => recordQuestProgress(state, "visit", map, 1, { map });
 export const recordQuestGate = (state, gateId) => recordQuestProgress(state, "gate", gateId);
-export function abandonQuest(state, questId) { if (state.active[questId] == null) return false; delete state.active[questId]; return true; }
-export function claimQuest(state, questId) { const quest = QUEST_DEFINITIONS.find(q => q.id === questId); if (!quest || state.completed.includes(questId) || !isQuestComplete(state, quest)) return null; delete state.active[questId]; state.completed.push(questId); return { ...quest.reward }; }
+export function abandonQuest(state, questId) { if (state.active[questId] == null) return false; delete state.active[questId]; if (!state.abandoned || typeof state.abandoned !== "object") state.abandoned = {}; state.abandoned[questId] = 1; return true; }
+export function claimQuest(state, questId) { const quest = QUEST_DEFINITIONS.find(q => q.id === questId); if (!quest || state.completed.includes(questId) || !isQuestComplete(state, quest)) return null; delete state.active[questId]; if (state.abandoned) delete state.abandoned[questId]; state.completed.push(questId); return { ...quest.reward }; }

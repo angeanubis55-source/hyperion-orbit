@@ -6,7 +6,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits, adminGiveExperience, adminGiveHonor } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminListAccounts } from "./ACCOUNT_SERVER.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
@@ -189,6 +189,61 @@ function handleAdminApi(request, response, pathname) {
     // Liste des bannissements actifs (expirés purgés).
     getActiveBan("", "");
     adminJson(response, 200, { ok: true, bans: [...bans.values()] });
+    return true;
+  }
+  if (pathname === "/api/admin/accounts" && request.method === "GET") {
+    // Tous les comptes (connectés + hors ligne) + invités connectés.
+    // Mêmes actions que les connectés : mute/ban/give par id/pseudo.
+    // Kick réservé aux connectés (ok:false si hors ligne).
+    const liveById = new Map();
+    for (const [map, room] of rooms) {
+      for (const [pid, entry] of room) {
+        const s = entry?.state || {};
+        liveById.set(String(pid), {
+          id: String(pid), pseudo: String(s.pseudo || "Pilote").slice(0, 20),
+          authed: String(pid).startsWith("u_"), map,
+          x: Math.round(Number(s.x) || 0), y: Math.round(Number(s.y) || 0),
+          dead: s.dead === true, muted: chatMutes.has(String(pid)),
+          connectedSec: Math.max(0, Math.round((now - Number(s.connectedAt || now)) / 1000)),
+          instance: false,
+        });
+      }
+    }
+    for (const [pid, entry] of instancePeers) {
+      const s = entry?.state || {};
+      liveById.set(String(pid), {
+        id: String(pid), pseudo: String(s.pseudo || "Pilote").slice(0, 20),
+        authed: String(pid).startsWith("u_"), map: String(entry.mapId || s.map || "?"),
+        x: Math.round(Number(s.x) || 0), y: Math.round(Number(s.y) || 0),
+        dead: s.dead === true, muted: chatMutes.has(String(pid)),
+        connectedSec: Math.max(0, Math.round((now - Number(s.connectedAt || now)) / 1000)),
+        instance: true,
+      });
+    }
+    let accounts = [];
+    try { accounts = adminListAccounts() || []; } catch { accounts = []; }
+    const out = accounts.map((a) => {
+      const live = liveById.get(String(a.id)) || null;
+      const ban = getActiveBan(String(a.id), String(a.pseudo));
+      return {
+        ...a,
+        online: !!live,
+        map: live ? live.map : null,
+        x: live ? live.x : null,
+        y: live ? live.y : null,
+        dead: live ? live.dead : null,
+        muted: chatMutes.has(String(a.id)),
+        connectedSec: live ? live.connectedSec : null,
+        instance: live ? live.instance === true : false,
+        banned: !!ban,
+        banUntil: ban ? (ban.until != null ? Number(ban.until) : null) : null,
+        banReason: ban ? String(ban.reason || "") : null,
+      };
+    });
+    // Invités connectés (sans compte) : pas de fiche hors ligne possible.
+    const guests = [...liveById.values()].filter((p) => !String(p.id).startsWith("u_"));
+    const onlineCount = [...liveById.keys()].length;
+    adminJson(response, 200, { ok: true, accounts: out, guests, onlineCount, total: out.length });
     return true;
   }
   if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban") && request.method === "POST") {
@@ -827,6 +882,18 @@ wss.on("connection", (ws) => {
     let msg = null;
     try { msg = JSON.parse(String(raw)); } catch { return; }
     if (!msg || typeof msg !== "object") return;
+    if (msg.t === "boxSyncReq") {
+      // Resync explicite (le client a perdu la sync initiale : refresh,
+      // purge, paquet perdu). Throttle anti-spam par connexion.
+      try {
+        if (state.instance === true) return;
+        const now = Date.now();
+        if (now - Number(state._boxSyncAt || 0) < 2000) return;
+        state._boxSyncAt = now;
+        sendBoxSync(ws, mapId);
+      } catch {}
+      return;
+    }
     if (msg.t === "box") {
       // Box ambiantes entierement autoritaires : le serveur genere, valide la
       // distance, tranche le premier collecteur et programme le respawn.

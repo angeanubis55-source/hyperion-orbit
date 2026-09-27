@@ -29,6 +29,10 @@
   .badge.muted { background: rgba(255,110,120,.15); color: #ff9aa5; border: 1px solid rgba(255,110,120,.4); }
   .badge.dead { background: rgba(120,120,120,.15); color: #999; border: 1px solid rgba(120,120,120,.4); }
   .badge.gate { background: rgba(180,120,255,.15); color: #cfa8ff; border: 1px solid rgba(180,120,255,.4); }
+  .badge.off { background: rgba(120,120,120,.15); color: #aaa; border: 1px solid rgba(120,120,120,.4); }
+  .searchRow { display: flex; gap: 8px; margin-bottom: 10px; }
+  .searchRow input { flex: 1; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
   .row { display: flex; gap: 8px; }
   .row input { flex: 1; }
   .chatLog { max-height: 220px; overflow-y: auto; display: grid; align-content: start; gap: 3px; padding: 9px 11px; margin-bottom: 8px; border: 1px solid rgba(124,240,255,.14); border-radius: 8px; background: rgba(2,10,17,.6); font-size: 13px; }
@@ -77,6 +81,14 @@
     </table>
   </div>
   <div class="card">
+    <h2>Tous les joueurs (connectés + hors ligne) <span id="accountCount" class="badge off">0</span></h2>
+    <div class="searchRow"><input id="accountSearch" type="text" placeholder="Rechercher un pseudo…" maxlength="20" autocomplete="off"></div>
+    <table>
+      <thead><tr><th>Pseudo</th><th>Statut</th><th>Map</th><th>Crédits</th><th>EXP</th><th>Honneur</th><th>Actions</th></tr></thead>
+      <tbody id="accountRows"><tr><td colspan="7">Chargement…</td></tr></tbody>
+    </table>
+  </div>
+  <div class="card">
     <h2>Bannis</h2>
     <table>
       <thead><tr><th>Pseudo</th><th>Motif</th><th>Jusqu'au</th><th>Actions</th></tr></thead>
@@ -121,6 +133,76 @@
       $("loginMsg").className = "msg err";
     }
   }
+  function mkBtn(label, danger) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "small" + (danger ? " danger" : ""); b.textContent = label;
+    b.style.marginLeft = "6px";
+    return b;
+  }
+  async function doGive(kind, pseudo) {
+    const labels = { credits: ["Crédits", "/api/admin/give", "crédits"], exp: ["EXP", "/api/admin/give-exp", "EXP"], honor: ["Honneur", "/api/admin/give-honor", "honneur"] };
+    const [title, path, unit] = labels[kind] || labels.credits;
+    const raw = prompt(`${title} pour ${pseudo} ?\nQuantité à AJOUTER (négatif = retirer, espaces acceptés) :`, "1000000");
+    if (raw == null) return;
+    try {
+      const out = await call(path, { method: "POST", body: JSON.stringify({ pseudo, amount: String(raw).replace(/[\s_]/g, "") }) });
+      if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+      alert(`${out.pseudo} : ${Number(out.before).toLocaleString("fr-FR")} → ${Number(out.after).toLocaleString("fr-FR")} ${unit}.`);
+    } catch (e) {
+      alert(e?.message || "Erreur.");
+    }
+    refresh();
+  }
+  async function doBan(p) {
+    const dur = prompt(`Bannir ${p.pseudo} ?\nDurée (connexion bloquée) : 1j, 3j, 7j, 30j ou indefini :`, "7j");
+    if (dur == null) return;
+    const D = { "1j": 86400000, "1d": 86400000, "3j": 3 * 86400000, "7j": 7 * 86400000, "1s": 7 * 86400000, "30j": 30 * 86400000, "1m": 30 * 86400000, "indefini": null, "indef": null, "inf": null };
+    const key = String(dur).trim().toLowerCase();
+    if (!(key in D)) { alert("Durée invalide (1j, 3j, 7j, 30j ou indefini)."); return; }
+    const reason = prompt("Motif du bannissement :", "Comportement inapproprié.");
+    if (reason == null) return;
+    try {
+      const out = await call("/api/admin/ban", { method: "POST", body: JSON.stringify({ id: p.id, pseudo: p.pseudo, durationMs: D[key], reason: String(reason).slice(0, 200) }) });
+      if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+      const until = out.until != null ? new Date(Number(out.until)).toLocaleString("fr-FR") : "définitif";
+      alert(`${out.pseudo} banni (${until}). Motif : ${out.reason}`);
+    } catch (e) {
+      alert(e?.message || "Erreur.");
+    }
+    refresh();
+  }
+  // Mêmes fonctions pour connectés et hors ligne. Kick uniquement si en ligne
+  // (le serveur ne peut pas kicker un hors ligne). Mute/ban/give par id/pseudo.
+  function appendAdminActions(td, p, online) {
+    let first = true;
+    const add = (b) => { if (!first) b.style.marginLeft = "6px"; first = false; td.appendChild(b); };
+    if (online) {
+      const kick = mkBtn("Kick", true); kick.style.marginLeft = "0px";
+      kick.onclick = async () => {
+        const reason = prompt(`Kicker ${p.pseudo} ?\nMotif affiché au joueur (explosion + déconnexion) :`, "Comportement inapproprié.");
+        if (reason == null) return;
+        const out = await call("/api/admin/kick", { method: "POST", body: JSON.stringify({ id: p.id, reason: String(reason).slice(0, 200) }) });
+        if (!out || out.ok !== true) alert("Joueur déjà parti.");
+        refresh();
+      };
+      add(kick);
+    }
+    const mute = mkBtn(p.muted ? "Unmute" : "Mute"); if (first) mute.style.marginLeft = "0px";
+    mute.onclick = async () => { await call("/api/admin/mute", { method: "POST", body: JSON.stringify({ id: p.id, muted: !p.muted }) }); refresh(); };
+    add(mute);
+    const ban = mkBtn(p.banned ? "Banni" : "Ban", true);
+    ban.onclick = async () => { await doBan(p); };
+    add(ban);
+    const give = mkBtn("Crédits");
+    give.onclick = async () => { await doGive("credits", p.pseudo); };
+    add(give);
+    const giveExp = mkBtn("EXP");
+    giveExp.onclick = async () => { await doGive("exp", p.pseudo); };
+    add(giveExp);
+    const giveHonor = mkBtn("Honneur");
+    giveHonor.onclick = async () => { await doGive("honor", p.pseudo); };
+    add(giveHonor);
+  }
   async function refresh() {
     if (!$("app") || $("app").style.display === "none") return;
     try {
@@ -128,6 +210,7 @@
       const peers = (out && out.peers) || [];
       try { await refreshChat(); } catch {}
       try { await refreshBans(); } catch {}
+      try { await refreshAccounts(); } catch {}
       $("peerCount").textContent = String(peers.length);
       const tb = $("peerRows");
       tb.innerHTML = "";
@@ -142,88 +225,51 @@
         tr.innerHTML = `<td>${esc(p.pseudo)}</td><td>${badges}</td><td>${esc(p.map)}</td>` +
           `<td>${esc(p.x)}, ${esc(p.y)}</td><td>${esc(p.dead ? "mort" : "en vie")}</td><td>${esc(p.connectedSec)}s</td><td></td>`;
         const td = tr.lastChild;
-        const kick = document.createElement("button");
-        kick.type = "button"; kick.className = "small danger"; kick.textContent = "Kick";
-        kick.onclick = async () => {
-          const reason = prompt(`Kicker ${p.pseudo} ?\nMotif affiché au joueur (explosion + déconnexion) :`, "Comportement inapproprié.");
-          if (reason == null) return;
-          await call("/api/admin/kick", { method: "POST", body: JSON.stringify({ id: p.id, reason: String(reason).slice(0, 200) }) });
-          refresh();
-        };
-        const mute = document.createElement("button");
-        mute.type = "button"; mute.className = "small"; mute.textContent = p.muted ? "Unmute" : "Mute";
-        mute.style.marginLeft = "6px";
-        mute.onclick = async () => { await call("/api/admin/mute", { method: "POST", body: JSON.stringify({ id: p.id, muted: !p.muted }) }); refresh(); };
-        const give = document.createElement("button");
-        give.type = "button"; give.className = "small"; give.textContent = "Crédits";
-        give.style.marginLeft = "6px";
-        give.onclick = async () => {
-          const raw = prompt(`Crédits pour ${p.pseudo} ?\nQuantité à AJOUTER (négatif = retirer, espaces acceptés) :`, "1000000");
-          if (raw == null) return;
-          try {
-            const out = await call("/api/admin/give", { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, amount: String(raw).replace(/[\s_]/g, "") }) });
-            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-            alert(`${out.pseudo} : ${out.before.toLocaleString("fr-FR")} → ${out.after.toLocaleString("fr-FR")} crédits.`);
-          } catch (e) {
-            alert(e?.message || "Erreur.");
-          }
-          refresh();
-        };
-        const giveExp = document.createElement("button");
-        giveExp.type = "button"; giveExp.className = "small"; giveExp.textContent = "EXP";
-        giveExp.style.marginLeft = "6px";
-        giveExp.onclick = async () => {
-          const raw = prompt(`EXP pour ${p.pseudo} ?\nQuantite a AJOUTER (negatif = retirer, espaces acceptes) :`, "1000000");
-          if (raw == null) return;
-          try {
-            const out = await call("/api/admin/give-exp", { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, amount: String(raw).replace(/[\s_]/g, "") }) });
-            if (!out || out.ok !== true) throw new Error(out?.error || "Echec.");
-            alert(`${out.pseudo} : ${out.before.toLocaleString("fr-FR")} -> ${out.after.toLocaleString("fr-FR")} EXP.`);
-          } catch (e) {
-            alert(e?.message || "Erreur.");
-          }
-          refresh();
-        };
-        const giveHonor = document.createElement("button");
-        giveHonor.type = "button"; giveHonor.className = "small"; giveHonor.textContent = "Honneur";
-        giveHonor.style.marginLeft = "6px";
-        giveHonor.onclick = async () => {
-          const raw = prompt(`Honneur pour ${p.pseudo} ?\nQuantité à AJOUTER (négatif = retirer, espaces acceptés) :`, "100000");
-          if (raw == null) return;
-          try {
-            const out = await call("/api/admin/give-honor", { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, amount: String(raw).replace(/[\s_]/g, "") }) });
-            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-            alert(`${out.pseudo} : ${out.before.toLocaleString("fr-FR")} → ${out.after.toLocaleString("fr-FR")} honneur.`);
-          } catch (e) {
-            alert(e?.message || "Erreur.");
-          }
-          refresh();
-        };
-        const ban = document.createElement("button");
-        ban.type = "button"; ban.className = "small danger"; ban.textContent = "Ban";
-        ban.style.marginLeft = "6px";
-        ban.onclick = async () => {
-          const dur = prompt(`Bannir ${p.pseudo} ?\nDurée (connexion bloquée) : 1j, 3j, 7j, 30j ou indefini :`, "7j");
-          if (dur == null) return;
-          const D = { "1j": 86400000, "1d": 86400000, "3j": 3 * 86400000, "7j": 7 * 86400000, "1s": 7 * 86400000, "30j": 30 * 86400000, "1m": 30 * 86400000, "indefini": null, "indef": null, "inf": null };
-          const key = String(dur).trim().toLowerCase();
-          if (!(key in D)) { alert("Durée invalide (1j, 3j, 7j, 30j ou indefini)."); return; }
-          const reason = prompt("Motif du bannissement :", "Comportement inapproprié.");
-          if (reason == null) return;
-          try {
-            const out = await call("/api/admin/ban", { method: "POST", body: JSON.stringify({ id: p.id, durationMs: D[key], reason: String(reason).slice(0, 200) }) });
-            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-            const until = out.until != null ? new Date(Number(out.until)).toLocaleString("fr-FR") : "définitif";
-            alert(`${out.pseudo} banni (${until}). Motif : ${out.reason}`);
-          } catch (e) {
-            alert(e?.message || "Erreur.");
-          }
-          refresh();
-        };
-        td.appendChild(kick); td.appendChild(mute); td.appendChild(ban); td.appendChild(give); td.appendChild(giveExp); td.appendChild(giveHonor);
+        appendAdminActions(td, p, true);
         tb.appendChild(tr);
       }
     } catch {}
+  }
+  async function refreshAccounts() {
+    const tb = $("accountRows");
+    if (!tb) return;
+    const out = await call("/api/admin/accounts");
+    const accounts = (out && out.accounts) || [];
+    const guests = (out && out.guests) || [];
+    const onlineCount = Number(out?.onlineCount ?? 0);
+    $("accountCount").textContent = `${String(accounts.length)} comptes · ${String(onlineCount)} en ligne`;
+    const q = ($("accountSearch")?.value || "").trim().toLowerCase();
+    const rows = accounts.filter((a) => !q || String(a.pseudo || "").toLowerCase().includes(q));
+    // En ligne d'abord, puis ordre alpha. Invités (sans compte) en bas.
+    rows.sort((a, b) => Number(b.online || false) - Number(a.online || false) || String(a.pseudo).localeCompare(String(b.pseudo)));
+    tb.innerHTML = "";
+    if (!rows.length && !guests.length) tb.innerHTML = `<tr><td colspan="7">Aucun compte.</td></tr>`;
+    for (const a of rows) {
+      const tr = document.createElement("tr");
+      if (a.muted) tr.className = "mutedRow";
+      const status = a.banned
+        ? `<span class="badge muted">banni</span>`
+        : (a.online ? `<span class="badge ok">en ligne</span>` : `<span class="badge off">hors ligne</span>`);
+      const extra = [(a.online && a.instance ? ` <span class="badge gate">gate</span>` : ""),
+        (a.online && a.dead ? ` <span class="badge dead">mort</span>` : ""),
+        (a.muted ? ` <span class="badge muted">muté</span>` : "")].join("");
+      const mapCell = a.online ? esc(a.map) : `<span style="color:#5d96a5">—</span>`;
+      tr.innerHTML = `<td>${esc(a.pseudo)}</td><td>${status}${extra}</td><td>${mapCell}</td>` +
+        `<td class="num">${Number(a.credits || 0).toLocaleString("fr-FR")}</td>` +
+        `<td class="num">${Number(a.exp || 0).toLocaleString("fr-FR")}</td>` +
+        `<td class="num">${Number(a.honor || 0).toLocaleString("fr-FR")}</td><td></td>`;
+      appendAdminActions(tr.lastChild, a, a.online === true);
+      tb.appendChild(tr);
+    }
+    for (const g of guests) {
+      if (q && !String(g.pseudo || "").toLowerCase().includes(q)) continue;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${esc(g.pseudo)} <span class="badge guest">invité</span></td>` +
+        `<td><span class="badge ok">en ligne</span></td><td>${esc(g.map)}</td>` +
+        `<td class="num">—</td><td class="num">—</td><td class="num">—</td><td></td>`;
+      appendAdminActions(tr.lastChild, g, true);
+      tb.appendChild(tr);
+    }
   }
   function fmtTime(at) {
     try {
@@ -302,6 +348,8 @@
   $("bcInput").addEventListener("keydown", (e) => { if (e.key === "Enter") broadcast(); });
   $("chatReplyBtn").onclick = replyChat;
   $("chatReplyInput").addEventListener("keydown", (e) => { if (e.key === "Enter") replyChat(); });
+  let searchT = 0;
+  $("accountSearch")?.addEventListener("input", () => { clearTimeout(searchT); searchT = setTimeout(() => { try { refreshAccounts(); } catch {} }, 250); });
   setInterval(refresh, 3000);
   if (token) login();
 })();

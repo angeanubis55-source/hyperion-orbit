@@ -1512,8 +1512,9 @@ export function updateCurrentUserProgress(patch = {}) {
     const existing = normalizeQuestState(u.quests);
     // Un moteur fraîchement initialisé peut envoyer un journal vide avant
     // d'avoir fini de se synchroniser. Ne détruis jamais des missions déjà
-    // sauvegardées dans ce cas.
-    const incomingEmpty = Object.keys(incoming.active).length === 0 && incoming.completed.length === 0;
+    // sauvegardées dans ce cas. Les tombstones d'abandon comptent comme
+    // données explicites : abandonner sa dernière mission doit sauvegarder.
+    const incomingEmpty = Object.keys(incoming.active).length === 0 && incoming.completed.length === 0 && Object.keys(incoming.abandoned || {}).length === 0;
     const existingHasData = Object.keys(existing.active).length > 0 || existing.completed.length > 0;
     if (!incomingEmpty || !existingHasData) u.quests = incoming;
   }

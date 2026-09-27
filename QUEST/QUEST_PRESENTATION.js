@@ -6,11 +6,54 @@ import {
   canAcceptQuest,
   getQuestPrerequisiteIds,
   getQuestObjectives,
+  getQuestRequiredLevel,
   getOrderedQuestDefinitions,
   isQuestComplete,
 } from "./QUEST_TYPES.js";
 import { getQuestExperienceReward, getQuestHonorReward } from "../SRC/CORE/PROGRESSION.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
+import { SPRITE_TRIM } from "./SPRITE_TRIM.js";
+
+// Dimensions du contenu visible (sans les marges transparentes du PNG).
+// Ex : Streuner = 73x49 visibles sur 109x96 de canvas.
+function trimmedDims(source) {
+  let key = null;
+  if (source?.path) key = String(source.path).replace(/\\/g, "/").replace(/\/+$/, "");
+  else if (source?.src) {
+    const p = String(source.src).replace(/\\/g, "/");
+    const i = p.lastIndexOf("/");
+    if (i > 0) key = p.slice(0, i);
+  }
+  const trim = (key && SPRITE_TRIM[key]) || null;
+  if (trim && trim[0] > 0 && trim[1] > 0) return { w: trim[0], h: trim[1] };
+  const w = Number(source?.w) || 0, h = Number(source?.h) || 0;
+  if (w > 0 && h > 0) return { w, h };
+  return null;
+}
+
+// Icônes SVG du terminal (courant hérité, 16px, stroke currentColor).
+const svgIcon = (inner, size = 16) => `<svg class="qtIcon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+const SVG_BANG = svgIcon(`<path d="M8 2.5v6.5"/><circle cx="8" cy="12.3" r="1.1" fill="currentColor" stroke="none"/>`);
+const SVG_LOCK = svgIcon(`<rect x="3.5" y="7" width="9" height="6.5" rx="1.2"/><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7"/>`);
+const SVG_CHECK = svgIcon(`<path d="M3 8.5l3.2 3.2L13 4.8"/>`);
+const SVG_ALL = svgIcon(`<path d="M8 2.5l5.5 3L8 8.5 2.5 5.5z"/><path d="M2.5 8.7L8 11.7l5.5-3"/><path d="M2.5 11.7L8 14.7l5.5-3"/>`);
+const SVG_MINUS = svgIcon(`<path d="M3 8h10"/>`, 14);
+const SVG_PLUS = svgIcon(`<path d="M8 3v10M3 8h10"/>`, 14);
+
+// Normalisation : plus le sprite est gros, plus on divise (jamais d'agrandissement),
+// pour que toutes les images fassent à peu près la même taille cible.
+const TREE_THUMB_TARGET = 40;
+const DETAIL_PORTRAIT_TARGET = 100;
+const DETAIL_ICON_TARGET = 64;
+export function normalizedSpriteSize(source, target) {
+  const dims = trimmedDims(source);
+  if (!dims) return { w: target, h: target };
+  const k = Math.min(1, target / Math.max(dims.w, dims.h));
+  return { w: Math.max(12, Math.round(dims.w * k)), h: Math.max(12, Math.round(dims.h * k)) };
+}
+function treeThumbSize(source) {
+  return normalizedSpriteSize(source, TREE_THUMB_TARGET);
+}
 
 function rewardRows(quest) {
   const ammo = Object.entries(quest.reward?.ammo || {}).filter(([, amount]) => amount > 0).map(([type, amount]) => [`Munitions ${type === "x6" ? "RSB-75" : type.toUpperCase()}`, formatInteger(amount)]);
@@ -38,7 +81,19 @@ export function formatQuestEntityName(value) {
 }
 
 function objectiveLabel(objective) {
+  // Visites : garde l'id de carte tel quel ("2-8", pas "2 8").
+  if (objective?.kind === "visit") return String(objective?.label || objective?.type || "Objectif").trim();
   return formatQuestEntityName(objective?.label || objective?.type || "Objectif");
+}
+
+// Libellé d'Aperçu : inclut le nombre ("Éliminer 5 Boss Streuners").
+// Les libellés qui ont déjà un nombre ("Éliminer 1000 X", "Visiter la carte…") sont inchangés.
+function apercuObjectiveLabel(objective) {
+  const base = objectiveLabel(objective);
+  if (/\d/.test(base)) return base;
+  const amount = Math.max(1, Math.floor(Number(objective?.amount) || 1));
+  if (!/\bdes\b/i.test(base)) return base;
+  return base.replace(/\bdes\b/i, `${amount}`);
 }
 
 function gateAdvice(type) {
@@ -74,67 +129,267 @@ function objectiveHelp(objective, npcLocations, collectables) {
     : "Cette cible apparaît par invocation ou après la destruction d’un NPC parent ; élimine ses unités associées pour la faire apparaître.";
 }
 
+// Sprites thématiques (w/h = taille réelle) : visites → portail standard
+// (portail pirate sur les maps 5-x), gates → portail de la gate.
+const GATE_PORTAL_SPRITES = {
+  alpha: { src: "ASSETS/ALPHA_PORTAL/ACTIVE.png", w: 500, h: 500 },
+  beta: { src: "ASSETS/BETA_PORTAL/ACTIVE.png", w: 437, h: 456 },
+  gamma: { src: "ASSETS/GAMMA_PORTAL/ACTIVE.png", w: 360, h: 421 },
+};
+const VISIT_PORTAL_SPRITE = { src: "ASSETS/STANDARD_PORTAL/ACTIVE.png", w: 320, h: 320 };
+const PIRATE_PORTAL_SPRITE = { src: "ASSETS/PIRATES_PORTAL/ACTIVE.png", w: 362, h: 387 };
+
+export function questObjectiveSprite(objective, collectables, npcTypes) {
+  if (objective?.kind === "collect") return collectables?.[objective.type]?.sprite;
+  if (objective?.kind === "gate") {
+    return GATE_PORTAL_SPRITES[String(objective.type || "").toLowerCase()] || VISIT_PORTAL_SPRITE;
+  }
+  if (objective?.kind === "visit") {
+    return /^5-/i.test(String(objective.type || "")) ? PIRATE_PORTAL_SPRITE : VISIT_PORTAL_SPRITE;
+  }
+  return npcTypes?.[objective?.type]?.sprite;
+}
+
+export function getQuestTargetSprite(quest, collectables, npcTypes) {
+  return questObjectiveSprite(getQuestObjectives(quest)[0], collectables, npcTypes);
+}
+
 export function getQuestTargetImage(quest, collectables, npcTypes) {
-  const target = getQuestObjectives(quest)[0];
-  const source = target?.kind === "collect"
-    ? collectables[target.type]?.sprite
-    : npcTypes[target?.type]?.sprite;
+  const source = getQuestTargetSprite(quest, collectables, npcTypes);
+  if (source?.src) return source.src;
   if (!source?.path) return "ASSETS/QUEST_BUTTON/1.png";
   return `${source.path}${Number(source.firstNumber ?? 1)}${source.ext || ".png"}`;
 }
 
-export function buildQuestCard(quest, questState) {
+export function questObjectiveImage(objective, collectables, npcTypes) {
+  const source = questObjectiveSprite(objective, collectables, npcTypes);
+  if (source?.src) return source.src;
+  if (!source?.path) return "ASSETS/QUEST_BUTTON/1.png";
+  return `${source.path}${Number(source.firstNumber ?? 1)}${source.ext || ".png"}`;
+}
+
+export function buildQuestCard(quest, questState, context = {}) {
+  const { collectables = {}, npcTypes = {} } = context;
   const objectives = getQuestObjectives(quest);
   const progress = questState.active[quest.id] || {};
-  const ready = isQuestComplete(questState, quest);
-  const actions = `${ready
-    ? `<button class="questAction" data-quest-action="claim" data-quest-id="${quest.id}">Récupérer la récompense</button>`
-    : `<button class="questAction" disabled>Mission en cours</button>`}
-    <button class="questAction questCancel" data-quest-action="abandon" data-quest-id="${quest.id}">Abandonner la mission</button>`;
+  const rowsHtml = objectives.map(objective => {
+    const current = Number(progress[objective.id] || 0);
+    const done = current >= objective.amount;
+    const iconSize = normalizedSpriteSize(questObjectiveSprite(objective, collectables, npcTypes), DETAIL_ICON_TARGET);
+    return `<div class="qoffObjective"><span class="qoffCheck"><input type="checkbox" tabindex="-1" aria-hidden="true"${done ? " checked" : ""} disabled></span><span class="qoffObjectiveLabel">${apercuObjectiveLabel(objective)}</span><b>${current}/${objective.amount}</b><img src="${questObjectiveImage(objective, collectables, npcTypes)}" width="${iconSize.w}" height="${iconSize.h}" style="width:${iconSize.w}px;height:${iconSize.h}px" alt="" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'"></div>`;
+  }).join("");
+  const actions = `<button class="questAction questCancel" data-quest-action="abandon" data-quest-id="${quest.id}">Abandonner la mission</button>`;
 
   return `<article class="questCard">
-    <div class="questTitle">${quest.title}</div>
-    <div class="questDescription">${quest.description}</div>
-    ${rewardCard(quest)}
-    <div class="questObjectives">${objectives.map(objective => {
-      const current = Number(progress[objective.id] || 0);
-      const percent = Math.min(100, current / objective.amount * 100);
-      return `<div class="questObjective"><div class="questStatus"><span>${objectiveLabel(objective)}</span><b>${current} / ${objective.amount}</b></div><div class="questProgress"><i style="width:${percent}%"></i></div></div>`;
-    }).join("")}</div>
-    ${ready ? `<div class="questStatus questComplete">Tous les objectifs sont accomplis</div>` : ""}
-    ${actions}
+    <h2 class="qoffTitle">${quest.title}</h2>
+    <h4 class="qoffSection">Aperçu</h4>
+    <div class="qoffBox">${rowsHtml}</div>
+    <h4 class="qoffSection">Récompense</h4>
+    <div class="qoffBox">${rewardRows(quest).map(([label, value]) => `<div class="qoffReward"><span>${label}</span><b>${value}</b></div>`).join("")}</div>
+    <div class="qoffActions">${actions}</div>
   </article>`;
 }
 
-export function buildQuestJournalView(questState, selectedId) {
+export function buildQuestJournalView(questState, selectedId, context = {}) {
   const activeIds = Object.keys(questState.active);
   const selectedQuestId = activeIds.includes(selectedId) ? selectedId : (activeIds[0] || null);
   const selected = QUEST_DEFINITIONS.find(quest => quest.id === selectedQuestId);
   return {
     selectedQuestId,
-    intro: `Journal de bord — ${activeIds.length}/${MAX_ACTIVE_QUESTS} missions actives`,
-    tabsHtml: activeIds.map(id => {
+    intro: "",
+    tabsHtml: activeIds.map((id, index) => {
       const quest = QUEST_DEFINITIONS.find(item => item.id === id);
-      return quest ? `<button class="questTab${id === selectedQuestId ? " active" : ""}" data-quest-tab="${id}" title="${quest.title}">${quest.title}</button>` : "";
+      return quest ? `<button class="questTab${id === selectedQuestId ? " active" : ""}" data-quest-tab="${id}" title="${quest.title}">${index + 1}</button>` : "";
     }).join(""),
     contentHtml: selected
-      ? buildQuestCard(selected, questState)
-      : `<div class="questEmpty">Aucune mission active. Approche-toi d’un bâtiment de quêtes pour en accepter.</div>`,
+      ? buildQuestCard(selected, questState, context)
+      : `<div class="questEmpty">Aucune mission active pour le moment</div>`,
   };
 }
 
-export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes, npcLocations = {} }) {
+export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes, npcLocations = {}, searchQuery = "", filter = "open", playerSector = null }) {
   const orderedQuests = getOrderedQuestDefinitions();
-  const selectedQuestId = orderedQuests.some(quest => quest.id === selectedId)
+  const query = String(searchQuery || "").trim().toLowerCase();
+  const matches = (quest) => !query || String(quest.title || "").toLowerCase().includes(query);
+  const isLocked = (quest) => getQuestPrerequisiteIds(quest).some((id) => !questState.completed.includes(id));
+  const isAccepted = (quest) => questState.active[quest.id] != null;
+  const isCompleted = (quest) => questState.completed.includes(quest.id);
+  const isOpen = (quest) => !isLocked(quest) && !isAccepted(quest) && !isCompleted(quest);
+  // Tri officiel : par niveau puis récompense (progression naturelle).
+  // Le niveau tient compte des maps de spawn (un Uber 4-5 vaut niv. 12).
+  const levelContext = { npcLocations, collectables };
+  const byLevel = [...orderedQuests].sort((a, b) =>
+    getQuestRequiredLevel(a, playerSector, levelContext) - getQuestRequiredLevel(b, playerSector, levelContext)
+    || a.title.localeCompare(b.title, "fr"));
+  const counts = {
+    open: byLevel.filter((quest) => isOpen(quest) || isAccepted(quest)).length,
+    locked: byLevel.filter((quest) => isLocked(quest) && !isCompleted(quest)).length,
+    done: byLevel.filter(isCompleted).length,
+    all: byLevel.length,
+  };
+  const visible = byLevel.filter((quest) => {
+    if (!matches(quest)) return false;
+    if (filter === "open") return isOpen(quest) || isAccepted(quest);
+    if (filter === "locked") return isLocked(quest) && !isCompleted(quest);
+    if (filter === "done") return isCompleted(quest);
+    return true;
+  });
+  const selectedQuestId = byLevel.some((quest) => quest.id === selectedId)
     ? selectedId
-    : (orderedQuests[0]?.id || null);
+    : (visible[0]?.id || byLevel[0]?.id || null);
   const quest = QUEST_DEFINITIONS.find(item => item.id === selectedQuestId);
-  const listHtml = orderedQuests.map(item => {
-    const completed = questState.completed.includes(item.id);
-    const accepted = questState.active[item.id] != null;
-    const locked = getQuestPrerequisiteIds(item).some(id => !questState.completed.includes(id));
-    return `<button class="questOfferItem${item.id === selectedQuestId ? " active" : ""}${accepted ? " accepted" : ""}${completed ? " completed" : ""}${locked ? " locked" : ""}" data-quest-offer="${item.id}">${item.title}${accepted ? " — En cours" : ""}</button>`;
-  }).join("") || `<div class="questEmpty">Aucune nouvelle mission.</div>`;
+  const isExtermQuest = (item) => String(item?.id || "").startsWith("exterm1000_");
+  const mainQuests = byLevel.filter((quest) => !isExtermQuest(quest));
+  const extermQuests = byLevel.filter(isExtermQuest).sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "fr"));
+  const questButton = (item) => {
+    const lv = getQuestRequiredLevel(item, playerSector, levelContext);
+    const isExterm = isExtermQuest(item);
+    const parents = isExterm ? [] : getQuestPrerequisiteIds(item).filter(id => id !== item.id);
+    // La quête finale "requiresAll" a ~300 parents : on ne dessine pas ses
+    // arêtes pour ne pas noyer l'arbre, on l'affiche comme nœud final.
+    const isFinal = Array.isArray(item.requiresAll) && item.requiresAll.length > 1;
+    const edgeParents = isFinal ? [] : parents;
+    let cls = "questTreeNode";
+    if (item.id === selectedQuestId) cls += " active";
+    if (isAccepted(item)) cls += " accepted";
+    if (isCompleted(item)) cls += " completed";
+    if (isLocked(item)) cls += " locked";
+    if (isFinal) cls += " isFinal";
+    if (isExterm) cls += " isExterm";
+    const inFilter = filter === "open" ? (isOpen(item) || isAccepted(item))
+      : filter === "locked" ? (isLocked(item) && !isCompleted(item))
+      : filter === "done" ? isCompleted(item)
+      : true;
+    // Terminée : toujours verte et visible (pas grisée par les filtres).
+    // Seule la recherche peut encore l'estomper.
+    if (!matches(item) || (!inFilter && !isCompleted(item))) cls += " dimmed";
+    const sub = isAccepted(item) ? "Active" : isCompleted(item) ? "Terminée" : isLocked(item) ? "Verrouillée" : `Niv. ${lv}`;
+    const icon = getQuestTargetImage(item, collectables, npcTypes);
+    const thumb = treeThumbSize(getQuestTargetSprite(item, collectables, npcTypes));
+    // Même checkbox que les paramètres (affichage seul, non cliquable).
+    const nodeCheck = `<input type="checkbox" class="questTreeCheck" tabindex="-1" aria-hidden="true"${isCompleted(item) ? " checked" : ""} disabled>`;
+    return `<button class="${cls}" data-quest-offer="${item.id}" data-quest-parents="${edgeParents.join(",")}" title="${String(item.title || "").replace(/"/g, "&quot;")} — ${sub}"><span class="questTreeThumb"><img src="${icon}" width="${thumb.w}" height="${thumb.h}" style="width:${thumb.w}px;height:${thumb.h}px" alt="" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'"></span><span><b>${item.title}</b><small>${sub}</small></span><i class="questTreeDot">${nodeCheck}</i></button>`;
+  };
+  // Profondeur = plus longue chaîne de prérequis (gauche -> droite).
+  // Les contrats d'extermination sont hors arbre : rangée du bas.
+  const byId = new Map(mainQuests.map(quest => [quest.id, quest]));
+  const depthMemo = new Map();
+  const questDepth = (id, visiting = new Set()) => {
+    if (depthMemo.has(id)) return depthMemo.get(id);
+    const quest = byId.get(id);
+    if (!quest) return 0;
+    const parents = getQuestPrerequisiteIds(quest).filter(parentId => parentId !== id && byId.has(parentId));
+    // Finale "tout requérir" : toujours tout à droite.
+    if (Array.isArray(quest.requiresAll) && quest.requiresAll.length > 1) {
+      let deepest = 0;
+      for (const parentId of parents) {
+        if (visiting.has(parentId)) continue;
+        visiting.add(id);
+        deepest = Math.max(deepest, questDepth(parentId, visiting));
+        visiting.delete(id);
+      }
+      const depth = deepest + 1;
+      depthMemo.set(id, depth);
+      return depth;
+    }
+    if (!parents.length) {
+      depthMemo.set(id, 0);
+      return 0;
+    }
+    let deepest = 0;
+    visiting.add(id);
+    for (const parentId of parents) {
+      if (visiting.has(parentId)) continue;
+      deepest = Math.max(deepest, questDepth(parentId, visiting));
+    }
+    visiting.delete(id);
+    const depth = deepest + 1;
+    depthMemo.set(id, depth);
+    return depth;
+  };
+  const columns = new Map();
+  let maxDepth = 0;
+  for (const quest of mainQuests) {
+    const depth = questDepth(quest.id);
+    maxDepth = Math.max(maxDepth, depth);
+    if (!columns.has(depth)) columns.set(depth, []);
+    columns.get(depth).push(quest);
+  }
+  for (const quests of columns.values()) quests.sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "fr"));
+  // Réduction des croisements (Sugiyama simplifié) : on trie chaque colonne
+  // pour mettre chaque nœud en face de ses parents puis de ses enfants.
+  // Sans ça, un enfant peut se retrouver tout en bas alors que son parent
+  // est tout en haut, et les fils se croisent partout.
+  const childrenOf = new Map();
+  for (const quest of mainQuests) {
+    for (const parentId of getQuestPrerequisiteIds(quest).filter(id => id !== quest.id && byId.has(id))) {
+      if (!childrenOf.has(parentId)) childrenOf.set(parentId, []);
+      childrenOf.get(parentId).push(quest.id);
+    }
+  }
+  const titleCompare = (a, b) => String(a.title || "").localeCompare(String(b.title || ""), "fr");
+  const refreshPositions = (pos) => {
+    pos.clear();
+    for (const quests of columns.values()) quests.forEach((q, i) => pos.set(q.id, i));
+  };
+  {
+    const pos = new Map();
+    refreshPositions(pos);
+    for (let pass = 0; pass < 6; pass++) {
+      // Aller : chaque nœud se rapproche de ses parents (colonne précédente).
+      for (let depth = 1; depth <= maxDepth; depth++) {
+        const quests = columns.get(depth);
+        const prev = columns.get(depth - 1);
+        if (!quests?.length || !prev?.length) continue;
+        const prevPos = new Map(prev.map((q, i) => [q.id, i]));
+        const score = new Map(quests.map(q => {
+          const parents = getQuestPrerequisiteIds(q).filter(id => prevPos.has(id));
+          const avg = parents.length
+            ? parents.reduce((s, id) => s + prevPos.get(id), 0) / parents.length
+            : pos.get(q.id);
+          return [q.id, avg];
+        }));
+        quests.sort((a, b) => (score.get(a.id) - score.get(b.id)) || titleCompare(a, b));
+      }
+      refreshPositions(pos);
+      // Retour : chaque nœud se rapproche de ses enfants (colonne suivante).
+      for (let depth = maxDepth - 1; depth >= 0; depth--) {
+        const quests = columns.get(depth);
+        const next = columns.get(depth + 1);
+        if (!quests?.length || !next?.length) continue;
+        const nextPos = new Map(next.map((q, i) => [q.id, i]));
+        const score = new Map(quests.map(q => {
+          const children = (childrenOf.get(q.id) || []).filter(id => nextPos.has(id));
+          const avg = children.length
+            ? children.reduce((s, id) => s + nextPos.get(id), 0) / children.length
+            : pos.get(q.id);
+          return [q.id, avg];
+        }));
+        quests.sort((a, b) => (score.get(a.id) - score.get(b.id)) || titleCompare(a, b));
+      }
+      refreshPositions(pos);
+    }
+  }
+  const treeColsHtml = Array.from({ length: maxDepth + 1 }, (_, depth) => {
+    const quests = columns.get(depth) || [];
+    if (!quests.length) return "";
+    return `<div class="questTreeCol" data-depth="${depth}"><div class="questTreeNodes">${quests.map(questButton).join("")}</div></div>`;
+  }).join("");
+  const extermHtml = extermQuests.length
+    ? `<div class="questTreeExterm"><div class="questTreeExtermTitle">— Contrats d'extermination <small>${extermQuests.length} · hors chaîne, sans prérequis</small></div><div class="questTreeExtermGrid">${extermQuests.map(questButton).join("")}</div></div>`
+    : "";
+  const freeSlots = Math.max(0, MAX_ACTIVE_QUESTS - Object.keys(questState.active).length);
+  const searchHtml = `<div class="questTreeToolbar"><div class="questSearchRow"><input class="questSearchInput" type="search" placeholder="Rechercher une mission…" value="${searchQuery.replace(/"/g, "&quot;")}" data-quest-search aria-label="Rechercher une mission"></div>`
+    + `<div class="questToggles" role="tablist" aria-label="Filtres">`
+    + `<button class="questToggleBtn${filter === "open" ? " active" : ""}" data-quest-filter="open" role="tab" title="Disponibles (${counts.open})">${SVG_BANG}</button>`
+    + `<button class="questToggleBtn${filter === "locked" ? " active" : ""}" data-quest-filter="locked" role="tab" title="Verrouillées (${counts.locked})">${SVG_LOCK}</button>`
+    + `<button class="questToggleBtn${filter === "done" ? " active" : ""}" data-quest-filter="done" role="tab" title="Terminées (${counts.done})">${SVG_CHECK}</button>`
+    + `<button class="questToggleBtn${filter === "all" ? " active" : ""}" data-quest-filter="all" role="tab" title="Toutes (${counts.all})">${SVG_ALL}</button>`
+    + `<span class="questTreeSlots">Encore ${freeSlots} emplacement${freeSlots > 1 ? "s" : ""} de mission</span>`
+    + `<span class="questTreeZoom"><button type="button" data-quest-zoom="out" title="Zoom -">${SVG_MINUS}</button><button type="button" data-quest-zoom="reset" title="Zoom 100%">100%</button><button type="button" data-quest-zoom="in" title="Zoom +">${SVG_PLUS}</button></span>`
+    + `</div>`
+    + `</div><div class="questTreeScroll" id="questTreeScroll"><div class="questTreeCanvas" id="questTreeCanvas"><svg class="questTreeEdges" id="questTreeEdges" aria-hidden="true"></svg><div class="questTreeMain">${treeColsHtml || `<div class="questEmpty">Aucune mission ici.</div>`}</div>${extermHtml}</div></div>`;
+  let listHtml = searchHtml;
   if (!quest) return { selectedQuestId, listHtml, detailHtml: `<div class="questEmpty">Toutes les missions sont actives ou terminées.</div>` };
 
   const available = hasAccess && canAcceptQuest(questState, quest);
@@ -144,25 +399,46 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
   const prerequisite = QUEST_DEFINITIONS.find(item => item.id === quest.requires);
   const prerequisiteIds = getQuestPrerequisiteIds(quest);
   const missingPrerequisites = prerequisiteIds.filter(id => !questState.completed.includes(id));
-  const unlockedQuests = QUEST_DEFINITIONS.filter(item => item.requires === quest.id);
   const full = Object.keys(questState.active).length >= MAX_ACTIVE_QUESTS;
+  const pill = completed ? ["done", "Terminée ✓"]
+    : accepted ? ["active", "En cours"]
+    : !hasAccess ? ["far", "Terminal éloigné"]
+    : full ? ["full", "Carnet plein"]
+    : missingPrerequisites.length ? ["locked", "Verrouillée"]
+    : ["open", "Disponible"];
   const status = completed ? "Mission terminée. Récompense déjà récupérée."
     : !hasAccess ? "Rapproche-toi du bâtiment de quêtes."
-    : full ? `Tu as déjà ${MAX_ACTIVE_QUESTS} missions actives.`
+    : full ? ""
     : missingPrerequisites.length ? (quest.requiresAll ? `Prérequis : termine les ${prerequisiteIds.length} missions précédentes.` : `Prérequis : termine « ${prerequisite?.title || missingPrerequisites[0]} ».`)
     : "Mission disponible.";
+  const targetImg = getQuestTargetImage(quest, collectables, npcTypes);
   const seriesRows = [
     ...(prerequisite ? [["Mission requise", prerequisite.title]] : []),
     ...(quest.requiresAll ? [["Progression requise", `${prerequisiteIds.length - missingPrerequisites.length} / ${prerequisiteIds.length} missions terminées`]] : []),
-    ...(unlockedQuests.length ? [["Débloque ensuite", unlockedQuests.map(item => item.title).join(", ")]] : []),
   ];
+  const questLevel = getQuestRequiredLevel(quest, playerSector, levelContext);
+  const objectiveSprite = (objective) => questObjectiveSprite(objective, collectables, npcTypes);
+  const objectiveIcon = (objective) => questObjectiveImage(objective, collectables, npcTypes);
+  const portraitSize = normalizedSpriteSize(getQuestTargetSprite(quest, collectables, npcTypes), DETAIL_PORTRAIT_TARGET);
+  const acceptBtn = completed
+    ? `<button class="qoffAccept done" disabled>Mission terminée ✓</button>`
+    : accepted
+      ? `<button class="qoffAccept close" data-quest-terminal-close="1">Fermer</button>`
+      : `<button class="qoffAccept" data-quest-terminal-accept="${quest.id}"${available ? "" : " disabled"}>Accepter la mission</button>`;
+  const statusHtml = (!status || completed || status === "Mission disponible.") ? "" : `<div class="qbriefStatus">${status}</div>`;
   const detailHtml = `
-    <div class="questTitle">${quest.title}</div><div class="questDescription">${quest.description}</div>
-    <div class="questObjectives">${objectives.map(objective => { const current = accepted ? Number(questState.active[quest.id]?.[objective.id] || 0) : (completed ? objective.amount : 0); return `<div class="questObjective"><div class="questStatus"><span>${objectiveLabel(objective)}</span><b>${current} / ${objective.amount}</b></div></div>`; }).join("")}</div>
-    ${rewardCard(quest)}
-    ${seriesRows.length ? `<section class="questInfoCard questSeriesCard"><h4>Série de missions</h4><div class="questInfoRows">${seriesRows.map(([label, value]) => `<div><span>${label}</span><b>${value}</b></div>`).join("")}</div></section>` : ""}
-    <section class="questInfoCard questHelpCard"><h4>Où chercher et comment réussir ?</h4><div class="questHelpList">${objectives.map(objective => `<article><b>${objectiveLabel(objective)}</b><p>${objectiveHelp(objective, npcLocations, collectables)}</p></article>`).join("")}</div></section>
-    <div class="questStatus">${status}</div>
-    <button class="questAction${completed ? " questCompletedAction" : accepted ? " questAcceptedAction" : ""}" data-quest-terminal-accept="${quest.id}" ${available ? "" : "disabled"}>${completed ? "Mission terminée ✓" : accepted ? "Mission en cours" : "Accepter cette mission"}</button>`;
+    <div class="qoffHead">
+      <span class="qoffPortraitFrame"><img class="qoffPortrait" src="${targetImg}" width="${portraitSize.w}" height="${portraitSize.h}" style="width:${portraitSize.w}px;height:${portraitSize.h}px" alt="" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'"></span>
+      <div class="qoffHeadText">
+        <h2 class="qoffTitle">${quest.title}</h2>
+      </div>
+    </div>
+    <h4 class="qoffSection">Aperçu</h4>
+    <div class="qoffBox">${objectives.map(objective => { const current = accepted ? Number(questState.active[quest.id]?.[objective.id] || 0) : (completed ? objective.amount : 0); const iconSize = normalizedSpriteSize(objectiveSprite(objective), DETAIL_ICON_TARGET); return `<div class="qoffObjective noCount"><span class="qoffCheck"><input type="checkbox" tabindex="-1" aria-hidden="true"${completed || current >= objective.amount ? " checked" : ""} disabled></span><span class="qoffObjectiveLabel">${apercuObjectiveLabel(objective)}</span><img src="${objectiveIcon(objective)}" width="${iconSize.w}" height="${iconSize.h}" style="width:${iconSize.w}px;height:${iconSize.h}px" alt="" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'"></div>`; }).join("")}</div>
+    <h4 class="qoffSection">Récompense</h4>
+    <div class="qoffBox">${rewardRows(quest).map(([label, value]) => `<div class="qoffReward"><span>${label}</span><b>${value}</b></div>`).join("")}</div>
+    ${seriesRows.length ? `<div class="qoffSeries">${seriesRows.map(([label, value]) => `<div><span>${label}</span><b>${value}</b></div>`).join("")}</div>` : ""}
+    <div class="qoffBottom qoffBottomSolo">${acceptBtn}</div>
+    ${statusHtml}`;
   return { selectedQuestId, listHtml, detailHtml };
 }

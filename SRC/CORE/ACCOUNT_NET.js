@@ -313,6 +313,11 @@ function mergeProgressiveFields(prev, next) {
     if (pQuests && nQuests && typeof pQuests === "object" && typeof nQuests === "object") {
       const completed = new Set([...(Array.isArray(nQuests.completed) ? nQuests.completed : []), ...(Array.isArray(pQuests.completed) ? pQuests.completed : [])].map(String));
       nQuests.completed = [...completed];
+      // Abandons explicites : purgés des deux côtés, jamais ressuscités.
+      const tombstones = { ...((pQuests.abandoned && typeof pQuests.abandoned === "object") ? pQuests.abandoned : {}), ...((nQuests.abandoned && typeof nQuests.abandoned === "object") ? nQuests.abandoned : {}) };
+      for (const id of completed) delete tombstones[id];
+      nQuests.abandoned = tombstones;
+      for (const id of Object.keys(tombstones)) { delete nQuests.active[id]; }
       nQuests.active ||= {};
       for (const [questId, previousProgress] of Object.entries(pQuests.active || {})) {
         if (completed.has(String(questId))) { delete nQuests.active[questId]; continue; }

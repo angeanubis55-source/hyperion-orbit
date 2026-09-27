@@ -334,6 +334,35 @@ export function adminGiveCredits(pseudo, amount) {
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
 
+// Admin : liste tous les comptes pour le panneau (connectés + hors ligne).
+// Retourne [{ accountId, id (pid stable u_xxx), pseudo, credits, exp, honor,
+// faction, createdAt, updatedAt }]. Tri par pseudo, max 5000.
+export function adminListAccounts() {
+  try {
+    initAccountDb();
+    const rows = db.prepare("SELECT id, pseudo, faction, data, created_at, updated_at FROM users ORDER BY pseudo COLLATE NOCASE LIMIT 5000").all();
+    return rows.map((r) => {
+      let credits = 0, exp = 0, honor = 0;
+      try {
+        const data = JSON.parse(r.data || "{}");
+        credits = Math.max(0, Math.floor(Number(data.credits) || 0));
+        exp = Math.max(0, Math.floor(Number(data?.stats?.exp) || 0));
+        honor = Math.max(0, Math.floor(Number(data?.stats?.honor) || 0));
+      } catch {}
+      const accountId = String(r.id);
+      return {
+        accountId,
+        id: `u_${accountId}`.slice(0, 128),
+        pseudo: String(r.pseudo || "Pilote").slice(0, 20),
+        faction: String(r.faction || ""),
+        credits, exp, honor,
+        createdAt: Number(r.created_at) || 0,
+        updatedAt: Number(r.updated_at) || 0,
+      };
+    });
+  } catch { return []; }
+}
+
 // --- Amis façon DO (comptes uniquement) : demande -> acceptation ->
 // amitié mutuelle. Les demandes en attente persistent (joueur hors ligne
 // les retrouve à la connexion).

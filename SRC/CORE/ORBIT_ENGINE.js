@@ -108,7 +108,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
+  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -13269,6 +13269,10 @@ function mergeQuestProgress(localState, persistedState) {
   const local = normalizeQuestState(localState);
   const persisted = normalizeQuestState(persistedState);
   const completed = new Set([...persisted.completed, ...local.completed]);
+  // Un abandon explicite bat les fusions max-gagnant : la progression
+  // abandonnée ne doit jamais ressusciter (reprise = zéro).
+  const abandoned = { ...(persisted.abandoned || {}), ...(local.abandoned || {}) };
+  for (const id of completed) delete abandoned[id];
   const active = { ...persisted.active };
   for (const [questId, localProgress] of Object.entries(local.active)) {
     if (completed.has(questId)) { delete active[questId]; continue; }
@@ -13278,7 +13282,8 @@ function mergeQuestProgress(localState, persistedState) {
     }
   }
   for (const questId of completed) delete active[questId];
-  return normalizeQuestState({ active, completed: [...completed] });
+  for (const questId of Object.keys(abandoned)) delete active[questId];
+  return normalizeQuestState({ active, completed: [...completed], abandoned });
 }
 
 function loadAccountUser() {
@@ -13410,9 +13415,15 @@ function renderQuestWindow() {
         if (!questState.completed.includes(id)) questState.completed.push(id);
         if (questState.active[id]) delete questState.active[id];
       }
+      // Abandons : union des tombstones, purge des progressions abandonnées
+      // (sinon le stockage les réinjecte et la reprise ne repart pas de zéro).
+      const tombstones = { ...(persisted.abandoned || {}), ...(questState.abandoned || {}) };
+      for (const id of questState.completed) delete tombstones[id];
+      for (const id of Object.keys(tombstones)) delete questState.active[id];
+      questState.abandoned = tombstones;
     }
   }
-  const view = buildQuestJournalView(questState, selectedQuestId);
+  const view = buildQuestJournalView(questState, selectedQuestId, { collectables: COLLECTABLE_DEFS, npcTypes: NPC_TYPES });
   selectedQuestId = view.selectedQuestId;
   if (ui.questIntro) ui.questIntro.textContent = view.intro;
   if (ui.questTabs) ui.questTabs.innerHTML = view.tabsHtml;
@@ -13450,6 +13461,11 @@ function fitQuestWindowToContent() {
 }
 
 window.addEventListener("resize", fitQuestWindowToContent);
+let questTreeResizeFrame = 0;
+window.addEventListener("resize", () => {
+  cancelAnimationFrame(questTreeResizeFrame);
+  questTreeResizeFrame = requestAnimationFrame(drawQuestTreeEdges);
+});
 const questWindowElement = document.getElementById("questWindow");
 if (questWindowElement) {
   new MutationObserver(() => {
@@ -13458,12 +13474,133 @@ if (questWindowElement) {
 }
 
 let selectedQuestOfferId = null;
+let questTerminalSearch = "";
+let questTerminalFilter = "open";
 let questNpcLocations = {};
+let questTreeZoom = 1;
+let selectedQuestLineage = new Set();
+
+// Lignée de la quête sélectionnée : ancêtres jusqu'aux racines +
+// descendants jusqu'aux feuilles. Sert à éclairer toute la chaîne en jaune.
+function computeQuestLineage(selectedId) {
+  const lineage = new Set();
+  const canvas = document.getElementById("questTreeCanvas");
+  if (!canvas || !selectedId) return lineage;
+  const parentsOf = new Map();
+  const childrenOf = new Map();
+  for (const node of canvas.querySelectorAll("[data-quest-offer]")) {
+    const id = node.dataset.questOffer;
+    const parents = String(node.dataset.questParents || "").split(",").map(s => s.trim()).filter(Boolean);
+    parentsOf.set(id, parents);
+    for (const p of parents) {
+      if (!childrenOf.has(p)) childrenOf.set(p, []);
+      childrenOf.get(p).push(id);
+    }
+  }
+  if (!parentsOf.has(selectedId)) return lineage;
+  lineage.add(selectedId);
+  const up = [...(parentsOf.get(selectedId) || [])];
+  while (up.length) {
+    const id = up.pop();
+    if (lineage.has(id)) continue;
+    lineage.add(id);
+    for (const p of parentsOf.get(id) || []) up.push(p);
+  }
+  const down = [...(childrenOf.get(selectedId) || [])];
+  while (down.length) {
+    const id = down.pop();
+    if (lineage.has(id)) continue;
+    lineage.add(id);
+    for (const c of childrenOf.get(id) || []) down.push(c);
+  }
+  return lineage;
+}
+
+function applyQuestTreeZoom() {
+  const canvas = document.getElementById("questTreeCanvas");
+  if (!canvas) return;
+  const zoom = Math.min(1.6, Math.max(0.5, Number(questTreeZoom) || 1));
+  questTreeZoom = zoom;
+  // `zoom` CSS plutôt que `transform: scale` : le scroll horizontal/vertical
+  // suit la vraie taille (le transform ne change pas la zone scrollable).
+  canvas.style.transform = "";
+  try { canvas.style.zoom = zoom === 1 ? "" : String(zoom); } catch {}
+  // Le bouton reset affiche le % réel (sinon il reste bloqué sur "100%").
+  try {
+    const label = ui.questOfferList?.querySelector('[data-quest-zoom="reset"]');
+    if (label) {
+      const pct = `${Math.round(zoom * 100)}%`;
+      if (label.textContent !== pct) label.textContent = pct;
+      label.title = `Zoom ${pct} — cliquer pour réinitialiser`;
+    }
+  } catch {}
+}
+
+function drawQuestTreeEdges(retry = 0) {
+  const scroll = document.getElementById("questTreeScroll");
+  const canvas = document.getElementById("questTreeCanvas");
+  const svg = document.getElementById("questTreeEdges");
+  if (!scroll || !canvas || !svg) return;
+  const canvasRect = canvas.getBoundingClientRect();
+  if (!canvasRect.width || !canvasRect.height) {
+    // Fenêtre cachée ou en cours d'animation d'ouverture : les mesures sont
+    // à zéro. On réessaye sur les frames suivantes au lieu d'abandonner
+    // (sinon les fils restent vides/mal placés jusqu'au prochain clic).
+    if (retry < 10) requestAnimationFrame(() => drawQuestTreeEdges(retry + 1));
+    return;
+  }
+  const byOffer = new Map();
+  for (const node of canvas.querySelectorAll("[data-quest-offer]")) byOffer.set(node.dataset.questOffer, node);
+  let paths = "";
+  for (const node of byOffer.values()) {
+    const parents = String(node.dataset.questParents || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 8);
+    if (!parents.length) continue;
+    const target = node.getBoundingClientRect();
+    const x2 = target.left - canvasRect.left;
+    const y2 = target.top - canvasRect.top + target.height / 2;
+    for (const parentId of parents) {
+      const parent = byOffer.get(parentId);
+      if (!parent) continue;
+      const source = parent.getBoundingClientRect();
+      const x1 = source.right - canvasRect.left;
+      const y1 = source.top - canvasRect.top + source.height / 2;
+      if (x2 - x1 < 4) continue;
+      const midX = (x1 + x2) / 2;
+      // Jaune sur toute la lignée (racines → sélection → feuilles),
+      // pas seulement sur l'arête d'arrivée.
+      const inLineage = selectedQuestLineage.has(parentId) && selectedQuestLineage.has(node.dataset.questOffer);
+      const cls = inLineage ? "isActive" : parent.classList.contains("completed") ? "isDone" : "";
+      paths += `<path class="${cls}" d="M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${midX.toFixed(1)} ${y1.toFixed(1)}, ${midX.toFixed(1)} ${y2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}"/>`;
+    }
+  }
+  // viewBox = dimensions visuelles (getBoundingClientRect), PAS scrollWidth :
+  // avec le zoom CSS les deux diffèrent et les fils se détachent des nœuds.
+  // Les coords ci-dessus sont déjà dans cet espace visuel → alignement à tout zoom.
+  svg.setAttribute("viewBox", `0 0 ${Math.max(1, canvasRect.width)} ${Math.max(1, canvasRect.height)}`);
+  svg.innerHTML = paths;
+}
+
+function centerQuestTreeOn(id) {
+  const scroll = document.getElementById("questTreeScroll");
+  if (!scroll || !id) return;
+  const node = scroll.querySelector(`[data-quest-offer="${CSS.escape(String(id))}"]`);
+  if (!node) return;
+  try { node.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" }); } catch { node.scrollIntoView(); }
+}
 
 function renderQuestTerminal() {
   if (!ui.questOfferDetail || !ui.questOfferList) return;
   const hasAccess = hasQuestTerminalAccess();
   lastQuestTerminalAccess = hasAccess;
+  let pilotSector = null;
+  try {
+    const pilot = account.user || getCurrentUserFull();
+    pilotSector = getFaction(pilot?.faction)?.sector ?? null;
+  } catch {}
+  const prevScroll = (() => {
+    const scroll = document.getElementById("questTreeScroll");
+    return scroll ? { left: scroll.scrollLeft, top: scroll.scrollTop } : null;
+  })();
   const view = buildQuestTerminalView({
     questState,
     selectedId: selectedQuestOfferId,
@@ -13471,10 +13608,20 @@ function renderQuestTerminal() {
     collectables: COLLECTABLE_DEFS,
     npcTypes: NPC_TYPES,
     npcLocations: questNpcLocations,
+    searchQuery: questTerminalSearch,
+    filter: questTerminalFilter,
+    playerSector: pilotSector,
   });
   selectedQuestOfferId = view.selectedQuestId;
   ui.questOfferList.innerHTML = view.listHtml;
   ui.questOfferDetail.innerHTML = view.detailHtml;
+  selectedQuestLineage = computeQuestLineage(selectedQuestOfferId);
+  applyQuestTreeZoom();
+  if (prevScroll) {
+    const scroll = document.getElementById("questTreeScroll");
+    if (scroll) { scroll.scrollLeft = prevScroll.left; scroll.scrollTop = prevScroll.top; }
+  }
+  requestAnimationFrame(() => { applyQuestTreeZoom(); drawQuestTreeEdges(); });
 }
 
 loadNpcLocationIndex().then(locations => {
@@ -13493,6 +13640,15 @@ loadPortalIndex().then(index => {
 function openQuestTerminal() {
   renderQuestTerminal();
   window.GameWindowManager?.restore("questOfferWindow");
+  // Double rAF : dessine après que la fenêtre soit réellement affichée
+  // (le restore peut être animé). Redraws différés : rattrapent la fin
+  // d'animation et le chargement des images qui décalent les nœuds.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    centerQuestTreeOn(selectedQuestOfferId);
+    drawQuestTreeEdges();
+  }));
+  setTimeout(() => drawQuestTreeEdges(), 150);
+  setTimeout(() => drawQuestTreeEdges(), 500);
 }
 
 function closeQuestTerminal() {
@@ -13509,13 +13665,67 @@ function closeQuestTerminal() {
 }
 
 ui.questOfferList?.addEventListener("click", event => {
+  const zoomBtn = event.target.closest("[data-quest-zoom]");
+  if (zoomBtn) {
+    const mode = zoomBtn.dataset.questZoom;
+    if (mode === "in") questTreeZoom = Math.min(1.6, (Number(questTreeZoom) || 1) + 0.1);
+    else if (mode === "out") questTreeZoom = Math.max(0.5, (Number(questTreeZoom) || 1) - 0.1);
+    else questTreeZoom = 1;
+    applyQuestTreeZoom();
+    requestAnimationFrame(drawQuestTreeEdges);
+    return;
+  }
+  const chip = event.target.closest("[data-quest-filter]");
+  if (chip) {
+    questTerminalFilter = chip.dataset.questFilter;
+    selectedQuestOfferId = null;
+    renderQuestTerminal();
+    requestAnimationFrame(() => {
+      const first = document.querySelector("#questTreeCanvas .questTreeNode:not(.dimmed)");
+      centerQuestTreeOn(first?.dataset?.questOffer || selectedQuestOfferId);
+      drawQuestTreeEdges();
+    });
+    return;
+  }
   const offer = event.target.closest("[data-quest-offer]");
   if (!offer) return;
   selectedQuestOfferId = offer.dataset.questOffer;
   renderQuestTerminal();
+  requestAnimationFrame(() => { centerQuestTreeOn(selectedQuestOfferId); drawQuestTreeEdges(); });
+});
+
+// Le layout peut bouger après le dessin (images/polices chargées, resize,
+// zoom) : revalide les fils sans boucle (le SVG est absolu, il ne resize rien).
+try {
+  if (typeof ResizeObserver !== "undefined" && ui.questOfferList) {
+    new ResizeObserver(() => {
+      if (!document.getElementById("questTreeCanvas")) return;
+      cancelAnimationFrame(questTreeResizeFrame);
+      questTreeResizeFrame = requestAnimationFrame(() => drawQuestTreeEdges());
+    }).observe(ui.questOfferList);
+  }
+} catch {}
+
+ui.questOfferList?.addEventListener("input", event => {
+  const search = event.target.closest("[data-quest-search]");
+  if (!search) return;
+  questTerminalSearch = String(search.value || "");
+  renderQuestTerminal();
+  // Rend le focus à la recherche (le re-rendu remplace l'input).
+  try {
+    const input = ui.questOfferList.querySelector("[data-quest-search]");
+    if (input) {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
+  } catch {}
 });
 
 ui.questOfferDetail?.addEventListener("click", event => {
+  if (event.target.closest("[data-quest-terminal-close]")) {
+    closeQuestTerminal();
+    return;
+  }
   const button = event.target.closest("[data-quest-terminal-accept]");
   if (!button) return;
   if (!hasQuestTerminalAccess()) {
@@ -13546,8 +13756,18 @@ function advanceQuestProgress(kind, type) {
     const quest = QUEST_DEFINITIONS.find(item => item.id === id);
     if (quest && isQuestComplete(questState, quest)) {
       showToast(`Mission accomplie : ${quest.title}`, 2);
+      // Validation automatique : la récompense part sans bouton Récupérer.
+      claimQuestReward(id);
     }
   }
+  // Filet : quêtes déjà complètes au chargement (vieilles sauvegardes).
+  for (const id of Object.keys(questState.active)) {
+    if (advanced.includes(id)) continue;
+    const quest = QUEST_DEFINITIONS.find(item => item.id === id);
+    if (quest && isQuestComplete(questState, quest)) claimQuestReward(id);
+  }
+  renderQuestWindow();
+  renderQuestTerminal();
 }
 
 ui.questTabs?.addEventListener("click", event => {
@@ -22033,6 +22253,8 @@ document.addEventListener("click", event => {
 // box ambiantes. Le client ne conserve qu'un miroir visuel ; les recompenses
 // restent personnelles au premier collecteur confirme.
 const pendingNetCollectableRewards = new Map();
+// Compteur de resyncs explicites (diagnostic window.__NETBOXDBG__.resyncs).
+let netBoxResyncs = 0;
 function syncNetBoxes(dt) {
   const curMap = currentMapId();
   try {
@@ -22046,6 +22268,8 @@ function syncNetBoxes(dt) {
     let knownSize = -1;
     try { const k = getNetBoxes(); knownSize = k ? k.size : -1; } catch {}
     dbg.knownSize = knownSize;
+    try { dbg.syncAgeMs = Math.round(netBoxSyncAgeMs()); } catch {}
+    dbg.resyncs = netBoxResyncs;
     let amb = 0, netc = 0;
     try {
       for (const c of collectables) {
@@ -22054,6 +22278,22 @@ function syncNetBoxes(dt) {
     } catch {}
     dbg.ambientLocal = amb;
     dbg.netCount = netc;
+  } catch {}
+  // Watchdog resync : si la sync initiale a ete perdue (refresh, purge,
+  // paquet perdu), la map reste vide jusqu'au prochain portail. Quand on
+  // est en zone, connecte, hors instance, avec zero box connue et aucun
+  // signe de vie depuis plus de 6 s, on redemande l'etat complet.
+  // (throttle 3 s cote client, 2 s cote serveur).
+  try {
+    if (started && !player.dead && rules?.mode === "zone" && netConnected() && !netInInstance()) {
+      let boxCount = 0;
+      try { const k = getNetBoxes(); boxCount = k ? k.size : 0; } catch {}
+      let ageMs = Infinity;
+      try { ageMs = netBoxSyncAgeMs(); } catch {}
+      if (boxCount === 0 && ageMs > 6000) {
+        try { if (requestBoxSync()) netBoxResyncs++; } catch {}
+      }
+    }
   } catch {}
   if (!netplayNpcActive()) {
     pendingNetCollectableRewards.clear();
