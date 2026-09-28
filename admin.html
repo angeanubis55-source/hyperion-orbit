@@ -389,6 +389,7 @@
     }
     return shipsLoading;
   }
+  const modSelByKey = {};
   function buildModuleCell(td, p) {
     const wrap = document.createElement("div");
     wrap.className = "modCell";
@@ -418,12 +419,18 @@
       btn.disabled = false;
       refresh();
     };
+    const savedMod = modSelByKey[p.id] || {};
+    const saveModSel = () => { modSelByKey[p.id] = { ship: shipSel.value, stat: statSel.value, pct: pctInput.value }; };
+    shipSel.onchange = saveModSel; statSel.onchange = saveModSel; pctInput.oninput = saveModSel;
+    statSel.value = savedMod.stat || "damage";
+    pctInput.value = savedMod.pct != null ? savedMod.pct : "30";
     if (shipFamilies && shipFamilies.length) {
       for (const s of shipFamilies) {
         const o = document.createElement("option");
         o.value = s.id; o.textContent = s.name;
         shipSel.appendChild(o);
       }
+      if (savedMod.ship) shipSel.value = savedMod.ship;
     } else {
       const o = document.createElement("option");
       o.value = ""; o.textContent = "…";
@@ -435,6 +442,8 @@
           opt.value = s.id; opt.textContent = s.name;
           shipSel.appendChild(opt);
         }
+        const savedAsync = modSelByKey[p.id] || {};
+        if (savedAsync.ship) shipSel.value = savedAsync.ship;
       }).catch(() => {});
     }
     wrap.appendChild(shipSel);
@@ -451,6 +460,7 @@
       try { await refreshAccounts(); } catch {}
     } catch {}
   }
+  const accountRowByKey = new Map();
   async function refreshAccounts() {
     const tb = $("accountRows");
     if (!tb) return;
@@ -464,34 +474,71 @@
     const rows = accounts.filter((a) => !q || String(a.pseudo || "").toLowerCase().includes(q));
     // En ligne d'abord, puis ordre alpha. Invités (sans compte) en bas.
     rows.sort((a, b) => Number(b.online || false) - Number(a.online || false) || String(a.pseudo).localeCompare(String(b.pseudo)));
-    tb.innerHTML = "";
-    if (!rows.length && !guests.length) tb.innerHTML = `<tr><td colspan="8">Aucun compte.</td></tr>`;
+    const guestsShown = guests.filter((g) => !q || String(g.pseudo || "").toLowerCase().includes(q));
+    // Mise à jour en place : les lignes existantes sont réutilisées (jamais
+    // détruites) pour ne pas fermer les listes ouvertes ni perdre les choix
+    // malgré le refresh toutes les 3 s. Seules les cellules d'info sont
+    // réécrites ; la cellule Module garde ses selects.
+    const wanted = new Set(rows.map((a) => "a:" + a.id));
+    for (const g of guestsShown) wanted.add("g:" + g.pseudo);
+    for (const [k, tr] of [...accountRowByKey]) {
+      if (!wanted.has(k)) { try { tr.remove(); } catch {} accountRowByKey.delete(k); }
+    }
+    if (!rows.length && !guestsShown.length) {
+      tb.innerHTML = `<tr><td colspan="8">Aucun compte.</td></tr>`;
+      return;
+    }
+    const ph = tb.querySelector("td[colspan]");
+    if (ph) ph.closest("tr").remove();
+    let rowIdx = 0;
+    const placeRow = (tr) => {
+      const cur = tb.children[rowIdx];
+      if (cur !== tr) tb.insertBefore(tr, cur || null);
+      rowIdx++;
+    };
     for (const a of rows) {
-      const tr = document.createElement("tr");
-      if (a.muted) tr.className = "mutedRow";
+      const key = "a:" + a.id;
+      let tr = accountRowByKey.get(key);
+      if (!tr || !tr.isConnected) {
+        tr = document.createElement("tr");
+        tr.innerHTML = `<td></td><td></td><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td></td><td></td>`;
+        accountRowByKey.set(key, tr);
+      }
+      if (a.muted) tr.className = "mutedRow"; else tr.className = "";
       const status = a.banned
         ? `<span class="badge muted">banni</span>`
         : (a.online ? `<span class="badge ok">en ligne</span>` : `<span class="badge off">hors ligne</span>`);
       const extra = [(a.online && a.instance ? ` <span class="badge gate">gate</span>` : ""),
         (a.online && a.dead ? ` <span class="badge dead">mort</span>` : ""),
         (a.muted ? ` <span class="badge muted">muté</span>` : "")].join("");
-      const mapCell = a.online ? esc(a.map) : `<span style="color:#5d96a5">—</span>`;
-      tr.innerHTML = `<td>${esc(a.pseudo)}</td><td>${status}${extra}</td><td>${mapCell}</td>` +
-        `<td class="num">${fmtN(a.credits)}</td>` +
-        `<td class="num">${fmtN(a.exp)}</td>` +
-        `<td class="num">${fmtN(a.honor)}</td><td></td><td></td>`;
-      appendAdminActions(tr.children[6], a, a.online === true, false);
-      buildModuleCell(tr.children[7], a);
-      tb.appendChild(tr);
+      const c = tr.children;
+      c[0].textContent = a.pseudo;
+      c[1].innerHTML = `${status}${extra}`;
+      c[2].innerHTML = a.online ? esc(a.map) : `<span style="color:#5d96a5">—</span>`;
+      c[3].textContent = fmtN(a.credits);
+      c[4].textContent = fmtN(a.exp);
+      c[5].textContent = fmtN(a.honor);
+      c[6].innerHTML = "";
+      appendAdminActions(c[6], a, a.online === true, false);
+      if (!c[7].firstChild) buildModuleCell(c[7], a);
+      placeRow(tr);
     }
-    for (const g of guests) {
-      if (q && !String(g.pseudo || "").toLowerCase().includes(q)) continue;
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${esc(g.pseudo)} <span class="badge guest">invité</span></td>` +
-        `<td><span class="badge ok">en ligne</span></td><td>${esc(g.map)}</td>` +
-        `<td class="num">—</td><td class="num">—</td><td class="num">—</td><td></td><td><span style="color:#5d96a5">—</span></td>`;
-      appendAdminActions(tr.children[6], g, true, true);
-      tb.appendChild(tr);
+    for (const g of guestsShown) {
+      const key = "g:" + g.pseudo;
+      let tr = accountRowByKey.get(key);
+      if (!tr || !tr.isConnected) {
+        tr = document.createElement("tr");
+        tr.innerHTML = `<td></td><td></td><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td></td><td><span style="color:#5d96a5">—</span></td>`;
+        accountRowByKey.set(key, tr);
+      }
+      tr.className = "";
+      const c = tr.children;
+      c[0].innerHTML = `${esc(g.pseudo)} <span class="badge guest">invité</span>`;
+      c[1].innerHTML = `<span class="badge ok">en ligne</span>`;
+      c[2].textContent = g.map;
+      c[6].innerHTML = "";
+      appendAdminActions(c[6], g, true, true);
+      placeRow(tr);
     }
   }
   function fmtTime(at) {
