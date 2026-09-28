@@ -65,7 +65,7 @@ export function getZoneSpawns(WORLD) {
       type,
       x, y,
       radius: 350,
-      respawn: 0,
+      respawn: type.startsWith("npc_Emperor_") ? 30 : 0,
       maxAlive: 1,
       aggroRange: 750,
       leashRange: 1700,
