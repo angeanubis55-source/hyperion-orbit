@@ -432,7 +432,7 @@ export const NPC_TYPES = {
     passiveNative: true,
     spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 6400000, shield: 6400000, speed: 100, bulletDmg: 35000, bulletSpeed: 4500, shootRange: 700,
+    r: 18, hp: 6400000, shield: 6400000, speed: 100, bulletDmg: 80000, bulletSpeed: 4500, shootRange: 700,
     onKill: { spawn: [ { type: "npc_Lordakia", count: 4, radius: 260 } ] },
   },
   npc_Emperor_Lordakium: {
@@ -442,7 +442,7 @@ export const NPC_TYPES = {
     passiveNative: true,
     spriteSpeed: 30,
     bulletSprite: { src: "COMBAT/MUNITIONS/LORDAKIUM.png", w: 97, h: 37, glow: true, invert: true },
-    r: 18, hp: 9600000, shield: 6800000, speed: 100, bulletDmg: 45000, bulletSpeed: 4500, shootRange: 700,
+    r: 18, hp: 9600000, shield: 6800000, speed: 100, bulletDmg: 96000, bulletSpeed: 4500, shootRange: 700,
     onKill: { spawn: [ { type: "npc_Lordakia", count: 15, radius: 260 } ] },
   },
   npc_Emperor_Kristallon: {
@@ -452,7 +452,7 @@ export const NPC_TYPES = {
     passiveNative: true,
     spriteSpeed: 60,
     bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 97, h: 37, glow: true, invert: true },
-    r: 18, hp: 14080000, shield: 10560000, speed: 100, bulletDmg: 640000, bulletSpeed: 4500, shootRange: 700,
+    r: 18, hp: 14080000, shield: 10560000, speed: 100, bulletDmg: 144000, bulletSpeed: 4500, shootRange: 700,
     shootRate: 0.25,
     onKill: { spawn: [ { type: "npc_Kristallin", count: 5, radius: 260 } ] },
   },
@@ -1249,7 +1249,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 40, hp: 650000, shield: 750000, speed: 250, bulletDmg: 8000, bulletSpeed: 4500, shootRange: 550,
+    r: 40, hp: 650000, shield: 750000, speed: 250, bulletDmg: 640, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Streuner_Guard_Turret: {
     name: "-=[ Streuner Guard Turret ]=-",
