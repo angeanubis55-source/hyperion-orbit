@@ -67,7 +67,7 @@ import {
   tickCurrentUserAuction,
 } from "./ACCOUNT.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
-import { flushNetUser } from "./ACCOUNT_NET.js";
+import { flushNetUser, noteNetConsumption } from "./ACCOUNT_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
   GALAXY_GATE_DEFINITIONS,
@@ -6514,6 +6514,26 @@ function initializeCustomActionBar() {
       const img = button.querySelector("img");
       if (img) img.onerror = () => { img.onerror = null; img.style.display = "none"; };
       button.onclick = () => {
+        // Un raccourci peut survivre quelques millisecondes dans la barre lors
+        // d'un changement de hangar. Ne jamais exécuter une aptitude si elle
+        // n'appartient plus au vaisseau réellement actif.
+        const activeAbilityGroup = currentAbilityShipMatch();
+        if (activeAbilityGroup !== group || !activeAbilityGroup.ids.includes(name)) {
+          showNotification("Aptitude indisponible sur le vaisseau actif", 2, "info");
+          // Nettoie seulement les anciens raccourcis, sans annuler une aptitude
+          // légitime déjà active sur le nouveau vaisseau.
+          try {
+            for (const slot of bar.querySelectorAll(".actionSlot")) {
+              const item = slot.querySelector('[data-action-id^="ability:"]');
+              const abilityId = String(item?.dataset?.actionId || "").slice("ability:".length);
+              if (item && !activeAbilityGroup?.ids?.includes(abilityId)) item.remove();
+            }
+            persist();
+            updateHudKeyHints();
+            refreshActiveActionPalette?.();
+          } catch {}
+          return;
+        }
         if (isCloakAbility(name)) {
           activatePoliceCloak();
           return;
@@ -16967,6 +16987,25 @@ function ammoCount(key) {
   return key === "x1" ? Infinity : player.ammo[key] || 0;
 }
 
+// Repercute immediatement une consommation dans l'objet canonique local sans
+// declencher un POST par tir. Ainsi, une sauvegarde de position ou un achat
+// ne peut plus relire l'ancien stock et le remettre dans le vaisseau.
+function mirrorConsumedStock(field, id, value) {
+  try {
+    const key = String(id || "").toLowerCase();
+    const amount = Math.max(0, Math.floor(Number(value) || 0));
+    const current = getCurrentUserFull();
+    if (current) {
+      current[field] ||= {};
+      current[field][key] = amount;
+    }
+    if (account.user) {
+      account.user[field] ||= {};
+      account.user[field][key] = amount;
+    }
+  } catch {}
+}
+
 function setAmmo(key) {
   if (!AMMO[key]) return;
   if (key !== "x1" && ammoCount(key) <= 0) key = "x1";
@@ -16989,7 +17028,10 @@ function setAmmo(key) {
 function consumeAmmo(shots) {
   const k = player.ammo.active;
   if (k === "x1") return;
-  player.ammo[k] = Math.max(0, (player.ammo[k] || 0) - shots);
+  const before = Math.max(0, Number(player.ammo[k]) || 0);
+  player.ammo[k] = Math.max(0, before - shots);
+  noteNetConsumption("ammo", k, before - player.ammo[k]);
+  mirrorConsumedStock("ammo", k, player.ammo[k]);
   if (player.ammo[k] <= 0) player.ammo.active = "x1";
   // Persiste la consommation (sinon un save entre deux syncs
   // réécrivait l'ancien stock et les tirs semblaient "annulés").
@@ -20009,7 +20051,7 @@ function petFuelTickCost(pet, user) {
   return (PET_FUEL_BASE_TICK + continuous) * petFuelEcoMult(pet, user);
 }
 function tickPetFuel(dt) {
-  const pet = account.user?.pet;
+  let pet = account.user?.pet;
   if (!pet || pet.owned !== true || pet.active !== true) {
     petState.fuelTickT = 0;
     return;
@@ -20025,6 +20067,14 @@ function tickPetFuel(dt) {
   const take = Math.floor(petState.fuelRest);
   if (take <= 0) return;
   petState.fuelRest -= take;
+  // account.user peut etre une ancienne copie apres netStore. Rattache la
+  // consommation au canon avant de retirer le carburant, sinon un sync le
+  // remplit de nouveau (notamment au passage exact a zero).
+  const current = getCurrentUserFull();
+  if (current?.pet?.owned === true) {
+    account.user = current;
+    pet = current.pet;
+  }
   pet.fuel = Math.max(0, Math.floor(Number(pet.fuel) || 0) - take);
   markProgressDirty();
   if (pet.fuel <= 0) {
@@ -20040,6 +20090,12 @@ function tickPetFuel(dt) {
 // Prélèvement one-shot (kamikaze / sacrifice) : 3 × économie, min 1.
 function consumePetOneshotFuel(pet, user) {
   if (!pet) return { ok: false };
+  const current = getCurrentUserFull();
+  if (current?.pet?.owned === true) {
+    account.user = current;
+    user = current;
+    pet = current.pet;
+  }
   const cost = Math.max(1, Math.round(PET_FUEL_ONESHOT * petFuelEcoMult(pet, user)));
   const have = Math.max(0, Math.floor(Number(pet.fuel) || 0));
   if (have < cost) return { ok: false, cost, have };
@@ -21454,6 +21510,8 @@ function playerUpgradeMults() {
 
 // Consomme le stock chargé (lasers/roquettes : par tir ; bouclier/vitesse : par palier).
 function consumeUpgradeStock(slot, amount = 1) {
+  const current = getCurrentUserFull();
+  if (current) account.user = current;
   const upgrades = account.user?.upgrades;
   const loaded = upgrades?.[slot];
   const stock = Math.max(0, Math.floor(Number(loaded?.stock) || 0));
@@ -21462,7 +21520,9 @@ function consumeUpgradeStock(slot, amount = 1) {
   refreshUpgradeSlotDom(slot);
   if (loaded.stock <= 0) {
     markProgressDirty();
-    saveProgressNow();
+    // updateCurrentUserProgress ne contient pas `upgrades` : sauvegarde le
+    // compte complet au palier zero pour que le minerai ne reapparaisse pas.
+    try { saveUser(account.user, { source: "progress" }); } catch {}
     applyCurrentConfigStats(false, null, true);
   }
   return true;
@@ -23682,12 +23742,31 @@ function killRewards(e) {
     gainedXp = Math.max(0, Math.floor(Number(serverReward.exp) || 0));
     gainedHonor = Math.max(0, Math.floor(Number(serverReward.honor) || 0));
     player.credits += credits;
-    if (!account.user) loadAccountUser();
+    // saveUser/netStore remplace le cache reseau par un clone. `account.user`
+    // peut donc encore pointer sur l'ancien objet : le kill y apparait, puis
+    // la sauvegarde de position relit le clone sans XP et donne l'impression
+    // que la recompense a ete retiree. Toujours repartir du canon local
+    // courant avant d'appliquer le delta confirme par le serveur.
+    const currentAccountUser = getCurrentUserFull();
+    if (currentAccountUser && (!account.user || String(currentAccountUser.id) === String(account.user.id))) {
+      account.user = currentAccountUser;
+    } else if (!account.user) {
+      loadAccountUser();
+    }
     if (account.user) {
       account.user.credits = Math.max(0, Math.floor(Number(account.user.credits) || 0)) + credits;
       account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
-      account.user.stats.exp = Math.max(0, Math.floor(Number(account.user.stats.exp) || 0)) + gainedXp;
-      account.user.stats.honor = Math.max(0, Math.floor(Number(account.user.stats.honor) || 0)) + gainedHonor;
+      // Le serveur fournit aussi les totaux apres transaction. Utiliser le
+      // total XP empeche de recompter le delta si un 409 a deja adopte cette
+      // meme recompense avant l'arrivee du message WebSocket.
+      const serverTotalExp = serverReward.totalExp == null ? null : Math.max(0, Math.floor(Number(serverReward.totalExp) || 0));
+      account.user.stats.exp = serverTotalExp != null
+        ? Math.max(Math.max(0, Math.floor(Number(account.user.stats.exp) || 0)), serverTotalExp)
+        : Math.max(0, Math.floor(Number(account.user.stats.exp) || 0)) + gainedXp;
+      const serverTotalHonor = serverReward.totalHonor == null ? null : Math.floor(Number(serverReward.totalHonor) || 0);
+      account.user.stats.honor = serverTotalHonor != null
+        ? Math.max(Math.floor(Number(account.user.stats.honor) || 0), serverTotalHonor)
+        : Math.floor(Number(account.user.stats.honor) || 0) + gainedHonor;
       if (serverReward.ownsKill === true) {
         account.user.stats.lifetimeKills = Math.max(0, Math.floor(Number(account.user.stats.lifetimeKills) || 0)) + 1;
         account.user.stats.npcKills ||= {};
@@ -24367,6 +24446,10 @@ function usePulse() {
   }
 
   player.credits -= PULSE_COST;
+  try {
+    const current = getCurrentUserFull();
+    if (current) { current.credits = player.credits; account.user = current; }
+  } catch {}
   pulseCd = PULSE_COOLDOWN;
   persistCdUntil("pulse", PULSE_COOLDOWN);
   // L'IEM purge immédiatement tous les effets de ralentissement et de gel.
@@ -24420,6 +24503,10 @@ function useIsh() {
   }
 
   player.credits -= ISH_COST;
+  try {
+    const current = getCurrentUserFull();
+    if (current) { current.credits = player.credits; account.user = current; }
+  } catch {}
   ishCd = ISH_COOLDOWN;
   persistCdUntil("ish", ISH_COOLDOWN);
   startRespawnInstaShield();
@@ -24703,6 +24790,8 @@ function tryFireRocket(opts = {}) {
   SFX.play("sfx_shot_roquettes", { cooldown: 0.05, cut: true });
 
   player.rockets[rocket.id] = rocketCount(rocket.id) - 1;
+  noteNetConsumption("rockets", rocket.id, 1);
+  mirrorConsumedStock("rockets", rocket.id, player.rockets[rocket.id]);
   if (PERSONAL_ROCKET_COOLDOWN_IDS.has(String(rocket.id || "").toLowerCase())) {
     personalRocketCooldowns.set(String(rocket.id).toLowerCase(), PERSONAL_ROCKET_COOLDOWN_SEC);
   } else {
@@ -24740,7 +24829,7 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
   consumeUpgradeStock("rocket");
   const shotMiss = typeof miss === "boolean"
     ? miss
-    : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.laserHitBonusPct || 0) + Number(player.rocketHitBonusPct || 0) + Number(rocketBoosterMults.hit || 0) + playerPilotMults().rocketHit) / 100));
+    : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.rocketHitBonusPct || 0) + Number(rocketBoosterMults.hit || 0) + playerPilotMults().rocketHit) / 100));
   const ang = rocket.manual === false
     ? launcherRocketLaunchAngle(player.angle, arcDir, spread)
     : player.angle + spread;
@@ -24829,6 +24918,8 @@ function tryFireSalvo(opts = {}) {
   player.angle = Math.atan2(t.y - player.y, t.x - player.x);
 
   player.rockets[id] = rocketCount(id) - n;
+  noteNetConsumption("rockets", id, n);
+  mirrorConsumedStock("rockets", id, player.rockets[id]);
   launcherReloadT = 0;
   launcherFullT = 0;
   launcherPhase = "cooldown";
@@ -24841,7 +24932,7 @@ function tryFireSalvo(opts = {}) {
   // Salve réelle : toute attaque casse le camouflage ultime.
   breakPoliceCloak();
   const volleyId = volleySeq++;
-  const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.laserHitBonusPct || 0) + Number(player.rocketHitBonusPct || 0) + playerPilotMults().rocketHit) / 100));
+  const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.rocketHitBonusPct || 0) + playerPilotMults().rocketHit) / 100));
   for (let i = 0; i < n; i++) {
     // 1 son par roquette, en même temps.
     SFX.play("sfx_shot_lance_roquettes");
@@ -34671,11 +34762,15 @@ function applyHangarDesignLive() {
     playerImgsReady = false;
     ensurePackLoaded(pack)
       .then(() => {
-        playerImgs = pack._imgs;
-        playerImgsReady = true;
+        // Un second switch peut avoir commencé pendant le chargement.
+        // Un résultat ancien ne doit jamais réinstaller le sprite précédent.
+        if (ACTIVE_SHIP === pack) {
+          playerImgs = pack._imgs;
+          playerImgsReady = true;
+        }
       })
       .catch(() => {
-        playerImgsReady = true;
+        if (ACTIVE_SHIP === pack) playerImgsReady = true;
       });
 
     // recalcule les stats (hp, bouclier, vitesse, dégâts…) en valeurs absolues
@@ -34843,11 +34938,29 @@ window.addEventListener("orbit:user-updated", event => {
   try {
     const nextHangarId = nextHangar?.id ?? null;
     if (nextHangarId && nextHangarId !== SESSION_HANGAR_ID) {
+      // Le compte pointe déjà sur le nouveau hangar, mais le joueur affiché
+      // appartient encore à l'ancien. Sauvegarde explicitement ce dernier
+      // avant de déplacer le verrou de session.
+      if (started && SESSION_HANGAR_ID) {
+        const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
+        saveHangarStateById(
+          SESSION_HANGAR_ID,
+          player.x,
+          player.y,
+          currentMap,
+          savedHpPct(),
+          savedShPct(),
+        );
+      }
       SESSION_HANGAR_ID = nextHangarId;
       CONFIG_SHIELDS["1"] = null;
       CONFIG_SHIELDS["2"] = null;
     }
   } catch {}
+  // ACTIVE_SHIP est la source de vérité du moteur pendant une partie. Elle
+  // n'est pas mutée par setActiveHangar, contrairement aux objets du compte :
+  // elle permet donc de reconnaître fiablement l'ancien vaisseau.
+  const engineShipId = String(ACTIVE_SHIP?.id || "").toLowerCase();
   account.user = refreshed;
   // Changement de vaisseau : account.user est déjà muté ici (cache partagé
   // de readUsers), on compare donc au dernier vaisseau vu par la palette.
@@ -34855,17 +34968,35 @@ window.addEventListener("orbit:user-updated", event => {
   // palette s'initie souvent avant les données du compte et resterait masquée.
   let nowShipId = "";
   try { nowShipId = String(getActiveHangarFromUser(account?.user)?.shipId || "").toLowerCase(); } catch {}
-  const prevShipId = String(lastAbilityShipId || "");
-  const shipChanged = nowShipId !== lastAbilityShipId;
+  const prevShipId = engineShipId || String(lastAbilityShipId || "");
+  const shipChanged = nowShipId !== engineShipId;
   if (shipChanged) {
+    // Aucun tir, verrouillage ou salve différée de l'ancienne coque ne doit
+    // continuer après le changement.
+    try { stopAttack(); } catch {}
+    try { Target.clear(); } catch {}
     // Isolation par vaisseau : l'ancien garde ses temps (effet + recharge),
     // le nouveau récupère les siens. Fini le CD Orcus qui fuit sur Police.
     try { if (started) handleShipAbilitySwitch(prevShipId, nowShipId); } catch {}
     lastAbilityShipId = nowShipId;
   }
-  try { refreshActiveActionPalette?.(shipChanged); } catch {}
   if (started) {
+    // Met d'abord à jour la coque et les stats. La palette, le sprite et les
+    // aptitudes sont ensuite reconstruits depuis le même vaisseau actif.
     applyCurrentConfigStats(false, switched ? nextHangar.activeConfig : null, true);
+    if (shipChanged) {
+      const nextPack = ACTIVE_SHIP;
+      playerImgsReady = false;
+      ensurePackLoaded(nextPack)
+        .then(() => {
+          if (ACTIVE_SHIP === nextPack) {
+            playerImgs = nextPack._imgs;
+            playerImgsReady = true;
+          }
+        })
+        .catch(() => { if (ACTIVE_SHIP === nextPack) playerImgsReady = true; });
+    }
+    try { refreshActiveActionPalette?.(shipChanged); } catch {}
     updateConfigButtons();
     updatePetHud();
     drawUI();

@@ -673,6 +673,12 @@ function humanizeShipId(id) {
 export function getShipFamilyId(shipId) {
   const id = String(shipId || "");
   if (!id) return id;
+  // La table base/design est la source la plus fiable. Le découpage par
+  // suffixes ci-dessous ne peut pas reconnaître tous les noms composés
+  // (ex. orcus_plus_pearl_cyan / orcus_plus_matte_red) et créait alors une
+  // fausse famille par couleur : les modules du vaisseau semblaient disparaître.
+  const designBaseId = getShipDesignBaseId(id);
+  if (designBaseId) return designBaseId;
   if (id.includes("_design_")) return id.split("_design_")[0];
 
   const parts = id.split("_");

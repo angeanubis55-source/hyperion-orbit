@@ -12,8 +12,15 @@ const CUR_KEY = "orbit_current_user";
 let memUser = null;
 let memToken = null;
 let saveTimer = null;
+// Sélection de hangar/design pas encore confirmée par le serveur. Elle doit
+// survivre à un 409 provoqué entre-temps par une récompense ou un autre save.
+let pendingHangarSelection = null;
+let observedShipSelection = null;
+let observedHangarSelection = null;
 let refreshStarted = false;
 let pendingPurchaseCredits = 0;
+const pendingPurchaseStock = { ammo: {}, rockets: {} };
+const pendingConsumedStock = { ammo: {}, rockets: {} };
 
 function lsGet(k) {
   try { return localStorage.getItem(k); } catch { return null; }
@@ -42,6 +49,23 @@ export function netStore(list) {
   const arr = Array.isArray(list) ? list : [];
   const mine = (memUser && arr.find((u) => u && u.id === memUser.id)) || arr[0] || null;
   if (mine && typeof mine === "object") {
+    try {
+      const newActive = mine?.hangars?.find((h) => h?.active)
+        || mine?.hangars?.find((h) => h?.shipId === mine?.ship)
+        || null;
+      const newShipId = String(mine?.ship || "");
+      const newHangarId = String(newActive?.id || "");
+      if (observedShipSelection !== null
+        && (newShipId !== observedShipSelection || newHangarId !== observedHangarSelection)) {
+        pendingHangarSelection = {
+          ship: mine.ship,
+          hangarId: newActive?.id || null,
+          hangar: newActive ? structuredClone(newActive) : null,
+        };
+      }
+      observedShipSelection = newShipId;
+      observedHangarSelection = newHangarId;
+    } catch {}
     // Memes garde-fous que le legacy (writeUsers) : plafond historique,
     // sentinelle Infinity -> -1 (JSON ne porte pas Infinity).
     try {
@@ -57,10 +81,54 @@ export function netStore(list) {
 
 // Enregistre le prix d'un achat jusqu'a ce que le serveur ait accepte la
 // sauvegarde correspondante. Sur 409, ce debit sera rejoue sur le canon.
-export function noteNetPurchase(totalPrice) {
+export function noteNetPurchase(totalPrice, stockGains = null) {
   if (!netActive()) return;
   const price = Math.max(0, Math.floor(Number(totalPrice) || 0));
   if (price > 0) pendingPurchaseCredits += price;
+  for (const field of ["ammo", "rockets"]) {
+    const gains = stockGains?.[field];
+    if (!gains || typeof gains !== "object") continue;
+    for (const [id, amount] of Object.entries(gains)) {
+      if (id === "x1") continue;
+      const add = Math.max(0, Math.floor(Number(amount) || 0));
+      if (add > 0) pendingPurchaseStock[field][id] = Math.max(0, Number(pendingPurchaseStock[field][id]) || 0) + add;
+    }
+  }
+}
+
+export function noteNetConsumption(field, id, amount) {
+  if (!netActive() || !pendingConsumedStock[field]) return;
+  const key = String(id || "").toLowerCase();
+  const used = Math.max(0, Math.floor(Number(amount) || 0));
+  if (key && used > 0) pendingConsumedStock[field][key] = Math.max(0, Number(pendingConsumedStock[field][key]) || 0) + used;
+}
+
+function clearPendingPurchaseStock(snapshot) {
+  for (const field of ["ammo", "rockets"]) {
+    for (const [id, amount] of Object.entries(snapshot?.[field] || {})) {
+      const left = Math.max(0, Number(pendingPurchaseStock[field][id]) || 0) - Math.max(0, Number(amount) || 0);
+      if (left > 0) pendingPurchaseStock[field][id] = left;
+      else delete pendingPurchaseStock[field][id];
+    }
+  }
+}
+
+function clearPendingConsumedStock(snapshot) {
+  for (const field of ["ammo", "rockets"]) {
+    for (const [id, amount] of Object.entries(snapshot?.[field] || {})) {
+      const left = Math.max(0, Number(pendingConsumedStock[field][id]) || 0) - Math.max(0, Number(amount) || 0);
+      if (left > 0) pendingConsumedStock[field][id] = left;
+      else delete pendingConsumedStock[field][id];
+    }
+  }
+}
+
+function resetPendingPurchases() {
+  pendingPurchaseCredits = 0;
+  pendingPurchaseStock.ammo = {};
+  pendingPurchaseStock.rockets = {};
+  pendingConsumedStock.ammo = {};
+  pendingConsumedStock.rockets = {};
 }
 
 export function netSetCurrent(cur) {
@@ -71,7 +139,10 @@ export function netSetCurrent(cur) {
     memToken = null;
     try { clearTimeout(saveTimer); } catch {}
     saveTimer = null;
-    pendingPurchaseCredits = 0;
+    resetPendingPurchases();
+    pendingHangarSelection = null;
+    observedShipSelection = null;
+    observedHangarSelection = null;
     lsSet(TOKEN_KEY, null);
     lsSet(CACHE_KEY, null);
     lsSet(CUR_KEY, null);
@@ -100,6 +171,16 @@ function readCache() {
   return null;
 }
 
+function observeHangarSelection(user) {
+  try {
+    const active = user?.hangars?.find((h) => h?.active)
+      || user?.hangars?.find((h) => h?.shipId === user?.ship)
+      || null;
+    observedShipSelection = String(user?.ship || "");
+    observedHangarSelection = String(active?.id || "");
+  } catch {}
+}
+
 // Boot synchrone (import) depuis token + cache. Le refresh async suit.
 export function bootNetFromCache() {
   try {
@@ -109,6 +190,7 @@ export function bootNetFromCache() {
     if (!cached) return false;
     memToken = tok;
     memUser = cached;
+    observeHangarSelection(memUser);
     if (!refreshStarted) {
       refreshStarted = true;
       setTimeout(() => { refreshNetUser().catch(() => {}); }, 0);
@@ -124,6 +206,7 @@ export function enterNetMode(token, user) {
   memToken = String(token || "");
   memUser = user && typeof user === "object" ? user : null;
   if (!memToken || !memUser) return false;
+  observeHangarSelection(memUser);
   lsSet(TOKEN_KEY, memToken);
   writeCache(memUser);
   try {
@@ -265,9 +348,22 @@ function mergeProgressiveFields(prev, next) {
       for (const pd of prev.drones.items) {
         if (!pd || pd.id == null) continue;
         const nd = byId.get(String(pd.id));
-        if (!nd) continue;
+        if (!nd) {
+          next.drones.items.push(pd);
+          byId.set(String(pd.id), pd);
+          continue;
+        }
         if (Number(pd.exp) > Number(nd.exp || 0)) nd.exp = Math.max(0, Number(pd.exp));
         if (Number(pd.level) > Number(nd.level || 0)) nd.level = Math.max(0, Math.floor(Number(pd.level)));
+      }
+      if (Array.isArray(prev.drones.formations) && Array.isArray(next.drones.formations)) {
+        const formations = new Set(next.drones.formations.map(String));
+        for (const id of prev.drones.formations) {
+          if (id != null && !formations.has(String(id))) {
+            next.drones.formations.push(id);
+            formations.add(String(id));
+          }
+        }
       }
     }
     if (prev.pet && next.pet && typeof next.pet === "object") {
@@ -319,14 +415,6 @@ function mergeProgressiveFields(prev, next) {
         for (const [id, count] of Object.entries(pCounts)) {
           if (Number(count) > Number(nCounts[id] || 0)) nCounts[id] = Math.max(0, Math.floor(Number(count) || 0));
         }
-      }
-    }
-    for (const field of ["ammo", "rockets"]) {
-      const pStock = prev[field], nStock = next[field];
-      if (!pStock || !nStock || typeof pStock !== "object" || typeof nStock !== "object") continue;
-      for (const [id, count] of Object.entries(pStock)) {
-        if (id === "x1" || id === "active") continue;
-        if (Number(count) > Number(nStock[id] || 0)) nStock[id] = Math.max(0, Math.floor(Number(count) || 0));
       }
     }
     if (Array.isArray(prev.hangars) && Array.isArray(next.hangars)) {
@@ -390,6 +478,8 @@ async function pushNow() {
   const token = memToken;
   const snapshot = memUser;
   const purchaseCreditsAtSend = pendingPurchaseCredits;
+  const purchaseStockAtSend = JSON.parse(JSON.stringify(pendingPurchaseStock));
+  const consumedStockAtSend = JSON.parse(JSON.stringify(pendingConsumedStock));
   let out = null;
   try {
     out = await api("/api/save", { method: "POST", body: { user: snapshot }, token });
@@ -398,6 +488,8 @@ async function pushNow() {
   }
   if (out && out.ok) {
     pendingPurchaseCredits = Math.max(0, pendingPurchaseCredits - purchaseCreditsAtSend);
+    clearPendingPurchaseStock(purchaseStockAtSend);
+    clearPendingConsumedStock(consumedStockAtSend);
     if (out.user && typeof out.user === "object") {
       const sentRev = Math.max(0, Math.floor(Number(snapshot?.revision) || 0));
       const liveRev = Math.max(0, Math.floor(Number(memUser?.revision) || 0));
@@ -415,6 +507,15 @@ async function pushNow() {
         schedulePush();
       }
     }
+    try {
+      const sentActive = snapshot?.hangars?.find((h) => h?.active)
+        || snapshot?.hangars?.find((h) => h?.shipId === snapshot?.ship);
+      if (pendingHangarSelection
+        && String(snapshot?.ship || "") === String(pendingHangarSelection.ship || "")
+        && String(sentActive?.id || "") === String(pendingHangarSelection.hangarId || "")) {
+        pendingHangarSelection = null;
+      }
+    } catch {}
     return out;
   }
   if (out && out.status === 409 && out.stale && out.user) {
@@ -428,8 +529,30 @@ async function pushNow() {
     // y compris lorsqu'elle diminue une valeur. La fusion par maximum, utile
     // pour les conflits ordinaires de gains, annulerait sinon les retraits.
     memUser = out.adminConflict === true ? out.user : mergeProgressiveFields(memUser, out.user);
+    if (out.adminConflict !== true && pendingHangarSelection) {
+      const pending = pendingHangarSelection;
+      memUser.hangars = Array.isArray(memUser.hangars) ? memUser.hangars : [];
+      if (pending.hangar && pending.hangarId) {
+        const index = memUser.hangars.findIndex((h) => String(h?.id || "") === String(pending.hangarId));
+        if (index >= 0) memUser.hangars[index] = structuredClone(pending.hangar);
+        else memUser.hangars.push(structuredClone(pending.hangar));
+      }
+      for (const h of memUser.hangars) h.active = String(h?.id || "") === String(pending.hangarId || "");
+      memUser.ship = pending.ship;
+    }
     if (out.adminConflict !== true && pendingPurchaseCredits > 0) {
       memUser.credits = Math.max(0, Math.floor(Number(memUser.credits) || 0) - pendingPurchaseCredits);
+    }
+    if (out.adminConflict !== true) {
+      for (const field of ["ammo", "rockets"]) {
+        memUser[field] ||= {};
+        for (const [id, amount] of Object.entries(pendingPurchaseStock[field])) {
+          memUser[field][id] = Math.max(0, Math.floor(Number(memUser[field][id]) || 0)) + Math.max(0, Math.floor(Number(amount) || 0));
+        }
+        for (const [id, amount] of Object.entries(pendingConsumedStock[field])) {
+          memUser[field][id] = Math.max(0, Math.floor(Number(memUser[field][id]) || 0) - Math.max(0, Math.floor(Number(amount) || 0)));
+        }
+      }
     }
     memUser.revision = Math.max(
       Math.floor(Number(memUser.revision) || 0),
@@ -494,7 +617,7 @@ function enterLocalFallback() {
   memToken = null;
   try { clearTimeout(saveTimer); } catch {}
   saveTimer = null;
-  pendingPurchaseCredits = 0;
+  resetPendingPurchases();
   lsSet(TOKEN_KEY, null);
   lsSet(CACHE_KEY, null);
   lsSet(CUR_KEY, null);

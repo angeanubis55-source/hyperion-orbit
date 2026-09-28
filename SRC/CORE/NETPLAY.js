@@ -863,6 +863,9 @@ export function ensureNetplayConnection() {
         baseHonor: Math.max(0, Math.floor(Number(msg.baseHonor) || 0)),
         petExp: Math.max(0, Number(msg.petExp) || 0),
         revision: Math.max(0, Math.floor(Number(msg.revision) || 0)),
+        totalCredits: Number.isFinite(Number(msg.totalCredits)) ? Math.max(0, Math.floor(Number(msg.totalCredits))) : null,
+        totalExp: Number.isFinite(Number(msg.totalExp)) ? Math.max(0, Math.floor(Number(msg.totalExp))) : null,
+        totalHonor: Number.isFinite(Number(msg.totalHonor)) ? Math.floor(Number(msg.totalHonor)) : null,
         ownsKill: msg.ownsKill === true,
         percent: Math.max(0, Math.min(100, Math.floor(Number(msg.percent) || 0))),
       });

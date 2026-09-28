@@ -311,7 +311,13 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
       .run(JSON.stringify(data), revision, now, uid);
     db.exec("COMMIT");
     inTx = false;
-    return { credits, exp, honor, baseExp, baseHonor, petExp, revision, ownsKill: ownsKill === true, type, txKey: key };
+    return {
+      credits, exp, honor, baseExp, baseHonor, petExp, revision,
+      totalCredits: Math.max(0, Math.floor(Number(data.credits) || 0)),
+      totalExp: Math.max(0, Math.floor(Number(data.stats?.exp) || 0)),
+      totalHonor: Math.floor(Number(data.stats?.honor) || 0),
+      ownsKill: ownsKill === true, type, txKey: key,
+    };
   } catch {
     if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
     return null;

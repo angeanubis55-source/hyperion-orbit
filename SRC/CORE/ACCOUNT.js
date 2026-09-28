@@ -1627,7 +1627,10 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
 
   // pay
   u.credits -= price;
-  noteNetPurchase(price);
+  noteNetPurchase(price, {
+    ammo: Object.fromEntries(Object.entries(item.give?.ammo || {}).map(([id, amount]) => [id, Number(amount || 0) * quantity])),
+    rockets: Object.fromEntries(Object.entries(item.give?.rockets || {}).map(([id, amount]) => [id, Number(amount || 0) * quantity])),
+  });
 
   // ammo packs
   if (item.give?.ammo) {
@@ -1741,9 +1744,11 @@ export function buyCurrentUserDrone(type) {
   const price = type === "iris" ? getIrisPrice(owned) : SPECIAL_DRONE_PRICE;
   if (u.credits < price) return { ok: false, error: "Crédits insuffisants." };
   u.credits -= price;
+  noteNetPurchase(price);
   const drone = createDrone(type, `drone_${uuid()}`);
   u.drones.items.push(drone);
   saveUser(u);
+  if (netActive()) flushNetUser().catch(() => {});
   return { ok: true, user: u, drone, price };
 }
 
@@ -1772,8 +1777,10 @@ export function buyCurrentUserDroneFormation(formationId) {
   if (u.drones.formations.includes(formation.id)) return { ok: false, error: "Formation déjà possédée." };
   if (u.credits < formation.price) return { ok: false, error: "Crédits insuffisants." };
   u.credits -= formation.price;
+  noteNetPurchase(formation.price);
   u.drones.formations.push(formation.id);
   saveUser(u);
+  if (netActive()) flushNetUser().catch(() => {});
   return { ok: true, user: u, formation, price: formation.price };
 }
 
@@ -2615,9 +2622,11 @@ export function buyModuleRoll(cost = 250000) {
   if (u.credits < cost) return { ok: false, error: "Crédits insuffisants." };
 
   u.credits -= cost;
+  noteNetPurchase(cost);
 
   ensureUserShape(u);
   saveUser(u);
+  if (netActive()) flushNetUser().catch(() => {});
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
 
   return { ok: true, user: u };
@@ -2692,12 +2701,14 @@ export function buyAndAddShipModule(cost, moduleObj) {
     cost = Math.max(0, Number(cost || 0));
     if (u.credits < cost) return { ok: false, error: "Crédits insuffisants." };
     u.credits -= cost;
+    noteNetPurchase(cost);
   }
 
   u.inventory.shipModules.push(moduleObj);
   u.inventory.moduleRollHistory.push({ ...moduleObj });
 
   saveUser(u);
+  if (!usedTicket && netActive()) flushNetUser().catch(() => {});
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
 
   return { ok: true, user: u, ticket: usedTicket };
@@ -2726,6 +2737,7 @@ export function buyAndReplaceShipModule(cost, oldId, newModule) {
     cost = Math.max(0, Number(cost || 0));
     if (u.credits < cost) return { ok: false, error: "Crédits insuffisants." };
     u.credits -= cost;
+    noteNetPurchase(cost);
   }
 
   if (oldId) {
@@ -2736,6 +2748,7 @@ export function buyAndReplaceShipModule(cost, oldId, newModule) {
   u.inventory.moduleRollHistory.push({ ...newModule });
 
   saveUser(u);
+  if (!usedTicket && netActive()) flushNetUser().catch(() => {});
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
 
   return { ok: true, user: u, ticket: usedTicket };

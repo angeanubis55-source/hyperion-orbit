@@ -879,14 +879,24 @@ function npcRewardShares(killerId, mapId, death) {
 // Les morts sont donc filees ici et traitees par lot hors boucle chaude
 // (le client attend la recompense avant d'afficher le gain, delai invisible).
 const pendingNpcRewards = []; // { mapId, death }
+const queuedNpcRewardKeys = new Set();
+function npcDeathKey(mapId, death) {
+  return `${String(mapId).toLowerCase()}:${String(death?.uid || "")}:${Number(death?.seq) || 0}`;
+}
 function queueNpcDeaths(mapId, deaths) {
   if (!Array.isArray(deaths) || !deaths.length) return;
   for (const death of deaths) {
     if (!death || typeof death !== "object") continue;
     const killerId = String(death.killer || "");
     if (!killerId.startsWith("u_") || death.cause !== "gun") continue;
-    if (pendingNpcRewards.length >= 500) pendingNpcRewards.shift();
-    pendingNpcRewards.push({ mapId: String(mapId), death });
+    const deathKey = npcDeathKey(mapId, death);
+    if (rewardedNpcDeaths.has(deathKey) || queuedNpcRewardKeys.has(deathKey)) continue;
+    if (pendingNpcRewards.length >= 500) {
+      const dropped = pendingNpcRewards.shift();
+      if (dropped) queuedNpcRewardKeys.delete(dropped.deathKey);
+    }
+    queuedNpcRewardKeys.add(deathKey);
+    pendingNpcRewards.push({ mapId: String(mapId), death, deathKey });
   }
 }
 function awardNpcDeaths(mapId, deaths) {
@@ -901,9 +911,9 @@ function pumpNpcRewards(budgetMs = 12) {
     if (!item) continue;
     const { mapId, death } = item;
     const killerId = String(death?.killer || "");
-    if (!killerId.startsWith("u_") || death?.cause !== "gun") continue;
-    const deathKey = `${String(mapId).toLowerCase()}:${String(death.uid)}:${Number(death.seq) || 0}`;
-    if (rewardedNpcDeaths.has(deathKey)) continue;
+    const deathKey = item.deathKey || npcDeathKey(mapId, death);
+    if (!killerId.startsWith("u_") || death?.cause !== "gun") { queuedNpcRewardKeys.delete(deathKey); continue; }
+    if (rewardedNpcDeaths.has(deathKey)) { queuedNpcRewardKeys.delete(deathKey); continue; }
     let complete = true;
     for (const share of npcRewardShares(killerId, mapId, death)) {
       const accountId = share.pid.slice(2);
@@ -922,12 +932,15 @@ function pumpNpcRewards(budgetMs = 12) {
     // Une erreur SQLite transitoire sera retentee au tour suivant (en fin de
     // file pour ne pas bloquer les autres). Les parts deja commitees sont
     // protegees par npc_reward_tx et ignorees via duplicate.
-    if (complete) rewardedNpcDeaths.set(deathKey, now);
-    else pendingNpcRewards.push({ mapId, death });
+    if (complete) {
+      queuedNpcRewardKeys.delete(deathKey);
+      rewardedNpcDeaths.set(deathKey, now);
+    } else pendingNpcRewards.push({ mapId, death, deathKey });
   }
   if (pendingNpcRewards.length > 400) {
     try { console.log(`[multi:npc] file recompenses saturee (${pendingNpcRewards.length}), delestage des plus anciennes`); } catch {}
-    pendingNpcRewards.splice(0, pendingNpcRewards.length - 400);
+    const dropped = pendingNpcRewards.splice(0, pendingNpcRewards.length - 400);
+    for (const item of dropped) queuedNpcRewardKeys.delete(item?.deathKey);
   }
 }
 setInterval(() => {
