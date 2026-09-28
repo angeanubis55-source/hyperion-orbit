@@ -642,7 +642,7 @@ const SHIP_DESIGN_TRAITS = new Set([
   "bleu", "egg", "infected", "pink",
 ]);
 
-const SHIP_PACK_ID_SET = new Set(SHIP_PACKS.map((p) => String(p?.id)));
+const SHIP_PACK_ID_SET = new Set(SHIP_PACKS.map((p) => String(p?.id).toLowerCase()));
 
 // Pack d'un vaisseau avec tolérance à la casse. « PhoenixBleu » (id legacy du
 // starter dans les comptes sauvegardés) correspond au pack « phoenix_bleu ».
@@ -671,7 +671,7 @@ function humanizeShipId(id) {
 
 // Famille d'un vaisseau : on coupe les suffixes cosmétiques de l'identifiant.
 export function getShipFamilyId(shipId) {
-  const id = String(shipId || "");
+  const id = String(shipId || "").toLowerCase();
   if (!id) return id;
   // La table base/design est la source la plus fiable. Le découpage par
   // suffixes ci-dessous ne peut pas reconnaître tous les noms composés
@@ -755,13 +755,15 @@ const SHIP_DESIGN_BASE_OVERRIDES = {
 };
 
 export function isRemovedShipPack(shipId) {
-  return SHIP_REMOVED_IDS.has(String(shipId || ""));
+  return SHIP_REMOVED_IDS.has(String(shipId || "").toLowerCase());
 }
 
 // Renvoie l'id de la base d'un vaisseau, ou null si le vaisseau EST une base
 // (ou un modèle autonome non listé comme design, ex : police, dinde).
+// Insensible à la casse : les ids boutique sont en minuscules mais les
+// hangars / le moteur peuvent fournir "Orcus", "ORCUS_PLUS_...".
 export function getShipDesignBaseId(shipId) {
-  const id = String(shipId || "");
+  const id = String(shipId || "").toLowerCase();
   if (!id) return null;
   if (SHIP_BASE_IDS.has(id)) return null;
   if (SHIP_DESIGN_BASE_OVERRIDES[id]) return SHIP_DESIGN_BASE_OVERRIDES[id];
@@ -781,7 +783,7 @@ export function getShipDesignBaseId(shipId) {
 // Liste complète d'un groupe de designs : la base d'abord, puis toutes ses
 // variantes (dans l'ordre du fichier).
 export function getShipDesignIds(baseId) {
-  const base = String(baseId || "");
+  const base = String(baseId || "").toLowerCase();
   const out = [base];
   for (const pack of SHIP_PACKS) {
     if (getShipDesignBaseId(pack.id) === base) out.push(pack.id);

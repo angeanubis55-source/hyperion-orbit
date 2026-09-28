@@ -25,7 +25,8 @@ const fit =
   // multipliés (x1.5 / x2, ex : +30% PV -> +45% / +60%). Les designs
   // cosmétiques héritent de leur base. Lasers, générateurs, drones,
   // formations et effets passifs non concernés.
-  const hullBaseId = getShipDesignBaseId(hangar?.shipId) || String(hangar?.shipId || "").toLowerCase();
+  const rawHullId = String(hangar?.shipId || "").toLowerCase();
+  const hullBaseId = getShipDesignBaseId(rawHullId) || rawHullId;
   const hullModuleMult = hullBaseId === "orcus_plus" ? 2 : hullBaseId === "orcus" ? 1.5 : 1;
   
   // ✅ ÉTAPE 1 : calculer les stats de BASE (avant modules %)
