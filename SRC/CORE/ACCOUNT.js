@@ -1,7 +1,7 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
-import { bootNetFromCache, flushNetUser, netActive, netCurrent, netList, netSetCurrent, netStore } from "./ACCOUNT_NET.js";
+import { bootNetFromCache, flushNetUser, netActive, netCurrent, netList, netSetCurrent, netStore, noteNetPurchase } from "./ACCOUNT_NET.js";
 // Multi : session serveur restauree au chargement (token + cache local),
 // puis refresh async via /api/me (revision canonique).
 try { bootNetFromCache(); } catch {}
@@ -1561,6 +1561,7 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
     const hullPrice = getPetHullPrice(owned);
     if (u.credits < hullPrice) return { ok: false, error: "Crédits insuffisants." };
     u.credits -= hullPrice;
+    noteNetPurchase(hullPrice);
     u.pet.hullUpgrades = owned + 1;
     incCount(u, item.id, 1);
     ensureUserShape(u);
@@ -1577,6 +1578,7 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
     const fuelPrice = Math.max(0, Number(item.price || 0)) * buyQty;
     if (u.credits < fuelPrice) return { ok: false, error: "Crédits insuffisants." };
     u.credits -= fuelPrice;
+    noteNetPurchase(fuelPrice);
     u.pet.fuel = Math.min(PET_FUEL_MAX, Math.max(0, Math.floor(Number(u.pet.fuel) || 0)) + buyQty);
     incCount(u, item.id, buyQty);
     ensureUserShape(u);
@@ -1625,6 +1627,7 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
 
   // pay
   u.credits -= price;
+  noteNetPurchase(price);
 
   // ammo packs
   if (item.give?.ammo) {
@@ -1723,7 +1726,7 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
   // récompense NPC bump la révision serveur : sans flush immédiat, l'achat local
   // (crédits débités + timer prolongé) est écrasé par le canon serveur = l'achat
   // semble crédité puis rollback/remboursé.
-  if ((isShip || isDesign || isBooster) && netActive()) {
+  if (netActive()) {
     try { const p = flushNetUser(); if (p && typeof p.catch === "function") p.catch(() => {}); } catch {}
   }
   return { ok: true, user: u, quantity, totalPrice: price };

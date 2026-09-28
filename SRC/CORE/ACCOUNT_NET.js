@@ -13,6 +13,7 @@ let memUser = null;
 let memToken = null;
 let saveTimer = null;
 let refreshStarted = false;
+let pendingPurchaseCredits = 0;
 
 function lsGet(k) {
   try { return localStorage.getItem(k); } catch { return null; }
@@ -54,6 +55,14 @@ export function netStore(list) {
   }
 }
 
+// Enregistre le prix d'un achat jusqu'a ce que le serveur ait accepte la
+// sauvegarde correspondante. Sur 409, ce debit sera rejoue sur le canon.
+export function noteNetPurchase(totalPrice) {
+  if (!netActive()) return;
+  const price = Math.max(0, Math.floor(Number(totalPrice) || 0));
+  if (price > 0) pendingPurchaseCredits += price;
+}
+
 export function netSetCurrent(cur) {
   if (!cur) {
     // Logout : coupe la session serveur (best effort) + nettoie tout.
@@ -62,6 +71,7 @@ export function netSetCurrent(cur) {
     memToken = null;
     try { clearTimeout(saveTimer); } catch {}
     saveTimer = null;
+    pendingPurchaseCredits = 0;
     lsSet(TOKEN_KEY, null);
     lsSet(CACHE_KEY, null);
     lsSet(CUR_KEY, null);
@@ -304,6 +314,20 @@ function mergeProgressiveFields(prev, next) {
           }
         }
       }
+      const pCounts = prev.inventory.counts, nCounts = next.inventory.counts;
+      if (pCounts && nCounts && typeof pCounts === "object" && typeof nCounts === "object") {
+        for (const [id, count] of Object.entries(pCounts)) {
+          if (Number(count) > Number(nCounts[id] || 0)) nCounts[id] = Math.max(0, Math.floor(Number(count) || 0));
+        }
+      }
+    }
+    for (const field of ["ammo", "rockets"]) {
+      const pStock = prev[field], nStock = next[field];
+      if (!pStock || !nStock || typeof pStock !== "object" || typeof nStock !== "object") continue;
+      for (const [id, count] of Object.entries(pStock)) {
+        if (id === "x1" || id === "active") continue;
+        if (Number(count) > Number(nStock[id] || 0)) nStock[id] = Math.max(0, Math.floor(Number(count) || 0));
+      }
     }
     if (Array.isArray(prev.hangars) && Array.isArray(next.hangars)) {
       const have = new Set(next.hangars.filter(Boolean).map((h) => String(h?.shipId)));
@@ -332,7 +356,8 @@ function mergeProgressiveFields(prev, next) {
     }
     // Une recompense NPC est maintenant ecrite par le serveur avant que le
     // kill local ait forcement pousse sa quete. Lors de l'adoption de cette
-    // revision, garde le maximum de chaque objectif et les missions terminees.    const pQuests = prev.quests, nQuests = next.quests;
+    // revision, garde le maximum de chaque objectif et les missions terminees.
+    const pQuests = prev.quests, nQuests = next.quests;
     if (pQuests && nQuests && typeof pQuests === "object" && typeof nQuests === "object") {
       const completed = new Set([...(Array.isArray(nQuests.completed) ? nQuests.completed : []), ...(Array.isArray(pQuests.completed) ? pQuests.completed : [])].map(String));
       nQuests.completed = [...completed];
@@ -364,6 +389,7 @@ async function pushNow() {
   if (!netActive()) return { ok: false };
   const token = memToken;
   const snapshot = memUser;
+  const purchaseCreditsAtSend = pendingPurchaseCredits;
   let out = null;
   try {
     out = await api("/api/save", { method: "POST", body: { user: snapshot }, token });
@@ -371,6 +397,7 @@ async function pushNow() {
     return { ok: false, error: "Reseau." };
   }
   if (out && out.ok) {
+    pendingPurchaseCredits = Math.max(0, pendingPurchaseCredits - purchaseCreditsAtSend);
     if (out.user && typeof out.user === "object") {
       const sentRev = Math.max(0, Math.floor(Number(snapshot?.revision) || 0));
       const liveRev = Math.max(0, Math.floor(Number(memUser?.revision) || 0));
@@ -401,8 +428,16 @@ async function pushNow() {
     // y compris lorsqu'elle diminue une valeur. La fusion par maximum, utile
     // pour les conflits ordinaires de gains, annulerait sinon les retraits.
     memUser = out.adminConflict === true ? out.user : mergeProgressiveFields(memUser, out.user);
+    if (out.adminConflict !== true && pendingPurchaseCredits > 0) {
+      memUser.credits = Math.max(0, Math.floor(Number(memUser.credits) || 0) - pendingPurchaseCredits);
+    }
+    memUser.revision = Math.max(
+      Math.floor(Number(memUser.revision) || 0),
+      Math.floor(Number(out.user.revision) || 0),
+    ) + 1;
     writeCache(memUser);
     try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "stale", conflicts } })); } catch {}
+    schedulePush();
     return out;
   }
   if (out && out.status === 401) {
@@ -459,6 +494,7 @@ function enterLocalFallback() {
   memToken = null;
   try { clearTimeout(saveTimer); } catch {}
   saveTimer = null;
+  pendingPurchaseCredits = 0;
   lsSet(TOKEN_KEY, null);
   lsSet(CACHE_KEY, null);
   lsSet(CUR_KEY, null);

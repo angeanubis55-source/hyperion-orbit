@@ -23869,7 +23869,14 @@ function processDeathsMeasured() {
       playNpcDeathFxOnce(e);
       if (e._netKiller === true && !e._netReward) {
         e._netReward = takeNetNpcReward(window.__CURRENT_MAP_ID__, e._netUid, e._netSeq);
-        if (!e._netReward) { e.hp = 0; continue; }
+        if (!e._netReward) {
+          // La recompense est deja commitee en base par le serveur. Si son
+          // message temps reel se perd, ne garde pas eternnellement le cadavre
+          // (il bloquerait aussi le respawn de la nouvelle incarnation).
+          e._netRewardWaitAt ||= performance.now();
+          if (performance.now() - e._netRewardWaitAt < 5000) { e.hp = 0; continue; }
+          e._netSilent = true;
+        }
       }
     } else if (e.hp > 0) continue;
 
