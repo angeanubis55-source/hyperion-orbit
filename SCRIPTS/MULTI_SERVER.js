@@ -6,7 +6,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminListAccounts, adminDeleteAccount } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminShipFamilies } from "./ACCOUNT_SERVER.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
@@ -191,6 +191,11 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, bans: [...bans.values()] });
     return true;
   }
+  if (pathname === "/api/admin/ships" && request.method === "GET") {
+    // Familles de vaisseaux pour le select "give module" du panneau admin.
+    adminJson(response, 200, { ok: true, ships: adminShipFamilies() });
+    return true;
+  }
   if (pathname === "/api/admin/accounts" && request.method === "GET") {
     // Tous les comptes (connectés + hors ligne) + invités connectés.
     // Mêmes actions que les connectés : mute/ban/give par id/pseudo.
@@ -246,7 +251,7 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, accounts: out, guests, onlineCount, total: out.length });
     return true;
   }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete") && request.method === "POST") {
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
         if (pathname === "/api/admin/delete") {
@@ -361,6 +366,25 @@ function handleAdminApi(request, response, pathname) {
             const peer = findPeerByPseudo(res.pseudo);
             if (peer) {
               const txt = `L'admin t'a ${res.given > 0 ? "donné" : "retiré"} ${Math.abs(res.given).toLocaleString("fr-FR")} honneur. Nouveau total : ${res.after.toLocaleString("fr-FR")}.`;
+              sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
+            }
+          } catch {}
+          adminJson(response, 200, res);
+          return;
+        }
+        if (pathname === "/api/admin/give-module") {
+          // Give module roulette : pseudo + famille vaisseau + stat + %.
+          // Notifie le joueur s'il est connecté ; sinon récupéré à sa synchro.
+          const res = adminGiveModule(String(body?.pseudo || ""), String(body?.shipId || ""), String(body?.stat || ""), body?.pct);
+          if (!res || res.ok !== true) {
+            adminJson(response, res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Paramètres invalides." });
+            return;
+          }
+          try {
+            const peer = findPeerByPseudo(res.pseudo);
+            if (peer) {
+              const b = res.module?.bonuses?.[0] || {};
+              const txt = `L'admin t'a donné un module ${res.module?.shipId} : ${b.pct > 0 ? "+" : ""}${b.pct}% ${b.stat}.`;
               sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
             }
           } catch {}

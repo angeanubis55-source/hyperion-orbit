@@ -14,6 +14,10 @@
   .card h2 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #75e8ff; }
   input[type=password], input[type=text], input[type=number] { height: 34px; padding: 0 10px; border: 1px solid rgba(124,240,255,.3); border-radius: 8px; background: #051521; color: #effcff; font-size: 13px; outline: 0; }
   input:focus { border-color: #69e9ff; }
+  select { height: 26px; padding: 0 6px; border: 1px solid rgba(124,240,255,.3); border-radius: 8px; background: #051521; color: #effcff; font-size: 12px; outline: 0; max-width: 130px; }
+  select:focus { border-color: #69e9ff; }
+  .modCell { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+  .modCell input[type=number] { height: 26px; width: 64px; padding: 0 6px; font-size: 12px; }
   button { height: 34px; padding: 0 16px; border: 1px solid rgba(124,240,255,.38); border-radius: 8px; background: linear-gradient(135deg, rgba(0,145,190,.38), rgba(0,70,100,.34)); color: #eaffff; font-weight: 800; font-size: 13px; cursor: pointer; }
   button:hover { border-color: rgba(124,240,255,.62); background: rgba(0,140,185,.3); }
   button.danger { border-color: rgba(255,110,120,.5); background: linear-gradient(135deg, rgba(190,30,40,.4), rgba(100,20,30,.35)); }
@@ -95,8 +99,8 @@
     <h2>Joueurs <span id="accountCount" class="badge off">0</span></h2>
     <div class="searchRow"><input id="accountSearch" type="text" placeholder="Rechercher un pseudo…" maxlength="20" autocomplete="off"></div>
     <table>
-      <thead><tr><th>Pseudo</th><th>Statut</th><th>Map</th><th>Crédits</th><th>EXP</th><th>Honneur</th><th>Actions</th></tr></thead>
-      <tbody id="accountRows"><tr><td colspan="7">Chargement…</td></tr></tbody>
+      <thead><tr><th>Pseudo</th><th>Statut</th><th>Map</th><th>Crédits</th><th>EXP</th><th>Honneur</th><th>Actions</th><th>Module</th></tr></thead>
+      <tbody id="accountRows"><tr><td colspan="8">Chargement…</td></tr></tbody>
     </table>
   </div>
   <div class="card">
@@ -147,6 +151,7 @@
       try { sessionStorage.setItem("orbit_admin_token", token); } catch {}
       $("loginBox").style.display = "none";
       $("app").style.display = "block";
+      try { ensureShips(); } catch {}
       refresh();
     } catch (e) {
       $("loginMsg").textContent = e?.message || "Erreur.";
@@ -366,6 +371,78 @@
       add(del);
     }
   }
+  /* ---------- Give module : vaisseau + stat + % par joueur ---------- */
+  const MODULE_STATS = [
+    ["damage", "Dégâts"], ["hp", "PV"], ["shield", "Bouclier"], ["speed", "Vitesse"],
+    ["penetration", "Péné."], ["laser_hit", "Préci.L"], ["rocket_hit", "Préci.R"],
+    ["evasion", "Évasion"], ["exp", "EXP"], ["honor", "Honneur"],
+  ];
+  let shipFamilies = null;
+  let shipsLoading = null;
+  async function ensureShips() {
+    if (shipFamilies) return shipFamilies;
+    if (!shipsLoading) {
+      shipsLoading = call("/api/admin/ships").then((out) => {
+        shipFamilies = (out && out.ok === true && Array.isArray(out.ships)) ? out.ships : [];
+        return shipFamilies;
+      }).catch(() => []).finally(() => { shipsLoading = null; });
+    }
+    return shipsLoading;
+  }
+  function buildModuleCell(td, p) {
+    const wrap = document.createElement("div");
+    wrap.className = "modCell";
+    const shipSel = document.createElement("select");
+    shipSel.title = "Vaisseau du module";
+    const statSel = document.createElement("select");
+    statSel.title = "Stat du module";
+    for (const [v, label] of MODULE_STATS) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = label;
+      statSel.appendChild(o);
+    }
+    const pctInput = document.createElement("input");
+    pctInput.type = "number"; pctInput.value = "30"; pctInput.min = "-8"; pctInput.max = "100";
+    pctInput.title = "Pourcentage (-8 à 100)";
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.className = "small"; btn.textContent = "Give";
+    btn.title = "Donner le module au joueur";
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        const out = await call("/api/admin/give-module", { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, shipId: shipSel.value, stat: statSel.value, pct: pctInput.value }) });
+        if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+        const b = out.module?.bonuses?.[0] || {};
+        toast(`${out.pseudo} : module ${out.module?.shipId} ${b.pct > 0 ? "+" : ""}${b.pct}% ${b.stat}.`, "ok");
+      } catch (e) { toast(e?.message || "Erreur.", "err"); }
+      btn.disabled = false;
+      refresh();
+    };
+    if (shipFamilies && shipFamilies.length) {
+      for (const s of shipFamilies) {
+        const o = document.createElement("option");
+        o.value = s.id; o.textContent = s.name;
+        shipSel.appendChild(o);
+      }
+    } else {
+      const o = document.createElement("option");
+      o.value = ""; o.textContent = "…";
+      shipSel.appendChild(o);
+      ensureShips().then((list) => {
+        shipSel.innerHTML = "";
+        for (const s of (list || [])) {
+          const opt = document.createElement("option");
+          opt.value = s.id; opt.textContent = s.name;
+          shipSel.appendChild(opt);
+        }
+      }).catch(() => {});
+    }
+    wrap.appendChild(shipSel);
+    wrap.appendChild(statSel);
+    wrap.appendChild(pctInput);
+    wrap.appendChild(btn);
+    td.appendChild(wrap);
+  }
   async function refresh() {
     if (!$("app") || $("app").style.display === "none") return;
     try {
@@ -388,7 +465,7 @@
     // En ligne d'abord, puis ordre alpha. Invités (sans compte) en bas.
     rows.sort((a, b) => Number(b.online || false) - Number(a.online || false) || String(a.pseudo).localeCompare(String(b.pseudo)));
     tb.innerHTML = "";
-    if (!rows.length && !guests.length) tb.innerHTML = `<tr><td colspan="7">Aucun compte.</td></tr>`;
+    if (!rows.length && !guests.length) tb.innerHTML = `<tr><td colspan="8">Aucun compte.</td></tr>`;
     for (const a of rows) {
       const tr = document.createElement("tr");
       if (a.muted) tr.className = "mutedRow";
@@ -402,8 +479,9 @@
       tr.innerHTML = `<td>${esc(a.pseudo)}</td><td>${status}${extra}</td><td>${mapCell}</td>` +
         `<td class="num">${fmtN(a.credits)}</td>` +
         `<td class="num">${fmtN(a.exp)}</td>` +
-        `<td class="num">${fmtN(a.honor)}</td><td></td>`;
-      appendAdminActions(tr.lastChild, a, a.online === true, false);
+        `<td class="num">${fmtN(a.honor)}</td><td></td><td></td>`;
+      appendAdminActions(tr.children[6], a, a.online === true, false);
+      buildModuleCell(tr.children[7], a);
       tb.appendChild(tr);
     }
     for (const g of guests) {
@@ -411,8 +489,8 @@
       const tr = document.createElement("tr");
       tr.innerHTML = `<td>${esc(g.pseudo)} <span class="badge guest">invité</span></td>` +
         `<td><span class="badge ok">en ligne</span></td><td>${esc(g.map)}</td>` +
-        `<td class="num">—</td><td class="num">—</td><td class="num">—</td><td></td>`;
-      appendAdminActions(tr.lastChild, g, true, true);
+        `<td class="num">—</td><td class="num">—</td><td class="num">—</td><td></td><td><span style="color:#5d96a5">—</span></td>`;
+      appendAdminActions(tr.children[6], g, true, true);
       tb.appendChild(tr);
     }
   }

@@ -12,7 +12,7 @@ import { computeHangarStats } from "../SHIP/SHIP_HANGARS.js";
 import { activeBoosterMults } from "../SRC/DATA/BOOSTERS.js";
 import { pilotSkillMults } from "../SRC/DATA/PILOT_SKILLS.js";
 import { calculateRankPoints } from "../SRC/CORE/PROGRESSION.js";
-import { getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
+import { getShipDesignBaseId, getShipFamilyId, getShipFamilyIds, getShipFamilyName, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 import { DRONE_XP_SHARE, getDroneLevel } from "../DRONE/DRONE_TYPES.js";
 import { PET_XP_SHARE, getPetLevel } from "../PET/PET_TYPES.js";
 import { NPC_REWARDS } from "../NPC/NPC_BALANCE.js";
@@ -1559,6 +1559,69 @@ export function adminGiveHonor(pseudo, amount) {
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
       .run(JSON.stringify(data), newRev, now, row.id);
     return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), before, after, given: delta, revision: newRev };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// Admin : liste des familles de vaisseaux pour le panneau (select give module).
+// Retourne [{ id, name }] trié par nom, ids en minuscules (base de famille).
+export function adminShipFamilies() {
+  try {
+    return getShipFamilyIds()
+      .map((id) => ({ id: String(id), name: String(getShipFamilyName(id) || id) }))
+      .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  } catch { return []; }
+}
+
+// Admin : give un module roulette à un compte (panneau /api/admin/give-module).
+// Crée UN module 1 stat : { shipId (famille), stat, pct }. Le % est la valeur
+// brute stockée (le x1.5 Orcus / x2 Orcus Plus s'applique à l'équipement).
+// pct entier, -8 (malus max x3) à 100. tier x3, rareté common (1 stat).
+const ADMIN_MODULE_STATS = new Set([
+  "hp", "shield", "damage", "speed", "penetration",
+  "laser_hit", "rocket_hit", "evasion", "exp", "honor",
+]);
+const ADMIN_MODULE_TYPE_BY_STAT = { hp: "hp", shield: "shd", damage: "dmg" };
+export function adminGiveModule(pseudo, shipId, stat, pct) {
+  try {
+    initAccountDb();
+    const key = norm(pseudo);
+    if (!key) return { ok: false, error: "Pseudo manquant." };
+    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const family = getShipFamilyId(shipId);
+    if (!family || !getShipPackById(family)) return { ok: false, error: "Vaisseau inconnu." };
+    const statId = String(stat || "").toLowerCase();
+    if (!ADMIN_MODULE_STATS.has(statId)) return { ok: false, error: "Stat inconnue." };
+    const pctInt = Math.floor(Number(String(pct ?? "").replace(/[\s_]/g, "")) || 0);
+    if (!Number.isFinite(pctInt) || pctInt === 0) return { ok: false, error: "Pourcentage invalide (entier non nul)." };
+    if (pctInt < -8 || pctInt > 100) return { ok: false, error: "Pourcentage hors borne (-8 à 100)." };
+    let data = {};
+    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    data.inventory ||= {};
+    if (!Array.isArray(data.inventory.shipModules)) data.inventory.shipModules = [];
+    const now = Math.floor(Date.now() / 1000);
+    const type = ADMIN_MODULE_TYPE_BY_STAT[statId] || "spc";
+    const mod = {
+      id: `mod_admin_${now}_${randomBytes(3).toString("hex")}`,
+      kind: "shipModule",
+      shipId: String(family),
+      familyId: String(family),
+      tier: "x3",
+      type,
+      bonuses: [{ stat: statId, pct: pctInt }],
+      rarity: "common",
+      iconKey: `${type}-x3`,
+      rerolls: 0,
+      createdAt: now,
+    };
+    data.inventory.shipModules.push(mod);
+    const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data._adminWriteToken = randomBytes(12).toString("hex");
+    data.revision = newRev;
+    data.updatedAt = Date.now();
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(data), newRev, Date.now(), row.id);
+    return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), module: mod, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
 
