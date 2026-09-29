@@ -157,12 +157,9 @@ html.orbitSessionReady #loadingOverlay{
 }
 
 .bossVitals{ margin:0; gap:7px; }
-.bossVitals .bar,
-.escortVitals .bar{ position:relative; height:22px; overflow:hidden; isolation:isolate; }
-.bossVitals .bar > i,
-.escortVitals .bar > i{ position:absolute; inset:0 auto 0 0; z-index:0; transition:width .18s ease; }
-.bossVitals .barValue,
-.escortVitals .barValue{
+.bossVitals .bar{ position:relative; height:22px; overflow:hidden; isolation:isolate; }
+.bossVitals .bar > i{ position:absolute; inset:0 auto 0 0; z-index:0; transition:width .18s ease; }
+.bossVitals .barValue{
   position:absolute;
   inset:0;
   z-index:1;
@@ -233,16 +230,6 @@ html.orbitSessionReady #loadingOverlay{
 .assemblyMessage:empty{ display:none; }
 .rarity-common{ --rarity:#a9bcc7; }.rarity-rare{ --rarity:#45bfff; }.rarity-epic{ --rarity:#ba72ff; }.rarity-legendary{ --rarity:#ffd15c; }
 @media (max-width:760px){ .assemblyCols{ grid-template-columns:1fr; } }
-
-#escortWindow{ display:none; width:330px; padding:0 9px 9px; pointer-events:auto; }
-#escortWindow.gameWindow > .gameWinBar{ margin:0 -9px 9px !important; }
-.escortWindowBody{ display:grid; gap:7px; max-height:430px; overflow-y:auto; }
-.escortStatus{ padding:8px; border:1px solid rgba(124,240,255,.14); background:#061521; }
-.escortStatus.destroyed{ opacity:.58; border-color:rgba(255,93,111,.3); }
-.escortStatusHead{ display:flex; justify-content:space-between; gap:8px; margin-bottom:6px; font-size:9px; }
-.escortStatusHead strong{ color:#75e8ff; }.escortStatusHead span{ color:#99adba; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.escortVitals{ margin:0; gap:5px; }
-.escortEmpty{ padding:22px 12px; color:#7895a6; text-align:center; font-size:11px; }
 
 #boxMeta{
   left:14px;

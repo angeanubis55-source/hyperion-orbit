@@ -32,6 +32,7 @@ export function suspendNetplay(v) {
     netShotInbox.length = 0;
     netPvpKillInbox.length = 0;
     netNpcRewardInbox.clear();
+    try { netLowRaid = null; } catch {}
     netPvpPetKillInbox.length = 0;
     netPvpLootInbox.length = 0;
     netPvpLootTakeInbox.length = 0;
@@ -149,6 +150,7 @@ function clearInstanceGameplay() {
     netSkillInbox.length = 0;
     netPvpKillInbox.length = 0;
     netNpcRewardInbox.clear();
+    try { netLowRaid = null; } catch {}
     netPvpPetKillInbox.length = 0;
     netPvpLootInbox.length = 0;
     netPvpLootTakeInbox.length = 0;
@@ -314,6 +316,18 @@ export function sendPvpLootTake(ev) {
     ws.send(JSON.stringify({ t: "pvpLootTake", uid: ev.uid.slice(0, 64) }));
   } catch {}
 }
+// Raid Low : dernier état broadcasté par le serveur (null si aucun).
+let netLowRaid = null;
+export function getNetLowRaid() {
+  return netLowRaid;
+}
+// Run serveur (redémarrage détecté via welcome) : les joueurs sur la Low
+// sont exclus vers le portail extérieur.
+let netServerRun = "";
+let netServerRestartAt = 0;
+export function getNetServerRestartAt() {
+  return netServerRestartAt;
+}
 // Recompenses PvP du serveur : { exp, honneur, mult, victim } a appliquer.
 const netPvpKillInbox = [];
 const netNpcRewardInbox = new Map();
@@ -322,6 +336,16 @@ export function takeNetNpcReward(mapId, uid, seq) {
   const reward = netNpcRewardInbox.get(key) || null;
   if (reward) netNpcRewardInbox.delete(key);
   return reward;
+}
+// Raid Low : récompense fixe de fin de run (uid low-raid-cache, seq variable).
+export function takeNetLowRaidReward() {
+  for (const [key, reward] of netNpcRewardInbox) {
+    if (String(key).includes(":low-raid-cache:")) {
+      netNpcRewardInbox.delete(key);
+      return reward;
+    }
+  }
+  return null;
 }
 // PET detruit : { victim, pet } pour le toast du tueur.
 const netPvpPetKillInbox = [];
@@ -614,6 +638,12 @@ export function ensureNetplayConnection() {
     connected = false;
     netAuthed = false;
     lastLatencyMs = null;
+    // Coupure (restart serveur, réseau) : purge immédiate du partagé —
+    // aucun fantôme (distants, NPC, box, tirs, groupe, raid), partout.
+    // La grâce 12 s ne concerne que le refresh d'un AUTRE joueur vu par
+    // le serveur ; ici c'est NOUS qui sommes coupés : écran net aussitôt.
+    try { clearInstanceGameplay(); } catch {}
+    try { netGroup = null; } catch {}
     if (noReconnect) return;
     // Reconnect douce apres 3 s (serveur maison qui redemarre).
     setTimeout(() => {
@@ -632,6 +662,22 @@ export function ensureNetplayConnection() {
     if (msg.t === "welcome") {
       myId = String(msg.id || "");
       if (msg.authed === true) netAuthed = true;
+      // Redémarrage serveur : run différent du précédent (stocké en session).
+      // Les joueurs sur la Low sont exclus vers le portail extérieur.
+      try {
+        const incomingRun = String(msg.run || "");
+        if (incomingRun) {
+          const prevRun = sessionStorage.getItem("orbit_server_run") || "";
+          if (!prevRun) {
+            sessionStorage.setItem("orbit_server_run", incomingRun);
+          } else if (prevRun !== incomingRun) {
+            sessionStorage.setItem("orbit_server_run", incomingRun);
+            netServerRestartAt = Date.now();
+            netLowRaid = null;
+          }
+          netServerRun = incomingRun;
+        }
+      } catch {}
       return;
     }
     // Depart immediat (portail / changement de map) : supprime le vaisseau
@@ -853,8 +899,7 @@ export function ensureNetplayConnection() {
       netShotInbox.push(msg);
       return;
     }
-    if (msg.t === "npcReward") {
-      const key = `${String(msg.map || "").toLowerCase()}:${String(msg.uid || "")}:${Number(msg.seq) || 0}`;
+    if (msg.t === "npcReward") {      const key = `${String(msg.map || "").toLowerCase()}:${String(msg.uid || "")}:${Number(msg.seq) || 0}`;
       netNpcRewardInbox.set(key, {
         credits: Math.max(0, Math.floor(Number(msg.credits) || 0)),
         exp: Math.max(0, Math.floor(Number(msg.exp) || 0)),
@@ -870,6 +915,18 @@ export function ensureNetplayConnection() {
         percent: Math.max(0, Math.min(100, Math.floor(Number(msg.percent) || 0))),
       });
       if (netNpcRewardInbox.size > 64) netNpcRewardInbox.delete(netNpcRewardInbox.keys().next().value);
+      return;
+    }
+    if (msg.t === "lowRaid" && msg && typeof msg === "object") {
+      // Raid Low : dernier état connu (phase, vague, compte à rebours).
+      netLowRaid = {
+        phase: String(msg.phase || "idle"),
+        wave: Math.max(0, Math.floor(Number(msg.wave) || 0)),
+        totalWaves: Math.max(1, Math.floor(Number(msg.totalWaves) || 6)),
+        nextWave: Math.max(1, Math.floor(Number(msg.nextWave) || 1)),
+        endsAt: Math.max(0, Number(msg.endsAt) || 0),
+        at: Date.now(),
+      };
       return;
     }
     if (msg.t === "skillFx" && (msg.skill === "iem" || msg.skill === "ish")) {

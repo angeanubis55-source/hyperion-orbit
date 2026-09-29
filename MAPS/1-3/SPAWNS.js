@@ -100,9 +100,7 @@ export function getZonePortals(WORLD) {
       y: 1000,
       r: 260,
       toMap: "low",
-      entryCost: 1000000,
-      escortCreditCost: 500000,
-      maxEscorts: 3,
+      toPortal: "p_low_return",
     },
     {
       id: "p_13_to_23",

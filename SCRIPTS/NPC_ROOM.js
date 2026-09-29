@@ -54,10 +54,12 @@ export class ZoneNpcSim {
   static async create(mapId) {
     const id = String(mapId || "").toLowerCase();
     if (!/^[a-z0-9_-]+$/.test(id)) return null;
+    // Alias client -> dossier : la Low partagée vit dans MAPS/LOW_MAP.
+    const dir = id === "low" ? "LOW_MAP" : id;
     try {
       const [{ WORLD }, spawns] = await Promise.all([
-        import(`../MAPS/${id}/WORLD.js`),
-        import(`../MAPS/${id}/SPAWNS.js`),
+        import(`../MAPS/${dir}/WORLD.js`),
+        import(`../MAPS/${dir}/SPAWNS.js`),
       ]);
       if (!WORLD || typeof spawns?.getZoneSpawns !== "function") return null;
       const world = { w: Number(WORLD.w) || 11000, h: Number(WORLD.h) || 7000 };
@@ -105,9 +107,18 @@ export class ZoneNpcSim {
         respawn: Number(c?.respawn ?? 1.5),
         maxAlive: Math.max(1, Number(c?.maxAlive ?? 1)),
         speed: (c?.speed ?? null),
+        // Raid Low : numéro de vague (0/undefined = camp normal permanent).
+        raidWave: Math.max(0, Math.floor(Number(c?.raidWave) || 0)) || 0,
+        // Raid Low : IA chasseur type gate (traque map-wide, pas de fuite).
+        hunter: c?.hunter === true,
+        // Raid Low : camp à usage unique par vague (pas de respawn).
+        noRespawn: c?.noRespawn === true,
       }));
       const sim = new ZoneNpcSim(id, world, camps);
       sim.safe = safe;
+      // Raid Low : aucune vague active au démarrage (pas de spawn).
+      sim.raidWave = 0;
+      sim.raidWaveGen = 0;
       return sim;
     } catch {
       return null; // pas une map zone (gate, base...) : pas de simu NPC
@@ -184,6 +195,43 @@ export class ZoneNpcSim {
     } catch {}
   }
 
+  // ---- Raid Low : activation de vague ----
+  // Les camps raidWave > 0 ne spawnent que si leur vague est active.
+  // Changer de vague despawn les NPC des autres vagues (purge partagée
+  // immédiate côté client, sans récompense).
+  setRaidWave(n) {
+    const wave = Math.max(0, Math.floor(Number(n) || 0));
+    if (wave === this.raidWave) return;
+    this.raidWave = wave;
+    // Nouvelle activation de vague : les camps à usage unique peuvent
+    // respawner une fois (génération suivante).
+    if (wave > 0) this.raidWaveGen = (Number(this.raidWaveGen) || 0) + 1;
+    const nowMs = Date.now();
+    for (const [uid, e] of [...this.entries]) {
+      if (!e || !(e.hp > 0)) continue;
+      const camp = this.camps.find((c) => c.id === e.campId);
+      if (camp && camp.raidWave > 0 && camp.raidWave !== wave) {
+        try { markDead(this.universe, this.mapId, uid, nowMs); } catch {}
+        this.entries.delete(uid);
+        if (this.recentGone.length < 200) this.recentGone.push(uid);
+      }
+    }
+    for (const camp of this.camps) {
+      if (camp.raidWave > 0 && camp.raidWave !== wave) this.campT.set(camp.id, 0);
+    }
+  }
+
+  // Nombre de NPC de la vague active encore en vie.
+  raidWaveAliveCount() {
+    let n = 0;
+    for (const e of this.entries.values()) {
+      if (!e || !(e.hp > 0)) continue;
+      const camp = this.camps.find((c) => c.id === e.campId);
+      if (camp && camp.raidWave > 0 && camp.raidWave === this.raidWave) n++;
+    }
+    return n;
+  }
+
   randomPos(pad = 80) {
     // Les NPC peuvent aller partout sur la map, meme sur la base.
     // Aucune exclusion de zone sure (evite les stacks aux bords).
@@ -200,6 +248,9 @@ export class ZoneNpcSim {
     const isCubikon = camp.type === "npc_Cubikon";
     const pos = isCubikon ? { x: camp.x, y: camp.y } : this.randomPos();
     markAlive(this.universe, this.mapId, uid, nowMs);
+    // Camp à usage unique (raid) : marqué comme spawné pour cette
+    // activation de vague (anti-respawn, voir tick).
+    if (camp.noRespawn === true) camp._raidGen = Number(this.raidWaveGen) || 0;
     const prev = this.entries.get(uid);
     this.entries.set(uid, {
       uid, campId: camp.id, type: camp.type,
@@ -214,6 +265,7 @@ export class ZoneNpcSim {
       canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,
       bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.2 + Math.random() * 0.5,
       aggroRange: camp.aggroRange, aggroHoldMs: Math.max(1000, (camp.aggroHold ?? 3.5) * 1000),
+      hunter: camp.hunter === true,
       aggroBy: null, aggroUntil: 0,
       tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
       lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
@@ -538,6 +590,11 @@ drainPlayerHits() {
       }
     }
     for (const camp of this.camps) {
+      // Raid Low : les camps de vague ne spawnent que si leur vague est active.
+      if (camp.raidWave > 0 && camp.raidWave !== this.raidWave) continue;
+      // Raid Low : camp à usage unique — déjà spawné pendant cette
+      // activation de vague = pas de respawn (sinon vague infinie).
+      if (camp.noRespawn === true && camp._raidGen === this.raidWaveGen) continue;
       if ((aliveByCamp.get(camp.id) || 0) >= camp.maxAlive) continue;
       const cd = (this.campT.get(camp.id) || 0) - dt;
       if (cd > 0) { this.campT.set(camp.id, cd); continue; }
@@ -704,7 +761,8 @@ drainPlayerHits() {
         }
       }
       // Proximite : rayon du camp (passifs : seulement si provoques).
-      let close = null, closeD = Number(e.aggroRange) || 700;
+      // Chasseurs (raid) : traque map-wide type gate, pas de rayon.
+      let close = null, closeD = e.hunter === true ? Infinity : (Number(e.aggroRange) || 700);
       if (!e.passive || attacker) {
         for (const [pid, p] of this.players) {
           if (!this.validTarget(p)) continue;
@@ -753,7 +811,8 @@ drainPlayerHits() {
         e.angle = fleeAngle;
       }
       let mx = 0, my = 0, spd = 0;
-      const fleeing = !e.kamikaze && e.hpMax > 0 && e.hp / e.hpMax < 0.10;
+      // Chasseurs (raid) : jamais de fuite, combat à mort comme en gate.
+      const fleeing = !e.kamikaze && e.hunter !== true && e.hpMax > 0 && e.hp / e.hpMax < 0.10;
       const from = attacker || close;
       if (cubeAnchored) {
         if (e.tx == null || Math.hypot(e.tx - e.x, e.ty - e.y) < 100) {

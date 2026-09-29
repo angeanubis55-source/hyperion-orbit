@@ -7,7 +7,8 @@ export const DEFAULT_NPC_RADAR_RADIUS = 1800;
 export const DEFAULT_NPC_RADAR_FADE_START = 1800;
 
 export function getNpcSensorRanges(rules = {}) {
-  if (rules.mode === "gate") {
+  // Gates + raid Low : tous les NPC visibles partout (pas de limite radar).
+  if (rules.mode === "gate" || rules.raidLow === true) {
     return { visibility: Infinity, radar: Infinity, allVisible: true };
   }
   const visibility = Math.max(100, Number(rules.npcVisibilityRadius) || DEFAULT_NPC_VISIBILITY_RADIUS);

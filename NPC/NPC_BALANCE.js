@@ -56,6 +56,9 @@ export const NPC_REWARDS = Object.freeze({
   npc_Hooligan: { credits: 375000, exp: 48000, honor: 96 },
   npc_Ravager: { credits: 480000, exp: 54000, honor: 192 },
   npc_Century_Falcon: { credits: 3000000, exp: 3000000, honor: 15000 },
+  // Cache de raid Low : récompense fixe versée à chaque membre du groupe
+  // présent sur la map à la mort du Century Falcon (100 % chacun).
+  npc_Low_Raid_Cache: { credits: 2000000, exp: 2000000, honor: 50000 },
   npc_Streuner_alpha: { credits: 1000, exp: 1000, honor: 2 },
   npc_Lordakia_alpha: { credits: 1800, exp: 1800, honor: 4 },
   npc_Mordon_alpha: { credits: 9600, exp: 4800, honor: 16 },

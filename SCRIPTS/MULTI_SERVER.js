@@ -5,6 +5,7 @@ import { dirname, extname, join, normalize, resolve } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
+import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminShipFamilies } from "./ACCOUNT_SERVER.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
@@ -290,6 +291,7 @@ function handleAdminApi(request, response, pathname) {
               } catch {}
             }
             if (pid) removeFromAllRooms(pid);
+            if (pid) peerNoGrace.set(pid, Date.now());
             if (victimWs) {
               const ws = victimWs;
               setTimeout(() => { try { ws.close(); } catch {} }, 500);
@@ -461,6 +463,7 @@ function handleAdminApi(request, response, pathname) {
               if (peerWs.readyState === 1) peerWs.send(JSON.stringify({ t: "banned", reason, until }));
             } catch {}
             if (targetId) removeFromAllRooms(targetId);
+            if (targetId) peerNoGrace.set(targetId, Date.now());
             const victimWs = peerWs;
             setTimeout(() => { try { victimWs.close(); } catch {} }, 800);
           }
@@ -477,6 +480,7 @@ function handleAdminApi(request, response, pathname) {
         if (pathname === "/api/admin/kick") {
           let found = false;
           const reason = String(body?.reason || "Comportement inapproprié.").slice(0, 200);
+          if (pid) peerNoGrace.set(pid, Date.now());
           for (const [map, room] of rooms) {
             const entry = room.get(pid);
             if (!entry || !entry.ws) continue;
@@ -606,7 +610,68 @@ const PLAYER_NEAR_PLAYER_RADIUS = 2600;
 const PLAYER_STATIC_REFRESH_TICKS = 10; // garde-fou de resynchronisation : 500 ms
 const rooms = new Map(); // mapId(lower) -> Map(id -> { ws, state })
 const npcSims = new Map(); // mapId(lower) -> ZoneNpcSim | null | Promise
-const boxRooms = new Map(); // mapId(lower) -> Map(uid -> { type, x, y })
+// Refresh (F5) : le socket se ferme mais le joueur revient aussitôt.
+// Grâce de 12 s (même durée que le groupe) : room, amis et groupe le
+// gardent ; s'il revient (pid stable u_<id>), rattachement silencieux
+// sans leave/join. Seul un vrai départ purge (leave + hors ligne).
+const PEER_GRACE_MS = 12_000;
+const peerGrace = new Map(); // pid -> timeout
+const peerNoGrace = new Map(); // pid -> at (kick/ban/suppression : purge immédiate, flag expiré à 60 s)
+
+function cancelPeerGrace(pid) {
+  const t = peerGrace.get(String(pid));
+  if (!t) return false;
+  clearTimeout(t);
+  peerGrace.delete(String(pid));
+  return true;
+}
+
+// Retire l'entrée fantôme SANS broadcast (rattachement en cours).
+function dropStaleEntry(pid) {
+  const key = String(pid);
+  for (const [, room] of rooms) room.delete(key);
+  instancePeers.delete(key);
+}
+
+function finalizePeerGone(pid, snap) {
+  const key = String(pid);
+  const ctx = {
+    id: key, state: snap?.state, authed: !!snap?.authed,
+    send: () => {},
+    sendTo: (to, obj) => sendToPeer(to, obj),
+    findByPseudo: (pseudo) => findPeerByPseudo(pseudo),
+    describe: (p) => describePeer(p),
+  };
+  try { socialPeerGone(key, ctx); } catch {}
+  try { if (snap?.authed && snap?.accountId) notifyFriendPresence(snap.accountId, false); } catch {}
+  try { removeFromAllRooms(key); } catch {}
+}
+
+function schedulePeerGrace(pid, snap) {
+  const key = String(pid);
+  const ng = peerNoGrace.get(key);
+  if (ng != null) {
+    peerNoGrace.delete(key);
+    if (Date.now() - Number(ng) < 60_000) {
+      finalizePeerGone(key, snap);
+      return;
+    }
+  }
+  if (peerGrace.has(key)) return;
+  // Tag : la boucle 10 s et la simu NPC ignorent le fantôme.
+  try {
+    for (const [, room] of rooms) {
+      const e = room.get(key);
+      if (e?.state) { e.state._graceUntil = Date.now() + PEER_GRACE_MS; break; }
+    }
+    const ie = instancePeers.get(key);
+    if (ie?.state) ie.state._graceUntil = Date.now() + PEER_GRACE_MS;
+  } catch {}
+  peerGrace.set(key, setTimeout(() => {
+    peerGrace.delete(key);
+    finalizePeerGone(key, snap);
+  }, PEER_GRACE_MS));
+}const boxRooms = new Map(); // mapId(lower) -> Map(uid -> { type, x, y })
 const boxRoomLoads = new Map(); // mapId -> Promise<Map>
 const boxRespawns = new Map(); // mapId -> [{ uid, type, at }]
 const pvpFeeds = new Map(); // mapId(lower) -> Map("victime|attaquant" -> { uid, by, total })
@@ -1006,7 +1071,7 @@ wss.on("connection", (ws) => {
     hpMax: 1, shMax: 0, hp: 1, sh: 0, range: 800, pvpAt: 0, pvpFrom: null, npcAt: 0, npcFrom: null, pvpWin: 0, pvpWinT: 0 };
   roomFor(mapId).set(id, { ws, state });
   allWs.add(ws);
-  ws.send(JSON.stringify({ t: "welcome", id, authed: false }));
+  ws.send(JSON.stringify({ t: "welcome", id, authed: false, run: serverRunId }));
 
   ws.on("message", (raw) => {
     const rateNow = Date.now();
@@ -1459,6 +1524,8 @@ wss.on("connection", (ws) => {
           const who = verifyWsToken(msg.token);
           if (who && who.id) {
             const stableId = `u_${String(who.id).slice(0, 64)}`;
+            // Refresh : rattachement silencieux (pas de leave/join).
+            if (cancelPeerGrace(stableId)) dropStaleEntry(stableId);
             const room = rooms.get(mapId);
             if (room) {
               if (room.has(id) && room.get(id)?.ws === ws) room.delete(id);
@@ -1476,7 +1543,7 @@ wss.on("connection", (ws) => {
             authed = true;
             state.pseudo = String(who.pseudo || "Pilote").slice(0, 20);
             refreshClanTag(state, accountId);
-            try { ws.send(JSON.stringify({ t: "welcome", id, authed: true })); } catch {}
+            try { ws.send(JSON.stringify({ t: "welcome", id, authed: true, run: serverRunId })); } catch {}
           }
         } catch {}
       }
@@ -1565,6 +1632,10 @@ wss.on("connection", (ws) => {
       try {
         ws.send(JSON.stringify({ t: "groupUpdate", group: socialDescribeGroup(id, socialCtx()) }));
       } catch {}
+      // Raid Low : état courant pour le nouvel arrivant (vague en cours, etc.).
+      if (nextMap === "low") {
+        try { ws.send(JSON.stringify(getLowRaidState())); } catch {}
+      }
       if (authed && accountId) {
         sendFriendsSync(ws, accountId);
         try { notifyFriendPresence(accountId, true); } catch {}
@@ -1866,8 +1937,8 @@ wss.on("connection", (ws) => {
     } catch {}
     try { if (authed && accountId) notifyFriendPresence(accountId, false); } catch {}
   };
-  ws.on("close", () => { allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); clanChatLast.delete(id); clanChatLast.delete(`${id}:notify`); clanChatLast.delete(`${id}:diplo`); onPeerGone(); removeFromAllRooms(id); });
-  ws.on("error", () => { try { ws.close(); } catch {} allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); clanChatLast.delete(id); clanChatLast.delete(`${id}:notify`); clanChatLast.delete(`${id}:diplo`); onPeerGone(); removeFromAllRooms(id); });
+  ws.on("close", () => { allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); clanChatLast.delete(id); clanChatLast.delete(`${id}:notify`); clanChatLast.delete(`${id}:diplo`); if (String(id).startsWith("u_")) schedulePeerGrace(id, { state, authed, accountId }); else { onPeerGone(); removeFromAllRooms(id); } });
+  ws.on("error", () => { try { ws.close(); } catch {} });
 });
 
 // Enchères partagées : clôture à chaque heure pile de Paris (:00),
@@ -1929,7 +2000,9 @@ setInterval(() => {
   for (const [key, room] of rooms) {
     if (!room.size) continue;
     // Expire les joueurs silencieux depuis > 10 s (onglet ferme sans close propre).
+    // Grâce refresh : les fantômes en attente de rattachement sont ignorés.
     for (const [pid, entry] of room) {
+      if (Number(entry?.state?._graceUntil || 0) > now) continue;
       if (now - Number(entry?.state?.updatedAt || 0) > 10000) {
         try { announceLeave(pid); } catch {}
         room.delete(pid);
@@ -1961,7 +2034,8 @@ setInterval(() => {
           const s = entry?.state;
           // Anti-fantôme : jamais positionné (chargement, pas de pos)
           // = ignoré par la simu NPC (ni poursuite ni ciblage).
-          if (s && s._posOk === true) {
+          // Refresh : le fantôme en grâce n'est ni poursuivi ni ciblé.
+          if (s && s._posOk === true && !(Number(s._graceUntil || 0) > now)) {
             const serverSafe = typeof sim.inSafe === "function" ? sim.inSafe(s.x, s.y) : false;
             s.serverSafe = serverSafe && s.safe === true;
             const serverDead = s.pvpDead === true || !(Number(s.hp) > 0);
@@ -2021,6 +2095,20 @@ setInterval(() => {
         ensureNpcSim(key);
       }
     } catch {}
+    // Raid Low : contrôleur de vagues en groupe (ralliement -> 5 s ->
+    // vagues enchaînées -> Century Falcon -> récompense fixe).
+    if (key === "low") {
+      try {
+        const lowSim = npcSims.get(key);
+        if (lowSim && typeof lowSim.setRaidWave === "function") {
+          tickLowRaid(room, lowSim, {
+            describe: (pid) => describePeer(pid),
+            sendTo: (pid, obj) => sendToPeer(pid, obj),
+            broadcast: (obj) => broadcastRoom(room, JSON.stringify(obj)),
+          });
+        }
+      } catch {}
+    }
     // Feed degats PvP du tick, fusionne avec le feed NPC (plafond commun).
     try {
       const pf = pvpFeeds.get(key);

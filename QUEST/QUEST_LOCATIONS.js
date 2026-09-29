@@ -3,9 +3,10 @@
 import { MAP_LOADERS } from "../SRC/CORE/MAP_REGISTRY.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 
-const GATE_MAPS = new Set(["alpha", "beta", "gamma", "low", "qz"]);
+const GATE_MAPS = new Set(["alpha", "beta", "gamma", "qz"]);
+// Alias mapId -> dossier (la Low partagée vit dans MAPS/LOW_MAP).
+const MAP_DIRS = Object.freeze({ low: "LOW_MAP" });
 const SPECIAL_GATE_WAVES = Object.freeze({
-  low: () => import("../MAPS/LOW_MAP/WAVES.js"),
   qz: () => import("../MAPS/BLIGHTED_MAP/WAVES.js"),
 });
 const WORLD_SAMPLE = Object.freeze({ w: 24000, h: 14000 });
@@ -15,7 +16,7 @@ export async function loadNpcLocationIndex() {
   const mapIds = Object.keys(MAP_LOADERS).filter(mapId => !GATE_MAPS.has(mapId));
   await Promise.all(mapIds.map(async mapId => {
     try {
-      const module = await import(`../MAPS/${mapId}/SPAWNS.js`);
+      const module = await import(`../MAPS/${MAP_DIRS[mapId] || mapId}/SPAWNS.js`);
       if (typeof module.getZoneSpawns !== "function") return;
       const types = new Set();
       for (const spawn of module.getZoneSpawns(WORLD_SAMPLE) || []) {
@@ -75,7 +76,7 @@ export async function loadPortalIndex() {
   const mapIds = Object.keys(MAP_LOADERS).filter(mapId => !GATE_MAPS.has(mapId));
   await Promise.all(mapIds.map(async mapId => {
     try {
-      const module = await import(`../MAPS/${mapId}/SPAWNS.js`);
+      const module = await import(`../MAPS/${MAP_DIRS[mapId] || mapId}/SPAWNS.js`);
       if (typeof module.getZonePortals !== "function") return;
       const dests = new Set();
       for (const portal of module.getZonePortals(WORLD_SAMPLE) || []) {

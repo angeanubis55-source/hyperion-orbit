@@ -47,7 +47,6 @@ export function init() {
         }),
       },
       playerSpawn: { x: 520, yRatio: 0.5 },
-      escort: { shipId: "goliath", ammo: "x3", max: 7 },
     },
   });
 }

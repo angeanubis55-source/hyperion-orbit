@@ -15,7 +15,7 @@ export function getMinimapPortalColors(portal, isReturn = false) {
 
 const minimapStaticCache = new Map();
 
-function minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height) {
+function minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone) {
   const portalKey = (portals || []).map((p) => [p.x, p.y, p.r, p.toMap, p.shortcutCreditCost]);
   const safeKey = safeZone
     ? {
@@ -23,16 +23,18 @@ function minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, wid
         beacons: (safeZone.beacons || []).map((b) => [b.x, b.y]),
       }
     : null;
+  const rallyKey = rallyZone ? [rallyZone.x, rallyZone.y, rallyZone.r] : null;
   return [
     world.w, world.h, width, height,
     isZoneMap ? 1 : 0,
     JSON.stringify(portalKey),
     String(returnPortal === portals ? "same" : (returnPortal && portals.indexOf(returnPortal))),
     JSON.stringify(safeKey),
+    JSON.stringify(rallyKey),
   ].join("|");
 }
 
-function drawMinimapStatic(cctx, cw, ch, world, portals, isZoneMap, safeZone, returnPortal) {
+function drawMinimapStatic(cctx, cw, ch, world, portals, isZoneMap, safeZone, returnPortal, rallyZone) {
   cctx.clearRect(0, 0, cw, ch);
   cctx.fillStyle = "rgba(255,255,255,0.04)";
   cctx.fillRect(0, 0, cw, ch);
@@ -82,17 +84,33 @@ function drawMinimapStatic(cctx, cw, ch, world, portals, isZoneMap, safeZone, re
     }
     cctx.restore();
   }
+
+  // Zone de ralliement du raid Low : cercle fixe (couche statique, coût nul).
+  if (rallyZone && Number(rallyZone.r) > 0) {
+    cctx.save();
+    cctx.globalAlpha = 0.95;
+    cctx.strokeStyle = "rgba(255,210,110,0.9)";
+    cctx.lineWidth = 1.5;
+    cctx.beginPath();
+    cctx.arc(rallyZone.x * scaleX, rallyZone.y * scaleY, Math.max(4, rallyZone.r * ((scaleX + scaleY) * 0.5)), 0, Math.PI * 2);
+    cctx.stroke();
+    cctx.fillStyle = "rgba(255,210,110,0.95)";
+    cctx.beginPath();
+    cctx.arc(rallyZone.x * scaleX, rallyZone.y * scaleY, 2.5, 0, Math.PI * 2);
+    cctx.fill();
+    cctx.restore();
+  }
 }
 
-function getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height) {
-  const key = minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height);
+function getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone) {
+  const key = minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone);
   let entry = minimapStaticCache.get(key);
   if (!entry) {
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const cctx = canvas.getContext("2d");
-    drawMinimapStatic(cctx, width, height, world, portals, isZoneMap, safeZone, returnPortal);
+    drawMinimapStatic(cctx, width, height, world, portals, isZoneMap, safeZone, returnPortal, rallyZone);
     entry = { canvas, key };
     minimapStaticCache.set(key, entry);
   }
@@ -103,10 +121,10 @@ export function renderMinimap(context, options) {
   if (!context) return;
   const {
     width, height, world, player, enemies = [], allies = [], pet = null, portals = [], returnPortal = null,
-    isZoneMap = false, safeZone = null, moveTarget = null, ping = null, markers = [],
+    isZoneMap = false, safeZone = null, rallyZone = null, moveTarget = null, ping = null, markers = [],
     camera, viewportWidth, viewportHeight, lockedNpc = null, shouldShowNpc = () => true, npcOpacity = () => 1,
   } = options;
-  const staticLayer = getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height);
+  const staticLayer = getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone);
   // La couche statique contient un fond blanc translucide. Sans effacer le
   // canvas visible, ce voile s'accumule à chaque frame jusqu'à devenir blanc.
   context.clearRect(0, 0, width, height);

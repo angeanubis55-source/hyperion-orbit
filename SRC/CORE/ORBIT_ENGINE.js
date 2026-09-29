@@ -108,7 +108,9 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getMyClanTag, getClanRelation } from "./NETPLAY.js";
+  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
+drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect,
+getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, getMyClanTag, getClanRelation } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -948,7 +950,6 @@ const ui = {
   gameLogWindow: document.getElementById("gameLogWindow"),
   questWindow: document.getElementById("questWindow"),
   questOfferWindow: document.getElementById("questOfferWindow"),
-  escortWindowBody: document.getElementById("escortWindowBody"),
   craftingRecipes: document.getElementById("craftingRecipes"),
   craftingDetail: document.getElementById("craftingDetail"),
   craftingQuantity: document.getElementById("craftingQuantity"),
@@ -12903,25 +12904,19 @@ function requestPortalEntryConfirmation(ptl, entryCost) {
 
   ptl.entryConfirmationOpen = true;
   title.textContent = "Entrer dans la gate LOW";
-  const escortCost = Math.max(0, Math.floor(Number(ptl.escortCreditCost) || 0));
-  const maxEscorts = Math.max(0, Math.min(7, Math.floor(Number(ptl.maxEscorts) || 0)));
-  const options = Array.from({ length: maxEscorts + 1 }, (_, count) => `<option value="${count}">${count} escorte${count > 1 ? "s" : ""}${count ? ` (+${formatInteger(count * escortCost)} crédits)` : ""}</option>`).join("");
-  message.innerHTML = `<span id="creditGateEntrySummary"></span>${maxEscorts ? `<label style="display:grid;gap:7px;margin-top:14px;color:#9fd7e8;font-weight:800">Escortes Goliath<select id="creditGateEscortCount" style="height:38px;padding:0 10px;border:1px solid rgba(124,240,255,.28);border-radius:8px;color:#e8f4ff;background:#071622">${options}</select></label>` : ""}`;
+  message.innerHTML = `<span id="creditGateEntrySummary"></span>`;
   cancel.textContent = "Annuler";
   confirm.textContent = "Confirmer";
   overlay.style.display = "grid";
 
-  const select = document.getElementById("creditGateEscortCount");
   const summary = document.getElementById("creditGateEntrySummary");
   const refresh = () => {
-    const escorts = Math.max(0, Math.min(maxEscorts, Number(select?.value) || 0));
-    const total = entryCost + escorts * escortCost;
+    const total = entryCost;
     const enough = player.credits >= total;
-    if (summary) summary.innerHTML = `Tu possèdes <strong>${formatInteger(player.credits)}</strong> crédits.<br><strong>${formatInteger(total)}</strong> nécessaires (${formatInteger(entryCost)} d'entrée${escorts ? ` + ${formatInteger(escorts * escortCost)} pour ${escorts} escorte${escorts > 1 ? "s" : ""}` : ""}).<br>Après paiement : <strong>${formatInteger(Math.max(0, player.credits - total))}</strong> crédits.`;
+    if (summary) summary.innerHTML = `Tu possèdes <strong>${formatInteger(player.credits)}</strong> crédits.<br><strong>${formatInteger(total)}</strong> nécessaires (${formatInteger(entryCost)} d'entrée).<br>Après paiement : <strong>${formatInteger(Math.max(0, player.credits - total))}</strong> crédits.`;
     confirm.disabled = !enough;
     confirm.textContent = enough ? "Confirmer l'entrée" : "Crédits insuffisants";
   };
-  select?.addEventListener("change", refresh);
   refresh();
 
   const cleanup = () => {
@@ -12937,11 +12932,9 @@ function requestPortalEntryConfirmation(ptl, entryCost) {
     if (event.target === overlay) cleanup();
   };
   confirm.onclick = () => {
-    const escorts = Math.max(0, Math.min(maxEscorts, Number(select?.value) || 0));
-    const total = entryCost + escorts * escortCost;
+    const total = entryCost;
     if (player.credits < total) return;
     ptl.pendingEntryCost = total;
-    ptl.pendingEscortCount = escorts;
     cleanup();
     startZonePortalJump(ptl, true);
   };
@@ -12961,8 +12954,6 @@ function requestResourceGateConfirmation(ptl) {
   const resourceId = String(ptl.entryResource || "hybrid_alloy");
   const owned = Math.max(0, Math.floor(Number(account.user?.inventory?.resources?.[resourceId]) || 0));
   const baseCost = Math.max(0, Math.floor(Number(ptl.entryResourceCost) || 0));
-  const escortCost = Math.max(0, Math.floor(Number(ptl.escortResourceCost) || 10));
-  const maxEscorts = Math.max(0, Math.min(7, Math.floor(Number(ptl.maxEscorts) || 0)));
   const resourceName = getResourceName(resourceId, owned);
   ptl.entryConfirmationOpen = true;
   title.textContent = "Entrer dans la gate QZ";
@@ -12973,19 +12964,15 @@ function requestResourceGateConfirmation(ptl) {
     message.innerHTML = `Accès impossible : tu possèdes <strong>${formatInteger(owned)}</strong> ${escapeHtml(resourceName)}, mais <strong>${formatInteger(baseCost)}</strong> sont nécessaires.<br><br>Élimine des <strong>Blighted Kristallon</strong> : ils font apparaître des <strong>Blighted Gygerthrall</strong>, dont les cargaisons contiennent les Alliages hybrides.`;
     cancel.style.display = "none";
   } else {
-    const options = Array.from({ length: maxEscorts + 1 }, (_, count) => `<option value="${count}">${count} escorte${count > 1 ? "s" : ""}${count ? ` (+${formatInteger(count * escortCost)} alliages)` : ""}</option>`).join("");
-    message.innerHTML = `<span id="qzEntrySummary"></span><label style="display:grid;gap:7px;margin-top:14px;color:#9fd7e8;font-weight:800">Escortes Goliath<select id="qzEscortCount" style="height:38px;padding:0 10px;border:1px solid rgba(124,240,255,.28);border-radius:8px;color:#e8f4ff;background:#071622">${options}</select></label>`;
-    const select = document.getElementById("qzEscortCount");
+    message.innerHTML = `<span id="qzEntrySummary"></span>`;
     const summary = document.getElementById("qzEntrySummary");
     const refresh = () => {
-      const escorts = Math.max(0, Math.min(maxEscorts, Number(select?.value) || 0));
-      const total = baseCost + escorts * escortCost;
+      const total = baseCost;
       const enough = owned >= total;
-      if (summary) summary.innerHTML = `Tu possèdes <strong>${formatInteger(owned)}</strong> Alliages hybrides.<br><strong>${formatInteger(total)}</strong> nécessaires (${formatInteger(baseCost)} d'entrée${escorts ? ` + ${formatInteger(escorts * escortCost)} pour ${escorts} escorte${escorts > 1 ? "s" : ""}` : ""}).<br>Après paiement : <strong>${formatInteger(Math.max(0, owned - total))}</strong> restant${owned - total > 1 ? "s" : ""}.`;
+      if (summary) summary.innerHTML = `Tu possèdes <strong>${formatInteger(owned)}</strong> Alliages hybrides.<br><strong>${formatInteger(total)}</strong> nécessaires (${formatInteger(baseCost)} d'entrée).<br>Après paiement : <strong>${formatInteger(Math.max(0, owned - total))}</strong> restants.`;
       confirm.disabled = !enough;
       confirm.textContent = enough ? "Confirmer l'entrée" : "Alliages insuffisants";
     };
-    select?.addEventListener("change", refresh);
     refresh();
   }
   overlay.style.display = "grid";
@@ -13003,11 +12990,9 @@ function requestResourceGateConfirmation(ptl) {
   overlay.onclick = event => { if (event.target === overlay) cleanup(); };
   confirm.onclick = () => {
     if (owned < baseCost) return cleanup();
-    const escorts = Math.max(0, Math.min(maxEscorts, Number(document.getElementById("qzEscortCount")?.value) || 0));
-    const total = baseCost + escorts * escortCost;
+    const total = baseCost;
     if (owned < total) return;
     ptl.pendingResourceCost = total;
-    ptl.pendingEscortCount = escorts;
     cleanup();
     startZonePortalJump(ptl, true);
   };
@@ -13036,6 +13021,13 @@ function purgeNpcsForJump() {
 
 function startZonePortalJump(ptl, entryConfirmed = false) {
   if (!ptl || ptl.jumping) return false;
+  // Raid Low : pas de sortie pendant une vague (le portail est masqué,
+  // ceci est le garde-fou pour les déclenchements directs comme le bot).
+  if (ptl.factionReturn === true && isLowRaidRunning()) {
+    SFX.play("swDeny");
+    showToast("Retour bloqué — vague en cours", 1.6);
+    return false;
+  }
   if (!isPlayerNearPortal(ptl)) {
     showToast("Approche-toi du portail", 1.2);
     return false;
@@ -13072,6 +13064,22 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
     }
   }
 
+  // Raid Low : entrée gratuite mais groupe de 2 à 10 exigé.
+  if (targetMapId === "low") {
+    let groupSize = 0;
+    try { groupSize = Number(getNetGroup()?.members?.length) || 0; } catch { groupSize = 0; }
+    if (groupSize < 2) {
+      SFX.play("swDeny");
+      showToast("Raid Low — groupe de 2 joueurs minimum requis", 2.4);
+      return false;
+    }
+    if (groupSize > 10) {
+      SFX.play("swDeny");
+      showToast("Raid Low — groupe de 10 joueurs maximum", 2.4);
+      return false;
+    }
+  }
+
   const entryCost = Math.max(0, Math.floor(Number(ptl.entryCost) || 0));
   const shortcutCreditCost = Math.max(0, Math.floor(Number(ptl.shortcutCreditCost) || 0));
   const confirmedEntryCost = entryConfirmed
@@ -13089,13 +13097,11 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
       return false;
     }
     account.user.inventory.resources[resourceId] = owned - totalCost;
-    try { sessionStorage.setItem("orbit_gate_escorts_qz", String(Math.max(0, Number(ptl.pendingEscortCount) || 0))); } catch {}
     markProgressDirty();
     saveProgressNow();
     showNotification(`Accès QZ payé : ${formatInteger(totalCost)} Alliages hybrides`, 3, "info");
     addGameLog(`Entrée QZ · -${formatInteger(totalCost)} Alliages hybrides`, "info");
     ptl.pendingResourceCost = 0;
-    ptl.pendingEscortCount = 0;
   }
   const totalPortalCreditCost = confirmedEntryCost + shortcutCreditCost;
   if (totalPortalCreditCost > 0 && player.credits < totalPortalCreditCost) {
@@ -13130,16 +13136,12 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
 
   if (entryCost > 0) {
     player.credits -= confirmedEntryCost;
-    if (ptl.maxEscorts > 0) {
-      try { sessionStorage.setItem(`orbit_gate_escorts_${gateId}`, String(Math.max(0, Number(ptl.pendingEscortCount) || 0))); } catch {}
-    }
     if (account.user) account.user.credits = player.credits;
     markProgressDirty();
     saveProgressNow();
     showNotification(`Droit d'entrée acquitté : ${formatInteger(confirmedEntryCost)} crédits`, 3, "info");
     addGameLog(`Entrée ${String(ptl.toMap || "Gate").toUpperCase()} · -${formatInteger(confirmedEntryCost)} crédits`, "info");
     ptl.pendingEntryCost = 0;
-    ptl.pendingEscortCount = 0;
   }
 
   if (shortcutCreditCost > 0) {
@@ -13187,6 +13189,14 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
 
   ptl.jumpMap = ptl.toMap;
   ptl.jumpPortal = ptl.toPortal;
+  // Portail retour Low : renvoie chacun vers sa map d'origine (firme).
+  if (ptl.factionReturn === true) {
+    const sector = String(getFaction((account.user || getCurrentUserFull())?.faction)?.sector || "1");
+    const mapBySector = { 1: "1-3", 2: "2-3", 3: "3-3" };
+    const portalBySector = { 1: "p_13_to_low", 2: "p_23_to_low", 3: "p_33_to_low" };
+    ptl.jumpMap = mapBySector[sector] || "1-3";
+    ptl.jumpPortal = portalBySector[sector] || "p_13_to_low";
+  }
   ptl.jumpTargetReady = false;
   ptl.jumpTargetPromise = Promise.resolve(
     window.__PRELOAD_MAP__?.(ptl.jumpMap, ptl.jumpPortal)
@@ -14589,9 +14599,12 @@ const portal = {
 const gateReturnPortal = createGatePortalState();
 
 function getInteractivePortals() {
-  return isZoneMap
+  const list = isZoneMap
     ? (zonePortals || []).filter(isZonePortalAvailable)
     : (betweenWaves ? [portal, gateReturnPortal].filter(ptl => ptl.active) : []);
+  // Raid Low : vague en cours = portail retour masqué (pas de sortie).
+  if (isLowRaidRunning()) return list.filter(ptl => ptl?.factionReturn !== true);
+  return list;
 }
 
 function isZonePortalAvailable(ptl) {
@@ -18465,294 +18478,28 @@ function spawnHaloPulse(x, y, radius, life, fillRgb, edgeRgb, follow = null, alp
 const floatTexts = [];
 const lasers = [];
 const engineTrails = [];
-const ESCORT_LOCK_SPR = Object.freeze({ ...LOCK_SPR, src: "ASSETS/UI/LOCK_VERT.png" });
-const ESCORT_ATTACK_RANGE = 580;
-const ESCORT_OVERLORD_ATTACK_RANGE = 720;
-const ESCORT_SAB_START_RATIO = 0.55;
-const ESCORT_SAB_STOP_RATIO = 0.92;
+
+// Clones Mimesis (hologrammes) : stockés ici pour le rendu / ciblage.
+// Le système d'escortes Goliath des gates Low/QZ a été supprimé.
 
 function getEscortById(id) {
   return escortShips.find(escort => escort.id === id) || null;
 }
 
-function destroyEscort(escort) {
-  if (!escort || escort.respawnT != null) return;
-  escort.hp = 0;
-  escort.sh = 0;
-  escort.vx = 0;
-  escort.vy = 0;
-  escort.target = null;
-  escort.respawnT = 5;
-  spawnExplosion(escort.x, escort.y, 1.25);
-  showNotification("Une escorte a été détruite — retour dans 5 secondes", 3, "info");
-}
-
 function getNpcCombatTarget(enemy) {
   return selectNpcCombatTarget(enemy, player, escortShips, {
-    gateMode: rules?.mode === "gate",
     getEscortById,
   });
-  /* Ancienne implémentation conservée temporairement pour faciliter la comparaison.
-  if (rules?.mode !== "gate" || !escortShips.length) {
-    if (enemy) enemy._combatTargetId = "player";
-    return player;
-  }
-  const candidates = player.dead ? [] : [player];
-  candidates.push(...escortShips.filter(escort => escort.hp > 0));
-  if (!candidates.length) return player;
-  if (enemy?.type === "npc_Gygerim_Overlord") {
-    const nearest = candidates.reduce((best, candidate) => (
-      !best || dist2(enemy.x, enemy.y, candidate.x, candidate.y) < dist2(enemy.x, enemy.y, best.x, best.y)
-        ? candidate
-        : best
-    ), null) || player;
-    enemy._combatTargetId = nearest === player ? "player" : nearest.id;
-    return nearest;
-  }
-  const current = enemy?._combatTargetId === "player" ? player : getEscortById(enemy?._combatTargetId);
-  if (current?.hp > 0 && dist2(enemy.x, enemy.y, current.x, current.y) <= 1200 * 1200) return current;
-  const target = candidates.reduce((best, candidate) => (
-    !best || dist2(enemy.x, enemy.y, candidate.x, candidate.y) < dist2(enemy.x, enemy.y, best.x, best.y) ? candidate : best
-  ), null) || player;
-  enemy._combatTargetId = target === player ? "player" : target.id;
-  return target; */
 }
 
 function initializeGateEscorts() {
-  escortShips.length = 0;
   if (typeof clearPendingEscortSalvo === "function") {
     try { clearPendingEscortSalvo(); } catch {}
-  }
-  const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
-  if (!rules?.escort) return;
-  let count = 0;
-  try {
-    const stored = sessionStorage.getItem(`orbit_gate_escorts_${gateId}`)
-      ?? (gateId === "qz" ? sessionStorage.getItem("orbit_qz_escorts") : null);
-    count = Math.max(0, Math.min(Number(rules.escort.max) || 7, Number(stored) || 0));
-  } catch {}
-  const escortShipId = String(rules.escort.shipId || "goliath").toLowerCase();
-  const pack = SHIP_PACKS.find(item => String(item.id || "").toLowerCase() === escortShipId)
-    || SHIP_PACKS.find(item => String(item.id || "").toLowerCase() === "goliath");
-  if (pack) void ensurePackLoaded(pack).catch(error => console.warn("Sprite de l'escorte indisponible :", error));
-  for (let index = 0; index < count; index++) {
-    const angle = (index / Math.max(1, count)) * TAU;
-    escortShips.push({
-      id: `${gateId}-escort-${index}`, formationIndex: index,
-      x: player.x + Math.cos(angle) * 180, y: player.y + Math.sin(angle) * 180,
-      vx: 0, vy: 0, angle, hp: 256000, hpMax: 256000, sh: 180000, shMax: 180000,
-      speed: 460, damage: 50000, fireCd: index * 0.12, target: null, pack,
-      altShot: index % 2 === 0, waypoint: null, waypointT: 0,
-      sabActive: false,
-    });
-  }
-  if (count) showNotification(`${count} escorte${count > 1 ? "s" : ""} Goliath engagée${count > 1 ? "s" : ""}`, 4, "info");
-}
-
-function chooseEscortWaypoint(escort) {
-  const angle = Math.random() * TAU;
-  const distance = rand(550, 1300);
-  return {
-    x: clamp(escort.x + Math.cos(angle) * distance, 120, WORLD.w - 120),
-    y: clamp(escort.y + Math.sin(angle) * distance, 120, WORLD.h - 120),
-  };
-}
-
-function fireEscortVolley(escort, target) {
-  const angle = Math.atan2(target.y - escort.y, target.x - escort.x);
-  const fx = Math.cos(angle);
-  const fy = Math.sin(angle);
-  const px = -fy;
-  const py = fx;
-  const speed = Math.max(900, Number(rules?.escort?.bulletSpeed) || BASE_RUN.baseBulletSpeed);
-  const muzzle = (escort.pack?.r || 34) + 10;
-  const muzzleX = escort.x + fx * muzzle;
-  const muzzleY = escort.y + fy * muzzle;
-  const volleyId = volleySeq++;
-  const useSab = escort.sabActive && Number(target.sh || 0) > 0;
-  const ammoKey = useSab ? "sab" : (rules?.escort?.ammo || "x3");
-  const normalAmmoMult = Math.max(0.001, Number(AMMO[rules?.escort?.ammo || "x3"]?.mult) || 3);
-  const totalDamage = useSab
-    ? (escort.damage / normalAmmoMult) * SAB50.drainMult
-    : escort.damage;
-  const shotMiss = Math.random() < PLAYER_SHOTS.missChance;
-  const isRealPair = !!escort.altShot;
-  const shots = isRealPair
-    ? [
-        { x: muzzleX + px * SIDE_OFFSET, y: muzzleY + py * SIDE_OFFSET, damage: totalDamage * SIDE_DMG_SPLIT },
-        { x: muzzleX - px * SIDE_OFFSET, y: muzzleY - py * SIDE_OFFSET, damage: totalDamage * SIDE_DMG_SPLIT },
-      ]
-    : [{ x: muzzleX, y: muzzleY, damage: totalDamage }];
-  playEscortShot(ammoKey);
-  const escortLife = bulletLifeForRange(ESCORT_ATTACK_RANGE, speed);
-  for (const shot of shots) {
-    const dx = target.x - shot.x;
-    const dy = target.y - shot.y;
-    const length = Math.hypot(dx, dy) || 1;
-    addCappedProjectile(bullets, {
-      x: shot.x, y: shot.y, vx: dx / length * speed, vy: dy / length * speed, spd: speed,
-      r: 6, life: escortLife, dmg: shot.damage,
-      key: ammoKey, side: "player", targetId: target.id, homing: true, miss: shotMiss,
-      isSab: useSab,
-      ownerEscortId: escort.id, volleyId, volleySize: shots.length,
-    }, ENTITY_LIMITS.playerBullets);
-  }
-  // Faux tirs visuels comme le joueur : 6 éclairs par salve, alternance
-  // paire / central, aucun dégât, aucun son d'impact.
-  const escortSalvoShots = 6;
-  const escortSalvoInterval = 0.2;
-  const pairItems = [[-SIDE_OFFSET, 0], [SIDE_OFFSET, 0]];
-  const singleItems = [[0, 0]];
-  for (let i = 1; i < escortSalvoShots; i++) {
-    const fakeIsPair = isRealPair ? i % 2 === 0 : i % 2 === 1;
-    scheduleEscortSalvoPart(i * escortSalvoInterval, {
-      escortId: escort.id,
-      targetId: target.id,
-      speed,
-      life: escortLife,
-      volleyId,
-      volleySize: shots.length,
-      key: ammoKey,
-      items: fakeIsPair ? pairItems : singleItems,
-    });
-  }
-  escort.altShot = !escort.altShot;
-  escort.angle = angle;
-}
-
-function updateGateEscorts(dt) {
-  if (!escortShips.length) return;
-  for (const escort of escortShips) {
-    if (escort.holo) continue; // Clones Mimesis : tick dédié (dispersion), pas de combat.
-    if (escort.hp <= 0) {
-      escort.respawnT = Math.max(0, Number(escort.respawnT ?? 5) - dt);
-      if (escort.respawnT <= 0) {
-        const spawn = rules?.playerSpawn || {};
-        const angle = (Number(escort.formationIndex || 0) / Math.max(1, escortShips.length)) * TAU;
-        const spawnX = Number(spawn.x ?? WORLD.w * Number(spawn.xRatio ?? 0.08));
-        const spawnY = Number(spawn.y ?? WORLD.h * Number(spawn.yRatio ?? 0.5));
-        escort.x = clamp(spawnX + Math.cos(angle) * 180, 80, WORLD.w - 80);
-        escort.y = clamp(spawnY + Math.sin(angle) * 180, 80, WORLD.h - 80);
-        escort.hp = escort.hpMax;
-        escort.sh = escort.shMax;
-        escort.respawnT = null;
-        escort.waypoint = null;
-        escort.waypointT = 0;
-        escort.bossAnchor = null;
-        escort.bossAnchorTargetId = null;
-        escort.bossAttackRange = null;
-        showNotification("Une escorte est revenue au combat", 2.5, "info");
-      }
-      continue;
-    }
-    escort.fireCd = Math.max(0, escort.fireCd - dt);
-    const shieldRatio = escort.sh / Math.max(1, escort.shMax);
-    if (shieldRatio <= ESCORT_SAB_START_RATIO) escort.sabActive = true;
-    else if (shieldRatio >= ESCORT_SAB_STOP_RATIO) escort.sabActive = false;
-    const livingEnemies = enemies.filter(enemy => enemy?.hp > 0);
-    const candidates = livingEnemies.filter(enemy => !enemy._bossEncounter?.invulnerable);
-    escort.target = candidates.reduce((best, enemy) => {
-      if (!best) return enemy;
-      return dist2(escort.x, escort.y, enemy.x, enemy.y) < dist2(escort.x, escort.y, best.x, best.y) ? enemy : best;
-    }, null);
-    escort.waypointT = Math.max(0, Number(escort.waypointT || 0) - dt);
-    const reachedWaypoint = escort.waypoint && dist2(escort.x, escort.y, escort.waypoint.x, escort.waypoint.y) < 100 * 100;
-    const needsWaypoint = !escort.waypoint || escort.waypointT <= 0 || reachedWaypoint;
-    if (!escort.target && needsWaypoint) {
-      escort.waypoint = chooseEscortWaypoint(escort);
-      escort.waypointT = rand(3, 6);
-    }
-    const targetsOverlord = escort.target?.type === "npc_Gygerim_Overlord";
-    const formationIndex = Number(escort.formationIndex || 0);
-    if (targetsOverlord && escort.bossAnchorTargetId !== escort.target.id) {
-      escort.bossAnchorTargetId = escort.target.id;
-      const anchorAngle = rand(Math.PI - 0.52, Math.PI + 0.52);
-      escort.bossAttackRange = rand(540, 705);
-      escort.bossAnchor = {
-        xOffset: Math.cos(anchorAngle) * escort.bossAttackRange,
-        yOffset: Math.sin(anchorAngle) * escort.bossAttackRange,
-      };
-    } else if (!targetsOverlord) {
-      escort.bossAnchorTargetId = null;
-      escort.bossAnchor = null;
-      escort.bossAttackRange = null;
-    }
-    const orbitAngle = performance.now() / 2200 + formationIndex;
-    const destination = targetsOverlord
-      ? {
-          x: escort.target.x + escort.bossAnchor.xOffset,
-          y: escort.target.y + escort.bossAnchor.yOffset,
-        }
-      : escort.target
-        ? { x: escort.target.x + Math.cos(orbitAngle) * 560, y: escort.target.y + Math.sin(orbitAngle) * 560 }
-        : escort.waypoint;
-    const dx = destination.x - escort.x;
-    const dy = destination.y - escort.y;
-    const distance = Math.hypot(dx, dy) || 1;
-    const speed = Math.min(escort.speed, distance * 2.2);
-    escort.vx = dx / distance * speed;
-    escort.vy = dy / distance * speed;
-    escort.x = clamp(escort.x + escort.vx * dt, 80, WORLD.w - 80);
-    escort.y = clamp(escort.y + escort.vy * dt, 80, WORLD.h - 80);
-    if (Math.hypot(escort.vx, escort.vy) > 5) escort.angle = Math.atan2(escort.vy, escort.vx);
-    const targetInRange = escort.target && (
-      dist2(escort.x, escort.y, escort.target.x, escort.target.y) <= (
-        targetsOverlord ? Math.min(ESCORT_OVERLORD_ATTACK_RANGE, Number(escort.bossAttackRange || ESCORT_OVERLORD_ATTACK_RANGE) + 15) : ESCORT_ATTACK_RANGE
-      ) ** 2
-    );
-    if (targetInRange) {
-      escort.angle = Math.atan2(escort.target.y - escort.y, escort.target.x - escort.x);
-      if (escort.fireCd <= 0) {
-        fireEscortVolley(escort, escort.target);
-        const ammoConfig = AMMO[rules?.escort?.ammo || "x3"] || AMMO.x3 || {};
-        const playerCadence = 1 / Math.max(0.001, player.baseFireRate * player.fireRateMult);
-        escort.fireCd = typeof ammoConfig.cooldown === "number" ? ammoConfig.cooldown : playerCadence;
-      }
-    }
-  }
-}
-
-function drawGateEscorts(ox, oy) {
-  for (const escort of escortShips) {
-    if (escort.holo) continue; // Clones Mimesis : rendus dans drawHoloClones.
-    if (escort.hp <= 0) continue;
-    const x = escort.x + ox;
-    const y = escort.y + oy;
-    if (x < -160 || y < -160 || x > innerWidth + 160 || y > innerHeight + 160) continue;
-    ctx.save();
-    ctx.translate(x, y);
-    const pack = escort.pack;
-    const frames = pack?.frames || 1;
-    const image = pack?._imgs?.[angleToFrameIndex(escort.angle + (pack?.angleOffset || 0), frames)] || pack?._imgs?.[0];
-    if (isImgReady(image)) drawCenteredImage(ctx, image, pack.w || 169, pack.h || 150);
-    else { ctx.fillStyle = "#79f5ff"; ctx.beginPath(); ctx.arc(0, 0, 24, 0, TAU); ctx.fill(); }
-    ctx.restore();
-    const barWidth = 92;
-    const barHeight = 4;
-    const barX = x - barWidth / 2;
-    const barY = y - 62;
-    const hpPercent = clamp(escort.hp / Math.max(1, escort.hpMax), 0, 1);
-    const shieldPercent = clamp(escort.sh / Math.max(1, escort.shMax), 0, 1);
-    ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,.6)";
-    ctx.fillRect(barX, barY, barWidth, barHeight);
-    ctx.fillRect(barX, barY + barHeight + 2, barWidth, barHeight);
-    ctx.fillStyle = "rgba(78,235,112,.95)";
-    ctx.fillRect(barX, barY, barWidth * hpPercent, barHeight);
-    ctx.fillStyle = "rgba(70,190,255,.95)";
-    ctx.fillRect(barX, barY + barHeight + 2, barWidth * shieldPercent, barHeight);
-    ctx.strokeStyle = "rgba(220,245,255,.28)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(barX - .5, barY - .5, barWidth + 1, barHeight + 1);
-    ctx.strokeRect(barX - .5, barY + barHeight + 1.5, barWidth + 1, barHeight + 1);
-    ctx.restore();
-    ctx.fillStyle = "#7cf0ff";
-    ctx.font = "800 11px system-ui"; ctx.textAlign = "center"; ctx.fillText("ESCORTE GOLIATH", x, y + 58);
   }
 }
 
 // Clones d'hologramme (Mimesis) : identiques à nous (design, barres, drones,
-// pseudo, grade, firme). Rendu seul (sautés dans drawGateEscorts).
+// pseudo, grade, firme).
 function drawHoloClones(ox, oy) {
   let has = false;
   try {
@@ -18843,17 +18590,6 @@ function drawHoloClones(ox, oy) {
       drawPlayerStatus(ctx, { hp: c.hp, hpMax: c.hpMax, sh: c.sh, shMax: c.shMax, r: Number(c.r || 18) }, pseudo, x, y, rankImage, factionImage, droneIndicators, formationImage, []);
     } catch {}
   }
-}
-
-function drawEscortTargetLocks(ox, oy) {
-  const playerTarget = Target.get();
-  const image = getCachedImage(ESCORT_LOCK_SPR.src);
-  if (!isImgReady(image)) return;
-  const targets = new Set();
-  for (const escort of escortShips) {
-    if (escort.target?.hp > 0 && escort.target !== playerTarget) targets.add(escort.target);
-  }
-  for (const target of targets) drawTargetLock(ctx, target, image, ESCORT_LOCK_SPR, ox, oy, performance.now() / 1000);
 }
 
 // ============================================================
@@ -24163,14 +23899,6 @@ let gateCompletionPending = false;
 function scheduleGalaxyGateCompletion(gateId, completion) {
   if (gateCompletionPending) return;
   gateCompletionPending = true;
-  if (escortShips.length || rules?.escort) {
-    const escortGateId = String(gateId).toLowerCase();
-    escortShips.length = 0;
-    try {
-      sessionStorage.removeItem(`orbit_gate_escorts_${escortGateId}`);
-      if (escortGateId === "qz") sessionStorage.removeItem("orbit_qz_escorts");
-    } catch {}
-  }
   attackActive = false;
   laserCombatInRange = null;
   escapeWatch = null;
@@ -24262,6 +23990,217 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
     if (typeof window.__GO_TO_MAP__ === "function" && String(destinationMap) !== gateId) window.__GO_TO_MAP__(destinationMap);
     else resetRun({ randomSpawn: false });
   }, 8500);
+}
+
+// ============================================================
+// Raid Low (groupe 2 à 10) : zone de ralliement, compte à rebours
+// 5 s, vagues enchaînées jusqu'au Century Falcon, récompense fixe
+// pour chaque membre présent. État piloté par le serveur
+// (SCRIPTS/LOW_RAID.js, message "lowRaid").
+// ============================================================
+const LOW_RAID_ZONE_CLIENT = Object.freeze({ x: 5500, y: 3500, r: 800 });
+const lowRaidClient = { lastKey: "", lastPhase: "", lastWave: 0, countdownToken: 0 };
+
+function isLowRaidMap() {
+  return String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === "low" && rules?.raidLow === true;
+}
+
+// Run en cours (vague active, décompte ou terminé) : portail masqué.
+// Le cercle, lui, n'est visible qu'au départ (avant la vague 1).
+function isLowRaidRunning() {
+  if (!isLowRaidMap()) return false;
+  try {
+    const st = getNetLowRaid();
+    return !!st && (st.phase === "wave" || st.phase === "countdown" || st.phase === "done");
+  } catch { return false; }
+}
+
+function isLowRaidCircleVisible() {
+  if (!isLowRaidMap()) return false;
+  try {
+    const st = getNetLowRaid();
+    if (!st) return true;
+    if (st.phase === "idle" || st.phase === "waiting") return true;
+    return st.phase === "countdown" && Number(st.nextWave || 1) <= 1;
+  } catch { return false; }
+}
+
+// Sortie Low vers la map d'origine (firme) : portail extérieur.
+function leaveLowToOrigin(reason) {
+  const sector = String(getFaction((account.user || getCurrentUserFull())?.faction)?.sector || "1");
+  const mapBySector = { 1: "1-3", 2: "2-3", 3: "3-3" };
+  const portalBySector = { 1: "p_13_to_low", 2: "p_23_to_low", 3: "p_33_to_low" };
+  const toMap = mapBySector[sector] || "1-3";
+  const toPortal = portalBySector[sector] || "p_13_to_low";
+  if (reason) {
+    try { showNotification(reason, 3, "info"); } catch {}
+    try { addGameLog(`Raid Low — ${reason}`, "info"); } catch {}
+  }
+  if (typeof window.__SWITCH_MAP__ === "function") {
+    window.__SWITCH_MAP__(toMap, toPortal).catch(() => window.__GO_TO_MAP__?.(toMap, toPortal));
+  } else {
+    window.__GO_TO_MAP__?.(toMap, toPortal);
+  }
+}
+
+function applyLowRaidReward(reward) {
+  const credits = Math.max(0, Math.floor(Number(reward.credits) || 0));
+  const experience = Math.max(0, Math.floor(Number(reward.baseExp) || 0));
+  const honor = Math.max(0, Math.floor(Number(reward.baseHonor) || 0));
+  const gainedXp = Math.max(0, Math.floor(Number(reward.exp) || 0));
+  const gainedHonor = Math.max(0, Math.floor(Number(reward.honor) || 0));
+  player.credits += credits;
+  const currentAccountUser = getCurrentUserFull();
+  if (currentAccountUser && (!account.user || String(currentAccountUser.id) === String(account.user.id))) {
+    account.user = currentAccountUser;
+  } else if (!account.user) {
+    loadAccountUser();
+  }
+  if (account.user) {
+    account.user.credits = Math.max(0, Math.floor(Number(account.user.credits) || 0)) + credits;
+    account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
+    const serverTotalExp = reward.totalExp == null ? null : Math.max(0, Math.floor(Number(reward.totalExp) || 0));
+    account.user.stats.exp = serverTotalExp != null
+      ? Math.max(Math.max(0, Math.floor(Number(account.user.stats.exp) || 0)), serverTotalExp)
+      : Math.max(0, Math.floor(Number(account.user.stats.exp) || 0)) + gainedXp;
+    const serverTotalHonor = reward.totalHonor == null ? null : Math.floor(Number(reward.totalHonor) || 0);
+    account.user.stats.honor = serverTotalHonor != null
+      ? Math.max(Math.floor(Number(account.user.stats.honor) || 0), serverTotalHonor)
+      : Math.floor(Number(account.user.stats.honor) || 0) + gainedHonor;
+    account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
+    for (const drone of account.user.drones?.items || []) {
+      drone.exp = Math.max(0, Number(drone.exp) || 0) + gainedXp * DRONE_XP_SHARE;
+      drone.level = getDroneLevel(drone.exp);
+    }
+    if (account.user.pet?.owned === true && account.user.pet.active === true) {
+      account.user.pet.exp = Math.max(0, Number(account.user.pet.exp) || 0) + Math.max(0, Number(reward.petExp) || 0);
+      account.user.pet.level = getPetLevel(account.user.pet.exp);
+    }
+    account.user.revision = Math.max(Math.floor(Number(account.user.revision) || 0), Math.floor(Number(reward.revision) || 0));
+  }
+  markProgressDirty();
+  saveProgressNow();
+  showNotificationGroup([
+    "Raid Low terminée",
+    `Vous avez reçu ${formatInteger(credits)} crédits`,
+    `Vous avez gagné ${formatInteger(gainedXp)} XP`,
+    `Vous avez gagné ${formatInteger(gainedHonor)} honneur`,
+  ], "reward");
+  addGameLog(`Raid Low terminée · +${formatInteger(credits)} crédits · +${formatInteger(gainedXp)} XP · +${formatInteger(gainedHonor)} honneur`, "reward");
+}
+
+function tickLowRaidClient() {
+  if (!isLowRaidMap()) return;
+  // Redémarrage serveur : exclusion vers le portail extérieur (map d'origine).
+  try {
+    const restartAt = Number(getNetServerRestartAt()) || 0;
+    if (restartAt && Date.now() - restartAt < 30_000 && lowRaidClient.evictedFor !== restartAt) {
+      lowRaidClient.evictedFor = restartAt;
+      leaveLowToOrigin("Serveur redémarré — retour au portail extérieur.");
+      return;
+    }
+  } catch {}
+  const pending = takeNetLowRaidReward();
+  if (pending) {
+    try { applyLowRaidReward(pending); } catch {}
+  }
+  const st = getNetLowRaid();
+  if (!st) return;
+  const key = `${st.phase}:${st.wave}:${st.endsAt}`;
+  const prevPhase = lowRaidClient.lastPhase;
+  if (key !== lowRaidClient.lastKey) {
+    lowRaidClient.lastKey = key;
+    lowRaidClient.lastPhase = st.phase;
+    if (st.phase === "countdown") {
+      const token = ++lowRaidClient.countdownToken;
+      const remaining = Math.max(1, Math.min(5, Math.ceil((Number(st.endsAt) - Date.now()) / 1000)));
+      addGameLog(`Raid Low — vague ${st.nextWave} dans ${remaining} seconde${remaining > 1 ? "s" : ""} ! Restez dans la zone.`, "info");
+      for (let s = remaining; s >= 1; s--) {
+        const delay = Math.max(0, (remaining - s) * 1000 + 60);
+        setTimeout(() => {
+          if (token !== lowRaidClient.countdownToken) return;
+          if (!isLowRaidMap()) return;
+          showNotification(String(s), 1.1, "info", { log: false });
+          addGameLog(`Raid Low — ${s}…`, "info");
+        }, delay);
+      }
+    } else {
+      lowRaidClient.countdownToken++;
+    }
+    if (st.phase === "wave" && st.wave !== lowRaidClient.lastWave) {
+      lowRaidClient.lastWave = st.wave;
+      const boss = st.wave >= st.totalWaves;
+      const label = boss ? "CENTURY FALCON" : `VAGUE ${st.wave} / ${st.totalWaves - 1}`;
+      showNotification(label, 3, boss ? "reward" : "info");
+      addGameLog(`Raid Low — ${label} !`, boss ? "reward" : "info");
+    }
+    if (st.phase === "waiting" && prevPhase === "wave") {
+      addGameLog("Raid Low — vague nettoyée ! Retournez dans la zone pour enchaîner.", "info");
+      showNotification("Retour en zone !", 2.5, "info");
+    }
+    if (st.phase === "done") {
+      addGameLog("Raid Low — Century Falcon abattu ! Récompenses distribuées.", "reward");
+    }
+    if (st.phase === "idle" && (prevPhase === "wave" || prevPhase === "countdown")) {
+      addGameLog("Raid Low — run annulé (groupe incomplet ou zone quittée).", "info");
+    }
+  }
+}
+
+function drawLowRaidZone(ox, oy) {
+  if (!isLowRaidMap()) return;
+  const z = LOW_RAID_ZONE_CLIENT;
+  const sx = z.x + ox;
+  const sy = z.y + oy;
+  const st = getNetLowRaid();
+  const running = isLowRaidRunning();
+  const showCircle = isLowRaidCircleVisible();
+  ctx.save();
+  ctx.textAlign = "center";
+  // Cercle : visible uniquement au départ (avant la vague 1).
+  if (showCircle && sx > -z.r && sy > -z.r && sx < innerWidth + z.r && sy < innerHeight + z.r) {
+    ctx.strokeStyle = st && st.phase === "countdown" ? "rgba(255,210,110,.9)" : "rgba(124,240,255,.55)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, z.r, 0, TAU);
+    ctx.stroke();
+  }
+  // Textes au centre du cercle (visibles même pendant les vagues).
+  if (sx < -100 || sy < -60 || sx > innerWidth + 100 || sy > innerHeight + 60) {
+    ctx.restore();
+    return;
+  }
+  if (running && st && st.phase === "countdown" && Number(st.nextWave || 1) > 1) {
+    // Inter-vagues : prochaine vague + décompte live.
+    const remain = Math.max(1, Math.ceil((Number(st.endsAt) - Date.now()) / 1000));
+    ctx.fillStyle = "#ffd76a";
+    ctx.font = "900 24px system-ui";
+    ctx.fillText(`VAGUE ${st.nextWave} DANS ${remain}`, sx, sy - 6);
+    if (Number(st.need) > 0) {
+      ctx.fillStyle = "#9fe8ff";
+      ctx.font = "800 17px system-ui";
+      ctx.fillText(`EN COMBAT : ${st.ready}/${st.need}`, sx, sy + 24);
+    }
+  } else if (running && st && st.wave > 0) {
+    const boss = st.wave >= st.totalWaves;
+    ctx.fillStyle = "#ffd76a";
+    ctx.font = "900 24px system-ui";
+    ctx.fillText(boss ? "CENTURY FALCON" : `VAGUE ${st.wave} / ${st.totalWaves - 1}`, sx, sy - 6);
+    const alive = st.need > 0 ? ` · ${st.ready}/${st.need}` : "";
+    ctx.fillStyle = "#9fe8ff";
+    ctx.font = "800 17px system-ui";
+    ctx.fillText(`EN COMBAT${alive}`, sx, sy + 24);
+  } else {
+    ctx.fillStyle = "#eaffff";
+    ctx.font = "900 22px system-ui";
+    ctx.fillText("ZONE DE RASSEMBLEMENT", sx, sy - 8);
+    if (st && Number.isFinite(Number(st.ready)) && Number(st.need) > 0) {
+      ctx.font = "800 20px system-ui";
+      ctx.fillStyle = "#9fe8ff";
+      ctx.fillText(`PRÊTS : ${st.ready}/${st.need}`, sx, sy + 24);
+    }
+  }
+  ctx.restore();
 }
 
 function runOnKillAction(action, pos = null) {
@@ -25058,7 +24997,7 @@ function playPlayerShot(ammoKey) {
   }
 }
 
-// Tir réel d'une escorte : mêmes fichiers que le joueur mais clés SFX
+// Tir réel du P.E.T : mêmes fichiers que le joueur mais clés SFX
 // dédiées, réglées par la ligne "Sons des escortes" (sans couper le joueur).
 const ESCORT_SHOT_SFX = {
   x1: "escortX1",
@@ -27215,6 +27154,8 @@ function die() {
 const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "maudite", "5-2"]);
 
 function isAnnexPortal(portal) {
+  // Retour Low : exclu aussi (sinon réapparition sur le portail masqué).
+  if (portal?.factionReturn === true) return true;
   return ANNEX_PORTAL_MAPS.has(String(portal?.toMap || "").trim().toLowerCase());
 }
 
@@ -27400,7 +27341,6 @@ async function goToMapFast(targetMap, spawnId = null) {
   }
   return "failed";
 }
-
 function respawnBaseGate() {
   // ✅ base haute (X-8) pour les maps marquées respawnBase upper (maudite, QZ),
   // sinon logique standard (gate → base mère).
@@ -27464,6 +27404,7 @@ function startRespawn(action) {
 function respawnBase() {
   // ✅ base haute (X-8) pour les maps marquées respawnBase upper (maudite),
   // sinon logique standard (zones basses → X-1, zones hautes → X-8).
+  // Raid Low : "low" ne matche pas les zones X- → base mère (comme en gate).
   const faction = (account.user || getCurrentUserFull())?.faction;
   const targetMap = rules?.respawnBase === "upper"
     ? getFactionUpperBaseMap(faction)
@@ -27691,6 +27632,7 @@ function drawMinimap() {
     returnPortal: gateReturnPortal,
     isZoneMap,
     safeZone: zoneSafe,
+    rallyZone: rules?.raidLow === true && isLowRaidCircleVisible() ? LOW_RAID_ZONE_CLIENT : null,
     moveTarget,
     ping: miniPing,
     camera,
@@ -28910,7 +28852,6 @@ function drawRocketDebuffEffect(e) {  const slowed = (e.rocketSlowT || 0) > 0;
 // ============================================================
 loadImage(LOCK_SPR.src, { priority: true });
 loadImage((LOCK_GREY_SPR || { src: "ASSETS/UI/LOCK_DEJAPRIS.png" }).src, { priority: true });
-loadImage(ESCORT_LOCK_SPR.src, { priority: true });
 loadImage(PORTAL_IDLE_SPR.src, { priority: true });
 loadImage(PORTAL_OPEN_SPR.src, { priority: true });
 
@@ -29932,13 +29873,7 @@ function enemyShoot(e, dt, combatTarget = player) {
   if (e.type === "npc_Gygerim_Overlord") {
     e._farShotCd = Number.isFinite(e._farShotCd) ? e._farShotCd - dt : 5;
     if (e._farShotCd <= 0) {
-      const distantTargets = (!player.dead && !isPlayerUntargetable()) ? [player] : [];
-      distantTargets.push(...escortShips.filter(escort => escort.hp > 0));
-      const farthest = distantTargets.reduce((best, candidate) => (
-        !best || dist2(e.x, e.y, candidate.x, candidate.y) > dist2(e.x, e.y, best.x, best.y)
-          ? candidate
-          : best
-      ), null);
+      const farthest = (!player.dead && !isPlayerUntargetable()) ? player : null;
       if (farthest) {
         const angle = Math.atan2(farthest.y - e.y, farthest.x - e.x);
         const projectileSpeed = Math.max(120, e.bulletSpeed || 900);
@@ -29956,8 +29891,8 @@ function enemyShoot(e, dt, combatTarget = player) {
           key: "x1",
           scale: e.bulletScale ?? 1.5,
           sprite: e.bulletSprite || null,
-          target: farthest === player ? "player" : "escort",
-          targetId: farthest === player ? null : farthest.id,
+          target: "player",
+          targetId: null,
           homing: true,
           ownerId: e.id,
           miss: Math.random() < Math.min(1, NPC_SHOT_RULES.missChance
@@ -29965,7 +29900,7 @@ function enemyShoot(e, dt, combatTarget = player) {
           hitRadiusBonus: NPC_SHOT_RULES.hitRadiusBonus,
           longRange: true,
         }, ENTITY_LIMITS.enemyBullets);
-        if (farthest === player) e._attackedPlayerRecently = true;
+        e._attackedPlayerRecently = true;
       }
       e._farShotCd = 5;
     }
@@ -31548,8 +31483,8 @@ if (moveTarget.active && !player.dead) {
     }
   } catch {}
   updateBossEncounters();
-  updateGateEscorts(dt);
   updatePet(dt);
+  try { tickLowRaidClient(); } catch (error) { console.warn("Low raid tick:", error); }
   try { tickBot(dt); } catch (error) { console.warn("BOT tick:", error); }
   if (started) {
     try { tickSkylabProduction(dt); } catch (error) { console.warn("Skylab tick:", error); }
@@ -32169,9 +32104,8 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
         else {
           const ownerNpc = b.ownerId != null ? enemies.find((x) => x?.id === b.ownerId) || null : null;
           damagePlayerLayers(bulletTarget, redirectProtectionDamage(bulletTarget, b.dmg, ownerNpc));
-          // Clone Mimesis tué : explosion standard + rire (pas de respawn d'escorte).
+          // Clone Mimesis tué : explosion standard + rire.
           if (bulletTarget.hp <= 0 && bulletTarget.holo) killHoloClone(bulletTarget);
-          else if (bulletTarget.hp <= 0) destroyEscort(bulletTarget);
         }
         if (b.isRocket) spawnExplosion(bulletTarget.x, bulletTarget.y, 0.25);
       }
@@ -32904,12 +32838,12 @@ if (GAME_SETTINGS.textures) {
 
   drawZonePortals(ox, oy);
   drawSafeModules(ox, oy);
+  drawLowRaidZone(ox, oy);
   drawMoveTarget(ox, oy);
   try { drawBotOverlays(ox, oy); } catch {}
   drawCollectables(ox, oy);
   drawPetLocator(ox, oy);
   drawEngineTrails(ox, oy);
-  drawGateEscorts(ox, oy);
   drawHoloClones(ox, oy);
   drawPet(ox, oy);
   drawTbrClones(ox, oy);
@@ -33898,7 +33832,6 @@ if (GAME_SETTINGS.textures) {
   drawPulseFx(ox, oy);
 
   const t = Target.get();
-  drawEscortTargetLocks(ox, oy);
   if (t) {
     drawTargetMarker(t, ox, oy, performance.now() / 1000);
   }
@@ -33916,23 +33849,6 @@ if (GAME_SETTINGS.textures) {
 // ============================================================
 // UI update
 // ============================================================
-let lastEscortPanelHtml = "";
-function renderEscortPanel() {
-  if (!ui.escortWindowBody) return;
-  const html = escortShips.length ? escortShips.map((escort, index) => {
-    const alive = escort.hp > 0;
-    const hpPct = clamp(escort.hp / Math.max(1, escort.hpMax), 0, 1) * 100;
-    const shPct = clamp(escort.sh / Math.max(1, escort.shMax), 0, 1) * 100;
-    const targetName = alive && escort.target ? (NPC_TYPES[escort.target.type]?.name || "Cible") : "Aucune cible";
-    const status = alive ? targetName : `Retour dans ${Math.ceil(Number(escort.respawnT || 0))} s`;
-    return `<article class="escortStatus${alive ? "" : " destroyed"}"><div class="escortStatusHead"><strong>ESCORTE ${index + 1}</strong><span>${escapeHtml(status)}</span></div><div class="escortVitals barWrap"><div class="bar hp"><i style="width:${hpPct}%"></i><span class="barValue">${formatInteger(escort.hp)} / ${formatInteger(escort.hpMax)}</span></div><div class="bar sh"><i style="width:${shPct}%"></i><span class="barValue">${formatInteger(escort.sh)} / ${formatInteger(escort.shMax)}</span></div></div></article>`;
-  }).join("") : `<div class="escortEmpty">Aucune escorte engag&eacute;e dans cette Gate.</div>`;
-  if (html !== lastEscortPanelHtml) {
-    ui.escortWindowBody.innerHTML = html;
-    lastEscortPanelHtml = html;
-  }
-}
-
 const hudLastText = new Map();
 const hudLastWidth = new Map();
 const hudLastDisplay = new Map();
@@ -34030,7 +33946,6 @@ function drawUI() {
       setHudText(ui.gygerimShTxt, `${formatInteger(boss.sh)} / ${formatInteger(shMax)}`);
     }
   }
-  renderEscortPanel();
 
 const u = account.user || null;
 const st = u?.stats || {};
