@@ -8192,14 +8192,20 @@ initAuctionUI({
 initPilotSkillsUI({
   getUser: () => account.user,
   afterAction: (action = "skills") => {
-    syncPlayerFromAccount();
     // Acheter des disques ne change aucun bonus : mise à jour légère du HUD,
-    // sans sauvegarde et recalcul complets de l'équipement en cascade.
+    // sans relire/normaliser tout le compte ni recalculer l'équipement.
     if (action === "disks") {
+      const fresh = getCurrentUserFull();
+      if (fresh) {
+        account.user = fresh;
+        player.credits = Math.max(0, Number(fresh.credits) || 0);
+      }
+      markProgressDirty();
       drawUI();
       window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
       return;
     }
+    syncPlayerFromAccount();
     markProgressDirty();
     saveProgressNow();
     window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
@@ -17174,6 +17180,29 @@ function updateAmmoUI() {
   refreshRocketPaletteCounts();
 
   syncActionDockState();
+}
+
+// Vente de munitions depuis l'inventaire : recopie le stock du compte vers
+// la session live (même pattern que les achats), puis rafraîchit l'UI.
+function applyAccountAmmoToPlayer() {
+  const u = account.user || getCurrentUserFull();
+  if (!u) return false;
+  account.user = u;
+  player.ammo = player.ammo || {};
+  for (const [key, value] of Object.entries(u.ammo || {})) {
+    if (key === "x1" || key === "active") continue;
+    player.ammo[key] = Math.max(0, Math.floor(Number(value) || 0));
+  }
+  player.ammo.x1 = Infinity;
+  if (player.ammo.active !== "x1" && !(Number(player.ammo[player.ammo.active] || 0) > 0)) player.ammo.active = "x1";
+  player.rockets = player.rockets || {};
+  for (const [key, value] of Object.entries(u.rockets || {})) {
+    player.rockets[key] = Math.max(0, Math.floor(Number(value) || 0));
+  }
+  try {
+    updateAmmoUI();
+  } catch {}
+  return true;
 }
 
 let actionDockCache = null;
@@ -34992,6 +35021,7 @@ window.__ORBIT_ENGINE__ = {
   showToast,
   showNotification,
   syncPlayerFromAccount,
+  applyAccountAmmoToPlayer,
   getEquipmentState() {
     const hangar = getActiveHangarFromUser(account.user);
     const pet = account.user?.pet;

@@ -1,5 +1,13 @@
 "use strict";
 
+// Base de revente des modules à l'inventaire (crédits / unité, par rareté).
+export const MODULE_SELL_PRICES = Object.freeze({
+  common: 500000,
+  rare: 750000,
+  epic: 1000000,
+  legendary: 2500000,
+});
+
 export const MODULE_ROLL_COST = 1000000;
 
 export const MODULE_TIER_WEIGHTS = Object.freeze([

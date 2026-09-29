@@ -5,8 +5,7 @@
 // PUBLIC/PROFILE.js), de façon indépendante, avec switch par catégorie +
 // recherche + pagination.
 
-import { describeItemUsage, getCurrentUserFull, sellItem } from "../SRC/CORE/ACCOUNT.js";
-import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
+import { getCurrentUserFull, sellItem, sellShipModules, sellUnitPrice, shipModuleGroupKey } from "../SRC/CORE/ACCOUNT.js";
 import { inventoryPage } from "./UI_INVENTORY.js";
 import { escapeHtml } from "./UI_DOM.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
@@ -29,9 +28,10 @@ let searchQuery = "";
 let pageIndex = 0;
 let pagerEl = null;
 let lastSignature = "";
-// Sélection pour la vente : clés stables "kind:id" + snapshot des données.
+// Sélection unique pour la vente : clé stable "kind:id".
 const selectedKeys = new Set();
-const selectedData = new Map();
+// Snapshot frais des entrées affichées (module objet inclus), par clé.
+const entryByKey = new Map();
 
 function slotKey(entry) {
   return `${entry?.kind || ""}:${entry?.id || ""}`;
@@ -101,44 +101,30 @@ function slotHtml(b, entry) {
     + `</article>`;
 }
 
-function sellEstimate() {
-  let count = 0;
-  let total = 0;
-  let hasPriced = false;
-  for (const data of selectedData.values()) {
-    count += 1;
-    if (data.kind !== "equipment") continue;
-    const qty = Math.floor(Number(data.quantity) || 0);
-    if (!Number.isFinite(Number(data.quantity)) || qty <= 0) continue;
-    const price = Number(findCatalogItem(data.id)?.price) || 0;
-    if (price > 0) {
-      total += Math.floor(price * 0.5) * qty;
-      hasPriced = true;
-    }
-  }
-  return { count, total, hasPriced };
+function selectedEntry() {
+  const key = [...selectedKeys][0];
+  return key ? entryByKey.get(key) || null : null;
 }
 
 function updateSellBtn() {
   const btn = $("tdmSellBtn");
   if (!btn) return;
-  const { count, total, hasPriced } = sellEstimate();
-  btn.disabled = count === 0;
-  btn.textContent = count === 0 || !hasPriced
-    ? "Vendre"
-    : `Vendre · +${formatInteger(total)} cr`;
+  btn.disabled = selectedKeys.size === 0;
+  btn.textContent = "Vendre";
 }
 
 function pruneSelection(filtered) {
   const allKeys = new Set();
+  entryByKey.clear();
   for (const section of filtered) {
-    for (const entry of section.items || []) allKeys.add(slotKey(entry));
+    for (const entry of section.items || []) {
+      const key = slotKey(entry);
+      allKeys.add(key);
+      entryByKey.set(key, entry);
+    }
   }
   for (const key of [...selectedKeys]) {
-    if (!allKeys.has(key)) {
-      selectedKeys.delete(key);
-      selectedData.delete(key);
-    }
+    if (!allKeys.has(key)) selectedKeys.delete(key);
   }
   updateSellBtn();
 }
@@ -191,70 +177,45 @@ function closeSellDialog() {
   if (dlg) dlg.hidden = true;
 }
 
+const SELLABLE_KINDS = ["equipment", "ammo", "module"];
+
 function openSellDialog() {
-  const data = [...selectedData.values()][0];
-  if (!data) return;
-  // Vaisseaux, designs, P.E.T, drones, munitions, ressources : invendables.
-  if (data.kind !== "equipment") {
-    engineNotify(`${data.name || "Objet"} : non vendable ici (vaisseaux, designs, P.E.T et drones exclus).`, 3, "error");
+  const entry = selectedEntry();
+  if (!entry) return;
+  // Tout se vend sauf vaisseaux, designs, P.E.T, drones et ressources.
+  if (!SELLABLE_KINDS.includes(entry.kind)) {
+    engineNotify(`${entry.name || "Objet"} : non vendable (vaisseaux, designs, P.E.T, drones et ressources exclus).`, 3, "error");
     return;
   }
-  const price = Number(findCatalogItem(data.id)?.price) || 0;
-  if (!(price > 0)) {
-    engineNotify(`${data.name || "Objet"} : sans prix de vente.`, 3, "error");
+  const unitGain = sellUnitPrice(entry.kind, entry.id, entry.module);
+  if (!(unitGain > 0)) {
+    engineNotify(`${entry.name || "Objet"} : sans prix de vente.`, 3, "error");
     return;
   }
-  const maxQty = Math.floor(Number(data.quantity) || 0);
+  const maxQty = Math.floor(Number(entry.quantity) || 0);
   if (!Number.isFinite(maxQty) || maxQty <= 0) {
-    engineNotify(`${data.name || "Objet"} : quantité invendable.`, 3, "error");
+    engineNotify(`${entry.name || "Objet"} : quantité invendable.`, 3, "error");
     return;
   }
-  let usage = { places: [], occurrences: 0, reserved: 0 };
-  try {
-    usage = describeItemUsage(data.id) || usage;
-  } catch {}
+  // Vente directe : si l'objet est monté quelque part, il en est retiré
+  // automatiquement (forçage), sans avertissement ni case à cocher.
   sellDialog = {
-    id: data.id,
-    name: data.name || data.id,
+    id: entry.id,
+    kind: entry.kind,
+    name: entry.name || entry.id,
+    module: entry.module || null,
     maxQty,
-    unitGain: Math.floor(price * 0.5),
-    usage,
+    unitGain,
   };
   hideTooltip();
   const dlg = $("tdmSellDialog");
   if (!dlg) return;
   const nameEl = $("tdmSellItem");
   if (nameEl) nameEl.textContent = `${sellDialog.name} — stock : ${formatInteger(maxQty)}`;
-  const usageEl = $("tdmSellUsage");
-  if (usageEl) {
-    if (usage.occurrences > 0) {
-      usageEl.hidden = false;
-      usageEl.textContent = "";
-      const warn = document.createElement("div");
-      warn.className = "tdmSellWarnTitle";
-      warn.textContent = `Équipé à ${usage.occurrences} endroit${usage.occurrences > 1 ? "s" : ""} — la vente le retirera de :`;
-      usageEl.appendChild(warn);
-      for (const place of usage.places) {
-        const row = document.createElement("div");
-        row.className = "tdmSellWarnRow";
-        row.textContent = `• ${place}`;
-        usageEl.appendChild(row);
-      }
-    } else {
-      usageEl.hidden = true;
-      usageEl.textContent = "";
-    }
-  }
-  const forceRow = $("tdmSellForceRow");
-  const forceBox = $("tdmSellForce");
-  if (forceRow && forceBox) {
-    forceRow.hidden = !(usage.occurrences > 0);
-    forceBox.checked = false;
-  }
   const qtyInput = $("tdmSellQty");
   if (qtyInput) {
     qtyInput.max = String(maxQty);
-    qtyInput.value = String(maxQty);
+    qtyInput.value = "1";
   }
   sellDialogError("");
   dlg.hidden = false;
@@ -263,13 +224,12 @@ function openSellDialog() {
 
 function confirmSellDialog() {
   if (!sellDialog) return;
-  const { id, name, usage } = sellDialog;
+  const { id, kind, name, module } = sellDialog;
   const qty = sellDialogQty();
-  const forceBox = $("tdmSellForce");
-  const force = usage.occurrences > 0 ? forceBox?.checked === true : false;
   let res = null;
   try {
-    res = sellItem(id, qty, { force });
+    if (kind === "module") res = sellShipModules(shipModuleGroupKey(module), qty, { force: true });
+    else res = sellItem(id, qty, { force: true });
   } catch (e) {
     res = { ok: false, error: String(e?.message || e) };
   }
@@ -280,7 +240,6 @@ function confirmSellDialog() {
   const stripped = Number(res.stripped) || 0;
   closeSellDialog();
   selectedKeys.clear();
-  selectedData.clear();
   updateSellBtn();
   engineNotify(
     `Vente : ${formatInteger(qty)}× ${name} · +${formatInteger(Number(res.gain) || 0)} crédits${stripped > 0 ? ` · ${stripped} copie${stripped > 1 ? "s" : ""} retirée${stripped > 1 ? "s" : ""} des équipements` : ""}`,
@@ -293,6 +252,12 @@ function confirmSellDialog() {
   try {
     eng.syncPlayerFromAccount?.();
   } catch {}
+  // Vente de munitions : recopie aussi le stock vers la session live.
+  if (res.ammoSold) {
+    try {
+      eng.applyAccountAmmoToPlayer?.();
+    } catch {}
+  }
   try {
     window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
   } catch {}
@@ -461,19 +426,11 @@ export function initTdmUI() {
     if (!key) return;
     if (selectedKeys.has(key)) {
       selectedKeys.delete(key);
-      selectedData.delete(key);
       slot.classList.remove("selected");
     } else {
       for (const old of dst.querySelectorAll(".inventorySlot.selected")) old.classList.remove("selected");
       selectedKeys.clear();
-      selectedData.clear();
       selectedKeys.add(key);
-      selectedData.set(key, {
-        id: slot.getAttribute("data-entry-id") || "",
-        kind: slot.getAttribute("data-kind") || "",
-        quantity: slot.getAttribute("data-quantity") ?? "",
-        name: String(slot.getAttribute("aria-label") || "").split(".")[0].trim(),
-      });
       slot.classList.add("selected");
     }
     updateSellBtn();

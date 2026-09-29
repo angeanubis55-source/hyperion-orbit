@@ -508,12 +508,10 @@
         </nav>
         <div id="tdmInventorySections" class="tdmSections"></div>
         <div id="tdmInventoryTooltip" class="inventoryTooltip tdmTooltip" role="tooltip"></div>
-        <div id="tdmSellDialog" class="tdmSellDialog" hidden>
+        <div id="tdmSellDialog" class="tdmSellDialog" data-no-drag="1" hidden>
           <div class="tdmSellCard" role="dialog" aria-modal="true" aria-labelledby="tdmSellTitle">
             <div id="tdmSellTitle" class="tdmSellTitle">Vendre</div>
             <div id="tdmSellItem" class="tdmSellItem"></div>
-            <div id="tdmSellUsage" class="tdmSellUsage" hidden></div>
-            <label id="tdmSellForceRow" class="tdmSellForce" hidden><input id="tdmSellForce" type="checkbox"><span>Retirer des équipements et forcer la vente</span></label>
             <div class="tdmSellQtyRow">
               <button type="button" data-tdm-qty="1">1</button>
               <button type="button" data-tdm-qty="10">10</button>

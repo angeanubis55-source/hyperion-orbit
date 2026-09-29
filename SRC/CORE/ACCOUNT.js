@@ -1,7 +1,7 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
-import { bootNetFromCache, flushNetUser, netActive, netCurrent, netList, netSetCurrent, netStore, noteNetPurchase } from "./ACCOUNT_NET.js";
+import { bootNetFromCache, flushNetUser, netActive, netCurrent, netList, netSetCurrent, netStore, noteNetConsumption, noteNetPurchase } from "./ACCOUNT_NET.js";
 // Multi : session serveur restauree au chargement (token + cache local),
 // puis refresh async via /api/me (revision canonique).
 try { bootNetFromCache(); } catch {}
@@ -16,6 +16,7 @@ import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { getRefineryRecipe, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
+import { getModuleRarity, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
 import {
   AUCTION_ACTIVE_LOTS,
   AUCTION_CYCLE_VERSION,
@@ -2545,6 +2546,32 @@ export function sellItem(itemId, qty = 1, options = {}) {
   itemId = String(itemId || "");
   qty = Math.max(1, Number(qty || 1) | 0);
 
+  // Munitions lasers / roquettes : stock réel (u.ammo / u.rockets),
+  // prix au prorata du pack catalogue (50 %, comme les équipements).
+  const ammoPack = ammoPackUnitPrice(itemId);
+  if (ammoPack && itemId !== "x1") {
+    const store = ammoPack.field === "rockets"
+      ? (u.rockets && typeof u.rockets === "object" ? u.rockets : null)
+      : (u.ammo && typeof u.ammo === "object" ? u.ammo : null);
+    if (!store || !Object.prototype.hasOwnProperty.call(store, itemId)) return { ok: false, error: "Item introuvable." };
+    const stock = Math.floor(Number(store[itemId]) || 0);
+    if (!Number.isFinite(stock) || stock < qty) return { ok: false, error: "Pas assez de munitions." };
+    const gain = ammoPack.unit * qty;
+    store[itemId] = stock - qty;
+    if (ammoPack.field === "ammo" && u.ammoActive !== "x1" && !(Number(u.ammo[u.ammoActive] || 0) > 0)) {
+      u.ammoActive = "x1";
+      u.ammo.active = "x1";
+    }
+    u.credits = Number(u.credits || 0) + gain;
+    try {
+      noteNetConsumption(ammoPack.field, itemId, qty);
+    } catch {}
+    ensureUserShape(u);
+    saveUser(u);
+    writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+    return { ok: true, user: u, gain, gainEach: ammoPack.unit, stripped: 0, ammoSold: { field: ammoPack.field, id: itemId, left: store[itemId] } };
+  }
+
   const it = findCatalogItem(itemId);
   if (!it) return { ok: false, error: "Item introuvable." };
 
@@ -2738,6 +2765,22 @@ export function describeItemUsage(itemId) {
       places.push(`Vaisseau « ${shipName} » (${cfgs.join(" + ")}) — ${n}×`);
       occurrences += n;
     }
+    // Modules montés (shipMods) : même item, autre groupe de fit.
+    const modCfgs = [];
+    let modN = 0;
+    for (const cfg of ["1", "2"]) {
+      const arr = h?.fits?.[cfg]?.shipMods;
+      const c = countIn(arr);
+      if (c > 0) {
+        modCfgs.push(cfg === "2" ? "config 2" : "config 1");
+        modN += c;
+      }
+    }
+    if (modN > 0) {
+      const shipName = getShipPackById(h?.shipId)?.name || String(h?.shipId || "Vaisseau");
+      places.push(`Vaisseau « ${shipName} » (modules, ${modCfgs.join(" + ")}) — ${modN}×`);
+      occurrences += modN;
+    }
   }
   const seenFits = new Set();
   (u.drones?.items || []).forEach((drone, index) => {
@@ -2786,6 +2829,135 @@ export function describeItemUsage(itemId) {
     }
   }
   return { places, occurrences, reserved: countReservedCopies(u, id) };
+}
+
+// Prix unitaire catalogue d'un pack de munitions (50 %, prorata de la taille
+// du pack). Retourne { unit, field, size } ou null si invendable.
+function ammoPackUnitPrice(itemId) {
+  const id = String(itemId || "");
+  if (!id || id === "x1") return null;
+  const laserPack = findCatalogItem(`ammo_${id}`);
+  const laserSize = laserPack?.give?.ammo?.[id];
+  if (laserPack && laserSize != null) {
+    const price = Number(laserPack.price) || 0;
+    const size = Math.max(1, Math.floor(Number(laserSize) || 1));
+    return price > 0 ? { unit: Math.floor(price * 0.5 / size), field: "ammo", size } : null;
+  }
+  const rocketPack = findCatalogItem(`rocket_${id}`);
+  const rocketSize = rocketPack?.give?.rockets?.[id];
+  if (rocketPack && rocketSize != null) {
+    const price = Number(rocketPack.price) || 0;
+    const size = Math.max(1, Math.floor(Number(rocketSize) || 1));
+    return price > 0 ? { unit: Math.floor(price * 0.5 / size), field: "rockets", size } : null;
+  }
+  return null;
+}
+
+// Total investi en relances d'un module (même formule que nextModuleRerollCost).
+export function moduleRerollInvested(module) {
+  const rerolls = Math.max(0, Math.floor(Number(module?.rerolls) || 0));
+  const base = Math.max(0, Math.floor(Number(MODULE_ROLL_COST) || 0));
+  let total = 0;
+  for (let i = 0; i < rerolls; i++) {
+    total += base * Math.pow(5, i + 1);
+  }
+  return total;
+}
+
+// Prix de revente d'un module : base rareté (entière) + relances investies / 2.
+// Ex : commun sans relance → 500 k ; légendaire 4 relances → 2,5 M + 390 M.
+export function moduleSellUnitPrice(module) {
+  const rarity = getModuleRarity(module?.bonuses?.length);
+  const base = Number(MODULE_SELL_PRICES[rarity]) || 0;
+  return base + Math.floor(moduleRerollInvested(module) * 0.5);
+}
+
+// Clé de groupage des modules strictement identiques (même que l'inventaire).
+export function shipModuleGroupKey(module) {
+  return JSON.stringify({
+    t: module?.type || "",
+    tier: module?.tier || "",
+    ship: module?.shipId || "",
+    b: module?.bonuses || [],
+  });
+}
+
+// Gain unitaire à la vente (même calcul que les fonctions de vente).
+// module = objet module pour kind === "module".
+export function sellUnitPrice(kind, id, module = null) {
+  const key = String(id || "");
+  if (!key) return 0;
+  if (kind === "equipment") {
+    const price = Number(findCatalogItem(key)?.price) || 0;
+    return price > 0 ? Math.floor(price * 0.5) : 0;
+  }
+  if (kind === "ammo") {
+    return ammoPackUnitPrice(key)?.unit || 0;
+  }
+  if (kind === "module") {
+    return moduleSellUnitPrice(module);
+  }
+  return 0;
+}
+
+// Vente de modules de vaisseau (groupe identique). Les copies montées dans
+// les shipMods exigent force:true (retrait partout, comme les équipements).
+export function sellShipModules(groupKey, qty = 1, options = {}) {
+  const u = getCurrentUserFull();
+  const key = String(groupKey || "");
+  qty = Math.max(1, Math.floor(Number(qty) || 0));
+  if (!u || !key) return { ok: false, error: "Non connecté." };
+  const all = Array.isArray(u.inventory?.shipModules) ? u.inventory.shipModules : [];
+  const owned = all.filter((m) => shipModuleGroupKey(m) === key);
+  if (owned.length < qty) return { ok: false, error: "Pas assez d'exemplaires." };
+  const unit = moduleSellUnitPrice(owned[0]);
+  if (!(unit > 0)) return { ok: false, error: "Ce module ne se vend pas ici." };
+  const mountedIds = new Set();
+  for (const h of u.hangars || []) {
+    for (const cfg of ["1", "2"]) {
+      const arr = h?.fits?.[cfg]?.shipMods;
+      if (Array.isArray(arr)) {
+        for (const mid of arr) if (mid) mountedIds.add(String(mid));
+      }
+    }
+  }
+  const free = owned.filter((m) => !mountedIds.has(String(m?.id)));
+  let toSell = free.slice(0, qty).map((m) => String(m?.id));
+  let stripped = 0;
+  if (toSell.length < qty) {
+    if (!options || options.force !== true) {
+      return { ok: false, error: "Module équipé : retire-le des vaisseaux ou force la vente.", equipped: owned.length - free.length };
+    }
+    const rest = owned.filter((m) => mountedIds.has(String(m?.id)) && !toSell.includes(String(m?.id))).slice(0, qty - toSell.length);
+    for (const m of rest) {
+      const mid = String(m?.id);
+      for (const h of u.hangars || []) {
+        for (const cfg of ["1", "2"]) {
+          const fit = h?.fits?.[cfg];
+          if (!fit || !Array.isArray(fit.shipMods)) continue;
+          const { next, removed } = stripIdFromArrayValues(fit.shipMods, mid);
+          if (removed > 0) {
+            fit.shipMods = compactFitArray(next, fit.shipMods.length);
+            stripped += removed;
+          }
+        }
+      }
+      toSell.push(mid);
+    }
+  }
+  if (toSell.length < qty) return { ok: false, error: "Pas assez d'exemplaires." };
+  const sellSet = new Set(toSell);
+  u.inventory.shipModules = all.filter((m) => !sellSet.has(String(m?.id)));
+  // L'historique des tirages (boutique) ne garde pas les modules vendus.
+  if (Array.isArray(u.inventory?.moduleRollHistory)) {
+    u.inventory.moduleRollHistory = u.inventory.moduleRollHistory.filter((h) => !sellSet.has(String(h?.id)));
+  }
+  const gain = unit * toSell.length;
+  u.credits = Number(u.credits || 0) + gain;
+  ensureUserShape(u);
+  saveUser(u);
+  writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+  return { ok: true, user: u, gain, gainEach: unit, quantity: toSell.length, stripped };
 }
 
 // ---------------------------
@@ -3641,10 +3813,15 @@ export function buyLogDiskPack() {
   u.credits = Math.max(0, Math.floor(Number(u.credits || 0)) - price);
   ensurePilotSkills(u);
   u.pilotSkills.disks += LOGDISK_PACK;
-  ensureUserShape(u);
-  // Un achat de disques ne modifie ni le hangar ni l'équipement. Le publier
-  // comme progression évite un recalcul complet du vaisseau dans le moteur.
-  saveUser(u, { source: "progress" });
+  // Le compte en mémoire est canonique. Ne lance aucune sérialisation dédiée
+  // ici : la sauvegarde périodique normale persistera crédits + disques sans
+  // provoquer un second gel juste après le clic.
+  if (netActive()) noteNetPurchase(price);
+  try {
+    window.dispatchEvent(new CustomEvent("orbit:user-updated", {
+      detail: { userId: u.id, revision: u.revision, source: "progress" },
+    }));
+  } catch {}
   return { ok: true, user: u, disks: u.pilotSkills.disks };
 }
 
@@ -3809,4 +3986,3 @@ export function tickCurrentUserAuction(nowMs = Date.now()) {
   }
   return { ok: true, user: u, events, changed };
 }
-
