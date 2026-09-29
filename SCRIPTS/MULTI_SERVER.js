@@ -909,6 +909,18 @@ function ensureNpcSim(mapId) {
   return pending;
 }
 
+// Dernier essai de (re)création de simu par map (une simu nulle — échec de
+// chargement — n'est pas réessayée par ensureNpcSim : purge définitive sinon).
+const npcSimRetryAt = new Map();
+function retryNpcSim(key, nowMs) {
+  const keyLc = String(key || "1-1").toLowerCase();
+  const at = Number(npcSimRetryAt.get(keyLc) || 0);
+  if (nowMs < at) return;
+  npcSimRetryAt.set(keyLc, nowMs + 10000);
+  try { npcSims.delete(keyLc); } catch {}
+  try { ensureNpcSim(keyLc); } catch {}
+}
+
 function roomFor(mapId) {
   const key = String(mapId || "1-1").toLowerCase();
   if (!rooms.has(key)) rooms.set(key, new Map());
@@ -2093,6 +2105,10 @@ setInterval(() => {
         awardNpcDeaths(key, npc.deaths);
       } else if (sim === undefined) {
         ensureNpcSim(key);
+      } else if (sim === null) {
+        // Simu en échec (ex : import de map) : réessaye toutes les 10 s
+        // au lieu de laisser la map vide définitivement.
+        try { retryNpcSim(key, now); } catch {}
       }
     } catch {}
     // Raid Low : contrôleur de vagues en groupe (ralliement -> 5 s ->

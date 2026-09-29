@@ -55,8 +55,10 @@ export class ZoneNpcSim {
   static async create(mapId) {
     const id = String(mapId || "").toLowerCase();
     if (!/^[a-z0-9_-]+$/.test(id)) return null;
-    // Alias client -> dossier : la Low partagée vit dans MAPS/LOW_MAP.
-    const dir = id === "low" ? "LOW_MAP" : id;
+    // Alias client -> dossier (casse exacte, systèmes sensibles à la casse) :
+    // la Low partagée vit dans MAPS/LOW_MAP, la Maudite dans MAPS/MAUDITE.
+    const MAP_DIR_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE" };
+    const dir = MAP_DIR_ALIASES[id] || id;
     try {
       const [{ WORLD }, spawns] = await Promise.all([
         import(`../MAPS/${dir}/WORLD.js`),
