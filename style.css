@@ -6655,14 +6655,14 @@ body > .inventoryTooltip .ttModNeg{ color:#ff5566 !important; font-size:12px !im
 .hangarDesignPanel.asImages {
   padding: 10px !important;
   display: grid !important;
-  grid-template-columns: repeat(4, 72px) !important;
   gap: 8px !important;
-  max-width: min(340px, calc(100vw - 16px)) !important;
+  box-sizing: border-box !important;
+  max-width: min(400px, calc(100vw - 16px)) !important;
 }
 .hangarDesignPanel .hangarDesignImageOption {
-  width: 72px !important;
-  height: 72px !important;
-  padding: 4px !important;
+  width: 88px !important;
+  height: 88px !important;
+  padding: 5px !important;
   display: grid !important;
   place-items: center !important;
   border: 1px solid rgba(124,240,255,.16) !important;
@@ -6672,7 +6672,7 @@ body > .inventoryTooltip .ttModNeg{ color:#ff5566 !important; font-size:12px !im
 }
 .hangarDesignPanel .hangarDesignImageOption img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
 .hangarDesignPanel .hangarDesignImageOption:hover { border-color: rgba(124,240,255,.55) !important; background: rgba(0,140,185,.18) !important; }
-.hangarDesignPanel .hangarDesignImageOption.selected { border-color: #7cf0ff !important; box-shadow: inset 3px 0 0 #69e9ff !important; }
+.hangarDesignPanel .hangarDesignImageOption.selected { border-color: #7cf0ff !important; box-shadow: 0 0 12px rgba(124,240,255,.35) !important; background: rgba(0,140,185,.22) !important; }
 
 /* Boutique : barre compacte, catégories fixes, liste et fiche produit. */
 #profileOverlay .shopToolbar {
@@ -8917,9 +8917,34 @@ body #hangarOverlay button.hangarCardPhotoBadge{
   cursor:pointer !important;
 }
 body #hangarOverlay button.hangarCardPhotoBadge:hover{ border-color:rgba(124,240,255,.6) !important; background:rgba(0,140,185,.35) !important; }
+body #hangarOverlay button.hangarCardPhotoBadge svg{ display:block !important; }
+body #hangarOverlay .hangarCardSlotBadge{
+  position:absolute !important;
+  left:2px !important;
+  top:2px !important;
+  min-width:20px !important;
+  height:20px !important;
+  margin:0 !important;
+  padding:0 6px !important;
+  display:grid !important;
+  place-items:center !important;
+  border:1px solid rgba(124,240,255,.35) !important;
+  border-radius:7px !important;
+  background:rgba(3,14,25,.85) !important;
+  color:#7cf0ff !important;
+  font:900 11px/1 system-ui !important;
+  pointer-events:none !important;
+}
 body #hangarOverlay .hangarListItem h3{ margin:0 !important; font-size:12px !important; }
 body #hangarOverlay .hangarListItem .tileActions{ margin:0 !important; display:flex !important; flex-direction:row !important; gap:6px !important; }
 body #hangarOverlay .hangarListItem .tileActions button{ min-height:26px !important; padding:4px 10px !important; font-size:10px !important; }
+body #hangarOverlay .hangarSwipe{ position:relative !important; display:inline-block !important; width:46px !important; height:26px !important; margin:0 !important; cursor:pointer !important; }
+body #hangarOverlay .hangarSwipe input{ opacity:0 !important; width:0 !important; height:0 !important; margin:0 !important; }
+body #hangarOverlay .hangarSwipe .swipeTrack{ position:absolute !important; inset:0 !important; border-radius:999px !important; background:rgba(255,255,255,.10) !important; border:1px solid rgba(124,240,255,.28) !important; transition:background .15s ease, border-color .15s ease !important; }
+body #hangarOverlay .hangarSwipe .swipeTrack::after{ content:"" !important; position:absolute !important; top:2px !important; left:2px !important; width:20px !important; height:20px !important; border-radius:50% !important; background:#8fb8c9 !important; transition:transform .15s ease, background .15s ease !important; }
+body #hangarOverlay .hangarSwipe input:checked + .swipeTrack{ background:rgba(0,180,230,.35) !important; border-color:#7cf0ff !important; }
+body #hangarOverlay .hangarSwipe input:checked + .swipeTrack::after{ transform:translateX(20px) !important; background:#7cf0ff !important; box-shadow:0 0 8px rgba(124,240,255,.6) !important; }
+body #hangarOverlay .hangarSwipe input:disabled + .swipeTrack{ cursor:default !important; }
 body #hangarOverlay .hangarDesignRow{
   grid-column:1 / -1 !important;
   width:100% !important;

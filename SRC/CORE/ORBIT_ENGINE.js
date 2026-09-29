@@ -38,6 +38,7 @@ import {
   getActiveHangarId,
   getHangarStateById,
   saveHangarStateById,
+  setActiveHangar,
   setActiveHangarConfig,
   consumeCurrentUserGalaxyGate,
   completeCurrentUserGalaxyGate,
@@ -110,7 +111,7 @@ import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
 drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect,
-getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, getMyClanTag, getClanRelation } from "./NETPLAY.js";
+getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -26204,6 +26205,11 @@ try {
 // - mort + killer depuis le serveur (processDeaths tranche les recompenses) ;
 // - repli solo : purge les entites reseau, le spawner local reprend.
 function syncNetNpcs(dt) {
+  // Reboot serveur (run changé, consommé via welcome) : purge déterministe
+  // des entités réseau. Le seq serveur repart de zéro : un cadavre conservé
+  // (même uid, même seq) bloquerait sinon la nouvelle incarnation et le NPC
+  // ne réapparaîtrait jamais côté client alors que le serveur l'a respawné.
+  try { if (consumeNetServerRestart()) purgeNetEntitiesForReconnect(); } catch {}
   let remotes = null;
   try { remotes = getNetNpcs(); } catch { remotes = null; }
   if (!netplayNpcActive() || !remotes) {
@@ -26372,6 +26378,21 @@ function syncNetNpcs(dt) {
     }
     if (Number.isFinite(Number(s.sh))) {
       e.sh = e.shMax > 0 ? Math.max(0, Math.min(e.shMax, Math.round(Number(s.sh)))) : Math.max(0, Math.round(Number(s.sh)));
+    }
+    // Revive zombie (même seq, snapshot alive) : un ancien verdict de mort
+    // (cadavre d'avant reboot, ou prédiction locale trop pessimiste) ne doit
+    // pas coller à l'entité ressuscitée — sinon processDeaths la tuerait
+    // sans attendre le serveur et le prochain respawn resterait bloqué.
+    if (e._netKiller != null) {
+      e._netKiller = null;
+      e._netKillerId = null;
+      e._netKillerPseudo = "";
+      e._netLootOwner = false;
+      e._netWaiting = false;
+      e._netSilent = false;
+      e._netReward = null;
+      e._netRewardWaitAt = 0;
+      e._deathFxPlayed = false;
     }
     e._netAggro = s.aggro != null ? String(s.aggro) : null;
     e._netLockBy = s.lock != null ? String(s.lock) : null;
@@ -31498,6 +31519,7 @@ if (moveTarget.active && !player.dead) {
   } catch {}
   updateBossEncounters();
   updatePet(dt);
+  try { tickHangarSwap(dt); } catch (error) { console.warn("Hangar swap tick:", error); }
   try { tickLowRaidClient(); } catch (error) { console.warn("Low raid tick:", error); }
   try { tickBot(dt); } catch (error) { console.warn("BOT tick:", error); }
   if (started) {
@@ -33373,6 +33395,8 @@ if (GAME_SETTINGS.textures) {
 
     // Comme dans le client officiel, la flamme recouvre sa sortie de réacteur.
     drawShipEngineFx();
+    // Échange de hangar : animation portail sur le vaisseau.
+    try { drawHangarSwapFx(); } catch {}
 
 // Pod de réparation : complétion visuelle des coques Aegis, par-dessus.
     drawAegisRepairPod();
@@ -34721,11 +34745,88 @@ function applyHangarDesignLive() {
   }
 }
 
+// ============================================================
+// Échange de hangar animé (swipe) : 3 s d'animation portail sur le
+// vaisseau puis bascule. La position de l'ancien vaisseau est
+// sauvegardée dans son hangar avant l'animation.
+// ============================================================
+let hangarSwapFx = null; // { t, dur, hangarId }
+
+function requestHangarSwap(hangarId) {
+  if (hangarSwapFx) { showToast("Échange en cours…", 1.2); return false; }
+  if (!started || player.dead) return false;
+  const u = account.user || getCurrentUserFull();
+  const cur = getActiveHangarFromUser(u);
+  if (!cur || String(cur.id) === String(hangarId)) return false;
+  const target = (u?.hangars || []).find((h) => String(h?.id) === String(hangarId));
+  if (!target) { showToast("Hangar introuvable.", 1.6); return false; }
+  // Sauvegarde la position de l'ancien vaisseau dans son hangar.
+  try {
+    const mapId = String(window.__CURRENT_MAP_ID__ || "1-1");
+    saveHangarStateById(cur.id, player.x, player.y, mapId, savedHpPct(), savedShPct());
+  } catch {}
+  // Précharge les frames de l'animation portail.
+  try {
+    const fx = DEFAULT_PORTAL_JUMP_FX;
+    const frames = Math.max(1, Number(fx.frames || 1));
+    for (let i = 0; i < frames; i++) loadImage(getPortalFrameSrc(fx, i));
+  } catch {}
+  hangarSwapFx = { t: 0, dur: 3, hangarId: target.id };
+  try { player.iFrames = Math.max(Number(player.iFrames) || 0, 3.3); } catch {}
+  try { SFX.play("swReady"); } catch {}
+  try { setTimeout(() => { try { SFX.play("swJump"); } catch {} }, 500); } catch {}
+  return true;
+}
+
+function tickHangarSwap(dt) {
+  if (!hangarSwapFx) return;
+  hangarSwapFx.t += Math.max(0, Number(dt) || 0);
+  if (hangarSwapFx.t < hangarSwapFx.dur) return;
+  const id = hangarSwapFx.hangarId;
+  hangarSwapFx = null;
+  let out = null;
+  try { out = setActiveHangar(id); } catch (error) { out = { ok: false, error: String(error?.message || error) }; }
+  if (!out || !out.ok) {
+    try { SFX.stop("swJump"); } catch {}
+    showToast(`Échange impossible (${out?.error || "erreur"})`, 2);
+    return;
+  }
+  // Le pipeline existant bascule le vaisseau (sprites, stats, verrous),
+  // resauvegarde l'ancien hangar et nettoie les cooldowns.
+  try { markHangarChanged(); } catch {}
+  try { SFX.stop("swJump"); SFX.play("swDone"); } catch {}
+  try {
+    const nm = getActiveHangarFromUser(account.user)?.shipId || "";
+    showNotification(`Vaisseau échangé : ${nm}`, 2.5, "info");
+  } catch {}
+}
+
+function drawHangarSwapFx() {
+  if (!hangarSwapFx) return;
+  const fx = DEFAULT_PORTAL_JUMP_FX;
+  const frames = Math.max(1, Number(fx.frames || 1));
+  const fps = Math.max(1, Number(fx.fps || 24));
+  const idx = Math.min(frames - 1, Math.floor(hangarSwapFx.t * fps) % frames);
+  const src = getPortalFrameSrc(fx, idx);
+  const img = src ? getCachedImage(src) : null;
+  if (!img) { try { if (src) loadImage(src); } catch {} return; }
+  if (!isImgReady(img)) return;
+  const p = Math.min(1, hangarSwapFx.t / Math.max(0.001, hangarSwapFx.dur));
+  const fade = p < 0.15 ? p / 0.15 : (p > 0.8 ? Math.max(0, (1 - p) / 0.2) : 1);
+  const scale = 1 + p * 0.3;
+  const w = (Number(fx.w) || 320) * scale, h = (Number(fx.h) || 320) * scale;
+  ctx.save();
+  ctx.globalAlpha = 0.9 * fade;
+  drawCenteredImage(ctx, img, w, h);
+  ctx.restore();
+}
+
 window.__ORBIT_ENGINE__ = {
   switchMap: switchMapConfig,
   getHangarAccess,
   markHangarChanged,
   applyHangarDesignLive,
+  requestHangarSwap,
   showToast,
   showNotification,
   getEquipmentState() {

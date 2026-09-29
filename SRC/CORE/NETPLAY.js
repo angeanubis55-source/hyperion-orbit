@@ -5,6 +5,10 @@
 let ws = null;
 let myId = "";
 let connected = false;
+// Génération du socket : un onclose périmé (ancien socket fermé après une
+// reconnect déjà relancée) ne doit jamais purger l'état du nouveau socket
+// ni ouvrir un doublon de connexion.
+let wsGen = 0;
 // Authentifie (token compte envoye au hello) : id stable, pseudo du compte.
 let netAuthed = false;
 export function netIsAuthed() {
@@ -325,8 +329,19 @@ export function getNetLowRaid() {
 // sont exclus vers le portail extérieur.
 let netServerRun = "";
 let netServerRestartAt = 0;
+// Génération de restart consommée par le moteur (purge des entités réseau).
+// Le seq serveur repart de zéro à chaque reboot : sans purge, un cadavre
+// conservé (même uid, même seq) bloque la nouvelle incarnation et le NPC
+// (ex : Empereur tué pendant son CD de 30 s) ne réapparaît jamais.
+let netServerRestartGen = 0;
+let netServerRestartSeen = 0;
 export function getNetServerRestartAt() {
   return netServerRestartAt;
+}
+export function consumeNetServerRestart() {
+  if (netServerRestartGen === netServerRestartSeen) return false;
+  netServerRestartSeen = netServerRestartGen;
+  return true;
 }
 // Recompenses PvP du serveur : { exp, honneur, mult, victim } a appliquer.
 const netPvpKillInbox = [];
@@ -619,6 +634,7 @@ export function ensureNetplayConnection() {
   try {
     ws = new WebSocket(url);
   } catch { ws = null; return; }
+  const myGen = ++wsGen;
 
   ws.onopen = () => {
     connected = true;
@@ -638,6 +654,7 @@ export function ensureNetplayConnection() {
     } catch {}
   };
   ws.onclose = () => {
+    if (myGen !== wsGen) return; // socket périmé (reconnect déjà relancée) : ignore
     connected = false;
     netAuthed = false;
     lastLatencyMs = null;
@@ -650,6 +667,7 @@ export function ensureNetplayConnection() {
     if (noReconnect) return;
     // Reconnect douce apres 3 s (serveur maison qui redemarre).
     setTimeout(() => {
+      if (myGen !== wsGen) return; // une reconnect plus récente a déjà pris le relais
       connectTried = false;
       ensureNetplayConnection();
       if (pendingLocal) sendNow(pendingLocal, true);
@@ -677,6 +695,20 @@ export function ensureNetplayConnection() {
             sessionStorage.setItem("orbit_server_run", incomingRun);
             netServerRestartAt = Date.now();
             netLowRaid = null;
+            // Reboot serveur : sa simu NPC repart de zéro (seq remis à 1).
+            // Purge déterministe du partagé + génération consommée par le
+            // moteur (purge des cadavres réseau). Sans ça, un NPC tué avant
+            // le reboot (même uid, même seq) bloque sa nouvelle incarnation.
+            try {
+              remotes.clear();
+              netNpcs.clear();
+              netDeaths.clear();
+              netGone = [];
+              netDmgInbox.length = 0;
+              netShotInbox.length = 0;
+              netSkillInbox.length = 0;
+            } catch {}
+            netServerRestartGen++;
           }
           netServerRun = incomingRun;
         }

@@ -9,14 +9,17 @@ export const UNIVERSE_VERSION = 2;
 
 export const RESPAWN_DELAY_MS = 0; // NPC normaux : instant, respawn random dans la map
 export const CUBIKON_RESPAWN_DELAY_MS = 60 * 1000; // chaque Cubikon : 60 secondes
+export const EMPEROR_RESPAWN_DELAY_MS = 30 * 1000; // chaque Empereur : 30 secondes (comme le Cubikon : delai porte par le slot, pas par la memoire du camp)
 export const BOSS_RESPAWN_DELAY_MS = 0;
 export const MAX_MAPS_STORED = 64;
 export const MAX_SLOTS_PER_MAP = 220;
 
 const CUBIKON_RE = /cubikon/i;
+const EMPEROR_RE = /emperor/i;
 
 export function respawnDelayForType(type) {
   if (CUBIKON_RE.test(String(type || ""))) return CUBIKON_RESPAWN_DELAY_MS;
+  if (EMPEROR_RE.test(String(type || ""))) return EMPEROR_RESPAWN_DELAY_MS;
   return RESPAWN_DELAY_MS;
 }
 

@@ -1567,12 +1567,15 @@ function openHangarDesignPanel(triggerEl, hangarId, options, currentId) {
   hangarDesignPanel = panel;
 
   const rect = triggerEl.getBoundingClientRect();
+  // Menu auto-adaptatif : colonnes et largeur selon le nombre de designs.
+  const CARD = 88, GAP = 8, PAD = 20;
   const cols = Math.min(4, Math.max(1, owned.length));
-  const width = cols * 80 + 20;
+  panel.style.gridTemplateColumns = `repeat(${cols}, ${CARD}px)`;
+  const width = Math.min(cols * CARD + (cols - 1) * GAP + PAD, window.innerWidth - 16);
   panel.style.width = `${width}px`;
   panel.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
 
-  const maxH = 2 * 88 + 20;
+  const maxH = 2 * CARD + GAP + PAD;
   const below = window.innerHeight - rect.bottom - 6;
   const top = below >= maxH ? rect.bottom + 4 : Math.max(4, rect.top - maxH - 4);
   panel.style.maxHeight = `${maxH}px`;
@@ -1682,15 +1685,17 @@ function renderHangarsMeasured(u) {
     el.innerHTML = `
       <div class="hangarCardPhoto">
         ${prev ? `<img src="${escapeHtml(prev)}" alt="${escapeHtml(h.shipId)}" class="shipImg" />` : ""}
-        <button type="button" class="hangarCardPhotoBadge" data-design-trigger="${h.id}" title="Choisir un design (${ownedDesignCount} possédé${ownedDesignCount > 1 ? "s" : ""})">▾</button>
+        ${h.lastMap ? `<span class="hangarCardSlotBadge" title="Dernière position : ${escapeHtml(String(h.lastMap).toUpperCase())}">${escapeHtml(String(h.lastMap).toUpperCase())}</span>` : ""}
+        <button type="button" class="hangarCardPhotoBadge" data-design-trigger="${h.id}" title="Choisir un design (${ownedDesignCount} possédé${ownedDesignCount > 1 ? "s" : ""})" aria-label="Choisir un design"><svg viewBox="0 0 12 8" width="10" height="7" aria-hidden="true"><path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
       <h3>
         ${escapeHtml(hangarPackName)}
       </h3>
       <div class="tileActions">
-        <button class="${isActive ? 'secondary' : 'primary'}" data-act="${h.id}" ${isActive ? 'disabled' : ''}>
-          ${isActive ? 'Activé' : 'Activer'}
-        </button>
+        <label class="hangarSwipe" title="${isActive ? 'Hangar actif' : 'Activer ce hangar'}">
+          <input type="checkbox" data-act="${h.id}" ${isActive ? 'checked disabled' : ''} aria-label="Activer ce hangar">
+          <span class="swipeTrack"></span>
+        </label>
         <button class="secondary" data-fit="${h.id}">Équiper</button>
       </div>
     `;
@@ -1717,6 +1722,30 @@ if (!isIntegratedInGame && isGameOpen()) {
 
   const access = getHangarActionAccess("activate");
   if (!access.ok) return setMsg(access.error, false);
+
+  // ✅ En jeu : fermeture de la fenêtre + 3 s d'animation portail sur le
+  // vaisseau, puis échange (la position de l'ancien est sauvegardée).
+  const eng = window.__ORBIT_ENGINE__;
+  if (isIntegratedInGame && eng && typeof eng.requestHangarSwap === "function") {
+    try { closeHangarOverlay({ immediate: true }); } catch {}
+    let startedFx = false;
+    try { startedFx = eng.requestHangarSwap(h.id) === true; } catch { startedFx = false; }
+    if (startedFx) {
+      setMsg("🌀 Échange en cours…", true);
+      window.setTimeout(() => {
+        try {
+          user = getCurrentUserFull();
+          renderHeader(user);
+          renderStats(user);
+          renderHangars(user);
+          refreshShopIfVisible();
+          window.__ORBIT_ENGINE__?.applyHangarDesignLive?.();
+        } catch {}
+      }, 3300);
+      return;
+    }
+    // Échec du démarrage (mort, échange en cours…) : repli synchrone.
+  }
 
   const out = setActiveHangar(h.id);
   if (!out.ok) return setMsg("❌ " + (out.error || "Impossible d'activer le hangar."), false);
