@@ -3,7 +3,7 @@ const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
 
 export function getZoneSpawns(WORLD) {
   const pad = 300;
-  const N = 1200;
+  const N = 250;
 
   const minDist = 0;
   const minDist2 = minDist * minDist;
@@ -12,14 +12,14 @@ export function getZoneSpawns(WORLD) {
   let tries = 0;
   const maxTries = 6000;
 
-  // ✅ Quotas EXACTS : 100 Cubikon + 400 Protegit
+  // ✅ Quotas EXACTS : 50 Cubikon + 200 Protegit
   const quota = [
-    { type: "npc_Cubikon", left: 150 },
-    { type: "npc_Cubikon_maudite", left: 50 },
-    { type: "npc_Protegit", left: 100 },
-    { type: "npc_Protegit_maudite", left: 100 },
-    { type: "npc_Protegit_maudite2", left: 100 },
-    { type: "npc_Protegit_maudite3", left: 100 },
+    { type: "npc_Cubikon", left: 35 },
+    { type: "npc_Cubikon_maudite", left: 15 },
+    { type: "npc_Protegit", left: 50 },
+    { type: "npc_Protegit_maudite", left: 50 },
+    { type: "npc_Protegit_maudite2", left: 50 },
+    { type: "npc_Protegit_maudite3", left: 50 },
   ];
 
   function pickQuotaType() {

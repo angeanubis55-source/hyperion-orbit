@@ -581,6 +581,9 @@ export function sendAuctionBid(key, amount) {
 let connectTried = false;
 
 function currentMapId() {
+  // Minuscules : le serveur travaille en minuscules (rooms, snapshots) et
+  // une seule map du registre est en majuscules (MAUDITE). Sans ça, tous
+  // les snapshots/shots/box de la Maudite étaient jetés côté client.
   try {
     return String(window.__CURRENT_MAP_ID__ || "1-1").toLowerCase();
   } catch { return "1-1"; }

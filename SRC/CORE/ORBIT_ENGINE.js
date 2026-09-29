@@ -24287,6 +24287,15 @@ function runOnKillAction(action, pos = null) {
       // Les credits de combat sont portes par le joueur jusqu'a la prochaine
       // sauvegarde. Les inclure avant d'ajouter le bonus evite un total stale.
       if (account.user) account.user.credits = Math.max(0, Math.floor(Number(player.credits) || 0));
+      // L'activation (spinner/entrée) est persistée dans le compte canonique.
+      // `account.user` peut être un clone réseau plus ancien (sans active) :
+      // resynchroniser la tranche gates évite de rater la complétion + quête.
+      try {
+        const canonical = getCurrentUserFull();
+        if (account.user && canonical && String(canonical.id) === String(account.user.id) && canonical.galaxyGates) {
+          account.user.galaxyGates = canonical.galaxyGates;
+        }
+      } catch {}
       const completion = completeCurrentUserGalaxyGate(currentGateId, account.user, { deferReward: true });
       if (completion.ok) {
         advanceQuestProgress("gate", currentGateId);
@@ -24303,6 +24312,8 @@ function runOnKillAction(action, pos = null) {
         const autoMsg = completion.autoDeployed ? ` — stock replacé sur la map` : "";
         renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[currentGateId].name} terminée${autoMsg}`);
         scheduleGalaxyGateCompletion(currentGateId, completion);
+      } else {
+        console.warn(`Fin de Gate ${currentGateId} ignorée : gate inactive dans l'état du compte.`);
       }
       return;
     }
