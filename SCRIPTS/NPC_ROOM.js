@@ -18,6 +18,7 @@ function statsFor(type) {
     shMax: Math.max(0, Math.floor(Number(cfg.shield ?? 0))),
     speed: Math.max(40, Math.floor(Number(cfg.speed ?? 320))),
     dr: clamp(Number(cfg.dr ?? 0), 0, 1),
+    r: Math.max(10, Math.floor(Number(cfg.r ?? 18))),
     spread: clamp(Number(cfg.shieldSpread ?? 0.8), 0, 1),
     passive: !!cfg.passiveNative,
     kamikaze: String(cfg.ai || "") === "kamikaze",
@@ -260,6 +261,7 @@ export class ZoneNpcSim {
       hp: stats.hpMax, sh: stats.shMax,
       hpMax: stats.hpMax, shMax: stats.shMax,
       speed: (camp.speed ?? stats.speed), dr: stats.dr, spread: stats.spread,
+      r: stats.r,
       passive: !!stats.passive, kamikaze: !!stats.kamikaze,
       explodeOnTouch: !!stats.explodeOnTouch, explodeRadius: stats.explodeRadius, explodeDmg: stats.explodeDmg,
       canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,
@@ -879,6 +881,38 @@ drainPlayerHits() {
         }
       }
     }
+    // 2bis) Séparation (parité gate) : les NPC du raid ne se stackent pas
+    // les uns sur les autres. Limitée aux entrées chasseuses (raid) :
+    // coût nul sur les autres maps (aucune entrée concernée).
+    try {
+      let raidList = null;
+      for (const e of this.entries.values()) {
+        if (!e || !(e.hp > 0) || e.hunter !== true) continue;
+        (raidList || (raidList = [])).push(e);
+      }
+      if (raidList && raidList.length > 1) {
+        for (let i = 0; i < raidList.length; i++) {
+          const a = raidList[i];
+          for (let j = i + 1; j < raidList.length; j++) {
+            const b = raidList[j];
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const minimum = (Number(a.r) || 18) + (Number(b.r) || 18) + 6;
+            const squared = dx * dx + dy * dy;
+            if (squared >= minimum * minimum || squared <= 0.0001) continue;
+            const distance = Math.sqrt(squared);
+            const nx = dx / distance, ny = dy / distance;
+            const overlap = minimum - distance;
+            const push = Math.min(220, overlap * 28) * dt;
+            const side = Math.min(220, overlap * 12) * (((i + j) % 2 === 0) ? 1 : -1) * dt;
+            const tx = -ny, ty = nx;
+            a.x = clamp(a.x + (-nx * push + tx * side), 80, this.world.w - 80);
+            a.y = clamp(a.y + (-ny * push + ty * side), 80, this.world.h - 80);
+            b.x = clamp(b.x + (nx * push - tx * side), 80, this.world.w - 80);
+            b.y = clamp(b.y + (ny * push - ty * side), 80, this.world.h - 80);
+          }
+        }
+      }
+    } catch {}
   }
 
   snapshot() {

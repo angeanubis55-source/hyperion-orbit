@@ -24153,52 +24153,34 @@ function drawLowRaidZone(ox, oy) {
   const sx = z.x + ox;
   const sy = z.y + oy;
   const st = getNetLowRaid();
-  const running = isLowRaidRunning();
   const showCircle = isLowRaidCircleVisible();
   ctx.save();
   ctx.textAlign = "center";
-  // Cercle : visible uniquement au départ (avant la vague 1).
-  if (showCircle && sx > -z.r && sy > -z.r && sx < innerWidth + z.r && sy < innerHeight + z.r) {
+  // Cercle + textes : uniquement au départ (avant la vague 1).
+  // Une fois le run lancé, le milieu reste vide : vagues et décompte
+  // passent uniquement par l'affichage rapide du haut + les logs.
+  if (!showCircle) {
+    ctx.restore();
+    return;
+  }
+  if (sx > -z.r && sy > -z.r && sx < innerWidth + z.r && sy < innerHeight + z.r) {
     ctx.strokeStyle = st && st.phase === "countdown" ? "rgba(255,210,110,.9)" : "rgba(124,240,255,.55)";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(sx, sy, z.r, 0, TAU);
     ctx.stroke();
   }
-  // Textes au centre du cercle (visibles même pendant les vagues).
   if (sx < -100 || sy < -60 || sx > innerWidth + 100 || sy > innerHeight + 60) {
     ctx.restore();
     return;
   }
-  if (running && st && st.phase === "countdown" && Number(st.nextWave || 1) > 1) {
-    // Inter-vagues : prochaine vague + décompte live.
-    const remain = Math.max(1, Math.ceil((Number(st.endsAt) - Date.now()) / 1000));
-    ctx.fillStyle = "#ffd76a";
-    ctx.font = "900 24px system-ui";
-    ctx.fillText(`VAGUE ${st.nextWave} DANS ${remain}`, sx, sy - 6);
-    if (Number(st.need) > 0) {
-      ctx.fillStyle = "#9fe8ff";
-      ctx.font = "800 17px system-ui";
-      ctx.fillText(`EN COMBAT : ${st.ready}/${st.need}`, sx, sy + 24);
-    }
-  } else if (running && st && st.wave > 0) {
-    const boss = st.wave >= st.totalWaves;
-    ctx.fillStyle = "#ffd76a";
-    ctx.font = "900 24px system-ui";
-    ctx.fillText(boss ? "CENTURY FALCON" : `VAGUE ${st.wave} / ${st.totalWaves - 1}`, sx, sy - 6);
-    const alive = st.need > 0 ? ` · ${st.ready}/${st.need}` : "";
+  ctx.fillStyle = "#eaffff";
+  ctx.font = "900 22px system-ui";
+  ctx.fillText("ZONE DE RASSEMBLEMENT", sx, sy - 8);
+  if (st && Number.isFinite(Number(st.ready)) && Number(st.need) > 0) {
+    ctx.font = "800 20px system-ui";
     ctx.fillStyle = "#9fe8ff";
-    ctx.font = "800 17px system-ui";
-    ctx.fillText(`EN COMBAT${alive}`, sx, sy + 24);
-  } else {
-    ctx.fillStyle = "#eaffff";
-    ctx.font = "900 22px system-ui";
-    ctx.fillText("ZONE DE RASSEMBLEMENT", sx, sy - 8);
-    if (st && Number.isFinite(Number(st.ready)) && Number(st.need) > 0) {
-      ctx.font = "800 20px system-ui";
-      ctx.fillStyle = "#9fe8ff";
-      ctx.fillText(`PRÊTS : ${st.ready}/${st.need}`, sx, sy + 24);
-    }
+    ctx.fillText(`PRÊTS : ${st.ready}/${st.need}`, sx, sy + 24);
   }
   ctx.restore();
 }
