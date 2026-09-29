@@ -11,7 +11,7 @@ import { normalizeQuestState, QUEST_DEFINITIONS } from "../../QUEST/QUEST_TYPES.
 import { QUEST_REWARD_BASELINE_2026 } from "../../QUEST/QUEST_REWARD_BASELINE.js";
 import { calculateRankPoints, getQuestExperienceReward, getQuestHonorReward } from "./PROGRESSION.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.js";
-import { compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js";
+import { compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
@@ -2538,7 +2538,7 @@ export function _dangerResetAll() {
   return { ok: true };
 }
 
-export function sellItem(itemId, qty = 1) {
+export function sellItem(itemId, qty = 1, options = {}) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
 
@@ -2564,20 +2564,17 @@ export function sellItem(itemId, qty = 1) {
   if (owned < qty) return { ok: false, error: "Pas assez d'exemplaires." };
 
   // Configurations can reuse copies, but a sale must leave enough for each one.
-  let reserved = 0;
-  for (const h of u.hangars || []) {
-    for (const cfg of ["1", "2"]) {
-      const fit = h.fits?.[cfg] || {};
-      const equipped = [...(fit.lasers || []), ...(fit.gens || []), ...(fit.extras || [])];
-      for (const drone of u.drones.items) equipped.push(...getDroneFit(drone, h.id, cfg).equipment);
-      if (u.pet?.owned === true) {
-        const pet = getPetFit(u.pet, h.id, cfg);
-        for (const group of ["lasers", "generators", "gears", "protocols"]) equipped.push(...pet[group]);
-      }
-      reserved = Math.max(reserved, equipped.filter(id => id === itemId).length);
+  let reserved = countReservedCopies(u, itemId);
+  let stripped = 0;
+  if (owned - qty < reserved) {
+    if (!options || options.force !== true) {
+      return { ok: false, error: "Objet équipé : retire-le et applique les changements avant de le vendre.", equipped: reserved };
     }
+    // Vente forcée : on retire l'objet de partout où il est monté, puis on vend.
+    stripped = stripItemFromStoredFits(u, itemId);
+    reserved = countReservedCopies(u, itemId);
   }
-  if (owned - qty < reserved) return { ok: false, error: "Objet équipé : retire-le et applique les changements avant de le vendre." };
+  if (owned - qty < reserved) return { ok: false, error: "Objet équipé : retire-le et applique les changements avant de le vendre.", equipped: reserved };
 
   const gainEach = Math.floor(price * 0.5);
   const gain = gainEach * qty;
@@ -2598,7 +2595,197 @@ export function sellItem(itemId, qty = 1) {
 
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
 
-  return { ok: true, user: u, gain, gainEach };
+  return { ok: true, user: u, gain, gainEach, stripped };
+}
+
+// ---------------------------
+// ✅ Vente depuis l'inventaire : réservations, retraits forcés, usages
+// ---------------------------
+
+// Nombre d'exemplaires réservés par l'équipement (max par hangar/config,
+// les configs pouvant réutiliser les mêmes copies).
+function countReservedCopies(u, itemId) {
+  const id = String(itemId || "");
+  let reserved = 0;
+  for (const h of u?.hangars || []) {
+    for (const cfg of ["1", "2"]) {
+      const fit = h?.fits?.[cfg] || {};
+      const equipped = [...(fit.lasers || []), ...(fit.gens || []), ...(fit.extras || [])];
+      for (const drone of u?.drones?.items || []) {
+        const eq = getDroneFit(drone, h?.id, cfg)?.equipment;
+        if (Array.isArray(eq)) equipped.push(...eq);
+      }
+      if (u?.pet?.owned === true) {
+        const pet = getPetFit(u.pet, h?.id, cfg) || {};
+        for (const group of ["lasers", "generators", "gears", "protocols"]) {
+          if (Array.isArray(pet[group])) equipped.push(...pet[group]);
+        }
+      }
+      reserved = Math.max(reserved, equipped.filter((entry) => String(entry || "") === id).length);
+    }
+  }
+  return reserved;
+}
+
+function stripIdFromArrayValues(values, id) {
+  let removed = 0;
+  const next = (Array.isArray(values) ? values : []).map((value) => {
+    if (value && String(value) === id) {
+      removed += 1;
+      return null;
+    }
+    return value;
+  });
+  return { next, removed };
+}
+
+// Retire un équipement de tous les fits où il est monté (vaisseaux, drones,
+// P.E.T, configs 1/2, formats legacy inclus). Retourne les copies retirées.
+function stripItemFromStoredFits(u, itemId) {
+  const id = String(itemId || "");
+  if (!u || !id) return 0;
+  let removed = 0;
+  for (const h of u.hangars || []) {
+    for (const cfg of ["1", "2"]) {
+      const fit = h?.fits?.[cfg];
+      if (!fit || typeof fit !== "object") continue;
+      for (const group of ["lasers", "gens", "extras"]) {
+        if (!Array.isArray(fit[group])) continue;
+        const { next, removed: n } = stripIdFromArrayValues(fit[group], id);
+        if (n > 0) {
+          fit[group] = compactFitArray(next, fit[group].length);
+          removed += n;
+        }
+      }
+    }
+  }
+  const fixDroneFit = (fit) => {
+    if (!fit || typeof fit !== "object" || !Array.isArray(fit.equipment)) return;
+    const { next, removed: n } = stripIdFromArrayValues(fit.equipment, id);
+    if (n > 0) {
+      fit.equipment = compactDroneEquipment(next, fit.equipment.length);
+      removed += n;
+    }
+  };
+  for (const drone of u.drones?.items || []) {
+    for (const perHangar of Object.values(drone?.fitsByHangar || {})) {
+      if (!perHangar || typeof perHangar !== "object") continue;
+      fixDroneFit(perHangar["1"]);
+      fixDroneFit(perHangar["2"]);
+    }
+    if (drone?.fits && typeof drone.fits === "object" && !Array.isArray(drone.fits)) {
+      fixDroneFit(drone.fits["1"]);
+      fixDroneFit(drone.fits["2"]);
+    }
+    fixDroneFit(drone?.fit);
+  }
+  const pet = u.pet?.owned === true ? u.pet : null;
+  if (pet) {
+    const fixPetFit = (fit) => {
+      if (!fit || typeof fit !== "object") return;
+      let n = 0;
+      for (const group of ["lasers", "generators", "gears", "protocols"]) {
+        if (!Array.isArray(fit[group])) continue;
+        const r = stripIdFromArrayValues(fit[group], id);
+        if (r.removed > 0) {
+          fit[group] = r.next;
+          n += r.removed;
+        }
+      }
+      if (n > 0) {
+        const compacted = compactPetFit(fit);
+        for (const group of ["lasers", "generators", "gears", "protocols"]) {
+          if (Array.isArray(compacted[group])) fit[group] = compacted[group];
+        }
+        removed += n;
+      }
+    };
+    for (const perHangar of Object.values(pet.fitsByHangar || {})) {
+      if (!perHangar || typeof perHangar !== "object") continue;
+      fixPetFit(perHangar["1"]);
+      fixPetFit(perHangar["2"]);
+    }
+    if (pet.fits && typeof pet.fits === "object" && !Array.isArray(pet.fits)) {
+      fixPetFit(pet.fits["1"]);
+      fixPetFit(pet.fits["2"]);
+    }
+    fixPetFit(pet.fit);
+  }
+  return removed;
+}
+
+// Où un équipement est-il monté ? Pour le dialogue de vente (forcée).
+export function describeItemUsage(itemId) {
+  const u = getCurrentUserFull();
+  const id = String(itemId || "");
+  const places = [];
+  if (!u || !id) return { places, occurrences: 0, reserved: 0 };
+  const countIn = (arr) => (Array.isArray(arr) ? arr.filter((v) => v && String(v) === id).length : 0);
+  let occurrences = 0;
+  for (const h of u.hangars || []) {
+    const cfgs = [];
+    let n = 0;
+    for (const cfg of ["1", "2"]) {
+      const fit = h?.fits?.[cfg] || {};
+      const c = ["lasers", "gens", "extras"].reduce((s, g) => s + countIn(fit[g]), 0);
+      if (c > 0) {
+        cfgs.push(cfg === "2" ? "config 2" : "config 1");
+        n += c;
+      }
+    }
+    if (n > 0) {
+      const shipName = getShipPackById(h?.shipId)?.name || String(h?.shipId || "Vaisseau");
+      places.push(`Vaisseau « ${shipName} » (${cfgs.join(" + ")}) — ${n}×`);
+      occurrences += n;
+    }
+  }
+  const seenFits = new Set();
+  (u.drones?.items || []).forEach((drone, index) => {
+    let n = 0;
+    const scan = (fit) => {
+      if (!fit || typeof fit !== "object" || seenFits.has(fit)) return;
+      seenFits.add(fit);
+      n += countIn(fit.equipment);
+    };
+    for (const perHangar of Object.values(drone?.fitsByHangar || {})) {
+      if (!perHangar || typeof perHangar !== "object") continue;
+      scan(perHangar["1"]);
+      scan(perHangar["2"]);
+    }
+    if (drone?.fits && typeof drone.fits === "object" && !Array.isArray(drone.fits)) {
+      scan(drone.fits["1"]);
+      scan(drone.fits["2"]);
+    }
+    scan(drone?.fit);
+    if (n > 0) {
+      const typeName = DRONE_TYPES[drone?.type]?.name || String(drone?.type || "?");
+      places.push(`Drone ${index + 1} (${typeName}) — ${n}×`);
+      occurrences += n;
+    }
+  });
+  if (u.pet?.owned === true) {
+    let n = 0;
+    const scan = (fit) => {
+      if (!fit || typeof fit !== "object" || seenFits.has(fit)) return;
+      seenFits.add(fit);
+      for (const group of ["lasers", "generators", "gears", "protocols"]) n += countIn(fit[group]);
+    };
+    for (const perHangar of Object.values(u.pet?.fitsByHangar || {})) {
+      if (!perHangar || typeof perHangar !== "object") continue;
+      scan(perHangar["1"]);
+      scan(perHangar["2"]);
+    }
+    if (u.pet?.fits && typeof u.pet.fits === "object" && !Array.isArray(u.pet.fits)) {
+      scan(u.pet.fits["1"]);
+      scan(u.pet.fits["2"]);
+    }
+    scan(u.pet?.fit);
+    if (n > 0) {
+      places.push(`P.E.T — ${n}×`);
+      occurrences += n;
+    }
+  }
+  return { places, occurrences, reserved: countReservedCopies(u, id) };
 }
 
 // ---------------------------
@@ -3455,7 +3642,9 @@ export function buyLogDiskPack() {
   ensurePilotSkills(u);
   u.pilotSkills.disks += LOGDISK_PACK;
   ensureUserShape(u);
-  saveUser(u);
+  // Un achat de disques ne modifie ni le hangar ni l'équipement. Le publier
+  // comme progression évite un recalcul complet du vaisseau dans le moteur.
+  saveUser(u, { source: "progress" });
   return { ok: true, user: u, disks: u.pilotSkills.disks };
 }
 

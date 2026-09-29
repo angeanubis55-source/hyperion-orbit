@@ -151,8 +151,8 @@ try {
           await page.screenshot({ path: join(root, "profile-account-preview.png"), fullPage: false });
           await page.click('#profileOverlay .tabBtn[data-tab="hangars"]');
           await page.screenshot({ path: join(root, "profile-hangars-preview.png"), fullPage: false });
-          await page.click('#profileOverlay .tabBtn[data-tab="inventory"]');
-          await page.waitForSelector("#inventorySections .inventorySlot");
+          await page.click('[data-window-id="tdmWindow"]');
+          await page.waitForSelector("#tdmInventorySections .inventorySlot");
           await page.screenshot({ path: join(root, "profile-inventory-preview.png"), fullPage: false });
         }
         await page.click("#btnShopHub");

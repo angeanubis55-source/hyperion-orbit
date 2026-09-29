@@ -88,6 +88,9 @@
   <button id="btnWikiHub" class="gameDockIcon" data-window-id="wikiWindow" type="button" title="Wiki / Aide" aria-label="Wiki / Aide">
     <span><img src="ASSETS/UI/MENU/help.png" data-menu-icon="help" alt="" draggable="false"></span>
   </button>
+  <button id="btnTdmHub" class="gameDockIcon" data-window-id="tdmWindow" type="button" title="Inventaire" aria-label="Inventaire">
+    <span><img src="ASSETS/UI/MENU/monthly_deluxe.png" data-menu-icon="monthly_deluxe" alt="" draggable="false"></span>
+  </button>
 </div>
   
 
@@ -484,6 +487,51 @@
       <div id="boosterList" class="boosterList"></div>
     </div>
 
+    <div id="tdmWindow" class="panel tdmPanel">
+      <div class="tdmBody">
+        <div class="tdmToolbar">
+          <label class="tdmSearchField">
+            <span>Recherche</span>
+            <input id="tdmInventorySearch" type="search" autocomplete="off" placeholder="Objet, ressource, vaisseau..." />
+          </label>
+        </div>
+        <nav class="tdmTabs" aria-label="Catégories d'inventaire">
+          <button class="tdmTab active" data-tdm-tab="all" type="button">Tout</button>
+          <button class="tdmTab" data-tdm-tab="ammo" type="button">Munitions</button>
+          <button class="tdmTab" data-tdm-tab="equipment" type="button">Équipements</button>
+          <button class="tdmTab" data-tdm-tab="modules" type="button">Modules</button>
+          <button class="tdmTab" data-tdm-tab="ships" type="button">Vaisseaux</button>
+          <button class="tdmTab" data-tdm-tab="drones" type="button">Drones &amp; P.E.T</button>
+          <button class="tdmTab" data-tdm-tab="resources" type="button">Ressources</button>
+          <span class="tdmTabsSep" aria-hidden="true"></span>
+          <button id="tdmSellBtn" class="tdmTab tdmSellBtn" type="button" disabled>Vendre</button>
+        </nav>
+        <div id="tdmInventorySections" class="tdmSections"></div>
+        <div id="tdmInventoryTooltip" class="inventoryTooltip tdmTooltip" role="tooltip"></div>
+        <div id="tdmSellDialog" class="tdmSellDialog" hidden>
+          <div class="tdmSellCard" role="dialog" aria-modal="true" aria-labelledby="tdmSellTitle">
+            <div id="tdmSellTitle" class="tdmSellTitle">Vendre</div>
+            <div id="tdmSellItem" class="tdmSellItem"></div>
+            <div id="tdmSellUsage" class="tdmSellUsage" hidden></div>
+            <label id="tdmSellForceRow" class="tdmSellForce" hidden><input id="tdmSellForce" type="checkbox"><span>Retirer des équipements et forcer la vente</span></label>
+            <div class="tdmSellQtyRow">
+              <button type="button" data-tdm-qty="1">1</button>
+              <button type="button" data-tdm-qty="10">10</button>
+              <button type="button" data-tdm-qty="100">100</button>
+              <button type="button" data-tdm-qty="max">Max</button>
+              <input id="tdmSellQty" type="number" min="1" value="1">
+            </div>
+            <div id="tdmSellTotal" class="tdmSellTotal"></div>
+            <div id="tdmSellError" class="tdmSellError" hidden></div>
+            <div class="tdmSellActions">
+              <button id="tdmSellCancel" type="button">Annuler</button>
+              <button id="tdmSellConfirm" type="button">Confirmer</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="botWindow" class="panel botPanel botWide">
       <div class="botBody">
         <div class="botTopRow">
@@ -786,7 +834,7 @@
             <details class="wikiArticle"><summary>Amis et présence</summary><p>Les demandes d'amis persistent jusqu'à acceptation ou refus. La fenêtre indique la présence et permet de gérer la relation sans modifier le groupe. Amitié et groupe sont deux systèmes distincts : être ami ne partage jamais automatiquement les récompenses.</p></details>
           </section>
           <section class="wikiPage" data-wiki-page="compte">
-            <details class="wikiArticle" open><summary>Profil, inventaire, patch-notes</summary><p>Onglet <b>Général</b> : actualités. <b>Inventaire</b> : tout ton compte avec recherche. <b>Patch-notes</b> : nouveautés des plus récentes aux plus anciennes.</p></details>
+            <details class="wikiArticle" open><summary>Profil, inventaire, patch-notes</summary><p>Onglet <b>Général</b> : actualités. <b>Inventaire</b> : ouvre la fenêtre Inventaire du dock (recherche + catégories). <b>Patch-notes</b> : nouveautés des plus récentes aux plus anciennes.</p></details>
             <details class="wikiArticle"><summary>Firmes et grades</summary><p>Firmes : <b>MMO / EIC / VRU</b>. Changer de firme coûte 1 Md de crédits + 50 % de l'honneur. Les <b>points de grade</b> viennent de l'XP et de l'honneur (XP ÷ 100 000 + honneur ÷ 100). L'onglet NPC &amp; Grades montre ton grade actuel, précédent / suivant et tes destructions par NPC.</p></details>
             <details class="wikiArticle"><summary>Sécurité du compte</summary><p>Pseudo, email, mot de passe et renommage REX se gèrent dans <b>Compte</b>. Déconnexion / redémarrage via l'icône Session du dock.</p></details>
           </section>
@@ -1100,7 +1148,6 @@
       <div class="profileHeaderCard">
         <div class="profileTabs">
           <button class="tabBtn active" data-tab="stats">GÉNÉRAL</button>
-          <button class="tabBtn" data-tab="inventory">INVENTAIRE</button>
           <button class="tabBtn" data-tab="account">COMPTE</button>
           <button class="tabBtn" data-tab="npcs">NPC &amp; GRADES</button>
         </div>
@@ -1259,21 +1306,6 @@
               <button id="btnChangeFaction" class="primary" type="button">Changer de firme</button>
             </section>
           </div>
-        </section>
-
-        <section id="panel_inventory" class="profilePanel">
-          <div class="inventoryToolbar">
-            <div>
-              <div class="inventoryTitle">Inventaire du pilote</div>
-              <div class="inventorySubtitle">Tous les biens et ressources conservés sur ton compte.</div>
-            </div>
-            <label class="inventorySearchField">
-              <span>Rechercher</span>
-              <input id="inventorySearch" type="search" autocomplete="off" placeholder="Objet, ressource, vaisseau..." />
-            </label>
-          </div>
-          <div id="inventorySections" class="inventorySections"></div>
-          <div id="inventoryTooltip" class="inventoryTooltip" role="tooltip"></div>
         </section>
 
       </div>

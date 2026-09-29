@@ -11200,4 +11200,71 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled{
 .questTreeNode.isExterm{ border-style:dashed !important; }
 @media (max-width:700px){ .questOfferLayout{ grid-template-columns:1fr !important; grid-template-rows:minmax(0,1.4fr) minmax(0,1fr) !important; } #questOfferList{ grid-column:1 !important; grid-row:1 !important; border-right:0 !important; border-bottom:1px solid rgba(124,240,255,.16) !important; } #questOfferDetail{ grid-column:1 !important; grid-row:2 !important; } }
 
+/* ===== Fenêtre TDM (miroir inventaire Espace pilote) ===== */
+.tdmPanel{ width:880px !important; min-width:0 !important; max-width:min(880px, calc(100vw - 20px)) !important; }
+.tdmBody{ display:grid !important; gap:8px !important; padding:10px 12px !important; }
+.tdmToolbar{ display:flex !important; align-items:flex-start !important; justify-content:flex-start !important; gap:10px !important; }
+.tdmTitleWrap{ min-width:0 !important; }
+.tdmTitle{ color:#f0fbff !important; font-size:11px !important; font-weight:900 !important; text-transform:uppercase !important; letter-spacing:.7px !important; }
+.tdmSubtitle{ margin-top:4px !important; color:rgba(204,228,241,.58) !important; font-size:10px !important; }
+.tdmSearchField{ width:min(300px, 70%) !important; display:flex !important; align-items:center !important; gap:8px !important; }
+.tdmSearchField > span{ color:rgba(164,202,221,.72) !important; font-size:9px !important; font-weight:900 !important; text-transform:uppercase !important; letter-spacing:.7px !important; }
+.tdmSearchField input{ flex:1 !important; min-width:0 !important; padding:6px 8px !important; border:1px solid rgba(124,240,255,.22) !important; border-radius:6px !important; color:#eaffff !important; background:rgba(2,12,20,.7) !important; font-size:11px !important; outline:0 !important; }
+.tdmSearchField input:focus{ border-color:rgba(0,217,255,.62) !important; box-shadow:0 0 0 2px rgba(0,217,255,.08) !important; }
+.tdmTabs{ display:flex !important; flex-wrap:wrap !important; justify-content:center !important; gap:8px !important; padding:10px 4px !important; border-top:1px solid rgba(124,240,255,.16) !important; border-bottom:1px solid rgba(124,240,255,.16) !important; }
+.tdmTab{ padding:4px 16px !important; border:1px solid rgba(124,240,255,.22) !important; border-radius:8px !important; color:rgba(204,228,241,.75) !important; background:rgba(2,12,20,.6) !important; font-size:12px !important; font-weight:800 !important; cursor:pointer !important; }
+.tdmPager{ display:flex !important; align-items:center !important; justify-content:space-between !important; gap:12px !important; padding:0 2px !important; color:rgba(204,228,241,.7) !important; font-size:10px !important; font-weight:700 !important; }
+.tdmPager button{ padding:2px 10px !important; border:1px solid rgba(124,240,255,.22) !important; border-radius:6px !important; color:#eaffff !important; background:rgba(2,12,20,.6) !important; font-size:10px !important; font-weight:800 !important; cursor:pointer !important; }
+.tdmPager button:hover:not(:disabled){ border-color:rgba(124,240,255,.55) !important; }
+.tdmPager button:disabled{ opacity:.4 !important; cursor:default !important; }
+.tdmTab:hover{ border-color:rgba(124,240,255,.55) !important; color:#eaffff !important; }
+.tdmTab.active{ border-color:#69e9ff !important; color:#effcff !important; background:#0b4a62 !important; }
+#tdmWindow .tdmSections{ min-height:120px !important; max-height:min(480px, calc(100vh - 260px)) !important; padding:4px !important; display:grid !important; grid-template-columns:repeat(auto-fill, 72px) !important; grid-auto-rows:72px !important; align-content:start !important; justify-content:center !important; gap:8px !important; overflow-y:auto !important; border:0 !important; border-radius:0 !important; background:transparent !important; }
+#tdmWindow .inventorySlot{ position:relative !important; width:72px !important; height:72px !important; box-sizing:border-box !important; display:grid !important; place-items:center !important; overflow:hidden !important; outline:0 !important; border:1px solid rgba(124,240,255,.16) !important; border-radius:9px !important; background:radial-gradient(circle at 50% 42%, rgba(0,217,255,.12), rgba(2,12,20,.84) 72%) !important; box-shadow:inset 0 0 0 1px rgba(255,255,255,.025) !important; }
+#tdmWindow .inventorySlot:hover, #tdmWindow .inventorySlot:focus-visible{ border-color:rgba(124,240,255,.65) !important; background:radial-gradient(circle at 50% 42%, rgba(0,217,255,.22), rgba(2,12,20,.84) 74%) !important; box-shadow:0 0 14px rgba(0,217,255,.13), inset 0 0 0 1px rgba(255,255,255,.05) !important; }
+#tdmWindow .inventorySlot img{ width:84% !important; height:84% !important; object-fit:contain !important; pointer-events:none !important; }
+#tdmWindow .inventorySlotQuantity{ position:absolute !important; right:5px !important; bottom:4px !important; max-width:calc(100% - 10px) !important; overflow:hidden !important; color:#ffd56a !important; font-size:10px !important; font-weight:1000 !important; line-height:1 !important; text-overflow:ellipsis !important; text-shadow:0 1px 3px #000, 0 0 5px #000 !important; white-space:nowrap !important; }
+#tdmWindow .inventorySlot{ cursor:pointer !important; }
+#tdmWindow .inventorySlot.rarity-common{ border-color:#a9bcc7 !important; background:linear-gradient(135deg,rgba(169,188,199,.38),rgba(169,188,199,.15)) !important; }
+#tdmWindow .inventorySlot.rarity-rare{ border-color:#45bfff !important; background:linear-gradient(135deg,rgba(69,191,255,.38),rgba(69,191,255,.15)) !important; }
+#tdmWindow .inventorySlot.rarity-epic{ border-color:#ba72ff !important; background:linear-gradient(135deg,rgba(186,114,255,.38),rgba(186,114,255,.15)) !important; }
+#tdmWindow .inventorySlot.rarity-legendary{ border-color:#ffd15c !important; background:linear-gradient(135deg,rgba(255,209,92,.38),rgba(255,209,92,.15)) !important; }
+#tdmWindow .inventorySlot.selected{ border-color:#69e9ff !important; box-shadow:0 0 14px rgba(0,217,255,.25), inset 0 0 0 1px rgba(105,233,255,.35) !important; }
+#tdmWindow .inventorySlot.selected::after{ content:"" !important; position:absolute !important; top:4px !important; right:4px !important; width:6px !important; height:6px !important; border-radius:50% !important; background:#69e9ff !important; box-shadow:0 0 7px #69e9ff !important; }
+.tdmTabsSep{ width:1px !important; align-self:stretch !important; margin:2px 4px !important; background:rgba(124,240,255,.25) !important; }
+.tdmSellBtn{ border-color:rgba(255,213,106,.5) !important; color:#ffd56a !important; }
+.tdmSellBtn:hover:not(:disabled){ border-color:#ffd56a !important; color:#ffe9ad !important; background:rgba(255,213,106,.12) !important; }
+.tdmSellBtn:disabled{ opacity:.4 !important; cursor:default !important; }
+/* Dialogue de vente : quantité + confirmation (+ forçage si équipé). */
+.tdmSellDialog{ position:fixed !important; inset:0 !important; z-index:999998 !important; display:grid !important; place-items:center !important; background:rgba(0,0,0,.55) !important; }
+.tdmSellDialog[hidden]{ display:none !important; }
+.tdmSellCard{ width:min(360px, calc(100vw - 40px)) !important; display:grid !important; gap:10px !important; padding:14px !important; border:1px solid rgba(124,240,255,.3) !important; border-radius:10px !important; background:rgba(3,14,23,.98) !important; box-shadow:0 12px 28px rgba(0,0,0,.6) !important; }
+.tdmSellTitle{ color:#f0fbff !important; font-size:12px !important; font-weight:900 !important; text-transform:uppercase !important; letter-spacing:.7px !important; }
+.tdmSellItem{ color:#eaffff !important; font-size:11px !important; font-weight:800 !important; }
+.tdmSellUsage{ display:grid !important; gap:4px !important; padding:8px !important; border:1px solid rgba(255,180,80,.45) !important; border-radius:8px !important; background:rgba(80,40,5,.35) !important; font-size:10px !important; }
+.tdmSellUsage[hidden]{ display:none !important; }
+.tdmSellWarnTitle{ color:#ffcf7a !important; font-weight:900 !important; }
+.tdmSellWarnRow{ color:rgba(255,230,190,.85) !important; font-weight:700 !important; }
+.tdmSellForce{ display:flex !important; align-items:center !important; gap:8px !important; color:#ffcf7a !important; font-size:10px !important; font-weight:800 !important; cursor:pointer !important; }
+.tdmSellForce[hidden]{ display:none !important; }
+.tdmSellForce input{ width:15px !important; height:15px !important; accent-color:#ffd56a !important; }
+.tdmSellQtyRow{ display:flex !important; align-items:center !important; gap:6px !important; }
+.tdmSellQtyRow button{ padding:4px 10px !important; border:1px solid rgba(124,240,255,.22) !important; border-radius:6px !important; color:#eaffff !important; background:rgba(2,12,20,.6) !important; font-size:10px !important; font-weight:800 !important; cursor:pointer !important; }
+.tdmSellQtyRow button:hover{ border-color:rgba(124,240,255,.55) !important; }
+.tdmSellQtyRow input{ flex:1 !important; min-width:0 !important; padding:5px 8px !important; border:1px solid rgba(124,240,255,.22) !important; border-radius:6px !important; color:#eaffff !important; background:rgba(2,12,20,.7) !important; font-size:11px !important; outline:0 !important; }
+.tdmSellTotal{ color:#ffd56a !important; font-size:11px !important; font-weight:900 !important; }
+.tdmSellError{ color:#ff8f9d !important; font-size:10px !important; font-weight:800 !important; }
+.tdmSellError[hidden]{ display:none !important; }
+.tdmSellActions{ display:flex !important; justify-content:flex-end !important; gap:8px !important; }
+.tdmSellActions button{ padding:6px 14px !important; border:1px solid rgba(124,240,255,.22) !important; border-radius:6px !important; font-size:11px !important; font-weight:800 !important; cursor:pointer !important; }
+#tdmSellCancel{ color:rgba(204,228,241,.8) !important; background:rgba(2,12,20,.6) !important; }
+#tdmSellConfirm{ border-color:#69e9ff !important; color:#06222e !important; background:#69e9ff !important; }
+#tdmWindow .inventoryEmpty{ grid-column:1 / -1 !important; padding:18px 12px !important; color:rgba(177,207,224,.48) !important; font-size:10px !important; text-align:center !important; }
+#tdmWindow .tdmTooltip{ position:fixed !important; z-index:999999 !important; width:max-content !important; max-width:310px !important; padding:10px 12px !important; display:block !important; opacity:0 !important; visibility:hidden !important; pointer-events:none !important; border:1px solid rgba(124,240,255,.36) !important; border-radius:8px !important; color:rgba(221,241,250,.78) !important; background:rgba(3,14,23,.97) !important; box-shadow:0 12px 28px rgba(0,0,0,.58), 0 0 16px rgba(0,217,255,.10) !important; font:700 10px/1.55 system-ui !important; white-space:pre-line !important; transition:opacity .12s ease !important; }
+#tdmWindow .tdmTooltip.visible{ opacity:1 !important; visibility:visible !important; }
+#tdmWindow .tdmTooltip .ttModName{ color:#eaffff !important; font-size:14px !important; font-weight:900 !important; margin-bottom:2px !important; }
+#tdmWindow .tdmTooltip .ttModLine{ color:rgba(221,241,250,.78) !important; font-size:12px !important; font-weight:700 !important; }
+#tdmWindow .tdmTooltip .ttModPos{ color:#00ff88 !important; font-size:12px !important; font-weight:800 !important; }
+#tdmWindow .tdmTooltip .ttModNeg{ color:#ff5566 !important; font-size:12px !important; font-weight:800 !important; }
+
 

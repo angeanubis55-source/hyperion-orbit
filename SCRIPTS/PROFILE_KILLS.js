@@ -79,7 +79,7 @@ try {
   for (const panel of ['closed','inventory']) {
     await page.evaluate(panel=>{
       if(panel==='closed')window.HyperionProfile.close({immediate:true});
-      else {window.HyperionProfile.open();document.querySelector('[data-tab="inventory"]').click();}
+      else {window.HyperionProfile.open();document.querySelector('[data-window-id="tdmWindow"]').click();}
     },panel);
     await page.waitForTimeout(1500);
     for(const type of ['idle','npc_StreuneR8','npc_Cubikon']) {

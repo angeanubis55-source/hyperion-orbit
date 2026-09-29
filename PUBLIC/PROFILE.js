@@ -129,6 +129,7 @@ const btnFullscreen = $("btnFullscreen");
 let user = null;
 let storedTab = localStorage.getItem("orbit_profile_tab") || "stats";
 if (storedTab === "patchnotes") storedTab = "stats";
+if (storedTab === "inventory") storedTab = "stats"; // onglet déplacé dans la fenêtre Inventaire
 if (storedTab === "shop" && document.getElementById("shopWindowPanel")) storedTab = "stats";
 if (storedTab === "hangars" && document.getElementById("hangarWindowPanel")) storedTab = "stats";
 let tab = storedTab;
@@ -5901,7 +5902,7 @@ function renderActiveProfilePanel({ mutation = false } = {}) {
   if (tab === "account") renderAccount(user);
   if (tab === "npcs") renderNpcStats(user);
   if (tab === "hangars" && !document.getElementById("hangarWindowPanel")) renderHangars(user);
-  if (tab === "inventory") renderInventory(user);
+  // Onglet inventaire supprimé de l'Espace pilote : voir la fenêtre Inventaire (UI/UI_TDM.js).
   // Page standalone (PROFILE.html) : la boutique reste un onglet du profil.
   // En jeu, la boutique a sa propre fenêtre et ne passe plus par ici.
   if (tab === "shop" && !document.getElementById("shopWindowPanel") && !(mutation && shopTab === "extras")) renderShop(user);
@@ -5935,3 +5936,15 @@ wireShopTabsOnce();
 wireHangarTabsOnce();
 wireAccountSettingsOnce();
 boot();
+
+// Exports pour la fenêtre Inventaire en jeu (UI/UI_TDM.js) : elle rend le
+// même inventaire de façon indépendante (mêmes sections, icônes, tooltips).
+export {
+  buildInventorySections,
+  inventoryItemIcon,
+  inventoryTooltipText,
+  inventoryModuleTooltipHtml,
+  inventoryEntryRarity,
+  inventoryQuantityLabel,
+  htmlForDataAttr,
+};

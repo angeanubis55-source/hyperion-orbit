@@ -151,6 +151,7 @@ import { initFriendsUI } from "../../UI/UI_FRIENDS.js";
 import { initClanUI } from "../../UI/UI_CLAN.js";
 import { initRankingsUI } from "../../UI/UI_RANKINGS.js";
 import { initPilotSkillsUI, renderPilotSkillsWindow, tickPilotSkillsDisplay } from "../../UI/UI_PILOT_SKILLS.js";
+import { initTdmUI } from "../../UI/UI_TDM.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
 import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
 import { checkMapAccess } from "./MAP_ACCESS.js";
@@ -8154,6 +8155,7 @@ function registerHudWindows() {
   reg("boosterWindow", "Boosters", menuIcon("booster"), false);
   reg("botWindow", "BOT", menuIcon("payload_escort"), false);
   reg("wikiWindow", "Wiki / Aide", menuIcon("help"), false);
+  reg("tdmWindow", "Inventaire", menuIcon("monthly_deluxe"), false);
   reg("gygerimStatus", "État du boss", menuIcon("worldBoss"), true, { minimizable: false });
 wireSettingsWindow();
 wireWikiWindow();
@@ -8162,6 +8164,7 @@ initGroupUI();
 initFriendsUI();
 initClanUI();
 initRankingsUI();
+initTdmUI();
 initSkylabUI({
   getUser: () => account.user,
   afterAction: () => {
@@ -8188,13 +8191,19 @@ initAuctionUI({
 });
 initPilotSkillsUI({
   getUser: () => account.user,
-  afterAction: () => {
+  afterAction: (action = "skills") => {
     syncPlayerFromAccount();
+    // Acheter des disques ne change aucun bonus : mise à jour légère du HUD,
+    // sans sauvegarde et recalcul complets de l'équipement en cascade.
+    if (action === "disks") {
+      drawUI();
+      window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+      return;
+    }
     markProgressDirty();
     saveProgressNow();
     window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
     try { applyCurrentConfigStats(true); } catch {}
-    try { renderPilotSkillsWindow(); } catch {}
   },
   toast: (text, dur = 2) => showToast(text, dur),
   notify: (text, dur = 2.5, type = "info") => showNotification(text, dur, type),
@@ -34982,6 +34991,7 @@ window.__ORBIT_ENGINE__ = {
   activateHangarAtSavedLocation,
   showToast,
   showNotification,
+  syncPlayerFromAccount,
   getEquipmentState() {
     const hangar = getActiveHangarFromUser(account.user);
     const pet = account.user?.pet;

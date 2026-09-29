@@ -207,7 +207,7 @@ function onPilotClick(event) {
       ctx?.toast?.(res?.error || "Impossible.", 2.2);
       return;
     }
-    ctx?.afterAction?.();
+    ctx?.afterAction?.("disks");
     try { renderPilotSkillsWindow(); } catch {}
     ctx?.toast?.(`+${LOGDISK_PACK} disques de log.`, 1.8);
     return;
