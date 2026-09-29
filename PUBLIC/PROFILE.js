@@ -1692,11 +1692,14 @@ function renderHangarsMeasured(u) {
         ${escapeHtml(hangarPackName)}
       </h3>
       <div class="tileActions">
-        <label class="hangarSwipe" title="${isActive ? 'Hangar actif' : 'Activer ce hangar'}">
-          <input type="checkbox" data-act="${h.id}" ${isActive ? 'checked disabled' : ''} aria-label="Activer ce hangar">
-          <span class="swipeTrack"></span>
-        </label>
         <button class="secondary" data-fit="${h.id}">Équiper</button>
+        ${isActive ? '' : `
+          <button class="secondary" data-travel="${h.id}">Activer</button>
+          <label class="hangarSwipe" title="Échanger avec ce hangar">
+            <input type="checkbox" data-act="${h.id}" aria-label="Échanger avec ce hangar">
+            <span class="swipeTrack"></span>
+          </label>
+        `}
       </div>
     `;
 
@@ -1707,31 +1710,39 @@ function renderHangarsMeasured(u) {
     };
     el.addEventListener("click", selectHangar);
 
-   el.querySelector(`[data-act="${h.id}"]`).addEventListener("click", () => {
+   const swipeInput = el.querySelector(`[data-act="${h.id}"]`);
+   swipeInput?.addEventListener("click", () => {
   if (isActive) return;
+
+  // Une checkbox change visuellement avant que nos règles métier soient
+  // vérifiées. Toute activation refusée doit donc remettre le swipe sur OFF.
+  const rejectSwipe = (message) => {
+    swipeInput.checked = false;
+    if (message) setMsg(message, false);
+  };
 
   // ✅ si le jeu (index.html) est ouvert, on bloque le changement de hangar
 const isIntegratedInGame = !!document.getElementById("profileOverlay");
 
 if (!isIntegratedInGame && isGameOpen()) {
-  return setMsg(
+  return rejectSwipe(
     "⚠️ Le jeu est ouvert. Ferme-le d’abord avant de changer de hangar.",
-    false
   );
 }
 
   const access = getHangarActionAccess("activate");
-  if (!access.ok) return setMsg(access.error, false);
+  if (!access.ok) return rejectSwipe(access.error);
 
-  // ✅ En jeu : fermeture de la fenêtre + 3 s d'animation portail sur le
-  // vaisseau, puis échange (la position de l'ancien est sauvegardée).
+  // ✅ En jeu : 1,5 s sur l'ancienne coque, échange sous le portail, puis
+  // encore 1,5 s sur la nouvelle coque (visible aussi en multijoueur).
   const eng = window.__ORBIT_ENGINE__;
   if (isIntegratedInGame && eng && typeof eng.requestHangarSwap === "function") {
-    try { closeHangarOverlay({ immediate: true }); } catch {}
+    // Même chemin que le bouton « réduire » : ferme aussi l'état doré du dock.
+    try { closeHangarOverlay(); } catch {}
     let startedFx = false;
     try { startedFx = eng.requestHangarSwap(h.id) === true; } catch { startedFx = false; }
     if (startedFx) {
-      setMsg("🌀 Échange en cours…", true);
+      setMsg("Échange en cours…", true);
       window.setTimeout(() => {
         try {
           user = getCurrentUserFull();
@@ -1744,11 +1755,13 @@ if (!isIntegratedInGame && isGameOpen()) {
       }, 3300);
       return;
     }
-    // Échec du démarrage (mort, échange en cours…) : repli synchrone.
+    // Échec tardif (mort, échange déjà en cours, état devenu invalide) :
+    // ne jamais contourner le verrou par une activation synchrone.
+    return rejectSwipe();
   }
 
   const out = setActiveHangar(h.id);
-  if (!out.ok) return setMsg("❌ " + (out.error || "Impossible d'activer le hangar."), false);
+  if (!out.ok) return rejectSwipe("❌ " + (out.error || "Impossible d'activer le hangar."));
 
   window.__ORBIT_ENGINE__?.markHangarChanged?.();
 
@@ -1762,6 +1775,32 @@ if (!isIntegratedInGame && isGameOpen()) {
     window.__ORBIT_ENGINE__?.applyHangarDesignLive?.();
   }
 });
+
+     el.querySelector(`[data-travel="${h.id}"]`)?.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      if (isActive) return;
+      const access = getHangarActionAccess("activate");
+      if (!access.ok) return setMsg(access.error, false);
+      const engine = window.__ORBIT_ENGINE__;
+      if (!engine || typeof engine.activateHangarAtSavedLocation !== "function") {
+        return setMsg("Le moteur du jeu n'est pas encore prêt.", false);
+      }
+      // Même chemin que le bouton « réduire » : ferme aussi l'état doré du dock.
+      try { closeHangarOverlay(); } catch {}
+      setMsg("Activation en cours…", true);
+      const out = await engine.activateHangarAtSavedLocation(h.id);
+      if (!out?.ok) {
+        setMsg(out?.error || "Impossible d'activer ce hangar.", false);
+        try { openHangarOverlay(); } catch {}
+        return;
+      }
+      user = getCurrentUserFull();
+      setMsg(`Hangar activé sur ${String(out.map || "").toUpperCase()}.`, true);
+      renderHeader(user);
+      renderStats(user);
+      renderHangars(user);
+      refreshShopIfVisible();
+    });
 
 
      el.querySelector(`[data-fit="${h.id}"]`).addEventListener("click", () => {

@@ -23267,7 +23267,7 @@ function npcEffectiveSpeed(e, fallback = 320) {
 }
 
 function hurtPlayer(amount, source = null) {
-  if (player.dead || player.iFrames > 0 || (player.invincibleT || 0) > 0) return;
+  if (player.dead || hangarSwapFx || player.iFrames > 0 || (player.invincibleT || 0) > 0) return;
 
   // Évasion (arbre pilote + modules) : probabilité d'esquiver totalement le coup (miss bleu).
   try {
@@ -28252,6 +28252,14 @@ function drawNetplayRemotes(ox, oy) {
       ctx.stroke();
       ctx.rotate(-(Number(r.rangle ?? r.angle) || 0));
     }
+    try {
+      const remaining = Number(r.hswap);
+      if (remaining > 0 && remaining <= HANGAR_SWAP_DURATION) {
+        const elapsed = HANGAR_SWAP_DURATION - remaining;
+        drawHangarSwapShield(elapsed);
+        drawHangarSwapImage(elapsed, HANGAR_SWAP_DURATION);
+      }
+    } catch {}
     try { drawRocketDebuffEffect(r); } catch {}
     // ISH distant : meme animation de bouclier instantane que localement.
     try {
@@ -31314,7 +31322,11 @@ if (startHintT > 0) {
   refreshHoldMoveTarget();
   let mx = 0, my = 0;
 
-if (moveTarget.active && !player.dead) {
+if (hangarSwapFx) {
+  moveTarget.active = false;
+  player.vx = 0;
+  player.vy = 0;
+} else if (moveTarget.active && !player.dead) {
   const dx = moveTarget.x - player.x;
   const dy = moveTarget.y - player.y;
   const d = Math.hypot(dx, dy);
@@ -31331,7 +31343,7 @@ if (moveTarget.active && !player.dead) {
   }
 }
 
-  updatePlayerVelocity(player, { x: mx, y: my }, dt);
+  if (!hangarSwapFx) updatePlayerVelocity(player, { x: mx, y: my }, dt);
 
   // Fortification (officiel) : vitesse plafonnée à 200 pendant l'effet.
   if ((player.fortifyT || 0) > 0) {
@@ -31342,7 +31354,7 @@ if (moveTarget.active && !player.dead) {
     }
   }
 
-  if (!player.dead) {
+  if (!player.dead && !hangarSwapFx) {
     advancePlayerToTarget(player, moveTarget, dt);
 
     if (isZoneMap && !playerIsOutsideWorld()) {
@@ -33395,7 +33407,8 @@ if (GAME_SETTINGS.textures) {
 
     // Comme dans le client officiel, la flamme recouvre sa sortie de réacteur.
     drawShipEngineFx();
-    // Échange de hangar : animation portail sur le vaisseau.
+    // Échange de hangar : coque -> ISH -> portail.
+    try { drawHangarSwapShield(hangarSwapFx?.t); } catch {}
     try { drawHangarSwapFx(); } catch {}
 
 // Pod de réparation : complétion visuelle des coques Aegis, par-dessus.
@@ -34458,6 +34471,7 @@ function frame(t) {
         x: player.x, y: player.y, angle: player.angle,
         vx: player.vx, vy: player.vy,
         shipId: (typeof ACTIVE_SHIP !== "undefined" && ACTIVE_SHIP?.id) || "",
+        hswap: hangarSwapFx ? Math.max(0.001, hangarSwapFx.dur - hangarSwapFx.t) : 0,
         pseudo: account?.user?.pseudo || "Pilote",
         dead: player.dead === true,
         hpPct: player.hpMax > 0 ? player.hp / player.hpMax : 1,
@@ -34746,11 +34760,13 @@ function applyHangarDesignLive() {
 }
 
 // ============================================================
-// Échange de hangar animé (swipe) : 3 s d'animation portail sur le
-// vaisseau puis bascule. La position de l'ancien vaisseau est
+// Échange de hangar animé (swipe) : 1,5 s sur l'ancienne coque, bascule,
+// puis 1,5 s sur la nouvelle. La position de l'ancien vaisseau est
 // sauvegardée dans son hangar avant l'animation.
 // ============================================================
-let hangarSwapFx = null; // { t, dur, hangarId }
+const HANGAR_SWAP_HALF_DURATION = 1.5;
+const HANGAR_SWAP_DURATION = HANGAR_SWAP_HALF_DURATION * 2;
+let hangarSwapFx = null; // { t, dur, switchAt, switched, hangarId }
 
 function requestHangarSwap(hangarId) {
   if (hangarSwapFx) { showToast("Échange en cours…", 1.2); return false; }
@@ -34771,48 +34787,164 @@ function requestHangarSwap(hangarId) {
     const frames = Math.max(1, Number(fx.frames || 1));
     for (let i = 0; i < frames; i++) loadImage(getPortalFrameSrc(fx, i));
   } catch {}
-  hangarSwapFx = { t: 0, dur: 3, hangarId: target.id };
-  try { player.iFrames = Math.max(Number(player.iFrames) || 0, 3.3); } catch {}
+  try { ensureInstaShieldLoaded(); } catch {}
+  try { moveTarget.active = false; player.vx = 0; player.vy = 0; } catch {}
+  hangarSwapFx = {
+    t: 0,
+    dur: HANGAR_SWAP_DURATION,
+    switchAt: HANGAR_SWAP_HALF_DURATION,
+    switched: false,
+    hangarId: target.id,
+  };
+  try { player.invincibleT = Math.max(Number(player.invincibleT) || 0, HANGAR_SWAP_DURATION); } catch {}
+  try { player.iFrames = Math.max(Number(player.iFrames) || 0, HANGAR_SWAP_DURATION + 0.3); } catch {}
   try { SFX.play("swReady"); } catch {}
   try { setTimeout(() => { try { SFX.play("swJump"); } catch {} }, 500); } catch {}
   return true;
 }
 
-function tickHangarSwap(dt) {
-  if (!hangarSwapFx) return;
-  hangarSwapFx.t += Math.max(0, Number(dt) || 0);
-  if (hangarSwapFx.t < hangarSwapFx.dur) return;
-  const id = hangarSwapFx.hangarId;
-  hangarSwapFx = null;
-  let out = null;
-  try { out = setActiveHangar(id); } catch (error) { out = { ok: false, error: String(error?.message || error) }; }
-  if (!out || !out.ok) {
-    try { SFX.stop("swJump"); } catch {}
-    showToast(`Échange impossible (${out?.error || "erreur"})`, 2);
-    return;
+async function activateHangarAtSavedLocation(hangarId) {
+  if (hangarSwapFx) return { ok: false, error: "Échange déjà en cours." };
+  if (!started || player.dead) return { ok: false, error: "Le vaisseau n'est pas disponible." };
+  const access = getHangarAccess();
+  if (!access.canActivate) return { ok: false, error: access.activationError };
+
+  const u = account.user || getCurrentUserFull();
+  const current = getActiveHangarFromUser(u);
+  const target = (u?.hangars || []).find((entry) => String(entry?.id) === String(hangarId));
+  if (!current || !target) return { ok: false, error: "Hangar introuvable." };
+  if (String(current.id) === String(target.id)) return { ok: false, error: "Ce hangar est déjà actif." };
+
+  const destination = getHangarStateById(target.id);
+  const destinationMap = String(destination?.map || "").toLowerCase();
+  if (!destinationMap) return { ok: false, error: "Ce hangar n'a encore aucune position enregistrée." };
+
+  // Valide et précharge la destination avant de modifier le hangar actif.
+  if (destinationMap !== String(window.__CURRENT_MAP_ID__ || "").toLowerCase()) {
+    try { await window.__PRELOAD_MAP__?.(destinationMap); }
+    catch { return { ok: false, error: `La carte ${destinationMap.toUpperCase()} est indisponible.` }; }
   }
-  // Le pipeline existant bascule le vaisseau (sprites, stats, verrous),
-  // resauvegarde l'ancien hangar et nettoie les cooldowns.
-  try { markHangarChanged(); } catch {}
-  try { SFX.stop("swJump"); SFX.play("swDone"); } catch {}
+
+  const oldMap = String(window.__CURRENT_MAP_ID__ || "1-1");
+  saveHangarStateById(current.id, player.x, player.y, oldMap, savedHpPct(), savedShPct());
   try {
-    const nm = getActiveHangarFromUser(account.user)?.shipId || "";
-    showNotification(`Vaisseau échangé : ${nm}`, 2.5, "info");
+    const fx = DEFAULT_PORTAL_JUMP_FX;
+    for (let i = 0; i < Math.max(1, Number(fx.frames || 1)); i++) loadImage(getPortalFrameSrc(fx, i));
+    ensureInstaShieldLoaded();
   } catch {}
+  moveTarget.active = false;
+  player.vx = 0;
+  player.vy = 0;
+  try { player.invincibleT = Math.max(Number(player.invincibleT) || 0, HANGAR_SWAP_DURATION); } catch {}
+  try { player.iFrames = Math.max(Number(player.iFrames) || 0, HANGAR_SWAP_DURATION + 0.3); } catch {}
+  try { SFX.play("swReady"); setTimeout(() => { try { SFX.play("swJump"); } catch {} }, 500); } catch {}
+
+  return await new Promise((resolve) => {
+    hangarSwapFx = {
+      t: 0,
+      dur: HANGAR_SWAP_DURATION,
+      switchAt: HANGAR_SWAP_HALF_DURATION,
+      switched: false,
+      transitioning: false,
+      mode: "travel",
+      hangarId: target.id,
+      destination,
+      destinationMap,
+      oldMap: oldMap.toLowerCase(),
+      resolve,
+    };
+  });
 }
 
-function drawHangarSwapFx() {
+async function completeHangarTravelMidpoint(fx) {
+  let result = null;
+  try { result = setActiveHangar(fx.hangarId); }
+  catch (error) { result = { ok: false, error: String(error?.message || error) }; }
+  if (!result?.ok) throw new Error(result?.error || "Activation impossible.");
+  if (fx.destinationMap !== fx.oldMap) await window.__SWITCH_MAP__(fx.destinationMap, null);
+
+  const px = Number(fx.destination?.pos?.x);
+  const py = Number(fx.destination?.pos?.y);
+  if (Number.isFinite(px) && Number.isFinite(py)) {
+    player.x = clamp(px, player.r, WORLD.w - player.r);
+    player.y = clamp(py, player.r, WORLD.h - player.r);
+  }
+  moveTarget.active = false;
+  player.vx = 0;
+  player.vy = 0;
+  camera.x = player.x;
+  camera.y = player.y;
+  if (Number.isFinite(Number(fx.destination?.hpPct))) player.hp = Math.max(1, Math.floor(player.hpMax * clamp(Number(fx.destination.hpPct), 0, 1)));
+  if (Number.isFinite(Number(fx.destination?.shPct))) player.sh = Math.max(0, Math.floor(player.shMax * clamp(Number(fx.destination.shPct), 0, 1)));
+  saveHangarStateById(fx.hangarId, player.x, player.y, fx.destinationMap, savedHpPct(), savedShPct());
+  markHangarChanged();
+  drawUI();
+}
+
+function tickHangarSwap(dt) {
   if (!hangarSwapFx) return;
+  if (hangarSwapFx.transitioning) {
+    player.vx = 0;
+    player.vy = 0;
+    moveTarget.active = false;
+    return;
+  }
+  hangarSwapFx.t += Math.max(0, Number(dt) || 0);
+  if (!hangarSwapFx.switched && hangarSwapFx.t >= hangarSwapFx.switchAt) {
+    hangarSwapFx.switched = true;
+    if (hangarSwapFx.mode === "travel") {
+      const fx = hangarSwapFx;
+      fx.t = fx.switchAt;
+      fx.transitioning = true;
+      completeHangarTravelMidpoint(fx)
+        .then(() => {
+          if (hangarSwapFx === fx) fx.transitioning = false;
+        })
+        .catch((error) => {
+          if (hangarSwapFx !== fx) return;
+          hangarSwapFx = null;
+          try { SFX.stop("swJump"); } catch {}
+          const failure = { ok: false, error: String(error?.message || error) };
+          try { fx.resolve?.(failure); } catch {}
+          showToast(failure.error, 2);
+        });
+      return;
+    }
+    const id = hangarSwapFx.hangarId;
+    let out = null;
+    try { out = setActiveHangar(id); } catch (error) { out = { ok: false, error: String(error?.message || error) }; }
+    if (!out || !out.ok) {
+      hangarSwapFx = null;
+      try { SFX.stop("swJump"); } catch {}
+      showToast(`Échange impossible (${out?.error || "erreur"})`, 2);
+      return;
+    }
+    try { markHangarChanged(); } catch {}
+    try {
+      const nm = getActiveHangarFromUser(account.user)?.shipId || "";
+      showNotification(`Vaisseau échangé : ${nm}`, 2.5, "info");
+    } catch {}
+  }
+  if (hangarSwapFx.t < hangarSwapFx.dur) return;
+  const finishedFx = hangarSwapFx;
+  hangarSwapFx = null;
+  try { SFX.stop("swJump"); SFX.play("swDone"); } catch {}
+  if (finishedFx.mode === "travel") {
+    try { finishedFx.resolve?.({ ok: true, map: finishedFx.destinationMap, x: player.x, y: player.y }); } catch {}
+  }
+}
+
+function drawHangarSwapImage(elapsed, duration = HANGAR_SWAP_DURATION) {
   const fx = DEFAULT_PORTAL_JUMP_FX;
   const frames = Math.max(1, Number(fx.frames || 1));
   const fps = Math.max(1, Number(fx.fps || 24));
-  const idx = Math.min(frames - 1, Math.floor(hangarSwapFx.t * fps) % frames);
+  const idx = Math.min(frames - 1, Math.floor(elapsed * fps) % frames);
   const src = getPortalFrameSrc(fx, idx);
   const img = src ? getCachedImage(src) : null;
   if (!img) { try { if (src) loadImage(src); } catch {} return; }
   if (!isImgReady(img)) return;
-  const p = Math.min(1, hangarSwapFx.t / Math.max(0.001, hangarSwapFx.dur));
-  const fade = p < 0.15 ? p / 0.15 : (p > 0.8 ? Math.max(0, (1 - p) / 0.2) : 1);
+  const p = Math.min(1, elapsed / Math.max(0.001, duration));
+  const fade = p < 0.09 ? p / 0.09 : (p > 0.9 ? Math.max(0, (1 - p) / 0.1) : 1);
   const scale = 1 + p * 0.3;
   const w = (Number(fx.w) || 320) * scale, h = (Number(fx.h) || 320) * scale;
   ctx.save();
@@ -34821,12 +34953,33 @@ function drawHangarSwapFx() {
   ctx.restore();
 }
 
+function drawHangarSwapShield(elapsed) {
+  if (!Number.isFinite(Number(elapsed)) || elapsed < 0) return;
+  if (!instaShieldReady || !instaShieldImgs?.length) return;
+  const progress = clamp(Number(elapsed) / HANGAR_SWAP_DURATION, 0, 0.999);
+  const idx = Math.min(instaShieldImgs.length - 1, Math.floor(progress * instaShieldImgs.length));
+  const img = instaShieldImgs[idx];
+  if (!isImgReady(img)) return;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.globalAlpha = 1;
+  ctx.drawImage(img, -INSTA_SHIELD_PACK.w / 2, -INSTA_SHIELD_PACK.h / 2, INSTA_SHIELD_PACK.w, INSTA_SHIELD_PACK.h);
+  ctx.restore();
+}
+
+function drawHangarSwapFx() {
+  if (!hangarSwapFx) return;
+  drawHangarSwapImage(hangarSwapFx.t, hangarSwapFx.dur);
+}
+
 window.__ORBIT_ENGINE__ = {
   switchMap: switchMapConfig,
   getHangarAccess,
   markHangarChanged,
   applyHangarDesignLive,
   requestHangarSwap,
+  activateHangarAtSavedLocation,
   showToast,
   showNotification,
   getEquipmentState() {

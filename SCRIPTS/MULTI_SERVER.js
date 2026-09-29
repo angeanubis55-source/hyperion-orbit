@@ -1322,6 +1322,7 @@ wss.on("connection", (ws) => {
         const hasStatus = (Number(msg.slowPct) > 0 && Number(msg.slowSec) > 0) || Number(msg.freezeSec) > 0;
         if (!Number.isFinite(dmg) || dmg < 0 || dmg > 1e7 || (dmg === 0 && !hasStatus)) return;
         if (foe.state.dead) return;
+        if (Number(foe.state.hswap) > 0) return;
         if (now < Number(foe.state.ishUntil || 0)) return;
         if (now < Number(foe.state.iemUntil || 0)) return;
         // Deja tue (pos de mort pas encore arrivee) : pas de double kill.
@@ -1774,6 +1775,7 @@ wss.on("connection", (ws) => {
       }
       if (Number.isFinite(Number(msg.angle))) state.angle = Number(msg.angle);
       if (typeof msg.shipId === "string" && msg.shipId) state.shipId = String(msg.shipId).slice(0, 64);
+      if (Number.isFinite(Number(msg.hswap))) state.hswap = Math.max(0, Math.min(3, Number(msg.hswap)));
       if (!authed && typeof msg.pseudo === "string" && msg.pseudo.trim()) state.pseudo = String(msg.pseudo).slice(0, 20);
       if (typeof msg.dead === "boolean") state.dead = msg.dead;
       if (typeof msg.safe === "boolean") state.safe = msg.safe;
@@ -2051,7 +2053,8 @@ setInterval(() => {
             const serverSafe = typeof sim.inSafe === "function" ? sim.inSafe(s.x, s.y) : false;
             s.serverSafe = serverSafe && s.safe === true;
             const serverDead = s.pvpDead === true || !(Number(s.hp) > 0);
-            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: s.iemUntil });
+            const swapUntargetableUntil = Number(s.hswap) > 0 ? now + Number(s.hswap) * 1000 + 150 : 0;
+            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: Math.max(Number(s.iemUntil) || 0, swapUntargetableUntil) });
           }
         }
         if (typeof sim.prunePlayers === "function") {
@@ -2067,7 +2070,7 @@ setInterval(() => {
             const victim = room.get(String(hit?.playerId));
             const s = victim?.state;
             if (!s || s.pvpDead === true || !(Number(s.hp) > 0)) continue;
-            if (Date.now() < Number(s.ishUntil || 0) || Date.now() < Number(s.iemUntil || 0)) continue;
+            if (Number(s.hswap) > 0 || Date.now() < Number(s.ishUntil || 0) || Date.now() < Number(s.iemUntil || 0)) continue;
             if (s.serverSafe === true) continue;
             if (Math.random() < Math.max(0, Math.min(0.9, Number(s.evade) || 0))) continue;
             const hitNow = Date.now();
@@ -2144,7 +2147,7 @@ setInterval(() => {
       if (!s) continue;
       // Anti-fantôme : pas de pos envoyée = invisible pour les autres.
       if (s._posOk !== true) continue;
-      players.push({ id: s.id, pseudo: s.pseudo, clan: String(s.clanTag || "").slice(0, 5), shipId: s.shipId, x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, vmax: Math.max(50, Math.min(5000, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
+      players.push({ id: s.id, pseudo: s.pseudo, clan: String(s.clanTag || "").slice(0, 5), shipId: s.shipId, hswap: Math.max(0, Math.min(3, Number(s.hswap) || 0)), x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, vmax: Math.max(50, Math.min(5000, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
         // PvP : PV autoritaires + date du dernier coup recu + attaquant (anneau Ship_damage).
         pvpAt: Number(s.pvpAt) || 0, pvpFrom: s.pvpFrom != null ? String(s.pvpFrom) : null, pvpHp: Math.max(0, Math.round(Number(s.hp) || 0)), pvpSh: Math.max(0, Math.round(Number(s.sh) || 0)),
         npcAt: Number(s.npcAt) || 0, npcSeq: Math.max(0, Math.floor(Number(s.npcSeq) || 0)), npcFrom: s.npcFrom != null ? String(s.npcFrom) : null,
