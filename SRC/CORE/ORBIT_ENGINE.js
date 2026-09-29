@@ -15960,10 +15960,31 @@ function enterLinkDead() {
   linkDead = true;
   retryAcc = 0;
   retryCount = 0;
+  // Liaison coupée (restart/MAJ serveur, réseau) : les entités réseau
+  // (NPC, cadavres) sont purgées aussitôt. Sans ça, un cadavre conservé
+  // bloque la nouvelle incarnation (même uid, seq remis à zéro) et le NPC
+  // ne réapparaît jamais côté client alors que le serveur l'a respawné.
+  try { purgeNetEntitiesForReconnect(); } catch {}
   try {
     forceNetReconnect();
   } catch {}
   setLinkOverlay(true, "Connexion perdue — reconnexion…");
+}
+
+// Retire toutes les entités réseau (reconstruction propre aux prochains
+// snapshots). Les NPC locaux (gates) sont conservés.
+function purgeNetEntitiesForReconnect() {
+  let lockedPurged = false;
+  let locked = null;
+  try { locked = Target.get(); } catch {}
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    if (!e || e._netUid == null) continue;
+    try { if (e.id != null) enemiesById.delete(e.id); } catch {}
+    if (locked && e === locked) lockedPurged = true;
+    enemies.splice(i, 1);
+  }
+  if (lockedPurged) { try { Target.clear(); } catch {} }
 }
 
 function tickLinkHeartbeat(realDt) {
