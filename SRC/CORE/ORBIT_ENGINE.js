@@ -8507,9 +8507,12 @@ function botSetModule(m) {
   botSaveConfig();
 }
 const Bot = {
+  npcSelectionLoaded: false,
+  boxSelectionLoaded: false,
   active: false,
   mode: "both",
   module: "both",
+  renderMode: "minimal",
   priority: "npc",
   targetMap: "",
   autoTravel: true,
@@ -8531,14 +8534,12 @@ const Bot = {
   petMode: "",
   petPrev: null,
   petPrevGear: null,
-  engageDist: 0,
   npcAmmo: Object.create(null),
   npcIncludeUnknown: false,
   npcSeen: Object.create(null),
   sightT: 0,
   lock: true,
   overlay: true,
-  npcIgnoreDist: 0,
   boxRadius: 0,
   npcPrio: Object.create(null),
   fleeResume: 45,
@@ -8549,8 +8550,6 @@ const Bot = {
   statsT0: 0,
   credits0: 0,
   exp0: 0,
-  orbitDist: 560,
-  npcDist: Object.create(null),
   orbit: true,
   safeNpc: true,
   autoSab: true,
@@ -8558,6 +8557,7 @@ const Bot = {
   orbitDir: 1,
   orbitFlipAt: 0,
   orbitId: null,
+  orbitAngle: 0,
   specialPrev: "",
   x6Armed: false,
   x6ArmedAt: 0,
@@ -8650,6 +8650,7 @@ function botSaveConfig() {
       active: Bot.active,
       mode: Bot.mode,
       module: Bot.module,
+      renderMode: Bot.renderMode,
       priority: Bot.priority,
       targetMap: Bot.targetMap,
       autoTravel: Bot.autoTravel,
@@ -8669,19 +8670,15 @@ function botSaveConfig() {
       petMode: Bot.petMode,
       lock: Bot.lock,
       overlay: Bot.overlay,
-      npcIgnoreDist: Bot.npcIgnoreDist,
       boxRadius: Bot.boxRadius,
       npcPrio: Bot.npcPrio,
       fleeResume: Bot.fleeResume,
       maxDeaths: Bot.maxDeaths,
       reviveWait: Bot.reviveWait,
-      orbitDist: Bot.orbitDist,
-      npcDist: Bot.npcDist,
       orbit: Bot.orbit,
       safeNpc: Bot.safeNpc,
       autoSab: Bot.autoSab,
       autoX6: Bot.autoX6,
-      engageDist: Bot.engageDist,
       npcAmmo: Bot.npcAmmo,
       npcIncludeUnknown: Bot.npcIncludeUnknown,
       npcSeen: Bot.npcSeen,
@@ -8730,13 +8727,20 @@ function botLoadConfig() {
     if (["both", "kill", "collect", "quest", "galaxy"].includes(data.module)) Bot.module = data.module;
     else if (["collect", "kill", "both"].includes(data.mode)) Bot.module = data.mode;
     Bot.mode = botModeForModule(Bot.module);
+    if (["normal", "minimal"].includes(data.renderMode)) Bot.renderMode = data.renderMode;
     if (["npc", "box", "nearest"].includes(data.priority)) Bot.priority = data.priority;
     if (typeof data.targetMap === "string") Bot.targetMap = data.targetMap;
     if (typeof data.autoTravel === "boolean") Bot.autoTravel = data.autoTravel;
     if (typeof data.autoRepair === "boolean") Bot.autoRepair = data.autoRepair;
     if (["base", "portal", "here"].includes(data.respawn)) Bot.respawn = data.respawn;
-    if (Array.isArray(data.npcAllow)) Bot.npcAllow = new Set(data.npcAllow.map(String));
-    if (Array.isArray(data.boxAllow)) Bot.boxAllow = new Set(data.boxAllow.map(String));
+    if (Array.isArray(data.npcAllow)) {
+      Bot.npcAllow = new Set(data.npcAllow.map(String));
+      Bot.npcSelectionLoaded = true;
+    }
+    if (Array.isArray(data.boxAllow)) {
+      Bot.boxAllow = new Set(data.boxAllow.map(String));
+      Bot.boxSelectionLoaded = true;
+    }
     if (typeof data.npcMapFilter === "string") Bot.npcMapFilter = data.npcMapFilter;
     if (typeof data.formMove === "string") Bot.formMove = data.formMove;
     if (typeof data.formAttack === "string") Bot.formAttack = data.formAttack;
@@ -8749,8 +8753,6 @@ function botLoadConfig() {
     if (typeof data.petMode === "string") Bot.petMode = data.petMode;
     if (typeof data.lock === "boolean") Bot.lock = data.lock;
     if (typeof data.overlay === "boolean") Bot.overlay = data.overlay;
-    const nid = Math.floor(Number(data.npcIgnoreDist));
-    Bot.npcIgnoreDist = Number.isFinite(nid) ? Math.max(0, Math.min(20000, nid)) : 0;
     const brad = Math.floor(Number(data.boxRadius));
     Bot.boxRadius = Number.isFinite(brad) ? Math.max(0, Math.min(20000, brad)) : 0;
     if (data.npcPrio && typeof data.npcPrio === "object") {
@@ -8765,18 +8767,10 @@ function botLoadConfig() {
     Bot.maxDeaths = Number.isFinite(md) ? Math.max(0, Math.min(999, md)) : 0;
     const rw = Math.floor(Number(data.reviveWait));
     Bot.reviveWait = Number.isFinite(rw) ? Math.max(0, Math.min(60, rw)) : 3;
-    const od = Math.floor(Number(data.orbitDist));
-    if (Number.isFinite(od)) Bot.orbitDist = Math.max(200, Math.min(2000, od));
     if (typeof data.orbit === "boolean") Bot.orbit = data.orbit;
     if (typeof data.safeNpc === "boolean") Bot.safeNpc = data.safeNpc;
     if (typeof data.autoSab === "boolean") Bot.autoSab = data.autoSab;
     if (typeof data.autoX6 === "boolean") Bot.autoX6 = data.autoX6;
-    if (data.npcDist && typeof data.npcDist === "object") {
-      for (const [k, v] of Object.entries(data.npcDist)) {
-        const d = Math.floor(Number(v));
-        if (Number.isFinite(d)) Bot.npcDist[String(k)] = Math.max(200, Math.min(2000, d));
-      }
-    }
     if (typeof data.flee === "boolean") Bot.flee = data.flee;
     const fp = Math.floor(Number(data.fleePct));
     if (Number.isFinite(fp)) Bot.fleePct = Math.max(5, Math.min(90, fp));
@@ -8827,8 +8821,6 @@ function botLoadConfig() {
     if (data.ggFinishCfg === "1" || data.ggFinishCfg === "2") Bot.ggFinishCfg = data.ggFinishCfg;
     else if (typeof data.ggFinishCfg === "string") Bot.ggFinishCfg = "";
     if (data.npcAmmo && typeof data.npcAmmo === "object") {
-    const ed = Math.floor(Number(data.engageDist));
-    Bot.engageDist = Number.isFinite(ed) ? Math.max(0, Math.min(3000, ed)) : 0;
       for (const [k, v] of Object.entries(data.npcAmmo)) {
         const a = String(v || "").toLowerCase();
         if (BOT_AMMO_IDS.includes(a)) Bot.npcAmmo[String(k)] = a;
@@ -8956,6 +8948,8 @@ function botSetActive(on) {
   Bot.travelOverride = "";
   Bot.lastFormation = "";
   Bot.roamT = 0;
+  Bot.orbitId = null;
+  Bot.orbitFlipAt = 0;
 
   if (!Bot.active) {
     Bot.status = "En pause";
@@ -8973,8 +8967,8 @@ function botSetActive(on) {
       Bot.exp0 = Math.max(0, Math.floor(Number(account.user?.stats?.exp) || 0));
     } catch { Bot.statsT0 = 0; Bot.credits0 = 0; Bot.exp0 = 0; }
     Bot.deaths = 0;
-  Bot.wasDead = false;
-  Bot.grabCd = Math.max(0, (Bot.grabCd || 0) - dt);
+    Bot.wasDead = false;
+    Bot.grabCd = 0;
 
     botApplyPetMode();
     botLog(`Bot démarré (${BOT_MODULES[Bot.module]?.label || Bot.module})`);
@@ -8989,10 +8983,12 @@ function botNpcPrio(type) {
   return Number.isFinite(p) ? Math.max(0, Math.min(99, p)) : 0;
 }
 
-// Distance de combat effective pour un type de NPC (surcharge perso ou défaut).
-function botNpcDist(type) {
-  const d = Math.floor(Number(Bot.npcDist[String(type)]));
-  return Number.isFinite(d) ? Math.max(200, Math.min(2000, d)) : Bot.orbitDist;
+// Reste 10 m hors de la portee du NPC, sans jamais sortir de notre portee laser.
+function botCombatDistance(type) {
+  const ownLimit = Math.max(0, (Number(playerRange) || 0) - 10);
+  const npcRange = Math.max(0, Number(NPC_TYPES[type]?.shootRange) || 0);
+  const desired = npcRange > 0 ? npcRange + 10 : Math.min(560, ownLimit);
+  return Math.min(desired, ownLimit);
 }
 
 // Bascule silencieuse de configuration 1/2 (même logique que le bouton,
@@ -9360,10 +9356,10 @@ function botTickQuests(dt) {
           if (o.map && String(o.map).toLowerCase() !== curMap) { ok = false; break; }
           if (o.kind === "kill") {
             if (Bot.mode === "collect") { ok = false; break; }
-            if (o.type !== "*" && Bot.npcAllow.size && !Bot.npcAllow.has(String(o.type))) { ok = false; break; }
+            if (o.type !== "*" && !Bot.npcAllow.has(String(o.type))) { ok = false; break; }
           } else if (o.kind === "collect") {
             if (Bot.mode === "kill") { ok = false; break; }
-            if (Bot.boxAllow.size && !Bot.boxAllow.has(String(o.type))) { ok = false; break; }
+            if (!Bot.boxAllow.has(String(o.type))) { ok = false; break; }
           } else { ok = false; break; }
         }
         if (!ok) continue;
@@ -9456,7 +9452,6 @@ function botRenderNpcList() {
         continue;
       }
     }
-    const dist = botNpcDist(t);
     const ammo = Bot.npcAmmo[String(t)] || "";
     const prio = botNpcPrio(t);
     const mapsFull = (maps || []).map(String).join(", ");
@@ -9465,7 +9460,6 @@ function botRenderNpcList() {
       `<input class="botNpcSel" type="checkbox" value="${escapeHtml(t)}"${Bot.npcAllow.has(t) ? " checked" : ""} title="Tuer ce NPC" />` +
       `<div class="botNpcId"><span class="botNpcName">${escapeHtml(name)}</span><small class="botNpcMaps" title="${escapeHtml(mapsFull || "Map inconnue")}">Maps : ${escapeHtml(mapsFull || "?")}</small></div>` +
       `<input class="botNpcPrio" type="number" data-type="${escapeHtml(t)}" value="${prio}" min="0" max="99" step="1" title="Priorité (plus haute = tuée d'abord)" />` +
-      `<input class="botNpcDist" type="number" data-type="${escapeHtml(t)}" value="${dist}" min="200" max="2000" step="10" title="Distance de combat (m)" />` +
       `<select class="botNpcAmmo" data-type="${escapeHtml(t)}" title="Munition pour ce NPC">${botAmmoOptions(ammo)}</select>` +
       `</div>`
     );
@@ -9497,7 +9491,10 @@ function wireBotWindow() {
   if (npcList && !npcList.dataset.wired) {
     npcList.dataset.wired = "1";
     const allTypes = Object.keys(NPC_TYPES || {});
-    if (!Bot.npcAllow.size) for (const t of allTypes) Bot.npcAllow.add(t);
+    if (!Bot.npcSelectionLoaded) {
+      for (const t of allTypes) Bot.npcAllow.add(t);
+      Bot.npcSelectionLoaded = true;
+    }
     botRenderNpcList();
     npcList.addEventListener("change", (e) => {
       const el = e.target.closest?.("input");
@@ -9520,16 +9517,6 @@ function wireBotWindow() {
       }
     });
     npcList.addEventListener("change", (e) => {
-      const el = e.target.closest?.('input[type="number"].botNpcDist');
-      if (!el) return;
-      const d = Math.floor(Number(el.value));
-      if (Number.isFinite(d)) {
-        Bot.npcDist[el.dataset.type] = Math.max(200, Math.min(2000, d));
-        el.value = Bot.npcDist[el.dataset.type];
-        botSaveConfig();
-      }
-    });
-    npcList.addEventListener("change", (e) => {
       const el = e.target.closest?.('input[type="number"].botNpcPrio');
       if (!el) return;
       const p = Math.floor(Number(el.value));
@@ -9546,7 +9533,10 @@ function wireBotWindow() {
   if (boxList && !boxList.children.length) {
     const types = Object.keys(COLLECTABLE_TYPES || {}).sort((a, b) =>
       String(COLLECTABLE_TYPES[a]?.name || a).localeCompare(String(COLLECTABLE_TYPES[b]?.name || b), "fr"));
-    if (!Bot.boxAllow.size) for (const t of types) Bot.boxAllow.add(t);
+    if (!Bot.boxSelectionLoaded) {
+      for (const t of types) Bot.boxAllow.add(t);
+      Bot.boxSelectionLoaded = true;
+    }
     boxList.innerHTML = types.map((t) =>
       `<label data-box="${escapeHtml(t)}"><input type="checkbox" value="${escapeHtml(t)}"${Bot.boxAllow.has(t) ? " checked" : ""} /><span>${escapeHtml(String(COLLECTABLE_TYPES[t]?.name || t))}</span></label>`
     ).join("");
@@ -9568,6 +9558,18 @@ function wireBotWindow() {
         botSetModule(moduleSel.value);
         moduleSel.value = Bot.module;
         botLog(`Module : ${BOT_MODULES[Bot.module]?.label || Bot.module}`);
+      });
+    }
+  }
+  const renderModeSel = document.getElementById("botRenderMode");
+  if (renderModeSel) {
+    renderModeSel.value = Bot.renderMode;
+    if (!renderModeSel.dataset.wired) {
+      renderModeSel.dataset.wired = "1";
+      renderModeSel.addEventListener("change", () => {
+        Bot.renderMode = renderModeSel.value === "normal" ? "normal" : "minimal";
+        botSaveConfig();
+        botLog(`Affichage : ${Bot.renderMode === "minimal" ? "minimal" : "normal"}`);
       });
     }
   }
@@ -9815,39 +9817,7 @@ function wireBotWindow() {
     }
   }
 
-  const orbitDist = document.getElementById("botOrbitDist");
-  if (orbitDist) {
-    orbitDist.value = Bot.orbitDist;
-    if (!orbitDist.dataset.wired) {
-      orbitDist.dataset.wired = "1";
-      orbitDist.addEventListener("change", () => {
-        const d = Math.floor(Number(orbitDist.value));
-        if (Number.isFinite(d)) {
-          Bot.orbitDist = Math.max(200, Math.min(2000, d));
-          orbitDist.value = Bot.orbitDist;
-          botSaveConfig();
-          // Les inputs NPC sans surcharge suivent le défaut : on rafraîchit.
-          botRenderNpcList();
-        }
-      });
-    }
-  }
   const fleeBox = document.getElementById("botFlee");
-  const engageDist = document.getElementById("botEngageDist");
-  if (engageDist) {
-    engageDist.value = Bot.engageDist;
-    if (!engageDist.dataset.wired) {
-      engageDist.dataset.wired = "1";
-      engageDist.addEventListener("change", () => {
-        const d = Math.floor(Number(engageDist.value));
-        if (Number.isFinite(d)) {
-          Bot.engageDist = Math.max(0, Math.min(3000, d));
-          engageDist.value = Bot.engageDist;
-          botSaveConfig();
-        }
-      });
-    }
-  }
   if (fleeBox) {
     fleeBox.checked = Bot.flee;
     if (!fleeBox.dataset.wired) {
@@ -9885,21 +9855,6 @@ function wireBotWindow() {
     }
   }
   const skillIemBox = document.getElementById("botSkillIem");
-  const npcIgnore = document.getElementById("botNpcIgnore");
-  if (npcIgnore) {
-    npcIgnore.value = Bot.npcIgnoreDist;
-    if (!npcIgnore.dataset.wired) {
-      npcIgnore.dataset.wired = "1";
-      npcIgnore.addEventListener("change", () => {
-        const v = Math.floor(Number(npcIgnore.value));
-        if (Number.isFinite(v)) {
-          Bot.npcIgnoreDist = Math.max(0, Math.min(20000, v));
-          npcIgnore.value = Bot.npcIgnoreDist;
-          botSaveConfig();
-        }
-      });
-    }
-  }
   if (skillIemBox) {
     skillIemBox.checked = Bot.skillIem;
     if (!skillIemBox.dataset.wired) {
@@ -10207,16 +10162,14 @@ function botQuestTargets() {
 function botNearestQuestNpc(set) {
   let best = null;
   let bestD2 = Infinity;
-  const ignore2 = Bot.npcIgnoreDist > 0 ? Bot.npcIgnoreDist * Bot.npcIgnoreDist : 0;
   const any = set.has("*");
   for (const e of enemies) {
     if (!e || Number(e.hp) <= 0) continue;
     if (e.isPetTarget) continue;
-    if (Bot.npcAllow.size && !Bot.npcAllow.has(String(e.type))) continue;
+    if (!Bot.npcAllow.has(String(e.type))) continue;
     if (!any && !set.has(String(e.type))) continue;
     try { if (Bot.safeNpc !== true && typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
-    if (ignore2 > 0 && d2 > ignore2) continue;
     const pr = botNpcPrio(e.type);
     const bpr = best ? botNpcPrio(best.type) : -1;
     if (!best || pr > bpr || (pr === bpr && d2 < bestD2)) { bestD2 = d2; best = e; }
@@ -10230,7 +10183,7 @@ function botNearestQuestBox(set) {
   const rad2 = Bot.boxRadius > 0 ? Bot.boxRadius * Bot.boxRadius : 0;
   for (const c of collectables) {
     if (!c) continue;
-    if (Bot.boxAllow.size && !Bot.boxAllow.has(String(c.type))) continue;
+    if (!Bot.boxAllow.has(String(c.type))) continue;
     if (!set.has(String(c.type))) continue;
     const d2 = dist2(player.x, player.y, c.x, c.y);
     if (rad2 > 0 && d2 > rad2) continue;
@@ -10255,14 +10208,12 @@ function botNearestAnyNpc() {
 function botNearestNpc() {
   let best = null;
   let bestD2 = Infinity;
-  const ignore2 = Bot.npcIgnoreDist > 0 ? Bot.npcIgnoreDist * Bot.npcIgnoreDist : 0;
   for (const e of enemies) {
     if (!e || Number(e.hp) <= 0) continue;
     if (e.isPetTarget) continue;
-    if (Bot.npcAllow.size && !Bot.npcAllow.has(String(e.type))) continue;
+    if (!Bot.npcAllow.has(String(e.type))) continue;
     try { if (Bot.safeNpc !== true && typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
-    if (ignore2 > 0 && d2 > ignore2) continue;
     const pr = botNpcPrio(e.type);
     const bpr = best ? botNpcPrio(best.type) : -1;
     if (!best || pr > bpr || (pr === bpr && d2 < bestD2)) { bestD2 = d2; best = e; }
@@ -10270,26 +10221,22 @@ function botNearestNpc() {
   return best ? { npc: best, d2: bestD2 } : null;
 }
 
-// Portee d'engagement (reglage du bot, 0 = portee laser).
+// La portee d'engagement est toujours notre portee laser reelle.
 function botEngageRange() {
-  try {
-    return Bot.engageDist > 0 ? Math.min(Bot.engageDist, playerRange) : playerRange;
-  } catch { return 0; }
+  try { return Math.max(0, Number(playerRange) || 0); } catch { return 0; }
 }
 
-// NPC tuable le plus proche DANS la portee (selection + ignore + priorites).
+// NPC tuable le plus proche DANS la portee (selection + priorites).
 function botNearestNpcInRange(maxD) {
   let best = null;
   let bestD2 = Infinity;
   const lim2 = maxD > 0 ? maxD * maxD : Infinity;
-  const ignore2 = Bot.npcIgnoreDist > 0 ? Bot.npcIgnoreDist * Bot.npcIgnoreDist : 0;
   for (const e of enemies) {
     if (!e || Number(e.hp) <= 0) continue;
     if (e.isPetTarget) continue;
-    if (Bot.npcAllow.size && !Bot.npcAllow.has(String(e.type))) continue;
+    if (!Bot.npcAllow.has(String(e.type))) continue;
     try { if (Bot.safeNpc !== true && typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
-    if (ignore2 > 0 && d2 > ignore2) continue;
     if (d2 > lim2) continue;
     const pr = botNpcPrio(e.type);
     const bpr = best ? botNpcPrio(best.type) : -1;
@@ -10389,7 +10336,7 @@ function botConcurrentNpc(engageMax, locked) {
       return null;
     }
     if (Bot.mode !== "both") return null;
-    if (locked && (!Bot.npcAllow.size || Bot.npcAllow.has(String(locked.type))) && okTarget(locked)) return locked;
+    if (locked && Bot.npcAllow.has(String(locked.type)) && okTarget(locked)) return locked;
     return botNearestNpcInRange(engageMax);
   } catch { return null; }
 }
@@ -10402,7 +10349,7 @@ function botEngageNpc(npc) {
   let d = 0;
   try { d = Math.hypot(npc.x - player.x, npc.y - player.y); } catch {}
   const engageMax = botEngageRange();
-  if (!attackActive && d <= engageMax * 0.95) { try { startAttack(); } catch {} }
+  if (!attackActive && d <= Math.max(80, engageMax - 10)) { try { startAttack(); } catch {} }
   else if (attackActive && d > engageMax) { try { stopAttack(); } catch {} }
   if (npc.id != null) Bot.lastNpcId = npc.id;
   return npc;
@@ -10427,7 +10374,7 @@ function botGrabBoxForFight(npcD2) {
     let bestD2 = Infinity;
     for (const c of collectables) {
       if (!c) continue;
-      if (Bot.boxAllow.size && !Bot.boxAllow.has(String(c.type))) continue;
+      if (!Bot.boxAllow.has(String(c.type))) continue;
       if (questSet && !questSet.has(String(c.type))) continue;
       const d2 = dist2(player.x, player.y, c.x, c.y);
       if (d2 > grabR2 || d2 >= npcD2) continue;
@@ -10444,7 +10391,7 @@ function botNearestBox() {
   const rad2 = Bot.boxRadius > 0 ? Bot.boxRadius * Bot.boxRadius : 0;
   for (const c of collectables) {
     if (!c) continue;
-    if (Bot.boxAllow.size && !Bot.boxAllow.has(String(c.type))) continue;
+    if (!Bot.boxAllow.has(String(c.type))) continue;
     const d2 = dist2(player.x, player.y, c.x, c.y);
     if (rad2 > 0 && d2 > rad2) continue;
     if (d2 < bestD2) { bestD2 = d2; best = c; }
@@ -10550,7 +10497,7 @@ function botClampMoveTarget(x, y) {
 // est toujours en mouvement.
 function botKiteCombatMove(npc, d, standD) {
   if (!npc || Number(npc.hp) <= 0) { moveTarget.active = false; return; }
-  if (d > playerRange * 0.95) {
+  if (d > Math.max(80, playerRange - 10)) {
     // Hors de portée : approche décalée (point à standD, pas le centre).
     const ax = d > 1 ? (player.x - npc.x) / d : 1;
     const ay = d > 1 ? (player.y - npc.y) / d : 0;
@@ -10596,12 +10543,12 @@ function botKiteCombatMove(npc, d, standD) {
   }
 }
 
-// Orbite de combat (maps, style classique) : le vaisseau tourne autour de
-// sa cible a standD en corrigeant le rayon, sens inverse toutes les ~3 s
-// pour ne pas etre predictible. Contact : esquive laterale pure.
+// Orbite de combat : suit un vrai point sur le cercle au lieu de viser loin
+// devant sur une tangente (qui coupait le cercle et ramenait le vaisseau sur
+// le NPC). Le sens reste stable par cible et ne change que rarement.
 function botOrbitCombatMove(npc, d, standD) {
   if (!npc || Number(npc.hp) <= 0) { moveTarget.active = false; return; }
-  if (d > playerRange * 0.95) {
+  if (d > Math.max(80, playerRange - 10)) {
     // Hors de portee : approche directe sur le point a standD.
     const ax = d > 1 ? (player.x - npc.x) / d : 1;
     const ay = d > 1 ? (player.y - npc.y) / d : 0;
@@ -10611,30 +10558,54 @@ function botOrbitCombatMove(npc, d, standD) {
     moveTarget.y = tgt.y;
     return;
   }
-  const dx = d > 1 ? (npc.x - player.x) / d : 1;
-  const dy = d > 1 ? (npc.y - player.y) / d : 0;
-  if (d < 160 && d > 0.01) {
-    // Contact : on s'ecarte sur le cote, le NPC depasse.
-    const tgt = botClampMoveTarget(player.x + -dy * 1000, player.y + dx * 1000);
+  const awayX = d > 1 ? (player.x - npc.x) / d : 1;
+  const awayY = d > 1 ? (player.y - npc.y) / d : 0;
+  const emergencyD = Math.max(220, Number(player.r || 0) + Number(npc.r || 0) + 140);
+  if (d < emergencyD && d > 0.01) {
+    // Contact/proximite dangereuse : sortie radiale prioritaire. Une faible
+    // composante laterale evite de traverser le NPC quand il avance aussi.
+    const s = Number(Bot.orbitDir) || 1;
+    const rawX = player.x + awayX * 900 + -awayY * s * 260;
+    const rawY = player.y + awayY * 900 + awayX * s * 260;
+    const tgt = botClampMoveTarget(rawX, rawY);
     moveTarget.active = true;
     moveTarget.x = tgt.x;
     moveTarget.y = tgt.y;
     return;
   }
-  // Nouvelle cible ou timer ecoule : (re)tire le sens de rotation.
+  // Nouvelle cible : choisit un sens une seule fois. Un changement rare evite
+  // une trajectoire eternelle sans provoquer les demi-tours permanents.
   const nowMs = performance.now();
   if (Bot.orbitId !== npc.id || nowMs >= (Number(Bot.orbitFlipAt) || 0)) {
     if (Bot.orbitId !== npc.id) Bot.orbitDir = Math.random() < 0.5 ? -1 : 1;
     else Bot.orbitDir = -(Number(Bot.orbitDir) || 1);
     Bot.orbitId = npc.id;
-    Bot.orbitFlipAt = nowMs + 2500 + Math.random() * 2500;
+    Bot.orbitFlipAt = nowMs + 14000 + Math.random() * 8000;
   }
   const s = Number(Bot.orbitDir) || 1;
-  const radial = Math.max(-1, Math.min(1, (d - standD) / Math.max(1, standD)));
-  let mx = -dy * s + dx * radial * 1.4;
-  let my = dx * s + dy * radial * 1.4;
-  const ml = Math.hypot(mx, my) || 1;
-  const tgt = botClampMoveTarget(player.x + (mx / ml) * 900, player.y + (my / ml) * 900);
+  const currentAngle = Math.atan2(player.y - npc.y, player.x - npc.x);
+  const radiusError = Math.max(-0.32, Math.min(0.32, (d - standD) / Math.max(standD, 1)));
+  const desiredRadius = Math.max(emergencyD, standD + radiusError * standD * 0.45);
+  // Petit pas angulaire = arc fluide. Il grandit legerement quand on est loin
+  // afin de rejoindre la trajectoire sans viser le centre du NPC.
+  const angleStep = (0.28 + Math.min(0.12, Math.abs(d - standD) / Math.max(standD, 1) * 0.12)) * s;
+  Bot.orbitAngle = currentAngle + angleStep;
+  let rawX = npc.x + Math.cos(Bot.orbitAngle) * desiredRadius;
+  let rawY = npc.y + Math.sin(Bot.orbitAngle) * desiredRadius;
+
+  // Les autres NPC proches repoussent doucement le point d'orbite : le bot ne
+  // garde plus un cercle parfait qui le ferait traverser un paquet.
+  for (const other of enemies) {
+    if (!other || other === npc || Number(other.hp) <= 0) continue;
+    const ox = player.x - other.x;
+    const oy = player.y - other.y;
+    const od = Math.hypot(ox, oy);
+    if (!(od > 1 && od < 650)) continue;
+    const push = (1 - od / 650) * 260;
+    rawX += ox / od * push;
+    rawY += oy / od * push;
+  }
+  const tgt = botClampMoveTarget(rawX, rawY);
   moveTarget.active = true;
   moveTarget.x = tgt.x;
   moveTarget.y = tgt.y;
@@ -11123,7 +11094,7 @@ function tickBot(dt) {
     try {
       const cur = Target.get();
       if (cur && !cur.isPetTarget && Number(cur.hp) > 0 && enemies.includes(cur)
-        && (!Bot.npcAllow.size || Bot.npcAllow.has(String(cur.type)))
+        && Bot.npcAllow.has(String(cur.type))
         && (Bot.safeNpc === true || typeof npcIsInSafeZone !== "function" || !npcIsInSafeZone(cur))) {
         lockedNpc = cur;
       }
@@ -11310,9 +11281,9 @@ function tickBot(dt) {
     botApplyNpcAmmo(npc);
     // Tir UNIQUEMENT à portée (jamais de lock + tir à l'autre bout de la
     // carte) : hors portée on approche en silence, à portée on engage
-    // (hystérésis 95 % / 100 % : pas de on/off à la limite).
-    const engageMax = Bot.engageDist > 0 ? Math.min(Bot.engageDist, playerRange) : playerRange;
-    if (!attackActive && d <= engageMax * 0.95) {
+    // (hysteresis a 10 m / limite exacte : pas de on/off a la limite).
+    const engageMax = botEngageRange();
+    if (!attackActive && d <= Math.max(80, engageMax - 10)) {
       try { startAttack(); } catch {}
     } else if (attackActive && d > engageMax) {
       try { stopAttack(); } catch {}
@@ -11363,10 +11334,8 @@ function tickBot(dt) {
     const isGgCombat = Bot.module === "galaxy" && rules?.mode === "gate";
     // Distance de sécurité : hors de portée de tir du NPC quand c'est
     // possible (portée NPC + marge), sinon au max de notre portée.
-    // Évite de rester planté sous les tirs à 560 m face à un NPC qui tire à 700 m.
-    const npcShootR = Number(NPC_TYPES[npc.type]?.shootRange) || 0;
-    const safeD = npcShootR > 0 ? npcShootR + 200 : 0;
-    const standD = Math.min(Math.max(200, botNpcDist(npc.type), safeD), playerRange * 0.9);
+    // Portee NPC + 10 m, plafonnee 10 m avant notre propre portee laser.
+    const standD = botCombatDistance(npc.type);
     if (isGgCombat) {
       botKiteCombatMove(npc, d, standD);
     } else if (Bot.orbit !== false) {
@@ -11454,7 +11423,7 @@ function drawBotOverlays(ox, oy) {
     const cands = [];
     for (const e of enemies) {
       if (!e || Number(e.hp) <= 0 || e.isPetTarget) continue;
-      if (Bot.npcAllow.size && !Bot.npcAllow.has(String(e.type))) continue;
+      if (!Bot.npcAllow.has(String(e.type))) continue;
       cands.push(e);
     }
     cands.sort((a, b) => dist2(player.x, player.y, a.x, a.y) - dist2(player.x, player.y, b.x, b.y));
@@ -11486,15 +11455,6 @@ function drawBotOverlays(ox, oy) {
     ctx.beginPath();
     ctx.arc(px, py, playerRange, 0, TAU);
     ctx.stroke();
-    const engageMax = Bot.engageDist > 0 ? Math.min(Bot.engageDist, playerRange) : 0;
-    if (engageMax > 0) {
-      ctx.setLineDash([8, 6]);
-      ctx.strokeStyle = "rgba(110,255,150,0.4)";
-      ctx.beginPath();
-      ctx.arc(px, py, engageMax, 0, TAU);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
   } catch {}
   // 4. Zones de non-agression : portails sûrs, base, modules sûrs.
   try {
@@ -33418,6 +33378,176 @@ function drawZoneWalls(ox, oy) {
   });
 }
 
+function botMinimalRenderActive() {
+  return Bot.active === true && Bot.renderMode === "minimal";
+}
+
+// Rendu ultra-leger pour les longues sessions de bot. Aucune image, ombre,
+// particule, animation de sprite ou gradient : uniquement quelques primitives
+// Canvas. La simulation et le reseau restent strictement inchanges.
+function drawBotMinimalScene(ox, oy) {
+  const visible = (x, y, margin = 40) => x >= -margin && y >= -margin && x <= innerWidth + margin && y <= innerHeight + margin;
+  const target = Target.get();
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  // Limites de la carte et zones utiles.
+  ctx.strokeStyle = "rgba(92,139,158,.38)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(ox, oy, WORLD.w, WORLD.h);
+  try {
+    if (zoneSafe?.zone?.kind === "circle") {
+      const z = zoneSafe.zone;
+      ctx.strokeStyle = "rgba(90,220,160,.42)";
+      ctx.beginPath();
+      ctx.arc(z.x + ox, z.y + oy, Number(z.r) || 0, 0, TAU);
+      ctx.stroke();
+    }
+  } catch {}
+
+  // Portails : anneaux fixes, sans sprites ni animation de saut.
+  try {
+    ctx.strokeStyle = "rgba(107,202,255,.9)";
+    ctx.lineWidth = 3;
+    for (const portalPoint of getInteractivePortals()) {
+      const x = portalPoint.x + ox, y = portalPoint.y + oy;
+      if (!visible(x, y, 90)) continue;
+      ctx.beginPath();
+      ctx.arc(x, y, 28, 0, TAU);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, y, 11, 0, TAU);
+      ctx.stroke();
+    }
+  } catch {}
+
+  // Collectables : points fixes. La cible de collecte conserve un anneau.
+  for (const item of collectables) {
+    if (!item) continue;
+    const x = item.x + ox, y = item.y + oy;
+    if (!visible(x, y, 10)) continue;
+    ctx.fillStyle = item.type === "Palladium_Ore" ? "#79d8ff" : "#ffd36b";
+    ctx.fillRect(Math.round(x) - 2, Math.round(y) - 2, 5, 5);
+    if (item.id === collectableTargetId) {
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(Math.round(x) - 7, Math.round(y) - 7, 14, 14);
+    }
+  }
+
+  // Projectiles : traits courts, aucune trainee ni frame animee.
+  const drawShot = (shot, color) => {
+    const x = Number(shot?.x) + ox, y = Number(shot?.y) + oy;
+    if (!visible(x, y, 12)) return;
+    const vx = Number(shot?.vx) || 0, vy = Number(shot?.vy) || 0;
+    const len = Math.hypot(vx, vy) || 1;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = shot?.isRocket ? 3 : 2;
+    ctx.beginPath();
+    ctx.moveTo(x - vx / len * 7, y - vy / len * 7);
+    ctx.lineTo(x + vx / len * 4, y + vy / len * 4);
+    ctx.stroke();
+  };
+  for (const shot of bullets) drawShot(shot, shot?.isRocket ? "#ffcf66" : "#78dfff");
+  for (const shot of enemyBullets) drawShot(shot, "#ff6474");
+
+  // NPC : fleche orientee. La cible verrouillee est jaune et garde ses barres.
+  for (const enemy of enemies) {
+    if (!enemy || Number(enemy.hp) <= 0) continue;
+    if (!shouldDetectNpc(player, enemy, NPC_SENSOR_RANGES.visibility, target)) continue;
+    const x = enemy.x + ox, y = enemy.y + oy;
+    if (!visible(x, y, 30)) continue;
+    const selected = enemy === target;
+    const size = selected ? 12 : 9;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Number(enemy.angle) || 0);
+    ctx.fillStyle = selected ? "#ffd36b" : /uber/i.test(String(enemy.type || "")) ? "#ff8a58" : "#ff596c";
+    ctx.beginPath();
+    ctx.moveTo(size, 0);
+    ctx.lineTo(-size * .7, -size * .62);
+    ctx.lineTo(-size * .35, 0);
+    ctx.lineTo(-size * .7, size * .62);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    if (selected) {
+      const hp = clamp(Number(enemy.hp) / Math.max(1, Number(enemy.hpMax) || 1), 0, 1);
+      const sh = clamp(Number(enemy.sh) / Math.max(1, Number(enemy.shMax) || 1), 0, 1);
+      ctx.fillStyle = "rgba(0,0,0,.75)";
+      ctx.fillRect(x - 24, y - 23, 48, 7);
+      ctx.fillStyle = "#53e37d";
+      ctx.fillRect(x - 23, y - 22, 46 * hp, 2);
+      ctx.fillStyle = "#55b9ff";
+      ctx.fillRect(x - 23, y - 19, 46 * sh, 2);
+      ctx.strokeStyle = "rgba(255,211,107,.8)";
+      ctx.beginPath();
+      ctx.arc(x, y, 17, 0, TAU);
+      ctx.stroke();
+    }
+  }
+
+  // Autres joueurs/bots multijoueur : carres simples.
+  try {
+    const remotes = getNetplayRemotes();
+    for (const remote of remotes?.values?.() || []) {
+      const x = Number(remote.x) + ox, y = Number(remote.y) + oy;
+      if (!visible(x, y, 20)) continue;
+      ctx.fillStyle = "#b57cff";
+      ctx.fillRect(Math.round(x) - 6, Math.round(y) - 6, 12, 12);
+    }
+  } catch {}
+
+  // P.E.T et joueur local : losange puis triangle cyan, toujours distincts.
+  try {
+    if (petState?.active && visible(petState.x + ox, petState.y + oy, 20)) {
+      const x = petState.x + ox, y = petState.y + oy;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = "#7dffab";
+      ctx.fillRect(-5, -5, 10, 10);
+      ctx.restore();
+    }
+  } catch {}
+  const px = player.x + ox, py = player.y + oy;
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(Number(player.angle) || 0);
+  ctx.fillStyle = "#7cf0ff";
+  ctx.beginPath();
+  ctx.moveTo(14, 0);
+  ctx.lineTo(-10, -9);
+  ctx.lineTo(-6, 0);
+  ctx.lineTo(-10, 9);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Informations de pilotage essentielles uniquement.
+  if (Bot.overlay && target && Number(target.hp) > 0) {
+    ctx.strokeStyle = "rgba(124,240,255,.3)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(target.x + ox, target.y + oy);
+    ctx.stroke();
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.arc(target.x + ox, target.y + oy, botCombatDistance(target.type), 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.restore();
+  drawPlayerBars(px, py);
+  drawMinimap();
+  drawToast();
+  drawRadiationWarning();
+}
+
 function draw() {
   ctx.fillStyle = "#050814";
   ctx.fillRect(0, 0, innerWidth, innerHeight);
@@ -33432,6 +33562,11 @@ function draw() {
       ox += (Math.random() * 2 - 1) * amp;
       oy += (Math.random() * 2 - 1) * amp;
     }
+  }
+
+  if (botMinimalRenderActive()) {
+    drawBotMinimalScene(ox, oy);
+    return;
   }
 
 if (GAME_SETTINGS.textures) {

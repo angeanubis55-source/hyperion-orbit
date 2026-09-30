@@ -650,7 +650,7 @@
           <button class="botTab" data-bot-tab="collect" type="button">Collecte</button>
           <button class="botTab" data-bot-tab="travel" type="button">Voyage</button>
           <button class="botTab" data-bot-tab="security" type="button">Sécurité</button>
-          <button class="botTab" data-bot-tab="npc" type="button">NPC</button>
+          <button class="botTab" data-bot-tab="npc" type="button">Cibles NPC</button>
           <button class="botTab" data-bot-tab="rex" type="button">REX</button>
           <button class="botTab" data-bot-tab="galaxy" type="button">Galaxy</button>
           <button class="botTab" data-bot-tab="stats" type="button">Stats</button>
@@ -668,6 +668,13 @@
                 <option value="galaxy">Galaxy Gates</option>
               </select>
             </label>
+            <label class="botField"><span>Affichage pendant le bot</span>
+              <select id="botRenderMode">
+                <option value="minimal" selected>Minimal — performances maximales</option>
+                <option value="normal">Normal — rendu complet</option>
+              </select>
+            </label>
+            <small class="botNote">Minimal remplace les sprites et projectiles par des formes simples et coupe les effets visuels.</small>
             <label class="botField"><span>Carte</span></label>
             <div class="botMapRow">
               <select id="botMapSelect" aria-label="Carte cible du bot"></select>
@@ -734,9 +741,7 @@
           <div class="botSection" data-bot-section="attack">
             <div class="botSectionTitle">Combat &amp; survie</div>
             <label class="botCheck"><input id="botLock" type="checkbox" checked /><span>Ne pas changer de cible avant de l'avoir finie</span></label>
-            <label class="botField"><span>Distance de combat par défaut (m)</span><input id="botOrbitDist" type="number" min="200" max="2000" step="10" value="560" /></label>
-            <label class="botField"><span>Engagement max (m, 0 = portée laser)</span><input id="botEngageDist" type="number" min="0" max="3000" step="10" value="0" /></label>
-            <label class="botField"><span>Ignorer NPC au-delà (m, 0 = illimité)</span><input id="botNpcIgnore" type="number" min="0" max="20000" step="100" value="0" /></label>
+            <small class="botNote">Distance automatique : portée du NPC + 10 m, sans jamais dépasser ta propre portée de tir.</small>
             <label class="botCheck"><input id="botOrbit" type="checkbox" checked /><span>Orbiter autour de la cible sur map (sinon kiting GG)</span></label>
             <label class="botCheck"><input id="botSafeNpc" type="checkbox" checked /><span>Tirer aussi les NPC sur portails / zones sûres</span></label>
             <label class="botCheck"><input id="botAutoSab" type="checkbox" checked /><span>SAB auto contre les gros boucliers</span></label>
@@ -774,6 +779,7 @@
               <label class="botCheck"><input id="botNpcUnknown" type="checkbox" /><span>Inclure les NPC non localisés</span></label>
             </div>
             <input id="botNpcSearch" class="botSearch" type="search" placeholder="Rechercher un NPC…" autocomplete="off" />
+            <div class="botNpcColumns" aria-hidden="true"><span></span><span>NPC / cartes</span><span>Priorité</span><span>Munition</span></div>
             <div id="botNpcList" class="botCheckList botNpcList"></div>
           </div>
           <div class="botSection" data-bot-section="collect">
