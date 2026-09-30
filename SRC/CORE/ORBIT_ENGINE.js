@@ -1020,6 +1020,8 @@ const ui = {
   btnIsh: document.getElementById("btnIsh"),
   btnCloak: document.getElementById("btnCloak"),
   cloakTxt: document.getElementById("cloakTxt"),
+  btnSmb: document.getElementById("btnSmb"),
+  smbTxt: document.getElementById("smbTxt"),
   btnRepair: document.getElementById("btnRepair"),
   repairTxt: document.getElementById("repairTxt"),
 
@@ -5052,6 +5054,7 @@ function restorePersistedCds() {
   player.frozenClawCd = Math.min(FROZEN_CLAW_COOLDOWN, Math.max(Number(player.frozenClawCd || 0), persistedCdLeft("frozenClaw")));
   pulseCd = Math.max(Number(pulseCd || 0), persistedCdLeft("pulse"));
   ishCd = Math.max(Number(ishCd || 0), persistedCdLeft("ish"));
+  smbCd = Math.max(Number(smbCd || 0), persistedCdLeft("smb"));
   // Reprise monde infini : ré-applique les temps d'effet restants (aucun
   // relaunch gratuit : T > 0 bloque l'activation) et re-persiste les Fx
   // pour un éventuel second refresh. Les rendus repartent car ils lisent T.
@@ -7501,7 +7504,7 @@ const SFX_ROWS = [
   { id: "escort", label: "Sons des escortes", members: ["escortX1", "escortX2", "escortX3", "escortX4", "escortX6", "escortSab"] },
   { id: "sfx_shot_roquettes", label: "Tir de roquettes", members: ["sfx_shot_roquettes"] },
   { id: "launcher", label: "Lance-roquettes", members: ["sfx_shot_lance_roquettes", "rocketLoad", "rocketsLoadStart", "rocketsLoaded"] },
-  { id: "pulseIsh", label: "IEM / ISH", members: ["pulseIEM", "ishShield"] },
+  { id: "pulseIsh", label: "IEM / ISH / SMB", members: ["pulseIEM", "ishShield", "smbBomb"] },
   { id: "death", label: "Mort du joueur", members: ["deathPlayer", "deathPlayer2"] },
   { id: "respawnPlayer", label: "Réapparition", members: ["respawnPlayer"] },
   { id: "radiationLoop", label: "Radiation", members: ["radiationLoop"] },
@@ -15835,6 +15838,103 @@ function drawPulseFx(ox, oy) {
 }
 
 // ============================================================
+// ✅ SMARTBOMB SMB-01 FX : vidéo officielle smartbomb1.swf (VP6A 320x320,
+// 213 ticks @12fps -> 118 frames uniques extraites en PNG RGBA dans
+// ASSETS/SMARTBOMB/). Jouée à 30fps (~4 s), centrée sur le lanceur.
+// ============================================================
+const SMB_FX_PACK = {
+  path: "ASSETS/SMARTBOMB/",
+  frames: 118,
+  firstNumber: 1,
+  ext: ".png",
+  fps: 30,
+  // Vraie taille de la vidéo officielle (320x320, sans upscale).
+  w: 320,
+  h: 320,
+};
+
+let smbFxImgs = [];
+let smbFxReady = false;
+
+function ensureSmbFxLoaded() {
+  if (SMB_FX_PACK._promise) return SMB_FX_PACK._promise;
+
+  SMB_FX_PACK._imgs = new Array(SMB_FX_PACK.frames);
+
+  SMB_FX_PACK._promise = (async () => {
+    const jobs = [];
+    for (let i = 0; i < SMB_FX_PACK.frames; i++) {
+      const src = `${SMB_FX_PACK.path}${SMB_FX_PACK.firstNumber + i}${SMB_FX_PACK.ext}`;
+      jobs.push(
+        loadImage(src, { priority: false })
+          .then((img) => (SMB_FX_PACK._imgs[i] = img))
+          .catch(() => (SMB_FX_PACK._imgs[i] = null))
+      );
+    }
+    await Promise.all(jobs);
+    smbFxImgs = SMB_FX_PACK._imgs;
+    smbFxReady = true;
+    return true;
+  })();
+
+  return SMB_FX_PACK._promise;
+}
+
+const smbFxs = [];
+
+function spawnSmbFx(x, y, scale = 1, followPlayer = false) {
+  if (!smbFxReady || !smbFxImgs?.length) return;
+  pushBounded(smbFxs, {
+    x,
+    y,
+    t: 0,
+    scale: Math.max(0.2, Number(scale) || 1),
+    followPlayer: followPlayer === true,
+    followNetId: typeof followPlayer === "string" ? followPlayer : null,
+  }, ENTITY_LIMITS.smbFxs);
+}
+
+function tickSmbFx(dt) {
+  if (!smbFxs.length) return;
+  const fps = SMB_FX_PACK.fps || 30;
+  const frames = SMB_FX_PACK.frames || smbFxImgs.length || 1;
+  const dur = frames / fps;
+
+  for (let i = smbFxs.length - 1; i >= 0; i--) {
+    smbFxs[i].t += dt;
+    if (smbFxs[i].t >= dur) smbFxs.splice(i, 1);
+  }
+}
+
+function drawSmbFx(ox, oy) {
+  if (!smbFxReady || !smbFxImgs?.length) return;
+
+  const fps = SMB_FX_PACK.fps || 30;
+  const frames = SMB_FX_PACK.frames || smbFxImgs.length || 1;
+
+  for (const fx of smbFxs) {
+    const idx = Math.min(frames - 1, Math.floor(fx.t * fps));
+    const img = smbFxImgs[idx];
+    if (!isImgReady(img)) continue;
+
+    let fxTarget = null;
+    try { if (fx.followNetId) fxTarget = getNetplayRemotes()?.get(String(fx.followNetId)); } catch {}
+    const x = (fx.followPlayer ? player.x : (fxTarget ? Number(fxTarget.rx ?? fxTarget.x) : fx.x)) + ox;
+    const y = (fx.followPlayer ? player.y : (fxTarget ? Number(fxTarget.ry ?? fxTarget.y) : fx.y)) + oy;
+
+    const w = (SMB_FX_PACK.w || (img.naturalWidth || img.width || 256)) * fx.scale;
+    const h = (SMB_FX_PACK.h || (img.naturalHeight || img.height || 256)) * fx.scale;
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.globalAlpha = 1;
+    ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
+    ctx.restore();
+  }
+}
+
+// ============================================================
 // ✅ SLOW EFFECT - sprite officiel sur toute cible ralentie
 // (PIB-100, DCR-250, K-300M) : boucle 30 frames 250x250.
 // ============================================================
@@ -17669,6 +17769,32 @@ function syncActionDockState() {
       applyDockField(button, "main", ishCooling ? `${ishCd.toFixed(1)}s` : "PRET",
         (v) => { if (small[0]) small[0].textContent = v; });
       applyDockField(button, "cd", ishCooling ? "" : "30k",
+        (v) => { if (small[1]) small[1].textContent = v; });
+    } else if (skill === "smb") {
+      // Mine SMB-01 : tout pareil que IEM/ISH (voile circulaire + flash "prêt",
+      // temps restant pendant la recharge, "PRET"/"30k" sinon).
+      const smbProgress = smbCd > 0 ? clamp(smbCd / SMB_COOLDOWN, 0, 1) : 0;
+      const smbCanUse = canUseSkill(SMB_COST);
+      const smbCooling = smbProgress > 0;
+      const smbWasCooling = button.dataset.smbCooling === "1";
+      if (smbWasCooling && !smbCooling && smbCanUse) {
+        button.classList.remove("skillReadyPop");
+        void button.offsetWidth;
+        button.classList.add("skillReadyPop");
+        setTimeout(() => button.classList.remove("skillReadyPop"), 750);
+      }
+      button.dataset.smbCooling = smbCooling ? "1" : "0";
+      applyDockField(button, "feedback", smbCooling,
+        (v) => button.classList.toggle("skillFeedback", v));
+      applyDockField(button, "progress", smbProgress.toFixed(3),
+        (v) => button.style.setProperty("--skill-feedback", v));
+      applyDockField(button, "disabled", !smbCanUse || smbCooling,
+        (v) => button.classList.toggle("disabled", v));
+      applyDockField(button, "ready", smbCanUse && !smbCooling,
+        (v) => button.classList.toggle("ready", v));
+      applyDockField(button, "main", smbCooling ? `${smbCd.toFixed(1)}s` : "PRET",
+        (v) => { if (small[0]) small[0].textContent = v; });
+      applyDockField(button, "cd", smbCooling ? "" : "30k",
         (v) => { if (small[1]) small[1].textContent = v; });
     } else if (skill === "cloak") {
       // CPU CL04K-XL : comme IEM/ISH (voile circulaire + flash "prêt").
@@ -20739,6 +20865,7 @@ const ENTITY_LIMITS = Object.freeze({
   floatTexts: 140,
   lasers: 80,
   pulseFxs: 12,
+  smbFxs: 12,
   engineTrails: 420,
 });
 
@@ -24540,9 +24667,22 @@ const ISH_COOLDOWN = 10.0;
 
 const ISH_DURATION = 3.0;
 
+// Extras Mine SMB-01 : 30k, CD 10 s, 3 s d'invincibilité + visuel officiel
+// smartbomb1.swf (sprites ASSETS/SMARTBOMB/), bleu marine côté dock.
+const SMB_COST = 30000;
+
+const SMB_COOLDOWN = 10.0;
+
+const SMB_DURATION = 3.0;
+
+// Dégâts officiels : 50k à tout ce qui est autour dans un rayon de 500.
+const SMB_DAMAGE = 50000;
+const SMB_RADIUS = 500;
+
 let pulseCd = 0;
 let iemCd = 0;
 let ishCd = 0;
+let smbCd = 0;
 // CPU CL04K-XL : 1 s de recharge entre ACTIF et PRET (anti-spam à la sortie).
 let cloakCd = 0;
 const CPU_CLOAK_COOLDOWN = 1.0;
@@ -24554,6 +24694,7 @@ function canUseSkill(cost) {
 function updateSkillUI() {
   const pulseOk = canUseSkill(PULSE_COST) && pulseCd <= 0;
   const ishOk = canUseSkill(ISH_COST) && ishCd <= 0;
+  const smbOk = canUseSkill(SMB_COST) && smbCd <= 0;
   // CPU CL04K-XL : 30k par activation (comme IEM/ISH), 1 s de recharge.
   const cloakOk = canUseSkill(CPU_CLOAK_COST) && cloakCd <= 0;
 
@@ -24561,6 +24702,8 @@ function updateSkillUI() {
   setHudClass(ui.btnPulse, "ready", pulseOk);
   setHudClass(ui.btnIsh, "disabled", !ishOk);
   setHudClass(ui.btnIsh, "ready", ishOk);
+  setHudClass(ui.btnSmb, "disabled", !smbOk);
+  setHudClass(ui.btnSmb, "ready", smbOk);
   setHudClass(ui.btnCloak, "disabled", !cloakOk);
   setHudClass(ui.btnCloak, "ready", cloakOk);
   setHudClass(ui.btnCloak, "active", isPlayerCpuCloaked());
@@ -24601,8 +24744,7 @@ function usePulse() {
     if (current) { current.credits = player.credits; account.user = current; }
   } catch {}
   pulseCd = PULSE_COOLDOWN;
-  persistCdUntil("pulse", PULSE_COOLDOWN);
-  // L'IEM purge immédiatement tous les effets de ralentissement et de gel.
+  persistCdUntil("pulse", PULSE_COOLDOWN);  // L'IEM purge immédiatement tous les effets de ralentissement et de gel.
   // Le serveur efface également leur état autoritaire afin qu'ils ne soient
   // pas réappliqués au prochain snapshot multijoueur.
   player.rocketSlowPct = 0;
@@ -24677,6 +24819,82 @@ function useIsh() {
 
 ui.btnIsh?.addEventListener("click", () => {
   if (!ui.btnIsh.classList.contains("disabled")) useIsh();
+});
+
+// Mine SMB-01 : 3 s d'invincibilité + visuel officiel smartbomb1.swf
+// (sprites ASSETS/SMARTBOMB/), 30k, CD 10 s.
+function useSmb() {
+  if (!started || player.dead) return;
+
+  // ZNA : pas de smartbomb depuis une zone de non-agression.
+  if (netSelfSafe()) {
+    showToast("Zone de non-agression", 1.4);
+    return;
+  }
+
+  if (smbCd > 0) {
+    showToast(`SMB en recharge (${smbCd.toFixed(1)}s)`, 0.9);
+    return;
+  }
+
+  if (player.credits < SMB_COST) {
+    showToast("Pas assez de crédits (SMB)", 1.2);
+    return;
+  }
+
+  player.credits -= SMB_COST;
+  try {
+    const current = getCurrentUserFull();
+    if (current) { current.credits = player.credits; account.user = current; }
+  } catch {}
+  smbCd = SMB_COOLDOWN;
+  persistCdUntil("smb", SMB_COOLDOWN);
+  // Visuel officiel : la vidéo smartbomb1.swf extraite en sprites.
+  // Posée au point d'activation : elle ne suit pas le vaisseau.
+  spawnSmbFx(player.x, player.y, 1, false);
+  try { sendSkillUse("smb"); } catch {}
+  player.invincibleT = Math.max(Number(player.invincibleT) || 0, SMB_DURATION);
+  SFX.play("smbBomb");
+
+  // 50k dégâts flats à tout ce qui est autour dans un rayon de 500
+  // (NPC + joueurs, comme le kamikaze : bouclier d'abord via damageEnemy,
+  // le serveur tranche pour le PvP).
+  let smbHit = 0;
+  try {
+    const r2 = SMB_RADIUS * SMB_RADIUS;
+    let pvpProxies = [];
+    try { pvpProxies = [...netPlayerProxies.values()]; } catch { pvpProxies = []; }
+    for (const e of [...enemies, ...pvpProxies]) {
+      if (!e || !(Number(e.hp) > 0) || e._bossEncounter?.invulnerable) continue;
+      // ZNA : un joueur protégé ne reçoit pas les dégâts.
+      if (e._netPlayer && e._netSafe === true) continue;
+      const ex = Number(e.x) - player.x;
+      const ey = Number(e.y) - player.y;
+      if (ex * ex + ey * ey > r2) continue;
+      const out = damageEnemy(e, SMB_DAMAGE, 0, { chance: 0, mult: 1 });
+      if (out?.total > 0) {
+        smbHit++;
+        try { notePetPlayerDamage(e); } catch {}
+        addFloatText(
+          Number(e.x) + (Math.random() - 0.5) * 60,
+          Number(e.y) - 90 - Math.random() * 20,
+          Math.round(out.total),
+          "rgba(255,150,60,0.98)",
+          { size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+        );
+      }
+    }
+  } catch {}
+
+  markProgressDirty();
+
+  showToast(smbHit > 0
+    ? `SMB : ${formatInteger(SMB_DAMAGE)} dégâts (${smbHit} cible${smbHit > 1 ? "s" : ""})`
+    : "SMB : aucune cible", smbHit > 0 ? 1.5 : 0.9);
+}
+
+ui.btnSmb?.addEventListener("click", () => {
+  if (!ui.btnSmb.classList.contains("disabled")) useSmb();
 });
 
 if (ui.respawnBaseBtn) {
@@ -27592,6 +27810,7 @@ function preloadDeferredFx() {
   try {
     Promise.allSettled([
       ensurePulseFxLoaded(), ensureRepairOrbitLoaded(), ensureInstaShieldLoaded(),
+      ensureSmbFxLoaded(),
       ensureShieldShimmerLoaded(), ensureSlowFxLoaded(), ensureIceFxLoaded(),
     ]).then(() => true);
   } catch {}
@@ -28390,7 +28609,7 @@ function tickNetplayVisuals(dt) {
       if (String(ev.by) === String(netMyId())) continue;
       const remote = getNetplayRemotes()?.get(String(ev.by));
       if (remote) {
-        playNetSpatialSound(ev.skill === "iem" ? "pulseIEM" : "ishShield", Number(remote.rx ?? remote.x), Number(remote.ry ?? remote.y), {
+        playNetSpatialSound(ev.skill === "iem" ? "pulseIEM" : ev.skill === "smb" ? "smbBomb" : "ishShield", Number(remote.rx ?? remote.x), Number(remote.ry ?? remote.y), {
           cooldown: 0.05,
           maxVoices: 4,
         });
@@ -28409,6 +28628,10 @@ function tickNetplayVisuals(dt) {
           Target.clear();
           attackActive = false;
         }
+      } else if (ev.skill === "smb") {
+        // Mine SMB-01 distante : la vraie vidéo smartbomb + son d'explosion.
+        // Posée au point de réception : ne suit pas le joueur distant.
+        if (remote) spawnSmbFx(Number(remote.rx ?? remote.x), Number(remote.ry ?? remote.y), 1, false);
       }
     }
   } catch {}
@@ -31554,6 +31777,7 @@ function update(dt) {
   }
   pulseCd = Math.max(0, pulseCd - dt);
   ishCd = Math.max(0, ishCd - dt);
+  smbCd = Math.max(0, smbCd - dt);
   cloakCd = Math.max(0, cloakCd - dt);
 
   if (account.user && account.dirty) {
@@ -31583,6 +31807,7 @@ function update(dt) {
   tickExplosions(dt);
   tickShipDamages(dt);
   tickPulseFx(dt);
+  tickSmbFx(dt);
   tickInstaShield(dt);
   tickShieldShimmer(dt);
   tickBoosters(dt);
@@ -33672,6 +33897,9 @@ if (GAME_SETTINGS.textures) {
   }
 
   const px = player.x + ox, py = player.y + oy;
+  // Smartbomb SMB-01 posée : SOUS les vaisseaux (joueur + distants),
+  // au-dessus des NPC et explosions.
+  try { drawSmbFx(ox, oy); } catch {}
   if (!player.dead) {
     ctx.save();
     // Camouflage ultime + hologramme : vaisseau + drones à 50 % d'opacité.
@@ -34531,6 +34759,7 @@ async function startGame() {
   ensureExplosionLoaded();
   ensureShipDamageLoaded();
   ensurePulseFxLoaded();
+  ensureSmbFxLoaded();
   ensureRepairOrbitLoaded();
 
   const u = getCurrentUserFull();

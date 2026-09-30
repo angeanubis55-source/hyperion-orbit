@@ -3504,6 +3504,7 @@ hors .clanBtns (ex. anciennes lignes Membres non re-rendues). */
 .ammoBtn[data-skill="ish"]{ --c:#ffe14d; }
 .ammoBtn[data-skill="repair"]{ --c:#39ff14; }
 .ammoBtn[data-skill="cloak"]{ --c:#a4133c; }
+.ammoBtn[data-skill="smb"]{ --c:#0b2e8f; }
 
 .skillBtn{
   min-width:130px;
@@ -3531,7 +3532,16 @@ hors .clanBtns (ex. anciennes lignes Membres non re-rendues). */
   gap:6px;
 }
 
-#btnCloak img{
+#btnSmb{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+}
+
+#btnCloak img,
+#btnSmb img{
   display:block;
   margin:0 auto;
 }
@@ -3562,7 +3572,8 @@ hors .clanBtns (ex. anciennes lignes Membres non re-rendues). */
   margin-top:0;
 }
 
-#btnCloak small{
+#btnCloak small,
+#btnSmb small{
   display:inline-block;
   margin-top:0;
 }
@@ -5725,9 +5736,11 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar #btnPulse{gap:0}
 #ammoBar #btnIsh{gap:0}
 #ammoBar #btnCloak{gap:0}
+#ammoBar #btnSmb{gap:0}
 #ammoBar #btnPulse > small,
 #ammoBar #btnIsh > small,
 #ammoBar #btnCloak > small,
+#ammoBar #btnSmb > small,
 #ammoBar #btnRepair > small{
   display:block;
   margin:2px 0 0;
@@ -5743,12 +5756,14 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 /* Le prix IEM/ISH reste masqué en mode compact (comme avant) */
 #ammoBar.compactAmmoBar #btnPulse > small.skillPriceMini,
 #ammoBar.compactAmmoBar #btnIsh > small.skillPriceMini,
-#ammoBar.compactAmmoBar #btnCloak > small.skillPriceMini{display:none}
+#ammoBar.compactAmmoBar #btnCloak > small.skillPriceMini,
+#ammoBar.compactAmmoBar #btnSmb > small.skillPriceMini{display:none}
 /* Texte IEM : pareil que la réparation (en bas, minuscule).
    Sélecteur par attribut : les boutons visibles sont des clones sans id. */
 #ammoBar [data-skill="pulse"] > small,
 #ammoBar [data-skill="ish"] > small,
-#ammoBar [data-skill="cloak"] > small{
+#ammoBar [data-skill="cloak"] > small,
+#ammoBar [data-skill="smb"] > small{
   position:absolute;
   z-index:3;
   left:2px;
@@ -5766,9 +5781,12 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 }
 #ammoBar [data-skill="pulse"] > small.skillPriceMini,
 #ammoBar [data-skill="ish"] > small.skillPriceMini,
-#ammoBar [data-skill="cloak"] > small.skillPriceMini{bottom:11px}
+#ammoBar [data-skill="cloak"] > small.skillPriceMini,
+#ammoBar [data-skill="smb"] > small.skillPriceMini{bottom:11px}
 /* CL04K : le mot PRET/ACTIF descendu d'1px par rapport aux autres. */
 #ammoBar [data-skill="cloak"] > small:first-of-type{bottom:1px}
+/* SMB : même position que CL04K (bouton à icône). */
+#ammoBar [data-skill="smb"] > small:first-of-type{bottom:1px}
 /* Texte réparation (OK / %) : en bas, minuscule comme les compteurs de
    roquettes. Même remarque : sélecteur par attribut pour les clones. */
 #ammoBar [data-skill="repair"] > small{
@@ -5796,6 +5814,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar.compactAmmoBar [data-skill="pulse"] > small,
 #ammoBar.compactAmmoBar [data-skill="ish"] > small,
 #ammoBar.compactAmmoBar [data-skill="cloak"] > small,
+#ammoBar.compactAmmoBar [data-skill="smb"] > small,
 #ammoBar.compactAmmoBar [data-skill="repair"] > small{
   font-size:10px !important;
   line-height:1 !important;
@@ -5862,6 +5881,8 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar [data-skill="ish"].skillFeedback,
 #ammoBar [data-skill="cloak"].ready,
 #ammoBar [data-skill="cloak"].skillFeedback,
+#ammoBar [data-skill="smb"].ready,
+#ammoBar [data-skill="smb"].skillFeedback,
 #ammoBar [data-skill="repair"].ready,
 #ammoBar [data-skill="repair"].skillFeedback{
   border-color:color-mix(in srgb, var(--c) 78%, white);
@@ -5875,6 +5896,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar [data-skill="pulse"].ready,
 #ammoBar [data-skill="ish"].ready,
 #ammoBar [data-skill="cloak"].ready,
+#ammoBar [data-skill="smb"].ready,
 #ammoBar [data-skill="repair"].ready{
   box-shadow:0 0 12px color-mix(in srgb, var(--c) 55%, transparent),
     0 0 0 2px color-mix(in srgb, var(--c) 22%, transparent) inset;
@@ -5883,9 +5905,11 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
    veut pas son opacity:.45 qui éteindrait la zone dévoilée. */
 #ammoBar [data-skill="pulse"].skillFeedback.disabled,
 #ammoBar [data-skill="ish"].skillFeedback.disabled,
-#ammoBar [data-skill="cloak"].skillFeedback.disabled{opacity:1}
+#ammoBar [data-skill="cloak"].skillFeedback.disabled,
+#ammoBar [data-skill="smb"].skillFeedback.disabled{opacity:1}
 #ammoBar [data-skill="pulse"].skillFeedback > small,
-#ammoBar [data-skill="ish"].skillFeedback > small{color:#cfe3ee}
+#ammoBar [data-skill="ish"].skillFeedback > small,
+#ammoBar [data-skill="smb"].skillFeedback > small{color:#cfe3ee}
 #ammoBar [data-skill].skillFeedback::after{
   content:"";
   position:absolute;
@@ -5945,6 +5969,19 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   0%{box-shadow:0 0 0 0 rgba(164,19,60,.95),0 0 0 0 rgba(164,19,60,.5)}
   60%{box-shadow:0 0 22px 4px rgba(164,19,60,.55),0 0 0 3px rgba(164,19,60,.25)}
   100%{box-shadow:0 0 12px rgba(164,19,60,.55),0 0 0 0 rgba(164,19,60,0)}
+}
+/* SMB-01 : liseré de voile bleu marine + flash "prêt" bleu marine. */
+#ammoBar [data-skill="smb"].skillFeedback::after{
+  background:conic-gradient(from 0deg at 50% 50%,
+    rgba(3,7,16,.8) 0deg calc(var(--skill-feedback,0) * 360deg),
+    rgba(11,46,143,.9) calc(var(--skill-feedback,0) * 360deg) calc(var(--skill-feedback,0) * 360deg + 3deg),
+    transparent calc(var(--skill-feedback,0) * 360deg + 3deg));
+}
+#ammoBar [data-skill="smb"].skillReadyPop{animation:smbReadyFlash .7s ease-out}
+@keyframes smbReadyFlash{
+  0%{box-shadow:0 0 0 0 rgba(11,46,143,.95),0 0 0 0 rgba(11,46,143,.5)}
+  60%{box-shadow:0 0 22px 4px rgba(11,46,143,.55),0 0 0 3px rgba(11,46,143,.25)}
+  100%{box-shadow:0 0 12px rgba(11,46,143,.55),0 0 0 0 rgba(11,46,143,0)}
 }
 /* ============================================================
    Pastille orbitale de tir (x1-x4, sab ; X6 exclu) : point blanc qui tourne
@@ -9431,6 +9468,7 @@ html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
 }
 #ammoBar .compactSkillBtn[data-skill="pulse"] > small,
 #ammoBar .compactSkillBtn[data-skill="ish"] > small,
+#ammoBar .compactSkillBtn[data-skill="smb"] > small,
 #ammoBar .compactSkillBtn[data-skill="repair"] > small{
   position:absolute;
   z-index:3;

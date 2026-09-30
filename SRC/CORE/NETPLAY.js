@@ -964,7 +964,7 @@ export function ensureNetplayConnection() {
       };
       return;
     }
-    if (msg.t === "skillFx" && (msg.skill === "iem" || msg.skill === "ish")) {
+    if (msg.t === "skillFx" && (msg.skill === "iem" || msg.skill === "ish" || msg.skill === "smb")) {
       if (netSkillInbox.length > 24) netSkillInbox.shift();
       netSkillInbox.push({
         skill: msg.skill,
@@ -1853,7 +1853,7 @@ export function sendSkillUse(skill) {
   if (suspended || instanceMode === true) return false;
   if (!ws || ws.readyState !== 1) return false;
   const key = String(skill || "").toLowerCase();
-  if (key !== "iem" && key !== "ish") return false;
+  if (key !== "iem" && key !== "ish" && key !== "smb") return false;
   try {
     ws.send(JSON.stringify({ t: "skillUse", skill: key }));
     return true;

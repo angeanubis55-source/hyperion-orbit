@@ -1310,9 +1310,9 @@ wss.on("connection", (ws) => {
         const room = rooms.get(mapId);
         if (!room || !room.has(id)) return;
         const skill = String(msg.skill || "").toLowerCase();
-        if (skill !== "iem" && skill !== "ish") return;
+        if (skill !== "iem" && skill !== "ish" && skill !== "smb") return;
         const now = Date.now();
-        const cdKey = skill === "iem" ? "iemCdUntil" : "ishCdUntil";
+        const cdKey = skill === "iem" ? "iemCdUntil" : skill === "ish" ? "ishCdUntil" : "smbCdUntil";
         if (now < Number(state[cdKey] || 0)) return;
         state[cdKey] = now + 10_000;
         const until = now + 3_000;
@@ -1328,6 +1328,7 @@ wss.on("connection", (ws) => {
           if (sim && typeof sim.breakPlayerLocks === "function") sim.breakPlayerLocks(id, until);
         } else {
           state.ishUntil = until;
+          if (skill === "smb") state.smbUntil = until;
         }
         broadcastRoom(room, JSON.stringify({ t: "skillFx", skill, by: id, at: now, until }));
       } catch {}
