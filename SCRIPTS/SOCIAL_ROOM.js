@@ -109,14 +109,53 @@ function dissolveIfSolo(pid, ctx) {
   } catch {}
 }
 
-function pruneInvites(now) {
+function pruneInvites(now, ctx) {
   for (const [pid, inv] of invites) {
-    if (now - Number(inv?.at || 0) > INVITE_TTL_MS) invites.delete(pid);
+    if (now - Number(inv?.at || 0) <= INVITE_TTL_MS) continue;
+    invites.delete(pid);
+    if (!ctx) continue;
+    // L'invitant ne doit pas rester coincé dans un groupe solo fantôme
+    // (invisible côté client, mais bloquant les futures invites) : on le
+    // dissout, sauf si une autre invitation en cours référence encore
+    // le même groupe.
+    const gid = String(inv?.gid || "");
+    let stillUsed = false;
+    for (const other of invites.values()) {
+      if (String(other?.gid) === gid && now - Number(other?.at || 0) <= INVITE_TTL_MS) { stillUsed = true; break; }
+    }
+    if (!stillUsed) {
+      try { dissolveIfSolo(String(inv?.from || ""), ctx); } catch {}
+    }
   }
 }
 
+// Un groupe à un seul membre est une préparation d'invitation invisible :
+// seul un groupe de 2+ compte comme "être dans un groupe".
+function inRealGroup(pid) {
+  const gid = memberGroup.get(String(pid));
+  if (!gid) return null;
+  if ((groups.get(gid)?.members?.length || 0) <= 1) return null;
+  return gid;
+}
+
+// Fantôme solo sans invitation sortante en cours : ménage silencieux
+// (ex : toutes les invites ont expiré entre deux prunes).
+function reapSoloGhost(pid, ctx) {
+  try {
+    const key = String(pid);
+    const gid = memberGroup.get(key);
+    const g = gid ? groups.get(gid) : null;
+    if (!g || g.members.length > 1) return;
+    const now = Date.now();
+    for (const inv of invites.values()) {
+      if (String(inv?.from) === key && String(inv?.gid) === String(gid) && now - Number(inv?.at || 0) <= INVITE_TTL_MS) return;
+    }
+    dissolveGroup(gid, ctx);
+  } catch {}
+}
+
 export function socialGroupOf(pid) {
-  return memberGroup.get(String(pid)) || null;
+  return inRealGroup(pid);
 }
 
 export function socialDescribeGroup(pid, ctx) {
@@ -139,7 +178,7 @@ export function socialPeerChanged(pid, ctx) {
 // Déconnexion : quitte le groupe + purge les invites le concernant.
 export function socialPeerGone(pid, ctx) {
   try {
-    pruneInvites(Date.now());
+    pruneInvites(Date.now(), ctx);
     for (const [target, inv] of invites) {
       if (String(target) === String(pid) || String(inv?.from) === String(pid)) invites.delete(target);
     }
@@ -163,6 +202,7 @@ export function handleSocialMessage(ctx, msg) {
   const me = String(ctx.id);
   try {
     if (t === "groupSync") {
+      reapSoloGhost(me, ctx);
       ctx.send({ t: "groupUpdate", group: socialDescribeGroup(me, ctx) });
       const inv = invites.get(me);
       if (inv && Date.now() - Number(inv.at || 0) <= INVITE_TTL_MS) {
@@ -173,7 +213,7 @@ export function handleSocialMessage(ctx, msg) {
     if (t === "groupCreate") {
       // Bouton Créer retiré (création auto à l'invitation) : conservé
       // pour compatibilité protocole, silencieux.
-      if (memberGroup.has(me)) { ctx.send({ t: "groupNotice", text: "Tu es déjà dans un groupe." }); return true; }
+      if (inRealGroup(me)) { ctx.send({ t: "groupNotice", text: "Tu es déjà dans un groupe." }); return true; }
       const gid = `g${nextGroup++}`;
       groups.set(gid, { id: gid, leader: me, members: [me], created: Date.now(), invitesLocked: false, rally: null });
       memberGroup.set(me, gid);
@@ -181,7 +221,7 @@ export function handleSocialMessage(ctx, msg) {
       return true;
     }
     if (t === "groupInvite") {
-      pruneInvites(Date.now());
+      pruneInvites(Date.now(), ctx);
       const target = ctx.findByPseudo(msg.to);
       if (!target) { ctx.send({ t: "groupNotice", text: "Pilote introuvable ou hors ligne." }); return true; }
       if (String(target.id) === me) { ctx.send({ t: "groupNotice", text: "Tu ne peux pas t'inviter toi-même." }); return true; }
@@ -194,7 +234,7 @@ export function handleSocialMessage(ctx, msg) {
       const g = groups.get(gid);
       if (g.invitesLocked === true && String(g.leader) !== me) { ctx.send({ t: "groupNotice", text: "Les invitations sont verrouillées par le chef." }); return true; }
       if (g.members.length >= GROUP_MAX) { ctx.send({ t: "groupNotice", text: `Groupe plein (${GROUP_MAX} max).` }); return true; }
-      if (memberGroup.get(String(target.id))) { ctx.send({ t: "groupNotice", text: `${target.pseudo} est déjà dans un groupe.` }); return true; }
+      if (inRealGroup(String(target.id))) { ctx.send({ t: "groupNotice", text: `${target.pseudo} est déjà dans un groupe.` }); return true; }
       invites.set(String(target.id), { gid, from: me, fromPseudo: cleanPseudo(ctx.state?.pseudo), at: Date.now() });
       const expiresAt = Date.now() + INVITE_TTL_MS;
       ctx.sendTo(String(target.id), { t: "groupInvite", from: me, fromPseudo: cleanPseudo(ctx.state?.pseudo), groupId: gid, expiresAt });
@@ -202,7 +242,7 @@ export function handleSocialMessage(ctx, msg) {
       return true;
     }
     if (t === "groupAccept") {
-      pruneInvites(Date.now());
+      pruneInvites(Date.now(), ctx);
       const inv = invites.get(me);
       if (!inv) { ctx.send({ t: "groupNotice", text: "Aucune invitation en attente." }); return true; }
       invites.delete(me);
