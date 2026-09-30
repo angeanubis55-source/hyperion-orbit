@@ -1160,6 +1160,8 @@ export function ensureNetplayConnection() {
           x, y,
           vx: svx,
           vy: svy,
+          // CPU CL04K-XL distant : vaisseau non rendu (point + proxy gardés).
+          cloakCpu: p.cloakCpu === true,
           // Destination de deplacement (pilotage de la prediction).
           moving,
           dx, dy,
@@ -1410,6 +1412,8 @@ function sendNow(local, force = false) {
       hswap: Math.max(0, Math.min(3, Number(local.hswap) || 0)),
       pseudo: String(local.pseudo || "Pilote").slice(0, 20),
       dead: local.dead === true,
+      cloakCpu: local.cloakCpu === true,
+      cloaked: local.cloaked === true || local.cloakCpu === true,
       hpPct: Number.isFinite(Number(local.hpPct)) ? local.hpPct : 1,
       shPct: Number.isFinite(Number(local.shPct)) ? local.shPct : 1,
       collectUid: String(local.collectUid || "").slice(0, 64),

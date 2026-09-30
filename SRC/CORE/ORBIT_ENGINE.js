@@ -1018,6 +1018,8 @@ const ui = {
 
   btnPulse: document.getElementById("btnPulse"),
   btnIsh: document.getElementById("btnIsh"),
+  btnCloak: document.getElementById("btnCloak"),
+  cloakTxt: document.getElementById("cloakTxt"),
   btnRepair: document.getElementById("btnRepair"),
   repairTxt: document.getElementById("repairTxt"),
 
@@ -2805,6 +2807,8 @@ function tartFireBurst(count) {
     showNotification("Cible hors de portée.", 1.5, "error");
     return false;
   }
+  // ZNA : pas de salve sur un joueur protégé (ni perte de sa propre ZNA).
+  if (netPvpBlocked(t)) return false;
   const id = String(player.launcherActive || "eco10").toLowerCase();
   const rocket = getRocketType(id);
   if (!rocket || rocket.manual !== false) return false;
@@ -6273,16 +6277,77 @@ function isPlayerHoloHidden() {
   if (typeof player === "undefined" || !player || player.dead) return false;
   return player.holoGramPhase === "clones";
 }
-// Inciblable par les NPC (camouflage ou hologramme) : ils arrêtent tir,
+// Inciblable par les NPC (camouflage, CPU CL04K-XL ou hologramme) : ils arrêtent tir,
 // poursuite, aggro et kamikaze, et ne fixent plus le joueur.
-function isPlayerUntargetable() { return isPlayerCloaked() || isPlayerHoloHidden(); }
+function isPlayerUntargetable() { return isPlayerCloaked() || isPlayerCpuCloaked() || isPlayerHoloHidden(); }
 // Toute attaque réelle casse le camouflage (laser, roquette, salve) :
-// l'aptitude est coupée donc la recharge démarre.
+// l'aptitude est coupée donc la recharge démarre. Le CPU CL04K-XL tombe
+// aussi (sans recharge, il n'en a pas).
 function breakPoliceCloak() {
+  breakCpuCloak("attaque");
   if ((player.cloakT || 0) <= 0) return;
   player.cloakT = 0;
   startPoliceCloakCooldown();
   showNotification("Camouflage ultime désactivé (attaque)", 2, "info");
+}
+// CPU Camouflage CL04K-XL : comme le camouflage ultime (rendu 50 %, PNJ
+// aveugles) mais sans CD ni durée, et le point minimap reste visible.
+// 30 000 crédits par activation (comme IEM/ISH), au bouton du dock.
+// Ne tombe qu'à la première attaque, à la mort ou dévoilé par une IEM
+// ennemie qui pète à côté.
+const CPU_CLOAK_COST = 30000;
+const CPU_CLOAK_IEM_RADIUS = 550;
+function isPlayerCpuCloaked() {
+  if (typeof player === "undefined" || !player || player.dead) return false;
+  return player.cpuCloak === true;
+}
+function breakCpuCloak(reason) {
+  if (player.cpuCloak !== true) return;
+  player.cpuCloak = false;
+  // 1 s anti-spam à la sortie (comme à l'activation manuelle).
+  cloakCd = Math.max(cloakCd, CPU_CLOAK_COOLDOWN);
+  showNotification(reason === "iem" ? "CPU CL04K-XL dévoilé par une IEM !" : "CPU CL04K-XL désactivé (attaque)", 2, "info");
+  try { updateSkillUI(); } catch {}
+}
+function toggleCpuCloak() {
+  if (player.dead || !started) return;
+  if (cloakCd > 0) {
+    showNotification(`CL04K-XL en recharge (${cloakCd.toFixed(1)}s)`, 0.9);
+    return;
+  }
+  if (isPlayerCpuCloaked()) {
+    player.cpuCloak = false;
+    cloakCd = Math.max(cloakCd, CPU_CLOAK_COOLDOWN);
+    showNotification("CPU CL04K-XL désactivé", 1.5, "info");
+    try { updateSkillUI(); } catch {}
+    return;
+  }
+  if (player.credits < CPU_CLOAK_COST) {
+    showNotification("Pas assez de crédits (CL04K-XL)", 1.2);
+    return;
+  }
+  player.credits -= CPU_CLOAK_COST;
+  try {
+    const current = getCurrentUserFull();
+    if (current) { current.credits = player.credits; account.user = current; }
+  } catch {}
+  markProgressDirty();
+  player.cpuCloak = true;
+  // Pas de recharge à l'activation : le CD d'1 s ne s'applique qu'entre
+  // ACTIF et PRET (à la sortie du camouflage).
+  // Les NPC perdent la cible : on efface l'aggro existante.
+  try {
+    for (const e of enemies) {
+      if (!e || e.hp <= 0) continue;
+      e._aggro = false;
+      e._aggroT = 0;
+      e._attackedPlayerRecently = false;
+      if (e._combatTargetId === "player") e._combatTargetId = null;
+      if (e.aiZ) e.aiZ.state = "wander";
+    }
+  } catch {}
+  showNotification("CPU CL04K-XL actif (sans limite de temps)", 2.5, "info");
+  try { updateSkillUI(); } catch {}
 }
 function activatePoliceCloak() {
   if (player.dead || !started) return;
@@ -17605,6 +17670,37 @@ function syncActionDockState() {
         (v) => { if (small[0]) small[0].textContent = v; });
       applyDockField(button, "cd", ishCooling ? "" : "30k",
         (v) => { if (small[1]) small[1].textContent = v; });
+    } else if (skill === "cloak") {
+      // CPU CL04K-XL : comme IEM/ISH (voile circulaire + flash "prêt").
+      // 1 s de recharge après chaque (dés)activation (anti-spam).
+      const cloakProgress = cloakCd > 0 ? clamp(cloakCd / CPU_CLOAK_COOLDOWN, 0, 1) : 0;
+      const cloakCanUse = canUseSkill(CPU_CLOAK_COST);
+      const cloakCooling = cloakProgress > 0;
+      const cloakWasCooling = button.dataset.cloakCooling === "1";
+      if (cloakWasCooling && !cloakCooling && cloakCanUse) {
+        button.classList.remove("skillReadyPop");
+        void button.offsetWidth;
+        button.classList.add("skillReadyPop");
+        setTimeout(() => button.classList.remove("skillReadyPop"), 750);
+      }
+      button.dataset.cloakCooling = cloakCooling ? "1" : "0";
+      const cloakActive = isPlayerCpuCloaked();
+      // Pendant l'effet : voile noir plein (comme si le CD venait de
+      // s'armer) ; il ne se balaye qu'à la sortie (ACTIF -> PRET).
+      applyDockField(button, "feedback", cloakCooling || cloakActive,
+        (v) => button.classList.toggle("skillFeedback", v));
+      applyDockField(button, "progress", (cloakActive ? 1 : cloakProgress).toFixed(3),
+        (v) => button.style.setProperty("--skill-feedback", v));
+      applyDockField(button, "disabled", (!cloakCanUse && !cloakActive) || cloakCooling,
+        (v) => button.classList.toggle("disabled", v));
+      applyDockField(button, "ready", (cloakCanUse || cloakActive) && !cloakCooling,
+        (v) => button.classList.toggle("ready", v));
+      applyDockField(button, "active", cloakActive,
+        (v) => button.classList.toggle("active", v));
+      applyDockField(button, "main", cloakCooling ? `${cloakCd.toFixed(1)}s` : (cloakActive ? "ACTIF" : "PRET"),
+        (v) => { if (small[0]) small[0].textContent = v; });
+      applyDockField(button, "cd", cloakCooling ? "" : "30k",
+        (v) => { if (small[1]) small[1].textContent = v; });
     } else if (skill === "repair") {
       applyDockField(button, "active", false,
         (v) => button.classList.remove("active"));
@@ -20494,7 +20590,8 @@ function drawPet(ox, oy) {
   ctx.save();
   ctx.translate(x, y);
   ctx.globalCompositeOperation = "source-over";
-  ctx.globalAlpha = 1;
+  // Camouflage (ultime ou CPU CL04K-XL) : le REX passe à 50 % comme le vaisseau.
+  ctx.globalAlpha = (isPlayerCloaked() || player.cpuCloak === true) ? 0.5 : 1;
   // Même balancement qu'à l'arrêt que le vaisseau et les drones (sprite uniquement).
   const petTt = performance.now() / 1000;
   const petBobY = Math.sin(petTt * 4.0) * 2 * idleSway;
@@ -23541,6 +23638,8 @@ function drawRemoteCollectBeams(c, ox, oy) {
   const now = performance.now() / 1000;
   for (const remote of remotes.values()) {
     if (!remote || String(remote.collectUid || "") !== String(c.slotUid)) continue;
+    // CPU CL04K-XL : pas de faisceau visible depuis un vaisseau invisible.
+    if (remote.cloakCpu === true) continue;
     const petCollect = remote.collectPet === true && remote.peta === 1;
     const sourceX = Number(petCollect ? (remote.petrx ?? remote.petx) : (remote.rx ?? remote.x)) + ox;
     const sourceY = Number(petCollect ? (remote.petry ?? remote.pety) : (remote.ry ?? remote.y)) + oy;
@@ -24444,6 +24543,9 @@ const ISH_DURATION = 3.0;
 let pulseCd = 0;
 let iemCd = 0;
 let ishCd = 0;
+// CPU CL04K-XL : 1 s de recharge entre ACTIF et PRET (anti-spam à la sortie).
+let cloakCd = 0;
+const CPU_CLOAK_COOLDOWN = 1.0;
 
 function canUseSkill(cost) {
   return started && !player.dead && player.credits >= cost;
@@ -24452,11 +24554,19 @@ function canUseSkill(cost) {
 function updateSkillUI() {
   const pulseOk = canUseSkill(PULSE_COST) && pulseCd <= 0;
   const ishOk = canUseSkill(ISH_COST) && ishCd <= 0;
+  // CPU CL04K-XL : 30k par activation (comme IEM/ISH), 1 s de recharge.
+  const cloakOk = canUseSkill(CPU_CLOAK_COST) && cloakCd <= 0;
 
   setHudClass(ui.btnPulse, "disabled", !pulseOk);
   setHudClass(ui.btnPulse, "ready", pulseOk);
   setHudClass(ui.btnIsh, "disabled", !ishOk);
   setHudClass(ui.btnIsh, "ready", ishOk);
+  setHudClass(ui.btnCloak, "disabled", !cloakOk);
+  setHudClass(ui.btnCloak, "ready", cloakOk);
+  setHudClass(ui.btnCloak, "active", isPlayerCpuCloaked());
+  try {
+    if (ui.cloakTxt) ui.cloakTxt.textContent = isPlayerCpuCloaked() ? "ACTIF" : (cloakOk ? "PRET" : "—");
+  } catch {}
   syncActionDockState();
 }
 
@@ -24525,6 +24635,11 @@ function usePulse() {
 
 ui.btnPulse.addEventListener("click", () => {
   if (!ui.btnPulse.classList.contains("disabled")) usePulse();
+});
+
+// CPU CL04K-XL : toggle sans CD ni durée (grisé si non équipé).
+ui.btnCloak?.addEventListener("click", () => {
+  if (!ui.btnCloak.classList.contains("disabled")) toggleCpuCloak();
 });
 
 // ISH : 3 s d'invincibilité + même anim que la réapparition,
@@ -24691,6 +24806,9 @@ function startAttack(ammoOverride = null) {
     if (player.dead || !started) return;
     const t = Target.get();
     if (!t) return;
+    // ZNA : si l'un des deux est en zone de non-agression, l'attaque ne
+    // démarre même pas (pas d'attackActive -> la ZNA reste active).
+    if (netPvpBlocked(t)) return;
     attackActive = true;
     announceLaserCombatRange(t);
     const fired = tryFireOnce(null, true);
@@ -24719,6 +24837,9 @@ function startAttack(ammoOverride = null) {
 
   const t = Target.get();
   if (!t) return;
+
+  // ZNA : attaque impossible si l'un des deux est en zone de non-agression.
+  if (netPvpBlocked(t)) return;
 
   // ✅ salve rapide indisponible : l'attaque reste active mais visuellement
   // rien ne part jusqu'à la fin du cooldown, où la salve se déclenche d'elle-même.
@@ -25026,6 +25147,12 @@ function tickAutoAttack(dt) {
 
   const t = Target.get();
   if (!t) {
+    stopAttack();
+    return;
+  }
+  // Cible entrée/sortie de ZNA en plein combat : on coupe l'attaque
+  // (l'attaque est impossible dès qu'un des deux est protégé).
+  if (netPvpBlocked(t)) {
     stopAttack();
     return;
   }
@@ -26082,17 +26209,34 @@ function netBoomSelfDamage(c, cause, x, y) {
   } catch {}
 }
 
-// Multi PvP : pas de tir si l'un des deux est en zone de non-agression
-// (parite solo : on ne se bat pas dans les zones sures).
+// Multi PvP : pas de tir sur une cible en zone de non-agression.
+// Si seul l'attaquant est protégé, l'attaque reste possible mais la fait
+// tomber (combatT / attackActive lèvent sa ZNA pendant 5 s) : on peut tirer
+// depuis sa base/portail sur un ennemi dehors, à ses risques et périls.
 let lastPvpSafeToastAt = 0;
 function netSelfSafe() {
   try { return safeZoneActive && playerIsInSafeZone(); } catch { return false; }
 }
 function netPvpBlocked(t) {
-  if (!t || (!t._netPlayer && !t._netPet) || !netplayNpcActive()) return false;
+  if (!t) return false;
+  // Propre REX : pas d'attaque dessus quand on est en ZNA (ailleurs, inchangé).
+  if (isOwnPetTarget(t)) {
+    if (!netSelfSafe()) return false;
+    try {
+      const nowMs = performance.now();
+      if (nowMs - lastPvpSafeToastAt > 3000) {
+        lastPvpSafeToastAt = nowMs;
+        showToast("Zone de non-agression", 1.4);
+      }
+    } catch {}
+    return true;
+  }
+  if ((!t._netPlayer && !t._netPet) || !netplayNpcActive()) return false;
+  // Seule la cible compte : protégée -> intouchable. Attaquant protégé
+  // seul -> autorisé (il perd sa ZNA en attaquant, mécanique existante).
   let foeSafe = false;
   try { foeSafe = t._netSafe === true; } catch {}
-  if (!foeSafe && !netSelfSafe()) return false;
+  if (!foeSafe) return false;
   try {
     const nowMs = performance.now();
     if (nowMs - lastPvpSafeToastAt > 3000) {
@@ -26101,6 +26245,13 @@ function netPvpBlocked(t) {
     }
   } catch {}
   return true;
+}
+// Propre REX (locké pour voir ses barres) : on ne peut jamais lui tirer
+// dessus, ZNA ou pas. Le lock reste autorisé (affichage des barres).
+function isOwnPetTarget(t) {
+  try {
+    return !!t && (t.isPetTarget === true || t === petTargetProxy || String(t.id || "") === "pet");
+  } catch { return false; }
 }
 
 // Multi : cible de tir partagee d'un NPC serveur.
@@ -27126,10 +27277,12 @@ function die() {
   escapeWatch = null;
   player.dead = true;
   // Mort = aptitudes coupées : leurs recharges démarrent.
+  // Le CPU CL04K-XL tombe aussi (sans recharge, silencieux).
   if ((player.cloakT || 0) > 0) {
     player.cloakT = 0;
     startPoliceCloakCooldown();
   }
+  player.cpuCloak = false;
   try { cancelRepairPod(); } catch {}
   try { cancelRepairs(); } catch {}
   try { cancelHammerPod(); } catch {}
@@ -28244,6 +28397,13 @@ function tickNetplayVisuals(dt) {
       }
       if (ev.skill === "iem") {
         if (remote) spawnPulseFx(Number(remote.rx ?? remote.x), Number(remote.ry ?? remote.y), 1, String(ev.by));
+        // IEM ennemie qui pète à côté : dévoile le CPU CL04K-XL.
+        try {
+          if (player.cpuCloak === true && !player.dead && remote) {
+            const dIem = Math.hypot(Number(remote.rx ?? remote.x) - player.x, Number(remote.ry ?? remote.y) - player.y);
+            if (dIem <= CPU_CLOAK_IEM_RADIUS) breakCpuCloak("iem");
+          }
+        } catch {}
         const locked = Target.get();
         if (locked?._netPlayer != null && String(locked._netPlayer) === String(ev.by)) {
           Target.clear();
@@ -28309,6 +28469,10 @@ function drawNetplayRemotes(ox, oy) {
     } catch {}
     const x = Number(r.rx ?? r.x) + ox, y = Number(r.ry ?? r.y) + oy + swayBob;
     if (x < -260 || y < -260 || x > innerWidth + 260 || y > innerHeight + 260) continue;
+    // CPU CL04K-XL distant : vaisseau invisible (ni coque, ni réacteurs, ni
+    // drones, ni plaque). Le point minimap reste (pas de filtre de ce côté)
+    // et le proxy reste cliquable : un clic réussi affiche le LOCK.
+    if (r.cloakCpu === true) continue;
     // Tirs de l'allie : vrais projectiles visuels (tickNetplayVisuals),
     // pas de faisceau.
     ctx.save();
@@ -31390,6 +31554,7 @@ function update(dt) {
   }
   pulseCd = Math.max(0, pulseCd - dt);
   ishCd = Math.max(0, ishCd - dt);
+  cloakCd = Math.max(0, cloakCd - dt);
 
   if (account.user && account.dirty) {
     account.saveCd -= dt;
@@ -32797,9 +32962,9 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             e._aggroT = aggroHold;
           }
           if (!e.passiveNative || e._provoked) {
-            // Camouflage ultime : pas de nouvelle aggro sur le joueur invisible.
+            // Camouflage ultime / CPU CL04K-XL : pas de nouvelle aggro sur le joueur invisible.
             // Portails : pas de nouvel aggro dans le rayon (sortie naturelle).
-            if (d <= aggroRange && !isPlayerCloaked() && !npcPortalCalm(e)) {
+            if (d <= aggroRange && !isPlayerCloaked() && player.cpuCloak !== true && !npcPortalCalm(e)) {
               e._aggro = true;
               e._aggroT = aggroHold;
             }
@@ -32812,8 +32977,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
         let mxv = 0, myv = 0;
 
-        // Camouflage ultime : le NPC ne poursuit plus le joueur invisible.
-        if (!playerInSZ && !isPlayerCloaked() && e._aggro) {
+        // Camouflage ultime / CPU CL04K-XL : le NPC ne poursuit plus le joueur invisible.
+        if (!playerInSZ && !isPlayerCloaked() && player.cpuCloak !== true && e._aggro) {
           e.aiZ.state = "aggro";
 
                   if (isKamikaze) {
@@ -33510,7 +33675,7 @@ if (GAME_SETTINGS.textures) {
   if (!player.dead) {
     ctx.save();
     // Camouflage ultime + hologramme : vaisseau + drones à 50 % d'opacité.
-    if (isPlayerCloaked() || isPlayerHoloHidden()) ctx.globalAlpha = 0.5;
+    if (isPlayerCloaked() || isPlayerHoloHidden() || player.cpuCloak === true) ctx.globalAlpha = 0.5;
     ctx.translate(px, py);
     // Redirect (Disruptor) : le vaisseau clignote pendant l'effet.
     if ((player.redirectT || 0) > 0) {
@@ -34036,7 +34201,7 @@ if (GAME_SETTINGS.textures) {
 
   // Nom + barres de vie + grade : 50 % d'opacité sous camouflage ultime / hologramme.
   ctx.save();
-  if (isPlayerCloaked() || isPlayerHoloHidden()) ctx.globalAlpha = 0.5;
+  if (isPlayerCloaked() || isPlayerHoloHidden() || player.cpuCloak === true) ctx.globalAlpha = 0.5;
   drawPlayerBars(px, py);
   ctx.restore();
   drawMinimap();
@@ -34642,6 +34807,12 @@ function frame(t) {
         hswap: hangarSwapFx ? Math.max(0.001, hangarSwapFx.dur - hangarSwapFx.t) : 0,
         pseudo: account?.user?.pseudo || "Pilote",
         dead: player.dead === true,
+        // CPU CL04K-XL actif : les autres ne rendent plus le vaisseau
+        // (le point minimap et le proxy cliquable restent).
+        cloakCpu: player.cpuCloak === true,
+        // Camouflage (ultime ou CPU) : les NPC PARTAGÉS doivent aussi
+        // perdre la cible côté serveur (sinon ils tirent un invisible).
+        cloaked: (player.cloakT || 0) > 0 || player.cpuCloak === true,
         hpPct: player.hpMax > 0 ? player.hp / player.hpMax : 1,
         shPct: player.shMax > 0 ? player.sh / player.shMax : 1,
         collectUid: activeCollectable?.slotUid ? String(activeCollectable.slotUid) : "",

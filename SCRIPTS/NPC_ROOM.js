@@ -130,12 +130,28 @@ export class ZoneNpcSim {
 
   setPlayer(clientId, x, y, flags = {}) {
     const f = (flags && typeof flags === "object") ? flags : { dead: flags };
-    this.players.set(String(clientId), {
+    const pid = String(clientId);
+    const prev = this.players.get(pid);
+    const cloaked = f.cloaked === true;
+    this.players.set(pid, {
       x: Number(x) || 0, y: Number(y) || 0,
       dead: f.dead === true,
       safe: f.safe === true,
       untargetableUntil: Math.max(0, Number(f.untargetableUntil) || 0),
+      cloaked,
     });
+    // Camouflage (ultime ou CPU) : les NPC perdent la cible sur le front
+    // montant, comme en local (pas de poursuite ni de tir sur l'invisible).
+    if (cloaked && !prev?.cloaked) {
+      for (const e of this.entries.values()) {
+        if (String(e.aggroBy || "") === pid) {
+          e.aggroBy = null;
+          e.aggroUntil = 0;
+        }
+        if (String(e.pendingAggroBy || "") === pid) e.pendingAggroBy = null;
+        if (String(e.chaseId || "") === pid) e.chaseId = null;
+      }
+    }
   }
 
   inSafe(x, y) {
@@ -163,9 +179,9 @@ export class ZoneNpcSim {
     };
   }
 
-  // Cible valide : vivante et hors zone sure.
+  // Cible valide : vivante, hors zone sure et non camouflée (ultime ou CPU).
   validTarget(p) {
-    return !!p && !p.dead && !p.safe && Date.now() >= Number(p.untargetableUntil || 0);
+    return !!p && !p.dead && !p.safe && !p.cloaked && Date.now() >= Number(p.untargetableUntil || 0);
   }
 
   breakPlayerLocks(clientId, untilMs) {

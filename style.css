@@ -3503,6 +3503,7 @@ hors .clanBtns (ex. anciennes lignes Membres non re-rendues). */
 .ammoBtn[data-skill="pulse"]{ --c:#b342ff; }
 .ammoBtn[data-skill="ish"]{ --c:#ffe14d; }
 .ammoBtn[data-skill="repair"]{ --c:#39ff14; }
+.ammoBtn[data-skill="cloak"]{ --c:#a4133c; }
 
 .skillBtn{
   min-width:130px;
@@ -3520,6 +3521,19 @@ hors .clanBtns (ex. anciennes lignes Membres non re-rendues). */
   flex-direction:column;
   align-items:center;
   gap:6px;
+}
+
+#btnCloak{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+}
+
+#btnCloak img{
+  display:block;
+  margin:0 auto;
 }
 
 #btnPulse .skillTopRow{
@@ -3544,6 +3558,11 @@ hors .clanBtns (ex. anciennes lignes Membres non re-rendues). */
 }
 
 #btnIsh small{
+  display:inline-block;
+  margin-top:0;
+}
+
+#btnCloak small{
   display:inline-block;
   margin-top:0;
 }
@@ -5705,8 +5724,10 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
    munitions/roquettes (même emplacement, taille, graisse, couleur). */
 #ammoBar #btnPulse{gap:0}
 #ammoBar #btnIsh{gap:0}
+#ammoBar #btnCloak{gap:0}
 #ammoBar #btnPulse > small,
 #ammoBar #btnIsh > small,
+#ammoBar #btnCloak > small,
 #ammoBar #btnRepair > small{
   display:block;
   margin:2px 0 0;
@@ -5721,11 +5742,13 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar.compactAmmoBar #btnRepair > small{font-size:12px;line-height:1;opacity:.88}
 /* Le prix IEM/ISH reste masqué en mode compact (comme avant) */
 #ammoBar.compactAmmoBar #btnPulse > small.skillPriceMini,
-#ammoBar.compactAmmoBar #btnIsh > small.skillPriceMini{display:none}
+#ammoBar.compactAmmoBar #btnIsh > small.skillPriceMini,
+#ammoBar.compactAmmoBar #btnCloak > small.skillPriceMini{display:none}
 /* Texte IEM : pareil que la réparation (en bas, minuscule).
    Sélecteur par attribut : les boutons visibles sont des clones sans id. */
 #ammoBar [data-skill="pulse"] > small,
-#ammoBar [data-skill="ish"] > small{
+#ammoBar [data-skill="ish"] > small,
+#ammoBar [data-skill="cloak"] > small{
   position:absolute;
   z-index:3;
   left:2px;
@@ -5742,7 +5765,10 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   text-shadow:0 1px 3px #000, 0 0 6px #000;
 }
 #ammoBar [data-skill="pulse"] > small.skillPriceMini,
-#ammoBar [data-skill="ish"] > small.skillPriceMini{bottom:11px}
+#ammoBar [data-skill="ish"] > small.skillPriceMini,
+#ammoBar [data-skill="cloak"] > small.skillPriceMini{bottom:11px}
+/* CL04K : le mot PRET/ACTIF descendu d'1px par rapport aux autres. */
+#ammoBar [data-skill="cloak"] > small:first-of-type{bottom:1px}
 /* Texte réparation (OK / %) : en bas, minuscule comme les compteurs de
    roquettes. Même remarque : sélecteur par attribut pour les clones. */
 #ammoBar [data-skill="repair"] > small{
@@ -5769,6 +5795,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar.compactAmmoBar .rocketQuickAction > small.launcherStock,
 #ammoBar.compactAmmoBar [data-skill="pulse"] > small,
 #ammoBar.compactAmmoBar [data-skill="ish"] > small,
+#ammoBar.compactAmmoBar [data-skill="cloak"] > small,
 #ammoBar.compactAmmoBar [data-skill="repair"] > small{
   font-size:10px !important;
   line-height:1 !important;
@@ -5833,6 +5860,8 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 #ammoBar [data-skill="pulse"].skillFeedback,
 #ammoBar [data-skill="ish"].ready,
 #ammoBar [data-skill="ish"].skillFeedback,
+#ammoBar [data-skill="cloak"].ready,
+#ammoBar [data-skill="cloak"].skillFeedback,
 #ammoBar [data-skill="repair"].ready,
 #ammoBar [data-skill="repair"].skillFeedback{
   border-color:color-mix(in srgb, var(--c) 78%, white);
@@ -5845,6 +5874,7 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 /* IEM/ISH prête : lueur extérieure + flash */
 #ammoBar [data-skill="pulse"].ready,
 #ammoBar [data-skill="ish"].ready,
+#ammoBar [data-skill="cloak"].ready,
 #ammoBar [data-skill="repair"].ready{
   box-shadow:0 0 12px color-mix(in srgb, var(--c) 55%, transparent),
     0 0 0 2px color-mix(in srgb, var(--c) 22%, transparent) inset;
@@ -5852,7 +5882,8 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
 /* Pendant la recharge le bouton porte aussi .disabled (clic bloqué) mais on ne
    veut pas son opacity:.45 qui éteindrait la zone dévoilée. */
 #ammoBar [data-skill="pulse"].skillFeedback.disabled,
-#ammoBar [data-skill="ish"].skillFeedback.disabled{opacity:1}
+#ammoBar [data-skill="ish"].skillFeedback.disabled,
+#ammoBar [data-skill="cloak"].skillFeedback.disabled{opacity:1}
 #ammoBar [data-skill="pulse"].skillFeedback > small,
 #ammoBar [data-skill="ish"].skillFeedback > small{color:#cfe3ee}
 #ammoBar [data-skill].skillFeedback::after{
@@ -5900,6 +5931,20 @@ body #profileOverlay #panel_shop .shopLayout{display:grid !important; grid-templ
   0%{box-shadow:0 0 0 0 rgba(255,225,77,.95),0 0 0 0 rgba(255,225,77,.5)}
   60%{box-shadow:0 0 22px 4px rgba(255,225,77,.55),0 0 0 3px rgba(255,225,77,.25)}
   100%{box-shadow:0 0 12px rgba(255,225,77,.55),0 0 0 0 rgba(255,225,77,0)}
+}
+/* CL04K : liseré de voile bordeaux (au lieu du violet par défaut). */
+#ammoBar [data-skill="cloak"].skillFeedback::after{
+  background:conic-gradient(from 0deg at 50% 50%,
+    rgba(3,7,16,.8) 0deg calc(var(--skill-feedback,0) * 360deg),
+    rgba(164,19,60,.9) calc(var(--skill-feedback,0) * 360deg) calc(var(--skill-feedback,0) * 360deg + 3deg),
+    transparent calc(var(--skill-feedback,0) * 360deg + 3deg));
+}
+/* CL04K : même flash "prêt" que les autres, en bordeaux. */
+#ammoBar [data-skill="cloak"].skillReadyPop{animation:cloakReadyFlash .7s ease-out}
+@keyframes cloakReadyFlash{
+  0%{box-shadow:0 0 0 0 rgba(164,19,60,.95),0 0 0 0 rgba(164,19,60,.5)}
+  60%{box-shadow:0 0 22px 4px rgba(164,19,60,.55),0 0 0 3px rgba(164,19,60,.25)}
+  100%{box-shadow:0 0 12px rgba(164,19,60,.55),0 0 0 0 rgba(164,19,60,0)}
 }
 /* ============================================================
    Pastille orbitale de tir (x1-x4, sab ; X6 exclu) : point blanc qui tourne
