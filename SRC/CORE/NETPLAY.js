@@ -1075,11 +1075,18 @@ export function ensureNetplayConnection() {
         const rawVx = Number(p.vx) || 0, rawVy = Number(p.vy) || 0;
         const rawSpeed = Math.hypot(rawVx, rawVy);
         const velocityScale = rawSpeed > vmax * 1.25 ? (vmax * 1.25) / rawSpeed : 1;
-        const positionChanged = !prev || x !== Number(prev.x) || y !== Number(prev.y)
-          || Math.abs(rawVx * velocityScale - Number(prev.vx || 0)) > 1
-          || Math.abs(rawVy * velocityScale - Number(prev.vy || 0)) > 1;
         const svx = p.dead === true ? 0 : rawVx * velocityScale;
         const svy = p.dead === true ? 0 : rawVy * velocityScale;
+        // Destination de deplacement (0,0 + moving:false = sur place).
+        const moving = p.moving === true && p.dead !== true;
+        const dx = moving ? Math.round(Number(p.mx) || 0) : 0;
+        const dy = moving ? Math.round(Number(p.my) || 0) : 0;
+        const destChanged = !prev || moving !== (prev.moving === true)
+          || dx !== Number(prev.dx || 0) || dy !== Number(prev.dy || 0);
+        const positionChanged = !prev || x !== Number(prev.x) || y !== Number(prev.y)
+          || Math.abs(rawVx * velocityScale - Number(prev.vx || 0)) > 1
+          || Math.abs(rawVy * velocityScale - Number(prev.vy || 0)) > 1
+          || destChanged;
         // Cadence d'envoi observee (ms entre snapshots DISTINCTS, lissee) :
         // ~50 ms onglet ouvert, ~1000 ms onglet reduit. Les snapshots repetes
         // par le serveur (20 Hz, memes valeurs) ne touchent a rien.
@@ -1153,6 +1160,9 @@ export function ensureNetplayConnection() {
           x, y,
           vx: svx,
           vy: svy,
+          // Destination de deplacement (pilotage de la prediction).
+          moving,
+          dx, dy,
           turn,
           headingAt,
           accel,
@@ -1391,6 +1401,10 @@ function sendNow(local, force = false) {
       y: Math.round(Number(local.y) || 0),
       vx: Math.round((Number(local.vx) || 0) * 100) / 100,
       vy: Math.round((Number(local.vy) || 0) * 100) / 100,
+      // Destination de deplacement (0,0 + moving:false = sur place).
+      mx: Math.round(Number(local.mx) || 0),
+      my: Math.round(Number(local.my) || 0),
+      moving: local.moving === true,
       angle: Number(local.angle) || 0,
       shipId: String(local.shipId || ""),
       hswap: Math.max(0, Math.min(3, Number(local.hswap) || 0)),
@@ -1725,8 +1739,27 @@ export function tickNetplayRemotes(dt = 0.016) {
     }
     // Virage regulier (orbite de farm) : prediction en arc de cercle au lieu
     // de la ligne droite, qui raterait chaque virage. Ligne droite sinon.
+    // Destination connue : on vise le segment exact [pos -> dest] au lieu
+    // d'extrapoler la vitesse (insensible au jitter d'arrivee des paquets :
+    // fini les micro-saccades en ligne droite, meme a ping eleve).
     let targetX, targetY;
-    if (Math.abs(turn) > 0.08 && spd > 60) {
+    const destX = Number(r.dx || 0), destY = Number(r.dy || 0);
+    const toDestX = destX - Number(r.x), toDestY = destY - Number(r.y);
+    const distToDest = Math.hypot(toDestX, toDestY);
+    const hasDest = r.moving === true && distToDest > 1;
+    if (r.moving === true && distToDest <= 1) {
+      // Sur la destination : on s'y pose, sans derive.
+      targetX = destX;
+      targetY = destY;
+    } else if (hasDest && spd > 1) {
+      const travel = Math.min(distToDest, spd * leadEff);
+      targetX = Number(r.x) + (toDestX / distToDest) * travel;
+      targetY = Number(r.y) + (toDestY / distToDest) * travel;
+    } else if (hasDest) {
+      // Ordre de bouger recu mais vitesse encore nulle : on reste, sans saut.
+      targetX = Number(r.x);
+      targetY = Number(r.y);
+    } else if (Math.abs(turn) > 0.08 && spd > 60) {
       const th0 = Math.atan2(vy, vx);
       const th1 = th0 + turn * leadEff;
       const radius = spd / turn;

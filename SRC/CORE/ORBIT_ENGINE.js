@@ -34632,6 +34632,12 @@ function frame(t) {
       pushNetplayLocal({
         x: player.x, y: player.y, angle: player.angle,
         vx: player.vx, vy: player.vy,
+        // Destination de deplacement (click-to-move / bot) : le receveur
+        // predit le long du segment exact au lieu d'extrapoler a l'aveugle
+        // (fini les micro-saccades en ligne droite).
+        mx: moveTarget.active === true ? Math.round(Number(moveTarget.x) || 0) : 0,
+        my: moveTarget.active === true ? Math.round(Number(moveTarget.y) || 0) : 0,
+        moving: moveTarget.active === true,
         shipId: (typeof ACTIVE_SHIP !== "undefined" && ACTIVE_SHIP?.id) || "",
         hswap: hangarSwapFx ? Math.max(0.001, hangarSwapFx.dur - hangarSwapFx.t) : 0,
         pseudo: account?.user?.pseudo || "Pilote",
