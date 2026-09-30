@@ -1345,7 +1345,7 @@ export function changeCurrentUserPassword(currentPassword, newPassword) {
   return { ok: true };
 }
 
-export const FACTION_CHANGE_CREDIT_COST = 1000000000;
+export const FACTION_CHANGE_CREDIT_COST = 50000000;
 
 export function changeCurrentUserFaction(nextFaction) {
   const u = getCurrentUserFull();
@@ -1355,7 +1355,7 @@ export function changeCurrentUserFaction(nextFaction) {
   if (!factionId) return { ok: false, error: "Firme invalide." };
   if (factionId === u.faction) return { ok: false, error: "Tu appartiens déjà à cette firme." };
   if (Number(u.credits || 0) < FACTION_CHANGE_CREDIT_COST) {
-    return { ok: false, error: "Il faut 1 000 000 000 crédits pour changer de firme." };
+    return { ok: false, error: "Il faut 50 000 000 crédits pour changer de firme." };
   }
 
   const honorBefore = Number(u.stats?.honor || 0);
@@ -1364,6 +1364,14 @@ export function changeCurrentUserFaction(nextFaction) {
   u.stats.honor = honorBefore - honorLost;
   u.stats.rankPoints = calculateRankPoints(u.stats);
   u.faction = factionId;
+  // Transfert : toutes les quêtes en cours sont annulées.
+  if (u.quests && typeof u.quests === "object") {
+    const qs = normalizeQuestState(u.quests);
+    if (!qs.abandoned || typeof qs.abandoned !== "object") qs.abandoned = {};
+    for (const id of Object.keys(qs.active || {})) qs.abandoned[id] = 1;
+    qs.active = {};
+    u.quests = qs;
+  }
   // Le REX suit la firme du pilote (comme le vaisseau).
   if (u.pet?.owned === true) u.pet.faction = factionId;
   const destinationFaction = getFaction(factionId);

@@ -32,7 +32,7 @@ import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
 import { apiAccountIdentity, apiPseudoFree, netActive } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
-import { SHIP_PACKS, getShipFamilyId, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
+import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 import { getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
 import { getAbilitiesForShip, getAbilityInfo, policeAbilityIds, abilityShipKeyFor, formatAbilityTiming } from "../SHIP/SHIP_ABILITIES.js";
 import { SHIP_ITEM_DIR, SHIP_ITEM_FULL_IDS, SHIP_ITEM_TRAIT_IDS, SHIP_TRAIT_DIR } from "../SHIP/SHIP_ITEMS.js";
@@ -78,6 +78,8 @@ const $ = (id) => document.getElementById(id);
 // UI refs
 const msgEl = $("msg");
 const npcKillList = $("npcKillList");
+const pvpKillList = $("pvpKillList");
+const pvpRewardTotals = $("pvpRewardTotals");
 const npcRewardTotals = $("npcRewardTotals");
 const npcRankExp = $("npcRankExp");
 const npcRankExpCalc = $("npcRankExpCalc");
@@ -130,6 +132,8 @@ let user = null;
 let storedTab = localStorage.getItem("orbit_profile_tab") || "stats";
 if (storedTab === "patchnotes") storedTab = "stats";
 if (storedTab === "inventory") storedTab = "stats"; // onglet déplacé dans la fenêtre Inventaire
+if (storedTab === "account") storedTab = "stats"; // onglet déplacé dans Paramètres
+if (storedTab === "npcs") storedTab = "stats"; // onglet déplacé dans Classement
 if (storedTab === "shop" && document.getElementById("shopWindowPanel")) storedTab = "stats";
 if (storedTab === "hangars" && document.getElementById("hangarWindowPanel")) storedTab = "stats";
 let tab = storedTab;
@@ -822,6 +826,7 @@ function setTab(next) {
   // Sur la page standalone (PROFILE.html), ceux-ci restent des onglets du profil.
   if (next === "shop" && document.getElementById("shopWindowPanel")) next = "stats";
   if (next === "hangars" && document.getElementById("hangarWindowPanel")) next = "stats";
+  if (next === "npcs") next = "stats"; // NPC & Grades déplacé dans Classement
   // Hors Espace pilote intégré, changer d'onglet annule les brouillons
   // d'équipement ; en jeu, c'est la fermeture de la fenêtre Hangars qui s'en charge.
   if (!document.getElementById("hangarWindowPanel") && next !== "hangars" && fitOverlayEl && fitOverlayEl.style.display !== "none") {
@@ -1390,6 +1395,72 @@ function renderNpcStats(u) {
     const missionRankPoints = calculateRankPoints(totals);
     missionRewardSummary.innerHTML = `<div class="npcRewardRow missionRewardRow"><span class="npcRewardName">Missions effectuées</span><strong>${formatNumber(completed.length)}</strong><span>${formatNumber(totals.exp)}</span><span>${formatNumber(totals.honor)}</span><span>${formatNumber(totals.credits)}</span><span>${formatNumber(missionRankPoints)}</span></div>`;
   }
+
+  renderPvpRow(u);
+}
+
+// Tableau Destruction Joueurs : une ligne par vaisseau (designs regroupés
+// sur leur base), comme le tableau NPC. Serveur (pvp_ship_kills) puis zéros
+// si hors ligne / invité. Les kills sans vaisseau connu (anciens kills,
+// shipId vide) sont regroupés sur une ligne "Vaisseau inconnu" pour que le
+// tableau corresponde toujours au total.
+async function renderPvpRow(u) {
+  if (!pvpKillList) return;
+  const paintShips = (ships = {}, agg = null) => {
+    const petKills = Math.max(0, Math.floor(Number(agg?.petKills) || 0));
+    const rows = getShipFamilyIds()
+      .map((id) => {
+        const s = ships[String(id || "").toLowerCase()] || { kills: 0, xp: 0, honneur: 0 };
+        const kills = Math.max(0, Math.floor(Number(s.kills) || 0));
+        const xp = Math.max(0, Math.floor(Number(s.xp) || 0));
+        const honor = Math.max(0, Math.floor(Number(s.honneur) || 0));
+        return {
+          name: String(getShipFamilyName(id) || id),
+          count: kills,
+          exp: xp,
+          honor,
+          rankPoints: calculateRankPoints({ exp: xp, honor }),
+        };
+      });
+    if (agg) {
+      const famKills = rows.reduce((t, r) => t + r.count, 0);
+      const famXp = rows.reduce((t, r) => t + r.exp, 0);
+      const famHonor = rows.reduce((t, r) => t + r.honor, 0);
+      const dk = Math.max(0, Math.floor(Number(agg.kills) || 0) - famKills);
+      const dx = Math.max(0, Math.floor(Number(agg.xp) || 0) - famXp);
+      const dh = Math.max(0, Math.floor(Number(agg.honneur) || 0) - famHonor);
+      if (dk > 0 || dx > 0 || dh > 0) {
+        rows.push({
+          name: "Vaisseau inconnu",
+          count: dk,
+          exp: dx,
+          honor: dh,
+          rankPoints: calculateRankPoints({ exp: dx, honor: dh }),
+        });
+      }
+    }
+    rows.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "fr"));
+    const petRow = `<div class="npcRewardRow"><span class="npcRewardName">PET</span><strong>${formatNumber(petKills)}</strong><span>—</span><span>—</span><span>—</span><span>—</span></div>`;
+    pvpKillList.innerHTML = petRow + rows
+      .map((item) => `<div class="npcRewardRow"><span class="npcRewardName">${escapeHtml(item.name)}</span><strong>${formatNumber(item.count)}</strong><span>${formatNumber(item.exp)}</span><span>${formatNumber(item.honor)}</span><span>—</span><span>${formatNumber(item.rankPoints)}</span></div>`)
+      .join("");
+  };
+  paintShips({});
+  if (pvpRewardTotals) pvpRewardTotals.innerHTML = "";
+  try {
+    const token = String(localStorage.getItem("orbit_token") || "");
+    if (!token) return;
+    const res = await fetch("/api/pvp/me", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+    const out = await res.json().catch(() => ({}));
+    if (out && out.ok === true && out.ships && typeof out.ships === "object") paintShips(out.ships, out);
+    if (out && out.ok === true && pvpRewardTotals) {
+      const kills = Math.max(0, Math.floor(Number(out.kills) || 0));
+      const xp = Math.max(0, Math.floor(Number(out.xp) || 0));
+      const honor = Math.max(0, Math.floor(Number(out.honneur) || 0));
+      const pts = calculateRankPoints({ exp: xp, honor });
+      pvpRewardTotals.innerHTML = `<div class="npcRewardRow npcTotalRewardRow"><span class="npcRewardName">Total des destructions</span><strong>${formatNumber(kills)}</strong><span>${formatNumber(xp)}</span><span>${formatNumber(honor)}</span><span>—</span><span>${formatNumber(pts)}</span></div>`;
+    }
+  } catch {}
 }
 
 function renderAccount(u) {
@@ -1503,7 +1574,7 @@ function wireAccountSettingsOnce() {
       const selected = getFaction(accountFaction?.value);
       showConfirm(
         "Confirmer le changement de firme",
-        `Rejoindre ${selected.shortName} coûtera 1 000 000 000 crédits et 50 % de ton honneur actuel. Cette opération est immédiate.`,
+        `Rejoindre ${selected.shortName} coûtera 50 000 000 crédits, 50 % de ton honneur actuel et annulera toutes tes quêtes en cours. Cette opération est immédiate.`,
         () => {
           btnChangeFaction.dataset.confirmed = "yes";
           btnChangeFaction.click();
@@ -1527,7 +1598,7 @@ function wireAccountSettingsOnce() {
       url.searchParams.delete("spawn");
       location.href = url.toString();
     }, 700);
-    setMsg(`Firme changée : ${out.faction.shortName}. Coût : 1 000 000 000 crédits et ${formatNumber(out.honorLost)} honneur.`, true);
+    setMsg(`Firme changée : ${out.faction.shortName}. Coût : 50 000 000 crédits, ${formatNumber(out.honorLost)} honneur et quêtes en cours annulées.`, true);
   });
 }
 
@@ -5899,7 +5970,6 @@ function profileIsVisible() {
 function renderActiveProfilePanel({ mutation = false } = {}) {
   if (!user) return;
   if (tab === "stats") renderStats(user);
-  if (tab === "account") renderAccount(user);
   if (tab === "npcs") renderNpcStats(user);
   if (tab === "hangars" && !document.getElementById("hangarWindowPanel")) renderHangars(user);
   // Onglet inventaire supprimé de l'Espace pilote : voir la fenêtre Inventaire (UI/UI_TDM.js).
@@ -5909,7 +5979,7 @@ function renderActiveProfilePanel({ mutation = false } = {}) {
 }
 
 window.addEventListener("orbit:user-updated", () => {
-  if ((!profileIsVisible() && !shopIsVisible() && !hangarIsVisible()) || accountRefreshFrame) return;
+  if ((!profileIsVisible() && !shopIsVisible() && !hangarIsVisible() && !settingsAccountVisible()) || accountRefreshFrame) return;
   accountRefreshFrame = requestAnimationFrame(() => {
     accountRefreshFrame = 0;
     user = getCurrentUserFull();
@@ -5918,6 +5988,7 @@ window.addEventListener("orbit:user-updated", () => {
       renderHeader(user);
       renderActiveProfilePanel({ mutation: true });
     }
+    if (settingsAccountVisible()) renderAccount(user);
     if (shopIsVisible() && shopTab !== "extras") renderShop(user);
     if (hangarIsVisible()) renderHangars(user);
     if (fitOverlayEl && fitOverlayEl.style.display !== "none" && fitState.hangarId) {
@@ -5925,6 +5996,40 @@ window.addEventListener("orbit:user-updated", () => {
       renderInventoryPalette();
     }
   });
+});
+
+// Onglet Compte déplacé dans Paramètres (voir switchSettingsTab moteur).
+function settingsAccountVisible() {
+  const page = document.querySelector('#settingsWindow [data-settings-page="account"]');
+  if (!page || !page.classList.contains("active")) return false;
+  const card = document.getElementById("settingsWindow");
+  return !!card && card.style.display !== "none" && !card.classList.contains("gameWinMinimized");
+}
+
+window.addEventListener("orbit:settings-tab", (event) => {
+  if (event?.detail?.tab !== "account") return;
+  const fresh = getCurrentUserFull();
+  if (fresh) {
+    user = fresh;
+    renderAccount(user);
+  }
+});
+
+window.addEventListener("orbit:window-restored", (event) => {
+  if (event?.detail?.id !== "settingsWindow" || !settingsAccountVisible()) return;
+  const fresh = getCurrentUserFull();
+  if (fresh) {
+    user = fresh;
+    renderAccount(user);
+  }
+});
+
+// NPC & Grades affiché dans Classement : rafraîchit à l'ouverture de l'onglet.
+window.addEventListener("orbit:ranking-npcs-shown", () => {
+  const fresh = getCurrentUserFull();
+  if (!fresh) return;
+  user = fresh;
+  try { renderNpcStats(fresh); } catch {}
 });
 
 // Init

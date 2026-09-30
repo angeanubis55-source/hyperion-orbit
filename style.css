@@ -2608,8 +2608,11 @@ html body #profileOverlay .profileTitle{ font-size:11px !important; }
 .friendsForm.muted{opacity:.55}
 .friendsForm input{ min-width:0; width:100%; height:30px; box-sizing:border-box; padding:0 9px; outline:0; border:1px solid rgba(124,240,255,.30); border-radius:7px; color:#effcff; background:#051521; font:600 12px/1 ui-sans-serif,system-ui; }
 .friendsForm input:focus{ border-color:#69e9ff; }
-.friendsForm button{ height:30px; padding:0 14px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 12px/1.2 ui-sans-serif,system-ui; }
-.friendsForm button:hover{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
+.friendsForm button,
+.rankingTabs .tabBtn{ height:30px; padding:0 14px; box-sizing:border-box; border:1px solid rgba(124,240,255,.38); border-radius:8px; color:#eaffff; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)); cursor:pointer; font:800 12px/1.2 ui-sans-serif,system-ui; }
+.friendsForm button:hover,
+.rankingTabs .tabBtn:hover,
+.rankingTabs .tabBtn.active{ border-color:rgba(124,240,255,.62); background:rgba(0,140,185,.3); }
 /* Fenêtre Clan */
 .clanPanel{width:500px;min-width:320px;max-width:calc(100vw - 20px);height:auto;max-height:calc(100vh - 20px);display:flex;flex-direction:column;overflow:hidden}
 #clanWindow:has(#clanManagePane.active){width:500px;max-width:calc(100vw - 20px)}
@@ -2715,19 +2718,98 @@ hors .clanBtns (ex. anciennes lignes Membres non re-rendues). */
 .clanLeaveRow{display:flex;justify-content:flex-end;padding:0 11px 10px;box-sizing:border-box}
 .clanLeaveRow button{height:28px;padding:0 12px;border:1px solid rgba(255,101,120,.45);border-radius:8px;color:#ff9aa7;background:rgba(160,25,45,.22);cursor:pointer;font:800 11px/1.2 ui-sans-serif,system-ui}
 .clanLeaveRow button:hover{border-color:#ff6578;background:rgba(160,25,45,.35)}
-/* Fenêtre Classement PvP */
-.rankingPanel{ width:560px; min-width:420px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
-.rankingStatus{ padding:7px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#75e8ff; font-size:11px; font-weight:800; text-transform:uppercase; }
+/* Fenêtre Classement PvP — même largeur sur les 2 onglets */
+.rankingPanel{ width:560px !important; min-width:420px !important; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
+#rankingWindow.gameWindow{ width:560px !important; min-width:420px !important; max-width:calc(100vw - 20px); }
+.rankingTabs{ display:flex; gap:8px; padding:10px 11px 0; box-sizing:border-box; }
+/* Même style que .friendsForm button (Ajouter) — surcharge du .tabBtn générique (ligne ~4241, !important) qui bloquait */
+.rankingTabs .tabBtn{ flex:1 1 0; height:30px !important; padding:0 14px !important; box-sizing:border-box; border:1px solid rgba(124,240,255,.38) !important; border-radius:8px !important; color:#eaffff !important; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important; cursor:pointer; font:800 11px/1.2 ui-sans-serif,system-ui !important; }
+.rankingTabs .tabBtn:hover,
+.rankingTabs .tabBtn.active{ border-color:rgba(124,240,255,.62) !important; background:rgba(0,140,185,.3) !important; color:#eaffff !important; }
+.rankingPane{ display:none; min-height:0; flex-direction:column; overflow:hidden; }
+.rankingPane.active{ display:flex; }
+.rankingPane[data-ranking-pane="board"]{ padding-bottom:10px; }
+.rankingPane[data-ranking-pane="npcs"]{ overflow-y:auto; overflow-x:hidden; padding:0 0 10px; gap:0; max-height:min(780px,calc(100vh - 60px)); }
+.rankingPane[data-ranking-pane="npcs"] .npcKillList{ max-height:none; }
+/* NPC & Grades : sans card, séparateurs fins comme l'onglet Classement */
+#rankingWindow .npcStatsCard{ flex:0 0 auto; min-height:0; display:flex; flex-direction:column; overflow:visible; border:0; border-radius:0; background:none; box-shadow:none; }
+#rankingWindow .npcStatsHeader{ flex:0 0 auto; margin:4px 0 0; padding:8px 11px 6px; display:flex; align-items:center; border:0; border-top:1px solid rgba(124,240,255,.16); color:#5d96a5; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; }
+#rankingWindow .npcStatsCard:first-child .npcStatsHeader{ border-top:0; }
+#rankingWindow .npcStatsHeader small{ color:#5d96a5; font-size:10px; font-weight:800; }
+#rankingWindow .npcCollapseHead{ flex:0 0 auto; width:100%; margin:4px 0 0; padding:8px 11px 6px; display:flex; align-items:center; justify-content:space-between; gap:8px; border:0; border-top:1px solid rgba(124,240,255,.16); background:none; color:#5d96a5; font:800 10px/1 ui-sans-serif,system-ui; text-transform:uppercase; letter-spacing:.7px; cursor:pointer; }
+#rankingWindow .npcCollapseHead:hover{ color:#dffaff; }
+#rankingWindow .npcCollapseHead svg{ flex:0 0 auto; width:10px; height:7px; color:inherit; transition:transform .18s ease; }
+#rankingWindow .npcCollapsible.collapsed .npcCollapseBody{ display:none; }
+#rankingWindow .npcCollapsible.collapsed .npcCollapseHead svg{ transform:rotate(-90deg); }
+#rankingWindow .npcCollapseBody{ display:flex; flex-direction:column; min-width:0; }
+#rankingWindow .npcKillList{ flex:0 0 auto; min-height:0; max-height:none; padding:0; margin:0; display:block; overflow:visible; border:0; }
+#rankingWindow .npcKillRow{ min-width:0; padding:5px 11px; display:flex; align-items:center; justify-content:space-between; gap:10px; border:0; border-radius:0; color:#bcdde5; background:none; box-shadow:none; font-size:12px; font-weight:600; }
+#rankingWindow .npcKillRow span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#bcdde5; }
+#rankingWindow .npcKillRow strong{ flex:0 0 auto; color:#effcff; }
+#rankingWindow .rankCalculationCard{ margin:0; padding:10px 11px 2px; display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; border:0; border-radius:0; background:none; box-shadow:none; }
+#rankingWindow .rankCalculationMetric,
+#rankingWindow .rankCalculationCurrent,
+#rankingWindow .rankCalculationAdjacent{ min-width:0; padding:2px 0; display:flex; flex-direction:column; justify-content:center; gap:2px; border:0; border-radius:0; background:none; box-shadow:none; }
+#rankingWindow .rankCalculationCard span{ color:#5d96a5; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; }
+#rankingWindow .rankCalculationCard strong{ color:#effcff; font-size:14px; font-weight:800; }
+#rankingWindow .rankCalculationCard small{ overflow:hidden; color:rgba(188,221,229,.7); font-size:9px; text-overflow:ellipsis; white-space:nowrap; }
+#rankingWindow .rankCalculationCard .rankImportantValue{ margin-top:2px; color:#ffd36b; font-size:11px; font-weight:800; }
+#rankingWindow .rankCalculationCurrent,
+#rankingWindow .rankCalculationAdjacent{ display:flex; flex-direction:column; align-items:center; justify-content:flex-start; text-align:center; }
+#rankingWindow .rankCalculationAdjacent{ grid-column:span 2; }
+#rankingWindow .rankCalculationCurrent{ grid-column:span 2; }
+#rankingWindow .rankPrevious{ border:0; justify-self:start; text-align:left; }
+#rankingWindow .rankNext{ border:0; justify-self:end; text-align:right; }
+#rankingWindow .rankCalculationCurrent{ justify-self:center; text-align:center; }
+#rankingWindow .rankPrevious strong{ color:#effcff; }
+#rankingWindow .rankPrevious .rankImportantValue{ color:#ffd36b; }
+#rankingWindow .rankCalculationCurrent strong{ color:#effcff; }
+#rankingWindow .rankCalculationCurrent .rankImportantValue,
+#rankingWindow .rankCalculationCurrent small b{ color:#ffd36b; }
+#rankingWindow .rankNext strong{ color:#effcff; }
+#rankingWindow .rankNext .rankImportantValue{ color:#ffd36b; }
+#rankingWindow .rankCalculationCurrent img,
+#rankingWindow .rankCalculationAdjacent img{ width:auto; height:auto; max-width:100%; object-fit:contain; image-rendering:auto; }
+#rankingWindow .rankCalculationCurrent div,
+#rankingWindow .rankCalculationAdjacent div{ min-width:0; display:flex; flex-direction:column; gap:2px; text-align:center; align-items:center; }
+#rankingWindow .rankMetricsSeparator{ grid-column:1 / -1; margin:4px 0 0; padding:8px 0 2px; border:0; border-top:1px solid rgba(124,240,255,.16); }
+#rankingWindow .rankMetricsSeparator span{ color:#5d96a5; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; }
+#rankingWindow .rankCalculationMetric{ grid-column:span 3; }
+#rankingWindow .rankCalculationMetric strong{ color:#effcff; font-weight:800; }
+#rankingWindow .rankCalculationMetric small{ color:rgba(188,221,229,.7); font-weight:700; }
+#rankingWindow .npcRewardRow{ min-width:0; padding:5px 11px; display:grid; grid-template-columns:minmax(120px,1.4fr) repeat(5,minmax(56px,1fr)); align-items:center; gap:8px; border:0; border-radius:0; color:#bcdde5; background:none; box-shadow:none; font-size:12px; font-weight:600; }
+#rankingWindow .npcRewardRow:nth-child(even){ background:rgba(124,240,255,.04); }
+#rankingWindow .npcRewardRow + .npcRewardRow{ margin-top:0; }
+#rankingWindow .npcRewardRow > :not(:first-child){ text-align:right; font-variant-numeric:tabular-nums; }
+#rankingWindow .npcRewardRow strong{ color:#effcff; font-weight:700; }
+#rankingWindow .npcRewardRow span{ color:#bcdde5; font-weight:600; }
+#rankingWindow .npcRewardHeader{ flex:0 0 auto; margin:0; padding:5px 11px; border:0; border-radius:0; border-bottom:1px solid rgba(124,240,255,.16); color:#5d96a5; background:none; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; }
+#rankingWindow .npcRewardHeader span{ color:#5d96a5; }
+#rankingWindow .npcRewardName{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#effcff; font-weight:700; }
+#rankingWindow .npcTotalsSeparator,
+#rankingWindow .missionStatsSeparator{ flex:0 0 auto; margin:4px 0 0; padding:8px 11px 6px; border:0; border-top:1px solid rgba(124,240,255,.16); color:#5d96a5; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; }
+#rankingWindow .npcTotalsSeparator span,
+#rankingWindow .missionStatsSeparator span{ color:#5d96a5; }
+#rankingWindow .npcRewardTotals{ flex:0 0 auto; padding:0; overflow:visible; }
+#rankingWindow .npcTotalRewardRow{ border:0; border-top:1px solid rgba(124,240,255,.16); background:none; }
+#rankingWindow .npcTotalRewardRow strong,
+#rankingWindow .npcTotalRewardRow span:not(.npcRewardName),
+#rankingWindow .missionRewardRow strong,
+#rankingWindow .missionRewardRow span:not(.npcRewardName){ color:#ffd36b; font-weight:800; }
+#rankingWindow .missionRewardSummary{ flex:0 0 auto; padding:0 0 6px; overflow:visible; }
+#rankingWindow .missionRewardRow{ border:0; border-radius:0; background:none; }
+.rankingStatus{ padding:7px 11px; box-sizing:border-box; border-bottom:1px solid rgba(124,240,255,.16); color:#75e8ff; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; }
 .rankingHead,.rankingRow{ display:grid; grid-template-columns:34px 40px 56px minmax(0,1fr) 80px; gap:6px; align-items:center; padding:5px 11px; box-sizing:border-box; }
-.rankingHead{ color:#5d96a5; font-size:11px; font-weight:800; text-transform:uppercase; border-bottom:1px solid rgba(124,240,255,.16); }
+.rankingHead{ color:#5d96a5; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; border-bottom:1px solid rgba(124,240,255,.16); }
+.rankingHead span:nth-child(2),.rankingHead span:nth-child(3){ text-align:center; }
 .rankingRows{ height:320px; min-height:160px; overflow-y:auto; display:grid; align-content:start; box-sizing:border-box; padding:4px 0; }
 .rankingRow{ color:#bcdde5; font-size:12px; font-weight:600; }
 .rankingRow:nth-child(even){ background:rgba(124,240,255,.04); }
 .rankingRow.rankingMe{ background:rgba(255,211,107,.10); }
 .rankingRow.rankingMe .rankingName{ color:#ffd36b; font-weight:800; }
 .rankingPos{ color:#5d96a5; font-weight:800; }
-.rankingGrade{ width:28px; height:28px; object-fit:contain; justify-self:center; }
-.rankingFirm{ width:auto; height:auto; max-width:28px; max-height:28px; object-fit:contain; justify-self:center; image-rendering:auto; }
+.rankingGrade{ width:auto; height:auto; max-width:100%; object-fit:contain; justify-self:center; }
+.rankingFirm{ width:auto; height:auto; max-width:100%; object-fit:contain; justify-self:center; image-rendering:auto; }
 .rankingFirmNone{ width:auto; height:auto; color:#5d96a5; font-size:11px; font-weight:800; }
 .rankingName{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#effcff; font-weight:700; }
 .rankingHead span:last-child{ text-align:center; }
@@ -3272,10 +3354,6 @@ hors .clanBtns (ex. anciennes lignes Membres non re-rendues). */
   margin:auto !important;
   pointer-events:none !important;
   transform:translateX(-1px) !important;
-}
-
-#btnGameHub.profileDockIcon{
-  order:-1800 !important;
 }
 
 /* ============================================================
@@ -4683,16 +4761,19 @@ body.orbitNoFade #fpsOverlay{
 #minimap.gameWindow #miniCanvas{
   display: block !important;
 
-  width: calc(100% - 20px) !important;
-  max-width: calc(100% - 20px) !important;
+  width: calc(100% - 28px) !important;
+  max-width: calc(100% - 28px) !important;
 
-  margin: 0 10px 10px 10px !important;
+  margin: 0 14px 12px 14px !important;
 
   box-sizing: border-box !important;
-  border-radius: 10px !important;
+  border-radius: 0 !important;
   overflow: hidden !important;
 
-  border: 1px solid rgba(124,240,255,.22) !important;
+  border: 1px solid rgba(220,82,92,.46) !important;
+  box-shadow:
+    inset 0 0 14px rgba(220,32,46,.06),
+    0 0 7px rgba(220,32,46,.08) !important;
 }
 
 /* La poignée de resize reste dans le cadre */
@@ -6162,7 +6243,8 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
 #profileOverlay .previewCard img { width: 120px !important; height: 120px !important; padding: 10px !important; }
 
 /* Statistiques et gestion du compte. */
-#profileOverlay .accountSettingsGrid {
+#profileOverlay .accountSettingsGrid,
+#settingsWindow .accountSettingsGrid {
   flex: 1 1 auto !important;
   min-width: 0 !important;
   min-height: 0 !important;
@@ -6171,9 +6253,6 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
   gap: 12px !important;
 }
 
-#profileOverlay #panel_account.profilePanel.active { overflow-y: auto !important; }
-#profileOverlay #panel_account.profilePanel.active { scrollbar-width: none !important; }
-#profileOverlay #panel_account.profilePanel.active::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
 
 /* Inventaire du compte */
 #profileOverlay #panel_inventory.profilePanel.active {
@@ -6286,14 +6365,17 @@ body > .inventoryTooltip .ttModNeg{ color:#ff5566 !important; font-size:12px !im
 #fitCard .rarity-epic { --rarity:#ba72ff; }
 #fitCard .rarity-legendary { --rarity:#ffd15c; }
 #profileOverlay .inventoryEmpty { padding: 18px 12px !important; color: rgba(177,207,224,.48) !important; font-size: 10px !important; text-align: center !important; }
-#profileOverlay #panel_account .accountSettingsGrid {
+#profileOverlay #panel_account .accountSettingsGrid,
+#settingsWindow .accountSettingsGrid {
   flex: 0 0 auto !important;
   grid-auto-rows: minmax(280px, auto) !important;
   overflow: visible !important;
 }
-#profileOverlay #panel_account .accountCard { overflow: visible !important; }
+#profileOverlay #panel_account .accountCard,
+#settingsWindow .accountCard { overflow: visible !important; }
 
-#profileOverlay .accountCard {
+#profileOverlay .accountCard,
+#settingsWindow .accountCard {
   min-width: 0 !important;
   min-height: 0 !important;
   padding: 16px !important;
@@ -6307,7 +6389,8 @@ body > .inventoryTooltip .ttModNeg{ color:#ff5566 !important; font-size:12px !im
   background: #071622 !important;
 }
 
-#profileOverlay .accountCardHeader {
+#profileOverlay .accountCardHeader,
+#settingsWindow .accountCardHeader {
   min-width: 0 !important;
   padding-bottom: 12px !important;
   display: flex !important;
@@ -6316,7 +6399,8 @@ body > .inventoryTooltip .ttModNeg{ color:#ff5566 !important; font-size:12px !im
   border-bottom: 1px solid rgba(124,240,255,.12) !important;
 }
 
-#profileOverlay .accountCardIcon {
+#profileOverlay .accountCardIcon,
+#settingsWindow .accountCardIcon {
   width: 36px !important;
   height: 36px !important;
   flex: 0 0 36px !important;
@@ -6329,19 +6413,25 @@ body > .inventoryTooltip .ttModNeg{ color:#ff5566 !important; font-size:12px !im
   font-size: 15px !important;
 }
 
-#profileOverlay .accountCardHeader h3 { margin: 0 !important; color: #effbff !important; font-size: 14px !important; }
-#profileOverlay .accountCardHeader p { margin: 3px 0 0 !important; overflow: hidden !important; color: rgba(204,228,241,.58) !important; font-size: 9px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
-#profileOverlay .passwordFields { display: grid !important; grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 10px !important; }
-#profileOverlay .passwordFields .accountField:first-child { grid-column: 1 / -1 !important; }
+#profileOverlay .accountCardHeader h3,
+#settingsWindow .accountCardHeader h3 { margin: 0 !important; color: #effbff !important; font-size: 14px !important; }
+#profileOverlay .accountCardHeader p,
+#settingsWindow .accountCardHeader p { margin: 3px 0 0 !important; overflow: hidden !important; color: rgba(204,228,241,.58) !important; font-size: 9px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#profileOverlay .passwordFields,
+#settingsWindow .passwordFields { display: grid !important; grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 10px !important; }
+#profileOverlay .passwordFields .accountField:first-child,
+#settingsWindow .passwordFields .accountField:first-child { grid-column: 1 / -1 !important; }
 
-#profileOverlay .accountField {
+#profileOverlay .accountField,
+#settingsWindow .accountField {
   min-width: 0 !important;
   display: flex !important;
   flex-direction: column !important;
   gap: 6px !important;
 }
 
-#profileOverlay .accountField > span {
+#profileOverlay .accountField > span,
+#settingsWindow .accountField > span {
   color: rgba(204,228,241,.62) !important;
   font-size: 9px !important;
   font-weight: 800 !important;
@@ -6350,7 +6440,9 @@ body > .inventoryTooltip .ttModNeg{ color:#ff5566 !important; font-size:12px !im
 }
 
 #profileOverlay .accountField input,
-#profileOverlay .accountField select {
+#profileOverlay .accountField select,
+#settingsWindow .accountField input,
+#settingsWindow .accountField select {
   width: 100% !important;
   height: 38px !important;
   min-width: 0 !important;
@@ -6364,12 +6456,18 @@ body > .inventoryTooltip .ttModNeg{ color:#ff5566 !important; font-size:12px !im
   font: 700 11px/1 system-ui !important;
 }
 
-#profileOverlay .accountField select { appearance: none !important; cursor: pointer !important; }
-#profileOverlay .accountField select option { color: #eaf9ff; background: #071622; }
-#profileOverlay .accountPanelIntro { margin: 0 0 12px; display: flex; flex-direction: column; gap: 4px; color: #effbff; }
-#profileOverlay .accountPanelIntro span { color: rgba(204,228,241,.62); font-size: 10px; }
-#profileOverlay .factionChangeCost { display: flex; flex-direction: column; gap: 5px; padding: 10px; border: 1px solid rgba(255,174,73,.2); border-radius: 8px; color: rgba(230,238,244,.72); background: rgba(255,145,45,.055); font-size: 10px; }
-#profileOverlay .factionChangeCost strong { color: #ffc06b; font-size: 11px; }
+#profileOverlay .accountField select,
+#settingsWindow .accountField select { appearance: none !important; cursor: pointer !important; }
+#profileOverlay .accountField select option,
+#settingsWindow .accountField select option { color: #eaf9ff; background: #071622; }
+#profileOverlay .accountPanelIntro,
+#settingsWindow .accountPanelIntro { margin: 0 0 12px; display: flex; flex-direction: column; gap: 4px; color: #effbff; }
+#profileOverlay .accountPanelIntro span,
+#settingsWindow .accountPanelIntro span { color: rgba(204,228,241,.62); font-size: 10px; }
+#profileOverlay .factionChangeCost,
+#settingsWindow .factionChangeCost { display: flex; flex-direction: column; gap: 5px; padding: 10px; border: 1px solid rgba(255,174,73,.2); border-radius: 8px; color: rgba(230,238,244,.72); background: rgba(255,145,45,.055); font-size: 10px; }
+#profileOverlay .factionChangeCost strong,
+#settingsWindow .factionChangeCost strong { color: #ffc06b; font-size: 11px; }
 
 #profileOverlay .npcStatsCard { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(124,240,255,.14); border-radius: 10px; background: #071622; }
 #profileOverlay .npcPanelIntro { margin: 0 0 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid rgba(124,240,255,.14); border-radius: 9px; background: #071622; }
@@ -6426,9 +6524,12 @@ body > .inventoryTooltip .ttModNeg{ color:#ff5566 !important; font-size:12px !im
 #profileOverlay .missionRewardSummary { flex: 0 0 auto; padding: 0 6px 6px; overflow-x: auto; }
 #profileOverlay .missionRewardRow { border: 1px solid rgba(124,240,255,.14); background: #0b2638; }
 
-#profileOverlay .accountField input:focus { border-color: rgba(124,240,255,.62) !important; }
-#profileOverlay .accountField input::placeholder { color: rgba(185,211,225,.34) !important; }
-#profileOverlay .accountCard > button { width: 100% !important; margin-top: auto !important; }
+#profileOverlay .accountField input:focus,
+#settingsWindow .accountField input:focus { border-color: rgba(124,240,255,.62) !important; }
+#profileOverlay .accountField input::placeholder,
+#settingsWindow .accountField input::placeholder { color: rgba(185,211,225,.34) !important; }
+#profileOverlay .accountCard > button,
+#settingsWindow .accountCard > button { width: 100% !important; margin-top: auto !important; }
 
 /* Hangars : aperçu fixe à gauche, vraie liste à droite. */
 #profileOverlay .hangarWorkspace {
@@ -6821,8 +6922,10 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
   #profileOverlay .hangarWorkspace { grid-template-columns: 210px minmax(0,1fr) !important; }
   #profileOverlay #panel_shop .shopLayout { grid-template-columns: 250px minmax(0,1fr) !important; }
   #profileOverlay #shopTabs.subtabs { grid-template-columns: repeat(3,minmax(0,1fr)) !important; }
-  #profileOverlay .passwordFields { grid-template-columns: 1fr !important; }
-  #profileOverlay .passwordFields .accountField:first-child { grid-column: auto !important; }
+  #profileOverlay .passwordFields,
+  #settingsWindow .passwordFields { grid-template-columns: 1fr !important; }
+  #profileOverlay .passwordFields .accountField:first-child,
+  #settingsWindow .passwordFields .accountField:first-child { grid-column: auto !important; }
 }
 
 /* Equipment compact controls and single-page slot layout */
@@ -6943,8 +7046,10 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
   #profileOverlay .generalPanel { height: auto; min-height: 100%; padding: 20px; grid-template-columns: 1fr; gap: 18px; text-align: center; }
   #profileOverlay .generalLogo { max-height: 150px; }
   #profileOverlay .generalCopy { align-items: center; }
-  #profileOverlay .accountSettingsGrid { grid-template-columns: 1fr !important; overflow: visible !important; }
-  #profileOverlay .accountCard { min-height: 290px !important; overflow: visible !important; }
+  #profileOverlay .accountSettingsGrid,
+  #settingsWindow .accountSettingsGrid { grid-template-columns: 1fr !important; overflow: visible !important; }
+  #profileOverlay .accountCard,
+  #settingsWindow .accountCard { min-height: 290px !important; overflow: visible !important; }
 }
 
 /* =========================================================
@@ -9666,11 +9771,25 @@ input[type=number]{ -moz-appearance:textfield; appearance:textfield; }
 }
 #settingsWindow .settingsTab:disabled{ opacity:.35 !important; cursor:default !important; }
 #settingsWindow .settingsTab>span{ display:block !important; width:100% !important; justify-self:center !important; text-align:center !important; }
-/* Pastille onglet actif façon boutique (shopTabDotBlink), collée à droite */
+/* Pastilles onglet actif façon boutique (shopTabDotBlink), collées à droite + à gauche */
 #settingsWindow .settingsTab.active::after{
   content:"" !important;
   position:absolute !important;
   right:10px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  width:8px !important;
+  height:8px !important;
+  border-radius:50% !important;
+  background:#00d9ff !important;
+  box-shadow:0 0 8px rgba(0,217,255,.9) !important;
+  animation:shopTabDotBlink 1s ease-in-out infinite !important;
+  pointer-events:none !important;
+}
+#settingsWindow .settingsTab.active::before{
+  content:"" !important;
+  position:absolute !important;
+  left:10px !important;
   top:50% !important;
   transform:translateY(-50%) !important;
   width:8px !important;
@@ -11238,12 +11357,12 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled{
 #tdmWindow{ position:relative; }
 .tdmSellDialog{ position:absolute !important; inset:0 !important; z-index:50 !important; display:grid !important; place-items:center !important; border-radius:8px !important; background:rgba(0,0,0,.55) !important; }
 .tdmSellDialog[hidden]{ display:none !important; }
-.tdmSellCard{ width:min(360px, calc(100% - 24px)) !important; display:grid !important; gap:12px !important; padding:20px !important; background:linear-gradient(135deg, rgba(10,12,28,.98), rgba(5,8,20,.98)) !important; border:1px solid rgba(0,217,255,.3) !important; border-radius:12px !important; box-shadow:0 20px 60px rgba(0,0,0,.7), 0 0 60px rgba(0,217,255,.15) !important; animation:modalIn .22s ease-out !important; }
-.tdmSellTitle{ color:#00d9ff !important; font-size:17px !important; font-weight:900 !important; }
-.tdmSellItem{ color:rgba(232,244,255,.8) !important; font-size:14px !important; line-height:1.6 !important; }
-.tdmSellQtyRow{ display:flex !important; align-items:center !important; gap:6px !important; }
-.tdmSellQtyRow input{ flex:1 !important; min-width:0 !important; padding:5px 8px !important; border:1px solid rgba(124,240,255,.22) !important; border-radius:6px !important; color:#eaffff !important; background:rgba(2,12,20,.7) !important; font-size:11px !important; outline:0 !important; }
-.tdmSellTotal{ color:#ffd56a !important; font-size:11px !important; font-weight:900 !important; }
+.tdmSellCard{ width:min(520px, calc(100% - 24px)) !important; display:grid !important; gap:14px !important; padding:28px !important; background:linear-gradient(135deg,rgba(8,25,38,.97),rgba(3,10,18,.97)) !important; border:1px solid rgba(100,200,255,.16) !important; border-radius:12px !important; box-shadow:0 12px 32px rgba(0,0,0,.6) !important; animation:modalIn .22s ease-out !important; }
+.tdmSellTitle{ color:#00d9ff !important; font-size:20px !important; font-weight:900 !important; }
+.tdmSellItem{ color:rgba(232,244,255,.8) !important; font-size:16px !important; line-height:1.6 !important; }
+.tdmSellQtyRow{ display:flex !important; align-items:center !important; gap:8px !important; }
+.tdmSellQtyRow input{ flex:1 !important; min-width:0 !important; min-height:34px !important; padding:7px 10px !important; border:1px solid rgba(124,240,255,.3) !important; border-radius:6px !important; color:#eaffff !important; background:rgba(0,20,35,.8) !important; font:700 13px/1.2 ui-sans-serif,system-ui !important; outline:0 !important; }
+.tdmSellTotal{ color:#ffd56a !important; font-size:13px !important; font-weight:900 !important; }
 .tdmSellError{ color:#ff8f9d !important; font-size:10px !important; font-weight:800 !important; }
 .tdmSellError[hidden]{ display:none !important; }
 .tdmSellActions{ display:flex !important; justify-content:flex-end !important; gap:8px !important; }
@@ -11255,4 +11374,176 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled{
 #tdmWindow .tdmTooltip .ttModPos{ color:#00ff88 !important; font-size:12px !important; font-weight:800 !important; }
 #tdmWindow .tdmTooltip .ttModNeg{ color:#ff5566 !important; font-size:12px !important; font-weight:800 !important; }
 
+/* Panneau Compte (Paramètres) : comme l'Espace pilote, pas de scroll interne. */
+#settingsWindow .accountCard{ overflow:visible !important; }
 
+/* ============================================================
+   Compte : unifié Classique + Boutique, tient sans scroll
+   - cards = classique (.settingsCard transparent, séparateurs)
+   - boutons = classique (.settingsResetBtn, déjà en HTML)
+   - textbox/select = boutique (.designSearchBar input)
+   - grille 3 + 2 compacte, sans scroll interne
+   ============================================================ */
+#settingsWindow .settingsPage[data-settings-page="account"]{
+  overflow:hidden !important;
+  padding:12px 14px !important;
+  gap:0 !important;
+  justify-content:start !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .accountSettingsGrid{
+  flex:1 1 auto !important;
+  min-height:0 !important;
+  min-width:0 !important;
+  display:grid !important;
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  grid-auto-rows:minmax(0,1fr) !important;
+  gap:0 12px !important;
+  overflow:hidden !important;
+  align-content:start !important;
+  align-items:stretch !important;
+}
+/* Cards : mêmes que Contrôles / Audio (.settingsCheck / .sfxRow) */
+#settingsWindow .settingsPage[data-settings-page="account"] .settingsCard.accountCard{
+  border:1px solid rgba(100,200,255,.16) !important;
+  border-radius:12px !important;
+  background:rgba(255,255,255,.035) !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  padding:10px 12px !important;
+  margin:0 !important;
+  gap:7px !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  overflow:hidden !important;
+  display:flex !important;
+  flex-direction:column !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .accountSettingsGrid{
+  gap:10px !important;
+}
+/* Sécurité (4e) large = 2 colonnes, Firme (5e) = 1 colonne -> 2e rangée pleine, sans trou */
+#settingsWindow .settingsPage[data-settings-page="account"] .accountSecurityCard{
+  grid-column:span 2 !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .accountSecurityCard .passwordFields{
+  display:grid !important;
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  gap:7px !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .accountSecurityCard .passwordFields .accountField:first-child{
+  grid-column:auto !important;
+}
+/* Header : comme classique .settingsCardHead, statuts en doré */
+#settingsWindow .settingsPage[data-settings-page="account"] .settingsCardHead{
+  padding-bottom:8px !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .settingsCardHead small{
+  color:#ffd477 !important;
+}
+/* Champs : label compact classique */
+#settingsWindow .settingsPage[data-settings-page="account"] .accountField{
+  gap:4px !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .accountField > span{
+  color:#7cecff !important;
+  font-size:9px !important;
+  font-weight:900 !important;
+  text-transform:uppercase !important;
+  letter-spacing:.7px !important;
+}
+/* Textbox + select : exactement comme boutique (.shopList .designSearchBar input) */
+#settingsWindow .settingsPage[data-settings-page="account"] .accountField input,
+#settingsWindow .settingsPage[data-settings-page="account"] .accountField select{
+  width:100% !important;
+  height:32px !important;
+  min-height:32px !important;
+  box-sizing:border-box !important;
+  padding:7px 10px !important;
+  border:1px solid rgba(124,240,255,.3) !important;
+  border-radius:6px !important;
+  outline:none !important;
+  color:#eaffff !important;
+  background:rgba(0,20,35,.8) !important;
+  font:700 13px/1.2 ui-sans-serif,system-ui !important;
+  box-shadow:none !important;
+  appearance:none !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .accountField select{
+  cursor:pointer !important;
+  padding-right:26px !important;
+  background-image:linear-gradient(45deg,transparent 50%,#7cf0ff 50%),linear-gradient(135deg,#7cf0ff 50%,transparent 50%) !important;
+  background-position:calc(100% - 16px) 50%,calc(100% - 11px) 50% !important;
+  background-size:5px 5px !important;
+  background-repeat:no-repeat !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .accountField select option{
+  color:#eaffff !important;
+  background:#071b28 !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .accountField input::placeholder{
+  color:rgba(158,238,255,.45) !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .accountField input:focus,
+#settingsWindow .settingsPage[data-settings-page="account"] .accountField select:focus{
+  border-color:#7cf0ff !important;
+  box-shadow:0 0 10px rgba(0,217,255,.25) !important;
+}
+/* Coûts : liste à puces, un point par ligne */
+#settingsWindow .settingsPage[data-settings-page="account"] .factionChangeCost{
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  gap:4px !important;
+  padding:6px 10px !important;
+  border:1px solid rgba(100,200,255,.16) !important;
+  border-radius:8px !important;
+  background:rgba(255,255,255,.035) !important;
+  font-size:9px !important;
+  color:rgba(232,244,255,.6) !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .factionChangeCost ul{
+  margin:0 !important;
+  padding-left:16px !important;
+  display:grid !important;
+  gap:2px !important;
+  list-style:disc !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .factionChangeCost li{
+  line-height:1.4 !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .factionChangeCost strong{
+  color:#ffd477 !important;
+  font-size:10px !important;
+}
+/* Boutons : déjà .settingsResetBtn (classique) -> collés en bas, compacts */
+#settingsWindow .settingsPage[data-settings-page="account"] .settingsResetBtn{
+  width:100% !important;
+  min-height:34px !important;
+  margin:auto 0 0 !important;
+}
+/* Sécurité : ancien intro supprimé, aucun résidu */
+#settingsWindow .accountPanelIntro{ display:none !important; }
+@media (max-width:760px){
+  #settingsWindow .settingsPage[data-settings-page="account"]{ overflow-y:auto !important; }
+  #settingsWindow .settingsPage[data-settings-page="account"] .accountSettingsGrid{
+    grid-template-columns:1fr !important;
+    grid-auto-rows:auto !important;
+    overflow:visible !important;
+  }
+  #settingsWindow .settingsPage[data-settings-page="account"] .accountSettingsGrid > *{
+    padding-left:0 !important;
+    border-left:0 !important;
+    border-top:1px solid rgba(100,200,255,.14) !important;
+    padding-top:10px !important;
+    margin-top:10px !important;
+  }
+  #settingsWindow .settingsPage[data-settings-page="account"] .accountSettingsGrid > *:first-child{
+    border-top:0 !important;
+    padding-top:0 !important;
+    margin-top:0 !important;
+  }
+  #settingsWindow .settingsPage[data-settings-page="account"] .accountSecurityCard{ grid-column:auto !important; }
+  #settingsWindow .settingsPage[data-settings-page="account"] .accountSecurityCard .passwordFields{
+    grid-template-columns:1fr !important;
+  }
+}

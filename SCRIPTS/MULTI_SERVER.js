@@ -7,7 +7,7 @@ import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, verifyWsToken, recordPvpKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminShipFamilies } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminShipFamilies } from "./ACCOUNT_SERVER.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
@@ -1394,7 +1394,7 @@ wss.on("connection", (ws) => {
             const honneur = Math.round(total / 500 * mult);
             // Stats persistantes du tueur (classement), si compte authentifie.
             try {
-              if (String(id).startsWith("u_")) recordPvpKill(String(id).slice(2), exp, honneur);
+              if (String(id).startsWith("u_")) recordPvpKill(String(id).slice(2), exp, honneur, foe.state.shipId);
             } catch {}
             // Guerres de clans : +1 au score si les deux clans sont en guerre.
             try {
@@ -1495,6 +1495,9 @@ wss.on("connection", (ws) => {
         }
         if (Number(foe.state.petPoolHp) <= 0 && wasPetAlive !== false) {
           foe.state.petDead = true;
+          try {
+            if (String(id).startsWith("u_")) recordPvpPetKill(String(id).slice(2));
+          } catch {}
           try {
             const killer = room.get(id);
             if (killer && killer.ws && killer.ws.readyState === 1) {

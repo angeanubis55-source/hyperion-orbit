@@ -14,7 +14,6 @@ import {
   SKYLAB_ROBOT_CREDIT_COST,
   SKYLAB_INSTANT_TRANSPORT_COST,
   SKYLAB_PRODUCTION_MULT,
-  SKYLAB_REFINERY_CYCLES_PER_SEC,
   canStartSkylabUpgrade,
   formatSkylabDuration,
   getSkylabModuleDef,

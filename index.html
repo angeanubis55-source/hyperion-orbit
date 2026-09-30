@@ -61,9 +61,6 @@
   <button id="btnSettingsHub" class="gameDockIcon" data-window-id="settingsWindow" type="button" title="Paramètres" aria-label="Paramètres">
     <span><img src="ASSETS/UI/MENU/settings.png" data-menu-icon="settings" alt="" draggable="false"></span>
   </button>
-  <button id="btnGameHub" class="gameDockIcon profileDockIcon" data-window-id="profileWindow" type="button" title="Profil" aria-label="Profil">
-    <span><img src="ASSETS/UI/MENU/user.png" data-menu-icon="user" alt="" draggable="false"></span>
-  </button>
   <button id="btnHangarHub" class="gameDockIcon hangarDockIcon" data-window-id="hangarWindow" type="button" title="Hangars" aria-label="Hangars">
     <span><img src="ASSETS/UI/MENU/hangar.png" data-menu-icon="hangar" alt="" draggable="false"></span>
   </button>
@@ -261,6 +258,7 @@
             <button class="settingsTab active" data-settings-tab="general" type="button"><span>Général</span></button>
             <button class="settingsTab" data-settings-tab="controls" type="button"><span>Commandes</span></button>
             <button class="settingsTab" data-settings-tab="sound" type="button"><span>Audio</span></button>
+            <button class="settingsTab" data-settings-tab="account" type="button"><span>Compte</span></button>
           </div>
         </nav>
         <section class="settingsPage active" data-settings-page="general">
@@ -375,6 +373,111 @@
           </div>
           <button id="btnResetSfx" class="settingsResetBtn" type="button">Réinitialiser les sons</button>
           </article>
+        </section>
+        <section class="settingsPage" data-settings-page="account">
+          <div class="accountSettingsGrid">
+          <article class="settingsCard accountCard">
+            <div class="settingsCardHead">
+              <div>
+                <b>Pseudo du pilote</b>
+                <small id="accountPseudoStatus">Pseudo actuel</small>
+              </div>
+            </div>
+            <label class="accountField">
+              <span>Nouveau pseudo</span>
+              <input id="accountPseudo" type="text" autocomplete="username" maxlength="32" placeholder="Nouveau pseudo" />
+            </label>
+            <label class="accountField">
+              <span>Mot de passe actuel</span>
+              <input id="pseudoCurrentPassword" type="password" autocomplete="current-password" placeholder="••••••••" />
+            </label>
+            <button id="btnSavePseudo" class="settingsResetBtn" type="button">Changer de pseudo</button>
+          </article>
+
+          <article class="settingsCard accountCard">
+            <div class="settingsCardHead">
+              <div>
+                <b>Pseudo du PET</b>
+                <small id="accountPetPseudoStatus">P.E.T non possédé</small>
+              </div>
+            </div>
+            <label class="accountField">
+              <span>Nouveau pseudo du PET</span>
+              <input id="accountPetPseudo" type="text" autocomplete="off" maxlength="32" placeholder="PET" />
+            </label>
+            <div class="factionChangeCost">
+              <span>Coût du renommage</span>
+              <ul>
+                <li><strong>1 000 000 crédits</strong></li>
+              </ul>
+            </div>
+            <button id="btnSavePetPseudo" class="settingsResetBtn" type="button">Changer le pseudo du PET</button>
+          </article>
+
+          <article class="settingsCard accountCard">
+            <div class="settingsCardHead">
+              <div>
+                <b>Adresse email</b>
+                <small id="accountEmailStatus">Aucune adresse liée</small>
+              </div>
+            </div>
+            <label class="accountField">
+              <span>Nouvelle adresse email</span>
+              <input id="accountEmail" type="email" autocomplete="email" inputmode="email" placeholder="pilote@exemple.com" />
+            </label>
+            <label class="accountField">
+              <span>Mot de passe actuel</span>
+              <input id="emailCurrentPassword" type="password" autocomplete="current-password" placeholder="••••••••" />
+            </label>
+            <button id="btnSaveEmail" class="settingsResetBtn" type="button">Lier cette adresse</button>
+          </article>
+
+          <article class="settingsCard accountCard accountSecurityCard">
+            <div class="settingsCardHead">
+              <div>
+                <b>Sécurité du compte</b>
+                <small>Modifie ton mot de passe de connexion</small>
+              </div>
+            </div>
+            <div class="passwordFields">
+              <label class="accountField">
+                <span>Mot de passe actuel</span>
+                <input id="passwordCurrent" type="password" autocomplete="current-password" placeholder="••••••••" />
+              </label>
+              <label class="accountField">
+                <span>Nouveau mot de passe</span>
+                <input id="passwordNew" type="password" autocomplete="new-password" placeholder="10 caractères minimum" />
+              </label>
+              <label class="accountField">
+                <span>Confirmation</span>
+                <input id="passwordConfirm" type="password" autocomplete="new-password" placeholder="Répète le nouveau mot de passe" />
+              </label>
+            </div>
+            <button id="btnChangePassword" class="settingsResetBtn" type="button">Changer le mot de passe</button>
+          </article>
+
+          <article class="settingsCard accountCard factionAccountCard">
+            <div class="settingsCardHead">
+              <div>
+                <b>Changer de firme</b>
+                <small id="accountFactionStatus">Firme actuelle</small>
+              </div>
+            </div>
+            <label class="accountField">
+              <span>Nouvelle firme</span>
+              <select id="accountFaction"></select>
+            </label>
+            <div class="factionChangeCost">
+              <span>Coût du transfert</span>
+              <ul>
+                <li><strong>50 000 000 crédits</strong></li>
+                <li><strong>50 % de l'honneur actuel</strong></li>
+                <li><strong>Annulation de toutes les quêtes en cours</strong></li>
+              </ul>
+            </div>
+            <button id="btnChangeFaction" class="settingsResetBtn" type="button">Changer de firme</button>
+          </article>
+          </div>
         </section>
       </div>
     </div>
@@ -827,14 +930,14 @@
             <details class="wikiArticle"><summary>Affichage et sons à distance</summary><ul><li><b>Monde :</b> les NPC sont affichés jusqu'à environ 1200 unités avec fondu.</li><li><b>Mini-carte :</b> portée plus large, environ 1700–1800 unités ; une cible verrouillée reste suivie même si elle s'éloigne.</li><li><b>Sons :</b> explosions, lasers, roquettes, lance-roquettes, IEM et ISH des autres joueurs ne sont audibles qu'à proximité.</li><li><b>Pseudos :</b> le tien est blanc, les alliés ordinaires cyan, les ennemis rouges et les membres de ton groupe jaune clair sur la map.</li></ul></details>
             <details class="wikiArticle"><summary>Créer et gérer un groupe</summary><p>Le groupe n'existe qu'après acceptation d'une invitation. Une invitation expire après 15 s. Le chef possède la couronne, peut verrouiller les invitations et activer le mode exclusion avant de sélectionner la carte du membre à retirer. Un joueur déconnecté ou parti en Galaxy Gate quitte le groupe après le délai prévu.</p></details>
             <details class="wikiArticle"><summary>Informations du groupe</summary><p>Chaque carte de membre affiche le vaisseau, la map, la distance ainsi que les barres de coque et de bouclier. Survoler une barre affiche sa valeur. Lorsqu'un membre verrouille un NPC, le nom et les vraies barres de la cible apparaissent immédiatement, même avant le premier tir.</p></details>
-            <details class="wikiArticle"><summary>Partage des récompenses NPC</summary><p>Sur la même map, les crédits, l'EXP et l'honneur d'un NPC sont divisés équitablement entre tous les membres éligibles. Les restes dus aux divisions sont distribués sans créer de récompense supplémentaire. Les kills NPC font progresser les objectifs de quête NPC des membres présents.</p><ul><li>Pas de partage des cargo-box.</li><li>Pas de partage des récompenses de quête.</li><li>Aucun partage en Galaxy Gate.</li><li>Le bonus final d'une gate reste personnel.</li><li>Les statistiques personnelles NPC &amp; Grades ne comptent que le tueur réel.</li></ul></details>
+            <details class="wikiArticle"><summary>Partage des récompenses NPC</summary><p>Sur la même map, les crédits, l'EXP et l'honneur d'un NPC sont divisés équitablement entre tous les membres éligibles. Les restes dus aux divisions sont distribués sans créer de récompense supplémentaire. Les kills NPC font progresser les objectifs de quête NPC des membres présents.</p><ul><li>Pas de partage des cargo-box.</li><li>Pas de partage des récompenses de quête.</li><li>Aucun partage en Galaxy Gate.</li><li>Le bonus final d'une gate reste personnel.</li><li>Les statistiques personnelles Classement → NPC &amp; Grades ne comptent que le tueur réel.</li></ul></details>
             <details class="wikiArticle"><summary>Chef, rassemblement et invitations</summary><p>Le cadenas ouvert autorise les membres à inviter ; fermé, leur champ d'invitation est désactivé. Le chef peut placer sur la mini-carte un point de rassemblement clignotant pendant 3 s. Quitter dissout le groupe si les règles de chef ne permettent plus de le maintenir.</p></details>
             <details class="wikiArticle"><summary>Amis et présence</summary><p>Les demandes d'amis persistent jusqu'à acceptation ou refus. La fenêtre indique la présence et permet de gérer la relation sans modifier le groupe. Amitié et groupe sont deux systèmes distincts : être ami ne partage jamais automatiquement les récompenses.</p></details>
           </section>
           <section class="wikiPage" data-wiki-page="compte">
-            <details class="wikiArticle" open><summary>Profil, inventaire, patch-notes</summary><p>Onglet <b>Général</b> : actualités. <b>Inventaire</b> : ouvre la fenêtre Inventaire du dock (recherche + catégories). <b>Patch-notes</b> : nouveautés des plus récentes aux plus anciennes.</p></details>
-            <details class="wikiArticle"><summary>Firmes et grades</summary><p>Firmes : <b>MMO / EIC / VRU</b>. Changer de firme coûte 1 Md de crédits + 50 % de l'honneur. Les <b>points de grade</b> viennent de l'XP et de l'honneur (XP ÷ 100 000 + honneur ÷ 100). L'onglet NPC &amp; Grades montre ton grade actuel, précédent / suivant et tes destructions par NPC.</p></details>
-            <details class="wikiArticle"><summary>Sécurité du compte</summary><p>Pseudo, email, mot de passe et renommage REX se gèrent dans <b>Compte</b>. Déconnexion / redémarrage via l'icône Session du dock.</p></details>
+            <details class="wikiArticle" open><summary>Profil, inventaire, patch-notes</summary><p>Onglet <b>Général</b> : actualités. <b>Inventaire</b> : ouvre la fenêtre Inventaire du dock (recherche + catégories). <b>Compte</b> : nouvel onglet de la fenêtre Paramètres (pseudo, email, mot de passe, firme). <b>Patch-notes</b> : nouveautés des plus récentes aux plus anciennes.</p></details>
+            <details class="wikiArticle"><summary>Firmes et grades</summary><p>Firmes : <b>MMO / EIC / VRU</b>. Changer de firme coûte 50 M de crédits + 50 % de l'honneur et annule toutes les quêtes en cours. Les <b>points de grade</b> viennent de l'XP et de l'honneur (XP ÷ 100 000 + honneur ÷ 100). L'onglet Classement → NPC &amp; Grades montre ton grade actuel, précédent / suivant et tes destructions par NPC.</p></details>
+            <details class="wikiArticle"><summary>Sécurité du compte</summary><p>Pseudo, email, mot de passe et renommage PET se gèrent dans <b>Compte</b>. Déconnexion / redémarrage via l'icône Session du dock.</p></details>
           </section>
           <section class="wikiPage" data-wiki-page="faq">
             <details class="wikiArticle" open><summary>Je n'inflige aucun dégât</summary><p>Vérifie : cible verrouillée ? Laser chargé et munition sélectionnée ? Portée ? Tir activé (<kbd>CTRL</kbd>) ? Minerai chargé sur les mauvais slots ? Change de munition (X2+) et rapproche-toi.</p></details>
@@ -869,9 +972,60 @@
     </div>
 
     <div id="rankingWindow" class="panel rankingPanel">
-      <div id="rankingStatus" class="rankingStatus">Chargement…</div>
-      <div class="rankingHead"><span>#</span><span>Grade</span><span>Firme</span><span>Pilote</span><span>Points</span></div>
-      <div id="rankingRows" class="rankingRows"><div class="rankingEmpty">Chargement…</div></div>
+      <div class="rankingTabs">
+        <button class="tabBtn active" data-ranking-tab="board" type="button">Classement</button>
+        <button class="tabBtn" data-ranking-tab="npcs" type="button">NPC &amp; grades</button>
+      </div>
+      <section class="rankingPane active" data-ranking-pane="board">
+        <div id="rankingStatus" class="rankingStatus">Chargement…</div>
+        <div class="rankingHead"><span>#</span><span>Grade</span><span>Firme</span><span>Pilote</span><span>Points</span></div>
+        <div id="rankingRows" class="rankingRows"><div class="rankingEmpty">Chargement…</div></div>
+      </section>
+      <section class="rankingPane" data-ranking-pane="npcs">
+        <section class="rankCalculationCard">
+          <div class="rankCalculationAdjacent rankPrevious">
+            <img id="npcPreviousRankImage" alt="Grade précédent" />
+            <div><span>Grade précédent</span><strong id="npcPreviousRankName">—</strong><small id="npcPreviousRankPoints" class="rankImportantValue">—</small></div>
+          </div>
+          <div class="rankCalculationCurrent">
+            <img id="npcRankImage" alt="Grade actuel" />
+            <div><span>Grade actuel</span><strong id="npcRankName">Pilote spatial de base</strong><small class="rankImportantValue"><b id="npcRankPoints">0</b> points de grade</small></div>
+          </div>
+          <div class="rankCalculationAdjacent rankNext">
+            <img id="npcNextRankImage" alt="Prochain grade" />
+            <div><span>Prochain grade</span><strong id="npcNextRankName">—</strong><small id="npcNextRankPoints" class="rankImportantValue">0</small></div>
+          </div>
+          <div class="rankMetricsSeparator"><span>Calcul des points de grade</span></div>
+          <div class="rankCalculationMetric"><span>Expérience</span><strong id="npcRankExp">0</strong><small id="npcRankExpCalc">0 ÷ 100 000 = 0</small></div>
+          <div class="rankCalculationMetric"><span>Honneur</span><strong id="npcRankHonor">0</strong><small id="npcRankHonorCalc">0 ÷ 100 = 0</small></div>
+        </section>
+        <section class="npcStatsCard npcCollapsible collapsed" data-npc-collapse>
+          <button class="npcCollapseHead" type="button" data-npc-toggle aria-expanded="false"><span>Destruction NPCs</span><svg viewBox="0 0 12 8" width="10" height="7" aria-hidden="true"><path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <div class="npcCollapseBody">
+            <div class="npcRewardRow npcRewardHeader"><span>NPC</span><span>Détruits</span><span>XP</span><span>Honneur</span><span>Crédits</span><span>Points de grade</span></div>
+            <div id="npcKillList" class="npcKillList"></div>
+          </div>
+        </section>
+        <section class="npcStatsCard">
+          <div class="npcTotalsSeparator"><span>Total de tous les NPC</span></div>
+          <div id="npcRewardTotals" class="npcRewardTotals"></div>
+        </section>
+        <section class="npcStatsCard npcCollapsible collapsed" data-npc-collapse>
+          <button class="npcCollapseHead" type="button" data-npc-toggle aria-expanded="false"><span>Destruction Joueurs</span><svg viewBox="0 0 12 8" width="10" height="7" aria-hidden="true"><path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <div class="npcCollapseBody">
+            <div class="npcRewardRow npcRewardHeader"><span>Vaisseau</span><span>Détruits</span><span>XP</span><span>Honneur</span><span>Crédits</span><span>Points de grade</span></div>
+            <div id="pvpKillList" class="npcKillList"></div>
+          </div>
+        </section>
+        <section class="npcStatsCard">
+          <div class="npcTotalsSeparator"><span>Total de tous les Joueurs</span></div>
+          <div id="pvpRewardTotals" class="npcRewardTotals"></div>
+        </section>
+        <section class="npcStatsCard">
+          <div class="missionStatsSeparator"><span>Missions accomplies</span></div>
+          <div id="missionRewardSummary" class="missionRewardSummary"></div>
+        </section>
+      </section>
     </div>
 
     <div id="groupWindow" class="panel groupPanel">
@@ -1137,181 +1291,6 @@
       </div>
     </div>
   </div>
-
-<div id="profileOverlay" class="profileOverlay" style="display:none;">
-  <div class="profileOverlayInner">
-
-    <div id="profileWindow" class="profileWindow">
-
-      <div class="profileHeaderCard">
-        <div class="profileTabs">
-          <button class="tabBtn active" data-tab="stats">GÉNÉRAL</button>
-          <button class="tabBtn" data-tab="account">COMPTE</button>
-          <button class="tabBtn" data-tab="npcs">NPC &amp; GRADES</button>
-        </div>
-      </div>
-
-      <div id="msg" class="msg"></div>
-
-      <div class="profileMainCard">
-
-        <section id="panel_stats" class="profilePanel active">
-          <div class="generalPanel">
-            <img class="generalLogo" src="ASSETS/UI/LOGO.png" alt="Hyperion Orbit" />
-            <div class="generalCopy">
-              <span>Bienvenue dans</span>
-              <h2>Hyperion Orbit</h2>
-              <p>Explore les secteurs de la galaxie, développe tes hangars et combats aux côtés de ta firme.</p>
-              <p>Cette section accueillera prochainement les informations générales, les actualités et les événements du jeu.</p>
-            </div>
-          </div>
-        </section>
-
-        <section id="panel_npcs" class="profilePanel">
-          <section class="rankCalculationCard">
-            <div class="rankCalculationAdjacent rankPrevious">
-              <img id="npcPreviousRankImage" alt="Grade précédent" />
-              <div><span>Grade précédent</span><strong id="npcPreviousRankName">—</strong><small id="npcPreviousRankPoints" class="rankImportantValue">—</small></div>
-            </div>
-            <div class="rankCalculationCurrent">
-              <img id="npcRankImage" alt="Grade actuel" />
-              <div><span>Grade actuel</span><strong id="npcRankName">Pilote spatial de base</strong><small class="rankImportantValue"><b id="npcRankPoints">0</b> points de grade</small></div>
-            </div>
-            <div class="rankCalculationAdjacent rankNext">
-              <img id="npcNextRankImage" alt="Prochain grade" />
-              <div><span>Prochain grade</span><strong id="npcNextRankName">—</strong><small id="npcNextRankPoints" class="rankImportantValue">0</small></div>
-            </div>
-            <div class="rankMetricsSeparator"><span>Calcul des points de grade</span></div>
-            <div class="rankCalculationMetric"><span>Expérience</span><strong id="npcRankExp">0</strong><small id="npcRankExpCalc">0 ÷ 100 000 = 0</small></div>
-            <div class="rankCalculationMetric"><span>Honneur</span><strong id="npcRankHonor">0</strong><small id="npcRankHonorCalc">0 ÷ 100 = 0</small></div>
-          </section>
-          <section class="npcStatsCard">
-            <div class="npcStatsHeader"><span>Destructions par type</span></div>
-            <div class="npcRewardRow npcRewardHeader"><span>NPC</span><span>Détruits</span><span>XP</span><span>Honneur</span><span>Crédits</span><span>Points de grade</span></div>
-            <div id="npcKillList" class="npcKillList"></div>
-            <div class="npcTotalsSeparator"><span>Total de tous les NPC</span></div>
-            <div id="npcRewardTotals" class="npcRewardTotals"></div>
-            <div class="missionStatsSeparator"><span>Missions accomplies</span></div>
-            <div id="missionRewardSummary" class="missionRewardSummary"></div>
-          </section>
-        </section>
-
-        <section id="panel_account" class="profilePanel">
-          <div class="accountPanelIntro">
-            <strong>Gestion du compte</strong>
-          </div>
-
-          <div class="accountSettingsGrid">
-            <section class="accountCard">
-              <div class="accountCardHeader">
-                <span class="accountCardIcon">ID</span>
-                <div>
-                  <h3>Pseudo du pilote</h3>
-                  <p id="accountPseudoStatus">Pseudo actuel</p>
-                </div>
-              </div>
-              <label class="accountField">
-                <span>Nouveau pseudo</span>
-                <input id="accountPseudo" type="text" autocomplete="username" maxlength="32" placeholder="Nouveau pseudo" />
-              </label>
-              <label class="accountField">
-                <span>Mot de passe actuel</span>
-                <input id="pseudoCurrentPassword" type="password" autocomplete="current-password" placeholder="••••••••" />
-              </label>
-              <button id="btnSavePseudo" class="primary" type="button">Changer de pseudo</button>
-            </section>
-
-            <section class="accountCard">
-              <div class="accountCardHeader">
-                <span class="accountCardIcon">RX</span>
-                <div>
-                  <h3>Pseudo du REX</h3>
-                  <p id="accountPetPseudoStatus">P.E.T non possédé</p>
-                </div>
-              </div>
-              <label class="accountField">
-                <span>Nouveau pseudo du REX</span>
-                <input id="accountPetPseudo" type="text" autocomplete="off" maxlength="32" placeholder="REX" />
-              </label>
-              <div class="factionChangeCost">
-                <span>Coût du renommage</span>
-                <strong>1 000 000 crédits</strong>
-              </div>
-              <button id="btnSavePetPseudo" class="primary" type="button">Changer le pseudo du REX</button>
-            </section>
-
-            <section class="accountCard">
-              <div class="accountCardHeader">
-                <span class="accountCardIcon">✉</span>
-                <div>
-                  <h3>Adresse email</h3>
-                  <p id="accountEmailStatus">Aucune adresse liée</p>
-                </div>
-              </div>
-              <label class="accountField">
-                <span>Nouvelle adresse email</span>
-                <input id="accountEmail" type="email" autocomplete="email" inputmode="email" placeholder="pilote@exemple.com" />
-              </label>
-              <label class="accountField">
-                <span>Mot de passe actuel</span>
-                <input id="emailCurrentPassword" type="password" autocomplete="current-password" placeholder="••••••••" />
-              </label>
-              <button id="btnSaveEmail" class="primary" type="button">Lier cette adresse</button>
-            </section>
-
-            <section class="accountCard">
-              <div class="accountCardHeader">
-                <span class="accountCardIcon">◆</span>
-                <div>
-                  <h3>Sécurité du compte</h3>
-                  <p>Modifie ton mot de passe de connexion</p>
-                </div>
-              </div>
-              <div class="passwordFields">
-                <label class="accountField">
-                  <span>Mot de passe actuel</span>
-                  <input id="passwordCurrent" type="password" autocomplete="current-password" placeholder="••••••••" />
-                </label>
-                <label class="accountField">
-                  <span>Nouveau mot de passe</span>
-                  <input id="passwordNew" type="password" autocomplete="new-password" placeholder="10 caractères minimum" />
-                </label>
-                <label class="accountField">
-                  <span>Confirmation</span>
-                  <input id="passwordConfirm" type="password" autocomplete="new-password" placeholder="Répète le nouveau mot de passe" />
-                </label>
-              </div>
-              <button id="btnChangePassword" class="primary" type="button">Changer le mot de passe</button>
-            </section>
-
-            <section class="accountCard factionAccountCard">
-              <div class="accountCardHeader">
-                <span class="accountCardIcon">F</span>
-                <div>
-                  <h3>Changer de firme</h3>
-                  <p id="accountFactionStatus">Firme actuelle</p>
-                </div>
-              </div>
-              <label class="accountField">
-                <span>Nouvelle firme</span>
-                <select id="accountFaction"></select>
-              </label>
-              <div class="factionChangeCost">
-                <span>Coût du transfert</span>
-                <strong>1 000 000 000 crédits</strong>
-                <strong>50 % de l’honneur actuel</strong>
-              </div>
-              <button id="btnChangeFaction" class="primary" type="button">Changer de firme</button>
-            </section>
-          </div>
-        </section>
-
-      </div>
-
-    </div>
-
-  </div>
-</div>
 
 <div id="shopOverlay" class="profileOverlay shopOverlay" style="display:none;">
   <div class="profileOverlayInner">

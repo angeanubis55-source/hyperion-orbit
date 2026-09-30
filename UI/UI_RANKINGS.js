@@ -58,7 +58,39 @@ export function initRankingsUI() {
   setInterval(load, 30000);
   try {
     window.addEventListener("orbit:window-restored", (e) => {
-      if (e?.detail?.id === "rankingWindow") load();
+      if (e?.detail?.id === "rankingWindow") {
+        load();
+        if (document.querySelector('#rankingWindow [data-ranking-pane="npcs"]')?.classList.contains("active")) {
+          try { window.dispatchEvent(new CustomEvent("orbit:ranking-npcs-shown")); } catch {}
+        }
+      }
+    });
+  } catch {}
+
+  try {
+    document.querySelectorAll('#rankingWindow [data-npc-toggle]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const section = btn.closest("[data-npc-collapse]");
+        if (!section) return;
+        const collapsed = section.classList.toggle("collapsed");
+        btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      });
+    });
+  } catch {}
+
+  try {
+    document.querySelectorAll("#rankingWindow [data-ranking-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const next = btn.dataset.rankingTab === "npcs" ? "npcs" : "board";
+        document.querySelectorAll("#rankingWindow [data-ranking-tab]").forEach((b) => {
+          b.classList.toggle("active", b === btn);
+        });
+        document.querySelectorAll("#rankingWindow [data-ranking-pane]").forEach((pane) => {
+          pane.classList.toggle("active", pane.dataset.rankingPane === next);
+        });
+        if (next === "board") load();
+        else try { window.dispatchEvent(new CustomEvent("orbit:ranking-npcs-shown")); } catch {}
+      });
     });
   } catch {}
 }

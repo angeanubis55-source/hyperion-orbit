@@ -99,15 +99,9 @@ try {
         if (windowIssue) errors.push(windowIssue);
       }
       if (inspectProfile) {
-        await page.click("#btnGameHub");
-        await page.waitForSelector("#profileWindow", { state: "visible", timeout: 10_000 });
+        await page.click("#btnHangarHub");
+        await page.waitForSelector("#hangarWindow", { state: "visible", timeout: 10_000 });
 
-        for (const section of ["stats", "hangars", "inventory"]) {
-          await page.click(`#profileOverlay .tabBtn[data-tab="${section}"]`);
-          await page.waitForFunction((name) => document.getElementById(`panel_${name}`)?.classList.contains("active"), section);
-        }
-
-        await page.click('#profileOverlay .tabBtn[data-tab="hangars"]');
         await page.click("#hangarGrid [data-fit]");
         await page.waitForSelector("#fitCard", { state: "visible", timeout: 10_000 });
         await page.dragAndDrop("#fitInvGrid .invCell:not(.disabled)", "#fitSlotsLasers .slotCell");
@@ -143,13 +137,6 @@ try {
         await page.click("#fitBtnCancel");
 
         if (captureProfile) {
-          await page.click('#profileOverlay .tabBtn[data-tab="stats"]');
-          await page.screenshot({ path: join(root, "profile-stats-preview.png"), fullPage: false });
-          await page.click('#profileOverlay .tabBtn[data-tab="npcs"]');
-          await page.screenshot({ path: join(root, "profile-npcs-preview.png"), fullPage: false });
-          await page.click('#profileOverlay .tabBtn[data-tab="account"]');
-          await page.screenshot({ path: join(root, "profile-account-preview.png"), fullPage: false });
-          await page.click('#profileOverlay .tabBtn[data-tab="hangars"]');
           await page.screenshot({ path: join(root, "profile-hangars-preview.png"), fullPage: false });
           await page.click('[data-window-id="tdmWindow"]');
           await page.waitForSelector("#tdmInventorySections .inventorySlot");
@@ -237,8 +224,7 @@ try {
           ok(api.setActiveHangarConfig(hid, 2));
           verify(2);
         });
-        await page.click("#btnGameHub");
-        await page.click('#profileOverlay .tabBtn[data-tab="hangars"]');
+        await page.click("#btnHangarHub");
         await page.click("#hangarGrid [data-fit]");
         await page.click("#fitBtnResetAll");
         await page.click("#fitBtnSave");

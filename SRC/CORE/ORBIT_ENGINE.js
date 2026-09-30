@@ -7751,11 +7751,11 @@ function renderKeybindRows() {
   });
 }
 
-// Onglets de la fenêtre paramètres (Visuels / Commandes / Son).
+// Onglets de la fenêtre paramètres (Général / Commandes / Son / Compte).
 function switchSettingsTab(name) {
   const window_ = document.getElementById("settingsWindow");
   if (!window_) return;
-  const valid = ["general", "controls", "sound"];
+  const valid = ["general", "controls", "sound", "account"];
   const target = valid.includes(name) ? name : "general";
   window_.querySelectorAll("[data-settings-tab]").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.settingsTab === target);
@@ -7763,6 +7763,10 @@ function switchSettingsTab(name) {
   window_.querySelectorAll("[data-settings-page]").forEach((page) => {
     page.classList.toggle("active", page.dataset.settingsPage === target);
   });
+  // L'onglet Compte est rendu par PUBLIC/PROFILE.js (pas d'import croisé).
+  try {
+    window.dispatchEvent(new CustomEvent("orbit:settings-tab", { detail: { tab: target } }));
+  } catch {}
 }
 
 // Construit une ligne (checkbox + slider) par groupe de sons, les unes sous les autres.

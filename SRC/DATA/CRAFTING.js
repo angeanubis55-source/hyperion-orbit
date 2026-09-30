@@ -285,7 +285,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   }),
   Object.freeze({
     id: "craft_vengeance_lightning",
-    name: "Éclairage de vengeance",
+    name: "Vengeance Lightning",
     rarity: "legendary",
     costs: {
       credits: 0,
@@ -305,7 +305,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   }),
   Object.freeze({
     id: "craft_goliath_sovereign",
-    name: "Goliath Souveraine",
+    name: "Goliath Sovereign",
     rarity: "legendary",
     costs: {
       credits: 0,
@@ -315,7 +315,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   }),
   Object.freeze({
     id: "craft_goliath_centaur",
-    name: "Goliath Centaure",
+    name: "Goliath Centaur",
     rarity: "legendary",
     costs: {
       credits: 0,
@@ -335,7 +335,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   }),
   Object.freeze({
     id: "craft_goliath_bastion",
-    name: "Bastion de Goliath",
+    name: "Goliath Bastion",
     rarity: "legendary",
     costs: {
       credits: 0,
@@ -345,7 +345,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   }),
   Object.freeze({
     id: "craft_venom",
-    name: "Venin",
+    name: "Venom",
     rarity: "legendary",
     costs: {
       credits: 0,
@@ -355,7 +355,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   }),
   Object.freeze({
     id: "craft_diminisher",
-    name: "Diminuteur",
+    name: "Diminisher",
     rarity: "legendary",
     costs: {
       credits: 0,
@@ -365,7 +365,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   }),
   Object.freeze({
     id: "craft_spectrum",
-    name: "Spectre",
+    name: "Spectrum",
     rarity: "legendary",
     costs: {
       credits: 0,
@@ -385,7 +385,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   }),
   Object.freeze({
     id: "craft_sentinel",
-    name: "Sentinelle",
+    name: "Sentinel",
     rarity: "legendary",
     costs: {
       credits: 0,

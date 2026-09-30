@@ -122,6 +122,21 @@ export function initAccountDb() {
       honneur INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS pvp_ship_kills (
+      user_id TEXT NOT NULL,
+      ship TEXT NOT NULL,
+      kills INTEGER NOT NULL DEFAULT 0,
+      xp INTEGER NOT NULL DEFAULT 0,
+      honneur INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, ship)
+    );
+    CREATE INDEX IF NOT EXISTS idx_pvp_ship_kills_user ON pvp_ship_kills(user_id);
+    CREATE TABLE IF NOT EXISTS pvp_pet_kills (
+      user_id TEXT PRIMARY KEY,
+      kills INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL DEFAULT 0
+    );
     CREATE TABLE IF NOT EXISTS npc_reward_tx (
       tx_key TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -358,7 +373,8 @@ function newSession(userId) {
 }
 
 // PvP : stats persistantes du tueur (classement). Retourne la ligne ou null.
-export function recordPvpKill(accountId, exp, honneur) {
+// shipId : vaisseau de la victime (designs regroupés sur leur base).
+export function recordPvpKill(accountId, exp, honneur, shipId) {
   try {
     initAccountDb();
     const uid = String(accountId || "");
@@ -369,10 +385,29 @@ export function recordPvpKill(accountId, exp, honneur) {
     const h = Math.max(0, Math.floor(Number(honneur) || 0));
     db.prepare("INSERT INTO pvp_stats (user_id, kills, xp, honneur, updated_at) VALUES (?, 1, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET kills = kills + 1, xp = xp + excluded.xp, honneur = honneur + excluded.honneur, updated_at = excluded.updated_at")
       .run(uid, e, h, Date.now());
+    try {
+      const raw = String(shipId || "").toLowerCase().slice(0, 64);
+      const ship = String(getShipDesignBaseId(raw) || getShipFamilyId(raw) || raw || "inconnu").toLowerCase().slice(0, 64) || "inconnu";
+      db.prepare("INSERT INTO pvp_ship_kills (user_id, ship, kills, xp, honneur, updated_at) VALUES (?, ?, 1, ?, ?, ?) ON CONFLICT(user_id, ship) DO UPDATE SET kills = kills + 1, xp = xp + excluded.xp, honneur = honneur + excluded.honneur, updated_at = excluded.updated_at")
+        .run(uid, ship, e, h, Date.now());
+    } catch {}
     return db.prepare("SELECT kills, xp, honneur FROM pvp_stats WHERE user_id = ?").get(uid);
   } catch { return null; }
 }
 
+// PET ennemi détruit : seul le compteur (pas de récompense XP/honneur).
+export function recordPvpPetKill(accountId) {
+  try {
+    initAccountDb();
+    const uid = String(accountId || "");
+    if (!uid) return null;
+    const exists = db.prepare("SELECT 1 FROM users WHERE id = ?").get(uid);
+    if (!exists) return null;
+    db.prepare("INSERT INTO pvp_pet_kills (user_id, kills, updated_at) VALUES (?, 1, ?) ON CONFLICT(user_id) DO UPDATE SET kills = kills + 1, updated_at = excluded.updated_at")
+      .run(uid, Date.now());
+    return db.prepare("SELECT kills FROM pvp_pet_kills WHERE user_id = ?").get(uid);
+  } catch { return null; }
+}
 // Admin (panneau /api/admin/give, meme effet que SCRIPTS/GIVE_CREDITS.js) :
 // ajoute/retire des crédits à un compte par pseudo. Révision bumpée :
 // le client adopte la version serveur à sa prochaine synchro.
@@ -467,6 +502,8 @@ export function adminDeleteAccount(target) {
       db.prepare("DELETE FROM sessions WHERE user_id = ?").run(uid);
     } catch {}
     try { db.prepare("DELETE FROM pvp_stats WHERE user_id = ?").run(uid); } catch {}
+    try { db.prepare("DELETE FROM pvp_ship_kills WHERE user_id = ?").run(uid); } catch {}
+    try { db.prepare("DELETE FROM pvp_pet_kills WHERE user_id = ?").run(uid); } catch {}
     try { db.prepare("DELETE FROM npc_reward_tx WHERE user_id = ?").run(uid); } catch {}
     try { db.prepare("DELETE FROM friends WHERE user_id = ? OR friend_id = ?").run(uid, uid); } catch {}
     try { db.prepare("DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?").run(uid, uid); } catch {}
@@ -1826,6 +1863,41 @@ export function handleAccountApi(req, res) {
       }
       list.sort((a, b) => b.points - a.points || b._kills - a._kills);
       return json(res, 200, { ok: true, list: list.slice(0, 100).map(({ pseudo, points, rankPoints, honor, faction }) => ({ pseudo, points, rankPoints, honor, faction })) });
+    } catch {
+      return json(res, 500, { ok: false, error: "Erreur serveur." });
+    }
+  }
+  if (pathname === "/api/pvp/me" && req.method === "GET") {
+    // Stats PvP personnelles (tableau Destruction Joueurs).
+    try {
+      if (rateLimited(`${ip}:/api/pvp/me`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+      const me = authUser(req);
+      if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+      initAccountDb();
+      const row = db.prepare("SELECT kills, xp, honneur FROM pvp_stats WHERE user_id = ?").get(String(me.id)) || { kills: 0, xp: 0, honneur: 0 };
+      let petKills = 0;
+      try {
+        const pr = db.prepare("SELECT kills FROM pvp_pet_kills WHERE user_id = ?").get(String(me.id));
+        petKills = Math.max(0, Math.floor(Number(pr?.kills) || 0));
+      } catch {}
+      let ships = {};
+      try {
+        for (const r of db.prepare("SELECT ship, kills, xp, honneur FROM pvp_ship_kills WHERE user_id = ?").all(String(me.id))) {
+          ships[String(r.ship || "").toLowerCase()] = {
+            kills: Math.max(0, Math.floor(Number(r.kills) || 0)),
+            xp: Math.max(0, Math.floor(Number(r.xp) || 0)),
+            honneur: Math.max(0, Math.floor(Number(r.honneur) || 0)),
+          };
+        }
+      } catch {}
+      return json(res, 200, {
+        ok: true,
+        kills: Math.max(0, Math.floor(Number(row.kills) || 0)),
+        xp: Math.max(0, Math.floor(Number(row.xp) || 0)),
+        honneur: Math.max(0, Math.floor(Number(row.honneur) || 0)),
+        petKills,
+        ships,
+      });
     } catch {
       return json(res, 500, { ok: false, error: "Erreur serveur." });
     }

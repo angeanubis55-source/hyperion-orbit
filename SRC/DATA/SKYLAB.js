@@ -13,7 +13,9 @@ export const SKYLAB_TIME_SCALE = 60;
 export const SKYLAB_PRODUCTION_MULT = 10;
 // Cycles de raffinage par seconde et par niveau : consommation graduelle
 // (jamais de siphon instantané du stock).
-export const SKYLAB_REFINERY_CYCLES_PER_SEC = 0.1;
+// Débit de base. Les paliers supérieurs sont ralentis dans
+// skylabRefineryCyclesPerSec afin de compenser leurs recettes en x10.
+export const SKYLAB_REFINERY_CYCLES_PER_SEC = 0.08;
 export const SKYLAB_MAX_LEVEL = 20;
 export const SKYLAB_TRANSPORT_COOLDOWN_SEC = 30;
 export const SKYLAB_ROBOT_LIFETIME_MS = 12 * 3600 * 1000;
@@ -186,6 +188,19 @@ export function skylabRefineryRatePerHour(moduleId, level) {
   return 0;
 }
 
+// Les raffineries de Promerium et de Seprom consomment chacune 10 unités du
+// palier précédent par cycle. Leur cadence doit donc être divisée par 10 à
+// chaque palier pour que des modules de niveaux proches restent équilibrés.
+export function skylabRefineryCyclesPerSec(moduleId, level) {
+  const l = Math.max(0, Math.min(SKYLAB_MAX_LEVEL, Math.floor(Number(level) || 0)));
+  if (l < 1) return 0;
+  let tierMult = 0;
+  if (moduleId === "prometid_refinery" || moduleId === "duranium_refinery") tierMult = 1;
+  else if (moduleId === "promerium_refinery") tierMult = 0.1;
+  else if (moduleId === "seprom_refinery") tierMult = 0.01;
+  return l * SKYLAB_REFINERY_CYCLES_PER_SEC * tierMult;
+}
+
 export function skylabSolarEnergy(level) {
   const l = Math.floor(Number(level) || 0);
   if (l < 1) return 0;
@@ -265,7 +280,7 @@ export function skylabSimulateHour(state) {
     if (!m || m.enabled === false || m.upgrading) continue;
     const level = Math.floor(Number(m.level) || 0);
     if (level < 1) continue;
-    let units = level * SKYLAB_REFINERY_CYCLES_PER_SEC * 60 * basicMult * eff;
+    let units = skylabRefineryCyclesPerSec(modId, level) * 60 * basicMult * eff;
     if (!(units > 0)) continue;
     const inputs = SKYLAB_REFINERY_INPUTS[modId];
     for (const [resId, perUnit] of Object.entries(inputs)) {
@@ -457,7 +472,7 @@ export function tickSkylabState(state, nowMs = Date.now(), dtRealSec = 1) {
     if (!m || m.enabled === false || m.upgrading) return;
     const level = Math.floor(Number(m.level) || 0);
     if (level < 1) return;
-    const cyclesPerSec = level * SKYLAB_REFINERY_CYCLES_PER_SEC * basicMult * eff;
+    const cyclesPerSec = skylabRefineryCyclesPerSec(modId, level) * basicMult * eff;
     if (!(cyclesPerSec > 0)) return;
     let units = cyclesPerSec * dt;
     // Limite par les intrants disponibles.

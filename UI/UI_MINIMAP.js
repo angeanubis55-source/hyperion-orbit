@@ -304,4 +304,29 @@ export function renderMinimap(context, options) {
     viewportWidth * scaleX,
     viewportHeight * scaleY,
   );
+
+  // Fine bande rouge aux limites du monde : elle laisse entrevoir la zone de
+  // radiations sans masquer les informations importantes de la mini-carte.
+  const radiationBand = Math.max(7, Math.min(11, Math.round(Math.min(width, height) * 0.055)));
+  context.save();
+  const topRadiation = context.createLinearGradient(0, 0, 0, radiationBand);
+  topRadiation.addColorStop(0, "rgba(220,48,62,0.15)");
+  topRadiation.addColorStop(1, "rgba(255,28,42,0)");
+  context.fillStyle = topRadiation;
+  context.fillRect(0, 0, width, radiationBand);
+  context.translate(width, height);
+  context.rotate(Math.PI);
+  context.fillRect(0, 0, width, radiationBand);
+  context.restore();
+
+  context.save();
+  const sideRadiation = context.createLinearGradient(0, 0, radiationBand, 0);
+  sideRadiation.addColorStop(0, "rgba(220,48,62,0.15)");
+  sideRadiation.addColorStop(1, "rgba(255,28,42,0)");
+  context.fillStyle = sideRadiation;
+  context.fillRect(0, 0, radiationBand, height);
+  context.translate(width, height);
+  context.rotate(Math.PI);
+  context.fillRect(0, 0, radiationBand, height);
+  context.restore();
 }

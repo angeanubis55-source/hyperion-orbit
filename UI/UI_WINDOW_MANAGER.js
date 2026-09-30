@@ -8,18 +8,18 @@
   function bringWindowToFront(card) {
     if (!card || card.classList.contains("gameWinMinimized")) return;
 
-    // L'Espace pilote vit dans #profileOverlay, la Boutique dans
-    // #shopOverlay et les Hangars dans #hangarOverlay : on remonte le
-    // conteneur avec la carte, sinon son z-index fixe (90000) le garderait
-    // toujours derrière les fenêtres HUD déjà remontées.
-    const overlay = card.closest("#profileOverlay, #shopOverlay, #hangarOverlay");
+    // La Boutique vit dans #shopOverlay et les Hangars dans
+    // #hangarOverlay : on remonte le conteneur avec la carte, sinon son
+    // z-index fixe (90000) le garderait toujours derrière les fenêtres HUD
+    // déjà remontées.
+    const overlay = card.closest("#shopOverlay, #hangarOverlay");
     if (overlay) overlay.style.setProperty("z-index", String(++topZ), "important");
 
     // Les fenêtres passent aussi par-dessus le dock (96000). Si la pile
     // devient trop haute, on la compacte en conservant exactement l'ordre
     // visuel actuel.
     if (topZ >= 99500) {
-      [...document.querySelectorAll(".gameWindow"), document.getElementById("profileOverlay"), document.getElementById("shopOverlay"), document.getElementById("hangarOverlay")]
+      [...document.querySelectorAll(".gameWindow"), document.getElementById("shopOverlay"), document.getElementById("hangarOverlay")]
         .filter((windowCard) => windowCard && windowCard.style.display !== "none")
         .sort((a, b) => (Number(a.style.zIndex) || 96000) - (Number(b.style.zIndex) || 96000))
         .forEach((windowCard, index) => windowCard.style.setProperty("z-index", String(96001 + index), "important"));
@@ -281,9 +281,9 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
     setDockIconVariant(btn, active ? "select" : (hover ? "hover" : ""));
   }
 
-  // Boutons gérés par leur propre logique d'ouverture (overlays profil/boutique/hangars) :
+  // Boutons gérés par leur propre logique d'ouverture (overlays boutique/hangars) :
   // on ne leur ajoute PAS le toggle générique pour éviter un double basculement.
-  const DOCK_ICONS_WITH_CUSTOM_TOGGLE = new Set(["btnGameHub", "btnShopHub", "btnHangarHub"]);
+  const DOCK_ICONS_WITH_CUSTOM_TOGGLE = new Set(["btnShopHub", "btnHangarHub"]);
 
   function wireDockIconButton(btn) {
     if (!btn || btn.__dockIconWired) return;
@@ -404,8 +404,8 @@ function prepareFloating(card) {
   const canvas = card.querySelector("#miniCanvas");
 
   if (canvas) {
-    // ratio actuel : 250px de large / 155px de haut
-    const canvasH = Math.round(w * 155 / 250);
+    // Zone intérieure légèrement plus compacte que le cadre de la fenêtre.
+    const canvasH = Math.round(w * 145 / 250);
 
     canvas.style.width = "100%";
     canvas.style.height = `${canvasH}px`;
