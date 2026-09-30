@@ -135,7 +135,7 @@ RESTE A FAIRE (prochaines étapes proposées)
 [x] Dégâts NPC partagés subis validés côté serveur (pool PV/bouclier autoritaire).
 [x] Défenses serveur : ISH, Représailles, Fortification, Endurance prismatique,
     Spectrum/Plus, Éventreur, Assimilation et Dernier rempart.
-[x] Fluidité : tick 20 Hz + vitesse réelle des joueurs, extrapolation plafonnée à 50 ms.
+[x] Fluidité : tick 20 Hz + vitesse réelle des joueurs, extrapolation plafonnée à 50 ms + freinage estimé (pas de dépassement du point d'arrêt) + convergence rapide sur échantillon frais (anti-retard permanent à haut ping).
 [ ] PvP (tirs entre joueurs réels) + chat.
 [ ] Galaxy Gates / quêtes coop / cargos partagés.
 [ ] Durcissement anti-triche (vitesses, cadences, positions).

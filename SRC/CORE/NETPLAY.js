@@ -1118,6 +1118,24 @@ export function ensureNetplayConnection() {
             turn = turn * Math.exp(-3 * dtH);
           }
         }
+        // Freinage (arrivee a destination) : estime la deceleration le long du
+        // cap pour ne pas depasser le point d'arret quand l'emetteur a du ping
+        // (le depassement + snapback est l'artefact dominant a haut ping).
+        // Seul le freinage est projete, jamais d'acceleration inventee.
+        // Date a l'horloge serveur (stable en rafale), comme estimateVelocity.
+        const prevSpd = Math.hypot(prevVx, prevVy);
+        const spdNow = Math.hypot(svx, svy);
+        let accel = Number(prev?.accel || 0);
+        let accelAt = Number(prev?.accelAt || sourceAt);
+        if (!prev) {
+          accel = 0;
+          accelAt = Number(sourceAt);
+        } else if (positionChanged) {
+          const dtA = Math.max(0.05, (Number(sourceAt) - accelAt) / 1000);
+          const rawA = (spdNow - prevSpd) / dtA;
+          accel = Math.max(-3000, Math.min(0, accel * 0.5 + rawA * 0.5));
+          accelAt = Number(sourceAt);
+        }
         const petx = Number(p.petx) || 0, pety = Number(p.pety) || 0;
         const rawPetVelocity = estimateVelocity(prev, petx, pety, now, "petx", "pety", sourceAt);
         const petVelocity = prev ? {
@@ -1137,6 +1155,13 @@ export function ensureNetplayConnection() {
           vy: svy,
           turn,
           headingAt,
+          accel,
+          accelAt,
+          // Echantillon frais : le rendu converge vite vers la position
+          // autoritaire (gros ping = decalage permanent sinon). Decroit
+          // chaque frame dans tickNetplayRemotes. Le plafond maxCorrection
+          // garde-fou contre les teleports.
+          freshBoost: positionChanged ? 1 : Number(prev?.freshBoost || 0),
           updateInterval,
           vmax,
           angle: Number(p.angle) || 0,
@@ -1690,31 +1715,45 @@ export function tickNetplayRemotes(dt = 0.016) {
     const vx = Number(r.vx || 0), vy = Number(r.vy || 0);
     const spd = Math.hypot(vx, vy);
     const turn = Math.max(-NET_MAX_TURN_RATE, Math.min(NET_MAX_TURN_RATE, Number(r.turn || 0)));
+    // Freinage estime : reduit le lead effectif (distance = v*t + a*t^2/2,
+    // jamais negative) pour s'arreter au point d'arrivee au lieu de le
+    // depasser puis snapper (cas typique du haut ping).
+    const accel = Math.min(0, Number(r.accel || 0));
+    let leadEff = lead;
+    if (spd > 1 && accel < 0) {
+      leadEff = Math.max(0, spd * lead + 0.5 * accel * lead * lead) / spd;
+    }
     // Virage regulier (orbite de farm) : prediction en arc de cercle au lieu
     // de la ligne droite, qui raterait chaque virage. Ligne droite sinon.
     let targetX, targetY;
     if (Math.abs(turn) > 0.08 && spd > 60) {
       const th0 = Math.atan2(vy, vx);
-      const th1 = th0 + turn * lead;
+      const th1 = th0 + turn * leadEff;
       const radius = spd / turn;
       targetX = Number(r.x) + radius * (Math.sin(th1) - Math.sin(th0));
       targetY = Number(r.y) + radius * (Math.cos(th0) - Math.cos(th1));
     } else {
-      targetX = Number(r.x) + vx * lead;
-      targetY = Number(r.y) + vy * lead;
+      targetX = Number(r.x) + vx * leadEff;
+      targetY = Number(r.y) + vy * leadEff;
     }
     const rx = Number(r.rx ?? r.x), ry = Number(r.ry ?? r.y);
     const correctionX = targetX - rx, correctionY = targetY - ry;
     const correctionDistance = Math.hypot(correctionX, correctionY);
     if (correctionDistance > netPerf.maxCorrection) netPerf.maxCorrection = Math.round(correctionDistance);
+    // Echantillon frais : convergence rapide vers l'autoritaire (le lissage
+    // seul laisserait un retard permanent, pire a haut ping). Borne a 0.85
+    // + plafond maxCorrection ci-dessous : pas de teleport.
+    const boost = Math.max(0, Number(r.freshBoost || 0));
+    const kEff = Math.min(0.85, k * (1 + 2 * boost));
+    r.freshBoost = boost * Math.exp(-6 * frameDt);
     // Un trou reseau peut faire arriver une correction importante d'un coup.
     // Le lissage exponentiel seul en absorbait ~26 % sur la premiere frame,
     // donnant l'impression d'une teleportation. Le plafond ne touche que le
     // rendu : positions serveur, portee et impacts restent autoritaires.
     const maxCorrection = Math.max(1800, Number(r.vmax) * 2) * frameDt;
     const correctionK = correctionDistance > 0
-      ? Math.min(k, maxCorrection / correctionDistance)
-      : k;
+      ? Math.min(kEff, maxCorrection / correctionDistance)
+      : kEff;
     r.rx = rx + correctionX * correctionK;
     r.ry = ry + correctionY * correctionK;
     const renderedAngle = Number(r.rangle ?? r.angle) || 0;
