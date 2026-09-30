@@ -6456,6 +6456,7 @@ function initializeCustomActionBar() {
   const SKILL_TIPS = Object.freeze({
     pulse: "IEM (30k) : les NPC qui t'attaquent perdent ta trace (3 s). CD 10 s.",
     ish: "ISH (30k) : invincible 3 s. CD 10 s.",
+    smb: "SMB (30k) : 50k dégâts autour (500). CD 10 s.",
     repair: "Réparation : le robot répare la coque au fil du temps.",
   });
   for (const button of actions) {
@@ -16352,6 +16353,20 @@ function tickBoosters(dt) {
     try {
       const fresh = getCurrentUserFull();
       if (fresh && Number(fresh.revision || 0) !== Number(account.user?.revision || 0)) {
+        // Minerais : jamais de redescente sur un gain local pas encore
+        // persisté (collecte +1 par +1 : le Palladium rendait ça visible).
+        // Même règle que mergeProgressiveFields côté net : les dépenses
+        // écrivent le canon + resync le moteur, seul le moteur collecte.
+        try {
+          const pRes = account.user?.inventory?.resources;
+          const nRes = fresh?.inventory?.resources;
+          if (pRes && nRes && typeof pRes === "object" && typeof nRes === "object") {
+            for (const id of ["palladium", "prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "xenomit", "osmium"]) {
+              const pv = Math.max(0, Math.floor(Number(pRes[id]) || 0));
+              if (pv > Math.max(0, Math.floor(Number(nRes[id]) || 0))) nRes[id] = pv;
+            }
+          }
+        } catch {}
         account.user = fresh;
         try { applyCurrentConfigStats(false, null, true); } catch {}
       }
@@ -24667,15 +24682,14 @@ const ISH_COOLDOWN = 10.0;
 
 const ISH_DURATION = 3.0;
 
-// Extras Mine SMB-01 : 30k, CD 10 s, 3 s d'invincibilité + visuel officiel
+// Extras Mine SMB-01 : 30k, CD 10 s, 50k dégâts autour (500) + visuel officiel
 // smartbomb1.swf (sprites ASSETS/SMARTBOMB/), bleu marine côté dock.
 const SMB_COST = 30000;
 
 const SMB_COOLDOWN = 10.0;
 
-const SMB_DURATION = 3.0;
-
-// Dégâts officiels : 50k à tout ce qui est autour dans un rayon de 500.
+// Dégâts : 50k à tout ce qui est autour dans un rayon de 500.
+// (Pas d'invincibilité : la bombe ne protège pas le lanceur.)
 const SMB_DAMAGE = 50000;
 const SMB_RADIUS = 500;
 
@@ -24821,8 +24835,8 @@ ui.btnIsh?.addEventListener("click", () => {
   if (!ui.btnIsh.classList.contains("disabled")) useIsh();
 });
 
-// Mine SMB-01 : 3 s d'invincibilité + visuel officiel smartbomb1.swf
-// (sprites ASSETS/SMARTBOMB/), 30k, CD 10 s.
+// Mine SMB-01 : visuel officiel smartbomb1.swf (sprites ASSETS/SMARTBOMB/),
+// 50k dégâts autour (500), 30k, CD 10 s. Ni invincibilité ni bulle.
 function useSmb() {
   if (!started || player.dead) return;
 
@@ -24851,9 +24865,9 @@ function useSmb() {
   persistCdUntil("smb", SMB_COOLDOWN);
   // Visuel officiel : la vidéo smartbomb1.swf extraite en sprites.
   // Posée au point d'activation : elle ne suit pas le vaisseau.
+  // (Pas d'invincibilité ni de bulle : juste la bombe + ses dégâts.)
   spawnSmbFx(player.x, player.y, 1, false);
   try { sendSkillUse("smb"); } catch {}
-  player.invincibleT = Math.max(Number(player.invincibleT) || 0, SMB_DURATION);
   SFX.play("smbBomb");
 
   // 50k dégâts flats à tout ce qui est autour dans un rayon de 500

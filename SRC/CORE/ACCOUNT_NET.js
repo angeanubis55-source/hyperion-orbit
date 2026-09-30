@@ -21,6 +21,9 @@ let refreshStarted = false;
 let pendingPurchaseCredits = 0;
 const pendingPurchaseStock = { ammo: {}, rockets: {} };
 const pendingConsumedStock = { ammo: {}, rockets: {} };
+// Miroir local de ORE_RESOURCE_IDS (SRC/DATA/RESOURCES.js) : ce module reste
+// sans import (pas de cycle avec ACCOUNT.js).
+const ORE_IDS = Object.freeze(["palladium", "prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "xenomit", "osmium"]);
 
 function lsGet(k) {
   try { return localStorage.getItem(k); } catch { return null; }
@@ -318,8 +321,12 @@ function noteConflict() {
 // refresh), on garde le MAX pour ne pas annuler les gains locaux non
 // encore poussés (ex : XP d'un kill juste avant un give admin). Sans ça :
 // XP qui monte (gain local) puis redescend (adopt du canon sans le gain).
-// Volontairement limité à l'XP/compteurs : crédits, munitions et honneur
-// (pénalité -50 % au changement de firme) peuvent baisser légitimement.
+// Volontairement limité à l'XP/compteurs/minerais : crédits, munitions et
+// honneur (pénalité -50 % au changement de firme) peuvent baisser
+// légitimement. Les minerais sont sûrs ici : toutes les dépenses
+// (vente, échange, raffinage, atelier, transporteur) écrivent le canon
+// directement ET resynchronisent le moteur — seul le moteur collecte
+// (jamais le serveur), donc moteur > canon = gain non poussé.
 function mergeProgressiveFields(prev, next) {
   if (!prev || !next || typeof next !== "object") return next;
   try {
@@ -414,6 +421,19 @@ function mergeProgressiveFields(prev, next) {
       if (pCounts && nCounts && typeof pCounts === "object" && typeof nCounts === "object") {
         for (const [id, count] of Object.entries(pCounts)) {
           if (Number(count) > Number(nCounts[id] || 0)) nCounts[id] = Math.max(0, Math.floor(Number(count) || 0));
+        }
+      }
+      // Minerais de soute (cf. ORE_RESOURCE_IDS dans SRC/DATA/RESOURCES.js) :
+      // la collecte crédite le moteur en local, le push suit en debounce 2 s.
+      // Entre les deux, un adopt du canon (récompense NPC...) écrasait le gain :
+      // soute qui monte à la collecte puis redescend — le plus visible sur le
+      // Palladium (+1 par rocher). On garde le MAX par minerai, comme l'XP.
+      const pRes = prev.inventory.resources, nRes = next.inventory.resources;
+      if (pRes && nRes && typeof pRes === "object" && typeof nRes === "object"
+        && !Array.isArray(pRes) && !Array.isArray(nRes)) {
+        for (const id of ORE_IDS) {
+          const pv = Math.max(0, Math.floor(Number(pRes[id]) || 0));
+          if (pv > Math.max(0, Math.floor(Number(nRes[id]) || 0))) nRes[id] = pv;
         }
       }
     }

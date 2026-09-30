@@ -1326,10 +1326,12 @@ wss.on("connection", (ws) => {
           state.freezeUntil = 0;
           const sim = npcSims.get(mapId);
           if (sim && typeof sim.breakPlayerLocks === "function") sim.breakPlayerLocks(id, until);
-        } else {
+        } else if (skill === "ish") {
           state.ishUntil = until;
-          if (skill === "smb") state.smbUntil = until;
         }
+        // smb : pas d'invincibilité (pas de ishUntil -> pas de bulle ISH
+        // affichée sur le lanceur par les autres clients). Le skillFx part
+        // quand même (explosion + son visibles par la room).
         broadcastRoom(room, JSON.stringify({ t: "skillFx", skill, by: id, at: now, until }));
       } catch {}
       return;

@@ -9441,6 +9441,7 @@ html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
 /* Skills : image officielle centrée, cooldown en bas comme les munitions */
 #ammoBar .compactSkillBtn[data-skill="pulse"]::before,
 #ammoBar .compactSkillBtn[data-skill="ish"]::before,
+#ammoBar .compactSkillBtn[data-skill="smb"]::before,
 #ammoBar .compactSkillBtn[data-skill="repair"]::before{
   content:"";
   position:absolute;
@@ -9456,12 +9457,15 @@ html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
 }
 #ammoBar .compactSkillBtn[data-skill="pulse"]::before{background-image:url("ASSETS/CONTROL_MENU/ammunition_specialammo_emp-01.png")}
 #ammoBar .compactSkillBtn[data-skill="ish"]::before{background-image:url("ASSETS/CONTROL_MENU/equipment_extra_cpu_ish-01.png")}
+#ammoBar .compactSkillBtn[data-skill="smb"]::before{background-image:url("ASSETS/CONTROL_MENU/AMMUNITION_MINE_SMB-01.PNG")}
 #ammoBar .compactSkillBtn[data-skill="repair"]::before{background-image:url("ASSETS/CONTROL_MENU/equipment_extra_repbot_rep-s.png")}
 #ammoBar .compactSkillBtn[data-skill="pulse"] > strong,
 #ammoBar .compactSkillBtn[data-skill="ish"] > strong,
+#ammoBar .compactSkillBtn[data-skill="smb"] > strong,
 #ammoBar .compactSkillBtn[data-skill="repair"] > strong{display:none !important}
 #ammoBar .compactSkillBtn[data-skill="pulse"],
 #ammoBar .compactSkillBtn[data-skill="ish"],
+#ammoBar .compactSkillBtn[data-skill="smb"],
 #ammoBar .compactSkillBtn[data-skill="repair"]{
   position:relative;
   overflow:hidden;
