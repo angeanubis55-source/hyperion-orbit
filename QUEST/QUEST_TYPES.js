@@ -155,7 +155,7 @@ const PIRATE_CAMPAIGNS = [
   Q("pirate_armada", "Armada à couler", "Détruis toutes les classes principales d’une armada.", [K("interceptor", "npc_Interceptor", 1000, "Éliminer des Interceptors"), K("barracuda", "npc_Barracuda", 500, "Éliminer des Barracudas"), K("saboteur", "npc_Saboteur", 500, "Éliminer des Saboteurs"), K("annihilator", "npc_Annihilator", 250, "Éliminer des Annihilators")], 400000000, 200000000, 800000, "pirate_falcon_10"),
   Q("pirate_saboteur_2500", "Guerre de l’ombre", "Poursuis la campagne contre les Saboteurs.", [K("saboteur", "npc_Saboteur", 2500, "Éliminer des Saboteurs")], 500000000, 250000000, 1000000, "pirate_saboteur_250"),
   Q("pirate_saboteur_7500", "Réseau fantôme", "Détruis l’essentiel du réseau Saboteur.", [K("saboteur", "npc_Saboteur", 7500, "Éliminer des Saboteurs")], 1200000000, 600000000, 2400000, "pirate_saboteur_2500"),
-  Q("pirate_saboteur_17500", "Extinction des Saboteurs", "Contrat pirate de très longue durée.", [K("saboteur", "npc_Saboteur", 17500, "Éliminer des Saboteurs")], 2500000000, 1250000000, 5000000),
+  Q("pirate_saboteur_17500", "Extinction des Saboteurs", "Contrat pirate de très longue durée.", [K("saboteur", "npc_Saboteur", 17500, "Éliminer des Saboteurs")], 3500000000, 1000000000, 4500000),
   Q("pirate_palladium_5000", "Tout le Palladium", "Accumule une réserve massive de Palladium.", [C("palladium", "Palladium_Ore", 5000, "Collecter du Palladium", "5-2")], 150000000, 75000000, 300000, "palladium_industry"),
 ];
 
@@ -166,8 +166,10 @@ const SPECIAL_CAMPAIGNS = [
 const PERMANENT_ELITE_CONTRACTS = [
   KQ("elite_cube_3500", "Faucheuse à Cubikons", "Contrat permanent contre les Cubikons.", [K("cubikon", "npc_Cubikon", 3500, "Détruire des Cubikons")]),
   KQ("elite_protegit_35000", "Marée de Protegits", "Élimine une population entière de Protegits.", [K("protegit", "npc_Protegit", 35000, "Éliminer des Protegits")]),
-  KQ("elite_interceptor_65000", "Fléau des Interceptors", "Contrat permanent contre les flottes Interceptor.", [K("interceptor", "npc_Interceptor", 65000, "Éliminer des Interceptors")]),
-  KQ("elite_annihilator_10500", "Requiem des Annihilators", "Élimine les unités Annihilator à très grande échelle.", [K("annihilator", "npc_Annihilator", 10500, "Éliminer des Annihilators")]),
+  Q("elite_interceptor_65000", "Fléau des Interceptors", "Contrat permanent contre les flottes Interceptor.", [K("interceptor", "npc_Interceptor", 65000, "Éliminer des Interceptors")], 3500000000, 1000000000, 4500000),
+  Q("elite_barracuda_22000", "Prédateur des Barracudas", "Contrat permanent contre les meutes de Barracudas.", [K("barracuda", "npc_Barracuda", 22000, "Éliminer des Barracudas")], 3500000000, 1000000000, 4500000),
+  Q("elite_annihilator_10500", "Requiem des Annihilators", "Élimine les unités Annihilator à très grande échelle.", [K("annihilator", "npc_Annihilator", 10500, "Éliminer des Annihilators")], 3500000000, 1000000000, 4500000),
+  Q("elite_palladium_50000", "Fièvre éternelle du Palladium", "Collecte une réserve colossale de Palladium en 5-2.", [C("palladium", "Palladium_Ore", 50000, "Collecter du Palladium", "5-2")], 3500000000, 1000000000, 4500000),
 ];
 
 const AMMO_CONTRACTS = [

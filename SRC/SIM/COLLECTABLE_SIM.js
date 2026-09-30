@@ -8,7 +8,7 @@
 export const COLLECTABLE_STORE_KEY = "orbit_collectables_v1";
 export const COLLECTABLE_STORE_VERSION = 1;
 export const MAX_COLLECTABLE_MAPS_STORED = 64;
-export const MAX_COLLECTABLE_SLOTS_PER_MAP = 1200; // Palladium 5-2 = 1000
+export const MAX_COLLECTABLE_SLOTS_PER_MAP = 1200; // Marge au-dessus des 500 Palladiums de 5-2
 
 export function createCollectableStore() {
   return { v: COLLECTABLE_STORE_VERSION, maps: {} };

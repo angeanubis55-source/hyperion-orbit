@@ -155,8 +155,8 @@ export const COLLECTABLE_TYPES = Object.freeze({
   Palladium_Ore: {
     name: "Palladium",
     maps: ["5-2"],
-    qty: 1000,
-    spawnBatch: 1000,
+    qty: 500,
+    spawnBatch: 500,
     minSpacing: 10,
     avoidPlayer: 0,
     npcDespawnAfter: 0,

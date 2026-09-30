@@ -22475,8 +22475,8 @@ function syncNetBoxes(dt) {
   let known = null;
   try { known = getNetBoxes(); } catch {}
   if (!known) return;
-  // Index construit en un seul passage : avec 1 000 Palladiums en 5-2,
-  // rechercher chaque uid dans tout `collectables` faisait ~1 000 000 de
+  // Index construit en un seul passage : avec des centaines de Palladiums en
+  // 5-2, rechercher chaque uid dans tout `collectables` faisait un travail
   // comparaisons par frame. Les lectures suivantes sont maintenant en O(1).
   const localBySlotUid = new Map();
   for (let i = collectables.length - 1; i >= 0; i--) {
