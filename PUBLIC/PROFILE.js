@@ -42,8 +42,8 @@ import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 import { FACTIONS, getFaction } from "../SRC/CORE/FACTIONS.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { QUEST_DEFINITIONS } from "../QUEST/QUEST_TYPES.js";
-import { AMMO } from "../COMBAT/AMMO_TYPES.js";
-import { getRocketType, rocketEffectLabel } from "../COMBAT/ROCKET_TYPES.js";
+import { AMMO, ammoDescription } from "../COMBAT/AMMO_TYPES.js";
+import { getRocketType, rocketDescription } from "../COMBAT/ROCKET_TYPES.js";
 import { getResourceName, getResourceIcon } from "../SRC/DATA/RESOURCES.js";
 import { getItemRarity, ITEM_RARITIES } from "../SRC/DATA/ITEM_RARITIES.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../DRONE/DRONE_TYPES.js";
@@ -158,6 +158,21 @@ let moduleReroll = null;
 // sauvegarde), donc il survit au re-render, au changement d'onglet et au reload.
 function nextModuleRerollCost(rerollsDone) {
   return MODULE_ROLL_COST * Math.pow(5, (Number(rerollsDone) || 0) + 1);
+}
+const MODULE_REROLL_TICKET_ID = "ticket_module_reroll";
+const MODULE_REROLL_TICKET_ICON = "/ASSETS/ITEMS/TICKET_MODULE_REROLL.png";
+function moduleRerollTicketCount(currentUser) {
+  return Math.max(0, Math.floor(Number(currentUser?.inventory?.counts?.[MODULE_REROLL_TICKET_ID]) || 0));
+}
+function moduleRollCostHtml(currentUser, creditCost, includeStock = true) {
+  const tickets = moduleRerollTicketCount(currentUser);
+  if (tickets > 0) {
+    return `<span class="moduleTicketCost"><img src="${MODULE_REROLL_TICKET_ICON}" alt="" /><strong>1 ticket</strong>${includeStock ? `<small>Stock : ×${formatNumber(tickets)}</small>` : ""}</span>`;
+  }
+  return `<span class="moduleCreditCost"><strong>${formatNumber(creditCost)}</strong> crédits</span>`;
+}
+function moduleRollCostText(currentUser, creditCost) {
+  return moduleRerollTicketCount(currentUser) > 0 ? "1 ticket" : `${formatNumber(creditCost)} crédits`;
 }
 let inventoryQuery = "";
 
@@ -1165,11 +1180,11 @@ function inventoryTooltipText(entry) {
   const lines = [entry.name];
   if (entry.rarity) lines.push(`Rareté : ${entry.rarity.name}`);
   if (entry.kind === "ammo") {
-    const multiplier = Number(AMMO?.[entry.id]?.mult);
-    if (Number.isFinite(multiplier)) lines.push(`Multiplicateur de dégâts : x${multiplier}`);
     const rocket = getRocketType(entry.id);
     if (rocket) {
-      lines.push(rocketEffectLabel(rocket));
+      lines.push(rocketDescription(rocket));
+    } else if (AMMO?.[entry.id]) {
+      lines.push(ammoDescription(entry.id));
     }
     lines.push(`Quantité possédée : ${inventoryQuantityLabel(entry.quantity)}`);
   } else if (entry.kind === "equipment") {
@@ -2108,12 +2123,12 @@ function renderShopMeasured(user) {
       title.appendChild(badge);
     }
     // Onglet Roquettes fusionné : petite carte comme P.E.T.
-    // Noms complets : "ROQUETTE" / "LANCE-ROQUETTE".
+    // Libellés courts : "ROQUETTE" / "L-ROQUETTES".
     if (shopTab === "rockets") {
       const badge = document.createElement("span");
       const isLauncher = it.manual === false;
       badge.className = "shopPetBadge shopWideBadge" + (isLauncher ? " shopLauncherBadge" : "");
-      badge.textContent = isLauncher ? "LANCE-ROQUETTE" : "ROQUETTE";
+      badge.textContent = isLauncher ? "L-ROQUETTES" : "ROQUETTE";
       badge.title = isLauncher ? "Lance-roquettes" : "Roquette manuelle";
       title.appendChild(document.createTextNode(" "));
       title.appendChild(badge);
@@ -2382,6 +2397,13 @@ function renderExtrasRoulette(user) {
       const rerollsDone = Number(module?.rerolls) || 0;
       const nextCost = nextModuleRerollCost(rerollsDone);
       const ownedModule = (currentUser?.inventory?.shipModules || []).some((m) => String(m?.id) === String(module?.id));
+      const canReroll = ownedModule && (moduleRerollTicketCount(currentUser) > 0 || Number(currentUser?.credits || 0) >= nextCost);
+      const payment = module?.rollPayment;
+      const paidHtml = payment?.type === "ticket"
+        ? `<span class="moduleHistoryPayment"><img src="${MODULE_REROLL_TICKET_ICON}" alt="" /> Payé : 1 ticket</span>`
+        : payment?.type === "credits"
+          ? `<span class="moduleHistoryPayment">Payé : ${formatNumber(payment.amount)} crédits</span>`
+          : `<span class="moduleHistoryPayment legacy">Paiement non enregistré</span>`;
       return `
         <div class="moduleHistoryRow">
           <span class="moduleHistoryIndex">${formatNumber(end - index)}</span>
@@ -2394,9 +2416,10 @@ function renderExtrasRoulette(user) {
           </div>
           <div class="moduleHistorySide">
             <time>${escapeHtml(obtainedAt)}</time>
-            <span class="moduleHistoryReroll">Relances : <strong>${formatNumber(rerollsDone)}</strong> · Prochaine : <strong>${formatNumber(nextCost)}</strong></span>
+            ${paidHtml}
+            <span class="moduleHistoryReroll">Relances : <strong>${formatNumber(rerollsDone)}</strong> · Prochaine : ${moduleRollCostHtml(currentUser, nextCost)}</span>
           </div>
-          ${module?.id ? `<button type="button" class="moduleHistoryRerollBtn" style="width:42px;height:42px;" data-reroll-module="${escapeHtml(String(module.id))}" title="Relancer ce module" ${ownedModule ? "" : "disabled"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7cf0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg></button>` : ""}
+          ${module?.id ? `<button type="button" class="moduleHistoryRerollBtn" style="width:42px;height:42px;" data-reroll-module="${escapeHtml(String(module.id))}" title="Relancer ce module avec ${escapeHtml(moduleRollCostText(currentUser, nextCost))}" ${canReroll ? "" : "disabled"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7cf0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg></button>` : ""}
         </div>
       `;
     }).join("");
@@ -2423,7 +2446,7 @@ function renderExtrasRoulette(user) {
           <p id="extrasPanelSub">Obtiens un module bonus aléatoire pour l'un de tes vaisseaux.</p>
         </div>
         <div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
-          <div class="extrasRouletteCost" id="extrasRouletteCost"><span>Coût du tirage</span><strong>${formatNumber(MODULE_ROLL_COST)}</strong> crédits</div>
+          <div class="extrasRouletteCost" id="extrasRouletteCost"><span>Coût du tirage</span>${moduleRollCostHtml(user, MODULE_ROLL_COST)}</div>
         </div>
       </div>
       <div id="rouletteView" style="display:flex;flex-direction:column;flex:1 1 auto;">
@@ -2432,8 +2455,8 @@ function renderExtrasRoulette(user) {
           <div id="rouletteCenterCell" style="position:absolute;left:${centerIndex * STEP + (64 - 68) / 2}px;top:50%;transform:translateY(-50%);width:68px;height:68px;pointer-events:none;border-radius:16px;border:3px solid #ffd700;box-shadow:0 0 16px rgba(255,215,0,0.6), inset 0 0 12px rgba(255,215,0,0.28);"></div>
         </div>
 
-        <button id="btnRoll" class="primary" style="width: 100%;" ${Number(user?.credits || 0) < MODULE_ROLL_COST ? "disabled" : ""}>
-          Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)
+        <button id="btnRoll" class="primary" style="width: 100%;" ${moduleRerollTicketCount(user) <= 0 && Number(user?.credits || 0) < MODULE_ROLL_COST ? "disabled" : ""}>
+          Lancer (${moduleRollCostText(user, MODULE_ROLL_COST)})
         </button>
 
         <div id="rollResult" style="margin-top: 16px; text-align: center; color: var(--muted);"></div>
@@ -2520,6 +2543,13 @@ function renderExtrasRoulette(user) {
   const btn = document.getElementById("btnRoll");
 
   let rolling = false;
+  const refreshModulePaymentControls = (currentUser) => {
+    if (costEl) costEl.innerHTML = `<span>Coût du tirage</span>${moduleRollCostHtml(currentUser, MODULE_ROLL_COST)}`;
+    if (btn) {
+      btn.innerHTML = `Lancer (${moduleRollCostText(currentUser, MODULE_ROLL_COST)})`;
+      btn.disabled = moduleRerollTicketCount(currentUser) <= 0 && Number(currentUser?.credits || 0) < MODULE_ROLL_COST;
+    }
+  };
 
   const renderRollResultCard = (mod) => {
     const bonusesText = mod.bonuses
@@ -2533,6 +2563,7 @@ function renderExtrasRoulette(user) {
     const familyId = moduleFamilyId(mod);
     const shipImg = shipPreviewSrc(familyBaseShipId(familyId));
     const credits = Number(user?.credits || 0);
+    const tickets = moduleRerollTicketCount(user);
 
     // Bouton relance collé sous "Lancer", carte du module collée sous la relance.
     const rollBtn = document.getElementById("btnRoll");
@@ -2547,8 +2578,8 @@ function renderExtrasRoulette(user) {
       rerollRow.style.display = "";
       rerollRow.innerHTML = `
         <button id="btnRerollModule" class="secondary" style="width:100%;padding:12px 14px;"
-          ${credits < moduleReroll.cost ? "disabled" : ""}>
-          Relancer ce module (${formatNumber(moduleReroll.cost)} crédits)
+          ${tickets <= 0 && credits < moduleReroll.cost ? "disabled" : ""}>
+          Relancer ce module (${moduleRollCostText(user, moduleReroll.cost)})
         </button>
       `;
     } else if (rerollRow) {
@@ -2592,6 +2623,7 @@ function renderExtrasRoulette(user) {
     renderStats(user2);
     renderHangars(user2);
     if (shopCredits) shopCredits.textContent = formatNumber(user2.credits || 0);
+    refreshModulePaymentControls(user2);
     syncGameCredits();
   };
 
@@ -2774,7 +2806,7 @@ function renderExtrasRoulette(user) {
       user = getCurrentUserFull() || user;
       // La CARD ne se ferme pas : elle attend le nouveau tirage puis se met à jour.
       renderRollResultCard(newMod);
-      refreshAfterModule(user, `Reroll réussi (${formatNumber(cost)} crédits).`);
+      refreshAfterModule(user, repl.ticket ? "Relance réussie (1 ticket utilisé)." : `Relance réussie (${formatNumber(cost)} crédits).`);
       rolling = false;
     };
 
@@ -2917,7 +2949,7 @@ if (isShipLike) {
   statLine = `${ammoDesc}`;
 } else if (it?.give?.rockets) {
   const rocket = getRocketType(ammoKey);
-  statLine = `<p class="shopItemStat">${escapeHtml(rocketEffectLabel(rocket))}</p>`;
+  statLine = `<p class="shopItemStat">${escapeHtml(it?.desc || rocketDescription(rocket))}</p>`;
 } else if (it?.petProtocol) {
   const req = Math.max(0, Number(it.petLevel) || 0);
   statLine = `<p class="shopItemStat">Bonus <strong>+${Number(it.petProtocol.pct) || 0} % ${escapeHtml(petProtocolStatLabel(it.petProtocol.key))}</strong>.</p>`;
@@ -3064,6 +3096,7 @@ if (isDrone) {
               <option value="1">1</option>
               <option value="5">5</option>
               <option value="10">10</option>
+              <option value="25">25</option>
               <option value="50">50</option>
               <option value="100">100</option>
               <option value="1000">1000</option>

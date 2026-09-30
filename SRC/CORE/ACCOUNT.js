@@ -3073,13 +3073,23 @@ export function buyAndAddShipModule(cost, moduleObj) {
   }
 
   u.inventory.shipModules.push(moduleObj);
-  u.inventory.moduleRollHistory.push({ ...moduleObj });
+  u.inventory.moduleRollHistory.push({
+    ...moduleObj,
+    rollPayment: usedTicket
+      ? { type: "ticket", amount: 1 }
+      : { type: "credits", amount: cost },
+  });
 
   saveUser(u);
   if (!usedTicket && netActive()) flushNetUser().catch(() => {});
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
 
-  return { ok: true, user: u, ticket: usedTicket };
+  return {
+    ok: true,
+    user: u,
+    ticket: usedTicket,
+    payment: usedTicket ? { type: "ticket", amount: 1 } : { type: "credits", amount: cost },
+  };
 }
 
 // ✅ Reroll ATOMIQUE (1 seule sauvegarde) : paiement + remplacement.
@@ -3113,13 +3123,23 @@ export function buyAndReplaceShipModule(cost, oldId, newModule) {
   }
 
   u.inventory.shipModules.push(newModule);
-  u.inventory.moduleRollHistory.push({ ...newModule });
+  u.inventory.moduleRollHistory.push({
+    ...newModule,
+    rollPayment: usedTicket
+      ? { type: "ticket", amount: 1 }
+      : { type: "credits", amount: cost },
+  });
 
   saveUser(u);
   if (!usedTicket && netActive()) flushNetUser().catch(() => {});
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
 
-  return { ok: true, user: u, ticket: usedTicket };
+  return {
+    ok: true,
+    user: u,
+    ticket: usedTicket,
+    payment: usedTicket ? { type: "ticket", amount: 1 } : { type: "credits", amount: cost },
+  };
 }
 
 // ✅ Hangar ID (verrou de session)

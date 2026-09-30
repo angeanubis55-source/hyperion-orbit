@@ -14,8 +14,9 @@
 // munitions de lance-roquettes (pas de tir manuel pour l'instant) : ECO-10,
 //   UBR-100, CBR, SAR-01, SAR-02, HSTRM-01, PIR-100, BDR-1212, SHG-01
 //   (5000, perce 50 %), SHG-02 (7500, perce 75 %).
-// Simplifications vs officiel : cooldown manuel unique 1 s (au lieu des
-// 30/60/120/240 s par type), pas de bonus Agatus sur AGT-500 (pas de PNJ
+// Les roquettes spéciales ont chacune leur propre cooldown : WIZ-X 15 s ;
+// DCR-250, PLD-8, R-IC3, RC-100, SR-5, AGT-500, SP-100X et K-300M 30 s.
+// Les standards partagent la cadence manuelle de 1 s. Pas de bonus Agatus sur AGT-500 (pas de PNJ
 // Agatus), pas de self-slow SR-5 ni de changement d'apparence WIZ-X
 // (cosmétique, libellé seul), son BDR-1211 standard (soundID 88 introuvable).
 // BDR-1212 réutilise l'icône BDR-1211 (aucune icône ammo officielle).
@@ -42,16 +43,16 @@ export const ROCKET_TYPES = Object.freeze({
   plt2021: def("plt2021", "Roquette PLT-2021", "021", "PLT-2021_100X100.png", 4000, 1.0, 60000),
   plt2026: def("plt2026", "Roquette PLT-2026", "026", "PLT-2026_100X100.png", 2000, 1.0, 40000),
   plt3030: def("plt3030", "Roquette PLT-3030", "030", "PLT-3030_100X100.png", 6000, 1.0, 170000),
-  dcr250: def("dcr250", "Roquette DCR-250", "DCR", "DCR-250_100X100.png", 0, 1.0, 12000, true, 10, { slowPct: 30, duration: 5 }),
-  pld8: def("pld8", "Roquette PLD-8", "PLD", "PLD-8_100X100.png", 0, 1.0, 90000, true, 10, { accuracyPenaltyPct: 40, duration: 5 }),
+  dcr250: def("dcr250", "Roquette DCR-250", "DCR", "DCR-250_100X100.png", 0, 30, 12000, true, 10, { slowPct: 30, duration: 5 }),
+  pld8: def("pld8", "Roquette PLD-8", "PLD", "PLD-8_100X100.png", 0, 30, 90000, true, 10, { accuracyPenaltyPct: 40, duration: 5 }),
   bdr1211: def("bdr1211", "Roquette BDR-1211", "BDR", "BDR-1211_100X100.png", 7500, 1.0, 250000),
-  wizx: def("wizx", "Roquette WIZ-X", "WIZ", "WIZ-X_100X100.png", 0, 1.0, 20000, true, 10, { appearance: true }),
-  ric3: def("ric3", "Roquette R-IC3", "IC3", "R-IC3_100X100.png", 0, 1.0, 150000, true, 10, { freezeSec: 2 }),
-  rc100: def("rc100", "Roquette RC-100", "RC", "RC-100_100X100.png", 0, 1.0, 150000, true, 10, { freezeSec: 3 }),
-  sr5: def("sr5", "Roquette SR-5", "SR5", "SR-5_100X100.png", 0, 1.0, 280000, true, 10, { shieldDrain: 80000, leechPct: 0.5 }),
-  agt500: def("agt500", "Roquette AGT-500", "AGT", "AGT-500_100X100.png", 25000, 1.0, 350000),
-  sp100x: def("sp100x", "Roquette SP-100X", "SPX", "SP-100X_100X100.png", 7200, 1.0, 200000, true, 10, { pierceShield: true }),
-  k300m: def("k300m", "Roquette K-300M", "K3M", "K-300M_100X100.png", 0, 1.0, 120000, true, 10, { slowPct: 20, accuracyPenaltyPct: 5, duration: 2 }),
+  wizx: def("wizx", "Roquette WIZ-X", "WIZ", "WIZ-X_100X100.png", 0, 15, 20000, true, 10, { appearance: true }),
+  ric3: def("ric3", "Roquette R-IC3", "IC3", "R-IC3_100X100.png", 0, 30, 150000, true, 10, { freezeSec: 2 }),
+  rc100: def("rc100", "Roquette RC-100", "RC", "RC-100_100X100.png", 0, 30, 150000, true, 10, { freezeSec: 3 }),
+  sr5: def("sr5", "Roquette SR-5", "SR5", "SR-5_100X100.png", 0, 30, 280000, true, 10, { shieldDrain: 80000, leechPct: 0.5 }),
+  agt500: def("agt500", "Roquette AGT-500", "AGT", "AGT-500_100X100.png", 25000, 30, 350000),
+  sp100x: def("sp100x", "Roquette SP-100X", "SPX", "SP-100X_100X100.png", 7200, 30, 200000, true, 10, { pierceShield: true }),
+  k300m: def("k300m", "Roquette K-300M", "K3M", "K-300M_100X100.png", 0, 30, 120000, true, 10, { slowPct: 20, accuracyPenaltyPct: 5, duration: 2 }),
   // Lance-roquettes : pas de tir manuel pour l'instant (mécanique à venir).
   eco10: def("eco10", "Roquette ECO-10", "ECO", "ECO-10_100X100.png", 2000, 3.0, 30000, false),
   pir100: def("pir100", "Roquette PIR-100", "PIR", "PIR-100_100X100.png", 3500, 3.5, 180000, false, 10, { shieldDrain: 2500 }),
@@ -89,12 +90,22 @@ export function rocketEffectLabel(rocketOrId) {
   if (effect?.slowPct && effect?.accuracyPenaltyPct) {
     return `Ralentit de ${format(effect.slowPct)} % et réduit la précision de ${format(effect.accuracyPenaltyPct)} % pendant ${format(effect.duration)} s`;
   }
+  if (effect?.slowPct) return `Ralentit la cible de ${format(effect.slowPct)} % pendant ${format(effect.duration)} s`;
   if (effect?.accuracyPenaltyPct) return `Précision réduite de ${format(effect.accuracyPenaltyPct)} % pendant ${format(effect.duration)} s`;
   if (effect?.shieldDrain && rocket.damage > 0) {
     return `${format(rocket.damage)} dégâts + ${format(effect.shieldDrain)} de bouclier absorbé par roquette`;
   }
   if (effect?.shieldDrain) return `${format(effect.shieldDrain)} de bouclier absorbé par roquette`;
   return `${format(rocket.damage)} dégâts par roquette`;
+}
+
+export function rocketDescription(rocketOrId) {
+  const rocket = typeof rocketOrId === "string" ? getRocketType(rocketOrId) : rocketOrId;
+  if (!rocket) return "Roquette inconnue.";
+  if (rocket.manual === false) return `Lance-roquettes. ${rocketEffectLabel(rocket)}.`;
+  const cooldown = Number(rocket.cooldown) || 0;
+  const cooldownLabel = cooldown.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+  return `Tir manuel. ${rocketEffectLabel(rocket)}. Temps de recharge : ${cooldownLabel} s.`;
 }
 
 export function rocketShopIcon(id) {

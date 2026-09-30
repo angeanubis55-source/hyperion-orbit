@@ -8696,6 +8696,43 @@ html body #shopOverlay .moduleHistoryRerollBtn:hover:not(:disabled){
 }
 html body #shopOverlay .moduleHistoryRerollBtn:disabled{ opacity:.35 !important; cursor:default !important; }
 
+/* Tickets de relance : coût courant, stock et moyen de paiement historique. */
+#shopOverlay .moduleTicketCost,
+#profileOverlay .moduleTicketCost{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:flex-end !important;
+  gap:5px !important;
+  white-space:nowrap !important;
+}
+#shopOverlay .moduleTicketCost img,
+#profileOverlay .moduleTicketCost img{
+  width:18px !important;
+  height:18px !important;
+  object-fit:contain !important;
+}
+#shopOverlay .moduleTicketCost small,
+#profileOverlay .moduleTicketCost small{
+  color:rgba(204,228,241,.58) !important;
+  font-size:9px !important;
+}
+html body #shopOverlay .moduleHistoryReroll .moduleTicketCost img,
+html body #shopOverlay .moduleHistoryPayment img{
+  width:14px !important;
+  height:14px !important;
+  object-fit:contain !important;
+}
+html body #shopOverlay .moduleHistoryPayment{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:flex-end !important;
+  gap:4px !important;
+  color:rgba(204,228,241,.62) !important;
+  font-size:9px !important;
+  white-space:nowrap !important;
+}
+html body #shopOverlay .moduleHistoryPayment.legacy{ color:rgba(204,228,241,.35) !important; }
+
 /* =========================================================
    Hangars & Équipement — fenêtre dédiée, miroir exact de
    l'Espace pilote (même grille, sidebar arrondie/translucide,

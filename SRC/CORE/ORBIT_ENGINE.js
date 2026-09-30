@@ -24832,8 +24832,9 @@ function tryFireRocket(opts = {}) {
   player.rockets[rocket.id] = rocketCount(rocket.id) - 1;
   noteNetConsumption("rockets", rocket.id, 1);
   mirrorConsumedStock("rockets", rocket.id, player.rockets[rocket.id]);
-  if (PERSONAL_ROCKET_COOLDOWN_IDS.has(String(rocket.id || "").toLowerCase())) {
-    personalRocketCooldowns.set(String(rocket.id).toLowerCase(), PERSONAL_ROCKET_COOLDOWN_SEC);
+  const personalCooldown = personalRocketCooldownFor(rocket.id);
+  if (personalCooldown > 0) {
+    personalRocketCooldowns.set(String(rocket.id).toLowerCase(), personalCooldown);
   } else {
     rocketCooldownMax = (rocket?.cooldown || 1.0) * formationRocketCooldownMult();
     rocketCooldown = rocketCooldownMax;
@@ -25185,20 +25186,28 @@ function rsbLikeCooldown(key) {
 // Roquettes R-310 : tir manuel à tête chercheuse, stock consommable.
 let rocketCooldown = 0;
 let rocketCooldownMax = 1.0;
-const PERSONAL_ROCKET_COOLDOWN_SEC = 30;
-const PERSONAL_ROCKET_COOLDOWN_IDS = new Set(["dcr250", "pld8", "ric3", "rc100", "agt500", "sp100x", "k300m"]);
+const PERSONAL_ROCKET_COOLDOWNS = new Map([
+  ["wizx", 15],
+  ["dcr250", 30], ["pld8", 30], ["ric3", 30], ["rc100", 30],
+  ["sr5", 30], ["agt500", 30], ["sp100x", 30], ["k300m", 30],
+]);
 const personalRocketCooldowns = new Map();
+
+function personalRocketCooldownFor(rocketId) {
+  return Math.max(0, Number(PERSONAL_ROCKET_COOLDOWNS.get(String(rocketId || "").toLowerCase())) || 0);
+}
 
 function rocketCooldownLeft(rocketId) {
   const id = String(rocketId || "").toLowerCase();
-  return PERSONAL_ROCKET_COOLDOWN_IDS.has(id)
+  return personalRocketCooldownFor(id) > 0
     ? Math.max(0, Number(personalRocketCooldowns.get(id)) || 0)
     : Math.max(0, Number(rocketCooldown) || 0);
 }
 
 function rocketCooldownMaxFor(rocketId) {
-  return PERSONAL_ROCKET_COOLDOWN_IDS.has(String(rocketId || "").toLowerCase())
-    ? PERSONAL_ROCKET_COOLDOWN_SEC
+  const personalCooldown = personalRocketCooldownFor(rocketId);
+  return personalCooldown > 0
+    ? personalCooldown
     : Math.max(0.05, Number(rocketCooldownMax) || 1);
 }
 // Lance-roquettes : chargeur 5 coups à 1/s, tir quand on veut (même partiel),

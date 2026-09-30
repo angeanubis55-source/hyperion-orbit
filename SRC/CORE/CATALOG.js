@@ -3,7 +3,8 @@
 
 import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, isRemovedShipPack } from "../../SHIP/SHIP_PACKS.js";
 import { DRONE_FORMATIONS, SPECIAL_DRONE_PRICE, getDroneShopSpritePath } from "../../DRONE/DRONE_TYPES.js";
-import { ROCKET_TYPES, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
+import { ammoDescription } from "../../COMBAT/AMMO_TYPES.js";
+import { ROCKET_TYPES, rocketDescription, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { BOOSTERS } from "../DATA/BOOSTERS.js";
 import { designHasOwnAbility, designHasOwnEffect, getShipEffectStats } from "../../SHIP/SHIP_BONUSES.js";
 
@@ -107,18 +108,22 @@ export const CATALOG = {
   { id: "ammo_abl", name: "A-BL", price: 1000000, give: { ammo: { abl: 1000 } },
     code: "A-BL", mult: 4, laser: "rose",
     desc: "Dégâts quadruplés (×4), ×8 contre Invoke et Mindfire Behemoth.", effect: "Tirs roses." },
-  ],
+  ].map((item) => {
+    const ammoId = Object.keys(item.give.ammo)[0];
+    return { ...item, desc: ammoDescription(ammoId) };
+  }),
 
   // Roquettes (lanceur natif + lance-roquettes) : généré depuis data/rockets.js.
   // Nouvelles roquettes = juste une entrée là-bas, la boutique suit toute seule.
   // Une seule catégorie boutique "Roquettes", le flag manual distingue l'usage.
   rockets: Object.values(ROCKET_TYPES).map((r) => ({
     id: `rocket_${r.id}`,
-    name: `${r.name} ×${r.packSize}`,
+    name: r.name,
     price: r.packPrice,
     give: { rockets: { [r.id]: r.packSize } },
     icon: rocketShopIcon(r.id),
     manual: r.manual !== false,
+    desc: rocketDescription(r),
   })),
 
   // Générateurs de vitesse officiels (darkorbitwiki.com/equipment/generators).

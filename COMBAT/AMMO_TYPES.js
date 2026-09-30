@@ -11,8 +11,8 @@ export const AMMO = {
   x3: { mult: 3.0, color: "rgba(61,255,140,0.95)" },
   x4: { mult: 4.0, color: "rgba(246,247,255,0.95)" },
   sab: { mult: 0.5, color: "rgba(0,30,255,0.95)" },
-  x6: { mult: 6.0, color: "rgba(255,165,74,0.95)" },
-  rcb: { mult: 7.0, color: "rgba(200,60,255,0.95)" },
+  x6: { mult: 6.0, cooldown: 5, color: "rgba(255,165,74,0.95)" },
+  rcb: { mult: 7.0, cooldown: 5, color: "rgba(200,60,255,0.95)" },
   cbo: { mult: 3.0, leechMult: 1.0, color: "rgba(150,90,255,0.95)" },
   job: { mult: 2.0, vsNpcMult: 3.5, color: "rgba(220,255,80,0.95)" },
   rb: { mult: 4.0, vsMatch: [/^npc_Demaner/], vsMult: 8.0, color: "rgba(255,210,80,0.95)" },
@@ -23,6 +23,34 @@ export const AMMO = {
   sbl: { mult: 4.0, vsMatch: [/^npc_Sibelon/], vsMult: 8.0, color: "rgba(80,220,255,0.95)" },
   abl: { mult: 4.0, vsMatch: [/Invoke/, /Mindfire/], vsMult: 8.0, color: "rgba(255,110,180,0.95)" },
 };
+
+const AMMO_DESCRIPTIONS = Object.freeze({
+  x1: "Inflige ×1 les dégâts laser de base.",
+  x2: "Inflige ×2 les dégâts laser de base.",
+  x3: "Inflige ×3 les dégâts laser de base.",
+  x4: "Inflige ×4 les dégâts laser de base.",
+  sab: "Absorbe un montant de bouclier égal à ×2 les dégâts laser et le transfère à votre vaisseau. N'inflige aucun dégât à la coque.",
+  x6: "Inflige ×6 les dégâts laser de base.",
+  rcb: "Inflige ×7 les dégâts laser de base.",
+  cbo: "Inflige ×3 les dégâts laser et absorbe en plus du bouclier à hauteur de ×1.",
+  job: "Inflige ×2 aux joueurs et ×3,5 aux aliens.",
+  rb: "Inflige ×4, ou ×8 contre les Demaners.",
+  pib: "Inflige ×4 et ralentit la cible de 10 % pendant 15 s.",
+  idb: "Commence à ×1, gagne ×1,25 par tir jusqu'à ×6, puis revient à ×1 après 3 s sans tirer.",
+  vb: "Inflige ×4, ou ×7 contre Styxus et Charopos.",
+  emaa: "Inflige ×4, ou ×7 contre les Mimesis.",
+  sbl: "Inflige ×4, ou ×8 contre les Sibelons.",
+  abl: "Inflige ×4, ou ×8 contre Invoke et Mindfire Behemoth.",
+});
+
+export function ammoDescription(id) {
+  const key = String(id || "").toLowerCase();
+  const description = AMMO_DESCRIPTIONS[key] || "Munition laser.";
+  const cooldown = Number(AMMO[key]?.cooldown);
+  return cooldown > 0
+    ? `${description} Temps de recharge : ${String(cooldown).replace(".", ",")} s (partagé entre RSB-75 et RCB-140).`
+    : description;
+}
 
 export const PLAYER_BULLET_SPRITES = {
   x0: { src: "COMBAT/MUNITIONS/X0.png", w: 56, h: 18, glow: true, rotateOffset: Math.PI },
