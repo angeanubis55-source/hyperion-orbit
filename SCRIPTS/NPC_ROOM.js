@@ -3,7 +3,7 @@
 // NPC_TYPES (stats), COMBAT_RULES (degats), MAPS/<id>/SPAWNS+WORLD (camps).
 // Le serveur tranche les PV des NPC et les degats qu'ils infligent aux joueurs.
 
-import { createUniverse, ensureMapSlots, markDead, markAlive, getSlot, slotUid } from "../SRC/SIM/UNIVERSE_SIM.js";
+import { createUniverse, deserializeUniverse, ensureMapSlots, markDead, markAlive, getSlot, serializeUniverse, slotUid } from "../SRC/SIM/UNIVERSE_SIM.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
 
@@ -34,11 +34,11 @@ function statsFor(type) {
 }
 
 export class ZoneNpcSim {
-  constructor(mapId, world, camps) {
+  constructor(mapId, world, camps, savedUniverse = null) {
     this.mapId = String(mapId).toLowerCase();
     this.world = { w: Number(world?.w) || 11000, h: Number(world?.h) || 7000 };
     this.camps = camps;
-    this.universe = createUniverse();
+    this.universe = savedUniverse ? deserializeUniverse(savedUniverse) : createUniverse();
     this.entries = new Map(); // uid -> { uid, campId, type, x, y, angle, hp, sh, hpMax, shMax, speed, dr, spread, tx, ty, killer }
     this.campT = new Map(); // campId -> delai avant prochain essai de spawn
     this.players = new Map(); // clientId -> { x, y, dead, safe, hidden }
@@ -52,7 +52,7 @@ export class ZoneNpcSim {
     ensureMapSlots(this.universe, this.mapId, camps, Date.now());
   }
 
-  static async create(mapId) {
+  static async create(mapId, savedUniverse = null) {
     const id = String(mapId || "").toLowerCase();
     if (!/^[a-z0-9_-]+$/.test(id)) return null;
     // Alias client -> dossier (casse exacte, systèmes sensibles à la casse) :
@@ -117,7 +117,7 @@ export class ZoneNpcSim {
         // Raid Low : camp à usage unique par vague (pas de respawn).
         noRespawn: c?.noRespawn === true,
       }));
-      const sim = new ZoneNpcSim(id, world, camps);
+      const sim = new ZoneNpcSim(id, world, camps, savedUniverse);
       sim.safe = safe;
       // Raid Low : aucune vague active au démarrage (pas de spawn).
       sim.raidWave = 0;
@@ -966,5 +966,12 @@ drainPlayerHits() {
     const gone = this.recentGone.slice(-200);
     this.recentGone.length = 0;
     return { list, deaths: this.deaths.slice(), dmg, gone };
+  }
+
+  // État léger destiné à survivre aux redémarrages du serveur. Il contient
+  // notamment alive/deadAt/respawnAt, donc un Empereur tué ne réapparaît pas
+  // simplement parce qu'une mise à jour redémarre le service.
+  serializeRespawns() {
+    return serializeUniverse(this.universe);
   }
 }

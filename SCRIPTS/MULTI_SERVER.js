@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
@@ -610,6 +610,35 @@ const PLAYER_NEAR_PLAYER_RADIUS = 2600;
 const PLAYER_STATIC_REFRESH_TICKS = 10; // garde-fou de resynchronisation : 500 ms
 const rooms = new Map(); // mapId(lower) -> Map(id -> { ws, state })
 const npcSims = new Map(); // mapId(lower) -> ZoneNpcSim | null | Promise
+const NPC_RESPAWNS_FILE = join(root, "SERVER_DATA", "npc_respawns.json");
+let savedNpcRespawns = {};
+try {
+  const parsed = JSON.parse(readFileSync(NPC_RESPAWNS_FILE, "utf8") || "{}");
+  if (parsed && typeof parsed === "object" && parsed.maps && typeof parsed.maps === "object") {
+    savedNpcRespawns = parsed.maps;
+  }
+} catch {}
+
+function saveNpcRespawns() {
+  const maps = {};
+  for (const [mapId, sim] of npcSims) {
+    if (!sim || typeof sim.then === "function" || typeof sim.serializeRespawns !== "function") continue;
+    try { maps[mapId] = JSON.parse(sim.serializeRespawns()); } catch {}
+  }
+  // Conserve également les cartes pas encore chargées pendant cette session.
+  for (const [mapId, state] of Object.entries(savedNpcRespawns)) {
+    if (!(mapId in maps)) maps[mapId] = state;
+  }
+  try {
+    mkdirSync(dirname(NPC_RESPAWNS_FILE), { recursive: true });
+    const temporary = `${NPC_RESPAWNS_FILE}.tmp`;
+    writeFileSync(temporary, JSON.stringify({ v: 1, savedAt: Date.now(), maps }));
+    renameSync(temporary, NPC_RESPAWNS_FILE);
+    savedNpcRespawns = maps;
+  } catch {}
+}
+
+setInterval(saveNpcRespawns, 5000).unref?.();
 // Refresh (F5) : le socket se ferme mais le joueur revient aussitôt.
 // Grâce de 12 s (même durée que le groupe) : room, amis et groupe le
 // gardent ; s'il revient (pid stable u_<id>), rattachement silencieux
@@ -898,7 +927,7 @@ function sendFriendsSync(ws, accountId) {
 function ensureNpcSim(mapId) {
   const key = String(mapId || "1-1").toLowerCase();
   if (npcSims.has(key)) return npcSims.get(key);
-  const pending = ZoneNpcSim.create(key).then((sim) => {
+  const pending = ZoneNpcSim.create(key, savedNpcRespawns[key] || null).then((sim) => {
     npcSims.set(key, sim || null);
     return sim || null;
   }).catch(() => {
@@ -2263,6 +2292,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   // Arrêt franc : coupe les connexions (sinon server.close attend les
   // joueurs connectés et le reboot/Ctrl+C reste bloqué 90 s).
   process.on(signal, () => {
+    try { saveNpcRespawns(); } catch {}
     try { server.closeAllConnections?.(); } catch {}
     try { wss.close?.(() => {}); } catch {}
     try { server.close(() => process.exit(0)); } catch { process.exit(0); }
