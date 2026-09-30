@@ -10,6 +10,10 @@ export const MODULE_SELL_PRICES = Object.freeze({
 
 export const MODULE_ROLL_COST = 1000000;
 
+// Tirages de NOUVEAUX modules limités par jour (minuit local).
+// Les relances (reroll d'un module possédé) restent illimitées.
+export const MODULE_DAILY_ROLL_LIMIT = 20;
+
 export const MODULE_TIER_WEIGHTS = Object.freeze([
   Object.freeze(["x1", 68]),
   Object.freeze(["x2", 25]),

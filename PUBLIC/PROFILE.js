@@ -16,6 +16,7 @@ import {
   replaceShipModule,
   buyAndAddShipModule,
   buyAndReplaceShipModule,
+  moduleDailyRollInfo,
   updateCurrentUserEmail,
   updateCurrentUserPseudo,
   updateCurrentUserPetPseudo,
@@ -48,7 +49,7 @@ import { getResourceName, getResourceIcon } from "../SRC/DATA/RESOURCES.js";
 import { getItemRarity, ITEM_RARITIES } from "../SRC/DATA/ITEM_RARITIES.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../DRONE/DRONE_TYPES.js";
 import { emptyPetFit, getPetHullPrice, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLevelXp, getPetSlots, getPetSpritePath, PET_FUEL_MAX, PET_HULL_MAX_BUYS } from "../PET/PET_TYPES.js";
-import { MODULE_ALL_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
+import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 import { appendToFitSlots, compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
 import { rarityForCatalogItem } from "../SRC/DATA/CRAFTING.js";
 import { getBooster, formatBoosterDuration } from "../SRC/DATA/BOOSTERS.js";
@@ -152,6 +153,9 @@ let selectedHangarId = null;
 let shopRenderToken = 0;
 let rouletteRailCells = [];
 let moduleReroll = null;
+// Tirage auto (roulette) : enchaîne les tirages de base tant que la case
+// est cochée et que les crédits suivent. Persisté entre les re-renders.
+let moduleAutoRoll = false;
 
 // Coût de la prochaine relance d'un module : 5M de base, x5 par relance
 // déjà effectuée. Le compteur est stocké sur le module (persisté en
@@ -176,19 +180,27 @@ function moduleCanPay(currentUser, creditCost) {
 }
 function moduleTicketStockHtml(currentUser) {
   const tickets = moduleRerollTicketCount(currentUser);
-  return `<span class="moduleTicketStock" style="display:inline-flex;align-items:center;gap:5px;" title="Tickets de relance"><img src="${MODULE_REROLL_TICKET_ICON}" alt="ticket" style="width:26px;height:26px;object-fit:contain;vertical-align:middle;" />×${formatNumber(tickets)}</span>`;
+  return `<span class="moduleTicketStock" style="display:inline-flex;align-items:center;gap:5px;" title="Tickets de relance"><img src="${MODULE_REROLL_TICKET_ICON}" alt="ticket" style="width:26px;height:26px;object-fit:contain;vertical-align:middle;" />×<strong>${formatNumber(tickets)}</strong></span>`;
 }
 function moduleRollCostText(currentUser, creditCost) {
   return modulePayChoice(currentUser) === "ticket" ? "1 ticket" : `${formatNumber(creditCost)} crédits`;
 }
-// Roulette : coût du tirage (crédits uniquement) à gauche, stock de tickets
-// (affichage seul, le ticket ne sert qu'en relance) à droite.
 function moduleRouletteCostHtml(currentUser) {
+  const info = moduleDailyRollInfo(currentUser);
+  const dailyCls = info.left <= 0 ? "moduleDailyRolls limited" : "moduleDailyRolls";
+  const dailyTitle = info.left <= 0 ? ' title="Limite du jour atteinte"' : ' title="Tirages restants du jour"';
+  const dailyValue = `<span class="${dailyCls}"${dailyTitle}><strong>${formatNumber(info.left)} / ${formatNumber(info.limit)}</strong></span>`;
   return `<span class="moduleCostGrid">`
+    + `<span class="moduleCostCol"><span class="moduleCostLabel">Tirages du jour</span>${dailyValue}</span>`
+    + `<span class="moduleCostVSeparator" aria-hidden="true"></span>`
     + `<span class="moduleCostCol"><span class="moduleCostLabel">Coût du tirage</span><span class="moduleCreditCost"><strong>${formatNumber(MODULE_ROLL_COST)}</strong> crédits</span></span>`
     + `<span class="moduleCostVSeparator" aria-hidden="true"></span>`
     + `<span class="moduleCostCol"><span class="moduleCostLabel">Tickets</span>${moduleTicketStockHtml(currentUser)}</span>`
     + `</span>`;
+}
+// Tirage de base possible : crédits OK + quota du jour restant.
+function moduleCanBaseRoll(currentUser) {
+  return Number(currentUser?.credits || 0) >= MODULE_ROLL_COST && moduleDailyRollInfo(currentUser).left > 0;
 }
 // Tête d'historique : comme la roulette, deux colonnes séparées.
 // À gauche "Relance", à droite les tickets. PAS de prix ici :
@@ -2480,12 +2492,13 @@ function renderExtrasRoulette(user) {
         </div>
       </div>
       <div id="rouletteView" style="display:flex;flex-direction:column;flex:1 1 auto;">
-        <div id="rouletteWindow" style="margin:16px auto;position:relative;overflow:hidden;width:${WINDOW_W}px;padding:16px 0;-webkit-mask-image:linear-gradient(to right,transparent,#000 7%,#000 93%,transparent);mask-image:linear-gradient(to right,transparent,#000 7%,#000 93%,transparent);">
+        <label class="moduleAutoRoll moduleAutoRollTop" for="btnAutoRoll" style="display:flex;justify-content:center;align-items:center;gap:6px;margin-bottom:8px;cursor:pointer;"><input type="checkbox" id="btnAutoRoll" ${moduleAutoRoll ? "checked" : ""} /><span>Tirage auto — enchaîne les tirages tant qu'il y a des crédits</span></label>
+        <div id="rouletteWindow" style="margin:2px auto 16px;position:relative;overflow:hidden;width:${WINDOW_W}px;padding:16px 0;-webkit-mask-image:linear-gradient(to right,transparent,#000 7%,#000 93%,transparent);mask-image:linear-gradient(to right,transparent,#000 7%,#000 93%,transparent);">
           <div id="rouletteRail" style="display:flex;gap:10px;width:max-content;will-change:transform;">${railHtml(cells)}</div>
           <div id="rouletteCenterCell" style="position:absolute;left:${centerIndex * STEP + (64 - 68) / 2}px;top:50%;transform:translateY(-50%);width:68px;height:68px;pointer-events:none;border-radius:16px;border:3px solid #ffd700;box-shadow:0 0 16px rgba(255,215,0,0.6), inset 0 0 12px rgba(255,215,0,0.28);"></div>
         </div>
 
-        <button id="btnRoll" class="primary" style="width: 100%;" ${Number(user?.credits || 0) < MODULE_ROLL_COST ? "disabled" : ""}>
+        <button id="btnRoll" class="primary" style="width: 100%;" ${moduleCanBaseRoll(user) ? "" : "disabled"}>
           Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)
         </button>
 
@@ -2590,11 +2603,17 @@ function renderExtrasRoulette(user) {
   let rolling = false;
   // Tirage de base = crédits uniquement : le bouton et le coût sont en crédits.
   const refreshModulePaymentControls = (currentUser) => {
-    if (costEl) costEl.innerHTML = moduleRouletteCostHtml();
+    // Quota épuisé : la case auto ne peut pas rester cochée.
+    if (moduleAutoRoll && moduleDailyRollInfo(currentUser).left <= 0) {
+      moduleAutoRoll = false;
+      const box = document.getElementById("btnAutoRoll");
+      if (box) box.checked = false;
+    }
+    if (costEl) costEl.innerHTML = moduleRouletteCostHtml(currentUser);
     refreshHistoryHead(currentUser);
     if (btn) {
       btn.innerHTML = `Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)`;
-      btn.disabled = Number(currentUser?.credits || 0) < MODULE_ROLL_COST;
+      btn.disabled = !moduleCanBaseRoll(currentUser);
     }
     // L'historique affiche le stock de tickets : on le rafraîchit aussi.
     updateModuleHistory(currentUser);
@@ -2790,6 +2809,22 @@ function renderExtrasRoulette(user) {
       renderRollResultCard(mod);
       refreshAfterModule(user);
       rolling = false;
+      // Tirage auto : enchaîne un nouveau tirage si la case est toujours
+      // cochée, la roulette visible, les crédits suffisants et le quota
+      // du jour non atteint (les relances restent illimitées).
+      if (moduleAutoRoll) {
+        const fresh = getCurrentUserFull() || user;
+        const rouletteOpen = rouletteView && rouletteView.style.display !== "none" && shopIsVisible();
+        const dailyLeft = moduleDailyRollInfo(fresh).left;
+        if (rouletteOpen && Number(fresh?.credits || 0) >= MODULE_ROLL_COST && dailyLeft > 0) {
+          setTimeout(() => { if (moduleAutoRoll) handleBaseRoll(); }, 500);
+        } else {
+          moduleAutoRoll = false;
+          const box = document.getElementById("btnAutoRoll");
+          if (box) box.checked = false;
+          if (rouletteOpen) setMsg(dailyLeft <= 0 ? `Tirage auto arrêté : limite du jour atteinte (${MODULE_DAILY_ROLL_LIMIT}/jour).` : "Tirage auto arrêté : crédits insuffisants.", false);
+        }
+      }
     };
 
     spinWheel(
@@ -2879,6 +2914,19 @@ function renderExtrasRoulette(user) {
   };
 
   btn?.addEventListener("click", handleBaseRoll);
+  document.getElementById("btnAutoRoll")?.addEventListener("change", (event) => {
+    const box = event?.target;
+    // À 0/20 la case refuse de rester cochée (même réactivée à la main).
+    if (box?.checked === true && moduleDailyRollInfo(getCurrentUserFull() || user).left <= 0) {
+      box.checked = false;
+      moduleAutoRoll = false;
+      setMsg(`Tirage auto impossible : limite du jour atteinte (${MODULE_DAILY_ROLL_LIMIT}/jour).`, false);
+      return;
+    }
+    moduleAutoRoll = box?.checked === true;
+    // Cocher pendant l'attente démarre la série immédiatement.
+    if (moduleAutoRoll) handleBaseRoll();
+  });
   refreshHistoryHead(user);
 }
 

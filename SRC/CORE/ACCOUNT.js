@@ -16,7 +16,7 @@ import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { getRefineryRecipe, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
-import { getModuleRarity, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
+import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
 import {
   AUCTION_ACTIVE_LOTS,
   AUCTION_CYCLE_VERSION,
@@ -819,6 +819,8 @@ function ensureUserShape(u) {
   }
   u.stats.lifetimeKills = Object.values(u.stats.npcKills).reduce((total, count) => total + Math.max(0, Number(count) || 0), 0);
   u.stats.rankPoints = calculateRankPoints(u.stats);
+  // Tirages quotidiens de modules (remis à zéro à chaque jour calendaire).
+  u.stats.moduleDailyRolls = normalizeModuleDailyRolls(u.stats.moduleDailyRolls);
 
   // P.E.T : possédé une seule fois (unique comme un vaisseau).
   // XP officielle : 5 % de l'XP du vaisseau, niveaux 0 → 20.
@@ -2970,6 +2972,29 @@ export function sellShipModules(groupKey, qty = 1, options = {}) {
 }
 
 // ---------------------------
+// ✅ Tirages quotidiens (nouveaux modules uniquement, relances illimitées)
+// ---------------------------
+function moduleDailyKey(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function normalizeModuleDailyRolls(v) {
+  const today = moduleDailyKey();
+  const count = v && v.day === today ? Math.max(0, Math.floor(Number(v.count) || 0)) : 0;
+  return { day: today, count };
+}
+
+// { used, limit, left } pour l'utilisateur donné (jour calendaire local).
+export function moduleDailyRollInfo(u) {
+  const s = normalizeModuleDailyRolls(u?.stats?.moduleDailyRolls);
+  const limit = Math.max(0, Math.floor(Number(MODULE_DAILY_ROLL_LIMIT) || 0));
+  return { used: s.count, limit, left: Math.max(0, limit - s.count) };
+}
+
+// ---------------------------
 // ✅ Roulette ship modules
 // ---------------------------
 export function buyModuleRoll(cost = 250000) {
@@ -3061,6 +3086,13 @@ export function buyAndAddShipModule(cost, moduleObj, options = {}) {
   if (!Array.isArray(u.inventory.shipModules)) u.inventory.shipModules = [];
   if (!Array.isArray(u.inventory.moduleRollHistory)) u.inventory.moduleRollHistory = [];
 
+  // Limite quotidienne des tirages de NOUVEAUX modules (relances illimitées).
+  const daily = normalizeModuleDailyRolls(u.stats?.moduleDailyRolls);
+  u.stats.moduleDailyRolls = daily;
+  if (daily.count >= MODULE_DAILY_ROLL_LIMIT) {
+    return { ok: false, error: `Limite quotidienne atteinte (${MODULE_DAILY_ROLL_LIMIT} tirages/jour).`, limit: true };
+  }
+
   const payWith = String(options?.payWith || "auto").toLowerCase();
   const tickets = Math.max(0, Math.floor(Number(u.inventory?.counts?.["ticket_module_reroll"]) || 0));
   let usedTicket = false;
@@ -3081,6 +3113,7 @@ export function buyAndAddShipModule(cost, moduleObj, options = {}) {
       ? { type: "ticket", amount: 1 }
       : { type: "credits", amount: cost },
   });
+  u.stats.moduleDailyRolls = { day: daily.day, count: daily.count + 1 };
 
   saveUser(u);
   if (!usedTicket && netActive()) flushNetUser().catch(() => {});
