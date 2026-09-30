@@ -1,5 +1,5 @@
 import { petEscortTarget, stepPetMotion, petCombatVelocity, orientPet } from "../../PET/PET_MOTION.js";
-import { measureGameTask } from "./PERFORMANCE_TIMINGS.js";
+import { measureGameTask, recordGameTask } from "./PERFORMANCE_TIMINGS.js";
 import { NpcEngine } from "../../NPC/NPC_ENGINE_RENDERER.js";
 import { ShipEngine } from "../../SHIP/SHIP_ENGINE_RENDERER.js";
 import { PetEngine } from "../../PET/PET_ENGINE_RENDERER.js";
@@ -35115,6 +35115,7 @@ function restartFrameScheduler() {
 }
 
 function frame(t) {
+  const frameCpuStartedAt = performance.now();
   lastFrameStart = t;
   const realDt = Math.max(0, (t - last) / 1000);
   last = t;
@@ -35143,14 +35144,16 @@ function frame(t) {
     }
 
     // Heartbeat serveur (3 s) + reconnexion bloquante si besoin.
-    try { tickLinkHeartbeat(realDt); } catch {}
+    try { measureGameTask("frame.heartbeat", () => tickLinkHeartbeat(realDt)); } catch {}
 
     // Multi : envoie position locale 20 Hz (bloqué avant DÉPART et si
     // liaison morte : aucune présence fantôme).
     // En gate (instance perso) : socket GARDÉ pour tchat + enchères,
     // gameplay partagé coupé (invisible, NPC/PvP 100 % locaux).
     try { setNetInstanceMode(!isZoneMap); } catch {}
-    if (started && !linkDead && netplayLocalUpdateDue()) try {
+    if (started && !linkDead && netplayLocalUpdateDue()) {
+      const netPushStartedAt = performance.now();
+      try {
       const atkTgt = Target.get();
       let dformId = "standard";
       try {
@@ -35279,9 +35282,11 @@ function frame(t) {
         petShMax: (function () { try { const p = account.user?.pet; return Math.max(0, Math.round(Number(petShieldMaxForHud(p, account.user)) || 0)); } catch { return 0; } })(),
         vmax: (function () { try { return Math.max(50, Math.round(Number(getSpeedBreakdown()?.total) || Number(player.baseSpeed) || 300)); } catch { return 300; } })(),
       });
-    } catch {}
+      } catch {}
+      finally { recordGameTask("frame.netPush", performance.now() - netPushStartedAt); }
+    }
     // Multi : projectiles visuels des allies (memes sprites, zero degat).
-    try { tickNetplayVisuals(Math.min(0.1, realDt)); } catch {}
+    try { measureGameTask("frame.netVisuals", () => tickNetplayVisuals(Math.min(0.1, realDt))); } catch {}
 
     if (document.visibilityState !== "hidden") {
       measureGameTask("frame.draw", draw);
@@ -35303,6 +35308,7 @@ function frame(t) {
     started = false;
     setCenterMsg(true, "Erreur JS", "Ouvre la console (F12) et copie l'erreur <b>CRASH</b>.", "");
   }
+  recordGameTask("frame.total", performance.now() - frameCpuStartedAt);
   scheduleNextFrame();
 }
 
