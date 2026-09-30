@@ -143,6 +143,8 @@ if (shopTab === "petGears" || shopTab === "petProtocols" || shopTab === "petGear
 if (shopTab === "speedGen" || shopTab === "shieldGen") shopTab = "generators"; // générateurs fusionnés
 // Recherche de l'onglet DESIGNS (conservée entre les re-renders).
 let designSearchQuery = "";
+// Recherche de l'onglet VAISSEAUX (conservée entre les re-renders).
+let shipSearchQuery = "";
 // Recherche par vaisseau dans l'historique des modules (conservée entre les re-renders).
 let moduleHistoryShipQuery = "";
 let selectedShopItemId = null;
@@ -425,12 +427,16 @@ function formatNumber(num) {
   return formatInteger(num);
 }
 
+function hasIntegratedHangarWindow() {
+  return !!document.getElementById("hangarWindowPanel");
+}
+
 function getHangarActionAccess(action) {
-  const integrated = !!document.getElementById("profileOverlay");
+  const integrated = hasIntegratedHangarWindow();
   if (!integrated) {
     return {
       ok: false,
-      error: "Ouvre l'Espace pilote directement depuis le jeu pour effectuer cette action.",
+      error: "Cette action doit être effectuée depuis la fenêtre Hangars du jeu.",
     };
   }
   const access = window.__ORBIT_ENGINE__?.getHangarAccess?.();
@@ -1675,7 +1681,7 @@ function openHangarDesignPanel(triggerEl, hangarId, options, currentId) {
 }
 
 function applyHangarDesign(hangarId, designId) {
-  const isIntegratedInGame = !!document.getElementById("profileOverlay");
+  const isIntegratedInGame = hasIntegratedHangarWindow();
   if (!isIntegratedInGame && isGameOpen()) {
     return setMsg("⚠️ Le jeu est ouvert. Ferme-le d'abord avant de changer de design.", false);
   }
@@ -1794,7 +1800,7 @@ function renderHangarsMeasured(u) {
   };
 
   // ✅ si le jeu (index.html) est ouvert, on bloque le changement de hangar
-const isIntegratedInGame = !!document.getElementById("profileOverlay");
+const isIntegratedInGame = hasIntegratedHangarWindow();
 
 if (!isIntegratedInGame && isGameOpen()) {
   return rejectSwipe(
@@ -1921,6 +1927,30 @@ function buildDesignSearchBar() {
   return bar;
 }
 
+function buildShipSearchBar() {
+  const bar = document.createElement("div");
+  bar.className = "designSearchBar";
+  const input = document.createElement("input");
+  input.id = "shipSearchInput";
+  input.type = "search";
+  input.placeholder = "Rechercher un vaisseau…";
+  input.autocomplete = "off";
+  input.value = shipSearchQuery;
+  input.setAttribute("aria-label", "Rechercher un vaisseau");
+  input.addEventListener("input", () => {
+    shipSearchQuery = input.value;
+    renderShop(currentProfileUser());
+    const again = document.getElementById("shipSearchInput");
+    if (again) {
+      again.focus();
+      const end = again.value.length;
+      try { again.setSelectionRange(end, end); } catch {}
+    }
+  });
+  bar.appendChild(input);
+  return bar;
+}
+
 function renderShop(user) {
   return measureGameTask("ui.renderShop", () => renderShopMeasured(user));
 }
@@ -1932,7 +1962,8 @@ function renderShopMeasured(user) {
     user.inventory?.shipDesigns, user.drones?.items?.map(drone => [drone.id, drone.type]),
     user.drones?.formations, user.drones?.activeFormation, user.rockets,
     user.pet?.owned, user.pet?.level, Math.floor(Number(user.pet?.exp) || 0), user.inventory?.counts?.["pet_niveau1"],
-    shopTab === "designs" ? designSearchQuery : ""]);
+    shopTab === "designs" ? designSearchQuery : "",
+    shopTab === "ships" ? shipSearchQuery : ""]);
   if (shopTab !== "extras" && listSignature === lastShopListSignature && refreshShopBalance) {
     refreshShopBalance(user);
     return;
@@ -1966,6 +1997,14 @@ function renderShopMeasured(user) {
   shopList.innerHTML = "";
 
   let list = getShopListFor(shopTab);
+  if (shopTab === "ships") {
+    const q = shipSearchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((it) =>
+        `${it?.name || ""} ${it?.ship?.id || ""}`.toLowerCase().includes(q));
+    }
+    shopList.appendChild(buildShipSearchBar());
+  }
   if (shopTab === "designs") {
     // Filtre par nom du design ou de son vaisseau de base.
     const q = designSearchQuery.trim().toLowerCase();
@@ -1980,7 +2019,11 @@ function renderShopMeasured(user) {
     empty.className = "tile";
     empty.innerHTML = `
       <h3>Aucun item</h3>
-      <p>${shopTab === "designs" && designSearchQuery.trim() ? "Aucun design pour cette recherche." : "Cette catégorie est vide."}</p>
+      <p>${shopTab === "designs" && designSearchQuery.trim()
+        ? "Aucun design pour cette recherche."
+        : shopTab === "ships" && shipSearchQuery.trim()
+          ? "Aucun vaisseau pour cette recherche."
+          : "Cette catégorie est vide."}</p>
     `;
     shopList.appendChild(empty);
     shopPreview.innerHTML = `
@@ -5375,8 +5418,8 @@ function unmountFitTitlebarButtons() {
 
 function openFitModal(hangarId) {
   // Ouverture libre (même hors base) : tout est brouillon local, Appliquer exige la base.
-  if (!document.getElementById("profileOverlay")) {
-    return setMsg("Ouvre l'Espace pilote directement depuis le jeu pour effectuer cette action.", false);
+  if (!hasIntegratedHangarWindow()) {
+    return setMsg("Cette action doit être effectuée depuis la fenêtre Hangars du jeu.", false);
   }
   if (!window.__ORBIT_ENGINE__?.getHangarAccess?.()) return setMsg("Le moteur du jeu n'est pas encore prêt.", false);
   hookFitDiscardOnMinimize();

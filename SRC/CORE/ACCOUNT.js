@@ -277,7 +277,9 @@ function defaultAmmo() {
   };
 }
 
-function makeHangar(shipId, active = false) {
+function makeHangar(shipId, active = false, factionId = null) {
+  const homeFaction = factionId ? getFaction(factionId) : null;
+  const homeSpawn = factionId ? getFactionBaseSpawn(factionId) : null;
   return {
     id: "h_" + shipId + "_" + Date.now() + "_" + Math.random().toString(16).slice(2),
     shipId,
@@ -291,11 +293,10 @@ function makeHangar(shipId, active = false) {
       extras: [],
     },
 
-    // Position sauvegardée (null = jamais joué = centre de la base de firme)
-    lastPos: null, // { x:number, y:number } | null
+    // Un nouveau hangar est stationné à la base mère X-1 de sa firme.
+    lastPos: homeSpawn, // { x:number, y:number } | null
 
-    // Map sauvegardée (null = jamais joué = map par défaut "1-1")
-    lastMap: null, // string | null
+    lastMap: homeFaction ? `${homeFaction.sector}-1` : null, // string | null
 
     // nouveau modèle (fit) ajouté dans ensureUserShape()
     // fit: { lasers:[], gens:[], extras:[], shipMods:[] }
@@ -1005,11 +1006,11 @@ function ensureUserShape(u) {
   for (const shipId of u.inventory.ships) {
     const baseOf = canonicalBaseOf(shipId);
     const already = u.hangars.some((h) => h && canonicalBaseOf(h.shipId) === baseOf);
-    if (!already) u.hangars.push(makeHangar(baseOf, false));
+    if (!already) u.hangars.push(makeHangar(baseOf, false, u.faction));
   }
 
   if (!u.hangars.length) {
-    u.hangars.push(makeHangar(STARTER_SHIP_ID, true));
+    u.hangars.push(makeHangar(STARTER_SHIP_ID, true, u.faction));
   }
 
   // actif cohérent avec u.ship
@@ -1224,7 +1225,7 @@ export function register({ pseudo, email, password, faction }) {
     rockets: { r310: 10 },
     ship: STARTER_SHIP_ID,
     inventory: { modules: [], ships: [STARTER_SHIP_ID], counts: {} },
-    hangars: [makeHangar(STARTER_SHIP_ID, true)],
+    hangars: [makeHangar(STARTER_SHIP_ID, true, requestedFaction)],
     stats: { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 },
   });
 
@@ -1703,7 +1704,7 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
 
     // 1 hangar pour ce ship si pas déjà
     if (!u.hangars.some((h) => h?.shipId === shipId)) {
-      u.hangars.push(makeHangar(shipId, false));
+      u.hangars.push(makeHangar(shipId, false, u.faction));
     }
   }
 
@@ -3269,7 +3270,7 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
     u.inventory.ships ??= [];
     u.hangars ??= [];
     u.inventory.ships.push(shipId);
-    if (!u.hangars.some(hangar => hangar?.shipId === shipId)) u.hangars.push(makeHangar(shipId, false));
+    if (!u.hangars.some(hangar => hangar?.shipId === shipId)) u.hangars.push(makeHangar(shipId, false, u.faction));
   }
   for (const [type, unitAmount] of Object.entries(recipe.output?.drones || {})) {
     const count = Number(unitAmount || 0) * quantity;

@@ -341,8 +341,8 @@ export const ABILITIES = Object.freeze({
 
   // ---- Orcus ----
   "ability_orcus_assimilate": A(
-    "ability_orcus_assimilate", "orcus", "Orcus", "Assimilation", "self",
-    "80 % de tous les dégâts reçus convertis en PV pendant 20 s.",
+    "ability_orcus_assimilate", "orcus", "Orcus / Orcus Plus", "Assimilation", "self",
+    "80 % de tous les dégâts reçus convertis en PV pendant 20 s (24 s sur Orcus Plus).",
     "", "", 540, 20, "done" // ✅
   ),
 

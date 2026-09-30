@@ -1364,10 +1364,15 @@ function activateSol() {
     showNotification(`Nano-réparateur : recharge ${Math.ceil(cd)} s`, 2, "info");
     return;
   }
-  try { solHeal(SOLACE_PCT); } catch {}
+  let healPct = SOLACE_PCT;
+  try {
+    const shipId = String(getActiveHangarFromUser(account?.user)?.shipId || "").toLowerCase();
+    if (shipId === "centurion_ability_solace") healPct = 0.20;
+  } catch {}
+  try { solHeal(healPct); } catch {}
   solFx();
   startSolCooldown();
-  showNotification("Nano-réparateur : +35 % HP", 2, "info");
+  showNotification(`Nano-réparateur : +${Math.round(healPct * 100)} % HP`, 2, "info");
 }
 function activateSolPlus() {
   if (player.dead || !started) return;
@@ -1482,6 +1487,11 @@ function incBurn(plus) {
 const SENT_DURATION = 10;
 const SENT_COOLDOWN = 180;
 const SENT_STEP = 0.10;
+function activeCenturionAbilityDuration(variant, normalDuration) {
+  let shipId = "";
+  try { shipId = String(getActiveHangarFromUser(account?.user)?.shipId || "").toLowerCase(); } catch {}
+  return shipId === `centurion_ability_${variant}` ? normalDuration / 2 : normalDuration;
+}
 function startSentCooldown() {
   player.sentCd = SENT_COOLDOWN;
   persistCdUntil("sentFx", 0);
@@ -1537,12 +1547,14 @@ function activateSent() {
     showNotification("Forteresse : aucun bouclier équipé", 2.5, "error");
     return;
   }
-  player.sentT = SENT_DURATION;
+  const duration = activeCenturionAbilityDuration("sentinel", SENT_DURATION);
+  player.sentT = duration;
+  player.sentDuration = duration;
   player.sentAcc = 0;
   player.sentBonus = 0;
   try { player.sentCfg = getActiveConfigNo(); } catch { player.sentCfg = null; }
-  persistCdUntil("sentFx", SENT_DURATION);
-  showNotification("Forteresse active (10 s) : +10 % bouclier/s, -30 % vitesse", 2.5, "info");
+  persistCdUntil("sentFx", duration);
+  showNotification(`Forteresse active (${duration} s) : +10 % bouclier/s, -30 % vitesse`, 2.5, "info");
 }
 // --- Spearhead : Recon (minimap x2, 30 s, CD 90 s).
 const RECON_DURATION = 30;
@@ -1868,6 +1880,7 @@ function tryLastStand() {
 // en PV (+x verts). Sprite ORCUS_ASSIMILATE (42 frames) par-dessus nous.
 // JAMX branché plus tard (avec Spearhead). Durée 20 s, recharge 540 s.
 const ORCUS_DURATION = 20;
+const ORCUS_PLUS_DURATION = ORCUS_DURATION + 4;
 const ORCUS_COOLDOWN = 540;
 const ORCUS_ABSORB = 0.8;
 const ORCUS_FRAMES = 42;
@@ -2259,7 +2272,7 @@ function shipAbilityTimerMap() {
       ["holoGramFx", "holoGram", "holoGramT", "holoGramCd", null, HOLOGRAM_COOLDOWN],
       ["cyborgFx", "cyborg", "cyborgT", "cyborgCd", CYBORG_DURATION, CYBORG_COOLDOWN],
       ["venomFx", "venom", "venomT", "venomCd", VENOM_DURATION, VENOM_COOLDOWN],
-      ["orcusFx", "orcus", "orcusT", "orcusCd", ORCUS_DURATION, ORCUS_COOLDOWN],
+      ["orcusFx", "orcus", "orcusT", "orcusCd", ORCUS_PLUS_DURATION, ORCUS_COOLDOWN],
       ["sentFx", "sent", "sentT", "sentCd", SENT_DURATION, SENT_COOLDOWN],
       ["reconFx", "recon", "reconT", "reconCd", RECON_DURATION, RECON_COOLDOWN],
       ["incFx", "inc", "incT", "incCd", INC_DURATION, INC_COOLDOWN],
@@ -2720,14 +2733,16 @@ function activateSpec() {
     return;
   }
   if ((player.specT || 0) > 0) return;
-  player.specT = SPEC_DURATION;
-  persistCdUntil("specFx", SPEC_DURATION);
+  const duration = activeCenturionAbilityDuration("spectrum", SPEC_DURATION);
+  player.specT = duration;
+  player.specDuration = duration;
+  persistCdUntil("specFx", duration);
   try {
     for (let i = 1; i <= PRISM_FRAMES; i++) {
       loadImage(`ASSETS/APTITUDES/SPECTRUM_PRISMATIC_SHIELDING/${i}.png`, { priority: true });
     }
   } catch {}
-  showNotification("Blindage prismatique actif (10 s) : -90 % dégâts subis, -25 % infligés", 2.5, "info");
+  showNotification(`Blindage prismatique actif (${duration} s) : -90 % dégâts subis, -25 % infligés`, 2.5, "info");
 }
 // --- Spectrum Plus : Réflexion prismatique : 8 s, recharge 180 s.
 // -70 % dégâts subis, 70 % réfléchis à chaque attaquant, -50 % infligés.
@@ -3487,16 +3502,18 @@ function activateVenom() {
   // Pas de limite de distance : le lock suffit (canal sans rupture de portée).
   player.venomTarget = t;
   player.venomHit = 0;
-  player.venomT = VENOM_DURATION;
+  const duration = activeCenturionAbilityDuration("venom", VENOM_DURATION);
+  player.venomT = duration;
+  player.venomDuration = duration;
   player.venomAcc = 0;
-  persistCdUntil("venomFx", VENOM_DURATION);
+  persistCdUntil("venomFx", duration);
   try {
     for (let i = 1; i <= CYBORG_FRAMES; i++) {
       loadImage(`ASSETS/APTITUDES/VENOM_SINGULARITY/${i}.png`, { priority: true });
     }
   } catch {}
   try { venomBeamTick(); } catch {}
-  showNotification("Singularité active (35 s) : dégâts croissants en coque", 2.5, "info");
+  showNotification(`Singularité active (${duration} s) : dégâts croissants en coque`, 2.5, "info");
 }
 // --- Affaiblissement (Diminisher, officiel) : le bouclier de la cible
 // verrouillée prend +50 % de dégâts pendant 15 s. Contrecoup : -30 % de
@@ -4109,6 +4126,13 @@ function cancelOrcus() {
   player.orcusT = 0;
   startOrcusCooldown();
 }
+function activeOrcusDuration() {
+  let shipId = "";
+  try { shipId = String(getActiveHangarFromUser(account?.user)?.shipId || "").toLowerCase(); } catch {}
+  let baseShipId = "";
+  try { baseShipId = String(getShipDesignBaseId(shipId) || shipId).toLowerCase(); } catch { baseShipId = shipId; }
+  return baseShipId === "orcus_plus" ? ORCUS_PLUS_DURATION : ORCUS_DURATION;
+}
 function activateOrcus() {
   if (player.dead || !started) return;
   const cd = Number(player.orcusCd || 0);
@@ -4117,14 +4141,16 @@ function activateOrcus() {
     return;
   }
   if ((player.orcusT || 0) > 0) return;
-  player.orcusT = ORCUS_DURATION;
-  persistCdUntil("orcusFx", ORCUS_DURATION);
+  const duration = activeOrcusDuration();
+  player.orcusT = duration;
+  player.orcusDuration = duration;
+  persistCdUntil("orcusFx", duration);
   try {
     for (let i = 1; i <= ORCUS_FRAMES; i++) {
       loadImage(`ASSETS/APTITUDES/ORCUS_ASSIMILATE/${i}.png`, { priority: true });
     }
   } catch {}
-  showNotification("Assimilation active (20 s) : 80 % des dégâts reçus convertis en PV", 2.5, "info");
+  showNotification(`Assimilation active (${duration} s) : 80 % des dégâts reçus convertis en PV`, 2.5, "info");
 }
 // --- Lightning Postcombustion : comme le Voyage Citadel (vitesse x2, 5 s).
 function startLightCooldown() {
@@ -4166,14 +4192,16 @@ function activateDiminish() {
     return;
   }
   player.diminishTarget = t;
-  player.diminishT = DIMINISH_DURATION;
-  persistCdUntil("diminishFx", DIMINISH_DURATION);
+  const duration = activeCenturionAbilityDuration("diminisher", DIMINISH_DURATION);
+  player.diminishT = duration;
+  player.diminishDuration = duration;
+  persistCdUntil("diminishFx", duration);
   try {
     for (let i = 1; i <= DIMINISH_FRAMES; i++) {
       loadImage(`ASSETS/APTITUDES/DIMINISHER_WEAKEN_SHIELDS/${i}.png`, { priority: true });
     }
   } catch {}
-  showNotification("Affaiblissement actif (15 s) : +50 % de dégâts au bouclier de la cible", 2.5, "info");
+  showNotification(`Affaiblissement actif (${duration} s) : +50 % de dégâts au bouclier de la cible`, 2.5, "info");
 }
 // --- DDoL (Disruptor, officiel) : dérègle le cooldown des lasers de la
 // cible verrouillée (3 à 5 s aléatoires) pendant 10 s.
@@ -5074,7 +5102,7 @@ function restorePersistedCds() {
     applyT("holoGramFx", "holoGramT", Number(__resumedFx.holoGramFx || 0));
     applyT("cyborgFx", "cyborgT", CYBORG_DURATION);
     applyT("venomFx", "venomT", VENOM_DURATION);
-    applyT("orcusFx", "orcusT", ORCUS_DURATION);
+    if (applyT("orcusFx", "orcusT", ORCUS_PLUS_DURATION)) player.orcusDuration = activeOrcusDuration();
     applyT("sentFx", "sentT", SENT_DURATION);
     applyT("reconFx", "reconT", RECON_DURATION);
     // Incinération : deux circuits indépendants (parallèle possible).
@@ -5880,7 +5908,7 @@ function getAbilityCooldown(abilityId) {
   }
   if (String(abilityId || "").toLowerCase() === "ability_spectrum") {
     if ((player.specT || 0) > 0) {
-      const total = SPEC_DURATION + SPEC_COOLDOWN;
+      const total = Number(player.specDuration || activeCenturionAbilityDuration("spectrum", SPEC_DURATION)) + SPEC_COOLDOWN;
       return { left: total, max: total };
     }
     return { left: Number(player.specCd || 0), max: SPEC_COOLDOWN };
@@ -5969,7 +5997,7 @@ function getAbilityCooldown(abilityId) {
   }
   if (String(abilityId || "").toLowerCase() === "ability_diminisher") {
     if ((player.diminishT || 0) > 0) {
-      const total = DIMINISH_DURATION + DIMINISH_COOLDOWN;
+      const total = Number(player.diminishDuration || activeCenturionAbilityDuration("diminisher", DIMINISH_DURATION)) + DIMINISH_COOLDOWN;
       return { left: total, max: total };
     }
     return { left: Number(player.diminishCd || 0), max: DIMINISH_COOLDOWN };
@@ -6032,7 +6060,7 @@ function getAbilityCooldown(abilityId) {
   // Orcus : pendant les 20 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_orcus_assimilate") {
     if ((player.orcusT || 0) > 0) {
-      const total = ORCUS_DURATION + ORCUS_COOLDOWN;
+      const total = Number(player.orcusDuration || activeOrcusDuration()) + ORCUS_COOLDOWN;
       return { left: total, max: total };
     }
     return { left: Number(player.orcusCd || 0), max: ORCUS_COOLDOWN };
@@ -6048,7 +6076,7 @@ function getAbilityCooldown(abilityId) {
   // Venom : pendant les 35 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_venom") {
     if ((player.venomT || 0) > 0) {
-      const total = VENOM_DURATION + VENOM_COOLDOWN;
+      const total = Number(player.venomDuration || activeCenturionAbilityDuration("venom", VENOM_DURATION)) + VENOM_COOLDOWN;
       return { left: total, max: total };
     }
     return { left: Number(player.venomCd || 0), max: VENOM_COOLDOWN };
@@ -6056,7 +6084,7 @@ function getAbilityCooldown(abilityId) {
   // Sentinel : pendant les 10 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_sentinel") {
     if ((player.sentT || 0) > 0) {
-      const total = SENT_DURATION + SENT_COOLDOWN;
+      const total = Number(player.sentDuration || activeCenturionAbilityDuration("sentinel", SENT_DURATION)) + SENT_COOLDOWN;
       return { left: total, max: total };
     }
     return { left: Number(player.sentCd || 0), max: SENT_COOLDOWN };
@@ -6452,6 +6480,11 @@ function initializeCustomActionBar() {
     { ship: "Aegis", ships: ["aegis"], ids: ["ability_aegis_hp-repair", "ability_aegis_repair-pod", "ability_aegis_shield-repair"] },
     { ship: "Basilisk", ships: ["basilisk"], ids: ["ability_basilisk_heightened-valour", "ability_basilisk_noxious-nebula"] },
     { ship: "Berserker", ships: ["berserker"], ids: ["ability_berserker_bsk", "ability_berserker_rvg", "ability_berserker_shl"] },
+    { ship: "Centurion Ability Solace", ships: ["centurion_ability_solace"], ids: ["ability_solace"] },
+    { ship: "Centurion Ability Diminisher", ships: ["centurion_ability_diminisher"], ids: ["ability_diminisher"] },
+    { ship: "Centurion Ability Sentinel", ships: ["centurion_ability_sentinel"], ids: ["ability_sentinel"] },
+    { ship: "Centurion Ability Venom", ships: ["centurion_ability_venom"], ids: ["ability_venom"] },
+    { ship: "Centurion Ability Spectrum", ships: ["centurion_ability_spectrum"], ids: ["ability_spectrum"] },
     { ship: "Citadel Plus", ships: ["citadel_plus"], ids: ["ability_citadel-plus_prismatic-endurance", "ability_citadel-plus_draw-fire", "ability_citadel-plus_fortify", "ability_citadel-plus_protection", "ability_citadel-plus_travel"] },
     { ship: "Citadel", ships: ["citadel"], ids: ["ability_citadel_draw-fire", "ability_citadel_fortify", "ability_citadel_protection", "ability_citadel_travel"] },
     { ship: "Cyborg", ships: ["cyborg"], ids: ["ability_cyborg_singularity"] },
@@ -6468,7 +6501,7 @@ function initializeCustomActionBar() {
     { ship: "Liberator Plus", ships: ["liberator_plus"], ids: ["ability_liberator-plus_self-repair"] },
     { ship: "Lightning", ships: ["lightning", "vengeance_lightning"], ids: ["ability_lightning"] },
     { ship: "Mimesis", ships: ["mimesis"], ids: ["ability_mimesis_hologram", "ability_mimesis_phase-out", "ability_mimesis_scramble"] },
-    { ship: "Orcus", ships: ["orcus"], ids: ["ability_orcus_assimilate"] },
+    { ship: "Orcus / Orcus Plus", ships: ["orcus", "orcus_plus"], ids: ["ability_orcus_assimilate"] },
     { ship: "Paladin", ships: ["paladin"], ids: ["ability_paladin_last-stand", "ability_paladin_ripper"] },
     { ship: "Pusat Plus", ships: ["pusat_plus"], ids: ["ability_pusat-plus_speed-sap"] },
     { ship: "Retiarus Plus", ships: ["retiarus_plus"], ids: ["ability_retiarus-plus_chsp", "ability_retiarus-plus_spcp"] },
@@ -6501,12 +6534,22 @@ function initializeCustomActionBar() {
       // Survol : Nom / description / buff / nerf / temps / CD (comme formations).
       const abilityInfo = getAbilityInfo(name);
       if (abilityInfo) {
-        const dur = Number(abilityInfo.durationSec);
+        const normalDur = Number(abilityInfo.durationSec);
+        const dur = group.ships.some(shipId => shipId.startsWith("centurion_ability_"))
+          ? normalDur / 2
+          : normalDur;
         const cd = Number(abilityInfo.cooldownSec);
-        let tip = `${abilityInfo.name}\n${abilityInfo.description}`;
+        let description = dur > 0 && dur !== normalDur
+          ? String(abilityInfo.description || "").replaceAll(`${normalDur} s`, `${dur} s`)
+          : abilityInfo.description;
+        if (group.ships.includes("centurion_ability_solace")) {
+          description = String(description || "").replaceAll("35 %", "20 %");
+        }
+        let tip = `${abilityInfo.name}\n${description}`;
         if (abilityInfo.buff) tip += `\nBuff : ${abilityInfo.buff}`;
         if (abilityInfo.nerf) tip += `\nNerf : ${abilityInfo.nerf}`;
-        if (Number.isFinite(dur) && dur > 0) tip += `\nTemps : ${dur} s`;
+        if (name === "ability_orcus_assimilate") tip += `\nTemps : 20 s (24 s sur Orcus Plus)`;
+        else if (Number.isFinite(dur) && dur > 0) tip += `\nTemps : ${dur} s`;
         else if (dur === 0) tip += `\nImmédiat`;
         if (Number.isFinite(cd) && cd > 0) tip += `\nCD : ${cd} s`;
         else if (cd === 0) tip += `\nSans recharge`;
@@ -27847,6 +27890,10 @@ function netplayNpcActive() {
 const netplaySpriteCache = new Map();
 // Etats moteurs (flammes) des vaisseaux distants, par id joueur.
 const netplayEngines = new Map();
+// Mouvement visuel des formations de drones distantes, par id joueur.
+// Chaque joueur conserve son propre cap lissé, son décalage de virage et les
+// positions interpolées de ses drones.
+const remoteDroneFormationMotions = new Map();
 // Etats moteurs (reacteurs) des PET distants, par id joueur.
 // Cle stable (holder) pour petEngine (WeakMap) + vitesse estimee pour les flames/trails.
 const netplayPetEngines = new Map();
@@ -28222,6 +28269,9 @@ function drawNetplayRemotes(ox, oy) {
       for (const id of netplayEngines.keys()) {
         if (!remotes.has(id)) netplayEngines.delete(id);
       }
+      for (const id of remoteDroneFormationMotions.keys()) {
+        if (!remotes.has(id)) remoteDroneFormationMotions.delete(id);
+      }
       for (const id of netplayPetEngines.keys()) {
         if (!remotes.has(id)) netplayPetEngines.delete(id);
       }
@@ -28441,13 +28491,31 @@ function drawNetplayRemotes(ox, oy) {
       if (dc > 0 && GAME_SETTINGS.remoteDrones) {
         let offsets = null;
         try { offsets = getDroneFormationOffsets(dc, String(r.dform || "standard")); } catch { offsets = null; }
-        const heading = shipEngine.heading({ angle: Number(r.rangle ?? r.angle) || 0 }, pack, remoteFrame);
-        const fa = heading + Math.PI, ca = Math.cos(fa), sa = Math.sin(fa);
+        const now = performance.now();
+        const shipHeading = Number(r.rangle ?? r.angle) || 0;
+        let motion = remoteDroneFormationMotions.get(r.id);
+        if (!motion) {
+          motion = { heading: shipHeading, side: 0, lastAt: now, drones: [] };
+          remoteDroneFormationMotions.set(r.id, motion);
+        }
+        const dt = Math.min(0.05, Math.max(0, (now - Number(motion.lastAt || now)) / 1000));
+        const headingDelta = shortestAngleDelta(motion.heading, shipHeading);
+        motion.heading += headingDelta * (1 - Math.exp(-dt * 11));
+        const wantedSide = Math.max(-9, Math.min(9, headingDelta * 22));
+        motion.side += (wantedSide - motion.side) * (1 - Math.exp(-dt * 9));
+        motion.lastAt = now;
+        const fa = motion.heading + Math.PI, ca = Math.cos(fa), sa = Math.sin(fa);
         const frames = Math.max(1, Number(pack?.frames) || 1);
         const dframe = Math.floor(remoteFrame * 32 / frames) % 32 + 1;
         for (let i = 0; i < dc; i++) {
           const o = offsets?.[i] || { x: Math.cos(i / dc * TAU) * 70, y: Math.sin(i / dc * TAU) * 70 };
-          const ddx = o.x * ca - o.y * sa, ddy = o.x * sa + o.y * ca;
+          const visual = motion.drones[i] || { x: o.x, y: o.y };
+          const follow = 1 - Math.exp(-dt * 7.5);
+          visual.x += (o.x - visual.x) * follow;
+          visual.y += (o.y - visual.y) * follow;
+          motion.drones[i] = visual;
+          const shiftedY = visual.y + motion.side;
+          const ddx = visual.x * ca - shiftedY * sa, ddy = visual.x * sa + shiftedY * ca;
           const spec = slots[i] || "";
           const sep = spec.lastIndexOf(":");
           const dtype = sep > 0 ? spec.slice(0, sep) : "iris";
@@ -28471,6 +28539,7 @@ function drawNetplayRemotes(ox, oy) {
           }
           ctx.restore();
         }
+        if (motion.drones.length > dc) motion.drones.length = dc;
       }
     } catch {}
     // PET de l'allie : sprite de son niveau a sa position interpolee,
@@ -34899,9 +34968,30 @@ async function activateHangarAtSavedLocation(hangarId) {
   if (!current || !target) return { ok: false, error: "Hangar introuvable." };
   if (String(current.id) === String(target.id)) return { ok: false, error: "Ce hangar est déjà actif." };
 
-  const destination = getHangarStateById(target.id);
-  const destinationMap = String(destination?.map || "").toLowerCase();
-  if (!destinationMap) return { ok: false, error: "Ce hangar n'a encore aucune position enregistrée." };
+  let destination = getHangarStateById(target.id);
+  let destinationMap = String(destination?.map || "").toLowerCase();
+  const savedX = Number(destination?.pos?.x);
+  const savedY = Number(destination?.pos?.y);
+  // Compatibilité avec les hangars créés avant l'enregistrement systématique
+  // de leur emplacement : une donnée absente signifie « stationné à la base
+  // mère », jamais « activation impossible ».
+  if (!destinationMap || !Number.isFinite(savedX) || !Number.isFinite(savedY)) {
+    destinationMap = String(getFactionHomeMap(u?.faction) || "1-1").toLowerCase();
+    const baseSpawn = getFactionBaseSpawn(u?.faction);
+    destination = {
+      ...destination,
+      map: destinationMap,
+      pos: { x: Number(baseSpawn.x), y: Number(baseSpawn.y) },
+    };
+    saveHangarStateById(
+      target.id,
+      destination.pos.x,
+      destination.pos.y,
+      destinationMap,
+      destination.hpPct,
+      destination.shPct,
+    );
+  }
 
   // Valide et précharge la destination avant de modifier le hangar actif.
   if (destinationMap !== String(window.__CURRENT_MAP_ID__ || "").toLowerCase()) {
