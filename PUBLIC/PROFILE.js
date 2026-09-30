@@ -161,18 +161,44 @@ function nextModuleRerollCost(rerollsDone) {
 }
 const MODULE_REROLL_TICKET_ID = "ticket_module_reroll";
 const MODULE_REROLL_TICKET_ICON = "/ASSETS/ITEMS/TICKET_MODULE_REROLL.png";
+// Paiement des RELANCES (ticket automatique si dispo, sinon crédits).
+// Le TIRAGE de base est toujours en crédits (jamais de ticket).
 function moduleRerollTicketCount(currentUser) {
   return Math.max(0, Math.floor(Number(currentUser?.inventory?.counts?.[MODULE_REROLL_TICKET_ID]) || 0));
 }
-function moduleRollCostHtml(currentUser, creditCost, includeStock = true) {
+function modulePayChoice(currentUser) {
+  if (moduleRerollTicketCount(currentUser) <= 0) return "credits";
+  return "ticket";
+}
+function moduleCanPay(currentUser, creditCost) {
+  if (modulePayChoice(currentUser) === "ticket") return moduleRerollTicketCount(currentUser) > 0;
+  return Number(currentUser?.credits || 0) >= Number(creditCost || 0);
+}
+function moduleTicketStockHtml(currentUser) {
   const tickets = moduleRerollTicketCount(currentUser);
-  if (tickets > 0) {
-    return `<span class="moduleTicketCost"><img src="${MODULE_REROLL_TICKET_ICON}" alt="" /><strong>1 ticket</strong>${includeStock ? `<small>Stock : ×${formatNumber(tickets)}</small>` : ""}</span>`;
-  }
-  return `<span class="moduleCreditCost"><strong>${formatNumber(creditCost)}</strong> crédits</span>`;
+  return `<span class="moduleTicketStock" style="display:inline-flex;align-items:center;gap:5px;" title="Tickets de relance"><img src="${MODULE_REROLL_TICKET_ICON}" alt="ticket" style="width:26px;height:26px;object-fit:contain;vertical-align:middle;" />×${formatNumber(tickets)}</span>`;
 }
 function moduleRollCostText(currentUser, creditCost) {
-  return moduleRerollTicketCount(currentUser) > 0 ? "1 ticket" : `${formatNumber(creditCost)} crédits`;
+  return modulePayChoice(currentUser) === "ticket" ? "1 ticket" : `${formatNumber(creditCost)} crédits`;
+}
+// Roulette : coût du tirage (crédits uniquement) à gauche, stock de tickets
+// (affichage seul, le ticket ne sert qu'en relance) à droite.
+function moduleRouletteCostHtml(currentUser) {
+  return `<span class="moduleCostGrid">`
+    + `<span class="moduleCostCol"><span class="moduleCostLabel">Coût du tirage</span><span class="moduleCreditCost"><strong>${formatNumber(MODULE_ROLL_COST)}</strong> crédits</span></span>`
+    + `<span class="moduleCostVSeparator" aria-hidden="true"></span>`
+    + `<span class="moduleCostCol"><span class="moduleCostLabel">Tickets</span>${moduleTicketStockHtml(currentUser)}</span>`
+    + `</span>`;
+}
+// Tête d'historique : comme la roulette, deux colonnes séparées.
+// À gauche "Relance", à droite les tickets. PAS de prix ici :
+// chaque ligne a déjà son propre "Prochaine".
+function moduleHistoryHeadHtml(currentUser) {
+  return `<span class="moduleCostGrid">`
+    + `<span class="moduleCostCol"><span class="moduleCostLabel">Relance</span><span class="moduleCreditCost"><strong>Tickets ou Crédits</strong></span></span>`
+    + `<span class="moduleCostVSeparator" aria-hidden="true"></span>`
+    + `<span class="moduleCostCol"><span class="moduleCostLabel">Tickets</span>${moduleTicketStockHtml(currentUser)}</span>`
+    + `</span>`;
 }
 let inventoryQuery = "";
 
@@ -2343,6 +2369,9 @@ function renderExtrasRoulette(user) {
 
   let historyPage = 0;
   let historyUser = user;
+  // L'historique ne montre que les modules encore possédés.
+  // Les anciennes relances (remplacées) et les modules vendus restent en
+  // sauvegarde (moduleRollHistory append-only) mais sont masqués.
   // Recherche par vaisseau dans l'historique des modules (nom de famille,
   // id de vaisseau ou type de module). Persistée pendant la session roulette.
   let historyShipQuery = moduleHistoryShipQuery || "";
@@ -2363,7 +2392,9 @@ function renderExtrasRoulette(user) {
     const history = Array.isArray(currentUser?.inventory?.moduleRollHistory)
       ? currentUser.inventory.moduleRollHistory
       : [];
-    return history.filter((module) => moduleHistoryMatches(module, historyShipQuery));
+    const searched = history.filter((module) => moduleHistoryMatches(module, historyShipQuery));
+    const ownedIds = new Set((currentUser?.inventory?.shipModules || []).map((m) => String(m?.id)));
+    return searched.filter((module) => ownedIds.has(String(module?.id)));
   }
   function renderModuleHistory(currentUser) {
     historyUser = currentUser;
@@ -2372,7 +2403,12 @@ function renderExtrasRoulette(user) {
       const total = Array.isArray(currentUser?.inventory?.moduleRollHistory)
         ? currentUser.inventory.moduleRollHistory.length
         : 0;
-      return `<div class="moduleHistoryEmpty">${total ? "Aucun module pour cette recherche." : "Aucun module obtenu pour le moment."}</div>`;
+      const owned = Array.isArray(currentUser?.inventory?.shipModules)
+        ? currentUser.inventory.shipModules.length
+        : 0;
+      if (!total) return `<div class="moduleHistoryEmpty">Aucun module obtenu pour le moment.</div>`;
+      if (owned > 0) return `<div class="moduleHistoryEmpty">Aucun module possédé pour cette recherche.</div>`;
+      return `<div class="moduleHistoryEmpty">Aucun module possédé pour le moment.</div>`;
     }
 
     const pages = Math.max(1, Math.ceil(history.length / 4));
@@ -2397,13 +2433,7 @@ function renderExtrasRoulette(user) {
       const rerollsDone = Number(module?.rerolls) || 0;
       const nextCost = nextModuleRerollCost(rerollsDone);
       const ownedModule = (currentUser?.inventory?.shipModules || []).some((m) => String(m?.id) === String(module?.id));
-      const canReroll = ownedModule && (moduleRerollTicketCount(currentUser) > 0 || Number(currentUser?.credits || 0) >= nextCost);
-      const payment = module?.rollPayment;
-      const paidHtml = payment?.type === "ticket"
-        ? `<span class="moduleHistoryPayment"><img src="${MODULE_REROLL_TICKET_ICON}" alt="" /> Payé : 1 ticket</span>`
-        : payment?.type === "credits"
-          ? `<span class="moduleHistoryPayment">Payé : ${formatNumber(payment.amount)} crédits</span>`
-          : `<span class="moduleHistoryPayment legacy">Paiement non enregistré</span>`;
+      const canReroll = ownedModule && moduleCanPay(currentUser, nextCost);
       return `
         <div class="moduleHistoryRow">
           <span class="moduleHistoryIndex">${formatNumber(end - index)}</span>
@@ -2416,8 +2446,7 @@ function renderExtrasRoulette(user) {
           </div>
           <div class="moduleHistorySide">
             <time>${escapeHtml(obtainedAt)}</time>
-            ${paidHtml}
-            <span class="moduleHistoryReroll">Relances : <strong>${formatNumber(rerollsDone)}</strong> · Prochaine : ${moduleRollCostHtml(currentUser, nextCost)}</span>
+            <span class="moduleHistoryReroll">Relances : <strong>${formatNumber(rerollsDone)}</strong> · Prochaine : ${escapeHtml(moduleRollCostText(currentUser, nextCost))}</span>
           </div>
           ${module?.id ? `<button type="button" class="moduleHistoryRerollBtn" style="width:42px;height:42px;" data-reroll-module="${escapeHtml(String(module.id))}" title="Relancer ce module avec ${escapeHtml(moduleRollCostText(currentUser, nextCost))}" ${canReroll ? "" : "disabled"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7cf0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg></button>` : ""}
         </div>
@@ -2446,7 +2475,8 @@ function renderExtrasRoulette(user) {
           <p id="extrasPanelSub">Obtiens un module bonus aléatoire pour l'un de tes vaisseaux.</p>
         </div>
         <div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
-          <div class="extrasRouletteCost" id="extrasRouletteCost"><span>Coût du tirage</span>${moduleRollCostHtml(user, MODULE_ROLL_COST)}</div>
+          <div class="extrasRouletteCost" id="extrasRouletteCost">${moduleRouletteCostHtml(user)}</div>
+          <div class="extrasRouletteCost" id="moduleHistoryHeadRight" style="display:none;">${moduleHistoryHeadHtml(user)}</div>
         </div>
       </div>
       <div id="rouletteView" style="display:flex;flex-direction:column;flex:1 1 auto;">
@@ -2455,8 +2485,8 @@ function renderExtrasRoulette(user) {
           <div id="rouletteCenterCell" style="position:absolute;left:${centerIndex * STEP + (64 - 68) / 2}px;top:50%;transform:translateY(-50%);width:68px;height:68px;pointer-events:none;border-radius:16px;border:3px solid #ffd700;box-shadow:0 0 16px rgba(255,215,0,0.6), inset 0 0 12px rgba(255,215,0,0.28);"></div>
         </div>
 
-        <button id="btnRoll" class="primary" style="width: 100%;" ${moduleRerollTicketCount(user) <= 0 && Number(user?.credits || 0) < MODULE_ROLL_COST ? "disabled" : ""}>
-          Lancer (${moduleRollCostText(user, MODULE_ROLL_COST)})
+        <button id="btnRoll" class="primary" style="width: 100%;" ${Number(user?.credits || 0) < MODULE_ROLL_COST ? "disabled" : ""}>
+          Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)
         </button>
 
         <div id="rollResult" style="margin-top: 16px; text-align: center; color: var(--muted);"></div>
@@ -2485,21 +2515,36 @@ function renderExtrasRoulette(user) {
   const panelSub = document.getElementById("extrasPanelSub");
   const costEl = document.getElementById("extrasRouletteCost");
   const historyBtn = document.getElementById("btnModuleHistory");
+  const headerEl = panelTitle?.closest(".extrasRouletteHeader") || costEl?.closest(".extrasRouletteHeader");
+  const historyHeadEl = document.getElementById("moduleHistoryHeadRight");
   const showRoulette = () => {
     if (rouletteView) rouletteView.style.display = "flex";
     if (historyView) historyView.style.display = "none";
     if (panelTitle) panelTitle.textContent = "Roulette de modules";
     if (panelSub) panelSub.textContent = "Obtiens un module bonus aléatoire pour l'un de tes vaisseaux.";
     if (costEl) costEl.style.display = "";
+    if (historyHeadEl) historyHeadEl.style.display = "none";
+    if (headerEl) { headerEl.style.removeProperty("border-bottom"); headerEl.classList.remove("noSeparator"); }
   };
   const showHistory = () => {
     historyPage = 0;
     updateModuleHistory(user);
+    refreshHistoryHead(user);
     if (rouletteView) rouletteView.style.display = "none";
     if (historyView) historyView.style.display = "flex";
     if (panelTitle) panelTitle.textContent = "Historique des modules";
-    if (panelSub) panelSub.textContent = `${formatNumber(user?.inventory?.moduleRollHistory?.length || 0)} tirage(s)`;
+    const ownedCount = Array.isArray(user?.inventory?.shipModules) ? user.inventory.shipModules.length : 0;
+    const totalCount = Array.isArray(user?.inventory?.moduleRollHistory) ? user.inventory.moduleRollHistory.length : 0;
+    if (panelSub) panelSub.textContent = `${formatNumber(ownedCount)} possédé(s) / ${formatNumber(totalCount)} tirage(s)`;
     if (costEl) costEl.style.display = "none";
+    if (historyHeadEl) historyHeadEl.style.display = "";
+    // Pas de séparateur au-dessus de la recherche en vue historique.
+    if (headerEl) { headerEl.style.setProperty("border-bottom", "none", "important"); headerEl.classList.add("noSeparator"); }
+  };
+  // Tickets de relance collés à droite, en face du titre "Historique des modules".
+  // Pas de prix ici : chaque ligne a déjà son propre "Prochaine".
+  const refreshHistoryHead = (currentUser) => {
+    if (historyHeadEl) historyHeadEl.innerHTML = moduleHistoryHeadHtml(currentUser);
   };
   historyBtn?.addEventListener("click", showHistory);
   document.getElementById("btnBackRoulette")?.addEventListener("click", showRoulette);
@@ -2543,15 +2588,20 @@ function renderExtrasRoulette(user) {
   const btn = document.getElementById("btnRoll");
 
   let rolling = false;
+  // Tirage de base = crédits uniquement : le bouton et le coût sont en crédits.
   const refreshModulePaymentControls = (currentUser) => {
-    if (costEl) costEl.innerHTML = `<span>Coût du tirage</span>${moduleRollCostHtml(currentUser, MODULE_ROLL_COST)}`;
+    if (costEl) costEl.innerHTML = moduleRouletteCostHtml();
+    refreshHistoryHead(currentUser);
     if (btn) {
-      btn.innerHTML = `Lancer (${moduleRollCostText(currentUser, MODULE_ROLL_COST)})`;
-      btn.disabled = moduleRerollTicketCount(currentUser) <= 0 && Number(currentUser?.credits || 0) < MODULE_ROLL_COST;
+      btn.innerHTML = `Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)`;
+      btn.disabled = Number(currentUser?.credits || 0) < MODULE_ROLL_COST;
     }
+    // L'historique affiche le stock de tickets : on le rafraîchit aussi.
+    updateModuleHistory(currentUser);
   };
 
   const renderRollResultCard = (mod) => {
+    if (mod && moduleReroll) moduleReroll._lastMod = mod;
     const bonusesText = mod.bonuses
       .map((b) => {
         const color = Number(b.pct) < 0 ? "#ff5566" : "#00ff88";
@@ -2562,8 +2612,7 @@ function renderExtrasRoulette(user) {
     const rarityMeta = moduleRarityMeta(mod);
     const familyId = moduleFamilyId(mod);
     const shipImg = shipPreviewSrc(familyBaseShipId(familyId));
-    const credits = Number(user?.credits || 0);
-    const tickets = moduleRerollTicketCount(user);
+    const liveUser = getCurrentUserFull() || user;
 
     // Bouton relance collé sous "Lancer", carte du module collée sous la relance.
     const rollBtn = document.getElementById("btnRoll");
@@ -2576,10 +2625,11 @@ function renderExtrasRoulette(user) {
         rollBtn.insertAdjacentElement("afterend", rerollRow);
       }
       rerollRow.style.display = "";
+      const canPayReroll = moduleCanPay(liveUser, moduleReroll.cost);
       rerollRow.innerHTML = `
         <button id="btnRerollModule" class="secondary" style="width:100%;padding:12px 14px;"
-          ${tickets <= 0 && credits < moduleReroll.cost ? "disabled" : ""}>
-          Relancer ce module (${moduleRollCostText(user, moduleReroll.cost)})
+          ${canPayReroll ? "" : "disabled"}>
+          Relancer ce module (${moduleRollCostText(liveUser, moduleReroll.cost)})
         </button>
       `;
     } else if (rerollRow) {
@@ -2617,7 +2667,13 @@ function renderExtrasRoulette(user) {
     updateModuleHistory(user2);
     const panelSub = document.getElementById("extrasPanelSub");
     const historyView = document.getElementById("moduleHistoryView");
-    if (panelSub && historyView && historyView.style.display !== "none") panelSub.textContent = `${formatNumber(user2?.inventory?.moduleRollHistory?.length || 0)} tirage(s)`;
+    if (panelSub) {
+      const ownedCount = Array.isArray(user2?.inventory?.shipModules) ? user2.inventory.shipModules.length : 0;
+      const totalCount = Array.isArray(user2?.inventory?.moduleRollHistory) ? user2.inventory.moduleRollHistory.length : 0;
+      if (historyView && historyView.style.display !== "none") {
+        panelSub.textContent = `${formatNumber(ownedCount)} possédé(s) / ${formatNumber(totalCount)} tirage(s)`;
+      }
+    }
     setMsg(message, true);
     renderHeader(user2);
     renderStats(user2);
@@ -2697,7 +2753,7 @@ function renderExtrasRoulette(user) {
     const mod = generateShipModule(u2);
     mod.rerolls = 0;
 
-    const saved = buyAndAddShipModule(MODULE_ROLL_COST, mod);
+    const saved = buyAndAddShipModule(MODULE_ROLL_COST, mod, { payWith: "credits" });
     if (!saved?.ok) {
       setMsg(saved?.error || "Achat impossible.", false);
       return;
@@ -2778,6 +2834,7 @@ function renderExtrasRoulette(user) {
     // Le compteur de relances est persisté sur le module lui-même.
     newMod.rerolls = oldRerolls + 1;
 
+    // Relance : ticket automatique si dispo, sinon crédits (pas de choix).
     const repl = buyAndReplaceShipModule(cost, oldId, newMod);
     if (!repl?.ok) {
       setMsg(repl?.error || "Achat impossible.", false);
@@ -2822,6 +2879,7 @@ function renderExtrasRoulette(user) {
   };
 
   btn?.addEventListener("click", handleBaseRoll);
+  refreshHistoryHead(user);
 }
 
 function renderShopPreview(user, it, cat) {
@@ -5760,10 +5818,22 @@ function openShopOverlay() {
   shopTab = "ammo";
   try { localStorage.setItem("orbit_shop_tab", shopTab); } catch {}
   selectedShopItemId = null;
-  document.querySelectorAll("#shopWindowTabs .tabBtn").forEach((button) => {
+  lastShopListSignature = null;
+  document.querySelectorAll("#shopWindowTabs .tabBtn, #shopTabs .subtabBtn").forEach((button) => {
     button.classList.toggle("active", button.dataset.shop === shopTab);
   });
-  if (shopIsVisible()) renderShop(user);
+  // Rendu immédiat (pas conditionné à shopIsVisible : restore() peut être
+  // async et laisser un panneau vide avec l'onglet actif).
+  try { renderShop(user); } catch {}
+  // Second passage après affichage réel (fenêtre flottante / animation).
+  try {
+    requestAnimationFrame(() => {
+      try {
+        const fresh = getCurrentUserFull() || user;
+        if (fresh) { user = fresh; renderShop(fresh); }
+      } catch {}
+    });
+  } catch {}
 }
 
 function closeShopOverlay({ immediate = false } = {}) {
@@ -6098,6 +6168,18 @@ window.addEventListener("orbit:window-restored", (event) => {
     user = fresh;
     renderAccount(user);
   }
+});
+
+// Boutique restaurée (dé-minimize) : re-rend l'onglet courant.
+// Sans ça, restore() async laisse parfois le panneau vide alors que
+// l'onglet Munitions lasers semble sélectionné.
+window.addEventListener("orbit:window-restored", (event) => {
+  if (event?.detail?.id !== "shopWindow") return;
+  if (!shopIsVisible()) return;
+  try {
+    const fresh = getCurrentUserFull() || user;
+    if (fresh) { user = fresh; lastShopListSignature = null; renderShop(fresh); }
+  } catch {}
 });
 
 // NPC & Grades affiché dans Classement : rafraîchit à l'ouverture de l'onglet.

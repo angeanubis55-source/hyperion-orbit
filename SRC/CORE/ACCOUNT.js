@@ -3048,7 +3048,8 @@ export function replaceShipModule(oldId, newModule) {
 // ✅ Tirage ATOMIQUE (1 seule sauvegarde) : paiement + ajout du module.
 // A appeler AVANT l'animation de la roue : si l'onglet se ferme pendant
 // l'animation, le module est déjà persisté (inventaire + historique).
-export function buyAndAddShipModule(cost, moduleObj) {
+// options.payWith: "ticket" | "credits" | undefined (auto = ticket si dispo).
+export function buyAndAddShipModule(cost, moduleObj, options = {}) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
 
@@ -3060,9 +3061,10 @@ export function buyAndAddShipModule(cost, moduleObj) {
   if (!Array.isArray(u.inventory.shipModules)) u.inventory.shipModules = [];
   if (!Array.isArray(u.inventory.moduleRollHistory)) u.inventory.moduleRollHistory = [];
 
+  const payWith = String(options?.payWith || "auto").toLowerCase();
   const tickets = Math.max(0, Math.floor(Number(u.inventory?.counts?.["ticket_module_reroll"]) || 0));
   let usedTicket = false;
-  if (tickets > 0) {
+  if (payWith !== "credits" && tickets > 0) {
     incCount(u, "ticket_module_reroll", -1);
     usedTicket = true;
   } else {
@@ -3094,7 +3096,8 @@ export function buyAndAddShipModule(cost, moduleObj) {
 
 // ✅ Reroll ATOMIQUE (1 seule sauvegarde) : paiement + remplacement.
 // Historique append-only : l'ancien tirage reste visible.
-export function buyAndReplaceShipModule(cost, oldId, newModule) {
+// options.payWith: "ticket" | "credits" | undefined (auto = ticket si dispo).
+export function buyAndReplaceShipModule(cost, oldId, newModule, options = {}) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
 
@@ -3106,9 +3109,10 @@ export function buyAndReplaceShipModule(cost, oldId, newModule) {
   if (!Array.isArray(u.inventory.shipModules)) u.inventory.shipModules = [];
   if (!Array.isArray(u.inventory.moduleRollHistory)) u.inventory.moduleRollHistory = [];
 
+  const payWith = String(options?.payWith || "auto").toLowerCase();
   const tickets = Math.max(0, Math.floor(Number(u.inventory?.counts?.["ticket_module_reroll"]) || 0));
   let usedTicket = false;
-  if (tickets > 0) {
+  if (payWith !== "credits" && tickets > 0) {
     incCount(u, "ticket_module_reroll", -1);
     usedTicket = true;
   } else {

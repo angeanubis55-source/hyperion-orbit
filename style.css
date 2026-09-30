@@ -1008,7 +1008,7 @@ html.orbitSessionReady #loadingOverlay{
 .shopList .designSearchBar input::placeholder{ color:rgba(158,238,255,.45); }
 .shopList .designSearchBar input:focus{ border-color:#7cf0ff; box-shadow:0 0 10px rgba(0,217,255,.25); }
 /* Recherche par vaisseau (historique des modules) : label + champ, sans carte. */
-.shopPreview .moduleHistorySearchField{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.shopPreview .moduleHistorySearchField{ display:flex; align-items:center; gap:8px; margin:14px 0 8px; }
 .shopPreview .moduleHistorySearchField > span{ flex:0 0 auto; color:#fff; font-size:11px; font-weight:700; white-space:nowrap; }
 .shopPreview .moduleHistorySearchField input{
   flex:1 1 auto; min-width:0; box-sizing:border-box;
@@ -1020,6 +1020,38 @@ html.orbitSessionReady #loadingOverlay{
 }
 .shopPreview .moduleHistorySearchField input::placeholder{ color:rgba(158,238,255,.45); }
 .shopPreview .moduleHistorySearchField input:focus{ border-color:#7cf0ff; box-shadow:0 0 10px rgba(0,217,255,.25); }
+#profileOverlay .extrasRouletteHeader.noSeparator, #shopOverlay .extrasRouletteHeader.noSeparator{ border-bottom:none !important; padding-bottom:0 !important; margin-bottom:0 !important; }
+/* Ticket modules (roulette + historique) : image petite + quantité alignées. */
+.shopPreview .moduleTicketCost,
+.shopPreview .moduleCreditCost,
+.shopPreview .moduleHistoryPayment,
+.shopPreview .modulePayToggle,
+.shopPreview .moduleTicketStock,
+.shopPreview .moduleTicketLine{ display:inline-flex; align-items:center; gap:5px; }
+/* Roulette : coût à gauche, tickets à droite, séparateur vertical entre les deux. */
+/* (sélecteurs avec ID : le CSS boutique force tous les spans en block) */
+#shopOverlay .extrasRouletteCost .moduleCostGrid,
+#profileOverlay .extrasRouletteCost .moduleCostGrid{ display:flex !important; align-items:stretch !important; gap:10px !important; }
+#shopOverlay .extrasRouletteCost .moduleCostGrid .moduleCostCol,
+#profileOverlay .extrasRouletteCost .moduleCostGrid .moduleCostCol{ display:flex !important; flex-direction:column !important; align-items:flex-end !important; gap:3px !important; }
+.shopPreview .moduleCostLabel{ font-size:9px; }
+#shopOverlay .extrasRouletteCost .moduleCostCol .moduleCreditCost,
+#profileOverlay .extrasRouletteCost .moduleCostCol .moduleCreditCost,
+#shopOverlay .extrasRouletteCost .moduleCostCol .moduleTicketStock,
+#profileOverlay .extrasRouletteCost .moduleCostCol .moduleTicketStock{
+  display:inline-flex !important; align-items:center !important; gap:5px !important;
+  min-height:26px !important; text-transform:none !important; font-size:18px !important;
+}
+#shopOverlay .extrasRouletteCost .moduleCostCol .moduleCreditCost strong,
+#profileOverlay .extrasRouletteCost .moduleCostCol .moduleCreditCost strong{ font-size:18px !important; }
+#shopOverlay .extrasRouletteCost .moduleCostGrid .moduleCostVSeparator,
+#profileOverlay .extrasRouletteCost .moduleCostGrid .moduleCostVSeparator{ width:1px !important; align-self:stretch !important; background:rgba(124,240,255,.25) !important; }
+.shopPreview .moduleTicketCost img,
+.shopPreview .moduleCreditCost img,
+.shopPreview .moduleHistoryPayment img,
+.shopPreview .modulePayToggle img,
+.shopPreview .moduleTicketStock img{ width:26px; height:26px; object-fit:contain; vertical-align:middle; flex:0 0 auto; }
+.shopPreview .moduleHistoryPayment{ gap:4px; }
 #profileOverlay .shopRow{ gap:9px; padding:9px; border-radius:9px; }
 #profileOverlay .shopRow img{ width:42px; height:42px; }
 #profileOverlay .shopPreview .bigImg{
@@ -6902,7 +6934,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview { widt
 #profileOverlay .moduleHistoryPanel > header { min-height: 42px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 16px !important; color: #effbff !important; }
 #profileOverlay .moduleHistoryPanel > header strong { font-size: 12px !important; }
 #profileOverlay .moduleHistoryPanel > header span { color: rgba(204,228,241,.52) !important; font-size: 9px !important; }
-#profileOverlay .moduleHistoryList { max-height: 230px !important; overflow-y: auto !important; border-top: 1px solid rgba(124,240,255,.09) !important; }
+#profileOverlay .moduleHistoryList { max-height:none !important; overflow:visible !important; border-top:none !important; }
 #profileOverlay .moduleHistoryRow { min-height: 48px !important; padding: 7px 5px !important; display: grid !important; grid-template-columns: 28px 38px 40px minmax(0,1fr) auto !important; align-items: center !important; gap: 9px !important; border-bottom: 1px solid rgba(124,240,255,.08) !important; }
 #profileOverlay .moduleHistoryIndex { color: rgba(204,228,241,.38) !important; font-size: 9px !important; text-align: center !important; }
 #profileOverlay .moduleHistoryRow img { width: 34px !important; height: 34px !important; object-fit: contain !important; image-rendering: pixelated !important; }
@@ -8397,7 +8429,7 @@ html body #shopOverlay .shipPreviewContainer { width: 100% !important; height: 2
 #shopOverlay .moduleHistoryPanel > header { min-height: 42px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 16px !important; color: #effbff !important; }
 #shopOverlay .moduleHistoryPanel > header strong { font-size: 12px !important; }
 #shopOverlay .moduleHistoryPanel > header span { color: rgba(204,228,241,.52) !important; font-size: 9px !important; }
-#shopOverlay .moduleHistoryList { max-height: 230px !important; overflow-y: auto !important; border-top: 1px solid rgba(124,240,255,.09) !important; }
+#shopOverlay .moduleHistoryList { max-height:none !important; overflow:visible !important; border-top:none !important; }
 #shopOverlay .moduleHistoryRow { min-height: 48px !important; padding: 7px 5px !important; display: grid !important; grid-template-columns: 28px 38px 40px minmax(0,1fr) auto !important; align-items: center !important; gap: 9px !important; border-bottom: 1px solid rgba(124,240,255,.08) !important; }
 #shopOverlay .moduleHistoryIndex { color: rgba(204,228,241,.38) !important; font-size: 9px !important; text-align: center !important; }
 #shopOverlay .moduleHistoryRow img { width: 34px !important; height: 34px !important; object-fit: contain !important; image-rendering: pixelated !important; }
