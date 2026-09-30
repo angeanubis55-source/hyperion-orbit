@@ -22475,18 +22475,21 @@ function syncNetBoxes(dt) {
   let known = null;
   try { known = getNetBoxes(); } catch {}
   if (!known) return;
+  // Index construit en un seul passage : avec 1 000 Palladiums en 5-2,
+  // rechercher chaque uid dans tout `collectables` faisait ~1 000 000 de
+  // comparaisons par frame. Les lectures suivantes sont maintenant en O(1).
+  const localBySlotUid = new Map();
   for (let i = collectables.length - 1; i >= 0; i--) {
     const c = collectables[i];
     if (c && c.slotUid && !c.dropUid && !known.has(String(c.slotUid))) {
       if (collectableTargetId === c.id) { try { cancelCollectableTarget(); } catch {} moveTarget.active = false; collectableTargetId = null; }
       collectables.splice(i, 1);
+      continue;
     }
+    if (c?.slotUid) localBySlotUid.set(String(c.slotUid), c);
   }
   for (const [uid, b] of known) {
-    let existing = null;
-    for (const c of collectables) {
-      if (c && String(c.slotUid) === String(uid)) { existing = c; break; }
-    }
+    const existing = localBySlotUid.get(String(uid));
     if (existing) {
       existing.x = Number(b.x) || 0;
       existing.y = Number(b.y) || 0;
