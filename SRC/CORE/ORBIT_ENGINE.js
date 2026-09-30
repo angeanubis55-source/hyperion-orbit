@@ -1007,6 +1007,7 @@ const ui = {
   rankPtsTxt: document.getElementById("rankPtsTxt"),
 
   lvlTxt: document.getElementById("lvlTxt"),
+  playerIdTxt: document.getElementById("playerIdTxt"),
   cfg1Btn: document.getElementById("cfg1Btn"),
   cfg2Btn: document.getElementById("cfg2Btn"),
   cfgToggleBtn: document.getElementById("cfgToggleBtn"),
@@ -29125,6 +29126,15 @@ function getDroneFormationOffsets(count, formationId) {
   return getOfficialDroneFormationPositions(count, formationId);
 }
 const droneVisualStates = new Map();
+const playerDroneFormationMotion = {
+  heading: null,
+  side: 0,
+  lastAt: 0,
+};
+
+function shortestAngleDelta(from, to) {
+  return Math.atan2(Math.sin(to - from), Math.cos(to - from));
+}
 
 function queueDroneLevelTransition(droneId, fromLevel, toLevel) {
   const id = String(droneId || "");
@@ -29146,10 +29156,24 @@ function drawPlayerDrones() {
   const formationId = drones.length >= Number(formation?.minDrones || 0) ? formation?.id : "standard";
   const offsets = getDroneFormationOffsets(drones.length, formationId);
   const now = performance.now();
-  // La formation utilise le cap quantifie de la frame actuellement affichee.
+  // La position de la formation suit l'angle continu du vaisseau. Le sprite
+  // reste directionnel, mais les drones ne sautent plus par paliers de frame.
   const shipFrame = getPlayerSpriteFrame();
-  const shipHeading = shipEngine.heading(player, ACTIVE_SHIP, shipFrame);
-  const formationAngle = shipHeading + Math.PI;
+  const shipHeading = Number(player.angle) || 0;
+  if (!Number.isFinite(playerDroneFormationMotion.heading)) {
+    playerDroneFormationMotion.heading = shipHeading;
+    playerDroneFormationMotion.lastAt = now;
+  }
+  const formationDt = Math.min(0.05, Math.max(0, (now - Number(playerDroneFormationMotion.lastAt || now)) / 1000));
+  const headingDelta = shortestAngleDelta(playerDroneFormationMotion.heading, shipHeading);
+  const headingFollow = 1 - Math.exp(-formationDt * 11);
+  playerDroneFormationMotion.heading += headingDelta * headingFollow;
+  const wantedSide = Math.max(-9, Math.min(9, headingDelta * 22));
+  const sideFollow = 1 - Math.exp(-formationDt * 9);
+  playerDroneFormationMotion.side += (wantedSide - playerDroneFormationMotion.side) * sideFollow;
+  playerDroneFormationMotion.lastAt = now;
+  const droneHeading = playerDroneFormationMotion.heading;
+  const formationAngle = droneHeading + Math.PI;
   const ca = Math.cos(formationAngle), sa = Math.sin(formationAngle);
   // L'atlas progresse dans le sens opposé : cet index correspond à la
   // rotation visuelle demandée de 90° vers la droite.
@@ -29194,7 +29218,10 @@ function drawPlayerDrones() {
       state.displayLevel = Math.max(1, Number(drone.level) || 1);
     }
     droneVisualStates.set(id, state);
-    const point = { x: state.x * collapse, y: state.y * collapse };
+    // Petit balancement uniquement pendant le virage. À l'arrêt, la
+    // formation reste parfaitement fixe autour du vaisseau.
+    const sideFloat = playerDroneFormationMotion.side * collapse;
+    const point = { x: state.x * collapse, y: state.y * collapse + sideFloat };
     const x = point.x * ca - point.y * sa;
     const y = point.x * sa + point.y * ca;
     if (!GAME_SETTINGS.drones || collapse <= 0.03) return;
@@ -34012,6 +34039,20 @@ function setHudDisabled(element, on) {
   element.disabled = bool;
 }
 
+// L'identifiant interne du compte peut être long et contenir des lettres.
+// L'interface expose une version publique stable, toujours sur 7 chiffres,
+// sans modifier la clé technique utilisée pour les sauvegardes et le réseau.
+function publicPlayerId(accountId) {
+  const value = String(accountId || "");
+  if (!value) return "—";
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return String(1000000 + ((hash >>> 0) % 9000000));
+}
+
 function drawUI() {
   const zoneMode = rules?.mode === "zone";
   const terminalAccess = hasQuestTerminalAccess();
@@ -34047,6 +34088,7 @@ const exp = Number(st.exp || 0);
 const lvl = getLevelInfo(exp);
 st.rankPoints = calculateRankPoints(st);
 updateProgressHud(ui, st, lvl);
+setHudText(ui.playerIdTxt, publicPlayerId(u?.id));
 
 if (ui.spdTxt) {
   const spd = getSpeedBreakdown();

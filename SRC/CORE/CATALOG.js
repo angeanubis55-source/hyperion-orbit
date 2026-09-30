@@ -5,6 +5,7 @@ import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, isRemovedShipPack } f
 import { DRONE_FORMATIONS, SPECIAL_DRONE_PRICE, getDroneShopSpritePath } from "../../DRONE/DRONE_TYPES.js";
 import { ROCKET_TYPES, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { BOOSTERS } from "../DATA/BOOSTERS.js";
+import { designHasOwnAbility, designHasOwnEffect, getShipEffectStats } from "../../SHIP/SHIP_BONUSES.js";
 
 /**
  * Règle de prix temporaire:
@@ -20,6 +21,39 @@ function defaultShipPrice(pack) {
   const frames = Number(pack.frames || 1);
   const area = (Number(pack.w || 160) * Number(pack.h || 160)) / 1000;
   return Math.round(200000 + frames * 8000 + area * 4000);
+}
+
+function roundDesignPrice(value) {
+  return Math.max(500000, Math.round((Number(value) || 0) / 500000) * 500000);
+}
+
+// Grille commune à tous les designs. Un cosmétique coûte une fraction de sa
+// coque ; seuls ses effets/compétences PROPRES ajoutent une prime. Les bonus
+// hérités du vaisseau de base ne sont donc jamais facturés une seconde fois.
+function balancedDesignPrice(pack) {
+  const baseId = getShipDesignBaseId(pack?.id);
+  const basePack = getShipPackById(baseId);
+  const basePrice = Number(basePack?.price) > 0
+    ? Number(basePack.price)
+    : defaultShipPrice(basePack || pack || {});
+  const cosmeticPrice = Math.max(1000000, Math.min(75000000, basePrice * 0.3));
+  let premium = 0;
+  if (designHasOwnEffect(pack?.id)) {
+    const fx = getShipEffectStats(pack?.id);
+    premium += Number(fx.damagePct || 0) * 2000000;
+    premium += Number(fx.hpPct || 0) * 1000000;
+    premium += Number(fx.shieldPct || 0) * 1000000;
+    premium += Number(fx.speedPct || 0) * 1500000;
+    premium += Number(fx.laserHitPct || 0) * 1000000;
+    premium += Number(fx.rocketHitPct || 0) * 1000000;
+    premium += Number(fx.penPct || 0) * 2000000;
+    premium += Number(fx.expPct || 0) * 600000;
+    premium += Number(fx.honorPct || 0) * 600000;
+    premium += Number(fx.speedFlat || 0) * 750000;
+    premium += Number(fx.flatHp || 0) * 50;
+  }
+  if (designHasOwnAbility(pack?.id)) premium += Math.max(15000000, basePrice * 0.2);
+  return roundDesignPrice(cosmeticPrice + premium);
 }
 
 export const CATALOG = {
@@ -270,7 +304,7 @@ export const CATALOG = {
     .map(p => ({
       id: `design_${p.id}`,
       name: p.name || p.id,
-      price: Number(p.price) > 0 ? Number(p.price) : defaultShipPrice(p),
+      price: balancedDesignPrice(p),
       design: { id: p.id, base: getShipDesignBaseId(p.id) },
     })),
 };

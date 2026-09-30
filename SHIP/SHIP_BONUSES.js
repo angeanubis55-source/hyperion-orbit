@@ -102,7 +102,7 @@ const SHIP_DESIGN_INFO = {
   centurion_shield: { effet: "+12% Bouclier" },
   centurion_speed: { effet: "+10 Vitesse" },
   centurion_ability: { effet: null, competence: "Compétence instable" },
-  centurion_tyrannos: { effet: "+10% Dégâts" },
+  centurion_tyrannos: { effet: "+10% Dégâts, +10% PV, +10% Précision lasers/roquettes, +15% Vitesse" },
   c_elite_ullrin: { effet: "+5% Dégâts", competence: "Protection / Attraction / Fortification / Voyage" },
 };
 
@@ -183,6 +183,25 @@ export function designHasOwnEffect(shipId) {
   return false;
 }
 
+// Même principe que designHasOwnEffect, mais uniquement pour une compétence
+// apportée par le design lui-même (une compétence héritée de la coque ne
+// renchérit pas tous ses habillages cosmétiques).
+export function designHasOwnAbility(shipId) {
+  const id = String(shipId || "");
+  if (!id || !getShipDesignBaseId(id)) return false;
+  const hasAbility = (entry) => entry?.competence !== undefined
+    && entry.competence !== null && String(entry.competence).trim() !== "";
+  if (hasAbility(SHIP_DESIGN_INFO[id])) return true;
+  const override = SHIP_DESIGN_OVERRIDES[id];
+  if (override && hasAbility(SHIP_DESIGN_INFO[override])) return true;
+  for (const [prefix, key] of SHIP_DESIGN_PREFIXES) {
+    if (id.startsWith(prefix)) {
+      return hasAbility(SHIP_DESIGN_INFO[key]);
+    }
+  }
+  return false;
+}
+
 /**
  * Renvoie { effet, competence } pour un id de vaisseau ou de design.
  * - design à gain propre -> son effet + compétence de sa base.
@@ -249,7 +268,7 @@ const SHIP_EFFECT_STATS = {
   centurion_hp: { hpPct: 15 },
   centurion_shield: { shieldPct: 12 },
   centurion_speed: { speedFlat: 10 },
-  centurion_tyrannos: { damagePct: 10 },
+  centurion_tyrannos: { damagePct: 10, hpPct: 10, laserHitPct: 10, rocketHitPct: 10, speedPct: 15 },
   c_elite_ullrin: { damagePct: 5 },
   aegis_elite: { damagePct: 5 },
   aegis_veteran: { honorPct: 5, expPct: 5 },
@@ -259,7 +278,12 @@ const SHIP_EFFECT_STATS = {
   spearhead_veteran: { honorPct: 5, expPct: 5 },
 };
 
-const EMPTY_STATS = { hpPct: 0, flatHp: 0, shieldPct: 0, damagePct: 0, speedFlat: 0, expPct: 0, honorPct: 0, penPct: 0 };
+const EMPTY_STATS = {
+  hpPct: 0, flatHp: 0, shieldPct: 0, damagePct: 0,
+  speedFlat: 0, speedPct: 0,
+  laserHitPct: 0, rocketHitPct: 0,
+  expPct: 0, honorPct: 0, penPct: 0,
+};
 
 function statsKeyFor(shipId) {
   const id = String(shipId || "");
