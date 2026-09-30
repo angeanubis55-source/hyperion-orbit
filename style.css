@@ -2719,8 +2719,8 @@ hors .clanBtns (ex. anciennes lignes Membres non re-rendues). */
 .clanLeaveRow button{height:28px;padding:0 12px;border:1px solid rgba(255,101,120,.45);border-radius:8px;color:#ff9aa7;background:rgba(160,25,45,.22);cursor:pointer;font:800 11px/1.2 ui-sans-serif,system-ui}
 .clanLeaveRow button:hover{border-color:#ff6578;background:rgba(160,25,45,.35)}
 /* Fenêtre Classement PvP — même largeur sur les 2 onglets */
-.rankingPanel{ width:560px !important; min-width:420px !important; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
-#rankingWindow.gameWindow{ width:560px !important; min-width:420px !important; max-width:calc(100vw - 20px); }
+.rankingPanel{ width:720px !important; min-width:420px !important; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden; }
+#rankingWindow.gameWindow{ width:720px !important; min-width:420px !important; max-width:calc(100vw - 20px); }
 .rankingTabs{ display:flex; gap:8px; padding:10px 11px 0; box-sizing:border-box; }
 /* Même style que .friendsForm button (Ajouter) — surcharge du .tabBtn générique (ligne ~4241, !important) qui bloquait */
 .rankingTabs .tabBtn{ flex:1 1 0; height:30px !important; padding:0 14px !important; box-sizing:border-box; border:1px solid rgba(124,240,255,.38) !important; border-radius:8px !important; color:#eaffff !important; background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important; cursor:pointer; font:800 11px/1.2 ui-sans-serif,system-ui !important; }
