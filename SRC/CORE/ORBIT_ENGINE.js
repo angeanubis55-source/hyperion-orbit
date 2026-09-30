@@ -10497,6 +10497,12 @@ function botClampMoveTarget(x, y) {
 // est toujours en mouvement.
 function botKiteCombatMove(npc, d, standD) {
   if (!npc || Number(npc.hp) <= 0) { moveTarget.active = false; return; }
+  // Meme en kiting/GG, la distance a la cible tiree passe avant toutes les
+  // esquives du paquet.
+  if (d < standD - 12) {
+    botOrbitCombatMove(npc, d, standD);
+    return;
+  }
   if (d > Math.max(80, playerRange - 10)) {
     // Hors de portée : approche décalée (point à standD, pas le centre).
     const ax = d > 1 ? (player.x - npc.x) / d : 1;
@@ -10534,8 +10540,16 @@ function botKiteCombatMove(npc, d, standD) {
   } else {
     const tx = -ky / kl, ty = kx / kl;
     const step = Math.min(kl, 800);
-    const rawX = player.x + kx / kl * step + tx * 350;
-    const rawY = player.y + ky / kl * step + ty * 350;
+    let rawX = player.x + kx / kl * step + tx * 350;
+    let rawY = player.y + ky / kl * step + ty * 350;
+    // Une esquive secondaire ne peut jamais choisir un point situe a
+    // l'interieur du rayon de combat de la cible prioritaire.
+    const ndx = rawX - npc.x, ndy = rawY - npc.y;
+    const nd = Math.hypot(ndx, ndy);
+    if (nd > 0.01 && nd < standD) {
+      rawX = npc.x + ndx / nd * standD;
+      rawY = npc.y + ndy / nd * standD;
+    }
     const tgt = botGateKiteTarget(rawX, rawY, closestD < 600);
     moveTarget.active = true;
     moveTarget.x = tgt.x;
@@ -10548,25 +10562,30 @@ function botKiteCombatMove(npc, d, standD) {
 // le NPC). Le sens reste stable par cible et ne change que rarement.
 function botOrbitCombatMove(npc, d, standD) {
   if (!npc || Number(npc.hp) <= 0) { moveTarget.active = false; return; }
-  if (d > Math.max(80, playerRange - 10)) {
-    // Hors de portee : approche directe sur le point a standD.
-    const ax = d > 1 ? (player.x - npc.x) / d : 1;
-    const ay = d > 1 ? (player.y - npc.y) / d : 0;
-    const tgt = botClampMoveTarget(npc.x + ax * standD, npc.y + ay * standD);
-    moveTarget.active = true;
-    moveTarget.x = tgt.x;
-    moveTarget.y = tgt.y;
-    return;
-  }
   const awayX = d > 1 ? (player.x - npc.x) / d : 1;
   const awayY = d > 1 ? (player.y - npc.y) / d : 0;
-  const emergencyD = Math.max(220, Number(player.r || 0) + Number(npc.r || 0) + 140);
-  if (d < emergencyD && d > 0.01) {
-    // Contact/proximite dangereuse : sortie radiale prioritaire. Une faible
-    // composante laterale evite de traverser le NPC quand il avance aussi.
+  const distanceTolerance = 12;
+  if (d < standD - distanceTolerance && d > 0.01) {
+    // Trop pres de LA cible : recul radial prioritaire jusqu'au rayon voulu.
+    // L'esquive des autres NPC ne peut ajouter qu'un decalage tangentiel ou
+    // une poussee vers l'exterieur, jamais nous ramener vers la cible.
     const s = Number(Bot.orbitDir) || 1;
-    const rawX = player.x + awayX * 900 + -awayY * s * 260;
-    const rawY = player.y + awayY * 900 + awayX * s * 260;
+    let avoidX = 0, avoidY = 0;
+    for (const other of enemies) {
+      if (!other || other === npc || Number(other.hp) <= 0) continue;
+      const ox = player.x - other.x, oy = player.y - other.y;
+      const od = Math.hypot(ox, oy);
+      if (!(od > 1 && od < 600)) continue;
+      const push = (1 - od / 600) * 320;
+      avoidX += ox / od * push;
+      avoidY += oy / od * push;
+    }
+    const radialAvoid = Math.max(0, avoidX * awayX + avoidY * awayY);
+    const tangentX = -awayY, tangentY = awayX;
+    const tangentAvoid = Math.max(-220, Math.min(220, avoidX * tangentX + avoidY * tangentY));
+    const retreat = Math.max(700, standD - d + 420) + radialAvoid;
+    const rawX = player.x + awayX * retreat + tangentX * (s * 100 + tangentAvoid);
+    const rawY = player.y + awayY * retreat + tangentY * (s * 100 + tangentAvoid);
     const tgt = botClampMoveTarget(rawX, rawY);
     moveTarget.active = true;
     moveTarget.x = tgt.x;
@@ -10584,27 +10603,32 @@ function botOrbitCombatMove(npc, d, standD) {
   }
   const s = Number(Bot.orbitDir) || 1;
   const currentAngle = Math.atan2(player.y - npc.y, player.x - npc.x);
-  const radiusError = Math.max(-0.32, Math.min(0.32, (d - standD) / Math.max(standD, 1)));
-  const desiredRadius = Math.max(emergencyD, standD + radiusError * standD * 0.45);
-  // Petit pas angulaire = arc fluide. Il grandit legerement quand on est loin
-  // afin de rejoindre la trajectoire sans viser le centre du NPC.
+  // Le point vise reste STRICTEMENT sur le rayon demande. L'erreur de distance
+  // change seulement la vitesse angulaire, jamais le rayon lui-meme.
   const angleStep = (0.28 + Math.min(0.12, Math.abs(d - standD) / Math.max(standD, 1) * 0.12)) * s;
   Bot.orbitAngle = currentAngle + angleStep;
-  let rawX = npc.x + Math.cos(Bot.orbitAngle) * desiredRadius;
-  let rawY = npc.y + Math.sin(Bot.orbitAngle) * desiredRadius;
+  let orbitX = Math.cos(Bot.orbitAngle);
+  let orbitY = Math.sin(Bot.orbitAngle);
 
-  // Les autres NPC proches repoussent doucement le point d'orbite : le bot ne
-  // garde plus un cercle parfait qui le ferait traverser un paquet.
+  // Les autres NPC modifient uniquement l'angle choisi sur le cercle. Apres
+  // cette esquive, on reprojette au rayon exact : la cible tiree reste
+  // prioritaire et aucun NPC secondaire ne peut casser sa distance.
+  let avoidX = 0, avoidY = 0;
   for (const other of enemies) {
     if (!other || other === npc || Number(other.hp) <= 0) continue;
     const ox = player.x - other.x;
     const oy = player.y - other.y;
     const od = Math.hypot(ox, oy);
     if (!(od > 1 && od < 650)) continue;
-    const push = (1 - od / 650) * 260;
-    rawX += ox / od * push;
-    rawY += oy / od * push;
+    const push = (1 - od / 650) * 0.55;
+    avoidX += ox / od * push;
+    avoidY += oy / od * push;
   }
+  orbitX += avoidX;
+  orbitY += avoidY;
+  const orbitLen = Math.hypot(orbitX, orbitY) || 1;
+  const rawX = npc.x + orbitX / orbitLen * standD;
+  const rawY = npc.y + orbitY / orbitLen * standD;
   const tgt = botClampMoveTarget(rawX, rawY);
   moveTarget.active = true;
   moveTarget.x = tgt.x;
@@ -11274,6 +11298,7 @@ function tickBot(dt) {
     botApplyFormation(Bot.formAttack);
     botApplyConfig(Bot.cfgAttack);
     const d = Math.hypot(npc.x - player.x, npc.y - player.y);
+    const standD = botCombatDistance(npc.type);
     const npcName = String((NPC_TYPES[npc.type]?.name || npc.type || "NPC")).replace(/^-=\[?\s*|\s*\]?=-$/g, "").trim() || "NPC";
     try { if (Target.get() !== npc) Target.set(npc); } catch {}
     // Le tir continue même si on se décale vers une box (simultané) : jamais
@@ -11305,6 +11330,16 @@ function tickBot(dt) {
         else if (collectableTargetId === armed.id) { try { cancelCollectableTarget(); } catch {} }
       } else if (d <= engageMax) grab = botGrabBoxForFight(d * d);
     } catch { grab = null; }
+    if (grab) {
+      const boxX = Number(grab.box.x) + Number(COLLECTABLE_PICKUP.offsetX || 0);
+      const boxY = Number(grab.box.y) + Number(COLLECTABLE_PICKUP.offsetY || 0);
+      const boxTargetDistance = Math.hypot(boxX - npc.x, boxY - npc.y);
+      // La collecte ne prend jamais la main si elle rapproche du NPC cible.
+      if (d < standD - 12 || boxTargetDistance < standD - 12) {
+        try { if (collectableTargetId === grab.box.id) cancelCollectableTarget(); } catch {}
+        grab = null;
+      }
+    }
     if (grab && d > engageMax * 1.1) {
       try { if (collectableTargetId === grab.box.id) cancelCollectableTarget(); } catch {}
       Bot.lastBoxId = null;
@@ -11335,7 +11370,6 @@ function tickBot(dt) {
     // Distance de sécurité : hors de portée de tir du NPC quand c'est
     // possible (portée NPC + marge), sinon au max de notre portée.
     // Portee NPC + 10 m, plafonnee 10 m avant notre propre portee laser.
-    const standD = botCombatDistance(npc.type);
     if (isGgCombat) {
       botKiteCombatMove(npc, d, standD);
     } else if (Bot.orbit !== false) {
@@ -33382,6 +33416,18 @@ function botMinimalRenderActive() {
   return Bot.active === true && Bot.renderMode === "minimal";
 }
 
+let minimalMinimapLastDraw = -Infinity;
+
+function drawMinimalMinimap() {
+  const now = performance.now();
+  // La minimap est un canvas independant qui conserve sa derniere image.
+  // 12 Hz suffisent en mode minimal et evitent de reparcourir toutes les
+  // entites de la carte a chaque frame de l'ecran principal.
+  if (now - minimalMinimapLastDraw < 1000 / 12) return;
+  minimalMinimapLastDraw = now;
+  drawMinimap();
+}
+
 // Rendu ultra-leger pour les longues sessions de bot. Aucune image, ombre,
 // particule, animation de sprite ou gradient : uniquement quelques primitives
 // Canvas. La simulation et le reseau restent strictement inchanges.
@@ -33543,7 +33589,7 @@ function drawBotMinimalScene(ox, oy) {
 
   ctx.restore();
   drawPlayerBars(px, py);
-  drawMinimap();
+  drawMinimalMinimap();
   drawToast();
   drawRadiationWarning();
 }
@@ -34996,6 +35042,7 @@ let fpsAcc = 0;
 let fpsFrames = 0;
 let fpsValue = 0;
 const performanceMonitor = createPerformanceMonitor();
+let minimalUiRefreshAcc = 1;
 let frameRequestId = 0;
 let backgroundFrameTimer = 0;
 let frameScheduleGeneration = 0;
@@ -35090,7 +35137,7 @@ function frame(t) {
       let remainingDt = Math.min(realDt, 1.25);
       do {
         const dt = Math.min(0.033, remainingDt);
-        update(dt);
+        measureGameTask("frame.update", () => update(dt));
         remainingDt -= dt;
       } while (remainingDt > 0.0001);
     }
@@ -35237,8 +35284,19 @@ function frame(t) {
     try { tickNetplayVisuals(Math.min(0.1, realDt)); } catch {}
 
     if (document.visibilityState !== "hidden") {
-      draw();
-      drawUI();
+      measureGameTask("frame.draw", draw);
+      if (botMinimalRenderActive()) {
+        minimalUiRefreshAcc += realDt;
+        // Les textes, jauges et boutons du HUD n'ont pas besoin d'etre
+        // recalcules 100 a 240 fois/s pendant une session de bot.
+        if (minimalUiRefreshAcc >= 0.1) {
+          minimalUiRefreshAcc = 0;
+          measureGameTask("frame.ui", drawUI);
+        }
+      } else {
+        minimalUiRefreshAcc = 0;
+        measureGameTask("frame.ui", drawUI);
+      }
     }
   } catch (err) {
     console.error("CRASH:", err);

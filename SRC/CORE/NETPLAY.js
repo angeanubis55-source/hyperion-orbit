@@ -209,6 +209,8 @@ const NET_SEND_INTERVAL_MS = 50;
 const NET_PREDICTION_FULL_MS = 1100;
 const NET_PREDICTION_BRAKE_MS = 900;
 const NET_MAX_ESTIMATED_SPEED = 1500;
+const NET_REMOTE_HISTORY_SIZE = 8;
+const NET_LOW_FPS_DELAY_MAX_MS = 240;
 // Taux de virage max pris en compte pour la prediction en arc (rad/s) :
 // une orbite de farm typique tourne a ~1-2,5 rad/s.
 const NET_MAX_TURN_RATE = 4;
@@ -1091,6 +1093,7 @@ export function ensureNetplayConnection() {
         // ~50 ms onglet ouvert, ~1000 ms onglet reduit. Les snapshots repetes
         // par le serveur (20 Hz, memes valeurs) ne touchent a rien.
         let updateInterval = Number(prev?.updateInterval || 60);
+        let updateJitter = Number(prev?.updateJitter || 0);
         if (!prev) {
           updateInterval = 60;
         } else if (positionChanged) {
@@ -1100,6 +1103,20 @@ export function ensureNetplayConnection() {
           // 20 Hz : un plafond trop large ne gene pas, l'age reste < 50 ms).
           const kUp = gap > est ? 0.5 : 0.15;
           updateInterval = Math.max(50, Math.min(2000, est + (gap - est) * kUp));
+          updateJitter += (Math.abs(gap - est) - updateJitter) * 0.25;
+        }
+        // Historique des positions DISTINCTES. Il sert uniquement au rendu
+        // des joueurs dont le jeu produit peu d'images : leurs coordonnees
+        // arrivent par paliers meme quand le reseau, lui, reste a 20 Hz.
+        let motionSamples = Array.isArray(prev?.motionSamples) ? prev.motionSamples.slice(-NET_REMOTE_HISTORY_SIZE + 1) : [];
+        if (!prev || revived) motionSamples = [];
+        if (positionChanged) {
+          const lastSample = motionSamples[motionSamples.length - 1];
+          const gapSec = lastSample ? Math.max(0.001, (now - Number(lastSample.at || now)) / 1000) : 0;
+          const jump = lastSample ? Math.hypot(x - Number(lastSample.x), y - Number(lastSample.y)) : 0;
+          const teleportLimit = Math.max(1500, vmax * Math.max(1, gapSec * 2.5));
+          if (jump > teleportLimit) motionSamples = [];
+          motionSamples.push({ at: now, x, y, vx: svx, vy: svy, angle: Number(p.angle) || 0 });
         }
         // Taux de virage (rad/s) depuis la rotation du vecteur VITESSE entre
         // deux snapshots distincts (surtout pas l'angle du sprite : le
@@ -1175,6 +1192,8 @@ export function ensureNetplayConnection() {
           // garde-fou contre les teleports.
           freshBoost: positionChanged ? 1 : Number(prev?.freshBoost || 0),
           updateInterval,
+          updateJitter,
+          motionSamples,
           vmax,
           angle: Number(p.angle) || 0,
           dead: p.dead === true,
@@ -1728,9 +1747,55 @@ export function tickNetplayRemotes(dt = 0.016) {
     // a 1 Hz (onglet reduit) depasse systematiquement sa vraie cadence puis
     // revient en arriere a chaque paquet (dent de scie = teleportations).
     const updateInterval = Math.max(50, Math.min(2000, Number(r.updateInterval || 60)));
+    const updateJitter = Math.max(0, Math.min(1000, Number(r.updateJitter || 0)));
+    const needsLowFpsBuffer = updateInterval > 75 || updateJitter > 20;
+    const wantedRenderDelay = needsLowFpsBuffer
+      ? Math.min(NET_LOW_FPS_DELAY_MAX_MS, Math.max(60, updateInterval * 0.9 + updateJitter * 0.4))
+      : 0;
+    const oldRenderDelay = Math.max(0, Number(r.renderDelay || 0));
+    const delayK = 1 - Math.exp(-(wantedRenderDelay > oldRenderDelay ? 8 : 2) * frameDt);
+    r.renderDelay = oldRenderDelay + (wantedRenderDelay - oldRenderDelay) * delayK;
+
+    // Rejoue le petit historique au temps de rendu adapte. A cadence saine,
+    // le delai vaut zero et on conserve exactement la prediction habituelle.
+    const renderAt = now - r.renderDelay;
+    const samples = Array.isArray(r.motionSamples) ? r.motionSamples : [];
+    let anchorX = Number(r.x), anchorY = Number(r.y);
+    let anchorVx = Number(r.vx || 0), anchorVy = Number(r.vy || 0);
+    let anchorAngle = Number(r.angle) || 0;
+    let anchorAt = Number(r.sampleAt || now);
+    if (samples.length) {
+      let afterIndex = samples.findIndex((sample) => Number(sample.at) >= renderAt);
+      if (afterIndex < 0) afterIndex = samples.length;
+      if (afterIndex === 0) {
+        const sample = samples[0];
+        anchorX = Number(sample.x); anchorY = Number(sample.y);
+        anchorVx = Number(sample.vx || 0); anchorVy = Number(sample.vy || 0);
+        anchorAngle = Number(sample.angle) || 0;
+        anchorAt = renderAt;
+      } else if (afterIndex < samples.length) {
+        const a = samples[afterIndex - 1], b = samples[afterIndex];
+        const span = Math.max(1, Number(b.at) - Number(a.at));
+        const mix = Math.max(0, Math.min(1, (renderAt - Number(a.at)) / span));
+        anchorX = Number(a.x) + (Number(b.x) - Number(a.x)) * mix;
+        anchorY = Number(a.y) + (Number(b.y) - Number(a.y)) * mix;
+        anchorVx = Number(a.vx || 0) + (Number(b.vx || 0) - Number(a.vx || 0)) * mix;
+        anchorVy = Number(a.vy || 0) + (Number(b.vy || 0) - Number(a.vy || 0)) * mix;
+        const angleA = Number(a.angle) || 0;
+        const angleDelta = Math.atan2(Math.sin((Number(b.angle) || 0) - angleA), Math.cos((Number(b.angle) || 0) - angleA));
+        anchorAngle = angleA + angleDelta * mix;
+        anchorAt = renderAt;
+      } else {
+        const sample = samples[samples.length - 1];
+        anchorX = Number(sample.x); anchorY = Number(sample.y);
+        anchorVx = Number(sample.vx || 0); anchorVy = Number(sample.vy || 0);
+        anchorAngle = Number(sample.angle) || 0;
+        anchorAt = Number(sample.at || anchorAt);
+      }
+    }
     const leadCap = r.background === true ? 1.3 : (updateInterval + 120) / 1000;
-    const lead = Math.min(predictionLeadSeconds(now - Number(r.sampleAt || now)), leadCap);
-    const vx = Number(r.vx || 0), vy = Number(r.vy || 0);
+    const lead = Math.min(predictionLeadSeconds(Math.max(0, renderAt - anchorAt)), leadCap);
+    const vx = anchorVx, vy = anchorVy;
     const spd = Math.hypot(vx, vy);
     const turn = Math.max(-NET_MAX_TURN_RATE, Math.min(NET_MAX_TURN_RATE, Number(r.turn || 0)));
     // Freinage estime : reduit le lead effectif (distance = v*t + a*t^2/2,
@@ -1748,7 +1813,7 @@ export function tickNetplayRemotes(dt = 0.016) {
     // fini les micro-saccades en ligne droite, meme a ping eleve).
     let targetX, targetY;
     const destX = Number(r.dx || 0), destY = Number(r.dy || 0);
-    const toDestX = destX - Number(r.x), toDestY = destY - Number(r.y);
+    const toDestX = destX - anchorX, toDestY = destY - anchorY;
     const distToDest = Math.hypot(toDestX, toDestY);
     const hasDest = r.moving === true && distToDest > 1;
     if (r.moving === true && distToDest <= 1) {
@@ -1757,21 +1822,21 @@ export function tickNetplayRemotes(dt = 0.016) {
       targetY = destY;
     } else if (hasDest && spd > 1) {
       const travel = Math.min(distToDest, spd * leadEff);
-      targetX = Number(r.x) + (toDestX / distToDest) * travel;
-      targetY = Number(r.y) + (toDestY / distToDest) * travel;
+      targetX = anchorX + (toDestX / distToDest) * travel;
+      targetY = anchorY + (toDestY / distToDest) * travel;
     } else if (hasDest) {
       // Ordre de bouger recu mais vitesse encore nulle : on reste, sans saut.
-      targetX = Number(r.x);
-      targetY = Number(r.y);
+      targetX = anchorX;
+      targetY = anchorY;
     } else if (Math.abs(turn) > 0.08 && spd > 60) {
       const th0 = Math.atan2(vy, vx);
       const th1 = th0 + turn * leadEff;
       const radius = spd / turn;
-      targetX = Number(r.x) + radius * (Math.sin(th1) - Math.sin(th0));
-      targetY = Number(r.y) + radius * (Math.cos(th0) - Math.cos(th1));
+      targetX = anchorX + radius * (Math.sin(th1) - Math.sin(th0));
+      targetY = anchorY + radius * (Math.cos(th0) - Math.cos(th1));
     } else {
-      targetX = Number(r.x) + vx * leadEff;
-      targetY = Number(r.y) + vy * leadEff;
+      targetX = anchorX + vx * leadEff;
+      targetY = anchorY + vy * leadEff;
     }
     const rx = Number(r.rx ?? r.x), ry = Number(r.ry ?? r.y);
     const correctionX = targetX - rx, correctionY = targetY - ry;
@@ -1794,7 +1859,7 @@ export function tickNetplayRemotes(dt = 0.016) {
     r.rx = rx + correctionX * correctionK;
     r.ry = ry + correctionY * correctionK;
     const renderedAngle = Number(r.rangle ?? r.angle) || 0;
-    const targetAngle = Number(r.angle) || 0;
+    const targetAngle = anchorAngle;
     const angleDelta = Math.atan2(Math.sin(targetAngle - renderedAngle), Math.cos(targetAngle - renderedAngle));
     r.rangle = renderedAngle + angleDelta * k;
     // PET : quasi pas d'extrapolation. Le PET tournoie autour de son
