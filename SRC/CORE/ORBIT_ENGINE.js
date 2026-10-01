@@ -23008,11 +23008,11 @@ function drawCollectables(ox, oy) {
         ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
         : `${minutes}:${seconds}`;
       ctx.save();
-      ctx.globalAlpha = 0.62;
-      ctx.font = "600 10px Arial, sans-serif";
+      ctx.globalAlpha = 0.92;
+      ctx.font = "600 13px Arial, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.fillStyle = "rgba(220,232,240,0.95)";
+      ctx.fillStyle = "#ffffff";
       ctx.shadowColor = "rgba(0,0,0,0.9)";
       ctx.shadowBlur = 3;
       ctx.fillText(label, x, y + bob + visualH * 0.5 + 4);
