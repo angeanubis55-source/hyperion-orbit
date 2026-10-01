@@ -8560,6 +8560,9 @@ const Bot = {
   moveTag: null,
   rangeRecoveryId: null,
   rangeRecovering: false,
+  closeId: null,
+  chaseId: null,
+  aggroId: null,
   specialPrev: "",
   x6Armed: false,
   x6ArmedAt: 0,
@@ -8953,6 +8956,9 @@ function botSetActive(on) {
   Bot.moveTag = null;
   Bot.rangeRecoveryId = null;
   Bot.rangeRecovering = false;
+  Bot.closeId = null;
+  Bot.chaseId = null;
+  Bot.aggroId = null;
 
   if (!Bot.active) {
     Bot.status = "En pause";
@@ -11385,11 +11391,23 @@ function tickBot(dt) {
     const npc = pick.ref;
     Bot.lastNpcId = npc.id;
     const d = Math.hypot(npc.x - player.x, npc.y - player.y);
-    const standD = botCombatDistance(npc);
+    const fullD = botCombatDistance(npc);
     if (Bot.rangeRecoveryId !== npc.id) {
       Bot.rangeRecoveryId = npc.id;
-      Bot.rangeRecovering = d < standD - 12;
+      Bot.rangeRecovering = d < fullD - 12;
+      Bot.closeId = null;
+      Bot.chaseId = null;
+      Bot.aggroId = null;
     }
+    // NPC qui ne nous chasse pas (passif) : on se rapproche pour le finir
+    // au lieu de glitcher à orbiter au max. Dès qu'il riposte, retour au
+    // max range pour le reste du combat (anti yoyo). Jamais en GG.
+    const isGgCombat0 = Bot.module === "galaxy" && rules?.mode === "gate";
+    let engaging = true;
+    try { engaging = typeof npcIsEngagingPlayer === "function" ? npcIsEngagingPlayer(npc) === true : true; } catch { engaging = true; }
+    if (engaging) Bot.aggroId = npc.id;
+    const passive = !isGgCombat0 && engaging !== true && Bot.aggroId !== npc.id && Bot.chaseId !== npc.id;
+    const standD = passive ? Math.min(fullD, 250) : fullD;
     if (d < standD - 12) Bot.rangeRecovering = true;
     else if (d >= standD + 20) Bot.rangeRecovering = false;
     const mustRetreat = Bot.rangeRecovering === true;
@@ -11448,6 +11466,38 @@ function tickBot(dt) {
     const isGgCombat = Bot.module === "galaxy" && rules?.mode === "gate";
     // Tout au max range laser (standD = playerRange live).
     // GG = kiting exclusif, map = orbite en rond exclusive.
+    // POURSUITE (map uniquement) : le NPC se sauve en plein combat (on
+    // tenait le cercle et il a filé au-delà de +150 m, ou il s'éloigne vite
+    // au-delà de +60 m) → on fonce droit sur lui jusqu'à ~100 m pour le
+    // finir, au lieu de rester bêtement à orbiter derrière. L'orbite
+    // reprend dès qu'on est au contact. Jamais en GG (paquet).
+    let chasing = false;
+    if (!isGgCombat) {
+      if (Bot.closeId !== npc.id && d <= standD + 60) Bot.closeId = npc.id;
+      let fleeing = false;
+      if (Bot.closeId === npc.id && d > 0.01) {
+        if (d > standD + 150) fleeing = true;
+        else if (d > standD + 60) {
+          try {
+            const rdx = npc.x - player.x, rdy = npc.y - player.y;
+            const rvx = (Number(npc.vx) || 0) - (Number(player.vx) || 0);
+            const rvy = (Number(npc.vy) || 0) - (Number(player.vy) || 0);
+            if ((rvx * rdx + rvy * rdy) / d > 150) fleeing = true;
+          } catch {}
+        }
+      }
+      if (fleeing) Bot.chaseId = npc.id;
+      else if (Bot.chaseId === npc.id && d <= 120) Bot.chaseId = null;
+      chasing = Bot.chaseId === npc.id;
+    }
+    if (chasing) {
+      Bot.status = Bot.mode === "both" ? "Farm — poursuite" : "Chasse — poursuite";
+      Bot.target = `${npcName} en fuite (${Math.round(d)}m) — on le colle`;
+      const tgt = botClampMoveTarget(npc.x, npc.y);
+      botOrderMove(tgt.x, tgt.y, npc.id);
+      botRefreshHudThrottled(dt);
+      return;
+    }
     if (isGgCombat) {
       botKiteCombatMove(npc, d, standD, dt);
     } else {
