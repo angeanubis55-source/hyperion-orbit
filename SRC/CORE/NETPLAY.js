@@ -682,6 +682,10 @@ export function ensureNetplayConnection() {
     let msg = null;
     try { msg = JSON.parse(String(ev.data)); } catch { return; }
     if (!msg || typeof msg !== "object") return;
+    if (msg.t === "maintenance") {
+      try { window.dispatchEvent(new CustomEvent("orbit:server-maintenance", { detail: msg })); } catch {}
+      return;
+    }
     if (msg.t === "welcome") {
       myId = String(msg.id || "");
       if (msg.authed === true) netAuthed = true;
@@ -697,6 +701,8 @@ export function ensureNetplayConnection() {
             sessionStorage.setItem("orbit_server_run", incomingRun);
             netServerRestartAt = Date.now();
             netLowRaid = null;
+            try { window.dispatchEvent(new CustomEvent("orbit:server-restarted", { detail: { run: incomingRun } })); } catch {}
+            setTimeout(() => { try { location.reload(); } catch {} }, 5000);
             // Reboot serveur : sa simu NPC repart de zéro (seq remis à 1).
             // Purge déterministe du partagé + génération consommée par le
             // moteur (purge des cadavres réseau). Sans ça, un NPC tué avant

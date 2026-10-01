@@ -16461,6 +16461,12 @@ function forceReloadAfterServerRestart() {
     setTimeout(() => { try { location.reload(); } catch {} }, 1000);
   }, 2000);
 }
+window.addEventListener("orbit:server-restarted", forceReloadAfterServerRestart);
+window.addEventListener("orbit:server-maintenance", () => {
+  try { saveStateImmediate(); } catch {}
+  try { saveProgressNow(); } catch {}
+  try { showNotification("Maintenance — sauvegarde et reconnexion automatique…", 4, "info"); } catch {}
+});
 function tickGameVersionCheck(dt) {
   if (versionReloadArmed) return;
   // Kické : on ne recharge jamais tout seul (retour via refresh manuel).

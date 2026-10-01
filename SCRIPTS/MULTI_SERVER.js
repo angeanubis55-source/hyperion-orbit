@@ -2300,14 +2300,25 @@ server.listen(PORT, "0.0.0.0", () => {
   else console.log(`[multi] Panneau admin : /admin.html (mot de passe généré${ADMIN_PASS_PERSISTED ? " dans SERVER_DATA/.admin_pass" : ""}, valeur non affichée)`);
 });
 
+let shuttingDown = false;
 for (const signal of ["SIGINT", "SIGTERM"]) {
-  // Arrêt franc : coupe les connexions (sinon server.close attend les
-  // joueurs connectés et le reboot/Ctrl+C reste bloqué 90 s).
   process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    // Maintenance ordonnée : demande d'abord aux navigateurs de sauvegarder,
+    // puis ferme toutes les sockets avec le code standard "service restart".
+    try { broadcastAll(JSON.stringify({ t: "maintenance", reason: "deploy", retryMs: 3000 })); } catch {}
     try { saveNpcRespawns(); } catch {}
-    try { server.closeAllConnections?.(); } catch {}
-    try { wss.close?.(() => {}); } catch {}
-    try { server.close(() => process.exit(0)); } catch { process.exit(0); }
-    setTimeout(() => process.exit(0), 2000).unref?.();
+    setTimeout(() => {
+      try {
+        for (const client of wss.clients) {
+          try { client.close(1012, "Mise à jour du serveur"); } catch {}
+        }
+      } catch {}
+      try { server.closeAllConnections?.(); } catch {}
+      try { wss.close?.(() => {}); } catch {}
+      try { server.close(() => process.exit(0)); } catch { process.exit(0); }
+    }, 750).unref?.();
+    setTimeout(() => process.exit(0), 3000).unref?.();
   });
 }
