@@ -8513,7 +8513,7 @@ const Bot = {
   active: false,
   mode: "both",
   module: "both",
-  renderMode: "minimal",
+  renderMode: "normal",
   priority: "npc",
   targetMap: "",
   autoTravel: false,
@@ -8637,6 +8637,7 @@ const Bot = {
   kills: 0,
   boxes: 0,
   lastNpcId: null,
+  combatTargetId: null,
   lastBoxId: null,
   lastFormation: "",
   fleeing: false,
@@ -8664,7 +8665,6 @@ function botSaveConfig() {
       active: Bot.active,
       mode: Bot.mode,
       module: Bot.module,
-      renderMode: Bot.renderMode,
       priority: Bot.priority,
       targetMap: Bot.targetMap,
       autoTravel: Bot.autoTravel,
@@ -8746,7 +8746,7 @@ function botLoadConfig() {
     if (["both", "kill", "collect", "quest", "galaxy"].includes(data.module)) Bot.module = data.module;
     else if (["collect", "kill", "both"].includes(data.mode)) Bot.module = data.mode;
     Bot.mode = botModeForModule(Bot.module);
-    if (["normal", "minimal"].includes(data.renderMode)) Bot.renderMode = data.renderMode;
+    Bot.renderMode = "normal";
     if (["npc", "box", "nearest"].includes(data.priority)) Bot.priority = data.priority;
     if (typeof data.targetMap === "string") Bot.targetMap = data.targetMap;
     if (typeof data.autoTravel === "boolean") Bot.autoTravel = data.autoTravel;
@@ -8986,6 +8986,7 @@ function botSetActive(on) {
   Bot.closeId = null;
   Bot.chaseId = null;
   Bot.aggroId = null;
+  Bot.combatTargetId = null;
 
   if (!Bot.active) {
     Bot.status = "En pause";
@@ -9633,18 +9634,6 @@ function wireBotWindow() {
         botSetModule(moduleSel.value);
         moduleSel.value = Bot.module;
         botLog(`Module : ${BOT_MODULES[Bot.module]?.label || Bot.module}`);
-      });
-    }
-  }
-  const renderModeSel = document.getElementById("botRenderMode");
-  if (renderModeSel) {
-    renderModeSel.value = Bot.renderMode;
-    if (!renderModeSel.dataset.wired) {
-      renderModeSel.dataset.wired = "1";
-      renderModeSel.addEventListener("change", () => {
-        Bot.renderMode = renderModeSel.value === "normal" ? "normal" : "minimal";
-        botSaveConfig();
-        botLog(`Affichage : ${Bot.renderMode === "minimal" ? "minimal" : "normal"}`);
       });
     }
   }
@@ -11280,12 +11269,16 @@ function tickBot(dt) {
   let lockedNpc = null;
   if (rules?.mode !== "gate" && (Bot.mode === "kill" || Bot.mode === "both")) {
     try {
-      const cur = Target.get();
+      const botLocked = Bot.combatTargetId == null ? null : enemies.find((enemy) => enemy?.id === Bot.combatTargetId);
+      const cur = botLocked || Target.get();
       if (cur && !cur.isPetTarget && Number(cur.hp) > 0 && enemies.includes(cur)
         && Bot.npcAllow.has(String(cur.type))) {
         lockedNpc = cur;
+        Bot.combatTargetId = cur.id;
+      } else {
+        Bot.combatTargetId = null;
       }
-    } catch { lockedNpc = null; }
+    } catch { lockedNpc = null; Bot.combatTargetId = null; }
   }
 
   let pick = null; // { kind: "npc"|"box", ref }
@@ -11394,8 +11387,9 @@ function tickBot(dt) {
   // qui arriverait juste après la disparition de la cible précédente.
   const previousNpcDied = Bot.lastNpcId != null
     && !enemies.some((enemy) => enemy && enemy.id === Bot.lastNpcId && Number(enemy.hp) > 0);
-  if (previousNpcDied && Bot.mode !== "collect") Bot.postKillScanT = 1.5;
-  if (Bot.postKillScanT > 0 && Bot.mode !== "collect") {
+  if (lockedNpc) Bot.postKillScanT = 0;
+  else if (previousNpcDied && Bot.mode !== "collect") Bot.postKillScanT = 1.5;
+  if (!lockedNpc && Bot.postKillScanT > 0 && Bot.mode !== "collect") {
     const nearbyNpc = botNearestNpcInRange(Math.max(2200, (Number(playerRange) || 700) * 3));
     if (nearbyNpc) pick = { kind: "npc", ref: nearbyNpc };
     else if (pick?.kind === "box") pick = null;
@@ -11413,8 +11407,9 @@ function tickBot(dt) {
       botSaveConfig();
       const kc = document.getElementById("botKillCount");
       if (kc) kc.textContent = String(Bot.kills);
+      Bot.lastNpcId = null;
+      Bot.combatTargetId = null;
     }
-    Bot.lastNpcId = null;
   }
   if (Bot.lastBoxId != null && (!foundBox || foundBox.box.id !== Bot.lastBoxId)) {
     const stillThere = collectables.some((c) => c && c.id === Bot.lastBoxId);
@@ -11471,6 +11466,7 @@ function tickBot(dt) {
   if (pick.kind === "npc") {
     const npc = pick.ref;
     Bot.lastNpcId = npc.id;
+    Bot.combatTargetId = npc.id;
     const d = Math.hypot(npc.x - player.x, npc.y - player.y);
     const fullD = botCombatDistance(npc);
     if (Bot.rangeRecoveryId !== npc.id) {
@@ -33611,10 +33607,7 @@ function drawZoneWalls(ox, oy) {
 }
 
 function botMinimalRenderActive() {
-  // Le mode d'affichage est un reglage graphique, pas un etat de pilotage.
-  // Il doit rester minimal meme pendant une pause, une mort, un changement de
-  // carte ou les quelques secondes de reprise automatique du bot.
-  return Bot.renderMode === "minimal";
+  return false;
 }
 
 let minimalMinimapLastDraw = -Infinity;
