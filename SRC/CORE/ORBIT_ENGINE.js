@@ -8983,7 +8983,7 @@ function botNpcPrio(type) {
   return Number.isFinite(p) ? Math.max(0, Math.min(99, p)) : 0;
 }
 
-// Reste 10 m hors de la portee du NPC, sans jamais sortir de notre portee laser.
+// Reste 50 m hors de la portee du NPC, sans jamais sortir de notre portee laser.
 function botCombatDistance(npcOrType) {
   const ownLimit = Math.max(0, (Number(playerRange) || 0) - 10);
   const npc = npcOrType && typeof npcOrType === "object" ? npcOrType : null;
@@ -8991,7 +8991,7 @@ function botCombatDistance(npcOrType) {
   // La valeur vivante de l'entite est prioritaire : certains NPC peuvent
   // recevoir une portee modifiee au spawn ou par leur variante de map.
   const npcRange = Math.max(0, Number(npc?.shootRange) || Number(NPC_TYPES[type]?.shootRange) || 0);
-  const desired = npcRange > 0 ? npcRange + 10 : Math.min(560, ownLimit);
+  const desired = npcRange > 0 ? npcRange + 50 : Math.min(560, ownLimit);
   return Math.min(desired, ownLimit);
 }
 
@@ -10625,27 +10625,12 @@ function botOrbitCombatMove(npc, d, standD) {
   let orbitX = Math.cos(Bot.orbitAngle);
   let orbitY = Math.sin(Bot.orbitAngle);
 
-  // Les autres NPC n'interviennent plus qu'en quasi-collision. Leur influence
-  // reste minuscule : ils ne pilotent jamais l'orbite a la place de la cible.
-  let avoidX = 0, avoidY = 0;
-  for (const other of enemies) {
-    if (!other || other === npc || Number(other.hp) <= 0) continue;
-    const ox = player.x - other.x;
-    const oy = player.y - other.y;
-    const od = Math.hypot(ox, oy);
-    if (!(od > 1 && od < 140)) continue;
-    const push = (1 - od / 140) * 0.12;
-    avoidX += ox / od * push;
-    avoidY += oy / od * push;
-  }
-  // On ne suit que la composante tangentielle de l'esquive, avec un ecart
-  // angulaire tres faible. Plusieurs NPC ne peuvent donc plus retourner le
-  // point vise de l'autre cote du cercle et nous faire couper par le centre.
-  const tangentX = -orbitY, tangentY = orbitX;
-  const angularNudge = Math.max(-0.03, Math.min(0.03, avoidX * tangentX + avoidY * tangentY));
-  const ca = Math.cos(angularNudge), sa = Math.sin(angularNudge);
-  const nudgedX = orbitX * ca - orbitY * sa;
-  const nudgedY = orbitX * sa + orbitY * ca;
+  // Sur les maps normales, aucun autre NPC ne modifie la trajectoire. Seule
+  // la cible attaquee pilote l'orbite. L'esquive de groupe reste reservee aux
+  // Galaxy Gates via botKiteCombatMove().
+  const angularNudge = 0;
+  const nudgedX = orbitX;
+  const nudgedY = orbitY;
   // Aller en ligne droite entre deux points d'un meme cercle coupe sa corde
   // et passe a l'interieur du rayon. On agrandit le point d'arrivee juste ce
   // qu'il faut pour que la trajectoire soit tangente au rayon standD.
@@ -11428,7 +11413,7 @@ function tickBot(dt) {
     const isGgCombat = Bot.module === "galaxy" && rules?.mode === "gate";
     // Distance de sécurité : hors de portée de tir du NPC quand c'est
     // possible (portée NPC + marge), sinon au max de notre portée.
-    // Portee NPC + 10 m, plafonnee 10 m avant notre propre portee laser.
+    // Portee NPC + 50 m, plafonnee 10 m avant notre propre portee laser.
     if (isGgCombat) {
       botKiteCombatMove(npc, d, standD);
     } else if (Bot.orbit !== false) {
