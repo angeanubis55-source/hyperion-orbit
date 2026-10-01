@@ -21900,6 +21900,14 @@ function collectableTargetCount(cfg) {
 // (respawn après délai) même en cas de refresh / changement de map / mort.
 // ============================================================
 let collectablesWorldMap = null;
+const PERMANENT_DROP_LIFETIME_SEC = 24 * 60 * 60;
+
+function collectableDropLifetimeSec(type, requested = 0) {
+  const explicit = Math.max(0, Number(requested) || 0);
+  if (explicit > 0) return explicit;
+  const configured = Math.max(0, Number(COLLECTABLE_DEFS[type]?.npcDespawnAfter) || 0);
+  return configured > 0 ? configured : PERMANENT_DROP_LIFETIME_SEC;
+}
 
 function collectableRespawnDelayMs(type) {
   const cfg = COLLECTABLE_DEFS[type] || {};
@@ -21998,15 +22006,20 @@ function initCollectableWorld(mapId) {
   for (const slot of slots) {
     if (slot && slot.alive !== false && !spawned.has(String(slot.uid))) pushAmbientCollectableInstance(slot, mapId);
   }
-  // Drops dynamiques survivants (cargo temporaires, assemblage permanents).
+  // Drops dynamiques survivants. Les anciens drops sans expiration sont
+  // migres vers une duree de 24 h a partir de ce chargement.
   for (const drop of listCollectableDrops(collectableStore, mapId)) {
-    const exp = Math.floor(Number(drop.expiresAtMs) || 0);
+    const lifetimeSec = collectableDropLifetimeSec(drop.type);
+    let exp = Math.floor(Number(drop.expiresAtMs) || 0);
+    if (!(exp > 0)) {
+      exp = now + lifetimeSec * 1000;
+      drop.expiresAtMs = exp;
+    }
     let elapsedSec = 0;
     if (exp > 0) {
       const remainingMs = exp - now;
       if (remainingMs <= 0) continue;
-      const cfg = COLLECTABLE_DEFS[drop.type] || {};
-      const totalMs = Math.max(1, Math.floor(Number(cfg.npcDespawnAfter || 30) * 1000));
+      const totalMs = Math.max(1, Math.floor(lifetimeSec * 1000));
       elapsedSec = Math.max(0, (totalMs - remainingMs) / 1000);
     }
     spawnCollectableAtRestored(drop, elapsedSec);
@@ -22036,7 +22049,7 @@ function spawnCollectableAtRestored(drop, elapsedSec) {
     fixedAmount: drop.amount,
     dropUid: String(drop.uid),
     slotUid: null,
-    despawnAfter: Math.max(0, Number(cfg.npcDespawnAfter || 0)),
+    despawnAfter: collectableDropLifetimeSec(drop.type),
     t: Math.max(0, Number(elapsedSec) || 0),
     frameAcc: sp.randomStart ? rand(0, frames) : 0,
   });
@@ -22159,7 +22172,7 @@ function spawnCollectableAt(type, x, y, opts = {}) {
   const frames = Math.max(1, Number(sp.frames || 1));
   const cx = clamp(x, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
   const cy = clamp(y, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
-  const despawnAfter = Math.max(0, Number(opts.despawnAfter || 0));
+  const despawnAfter = collectableDropLifetimeSec(type, opts.despawnAfter);
 
   const instance = {
     id: opts.uid != null ? String(opts.uid).slice(0, 64) : newId(),
@@ -22948,6 +22961,7 @@ function drawCollectables(ox, oy) {
 
     const pulse = 1 + Math.sin(c.t * 4) * 0.04;
     const bob = Math.sin(c.t * 3) * Number(cfg.bob ?? 4);
+    const visualH = Number(sp.h || img?.naturalHeight || img?.height || 64) * Number(sp.scale || 1);
 
     ctx.save();
     ctx.translate(x, y + bob);
@@ -22982,6 +22996,28 @@ function drawCollectables(ox, oy) {
     }
 
     ctx.restore();
+
+    // Toutes les box dynamiques temporaires affichent leur temps restant.
+    // Les slots natifs (Bonus Box, Palladium...) gardent leur respawn normal.
+    if (c.dropUid && Number(c.despawnAfter) > 0) {
+      const remaining = Math.max(0, Math.ceil(Number(c.despawnAfter) - Number(c.t || 0)));
+      const hours = Math.floor(remaining / 3600);
+      const minutes = Math.floor((remaining % 3600) / 60);
+      const seconds = String(remaining % 60).padStart(2, "0");
+      const label = hours > 0
+        ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
+        : `${minutes}:${seconds}`;
+      ctx.save();
+      ctx.globalAlpha = 0.62;
+      ctx.font = "600 10px Arial, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillStyle = "rgba(220,232,240,0.95)";
+      ctx.shadowColor = "rgba(0,0,0,0.9)";
+      ctx.shadowBlur = 3;
+      ctx.fillText(label, x, y + bob + visualH * 0.5 + 4);
+      ctx.restore();
+    }
   }
 }
 
