@@ -8984,9 +8984,13 @@ function botNpcPrio(type) {
 }
 
 // Reste 10 m hors de la portee du NPC, sans jamais sortir de notre portee laser.
-function botCombatDistance(type) {
+function botCombatDistance(npcOrType) {
   const ownLimit = Math.max(0, (Number(playerRange) || 0) - 10);
-  const npcRange = Math.max(0, Number(NPC_TYPES[type]?.shootRange) || 0);
+  const npc = npcOrType && typeof npcOrType === "object" ? npcOrType : null;
+  const type = npc ? npc.type : npcOrType;
+  // La valeur vivante de l'entite est prioritaire : certains NPC peuvent
+  // recevoir une portee modifiee au spawn ou par leur variante de map.
+  const npcRange = Math.max(0, Number(npc?.shootRange) || Number(NPC_TYPES[type]?.shootRange) || 0);
   const desired = npcRange > 0 ? npcRange + 10 : Math.min(560, ownLimit);
   return Math.min(desired, ownLimit);
 }
@@ -10489,6 +10493,31 @@ function botClampMoveTarget(x, y) {
   return { x: clamp(x, 80, WORLD.w - 80), y: clamp(y, 80, WORLD.h - 80) };
 }
 
+// Conserve le rayon de combat meme pres d'un bord. Un clamp direct peut
+// rabattre un point exterieur juste a cote du NPC ; on cherche alors le point
+// valide le plus proche sur le meme cercle.
+function botClampCombatTarget(npc, preferredX, preferredY, standD) {
+  const first = botClampMoveTarget(preferredX, preferredY);
+  if (Math.hypot(first.x - npc.x, first.y - npc.y) >= standD - 6) return first;
+  const preferredAngle = Math.atan2(preferredY - npc.y, preferredX - npc.x);
+  let best = first;
+  let bestScore = Infinity;
+  let bestRadius = Math.hypot(first.x - npc.x, first.y - npc.y);
+  for (let i = 0; i < 32; i++) {
+    const offset = (Math.ceil(i / 2) * (i % 2 ? 1 : -1)) * (TAU / 32);
+    const angle = preferredAngle + offset;
+    const rawX = npc.x + Math.cos(angle) * standD;
+    const rawY = npc.y + Math.sin(angle) * standD;
+    const candidate = botClampMoveTarget(rawX, rawY);
+    const radius = Math.hypot(candidate.x - npc.x, candidate.y - npc.y);
+    if (radius > bestRadius) { bestRadius = radius; best = candidate; }
+    if (radius < standD - 6) continue;
+    const score = Math.abs(offset) + Math.hypot(candidate.x - player.x, candidate.y - player.y) / 100000;
+    if (score < bestScore) { bestScore = score; best = candidate; }
+  }
+  return best;
+}
+
 // ✅ Kiting de combat (style Galaxy Gate, partout : gate + map) : approche
 // décalée hors de portée, sinon répulsion quadratique de TOUS les NPC
 // proches (les proches dominent, la cible moins fort pour rester à portée
@@ -10499,7 +10528,7 @@ function botKiteCombatMove(npc, d, standD) {
   if (!npc || Number(npc.hp) <= 0) { moveTarget.active = false; return; }
   // Meme en kiting/GG, la distance a la cible tiree passe avant toutes les
   // esquives du paquet.
-  if (d < standD - 12) {
+  if (d < standD - 3) {
     botOrbitCombatMove(npc, d, standD);
     return;
   }
@@ -10564,29 +10593,15 @@ function botOrbitCombatMove(npc, d, standD) {
   if (!npc || Number(npc.hp) <= 0) { moveTarget.active = false; return; }
   const awayX = d > 1 ? (player.x - npc.x) / d : 1;
   const awayY = d > 1 ? (player.y - npc.y) / d : 0;
-  const distanceTolerance = 12;
+  const distanceTolerance = 3;
   if (d < standD - distanceTolerance && d > 0.01) {
     // Trop pres de LA cible : recul radial prioritaire jusqu'au rayon voulu.
-    // L'esquive des autres NPC ne peut ajouter qu'un decalage tangentiel ou
-    // une poussee vers l'exterieur, jamais nous ramener vers la cible.
-    const s = Number(Bot.orbitDir) || 1;
-    let avoidX = 0, avoidY = 0;
-    for (const other of enemies) {
-      if (!other || other === npc || Number(other.hp) <= 0) continue;
-      const ox = player.x - other.x, oy = player.y - other.y;
-      const od = Math.hypot(ox, oy);
-      if (!(od > 1 && od < 600)) continue;
-      const push = (1 - od / 600) * 320;
-      avoidX += ox / od * push;
-      avoidY += oy / od * push;
-    }
-    const radialAvoid = Math.max(0, avoidX * awayX + avoidY * awayY);
-    const tangentX = -awayY, tangentY = awayX;
-    const tangentAvoid = Math.max(-220, Math.min(220, avoidX * tangentX + avoidY * tangentY));
-    const retreat = Math.max(700, standD - d + 420) + radialAvoid;
-    const rawX = player.x + awayX * retreat + tangentX * (s * 100 + tangentAvoid);
-    const rawY = player.y + awayY * retreat + tangentY * (s * 100 + tangentAvoid);
-    const tgt = botClampMoveTarget(rawX, rawY);
+    // Aucune esquive secondaire ici : tant que la distance n'est pas
+    // recuperee, tout le mouvement sert a s'eloigner de la cible attaquee.
+    const retreat = Math.max(700, standD - d + 420);
+    const rawX = player.x + awayX * retreat;
+    const rawY = player.y + awayY * retreat;
+    const tgt = botClampCombatTarget(npc, rawX, rawY, standD);
     moveTarget.active = true;
     moveTarget.x = tgt.x;
     moveTarget.y = tgt.y;
@@ -10610,26 +10625,35 @@ function botOrbitCombatMove(npc, d, standD) {
   let orbitX = Math.cos(Bot.orbitAngle);
   let orbitY = Math.sin(Bot.orbitAngle);
 
-  // Les autres NPC modifient uniquement l'angle choisi sur le cercle. Apres
-  // cette esquive, on reprojette au rayon exact : la cible tiree reste
-  // prioritaire et aucun NPC secondaire ne peut casser sa distance.
+  // Les autres NPC n'interviennent plus qu'en quasi-collision. Leur influence
+  // reste minuscule : ils ne pilotent jamais l'orbite a la place de la cible.
   let avoidX = 0, avoidY = 0;
   for (const other of enemies) {
     if (!other || other === npc || Number(other.hp) <= 0) continue;
     const ox = player.x - other.x;
     const oy = player.y - other.y;
     const od = Math.hypot(ox, oy);
-    if (!(od > 1 && od < 650)) continue;
-    const push = (1 - od / 650) * 0.55;
+    if (!(od > 1 && od < 140)) continue;
+    const push = (1 - od / 140) * 0.12;
     avoidX += ox / od * push;
     avoidY += oy / od * push;
   }
-  orbitX += avoidX;
-  orbitY += avoidY;
-  const orbitLen = Math.hypot(orbitX, orbitY) || 1;
-  const rawX = npc.x + orbitX / orbitLen * standD;
-  const rawY = npc.y + orbitY / orbitLen * standD;
-  const tgt = botClampMoveTarget(rawX, rawY);
+  // On ne suit que la composante tangentielle de l'esquive, avec un ecart
+  // angulaire tres faible. Plusieurs NPC ne peuvent donc plus retourner le
+  // point vise de l'autre cote du cercle et nous faire couper par le centre.
+  const tangentX = -orbitY, tangentY = orbitX;
+  const angularNudge = Math.max(-0.03, Math.min(0.03, avoidX * tangentX + avoidY * tangentY));
+  const ca = Math.cos(angularNudge), sa = Math.sin(angularNudge);
+  const nudgedX = orbitX * ca - orbitY * sa;
+  const nudgedY = orbitX * sa + orbitY * ca;
+  // Aller en ligne droite entre deux points d'un meme cercle coupe sa corde
+  // et passe a l'interieur du rayon. On agrandit le point d'arrivee juste ce
+  // qu'il faut pour que la trajectoire soit tangente au rayon standD.
+  const travelAngle = Math.min(0.6, Math.abs(angleStep + angularNudge));
+  const tangentRadius = standD / Math.max(0.82, Math.cos(travelAngle));
+  const rawX = npc.x + nudgedX * tangentRadius;
+  const rawY = npc.y + nudgedY * tangentRadius;
+  const tgt = botClampCombatTarget(npc, rawX, rawY, standD);
   moveTarget.active = true;
   moveTarget.x = tgt.x;
   moveTarget.y = tgt.y;
@@ -11298,7 +11322,7 @@ function tickBot(dt) {
     botApplyFormation(Bot.formAttack);
     botApplyConfig(Bot.cfgAttack);
     const d = Math.hypot(npc.x - player.x, npc.y - player.y);
-    const standD = botCombatDistance(npc.type);
+    const standD = botCombatDistance(npc);
     const npcName = String((NPC_TYPES[npc.type]?.name || npc.type || "NPC")).replace(/^-=\[?\s*|\s*\]?=-$/g, "").trim() || "NPC";
     try { if (Target.get() !== npc) Target.set(npc); } catch {}
     // Le tir continue même si on se décale vers une box (simultané) : jamais
@@ -11315,31 +11339,11 @@ function tickBot(dt) {
     }
     // Munitions speciales auto (SAB bouclier / X6 burst).
     try { botAutoSpecialAmmo(npc, d, engageMax); } catch {}
-    // Simultane : box au passage SANS couper le tir, avec garde-fous anti-derive :
-    // - uniquement a portee de tir du NPC (sinon on reste au combat),
-    // - box proche du vaisseau et plus proche que le NPC,
-    // - on ne change plus de box en cours de route, pas de chaine (grabCd).
+    // Une cible NPC engagee garde la priorite absolue sur le mouvement.
+    // La collecte reprendra apres le combat : aucune box ne peut maintenant
+    // detourner le vaisseau du rayon de combat demande.
     let grab = null;
-    try {
-      const armed = collectableTargetId != null
-        ? collectables.find((c) => c && c.id === collectableTargetId)
-        : null;
-      if (armed) {
-        const ad2 = dist2(player.x, player.y, armed.x, armed.y);
-        if (ad2 <= BOT_GRAB_RADIUS * BOT_GRAB_RADIUS) grab = { box: armed, d2: ad2 };
-        else if (collectableTargetId === armed.id) { try { cancelCollectableTarget(); } catch {} }
-      } else if (d <= engageMax) grab = botGrabBoxForFight(d * d);
-    } catch { grab = null; }
-    if (grab) {
-      const boxX = Number(grab.box.x) + Number(COLLECTABLE_PICKUP.offsetX || 0);
-      const boxY = Number(grab.box.y) + Number(COLLECTABLE_PICKUP.offsetY || 0);
-      const boxTargetDistance = Math.hypot(boxX - npc.x, boxY - npc.y);
-      // La collecte ne prend jamais la main si elle rapproche du NPC cible.
-      if (d < standD - 12 || boxTargetDistance < standD - 12) {
-        try { if (collectableTargetId === grab.box.id) cancelCollectableTarget(); } catch {}
-        grab = null;
-      }
-    }
+    try { if (collectableTargetId != null) cancelCollectableTarget(); } catch {}
     if (grab && d > engageMax * 1.1) {
       try { if (collectableTargetId === grab.box.id) cancelCollectableTarget(); } catch {}
       Bot.lastBoxId = null;
@@ -11379,16 +11383,7 @@ function tickBot(dt) {
     } else {
       // Hors gate : kiting comme en GG (plus d'orbite en rond, plus de
       // camping). Contact : esquive latérale pure, le NPC dépasse.
-      const gx = d > 1 ? (player.x - npc.x) / d : 1;
-      const gy = d > 1 ? (player.y - npc.y) / d : 0;
-      if (d < 160 && d > 0.01) {
-        const tgt = botClampMoveTarget(player.x + -gy * 1000, player.y + gx * 1000);
-        moveTarget.active = true;
-        moveTarget.x = tgt.x;
-        moveTarget.y = tgt.y;
-      } else {
-        botKiteCombatMove(npc, d, standD);
-      }
+      botKiteCombatMove(npc, d, standD);
     }
   } else {
     const box = pick.ref;
@@ -11416,10 +11411,21 @@ function tickBot(dt) {
       }
     }
     if (foe) {
-      const fd = Math.round(Math.hypot(foe.x - player.x, foe.y - player.y));
+      const foeDistance = Math.hypot(foe.x - player.x, foe.y - player.y);
+      const fd = Math.round(foeDistance);
       const foeName = String((NPC_TYPES[foe.type]?.name || foe.type || "NPC")).replace(/^-=\[?\s*|\s*\]?=-$/g, "").trim() || "NPC";
       Bot.status = Bot.mode === "both" ? "Farm — collecte + combat" : "Collecte + combat";
       Bot.target = `${boxName} (${Math.round(d)}m) + ${foeName} (${fd}m)`;
+      Bot.lastNpcId = foe.id;
+      try { if (collectableTargetId != null) cancelCollectableTarget(); } catch {}
+      botApplyFormation(Bot.formAttack);
+      botApplyConfig(Bot.cfgAttack);
+      const foeStandD = botCombatDistance(foe);
+      const isGgCombat = Bot.module === "galaxy" && rules?.mode === "gate";
+      if (isGgCombat) botKiteCombatMove(foe, foeDistance, foeStandD);
+      else botOrbitCombatMove(foe, foeDistance, foeStandD);
+      botRefreshHudThrottled(dt);
+      return;
     } else {
       Bot.status = Bot.mode === "both" ? "Farm — collecte" : "Collecte";
       Bot.target = `${boxName} (${Math.round(d)}m)`;
@@ -33413,7 +33419,10 @@ function drawZoneWalls(ox, oy) {
 }
 
 function botMinimalRenderActive() {
-  return Bot.active === true && Bot.renderMode === "minimal";
+  // Le mode d'affichage est un reglage graphique, pas un etat de pilotage.
+  // Il doit rester minimal meme pendant une pause, une mort, un changement de
+  // carte ou les quelques secondes de reprise automatique du bot.
+  return Bot.renderMode === "minimal";
 }
 
 let minimalMinimapLastDraw = -Infinity;
@@ -33582,7 +33591,7 @@ function drawBotMinimalScene(ox, oy) {
     ctx.stroke();
     ctx.setLineDash([6, 5]);
     ctx.beginPath();
-    ctx.arc(target.x + ox, target.y + oy, botCombatDistance(target.type), 0, TAU);
+    ctx.arc(target.x + ox, target.y + oy, botCombatDistance(target), 0, TAU);
     ctx.stroke();
     ctx.setLineDash([]);
   }
