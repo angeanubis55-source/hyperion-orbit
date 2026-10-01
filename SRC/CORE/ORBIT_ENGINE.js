@@ -10360,6 +10360,23 @@ function botGrabBoxForFight(npc, standD) {
     const routeY = moveTarget.active ? Number(moveTarget.y) : player.y;
     const segX = routeX - player.x, segY = routeY - player.y;
     const segL2 = segX * segX + segY * segY;
+    // Une fois la petite deviation commencee, terminer CETTE box. Sans ce
+    // verrou, deux box voisines deviennent tour a tour "la plus proche" et
+    // font alterner le point de mouvement a chaque tick.
+    if (Bot.lastBoxId != null) {
+      const current = collectables.find((c) => c && String(c.id) === String(Bot.lastBoxId));
+      if (current && Bot.boxAllow.has(String(current.type))) {
+        const currentD2 = dist2(player.x, player.y, current.x, current.y);
+        const currentNpcD = Math.hypot(current.x - npc.x, current.y - npc.y);
+        const releaseR = BOT_GRAB_RADIUS + 120;
+        if (currentD2 <= releaseR * releaseR && currentNpcD >= safeAtBox) {
+          return { box: current, d2: currentD2 };
+        }
+      }
+      // Disparue, trop loin ou devenue dangereuse : seulement ici une autre
+      // box peut etre choisie.
+      Bot.lastBoxId = null;
+    }
     let best = null;
     let bestD2 = Infinity;
     for (const c of collectables) {
@@ -11311,9 +11328,16 @@ function tickBot(dt) {
     if (!pick) Bot.target = "Aucune cible de quête";
   } else if (Bot.mode === "kill") pick = lockedNpc ? { kind: "npc", ref: lockedNpc } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null);
   else if (Bot.mode === "collect") pick = selectedBox ? { kind: "box", ref: selectedBox.box } : null;
-  else if (Bot.priority === "box") pick = selectedBox ? { kind: "box", ref: selectedBox.box } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null);
+  else if (Bot.priority === "box") pick = selectedBox
+    ? { kind: "box", ref: selectedBox.box }
+    : (lockedNpc ? { kind: "npc", ref: lockedNpc } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null));
   else if (Bot.priority === "nearest") {
-    const nearestNpc = botNearestNpcByDistance();
+    // "Les deux simultanement" choisit le NPC le plus proche uniquement au
+    // debut d'un combat. Un autre NPC qui s'approche ne remplace jamais la
+    // cible vivante deja verrouillee.
+    const nearestNpc = lockedNpc
+      ? { npc: lockedNpc, d2: dist2(player.x, player.y, lockedNpc.x, lockedNpc.y) }
+      : botNearestNpcByDistance();
     const simultaneousReach = Math.max(500, botEngageRange() * 1.25);
     if (nearestNpc && selectedBox) {
       const boxToNpc = Math.hypot(selectedBox.box.x - nearestNpc.npc.x, selectedBox.box.y - nearestNpc.npc.y);

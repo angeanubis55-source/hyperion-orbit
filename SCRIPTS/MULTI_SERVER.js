@@ -787,7 +787,7 @@ function ensureBoxRoom(mapId) {
     const boxes = new Map(), taken = [];
     for (const [type, cfg] of Object.entries(COLLECTABLE_TYPES)) {
       if (!cfg || cfg.enabled === false || !collectableAllowedOnMap(cfg, key)) continue;
-      const qty = Math.max(0, Math.min(1200, Math.floor(Number(cfg.qty ?? cfg.count ?? cfg.amount ?? cfg.maxAlive) || 0)));
+      const qty = Math.max(0, Math.floor(Number(cfg.qty ?? cfg.count ?? cfg.amount ?? cfg.maxAlive) || 0));
       const spacing = Math.max(0, Number(cfg.minSpacing) || 0);
       for (let index = 0; index < qty; index++) {
         const pos = randomBoxPosition(sim, taken, spacing);

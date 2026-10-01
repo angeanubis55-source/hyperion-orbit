@@ -989,7 +989,7 @@ export function ensureNetplayConnection() {
         if (syncMap && syncMap !== currentMapId()) return;
       } catch {}
       netBoxes.clear();
-      for (const b of msg.boxes.slice(0, 1200)) {
+      for (const b of msg.boxes) {
         if (!b || typeof b.uid !== "string" || typeof b.type !== "string") continue;
         if (!Number.isFinite(Number(b.x)) || !Number.isFinite(Number(b.y))) continue;
         const uid = b.uid.slice(0, 64);
@@ -1015,7 +1015,7 @@ export function ensureNetplayConnection() {
         netBoxInbox.push({ op: "collect", uid });
       } else if (msg.op === "list" && Array.isArray(msg.boxes)) {
         netBoxes.clear();
-        for (const b of msg.boxes.slice(0, 1200)) {
+        for (const b of msg.boxes) {
           if (!b || typeof b.uid !== "string" || typeof b.type !== "string") continue;
           if (!Number.isFinite(Number(b.x)) || !Number.isFinite(Number(b.y))) continue;
           const uid = b.uid.slice(0, 64);

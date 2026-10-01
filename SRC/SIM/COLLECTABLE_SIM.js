@@ -7,8 +7,6 @@
 
 export const COLLECTABLE_STORE_KEY = "orbit_collectables_v1";
 export const COLLECTABLE_STORE_VERSION = 1;
-export const MAX_COLLECTABLE_MAPS_STORED = 64;
-export const MAX_COLLECTABLE_SLOTS_PER_MAP = 1200; // Marge au-dessus des 500 Palladiums de 5-2
 
 export function createCollectableStore() {
   return { v: COLLECTABLE_STORE_VERSION, maps: {} };
@@ -38,7 +36,7 @@ function getMapEntry(store, mapId, create = false) {
 export function ensureCollectableSlots(store, mapId, defs = [], nowMs = 0) {
   const id = String(mapId);
   const entry = getMapEntry(store, id, true);
-  const list = Array.isArray(defs) ? defs.slice(0, MAX_COLLECTABLE_SLOTS_PER_MAP) : [];
+  const list = Array.isArray(defs) ? defs : [];
   const prevByUid = new Map(entry.slots.map((s) => [String(s?.uid), s]));
   const seen = new Set();
   const next = [];
@@ -68,11 +66,6 @@ export function ensureCollectableSlots(store, mapId, defs = [], nowMs = 0) {
   }
   entry.slots = next;
 
-  const keys = Object.keys(store.maps);
-  if (keys.length > MAX_COLLECTABLE_MAPS_STORED) {
-    const drop = keys.length - MAX_COLLECTABLE_MAPS_STORED;
-    for (let i = 0; i < drop; i++) delete store.maps[keys[i]];
-  }
   return next;
 }
 
@@ -236,7 +229,6 @@ export function deserializeCollectableStore(raw) {
       store.maps[String(mapId)] = {
         slots: (Array.isArray(entry.slots) ? entry.slots : [])
           .filter((s) => s && typeof s.uid === "string" && typeof s.type === "string")
-          .slice(0, MAX_COLLECTABLE_SLOTS_PER_MAP)
           .map((s) => ({
             uid: String(s.uid),
             type: String(s.type),
@@ -248,7 +240,6 @@ export function deserializeCollectableStore(raw) {
           })),
         drops: (Array.isArray(entry.drops) ? entry.drops : [])
           .filter((d) => d && typeof d.uid === "string")
-          .slice(0, MAX_COLLECTABLE_SLOTS_PER_MAP)
           .map((d) => ({
             uid: String(d.uid),
             type: String(d.type || "Cargo_Box"),
