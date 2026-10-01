@@ -432,6 +432,32 @@ function applyRadiation(dt) {
   }
   if (dmg <= 0) return;
   resetRepairCooldown();
+  // Le REX subit la meme proportion de radiation que son proprietaire, mais
+  // calculee sur ses propres PV max. La radiation touche directement la coque,
+  // comme pour le vaisseau, uniquement lorsque le REX est lui-meme hors map.
+  const pet = account.user?.pet;
+  const petOutside = petState.ready && (
+    petState.x < 0 || petState.x > WORLD.w || petState.y < 0 || petState.y > WORLD.h
+  );
+  if (pet?.owned === true && pet.active === true && Number(pet.hp) > 0 && petOutside) {
+    const petHpMax = Math.max(1, Number(petMaxHpWithHeat(pet)) || 1);
+    const playerHpMax = Math.max(1, Number(player.hpMax) || 1);
+    const petDmg = petHpMax * (dmg / playerHpMax);
+    pet.hp = Math.max(0, Number(pet.hp) - petDmg);
+    onPetTookDamage();
+    markProgressDirty();
+    try {
+      addFloatText(petState.x, petState.y - 70, Math.max(1, Math.round(petDmg)), "rgba(255,80,100,0.95)");
+    } catch {}
+    if (pet.hp <= 0) {
+      pet.hp = 0;
+      try { spawnExplosion(petState.x, petState.y, 1.0); } catch {}
+      try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
+      onPetDestroyed();
+      showToast("REX detruit par les radiations.", 1.8);
+      if (petLink.until > 0) endHplLink("destroyed");
+    }
+  }
   // Lien HP : la radiation aussi part sur le REX.
   const radRest = absorbPetLinkDamage(dmg);
   player.hp -= radRest;
@@ -8863,9 +8889,6 @@ function botLoadConfig() {
     }
     Bot.module = "both";
     Bot.mode = ["both", "kill", "collect"].includes(data.mode) ? data.mode : "both";
-    Bot.priority = "npc";
-    Bot.targetMap = "";
-    Bot.autoTravel = false;
     Bot.cargo = false;
     Bot.selling = false;
     Bot.questsAccept = false;
@@ -10272,6 +10295,20 @@ function botNearestNpc() {
   return best ? { npc: best, d2: bestD2 } : null;
 }
 
+// Distance pure pour le choix mixte "Le plus proche". Les priorites par
+// type de NPC restent reservees au choix "NPC en priorite".
+function botNearestNpcByDistance() {
+  let best = null;
+  let bestD2 = Infinity;
+  for (const e of enemies) {
+    if (!e || Number(e.hp) <= 0 || e.isPetTarget) continue;
+    if (!Bot.npcAllow.has(String(e.type))) continue;
+    const d2 = dist2(player.x, player.y, e.x, e.y);
+    if (d2 < bestD2) { bestD2 = d2; best = e; }
+  }
+  return best ? { npc: best, d2: bestD2 } : null;
+}
+
 // La portee d'engagement est toujours notre portee laser reelle.
 function botEngageRange() {
   try { return Math.max(0, Number(playerRange) || 0); } catch { return 0; }
@@ -10393,6 +10430,7 @@ function botClearSpecialAmmo() {
 // cible verrouillee d'abord (respect du lock), sinon le plus proche a portee.
 // Module quest : uniquement les NPC de quete. Autres modes que both : rien.
 function botConcurrentNpc(engageMax, locked) {
+  if (Bot.priority !== "npc") return null;
   const lim2 = engageMax * engageMax;
   const okTarget = (e) => {
     if (!e || e.isPetTarget || Number(e.hp) <= 0) return false;
@@ -11371,17 +11409,17 @@ function tickBot(dt) {
       pick = qNpc ? { kind: "npc", ref: qNpc.npc } : (qBox ? { kind: "box", ref: qBox.box } : null);
     }
     if (!pick) Bot.target = "Aucune cible de quête";
-  } else if (lockedNpc) pick = { kind: "npc", ref: lockedNpc };
-  else if (Bot.mode === "kill") pick = foundNpc ? { kind: "npc", ref: foundNpc.npc } : null;
+  } else if (Bot.mode === "kill") pick = lockedNpc ? { kind: "npc", ref: lockedNpc } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null);
   else if (Bot.mode === "collect") pick = foundBox ? { kind: "box", ref: foundBox.box } : null;
   else if (Bot.priority === "box") pick = foundBox ? { kind: "box", ref: foundBox.box } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null);
   else if (Bot.priority === "nearest") {
-    if (foundNpc && foundBox) pick = foundNpc.d2 <= foundBox.d2 ? { kind: "npc", ref: foundNpc.npc } : { kind: "box", ref: foundBox.box };
-    else if (foundNpc) pick = { kind: "npc", ref: foundNpc.npc };
+    const nearestNpc = botNearestNpcByDistance();
+    if (nearestNpc && foundBox) pick = nearestNpc.d2 <= foundBox.d2 ? { kind: "npc", ref: nearestNpc.npc } : { kind: "box", ref: foundBox.box };
+    else if (nearestNpc) pick = { kind: "npc", ref: nearestNpc.npc };
     else if (foundBox) pick = { kind: "box", ref: foundBox.box };
   } else {
     // NPC d'abord (défaut) : le NPC le plus proche gagne, sinon la box.
-    pick = foundNpc ? { kind: "npc", ref: foundNpc.npc } : (foundBox ? { kind: "box", ref: foundBox.box } : null);
+    pick = lockedNpc ? { kind: "npc", ref: lockedNpc } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : (foundBox ? { kind: "box", ref: foundBox.box } : null));
   }
 
   // Après un kill, les NPC cochés autour du vaisseau sont prioritaires sur
@@ -11391,7 +11429,7 @@ function tickBot(dt) {
     && !enemies.some((enemy) => enemy && enemy.id === Bot.lastNpcId && Number(enemy.hp) > 0);
   if (lockedNpc) Bot.postKillScanT = 0;
   else if (previousNpcDied && Bot.mode !== "collect") Bot.postKillScanT = 1.5;
-  if (!lockedNpc && Bot.postKillScanT > 0 && Bot.mode !== "collect") {
+  if (!lockedNpc && Bot.postKillScanT > 0 && Bot.mode !== "collect" && Bot.priority === "npc") {
     const nearbyNpc = botNearestNpcInRange(Math.max(2200, (Number(playerRange) || 700) * 3));
     if (nearbyNpc) pick = { kind: "npc", ref: nearbyNpc };
     else if (pick?.kind === "box") pick = null;
@@ -11591,16 +11629,11 @@ function tickBot(dt) {
     else {
       // Plus rien à portée : on décroche proprement (cible morte ou partie),
       // sinon on garde l'attaque (le tick de tir gère déjà la portée).
-      let curOk = false;
-      try {
-        const cur = Target.get();
-        curOk = !!cur && !cur.isPetTarget && Number(cur.hp) > 0 && enemies.includes(cur);
-      } catch { curOk = false; }
-      if (!curOk) {
-        if (attackActive) { try { stopAttack(); } catch {} }
-        try { if (Target.get()) Target.clear(); } catch {}
-        Bot.lastNpcId = null;
-      }
+      if (attackActive) { try { stopAttack(); } catch {} }
+      try { if (Target.get()) Target.clear(); } catch {}
+      Bot.combatTargetId = null;
+      Bot.lastNpcId = null;
+      botClearSpecialAmmo();
     }
     if (foe) {
       const foeDistance = Math.hypot(foe.x - player.x, foe.y - player.y);
@@ -20507,11 +20540,20 @@ function updatePet(dt) {
   // vers sa box (ou déjà sur la suivante) ne doit pas faire demi-tour.
   // La portée reste centrée sur le joueur : s'éloigner trop annule la cible.
   const petGears = petActiveGears();
-  const preFetch = validatePetFetch(petGears) || scanPetFetch(petGears);
+  const ownerInRadiation = playerIsOutsideWorld();
+  const preFetch = ownerInRadiation ? null : (validatePetFetch(petGears) || scanPetFetch(petGears));
   const leash = Math.max(750, playerRange * 1.2) + (finishingAttack ? 600 : 0);
   // Inclure le rayon de combat : le cote oppose du NPC reste accessible.
   const ownerLeash = leash + PET_COMBAT_RADIUS;
-  if (ownerDistance > ownerLeash && !petState.returning && preFetch == null) {
+  if (ownerInRadiation) {
+    // En radiation, aucune box ni cible de combat ne retient le REX dans la
+    // carte : il abandonne son action et suit immediatement son proprietaire.
+    petState.returning = true;
+    petState.fetchId = null;
+    petState.fetchHold = 0;
+    petState.assistTarget = null;
+    petState.combatTarget = null;
+  } else if (ownerDistance > ownerLeash && !petState.returning && preFetch == null) {
     petState.returning = true;
     petState.assistTarget = null;
     petState.escortX = undefined;
