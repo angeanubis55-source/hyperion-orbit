@@ -8558,6 +8558,8 @@ const Bot = {
   orbitFlipAt: 0,
   orbitId: null,
   orbitAngle: 0,
+  rangeRecoveryId: null,
+  rangeRecovering: false,
   specialPrev: "",
   x6Armed: false,
   x6ArmedAt: 0,
@@ -8950,6 +8952,8 @@ function botSetActive(on) {
   Bot.roamT = 0;
   Bot.orbitId = null;
   Bot.orbitFlipAt = 0;
+  Bot.rangeRecoveryId = null;
+  Bot.rangeRecovering = false;
 
   if (!Bot.active) {
     Bot.status = "En pause";
@@ -11359,10 +11363,20 @@ function tickBot(dt) {
   if (pick.kind === "npc") {
     const npc = pick.ref;
     Bot.lastNpcId = npc.id;
-    botApplyFormation(Bot.formAttack);
-    botApplyConfig(Bot.cfgAttack);
     const d = Math.hypot(npc.x - player.x, npc.y - player.y);
     const standD = botCombatDistance(npc);
+    if (Bot.rangeRecoveryId !== npc.id) {
+      Bot.rangeRecoveryId = npc.id;
+      Bot.rangeRecovering = d < standD - 3;
+    }
+    if (d < standD - 3) Bot.rangeRecovering = true;
+    else if (d >= standD + 20) Bot.rangeRecovering = false;
+    const mustRetreat = Bot.rangeRecovering === true;
+    // Quand la distance est perdue, la configuration et la formation de fuite
+    // passent avant celles d'attaque afin d'utiliser la meilleure vitesse
+    // disponible. Une fois le rayon recupere, l'equipement d'attaque revient.
+    botApplyFormation(mustRetreat ? (Bot.formFlee || Bot.formMove || Bot.formAttack) : Bot.formAttack);
+    botApplyConfig(mustRetreat ? (Bot.cfgFlee || Bot.cfgFly || Bot.cfgAttack) : Bot.cfgAttack);
     const npcName = String((NPC_TYPES[npc.type]?.name || npc.type || "NPC")).replace(/^-=\[?\s*|\s*\]?=-$/g, "").trim() || "NPC";
     try { if (Target.get() !== npc) Target.set(npc); } catch {}
     // Le tir continue même si on se décale vers une box (simultané) : jamais
@@ -11405,7 +11419,7 @@ function tickBot(dt) {
       return;
     }
     Bot.status = Bot.mode === "both" ? "Farm — combat" : "Chasse — combat";
-    Bot.target = `${npcName} (${Math.round(d)}m)`;
+    Bot.target = `${npcName} — ${Math.round(d)}m / cible ${Math.round(standD)}m`;
     // En Galaxy Gate : pas d'orbite serrée ni de camping au milieu du paquet.
     // On garde la distance de tir à la cible, on repousse tous les autres NPC
     // proches (surtout les non-ciblés) et on strafe doucement pour ne jamais
