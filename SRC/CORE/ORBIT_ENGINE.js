@@ -18984,7 +18984,7 @@ const npcSpatialIndex = new SpatialIndex(700);
 const collectableSpatialIndex = new SpatialIndex(700);
 let npcSpatialFrame = -1;
 let collectableSpatialLength = -1;
-let collectableSpatialAt = 0;
+let collectableSpatialDirty = true;
 
 function refreshNpcSpatialIndex() {
   const frame = Math.floor(performance.now() / 16);
@@ -18994,11 +18994,31 @@ function refreshNpcSpatialIndex() {
 }
 
 function refreshCollectableSpatialIndex() {
-  const now = performance.now();
-  if (collectableSpatialLength === collectables.length && now - collectableSpatialAt < 250) return;
+  if (!collectableSpatialDirty && collectableSpatialLength === collectables.length) return;
   collectableSpatialLength = collectables.length;
-  collectableSpatialAt = now;
+  collectableSpatialDirty = false;
   collectableSpatialIndex.rebuild(collectables);
+}
+
+function invalidateCollectableSpatialIndex() {
+  collectableSpatialDirty = true;
+}
+
+function indexCollectableAdded(c) {
+  if (collectableSpatialDirty || !c) return;
+  collectableSpatialIndex.add(c);
+  collectableSpatialLength = collectables.length;
+}
+
+function indexCollectableRemoved(c) {
+  if (collectableSpatialDirty || !c) return;
+  collectableSpatialIndex.delete(c);
+  collectableSpatialLength = collectables.length;
+}
+
+function indexCollectableMoved(c) {
+  if (collectableSpatialDirty || !c) return;
+  collectableSpatialIndex.update(c);
 }
 
 function spatialNpcsInRect(minX, minY, maxX, maxY) {
@@ -21262,6 +21282,26 @@ function addCappedProjectile(collection, options, limit) {
 }
 
 let collectableTargetId = null;
+let collectableTickPlayerTargetId = null;
+let collectableTickPlayerTarget = null;
+let collectableTickPetTargetId = null;
+let collectableTickPetTarget = null;
+
+function cachedTickCollectable(id, petTarget = false) {
+  if (id == null) return null;
+  if (petTarget) {
+    if (collectableTickPetTargetId !== id) {
+      collectableTickPetTargetId = id;
+      collectableTickPetTarget = collectables.find(c => c?.id === id) || null;
+    }
+    return collectableTickPetTarget;
+  }
+  if (collectableTickPlayerTargetId !== id) {
+    collectableTickPlayerTargetId = id;
+    collectableTickPlayerTarget = collectables.find(c => c?.id === id) || null;
+  }
+  return collectableTickPlayerTarget;
+}
 
 const COLLECTABLE_PICKUP = {
   offsetX: 0,
@@ -21991,6 +22031,7 @@ function pushNetBoxInstance(box) {
     t: 0,
     frameAcc: sp.randomStart ? rand(0, frames) : 0,
   });
+  indexCollectableAdded(collectables[collectables.length - 1]);
   return true;
 }
 
@@ -22016,6 +22057,7 @@ function pushAmbientCollectableInstance(slot, mapId) {
     t: 0,
     frameAcc: sp.randomStart ? rand(0, frames) : 0,
   });
+  indexCollectableAdded(collectables[collectables.length - 1]);
 }
 
 // Position d'un nouveau slot : aléatoire, espacée des slots existants.
@@ -22105,6 +22147,7 @@ function spawnCollectableAtRestored(drop, elapsedSec) {
     t: Math.max(0, Number(elapsedSec) || 0),
     frameAcc: sp.randomStart ? rand(0, frames) : 0,
   });
+  indexCollectableAdded(collectables[collectables.length - 1]);
   return true;
 }
 
@@ -22264,6 +22307,7 @@ function spawnCollectableAt(type, x, y, opts = {}) {
     frameAcc: sp.randomStart ? rand(0, frames) : 0,
   };
   collectables.push(instance);
+  indexCollectableAdded(instance);
 
   // Monde continu : les drops à durée de vie survivent au refresh
   // (expiration en temps réel via l'horloge monde). expiresAtMs = 0 :
@@ -22291,7 +22335,7 @@ function pickCollectableAtScreen(sx, sy) {
   let best = null;
   let bestD2 = Infinity;
 
-  for (const c of collectables) {
+  for (const c of spatialCollectablesNear(w.x, w.y, 300)) {
     if (!c) continue;
     if (c.map && String(c.map) !== currentMapId()) continue;
 
@@ -22634,9 +22678,39 @@ document.addEventListener("click", event => {
 const pendingNetCollectableRewards = new Map();
 // Compteur de resyncs explicites (diagnostic window.__NETBOXDBG__.resyncs).
 let netBoxResyncs = 0;
+let netBoxMaintenanceT = 0;
+let netBoxDebugT = 0;
+let netBoxNeedsReconcile = true;
+const localNetBoxesByUid = new Map();
+
+function removeLocalNetBox(uid, fromNet = false) {
+  const key = String(uid || "");
+  let c = localNetBoxesByUid.get(key) || null;
+  if (!c) c = collectables.find(item => item && String(item.slotUid) === key) || null;
+  if (!c) return false;
+  if (collectableTargetId === c.id) {
+    try { cancelCollectableTarget(); } catch {}
+    moveTarget.active = false;
+    collectableTargetId = null;
+  }
+  if (!c._netBox && fromNet) {
+    try { takeCollectableInstance(c, { fromNet: true }); } catch {}
+  }
+  const index = collectables.indexOf(c);
+  if (index >= 0) collectables.splice(index, 1);
+  if (collectableTickPlayerTarget === c) { collectableTickPlayerTarget = null; collectableTickPlayerTargetId = null; }
+  if (collectableTickPetTarget === c) { collectableTickPetTarget = null; collectableTickPetTargetId = null; }
+  localNetBoxesByUid.delete(key);
+  indexCollectableRemoved(c);
+  return index >= 0;
+}
+
 function syncNetBoxes(dt) {
   const curMap = currentMapId();
-  try {
+  netBoxMaintenanceT += dt;
+  netBoxDebugT += dt;
+  if (netBoxDebugT >= 1) try {
+    netBoxDebugT = 0;
     window.__NETBOXDBG__ = window.__NETBOXDBG__ || {};
     const dbg = window.__NETBOXDBG__;
     dbg.map = curMap;
@@ -22678,12 +22752,15 @@ function syncNetBoxes(dt) {
     pendingNetCollectableRewards.clear();
     let purged = false;
     for (let i = collectables.length - 1; i >= 0; i--) {
-      if (collectables[i]?._netBox) { collectables.splice(i, 1); purged = true; }
+      const c = collectables[i];
+      if (c?._netBox) { collectables.splice(i, 1); indexCollectableRemoved(c); purged = true; }
     }
     if (purged && collectableTargetId != null) {
       const still = collectables.some(c => c && c.id === collectableTargetId);
       if (!still) { try { cancelCollectableTarget(); } catch {} moveTarget.active = false; collectableTargetId = null; }
     }
+    localNetBoxesByUid.clear();
+    netBoxNeedsReconcile = true;
     try { clearNetBoxes(); } catch {}
     return;
   }
@@ -22691,7 +22768,26 @@ function syncNetBoxes(dt) {
   let evs = [];
   try { evs = drainNetBoxInbox(); } catch {}
   for (const ev of evs) {
-    if (!ev || !ev.uid) continue;
+    if (!ev) continue;
+    if (ev.op === "sync") {
+      netBoxNeedsReconcile = true;
+      continue;
+    }
+    if (ev.op === "spawn" && ev.uid && ev.box) {
+      const uid = String(ev.uid);
+      if (!localNetBoxesByUid.has(uid)) {
+        const before = collectables.length;
+        try { pushNetBoxInstance({ uid, type: ev.box.type, x: ev.box.x, y: ev.box.y }); } catch {}
+        const added = collectables.length > before ? collectables[collectables.length - 1] : null;
+        if (added) localNetBoxesByUid.set(uid, added);
+      }
+      continue;
+    }
+    if (ev.op === "unspawn" && Array.isArray(ev.uids)) {
+      for (const uid of ev.uids) removeLocalNetBox(uid, true);
+      continue;
+    }
+    if (!ev.uid) continue;
     if (ev.op === "claim") {
       const pendingReward = pendingNetCollectableRewards.get(String(ev.uid));
       pendingNetCollectableRewards.delete(String(ev.uid));
@@ -22700,16 +22796,13 @@ function syncNetBoxes(dt) {
       }
       continue;
     }
-    if (ev.op !== "collect") continue;
-    for (let i = collectables.length - 1; i >= 0; i--) {
-      const c = collectables[i];
-      if (c && String(c.slotUid) === String(ev.uid)) {
-        if (collectableTargetId === c.id) { try { cancelCollectableTarget(); } catch {} moveTarget.active = false; collectableTargetId = null; }
-        if (c._netBox) collectables.splice(i, 1);
-        else { try { takeCollectableInstance(c, { fromNet: true }); } catch {} collectables.splice(i, 1); }
-      }
-    }
+    if (ev.op === "collect") removeLocalNetBox(ev.uid, true);
   }
+  // Les événements gardent les apparitions et collectes instantanées. Le
+  // passage global n'est plus qu'un garde-fou toutes les cinq secondes.
+  if (!netBoxNeedsReconcile && netBoxMaintenanceT < 5) return;
+  netBoxMaintenanceT = 0;
+  netBoxNeedsReconcile = false;
   // Miroir serveur : ajoute les manquantes, vire les inconnues.
   let known = null;
   try { known = getNetBoxes(); } catch {}
@@ -22727,17 +22820,27 @@ function syncNetBoxes(dt) {
     if (c && c.slotUid && !c.dropUid && !known.has(String(c.slotUid))) {
       if (collectableTargetId === c.id) { try { cancelCollectableTarget(); } catch {} moveTarget.active = false; collectableTargetId = null; }
       collectables.splice(i, 1);
+      indexCollectableRemoved(c);
       continue;
     }
     if (c?.slotUid) localBySlotUid.set(String(c.slotUid), c);
   }
+  localNetBoxesByUid.clear();
+  for (const [uid, c] of localBySlotUid) localNetBoxesByUid.set(uid, c);
   for (const [uid, b] of known) {
     const existing = localBySlotUid.get(String(uid));
     if (existing) {
       existing.x = Number(b.x) || 0;
       existing.y = Number(b.y) || 0;
       existing._netBox = true;
-    } else { try { pushNetBoxInstance({ uid, type: b.type, x: b.x, y: b.y }); } catch {} }
+      localNetBoxesByUid.set(String(uid), existing);
+      indexCollectableMoved(existing);
+    } else {
+      const before = collectables.length;
+      try { pushNetBoxInstance({ uid, type: b.type, x: b.x, y: b.y }); } catch {}
+      const added = collectables.length > before ? collectables[collectables.length - 1] : null;
+      if (added) localNetBoxesByUid.set(String(uid), added);
+    }
   }
 }
 
@@ -22791,8 +22894,29 @@ function tickCollectables(dt) {
     } catch {}
   }
 
-  for (let i = collectables.length - 1; i >= 0; i--) {
-    const c = collectables[i];
+  // À cadence normale, aucune traversée de la collection complète : seules
+  // les cellules dans le rayon utile sont visitées. Le balayage global à
+  // 1 Hz entretient les expirations des box réellement lointaines.
+  const tickCandidates = tickFarCollectables
+    ? collectables.slice()
+    : spatialCollectablesNear(player.x, player.y, COLLECTABLE_NEAR_RADIUS);
+  if (!tickFarCollectables) {
+    const playerTarget = cachedTickCollectable(collectableTargetId, false);
+    const petTarget = cachedTickCollectable(petState.fetchId, true);
+    if (playerTarget && !tickCandidates.includes(playerTarget)) tickCandidates.push(playerTarget);
+    if (petTarget && !tickCandidates.includes(petTarget)) tickCandidates.push(petTarget);
+  }
+  const removeTickCollectable = (c) => {
+    const index = collectables.indexOf(c);
+    if (index < 0) return;
+    collectables.splice(index, 1);
+    if (collectableTickPlayerTarget === c) { collectableTickPlayerTarget = null; collectableTickPlayerTargetId = null; }
+    if (collectableTickPetTarget === c) { collectableTickPetTarget = null; collectableTickPetTargetId = null; }
+    if (c?.slotUid) localNetBoxesByUid.delete(String(c.slotUid));
+    indexCollectableRemoved(c);
+  };
+
+  for (const c of tickCandidates) {
     if (!c) continue;
 
     // Les box sont immobiles : au-delà de la zone visible estimée (1 800)
@@ -22825,7 +22949,7 @@ function tickCollectables(dt) {
       persistCollectables();
     } catch {}
   }
-  collectables.splice(i, 1);
+  removeTickCollectable(c);
   continue;
 }
 
@@ -22845,7 +22969,7 @@ const isSelected = collectableTargetId === c.id && c.armed === true;
         const autoRes = applyCollectableReward(c);
         if (!autoRes?.kept) {
           takeCollectableInstance(c);
-          collectables.splice(i, 1);
+          removeTickCollectable(c);
         }
       }
 
@@ -22897,7 +23021,7 @@ player.y = collectY;
       collectableTargetId = null;
       if (!collectRes?.kept) {
         takeCollectableInstance(c);
-        collectables.splice(i, 1);
+        removeTickCollectable(c);
       }
     }
   }
@@ -27465,7 +27589,7 @@ collectables.length = 0;
 collectablesWorldMap = null;
 npcSpatialFrame = -1;
 collectableSpatialLength = -1;
-collectableSpatialAt = 0;
+collectableSpatialDirty = true;
 sparks.length = 0;
 floatTexts.length = 0;
 lasers.length = 0;

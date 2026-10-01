@@ -56,19 +56,47 @@ export class SpatialIndex {
   constructor(cellSize = 640) {
     this.cellSize = Math.max(64, Number(cellSize) || 640);
     this.cells = new Map();
+    this.itemKeys = new Map();
   }
 
   rebuild(items) {
     this.cells.clear();
-    for (const item of items || []) {
-      if (!item || !Number.isFinite(Number(item.x)) || !Number.isFinite(Number(item.y))) continue;
-      const cx = Math.floor(Number(item.x) / this.cellSize);
-      const cy = Math.floor(Number(item.y) / this.cellSize);
-      const key = `${cx}:${cy}`;
-      let cell = this.cells.get(key);
-      if (!cell) this.cells.set(key, cell = []);
-      cell.push(item);
+    this.itemKeys.clear();
+    for (const item of items || []) this.add(item);
+  }
+
+  add(item) {
+    if (!item || !Number.isFinite(Number(item.x)) || !Number.isFinite(Number(item.y))) return false;
+    this.delete(item);
+    const cx = Math.floor(Number(item.x) / this.cellSize);
+    const cy = Math.floor(Number(item.y) / this.cellSize);
+    const key = integerKey(cx, cy);
+    let cell = this.cells.get(key);
+    if (!cell) this.cells.set(key, cell = new Set());
+    cell.add(item);
+    this.itemKeys.set(item, key);
+    return true;
+  }
+
+  delete(item) {
+    const key = this.itemKeys.get(item);
+    if (key == null) return false;
+    const cell = this.cells.get(key);
+    if (cell) {
+      cell.delete(item);
+      if (cell.size === 0) this.cells.delete(key);
     }
+    this.itemKeys.delete(item);
+    return true;
+  }
+
+  update(item) {
+    if (!item) return false;
+    const cx = Math.floor(Number(item.x) / this.cellSize);
+    const cy = Math.floor(Number(item.y) / this.cellSize);
+    const key = integerKey(cx, cy);
+    if (this.itemKeys.get(item) === key) return true;
+    return this.add(item);
   }
 
   queryRect(minX, minY, maxX, maxY) {
@@ -79,7 +107,7 @@ export class SpatialIndex {
     const y1 = Math.floor(Number(maxY) / this.cellSize);
     for (let cy = y0; cy <= y1; cy++) {
       for (let cx = x0; cx <= x1; cx++) {
-        const cell = this.cells.get(`${cx}:${cy}`);
+        const cell = this.cells.get(integerKey(cx, cy));
         if (!cell) continue;
         for (const item of cell) {
           if (item.x >= minX && item.x <= maxX && item.y >= minY && item.y <= maxY) out.push(item);
@@ -92,11 +120,22 @@ export class SpatialIndex {
   queryCircle(x, y, radius) {
     const r = Math.max(0, Number(radius) || 0);
     const r2 = r * r;
-    return this.queryRect(x - r, y - r, x + r, y + r)
-      .filter((item) => {
+    const out = [];
+    const x0 = Math.floor((x - r) / this.cellSize);
+    const y0 = Math.floor((y - r) / this.cellSize);
+    const x1 = Math.floor((x + r) / this.cellSize);
+    const y1 = Math.floor((y + r) / this.cellSize);
+    for (let cy = y0; cy <= y1; cy++) {
+      for (let cx = x0; cx <= x1; cx++) {
+        const cell = this.cells.get(integerKey(cx, cy));
+        if (!cell) continue;
+        for (const item of cell) {
         const dx = Number(item.x) - x, dy = Number(item.y) - y;
-        return dx * dx + dy * dy <= r2;
-      });
+          if (dx * dx + dy * dy <= r2) out.push(item);
+        }
+      }
+    }
+    return out;
   }
 }
 

@@ -1001,6 +1001,7 @@ export function ensureNetplayConnection() {
       }
       lastBoxSyncMs = performance.now();
       lastBoxFullSyncMap = currentMapId();
+      netBoxInbox.push({ op: "sync" });
       return;
     }
     if (msg.t === "box" && msg.op) {
@@ -1028,17 +1029,24 @@ export function ensureNetplayConnection() {
         }
         lastBoxSyncMs = performance.now();
         lastBoxFullSyncMap = currentMapId();
+        netBoxInbox.push({ op: "sync" });
       } else if (msg.op === "spawn" && msg.box && typeof msg.box.uid === "string") {
         const b = msg.box, uid = b.uid.slice(0, 64);
         if (!pendingNetBoxClaims.has(uid) && typeof b.type === "string" && Number.isFinite(Number(b.x)) && Number.isFinite(Number(b.y))) {
-          netBoxes.set(uid, { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)) });
+          const box = { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)) };
+          netBoxes.set(uid, box);
+          netBoxInbox.push({ op: "spawn", uid, box });
           lastBoxSyncMs = performance.now();
         }
       } else if (msg.op === "unspawn" && Array.isArray(msg.uids)) {
+        const uids = [];
         for (const u of msg.uids.slice(0, 200)) {
           if (typeof u !== "string") continue;
-          netBoxes.delete(u.slice(0, 64));
+          const uid = u.slice(0, 64);
+          netBoxes.delete(uid);
+          uids.push(uid);
         }
+        if (uids.length) netBoxInbox.push({ op: "unspawn", uids });
       }
       return;
     }
