@@ -8614,6 +8614,7 @@ const Bot = {
   kills: 0,
   boxes: 0,
   lastNpcId: null,
+  lastNpcKey: null,
   combatTargetId: null,
   lastBoxId: null,
   lastFormation: "",
@@ -8880,6 +8881,7 @@ function botSetActive(on) {
   Bot.chaseId = null;
   Bot.aggroId = null;
   Bot.combatTargetId = null;
+  Bot.lastNpcKey = null;
 
   if (!Bot.active) {
     Bot.status = "En pause";
@@ -10302,10 +10304,36 @@ function botConcurrentNpc(engageMax, locked) {
   } catch { return null; }
 }
 
+function botNpcLockKey(npc) {
+  if (!npc) return null;
+  if (npc._netUid != null) return `net:${String(npc._netUid)}:${Number(npc._netSeq) || 0}`;
+  if (npc.universeUid != null) return `universe:${String(npc.universeUid)}`;
+  return npc.id != null ? `local:${String(npc.id)}` : null;
+}
+
+function botNpcHasLockKey(npc, key) {
+  if (!npc || key == null) return false;
+  const stableKey = botNpcLockKey(npc);
+  // Compatibilite avec une cible conservee avant cette mise a jour.
+  return stableKey === String(key) || String(npc.id) === String(key);
+}
+
+function botLockNpc(npc) {
+  const key = botNpcLockKey(npc);
+  if (!key) return;
+  Bot.combatTargetId = key;
+  Bot.lastNpcId = npc.id;
+  Bot.lastNpcKey = key;
+}
+
+function botTargetIsNpc(npc) {
+  try { return botNpcLockKey(Target.get()) === botNpcLockKey(npc); } catch { return false; }
+}
+
 // Verrouille + tire sur un NPC SANS toucher au mouvement (collecte simultanee).
 function botEngageNpc(npc) {
   if (!npc || Number(npc.hp) <= 0) return null;
-  try { if (Target.get() !== npc) Target.set(npc); } catch {}
+  try { if (!botTargetIsNpc(npc)) Target.set(npc); } catch {}
   botApplyNpcAmmo(npc);
   let d = 0;
   try { d = Math.hypot(npc.x - player.x, npc.y - player.y); } catch {}
@@ -10313,10 +10341,7 @@ function botEngageNpc(npc) {
   if (!attackActive && d <= Math.max(80, engageMax)) { try { startAttack(); } catch {} }
   else if (attackActive && d > engageMax + 20) { try { stopAttack(); } catch {} }
   try { botAutoSpecialAmmo(npc, d, engageMax); } catch {}
-  if (npc.id != null) {
-    Bot.lastNpcId = npc.id;
-    Bot.combatTargetId = npc.id;
-  }
+  botLockNpc(npc);
   return npc;
 }
 
@@ -10857,6 +10882,8 @@ function tickBot(dt) {
   if (!started || player.dead) {
     // Compteur de kills/boxes : la cible a disparu pendant la mort.
     Bot.lastNpcId = null;
+    Bot.lastNpcKey = null;
+    Bot.combatTargetId = null;
     Bot.lastBoxId = null;
     Bot.fleeing = false;
     if (player.dead && started) {
@@ -11178,12 +11205,16 @@ function tickBot(dt) {
   let lockedNpc = null;
   if (Bot.mode === "kill" || Bot.mode === "both") {
     try {
-      const botLocked = Bot.combatTargetId == null ? null : enemies.find((enemy) => String(enemy?.id) === String(Bot.combatTargetId));
-      const cur = botLocked || Target.get();
+      const botLocked = Bot.combatTargetId == null ? null
+        : enemies.find((enemy) => botNpcHasLockKey(enemy, Bot.combatTargetId));
+      // Une cible deja choisie appartient au bot jusqu'a sa mort. Le lock
+      // visuel courant ne peut donc pas imposer un autre NPC au milieu d'un
+      // groupe (clic, snapshot reseau ou doublon temporaire).
+      const cur = Bot.combatTargetId == null ? Target.get() : botLocked;
       if (cur && !cur.isPetTarget && Number(cur.hp) > 0 && enemies.includes(cur)
         && Bot.npcAllow.has(String(cur.type))) {
         lockedNpc = cur;
-        Bot.combatTargetId = cur.id;
+        botLockNpc(cur);
       } else {
         Bot.combatTargetId = null;
       }
@@ -11298,8 +11329,8 @@ function tickBot(dt) {
   // Après un kill, les NPC cochés autour du vaisseau sont prioritaires sur
   // toute box ou patrouille. La fenêtre couvre également un spawn/snapshot
   // qui arriverait juste après la disparition de la cible précédente.
-  const previousNpcDied = Bot.lastNpcId != null
-    && !enemies.some((enemy) => enemy && String(enemy.id) === String(Bot.lastNpcId) && Number(enemy.hp) > 0);
+  const previousNpcDied = Bot.lastNpcKey != null
+    && !enemies.some((enemy) => enemy && botNpcHasLockKey(enemy, Bot.lastNpcKey) && Number(enemy.hp) > 0);
   if (lockedNpc) Bot.postKillScanT = 0;
   else if (previousNpcDied && Bot.mode !== "collect") Bot.postKillScanT = 1.5;
   if (!lockedNpc && Bot.postKillScanT > 0 && Bot.mode !== "collect" && Bot.priority === "npc") {
@@ -11313,14 +11344,15 @@ function tickBot(dt) {
   // passage, la branche collecte lock et tire dès que ça porte).
 
   // Compteurs : cible suivie qui a disparu = kill / collecte réussie.
-  if (Bot.lastNpcId != null && (!foundNpc || foundNpc.npc.id !== Bot.lastNpcId)) {
-    const stillAlive = enemies.some((e) => e && String(e.id) === String(Bot.lastNpcId) && Number(e.hp) > 0);
+  if (Bot.lastNpcKey != null && (!foundNpc || !botNpcHasLockKey(foundNpc.npc, Bot.lastNpcKey))) {
+    const stillAlive = enemies.some((e) => e && botNpcHasLockKey(e, Bot.lastNpcKey) && Number(e.hp) > 0);
     if (!stillAlive) {
       Bot.kills++;
       botSaveConfig();
       const kc = document.getElementById("botKillCount");
       if (kc) kc.textContent = String(Bot.kills);
       Bot.lastNpcId = null;
+      Bot.lastNpcKey = null;
       Bot.combatTargetId = null;
     }
   }
@@ -11364,6 +11396,8 @@ function tickBot(dt) {
         try { stopAttack(); } catch {}
         try { if (Target.get()) Target.clear(); } catch {}
         Bot.lastNpcId = null;
+        Bot.lastNpcKey = null;
+        Bot.combatTargetId = null;
       }
     }
     Bot.status = Bot.mode === "collect" ? "Collecte — patrouille" : Bot.mode === "kill" ? "Chasse — patrouille" : "Farm — patrouille";
@@ -11378,8 +11412,7 @@ function tickBot(dt) {
 
   if (pick.kind === "npc") {
     const npc = pick.ref;
-    Bot.lastNpcId = npc.id;
-    Bot.combatTargetId = npc.id;
+    botLockNpc(npc);
     const d = Math.hypot(npc.x - player.x, npc.y - player.y);
     const fullD = botCombatDistance(npc);
     if (Bot.rangeRecoveryId !== npc.id) {
@@ -11410,7 +11443,7 @@ function tickBot(dt) {
     botApplyFormation(npcForm);
     botApplyConfig(npcCfg);
     const npcName = String((NPC_TYPES[npc.type]?.name || npc.type || "NPC")).replace(/^-=\[?\s*|\s*\]?=-$/g, "").trim() || "NPC";
-    try { if (Target.get() !== npc) Target.set(npc); } catch {}
+    try { if (!botTargetIsNpc(npc)) Target.set(npc); } catch {}
     // Le tir continue même si on se décale vers une box (simultané) : jamais
     // de cancelCollectableTarget ici, et pas de reset de lastBoxId (compteur).
     botApplyNpcAmmo(npc);
@@ -11507,6 +11540,7 @@ function tickBot(dt) {
       try { if (Target.get()) Target.clear(); } catch {}
       Bot.combatTargetId = null;
       Bot.lastNpcId = null;
+      Bot.lastNpcKey = null;
       botClearSpecialAmmo();
     }
     if (foe) {
@@ -11515,7 +11549,7 @@ function tickBot(dt) {
       const foeName = String((NPC_TYPES[foe.type]?.name || foe.type || "NPC")).replace(/^-=\[?\s*|\s*\]?=-$/g, "").trim() || "NPC";
       Bot.status = Bot.mode === "both" ? "Farm — collecte + combat" : "Collecte + combat";
       Bot.target = `${boxName} (${Math.round(d)}m) + ${foeName} (${fd}m)`;
-      Bot.lastNpcId = foe.id;
+      botLockNpc(foe);
     } else {
       Bot.status = Bot.mode === "both" ? "Farm — collecte" : "Collecte";
       Bot.target = `${boxName} (${Math.round(d)}m)`;
@@ -26886,14 +26920,33 @@ function syncNetNpcs(dt) {
   // coutait O(n2) par frame (~0.2 ms a 220 NPC, quadratique au-dela).
   const netUidToEnemy = new Map();
   try {
-    for (const c of enemies) {
-      if (c && c._netUid != null) netUidToEnemy.set(c._netUid, c);
+    let currentTarget = null;
+    try { currentTarget = Target.get(); } catch {}
+    // Une seule entite locale par uid serveur. En cas de doublon transitoire,
+    // conserver celle deja verrouillee evite tout saut de cible/mouvement.
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const c = enemies[i];
+      if (!c || c._netUid == null) continue;
+      const uid = String(c._netUid);
+      const kept = netUidToEnemy.get(uid);
+      if (!kept) {
+        netUidToEnemy.set(uid, c);
+        continue;
+      }
+      if (c === currentTarget) {
+        const keptIndex = enemies.indexOf(kept);
+        if (keptIndex >= 0) enemies.splice(keptIndex, 1);
+        netUidToEnemy.set(uid, c);
+      } else {
+        enemies.splice(i, 1);
+      }
     }
   } catch {}
   for (const s of remotes.values()) {
     if (!s || !s.uid) continue;
-    seen.add(s.uid);
-    let e = netUidToEnemy.get(s.uid) || null;
+    const snapshotUid = String(s.uid);
+    seen.add(snapshotUid);
+    let e = netUidToEnemy.get(snapshotUid) || null;
     // Lors du premier snapshot apres un changement de carte, `s.x/y` peut
     // deja contenir la position serveur suivante tandis que `s.rx/ry` est la
     // position de rendu lissee. Creer le NPC sur x/y puis le ramener vers
