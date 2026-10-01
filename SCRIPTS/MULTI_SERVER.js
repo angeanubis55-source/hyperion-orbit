@@ -768,14 +768,8 @@ function collectableAllowedOnMap(cfg, mapId) {
   return (Array.isArray(maps) ? maps : [maps]).some((value) => String(value || "").toLowerCase() === id);
 }
 
-function randomBoxPosition(sim, taken, minSpacing) {
+function randomBoxPosition(sim) {
   const world = sim?.world || { w: 11000, h: 7000 };
-  for (let attempt = 0; attempt < 80; attempt++) {
-    const pos = { x: Math.round(80 + Math.random() * Math.max(1, world.w - 160)), y: Math.round(80 + Math.random() * Math.max(1, world.h - 160)) };
-    if (typeof sim?.inSafe === "function" && sim.inSafe(pos.x, pos.y)) continue;
-    if (minSpacing > 0 && taken.some((other) => Math.hypot(pos.x - other.x, pos.y - other.y) < minSpacing)) continue;
-    return pos;
-  }
   return { x: Math.round(80 + Math.random() * Math.max(1, world.w - 160)), y: Math.round(80 + Math.random() * Math.max(1, world.h - 160)) };
 }
 
@@ -784,14 +778,12 @@ function ensureBoxRoom(mapId) {
   if (boxRooms.has(key)) return Promise.resolve(boxRooms.get(key));
   if (boxRoomLoads.has(key)) return boxRoomLoads.get(key);
   const pending = Promise.resolve(ensureNpcSim(key)).then((sim) => {
-    const boxes = new Map(), taken = [];
+    const boxes = new Map();
     for (const [type, cfg] of Object.entries(COLLECTABLE_TYPES)) {
       if (!cfg || cfg.enabled === false || !collectableAllowedOnMap(cfg, key)) continue;
       const qty = Math.max(0, Math.floor(Number(cfg.qty ?? cfg.count ?? cfg.amount ?? cfg.maxAlive) || 0));
-      const spacing = Math.max(0, Number(cfg.minSpacing) || 0);
       for (let index = 0; index < qty; index++) {
-        const pos = randomBoxPosition(sim, taken, spacing);
-        taken.push(pos);
+        const pos = randomBoxPosition(sim);
         boxes.set(`${type}#${index}`, { type, ...pos });
       }
     }
@@ -803,7 +795,19 @@ function ensureBoxRoom(mapId) {
   }).catch(() => {
     boxRoomLoads.delete(key);
     const boxes = new Map();
+    // La simulation NPC ne doit jamais conditionner l'existence des box.
+    // En cas d'echec de chargement, generation native immediate avec les
+    // dimensions de secours ; une room vide ne reste plus mise en cache.
+    for (const [type, cfg] of Object.entries(COLLECTABLE_TYPES)) {
+      if (!cfg || cfg.enabled === false || !collectableAllowedOnMap(cfg, key)) continue;
+      const qty = Math.max(0, Math.floor(Number(cfg.qty ?? cfg.count ?? cfg.amount ?? cfg.maxAlive) || 0));
+      for (let index = 0; index < qty; index++) {
+        boxes.set(`${type}#${index}`, { type, ...randomBoxPosition(null) });
+      }
+    }
     boxRooms.set(key, boxes);
+    const room = rooms.get(key);
+    if (room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "list", boxes: [...boxes].map(([uid, b]) => ({ uid, ...b })) }));
     return boxes;
   });
   boxRoomLoads.set(key, pending);
@@ -2028,15 +2032,13 @@ setInterval(() => {
     const set = boxRooms.get(mapId);
     if (!set) continue;
     const sim = npcSims.get(mapId);
-    const taken = [...set.values()].map((b) => ({ x: b.x, y: b.y }));
     for (let i = queue.length - 1; i >= 0; i--) {
       const pending = queue[i];
       if (!pending || Number(pending.at) > now) continue;
       queue.splice(i, 1);
       if (set.has(pending.uid)) continue;
       const cfg = COLLECTABLE_TYPES[pending.type] || {};
-      const pos = randomBoxPosition(sim && typeof sim.then !== "function" ? sim : null, taken, Math.max(0, Number(cfg.minSpacing) || 0));
-      taken.push(pos);
+      const pos = randomBoxPosition(sim && typeof sim.then !== "function" ? sim : null);
       const box = { type: pending.type, ...pos };
       set.set(pending.uid, box);
       const room = rooms.get(mapId);

@@ -21959,30 +21959,13 @@ function pushAmbientCollectableInstance(slot, mapId) {
 }
 
 // Position d'un nouveau slot : aléatoire, espacée des slots existants.
-function pickAmbientSlotPosition(type, taken) {
-  const cfg = COLLECTABLE_DEFS[type] || {};
-  const minSpacing = Number(cfg.minSpacing ?? COLLECTABLE_CFG.minSpacing ?? 120);
-  const maxAttempts = Math.max(1, Number(cfg.maxAttempts ?? COLLECTABLE_CFG.maxAttempts ?? 80));
-  for (let i = 0; i < maxAttempts; i++) {
-    const pos = spawnRandomOnMap();
-    if (minSpacing > 0) {
-      let ok = true;
-      for (const p of taken) {
-        if (dist2(pos.x, pos.y, p.x, p.y) < minSpacing * minSpacing) { ok = false; break; }
-      }
-      if (!ok) continue;
-    }
-    return pos;
-  }
+function pickAmbientSlotPosition() {
   return spawnRandomOnMap();
 }
 
 // Respawn aléatoire d'un slot dû (comme les NPC : jamais à la même place).
 function respawnAmbientSlot(slot, mapId) {
-  const taken = listCollectableSlots(collectableStore, mapId)
-    .filter((s) => s && String(s.uid) !== String(slot.uid))
-    .map((s) => ({ x: Number(s.x), y: Number(s.y) }));
-  const pos = pickAmbientSlotPosition(slot.type, taken);
+  const pos = pickAmbientSlotPosition();
   reviveCollectableSlot(collectableStore, mapId, String(slot.uid), pos.x, pos.y);
   pushAmbientCollectableInstance({ ...slot, x: pos.x, y: pos.y }, mapId);
 }
@@ -21991,7 +21974,6 @@ function initCollectableWorld(mapId) {
   if (!WORLD || !(Number(WORLD.w) > 0) || !(Number(WORLD.h) > 0)) return;
   const now = worldClock.now();
   const defs = [];
-  const taken = listCollectableSlots(collectableStore, mapId).map((s) => ({ x: Number(s.x), y: Number(s.y) }));
   for (const [type, cfg] of collectableDefsList()) {
     const target = collectableTargetCount(cfg);
     if (target <= 0) continue;
@@ -21999,8 +21981,7 @@ function initCollectableWorld(mapId) {
     const missing = Math.max(0, target - existing);
     for (let i = 0; i < target - missing; i++) defs.push({ type, x: 0, y: 0 });
     for (let i = 0; i < missing; i++) {
-      const pos = pickAmbientSlotPosition(type, taken);
-      taken.push(pos);
+      const pos = pickAmbientSlotPosition();
       defs.push({ type, x: pos.x, y: pos.y });
     }
     // Précharge les sprites des box de la map.
