@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --test SCRIPTS/BOT_NAVIGATION_TEST.js",
     "server": "node SCRIPTS/GAME_SERVER.js",
     "server:multi": "node SCRIPTS/MULTI_SERVER.js",
     "benchmark": "node SCRIPTS/BENCHMARK_SPATIAL.js",

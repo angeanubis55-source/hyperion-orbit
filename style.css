@@ -9377,6 +9377,9 @@ html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
 .botNpcRow input[type="number"]{ width:56px; height:24px; padding:0 4px; box-sizing:border-box; border:1px solid rgba(124,240,255,.3); border-radius:6px; background:#051521; color:#effcff; font:700 11px system-ui; }
 .botNpcRow select.botNpcAmmo{ width:64px; height:24px; padding:0 2px; box-sizing:border-box; border:1px solid rgba(124,240,255,.3); border-radius:6px; background:#051521; color:#effcff; font:700 11px system-ui; }
 .botNpcRow input[type="checkbox"]{ accent-color:#00d9ff; }
+.botNpcCombat{display:grid;grid-template-columns:minmax(78px,.8fr) auto auto 72px minmax(130px,1.4fr);gap:6px;align-items:center}
+.botNpcCombat label{display:flex;align-items:center;gap:3px;color:#9fc6d1;font-size:10px;font-weight:800}
+.botNpcCombat select{min-width:0;width:100%;height:27px;border:1px solid rgba(124,240,255,.3);border-radius:4px;background:#051521;color:#effcff;font:700 10px system-ui}
 .botLog{ min-height:120px; max-height:180px; overflow-y:auto; padding:6px 8px; border:1px solid rgba(124,240,255,.12); border-radius:8px; background:rgba(0,0,0,.35); color:#9fc6d1; font-size:11px; line-height:1.45; }
 @media (max-width:800px){ .botGrid{ grid-template-columns:1fr; } .botWide .botNpcList{ grid-template-columns:1fr; } }
 
@@ -9451,7 +9454,7 @@ html body #hangarOverlay #hangarWindow.gameWindow > .gameWinBar .gameWinMinBtn {
 .botWide .botSectionTitle{padding-bottom:5px;border-bottom:1px solid rgba(124,240,255,.1);color:#a9d7e2}
 .botWide .botPlayBtn{border-radius:4px}
 .botWide .botNpcList{grid-template-columns:1fr;gap:3px}
-.botNpcColumns,.botNpcRow{display:grid;grid-template-columns:22px minmax(180px,1fr) 58px 84px;gap:8px;align-items:center}
+.botNpcColumns,.botNpcRow{display:grid;grid-template-columns:22px minmax(180px,.8fr) 58px minmax(420px,2fr);gap:8px;align-items:center}
 .botNpcColumns{padding:0 7px;color:#527f8c;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.35px}
 .botNpcColumns span:nth-child(n+3){text-align:center}
 .botWide .botNpcRow{min-height:38px;padding:5px 7px;border-radius:3px;background:rgba(0,8,15,.22)}
