@@ -16451,6 +16451,16 @@ function tickLinkHeartbeat(realDt) {
 // puis on recharge (sauvegarde d'abord : position + progression).
 let versionCheckT = 0;
 let versionReloadArmed = false;
+function forceReloadAfterServerRestart() {
+  if (versionReloadArmed || kickedReason != null) return;
+  versionReloadArmed = true;
+  try { showNotification("Serveur redémarré — actualisation automatique…", 3, "info"); } catch {}
+  setTimeout(() => {
+    try { saveStateImmediate(); } catch {}
+    try { saveProgressNow(); } catch {}
+    setTimeout(() => { try { location.reload(); } catch {} }, 1000);
+  }, 2000);
+}
 function tickGameVersionCheck(dt) {
   if (versionReloadArmed) return;
   // Kické : on ne recharge jamais tout seul (retour via refresh manuel).
@@ -26878,7 +26888,12 @@ function syncNetNpcs(dt) {
   // des entités réseau. Le seq serveur repart de zéro : un cadavre conservé
   // (même uid, même seq) bloquerait sinon la nouvelle incarnation et le NPC
   // ne réapparaîtrait jamais côté client alors que le serveur l'a respawné.
-  try { if (consumeNetServerRestart()) purgeNetEntitiesForReconnect(); } catch {}
+  try {
+    if (consumeNetServerRestart()) {
+      purgeNetEntitiesForReconnect();
+      forceReloadAfterServerRestart();
+    }
+  } catch {}
   let remotes = null;
   try { remotes = getNetNpcs(); } catch { remotes = null; }
   if (!netplayNpcActive() || !remotes) {
