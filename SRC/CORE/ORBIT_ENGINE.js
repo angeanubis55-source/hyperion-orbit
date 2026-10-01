@@ -8557,6 +8557,7 @@ const Bot = {
   orbitFlipAt: 0,
   orbitId: null,
   orbitAngle: 0,
+  moveTag: null,
   rangeRecoveryId: null,
   rangeRecovering: false,
   specialPrev: "",
@@ -8949,6 +8950,7 @@ function botSetActive(on) {
   Bot.roamT = 0;
   Bot.orbitId = null;
   Bot.orbitFlipAt = 0;
+  Bot.moveTag = null;
   Bot.rangeRecoveryId = null;
   Bot.rangeRecovering = false;
 
@@ -8984,20 +8986,13 @@ function botNpcPrio(type) {
   return Number.isFinite(p) ? Math.max(0, Math.min(99, p)) : 0;
 }
 
-// Reste 50 m hors de la portee du NPC, sans jamais sortir de notre portee laser.
-// Rayon de combat (la "zone") : portée NPC + 50 m, sans jamais dépasser
-// notre portée laser - 10 m. Ex : NPC 500 m + nous 700 m => orbite à 550 m.
-// Si le NPC porte aussi loin que nous (ex 700 vs 700), on plafonne à 690 m :
-// on reste DANS sa portée, c'est normal, on ne peut pas faire mieux.
+// Rayon de combat (la "zone") : TOUJOURS notre portee laser max, en direct.
+// Recalcule a chaque tick depuis playerRange : si ta portee bouge (MMT x2,
+// charges Hecate), l'orbite suit aussitot. Les balles vivent exactement
+// playerRange / vitesse : tirer au max passe, mais a la limite pres.
 function botCombatDistance(npcOrType) {
-  const ownLimit = Math.max(0, (Number(playerRange) || 0) - 10);
-  const npc = npcOrType && typeof npcOrType === "object" ? npcOrType : null;
-  const type = npc ? npc.type : npcOrType;
-  // La valeur vivante de l'entite est prioritaire : certains NPC peuvent
-  // recevoir une portee modifiee au spawn ou par leur variante de map.
-  const npcRange = Math.max(0, Number(npc?.shootRange) || Number(NPC_TYPES[type]?.shootRange) || 0);
-  const desired = npcRange > 0 ? npcRange + 50 : Math.min(560, ownLimit);
-  return Math.min(desired, ownLimit);
+  void npcOrType;
+  return Math.max(0, Number(playerRange) || 0);
 }
 
 // Bascule silencieuse de configuration 1/2 (même logique que le bouton,
@@ -10359,8 +10354,8 @@ function botEngageNpc(npc) {
   let d = 0;
   try { d = Math.hypot(npc.x - player.x, npc.y - player.y); } catch {}
   const engageMax = botEngageRange();
-  if (!attackActive && d <= Math.max(80, engageMax - 10)) { try { startAttack(); } catch {} }
-  else if (attackActive && d > engageMax) { try { stopAttack(); } catch {} }
+  if (!attackActive && d <= Math.max(80, engageMax)) { try { startAttack(); } catch {} }
+  else if (attackActive && d > engageMax + 20) { try { stopAttack(); } catch {} }
   if (npc.id != null) Bot.lastNpcId = npc.id;
   return npc;
 }
@@ -10499,6 +10494,24 @@ function botClampMoveTarget(x, y) {
   return { x: clamp(x, 80, WORLD.w - 80), y: clamp(y, 80, WORLD.h - 80) };
 }
 
+// Ordre de mouvement throttlé (combat uniquement) : le tick tourne à chaque
+// frame, mais on ne RE-clique que si le nouveau point a bougé de 50 m+ ou si
+// la cible a changé. Entre deux ordres le vaisseau file en ligne droite :
+// fini les clics à foison tout autour et le glitch sur place. Le tag =
+// l'id du NPC : changer de cible force un ordre frais.
+function botOrderMove(x, y, tag) {
+  x = Math.round(Number(x) || 0);
+  y = Math.round(Number(y) || 0);
+  if (moveTarget.active && Bot.moveTag === tag) {
+    const dx = x - moveTarget.x, dy = y - moveTarget.y;
+    if (dx * dx + dy * dy < 2500) return; // < 50 m : on garde l'ordre en cours
+  }
+  Bot.moveTag = tag;
+  moveTarget.active = true;
+  moveTarget.x = x;
+  moveTarget.y = y;
+}
+
 // Conserve le rayon de combat meme pres d'un bord. Un clamp direct peut
 // rabattre un point exterieur juste a cote du NPC ; on cherche alors le point
 // valide le plus proche sur le meme cercle.
@@ -10536,20 +10549,18 @@ function botShipSpeed() {
 // ✅ Kiting de combat EXCLUSIF Galaxy Gate : répulsion quadratique de TOUS
 // les NPC proches + dérive tangentielle. Jamais utilisé sur map.
 function botKiteCombatMove(npc, d, standD, dt) {
-  if (!npc || Number(npc.hp) <= 0) { moveTarget.active = false; return; }
+  if (!npc || Number(npc.hp) <= 0) { moveTarget.active = false; Bot.moveTag = null; return; }
   // Meme en GG, la distance a la cible tiree passe avant les esquives.
   if (d < standD - 12) {
     botOrbitCombatMove(npc, d, standD, dt);
     return;
   }
-  if (d > Math.max(80, playerRange - 10)) {
+  if (d > Math.max(80, playerRange + 20)) {
     // Hors de portée : approche décalée (point à standD, pas le centre).
     const ax = d > 1 ? (player.x - npc.x) / d : 1;
     const ay = d > 1 ? (player.y - npc.y) / d : 0;
     const tgt = botClampMoveTarget(npc.x + ax * standD, npc.y + ay * standD);
-    moveTarget.active = true;
-    moveTarget.x = tgt.x;
-    moveTarget.y = tgt.y;
+    botOrderMove(tgt.x, tgt.y, npc.id);
     return;
   }
   let kx = 0, ky = 0;
@@ -10590,20 +10601,22 @@ function botKiteCombatMove(npc, d, standD, dt) {
       rawY = npc.y + ndy / nd * standD;
     }
     const tgt = botGateKiteTarget(rawX, rawY, closestD < 600);
-    moveTarget.active = true;
-    moveTarget.x = tgt.x;
-    moveTarget.y = tgt.y;
+    botOrderMove(tgt.x, tgt.y, npc.id);
   }
 }
 
-// Orbite de combat MAP (vrai cercle) : le point visé est proche (~0.6 s
-// devant sur le cercle, jamais loin devant), donc le vaisseau suit le
-// cercle au lieu de couper la corde et spiraler vers le NPC.
-// - trop près (d < standD - 12) : recul radial + amorce tangentielle.
-// - sinon : point sur le cercle légèrement devant + correction radiale douce.
+// Orbite de combat MAP : lock, RECULE jusqu'au max range, puis tourne en
+// rond EN RECULANT (poussée extérieure permanente, comme le kiting qui
+// marche bien). 3 phases :
+// 1. dedans (d < standD - 12) : recule franc vers le max + amorce du cercle.
+// 2. dehors loin (d > standD + 60) : approche radiale directe au cercle.
+// 3. sur le cercle : tourne en rond en poussant vers l'extérieur.
+// L'équilibre est pile à standD (= portée laser max) : au-dessus, les
+// balles mourraient avant d'arriver (elles vivent exactement playerRange).
 // Le sens est stable par cible (flip rare toutes les ~14-22 s).
 function botOrbitCombatMove(npc, d, standD, dt) {
-  if (!npc || Number(npc.hp) <= 0) { moveTarget.active = false; return; }
+  if (!npc || Number(npc.hp) <= 0) { moveTarget.active = false; Bot.moveTag = null; return; }
+  void dt;
   const shipV = botShipSpeed();
   const awayX = d > 1 ? (player.x - npc.x) / d : 1;
   const awayY = d > 1 ? (player.y - npc.y) / d : 0;
@@ -10617,25 +10630,29 @@ function botOrbitCombatMove(npc, d, standD, dt) {
     Bot.orbitFlipAt = nowMs + 14000 + Math.random() * 8000;
   }
   const s = Number(Bot.orbitDir) || 1;
-  const TOL = 12;
-  if (d < standD - TOL && d > 0.01) {
-    // Trop pres : on sort franchement vers le rayon + on amorce le cercle
-    // (85 % radial / 35 % tangentiel) au lieu de reculer en ligne droite.
+  // Phase 1 — TROP PRES : recule au max range en amorçant le cercle
+  // (radial fort + tangentiel, pas de ligne droite).
+  if (d < standD - 12 && d > 0.01) {
     const tx = -awayY * s, ty = awayX * s;
-    const need = (standD - d) + 180;
-    const rawX = player.x + awayX * need + tx * 160;
-    const rawY = player.y + awayY * need + ty * 160;
+    const need = (standD - d) + 200;
+    const rawX = player.x + awayX * need + tx * 180;
+    const rawY = player.y + awayY * need + ty * 180;
     const tgt = botClampCombatTarget(npc, rawX, rawY, standD);
-    moveTarget.active = true;
-    moveTarget.x = tgt.x;
-    moveTarget.y = tgt.y;
+    botOrderMove(tgt.x, tgt.y, npc.id);
+    return;
+  }
+  // Phase 2 — TROP LOIN : approche radiale directe au point le plus proche
+  // du cercle (pas d'angle, pas de détour).
+  if (d > standD + 60) {
+    const tgt = botClampCombatTarget(npc, npc.x + awayX * standD, npc.y + awayY * standD, standD);
+    botOrderMove(tgt.x, tgt.y, npc.id);
     return;
   }
   const currentAngle = Math.atan2(player.y - npc.y, player.x - npc.x);
-  // Vitesse angulaire réellement tenable : v / r à 80 % (marge pour corriger).
+  // Phase 3 — SUR LE CERCLE : tourne en rond EN RECULANT. Le point visé
+  // est proche (~0.6 s devant, 6°..24°) + rayon tangent (standD / cos) qui
+  // pousse vers l'extérieur en permanence : le vaisseau ne replonge jamais.
   const omega = shipV / Math.max(200, standD) * 0.8;
-  // Point visé ~0.6 s devant, clampé 6°..24° : proche = pas de corde coupée,
-  // pas de toupie collée.
   const ahead = Math.min(0.42, Math.max(0.10, omega * 0.6));
   const targetAngle = currentAngle + s * ahead;
   // Aller en ligne droite vers un point du cercle coupe la corde et fait
@@ -10650,9 +10667,7 @@ function botOrbitCombatMove(npc, d, standD, dt) {
   const rawX = npc.x + Math.cos(targetAngle) * wantR;
   const rawY = npc.y + Math.sin(targetAngle) * wantR;
   const tgt = botClampCombatTarget(npc, rawX, rawY, standD);
-  moveTarget.active = true;
-  moveTarget.x = tgt.x;
-  moveTarget.y = tgt.y;
+  botOrderMove(tgt.x, tgt.y, npc.id);
 }
 
 // Spinner auto hors gate (toutes les 100 ms) : multiplicateur auto puis
@@ -11389,12 +11404,12 @@ function tickBot(dt) {
     // de cancelCollectableTarget ici, et pas de reset de lastBoxId (compteur).
     botApplyNpcAmmo(npc);
     // Tir UNIQUEMENT à portée (jamais de lock + tir à l'autre bout de la
-    // carte) : hors portée on approche en silence, à portée on engage
-    // (hysteresis a 10 m / limite exacte : pas de on/off a la limite).
+    // carte) : hors portée on approche en silence, à portée max on engage.
+    // On ne coupe que 20 m au-delà (epsilon anti on/off, pas un réglage).
     const engageMax = botEngageRange();
-    if (!attackActive && d <= Math.max(80, engageMax - 10)) {
+    if (!attackActive && d <= Math.max(80, engageMax)) {
       try { startAttack(); } catch {}
-    } else if (attackActive && d > engageMax) {
+    } else if (attackActive && d > engageMax + 20) {
       try { stopAttack(); } catch {}
     }
     // Munitions speciales auto (SAB bouclier / X6 burst).
@@ -11431,9 +11446,7 @@ function tickBot(dt) {
     // proches (surtout les non-ciblés) et on strafe doucement pour ne jamais
     // rester immobile sous les tirs.
     const isGgCombat = Bot.module === "galaxy" && rules?.mode === "gate";
-    // Distance de sécurité : hors de portée de tir du NPC quand c'est
-    // possible (portée NPC + marge), sinon au max de notre portée.
-    // Portee NPC + 50 m, plafonnee 10 m avant notre propre portee laser.
+    // Tout au max range laser (standD = playerRange live).
     // GG = kiting exclusif, map = orbite en rond exclusive.
     if (isGgCombat) {
       botKiteCombatMove(npc, d, standD, dt);
