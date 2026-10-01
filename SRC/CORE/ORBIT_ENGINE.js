@@ -11465,10 +11465,11 @@ function tickBot(dt) {
     // rester immobile sous les tirs.
     const isGgCombat = Bot.module === "galaxy" && rules?.mode === "gate";
     // Tout au max range laser (standD = playerRange live).
-    // GG = kiting exclusif, map = orbite en rond exclusive.
+    // Map : orbite en rond, SAUF poursuite + première attaque = kiting.
+    // GG = kiting exclusif.
     // POURSUITE (map uniquement) : le NPC se sauve en plein combat (on
     // tenait le cercle et il a filé au-delà de +150 m, ou il s'éloigne vite
-    // au-delà de +60 m) → on fonce droit sur lui jusqu'à ~100 m pour le
+    // au-delà de +60 m) → kiting resserré à 120 m pour le coller et le
     // finir, au lieu de rester bêtement à orbiter derrière. L'orbite
     // reprend dès qu'on est au contact. Jamais en GG (paquet).
     let chasing = false;
@@ -11492,13 +11493,27 @@ function tickBot(dt) {
     }
     if (chasing) {
       Bot.status = Bot.mode === "both" ? "Farm — poursuite" : "Chasse — poursuite";
-      Bot.target = `${npcName} en fuite (${Math.round(d)}m) — on le colle`;
-      const tgt = botClampMoveTarget(npc.x, npc.y);
-      botOrderMove(tgt.x, tgt.y, npc.id);
+      if (d > engageMax) {
+        // Hors portée (les balles meurent à playerRange : tirer ne servirait
+        // à rien) → on fonce droit sur lui pour recoller, fermeture max.
+        Bot.target = `${npcName} en fuite (${Math.round(d)}m) — on fonce`;
+        const tgt = botClampMoveTarget(npc.x, npc.y);
+        botOrderMove(tgt.x, tgt.y, npc.id);
+      } else {
+        // À portée → kiting resserré à 120 m : on le colle en bougeant et
+        // on continue de tirer (le tir repart tout seul dès que ça porte).
+        Bot.target = `${npcName} en fuite (${Math.round(d)}m) — kiting resserré`;
+        botKiteCombatMove(npc, d, 120, dt);
+      }
       botRefreshHudThrottled(dt);
       return;
     }
-    if (isGgCombat) {
+    // PREMIERE ATTAQUE (map uniquement) : cercle jamais tenu sur cette cible
+    // et encore loin → approche en kiting (celui qui marche bien), l'orbite
+    // prend le relais dès qu'on est sur le cercle.
+    const firstAttack = !isGgCombat && Bot.closeId !== npc.id && d > standD + 60;
+    if (firstAttack) Bot.target = `${npcName} — approche (${Math.round(d)}m)`;
+    if (isGgCombat || firstAttack) {
       botKiteCombatMove(npc, d, standD, dt);
     } else {
       botOrbitCombatMove(npc, d, standD, dt);
