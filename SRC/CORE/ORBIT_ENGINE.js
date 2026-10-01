@@ -10312,7 +10312,11 @@ function botEngageNpc(npc) {
   const engageMax = botEngageRange();
   if (!attackActive && d <= Math.max(80, engageMax)) { try { startAttack(); } catch {} }
   else if (attackActive && d > engageMax + 20) { try { stopAttack(); } catch {} }
-  if (npc.id != null) Bot.lastNpcId = npc.id;
+  try { botAutoSpecialAmmo(npc, d, engageMax); } catch {}
+  if (npc.id != null) {
+    Bot.lastNpcId = npc.id;
+    Bot.combatTargetId = npc.id;
+  }
   return npc;
 }
 
@@ -11157,14 +11161,24 @@ function tickBot(dt) {
   const wantBox = Bot.mode === "collect" || Bot.mode === "both";
   const foundNpc = wantKill ? botNearestNpc() : null;
   const foundBox = wantBox ? botNearestBox() : null;
+  let lockedBox = null;
+  if (wantBox && Bot.lastBoxId != null) {
+    try {
+      lockedBox = collectables.find((box) => box && String(box.id) === String(Bot.lastBoxId)
+        && Bot.boxAllow.has(String(box.type))) || null;
+    } catch { lockedBox = null; }
+  }
+  const selectedBox = lockedBox
+    ? { box: lockedBox, d2: dist2(player.x, player.y, lockedBox.x, lockedBox.y) }
+    : foundBox;
 
   // Verrouillage auto : sur map on ne change pas de cible tant que
   // l'actuelle n'est pas finie ; en GG on switch librement au plus proche.
   // (Plus d'option : comportement fixé.)
   let lockedNpc = null;
-  if (rules?.mode !== "gate" && (Bot.mode === "kill" || Bot.mode === "both")) {
+  if (Bot.mode === "kill" || Bot.mode === "both") {
     try {
-      const botLocked = Bot.combatTargetId == null ? null : enemies.find((enemy) => enemy?.id === Bot.combatTargetId);
+      const botLocked = Bot.combatTargetId == null ? null : enemies.find((enemy) => String(enemy?.id) === String(Bot.combatTargetId));
       const cur = botLocked || Target.get();
       if (cur && !cur.isPetTarget && Number(cur.hp) > 0 && enemies.includes(cur)
         && Bot.npcAllow.has(String(cur.type))) {
@@ -11265,17 +11279,17 @@ function tickBot(dt) {
     }
     if (!pick) Bot.target = "Aucune cible de quête";
   } else if (Bot.mode === "kill") pick = lockedNpc ? { kind: "npc", ref: lockedNpc } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null);
-  else if (Bot.mode === "collect") pick = foundBox ? { kind: "box", ref: foundBox.box } : null;
-  else if (Bot.priority === "box") pick = foundBox ? { kind: "box", ref: foundBox.box } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null);
+  else if (Bot.mode === "collect") pick = selectedBox ? { kind: "box", ref: selectedBox.box } : null;
+  else if (Bot.priority === "box") pick = selectedBox ? { kind: "box", ref: selectedBox.box } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null);
   else if (Bot.priority === "nearest") {
     const nearestNpc = botNearestNpcByDistance();
     const simultaneousReach = Math.max(500, botEngageRange() * 1.25);
-    if (nearestNpc && foundBox) {
-      const boxToNpc = Math.hypot(foundBox.box.x - nearestNpc.npc.x, foundBox.box.y - nearestNpc.npc.y);
-      pick = boxToNpc <= simultaneousReach ? { kind: "box", ref: foundBox.box } : { kind: "npc", ref: nearestNpc.npc };
+    if (nearestNpc && selectedBox) {
+      const boxToNpc = Math.hypot(selectedBox.box.x - nearestNpc.npc.x, selectedBox.box.y - nearestNpc.npc.y);
+      pick = boxToNpc <= simultaneousReach ? { kind: "box", ref: selectedBox.box } : { kind: "npc", ref: nearestNpc.npc };
     }
     else if (nearestNpc) pick = { kind: "npc", ref: nearestNpc.npc };
-    else if (foundBox) pick = { kind: "box", ref: foundBox.box };
+    else if (selectedBox) pick = { kind: "box", ref: selectedBox.box };
   } else {
     // NPC d'abord (défaut) : le NPC le plus proche gagne, sinon la box.
     pick = lockedNpc ? { kind: "npc", ref: lockedNpc } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : (foundBox ? { kind: "box", ref: foundBox.box } : null));
@@ -11285,7 +11299,7 @@ function tickBot(dt) {
   // toute box ou patrouille. La fenêtre couvre également un spawn/snapshot
   // qui arriverait juste après la disparition de la cible précédente.
   const previousNpcDied = Bot.lastNpcId != null
-    && !enemies.some((enemy) => enemy && enemy.id === Bot.lastNpcId && Number(enemy.hp) > 0);
+    && !enemies.some((enemy) => enemy && String(enemy.id) === String(Bot.lastNpcId) && Number(enemy.hp) > 0);
   if (lockedNpc) Bot.postKillScanT = 0;
   else if (previousNpcDied && Bot.mode !== "collect") Bot.postKillScanT = 1.5;
   if (!lockedNpc && Bot.postKillScanT > 0 && Bot.mode !== "collect" && Bot.priority === "npc") {
@@ -11300,7 +11314,7 @@ function tickBot(dt) {
 
   // Compteurs : cible suivie qui a disparu = kill / collecte réussie.
   if (Bot.lastNpcId != null && (!foundNpc || foundNpc.npc.id !== Bot.lastNpcId)) {
-    const stillAlive = enemies.some((e) => e && e.id === Bot.lastNpcId && Number(e.hp) > 0);
+    const stillAlive = enemies.some((e) => e && String(e.id) === String(Bot.lastNpcId) && Number(e.hp) > 0);
     if (!stillAlive) {
       Bot.kills++;
       botSaveConfig();
@@ -11310,16 +11324,16 @@ function tickBot(dt) {
       Bot.combatTargetId = null;
     }
   }
-  if (Bot.lastBoxId != null && (!foundBox || foundBox.box.id !== Bot.lastBoxId)) {
-    const stillThere = collectables.some((c) => c && c.id === Bot.lastBoxId);
+  if (Bot.lastBoxId != null) {
+    const stillThere = collectables.some((c) => c && String(c.id) === String(Bot.lastBoxId));
     if (!stillThere) {
       Bot.boxes++;
       botSaveConfig();
       const bc = document.getElementById("botBoxCount");
       if (bc) bc.textContent = String(Bot.boxes);
       Bot.grabCd = 4;
+      Bot.lastBoxId = null;
     }
-    Bot.lastBoxId = null;
   }
 
   if (!pick) {
