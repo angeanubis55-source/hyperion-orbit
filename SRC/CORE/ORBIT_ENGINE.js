@@ -30,6 +30,7 @@ import {
 } from "../../PET/PET_GEARS.js";
 import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_TRAILS.js";
 import { computeBotCombatMove } from "./BOT_NAVIGATION.js";
+import { SpatialIndex } from "./SPATIAL_INDEX.js";
 "use strict";
 import {
   getCurrentUserFull,
@@ -10113,31 +10114,16 @@ function botNearestQuestNpc(set) {
 }
 
 function botNearestQuestBox(set) {
-  let best = null;
-  let bestD2 = Infinity;
-  const rad2 = Bot.boxRadius > 0 ? Bot.boxRadius * Bot.boxRadius : 0;
-  for (const c of collectables) {
-    if (!c) continue;
-    if (!Bot.boxAllow.has(String(c.type))) continue;
-    if (!set.has(String(c.type))) continue;
-    const d2 = dist2(player.x, player.y, c.x, c.y);
-    if (rad2 > 0 && d2 > rad2) continue;
-    if (d2 < bestD2) { bestD2 = d2; best = c; }
-  }
-  return best ? { box: best, d2: bestD2 } : null;
+  const found = nearestSpatialCollectable(player.x, player.y, (c) => c
+    && Bot.boxAllow.has(String(c.type)) && set.has(String(c.type)), Bot.boxRadius);
+  return found ? { box: found.item, d2: found.d2 } : null;
 }
 
 // Plus proche NPC vivant (module Galaxy Gates : vagues imposées, pas de filtre).
 function botNearestAnyNpc() {
-  let best = null;
-  let bestD2 = Infinity;
-  for (const e of enemies) {
-    if (!e || Number(e.hp) <= 0) continue;
-    if (e.isPetTarget) continue;
-    const d2 = dist2(player.x, player.y, e.x, e.y);
-    if (d2 < bestD2) { bestD2 = d2; best = e; }
-  }
-  return best ? { npc: best, d2: bestD2 } : null;
+  const found = nearestSpatialNpc(player.x, player.y,
+    (e) => e && Number(e.hp) > 0 && !e.isPetTarget);
+  return found ? { npc: found.item, d2: found.d2 } : null;
 }
 
 function botNearestNpc() {
@@ -10158,15 +10144,9 @@ function botNearestNpc() {
 // Distance pure pour le choix mixte "Le plus proche". Les priorites par
 // type de NPC restent reservees au choix "NPC en priorite".
 function botNearestNpcByDistance() {
-  let best = null;
-  let bestD2 = Infinity;
-  for (const e of enemies) {
-    if (!e || Number(e.hp) <= 0 || e.isPetTarget) continue;
-    if (!Bot.npcAllow.has(String(e.type))) continue;
-    const d2 = dist2(player.x, player.y, e.x, e.y);
-    if (d2 < bestD2) { bestD2 = d2; best = e; }
-  }
-  return best ? { npc: best, d2: bestD2 } : null;
+  const found = nearestSpatialNpc(player.x, player.y, (e) => e
+    && Number(e.hp) > 0 && !e.isPetTarget && Bot.npcAllow.has(String(e.type)));
+  return found ? { npc: found.item, d2: found.d2 } : null;
 }
 
 // La portee d'engagement est toujours notre portee laser reelle.
@@ -10179,7 +10159,8 @@ function botNearestNpcInRange(maxD) {
   let best = null;
   let bestD2 = Infinity;
   const lim2 = maxD > 0 ? maxD * maxD : Infinity;
-  for (const e of enemies) {
+  const candidates = Number.isFinite(lim2) ? spatialNpcsNear(player.x, player.y, maxD) : enemies;
+  for (const e of candidates) {
     if (!e || Number(e.hp) <= 0) continue;
     if (e.isPetTarget) continue;
     if (!Bot.npcAllow.has(String(e.type))) continue;
@@ -10396,7 +10377,7 @@ function botGrabBoxForFight(npc, standD) {
     }
     let best = null;
     let bestD2 = Infinity;
-    for (const c of collectables) {
+    for (const c of spatialCollectablesNear(player.x, player.y, BOT_GRAB_RADIUS)) {
       if (!c) continue;
       if (!Bot.boxAllow.has(String(c.type))) continue;
       const d2 = dist2(player.x, player.y, c.x, c.y);
@@ -10418,15 +10399,9 @@ function botGrabBoxForFight(npc, standD) {
 }
 
 function botNearestBox() {
-  let best = null;
-  let bestD2 = Infinity;
-  for (const c of collectables) {
-    if (!c) continue;
-    if (!Bot.boxAllow.has(String(c.type))) continue;
-    const d2 = dist2(player.x, player.y, c.x, c.y);
-    if (d2 < bestD2) { bestD2 = d2; best = c; }
-  }
-  return best ? { box: best, d2: bestD2 } : null;
+  const found = nearestSpatialCollectable(player.x, player.y,
+    (c) => c && Bot.boxAllow.has(String(c.type)), Bot.boxRadius);
+  return found ? { box: found.item, d2: found.d2 } : null;
 }
 
 // Itinéraire physique entre deux maps via le graphe des portails (BFS).
@@ -19005,6 +18980,78 @@ function snapshotActiveEnemiesToUniverse(mapId) {
 const escortShips = [];
 const pickups = [];
 const collectables = [];
+const npcSpatialIndex = new SpatialIndex(700);
+const collectableSpatialIndex = new SpatialIndex(700);
+let npcSpatialFrame = -1;
+let collectableSpatialLength = -1;
+let collectableSpatialAt = 0;
+
+function refreshNpcSpatialIndex() {
+  const frame = Math.floor(performance.now() / 16);
+  if (frame === npcSpatialFrame) return;
+  npcSpatialFrame = frame;
+  npcSpatialIndex.rebuild(enemies);
+}
+
+function refreshCollectableSpatialIndex() {
+  const now = performance.now();
+  if (collectableSpatialLength === collectables.length && now - collectableSpatialAt < 250) return;
+  collectableSpatialLength = collectables.length;
+  collectableSpatialAt = now;
+  collectableSpatialIndex.rebuild(collectables);
+}
+
+function spatialNpcsInRect(minX, minY, maxX, maxY) {
+  refreshNpcSpatialIndex();
+  return npcSpatialIndex.queryRect(minX, minY, maxX, maxY);
+}
+
+function spatialNpcsNear(x, y, radius) {
+  refreshNpcSpatialIndex();
+  return npcSpatialIndex.queryCircle(x, y, radius);
+}
+
+function nearestSpatialNpc(x, y, predicate, maxRadius = 0) {
+  const limit = maxRadius > 0 ? maxRadius : Math.hypot(WORLD.w, WORLD.h);
+  let radius = Math.min(700, limit);
+  while (radius > 0) {
+    let best = null, bestD2 = Infinity;
+    for (const item of spatialNpcsNear(x, y, radius)) {
+      if (!predicate(item)) continue;
+      const d2 = dist2(x, y, item.x, item.y);
+      if (d2 < bestD2) { best = item; bestD2 = d2; }
+    }
+    if (best || radius >= limit) return best ? { item: best, d2: bestD2 } : null;
+    radius = Math.min(limit, radius * 2);
+  }
+  return null;
+}
+
+function spatialCollectablesInRect(minX, minY, maxX, maxY) {
+  refreshCollectableSpatialIndex();
+  return collectableSpatialIndex.queryRect(minX, minY, maxX, maxY);
+}
+
+function spatialCollectablesNear(x, y, radius) {
+  refreshCollectableSpatialIndex();
+  return collectableSpatialIndex.queryCircle(x, y, radius);
+}
+
+function nearestSpatialCollectable(x, y, predicate, maxRadius = 0) {
+  const limit = maxRadius > 0 ? maxRadius : Math.hypot(WORLD.w, WORLD.h);
+  let radius = Math.min(700, limit);
+  while (radius > 0) {
+    let best = null, bestD2 = Infinity;
+    for (const item of spatialCollectablesNear(x, y, radius)) {
+      if (!predicate(item)) continue;
+      const d2 = dist2(x, y, item.x, item.y);
+      if (d2 < bestD2) { best = item; bestD2 = d2; }
+    }
+    if (best || radius >= limit) return best ? { item: best, d2: bestD2 } : null;
+    radius = Math.min(limit, radius * 2);
+  }
+  return null;
+}
 const sparks = [];
 const healerPulses = [];
 // Pulsations de halo génériques (pod Aegis, bouées pet) : même visuel que
@@ -20136,7 +20183,8 @@ function scanPetFetch(gears) {
   const arRange = getPetGearRangeWithRadar("ar", gears.ar, pet, account.user);
   if (Math.max(alRange, arRange) <= 0) return null;
   const next = pickNearestWithin(
-    collectables, player.x, player.y, Math.max(alRange, arRange),
+    spatialCollectablesNear(player.x, player.y, Math.max(alRange, arRange)),
+    player.x, player.y, Math.max(alRange, arRange),
     (c) => isPetFetchEligible(c, gears, alRange, arRange),
   );
   if (next) petState.fetchId = next.id;
@@ -20159,7 +20207,8 @@ function scanTbrFetch(c, gears, exclude) {
   const arRange = getPetGearRangeWithRadar("ar", gears.ar, pet, account.user);
   if (Math.max(alRange, arRange) <= 0) return null;
   const next = pickNearestWithin(
-    collectables, Number(c.x || 0), Number(c.y || 0), Math.max(alRange, arRange),
+    spatialCollectablesNear(Number(c.x || 0), Number(c.y || 0), Math.max(alRange, arRange)),
+    Number(c.x || 0), Number(c.y || 0), Math.max(alRange, arRange),
     (b) => !exclude.has(b?.id) && isPetFetchEligible(b, gears, alRange, arRange),
   );
   if (next) c.fetchId = next.id;
@@ -20205,7 +20254,7 @@ function tickPetLocator(gears, dt) {
   }
   const range = getPetGearRangeWithRadar("el", gears.el, account.user?.pet, account.user);
   const foe = pickNearestWithin(
-    enemies, player.x, player.y, range,
+    spatialNpcsNear(player.x, player.y, range), player.x, player.y, range,
     (e) => Number(e?.hp) > 0 && String(e.type || "?") === petLocator.manualType,
   );
   if (foe) {
@@ -21731,6 +21780,9 @@ const COLLECTABLE_DEFS =
     : (rules?.collectables?.types || {});
 
 let collectableSpawnT = 0;
+const COLLECTABLE_NEAR_RADIUS = 2000;
+const COLLECTABLE_FAR_TICK_INTERVAL = 1;
+let collectableFarTickT = 0;
 
 function currentMapId() {
   return String(window.__CURRENT_MAP_ID__ || "1-1");
@@ -22702,6 +22754,10 @@ function tickCollectables(dt) {
   }
 
   collectableSpawnT -= dt;
+  collectableFarTickT += dt;
+  const tickFarCollectables = collectableFarTickT >= COLLECTABLE_FAR_TICK_INTERVAL;
+  const farCollectableDt = tickFarCollectables ? collectableFarTickT : 0;
+  if (tickFarCollectables) collectableFarTickT = 0;
 
   // En multi les ambiantes viennent exclusivement du serveur.
   if (collectableSpawnT <= 0 && rules?.mode !== "zone") {
@@ -22739,10 +22795,22 @@ function tickCollectables(dt) {
     const c = collectables[i];
     if (!c) continue;
 
+    // Les box sont immobiles : au-delà de la zone visible estimée (1 800)
+    // et de sa marge de 200 unités, leur animation/expiration peut tourner à
+    // 1 Hz. Une box ciblée par le joueur ou le PET reste toujours à pleine
+    // fréquence afin de ne jamais ralentir un déplacement ou une collecte.
+    const isPlayerTarget = collectableTargetId === c.id;
+    const isPetTarget = petState.fetchId === c.id;
+    const dxPlayer = Number(c.x || 0) - player.x;
+    const dyPlayer = Number(c.y || 0) - player.y;
+    const isNearPlayer = dxPlayer * dxPlayer + dyPlayer * dyPlayer <= COLLECTABLE_NEAR_RADIUS * COLLECTABLE_NEAR_RADIUS;
+    if (!isNearPlayer && !isPlayerTarget && !isPetTarget && !tickFarCollectables) continue;
+    const collectableDt = isNearPlayer || isPlayerTarget || isPetTarget ? dt : farCollectableDt;
+
     const cfg = COLLECTABLE_DEFS[c.type] || {};
     const sp = cfg.sprite || {};
 
-    c.t += dt;
+    c.t += collectableDt;
 
     if (c.despawnAfter > 0 && c.t >= c.despawnAfter) {
   if (collectableTargetId === c.id) {
@@ -22762,7 +22830,7 @@ function tickCollectables(dt) {
 }
 
     const fps = Math.max(0.01, Number(sp.fps ?? sp.speed ?? 12));
-    c.frameAcc += dt * fps;
+    c.frameAcc += collectableDt * fps;
 
     if (player.dead) continue;
 
@@ -22819,7 +22887,7 @@ const d = Math.hypot(dx, dy);
 player.x = collectX;
 player.y = collectY;
 
-    c.collectT = (c.collectT || 0) + dt;
+    c.collectT = (c.collectT || 0) + collectableDt;
 
     // ✅ Attente de 1 seconde avant collecte
     if (c.collectT >= COLLECTABLE_PICKUP.holdDuration) {
@@ -22941,7 +23009,8 @@ function drawCollectBeam(c, ox, oy) {
 }
 
 function drawCollectables(ox, oy) {
-  for (const c of collectables) {
+  const visibleCollectables = spatialCollectablesInRect(-ox - 180, -oy - 180, -ox + innerWidth + 180, -oy + innerHeight + 180);
+  for (const c of visibleCollectables) {
     const cfg = COLLECTABLE_DEFS[c.type] || {};
     const sp = cfg.sprite || {};
 
@@ -27394,11 +27463,15 @@ escortShips.length = 0;
 pickups.length = 0;
 collectables.length = 0;
 collectablesWorldMap = null;
+npcSpatialFrame = -1;
+collectableSpatialLength = -1;
+collectableSpatialAt = 0;
 sparks.length = 0;
 floatTexts.length = 0;
 lasers.length = 0;
 engineTrails.length = 0;
 collectableSpawnT = 0;
+collectableFarTickT = 0;
 
   fireCooldown = 0;
   laserCd = 2.0;
@@ -33711,7 +33784,7 @@ function drawBotMinimalScene(ox, oy) {
   } catch {}
 
   // Collectables : points fixes. La cible de collecte conserve un anneau.
-  for (const item of collectables) {
+  for (const item of spatialCollectablesInRect(-ox - 20, -oy - 20, -ox + innerWidth + 20, -oy + innerHeight + 20)) {
     if (!item) continue;
     const x = item.x + ox, y = item.y + oy;
     if (!visible(x, y, 10)) continue;
@@ -33741,7 +33814,7 @@ function drawBotMinimalScene(ox, oy) {
   for (const shot of enemyBullets) drawShot(shot, "#ff6474");
 
   // NPC : fleche orientee. La cible verrouillee est jaune et garde ses barres.
-  for (const enemy of enemies) {
+  for (const enemy of spatialNpcsInRect(-ox - 50, -oy - 50, -ox + innerWidth + 50, -oy + innerHeight + 50)) {
     if (!enemy || Number(enemy.hp) <= 0) continue;
     if (!shouldDetectNpc(player, enemy, NPC_SENSOR_RANGES.visibility, target)) continue;
     const x = enemy.x + ox, y = enemy.y + oy;
@@ -33925,7 +33998,7 @@ if (GAME_SETTINGS.textures) {
     if (x < -pulse.radius || y < -pulse.radius || x > innerWidth + pulse.radius || y > innerHeight + pulse.radius) continue;
     drawHaloPulse(x, y, pulse.radius, k, pulse.fill, pulse.edge, pulse.alpha ?? 1, pulse.maxWidth ?? 6);
   }
-  for (const e of enemies) {
+  for (const e of spatialNpcsInRect(-ox - 240, -oy - 240, -ox + innerWidth + 240, -oy + innerHeight + 240)) {
     if (e.hp <= 0) continue;
     if (!shouldDetectNpc(player, e, NPC_SENSOR_RANGES.visibility, selectedEnemyForBars)) continue;
 

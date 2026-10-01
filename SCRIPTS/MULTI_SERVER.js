@@ -605,7 +605,7 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 // Un snapshot complet est remplace 50 ms plus tard : ne jamais empiler des
 // etats obsoletes pour un client dont la connexion ne suit plus.
 const SNAPSHOT_BACKPRESSURE_LIMIT = 256 * 1024;
-const NPC_NEAR_PLAYER_RADIUS = 2600;
+const NPC_NEAR_PLAYER_RADIUS = 2000;
 const PLAYER_NEAR_PLAYER_RADIUS = 2600;
 const PLAYER_STATIC_REFRESH_TICKS = 10; // garde-fou de resynchronisation : 500 ms
 const rooms = new Map(); // mapId(lower) -> Map(id -> { ws, state })
@@ -2049,13 +2049,15 @@ setInterval(() => {
 }, 250);
 
 // Broadcast + simu NPC 20 Hz par room, uniquement aux sockets ouvertes.
-// Les NPC loin de tous les joueurs voyagent a 10 Hz ; leur simulation reste
-// a 20 Hz et les NPC actifs/proches restent toujours dans chaque snapshot.
+// Les NPC inactifs à plus de 2 000 unités de tous les joueurs voyagent à 1 Hz ;
+// leur simulation reste à 20 Hz et les NPC actifs/proches restent toujours
+// dans chaque snapshot. Les joueurs lointains restent, eux, à 10 Hz.
 let snapshotTick = 0;
 setInterval(() => {
   const now = Date.now();
-  const fullNpcTick = (++snapshotTick & 1) === 0;
-  const fullPlayerTick = fullNpcTick;
+  snapshotTick++;
+  const fullNpcTick = snapshotTick % 20 === 0;
+  const fullPlayerTick = (snapshotTick & 1) === 0;
   const includePlayerStatic = snapshotTick % PLAYER_STATIC_REFRESH_TICKS === 0;
   for (const [key, room] of rooms) {
     if (!room.size) continue;
