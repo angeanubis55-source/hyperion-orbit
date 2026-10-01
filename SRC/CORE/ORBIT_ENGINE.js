@@ -9040,6 +9040,7 @@ function botCombatDistance(npcOrType) {
 // Bascule silencieuse de configuration 1/2 (même logique que le bouton,
 // sans les toasts ; cooldown 5 s respecté, échecs ignorés).
 function botApplyConfig(want) {
+  if (!Bot.active) return;
   want = Number(want) === 2 ? 2 : Number(want) === 1 ? 1 : 0;
   if (!want) return;
   try {
@@ -9210,6 +9211,7 @@ function botRestoreLoadout() {
 // Bascule silencieuse de formation drones (échec ignoré : non possédée,
 // pas assez de drones, cooldown 2 s côté compte).
 function botApplyFormation(id) {
+  if (!Bot.active) return;
   if (!id || id === Bot.lastFormation) return;
   let out = null;
   try { out = setCurrentUserDroneFormation(id); } catch { return; }
