@@ -10570,6 +10570,9 @@ function botApplyGalaxyFinishFormation() {
 // ~3,5 s d'exposition, ~500 m de profondeur max), exposition remise à 0 dès
 // la rentrée, et les NPC suivent peu/nul dehors : respiration garantie.
 function botGateKiteTarget(rawX, rawY, threatClose) {
+  void threatClose;
+  return { x: clamp(rawX, 120, WORLD.w - 120), y: clamp(rawY, 120, WORLD.h - 120) };
+  /* Ancienne excursion volontaire en radiation desactivee.
   const inside = { x: clamp(rawX, 120, WORLD.w - 120), y: clamp(rawY, 120, WORLD.h - 120) };
   try {
     let outside = false, exp = 0;
@@ -10586,18 +10589,14 @@ function botGateKiteTarget(rawX, rawY, threatClose) {
     const blocked = Math.hypot(inside.x - player.x, inside.y - player.y) < 150;
     if (!blocked || exp > 3.5) return inside;
     return { x: clamp(rawX, -500, WORLD.w + 500), y: clamp(rawY, -500, WORLD.h + 500) };
-  } catch { return inside; }
+  } catch { return inside; } */
 }
 
 // ✅ Clamp des cibles de mouvement du bot en combat : en map (zone), on
 // autorise la marge de radiations au lieu de rester plaqué contre le mur ou
 // coincé dans un coin. En gate, on reste strictement dans la carte.
 function botClampMoveTarget(x, y) {
-  if (isZoneMap) {
-    const m = RADIATION_SPAWN_MARGIN;
-    return { x: clamp(x, -m, WORLD.w + m), y: clamp(y, -m, WORLD.h + m) };
-  }
-  return { x: clamp(x, 80, WORLD.w - 80), y: clamp(y, 80, WORLD.h - 80) };
+  return { x: clamp(x, 120, WORLD.w - 120), y: clamp(y, 120, WORLD.h - 120) };
 }
 
 // Ordre de mouvement throttlé (combat uniquement) : le tick tourne à chaque
@@ -10674,7 +10673,7 @@ function botKiteCombatMove(npc, d, standD, dt) {
       minY: 0,
       maxX: WORLD.w,
       maxY: WORLD.h,
-      margin: isZoneMap ? -RADIATION_SPAWN_MARGIN : 80,
+      margin: 120,
     },
     state: Bot.steering?.npcId === npc.id ? Bot.steering : {},
     dt,
@@ -20540,20 +20539,11 @@ function updatePet(dt) {
   // vers sa box (ou déjà sur la suivante) ne doit pas faire demi-tour.
   // La portée reste centrée sur le joueur : s'éloigner trop annule la cible.
   const petGears = petActiveGears();
-  const ownerInRadiation = playerIsOutsideWorld();
-  const preFetch = ownerInRadiation ? null : (validatePetFetch(petGears) || scanPetFetch(petGears));
+  const preFetch = validatePetFetch(petGears) || scanPetFetch(petGears);
   const leash = Math.max(750, playerRange * 1.2) + (finishingAttack ? 600 : 0);
   // Inclure le rayon de combat : le cote oppose du NPC reste accessible.
   const ownerLeash = leash + PET_COMBAT_RADIUS;
-  if (ownerInRadiation) {
-    // En radiation, aucune box ni cible de combat ne retient le REX dans la
-    // carte : il abandonne son action et suit immediatement son proprietaire.
-    petState.returning = true;
-    petState.fetchId = null;
-    petState.fetchHold = 0;
-    petState.assistTarget = null;
-    petState.combatTarget = null;
-  } else if (ownerDistance > ownerLeash && !petState.returning && preFetch == null) {
+  if (ownerDistance > ownerLeash && !petState.returning && preFetch == null) {
     petState.returning = true;
     petState.assistTarget = null;
     petState.escortX = undefined;

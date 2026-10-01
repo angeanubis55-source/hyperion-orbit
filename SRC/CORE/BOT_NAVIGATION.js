@@ -36,13 +36,17 @@ export function computeBotCombatMove({ player, npc, range, desiredDistance, boun
 
   let x = predictedX + orbitX * targetRadius;
   let y = predictedY + orbitY * targetRadius;
+  let wallTurnT = Math.max(0, (Number(state.wallTurnT) || 0) - Math.max(0, Number(dt) || 0));
   const margin = Number(bounds?.margin ?? 80);
   const minX = Number(bounds?.minX ?? 0) + margin;
   const minY = Number(bounds?.minY ?? 0) + margin;
   const maxX = Number(bounds?.maxX ?? 10000) - margin;
   const maxY = Number(bounds?.maxY ?? 10000) - margin;
   if (x < minX || x > maxX || y < minY || y > maxY) {
-    direction *= -1;
+    if (wallTurnT <= 0) {
+      direction *= -1;
+      wallTurnT = 0.75;
+    }
     const tx = -radial.y * direction, ty = radial.x * direction;
     x = clamp(Number(player.x) + radial.x * 260 + tx * 520, minX, maxX);
     y = clamp(Number(player.y) + radial.y * 260 + ty * 520, minY, maxY);
@@ -50,5 +54,5 @@ export function computeBotCombatMove({ player, npc, range, desiredDistance, boun
     x = clamp(x, minX, maxX);
     y = clamp(y, minY, maxY);
   }
-  return { x, y, desired, inner, outer, distance, mode, state: { mode, direction, elapsed: (Number(state.elapsed) || 0) + Math.max(0, Number(dt) || 0) } };
+  return { x, y, desired, inner, outer, distance, mode, state: { mode, direction, wallTurnT, elapsed: (Number(state.elapsed) || 0) + Math.max(0, Number(dt) || 0) } };
 }

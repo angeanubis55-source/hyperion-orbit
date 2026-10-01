@@ -49,6 +49,16 @@ test("wall handling remains bounded", () => {
   assert.equal(Math.abs(out.state.direction), 1);
 });
 
+test("wall avoidance turns once then keeps circling away from radiation", () => {
+  const edgeNpc = { ...npc, x: 120, y: 120 };
+  const ship = { x: 170, y: 120 };
+  const first = computeBotCombatMove({ player: ship, npc: edgeNpc, range: 1000, bounds, state: { direction: 1 }, dt: 1 / 60 });
+  const second = computeBotCombatMove({ player: ship, npc: edgeNpc, range: 1000, bounds, state: first.state, dt: 1 / 60 });
+  assert.ok(first.x >= 80 && first.y >= 80);
+  assert.ok(second.x >= 80 && second.y >= 80);
+  assert.equal(second.state.direction, first.state.direction);
+});
+
 test("other NPCs never influence movement toward the locked target", () => {
   const input = { player: { x: 5800, y: 3000 }, npc, range: 1000, bounds, state: { direction: 1 } };
   const alone = computeBotCombatMove(input);
