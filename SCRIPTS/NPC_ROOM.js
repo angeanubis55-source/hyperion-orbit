@@ -6,6 +6,7 @@
 import { createUniverse, deserializeUniverse, ensureMapSlots, markDead, markAlive, getSlot, serializeUniverse, slotUid } from "../SRC/SIM/UNIVERSE_SIM.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
+import { createSpatialPairIndex } from "../SRC/CORE/SPATIAL_INDEX.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, Number(v)));
 const TAU = Math.PI * 2;
@@ -49,6 +50,7 @@ export class ZoneNpcSim {
     this.feed = new Map(); // "uid|by" -> { uid, by, total } (degats du tick)
     this.recentGone = []; // uids retires sans mort (despawn vague) : purge immediate cote client
     this.playerHits = []; // impacts NPC autoritaires a appliquer par MULTI_SERVER
+    this.separationIndex = createSpatialPairIndex(512);
     // Journal des kills (2.5 s) : le respawn instantane des NPC normaux
     // effacerait sinon la mort avant le snapshot — le killer perdrait sa recompense.
     this.deaths = []; // { uid, type, x, y, killer, at }
@@ -925,41 +927,51 @@ drainPlayerHits() {
         }
       }
     }
-    // 2bis) Séparation (parité gate) : les NPC du raid ne se stackent pas
-    // les uns sur les autres. Limitée aux entrées chasseuses (raid) :
-    // coût nul sur les autres maps (aucune entrée concernée).
+    // 2bis) Séparation (parité gate/Low) sur toutes les maps : les NPC
+    // vivants ne peuvent plus se superposer. L'index spatial limite le coût
+    // aux voisins immédiats au lieu de comparer toute la map en O(n²).
     try {
-      let raidList = null;
+      const activeList = [];
       for (const e of this.entries.values()) {
-        if (!e || !(e.hp > 0) || e.hunter !== true) continue;
-        (raidList || (raidList = [])).push(e);
+        if (e && e.hp > 0) activeList.push(e);
       }
-      if (raidList && raidList.length > 1) {
-        for (let i = 0; i < raidList.length; i++) {
-          const a = raidList[i];
-          for (let j = i + 1; j < raidList.length; j++) {
-            const b = raidList[j];
-            const dx = b.x - a.x, dy = b.y - a.y;
-            const minimum = (Number(a.r) || 18) + (Number(b.r) || 18) + 6;
-            const squared = dx * dx + dy * dy;
-            if (squared >= minimum * minimum || squared <= 0.0001) continue;
-            const distance = Math.sqrt(squared);
-            const nx = dx / distance, ny = dy / distance;
-            const overlap = minimum - distance;
-            const push = Math.min(220, overlap * 28) * dt;
-            const side = Math.min(220, overlap * 12) * (((i + j) % 2 === 0) ? 1 : -1) * dt;
-            const tx = -ny, ty = nx;
-            const aRadiation = !!a.chaseId || a.x < 80 || a.x > this.world.w - 80 || a.y < 80 || a.y > this.world.h - 80;
-            const bRadiation = !!b.chaseId || b.x < 80 || b.x > this.world.w - 80 || b.y < 80 || b.y > this.world.h - 80;
-            const aMin = aRadiation ? 80 - RADIATION_CHASE_MARGIN : 80;
-            const bMin = bRadiation ? 80 - RADIATION_CHASE_MARGIN : 80;
-            a.x = clamp(a.x + (-nx * push + tx * side), aMin, aRadiation ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80);
-            a.y = clamp(a.y + (-ny * push + ty * side), aMin, aRadiation ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80);
-            b.x = clamp(b.x + (nx * push - tx * side), bMin, bRadiation ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80);
-            b.y = clamp(b.y + (ny * push - ty * side), bMin, bRadiation ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80);
-          }
+      this.separationIndex.forEachPair(activeList, (a, b, i, j) => {
+        let dx = b.x - a.x, dy = b.y - a.y;
+        const minimum = (Number(a.r) || 18) + (Number(b.r) || 18) + 6;
+        let squared = dx * dx + dy * dy;
+        if (squared >= minimum * minimum) return;
+        // Deux centres strictement identiques n'ont aucune direction de
+        // répulsion : leur donner un axe stable évite un stack permanent.
+        if (squared <= 0.0001) {
+          const angle = ((i + 1) * 2.399963 + (j + 1) * 0.754877) % TAU;
+          dx = Math.cos(angle) * 0.01;
+          dy = Math.sin(angle) * 0.01;
+          squared = dx * dx + dy * dy;
         }
-      }
+        const distance = Math.sqrt(squared);
+        const nx = dx / distance, ny = dy / distance;
+        const overlap = minimum - distance;
+        const push = Math.min(220, overlap * 28) * dt;
+        const side = Math.min(220, overlap * 12) * (((i + j) % 2 === 0) ? 1 : -1) * dt;
+        const tx = -ny, ty = nx;
+        const aAnchored = a.type === "npc_Cubikon";
+        const bAnchored = b.type === "npc_Cubikon";
+        if (aAnchored && bAnchored) return;
+        const aRadiation = !!a.chaseId || a.x < 80 || a.x > this.world.w - 80 || a.y < 80 || a.y > this.world.h - 80;
+        const bRadiation = !!b.chaseId || b.x < 80 || b.x > this.world.w - 80 || b.y < 80 || b.y > this.world.h - 80;
+        const aMin = aRadiation ? 80 - RADIATION_CHASE_MARGIN : 80;
+        const bMin = bRadiation ? 80 - RADIATION_CHASE_MARGIN : 80;
+        const aShare = bAnchored ? 2 : 1;
+        const bShare = aAnchored ? 2 : 1;
+        if (!aAnchored) {
+          a.x = clamp(a.x + (-nx * push + tx * side) * aShare, aMin, aRadiation ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80);
+          a.y = clamp(a.y + (-ny * push + ty * side) * aShare, aMin, aRadiation ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80);
+        }
+        if (!bAnchored) {
+          b.x = clamp(b.x + (nx * push - tx * side) * bShare, bMin, bRadiation ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80);
+          b.y = clamp(b.y + (ny * push - ty * side) * bShare, bMin, bRadiation ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80);
+        }
+      });
     } catch {}
   }
 

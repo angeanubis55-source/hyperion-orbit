@@ -33836,8 +33836,37 @@ const WALL_TEX = {
   w: 64,
   h: 64,
 };
+const MAP_BACKGROUND = {
+  src: "ASSETS/BACKGROUNDS/Hyperion_fond.webp",
+  overscan: 1.12,
+  maxParallax: 70,
+};
 
 loadImage(WALL_TEX.src, { priority: true });
+loadImage(MAP_BACKGROUND.src, { priority: true });
+
+function drawMapBackground() {
+  const img = getCachedImage(MAP_BACKGROUND.src);
+  if (!isImgReady(img)) return;
+  const sourceW = Math.max(1, Number(img.naturalWidth || img.width) || 1920);
+  const sourceH = Math.max(1, Number(img.naturalHeight || img.height) || 1080);
+  // Mode "cover" + 12 % de débord invisible. Le parallaxe est strictement
+  // borné dans ce débord : aucun bord de l'image ne peut entrer à l'écran.
+  const scale = Math.max(innerWidth / sourceW, innerHeight / sourceH) * MAP_BACKGROUND.overscan;
+  const drawW = sourceW * scale;
+  const drawH = sourceH * scale;
+  const hiddenX = Math.max(0, (drawW - innerWidth) / 2);
+  const hiddenY = Math.max(0, (drawH - innerHeight) / 2);
+  const mapX = clamp((Number(camera.x) / Math.max(1, Number(WORLD.w)) - 0.5) * 2, -1, 1);
+  const mapY = clamp((Number(camera.y) / Math.max(1, Number(WORLD.h)) - 0.5) * 2, -1, 1);
+  const shiftX = mapX * Math.min(hiddenX, MAP_BACKGROUND.maxParallax);
+  const shiftY = mapY * Math.min(hiddenY, MAP_BACKGROUND.maxParallax);
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, (innerWidth - drawW) / 2 - shiftX, (innerHeight - drawH) / 2 - shiftY, drawW, drawH);
+  ctx.restore();
+}
 
 function drawZoneWalls(ox, oy) {
   if (!isZoneMap || !zoneWalls?.length) return;
@@ -34035,6 +34064,7 @@ function drawBotMinimalScene(ox, oy) {
 function draw() {
   ctx.fillStyle = "#050814";
   ctx.fillRect(0, 0, innerWidth, innerHeight);
+  drawMapBackground();
 
   let ox = innerWidth / 2 - camera.x;
   let oy = innerHeight / 2 - camera.y;
@@ -35300,7 +35330,11 @@ async function prepareGameAssets() {
     ui.loadingOverlay?.querySelector(".loadingTrack")?.setAttribute("aria-valuenow", String(percent));
   });
   try {
-    const jobs = [ensurePackLoaded(ACTIVE_SHIP), loadImage(WALL_TEX.src, { priority: true })];
+    const jobs = [
+      ensurePackLoaded(ACTIVE_SHIP),
+      loadImage(WALL_TEX.src, { priority: true }),
+      loadImage(MAP_BACKGROUND.src, { priority: true }),
+    ];
     jobs.push(...preloadPlayerBulletSprites());
     jobs.push(...preloadPetSprites());
     // ✅ drones possédés uniquement au boot (le reste en fond) : DÉPART plus
