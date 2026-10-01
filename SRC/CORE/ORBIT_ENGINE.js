@@ -10184,7 +10184,7 @@ function botNearestNpcInRange(maxD) {
 // Munition configuree pour ce NPC (retombe sur X1 si stock vide).
 function botApplyNpcAmmo(npc) {
   const current = String(player.ammo.active || "").toLowerCase();
-  if (current === "sab" || current === "x6" || Bot.x6Armed) return;
+  if (Bot.x6Armed || (current === "sab" && Bot.sabPrev)) return;
   const wantAmmo = Bot.npcAmmo[String(npc.type)] || "x1";
   if (wantAmmo && AMMO[wantAmmo] && player.ammo.active !== wantAmmo) {
     try { setAmmo(wantAmmo); } catch {}
@@ -10268,6 +10268,16 @@ function botAutoSpecialAmmo(npc, d, engageMax) {
 }
 
 function botClearSpecialAmmo() {
+  const current = String(player.ammo.active || "").toLowerCase();
+  let back = "";
+  if (current === "x6" && (Bot.x6Armed || Bot.specialPrev || Bot.x6BackToSab)) {
+    back = Bot.x6BackToSab ? Bot.sabPrev : Bot.specialPrev;
+  } else if (current === "sab" && Bot.sabPrev) {
+    back = Bot.sabPrev;
+  }
+  if (back && AMMO[back] && back !== "x6" && back !== "sab") {
+    try { setAmmo(back); } catch {}
+  }
   Bot.specialPrev = "";
   Bot.sabPrev = "";
   Bot.x6BackToSab = false;
