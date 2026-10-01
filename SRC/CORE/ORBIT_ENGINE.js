@@ -110,7 +110,7 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
+  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
 drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect,
 getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation } from "./NETPLAY.js";
 import {
@@ -22649,6 +22649,10 @@ function syncNetBoxes(dt) {
   let known = null;
   try { known = getNetBoxes(); } catch {}
   if (!known) return;
+  // Avant la premiere liste complete du serveur, conserver les instances
+  // preparees pendant le chargement. Elles seront recalees par uid des que
+  // le snapshot autoritaire de cette carte arrivera.
+  try { if (!netBoxSnapshotReady()) return; } catch { return; }
   // Index construit en un seul passage : avec des centaines de Palladiums en
   // 5-2, rechercher chaque uid dans tout `collectables` faisait un travail
   // comparaisons par frame. Les lectures suivantes sont maintenant en O(1).
@@ -22682,13 +22686,6 @@ function tickCollectables(dt) {
   if (collectablesWorldMap !== curMap) {
     collectablesWorldMap = curMap;
     try { initCollectableWorld(curMap); } catch {}
-    // En carte multijoueur, aucune ancienne ambiance locale ne doit survivre
-    // avant l'arrivee de l'etat serveur. Les drops NPC restent intacts.
-    if (rules?.mode === "zone") {
-      for (let i = collectables.length - 1; i >= 0; i--) {
-        if (collectables[i]?.slotUid && !collectables[i]?.dropUid) collectables.splice(i, 1);
-      }
-    }
   }
 
   collectableSpawnT -= dt;
@@ -35203,6 +35200,10 @@ if (ui.startHint) {
 }
 
   resetRun({ randomSpawn: false });
+  // La carte est connue et les sprites sont deja charges : construire les
+  // box avant de retirer l'ecran de chargement, sans attendre le WebSocket.
+  collectablesWorldMap = currentMapId();
+  try { initCollectableWorld(collectablesWorldMap); } catch {}
   advanceQuestProgress("visit", String(window.__CURRENT_MAP_ID__ || "").toLowerCase());
   // Le contenu des fenêtres n'est pas conservé par le DOM après un refresh.
   // Recharge immédiatement le journal depuis le compte avant que le joueur
@@ -35644,6 +35645,8 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   history.replaceState({ mapId }, "", url);
 
   resetRun({ preparedZoneCamps, preparedZonePortals });
+  collectablesWorldMap = currentMapId();
+  try { initCollectableWorld(collectablesWorldMap); } catch {}
   player.iFrames = 0;
   mapPortalLock = 0.6;
   // Pas de save synchrone à l'arrivée : la position d'avant-saut a déjà

@@ -30,6 +30,7 @@ export function suspendNetplay(v) {
     netGone = [];
     netBoxes.clear();
     lastBoxSyncMs = 0;
+    lastBoxFullSyncMap = "";
     netBoxInbox.length = 0;
     pendingNetBoxClaims.clear();
     netDmgInbox.length = 0;
@@ -147,6 +148,7 @@ function clearInstanceGameplay() {
     netGone = [];
     netBoxes.clear();
     lastBoxSyncMs = 0;
+    lastBoxFullSyncMap = "";
     netBoxInbox.length = 0;
     pendingNetBoxClaims.clear();
     netDmgInbox.length = 0;
@@ -257,6 +259,7 @@ const netBoxInbox = [];
 // (boxesSync / list / spawn) : le moteur redemande une sync complete
 // quand la map est vide sans nouvelles (sync initiale perdue au refresh).
 let lastBoxSyncMs = 0;
+let lastBoxFullSyncMap = "";
 // Une collecte reste reservee localement jusqu'a la reponse autoritaire du
 // serveur. Cela empeche une liste retardee de faire reapparaitre la box.
 const pendingNetBoxClaims = new Set();
@@ -997,6 +1000,7 @@ export function ensureNetplayConnection() {
         netBoxes.set(uid, { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)) });
       }
       lastBoxSyncMs = performance.now();
+      lastBoxFullSyncMap = currentMapId();
       return;
     }
     if (msg.t === "box" && msg.op) {
@@ -1023,6 +1027,7 @@ export function ensureNetplayConnection() {
           netBoxes.set(uid, { type: String(b.type).slice(0, 32), x: Math.round(Number(b.x)), y: Math.round(Number(b.y)) });
         }
         lastBoxSyncMs = performance.now();
+        lastBoxFullSyncMap = currentMapId();
       } else if (msg.op === "spawn" && msg.box && typeof msg.box.uid === "string") {
         const b = msg.box, uid = b.uid.slice(0, 64);
         if (!pendingNetBoxClaims.has(uid) && typeof b.type === "string" && Number.isFinite(Number(b.x)) && Number.isFinite(Number(b.y))) {
@@ -1594,8 +1599,13 @@ export function sendShotEvent(ev) {
 
 export function clearNetBoxes() {
   netBoxes.clear();
+  lastBoxFullSyncMap = "";
   netBoxInbox.length = 0;
   pendingNetBoxClaims.clear();
+}
+
+export function netBoxSnapshotReady() {
+  try { return lastBoxFullSyncMap === currentMapId(); } catch { return false; }
 }
 
 // Reserve immediatement la box cote client, puis demande au serveur qui a
@@ -1935,7 +1945,7 @@ export function sendSkillUse(skill) {
 // Ce module ne fait que le reseau : envoi 20 Hz + snapshots + extrapolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, netplayLocalUpdateDue, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
+  window.__NETPLAY__ = { pushNetplayLocal, netplayLocalUpdateDue, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;
