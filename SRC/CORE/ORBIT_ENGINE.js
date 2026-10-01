@@ -10848,6 +10848,54 @@ function botTickGalaxyEnter(dt) {
   return true;
 }
 
+// Refuge de non-agression le plus proche sur la carte courante. La distance
+// est mesuree jusqu'au bord de la zone, pas jusqu'a son centre : une grande
+// base proche gagne donc logiquement face a un portail plus eloigne.
+function botNearestSafeRefuge(x, y) {
+  if (!isZoneMap) return null;
+  const candidates = [];
+  const add = (kind, label, cx, cy, radius) => {
+    cx = Number(cx); cy = Number(cy); radius = Number(radius);
+    if (!Number.isFinite(cx) || !Number.isFinite(cy) || !(radius > 0)) return;
+    const centerDistance = Math.hypot(x - cx, y - cy);
+    const edgeDistance = Math.max(0, centerDistance - radius);
+    // Point d'entree situe 90 m a l'interieur pour ne pas osciller sur la
+    // limite. Si on est deja protege, on reste simplement sur place.
+    const insideRadius = Math.max(0, radius - 90);
+    const nx = centerDistance > 1 ? (x - cx) / centerDistance : 0;
+    const ny = centerDistance > 1 ? (y - cy) / centerDistance : 0;
+    candidates.push({
+      kind, label, cx, cy, radius, edgeDistance,
+      x: centerDistance <= insideRadius ? x : cx + nx * insideRadius,
+      y: centerDistance <= insideRadius ? y : cy + ny * insideRadius,
+    });
+  };
+
+  try {
+    for (const portal of getInteractivePortals()) {
+      if (!portalProvidesSafety(portal)) continue;
+      add("portal", "portail sûr", portal.x, portal.y, DEFAULT_PORTAL_RADIUS + SAFE_ZONE_MARGIN);
+    }
+  } catch {}
+  try {
+    if (baseProvidesSafety() && zoneSafe?.zone?.kind === "circle") {
+      const z = zoneSafe.zone;
+      add("base", getCurrentZoneMapId() === "5-2" ? "base pirate" : "base de faction", z.x, z.y, z.r);
+    }
+  } catch {}
+  try {
+    for (const module of zoneSafe?.modules || []) {
+      const radius = Number(module?.safeRadius || 0);
+      if (!(radius > 0)) continue;
+      add("module", "zone de non-agression", module.x, module.y, radius);
+    }
+  } catch {}
+
+  candidates.sort((a, b) => a.edgeDistance - b.edgeDistance
+    || Math.hypot(x - a.cx, y - a.cy) - Math.hypot(x - b.cx, y - b.cy));
+  return candidates[0] || null;
+}
+
 function tickBot(dt) {
   try { botRecordSightings(dt); } catch {}
   if (!Bot.active) return;
@@ -10936,7 +10984,7 @@ function tickBot(dt) {
   // Quêtes auto (rend + accept au terminal), throttlé en interne.
   if (Bot.questsAccept || Bot.questsClaim) botTickQuests(dt);
 
-  // Seuil de fuite : coque basse → repli au portail le plus proche, le
+  // Seuil de fuite : coque basse → repli dans la ZNA la plus proche, le
   // robot réparateur passif remonte la coque, reprise au seuil + 20 %.
   // Prioritaire sur le voyage et le farm : la survie d'abord.
   const hpMaxSafe = Math.max(1, Number(player.hpMax) || 1);
@@ -10946,7 +10994,7 @@ function tickBot(dt) {
     try { stopAttack(); } catch {}
     try { cancelCollectableTarget(); } catch {}
     try { if (Target.get()) Target.clear(); } catch {}
-    botLog(`Coque à ${Math.round(hpPct)} % — fuite au portail`);
+    botLog(`Coque à ${Math.round(hpPct)} % — fuite vers la zone sûre la plus proche`);
   }
   if (Bot.fleeing) {
     // Reprise explicite (style DarkBot REPAIR_HP_RANGE), plancher = seuil + 5.
@@ -10959,12 +11007,19 @@ function tickBot(dt) {
       Bot.target = `Coque ${Math.round(hpPct)} % (reprise à ${resumeAt} %)`;
       botApplyFormation(Bot.formFlee || Bot.formMove);
       botApplyConfig(Bot.cfgFlee || Bot.cfgFly);
-      const shelter = getNearestPortalTo(player.x, player.y);
+      const shelter = botNearestSafeRefuge(player.x, player.y);
       if (shelter) {
         if (attackActive) { try { stopAttack(); } catch {} }
-        moveTarget.active = true;
-        moveTarget.x = clamp(shelter.x, 80, WORLD.w - 80);
-        moveTarget.y = clamp(shelter.y, 80, WORLD.h - 80);
+        Bot.target = `${shelter.label} — coque ${Math.round(hpPct)} % (reprise à ${resumeAt} %)`;
+        if (playerIsInSafeZone()) {
+          // Une fois protege, ne va pas inutilement jusqu'au centre de la
+          // base ou du portail : il tient sa position et se repare.
+          moveTarget.active = false;
+        } else {
+          moveTarget.active = true;
+          moveTarget.x = clamp(shelter.x, 80, WORLD.w - 80);
+          moveTarget.y = clamp(shelter.y, 80, WORLD.h - 80);
+        }
       } else if (rules?.mode === "gate") {
         // En Galaxy Gate : pas de portail → kiting : on fuit les menaces en
         // faisant le tour de la map (jamais planté au milieu), tirs coupés,
