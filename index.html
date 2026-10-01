@@ -668,13 +668,9 @@
               <select id="botPriority">
                 <option value="box">Box en priorité</option>
                 <option value="npc">NPC en priorité</option>
-                <option value="nearest">Le plus proche</option>
+                <option value="nearest">Les deux simultanément</option>
               </select>
             </label>
-          </div>
-          <div class="botSection" data-bot-section="travel">
-            <div class="botSectionTitle">Carte cible</div>
-            <label class="botCheck"><input id="botAutoTravel" type="checkbox" checked /><span>Voyager auto vers la carte</span></label>
           </div>
           <div class="botSection" data-bot-section="general">
             <div class="botSectionTitle">Réparation si mort</div>
@@ -689,42 +685,10 @@
             <label class="botField"><span>Délai avant réparation (s)</span><input id="botReviveWait" type="number" min="0" max="60" step="1" value="3" /></label>
             <label class="botField"><span>Morts max (0 = illimité)</span><input id="botMaxDeaths" type="number" min="0" max="999" step="1" value="0" /></label>
           </div>
-          <div class="botSection" data-bot-section="travel">
-            <div class="botSectionTitle">Soute pleine</div>
-            <label class="botCheck"><input id="botCargo" type="checkbox" checked /><span>Vendre auto au comptoir si soute pleine</span></label>
-            <label class="botField"><span>Seuil (% soute)</span><input id="botCargoPct" type="number" min="50" max="100" step="1" value="95" /></label>
-            <label class="botField"><span>Base de vente</span>
-              <select id="botSellBase">
-                <option value="auto">Auto (la plus proche : X-1 / X-8)</option>
-                <option value="low">Base basse (X-1)</option>
-                <option value="high">Base haute (X-8)</option>
-              </select>
-            </label>
-            <div class="botSectionTitle" style="margin-top:4px">Raffinage auto (avant vente)</div>
-            <div class="botRefineGrid">
-              <label class="botField"><span>Lasers</span><span class="botRefineRow"><select id="botRefineLaser"></select><input id="botRefineLaserQty" type="number" min="1" max="999" step="1" value="20" title="Minerai à charger" /></span></label>
-              <label class="botField"><span>Bouclier</span><span class="botRefineRow"><select id="botRefineShield"></select><input id="botRefineShieldQty" type="number" min="1" max="999" step="1" value="20" title="Minerai à charger" /></span></label>
-              <label class="botField"><span>Roquettes</span><span class="botRefineRow"><select id="botRefineRocket"></select><input id="botRefineRocketQty" type="number" min="1" max="999" step="1" value="20" title="Minerai à charger" /></span></label>
-              <label class="botField"><span>Vitesse</span><span class="botRefineRow"><select id="botRefineSpeed"></select><input id="botRefineSpeedQty" type="number" min="1" max="999" step="1" value="20" title="Minerai à charger" /></span></label>
-            </div>
-            <small class="botNote">1 minerai = 10 tirs / 10 min. On ne remplace jamais un slot chargé d'un autre minerai. Vente seulement si encore pleine.</small>
-          </div>
-          <div class="botSection" data-bot-section="travel">
-            <div class="botSectionTitle">Quêtes auto</div>
-            <label class="botCheck"><input id="botQuestsAccept" type="checkbox" /><span>Accepter les quêtes de farm (au terminal)</span></label>
-            <label class="botCheck"><input id="botQuestsClaim" type="checkbox" checked /><span>Rendre les quêtes terminées</span></label>
-            <small class="botNote">Seules les quêtes tuer/collecter correspondant à ta sélection.</small>
-          </div>
           <div class="botSection" data-bot-section="general">
             <div class="botSectionTitle">Exploration et fuite</div>
             <div class="botCfgRow"><span>Exploration</span><div class="botSeg" id="botCfgFlySeg"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormMove" aria-label="Formation en déplacement"></select></div>
             <small class="botNote">La même configuration est utilisée pour explorer et fuir.</small>
-          </div>
-          <div class="botSection" data-bot-section="removed">
-            <div class="botSectionTitle">Combat &amp; survie</div>
-            <small class="botNote">Kiting partout : approche, strafe au max range laser, poursuite resserrée si fuite. Cible verrouillée sur map, libre en GG. Tir partout.</small>
-            <label class="botCheck"><input id="botAutoSab" type="checkbox" checked /><span>SAB auto contre les gros boucliers</span></label>
-            <label class="botCheck"><input id="botAutoX6" type="checkbox" checked /><span>X6 auto en burst dès que prêt</span></label>
           </div>
           <div class="botSection" data-bot-section="general">
             <div class="botSectionTitle">Compétences auto</div>
@@ -733,12 +697,6 @@
             <label class="botCheck"><input id="botSkillIsh" type="checkbox" /><span>ISH sous (coque %)</span></label>
             <label class="botField"><span>Seuil ISH (% coque)</span><input id="botIshPct" type="number" min="5" max="90" step="1" value="20" /></label>
             <small class="botNote">REP = robot réparateur passif, toujours actif (30 000 crédits par IEM/ISH).</small>
-          </div>
-          <div class="botSection" data-bot-section="attack">
-            <div class="botSectionTitle">Roquettes auto</div>
-            <label class="botCheck"><input id="botRockets" type="checkbox" /><span>Roquettes auto en combat</span></label>
-            <label class="botCheck"><input id="botLaunchers" type="checkbox" /><span>Lance-roquettes auto en combat</span></label>
-            <small class="botNote">Utilise la roquette et le lanceur sélectionnés. Restaure OFF à l'arrêt.</small>
           </div>
           <div class="botSection" data-bot-section="rex">
             <div class="botSectionTitle">REX pendant le bot</div>
@@ -767,53 +725,6 @@
             <div class="botSectionTitle botRowTitle"><span>Bonus Box</span><span class="botMiniActions"><button id="botBoxAll" type="button">Tout</button><button id="botBoxNone" type="button">Aucun</button></span></div>
             <div class="botCfgRow"><span>Collecte</span><div class="botSeg" id="botCfgCollectSeg"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormCollect" aria-label="Formation de collecte"></select></div>
             <div id="botBoxList" class="botCheckList"></div>
-          </div>
-          <div class="botSection" data-bot-section="stats">
-            <div class="botSectionTitle">Session de farm</div>
-            <div class="botStatsGrid">
-              <div><span>Durée</span><b id="botStatTime">—</b></div>
-              <div><span>Kills</span><b id="botStatKills">0</b></div>
-              <div><span>Box</span><b id="botStatBoxes">0</b></div>
-              <div><span>Morts</span><b id="botStatDeaths">0</b></div>
-              <div><span>Crédits</span><b id="botStatCredits">+0</b></div>
-              <div><span>Crédits/h</span><b id="botStatCreditsH">—</b></div>
-              <div><span>XP</span><b id="botStatXp">+0</b></div>
-              <div><span>XP/h</span><b id="botStatXpH">—</b></div>
-            </div>
-          </div>
-          <div class="botSection" data-bot-section="galaxy">
-            <div class="botSectionTitle">Spinner automatique (Galaxy Gates)</div>
-            <label class="botCheck"><input id="botGgSpin" type="checkbox" /><span>Activer le GG spinner automatique</span></label>
-            <small class="botNote">Spin sur l'ensemble Alpha + Beta + Gamma (une seule roue).</small>
-            <label class="botField"><span>Spins par passage (1-100)</span><input id="botGgSpins" type="number" min="1" max="100" step="1" value="10" /></label>
-            <label class="botCheck"><input id="botGgAutoMult" type="checkbox" checked /><span>Activer le multiplicateur dès qu'il est dispo</span></label>
-            <small class="botNote">Spin auto hors gate (énergie puis crédits). Construit puis enchaîne les portails sans rien toucher.</small>
-          </div>
-          <div class="botSection" data-bot-section="galaxy">
-            <div class="botSectionTitle">Enchaînement auto des gates</div>
-            <label class="botCheck"><input id="botGgAutoEnter" type="checkbox" checked /><span>Entrer auto dès qu'une GG est construite</span></label>
-            <label class="botCheck"><input id="botGgNearestSwitch" type="checkbox" checked /><span>En gate : toujours le NPC le plus proche (switch si plus proche)</span></label>
-            <small class="botNote">En mode Galaxy le bot vole vers la base mère puis saute dans le portail GG déployé, et enchaîne les vagues.</small>
-          </div>
-          <div class="botSection" data-bot-section="galaxy">
-            <div class="botSectionTitle">Formation de fin (après Cubikon)</div>
-            <label class="botField"><span>Formation finale</span><select id="botGgFinishForm" aria-label="Formation de fin de GG"></select></label>
-            <label class="botField"><span>Config finale</span>
-              <select id="botGgFinishCfg" aria-label="Configuration de fin de GG">
-                <option value="">— Ne pas changer —</option>
-                <option value="1">1</option>
-                <option value="2">2</option>
-              </select>
-            </label>
-            <small class="botNote">Appliquées dès que le Cubikon est mort, jusqu'au retour sur la map mère. Vide = ne pas changer.</small>
-          </div>
-          <div class="botSection" data-bot-section="log">
-            <div class="botSectionTitle">Journal</div>
-            <div id="botLog" class="botLog" aria-live="polite"></div>
-          </div>
-          <div class="botSection" data-bot-section="removed">
-            <div class="botSectionTitle">Affichage (bot actif)</div>
-            <label class="botCheck"><input id="botOverlay" type="checkbox" checked /><span>Traits + portées + zones de non-agression</span></label>
           </div>
         </div>
       </div>

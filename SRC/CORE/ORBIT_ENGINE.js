@@ -8519,18 +8519,11 @@ const BOT_MODULES = Object.freeze({
   both: { mode: "both", label: "Kill & Collect" },
   kill: { mode: "kill", label: "Kill" },
   collect: { mode: "collect", label: "Collect" },
-  quest: { mode: "both", label: "Quest" },
-  galaxy: { mode: "kill", label: "Galaxy Gates" },
-
 });
-function botModeForModule(m) {
-  return BOT_MODULES[String(m)]?.mode || "both";
-}
-function botSetModule(m) {
+function botSetMode(m) {
   m = String(m || "both");
   if (!BOT_MODULES[m]) m = "both";
-  Bot.module = m;
-  Bot.mode = botModeForModule(m);
+  Bot.mode = m;
   botSaveConfig();
 }
 const Bot = {
@@ -8538,24 +8531,16 @@ const Bot = {
   boxSelectionLoaded: false,
   active: false,
   mode: "both",
-  module: "both",
   renderMode: "normal",
   priority: "npc",
   targetMap: "",
-  autoTravel: false,
   autoRepair: true,
   respawn: "base",
   npcAllow: new Set(),
   boxAllow: new Set(),
   npcMapFilter: "",
   formMove: "",
-  formAttack: "",
-  formTravel: "",
-  formFlee: "",
-  cfgAttack: "",
   cfgFly: "",
-  cfgTravel: "",
-  cfgFlee: "",
   cfgPrev: 0,
   ammoPrev: "",
   petMode: "",
@@ -8572,8 +8557,6 @@ const Bot = {
   npcIncludeUnknown: false,
   npcSeen: Object.create(null),
   sightT: 0,
-  overlay: false,
-  boxRadius: 0,
   formCollect: "",
   cfgCollect: "",
   npcPrio: Object.create(null),
@@ -8585,8 +8568,6 @@ const Bot = {
   statsT0: 0,
   credits0: 0,
   exp0: 0,
-  autoSab: true,
-  autoX6: true,
   moveTag: null,
   moveOrderedAt: 0,
   steering: null,
@@ -8626,40 +8607,10 @@ const Bot = {
 
 
 
-  cargo: false,
-  cargoPct: 95,
-  sellBase: "auto",
-  refine: {
-    laser: { ore: "", qty: 20 },
-    shield: { ore: "", qty: 20 },
-    rocket: { ore: "", qty: 20 },
-    speed: { ore: "", qty: 20 },
-  },
   skillIem: false,
   iemFoes: 3,
   skillIsh: false,
   ishPct: 20,
-  rockets: false,
-  launchers: false,
-  questsAccept: false,
-  questsClaim: false,
-  questT: 0,
-  ggSpin: false,
-  ggGate: "alpha",
-  ggSpins: 10,
-  ggAutoMult: true,
-  ggAutoEnter: true,
-  ggNearestSwitch: true,
-  ggFinishForm: "",
-  ggFinishCfg: "",
-  ggSpinT: 0,
-  ggUiT: 0,
-  ggJumpCd: 0,
-  ggSwitchCd: 0,
-  rocketPrev: false,
-  launcherPrev: false,
-  selling: false,
-  travelOverride: "",
   kills: 0,
   boxes: 0,
   lastNpcId: null,
@@ -8690,36 +8641,24 @@ function botSaveConfig() {
     localStorage.setItem(BOT_STORE_KEY, JSON.stringify({
       active: Bot.active,
       mode: Bot.mode,
-      module: Bot.module,
       priority: Bot.priority,
       targetMap: Bot.targetMap,
-      autoTravel: Bot.autoTravel,
       autoRepair: Bot.autoRepair,
       respawn: Bot.respawn,
       npcAllow: [...Bot.npcAllow],
       boxAllow: [...Bot.boxAllow],
       npcMapFilter: Bot.npcMapFilter,
       formMove: Bot.formMove,
-      formAttack: Bot.formAttack,
-      formTravel: Bot.formTravel,
-      formFlee: Bot.formFlee,
-      cfgAttack: Bot.cfgAttack,
       cfgFly: Bot.cfgFly,
-      cfgTravel: Bot.cfgTravel,
-      cfgFlee: Bot.cfgFlee,
       petMode: Bot.petMode,
       petEnabled: Bot.petEnabled,
       petAutoFuel: Bot.petAutoFuel,
-      overlay: Bot.overlay,
-      boxRadius: Bot.boxRadius,
       formCollect: Bot.formCollect,
       cfgCollect: Bot.cfgCollect,
       npcPrio: Bot.npcPrio,
       fleeResume: Bot.fleeResume,
       maxDeaths: Bot.maxDeaths,
       reviveWait: Bot.reviveWait,
-      autoSab: Bot.autoSab,
-      autoX6: Bot.autoX6,
       npcAmmo: Bot.npcAmmo,
       npcSab: Bot.npcSab,
       npcX6: Bot.npcX6,
@@ -8734,26 +8673,10 @@ function botSaveConfig() {
 
 
 
-      cargo: Bot.cargo,
-      cargoPct: Bot.cargoPct,
-      sellBase: Bot.sellBase,
-      refine: Bot.refine,
       skillIem: Bot.skillIem,
       iemFoes: Bot.iemFoes,
       skillIsh: Bot.skillIsh,
       ishPct: Bot.ishPct,
-      rockets: Bot.rockets,
-      launchers: Bot.launchers,
-      questsAccept: Bot.questsAccept,
-      questsClaim: Bot.questsClaim,
-      ggSpin: Bot.ggSpin,
-      ggGate: Bot.ggGate,
-      ggSpins: Bot.ggSpins,
-      ggAutoMult: Bot.ggAutoMult,
-      ggAutoEnter: Bot.ggAutoEnter,
-      ggNearestSwitch: Bot.ggNearestSwitch,
-      ggFinishForm: Bot.ggFinishForm,
-      ggFinishCfg: Bot.ggFinishCfg,
       kills: Bot.kills,
       boxes: Bot.boxes,
       tab: Bot.tab,
@@ -8769,13 +8692,10 @@ function botLoadConfig() {
   try {
     const data = JSON.parse(raw);
     if (!data || typeof data !== "object") return false;
-    if (["both", "kill", "collect", "quest", "galaxy"].includes(data.module)) Bot.module = data.module;
-    else if (["collect", "kill", "both"].includes(data.mode)) Bot.module = data.mode;
-    Bot.mode = botModeForModule(Bot.module);
+    Bot.mode = ["collect", "kill", "both"].includes(data.mode) ? data.mode : "both";
     Bot.renderMode = "normal";
     if (["npc", "box", "nearest"].includes(data.priority)) Bot.priority = data.priority;
     if (typeof data.targetMap === "string") Bot.targetMap = data.targetMap;
-    if (typeof data.autoTravel === "boolean") Bot.autoTravel = data.autoTravel;
     if (typeof data.autoRepair === "boolean") Bot.autoRepair = data.autoRepair;
     if (["base", "portal", "here"].includes(data.respawn)) Bot.respawn = data.respawn;
     if (Array.isArray(data.npcAllow)) {
@@ -8788,21 +8708,12 @@ function botLoadConfig() {
     }
     if (typeof data.npcMapFilter === "string") Bot.npcMapFilter = data.npcMapFilter;
     if (typeof data.formMove === "string") Bot.formMove = data.formMove;
-    if (typeof data.formAttack === "string") Bot.formAttack = data.formAttack;
-    if (typeof data.formTravel === "string") Bot.formTravel = data.formTravel;
-    if (typeof data.formFlee === "string") Bot.formFlee = data.formFlee;
-    if (data.cfgAttack === "1" || data.cfgAttack === "2") Bot.cfgAttack = data.cfgAttack;
     if (data.cfgFly === "1" || data.cfgFly === "2") Bot.cfgFly = data.cfgFly;
-    if (data.cfgTravel === "1" || data.cfgTravel === "2") Bot.cfgTravel = data.cfgTravel;
-    if (data.cfgFlee === "1" || data.cfgFlee === "2") Bot.cfgFlee = data.cfgFlee;
     if (typeof data.petMode === "string") Bot.petMode = data.petMode;
     if (typeof data.petEnabled === "boolean") Bot.petEnabled = data.petEnabled;
     if (typeof data.petAutoFuel === "boolean") Bot.petAutoFuel = data.petAutoFuel;
     if (typeof data.formCollect === "string") Bot.formCollect = data.formCollect;
     if (data.cfgCollect === "1" || data.cfgCollect === "2") Bot.cfgCollect = data.cfgCollect;
-    if (typeof data.overlay === "boolean") Bot.overlay = data.overlay;
-    const brad = Math.floor(Number(data.boxRadius));
-    Bot.boxRadius = Number.isFinite(brad) ? Math.max(0, Math.min(20000, brad)) : 0;
     if (data.npcPrio && typeof data.npcPrio === "object") {
       for (const [k, v] of Object.entries(data.npcPrio)) {
         const p = Math.floor(Number(v));
@@ -8815,8 +8726,6 @@ function botLoadConfig() {
     Bot.maxDeaths = Number.isFinite(md) ? Math.max(0, Math.min(999, md)) : 0;
     const rw = Math.floor(Number(data.reviveWait));
     Bot.reviveWait = Number.isFinite(rw) ? Math.max(0, Math.min(60, rw)) : 3;
-    if (typeof data.autoSab === "boolean") Bot.autoSab = data.autoSab;
-    if (typeof data.autoX6 === "boolean") Bot.autoX6 = data.autoX6;
     if (typeof data.flee === "boolean") Bot.flee = data.flee;
     const fp = Math.floor(Number(data.fleePct));
     if (Number.isFinite(fp)) Bot.fleePct = Math.max(5, Math.min(90, fp));
@@ -8828,44 +8737,12 @@ function botLoadConfig() {
 
 
 
-    if (typeof data.cargo === "boolean") Bot.cargo = data.cargo;
-    const cp = Math.floor(Number(data.cargoPct));
-    if (Number.isFinite(cp)) Bot.cargoPct = Math.max(50, Math.min(100, cp));
-    if (["auto", "low", "high"].includes(data.sellBase)) Bot.sellBase = data.sellBase;
-    if (data.refine && typeof data.refine === "object") {
-      for (const slot of ["laser", "shield", "rocket", "speed"]) {
-        const r = data.refine[slot];
-        if (!r || typeof r !== "object") continue;
-        const ore = String(r.ore || "").toLowerCase();
-        const qty = Math.floor(Number(r.qty));
-        Bot.refine[slot] = {
-          ore: (UPGRADE_SLOT_ORES[slot] || []).includes(ore) ? ore : "",
-          qty: Number.isFinite(qty) ? Math.max(1, Math.min(999, qty)) : 20,
-        };
-      }
-    }
     if (typeof data.skillIem === "boolean") Bot.skillIem = data.skillIem;
     const foes = Math.floor(Number(data.iemFoes));
     if (Number.isFinite(foes)) Bot.iemFoes = Math.max(1, Math.min(10, foes));
     if (typeof data.skillIsh === "boolean") Bot.skillIsh = data.skillIsh;
     const ishp = Math.floor(Number(data.ishPct));
     if (Number.isFinite(ishp)) Bot.ishPct = Math.max(5, Math.min(90, ishp));
-    if (typeof data.rockets === "boolean") Bot.rockets = data.rockets;
-    if (typeof data.launchers === "boolean") Bot.launchers = data.launchers;
-    if (typeof data.questsAccept === "boolean") Bot.questsAccept = data.questsAccept;
-    if (typeof data.questsClaim === "boolean") Bot.questsClaim = data.questsClaim;
-    if (typeof data.ggSpin === "boolean") Bot.ggSpin = data.ggSpin;
-    if (["alpha", "beta", "gamma"].includes(String(data.ggGate || "").toLowerCase())) Bot.ggGate = String(data.ggGate).toLowerCase();
-    {
-      const gs = Math.floor(Number(data.ggSpins));
-      if (Number.isFinite(gs)) Bot.ggSpins = Math.max(1, Math.min(100, gs));
-    }
-    if (typeof data.ggAutoMult === "boolean") Bot.ggAutoMult = data.ggAutoMult;
-    if (typeof data.ggAutoEnter === "boolean") Bot.ggAutoEnter = data.ggAutoEnter;
-    if (typeof data.ggNearestSwitch === "boolean") Bot.ggNearestSwitch = data.ggNearestSwitch;
-    if (typeof data.ggFinishForm === "string") Bot.ggFinishForm = data.ggFinishForm;
-    if (data.ggFinishCfg === "1" || data.ggFinishCfg === "2") Bot.ggFinishCfg = data.ggFinishCfg;
-    else if (typeof data.ggFinishCfg === "string") Bot.ggFinishCfg = "";
     if (data.npcAmmo && typeof data.npcAmmo === "object") {
       for (const [k, v] of Object.entries(data.npcAmmo)) {
         const a = String(v || "").toLowerCase();
@@ -8887,14 +8764,7 @@ function botLoadConfig() {
       const migrated = BOT_TAB_LEGACY[data.tab] || data.tab;
       if (document.querySelector(`#botTabs [data-bot-tab="${migrated}"]`)) Bot.tab = migrated;
     }
-    Bot.module = "both";
     Bot.mode = ["both", "kill", "collect"].includes(data.mode) ? data.mode : "both";
-    Bot.cargo = false;
-    Bot.selling = false;
-    Bot.questsAccept = false;
-    Bot.questsClaim = false;
-    Bot.boxRadius = 0;
-    Bot.overlay = false;
     return data.active === true;
   } catch { return false; }
 }
@@ -9033,7 +8903,7 @@ function botSetActive(on) {
     botApplyPetMode();
     botApplyFormation(Bot.formMove);
     botApplyConfig(Bot.cfgFly);
-    botLog(`Bot démarré (${BOT_MODULES[Bot.module]?.label || Bot.module})`);
+    botLog(`Bot démarré (${BOT_MODULES[Bot.mode]?.label || Bot.mode})`);
   }
   botSaveConfig();
   botRefreshHud();
@@ -9187,13 +9057,8 @@ function botNearestTradeModule() {
 function botSnapshotLoadout() {
   Bot.cfgPrev = 0;
   Bot.ammoPrev = "";
-  Bot.rocketPrev = false;
-  Bot.launcherPrev = false;
   try { Bot.cfgPrev = getActiveConfigNo() === 2 ? 2 : 1; } catch { Bot.cfgPrev = 0; }
   try { Bot.ammoPrev = String(player.ammo.active || ""); } catch { Bot.ammoPrev = ""; }
-  try { Bot.rocketPrev = player.rocketAuto === true; } catch {}
-  try { Bot.launcherPrev = player.launcherAuto === true; } catch {}
-  botApplyRocketFlags();
 }
 
 // Applique les flags roquettes/lance-roquettes du bot (restaurés à l'arrêt).
@@ -9219,13 +9084,6 @@ function botRestoreLoadout() {
   } catch {}
   try {
     if (Bot.ammoPrev && AMMO[Bot.ammoPrev] && player.ammo.active !== Bot.ammoPrev) setAmmo(Bot.ammoPrev);
-  } catch {}
-  try {
-    if (player.rocketAuto !== Bot.rocketPrev || player.launcherAuto !== Bot.launcherPrev) {
-      player.rocketAuto = Bot.rocketPrev;
-      player.launcherAuto = Bot.launcherPrev;
-      markProgressDirty();
-    }
   } catch {}
   Bot.cfgPrev = 0;
   Bot.ammoPrev = "";
@@ -9634,47 +9492,44 @@ function wireBotWindow() {
   if (boxList && !boxList.children.length) {
     const types = Object.keys(COLLECTABLE_TYPES || {}).sort((a, b) =>
       String(COLLECTABLE_TYPES[a]?.name || a).localeCompare(String(COLLECTABLE_TYPES[b]?.name || b), "fr"));
+    const bonusTypes = ["Bonus_Box", "Green_Booty_Box", "Astral_Prime_Box"].filter((t) => types.includes(t));
     if (!Bot.boxSelectionLoaded) {
       for (const t of types) Bot.boxAllow.add(t);
       Bot.boxSelectionLoaded = true;
     }
-    boxList.innerHTML = types.map((t) =>
-      `<label data-box="${escapeHtml(t)}"><input type="checkbox" value="${escapeHtml(t)}"${Bot.boxAllow.has(t) ? " checked" : ""} /><span>${escapeHtml(String(COLLECTABLE_TYPES[t]?.name || t))}</span></label>`
+    // Migration : une ancienne selection de l'un des trois bonus active le
+    // groupe entier. Les types restent distincts dans le moteur de collecte.
+    if (bonusTypes.some((t) => Bot.boxAllow.has(t))) {
+      for (const t of bonusTypes) Bot.boxAllow.add(t);
+    }
+    const rows = [];
+    if (bonusTypes.length) rows.push({ key: "bonus_box_group", name: "Bonus Box", types: bonusTypes });
+    for (const t of types) {
+      if (!bonusTypes.includes(t)) rows.push({ key: t, name: String(COLLECTABLE_TYPES[t]?.name || t), types: [t] });
+    }
+    boxList.innerHTML = rows.map((row) =>
+      `<label data-box="${escapeHtml(row.key)}"><input type="checkbox" value="${escapeHtml(row.key)}" data-types="${escapeHtml(row.types.join(","))}"${row.types.every((t) => Bot.boxAllow.has(t)) ? " checked" : ""} /><span>${escapeHtml(row.name)}</span></label>`
     ).join("");
     boxList.addEventListener("change", (e) => {
       const box = e.target.closest?.('input[type="checkbox"]');
       if (!box) return;
-      if (box.checked) Bot.boxAllow.add(box.value);
-      else Bot.boxAllow.delete(box.value);
+      const selectedTypes = String(box.dataset.types || box.value).split(",").filter(Boolean);
+      for (const type of selectedTypes) {
+        if (box.checked) Bot.boxAllow.add(type);
+        else Bot.boxAllow.delete(type);
+      }
       botSaveConfig();
     });
   }
   // Module (façon fenêtre Général) : Kill & Collect / Kill / Collect / Quest / Galaxy Gates.
-  const moduleSel = document.getElementById("botModule");
-  if (moduleSel) {
-    moduleSel.value = Bot.module || "both";
-    if (!moduleSel.dataset.wired) {
-      moduleSel.dataset.wired = "1";
-      moduleSel.addEventListener("change", () => {
-        botSetModule(moduleSel.value);
-        moduleSel.value = Bot.module;
-        botLog(`Module : ${BOT_MODULES[Bot.module]?.label || Bot.module}`);
-      });
-    }
-  }
   document.querySelectorAll('#botModeRow input[name="botMode"]').forEach((radio) => {
     radio.checked = radio.value === Bot.mode;
     radio.addEventListener("change", () => {
       if (!radio.checked) return;
-      botSetModule(radio.value);
-      botLog(`Mode : ${BOT_MODULES[Bot.module]?.label || Bot.module}`);
+      botSetMode(radio.value);
+      botLog(`Mode : ${BOT_MODULES[Bot.mode]?.label || Bot.mode}`);
     });
   });
-  const autoTravel = document.getElementById("botAutoTravel");
-  if (autoTravel) {
-    autoTravel.checked = Bot.autoTravel;
-    autoTravel.addEventListener("change", () => { Bot.autoTravel = autoTravel.checked; botSaveConfig(); });
-  }
   const autoRepair = document.getElementById("botAutoRepair");
   if (autoRepair) {
     autoRepair.checked = Bot.autoRepair;
@@ -9814,9 +9669,6 @@ function wireBotWindow() {
   const formDefs = [
     ["botFormMove", "formMove"],
     ["botFormCollect", "formCollect"],
-    ["botFormAttack", "formAttack"],
-    ["botFormTravel", "formTravel"],
-    ["botFormFlee", "formFlee"],
   ];
   for (const [elId, key] of formDefs) {
     const sel = document.getElementById(elId);
@@ -9841,11 +9693,8 @@ function wireBotWindow() {
   }
   // Configurations 1/2 par phase, style boutons segmentés (—, 1, 2).
   const cfgSegDefs = [
-    ["botCfgAttackSeg", "cfgAttack"],
     ["botCfgFlySeg", "cfgFly"],
     ["botCfgCollectSeg", "cfgCollect"],
-    ["botCfgFleeSeg", "cfgFlee"],
-    ["botCfgTravelSeg", "cfgTravel"],
   ];
   for (const [elId, key] of cfgSegDefs) {
     const seg = document.getElementById(elId);
@@ -10430,7 +10279,6 @@ function botClearSpecialAmmo() {
 // cible verrouillee d'abord (respect du lock), sinon le plus proche a portee.
 // Module quest : uniquement les NPC de quete. Autres modes que both : rien.
 function botConcurrentNpc(engageMax, locked) {
-  if (Bot.priority !== "npc") return null;
   const lim2 = engageMax * engageMax;
   const okTarget = (e) => {
     if (!e || e.isPetTarget || Number(e.hp) <= 0) return false;
@@ -10438,14 +10286,6 @@ function botConcurrentNpc(engageMax, locked) {
     try { return dist2(player.x, player.y, e.x, e.y) <= lim2; } catch { return false; }
   };
   try {
-    if (Bot.module === "quest") {
-      const qt = botQuestTargets();
-      if (!qt.npcs.size) return null;
-      if (locked && (qt.npcs.has("*") || qt.npcs.has(String(locked.type))) && okTarget(locked)) return locked;
-      const hit = botNearestQuestNpc(qt.npcs);
-      if (hit && hit.d2 <= lim2) return hit.npc;
-      return null;
-    }
     if (Bot.mode !== "both") return null;
     if (locked && Bot.npcAllow.has(String(locked.type)) && okTarget(locked)) return locked;
     return botNearestNpcInRange(engageMax);
@@ -10468,28 +10308,36 @@ function botEngageNpc(npc) {
 
 // Box a ramasser AU PASSAGE pendant un combat : autorisee, dans le rayon de
 // detour ET plus proche que le NPC. Module quest : box de quete uniquement.
-const BOT_GRAB_RADIUS = 350;
-function botGrabBoxForFight(npcD2) {
+const BOT_GRAB_RADIUS = 380;
+function botGrabBoxForFight(npc, standD) {
   try {
-    if (Bot.mode !== "both") return null;
-    if (Bot.module === "galaxy") return null;
+    if (Bot.mode !== "both" || Bot.priority !== "npc" || !npc) return null;
     if ((Bot.grabCd || 0) > 0) return null;
-    let questSet = null;
-    if (Bot.module === "quest") {
-      questSet = botQuestTargets().boxes;
-      if (!questSet.size) return null;
-    }
     const grabR2 = BOT_GRAB_RADIUS * BOT_GRAB_RADIUS;
-    const rad2 = Bot.boxRadius > 0 ? Bot.boxRadius * Bot.boxRadius : 0;
+    const currentNpcD = Math.hypot(player.x - npc.x, player.y - npc.y);
+    const shootRange = Math.max(0, Number(npc.shootRange) || Number(NPC_TYPES[npc.type]?.shootRange) || 0);
+    const safeAtBox = shootRange > 0 ? shootRange + 70 : Math.max(180, standD - 25);
+    const routeX = moveTarget.active ? Number(moveTarget.x) : player.x;
+    const routeY = moveTarget.active ? Number(moveTarget.y) : player.y;
+    const segX = routeX - player.x, segY = routeY - player.y;
+    const segL2 = segX * segX + segY * segY;
     let best = null;
     let bestD2 = Infinity;
     for (const c of collectables) {
       if (!c) continue;
       if (!Bot.boxAllow.has(String(c.type))) continue;
-      if (questSet && !questSet.has(String(c.type))) continue;
       const d2 = dist2(player.x, player.y, c.x, c.y);
-      if (d2 > grabR2 || d2 >= npcD2) continue;
-      if (rad2 > 0 && d2 > rad2) continue;
+      if (d2 > grabR2) continue;
+      const boxNpcD = Math.hypot(c.x - npc.x, c.y - npc.y);
+      if (boxNpcD < safeAtBox) continue;
+      let routeDistance = Math.sqrt(d2);
+      if (segL2 > 1) {
+        const t = clamp(((c.x - player.x) * segX + (c.y - player.y) * segY) / segL2, 0, 1);
+        routeDistance = Math.hypot(c.x - (player.x + segX * t), c.y - (player.y + segY * t));
+      }
+      const onRoute = routeDistance <= 170;
+      const slightRetreat = d2 <= 300 * 300 && boxNpcD >= currentNpcD - 20;
+      if (!onRoute && !slightRetreat) continue;
       if (d2 < bestD2) { bestD2 = d2; best = c; }
     }
     return best ? { box: best, d2: bestD2 } : null;
@@ -10499,12 +10347,10 @@ function botGrabBoxForFight(npcD2) {
 function botNearestBox() {
   let best = null;
   let bestD2 = Infinity;
-  const rad2 = Bot.boxRadius > 0 ? Bot.boxRadius * Bot.boxRadius : 0;
   for (const c of collectables) {
     if (!c) continue;
     if (!Bot.boxAllow.has(String(c.type))) continue;
     const d2 = dist2(player.x, player.y, c.x, c.y);
-    if (rad2 > 0 && d2 > rad2) continue;
     if (d2 < bestD2) { bestD2 = d2; best = c; }
   }
   return best ? { box: best, d2: bestD2 } : null;
@@ -11244,11 +11090,11 @@ function tickBot(dt) {
   const curMap = String(window.__CURRENT_MAP_ID__ || "1-1").toLowerCase();
   // Module Galaxy Gates : le voyage manuel est désactivé (l'entrée GG gère
   // elle-même le retour base + le saut), sauf override de vente.
-  if (wantMap && wantMap !== curMap && (Bot.autoTravel || Bot.travelOverride) && (Bot.module !== "galaxy" || Bot.travelOverride)) {
+  if (wantMap && wantMap !== curMap) {
     Bot.travelCd -= dt;
     Bot.jumpCd -= dt;
-    botApplyFormation(Bot.formTravel);
-    botApplyConfig(Bot.cfgTravel);
+    botApplyFormation(Bot.formMove);
+    botApplyConfig(Bot.cfgFly);
     if (!botPortalIndex) {
       Bot.status = `Voyage → ${String(effRaw).toUpperCase()}`;
       Bot.target = "Cartographie des portails…";
@@ -11413,7 +11259,11 @@ function tickBot(dt) {
   else if (Bot.priority === "box") pick = foundBox ? { kind: "box", ref: foundBox.box } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null);
   else if (Bot.priority === "nearest") {
     const nearestNpc = botNearestNpcByDistance();
-    if (nearestNpc && foundBox) pick = nearestNpc.d2 <= foundBox.d2 ? { kind: "npc", ref: nearestNpc.npc } : { kind: "box", ref: foundBox.box };
+    const simultaneousReach = Math.max(500, botEngageRange() * 1.25);
+    if (nearestNpc && foundBox) {
+      const boxToNpc = Math.hypot(foundBox.box.x - nearestNpc.npc.x, foundBox.box.y - nearestNpc.npc.y);
+      pick = boxToNpc <= simultaneousReach ? { kind: "box", ref: foundBox.box } : { kind: "npc", ref: nearestNpc.npc };
+    }
     else if (nearestNpc) pick = { kind: "npc", ref: nearestNpc.npc };
     else if (foundBox) pick = { kind: "box", ref: foundBox.box };
   } else {
@@ -11555,7 +11405,8 @@ function tickBot(dt) {
     // La collecte reprendra apres le combat : aucune box ne peut maintenant
     // detourner le vaisseau du rayon de combat demande.
     let grab = null;
-    try { if (collectableTargetId != null) cancelCollectableTarget(); } catch {}
+    try { grab = botGrabBoxForFight(npc, standD); } catch { grab = null; }
+    if (!grab) { try { if (collectableTargetId != null) cancelCollectableTarget(); } catch {} }
     if (grab && d > engageMax * 1.1) {
       try { if (collectableTargetId === grab.box.id) cancelCollectableTarget(); } catch {}
       Bot.lastBoxId = null;
@@ -11641,13 +11492,6 @@ function tickBot(dt) {
       Bot.status = Bot.mode === "both" ? "Farm — collecte + combat" : "Collecte + combat";
       Bot.target = `${boxName} (${Math.round(d)}m) + ${foeName} (${fd}m)`;
       Bot.lastNpcId = foe.id;
-      try { if (collectableTargetId != null) cancelCollectableTarget(); } catch {}
-      botApplyFormation(Bot.formAttack);
-      botApplyConfig(Bot.cfgAttack);
-      const foeStandD = botCombatDistance(foe);
-      botKiteCombatMove(foe, foeDistance, foeStandD, dt);
-      botRefreshHudThrottled(dt);
-      return;
     } else {
       Bot.status = Bot.mode === "both" ? "Farm — collecte" : "Collecte";
       Bot.target = `${boxName} (${Math.round(d)}m)`;

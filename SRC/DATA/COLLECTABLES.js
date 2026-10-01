@@ -4,7 +4,7 @@
 // Pour en ajouter une, duplique une entrée et adapte son sprite, ses cartes et ses récompenses.
 export const COLLECTABLE_TYPES = Object.freeze({
   Cargo_Box: {
-    name: "Débris de NPC",
+    name: "Cargo Box",
     maps: "*",
     qty: 0,
     spawnBatch: 50,
@@ -30,7 +30,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
   },
 
   Bonus_Box: {
-    name: "Bonus aléatoire",
+    name: "Bonus Box",
     maps: "*",
     // GG / Low / QZ : aucune box ambiente, uniquement cargo + drops NPC.
     denyMaps: ["alpha", "beta", "gamma", "low", "qz"],
@@ -69,7 +69,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
   },
 
   Green_Booty_Box: {
-    name: "Bonus crédits",
+    name: "Bonus Box",
     // Désactivée temporairement (aucun spawn ; réactiver en retirant la ligne).
     enabled: false,
     maps: "*",
@@ -100,7 +100,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
   },
 
   Astral_Prime_Box: {
-    name: "Bonus de munitions",
+    name: "Bonus Box",
     maps: "MAUDITE",
     qty: 100,
     spawnBatch: 100,
