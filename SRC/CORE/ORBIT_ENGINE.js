@@ -10363,9 +10363,10 @@ function botGrabBoxForFight(npc, standD) {
     if ((Bot.grabCd || 0) > 0) return null;
     const grabR2 = BOT_GRAB_RADIUS * BOT_GRAB_RADIUS;
     const currentNpcD = Math.hypot(player.x - npc.x, player.y - npc.y);
-    // NPC hors de portee / en fuite : poursuite pure. Ne meme pas amorcer
-    // une box qui serait rejetee ensuite, sinon le mouvement alterne box/NPC.
-    if (currentNpcD > botEngageRange() * 1.05) {
+    // Tant que le tir n'est pas reellement etabli, poursuite pure. Au bord de
+    // portee une box ne doit jamais etre acceptee puis rejetee au tick suivant
+    // parce que le NPC passif s'est eloigne de quelques metres.
+    if (!attackActive || currentNpcD > botEngageRange()) {
       Bot.lastBoxId = null;
       return null;
     }
@@ -10384,7 +10385,8 @@ function botGrabBoxForFight(npc, standD) {
         const currentD2 = dist2(player.x, player.y, current.x, current.y);
         const currentNpcD = Math.hypot(current.x - npc.x, current.y - npc.y);
         const releaseR = BOT_GRAB_RADIUS + 120;
-        if (currentD2 <= releaseR * releaseR && currentNpcD >= safeAtBox) {
+        const stickySafeAtBox = shootRange > 0 ? safeAtBox : Math.max(140, safeAtBox - 60);
+        if (currentD2 <= releaseR * releaseR && currentNpcD >= stickySafeAtBox) {
           return { box: current, d2: currentD2 };
         }
       }
