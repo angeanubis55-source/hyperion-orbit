@@ -658,26 +658,17 @@
               <label class="botCheck"><input type="radio" name="botMode" value="collect" /><span>Collect</span></label>
             </div>
           </div>
-          <div class="botSection" data-bot-section="removed">
-            <div class="botSectionTitle">Module</div>
-            <label class="botField"><span>Module</span>
-              <select id="botModule">
-                <option value="both">Kill &amp; Collect</option>
-                <option value="kill">Kill</option>
-                <option value="collect">Collect</option>
-                <option value="quest">Quest</option>
-                <option value="galaxy">Galaxy Gates</option>
-              </select>
-            </label>
-            <label class="botField"><span>Carte</span></label>
+          <div class="botSection" data-bot-section="general">
+            <div class="botSectionTitle">Travail</div>
+            <label class="botField"><span>Map de travail</span></label>
             <div class="botMapRow">
               <select id="botMapSelect" aria-label="Carte cible du bot"></select>
             </div>
-            <label class="botField"><span>Priorité (mode mixte)</span>
+            <label class="botField"><span>Priorité Kill &amp; Collect</span>
               <select id="botPriority">
-                <option value="npc">NPC le plus proche d'abord</option>
-                <option value="box">Box la plus proche d'abord</option>
-                <option value="nearest">Le plus proche (n'importe)</option>
+                <option value="box">Box en priorité</option>
+                <option value="npc">NPC en priorité</option>
+                <option value="nearest">Le plus proche</option>
               </select>
             </label>
           </div>

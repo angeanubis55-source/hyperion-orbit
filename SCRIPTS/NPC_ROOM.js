@@ -9,6 +9,9 @@ import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, Number(v)));
 const TAU = Math.PI * 2;
+// Les NPC restent normalement dans la carte, mais une cible deja engagee peut
+// etre poursuivie dans la radiation jusqu'a la meme profondeur que le client.
+const RADIATION_CHASE_MARGIN = 2500;
 
 function statsFor(type) {
   const cfg = NPC_TYPES[type];
@@ -766,7 +769,14 @@ drainPlayerHits() {
       }
       if (e.aggroBy) {
         const p = this.players.get(e.aggroBy);
-        if (nowMs < Number(e.aggroUntil || 0) && this.validTarget(p)) attacker = { id: e.aggroBy, x: p.x, y: p.y };
+        const targetOutside = !!p && (p.x < 0 || p.x > this.world.w || p.y < 0 || p.y > this.world.h);
+        // Une poursuite deja declenchee ne s'annule pas artificiellement au
+        // passage de la frontiere. Elle cessera si la cible meurt, se cache,
+        // atteint une ZNA ou revient hors des conditions normales d'aggro.
+        if (targetOutside && this.validTarget(p)) {
+          e.aggroUntil = nowMs + (Number(e.aggroHoldMs) || 3500);
+          attacker = { id: e.aggroBy, x: p.x, y: p.y };
+        } else if (nowMs < Number(e.aggroUntil || 0) && this.validTarget(p)) attacker = { id: e.aggroBy, x: p.x, y: p.y };
         else if (p?.safe) {
           e.retreating = true;
           e.retreatUntil = nowMs + 3000;
@@ -879,10 +889,26 @@ drainPlayerHits() {
         mx = dx / d; my = dy / d; spd = e.speed * 0.55;
         if (spd > 0) e.angle = Math.atan2(dy, dx);
       }
+      const outsideMap = e.x < 80 || e.x > this.world.w - 80 || e.y < 80 || e.y > this.world.h - 80;
+      // Sans cible, un NPC deja sorti ne continue jamais son roaming dans la
+      // radiation : il rejoint d'abord le point interieur le plus proche.
+      if (!chase && outsideMap) {
+        const tx = clamp(e.x, 80, this.world.w - 80);
+        const ty = clamp(e.y, 80, this.world.h - 80);
+        const dx = tx - e.x, dy = ty - e.y;
+        const d = Math.hypot(dx, dy) || 1;
+        mx = dx / d; my = dy / d; spd = e.speed * 0.7;
+        e.angle = Math.atan2(dy, dx);
+        e.tx = null; e.ty = null;
+      }
       if (frozen) spd = 0;
       else spd *= slowMult;
-      e.x = clamp(e.x + mx * spd * dt, 80, this.world.w - 80);
-      e.y = clamp(e.y + my * spd * dt, 80, this.world.h - 80);
+      const radiationTravel = !!chase || outsideMap;
+      const minBound = radiationTravel ? 80 - RADIATION_CHASE_MARGIN : 80;
+      const maxBoundX = radiationTravel ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80;
+      const maxBoundY = radiationTravel ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80;
+      e.x = clamp(e.x + mx * spd * dt, minBound, maxBoundX);
+      e.y = clamp(e.y + my * spd * dt, minBound, maxBoundY);
 
       // Tirs NPC autoritaires. Le client conserve les projectiles visuels,
       // mais seul cet impact serveur retire effectivement PV/bouclier.
@@ -923,10 +949,14 @@ drainPlayerHits() {
             const push = Math.min(220, overlap * 28) * dt;
             const side = Math.min(220, overlap * 12) * (((i + j) % 2 === 0) ? 1 : -1) * dt;
             const tx = -ny, ty = nx;
-            a.x = clamp(a.x + (-nx * push + tx * side), 80, this.world.w - 80);
-            a.y = clamp(a.y + (-ny * push + ty * side), 80, this.world.h - 80);
-            b.x = clamp(b.x + (nx * push - tx * side), 80, this.world.w - 80);
-            b.y = clamp(b.y + (ny * push - ty * side), 80, this.world.h - 80);
+            const aRadiation = !!a.chaseId || a.x < 80 || a.x > this.world.w - 80 || a.y < 80 || a.y > this.world.h - 80;
+            const bRadiation = !!b.chaseId || b.x < 80 || b.x > this.world.w - 80 || b.y < 80 || b.y > this.world.h - 80;
+            const aMin = aRadiation ? 80 - RADIATION_CHASE_MARGIN : 80;
+            const bMin = bRadiation ? 80 - RADIATION_CHASE_MARGIN : 80;
+            a.x = clamp(a.x + (-nx * push + tx * side), aMin, aRadiation ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80);
+            a.y = clamp(a.y + (-ny * push + ty * side), aMin, aRadiation ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80);
+            b.x = clamp(b.x + (nx * push - tx * side), bMin, bRadiation ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80);
+            b.y = clamp(b.y + (ny * push - ty * side), bMin, bRadiation ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80);
           }
         }
       }

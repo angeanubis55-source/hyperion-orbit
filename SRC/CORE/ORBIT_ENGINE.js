@@ -277,7 +277,7 @@ function isNpcOutsideWorld(e) {
 function npcCanEnterRadiation(e) {
   if (player.dead) return false;
   if (!playerIsOutsideWorld()) return false;
-  return !!(e._aggro || e._attackedPlayerRecently);
+  return !!(e._aggro || e._attackedPlayerRecently || e.aiZ?.state === "aggro");
 }
 
 function integrateNpcPosition(e, dt) {
@@ -33422,7 +33422,11 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
               e._aggroT = aggroHold;
             }
           }
-          if (e._aggro && e._aggroT <= 0) {
+          // Une aggro deja acquise reste active tant que le joueur est dans
+          // la radiation. Sortir de la map ne doit pas casser la poursuite.
+          if (e._aggro && playerIsOutsideWorld() && !isPlayerCloaked() && player.cpuCloak !== true) {
+            e._aggroT = aggroHold;
+          } else if (e._aggro && e._aggroT <= 0) {
             e._aggro = false;
             e._attackedPlayerRecently = false;
           }
