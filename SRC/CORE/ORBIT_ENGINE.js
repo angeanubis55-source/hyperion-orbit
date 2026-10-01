@@ -9095,11 +9095,20 @@ function botRestoreLoadout() {
 // pas assez de drones, cooldown 2 s côté compte).
 function botApplyFormation(id) {
   if (!Bot.active) return;
-  if (!id || id === Bot.lastFormation) return;
+  if (!id) return;
+  // Verifier l'etat reel, pas seulement la derniere demande du bot. Un
+  // changement manuel peut rendre lastFormation obsolete alors que le bot
+  // croit encore etre sur la formation voulue.
+  let activeId = "";
+  try { activeId = String(getActiveDroneFormation(account.user)?.id || account.user?.drones?.activeFormation || ""); } catch {}
+  if (activeId === String(id)) {
+    Bot.lastFormation = String(id);
+    return;
+  }
   let out = null;
   try { out = setCurrentUserDroneFormation(id); } catch { return; }
   if (!out?.ok) return;
-  Bot.lastFormation = id;
+  Bot.lastFormation = String(id);
   try {
     account.user = out.user;
     applyCurrentConfigStats(false, null, true);
@@ -10354,6 +10363,12 @@ function botGrabBoxForFight(npc, standD) {
     if ((Bot.grabCd || 0) > 0) return null;
     const grabR2 = BOT_GRAB_RADIUS * BOT_GRAB_RADIUS;
     const currentNpcD = Math.hypot(player.x - npc.x, player.y - npc.y);
+    // NPC hors de portee / en fuite : poursuite pure. Ne meme pas amorcer
+    // une box qui serait rejetee ensuite, sinon le mouvement alterne box/NPC.
+    if (currentNpcD > botEngageRange() * 1.05) {
+      Bot.lastBoxId = null;
+      return null;
+    }
     const shootRange = Math.max(0, Number(npc.shootRange) || Number(NPC_TYPES[npc.type]?.shootRange) || 0);
     const safeAtBox = shootRange > 0 ? shootRange + 70 : Math.max(180, standD - 25);
     const routeX = moveTarget.active ? Number(moveTarget.x) : player.x;
@@ -11338,10 +11353,17 @@ function tickBot(dt) {
     const nearestNpc = lockedNpc
       ? { npc: lockedNpc, d2: dist2(player.x, player.y, lockedNpc.x, lockedNpc.y) }
       : botNearestNpcByDistance();
-    const simultaneousReach = Math.max(500, botEngageRange() * 1.25);
+    const simultaneousReach = Math.max(900, botEngageRange() * 1.5);
+    const simultaneousBoxReach = Math.max(1800, botEngageRange() * 2.5);
     if (nearestNpc && selectedBox) {
       const boxToNpc = Math.hypot(selectedBox.box.x - nearestNpc.npc.x, selectedBox.box.y - nearestNpc.npc.y);
-      pick = boxToNpc <= simultaneousReach ? { kind: "box", ref: selectedBox.box } : { kind: "npc", ref: nearestNpc.npc };
+      const playerToBox = Math.sqrt(selectedBox.d2);
+      const continuingBox = lockedBox && String(lockedBox.id) === String(selectedBox.box.id);
+      const keepBox = continuingBox
+        ? (boxToNpc <= simultaneousReach * 1.6 || playerToBox <= simultaneousBoxReach * 1.25)
+        : (boxToNpc <= simultaneousReach || playerToBox <= simultaneousBoxReach);
+      if (!keepBox && continuingBox) Bot.lastBoxId = null;
+      pick = keepBox ? { kind: "box", ref: selectedBox.box } : { kind: "npc", ref: nearestNpc.npc };
     }
     else if (nearestNpc) pick = { kind: "npc", ref: nearestNpc.npc };
     else if (selectedBox) pick = { kind: "box", ref: selectedBox.box };
@@ -11557,7 +11579,7 @@ function tickBot(dt) {
     // Le vaisseau continue vers la collecte pendant que les lasers partent.
     const foe = botConcurrentNpc(botEngageRange(), lockedNpc);
     if (foe) botEngageNpc(foe);
-    else {
+    else if (!lockedNpc) {
       // Plus rien à portée : on décroche proprement (cible morte ou partie),
       // sinon on garde l'attaque (le tick de tir gère déjà la portée).
       if (attackActive) { try { stopAttack(); } catch {} }
@@ -11566,14 +11588,19 @@ function tickBot(dt) {
       Bot.lastNpcId = null;
       Bot.lastNpcKey = null;
       botClearSpecialAmmo();
+    } else if (attackActive) {
+      // Hors portee pendant le trajet : on coupe seulement le tir. Le NPC et
+      // la box restent tous les deux verrouilles, sans bascule entre eux.
+      try { stopAttack(); } catch {}
     }
-    if (foe) {
-      const foeDistance = Math.hypot(foe.x - player.x, foe.y - player.y);
+    const shownFoe = foe || lockedNpc;
+    if (shownFoe) {
+      const foeDistance = Math.hypot(shownFoe.x - player.x, shownFoe.y - player.y);
       const fd = Math.round(foeDistance);
-      const foeName = String((NPC_TYPES[foe.type]?.name || foe.type || "NPC")).replace(/^-=\[?\s*|\s*\]?=-$/g, "").trim() || "NPC";
+      const foeName = String((NPC_TYPES[shownFoe.type]?.name || shownFoe.type || "NPC")).replace(/^-=\[?\s*|\s*\]?=-$/g, "").trim() || "NPC";
       Bot.status = Bot.mode === "both" ? "Farm — collecte + combat" : "Collecte + combat";
       Bot.target = `${boxName} (${Math.round(d)}m) + ${foeName} (${fd}m)`;
-      botLockNpc(foe);
+      botLockNpc(shownFoe);
     } else {
       Bot.status = Bot.mode === "both" ? "Farm — collecte" : "Collecte";
       Bot.target = `${boxName} (${Math.round(d)}m)`;
