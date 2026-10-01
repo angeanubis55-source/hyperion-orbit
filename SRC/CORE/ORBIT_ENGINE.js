@@ -8538,7 +8538,6 @@ const Bot = {
   npcIncludeUnknown: false,
   npcSeen: Object.create(null),
   sightT: 0,
-  lock: true,
   overlay: true,
   boxRadius: 0,
   npcPrio: Object.create(null),
@@ -8550,7 +8549,6 @@ const Bot = {
   statsT0: 0,
   credits0: 0,
   exp0: 0,
-  safeNpc: true,
   autoSab: true,
   autoX6: true,
   moveTag: null,
@@ -8560,6 +8558,8 @@ const Bot = {
   chaseId: null,
   aggroId: null,
   specialPrev: "",
+  sabPrev: "",
+  x6BackToSab: false,
   x6Armed: false,
   x6ArmedAt: 0,
   flee: true,
@@ -8669,14 +8669,12 @@ function botSaveConfig() {
       cfgTravel: Bot.cfgTravel,
       cfgFlee: Bot.cfgFlee,
       petMode: Bot.petMode,
-      lock: Bot.lock,
       overlay: Bot.overlay,
       boxRadius: Bot.boxRadius,
       npcPrio: Bot.npcPrio,
       fleeResume: Bot.fleeResume,
       maxDeaths: Bot.maxDeaths,
       reviveWait: Bot.reviveWait,
-      safeNpc: Bot.safeNpc,
       autoSab: Bot.autoSab,
       autoX6: Bot.autoX6,
       npcAmmo: Bot.npcAmmo,
@@ -8751,7 +8749,6 @@ function botLoadConfig() {
     if (data.cfgTravel === "1" || data.cfgTravel === "2") Bot.cfgTravel = data.cfgTravel;
     if (data.cfgFlee === "1" || data.cfgFlee === "2") Bot.cfgFlee = data.cfgFlee;
     if (typeof data.petMode === "string") Bot.petMode = data.petMode;
-    if (typeof data.lock === "boolean") Bot.lock = data.lock;
     if (typeof data.overlay === "boolean") Bot.overlay = data.overlay;
     const brad = Math.floor(Number(data.boxRadius));
     Bot.boxRadius = Number.isFinite(brad) ? Math.max(0, Math.min(20000, brad)) : 0;
@@ -8767,7 +8764,6 @@ function botLoadConfig() {
     Bot.maxDeaths = Number.isFinite(md) ? Math.max(0, Math.min(999, md)) : 0;
     const rw = Math.floor(Number(data.reviveWait));
     Bot.reviveWait = Number.isFinite(rw) ? Math.max(0, Math.min(60, rw)) : 3;
-    if (typeof data.safeNpc === "boolean") Bot.safeNpc = data.safeNpc;
     if (typeof data.autoSab === "boolean") Bot.autoSab = data.autoSab;
     if (typeof data.autoX6 === "boolean") Bot.autoX6 = data.autoX6;
     if (typeof data.flee === "boolean") Bot.flee = data.flee;
@@ -9800,18 +9796,10 @@ function wireBotWindow() {
       if (Bot.active) botApplyPetMode();
     });
   }
-  // Verrouillage de cible, fuite, overlays.
-  const lockBox = document.getElementById("botLock");
-  if (lockBox) {
-    lockBox.checked = Bot.lock;
-    if (!lockBox.dataset.wired) {
-      lockBox.dataset.wired = "1";
-      lockBox.addEventListener("change", () => { Bot.lock = lockBox.checked; botSaveConfig(); });
-    }
-  }
-  // NPC en zone sure, SAB/X6 auto : même câblage, défauts actifs.
-  // (Le bot kite partout : map + GG.)
-  for (const [boxId, key] of [["botSafeNpc", "safeNpc"], ["botAutoSab", "autoSab"], ["botAutoX6", "autoX6"]]) {
+  // Fuite, overlays.
+  // SAB/X6 auto : même câblage, défauts actifs.
+  // (Le bot kite partout : map + GG. Lock auto sauf GG. Tir partout.)
+  for (const [boxId, key] of [["botAutoSab", "autoSab"], ["botAutoX6", "autoX6"]]) {
     const box = document.getElementById(boxId);
     if (!box) continue;
     box.checked = Bot[key] !== false;
@@ -10173,7 +10161,6 @@ function botNearestQuestNpc(set) {
     if (e.isPetTarget) continue;
     if (!Bot.npcAllow.has(String(e.type))) continue;
     if (!any && !set.has(String(e.type))) continue;
-    try { if (Bot.safeNpc !== true && typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
     const pr = botNpcPrio(e.type);
     const bpr = best ? botNpcPrio(best.type) : -1;
@@ -10217,7 +10204,6 @@ function botNearestNpc() {
     if (!e || Number(e.hp) <= 0) continue;
     if (e.isPetTarget) continue;
     if (!Bot.npcAllow.has(String(e.type))) continue;
-    try { if (Bot.safeNpc !== true && typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
     const pr = botNpcPrio(e.type);
     const bpr = best ? botNpcPrio(best.type) : -1;
@@ -10240,7 +10226,6 @@ function botNearestNpcInRange(maxD) {
     if (!e || Number(e.hp) <= 0) continue;
     if (e.isPetTarget) continue;
     if (!Bot.npcAllow.has(String(e.type))) continue;
-    try { if (Bot.safeNpc !== true && typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
     if (d2 > lim2) continue;
     const pr = botNpcPrio(e.type);
@@ -10258,22 +10243,25 @@ function botApplyNpcAmmo(npc) {
   }
 }
 
-// Munitions speciales auto en combat : SAB pour vider le bouclier puis
-// retour a la munition precedente, X6 en burst des que son cooldown est
-// pret. Ne coupe jamais l'attaque (switch differents uniquement).
+// Munitions speciales auto en combat : SAB jusqu'à ce que le bouclier soit
+// VIDE (plus une miette) puis retour aux lasers, X6 en burst des que son
+// cooldown est pret. Ne coupe jamais l'attaque (switch differents uniquement).
 function botAutoSpecialAmmo(npc, d, engageMax) {
   if (!npc || Number(npc.hp) <= 0 || player.dead || !started) return;
   const cur = String(player.ammo.active || "x1").toLowerCase();
   const inRange = d <= engageMax;
   const shMax = Math.max(0, Number(npc.shMax) || 0);
   const shRatio = shMax > 0 ? Math.max(0, Number(npc.sh) || 0) / shMax : 0;
+  const shieldUp = shMax > 0 && shRatio > 0.02;
 
-  // X6 : burst des que pret et a portee (prioritaire sur le SAB).
+  // X6 : burst des que pret et a portee (prioritaire sur le SAB, mais sans
+  // voler son ticket de retour : si on est en plein SAB, on y revient après).
   if (Bot.autoX6 && inRange && !Bot.x6Armed && cur !== "x6"
     && ammoCount("x6") > 0) {
     try {
       if (rsbLikeCooldown("x6") <= 0) {
-        Bot.specialPrev = cur;
+        if (cur === "sab" && shieldUp) Bot.x6BackToSab = true;
+        else Bot.specialPrev = cur;
         Bot.x6Armed = true;
         Bot.x6ArmedAt = Date.now();
         try { startAttack("x6"); } catch {}
@@ -10281,14 +10269,21 @@ function botAutoSpecialAmmo(npc, d, engageMax) {
       }
     } catch {}
   }
-  // Salve X6 partie (cooldown actif) ou delai depasse : retour au precedent.
+  // Salve X6 partie (cooldown actif) ou delai depasse : retour au precedent
+  // (ou au SAB en cours si le burst l'avait interrompu).
   if (Bot.x6Armed) {
     let fired = false;
     try { fired = rsbLikeCooldown("x6") > 0; } catch {}
     if (fired || Date.now() - Number(Bot.x6ArmedAt || 0) > 3000) {
       Bot.x6Armed = false;
-      const back = Bot.specialPrev && AMMO[Bot.specialPrev] ? Bot.specialPrev : "";
-      Bot.specialPrev = "";
+      let back = "";
+      if (Bot.x6BackToSab === true) {
+        Bot.x6BackToSab = false;
+        back = "sab";
+      } else {
+        back = Bot.specialPrev && AMMO[Bot.specialPrev] ? Bot.specialPrev : "";
+        Bot.specialPrev = "";
+      }
       if (back && back !== String(player.ammo.active || "").toLowerCase()) {
         try { startAttack(back); } catch {}
       }
@@ -10297,16 +10292,17 @@ function botAutoSpecialAmmo(npc, d, engageMax) {
     return; // salve en cours : on ne touche a rien d'autre.
   }
 
-  // SAB : tant que le bouclier est consistant, puis retour au precedent.
-  if (Bot.autoSab && AMMO.sab) {
-    if (cur !== "sab" && shMax > 0 && shRatio > 0.25 && ammoCount("sab") > 0) {
-      Bot.specialPrev = cur;
+  // SAB : on vide le bouclier jusqu'au bout, puis retour aux lasers.
+  // (Jamais pendant un burst X6 : la garde x6Armed ci-dessus a déjà filtré.)
+  if (Bot.autoSab && AMMO.sab && cur !== "x6") {
+    if (cur !== "sab" && shieldUp && ammoCount("sab") > 0) {
+      Bot.sabPrev = cur;
       try { startAttack("sab"); } catch {}
       return;
     }
-    if (cur === "sab" && (shMax <= 0 || shRatio < 0.08 || ammoCount("sab") <= 0)) {
-      const back = Bot.specialPrev && AMMO[Bot.specialPrev] ? Bot.specialPrev : "";
-      Bot.specialPrev = "";
+    if (cur === "sab" && (!shieldUp || ammoCount("sab") <= 0)) {
+      const back = Bot.sabPrev && AMMO[Bot.sabPrev] ? Bot.sabPrev : "";
+      Bot.sabPrev = "";
       if (back && back !== String(player.ammo.active || "").toLowerCase()) {
         try { startAttack(back); } catch {}
       }
@@ -10316,6 +10312,8 @@ function botAutoSpecialAmmo(npc, d, engageMax) {
 
 function botClearSpecialAmmo() {
   Bot.specialPrev = "";
+  Bot.sabPrev = "";
+  Bot.x6BackToSab = false;
   Bot.x6Armed = false;
   Bot.x6ArmedAt = 0;
 }
@@ -10328,7 +10326,6 @@ function botConcurrentNpc(engageMax, locked) {
   const okTarget = (e) => {
     if (!e || e.isPetTarget || Number(e.hp) <= 0) return false;
     try { if (!enemies.includes(e)) return false; } catch { return false; }
-    try { if (Bot.safeNpc !== true && typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) return false; } catch {}
     try { return dist2(player.x, player.y, e.x, e.y) <= lim2; } catch { return false; }
   };
   try {
@@ -10562,8 +10559,18 @@ function botKiteCombatMove(npc, d, standD, dt) {
   }
   let kx = 0, ky = 0;
   let closestD = Infinity, closestX = 0, closestY = 0;
+  // Sur map : comme en GG, on ne réagit qu'aux NPC qui nous chassent (+ la
+  // cible). Les passants qui traversent à 1600 m ne doivent pas faire
+  // glitcher le strafe ni déclencher la fuite contact. En GG tout le monde
+  // nous chasse de toute façon : comportement strictement identique.
+  const mapMode = !(Bot.module === "galaxy" && rules?.mode === "gate");
   for (const e of enemies) {
     if (!e || Number(e.hp) <= 0) continue;
+    if (mapMode && e !== npc) {
+      let engaging = false;
+      try { engaging = typeof npcIsEngagingPlayer === "function" && npcIsEngagingPlayer(e) === true; } catch {}
+      if (!engaging) continue;
+    }
     const ex = player.x - e.x, ey = player.y - e.y;
     const ed = Math.hypot(ex, ey);
     if (ed < closestD) { closestD = ed; closestX = ex; closestY = ey; }
@@ -11133,14 +11140,15 @@ function tickBot(dt) {
   const foundNpc = wantKill ? botNearestNpc() : null;
   const foundBox = wantBox ? botNearestBox() : null;
 
-  // Verrouillage : on ne change pas de cible tant que l'actuelle n'est pas finie.
+  // Verrouillage auto : sur map on ne change pas de cible tant que
+  // l'actuelle n'est pas finie ; en GG on switch librement au plus proche.
+  // (Plus d'option : comportement fixé.)
   let lockedNpc = null;
-  if (Bot.lock && (Bot.mode === "kill" || Bot.mode === "both")) {
+  if (rules?.mode !== "gate" && (Bot.mode === "kill" || Bot.mode === "both")) {
     try {
       const cur = Target.get();
       if (cur && !cur.isPetTarget && Number(cur.hp) > 0 && enemies.includes(cur)
-        && Bot.npcAllow.has(String(cur.type))
-        && (Bot.safeNpc === true || typeof npcIsInSafeZone !== "function" || !npcIsInSafeZone(cur))) {
+        && Bot.npcAllow.has(String(cur.type))) {
         lockedNpc = cur;
       }
     } catch { lockedNpc = null; }
