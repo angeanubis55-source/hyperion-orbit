@@ -27,6 +27,7 @@ import {
 
 const STALE_MS = 120000; // sans nouvelles serveur 2 min : retour en solo
 const META_CACHE_MAX = 64; // méta statique des lots (règlement des gains)
+const PENDING_HOLD_MS = 30000; // mise envoyée, écho serveur pas encore reçu : ne pas crier à la surenchère
 
 let sharedActive = false;
 let sharedCycle = 0;
@@ -53,6 +54,14 @@ function meId() {
   } catch {
     return "";
   }
+}
+
+// "Surenchère de X" vs "Surenchère d'un rival" (grammaire).
+function outbidToastText(outbidBy, lotName) {
+  const who = String(outbidBy || "").trim();
+  if (!who || /^un rival$/i.test(who)) return `Surenchère d'un rival sur ${lotName} (remboursé).`;
+  if (/^[aeiouyh]/i.test(who)) return `Surenchère d'${who} sur ${lotName} (remboursé).`;
+  return `Surenchère de ${who} sur ${lotName} (remboursé).`;
 }
 
 function cacheMeta(srv) {
@@ -154,25 +163,38 @@ function mergeSingleLot(srv, u, carried) {
 }
 
 function applySync(msg, now) {
-  const u = getCurrentUserFull();
-  if (!u) return { events: [] };
-  const events = [];
   const newCycle = Math.max(0, Math.floor(Number(msg?.cycle) || 0));
   const incoming = Array.isArray(msg?.lots) ? msg.lots : [];
   const wasActive = sharedActive === true;
   const oldCycle = sharedCycle;
+  const isBoundary = wasActive && oldCycle !== newCycle;
+  sharedActive = true;
+  sharedCycle = newCycle;
+  lastSeen = now;
+  try {
+    setSharedAuctionMode(true);
+  } catch {}
+  const events = [];
+  // Rattrapage : si le settle de :00 a été manqué (déco à l'heure pile,
+  // inbox pleine, onglet en veille), le sync porte le dernier règlement.
+  // On l'applique AVANT de fusionner, sinon un gagnant seul sur son lot
+  // serait remboursé en "surenchère" et perdrait l'item.
+  try {
+    const ls = msg?.lastSettle;
+    if (ls && typeof ls === "object" && Number.isFinite(Number(ls?.cycle)) && Array.isArray(ls?.results)) {
+      const rec = applySettle({ cycle: ls.cycle, results: ls.results });
+      for (const ev of rec.events || []) events.push(ev);
+    }
+  } catch {}
+  // Relecture APRES rattrapage (applySettle a pu rembourser + vider les lots).
+  const u = getCurrentUserFull();
+  if (!u) return { events };
   // Anciennes réservations (cycle manqué sans règlement) : rembourse.
   const oldByKey = new Map();
   try {
     for (const lot of u.auction?.lots || []) {
       if (lot && lot.catalogId) oldByKey.set(String(lot.catalogId), Math.max(0, Math.floor(Number(lot.myBid) || 0)));
     }
-  } catch {}
-  sharedActive = true;
-  sharedCycle = newCycle;
-  lastSeen = now;
-  try {
-    setSharedAuctionMode(true);
   } catch {}
   const merged = [];
   for (const srv of incoming) {
@@ -182,13 +204,36 @@ function applySync(msg, now) {
     const key = String(srv?.key || srv?.catalogId || "");
     if (!key) continue;
     const carried = oldByKey.get(String(srv?.catalogId || key)) || 0;
+    // Mise envoyée, écho serveur pas encore reçu (sync devançant l'update) :
+    // on garde la mise locale au lieu de crier à la surenchère.
+    // Sans ça, un joueur seul sur son lot voyait "surenchéri" à tort.
+    try {
+      const pend = pending.get(key);
+      if (pend && carried > 0 && (now - Math.max(0, Number(pend.at) || 0)) < PENDING_HOLD_MS) {
+        const me = meId();
+        const srvTop = Math.max(0, Math.floor(Number(srv?.topBid) || 0));
+        const srvBidderId = String(srv?.topBidderId || "");
+        const confirmedMine = srvBidderId !== "" && srvBidderId === me && srvTop > 0;
+        if (!confirmedMine) {
+          const localLot = (u.auction?.lots || []).find((l) => String(l?.catalogId) === String(srv?.catalogId || key));
+          if (localLot && Number(localLot.myBid) > 0) {
+            merged.push(localLot);
+            continue;
+          }
+        }
+      } else if (pend && (now - Math.max(0, Number(pend.at) || 0)) >= PENDING_HOLD_MS) {
+        pending.delete(key);
+      }
+    } catch {}
     const { lot, refunded, outbidBy } = mergeSingleLot(srv, u, carried);
     if (isLotMaskedForUser(lot, u)) {
       // Lot masqué mais mise réservée dessus : rembourse (sécurité).
       if (lot.myBid > 0) u.credits = Math.max(0, Math.floor(Number(u.credits || 0) + lot.myBid));
       continue;
     }
-    if (refunded > 0) events.push({ type: "toast", text: `Surenchère de ${outbidBy} sur ${lot.name} (remboursé).` });
+    // Frontière de cycle (ex : 07:00:00) : ce n'est pas une surenchère mais
+    // la clôture du cycle — libellé dédié pour ne pas accuser un rival fantôme.
+    if (refunded > 0) events.push({ type: "toast", text: isBoundary ? `Cycle clôturé : ${lot.name} — mise remboursée (${refunded.toLocaleString("fr-FR")} crédits).` : outbidToastText(outbidBy, lot.name) });
     merged.push(lot);
   }
   // Réservations orphelines (lot disparu / cycle manqué) : rembourse.
@@ -245,7 +290,7 @@ function applyUpdate(msg, now) {
   } else {
     lots.push(lot);
   }
-  if (refunded > 0) events.push({ type: "toast", text: `Surenchère de ${outbidBy} sur ${lot.name} (remboursé).` });
+  if (refunded > 0) events.push({ type: "toast", text: outbidToastText(outbidBy, lot.name) });
   try {
     saveUser(u);
   } catch {}
@@ -413,6 +458,10 @@ export function pumpSharedAuction(nowMs = Date.now()) {
   }
   void hadSync;
   const wasDirty = dirty;
+  // Tout changement d'enchères (mise rivale, remboursement, rejet, settle)
+  // touche crédits et/ou historique : le moteur doit resync le profil
+  // (sinon la sauvegarde périodique réécrase le remboursement).
+  if (wasDirty) profileDirty = true;
   return { shared: sharedActive, dirty: wasDirty, profileDirty, events };
 }
 
@@ -439,7 +488,7 @@ export function placeSharedBid(lotId, amount) {
   lot.topBid = bid;
   lot.topBidder = "you";
   lot.bids = Math.max(0, Math.floor(Number(lot.bids) || 0)) + 1;
-  pending.set(key, { prev: prevMyBid, amount: bid });
+  pending.set(key, { prev: prevMyBid, amount: bid, at: Date.now() });
   try {
     saveUser(u);
   } catch {}

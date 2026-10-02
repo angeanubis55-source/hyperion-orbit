@@ -27,6 +27,11 @@ let cycle = 0;
 let lotsMeta = []; // [{ key, catalogId, name, icon, shopPrice, qty, packQty, kind, droneType, formationId, ammoGive, rocketsGive, resourcesGive, noDiscount, startPrice, endsAt }]
 let bids = new Map(); // key -> { topBid, topBidder, topBidderId, bids, recent: [{ pseudo, amount, at }] }
 const throttle = new Map(); // bidderId -> { last, stamps: [ms] }
+// Dernier règlement (anti perte de gain) : si un client manque le broadcast
+// auctionSettle (déconnexion à :00, inbox pleine, onglet en veille), le sync
+// suivant le contient et le client peut quand même toucher son lot.
+// Persisté comme les mises (reboot serveur sans perte).
+let lastSettle = null; // { cycle, results: [{ key, name, winner, winnerId, amount, bids }], at }
 
 function lotKeyOf(lot) {
   return String(lot?.catalogId || "");
@@ -64,7 +69,7 @@ function buildCycle(now) {
 function persist() {
   try {
     mkdirSync(dirname(STATE_FILE), { recursive: true });
-    const data = { cycle, bids: {} };
+    const data = { cycle, bids: {}, lastSettle };
     for (const [key, b] of bids) {
       data.bids[key] = {
         topBid: b.topBid, topBidder: b.topBidder, topBidderId: b.topBidderId,
@@ -79,6 +84,13 @@ function restore(now) {
   buildCycle(now);
   try {
     const raw = JSON.parse(readFileSync(STATE_FILE, "utf8") || "{}");
+    // Dernier règlement : rejouable après reboot (clients non notifiés).
+    try {
+      const ls = raw?.lastSettle;
+      if (ls && typeof ls === "object" && Number.isFinite(Number(ls.cycle)) && Array.isArray(ls.results)) {
+        lastSettle = { cycle: Math.floor(Number(ls.cycle)), results: ls.results.filter((r) => r && typeof r === "object").slice(0, AUCTION_ACTIVE_LOTS + 4), at: Math.max(0, Number(ls.at) || 0) };
+      }
+    } catch {}
     if (Math.floor(Number(raw?.cycle) || 0) !== cycle) return;
     const saved = raw?.bids;
     if (!saved || typeof saved !== "object") return;
@@ -113,6 +125,7 @@ function serializeLot(meta) {
 }
 
 // Etat complet pour un nouveau venu (comme chatHistory).
+// Inclut le dernier règlement (rattrapage si le settle :00 a été manqué).
 export function getAuctionSync(nowMs = Date.now()) {
   const now = Number(nowMs) || Date.now();
   if (cycle !== parisHourSeed(now)) restore(now);
@@ -121,6 +134,7 @@ export function getAuctionSync(nowMs = Date.now()) {
     cycle,
     endsAt: parisHourEndMs(now),
     lots: lotsMeta.map(serializeLot),
+    lastSettle,
   };
 }
 
@@ -187,6 +201,12 @@ export function pollAuctionCycle(nowMs = Date.now()) {
     };
   });
   const oldCycle = cycle;
+  // Mémorise le règlement AVANT diffusion : rejouable via le sync suivant
+  // si un client manque le broadcast (à :00 pile, déconnexion, inbox pleine).
+  // Sans ça, un gagnant seul sur son lot mais déconnecté à :00 ne recevait
+  // jamais l'item (le sync remboursait en "surenchère").
+  const settleMsg = { t: "auctionSettle", cycle: oldCycle, results };
+  lastSettle = { cycle: oldCycle, results, at: now };
   // Commit le rollover AVANT de reconstruire : si buildCycle leve (lot
   // corrompu...), on ne doit JAMAIS re-diffuser le meme settle au poll
   // suivant (= double attribution des gains chez les gagnants).
@@ -203,7 +223,7 @@ export function pollAuctionCycle(nowMs = Date.now()) {
   }
   persist();
   return {
-    settle: { t: "auctionSettle", cycle: oldCycle, results },
+    settle: settleMsg,
     sync: getAuctionSync(now),
   };
 }

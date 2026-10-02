@@ -12578,6 +12578,7 @@ ui.refineryAllBtn?.addEventListener("click", () => {
   saveProgressNow();
   refineryRefineAll();
   renderRefineryWindow();
+  try { if (ui.oreTradeWindow && ui.oreTradeWindow.style.display !== "none") renderOreTradeWindow(); } catch {}
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
 
@@ -12593,6 +12594,7 @@ ui.refineryRecipes?.addEventListener("click", event => {
   account.user = result.user;
   const autoTotal = maybeRefineryAuto();
   renderRefineryWindow(`${formatInteger(result.gained + autoTotal)} ${getResourceName(result.recipe.output.id, result.gained + autoTotal)} raffiné(s).`);
+  try { if (ui.oreTradeWindow && ui.oreTradeWindow.style.display !== "none") renderOreTradeWindow(); } catch {}
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
 ui.refineryUpgrades?.addEventListener("click", event => {
@@ -12610,6 +12612,7 @@ ui.refineryUpgrades?.addEventListener("click", event => {
   account.user = result.user;
   applyCurrentConfigStats(false, null, true);
   renderRefineryWindow();
+  try { if (ui.oreTradeWindow && ui.oreTradeWindow.style.display !== "none") renderOreTradeWindow(); } catch {}
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
 
@@ -12715,6 +12718,7 @@ ui.upgAmountOk?.addEventListener("click", () => {
   applyCurrentConfigStats(false, null, true);
   closeUpgradeAmountDialog();
   renderRefineryWindow();
+  try { if (ui.oreTradeWindow && ui.oreTradeWindow.style.display !== "none") renderOreTradeWindow(); } catch {}
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
 queueMicrotask(() => renderRefineryWindow());
@@ -12723,6 +12727,12 @@ window.addEventListener("orbit:window-restored", event => {
   if (event.detail?.id === "refineryWindow") renderRefineryWindow();
 });
 window.addEventListener("orbit:profile-progress", () => renderCraftingWindow());
+window.addEventListener("orbit:profile-progress", () => {
+  // Commerce <-> raffinage synchronisés même sans action directe (collecte,
+  // récompense, autre onglet...) : re-rend les fenêtres ouvertes.
+  try { if (ui.refineryWindow && ui.refineryWindow.style.display !== "none") renderRefineryWindow(); } catch {}
+  try { if (ui.oreTradeWindow && ui.oreTradeWindow.style.display !== "none") renderOreTradeWindow(); } catch {}
+});
 queueMicrotask(() => renderCraftingWindow());
 
 let selectedGalaxyGateId = null;
@@ -16460,8 +16470,31 @@ function tickAuctionLogic() {
   try {
     const pump = pumpSharedAuction();
     if (pump && pump.shared) {
-      if (pump.profileDirty) {
-        syncPlayerFromAccount();
+      // Les remboursements (surenchère, rejet, défaite au settle) modifient
+      // les crédits + lots en stockage via saveUser(). Sans resync ici,
+      // account.user / player.credits restaient périmés et la prochaine
+      // sauvegarde écrasait le remboursement ("marqué remboursé" mais
+      // crédits jamais recrédités). On resync donc sur dirty aussi.
+      // Sync à delta préservé (pas de syncPlayerFromAccount aveugle) :
+      // player.credits peut contenir des gains/dépenses non sauvés
+      // (collecte, pulse...) qu'on ne doit pas effacer à chaque mise rivale.
+      if (pump.profileDirty || pump.dirty) {
+        try {
+          const fresh = getCurrentUserFull();
+          if (fresh && account.user) {
+            const delta = Math.floor(Number(fresh.credits || 0)) - Math.floor(Number(account.user.credits || 0));
+            account.user.credits = fresh.credits;
+            account.user.auction = fresh.auction;
+            account.user.revision = fresh.revision;
+            if (Number.isFinite(delta) && delta !== 0) {
+              player.credits = Math.max(0, Math.floor(Number(player.credits || 0) + delta));
+            }
+          } else {
+            syncPlayerFromAccount();
+          }
+        } catch {
+          try { syncPlayerFromAccount(); } catch {}
+        }
         markProgressDirty();
         window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
       }
@@ -23146,6 +23179,21 @@ function drawCollectables(ox, oy) {
       continue;
     }
 
+    // Même règle que les NPC (capteurs 1800) : au-delà, pas de sprite.
+    // Seule la box visée (collecte en cours, joueur ou PET) reste affichée.
+    try {
+      const visR = Number(NPC_SENSOR_RANGES?.visibility);
+      if (Number.isFinite(visR)) {
+        const targeted = (typeof collectableTargetId !== "undefined" && collectableTargetId === c.id)
+          || (typeof petState !== "undefined" && petState && petState.fetchId === c.id);
+        if (!targeted) {
+          const bdx = Number(c.x) - Number(player.x);
+          const bdy = Number(c.y) - Number(player.y);
+          if (bdx * bdx + bdy * bdy > visR * visR) continue;
+        }
+      }
+    } catch {}
+
     drawCollectBeam(c, ox, oy);
 
     const frames = Math.max(1, Number(sp.frames || sp._imgs?.length || 1));
@@ -26909,6 +26957,31 @@ function netNpcCombatTarget(e) {
 
 // Multi PvP : avatars des joueurs distants (hors tableau `enemies` pour ne
 // perturber aucun systeme NPC : ils vivent dans enemiesById pour le homing).
+// Membres du groupe (cache 1 s) : visibles au-delà du rayon capteurs,
+// comme un lock (coordination conservée malgré le culling 1800).
+let remoteGroupIdsAt = 0;
+let remoteGroupIds = new Set();
+let remoteGroupPseudos = new Set();
+function isRemoteGroupMember(r) {
+  try {
+    const now = performance.now();
+    if (now - remoteGroupIdsAt > 1000) {
+      remoteGroupIdsAt = now;
+      remoteGroupIds = new Set();
+      remoteGroupPseudos = new Set();
+      const members = getNetGroup()?.members;
+      if (Array.isArray(members)) {
+        for (const m of members) {
+          if (m?.id != null) remoteGroupIds.add(String(m.id));
+          if (m?.pseudo) remoteGroupPseudos.add(String(m.pseudo));
+        }
+      }
+    }
+    if (r?.id != null && remoteGroupIds.has(String(r.id))) return true;
+    if (r?.pseudo && remoteGroupPseudos.has(String(r.pseudo))) return true;
+  } catch {}
+  return false;
+}
 const netPlayerProxies = new Map(); // clientId -> entite cible
 const netPetProxies = new Map(); // clientId -> proxy du PET allie (lock + degats PvP)
 let lastPvpAdoptAt = 0;
@@ -29141,6 +29214,31 @@ function drawNetplayRemotes(ox, oy) {
     // drones, ni plaque). Le point minimap reste (pas de filtre de ce côté)
     // et le proxy reste cliquable : un clic réussi affiche le LOCK.
     if (r.cloakCpu === true) continue;
+    // Même règle que les NPC (capteurs 1800) : au-delà, pas de sprite.
+    // Exceptions : lock, combat (mêmes cas que le filtre réseau serveur),
+    // membre du groupe. Le PET de l'allié suit son porteur (même bloc).
+    // Le point minimap reste affiché (pas de filtre de ce côté).
+    try {
+      const pVisR = Number(NPC_SENSOR_RANGES?.visibility);
+      if (Number.isFinite(pVisR)) {
+        const prx0 = Number(r.rx ?? r.x);
+        const pry0 = Number(r.ry ?? r.y);
+        const pdx = prx0 - Number(player.x);
+        const pdy = pry0 - Number(player.y);
+        if (pdx * pdx + pdy * pdy > pVisR * pVisR) {
+          let keepRemote = false;
+          try {
+            const proxy = netPlayerProxies.get(r.id);
+            if (proxy && Target.get() === proxy) keepRemote = true;
+          } catch {}
+          if (!keepRemote && (r.atk === true || r.combat === "player"
+            || Number(r.slowT) > 0 || Number(r.freezeT) > 0
+            || Number(r.iemT) > 0 || Number(r.ishT) > 0)) keepRemote = true;
+          if (!keepRemote && isRemoteGroupMember(r)) keepRemote = true;
+          if (!keepRemote) continue;
+        }
+      }
+    } catch {}
     // Tirs de l'allie : vrais projectiles visuels (tickNetplayVisuals),
     // pas de faisceau.
     ctx.save();
@@ -29971,6 +30069,7 @@ ui.otExchangeBtn?.addEventListener("click", () => {
   addPlayerCombatFloat(result.energies, "rgba(121,237,255,0.98)", "+");
   showNotificationGroup([`Échange : ${formatInteger(result.cost)} Palladium → +${formatInteger(result.energies)} énergie(s) Galaxy`], "reward", { whiteTerms: [`+${formatInteger(result.energies)}`] });
   renderOreTradeWindow();
+  try { if (ui.refineryWindow && ui.refineryWindow.style.display !== "none") renderRefineryWindow(); } catch {}
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
 ui.oreTradeWindow?.addEventListener("click", (event) => {
@@ -29990,6 +30089,9 @@ ui.oreTradeWindow?.addEventListener("click", (event) => {
   setHudText(ui.shopCredits, formatInteger(player.credits));
   showNotificationGroup([`Vente : ${formatInteger(result.quantity)} ${getResourceName(result.resourceId, result.quantity)} → +${formatInteger(result.gained)} crédits${traBonus > 0 ? ` (+${traBonus} % Trader)` : ""}`], "reward", { whiteTerms: [`+${formatInteger(result.gained)}`] });
   renderOreTradeWindow();
+  // Commerce <-> raffinage synchronisés : la vente change les stocks affichés
+  // dans le raffinage ouvert (sinon fermeture/réouverture obligatoire).
+  try { if (ui.refineryWindow && ui.refineryWindow.style.display !== "none") renderRefineryWindow(); } catch {}
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
 

@@ -1,7 +1,7 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
-import { bootNetFromCache, flushNetUser, netActive, netCurrent, netList, netSetCurrent, netStore, noteNetConsumption, noteNetPurchase } from "./ACCOUNT_NET.js";
+import { bootNetFromCache, flushNetUser, netActive, netCurrent, netList, netSetCurrent, netStore, noteNetConsumption, noteNetPurchase, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
 // Multi : session serveur restauree au chargement (token + cache local),
 // puis refresh async via /api/me (revision canonique).
 try { bootNetFromCache(); } catch {}
@@ -3377,6 +3377,11 @@ export function refineCurrentUserOre(recipeId, requestedQuantity = 1) {
   u.inventory.resources[recipe.output.id] = Math.max(0, Number(u.inventory.resources[recipe.output.id] || 0) + gained);
   ensureUserShape(u);
   saveUser(u);
+  if (netActive()) {
+    for (const [resourceId, perUnit] of Object.entries(recipe.inputs)) {
+      noteNetConsumption("ores", resourceId, Math.floor(Number(perUnit) || 0) * quantity);
+    }
+  }
   return { ok: true, user: u, recipe, quantity, gained };
 }
 
@@ -3396,6 +3401,7 @@ export function sellCurrentUserOre(resourceId, bonusPct = 0) {  const u = getCur
   u.credits = Math.max(0, Number(u.credits || 0)) + gained;
   ensureUserShape(u);
   saveUser(u);
+  if (netActive()) noteNetConsumption("ores", id, owned);
   return { ok: true, user: u, resourceId: id, quantity: owned, gained };
 }
 
@@ -3413,6 +3419,7 @@ export function exchangeCurrentUserPalladiumForEnergy() {
   u.galaxyGates.energy += energies;
   ensureUserShape(u);
   saveUser(u);
+  if (netActive()) noteNetConsumption("ores", "palladium", cost);
   return { ok: true, energies, cost, user: u };
 }
 
@@ -3437,6 +3444,10 @@ export function chargeShipUpgrade(slotId, oreId, oreAmount = 1) {
     : { ore, stock: amount * 10 };
   ensureUserShape(u);
   saveUser(u);
+  if (netActive()) {
+    noteNetConsumption("ores", ore, amount);
+    noteNetUpgradeCharge(slot, ore, u.upgrades[slot].stock);
+  }
   return { ok: true, user: u, slot, ore, stock: u.upgrades[slot].stock };
 }
 

@@ -20,7 +20,11 @@ let observedHangarSelection = null;
 let refreshStarted = false;
 let pendingPurchaseCredits = 0;
 const pendingPurchaseStock = { ammo: {}, rockets: {} };
-const pendingConsumedStock = { ammo: {}, rockets: {} };
+const pendingConsumedStock = { ammo: {}, rockets: {}, ores: {} };
+// Charges d'améliorations (raffinage -> slots laser/rocket/speed/shield) pas
+// encore acceptées par le serveur : sur 409, le canon (sans la charge)
+// écraserait le slot = dépôt "mis puis enlevé et remis dans la liste".
+const pendingUpgradeCharges = {};
 // Miroir local de ORE_RESOURCE_IDS (SRC/DATA/RESOURCES.js) : ce module reste
 // sans import (pas de cycle avec ACCOUNT.js).
 const ORE_IDS = Object.freeze(["palladium", "prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "xenomit", "osmium"]);
@@ -106,6 +110,16 @@ export function noteNetConsumption(field, id, amount) {
   if (key && used > 0) pendingConsumedStock[field][key] = Math.max(0, Number(pendingConsumedStock[field][key]) || 0) + used;
 }
 
+// Charge d'amélioration (raffinage) en attente d'acceptation serveur.
+// Rejouée sur le canon en cas de 409 (comme les achats).
+export function noteNetUpgradeCharge(slot, ore, stock) {
+  if (!netActive()) return;
+  const key = String(slot || "").toLowerCase();
+  const st = Math.max(0, Math.floor(Number(stock) || 0));
+  if (!key || !(st > 0)) return;
+  pendingUpgradeCharges[key] = { ore: String(ore || ""), stock: st };
+}
+
 function clearPendingPurchaseStock(snapshot) {
   for (const field of ["ammo", "rockets"]) {
     for (const [id, amount] of Object.entries(snapshot?.[field] || {})) {
@@ -124,6 +138,12 @@ function clearPendingConsumedStock(snapshot) {
       else delete pendingConsumedStock[field][id];
     }
   }
+  // Minerais : le snapshot pousse inventory.resources.
+  for (const [id, amount] of Object.entries(snapshot?.inventory?.resources || {})) {
+    const left = Math.max(0, Number(pendingConsumedStock.ores[String(id || "").toLowerCase()]) || 0) - Math.max(0, Number(amount) || 0);
+    if (left > 0) pendingConsumedStock.ores[String(id || "").toLowerCase()] = left;
+    else delete pendingConsumedStock.ores[String(id || "").toLowerCase()];
+  }
 }
 
 function resetPendingPurchases() {
@@ -132,6 +152,8 @@ function resetPendingPurchases() {
   pendingPurchaseStock.rockets = {};
   pendingConsumedStock.ammo = {};
   pendingConsumedStock.rockets = {};
+  pendingConsumedStock.ores = {};
+  for (const k of Object.keys(pendingUpgradeCharges)) delete pendingUpgradeCharges[k];
 }
 
 export function netSetCurrent(cur) {
@@ -377,6 +399,28 @@ function mergeProgressiveFields(prev, next) {
       if (Number(prev.pet.exp) > Number(next.pet.exp || 0)) next.pet.exp = Math.max(0, Number(prev.pet.exp));
       if (Number(prev.pet.level) > Number(next.pet.level || 0)) next.pet.level = Math.max(0, Math.floor(Number(prev.pet.level)));
     }
+    // Améliorations chargées (raffinage -> slots) : une charge validée
+    // localement ne doit jamais disparaître quand le canon serveur (sans la
+    // charge, push pas encore accepté) est adopté. Même minerai : MAX du
+    // stock (consommation par tir non poussée à chaque coup). Slot vide côté
+    // canon : on garde la charge locale. Minerai remplacé : le canon tranche
+    // (le replay pendingUpgradeCharges couvre le cas récent).
+    if (prev.upgrades && next.upgrades && typeof next.upgrades === "object" && !Array.isArray(next.upgrades)) {
+      for (const [slot, loaded] of Object.entries(prev.upgrades)) {
+        const key = String(slot || "").toLowerCase();
+        if (!key || !loaded || typeof loaded !== "object") continue;
+        const pStock = Math.max(0, Math.floor(Number(loaded.stock) || 0));
+        if (!(pStock > 0)) continue;
+        const pOre = String(loaded.ore || "");
+        const cur = next.upgrades[key];
+        const nStock = cur && typeof cur === "object" ? Math.max(0, Math.floor(Number(cur.stock) || 0)) : 0;
+        if (!cur || typeof cur !== "object" || !(nStock > 0)) {
+          next.upgrades[key] = { ore: pOre, stock: pStock };
+        } else if (String(cur.ore || "") === pOre && pStock > nStock) {
+          next.upgrades[key] = { ore: pOre, stock: pStock };
+        }
+      }
+    }
     // Vaisseaux/designs/hangars possédés localement mais absents du canon
     // serveur (achat boutique pas encore poussé lors d'un 409) : union.
     // Un achat validé localement ne doit jamais disparaître avec l'illusion
@@ -500,6 +544,7 @@ async function pushNow() {
   const purchaseCreditsAtSend = pendingPurchaseCredits;
   const purchaseStockAtSend = JSON.parse(JSON.stringify(pendingPurchaseStock));
   const consumedStockAtSend = JSON.parse(JSON.stringify(pendingConsumedStock));
+  const upgradeChargesAtSend = JSON.parse(JSON.stringify(pendingUpgradeCharges));
   let out = null;
   try {
     out = await api("/api/save", { method: "POST", body: { user: snapshot }, token });
@@ -510,6 +555,14 @@ async function pushNow() {
     pendingPurchaseCredits = Math.max(0, pendingPurchaseCredits - purchaseCreditsAtSend);
     clearPendingPurchaseStock(purchaseStockAtSend);
     clearPendingConsumedStock(consumedStockAtSend);
+    // Charges d'améliorations couvertes par le snapshot accepté (inchangées
+    // pendant le vol : une nouvelle charge reste en attente).
+    for (const [k, sent] of Object.entries(upgradeChargesAtSend || {})) {
+      const cur = pendingUpgradeCharges[k];
+      if (cur && String(cur.ore) === String(sent?.ore) && Math.floor(Number(cur.stock) || 0) === Math.floor(Number(sent?.stock) || 0)) {
+        delete pendingUpgradeCharges[k];
+      }
+    }
     if (out.user && typeof out.user === "object") {
       const sentRev = Math.max(0, Math.floor(Number(snapshot?.revision) || 0));
       const liveRev = Math.max(0, Math.floor(Number(memUser?.revision) || 0));
@@ -572,6 +625,24 @@ async function pushNow() {
         for (const [id, amount] of Object.entries(pendingConsumedStock[field])) {
           memUser[field][id] = Math.max(0, Math.floor(Number(memUser[field][id]) || 0) - Math.max(0, Math.floor(Number(amount) || 0)));
         }
+      }
+      // Minerais dépensés (vente, raffinage, charge d'amélioration, échange)
+      // pas encore acceptés : on rejoue la dépense sur le canon, sinon le
+      // MAX du merge les ressuscite et le dépôt semble annulé.
+      memUser.inventory ||= {};
+      memUser.inventory.resources ||= {};
+      for (const [id, amount] of Object.entries(pendingConsumedStock.ores)) {
+        const key = String(id || "").toLowerCase();
+        if (!key) continue;
+        memUser.inventory.resources[key] = Math.max(0, Math.floor(Number(memUser.inventory.resources[key]) || 0) - Math.max(0, Math.floor(Number(amount) || 0)));
+      }
+      // Charges d'améliorations en attente : restaurées sur le canon.
+      memUser.upgrades ||= {};
+      for (const [slot, charge] of Object.entries(pendingUpgradeCharges)) {
+        const key = String(slot || "").toLowerCase();
+        const st = Math.max(0, Math.floor(Number(charge?.stock) || 0));
+        if (!key || !(st > 0)) continue;
+        memUser.upgrades[key] = { ore: String(charge?.ore || ""), stock: st };
       }
     }
     memUser.revision = Math.max(
