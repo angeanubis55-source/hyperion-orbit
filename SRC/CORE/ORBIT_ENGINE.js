@@ -16011,7 +16011,7 @@ function drawPulseFx(ox, oy) {
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
+    ctx.imageSmoothingQuality = "low";
     ctx.globalAlpha = 1;
     ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
     ctx.restore();
@@ -16110,7 +16110,7 @@ function drawSmbFx(ox, oy) {
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
+    ctx.imageSmoothingQuality = "low";
     ctx.globalAlpha = 1;
     ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
     ctx.restore();
@@ -16654,7 +16654,7 @@ function drawInstaShield() {
 
 ctx.save();
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
+    ctx.imageSmoothingQuality = "low";
     ctx.globalAlpha = 1;
     ctx.drawImage(img, -w / 2, -h / 2, w, h);
     ctx.restore();
@@ -16947,7 +16947,7 @@ if (spinSpeed !== 0) {
 }
 
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
+  ctx.imageSmoothingQuality = "low";
 
   ctx.globalAlpha *= repairOrbitFx.alpha * Number(pack.alpha ?? 1);
 
@@ -17111,7 +17111,7 @@ function drawExplosions(ox, oy) {
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
+    ctx.imageSmoothingQuality = "low";
     ctx.globalAlpha = 1;
     ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
     ctx.restore();
@@ -17227,7 +17227,7 @@ function drawShipDamages(ox, oy) {
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
+    ctx.imageSmoothingQuality = "low";
     // ✅ rotation libre sur 360° : le sprite pointe "à droite" (angle 0) par
     // défaut ; on le pivote vers l'angle du tir reçu pour qu'il fasse face.
     ctx.translate(x, y);
@@ -29453,7 +29453,7 @@ function drawNetplayRemotes(ox, oy) {
           if (!(w > 0) || !(h > 0)) continue;
           ctx.save();
           ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = "high";
+          ctx.imageSmoothingQuality = "low";
           ctx.translate(Math.cos(sd.ang) * sd.rad, Math.sin(sd.ang) * sd.rad);
           ctx.rotate(sd.rot || 0);
           ctx.globalAlpha = 1;
@@ -30636,7 +30636,7 @@ function drawZonePortals(ox, oy) {
 
         ctx.globalAlpha = alpha;
         ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
+        ctx.imageSmoothingQuality = "low";
 
         ctx.drawImage(
           buttonImg,
@@ -30709,7 +30709,7 @@ function drawSafeModules(ox, oy) {
         ctx.save();
         ctx.globalAlpha = isPlayerNearQuestModule(m) ? 1 : 0.65;
         ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
+        ctx.imageSmoothingQuality = "low";
         ctx.drawImage(
           buttonImg,
           button.x + ox - QUEST_BUTTON.w / 2,
@@ -30734,7 +30734,7 @@ function drawSafeModules(ox, oy) {
         ctx.save();
         ctx.globalAlpha = isPlayerNearTradeModule(m) ? 1 : 0.65;
         ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
+        ctx.imageSmoothingQuality = "low";
         ctx.drawImage(
           tradeImg,
           tradeBtn.x + ox - TRADE_BUTTON.w / 2,
@@ -30768,7 +30768,7 @@ function drawSafeModules(ox, oy) {
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
+    ctx.imageSmoothingQuality = "low";
 
     ctx.drawImage(
       bImg,
@@ -34012,7 +34012,7 @@ function drawMapBackground() {
   const drawH = sourceH * scale;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
+  ctx.imageSmoothingQuality = "low";
   ctx.drawImage(img, (innerWidth - drawW) / 2, (innerHeight - drawH) / 2, drawW, drawH);
   ctx.restore();
 }
@@ -36407,7 +36407,7 @@ function drawHangarSwapShield(elapsed) {
   if (!isImgReady(img)) return;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
+  ctx.imageSmoothingQuality = "low";
   ctx.globalAlpha = 1;
   ctx.drawImage(img, -INSTA_SHIELD_PACK.w / 2, -INSTA_SHIELD_PACK.h / 2, INSTA_SHIELD_PACK.w, INSTA_SHIELD_PACK.h);
   ctx.restore();
