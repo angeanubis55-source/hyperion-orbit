@@ -13051,9 +13051,9 @@ const TRADE_BUTTON = {
 // map battle OU menant vers une map battle.
 // ============================================================
 const PVP_PORTAL_SPRITES = {
-  idle: { src: "ASSETS/PVP_PORTAIL/t_idle_01.png", w: 410, h: 400, yOff: 0 },
-  open: { src: "ASSETS/PVP_PORTAIL/t_idle_02.png", w: 410, h: 400, yOff: 0 },
-  jump: { src: "ASSETS/PVP_PORTAIL/t_active.png", w: 410, h: 400, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+  idle: { src: "ASSETS/PVP_PORTAIL/t_idle_01.png", w: 410, h: 400, xOff: 7, yOff: -2 },
+  open: { src: "ASSETS/PVP_PORTAIL/t_idle_02.png", w: 410, h: 400, xOff: 7, yOff: -2 },
+  jump: { src: "ASSETS/PVP_PORTAIL/t_active.png", w: 410, h: 400, xOff: 7, yOff: -2, scale: 1, spinSpeed: 0, alpha: 1 },
 };
 
 // Portail pirate (5-2) réutilisé sur les x-3 vers LOW.
@@ -28774,6 +28774,7 @@ function drawMinimap() {
     viewportWidth: innerWidth,
     viewportHeight: innerHeight,
     lockedNpc: Target.get(),
+    portalLabels: portalLabelsOn === true,
     // Spearhead Recon : radar minimap x2 pendant l'effet.
     shouldShowNpc: (source, enemy, locked) => shouldDetectNpc(source, enemy, ((player.reconT || 0) > 0 ? NPC_SENSOR_RANGES.radar * 2 : NPC_SENSOR_RANGES.radar), locked),
     npcOpacity: (source, enemy, locked) => {
@@ -30428,16 +30429,16 @@ function setPortalLabels(on) {
   return portalLabelsOn;
 }
 
-// Nom de la destination en petit près du portail, placé vers le centre de
-// l'écran (jamais vers le bord) pour rester discret et lisible.
-// Rendu monde (derrière les contrôles DOM), mêmes portails que drawZonePortals.
+// Nom de la destination au-dessus du bouton de saut (bouton à ptl.y - 210,
+// ~135 de haut) : discret mais lisible. Rendu monde (derrière les contrôles
+// DOM), mêmes portails que drawZonePortals.
 function drawPortalLabels(ox, oy) {
   if (portalLabelsOn !== true) return;
   let portals = null;
   try { portals = getInteractivePortals(); } catch { return; }
   if (!portals || !portals.length) return;
   ctx.save();
-  ctx.font = "700 11px ui-sans-serif, system-ui";
+  ctx.font = "800 15px ui-sans-serif, system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   for (const ptl of portals) {
@@ -30446,13 +30447,13 @@ function drawPortalLabels(ox, oy) {
     // Cohérent avec le culling des sprites : pas de label si caché.
     if (isBeyondSensorRadius(ptl.x, ptl.y, 200)) continue;
     const sx = Number(ptl.x) + ox, sy = Number(ptl.y) + oy;
-    if (sx < -80 || sy < -40 || sx > innerWidth + 80 || sy > innerHeight + 40) continue;
-    const lx = sx < innerWidth / 2 ? sx + 30 : sx - 30;
-    const ly = sy < innerHeight / 2 ? sy + 34 : sy - 38;
-    ctx.lineWidth = 3;
+    if (sx < -80 || sy < -320 || sx > innerWidth + 80 || sy > innerHeight + 40) continue;
+    const lx = Math.max(34, Math.min(innerWidth - 34, sx));
+    const ly = sy - 292;
+    ctx.lineWidth = 4;
     ctx.strokeStyle = "rgba(4,8,18,0.85)";
     ctx.strokeText(dest, lx, ly);
-    ctx.fillStyle = "rgba(170,225,240,0.9)";
+    ctx.fillStyle = "rgba(170,225,240,0.95)";
     ctx.fillText(dest, lx, ly);
   }
   ctx.restore();
