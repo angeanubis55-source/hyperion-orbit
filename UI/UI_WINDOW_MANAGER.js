@@ -483,25 +483,6 @@ function makeMinimapResizable(id, card) {
     resizeFromButton(40);
   });
 
-  // Bouton "i" : destinations des portails (vert = affichées, rouge = masquées).
-  try {
-    const infoBtn = card.querySelector("#miniPortalLabels");
-    if (infoBtn && !infoBtn.__portalLabelsWired) {
-      infoBtn.__portalLabelsWired = true;
-      let storedOn = true;
-      try { storedOn = localStorage.getItem("orbit_portal_labels") !== "0"; } catch {}
-      infoBtn.classList.toggle("on", storedOn);
-      try { window.__ORBIT_ENGINE__?.setPortalLabels?.(storedOn); } catch {}
-      infoBtn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        const next = !infoBtn.classList.contains("on");
-        infoBtn.classList.toggle("on", next);
-        try { window.__ORBIT_ENGINE__?.setPortalLabels?.(next); } catch {}
-        try { localStorage.setItem("orbit_portal_labels", next ? "1" : "0"); } catch {}
-      });
-    }
-  } catch {}
-
   let resizing = false;
   let startX = 0;
   let startY = 0;

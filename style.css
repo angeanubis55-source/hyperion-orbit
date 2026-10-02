@@ -713,24 +713,6 @@ html.orbitSessionReady #loadingOverlay{
   transform:none;
 }
 
-/* Bouton info destinations portails : fond rouge éteint, vert allumé.
-   Préfixé #minimap : .gameWinMinBtn (plus bas dans le fichier) gagnerait sinon. */
-#minimap .miniInfoBtn{
-  background:linear-gradient(180deg, rgba(94,22,30,.92), rgba(43,10,15,.96)) !important;
-  border-color:rgba(255,90,105,.35) !important;
-}
-#minimap .miniInfoBtn.on{
-  background:linear-gradient(180deg, rgba(22,94,46,.92), rgba(10,43,22,.96)) !important;
-  border-color:rgba(90,255,140,.4) !important;
-}
-#minimap .miniInfoBtn:hover:not(:disabled){
-  border-color:rgba(255,150,160,.6) !important;
-}
-#minimap .miniInfoBtn.on:hover:not(:disabled){
-  border-color:rgba(140,255,175,.65) !important;
-}
-.miniInfoBtn svg{ display:block; }
-
 #miniCanvas{
   display:block;
   width:100%;
@@ -4851,6 +4833,12 @@ body.orbitNoFade #fpsOverlay{
   box-sizing: border-box !important;
   margin-top: -3px !important;
   margin-bottom: 3px !important;
+}
+
+/* Texte seul remonté de 2px, sans bouger la mise en page. */
+#miniHeader span{
+  position:relative;
+  top:-2px;
 }
 
 /* Séparateur */

@@ -69,6 +69,17 @@ export function updatePortalProximity(portals, dt, options = {}) {
     if (near && !portal.open && !portal.switching && !portal.holding && !portal.closing) {
       portal.switching = true;
       portal.switchT = 0;
+    } else if (near && portal.closing) {
+      // Re-entrée pendant la fermeture (spam entrée/sortie, jitter au bord
+      // du rayon) : on reprend l'ouverture depuis le niveau visuel courant
+      // au lieu de retomber à 0 puis recommencer.
+      const cur = clamp(getPortalOpenFade(portal, switchDuration), 0, 1);
+      portal.closing = false;
+      portal.closeT = 0;
+      portal.switching = true;
+      portal.switchT = cur * switchDuration;
+      portal.open = false;
+      portal.holding = false;
     } else if (!near && (portal.open || portal.switching || portal.holding) && !portal.closing) {
       startPortalClosing(portal, switchDuration);
     }

@@ -13045,55 +13045,38 @@ const TRADE_BUTTON = {
   proximityRadius: 450,
 };
 
-// ============================================================
-// ✅ Portail PVP (maps battle 4-x) : t_idle_01 = fermé, t_idle_02 = ouvert,
-// t_active = animation de saut. Appliqué à tous les portails situés en
-// map battle OU menant vers une map battle.
-// ============================================================
-const PVP_PORTAL_SPRITES = {
-  idle: { src: "ASSETS/PVP_PORTAIL/t_idle_01.png", w: 410, h: 400, xOff: 7, yOff: -2 },
-  open: { src: "ASSETS/PVP_PORTAIL/t_idle_02.png", w: 410, h: 400, xOff: 7, yOff: -2 },
-  jump: { src: "ASSETS/PVP_PORTAIL/t_active.png", w: 410, h: 400, xOff: 7, yOff: -2, scale: 1, spinSpeed: 0, alpha: 1 },
-};
-
-// Portail pirate (5-2) réutilisé sur les x-3 vers LOW.
-const LOW_PORTAL_SPRITES = {
-  idle: { src: "ASSETS/PIRATES_PORTAL/DESACTIVE.png", w: 362, h: 387, yOff: 0 },
-  open: { src: "ASSETS/PIRATES_PORTAL/ACTIVE.png", w: 362, h: 387, yOff: 0 },
-  jump: { src: "ASSETS/PIRATES_PORTAL/JUMP.png", w: 362, h: 387, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
-};
-
 function isBattlePortal(ptl = null) {
-  // Skin PVP si et seulement si la DESTINATION est battle (4-1..4-4).
-  // Un portail vers une map normale garde le skin normal, même situé en
-  // map battle (ex : 4-4 -> 1-5). 4-5 et 5-2 ne sont pas battle.
+  // Destination battle (4-1..4-4) uniquement. 4-5 et 5-2 n'en sont pas.
   try {
     const to = String(ptl?.toMap || "").trim().toLowerCase();
     return /^(4-[1-4])($|\.)/.test(to) || /-4\.1$/.test(to);
   } catch { return false; }
 }
 
+// Skin rouge des portails PVP (dossier versionné par le joueur).
+const PVP_PORTAL_SPRITES = {
+  idle: { src: "ASSETS/PVP_PORTAL/DESACTIVE.png", w: 320, h: 320, yOff: 0 },
+  open: { src: "ASSETS/PVP_PORTAL/ACTIVE.png", w: 320, h: 320, yOff: 0 },
+  jump: { src: "ASSETS/PVP_PORTAL/JUMP.png", w: 320, h: 320, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+};
+
 function getPortalSpriteSet(ptl = null) {
   const pvp = isBattlePortal(ptl);
-  // LOW depuis les x-3 : skin pirate (skins explicites prioritaires).
-  let low = false;
-  try { low = String(ptl?.toMap || "").trim().toLowerCase() === "low"; } catch {}
-  const skinIdle = ptl?.sprites?.idle || (low ? LOW_PORTAL_SPRITES.idle : (pvp ? PVP_PORTAL_SPRITES.idle : PORTAL_IDLE_SPR));
-  const skinOpen = ptl?.sprites?.open || (low ? LOW_PORTAL_SPRITES.open : (pvp ? PVP_PORTAL_SPRITES.open : PORTAL_OPEN_SPR));
   return {
-    idle: skinIdle,
-    open: skinOpen,
+    idle: ptl?.sprites?.idle || (pvp ? PVP_PORTAL_SPRITES.idle : PORTAL_IDLE_SPR),
+    open: ptl?.sprites?.open || (pvp ? PVP_PORTAL_SPRITES.open : PORTAL_OPEN_SPR),
 
     jump: {
       ...DEFAULT_PORTAL_JUMP_SPR,
       ...(PORTAL_JUMP_SPR || {}),
-      ...(isBattlePortal(ptl) && !ptl?.sprites?.jump ? PVP_PORTAL_SPRITES.jump : {}),
-      ...(low && !ptl?.sprites?.jump ? LOW_PORTAL_SPRITES.jump : {}),
+      ...(pvp && !ptl?.sprites?.jump ? PVP_PORTAL_SPRITES.jump : {}),
       ...(ptl?.sprites?.jump || {}),
     },
 
     jumpFx: {
       ...DEFAULT_PORTAL_JUMP_FX,
+      // Portails PVP : animation de saut rouge (25 frames 320x320).
+      ...(pvp && !ptl?.sprites?.jumpFx ? { path: "ASSETS/PORTAL_JUMP_RED/" } : {}),
       ...(ptl?.sprites?.jumpFx || {}),
     },
 
@@ -28774,7 +28757,6 @@ function drawMinimap() {
     viewportWidth: innerWidth,
     viewportHeight: innerHeight,
     lockedNpc: Target.get(),
-    portalLabels: portalLabelsOn === true,
     // Spearhead Recon : radar minimap x2 pendant l'effet.
     shouldShowNpc: (source, enemy, locked) => shouldDetectNpc(source, enemy, ((player.reconT || 0) > 0 ? NPC_SENSOR_RANGES.radar * 2 : NPC_SENSOR_RANGES.radar), locked),
     npcOpacity: (source, enemy, locked) => {
@@ -30419,46 +30401,6 @@ function tickZonePortalVisualTransitions(dt) {
   tickPortalVisualTransitions(portals, dt, portal.switchDur);
 }
 
-// Labels de destination des portails (bouton "i" de la mini-carte).
-// Persisté en local : "1" = affichés (fond vert), "0" = masqués (fond rouge).
-let portalLabelsOn = true;
-try { portalLabelsOn = localStorage.getItem("orbit_portal_labels") !== "0"; } catch {}
-function setPortalLabels(on) {
-  portalLabelsOn = on === true;
-  try { localStorage.setItem("orbit_portal_labels", portalLabelsOn ? "1" : "0"); } catch {}
-  return portalLabelsOn;
-}
-
-// Nom de la destination au-dessus du bouton de saut (bouton à ptl.y - 210,
-// ~135 de haut) : discret mais lisible. Rendu monde (derrière les contrôles
-// DOM), mêmes portails que drawZonePortals.
-function drawPortalLabels(ox, oy) {
-  if (portalLabelsOn !== true) return;
-  let portals = null;
-  try { portals = getInteractivePortals(); } catch { return; }
-  if (!portals || !portals.length) return;
-  ctx.save();
-  ctx.font = "800 15px ui-sans-serif, system-ui";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  for (const ptl of portals) {
-    const dest = String(ptl?.toMap || "").trim().toUpperCase();
-    if (!dest) continue;
-    // Cohérent avec le culling des sprites : pas de label si caché.
-    if (isBeyondSensorRadius(ptl.x, ptl.y, 200)) continue;
-    const sx = Number(ptl.x) + ox, sy = Number(ptl.y) + oy;
-    if (sx < -80 || sy < -320 || sx > innerWidth + 80 || sy > innerHeight + 40) continue;
-    const lx = Math.max(34, Math.min(innerWidth - 34, sx));
-    const ly = sy - 292;
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = "rgba(4,8,18,0.85)";
-    ctx.strokeText(dest, lx, ly);
-    ctx.fillStyle = "rgba(170,225,240,0.95)";
-    ctx.fillText(dest, lx, ly);
-  }
-  ctx.restore();
-}
-
 function drawZonePortals(ox, oy) {
   const portals = getInteractivePortals();
   if (!portals.length) return;
@@ -30488,8 +30430,14 @@ function drawZonePortals(ox, oy) {
     const openFade = getPortalOpenFade(ptl);
     const jumpFade = getPortalJumpFade(ptl);
 
-    // ✅ portail idle
-    ctx.globalAlpha = 1 - openFade;
+    // ✅ Respiration : dès que le portail est visible, l'ACTIVE oscille
+    // en continu par-dessus la DESACTIVE (phase propre à chaque portail).
+    // Pas de proximité, pas de phases : toujours le même cycle.
+    const nowMs = performance.now();
+    const breatheA = 0.5 - 0.5 * Math.cos(nowMs / 1000 * TAU / 2.4 + (Number(ptl.x) + Number(ptl.y)) * 0.01);
+
+    // ✅ portail idle.
+    ctx.globalAlpha = 1;
     ctx.drawImage(
       imgIdle,
       x - w / 2,
@@ -30498,20 +30446,22 @@ function drawZonePortals(ox, oy) {
       h
     );
 
-    // ✅ portail ouvert
-    ctx.globalAlpha = openFade;
-    const openW = spr.open.w || w;
-    const openH = spr.open.h || h;
-    const openScale = Number(spr.open.scale ?? 1);
-    const openXOff = Number(spr.open.xOff || 0);
-    const openYOff = Number(spr.open.yOff || 0);
-    ctx.drawImage(
-      imgOpen,
-      x + openXOff - (openW * openScale) / 2,
-      y + openYOff - (openH * openScale) / 2,
-      openW * openScale,
-      openH * openScale
-    );
+    // ✅ portail ouvert.
+    {
+      const openW = spr.open.w || w;
+      const openH = spr.open.h || h;
+      const openScale = Number(spr.open.scale ?? 1);
+      const openXOff = Number(spr.open.xOff || 0);
+      const openYOff = Number(spr.open.yOff || 0);
+      ctx.globalAlpha = clamp(breatheA, 0, 1);
+      ctx.drawImage(
+        imgOpen,
+        x + openXOff - (openW * openScale) / 2,
+        y + openYOff - (openH * openScale) / 2,
+        openW * openScale,
+        openH * openScale
+      );
+    }
 
     ctx.globalAlpha = 1;
 
@@ -34333,7 +34283,6 @@ if (GAME_SETTINGS.textures) {
 }
 
   drawZonePortals(ox, oy);
-  drawPortalLabels(ox, oy);
   drawSafeModules(ox, oy);
   drawLowRaidZone(ox, oy);
   drawMoveTarget(ox, oy);
@@ -36512,7 +36461,6 @@ function drawHangarSwapFx() {
 
 window.__ORBIT_ENGINE__ = {
   switchMap: switchMapConfig,
-  setPortalLabels,
   getHangarAccess,
   markHangarChanged,
   applyHangarDesignLive,
