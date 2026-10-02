@@ -17064,13 +17064,14 @@ function spawnExplosion(x, y, scale = 1) {
 // est ignoré (explosions, tirs distants, FX, étincelles, chiffres).
 // Infinity en gates/raid = aucun culling. Le joueur local et ses tirs
 // restent à plein régime (pas de filtre de ce côté).
-function isBeyondSensorRadius(wx, wy) {
+function isBeyondSensorRadius(wx, wy, margin = 0) {
   try {
     const visR = Number(NPC_SENSOR_RANGES?.visibility);
     if (!Number.isFinite(visR)) return false;
     const dx = Number(wx) - Number(player.x);
     const dy = Number(wy) - Number(player.y);
-    return dx * dx + dy * dy > visR * visR;
+    const r = visR + Math.max(0, Number(margin) || 0);
+    return dx * dx + dy * dy > r * r;
   } catch { return false; }
 }
 
@@ -30005,7 +30006,7 @@ const SAFE_MODULE_SPR = {
   BEACON_VRU: { src: "ASSETS/VRU/BEACON.png" },
   QUEST_VRU: { src: "ASSETS/VRU/QUEST.png" },
 
-  CENTRE_PIRATE: { src: "ASSETS/PIRATES/CENTRE.png" },
+  CENTRE_PIRATE: { src: "ASSETS/PIRATES/CENTRE.webp" },
 };
 
 function preloadSafeModuleSprites(sectorRules, world) {
@@ -30375,6 +30376,9 @@ function drawZonePortals(ox, oy) {
   ctx.imageSmoothingEnabled = false;
 
   for (const ptl of portals) {
+    // Capteurs 1800 (comme les NPC) : ces portails n'avaient aucun culling
+    // (même pas viewport). En saut on est dessus : toujours visible.
+    if (isBeyondSensorRadius(ptl.x, ptl.y, 200)) continue;
     const spr = getPortalSpriteSet(ptl);
 
     const imgIdle = getCachedImage(spr.idle?.src);
@@ -30661,6 +30665,12 @@ function drawSafeModules(ox, oy) {
   const mods = zoneSafe.modules || [];
 
   for (const m of mods) {
+    // Capteurs 1800 (comme les NPC) : la base (ex : 3000×1985 en 5-2) et ses
+    // boutons n'avaient aucun culling. Marge = demi-taille (pop-in au bord).
+    // Minimap et logique de proximité inchangées.
+    try {
+      if (isBeyondSensorRadius(m.x, m.y, Math.max(Number(m.w) || 0, Number(m.h) || 0) / 2)) continue;
+    } catch {}
     const spr = SAFE_MODULE_SPR[m.spr];
     if (!spr) continue;
 
@@ -30671,8 +30681,10 @@ function drawSafeModules(ox, oy) {
     const y = m.y + oy;
 
     ctx.save();
+    // Base statique dessinée en 1:1 : smoothing "low" (le "high" coûtait
+    // cher sur 3000×1985 pour zéro différence visuelle sans redimension).
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
+    ctx.imageSmoothingQuality = "low";
 
     ctx.drawImage(
       img,
@@ -30738,6 +30750,9 @@ function drawSafeModules(ox, oy) {
   const bea = zoneSafe.beacons || [];
 
   for (const b of bea) {
+    try {
+      if (isBeyondSensorRadius(b.x, b.y, Math.max(Number(b.w) || 90, Number(b.h) || 165) / 2)) continue;
+    } catch {}
     const beaconSprite =
       SAFE_MODULE_SPR[b.spr] ||
       SAFE_MODULE_SPR.BEACON_MMO;

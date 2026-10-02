@@ -107,7 +107,7 @@ try {
   requests.length = 0;
   await page.evaluate(async () => { await window.__SWITCH_MAP__('5-2'); });
   assert.equal(await page.evaluate(() => window.__CURRENT_MAP_ID__), '5-2');
-  assert.ok(requests.includes('/ASSETS/PIRATES/CENTRE.png'), 'Pirate base must be prepared on entry to its sector');
+  assert.ok(requests.includes('/ASSETS/PIRATES/CENTRE.webp'), 'Pirate base must be prepared on entry to its sector');
   results.phases.push({ label: 'pirate sector 5-2', requests: requests.length });
   requests.length = 0;
   await page.evaluate(async () => { await window.__SWITCH_MAP__('1-1'); });
