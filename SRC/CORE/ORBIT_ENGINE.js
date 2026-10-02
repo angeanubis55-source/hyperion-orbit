@@ -85,6 +85,7 @@ import { pilotSkillMults } from "../DATA/PILOT_SKILLS.js";
 import { CRAFTING_RECIPES, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
 import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
+import { getShipEffectStats } from "../../SHIP/SHIP_BONUSES.js";
 import { GAME_VERSION } from "../DATA/VERSION.js";
 import { getShipPackById as getShipPackByIdData, getShipDesignBaseId } from "../../SHIP/SHIP_PACKS.js";
 import { getAbilityInfo, formatAbilityTiming, policeAbilityIds, abilityIconFile } from "../../SHIP/SHIP_ABILITIES.js";
@@ -14590,13 +14591,27 @@ function getSpeedBreakdown() {
   }
 
   speedPct += Number(getActiveDroneFormation(u).effects?.speedPct || 0);
+  // ✅ Passif vitesse du design actif (ex : Tyrannos +15 %) : le déplacement
+  // (player.baseSpeed via bonusSpeed du hangar) l'applique déjà — sans ça
+  // l'HUD affichait une vitesse inférieure à la réelle.
+  let designSpeedPct = 0;
+  let designSpeedFlat = 0;
+  let designSpeedLabel = "";
+  try {
+    const designFx = getShipEffectStats(shipId) || {};
+    designSpeedPct = Math.max(0, Number(designFx.speedPct || 0));
+    designSpeedFlat = Math.max(0, Number(designFx.speedFlat || 0));
+    if (designSpeedPct > 0 || designSpeedFlat > 0) {
+      designSpeedLabel = ` | Design: +${designSpeedPct}%${designSpeedFlat > 0 ? ` +${designSpeedFlat}` : ""}`;
+    }
+  } catch {}
   // ✅ Leonov home (x-1 à x-4 de sa firme) : vitesse x2, comme le moteur
   // de déplacement (player.baseSpeed) — sinon l'HUD affiche la moitié.
   const leonovHome = isLeonovHomeActive();
   // ✅ Ralentis et boosts temporaires (IEM, kamikaze, Hecate, Voyage, RVG) :
   // playerSlowMult central, comme le moteur de déplacement — sinon l'HUD
   // affiche la vitesse de base (ex. 280 au lieu de 252 ralenti).
-  const total = Math.floor((base + genSpeed) * (1 + speedPct / 100) * playerUpgradeMults().speed * (leonovHome ? 1.2 : 1) * playerSlowMult(player));
+  const total = Math.floor(((base + genSpeed) * (1 + (speedPct + designSpeedPct) / 100) + designSpeedFlat) * playerUpgradeMults().speed * (leonovHome ? 1.2 : 1) * playerSlowMult(player));
 
   return {
     shipId,
@@ -14604,6 +14619,7 @@ function getSpeedBreakdown() {
     base,
     genSpeed,
     speedPct,
+    designSpeedLabel,
     leonovHome,
     total,
     speedItems,
@@ -35366,6 +35382,7 @@ if (ui.spdTxt) {
     `Vaisseau: ${spd.base}` +
     ` | Générateurs: +${spd.genSpeed}` +
     ` | Modules vitesse: +${spd.speedPct}%` +
+    `${spd.designSpeedLabel || ""}` +
     (spd.leonovHome ? ` | Leonov home: x1.2` : ``) +
     ` | Config ${spd.config}`);
 }
