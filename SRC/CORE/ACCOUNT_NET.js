@@ -138,12 +138,9 @@ function clearPendingConsumedStock(snapshot) {
       else delete pendingConsumedStock[field][id];
     }
   }
-  // Minerais : le snapshot pousse inventory.resources.
-  for (const [id, amount] of Object.entries(snapshot?.inventory?.resources || {})) {
-    const left = Math.max(0, Number(pendingConsumedStock.ores[String(id || "").toLowerCase()]) || 0) - Math.max(0, Number(amount) || 0);
-    if (left > 0) pendingConsumedStock.ores[String(id || "").toLowerCase()] = left;
-    else delete pendingConsumedStock.ores[String(id || "").toLowerCase()];
-  }
+  // Minerais : soldés via leur propre snapshot (consumedOresAtSend), pas via
+  // les stocks du snapshot poussé (qui donneraient un solde faux -> la
+  // dépense serait re-soustraite à chaque 409 = rollback à zéro).
 }
 
 function resetPendingPurchases() {
@@ -544,6 +541,7 @@ async function pushNow() {
   const purchaseCreditsAtSend = pendingPurchaseCredits;
   const purchaseStockAtSend = JSON.parse(JSON.stringify(pendingPurchaseStock));
   const consumedStockAtSend = JSON.parse(JSON.stringify(pendingConsumedStock));
+  const consumedOresAtSend = JSON.parse(JSON.stringify(pendingConsumedStock.ores || {}));
   const upgradeChargesAtSend = JSON.parse(JSON.stringify(pendingUpgradeCharges));
   let out = null;
   try {
@@ -555,6 +553,15 @@ async function pushNow() {
     pendingPurchaseCredits = Math.max(0, pendingPurchaseCredits - purchaseCreditsAtSend);
     clearPendingPurchaseStock(purchaseStockAtSend);
     clearPendingConsumedStock(consumedStockAtSend);
+    // Minerais dépensés couverts par le snapshot accepté : on ne solde que
+    // ce qui était en attente à l'envoi (une nouvelle dépense en vol reste).
+    for (const [id, sent] of Object.entries(consumedOresAtSend || {})) {
+      const key = String(id || "").toLowerCase();
+      if (!key) continue;
+      const left = Math.max(0, Number(pendingConsumedStock.ores[key]) || 0) - Math.max(0, Number(sent) || 0);
+      if (left > 0) pendingConsumedStock.ores[key] = left;
+      else delete pendingConsumedStock.ores[key];
+    }
     // Charges d'améliorations couvertes par le snapshot accepté (inchangées
     // pendant le vol : une nouvelle charge reste en attente).
     for (const [k, sent] of Object.entries(upgradeChargesAtSend || {})) {
@@ -629,20 +636,25 @@ async function pushNow() {
       // Minerais dépensés (vente, raffinage, charge d'amélioration, échange)
       // pas encore acceptés : on rejoue la dépense sur le canon, sinon le
       // MAX du merge les ressuscite et le dépôt semble annulé.
+      // Soldés aussitôt (baked dans memUser qui sera poussé) : un 2e 409
+      // avant le push ne doit pas les re-soustraire (= rollback à zéro).
       memUser.inventory ||= {};
       memUser.inventory.resources ||= {};
       for (const [id, amount] of Object.entries(pendingConsumedStock.ores)) {
         const key = String(id || "").toLowerCase();
         if (!key) continue;
         memUser.inventory.resources[key] = Math.max(0, Math.floor(Number(memUser.inventory.resources[key]) || 0) - Math.max(0, Math.floor(Number(amount) || 0)));
+        delete pendingConsumedStock.ores[key];
       }
-      // Charges d'améliorations en attente : restaurées sur le canon.
+      // Charges d'améliorations en attente : restaurées sur le canon
+      // (soldées aussitôt, même raison).
       memUser.upgrades ||= {};
       for (const [slot, charge] of Object.entries(pendingUpgradeCharges)) {
         const key = String(slot || "").toLowerCase();
         const st = Math.max(0, Math.floor(Number(charge?.stock) || 0));
         if (!key || !(st > 0)) continue;
         memUser.upgrades[key] = { ore: String(charge?.ore || ""), stock: st };
+        delete pendingUpgradeCharges[key];
       }
     }
     memUser.revision = Math.max(

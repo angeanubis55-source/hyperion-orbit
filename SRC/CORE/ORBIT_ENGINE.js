@@ -15979,12 +15979,14 @@ function drawPulseFx(ox, oy) {
   const frames = PULSE_PACK.frames || pulseImgs.length || 1;
 
   for (const fx of pulseFxs) {
+    let fxTarget = null;
+    try { if (fx.followNetId) fxTarget = getNetplayRemotes()?.get(String(fx.followNetId)); } catch {}
+    if (!fx.followPlayer && !fxTarget && isBeyondSensorRadius(fx.x, fx.y)) continue;
+    if (fxTarget && isBeyondSensorRadius(Number(fxTarget.rx ?? fxTarget.x), Number(fxTarget.ry ?? fxTarget.y))) continue;
     const idx = Math.min(frames - 1, Math.floor(fx.t * fps));
     const img = pulseImgs[idx];
     if (!isImgReady(img)) continue;
 
-    let fxTarget = null;
-    try { if (fx.followNetId) fxTarget = getNetplayRemotes()?.get(String(fx.followNetId)); } catch {}
     const x = (fx.followPlayer ? player.x : (fxTarget ? Number(fxTarget.rx ?? fxTarget.x) : fx.x)) + ox;
     const y = (fx.followPlayer ? player.y : (fxTarget ? Number(fxTarget.ry ?? fxTarget.y) : fx.y)) + oy;
 
@@ -16076,12 +16078,14 @@ function drawSmbFx(ox, oy) {
   const frames = SMB_FX_PACK.frames || smbFxImgs.length || 1;
 
   for (const fx of smbFxs) {
+    let fxTarget = null;
+    try { if (fx.followNetId) fxTarget = getNetplayRemotes()?.get(String(fx.followNetId)); } catch {}
+    if (!fx.followPlayer && !fxTarget && isBeyondSensorRadius(fx.x, fx.y)) continue;
+    if (fxTarget && isBeyondSensorRadius(Number(fxTarget.rx ?? fxTarget.x), Number(fxTarget.ry ?? fxTarget.y))) continue;
     const idx = Math.min(frames - 1, Math.floor(fx.t * fps));
     const img = smbFxImgs[idx];
     if (!isImgReady(img)) continue;
 
-    let fxTarget = null;
-    try { if (fx.followNetId) fxTarget = getNetplayRemotes()?.get(String(fx.followNetId)); } catch {}
     const x = (fx.followPlayer ? player.x : (fxTarget ? Number(fxTarget.rx ?? fxTarget.x) : fx.x)) + ox;
     const y = (fx.followPlayer ? player.y : (fxTarget ? Number(fxTarget.ry ?? fxTarget.y) : fx.y)) + oy;
 
@@ -17040,6 +17044,20 @@ function spawnExplosion(x, y, scale = 1) {
   }, ENTITY_LIMITS.explosions);
 }
 
+// Capteurs 1800 (même règle que les NPC) : tout effet visuel au-delà du rayon
+// est ignoré (explosions, tirs distants, FX, étincelles, chiffres).
+// Infinity en gates/raid = aucun culling. Le joueur local et ses tirs
+// restent à plein régime (pas de filtre de ce côté).
+function isBeyondSensorRadius(wx, wy) {
+  try {
+    const visR = Number(NPC_SENSOR_RANGES?.visibility);
+    if (!Number.isFinite(visR)) return false;
+    const dx = Number(wx) - Number(player.x);
+    const dy = Number(wy) - Number(player.y);
+    return dx * dx + dy * dy > visR * visR;
+  } catch { return false; }
+}
+
 function tickExplosions(dt) {
   if (!explosions.length) return;
 
@@ -17061,6 +17079,7 @@ function drawExplosions(ox, oy) {
   const frames = EXPLOSION_PACK.frames || explosionImgs.length || 1;
 
   for (const ex of explosions) {
+    if (isBeyondSensorRadius(ex.x, ex.y)) continue;
     const idx = Math.min(frames - 1, Math.floor(ex.t * fps));
     const img = explosionImgs[idx];
     if (!isImgReady(img)) continue;
@@ -24233,6 +24252,10 @@ function drawRemoteCollectBeams(c, ox, oy) {
     if (!remote || String(remote.collectUid || "") !== String(c.slotUid)) continue;
     // CPU CL04K-XL : pas de faisceau visible depuis un vaisseau invisible.
     if (remote.cloakCpu === true) continue;
+    // Capteurs 1800 : pas de faisceau depuis un collecteur invisible.
+    try {
+      if (isBeyondSensorRadius(Number(remote.rx ?? remote.x), Number(remote.ry ?? remote.y))) continue;
+    } catch {}
     const petCollect = remote.collectPet === true && remote.peta === 1;
     const sourceX = Number(petCollect ? (remote.petrx ?? remote.petx) : (remote.rx ?? remote.x)) + ox;
     const sourceY = Number(petCollect ? (remote.petry ?? remote.pety) : (remote.ry ?? remote.y)) + oy;
@@ -34047,6 +34070,11 @@ function drawBotMinimalScene(ox, oy) {
 
   // Projectiles : traits courts, aucune trainee ni frame animee.
   const drawShot = (shot, color) => {
+    // Tirs distants (NPC + visuels alliés) : même règle capteurs 1800 que les
+    // NPC. Nos propres tirs restent à plein régime.
+    if (shot !== null && typeof shot === "object" && (shot._netVisual === true || shot._netFriend != null || shot.side !== "player")) {
+      if (isBeyondSensorRadius(Number(shot.x), Number(shot.y))) return;
+    }
     const x = Number(shot?.x) + ox, y = Number(shot?.y) + oy;
     if (!visible(x, y, 12)) return;
     const vx = Number(shot?.vx) || 0, vy = Number(shot?.vy) || 0;
@@ -34570,6 +34598,9 @@ if (GAME_SETTINGS.textures) {
   // for (const L of lasers) drawLaserBeam(L, ox, oy);
 
   for (const b of bullets) {
+    // Visuels alliés distants : même règle capteurs 1800. Nos propres tirs
+    // restent à plein régime.
+    if (b && b._netVisual === true && isBeyondSensorRadius(b.x, b.y)) continue;
     const x = b.x + ox, y = b.y + oy;
     if (x < -90 || y < -90 || x > innerWidth + 90 || y > innerHeight + 90) continue;
     // Filet fin derrière les roquettes : gris pour le lanceur, arc-en-ciel
@@ -34595,6 +34626,8 @@ if (GAME_SETTINGS.textures) {
   }
 
   for (const b of enemyBullets) {
+    // Tirs NPC / visuels distants : même règle capteurs 1800 que les NPC.
+    if (isBeyondSensorRadius(b.x, b.y)) continue;
     const x = b.x + ox, y = b.y + oy;
     if (x < -120 || y < -120 || x > innerWidth + 120 || y > innerHeight + 120) continue;
     const ang = Math.atan2(b.vy, b.vx);
@@ -34606,6 +34639,7 @@ if (GAME_SETTINGS.textures) {
   // on ne dessine plus les cercles jaunes, seule la fumée de traînée reste.
   for (const s of sparks) {
     if (!s.smoke) continue;
+    if (isBeyondSensorRadius(s.x, s.y)) continue;
     const x = s.x + ox, y = s.y + oy;
     if (x < -40 || y < -40 || x > innerWidth + 40 || y > innerHeight + 40) continue;
     const lifeSpan = 1;
@@ -34619,6 +34653,7 @@ if (GAME_SETTINGS.textures) {
   }
 
   for (const ft of GAME_SETTINGS.combatText ? floatTexts : []) {
+    if (isBeyondSensorRadius(ft.x, ft.y)) continue;
     const p = clamp(ft.t / ft.life, 0, 1);
     const a = 1 - p;
 

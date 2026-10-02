@@ -52,7 +52,7 @@ import { emptyPetFit, getPetHullPrice, getPetLevel, getPetLevelBonus, getPetLeve
 import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 import { appendToFitSlots, compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
 import { rarityForCatalogItem } from "../SRC/DATA/CRAFTING.js";
-import { getBooster, formatBoosterDuration } from "../SRC/DATA/BOOSTERS.js";
+import { getBooster, formatBoosterDuration, formatBoosterCountdown } from "../SRC/DATA/BOOSTERS.js";
 
 // ✅ détecte si index.html (le jeu) est ouvert
 function isGameOpen() {
@@ -1951,6 +1951,7 @@ if (!isIntegratedInGame && isGameOpen()) {
 
 let lastShopListSignature = "";
 let refreshShopBalance = null;
+let shopBoosterTick = null;
 function currentProfileUser() { return user; }
 
 // Barre de recherche de l'onglet DESIGNS : sticky en haut de la liste,
@@ -3112,6 +3113,18 @@ if (isDrone) {
       <strong data-shop-stock style="color: #00d9ff;">${formatNumber(ammoQty.qty)}</strong>
     </p>
   `;
+} else if (it?.booster?.id) {
+  // Boosters : l'achat boutique part DIRECTEMENT dans le timer actif
+  // (pas de stock) — afficher Actif + temps restant plutôt que "Stock 0".
+  const bDef = getBooster(it.booster.id);
+  const bKey = String(bDef?.id || it.booster.id || "");
+  const bActiveUntil = Math.max(0, Math.floor(Number(user?.boosters?.active?.[bKey] || 0)));
+  const bLeft = bActiveUntil - Date.now();
+  const bStock = Math.max(0, Math.floor(Number(counts[it?.id] || 0)));
+  const bStockHtml = bStock > 0 ? ` · en stock : <strong data-shop-stock style="color: #00d9ff;">${formatNumber(bStock)}</strong>` : "";
+  stockLine = bLeft > 0
+    ? `<p class="shopAmmoOwned">Booster : <strong data-booster-status="active" style="color: #00ff88;">Actif</strong> · reste <strong data-booster-countdown="${bActiveUntil}" style="color: #00ff88;">${formatBoosterCountdown(bLeft)}</strong>${bStockHtml}</p>`
+    : `<p class="shopAmmoOwned">Booster : <strong data-booster-status="inactive" style="color: #ff4d5e;">Inactif</strong>${bStockHtml}</p>`;
 } else if (!isShipLike) {
   stockLine = `
     <p style="margin: 8px 0;">
@@ -3283,6 +3296,29 @@ if (isDrone) {
   });
   refreshShopBalance = freshUser => {
     user = freshUser;
+    if (it?.booster?.id) {
+      // Booster : statut Actif/Inactif + compte à rebours (pas de "stock").
+      const bDef = getBooster(it.booster.id);
+      const bKey = String(bDef?.id || it.booster.id || "");
+      const until = Math.max(0, Math.floor(Number(user?.boosters?.active?.[bKey] || 0)));
+      const left = until - Date.now();
+      const statusEl = shopPreview.querySelector("[data-booster-status]");
+      const cdEl = shopPreview.querySelector("[data-booster-countdown]");
+      const wasActive = statusEl?.dataset?.boosterStatus === "active" || !!cdEl;
+      // Transition actif <-> inactif : re-rendu complet de la fiche.
+      if ((left > 0) !== wasActive) {
+        try { renderShopPreview(user, it, cat); } catch {}
+        return;
+      }
+      if (cdEl && left > 0) {
+        cdEl.dataset.boosterCountdown = String(until);
+        cdEl.textContent = formatBoosterCountdown(left);
+      }
+      const bStock = shopPreview.querySelector("[data-shop-stock]");
+      if (bStock) bStock.textContent = formatNumber(Math.max(0, Math.floor(Number(user?.inventory?.counts?.[it.id] || 0))));
+      updatePurchaseSummary();
+      return;
+    }
     const stock = shopPreview.querySelector("[data-shop-stock]");
     if (stock) stock.textContent = formatNumber(isFuel
       ? Math.max(0, Math.floor(Number(user?.pet?.fuel) || 0))
@@ -3294,6 +3330,33 @@ if (isDrone) {
     updatePurchaseSummary();
   };
   updatePurchaseSummary();
+
+  // Compte à rebours live du timer booster (1 s). Coupé à chaque fiche.
+  try { if (shopBoosterTick) { clearInterval(shopBoosterTick); shopBoosterTick = null; } } catch {}
+  try {
+    if (shopPreview.querySelector("[data-booster-countdown]")) {
+      shopBoosterTick = setInterval(() => {
+        try {
+          const el = shopPreview.querySelector("[data-booster-countdown]");
+          if (!el || !document.contains(el)) {
+            clearInterval(shopBoosterTick);
+            shopBoosterTick = null;
+            return;
+          }
+          const until = Math.max(0, Math.floor(Number(el.dataset.boosterCountdown) || 0));
+          const left = until - Date.now();
+          if (left <= 0) {
+            clearInterval(shopBoosterTick);
+            shopBoosterTick = null;
+            try { renderShopPreview(currentProfileUser(), it, cat); } catch {}
+            return;
+          }
+          const txt = formatBoosterCountdown(left);
+          if (el.textContent !== txt) el.textContent = txt;
+        } catch {}
+      }, 1000);
+    }
+  } catch {}
 
   btn.addEventListener("click", () => {
     const quantity = normalizeQuantity();
