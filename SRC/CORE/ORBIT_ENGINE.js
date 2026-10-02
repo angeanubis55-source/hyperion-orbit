@@ -13045,14 +13045,50 @@ const TRADE_BUTTON = {
   proximityRadius: 450,
 };
 
+// ============================================================
+// ✅ Portail PVP (maps battle 4-x) : t_idle_01 = fermé, t_idle_02 = ouvert,
+// t_active = animation de saut. Appliqué à tous les portails situés en
+// map battle OU menant vers une map battle.
+// ============================================================
+const PVP_PORTAL_SPRITES = {
+  idle: { src: "ASSETS/PVP_PORTAIL/t_idle_01.png", w: 410, h: 400, yOff: 0 },
+  open: { src: "ASSETS/PVP_PORTAIL/t_idle_02.png", w: 410, h: 400, yOff: 0 },
+  jump: { src: "ASSETS/PVP_PORTAIL/t_active.png", w: 410, h: 400, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+};
+
+// Portail pirate (5-2) réutilisé sur les x-3 vers LOW.
+const LOW_PORTAL_SPRITES = {
+  idle: { src: "ASSETS/PIRATES_PORTAL/DESACTIVE.png", w: 362, h: 387, yOff: 0 },
+  open: { src: "ASSETS/PIRATES_PORTAL/ACTIVE.png", w: 362, h: 387, yOff: 0 },
+  jump: { src: "ASSETS/PIRATES_PORTAL/JUMP.png", w: 362, h: 387, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+};
+
+function isBattlePortal(ptl = null) {
+  // Skin PVP si et seulement si la DESTINATION est battle (4-1..4-4).
+  // Un portail vers une map normale garde le skin normal, même situé en
+  // map battle (ex : 4-4 -> 1-5). 4-5 et 5-2 ne sont pas battle.
+  try {
+    const to = String(ptl?.toMap || "").trim().toLowerCase();
+    return /^(4-[1-4])($|\.)/.test(to) || /-4\.1$/.test(to);
+  } catch { return false; }
+}
+
 function getPortalSpriteSet(ptl = null) {
+  const pvp = isBattlePortal(ptl);
+  // LOW depuis les x-3 : skin pirate (skins explicites prioritaires).
+  let low = false;
+  try { low = String(ptl?.toMap || "").trim().toLowerCase() === "low"; } catch {}
+  const skinIdle = ptl?.sprites?.idle || (low ? LOW_PORTAL_SPRITES.idle : (pvp ? PVP_PORTAL_SPRITES.idle : PORTAL_IDLE_SPR));
+  const skinOpen = ptl?.sprites?.open || (low ? LOW_PORTAL_SPRITES.open : (pvp ? PVP_PORTAL_SPRITES.open : PORTAL_OPEN_SPR));
   return {
-    idle: ptl?.sprites?.idle || PORTAL_IDLE_SPR,
-    open: ptl?.sprites?.open || PORTAL_OPEN_SPR,
+    idle: skinIdle,
+    open: skinOpen,
 
     jump: {
       ...DEFAULT_PORTAL_JUMP_SPR,
       ...(PORTAL_JUMP_SPR || {}),
+      ...(isBattlePortal(ptl) && !ptl?.sprites?.jump ? PVP_PORTAL_SPRITES.jump : {}),
+      ...(low && !ptl?.sprites?.jump ? LOW_PORTAL_SPRITES.jump : {}),
       ...(ptl?.sprites?.jump || {}),
     },
 
@@ -23337,6 +23373,45 @@ function strokeOutlineCentered(sil, w, h, color, alpha) {
   ctx.restore();
 }
 
+// Halo restreint à la moitié basse avec fondu en dégradé (pas de coupure
+// nette) : rendu sur calque temporaire puis masque vertical destination-in.
+let bottomHalfScratch = null;
+function drawEnemyContourBottomHalf(sil, w, h, color, alpha) {
+  const pad = 16;
+  const cw = Math.max(1, Math.ceil(w + pad * 2));
+  const ch = Math.max(1, Math.ceil(h + pad * 2));
+  if (!bottomHalfScratch || bottomHalfScratch.width !== cw || bottomHalfScratch.height !== ch) {
+    bottomHalfScratch = document.createElement("canvas");
+    bottomHalfScratch.width = cw;
+    bottomHalfScratch.height = ch;
+  }
+  const g = bottomHalfScratch.getContext("2d");
+  g.save();
+  g.clearRect(0, 0, cw, ch);
+  g.globalAlpha = Math.max(0.3, Math.min(1, alpha));
+  g.shadowColor = color;
+  g.shadowBlur = 12;
+  const ox = pad - w / 2, oy = pad - h / 2;
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2;
+    g.drawImage(sil, ox + Math.cos(a) * 2, oy + Math.sin(a) * 2, w, h);
+  }
+  g.restore();
+  // Fondu : transparent au-dessus de ~30 % de la hauteur, opaque sous ~62 %.
+  g.save();
+  g.globalCompositeOperation = "destination-in";
+  const grad = g.createLinearGradient(0, pad + h * 0.30, 0, pad + h * 0.62);
+  grad.addColorStop(0, "rgba(0,0,0,0)");
+  grad.addColorStop(1, "rgba(0,0,0,1)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, cw, ch);
+  g.restore();
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.drawImage(bottomHalfScratch, -w / 2 - pad, -h / 2 - pad, cw, ch);
+  ctx.restore();
+}
+
 function petLocatorPulse() {
   return 0.75 + Math.sin(performance.now() / 1000 * 5) * 0.2;
 }
@@ -29842,7 +29917,8 @@ function enemySpriteSize(e) {
 
 // Contour d'un NPC (Ubers en rouge) : silhouette derrière la sprite.
 // alpha optionnel (défaut : pulsation douce du localisateur).
-function drawEnemyContour(e, cfg, exactFrame, color, alpha = petLocatorPulse()) {
+// bottomHalf : restreint le halo à la moitié basse (ex : Uber Mordon).
+function drawEnemyContour(e, cfg, exactFrame, color, alpha = petLocatorPulse(), bottomHalf = false) {
   const sp = cfg?.sprite;
   if (!sp || !sp._imgs || !sp._imgs.length || !sp._ready) return;
   const idx = exactFrame ?? getEnemySpriteFrame(e, cfg, sp);
@@ -29853,37 +29929,11 @@ function drawEnemyContour(e, cfg, exactFrame, color, alpha = petLocatorPulse()) 
   const w = e.isBoss ? baseW * 1.05 : baseW;
   const h = e.isBoss ? baseH * 1.05 : baseH;
   const sil = outlineSilhouette(`npc:${e.type}:${idx}`, img, w, h, color);
+  if (bottomHalf === true) {
+    drawEnemyContourBottomHalf(sil, w, h, color, alpha);
+    return;
+  }
   strokeOutlineCentered(sil, w, h, color, alpha);
-}
-
-// Ubers pirates (5-2) : anneau rouge pulsé tout autour pour les repérer.
-const UBER_PIRATE_GLOW = new Set([
-  "npc_Uber_Interceptor",
-  "npc_Uber_Barracuda",
-  "npc_Uber_Saboteur",
-  "npc_Uber_Annihilator",
-]);
-
-function drawUberPirateGlow(e) {
-  if (!UBER_PIRATE_GLOW.has(String(e?.type || ""))) return;
-  if ((e.hp || 0) <= 0) return;
-  const now = performance.now() * 0.001;
-  const radius = Math.max(24, Number(e.r) || 24);
-  const pulse = 0.65 + Math.sin(now * 4) * 0.2;
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  ctx.strokeStyle = `rgba(255,45,60,${pulse})`;
-  ctx.lineWidth = 4;
-  ctx.shadowColor = "rgba(255,30,45,1)";
-  ctx.shadowBlur = 18;
-  ctx.beginPath();
-  ctx.arc(0, 0, radius + 10, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(0, 0, radius + 18, -now * 1.2, -now * 1.2 + Math.PI * 1.5);
-  ctx.stroke();
-  ctx.restore();
 }
 
 function drawRocketDebuffEffect(e) {  const slowed = (e.rocketSlowT || 0) > 0;
@@ -30366,6 +30416,46 @@ function startZonePortalClosing(ptl) {
 function tickZonePortalVisualTransitions(dt) {
   const portals = getInteractivePortals();
   tickPortalVisualTransitions(portals, dt, portal.switchDur);
+}
+
+// Labels de destination des portails (bouton "i" de la mini-carte).
+// Persisté en local : "1" = affichés (fond vert), "0" = masqués (fond rouge).
+let portalLabelsOn = true;
+try { portalLabelsOn = localStorage.getItem("orbit_portal_labels") !== "0"; } catch {}
+function setPortalLabels(on) {
+  portalLabelsOn = on === true;
+  try { localStorage.setItem("orbit_portal_labels", portalLabelsOn ? "1" : "0"); } catch {}
+  return portalLabelsOn;
+}
+
+// Nom de la destination en petit près du portail, placé vers le centre de
+// l'écran (jamais vers le bord) pour rester discret et lisible.
+// Rendu monde (derrière les contrôles DOM), mêmes portails que drawZonePortals.
+function drawPortalLabels(ox, oy) {
+  if (portalLabelsOn !== true) return;
+  let portals = null;
+  try { portals = getInteractivePortals(); } catch { return; }
+  if (!portals || !portals.length) return;
+  ctx.save();
+  ctx.font = "700 11px ui-sans-serif, system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const ptl of portals) {
+    const dest = String(ptl?.toMap || "").trim().toUpperCase();
+    if (!dest) continue;
+    // Cohérent avec le culling des sprites : pas de label si caché.
+    if (isBeyondSensorRadius(ptl.x, ptl.y, 200)) continue;
+    const sx = Number(ptl.x) + ox, sy = Number(ptl.y) + oy;
+    if (sx < -80 || sy < -40 || sx > innerWidth + 80 || sy > innerHeight + 40) continue;
+    const lx = sx < innerWidth / 2 ? sx + 30 : sx - 30;
+    const ly = sy < innerHeight / 2 ? sy + 34 : sy - 38;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(4,8,18,0.85)";
+    ctx.strokeText(dest, lx, ly);
+    ctx.fillStyle = "rgba(170,225,240,0.9)";
+    ctx.fillText(dest, lx, ly);
+  }
+  ctx.restore();
 }
 
 function drawZonePortals(ox, oy) {
@@ -34242,6 +34332,7 @@ if (GAME_SETTINGS.textures) {
 }
 
   drawZonePortals(ox, oy);
+  drawPortalLabels(ox, oy);
   drawSafeModules(ox, oy);
   drawLowRaidZone(ox, oy);
   drawMoveTarget(ox, oy);
@@ -34323,7 +34414,8 @@ if (GAME_SETTINGS.textures) {
     const enemyConfig = NPC_TYPES[e.type];
     const enemySpriteFrame = enemyConfig?.sprite ? getEnemySpriteFrame(e, enemyConfig, enemyConfig.sprite) : 0;
     // Tous les Ubers du jeu : contour rouge de base (comme le localisateur).
-    if (/uber/i.test(String(e.type || ""))) drawEnemyContour(e, enemyConfig, enemySpriteFrame, "#ff4655");
+    // Uber Mordon : contour restreint à la moitié basse.
+    if (/uber/i.test(String(e.type || ""))) drawEnemyContour(e, enemyConfig, enemySpriteFrame, "#ff4655", undefined, String(e.type || "") === "npc_Uber_Mordon");
     // Keres Spread : même effet que le localisateur ennemi du PET (doré),
     // en vert clignotant progressif, dessiné AVANT le corps (le sprite passe par-dessus).
     if ((e.keresSprT || 0) > 0 && e.hp > 0) {
@@ -34350,7 +34442,6 @@ if (GAME_SETTINGS.textures) {
     }
     drawEnemyBody(e, enemySpriteFrame);
     if (GAME_SETTINGS.npcEngineEffects) npcEngine.draw(ctx, e, enemyConfig, isImgReady, enemySpriteFrame);
-    drawUberPirateGlow(e);
     drawRocketDebuffEffect(e);
     // Affaiblissement (Diminisher) : sprite joué par-dessus le vaisseau
     // de la cible verrouillée, en boucle pendant l'effet.
@@ -36420,6 +36511,7 @@ function drawHangarSwapFx() {
 
 window.__ORBIT_ENGINE__ = {
   switchMap: switchMapConfig,
+  setPortalLabels,
   getHangarAccess,
   markHangarChanged,
   applyHangarDesignLive,
