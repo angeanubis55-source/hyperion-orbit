@@ -16010,7 +16010,7 @@ function drawPulseFx(ox, oy) {
     const h = (PULSE_PACK.h || (img.naturalHeight || img.height || 256)) * fx.scale;
 
     ctx.save();
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = false;
     ctx.imageSmoothingQuality = "low";
     ctx.globalAlpha = 1;
     ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
@@ -16109,7 +16109,7 @@ function drawSmbFx(ox, oy) {
     const h = (SMB_FX_PACK.h || (img.naturalHeight || img.height || 256)) * fx.scale;
 
     ctx.save();
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = false;
     ctx.imageSmoothingQuality = "low";
     ctx.globalAlpha = 1;
     ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
@@ -16653,7 +16653,7 @@ function drawInstaShield() {
   const h = INSTA_SHIELD_PACK.h;
 
 ctx.save();
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = false;
     ctx.imageSmoothingQuality = "low";
     ctx.globalAlpha = 1;
     ctx.drawImage(img, -w / 2, -h / 2, w, h);
@@ -16756,7 +16756,7 @@ function drawShieldShimmer() {
   const alpha = clamp(Math.min(shieldShimmerT / fade, (dur - shieldShimmerT) / fade), 0, 1);
 
   ctx.save();
-  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingEnabled = false;
   ctx.globalAlpha = alpha;
   ctx.drawImage(img, -size / 2, -size / 2, size, size);
   ctx.restore();
@@ -16946,7 +16946,7 @@ if (spinSpeed !== 0) {
   ctx.rotate(repairOrbitFx.t * TAU * spinSpeed);
 }
 
-  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingEnabled = false;
   ctx.imageSmoothingQuality = "low";
 
   ctx.globalAlpha *= repairOrbitFx.alpha * Number(pack.alpha ?? 1);
@@ -17110,7 +17110,7 @@ function drawExplosions(ox, oy) {
     if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > innerWidth || y - h / 2 > innerHeight) continue;
 
     ctx.save();
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = false;
     ctx.imageSmoothingQuality = "low";
     ctx.globalAlpha = 1;
     ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
@@ -17226,7 +17226,7 @@ function drawShipDamages(ox, oy) {
     if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > innerWidth || y - h / 2 > innerHeight) continue;
 
     ctx.save();
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = false;
     ctx.imageSmoothingQuality = "low";
     // ✅ rotation libre sur 360° : le sprite pointe "à droite" (angle 0) par
     // défaut ; on le pivote vers l'angle du tir reçu pour qu'il fasse face.
@@ -29340,7 +29340,7 @@ function drawNetplayRemotes(ox, oy) {
         const idx = Math.min(instaShieldImgs.length - 1, Math.floor(progress * instaShieldImgs.length));
         const shieldImg = instaShieldImgs[idx];
         if (isImgReady(shieldImg)) {
-          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingEnabled = false;
           ctx.drawImage(shieldImg, -INSTA_SHIELD_PACK.w / 2, -INSTA_SHIELD_PACK.h / 2, INSTA_SHIELD_PACK.w, INSTA_SHIELD_PACK.h);
         }
       }
@@ -29452,7 +29452,7 @@ function drawNetplayRemotes(ox, oy) {
           const h = (SHIP_DAMAGE_PACK.h || (img.naturalHeight || img.height || 128)) * sc;
           if (!(w > 0) || !(h > 0)) continue;
           ctx.save();
-          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingEnabled = false;
           ctx.imageSmoothingQuality = "low";
           ctx.translate(Math.cos(sd.ang) * sd.rad, Math.sin(sd.ang) * sd.rad);
           ctx.rotate(sd.rot || 0);
@@ -30635,7 +30635,7 @@ function drawZonePortals(ox, oy) {
         ctx.save();
 
         ctx.globalAlpha = alpha;
-        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingEnabled = false;
         ctx.imageSmoothingQuality = "low";
 
         ctx.drawImage(
@@ -30683,7 +30683,7 @@ function drawSafeModules(ox, oy) {
     ctx.save();
     // Base statique dessinée en 1:1 : smoothing "low" (le "high" coûtait
     // cher sur 3000×1985 pour zéro différence visuelle sans redimension).
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = false;
     ctx.imageSmoothingQuality = "low";
 
     ctx.drawImage(
@@ -30708,7 +30708,7 @@ function drawSafeModules(ox, oy) {
         const button = getQuestButtonPosition(m);
         ctx.save();
         ctx.globalAlpha = isPlayerNearQuestModule(m) ? 1 : 0.65;
-        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingEnabled = false;
         ctx.imageSmoothingQuality = "low";
         ctx.drawImage(
           buttonImg,
@@ -30733,7 +30733,7 @@ function drawSafeModules(ox, oy) {
         const tradeBtn = getTradeButtonPosition(m);
         ctx.save();
         ctx.globalAlpha = isPlayerNearTradeModule(m) ? 1 : 0.65;
-        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingEnabled = false;
         ctx.imageSmoothingQuality = "low";
         ctx.drawImage(
           tradeImg,
@@ -30767,7 +30767,7 @@ function drawSafeModules(ox, oy) {
     const bh = Number(b.h) || 165;
 
     ctx.save();
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = false;
     ctx.imageSmoothingQuality = "low";
 
     ctx.drawImage(
@@ -34011,7 +34011,7 @@ function drawMapBackground() {
   const drawW = sourceW * scale;
   const drawH = sourceH * scale;
   ctx.save();
-  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingEnabled = false;
   ctx.imageSmoothingQuality = "low";
   ctx.drawImage(img, (innerWidth - drawW) / 2, (innerHeight - drawH) / 2, drawW, drawH);
   ctx.restore();
@@ -36406,7 +36406,7 @@ function drawHangarSwapShield(elapsed) {
   const img = instaShieldImgs[idx];
   if (!isImgReady(img)) return;
   ctx.save();
-  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingEnabled = false;
   ctx.imageSmoothingQuality = "low";
   ctx.globalAlpha = 1;
   ctx.drawImage(img, -INSTA_SHIELD_PACK.w / 2, -INSTA_SHIELD_PACK.h / 2, INSTA_SHIELD_PACK.w, INSTA_SHIELD_PACK.h);
