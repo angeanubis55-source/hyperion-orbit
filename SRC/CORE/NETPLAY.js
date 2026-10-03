@@ -1786,7 +1786,6 @@ export function tickNetplayRemotes(dt = 0.016) {
     const samples = Array.isArray(r.motionSamples) ? r.motionSamples : [];
     let anchorX = Number(r.x), anchorY = Number(r.y);
     let anchorVx = Number(r.vx || 0), anchorVy = Number(r.vy || 0);
-    let anchorAngle = Number(r.angle) || 0;
     let anchorAt = Number(r.sampleAt || now);
     if (samples.length) {
       let afterIndex = samples.findIndex((sample) => Number(sample.at) >= renderAt);
@@ -1795,7 +1794,6 @@ export function tickNetplayRemotes(dt = 0.016) {
         const sample = samples[0];
         anchorX = Number(sample.x); anchorY = Number(sample.y);
         anchorVx = Number(sample.vx || 0); anchorVy = Number(sample.vy || 0);
-        anchorAngle = Number(sample.angle) || 0;
         anchorAt = renderAt;
       } else if (afterIndex < samples.length) {
         const a = samples[afterIndex - 1], b = samples[afterIndex];
@@ -1805,15 +1803,11 @@ export function tickNetplayRemotes(dt = 0.016) {
         anchorY = Number(a.y) + (Number(b.y) - Number(a.y)) * mix;
         anchorVx = Number(a.vx || 0) + (Number(b.vx || 0) - Number(a.vx || 0)) * mix;
         anchorVy = Number(a.vy || 0) + (Number(b.vy || 0) - Number(a.vy || 0)) * mix;
-        const angleA = Number(a.angle) || 0;
-        const angleDelta = Math.atan2(Math.sin((Number(b.angle) || 0) - angleA), Math.cos((Number(b.angle) || 0) - angleA));
-        anchorAngle = angleA + angleDelta * mix;
         anchorAt = renderAt;
       } else {
         const sample = samples[samples.length - 1];
         anchorX = Number(sample.x); anchorY = Number(sample.y);
         anchorVx = Number(sample.vx || 0); anchorVy = Number(sample.vy || 0);
-        anchorAngle = Number(sample.angle) || 0;
         anchorAt = Number(sample.at || anchorAt);
       }
     }
@@ -1883,7 +1877,9 @@ export function tickNetplayRemotes(dt = 0.016) {
     r.rx = rx + correctionX * correctionK;
     r.ry = ry + correctionY * correctionK;
     const renderedAngle = Number(r.rangle ?? r.angle) || 0;
-    const targetAngle = anchorAngle;
+    // L'orientation arrive même sans déplacement : l'historique des
+    // positions distinctes ne doit pas figer la visée d'un joueur immobile.
+    const targetAngle = Number(r.angle) || 0;
     const angleDelta = Math.atan2(Math.sin(targetAngle - renderedAngle), Math.cos(targetAngle - renderedAngle));
     r.rangle = renderedAngle + angleDelta * k;
     // PET : quasi pas d'extrapolation. Le PET tournoie autour de son

@@ -28,7 +28,8 @@ function cachedPattern(context, image, repeat) {
 
 export function drawWallLayer(context, walls, texture, options) {
   if (!context || !walls?.length || !texture) return;
-  const { offsetX, offsetY, getImage, isImageReady, createScaleMatrix } = options;
+  const { offsetX, offsetY, getImage, isImageReady, createScaleMatrix,
+    viewportWidth = Infinity, viewportHeight = Infinity } = options;
   const image = getImage(texture.src);
   if (!isImageReady(image)) return;
   const pattern = cachedPattern(context, image, "repeat");
@@ -39,19 +40,19 @@ export function drawWallLayer(context, walls, texture, options) {
     pattern.setTransform(createScaleMatrix((texture.w || imageWidth) / imageWidth, (texture.h || imageHeight) / imageHeight));
   }
   context.save();
+  context.fillStyle = pattern;
   for (const wall of walls) {
-    context.save();
     // ✅ Coords écran arrondies à l'entier : 2 murs qui partagent EXACTEMENT
     // la même arête tombent sur le même pixel → aucune ligne de jointure
     // (avec des fractionnaires, l'antialiasing laissait filtrer le fond).
-    context.translate(0, 0);
-    context.fillStyle = pattern;
     const x0 = Math.round(wall.x - wall.w / 2 + offsetX);
     const y0 = Math.round(wall.y - wall.h / 2 + offsetY);
     const x1 = Math.round(wall.x + wall.w / 2 + offsetX);
     const y1 = Math.round(wall.y + wall.h / 2 + offsetY);
-    context.fillRect(x0, y0, x1 - x0, y1 - y0);
-    context.restore();
+    const left = Math.max(0, x0), top = Math.max(0, y0);
+    const right = Math.min(viewportWidth, x1), bottom = Math.min(viewportHeight, y1);
+    if (right <= left || bottom <= top) continue;
+    context.fillRect(left, top, right - left, bottom - top);
   }
   context.restore();
   if (pattern.setTransform && typeof DOMMatrix !== "undefined") {

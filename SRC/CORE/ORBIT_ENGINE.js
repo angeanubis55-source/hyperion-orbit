@@ -160,7 +160,7 @@ import { initRankingsUI } from "../../UI/UI_RANKINGS.js";
 import { initPilotSkillsUI, renderPilotSkillsWindow, tickPilotSkillsDisplay } from "../../UI/UI_PILOT_SKILLS.js";
 import { initTdmUI } from "../../UI/UI_TDM.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
-import { getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
+import { canUseFactionModule, getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
 import { checkMapAccess } from "./MAP_ACCESS.js";
 import {
   QUEST_DEFINITIONS,
@@ -9211,7 +9211,7 @@ function botNearestTradeModule() {
   let bestPos = null;
   try {
     for (const m of zoneSafe?.modules || []) {
-      if (!isTradeModule(m)) continue;
+      if (!isTradeModule(m) || !canUseStation(m)) continue;
       const pos = getTradeButtonPosition(m);
       if (!pos) continue;
       const d2 = dist2(player.x, player.y, pos.x, pos.y);
@@ -11040,7 +11040,7 @@ function botNearestSafeRefuge(x, y) {
   try {
     for (const module of zoneSafe?.modules || []) {
       const radius = Number(module?.safeRadius || 0);
-      if (!(radius > 0)) continue;
+      if (!(radius > 0) || !canUseStation(module)) continue;
       add("module", "zone de non-agression", module.x, module.y, radius);
     }
   } catch {}
@@ -11842,7 +11842,7 @@ function drawBotOverlays(ox, oy) {
     ctx.setLineDash([6, 6]);
     for (const m of zoneSafe?.modules || []) {
       const rr = Number(m?.safeRadius) || 0;
-      if (!(rr > 0)) continue;
+      if (!(rr > 0) || !canUseStation(m)) continue;
       const sx = m.x + ox;
       const sy = m.y + oy;
       if (!inView(sx, sy, rr)) continue;
@@ -13232,7 +13232,13 @@ const TRADE_BUTTON = {
 // Les vieux PVP_PORTAL (rouge) et PORTAL_JUMP_RED sont supprimés : les battle
 // 4-1..4-4 utilisent BATTLE/4-x, comme chaque map utilise son propre skin.
 function getPortalSpriteSet(ptl = null) {
-  const skin = getPortalSkinForMap(ptl?.toMap);
+  const gateId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+  const isGalaxyGate = ["alpha", "beta", "gamma"].includes(gateId);
+  const destination = isGalaxyGate && ptl === portal ? gateId
+    : isGalaxyGate && ptl === gateReturnPortal
+      ? getFactionHomeMap((account.user || getCurrentUserFull())?.faction)
+      : ptl?.toMap;
+  const skin = getPortalSkinForMap(destination);
   return {
     idle: ptl?.sprites?.idle || skin?.idle || PORTAL_IDLE_SPR,
     open: ptl?.sprites?.open || skin?.open || PORTAL_OPEN_SPR,
@@ -13924,7 +13930,7 @@ let lastQuestTerminalAccess = null;
 
 function hasQuestTerminalAccess() {
   return (zoneSafe?.modules || []).some(module =>
-    isQuestModule(module) && isPlayerNearQuestModule(module)
+    isQuestModule(module) && canUseStation(module) && isPlayerNearQuestModule(module)
   );
 }
 
@@ -14180,6 +14186,7 @@ loadPortalIndex().then(index => {
 });
 
 function openQuestTerminal() {
+  if (!hasQuestTerminalAccess()) return;
   renderQuestTerminal();
   window.GameWindowManager?.restore("questOfferWindow");
   // Double rAF : dessine après que la fenêtre soit réellement affichée
@@ -18663,6 +18670,10 @@ function updatePortalButtonCursor(clientX, clientY) {
   return false;
 }
 
+function canUseStation(module) {
+  return canUseFactionModule(module, (account.user || getCurrentUserFull())?.faction);
+}
+
 function isQuestModule(module) {
   return module?.questTerminal === true || String(module?.spr || "").startsWith("QUEST_");
 }
@@ -18722,7 +18733,7 @@ function pickQuestButtonAtScreen(clientX, clientY) {
 
   for (let i = zoneSafe.modules.length - 1; i >= 0; i--) {
     const module = zoneSafe.modules[i];
-    if (!isQuestModule(module)) continue;
+    if (!isQuestModule(module) || !canUseStation(module)) continue;
     const pos = getQuestButtonPosition(module);
 
     if (
@@ -18787,7 +18798,7 @@ function pickTradeButtonAtScreen(clientX, clientY) {
 
   for (let i = zoneSafe.modules.length - 1; i >= 0; i--) {
     const module = zoneSafe.modules[i];
-    if (!isTradeModule(module)) continue;
+    if (!isTradeModule(module) || !canUseStation(module)) continue;
     const pos = getTradeButtonPosition(module);
 
     if (
@@ -18826,7 +18837,7 @@ function isTradeWindowAnchored() {
   if (traWindowActive()) return true;
   if (!activeTradeModule) return false;
   if (!(zoneSafe?.modules || []).includes(activeTradeModule)) return false;
-  return isPlayerNearTradeModule(activeTradeModule);
+  return canUseStation(activeTradeModule) && isPlayerNearTradeModule(activeTradeModule);
 }
 
 canvas.addEventListener(
@@ -19920,6 +19931,20 @@ function resetPetSpawn() {
   petState.fetchHold = 0;
   petLocator.enemyId = null;
   petLocator.manualType = null;
+}
+
+function resetPetAfterRespawn() {
+  // Une réparation peut déplacer le propriétaire sur la même carte.
+  // Empêche aussi la restauration au boot de reprendre la position de mort.
+  petBootRestoreArmed = false;
+  resetPetSpawn();
+  const pet = account.user?.pet;
+  if (pet?.owned !== true || pet.active !== true || !(Number(pet.hp) > 0)) return;
+  const map = currentMapId();
+  restorePetSavedPosition({ x: player.x - 90, y: player.y + 70, map }, map);
+  pet.x = petState.x;
+  pet.y = petState.y;
+  pet.map = map;
 }
 
 // Refresh : replace le REX où il était (même map uniquement). Retourne faux
@@ -22385,7 +22410,7 @@ function pushAmbientCollectableInstance(slot, mapId) {
   const cfg = COLLECTABLE_DEFS[slot.type] || {};
   // Type désactivé temporairement (ex : Green_Booty_Box) : aucun spawn,
   // même si des slots persistent en sauvegarde (réactivables plus tard).
-  if (cfg.enabled === false) return;
+  if (cfg.enabled === false || !collectableAllowedOnCurrentMap(cfg, mapId)) return;
   ensureCollectableLoaded(slot.type);
   const sp = cfg.sprite || {};
   const frames = Math.max(1, Number(sp.frames || 1));
@@ -27123,15 +27148,12 @@ function baseProvidesSafety() {
   return owner === getFaction((account.user || getCurrentUserFull())?.faction).id;
 }
 
-// ZNA projetée par un module sûr (ex : contrôleur de missions sur les
-// maps x-4 / x-5 via `safeRadius`). Contrairement aux bases CENTRE_*,
-// elle est neutre : elle profite à toutes les factions car les
-// contrôleurs de missions sont accessibles à tout le monde.
+// Les contr?leurs prot?gent uniquement les joueurs de leur firme.
 function getSafeModuleAt(x, y) {
   if (!isZoneMap) return null;
   for (const module of zoneSafe?.modules || []) {
     const radius = Number(module?.safeRadius || 0);
-    if (!(radius > 0)) continue;
+    if (!(radius > 0) || !canUseStation(module)) continue;
     if (dist2(x, y, module.x, module.y) <= radius * radius) return module;
   }
   return null;
@@ -28296,6 +28318,7 @@ jumpBaseFade: 1,
       player.x = spawnXY.x;
       player.y = spawnXY.y;
       if (ov.respawn === true) {
+        resetPetAfterRespawn();
         player.hp = Math.max(1, Math.ceil(player.hpMax * 0.1));
         player.sh = player.shMax > 0 ? Math.max(1, Math.ceil(player.shMax * 0.1)) : 0;
         player.repairT = 0;
@@ -30471,7 +30494,7 @@ function renderOreTradeWindow() {
 
 function openOreTradeWindow(tradeModule = null) {
   const anchor = tradeModule && isTradeModule(tradeModule) ? tradeModule : null;
-  if (!anchor || !isPlayerNearTradeModule(anchor)) {
+  if (!anchor || !canUseStation(anchor) || !isPlayerNearTradeModule(anchor)) {
     showToast("Approche-toi du comptoir pirate", 1.4);
     return;
   }
@@ -31155,7 +31178,7 @@ function drawSafeModules(ox, oy) {
 
     ctx.restore();
 
-    if (isQuestModule(m)) {
+    if (isQuestModule(m) && canUseStation(m)) {
       const buttonSprite = m.questButtonPressed
         ? QUEST_BUTTON.click
         : m.questButtonHovered
@@ -31180,7 +31203,7 @@ function drawSafeModules(ox, oy) {
       }
     }
 
-    if (isTradeModule(m)) {
+    if (isTradeModule(m) && canUseStation(m)) {
       const tradeSprite = m.tradeButtonPressed
         ? TRADE_BUTTON.click
         : m.tradeButtonHovered
@@ -34490,6 +34513,8 @@ function drawZoneWalls(ox, oy) {
   drawWallLayer(ctx, zoneWalls, WALL_TEX, {
     offsetX: ox,
     offsetY: oy,
+    viewportWidth: innerWidth,
+    viewportHeight: innerHeight,
     getImage: getCachedImage,
     isImageReady: isImgReady,
     createScaleMatrix: (sx, sy) => new DOMMatrix().scale(sx, sy),
@@ -35992,7 +36017,7 @@ async function prepareGameAssets() {
     if (rules?.mode === "zone" && typeof rules.getZonePortals === "function") {
       for (const portal of rules.getZonePortals(WORLD) || []) jobs.push(...preloadPortalSprites(portal));
     } else {
-      jobs.push(...preloadPortalSprites());
+      jobs.push(...preloadPortalSprites(portal), ...preloadPortalSprites(gateReturnPortal));
     }
     await Promise.allSettled(jobs);
     await IMG.whenIdle();

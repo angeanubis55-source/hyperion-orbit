@@ -1,3 +1,4 @@
+import { canUseFactionModule } from "../SRC/CORE/FACTIONS.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -369,4 +370,110 @@ test("projectiles à dégâts locaux, repli solo et visuels activés conservés"
     assert.equal(shots[0].dmg, 10);
   }
   assert.equal(shotHarness({ impacts: true, density: 0 }).length, 0);
+});
+
+
+test("stations : missions, commerce et protection reserves a la firme, pirates neutres", async () => {
+  for (const [faction, sector] of [["mmo",1],["eic",2],["vru",3]]) {
+    for (const ownerSector of [1,2,3]) {
+      for (const zone of [1,4,5,8]) {
+        const { getZoneSafeModules } = await import('../MAPS/' + ownerSector + '-' + zone + '/SPAWNS.js');
+        const station = getZoneSafeModules({ w:11000, h:7000 }).modules.find(m => m.questTerminal || String(m.spr).startsWith('QUEST_'));
+        assert.ok(station);
+        assert.equal(canUseFactionModule(station, faction), sector === ownerSector);
+        const context = vm.createContext({
+          zoneSafe: { modules: [station] }, isZoneMap: true,
+          canUseStation: m => canUseFactionModule(m, faction),
+          isPlayerNearQuestModule: () => true, isPlayerNearTradeModule: () => true,
+          traWindowActive: () => false, activeTradeModule: station,
+          dist2: (x,y,a,b) => (x-a)**2 + (y-b)**2,
+        });
+        vm.runInContext(engineFunction('isQuestModule') + '\n' + engineFunction('hasQuestTerminalAccess') + '\n' + engineFunction('getSafeModuleAt') + '\n' + engineFunction('isTradeWindowAnchored'), context);
+        assert.equal(vm.runInContext('hasQuestTerminalAccess()', context), sector === ownerSector);
+        assert.equal(vm.runInContext('isTradeWindowAnchored()', context), sector === ownerSector);
+        if (station.safeRadius) assert.equal(vm.runInContext('getSafeModuleAt(zoneSafe.modules[0].x, zoneSafe.modules[0].y) !== null', context), sector === ownerSector);
+      }
+    }
+    assert.equal(canUseFactionModule({id:'CENTRE_PIRATES'}, faction), true);
+  }
+});
+
+
+test('BL : retour x8 et exclusion des bonus, contrats gates distincts', async () => {
+  const { getFactionRespawnMap } = await import('../SRC/CORE/FACTIONS.js');
+  const { COLLECTABLE_TYPES: COLLECTABLE_DEFS } = await import('../SRC/DATA/COLLECTABLES.js');
+  for (const [faction,sector] of [['mmo',1],['eic',2],['vru',3]]) {
+    for (const origin of ['1-BL','2-bl','3-BL']) assert.equal(getFactionRespawnMap(faction,origin), sector+'-8');
+    assert.equal(getFactionRespawnMap(faction, sector+'-1'),sector+'-1');
+    assert.equal(getFactionRespawnMap(faction,'alpha',{gate:true}),sector+'-1');
+  }
+  const context = vm.createContext({currentMapId:()=> '1-BL'});
+  vm.runInContext(engineFunction('collectableAllowedOnCurrentMap'),context);
+  context.cfg = COLLECTABLE_DEFS.Bonus_Box;
+  for(const map of ['1-BL','2-BL','3-BL']) { context.map = map; assert.equal(vm.runInContext('collectableAllowedOnCurrentMap(cfg,map)',context),false); }
+  context.map='1-6'; assert.equal(vm.runInContext('collectableAllowedOnCurrentMap(cfg,map)',context),true);
+  for(const [id,type] of [['salvage_gate_07','alpha'],['salvage_gate_08','beta'],['salvage_gate_09','gamma']]) {
+    const q=QUEST_DEFINITIONS.find(q=>q.id===id);
+    assert.equal(getQuestObjectives(q)[0].amount,2);
+    assert.equal(getQuestObjectives(q)[0].type,type);
+  }
+});
+
+test('murs : dessin limite au viewport, texture conservee et murs hors ecran ignores', async () => {
+  const {drawWallLayer}=await import('../SRC/CORE/WORLD_LAYER_RENDERER.js');
+  const draws=[];
+  const context={createPattern:()=>({}),save(){},restore(){},fillRect:(...args)=>draws.push(args)};
+  drawWallLayer(context,[{x:50,y:50,w:100,h:10000},{x:2000,y:50,w:50,h:50}],{src:'wall'}, {
+    offsetX:0,offsetY:0,viewportWidth:800,viewportHeight:600,getImage:()=>({width:64,height:64}),isImageReady:()=>true,
+  });
+  assert.deepEqual(draws,[[0,0,100,600]]);
+});
+
+
+test('joueur distant immobile : orientation recente suivie sans deplacer la position', () => {
+  const source=readFileSync(new URL('../SRC/CORE/NETPLAY.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+  const r={x:100,y:200,rx:100,ry:200,vx:0,vy:0,vmax:400,angle:Math.PI/2,rangle:0,sampleAt:500,motionSamples:[{at:500,x:100,y:200,vx:0,vy:0,angle:0}],petx:100,pety:200};
+  const ctx=vm.createContext({remotes:new Map([['other',r]]),netNpcs:new Map(),performance:{now:()=>1000},netPerf:{maxCorrection:0},NET_LOW_FPS_DELAY_MAX_MS:240,NET_MAX_TURN_RATE:5,NET_MAX_ESTIMATED_SPEED:1500,predictionLeadSeconds:()=>0});
+  vm.runInContext(engineFunction('tickNetplayRemotes',source),ctx);
+  for(let i=0;i<60;i++) vm.runInContext('tickNetplayRemotes(1/60)',ctx);
+  assert.ok(Math.abs(r.rangle-Math.PI/2)<0.001);
+  assert.equal(r.rx,100); assert.equal(r.ry,200);
+  r.angle=-Math.PI/2;
+  for(let i=0;i<60;i++) vm.runInContext('tickNetplayRemotes(1/60)',ctx);
+  assert.ok(Math.abs(Math.atan2(Math.sin(r.rangle-r.angle),Math.cos(r.rangle-r.angle)))<0.001);
+});
+
+
+test('REX : respawn meme carte rappelle pres du joueur et efface le trajet', () => {
+  const pet={owned:true,active:true,hp:100,x:9000,y:9000,map:'1-6'};
+  const context=vm.createContext({account:{user:{pet}},petState:{x:9000,y:9000,ready:true,target:{},fetchId:123,hasWp:true,vx:400,vy:400},petLocator:{enemyId:1,manualType:'npc'},player:{x:1000,y:1500,angle:0},WORLD:{w:11000,h:7000},petBootRestoreArmed:true,currentMapId:()=> '1-6',cancelKamikazeRun:()=>{},clamp:(v,a,b)=>Math.max(a,Math.min(b,v))});
+  vm.runInContext(engineFunction('resetPetSpawn')+'\n'+engineFunction('restorePetSavedPosition')+'\n'+engineFunction('resetPetAfterRespawn'),context);
+  vm.runInContext('resetPetAfterRespawn()',context);
+  assert.equal(context.petState.x,910); assert.equal(context.petState.y,1570);
+  assert.equal(context.petState.target,null); assert.equal(context.petState.fetchId,null);
+  assert.equal(context.petState.hasWp,false); assert.equal(context.petState.vx,0);
+  assert.equal(context.petBootRestoreArmed,false);
+  assert.equal(pet.x,910); assert.equal(pet.hp,100); assert.equal(pet.active,true);
+  pet.hp=0;
+  vm.runInContext('resetPetAfterRespawn()',context);
+  assert.equal(pet.hp,0); assert.equal(context.petState.ready,false);
+});
+
+
+test('GG : portail gauche gate et portail droit base de la firme, assets existants', async () => {
+  const {getPortalSkinForMap}=await import('../SRC/CORE/PORTAL_SKINS.js');
+  const {getFactionHomeMap}=await import('../SRC/CORE/FACTIONS.js');
+  const {existsSync}=await import('node:fs');
+  for(const gate of ['alpha','beta','gamma']) for(const faction of ['mmo','eic','vru']) {
+    const portal={},gateReturnPortal={};
+    const context=vm.createContext({window:{__CURRENT_MAP_ID__:gate},rules:{},portal,gateReturnPortal,account:{user:{faction}},getFactionHomeMap,getPortalSkinForMap,PORTAL_IDLE_SPR:{},PORTAL_OPEN_SPR:{},PORTAL_JUMP_SPR:{},DEFAULT_PORTAL_JUMP_SPR:{},DEFAULT_PORTAL_JUMP_FX:{},DEFAULT_PORTAL_JUMP_BUTTON:{}});
+    vm.runInContext(engineFunction('getPortalSpriteSet'),context);
+    const left=vm.runInContext('getPortalSpriteSet(portal)',context);
+    const right=vm.runInContext('getPortalSpriteSet(gateReturnPortal)',context);
+    for(const state of ['idle','open','jump']) {
+      assert.equal(left[state].src,getPortalSkinForMap(gate)[state].src);
+      assert.equal(right[state].src,getPortalSkinForMap(getFactionHomeMap(faction))[state].src);
+      assert.ok(existsSync(left[state].src)); assert.ok(existsSync(right[state].src));
+    }
+  }
 });

@@ -17,6 +17,14 @@ export function getFaction(value) {
   return FACTIONS[normalizeFactionId(value)];
 }
 
+// Station ownership also covers controller IDs such as QUEST_MMO_15.
+export function canUseFactionModule(module, factionId) {
+  const owner = /^(?:CENTRE|QUEST)_(MMO|EIC|VRU|PIRATES?)(?:_|$)/i
+    .exec(String(module?.id || module?.spr || ""))?.[1]?.toLowerCase();
+  if (owner === "pirate" || owner === "pirates") return true;
+  return !!owner && owner === getFaction(factionId).id;
+}
+
 export function getFactionHomeMap(value) {
   return `${getFaction(value).sector}-1`;
 }
@@ -42,6 +50,7 @@ export function resolveBaseCenter(zoneSafe, fallback = null) {
 
 export function getFactionRespawnMap(value, currentMapId, { gate = false } = {}) {
   if (gate) return getFactionHomeMap(value);
+  if (/^[123]-bl$/i.test(String(currentMapId || "").trim())) return getFactionUpperBaseMap(value);
 
   const match = String(currentMapId || "").trim().match(/^[123]-(\d+(?:\.\d+)?)$/);
   if (!match) return getFactionHomeMap(value);
