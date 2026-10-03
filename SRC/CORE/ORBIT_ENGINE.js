@@ -32,6 +32,7 @@ import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_T
 import { computeBotCombatMove } from "./BOT_NAVIGATION.js";
 import { SpatialIndex } from "./SPATIAL_INDEX.js";
 import { normalizeMapId } from "./MAP_REGISTRY.js";
+import { getPortalSkinForMap } from "./PORTAL_SKINS.js";
 "use strict";
 import {
   getCurrentUserFull,
@@ -13054,38 +13055,26 @@ const TRADE_BUTTON = {
   proximityRadius: 450,
 };
 
-function isBattlePortal(ptl = null) {
-  // Destination battle (4-1..4-4) uniquement. 4-5 et 5-2 n'en sont pas.
-  try {
-    const to = String(ptl?.toMap || "").trim().toLowerCase();
-    return /^(4-[1-4])($|\.)/.test(to) || /-4\.1$/.test(to);
-  } catch { return false; }
-}
-
-// Skin rouge des portails PVP (dossier versionné par le joueur).
-const PVP_PORTAL_SPRITES = {
-  idle: { src: "ASSETS/PVP_PORTAL/DESACTIVE.png", w: 320, h: 320, yOff: 0 },
-  open: { src: "ASSETS/PVP_PORTAL/ACTIVE.png", w: 320, h: 320, yOff: 0 },
-  jump: { src: "ASSETS/PVP_PORTAL/JUMP.png", w: 320, h: 320, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
-};
-
+// Skin de portail par map de destination (ASSETS/PORTAL : NORMAUX / BATTLE / BL / QZ).
+// Les vieux PVP_PORTAL (rouge) et PORTAL_JUMP_RED sont supprimés : les battle
+// 4-1..4-4 utilisent BATTLE/4-x, comme chaque map utilise son propre skin.
 function getPortalSpriteSet(ptl = null) {
-  const pvp = isBattlePortal(ptl);
+  const skin = getPortalSkinForMap(ptl?.toMap);
   return {
-    idle: ptl?.sprites?.idle || (pvp ? PVP_PORTAL_SPRITES.idle : PORTAL_IDLE_SPR),
-    open: ptl?.sprites?.open || (pvp ? PVP_PORTAL_SPRITES.open : PORTAL_OPEN_SPR),
+    idle: ptl?.sprites?.idle || skin?.idle || PORTAL_IDLE_SPR,
+    open: ptl?.sprites?.open || skin?.open || PORTAL_OPEN_SPR,
 
     jump: {
       ...DEFAULT_PORTAL_JUMP_SPR,
       ...(PORTAL_JUMP_SPR || {}),
-      ...(pvp && !ptl?.sprites?.jump ? PVP_PORTAL_SPRITES.jump : {}),
+      ...(!ptl?.sprites?.jump && skin?.jump ? skin.jump : {}),
       ...(ptl?.sprites?.jump || {}),
     },
 
     jumpFx: {
       ...DEFAULT_PORTAL_JUMP_FX,
-      // Portails PVP : animation de saut rouge (25 frames 320x320).
-      ...(pvp && !ptl?.sprites?.jumpFx ? { path: "ASSETS/PORTAL_JUMP_RED/" } : {}),
+      // Animation de saut de la catégorie (25 frames 320x320).
+      ...(!ptl?.sprites?.jumpFx && skin?.jumpFxPath ? { path: skin.jumpFxPath } : {}),
       ...(ptl?.sprites?.jumpFx || {}),
     },
 
