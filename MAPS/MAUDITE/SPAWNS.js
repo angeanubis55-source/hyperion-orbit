@@ -14,7 +14,7 @@ export function getZoneSpawns(WORLD) {
 
   // ✅ Quotas EXACTS : 50 Cubikon + 200 Protegit
   const quota = [
-    { type: "npc_Cubikon", left: 1500 },
+    { type: "npc_Cubikon", left: 35 },
     { type: "npc_Cubikon_maudite", left: 15 },
     { type: "npc_Protegit", left: 50 },
     { type: "npc_Protegit_maudite", left: 50 },
