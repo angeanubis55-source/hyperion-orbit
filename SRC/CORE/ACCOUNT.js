@@ -3362,8 +3362,8 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
 }
 
 // Raffinage minerais -> minerais nobles (ratios officiels, voir REFINERY_RECIPES).
-export function refineCurrentUserOre(recipeId, requestedQuantity = 1) {
-  const u = getCurrentUserFull();
+export function refineCurrentUserOre(recipeId, requestedQuantity = 1, options = {}) {
+  const u = options.user || getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const recipe = getRefineryRecipe(recipeId);
   if (!recipe) return { ok: false, error: "Recette introuvable." };
@@ -3375,8 +3375,10 @@ export function refineCurrentUserOre(recipeId, requestedQuantity = 1) {
     u.inventory.resources[resourceId] = Math.max(0, Number(u.inventory.resources[resourceId] || 0) - Math.floor(Number(perUnit) || 0) * quantity);
   }
   u.inventory.resources[recipe.output.id] = Math.max(0, Number(u.inventory.resources[recipe.output.id] || 0) + gained);
-  ensureUserShape(u);
-  saveUser(u);
+  if (!options.deferSave) {
+    ensureUserShape(u);
+    saveUser(u);
+  }
   if (netActive()) {
     for (const [resourceId, perUnit] of Object.entries(recipe.inputs)) {
       noteNetConsumption("ores", resourceId, Math.floor(Number(perUnit) || 0) * quantity);

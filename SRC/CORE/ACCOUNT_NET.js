@@ -177,10 +177,30 @@ export function netSetCurrent(cur) {
   }
 }
 
-function writeCache(user) {
+let pendingCacheUser = null;
+let cacheWriteScheduled = false;
+function flushAccountCache() {
+  cacheWriteScheduled = false;
+  const user = pendingCacheUser;
+  pendingCacheUser = null;
+  // Une deconnexion ne doit jamais etre suivie par la resurrection du cache.
+  if (!user || !netActive() || user.id !== memUser.id) return;
   try {
     lsSet(CACHE_KEY, JSON.stringify({ user, at: Date.now() }));
   } catch {}
+}
+
+function writeCache(user, immediate = false) {
+  pendingCacheUser = user;
+  if (immediate) { flushAccountCache(); return; }
+  if (cacheWriteScheduled) return;
+  cacheWriteScheduled = true;
+  // Regroupe les sauvegardes rapproches, puis utilise un temps libre du
+  // navigateur. La serialisation/localStorage reste hors de l'action.
+  setTimeout(() => {
+    if (typeof requestIdleCallback === "function") requestIdleCallback(flushAccountCache, { timeout: 1500 });
+    else setTimeout(flushAccountCache, 0);
+  }, 250);
 }
 
 function readCache() {
@@ -230,7 +250,7 @@ export function enterNetMode(token, user) {
   if (!memToken || !memUser) return false;
   observeHangarSelection(memUser);
   lsSet(TOKEN_KEY, memToken);
-  writeCache(memUser);
+  writeCache(memUser, true);
   try {
     lsSet(CUR_KEY, JSON.stringify({ id: memUser.id, pseudo: memUser.pseudo, email: memUser.email }));
   } catch {}
@@ -680,6 +700,7 @@ async function pushNow() {
 }
 
 export async function flushNetUser() {
+  flushAccountCache();
   try { clearTimeout(saveTimer); } catch {}
   saveTimer = null;
   return pushNow();

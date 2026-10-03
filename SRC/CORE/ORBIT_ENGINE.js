@@ -12642,12 +12642,14 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
 // Auto : raffine dès qu'une recette devient disponible.
 // ============================================================
 function refineryRefineAll() {
+  if (!account.user) loadAccountUser();
+  if (!account.user) return 0;
   // Passes répétées : une recette peut débloquer la suivante (ex : Xenomit -> Promerium).
   let total = 0;
   for (let pass = 0; pass < 10; pass++) {
     let progress = 0;
     for (const recipe of REFINERY_RECIPES) {
-      const result = refineCurrentUserOre(recipe.id, Infinity);
+      const result = refineCurrentUserOre(recipe.id, Infinity, { user: account.user, deferSave: true });
       if (result.ok) {
         account.user = result.user;
         progress += result.gained;
@@ -12656,6 +12658,9 @@ function refineryRefineAll() {
     total += progress;
     if (progress <= 0) break;
   }
+  // Une collecte peut declencher toute une chaine de recettes : persiste
+  // une seule fois, sans reconstruire l'equipement entre chaque recette.
+  if (total > 0) saveUser(account.user, { source: "progress" });
   return total;
 }
 
@@ -15349,13 +15354,13 @@ function removeNotificationNode(node) {
   pumpNotificationQueue();
 }
 
-function mountNotification(spec) {
+function mountNotification(spec, deferHeight = false) {
   if (!ui.orbitNotifications) return;
   const node = document.createElement("div");
   node.className = `orbitNotification ${spec.type}`;
   setNotificationText(node, spec.value, { goldTerms: spec.goldTerms, whiteTerms: spec.whiteTerms, violetTerms: spec.violetTerms });
   ui.orbitNotifications.appendChild(node);
-  node.style.setProperty("--notice-height", `${node.scrollHeight}px`);
+  if (!deferHeight) node.style.setProperty("--notice-height", `${node.scrollHeight}px`);
   const now = Date.now();
   const baseVisibleMs = Math.max(spec.minVisibleMs, spec.durationMs);
   node.dataset.baseVisibleMs = String(baseVisibleMs);
@@ -15367,6 +15372,7 @@ function mountNotification(spec) {
   node.dataset.leaveAt = String(leaveAt);
   node._leaveTimer = setTimeout(() => node.classList.add("leaving"), Math.max(0, leaveAt - now));
   node._removeTimer = setTimeout(() => removeNotificationNode(node), Math.max(0, leaveAt - now) + 700);
+  return node;
 }
 
 function resetVisibleNotificationFlow() {
@@ -15421,7 +15427,11 @@ function flushLatestNotificationGroup() {
       node._removeTimer = setTimeout(() => removeNotificationNode(node), 700);
     }
   }
-  for (const spec of group.slice(-MAX_VISIBLE_NOTIFICATIONS)) mountNotification(spec);
+  const nodes = group.slice(-MAX_VISIBLE_NOTIFICATIONS).map(spec => mountNotification(spec, true));
+  // Insere tout le groupe, lit toutes les hauteurs, puis applique les styles.
+  // L'ancien aller-retour DOM/scrollHeight forcait un layout par ligne.
+  const heights = nodes.map(node => node.scrollHeight);
+  nodes.forEach((node, index) => node.style.setProperty("--notice-height", `${heights[index]}px`));
   resetVisibleNotificationFlow();
 }
 

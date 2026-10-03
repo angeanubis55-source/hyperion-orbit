@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
+import { REFINERY_RECIPES, getRefineryRecipe, refineOreOutput } from "../SRC/DATA/RESOURCES.js";
 import { guidedChaseSpeed } from "../COMBAT/PROJECTILES.js";
 import { drawCombatFloatTexts } from "../SRC/CORE/COMBAT_TEXT_RENDERER.js";
 import { tickFloatingTexts } from "../SRC/CORE/FRAME_SYSTEMS.js";
@@ -9,13 +11,94 @@ import { QUEST_DEFINITIONS, getQuestObjectives, normalizeQuestState, recordQuest
 
 // Exerce les fonctions livrées sans démarrer une session ou un serveur réel.
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-function engineFunction(name) {
-  const start = engine.indexOf(`function ${name}(`);
+function engineFunction(name, source = engine) {
+  const start = source.indexOf(`function ${name}(`);
   assert.ok(start >= 0, name);
-  const end = engine.indexOf("\n}", start);
+  const end = source.indexOf("\n}", start);
   assert.ok(end > start, name);
-  return engine.slice(start, end + 2);
+  return source.slice(start, end + 2);
 }
+
+test("affichage des gains : format francais preserve", () => {
+  for (const value of [0, 12, 1234, 123456789, -1234, 42.9, undefined, Infinity]) {
+    const expected = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 })
+      .format(Math.floor(Number(value) || 0)).replace(/[\u00a0\u202f]/g, " ");
+    assert.equal(formatInteger(value), expected);
+  }
+});
+
+test("raffinage auto : chaine complete, une sauvegarde, debits reseau conserves", () => {
+  const source = readFileSync(new URL("../SRC/CORE/ACCOUNT.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const user = { inventory: { resources: { prometium: 10000, endurium: 10000, terbium: 10000, xenomit: 1000 } } };
+  const expected = structuredClone(user);
+  let expectedGain = 0;
+  const expectedDebits = {};
+  for (let pass = 0; pass < 10; pass++) {
+    let progress = 0;
+    for (const recipe of REFINERY_RECIPES) {
+      const { quantity, gained } = refineOreOutput(expected.inventory.resources, recipe, Infinity);
+      if (!quantity) continue;
+      for (const [id, perUnit] of Object.entries(recipe.inputs)) {
+        const debit = perUnit * quantity;
+        expected.inventory.resources[id] -= debit;
+        expectedDebits[id] = (expectedDebits[id] || 0) + debit;
+      }
+      expected.inventory.resources[recipe.output.id] = (expected.inventory.resources[recipe.output.id] || 0) + gained;
+      progress += gained;
+    }
+    expectedGain += progress;
+    if (!progress) break;
+  }
+  let saves = 0, reads = 0;
+  const debits = {};
+  const context = vm.createContext({ account: { user }, REFINERY_RECIPES, getRefineryRecipe, refineOreOutput,
+    netActive: () => true, noteNetConsumption: (field, id, count) => { assert.equal(field, "ores"); debits[id] = (debits[id] || 0) + count; },
+    getCurrentUserFull: () => { reads++; return user; }, ensureUserShape: u => u,
+    saveUser: (u, options) => { assert.equal(u, user); assert.equal(options.source, "progress"); saves++; },
+  });
+  vm.runInContext(engineFunction("refineCurrentUserOre", source) + "\n" + engineFunction("refineryRefineAll"), context);
+  assert.equal(context.refineryRefineAll(), expectedGain);
+  assert.deepEqual(user, expected);
+  assert.deepEqual(debits, expectedDebits);
+  assert.equal(reads, 0);
+  assert.equal(saves, 1);
+  assert.equal(context.refineryRefineAll(), 0);
+  assert.equal(saves, 1);
+});
+
+test("notifications : toutes les insertions avant lecture des hauteurs, tous les styles apres", () => {
+  const events = [];
+  const context = vm.createContext({ notificationGroupFrame: 1, pendingNotificationGroup: [{}, {}, {}],
+    ui: { orbitNotifications: { children: [] } }, MAX_VISIBLE_NOTIFICATIONS: 8,
+    mountNotification: (spec, deferHeight) => {
+      assert.equal(deferHeight, true); events.push("insert");
+      return { get scrollHeight() { events.push("read"); return 24; }, style: { setProperty: () => events.push("write") } };
+    }, resetVisibleNotificationFlow: () => {},
+  });
+  vm.runInContext(engineFunction("flushLatestNotificationGroup"), context);
+  context.flushLatestNotificationGroup();
+  assert.deepEqual(events, ["insert", "insert", "insert", "read", "read", "read", "write", "write", "write"]);
+});
+
+test("cache compte : ecritures regroupees, derniere revision et deconnexion respectees", () => {
+  const source = readFileSync(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const timers = [], idle = [], writes = [];
+  const context = vm.createContext({ memUser: { id: "pilot" }, CACHE_KEY: "cache",
+    setTimeout: fn => timers.push(fn), requestIdleCallback: fn => idle.push(fn),
+    netActive: () => !!context.memUser, lsSet: (key, value) => writes.push(JSON.parse(value).user),
+  });
+  vm.runInContext("let pendingCacheUser = null; let cacheWriteScheduled = false;\n"
+    + engineFunction("flushAccountCache", source) + "\n" + engineFunction("writeCache", source), context);
+  context.writeCache({ id: "pilot", revision: 1 });
+  context.writeCache({ id: "pilot", revision: 2 });
+  assert.equal(writes.length, 0); assert.equal(timers.length, 1);
+  timers.shift()(); assert.equal(writes.length, 0);
+  idle.shift()(); assert.equal(writes[0].revision, 2);
+  context.writeCache({ id: "pilot", revision: 3 });
+  context.memUser = null;
+  timers.shift()(); idle.shift()();
+  assert.equal(writes.length, 1);
+});
 function canvas() {
   const calls = [];
   const ctx = { calls };
