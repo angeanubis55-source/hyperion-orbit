@@ -398,6 +398,34 @@ export const COLLECTABLE_TYPES = Object.freeze({
     },
     rewards: { resources: { kyhalon: [1, 1] } },
   },
+
+  // Box lâchée par l'Invoke XVI à sa mort (jamais en ambient).
+  // Contenu : Rinusk 55-80 + Trace Blacklight 30-40.
+  Sun_Box: {
+    name: "Sun Box",
+    maps: "*",
+    qty: 0,
+    spawnBatch: 1,
+    minSpacing: 100,
+    avoidPlayer: 0,
+    npcDespawnAfter: 0,
+    r: 30,
+    pickupRadius: 50,
+    bob: 5,
+    sprite: {
+      path: "ASSETS/COLLECTABLES/BONUS_BOX_SUN/",
+      frames: 20,
+      firstNumber: 1,
+      ext: ".png",
+      fps: 12,
+      w: 96,
+      h: 96,
+      scale: 1,
+      randomStart: true,
+      glow: false,
+    },
+    rewards: { resources: { rinusk: [55, 80], blacklight_trace: [30, 40] } },
+  },
 });
 
 export const COLLECTABLE_SPAWN = Object.freeze({

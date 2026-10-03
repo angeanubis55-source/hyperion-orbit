@@ -46,23 +46,11 @@ export const MAP_LOADERS = Object.freeze({
 
 const MAP_IDS_BY_LOWERCASE = new Map(Object.keys(MAP_LOADERS).map(id => [id.toLowerCase(), id]));
 
-// Anciens ids (sauvegardes existantes) : redirigés vers les ids canoniques.
-// Canonique = 1-BL/2-BL/3-BL + battle 4-1/4-2/4-3/4-4. Ne plus utiliser les
-// vieux ids ailleurs (toMap, portails, saves) : tout est uniformisé.
-const LEGACY_MAP_IDS = Object.freeze({
-  "1-4.1": "4-1",
-  "2-4.1": "4-2",
-  "3-4.1": "4-3",
-  "4-4.123": "4-4",
-  "1-8.1": "1-BL",
-  "2-8.1": "2-BL",
-  "3-8.1": "3-BL",
-});
-
+// Seuls les noms réels existent (1-BL/2-BL/3-BL, 4-1/4-2/4-3/4-4...).
+// Aucun alias : un id inconnu retombe sur la map par défaut.
 export function normalizeMapId(value) {
   const id = String(value || "").trim().toLowerCase();
   if (id === "???") return "MAUDITE";
-  if (Object.hasOwn(LEGACY_MAP_IDS, id)) return LEGACY_MAP_IDS[id];
   return MAP_IDS_BY_LOWERCASE.get(id) || DEFAULT_MAP_ID;
 }
 

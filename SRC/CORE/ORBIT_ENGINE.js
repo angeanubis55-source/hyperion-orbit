@@ -21554,6 +21554,20 @@ const NPC_SEP = {
   maxPush: 220,
 };
 const npcSeparationIndex = createSpatialPairIndex(512);
+// Boss BL immobiles (comme le Cubikon) : les Impulse II / Attend IX ne doivent
+// jamais les pousser (Invoke XVI, Mindfire Behemoth, Strokelight Barrage).
+const ANCHORED_NPC_TYPES = new Set([
+  "npc_Cubikon",
+  "npc_Invoke_XVI",
+  "npc_Mindfire_Behemoth",
+  "npc_Strokelight_Barrage",
+]);
+function isAnchoredNpcEntity(e) {
+  if (!e) return false;
+  if (ANCHORED_NPC_TYPES.has(e.type)) return true;
+  if (Number(e.speed) <= 0) return true;
+  return false;
+}
 
 // ============================================================
 // ✅ NPC combat movement : moins robotique, sans toucher NPC_TYPES
@@ -21661,6 +21675,8 @@ function npcHpPct(e) {
 }
 function npcShouldFlee(e) {
   if (!e || Number(e.hp) <= 0) return false;
+  // Ancres BL / Cubikon : jamais de fuite, ils tiennent leur position.
+  if (isAnchoredNpcEntity(e)) return false;
   if ((NPC_TYPES[e.type] || {}).ai === "kamikaze") return false;
   return npcHpPct(e) < NPC_FLEE_HP_PCT;
 }
@@ -21685,7 +21701,9 @@ function applyNpcSeparation(dt) {
 
   npcSeparationIndex.forEachPair(enemies, (a, b, i, j) => {
 
-      if (a.type === "npc_Cubikon" || b.type === "npc_Cubikon") return;
+      // Copie inactive (le live est NPC/NPC_MOVEMENT.js) : même règle —
+      // ancre impliquée = traversée libre, aucune séparation.
+      if (isAnchoredNpcEntity(a) || isAnchoredNpcEntity(b)) return;
 
       const dx = b.x - a.x;
       const dy = b.y - a.y;
@@ -21918,6 +21936,23 @@ let collectableFarTickT = 0;
 
 function currentMapId() {
   return String(window.__CURRENT_MAP_ID__ || "1-1");
+}
+
+// ✅ Blacklight (1-BL / 2-BL / 3-BL) : tous les dégâts sont x2 de base,
+// émis comme subis (officiel).
+const BL_MAP_IDS = new Set(["1-bl", "2-bl", "3-bl"]);
+function isBlacklightMap(mapId = currentMapId()) {
+  return BL_MAP_IDS.has(String(mapId || "").trim().toLowerCase());
+}
+function blMapDamageMult() {
+  return isBlacklightMap() ? 2 : 1;
+}
+
+// Maps doublées (1-BL / 2-BL / 3-BL / 4-5 : 22000x14000 vs 11000x7000
+// standard) : distance d'aggro et de poursuite x2.
+const DOUBLE_RANGE_MAP_IDS = new Set(["1-bl", "2-bl", "3-bl", "4-5"]);
+function aggroRangeMult() {
+  return DOUBLE_RANGE_MAP_IDS.has(String(currentMapId() || "").trim().toLowerCase()) ? 2 : 1;
 }
 
 // ✅ Leonov : bonus actif si le vaisseau actif est le Leonov ET que la map
@@ -23795,7 +23830,8 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
     return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0, sab: true };
   }
 
-  const baseDamage = Math.max(1, Number(amount) || 1);
+  // Blacklight : drain x2 de base comme tous les dégâts.
+  const baseDamage = Math.max(1, Number(amount) || 1) * (e._netPlayer ? 1 : blMapDamageMult());
   const variance = 0.95 + Math.random() * 0.1;
   const isCrit = Math.random() < 0.05;
   const raw = baseDamage * variance * (isCrit ? 1.5 : 1);
@@ -23946,6 +23982,10 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
     } catch {}
     return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
   }
+
+  // Blacklight : dégâts x2 de base (hors prédiction PvP ci-dessus).
+  // fromRedirect = renvoi déjà doublé côté hurtPlayer : pas de double-dip.
+  if (!opts.fromRedirect) dmg = Number(dmg || 0) * blMapDamageMult();
 
   // Affaiblissement (Diminisher, officiel) : +50 % de dégâts au bouclier
   // de la cible verrouillée — lasers uniquement (pas les roquettes),
@@ -24133,7 +24173,10 @@ function applyRocketVolleyHit(e, b, count, recipient = player) {
 }
 
 function npcEffectiveSpeed(e, fallback = 320) {
-  const baseSpeed = Number(e?.speed) || fallback;
+  // Un speed explicite à 0 (boss BL immobiles, Cubikon...) doit rester 0 :
+  // `Number(0) || fallback` vaudrait 320 et les ferait vagabonder.
+  const raw = Number(e?.speed);
+  const baseSpeed = Number.isFinite(raw) ? Math.max(0, raw) : fallback;
   const slowPct = (e?.rocketSlowT || 0) > 0
     ? clamp(Number(e.rocketSlowPct) || 0, 0, 95)
     : 0;
@@ -24142,6 +24185,11 @@ function npcEffectiveSpeed(e, fallback = 320) {
 
 function hurtPlayer(amount, source = null) {
   if (player.dead || hangarSwapFx || player.iFrames > 0 || (player.invincibleT || 0) > 0) return;
+
+  // Blacklight : dégâts subis x2 de base. Les renvois vers les NPC
+  // (redirect / RVG / Spectrum+) repassent par damageEnemy avec
+  // fromRedirect : un seul x2 au total, pas de double-dip.
+  amount = Number(amount || 0) * blMapDamageMult();
 
   // Évasion (arbre pilote + modules) : probabilité d'esquiver totalement le coup (miss bleu).
   try {
@@ -24162,7 +24210,7 @@ function hurtPlayer(amount, source = null) {
     if (dst && dst.hp > 0) {
       const rdmg = Math.max(0, Math.round(Number(amount) || 0));
       if (rdmg > 0) {
-        try { damageEnemy(dst, rdmg); } catch {}
+        try { damageEnemy(dst, rdmg, undefined, undefined, { fromRedirect: true }); } catch {}
         try {
           addFloatText(
             dst.x + (Math.random() - 0.5) * 60,
@@ -24184,7 +24232,7 @@ function hurtPlayer(amount, source = null) {
   if ((player.rvgT || 0) > 0) {
     if (source && source.hp > 0) {
       const rdmg = Math.max(0, Math.round(Number(amount) || 0));
-      try { damageEnemy(source, rdmg); } catch {}
+      try { damageEnemy(source, rdmg, undefined, undefined, { fromRedirect: true }); } catch {}
       addFloatText(
         source.x + (Math.random() - 0.5) * 60,
         source.y - 90 - Math.random() * 20,
@@ -24253,7 +24301,7 @@ function hurtPlayer(amount, source = null) {
     if (source && source.hp > 0) {
       const rdmg = Math.max(0, Math.round(Number(Number(amount) || 0) * SPECPLUS_REFLECT));
       if (rdmg > 0) {
-        try { damageEnemy(source, rdmg); } catch {}
+        try { damageEnemy(source, rdmg, undefined, undefined, { fromRedirect: true }); } catch {}
         try {
           addFloatText(
             source.x + (Math.random() - 0.5) * 60,
@@ -24456,12 +24504,17 @@ function killRewards(e) {
   const killLabel = isSharedGroupKill
     ? `Le pilote ${killerPseudo} a éliminé ${npcName}`
     : `${npcName} éliminé`;
-  addGameLog(`${killLabel} · +${formatInteger(credits)} crédits · +${xpText} · +${honorText}`, "reward");
+  // Drops directs (rinusk, traceur...) déjà attribués dans le balayage :
+  // fusionnés dans ce toast (un 2e groupe écraserait celui-ci).
+  const directLines = Array.isArray(e._directDropLines) ? e._directDropLines.filter(Boolean).map(String) : [];
+  try { delete e._directDropLines; } catch {}
+  addGameLog([`${killLabel} · +${formatInteger(credits)} crédits · +${xpText} · +${honorText}`, ...directLines].join(" · "), "reward");
   showNotificationGroup([
     killLabel,
     `Vous avez reçu ${formatInteger(credits)} crédits`,
     `Vous avez gagné ${xpText}`,
     `Vous avez gagné ${honorText}`,
+    ...directLines,
   ], "info", { whiteTerms, violetTerms });
   // Le groupe partage les recompenses et les objectifs de quete, mais la
   // fiche "NPC & Grades" reste personnelle : seul le tueur est credite.
@@ -24633,6 +24686,10 @@ if (e.type === "npc_Blighted_Gygerthrall") {
   dropType = "Hybrid_Alloy_Box";
 }
 
+if (e.type === "npc_Invoke_XVI") {
+  dropType = "Sun_Box";
+}
+
 if (
   ownsNpcLoot &&
   !e.noRewards &&
@@ -24682,7 +24739,10 @@ if (ownsNpcLoot && !e.noRewards) {
       if (received.length) {
         markProgressDirty();
         addGameLog(received.join(" · "), "reward");
-        showNotificationGroup(received, "reward", {});
+        // Pas de 2e toast ici : showNotificationGroup écrase le groupe en
+        // attente, et killRewards() affiche son toast juste après dans la
+        // même frame. Les lignes sont fusionnées dans le toast du kill.
+        e._directDropLines = received;
       }
     }
   }
@@ -27918,7 +27978,7 @@ jumpBaseFade: 1,
     try {
       const transfer = JSON.parse(sessionStorage.getItem("orbit_faction_transfer") || "null");
       const currentMap = String(window.__CURRENT_MAP_ID__ || "1-1");
-      // ✅ compare normalisée : une sauvegarde legacy (ex "1-8.1") doit matcher "1-BL".
+      // ✅ compare normalisée (insensible à la casse) : même carte -> base.
       if (transfer && normalizeMapId(transfer.map) === normalizeMapId(currentMap)) {
         const center = resolveBaseCenter(zoneSafe, transfer.fallback);
         const baseX = center.x;
@@ -27995,7 +28055,7 @@ jumpBaseFade: 1,
     for (const [candPortal, candMap] of candidates) {
       if (!candPortal || !candMap) continue;
       if (!isSafeId(candPortal) || !isSafeId(candMap)) continue;
-      // ✅ compare normalisée : legacy "1-8.1" == canonique "1-BL" (même carte).
+      // ✅ compare normalisée (insensible à la casse).
       if (normalizeMapId(candMap) !== normalizeMapId(currentMap)) continue;
       const ptl = zonePortals.find(p => String(p.id) === String(candPortal));
       if (!ptl) continue;
@@ -28061,8 +28121,8 @@ jumpBaseFade: 1,
       player.x = clamp(gateEntrySpawn.x, 80, WORLD.w - 80);
       player.y = clamp(gateEntrySpawn.y, 80, WORLD.h - 80);
     } else {
-      // ✅ compare normalisée : une sauvegarde legacy ("1-8.1", "4-4.123"...)
-      // restaure la position au lieu de retomber au spawn faction (1500/1500).
+      // ✅ compare normalisée : restaure la position sauvegardée
+      // au lieu de retomber au spawn faction (1500/1500).
       if (normalizeMapId(st.map) !== normalizeMapId(currentMap)) {
         player.x = clamp(gateEntrySpawn.x, 80, WORLD.w - 80);
         player.y = clamp(gateEntrySpawn.y, 80, WORLD.h - 80);
@@ -33354,7 +33414,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
         }
         else {
           const ownerNpc = b.ownerId != null ? enemies.find((x) => x?.id === b.ownerId) || null : null;
-          damagePlayerLayers(bulletTarget, redirectProtectionDamage(bulletTarget, b.dmg, ownerNpc));
+          damagePlayerLayers(bulletTarget, redirectProtectionDamage(bulletTarget, b.dmg, ownerNpc) * blMapDamageMult());
           // Clone Mimesis tué : explosion standard + rire.
           if (bulletTarget.hp <= 0 && bulletTarget.holo) killHoloClone(bulletTarget);
         }
@@ -33855,7 +33915,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           if (!e.passiveNative || e._provoked) {
             // Camouflage ultime / CPU CL04K-XL : pas de nouvelle aggro sur le joueur invisible.
             // Portails : pas de nouvel aggro dans le rayon (sortie naturelle).
-            if (d <= aggroRange && !isPlayerCloaked() && player.cpuCloak !== true && !npcPortalCalm(e)) {
+            // Maps doublées (BL / 4-5) : portée x2.
+            if (d <= aggroRange * aggroRangeMult() && !isPlayerCloaked() && player.cpuCloak !== true && !npcPortalCalm(e)) {
               e._aggro = true;
               e._aggroT = aggroHold;
             }

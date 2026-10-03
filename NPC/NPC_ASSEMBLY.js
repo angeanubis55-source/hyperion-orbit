@@ -87,14 +87,14 @@ export const ASSEMBLY_DIRECT_TABLE = Object.freeze([
   Object.freeze({
     resource: "rinusk",
     drops: Object.freeze({
-      npc_Impulse_II: [1, 1], npc_Attend_IX: [1, 2],
-      npc_Invoke_XVI: [2, 3], npc_Mindfire_Behemoth: [3, 5],
+      npc_Impulse_II: [15, 25], npc_Attend_IX: [80, 90],
+      npc_Mindfire_Behemoth: [3, 5],
     }),
   }),
   Object.freeze({
     resource: "blacklight_trace",
     drops: Object.freeze({
-      npc_Attend_IX: [1, 1], npc_Invoke_XVI: [1, 2], npc_Mindfire_Behemoth: [2, 3],
+      npc_Attend_IX: [5, 15], npc_Mindfire_Behemoth: [2, 3],
     }),
   }),
   Object.freeze({

@@ -14,6 +14,31 @@ const TAU = Math.PI * 2;
 // etre poursuivie dans la radiation jusqu'a la meme profondeur que le client.
 const RADIATION_CHASE_MARGIN = 2500;
 
+// Ancres immobiles (Cubikon + boss BL) : la séparation les ignore dans les
+// deux sens — les mobiles passent par-dessus au lieu de les pousser.
+const ANCHORED_NPC_TYPES = new Set([
+  "npc_Cubikon",
+  "npc_Invoke_XVI",
+  "npc_Mindfire_Behemoth",
+  "npc_Strokelight_Barrage",
+]);
+function isAnchoredNpcType(type) {
+  return ANCHORED_NPC_TYPES.has(String(type || ""));
+}
+
+// Maps doublées (1-BL / 2-BL / 3-BL / 4-5 : 22000x14000 vs 11000x7000
+// standard) : distance d'aggro et de poursuite x2.
+const DOUBLE_RANGE_MAP_IDS = new Set(["1-bl", "2-bl", "3-bl", "4-5"]);
+function aggroRangeMultFor(mapId) {
+  return DOUBLE_RANGE_MAP_IDS.has(String(mapId || "").trim().toLowerCase()) ? 2 : 1;
+}
+
+// Blacklight uniquement : tous les dégâts x2 de base (parité client).
+const BL_MAP_IDS = new Set(["1-bl", "2-bl", "3-bl"]);
+function blDamageMultFor(mapId) {
+  return BL_MAP_IDS.has(String(mapId || "").trim().toLowerCase()) ? 2 : 1;
+}
+
 function statsFor(type) {
   const cfg = NPC_TYPES[type];
   if (!cfg) return null;
@@ -58,13 +83,7 @@ export class ZoneNpcSim {
   }
 
   static async create(mapId, savedUniverse = null) {
-    let id = String(mapId || "").toLowerCase();
-    // Vieux ids (sauvegardes existantes) -> canonique (parité MAP_REGISTRY).
-    const LEGACY_IDS = {
-      "1-4.1": "4-1", "2-4.1": "4-2", "3-4.1": "4-3", "4-4.123": "4-4",
-      "1-8.1": "1-bl", "2-8.1": "2-bl", "3-8.1": "3-bl",
-    };
-    if (Object.hasOwn(LEGACY_IDS, id)) id = LEGACY_IDS[id];
+    const id = String(mapId || "").toLowerCase();
     if (!/^[a-z0-9_-]+$/.test(id)) return null;
     // Alias client -> dossier (casse exacte, systèmes sensibles à la casse) :
     // la Low partagée vit dans MAPS/LOW_MAP, la Maudite dans MAPS/MAUDITE,
@@ -775,7 +794,7 @@ drainPlayerHits() {
           if (d2 < victimD2) { victimD2 = d2; victim = pid; }
         }
         if (victim != null) {
-          this.playerHits.push({ playerId: String(victim), npcUid: e.uid, damage: Math.max(0, Number(e.explodeDmg) || 0), kind: "boom" });
+          this.playerHits.push({ playerId: String(victim), npcUid: e.uid, damage: Math.max(0, Number(e.explodeDmg) || 0) * blDamageMultFor(this.mapId), kind: "boom" });
           e.hp = 0; e.sh = 0; e.killer = String(victim); e.cause = "boom";
           e.cube = null;
           if (!e.campId) e.deadAt = nowMs;
@@ -821,7 +840,8 @@ drainPlayerHits() {
       }
       // Proximite : rayon du camp (passifs : seulement si provoques).
       // Chasseurs (raid) : traque map-wide type gate, pas de rayon.
-      let close = null, closeD = e.hunter === true ? Infinity : (Number(e.aggroRange) || 700);
+      // Maps doublées (BL / 4-5) : portée x2 (acquisition comme poursuite).
+      let close = null, closeD = e.hunter === true ? Infinity : (Number(e.aggroRange) || 700) * aggroRangeMultFor(this.mapId);
       if (!e.passive || attacker) {
         for (const [pid, p] of this.players) {
           if (!this.validTarget(p)) continue;
@@ -871,7 +891,8 @@ drainPlayerHits() {
       }
       let mx = 0, my = 0, spd = 0;
       // Chasseurs (raid) : jamais de fuite, combat à mort comme en gate.
-      const fleeing = !e.kamikaze && e.hunter !== true && e.hpMax > 0 && e.hp / e.hpMax < 0.10;
+      // Ancres (Cubikon + boss BL) : jamais de fuite non plus.
+      const fleeing = !e.kamikaze && e.hunter !== true && !isAnchoredNpcType(e.type) && e.hpMax > 0 && e.hp / e.hpMax < 0.10;
       const from = attacker || close;
       if (cubeAnchored) {
         if (e.tx == null || Math.hypot(e.tx - e.x, e.ty - e.y) < 100) {
@@ -948,7 +969,7 @@ drainPlayerHits() {
           e.shootCd = (1 / Math.max(0.001, e.shootRate)) * (0.85 + Math.random() * 0.3);
           for (let shot = 0; shot < e.burst; shot++) {
             if (Math.random() < 0.15) continue;
-            const damage = Math.max(1, Math.round(e.bulletDmg * (0.95 + Math.random() * 0.1)));
+            const damage = Math.max(1, Math.round(e.bulletDmg * (0.95 + Math.random() * 0.1) * blDamageMultFor(this.mapId)));
             this.playerHits.push({ playerId: String(chase.id), npcUid: e.uid, damage, kind: "laser" });
           }
         }
@@ -963,6 +984,8 @@ drainPlayerHits() {
         if (e && e.hp > 0) activeList.push(e);
       }
       this.separationIndex.forEachPair(activeList, (a, b, i, j) => {
+        // Ancre impliquée : traversée libre, aucune séparation.
+        if (isAnchoredNpcType(a.type) || isAnchoredNpcType(b.type)) return;
         let dx = b.x - a.x, dy = b.y - a.y;
         const minimum = (Number(a.r) || 18) + (Number(b.r) || 18) + 6;
         let squared = dx * dx + dy * dy;
@@ -981,23 +1004,14 @@ drainPlayerHits() {
         const push = Math.min(220, overlap * 28) * dt;
         const side = Math.min(220, overlap * 12) * (((i + j) % 2 === 0) ? 1 : -1) * dt;
         const tx = -ny, ty = nx;
-        const aAnchored = a.type === "npc_Cubikon";
-        const bAnchored = b.type === "npc_Cubikon";
-        if (aAnchored && bAnchored) return;
         const aRadiation = !!a.chaseId || a.x < 80 || a.x > this.world.w - 80 || a.y < 80 || a.y > this.world.h - 80;
         const bRadiation = !!b.chaseId || b.x < 80 || b.x > this.world.w - 80 || b.y < 80 || b.y > this.world.h - 80;
         const aMin = aRadiation ? 80 - RADIATION_CHASE_MARGIN : 80;
         const bMin = bRadiation ? 80 - RADIATION_CHASE_MARGIN : 80;
-        const aShare = bAnchored ? 2 : 1;
-        const bShare = aAnchored ? 2 : 1;
-        if (!aAnchored) {
-          a.x = clamp(a.x + (-nx * push + tx * side) * aShare, aMin, aRadiation ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80);
-          a.y = clamp(a.y + (-ny * push + ty * side) * aShare, aMin, aRadiation ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80);
-        }
-        if (!bAnchored) {
-          b.x = clamp(b.x + (nx * push - tx * side) * bShare, bMin, bRadiation ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80);
-          b.y = clamp(b.y + (ny * push - ty * side) * bShare, bMin, bRadiation ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80);
-        }
+        a.x = clamp(a.x + (-nx * push + tx * side), aMin, aRadiation ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80);
+        a.y = clamp(a.y + (-ny * push + ty * side), aMin, aRadiation ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80);
+        b.x = clamp(b.x + (nx * push - tx * side), bMin, bRadiation ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80);
+        b.y = clamp(b.y + (ny * push - ty * side), bMin, bRadiation ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80);
       });
     } catch {}
   }

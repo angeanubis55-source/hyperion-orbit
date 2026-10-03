@@ -1753,7 +1753,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 59, hp: 4500000, shield: 500000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 59, hp: 4500000, shield: 500000, speed: 0, bulletDmg: 20000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_I_Egg: {
     name: "-=[ I-Egg ]=-",
@@ -1970,7 +1970,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 32, hp: 9000000, shield: 4800000, speed: 250, bulletDmg: 17000, bulletSpeed: 4500, shootRange: 550,
+    r: 32, hp: 9000000, shield: 4800000, speed: 150, bulletDmg: 17000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Invoke_XVI: {
     name: "-=[ Invoke XVI ]=-",
@@ -1988,7 +1988,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 144, hp: 135000000, shield: 0, speed: 0, bulletDmg: 145000, bulletSpeed: 4500, shootRange: 550,
+    r: 144, hp: 135000000, shield: 0, speed: 0, bulletDmg: 75000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Unidentified_Destroyer: {
     name: "-=[ Unidentified Destroyer ]=-",
@@ -2354,12 +2354,12 @@ export const NPC_TYPES = {
   },
   npc_Impulse_II: {
     name: "Impulse II",
-    sprite: { path: "NPC/NPC_SPRITES/SLENDER/", frames: 32, firstNumber: 1, ext: ".png", w: 450, h: 400 },
+    sprite: { path: "NPC/NPC_SPRITES/IMPULSE_II/", frames: 32, firstNumber: 1, ext: ".png", w: 150, h: 120 },
     playSprite: false,
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 18, hp: 1200000, shield: 750000, speed: 450, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Purpose_XXI: {
     name: "Purpose XXI",

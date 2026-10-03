@@ -4,12 +4,31 @@ import { clamp } from "../SRC/CORE/COLLISION.js";
 import { createSpatialPairIndex } from "../SRC/CORE/SPATIAL_INDEX.js";
 
 export const NPC_SEPARATION = Object.freeze({ enable: true, extra: 6, strength: 28, side: 12, maxPush: 220 });
+// Boss BL immobiles (comme le Cubikon) : les Impulse II / Attend IX ne doivent
+// jamais les pousser (Invoke XVI, Mindfire Behemoth, Strokelight Barrage).
+const ANCHORED_NPC_TYPES = new Set([
+  "npc_Cubikon",
+  "npc_Invoke_XVI",
+  "npc_Mindfire_Behemoth",
+  "npc_Strokelight_Barrage",
+]);
+
+function isAnchoredNpc(e) {
+  if (!e) return false;
+  if (ANCHORED_NPC_TYPES.has(e.type)) return true;
+  // Filet de sécurité : vitesse 0 (override de camp, ex : boss BL fixes).
+  if (Number(e.speed) <= 0) return true;
+  return false;
+}
 const separationIndex = createSpatialPairIndex(512);
 
 export function applyNpcSeparation(enemies, deltaTime, world, isZoneMap = false) {
   if (isZoneMap || !NPC_SEPARATION.enable || enemies.length <= 1) return;
   separationIndex.forEachPair(enemies, (a, b, i, j) => {
-    if (a.type === "npc_Cubikon" || b.type === "npc_Cubikon") return;
+    // Ancre BL / Cubikon impliquée : aucune séparation dans les deux sens.
+    // Les mobiles passent par-dessus le boss au lieu de le pousser
+    // (ou de rebondir dessus).
+    if (isAnchoredNpc(a) || isAnchoredNpc(b)) return;
     // Fuyards (< 10 % PV en gate) : on les laisse se stacker exactement les
     // uns sur les autres dans le coin, sans les écarter.
     if (a._fleeing && b._fleeing) return;

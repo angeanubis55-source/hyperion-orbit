@@ -217,8 +217,11 @@ export const NPC_REWARDS = Object.freeze({
   npc_Sheer_Chaos_Annihilator: { credits: 50000, exp: 25000, honor: 100 },
   npc_Sheer_Chaos_Protegit: { credits: 50000, exp: 25000, honor: 100 },
   npc_Unidentified: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Attend_IX: { credits: 1000000, exp: 350000, honor: 750 },
-  npc_Invoke_XVI: { credits: 9500000, exp: 3500000, honor: 20000 },
+  // BL : uridium officiel x10000 reversé en crédits (pas d'uridium en jeu).
+  // Impulse : 200 000 + 45 x 10 000 = 650 000. Attend : 1 000 000 + 275 x 10 000 = 3 750 000.
+  npc_Attend_IX: { credits: 3750000, exp: 350000, honor: 750 },
+  // Invoke : 9 500 000 + 2000 uridium x 10 000 = 29 500 000 (pas d'uridium en jeu).
+  npc_Invoke_XVI: { credits: 29500000, exp: 3500000, honor: 20000 },
   npc_Mindfire_Behemoth: { credits: 25000000, exp: 10000000, honor: 60000 },
   npc_Unidentified_Destroyer: { credits: 50000, exp: 25000, honor: 100 },
   // Recompenses generiques : les statistiques serveur ne figurent pas dans main.swf.
@@ -261,7 +264,7 @@ export const NPC_REWARDS = Object.freeze({
   npc_Sunder_Star_2: { credits: 50000, exp: 25000, honor: 100 },
   npc_Sunder_Star_3: { credits: 50000, exp: 25000, honor: 100 },
   npc_Sunder_Star_4: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Impulse_II: { credits: 50000, exp: 25000, honor: 100 },
+  npc_Impulse_II: { credits: 650000, exp: 55000, honor: 200 },
   npc_Purpose_XXI: { credits: 50000, exp: 25000, honor: 100 },
   npc_Urge_IV: { credits: 50000, exp: 25000, honor: 100 },
   npc_Attitude_XIII: { credits: 50000, exp: 25000, honor: 100 },
