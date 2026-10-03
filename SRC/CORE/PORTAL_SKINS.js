@@ -22,7 +22,7 @@ const SKIN_DIR_BY_MAP = (() => {
     "2-1", "2-2", "2-3", "2-4", "2-5", "2-6", "2-7", "2-8",
     "3-1", "3-2", "3-3", "3-4", "3-5", "3-6", "3-7", "3-8",
   ]) m.set(id, `NORMAUX/${id}`);
-  for (const id of ["4-1", "4-2", "4-3", "4-4"]) m.set(id, `BATTLE/${id}`);
+  for (const id of ["4-1", "4-2", "4-3", "4-4", "4-5"]) m.set(id, `BATTLE/${id}`);
   m.set("1-BL", "BL/1BL");
   m.set("2-BL", "BL/2BL");
   m.set("3-BL", "BL/3BL");
