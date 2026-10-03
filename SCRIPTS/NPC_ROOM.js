@@ -58,11 +58,18 @@ export class ZoneNpcSim {
   }
 
   static async create(mapId, savedUniverse = null) {
-    const id = String(mapId || "").toLowerCase();
+    let id = String(mapId || "").toLowerCase();
+    // Vieux ids (sauvegardes existantes) -> canonique (parité MAP_REGISTRY).
+    const LEGACY_IDS = {
+      "1-4.1": "4-1", "2-4.1": "4-2", "3-4.1": "4-3", "4-4.123": "4-4",
+      "1-8.1": "1-bl", "2-8.1": "2-bl", "3-8.1": "3-bl",
+    };
+    if (Object.hasOwn(LEGACY_IDS, id)) id = LEGACY_IDS[id];
     if (!/^[a-z0-9_-]+$/.test(id)) return null;
     // Alias client -> dossier (casse exacte, systèmes sensibles à la casse) :
-    // la Low partagée vit dans MAPS/LOW_MAP, la Maudite dans MAPS/MAUDITE.
-    const MAP_DIR_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE" };
+    // la Low partagée vit dans MAPS/LOW_MAP, la Maudite dans MAPS/MAUDITE,
+    // les BL dans MAPS/1-BL, 2-BL, 3-BL.
+    const MAP_DIR_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
     const dir = MAP_DIR_ALIASES[id] || id;
     try {
       const [{ WORLD }, spawns] = await Promise.all([
