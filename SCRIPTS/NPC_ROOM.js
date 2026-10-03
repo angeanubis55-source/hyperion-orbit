@@ -115,6 +115,10 @@ export class ZoneNpcSim {
         respawn: Number(c?.respawn ?? 1.5),
         maxAlive: Math.max(1, Number(c?.maxAlive ?? 1)),
         speed: (c?.speed ?? null),
+        // Camps fixes (boss BL...) : spawn/respawn au camp, comme le Cubikon.
+        fixed: c?.fixed === true,
+        // Zone de spawn (ex : Invoke BL) : { x1, y1, x2, y2 }.
+        spawnArea: c?.spawnArea || null,
         // Raid Low : numéro de vague (0/undefined = camp normal permanent).
         raidWave: Math.max(0, Math.floor(Number(c?.raidWave) || 0)) || 0,
         // Raid Low : IA chasseur type gate (traque map-wide, pas de fuite).
@@ -265,12 +269,28 @@ export class ZoneNpcSim {
     };
   }
 
+  areaPos(camp, pad = 80) {
+    const a = camp?.spawnArea;
+    if (a && [a.x1, a.y1, a.x2, a.y2].every((v) => Number.isFinite(Number(v)))) {
+      const ax1 = Math.min(Number(a.x1), Number(a.x2));
+      const ax2 = Math.max(Number(a.x1), Number(a.x2));
+      const ay1 = Math.min(Number(a.y1), Number(a.y2));
+      const ay2 = Math.max(Number(a.y1), Number(a.y2));
+      return {
+        x: ax1 + Math.random() * Math.max(0, ax2 - ax1),
+        y: ay1 + Math.random() * Math.max(0, ay2 - ay1),
+      };
+    }
+    return this.randomPos(pad);
+  }
+
   spawnFor(camp, nowMs) {
     const uid = slotUid(this.mapId, camp.id);
     const stats = statsFor(camp.type);
     if (!stats) return; // type inconnu : slot ignore definitivement
     const isCubikon = camp.type === "npc_Cubikon";
-    const pos = isCubikon ? { x: camp.x, y: camp.y } : this.randomPos();
+    const isFixedCamp = isCubikon || camp.fixed === true;
+    const pos = isFixedCamp ? { x: camp.x, y: camp.y } : this.areaPos(camp);
     markAlive(this.universe, this.mapId, uid, nowMs);
     // Camp à usage unique (raid) : marqué comme spawné pour cette
     // activation de vague (anti-respawn, voir tick).
