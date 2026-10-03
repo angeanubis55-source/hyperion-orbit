@@ -82,7 +82,7 @@ export function getZonePortals(WORLD) {
   return [
   {
       id: "p_52_to_45",
-      x: 5500,
+      x: 7750,
       y: 3500,
       r: 260,
       toMap: "4-5",

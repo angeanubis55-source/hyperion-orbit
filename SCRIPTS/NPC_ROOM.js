@@ -406,6 +406,12 @@ drainPlayerHits() {
     return n;
   }
 
+  refillCubikonMinions(cub, nowMs) {
+    if (cub?.type !== "npc_Cubikon" || !(cub.hp > 0) || !cub.cubeArmed || cub.cube) return;
+    if (nowMs - Number(cub.lastCubeHitAt || 0) > 10000) return;
+    if (this.countCubikonMinions(cub.uid) < 5) this.spawnCubikonWave(cub, nowMs);
+  }
+
   spawnCubikonWave(cub, nowMs) {
     if (!cub || !(cub.hp > 0)) return;
     const stats = statsFor("npc_Protegit");
@@ -698,6 +704,7 @@ drainPlayerHits() {
           }
         }
       }
+      this.refillCubikonMinions(m, nowMs);
       // Entite hors-camp morte (minion ou vague onKill) : purge apres
       // diffusion du journal (3 s).
       if (!m.campId && !(m.hp > 0) && nowMs - Number(m.deadAt || 0) > 3000) {

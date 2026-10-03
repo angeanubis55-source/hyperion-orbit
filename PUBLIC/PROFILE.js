@@ -2014,11 +2014,21 @@ function renderShopMeasured(user) {
   if (!shopList || !shopPreview) return;
   const listSignature = JSON.stringify([shopTab, user.inventory?.ships,
     user.inventory?.shipDesigns, user.drones?.items?.map(drone => [drone.id, drone.type]),
-    user.drones?.formations, user.drones?.activeFormation, user.rockets,
-    user.pet?.owned, user.pet?.level, Math.floor(Number(user.pet?.exp) || 0), user.inventory?.counts?.["pet_niveau1"],
+    user.drones?.formations, user.drones?.activeFormation,
+    user.pet?.owned, getPetLevel(user.pet?.exp), user.inventory?.counts?.["pet_niveau1"],
     shopTab === "designs" ? designSearchQuery : "",
     shopTab === "ships" ? shipSearchQuery : ""]);
   if (shopTab !== "extras" && listSignature === lastShopListSignature && refreshShopBalance) {
+    refreshShopBalance(user);
+    return;
+  }
+  // Une mutation du compte ne doit pas remplacer un contrôle en cours d'usage.
+  // Le changement de catégorie reste immédiat ; la reconstruction sera
+  // rattrapée par la prochaine mise à jour une fois le contrôle quitté.
+  if (shopTab !== "extras" && refreshShopBalance &&
+      JSON.parse(lastShopListSignature || "[]")[0] === shopTab &&
+      shopPreview.contains(document.activeElement) &&
+      document.activeElement?.matches("input, select")) {
     refreshShopBalance(user);
     return;
   }
@@ -3262,12 +3272,14 @@ if (isDrone) {
     : isUnique
       ? 1
       : Math.min(quantityCapNow(), Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
-  const updatePurchaseSummary = () => {
+  const updatePurchaseSummary = (event = null) => {
     const quantity = normalizeQuantity();
     const total = price * quantity;
     if (quantityInput) {
       quantityInput.max = String(quantityCapNow());
-      quantityInput.value = String(quantity);
+      if (event?.type === "change" || document.activeElement !== quantityInput) {
+        quantityInput.value = String(quantity);
+      }
     }
     if (totalEl) totalEl.textContent = formatNumber(total);
     const gateUnmet = petGateUnmetNow();

@@ -477,3 +477,39 @@ test('GG : portail gauche gate et portail droit base de la firme, assets existan
     }
   }
 });
+
+
+test('Cubikon : renfort sous cinq survivants, aucun apres reset ou mort', () => {
+  const server=readFileSync(new URL('./NPC_ROOM.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+  const start=server.indexOf('  refillCubikonMinions('),end=server.indexOf('\n  }',start)+4;
+  const ctx=vm.createContext({});
+  vm.runInContext('class Refill { '+server.slice(start,end)+' }; globalThis.Refill=Refill;',ctx);
+  for(const count of [0,4,5,20]) {
+    const cub={type:'npc_Cubikon',uid:'cube',hp:100,cubeArmed:true,lastCubeHitAt:1000};
+    const sim=new ctx.Refill(); let spawned=0;
+    sim.countCubikonMinions=()=>count;
+    sim.spawnCubikonWave=()=>{spawned=20-count;};
+    sim.refillCubikonMinions(cub,2000);
+    assert.equal(spawned,count<5?20-count:0);
+    spawned=0; sim.refillCubikonMinions(cub,12000); assert.equal(spawned,0);
+    cub.hp=0; sim.refillCubikonMinions(cub,2000); assert.equal(spawned,0);
+    const local=vm.createContext({enemies:Array.from({length:count},()=>({hp:100,type:'npc_Protegit',masterId:1})),CUBIKON_RESET:{idleDelay:10},isEntityJammed:()=>false,spawnProtegitOnCubikonHit:()=>{spawned=20-count;},cub:{id:1,hp:100,_spawnedOnce:true,_sinceHit:1}});
+    vm.runInContext(engineFunction('refillLocalCubikonMinions')+'\nrefillLocalCubikonMinions(cub);',local);
+    assert.equal(spawned,count<5?20-count:0);
+    spawned=0;local.cub._sinceHit=11;
+    vm.runInContext('refillLocalCubikonMinions(cub)',local);assert.equal(spawned,0);
+  }
+});
+
+
+test('boutique : tirs et XP REX rafraichissent le solde sans reconstruire les controles', async () => {
+  const source=readFileSync(new URL('../PUBLIC/PROFILE.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+  const {getPetLevel}=await import('../PET/PET_TYPES.js');
+  const user={credits:1000,inventory:{},drones:{},pet:{owned:true,exp:100,level:0},rockets:{r310:500}};
+  let refreshed=0;
+  const signature=JSON.stringify(['ammo',undefined,undefined,undefined,undefined,undefined,true,0,undefined,'','']);
+  const ctx=vm.createContext({shopCredits:null,shopList:{},shopPreview:{},shopTab:'ammo',lastShopListSignature:signature,getPetLevel,refreshShopBalance:()=>refreshed++,user});
+  vm.runInContext(engineFunction('renderShopMeasured',source),ctx);
+  for(let i=0;i<10;i++) {user.pet.exp++;user.rockets.r310--;vm.runInContext('renderShopMeasured(user)',ctx);}
+  assert.equal(refreshed,10);
+});

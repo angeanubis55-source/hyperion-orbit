@@ -23984,6 +23984,13 @@ function petLockValid() {
     && petState.ready && !player.dead && started && Number(pet.hp) > 0;
 }
 
+function refillLocalCubikonMinions(cub) {
+  if (!cub || !(cub.hp > 0) || !cub._spawnedOnce || cub._resetting || isEntityJammed(cub)) return;
+  if (!(cub._sinceHit < CUBIKON_RESET.idleDelay) || cub._animPhase) return;
+  const alive = enemies.filter(m => m && m.hp > 0 && m.type === "npc_Protegit" && m.masterId === cub.id).length;
+  if (alive < 5) spawnProtegitOnCubikonHit(cub, 20);
+}
+
 function spawnProtegitOnCubikonHit(cub, count = 20) {
   if (!cub || cub.hp <= 0) return;
   if (cub.type !== "npc_Cubikon") return;
@@ -23991,7 +23998,8 @@ function spawnProtegitOnCubikonHit(cub, count = 20) {
   // ✅ Vague fixe : 20 Protegit max liés à ce Cubikon.
   const MAX_MINIONS = 20;
 
-  const current = (cub._minionIds?.length || 0);
+  cub._minionIds = enemies.filter(m => m && m.hp > 0 && m.type === "npc_Protegit" && m.masterId === cub.id).map(m => m.id);
+  const current = cub._minionIds.length;
   if (current >= MAX_MINIONS) return;
 
   const wanted = Math.max(0, Math.floor(Number(count) || 20));
@@ -33956,6 +33964,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
     // barre de vie (regen locale ecrasee par le snapshot 20 Hz).
     if (e.type === "npc_Cubikon" && !(e._netUid && netplayNpcActive())) {
       e._sinceHit = (e._sinceHit ?? 999) + dt;
+      refillLocalCubikonMinions(e);
 
       if (e._minionDespawning == null) e._minionDespawning = false;
 
