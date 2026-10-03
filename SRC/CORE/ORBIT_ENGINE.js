@@ -27660,7 +27660,7 @@ for (let i = collectables.length - 1; i >= 0; i--) {
     if (alive < (camp.maxAlive || 0)) {
       // Univers persistant : un slot mort avant son respawnAt ne respawn pas,
       // meme si le joueur change de map / refresh / meurt. L'horloge decide.
-      // Mort -> respawn RANDOM instant (sauf Cubikon : au camp).
+      // Mort -> respawn RANDOM instant (sauf Cubikon/camps fixes : au camp).
       // Vivant connu -> position + HP persistés (retrouvé où laissé).
       const uid = slotUid(curMap, camp.id);
       let slot = null;
@@ -27668,6 +27668,8 @@ for (let i = collectables.length - 1; i >= 0; i--) {
         slot = getSlot(universe, curMap, uid);
       } catch { slot = null; }
       const isCubikon = camp.type === "npc_Cubikon";
+      // Camps fixes (boss BL...) : spawn/respawn au camp, comme le Cubikon.
+      const isFixedCamp = isCubikon || camp.fixed === true;
       if (slot && slot.alive === false) {
         if (!worldClock.isDue(slot.respawnAtMs)) {
           camp.t = 1;
@@ -27675,10 +27677,10 @@ for (let i = collectables.length - 1; i >= 0; i--) {
         }
         try { markAlive(universe, curMap, uid, worldClock.now()); } catch {}
       }
-      const scatter = !isCubikon && (!slot || slot.scattered === false);
+      const scatter = !isFixedCamp && (!slot || slot.scattered === false);
       let x = 0, y = 0;
 
-      if (isCubikon) {
+      if (isFixedCamp) {
   x = camp.x;
   y = camp.y;
 } else if (!scatter && slot && slot.alive !== false && slot.updatedAtMs > 0 && Number.isFinite(Number(slot.x))) {
@@ -27687,9 +27689,20 @@ for (let i = collectables.length - 1; i >= 0; i--) {
   x = clamp(Number(slot.x), 80, WORLD.w - 80);
   y = clamp(Number(slot.y), 80, WORLD.h - 80);
 } else {
-  const pos = spawnRandomOnMap();
-  x = pos.x;
-  y = pos.y;
+  // Zone de spawn du camp (ex : Invoke BL) sinon random sur toute la map.
+  const area = camp.spawnArea;
+  if (area && [area.x1, area.y1, area.x2, area.y2].every((v) => Number.isFinite(Number(v)))) {
+    const ax1 = Math.min(Number(area.x1), Number(area.x2));
+    const ax2 = Math.max(Number(area.x1), Number(area.x2));
+    const ay1 = Math.min(Number(area.y1), Number(area.y2));
+    const ay2 = Math.max(Number(area.y1), Number(area.y2));
+    x = rand(ax1, ax2);
+    y = rand(ay1, ay2);
+  } else {
+    const pos = spawnRandomOnMap();
+    x = pos.x;
+    y = pos.y;
+  }
 }
 
       const e = makeEnemy(camp.type, x, y);
@@ -27822,6 +27835,8 @@ collectableFarTickT = 0;
             type: String(s.type),
             x: Number(s.homeX),
             y: Number(s.homeY),
+            fixed: tuning.fixed === true,
+            spawnArea: tuning.spawnArea || null,
             radius: tuning.radius ?? 350,
             respawn: tuning.respawn ?? 1.5,
             maxAlive: tuning.maxAlive ?? 1,

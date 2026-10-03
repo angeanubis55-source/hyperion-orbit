@@ -1,8 +1,77 @@
-// 3-BL : map vide pour l'instant (contenu branché plus tard).
+// 3-BL : 40 Impulse II + 20 Attend IX (boss : cas par cas plus tard).
 // Triangle BL : 3-8 (retour) + 1-BL + 2-BL.
 
+const rand = (a,b)=>a+Math.random()*(b-a);
+const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
+
 export function getZoneSpawns(WORLD) {
-  return [];
+  const pad = 300;
+  const N = 60;
+
+  const minDist = 0;
+  const minDist2 = minDist * minDist;
+
+  const camps = [];
+  let tries = 0;
+  const maxTries = 6000;
+
+  // ✅ Quotas EXACTS : 40 Impulse II + 20 Attend IX
+  const quota = [
+    { type: "npc_Impulse_II", left: 40 },
+    { type: "npc_Attend_IX", left: 20 },
+  ];
+
+  function pickQuotaType() {
+    const total = quota.reduce((s, q) => s + Math.max(0, q.left), 0);
+    if (total <= 0) return "npc_Impulse_II"; // fallback
+
+    let r = Math.random() * total;
+    for (const q of quota) {
+      if (q.left <= 0) continue;
+      r -= q.left;
+      if (r <= 0) {
+        q.left--;
+        return q.type;
+      }
+    }
+
+    // sécurité
+    for (const q of quota) {
+      if (q.left > 0) {
+        q.left--;
+        return q.type;
+      }
+    }
+    return "npc_Impulse_II";
+  }
+
+  while (camps.length < N && tries < maxTries) {
+    tries++;
+
+    const x = rand(pad, WORLD.w - pad);
+    const y = rand(pad, WORLD.h - pad);
+
+    let ok = true;
+    for (const c of camps) {
+      if (dist2(x, y, c.x, c.y) < minDist2) { ok = false; break; }
+    }
+    if (!ok) continue;
+
+    const type = pickQuotaType();
+
+    camps.push({
+      type,
+      x, y,
+      radius: 350,
+      respawn: 0,
+      maxAlive: 1,
+      aggroRange: 750,
+      leashRange: 1700,
+      aggroHold: 4,
+    });
+  }
+
+  return camps;
 }
 
 export function getZonePortals(WORLD) {

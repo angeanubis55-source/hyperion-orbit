@@ -1,8 +1,121 @@
-// 1-BL : map vide pour l'instant (contenu branché plus tard).
+// 1-BL : 40 Impulse II + 20 Attend IX (boss : cas par cas plus tard).
 // Triangle BL : 1-8 (retour) + 2-BL + 3-BL.
 
+const rand = (a,b)=>a+Math.random()*(b-a);
+const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
+
 export function getZoneSpawns(WORLD) {
-  return [];
+  const pad = 300;
+  const N = 60;
+
+  const minDist = 0;
+  const minDist2 = minDist * minDist;
+
+  const camps = [];
+  let tries = 0;
+  const maxTries = 6000;
+
+  // ✅ Quotas EXACTS : 40 Impulse II + 20 Attend IX
+  const quota = [
+    { type: "npc_Impulse_II", left: 40 },
+    { type: "npc_Attend_IX", left: 20 },
+  ];
+
+  function pickQuotaType() {
+    const total = quota.reduce((s, q) => s + Math.max(0, q.left), 0);
+    if (total <= 0) return "npc_Impulse_II"; // fallback
+
+    let r = Math.random() * total;
+    for (const q of quota) {
+      if (q.left <= 0) continue;
+      r -= q.left;
+      if (r <= 0) {
+        q.left--;
+        return q.type;
+      }
+    }
+
+    // sécurité
+    for (const q of quota) {
+      if (q.left > 0) {
+        q.left--;
+        return q.type;
+      }
+    }
+    return "npc_Impulse_II";
+  }
+
+  while (camps.length < N && tries < maxTries) {
+    tries++;
+
+    const x = rand(pad, WORLD.w - pad);
+    const y = rand(pad, WORLD.h - pad);
+
+    let ok = true;
+    for (const c of camps) {
+      if (dist2(x, y, c.x, c.y) < minDist2) { ok = false; break; }
+    }
+    if (!ok) continue;
+
+    const type = pickQuotaType();
+
+    camps.push({
+      type,
+      x, y,
+      radius: 350,
+      respawn: 0,
+      maxAlive: 1,
+      aggroRange: 750,
+      leashRange: 1700,
+      aggroHold: 4,
+    });
+  }
+
+  // ✅ Boss BL : 10 Invoke (zone 300,300 -> 5000,8000) + Strok + Mindfire fixes.
+  // Tous immobiles (speed 0, comme le Cubikon). Respawn : Invoke 30 s,
+  // Strok/Mindfire 5 min (délais dans UNIVERSE_SIM).
+  const INVOKE_AREA = { x1: 300, y1: 300, x2: 5000, y2: 8000 };
+  for (let i = 0; i < 10; i++) {
+    camps.push({
+      type: "npc_Invoke_XVI",
+      x: rand(INVOKE_AREA.x1, INVOKE_AREA.x2),
+      y: rand(INVOKE_AREA.y1, INVOKE_AREA.y2),
+      spawnArea: { ...INVOKE_AREA },
+      speed: 0,
+      radius: 350,
+      respawn: 0,
+      maxAlive: 1,
+      aggroRange: 750,
+      leashRange: 1700,
+      aggroHold: 4,
+    });
+  }
+  camps.push({
+    type: "npc_Strokelight_Barrage",
+    x: 3140, y: 1290,
+    fixed: true,
+    speed: 0,
+    radius: 350,
+    respawn: 0,
+    maxAlive: 1,
+    aggroRange: 750,
+    leashRange: 1700,
+    aggroHold: 4,
+  });
+  camps.push({
+    type: "npc_Mindfire_Behemoth",
+    x: 21000, y: 6220,
+    fixed: true,
+    speed: 0,
+    radius: 350,
+    respawn: 0,
+    maxAlive: 1,
+    aggroRange: 750,
+    leashRange: 1700,
+    aggroHold: 4,
+  });
+
+  return camps;
 }
 
 export function getZonePortals(WORLD) {

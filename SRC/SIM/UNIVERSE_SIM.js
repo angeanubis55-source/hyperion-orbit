@@ -10,6 +10,8 @@ export const UNIVERSE_VERSION = 2;
 export const RESPAWN_DELAY_MS = 0; // NPC normaux : instant, respawn random dans la map
 export const CUBIKON_RESPAWN_DELAY_MS = 60 * 1000; // chaque Cubikon : 60 secondes
 export const EMPEROR_RESPAWN_DELAY_MS = 30 * 1000; // chaque Empereur : 30 secondes (comme le Cubikon : delai porte par le slot, pas par la memoire du camp)
+export const INVOKE_RESPAWN_DELAY_MS = 30 * 1000; // chaque Invoke XVI : 30 secondes
+export const BL_BOSS_RESPAWN_DELAY_MS = 5 * 60 * 1000; // Strokelight Barrage + Mindfire Behemoth : 5 minutes
 export const BOSS_RESPAWN_DELAY_MS = 0;
 export const MAX_MAPS_STORED = 64;
 export const MAX_SLOTS_PER_MAP = 220;
@@ -20,6 +22,8 @@ const EMPEROR_RE = /emperor/i;
 export function respawnDelayForType(type) {
   if (CUBIKON_RE.test(String(type || ""))) return CUBIKON_RESPAWN_DELAY_MS;
   if (EMPEROR_RE.test(String(type || ""))) return EMPEROR_RESPAWN_DELAY_MS;
+  if (/invoke/i.test(String(type || ""))) return INVOKE_RESPAWN_DELAY_MS;
+  if (/strokelight|mindfire/i.test(String(type || ""))) return BL_BOSS_RESPAWN_DELAY_MS;
   return RESPAWN_DELAY_MS;
 }
 
