@@ -100,13 +100,16 @@ export function tickLifetimeItems(items, dt, getLifetime) {
 }
 
 export function tickFloatingTexts(items, dt) {
+  if (!items.length) return;
+  const dragX = Math.pow(0.9, dt * 60);
+  const dragY = Math.pow(0.92, dt * 60);
   for (let index = items.length - 1; index >= 0; index--) {
     const item = items[index];
     item.t += dt;
     item.x += (item.vx || 0) * dt;
     item.y += (item.vy || 0) * dt;
-    item.vx *= Math.pow(0.9, dt * 60);
-    item.vy *= Math.pow(0.92, dt * 60);
+    item.vx *= dragX;
+    item.vy *= dragY;
     if (item.t >= item.life) items.splice(index, 1);
   }
 }

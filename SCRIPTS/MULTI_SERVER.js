@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, mkdir, writeFile, rename } from "node:fs/promises";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
@@ -619,7 +619,15 @@ try {
   }
 } catch {}
 
+let npcRespawnSavePending = null;
 function saveNpcRespawns() {
+  // Un seul fichier temporaire : aucune ecriture concurrente, y compris
+  // lorsque l'arret arrive pendant la sauvegarde periodique.
+  if (npcRespawnSavePending) return npcRespawnSavePending;
+  npcRespawnSavePending = persistNpcRespawns().finally(() => { npcRespawnSavePending = null; });
+  return npcRespawnSavePending;
+}
+async function persistNpcRespawns() {
   const maps = {};
   for (const [mapId, sim] of npcSims) {
     if (!sim || typeof sim.then === "function" || typeof sim.serializeRespawns !== "function") continue;
@@ -630,10 +638,10 @@ function saveNpcRespawns() {
     if (!(mapId in maps)) maps[mapId] = state;
   }
   try {
-    mkdirSync(dirname(NPC_RESPAWNS_FILE), { recursive: true });
+    await mkdir(dirname(NPC_RESPAWNS_FILE), { recursive: true });
     const temporary = `${NPC_RESPAWNS_FILE}.tmp`;
-    writeFileSync(temporary, JSON.stringify({ v: 1, savedAt: Date.now(), maps }));
-    renameSync(temporary, NPC_RESPAWNS_FILE);
+    await writeFile(temporary, JSON.stringify({ v: 1, savedAt: Date.now(), maps }));
+    await rename(temporary, NPC_RESPAWNS_FILE);
     savedNpcRespawns = maps;
   } catch {}
 }

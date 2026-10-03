@@ -58,6 +58,14 @@ export function advanceProjectile(projectile, deltaTime) {
   return projectile.life <= 0;
 }
 
+export function guidedChaseSpeed(baseSpeed, targetVx, targetVy) {
+  const base = Math.max(120, Number(baseSpeed) || 120);
+  // Les vitesses de rendu incluent les corrections reseau : limite leur
+  // influence tout en gardant une marge pour rattraper une cible mobile.
+  const targetSpeed = Math.min(base * 0.5, Math.hypot(Number(targetVx) || 0, Number(targetVy) || 0));
+  return base + targetSpeed;
+}
+
 export function launcherRocketLaunchAngle(forwardAngle, arcDirection, spread = 0) {
   const side = Number(arcDirection) < 0 ? -1 : 1;
   // Départ nettement latéral. Le décalage propre à chaque roquette est

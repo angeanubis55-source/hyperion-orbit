@@ -1,5 +1,6 @@
 import { petEscortTarget, stepPetMotion, petCombatVelocity, orientPet } from "../../PET/PET_MOTION.js";
 import { measureGameTask, recordGameTask } from "./PERFORMANCE_TIMINGS.js";
+import { drawCombatFloatTexts } from "./COMBAT_TEXT_RENDERER.js";
 import { NpcEngine } from "../../NPC/NPC_ENGINE_RENDERER.js";
 import { ShipEngine } from "../../SHIP/SHIP_ENGINE_RENDERER.js";
 import { PetEngine } from "../../PET/PET_ENGINE_RENDERER.js";
@@ -100,7 +101,7 @@ import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield 
 import { createSpatialPairIndex, rebuildIdIndex } from "./SPATIAL_INDEX.js";
 import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "./RENDERING.js";
 import { spawnNpcEntity } from "../../NPC/NPC_SPAWNER.js";
-import { addProjectile, advanceProjectile, blendVelocityDirection, guideLauncherRocketVelocity, launcherRocketLaunchAngle, removeProjectile } from "../../COMBAT/PROJECTILES.js";
+import { addProjectile, advanceProjectile, blendVelocityDirection, guidedChaseSpeed, guideLauncherRocketVelocity, launcherRocketLaunchAngle, removeProjectile } from "../../COMBAT/PROJECTILES.js";
 import { createWaveSpawnState } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
@@ -7518,8 +7519,9 @@ const DEFAULT_GAME_SETTINGS = {
   npcExplosions: true,
   rocketSmoke: true,
   boxAnims: true,
-  // OFF par défaut : portails toujours ACTIVE fixe + image JUMP fixe.
-  // ON = respiration + séquence animée 25 frames au saut.
+  // OFF par défaut : ACTIVE fixe + jump figé sur la frame 10.
+  // ON = respiration ACTIVE/DESACTIVE au repos ; au saut la respiration
+  // s'arrête et le sprite jump joue en entier (séquence 25 frames).
   portalAnims: false,
   showBonusBoxes: true,
   showResourceBoxes: true,
@@ -7775,6 +7777,14 @@ function setGameSetting(key, value) {
 
   if (key === "moveMarker") {
     showToast(GAME_SETTINGS.moveMarker ? "Marqueur de déplacement affiché" : "Marqueur de déplacement masqué", 1.1);
+  }
+
+  // ✅ Anims portails activées en pleine session : on précharge les 25 frames
+  // de tous les portails visibles pour que le sprite joue dès le prochain saut.
+  if (key === "portalAnims" && GAME_SETTINGS.portalAnims === true) {
+    try {
+      for (const ptl of getInteractivePortals()) preloadPortalJumpSequence(ptl);
+    } catch {}
   }
 }
 
@@ -13268,6 +13278,22 @@ function getPortalFrameSrc(pack, index) {
   return `${pack.path}${n}${ext}`;
 }
 
+function preloadPortalJumpSequence(ptl = null) {
+  const jobs = [];
+  try {
+    const spr = getPortalSpriteSet(ptl);
+    const fx = spr?.jumpFx;
+    if (fx?.path) {
+      const frames = Math.max(1, Number(fx.frames || 1));
+      for (let i = 0; i < frames; i++) {
+        const src = getPortalFrameSrc(fx, i);
+        if (src) jobs.push(loadImage(src, { priority: true }));
+      }
+    }
+  } catch {}
+  return jobs;
+}
+
 function preloadPortalSprites(ptl = null) {
   const spr = getPortalSpriteSet(ptl);
   const jobs = [];
@@ -13290,11 +13316,18 @@ if (btn?.click?.src) {
   jobs.push(loadImage(btn.click.src, { priority: true }));
 }
 
-  // ✅ précharge la frame 10 figée du saut (seule frame affichée)
+  // ✅ précharge la séquence de saut quand les anims sont ON
+  // (sinon seule la frame 10 figée est affichée).
   const fx = spr.jumpFx;
+  let portalAnimsPreloadOn = false;
+  try { portalAnimsPreloadOn = GAME_SETTINGS.portalAnims === true; } catch {}
   if (fx?.path) {
-    const src = getPortalFrameSrc(fx, 9);
-    if (src) jobs.push(loadImage(src, { priority: true }));
+    if (portalAnimsPreloadOn) {
+      jobs.push(...preloadPortalJumpSequence(ptl));
+    } else {
+      const src = getPortalFrameSrc(fx, 9);
+      if (src) jobs.push(loadImage(src, { priority: true }));
+    }
   }
   return jobs;
 }
@@ -13643,6 +13676,12 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   ptl.jumpT = 0;
   ptl.jumpDur = Math.max(0.1, Number(ptl.jumpDur ?? 2));
 
+  // ✅ Si les anims portails sont ON, on précharge toute la séquence
+  // de saut en priorité pour que le sprite joue en entier dès le début.
+  try {
+    if (GAME_SETTINGS.portalAnims === true) preloadPortalJumpSequence(ptl);
+  } catch {}
+
   // ✅ invulnérable pendant l'animation : les NPC restent visibles et
   // peuvent encore tirer, mais le saut ne doit jamais tuer.
   try { player.iFrames = Math.max(Number(player.iFrames) || 0, ptl.jumpDur + 0.3); } catch {}
@@ -13796,11 +13835,10 @@ function loadAccountUser() {
 }
 
 function markProgressDirty() {
+  if (!account.dirty) account.saveCd = 15.0;
   account.dirty = true;
-  // Filet de sécurité : la sauvegarde périodique ne sert qu'en cas de
-  // crash. Le vrai point de sauvegarde, c'est le portail / changement
-  // de map / quitter (saveStateImmediate, freeze masqué par le chargement).
-  account.saveCd = 15.0;
+  // Le premier changement arme le filet de securite periodique. Les tirs
+  // suivants ne repoussent pas ce delai ; portail/quitter sauvent aussitot.
 }
 
 let progressSaveIdleHandle = 0;
@@ -13884,8 +13922,12 @@ function hasQuestTerminalAccess() {
   );
 }
 
+let questJournalRenderPending = false;
+let questTerminalRenderPending = false;
+
 function renderQuestWindow() {
   if (!ui.questList) return;
+  questJournalRenderPending = false;
   // Rattrape le cas où le moteur a été instancié avant la session utilisateur
   // (refresh/login) et aurait conservé un journal vide en mémoire.
   // Fusionne aussi le stockage frais : progression externe (ou autre onglet)
@@ -14083,6 +14125,7 @@ function centerQuestTreeOn(id) {
 
 function renderQuestTerminal() {
   if (!ui.questOfferDetail || !ui.questOfferList) return;
+  questTerminalRenderPending = false;
   const hasAccess = hasQuestTerminalAccess();
   lastQuestTerminalAccess = hasAccess;
   let pilotSector = null;
@@ -14234,16 +14277,26 @@ ui.questOfferDetail?.addEventListener("click", event => {
   renderQuestTerminal();
 });
 
+// Les kills mettent l'état à jour immédiatement ; les panneaux fermés
+// sont reconstruits une seule fois à leur prochaine ouverture.
+function refreshPendingQuestViews() {
+  const visible = node => node && !node.hidden && node.style.display !== "none"
+    && !node.classList.contains("gameWinMinimized") && !node.classList.contains("gameWinClosing");
+  if (questJournalRenderPending && visible(ui.questWindow)) renderQuestWindow();
+  if (questTerminalRenderPending && visible(ui.questOfferWindow)) renderQuestTerminal();
+}
+for (const node of [ui.questWindow, ui.questOfferWindow]) {
+  if (node) new MutationObserver(refreshPendingQuestViews).observe(node, {
+    attributes: true, attributeFilter: ["class", "style", "hidden"],
+  });
+}
+
 function advanceQuestProgress(kind, type) {
   const advanced = recordQuestProgress(questState, kind, type, 1, {
     map: String(window.__CURRENT_MAP_ID__ || "").toLowerCase(),
   });
   if (!advanced.length) return;
   markProgressDirty();
-  const questVisible = ui.questWindow
-    && ui.questWindow.style.display !== "none"
-    && !ui.questWindow.classList.contains("gameWinMinimized");
-  if (questVisible) renderQuestWindow();
 
   for (const id of advanced) {
     const quest = QUEST_DEFINITIONS.find(item => item.id === id);
@@ -14259,8 +14312,9 @@ function advanceQuestProgress(kind, type) {
     const quest = QUEST_DEFINITIONS.find(item => item.id === id);
     if (quest && isQuestComplete(questState, quest)) claimQuestReward(id);
   }
-  renderQuestWindow();
-  renderQuestTerminal();
+  questJournalRenderPending = true;
+  questTerminalRenderPending = true;
+  refreshPendingQuestViews();
 }
 
 ui.questTabs?.addEventListener("click", event => {
@@ -22168,8 +22222,9 @@ function playerUpgradeMults() {
 
 // Consomme le stock chargé (lasers/roquettes : par tir ; bouclier/vitesse : par palier).
 function consumeUpgradeStock(slot, amount = 1) {
-  const current = getCurrentUserFull();
-  if (current) account.user = current;
+  // Le compte live est synchronise par les evenements de compte. Une
+  // normalisation complete ici faisait parcourir l'inventaire a chaque tir.
+  if (!account.user) account.user = getCurrentUserFull();
   const upgrades = account.user?.upgrades;
   const loaded = upgrades?.[slot];
   const stock = Math.max(0, Math.floor(Number(loaded?.stock) || 0));
@@ -30750,11 +30805,11 @@ function drawZonePortals(ox, oy) {
     );
 
     // Option "Animations des portails" : ON = respiration continue de
-    // l'ACTIVE par-dessus la DESACTIVE ; OFF (défaut) = toujours ACTIVE
-    // fixe, sans switch proche/loin ni oscillation.
+    // l'ACTIVE par-dessus la DESACTIVE (coupée pendant le saut : ACTIVE
+    // fixe + sprite jump) ; OFF (défaut) = toujours ACTIVE fixe.
     let portalAnimsOn = true;
     try { portalAnimsOn = GAME_SETTINGS.portalAnims === true; } catch {}
-    if (portalAnimsOn) {
+    if (portalAnimsOn && !ptl.jumping) {
       // ✅ Respiration : dès que le portail est visible, l'ACTIVE oscille
       // en continu par-dessus la DESACTIVE (phase propre à chaque portail).
       // Pas de proximité, pas de phases : toujours le même cycle.
@@ -30774,13 +30829,21 @@ function drawZonePortals(ox, oy) {
         openH * openScale
       );
     } else {
-      // ✅ toujours ACTIVE : pas de switch proche/loin, alpha pleine.
-      ctx.globalAlpha = 1;
+      // ✅ ACTIVE fixe. Pendant un saut (ON), on part de la valeur de
+      // respiration courante puis on monte à 1 avec le fondu du saut
+      // (jumpFade 0→1) : transition naturelle, sans coupure.
       const openW = spr.open.w || w;
       const openH = spr.open.h || h;
       const openScale = Number(spr.open.scale ?? 1);
       const openXOff = Number(spr.open.xOff || 0);
       const openYOff = Number(spr.open.yOff || 0);
+      let openAlpha = 1;
+      if (ptl.jumping && portalAnimsOn) {
+        const nowMs = performance.now();
+        const breatheA = 0.5 - 0.5 * Math.cos(nowMs / 1000 * TAU / 2.4 + (Number(ptl.x) + Number(ptl.y)) * 0.01);
+        openAlpha = breatheA + (1 - breatheA) * clamp(jumpFade, 0, 1);
+      }
+      ctx.globalAlpha = clamp(openAlpha, 0, 1);
       ctx.drawImage(
         imgOpen,
         x + openXOff - (openW * openScale) / 2,
@@ -30793,18 +30856,23 @@ function drawZonePortals(ox, oy) {
     ctx.globalAlpha = 1;
 
     // ========================================================
-    // Image fixe pendant le saut : frame 10 de la sequence,
-    // centree sur le portail (repli : image JUMP fixe).
+    // Saut : OFF = image JUMP fixe (frame 10 de la séquence,
+    // repli : image JUMP fixe). ON = comme avant : image JUMP fixe
+    // + sprite jump joué en entier (séquence 25 frames par-dessus),
+    // respiration arrêtée pendant le saut (voir ci-dessus).
     // ========================================================
     if (ptl.jumping && spr.jump?.src) {
       let jumpSrc = spr.jump.src;
-      try {
-        const fx = spr.jumpFx;
-        if (fx && fx.path) {
-          const frame10 = getPortalFrameSrc(fx, 9);
-          if (frame10 && isImgReady(getCachedImage(frame10))) jumpSrc = frame10;
-        }
-      } catch {}
+      if (!portalAnimsOn) {
+        // OFF : jump figé sur la frame 10.
+        try {
+          const fx = spr.jumpFx;
+          if (fx && fx.path) {
+            const frame10 = getPortalFrameSrc(fx, 9);
+            if (frame10 && isImgReady(getCachedImage(frame10))) jumpSrc = frame10;
+          }
+        } catch {}
+      }
       const imgJump = getCachedImage(jumpSrc);
 
       if (isImgReady(imgJump)) {
@@ -30859,8 +30927,102 @@ function drawZonePortals(ox, oy) {
       }
     }
 
-    // Saut : image JUMP fixe centree sur le portail (voir ci-dessus),
-    // pas de sequence animee.
+    // ========================================================
+    // Animation pendant le saut (ON uniquement) : la séquence
+    // joue en entier par-dessus l'image JUMP fixe, comme avant.
+    // ========================================================
+    if (
+      portalAnimsOn &&
+      ptl.jumping &&
+      spr.jumpFx?.path &&
+      spr.jumpFx?.frames
+    ) {
+      const fx = spr.jumpFx;
+
+      const frames = Math.max(
+        1,
+        Number(fx.frames || 1)
+      );
+
+      const fps = Math.max(
+        1,
+        Number(fx.fps || 24)
+      );
+
+      const loop = fx.loop !== false;
+
+      let frameIndex = Math.floor(
+        ptl.jumpT * fps
+      );
+
+      if (loop) {
+        frameIndex %= frames;
+      } else {
+        frameIndex = Math.min(
+          frames - 1,
+          frameIndex
+        );
+      }
+
+      const src = getPortalFrameSrc(
+        fx,
+        frameIndex
+      );
+
+      const imgFx = getCachedImage(src);
+
+      if (isImgReady(imgFx)) {
+        const fxW =
+          fx.w ||
+          imgFx.naturalWidth ||
+          128;
+
+        const fxH =
+          fx.h ||
+          imgFx.naturalHeight ||
+          128;
+
+        const fxScale = Number(fx.scale ?? 1);
+        const fxAlpha =
+          Number(fx.alpha ?? 1) *
+          jumpFade;
+
+        const fxYOff = Number(fx.yOff || 0);
+        const fxXOff = Number(fx.xOff || 0);
+
+        const spinSpeed = Number(
+          fx.spinSpeed || 0
+        );
+
+        const angle = spinSpeed
+          ? ptl.jumpT * TAU * spinSpeed
+          : 0;
+
+        ctx.save();
+
+        ctx.translate(
+          x + fxXOff,
+          y + fxYOff
+        );
+
+        ctx.rotate(angle);
+        ctx.globalAlpha = fxAlpha;
+
+        ctx.drawImage(
+          imgFx,
+          -(fxW * fxScale) / 2,
+          -(fxH * fxScale) / 2,
+          fxW * fxScale,
+          fxH * fxScale
+        );
+
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Saut : image JUMP fixe + sprite jump entier (séquence) quand ON,
+    // image JUMP fixe (frame 10) quand OFF. Respiration arrêtée (voir ci-dessus).
 
     // ========================================================
     // ✅ Bouton de saut au-dessus du portail
@@ -31310,6 +31472,11 @@ function playerIsInSafeZone() {
 
 function enemyShoot(e, dt, combatTarget = player) {
   if (!e || e.hp <= 0) return;
+  // Vers un joueur, les dégâts des NPC partagés arrivent du serveur.
+  // Si tirs ET impacts sont coupés, aucune trajectoire invisible à simuler.
+  // Les escortes locales et les NPC solo gardent leurs vrais projectiles.
+  if (e._netUid && netplayNpcActive() && (combatTarget === player || combatTarget?._netVisual)
+    && !displayNpcShotsOn() && (GAME_SETTINGS.npcExplosions === false || fxDensityMult() === 0)) return;
   if ((e.empT || 0) > 0) return;
   // Redirect (Disruptor, officiel) : lasers de la cible désactivés 4 s.
   if ((e.redirectSilenceT || 0) > 0) return;
@@ -33184,8 +33351,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     const dy = t.y - b.y;
     const distance = Math.hypot(dx, dy) || 1;
     const baseSpeed = Math.max(120, Number(b.spd) || Math.hypot(b.vx, b.vy) || 120);
-    const targetSpeed = Math.hypot(Number(t.vx) || 0, Number(t.vy) || 0);
-    const chaseSpeed = Math.max(baseSpeed, targetSpeed + baseSpeed);
+    const chaseSpeed = guidedChaseSpeed(baseSpeed, t.vx, t.vy);
     b.vx = dx / distance * chaseSpeed;
     b.vy = dy / distance * chaseSpeed;
     if (b.isRocket) {
@@ -35017,45 +35183,11 @@ function draw() {
     ctx.globalAlpha = 1;
   }
 
-  for (const ft of floatTexts) {
-    if (isBeyondSensorRadius(ft.x, ft.y)) continue;
-    const p = clamp(ft.t / ft.life, 0, 1);
-    const a = 1 - p;
-
-    const sx = ft.x + ox;
-    const sy = ft.y + oy;
-    if (sx < -120 || sy < -80 || sx > innerWidth + 120 || sy > innerHeight + 80) continue;
-
-    const popK = Math.exp(-p * 10);
-    const sc = 1 + (ft.pop || 0) * popK;
-
-    const sh = (ft.shake || 0) * (1 - p);
-    const jx = (Math.random() * 2 - 1) * sh;
-    const jy = (Math.random() * 2 - 1) * sh;
-
-    ctx.save();
-    ctx.translate(sx + jx, sy + jy);
-    ctx.scale(sc, sc);
-
-    ctx.globalAlpha = a;
-    ctx.shadowBlur = (ft.glow || 0) * 26 * (1 - p);
-    ctx.shadowColor = ft.color;
-
-    ctx.font = `${ft.weight || 900} ${Math.round(ft.size || 18)}px ui-sans-serif, system-ui`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    const lw = clamp((ft.size || 18) * 0.22, 4, 12);
-    ctx.lineWidth = lw;
-    ctx.strokeStyle = "rgba(5,8,20,0.92)";
-    ctx.strokeText(ft.text, 0, 0);
-
-    ctx.fillStyle = ft.color;
-    ctx.fillText(ft.text, 0, 0);
-
-    ctx.restore();
-    ctx.globalAlpha = 1;
-  }
+  drawCombatFloatTexts(ctx, floatTexts, {
+    ox, oy, width: innerWidth, height: innerHeight,
+    simple: gfxQualityOff() || fxDensityMult() <= 0.35 || GAME_SETTINGS.npcExplosions === false,
+    isBeyondSensorRadius,
+  });
 
   const px = player.x + ox, py = player.y + oy;
   // Smartbomb SMB-01 posée : SOUS les vaisseaux (joueur + distants),
