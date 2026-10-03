@@ -13004,6 +13004,12 @@ const DEFAULT_PORTAL_JUMP_FX = {
   spinSpeed: 0,
 };
 
+// Switch / activation de vaisseau (hangar) : anim JUMP des NORMAUX.
+const HANGAR_SWAP_FX = {
+  ...DEFAULT_PORTAL_JUMP_FX,
+  path: "ASSETS/PORTAL/NORMAUX/JUMP/",
+};
+
 const DEFAULT_PORTAL_JUMP_BUTTON = {
   idle: {
     src: "ASSETS/PORTAL_JUMP_BUTTON/NOTHING.png",
@@ -36251,7 +36257,7 @@ function requestHangarSwap(hangarId) {
   } catch {}
   // Précharge les frames de l'animation portail.
   try {
-    const fx = DEFAULT_PORTAL_JUMP_FX;
+    const fx = HANGAR_SWAP_FX;
     const frames = Math.max(1, Number(fx.frames || 1));
     for (let i = 0; i < frames; i++) loadImage(getPortalFrameSrc(fx, i));
   } catch {}
@@ -36317,7 +36323,7 @@ async function activateHangarAtSavedLocation(hangarId) {
   const oldMap = String(window.__CURRENT_MAP_ID__ || "1-1");
   saveHangarStateById(current.id, player.x, player.y, oldMap, savedHpPct(), savedShPct());
   try {
-    const fx = DEFAULT_PORTAL_JUMP_FX;
+    const fx = HANGAR_SWAP_FX;
     for (let i = 0; i < Math.max(1, Number(fx.frames || 1)); i++) loadImage(getPortalFrameSrc(fx, i));
     ensureInstaShieldLoaded();
   } catch {}
@@ -36424,7 +36430,7 @@ function tickHangarSwap(dt) {
 }
 
 function drawHangarSwapImage(elapsed, duration = HANGAR_SWAP_DURATION) {
-  const fx = DEFAULT_PORTAL_JUMP_FX;
+  const fx = HANGAR_SWAP_FX;
   const frames = Math.max(1, Number(fx.frames || 1));
   const fps = Math.max(1, Number(fx.fps || 24));
   const idx = Math.min(frames - 1, Math.floor(elapsed * fps) % frames);
