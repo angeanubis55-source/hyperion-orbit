@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
@@ -271,10 +271,6 @@
               <button id="btnResetDock" class="settingsResetBtn" type="button">Réinitialiser le dock</button>
               <button id="btnResetAllSettings" class="settingsResetBtn settingsDangerBtn" type="button">Restaurer tous les paramètres</button>
             </article>
-            <article class="settingsCard settingsPerformanceCard">
-              <div class="settingsSectionSub">Performances</div>
-              <label class="settingsFpsRow" for="optFpsLimit"><span><b>FPS maximum</b><small>Une limite basse réduit l'utilisation du processeur et de la batterie.</small></span><select id="optFpsLimit"><option value="30">30 FPS</option><option value="60">60 FPS</option><option value="90">90 FPS</option><option value="120">120 FPS</option><option value="144">144 FPS</option><option value="240">240 FPS</option><option value="360">360 FPS</option><option value="0">Auto (écran)</option></select></label>
-            </article>
             <article class="settingsCard">
               <div class="settingsSectionSub">Démarrage</div>
               <label class="settingsCheck" for="optAutoStart"><input id="optAutoStart" type="checkbox" /><span><b>Démarrage automatique</b><small>Lance directement la partie après le chargement.</small></span></label>
@@ -288,21 +284,27 @@
               <select id="optLang"><option value="fr" selected>🇫🇷 Français</option></select>
             </article>
             </div>
-            <div class="settingsCol">
-            <article class="settingsCard">
-              <div class="settingsSectionSub">Qualité graphique</div>
+            <div class="settingsCol settingsColScroll">
+              <div class="settingsSectionSub">Affichage</div>
               <div class="settingsOptionGrid">
-                <label class="settingsCheck" for="optTextures"><input id="optTextures" type="checkbox" /><span><b>Textures des maps</b><small>Arrière-plans et décors détaillés.</small></span></label>
-                <label class="settingsCheck" for="optShipEffect"><input id="optShipEffect" type="checkbox" /><span><b>Effets des vaisseaux</b><small>Superpositions animées des coques.</small></span></label>
-                <label class="settingsCheck" for="optShipSmoke"><input id="optShipSmoke" type="checkbox" /><span><b>Moteurs et fumées</b><small>Vaisseaux, P.E.T et traînées distantes.</small></span></label>
-                <label class="settingsCheck" for="optNpcEngineEffects"><input id="optNpcEngineEffects" type="checkbox" /><span><b>Effets moteurs des NPC</b><small>Flammes et animation moteur des aliens.</small></span></label>
-                <label class="settingsCheck" for="optCustomDesignEffects"><input id="optCustomDesignEffects" type="checkbox" /><span><b>Effets des designs</b><small>Notes, cœurs et cosmétiques spéciaux.</small></span></label>
-                <label class="settingsCheck" for="optMoveMarker"><input id="optMoveMarker" type="checkbox" /><span><b>Marqueur de déplacement</b><small>Affiche la destination de ton clic.</small></span></label>
-                <label class="settingsCheck" for="optCombatText"><input id="optCombatText" type="checkbox" /><span><b>Chiffres de combat</b><small>Dégâts, soins, esquives et récompenses flottantes.</small></span></label>
-                <label class="settingsCheck" for="optDrones"><input id="optDrones" type="checkbox" /><span><b>Mes drones</b><small>Affiche tes Iris, Apis et Zeus.</small></span></label>
-                <label class="settingsCheck" for="optRemoteDrones"><input id="optRemoteDrones" type="checkbox" /><span><b>Drones des autres joueurs</b><small>Réduit l'encombrement en multijoueur.</small></span></label>
+                <label class="settingsPlainRow" for="optFpsLimit"><span><b>FPS maximum</b></span><select id="optFpsLimit"><option value="30">30 FPS</option><option value="60">60 FPS</option><option value="90">90 FPS</option><option value="120">120 FPS</option><option value="144">144 FPS</option><option value="240">240 FPS</option><option value="360">360 FPS</option><option value="0">Auto (écran)</option></select></label>
+                <label class="settingsPlainRow" for="optGfxQuality"><span><b>Qualité graphique</b></span><select id="optGfxQuality"><option value="off">Désactivé</option><option value="low">Basse</option><option value="low-med">Basse (densité moyenne)</option><option value="low-high">Basse (densité haute)</option><option value="med-low">Moyenne (densité basse)</option><option value="med">Moyenne</option><option value="med-high">Moyenne (densité haute)</option><option value="high-low">Haute (densité basse)</option><option value="high-med">Haute (densité moyenne)</option><option value="high">Haute</option><option value="custom">Personnalisé</option></select></label>
+                <label class="settingsCheck" for="optTextures"><input id="optTextures" type="checkbox" /><span><b>Afficher le fond</b></span><em class="perfTag low">LOW</em></label>
+                <label class="settingsCheck" for="optMoveMarker"><input id="optMoveMarker" type="checkbox" /><span><b>Afficher le marqueur de déplacement</b></span><em class="perfTag low">LOW</em></label>
+                <label class="settingsCheck" for="optShipEffect"><input id="optShipEffect" type="checkbox" /><span><b>Afficher les effets de vaisseau</b></span><em class="perfTag med">MED</em></label>
+                <label class="settingsCheck" for="optShipSmoke"><input id="optShipSmoke" type="checkbox" /><span><b>Afficher les moteurs et fumées</b></span><em class="perfTag high">HIGH</em></label>
+                <label class="settingsCheck" for="optDrones"><input id="optDrones" type="checkbox" /><span><b>Afficher mes drones</b></span><em class="perfTag low">LOW</em></label>
+                <label class="settingsCheck" for="optRemoteDrones"><input id="optRemoteDrones" type="checkbox" /><span><b>Afficher les drones des autres</b></span><em class="perfTag med">MED</em></label>
+                <label class="settingsCheck" for="optNpcExplosions"><input id="optNpcExplosions" type="checkbox" /><span><b>Afficher les explosions et impacts</b></span><em class="perfTag med">MED</em></label>
+                <label class="settingsCheck" for="optRocketSmoke"><input id="optRocketSmoke" type="checkbox" /><span><b>Afficher les traînées de roquettes</b></span><em class="perfTag med">MED</em></label>
+                <label class="settingsCheck" for="optBoxAnims"><input id="optBoxAnims" type="checkbox" /><span><b>Afficher les animations des box</b></span><em class="perfTag low">LOW</em></label>
+                <label class="settingsCheck" for="optPortalAnims"><input id="optPortalAnims" type="checkbox" /><span><b>Afficher les animations des portails</b></span><em class="perfTag low">LOW</em></label>
+                <label class="settingsCheck" for="optShowBonusBoxes"><input id="optShowBonusBoxes" type="checkbox" /><span><b>Afficher bonus et ressources</b></span><em class="perfTag low">LOW</em></label>
+                <label class="settingsCheck" for="optShowCargoBoxes"><input id="optShowCargoBoxes" type="checkbox" /><span><b>Afficher les cargos</b></span><em class="perfTag low">LOW</em></label>
+                <label class="settingsCheck" for="optShowNpcShots"><input id="optShowNpcShots" type="checkbox" /><span><b>Afficher les tirs des NPC</b></span><em class="perfTag med">MED</em></label>
+                <label class="settingsCheck" for="optShowHalos"><input id="optShowHalos" type="checkbox" /><span><b>Afficher les halos et liens</b></span><em class="perfTag med">MED</em></label>
+                <label class="settingsCheck" for="optShowNpcs"><input id="optShowNpcs" type="checkbox" /><span><b>Afficher les NPC</b></span><em class="perfTag high">HIGH</em></label>
               </div>
-            </article>
             </div>
           </div>
         </section>

@@ -7511,11 +7511,24 @@ const DEFAULT_GAME_SETTINGS = {
   textures: true,
   drones: true,
   remoteDrones: true,
-  combatText: true,
   autoStart: false,
   shipEffect: true,
   shipSmoke: true,
   npcEngineEffects: true,
+  npcExplosions: true,
+  rocketSmoke: true,
+  boxAnims: true,
+  // OFF par défaut : portails toujours ACTIVE fixe + image JUMP fixe.
+  // ON = respiration + séquence animée 25 frames au saut.
+  portalAnims: false,
+  showBonusBoxes: true,
+  showResourceBoxes: true,
+  showCargoBoxes: true,
+  showNpcShots: true,
+  showHalos: true,
+  showNpcs: true,
+  fxDensity: "high",
+  gfxQuality: "high",
   customDesignEffects: true,
   moveMarker: true,
   // Attaque au double-clic sur un NPC/joueur. Désactivable dans Général.
@@ -7587,6 +7600,60 @@ function normalizeFpsLimit(raw) {
   return FPS_LIMIT_STEPS.includes(v) ? v : 0;
 }
 
+// Preset qualité graphique : un clic règle densité + effets, en progressif.
+// Désactivé = tout coupé ; Basse = effets légers ; Moyenne = +combat ;
+// Haute = tout actif. Visibilités (NPC, box, drones) jamais touchées.
+const GFX_QUALITY_ALL_FLAGS = Object.freeze([
+  "shipSmoke", "npcEngineEffects", "npcExplosions", "rocketSmoke",
+  "showHalos", "showNpcShots", "boxAnims", "portalAnims",
+  "shipEffect", "customDesignEffects",
+  "textures", "moveMarker", "drones", "remoteDrones",
+  "showBonusBoxes", "showResourceBoxes", "showCargoBoxes", "showNpcs",
+]);
+const GFX_QUALITY_LIGHT_FLAGS = Object.freeze([
+  "showNpcs",
+]);
+const GFX_QUALITY_MID_FLAGS = Object.freeze([
+  "boxAnims", "portalAnims", "shipEffect", "customDesignEffects",
+  "textures", "moveMarker", "drones", "remoteDrones",
+  "showBonusBoxes", "showResourceBoxes", "showCargoBoxes", "showNpcShots",
+  "npcExplosions", "rocketSmoke", "showHalos", "showNpcs",
+]);
+const GFX_QUALITY_BUNDLES = Object.freeze({
+  off: { fxDensity: "off", on: Object.freeze([]) },
+  low: { fxDensity: "low", on: GFX_QUALITY_LIGHT_FLAGS },
+  "low-med": { fxDensity: "med", on: GFX_QUALITY_LIGHT_FLAGS },
+  "low-high": { fxDensity: "high", on: GFX_QUALITY_LIGHT_FLAGS },
+  med: { fxDensity: "med", on: GFX_QUALITY_MID_FLAGS },
+  "med-low": { fxDensity: "low", on: GFX_QUALITY_MID_FLAGS },
+  "med-high": { fxDensity: "high", on: GFX_QUALITY_MID_FLAGS },
+  high: { fxDensity: "high", on: GFX_QUALITY_ALL_FLAGS },
+  "high-low": { fxDensity: "low", on: GFX_QUALITY_ALL_FLAGS },
+  "high-med": { fxDensity: "med", on: GFX_QUALITY_ALL_FLAGS },
+});
+const GFX_QUALITY_ORDER = Object.freeze(["off", "low", "low-med", "low-high", "med-low", "med", "med-high", "high-low", "high-med", "high"]);
+function normalizeGfxQuality(raw) {
+  const v = String(raw || "").toLowerCase();
+  return GFX_QUALITY_ORDER.includes(v) || v === "custom" ? v : "high";
+}
+function matchGfxQuality(settings = null) {
+  try {
+    const source = settings && typeof settings === "object" ? settings : GAME_SETTINGS;
+    for (const name of GFX_QUALITY_ORDER) {
+      const bundle = GFX_QUALITY_BUNDLES[name];
+      if (String(source.fxDensity || "") !== bundle.fxDensity) continue;
+      if (GFX_QUALITY_ALL_FLAGS.every((key) => !!source[key] === bundle.on.includes(key))) return name;
+    }
+  } catch {}
+  return "custom";
+}
+
+// Densité des effets : off = zéro, low = ~1/3, med = ~2/3, high = plein.
+function normalizeFxDensity(raw) {
+  const v = String(raw || "").toLowerCase();
+  return v === "off" || v === "low" || v === "med" ? v : "high";
+}
+
 function normalizeKeybinds(raw) {
   const normalized = { ...DEFAULT_KEYBINDS };
   if (raw && typeof raw === "object") {
@@ -7613,6 +7680,9 @@ function loadGameSettings() {
     };
     settings.soundVolume = clamp(Math.round(Number(settings.soundVolume) || 0), 0, 100);
     settings.fpsLimit = normalizeFpsLimit(settings.fpsLimit);
+    settings.fxDensity = normalizeFxDensity(settings.fxDensity);
+    // Le preset affiché reflète toujours la réalité (sinon "Personnalisé").
+    settings.gfxQuality = matchGfxQuality(settings);
     if (!settings.sound || settings.soundVolume === 0) {
       settings.sound = false;
       settings.soundVolume = 0;
@@ -7684,6 +7754,7 @@ function setGameSetting(key, value) {
       : 0;
     SFX?.setMasterVolume?.(GAME_SETTINGS.soundVolume / 100);
   }
+  syncGfxQualityFromFlags();
   saveGameSettings();
   renderSettingsWindow();
 
@@ -7707,6 +7778,18 @@ function setGameSetting(key, value) {
   }
 }
 
+// Une case pour deux clés (regroupements d'options) : écrit les deux,
+// sauvegarde une fois et rafraîchit la fenêtre.
+function setPairedSetting(keys, value) {
+  const on = !!value;
+  for (const key of keys || []) {
+    if (key in GAME_SETTINGS) GAME_SETTINGS[key] = on;
+  }
+  syncGfxQualityFromFlags();
+  saveGameSettings();
+  renderSettingsWindow();
+}
+
 // FPS maximum (0 = auto : synchronisé sur les Hz de l'écran, défaut). Nombre,
 // pas booléen : ne passe pas par setGameSetting (qui force en booléen).
 function setFpsLimit(value) {
@@ -7718,6 +7801,30 @@ function setFpsLimit(value) {
     GAME_SETTINGS.fpsLimit > 0 ? `FPS maximum : ${GAME_SETTINGS.fpsLimit}` : "FPS : auto (écran)",
     1.1
   );
+}
+
+// Preset qualité : applique le bundle d'un coup. "Personnalisé" = lecture
+// seule (retouche manuelle en cours) : le resélectionner ne fait rien.
+function setGfxQuality(value) {
+  const normalized = normalizeGfxQuality(value);
+  if (normalized === "custom") {
+    renderSettingsWindow();
+    return;
+  }
+  const bundle = GFX_QUALITY_BUNDLES[normalized];
+  GAME_SETTINGS.gfxQuality = normalized;
+  GAME_SETTINGS.fxDensity = bundle.fxDensity;
+  for (const key of GFX_QUALITY_ALL_FLAGS) {
+    if (key in GAME_SETTINGS) GAME_SETTINGS[key] = bundle.on.includes(key);
+  }
+  saveGameSettings();
+  renderSettingsWindow();
+}
+
+// Cohérence inverse : les cases remettent la qualité à jour
+// (bundle reconnu ou Personnalisé).
+function syncGfxQualityFromFlags() {
+  GAME_SETTINGS.gfxQuality = matchGfxQuality();
 }
 
 function setSoundVolume(value) {
@@ -8069,22 +8176,39 @@ function renderSettingsWindow() {
   if (drones) drones.checked = !!GAME_SETTINGS.drones;
   const remoteDrones = document.getElementById("optRemoteDrones");
   if (remoteDrones) remoteDrones.checked = !!GAME_SETTINGS.remoteDrones;
-  const combatText = document.getElementById("optCombatText");
-  if (combatText) combatText.checked = !!GAME_SETTINGS.combatText;
   const shipEffect = document.getElementById("optShipEffect");
-  if (shipEffect) shipEffect.checked = !!GAME_SETTINGS.shipEffect;
+  // Regroupé "vaisseaux + designs" : la case reflète l'état commun.
+  if (shipEffect) shipEffect.checked = !!GAME_SETTINGS.shipEffect && !!GAME_SETTINGS.customDesignEffects;
   const shipSmoke = document.getElementById("optShipSmoke");
-  if (shipSmoke) shipSmoke.checked = !!GAME_SETTINGS.shipSmoke;
-  const npcEngineEffects = document.getElementById("optNpcEngineEffects");
-  if (npcEngineEffects) npcEngineEffects.checked = !!GAME_SETTINGS.npcEngineEffects;
-  const customDesignEffects = document.getElementById("optCustomDesignEffects");
-  if (customDesignEffects) customDesignEffects.checked = !!GAME_SETTINGS.customDesignEffects;
+  // Regroupé "moteurs vaisseaux + NPC" : la case reflète l'état commun.
+  if (shipSmoke) shipSmoke.checked = !!GAME_SETTINGS.shipSmoke && !!GAME_SETTINGS.npcEngineEffects;
+  const npcExplosions = document.getElementById("optNpcExplosions");
+  if (npcExplosions) npcExplosions.checked = !!GAME_SETTINGS.npcExplosions;
+  const rocketSmoke = document.getElementById("optRocketSmoke");
+  if (rocketSmoke) rocketSmoke.checked = !!GAME_SETTINGS.rocketSmoke;
+  const boxAnims = document.getElementById("optBoxAnims");
+  if (boxAnims) boxAnims.checked = !!GAME_SETTINGS.boxAnims;
+  const portalAnims = document.getElementById("optPortalAnims");
+  if (portalAnims) portalAnims.checked = !!GAME_SETTINGS.portalAnims;
+  const showBonusBoxes = document.getElementById("optShowBonusBoxes");
+  // Regroupé "bonus + ressources" : la case reflète l'état commun.
+  if (showBonusBoxes) showBonusBoxes.checked = !!GAME_SETTINGS.showBonusBoxes && !!GAME_SETTINGS.showResourceBoxes;
+  const showCargoBoxes = document.getElementById("optShowCargoBoxes");
+  if (showCargoBoxes) showCargoBoxes.checked = !!GAME_SETTINGS.showCargoBoxes;
+  const showNpcShots = document.getElementById("optShowNpcShots");
+  if (showNpcShots) showNpcShots.checked = !!GAME_SETTINGS.showNpcShots;
+  const showHalos = document.getElementById("optShowHalos");
+  if (showHalos) showHalos.checked = !!GAME_SETTINGS.showHalos;
+  const showNpcs = document.getElementById("optShowNpcs");
+  if (showNpcs) showNpcs.checked = !!GAME_SETTINGS.showNpcs;
   const moveMarker = document.getElementById("optMoveMarker");
   if (moveMarker) moveMarker.checked = !!GAME_SETTINGS.moveMarker;
   const doubleClickAttack = document.getElementById("optDoubleClickAttack");
   if (doubleClickAttack) doubleClickAttack.checked = GAME_SETTINGS.doubleClickAttack !== false;
   const fpsLimit = document.getElementById("optFpsLimit");
   if (fpsLimit) fpsLimit.value = String(normalizeFpsLimit(GAME_SETTINGS.fpsLimit));
+  const gfxQuality = document.getElementById("optGfxQuality");
+  if (gfxQuality) gfxQuality.value = normalizeGfxQuality(GAME_SETTINGS.gfxQuality);
 
   renderKeybindRows();
   renderSfxRows();
@@ -8108,11 +8232,8 @@ function wireSettingsWindow() {
   const autoStart = document.getElementById("optAutoStart");
   const drones = document.getElementById("optDrones");
   const remoteDrones = document.getElementById("optRemoteDrones");
-  const combatText = document.getElementById("optCombatText");
   const shipEffect = document.getElementById("optShipEffect");
   const shipSmoke = document.getElementById("optShipSmoke");
-  const npcEngineEffects = document.getElementById("optNpcEngineEffects");
-  const customDesignEffects = document.getElementById("optCustomDesignEffects");
   const moveMarker = document.getElementById("optMoveMarker");
   const fpsLimitSel = document.getElementById("optFpsLimit");
   const settingsWindow = document.getElementById("settingsWindow");
@@ -8157,24 +8278,50 @@ function wireSettingsWindow() {
     setGameSetting("remoteDrones", remoteDrones.checked);
   });
 
-  combatText?.addEventListener("change", () => {
-    setGameSetting("combatText", combatText.checked);
-  });
-
+  // Regroupé : une case pilote les deux clés (vaisseaux + designs).
   shipEffect?.addEventListener("change", () => {
-    setGameSetting("shipEffect", shipEffect.checked);
+    setPairedSetting(["shipEffect", "customDesignEffects"], shipEffect.checked);
   });
 
+  // Regroupé : une case pilote les deux clés (moteurs vaisseaux + NPC).
   shipSmoke?.addEventListener("change", () => {
-    setGameSetting("shipSmoke", shipSmoke.checked);
+    setPairedSetting(["shipSmoke", "npcEngineEffects"], shipSmoke.checked);
   });
 
-  npcEngineEffects?.addEventListener("change", () => {
-    setGameSetting("npcEngineEffects", npcEngineEffects.checked);
+  document.getElementById("optNpcExplosions")?.addEventListener("change", (ev) => {
+    setGameSetting("npcExplosions", ev.currentTarget.checked);
   });
 
-  customDesignEffects?.addEventListener("change", () => {
-    setGameSetting("customDesignEffects", customDesignEffects.checked);
+  document.getElementById("optRocketSmoke")?.addEventListener("change", (ev) => {
+    setGameSetting("rocketSmoke", ev.currentTarget.checked);
+  });
+
+  document.getElementById("optBoxAnims")?.addEventListener("change", (ev) => {
+    setGameSetting("boxAnims", ev.currentTarget.checked);
+  });
+
+  document.getElementById("optPortalAnims")?.addEventListener("change", (ev) => {
+    setGameSetting("portalAnims", ev.currentTarget.checked);
+  });
+
+  document.getElementById("optShowBonusBoxes")?.addEventListener("change", (ev) => {
+    setPairedSetting(["showBonusBoxes", "showResourceBoxes"], ev.currentTarget.checked);
+  });
+
+  document.getElementById("optShowCargoBoxes")?.addEventListener("change", (ev) => {
+    setGameSetting("showCargoBoxes", ev.currentTarget.checked);
+  });
+
+  document.getElementById("optShowNpcShots")?.addEventListener("change", (ev) => {
+    setGameSetting("showNpcShots", ev.currentTarget.checked);
+  });
+
+  document.getElementById("optShowHalos")?.addEventListener("change", (ev) => {
+    setGameSetting("showHalos", ev.currentTarget.checked);
+  });
+
+  document.getElementById("optShowNpcs")?.addEventListener("change", (ev) => {
+    setGameSetting("showNpcs", ev.currentTarget.checked);
   });
 
   moveMarker?.addEventListener("change", () => {
@@ -8188,6 +8335,10 @@ function wireSettingsWindow() {
 
   fpsLimitSel?.addEventListener("change", () => {
     setFpsLimit(Number(fpsLimitSel.value));
+  });
+
+  document.getElementById("optGfxQuality")?.addEventListener("change", (ev) => {
+    setGfxQuality(ev.currentTarget.value);
   });
 
   document.querySelectorAll("#settingsWindow .keyBindRow").forEach((btn) => {
@@ -13139,15 +13290,11 @@ if (btn?.click?.src) {
   jobs.push(loadImage(btn.click.src, { priority: true }));
 }
 
-  // ✅ précharge le sprite animé par-dessus
+  // ✅ précharge la frame 10 figée du saut (seule frame affichée)
   const fx = spr.jumpFx;
-  if (fx?.path && fx?.frames) {
-    const frames = Math.max(1, Number(fx.frames || 1));
-
-    for (let i = 0; i < frames; i++) {
-      const src = getPortalFrameSrc(fx, i);
-      if (src) jobs.push(loadImage(src, { priority: true }));
-    }
+  if (fx?.path) {
+    const src = getPortalFrameSrc(fx, 9);
+    if (src) jobs.push(loadImage(src, { priority: true }));
   }
   return jobs;
 }
@@ -17070,17 +17217,25 @@ function ensureExplosionLoaded() {
 
 const explosions = [];
 
-function spawnExplosion(x, y, scale = 1) {
+function spawnExplosion(x, y, scale = 1, kind = "npc") {
   if (!explosionReady || !explosionImgs || !explosionImgs.length) {
     return;
   }
+  // Densité Off : aucune explosion (même joueur).
+  if (fxDensityMult() === 0) return;
+  // Options perf (Général) : explosions NPC et mini-explosions roquettes coupables séparément.
+  try {
+    if (kind === "rocket" && GAME_SETTINGS.rocketSmoke === false) return;
+    if (kind === "npc" && GAME_SETTINGS.npcExplosions === false) return;
+  } catch {}
 
   pushBounded(explosions, {
     x,
     y,
     t: 0,
     scale: Math.max(0.2, Number(scale) || 1),
-  }, ENTITY_LIMITS.explosions);
+    kind: kind === "rocket" ? "rocket" : kind === "player" ? "player" : "npc",
+  }, fxDensityCap(ENTITY_LIMITS.explosions));
 }
 
 // Capteurs 1800 (même règle que les NPC) : tout effet visuel au-delà du rayon
@@ -17119,6 +17274,10 @@ function drawExplosions(ox, oy) {
   const frames = EXPLOSION_PACK.frames || explosionImgs.length || 1;
 
   for (const ex of explosions) {
+    try {
+      if (ex.kind === "rocket" && GAME_SETTINGS.rocketSmoke === false) continue;
+      if (ex.kind === "npc" && GAME_SETTINGS.npcExplosions === false) continue;
+    } catch {}
     if (isBeyondSensorRadius(ex.x, ex.y)) continue;
     const idx = Math.min(frames - 1, Math.floor(ex.t * fps));
     const img = explosionImgs[idx];
@@ -17200,6 +17359,10 @@ function shipDamageBubbleRadius() {
 // sur le cercle, même si le joueur continue d'avancer.
 function spawnShipDamage(fromX, fromY) {
   if (!shipDamageReady || !shipDamageImgs || !shipDamageImgs.length) return;
+  // Densité Off : aucun anneau de dégâts.
+  if (fxDensityMult() === 0) return;
+  // Option "Explosions et impacts" : aucun spawn quand coupée.
+  try { if (GAME_SETTINGS.npcExplosions === false) return; } catch {}
 
   const ang = Math.atan2(fromY - player.y, fromX - player.x);
   const rad = shipDamageBubbleRadius();
@@ -17210,7 +17373,7 @@ function spawnShipDamage(fromX, fromY) {
     rot: ang,
     t: 0,
     scale: Number(SHIP_DAMAGE_PACK.scale) || 0.4,
-  }, ENTITY_LIMITS.explosions);
+  }, fxDensityCap(ENTITY_LIMITS.explosions));
 }
 
 function tickShipDamages(dt) {
@@ -21089,7 +21252,7 @@ function drawPet(ox, oy) {
   ctx.globalAlpha = (isPlayerCloaked() || player.cpuCloak === true) ? 0.5 : 1;
   // Même balancement qu'à l'arrêt que le vaisseau et les drones (sprite uniquement).
   const petTt = performance.now() / 1000;
-  const petBobY = Math.sin(petTt * 4.0) * 2 * idleSway;
+  const petBobY = GAME_SETTINGS.shipEffect ? Math.sin(petTt * 4.0) * 2 * idleSway : 0;
   ctx.save();
   ctx.translate(0, petBobY);
   let sprite = image;
@@ -21172,7 +21335,7 @@ function drawTbrClones(ox, oy) {
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
     const petTt = performance.now() / 1000;
-    const petBobY = Math.sin(petTt * 4.0) * 2 * idleSway;
+    const petBobY = GAME_SETTINGS.shipEffect ? Math.sin(petTt * 4.0) * 2 * idleSway : 0;
     ctx.save();
     ctx.translate(0, petBobY);
     let sprite = image;
@@ -21259,7 +21422,7 @@ function emitEngineTrail(entity, config, dt, ownerNpcId = null, engineKind = "sh
   if (!layout) return;
 
   const speedRatio = clamp(speed / Math.max(100, Number(entity.speed || config?.speed || 320)), 0, 1);
-  entity._trailAcc = (entity._trailAcc || 0) + dt * (10 + speedRatio * 10);
+  entity._trailAcc = (entity._trailAcc || 0) + dt * (10 + speedRatio * 10) * fxDensityMult();
 
   while (entity._trailAcc >= 1) {
     entity._trailAcc -= 1;
@@ -21298,7 +21461,7 @@ function emitEngineTrail(entity, config, dt, ownerNpcId = null, engineKind = "sh
         stretch: 1.35 + Math.random() * 0.75,
         drift: (Math.random() - 0.5) * 18,
         smokeVariant: Math.floor(Math.random() * 6),
-      }, ENTITY_LIMITS.engineTrails);
+      }, fxDensityCap(ENTITY_LIMITS.engineTrails));
     }
   }
 }
@@ -23156,6 +23319,8 @@ player.y = collectY;
 
 function drawCollectBeam(c, ox, oy) {
   if (!c) return;
+  // Option "Animations des box" : aucun faisceau, box statique.
+  try { if (GAME_SETTINGS.boxAnims === false) return; } catch {}
   drawRemoteCollectBeams(c, ox, oy);
   // Faisceau du P.E.T vers sa box (même visuel que le joueur).
   const isPetBox = petState.fetchId === c.id && (petState.fetchHold || 0) > 0;
@@ -23259,11 +23424,66 @@ function drawCollectBeam(c, ox, oy) {
   ctx.restore();
 }
 
+// Visibilité des box (options d'affichage, visuel seul : la collecte,
+// les quêtes et le ciblage restent intacts).
+const BONUS_BOX_DISPLAY_TYPES = new Set(["Bonus_Box", "Green_Booty_Box", "Astral_Prime_Box"]);
+function isCollectableHiddenByDisplay(type) {
+  try {
+    const t = String(type || "");
+    if (!t) return false;
+    if (t === "Cargo_Box") return GAME_SETTINGS.showCargoBoxes === false;
+    if (BONUS_BOX_DISPLAY_TYPES.has(t)) return GAME_SETTINGS.showBonusBoxes === false;
+    // Ressources : Mucosum, Aurus, Prismatium, Sun, Palladium, Scrap...
+    return GAME_SETTINGS.showResourceBoxes === false;
+  } catch { return false; }
+}
+
+// Visuel seul : la simulation (dégâts, soins, liens) reste intacte.
+function displayNpcShotsOn() {
+  try { return GAME_SETTINGS.showNpcShots !== false; } catch { return true; }
+}
+function displayHalosOn() {
+  try { return GAME_SETTINGS.showHalos !== false; } catch { return true; }
+}
+function displayNpcsOn() {
+  try { return GAME_SETTINGS.showNpcs !== false; } catch { return true; }
+}
+// Qualité Désactivé : coupe-circuit total (même les visés et les barres).
+function gfxQualityOff() {
+  try { return GAME_SETTINGS.gfxQuality === "off"; } catch { return false; }
+}
+// Densité des effets (LOW/MED/HIGH) : divise les quantités cosmétiques
+// (traînées, fumée, caps d'explosions/étincelles). Dégâts et simulation intacts.
+function fxDensityMult() {
+  try {
+    const v = String(GAME_SETTINGS.fxDensity || "high").toLowerCase();
+    if (v === "off") return 0;
+    if (v === "low") return 0.35;
+    if (v === "med") return 0.65;
+  } catch {}
+  return 1;
+}
+function fxDensityCap(base) {
+  if (fxDensityMult() === 0) return 0;
+  return Math.max(4, Math.floor(Number(base) * fxDensityMult()));
+}
+
 function drawCollectables(ox, oy) {
   const visibleCollectables = spatialCollectablesInRect(-ox - 180, -oy - 180, -ox + innerWidth + 180, -oy + innerHeight + 180);
   for (const c of visibleCollectables) {
+    // Qualité Désactivé : aucune box, même visée.
+    if (gfxQualityOff()) continue;
     const cfg = COLLECTABLE_DEFS[c.type] || {};
     const sp = cfg.sprite || {};
+
+    // Box masquée par les options : on la saute, sauf si visée
+    // (collecte en cours, joueur ou PET : retour visuel conservé).
+    let boxTargeted = false;
+    try {
+      boxTargeted = (typeof collectableTargetId !== "undefined" && collectableTargetId === c.id)
+        || (typeof petState !== "undefined" && petState && petState.fetchId === c.id);
+    } catch {}
+    try { if (!boxTargeted && isCollectableHiddenByDisplay(c.type)) continue; } catch {}
 
     const x = c.x + ox;
     const y = c.y + oy;
@@ -23278,9 +23498,7 @@ function drawCollectables(ox, oy) {
     try {
       const visR = Number(NPC_SENSOR_RANGES?.visibility);
       if (Number.isFinite(visR)) {
-        const targeted = (typeof collectableTargetId !== "undefined" && collectableTargetId === c.id)
-          || (typeof petState !== "undefined" && petState && petState.fetchId === c.id);
-        if (!targeted) {
+        if (!boxTargeted) {
           const bdx = Number(c.x) - Number(player.x);
           const bdy = Number(c.y) - Number(player.y);
           if (bdx * bdx + bdy * bdy > visR * visR) continue;
@@ -23291,11 +23509,15 @@ function drawCollectables(ox, oy) {
     drawCollectBeam(c, ox, oy);
 
     const frames = Math.max(1, Number(sp.frames || sp._imgs?.length || 1));
-    const idx = Math.floor(c.frameAcc) % frames;
+    // Option "Animations des box" : sprite fixe (frame 0), sinon défilement.
+    let boxAnimsOn = true;
+    try { boxAnimsOn = GAME_SETTINGS.boxAnims !== false; } catch {}
+    const idx = boxAnimsOn ? Math.floor(c.frameAcc) % frames : 0;
     const img = sp._imgs?.[idx];
 
-    const pulse = 1 + Math.sin(c.t * 4) * 0.04;
-    const bob = Math.sin(c.t * 3) * Number(cfg.bob ?? 4);
+    // Même option : sans pulsation/flottement/halo.
+    const pulse = boxAnimsOn ? 1 + Math.sin(c.t * 4) * 0.04 : 1;
+    const bob = boxAnimsOn ? Math.sin(c.t * 3) * Number(cfg.bob ?? 4) : 0;
     const visualH = Number(sp.h || img?.naturalHeight || img?.height || 64) * Number(sp.scale || 1);
 
     ctx.save();
@@ -23310,7 +23532,7 @@ function drawCollectables(ox, oy) {
       ctx.imageSmoothingEnabled = false;
   drawCenteredImage(ctx, img, w, h);
 
-      if (sp.glow !== false) {
+      if (boxAnimsOn && sp.glow !== false) {
         ctx.globalAlpha = 0.22;
         ctx.drawImage(img, -w * 0.7, -h * 0.7, w * 1.4, h * 1.4);
         ctx.globalAlpha = 1;
@@ -29019,6 +29241,9 @@ function netShipDamageDt() {
 }
 function spawnNetShipDamage(remoteId, ang, rad, why = "") {
   if (remoteId == null || !Number.isFinite(Number(ang))) return;
+  // Même option que le local ("Explosions et impacts").
+  try { if (GAME_SETTINGS.npcExplosions === false) return; } catch {}
+  if (fxDensityMult() === 0) return;
   const key = String(remoteId);
   let list = netShipDamages.get(key);
   if (!list) { list = []; netShipDamages.set(key, list); }
@@ -30514,12 +30739,6 @@ function drawZonePortals(ox, oy) {
     const openFade = getPortalOpenFade(ptl);
     const jumpFade = getPortalJumpFade(ptl);
 
-    // ✅ Respiration : dès que le portail est visible, l'ACTIVE oscille
-    // en continu par-dessus la DESACTIVE (phase propre à chaque portail).
-    // Pas de proximité, pas de phases : toujours le même cycle.
-    const nowMs = performance.now();
-    const breatheA = 0.5 - 0.5 * Math.cos(nowMs / 1000 * TAU / 2.4 + (Number(ptl.x) + Number(ptl.y)) * 0.01);
-
     // ✅ portail idle.
     ctx.globalAlpha = 1;
     ctx.drawImage(
@@ -30530,8 +30749,17 @@ function drawZonePortals(ox, oy) {
       h
     );
 
-    // ✅ portail ouvert.
-    {
+    // Option "Animations des portails" : ON = respiration continue de
+    // l'ACTIVE par-dessus la DESACTIVE ; OFF (défaut) = toujours ACTIVE
+    // fixe, sans switch proche/loin ni oscillation.
+    let portalAnimsOn = true;
+    try { portalAnimsOn = GAME_SETTINGS.portalAnims === true; } catch {}
+    if (portalAnimsOn) {
+      // ✅ Respiration : dès que le portail est visible, l'ACTIVE oscille
+      // en continu par-dessus la DESACTIVE (phase propre à chaque portail).
+      // Pas de proximité, pas de phases : toujours le même cycle.
+      const nowMs = performance.now();
+      const breatheA = 0.5 - 0.5 * Math.cos(nowMs / 1000 * TAU / 2.4 + (Number(ptl.x) + Number(ptl.y)) * 0.01);
       const openW = spr.open.w || w;
       const openH = spr.open.h || h;
       const openScale = Number(spr.open.scale ?? 1);
@@ -30545,15 +30773,39 @@ function drawZonePortals(ox, oy) {
         openW * openScale,
         openH * openScale
       );
+    } else {
+      // ✅ toujours ACTIVE : pas de switch proche/loin, alpha pleine.
+      ctx.globalAlpha = 1;
+      const openW = spr.open.w || w;
+      const openH = spr.open.h || h;
+      const openScale = Number(spr.open.scale ?? 1);
+      const openXOff = Number(spr.open.xOff || 0);
+      const openYOff = Number(spr.open.yOff || 0);
+      ctx.drawImage(
+        imgOpen,
+        x + openXOff - (openW * openScale) / 2,
+        y + openYOff - (openH * openScale) / 2,
+        openW * openScale,
+        openH * openScale
+      );
     }
 
     ctx.globalAlpha = 1;
 
     // ========================================================
-    // Image fixe pendant le saut
+    // Image fixe pendant le saut : frame 10 de la sequence,
+    // centree sur le portail (repli : image JUMP fixe).
     // ========================================================
     if (ptl.jumping && spr.jump?.src) {
-      const imgJump = getCachedImage(spr.jump.src);
+      let jumpSrc = spr.jump.src;
+      try {
+        const fx = spr.jumpFx;
+        if (fx && fx.path) {
+          const frame10 = getPortalFrameSrc(fx, 9);
+          if (frame10 && isImgReady(getCachedImage(frame10))) jumpSrc = frame10;
+        }
+      } catch {}
+      const imgJump = getCachedImage(jumpSrc);
 
       if (isImgReady(imgJump)) {
         const jumpW =
@@ -30607,97 +30859,8 @@ function drawZonePortals(ox, oy) {
       }
     }
 
-    // ========================================================
-    // Animation pendant le saut
-    // ========================================================
-    if (
-      ptl.jumping &&
-      spr.jumpFx?.path &&
-      spr.jumpFx?.frames
-    ) {
-      const fx = spr.jumpFx;
-
-      const frames = Math.max(
-        1,
-        Number(fx.frames || 1)
-      );
-
-      const fps = Math.max(
-        1,
-        Number(fx.fps || 24)
-      );
-
-      const loop = fx.loop !== false;
-
-      let frameIndex = Math.floor(
-        ptl.jumpT * fps
-      );
-
-      if (loop) {
-        frameIndex %= frames;
-      } else {
-        frameIndex = Math.min(
-          frames - 1,
-          frameIndex
-        );
-      }
-
-      const src = getPortalFrameSrc(
-        fx,
-        frameIndex
-      );
-
-      const imgFx = getCachedImage(src);
-
-      if (isImgReady(imgFx)) {
-        const fxW =
-          fx.w ||
-          imgFx.naturalWidth ||
-          128;
-
-        const fxH =
-          fx.h ||
-          imgFx.naturalHeight ||
-          128;
-
-        const fxScale = Number(fx.scale ?? 1);
-        const fxAlpha =
-          Number(fx.alpha ?? 1) *
-          jumpFade;
-
-        const fxYOff = Number(fx.yOff || 0);
-        const fxXOff = Number(fx.xOff || 0);
-
-        const spinSpeed = Number(
-          fx.spinSpeed || 0
-        );
-
-        const angle = spinSpeed
-          ? ptl.jumpT * TAU * spinSpeed
-          : 0;
-
-        ctx.save();
-
-        ctx.translate(
-          x + fxXOff,
-          y + fxYOff
-        );
-
-        ctx.rotate(angle);
-        ctx.globalAlpha = fxAlpha;
-
-        ctx.drawImage(
-          imgFx,
-          -(fxW * fxScale) / 2,
-          -(fxH * fxScale) / 2,
-          fxW * fxScale,
-          fxH * fxScale
-        );
-
-        ctx.restore();
-        ctx.globalAlpha = 1;
-      }
-    }
+    // Saut : image JUMP fixe centree sur le portail (voir ci-dessus),
+    // pas de sequence animee.
 
     // ========================================================
     // ✅ Bouton de saut au-dessus du portail
@@ -33066,21 +33229,25 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       }
       // Fumée arc-en-ciel + filet : densité au mètre (tous les 12 px),
       // constante à toute vitesse — couvre tout le vol même à 3 s.
+      // Option "Roquettes : traînées et fumée" : coupée = aucun spawn, vol sec.
+      let rocketFxOn = true;
+      try { rocketFxOn = GAME_SETTINGS.rocketSmoke !== false; } catch {}
       const lastPt = b.trail?.length ? b.trail[b.trail.length - 1] : null;
       const stepMoved = lastPt ? Math.hypot(b.x - lastPt.x, b.y - lastPt.y) : 99;
       b.smokeDist = (b.smokeDist || 0) + stepMoved;
-      if (b.smokeDist >= 12) {
+      // Densité : espacement des bouffées (12 px à densité pleine, rien à Off).
+      if (rocketFxOn && fxDensityMult() > 0 && b.smokeDist >= 12 / fxDensityMult()) {
         b.smokeDist = 0;
         b.smokeHue = ((b.smokeHue || 0) + 8) % 360;
         const smokeColor = b.isLauncherRocket
           ? "rgba(190,200,205,0.82)"
           : `hsla(${b.smokeHue},100%,65%,0.9)`;
-        pushBounded(sparks, { x: b.x, y: b.y, t: 0, big: false, smoke: true, color: smokeColor }, ENTITY_LIMITS.sparks);
+        pushBounded(sparks, { x: b.x, y: b.y, t: 0, big: false, smoke: true, color: smokeColor }, fxDensityCap(ENTITY_LIMITS.sparks));
         b.trail ??= [];
         b.trail.push({ x: b.x, y: b.y, hue: b.smokeHue || 0, color: b.isLauncherRocket ? "rgba(205,215,220,0.9)" : null });
         if (b.trail.length > 110) b.trail.shift();
       }
-      if (!b.trail?.length) {
+      if (!b.trail?.length && rocketFxOn) {
         b.trail = [{ x: b.x, y: b.y, hue: b.smokeHue || 0, color: b.isRocket ? "rgba(205,215,220,0.9)" : null }];
       }
     }
@@ -33209,7 +33376,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       if (!launcherImpact.final) {
         // ✅ MISS = silencieux (ni laser ni roquette).
         if (!b.miss && !b.ownerEscortId) playRocketImpactStaggered(b.volleyId);
-        spawnExplosion(b.x, b.y, 0.2);
+        spawnExplosion(b.x, b.y, 0.2, "rocket");
         removeProjectile(bullets, i);
         cleanupPlayerMissVolley(b);
         continue;
@@ -33220,7 +33387,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       // ✅ MISS = silencieux (ni laser ni roquette).
       showPlayerMissOnce(b, t);
 
-      if (b.isRocket) spawnExplosion(b.x, b.y, 0.2);
+      if (b.isRocket) spawnExplosion(b.x, b.y, 0.2, "rocket");
       removeProjectile(bullets, i);
       cleanupPlayerMissVolley(b);
       continue;
@@ -33253,7 +33420,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       }
       // Impact roquette sur le REX : explosion + son, comme un NPC.
       if (b.isRocket) {
-        spawnExplosion(b.x, b.y, 0.25);
+        spawnExplosion(b.x, b.y, 0.25, "rocket");
         if (Number(account.user?.pet?.hp) > 0) playRocketImpactStaggered(b.volleyId);
       }
       removeProjectile(bullets, i);
@@ -33306,7 +33473,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       showSabZeroOnce(b, t);
     }
 
-    if (b.isRocket) spawnExplosion(b.x, b.y, out.total >= 600 || out.isCrit ? 0.35 : 0.25);
+    if (b.isRocket) spawnExplosion(b.x, b.y, out.total >= 600 || out.isCrit ? 0.35 : 0.25, "rocket");
     removeProjectile(bullets, i);
     cleanupPlayerMissVolley(b);
     continue;
@@ -33394,7 +33561,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
       const effectiveMiss = b.miss || (formationEvasion + scrambleEvasion > 0 && Math.random() < Math.min(1, formationEvasion + scrambleEvasion));
       if (effectiveMiss) {
         if (bulletTarget === player) addMissText(player.x + (Math.random() - 0.5) * 50, player.y - 85 - Math.random() * 20);
-        if (b.isRocket) spawnExplosion(bulletTarget.x, bulletTarget.y, 0.2);
+        if (b.isRocket) spawnExplosion(bulletTarget.x, bulletTarget.y, 0.2, "rocket");
       } else {
         if (bulletTarget === player) {
           // (sprite déjà joué à l'entrée du rond) ; secours si le tir est
@@ -33418,7 +33585,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
           // Clone Mimesis tué : explosion standard + rire.
           if (bulletTarget.hp <= 0 && bulletTarget.holo) killHoloClone(bulletTarget);
         }
-        if (b.isRocket) spawnExplosion(bulletTarget.x, bulletTarget.y, 0.25);
+        if (b.isRocket) spawnExplosion(bulletTarget.x, bulletTarget.y, 0.25, "rocket");
       }
 
       continue;
@@ -34344,7 +34511,8 @@ function drawBotMinimalScene(ox, oy) {
 function draw() {
   ctx.fillStyle = "#050814";
   ctx.fillRect(0, 0, innerWidth, innerHeight);
-  drawMapBackground();
+  // Option textures : OFF = vide spatial uni, murs + fond masqués.
+  if (GAME_SETTINGS.textures) drawMapBackground();
 
   let ox = innerWidth / 2 - camera.x;
   let oy = innerHeight / 2 - camera.y;
@@ -34363,9 +34531,7 @@ function draw() {
     return;
   }
 
-if (GAME_SETTINGS.textures) {
   drawZoneWalls(ox, oy);
-}
 
   drawZonePortals(ox, oy);
   drawSafeModules(ox, oy);
@@ -34378,9 +34544,9 @@ if (GAME_SETTINGS.textures) {
   drawHoloClones(ox, oy);
   drawPet(ox, oy);
   drawTbrClones(ox, oy);
-  drawPetLink(ox, oy);
-  drawTempestLinks(ox, oy);
-  drawJamxHalos(ox, oy);
+  if (displayHalosOn()) drawPetLink(ox, oy);
+  if (displayHalosOn()) drawTempestLinks(ox, oy);
+  if (displayHalosOn()) drawJamxHalos(ox, oy);
   drawPetBuoy(ox, oy);
 
   for (const pck of pickups) {
@@ -34417,7 +34583,7 @@ if (GAME_SETTINGS.textures) {
   }
 
   const selectedEnemyForBars = Target.get();
-  for (const pulse of healerPulses) {
+  for (const pulse of displayHalosOn() ? healerPulses : []) {
     const x = pulse.x + ox;
     const y = pulse.y + oy;
     const k = clamp(pulse.t / pulse.life, 0, 1);
@@ -34425,7 +34591,7 @@ if (GAME_SETTINGS.textures) {
     drawHaloPulse(x, y, pulse.radius, k, "55,255,125", "80,255,145");
   }
   // Pulsations génériques (pod Aegis, bouées pet) : mêmes règles d'affichage.
-  for (const pulse of haloPulses) {
+  for (const pulse of displayHalosOn() ? haloPulses : []) {
     const x = pulse.x + ox;
     const y = pulse.y + oy;
     const k = clamp(pulse.t / pulse.life, 0, 1);
@@ -34448,6 +34614,46 @@ if (GAME_SETTINGS.textures) {
 
     const enemyConfig = NPC_TYPES[e.type];
     const enemySpriteFrame = enemyConfig?.sprite ? getEnemySpriteFrame(e, enemyConfig, enemyConfig.sprite) : 0;
+    // NPC masqués ou qualité Désactivé : contour gris clair seul + barres/nom.
+    // 1 seul dessin plat, sans ombre ni halo.
+    if (!displayNpcsOn() || gfxQualityOff()) {
+      try {
+        const sp = enemyConfig?.sprite;
+        const img = sp?._imgs?.[enemySpriteFrame] || sp?._imgs?.[0];
+        if (sp && sp._ready && isImgReady(img)) {
+          const baseW = sp.w ?? sp.size ?? 160;
+          const baseH = sp.h ?? sp.size ?? 160;
+          const w = e.isBoss ? baseW * 1.05 : baseW;
+          const h = e.isBoss ? baseH * 1.05 : baseH;
+          const sil = outlineSilhouette(`npc:${e.type}:${enemySpriteFrame}`, img, w, h, "#c3cad2");
+          ctx.save();
+          ctx.globalAlpha = 1;
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(sil, -w / 2, -h / 2, w, h);
+          ctx.restore();
+        } else {
+          ctx.save();
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = "rgba(195,202,210,0.9)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, Math.max(8, Number(e.r) || 24), 0, TAU);
+          ctx.stroke();
+          ctx.restore();
+        }
+      } catch {}
+      try {
+        drawNpcStatus(
+          ctx,
+          e,
+          npcLabelFor(e),
+          shouldShowNpcBars(e, selectedEnemyForBars),
+        );
+      } catch {}
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      continue;
+    }
     // Tous les Ubers du jeu : contour rouge de base (comme le localisateur).
     // Uber Mordon : contour restreint à la moitié basse.
     if (/uber/i.test(String(e.type || ""))) drawEnemyContour(e, enemyConfig, enemySpriteFrame, "#ff4655", undefined, String(e.type || "") === "npc_Uber_Mordon");
@@ -34761,8 +34967,10 @@ if (GAME_SETTINGS.textures) {
     const x = b.x + ox, y = b.y + oy;
     if (x < -90 || y < -90 || x > innerWidth + 90 || y > innerHeight + 90) continue;
     // Filet fin derrière les roquettes : gris pour le lanceur, arc-en-ciel
-    // pour les roquettes normales.
-    if (b.isRocket && b.trail?.length > 1) {
+    // pour les roquettes normales. Coupé par l'option roquettes.
+    let rocketTrailOn = true;
+    try { rocketTrailOn = GAME_SETTINGS.rocketSmoke !== false; } catch {}
+    if (rocketTrailOn && b.isRocket && b.trail?.length > 1) {
       ctx.save();
       ctx.lineWidth = 1;
       ctx.lineCap = "round";
@@ -34782,7 +34990,7 @@ if (GAME_SETTINGS.textures) {
     drawBulletSprite(x, y, ang, b.key || "x1", "player", 1.6);
   }
 
-  for (const b of enemyBullets) {
+  for (const b of displayNpcShotsOn() ? enemyBullets : []) {
     // Tirs NPC / visuels distants : même règle capteurs 1800 que les NPC.
     if (isBeyondSensorRadius(b.x, b.y)) continue;
     const x = b.x + ox, y = b.y + oy;
@@ -34809,7 +35017,7 @@ if (GAME_SETTINGS.textures) {
     ctx.globalAlpha = 1;
   }
 
-  for (const ft of GAME_SETTINGS.combatText ? floatTexts : []) {
+  for (const ft of floatTexts) {
     if (isBeyondSensorRadius(ft.x, ft.y)) continue;
     const p = clamp(ft.t / ft.life, 0, 1);
     const a = 1 - p;
@@ -34852,7 +35060,7 @@ if (GAME_SETTINGS.textures) {
   const px = player.x + ox, py = player.y + oy;
   // Smartbomb SMB-01 posée : SOUS les vaisseaux (joueur + distants),
   // au-dessus des NPC et explosions.
-  try { drawSmbFx(ox, oy); } catch {}
+  try { if (displayHalosOn()) drawSmbFx(ox, oy); } catch {}
   if (!player.dead) {
     ctx.save();
     // Camouflage ultime + hologramme : vaisseau + drones à 50 % d'opacité.
@@ -34864,7 +35072,7 @@ if (GAME_SETTINGS.textures) {
     }
     
     const tt = performance.now() / 1000;
-    const bobY = Math.sin(tt * 4.0) * 2 * idleSway;
+    const bobY = GAME_SETTINGS.shipEffect ? Math.sin(tt * 4.0) * 2 * idleSway : 0;
     ctx.translate(0, bobY);
 
     // BSK (Berserker) : tremblement croissant avec la progression (30 s).
@@ -35373,7 +35581,7 @@ if (GAME_SETTINGS.textures) {
   } catch {}
 
   // L'IEM reste centrée sur le joueur et se dessine au-dessus du vaisseau.
-  drawPulseFx(ox, oy);
+  if (displayHalosOn()) drawPulseFx(ox, oy);
 
   const t = Target.get();
   if (t) {
