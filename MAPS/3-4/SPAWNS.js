@@ -80,7 +80,7 @@ export function getZonePortals(WORLD) {
   return [
     {
       id: "p_34_to_14",
-      x: 1000,   // haut gauche
+      x: 1083,   // haut gauche
       y: 1000,
       r: 260,
       toMap: "1-4",
@@ -88,7 +88,7 @@ export function getZonePortals(WORLD) {
     },
     {
       id: "p_34_to_33",
-      x: 10000,   // haut droite
+      x: 10232,   // haut droite
       y: 1000,
       r: 260,
       toMap: "3-3",
@@ -96,16 +96,16 @@ export function getZonePortals(WORLD) {
     },
     {
       id: "p_34_to_4-3",
-      x: 5500,   // haut millieu
-      y: 1000,
+      x: 5517,   // haut millieu
+      y: 767,
       r: 260,
       toMap: "4-3",
       toPortal: "p_4-3_to_34",
     },
     {
       id: "p_34_to_32",
-      x: 10000,   // bas droite
-      y: 6000,
+      x: 10232,   // bas droite
+      y: 5900,
       r: 260,
       toMap: "3-2",
       toPortal: "p_32_to_34",
@@ -115,9 +115,9 @@ export function getZonePortals(WORLD) {
 
 export function getZoneSafeModules(WORLD) {
   const modules = [
-    { id: "QUEST_VRU", x: 5500, y: 2000, w: 515, h: 728, spr: "QUEST_VRU", safeRadius: 400 },
+    { id: "QUEST_VRU", x: 5517, y: 1767, w: 515, h: 728, spr: "QUEST_VRU", safeRadius: 400 },
   ];
-  const zone = { kind: "circle", x: 5500, y: 2000, r: 600 };
+  const zone = { kind: "circle", x: 5517, y: 1767, r: 600 };
   return { zone, modules, beacons: [] };
 }
 

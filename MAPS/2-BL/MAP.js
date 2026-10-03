@@ -1,7 +1,7 @@
 import { startOrbitGame } from "../../SRC/CORE/ORBIT_ENGINE.js";
 import { createImageLoader } from "../../SRC/CORE/IMAGE_LOADER.js";
 import { createSFX } from "../../SRC/CORE/SFX.js";
-import { getZoneSpawns, getZonePortals } from "./SPAWNS.js";
+import { getZoneSpawns, getZonePortals, getZoneSafeModules, getZoneWalls } from "./SPAWNS.js";
 
 import { WORLD } from "./WORLD.js";
 
@@ -32,10 +32,11 @@ export function init() {
 
     rules: {
   mode: "zone",
-  mapLabel: "3-9",
-  mapName: "Anomalie VRU",
+  mapLabel: "2-BL",
   getZoneSpawns,
-  getZonePortals, // ✅ ajout
+  getZonePortals,
+  getZoneSafeModules,
+  getZoneWalls,
 },
 
   });

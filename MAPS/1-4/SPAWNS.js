@@ -80,7 +80,7 @@ export function getZonePortals(WORLD) {
   return [
     {
       id: "p_14_to_12",
-      x: 1000,   // haut gauche
+      x: 1083,   // haut gauche
       y: 1000,
       r: 260,
       toMap: "1-2",
@@ -88,7 +88,7 @@ export function getZonePortals(WORLD) {
     },
     {
       id: "p_14_to_13",
-      x: 10000,   // haut droite
+      x: 10232,   // haut droite
       y: 1000,
       r: 260,
       toMap: "1-3",
@@ -96,16 +96,16 @@ export function getZonePortals(WORLD) {
     },
     {
       id: "p_14_to_4-1",
-      x: 10000,   // haut droite
-      y: 3500,
+      x: 10511,   // haut droite
+      y: 3067,
       r: 260,
       toMap: "4-1",
       toPortal: "p_4-1_to_14",
     },
     {
       id: "p_14_to_34",
-      x: 10000,   // haut droite
-      y: 6000,
+      x: 10232,   // haut droite
+      y: 5900,
       r: 260,
       toMap: "3-4",
       toPortal: "p_34_to_14",
@@ -115,8 +115,8 @@ export function getZonePortals(WORLD) {
 
 export function getZoneSafeModules(WORLD) {
   const modules = [
-    { id: "QUEST_MMO", x: 9000, y: 3500, w: 515, h: 728, spr: "QUEST_MMO", safeRadius: 400 },
+    { id: "QUEST_MMO", x: 9511, y: 3067, w: 515, h: 728, spr: "QUEST_MMO", safeRadius: 400 },
   ];
-  const zone = { kind: "circle", x: 9000, y: 3500, r: 600 };
+  const zone = { kind: "circle", x: 9511, y: 3067, r: 600 };
   return { zone, modules, beacons: [] };
 }

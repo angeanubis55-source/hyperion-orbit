@@ -90,28 +90,12 @@ export function getZonePortals(WORLD) {
       toPortal: "p_27_to_28",
     },
     {
-      id: "p_28_to_28.1",
-      x: 5500,
-      y: 6000,
+      id: "p_28_to_2BL",
+      x: 6111,
+      y: 5667,
       r: 260,
-      toMap: "2-8.1",
-      toPortal: "p_28.1_to_28",
-    },
-    {
-      id: "p_28_to_29",
-      x: 1000,
-      y: 1000,
-      r: 260,
-      toMap: "2-9",
-      toPortal: "p_29_to_28",
-    },
-    {
-      id: "p_28_to_200",
-      x: 10000,
-      y: 1000,
-      r: 260,
-      toMap: "2-10",
-      toPortal: "p_200_to_28",
+      toMap: "2-BL",
+      toPortal: "p_2BL_to_28",
     },
   ];
 }

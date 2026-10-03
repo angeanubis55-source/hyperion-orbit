@@ -1,4 +1,4 @@
 export const WORLD = {
-  w: 11000,
-  h: 7000
+  w: 22000,
+  h: 14000
 };

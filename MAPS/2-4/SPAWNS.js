@@ -80,7 +80,7 @@ export function getZonePortals(WORLD) {
   return [
     {
       id: "p_24_to_22",
-      x: 1000,   
+      x: 1083,   
       y: 1000,
       r: 260,
       toMap: "2-2",
@@ -88,7 +88,7 @@ export function getZonePortals(WORLD) {
     },
     {
       id: "p_24_to_23",
-      x: 10000,   
+      x: 10232,   
       y: 1000,
       r: 260,
       toMap: "2-3",
@@ -96,16 +96,16 @@ export function getZonePortals(WORLD) {
     },
     {
       id: "p_24_to_4-2",
-      x: 5500,  
-      y: 6000,
+      x: 5517,  
+      y: 6133,
       r: 260,
       toMap: "4-2",
       toPortal: "p_4-2_to_24",
     },
     {
       id: "p_24_to_33",
-      x: 1000,  
-      y: 6000,
+      x: 1083,  
+      y: 5900,
       r: 260,
       toMap: "3-3",
       toPortal: "p_33_to_24",
@@ -115,9 +115,9 @@ export function getZonePortals(WORLD) {
 
 export function getZoneSafeModules(WORLD) {
   const modules = [
-    { id: "QUEST_EIC", x: 5500, y: 5000, w: 515, h: 728, spr: "QUEST_EIC", safeRadius: 400 },
+    { id: "QUEST_EIC", x: 5517, y: 5133, w: 515, h: 728, spr: "QUEST_EIC", safeRadius: 400 },
   ];
-  const zone = { kind: "circle", x: 5500, y: 5000, r: 600 };
+  const zone = { kind: "circle", x: 5517, y: 5133, r: 600 };
   return { zone, modules, beacons: [] };
 }
 

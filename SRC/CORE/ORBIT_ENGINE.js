@@ -31,6 +31,7 @@ import {
 import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_TRAILS.js";
 import { computeBotCombatMove } from "./BOT_NAVIGATION.js";
 import { SpatialIndex } from "./SPATIAL_INDEX.js";
+import { normalizeMapId } from "./MAP_REGISTRY.js";
 "use strict";
 import {
   getCurrentUserFull,
@@ -8503,9 +8504,9 @@ function wireBoosterWindow() {
 // ============================================================
 const BOT_STORE_KEY = "orbit_bot_config_v1";
 const BOT_MAPS = [
-  "1-1", "1-2", "1-3", "1-4", "1-5", "1-6", "1-7", "1-8", "4-1", "1-9", "1-10",
-  "2-1", "2-2", "2-3", "2-4", "2-5", "2-6", "2-7", "2-8", "4-2", "2-9", "2-10",
-  "3-1", "3-2", "3-3", "3-4", "3-5", "3-6", "3-7", "3-8", "4-3", "3-9", "3-10",
+  "1-1", "1-2", "1-3", "1-4", "1-5", "1-6", "1-7", "1-8", "4-1",
+  "2-1", "2-2", "2-3", "2-4", "2-5", "2-6", "2-7", "2-8", "4-2",
+  "3-1", "3-2", "3-3", "3-4", "3-5", "3-6", "3-7", "3-8", "4-3",
   "4-4", "4-5", "5-2", "MAUDITE",
 ];
 // Munitions laser sélectionnables par NPC (vide = auto / ne pas changer).
@@ -12937,13 +12938,21 @@ const newId = () => nextId++;
 function resolvePlayerWalls() {
   if (!zoneWalls || !zoneWalls.length) return;
 
+  // ✅ Collision active aussi en radiation (murs prolongés hors-map) : on borne
+  // alors au périmètre radiation, sinon le clamp monde ramènerait le joueur en map.
+  const out = playerIsOutsideWorld();
+  const minX = out ? player.r - RADIATION_SPAWN_MARGIN : player.r;
+  const maxX = out ? WORLD.w - player.r + RADIATION_SPAWN_MARGIN : WORLD.w - player.r;
+  const minY = out ? player.r - RADIATION_SPAWN_MARGIN : player.r;
+  const maxY = out ? WORLD.h - player.r + RADIATION_SPAWN_MARGIN : WORLD.h - player.r;
+
   for (let pass = 0; pass < 2; pass++) {
     for (const w of zoneWalls) {
       const push = circleRectResolve(player.x, player.y, player.r, w);
       if (!push) continue;
 
-      player.x = clamp(player.x + push.x, player.r, WORLD.w - player.r);
-      player.y = clamp(player.y + push.y, player.r, WORLD.h - player.r);
+      player.x = clamp(player.x + push.x, minX, maxX);
+      player.y = clamp(player.y + push.y, minY, maxY);
 
       const dot = player.vx * push.x + player.vy * push.y;
       if (dot < 0) {
@@ -27899,7 +27908,8 @@ jumpBaseFade: 1,
     try {
       const transfer = JSON.parse(sessionStorage.getItem("orbit_faction_transfer") || "null");
       const currentMap = String(window.__CURRENT_MAP_ID__ || "1-1");
-      if (transfer && String(transfer.map || "") === currentMap) {
+      // ✅ compare normalisée : une sauvegarde legacy (ex "1-8.1") doit matcher "1-BL".
+      if (transfer && normalizeMapId(transfer.map) === normalizeMapId(currentMap)) {
         const center = resolveBaseCenter(zoneSafe, transfer.fallback);
         const baseX = center.x;
         const baseY = center.y;
@@ -27923,7 +27933,7 @@ jumpBaseFade: 1,
     const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
     const ov = popRespawnOverride();
 
-    if (ov && String(ov.map || "") === String(currentMap)) {
+    if (ov && normalizeMapId(ov.map) === normalizeMapId(currentMap)) {
       const position = ov.baseCenter ? resolveBaseCenter(zoneSafe, ov.fallback) : ov;
       const fallbackSpawn = getFactionFallbackSpawn();
       const spawnXY = clampSpawnPos(Number(position.x) || fallbackSpawn.x, Number(position.y) || fallbackSpawn.y);
@@ -27954,7 +27964,7 @@ jumpBaseFade: 1,
     const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
 
     // Whitelist : id portail/map limités à [A-Za-z0-9_-.], 64 chars max, map == carte courante.
-    // Le point est requis : maps 4-1 / 4-2 / 4-3 / 4-4 + portails p_..._to_....
+    // Majuscules requises : portails BL (p_1BL_to_2BL...) + maps 4-1 / 4-2 / 4-3 / 4-4.
     const isSafeId = (v) => typeof v === "string" || typeof v === "number"
       ? /^[A-Za-z0-9_\-.]{1,64}$/.test(String(v))
       : false;
@@ -27975,7 +27985,8 @@ jumpBaseFade: 1,
     for (const [candPortal, candMap] of candidates) {
       if (!candPortal || !candMap) continue;
       if (!isSafeId(candPortal) || !isSafeId(candMap)) continue;
-      if (String(candMap).toLowerCase() !== String(currentMap).toLowerCase()) continue;
+      // ✅ compare normalisée : legacy "1-8.1" == canonique "1-BL" (même carte).
+      if (normalizeMapId(candMap) !== normalizeMapId(currentMap)) continue;
       const ptl = zonePortals.find(p => String(p.id) === String(candPortal));
       if (!ptl) continue;
       player.x = clamp(ptl.x, 80, WORLD.w - 80);
@@ -28040,7 +28051,9 @@ jumpBaseFade: 1,
       player.x = clamp(gateEntrySpawn.x, 80, WORLD.w - 80);
       player.y = clamp(gateEntrySpawn.y, 80, WORLD.h - 80);
     } else {
-      if (String(st.map) !== String(currentMap)) {
+      // ✅ compare normalisée : une sauvegarde legacy ("1-8.1", "4-4.123"...)
+      // restaure la position au lieu de retomber au spawn faction (1500/1500).
+      if (normalizeMapId(st.map) !== normalizeMapId(currentMap)) {
         player.x = clamp(gateEntrySpawn.x, 80, WORLD.w - 80);
         player.y = clamp(gateEntrySpawn.y, 80, WORLD.h - 80);
       } else if (st.pos && st.pos.x != null && st.pos.y != null) {
@@ -28750,6 +28763,7 @@ function drawMinimap() {
     returnPortal: gateReturnPortal,
     isZoneMap,
     safeZone: zoneSafe,
+    walls: zoneWalls,
     rallyZone: rules?.raidLow === true && isLowRaidCircleVisible() ? LOW_RAID_ZONE_CLIENT : null,
     moveTarget,
     ping: miniPing,
@@ -32536,7 +32550,7 @@ if (hangarSwapFx) {
   if (!player.dead && !hangarSwapFx) {
     advancePlayerToTarget(player, moveTarget, dt);
 
-    if (isZoneMap && !playerIsOutsideWorld()) {
+    if (isZoneMap) {
       resolvePlayerWalls();
     }
   }
@@ -34029,7 +34043,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 // Render
 // ============================================================
 const WALL_TEX = {
-  src: "ASSETS/UI/BLOCKZONE.png",
+  src: "ASSETS/UI/WALL_GREY_STRIPED.png",
   w: 64,
   h: 64,
 };

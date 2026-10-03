@@ -15,7 +15,7 @@ export function getMinimapPortalColors(portal, isReturn = false) {
 
 const minimapStaticCache = new Map();
 
-function minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone) {
+function minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls) {
   const portalKey = (portals || []).map((p) => [p.x, p.y, p.r, p.toMap, p.shortcutCreditCost]);
   const safeKey = safeZone
     ? {
@@ -31,10 +31,11 @@ function minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, wid
     String(returnPortal === portals ? "same" : (returnPortal && portals.indexOf(returnPortal))),
     JSON.stringify(safeKey),
     JSON.stringify(rallyKey),
+    JSON.stringify((walls || []).map((wl) => [wl.x, wl.y, wl.w, wl.h])),
   ].join("|");
 }
 
-function drawMinimapStatic(cctx, cw, ch, world, portals, isZoneMap, safeZone, returnPortal, rallyZone) {
+function drawMinimapStatic(cctx, cw, ch, world, portals, isZoneMap, safeZone, returnPortal, rallyZone, walls) {
   cctx.clearRect(0, 0, cw, ch);
   cctx.fillStyle = "rgba(255,255,255,0.04)";
   cctx.fillRect(0, 0, cw, ch);
@@ -50,7 +51,8 @@ function drawMinimapStatic(cctx, cw, ch, world, portals, isZoneMap, safeZone, re
       const colors = getMinimapPortalColors(portal, isReturn);
       const x = portal.x * scaleX;
       const y = portal.y * scaleY;
-      const radius = (portal.r || 200) * ((scaleX + scaleY) * 0.5);
+      // Taille fixe pour tous les portails du jeu, petite ou grande map.
+      const radius = 7;
       cctx.strokeStyle = colors.stroke;
       cctx.beginPath();
       cctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -85,6 +87,74 @@ function drawMinimapStatic(cctx, cw, ch, world, portals, isZoneMap, safeZone, re
     cctx.restore();
   }
 
+  // Murs (cadres gris) : remplissage discret + bordure claire.
+  // Les arêtes recouvertes par un autre mur ne sont pas tracées : les murs
+  // jointifs (ex les 2 barres à droite en 1-BL) rendent un seul bloc uni.
+  if (Array.isArray(walls) && walls.length) {
+    cctx.save();
+    const wrects = [];
+    for (const wl of walls) {
+      if (!wl) continue;
+      const wx = Number(wl.x) * scaleX, wy = Number(wl.y) * scaleY;
+      const ww = Math.max(2, Number(wl.w) * scaleX), wh = Math.max(2, Number(wl.h) * scaleY);
+      cctx.fillStyle = "rgba(122,134,150,0.30)";
+      cctx.fillRect(wx - ww / 2, wy - wh / 2, ww, wh);
+      wrects.push(wl);
+    }
+    const wspan = (wl) => ({
+      x1: Number(wl.x) - Number(wl.w) / 2, x2: Number(wl.x) + Number(wl.w) / 2,
+      y1: Number(wl.y) - Number(wl.h) / 2, y2: Number(wl.y) + Number(wl.h) / 2,
+    });
+    // Tronçons d'une arête non recouverts par un autre mur (coordonnées monde).
+    const edgeGaps = (fixed, a1, a2, vertical, self) => {
+      const covered = [];
+      for (const o of wrects) {
+        if (o === self) continue;
+        const t = wspan(o);
+        if (vertical ? (t.x1 <= fixed + 2 && t.x2 >= fixed - 2) : (t.y1 <= fixed + 2 && t.y2 >= fixed - 2)) {
+          const s0 = Math.max(a1, vertical ? t.y1 : t.x1);
+          const s1 = Math.min(a2, vertical ? t.y2 : t.x2);
+          if (s1 - s0 > 4) covered.push([s0, s1]);
+        }
+      }
+      covered.sort((p, q) => p[0] - q[0]);
+      const gaps = [];
+      let cur = a1;
+      for (const cov of covered) {
+        if (cov[0] > cur + 1) gaps.push([cur, Math.min(cov[0], a2)]);
+        cur = Math.max(cur, cov[1]);
+        if (cur >= a2) break;
+      }
+      if (cur < a2 - 1) gaps.push([cur, a2]);
+      return gaps;
+    };
+    cctx.strokeStyle = "rgba(190,200,214,0.85)";
+    cctx.lineWidth = 1;
+    cctx.beginPath();
+    for (const wl of wrects) {
+      const s = wspan(wl);
+      const wx = Number(wl.x) * scaleX, wy = Number(wl.y) * scaleY;
+      for (const seg of edgeGaps(s.y1, s.x1, s.x2, false, wl)) {
+        cctx.moveTo(wx + (seg[0] - Number(wl.x)) * scaleX, wy - (Number(wl.h) * scaleY) / 2);
+        cctx.lineTo(wx + (seg[1] - Number(wl.x)) * scaleX, wy - (Number(wl.h) * scaleY) / 2);
+      }
+      for (const seg of edgeGaps(s.y2, s.x1, s.x2, false, wl)) {
+        cctx.moveTo(wx + (seg[0] - Number(wl.x)) * scaleX, wy + (Number(wl.h) * scaleY) / 2);
+        cctx.lineTo(wx + (seg[1] - Number(wl.x)) * scaleX, wy + (Number(wl.h) * scaleY) / 2);
+      }
+      for (const seg of edgeGaps(s.x1, s.y1, s.y2, true, wl)) {
+        cctx.moveTo(wx - (Number(wl.w) * scaleX) / 2, wy + (seg[0] - Number(wl.y)) * scaleY);
+        cctx.lineTo(wx - (Number(wl.w) * scaleX) / 2, wy + (seg[1] - Number(wl.y)) * scaleY);
+      }
+      for (const seg of edgeGaps(s.x2, s.y1, s.y2, true, wl)) {
+        cctx.moveTo(wx + (Number(wl.w) * scaleX) / 2, wy + (seg[0] - Number(wl.y)) * scaleY);
+        cctx.lineTo(wx + (Number(wl.w) * scaleX) / 2, wy + (seg[1] - Number(wl.y)) * scaleY);
+      }
+    }
+    cctx.stroke();
+    cctx.restore();
+  }
+
   // Zone de ralliement du raid Low : cercle fixe (couche statique, coût nul).
   if (rallyZone && Number(rallyZone.r) > 0) {
     cctx.save();
@@ -102,15 +172,15 @@ function drawMinimapStatic(cctx, cw, ch, world, portals, isZoneMap, safeZone, re
   }
 }
 
-function getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone) {
-  const key = minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone);
+function getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls) {
+  const key = minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls);
   let entry = minimapStaticCache.get(key);
   if (!entry) {
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const cctx = canvas.getContext("2d");
-    drawMinimapStatic(cctx, width, height, world, portals, isZoneMap, safeZone, returnPortal, rallyZone);
+    drawMinimapStatic(cctx, width, height, world, portals, isZoneMap, safeZone, returnPortal, rallyZone, walls);
     entry = { canvas, key };
     minimapStaticCache.set(key, entry);
   }
@@ -123,8 +193,9 @@ export function renderMinimap(context, options) {
     width, height, world, player, enemies = [], allies = [], pet = null, portals = [], returnPortal = null,
     isZoneMap = false, safeZone = null, rallyZone = null, moveTarget = null, ping = null, markers = [],
     camera, viewportWidth, viewportHeight, lockedNpc = null, shouldShowNpc = () => true, npcOpacity = () => 1,
+    walls = [],
   } = options;
-  const staticLayer = getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone);
+  const staticLayer = getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls);
   // La couche statique contient un fond blanc translucide. Sans effacer le
   // canvas visible, ce voile s'accumule à chaque frame jusqu'à devenir blanc.
   context.clearRect(0, 0, width, height);

@@ -153,9 +153,9 @@ export function getZonePortals(WORLD) {
 
       id: "p_11_to_12",
 
-      x: 10000,
+      x: 10232,
 
-      y: 6000,
+      y: 5900,
 
       r: 260,
 
@@ -424,7 +424,6 @@ export function getZoneSafeModules(WORLD) {
 
 
     w: 90,
-
     h: 165,
 
 

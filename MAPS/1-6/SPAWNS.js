@@ -103,16 +103,16 @@ export function getZonePortals(WORLD) {
   return [
 {
       id: "p_16_to_15",
-      x: 10000,
-      y: 6000,
+      x: 10232,
+      y: 5900,
       r: 260,
       toMap: "1-5",
       toPortal: "p_15_to_16",
       },
       {
       id: "p_16_to_18",
-      x: 1000,   // haut droite
-      y: 6000,
+      x: 1083,   // haut droite
+      y: 5900,
       r: 260,
       toMap: "1-8",
       toPortal: "p_18_to_16",

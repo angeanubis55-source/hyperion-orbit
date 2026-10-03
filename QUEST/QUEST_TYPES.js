@@ -99,9 +99,9 @@ const GENERATED_ROUTES = [
   ["route_mmo_outer", "Faubourgs MMO", ["1-5", "1-6", "1-7", "1-8"], 100000],
   ["route_eic_outer", "Faubourgs EIC", ["2-5", "2-6", "2-7", "2-8"], 100000],
   ["route_vru_outer", "Faubourgs VRU", ["3-5", "3-6", "3-7", "3-8"], 100000],
-  ["route_mmo_hidden", "Entrailles MMO", ["4-1", "1-9", "1-10"], 200000, "route_mmo_outer"],
-  ["route_eic_hidden", "Entrailles EIC", ["4-2", "2-9", "2-10"], 200000, "route_eic_outer"],
-  ["route_vru_hidden", "Entrailles VRU", ["4-3", "3-9", "3-10"], 200000, "route_vru_outer"],
+  ["route_mmo_hidden", "Entrailles MMO", ["4-1"], 200000, "route_mmo_outer"],
+  ["route_eic_hidden", "Entrailles EIC", ["4-2"], 200000, "route_eic_outer"],
+  ["route_vru_hidden", "Entrailles VRU", ["4-3"], 200000, "route_vru_outer"],
   ["route_homeworlds", "Pèlerinage des mères", ["1-1", "2-1", "3-1"], 250000, "upper_tour"],
   ["route_warzone", "Route du carnage", ["4-1", "4-2", "4-3", "4-4", "4-5"], 400000, "route_homeworlds"],
 ].map(([id, title, maps, credits, requires], index) => ({

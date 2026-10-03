@@ -16,9 +16,8 @@ export const MAP_LOADERS = Object.freeze({
   "1-6": () => import("../../MAPS/1-6/MAP.js"),
   "1-7": () => import("../../MAPS/1-7/MAP.js"),
   "1-8": () => import("../../MAPS/1-8/MAP.js"),
+  "1-BL": () => import("../../MAPS/1-BL/MAP.js"),
   "4-1": () => import("../../MAPS/4-1/MAP.js"),
-  "1-9": () => import("../../MAPS/1-9/MAP.js"),
-  "1-10": () => import("../../MAPS/1-10/MAP.js"),
   "2-1": () => import("../../MAPS/2-1/MAP.js"),
   "2-2": () => import("../../MAPS/2-2/MAP.js"),
   "2-3": () => import("../../MAPS/2-3/MAP.js"),
@@ -27,9 +26,8 @@ export const MAP_LOADERS = Object.freeze({
   "2-6": () => import("../../MAPS/2-6/MAP.js"),
   "2-7": () => import("../../MAPS/2-7/MAP.js"),
   "2-8": () => import("../../MAPS/2-8/MAP.js"),
+  "2-BL": () => import("../../MAPS/2-BL/MAP.js"),
   "4-2": () => import("../../MAPS/4-2/MAP.js"),
-  "2-9": () => import("../../MAPS/2-9/MAP.js"),
-  "2-10": () => import("../../MAPS/2-10/MAP.js"),
   "3-1": () => import("../../MAPS/3-1/MAP.js"),
   "3-2": () => import("../../MAPS/3-2/MAP.js"),
   "3-3": () => import("../../MAPS/3-3/MAP.js"),
@@ -38,9 +36,8 @@ export const MAP_LOADERS = Object.freeze({
   "3-6": () => import("../../MAPS/3-6/MAP.js"),
   "3-7": () => import("../../MAPS/3-7/MAP.js"),
   "3-8": () => import("../../MAPS/3-8/MAP.js"),
+  "3-BL": () => import("../../MAPS/3-BL/MAP.js"),
   "4-3": () => import("../../MAPS/4-3/MAP.js"),
-  "3-9": () => import("../../MAPS/3-9/MAP.js"),
-  "3-10": () => import("../../MAPS/3-10/MAP.js"),
   "4-4": () => import("../../MAPS/4-4/MAP.js"),
   "4-5": () => import("../../MAPS/4-5/MAP.js"),
   "5-2": () => import("../../MAPS/5-2/MAP.js"),
@@ -49,12 +46,17 @@ export const MAP_LOADERS = Object.freeze({
 
 const MAP_IDS_BY_LOWERCASE = new Map(Object.keys(MAP_LOADERS).map(id => [id.toLowerCase(), id]));
 
-// Anciens ids (sauvegardes existantes) : redirigés vers les nouveaux.
+// Anciens ids (sauvegardes existantes) : redirigés vers les ids canoniques.
+// Canonique = 1-BL/2-BL/3-BL + battle 4-1/4-2/4-3/4-4. Ne plus utiliser les
+// vieux ids ailleurs (toMap, portails, saves) : tout est uniformisé.
 const LEGACY_MAP_IDS = Object.freeze({
   "1-4.1": "4-1",
   "2-4.1": "4-2",
   "3-4.1": "4-3",
   "4-4.123": "4-4",
+  "1-8.1": "1-BL",
+  "2-8.1": "2-BL",
+  "3-8.1": "3-BL",
 });
 
 export function normalizeMapId(value) {

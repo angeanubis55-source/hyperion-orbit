@@ -74,16 +74,16 @@ export function getZonePortals(WORLD) {
   return [
     {
       id: "p_4-4_to_4-1",
-      x: 10000,   
-      y: 6000,
+      x: 10616,   
+      y: 6933,
       r: 520,
       toMap: "4-1",
       toPortal: "p_4-1_to_4-4",
     },
     {
       id: "p_4-4_to_15",
-      x: 2000,   // haut droite
-      y: 7000,
+      x: 3841,   // haut droite
+      y: 6933,
       r: 520,
       toMap: "1-5",
       toPortal: "p_15_to_4-4",
@@ -93,16 +93,16 @@ export function getZonePortals(WORLD) {
 
     {
       id: "p_4-4_to_4-2",
-      x: 12000,   
-      y: 6000,
+      x: 12083,   
+      y: 6067,
       r: 520,
       toMap: "4-2",
       toPortal: "p_4-2_to_4-4",
     },
     {
       id: "p_4-4_to_25",
-      x: 20000,   // haut droite
-      y: 2000,
+      x: 15505,   // haut droite
+      y: 667,
       r: 520,
       toMap: "2-5",
       toPortal: "p_25_to_4-4",
@@ -112,16 +112,16 @@ export function getZonePortals(WORLD) {
 
     {
       id: "p_4-4_to_4-3",
-      x: 11000,   
-      y: 8000,
+      x: 12083,   
+      y: 7467,
       r: 520,
       toMap: "4-3",
       toPortal: "p_4-3_to_4-4",
     },
     {
       id: "p_4-4_to_35",
-      x: 20000,   // haut droite
-      y: 12000,
+      x: 15505,   // haut droite
+      y: 12867,
       r: 520,
       toMap: "3-5",
       toPortal: "p_35_to_4-4",

@@ -106,8 +106,8 @@ export function getZonePortals(WORLD) {
   return [
        {
       id: "p_45_to_15",
-      x: 1000,   
-      y: 7000,
+      x: 3841,   
+      y: 6933,
       r: 520,
       toMap: "1-5",
       toPortal: "p_15_to_45",
@@ -117,8 +117,8 @@ export function getZonePortals(WORLD) {
 
     {
       id: "p_45_to_25",
-      x: 11000,   
-      y: 1000,
+      x: 15505,   
+      y: 667,
       r: 520,
       toMap: "2-5",
       toPortal: "p_25_to_45",
@@ -128,8 +128,8 @@ export function getZonePortals(WORLD) {
 
     {
       id: "p_45_to_35",
-      x: 11000,   
-      y: 13000,
+      x: 15505,   
+      y: 13133,
       r: 520,
       toMap: "3-5",
       toPortal: "p_35_to_45",

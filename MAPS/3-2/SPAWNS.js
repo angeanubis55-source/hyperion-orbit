@@ -80,15 +80,15 @@ export function getZonePortals(WORLD) {
   return [
     {
       id: "p_32_to_31",
-      x: 10000,   // haut gauche
-      y: 6000,
+      x: 10232,   // haut gauche
+      y: 5900,
       r: 260,
       toMap: "3-1",
       toPortal: "p_31_to_32",
     },
     {
       id: "p_32_to_33",
-      x: 10000,   // haut droite
+      x: 10232,   // haut droite
       y: 1000,
       r: 260,
       toMap: "3-3",
@@ -96,7 +96,7 @@ export function getZonePortals(WORLD) {
     },
     {
       id: "p_32_to_34",
-      x: 1000,   // haut gauche
+      x: 1083,   // haut gauche
       y: 1000,
       r: 260,
       toMap: "3-4",

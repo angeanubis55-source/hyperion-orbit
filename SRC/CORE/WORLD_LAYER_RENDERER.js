@@ -41,9 +41,16 @@ export function drawWallLayer(context, walls, texture, options) {
   context.save();
   for (const wall of walls) {
     context.save();
-    context.translate(wall.x - wall.w / 2 + offsetX, wall.y - wall.h / 2 + offsetY);
+    // ✅ Coords écran arrondies à l'entier : 2 murs qui partagent EXACTEMENT
+    // la même arête tombent sur le même pixel → aucune ligne de jointure
+    // (avec des fractionnaires, l'antialiasing laissait filtrer le fond).
+    context.translate(0, 0);
     context.fillStyle = pattern;
-    context.fillRect(0, 0, wall.w, wall.h);
+    const x0 = Math.round(wall.x - wall.w / 2 + offsetX);
+    const y0 = Math.round(wall.y - wall.h / 2 + offsetY);
+    const x1 = Math.round(wall.x + wall.w / 2 + offsetX);
+    const y1 = Math.round(wall.y + wall.h / 2 + offsetY);
+    context.fillRect(x0, y0, x1 - x0, y1 - y0);
     context.restore();
   }
   context.restore();

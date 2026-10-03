@@ -75,7 +75,7 @@ export function getZonePortals(WORLD) {
   return [
     {
       id: "p_18_to_16",
-      x: 10000,
+      x: 10232,
       y: 1000,
       r: 260,
       toMap: "1-6",
@@ -83,35 +83,19 @@ export function getZonePortals(WORLD) {
     },
     {
       id: "p_18_to_17",
-      x: 10000,
-      y: 6000,
+      x: 10232,
+      y: 5900,
       r: 260,
       toMap: "1-7",
       toPortal: "p_17_to_18",
     },
     {
-      id: "p_18_to_18.1",
-      x: 5500,
-      y: 6000,
+      id: "p_18_to_1BL",
+      x: 6111,
+      y: 5667,
       r: 260,
-      toMap: "1-8.1",
-      toPortal: "p_18.1_to_18",
-    },
-    {
-      id: "p_18_to_19",
-      x: 1000,
-      y: 1000,
-      r: 260,
-      toMap: "1-9",
-      toPortal: "p_19_to_18",
-    },
-    {
-      id: "p_18_to_100",
-      x: 1000,
-      y: 6000,
-      r: 260,
-      toMap: "1-10",
-      toPortal: "p_100_to_18",
+      toMap: "1-BL",
+      toPortal: "p_1BL_to_18",
     },
   ];
 }
