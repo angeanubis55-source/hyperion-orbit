@@ -5,6 +5,8 @@ import vm from "node:vm";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 import { REFINERY_RECIPES, getRefineryRecipe, refineOreOutput } from "../SRC/DATA/RESOURCES.js";
 import { guidedChaseSpeed } from "../COMBAT/PROJECTILES.js";
+import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
+import { createDeferredPersistence } from "../SRC/CORE/DEFERRED_PERSISTENCE.js";
 import { drawCombatFloatTexts } from "../SRC/CORE/COMBAT_TEXT_RENDERER.js";
 import { tickFloatingTexts } from "../SRC/CORE/FRAME_SYSTEMS.js";
 import { QUEST_DEFINITIONS, getQuestObjectives, normalizeQuestState, recordQuestProgress, isQuestComplete, claimQuest } from "../QUEST/QUEST_TYPES.js";
@@ -18,6 +20,109 @@ function engineFunction(name, source = engine) {
   assert.ok(end > start, name);
   return source.slice(start, end + 2);
 }
+
+test("stockage des cargos : aucune serialisation dans la frame, etat recent et flush a la fermeture", () => {
+  const callbacks = [], writes = [];
+  let time = 10000;
+  let state = { drops: 1 };
+  const persist = createDeferredPersistence(() => writes.push(structuredClone(state)), {
+    now: () => time, schedule: fn => callbacks.push(fn),
+  });
+  persist(); state.drops = 2; persist();
+  assert.equal(writes.length, 0); assert.equal(callbacks.length, 1);
+  callbacks.shift()(); assert.deepEqual(writes, [{ drops: 2 }]);
+  time += 1000; persist(); assert.equal(callbacks.length, 0);
+  time += 5000; state.drops = 3; persist();
+  state.drops = 4; persist({ force: true });
+  assert.deepEqual(writes, [{ drops: 2 }, { drops: 4 }]);
+  callbacks.shift()(); assert.equal(writes.length, 2);
+});
+
+test("recompense NPC partage : compte canonique sans normalisation, gains conserves", () => {
+  const user = { id: "pilot", credits: 100, revision: 1, stats: { exp: 10, honor: 2, lifetimeKills: 0, npcKills: {} } };
+  const old = { ...user, credits: 50, stats: { ...user.stats } };
+  const context = vm.createContext({ account: { user: old }, netList: () => [user],
+    getCurrentUserFull: () => { throw new Error("Normalisation pendant la mort"); },
+    player: { credits: 100, kills: 0 }, NPC_TYPES: { npc_test: { name: "Test" } },
+    getActiveDroneFormation: () => ({}), calculateRankPoints: () => 42, formatInteger,
+    addGameLog: () => {}, showNotificationGroup: () => {}, markProgressDirty: () => {}, window: {},
+  });
+  vm.runInContext(engineFunction("killRewards"), context);
+  context.killRewards({ type: "npc_test", _netUid: "npc1", _netLootOwner: true,
+    _netReward: { credits: 20, exp: 30, honor: 5, baseExp: 30, baseHonor: 5,
+      totalExp: 40, totalHonor: 7, revision: 2, percent: 100, ownsKill: true } });
+  assert.equal(context.account.user, user);
+  assert.equal(context.player.credits, 120);
+  assert.equal(user.credits, 120);
+  assert.equal(user.stats.exp, 40);
+  assert.equal(user.stats.honor, 7);
+  assert.equal(user.stats.npcKills.npc_test, 1);
+  assert.equal(user.revision, 2);
+});
+
+function targetHarness(enemies) {
+  const start = engine.indexOf("const Target = (() => {");
+  const end = engine.indexOf("\n})();", start) + "\n})();".length;
+  assert.ok(start >= 0 && end > start);
+  let stops = 0;
+  const context = vm.createContext({ enemies, attackActive: false, fireCooldown: .5,
+    stopAttack: () => { stops++; context.attackActive = false; },
+    petLockValid: () => true, getEnemyById: id => enemies.find(e => e.id === id),
+    player: { shPen: 0 }, NPC_TYPES: {}, rules: {}, damageEnemyLayers,
+    blMapDamageMult: () => 1, diminishWeakened: () => false, holoEnemyWeakened: () => false,
+    triggerBossEncounterPhase: () => {}, sendNetHit: () => {},
+  });
+  const damage = engine.slice(engine.indexOf("function damageEnemy("), engine.indexOf("function applyRocketHit("));
+  const deaths = engine.slice(engine.indexOf("function processDeathsMeasured("), engine.indexOf("function scheduleGalaxyGateCompletion("));
+  vm.runInContext(engine.slice(start, end) + "\nglobalThis.target = Target;\n" + damage + "\n" + deaths, context);
+  return { context, target: context.target, stops: () => stops };
+}
+
+test("lock NPC : impact predit lethal avant processDeaths, correction serveur sans delock", () => {
+  const npc = { id: 1, type: "npc_Streuner", _netUid: "npc1", _netSeq: 3, hp: 100, sh: 0 };
+  const h = targetHarness([npc]);
+  h.target.set(npc); h.context.attackActive = true;
+  h.context.damageEnemy(npc, 1000);
+  assert.equal(npc.hp, 0);
+  // Plusieurs effets relisent la cible dans la meme frame, avant la mort.
+  assert.equal(h.target.get(), npc);
+  assert.equal(h.target.get(), npc);
+  h.context.processDeathsMeasured();
+  assert.equal(npc.hp, 1);
+  assert.equal(npc._netWaiting, true);
+  npc.hp = 70; // Le snapshot confirme que la cible est encore vivante.
+  assert.equal(h.target.get(), npc);
+  assert.equal(h.context.attackActive, true);
+  assert.equal(h.context.fireCooldown, .5);
+  assert.equal(h.stops(), 0);
+});
+
+test("lock : morts confirmees serveur et solo liberent la cible", () => {
+  for (const verdict of [true, false]) {
+    const npc = { id: 1, _netUid: "npc1", hp: 100 };
+    const h = targetHarness([npc]); h.target.set(npc);
+    npc.hp = 0; npc._netKiller = verdict;
+    assert.equal(h.target.get(), null);
+  }
+  const npc = { id: 1, hp: 100 };
+  const h = targetHarness([npc]); h.target.set(npc); npc.hp = 0;
+  assert.equal(h.target.get(), null);
+});
+
+test("lock : remplacement conserve l'incarnation, sans suivre le respawn ni un retrait", () => {
+  const npc = { id: 1, _netUid: "npc1", universeUid: "npc1", _netSeq: 3, hp: 100 };
+  const enemies = [npc];
+  const h = targetHarness(enemies); h.target.set(npc); h.context.attackActive = true;
+  const twin = { ...npc, id: 2 };
+  enemies.splice(0, 1, twin);
+  assert.equal(h.target.get(), twin);
+  assert.equal(h.stops(), 0);
+  enemies.splice(0, 1, { ...twin, _netSeq: 4 });
+  assert.equal(h.target.get(), null);
+  enemies.splice(0, 1, npc); h.target.set(npc);
+  enemies.length = 0;
+  assert.equal(h.target.get(), null);
+});
 
 test("affichage des gains : format francais preserve", () => {
   for (const value of [0, 12, 1234, 123456789, -1234, 42.9, undefined, Infinity]) {

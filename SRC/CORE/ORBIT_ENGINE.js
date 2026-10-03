@@ -1,5 +1,6 @@
 import { petEscortTarget, stepPetMotion, petCombatVelocity, orientPet } from "../../PET/PET_MOTION.js";
 import { measureGameTask, recordGameTask } from "./PERFORMANCE_TIMINGS.js";
+import { createDeferredPersistence } from "./DEFERRED_PERSISTENCE.js";
 import { drawCombatFloatTexts } from "./COMBAT_TEXT_RENDERER.js";
 import { NpcEngine } from "../../NPC/NPC_ENGINE_RENDERER.js";
 import { ShipEngine } from "../../SHIP/SHIP_ENGINE_RENDERER.js";
@@ -73,7 +74,7 @@ import {
   tickCurrentUserAuction,
 } from "./ACCOUNT.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
-import { flushNetUser, noteNetConsumption } from "./ACCOUNT_NET.js";
+import { flushNetUser, netList, noteNetConsumption } from "./ACCOUNT_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
   GALAXY_GATE_DEFINITIONS,
@@ -19230,17 +19231,12 @@ try {
     }, 5000);
   }
 } catch {}
-let universeSaveT = 0;
-function persistUniverse({ force = false } = {}) {
+const persistUniverse = createDeferredPersistence(force => {
   worldClock.markTick({ force });
-  if (!universeStorage?.setItem && !force) return;
-  const nowMs = worldClock.now();
-  if (!force && nowMs - universeSaveT < 5000) return;
-  universeSaveT = nowMs;
   try {
-    universeStorage?.setItem?.(UNIVERSE_KEY, serializeUniverse(universe));
+    measureGameTask("persistUniverse", () => universeStorage?.setItem?.(UNIVERSE_KEY, serializeUniverse(universe)));
   } catch {}
-}
+}, { now: () => worldClock.now() });
 // Monde continu collectables : même rythme que l'univers (5 s, force au quit).
 let collectableStore = createCollectableStore();
 try {
@@ -19248,16 +19244,11 @@ try {
 } catch {
   collectableStore = createCollectableStore();
 }
-let collectableSaveT = 0;
-function persistCollectables({ force = false } = {}) {
-  if (!universeStorage?.setItem && !force) return;
-  const nowMs = worldClock.now();
-  if (!force && nowMs - collectableSaveT < 5000) return;
-  collectableSaveT = nowMs;
+const persistCollectables = createDeferredPersistence(() => {
   try {
-    universeStorage?.setItem?.(COLLECTABLE_STORE_KEY, serializeCollectableStore(collectableStore));
+    measureGameTask("persistCollectables", () => universeStorage?.setItem?.(COLLECTABLE_STORE_KEY, serializeCollectableStore(collectableStore)));
   } catch {}
-}
+}, { now: () => worldClock.now() });
 // ✅ Purge des ressources d'une Galaxy Gate terminée/perdue : supprime les
 // collectables non ramassés (cargos + assemblage) en mémoire ET dans le
 // store persisté. Évite l'accumulation quand on enchaîne les runs
@@ -23853,8 +23844,9 @@ const Target = (() => {
     if (!netUid && !uniUid && !id) return null;
     for (const x of enemies) {
       if (!x || x === t || !(x.hp > 0)) continue;
-      if (netUid && x._netUid != null && String(x._netUid) === netUid) return x;
-      if (uniUid && (String(x.universeUid) === uniUid || (x._netUid != null && String(x._netUid) === uniUid))) return x;
+      if (netUid && x._netUid != null && String(x._netUid) === netUid
+        && (Number(x._netSeq) || 0) === (Number(t._netSeq) || 0)) return x;
+      if (!netUid && uniUid && (String(x.universeUid) === uniUid || (x._netUid != null && String(x._netUid) === uniUid))) return x;
       if (!netUid && !uniUid && id && x.id != null && String(x.id) === id) return x;
     }
     return null;
@@ -23920,7 +23912,12 @@ const Target = (() => {
       }
       return cur;
     }
-    if (!enemies.includes(cur) || cur.hp <= 0) {
+    const present = enemies.includes(cur);
+    if (!present || cur.hp <= 0) {
+      // Zero PV predit n'est pas une mort serveur. D'autres impacts et
+      // effets relisent le lock AVANT processDeaths, qui remet alors 1 PV
+      // en attendant le verdict. Ne pas effacer cur dans cet intervalle.
+      if (present && cur._netUid != null && cur._netKiller == null) return cur;
       // Purge/respawn snapshot : la cible vit sous un autre objet (jumeau
       // même uid) → on la suit sans casser le verrou ni l'attaque en cours.
       const twin = cur && cur.hp > 0 ? findNpcTwin(cur) : null;
@@ -24720,7 +24717,9 @@ function killRewards(e) {
     // la sauvegarde de position relit le clone sans XP et donne l'impression
     // que la recompense a ete retiree. Toujours repartir du canon local
     // courant avant d'appliquer le delta confirme par le serveur.
-    const currentAccountUser = getCurrentUserFull();
+    // Le cache reseau contient deja le compte charge. Sa reference canonique
+    // evite de normaliser tous les hangars/inventaires pendant chaque kill.
+    const currentAccountUser = netList()[0] || getCurrentUserFull();
     if (currentAccountUser && (!account.user || String(currentAccountUser.id) === String(account.user.id))) {
       account.user = currentAccountUser;
     } else if (!account.user) {
@@ -25075,8 +25074,8 @@ if (e.type === "npc_Cubikon") {
    // }
 
     if (!e.noRewards) {
-      advanceQuestProgress("kill", e.type);
-      killRewards(e);
+      measureGameTask("npcDeath.quests", () => advanceQuestProgress("kill", e.type));
+      measureGameTask("npcDeath.rewards", () => killRewards(e));
       try { onStockpileNpcKill(); } catch {}
     }
 
