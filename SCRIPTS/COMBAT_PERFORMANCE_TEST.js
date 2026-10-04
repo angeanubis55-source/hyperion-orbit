@@ -73,7 +73,7 @@ function targetHarness(enemies) {
     blMapDamageMult: () => 1, diminishWeakened: () => false, holoEnemyWeakened: () => false,
     triggerBossEncounterPhase: () => {}, sendNetHit: () => {},
   });
-  const damage = engine.slice(engine.indexOf("function damageEnemy("), engine.indexOf("function applyRocketHit("));
+  const damage = engineFunction('refreshCubikonFromMinionHit') + '\n' + engine.slice(engine.indexOf("function damageEnemy("), engine.indexOf("function applyRocketHit("));
   const deaths = engine.slice(engine.indexOf("function processDeathsMeasured("), engine.indexOf("function scheduleGalaxyGateCompletion("));
   vm.runInContext(engine.slice(start, end) + "\nglobalThis.target = Target;\n" + damage + "\n" + deaths, context);
   return { context, target: context.target, stops: () => stops };
@@ -489,14 +489,14 @@ test('Cubikon : renfort sous cinq survivants, aucun apres reset ou mort', () => 
     const sim=new ctx.Refill(); let spawned=0;
     sim.countCubikonMinions=()=>count;
     sim.spawnCubikonWave=()=>{spawned=20-count;};
-    sim.refillCubikonMinions(cub,2000);
+    sim.refillCubikonMinions(cub,15000);
     assert.equal(spawned,count<5?20-count:0);
-    spawned=0; sim.refillCubikonMinions(cub,12000); assert.equal(spawned,0);
+    spawned=0; sim.refillCubikonMinions(cub,17000); assert.equal(spawned,0);
     cub.hp=0; sim.refillCubikonMinions(cub,2000); assert.equal(spawned,0);
-    const local=vm.createContext({enemies:Array.from({length:count},()=>({hp:100,type:'npc_Protegit',masterId:1})),CUBIKON_RESET:{idleDelay:10},isEntityJammed:()=>false,spawnProtegitOnCubikonHit:()=>{spawned=20-count;},cub:{id:1,hp:100,_spawnedOnce:true,_sinceHit:1}});
+    const local=vm.createContext({enemies:Array.from({length:count},()=>({hp:100,type:'npc_Protegit',masterId:1})),CUBIKON_RESET:{idleDelay:15},isEntityJammed:()=>false,spawnProtegitOnCubikonHit:()=>{spawned=20-count;},cub:{id:1,hp:100,_spawnedOnce:true,_sinceHit:1}});
     vm.runInContext(engineFunction('refillLocalCubikonMinions')+'\nrefillLocalCubikonMinions(cub);',local);
     assert.equal(spawned,count<5?20-count:0);
-    spawned=0;local.cub._sinceHit=11;
+    spawned=0;local.cub._sinceHit=16;
     vm.runInContext('refillLocalCubikonMinions(cub)',local);assert.equal(spawned,0);
   }
 });
@@ -512,4 +512,28 @@ test('boutique : tirs et XP REX rafraichissent le solde sans reconstruire les co
   vm.runInContext(engineFunction('renderShopMeasured',source),ctx);
   for(let i=0;i<10;i++) {user.pet.exp++;user.rockets.r310--;vm.runInContext('renderShopMeasured(user)',ctx);}
   assert.equal(refreshed,10);
+});
+
+
+test('Protegits et renforts : impact relance le delai du maitre vivant uniquement', () => {
+  const cub={id:1,type:'npc_Cubikon',hp:100,_sinceHit:14,_resetting:true};
+  const minion={id:2,type:'npc_Protegit',masterId:1,hp:100,despawnDur:0.5};
+  const ctx=vm.createContext({enemies:[cub,minion],minion,netplayNpcActive:()=>false});
+  vm.runInContext(engineFunction('refreshCubikonFromMinionHit')+'\nrefreshCubikonFromMinionHit(minion)',ctx);
+  assert.equal(cub._sinceHit,0);assert.equal(cub._resetting,false);assert.equal(minion.despawnDur,0);
+  cub._sinceHit=14;cub.hp=0;
+  vm.runInContext('refreshCubikonFromMinionHit(minion)',ctx);assert.equal(cub._sinceHit,14);
+});
+
+
+test('fuite NPC : cap conserve sans cible, rebond aux limites sans nouveau tirage', async () => {
+  const {npcFleeDirection}=await import('../NPC/NPC_FLEE.js');
+  const npc={x:500,y:500},world={w:11000,h:7000};let draws=0;
+  const random=()=>{draws++;return 0;};
+  assert.deepEqual(npcFleeDirection(npc,world,random),{x:1,y:0});
+  npc.target={x:-999,y:50};
+  assert.deepEqual(npcFleeDirection(npc,world,random),{x:1,y:0});
+  npc.target=null;npc.x=world.w-80;
+  assert.deepEqual(npcFleeDirection(npc,world,random),{x:-1,y:0});
+  assert.equal(draws,1);
 });

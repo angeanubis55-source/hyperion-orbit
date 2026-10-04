@@ -1,3 +1,4 @@
+import { npcFleeDirection } from "../../NPC/NPC_FLEE.js";
 import { petEscortTarget, stepPetMotion, petCombatVelocity, orientPet } from "../../PET/PET_MOTION.js";
 import { measureGameTask, recordGameTask } from "./PERFORMANCE_TIMINGS.js";
 import { createDeferredPersistence } from "./DEFERRED_PERSISTENCE.js";
@@ -23984,6 +23985,19 @@ function petLockValid() {
     && petState.ready && !player.dead && started && Number(pet.hp) > 0;
 }
 
+function refreshCubikonFromMinionHit(minion) {
+  if (minion?.type !== "npc_Protegit" || !minion.masterId) return;
+  if (minion._netUid && netplayNpcActive()) return;
+  const cub = enemies.find(e => e.id === minion.masterId && e.type === "npc_Cubikon" && e.hp > 0);
+  if (!cub) return;
+  cub._sinceHit = 0;
+  cub._resetting = false;
+  cub._minionDespawning = false;
+  for (const m of enemies) {
+    if (m.masterId === cub.id && m.hp > 0) { m.despawnDur = 0; m.despawnT = 0; }
+  }
+}
+
 function refillLocalCubikonMinions(cub) {
   if (!cub || !(cub.hp > 0) || !cub._spawnedOnce || cub._resetting || isEntityJammed(cub)) return;
   if (!(cub._sinceHit < CUBIKON_RESET.idleDelay) || cub._animPhase) return;
@@ -24203,6 +24217,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
     return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0, sab: true };
   }
   e._damagedByPlayer = true;
+  refreshCubikonFromMinionHit(e);
   if (e._cubikonDeathFlee) e.noRewards = false;
   e._healthRevealed = true;
   triggerBossEncounterPhase(e, stolen);
@@ -24345,6 +24360,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   }
   if (result.total > 0) {
     e._damagedByPlayer = true;
+    refreshCubikonFromMinionHit(e);
     if (e._cubikonDeathFlee) e.noRewards = false;
   }
   // Reallocate (Hammerclaw Plus) : 20 % de nos dégâts alimentent le pot commun.
@@ -34195,14 +34211,17 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
         // mouvement change.
         if (npcShouldFlee(e)) {
           e._fleeing = true;
-          setNpcVelocity(e, -nx, -ny, npcFleeSpeed(e));
+          const fleeDir = npcFleeDirection(e, WORLD);
+          setNpcVelocity(e, fleeDir.x, fleeDir.y, npcFleeSpeed(e));
           integrateNpcPosition(e, dt);
           if (e.vx * e.vx + e.vy * e.vy > 25) {
             e.angle = Math.atan2(e.vy, e.vx);
           }
+          if (d <= (e.shootRange || 540) && !(combatTarget === player && isPlayerUntargetable())) e.angle = Math.atan2(combatTarget.y - e.y, combatTarget.x - e.x);
           continue;
         }
         e._fleeing = false;
+        e.fleeDirection = null;
 
         if (!e.aiZ) {
           e.aiZ = {
@@ -34388,7 +34407,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
         // le clamp + la séparation.
         if (npcShouldFlee(e)) {
           e._fleeing = true;
-          const corner = npcGateFleeCorner(e);
+          const corner = e.fleeCorner || (e.fleeCorner = npcGateFleeCorner(e));
           const cx = corner.x - e.x, cy = corner.y - e.y;
           const cd = Math.hypot(cx, cy);
           if (cd < NPC_FLEE_ARRIVED_DIST) {
@@ -34398,6 +34417,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           }
         } else {
           e._fleeing = false;
+          e.fleeCorner = null;
           if (!e.ai) e.ai = {};
 
           // Camouflage ultime : le NPC reste sur place (cible invisible).

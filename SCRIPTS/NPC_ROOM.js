@@ -1,3 +1,4 @@
+import { npcFleeDirection } from "../NPC/NPC_FLEE.js";
 // SCRIPTS/NPC_ROOM.js — Simulation NPC serveur pour les maps zone.
 // Reutilise les modules purs du jeu : UNIVERSE_SIM (slots/respawn),
 // NPC_TYPES (stats), COMBAT_RULES (degats), MAPS/<id>/SPAWNS+WORLD (camps).
@@ -354,7 +355,7 @@ drainPlayerHits() {
   // --- Vague Cubikon partagee (parite solo, visible par tous) ---
   // Le premier impact sur un Cubikon declenche son animation d'ouverture
   // (delay 2 s -> open -> hold 2 s) puis le serveur fait apparaitre 20
-  // Protegits ancres au Cubikon. Sans nouveau coup pendant 10 s, les
+  // Protegits ancres au Cubikon. Sans nouveau coup pendant 15 s, les
   // minions sont retires silencieusement et la vague est re-armee.
   static CUBIKON_WAVE_SIZE = 20;
   static CUBIKON_WAVE_MAX = 20;
@@ -408,7 +409,7 @@ drainPlayerHits() {
 
   refillCubikonMinions(cub, nowMs) {
     if (cub?.type !== "npc_Cubikon" || !(cub.hp > 0) || !cub.cubeArmed || cub.cube) return;
-    if (nowMs - Number(cub.lastCubeHitAt || 0) > 10000) return;
+    if (nowMs - Number(cub.lastCubeHitAt || 0) > 15000) return;
     if (this.countCubikonMinions(cub.uid) < 5) this.spawnCubikonWave(cub, nowMs);
   }
 
@@ -625,6 +626,10 @@ drainPlayerHits() {
       // perde sa protection avant de reagir.
       entry.pendingAggroBy = String(clientId);
     }
+    if (applied > 0 && entry.type === "npc_Protegit" && entry.masterUid) {
+      const master = this.entries.get(entry.masterUid);
+      if (master?.type === "npc_Cubikon" && master.hp > 0) master.lastCubeHitAt = nowMs;
+    }
     if (entry.type === "npc_Cubikon") {
       // Premier impact de l'engagement : animation + vague partagees.
       // (Si le coup est fatal, la mort ci-dessous libere les minions.)
@@ -686,7 +691,7 @@ drainPlayerHits() {
       this.campT.set(camp.id, camp.respawn);
     }
     // 1bis) Vagues Cubikon : transitions d'animation, spawn partage,
-    // dechet des minions orphelins et re-armement apres 10 s sans coup.
+    // dechet des minions orphelins et re-armement apres 15 s sans coup.
     for (const [muid, m] of [...this.entries]) {
       if (!m) continue;
       if (m.type === "npc_Cubikon" && m.cube) {
@@ -711,11 +716,11 @@ drainPlayerHits() {
         this.entries.delete(muid);
         continue;
       }
-      // Cubikon vivant sans coup depuis 10 s : minions retires
+      // Cubikon vivant sans coup depuis 15 s : minions retires
       // silencieusement (parite solo : despawn 0.5 s, sans recompense),
       // la prochaine salve re-arme la vague.
       if (m.type === "npc_Cubikon" && m.cubeArmed && (m.hp > 0)
-        && nowMs - Number(m.lastCubeHitAt || 0) > 10000) {
+        && nowMs - Number(m.lastCubeHitAt || 0) > 15000) {
         for (const [muid2, m2] of [...this.entries]) {
           if (m2 && m2.masterUid === m.uid && m2.hp > 0 && !m2.decaying) {
             this.entries.delete(muid2);
@@ -900,6 +905,7 @@ drainPlayerHits() {
       // Chasseurs (raid) : jamais de fuite, combat à mort comme en gate.
       // Ancres (Cubikon + boss BL) : jamais de fuite non plus.
       const fleeing = !e.kamikaze && e.hunter !== true && !isAnchoredNpcType(e.type) && e.hpMax > 0 && e.hp / e.hpMax < 0.10;
+      if (!fleeing) e.fleeDirection = null;
       const from = attacker || close;
       if (cubeAnchored) {
         if (e.tx == null || Math.hypot(e.tx - e.x, e.ty - e.y) < 100) {
@@ -911,12 +917,10 @@ drainPlayerHits() {
         const d = Math.hypot(dx, dy) || 1;
         mx = dx / d; my = dy / d; spd = e.speed * 0.7;
         if (spd > 0) e.angle = Math.atan2(dy, dx);
-      } else if (fleeing && from) {
-        // Fuite : s'eloigne de la menace, rattrapable.
-        const dx = e.x - from.x, dy = e.y - from.y;
-        const d = Math.hypot(dx, dy) || 1;
-        mx = dx / d; my = dy / d; spd = e.speed * 0.85;
-        e.angle = Math.atan2(dy, dx);
+      } else if (fleeing) {
+        const dir = npcFleeDirection(e, this.world);
+        mx = dir.x; my = dir.y; spd = e.speed * 0.85;
+        e.angle = chase ? Math.atan2(chase.y - e.y, chase.x - e.x) : Math.atan2(my, mx);
       } else if (chase) {
         const dx = chase.x - e.x, dy = chase.y - e.y;
         const d = Math.hypot(dx, dy) || 1;
