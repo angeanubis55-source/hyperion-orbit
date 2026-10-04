@@ -33734,10 +33734,9 @@ for (const ptl of zonePortals) {
   // leur état d'aggro et les tirs déjà en vol continuaient d'arriver, ce qui
   // donnait l'impression qu'ils ne lâchaient pas même une fois protégé.
   if (safeZoneActive && !wasSafeZoneActive) {
-    try {
-      const t = (typeof Target !== "undefined" && Target && typeof Target.get === "function") ? Target.get() : null;
-      if (t && Array.isArray(enemies) && enemies.includes(t)) Target.clear();
-    } catch {}
+    // Note : on garde le lock (Target) volontairement — seul l'aggro des NPC
+    // est coupée. Le lock seul sans attaque ne ré-aggro pas (voir
+    // npcShelterKeepsAggro qui exige attackActive).
     try {
       for (const e of (enemies || [])) {
         if (!e || e.hp <= 0) continue;
