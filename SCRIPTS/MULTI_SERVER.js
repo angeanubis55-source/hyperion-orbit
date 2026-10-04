@@ -2127,7 +2127,13 @@ setInterval(() => {
             const s = victim?.state;
             if (!s || s.pvpDead === true || !(Number(s.hp) > 0)) continue;
             if (Number(s.hswap) > 0 || Date.now() < Number(s.ishUntil || 0) || Date.now() < Number(s.iemUntil || 0)) continue;
-            if (s.serverSafe === true) continue;
+            if (s.serverSafe === true) {
+              // Riposte ZNA : seul le NPC visé peut blesser un joueur
+              // protégé (parité solo). Tous les autres impacts sont ignorés.
+              let safeHitOk = false;
+              try { safeHitOk = typeof sim.allowsSafeHit === "function" && sim.allowsSafeHit(hit?.npcUid, String(hit?.playerId)) === true; } catch {}
+              if (!safeHitOk) continue;
+            }
             if (Math.random() < Math.max(0, Math.min(0.9, Number(s.evade) || 0))) continue;
             const hitNow = Date.now();
             const damage = Math.max(0, Math.min(1e8, Number(hit?.damage) || 0));

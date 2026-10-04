@@ -110,7 +110,8 @@ export class ZoneNpcSim {
           const mods = spawns.getZoneSafeModules(world);
           const z = mods?.zone;
           if (z && String(z.kind || "circle") === "circle" && Number.isFinite(Number(z.r))) {
-            safe = [{ x: Number(z.x) || 0, y: Number(z.y) || 0, r: Number(z.r) }];
+            // Marge +50 : parité solo (z.r + SAFE_ZONE_MARGIN côté client).
+            safe = [{ x: Number(z.x) || 0, y: Number(z.y) || 0, r: Number(z.r) + 50 }];
           }
           // Modules autonomes (controleurs de missions x-4 / x-5). Les x-5
           // n'ont volontairement aucune `zone` globale : leur `safeRadius`
@@ -131,7 +132,8 @@ export class ZoneNpcSim {
             const destination = String(portal.toMap || "").trim().toLowerCase();
             // Les portails de Galaxy Gates ne fournissent jamais de zone sure.
             if (["alpha", "beta", "gamma"].includes(destination)) continue;
-            safe.push({ x: Number(portal.x) || 0, y: Number(portal.y) || 0, r: 900 });
+            // Rayon 500 : parité solo (450 + SAFE_ZONE_MARGIN côté client).
+            safe.push({ x: Number(portal.x) || 0, y: Number(portal.y) || 0, r: 500 });
           }
         }
       } catch {}
@@ -225,6 +227,27 @@ export class ZoneNpcSim {
   // Cible valide : vivante, hors zone sure et non camouflée (ultime ou CPU).
   validTarget(p) {
     return !!p && !p.dead && !p.safe && !p.cloaked && Date.now() >= Number(p.untargetableUntil || 0);
+  }
+
+  // Riposte depuis une zone sure : le NPC frappé par un joueur protégé
+  // garde le droit de le pourchasser et de le toucher tant que son aggro
+  // est fraîche (refreshée par les impacts reçus). Parité solo : seul le
+  // NPC visé riposte, les autres ignorent le joueur protégé.
+  retaliationOpen(e, pid, nowMs) {
+    if (!e || pid == null) return false;
+    const p = this.players.get(String(pid));
+    if (!p || p.dead || p.safe !== true) return false;
+    if (String(e.lastHitBy || "") !== String(pid)) return false;
+    return Number(nowMs || Date.now()) < Number(e.aggroUntil || 0);
+  }
+
+  // MULTI_SERVER : laisse passer les dégâts de riposte vers un joueur
+  // protégé (uniquement le NPC qu'il est en train de taper).
+  allowsSafeHit(npcUid, pid) {
+    if (!npcUid || pid == null) return false;
+    const e = this.entries.get(String(npcUid));
+    if (!e || !(e.hp > 0)) return false;
+    return this.retaliationOpen(e, pid, Date.now());
   }
 
   breakPlayerLocks(clientId, untilMs) {
@@ -716,6 +739,7 @@ drainPlayerHits() {
     if (entry.firstBy == null) entry.firstBy = String(clientId);
     entry.lastHitBy = String(clientId);
     const nowMs = Date.now();
+    entry.lastHitAt = nowMs;
     // Lock premier attaquant : prise si libre (le premier qui tape prend le
     // rouge), refresh si détenteur (un dégât annule la grace, "re bon").
     // Détenteur non confirmé (transfert auto, jamais tapé depuis) : le hit
@@ -766,18 +790,16 @@ drainPlayerHits() {
       const key = `${uid}|${clientId}`;
       this.feed.set(key, { uid, by: String(clientId), total: Math.round((this.feed.get(key)?.total || 0) + applied) });
     }
-    // Provoque : poursuit son agresseur quelques secondes (comme en solo).
+    // Provoque : poursuit son agresseur quelques secondes (comme en solo),
+    // même si le tir part depuis une ZNA (seul le NPC visé riposte : les
+    // autres ignorent le tireur protégé via validTarget, pas de rancune).
     // Pendant l'IEM, ses tirs peuvent continuer a toucher le NPC mais ne
     // doivent pas recreer silencieusement l'ancien lock.
-    if (this.validTarget(shooter)) {
+    if (this.validTarget(shooter) || (shooter.safe === true && nowMs >= Number(shooter.untargetableUntil || 0))) {
       entry.aggroBy = String(clientId);
-      entry.aggroUntil = Date.now() + (Number(entry.aggroHoldMs) || 3500);
+      entry.aggroUntil = nowMs + (Number(entry.aggroHoldMs) || 3500);
       entry.pendingAggroBy = null;
       entry.retreating = false;
-    } else if (shooter.safe && Date.now() >= Number(shooter.untargetableUntil || 0)) {
-      // Le tir depuis une ZNA est memorise : le NPC attend que le pilote
-      // perde sa protection avant de reagir.
-      entry.pendingAggroBy = String(clientId);
     }
     if (applied > 0 && entry.type === "npc_Protegit" && entry.masterUid) {
       const master = this.entries.get(entry.masterUid);
@@ -912,8 +934,10 @@ drainPlayerHits() {
       // firstBy suit pour que la récompense aille au nouveau rouge.
       if (e.lockBy != null) {
         const holder = this.players.get(String(e.lockBy));
-        const holderOut = !holder || holder.dead === true || holder.safe === true;
         const holderIdle = nowMs - Number(e.lockHitAt || 0) > ZoneNpcSim.LOCK_IDLE_MS;
+        // En ZNA, le détenteur qui tape encore garde son lock (c'est lui
+        // que le NPC riposte). Il ne le perd qu'en restant passif.
+        const holderOut = !holder || holder.dead === true || (holder.safe === true && holderIdle);
         if (holderOut || holderIdle) {
           if (!e.lockReleaseAt) e.lockReleaseAt = nowMs + ZoneNpcSim.LOCK_GRACE_MS;
           else if (nowMs >= Number(e.lockReleaseAt) || 0) {
@@ -1004,17 +1028,11 @@ drainPlayerHits() {
           continue;
         }
       }
-      // Agresseur provoque (encore valide).
+      // Agresseur provoque (encore valide). La riposte ZNA est gérée
+      // directement dans applyHit + la branche `p?.safe` ci-dessous
+      // (plus de rancune différée : le NPC visé réagit tout de suite).
       let attacker = null;
-      if (e.pendingAggroBy) {
-        const pending = this.players.get(String(e.pendingAggroBy));
-        if (this.validTarget(pending)) {
-          e.aggroBy = String(e.pendingAggroBy);
-          e.aggroUntil = nowMs + (Number(e.aggroHoldMs) || 3500);
-          e.pendingAggroBy = null;
-          e.retreating = false;
-        }
-      }
+      if (e.pendingAggroBy) e.pendingAggroBy = null;
       if (e.aggroBy) {
         const p = this.players.get(e.aggroBy);
         const targetOutside = !!p && (p.x < 0 || p.x > this.world.w || p.y < 0 || p.y > this.world.h);
@@ -1026,13 +1044,19 @@ drainPlayerHits() {
           attacker = { id: e.aggroBy, x: p.x, y: p.y };
         } else if (nowMs < Number(e.aggroUntil || 0) && this.validTarget(p)) attacker = { id: e.aggroBy, x: p.x, y: p.y };
         else if (p?.safe) {
-          e.retreating = true;
-          e.retreatUntil = nowMs + 3000;
-          e.shieldRegenAt = nowMs + 5000;
-          e.retreatFromX = p.x;
-          e.retreatFromY = p.y;
-          e.aggroBy = null;
-          e.aggroUntil = 0;
+          // Riposte ZNA : seul le NPC visé garde sa poursuite (parité
+          // solo). Tous les autres décrochent et se replient.
+          if (this.retaliationOpen(e, e.aggroBy, nowMs)) {
+            attacker = { id: e.aggroBy, x: p.x, y: p.y };
+          } else {
+            e.retreating = true;
+            e.retreatUntil = nowMs + 3000;
+            e.shieldRegenAt = nowMs + 5000;
+            e.retreatFromX = p.x;
+            e.retreatFromY = p.y;
+            e.aggroBy = null;
+            e.aggroUntil = 0;
+          }
         } else if (nowMs >= Number(e.aggroUntil || 0)) {
           e.aggroBy = null;
           e.aggroUntil = 0;
@@ -1155,8 +1179,12 @@ drainPlayerHits() {
 
       // Tirs NPC autoritaires. Le client conserve les projectiles visuels,
       // mais seul cet impact serveur retire effectivement PV/bouclier.
+      // Riposte ZNA : le NPC visé peut toucher son agresseur protégé
+      // (parité solo). Tout autre tir sur joueur protégé reste interdit.
       e.shootCd = Math.max(0, Number(e.shootCd || 0) - dt);
-      if (!frozen && e.canShoot !== false && e.shootRate > 0 && chase && this.validTarget(this.players.get(String(chase.id)))) {
+      const chasePlayer = chase ? this.players.get(String(chase.id)) : null;
+      const chaseTargetOk = this.validTarget(chasePlayer) || this.retaliationOpen(e, chase ? chase.id : null, nowMs);
+      if (!frozen && e.canShoot !== false && e.shootRate > 0 && chase && chaseTargetOk) {
         const distance = Math.hypot(chase.x - e.x, chase.y - e.y);
         if (distance <= e.shootRange && e.shootCd <= 0) {
           e.shootCd = (1 / Math.max(0.001, e.shootRate)) * (0.85 + Math.random() * 0.3);
@@ -1224,12 +1252,14 @@ drainPlayerHits() {
     for (const e of this.entries.values()) {
       if (e.hp > 0) {
         // Cible partagee : la poursuite en cours si elle est encore valide
-        // (tous les ecrans voient le NPC tirer le meme joueur). Sans
-        // closure allouee par entree (pression GC a 20 Hz).
+        // (tous les ecrans voient le NPC tirer le meme joueur). Inclut la
+        // riposte ZNA (sinon dégâts invisibles sur le joueur protégé).
+        // Sans closure allouee par entree (pression GC a 20 Hz).
         let aggroId = null;
         if (e.chaseId) {
           const ap = this.players.get(e.chaseId);
           if (this.validTarget(ap)) aggroId = e.chaseId;
+          else if (this.retaliationOpen(e, e.chaseId, nowMs)) aggroId = e.chaseId;
         }
         list.push({
           uid: e.uid, type: e.type,

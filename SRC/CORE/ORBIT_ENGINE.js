@@ -326,7 +326,7 @@ function integrateNpcPosition(e, dt) {
 // Rayon de courtoisie autour des portails actifs : un NPC non engagé
 // n'y aggro ni n'y tire, et en sort de lui-même (aucune téléportation,
 // aucune répulsion en combat — la ZNA garde son comportement d'avant).
-const NPC_PORTAL_KEEPOUT_RADIUS = 600;
+const NPC_PORTAL_KEEPOUT_RADIUS = 500;
 
 function interactivePortalList() {
   try {
@@ -382,6 +382,32 @@ function playerProtectedSpot() {
     if (typeof playerIsInSafeZone === "function" && playerIsInSafeZone()) return true;
   } catch {}
   return playerOnPortal();
+}
+
+// true si le NPC doit garder l'aggro même quand le joueur est à l'abri
+// (portail / base) : seule la cible actuellement lockée (celle qu'on tape)
+// reste au combat. Les anciens `_damagedByPlayer` / `_provoked` ne suffisent
+// plus : sinon tout NPC tapé une fois dans le passé, ou toute vague à
+// minions provoqués, continuait à suivre et tirer sur le portail.
+// Exceptions volontaires : Draw Fire (taunt Citadel) et kamikazes
+// (roquettes Barrage à poursuite à mort).
+function npcShelterKeepsAggro(e) {
+  if (!e) return false;
+  if (e.drawFireLock === true) return true;
+  try {
+    const cfg = (typeof NPC_TYPES !== "undefined" && NPC_TYPES[e.type]) || {};
+    if (cfg.ai === "kamikaze") return true;
+  } catch {}
+  try {
+    if (typeof Target !== "undefined" && Target && typeof Target.get === "function") {
+      const t = Target.get();
+      if (t && t === e) return true;
+      if (t && e && t.id != null && e.id != null && String(t.id) === String(e.id)) return true;
+      if (t && e && t.universeUid != null && e.universeUid != null && String(t.universeUid) === String(e.universeUid)) return true;
+      if (t && e && t._netUid != null && e._netUid != null && String(t._netUid) === String(e._netUid)) return true;
+    }
+  } catch {}
+  return false;
 }
 
 // true si le NPC est dans le rayon sans être engagé : pas de nouvel aggro,
@@ -27461,7 +27487,7 @@ let safeZoneR = 0;
 // Rayon général de tous les portails
 const DEFAULT_PORTAL_RADIUS = 450;
 
-const SAFE_ZONE_MARGIN = 450;
+const SAFE_ZONE_MARGIN = 50; // Portails : 450 + 50 = 500 de non-agression.
 
 function getCurrentZoneMapId() {
   return String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").trim().toLowerCase();
@@ -31841,7 +31867,8 @@ function playerIsInSafeZone() {
 
   if (baseProvidesSafety() && zoneSafe?.zone?.kind === "circle") {
     const z = zoneSafe.zone;
-    if (dist2(player.x, player.y, z.x, z.y) <= (z.r || 0) * (z.r || 0)) return true;
+    const zr = (Number(z.r) || 0) + SAFE_ZONE_MARGIN;
+    if (dist2(player.x, player.y, z.x, z.y) <= zr * zr) return true;
   }
 
   if (getSafeModuleAt(player.x, player.y)) return true;
@@ -31868,10 +31895,11 @@ function enemyShoot(e, dt, combatTarget = player) {
     return;
   }
 
-  // Joueur à l'abri (portail ou base) : seuls les NPC tapés (ou provoqués :
-  // vagues de boss) ripostent. Les autres font leur vie même à portée de tir.
+  // Joueur à l'abri (portail ou base) : seul le NPC locké (celui qu'on
+  // tape) riposte. Tous les autres décrochent, même déjà tapés avant ou
+  // provoqués (vagues de boss) : ils font leur vie même à portée de tir.
   // (typeof = harnais de test évaluant enemyShoot isolé.)
-  if (combatTarget === player && typeof playerProtectedSpot === "function" && playerProtectedSpot() && e._damagedByPlayer !== true && e._provoked !== true && !e.drawFireLock) {
+  if (combatTarget === player && typeof playerProtectedSpot === "function" && playerProtectedSpot() && !npcShelterKeepsAggro(e)) {
     e.shootCd = 0.5 + Math.random() * 0.6;
     return;
   }
@@ -33548,8 +33576,8 @@ if (hangarSwapFx) {
 
     // Protection portail en rayon safe (portail + marge), indépendant du
     // rayon d'interaction (450) qui pilote l'ouverture et le saut. Corrige
-    // deux bugs : la couronne 450-900 affichait le cercle violet (overlay
-    // et NPC en 900) sans protéger le joueur (450), et l'arrivée d'un saut
+    // deux bugs : la couronne 450-500 affichait le cercle violet (overlay
+    // et NPC en 500) sans protéger le joueur (450), et l'arrivée d'un saut
     // n'activait pas la ZNA côté arrivée.
     const noCombatForSafe = player.combatT <= 0 && !attackActive;
     let safePortal = null;
@@ -33628,7 +33656,7 @@ if (
   startZonePortalJump(near);
 }
     } else if (safePortal) {
-      // Hors rayon d'interaction mais dans la couronne safe (450-900)
+      // Hors rayon d'interaction mais dans la couronne safe (450-500)
       // d'un portail sûr : on reste protégé (cercle violet = protégé).
       safeZoneX = safePortal.x;
       safeZoneY = safePortal.y;
@@ -34545,10 +34573,13 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
         e._aggroT = Math.max(0, (e._aggroT || 0) - dt);
 
-        // Joueur à l'abri (portail ou base) : un NPC déjà aggro mais jamais
-        // tapé ni provoqué se barre (parité serveur : safe). Seul celui
-        // qu'on tape reste au combat (ni les kamikazes : roquettes Barrage).
-        if (playerProtectedSpot() && e._damagedByPlayer !== true && e._provoked !== true && !e.drawFireLock && !isKamikaze) {
+        // Joueur à l'abri (portail ou base) : tout NPC non locké décroche
+        // (parité serveur : safe). Seul celui qu'on tape reste au combat
+        // (plus Draw Fire et kamikazes : roquettes Barrage à poursuite à
+        // mort). Les `_damagedByPlayer` / `_provoked` historiques ne gardent
+        // plus l'aggro : sinon un NPC tapé avant puis un retour portail le
+        // faisait rester collé pour toujours.
+        if (playerProtectedSpot() && !npcShelterKeepsAggro(e)) {
           e._aggro = false;
           e._aggroT = 0;
           e._attackedPlayerRecently = false;
@@ -34630,9 +34661,10 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             // Camouflage ultime / CPU CL04K-XL : pas de nouvelle aggro sur le joueur invisible.
             // Portails : pas de nouvel aggro dans le rayon (sortie naturelle),
             // ni quand le joueur est lui-même à l'abri (portail ou base : seul
-            // le NPC tapé vient, les autres font leur vie).
+            // le NPC locké vient, les autres font leur vie même s'ils étaient
+            // déjà engagés / provoqués avant).
             // Maps doublées (BL / 4-5) : portée x2.
-            if (d <= aggroRange * aggroRangeMult() && !isPlayerCloaked() && player.cpuCloak !== true && !npcPortalCalm(e) && !(playerProtectedSpot() && !npcEngagedWithPlayer(e))) {
+            if (d <= aggroRange * aggroRangeMult() && !isPlayerCloaked() && player.cpuCloak !== true && !npcPortalCalm(e) && !(playerProtectedSpot() && !npcShelterKeepsAggro(e))) {
               e._aggro = true;
               e._aggroT = aggroHold;
             }
@@ -34665,6 +34697,15 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           e.aiZ.state = "wander";
           e.aiZ.wanderT -= dt;
 
+          // Joueur à l'abri : les NPC non lockés dans le rayon portail
+          // sortent en radial (ils ne patinent pas autour du joueur).
+          if (playerProtectedSpot() && !npcShelterKeepsAggro(e) && npcPortalDist(e) < NPC_PORTAL_KEEPOUT_RADIUS) {
+            const exit = npcPortalExitDir(e);
+            e.aiZ.wanderTarget = null;
+            e.aiZ.wanderT = 0.5;
+            mxv = exit.x * 0.65;
+            myv = exit.y * 0.65;
+          } else {
           if (!e.aiZ.wanderTarget || e.aiZ.wanderT <= 0) {
             const angle = Math.random() * Math.PI * 2;
             const distance = 400 + Math.random() * 800;
@@ -34687,6 +34728,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
           mxv = (txW / tdistW) * 0.65;
           myv = (tyW / tdistW) * 0.65;
+          }
         }
 
         const spdE = npcEffectiveSpeed(e);
@@ -36659,9 +36701,12 @@ function frame(t) {
         const items = account?.user?.drones?.items || [];
         dslotsNow = items.slice(0, 12).map(d => `${String(d?.type || "iris").slice(0, 24)}:${Math.max(1, Number(d?.level) || 1)}`).join(",");
       } catch {}
-      // Zone sure : le serveur calme les NPC.
+      // Zone sure : le serveur calme les NPC. Position seule, même en
+      // combat : tirer depuis un portail / une base (ou y fuir en étant
+      // poursuivi) ne fait plus perdre la protection. Seul le NPC visé
+      // riposte côté serveur (parité solo).
       let netSafe = false;
-      try { netSafe = safeZoneActive && playerIsInSafeZone(); } catch {}
+      try { netSafe = playerProtectedSpot(); } catch {}
       // Plaque alliee (grade, firme, drones, modules, formation).
       let rankPathNow = "", firmNow = "", dindNow = "", ficonNow = "", mindNow = "";
       try {
