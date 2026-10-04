@@ -1,3 +1,4 @@
+import { protegitPatrol } from "../../NPC/PROTEGIT_MOVEMENT.js";
 import { npcFleeDirection } from "../../NPC/NPC_FLEE.js";
 import { petEscortTarget, stepPetMotion, petCombatVelocity, orientPet } from "../../PET/PET_MOTION.js";
 import { measureGameTask, recordGameTask } from "./PERFORMANCE_TIMINGS.js";
@@ -24002,7 +24003,16 @@ function refillLocalCubikonMinions(cub) {
   if (!cub || !(cub.hp > 0) || !cub._spawnedOnce || cub._resetting || isEntityJammed(cub)) return;
   if (!(cub._sinceHit < CUBIKON_RESET.idleDelay) || cub._animPhase) return;
   const alive = enemies.filter(m => m && m.hp > 0 && m.type === "npc_Protegit" && m.masterId === cub.id).length;
-  if (alive < 5) spawnProtegitOnCubikonHit(cub, 20);
+  if (alive < 5) {
+    cub._animPhase = "delay";
+    cub._openDelayT = 2.0;
+    cub._holdLastT = 0;
+    cub._pendingSpawn = 20;
+    cub.spritePlay = false;
+    cub.spriteDir = 1;
+    cub.spriteIdx = 0;
+    cub.spriteAcc = 0;
+  }
 }
 
 function spawnProtegitOnCubikonHit(cub, count = 20) {
@@ -24266,9 +24276,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
       e.spritePlay = false;
       e.spriteDir = 1;
       e.spriteIdx = 0;
-      e.spriteAcc = 0;
-      e.angle = 0;
-    }
+      e.spriteAcc = 0;    }
   }
 
   // Multi : NPC partage — drain predit en local, serveur tranche (bouclier seul).
@@ -24406,10 +24414,7 @@ e._pendingSpawn = 20;
   e.spritePlay = false;
   e.spriteDir = 1;
   e.spriteIdx = 0;
-  e.spriteAcc = 0;
-
-  e.angle = 0;
-}
+  e.spriteAcc = 0;}
   }
 
   // Multi : NPC partage — prediction locale deja appliquee ci-dessus,
@@ -27896,14 +27901,10 @@ function syncNetNpcs(dt) {
           e.spriteDir = 1;
           e.spriteIdx = 0;
           e._openDelayT = Math.max(0.1, remain);
-          e._holdLastT = 0;
-          e.angle = 0;
-        } else if (s.cube === "open") {
+          e._holdLastT = 0;        } else if (s.cube === "open") {
           e.spritePlay = true;
           e.spriteDir = 1;
-          e.spriteIdx = 0;
-          e.angle = 0;
-        } else if (s.cube === "hold") {
+          e.spriteIdx = 0;        } else if (s.cube === "hold") {
           try {
             const sp = NPC_TYPES[e.type]?.sprite;
             const frames = sp?.frames || sp?._imgs?.length || 1;
@@ -33874,9 +33875,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
       farInterval: 15,
     })) continue;
 
-    if (e.type === "npc_Cubikon" && !e.spritePlay) {
-      e.angle = 0;
-      }
+
 
     // ✅ Animation sprites (Cubikon special)
 if (e.spritePlay) {
@@ -33967,9 +33966,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
       // ✅ fini : idle
       e._animPhase = null;
-      e.spriteDir = 1;
-      e.angle = 0;
-    }
+      e.spriteDir = 1;    }
   }
 }
 
@@ -34171,30 +34168,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           const master = getEnemyById(e.masterId);
 
           if (master && master.hp > 0) {
-            e.anchorWanderT = (e.anchorWanderT || 0) - dt;
-
-            if (e.anchorWanderT <= 0) {
-              const ang = Math.random() * Math.PI * 2;
-              const rMin = e.anchorRMin ?? 200;
-              const rMax = e.anchorRMax ?? 700;
-              const r = rand(rMin, rMax);
-
-              e.anchorTX = clamp(master.x + Math.cos(ang) * r, e.r || 18, WORLD.w - (e.r || 18));
-              e.anchorTY = clamp(master.y + Math.sin(ang) * r, e.r || 18, WORLD.h - (e.r || 18));
-
-              e.anchorWanderT = 0.8 + Math.random() * 1.0;
-            }
-
-            const dxm = (e.anchorTX || master.x) - e.x;
-            const dym = (e.anchorTY || master.y) - e.y;
-            const dm = Math.hypot(dxm, dym) || 1;
-
-            const mxv = dxm / dm;
-            const myv = dym / dm;
-
-            const spdE = npcEffectiveSpeed(e);
-            setNpcVelocity(e, mxv, myv, spdE);
-
+            const patrol = protegitPatrol(e, master, WORLD, dt);
+            setNpcVelocity(e, patrol.x, patrol.y, npcEffectiveSpeed(e) * patrol.speed);
             integrateNpcPosition(e, dt);
             
 
@@ -34202,6 +34177,9 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
               e.angle = Math.atan2(e.vy, e.vx);
             }
 
+            if (combatTarget && Math.hypot(combatTarget.x - e.x, combatTarget.y - e.y) <= (e.shootRange || 540)) {
+              e.angle = Math.atan2(combatTarget.y - e.y, combatTarget.x - e.x);
+            }
             continue;
           }
         }

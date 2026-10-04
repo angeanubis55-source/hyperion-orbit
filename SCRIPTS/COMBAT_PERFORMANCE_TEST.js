@@ -490,12 +490,20 @@ test('Cubikon : renfort sous cinq survivants, aucun apres reset ou mort', () => 
     sim.countCubikonMinions=()=>count;
     sim.spawnCubikonWave=()=>{spawned=20-count;};
     sim.refillCubikonMinions(cub,15000);
-    assert.equal(spawned,count<5?20-count:0);
+    assert.equal(spawned,0);
+    assert.equal(cub.cube?.phase, count<5?'delay':undefined);
+    if(count<5) { assert.equal(cub.cube.until,17000); assert.equal(cub.cube.spawnAt,19600); }
+    const pending=cub.cube; sim.refillCubikonMinions(cub,15001); assert.equal(cub.cube,pending);
+    cub.cube=null;
     spawned=0; sim.refillCubikonMinions(cub,17000); assert.equal(spawned,0);
     cub.hp=0; sim.refillCubikonMinions(cub,2000); assert.equal(spawned,0);
     const local=vm.createContext({enemies:Array.from({length:count},()=>({hp:100,type:'npc_Protegit',masterId:1})),CUBIKON_RESET:{idleDelay:15},isEntityJammed:()=>false,spawnProtegitOnCubikonHit:()=>{spawned=20-count;},cub:{id:1,hp:100,_spawnedOnce:true,_sinceHit:1}});
     vm.runInContext(engineFunction('refillLocalCubikonMinions')+'\nrefillLocalCubikonMinions(cub);',local);
-    assert.equal(spawned,count<5?20-count:0);
+    assert.equal(spawned,0);
+    assert.equal(local.cub._animPhase,count<5?'delay':undefined);
+    if(count<5) { assert.equal(local.cub._pendingSpawn,20); assert.equal(local.cub.spriteIdx,0); assert.equal(local.cub._openDelayT,2); }
+    vm.runInContext('refillLocalCubikonMinions(cub)',local); assert.equal(spawned,0);
+    local.cub._animPhase=null;
     spawned=0;local.cub._sinceHit=16;
     vm.runInContext('refillLocalCubikonMinions(cub)',local);assert.equal(spawned,0);
   }
@@ -536,4 +544,20 @@ test('fuite NPC : cap conserve sans cible, rebond aux limites sans nouveau tirag
   npc.target=null;npc.x=world.w-80;
   assert.deepEqual(npcFleeDirection(npc,world,random),{x:-1,y:0});
   assert.equal(draws,1);
+});
+
+
+test('Protegits : patrouille autonome bornee, vitesse variee et destination conservee entre decisions', async () => {
+  const {protegitPatrol}=await import('../NPC/PROTEGIT_MOVEMENT.js');
+  const minion={x:500,y:500},master={x:600,y:600},world={w:11000,h:7000};let calls=0;
+  const random=()=>{calls++;return 0.5;};
+  const first=protegitPatrol(minion,master,world,0.016,random);
+  assert.ok(Math.abs(Math.hypot(first.x,first.y)-1)<1e-9);
+  assert.ok(first.speed>=0.85 && first.speed<=1);
+  const x=minion.patrolX,y=minion.patrolY;
+  protegitPatrol(minion,master,world,0.016,random);
+  assert.equal(calls,4);assert.equal(minion.patrolX,x);assert.equal(minion.patrolY,y);
+  minion.patrolTime=0;master.x=80;master.y=80;
+  protegitPatrol(minion,master,world,0.016,random);
+  assert.equal(calls,8);assert.ok(minion.patrolX>=80 && minion.patrolY>=80);
 });

@@ -1,3 +1,4 @@
+import { protegitPatrol } from "../NPC/PROTEGIT_MOVEMENT.js";
 import { npcFleeDirection } from "../NPC/NPC_FLEE.js";
 // SCRIPTS/NPC_ROOM.js — Simulation NPC serveur pour les maps zone.
 // Reutilise les modules purs du jeu : UNIVERSE_SIM (slots/respawn),
@@ -410,7 +411,9 @@ drainPlayerHits() {
   refillCubikonMinions(cub, nowMs) {
     if (cub?.type !== "npc_Cubikon" || !(cub.hp > 0) || !cub.cubeArmed || cub.cube) return;
     if (nowMs - Number(cub.lastCubeHitAt || 0) > 15000) return;
-    if (this.countCubikonMinions(cub.uid) < 5) this.spawnCubikonWave(cub, nowMs);
+    if (this.countCubikonMinions(cub.uid) < 5) {
+      cub.cube = { phase: "delay", until: nowMs + 2000, spawnAt: nowMs + 4600 };
+    }
   }
 
   spawnCubikonWave(cub, nowMs) {
@@ -908,15 +911,9 @@ drainPlayerHits() {
       if (!fleeing) e.fleeDirection = null;
       const from = attacker || close;
       if (cubeAnchored) {
-        if (e.tx == null || Math.hypot(e.tx - e.x, e.ty - e.y) < 100) {
-          const a = Math.random() * TAU, dist = 200 + Math.random() * 500;
-          e.tx = clamp(cubeMaster.x + Math.cos(a) * dist, 80, this.world.w - 80);
-          e.ty = clamp(cubeMaster.y + Math.sin(a) * dist, 80, this.world.h - 80);
-        }
-        const dx = e.tx - e.x, dy = e.ty - e.y;
-        const d = Math.hypot(dx, dy) || 1;
-        mx = dx / d; my = dy / d; spd = e.speed * 0.7;
-        if (spd > 0) e.angle = Math.atan2(dy, dx);
+        const patrol = protegitPatrol(e, cubeMaster, this.world, dt);
+        mx = patrol.x; my = patrol.y; spd = e.speed * patrol.speed;
+        e.angle = chase ? Math.atan2(chase.y - e.y, chase.x - e.x) : Math.atan2(my, mx);
       } else if (fleeing) {
         const dir = npcFleeDirection(e, this.world);
         mx = dir.x; my = dir.y; spd = e.speed * 0.85;
