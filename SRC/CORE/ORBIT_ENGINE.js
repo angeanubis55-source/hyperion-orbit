@@ -22530,9 +22530,77 @@ function respawnAmbientSlot(slot, mapId) {
   pushAmbientCollectableInstance({ ...slot, x: pos.x, y: pos.y }, mapId);
 }
 
+// Multi : le serveur est l'autorité des box ambiantes. Quand il est connecté,
+// ne jamais générer de doublons locaux : au refresh les locales apparaissaient
+// puis étaient remplacées par celles du serveur (flash / regen apparente).
+// Purge les instances ambiantes locales d'une map (sans toucher au store
+// ni aux drops personnels comme les cargos).
+function purgeLocalAmbientCollectables(mapId) {
+  const id = String(mapId);
+  let purged = false;
+  for (let i = collectables.length - 1; i >= 0; i--) {
+    const c = collectables[i];
+    if (!c || !c.slotUid || c.dropUid || c._netBox) continue;
+    if (String(c.map || id) !== id) continue;
+    if (collectableTargetId === c.id) {
+      try { cancelCollectableTarget(); } catch {}
+      try { moveTarget.active = false; } catch {}
+      collectableTargetId = null;
+    }
+    if (collectableTickPlayerTarget === c) { collectableTickPlayerTarget = null; collectableTickPlayerTargetId = null; }
+    if (collectableTickPetTarget === c) { collectableTickPetTarget = null; collectableTickPetTargetId = null; }
+    collectables.splice(i, 1);
+    try { indexCollectableRemoved(c); } catch {}
+    purged = true;
+  }
+  if (purged) {
+    try { invalidateCollectableSpatialIndex(); } catch {}
+  }
+  return purged;
+}
+
+// Restaure les drops personnels (cargos...) d'une map depuis le store.
+// En multi (autorité serveur) les cargos restent locaux : on les restaure
+// même quand les ambiantes sont ignorées.
+function restoreCollectableDrops(mapId, now) {
+  pruneExpiredDrops(collectableStore, mapId, now);
+  // Drops dynamiques survivants. Les anciens drops sans expiration sont
+  // migres vers une duree de 24 h a partir de ce chargement.
+  for (const drop of listCollectableDrops(collectableStore, mapId)) {
+    const lifetimeSec = collectableDropLifetimeSec(drop.type);
+    let exp = Math.floor(Number(drop.expiresAtMs) || 0);
+    if (!(exp > 0)) {
+      exp = now + lifetimeSec * 1000;
+      drop.expiresAtMs = exp;
+    }
+    let elapsedSec = 0;
+    if (exp > 0) {
+      const remainingMs = exp - now;
+      if (remainingMs <= 0) continue;
+      const totalMs = Math.max(1, Math.floor(lifetimeSec * 1000));
+      elapsedSec = Math.max(0, (totalMs - remainingMs) / 1000);
+    }
+    spawnCollectableAtRestored(drop, elapsedSec);
+  }
+}
+
 function initCollectableWorld(mapId) {
   if (!WORLD || !(Number(WORLD.w) > 0) || !(Number(WORLD.h) > 0)) return;
   const now = worldClock.now();
+  // Multi : les ambiantes viennent exclusivement du serveur (boxesSync).
+  // Les générer en local avant leur arrivée = flash au refresh.
+  // Le miroir réseau (netBoxes) survit au resetRun qui vide les visuels :
+  // on force une réconciliation immédiate, sinon la map reste vide jusqu'à
+  // la prochaine fenêtre de maintenance (5 s).
+  try {
+    if (typeof netplayBoxesActive === "function" && netplayBoxesActive()) {
+      purgeLocalAmbientCollectables(mapId);
+      restoreCollectableDrops(mapId, now);
+      persistCollectables();
+      try { netBoxNeedsReconcile = true; } catch {}
+      return;
+    }
+  } catch {}
   const defs = [];
   for (const [type, cfg] of collectableDefsList()) {
     const target = collectableTargetCount(cfg);
@@ -22554,28 +22622,10 @@ function initCollectableWorld(mapId) {
   for (const slot of dueCollectableSlots(collectableStore, mapId, now)) {
     try { respawnAmbientSlot(slot, mapId); spawned.add(String(slot.uid)); } catch {}
   }
-  pruneExpiredDrops(collectableStore, mapId, now);
   for (const slot of slots) {
     if (slot && slot.alive !== false && !spawned.has(String(slot.uid))) pushAmbientCollectableInstance(slot, mapId);
   }
-  // Drops dynamiques survivants. Les anciens drops sans expiration sont
-  // migres vers une duree de 24 h a partir de ce chargement.
-  for (const drop of listCollectableDrops(collectableStore, mapId)) {
-    const lifetimeSec = collectableDropLifetimeSec(drop.type);
-    let exp = Math.floor(Number(drop.expiresAtMs) || 0);
-    if (!(exp > 0)) {
-      exp = now + lifetimeSec * 1000;
-      drop.expiresAtMs = exp;
-    }
-    let elapsedSec = 0;
-    if (exp > 0) {
-      const remainingMs = exp - now;
-      if (remainingMs <= 0) continue;
-      const totalMs = Math.max(1, Math.floor(lifetimeSec * 1000));
-      elapsedSec = Math.max(0, (totalMs - remainingMs) / 1000);
-    }
-    spawnCollectableAtRestored(drop, elapsedSec);
-  }
+  restoreCollectableDrops(mapId, now);
   persistCollectables();
 }
 
@@ -22848,7 +22898,7 @@ function applyCollectableReward(c) {
   if (!cfg) return;
   // En multi, une box ambiante disparait tout de suite visuellement, mais son
   // contenu n'est verse qu'au client qui recoit l'accord unique du serveur.
-  if (c.slotUid && !c.dropUid && netplayNpcActive() && c._netClaimGranted !== true) {
+  if (c.slotUid && !c.dropUid && netplayBoxesActive() && c._netClaimGranted !== true) {
     const uid = String(c.slotUid);
     let requested = false;
     try { requested = claimNetBox(uid); } catch {}
@@ -23194,6 +23244,10 @@ function removeLocalNetBox(uid, fromNet = false) {
 }
 
 
+function netplayBoxesActive() {
+  return rules?.mode === "zone" && netConnected() && !netInInstance();
+}
+
 function syncNetBoxes(dt) {
   const curMap = currentMapId();
   netBoxMaintenanceT += dt;
@@ -23203,7 +23257,7 @@ function syncNetBoxes(dt) {
     window.__NETBOXDBG__ = window.__NETBOXDBG__ || {};
     const dbg = window.__NETBOXDBG__;
     dbg.map = curMap;
-    dbg.active = netplayNpcActive();
+    dbg.active = netplayBoxesActive();
     dbg.authority = "server";
     try { dbg.myId = netMyId(); } catch {}
     try { dbg.status = netplayStatus(); } catch {}
@@ -23237,7 +23291,7 @@ function syncNetBoxes(dt) {
       }
     }
   } catch {}
-  if (!netplayNpcActive()) {
+  if (!netplayBoxesActive()) {
     pendingNetCollectableRewards.clear();
     let purged = false;
     for (let i = collectables.length - 1; i >= 0; i--) {
@@ -23250,7 +23304,8 @@ function syncNetBoxes(dt) {
     }
     localNetBoxesByUid.clear();
     netBoxNeedsReconcile = true;
-    try { clearNetBoxes(); } catch {}
+    // Une liste peut deja etre arrivee pendant la connexion / le chargement.
+    // NETPLAY nettoie les donnees au changement de carte ou de session.
     return;
   }
   // Collectes distantes : disparition immediate du miroir local.
@@ -23298,8 +23353,8 @@ function syncNetBoxes(dt) {
   // Avant la premiere liste complete du serveur, conserver les instances
   // preparees pendant le chargement. Elles seront recalees par uid des que
   // le snapshot autoritaire de cette carte arrivera.
-  netBoxNeedsReconcile = false;
   try { if (!netBoxSnapshotReady()) return; } catch { return; }
+  netBoxNeedsReconcile = false;
   // Index construit en un seul passage : avec des centaines de Palladiums en
   // 5-2, rechercher chaque uid dans tout `collectables` faisait un travail
   // comparaisons par frame. Les lectures suivantes sont maintenant en O(1).
@@ -36426,8 +36481,9 @@ if (ui.startHint) {
 }
 
   resetRun({ randomSpawn: false });
-  // La carte est connue et les sprites sont deja charges : construire les
-  // box avant de retirer l'ecran de chargement, sans attendre le WebSocket.
+  // La carte est connue et les sprites sont deja charges : construire le
+  // monde local avant de retirer l'ecran de chargement. En multi les
+  // ambiantes viennent du serveur (aucun doublon local, pas de flash).
   collectablesWorldMap = currentMapId();
   try { initCollectableWorld(collectablesWorldMap); } catch {}
   advanceQuestProgress("visit", String(window.__CURRENT_MAP_ID__ || "").toLowerCase());
