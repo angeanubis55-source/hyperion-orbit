@@ -12,6 +12,20 @@ const CUR_KEY = "orbit_current_user";
 let memUser = null;
 let memToken = null;
 let saveTimer = null;
+let pendingGalaxyGates = null;
+function cachePendingGalaxyGates() {
+  if (memUser?.id) lsSet(`orbit_pending_gg:${memUser.id}`, pendingGalaxyGates ? JSON.stringify(pendingGalaxyGates) : null);
+}
+function restorePendingGalaxyGates() {
+  pendingGalaxyGates = null;
+  try { pendingGalaxyGates = JSON.parse(lsGet(`orbit_pending_gg:${memUser.id}`) || "null"); } catch {}
+  retainPendingGalaxyGates(memUser);
+  if (pendingGalaxyGates) schedulePush();
+}
+function retainPendingGalaxyGates(user) {
+  if (pendingGalaxyGates && user) user.galaxyGates = structuredClone(pendingGalaxyGates);
+  return user;
+}
 // Sélection de hangar/design pas encore confirmée par le serveur. Elle doit
 // survivre à un 409 provoqué entre-temps par une récompense ou un autre save.
 let pendingHangarSelection = null;
@@ -80,7 +94,11 @@ export function netStore(list) {
         mine.inventory.moduleRollHistory = mine.inventory.moduleRollHistory.slice(-500);
       }
     } catch {}
+    if (JSON.stringify(mine.galaxyGates) !== JSON.stringify(memUser?.galaxyGates)) {
+      pendingGalaxyGates = mine.galaxyGates ? structuredClone(mine.galaxyGates) : null;
+    }
     memUser = JSON.parse(JSON.stringify(mine, (k, v) => (v === Infinity ? -1 : v)));
+    cachePendingGalaxyGates();
     writeCache(memUser);
     schedulePush();
   }
@@ -159,6 +177,7 @@ export function netSetCurrent(cur) {
     const tok = memToken || lsGet(TOKEN_KEY);
     memUser = null;
     memToken = null;
+    pendingGalaxyGates = null;
     try { clearTimeout(saveTimer); } catch {}
     saveTimer = null;
     resetPendingPurchases();
@@ -232,6 +251,7 @@ export function bootNetFromCache() {
     if (!cached) return false;
     memToken = tok;
     memUser = cached;
+    restorePendingGalaxyGates();
     observeHangarSelection(memUser);
     if (!refreshStarted) {
       refreshStarted = true;
@@ -248,6 +268,7 @@ export function enterNetMode(token, user) {
   memToken = String(token || "");
   memUser = user && typeof user === "object" ? user : null;
   if (!memToken || !memUser) return false;
+  restorePendingGalaxyGates();
   observeHangarSelection(memUser);
   lsSet(TOKEN_KEY, memToken);
   writeCache(memUser, true);
@@ -339,7 +360,8 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
 }
 
 function schedulePush() {
-  try { clearTimeout(saveTimer); } catch {}
+  // Les kills suivants ne repoussent pas une sauvegarde deja programmee.
+  if (saveTimer != null) return;
   saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, 2000);
 }
 
@@ -558,6 +580,7 @@ async function pushNow() {
   if (!netActive()) return { ok: false };
   const token = memToken;
   const snapshot = memUser;
+  const galaxyGatesAtSend = JSON.stringify(snapshot.galaxyGates);
   const purchaseCreditsAtSend = pendingPurchaseCredits;
   const purchaseStockAtSend = JSON.parse(JSON.stringify(pendingPurchaseStock));
   const consumedStockAtSend = JSON.parse(JSON.stringify(pendingConsumedStock));
@@ -567,9 +590,12 @@ async function pushNow() {
   try {
     out = await api("/api/save", { method: "POST", body: { user: snapshot }, token });
   } catch {
+    schedulePush();
     return { ok: false, error: "Reseau." };
   }
   if (out && out.ok) {
+    if (JSON.stringify(pendingGalaxyGates) === galaxyGatesAtSend) pendingGalaxyGates = null;
+    cachePendingGalaxyGates();
     pendingPurchaseCredits = Math.max(0, pendingPurchaseCredits - purchaseCreditsAtSend);
     clearPendingPurchaseStock(purchaseStockAtSend);
     clearPendingConsumedStock(consumedStockAtSend);
@@ -596,7 +622,7 @@ async function pushNow() {
       if (liveRev <= sentRev) {
         // Aucun changement local pendant la requete : la reponse peut devenir
         // le nouvel etat canonique.
-        memUser = out.user;
+        memUser = retainPendingGalaxyGates(out.user);
         writeCache(memUser);
       } else {
         // Une recompense (notamment le bonus de fin de Galaxy Gate) a ete
@@ -629,6 +655,7 @@ async function pushNow() {
     // y compris lorsqu'elle diminue une valeur. La fusion par maximum, utile
     // pour les conflits ordinaires de gains, annulerait sinon les retraits.
     memUser = out.adminConflict === true ? out.user : mergeProgressiveFields(memUser, out.user);
+    retainPendingGalaxyGates(memUser);
     if (out.adminConflict !== true && pendingHangarSelection) {
       const pending = pendingHangarSelection;
       memUser.hangars = Array.isArray(memUser.hangars) ? memUser.hangars : [];
@@ -730,6 +757,7 @@ async function refreshNetUser() {
     memUser = serverAdminToken && serverAdminToken !== localAdminToken
       ? out.user
       : mergeProgressiveFields(memUser, out.user);
+    retainPendingGalaxyGates(memUser);
     writeCache(memUser);
     try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "refresh" } })); } catch {}
   }

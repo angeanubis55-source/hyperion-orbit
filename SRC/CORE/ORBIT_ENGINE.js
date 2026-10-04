@@ -4627,6 +4627,7 @@ function activateValour() {
   showNotification("Valeur exaltée active (30 s)", 2, "info");
 }
 function restorePersistedCds() {
+  restoreCpuCloak();
   // Monde infini : un refresh ne doit NI annuler l'effet NI offrir un
   // relaunch gratuit. L'effet continue en temps absolu (timestamps) : on
   // restaure le temps restant et on reprend l'animation (joueur + NPC).
@@ -6339,9 +6340,25 @@ function isPlayerCpuCloaked() {
   if (typeof player === "undefined" || !player || player.dead) return false;
   return player.cpuCloak === true;
 }
+function persistCpuCloak() {
+  try {
+    const id = account.user?.id;
+    if (!id) return;
+    const key = `orbit_cpu_cloak_v1:${id}`;
+    if (player.cpuCloak === true && !player.dead) localStorage.setItem(key, "1");
+    else localStorage.removeItem(key);
+  } catch {}
+}
+function restoreCpuCloak() {
+  try {
+    const id = account.user?.id;
+    player.cpuCloak = !!id && !player.dead && localStorage.getItem(`orbit_cpu_cloak_v1:${id}`) === "1";
+  } catch {}
+}
 function breakCpuCloak(reason) {
   if (player.cpuCloak !== true) return;
   player.cpuCloak = false;
+  persistCpuCloak();
   // 1 s anti-spam à la sortie (comme à l'activation manuelle).
   cloakCd = Math.max(cloakCd, CPU_CLOAK_COOLDOWN);
   showNotification(reason === "iem" ? "CPU CL04K-XL dévoilé par une IEM !" : "CPU CL04K-XL désactivé (attaque)", 2, "info");
@@ -6355,6 +6372,7 @@ function toggleCpuCloak() {
   }
   if (isPlayerCpuCloaked()) {
     player.cpuCloak = false;
+    persistCpuCloak();
     cloakCd = Math.max(cloakCd, CPU_CLOAK_COOLDOWN);
     showNotification("CPU CL04K-XL désactivé", 1.5, "info");
     try { updateSkillUI(); } catch {}
@@ -6371,6 +6389,7 @@ function toggleCpuCloak() {
   } catch {}
   markProgressDirty();
   player.cpuCloak = true;
+  persistCpuCloak();
   // Pas de recharge à l'activation : le CD d'1 s ne s'applique qu'entre
   // ACTIF et PRET (à la sortie du camouflage).
   // Les NPC perdent la cible : on efface l'aggro existante.
@@ -25859,16 +25878,14 @@ function useSmb() {
   try { sendSkillUse("smb"); } catch {}
   SFX.play("smbBomb");
 
-  // 50k dégâts flats à tout ce qui est autour dans un rayon de 500
-  // (NPC + joueurs, comme le kamikaze : bouclier d'abord via damageEnemy,
-  // le serveur tranche pour le PvP).
+  // 50k dégâts aux joueurs dans un rayon de 500 ; le serveur tranche le PvP.
   let smbHit = 0;
   try {
     const r2 = SMB_RADIUS * SMB_RADIUS;
     let pvpProxies = [];
     try { pvpProxies = [...netPlayerProxies.values()]; } catch { pvpProxies = []; }
-    for (const e of [...enemies, ...pvpProxies]) {
-      if (!e || !(Number(e.hp) > 0) || e._bossEncounter?.invulnerable) continue;
+    for (const e of pvpProxies) {
+      if (!e?._netPlayer || !(Number(e.hp) > 0)) continue;
       // ZNA : un joueur protégé ne reçoit pas les dégâts.
       if (e._netPlayer && e._netSafe === true) continue;
       const ex = Number(e.x) - player.x;
@@ -28570,6 +28587,7 @@ function die() {
     startPoliceCloakCooldown();
   }
   player.cpuCloak = false;
+  persistCpuCloak();
   try { cancelRepairPod(); } catch {}
   try { cancelRepairs(); } catch {}
   try { cancelHammerPod(); } catch {}

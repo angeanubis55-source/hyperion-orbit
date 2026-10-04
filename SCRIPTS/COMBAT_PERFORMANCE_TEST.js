@@ -635,6 +635,32 @@ test('REX : sync compte conserve degats et regeneration live, reparation manuell
 });
 
 
+test('GG : sauvegarde non repoussee par les kills, progression en attente restauree apres restart', () => {
+ const source=readFileSync(new URL('../SRC/CORE/ACCOUNT_NET.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+ const checkpoint={active:'alpha',activeWave:10,waves:{alpha:10},waveKills:{alpha:{wave:10,killed:12}}};
+ let timers=0;
+ const saved=new Map([['orbit_pending_gg:a',JSON.stringify(checkpoint)]]);
+ const ctx=vm.createContext({memUser:{id:'a',galaxyGates:{activeWave:1}},pendingGalaxyGates:null,saveTimer:null,structuredClone,JSON,lsGet:k=>saved.get(k),lsSet:(k,v)=>v==null?saved.delete(k):saved.set(k,v),setTimeout:()=>++timers});
+ vm.runInContext(['retainPendingGalaxyGates','restorePendingGalaxyGates','cachePendingGalaxyGates','schedulePush'].map(n=>engineFunction(n,source)).join('\n'),ctx);
+ vm.runInContext('restorePendingGalaxyGates(); schedulePush(); schedulePush()',ctx);
+ assert.equal(timers,1);assert.equal(ctx.memUser.galaxyGates.activeWave,10);assert.equal(ctx.memUser.galaxyGates.waveKills.alpha.killed,12);
+ ctx.memUser={id:'a',galaxyGates:{activeWave:1}};
+ vm.runInContext('retainPendingGalaxyGates(memUser)',ctx);assert.equal(ctx.memUser.galaxyGates.activeWave,10);
+ ctx.pendingGalaxyGates=null;vm.runInContext('cachePendingGalaxyGates()',ctx);assert.equal(saved.has('orbit_pending_gg:a'),false);
+ ctx.memUser={id:'b',galaxyGates:{activeWave:1}};vm.runInContext('restorePendingGalaxyGates()',ctx);assert.equal(ctx.memUser.galaxyGates.activeWave,1);
+});
+
+test('camouflage CPU : refresh conserve activation, compte isole et mort efface etat', () => {
+ const saved=new Map();
+ const ctx=vm.createContext({account:{user:{id:'a'}},player:{cpuCloak:true,dead:false},localStorage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)}});
+ vm.runInContext(engineFunction('persistCpuCloak')+'\n'+engineFunction('restoreCpuCloak'),ctx);
+ vm.runInContext('persistCpuCloak(); player.cpuCloak=false; restoreCpuCloak()',ctx);
+ assert.equal(ctx.player.cpuCloak,true);
+ ctx.account.user.id='b';vm.runInContext('restoreCpuCloak()',ctx);assert.equal(ctx.player.cpuCloak,false);
+ ctx.account.user.id='a';ctx.player.dead=true;vm.runInContext('persistCpuCloak(); player.dead=false; restoreCpuCloak()',ctx);assert.equal(ctx.player.cpuCloak,false);
+ ctx.player.cpuCloak=true;vm.runInContext('persistCpuCloak(); player.cpuCloak=false; persistCpuCloak(); restoreCpuCloak()',ctx);assert.equal(ctx.player.cpuCloak,false);
+});
+
 test('bonus boxes : snapshot applique des connexion sans attendre la synchronisation NPC', () => {
  let connected=false,ready=false,clears=0;
  const known=new Map([['box1',{type:'Bonus_Box',x:100,y:200}]]), boxes=[];
