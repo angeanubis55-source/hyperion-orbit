@@ -34959,16 +34959,10 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 // ============================================================
 // Render
 // ============================================================
-const WALL_TEX = {
-  src: "ASSETS/UI/WALL_GREY_STRIPED.png",
-  w: 64,
-  h: 64,
-};
 const MAP_BACKGROUND = {
   src: "ASSETS/BACKGROUNDS/Hyperion_fond.webp",
 };
 
-loadImage(WALL_TEX.src, { priority: true });
 loadImage(MAP_BACKGROUND.src, { priority: true });
 
 function drawMapBackground() {
@@ -34991,14 +34985,12 @@ function drawMapBackground() {
 
 function drawZoneWalls(ox, oy) {
   if (!isZoneMap || !zoneWalls?.length) return;
-  drawWallLayer(ctx, zoneWalls, WALL_TEX, {
+  // Dessin procédural (aucune texture) : aplat + bordure, culled au viewport.
+  drawWallLayer(ctx, zoneWalls, null, {
     offsetX: ox,
     offsetY: oy,
     viewportWidth: innerWidth,
     viewportHeight: innerHeight,
-    getImage: getCachedImage,
-    isImageReady: isImgReady,
-    createScaleMatrix: (sx, sy) => new DOMMatrix().scale(sx, sy),
   });
 }
 
@@ -36475,7 +36467,6 @@ async function prepareGameAssets() {
   try {
     const jobs = [
       ensurePackLoaded(ACTIVE_SHIP),
-      loadImage(WALL_TEX.src, { priority: true }),
       loadImage(MAP_BACKGROUND.src, { priority: true }),
     ];
     jobs.push(...preloadPlayerBulletSprites());

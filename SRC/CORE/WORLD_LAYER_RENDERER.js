@@ -1,48 +1,30 @@
 "use strict";
 
-import { clamp } from "./COLLISION.js";
+// Murs dessinés en procédural pur : aucun sprite, aucun motif répété, donc
+// aucun chargement d'image, aucune matrice de motif à recalculer par frame.
+// Par mur visible : 1 fillRect (aplat) + 1 strokeRect (bordure) — le chemin
+// le plus rapide pour le canvas, même sur les petites configs.
 
-const PATTERN_CACHE = new WeakMap();
-
-function patternCacheFor(context) {
-  let byImage = PATTERN_CACHE.get(context);
-  if (!byImage) {
-    byImage = new Map();
-    PATTERN_CACHE.set(context, byImage);
-  }
-  return byImage;
-}
-
-function cachedPattern(context, image, repeat) {
-  if (!context || !image) return null;
-  const byImage = patternCacheFor(context);
-  const key = repeat + ":repeat";
-  let entry = byImage.get(image);
-  if (!entry) {
-    entry = {};
-    byImage.set(image, entry);
-  }
-  if (!entry[key]) entry[key] = context.createPattern(image, repeat);
-  return entry[key];
-}
+const DEFAULT_WALL_COLORS = Object.freeze({
+  fill: "#333945",
+  edge: "#7e8899",
+  edgeWidth: 3,
+});
 
 export function drawWallLayer(context, walls, texture, options) {
-  if (!context || !walls?.length || !texture) return;
-  const { offsetX, offsetY, getImage, isImageReady, createScaleMatrix,
-    viewportWidth = Infinity, viewportHeight = Infinity } = options;
-  const image = getImage(texture.src);
-  if (!isImageReady(image)) return;
-  const pattern = cachedPattern(context, image, "repeat");
-  if (!pattern) return;
-  const imageWidth = image.naturalWidth || image.width || 1;
-  const imageHeight = image.naturalHeight || image.height || 1;
-  if (pattern.setTransform && createScaleMatrix) {
-    pattern.setTransform(createScaleMatrix((texture.w || imageWidth) / imageWidth, (texture.h || imageHeight) / imageHeight));
-  }
+  if (!context || !walls?.length) return;
+  const { offsetX = 0, offsetY = 0,
+    viewportWidth = Infinity, viewportHeight = Infinity,
+    colors = DEFAULT_WALL_COLORS } = options || {};
+  const fill = colors?.fill ?? DEFAULT_WALL_COLORS.fill;
+  const edge = colors?.edge ?? DEFAULT_WALL_COLORS.edge;
+  const edgeWidth = Math.max(1, Number(colors?.edgeWidth ?? DEFAULT_WALL_COLORS.edgeWidth) || 1);
   context.save();
-  context.fillStyle = pattern;
+  context.fillStyle = fill;
+  context.strokeStyle = edge;
+  context.lineWidth = edgeWidth;
   for (const wall of walls) {
-    // ✅ Coords écran arrondies à l'entier : 2 murs qui partagent EXACTEMENT
+    // Coords écran arrondies à l'entier : 2 murs qui partagent EXACTEMENT
     // la même arête tombent sur le même pixel → aucune ligne de jointure
     // (avec des fractionnaires, l'antialiasing laissait filtrer le fond).
     const x0 = Math.round(wall.x - wall.w / 2 + offsetX);
@@ -53,9 +35,9 @@ export function drawWallLayer(context, walls, texture, options) {
     const right = Math.min(viewportWidth, x1), bottom = Math.min(viewportHeight, y1);
     if (right <= left || bottom <= top) continue;
     context.fillRect(left, top, right - left, bottom - top);
+    if (typeof context.strokeRect === "function") {
+      context.strokeRect(left, top, right - left, bottom - top);
+    }
   }
   context.restore();
-  if (pattern.setTransform && typeof DOMMatrix !== "undefined") {
-    pattern.setTransform(new DOMMatrix());
-  }
 }
