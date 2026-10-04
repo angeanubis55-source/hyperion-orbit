@@ -27503,6 +27503,8 @@ let safeZoneActive = false;
 let safeZoneX = 0;
 let safeZoneY = 0;
 let safeZoneR = 0;
+// Mémorise l'état ZNA pour détecter son activation (front montant).
+let wasSafeZoneActive = false;
 
 // Rayon général de tous les portails
 const DEFAULT_PORTAL_RADIUS = 450;
@@ -33727,6 +33729,69 @@ for (const ptl of zonePortals) {
     if (toast?.fixed && toast.text === "Zone de Non-Agression") clearToastFixed();
   }
 
+  // Activation de la ZNA (le texte vient d'apparaître, donc 5 s sans combat
+  // déjà écoulées) : décrochage immédiat et total. Sans ça, les NPC gardaient
+  // leur état d'aggro et les tirs déjà en vol continuaient d'arriver, ce qui
+  // donnait l'impression qu'ils ne lâchaient pas même une fois protégé.
+  if (safeZoneActive && !wasSafeZoneActive) {
+    try {
+      const t = (typeof Target !== "undefined" && Target && typeof Target.get === "function") ? Target.get() : null;
+      if (t && Array.isArray(enemies) && enemies.includes(t)) Target.clear();
+    } catch {}
+    try {
+      for (const e of (enemies || [])) {
+        if (!e || e.hp <= 0) continue;
+        if (e.drawFireLock === true) continue;
+        let isKamikaze = false;
+        try { isKamikaze = ((typeof NPC_TYPES !== "undefined" && NPC_TYPES[e.type]) || {}).ai === "kamikaze"; } catch {}
+        if (isKamikaze) continue;
+        e._aggro = false;
+        e._aggroT = 0;
+        e._attackedPlayerRecently = false;
+        e._pendingSafeAggro = false;
+        e._safeRetreat = false;
+        e._safeRetreatT = 0;
+        e._safeShieldRegenDelay = 0;
+        if (e._combatTargetId === "player") e._combatTargetId = null;
+        if (e._combatTarget === player) e._combatTarget = null;
+        if (e.aiZ) {
+          e.aiZ.state = "wander";
+          // Sortie décisive hors de la ZNA (radiale depuis son centre) au lieu
+          // de flâner autour du joueur à 0.65x.
+          try {
+            const cx = safeZoneX, cy = safeZoneY;
+            const dxs = (e.x - cx) || 1, dys = (e.y - cy) || 0;
+            const ds = Math.hypot(dxs, dys) || 1;
+            const rr = (safeZoneR || (DEFAULT_PORTAL_RADIUS + SAFE_ZONE_MARGIN)) + 420 + Math.random() * 380;
+            let tx = cx + (dxs / ds) * rr + rand(-200, 200);
+            let ty = cy + (dys / ds) * rr + rand(-200, 200);
+            tx = clamp(tx, e.r || 18, WORLD.w - (e.r || 18));
+            ty = clamp(ty, e.r || 18, WORLD.h - (e.r || 18));
+            e.aiZ.wanderTarget = pushPointOutsidePortals({ x: tx, y: ty });
+            e.aiZ.wanderT = 2.5;
+          } catch {}
+        }
+      }
+    } catch {}
+    // Les tirs déjà en vol n'atteignent plus le joueur une fois protégé.
+    try {
+      for (let i = enemyBullets.length - 1; i >= 0; i--) {
+        if (enemyBullets[i] && enemyBullets[i].target === "player") enemyBullets.splice(i, 1);
+      }
+    } catch {}
+  }
+  wasSafeZoneActive = !!safeZoneActive;
+  // Tant que la ZNA est active, aucun tir NPC en vol vers le joueur ne doit
+  // subsister (un tir parti juste avant l'activation mettrait 1-2 s à arriver
+  // et donnerait l'impression que les NPC tirent encore sous protection).
+  if (safeZoneActive) {
+    try {
+      for (let i = enemyBullets.length - 1; i >= 0; i--) {
+        if (enemyBullets[i] && enemyBullets[i].target === "player") enemyBullets.splice(i, 1);
+      }
+    } catch {}
+  }
+
   const tAim = Target.get();
   if (!player.dead) {
     // QA Hyperion : pendant la charge et la rafale on reste face à la cible
@@ -34603,6 +34668,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           e._aggro = false;
           e._aggroT = 0;
           e._attackedPlayerRecently = false;
+          e._pendingSafeAggro = false;
           if (e.aiZ) e.aiZ.state = "wander";
         }
 
@@ -34632,6 +34698,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           e._aggro = false;
           e._aggroT = 0;
           e._attackedPlayerRecently = false;
+          e._pendingSafeAggro = false;
 
           if (e._safeRetreat) {
             e._safeRetreatT = Math.max(0, Number(e._safeRetreatT || 0) - dt);
