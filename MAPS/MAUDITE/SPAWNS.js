@@ -14,12 +14,12 @@ export function getZoneSpawns(WORLD) {
 
   // ✅ Quotas EXACTS : 50 Cubikon + 200 Protegit
   const quota = [
-    { type: "npc_Cubikon", left: 35 },
-    { type: "npc_Cubikon_maudite", left: 15 },
-    { type: "npc_Protegit", left: 50 },
-    { type: "npc_Protegit_maudite", left: 50 },
+    { type: "npc_Cubikon", left: 100 },
+    { type: "npc_Cubikon_maudite", left: 50 },
+    { type: "npc_Protegit", left: 100 },
+    { type: "npc_Protegit_maudite", left: 75 },
     { type: "npc_Protegit_maudite2", left: 50 },
-    { type: "npc_Protegit_maudite3", left: 50 },
+    { type: "npc_Protegit_maudite3", left: 25 },
   ];
 
   function pickQuotaType() {
@@ -59,10 +59,12 @@ export function getZoneSpawns(WORLD) {
     if (!ok) continue;
 
     const type = pickQuotaType();
+    const isCubikon = type === "npc_Cubikon" || type === "npc_Cubikon_maudite";
 
     camps.push({
       type,
       x, y,
+      ...(isCubikon ? { fixed: true, speed: 0 } : {}),
       radius: 350,
       respawn: 8,
       maxAlive: 1,

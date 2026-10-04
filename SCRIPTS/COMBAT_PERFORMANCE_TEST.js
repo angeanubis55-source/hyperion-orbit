@@ -48,7 +48,7 @@ test("recompense NPC partage : compte canonique sans normalisation, gains conser
     getActiveDroneFormation: () => ({}), calculateRankPoints: () => 42, formatInteger,
     addGameLog: () => {}, showNotificationGroup: () => {}, markProgressDirty: () => {}, window: {},
   });
-  vm.runInContext(engineFunction("killRewards"), context);
+  vm.runInContext(engineFunction("preserveLivePetVitals") + "\n" + engineFunction("killRewards"), context);
   context.killRewards({ type: "npc_test", _netUid: "npc1", _netLootOwner: true,
     _netReward: { credits: 20, exp: 30, honor: 5, baseExp: 30, baseHonor: 5,
       totalExp: 40, totalHonor: 7, revision: 2, percent: 100, ownsKill: true } });
@@ -560,4 +560,76 @@ test('Protegits : patrouille autonome bornee, vitesse variee et destination cons
   minion.patrolTime=0;master.x=80;master.y=80;
   protegitPatrol(minion,master,world,0.016,random);
   assert.equal(calls,8);assert.ok(minion.patrolX>=80 && minion.patrolY>=80);
+});
+
+
+test('REX : garde sa cible cinq secondes, libere immediatement une cible invalide', () => {
+ const a={hp:100}, b={hp:100}, state={target:null};
+ const ctx=vm.createContext({state,a,b,valid:t=>t.hp>0});
+ vm.runInContext(engineFunction('chooseStablePetTarget'),ctx);
+ state.target=vm.runInContext('chooseStablePetTarget(state,a,10,valid)',ctx);
+ assert.equal(state.target,a);
+ for(const time of [10.5,11,14.99]) {ctx.now=time;assert.equal(vm.runInContext('chooseStablePetTarget(state,b,now,valid)',ctx),a);}
+ assert.equal(vm.runInContext('chooseStablePetTarget(state,b,15,valid)',ctx),b);
+ state.target=a;state.targetSelectedAt=20;a.hp=0;
+ assert.equal(vm.runInContext('chooseStablePetTarget(state,b,21,valid)',ctx),b);
+ assert.equal(vm.runInContext('chooseStablePetTarget(state,null,21,valid)',ctx),null);
+});
+
+
+test('Maudite : Chaos Cubikon compte en contrats generaux, objectifs specifiques distincts', () => {
+ const state=normalizeQuestState({active:{elite_cube_3500:{cubikon:0},cursed_cube_breakers:{cubikon:0,cursed_cubikon:0}}});
+ recordQuestProgress(state,'kill','npc_Cubikon_maudite',1,{map:'maudite'});
+ assert.equal(state.active.elite_cube_3500.cubikon,1);
+ assert.equal(state.active.cursed_cube_breakers.cubikon,0);
+ assert.equal(state.active.cursed_cube_breakers.cursed_cubikon,1);
+ recordQuestProgress(state,'kill','npc_Cubikon',1,{map:'MAUDITE'});
+ assert.equal(state.active.elite_cube_3500.cubikon,2);
+ assert.equal(state.active.cursed_cube_breakers.cubikon,1);
+});
+
+test('Maudite : parts groupe sur meme carte totalisent 100, hors carte et instances exclus', () => {
+ const source=readFileSync(new URL('./MULTI_SERVER.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+ const members=[{id:'u_a',map:'MAUDITE',online:true},{id:'u_b',map:'maudite',online:true},{id:'u_c',map:'maudite',online:true},{id:'u_d',map:'1-7',online:true},{id:'u_e',map:'maudite',instance:true},{id:'u_f',map:'maudite',online:false}];
+ const ctx=vm.createContext({socialDescribeGroup:()=>({members}),describePeer:()=>{},death:{uid:'cube',seq:1}});
+ vm.runInContext(engineFunction('npcRewardShares',source),ctx);
+ const shares=vm.runInContext('npcRewardShares("u_a","maudite",death)',ctx);
+ assert.deepEqual(Array.from(shares,s=>s.pid),['u_a','u_b','u_c']);
+ assert.equal(shares.reduce((n,s)=>n+s.percent,0),100);
+ assert.ok(shares.every(s=>s.percent===33||s.percent===34));
+});
+
+
+test('Maudite : Cubikons classiques et Chaos restent immobiles en simulation serveur', async () => {
+ const {ZoneNpcSim}=await import('./NPC_ROOM.js');
+ const sim=await ZoneNpcSim.create('maudite'); assert.ok(sim);
+ for(let i=0;i<10;i++) sim.tick(0.1);
+ const cubes=[...sim.entries.values()].filter(e=>e.type==='npc_Cubikon'||e.type==='npc_Cubikon_maudite');
+ assert.ok(cubes.some(e=>e.type==='npc_Cubikon')); assert.ok(cubes.some(e=>e.type==='npc_Cubikon_maudite'));
+ const positions=cubes.map(e=>[e.x,e.y]);
+ for(const cube of cubes) {assert.equal(cube.speed,0);sim.setPlayer('test',cube.x+150,cube.y+150,{dead:false});}
+ for(let i=0;i<100;i++) sim.tick(0.1);
+ cubes.forEach((cube,i)=>assert.deepEqual([cube.x,cube.y],positions[i]));
+});
+
+
+test('Cubikons maudits : separation ignore les chevauchements meme si vitesse non nulle', async () => {
+ const {applyNpcSeparation}=await import('../NPC/NPC_MOVEMENT.js');
+ const cube={id:1,type:'npc_Cubikon_maudite',hp:100,x:500,y:500,r:100,speed:300};
+ const mobile={id:2,type:'npc_Protegit',hp:100,x:501,y:501,r:30,speed:300};
+ for(let i=0;i<60;i++) applyNpcSeparation([cube,mobile],1/60,{w:11000,h:7000},false);
+ assert.equal(cube.x,500);assert.equal(cube.y,500);
+});
+
+
+test('REX : sync compte conserve degats et regeneration live, reparation manuelle adoptee', () => {
+ const ctx=vm.createContext({});vm.runInContext(engineFunction('preserveLivePetVitals'),ctx);
+ for(const [liveHp,oldHp] of [[40,90],[90,40],[0,80]]) {
+ ctx.prev={id:'a',pet:{owned:true,active:true,hp:liveHp,sh:12}};
+ ctx.next={id:'a',pet:{owned:true,active:true,hp:oldHp,sh:60,exp:123}};
+ vm.runInContext('preserveLivePetVitals(prev,next)',ctx);
+ assert.equal(ctx.next.pet.hp,liveHp);assert.equal(ctx.next.pet.sh,12);assert.equal(ctx.next.pet.exp,123);
+ }
+ ctx.next.pet.active=false;ctx.next.pet.hp=10;
+ vm.runInContext('preserveLivePetVitals(prev,next)',ctx);assert.equal(ctx.next.pet.hp,10);
 });

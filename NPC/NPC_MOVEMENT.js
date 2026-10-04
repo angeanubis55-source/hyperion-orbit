@@ -8,6 +8,7 @@ export const NPC_SEPARATION = Object.freeze({ enable: true, extra: 6, strength: 
 // jamais les pousser (Invoke XVI, Mindfire Behemoth, Strokelight Barrage).
 const ANCHORED_NPC_TYPES = new Set([
   "npc_Cubikon",
+  "npc_Cubikon_maudite",
   "npc_Invoke_XVI",
   "npc_Mindfire_Behemoth",
   "npc_Strokelight_Barrage",

@@ -718,7 +718,9 @@ export function recordQuestProgress(state, kind, type, amount = 1, context = {})
       // sans tenir compte de la casse : le moteur envoie parfois en minuscules.
       const typeMatches = kind === "visit" || kind === "gate"
         ? sameId(o.type, type)
-        : (o.type === type || (kind === "kill" && o.type === "*"));
+        : (o.type === type || (kind === "kill" && o.type === "*")
+          || (kind === "kill" && !o.map && o.type === "npc_Cubikon"
+            && type === "npc_Cubikon_maudite"));
       if (!typeMatches) continue;
       if (o.map && !sameId(o.map, context.map)) continue;
       const before = Number(state.active[quest.id][o.id] || 0);

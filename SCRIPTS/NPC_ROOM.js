@@ -20,6 +20,7 @@ const RADIATION_CHASE_MARGIN = 2500;
 // deux sens — les mobiles passent par-dessus au lieu de les pousser.
 const ANCHORED_NPC_TYPES = new Set([
   "npc_Cubikon",
+  "npc_Cubikon_maudite",
   "npc_Invoke_XVI",
   "npc_Mindfire_Behemoth",
   "npc_Strokelight_Barrage",

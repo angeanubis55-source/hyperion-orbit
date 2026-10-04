@@ -8509,7 +8509,7 @@ initPilotSkillsUI({
     if (action === "disks") {
       const fresh = getCurrentUserFull();
       if (fresh) {
-        account.user = fresh;
+        account.user = preserveLivePetVitals(account.user, fresh);
         player.credits = Math.max(0, Number(fresh.credits) || 0);
       }
       markProgressDirty();
@@ -13832,9 +13832,21 @@ function mergeQuestProgress(localState, persistedState) {
   return normalizeQuestState({ active, completed: [...completed], abandoned });
 }
 
+function preserveLivePetVitals(previous, next) {
+  if (!previous || !next || previous.id !== next.id) return next;
+  const live = previous.pet, incoming = next.pet;
+  // Une réparation manuelle désactive le REX : adopter alors le nouvel état.
+  if (live?.owned !== true || incoming?.owned !== true
+      || live.active !== true || incoming.active !== true) return next;
+  for (const key of ["hp", "sh"]) {
+    if (Number.isFinite(Number(live[key]))) incoming[key] = Math.max(0, Number(live[key]));
+  }
+  return next;
+}
+
 function loadAccountUser() {
   const previousId = account.user?.id || null;
-  account.user = getCurrentUserFull();
+  account.user = preserveLivePetVitals(account.user, getCurrentUserFull());
 
   // Le module est initialisé avant la connexion. Dans ce cas, questState
   // contient encore l'état vide issu de l'utilisateur anonyme : resynchronise
@@ -15044,7 +15056,7 @@ function syncPlayerFromAccount() {
   const fresh = getCurrentUserFull();
   if (!fresh) return false;
 
-  account.user = fresh;
+  account.user = preserveLivePetVitals(account.user, fresh);
   // Synchronise aussi le journal des missions lors d'un refresh ou d'une
   // reconnexion (le moteur peut avoir été créé avant le compte).
   // Ne jamais faire redescendre un objectif vivant lorsqu'une recompense NPC
@@ -16832,7 +16844,7 @@ function tickBoosters(dt) {
             }
           }
         } catch {}
-        account.user = fresh;
+        account.user = preserveLivePetVitals(account.user, fresh);
         try { applyCurrentConfigStats(false, null, true); } catch {}
       }
     } catch {}
@@ -19650,6 +19662,14 @@ function petTargetStillValid(ref) {
   return false;
 }
 
+function chooseStablePetTarget(state, candidate, now, valid) {
+  const current = state.target;
+  if (candidate && current && current !== candidate && valid(current)
+      && now - Number(state.targetSelectedAt || 0) < 5) return current;
+  if (candidate !== current) state.targetSelectedAt = now;
+  return candidate;
+}
+
 function petVolleyDamage(pet, user, target) {
   const hangar = (user?.hangars || []).find((h) => h?.active) || null;
   const hid = hangar ? String(hangar.id) : null;
@@ -20978,6 +20998,12 @@ function updatePet(dt) {
     petState.outOfRangeShots = 0;
     target = null;
   }
+  target = chooseStablePetTarget(petState, target, performance.now() / 1000, current => {
+    if (!petTargetStillValid(current) || !(current.hp > 0)
+        || Math.hypot(current.x - player.x, current.y - player.y) > leash) return false;
+    if (current._netPlayer != null && netPvpBlocked(current)) return false;
+    return true;
+  });
   petState.target = target;
   if (!target) {
     for (let i = pendingEscortSalvo.length - 1; i >= 0; i--) {
@@ -20988,7 +21014,7 @@ function updatePet(dt) {
   const ownerSpeed = Math.max(260, getSpeedBreakdown().total) * playerSlowMult(player);
   // Close / intermediate / far zones blend continuously into catch-up speed.
   const catchup = clamp((ownerDistance - 220) / 680, 0, 1);
-  const followSpeed = ownerSpeed * (1.1 + catchup * 0.65);
+  const followSpeed = ownerSpeed * (1.05 + catchup * 0.30);
   let destX = petState.x, destY = petState.y;
   let wantSpeed = followSpeed;
   const weaving = !!target;
@@ -21015,7 +21041,7 @@ function updatePet(dt) {
   const prevX = petState.x;
   const prevY = petState.y;
   if (weaving) {
-    const scale = Math.min(1, followSpeed / (Math.hypot(weaveVX, weaveVY) || 1));
+    const scale = Math.min(1, (ownerSpeed * 1.1) / (Math.hypot(weaveVX, weaveVY) || 1));
     stepPetMotion(petState, weaveVX * scale, weaveVY * scale, dt, WORLD, RADIATION_SPAWN_MARGIN);
   } else if (fetchTarget) {
     // Approche vivante (jamais de ligne droite parfaite ni de snap) :
@@ -21803,6 +21829,7 @@ const npcSeparationIndex = createSpatialPairIndex(512);
 // jamais les pousser (Invoke XVI, Mindfire Behemoth, Strokelight Barrage).
 const ANCHORED_NPC_TYPES = new Set([
   "npc_Cubikon",
+  "npc_Cubikon_maudite",
   "npc_Invoke_XVI",
   "npc_Mindfire_Behemoth",
   "npc_Strokelight_Barrage",
@@ -24773,7 +24800,7 @@ function killRewards(e) {
     // courant avant d'appliquer le delta confirme par le serveur.
     // Le cache reseau contient deja le compte charge. Sa reference canonique
     // evite de normaliser tous les hangars/inventaires pendant chaque kill.
-    const currentAccountUser = netList()[0] || getCurrentUserFull();
+    const currentAccountUser = preserveLivePetVitals(account.user, netList()[0] || getCurrentUserFull());
     if (currentAccountUser && (!account.user || String(currentAccountUser.id) === String(account.user.id))) {
       account.user = currentAccountUser;
     } else if (!account.user) {
@@ -27735,7 +27762,7 @@ function syncNetNpcs(dt) {
         if (d && (Number(d.seq) || 0) === (c._netSeq || 0)) {
           const killerId = String(d.killer);
           const ownsKill = killerId === String(netMyId());
-          const groupMate = rules?.mode !== "gate" && getNetGroup()?.members?.some((m) => String(m.id) === killerId && String(m.map) === String(window.__CURRENT_MAP_ID__ || "") && m.instance !== true);
+          const groupMate = rules?.mode !== "gate" && getNetGroup()?.members?.some((m) => String(m.id) === killerId && String(m.map).toLowerCase() === String(window.__CURRENT_MAP_ID__ || "").toLowerCase() && m.instance !== true);
           c._netKiller = ownsKill || groupMate === true;
           c._netKillerId = killerId;
           c._netKillerPseudo = getNetGroup()?.members?.find((m) => String(m.id) === killerId)?.pseudo || "";
@@ -27791,7 +27818,7 @@ function syncNetNpcs(dt) {
         if (e._netKiller == null && s.killer != null) {
           const killerId = String(s.killer);
           const ownsKill = killerId === String(netMyId());
-          const groupMate = rules?.mode !== "gate" && getNetGroup()?.members?.some((m) => String(m.id) === killerId && String(m.map) === String(window.__CURRENT_MAP_ID__ || "") && m.instance !== true);
+          const groupMate = rules?.mode !== "gate" && getNetGroup()?.members?.some((m) => String(m.id) === killerId && String(m.map).toLowerCase() === String(window.__CURRENT_MAP_ID__ || "").toLowerCase() && m.instance !== true);
           e._netKiller = ownsKill || groupMate === true;
           e._netKillerId = killerId;
           e._netKillerPseudo = getNetGroup()?.members?.find((m) => String(m.id) === killerId)?.pseudo || "";
@@ -31343,7 +31370,7 @@ function targetLockSprite(e) {
       if (holder !== String(netMyId())) {
         const mate = rules?.mode !== "gate" && getNetGroup()?.members?.some(
           (m) => String(m.id) === holder
-            && String(m.map) === String(window.__CURRENT_MAP_ID__ || "")
+            && String(m.map).toLowerCase() === String(window.__CURRENT_MAP_ID__ || "").toLowerCase()
             && m.instance !== true,
         );
         if (mate !== true) {
@@ -37098,7 +37125,7 @@ window.addEventListener("orbit:user-updated", event => {
   // n'est pas mutée par setActiveHangar, contrairement aux objets du compte :
   // elle permet donc de reconnaître fiablement l'ancien vaisseau.
   const engineShipId = String(ACTIVE_SHIP?.id || "").toLowerCase();
-  account.user = refreshed;
+  account.user = preserveLivePetVitals(previous, refreshed);
   // Changement de vaisseau : account.user est déjà muté ici (cache partagé
   // de readUsers), on compare donc au dernier vaisseau vu par la palette.
   // Le refresh est systématique (pas seulement au changement) : au boot la
