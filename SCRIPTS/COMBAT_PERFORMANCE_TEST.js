@@ -633,3 +633,16 @@ test('REX : sync compte conserve degats et regeneration live, reparation manuell
  ctx.next.pet.active=false;ctx.next.pet.hp=10;
  vm.runInContext('preserveLivePetVitals(prev,next)',ctx);assert.equal(ctx.next.pet.hp,10);
 });
+
+
+test('bonus boxes : snapshot applique des connexion sans attendre la synchronisation NPC', () => {
+ let connected=false,ready=false,clears=0;
+ const known=new Map([['box1',{type:'Bonus_Box',x:100,y:200}]]), boxes=[];
+ const ctx=vm.createContext({currentMapId:()=> '1-7',rules:{mode:'zone'},netConnected:()=>connected,netInInstance:()=>false,netplayNpcActive:()=>false,netBoxMaintenanceT:0,netBoxDebugT:0,started:false,player:{dead:false},pendingNetCollectableRewards:new Map(),collectables:boxes,collectableTargetId:null,localNetBoxesByUid:new Map(),netBoxNeedsReconcile:true,clearNetBoxes:()=>{clears++;known.clear();},drainNetBoxInbox:()=>[],getNetBoxes:()=>known,netBoxSnapshotReady:()=>ready,pushNetBoxInstance:b=>boxes.push({...b,slotUid:b.uid,_netBox:true}),indexCollectableMoved:()=>{}});
+ vm.runInContext(engineFunction('netplayBoxesActive')+'\n'+engineFunction('syncNetBoxes'),ctx);
+ vm.runInContext('syncNetBoxes(0.016)',ctx);assert.equal(clears,0);assert.equal(known.size,1);
+ connected=true;
+ vm.runInContext('syncNetBoxes(0.016)',ctx);assert.equal(ctx.netBoxNeedsReconcile,true);
+ ready=true;
+ vm.runInContext('syncNetBoxes(0.016)',ctx);assert.equal(boxes.length,1);assert.equal(boxes[0].slotUid,'box1');
+});

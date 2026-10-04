@@ -22780,7 +22780,7 @@ function applyCollectableReward(c) {
   if (!cfg) return;
   // En multi, une box ambiante disparait tout de suite visuellement, mais son
   // contenu n'est verse qu'au client qui recoit l'accord unique du serveur.
-  if (c.slotUid && !c.dropUid && netplayNpcActive() && c._netClaimGranted !== true) {
+  if (c.slotUid && !c.dropUid && netplayBoxesActive() && c._netClaimGranted !== true) {
     const uid = String(c.slotUid);
     let requested = false;
     try { requested = claimNetBox(uid); } catch {}
@@ -23109,6 +23109,10 @@ function removeLocalNetBox(uid, fromNet = false) {
   return index >= 0;
 }
 
+function netplayBoxesActive() {
+  return rules?.mode === "zone" && netConnected() && !netInInstance();
+}
+
 function syncNetBoxes(dt) {
   const curMap = currentMapId();
   netBoxMaintenanceT += dt;
@@ -23152,7 +23156,7 @@ function syncNetBoxes(dt) {
       }
     }
   } catch {}
-  if (!netplayNpcActive()) {
+  if (!netplayBoxesActive()) {
     pendingNetCollectableRewards.clear();
     let purged = false;
     for (let i = collectables.length - 1; i >= 0; i--) {
@@ -23165,7 +23169,8 @@ function syncNetBoxes(dt) {
     }
     localNetBoxesByUid.clear();
     netBoxNeedsReconcile = true;
-    try { clearNetBoxes(); } catch {}
+    // Une liste peut déjà être arrivée pendant la connexion / le chargement.
+    // NETPLAY nettoie lui-même les données au changement de carte ou session.
     return;
   }
   // Collectes distantes : disparition immediate du miroir local.
@@ -23206,7 +23211,6 @@ function syncNetBoxes(dt) {
   // passage global n'est plus qu'un garde-fou toutes les cinq secondes.
   if (!netBoxNeedsReconcile && netBoxMaintenanceT < 5) return;
   netBoxMaintenanceT = 0;
-  netBoxNeedsReconcile = false;
   // Miroir serveur : ajoute les manquantes, vire les inconnues.
   let known = null;
   try { known = getNetBoxes(); } catch {}
@@ -23215,6 +23219,7 @@ function syncNetBoxes(dt) {
   // preparees pendant le chargement. Elles seront recalees par uid des que
   // le snapshot autoritaire de cette carte arrivera.
   try { if (!netBoxSnapshotReady()) return; } catch { return; }
+  netBoxNeedsReconcile = false;
   // Index construit en un seul passage : avec des centaines de Palladiums en
   // 5-2, rechercher chaque uid dans tout `collectables` faisait un travail
   // comparaisons par frame. Les lectures suivantes sont maintenant en O(1).
