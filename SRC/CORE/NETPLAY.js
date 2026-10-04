@@ -1732,7 +1732,6 @@ export function sendNetHit(hit) {
   if (!ws || ws.readyState !== 1 || !hit || !hit.uid) return;
   try {
     const h = { t: "hit", uid: String(hit.uid) };
-    if (hit.skill === "smb") h.skill = "smb";
     if (hit.kind === "sab") {
       h.kind = "sab";
       h.dmg = Math.max(0, Number(hit.dmg) || 0);
