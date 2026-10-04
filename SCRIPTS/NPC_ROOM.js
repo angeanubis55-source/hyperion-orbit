@@ -558,7 +558,8 @@ drainPlayerHits() {
     if (!shooter || shooter.dead) return;
     const dx = Number(entry.x) - Number(shooter.x);
     const dy = Number(entry.y) - Number(shooter.y);
-    if (dx * dx + dy * dy > 6500 * 6500) return;
+    const hitRange = hit?.skill === "smb" && Number(hit.dmg) <= 50000 ? 11000 : 6500;
+    if (dx * dx + dy * dy > hitRange * hitRange) return;
     const raw = Number(hit?.dmg);
     // Conserve le plafond historique : certaines configurations tres haut
     // niveau peuvent legitimement depasser 10 M sur un impact cumule.

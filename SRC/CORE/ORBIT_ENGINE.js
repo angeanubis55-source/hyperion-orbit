@@ -24450,6 +24450,7 @@ e._pendingSpawn = 20;
     try {
       sendNetHit({
         uid: e._netUid,
+        skill: opts.skill,
         dmg: Number(dmg) || 0,
         pen,
         critChance: crit?.chance,
@@ -25671,7 +25672,7 @@ const SMB_COOLDOWN = 10.0;
 // Dégâts : 50k à tout ce qui est autour dans un rayon de 500.
 // (Pas d'invincibilité : la bombe ne protège pas le lanceur.)
 const SMB_DAMAGE = 50000;
-const SMB_RADIUS = 500;
+const SMB_RADIUS = 11000;
 
 let pulseCd = 0;
 let iemCd = 0;
@@ -25850,7 +25851,7 @@ function useSmb() {
   try { sendSkillUse("smb"); } catch {}
   SFX.play("smbBomb");
 
-  // 50k dégâts flats à tout ce qui est autour dans un rayon de 500
+  // 50k dégâts flats à tout ce qui est autour dans un rayon de 11 000
   // (NPC + joueurs, comme le kamikaze : bouclier d'abord via damageEnemy,
   // le serveur tranche pour le PvP).
   let smbHit = 0;
@@ -25865,7 +25866,7 @@ function useSmb() {
       const ex = Number(e.x) - player.x;
       const ey = Number(e.y) - player.y;
       if (ex * ex + ey * ey > r2) continue;
-      const out = damageEnemy(e, SMB_DAMAGE, 0, { chance: 0, mult: 1 });
+      const out = damageEnemy(e, SMB_DAMAGE, 0, { chance: 0, mult: 1 }, { skill: "smb" });
       if (out?.total > 0) {
         smbHit++;
         try { notePetPlayerDamage(e); } catch {}
