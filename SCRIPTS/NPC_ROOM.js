@@ -36,7 +36,8 @@ function aggroRangeMultFor(mapId) {
   return DOUBLE_RANGE_MAP_IDS.has(String(mapId || "").trim().toLowerCase()) ? 2 : 1;
 }
 
-// Blacklight uniquement : tous les dégâts x2 de base (parité client).
+// Blacklight uniquement : seuls les dégâts des JOUEURS sont x2 (officiel),
+// comme en solo. Les NPC infligent leurs dégâts normaux.
 const BL_MAP_IDS = new Set(["1-bl", "2-bl", "3-bl"]);
 function blDamageMultFor(mapId) {
   return BL_MAP_IDS.has(String(mapId || "").trim().toLowerCase()) ? 2 : 1;
@@ -157,6 +158,10 @@ export class ZoneNpcSim {
       }));
       const sim = new ZoneNpcSim(id, world, camps, savedUniverse);
       sim.safe = safe;
+      // Murs de la map (zones grises) : les spawnArea (Invoke BL) les évitent.
+      try {
+        sim.walls = typeof spawns?.getZoneWalls === "function" ? spawns.getZoneWalls(world) || [] : [];
+      } catch { sim.walls = []; }
       // Raid Low : aucune vague active au démarrage (pas de spawn).
       sim.raidWave = 0;
       sim.raidWaveGen = 0;
@@ -298,6 +303,18 @@ export class ZoneNpcSim {
     };
   }
 
+  inWall(x, y, margin) {
+    const walls = Array.isArray(this.walls) ? this.walls : [];
+    if (!walls.length) return false;
+    const m = Math.max(0, Number(margin) || 0);
+    for (const w of walls) {
+      const hw = Number(w?.w || 0) / 2 + m;
+      const hh = Number(w?.h || 0) / 2 + m;
+      if (Math.abs(Number(x) - Number(w?.x || 0)) <= hw && Math.abs(Number(y) - Number(w?.y || 0)) <= hh) return true;
+    }
+    return false;
+  }
+
   areaPos(camp, pad = 80) {
     const a = camp?.spawnArea;
     if (a && [a.x1, a.y1, a.x2, a.y2].every((v) => Number.isFinite(Number(v)))) {
@@ -305,10 +322,20 @@ export class ZoneNpcSim {
       const ax2 = Math.max(Number(a.x1), Number(a.x2));
       const ay1 = Math.min(Number(a.y1), Number(a.y2));
       const ay2 = Math.max(Number(a.y1), Number(a.y2));
-      return {
-        x: ax1 + Math.random() * Math.max(0, ax2 - ax1),
-        y: ay1 + Math.random() * Math.max(0, ay2 - ay1),
-      };
+      // Jamais dans les zones grises (murs) pour les spawnArea (Invoke BL).
+      const stats = statsFor(camp?.type);
+      const margin = (Number(stats?.r) || 60) + 30;
+      let x = ax1 + Math.random() * Math.max(0, ax2 - ax1);
+      let y = ay1 + Math.random() * Math.max(0, ay2 - ay1);
+      for (let t = 0; t < 12 && this.inWall(x, y, margin); t++) {
+        x = ax1 + Math.random() * Math.max(0, ax2 - ax1);
+        y = ay1 + Math.random() * Math.max(0, ay2 - ay1);
+      }
+      if (this.inWall(x, y, margin) && Number.isFinite(Number(camp?.x)) && Number.isFinite(Number(camp?.y))) {
+        x = clamp(Number(camp.x), 80, this.world.w - 80);
+        y = clamp(Number(camp.y), 80, this.world.h - 80);
+      }
+      return { x, y };
     }
     return this.randomPos(pad);
   }
@@ -523,6 +550,124 @@ drainPlayerHits() {
     }
   }
 
+  // Mindfire Behemoth : 2 Attend IX à 75 % / 50 % / 25 % de durabilité.
+  // Non bloquant : le Mindfire reste vulnérable, les Attend sont indépendants.
+  checkMindfireWaves(entry, nowMs) {
+    if (!entry || String(entry.type || "") !== "npc_Mindfire_Behemoth" || !(entry.hp > 0)) return;
+    const max = Math.max(0, Number(entry.hpMax) || 0) + Math.max(0, Number(entry.shMax) || 0);
+    if (!(max > 0)) return;
+    const frac = (Math.max(0, Number(entry.hp) || 0) + Math.max(0, Number(entry.sh) || 0)) / max;
+    entry.mindWaves ||= {};
+    const stats = statsFor("npc_Attend_IX");
+    if (!stats) return;
+    for (const [threshold, key] of [[0.75, "p75"], [0.50, "p50"], [0.25, "p25"]]) {
+      if (frac <= threshold && !entry.mindWaves[key]) {
+        entry.mindWaves[key] = true;
+        for (let i = 0; i < 2; i++) {
+          if (this.countCamplessAlive() >= ZoneNpcSim.WAVELESS_MAX) return;
+          const ang = Math.random() * TAU;
+          const dist = 60 + Math.random() * 400;
+          const seq = (this.waveSeq = (Number(this.waveSeq) || 0) + 1) + (Number(entry.seq) || 0) * 100000;
+          const uid = `${this.mapId}#wave${Number(this.waveSeq) || 0}`;
+          const x = clamp(Number(entry.x) + Math.cos(ang) * dist, 80, this.world.w - 80);
+          const y = clamp(Number(entry.y) + Math.sin(ang) * dist, 80, this.world.h - 80);
+          this.entries.set(uid, {
+            uid, campId: null, type: "npc_Attend_IX",
+            masterUid: null, masterSeq: 0,
+            x, y, angle: Math.random() * TAU,
+            hp: stats.hpMax, sh: stats.shMax,
+            hpMax: stats.hpMax, shMax: stats.shMax,
+            speed: stats.speed, dr: stats.dr, spread: stats.spread,
+            passive: !!stats.passive, kamikaze: !!stats.kamikaze,
+            explodeOnTouch: !!stats.explodeOnTouch, explodeRadius: stats.explodeRadius, explodeDmg: stats.explodeDmg,
+            canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,
+            bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.2 + Math.random() * 0.5,
+            aggroRange: 700, aggroHoldMs: 3500,
+            aggroBy: null, aggroUntil: 0,
+            tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+            lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
+            masterKiller: null, decaying: false, decayPerSec: 0, decayAge: 0,
+            fleeVx: 0, fleeVy: 0, deadAt: 0,
+            orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
+            seq,
+          });
+        }
+      }
+    }
+  }
+
+  // Invoke XVI : 7 Impulse II au premier dégât, une seule fois par incarnation.
+  // Non bloquant : l'Invoke reste vulnérable, les Impulse sont indépendants.
+  spawnInvokeImpulse(entry, nowMs) {
+    if (!entry) return;
+    const stats = statsFor("npc_Impulse_II");
+    if (!stats) return;
+    for (let i = 0; i < 7; i++) {
+      if (this.countCamplessAlive() >= ZoneNpcSim.WAVELESS_MAX) return;
+      const ang = Math.random() * TAU;
+      const dist = 60 + Math.random() * 400;
+      const seq = (this.waveSeq = (Number(this.waveSeq) || 0) + 1) + (Number(entry.seq) || 0) * 100000;
+      const uid = `${this.mapId}#wave${Number(this.waveSeq) || 0}`;
+      const x = clamp(Number(entry.x) + Math.cos(ang) * dist, 80, this.world.w - 80);
+      const y = clamp(Number(entry.y) + Math.sin(ang) * dist, 80, this.world.h - 80);
+      this.entries.set(uid, {
+        uid, campId: null, type: "npc_Impulse_II",
+        masterUid: null, masterSeq: 0,
+        x, y, angle: Math.random() * TAU,
+        hp: stats.hpMax, sh: stats.shMax,
+        hpMax: stats.hpMax, shMax: stats.shMax,
+        speed: stats.speed, dr: stats.dr, spread: stats.spread,
+        passive: !!stats.passive, kamikaze: !!stats.kamikaze,
+        explodeOnTouch: !!stats.explodeOnTouch, explodeRadius: stats.explodeRadius, explodeDmg: stats.explodeDmg,
+        canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,
+        bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.2 + Math.random() * 0.5,
+        aggroRange: 700, aggroHoldMs: 3500,
+        aggroBy: null, aggroUntil: 0,
+        tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+        lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
+        masterKiller: null, decaying: false, decayPerSec: 0, decayAge: 0,
+        fleeVx: 0, fleeVy: 0, deadAt: 0,
+        orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
+        seq,
+      });
+    }
+  }
+
+  // Strokelight Barrage : 1 Barrage Seeker Rocket verrouillée sur l'agresseur.
+  spawnBarrageRocket(entry, nowMs) {
+    if (!entry || !(entry.hp > 0)) return;
+    const stats = statsFor("npc_Barrage_Seeker_Rocket");
+    if (!stats) return;
+    if (this.countCamplessAlive() >= ZoneNpcSim.WAVELESS_MAX) return;
+    const ang = Math.random() * TAU;
+    const dist = 60 + Math.random() * 120;
+    const seq = (this.waveSeq = (Number(this.waveSeq) || 0) + 1) + (Number(entry.seq) || 0) * 100000;
+    const uid = `${this.mapId}#wave${Number(this.waveSeq) || 0}`;
+    const x = clamp(Number(entry.x) + Math.cos(ang) * dist, 80, this.world.w - 80);
+    const y = clamp(Number(entry.y) + Math.sin(ang) * dist, 80, this.world.h - 80);
+    const target = this.players.has(String(entry.lastHitBy)) ? String(entry.lastHitBy) : null;
+    this.entries.set(uid, {
+      uid, campId: null, type: "npc_Barrage_Seeker_Rocket",
+      masterUid: null, masterSeq: 0,
+      x, y, angle: Math.random() * TAU,
+      hp: stats.hpMax, sh: stats.shMax,
+      hpMax: stats.hpMax, shMax: stats.shMax,
+      speed: stats.speed, dr: stats.dr, spread: stats.spread,
+      passive: false, kamikaze: !!stats.kamikaze,
+      explodeOnTouch: !!stats.explodeOnTouch, explodeRadius: stats.explodeRadius, explodeDmg: stats.explodeDmg,
+      canShoot: false, shootRange: stats.shootRange, shootRate: 0,
+      bulletDmg: 0, burst: stats.burst, shootCd: 0,
+      aggroRange: 8000, aggroHoldMs: 3600000,
+      aggroBy: target, aggroUntil: target ? nowMs + 3600000 : 0,
+      tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+      lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
+      masterKiller: null, decaying: false, decayPerSec: 0, decayAge: 0,
+      fleeVx: 0, fleeVy: 0, deadAt: 0,
+      orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
+      seq,
+    });
+  }
+
   // A la mort du Cubikon, ses Protegits fuient en ligne droite pendant 3 s
   // puis errent comme les autres NPC (agro + tirs) tout en continuant de
   // perdre 5 % de leur vie max par seconde, meme sous le feu ennemi.
@@ -563,6 +708,10 @@ drainPlayerHits() {
     // Conserve le plafond historique : certaines configurations tres haut
     // niveau peuvent legitimement depasser 10 M sur un impact cumule.
     if (!Number.isFinite(raw) || raw < 0 || raw > 1e8) return;
+    // Blacklight : seuls les dégâts des joueurs sont x2 (officiel, parité solo).
+    // Strokelight Barrage : insensible (officiel : NPC normal en map BL).
+    const strokNoBonus = String(entry.type || "") === "npc_Strokelight_Barrage";
+    const buffed = Math.max(0, raw) * (strokNoBonus ? 1 : blDamageMultFor(this.mapId));
     // Premier attaquant = credit du kill (pas le coup de grace).
     if (entry.firstBy == null) entry.firstBy = String(clientId);
     entry.lastHitBy = String(clientId);
@@ -597,11 +746,11 @@ drainPlayerHits() {
     let applied = 0;
     if (hit?.kind === "sab") {
       // Drain bouclier seul (miroir drainShield) : jamais de coque.
-      const drained = Math.min(Math.max(0, entry.sh), Math.max(0, raw));
+      const drained = Math.min(Math.max(0, entry.sh), buffed);
       entry.sh -= drained;
       applied = drained;
     } else {
-      const res = damageEnemyLayers(entry, Math.max(0, raw), {
+      const res = damageEnemyLayers(entry, buffed, {
         shieldPenetration: clamp(Number(hit?.pen ?? 0), 0, 1),
         weakenShields: clamp(Number(hit?.weaken ?? 0), 0, 10),
         shieldSpread: entry.spread,
@@ -644,6 +793,18 @@ drainPlayerHits() {
           entry.cube = { phase: "delay", until: nowMs + 2000, spawnAt: nowMs + 4600 };
         }
       }
+    }
+    // Mindfire Behemoth : 2 Attend IX à 75 % / 50 % / 25 % de durabilité.
+    // Non bloquant : le Mindfire reste vulnérable (pas d'invulnérabilité).
+    if (applied > 0 && entry.type === "npc_Mindfire_Behemoth" && entry.hp > 0) {
+      try { this.checkMindfireWaves(entry, nowMs); } catch {}
+    }
+    // Invoke XVI : 7 Impulse II dès le premier dégât, une seule fois
+    // par incarnation (l'entrée serveur persiste aux départs/retours).
+    // Non bloquant : l'Invoke reste vulnérable.
+    if (applied > 0 && entry.type === "npc_Invoke_XVI" && !entry.invokeReleased) {
+      entry.invokeReleased = true;
+      try { this.spawnInvokeImpulse(entry, nowMs); } catch {}
     }
     if (!(entry.hp > 0)) {
       entry.hp = 0;
@@ -801,6 +962,23 @@ drainPlayerHits() {
       const slowMult = nowMs < Number(e.slowUntil || 0)
         ? Math.max(0.05, 1 - clamp(Number(e.slowPct) || 0, 0, 95) / 100)
         : 1;
+      // Strokelight Barrage : 1 Barrage Seeker Rocket / 5 s une fois attaqué.
+      // La roquette kamikaze poursuit l'agresseur jusqu'à la mort.
+      if (e.hp > 0 && String(e.type || "") === "npc_Strokelight_Barrage" && e.lastHitBy != null && !frozen) {
+        e.barrageT = Math.max(0, (Number(e.barrageT) || 0) - dt);
+        if (e.barrageT <= 0) {
+          e.barrageT = 5;
+          try { this.spawnBarrageRocket(e, nowMs); } catch {}
+        }
+      }
+      // Strokelight Barrage : sous 25 % de durabilité il devient mobile (350).
+      if (String(e.type || "") === "npc_Strokelight_Barrage") {
+        const strokMax = Math.max(0, Number(e.hpMax) || 0) + Math.max(0, Number(e.shMax) || 0);
+        const strokFrac = strokMax > 0
+          ? (Math.max(0, Number(e.hp) || 0) + Math.max(0, Number(e.sh) || 0)) / strokMax
+          : 1;
+        e.speed = strokFrac < 0.25 ? 350 : 0;
+      }
       // Kamikaze au contact : explose, la victime touche la recompense.
       if (e.kamikaze && e.explodeOnTouch) {
         let victim = null, victimD2 = e.explodeRadius * e.explodeRadius;
@@ -810,7 +988,7 @@ drainPlayerHits() {
           if (d2 < victimD2) { victimD2 = d2; victim = pid; }
         }
         if (victim != null) {
-          this.playerHits.push({ playerId: String(victim), npcUid: e.uid, damage: Math.max(0, Number(e.explodeDmg) || 0) * blDamageMultFor(this.mapId), kind: "boom" });
+          this.playerHits.push({ playerId: String(victim), npcUid: e.uid, damage: Math.max(0, Number(e.explodeDmg) || 0), kind: "boom" });
           e.hp = 0; e.sh = 0; e.killer = String(victim); e.cause = "boom";
           e.cube = null;
           if (!e.campId) e.deadAt = nowMs;
@@ -978,7 +1156,7 @@ drainPlayerHits() {
           e.shootCd = (1 / Math.max(0.001, e.shootRate)) * (0.85 + Math.random() * 0.3);
           for (let shot = 0; shot < e.burst; shot++) {
             if (Math.random() < 0.15) continue;
-            const damage = Math.max(1, Math.round(e.bulletDmg * (0.95 + Math.random() * 0.1) * blDamageMultFor(this.mapId)));
+            const damage = Math.max(1, Math.round(e.bulletDmg * (0.95 + Math.random() * 0.1)));
             this.playerHits.push({ playerId: String(chase.id), npcUid: e.uid, damage, kind: "laser" });
           }
         }

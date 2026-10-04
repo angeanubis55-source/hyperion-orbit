@@ -25,8 +25,8 @@ export const RESOURCE_TYPES = Object.freeze({
   tetrathrin: Object.freeze({ id: "tetrathrin", name: "Tetrathrin", plural: "Tetrathrin", icon: "/ASSETS/ORES/TETRATHRIN.png" }),
   kyhalon: Object.freeze({ id: "kyhalon", name: "Kyhalon", plural: "Kyhalon", icon: "/ASSETS/ORES/KYHALON.png" }),
   rinusk: Object.freeze({ id: "rinusk", name: "Rinusk", plural: "Rinusk", icon: "/ASSETS/ORES/RINUSK.png" }),
-  blacklight_trace: Object.freeze({ id: "blacklight_trace", name: "Trace Blacklight", plural: "Traces Blacklight", icon: "/ASSETS/ORES/BLACKLIGHT_TRACE.png" }),
-  mindfire_cerebrum: Object.freeze({ id: "mindfire_cerebrum", name: "Cerebrum", plural: "Cerebrums", icon: "/ASSETS/ORES/MINDFIRE_CEREBRUM.png" }),
+  blacklight_trace: Object.freeze({ id: "blacklight_trace", name: "Traceur Blacklight", plural: "Traceurs Blacklight", icon: "/ASSETS/ORES/BLACKLIGHT_TRACE.png" }),
+  mindfire_cerebrum: Object.freeze({ id: "mindfire_cerebrum", name: "Cerebrum Mindfire", plural: "Cerebrum Mindfire", icon: "/ASSETS/ORES/MINDFIRE_CEREBRUM.png" }),
   // Composants intermédiaires d'assemblage (atelier) : fabriqués puis réutilisés.
   nano_condensator: Object.freeze({ id: "nano_condensator", name: "Condensateur nano", plural: "Condensateurs nano", icon: "/ASSETS/CPU/NANO_CONDENSER_100X100.png" }),
   high_frequency_cable: Object.freeze({ id: "high_frequency_cable", name: "Câble haute fréquence", plural: "Câbles haute fréquence", icon: "/ASSETS/CPU/HIGH_FREQUENCY_CABLE_100X100.png" }),

@@ -400,7 +400,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
   },
 
   // Box lâchée par l'Invoke XVI à sa mort (jamais en ambient).
-  // Contenu : Rinusk 55-80 + Trace Blacklight 30-40.
+  // Contenu : Rinusk 55-80 + Traceurs 30-40.
   Sun_Box: {
     name: "Sun Box",
     maps: "*",
@@ -425,6 +425,42 @@ export const COLLECTABLE_TYPES = Object.freeze({
       glow: false,
     },
     rewards: { resources: { rinusk: [55, 80], blacklight_trace: [30, 40] } },
+  },
+
+  // Box lâchée par le Mindfire Behemoth à sa mort (jamais en ambient).
+  // Officiel : Rinusk 100-120 + Trace 120-140 + Cerebrum 30-45 +
+  // EXP 8.5-12.5M + Honneur 52.5-72.5k + Crédits 16.5-22.5M + Uridium 5400-5900.
+  // Pas d'uridium en jeu : converti en crédits x10000, donc crédits
+  // 70 500 000 - 81 500 000 (16.5M+54M -> 22.5M+59M).
+  Mindfire_Sun_Box: {
+    name: "Sun Box",
+    maps: "*",
+    qty: 0,
+    spawnBatch: 1,
+    minSpacing: 100,
+    avoidPlayer: 0,
+    npcDespawnAfter: 0,
+    r: 30,
+    pickupRadius: 50,
+    bob: 5,
+    sprite: {
+      path: "ASSETS/COLLECTABLES/BONUS_BOX_SUN/",
+      frames: 20,
+      firstNumber: 1,
+      ext: ".png",
+      fps: 12,
+      w: 96,
+      h: 96,
+      scale: 1,
+      randomStart: true,
+      glow: false,
+    },
+    rewards: {
+      credits: [70500000, 81500000],
+      exp: [8500000, 12500000],
+      honor: [52500, 72500],
+      resources: { rinusk: [100, 120], blacklight_trace: [120, 140], mindfire_cerebrum: [30, 45] },
+    },
   },
 });
 

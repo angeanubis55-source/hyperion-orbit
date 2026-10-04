@@ -193,7 +193,7 @@ export const NPC_REWARDS = Object.freeze({
   npc_Pike: { credits: 50000, exp: 25000, honor: 100 },
   npc_Spookfish: { credits: 50000, exp: 25000, honor: 100 },
   npc_The_Stinger: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Strokelight_Barrage: { credits: 6500000, exp: 25000, honor: 100 },
+  npc_Strokelight_Barrage: { credits: 46500000, exp: 3500000, honor: 350000 },
   npc_I_Egg: { credits: 50000, exp: 25000, honor: 100 },
   npc_I_Hitac: { credits: 50000, exp: 25000, honor: 100 },
   npc_Plagued_Gygerthrall: { credits: 50000, exp: 25000, honor: 100 },
@@ -222,7 +222,8 @@ export const NPC_REWARDS = Object.freeze({
   npc_Attend_IX: { credits: 3750000, exp: 350000, honor: 750 },
   // Invoke : 9 500 000 + 2000 uridium x 10 000 = 29 500 000 (pas d'uridium en jeu).
   npc_Invoke_XVI: { credits: 29500000, exp: 3500000, honor: 20000 },
-  npc_Mindfire_Behemoth: { credits: 25000000, exp: 10000000, honor: 60000 },
+  // Mindfire : 20 000 000 + 1000 uridium x 10 000 = 30 000 000 (pas d'uridium en jeu).
+  npc_Mindfire_Behemoth: { credits: 30000000, exp: 10000000, honor: 60000 },
   npc_Unidentified_Destroyer: { credits: 50000, exp: 25000, honor: 100 },
   // Recompenses generiques : les statistiques serveur ne figurent pas dans main.swf.
   npc_P_E_T_Berserker: { credits: 50000, exp: 25000, honor: 100 },
@@ -260,7 +261,7 @@ export const NPC_REWARDS = Object.freeze({
   npc_Demaner_Corsair: { credits: 50000, exp: 25000, honor: 100 },
   npc_Awakened_Devourer: { credits: 50000, exp: 25000, honor: 100 },
   npc_Deadly_Battleray: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Barrage_Seeker_Rocket: { credits: 50000, exp: 25000, honor: 100 },
+  npc_Barrage_Seeker_Rocket: { credits: 0, exp: 0, honor: 0 },
   npc_Sunder_Star_2: { credits: 50000, exp: 25000, honor: 100 },
   npc_Sunder_Star_3: { credits: 50000, exp: 25000, honor: 100 },
   npc_Sunder_Star_4: { credits: 50000, exp: 25000, honor: 100 },
@@ -269,8 +270,8 @@ export const NPC_REWARDS = Object.freeze({
   npc_Urge_IV: { credits: 50000, exp: 25000, honor: 100 },
   npc_Attitude_XIII: { credits: 50000, exp: 25000, honor: 100 },
   npc_Capital_I: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Abide_I: { credits: 50000, exp: 25000, honor: 100 },
-  npc_SteadFast_III: { credits: 50000, exp: 25000, honor: 100 },
+  npc_Abide_I: { credits: 155000, exp: 15000, honor: 55 },
+  npc_SteadFast_III: { credits: 155000, exp: 15000, honor: 55 },
   npc_Regard_CXI: { credits: 50000, exp: 25000, honor: 100 },
   npc_Observe_X: { credits: 50000, exp: 25000, honor: 100 },
   npc_Find_VII: { credits: 50000, exp: 25000, honor: 100 },

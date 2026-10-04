@@ -205,7 +205,8 @@ export function renderMinimap(context, options) {
 
   for (const enemy of enemies) {
     if (!enemy || enemy.hp <= 0 || !shouldShowNpc(player, enemy, lockedNpc)) continue;
-    const size = clamp((enemy.r || 18) / 12, 2, 6);
+    // Tous les NPC : même point rouge, quelle que soit leur taille en jeu.
+    const size = 2;
     const opacity = clamp(Number(npcOpacity(player, enemy, lockedNpc)) || 0, 0, 1);
     if (opacity <= 0) continue;
     context.fillStyle = `rgba(255,107,122,${(0.8 * opacity).toFixed(3)})`;
@@ -217,7 +218,7 @@ export function renderMinimap(context, options) {
     // Joueur distant : meme taille qu'un NPC + meme portee radar.
     if (ally._net) {
       if (!shouldShowNpc(player, ally, lockedNpc)) continue;
-      const size = clamp((ally.r || 18) / 12, 2, 6);
+      const size = 2;
       context.fillStyle = ally.color || "rgba(80,160,255,0.95)";
       context.fillRect(ally.x * scaleX - size / 2, ally.y * scaleY - size / 2, size, size);
       continue;

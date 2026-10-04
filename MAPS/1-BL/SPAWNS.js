@@ -74,12 +74,33 @@ export function getZoneSpawns(WORLD) {
   // ✅ Boss BL : 10 Invoke (zone 300,300 -> 5000,8000) + Strok + Mindfire fixes.
   // Tous immobiles (speed 0, comme le Cubikon). Respawn : Invoke 30 s,
   // Strok/Mindfire 5 min (délais dans UNIVERSE_SIM).
+  // Les Invoke ne spawnent jamais dans les zones grises (murs).
   const INVOKE_AREA = { x1: 300, y1: 300, x2: 5000, y2: 8000 };
+  const INVOKE_WALLS = getZoneWalls(WORLD);
+  const INVOKE_MARGIN = 120;
+  function inGreyZone(x, y) {
+    for (const wl of INVOKE_WALLS) {
+      const hw = Number(wl?.w || 0) / 2 + INVOKE_MARGIN;
+      const hh = Number(wl?.h || 0) / 2 + INVOKE_MARGIN;
+      if (Math.abs(x - Number(wl?.x || 0)) <= hw && Math.abs(y - Number(wl?.y || 0)) <= hh) return true;
+    }
+    return false;
+  }
+  function pickInvokePos() {
+    let x = rand(INVOKE_AREA.x1, INVOKE_AREA.x2);
+    let y = rand(INVOKE_AREA.y1, INVOKE_AREA.y2);
+    for (let t = 0; t < 12 && inGreyZone(x, y); t++) {
+      x = rand(INVOKE_AREA.x1, INVOKE_AREA.x2);
+      y = rand(INVOKE_AREA.y1, INVOKE_AREA.y2);
+    }
+    return { x, y };
+  }
   for (let i = 0; i < 10; i++) {
+    const pos = pickInvokePos();
     camps.push({
       type: "npc_Invoke_XVI",
-      x: rand(INVOKE_AREA.x1, INVOKE_AREA.x2),
-      y: rand(INVOKE_AREA.y1, INVOKE_AREA.y2),
+      x: pos.x,
+      y: pos.y,
       spawnArea: { ...INVOKE_AREA },
       speed: 0,
       radius: 350,

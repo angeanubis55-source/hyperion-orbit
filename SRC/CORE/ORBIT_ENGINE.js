@@ -360,6 +360,30 @@ function npcEngagedWithPlayer(e) {
     || e.aiZ?.state === "aggro";
 }
 
+// true si le joueur est sur un portail : les NPC non engagés n'aggront
+// pas (parité serveur : safe portails). Seul celui qu'on tape vient.
+function playerOnPortal() {
+  if (player.dead) return false;
+  for (const ptl of interactivePortalList()) {
+    if (!ptl || ptl.active === false) continue;
+    const px = Number(ptl.x), py = Number(ptl.y);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+    if (Math.hypot(player.x - px, player.y - py) < NPC_PORTAL_KEEPOUT_RADIUS) return true;
+  }
+  return false;
+}
+
+// true si le joueur est physiquement à l'abri (portail ou base, même en
+// combat : safeZoneActive exige noCombat, mais pour l'aggro seule la
+// position compte). Les NPC non engagés font leur vie.
+function playerProtectedSpot() {
+  if (player.dead) return false;
+  try {
+    if (typeof playerIsInSafeZone === "function" && playerIsInSafeZone()) return true;
+  } catch {}
+  return playerOnPortal();
+}
+
 // true si le NPC est dans le rayon sans être engagé : pas de nouvel aggro,
 // pas de tir, sortie naturelle.
 function npcPortalCalm(e) {
@@ -22193,6 +22217,17 @@ function spawnRandomOnMap() {
   };
 }
 
+// Zone grise (mur) ? Vrai si le point touche un mur de la map (marge incluse).
+// Utilisé pour ne jamais faire spawner un NPC dans un mur (Invoke BL).
+function spawnPosInWall(x, y, margin) {
+  if (!Array.isArray(zoneWalls) || !zoneWalls.length) return false;
+  const m = Math.max(0, Number(margin) || 0);
+  for (const w of zoneWalls) {
+    if (circleRectResolve(x, y, m, w)) return true;
+  }
+  return false;
+}
+
 // ============================================================
 // ✅ Collectables globaux toutes maps
 // ============================================================
@@ -22233,8 +22268,8 @@ function currentMapId() {
   return String(window.__CURRENT_MAP_ID__ || "1-1");
 }
 
-// ✅ Blacklight (1-BL / 2-BL / 3-BL) : tous les dégâts sont x2 de base,
-// émis comme subis (officiel).
+// ✅ Blacklight (1-BL / 2-BL / 3-BL) : seuls les dégâts des JOUEURS sont
+// x2 (officiel). Les NPC infligent leurs dégâts normaux.
 const BL_MAP_IDS = new Set(["1-bl", "2-bl", "3-bl"]);
 function isBlacklightMap(mapId = currentMapId()) {
   return BL_MAP_IDS.has(String(mapId || "").trim().toLowerCase());
@@ -22688,8 +22723,22 @@ function spawnCollectableAt(type, x, y, opts = {}) {
 
   const sp = cfg.sprite || {};
   const frames = Math.max(1, Number(sp.frames || 1));
-  const cx = clamp(x, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
-  const cy = clamp(y, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
+  let cx = clamp(x, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
+  let cy = clamp(y, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
+  // Jamais dans un mur (zones grises) : un NPC tué dans un caillou doit
+  // laisser son cargo / soleil au bord du mur, sinon non récoltable.
+  const boxR = Number(cfg.r ?? cfg.radius ?? 32) + 8;
+  for (let pass = 0; pass < 2; pass++) {
+    if (!Array.isArray(zoneWalls) || !zoneWalls.length) break;
+    for (const w of zoneWalls) {
+      const push = circleRectResolve(cx, cy, boxR, w);
+      if (!push) continue;
+      cx += push.x;
+      cy += push.y;
+    }
+  }
+  cx = clamp(cx, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
+  cy = clamp(cy, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
   const despawnAfter = collectableDropLifetimeSec(type, opts.despawnAfter);
 
   const instance = {
@@ -22799,7 +22848,7 @@ function applyCollectableReward(c) {
   if (!cfg) return;
   // En multi, une box ambiante disparait tout de suite visuellement, mais son
   // contenu n'est verse qu'au client qui recoit l'accord unique du serveur.
-  if (c.slotUid && !c.dropUid && netplayBoxesActive() && c._netClaimGranted !== true) {
+  if (c.slotUid && !c.dropUid && netplayNpcActive() && c._netClaimGranted !== true) {
     const uid = String(c.slotUid);
     let requested = false;
     try { requested = claimNetBox(uid); } catch {}
@@ -22863,6 +22912,22 @@ function applyCollectableReward(c) {
   if (credits > 0) {
     player.credits += credits;
     parts.push(`+${credits} crédits`);
+    changed = true;
+    grantedAny = true;
+  }
+
+  const boxExp = Math.floor(rollValue(reward.exp ?? reward.experience, 0) * boxMult);
+  if (boxExp > 0) {
+    const xpResult = awardExperience(boxExp, "box");
+    parts.push(`+${formatInteger(xpResult?.gained ?? boxExp)} XP`);
+    changed = true;
+    grantedAny = true;
+  }
+
+  const boxHonor = Math.floor(rollValue(reward.honor, 0) * boxMult);
+  if (boxHonor > 0) {
+    const honorResult = awardHonor(boxHonor);
+    parts.push(`+${formatInteger(honorResult?.gained ?? boxHonor)} honneur`);
     changed = true;
     grantedAny = true;
   }
@@ -23128,9 +23193,6 @@ function removeLocalNetBox(uid, fromNet = false) {
   return index >= 0;
 }
 
-function netplayBoxesActive() {
-  return rules?.mode === "zone" && netConnected() && !netInInstance();
-}
 
 function syncNetBoxes(dt) {
   const curMap = currentMapId();
@@ -23175,7 +23237,7 @@ function syncNetBoxes(dt) {
       }
     }
   } catch {}
-  if (!netplayBoxesActive()) {
+  if (!netplayNpcActive()) {
     pendingNetCollectableRewards.clear();
     let purged = false;
     for (let i = collectables.length - 1; i >= 0; i--) {
@@ -23188,8 +23250,7 @@ function syncNetBoxes(dt) {
     }
     localNetBoxesByUid.clear();
     netBoxNeedsReconcile = true;
-    // Une liste peut déjà être arrivée pendant la connexion / le chargement.
-    // NETPLAY nettoie lui-même les données au changement de carte ou session.
+    try { clearNetBoxes(); } catch {}
     return;
   }
   // Collectes distantes : disparition immediate du miroir local.
@@ -23237,8 +23298,8 @@ function syncNetBoxes(dt) {
   // Avant la premiere liste complete du serveur, conserver les instances
   // preparees pendant le chargement. Elles seront recalees par uid des que
   // le snapshot autoritaire de cette carte arrivera.
-  try { if (!netBoxSnapshotReady()) return; } catch { return; }
   netBoxNeedsReconcile = false;
+  try { if (!netBoxSnapshotReady()) return; } catch { return; }
   // Index construit en un seul passage : avec des centaines de Palladiums en
   // 5-2, rechercher chaque uid dans tout `collectables` faisait un travail
   // comparaisons par frame. Les lectures suivantes sont maintenant en O(1).
@@ -24116,6 +24177,110 @@ function spawnProtegitOnCubikonHit(cub, count = 20) {
   }
 }
 
+// Mindfire Behemoth : 2 Attend IX à 75 % / 50 % / 25 % de durabilité.
+// Non bloquant : le Mindfire reste vulnérable, les Attend sont indépendants.
+function spawnMindfireAttends(mind, count = 2) {
+  if (!mind || mind.hp <= 0) return;
+  const wanted = Math.max(0, Math.floor(Number(count) || 2));
+  for (let i = 0; i < wanted; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const dist = 150 + Math.random() * 400;
+    const sx = clamp(mind.x + Math.cos(ang) * dist, 80, WORLD.w - 80);
+    const sy = clamp(mind.y + Math.sin(ang) * dist, 80, WORLD.h - 80);
+    const m = makeEnemy("npc_Attend_IX", sx, sy);
+    if (!m) continue;
+    m._provoked = true;
+    enemies.push(m);
+  }
+}
+
+function checkMindfireWaves(e) {
+  if (!e || String(e.type || "") !== "npc_Mindfire_Behemoth" || !(e.hp > 0)) return;
+  // Multi : vague pilotée par le serveur (snapshot), jamais en local.
+  if (e._netUid && netplayNpcActive()) return;
+  // Brouillé : pas de spawn (comme Cubikon / onKill).
+  if (isEntityJammed(e)) return;
+  const max = Math.max(0, Number(e.hpMax) || 0) + Math.max(0, Number(e.shMax) || 0);
+  if (!(max > 0)) return;
+  const frac = (Math.max(0, Number(e.hp) || 0) + Math.max(0, Number(e.sh) || 0)) / max;
+  e._mindfireWaves ||= {};
+  const steps = [[0.75, "p75"], [0.50, "p50"], [0.25, "p25"]];
+  for (const [threshold, key] of steps) {
+    if (frac <= threshold && !e._mindfireWaves[key]) {
+      e._mindfireWaves[key] = true;
+      spawnMindfireAttends(e, 2);
+    }
+  }
+}
+
+// Invoke XVI : 7 Impulse II dès le premier dégât reçu, une seule fois
+// par incarnation (slot persistant : pas de re-lâcher au retour ni pour
+// un autre joueur). Non bloquant : l'Invoke reste vulnérable.
+function spawnInvokeImpulse(invoker, count = 7) {
+  if (!invoker) return;
+  const wanted = Math.max(0, Math.floor(Number(count) || 7));
+  for (let i = 0; i < wanted; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const dist = 150 + Math.random() * 400;
+    const sx = clamp(invoker.x + Math.cos(ang) * dist, 80, WORLD.w - 80);
+    const sy = clamp(invoker.y + Math.sin(ang) * dist, 80, WORLD.h - 80);
+    const m = makeEnemy("npc_Impulse_II", sx, sy);
+    if (!m) continue;
+    m._provoked = true;
+    enemies.push(m);
+  }
+}
+
+function checkInvokeRelease(e) {
+  if (!e || String(e.type || "") !== "npc_Invoke_XVI") return;
+  if (e._invokeReleased === true) return;
+  // Multi : vague pilotée par le serveur (snapshot), jamais en local.
+  if (e._netUid && netplayNpcActive()) return;
+  // Brouillé : pas de spawn (comme Cubikon / onKill).
+  if (isEntityJammed(e)) return;
+  e._invokeReleased = true;
+  try {
+    const slot = e.universeUid != null ? getSlot(universe, currentMapId(), e.universeUid) : null;
+    if (slot) slot.released = true;
+    persistUniverse();
+  } catch {}
+  spawnInvokeImpulse(e, 7);
+}
+
+// Strokelight Barrage : 1 Barrage Seeker Rocket toutes les 5 s tant
+// qu'il a été attaqué. La roquette kamikaze poursuit le joueur jusqu'à
+// la mort (destruction à 35 000 PV ou explosion 300 000 dégâts au contact).
+function tickStrokelightBarrage(dt) {
+  if (!(dt > 0) || player.dead) return;
+  for (const e of enemies) {
+    if (!e || e.hp <= 0) continue;
+    if (String(e.type || "") !== "npc_Strokelight_Barrage") continue;
+    // Sous 25 % de durabilité : le Strokelight devient mobile (vitesse 350).
+    const strokMax = Math.max(0, Number(e.hpMax) || 0) + Math.max(0, Number(e.shMax) || 0);
+    const strokFrac = strokMax > 0
+      ? (Math.max(0, Number(e.hp) || 0) + Math.max(0, Number(e.sh) || 0)) / strokMax
+      : 1;
+    e.speed = strokFrac < 0.25 ? 350 : 0;
+    if (e._damagedByPlayer !== true) continue;
+    // Multi : vague pilotée par le serveur (snapshot), jamais en local.
+    if (e._netUid && netplayNpcActive()) continue;
+    e._barrageT = Math.max(0, Number(e._barrageT) || 0) - dt;
+    if (e._barrageT > 0) continue;
+    e._barrageT = 5;
+    const sx = clamp(e.x + (Math.random() - 0.5) * 120, 80, WORLD.w - 80);
+    const sy = clamp(e.y + (Math.random() - 0.5) * 120, 80, WORLD.h - 80);
+    const m = makeEnemy("npc_Barrage_Seeker_Rocket", sx, sy);
+    if (!m) continue;
+    // Verrouille le joueur d'emblée et ne le lâche plus (poursuite à mort).
+    m._provoked = true;
+    m._aggro = true;
+    m._aggroT = 3600;
+    m.aggroHold = 3600;
+    m.aggroRange = 8000;
+    enemies.push(m);
+  }
+}
+
 // ============================================================
 // ✅ Munitions spéciales du joueur (officielles) : résolution du
 // multiplicateur au moment du tir. Lecture seule du type de cible.
@@ -24135,6 +24300,8 @@ function resolveAmmoMult(ammoKey, target) {
     return current;
   }
   const targetType = String(target?.type || "");
+  // Strokelight Barrage : insensible à l'A-BL (officiel : dégâts normaux x1).
+  if (ammoKey === "abl" && targetType === "npc_Strokelight_Barrage") return 1;
   // JOB-100 : ×3,5 aliens, ×2 joueurs.
   if (ammoKey === "job") return targetType.startsWith("npc_") ? Number(cfg.vsNpcMult || 3.5) : base;
   // Bonus conditionnels (RB/Demaners, SBL/Sibelons, VB/Styxus-Charopos,
@@ -24226,8 +24393,10 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
     return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0, sab: true };
   }
 
-  // Blacklight : drain x2 de base comme tous les dégâts.
-  const baseDamage = Math.max(1, Number(amount) || 1) * (e._netPlayer ? 1 : blMapDamageMult());
+  // Blacklight : drain x2 comme les dégâts de joueur (officiel).
+  // Strokelight Barrage : insensible (officiel : NPC normal en map BL).
+  const strokNoBonus = String(e.type || "") === "npc_Strokelight_Barrage";
+  const baseDamage = Math.max(1, Number(amount) || 1) * (e._netPlayer || strokNoBonus ? 1 : blMapDamageMult());
   const variance = 0.95 + Math.random() * 0.1;
   const isCrit = Math.random() < 0.05;
   const raw = baseDamage * variance * (isCrit ? 1.5 : 1);
@@ -24378,9 +24547,10 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
     return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
   }
 
-  // Blacklight : dégâts x2 de base (hors prédiction PvP ci-dessus).
-  // fromRedirect = renvoi déjà doublé côté hurtPlayer : pas de double-dip.
-  if (!opts.fromRedirect) dmg = Number(dmg || 0) * blMapDamageMult();
+  // Blacklight : dégâts x2 de base (officiel : seuls les joueurs en
+  // bénéficient). Les renvois (fromRedirect) sont des dégâts de joueur.
+  // Strokelight Barrage : insensible au x2 (officiel : NPC normal en map BL).
+  dmg = Number(dmg || 0) * (String(e.type || "") === "npc_Strokelight_Barrage" ? 1 : blMapDamageMult());
 
   // Affaiblissement (Diminisher, officiel) : +50 % de dégâts au bouclier
   // de la cible verrouillée — lasers uniquement (pas les roquettes),
@@ -24469,8 +24639,15 @@ e._pendingSpawn = 20;
   e.spritePlay = false;
   e.spriteDir = 1;
   e.spriteIdx = 0;
-  e.spriteAcc = 0;}
+  e.spriteAcc = 0;
+}
   }
+
+  // Mindfire Behemoth : paliers 75/50/25 % -> 2 Attend IX (non bloquant).
+  // Invoke XVI : premier dégât -> 7 Impulse II, une seule fois (non bloquant).
+  // typeof = garde pour les harnais de test qui évaluent damageEnemy isolé.
+  if ((shD + hpD) > 0 && typeof checkMindfireWaves === "function") checkMindfireWaves(e);
+  if ((shD + hpD) > 0 && typeof checkInvokeRelease === "function") checkInvokeRelease(e);
 
   // Multi : NPC partage — prediction locale deja appliquee ci-dessus,
   // le serveur tranche avec les memes entrees effectives (le snapshot corrige).
@@ -24579,10 +24756,9 @@ function npcEffectiveSpeed(e, fallback = 320) {
 function hurtPlayer(amount, source = null) {
   if (player.dead || hangarSwapFx || player.iFrames > 0 || (player.invincibleT || 0) > 0) return;
 
-  // Blacklight : dégâts subis x2 de base. Les renvois vers les NPC
-  // (redirect / RVG / Spectrum+) repassent par damageEnemy avec
-  // fromRedirect : un seul x2 au total, pas de double-dip.
-  amount = Number(amount || 0) * blMapDamageMult();
+  // Blacklight : dégâts des NPC non doublés (officiel : seul le joueur
+  // tape x2). Les renvois vers les NPC repassent par damageEnemy qui
+  // applique le x2 (dégâts de joueur), sans double-dip.
 
   // Évasion (arbre pilote + modules) : probabilité d'esquiver totalement le coup (miss bleu).
   try {
@@ -25085,10 +25261,15 @@ if (e.type === "npc_Invoke_XVI") {
   dropType = "Sun_Box";
 }
 
+if (e.type === "npc_Mindfire_Behemoth") {
+  dropType = "Mindfire_Sun_Box";
+}
+
 if (
   ownsNpcLoot &&
   !e.noRewards &&
-  e.type !== "npc_Protegit"
+  e.type !== "npc_Protegit" &&
+  e.type !== "npc_Barrage_Seeker_Rocket"
 ) {
   const dropCfg = COLLECTABLE_DEFS[dropType] || {};
 
@@ -25141,6 +25322,22 @@ if (ownsNpcLoot && !e.noRewards) {
       }
     }
   }
+
+  // Strokelight Barrage : +1000 munitions A-BL direct inventaire à la mort.
+  if (e.type === "npc_Strokelight_Barrage" && ownsNpcLoot && !e.noRewards) {
+    player.ammo ||= {};
+    player.ammo.abl = Math.max(0, Number(player.ammo.abl) || 0) + 1000;
+    try { updateAmmoUI(); } catch {}
+    markProgressDirty();
+    const ablLine = `Vous avez reçu ${formatInteger(1000)} munitions A-BL`;
+    addGameLog(ablLine, "reward");
+    if (Array.isArray(e._directDropLines)) e._directDropLines.push(ablLine);
+    else e._directDropLines = [ablLine];
+  }
+
+  // Strokelight Barrage : 5 Abide I à sa mort via onKill (NPC_TYPES + serveur).
+  // Mindfire Behemoth : 5 SteadFast III + 2 Attend IX à sa mort via onKill.
+  // (Pas de spawn manuel ici : onKill couvre solo + multi sans doublon.)
 }
 
 if (e.type === "npc_Cubikon") {
@@ -28136,14 +28333,24 @@ for (let i = collectables.length - 1; i >= 0; i--) {
   y = clamp(Number(slot.y), 80, WORLD.h - 80);
 } else {
   // Zone de spawn du camp (ex : Invoke BL) sinon random sur toute la map.
+  // Jamais dans les zones grises (murs) pour les spawnArea (Invoke BL).
   const area = camp.spawnArea;
   if (area && [area.x1, area.y1, area.x2, area.y2].every((v) => Number.isFinite(Number(v)))) {
     const ax1 = Math.min(Number(area.x1), Number(area.x2));
     const ax2 = Math.max(Number(area.x1), Number(area.x2));
     const ay1 = Math.min(Number(area.y1), Number(area.y2));
     const ay2 = Math.max(Number(area.y1), Number(area.y2));
+    const wallMargin = (Number(NPC_TYPES[camp.type]?.r) || 60) + 30;
     x = rand(ax1, ax2);
     y = rand(ay1, ay2);
+    for (let t = 0; t < 12 && spawnPosInWall(x, y, wallMargin); t++) {
+      x = rand(ax1, ax2);
+      y = rand(ay1, ay2);
+    }
+    if (spawnPosInWall(x, y, wallMargin) && Number.isFinite(Number(camp.x)) && Number.isFinite(Number(camp.y))) {
+      x = clamp(Number(camp.x), 80, WORLD.w - 80);
+      y = clamp(Number(camp.y), 80, WORLD.h - 80);
+    }
   } else {
     const pos = spawnRandomOnMap();
     x = pos.x;
@@ -28157,6 +28364,9 @@ for (let i = collectables.length - 1; i >= 0; i--) {
         e.homeY = null;
         e.homeCampId = camp.id;
         e.universeUid = uid;
+        // Invoke XVI : lâcher unique déjà effectué pour cette incarnation ?
+        // (slot persistant : départ/retour ou autre joueur = pas de re-lâcher).
+        if (String(camp.type || "") === "npc_Invoke_XVI") e._invokeReleased = slot?.released === true;
 
         e.wanderMode = true;
         e.aggroRange = camp.aggroRange ?? 700;
@@ -31600,6 +31810,14 @@ function enemyShoot(e, dt, combatTarget = player) {
     return;
   }
 
+  // Joueur à l'abri (portail ou base) : seuls les NPC tapés (ou provoqués :
+  // vagues de boss) ripostent. Les autres font leur vie même à portée de tir.
+  // (typeof = harnais de test évaluant enemyShoot isolé.)
+  if (combatTarget === player && typeof playerProtectedSpot === "function" && playerProtectedSpot() && e._damagedByPlayer !== true && e._provoked !== true && !e.drawFireLock) {
+    e.shootCd = 0.5 + Math.random() * 0.6;
+    return;
+  }
+
   // Camouflage ultime : les NPC ne voient plus le joueur, ils gardent le tir.
   if (combatTarget === player && isPlayerUntargetable()) {
     e.shootCd = 0.5 + Math.random() * 0.6;
@@ -33234,6 +33452,9 @@ if (hangarSwapFx) {
     }
   } catch {}
   updateBossEncounters();
+  if (typeof tickStrokelightBarrage === "function") {
+    try { tickStrokelightBarrage(dt); } catch (error) { console.warn("Strokelight barrage tick:", error); }
+  }
   updatePet(dt);
   try { tickHangarSwap(dt); } catch (error) { console.warn("Hangar swap tick:", error); }
   try { tickLowRaidClient(); } catch (error) { console.warn("Low raid tick:", error); }
@@ -33858,7 +34079,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
         }
         else {
           const ownerNpc = b.ownerId != null ? enemies.find((x) => x?.id === b.ownerId) || null : null;
-          damagePlayerLayers(bulletTarget, redirectProtectionDamage(bulletTarget, b.dmg, ownerNpc) * blMapDamageMult());
+          damagePlayerLayers(bulletTarget, redirectProtectionDamage(bulletTarget, b.dmg, ownerNpc));
           // Clone Mimesis tué : explosion standard + rire.
           if (bulletTarget.hp <= 0 && bulletTarget.holo) killHoloClone(bulletTarget);
         }
@@ -34266,6 +34487,16 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
         e._aggroT = Math.max(0, (e._aggroT || 0) - dt);
 
+        // Joueur à l'abri (portail ou base) : un NPC déjà aggro mais jamais
+        // tapé ni provoqué se barre (parité serveur : safe). Seul celui
+        // qu'on tape reste au combat (ni les kamikazes : roquettes Barrage).
+        if (playerProtectedSpot() && e._damagedByPlayer !== true && e._provoked !== true && !e.drawFireLock && !isKamikaze) {
+          e._aggro = false;
+          e._aggroT = 0;
+          e._attackedPlayerRecently = false;
+          if (e.aiZ) e.aiZ.state = "wander";
+        }
+
         const aggroRange = e.aggroRange ?? 700;
         const aggroHold = e.aggroHold ?? 3.5;
 
@@ -34339,9 +34570,11 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           }
           if (!e.passiveNative || e._provoked) {
             // Camouflage ultime / CPU CL04K-XL : pas de nouvelle aggro sur le joueur invisible.
-            // Portails : pas de nouvel aggro dans le rayon (sortie naturelle).
+            // Portails : pas de nouvel aggro dans le rayon (sortie naturelle),
+            // ni quand le joueur est lui-même à l'abri (portail ou base : seul
+            // le NPC tapé vient, les autres font leur vie).
             // Maps doublées (BL / 4-5) : portée x2.
-            if (d <= aggroRange * aggroRangeMult() && !isPlayerCloaked() && player.cpuCloak !== true && !npcPortalCalm(e)) {
+            if (d <= aggroRange * aggroRangeMult() && !isPlayerCloaked() && player.cpuCloak !== true && !npcPortalCalm(e) && !(playerProtectedSpot() && !npcEngagedWithPlayer(e))) {
               e._aggro = true;
               e._aggroT = aggroHold;
             }

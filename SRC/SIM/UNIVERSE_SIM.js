@@ -91,6 +91,8 @@ export function ensureMapSlots(universe, mapId, campDefs = [], nowMs = 0) {
       // (equilibrage), la home et l'etat vivant sont preserves.
       old.type = String(camp?.type || old.type || "unknown");
       if (typeof old.alive !== "boolean") old.alive = true;
+      // Lâcher unique déjà effectué pour l'incarnation active (ex : Invoke XVI).
+      if (typeof old.released !== "boolean") old.released = false;
       return old;
     }
     return {
@@ -110,6 +112,9 @@ export function ensureMapSlots(universe, mapId, campDefs = [], nowMs = 0) {
       shPct: 1,
       // false = prochain spawn en RANDOM (sort de mort). true = position connue.
       scattered: true,
+      // true = le lâcher unique de l'incarnation a déjà eu lieu (Invoke XVI).
+      // Reset à chaque mort/revive (nouvelle incarnation = nouveau lâcher).
+      released: false,
       updatedAtMs: now > 0 ? now : 0,
     };
   });
@@ -141,6 +146,7 @@ export function markDead(universe, mapId, uid, nowMs, delayMs = null) {
   slot.hpPct = 0;
   slot.shPct = 0;
   slot.scattered = false; // prochain spawn en RANDOM
+  slot.released = false; // nouvelle incarnation au revive = nouveau lâcher
   slot.updatedAtMs = now;
   return slot;
 }
@@ -157,6 +163,7 @@ export function markAlive(universe, mapId, uid, nowMs) {
   slot.x = slot.homeX;
   slot.y = slot.homeY;
   slot.scattered = false; // le spawner placera en RANDOM (sauf Cubikon)
+  slot.released = false; // nouvelle incarnation = nouveau lâcher
   slot.updatedAtMs = now;
   return slot;
 }
@@ -205,6 +212,7 @@ export function tickBackground(universe, nowMs, { skipMapId = null } = {}) {
       slot.x = slot.homeX;
       slot.y = slot.homeY;
       slot.scattered = false; // le spawner placera en RANDOM (sauf Cubikon)
+      slot.released = false; // nouvelle incarnation = nouveau lâcher
       slot.updatedAtMs = now;
       revived.push({ mapId: String(mapId), uid: String(slot.uid), type: String(slot.type) });
         continue;
@@ -264,6 +272,7 @@ export function deserializeUniverse(raw) {
           hpPct: Math.max(0, Math.min(1, Number(s.hpPct ?? 1))),
           shPct: Math.max(0, Math.min(1, Number(s.shPct ?? 1))),
           scattered: s.scattered !== false,
+          released: s.released === true,
           updatedAtMs: Math.max(0, Math.floor(Number(s.updatedAtMs) || 0)),
         }));
     }

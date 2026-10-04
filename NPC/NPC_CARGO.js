@@ -254,7 +254,7 @@ export function getNpcCargoOres(type, mapId = null) {
   if (key === "npc_Agatus") return scaleCargo(AGATUS_CARGO[agatusTier(mapId)], gateMult);
   if (key === "npc_Spinel") return scaleCargo(SPINEL_CARGO[agatusTier(mapId)], gateMult);
   // Indestructible / soute officielle 0.
-  if (key === "npc_Spinelus" || key === "npc_Plutus_Turret") return Object.freeze({});
+  if (key === "npc_Spinelus" || key === "npc_Plutus_Turret" || key === "npc_Barrage_Seeker_Rocket") return Object.freeze({});
   key = stripReskin(key);
   if (BASE_CARGO[key]) return scaleCargo(BASE_CARGO[key], gateMult);
   if (BOSS_CARGO[key]) return scaleCargo(BOSS_CARGO[key], gateMult);
