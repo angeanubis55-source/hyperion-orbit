@@ -24262,6 +24262,9 @@ function tickStrokelightBarrage(dt) {
       : 1;
     e.speed = strokFrac < 0.25 ? 350 : 0;
     if (e._damagedByPlayer !== true) continue;
+    // Hors de portée de tir : le Strokelight arrête d'envoyer des roquettes.
+    const sRange = Number(e.shootRange) || 700;
+    if (dist2(e.x, e.y, player.x, player.y) > sRange * sRange) continue;
     // Multi : vague pilotée par le serveur (snapshot), jamais en local.
     if (e._netUid && netplayNpcActive()) continue;
     e._barrageT = Math.max(0, Number(e._barrageT) || 0) - dt;

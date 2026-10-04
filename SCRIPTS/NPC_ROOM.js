@@ -964,7 +964,13 @@ drainPlayerHits() {
         : 1;
       // Strokelight Barrage : 1 Barrage Seeker Rocket / 5 s une fois attaqué.
       // La roquette kamikaze poursuit l'agresseur jusqu'à la mort.
+      // Hors de portée de tir : plus d'envoi (les roquettes en vol continuent).
       if (e.hp > 0 && String(e.type || "") === "npc_Strokelight_Barrage" && e.lastHitBy != null && !frozen) {
+        const atk = this.players.get(String(e.lastHitBy));
+        const sRange = Number(e.shootRange) || 700;
+        if (!atk || !this.validTarget(atk)) continue;
+        const adx = Number(atk.x) - e.x, ady = Number(atk.y) - e.y;
+        if (adx * adx + ady * ady > sRange * sRange) continue;
         e.barrageT = Math.max(0, (Number(e.barrageT) || 0) - dt);
         if (e.barrageT <= 0) {
           e.barrageT = 5;
