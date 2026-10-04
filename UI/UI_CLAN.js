@@ -17,6 +17,48 @@ import {
 import { escapeHtml } from "./UI_DOM.js";
 
 let started = false;
+let warConfirmationPending = false;
+
+async function confirmClanWar(tag) {
+  if (warConfirmationPending) return false;
+  const template = document.getElementById("confirmOverlay");
+  if (!template) return false;
+  warConfirmationPending = true;
+  const overlay = template.cloneNode(true);
+  const title = overlay.querySelector("#confirmTitle");
+  const message = overlay.querySelector("#confirmMessage");
+  const cancel = overlay.querySelector("#confirmCancel");
+  const ok = overlay.querySelector("#confirmOk");
+  for (const element of [overlay, ...overlay.querySelectorAll("[id]")]) element.id = `clanWar_${element.id}`;
+  title.textContent = "Déclaration de guerre";
+  message.textContent = `Déclarer la guerre à [${tag}] ? Effet immédiat, 100 jours maximum.`;
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", title.id);
+  overlay.style.display = "grid";
+  const previousFocus = document.activeElement;
+  document.body.appendChild(overlay);
+  cancel.focus();
+  return new Promise(resolve => {
+    const finish = accepted => {
+      overlay.remove();
+      warConfirmationPending = false;
+      previousFocus?.focus();
+      resolve(accepted);
+    };
+    cancel.onclick = () => finish(false);
+    ok.onclick = () => finish(true);
+    overlay.onclick = event => { if (event.target === overlay) finish(false); };
+    overlay.onkeydown = event => {
+      event.stopPropagation();
+      if (event.key === "Escape") { event.preventDefault(); finish(false); }
+      if (event.key === "Tab") {
+        event.preventDefault();
+        (document.activeElement === cancel ? ok : cancel).focus();
+      }
+    };
+  });
+}
 const ICON_REMOVE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>`;
 const ICON_ACCEPT = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>`;
 const CROWN_SVG = `<svg class="clanLeaderCrown" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 4.5 4L12 4l4.5 7L21 7l-2 11H5L3 7Z"/><path d="M5 18h14"/></svg>`;
@@ -473,7 +515,7 @@ export function initClanUI() {
         } finally { diploBusy = false; }
       } else if (act === "war-now" && button.dataset.tag) {
         const tag = button.dataset.tag;
-        if (!window.confirm(`Déclarer la guerre à [${tag}] ? Effet immédiat, 100 jours max.`)) return;
+        if (!(await confirmClanWar(tag))) return;
         diploBusy = true; button.disabled = true;
         try {
           const data = await apiClan("/api/clans/diplo", "POST", { tag, kind: "war" });
@@ -542,7 +584,7 @@ export function initClanUI() {
     const kind = document.getElementById("clanDiploKindSelect")?.value || "nap";
     if (!tag) return;
     const label = kind === "war" ? "guerre" : kind === "alliance" ? "alliance" : "NAP";
-    if (kind === "war" && !window.confirm(`Déclarer la guerre à [${tag}] ? Effet immédiat, 100 jours max.`)) return;
+    if (kind === "war" && !(await confirmClanWar(tag))) return;
     try {
       const data = await apiClan("/api/clans/diplo", "POST", { tag, kind });
       const announce = kind === "war" ? `Guerre déclarée à [${data.rel?.otherTag || tag}] !` : `${label} proposée à [${data.rel?.otherTag || tag}].`;

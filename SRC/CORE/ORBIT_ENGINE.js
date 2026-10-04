@@ -12948,8 +12948,12 @@ function renderGalaxyGateWindow(message = "") {
   const isActive = state.active === gate.id;
   const isDeployed = state.deployed?.[gate.id] === true;
   const stock = Math.max(0, Math.floor(Number(state.built[gate.id]) || 0));
-  const status = isActive ? "En cours" : isDeployed ? (stock > 0 ? `Sur la map + stock ${stock}/${GALAXY_GATE_BUILD_LIMIT}` : "Sur la map") : (stock > 0 ? `Stock ${stock}/${GALAXY_GATE_BUILD_LIMIT}` : "");
-  ui.ggBuilt.textContent = status ? `${formatInteger(stock)} / ${GALAXY_GATE_BUILD_LIMIT} · ${status}` : `${formatInteger(stock)} / ${GALAXY_GATE_BUILD_LIMIT}`;
+  const waiting = stock > 0 ? `${formatInteger(stock)} en attente` : "";
+  ui.ggBuilt.textContent = isActive
+    ? ["1 en cours", waiting].filter(Boolean).join(" · ")
+    : isDeployed
+      ? ["1 sur la carte", waiting].filter(Boolean).join(" · ")
+      : waiting || "Aucune gate construite";
   if (ui.ggCompleted) ui.ggCompleted.textContent = formatInteger(state.completed[gate.id]);
   if (ui.ggLives) ui.ggLives.textContent = `${formatInteger(state.lives?.[gate.id] ?? gate.maxLives)} / ${formatInteger(gate.maxLives)}`;
   const activeWave = state.active === gate.id

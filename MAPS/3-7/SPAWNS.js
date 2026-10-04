@@ -95,7 +95,7 @@ export function getZonePortals(WORLD) {
     },
     {
       id: "p_37_to_36",
-      x: 1000,   // haut droite
+      x: 5500,   // haut droite
       y: 6000,
       r: 260,
       toMap: "3-6",
