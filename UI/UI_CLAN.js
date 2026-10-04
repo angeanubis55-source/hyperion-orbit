@@ -21,23 +21,25 @@ let warConfirmationPending = false;
 
 async function confirmClanWar(tag) {
   if (warConfirmationPending) return false;
-  const template = document.getElementById("confirmOverlay");
-  if (!template) return false;
+  const clanWindow = document.getElementById("clanWindow");
+  if (!clanWindow) return false;
   warConfirmationPending = true;
-  const overlay = template.cloneNode(true);
-  const title = overlay.querySelector("#confirmTitle");
-  const message = overlay.querySelector("#confirmMessage");
-  const cancel = overlay.querySelector("#confirmCancel");
-  const ok = overlay.querySelector("#confirmOk");
-  for (const element of [overlay, ...overlay.querySelectorAll("[id]")]) element.id = `clanWar_${element.id}`;
+  const overlay = document.createElement("div");
+  overlay.className = "tdmSellDialog";
+  overlay.dataset.noDrag = "1";
+  overlay.innerHTML = `<div class="tdmSellCard" role="dialog" aria-labelledby="clanWarTitle">
+    <div id="clanWarTitle" class="tdmSellTitle"></div>
+    <div class="tdmSellItem"></div>
+    <div class="tdmSellActions"><button type="button" data-war-cancel>Annuler</button><button type="button" data-war-confirm>Confirmer</button></div>
+  </div>`;
+  const title = overlay.querySelector(".tdmSellTitle");
+  const message = overlay.querySelector(".tdmSellItem");
+  const cancel = overlay.querySelector("[data-war-cancel]");
+  const ok = overlay.querySelector("[data-war-confirm]");
   title.textContent = "Déclaration de guerre";
   message.textContent = `Déclarer la guerre à [${tag}] ? Effet immédiat, 100 jours maximum.`;
-  overlay.setAttribute("role", "dialog");
-  overlay.setAttribute("aria-modal", "true");
-  overlay.setAttribute("aria-labelledby", title.id);
-  overlay.style.display = "grid";
   const previousFocus = document.activeElement;
-  document.body.appendChild(overlay);
+  clanWindow.appendChild(overlay);
   cancel.focus();
   return new Promise(resolve => {
     const finish = accepted => {
@@ -52,10 +54,6 @@ async function confirmClanWar(tag) {
     overlay.onkeydown = event => {
       event.stopPropagation();
       if (event.key === "Escape") { event.preventDefault(); finish(false); }
-      if (event.key === "Tab") {
-        event.preventDefault();
-        (document.activeElement === cancel ? ok : cancel).focus();
-      }
     };
   });
 }
