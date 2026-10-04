@@ -398,6 +398,13 @@ function npcShelterKeepsAggro(e) {
     const cfg = (typeof NPC_TYPES !== "undefined" && NPC_TYPES[e.type]) || {};
     if (cfg.ai === "kamikaze") return true;
   } catch {}
+  // Seule la cible qu'on est en train de taper (lock + attaque active)
+  // garde l'aggro. Un simple lock sans tir se calme aussi, sinon un NPC
+  // locké mais non attaqué tirerait pour toujours sur le portail.
+  // (Parité multi : la riposte serveur exige des impacts frais.)
+  let attacking = false;
+  try { attacking = attackActive === true; } catch {}
+  if (!attacking) return false;
   try {
     if (typeof Target !== "undefined" && Target && typeof Target.get === "function") {
       const t = Target.get();
@@ -21077,6 +21084,19 @@ function updatePet(dt) {
     if (current._netPlayer != null && netPvpBlocked(current)) return false;
     return true;
   });
+  // ZNA : cessez-le-feu du REX quand le joueur est à l'abri. Sans ça sa
+  // riposte autonome entretient l'aggro du NPC (qui continue de tirer sur
+  // le joueur, ce qui fait re-riposter le REX) et la zone ne se calme
+  // jamais. Seule exception : l'assistance du duel en cours (le joueur
+  // tape lui-même cette cible).
+  if (target && playerProtectedSpot()) {
+    let duel = false;
+    try { duel = attackActive === true && Target.get() != null && Target.get() === target; } catch {}
+    if (!duel) {
+      if (petState.assistTarget === target) petState.assistTarget = null;
+      target = null;
+    }
+  }
   petState.target = target;
   if (!target) {
     for (let i = pendingEscortSalvo.length - 1; i >= 0; i--) {
