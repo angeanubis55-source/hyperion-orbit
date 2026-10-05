@@ -393,6 +393,47 @@ export const CRAFTING_RECIPES = Object.freeze([
     },
     output: { ships: { sentinel: 1 } },
   }),
+  // ---- Blacklight (quêtes BL) ----
+  Object.freeze({
+    id: "craft_prometheus",
+    name: "Laser PR-L Prometheus",
+    rarity: "legendary",
+    costs: {
+      credits: 100000000,
+      resources: { rinusk: 1500, blacklight_trace: 180 },
+    },
+    output: { items: { laser_prl: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_abl_1000",
+    name: "Munitions A-BL (1000)",
+    rarity: "rare",
+    costs: {
+      credits: 5000000,
+      resources: { rinusk: 250, blacklight_trace: 50 },
+    },
+    output: { ammo: { abl: 1000 } },
+  }),
+  Object.freeze({
+    id: "craft_blacklight_cipher",
+    name: "Code secret Black Light",
+    rarity: "legendary",
+    costs: {
+      credits: 75000000,
+      resources: { rinusk: 2400, blacklight_trace: 1000, mindfire_cerebrum: 100 },
+    },
+    output: { resources: { blacklight_cipher: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_ephon_100",
+    name: "Booster EPHON-100 (2h)",
+    rarity: "legendary",
+    costs: {
+      credits: 500000000,
+      resources: { rinusk: 10000, blacklight_trace: 10000, mindfire_cerebrum: 1500 },
+    },
+    output: { items: { booster_ephon: 1 } },
+  }),
 ]);
 
 export function getCraftingRecipe(recipeId) {

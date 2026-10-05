@@ -6,6 +6,11 @@ import { getMapRequiredLevel } from "../SRC/CORE/MAP_ACCESS.js";
 export const MAX_ACTIVE_QUESTS = 10;
 const K = (id, type, amount, label, map) => ({ id, kind: "kill", type, amount, label, ...(map ? { map } : {}) });
 const C = (id, type, amount, label, map) => ({ id, kind: "collect", type, amount, label, ...(map ? { map } : {}) });
+// Assemblage : type = id de recette (craft_prometheus...), amount = crafts.
+// Joueurs : type "pvp". Présence : type "bl" (maps Blacklight), amount en secondes.
+const R = (id, type, amount, label) => ({ id, kind: "craft", type, amount, label });
+const P = (id, amount, label, map) => ({ id, kind: "pvp", type: "pvp", amount, label, ...(map ? { map } : {}) });
+const S = (id, seconds, label) => ({ id, kind: "stay", type: "bl", amount: seconds, label });
 const V = map => ({ id: `visit_${map}`, kind: "visit", type: map, amount: 1, label: `Visiter la carte ${map}` });
 const G = (type, amount = 1) => ({ id: `gate_${type}`, kind: "gate", type, amount, label: `Terminer la Galaxy Gate ${type[0].toUpperCase()}${type.slice(1)}` });
 const Q = (id, title, description, objectives, credits, exp, honor, requires) => ({ id, title, description, objectives, reward: { credits, exp, honor }, ...(requires ? { requires } : {}) });
@@ -57,6 +62,87 @@ const AQ = (id, title, description, objectives, credits, exp, honor, ammo, requi
 const EQ = (id, title, description, objectives, credits, exp, honor, galaxyEnergy, requires) => ({ ...Q(id, title, description, objectives, credits, exp, honor, requires), reward: { credits, exp, honor, galaxyEnergy } });
 const CEQ = (id, title, description, objectives, credits, exp, honor, ammo, galaxyEnergy, requires) => ({ ...Q(id, title, description, objectives, credits, exp, honor, requires), reward: { credits, exp, honor, ammo, galaxyEnergy } });
 
+// ---------------------------------------------------------------------------
+// Famille Blacklight (60 quêtes chaînées : chacune débloque la suivante).
+// Objectifs suivis : kill / collect (box comme ressources) / craft /
+// pvp / stay (présence BL). Contraintes de temps, "sans mourir" et dégâts
+// du document d'origine : non suivis (version simplifiée).
+// Récompenses : EXP/honneur du document ; crédits 0 (aucun au document) ;
+// boosters -> 1 Laser Prometheus (inventaire) ; codes secrets -> ressource
+// blacklight_cipher (+2,5 M d'honneur si le document ne précise rien).
+// ---------------------------------------------------------------------------
+const BL_MAPS = ["1-bl", "2-bl", "3-bl"];
+const BLQ = (num, title, description, objectives, reward, prev) => ({
+  id: `bl_${String(num).padStart(2, "0")}`,
+  title,
+  description,
+  objectives,
+  reward: { credits: 0, exp: 0, honor: 0, ...reward },
+  ...(prev ? { requires: `bl_${String(prev).padStart(2, "0")}` } : {}),
+});
+const PRL = { lasers: { laser_prl: 1 } };
+const BLACKLIGHT_CHAIN = [
+  BLQ(1, "Délimitation", "Fais tes preuves sur les Impulse II de la Blacklight.", [K("impulse", "npc_Impulse_II", 10, "Détruire des Impulse II", BL_MAPS)], { ...PRL }, null),
+  BLQ(2, "Bouche Prométhéenne", "Continue le nettoyage des Impulse II.", [K("impulse", "npc_Impulse_II", 25, "Détruire des Impulse II", BL_MAPS)], { ...PRL }, 1),
+  BLQ(3, "Arrimage", "Les Impulse II pullulent, ne relâche pas l'effort.", [K("impulse", "npc_Impulse_II", 35, "Détruire des Impulse II", BL_MAPS)], { ...PRL }, 2),
+  BLQ(4, "L'assemblée des Fous", "Une vague massive d'Impulse II à exterminer.", [K("impulse", "npc_Impulse_II", 50, "Détruire des Impulse II", BL_MAPS)], { ...PRL }, 3),
+  BLQ(5, "Une Mort Brève", "Impulse II et premiers Attend IX au programme.", [K("impulse", "npc_Impulse_II", 50, "Détruire des Impulse II", BL_MAPS), K("attend", "npc_Attend_IX", 5, "Détruire des Attend IX", BL_MAPS)], { ...PRL }, 4),
+  BLQ(6, "Soupçons", "Concentre-toi sur les Attend IX.", [K("attend", "npc_Attend_IX", 15, "Détruire des Attend IX", BL_MAPS)], { ...PRL }, 5),
+  BLQ(7, "Lame de Rasoir", "Ménage mixte : Impulse II et Attend IX.", [K("impulse", "npc_Impulse_II", 35, "Détruire des Impulse II", BL_MAPS), K("attend", "npc_Attend_IX", 8, "Détruire des Attend IX", BL_MAPS)], { ...PRL }, 6),
+  BLQ(8, "Probabilités Tangibles", "Grosse opération mixte dans la Blacklight.", [K("impulse", "npc_Impulse_II", 50, "Détruire des Impulse II", BL_MAPS), K("attend", "npc_Attend_IX", 20, "Détruire des Attend IX", BL_MAPS)], { ...PRL }, 7),
+  BLQ(9, "Pensée Fugace", "Cinquante Attend IX à abattre.", [K("attend", "npc_Attend_IX", 50, "Détruire des Attend IX", BL_MAPS)], { ...PRL }, 8),
+  BLQ(10, "Sous la surface", "Tes premiers Invoke XVI t'attendent.", [K("invoke", "npc_Invoke_XVI", 3, "Détruire des Invoke XVI", BL_MAPS)], { ...PRL }, 9),
+  BLQ(11, "Foreuse", "Rapporte du Rinusk des épaves Blacklight.", [C("rinusk", "rinusk", 2000, "Collecter du Rinusk")], { ...PRL }, 10),
+  BLQ(12, "Désordre Technologique", "Rinusk et premier Prometheus assemblé.", [C("rinusk", "rinusk", 4000, "Collecter du Rinusk"), R("craft-prl", "craft_prometheus", 1, "Assembler un Laser Prometheus")], { ...PRL, ammo: { abl: 20000 } }, 11),
+  BLQ(13, "Soif de connaissances", "Invoke XVI et munitions A-BL assemblées.", [K("invoke", "npc_Invoke_XVI", 5, "Détruire des Invoke XVI", BL_MAPS), R("craft-abl", "craft_abl_1000", 25, "Assembler 25 fois des Munitions A-BL")], { ...PRL }, 12),
+  BLQ(14, "Courons !", "Invoke XVI et Attend IX en force.", [K("invoke", "npc_Invoke_XVI", 5, "Détruire des Invoke XVI", BL_MAPS), K("attend", "npc_Attend_IX", 25, "Détruire des Attend IX", BL_MAPS)], { ...PRL, resources: { mindfire_cerebrum: 100 } }, 13),
+  BLQ(15, "Solution insensée", "Assemble un Code secret Black Light.", [R("craft-cipher", "craft_blacklight_cipher", 1, "Assembler un Code secret Black Light")], { honor: 2500000, resources: { blacklight_cipher: 2 } }, 14),
+  BLQ(16, "Sans dessus dessous", "Rapporte vite du Rinusk.", [C("rinusk", "rinusk", 100, "Collecter du Rinusk")], { exp: 35000000, honor: 1500000 }, 15),
+  BLQ(17, "La vertu est un mensonge", "Rapporte des Traceurs Black Light.", [C("trace", "blacklight_trace", 100, "Collecter des Traceurs Black Light")], { exp: 35000000, honor: 1500000 }, 16),
+  BLQ(18, "Organiser le Chaos", "Un gros stock de Rinusk s'impose.", [C("rinusk", "rinusk", 1000, "Collecter du Rinusk")], { exp: 35000000, honor: 1500000 }, 17),
+  BLQ(19, "Le monde de Mars", "Un gros stock de Traceurs s'impose.", [C("trace", "blacklight_trace", 1000, "Collecter des Traceurs Black Light")], { exp: 35000000, honor: 1500000 }, 18),
+  BLQ(20, "Annihiler les faibles", "Vingt Impulse II, vite et proprement.", [K("impulse", "npc_Impulse_II", 20, "Détruire des Impulse II", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 19),
+  BLQ(21, "Apparition Publique", "Dix Attend IX à abattre.", [K("attend", "npc_Attend_IX", 10, "Détruire des Attend IX", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 20),
+  BLQ(22, "Toucher Miraculeux", "Trois Invoke XVI à détruire.", [K("invoke", "npc_Invoke_XVI", 3, "Détruire des Invoke XVI", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 21),
+  BLQ(23, "Jouer avec les Cieux", "Cent Impulse et cinquante Attend à exterminer.", [K("impulse", "npc_Impulse_II", 100, "Détruire des Impulse II", BL_MAPS), K("attend", "npc_Attend_IX", 50, "Détruire des Attend IX", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 22),
+  BLQ(24, "Une simple parcelle", "Trois Invoke XVI à détruire.", [K("invoke", "npc_Invoke_XVI", 3, "Détruire des Invoke XVI", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 23),
+  BLQ(25, "Œil de Lynx, Cœur de pierre", "Abats le Mindfire Behemoth.", [K("mindfire", "npc_Mindfire_Behemoth", 1, "Détruire le Mindfire Behemoth", BL_MAPS)], { exp: 150000000, honor: 25000000, ammo: { abl: 30000 }, resources: { blacklight_cipher: 1 } }, 24),
+  BLQ(26, "Frappe Chirurgicale", "Trente-cinq Impulse II à éliminer.", [K("impulse", "npc_Impulse_II", 35, "Détruire des Impulse II", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 25),
+  BLQ(27, "Respirez", "Cent Impulse II à éliminer.", [K("impulse", "npc_Impulse_II", 100, "Détruire des Impulse II", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 26),
+  BLQ(28, "Talents Cachés", "Deux cents Impulse II à éliminer.", [K("impulse", "npc_Impulse_II", 200, "Détruire des Impulse II", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 27),
+  BLQ(29, "Bourreau de Travail", "Dix Attend IX à éliminer.", [K("attend", "npc_Attend_IX", 10, "Détruire des Attend IX", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 28),
+  BLQ(30, "Nettoyage", "Cinquante Attend IX à éliminer.", [K("attend", "npc_Attend_IX", 50, "Détruire des Attend IX", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 29),
+  BLQ(31, "La restauration", "Cent Attend IX à éliminer.", [K("attend", "npc_Attend_IX", 100, "Détruire des Attend IX", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 30),
+  BLQ(32, "Protéger et Obéir", "Trois Invoke XVI à détruire.", [K("invoke", "npc_Invoke_XVI", 3, "Détruire des Invoke XVI", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 31),
+  BLQ(33, "Tueur de Sang Froid", "Quinze Invoke XVI à détruire.", [K("invoke", "npc_Invoke_XVI", 15, "Détruire des Invoke XVI", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 32),
+  BLQ(34, "Écraser la Vermine", "Cinquante Invoke XVI à détruire.", [K("invoke", "npc_Invoke_XVI", 50, "Détruire des Invoke XVI", BL_MAPS)], { exp: 35000000, honor: 1500000 }, 33),
+  BLQ(35, "Motivations Fluctuantes", "Dix Mindfire Behemoth à abattre.", [K("mindfire", "npc_Mindfire_Behemoth", 10, "Détruire des Mindfire Behemoth", BL_MAPS)], { exp: 150000000, honor: 50000000, ammo: { abl: 30000 }, resources: { blacklight_cipher: 1 } }, 34),
+  BLQ(36, "La lettre de la loi", "Mille Rinusk sur les maps Blacklight.", [C("rinusk-bl", "rinusk", 1000, "Collecter du Rinusk en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 35),
+  BLQ(37, "Toujours Vivant !", "Deux cents Traceurs sur les maps Blacklight.", [C("trace-bl", "blacklight_trace", 200, "Collecter des Traceurs Black Light en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 36),
+  BLQ(38, "Chiffonnier", "Rinusk et Traceurs sur les maps Blacklight.", [C("rinusk-bl", "rinusk", 2000, "Collecter du Rinusk en Blacklight", BL_MAPS), C("trace-bl", "blacklight_trace", 400, "Collecter des Traceurs Black Light en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 37),
+  BLQ(39, "Imprudence", "Dix Cerebrum Mindfire sur les maps Blacklight.", [C("cerebrum-bl", "mindfire_cerebrum", 10, "Collecter des Cerebrum Mindfire en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 38),
+  BLQ(40, "Nature Humaine", "Cinquante Impulse II sur les maps Blacklight.", [K("impulse-bl", "npc_Impulse_II", 50, "Détruire des Impulse II en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 39),
+  BLQ(41, "Pierre à aiguiser", "Impulse II et Attend IX sur les maps Blacklight.", [K("impulse-bl", "npc_Impulse_II", 50, "Détruire des Impulse II en Blacklight", BL_MAPS), K("attend-bl", "npc_Attend_IX", 50, "Détruire des Attend IX en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 40),
+  BLQ(42, "Imitation", "Impulse, Attend et Invoke sur les maps Blacklight.", [K("impulse-bl", "npc_Impulse_II", 50, "Détruire des Impulse II en Blacklight", BL_MAPS), K("attend-bl", "npc_Attend_IX", 50, "Détruire des Attend IX en Blacklight", BL_MAPS), K("invoke-bl", "npc_Invoke_XVI", 10, "Détruire des Invoke XVI en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 41),
+  BLQ(43, "Bruit Blanc", "Tiens bon 20 minutes en Blacklight.", [S("stay-20m", 1200, "Rester 20 minutes en Blacklight")], { exp: 35000000, honor: 2500000 }, 42),
+  BLQ(44, "Générosité", "Tiens bon 1 heure en Blacklight.", [S("stay-1h", 3600, "Rester 1 heure en Blacklight")], { exp: 35000000, honor: 2500000 }, 43),
+  BLQ(45, "Restez à l'écoute", "Tiens bon 5 heures en Blacklight.", [S("stay-5h", 18000, "Rester 5 heures en Blacklight")], { exp: 150000000, honor: 35000000, ammo: { abl: 30000 }, resources: { blacklight_cipher: 1 } }, 44),
+  BLQ(46, "Les murs que nous érigeons", "Dix pilotes ennemis en Blacklight.", [P("pvp-10", 10, "Détruire 10 joueurs en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 45),
+  BLQ(47, "Tous aux abris", "Vingt pilotes ennemis en Blacklight.", [P("pvp-20", 20, "Détruire 20 joueurs en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 46),
+  BLQ(48, "La résistance", "Cinquante pilotes ennemis en Blacklight.", [P("pvp-50a", 50, "Détruire 50 joueurs en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 47),
+  BLQ(49, "Envoyer et recevoir", "Cinq pilotes ennemis en Blacklight.", [P("pvp-5", 5, "Détruire 5 joueurs en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 48),
+  BLQ(50, "Le temps presse", "Dix pilotes ennemis en Blacklight.", [P("pvp-10b", 10, "Détruire 10 joueurs en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 49),
+  BLQ(51, "Poings Liés", "Quinze pilotes ennemis en Blacklight.", [P("pvp-15", 15, "Détruire 15 joueurs en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 50),
+  BLQ(52, "La force des mots", "Trente pilotes ennemis en Blacklight.", [P("pvp-30a", 30, "Détruire 30 joueurs en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 51),
+  BLQ(53, "L'ancien règne", "Trente pilotes ennemis en Blacklight.", [P("pvp-30b", 30, "Détruire 30 joueurs en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 52),
+  BLQ(54, "Erreurs fondamentales", "Cinquante pilotes ennemis en Blacklight.", [P("pvp-50b", 50, "Détruire 50 joueurs en Blacklight", BL_MAPS)], { exp: 35000000, honor: 2500000 }, 53),
+  BLQ(55, "Les confins du réel", "Cinquante pilotes ennemis en Blacklight.", [P("pvp-50c", 50, "Détruire 50 joueurs en Blacklight", BL_MAPS)], { exp: 150000000, honor: 35000000, ammo: { abl: 30000 }, resources: { blacklight_cipher: 1 }, ...PRL }, 54),
+  BLQ(56, "Pointage", "Soixante-douze heures cumulées en Blacklight.", [S("stay-72h", 259200, "Rester 72 heures en Blacklight")], { exp: 200000000, honor: 45000000 }, 55),
+  BLQ(57, "Coup de Grâce", "Deux cents Mindfire Behemoth à abattre.", [K("mindfire", "npc_Mindfire_Behemoth", 200, "Détruire des Mindfire Behemoth", BL_MAPS)], { exp: 200000000, honor: 45000000 }, 56),
+  BLQ(58, "Gladiateur", "Mille pilotes ennemis en Blacklight.", [P("pvp-1000", 1000, "Détruire 1000 joueurs en Blacklight", BL_MAPS)], { exp: 200000000, honor: 45000000 }, 57),
+  BLQ(59, "Enfantin", "Quatre mille Impulse II à exterminer.", [K("impulse", "npc_Impulse_II", 4000, "Détruire des Impulse II", BL_MAPS)], { exp: 200000000, honor: 45000000 }, 58),
+  BLQ(60, "Nous détenons votre identité", "Assemble cinq boosters EPHON-100.", [R("craft-ephon", "craft_ephon_100", 5, "Assembler 5 boosters EPHON-100")], { exp: 200000000, honor: 45000000 }, 59),
+];
 const HUNT_FAMILIES = [
   ["streuner", "Streuner", "npc_Streuner", 12, 80000], ["lordakia", "Lordakia", "npc_Lordakia", 15, 120000],
   ["saimon", "Saimon", "npc_Saimon", 18, 170000], ["mordon", "Mordon", "npc_Mordon", 15, 240000],
@@ -532,6 +618,7 @@ const QUEST_CATALOG = [
   ...AMMO_CONTRACTS,
   ...GALAXY_ENERGY_CONTRACTS,
   ...CURSED_MAP_CONTRACTS,
+  ...BLACKLIGHT_CHAIN,
   ...SUPPLY_CONTRACTS,
   ...LEGENDARY_KILL_CONTRACTS,
   ...FIRME_PATROLS,
@@ -722,7 +809,11 @@ export function recordQuestProgress(state, kind, type, amount = 1, context = {})
           || (kind === "kill" && !o.map && o.type === "npc_Cubikon"
             && type === "npc_Cubikon_maudite"));
       if (!typeMatches) continue;
-      if (o.map && !sameId(o.map, context.map)) continue;
+      // Filtre map : string unique ou liste (ex : les 3 maps BL).
+      if (o.map) {
+        const maps = Array.isArray(o.map) ? o.map : [o.map];
+        if (!maps.some(candidate => sameId(candidate, context.map))) continue;
+      }
       const before = Number(state.active[quest.id][o.id] || 0);
       state.active[quest.id][o.id] = Math.min(o.amount, before + Math.max(0, Number(amount) || 0));
       changed ||= before !== state.active[quest.id][o.id];
@@ -735,5 +826,8 @@ export const recordQuestKill = (state, type, context) => recordQuestProgress(sta
 export const recordQuestCollect = (state, type, context) => recordQuestProgress(state, "collect", type, 1, context);
 export const recordQuestVisit = (state, map) => recordQuestProgress(state, "visit", map, 1, { map });
 export const recordQuestGate = (state, gateId) => recordQuestProgress(state, "gate", gateId);
+export const recordQuestCraft = (state, recipeId, quantity = 1) => recordQuestProgress(state, "craft", recipeId, quantity, {});
+export const recordQuestPvp = (state, context) => recordQuestProgress(state, "pvp", "pvp", 1, context);
+export const recordQuestStay = (state, seconds, context) => recordQuestProgress(state, "stay", "bl", seconds, context);
 export function abandonQuest(state, questId) { if (state.active[questId] == null) return false; delete state.active[questId]; if (!state.abandoned || typeof state.abandoned !== "object") state.abandoned = {}; state.abandoned[questId] = 1; return true; }
 export function claimQuest(state, questId) { const quest = QUEST_DEFINITIONS.find(q => q.id === questId); if (!quest || state.completed.includes(questId) || !isQuestComplete(state, quest)) return null; delete state.active[questId]; if (state.abandoned) delete state.abandoned[questId]; state.completed.push(questId); return { ...quest.reward }; }

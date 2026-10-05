@@ -12734,6 +12734,7 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
   const result = craftCurrentUserRecipe(recipe.id, quantity);
   if (!result.ok) return renderCraftingWindow(result.error);
   account.user = result.user;
+  try { advanceQuestProgress("craft", String(recipe.id), Math.max(1, Math.floor(Number(quantity) || 1))); } catch {}
   syncPlayerFromAccount();
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
   showNotification(`${result.recipe.name} assemblé`, 2.5, "reward", { goldTerms: [result.recipe.name] });
@@ -14423,8 +14424,8 @@ for (const node of [ui.questWindow, ui.questOfferWindow]) {
   });
 }
 
-function advanceQuestProgress(kind, type) {
-  const advanced = recordQuestProgress(questState, kind, type, 1, {
+function advanceQuestProgress(kind, type, amount = 1) {
+  const advanced = recordQuestProgress(questState, kind, type, amount, {
     map: String(window.__CURRENT_MAP_ID__ || "").toLowerCase(),
   });
   if (!advanced.length) return;
@@ -14449,6 +14450,13 @@ function advanceQuestProgress(kind, type) {
   refreshPendingQuestViews();
 }
 
+// Suivi des ressources collectées pour les quêtes (Rinusk, Traceurs...).
+function trackResourceGain(resourceId, qty) {
+  const amount = Math.max(0, Math.floor(Number(qty) || 0));
+  if (!resourceId || amount <= 0) return;
+  try { advanceQuestProgress("collect", String(resourceId), amount); } catch {}
+}
+
 ui.questTabs?.addEventListener("click", event => {
   const tab = event.target.closest("[data-quest-tab]");
   if (!tab) return;
@@ -14471,6 +14479,42 @@ function claimQuestReward(questId) {
   const ammoGained = ammoRewards.map(([type, amount]) => [type, Math.max(0, Math.floor(Number(amount) * questMult || 0))]);
   for (const [type, gained] of ammoGained) player.ammo[type] += gained;
   if (ammoGained.length) updateAmmoUI();
+  // Lasers offerts (ex : Prometheus) : stockés en inventaire (modules),
+  // à équiper manuellement via les slots lasers.
+  const laserMessages = [];
+  try {
+    const laserGains = Object.entries(reward.lasers || {}).filter(([id, qty]) => id && Number(qty) > 0);
+    if (account.user && laserGains.length) {
+      account.user.inventory ||= {};
+      account.user.inventory.modules ??= [];
+      account.user.inventory.counts ||= {};
+      for (const [id, qty] of laserGains) {
+        const q = Math.max(1, Math.floor(Number(qty) || 0));
+        for (let i = 0; i < q; i++) {
+          if (!account.user.inventory.modules.includes(id)) account.user.inventory.modules.push(id);
+        }
+        account.user.inventory.counts[id] = Math.max(0, Number(account.user.inventory.counts[id]) || 0) + q;
+        let lname = String(id);
+        try { lname = findCatalogItem(id)?.name || id; } catch {}
+        laserMessages.push(`Vous avez reçu ${q} laser ${lname} (inventaire)`);
+      }
+    }
+  } catch {}
+  // Ressources offertes (ex : Cerebrum, Code secret) : direct inventaire.
+  // Non suivies par les quêtes (pas de validation en cascade).
+  const resourceMessages = [];
+  try {
+    const resGains = Object.entries(reward.resources || {}).filter(([id, qty]) => id && Number(qty) > 0);
+    if (account.user && resGains.length) {
+      account.user.inventory ||= {};
+      account.user.inventory.resources ||= {};
+      for (const [id, qty] of resGains) {
+        const q = Math.max(1, Math.floor(Number(qty) || 0));
+        account.user.inventory.resources[id] = Math.max(0, Number(account.user.inventory.resources[id]) || 0) + q;
+        resourceMessages.push(`Vous avez reçu ${formatInteger(q)} ${getResourceName(id, q)}`);
+      }
+    }
+  } catch {}
   const experience = Math.floor(getQuestExperienceReward(quest) * questMult);
   const honor = Math.floor(getQuestHonorReward(quest) * questMult);
   // Montants réellement reçus (bonus modules + boosters XP/honneur inclus).
@@ -14490,12 +14534,14 @@ function claimQuestReward(questId) {
   const AMMO_REWARD_NAMES = { x6: "RSB-75", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", sab: "SAB-50", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x1: "LCB-10" };
   const ammoMessages = ammoGained.map(([type, gained]) => `Vous avez reçu ${formatInteger(gained)} munitions ${AMMO_REWARD_NAMES[type] || String(type).toUpperCase()}`);
   const energyMessage = galaxyEnergy > 0 ? `Vous avez reçu ${formatInteger(galaxyEnergy)} énergies pour les portails intergalactiques (GG)` : "";
-  addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(creditsGained)} crédits · +${formatInteger(gainedXp)} XP · +${formatInteger(gainedHonor)} honneur${ammoMessages.length ? ` · ${ammoMessages.join(" · ")}` : ""}${energyMessage ? ` · ${energyMessage}` : ""}`, "reward");
+  addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(creditsGained)} crédits · +${formatInteger(gainedXp)} XP · +${formatInteger(gainedHonor)} honneur${ammoMessages.length ? ` · ${ammoMessages.join(" · ")}` : ""}${laserMessages.length ? ` · ${laserMessages.join(" · ")}` : ""}${resourceMessages.length ? ` · ${resourceMessages.join(" · ")}` : ""}${energyMessage ? ` · ${energyMessage}` : ""}`, "reward");
   showNotificationGroup([
     `Vous avez reçu ${formatInteger(creditsGained)} crédits`,
     `Vous avez gagné ${formatInteger(gainedXp)} XP`,
     `Vous avez gagné ${formatInteger(gainedHonor)} honneur`,
     ...ammoMessages,
+    ...laserMessages,
+    ...resourceMessages,
     ...(energyMessage ? [energyMessage] : []),
   ]);
   return true;
@@ -23084,7 +23130,7 @@ function applyCollectableReward(c) {
   const credits = Math.floor(rollValue(reward.credits, 0) * boxMult);
   if (credits > 0) {
     player.credits += credits;
-    parts.push(`+${credits} crédits`);
+    parts.push(`+${formatInteger(credits)} crédits`);
     changed = true;
     grantedAny = true;
   }
@@ -23185,6 +23231,7 @@ function applyCollectableReward(c) {
             goldTerms.push(formatInteger(added));
             changed = true;
             grantedAny = true;
+            try { trackResourceGain(resourceId, added); } catch {}
           }
           if (blocked > 0) oreBlockedAny = true;
           continue;
@@ -23194,6 +23241,7 @@ function applyCollectableReward(c) {
         goldTerms.push(formatInteger(wanted));
         changed = true;
         grantedAny = true;
+        try { trackResourceGain(resourceId, wanted); } catch {}
       }
     }
   }
@@ -23230,6 +23278,7 @@ function applyCollectableReward(c) {
             goldTerms.push(formatInteger(added));
             changed = true;
             granted = true;
+            try { trackResourceGain(resourceId, added); } catch {}
           }
           if (blocked > 0) remainder[resourceId] = (remainder[resourceId] || 0) + blocked;
         }
@@ -25548,6 +25597,7 @@ if (ownsNpcLoot && !e.noRewards) {
         account.user.inventory.resources[resource] =
           Math.max(0, Number(account.user.inventory.resources[resource]) || 0) + amount;
         received.push(`Vous avez reçu ${formatInteger(amount)} ${getResourceName(resource, amount)}`);
+        try { trackResourceGain(resource, amount); } catch {}
       }
       if (received.length) {
         markProgressDirty();
@@ -26035,6 +26085,7 @@ function runOnKillAction(action, pos = null) {
         if (amount <= 0) continue;
         account.user.inventory.resources[resourceId] = Math.max(0, Number(account.user.inventory.resources[resourceId]) || 0) + amount;
         resourceMessages.push(`Vous avez reçu ${formatInteger(amount)} ${getResourceName(resourceId, amount)}`);
+        try { trackResourceGain(resourceId, amount); } catch {}
       }
     }
     awardExperience(experience);
@@ -27631,6 +27682,8 @@ let zoneWalls = [];
 let zoneSafe = null;
 let mapPortalLock = 0;
 let portalHintCd = 0;
+// Cumul de présence en map Blacklight (quêtes "stay"), versé par tranches.
+let stayBlAcc = 0;
 
 let safeZoneActive = false;
 let safeZoneX = 0;
@@ -28456,6 +28509,7 @@ function syncNetNpcs(dt) {
       } catch {}
       const farmed = Number(k.mult) > 0 && Number(k.mult) < 1 ? " (rendement réduit : même victime)" : "";
       showToast(`Vaisseau de ${k.victim} détruit : +${formatInteger(gainedHo)} honneur, +${formatInteger(gainedXp)} XP${farmed}`, 3.2);
+      try { advanceQuestProgress("pvp", "pvp"); } catch {}
     }
     for (const k of drainNetPvpPetKillInbox()) {
       if (!k) continue;
@@ -33714,6 +33768,20 @@ if (hangarSwapFx) {
 
   mapPortalLock = Math.max(0, mapPortalLock - dt);
   portalHintCd = Math.max(0, portalHintCd - dt);
+  // Présence en map Blacklight (quêtes "rester X en BL") : cumulé puis
+  // versé par tranches de 5 s pour ne pas salir la sauvegarde en continu.
+  try {
+    if (started && !player.dead && isBlacklightMap()) {
+      stayBlAcc = Math.max(0, Number(stayBlAcc || 0)) + Math.max(0, Number(dt) || 0);
+      if (stayBlAcc >= 5) {
+        const whole = Math.floor(stayBlAcc);
+        stayBlAcc -= whole;
+        advanceQuestProgress("stay", "bl", whole);
+      }
+    } else {
+      stayBlAcc = 0;
+    }
+  } catch {}
   tickZonePortalVisualTransitions(dt);
   if (tickGatePortalJumps(dt)) return;
   if (tickZonePortalJumps(dt)) return;
@@ -35420,7 +35488,7 @@ function draw() {
     ctx.font = "1000 12px ui-sans-serif, system-ui";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    const txt = `+${pck.credits || 0}`;
+    const txt = `+${formatInteger(pck.credits || 0)}`;
     ctx.lineWidth = 4;
     ctx.strokeStyle = "rgba(5,8,20,0.90)";
     ctx.strokeText(txt, 0, 14);

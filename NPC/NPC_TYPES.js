@@ -350,7 +350,7 @@ export const NPC_TYPES = {
     r: 18, hp: 600, shield: 800, speed: 300, bulletDmg: 40, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Boss_Streuner_Recruit: {
-    name: "* Protecteur Streuner *",
+    name: "[ Protecteur Streuner ]",
     sprite: { path: "NPC/NPC_SPRITES/BOSS_STREUNER_RECRUIT/", frames: 32, firstNumber: 1, ext: ".png", w: 220, h: 220 },
     playSprite: false,
     passiveNative: false,
@@ -529,7 +529,7 @@ export const NPC_TYPES = {
     r: 18, hp: 12000000, shield: 9000000, speed: 360, bulletDmg: 70000, bulletSpeed: 4500, shootRange: 600,
   },
   npc_Streuner_alpha: {
-    name: "[α] -=[ Streuner ]=-",
+    name: "-=[ Streuner ]=- α",
     sprite: { path: "NPC/NPC_SPRITES/STREUNER/", frames: 32, firstNumber: 1, ext: ".png", w: 109, h: 96 },
     playSprite: false,
     passiveNative: false,
@@ -538,7 +538,7 @@ export const NPC_TYPES = {
     r: 18, hp: 800, shield: 400, speed: 270, bulletDmg: 20, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Lordakia_alpha: {
-    name: "[α] -=[ Lordakia ]=-",
+    name: "-=[ Lordakia ]=- α",
     sprite: { path: "NPC/NPC_SPRITES/LORDAKIA/", frames: 32, firstNumber: 1, ext: ".png", w: 71, h: 64 },
     playSprite: true,
     passiveNative: false,
@@ -547,7 +547,7 @@ export const NPC_TYPES = {
     r: 18, hp: 2000, shield: 2000, speed: 320, bulletDmg: 80, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Mordon_alpha: {
-    name: "[α] -=[ Mordon ]=-",
+    name: "-=[ Mordon ]=- α",
     sprite: { path: "NPC/NPC_SPRITES/MORDON/", frames: 16, firstNumber: 1, ext: ".png", w: 150, h: 120 },
     playSprite: true,
     passiveNative: false,
@@ -556,7 +556,7 @@ export const NPC_TYPES = {
     r: 18, hp: 20000, shield: 10000, speed: 125, bulletDmg: 390, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Saimon_alpha: {
-    name: "[α] -=[ Saimon ]=-",
+    name: "-=[ Saimon ]=- α",
     sprite: { path: "NPC/NPC_SPRITES/SAIMON/", frames: 32, firstNumber: 1, ext: ".png", w: 90, h: 80 },
     playSprite: false,
     passiveNative: false,
@@ -565,7 +565,7 @@ export const NPC_TYPES = {
     r: 18, hp: 6000, shield: 6000, speed: 320, bulletDmg: 200, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Devolarium_alpha: {
-    name: "[α] -=[ Devolarium ]=-",
+    name: "-=[ Devolarium ]=- α",
     sprite: { path: "NPC/NPC_SPRITES/DEVOLARIUM/", frames: 32, firstNumber: 1, ext: ".png", w: 228, h: 228 },
     playSprite: false,
     passiveNative: false,
@@ -574,7 +574,7 @@ export const NPC_TYPES = {
     r: 18, hp: 100000, shield: 100000, speed: 200, bulletDmg: 1200, bulletSpeed: 4500, shootRange: 480,
   },
   npc_Kristallin_alpha: {
-    name: "[α] -=[ Kristallin ]=-",
+    name: "-=[ Kristallin ]=- α",
     sprite: { path: "NPC/NPC_SPRITES/KRISTALLIN/", frames: 83, firstNumber: 1, ext: ".png", w: 113, h: 113 },
     playSprite: true,
     passiveNative: false,
@@ -583,7 +583,7 @@ export const NPC_TYPES = {
     r: 18, hp: 50000, shield: 40000, speed: 320, bulletDmg: 1200, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Sibelon_alpha: {
-    name: "[α] -=[ Sibelon ]=-",
+    name: "-=[ Sibelon ]=- α",
     sprite: { path: "NPC/NPC_SPRITES/SIBELON/", frames: 32, firstNumber: 1, ext: ".png", w: 338, h: 300 },
     playSprite: false,
     passiveNative: false,
@@ -592,7 +592,7 @@ export const NPC_TYPES = {
     r: 18, hp: 200000, shield: 200000, speed: 100, bulletDmg: 2650, bulletSpeed: 4500, shootRange: 480,
   },
   npc_Sibelonit_alpha: {
-    name: "[α] -=[ Sibelonit ]=-",
+    name: "-=[ Sibelonit ]=- α",
     sprite: { path: "NPC/NPC_SPRITES/SIBELONIT/", frames: 32, firstNumber: 1, ext: ".png", w: 90, h: 80 },
     playSprite: true,
     passiveNative: false,
@@ -601,7 +601,7 @@ export const NPC_TYPES = {
     r: 18, hp: 40000, shield: 40000, speed: 320, bulletDmg: 3200, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Kristallon_alpha: {
-    name: "[α] -=[ Kristallon ]=-",
+    name: "-=[ Kristallon ]=- α",
     sprite: { path: "NPC/NPC_SPRITES/KRISTALLON/", frames: 83, firstNumber: 1, ext: ".png", w: 188, h: 188 },
     playSprite: true,
     passiveNative: false,
@@ -610,7 +610,7 @@ export const NPC_TYPES = {
     r: 18, hp: 400000, shield: 300000, speed: 250, bulletDmg: 4450, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Protegit_alpha: {
-    name: "[α] -=[ Protegit ]=-",
+    name: "-=[ Protegit ]=- α",
     sprite: { path: "NPC/NPC_SPRITES/PROTEGIT/", frames: 32, firstNumber: 1, ext: ".png", w: 75, h: 66 },
     playSprite: false,
     passiveNative: false,
@@ -619,7 +619,7 @@ export const NPC_TYPES = {
     r: 18, hp: 50000, shield: 40000, speed: 420, bulletDmg: 1500, bulletSpeed: 4500, shootRange: 620,
   },
   npc_Cubikon_alpha: {
-    name: "[α] -=[ Cubikon ]=-",
+    name: "-=[ Cubikon ]=- α",
     sprite: { path: "NPC/NPC_SPRITES/CUBIKON/", frames: 1, firstNumber: 1, ext: ".png", w: 383, h: 384 },
     playSprite: false,
     passiveNative: false,
@@ -629,7 +629,7 @@ export const NPC_TYPES = {
     shootRate: 0,
   },
   npc_Streuner_beta: {
-    name: "[β] -=[ Streuner ]=-",
+    name: "-=[ Streuner ]=- β",
     sprite: { path: "NPC/NPC_SPRITES/STREUNER/", frames: 32, firstNumber: 1, ext: ".png", w: 109, h: 96 },
     playSprite: false,
     passiveNative: false,
@@ -638,7 +638,7 @@ export const NPC_TYPES = {
     r: 18, hp: 1600, shield: 800, speed: 270, bulletDmg: 40, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Lordakia_beta: {
-    name: "[β] -=[ Lordakia ]=-",
+    name: "-=[ Lordakia ]=- β",
     sprite: { path: "NPC/NPC_SPRITES/LORDAKIA/", frames: 32, firstNumber: 1, ext: ".png", w: 71, h: 64 },
     playSprite: true,
     passiveNative: false,
@@ -647,7 +647,7 @@ export const NPC_TYPES = {
     r: 18, hp: 4000, shield: 4000, speed: 320, bulletDmg: 160, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Mordon_beta: {
-    name: "[β] -=[ Mordon ]=-",
+    name: "-=[ Mordon ]=- β",
     sprite: { path: "NPC/NPC_SPRITES/MORDON/", frames: 16, firstNumber: 1, ext: ".png", w: 150, h: 120 },
     playSprite: true,
     passiveNative: false,
@@ -656,7 +656,7 @@ export const NPC_TYPES = {
     r: 18, hp: 40000, shield: 20000, speed: 125, bulletDmg: 780, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Saimon_beta: {
-    name: "[β] -=[ Saimon ]=-",
+    name: "-=[ Saimon ]=- β",
     sprite: { path: "NPC/NPC_SPRITES/SAIMON/", frames: 32, firstNumber: 1, ext: ".png", w: 90, h: 80 },
     playSprite: false,
     passiveNative: false,
@@ -665,7 +665,7 @@ export const NPC_TYPES = {
     r: 18, hp: 12000, shield: 12000, speed: 320, bulletDmg: 400, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Devolarium_beta: {
-    name: "[β] -=[ Devolarium ]=-",
+    name: "-=[ Devolarium ]=- β",
     sprite: { path: "NPC/NPC_SPRITES/DEVOLARIUM/", frames: 32, firstNumber: 1, ext: ".png", w: 228, h: 228 },
     playSprite: false,
     passiveNative: false,
@@ -674,7 +674,7 @@ export const NPC_TYPES = {
     r: 18, hp: 200000, shield: 200000, speed: 200, bulletDmg: 2400, bulletSpeed: 4500, shootRange: 480,
   },
   npc_Kristallin_beta: {
-    name: "[β] -=[ Kristallin ]=-",
+    name: "-=[ Kristallin ]=- β",
     sprite: { path: "NPC/NPC_SPRITES/KRISTALLIN/", frames: 83, firstNumber: 1, ext: ".png", w: 113, h: 113 },
     playSprite: true,
     passiveNative: false,
@@ -683,7 +683,7 @@ export const NPC_TYPES = {
     r: 18, hp: 100000, shield: 80000, speed: 320, bulletDmg: 2400, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Sibelon_beta: {
-    name: "[β] -=[ Sibelon ]=-",
+    name: "-=[ Sibelon ]=- β",
     sprite: { path: "NPC/NPC_SPRITES/SIBELON/", frames: 32, firstNumber: 1, ext: ".png", w: 338, h: 300 },
     playSprite: false,
     passiveNative: false,
@@ -692,7 +692,7 @@ export const NPC_TYPES = {
     r: 18, hp: 400000, shield: 400000, speed: 100, bulletDmg: 5300, bulletSpeed: 4500, shootRange: 480,
   },
   npc_Sibelonit_beta: {
-    name: "[β] -=[ Sibelonit ]=-",
+    name: "-=[ Sibelonit ]=- β",
     sprite: { path: "NPC/NPC_SPRITES/SIBELONIT/", frames: 32, firstNumber: 1, ext: ".png", w: 90, h: 80 },
     playSprite: true,
     passiveNative: false,
@@ -701,7 +701,7 @@ export const NPC_TYPES = {
     r: 18, hp: 80000, shield: 80000, speed: 320, bulletDmg: 6400, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Kristallon_beta: {
-    name: "[β] -=[ Kristallon ]=-",
+    name: "-=[ Kristallon ]=- β",
     sprite: { path: "NPC/NPC_SPRITES/KRISTALLON/", frames: 83, firstNumber: 1, ext: ".png", w: 188, h: 188 },
     playSprite: true,
     passiveNative: false,
@@ -710,7 +710,7 @@ export const NPC_TYPES = {
     r: 18, hp: 800000, shield: 600000, speed: 250, bulletDmg: 8900, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Protegit_beta: {
-    name: "[β] -=[ Protegit ]=-",
+    name: "-=[ Protegit ]=- β",
     sprite: { path: "NPC/NPC_SPRITES/PROTEGIT/", frames: 32, firstNumber: 1, ext: ".png", w: 75, h: 66 },
     playSprite: false,
     passiveNative: false,
@@ -719,7 +719,7 @@ export const NPC_TYPES = {
     r: 18, hp: 100000, shield: 80000, speed: 420, bulletDmg: 4500, bulletSpeed: 4500, shootRange: 620,
   },
   npc_Cubikon_beta: {
-    name: "[β] -=[ Cubikon ]=-",
+    name: "-=[ Cubikon ]=- β",
     sprite: { path: "NPC/NPC_SPRITES/CUBIKON/", frames: 1, firstNumber: 1, ext: ".png", w: 383, h: 384 },
     playSprite: false,
     passiveNative: false,
@@ -729,7 +729,7 @@ export const NPC_TYPES = {
     shootRate: 0,
   },
   npc_Streuner_gamma: {
-    name: "[γ] -=[ Streuner ]=-",
+    name: "-=[ Streuner ]=- γ",
     sprite: { path: "NPC/NPC_SPRITES/STREUNER/", frames: 32, firstNumber: 1, ext: ".png", w: 109, h: 96 },
     playSprite: false,
     passiveNative: false,
@@ -738,7 +738,7 @@ export const NPC_TYPES = {
     r: 18, hp: 2400, shield: 1200, speed: 270, bulletDmg: 80, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Lordakia_gamma: {
-    name: "[γ] -=[ Lordakia ]=-",
+    name: "-=[ Lordakia ]=- γ",
     sprite: { path: "NPC/NPC_SPRITES/LORDAKIA/", frames: 32, firstNumber: 1, ext: ".png", w: 71, h: 64 },
     playSprite: true,
     passiveNative: false,
@@ -747,7 +747,7 @@ export const NPC_TYPES = {
     r: 18, hp: 6000, shield: 6000, speed: 320, bulletDmg: 320, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Mordon_gamma: {
-    name: "[γ] -=[ Mordon ]=-",
+    name: "-=[ Mordon ]=- γ",
     sprite: { path: "NPC/NPC_SPRITES/MORDON/", frames: 16, firstNumber: 1, ext: ".png", w: 150, h: 120 },
     playSprite: true,
     passiveNative: false,
@@ -756,7 +756,7 @@ export const NPC_TYPES = {
     r: 18, hp: 60000, shield: 30000, speed: 125, bulletDmg: 1560, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Saimon_gamma: {
-    name: "[γ] -=[ Saimon ]=-",
+    name: "-=[ Saimon ]=- γ",
     sprite: { path: "NPC/NPC_SPRITES/SAIMON/", frames: 32, firstNumber: 1, ext: ".png", w: 90, h: 80 },
     playSprite: false,
     passiveNative: false,
@@ -765,7 +765,7 @@ export const NPC_TYPES = {
     r: 18, hp: 18000, shield: 18000, speed: 320, bulletDmg: 800, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Devolarium_gamma: {
-    name: "[γ] -=[ Devolarium ]=-",
+    name: "-=[ Devolarium ]=- γ",
     sprite: { path: "NPC/NPC_SPRITES/DEVOLARIUM/", frames: 32, firstNumber: 1, ext: ".png", w: 228, h: 228 },
     playSprite: false,
     passiveNative: false,
@@ -774,7 +774,7 @@ export const NPC_TYPES = {
     r: 18, hp: 300000, shield: 300000, speed: 200, bulletDmg: 4800, bulletSpeed: 4500, shootRange: 480,
   },
   npc_Kristallin_gamma: {
-    name: "[γ] -=[ Kristallin ]=-",
+    name: "-=[ Kristallin ]=- γ",
     sprite: { path: "NPC/NPC_SPRITES/KRISTALLIN/", frames: 83, firstNumber: 1, ext: ".png", w: 113, h: 113 },
     playSprite: true,
     passiveNative: false,
@@ -783,7 +783,7 @@ export const NPC_TYPES = {
     r: 18, hp: 150000, shield: 120000, speed: 320, bulletDmg: 4800, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Sibelon_gamma: {
-    name: "[γ] -=[ Sibelon ]=-",
+    name: "-=[ Sibelon ]=- γ",
     sprite: { path: "NPC/NPC_SPRITES/SIBELON/", frames: 32, firstNumber: 1, ext: ".png", w: 338, h: 300 },
     playSprite: false,
     passiveNative: false,
@@ -792,7 +792,7 @@ export const NPC_TYPES = {
     r: 18, hp: 600000, shield: 600000, speed: 100, bulletDmg: 10600, bulletSpeed: 4500, shootRange: 480,
   },
   npc_Sibelonit_gamma: {
-    name: "[γ] -=[ Sibelonit ]=-",
+    name: "-=[ Sibelonit ]=- γ",
     sprite: { path: "NPC/NPC_SPRITES/SIBELONIT/", frames: 32, firstNumber: 1, ext: ".png", w: 90, h: 80 },
     playSprite: true,
     passiveNative: false,
@@ -801,7 +801,7 @@ export const NPC_TYPES = {
     r: 18, hp: 120000, shield: 120000, speed: 320, bulletDmg: 12800, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Kristallon_gamma: {
-    name: "[γ] -=[ Kristallon ]=-",
+    name: "-=[ Kristallon ]=- γ",
     sprite: { path: "NPC/NPC_SPRITES/KRISTALLON/", frames: 83, firstNumber: 1, ext: ".png", w: 188, h: 188 },
     playSprite: true,
     passiveNative: false,
@@ -810,7 +810,7 @@ export const NPC_TYPES = {
     r: 18, hp: 1200000, shield: 900000, speed: 250, bulletDmg: 17800, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Protegit_gamma: {
-    name: "[γ] -=[ Protegit ]=-",
+    name: "-=[ Protegit ]=- γ",
     sprite: { path: "NPC/NPC_SPRITES/PROTEGIT/", frames: 32, firstNumber: 1, ext: ".png", w: 75, h: 66 },
     playSprite: false,
     passiveNative: false,
@@ -819,7 +819,7 @@ export const NPC_TYPES = {
     r: 18, hp: 150000, shield: 120000, speed: 420, bulletDmg: 6000, bulletSpeed: 4500, shootRange: 620,
   },
   npc_Cubikon_gamma: {
-    name: "[γ] -=[ Cubikon ]=-",
+    name: "-=[ Cubikon ]=- γ",
     sprite: { path: "NPC/NPC_SPRITES/CUBIKON/", frames: 1, firstNumber: 1, ext: ".png", w: 383, h: 384 },
     playSprite: false,
     passiveNative: false,
@@ -1747,7 +1747,7 @@ export const NPC_TYPES = {
     r: 103, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Strokelight_Barrage: {
-    name: "-=[ Strokelight Barrage ]=-",
+    name: "\\\\ Strokelight Barrage //",
     sprite: { path: "NPC/NPC_SPRITES/STROKELIGHT_BARRAGE/", frames: 32, firstNumber: 1, ext: ".png", w: 330, h: 264 },
     playSprite: false,
     passiveNative: false,
@@ -1883,7 +1883,7 @@ export const NPC_TYPES = {
     r: 41, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Uber_Interceptor: {
-    name: "-=[ Uber Interceptor ]=-",
+    name: "[ Uber Interceptor ]",
     sprite: { path: "NPC/NPC_SPRITES/INTERCEPTOR/", frames: 32, firstNumber: 1, ext: ".png", w: 94, h: 83 },
     playSprite: false,
     passiveNative: false,
@@ -1892,7 +1892,7 @@ export const NPC_TYPES = {
     r: 18, hp: 150000, shield: 100000, speed: 520, bulletDmg: 600, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Uber_Barracuda: {
-    name: "-=[ Uber Barracuda ]=-",
+    name: "[ Uber Barracuda ]",
     sprite: { path: "NPC/NPC_SPRITES/BARRACUDA/", frames: 32, firstNumber: 1, ext: ".png", w: 128, h: 113 },
     playSprite: false,
     passiveNative: false,
@@ -1901,7 +1901,7 @@ export const NPC_TYPES = {
     r: 23, hp: 400000, shield: 250000, speed: 430, bulletDmg: 10000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Uber_Saboteur: {
-    name: "-=[ Uber Saboteur ]=-",
+    name: "[ Uber Saboteur ]",
     sprite: { path: "NPC/NPC_SPRITES/SABOTEUR/", frames: 32, firstNumber: 1, ext: ".png", w: 131, h: 116 },
     playSprite: false,
     passiveNative: false,
@@ -1911,7 +1911,7 @@ export const NPC_TYPES = {
     shootRate: 0.25,
   },
   npc_Uber_Annihilator: {
-    name: "-=[ Uber Annihilator ]=-",
+    name: "[ Uber Annihilator ]",
     sprite: { path: "NPC/NPC_SPRITES/ANNIHILATOR/", frames: 32, firstNumber: 1, ext: ".png", w: 285, h: 253 },
     playSprite: false,
     passiveNative: false,
@@ -1965,7 +1965,7 @@ export const NPC_TYPES = {
     r: 27, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Attend_IX: {
-    name: "-=[ Attend IX ]=-",
+    name: "\\\\ Attend IX //",
     sprite: { path: "NPC/NPC_SPRITES/ATTEND_IX/", frames: 32, firstNumber: 1, ext: ".png", w: 180, h: 144 },
     playSprite: false,
     passiveNative: false,
@@ -1974,7 +1974,7 @@ export const NPC_TYPES = {
     r: 32, hp: 9000000, shield: 4800000, speed: 150, bulletDmg: 17000, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Invoke_XVI: {
-    name: "-=[ Invoke XVI ]=-",
+    name: "\\\\ Invoke XVI //",
     sprite: { path: "NPC/NPC_SPRITES/INVOKE_XVI/", frames: 32, firstNumber: 1, ext: ".png", w: 480, h: 384 },
     playSprite: false,
     passiveNative: false,
@@ -1983,7 +1983,7 @@ export const NPC_TYPES = {
     r: 86, hp: 36000000, shield: 0, speed: 0, bulletDmg: 30000, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Mindfire_Behemoth: {
-    name: "-=[ Mindfire Behemoth ]=-",
+    name: "\\\\ Mindfire Behemoth //",
     sprite: { path: "NPC/NPC_SPRITES/MINDFIRE_BEHEMOTH/", frames: 32, firstNumber: 1, ext: ".png", w: 800, h: 640 },
     playSprite: false,
     passiveNative: false,
@@ -2357,7 +2357,7 @@ export const NPC_TYPES = {
     r: 18, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Impulse_II: {
-    name: "Impulse II",
+    name: "\\\\ Impulse II //",
     sprite: { path: "NPC/NPC_SPRITES/IMPULSE_II/", frames: 32, firstNumber: 1, ext: ".png", w: 150, h: 120 },
     playSprite: false,
     passiveNative: false,
@@ -2402,7 +2402,7 @@ export const NPC_TYPES = {
     r: 18, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Abide_I: {
-    name: "Abide I",
+    name: "\\\\ Abide I //",
     sprite: { path: "NPC/NPC_SPRITES/IMPULSE_II/", frames: 32, firstNumber: 1, ext: ".png", w: 150, h: 120 },
     playSprite: false,
     passiveNative: false,
@@ -2411,7 +2411,7 @@ export const NPC_TYPES = {
     r: 18, hp: 600000, shield: 0, speed: 600, bulletDmg: 9000, bulletSpeed: 4500, shootRange: 290,
   },
   npc_SteadFast_III: {
-    name: "SteadFast III",
+    name: "\\\\ SteadFast III //",
     sprite: { path: "NPC/NPC_SPRITES/ATTEND_IX/", frames: 32, firstNumber: 1, ext: ".png", w: 180, h: 144 },
     playSprite: false,
     passiveNative: false,
