@@ -87,32 +87,7 @@ export function getZonePortals(WORLD) {
       r: 260,
       toMap: "4-5",
       toPortal: "p_45_to_52",
-sprites: {
-    idle: {
-      src: "ASSETS/PIRATES_PORTAL/DESACTIVE.png",
-      w: 362,
-      h: 387,
-      yOff: 0,
-    },
-
-    open: {
-      src: "ASSETS/PIRATES_PORTAL/ACTIVE.png",
-      w: 362,
-      h: 387,
-      yOff: 0,
-    },
-
-    jump: {
-      src: "ASSETS/PIRATES_PORTAL/JUMP.png",
-      w: 362,
-      h: 387,
-      yOff: 0,
-      scale: 1,
-      spinSpeed: 0,
-      alpha: 1,
-    },
-    },
-        },
+  },
   ];
 }
 

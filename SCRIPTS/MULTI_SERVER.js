@@ -2229,6 +2229,16 @@ setInterval(() => {
           }
         }
         npc = sim.snapshot();
+        // Halos Mindfire : camouflages dissipés (message ciblé, le client
+        // casse son camouflage à réception).
+        if (typeof sim.drainDecloaks === "function") {
+          try {
+            for (const d of sim.drainDecloaks()) {
+              if (!d || !String(d.playerId || "").startsWith("u_")) continue;
+              sendToPeer(String(d.playerId), { t: "mindfireDecloak", uid: String(d.npcUid || "") });
+            }
+          } catch {}
+        }
         // Recompenses filees hors boucle chaude (SQLite ~8 ms/part) : le
         // client attend le gain avant d'afficher l'explosion, delai invisible.
         awardNpcDeaths(key, npc.deaths);

@@ -49,6 +49,16 @@ const SHUFFLE_THREAT_TYPES = new Set([
 const THREAT_SHUFFLE_MS = 3000;
 // Hystérésis du top dégâts : il faut dépasser la cible actuelle de 25 %.
 const THREAT_OVERTAKE_MULT = 1.25;
+// Halo Mindfire : pulsation + dévoilage camouflage, toutes les 1 s, rayon 1200.
+const MINDFIRE_HALO_PERIOD_S = 1;
+const MINDFIRE_HALO_RADIUS = 1200;
+
+// Bouclier uniquement : Mindfire et Invoke ne régénèrent jamais rien, mais
+// le Strokelight régénère son bouclier (jamais sa coque).
+function isNoShieldRegenBlBossType(type) {
+  return String(type || "") === "npc_Mindfire_Behemoth"
+    || String(type || "") === "npc_Invoke_XVI";
+}
 
 // Blacklight : seuls les dégâts des joueurs sont majorés (x1.25, sauf
 // Orcus / Orcus Plus qui restent x1), comme en solo. Les NPC infligent
@@ -99,6 +109,7 @@ export class ZoneNpcSim {
     this.feed = new Map(); // "uid|by" -> { uid, by, total } (degats du tick)
     this.recentGone = []; // uids retires sans mort (despawn vague) : purge immediate cote client
     this.playerHits = []; // impacts NPC autoritaires a appliquer par MULTI_SERVER
+    this.decloaks = []; // camouflages dissipés par les halos Mindfire
     this.separationIndex = createSpatialPairIndex(512);
     // Journal des kills (2.5 s) : le respawn instantane des NPC normaux
     // effacerait sinon la mort avant le snapshot — le killer perdrait sa recompense.
@@ -503,6 +514,12 @@ drainPlayerHits() {
     return this.playerHits.splice(0, this.playerHits.length);
   }
 
+  // Camouflages dissipés par les halos Mindfire : { playerId, npcUid }.
+  drainDecloaks() {
+    if (!this.decloaks || !this.decloaks.length) return [];
+    return this.decloaks.splice(0, this.decloaks.length);
+  }
+
   // --- Vague Cubikon partagee (parite solo, visible par tous) ---
   // Le premier impact sur un Cubikon declenche son animation d'ouverture
   // (delay 2 s -> open -> hold 2 s) puis le serveur fait apparaitre 20
@@ -830,8 +847,8 @@ drainPlayerHits() {
     // Conserve le plafond historique : certaines configurations tres haut
     // niveau peuvent legitimement depasser 10 M sur un impact cumule.
     if (!Number.isFinite(raw) || raw < 0 || raw > 1e8) return;
-    // Blacklight : seuls les dégâts des joueurs sont x2 (officiel, parité solo).
-    // Strokelight Barrage : insensible (officiel : NPC normal en map BL).
+    // Blacklight : dégâts joueurs x1.25 (sauf Orcus x1), comme en solo.
+    // Strokelight Barrage : insensible (NPC normal en map BL).
     const strokNoBonus = String(entry.type || "") === "npc_Strokelight_Barrage";
     const buffed = Math.max(0, raw) * (strokNoBonus ? 1 : blDamageMultFor(this.mapId, shooter?.shipId));
     // Premier attaquant = credit du kill (pas le coup de grace).
@@ -1061,6 +1078,20 @@ drainPlayerHits() {
     // - sinon : derive. En poursuite proche : orbite, jamais statique.
     for (const e of this.entries.values()) {
       if (!(e.hp > 0)) continue;
+      // Halo Mindfire : pulsation toutes les 1 s (rayon 1200). Les joueurs
+      // camouflés dedans perdent leur camouflage (ultime comme CPU).
+      if (e.type === "npc_Mindfire_Behemoth") {
+        e.haloT = Math.max(0, (Number(e.haloT) || 0) - dt);
+        if (e.haloT <= 0) {
+          e.haloT = MINDFIRE_HALO_PERIOD_S;
+          for (const [pid, p] of this.players) {
+            if (!p || p.dead || p.cloaked !== true) continue;
+            const dx = Number(p.x) - e.x, dy = Number(p.y) - e.y;
+            if (dx * dx + dy * dy > MINDFIRE_HALO_RADIUS * MINDFIRE_HALO_RADIUS) continue;
+            this.decloaks.push({ playerId: String(pid), npcUid: e.uid });
+          }
+        }
+      }
       // Lock premier attaquant : le détenteur le perd s'il est mort, en ZNA
       // ou sans dégât depuis 5 s. Grace de 5 s (un dégât du détenteur
       // l'annule, voir applyHit), puis TRANSFERT AUTO au prétendant le plus
@@ -1226,8 +1257,10 @@ drainPlayerHits() {
       e.chaseId = chase ? chase.id : null;
       // Desengage par une ZNA : le NPC s'eloigne et recharge seulement son
       // bouclier. Sa coque ne se regenere jamais lors de ce repli.
+      // Mindfire / Invoke : aucune regeneration. Strokelight : bouclier
+      // oui (ce bloc ne touche que lui), coque jamais.
       if (e.retreating && !chase) {
-        if (nowMs >= Number(e.shieldRegenAt || 0)) {
+        if (nowMs >= Number(e.shieldRegenAt || 0) && !isNoShieldRegenBlBossType(e.type)) {
           e.sh = Math.min(e.shMax, e.sh + e.shMax * 0.10 * dt);
         }
         if (e.sh >= e.shMax && nowMs >= Math.max(Number(e.retreatUntil || 0), Number(e.shieldRegenAt || 0))) {

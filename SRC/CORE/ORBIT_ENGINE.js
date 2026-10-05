@@ -119,7 +119,7 @@ import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
-drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, drainNetSunInbox,
+drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, drainNetSunInbox, drainNetDecloakInbox,
 getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation } from "./NETPLAY.js";
 import {
   createGatePortalState,
@@ -417,6 +417,19 @@ function npcShelterKeepsAggro(e) {
   return false;
 }
 
+// Boss BL sans aucune régénération (ni bouclier en repli ZNA, ni autre) :
+// Mindfire, Invoke, Strokelight.
+function isNoRegenBlBoss(type) {
+  return String(type || "") === "npc_Mindfire_Behemoth"
+    || String(type || "") === "npc_Invoke_XVI"
+    || String(type || "") === "npc_Strokelight_Barrage";
+}
+// Bouclier uniquement : Mindfire et Invoke ne régénèrent jamais rien, mais
+// le Strokelight régénère son bouclier (jamais sa coque).
+function isNoShieldRegenBlBoss(type) {
+  return String(type || "") === "npc_Mindfire_Behemoth"
+    || String(type || "") === "npc_Invoke_XVI";
+}
 // true si le NPC est dans le rayon sans être engagé : pas de nouvel aggro,
 // pas de tir, sortie naturelle.
 function npcPortalCalm(e) {
@@ -6418,8 +6431,20 @@ function breakCpuCloak(reason) {
   persistCpuCloak();
   // 1 s anti-spam à la sortie (comme à l'activation manuelle).
   cloakCd = Math.max(cloakCd, CPU_CLOAK_COOLDOWN);
-  showNotification(reason === "iem" ? "CPU CL04K-XL dévoilé par une IEM !" : "CPU CL04K-XL désactivé (attaque)", 2, "info");
+  showNotification(reason === "iem" ? "CPU CL04K-XL dévoilé par une IEM !" : reason === "mindfire" ? "CPU CL04K-XL dissipé par le Mindfire !" : "CPU CL04K-XL désactivé (attaque)", 2, "info");
   try { updateSkillUI(); } catch {}
+}
+// Halo Mindfire : dissipe le camouflage du joueur (ultime + CPU).
+function stripCloakByMindfire() {
+  if (player.dead) return;
+  if ((player.cloakT || 0) > 0) {
+    player.cloakT = 0;
+    try { startPoliceCloakCooldown(); } catch {}
+    showNotification("Camouflage dissipé par le Mindfire !", 2, "info");
+  }
+  if (player.cpuCloak === true) {
+    try { breakCpuCloak("mindfire"); } catch {}
+  }
 }
 function toggleCpuCloak() {
   if (player.dead || !started) return;
@@ -24456,8 +24481,6 @@ function resolveAmmoMult(ammoKey, target) {
     return current;
   }
   const targetType = String(target?.type || "");
-  // Strokelight Barrage : insensible à l'A-BL (officiel : dégâts normaux x1).
-  if (ammoKey === "abl" && targetType === "npc_Strokelight_Barrage") return 1;
   // JOB-100 : ×3,5 aliens, ×2 joueurs.
   if (ammoKey === "job") return targetType.startsWith("npc_") ? Number(cfg.vsNpcMult || 3.5) : base;
   // Bonus conditionnels (RB/Demaners, SBL/Sibelons, VB/Styxus-Charopos,
@@ -24549,8 +24572,8 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
     return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0, sab: true };
   }
 
-  // Blacklight : drain x2 comme les dégâts de joueur (officiel).
-  // Strokelight Barrage : insensible (officiel : NPC normal en map BL).
+  // Blacklight : drain x1.25 comme les dégâts de joueur.
+  // Strokelight Barrage : insensible (NPC normal en map BL).
   const strokNoBonus = String(e.type || "") === "npc_Strokelight_Barrage";
   const baseDamage = Math.max(1, Number(amount) || 1) * (e._netPlayer || strokNoBonus ? 1 : blMapDamageMult());
   const variance = 0.95 + Math.random() * 0.1;
@@ -24703,9 +24726,9 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
     return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
   }
 
-  // Blacklight : dégâts x2 de base (officiel : seuls les joueurs en
-  // bénéficient). Les renvois (fromRedirect) sont des dégâts de joueur.
-  // Strokelight Barrage : insensible au x2 (officiel : NPC normal en map BL).
+  // Blacklight : dégâts x1.25 de base (seuls les joueurs en bénéficient).
+  // Les renvois (fromRedirect) sont des dégâts de joueur.
+  // Strokelight Barrage : insensible (NPC normal en map BL).
   dmg = Number(dmg || 0) * (String(e.type || "") === "npc_Strokelight_Barrage" ? 1 : blMapDamageMult());
 
   // Affaiblissement (Diminisher, officiel) : +50 % de dégâts au bouclier
@@ -25371,6 +25394,14 @@ function processDeaths() {
         if (claimedSunKeys.size > 64) claimedSunKeys.delete(claimedSunKeys.keys().next().value);
         grantPersonalSun(s.sunType, Number(s.x) || 0, Number(s.y) || 0, s.map);
       }
+    }
+  } catch {}
+  // Halos Mindfire (multi) : le serveur a dissipé notre camouflage.
+  try {
+    let dec = null;
+    try { dec = drainNetDecloakInbox(); } catch { dec = null; }
+    if (dec && dec.length && !player.dead) {
+      try { stripCloakByMindfire(); } catch {}
     }
   } catch {}
   return measureGameTask("processDeaths", processDeathsMeasured);
@@ -34387,6 +34418,8 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
     healerPulses.push({ x: healer.x, y: healer.y, radius, t: 0, life: 0.8, follow: healer });
     for (const ally of enemies) {
       if (!ally || ally === healer || ally.hp <= 0 || ally.type === "npc_Streuner_Aider") continue;
+      // Boss BL : aucune régénération, même par un soigneur.
+      if (isNoRegenBlBoss(ally.type)) continue;
       const dx = ally.x - healer.x;
       const dy = ally.y - healer.y;
       if (dx * dx + dy * dy > radius2) continue;
@@ -34414,6 +34447,24 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
     if (!e || e.hp <= 0) continue;
     e._previousX = e.x;
     e._previousY = e.y;
+    // Halo Mindfire : pulsation violette toutes les 1 s (rayon 1200).
+    // Visuel pour tous (solo + multi) ; l'effet anti-camouflage en solo
+    // s'applique ici, en multi c'est le serveur qui tranche (inbox).
+    if (e.type === "npc_Mindfire_Behemoth") {
+      e._haloT = Math.max(0, (Number(e._haloT) || 0) - dt);
+      if (e._haloT <= 0) {
+        e._haloT = 1;
+        if (displayHalosOn()) {
+          try { spawnHaloPulse(e.x, e.y, 1200, 1, "150,110,255", "190,150,255"); } catch {}
+        }
+        if (!e._netUid && !player.dead) {
+          const dx = player.x - e.x, dy = player.y - e.y;
+          if (dx * dx + dy * dy <= 1200 * 1200) {
+            try { stripCloakByMindfire(); } catch {}
+          }
+        }
+      }
+    }
     if (!shouldRunNpcFrame({
       player,
       npc: e,
@@ -34804,7 +34855,9 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           if (e._safeRetreat) {
             e._safeRetreatT = Math.max(0, Number(e._safeRetreatT || 0) - dt);
             e._safeShieldRegenDelay = Math.max(0, Number(e._safeShieldRegenDelay || 0) - dt);
-            if (e._safeShieldRegenDelay <= 0) {
+            // Mindfire et Invoke : aucune régénération. Strokelight :
+            // bouclier oui, coque jamais (ce bloc ne touche que le bouclier).
+            if (e._safeShieldRegenDelay <= 0 && !isNoShieldRegenBlBoss(e.type)) {
               e.sh = Math.min(e.shMax, Number(e.sh || 0) + Number(e.shMax || 0) * 0.10 * dt);
             }
             if (e.sh >= e.shMax && e._safeRetreatT <= 0 && e._safeShieldRegenDelay <= 0) {
@@ -34930,6 +34983,28 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           e.angle = Math.atan2(player.y - e.y, player.x - e.x);
         } else if (spd2N > 25) {
           e.angle = Math.atan2(e.vy, e.vx);
+        }
+
+        // Mindfire sous 25 % de durabilité : joue le sprite en boucle
+        // (comme le Kristallin), solo comme multi (les PV partagés
+        // viennent du snapshot). Reprend à la frame directionnelle
+        // actuelle, puis boucle jusqu'à la fin et ainsi de suite.
+        if (e.type === "npc_Mindfire_Behemoth") {
+          const duraMax = Math.max(0, Number(e.hpMax) || 0) + Math.max(0, Number(e.shMax) || 0);
+          const dura = Math.max(0, Number(e.hp) || 0) + Math.max(0, Number(e.sh) || 0);
+          if (duraMax > 0 && dura <= duraMax * 0.25) {
+            if (!e.spritePlay) {
+              e.spritePlay = true;
+              e.spriteAcc = 0;
+              try {
+                const sp = NPC_TYPES[e.type]?.sprite;
+                const frames = sp?.frames || sp?._imgs?.length || 32;
+                e.spriteIdx = angleToFrameIndex(e.angle + (sp?.angleOffset || 0), frames);
+              } catch {}
+            }
+          } else if (e.spritePlay) {
+            e.spritePlay = false;
+          }
         }
 
         // JAMX / Creed : kamikaze NPC bloqué pendant l'effet.

@@ -385,6 +385,12 @@ export function drainNetSunInbox() {
   if (!netSunInbox.length) return [];
   return netSunInbox.splice(0, netSunInbox.length);
 }
+// Halos Mindfire : camouflage dissipé par le serveur ({ uid }).
+const netDecloakInbox = [];
+export function drainNetDecloakInbox() {
+  if (!netDecloakInbox.length) return [];
+  return netDecloakInbox.splice(0, netDecloakInbox.length);
+}
 // Tirs allies exacts (vrais + faux) : { t:shot/rshot, ... } a jouer aussitot.
 const netShotInbox = [];
 // IEM / ISH synchronises : evenement immediat pour casser les locks et
@@ -979,8 +985,7 @@ export function ensureNetplayConnection() {
       if (netNpcRewardInbox.size > 64) netNpcRewardInbox.delete(netNpcRewardInbox.keys().next().value);
       return;
     }
-    if (msg.t === "npcSun" && msg && typeof msg === "object") {
-      if (netSunInbox.length > 32) netSunInbox.shift();
+    if (msg.t === "npcSun" && msg && typeof msg === "object") {      if (netSunInbox.length > 32) netSunInbox.shift();
       netSunInbox.push({
         map: String(msg.map || "").toLowerCase(),
         uid: String(msg.uid || ""),
@@ -989,6 +994,11 @@ export function ensureNetplayConnection() {
         x: Number.isFinite(Number(msg.x)) ? Math.round(Number(msg.x)) : 0,
         y: Number.isFinite(Number(msg.y)) ? Math.round(Number(msg.y)) : 0,
       });
+      return;
+    }
+    if (msg.t === "mindfireDecloak" && msg && typeof msg === "object") {
+      if (netDecloakInbox.length > 16) netDecloakInbox.shift();
+      netDecloakInbox.push({ uid: String(msg.uid || "") });
       return;
     }
     if (msg.t === "lowRaid" && msg && typeof msg === "object") {
