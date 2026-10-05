@@ -10,12 +10,11 @@ import {
   acBucket,
   acStrike,
   acHealTake,
-  acMoveTake,
   acAuditWindow,
   acPoolResize,
+  acRecordViolation,
 } from "./ANTICHEAT.js";
 const {
-  SERVER_VMAX,
   AC_HIT_CAP, AC_HIT_REFILL, AC_DMG_CAP, AC_DMG_REFILL,
   AC_PVP_HIT_CAP, AC_PVP_HIT_REFILL, AC_PVP_DMG_CAP, AC_PVP_DMG_REFILL,
   HEAL_BUDGET_RATE, HEAL_BUDGET_CAP,
@@ -25,7 +24,8 @@ import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminShipFamilies } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
-import { takeMovement, useMovementAbility, syncMovementAbility, movementSpeed } from "./MOVEMENT_RULES.js";
+import { updateClockGuard, stopRejectedMotion } from "./CLOCK_GUARD.js";
+import { takeMovement, useMovementAbility, syncMovementAbility, movementSpeed, usePhaseOut } from "./MOVEMENT_RULES.js";
 import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival, respawnMap } from "./MAP_RULES.js";
 import { getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
@@ -312,23 +312,28 @@ function handleAdminApi(request, response, pathname) {
     holds.sort((x, y) => y.at - x.at);
     const suspects = [];
     const seen = new Set();
-    const collect = (pid, st, map) => {
+    const collect = (pid, st, map, online = true) => {
       const a = st && st._audit;
-      if (!a || !(Number(a.score) > 0)) return;
+      const recent = st?._security && Date.now() - st._security.last.at < 300000;
+      if (!a || (!(Number(a.score) > 0) && !recent)) return;
       if (seen.has(pid)) return;
       seen.add(pid);
       suspects.push({
-        id: pid, pseudo: String(st.pseudo || ""), online: true, map: map || null,
+        id: pid, pseudo: String(st.pseudo || ""), online, map: map || null,
         score: Math.round(Number(a.score) || 0), strikes: Number(a.strikes || 0),
         last: a.last && typeof a.last === "object" ? a.last : null,
+        security: st._security || null,
+        clockBlocked: st._clockGuard?.blocked === true,
       });
     };
     for (const [map, room] of rooms) {
-      for (const [pid, e] of room) { if (e && e.state) collect(pid, e.state, map); }
+      for (const [pid, e] of room) { if (e && e.state) collect(pid, e.state, map, e.ws?.readyState === 1); }
     }
     for (const [pid, e] of instancePeers) {
-      if (e && e.state) collect(pid, e.state, e.mapId || null);
+      if (e && e.state) collect(pid, e.state, e.mapId || null, e.ws?.readyState === 1);
     }
+    // Une deconnexion ne fait pas disparaitre les derniers signalements.
+    for (const [pid, st] of securityStates) collect(pid, st, st.serverMap, false);
     suspects.sort((x, y) => y.score - x.score);
     adminJson(response, 200, { ok: true, holds, suspects: suspects.slice(0, 100) });
     return true;
@@ -1408,6 +1413,7 @@ function runCheatAudit() {
           score, strikes: a.strikes,
           kills10s: Math.round(rates.kills), boxes10s: Math.round(rates.boxes),
           dmg10s: Math.round(rates.dmg), triggers: triggers.slice(-6), at: now,
+          security: st._security || null,
         });
       } catch {}
       a.score = 0;
@@ -1510,6 +1516,12 @@ wss.on("connection", (ws) => {
     try { msg = JSON.parse(String(raw)); } catch { return; }
     if (!msg || typeof msg !== "object") return;
     ws.lastHeardAt = rateNow;
+    // La pause est appliquee aussi par le serveur, meme si le DOM est retire.
+    if (state._clockGuard?.blocked && ["pos", "map", "box", "hit", "pvpHit", "pvpPetHit", "skillUse", "shot", "rshot", "pvpLoot", "pvpLootTake"].includes(msg.t)) {
+      stopRejectedMotion(state);
+      if (msg.t === "pos" || msg.t === "map") correctState();
+      return;
+    }
     if (msg.t === "boxSyncReq") {
       // Resync explicite (le client a perdu la sync initiale : refresh,
       // purge, paquet perdu). Throttle anti-spam par connexion.
@@ -1676,7 +1688,11 @@ wss.on("connection", (ws) => {
         const now = Date.now();
         const profile = refreshCombatProfile(shooter, accountId, mapId);
         msg = validateCombatHit(profile, msg, shooter, now);
-        if (!msg) { acStrike(shooter, "hitStrike"); return; }
+        if (!msg) {
+          acStrike(shooter, "hitStrike");
+          acRecordViolation(shooter, "profile", now, { reason: "Impact NPC hors du profil autorise", unverified: true });
+          return;
+        }
         // Anti-rafale : seaux par attaquant (horloge serveur). Rafales AoE
         // légitimes OK, spam Cheat Engine étouffé (mitigation + log).
         // Dégâts nuls (spam de freeze/ralentissement) : coût x5.
@@ -1684,6 +1700,7 @@ wss.on("connection", (ws) => {
         const hitCost = hitDmg > 0 ? 1 : 5;
         if (!acBucket(shooter, "HitN", now, AC_HIT_CAP, AC_HIT_REFILL, hitCost)
           || !acBucket(shooter, "HitD", now, AC_DMG_CAP, AC_DMG_REFILL, hitDmg)) {
+          acRecordViolation(shooter, "combat", now, { reason: "Rafale d'impacts NPC depassant le budget" });
           if (acStrike(shooter, "hitStrike")) {
             try { console.log(`[multi:anticheat] rafale degats ${shooter.pseudo} (${mapId})`); } catch {}
           }
@@ -1700,6 +1717,21 @@ wss.on("connection", (ws) => {
       } catch {}
       return;
     }
+    if (msg.t === "clockReport") {
+      // Declaration du client : pause reversible, aucun score ni gel de compte.
+      const now = Date.now();
+      if (!authed || !accountId || !acBucket(state, "ClockReport", now, 1, 0.25, 1)) return;
+      const requested = Number(msg.requestedSeconds), elapsed = Number(msg.serverSeconds);
+      const guard = updateClockGuard(state, requested, elapsed, now);
+      if (!guard) return;
+      if (requested > elapsed * 3) {
+        acRecordViolation(state, "clock", now, { reason: "Horloge acceleree signalee par le client",
+          scale: Math.min(1000, requested / elapsed), declared: true });
+      }
+      if (guard.blocked) stopRejectedMotion(state);
+      try { ws.send(JSON.stringify({ t: "speedGuard", ...guard })); } catch {}
+      return;
+    }
     if (msg.t === "skillUse") {
       try {
         if (!authed || !accountId || state.instance === true) return;
@@ -1708,6 +1740,15 @@ wss.on("connection", (ws) => {
         const skill = String(msg.skill || "").toLowerCase();
         if (skill.startsWith("ability_")) {
           const profile = refreshCombatProfile(state, accountId, mapId);
+          if (skill === "ability_mimesis_phase-out") {
+            const now = Date.now();
+            const arrival = usePhaseOut(state, profile, mapId, serverMaps.get(mapId)?.world, now);
+            if (arrival) {
+              Object.assign(state, arrival, { vx: 0, vy: 0, moving: false, motionBlocked: false, teleportSeq: (state.teleportSeq || 0) + 1, moveBuck: 0, moveBuckT: now, _arrival: null });
+              ws.send(JSON.stringify({ t: "stateCorrection", map: mapId, ...arrival }));
+            }
+            return;
+          }
           if (useMovementAbility(state, profile, skill, msg.enabled !== false, Date.now(), movementTarget(msg.target), String(msg.target || ""))) {
             state.moveSpeed = movementSpeed(state, profile, Date.now());
           }
@@ -1752,13 +1793,18 @@ wss.on("connection", (ws) => {
         if (foe === me || me.state.pvpDead === true || !(me.state.hp > 0)) return;
         const profile = refreshCombatProfile(me.state, accountId, mapId);
         msg = validateCombatHit(profile, msg, me.state);
-        if (!msg) { acStrike(me.state, "pvpStrike"); return; }
+        if (!msg) {
+          acStrike(me.state, "pvpStrike");
+          acRecordViolation(me.state, "profile", Date.now(), { reason: "Impact PvP hors du profil autorise", unverified: true });
+          return;
+        }
         const now = Date.now();
         // Anti-rafale PvP : mêmes seaux (plus stricts : TTK faibles).
         const pvpDmg = Math.max(0, Number(msg.dmg) || 0);
         const pvpCost = pvpDmg > 0 ? 1 : 5;
         if (!acBucket(me.state, "PvpN", now, AC_PVP_HIT_CAP, AC_PVP_HIT_REFILL, pvpCost)
           || !acBucket(me.state, "PvpD", now, AC_PVP_DMG_CAP, AC_PVP_DMG_REFILL, pvpDmg)) {
+          acRecordViolation(me.state, "combat", now, { reason: "Rafale d'impacts PvP depassant le budget" });
           if (acStrike(me.state, "pvpStrike")) {
             try { console.log(`[multi:anticheat] rafale pvp ${me.state.pseudo} (${mapId})`); } catch {}
           }
@@ -1894,7 +1940,11 @@ wss.on("connection", (ws) => {
         if (foe === me || me.state.pvpDead === true || !(me.state.hp > 0)) return;
         const profile = refreshCombatProfile(me.state, accountId, mapId);
         msg = validateCombatHit(profile, msg, me.state);
-        if (!msg) { acStrike(me.state, "pvpStrike"); return; }
+        if (!msg) {
+          acStrike(me.state, "pvpStrike");
+          acRecordViolation(me.state, "profile", Date.now(), { reason: "Impact PET hors du profil autorise", unverified: true });
+          return;
+        }
         if (foe.state.peta !== 1) return;
         const now = Date.now();
         // Le PET beneficie de la zone de non-agression de son proprietaire.
@@ -1903,6 +1953,7 @@ wss.on("connection", (ws) => {
         const pvpPetCost = pvpPetDmg > 0 ? 1 : 5;
         if (!acBucket(me.state, "PvpN", now, AC_PVP_HIT_CAP, AC_PVP_HIT_REFILL, pvpPetCost)
           || !acBucket(me.state, "PvpD", now, AC_PVP_DMG_CAP, AC_PVP_DMG_REFILL, pvpPetDmg)) {
+          acRecordViolation(me.state, "combat", now, { reason: "Rafale d'impacts PET depassant le budget" });
           return;
         }
         const dmg = Number(msg.dmg);
@@ -1998,6 +2049,8 @@ wss.on("connection", (ws) => {
           if (who && who.id) {
             const stableId = `u_${String(who.id).slice(0, 64)}`;
             const previousState = securityStates.get(stableId) || findPeerState(stableId);
+            // Reconnexion et refresh reprennent les effets encore actifs.
+            // Conserver leurs echeances serveur : aucun relaunch ni temps ajoute.
             const previousSocket = accountSockets.get(stableId);
             accountSockets.set(stableId, ws);
             if (previousSocket && previousSocket !== ws) { try { previousSocket.close(4001, "Session replaced"); } catch {} }
@@ -2049,7 +2102,7 @@ wss.on("connection", (ws) => {
             audOf(state);
             state.pseudo = String(who.pseudo || "Pilote").slice(0, 20);
             refreshClanTag(state, accountId);
-            try { ws.send(JSON.stringify({ t: "welcome", id, authed: true, run: serverRunId })); } catch {}
+            try { ws.send(JSON.stringify({ t: "welcome", id, authed: true, run: serverRunId, at: Date.now(), clockBlocked: state._clockGuard?.blocked === true })); } catch {}
           }
         } catch {}
       }
@@ -2080,6 +2133,7 @@ wss.on("connection", (ws) => {
           return;
         }
       } catch {}
+      if (state._clockGuard?.blocked) { stopRejectedMotion(state); correctState(); return; }
       const nextMap = String(msg.map || mapId || "1-1").toLowerCase();
       if (!changeMap(nextMap, msg.instance === true)) { correctState(); return; }
       state._joined = true;
@@ -2161,7 +2215,7 @@ wss.on("connection", (ws) => {
       // Le pong porte la version serveur : le client recharge tout seul
       // quand le jeu a été mis à jour (git pull + restart).
       try {
-        ws.send(JSON.stringify({ t: "pong", t0: Math.max(0, Number(msg.t0) || 0), v: String(GAME_VERSION || "") }));
+        ws.send(JSON.stringify({ t: "pong", t0: Math.max(0, Number(msg.t0) || 0), v: String(GAME_VERSION || ""), at: Date.now() }));
       } catch {}
       if (authed && accountId && Date.now() - Number(state._friendsSyncAt || 0) >= 15_000) {
         state._friendsSyncAt = Date.now();
@@ -2241,6 +2295,7 @@ wss.on("connection", (ws) => {
         state.vx = nextVx * scale;
         state.vy = nextVy * scale;
       }
+      let movementAccepted = false;
       const nx = Number(msg.x), ny = Number(msg.y);
       if (Number.isFinite(nx) && Number.isFinite(ny)) {
         const nowMove = Date.now();
@@ -2249,6 +2304,8 @@ wss.on("connection", (ws) => {
             || reviveArrival(serverMaps, state, mapId, state._account.faction, nx, ny));
         const legitJump = validArrival(state._arrival, nx, ny, nowMove) || !!revival;
         if (legitJump) {
+          movementAccepted = true;
+          state.teleportSeq = (state.teleportSeq || 0) + 1;
           state.x = nx;
           state.y = ny;
           state._posOk = true;
@@ -2270,12 +2327,14 @@ wss.on("connection", (ws) => {
           }
         } else {
           // Décision de déplacement : voir SCRIPTS/ANTICHEAT.js (testable).
-          const mv = takeMovement(state, profile, nx, ny, nowMove);
+          const mv = takeMovement(state, profile, nx, ny, nowMove, movementTarget(state._moveEffect?.targetKey));
           state.x = mv.x;
           state.y = mv.y;
-          if (!mv.accepted) correctState();
+          movementAccepted = mv.accepted;
         }
       }
+      if (!movementAccepted) { stopRejectedMotion(state); correctState(); }
+      else state.motionBlocked = false;
       if (Number.isFinite(Number(msg.angle))) state.angle = Number(msg.angle);
       // B02 actifs (bonus de groupe) : ids validés, diffusés au groupe.
       if (!authed && typeof msg.pseudo === "string" && msg.pseudo.trim()) state.pseudo = String(msg.pseudo).slice(0, 20);
@@ -2310,9 +2369,11 @@ wss.on("connection", (ws) => {
       if (Number.isFinite(Number(msg.ty))) state.ty = Math.round(Number(msg.ty));
       // Destination de deplacement (prediction cote receveur). Bornee large
       // (monde + marges), jamais de kick (lags = faux positifs).
-      if (typeof msg.moving === "boolean") state.moving = msg.moving;
-      if (Number.isFinite(Number(msg.mx))) state.mx = Math.max(-100000, Math.min(100000, Math.round(Number(msg.mx))));
-      if (Number.isFinite(Number(msg.my))) state.my = Math.max(-100000, Math.min(100000, Math.round(Number(msg.my))));
+      if (movementAccepted) {
+        if (typeof msg.moving === "boolean") state.moving = msg.moving;
+        if (Number.isFinite(Number(msg.mx))) state.mx = Math.max(-100000, Math.min(100000, Math.round(Number(msg.mx))));
+        if (Number.isFinite(Number(msg.my))) state.my = Math.max(-100000, Math.min(100000, Math.round(Number(msg.my))));
+      }
       if (typeof msg.ammo === "string" && msg.ammo) state.ammo = String(msg.ammo).slice(0, 16);
       if (Number.isFinite(Number(msg.drones))) state.drones = Math.max(0, Math.min(12, Math.round(Number(msg.drones))));
       if (typeof msg.dform === "string" && msg.dform) state.dform = String(msg.dform).slice(0, 32);
@@ -2553,6 +2614,14 @@ setInterval(() => {
   const fullNpcTick = snapshotTick % 20 === 0;
   const fullPlayerTick = (snapshotTick & 1) === 0;
   const includePlayerStatic = snapshotTick % PLAYER_STATIC_REFRESH_TICKS === 0;
+  // Les instances n'ont pas de snapshot partage, mais gardent le meme rythme
+  // de simulation. Aucun mouvement ni gain d'economie n'est adopte ici.
+  const clockPayload = JSON.stringify({ t: "clock", at: now });
+  for (const [, entry] of instancePeers) {
+    try {
+      if (entry.ws.readyState === 1 && entry.ws.bufferedAmount < SNAPSHOT_BACKPRESSURE_LIMIT) entry.ws.send(clockPayload);
+    } catch {}
+  }
   for (const [key, room] of rooms) {
     if (!room.size) continue;
     // Les sockets silencieux sont fermes par le heartbeat. Le handler close
@@ -2681,7 +2750,7 @@ setInterval(() => {
       if (!s) continue;
       // Anti-fantôme : pas de pos envoyée = invisible pour les autres.
       if (s._posOk !== true) continue;
-      players.push({ id: s.id, pseudo: s.pseudo, clan: String(s.clanTag || "").slice(0, 5), shipId: s.shipId, hswap: Math.max(0, Math.min(3, Number(s.hswap) || 0)), x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, moving: s.moving === true, mx: Math.round(Number(s.mx) || 0), my: Math.round(Number(s.my) || 0), cloakCpu: s.cloakCpu === true, vmax: Math.max(50, Math.min(5000, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
+      players.push({ id: s.id, pseudo: s.pseudo, clan: String(s.clanTag || "").slice(0, 5), shipId: s.shipId, hswap: Math.max(0, Math.min(3, Number(s.hswap) || 0)), x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, moving: s.moving === true, motionBlocked: s.motionBlocked === true, teleportSeq: Number(s.teleportSeq) || 0, mx: Math.round(Number(s.mx) || 0), my: Math.round(Number(s.my) || 0), cloakCpu: s.cloakCpu === true, vmax: Math.max(50, Math.min(7500, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
         // PvP : PV autoritaires + date du dernier coup recu + attaquant (anneau Ship_damage).
         pvpAt: Number(s.pvpAt) || 0, pvpFrom: s.pvpFrom != null ? String(s.pvpFrom) : null, pvpHp: Math.max(0, Math.round(Number(s.hp) || 0)), pvpSh: Math.max(0, Math.round(Number(s.sh) || 0)),
         npcAt: Number(s.npcAt) || 0, npcSeq: Math.max(0, Math.floor(Number(s.npcSeq) || 0)), npcFrom: s.npcFrom != null ? String(s.npcFrom) : null,

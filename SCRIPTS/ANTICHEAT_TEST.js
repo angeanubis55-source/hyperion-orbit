@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { acMoveTake, acBucket, acPoolResize, acHealTake, acAuditWindow, acAuditScore } from "./ANTICHEAT.js";
+import { acMoveTake, acBucket, acPoolResize, acHealTake, acAuditWindow, acAuditScore, acRecordViolation } from "./ANTICHEAT.js";
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { loadServerMaps, mapTransition, validArrival, reviveArrival } from "./MAP_RULES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
@@ -90,6 +90,49 @@ test("l'audit normalise une fenêtre longue et remet ses compteurs à zéro", ()
   assert.equal(r.score, 10);
   assert.equal(a.kills, 0);
   assert.equal(a.teleAt, 12);
+});
+
+test("un rejet isole est visible sans score, meme apres une rafale de paquets de lag", () => {
+  const s = { _audit: { t: 10000, score: 0 } };
+  for (let i = 0; i < 200; i++) acRecordViolation(s, "movement", 11000, { distance: 1000 });
+  assert.equal(s._security.total, 200);
+  assert.equal(s._security.history.length, 1);
+  assert.equal(acAuditWindow(s._audit, 20000).score, 0);
+});
+
+test("des rejets de petits sauts repetes font monter le score et gardent des details bornes", t => {
+  t.mock.method(console, "log", () => {});
+  const s = { x: 0, y: 0, moveSpeed: 400, moveBuck: 0, moveBuckT: 10000,
+    _audit: { t: 10000, score: 0 } };
+  for (let window = 0; window < 2; window++) {
+    for (let i = 1; i <= 100; i++) {
+      const now = 10000 + window * 10000 + i * 100;
+      assert.equal(acMoveTake(s, 1000, 0, now).accepted, false);
+    }
+    const audit = acAuditWindow(s._audit, 20000 + window * 10000);
+    assert.equal(audit.score, (window + 1) * 50);
+    assert.equal(audit.rates.teleports, 0, "aucun saut ne depasse 4000 u");
+    assert.ok(audit.triggers.some(t => t.includes("mouvements refusés")));
+    assert.equal(s._audit.movementRejected, 0);
+  }
+  assert.ok(s._security.history.length <= 24);
+  assert.equal(s._security.last.distance, 1000);
+  assert.equal(s._security.last.speed, 400);
+  assert.equal(s._audit.score, 100);
+});
+
+test("une declaration d'horloge client reste informative, sans gel automatique", () => {
+  const s = { _audit: { t: 10000, score: 0 } };
+  for (let i = 0; i < 10; i++) acRecordViolation(s, "clock", 10000 + i * 1000, { scale: 50, declared: true });
+  assert.equal(acAuditWindow(s._audit, 20000).score, 0);
+  assert.equal(s._security.last.declared, true);
+});
+
+test("un effet de combat encore local ne provoque pas de gel sur un rejet de profil seul", () => {
+  const s = { _audit: { t: 10000, score: 0 } };
+  for (let i = 0; i < 100; i++) acRecordViolation(s, "profile", 10000 + i * 100, { unverified: true });
+  assert.equal(acAuditWindow(s._audit, 20000).score, 0);
+  assert.equal(s._security.last.unverified, true);
 });
 
 test("les stats dépendent du hangar et de sa configuration", () => {

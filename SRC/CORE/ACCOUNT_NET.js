@@ -234,6 +234,25 @@ export function noteNetPetFuelConsumed(amount) {
   if (used > 0) pendingConsumedPetFuel = Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0)) + used;
 }
 
+// Sélections (munitions, roquettes, lanceurs, autos, formation) en attente
+// d'acceptation serveur : rejouées sur le canon en cas de 409. Sans ça,
+// un adopt entre l'écriture immédiate et le push accepté restaure
+// l'ancienne sélection (rollback du choix, puis repush = perte définitive).
+const pendingSelections = {};
+export function noteNetSelection(patch = null) {
+  if (!netActive()) return;
+  if (!patch || typeof patch !== "object") return;
+  for (const key of ["ammoActive", "rocketActive", "launcherActive", "rocketAuto", "launcherAuto", "droneFormation", "droneFormationAt"]) {
+    if (patch[key] === undefined) continue;
+    pendingSelections[key] = patch[key];
+  }
+}
+
+function clearPendingSelections(snapshot) {
+  for (const key of Object.keys(snapshot || {})) {
+    if (key in pendingSelections) delete pendingSelections[key];
+  }
+}
 // Gains locaux pas encore acceptés (crédits / ressources NON-minerais) :
 // rejoués en AJOUT sur le canon en cas de 409. Les minerais, compteurs et
 // munitions achetées ont déjà leurs propres canaux (MAX ou replay d'achat) —
@@ -317,6 +336,7 @@ function resetPendingPurchases() {
   pendingConsumedPetFuel = 0;
   pendingGainedCredits = 0;
   for (const k of Object.keys(pendingGainedResources)) delete pendingGainedResources[k];
+  for (const k of Object.keys(pendingSelections)) delete pendingSelections[k];
   for (const k of Object.keys(pendingUpgradeCharges)) delete pendingUpgradeCharges[k];
 }
 
@@ -744,6 +764,7 @@ async function pushNow() {
   const consumedPetFuelAtSend = Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0));
   const gainedCreditsAtSend = Math.max(0, Math.floor(Number(pendingGainedCredits) || 0));
   const gainedResourcesAtSend = { ...pendingGainedResources };
+  const selectionsAtSend = { ...pendingSelections };
   const consumedOresAtSend = JSON.parse(JSON.stringify(pendingConsumedStock.ores || {}));
   const upgradeChargesAtSend = JSON.parse(JSON.stringify(pendingUpgradeCharges));
   let out = null;
@@ -766,6 +787,7 @@ async function pushNow() {
     pendingConsumedPetFuel = Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0) - consumedPetFuelAtSend);
     pendingGainedCredits = Math.max(0, Math.floor(Number(pendingGainedCredits) || 0) - gainedCreditsAtSend);
     clearPendingGainedResources(gainedResourcesAtSend);
+    clearPendingSelections(selectionsAtSend);
     // Minerais dépensés couverts par le snapshot accepté : on ne solde que
     // ce qui était en attente à l'envoi (une nouvelle dépense en vol reste).
     for (const [id, sent] of Object.entries(consumedOresAtSend || {})) {
@@ -949,6 +971,26 @@ async function pushNow() {
           memUser.inventory.resources[key] = Math.max(0, Math.floor(Number(memUser.inventory.resources[key]) || 0)) + q;
         }
         for (const k of Object.keys(pendingGainedResources)) delete pendingGainedResources[k];
+      }
+      // Sélections en attente : réécrites sur le canon (choix les plus
+      // récents gagnent), puis soldées (baked dans memUser qui sera poussé).
+      if (Object.keys(pendingSelections).length) {
+        const sel = pendingSelections;
+        if (sel.ammoActive !== undefined) {
+          memUser.ammoActive = sel.ammoActive;
+          memUser.ammo ||= {};
+          memUser.ammo.active = sel.ammoActive;
+        }
+        if (sel.rocketActive !== undefined) memUser.rocketActive = sel.rocketActive;
+        if (sel.launcherActive !== undefined) memUser.launcherActive = sel.launcherActive;
+        if (sel.rocketAuto !== undefined) memUser.rocketAuto = sel.rocketAuto === true;
+        if (sel.launcherAuto !== undefined) memUser.launcherAuto = sel.launcherAuto === true;
+        if (sel.droneFormation !== undefined) {
+          memUser.drones ||= {};
+          memUser.drones.activeFormation = sel.droneFormation;
+          if (sel.droneFormationAt !== undefined) memUser.drones.lastFormationChangeAt = sel.droneFormationAt;
+        }
+        for (const k of Object.keys(pendingSelections)) delete pendingSelections[k];
       }
     }
     memUser.revision = Math.max(

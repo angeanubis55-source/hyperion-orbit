@@ -120,7 +120,7 @@
   </div>
   <div class="card">
     <h2>Anticheat — suspects live</h2>
-    <p class="sub">Score d'audit &gt; 0 (fenêtres 10 s : kills, boxes, dégâts). +15 dépassement simple, +50 grossier, sanction à 100.</p>
+    <p class="sub">Anomalies récentes et scores d'audit. Un rejet isolé ou une déclaration du client ne prouve pas une triche. Les rejets répétés sur plusieurs secondes augmentent le score ; gel à 100.</p>
     <table>
       <thead><tr><th>Pseudo</th><th>Score</th><th>Signalements</th><th>Dernier signalement</th><th>Actions</th></tr></thead>
       <tbody id="suspectRows"><tr><td colspan="5">Aucun suspect.</td></tr></tbody>
@@ -629,7 +629,19 @@
     if (Number(ev.dmg10s) > 0) parts.push(`${fmtDmgShort(ev.dmg10s)} dégâts/10s`);
     if (Number(ev.score) > 0) parts.push(`score ${fmtN(ev.score)}`);
     if (Array.isArray(ev.triggers) && ev.triggers.length) parts.push(ev.triggers.slice(-3).join(" · "));
+    if (ev.security?.last) parts.push(securityEventText(ev.security.last));
     return parts.length ? parts.join(" · ") : "—";
+  }
+  function securityEventText(event) {
+    const parts = [String(event.reason || "Anomalie")];
+    if (event.distance != null) parts.push(`distance ${fmtN(event.distance)} u`);
+    if (event.allowedDistance != null) parts.push(`budget ${fmtN(event.allowedDistance)} u`);
+    if (event.speed != null) parts.push(`vitesse autorisée ${fmtN(event.speed)} u/s`);
+    if (event.elapsedMs != null) parts.push(`intervalle ${fmtN(event.elapsedMs)} ms`);
+    if (event.ability) parts.push(`aptitude ${event.ability}`);
+    if (event.scale != null) parts.push(`×${Number(event.scale).toFixed(1)} (déclaration client, sans sanction automatique)`);
+    if (event.unverified) parts.push("effet local possible : examen manuel, sans sanction automatique");
+    return parts.join(" · ");
   }
   async function refreshCheat() {
     const tb = $("cheatRows");
@@ -665,12 +677,17 @@
       }
     }
     if (st) {
+      const expanded = new Set([...st.querySelectorAll("details[open]")].map(d => d.dataset.id));
       st.innerHTML = "";
       if (!suspects.length) st.innerHTML = `<tr><td colspan="5">Aucun suspect.</td></tr>`;
       for (const s of suspects) {
         const tr = document.createElement("tr");
-        const last = s.last && typeof s.last === "object" && Array.isArray(s.last.triggers) ? s.last.triggers.slice(-2).join(" · ") : "—";
-        tr.innerHTML = `<td>${esc(s.pseudo)}${s.online ? "" : " <span class=\"badge off\">hors ligne</span>"}</td><td class="num">${fmtN(s.score)}</td><td class="num">${fmtN(s.strikes)}</td><td>${esc(last)}</td><td></td>`;
+        const report = s.security;
+        const last = (s.clockBlocked ? "Session suspendue : rythme anormal. " : "") + (report?.last && Number(report.last.at) >= Number(s.last?.at || 0) ? securityEventText(report.last)
+          : Array.isArray(s.last?.triggers) ? s.last.triggers.slice(-2).join(" · ") : "—");
+        const history = Array.isArray(report?.history) ? report.history : [];
+        const detail = history.length ? `<details data-id="${esc(s.id)}"${expanded.has(s.id) ? " open" : ""}><summary>${fmtN(report.total)} événements · détails</summary><ul>${history.map(e => `<li>${esc(fmtDateTime(e.at))} : ${esc(securityEventText(e))}</li>`).join("")}</ul></details>` : "";
+        tr.innerHTML = `<td>${esc(s.pseudo)}${s.online ? "" : " <span class=\"badge off\">hors ligne</span>"}</td><td class="num">${fmtN(s.score)}</td><td class="num">${fmtN(s.strikes)}</td><td>${esc(last)}${detail}</td><td></td>`;
         const td = tr.lastChild;
         const kick = document.createElement("button");
         kick.type = "button"; kick.className = "small danger"; kick.textContent = "Kick";

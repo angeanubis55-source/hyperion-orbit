@@ -1,7 +1,7 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
-import { bootNetFromCache, flushNetUser, netActive, netCurrent, netList, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
+import { bootNetFromCache, flushNetUser, netActive, netCurrent, netList, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSelection, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
 // Multi : session serveur restauree au chargement (token + cache local),
 // puis refresh async via /api/me (revision canonique).
 try { bootNetFromCache(); } catch {}
@@ -1483,7 +1483,18 @@ export function updateCurrentUserProgress(patch = {}) {
       .map(([resourceId, quantity]) => [String(resourceId), Math.max(0, Math.floor(Number(quantity) || 0))])
       .filter(([, quantity]) => quantity > 0));
   }
-  if (patch.drones && typeof patch.drones === "object") u.drones = structuredClone(patch.drones);
+  if (patch.drones && typeof patch.drones === "object") {
+    // La sélection de formation (+ son horodatage de cooldown) vient du
+    // STOCKAGE, jamais de la mémoire : setCurrentUserDroneFormation écrit
+    // en direct, et l'autosave périodique d'un onglet périmé réécraserait
+    // sinon le dernier choix (rollback formation). Le reste (XP des
+    // drones, fits...) vient bien de la mémoire.
+    const keepFormation = u.drones?.activeFormation;
+    const keepChangedAt = u.drones?.lastFormationChangeAt;
+    u.drones = structuredClone(patch.drones);
+    if (keepFormation) u.drones.activeFormation = keepFormation;
+    if (keepChangedAt != null) u.drones.lastFormationChangeAt = keepChangedAt;
+  }
   if (patch.pet && typeof patch.pet === "object") u.pet = structuredClone(patch.pet);
   // Minerais chargés sur l'équipement : sans ça la sauvegarde périodique
   // ignore la consommation des tirs (seul le palier zéro persistait) et un
@@ -1538,6 +1549,19 @@ export function updateCurrentUserProgress(patch = {}) {
   }
 
   ensureUserShape(u);
+  // Sélections portées par le patch : notées avec leurs valeurs FINALES
+  // (post repli stock) pour survivre à un 409 (replay sur le canon).
+  // L'autosave périodique ne porte plus ces clés (write-through direct),
+  // donc pas de note parasite ici.
+  try {
+    const sel = {};
+    if (patch.ammoActive !== undefined || patch.ammo?.active !== undefined) sel.ammoActive = u.ammoActive;
+    if (patch.rocketActive !== undefined) sel.rocketActive = u.rocketActive;
+    if (patch.rocketAuto !== undefined) sel.rocketAuto = u.rocketAuto === true;
+    if (patch.launcherActive !== undefined) sel.launcherActive = u.launcherActive;
+    if (patch.launcherAuto !== undefined) sel.launcherAuto = u.launcherAuto === true;
+    if (Object.keys(sel).length) noteNetSelection(sel);
+  } catch {}
   // Diagnostic XP (console : JSON.stringify(window.__XPDIAG__)) : dernières
   // valeurs XP/honneur poussées vers la persistance + révision.
   try {
@@ -1817,6 +1841,8 @@ export function setCurrentUserDroneFormation(formationId) {
   u.drones.activeFormation = formationId;
   u.drones.lastFormationChangeAt = Date.now();
   saveUser(u);
+  // Sélection persistée : notée pour survivre à un 409 (replay sur le canon).
+  noteNetSelection({ droneFormation: formationId, droneFormationAt: u.drones.lastFormationChangeAt });
   return { ok: true, user: u, formation };
 }
 
@@ -2595,6 +2621,8 @@ export function sellItem(itemId, qty = 1, options = {}) {
     if (ammoPack.field === "ammo" && u.ammoActive !== "x1" && !(Number(u.ammo[u.ammoActive] || 0) > 0)) {
       u.ammoActive = "x1";
       u.ammo.active = "x1";
+      // Repli de sélection : noté (sinon un 409 restaure l'ancienne).
+      noteNetSelection({ ammoActive: "x1" });
     }
     u.credits = Number(u.credits || 0) + gain;
     try {
@@ -3792,7 +3820,7 @@ function ensureAuction(u) {
       patched = true;
     }
     if (patched) {
-      ensureUserShape(u);
+  ensureUserShape(u);
       saveUser(u);
     }
   } catch {}

@@ -11,10 +11,12 @@ import { once } from "node:events";
 import WebSocket from "ws";
 import { combatProfile } from "./COMBAT_PROFILE.js";
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
+import { SHIP_PACKS } from "../SHIP/SHIP_PACKS.js";
+import { abilityShipKeyFor } from "../SHIP/SHIP_ABILITIES.js";
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeout: 55000 }, async t => {
+test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeout: 65000 }, async t => {
   const temporary = await mkdtemp(join(tmpdir(), "orbit-anticheat-"));
   const reserve = createServer();
   reserve.listen(0, "127.0.0.1");
@@ -56,14 +58,14 @@ test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeo
   assert.ok(ready, output);
   const items = Object.values(CATALOG).flat().filter(i => i && typeof i === "object");
   const shield = items.find(i => i.module?.type === "shield" && !i.petOnly);
-  const makeAccount = async (name, map = "1-1", pos = { x: 4500, y: 3500 }) => {
+  const makeAccount = async (name, map = "1-1", pos = { x: 4500, y: 3500 }, shipId = "PhoenixBleu") => {
     const account = await api("/api/register", { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ pseudo: name, email: `${name}@example.test`, password: "test-password-123", faction: "mmo" }) });
     const user = { ...account.user, revision: Number(account.user.revision || 1) + 1,
-      hangars: [{ id: "test-hangar", active: true, shipId: "PhoenixBleu", activeConfig: 1, lastMap: map, lastPos: pos,
+      hangars: [{ id: "test-hangar", active: true, shipId, activeConfig: 1, lastMap: map, lastPos: pos,
         fits: { "1": { lasers: [], gens: [shield.id], extras: [], shipMods: [] },
           "2": { lasers: [], gens: [], extras: [], shipMods: [] } } }],
-      drones: { items: [] }, inventory: { shipModules: [] }, rockets: {} };
+      drones: { items: [] }, inventory: { shipModules: [] }, rockets: { ric3: 2 } };
     await api("/api/save", { method: "POST", headers: { "content-type": "application/json", Authorization: `Bearer ${account.token}` }, body: JSON.stringify({ user }) });
     return { ...account, user };
   };
@@ -103,6 +105,81 @@ test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeo
   t.after(() => clearInterval(idleHeartbeat));
   const silent = await connect(await makeAccount("anticheat-silent"));
   const silentClosed = once(silent.ws, "close");
+  const speedAccount = await makeAccount("anticheat-speed50");
+  const speed = await connect(speedAccount);
+  const speedClosed = once(speed.ws, "close");
+  // Des sauts frequents, tous sous l'ancien seuil de telemetry de 4000 u.
+  const speedTimer = setInterval(() => {
+    if (speed.ws.readyState === WebSocket.OPEN) speed.send({ ...speed.pos, x: speed.pos.x + 2000, vx: 1e9, moving: true, mx: 99999, my: 99999, time: 1e15 });
+  }, 100);
+  t.after(() => clearInterval(speedTimer));
+  const clockAccount = await makeAccount("anticheat-clock50");
+  const clockPeer = await connect(clockAccount);
+  clockPeer.send({ t: "clockReport", requestedSeconds: 250, serverSeconds: 5 });
+  await clockPeer.wait(m => m.t === "speedGuard" && m.blocked === true);
+  const beforePausedAttack = await b.snapshot();
+  clockPeer.send({ t: "pvpHit", target: b.id, dmg: 1000 });
+  assert.equal((await b.snapshot()).pvpAt, beforePausedAttack.pvpAt, "le serveur refuse aussi les tirs pendant la pause, independamment des attaques NPC");
+  const observedSpeed = await b.wait(m => m.t === "snapshot" && m.players.some(p => p.id === speed.id && p.motionBlocked));
+  const stoppedSpeed = observedSpeed.players.find(p => p.id === speed.id);
+  assert.equal(stoppedSpeed.vx, 0, "les autres joueurs ne recoivent plus la vitesse refusee");
+  assert.equal(stoppedSpeed.moving, false);
+  assert.equal(stoppedSpeed.mx, stoppedSpeed.x);
+  const diagnosticDeadline = Date.now() + 4000;
+  let clockDiagnostic, speedDiagnostic;
+  while (Date.now() < diagnosticDeadline) {
+    const audit = await api("/api/admin/cheat", { headers: { "x-admin-token": password } });
+    clockDiagnostic = audit.suspects.find(p => p.id === clockPeer.id);
+    speedDiagnostic = audit.suspects.find(p => p.id === speed.id);
+    if (clockDiagnostic && speedDiagnostic) break;
+    await pause(50);
+  }
+  assert.equal(clockDiagnostic?.score, 0, "une declaration client seule ne sanctionne pas");
+  assert.equal(clockDiagnostic?.security.last.declared, true);
+  assert.equal(speedDiagnostic?.security.last.distance, 2000, "les petits sauts sont visibles avant l'audit");
+  assert.ok(speedDiagnostic.security.last.allowedDistance < 2000);
+  clockPeer.ws.close(); await once(clockPeer.ws, "close");
+  assert.equal((await api("/api/admin/cheat", { headers: { "x-admin-token": password } })).suspects.find(p => p.id === clockPeer.id)?.online, false);
+  const clockReconnected = await connect(clockAccount);
+  assert.equal(clockReconnected.messages.find(m => m.t === "welcome" && m.authed).clockBlocked, true, "un refresh ne contourne pas la pause");
+  const prematureRecoveryAt = clockReconnected.messages.length;
+  clockReconnected.send({ t: "clockReport", requestedSeconds: 5, serverSeconds: 5 });
+  // Le throttle peut ignorer un rapport immediat ; dans tous les cas aucun deblocage.
+  await pause(100);
+  assert.equal(clockReconnected.messages.slice(prematureRecoveryAt).some(m => m.t === "speedGuard" && !m.blocked), false);
+  const lightningShip = SHIP_PACKS.find(p => abilityShipKeyFor(p.id) === "lightning");
+  assert.ok(lightningShip);
+  const lightning = await makeAccount("anticheat-lightning", "1-1", { x: 4500, y: 3500 }, lightningShip.id);
+  let light = await connect(lightning);
+  const lightProfile = combatProfile(lightning.user, "1-1");
+  light.send({ t: "skillUse", skill: "ability_lightning", enabled: true, duration: 99999, multiplier: 99999 });
+  await pause(150);
+  light.pos.x += Math.round(lightProfile.speed * 1.7 * 0.15);
+  const boostAt = light.messages.length;
+  light.send({ ...light.pos, vx: 1e9, vmax: 1e9 });
+  const boosted = await light.wait(m => m.t === "snapshot" && m.players.some(p => p.id === light.id && p.x === light.pos.x), boostAt)
+    .then(m => m.players.find(p => p.id === light.id));
+  assert.equal(boosted.x, light.pos.x, "un vrai bonus de vitesse reste utilisable");
+  assert.equal(boosted.vmax, Math.floor(lightProfile.speed) * 2, "le multiplicateur forge est ignore");
+  assert.ok(Math.abs(boosted.vx) <= boosted.vmax);
+  // Une reconnexion ne coupe ni ne renouvelle une aptitude en cours.
+  const beforeReconnect = light;
+  lightning.user.hangars[0].lastPos = { x: light.pos.x, y: light.pos.y };
+  light.ws.close();
+  await once(light.ws, "close");
+  light = await connect(lightning);
+  assert.equal(light.id, beforeReconnect.id);
+  assert.equal((await light.snapshot()).vmax, Math.floor(lightProfile.speed) * 2, "le bonus continue apres reconnexion");
+  await pause(150);
+  light.pos.x += Math.round(lightProfile.speed * 2 * 0.15);
+  const resumedAt = light.messages.length;
+  light.send(light.pos);
+  await light.wait(m => m.t === "snapshot" && m.players.some(p => p.id === light.id && p.x === light.pos.x), resumedAt);
+  assert.equal(light.messages.slice(resumedAt).some(m => m.t === "stateCorrection"), false, "pas de rollback pour le mouvement accelere valide");
+  a.send({ t: "skillUse", skill: "ability_lightning", enabled: true });
+  a.send({ ...a.pos, x: a.pos.x + 2000, vmax: 1e9, vx: 1e9, time: 1e15 });
+  const deniedBoost = await a.snapshot();
+  assert.equal(deniedBoost.x, a.pos.x, "une coque sans cette aptitude ne peut pas accelerer");
   const expectedHpDamage = Math.round(1000 * (1 - combatProfile(bob.user, "1-1").absorb));
   const original = await b.snapshot();
   const startHit = b.messages.length;
@@ -122,6 +199,15 @@ test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeo
   const oversizedAt = b.messages.length;
   a.send({ t: "pvpHit", target: b.id, dmg: 1e7 });
   assert.equal((await b.snapshot(oversizedAt)).pvpHp, followup.pvpHp, "impact au-delà du profil refusé");
+  const freezeAt = b.messages.length;
+  a.send({ t: "pvpHit", target: b.id, dmg: 0, rocket: "ric3" });
+  await b.wait(m => m.t === "snapshot" && m.players.some(p => p.id === b.id && p.freezeT > 0), freezeAt);
+  const freezeCorrectionAt = b.messages.length;
+  b.send({ ...b.pos, x: b.pos.x + 5, vx: 1e9 });
+  await b.wait(m => m.t === "stateCorrection", freezeCorrectionAt);
+  const frozen = await b.snapshot();
+  assert.equal(frozen.x, b.pos.x, "un client modifie ne peut pas ignorer le gel");
+  assert.equal(frozen.vx, 0);
 
   a.send({ ...a.pos, dead: true });
   for (let i = 0; i < 30; i++) a.send({ ...a.pos, dead: false, x: 100000, y: 100000, vmax: 5000 });
@@ -141,12 +227,19 @@ test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeo
   while (Date.now() < auditDeadline) {
     const audit = await api("/api/admin/cheat", { headers: { "x-admin-token": password } });
     suspect = audit.suspects.find(p => p.id === a.id);
-    if (suspect) break;
+    if (suspect?.score > 0) break;
     a.send(a.pos); b.send({ ...b.pos, hpPct: followup.pvpHp / combatProfile(bob.user, "1-1").hpMax,
       shPct: followup.pvpSh / combatProfile(bob.user, "1-1").shMax });
+    light.send(light.pos);
     await pause(250);
   }
   assert.equal(suspect?.score, 10, output);
+  const recoveryAt = clockReconnected.messages.length;
+  clockReconnected.send({ t: "clockReport", requestedSeconds: 5, serverSeconds: 5 });
+  await clockReconnected.wait(m => m.t === "speedGuard" && m.recovered === true && !m.blocked, recoveryAt);
+  light.send({ t: "skillUse", skill: "ability_lightning", enabled: true });
+  const expired = await light.snapshot();
+  assert.equal(expired.vmax, Math.floor(lightProfile.speed), "expiration et cooldown appliques sur le vrai serveur");
   assert.equal(idle.ws.readyState, WebSocket.OPEN, "le joueur immobile reste connecte");
   assert.ok((await peers()).peers.some(p => p.id === idle.id), "les pings maintiennent la presence sans nouvelles positions");
   await idle.snapshot();
@@ -171,7 +264,28 @@ test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeo
   assert.equal(arrived.map, "1-1");
   assert.equal(arrived.x, 10232);
   assert.equal(arrived.y, 5900);
+  const mimesisShip = SHIP_PACKS.find(p => abilityShipKeyFor(p.id) === "mimesis");
+  const mimesis = await connect(await makeAccount("anticheat-phase", "1-1", { x: 4500, y: 3500 }, mimesisShip.id));
+  const phaseAt = mimesis.messages.length;
+  mimesis.send({ t: "skillUse", skill: "ability_mimesis_phase-out", x: 100000, y: 100000 });
+  const phase = await mimesis.wait(m => m.t === "stateCorrection", phaseAt);
+  assert.ok(Math.abs(Math.hypot(phase.x - 4500, phase.y - 3500) - 500) < 0.01);
+  Object.assign(mimesis.pos, { x: phase.x, y: phase.y });
+  mimesis.send(mimesis.pos);
+  const phased = await mimesis.snapshot();
+  assert.equal(phased.x, Math.round(phase.x));
+  assert.equal(phased.y, Math.round(phase.y));
+  assert.equal(phased.teleportSeq, 1, "la teleportation autorisee est identifiable par les observateurs");
+  const repeatPhaseAt = mimesis.messages.length;
+  mimesis.send({ t: "skillUse", skill: "ability_mimesis_phase-out" });
+  await pause(100);
+  assert.equal(mimesis.messages.slice(repeatPhaseAt).some(m => m.t === "stateCorrection"), false, "pas de teleportation repetee sans recharge");
   const [silentCode, silentReason] = await silentClosed;
   assert.equal(silentCode, 4000, "un socket vraiment silencieux finit par etre ferme");
   assert.equal(String(silentReason), "Heartbeat timeout");
+  await speedClosed;
+  const held = (await api("/api/admin/cheat", { headers: { "x-admin-token": password } })).holds.find(h => h.pseudo === "anticheat-speed50");
+  assert.ok(held, "les rejets repetes aboutissent a un dossier en examen");
+  assert.ok(held.evidence.score >= 100);
+  assert.equal(held.evidence.security.last.distance, 2000);
 });

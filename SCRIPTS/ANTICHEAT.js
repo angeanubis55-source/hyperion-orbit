@@ -49,6 +49,37 @@ function acLog(msg) {
   try { console.log(msg); } catch {}
 }
 
+// Historique court, attribue a la session authentifiee. Un rejet isole est
+// visible, mais seules des anomalies repetant sur plusieurs secondes scorent.
+export function acRecordViolation(state, kind, now, details = {}) {
+  if (!["movement", "combat", "clock", "profile"].includes(kind) || !Number.isFinite(now)) return;
+  const report = state._security || (state._security = { total: 0, counts: {}, history: [] });
+  report.total++;
+  report.counts[kind] = (report.counts[kind] || 0) + 1;
+  const event = { ...details, kind, at: now };
+  report.last = event;
+  const last = report.history[report.history.length - 1];
+  if (!last || now - last.at >= 500 || last.kind !== kind) {
+    report.history.push(event);
+    if (report.history.length > 24) report.history.shift();
+  }
+  const audit = state._audit;
+  // L'acceleration d'horloge signalee par le client est informative. Elle
+  // ne prouve rien seule et ne participe jamais au gel automatique.
+  // Un impact hors enveloppe peut aussi venir d'une aptitude encore locale.
+  // Il reste visible pour examen, sans sanction automatique sur cette base.
+  if (audit && (kind === "movement" || kind === "combat")) {
+    const count = `${kind}Rejected`, periods = `${kind}Seconds`;
+    audit[count] = (audit[count] || 0) + 1;
+    const seconds = audit[periods] || (audit[periods] = []);
+    const second = Math.floor(now / 1000);
+    if (seconds[seconds.length - 1] !== second) {
+      seconds.push(second);
+      if (seconds.length > 64) seconds.shift();
+    }
+  }
+}
+
 // --- Audit périodique (toutes les 10 s) : le farm sur place à vitesse
 // fulgurante passe sous les seaux instantanés (calibrés large pour les
 // rafales AoE légitimes). L'audit compare des compteurs strictement
@@ -79,6 +110,14 @@ export function acAuditScore(prevScore, rates) {
   check(rates?.kills, AUDIT_KILLS_SOFT, AUDIT_KILLS_HARD, "kills/10s", fmtInt);
   check(rates?.boxes, AUDIT_BOXES_SOFT, AUDIT_BOXES_HARD, "boxes/10s", fmtInt);
   check(rates?.dmg, AUDIT_DMG_SOFT, AUDIT_DMG_HARD, "dégâts/10s", fmtDmg);
+  for (const [kind, label] of [["movement", "mouvements refusés"], ["combat", "impacts refusés"]]) {
+    const count = Number(rates?.[`${kind}Rejected`]) || 0;
+    const seconds = Number(rates?.[`${kind}Seconds`]) || 0;
+    if (count >= 6 && seconds >= 3) {
+      score += count >= 20 && seconds >= 8 ? AUDIT_HARD_SCORE : AUDIT_SOFT_SCORE;
+      triggers.push(`${label} : ${fmtInt(count)}/10s sur ${fmtInt(seconds)} secondes`);
+    }
+  }
   if (Number(rates?.teleports) > 0) {
     score += 10;
     triggers.push(`téléports rejetés x${fmtInt(rates.teleports)}`);
@@ -96,20 +135,37 @@ export function acMoveTake(state, nx, ny, nowMs, allowance = null) {
     if (![nx, ny, nowMs].every(Number.isFinite)) return { ...keep, accepted: false };
     const rate = Number(state.moveSpeed);
     const refill = Number.isFinite(rate) ? Math.max(0, Math.min(SERVER_VMAX * 5, rate)) : MOVE_BUCKET_REFILL;
-    const cap = Math.min(MOVE_BUCKET_CAP * 2, Math.max(20, (allowance?.capacitySpeed ?? refill) * 2 + 20));
-    const realDt = Math.max(0, Math.min(5, (nowMs - Number(state.moveBuckT || 0)) / 1000));
-    state.moveBuckT = nowMs;
     let buck = Number(state.moveBuck);
     if (!Number.isFinite(buck)) buck = 20;
+    const cap = refill === 0 && !(allowance?.distance > 0) ? 0
+      : Math.min(MOVE_BUCKET_CAP * 2, Math.max(20, buck, (allowance?.capacitySpeed ?? refill) * 2 + 20));
+    const realDt = Math.max(0, Math.min(5, (nowMs - Number(state.moveBuckT || 0)) / 1000));
+    state.moveBuckT = nowMs;
+    // Une fin de bonus ne supprime pas la distance deja autorisee pour les
+    // positions encore en transit. Ce credit est consomme, jamais renouvele
+    // a l'ancienne vitesse. Un gel reste prioritaire (cap = 0).
     buck = Math.min(cap, buck + (allowance?.distance ?? realDt * refill));
     const dx = nx - keep.x, dy = ny - keep.y;
     const jumpDist = Math.hypot(dx, dy);
-    if (jumpDist <= buck) {
+    // Meme marge fixe de 100 ms que l'interpolation du moteur client.
+    // Les vitesses viennent du serveur et la dette est remboursee : aucun
+    // nouveau credit par paquet, ni par activation/coupure d'aptitude.
+    if (cap > 0) state.moveTimingGrace = Math.max(Number(state.moveTimingGrace) || 0,
+      (allowance?.capacitySpeed ?? refill) * 0.1);
+    const debtLimit = cap > 0 ? 2 + (Number(state.moveTimingGrace) || 0) : 0;
+    // Deux unites supplementaires absorbent l'arrondi des positions. La dette est
+    // remboursee sur le paquet suivant : le spam ne multiplie pas la marge.
+    if (jumpDist <= buck + debtLimit) {
       state.moveBuck = buck - jumpDist;
       state._rejPos = null;
       return { x: nx, y: ny, accepted: true };
     }
     state.moveBuck = buck; // conserver la recharge, même après un rejet
+    acRecordViolation(state, "movement", nowMs, { reason: "Distance superieure au budget serveur",
+      x: keep.x, y: keep.y, requestedX: nx, requestedY: ny,
+      distance: Math.round(jumpDist), allowedDistance: Math.round(Math.max(0, buck + debtLimit)),
+      speed: refill, elapsedMs: Math.round(realDt * 1000),
+      ability: state._moveEffect && nowMs < state._moveEffect.until ? state._moveEffect.key : null });
     const far = jumpDist > FAR_JUMP_NO_HEAL;
     state.teleWarn = Number(state.teleWarn || 0) + 1;
     if (far) {
@@ -152,9 +208,14 @@ export function acAuditWindow(audit, nowMs, teleStrike = 0) {
     boxes: Math.max(0, Number(audit.boxes) || 0) * f,
     dmg: Math.max(0, Number(audit.dmg) || 0) * f,
     teleports: Math.max(0, teleStrike - (Number(audit.teleAt) || 0)),
+    movementRejected: Math.max(0, Number(audit.movementRejected) || 0) * f,
+    movementSeconds: (audit.movementSeconds?.length || 0) * f,
+    combatRejected: Math.max(0, Number(audit.combatRejected) || 0) * f,
+    combatSeconds: (audit.combatSeconds?.length || 0) * f,
   };
   const result = acAuditScore(audit.score, rates);
-  Object.assign(audit, { t: nowMs, kills: 0, boxes: 0, dmg: 0, teleAt: teleStrike, score: result.score });
+  Object.assign(audit, { t: nowMs, kills: 0, boxes: 0, dmg: 0, teleAt: teleStrike, score: result.score,
+    movementRejected: 0, movementSeconds: [], combatRejected: 0, combatSeconds: [] });
   return { ...result, rates };
 }
 

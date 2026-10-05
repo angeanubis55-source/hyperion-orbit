@@ -1,0 +1,219 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { SHIP_PACKS } from "../SHIP/SHIP_PACKS.js";
+import { abilityShipKeyFor } from "../SHIP/SHIP_ABILITIES.js";
+import { playerSlowMult } from "../SRC/CORE/FRAME_SYSTEMS.js";
+import { movementSpeed, movementWindow, takeMovement, useMovementAbility, stopMovementAbility, syncMovementAbility, usePhaseOut } from "./MOVEMENT_RULES.js";
+
+const profile = (ship = "phoenixbleu") => ({ shipId: SHIP_PACKS.find(p => abilityShipKeyFor(p.id) === ship || p.id.toLowerCase() === ship)?.id || ship,
+  speed: 400, hangarId: "h1", config: 1, range: 1400 });
+const state = () => ({ id: "u_test", hp: 1000, sh: 1000, x: 0, y: 0, moveBuck: 0, moveBuckT: 10000 });
+const move = (s, p, x, y, now) => { const result = takeMovement(s, p, x, y, now); Object.assign(s, { x: result.x, y: result.y }); return result; };
+
+test("un speed hack modere reste bloque sur une duree longue", t => {
+  t.mock.method(console, "log", () => {});
+  const s = state(), p = profile();
+  let rejections = 0;
+  for (let i = 1; i <= 400; i++) {
+    // +30 % avec une vmax et des timestamps client mensongers.
+    s.vmax = 1e9; s.clientTime = 10000 + i * 5000;
+    if (!move(s, p, i * 26, 0, 10000 + i * 50).accepted) rejections++;
+  }
+  assert.ok(rejections > 0);
+  assert.ok(s.x <= 400 * 20 * 1.01 + 42);
+});
+
+test("les rafales de messages ne donnent pas du temps supplementaire", t => {
+  t.mock.method(console, "log", () => {});
+  const s = state(), p = profile();
+  for (let i = 1; i <= 300; i++) move(s, p, i, 0, 10000);
+  assert.equal(s.x, 42, "la dette fixe de 100 ms et l'arrondi ne se multiplient pas avec les paquets");
+});
+
+test("la marge d'interpolation du client est acceptee aussi pendant un bonus", () => {
+  const s = state(), p = profile("lightning");
+  useMovementAbility(s, p, "ability_lightning", true, 10000);
+  // Le client peut consommer 100 ms d'avance entre deux ticks serveur.
+  assert.equal(move(s, p, 80, 0, 10000).accepted, true);
+  assert.equal(move(s, p, 120, 0, 10050).accepted, true);
+  assert.equal(move(s, p, 160, 0, 10100).accepted, true);
+  assert.equal(move(s, p, 200, 0, 10100).accepted, false, "une rafale ne renouvelle pas la marge");
+});
+
+test("les coordonnees arrondies et les orbites restent valides a plusieurs cadences", () => {
+  for (const dt of [50, 100, 1000]) {
+    const s = state(), p = profile();
+    let x = 0, y = 0;
+    for (let i = 1; i <= 100; i++) {
+      const angle = i * 0.1;
+      x += 400 * dt / 1000 * Math.cos(angle);
+      y += 400 * dt / 1000 * Math.sin(angle);
+      assert.equal(move(s, p, Math.round(x), Math.round(y), 10000 + i * dt).accepted, true, `${dt} ms, pas ${i}`);
+    }
+  }
+});
+
+test("un retard reseau de deux secondes conserve le deplacement legitime", () => {
+  assert.equal(move(state(), profile(), 800, 0, 12000).accepted, true);
+});
+
+test("un bonus forge ou emprunte a une autre coque est refuse", () => {
+  assert.equal(useMovementAbility(state(), profile(), "ability_lightning", true, 10000), false);
+  assert.equal(useMovementAbility(state(), profile("lightning"), "ability_citadel_travel", true, 10000), false);
+});
+
+test("Lightning est borne par une duree et une recharge serveur", () => {
+  const s = state(), p = profile("lightning");
+  assert.equal(useMovementAbility(s, p, "ability_lightning", true, 10000), true);
+  assert.equal(movementSpeed(s, p, 10001), 800);
+  assert.equal(useMovementAbility(s, p, "ability_lightning", true, 10001), false);
+  assert.equal(movementSpeed(s, p, 20000), 400);
+  assert.equal(useMovementAbility(s, p, "ability_lightning", true, 20001), false);
+  assert.equal(useMovementAbility(s, p, "ability_lightning", true, 80000), true);
+});
+
+test("l'expiration d'un bonus est integree sans accorder sa vitesse apres la fin", () => {
+  const s = state(), p = profile("lightning");
+  useMovementAbility(s, p, "ability_lightning", true, 10000);
+  s.moveBuckT = 19500;
+  assert.equal(movementWindow(s, p, 20500).distance, 600 * 1.01);
+});
+
+test("activer un bonus ne remunere pas le temps avant son activation", () => {
+  const s = state(), p = profile("lightning");
+  assert.equal(useMovementAbility(s, p, "ability_lightning", true, 11000), true);
+  assert.equal(s.moveBuck, 404);
+  assert.equal(s.moveBuckT, 11000);
+});
+
+test("un gel bloque tout mouvement et un ralentissement reduit la vitesse", () => {
+  const s = state(), p = profile();
+  s.freezeUntil = 15000; s.moveBuck = 10000;
+  assert.equal(move(s, p, 1, 0, 11000).accepted, false);
+  assert.equal(s.moveBuck, 0);
+  s.freezeUntil = 0; s.slowPct = 80; s.slowUntil = 20000;
+  assert.ok(Math.abs(movementSpeed(s, p, 11000) - 80) < 1e-9);
+  assert.equal(move(s, p, 80, 0, 12000).accepted, true);
+});
+
+test("Tartarus Plus permet OFF immediatement mais garde dix secondes avant ON", () => {
+  const s = state(), p = profile("tartarus_plus"), key = "ability_tartarus-plus_speed-boost-plus";
+  assert.equal(useMovementAbility(s, p, key, true, 10000), true);
+  assert.equal(useMovementAbility(s, p, key, false, 10001), true);
+  assert.equal(useMovementAbility(s, p, key, true, 10002), false);
+  assert.equal(useMovementAbility(s, p, key, true, 20001), true);
+});
+
+test("annulation et changement de coque coupent le boost sans effacer la recharge", () => {
+  const s = state(), p = profile("lightning");
+  useMovementAbility(s, p, "ability_lightning", true, 10000);
+  stopMovementAbility(s, p, 11000);
+  assert.equal(movementSpeed(s, p, 11000), 400);
+  assert.equal(useMovementAbility(s, p, "ability_lightning", true, 11001), false);
+  useMovementAbility(s, p, "ability_lightning", true, 80000);
+  syncMovementAbility(s, profile(), 81000);
+  assert.equal(s._moveEffect, null);
+});
+
+test("un paquet retarde garde le credit gagne avant la coupure d'un bonus", () => {
+  const s = state(), p = profile("tartarus_plus"), key = "ability_tartarus-plus_speed-boost-plus";
+  useMovementAbility(s, p, key, true, 10000);
+  assert.equal(useMovementAbility(s, p, key, false, 12000), true);
+  // OFF arrive avant la position calculee durant les deux secondes de boost.
+  assert.equal(move(s, p, 1160, 0, 12000).accepted, true);
+  assert.equal(movementSpeed(s, p, 12000), 400);
+  assert.equal(move(s, p, 1560, 0, 13000).accepted, true);
+  assert.equal(move(s, p, 2140, 0, 14000).accepted, false, "l'ancien bonus ne continue pas a remplir le budget");
+});
+
+test("la poursuite Keres ne perd pas son bonus si la cible reste mobile", () => {
+  const s = state(), p = profile("keres");
+  const target = { id: "npc", hp: 100, x: 3000, y: 0 };
+  useMovementAbility(s, p, "ability_keres_sle", true, 10000, target, "npc");
+  for (let i = 1; i <= 160; i++) {
+    target.x += 2000;
+    const now = 10000 + i * 1000;
+    syncMovementAbility(s, p, now, target);
+    const result = takeMovement(s, p, s.x + 2000, 0, now, target);
+    assert.equal(result.accepted, true);
+    s.x = result.x;
+    assert.equal(movementSpeed(s, p, now), 2000);
+  }
+  target.hp = 0;
+  syncMovementAbility(s, p, 170001, target);
+  assert.equal(movementSpeed(s, p, 170001), 400);
+  assert.equal(useMovementAbility(s, p, "ability_keres_sle", true, 170002, { ...target, hp: 100 }, "npc"), false);
+});
+
+// Comparer aux vrais multiplicateurs du moteur client, y compris les variantes
+// Plus, avec des positions arrondies et des arrivees reseau irregulieres.
+for (const [ship, key, field, duration, toggle] of [
+  ["lightning", "ability_lightning", "lightT", 10],
+  ["citadel", "ability_citadel_travel", "travelT", 5],
+  ["citadel_plus", "ability_citadel-plus_travel", "travelT", 5],
+  ["holo", "ability_holo_self-reversal", "holoSelfT", 15],
+  ["retiarus", "ability_retiarus_spc", "spcT", 10],
+  ["retiarus_plus", "ability_retiarus-plus_spcp", "spcPlusT", 10],
+  ["pusat_plus", "ability_pusat-plus_speed-sap", "sapT", 10],
+  ["solace_plus", "ability_solace-plus_nano-cluster-repairer-plus", "solBoostT", 1],
+  ["tartarus", "ability_tartarus_speed-boost", "tartBoostOn", Infinity, true],
+  ["tartarus_plus", "ability_tartarus-plus_speed-boost-plus", "tartPlusBoostOn", Infinity, true],
+  ["mimesis", "ability_mimesis_scramble", "scrambleT", Infinity],
+  ["keres", "ability_keres_sle", "sleightT", Infinity],
+]) {
+  test(`${ship} : deplacement natif accepte avec son aptitude, meme en rafale`, () => {
+    const s = state(), p = profile(ship), target = { id: "npc", hp: 100, x: 1000, y: 0 };
+    assert.equal(useMovementAbility(s, p, key, true, 10000, target, "npc"), true);
+    const native = { [field]: toggle ? true : 1 };
+    assert.equal(movementSpeed(s, p, 10001), p.speed * playerSlowMult(native));
+    let x = 0;
+    // Jitter de 30 ms, suivi de rafales de paquets conservant leur ordre.
+    const jitter = [30, 0, 0, 20, 0];
+    for (let i = 1; i <= 400; i++) {
+      const elapsed = i * 50;
+      native[field] = elapsed < duration * 1000 ? (toggle ? true : 1) : (toggle ? false : 0);
+      x += p.speed * playerSlowMult(native) * 0.05;
+      target.x = x + 1000;
+      const now = 10000 + elapsed + jitter[i % jitter.length];
+      syncMovementAbility(s, p, now, target);
+      const result = takeMovement(s, p, Math.round(x), 0, now, target);
+      assert.equal(result.accepted, true, `paquet ${i}`);
+      s.x = result.x;
+    }
+    assert.equal(s.teleWarn || 0, 0);
+  });
+}
+
+test("Mimesis exige un bouclier et se coupe lors d'un changement de configuration", () => {
+  const s = state(), p = profile("mimesis"), key = "ability_mimesis_scramble";
+  s.sh = 0;
+  assert.equal(useMovementAbility(s, p, key, true, 10000), false);
+  s.sh = 100;
+  assert.equal(useMovementAbility(s, p, key, true, 10000), true);
+  syncMovementAbility(s, { ...p, config: 2 }, 10001);
+  assert.equal(s._moveEffect, null);
+  assert.equal(useMovementAbility(s, p, key, true, 10002), false);
+});
+
+test("Keres exige une cible reelle et son dash doit la rejoindre", () => {
+  const s = state(), p = profile("keres"), key = "ability_keres_sle";
+  const target = { id: "npc", hp: 100, x: 3000, y: 0 };
+  assert.equal(useMovementAbility(s, p, key, true, 10000), false);
+  assert.equal(useMovementAbility(s, p, key, true, 10000, target, "npc"), true);
+  assert.equal(takeMovement(s, p, 0, 200, 10100, target).accepted, false);
+  assert.equal(takeMovement(s, p, 200, 0, 10100, target).accepted, true);
+  target.hp = 0;
+  syncMovementAbility(s, p, 10101, target);
+  assert.equal(s._moveEffect, null);
+});
+
+test("la teleportation Mimesis est choisie par le serveur et respecte son cooldown et les cartes", () => {
+  const s = { ...state(), x: 1000, y: 1000 }, p = profile("mimesis"), world = { w: 5000, h: 5000 };
+  assert.equal(usePhaseOut(s, profile(), "1-1", world, 10000), null);
+  for (const map of ["low", "uba", "5-2", "alpha", "qz"]) assert.equal(usePhaseOut(s, p, map, world, 10000), null);
+  assert.deepEqual(usePhaseOut(s, p, "1-1", world, 10000, () => 0), { x: 1500, y: 1000 });
+  assert.equal(usePhaseOut(s, p, "1-1", world, 10001), null);
+  const next = usePhaseOut(s, p, "1-1", world, 310000, () => 0.5);
+  assert.equal(next.x, 500);
+  assert.ok(Math.abs(next.y - 1000) < 1e-9);
+});

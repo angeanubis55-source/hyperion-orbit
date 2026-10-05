@@ -5,6 +5,58 @@
 let ws = null;
 let myId = "";
 let connected = false;
+// Le temps de simulation en ligne est gagne avec les ticks du serveur.
+// Accelerer performance.now()/les timers ne cree pas de temps de jeu.
+let simulationServerAt = null;
+let simulationCredit = 0;
+let simulationRequested = 0;
+let simulationWindowAt = null;
+let simulationBlocked = false;
+export function netSpeedGuardActive() { return simulationBlocked; }
+function setSimulationBlocked(blocked) {
+  const previous = simulationBlocked;
+  simulationBlocked = blocked === true;
+  if (simulationBlocked) simulationCredit = 0;
+  if (previous !== simulationBlocked) {
+    try { window.dispatchEvent(new CustomEvent("orbit:speed-guard", { detail: { blocked: simulationBlocked, recovered: previous && !simulationBlocked } })); } catch {}
+  }
+}
+function observeSimulationClock(at) {
+  if (!Number.isFinite(at) || at <= 0) return;
+  if (simulationServerAt === null) {
+    simulationServerAt = at;
+    simulationWindowAt = at;
+    return;
+  }
+  if (at <= simulationServerAt) return; // doublon ou paquet ancien
+  simulationCredit = simulationBlocked ? 0 : Math.min(1.25, simulationCredit + (at - simulationServerAt) / 1000);
+  simulationServerAt = at;
+  const seconds = (at - simulationWindowAt) / 1000;
+  if (seconds >= 5) {
+    const abnormal = simulationRequested > seconds * 3;
+    if (abnormal) setSimulationBlocked(true);
+    if ((abnormal || simulationBlocked) && ws?.readyState === 1) {
+      try { ws.send(JSON.stringify({ t: "clockReport", requestedSeconds: simulationRequested, serverSeconds: seconds })); } catch {}
+    }
+    simulationRequested = 0;
+    simulationWindowAt = at;
+  }
+}
+export function netSimulationStep(requestedSeconds) {
+  const requested = Math.max(0, Math.min(1.25, Number(requestedSeconds) || 0));
+  if (suspended) return 0;
+  if (simulationServerAt === null) return netConnected() ? 0 : requested;
+  simulationRequested += requested;
+  if (simulationBlocked) return 0;
+  // Dette fixe de 100 ms pour lisser les snapshots a 20 Hz. Elle doit etre
+  // remboursee : les frames et les reconnexions ne multiplient pas la marge.
+  const step = Math.min(requested, Math.max(0, simulationCredit + 0.1));
+  simulationCredit -= step;
+  return step;
+}
+export function netGameTimeMs() {
+  return simulationServerAt !== null ? simulationServerAt : Date.now();
+}
 // Génération du socket : un onclose périmé (ancien socket fermé après une
 // reconnect déjà relancée) ne doit jamais purger l'état du nouveau socket
 // ni ouvrir un doublon de connexion.
@@ -739,6 +791,15 @@ export function ensureNetplayConnection() {
     try { msg = JSON.parse(String(ev.data)); } catch { return; }
     if (!msg || typeof msg !== "object") return;
     lastServerMessageMs = Date.now();
+    if (msg.t === "snapshot" || msg.t === "clock" || msg.t === "welcome" || msg.t === "pong") {
+      observeSimulationClock(msg.at);
+    }
+    if (msg.t === "speedGuard") {
+      if (typeof msg.blocked === "boolean") setSimulationBlocked(msg.blocked);
+      return;
+    }
+    if (msg.t === "welcome" && msg.clockBlocked === true) setSimulationBlocked(true);
+    if (msg.t === "clock") return;
     if (msg.t === "stateCorrection") {
       if (!Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) return;
       try { window.dispatchEvent(new CustomEvent("orbit:server-position", { detail: msg })); } catch {}
@@ -1182,14 +1243,17 @@ export function ensureNetplayConnection() {
         const prev = remotes.get(id);
         const x = Number(p.x) || 0, y = Number(p.y) || 0;
         const revived = !!prev && prev.dead === true && p.dead !== true;
-        const vmax = Math.max(50, Math.min(5000, Number(p.vmax) || 400));
+        const vmax = Math.max(50, Math.min(7500, Number(p.vmax) || 400));
+        const motionBlocked = p.motionBlocked === true;
+        const teleportSeq = Number(p.teleportSeq) || 0;
+        const teleported = revived || (!!prev && teleportSeq !== Number(prev.teleportSeq || 0));
         const rawVx = Number(p.vx) || 0, rawVy = Number(p.vy) || 0;
         const rawSpeed = Math.hypot(rawVx, rawVy);
-        const velocityScale = rawSpeed > vmax * 1.25 ? (vmax * 1.25) / rawSpeed : 1;
-        const svx = p.dead === true ? 0 : rawVx * velocityScale;
-        const svy = p.dead === true ? 0 : rawVy * velocityScale;
+        const velocityScale = rawSpeed > vmax ? vmax / rawSpeed : 1;
+        const svx = p.dead === true || motionBlocked ? 0 : rawVx * velocityScale;
+        const svy = p.dead === true || motionBlocked ? 0 : rawVy * velocityScale;
         // Destination de deplacement (0,0 + moving:false = sur place).
-        const moving = p.moving === true && p.dead !== true;
+        const moving = p.moving === true && p.dead !== true && !motionBlocked;
         const dx = moving ? Math.round(Number(p.mx) || 0) : 0;
         const dy = moving ? Math.round(Number(p.my) || 0) : 0;
         const destChanged = !prev || moving !== (prev.moving === true)
@@ -1218,7 +1282,7 @@ export function ensureNetplayConnection() {
         // des joueurs dont le jeu produit peu d'images : leurs coordonnees
         // arrivent par paliers meme quand le reseau, lui, reste a 20 Hz.
         let motionSamples = Array.isArray(prev?.motionSamples) ? prev.motionSamples.slice(-NET_REMOTE_HISTORY_SIZE + 1) : [];
-        if (!prev || revived) motionSamples = [];
+        if (!prev || teleported || motionBlocked) motionSamples = [];
         if (positionChanged) {
           const lastSample = motionSamples[motionSamples.length - 1];
           const gapSec = lastSample ? Math.max(0.001, (now - Number(lastSample.at || now)) / 1000) : 0;
@@ -1284,6 +1348,8 @@ export function ensureNetplayConnection() {
           shipId: String(p.shipId ?? prev?.shipId ?? ""),
           hswap: Math.max(0, Math.min(3, Number(p.hswap) || 0)),
           x, y,
+          motionBlocked, teleportSeq,
+          renderDelay: motionBlocked || teleported ? 0 : Number(prev?.renderDelay || 0),
           vx: svx,
           vy: svy,
           // CPU CL04K-XL distant : vaisseau non rendu (point + proxy gardés).
@@ -1291,9 +1357,9 @@ export function ensureNetplayConnection() {
           // Destination de deplacement (pilotage de la prediction).
           moving,
           dx, dy,
-          turn,
+          turn: motionBlocked || teleported ? 0 : turn,
           headingAt,
-          accel,
+          accel: motionBlocked || teleported ? 0 : accel,
           accelAt,
           // Echantillon frais : le rendu converge vite vers la position
           // autoritaire (gros ping = decalage permanent sinon). Decroit
@@ -1382,9 +1448,9 @@ export function ensureNetplayConnection() {
           sampleAt: positionChanged ? now : Number(prev?.sampleAt || now),
           sourceAt,
           // Position de rendu (interpolee vers x/y pour eviter les sauts).
-          rx: prev && !revived ? Number(prev.rx ?? prev.x ?? p.x) : Number(p.x) || 0,
-          ry: prev && !revived ? Number(prev.ry ?? prev.y ?? p.y) : Number(p.y) || 0,
-          rangle: prev && !revived ? Number(prev.rangle ?? prev.angle ?? p.angle) : Number(p.angle) || 0,
+          rx: prev && !teleported ? Number(prev.rx ?? prev.x ?? p.x) : Number(p.x) || 0,
+          ry: prev && !teleported ? Number(prev.ry ?? prev.y ?? p.y) : Number(p.y) || 0,
+          rangle: prev && !teleported ? Number(prev.rangle ?? prev.angle ?? p.angle) : Number(p.angle) || 0,
           // PET : snap à l'activation (pas de lerp depuis une vieille
           // position : le tick tirait petrx vers (0,0) quand peta=0, puis
           // dash au retour). Tant qu'inactif, petrx = petx (0, proxy caché).
@@ -1868,7 +1934,7 @@ export function tickNetplayRemotes(dt = 0.016) {
     // revient en arriere a chaque paquet (dent de scie = teleportations).
     const updateInterval = Math.max(50, Math.min(2000, Number(r.updateInterval || 60)));
     const updateJitter = Math.max(0, Math.min(1000, Number(r.updateJitter || 0)));
-    const needsLowFpsBuffer = updateInterval > 75 || updateJitter > 20;
+    const needsLowFpsBuffer = !r.motionBlocked && (updateInterval > 75 || updateJitter > 20);
     const wantedRenderDelay = needsLowFpsBuffer
       ? Math.min(NET_LOW_FPS_DELAY_MAX_MS, Math.max(60, updateInterval * 0.9 + updateJitter * 0.4))
       : 0;
@@ -1966,7 +2032,7 @@ export function tickNetplayRemotes(dt = 0.016) {
     // Le lissage exponentiel seul en absorbait ~26 % sur la premiere frame,
     // donnant l'impression d'une teleportation. Le plafond ne touche que le
     // rendu : positions serveur, portee et impacts restent autoritaires.
-    const maxCorrection = Math.max(1800, Number(r.vmax) * 2) * frameDt;
+    const maxCorrection = (Number(r.vmax) || 400) * frameDt;
     const correctionK = correctionDistance > 0
       ? Math.min(kEff, maxCorrection / correctionDistance)
       : kEff;

@@ -47,6 +47,16 @@
   </div>
 </div>
 
+<dialog id="speedGuardOverlay" class="linkOverlay speedGuardOverlay" role="alertdialog" aria-modal="true" aria-labelledby="speedGuardTitle" aria-describedby="speedGuardMessage" tabindex="-1" style="display:none;">
+  <div class="linkBox speedGuardBox">
+    <h2 id="speedGuardTitle">Partie suspendue</h2>
+    <p id="speedGuardMessage">L’utilisation d’un logiciel de modification de mémoire ou de vitesse est interdite.</p>
+    <p>Un rythme anormal a été détecté. Désactive toute accélération et ferme l’outil concerné.</p>
+    <p class="speedGuardStatus" role="status">Vérification du rythme… Le jeu se rechargera automatiquement après le retour à la normale.</p>
+    <div class="linkSpin" aria-hidden="true"></div>
+  </div>
+</dialog>
+
 <div id="gameWindowDock">
   <div class="sessionDockMenu">
     <button id="btnSessionMenu" class="gameDockIcon logoutDockIcon" type="button" title="Session" aria-label="Menu de session" aria-expanded="false">

@@ -118,7 +118,8 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
-import { netServerMessageAge } from "./NETPLAY.js";
+import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
+import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
   drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetDecloakInbox,
 getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation } from "./NETPLAY.js";
@@ -1484,6 +1485,14 @@ function activateSol() {
   startSolCooldown();
   showNotification(`Nano-réparateur : +${Math.round(healPct * 100)} % HP`, 2, "info");
 }
+function reportMovementAbility(skill, enabled = true, target = null) {
+  // Les variantes Citadel partagent le meme code d'activation.
+  const key = skill === "travel"
+    ? currentAbilityShipMatch()?.ids?.find(id => id.endsWith("_travel")) : skill;
+  if (!key) return;
+  try { sendSkillUse(key, { enabled, target: target?._netPlayer || target?._netUid || "" }); } catch {}
+}
+
 function activateSolPlus() {
   if (player.dead || !started) return;
   if (tempestBackupHealBlocked()) return;
@@ -1495,6 +1504,7 @@ function activateSolPlus() {
   try { solHeal(SOLACE_PLUS_PCT); } catch {}
   solFx();
   player.solBoostT = SOLACE_PLUS_BOOST;
+  reportMovementAbility("ability_solace-plus_nano-cluster-repairer-plus");
   try {
     for (let i = 1; i <= 3; i++) loadImage(`ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${i}.png`, { priority: true });
   } catch {}
@@ -1717,6 +1727,7 @@ function startSpcCooldown() {
 }
 function cancelSpc() {
   if ((player.spcT || 0) <= 0) return;
+  reportMovementAbility("ability_retiarus_spc", false);
   player.spcT = 0;
   startSpcCooldown();
 }
@@ -1729,6 +1740,7 @@ function activateSpc() {
   }
   if ((player.spcT || 0) > 0) return;
   player.spcT = SPC_DURATION;
+  reportMovementAbility("ability_retiarus_spc");
   persistCdUntil("spcFx", SPC_DURATION);
   showNotification("Supercharge active (10 s) : +10 % vitesse", 2, "info");
 }
@@ -1802,6 +1814,7 @@ function startSpcPlusCooldown() {
 }
 function cancelSpcPlus() {
   if ((player.spcPlusT || 0) <= 0) return;
+  reportMovementAbility("ability_retiarus-plus_spcp", false);
   player.spcPlusT = 0;
   startSpcPlusCooldown();
 }
@@ -1814,6 +1827,7 @@ function activateSpcPlus() {
   }
   if ((player.spcPlusT || 0) > 0) return;
   player.spcPlusT = SPCP_DURATION;
+  reportMovementAbility("ability_retiarus-plus_spcp");
   persistCdUntil("spcPlusFx", SPCP_DURATION);
   showNotification("Supercharge Plus active (10 s) : +20 % vitesse", 2, "info");
 }
@@ -1862,6 +1876,7 @@ function startSapCooldown() {
 }
 function cancelSap() {
   if ((player.sapT || 0) <= 0) return;
+  reportMovementAbility("ability_pusat-plus_speed-sap", false);
   player.sapT = 0;
   player.sapTarget = null;
   startSapCooldown();
@@ -1886,6 +1901,7 @@ function activateSap() {
   }
   player.sapTarget = t;
   player.sapT = SAP_DURATION;
+  reportMovementAbility("ability_pusat-plus_speed-sap", true, t);
   try {
     t.rocketSlowPct = Math.max(Number(t.rocketSlowPct || 0), SAP_SLOW_PCT);
     t.rocketSlowT = Math.max(Number(t.rocketSlowT || 0), SAP_DURATION);
@@ -2126,7 +2142,7 @@ function persistCdUntil(name, seconds, scopeOverride) {
   try {
     const all = readPersistedCds();
     const key = scopedCdName(name, scopeOverride);
-    if (Number(seconds) > 0) all[key] = Date.now() + Number(seconds) * 1000;
+    if (Number(seconds) > 0) all[key] = netGameTimeMs() + Number(seconds) * 1000;
     else delete all[key];
     // Migration : l'ancienne clé globale ne doit plus fuiter entre vaisseaux.
     if (Object.prototype.hasOwnProperty.call(all, name)) delete all[name];
@@ -2142,7 +2158,7 @@ function persistedCdLeft(name, scopeOverride) {
       // Migration douce : une seule lecture de l'ancienne clé globale.
       until = Number(all[name] || 0);
     }
-    return Math.max(0, (until - Date.now()) / 1000);
+    return Math.max(0, (until - netGameTimeMs()) / 1000);
   } catch { return 0; }
 }
 // Écriture / lecture forcée sur un scope explicite (snapshot inter-vaisseaux).
@@ -2251,7 +2267,7 @@ function snapshotAbilityTargetsTick() {
         const uid = String(e.universeUid != null ? e.universeUid : e.id);
         const entry = { uid };
         let any = false;
-        const put = (k, v) => { if (Number(v || 0) > 0.05) { entry[k] = Date.now() + Number(v) * 1000; any = true; } };
+        const put = (k, v) => { if (Number(v || 0) > 0.05) { entry[k] = netGameTimeMs() + Number(v) * 1000; any = true; } };
         put("markT", e.markT); put("neutrT", e.neutrT);
         put("jamxT", e.jamxT); put("creedT", e.creedT);
         put("keresSprT", e.keresSprT);
@@ -2323,7 +2339,7 @@ function scheduleAbilityResumeTargets(resumedFx) {
                 return null;
               })();
               if (!e) continue;
-              const left = (until) => Math.max(0, (Number(until || 0) - Date.now()) / 1000);
+              const left = (until) => Math.max(0, (Number(until || 0) - netGameTimeMs()) / 1000);
               if (left(d.markT) > 0) e.markT = Math.max(Number(e.markT || 0), left(d.markT));
               if (left(d.neutrT) > 0) e.neutrT = Math.max(Number(e.neutrT || 0), left(d.neutrT));
               if (left(d.jamxT) > 0) e.jamxT = Math.max(Number(e.jamxT || 0), left(d.jamxT));
@@ -2730,6 +2746,7 @@ function startTravelCooldown() {
 }
 function cancelTravel() {
   if ((player.travelT || 0) <= 0) return;
+  reportMovementAbility("travel", false);
   player.travelT = 0;
   startTravelCooldown();
 }
@@ -2742,6 +2759,7 @@ function activateTravel() {
   }
   if ((player.travelT || 0) > 0) return;
   player.travelT = TRAVEL_DURATION;
+  reportMovementAbility("travel");
   persistCdUntil("travelFx", TRAVEL_DURATION);
   try {
     for (let i = 1; i <= 3; i++) {
@@ -3015,6 +3033,7 @@ function tartBoostLaserMult() {
 function activateTartBoost() {
   if (player.dead || !started) return;
   player.tartBoostOn = player.tartBoostOn !== true;
+  reportMovementAbility("ability_tartarus_speed-boost", player.tartBoostOn);
   if (player.tartBoostOn === true) {
     player.tartBoostElapsed = 0;
     try {
@@ -3037,6 +3056,7 @@ function activateTartPlusBoost() {
     }
   }
   player.tartPlusBoostOn = player.tartPlusBoostOn !== true;
+  reportMovementAbility("ability_tartarus-plus_speed-boost-plus", player.tartPlusBoostOn);
   player.tartPlusBoostCd = TARTPLUS_BOOST_SWITCH_CD;
   persistCdUntil("tartPlusBoost", TARTPLUS_BOOST_SWITCH_CD);
   if (player.tartPlusBoostOn === true) {
@@ -3677,6 +3697,7 @@ function startHoloEnemyCooldown() {
 }
 function cancelHoloSelf() {
   if ((player.holoSelfT || 0) <= 0) return;
+  reportMovementAbility("ability_holo_self-reversal", false);
   player.holoSelfT = 0;
   startHoloSelfCooldown();
 }
@@ -3696,6 +3717,7 @@ function activateHoloSelf() {
   }
   if ((player.holoSelfT || 0) > 0) return;
   player.holoSelfT = HOLO_DURATION;
+  reportMovementAbility("ability_holo_self-reversal");
   persistCdUntil("holoSelfFx", HOLO_DURATION);
   try {
     for (let i = 1; i <= HOLO_FRAMES; i++) {
@@ -3981,6 +4003,7 @@ function startSleightCooldown() {
 }
 function cancelSleight() {
   if ((player.sleightT || 0) <= 0 && !player.sleightTarget) return;
+  reportMovementAbility("ability_keres_sle", false);
   player.sleightT = 0;
   player.sleightTarget = null;
   player.sleightElapsed = 0;
@@ -4004,6 +4027,7 @@ function activateSleight() {
   // Pas de limite de distance : lock suffit, même à l'autre bout de la carte.
   player.sleightTarget = t;
   player.sleightT = 1;
+  reportMovementAbility("ability_keres_sle", true, t);
   player.sleightElapsed = 0;
   player.sleightDrove = false;
   persistCdUntil("sleightFx", SLEIGHT_COOLDOWN);
@@ -4018,6 +4042,7 @@ function scrambleDamageMult() {
   return 1 + SCRAMBLE_DMG;
 }
 function startScrambleCooldown() {
+  reportMovementAbility("ability_mimesis_scramble", false);
   player.scrambleT = 0;
   player.scrambleCd = SCRAMBLE_COOLDOWN;
   persistCdUntil("scrambleFx", 0);
@@ -4036,6 +4061,7 @@ function activateScramble() {
   }
   if ((player.scrambleT || 0) > 0) return;
   player.scrambleT = 1;
+  reportMovementAbility("ability_mimesis_scramble");
   player.scrambleAcc = 0;
   try { player.scrambleCfg = getActiveConfigNo(); } catch { player.scrambleCfg = null; }
   persistCdUntil("scrambleFx", SCRAMBLE_COOLDOWN);
@@ -4065,6 +4091,13 @@ function activatePhaseOut() {
   }
   if (isPhaseOutBlocked()) {
     showNotification("Sortie de phase impossible ici (gates / LoW / UBA / pirates)", 2.5, "error");
+    return;
+  }
+  if (netConnected() && isZoneMap) {
+    // Le serveur choisit le point d'arrivee et le renvoie au client.
+    if (!sendSkillUse("ability_mimesis_phase-out")) return;
+    startPhaseOutCooldown();
+    showNotification("Sortie de phase !", 1.2, "info");
     return;
   }
   const ang = Math.random() * Math.PI * 2;
@@ -4272,6 +4305,7 @@ function startLightCooldown() {
 }
 function cancelLight() {
   if ((player.lightT || 0) <= 0) return;
+  reportMovementAbility("ability_lightning", false);
   player.lightT = 0;
   startLightCooldown();
 }
@@ -4284,6 +4318,7 @@ function activateLight() {
   }
   if ((player.lightT || 0) > 0) return;
   player.lightT = LIGHT_DURATION;
+  reportMovementAbility("ability_lightning");
   persistCdUntil("lightFx", LIGHT_DURATION);
   try {
     for (let i = 1; i <= 3; i++) loadImage(`ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${i}.png`, { priority: true });
@@ -6659,7 +6694,12 @@ function initializeCustomActionBar() {
         }
         player.launcherActive = rid;
         markProgressDirty();
-        saveProgressNow();
+        // Écriture immédiate (comme setAmmo) : la sélection ne doit jamais
+        // dépendre de l'autosave périodique (sinon un 2e onglet la réécrit).
+        try {
+          const out = updateCurrentUserProgress({ launcherActive: rid });
+          if (out?.ok && out.user && account) account.user = out.user;
+        } catch {}
         // Idem : ne force plus l'onglet Lance-roquettes.
         try { refreshActiveActionPalette?.(); } catch {}
         updateAmmoUI();
@@ -6668,7 +6708,11 @@ function initializeCustomActionBar() {
       playDockSelectSound(String(player.rocketActive || "").toLowerCase() !== String(id).toLowerCase());
       player.rocketActive = id;
       markProgressDirty();
-      saveProgressNow();
+      // Écriture immédiate (comme setAmmo) : voir ci-dessus.
+      try {
+        const out = updateCurrentUserProgress({ rocketActive: id });
+        if (out?.ok && out.user && account) account.user = out.user;
+      } catch {}
       refreshRocketPaletteCounts();
       updateAmmoUI();
       // Clic = tir immédiat de la sélection (strict : pas de bascule), auto ou pas.
@@ -7268,7 +7312,12 @@ function initializeCustomActionBar() {
         autoBtn.onclick = () => {
           player.rocketAuto = !player.rocketAuto;
           markProgressDirty();
-          saveProgressNow();
+          // Écriture immédiate (comme setAmmo) : sinon l'autosave
+          // périodique d'un autre onglet réécrit l'ancien état.
+          try {
+            const out = updateCurrentUserProgress({ rocketAuto: player.rocketAuto === true });
+            if (out?.ok && out.user && account) account.user = out.user;
+          } catch {}
           renderPalette("rockets");
           updateAmmoUI();
           if (!player.rocketAuto) {
@@ -7297,7 +7346,11 @@ function initializeCustomActionBar() {
         toggleBtn.onclick = () => {
           player.launcherAuto = !player.launcherAuto;
           markProgressDirty();
-          saveProgressNow();
+          // Écriture immédiate (comme setAmmo) : voir ci-dessus.
+          try {
+            const out = updateCurrentUserProgress({ launcherAuto: player.launcherAuto === true });
+            if (out?.ok && out.user && account) account.user = out.user;
+          } catch {}
           renderPalette("launchers");
           updateAmmoUI();
           if (!player.launcherAuto) {
@@ -14775,12 +14828,11 @@ hangarState: !player.dead && started ? {
     sbl: player.ammo.sbl || 0,
     abl: player.ammo.abl || 0,
   },
-  ammoActive: player.ammo.active || "x1",
+  // Sélections (munition/roquette/lanceur actifs, modes AUTO) : JAMAIS ici.
+  // Elles persistent en écriture immédiate au moment du choix (setAmmo,
+  // dock roquettes/lanceurs, toggles AUTO) : l'autosave périodique avec
+  // une mémoire périmée (2e onglet) réécraserait sinon le dernier choix.
   rockets: sanitizeRocketsForSave(),
-  rocketActive: player.rocketActive || "r310",
-  rocketAuto: player.rocketAuto === true,
-  launcherActive: player.launcherActive || "eco10",
-  launcherAuto: player.launcherAuto === true,
 });
   if (result?.ok && result.user) account.user = result.user;
   account.dirty = false;
@@ -16912,6 +16964,7 @@ function setKickOverlay(reason, title) {
     const el = document.getElementById("kickOverlay");
     if (!el) return;
     if (kickedReason != null) {
+      renderSpeedGuard(false);
       const label = el.querySelector("[data-kick-reason]");
       if (label) label.textContent = kickedReason;
       const heading = el.querySelector("[data-kick-title]");
@@ -16967,6 +17020,25 @@ function tickLinkHeartbeat(realDt) {
     try { netDisconnect(); } catch {}
     try { setKickOverlay(K?.reason || "Comportement inapproprié.", K?.title || "Exclu par l'administrateur"); } catch {}
   }
+  try {
+    for (const B of drainNetBannedInbox()) {
+      try { netDisconnect(); } catch {}
+      // Banni : popup bloquante (motif + date de retour), refresh manuel.
+      // Aucun retry auto (validation heartbeat) tant que c'est armé.
+      const until = Number(B?.until);
+      const dateTxt = Number.isFinite(until) && until > 0
+        ? ` Vous pourrez vous reconnecter à partir du ${new Date(until).toLocaleString("fr-FR")}.`
+        : " Bannissement définitif.";
+      try { setKickOverlay(`Vous avez été banni. Motif : ${B?.reason || "Comportement inapproprié."}.${dateTxt}`, "Banni par l'administrateur"); } catch {}
+    }
+    for (const C of drainNetCheatInbox()) {
+      try { netDisconnect(); } catch {}
+      // Triche (kick + gel, dossier en examen) : comme une déconnexion
+      // volontaire + message modération, refresh manuel pour revenir
+      // (rejeté tant que le gel est actif).
+      try { setKickOverlay(C?.reason || "Vous avez triché. La modération étudie actuellement votre cas. Si cela est avéré, vous serez définitivement banni.", "Triche détectée"); } catch {}
+    }
+  } catch {}
   // Kické : popup bloquante, aucun retry, aucun masquage auto.
   if (kickedReason != null) {
     try { setKickOverlay(kickedReason); } catch {}
@@ -18122,7 +18194,15 @@ function consumeAmmo(shots) {
   player.ammo[k] = Math.max(0, before - shots);
   noteNetConsumption("ammo", k, before - player.ammo[k]);
   mirrorConsumedStock("ammo", k, player.ammo[k]);
-  if (player.ammo[k] <= 0) player.ammo.active = "x1";
+  if (player.ammo[k] <= 0 && player.ammo.active !== "x1") {
+    player.ammo.active = "x1";
+    // Bascule persistée (événement rare : une seule fois par épuisement) :
+    // sinon le stockage garde l'ancienne munition et le prochain sync y revient.
+    try {
+      const out = updateCurrentUserProgress({ ammoActive: "x1" });
+      if (out?.ok && out.user && account) account.user = out.user;
+    } catch {}
+  }
   // Persiste la consommation (sinon un save entre deux syncs
   // réécrivait l'ancien stock et les tirs semblaient "annulés").
   try { markProgressDirty(); } catch {}
@@ -28750,23 +28830,6 @@ function syncNetNpcs(dt) {
       try { spawnExplosion(Number(B.x) || 0, Number(B.y) || 0, 1.4); } catch {}
       try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
     }
-    for (const B of drainNetBannedInbox()) {
-      try { netDisconnect(); } catch {}
-      // Banni : popup bloquante (motif + date de retour), refresh manuel.
-      // Aucun retry auto (validation heartbeat) tant que c'est armé.
-      const until = Number(B?.until);
-      const dateTxt = Number.isFinite(until) && until > 0
-        ? ` Vous pourrez vous reconnecter à partir du ${new Date(until).toLocaleString("fr-FR")}.`
-        : " Bannissement définitif.";
-      try { setKickOverlay(`Vous avez été banni. Motif : ${B?.reason || "Comportement inapproprié."}.${dateTxt}`, "Banni par l'administrateur"); } catch {}
-    }
-    for (const C of drainNetCheatInbox()) {
-      try { netDisconnect(); } catch {}
-      // Triche (kick + gel, dossier en examen) : comme une déconnexion
-      // volontaire + message modération, refresh manuel pour revenir
-      // (rejeté tant que le gel est actif).
-      try { setKickOverlay(C?.reason || "Vous avez triché. La modération étudie actuellement votre cas. Si cela est avéré, vous serez définitivement banni.", "Triche détectée"); } catch {}
-    }
   } catch {}
   // Verrou fantôme : géré par Target.get() qui suit le jumeau snapshot
   // (même uid) au lieu de casser le verrou en plein tir. Pas de clear ici :
@@ -33121,6 +33184,7 @@ function update(dt) {
     } else {
       const d = Math.hypot(st.x - player.x, st.y - player.y);
       if (d <= SLEIGHT_STOP) {
+        reportMovementAbility("ability_keres_sle", false);
         player.sleightT = 0;
         player.sleightTarget = null;
         player.sleightElapsed = 0;
@@ -37221,6 +37285,17 @@ function restartFrameScheduler() {
   scheduleNextFrame();
 }
 
+let speedGuardRecoveryReloading = false;
+function handleSpeedGuardState(event) {
+  renderSpeedGuard(event.detail?.blocked === true && kickedReason == null);
+  if (event.detail?.recovered === true && !speedGuardRecoveryReloading && kickedReason == null) {
+    speedGuardRecoveryReloading = true;
+    // Resynchronise les aptitudes locales avec leurs echeances serveur.
+    location.reload();
+  }
+}
+window.addEventListener("orbit:speed-guard", handleSpeedGuardState);
+
 function frame(t) {
   const frameCpuStartedAt = performance.now();
   lastFrameStart = t;
@@ -37242,8 +37317,9 @@ function frame(t) {
     if (!linkDead) {
       // Les navigateurs ralentissent les timers des onglets masqués. Découper
       // le temps écoulé garde la simulation stable sans perdre cette durée.
-      let remainingDt = Math.min(realDt, 1.25);
-      do {
+      let remainingDt = netSimulationStep(realDt);
+      renderSpeedGuard(netSpeedGuardActive() && kickedReason == null);
+      if (!netSpeedGuardActive()) do {
         const dt = Math.min(0.033, remainingDt);
         measureGameTask("frame.update", () => update(dt));
         remainingDt -= dt;
@@ -37258,7 +37334,7 @@ function frame(t) {
     // En gate (instance perso) : socket GARDÉ pour tchat + enchères,
     // gameplay partagé coupé (invisible, NPC/PvP 100 % locaux).
     try { setNetInstanceMode(!isZoneMap); } catch {}
-    if (started && !linkDead && netplayLocalUpdateDue()) {
+    if (started && !linkDead && !netSpeedGuardActive() && netplayLocalUpdateDue()) {
       const netPushStartedAt = performance.now();
       try {
       const atkTgt = Target.get();
@@ -37500,12 +37576,8 @@ updateCurrentUserProgress({
     sbl: player.ammo.sbl || 0,
     abl: player.ammo.abl || 0,
   },
-  ammoActive: player.ammo.active || "x1",
+  // Sélections : voir ci-dessus (écriture immédiate, jamais l'autosave).
   rockets: sanitizeRocketsForSave(),
-  rocketActive: player.rocketActive || "r310",
-  rocketAuto: player.rocketAuto === true,
-  launcherActive: player.launcherActive || "eco10",
-  launcherAuto: player.launcherAuto === true,
 });
 }
 
