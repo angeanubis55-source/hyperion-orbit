@@ -11,6 +11,7 @@ let simulationServerAt = null;
 let simulationCredit = 0;
 let simulationRequested = 0;
 let simulationWindowAt = null;
+let simulationAbnormalWindows = 0;
 let simulationBlocked = false;
 export function netSpeedGuardActive() { return simulationBlocked; }
 function setSimulationBlocked(blocked) {
@@ -34,8 +35,12 @@ function observeSimulationClock(at) {
   const seconds = (at - simulationWindowAt) / 1000;
   if (seconds >= 5) {
     const abnormal = simulationRequested > seconds * 3;
-    if (abnormal) setSimulationBlocked(true);
-    if ((abnormal || simulationBlocked) && ws?.readyState === 1) {
+    // Une premiere fenetre peut se terminer sur un vieux paquet retenu
+    // par le reseau. Confirmer sur la suivante avant de suspendre la session.
+    simulationAbnormalWindows = abnormal ? simulationAbnormalWindows + 1 : 0;
+    const confirmed = simulationAbnormalWindows >= 2;
+    if (confirmed) setSimulationBlocked(true);
+    if ((confirmed || simulationBlocked) && ws?.readyState === 1) {
       try { ws.send(JSON.stringify({ t: "clockReport", requestedSeconds: simulationRequested, serverSeconds: seconds })); } catch {}
     }
     simulationRequested = 0;
@@ -331,7 +336,12 @@ const pendingNetBoxClaims = new Set();
 // Echo de soi pour le PvP (PV autoritaires serveur).
 let selfServ = null;
 export function getNetSelf() {
-  return selfServ;
+  if (!selfServ) return null;
+  // Ne pas reappliquer la meme duree a chaque frame pendant un trou reseau.
+  const elapsed = Math.max(0, (performance.now() - selfServ.at) / 1000);
+  return { ...selfServ, slowT: Math.max(0, selfServ.slowT - elapsed),
+    freezeT: Math.max(0, selfServ.freezeT - elapsed), iemT: Math.max(0, selfServ.iemT - elapsed),
+    ishT: Math.max(0, selfServ.ishT - elapsed) };
 }
 // Feed degats allies : { uid, by, total } (chiffres sur la cible, sans effet).
 const netDmgInbox = [];
@@ -1219,6 +1229,7 @@ export function ensureNetplayConnection() {
         // Echo de soi (PvP) : PV autoritaires + date du dernier coup recu.
         if (id && id === myId) {
           selfServ = {
+            dead: p.dead === true,
             hp: Number(p.pvpHp), sh: Number(p.pvpSh), pvpAt: Number(p.pvpAt) || 0,
             pvpFrom: p.pvpFrom != null ? String(p.pvpFrom) : null,
             npcAt: Number(p.npcAt) || 0,

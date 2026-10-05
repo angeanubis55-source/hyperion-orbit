@@ -5,7 +5,7 @@ import vm from "node:vm";
 
 // Execute les vrais handlers du client avec sockets et horloge controles.
 const source = readFileSync(new URL("../SRC/CORE/NETPLAY.js", import.meta.url), "utf8").replace(/^export /gm, "");
-const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
+const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const linkCheck = engine.slice(engine.indexOf("function netLinkAliveInGame()"), engine.indexOf("function setLinkOverlay("));
 
 function client() {
@@ -37,19 +37,63 @@ test("l'horloge x50 ne multiplie ni la simulation ni les recharges", () => {
   const c = client();
   c.sockets[0].receive({ t: "welcome", authed: true, id: "test", at: 10000 });
   let simulated = 0;
-  for (let frame = 1; frame <= 360; frame++) {
+  for (let frame = 1; frame <= 720; frame++) {
     // 60 frames par seconde reelle ; performance.now et Date.now vont x50.
     c.advance(50 * 1000 / 60);
     if (frame % 3 === 0) c.sockets[0].receive({ t: "clock", at: 10000 + frame * 1000 / 60 });
     simulated += c.api.netSimulationStep(50 / 60);
   }
-  assert.ok(simulated <= 6.1 + 1e-8);
-  assert.ok(simulated >= 4.8 && simulated <= 5.1, "le rythme reste normal jusqu'a la suspension");
+  assert.ok(simulated <= 12.1 + 1e-8);
+  assert.ok(simulated >= 9.8 && simulated <= 10.1, "le rythme reste normal jusqu'a la confirmation sur deux fenetres");
   assert.equal(c.api.netSpeedGuardActive(), true);
-  assert.ok(90 - simulated > 83, "une recharge de 90 s ne peut pas finir en six secondes");
-  assert.equal(c.api.netGameTimeMs(), 16000, "les timestamps d'aptitude suivent aussi le serveur");
+  assert.ok(90 - simulated > 79, "une recharge de 90 s ne peut pas finir en douze secondes");
+  assert.equal(c.api.netGameTimeMs(), 22000, "les timestamps d'aptitude suivent aussi le serveur");
   const report = c.sockets[0].sent.find(m => m.t === "clockReport");
   assert.ok(report.requestedSeconds / report.serverSeconds > 3);
+});
+
+test("un paquet ancien apres vingt secondes de lag ne declenche pas la popup anti-triche", () => {
+  const c = client(), socket = c.sockets[0];
+  socket.receive({ t: "welcome", authed: true, id: "test", at: 10000 });
+  for (let frame = 0; frame < 1200; frame++) { c.advance(1000 / 60); c.api.netSimulationStep(1 / 60); }
+  // Les premiers snapshots retenus arrivent avant les derniers, dans l'ordre TCP.
+  socket.receive({ t: "clock", at: 15000 });
+  assert.equal(c.api.netSpeedGuardActive(), false);
+  for (let at = 20000; at <= 30000; at += 5000) socket.receive({ t: "clock", at });
+  for (let frame = 1; frame <= 360; frame++) {
+    c.advance(1000 / 60);
+    if (frame % 3 === 0) socket.receive({ t: "clock", at: 30000 + frame * 1000 / 60 });
+    c.api.netSimulationStep(1 / 60);
+  }
+  assert.equal(c.api.netSpeedGuardActive(), false);
+  assert.equal(socket.sent.some(m => m.t === "clockReport"), false);
+});
+
+test("un gel et un ralentissement recus une seule fois expirent pendant un trou reseau", () => {
+  const c = client(), socket = c.sockets[0];
+  socket.receive({ t: "welcome", authed: true, id: "test", at: 10000 });
+  socket.receive({ t: "snapshot", at: 10000, players: [{ id: "test", freezeT: 2, slowT: 4, slowPct: 50, iemT: 3, ishT: 5 }] });
+  c.advance(1500);
+  assert.equal(c.api.getNetSelf().freezeT, 0.5);
+  assert.equal(c.api.getNetSelf().slowT, 2.5);
+  c.advance(3500);
+  const self = c.api.getNetSelf();
+  for (const key of ["freezeT", "slowT", "iemT", "ishT"]) assert.equal(self[key], 0);
+  assert.equal(c.api.getNetSelf().freezeT, 0, "relire l'etat ne renouvelle pas le gel");
+});
+
+test("une mort NPC recue apres des paquets manques est adoptee une seule fois", () => {
+  const from = engine.indexOf("    const npcDamageSeq =");
+  const to = engine.indexOf("  } catch {}\n  // Multi PvP : pool PET", from);
+  assert.ok(from > 0 && to > from);
+  const context = vm.createContext({ self: { dead: true, npcAt: 20000, npcSeq: 20, npcHpDamage: 10, npcShDamage: 0 },
+    player: { hp: 800, sh: 0, hpMax: 1000, shMax: 0, dead: false }, lastNpcDamageAdoptSeq: 1, lastNpcDamageAdoptAt: 10000,
+    REPAIR: { cooldown: 10 }, enemies: [], die: () => { context.player.dead = true; },
+  });
+  const adopt = () => vm.runInContext(`(() => {${engine.slice(from, to)}})()`, context);
+  adopt(); assert.equal(context.player.dead, true); assert.equal(context.player.hp, 0);
+  context.player.dead = false; context.player.hp = 100;
+  adopt(); assert.equal(context.player.hp, 100, "le meme paquet ne tue pas de nouveau apres reparation");
 });
 
 test("la pause mesure le retour a la normale sans accumuler de temps de rattrapage", () => {

@@ -33991,6 +33991,9 @@ if (hangarSwapFx) {
           player.sh = Math.max(0, Math.min(player.sh, Math.min(player.shMax, Number(self.sh))));
         }
       }
+      // Un trou reseau peut faire manquer plusieurs revisions de degats.
+      // La mort serveur reste definitive meme si seul le dernier coup arrive.
+      if (self.dead === true) player.hp = 0;
       player.attackedT = REPAIR.cooldown;
       try { resetRepairCooldown(); } catch {}
       try {

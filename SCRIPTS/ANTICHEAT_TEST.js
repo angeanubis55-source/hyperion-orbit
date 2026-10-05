@@ -107,7 +107,7 @@ test("des rejets de petits sauts repetes font monter le score et gardent des det
   for (let window = 0; window < 2; window++) {
     for (let i = 1; i <= 100; i++) {
       const now = 10000 + window * 10000 + i * 100;
-      assert.equal(acMoveTake(s, 1000, 0, now).accepted, false);
+      assert.equal(acMoveTake(s, 3000, 0, now).accepted, false);
     }
     const audit = acAuditWindow(s._audit, 20000 + window * 10000);
     assert.equal(audit.score, (window + 1) * 50);
@@ -116,7 +116,7 @@ test("des rejets de petits sauts repetes font monter le score et gardent des det
     assert.equal(s._audit.movementRejected, 0);
   }
   assert.ok(s._security.history.length <= 24);
-  assert.equal(s._security.last.distance, 1000);
+  assert.equal(s._security.last.distance, 3000);
   assert.equal(s._security.last.speed, 400);
   assert.equal(s._audit.score, 100);
 });

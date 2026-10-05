@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { SHIP_PACKS } from "../SHIP/SHIP_PACKS.js";
 import { abilityShipKeyFor } from "../SHIP/SHIP_ABILITIES.js";
 import { playerSlowMult } from "../SRC/CORE/FRAME_SYSTEMS.js";
+import { acAuditWindow } from "./ANTICHEAT.js";
 import { movementSpeed, movementWindow, takeMovement, useMovementAbility, stopMovementAbility, syncMovementAbility, usePhaseOut } from "./MOVEMENT_RULES.js";
 
 const profile = (ship = "phoenixbleu") => ({ shipId: SHIP_PACKS.find(p => abilityShipKeyFor(p.id) === ship || p.id.toLowerCase() === ship)?.id || ship,
@@ -55,6 +56,35 @@ test("les coordonnees arrondies et les orbites restent valides a plusieurs caden
 
 test("un retard reseau de deux secondes conserve le deplacement legitime", () => {
   assert.equal(move(state(), profile(), 800, 0, 12000).accepted, true);
+});
+
+test("une connexion irreguliere conserve cinq secondes de mouvement sans signalement", () => {
+  const s = state(), p = profile();
+  s._audit = { t: 10000, score: 0 };
+  let now = 10000, x = 0;
+  for (const delay of [1115, 3302, 2111, 4195, 1123, 5000, 1053]) {
+    now += delay; x += p.speed * delay / 1000;
+    assert.equal(move(s, p, Math.round(x), 0, now).accepted, true, `${delay} ms`);
+  }
+  assert.equal(s._security, undefined);
+  assert.equal(acAuditWindow(s._audit, now).score, 0);
+});
+
+test("les positions en attente se rattrapent en rafale sans multiplier le budget", () => {
+  const s = state(), p = profile();
+  for (let x = 200; x <= 1800; x += 200) assert.equal(move(s, p, x, 0, 14500).accepted, true);
+  assert.equal(move(s, p, 2200, 0, 14500).accepted, false);
+});
+
+test("un gel ou une mort desynchronises corrigent la position sans dossier de triche", t => {
+  t.mock.method(console, "log", () => {});
+  for (const blocked of [{ freezeUntil: 50000 }, { hp: 0, pvpDead: true }]) {
+    const s = Object.assign(state(), blocked, { _audit: { t: 10000, score: 0 } });
+    for (let i = 1; i <= 20; i++) assert.equal(move(s, profile(), 682, 0, 10000 + i * 1100).accepted, false);
+    assert.equal(s.x, 0);
+    assert.equal(s._security, undefined);
+    assert.equal(acAuditWindow(s._audit, 32000).score, 0);
+  }
 });
 
 test("un bonus forge ou emprunte a une autre coque est refuse", () => {

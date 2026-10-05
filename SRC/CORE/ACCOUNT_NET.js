@@ -12,6 +12,7 @@ const CUR_KEY = "orbit_current_user";
 let memUser = null;
 let memToken = null;
 let saveTimer = null;
+let saveInFlight = null;
 let pendingGalaxyGates = null;
 function cachePendingGalaxyGates() {
   if (memUser?.id) lsSet(`orbit_pending_gg:${memUser.id}`, pendingGalaxyGates ? JSON.stringify(pendingGalaxyGates) : null);
@@ -117,7 +118,7 @@ export function netStore(list) {
     if (JSON.stringify(mine.galaxyGates) !== JSON.stringify(memUser?.galaxyGates)) {
       pendingGalaxyGates = mine.galaxyGates ? structuredClone(mine.galaxyGates) : null;
     }
-    memUser = JSON.parse(JSON.stringify(mine, (k, v) => (v === Infinity ? -1 : v)));
+    memUser = retainPendingSelections(JSON.parse(JSON.stringify(mine, (k, v) => (v === Infinity ? -1 : v))));
     cachePendingGalaxyGates();
     writeCache(memUser);
     schedulePush();
@@ -239,19 +240,71 @@ export function noteNetPetFuelConsumed(amount) {
 // un adopt entre l'écriture immédiate et le push accepté restaure
 // l'ancienne sélection (rollback du choix, puis repush = perte définitive).
 const pendingSelections = {};
+const pendingSelectionVersions = {};
+const SELECTION_KEYS = ["ammoActive", "rocketActive", "launcherActive", "rocketAuto", "launcherAuto", "droneFormation", "droneFormationAt"];
+let selectionVersion = 0;
+function cachePendingSelections() {
+  if (!memUser?.id) return;
+  lsSet(`orbit_pending_selections:${memUser.id}`, Object.keys(pendingSelections).length ? JSON.stringify(pendingSelections) : null);
+}
+
 export function noteNetSelection(patch = null) {
   if (!netActive()) return;
   if (!patch || typeof patch !== "object") return;
-  for (const key of ["ammoActive", "rocketActive", "launcherActive", "rocketAuto", "launcherAuto", "droneFormation", "droneFormationAt"]) {
+  const version = ++selectionVersion;
+  for (const key of SELECTION_KEYS) {
     if (patch[key] === undefined) continue;
     pendingSelections[key] = patch[key];
+    pendingSelectionVersions[key] = version;
+  }
+  cachePendingSelections();
+}
+
+function retainPendingSelections(user) {
+  if (!user) return user;
+  const sel = pendingSelections;
+  if (sel.ammoActive !== undefined) {
+    user.ammoActive = sel.ammoActive;
+    user.ammo ||= {};
+    user.ammo.active = sel.ammoActive;
+  }
+  for (const key of ["rocketActive", "launcherActive", "rocketAuto", "launcherAuto"]) {
+    if (sel[key] !== undefined) user[key] = sel[key];
+  }
+  if (sel.droneFormation !== undefined || sel.droneFormationAt !== undefined) {
+    user.drones ||= {};
+    if (sel.droneFormation !== undefined) user.drones.activeFormation = sel.droneFormation;
+    if (sel.droneFormationAt !== undefined) user.drones.lastFormationChangeAt = sel.droneFormationAt;
+  }
+  return user;
+}
+
+function restorePendingSelections() {
+  for (const key of Object.keys(pendingSelections)) delete pendingSelections[key];
+  for (const key of Object.keys(pendingSelectionVersions)) delete pendingSelectionVersions[key];
+  try { noteNetSelection(JSON.parse(lsGet(`orbit_pending_selections:${memUser.id}`) || "null")); } catch {}
+  retainPendingSelections(memUser);
+  if (Object.keys(pendingSelections).length) {
+    // La selection peut dater d'un clic juste avant fermeture, donc sa
+    // revision doit depasser celle du cache charge au demarrage.
+    memUser.revision = Math.max(0, Number(memUser.revision) || 0) + 1;
+    schedulePush();
   }
 }
 
-function clearPendingSelections(snapshot) {
-  for (const key of Object.keys(snapshot || {})) {
-    if (key in pendingSelections) delete pendingSelections[key];
+function clearPendingSelections(versions, snapshot, acceptedUser) {
+  for (const key of Object.keys(versions || {})) {
+    if (pendingSelectionVersions[key] !== versions[key]) continue;
+    const actual = key === "droneFormation" ? acceptedUser?.drones?.activeFormation
+      : key === "droneFormationAt" ? acceptedUser?.drones?.lastFormationChangeAt : acceptedUser?.[key];
+    const sent = key === "droneFormation" ? snapshot?.drones?.activeFormation
+      : key === "droneFormationAt" ? snapshot?.drones?.lastFormationChangeAt : snapshot?.[key];
+    // Seule une confirmation de ce choix precis retire l'attente.
+    if (actual !== sent) continue;
+    delete pendingSelections[key];
+    delete pendingSelectionVersions[key];
   }
+  cachePendingSelections();
 }
 // Gains locaux pas encore acceptés (crédits / ressources NON-minerais) :
 // rejoués en AJOUT sur le canon en cas de 409. Les minerais, compteurs et
@@ -337,6 +390,7 @@ function resetPendingPurchases() {
   pendingGainedCredits = 0;
   for (const k of Object.keys(pendingGainedResources)) delete pendingGainedResources[k];
   for (const k of Object.keys(pendingSelections)) delete pendingSelections[k];
+  for (const k of Object.keys(pendingSelectionVersions)) delete pendingSelectionVersions[k];
   for (const k of Object.keys(pendingUpgradeCharges)) delete pendingUpgradeCharges[k];
 }
 
@@ -420,6 +474,7 @@ export function bootNetFromCache() {
     if (!cached) return false;
     memToken = tok;
     memUser = cached;
+    restorePendingSelections();
     restorePendingGalaxyGates();
     observeHangarSelection(memUser);
     if (!refreshStarted) {
@@ -437,6 +492,7 @@ export function enterNetMode(token, user) {
   memToken = String(token || "");
   memUser = user && typeof user === "object" ? user : null;
   if (!memToken || !memUser) return false;
+  restorePendingSelections();
   restorePendingGalaxyGates();
   observeHangarSelection(memUser);
   lsSet(TOKEN_KEY, memToken);
@@ -508,6 +564,8 @@ export async function apiPseudoFree(pseudo) {
 
 export async function apiAccountIdentity(kind, value, currentPassword) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  const token = memToken;
+  const userId = memUser.id;
   const allowed = new Set(["pseudo", "email", "password"]);
   const key = String(kind || "").toLowerCase();
   if (!allowed.has(key)) return { ok: false, error: "Modification inconnue." };
@@ -515,10 +573,15 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
     const out = await api(`/api/account/${key}`, {
       method: "POST",
       body: { value, currentPassword },
-      token: memToken,
+      token,
     });
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     if (out?.ok && out.user) {
-      memUser = out.user;
+      memUser = retainPendingSelections(out.user);
+      if (Object.keys(pendingSelections).length) {
+        memUser.revision = Math.max(0, Number(memUser.revision) || 0) + 1;
+        schedulePush();
+      }
       writeCache(memUser);
       try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "account" } })); } catch {}
     }
@@ -746,9 +809,23 @@ function mergeProgressiveFields(prev, next) {
 
 async function pushNow() {
   saveTimer = null;
+  if (saveInFlight) {
+    // Une seule sauvegarde en vol : achats, pagehide et timer ne doivent
+    // pas acquitter les memes changements avec des reponses concurrentes.
+    if (netActive()) schedulePush();
+    return saveInFlight;
+  }
+  saveInFlight = pushSnapshot();
+  try { return await saveInFlight; }
+  finally { saveInFlight = null; }
+}
+
+async function pushSnapshot() {
   if (!netActive()) return { ok: false };
   const token = memToken;
-  const snapshot = memUser;
+  // getCurrentUserFull/saveUser peuvent muter memUser pendant la requete.
+  // Le contenu et la revision envoyes doivent rester immuables.
+  const snapshot = structuredClone(memUser);
   const galaxyGatesAtSend = JSON.stringify(snapshot.galaxyGates);
   const purchaseCreditsAtSend = pendingPurchaseCredits;
   const purchaseStockAtSend = JSON.parse(JSON.stringify(pendingPurchaseStock));
@@ -764,16 +841,17 @@ async function pushNow() {
   const consumedPetFuelAtSend = Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0));
   const gainedCreditsAtSend = Math.max(0, Math.floor(Number(pendingGainedCredits) || 0));
   const gainedResourcesAtSend = { ...pendingGainedResources };
-  const selectionsAtSend = { ...pendingSelections };
+  const selectionsAtSend = { ...pendingSelectionVersions };
   const consumedOresAtSend = JSON.parse(JSON.stringify(pendingConsumedStock.ores || {}));
   const upgradeChargesAtSend = JSON.parse(JSON.stringify(pendingUpgradeCharges));
   let out = null;
   try {
     out = await api("/api/save", { method: "POST", body: { user: snapshot }, token });
   } catch {
-    schedulePush();
+    if (netActive() && memToken === token) schedulePush();
     return { ok: false, error: "Reseau." };
   }
+  if (!netActive() || memToken !== token || String(memUser.id) !== String(snapshot.id)) return { ok: false, ignored: true };
   if (out && out.ok) {
     if (JSON.stringify(pendingGalaxyGates) === galaxyGatesAtSend) pendingGalaxyGates = null;
     cachePendingGalaxyGates();
@@ -787,7 +865,7 @@ async function pushNow() {
     pendingConsumedPetFuel = Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0) - consumedPetFuelAtSend);
     pendingGainedCredits = Math.max(0, Math.floor(Number(pendingGainedCredits) || 0) - gainedCreditsAtSend);
     clearPendingGainedResources(gainedResourcesAtSend);
-    clearPendingSelections(selectionsAtSend);
+    clearPendingSelections(selectionsAtSend, snapshot, out.user);
     // Minerais dépensés couverts par le snapshot accepté : on ne solde que
     // ce qui était en attente à l'envoi (une nouvelle dépense en vol reste).
     for (const [id, sent] of Object.entries(consumedOresAtSend || {})) {
@@ -811,7 +889,11 @@ async function pushNow() {
       if (liveRev <= sentRev) {
         // Aucun changement local pendant la requete : la reponse peut devenir
         // le nouvel etat canonique.
-        memUser = retainPendingGalaxyGates(out.user);
+        memUser = retainPendingSelections(retainPendingGalaxyGates(out.user));
+        if (Object.keys(pendingSelections).length) {
+          memUser.revision = Math.max(0, Number(memUser.revision) || 0) + 1;
+          schedulePush();
+        }
         writeCache(memUser);
       } else {
         // Une recompense (notamment le bonus de fin de Galaxy Gate) a ete
@@ -972,27 +1054,10 @@ async function pushNow() {
         }
         for (const k of Object.keys(pendingGainedResources)) delete pendingGainedResources[k];
       }
-      // Sélections en attente : réécrites sur le canon (choix les plus
-      // récents gagnent), puis soldées (baked dans memUser qui sera poussé).
-      if (Object.keys(pendingSelections).length) {
-        const sel = pendingSelections;
-        if (sel.ammoActive !== undefined) {
-          memUser.ammoActive = sel.ammoActive;
-          memUser.ammo ||= {};
-          memUser.ammo.active = sel.ammoActive;
-        }
-        if (sel.rocketActive !== undefined) memUser.rocketActive = sel.rocketActive;
-        if (sel.launcherActive !== undefined) memUser.launcherActive = sel.launcherActive;
-        if (sel.rocketAuto !== undefined) memUser.rocketAuto = sel.rocketAuto === true;
-        if (sel.launcherAuto !== undefined) memUser.launcherAuto = sel.launcherAuto === true;
-        if (sel.droneFormation !== undefined) {
-          memUser.drones ||= {};
-          memUser.drones.activeFormation = sel.droneFormation;
-          if (sel.droneFormationAt !== undefined) memUser.drones.lastFormationChangeAt = sel.droneFormationAt;
-        }
-        for (const k of Object.keys(pendingSelections)) delete pendingSelections[k];
-      }
     }
+    // Les choix restent en attente jusqu'a confirmation, y compris lors
+    // d'une correction admin. Les totaux serveur restent ceux adoptes.
+    retainPendingSelections(memUser);
     memUser.revision = Math.max(
       Math.floor(Number(memUser.revision) || 0),
       Math.floor(Number(out.user.revision) || 0),
@@ -1009,7 +1074,7 @@ async function pushNow() {
   }
   if (out && out.user && typeof out.user === "object") {
     // Conflit pseudo/email : le serveur tranche, on adopte le canon.
-    memUser = out.user;
+    memUser = retainPendingSelections(out.user);
     writeCache(memUser);
   }
   return out || { ok: false };
@@ -1024,12 +1089,15 @@ export async function flushNetUser() {
 
 async function refreshNetUser() {
   if (!netActive()) return;
+  const token = memToken;
+  const userId = memUser.id;
   let out = null;
   try {
-    out = await api("/api/me", { token: memToken });
+    out = await api("/api/me", { token });
   } catch {
     return;
   }
+  if (!netActive() || memToken !== token || memUser.id !== userId) return;
   if (!out || !out.ok || !out.user) {
     if (out && out.status === 401) enterLocalFallback();
     return;
@@ -1047,6 +1115,11 @@ async function refreshNetUser() {
       ? out.user
       : mergeProgressiveFields(memUser, out.user);
     retainPendingGalaxyGates(memUser);
+    retainPendingSelections(memUser);
+    if (Object.keys(pendingSelections).length) {
+      memUser.revision = Math.max(srvRev, Number(memUser.revision) || 0) + 1;
+      schedulePush();
+    }
     writeCache(memUser);
     try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "refresh" } })); } catch {}
   }

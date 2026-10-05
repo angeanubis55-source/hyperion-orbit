@@ -2686,7 +2686,7 @@ setInterval(() => {
             s.npcDamage += Math.max(0, Number(result?.total) || 0);
             s.npcHpDamage += Math.max(0, Number(result?.hp) || 0);
             s.npcShDamage += Math.max(0, Number(result?.sh) || 0);
-            if (s.hp <= 0) s.pvpDead = true;
+            if (s.hp <= 0) { s.pvpDead = true; s.dead = true; }
           }
           for (const s of npcHitVictims) {
             s.npcSeq = Math.max(0, Math.floor(Number(s.npcSeq) || 0)) + 1;

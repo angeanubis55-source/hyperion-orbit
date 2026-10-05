@@ -110,7 +110,7 @@ test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeo
   const speedClosed = once(speed.ws, "close");
   // Des sauts frequents, tous sous l'ancien seuil de telemetry de 4000 u.
   const speedTimer = setInterval(() => {
-    if (speed.ws.readyState === WebSocket.OPEN) speed.send({ ...speed.pos, x: speed.pos.x + 2000, vx: 1e9, moving: true, mx: 99999, my: 99999, time: 1e15 });
+    if (speed.ws.readyState === WebSocket.OPEN) speed.send({ ...speed.pos, x: speed.pos.x + 3000, vx: 1e9, moving: true, mx: 99999, my: 99999, time: 1e15 });
   }, 100);
   t.after(() => clearInterval(speedTimer));
   const clockAccount = await makeAccount("anticheat-clock50");
@@ -136,8 +136,8 @@ test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeo
   }
   assert.equal(clockDiagnostic?.score, 0, "une declaration client seule ne sanctionne pas");
   assert.equal(clockDiagnostic?.security.last.declared, true);
-  assert.equal(speedDiagnostic?.security.last.distance, 2000, "les petits sauts sont visibles avant l'audit");
-  assert.ok(speedDiagnostic.security.last.allowedDistance < 2000);
+  assert.equal(speedDiagnostic?.security.last.distance, 3000, "les sauts sous 4000 u sont visibles avant l'audit");
+  assert.ok(speedDiagnostic.security.last.allowedDistance < 3000);
   clockPeer.ws.close(); await once(clockPeer.ws, "close");
   assert.equal((await api("/api/admin/cheat", { headers: { "x-admin-token": password } })).suspects.find(p => p.id === clockPeer.id)?.online, false);
   const clockReconnected = await connect(clockAccount);
@@ -287,5 +287,5 @@ test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeo
   const held = (await api("/api/admin/cheat", { headers: { "x-admin-token": password } })).holds.find(h => h.pseudo === "anticheat-speed50");
   assert.ok(held, "les rejets repetes aboutissent a un dossier en examen");
   assert.ok(held.evidence.score >= 100);
-  assert.equal(held.evidence.security.last.distance, 2000);
+  assert.equal(held.evidence.security.last.distance, 3000);
 });

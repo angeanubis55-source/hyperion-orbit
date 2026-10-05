@@ -6,6 +6,7 @@ const SERVER_VMAX = 1500;
 const FAR_JUMP_NO_HEAL = 4000;
 const MOVE_BUCKET_CAP = 8000;
 const MOVE_BUCKET_REFILL = 1500;
+const MOVE_NETWORK_WINDOW_MS = 5000;
 const AC_HIT_CAP = 240, AC_HIT_REFILL = 80;
 const AC_DMG_CAP = 3e9, AC_DMG_REFILL = 250e6;
 const AC_PVP_HIT_CAP = 240, AC_PVP_HIT_REFILL = 80;
@@ -138,7 +139,7 @@ export function acMoveTake(state, nx, ny, nowMs, allowance = null) {
     let buck = Number(state.moveBuck);
     if (!Number.isFinite(buck)) buck = 20;
     const cap = refill === 0 && !(allowance?.distance > 0) ? 0
-      : Math.min(MOVE_BUCKET_CAP * 2, Math.max(20, buck, (allowance?.capacitySpeed ?? refill) * 2 + 20));
+      : Math.min(MOVE_BUCKET_CAP * 2, Math.max(20, buck, (allowance?.capacitySpeed ?? refill) * MOVE_NETWORK_WINDOW_MS / 1000 + 20));
     const realDt = Math.max(0, Math.min(5, (nowMs - Number(state.moveBuckT || 0)) / 1000));
     state.moveBuckT = nowMs;
     // Une fin de bonus ne supprime pas la distance deja autorisee pour les
@@ -161,6 +162,9 @@ export function acMoveTake(state, nx, ny, nowMs, allowance = null) {
       return { x: nx, y: ny, accepted: true };
     }
     state.moveBuck = buck; // conserver la recharge, même après un rejet
+    // Mort/gel imposes par le serveur : une position encore en transit
+    // n'est pas une preuve de speed hack. La correction reste obligatoire.
+    if (allowance?.blockedReason) return { ...keep, accepted: false };
     acRecordViolation(state, "movement", nowMs, { reason: "Distance superieure au budget serveur",
       x: keep.x, y: keep.y, requestedX: nx, requestedY: ny,
       distance: Math.round(jumpDist), allowedDistance: Math.round(Math.max(0, buck + debtLimit)),
@@ -221,7 +225,7 @@ export function acAuditWindow(audit, nowMs, teleStrike = 0) {
 
 // Export groupé (fin de fichier : toutes les consts sont initialisées).
 export const ANTICHEAT = {
-  SERVER_VMAX, FAR_JUMP_NO_HEAL, MOVE_BUCKET_CAP, MOVE_BUCKET_REFILL,
+  SERVER_VMAX, FAR_JUMP_NO_HEAL, MOVE_BUCKET_CAP, MOVE_BUCKET_REFILL, MOVE_NETWORK_WINDOW_MS,
   AC_HIT_CAP, AC_HIT_REFILL, AC_DMG_CAP, AC_DMG_REFILL,
   AC_PVP_HIT_CAP, AC_PVP_HIT_REFILL, AC_PVP_DMG_CAP, AC_PVP_DMG_REFILL,
   HEAL_BUDGET_RATE, HEAL_BUDGET_CAP, REVIVE_REBASE_MAX, PET_LEASH,

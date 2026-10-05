@@ -93,10 +93,10 @@ try {
   const normal = await game.evaluate(() => ({ time: simulationSeconds, shots, abilityCd }));
   assert.ok(normal.time >= 2.7 && normal.time <= 3.5, JSON.stringify(normal));
   await game.evaluate(() => setClockFactor(50));
-  await game.waitForTimeout(7000);
+  await game.waitForTimeout(12000);
   const accelerated = await game.evaluate(() => ({ time: simulationSeconds, shots, abilityCd }));
-  assert.ok(accelerated.time - normal.time >= 1.5 && accelerated.time - normal.time <= 2.8, JSON.stringify(accelerated));
-  assert.ok(accelerated.shots <= 12, JSON.stringify(accelerated));
+  assert.ok(accelerated.time - normal.time >= 6.5 && accelerated.time - normal.time <= 7.8, JSON.stringify(accelerated));
+  assert.ok(accelerated.shots <= 22, JSON.stringify(accelerated));
   assert.ok(accelerated.abilityCd > 79, JSON.stringify(accelerated));
   assert.equal(await game.evaluate(() => netSpeedGuardActive()), true);
   const panel = game.locator("#speedGuardOverlay");

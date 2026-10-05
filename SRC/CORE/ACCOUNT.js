@@ -1840,9 +1840,9 @@ export function setCurrentUserDroneFormation(formationId) {
   if (cooldownLeft > 0) return { ok: false, error: `Formation disponible dans ${(cooldownLeft / 1000).toFixed(1)} s.` };
   u.drones.activeFormation = formationId;
   u.drones.lastFormationChangeAt = Date.now();
-  saveUser(u);
   // Sélection persistée : notée pour survivre à un 409 (replay sur le canon).
   noteNetSelection({ droneFormation: formationId, droneFormationAt: u.drones.lastFormationChangeAt });
+  saveUser(u);
   return { ok: true, user: u, formation };
 }
 

@@ -1,5 +1,5 @@
 import { abilityShipKeyFor, getAbilitiesForShip } from "../SHIP/SHIP_ABILITIES.js";
-import { acMoveTake, acRecordViolation } from "./ANTICHEAT.js";
+import { ANTICHEAT, acMoveTake, acRecordViolation } from "./ANTICHEAT.js";
 
 // Valeurs des aptitudes effectivement branchees dans FRAME_SYSTEMS.
 const rules = {
@@ -43,7 +43,7 @@ export function movementSpeed(state, profile, now) {
 // Integrer les changements de vitesse avec l'horloge serveur : un bonus
 // expire ne donne pas sa vitesse au temps suivant (ni au temps precedent).
 export function movementWindow(state, profile, now) {
-  const from = Math.max(now - 2000, Math.min(now, Number(state.moveBuckT ?? now)));
+  const from = Math.max(now - ANTICHEAT.MOVE_NETWORK_WINDOW_MS, Math.min(now, Number(state.moveBuckT ?? now)));
   const marks = [from, now];
   for (const time of [state._moveEffect?.from, state._moveEffect?.until, state.slowUntil, state.freezeUntil]) {
     if (time > from && time < now) marks.push(time);
@@ -56,7 +56,9 @@ export function movementWindow(state, profile, now) {
     distance += speed * (marks[i] - marks[i - 1]) / 1000;
   }
   // 1 % pour les coordonnees arrondies ; aucune marge permanente de 50 %.
-  return { distance: distance * 1.01, capacitySpeed };
+  const blockedReason = state.pvpDead || !(state.hp > 0) ? "dead"
+    : now < Number(state.freezeUntil || 0) ? "frozen" : null;
+  return { distance: distance * 1.01, capacitySpeed, blockedReason };
 }
 
 export function takeMovement(state, profile, x, y, now, target = null) {
