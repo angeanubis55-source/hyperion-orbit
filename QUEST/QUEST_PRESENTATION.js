@@ -12,6 +12,7 @@ import {
 } from "./QUEST_TYPES.js";
 import { getQuestExperienceReward, getQuestHonorReward } from "../SRC/CORE/PROGRESSION.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
+import { getResourceName } from "../SRC/DATA/RESOURCES.js";
 import { SPRITE_TRIM } from "./SPRITE_TRIM.js";
 
 // Dimensions du contenu visible (sans les marges transparentes du PNG).
@@ -55,16 +56,38 @@ function treeThumbSize(source) {
   return normalizedSpriteSize(source, TREE_THUMB_TARGET);
 }
 
+const QUEST_AMMO_LABELS = { x1: "LCB-10", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x6: "RSB-75", sab: "SAB-50", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL" };
+const QUEST_LASER_LABELS = { laser_prl: "Laser Prometheus" };
+function questLaserLabel(id) {
+  if (QUEST_LASER_LABELS[id]) return QUEST_LASER_LABELS[id];
+  return String(id || "Laser").replace(/^laser_?/i, "Laser ").replace(/[_-]+/g, " ").trim() || "Laser";
+}
+
 function rewardRows(quest) {
-  const ammo = Object.entries(quest.reward?.ammo || {}).filter(([, amount]) => amount > 0).map(([type, amount]) => [`Munitions ${type === "x6" ? "RSB-75" : type.toUpperCase()}`, formatInteger(amount)]);
-  const galaxyEnergy = Math.max(0, Math.floor(Number(quest.reward?.galaxyEnergy) || 0));
-  return [
-    ["Crédits", formatInteger(quest.reward.credits)],
-    ["Expérience", formatInteger(getQuestExperienceReward(quest))],
-    ["Honneur", formatInteger(getQuestHonorReward(quest))],
-    ...ammo,
-    ...(galaxyEnergy ? [["Énergies Galaxy Gate", formatInteger(galaxyEnergy)]] : []),
-  ];
+  const r = quest.reward || {};
+  const rows = [];
+  // Montants à 0 : on n'affiche rien (ex : quêtes BL sans crédits).
+  const credits = Math.max(0, Math.floor(Number(r.credits) || 0));
+  if (credits > 0) rows.push(["Crédits", formatInteger(credits)]);
+  const exp = Math.max(0, Math.floor(Number(getQuestExperienceReward(quest)) || 0));
+  if (exp > 0) rows.push(["Expérience", formatInteger(exp)]);
+  const honor = Math.max(0, Math.floor(Number(getQuestHonorReward(quest)) || 0));
+  if (honor > 0) rows.push(["Honneur", formatInteger(honor)]);
+  for (const [type, amount] of Object.entries(r.ammo || {})) {
+    if (!(Number(amount) > 0)) continue;
+    rows.push([`Munitions ${QUEST_AMMO_LABELS[type] || String(type).toUpperCase()}`, formatInteger(amount)]);
+  }
+  for (const [id, qty] of Object.entries(r.lasers || {})) {
+    if (!(Number(qty) > 0)) continue;
+    rows.push([questLaserLabel(id), `${formatInteger(qty)}x`]);
+  }
+  for (const [id, qty] of Object.entries(r.resources || {})) {
+    if (!(Number(qty) > 0)) continue;
+    rows.push([getResourceName(id, qty), formatInteger(qty)]);
+  }
+  const galaxyEnergy = Math.max(0, Math.floor(Number(r.galaxyEnergy) || 0));
+  if (galaxyEnergy > 0) rows.push(["Énergies Galaxy Gate", formatInteger(galaxyEnergy)]);
+  return rows;
 }
 
 function rewardCard(quest) {
@@ -88,12 +111,16 @@ function objectiveLabel(objective) {
 
 // Libellé d'Aperçu : inclut le nombre ("Éliminer 5 Boss Streuners").
 // Les libellés qui ont déjà un nombre ("Éliminer 1000 X", "Visiter la carte…") sont inchangés.
+// Sinon on remplace le premier article ("des", "du", "de la", "le", "un"...)
+// par le montant : couvre toutes les formulations ("Collecter du Palladium"
+// -> "Collecter 50 Palladium", "Détruire le Mindfire" -> "Détruire 1 Mindfire").
 function apercuObjectiveLabel(objective) {
   const base = objectiveLabel(objective);
   if (/\d/.test(base)) return base;
   const amount = Math.max(1, Math.floor(Number(objective?.amount) || 1));
-  if (!/\bdes\b/i.test(base)) return base;
-  return base.replace(/\bdes\b/i, `${amount}`);
+  const pattern = /\b(des|du|de la|de l'|de|le|la|les|l'|un|une)\b/i;
+  if (!pattern.test(base)) return base;
+  return base.replace(pattern, `${amount}`);
 }
 
 function gateAdvice(type) {
