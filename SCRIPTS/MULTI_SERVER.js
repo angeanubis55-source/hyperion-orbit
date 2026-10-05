@@ -5,23 +5,126 @@ import { dirname, extname, join, normalize, resolve } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
+import {
+  ANTICHEAT as AC,
+  acBucket,
+  acStrike,
+  acHealTake,
+  acMoveTake,
+  acAuditWindow,
+  acPoolResize,
+} from "./ANTICHEAT.js";
+const {
+  SERVER_VMAX,
+  AC_HIT_CAP, AC_HIT_REFILL, AC_DMG_CAP, AC_DMG_REFILL,
+  AC_PVP_HIT_CAP, AC_PVP_HIT_REFILL, AC_PVP_DMG_CAP, AC_PVP_DMG_REFILL,
+  HEAL_BUDGET_RATE, HEAL_BUDGET_CAP,
+  PET_LEASH,
+} = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminShipFamilies } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminShipFamilies } from "./ACCOUNT_SERVER.js";
+import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
+import { takeMovement, useMovementAbility, syncMovementAbility, movementSpeed } from "./MOVEMENT_RULES.js";
+import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival, respawnMap } from "./MAP_RULES.js";
+import { getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
+import { GROUP_BOOSTER_BONUS } from "../SRC/DATA/BOOSTERS.js";
+
+const serverMaps = await loadServerMaps();
+const securityStates = new Map();
+const accountSockets = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [pid, saved] of securityStates) {
+    if (!accountSockets.has(pid) && now - Number(saved.updatedAt || 0) > 24 * 3600_000) securityStates.delete(pid);
+  }
+}, 60_000).unref?.();
+
+function refreshCombatProfile(state, accountId, map, message = {}) {
+  if (!accountId) return null;
+  const now = Date.now();
+  const requestedConfig = Number(message.config) === 2 ? 2 : Number(message.config) === 1 ? 1 : null;
+  if (!state._account || now - Number(state._accountAt || 0) >= 1000
+    || (message.shipId && message.shipId !== state.shipId)) {
+    state._account = getAccountGameplayData(accountId);
+    state._accountAt = now;
+  }
+  if (!state._account) return null;
+  if (requestedConfig && requestedConfig !== state._config && now >= Number(state._configCdUntil || 0)) {
+    state._config = requestedConfig;
+    state._configCdUntil = now + 5000;
+  }
+  if (!state._combat || state._combatRev !== state._account.revision || state._combatMap !== map
+    || (state._config && state._combat.config !== state._config)
+    || now - Number(state._combatAt || 0) >= 1000) {
+    const groupBoosters = {};
+    for (const peer of socialDescribeGroup(state.id, { describe: describePeer })?.members || []) {
+      if (peer.id === state.id || peer.online === false || peer.map !== map) continue;
+      const member = findPeerState(peer.id);
+      for (const id of Object.keys(GROUP_BOOSTER_BONUS)) {
+        if (now < Number(member?._account?.boosters?.active?.[id] || 0)) groupBoosters[id] = (groupBoosters[id] || 0) + 1;
+      }
+    }
+    const profile = combatProfile(state._account, map, state._config, groupBoosters);
+    if (!profile) return null;
+    const prior = state._combat;
+    const shields = state._configShields || (state._configShields = {});
+    const key = `${profile.hangarId}:${profile.config}`;
+    if (prior) shields[`${prior.hangarId}:${prior.config}`] = Math.max(0, Number(state.sh) || 0);
+    acPoolResize(state, profile.hpMax, profile.shMax);
+    if (prior && (prior.hangarId !== profile.hangarId || prior.config !== profile.config) && !state.pvpDead && state.hp > 0) {
+      state.sh = Math.min(profile.shMax, shields[key] ?? profile.shMax);
+    }
+    if (prior && prior.shipId !== profile.shipId) state._swapUntil = now + 3000;
+    state._combat = profile;
+    state._config = profile.config;
+    state._combatRev = state._account.revision;
+    state._combatMap = map;
+    state._combatAt = now;
+    state.shipId = profile.shipId;
+    state.absorb = profile.absorb;
+    state.evade = profile.evade;
+    state.range = profile.range;
+    state.vmax = profile.speed;
+    state.moveSpeed = profile.speed;
+    state.b2 = Object.keys(GROUP_BOOSTER_BONUS).filter(id => now < Number(state._account.boosters?.active?.[id] || 0));
+  }
+  state.hswap = Math.max(0, (Number(state._swapUntil || 0) - now) / 1000);
+  return state._combat;
+}
 
 const root = resolve(process.cwd());
 const portArg = process.argv.find((arg) => arg.startsWith("--port="))?.slice(7);
 const PORT = Number(portArg || process.env.PORT || 8080) || 8080;
 const PUBLIC_DIRS = new Set(["ASSETS", "AUDIO", "COMBAT", "DRONE", "MAPS", "NPC", "PET", "PUBLIC", "QUEST", "SHIP", "SRC", "UI"]);
 const PUBLIC_FILES = new Set(["index.html", "admin.html", "style.css", "ASSETS_MANIFEST.json"]);
-// Les vaisseaux speciaux (notamment Police) depassent largement l'ancien
-// plafond de 50 M. Le pool combat serveur doit couvrir leurs vraies stats,
-// sinon le premier impact remplace leur bouclier par le pool tronque.
-const MAX_PLAYER_COMBAT_LAYER = 1_000_000_000;
+// Anti-cheat : voir SCRIPTS/ANTICHEAT.js (module pur, testable).
+// Les constantes/helpers locaux ont migré là-bas.
+
+// Compteurs d'audit anticheat par joueur (strictement serveur : kills
+// crédités, boxes acceptées, dégâts appliqués). Fenêtre 10 s, voir
+// acAuditScore dans ANTICHEAT.js.
+function audOf(state) {
+  const a = state && state._audit && typeof state._audit === "object" ? state._audit : null;
+  if (a) return a;
+  const fresh = { t: Date.now(), kills: 0, boxes: 0, dmg: 0, score: 0, strikes: 0, last: null, teleAt: 0 };
+  if (state && typeof state === "object") state._audit = fresh;
+  return fresh;
+}
+function findPeerState(pid) {
+  const id = String(pid || "");
+  if (!id) return null;
+  for (const [, room] of rooms) {
+    const e = room.get(id);
+    if (e && e.state) return e.state;
+  }
+  const ie = instancePeers.get(id);
+  return ie && ie.state ? ie.state : null;
+}
 
 function publicRelativePath(pathname) {
   const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
@@ -192,6 +295,44 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, bans: [...bans.values()] });
     return true;
   }
+  if (pathname === "/api/admin/cheat" && request.method === "GET") {
+    // Anticheat : dossiers gelés en attente de modération + suspects live
+    // (score d'audit > 0). Libérer = unban existant ; bannir définitif =
+    // ban existant (écrase le gel).
+    getActiveBan("", "");
+    const holds = [];
+    for (const [key, b] of bans) {
+      if (!b || b.cheatHold !== true) continue;
+      holds.push({
+        key, pseudo: String(b.pseudo || ""), reason: String(b.reason || ""),
+        at: Number(b.at) || 0,
+        evidence: b.evidence && typeof b.evidence === "object" ? b.evidence : null,
+      });
+    }
+    holds.sort((x, y) => y.at - x.at);
+    const suspects = [];
+    const seen = new Set();
+    const collect = (pid, st, map) => {
+      const a = st && st._audit;
+      if (!a || !(Number(a.score) > 0)) return;
+      if (seen.has(pid)) return;
+      seen.add(pid);
+      suspects.push({
+        id: pid, pseudo: String(st.pseudo || ""), online: true, map: map || null,
+        score: Math.round(Number(a.score) || 0), strikes: Number(a.strikes || 0),
+        last: a.last && typeof a.last === "object" ? a.last : null,
+      });
+    };
+    for (const [map, room] of rooms) {
+      for (const [pid, e] of room) { if (e && e.state) collect(pid, e.state, map); }
+    }
+    for (const [pid, e] of instancePeers) {
+      if (e && e.state) collect(pid, e.state, e.mapId || null);
+    }
+    suspects.sort((x, y) => y.score - x.score);
+    adminJson(response, 200, { ok: true, holds, suspects: suspects.slice(0, 100) });
+    return true;
+  }
   if (pathname === "/api/admin/ships" && request.method === "GET") {
     // Familles de vaisseaux pour le select "give module" du panneau admin.
     adminJson(response, 200, { ok: true, ships: adminShipFamilies() });
@@ -252,7 +393,7 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, accounts: out, guests, onlineCount, total: out.length });
     return true;
   }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete") && request.method === "POST") {
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
         if (pathname === "/api/admin/delete") {
@@ -473,6 +614,41 @@ function handleAdminApi(request, response, pathname) {
           if (chatHistory.length > 40) chatHistory.splice(0, chatHistory.length - 40);
           broadcastAll(JSON.stringify({ t: "chatMsg", ...sysEntry }));
           adminJson(response, 200, { ok: true, pseudo: targetPseudo, reason, until });
+          return;
+        }
+        if (pathname === "/api/admin/cheat-hold") {
+          // Gel manuel anticheat (modération) : kick + gel du compte en
+          // attente d'examen, comme la sanction auto. Pseudo ou id.
+          const targetId = String(body?.id || "").slice(0, 128);
+          const targetPseudo = String(body?.pseudo || "").trim().slice(0, 20);
+          const reason = String(body?.reason || "Dossier anticheat — en cours d'examen par la modération.").replace(/\s+/g, " ").trim().slice(0, 200);
+          let pid = "";
+          if (targetId) {
+            pid = targetId;
+          } else if (targetPseudo) {
+            const low = targetPseudo.toLowerCase();
+            outer: {
+              for (const [, room] of rooms) {
+                for (const [rid, entry] of room) {
+                  if (String(entry?.state?.pseudo || "").trim().toLowerCase() === low) { pid = String(rid); break outer; }
+                }
+              }
+              for (const [rid, entry] of instancePeers) {
+                if (String(entry?.state?.pseudo || "").trim().toLowerCase() === low) { pid = String(rid); break outer; }
+              }
+            }
+          }
+          if (!pid) {
+            // Hors ligne : gel par clé pseudo (bloqué à la prochaine connexion).
+            if (!targetPseudo) { adminJson(response, 400, { ok: false, error: "Pseudo ou id manquant." }); return; }
+            const key = `pseudo:${targetPseudo.toLowerCase()}`.slice(0, 128);
+            bans.set(key, { key, pseudo: targetPseudo, reason, until: null, at: Date.now(), cheatHold: true, evidence: { manual: true } });
+            saveBans();
+            adminJson(response, 200, { ok: true, pseudo: targetPseudo, offline: true });
+            return;
+          }
+          const res = punishCheater(pid, { manual: true, at: Date.now() }, reason);
+          adminJson(response, 200, res);
           return;
         }
         const pid = String(body?.id || "");
@@ -841,6 +1017,17 @@ function broadcastRoom(room, payload, excludeId = null) {
 // Canaux globaux (tchat, enchères, annonces admin) : TOUS les sockets,
 // y compris les joueurs en instance perso (Galaxy Gates, hors room).
 const allWs = new Set();
+// La vie du socket est distincte de la derniere position de combat.
+// Cela couvre aussi les instances, qui n'envoient pas de positions.
+setInterval(() => {
+  const now = Date.now();
+  for (const ws of allWs) {
+    if (ws.readyState !== 1 || now - ws.lastHeardAt <= 30000) continue;
+    try { ws.close(4000, "Heartbeat timeout"); } catch {}
+    const timer = setTimeout(() => { if (ws.readyState !== 3) ws.terminate(); }, 1000);
+    timer.unref();
+  }
+}, 1000);
 function broadcastAll(payload) {
   for (const ws of allWs) {
     try { if (ws.readyState === 1) ws.send(payload); } catch {}
@@ -1123,6 +1310,13 @@ function pumpNpcRewards(budgetMs = 12) {
       const reward = awardNpcKill(accountId, death.type, mapId, share.percent, share.pid === killerId, txKey);
       if (!reward) { complete = false; continue; }
       if (reward.duplicate) continue;
+      // Audit anticheat : kill crédité au tueur (strictement serveur).
+      if (share.pid === killerId) {
+        try {
+          const ps = findPeerState(share.pid);
+          if (ps) audOf(ps).kills += 1;
+        } catch {}
+      }
       sendToPeer(share.pid, {
         t: "npcReward", map: String(mapId), uid: String(death.uid), seq: Number(death.seq) || 0,
         killer: killerId, percent: share.percent, ...reward,
@@ -1154,6 +1348,76 @@ setInterval(() => {
   try { pumpNpcRewards(12); } catch {}
 }, 100);
 
+// --- Audit anticheat périodique (10 s) + sanction (kick + gel, JAMAIS de
+// ban auto : l'admin tranche après inspection). Voir ANTICHEAT.js.
+const CHEAT_KICK_MESSAGE = "Vous avez triché. La modération étudie actuellement votre cas. Si cela est avéré, vous serez définitivement banni.";
+function punishCheater(pid, evidence, manualReason = null) {
+  const id = String(pid || "");
+  if (!id) return { ok: false };
+  let entry = null;
+  for (const [, room] of rooms) {
+    const e = room.get(id);
+    if (e) { entry = e; break; }
+  }
+  if (!entry) entry = instancePeers.get(id) || null;
+  const pseudo = String(entry?.state?.pseudo || "").slice(0, 20) || id;
+  const reason = String(manualReason || "Triche détectée automatiquement — dossier en cours d'examen par la modération.").slice(0, 200);
+  try {
+    if (entry?.ws && entry.ws.readyState === 1) entry.ws.send(JSON.stringify({ t: "cheatKick", reason: CHEAT_KICK_MESSAGE }));
+  } catch {}
+  try { removeFromAllRooms(id); } catch {}
+  try { peerNoGrace.set(id, Date.now()); } catch {}
+  const victimWs = entry?.ws || null;
+  setTimeout(() => { try { victimWs && victimWs.close(); } catch {} }, 800);
+  // Gel du compte (comptes uniquement) : PAS de ban définitif auto.
+  if (id.startsWith("u_")) {
+    const at = Date.now();
+    const ev = evidence && typeof evidence === "object" ? evidence : {};
+    for (const k of banKeysFor(id, pseudo)) {
+      bans.set(k, { key: k, pseudo, reason, until: null, at, cheatHold: true, evidence: ev });
+    }
+    saveBans();
+  }
+  try { console.log(`[multi:anticheat] sanction ${pseudo} (${id}) : ${reason}`); } catch {}
+  return { ok: true, pseudo };
+}
+function runCheatAudit() {
+  const now = Date.now();
+  const peers = [];
+  for (const [, room] of rooms) {
+    for (const [pid, e] of room) { if (e && e.state) peers.push([pid, e.state]); }
+  }
+  for (const [pid, e] of instancePeers) {
+    if (e && e.state) peers.push([pid, e.state]);
+  }
+  for (const [pid, st] of peers) {
+    const a = st._audit;
+    if (!a || typeof a !== "object") continue;
+    const r = acAuditWindow(a, now, Number(st.teleStrike || 0));
+    if (!r) continue;
+    const rates = r.rates;
+    const score = r.score;
+    const triggers = [...r.triggers];
+    if (!triggers.length) continue;
+    a.strikes = Number(a.strikes || 0) + 1;
+    a.last = { at: now, triggers: triggers.slice(-6) };
+    try { console.log(`[multi:anticheat] audit ${st.pseudo} (${pid}) score ${score} : ${triggers.join(" · ")}`); } catch {}
+    if (score >= AC.AUDIT_PUNISH_SCORE) {
+      try {
+        punishCheater(pid, {
+          score, strikes: a.strikes,
+          kills10s: Math.round(rates.kills), boxes10s: Math.round(rates.boxes),
+          dmg10s: Math.round(rates.dmg), triggers: triggers.slice(-6), at: now,
+        });
+      } catch {}
+      a.score = 0;
+    }
+  }
+}
+setInterval(() => {
+  try { runCheatAudit(); } catch {}
+}, AC.AUDIT_WIN_MS);
+
 server.on("upgrade", (request, socket, head) => {
   const url = new URL(request.url || "/ws", "http://localhost");
   if (!url.pathname.startsWith("/ws")) {
@@ -1178,6 +1442,9 @@ server.on("upgrade", (request, socket, head) => {
 });
 
 wss.on("connection", (ws) => {
+  ws.lastHeardAt = Date.now();
+  let messageRateAt = ws.lastHeardAt;
+  let messageRateCount = 0;
   // Invite par defaut ; le hello authentifie (token compte) et fige
   // l'identite stable `u_<accountId>` (meme id apres refresh/restart).
   let id = `p${nextId++}`;
@@ -1191,20 +1458,58 @@ wss.on("connection", (ws) => {
   allWs.add(ws);
   ws.send(JSON.stringify({ t: "welcome", id, authed: false, run: serverRunId }));
 
-  ws.on("message", (raw) => {
-    const rateNow = Date.now();
-    if (rateNow - Number(state._msgRateAt || 0) >= 1000) {
-      state._msgRateAt = rateNow;
-      state._msgRateCount = 0;
+  const correctState = () => {
+    const now = Date.now();
+    if (now - Number(state._correctionAt || 0) < 500) return;
+    state._correctionAt = now;
+    if (ws.readyState === 1) ws.send(JSON.stringify({ t: "stateCorrection", map: mapId, x: state.x, y: state.y }));
+  };
+  const movementTarget = key => rooms.get(mapId)?.get(String(key))?.state || npcSims.get(mapId)?.entries?.get(String(key)) || null;
+  const changeMap = (nextMap, instance = false) => {
+    if (nextMap === mapId && instance === (state.instance === true)) return true;
+    if (!authed || !accountId) return false;
+    const now = Date.now();
+    let arrival;
+    if (state.instance === true) {
+      if (instance || nextMap !== state._instanceReturn?.map) return false;
+      arrival = state._instanceReturn;
+    } else {
+      arrival = mapTransition(serverMaps, state, mapId, nextMap, state._account?.faction, now);
+      // Reprise d'une instance sauvegardée : son économie reste locale.
+      const savedMap = state._account?.hangars?.find(h => h?.active)?.lastMap;
+      if (!arrival && !state._joined && instance && String(savedMap).toLowerCase() === nextMap
+        && ["alpha", "beta", "gamma", "qz"].includes(nextMap)) arrival = { instance: true };
     }
-    state._msgRateCount = Number(state._msgRateCount || 0) + 1;
-    if (state._msgRateCount > 250) {
+    if (!arrival || instance !== (arrival.instance === true)) return false;
+    if (instance) {
+      const home = respawnMap(state._account?.faction, nextMap);
+      state._instanceReturn = { map: home, ...baseArrival(serverMaps, home, state._account?.faction) };
+    } else {
+      state._arrival = { ...arrival, until: now + 15000 };
+      state.x = arrival.x;
+      state.y = arrival.y;
+    }
+    state.serverMap = nextMap;
+    state.portalCdUntil = now + 5000;
+    return true;
+  };
+
+  ws.on("message", (raw) => {
+    if (authed && accountSockets.get(id) !== ws) return;
+    const rateNow = Date.now();
+    if (rateNow - messageRateAt >= 1000) {
+      messageRateAt = rateNow;
+      messageRateCount = 0;
+    }
+    messageRateCount++;
+    if (messageRateCount > 250) {
       try { ws.close(1008, "Message rate exceeded"); } catch {}
       return;
     }
     let msg = null;
     try { msg = JSON.parse(String(raw)); } catch { return; }
     if (!msg || typeof msg !== "object") return;
+    ws.lastHeardAt = rateNow;
     if (msg.t === "boxSyncReq") {
       // Resync explicite (le client a perdu la sync initiale : refresh,
       // purge, paquet perdu). Throttle anti-spam par connexion.
@@ -1231,6 +1536,7 @@ wss.on("connection", (ws) => {
           const petDist = box && state.peta === 1 ? Math.hypot(Number(state.petx ?? state.x) - box.x, Number(state.pety ?? state.y) - box.y) : Infinity;
           const accepted = !!box && Math.min(shipDist, petDist) <= 260 && set.delete(uid);
           if (accepted) {
+            try { audOf(state).boxes += 1; } catch {}
             broadcastRoom(room, JSON.stringify({ t: "box", op: "collect", uid }), id);
             const cfg = COLLECTABLE_TYPES[box.type] || {};
             const delayMs = Math.max(250, Math.floor((Number(cfg.respawnDelaySec ?? 60) || 0) * 1000));
@@ -1368,12 +1674,25 @@ wss.on("connection", (ws) => {
         const shooter = rooms.get(mapId)?.get(id)?.state;
         if (!shooter || shooter.pvpDead === true || !(Number(shooter.hp) > 0)) return;
         const now = Date.now();
-        if (now - Number(shooter.npcHitWinT || 0) > 1000) { shooter.npcHitWinT = now; shooter.npcHitN = 0; }
-        shooter.npcHitN = Number(shooter.npcHitN || 0) + 1;
-        if (shooter.npcHitN > 100) return;
+        const profile = refreshCombatProfile(shooter, accountId, mapId);
+        msg = validateCombatHit(profile, msg, shooter, now);
+        if (!msg) { acStrike(shooter, "hitStrike"); return; }
+        // Anti-rafale : seaux par attaquant (horloge serveur). Rafales AoE
+        // légitimes OK, spam Cheat Engine étouffé (mitigation + log).
+        // Dégâts nuls (spam de freeze/ralentissement) : coût x5.
+        const hitDmg = Math.max(0, Number(msg.dmg) || 0) * profile.critMult * 1.05 * 1.25;
+        const hitCost = hitDmg > 0 ? 1 : 5;
+        if (!acBucket(shooter, "HitN", now, AC_HIT_CAP, AC_HIT_REFILL, hitCost)
+          || !acBucket(shooter, "HitD", now, AC_DMG_CAP, AC_DMG_REFILL, hitDmg)) {
+          if (acStrike(shooter, "hitStrike")) {
+            try { console.log(`[multi:anticheat] rafale degats ${shooter.pseudo} (${mapId})`); } catch {}
+          }
+          return;
+        }
         const sim = npcSims.get(mapId);
         if (sim && typeof sim.applyHit === "function") {
-          sim.applyHit(id, msg);
+          const appliedHit = Number(sim.applyHit(id, msg)) || 0;
+          if (appliedHit > 0) { try { audOf(shooter).dmg += appliedHit; } catch {} }
           // Diagnostic multi (console serveur) : hits recus par map.
           hitStats.count++;
           hitStats.byMap.set(mapId, (hitStats.byMap.get(mapId) || 0) + 1);
@@ -1387,6 +1706,13 @@ wss.on("connection", (ws) => {
         const room = rooms.get(mapId);
         if (!room || !room.has(id)) return;
         const skill = String(msg.skill || "").toLowerCase();
+        if (skill.startsWith("ability_")) {
+          const profile = refreshCombatProfile(state, accountId, mapId);
+          if (useMovementAbility(state, profile, skill, msg.enabled !== false, Date.now(), movementTarget(msg.target), String(msg.target || ""))) {
+            state.moveSpeed = movementSpeed(state, profile, Date.now());
+          }
+          return;
+        }
         if (skill !== "iem" && skill !== "ish" && skill !== "smb") return;
         const now = Date.now();
         const cdKey = skill === "iem" ? "iemCdUntil" : skill === "ish" ? "ishCdUntil" : "smbCdUntil";
@@ -1394,6 +1720,7 @@ wss.on("connection", (ws) => {
         state[cdKey] = now + 10_000;
         const until = now + 3_000;
         if (skill === "iem") {
+          takeMovement(state, refreshCombatProfile(state, accountId, mapId), state.x, state.y, now);
           state.iemUntil = until;
           // L'IEM dissipe les ralentissements et gels déjà actifs. Ces champs
           // sont autoritaires : leur remise à zéro empêche un ancien effet de
@@ -1422,29 +1749,34 @@ wss.on("connection", (ws) => {
         const foe = room.get(String(msg.target));
         const me = room.get(id);
         if (!foe || !me) return;
+        if (foe === me || me.state.pvpDead === true || !(me.state.hp > 0)) return;
+        const profile = refreshCombatProfile(me.state, accountId, mapId);
+        msg = validateCombatHit(profile, msg, me.state);
+        if (!msg) { acStrike(me.state, "pvpStrike"); return; }
         const now = Date.now();
-        // Anti-rafale : 80 coups/s max par attaquant.
-        if (now - Number(me.state.pvpWinT || 0) > 1000) { me.state.pvpWinT = now; me.state.pvpN = 0; }
-        me.state.pvpN = Number(me.state.pvpN || 0) + 1;
-        if (me.state.pvpN > 80) return;
+        // Anti-rafale PvP : mêmes seaux (plus stricts : TTK faibles).
+        const pvpDmg = Math.max(0, Number(msg.dmg) || 0);
+        const pvpCost = pvpDmg > 0 ? 1 : 5;
+        if (!acBucket(me.state, "PvpN", now, AC_PVP_HIT_CAP, AC_PVP_HIT_REFILL, pvpCost)
+          || !acBucket(me.state, "PvpD", now, AC_PVP_DMG_CAP, AC_PVP_DMG_REFILL, pvpDmg)) {
+          if (acStrike(me.state, "pvpStrike")) {
+            try { console.log(`[multi:anticheat] rafale pvp ${me.state.pseudo} (${mapId})`); } catch {}
+          }
+          return;
+        }
         const dmg = Number(msg.dmg);
         const hasStatus = (Number(msg.slowPct) > 0 && Number(msg.slowSec) > 0) || Number(msg.freezeSec) > 0;
         if (!Number.isFinite(dmg) || dmg < 0 || dmg > 1e7 || (dmg === 0 && !hasStatus)) return;
         if (foe.state.dead) return;
-        if (Number(foe.state.hswap) > 0) return;
+        if (now < Number(foe.state._swapUntil || 0)) return;
         if (now < Number(foe.state.ishUntil || 0)) return;
         if (now < Number(foe.state.iemUntil || 0)) return;
         // Deja tue (pos de mort pas encore arrivee) : pas de double kill.
         if (foe.state.pvpDead === true) return;
-        let wasAlive = Number(foe.state.hp) > 0;
-        // Revive rate (reparation entre le pos et le tir) : rebase d'abord.
-        if (!(Number(foe.state.hp) > 0)) {
-          wasAlive = true; // le client est vivant : le kill compte si ce coup tue.
-          const hm = Math.max(1, Number(foe.state.hpMax) || 1);
-          const sm = Math.max(0, Number(foe.state.shMax) || 0);
-          foe.state.hp = Math.max(0, Math.min(hm, hm * Math.max(0, Math.min(1, Number(foe.state.hpPct ?? 1)))));
-          foe.state.sh = Math.max(0, Math.min(sm, sm * Math.max(0, Math.min(1, Number(foe.state.shPct ?? 1)))));
-        }
+        const wasAlive = Number(foe.state.hp) > 0;
+        // Revive rate (reparation entre le pos et le tir) : rebase d'abord,
+        // plafonné au budget de remontée (sinon vie figée pleine = dieu).
+        if (!wasAlive) return;
         // Anti-teleport : projectile credible depuis la position de l'attaquant.
         const reach = (Number(me.state.range) || 800) + 800;
         const dx = Number(foe.state.x) - Number(me.state.x);
@@ -1472,12 +1804,18 @@ wss.on("connection", (ws) => {
         const slowSec = Math.max(0, Math.min(30, Number(msg.slowSec) || 0));
         const freezeSec = Math.max(0, Math.min(5, Number(msg.freezeSec) || 0));
         if (slowPct > 0 && slowSec > 0) {
+          takeMovement(foe.state, foe.state._combat, foe.state.x, foe.state.y, now);
           foe.state.slowPct = Math.max(Number(foe.state.slowPct) || 0, slowPct);
           foe.state.slowUntil = Math.max(Number(foe.state.slowUntil) || 0, now + slowSec * 1000);
         }
-        if (freezeSec > 0) foe.state.freezeUntil = Math.max(Number(foe.state.freezeUntil) || 0, now + freezeSec * 1000);
+        if (freezeSec > 0) {
+          takeMovement(foe.state, foe.state._combat, foe.state.x, foe.state.y, now);
+          foe.state.moveBuck = 0;
+          foe.state.freezeUntil = Math.max(Number(foe.state.freezeUntil) || 0, now + freezeSec * 1000);
+        }
         // Feed degats : la victime voit les chiffres (comme les NPC).
         if (applied > 0) {
+          try { audOf(me.state).dmg += applied; } catch {}
           const fkey = `${foe.state.id}|${id}`;
           let feed = pvpFeeds.get(mapId);
           if (!feed) { feed = new Map(); pvpFeeds.set(mapId, feed); }
@@ -1553,24 +1891,25 @@ wss.on("connection", (ws) => {
         const foe = room.get(String(msg.target));
         const me = room.get(id);
         if (!foe || !me) return;
+        if (foe === me || me.state.pvpDead === true || !(me.state.hp > 0)) return;
+        const profile = refreshCombatProfile(me.state, accountId, mapId);
+        msg = validateCombatHit(profile, msg, me.state);
+        if (!msg) { acStrike(me.state, "pvpStrike"); return; }
         if (foe.state.peta !== 1) return;
         const now = Date.now();
         // Le PET beneficie de la zone de non-agression de son proprietaire.
-        if (foe.state.safe === true || me.state.safe === true) return;
-        if (now - Number(me.state.pvpPetWinT || 0) > 1000) { me.state.pvpPetWinT = now; me.state.pvpPetN = 0; }
-        me.state.pvpPetN = Number(me.state.pvpPetN || 0) + 1;
-        if (me.state.pvpPetN > 80) return;
+        if (foe.state.serverSafe === true || me.state.serverSafe === true) return;
+        const pvpPetDmg = Math.max(0, Number(msg.dmg) || 0);
+        const pvpPetCost = pvpPetDmg > 0 ? 1 : 5;
+        if (!acBucket(me.state, "PvpN", now, AC_PVP_HIT_CAP, AC_PVP_HIT_REFILL, pvpPetCost)
+          || !acBucket(me.state, "PvpD", now, AC_PVP_DMG_CAP, AC_PVP_DMG_REFILL, pvpPetDmg)) {
+          return;
+        }
         const dmg = Number(msg.dmg);
         if (!Number.isFinite(dmg) || dmg <= 0 || dmg > 1e7) return;
         if (foe.state.petDead === true) return;
-        let wasPetAlive = Number(foe.state.petPoolHp) > 0;
-        if (!(Number(foe.state.petPoolHp) > 0)) {
-          wasPetAlive = true;
-          const hm = Math.max(1, Number(foe.state.petHpM) || 1);
-          const sm = Math.max(0, Number(foe.state.petShM) || 0);
-          foe.state.petPoolHp = Math.max(0, Math.min(hm, hm * Math.max(0, Math.min(1, Number(foe.state.petHp ?? 1)))));
-          foe.state.petPoolSh = Math.max(0, Math.min(sm, sm * Math.max(0, Math.min(1, Number(foe.state.petSh ?? 1)))));
-        }
+        const wasPetAlive = Number(foe.state.petPoolHp) > 0;
+        if (!wasPetAlive) return;
         const reach = (Number(me.state.range) || 800) + 800;
         const dx = Number(foe.state.petx ?? foe.state.x) - Number(me.state.x);
         const dy = Number(foe.state.pety ?? foe.state.y) - Number(me.state.y);
@@ -1596,6 +1935,7 @@ wss.on("connection", (ws) => {
         foe.state._petShRegenBudget = 0;
         foe.state._petRegenAt = now;
         if (applied > 0) {
+          try { audOf(me.state).dmg += applied; } catch {}
           const fkey = `${foe.state.id}|pet|${id}`;
           let feed = pvpFeeds.get(mapId);
           if (!feed) { feed = new Map(); pvpFeeds.set(mapId, feed); }
@@ -1623,6 +1963,14 @@ wss.on("connection", (ws) => {
         const room = rooms.get(mapId);
         if (!room || !room.has(id)) return;
         const out = { t: msg.t, by: id, map: mapId };
+        if (msg.t === "rshot" && authed) {
+          const profile = refreshCombatProfile(state, accountId, mapId);
+          const key = String(msg.key || "");
+          if (profile?.rocketIds.includes(key)) {
+            state._launchedRocketIds ||= {};
+            state._launchedRocketIds[key] = Date.now() + 20000;
+          }
+        }
         if (typeof msg.key === "string") out.key = String(msg.key).slice(0, 16);
         if (typeof msg.kind === "string") out.kind = String(msg.kind).slice(0, 16);
         if (typeof msg.petTarget === "string") out.petTarget = String(msg.petTarget).slice(0, 64);
@@ -1649,14 +1997,19 @@ wss.on("connection", (ws) => {
           const who = verifyWsToken(msg.token);
           if (who && who.id) {
             const stableId = `u_${String(who.id).slice(0, 64)}`;
+            const previousState = securityStates.get(stableId) || findPeerState(stableId);
+            const previousSocket = accountSockets.get(stableId);
+            accountSockets.set(stableId, ws);
+            if (previousSocket && previousSocket !== ws) { try { previousSocket.close(4001, "Session replaced"); } catch {} }
             // Refresh : rattachement silencieux (pas de leave/join).
             if (cancelPeerGrace(stableId)) dropStaleEntry(stableId);
             const room = rooms.get(mapId);
             if (room) {
               if (room.has(id) && room.get(id)?.ws === ws) room.delete(id);
               const prev = room.get(stableId);
-              if (prev && prev.ws !== ws) { try { prev.ws.close(); } catch {} }
+              if (prev && prev.ws !== ws) { try { prev.ws.close(4001, "Session replaced"); } catch {} }
               room.delete(stableId);
+              if (previousState) state = previousState;
               state.id = stableId;
               id = stableId;
               room.set(id, { ws, state });
@@ -1666,6 +2019,34 @@ wss.on("connection", (ws) => {
             }
             accountId = String(who.id);
             authed = true;
+            if (previousState) {
+              mapId = String(state.serverMap || mapId);
+            } else {
+              state._account = getAccountGameplayData(accountId);
+              state._accountAt = Date.now();
+              const saved = state._account?.hangars.find(h => h?.active) || state._account?.hangars[0];
+              mapId = serverMaps.has(String(saved?.lastMap).toLowerCase()) ? String(saved.lastMap).toLowerCase()
+                : getFactionHomeMap(state._account?.faction);
+            }
+            const profile = refreshCombatProfile(state, accountId, mapId);
+            if (!profile) { ws.close(1008, "Invalid combat profile"); return; }
+            if (!previousState) {
+              const saved = state._account.hangars.find(h => h?.active) || state._account.hangars[0];
+              const base = baseArrival(serverMaps, mapId, state._account.faction);
+              const position = saved.lastPos;
+              state.x = Number.isFinite(Number(position?.x)) ? Number(position.x) : base.x;
+              state.y = Number.isFinite(Number(position?.y)) ? Number(position.y) : base.y;
+              state.hp = state.hpMax * Math.max(0, Math.min(1, Number(saved.lastHpPct ?? 1)));
+              state.sh = state.shMax * Math.max(0, Math.min(1, Number(saved.lastShPct ?? 1)));
+              state.pvpDead = !(state.hp > 0);
+              state._posOk = true;
+            }
+            state.serverMap = mapId;
+            removeFromAllRooms(id);
+            if (state.instance === true) instancePeers.set(id, { ws, state, mapId });
+            else roomFor(mapId).set(id, { ws, state });
+            securityStates.set(id, state);
+            audOf(state);
             state.pseudo = String(who.pseudo || "Pilote").slice(0, 20);
             refreshClanTag(state, accountId);
             try { ws.send(JSON.stringify({ t: "welcome", id, authed: true, run: serverRunId })); } catch {}
@@ -1681,20 +2062,27 @@ wss.on("connection", (ws) => {
         if (ban) {
           try {
             if (ws.readyState === 1) {
-              ws.send(JSON.stringify({
-                t: "banned",
-                reason: String(ban.reason || "Comportement inapproprié.").slice(0, 200),
-                until: ban.until != null ? Number(ban.until) : null,
-              }));
+              // Gel anticheat en attente de modération : message dédié
+              // (pas de date, pas de "banni" définitif).
+              if (ban.cheatHold === true) {
+                ws.send(JSON.stringify({ t: "cheatHold", reason: CHEAT_KICK_MESSAGE }));
+              } else {
+                ws.send(JSON.stringify({
+                  t: "banned",
+                  reason: String(ban.reason || "Comportement inapproprié.").slice(0, 200),
+                  until: ban.until != null ? Number(ban.until) : null,
+                }));
+              }
             }
-          } catch {}
-          removeFromAllRooms(id);
+          } catch {}          removeFromAllRooms(id);
           const bannedWs = ws;
           setTimeout(() => { try { bannedWs.close(); } catch {} }, 800);
           return;
         }
       } catch {}
       const nextMap = String(msg.map || mapId || "1-1").toLowerCase();
+      if (!changeMap(nextMap, msg.instance === true)) { correctState(); return; }
+      state._joined = true;
       const socialCtx = () => ({
         id, state, authed,
         send: (obj) => { try { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch {} },
@@ -1733,7 +2121,6 @@ wss.on("connection", (ws) => {
       if (nextMap !== mapId) {
         removeFromAllRooms(id);
         mapId = nextMap;
-        state._teleSkip = true; // portail : saut legitime
         roomFor(mapId).set(id, { ws, state });
         ensureNpcSim(mapId);
       } else {
@@ -1741,7 +2128,7 @@ wss.on("connection", (ws) => {
       }
       // Authentifie : pseudo du compte uniquement (declare ignore).
       if (!authed && typeof msg.pseudo === "string" && msg.pseudo.trim()) state.pseudo = String(msg.pseudo).slice(0, 20);
-      if (typeof msg.shipId === "string" && msg.shipId) state.shipId = String(msg.shipId).slice(0, 64);
+      if (!authed && typeof msg.shipId === "string" && msg.shipId) state.shipId = String(msg.shipId).slice(0, 64);
       state.updatedAt = Date.now();
       // Etat des box pour le nouveau venu.
       sendBoxSync(ws, mapId);
@@ -1770,7 +2157,7 @@ wss.on("connection", (ws) => {
     }
     if (msg.t === "ping") {
       // Heartbeat client (3 s) : preuve de vie, reprise après coupure.
-      // Ne touche PAS updatedAt (l'expiration des silencieux reste à 10 s).
+      // lastHeardAt maintient la liaison ; updatedAt reste la date de position.
       // Le pong porte la version serveur : le client recharge tout seul
       // quand le jeu a été mis à jour (git pull + restart).
       try {
@@ -1831,74 +2218,81 @@ wss.on("connection", (ws) => {
       // Instance perso : aucune présence partagée (le client ne devrait
       // déjà plus envoyer de pos en gate).
       if (state.instance === true) return;
-      // Anti-cheat positions : deplacement credible vs vmax declaree
-      // (plafonnee). Rejet doux (on garde l'ancienne position) + log,
-      // jamais de kick (lags = faux positifs).
-      // Auto-guerison : un point rejete mais STABLE 5x de suite (= 0.5 s,
-      // reaparition base/portail same-map que le serveur n'a pas vue)
-      // est accepte. Un speed-hacker (jamais stable) reste bloque.
-      if (Number.isFinite(Number(msg.vmax))) state.vmax = Math.max(50, Math.min(5000, Math.round(Number(msg.vmax))));
-      const declaredVmax = Math.max(50, Math.min(5000, Number(state.vmax) || 400));
+      if (!authed || !accountId) return;
+      const requestedMap = String(msg.map || mapId).toLowerCase();
+      if (requestedMap !== mapId) {
+        if (!changeMap(requestedMap)) { correctState(); return; }
+        removeFromAllRooms(id);
+        mapId = requestedMap;
+        roomFor(mapId).set(id, { ws, state });
+        ensureNpcSim(mapId);
+        sendBoxSync(ws, mapId);
+      }
+      const profile = refreshCombatProfile(state, accountId, mapId, msg);
+      if (!profile) return;
+      syncMovementAbility(state, profile, Date.now(), movementTarget(state._moveEffect?.targetKey));
+      // Vitesse de l'equipement + aptitude autorisee, selon le temps serveur.
+      // Les timestamps et vmax du client n'accordent aucun droit de mouvement.
+      const declaredVmax = movementSpeed(state, profile, Date.now());
       const nextVx = Number(msg.vx), nextVy = Number(msg.vy);
       if (Number.isFinite(nextVx) && Number.isFinite(nextVy)) {
         const speed = Math.hypot(nextVx, nextVy);
-        const scale = speed > declaredVmax * 1.25 ? (declaredVmax * 1.25) / speed : 1;
+        const scale = speed > declaredVmax ? declaredVmax / speed : 1;
         state.vx = nextVx * scale;
         state.vy = nextVy * scale;
       }
       const nx = Number(msg.x), ny = Number(msg.y);
       if (Number.isFinite(nx) && Number.isFinite(ny)) {
-        const legitJump = state._teleSkip === true || state._posOk !== true || (state.dead === true && msg.dead !== true);
-        state._teleSkip = false;
+        const nowMove = Date.now();
+        const revival = msg.dead !== true && (state.pvpDead === true || !(state.hp > 0))
+          && ((state._arrival?.revive === true && validArrival(state._arrival, nx, ny, nowMove))
+            || reviveArrival(serverMaps, state, mapId, state._account.faction, nx, ny));
+        const legitJump = validArrival(state._arrival, nx, ny, nowMove) || !!revival;
         if (legitJump) {
           state.x = nx;
           state.y = ny;
           state._posOk = true;
           state._rejPos = null;
-        } else {
-          const dt = Math.max(0.05, Math.min(3, (Date.now() - Number(state.updatedAt || 0)) / 1000));
-          const vmax = Math.max(50, Math.min(5000, Number(state.vmax) || 400));
-          const allowed = vmax * dt * 1.6 + 600;
-          const dx = nx - Number(state.x), dy = ny - Number(state.y);
-          if (dx * dx + dy * dy <= allowed * allowed) {
-            state.x = nx;
-            state.y = ny;
-            state._rejPos = null;
-          } else {
-            const prev = state._rejPos;
-            const sameSpot = prev && (nx - prev.x) * (nx - prev.x) + (ny - prev.y) * (ny - prev.y) <= 300 * 300;
-            const n = sameSpot ? Number(prev.n || 0) + 1 : 1;
-            if (n >= 5) {
-              // Stable : reaparition legitime ratee, on resynchronise.
-              state.x = nx;
-              state.y = ny;
-              state._rejPos = null;
-              state.teleHeal = Number(state.teleHeal || 0) + 1;
-              try { console.log(`[multi:anticheat] resync ${state.pseudo} (${Math.round(Math.hypot(dx, dy))}u, stable)`); } catch {}
-            } else {
-              state._rejPos = { x: nx, y: ny, n };
-              state.teleWarn = Number(state.teleWarn || 0) + 1;
-              if (state.teleWarn % 20 === 1) {
-                try { console.log(`[multi:anticheat] teleport suspect ${state.pseudo} (${Math.round(Math.hypot(dx, dy))}u en ${Math.round(dt * 1000)}ms, vmax ${vmax})`); } catch {}
-              }
-            }
+          state._arrival = null;
+          state.moveBuck = 0;
+          state.moveBuckT = Date.now();
+          if (revival) {
+            state.hp = Math.max(1, Math.floor(state.hpMax * 0.1));
+            state.sh = Math.floor(state.shMax * 0.1);
+            state.dead = false;
+            state.pvpDead = false;
+            state.healBudHp = 0;
+            state.healBudSh = 0;
+            state.healBudT = nowMove;
+            state.dmgBlockUntil = nowMove + 500;
+            state.ishUntil = nowMove + 3000;
+            state.portalCdUntil = nowMove + 5000;
           }
+        } else {
+          // Décision de déplacement : voir SCRIPTS/ANTICHEAT.js (testable).
+          const mv = takeMovement(state, profile, nx, ny, nowMove);
+          state.x = mv.x;
+          state.y = mv.y;
+          if (!mv.accepted) correctState();
         }
       }
       if (Number.isFinite(Number(msg.angle))) state.angle = Number(msg.angle);
-      if (typeof msg.shipId === "string" && msg.shipId) state.shipId = String(msg.shipId).slice(0, 64);
       // B02 actifs (bonus de groupe) : ids validés, diffusés au groupe.
-      if (Array.isArray(msg.b2)) {
-        const ok = ["dmg2", "shd2", "hp2", "ep2", "hon2", "rep2", "res2", "sreg2"];
-        state.b2 = msg.b2.map((v) => String(v || "")).filter((v) => ok.includes(v)).slice(0, 8);
-      }
-      if (Number.isFinite(Number(msg.hswap))) state.hswap = Math.max(0, Math.min(3, Number(msg.hswap)));
       if (!authed && typeof msg.pseudo === "string" && msg.pseudo.trim()) state.pseudo = String(msg.pseudo).slice(0, 20);
-      if (typeof msg.dead === "boolean") state.dead = msg.dead;
+      state.dead = state.pvpDead === true || !(state.hp > 0);
       // CPU CL04K-XL : vaisseau masqué aux autres (point minimap conservé).
+      // CPU natif : son coût en crédits sera validé lors de la migration
+      // économique, comme les coûts IEM/ISH/SMB existants.
       if (typeof msg.cloakCpu === "boolean") state.cloakCpu = msg.cloakCpu;
       // Camouflage (ultime ou CPU) : les NPC partagés perdent la cible.
-      if (typeof msg.cloaked === "boolean") state.cloaked = msg.cloaked;
+      if (typeof msg.cloaked === "boolean") {
+        const nowCloak = Date.now();
+        if (msg.cloaked && !state.cloaked && profile.cloakSkill && nowCloak >= Number(state._cloakCdUntil || 0)) {
+          state._cloakUntil = nowCloak + (Number(profile.cloakSkill.durationSec) || 30) * 1000;
+          state._cloakCdUntil = nowCloak + (Number(profile.cloakSkill.cooldownSec) || 240) * 1000;
+        }
+        state.cloaked = msg.cloaked && (state.cloakCpu || nowCloak < Number(state._cloakUntil || 0));
+      }
       if (typeof msg.safe === "boolean") state.safe = msg.safe;
       if (Number.isFinite(Number(msg.hpPct))) state.hpPct = Math.max(0, Math.min(1, Number(msg.hpPct)));
       if (Number.isFinite(Number(msg.shPct))) state.shPct = Math.max(0, Math.min(1, Number(msg.shPct)));
@@ -1912,8 +2306,6 @@ wss.on("connection", (ws) => {
       if (Number.isFinite(Number(msg.targetShPct))) state.targetShPct = Math.max(0, Math.min(1, Number(msg.targetShPct)));
       if (Number.isFinite(Number(msg.targetHpMax))) state.targetHpMax = Math.max(0, Math.min(1e12, Math.round(Number(msg.targetHpMax))));
       if (Number.isFinite(Number(msg.targetShMax))) state.targetShMax = Math.max(0, Math.min(1e12, Math.round(Number(msg.targetShMax))));
-      if (Number.isFinite(Number(msg.absorb))) state.absorb = Math.max(0, Math.min(1, Number(msg.absorb)));
-      if (Number.isFinite(Number(msg.evade))) state.evade = Math.max(0, Math.min(0.9, Number(msg.evade)));
       if (Number.isFinite(Number(msg.tx))) state.tx = Math.round(Number(msg.tx));
       if (Number.isFinite(Number(msg.ty))) state.ty = Math.round(Number(msg.ty));
       // Destination de deplacement (prediction cote receveur). Bornee large
@@ -1946,26 +2338,26 @@ wss.on("connection", (ws) => {
       //   reimposait l'ancien pool au client (vie "qui revient en arriere
       //   apres reparation"). Montees suspectes (>50 % du max hors revive)
       //   loggees, sans kick (serveur prive : pas de faux positif).
-      if (Number.isFinite(Number(msg.hpMax)) && Number(msg.hpMax) > 0) {
-        const hm = Math.min(MAX_PLAYER_COMBAT_LAYER, Math.round(Number(msg.hpMax)));
-        const sm = Math.min(MAX_PLAYER_COMBAT_LAYER, Math.round(Number(msg.shMax) || 0));
+      {
+        const hm = profile.hpMax;
+        const sm = profile.shMax;
+        // Télémétrie : pools absurdes (= hpMax forgé, dieu du PvP).
+        if ((hm > 50e6 || sm > 50e6) && acStrike(state, "poolStrike", 10)) {
+          try { console.log(`[multi:anticheat] pool suspect ${state.pseudo} (hpMax ${hm}, shMax ${sm})`); } catch {}
+        }
         const cHp = Math.max(0, Math.min(hm, hm * Math.max(0, Math.min(1, Number(msg.hpPct ?? 1)))));
         const cSh = Math.max(0, Math.min(sm, sm * Math.max(0, Math.min(1, Number(msg.shPct ?? 1)))));
-        if (!state._init || hm !== state.hpMax || sm !== state.shMax) {
-          state.hpMax = hm;
-          state.shMax = sm;
-          state.hp = cHp;
-          state.sh = cSh;
-          state._init = true;
-          state.pvpDead = false;
-        } else if (state.dead === true) {
+        // Budget de remontée (horloge serveur) : les réparations légitimes
+        // sont graduelles, la vie figée pleine (Cheat Engine) est étouffée.
+        const nowH = Date.now();
+        const hDt = Math.max(0, Math.min(5, (nowH - Number(state.healBudT || 0)) / 1000));
+        state.healBudT = nowH;
+        state.healBudHp = Math.min(hm * HEAL_BUDGET_CAP, Number(state.healBudHp || 0) + hm * HEAL_BUDGET_RATE * hDt);
+        state.healBudSh = Math.min(sm * HEAL_BUDGET_CAP, Number(state.healBudSh || 0) + sm * HEAL_BUDGET_RATE * hDt);
+        const healTake = (cur, want, max, key) => acHealTake(state, cur, want, max, key);
+        if (state.dead === true || state.pvpDead === true) {
           state.hp = 0;
           state.sh = 0;
-        } else if (!(state.hp > 0)) {
-          // Revive (reparation) : le client est vivant avec des PV.
-          state.hp = cHp;
-          state.sh = cSh;
-          state.pvpDead = false;
         } else {
           // Blackout : un coup vient d'être appliqué (dmgBlockUntil) — les
           // remontées sont ignorées le temps que la victime l'adopte
@@ -1982,7 +2374,8 @@ wss.on("connection", (ws) => {
                 try { console.log(`[multi:anticheat] soin suspect ${state.pseudo} (+${Math.round(cHp - state.hp)} HP en un pos, max ${hm})`); } catch {}
               }
             }
-            state.hp = Math.min(hm, cHp);
+            // Plafonné au budget (voir ci-dessus).
+            state.hp = healTake(state.hp, cHp, hm, "healBudHp");
           }
           if (cSh < state.sh) state.sh = cSh;
           else if (cSh > state.sh && !blocked) {
@@ -1992,15 +2385,23 @@ wss.on("connection", (ws) => {
                 try { console.log(`[multi:anticheat] soin suspect ${state.pseudo} (+${Math.round(cSh - state.sh)} SH en un pos, max ${sm})`); } catch {}
               }
             }
-            state.sh = Math.min(sm, cSh);
+            state.sh = healTake(state.sh, cSh, sm, "healBudSh");
           }
         }
       }
-      if (Number.isFinite(Number(msg.range))) state.range = Math.max(200, Math.min(5000, Number(msg.range)));
-      if (msg.peta === 1 || msg.peta === 0) state.peta = msg.peta === 1 ? 1 : 0;
+      if (!(state.hp > 0)) { state.pvpDead = true; state.dead = true; }
+      if (msg.peta === 1 || msg.peta === 0) state.peta = profile.petOwned && msg.peta === 1 ? 1 : 0;
       if (Number.isFinite(Number(msg.petl))) state.petl = Math.max(1, Math.min(32, Math.round(Number(msg.petl))));
-      if (Number.isFinite(Number(msg.petx))) state.petx = Math.round(Number(msg.petx));
-      if (Number.isFinite(Number(msg.pety))) state.pety = Math.round(Number(msg.pety));
+      if (Number.isFinite(Number(msg.petx)) && Number.isFinite(Number(msg.pety))) {
+        // Laisse PET : le pet colle son vaisseau. Sans ça, petx/pety forgés
+        // sur chaque box = ramassage de toute la map (boxes validées dessus).
+        const ppx = Math.round(Number(msg.petx)), ppy = Math.round(Number(msg.pety));
+        const ldx = ppx - Number(state.x), ldy = ppy - Number(state.y);
+        if (ldx * ldx + ldy * ldy <= PET_LEASH * PET_LEASH) {
+          state.petx = ppx;
+          state.pety = ppy;
+        }
+      }
       if (Number.isFinite(Number(msg.petd))) state.petd = Math.round(Number(msg.petd) * 100) / 100;
       if (typeof msg.petn === "string") state.petn = String(msg.petn).slice(0, 32);
       if (typeof msg.petf === "string") state.petf = String(msg.petf).slice(0, 16);
@@ -2008,26 +2409,30 @@ wss.on("connection", (ws) => {
       if (Number.isFinite(Number(msg.petHp))) state.petHp = Math.max(0, Math.min(1, Number(msg.petHp)));
       if (Number.isFinite(Number(msg.petSh))) state.petSh = Math.max(0, Math.min(1, Number(msg.petSh)));
       // Pool PV du PET (degats PvP) : meme regles que le pool joueur.
-      if (Number.isFinite(Number(msg.petHpMax)) && Number(msg.petHpMax) > 0) {
-        const phm = Math.min(50_000_000, Math.round(Number(msg.petHpMax)));
-        const psm = Math.min(50_000_000, Math.round(Number(msg.petShMax) || 0));
+      if (profile.petOwned) {
+        const phm = profile.petHpMax;
+        const psm = profile.petShMax;
         const cPHp = Math.max(0, Math.min(phm, phm * Math.max(0, Math.min(1, Number(msg.petHp ?? 1)))));
         const cPSh = Math.max(0, Math.min(psm, psm * Math.max(0, Math.min(1, Number(msg.petSh ?? 1)))));
-        if (!state._petInit || phm !== state.petHpM || psm !== state.petShM) {
+        if (!state._petInit) {
           state.petHpM = phm;
           state.petShM = psm;
-          state.petPoolHp = cPHp;
-          state.petPoolSh = cPSh;
+          state.petPoolHp = Math.min(phm, Number(state._account.pet.hp) || 0);
+          state.petPoolSh = Math.min(psm, Math.max(0, Number(state._account.pet.sh ?? psm) || 0));
           state._petInit = true;
-          state.petDead = false;
+          state.petDead = !(state.petPoolHp > 0);
         } else if (!(cPHp > 0)) {
           state.petPoolHp = 0;
           state.petPoolSh = 0;
         } else if (!(state.petPoolHp > 0)) {
-          // Reparation du PET : le client est en vie avec des PV.
-          state.petPoolHp = cPHp;
-          state.petPoolSh = cPSh;
-          state.petDead = false;
+          // Réparation enregistrée dans le compte (10 %), jamais un ratio
+          // arbitraire dans pos. L'économie sera migrée séparément.
+          if (state._account.revision !== state._petDeathRevision && state._account.pet.active === false
+            && Number(state._account.pet.hp) > 0) {
+            state.petPoolHp = Math.min(phm * 0.1, Number(state._account.pet.hp));
+            state.petPoolSh = 0;
+            state.petDead = false;
+          }
         } else {
           if (cPHp < state.petPoolHp) state.petPoolHp = cPHp;
           if (cPSh < state.petPoolSh) state.petPoolSh = cPSh;
@@ -2052,13 +2457,13 @@ wss.on("connection", (ws) => {
             state._petShRegenBudget -= gain;
           }
         }
-      }
-      if (typeof msg.map === "string" && msg.map.toLowerCase() !== mapId) {
-        removeFromAllRooms(id);
-        mapId = String(msg.map).toLowerCase();
-        state._teleSkip = true; // portail : saut legitime
-        roomFor(mapId).set(id, { ws, state });
-        sendBoxSync(ws, mapId);
+        state.petHpM = phm; state.petShM = psm;
+        state.petPoolHp = Math.min(phm, state.petPoolHp);
+        state.petPoolSh = Math.min(psm, state.petPoolSh);
+        if (!(state.petPoolHp > 0)) {
+          state.petDead = true;
+          state._petDeathRevision ??= state._account.revision;
+        } else state._petDeathRevision = null;
       }
       state.updatedAt = Date.now();
     }
@@ -2077,7 +2482,18 @@ wss.on("connection", (ws) => {
     } catch {}
     try { if (authed && accountId) notifyFriendPresence(accountId, false); } catch {}
   };
-  ws.on("close", () => { allWs.delete(ws); chatLastById.delete(id); friendPingLast.delete(id); clanChatLast.delete(id); clanChatLast.delete(`${id}:notify`); clanChatLast.delete(`${id}:diplo`); if (String(id).startsWith("u_")) schedulePeerGrace(id, { state, authed, accountId }); else { onPeerGone(); removeFromAllRooms(id); } });
+  ws.on("close", (code, reason) => {
+    allWs.delete(ws);
+    if (code !== 1000 && code !== 1001) {
+      console.log(`[multi:connection] ${id} closed ${code}: ${String(reason).slice(0, 120)}`);
+    }
+    if (authed && accountSockets.get(id) !== ws) return;
+    accountSockets.delete(id);
+    chatLastById.delete(id); friendPingLast.delete(id); clanChatLast.delete(id);
+    clanChatLast.delete(`${id}:notify`); clanChatLast.delete(`${id}:diplo`);
+    if (String(id).startsWith("u_")) schedulePeerGrace(id, { state, authed, accountId });
+    else { onPeerGone(); removeFromAllRooms(id); }
+  });
   ws.on("error", () => { try { ws.close(); } catch {} });
 });
 
@@ -2139,32 +2555,8 @@ setInterval(() => {
   const includePlayerStatic = snapshotTick % PLAYER_STATIC_REFRESH_TICKS === 0;
   for (const [key, room] of rooms) {
     if (!room.size) continue;
-    // Expire les joueurs silencieux depuis > 10 s (onglet ferme sans close propre).
-    // Grâce refresh : les fantômes en attente de rattachement sont ignorés.
-    for (const [pid, entry] of room) {
-      if (Number(entry?.state?._graceUntil || 0) > now) continue;
-      if (now - Number(entry?.state?.updatedAt || 0) > 10000) {
-        try { announceLeave(pid); } catch {}
-        room.delete(pid);
-        try {
-          const goneState = entry?.state || {};
-          socialPeerGone(String(pid), {
-            id: String(pid), state: goneState, authed: String(pid).startsWith("u_"),
-            send: () => {},
-            sendTo: (to, obj) => sendToPeer(to, obj),
-            findByPseudo: (pseudo) => findPeerByPseudo(pseudo),
-            // Pair déjà retiré de la room : fiche locale d'abord.
-            describe: (p) => (String(p) === String(pid)
-              ? { id: String(pid), pseudo: String(goneState.pseudo || "Pilote").slice(0, 20), map: key, online: false }
-              : describePeer(p)),
-          });
-        } catch {}
-        try {
-          if (String(pid).startsWith("u_")) notifyFriendPresence(String(pid).slice(2), false);
-        } catch {}
-      }
-    }
-    if (!room.size) continue;
+    // Les sockets silencieux sont fermes par le heartbeat. Le handler close
+    // retire ensuite la presence via la grace habituelle de reconnexion.
     // Simu NPC : positions des joueurs pour la poursuite, tick, snapshot.
     let npc = { list: [], deaths: [], dmg: [] };
     try {
@@ -2179,7 +2571,7 @@ setInterval(() => {
             const serverSafe = typeof sim.inSafe === "function" ? sim.inSafe(s.x, s.y) : false;
             s.serverSafe = serverSafe && s.safe === true;
             const serverDead = s.pvpDead === true || !(Number(s.hp) > 0);
-            const swapUntargetableUntil = Number(s.hswap) > 0 ? now + Number(s.hswap) * 1000 + 150 : 0;
+            const swapUntargetableUntil = Number(s._swapUntil || 0);
             sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: Math.max(Number(s.iemUntil) || 0, swapUntargetableUntil), cloaked: s.cloaked === true || s.cloakCpu === true, shipId: s.shipId });
           }
         }
@@ -2196,7 +2588,7 @@ setInterval(() => {
             const victim = room.get(String(hit?.playerId));
             const s = victim?.state;
             if (!s || s.pvpDead === true || !(Number(s.hp) > 0)) continue;
-            if (Number(s.hswap) > 0 || Date.now() < Number(s.ishUntil || 0) || Date.now() < Number(s.iemUntil || 0)) continue;
+            if (Date.now() < Number(s._swapUntil || 0) || Date.now() < Number(s.ishUntil || 0) || Date.now() < Number(s.iemUntil || 0)) continue;
             if (s.serverSafe === true) {
               // Riposte ZNA : seul le NPC visé peut blesser un joueur
               // protégé (parité solo). Tous les autres impacts sont ignorés.

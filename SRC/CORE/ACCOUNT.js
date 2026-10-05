@@ -1,7 +1,7 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
-import { bootNetFromCache, flushNetUser, netActive, netCurrent, netList, netSetCurrent, netStore, noteNetConsumption, noteNetPurchase, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
+import { bootNetFromCache, flushNetUser, netActive, netCurrent, netList, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
 // Multi : session serveur restauree au chargement (token + cache local),
 // puis refresh async via /api/me (revision canonique).
 try { bootNetFromCache(); } catch {}
@@ -15,7 +15,7 @@ import { compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit 
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
-import { getRefineryRecipe, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
+import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
 import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
 import {
   AUCTION_ACTIVE_LOTS,
@@ -1485,6 +1485,12 @@ export function updateCurrentUserProgress(patch = {}) {
   }
   if (patch.drones && typeof patch.drones === "object") u.drones = structuredClone(patch.drones);
   if (patch.pet && typeof patch.pet === "object") u.pet = structuredClone(patch.pet);
+  // Minerais chargés sur l'équipement : sans ça la sauvegarde périodique
+  // ignore la consommation des tirs (seul le palier zéro persistait) et un
+  // refresh restaure le stock.
+  if (patch.upgrades && typeof patch.upgrades === "object" && !Array.isArray(patch.upgrades)) {
+    u.upgrades = structuredClone(patch.upgrades);
+  }
   if (patch.skylab && typeof patch.skylab === "object") u.skylab = normalizeSkylabState(patch.skylab);
   if (patch.auction && typeof patch.auction === "object") u.auction = normalizeAuctionState(patch.auction);
 
@@ -2013,10 +2019,16 @@ export function setPetActiveGear(key) {
 export function spinCurrentUserGalaxyGate(gateId, count = 1, rng = Math.random) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const creditsBefore = Math.max(0, Math.floor(Number(u.credits) || 0));
   const result = spinGalaxyGate(u.galaxyGates, gateId, count, u.credits, rng);
   if (!result.ok) return result;
   u.galaxyGates = result.state;
   u.credits = result.credits;
+  // Mode multi : mises (débit) et gains (crédits/munitions) sinon désync 409
+  // (mises remboursées + pièces gardées = spins gratuits, ou gains perdus).
+  noteNetPurchase(Math.max(0, creditsBefore - Math.max(0, Math.floor(Number(result.credits) || 0))));
+  noteNetCreditGain(Math.max(0, Math.max(0, Math.floor(Number(result.credits) || 0)) - creditsBefore));
+  noteNetPurchase(0, { ammo: result.rewards?.ammo || {}, rockets: result.rewards?.rockets || {} });
   for (const [ammoId, amount] of Object.entries(result.rewards.ammo || {})) {
     if (!(Number(amount) > 0)) continue;
     u.ammo[ammoId] = Math.max(0, Number(u.ammo[ammoId]) || 0) + amount;
@@ -2048,6 +2060,8 @@ export function grantCurrentUserGalaxyEnergy(amount) {
   const gained = Math.max(0, Math.floor(Number(amount) || 0));
   u.galaxyGates.energy += gained;
   saveUser(u);
+  // Mode multi : sinon l'octroi est perdu sur 409 (gates non fusionnées).
+  noteNetGateEnergy(gained);
   return { ok: true, gained, user: u };
 }
 
@@ -2111,10 +2125,14 @@ export function completeCurrentUserGalaxyGate(gateId, currentUser = null, option
     u.credits = Math.max(0, Math.floor(Number(u.credits || 0))) + Math.max(0, Math.floor(Number(reward.credits || 0)));
     u.stats ||= { honor: 0, exp: 0, rankPoints: 0 };
     u.stats.exp = Math.max(0, Math.floor(Number(u.stats.exp || 0))) + expGain;
-    u.stats.honor = Math.max(0, Math.floor(Number(u.stats.honor || 0))) + honorGain;
+    u.stats.honor = Math.max(0, Math.floor(Number(u.stats.honor) || 0)) + honorGain;
     u.stats.rankPoints = calculateRankPoints(u.stats);
     u.ammo ||= {};
     u.ammo.x4 = Math.max(0, Math.floor(Number(u.ammo.x4 || 0))) + Math.max(0, Math.floor(Number(reward.x4 || 0)));
+    // Mode multi : la gate consommée survit via pendingGalaxyGates, mais les
+    // gains crédits/munitions seraient perdus sur 409 (XP : MAX du merge).
+    noteNetCreditGain(Math.max(0, Math.floor(Number(reward.credits || 0))));
+    noteNetPurchase(0, { ammo: { x4: Math.max(0, Math.floor(Number(reward.x4 || 0))) } });
     ensureUserShape(u);
     saveUser(u);
     // Montants réels : l'affichage (notifications + log) suit automatiquement.
@@ -2627,6 +2645,10 @@ export function sellItem(itemId, qty = 1, options = {}) {
 
   u.credits = Number(u.credits || 0) + gain;
 
+  // Mode multi : la vente doit survivre à un 409 (sinon le merge ressuscite
+  // l'objet et le canon retire les crédits = rollback + duplication).
+  noteNetEquipmentSold({ counts: { [itemId]: qty }, credits: gain });
+
   if (Array.isArray(u.inventory?.modules)) {
     if (!u.inventory.counts?.[itemId]) {
       u.inventory.modules = u.inventory.modules.filter((x) => x !== itemId);
@@ -2970,6 +2992,8 @@ export function sellShipModules(groupKey, qty = 1, options = {}) {
   }
   const gain = unit * toSell.length;
   u.credits = Number(u.credits || 0) + gain;
+  // Mode multi : idem ci-dessus (union des modules au merge sinon).
+  noteNetEquipmentSold({ moduleIds: toSell, credits: gain });
   ensureUserShape(u);
   saveUser(u);
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
@@ -3010,6 +3034,8 @@ export function buyModuleRoll(cost = 250000) {
   const tickets = Math.max(0, Math.floor(Number(u.inventory?.counts?.["ticket_module_reroll"]) || 0));
   if (tickets > 0) {
     incCount(u, "ticket_module_reroll", -1);
+    // Ticket consommé : sinon un 409 le ressuscite (relance gratuite).
+    noteNetEquipmentSold({ counts: { ticket_module_reroll: 1 } });
     ensureUserShape(u);
     saveUser(u);
     writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
@@ -3103,6 +3129,8 @@ export function buyAndAddShipModule(cost, moduleObj, options = {}) {
   let usedTicket = false;
   if (payWith !== "credits" && tickets > 0) {
     incCount(u, "ticket_module_reroll", -1);
+    // Ticket consommé : sinon un 409 le ressuscite (relance gratuite).
+    noteNetEquipmentSold({ counts: { ticket_module_reroll: 1 } });
     usedTicket = true;
   } else {
     cost = Math.max(0, Number(cost || 0));
@@ -3152,6 +3180,8 @@ export function buyAndReplaceShipModule(cost, oldId, newModule, options = {}) {
   let usedTicket = false;
   if (payWith !== "credits" && tickets > 0) {
     incCount(u, "ticket_module_reroll", -1);
+    // Ticket consommé : sinon un 409 le ressuscite (relance gratuite).
+    noteNetEquipmentSold({ counts: { ticket_module_reroll: 1 } });
     usedTicket = true;
   } else {
     cost = Math.max(0, Number(cost || 0));
@@ -3313,30 +3343,53 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
   }
 
   u.credits -= creditCost;
+  noteNetPurchase(creditCost);
+  const craftItemCosts = {};
   for (const [resourceId, unitCost] of Object.entries(recipe.costs?.resources || {})) {
-    u.inventory.resources[resourceId] = Math.max(0, Number(u.inventory.resources[resourceId] || 0) - Number(unitCost || 0) * quantity);
+    const resAmount = Number(unitCost || 0) * quantity;
+    u.inventory.resources[resourceId] = Math.max(0, Number(u.inventory.resources[resourceId] || 0) - resAmount);
+    // Canal "ores" = toutes les ressources de soute (le replay soustrait
+    // de resources[] quel que soit l'id) : sans ça un 409 ressuscite les
+    // minerais via le MAX du merge pendant que le produit reste acquis.
+    noteNetConsumption("ores", resourceId, resAmount);
   }
   for (const [itemId, unitCost] of Object.entries(recipe.costs?.items || {})) {
-    incCount(u, itemId, -Math.max(0, Math.floor(Number(unitCost || 0))) * quantity);
+    const itemAmount = Math.max(0, Math.floor(Number(unitCost || 0))) * quantity;
+    incCount(u, itemId, -itemAmount);
     if (u.inventory?.counts?.[itemId] <= 0) delete u.inventory.counts[itemId];
     if (Array.isArray(u.inventory?.modules) && !u.inventory.counts?.[itemId]) {
       u.inventory.modules = u.inventory.modules.filter((x) => x !== itemId);
     }
+    if (itemAmount > 0) craftItemCosts[itemId] = Math.max(0, Math.floor(Number(craftItemCosts[itemId]) || 0)) + itemAmount;
   }
+  noteNetEquipmentSold({ counts: craftItemCosts });
   if (logDiskCost > 0) {
     u.pilotSkills.disks = Math.max(0, Math.floor(Number(u.pilotSkills.disks) || 0) - logDiskCost);
   }
   for (const [ammoId, unitCost] of Object.entries(recipe.costs?.ammo || {})) {
-    u.ammo[ammoId] = Math.max(0, Math.floor(Number(u.ammo[ammoId]) || 0) - Math.max(0, Math.floor(Number(unitCost) || 0)) * quantity);
+    const ammoAmount = Math.max(0, Math.floor(Number(unitCost) || 0)) * quantity;
+    u.ammo[ammoId] = Math.max(0, Math.floor(Number(u.ammo[ammoId]) || 0) - ammoAmount);
+    noteNetConsumption("ammo", ammoId, ammoAmount);
   }
+  const craftResGains = {};
   for (const [resourceId, unitAmount] of Object.entries(recipe.output?.resources || {})) {
-    u.inventory.resources[resourceId] = Math.max(0, Number(u.inventory.resources[resourceId] || 0) + Number(unitAmount || 0) * quantity);
+    const resGain = Number(unitAmount || 0) * quantity;
+    u.inventory.resources[resourceId] = Math.max(0, Number(u.inventory.resources[resourceId] || 0) + resGain);
+    // Minerais : déjà couverts par le MAX du merge (ne pas noter : double
+    // comptage). Non-minerais (cipher...) : sinon perdus sur 409.
+    if (!isOreResource(resourceId) && resGain > 0) craftResGains[resourceId] = Math.max(0, Math.floor(Number(craftResGains[resourceId]) || 0)) + Math.floor(resGain);
   }
+  noteNetResourceGain(craftResGains);
   for (const [itemId, unitAmount] of Object.entries(recipe.output?.items || {})) incCount(u, itemId, Number(unitAmount || 0) * quantity);
+  const craftRocketGains = {};
   for (const [rocketId, unitAmount] of Object.entries(recipe.output?.rockets || {})) {
+    const rGain = Number(unitAmount || 0) * quantity;
     u.rockets ??= {};
-    u.rockets[rocketId] = Math.max(0, Math.floor(Number(u.rockets[rocketId] || 0) + Number(unitAmount || 0) * quantity));
+    u.rockets[rocketId] = Math.max(0, Math.floor(Number(u.rockets[rocketId] || 0) + rGain));
+    if (rGain > 0) craftRocketGains[rocketId] = Math.max(0, Math.floor(Number(craftRocketGains[rocketId]) || 0)) + Math.floor(rGain);
   }
+  // Roquettes : pas de MAX au merge (perdues sur 409) → canal achats.
+  noteNetPurchase(0, { rockets: craftRocketGains });
   for (const shipId of Object.keys(recipe.output?.ships || {})) {
     u.inventory.ships ??= [];
     u.hangars ??= [];
@@ -3417,7 +3470,11 @@ export function sellCurrentUserOre(resourceId, bonusPct = 0) {  const u = getCur
   u.credits = Math.max(0, Number(u.credits || 0)) + gained;
   ensureUserShape(u);
   saveUser(u);
+  // Mode multi : le stock est rejoué via le canal minerais, mais le gain
+  // crédits doit aussi survivre au 409 (sinon vente annulée : stock de
+  // retour + crédits retirés).
   if (netActive()) noteNetConsumption("ores", id, owned);
+  noteNetEquipmentSold({ credits: gained });
   return { ok: true, user: u, resourceId: id, quantity: owned, gained };
 }
 
@@ -3435,7 +3492,10 @@ export function exchangeCurrentUserPalladiumForEnergy() {
   u.galaxyGates.energy += energies;
   ensureUserShape(u);
   saveUser(u);
+  // Mode multi : dépense rejouée via le canal minerais, gain énergie rejoué
+  // aussi (sinon perte nette sur 409 : palladium débité, énergie perdue).
   if (netActive()) noteNetConsumption("ores", "palladium", cost);
+  noteNetGateEnergy(energies);
   return { ok: true, energies, cost, user: u };
 }
 
@@ -3488,8 +3548,12 @@ export function startSkylabUpgrade(moduleId, nowMs = Date.now()) {
   if (!check.ok) return { ok: false, error: check.error, user: u };
   const { to, cost } = check;
   u.credits = Math.max(0, Math.floor(Number(u.credits || 0) - cost.credits));
+  // Mode multi : sinon un 409 rembourse les crédits ET restaure le stock
+  // (construction annulée en silence).
+  noteNetPurchase(cost.credits);
   for (const [resId, need] of Object.entries(cost.resEach)) {
     sky.stock[resId] = Math.max(0, Math.floor(Number(sky.stock[resId]) || 0) - need);
+    noteNetSkylabMoved(resId, -need);
   }
   sky.modules[moduleId].upgrading = { to, finishesAt: now + cost.timeSecGame * 1000 };
   sky.lastTickAt = now;
@@ -3529,6 +3593,7 @@ export function buySkylabRobot(moduleId, nowMs = Date.now()) {
   const price = SKYLAB_ROBOT_CREDIT_COST;
   if (Number(u.credits || 0) < price) return { ok: false, error: "Crédits insuffisants.", user: u };
   u.credits = Math.max(0, Math.floor(Number(u.credits || 0) - price));
+  noteNetPurchase(price);
   m.robots.push({ elite: false, expiresAt: now + SKYLAB_ROBOT_LIFETIME_MS });
   ensureUserShape(u);
   saveUser(u);
@@ -3606,6 +3671,7 @@ export function instantSkylabTransport(amounts, toSky = false, nowMs = Date.now(
     return { ok: false, error: "Rien à transporter (stocks vides ou pleins).", user: u };
   }
   u.credits = Math.max(0, Math.floor(Number(u.credits || 0) - SKYLAB_INSTANT_TRANSPORT_COST));
+  noteNetPurchase(SKYLAB_INSTANT_TRANSPORT_COST);
   sky.lastTickAt = now;
   ensureUserShape(u);
   saveUser(u);
@@ -3645,6 +3711,9 @@ function moveSkyToShip(u, sky, wanted) {
     if (added <= 0) continue;
     sky.stock[id] = Math.max(0, Number(sky.stock[id]) || 0) - added;
     u.inventory.resources[id] = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0)) + added;
+    // Mode multi : le stock Skylab n'est pas fusionné (canon gagne) — sans
+    // note, un 409 restaure le stock pendant que la soute garde le gain (dup).
+    noteNetSkylabMoved(id, -added);
     moved[id] = added;
     totalMoved += added;
   }
@@ -3665,6 +3734,10 @@ function moveShipToSky(u, sky, wanted) {
     u.inventory.resources[id] = inShip - qty;
     if (u.inventory.resources[id] <= 0) delete u.inventory.resources[id];
     sky.stock[id] = Math.max(0, Number(sky.stock[id]) || 0) + qty;
+    // Mode multi : rejoués sur le canon en cas de 409 (débit soute + crédit
+    // Skylab), sinon le transfert est annulé en silence.
+    noteNetConsumption("ores", id, qty);
+    noteNetSkylabMoved(id, qty);
     moved[id] = qty;
     totalMoved += qty;
   }
@@ -3783,9 +3856,13 @@ export function placeAuctionBid(lotId, amount, nowMs = Date.now()) {
   const minimum = auctionMinNextBid(lot);
   if (bid < minimum) return { ok: false, error: `Mise minimale : ${minimum.toLocaleString("fr-FR")} crédits.`, user: u };
   // Rembourse l'ancienne mise puis réserve la nouvelle.
+  const previousMyBid = Math.max(0, Math.floor(Number(lot.myBid) || 0));
   u.credits = Math.max(0, Math.floor(Number(u.credits || 0) + Math.max(0, Number(lot.myBid) || 0)));
   if (Number(u.credits || 0) < bid) return { ok: false, error: "Crédits insuffisants.", user: u };
   u.credits = Math.max(0, Math.floor(Number(u.credits || 0) - bid));
+  // Mode multi : débit net synchrone (sinon un 409 rembourse la mise via le
+  // canon pendant que le lot reste acquis après attribution).
+  noteNetPurchase(Math.max(0, bid - previousMyBid));
   lot.myBid = bid;
   lot.topBid = bid;
   lot.topBidder = "you";
@@ -3806,6 +3883,8 @@ function grantAuctionLot(u, lot) {
       u.ammo[key] = Math.max(0, Number(u.ammo[key] || 0) + add);
     }
     incCount(u, lot.catalogId, 1);
+    // Mode multi : sinon munitions perdues sur 409 (mise déjà notée au bid).
+    noteNetPurchase(0, { ammo: lot.ammoGive });
     ensureUserShape(u);
     saveUser(u);
     return { ok: true, user: u };
@@ -3817,6 +3896,7 @@ function grantAuctionLot(u, lot) {
       u.rockets[key] = Math.max(0, Math.floor(Number(u.rockets[key] || 0) + add));
     }
     incCount(u, lot.catalogId, 1);
+    noteNetPurchase(0, { rockets: lot.rocketsGive });
     ensureUserShape(u);
     saveUser(u);
     return { ok: true, user: u };
@@ -3827,6 +3907,8 @@ function grantAuctionLot(u, lot) {
     for (const [id, qty] of Object.entries(lot.resourcesGive)) {
       const q = Math.max(1, Math.floor(Number(qty) || 0));
       u.inventory.resources[id] = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0)) + q;
+      // Non-minerais : sinon perdus sur 409 (les minerais ont le MAX).
+      if (!isOreResource(id)) noteNetResourceGain({ [id]: q });
     }
     ensureUserShape(u);
     saveUser(u);
@@ -3863,8 +3945,7 @@ function settleAuctionLot(u, auction, lot) {
   const won = lot.topBidder === "you" && Number(lot.myBid) > 0;
   if (won) {
     const grant = grantAuctionLot(u, lot);
-    if (!grant?.ok) {
-      // Gain impossible (ex : devenu possédé entre-temps) : rembourse la mise.
+    if (!grant?.ok) {      // Gain impossible (ex : devenu possédé entre-temps) : rembourse la mise.
       u.credits = Math.max(0, Math.floor(Number(u.credits || 0) + Math.max(0, Number(lot.myBid) || 0)));
       pushAuctionHistory(auction, { name: lot.name, result: "lost", amount: Number(lot.myBid) || 0, by: bidder });
       return { type: "lost", name: lot.name, amount: Number(lot.myBid) || 0, refunded: true };

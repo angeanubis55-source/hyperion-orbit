@@ -88,6 +88,16 @@ export function netConnected() {
 let lastPongMs = 0;
 let lastHelloAckMs = 0;
 let lastLatencyMs = null;
+let lastServerMessageMs = 0;
+let heartbeatTimer = null;
+let lastDisconnect = null;
+export function netServerMessageAge() {
+  return lastServerMessageMs ? Math.max(0, Date.now() - lastServerMessageMs) : Infinity;
+}
+function stopHeartbeat() {
+  if (heartbeatTimer != null) clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+}
 // Version du serveur (pong) : le moteur recharge la page si elle diffère
 // de celle du boot (mise à jour déployée : git pull + restart serveur).
 let srvVersionSeen = "";
@@ -126,6 +136,9 @@ export function sendPing() {
 // Reconnexion volontaire (sas / écran de reconnexion) : casse le socket
 // douteux puis relance le cycle (hello auto à l'ouverture).
 export function forceNetReconnect() {
+  if (noReconnect) return;
+  stopHeartbeat();
+  wsGen++; // Invalide aussi les callbacks executes pendant close().
   try {
     connectTried = false;
     connected = false;
@@ -287,6 +300,7 @@ export function drainNetAdminBoomInbox() {
 let noReconnect = false;
 export function netDisconnect() {
   noReconnect = true;
+  stopHeartbeat();
   try { if (ws && ws.readyState === 1) ws.close(); } catch {}
   ws = null;
   connected = false;
@@ -296,6 +310,13 @@ const netBannedInbox = [];
 export function drainNetBannedInbox() {
   if (!netBannedInbox.length) return [];
   return netBannedInbox.splice(0, netBannedInbox.length);
+}
+// Sanction anticheat (kick + gel, modération) : { reason } + popup
+// bloquante moteur, sans reconnect auto (comme un ban).
+const netCheatInbox = [];
+export function drainNetCheatInbox() {
+  if (!netCheatInbox.length) return [];
+  return netCheatInbox.splice(0, netCheatInbox.length);
 }
 const netPvpLootTakeInbox = [];
 export function drainNetPvpLootInbox() {
@@ -631,7 +652,7 @@ function wsUrl() {
 }
 
 export function netplayStatus() {
-  return { connected, authed: netAuthed, myId, count: remotes.size, boxAuthority: "server", boxCount: netBoxes.size, instance: instanceMode === true };
+  return { connected, authed: netAuthed, myId, count: remotes.size, boxAuthority: "server", boxCount: netBoxes.size, instance: instanceMode === true, lastDisconnect };
 }
 
 function prune() {
@@ -642,7 +663,7 @@ function prune() {
 }
 
 export function ensureNetplayConnection() {
-  if (connectTried) return;
+  if (connectTried || noReconnect) return;
   // file:// ou preview sans serveur : reste en solo.
   try {
     if (!/^https?:$/.test(location.protocol)) return;
@@ -652,11 +673,16 @@ export function ensureNetplayConnection() {
   connectTried = true;
   try {
     ws = new WebSocket(url);
-  } catch { ws = null; return; }
+  } catch { ws = null; connectTried = false; return; }
   const myGen = ++wsGen;
+  const socket = ws;
 
   ws.onopen = () => {
+    if (myGen !== wsGen) return;
     connected = true;
+    lastServerMessageMs = Date.now(); // Delai de connexion pour recevoir hello/pong.
+    lastPongMs = 0;
+    lastHelloAckMs = 0;
     lastLatencyMs = null;
     lastMapSent = "";
     try {
@@ -671,9 +697,18 @@ export function ensureNetplayConnection() {
       lastMapSent = currentMapId();
       sendPing();
     } catch {}
+    stopHeartbeat();
+    heartbeatTimer = setInterval(() => {
+      if (myGen === wsGen) sendPing();
+    }, 3000);
   };
-  ws.onclose = () => {
+  ws.onclose = (ev) => {
     if (myGen !== wsGen) return; // socket périmé (reconnect déjà relancée) : ignore
+    stopHeartbeat();
+    lastDisconnect = { at: Date.now(), code: Number(ev?.code || 1006), reason: String(ev?.reason || "").slice(0, 120) };
+    if (lastDisconnect.code === 4001) {
+      noReconnect = true;
+    }
     connected = false;
     netAuthed = false;
     lastLatencyMs = null;
@@ -683,6 +718,9 @@ export function ensureNetplayConnection() {
     // le serveur ; ici c'est NOUS qui sommes coupés : écran net aussitôt.
     try { clearInstanceGameplay(); } catch {}
     try { netGroup = null; } catch {}
+    if (lastDisconnect.code === 4001) {
+      netAdminKickInbox.push({ title: "Session ouverte ailleurs", reason: "Ce compte est connecté dans un autre onglet ou appareil. Actualise cette page pour reprendre ici." });
+    }
     if (noReconnect) return;
     // Reconnect douce apres 3 s (serveur maison qui redemarre).
     setTimeout(() => {
@@ -692,13 +730,20 @@ export function ensureNetplayConnection() {
       if (pendingLocal) sendNow(pendingLocal, true);
     }, 3000);
   };
-  ws.onerror = () => { try { ws.close(); } catch {} };
+  ws.onerror = () => { if (myGen !== wsGen) return; try { socket.close(); } catch {} };
   ws.onmessage = (ev) => {
+    if (myGen !== wsGen) return;
     netPerf.messages++;
     netPerf.bytes += typeof ev.data === "string" ? ev.data.length : Number(ev.data?.byteLength || 0);
     let msg = null;
     try { msg = JSON.parse(String(ev.data)); } catch { return; }
     if (!msg || typeof msg !== "object") return;
+    lastServerMessageMs = Date.now();
+    if (msg.t === "stateCorrection") {
+      if (!Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) return;
+      try { window.dispatchEvent(new CustomEvent("orbit:server-position", { detail: msg })); } catch {}
+      return;
+    }
     if (msg.t === "maintenance") {
       try { window.dispatchEvent(new CustomEvent("orbit:server-maintenance", { detail: msg })); } catch {}
       return;
@@ -904,6 +949,13 @@ export function ensureNetplayConnection() {
       netBannedInbox.push({
         reason: String(msg.reason || "Comportement inapproprié.").slice(0, 200),
         until: msg.until != null && Number.isFinite(Number(msg.until)) ? Math.max(0, Number(msg.until)) : null,
+      });
+      return;
+    }
+    if (msg.t === "cheatKick" || msg.t === "cheatHold") {
+      if (netCheatInbox.length > 4) netCheatInbox.shift();
+      netCheatInbox.push({
+        reason: String(msg.reason || "Vous avez triché. La modération étudie actuellement votre cas. Si cela est avéré, vous serez définitivement banni.").slice(0, 300),
       });
       return;
     }
@@ -1485,6 +1537,7 @@ function sendNow(local, force = false) {
       moving: local.moving === true,
       angle: Number(local.angle) || 0,
       shipId: String(local.shipId || ""),
+      config: Number(local.config) === 2 ? 2 : 1,
       // B02 actifs (bonus de groupe) : ids synchronisés pour la fenêtre Boosters.
       b2: Array.isArray(local.b2) ? local.b2.map(String).slice(0, 8) : [],
       hswap: Math.max(0, Math.min(3, Number(local.hswap) || 0)),
@@ -1724,6 +1777,7 @@ export function sendPvpPetHit(hit) {
   if (!ws || ws.readyState !== 1 || !hit || !hit.target) return;
   try {
     const h = { t: "pvpPetHit", target: String(hit.target) };
+    if (typeof hit.rocket === "string") h.rocket = hit.rocket.slice(0, 16);
     if (hit.kind === "sab") {
       h.kind = "sab";
       h.dmg = Math.max(0, Number(hit.dmg) || 0);
@@ -1747,6 +1801,7 @@ export function sendPvpHit(hit) {
   if (!ws || ws.readyState !== 1 || !hit || !hit.target) return;
   try {
     const h = { t: "pvpHit", target: String(hit.target) };
+    if (typeof hit.rocket === "string") h.rocket = hit.rocket.slice(0, 16);
     if (hit.kind === "sab") {
       h.kind = "sab";
       h.dmg = Math.max(0, Number(hit.dmg) || 0);
@@ -1772,6 +1827,7 @@ export function sendNetHit(hit) {
   if (!ws || ws.readyState !== 1 || !hit || !hit.uid) return;
   try {
     const h = { t: "hit", uid: String(hit.uid) };
+    if (typeof hit.rocket === "string") h.rocket = hit.rocket.slice(0, 16);
     if (hit.kind === "sab") {
       h.kind = "sab";
       h.dmg = Math.max(0, Number(hit.dmg) || 0);
@@ -1974,13 +2030,14 @@ export function tickNetplayRemotes(dt = 0.016) {
   }
 }
 
-export function sendSkillUse(skill) {
+export function sendSkillUse(skill, details = {}) {
   if (suspended || instanceMode === true) return false;
   if (!ws || ws.readyState !== 1) return false;
   const key = String(skill || "").toLowerCase();
-  if (key !== "iem" && key !== "ish" && key !== "smb") return false;
+  if (key !== "iem" && key !== "ish" && key !== "smb" && !/^ability_[a-z0-9_-]{1,56}$/.test(key)) return false;
   try {
-    ws.send(JSON.stringify({ t: "skillUse", skill: key }));
+    ws.send(JSON.stringify({ t: "skillUse", skill: key, enabled: details.enabled !== false,
+      target: String(details.target || "").slice(0, 64) }));
     return true;
   } catch { return false; }
 }

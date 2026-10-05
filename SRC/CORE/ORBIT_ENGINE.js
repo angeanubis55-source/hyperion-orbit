@@ -76,7 +76,7 @@ import {
   tickCurrentUserAuction,
 } from "./ACCOUNT.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
-import { flushNetUser, netList, noteNetConsumption } from "./ACCOUNT_NET.js";
+import { flushNetUser, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
   GALAXY_GATE_DEFINITIONS,
@@ -118,8 +118,9 @@ import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
+import { netServerMessageAge } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
-drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, drainNetSunInbox, drainNetDecloakInbox,
+  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetDecloakInbox,
 getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation } from "./NETPLAY.js";
 import {
   createGatePortalState,
@@ -6465,6 +6466,7 @@ function toggleCpuCloak() {
     return;
   }
   player.credits -= CPU_CLOAK_COST;
+  try { noteNetPurchase(CPU_CLOAK_COST); } catch {}
   try {
     const current = getCurrentUserFull();
     if (current) { current.credits = player.credits; account.user = current; }
@@ -13880,6 +13882,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   if (entryCost > 0) {
     player.credits -= confirmedEntryCost;
     if (account.user) account.user.credits = player.credits;
+    try { noteNetPurchase(confirmedEntryCost); } catch {}
     markProgressDirty();
     saveProgressNow();
     showNotification(`Droit d'entrée acquitté : ${formatInteger(confirmedEntryCost)} crédits`, 3, "info");
@@ -13890,6 +13893,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   if (shortcutCreditCost > 0) {
     player.credits -= shortcutCreditCost;
     if (account.user) account.user.credits = player.credits;
+    try { noteNetPurchase(shortcutCreditCost); } catch {}
     markProgressDirty();
     saveProgressNow();
     showNotification(`Taxe du raccourci acquittée : ${formatInteger(shortcutCreditCost)} crédits`, 3, "info");
@@ -14599,10 +14603,15 @@ function claimQuestReward(questId) {
   const questMult = playerBoosterMults().quest;
   const creditsGained = Math.max(0, Math.floor(Number(reward.credits || 0) * questMult));
   player.credits += creditsGained;
+  // Mode multi : sinon les gains sont perdus sur 409 (canon serveur).
+  try { noteNetCreditGain(creditsGained); } catch {}
   const ammoRewards = Object.entries(reward.ammo || {}).filter(([type, amount]) => Object.hasOwn(player.ammo, type) && Number(amount) > 0);
   const ammoGained = ammoRewards.map(([type, amount]) => [type, Math.max(0, Math.floor(Number(amount) * questMult || 0))]);
   for (const [type, gained] of ammoGained) player.ammo[type] += gained;
-  if (ammoGained.length) updateAmmoUI();
+  if (ammoGained.length) {
+    updateAmmoUI();
+    try { noteNetPurchase(0, { ammo: Object.fromEntries(ammoGained) }); } catch {}
+  }
   // Lasers offerts (ex : Prometheus) : stockés en inventaire (modules),
   // à équiper manuellement via les slots lasers.
   const laserMessages = [];
@@ -14635,6 +14644,8 @@ function claimQuestReward(questId) {
       for (const [id, qty] of resGains) {
         const q = Math.max(1, Math.floor(Number(qty) || 0));
         account.user.inventory.resources[id] = Math.max(0, Number(account.user.inventory.resources[id]) || 0) + q;
+        // Non-minerais (cipher...) : sinon perdus sur 409 (pas de MAX).
+        try { if (!isOreResource(id)) noteNetResourceGain({ [id]: q }); } catch {}
         resourceMessages.push(`Vous avez reçu ${formatInteger(q)} ${getResourceName(id, q)}`);
       }
     }
@@ -14733,6 +14744,7 @@ function saveProgressNowMeasured() {
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
   drones: account.user.drones,
   pet: account.user.pet,
+  upgrades: account.user.upgrades,
   skylab: account.user.skylab,
   auction: account.user.auction,
 hangarState: !player.dead && started ? {
@@ -16826,10 +16838,9 @@ let auctionTickT = 0;
 
 // Liaison serveur (vrai jeu multi) : entrée + vie.
 // - Sas d'entrée : pas de spawn sans hello traité (anti-fantôme).
-// - Heartbeat 3 s : sans pong récent = liaison morte -> overlay
+// - Heartbeat 3 s : sans message serveur depuis 30 s = liaison morte -> overlay
 //   bloquant + simulation gelée, reconnexion jusqu'au succès.
 let linkDead = false;
-let pingAcc = 0;
 let retryAcc = 0;
 let retryCount = 0;
 
@@ -16871,9 +16882,7 @@ function waitNetLink(timeoutMs) {
 function netLinkAliveInGame() {
   try {
     if (!netConnected()) return false;
-    if (netPongAge() < 9000) return true;
-    if (netHelloAckAge() < 9000) return true;
-    return false;
+    return netServerMessageAge() < 30000;
   } catch {
     return false;
   }
@@ -16949,19 +16958,22 @@ function purgeNetEntitiesForReconnect() {
 
 function tickLinkHeartbeat(realDt) {
   if (!started || starting) return;
+  // Traiter aussi les fins de session quand linkDead gele la simulation.
+  for (const K of drainNetAdminKickInbox()) {
+    if (!K?.title) {
+      try { spawnExplosion(player.x, player.y, 1.4); } catch {}
+      try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
+    }
+    try { netDisconnect(); } catch {}
+    try { setKickOverlay(K?.reason || "Comportement inapproprié.", K?.title || "Exclu par l'administrateur"); } catch {}
+  }
   // Kické : popup bloquante, aucun retry, aucun masquage auto.
   if (kickedReason != null) {
     try { setKickOverlay(kickedReason); } catch {}
     return;
   }
   if (!linkDead) {
-    pingAcc += realDt;
-    if (pingAcc >= 3) {
-      pingAcc = 0;
-      try {
-        sendPing();
-      } catch {}
-    }
+    // Les pings sont geres par NETPLAY, independamment des frames du jeu.
     // Onglet masqué : timers étranglés, on ne déclare pas la mort
     // (vérification reprise au retour).
     try {
@@ -16982,7 +16994,6 @@ function tickLinkHeartbeat(realDt) {
   }
   if (netLinkReadyForEntry()) {
     linkDead = false;
-    pingAcc = 0;
     retryAcc = 0;
     setLinkOverlay(false);
   }
@@ -19712,8 +19723,8 @@ const healerPulses = [];
 // Pulsations de halo génériques (pod Aegis, bouées pet) : même visuel que
 // le soigneur via drawHaloPulse, avec leurs propres couleurs.
 const haloPulses = [];
-function spawnHaloPulse(x, y, radius, life, fillRgb, edgeRgb, follow = null, alpha = 1, maxWidth = 6) {
-  haloPulses.push({ x, y, radius, t: 0, life, fill: fillRgb, edge: edgeRgb, follow, alpha, maxWidth });
+function spawnHaloPulse(x, y, radius, life, fillRgb, edgeRgb, follow = null, alpha = 1, maxWidth = 6, glow = true) {
+  haloPulses.push({ x, y, radius, t: 0, life, fill: fillRgb, edge: edgeRgb, follow, alpha, maxWidth, glow });
 }
 const floatTexts = [];
 const lasers = [];
@@ -21076,6 +21087,8 @@ function tickPetFuel(dt) {
     pet = current.pet;
   }
   pet.fuel = Math.max(0, Math.floor(Number(pet.fuel) || 0) - take);
+  // Mode multi : sinon un 409 remplit le réservoir depuis le canon.
+  try { noteNetPetFuelConsumed(take); } catch {}
   markProgressDirty();
   if (pet.fuel <= 0) {
     pet.fuel = 0;
@@ -21100,6 +21113,7 @@ function consumePetOneshotFuel(pet, user) {
   const have = Math.max(0, Math.floor(Number(pet.fuel) || 0));
   if (have < cost) return { ok: false, cost, have };
   pet.fuel = have - cost;
+  try { noteNetPetFuelConsumed(cost); } catch {}
   markProgressDirty();
   return { ok: true, cost, have: pet.fuel };
 }
@@ -21598,16 +21612,26 @@ function haloGlowSprite(fillRgb) {
   haloGlowCache.set(fillRgb, c);
   return c;
 }
-function drawHaloPulse(x, y, radius, k, fillRgb, edgeRgb, alphaScale = 1, maxWidth = 6) {
+function drawHaloPulse(x, y, radius, k, fillRgb, edgeRgb, alphaScale = 1, maxWidth = 6, glow = true) {
   const prog = Math.max(0, Math.min(1, Number(k) || 0));
   const r = Math.max(1, radius * (0.2 + prog * 0.8));
   const a = (1 - prog) * 0.78 * Math.max(0, Math.min(1, Number(alphaScale ?? 1)));
   if (a <= 0.01) return;
+  // Perfs : le glow (drawImage mis à l'échelle + blend alpha) coûte au
+  // prorata de sa surface. À 1200 de rayon (halo Mindfire) ça fait un
+  // remplissage de 2400×2400 px par frame = plein écran, le principal
+  // goulot FPS. On plafonne le glow à ~1040 px de large : l'anneau garde
+  // le rayon réel (visuel identique, effet d'onde de choc), le remplissage
+  // est divisé par ~5. Les petits halos (< 520) sont inchangés.
+  const gr = Math.min(r, 520);
   ctx.save();
   ctx.globalAlpha = a;
-  try {
-    ctx.drawImage(haloGlowSprite(fillRgb), x - r, y - r, r * 2, r * 2);
-  } catch {}
+  // glow = false : anneau seul, coût quasi nul (aucun remplissage).
+  if (glow !== false) {
+    try {
+      ctx.drawImage(haloGlowSprite(fillRgb), x - gr, y - gr, gr * 2, gr * 2);
+    } catch {}
+  }
   ctx.strokeStyle = `rgba(${edgeRgb},0.95)`;
   ctx.lineWidth = Math.max(0.5, maxWidth - prog * (maxWidth / 2));
   ctx.beginPath();
@@ -21643,7 +21667,7 @@ function drawPetBuoy(ox, oy) {
         spawnHaloPulse(s.x, s.y, PET_BUOY_RADIUS, 1,
           petBuoy.key === "bc" ? "255,70,80" : "55,255,125",
           petBuoy.key === "bc" ? "255,110,120" : "80,255,145",
-          "pet");
+          "pet", 1, 6, false);
       } catch {}
     }
   }
@@ -22622,7 +22646,10 @@ function consumeUpgradeStock(slot, amount = 1) {
   const loaded = upgrades?.[slot];
   const stock = Math.max(0, Math.floor(Number(loaded?.stock) || 0));
   if (stock <= 0) return false;
-  loaded.stock = Math.max(0, stock - Math.max(1, Math.floor(Number(amount) || 1)));
+  const used = Math.max(1, Math.floor(Number(amount) || 1));
+  loaded.stock = Math.max(0, stock - used);
+  // Mode multi : sinon un 409 restaure le stock du canon (tirs gratuits).
+  try { noteNetUpgradeConsumed(slot, used); } catch {}
   refreshUpgradeSlotDom(slot);
   if (loaded.stock <= 0) {
     markProgressDirty();
@@ -24909,7 +24936,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
     const amount = Math.max(0, Math.round(Number(dmg) || 0));
     try {
       sendPvpHit({ target: e._netPlayer, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult,
-        slowPct: opts.slowPct, slowSec: opts.slowSec, freezeSec: opts.freezeSec });
+        slowPct: opts.slowPct, slowSec: opts.slowSec, freezeSec: opts.freezeSec, rocket: opts.rocket });
     } catch {}
     return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
   }
@@ -24919,7 +24946,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (e._netPet && netplayNpcActive()) {
     const amount = Math.max(0, Math.round(Number(dmg) || 0));
     try {
-      sendPvpPetHit({ target: e._netPet, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult });
+      sendPvpPetHit({ target: e._netPet, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult, rocket: opts.rocket });
     } catch {}
     return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
   }
@@ -25040,6 +25067,7 @@ e._pendingSpawn = 20;
         slowPct: opts.slowPct,
         slowSec: opts.slowSec,
         freezeSec: opts.freezeSec,
+        rocket: opts.rocket,
       });
     } catch {}
   }
@@ -25051,7 +25079,7 @@ function applyRocketHit(e, b, recipient = player) {
   if (!e || e.hp <= 0 || e._bossEncounter?.invulnerable) return emptyEnemyDamageResult();
   const effect = b.rocketEffect || null;
   const direct = b.dmg > 0 ? damageEnemy(e, b.dmg, effect?.pierceShield ? 1 : effect?.piercePct, undefined, {
-    noWeaken: true, slowPct: effect?.slowPct, slowSec: effect?.duration, freezeSec: effect?.freezeSec,
+    noWeaken: true, slowPct: effect?.slowPct, slowSec: effect?.duration, freezeSec: effect?.freezeSec, rocket: b.key,
   }) : emptyEnemyDamageResult();
   const drained = effect?.shieldDrain > 0 && e.hp > 0
     ? drainShieldFromEnemy(e, effect.shieldDrain, recipient, effect?.leechPct)
@@ -25071,7 +25099,7 @@ function applyRocketHit(e, b, recipient = player) {
   // Les roquettes de controle ont 0 degat : leur impact d'etat doit tout de
   // meme atteindre le serveur (joueur distant ou NPC partage).
   if (!(b.dmg > 0) && (effect?.slowPct > 0 || effect?.freezeSec > 0)) {
-    const status = { dmg: 0, slowPct: effect?.slowPct, slowSec: effect?.duration, freezeSec: effect?.freezeSec };
+    const status = { dmg: 0, slowPct: effect?.slowPct, slowSec: effect?.duration, freezeSec: effect?.freezeSec, rocket: b.key };
     try {
       if (e._netPlayer) sendPvpHit({ target: e._netPlayer, ...status });
       else if (e._netUid) sendNetHit({ uid: e._netUid, ...status });
@@ -26420,6 +26448,7 @@ function usePulse() {
   }
 
   player.credits -= PULSE_COST;
+  try { noteNetPurchase(PULSE_COST); } catch {}
   try {
     const current = getCurrentUserFull();
     if (current) { current.credits = player.credits; account.user = current; }
@@ -26481,6 +26510,7 @@ function useIsh() {
   }
 
   player.credits -= ISH_COST;
+  try { noteNetPurchase(ISH_COST); } catch {}
   try {
     const current = getCurrentUserFull();
     if (current) { current.credits = player.credits; account.user = current; }
@@ -26524,6 +26554,7 @@ function useSmb() {
   }
 
   player.credits -= SMB_COST;
+  try { noteNetPurchase(SMB_COST); } catch {}
   try {
     const current = getCurrentUserFull();
     if (current) { current.credits = player.credits; account.user = current; }
@@ -28719,13 +28750,6 @@ function syncNetNpcs(dt) {
       try { spawnExplosion(Number(B.x) || 0, Number(B.y) || 0, 1.4); } catch {}
       try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
     }
-    for (const K of drainNetAdminKickInbox()) {
-      try { spawnExplosion(player.x, player.y, 1.4); } catch {}
-      try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
-      try { netDisconnect(); } catch {}
-      // Popup bloquante (motif) : refresh manuel obligatoire pour revenir.
-      try { setKickOverlay(K?.reason || "Comportement inapproprié.", "Exclu par l'administrateur"); } catch {}
-    }
     for (const B of drainNetBannedInbox()) {
       try { netDisconnect(); } catch {}
       // Banni : popup bloquante (motif + date de retour), refresh manuel.
@@ -28735,6 +28759,13 @@ function syncNetNpcs(dt) {
         ? ` Vous pourrez vous reconnecter à partir du ${new Date(until).toLocaleString("fr-FR")}.`
         : " Bannissement définitif.";
       try { setKickOverlay(`Vous avez été banni. Motif : ${B?.reason || "Comportement inapproprié."}.${dateTxt}`, "Banni par l'administrateur"); } catch {}
+    }
+    for (const C of drainNetCheatInbox()) {
+      try { netDisconnect(); } catch {}
+      // Triche (kick + gel, dossier en examen) : comme une déconnexion
+      // volontaire + message modération, refresh manuel pour revenir
+      // (rejeté tant que le gel est actif).
+      try { setKickOverlay(C?.reason || "Vous avez triché. La modération étudie actuellement votre cas. Si cela est avéré, vous serez définitivement banni.", "Triche détectée"); } catch {}
     }
   } catch {}
   // Verrou fantôme : géré par Target.get() qui suit le jumeau snapshot
@@ -32492,7 +32523,7 @@ function update(dt) {
     if (podSec !== Number(player.podLastPulseSec ?? -1)) {
       player.podLastPulseSec = podSec;
       if (player.podX != null) {
-        try { spawnHaloPulse(player.podX, player.podY, REPAIR_POD_RADIUS, 0.9, "55,255,125", "80,255,145"); } catch {}
+        try { spawnHaloPulse(player.podX, player.podY, REPAIR_POD_RADIUS, 0.9, "55,255,125", "80,255,145", null, 1, 6, false); } catch {}
       }
     }
     player.podHealAcc = Number(player.podHealAcc || 0) + dt;
@@ -32526,7 +32557,7 @@ function update(dt) {
       if (hammerPodSec !== Number(player[pLast] ?? -1)) {
         player[pLast] = hammerPodSec;
         if (player[pX] != null) {
-          try { spawnHaloPulse(player[pX], player[pY], hammerPodRadius(podPlus), 0.9, "55,255,125", "80,255,145"); } catch {}
+          try { spawnHaloPulse(player[pX], player[pY], hammerPodRadius(podPlus), 0.9, "55,255,125", "80,255,145", null, 1, 6, false); } catch {}
         }
       }
       player[pAcc] = Number(player[pAcc] || 0) + dt;
@@ -32683,7 +32714,7 @@ function update(dt) {
     if (protSec !== Number(player.protectionLastPulseSec ?? -1)) {
       player.protectionLastPulseSec = protSec;
       if (!player.dead) {
-        try { spawnHaloPulse(player.x, player.y, PROTECTION_RADIUS, 1.0, "200,170,255", "230,210,255", "player"); } catch {}
+        try { spawnHaloPulse(player.x, player.y, PROTECTION_RADIUS, 1.0, "200,170,255", "230,210,255", "player", 1, 6, false); } catch {}
       }
     }
     if (player.protectionT <= 0) {
@@ -33497,7 +33528,7 @@ function update(dt) {
       try { ripperTick(); } catch {}
       // Une pulsation jaune visible par seconde, comme la Protection.
       if (!player.dead) {
-        try { spawnHaloPulse(player.x, player.y, RIPPER_RADIUS, 1.0, "255,210,80", "255,240,170", "player"); } catch {}
+        try { spawnHaloPulse(player.x, player.y, RIPPER_RADIUS, 1.0, "255,210,80", "255,240,170", "player", 1, 6, false); } catch {}
       }
     }
     if (player.ripperT <= 0) {
@@ -34734,7 +34765,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
       if (e._haloT <= 0) {
         e._haloT = 1;
         if (displayHalosOn()) {
-          try { spawnHaloPulse(e.x, e.y, 1200, 1, "150,110,255", "190,150,255"); } catch {}
+          try { spawnHaloPulse(e.x, e.y, 1200, 1, "150,110,255", "190,150,255", null, 1, 6, false); } catch {}
         }
         if (!e._netUid && !player.dead) {
           const dx = player.x - e.x, dy = player.y - e.y;
@@ -35716,7 +35747,7 @@ function draw() {
     const y = pulse.y + oy;
     const k = clamp(pulse.t / pulse.life, 0, 1);
     if (x < -pulse.radius || y < -pulse.radius || x > innerWidth + pulse.radius || y > innerHeight + pulse.radius) continue;
-    drawHaloPulse(x, y, pulse.radius, k, "55,255,125", "80,255,145");
+    drawHaloPulse(x, y, pulse.radius, k, "55,255,125", "80,255,145", 1, 6, false);
   }
   // Pulsations génériques (pod Aegis, bouées pet) : mêmes règles d'affichage.
   for (const pulse of displayHalosOn() ? haloPulses : []) {
@@ -35724,7 +35755,7 @@ function draw() {
     const y = pulse.y + oy;
     const k = clamp(pulse.t / pulse.life, 0, 1);
     if (x < -pulse.radius || y < -pulse.radius || x > innerWidth + pulse.radius || y > innerHeight + pulse.radius) continue;
-    drawHaloPulse(x, y, pulse.radius, k, pulse.fill, pulse.edge, pulse.alpha ?? 1, pulse.maxWidth ?? 6);
+    drawHaloPulse(x, y, pulse.radius, k, pulse.fill, pulse.edge, pulse.alpha ?? 1, pulse.maxWidth ?? 6, pulse.glow);
   }
   for (const e of spatialNpcsInRect(-ox - 240, -oy - 240, -ox + innerWidth + 240, -oy + innerHeight + 240)) {
     if (e.hp <= 0) continue;
@@ -36912,13 +36943,15 @@ async function prepareGameAssets() {
   if (assetsPrepared) return;
   if (ui.loadingOverlay) ui.loadingOverlay.style.display = "block";
   if (ui.loadingStatus) ui.loadingStatus.textContent = "Chargement du secteur actuel…";
-  const stopProgress = IMG.onProgress(({ total, done }) => {
-    const percent = total ? Math.round(done / total * 100) : 0;
+  const renderProgress = ({ total, done }, ready = false) => {
+    const percent = ready ? 100 : (total ? Math.min(99, Math.floor(done / total * 100)) : 0);
     if (ui.loadingBar) ui.loadingBar.style.width = `${percent}%`;
     if (ui.loadingCount) ui.loadingCount.textContent = `${done} / ${total} ressources du secteur`;
     if (ui.loadingPercent) ui.loadingPercent.textContent = `${percent} %`;
     ui.loadingOverlay?.querySelector(".loadingTrack")?.setAttribute("aria-valuenow", String(percent));
-  });
+  };
+  renderProgress({ total: 0, done: 0 });
+  let stopProgress = () => {};
   try {
     const jobs = [
       ensurePackLoaded(ACTIVE_SHIP),
@@ -36946,9 +36979,17 @@ async function prepareGameAssets() {
     } else {
       jobs.push(...preloadPortalSprites(portal), ...preloadPortalSprites(gateReturnPortal));
     }
+    // Tous les lots (y compris les imports de bases) sont enregistres avant
+    // de calculer le pourcentage. Les ajouts suivants ne changent pas ce total.
+    let preparedProgress = IMG.snapshot();
+    stopProgress = IMG.onProgress(progress => {
+      preparedProgress = progress;
+      renderProgress(progress);
+    }, { freezeTotal: true });
     await Promise.allSettled(jobs);
     await IMG.whenIdle();
     assetsPrepared = true;
+    renderProgress(preparedProgress, true);
     playerImgs = ACTIVE_SHIP._imgs;
     playerImgsReady = true;
     if (ui.loadingStatus) ui.loadingStatus.textContent = "Secteur prêt.";
@@ -37306,6 +37347,7 @@ function frame(t) {
         my: moveTarget.active === true ? Math.round(Number(moveTarget.y) || 0) : 0,
         moving: moveTarget.active === true,
         shipId: (typeof ACTIVE_SHIP !== "undefined" && ACTIVE_SHIP?.id) || "",
+        config: Number(getActiveHangarFromUser(account.user)?.activeConfig) === 2 ? 2 : 1,
         hswap: hangarSwapFx ? Math.max(0.001, hangarSwapFx.dur - hangarSwapFx.t) : 0,
         pseudo: account?.user?.pseudo || "Pilote",
         dead: player.dead === true,
@@ -37386,6 +37428,26 @@ function frame(t) {
 // ============================================================
 // Init
 // ============================================================
+// Une position refusée doit être adoptée par le propriétaire aussi, pour
+// éviter une désynchronisation permanente après un lag ou un saut rejeté.
+let serverPositionCorrectionRunning = false;
+window.addEventListener("orbit:server-position", async (event) => {
+  const correction = event.detail;
+  if (!started || !correction || serverPositionCorrectionRunning) return;
+  const x = Number(correction.x), y = Number(correction.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  serverPositionCorrectionRunning = true;
+  try {
+    if (String(correction.map).toLowerCase() !== currentMapId().toLowerCase()) {
+      const result = await goToMapFast(correction.map);
+      if (result !== "switched" && result !== "same") return;
+    }
+    player.x = x; player.y = y;
+    player.vx = 0; player.vy = 0;
+    moveTarget.active = false;
+  } finally { serverPositionCorrectionRunning = false; }
+});
+
 function saveStateImmediate() {
   try { if (sessionStorage.getItem("orbit_faction_transfer")) return; } catch {}
   if (!account.user) return;
@@ -37414,6 +37476,7 @@ updateCurrentUserProgress({
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
   drones: account.user.drones,
   pet: account.user.pet,
+  upgrades: account.user.upgrades,
   skylab: account.user.skylab,
   auction: account.user.auction,
 

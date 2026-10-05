@@ -18,9 +18,9 @@ export function createImageLoader({
     return { total: IMG_TOTAL, done: IMG_DONE, pending: IMG_QUEUE.length + IMG_INFLIGHT };
   }
 
-  function notify() {
+  function notify(completedSrc = null) {
     const state = snapshot();
-    for (const listener of listeners) listener(state);
+    for (const listener of listeners) listener(state, completedSrc);
     if (state.pending === 0) {
       for (const resolve of idleWaiters) resolve(state);
       idleWaiters.clear();
@@ -40,7 +40,7 @@ export function createImageLoader({
         IMG_INFLIGHT--;
         IMG_DONE++;
         resolve(img);
-        notify();
+        notify(src);
         _pump();
       };
 
@@ -95,11 +95,23 @@ export function createImageLoader({
     return Math.max(1, Math.min(maxDpr, window.devicePixelRatio || 1));
   }
 
-  function onProgress(listener) {
+  function onProgress(listener, { freezeTotal = false } = {}) {
     if (typeof listener !== "function") return () => {};
-    listeners.add(listener);
-    listener(snapshot());
-    return () => listeners.delete(listener);
+    let notifyListener = listener;
+    if (freezeTotal) {
+      // Une liste deja preparee garde son total, meme si le rendu ou un
+      // prechargement ajoute ensuite d'autres images dans le meme loader.
+      const sources = new Set(IMG_PROMISE.keys());
+      const total = IMG_TOTAL;
+      let done = IMG_DONE;
+      notifyListener = (_state, completedSrc) => {
+        if (sources.delete(completedSrc)) done++;
+        listener({ total, done, pending: total - done });
+      };
+    }
+    listeners.add(notifyListener);
+    notifyListener(snapshot());
+    return () => listeners.delete(notifyListener);
   }
 
   function whenIdle() {

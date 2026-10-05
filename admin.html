@@ -110,6 +110,22 @@
       <tbody id="banRows"><tr><td colspan="4">Aucun bannissement.</td></tr></tbody>
     </table>
   </div>
+  <div class="card">
+    <h2>Anticheat — dossiers en examen</h2>
+    <p class="sub">Gel automatique (kick + compte gelé, JAMAIS de ban auto). Libérer = innocent. Bannir définitif = triche avérée.</p>
+    <table>
+      <thead><tr><th>Pseudo</th><th>Détecté le</th><th>Preuves (fenêtre 10 s)</th><th>Actions</th></tr></thead>
+      <tbody id="cheatRows"><tr><td colspan="4">Aucun dossier.</td></tr></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Anticheat — suspects live</h2>
+    <p class="sub">Score d'audit &gt; 0 (fenêtres 10 s : kills, boxes, dégâts). +15 dépassement simple, +50 grossier, sanction à 100.</p>
+    <table>
+      <thead><tr><th>Pseudo</th><th>Score</th><th>Signalements</th><th>Dernier signalement</th><th>Actions</th></tr></thead>
+      <tbody id="suspectRows"><tr><td colspan="5">Aucun suspect.</td></tr></tbody>
+    </table>
+  </div>
 </div>
 <div id="modalOverlay"><div id="modalBox">
   <h3 id="modalTitle"></h3>
@@ -457,6 +473,7 @@
     try {
       try { await refreshChat(); } catch {}
       try { await refreshBans(); } catch {}
+      try { await refreshCheat(); } catch {}
       try { await refreshAccounts(); } catch {}
     } catch {}
   }
@@ -588,6 +605,90 @@
       };
       td.appendChild(unban);
       tb.appendChild(tr);
+    }
+  }
+  function fmtDateTime(at) {
+    try {
+      const d = new Date(Number(at) || 0);
+      if (!Number.isFinite(d.getTime()) || d.getTime() <= 0) return "—";
+      return d.toLocaleString("fr-FR");
+    } catch { return "—"; }
+  }
+  function fmtDmgShort(v) {
+    const n = Math.max(0, Math.floor(Number(v) || 0));
+    if (n >= 1e9) return `${(n / 1e9).toFixed(1)} Md`;
+    if (n >= 1e6) return `${Math.round(n / 1e6)} M`;
+    return fmtN(n);
+  }
+  function evidenceText(ev) {
+    if (!ev || typeof ev !== "object") return "—";
+    const parts = [];
+    if (ev.manual === true) parts.push("gel manuel");
+    if (Number(ev.kills10s) > 0) parts.push(`${fmtN(ev.kills10s)} kills/10s`);
+    if (Number(ev.boxes10s) > 0) parts.push(`${fmtN(ev.boxes10s)} boxes/10s`);
+    if (Number(ev.dmg10s) > 0) parts.push(`${fmtDmgShort(ev.dmg10s)} dégâts/10s`);
+    if (Number(ev.score) > 0) parts.push(`score ${fmtN(ev.score)}`);
+    if (Array.isArray(ev.triggers) && ev.triggers.length) parts.push(ev.triggers.slice(-3).join(" · "));
+    return parts.length ? parts.join(" · ") : "—";
+  }
+  async function refreshCheat() {
+    const tb = $("cheatRows");
+    const st = $("suspectRows");
+    if (!tb && !st) return;
+    let out = null;
+    try { out = await call("/api/admin/cheat"); } catch { return; }
+    const holds = (out && Array.isArray(out.holds)) ? out.holds : [];
+    const suspects = (out && Array.isArray(out.suspects)) ? out.suspects : [];
+    if (tb) {
+      tb.innerHTML = "";
+      if (!holds.length) tb.innerHTML = `<tr><td colspan="4">Aucun dossier.</td></tr>`;
+      for (const h of holds) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${esc(h.pseudo)}</td><td>${esc(fmtDateTime(h.at))}</td><td>${esc(evidenceText(h.evidence))}</td><td></td>`;
+        const td = tr.lastChild;
+        const free = document.createElement("button");
+        free.type = "button"; free.className = "small"; free.textContent = "Libérer (innocent)";
+        free.onclick = async () => {
+          try {
+            const res = await call("/api/admin/unban", { method: "POST", body: JSON.stringify({ key: h.key }) });
+            if (!res || res.ok !== true) throw new Error("Échec.");
+            toast(`${h.pseudo} libéré.`, "ok");
+          } catch (e) { toast(e?.message || "Erreur.", "err"); }
+          refresh();
+        };
+        const ban = document.createElement("button");
+        ban.type = "button"; ban.className = "small danger"; ban.textContent = "Bannir définitif";
+        ban.onclick = () => openBanModal({ id: "", pseudo: h.pseudo });
+        td.appendChild(free);
+        td.appendChild(ban);
+        tb.appendChild(tr);
+      }
+    }
+    if (st) {
+      st.innerHTML = "";
+      if (!suspects.length) st.innerHTML = `<tr><td colspan="5">Aucun suspect.</td></tr>`;
+      for (const s of suspects) {
+        const tr = document.createElement("tr");
+        const last = s.last && typeof s.last === "object" && Array.isArray(s.last.triggers) ? s.last.triggers.slice(-2).join(" · ") : "—";
+        tr.innerHTML = `<td>${esc(s.pseudo)}${s.online ? "" : " <span class=\"badge off\">hors ligne</span>"}</td><td class="num">${fmtN(s.score)}</td><td class="num">${fmtN(s.strikes)}</td><td>${esc(last)}</td><td></td>`;
+        const td = tr.lastChild;
+        const kick = document.createElement("button");
+        kick.type = "button"; kick.className = "small danger"; kick.textContent = "Kick";
+        kick.onclick = () => openKickModal({ id: s.id, pseudo: s.pseudo });
+        const hold = document.createElement("button");
+        hold.type = "button"; hold.className = "small danger"; hold.textContent = "Geler";
+        hold.onclick = async () => {
+          try {
+            const res = await call("/api/admin/cheat-hold", { method: "POST", body: JSON.stringify({ id: s.id, pseudo: s.pseudo }) });
+            if (!res || res.ok !== true) throw new Error(res?.error || "Échec.");
+            toast(`${s.pseudo} gelé (dossier ouvert).`, "ok");
+          } catch (e) { toast(e?.message || "Erreur.", "err"); }
+          refresh();
+        };
+        td.appendChild(kick);
+        td.appendChild(hold);
+        st.appendChild(tr);
+      }
     }
   }
   async function sendAdminMessage(inputId, msgId) {

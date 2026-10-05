@@ -1416,6 +1416,20 @@ export function clanMemberUserIds(clanId) {
 
 // WS multi : verifie un token de compte hors HTTP (hello).
 // Retourne { id, pseudo } ou null (invite / token mort).
+export function getAccountGameplayData(accountId) {
+  initAccountDb();
+  const row = db.prepare("SELECT data, faction, revision FROM users WHERE id = ?").get(String(accountId));
+  if (!row) return null;
+  try {
+    const data = JSON.parse(row.data || "{}");
+    if (!Array.isArray(data.hangars) || !data.hangars.length) {
+      data.hangars = [{ id: "starter", shipId: "PhoenixBleu", active: true, activeConfig: 1,
+        fit: { lasers: [], gens: [], extras: [], shipMods: [] } }];
+    }
+    return { ...data, faction: row.faction, revision: row.revision };
+  } catch { return null; }
+}
+
 export function verifyWsToken(token) {
   try {
     const t = String(token || "").slice(0, 128);

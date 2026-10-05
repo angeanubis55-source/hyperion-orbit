@@ -35,6 +35,26 @@ let refreshStarted = false;
 let pendingPurchaseCredits = 0;
 const pendingPurchaseStock = { ammo: {}, rockets: {} };
 const pendingConsumedStock = { ammo: {}, rockets: {}, ores: {} };
+// Ventes d'équipement pas encore acceptées par le serveur : rejouées sur le
+// canon en cas de 409 (comme les achats). Sans ça, le MAX des compteurs et
+// l'union des modules du merge ressuscitent les objets vendus pendant que
+// le canon serveur retire les crédits = rollback + duplication.
+const pendingEquipmentSales = { counts: {}, moduleIds: [], credits: 0 };
+// Delta Skylab (stock) pas encore accepté : signé par ressource (transporteur
+// sky->soute = négatif, soute->sky = positif). Rejoué sur le canon en cas de
+// 409 : le merge ne touche pas au skylab, donc sans replay le canon restaure
+// le stock (dup côté soute via le MAX des minerais) ou l'annule.
+const pendingSkylabDelta = {};
+// Énergie Galaxy gagnée (échange Palladium) pas encore acceptée : rejouée
+// sur le canon en cas de 409 (le merge ne touche pas aux gates). Sinon la
+// dépense Palladium est rejouée mais pas le gain = perte nette.
+let pendingGateEnergy = 0;
+// Stock d'améliorations consommé par les tirs (par slot) + essence P.E.T
+// brûlée, pas encore acceptés : rejoués sur le canon en cas de 409. Sinon
+// le canon (plus haut) restaure le stock = tirs/essence gratuits. Même
+// pattern que les minerais dépensés.
+const pendingConsumedUpgrades = {};
+let pendingConsumedPetFuel = 0;
 // Charges d'améliorations (raffinage -> slots laser/rocket/speed/shield) pas
 // encore acceptées par le serveur : sur 409, le canon (sans la charge)
 // écraserait le slot = dépôt "mis puis enlevé et remis dans la liste".
@@ -128,6 +148,28 @@ export function noteNetConsumption(field, id, amount) {
   if (key && used > 0) pendingConsumedStock[field][key] = Math.max(0, Number(pendingConsumedStock[field][key]) || 0) + used;
 }
 
+// Vente d'équipement (compteurs inventaire et/ou ids de modules + crédits
+// gagnés) en attente d'acceptation serveur. Rejouée sur le canon en cas
+// de 409 (comme les achats et les minerais dépensés).
+export function noteNetEquipmentSold({ counts = null, moduleIds = null, credits = 0 } = {}) {
+  if (!netActive()) return;
+  if (counts && typeof counts === "object") {
+    for (const [id, qty] of Object.entries(counts)) {
+      const key = String(id || "");
+      const q = Math.max(0, Math.floor(Number(qty) || 0));
+      if (key && q > 0) pendingEquipmentSales.counts[key] = Math.max(0, Math.floor(Number(pendingEquipmentSales.counts[key]) || 0)) + q;
+    }
+  }
+  if (Array.isArray(moduleIds)) {
+    for (const mid of moduleIds) {
+      const key = String(mid?.id ?? mid ?? "");
+      if (key) pendingEquipmentSales.moduleIds.push(key);
+    }
+  }
+  const gain = Math.max(0, Math.floor(Number(credits) || 0));
+  if (gain > 0) pendingEquipmentSales.credits = Math.max(0, Math.floor(Number(pendingEquipmentSales.credits) || 0)) + gain;
+}
+
 // Charge d'amélioration (raffinage) en attente d'acceptation serveur.
 // Rejouée sur le canon en cas de 409 (comme les achats).
 export function noteNetUpgradeCharge(slot, ore, stock) {
@@ -136,6 +178,9 @@ export function noteNetUpgradeCharge(slot, ore, stock) {
   const st = Math.max(0, Math.floor(Number(stock) || 0));
   if (!key || !(st > 0)) return;
   pendingUpgradeCharges[key] = { ore: String(ore || ""), stock: st };
+  // Nouvelle charge = nouveau compteur : la consommation notée portait sur
+  // l'ancien stock (sinon re-soustraction sur le stock neuf).
+  delete pendingConsumedUpgrades[key];
 }
 
 function clearPendingPurchaseStock(snapshot) {
@@ -161,6 +206,101 @@ function clearPendingConsumedStock(snapshot) {
   // dépense serait re-soustraite à chaque 409 = rollback à zéro).
 }
 
+// Mouvement Skylab <-> soute en attente d'acceptation serveur (delta signé).
+export function noteNetSkylabMoved(id, delta) {
+  if (!netActive()) return;
+  const key = String(id || "");
+  const d = Math.floor(Number(delta) || 0);
+  if (!key || d === 0) return;
+  pendingSkylabDelta[key] = Math.floor(Number(pendingSkylabDelta[key]) || 0) + d;
+}
+
+export function noteNetGateEnergy(amount) {
+  if (!netActive()) return;
+  const g = Math.max(0, Math.floor(Number(amount) || 0));
+  if (g > 0) pendingGateEnergy = Math.max(0, Math.floor(Number(pendingGateEnergy) || 0)) + g;
+}
+
+export function noteNetUpgradeConsumed(slot, amount) {
+  if (!netActive()) return;
+  const key = String(slot || "").toLowerCase();
+  const used = Math.max(0, Math.floor(Number(amount) || 0));
+  if (key && used > 0) pendingConsumedUpgrades[key] = Math.max(0, Math.floor(Number(pendingConsumedUpgrades[key]) || 0)) + used;
+}
+
+export function noteNetPetFuelConsumed(amount) {
+  if (!netActive()) return;
+  const used = Math.max(0, Math.floor(Number(amount) || 0));
+  if (used > 0) pendingConsumedPetFuel = Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0)) + used;
+}
+
+// Gains locaux pas encore acceptés (crédits / ressources NON-minerais) :
+// rejoués en AJOUT sur le canon en cas de 409. Les minerais, compteurs et
+// munitions achetées ont déjà leurs propres canaux (MAX ou replay d'achat) —
+// ne surtout pas les noter ici aussi (double comptage avec le MAX).
+let pendingGainedCredits = 0;
+const pendingGainedResources = {};
+export function noteNetCreditGain(amount) {
+  if (!netActive()) return;
+  const g = Math.max(0, Math.floor(Number(amount) || 0));
+  if (g > 0) pendingGainedCredits = Math.max(0, Math.floor(Number(pendingGainedCredits) || 0)) + g;
+}
+export function noteNetResourceGain(gains = null) {
+  if (!netActive()) return;
+  if (!gains || typeof gains !== "object") return;
+  for (const [id, qty] of Object.entries(gains)) {
+    const key = String(id || "");
+    const q = Math.max(0, Math.floor(Number(qty) || 0));
+    if (key && q > 0) pendingGainedResources[key] = Math.max(0, Math.floor(Number(pendingGainedResources[key]) || 0)) + q;
+  }
+}
+
+function clearPendingEquipmentSales(snapshot) {
+  for (const [id, qty] of Object.entries(snapshot?.counts || {})) {
+    const left = Math.max(0, Math.floor(Number(pendingEquipmentSales.counts[id]) || 0)) - Math.max(0, Math.floor(Number(qty) || 0));
+    if (left > 0) pendingEquipmentSales.counts[id] = left;
+    else delete pendingEquipmentSales.counts[id];
+  }
+  // Ids de modules : multi-ensemble (retire une occurrence par id envoyé).
+  const sentIds = Array.isArray(snapshot?.moduleIds) ? snapshot.moduleIds.map(String) : [];
+  if (sentIds.length && pendingEquipmentSales.moduleIds.length) {
+    const surplus = new Map();
+    for (const id of sentIds) surplus.set(id, (surplus.get(id) || 0) + 1);
+    pendingEquipmentSales.moduleIds = pendingEquipmentSales.moduleIds.filter((id) => {
+      const left = surplus.get(String(id)) || 0;
+      if (left > 0) { surplus.set(String(id), left - 1); return false; }
+      return true;
+    });
+  }
+  pendingEquipmentSales.credits = Math.max(0, Math.floor(Number(pendingEquipmentSales.credits) || 0) - Math.max(0, Math.floor(Number(snapshot?.credits) || 0)));
+}
+
+function clearPendingSkylabDelta(snapshot) {
+  for (const [id, delta] of Object.entries(snapshot || {})) {
+    const d = Math.floor(Number(delta) || 0);
+    if (d === 0) continue;
+    const left = Math.floor(Number(pendingSkylabDelta[id]) || 0) - d;
+    if (left === 0) delete pendingSkylabDelta[id];
+    else pendingSkylabDelta[id] = left;
+  }
+}
+
+function clearPendingConsumedUpgrades(snapshot) {
+  for (const [slot, amount] of Object.entries(snapshot || {})) {
+    const left = Math.max(0, Math.floor(Number(pendingConsumedUpgrades[slot]) || 0)) - Math.max(0, Math.floor(Number(amount) || 0));
+    if (left > 0) pendingConsumedUpgrades[slot] = left;
+    else delete pendingConsumedUpgrades[slot];
+  }
+}
+
+function clearPendingGainedResources(snapshot) {
+  for (const [id, qty] of Object.entries(snapshot || {})) {
+    const left = Math.max(0, Math.floor(Number(pendingGainedResources[id]) || 0)) - Math.max(0, Math.floor(Number(qty) || 0));
+    if (left > 0) pendingGainedResources[id] = left;
+    else delete pendingGainedResources[id];
+  }
+}
+
 function resetPendingPurchases() {
   pendingPurchaseCredits = 0;
   pendingPurchaseStock.ammo = {};
@@ -168,6 +308,15 @@ function resetPendingPurchases() {
   pendingConsumedStock.ammo = {};
   pendingConsumedStock.rockets = {};
   pendingConsumedStock.ores = {};
+  pendingEquipmentSales.counts = {};
+  pendingEquipmentSales.moduleIds = [];
+  pendingEquipmentSales.credits = 0;
+  for (const k of Object.keys(pendingSkylabDelta)) delete pendingSkylabDelta[k];
+  pendingGateEnergy = 0;
+  for (const k of Object.keys(pendingConsumedUpgrades)) delete pendingConsumedUpgrades[k];
+  pendingConsumedPetFuel = 0;
+  pendingGainedCredits = 0;
+  for (const k of Object.keys(pendingGainedResources)) delete pendingGainedResources[k];
   for (const k of Object.keys(pendingUpgradeCharges)) delete pendingUpgradeCharges[k];
 }
 
@@ -584,6 +733,17 @@ async function pushNow() {
   const purchaseCreditsAtSend = pendingPurchaseCredits;
   const purchaseStockAtSend = JSON.parse(JSON.stringify(pendingPurchaseStock));
   const consumedStockAtSend = JSON.parse(JSON.stringify(pendingConsumedStock));
+  const equipmentSalesAtSend = {
+    counts: { ...pendingEquipmentSales.counts },
+    moduleIds: [...pendingEquipmentSales.moduleIds],
+    credits: Math.max(0, Math.floor(Number(pendingEquipmentSales.credits) || 0)),
+  };
+  const skylabDeltaAtSend = { ...pendingSkylabDelta };
+  const gateEnergyAtSend = Math.max(0, Math.floor(Number(pendingGateEnergy) || 0));
+  const consumedUpgradesAtSend = { ...pendingConsumedUpgrades };
+  const consumedPetFuelAtSend = Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0));
+  const gainedCreditsAtSend = Math.max(0, Math.floor(Number(pendingGainedCredits) || 0));
+  const gainedResourcesAtSend = { ...pendingGainedResources };
   const consumedOresAtSend = JSON.parse(JSON.stringify(pendingConsumedStock.ores || {}));
   const upgradeChargesAtSend = JSON.parse(JSON.stringify(pendingUpgradeCharges));
   let out = null;
@@ -599,6 +759,13 @@ async function pushNow() {
     pendingPurchaseCredits = Math.max(0, pendingPurchaseCredits - purchaseCreditsAtSend);
     clearPendingPurchaseStock(purchaseStockAtSend);
     clearPendingConsumedStock(consumedStockAtSend);
+    clearPendingEquipmentSales(equipmentSalesAtSend);
+    clearPendingSkylabDelta(skylabDeltaAtSend);
+    pendingGateEnergy = Math.max(0, Math.floor(Number(pendingGateEnergy) || 0) - gateEnergyAtSend);
+    clearPendingConsumedUpgrades(consumedUpgradesAtSend);
+    pendingConsumedPetFuel = Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0) - consumedPetFuelAtSend);
+    pendingGainedCredits = Math.max(0, Math.floor(Number(pendingGainedCredits) || 0) - gainedCreditsAtSend);
+    clearPendingGainedResources(gainedResourcesAtSend);
     // Minerais dépensés couverts par le snapshot accepté : on ne solde que
     // ce qui était en attente à l'envoi (une nouvelle dépense en vol reste).
     for (const [id, sent] of Object.entries(consumedOresAtSend || {})) {
@@ -702,6 +869,86 @@ async function pushNow() {
         if (!key || !(st > 0)) continue;
         memUser.upgrades[key] = { ore: String(charge?.ore || ""), stock: st };
         delete pendingUpgradeCharges[key];
+      }
+      // Ventes d'équipement (compteurs, modules, crédits gagnés) pas encore
+      // acceptées : on rejoue la vente sur le canon, sinon le MAX des
+      // compteurs et l'union des modules du merge ressuscitent les objets
+      // vendus pendant que le canon retire les crédits = rollback + dup.
+      // Soldées aussitôt (baked dans memUser qui sera poussé) : un 2e 409
+      // avant le push ne doit pas les re-soustraire (= rollback à zéro).
+      memUser.inventory ||= {};
+      memUser.inventory.counts ||= {};
+      for (const [id, qty] of Object.entries(pendingEquipmentSales.counts)) {
+        const key = String(id || "");
+        if (!key) continue;
+        memUser.inventory.counts[key] = Math.max(0, Math.floor(Number(memUser.inventory.counts[key]) || 0) - Math.max(0, Math.floor(Number(qty) || 0)));
+        if (!(Number(memUser.inventory.counts[key]) > 0) && Array.isArray(memUser.inventory.modules)) {
+          memUser.inventory.modules = memUser.inventory.modules.filter((x) => String(x) !== key);
+        }
+      }
+      if (pendingEquipmentSales.moduleIds.length) {
+        const gone = new Set(pendingEquipmentSales.moduleIds.map(String));
+        if (Array.isArray(memUser.inventory.shipModules)) {
+          memUser.inventory.shipModules = memUser.inventory.shipModules.filter((m) => !gone.has(String(m?.id)));
+        }
+        if (Array.isArray(memUser.inventory.moduleRollHistory)) {
+          memUser.inventory.moduleRollHistory = memUser.inventory.moduleRollHistory.filter((h) => !gone.has(String(h?.id)));
+        }
+      }
+      if (pendingEquipmentSales.credits > 0) {
+        memUser.credits = Math.max(0, Math.floor(Number(memUser.credits) || 0)) + Math.max(0, Math.floor(Number(pendingEquipmentSales.credits) || 0));
+      }
+      pendingEquipmentSales.counts = {};
+      pendingEquipmentSales.moduleIds = [];
+      pendingEquipmentSales.credits = 0;
+      // Transferts Skylab <-> soute : rejoue le delta signé sur le stock du
+      // canon (soldé aussitôt, même raison que ci-dessus).
+      memUser.skylab ||= {};
+      memUser.skylab.stock ||= {};
+      for (const [id, delta] of Object.entries(pendingSkylabDelta)) {
+        const key = String(id || "");
+        const d = Math.floor(Number(delta) || 0);
+        if (!key || d === 0) continue;
+        memUser.skylab.stock[key] = Math.max(0, Math.floor(Number(memUser.skylab.stock[key]) || 0) + d);
+      }
+      for (const k of Object.keys(pendingSkylabDelta)) delete pendingSkylabDelta[k];
+      if (pendingGateEnergy > 0) {
+        memUser.galaxyGates ||= {};
+        memUser.galaxyGates.energy = Math.max(0, Math.floor(Number(memUser.galaxyGates.energy) || 0)) + Math.max(0, Math.floor(Number(pendingGateEnergy) || 0));
+        pendingGateEnergy = 0;
+      }
+      // Tir: stock d'améliorations consommé (soldé aussitôt, même raison).
+      memUser.upgrades ||= {};
+      for (const [slot, amount] of Object.entries(pendingConsumedUpgrades)) {
+        const key = String(slot || "").toLowerCase();
+        const used = Math.max(0, Math.floor(Number(amount) || 0));
+        if (!key || !(used > 0)) continue;
+        const loaded = memUser.upgrades[key];
+        if (loaded && typeof loaded === "object") {
+          loaded.stock = Math.max(0, Math.floor(Number(loaded.stock) || 0) - used);
+        }
+        delete pendingConsumedUpgrades[key];
+      }
+      // Essence P.E.T. brûlée (soldée aussitôt, même raison).
+      if (pendingConsumedPetFuel > 0 && memUser.pet && typeof memUser.pet === "object") {
+        memUser.pet.fuel = Math.max(0, Math.floor(Number(memUser.pet.fuel) || 0) - Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0)));
+      }
+      pendingConsumedPetFuel = 0;
+      // Gains locaux (crédits / ressources non-minerais) : ajoutés au canon.
+      if (pendingGainedCredits > 0) {
+        memUser.credits = Math.max(0, Math.floor(Number(memUser.credits) || 0)) + Math.max(0, Math.floor(Number(pendingGainedCredits) || 0));
+        pendingGainedCredits = 0;
+      }
+      if (Object.keys(pendingGainedResources).length) {
+        memUser.inventory ||= {};
+        memUser.inventory.resources ||= {};
+        for (const [id, qty] of Object.entries(pendingGainedResources)) {
+          const key = String(id || "");
+          const q = Math.max(0, Math.floor(Number(qty) || 0));
+          if (!key || !(q > 0)) continue;
+          memUser.inventory.resources[key] = Math.max(0, Math.floor(Number(memUser.inventory.resources[key]) || 0)) + q;
+        }
+        for (const k of Object.keys(pendingGainedResources)) delete pendingGainedResources[k];
       }
     }
     memUser.revision = Math.max(

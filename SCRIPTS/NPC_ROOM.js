@@ -894,8 +894,8 @@ drainPlayerHits() {
         shieldPenetration: clamp(Number(hit?.pen ?? 0), 0, 1),
         weakenShields: clamp(Number(hit?.weaken ?? 0), 0, 10),
         shieldSpread: entry.spread,
-        critChance: Number.isFinite(Number(hit?.critChance)) ? Number(hit.critChance) : 0.05,
-        critMultiplier: Number.isFinite(Number(hit?.critMult)) ? Number(hit.critMult) : 1.5,
+        critChance: Number.isFinite(Number(hit?.critChance)) ? clamp(Number(hit.critChance), 0, 0.5) : 0.05,
+        critMultiplier: Number.isFinite(Number(hit?.critMult)) ? clamp(Number(hit.critMult), 1, 2) : 1.5,
         variance: 0.05,
         random: Math.random,
       });
@@ -995,6 +995,8 @@ drainPlayerHits() {
       }
       this.deaths.push(death);
     }
+    // Dégâts appliqués par ce coup (audit anticheat côté MULTI_SERVER).
+    return applied;
   }
 
   tick(dtSec = 0.1) {
