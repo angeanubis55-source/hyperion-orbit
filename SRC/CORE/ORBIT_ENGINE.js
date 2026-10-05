@@ -12520,6 +12520,9 @@ function craftingItemIcon(catalogItemId) {
   const item = catalogItemId ? findCatalogItem(catalogItemId) : null;
   if (item?.icon) return item.icon;
   const id = String(catalogItemId || "");
+  if (id.startsWith("booster_")) {
+    try { return getBooster(id.slice("booster_".length))?.icon || CRAFTING_FALLBACK_ICON; } catch { return CRAFTING_FALLBACK_ICON; }
+  }
   if (id.startsWith("ammo_")) return craftingAmmoIcon(id.slice(5));
   if (id.startsWith("rocket_")) {
     try { return rocketShopIcon(id.slice(7)) || CRAFTING_FALLBACK_ICON; } catch { return CRAFTING_FALLBACK_ICON; }

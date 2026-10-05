@@ -251,8 +251,8 @@ export function buildHourlyLots(catalog, filters = {}, nowMs = Date.now(), rng =
     }
   }
 
-  // 22. Ticket relance module (25 M, SANS les -70 %).
-  pushCatalog("ticket_module_reroll", 1, { noDiscount: true });
+  // 22. Ticket relance module (décote normale des -70 % comme les autres).
+  pushCatalog("ticket_module_reroll", 1);
 
   return lots.slice(0, AUCTION_ACTIVE_LOTS);
 }

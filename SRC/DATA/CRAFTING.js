@@ -221,7 +221,7 @@ export const CRAFTING_RECIPES = Object.freeze([
       credits: 0,
       resources: { scrap: 25, mucosum: 38, plasmide: 5 },
     },
-    output: { rockets: { ric3: 1000 } },
+    output: { rockets: { ric3: 100 } },
   }),
   Object.freeze({
     id: "craft_rc100",
@@ -231,7 +231,7 @@ export const CRAFTING_RECIPES = Object.freeze([
       credits: 0,
       resources: { scrap: 27, mucosum: 40, plasmide: 7 },
     },
-    output: { rockets: { rc100: 1000 } },
+    output: { rockets: { rc100: 100 } },
   }),
   Object.freeze({
     id: "craft_shg01",
@@ -485,6 +485,16 @@ export const CRAFTING_RECIPES = Object.freeze([
       resources: { rinusk: 10000, blacklight_trace: 10000, mindfire_cerebrum: 1500 },
     },
     output: { items: { booster_ephon: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_ticket_reroll",
+    name: "Ticket relance module",
+    rarity: "epic",
+    costs: {
+      credits: 125000000,
+      resources: {},
+    },
+    output: { items: { ticket_module_reroll: 1 } },
   }),
 ]);
 
