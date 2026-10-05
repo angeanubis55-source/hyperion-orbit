@@ -33,7 +33,7 @@ import {
   pickNearestWithin,
 } from "../../PET/PET_GEARS.js";
 import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_TRAILS.js";
-import { computeBotCombatMove } from "./BOT_NAVIGATION.js";
+import { computeBotCombatMove, computeWallDetour } from "./BOT_NAVIGATION.js";
 import { SpatialIndex } from "./SPATIAL_INDEX.js";
 import { normalizeMapId } from "./MAP_REGISTRY.js";
 import { getPortalSkinForMap } from "./PORTAL_SKINS.js";
@@ -98,7 +98,7 @@ import { getAbilityInfo, formatAbilityTiming, policeAbilityIds, abilityIconFile 
 import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, formationDockIcon, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath, isClassicFormation } from "../../DRONE/DRONE_TYPES.js";
 import { getOfficialDroneFormationPositions } from "../../DRONE/DRONE_FORMATIONS.js";
 import { PET_XP_SHARE, PET_FUEL_MAX, PET_FUEL_TICK_SEC, PET_FUEL_BASE_TICK, PET_FUEL_GEAR_TICK, PET_FUEL_ONESHOT, getPetDamageBonus, getPetHullBonusHp, getPetLevel, getPetLevelXp, getPetMaxHp, getPetNextLevelXp, getPetShieldBonus, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
-import { clamp, circleRectResolve, dist2, movingCircleHit, segCircleHit } from "./COLLISION.js";
+import { clamp, circleRectResolve, clampSegmentToWalls, dist2, movingCircleHit, segCircleHit } from "./COLLISION.js";
 import { createKeyboardState, createPointerState } from "./INPUT.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "../../COMBAT/COMBAT_RULES.js";
 import { createSpatialPairIndex, rebuildIdIndex } from "./SPATIAL_INDEX.js";
@@ -8835,7 +8835,7 @@ const BOT_MAPS = [
   "1-1", "1-2", "1-3", "1-4", "1-5", "1-6", "1-7", "1-8", "4-1",
   "2-1", "2-2", "2-3", "2-4", "2-5", "2-6", "2-7", "2-8", "4-2",
   "3-1", "3-2", "3-3", "3-4", "3-5", "3-6", "3-7", "3-8", "4-3",
-  "4-4", "4-5", "5-2", "MAUDITE",
+  "4-4", "4-5", "5-2", "MAUDITE", "1-BL", "2-BL", "3-BL",
 ];
 // Munitions laser sélectionnables par NPC (vide = auto / ne pas changer).
 const BOT_AMMO_IDS = ["x1", "x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl"];
@@ -10426,6 +10426,17 @@ function botQuestTargets() {
 }
 
 // Plus proche NPC de quête (priorité DarkBot puis distance).
+// Visibilité "joueur normal" pour le bot : rayon capteurs (1800 m en zone,
+// illimité en gate), lock conservé, NPC qui nous attaque toujours visible.
+// Utilisé par les recherches de cibles (pas de wallhack map-wide).
+function botNpcVisible(e) {
+  try {
+    let locked = null;
+    try { locked = Target.get(); } catch {}
+    return shouldDetectNpc(player, e, NPC_SENSOR_RANGES.visibility, locked);
+  } catch { return true; }
+}
+
 function botNearestQuestNpc(set) {
   let best = null;
   let bestD2 = Infinity;
@@ -10435,6 +10446,9 @@ function botNearestQuestNpc(set) {
     if (e.isPetTarget) continue;
     if (!Bot.npcAllow.has(String(e.type))) continue;
     if (!any && !set.has(String(e.type))) continue;
+    // Pas de wallhack : comme un joueur, le bot ne voit que dans son rayon
+    // (lock conservé : la cible engagée reste suivie).
+    if (!botNpcVisible(e)) continue;
     const d2 = dist2(player.x, player.y, e.x, e.y);
     const pr = botNpcPrio(e.type);
     const bpr = best ? botNpcPrio(best.type) : -1;
@@ -10463,6 +10477,9 @@ function botNearestNpc() {
     if (!e || Number(e.hp) <= 0) continue;
     if (e.isPetTarget) continue;
     if (!Bot.npcAllow.has(String(e.type))) continue;
+    // Pas de wallhack : comme un joueur, le bot ne voit que dans son rayon
+    // (lock conservé : la cible engagée reste suivie).
+    if (!botNpcVisible(e)) continue;
     const d2 = dist2(player.x, player.y, e.x, e.y);
     const pr = botNpcPrio(e.type);
     const bpr = best ? botNpcPrio(best.type) : -1;
@@ -10475,13 +10492,20 @@ function botNearestNpc() {
 // type de NPC restent reservees au choix "NPC en priorite".
 function botNearestNpcByDistance() {
   const found = nearestSpatialNpc(player.x, player.y, (e) => e
-    && Number(e.hp) > 0 && !e.isPetTarget && Bot.npcAllow.has(String(e.type)));
+    && Number(e.hp) > 0 && !e.isPetTarget && Bot.npcAllow.has(String(e.type))
+    && botNpcVisible(e));
   return found ? { npc: found.item, d2: found.d2 } : null;
 }
 
 // La portee d'engagement est toujours notre portee laser reelle.
 function botEngageRange() {
   try { return Math.max(0, Number(playerRange) || 0); } catch { return 0; }
+}
+// Le bot ne fait face et n'engage le combat qu'à partir de cette distance.
+// Au-delà (navigation, contournement de murs), il regarde où il va vraiment.
+const BOT_FACE_RANGE = 1400;
+function botEngageStartRange() {
+  return Math.min(BOT_FACE_RANGE, Math.max(80, botEngageRange()));
 }
 
 // NPC tuable le plus proche DANS la portee (selection + priorites).
@@ -10494,6 +10518,8 @@ function botNearestNpcInRange(maxD) {
     if (!e || Number(e.hp) <= 0) continue;
     if (e.isPetTarget) continue;
     if (!Bot.npcAllow.has(String(e.type))) continue;
+    // Pas de wallhack : rayon capteurs comme un joueur.
+    if (!botNpcVisible(e)) continue;
     const d2 = dist2(player.x, player.y, e.x, e.y);
     if (d2 > lim2) continue;
     const pr = botNpcPrio(e.type);
@@ -10658,7 +10684,7 @@ function botEngageNpc(npc) {
   let d = 0;
   try { d = Math.hypot(npc.x - player.x, npc.y - player.y); } catch {}
   const engageMax = botEngageRange();
-  if (!attackActive && d <= Math.max(80, engageMax)) { try { startAttack(); } catch {} }
+  if (!attackActive && d <= botEngageStartRange()) { try { startAttack(); } catch {} }
   else if (attackActive && d > engageMax + 20) { try { stopAttack(); } catch {} }
   try { botAutoSpecialAmmo(npc, d, engageMax); } catch {}
   botLockNpc(npc);
@@ -10901,6 +10927,9 @@ function botKiteCombatMove(npc, d, standD, dt) {
     },
     state: Bot.steering?.npcId === npc.id ? Bot.steering : {},
     dt,
+    // Orbite décollée des murs (pas de frôlement/glitch contre les cailloux).
+    walls: isZoneMap && Array.isArray(zoneWalls) && zoneWalls.length ? zoneWalls : null,
+    shipRadius: player.r || 18,
   });
   Bot.steering = { ...steering.state, npcId: npc.id };
   botOrderMove(steering.x, steering.y, npc.id);
@@ -11804,7 +11833,7 @@ function tickBot(dt) {
     // carte) : hors portée on approche en silence, à portée max on engage.
     // On ne coupe que 20 m au-delà (epsilon anti on/off, pas un réglage).
     const engageMax = botEngageRange();
-    if (!attackActive && d <= Math.max(80, engageMax)) {
+    if (!attackActive && d <= botEngageStartRange()) {
       try { startAttack(); } catch {}
     } else if (attackActive && d > engageMax + 20) {
       try { stopAttack(); } catch {}
@@ -19161,9 +19190,17 @@ function setMoveTargetFromScreen(clientX, clientY) {
   try { botNotifyManual(); } catch {}
 
   const w = screenToWorld(clientX, clientY);
+  // La destination ne traverse jamais un mur : elle s'arrête à la bordure
+  // du premier mur traversé (marge = rayon du vaisseau).
+  let dest = { x: w.x, y: w.y };
+  try {
+    if (isZoneMap && Array.isArray(zoneWalls) && zoneWalls.length && !player.dead) {
+      dest = clampSegmentToWalls(player.x, player.y, w.x, w.y, zoneWalls, player.r || 18);
+    }
+  } catch {}
   moveTarget.active = true;
-  moveTarget.x = w.x;
-  moveTarget.y = w.y;
+  moveTarget.x = dest.x;
+  moveTarget.y = dest.y;
 }
 
 function setMoveTargetFromEvent(e) {
@@ -29758,9 +29795,17 @@ function setMoveTargetFromMiniEvent(clientX, clientY) {
   const wx = mx * WORLD.w;
   const wy = my * WORLD.h;
 
+  // Comme au clic map : la destination s'arrête à la bordure du premier
+  // mur traversé au lieu de passer à travers.
+  let dest = { x: wx, y: wy };
+  try {
+    if (isZoneMap && Array.isArray(zoneWalls) && zoneWalls.length && !player.dead) {
+      dest = clampSegmentToWalls(player.x, player.y, wx, wy, zoneWalls, player.r || 18);
+    }
+  } catch {}
   moveTarget.active = true;
-  moveTarget.x = wx;
-  moveTarget.y = wy;
+  moveTarget.x = dest.x;
+  moveTarget.y = dest.y;
 }
 
 mini.addEventListener("pointerdown", (e) => {
@@ -33697,6 +33742,30 @@ if (hangarSwapFx) {
   }
 }
 
+  // Bot : contourne les murs au lieu de foncer dedans (maps BL). Pilotage
+  // manuel inchangé (pointer enfoncé = le joueur décide).
+  // En combat (attaque active), l'orbite pilote déjà en évitant les murs :
+  // on n'applique ici que les demi-tours d'urgence (vrai blocage), sinon
+  // les deux systèmes se battent et ça oscille.
+  if (!hangarSwapFx && Bot.active === true && moveTarget.active && !player.dead
+    && !pointer.down && isZoneMap && Array.isArray(zoneWalls) && zoneWalls.length
+    && (mx !== 0 || my !== 0)) {
+    try {
+      Bot.wallSteer = Bot.wallSteer && typeof Bot.wallSteer === "object" ? Bot.wallSteer : {};
+      const steer = computeWallDetour({
+        fromX: player.x, fromY: player.y,
+        toX: moveTarget.x, toY: moveTarget.y,
+        walls: zoneWalls, radius: player.r || 18, state: Bot.wallSteer, dt,
+        bounds: { minX: 100, minY: 100, maxX: WORLD.w - 100, maxY: WORLD.h - 100 },
+      });
+      if (steer && steer.detour === true && (!attackActive || steer.freeing === true)) {
+        const sdx = steer.x - player.x, sdy = steer.y - player.y;
+        const sd = Math.hypot(sdx, sdy);
+        if (sd > 1) { mx = sdx / sd; my = sdy / sd; }
+      }
+    } catch {}
+  }
+
   if (!hangarSwapFx) updatePlayerVelocity(player, { x: mx, y: my }, dt);
 
   // Fortification (officiel) : vitesse plafonnée à 200 pendant l'effet.
@@ -34143,6 +34212,11 @@ for (const ptl of zonePortals) {
       player.angle = Math.atan2(qaLock.y - player.y, qaLock.x - player.x);
     } else if (attackActive && tAim) {
       player.angle = Math.atan2(tAim.y - player.y, tAim.x - player.x);
+    } else if (Bot.active === true && !player.dead && Math.hypot(Number(player.vx) || 0, Number(player.vy) || 0) > 60) {
+      // Bot sans attaque en cours (navigation portail, approche NPC au-delà
+      // de 1400 m, contournement) : il regarde où il va vraiment, pas la
+      // destination lointaine. Pilotage manuel inchangé (moveTarget).
+      player.angle = Math.atan2(player.vy, player.vx);
     } else if (moveTarget.active) {
       player.angle = Math.atan2(moveTarget.y - player.y, moveTarget.x - player.x);
     }

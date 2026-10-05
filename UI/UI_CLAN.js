@@ -17,34 +17,36 @@ import {
 import { escapeHtml } from "./UI_DOM.js";
 
 let started = false;
-let warConfirmationPending = false;
+let clanDialogPending = false;
 
-async function confirmClanWar(tag) {
-  if (warConfirmationPending) return false;
+// Confirmation intégrée au panneau (même style que la déclaration de
+// guerre) : remplace les confirm() natifs du navigateur.
+async function confirmClanDialog(title, message) {
+  if (clanDialogPending) return false;
   const clanWindow = document.getElementById("clanWindow");
   if (!clanWindow) return false;
-  warConfirmationPending = true;
+  clanDialogPending = true;
   const overlay = document.createElement("div");
   overlay.className = "tdmSellDialog";
   overlay.dataset.noDrag = "1";
-  overlay.innerHTML = `<div class="tdmSellCard" role="dialog" aria-labelledby="clanWarTitle">
-    <div id="clanWarTitle" class="tdmSellTitle"></div>
+  overlay.innerHTML = `<div class="tdmSellCard" role="dialog" aria-labelledby="clanDlgTitle">
+    <div id="clanDlgTitle" class="tdmSellTitle"></div>
     <div class="tdmSellItem"></div>
-    <div class="tdmSellActions"><button type="button" data-war-cancel>Annuler</button><button type="button" data-war-confirm>Confirmer</button></div>
+    <div class="tdmSellActions"><button type="button" data-dlg-cancel>Annuler</button><button type="button" data-dlg-confirm>Confirmer</button></div>
   </div>`;
-  const title = overlay.querySelector(".tdmSellTitle");
-  const message = overlay.querySelector(".tdmSellItem");
-  const cancel = overlay.querySelector("[data-war-cancel]");
-  const ok = overlay.querySelector("[data-war-confirm]");
-  title.textContent = "Déclaration de guerre";
-  message.textContent = `Déclarer la guerre à [${tag}] ? Effet immédiat, 100 jours maximum.`;
+  const titleEl = overlay.querySelector(".tdmSellTitle");
+  const messageEl = overlay.querySelector(".tdmSellItem");
+  const cancel = overlay.querySelector("[data-dlg-cancel]");
+  const ok = overlay.querySelector("[data-dlg-confirm]");
+  titleEl.textContent = title;
+  messageEl.textContent = message;
   const previousFocus = document.activeElement;
   clanWindow.appendChild(overlay);
   cancel.focus();
   return new Promise(resolve => {
     const finish = accepted => {
       overlay.remove();
-      warConfirmationPending = false;
+      clanDialogPending = false;
       previousFocus?.focus();
       resolve(accepted);
     };
@@ -56,6 +58,10 @@ async function confirmClanWar(tag) {
       if (event.key === "Escape") { event.preventDefault(); finish(false); }
     };
   });
+}
+
+async function confirmClanWar(tag) {
+  return confirmClanDialog("Déclaration de guerre", `Déclarer la guerre à [${tag}] ? Effet immédiat, 100 jours maximum.`);
 }
 const ICON_REMOVE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>`;
 const ICON_ACCEPT = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>`;
@@ -451,14 +457,14 @@ export function initClanUI() {
         try { sendClanNotify(); } catch {}
         await load();
       } else if (act === "leave") {
-        if (!clan || !window.confirm(`Quitter le clan [${clan.tag}] ${clan.name} ?`)) return;
+        if (!clan || !await confirmClanDialog("Quitter le clan", `Quitter le clan [${clan.tag}] ${clan.name} ?`)) return;
         try { sendClanNotify(); } catch {}
         try { await apiClan("/api/clans/leave", "POST", {}); } catch {}
         clan = null;
         try { const { sendClanRefresh } = await import("../SRC/CORE/NETPLAY.js"); sendClanRefresh(); } catch {}
         await load();
       } else if (act === "dissolve") {
-        if (!window.confirm(`Dissoudre le clan [${clan.tag}] ${clan.name} ? Tous les membres seront exclus.`)) return;
+        if (!await confirmClanDialog("Dissoudre le clan", `Dissoudre le clan [${clan.tag}] ${clan.name} ? Tous les membres seront exclus.`)) return;
         try { sendClanNotify(); } catch {}
         try { await apiClan("/api/clans/dissolve", "POST", {}); } catch {}
         clan = null;
@@ -472,18 +478,18 @@ export function initClanUI() {
         await load(act === "accept" ? `${pseudo} a rejoint le clan.` : `Candidature de ${pseudo} refusée.`);
       } else if (act === "kick" && row) {
         const pseudo = row.dataset.pseudo || "";
-        if (!window.confirm(`Exclure ${pseudo} du clan ?`)) return;
+        if (!await confirmClanDialog("Exclure un membre", `Exclure ${pseudo} du clan ?`)) return;
         try { await apiClan("/api/clans/kick", "POST", { pseudo }); } catch {}
         try { sendClanNotify(pseudo); } catch {}
         await load();
       } else if (act === "transfer" && row) {
         const pseudo = row.dataset.pseudo || "";
-        if (!window.confirm(`Transférer le chef à ${pseudo} ? Tu deviendras simple membre.`)) return;
+        if (!await confirmClanDialog("Transférer la chefferie", `Transférer le chef à ${pseudo} ? Tu deviendras simple membre.`)) return;
         try { await apiClan("/api/clans/transfer", "POST", { pseudo }); } catch {}
         try { sendClanNotify(pseudo); } catch {}
         await load();
       } else if (act === "rank-del" && rankRow) {
-        if (!window.confirm(`Supprimer le rang ${rankRow.dataset.rank} ?`)) return;
+        if (!await confirmClanDialog("Supprimer le rang", `Supprimer le rang ${rankRow.dataset.rank} ?`)) return;
         await apiClan("/api/clans/rank-manage", "POST", { action: "delete", name: rankRow.dataset.rank });
         try { sendClanNotify(); } catch {}
         await load();
