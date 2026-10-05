@@ -1559,6 +1559,11 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
 
   const item = findCatalogItem(itemId);
   if (!item) return { ok: false, error: "Item introuvable." };
+  // Articles retirés de la vente (Prometheus, A-BL) : quêtes et assemblage
+  // uniquement. Les gains gratuits (quêtes, enchères) restent possibles.
+  if (item.shopHidden === true && options.free !== true) {
+    return { ok: false, error: "Article non vendu en boutique." };
+  }
 
   const isShip = !!item.ship?.id;
   const isDesign = !!item.design?.id;
@@ -3296,8 +3301,14 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
   if (logDiskCost > 0) {
     u.pilotSkills = normalizePilotSkills(u.pilotSkills);
     const haveDisks = Math.max(0, Math.floor(Number(u.pilotSkills.disks) || 0));
-    if (haveDisks < logDiskCost) {
-      return { ok: false, error: `Disques de log insuffisants : ${haveDisks} / ${logDiskCost}.` };
+    if (haveDisks < logDiskCost) return { ok: false, error: `Disques de log insuffisants : ${haveDisks} / ${logDiskCost}.` };
+  }
+  // Coûts en munitions (ex : UCB-100 pour les A-BL).
+  u.ammo ??= defaultAmmo();
+  for (const [ammoId, unitCost] of Object.entries(recipe.costs?.ammo || {})) {
+    const required = Math.max(0, Math.floor(Number(unitCost) || 0)) * quantity;
+    if (Math.max(0, Math.floor(Number(u.ammo[ammoId]) || 0)) < required) {
+      return { ok: false, error: `Munitions insuffisantes : ${ammoId}.` };
     }
   }
 
@@ -3314,6 +3325,9 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
   }
   if (logDiskCost > 0) {
     u.pilotSkills.disks = Math.max(0, Math.floor(Number(u.pilotSkills.disks) || 0) - logDiskCost);
+  }
+  for (const [ammoId, unitCost] of Object.entries(recipe.costs?.ammo || {})) {
+    u.ammo[ammoId] = Math.max(0, Math.floor(Number(u.ammo[ammoId]) || 0) - Math.max(0, Math.floor(Number(unitCost) || 0)) * quantity);
   }
   for (const [resourceId, unitAmount] of Object.entries(recipe.output?.resources || {})) {
     u.inventory.resources[resourceId] = Math.max(0, Number(u.inventory.resources[resourceId] || 0) + Number(unitAmount || 0) * quantity);

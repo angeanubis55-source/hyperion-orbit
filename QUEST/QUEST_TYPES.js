@@ -94,7 +94,7 @@ const BLACKLIGHT_CHAIN = [
   BLQ(10, "Sous la surface", "Tes premiers Invoke XVI t'attendent.", [K("invoke", "npc_Invoke_XVI", 3, "Détruire des Invoke XVI", BL_MAPS)], { ...PRL }, 9),
   BLQ(11, "Foreuse", "Rapporte du Rinusk des épaves Blacklight.", [C("rinusk", "rinusk", 2000, "Collecter du Rinusk")], { ...PRL }, 10),
   BLQ(12, "Désordre Technologique", "Rinusk et premier Prometheus assemblé.", [C("rinusk", "rinusk", 4000, "Collecter du Rinusk"), R("craft-prl", "craft_prometheus", 1, "Assembler un Laser Prometheus")], { ...PRL, ammo: { abl: 20000 } }, 11),
-  BLQ(13, "Soif de connaissances", "Invoke XVI et munitions A-BL assemblées.", [K("invoke", "npc_Invoke_XVI", 5, "Détruire des Invoke XVI", BL_MAPS), R("craft-abl", "craft_abl_1000", 25, "Assembler 25 fois des Munitions A-BL")], { ...PRL }, 12),
+  BLQ(13, "Soif de connaissances", "Invoke XVI et munitions A-BL assemblées.", [K("invoke", "npc_Invoke_XVI", 5, "Détruire des Invoke XVI", BL_MAPS), R("craft-abl", "craft_abl_25000", 1, "Assembler des Munitions A-BL")], { ...PRL }, 12),
   BLQ(14, "Courons !", "Invoke XVI et Attend IX en force.", [K("invoke", "npc_Invoke_XVI", 5, "Détruire des Invoke XVI", BL_MAPS), K("attend", "npc_Attend_IX", 25, "Détruire des Attend IX", BL_MAPS)], { ...PRL, resources: { mindfire_cerebrum: 100 } }, 13),
   BLQ(15, "Solution insensée", "Assemble un Code secret Black Light.", [R("craft-cipher", "craft_blacklight_cipher", 1, "Assembler un Code secret Black Light")], { honor: 2500000, resources: { blacklight_cipher: 2 } }, 14),
   BLQ(16, "Sans dessus dessous", "Rapporte vite du Rinusk.", [C("rinusk", "rinusk", 100, "Collecter du Rinusk")], { exp: 35000000, honor: 1500000 }, 15),

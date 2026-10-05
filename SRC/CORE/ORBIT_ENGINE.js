@@ -86,7 +86,7 @@ import {
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { findCatalogItem } from "./CATALOG.js";
-import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBoosterDuration, BOOSTERS } from "../DATA/BOOSTERS.js";
+import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBoosterDuration, BOOSTERS, getBooster, normalizeBoostersState } from "../DATA/BOOSTERS.js";
 import { pilotSkillMults } from "../DATA/PILOT_SKILLS.js";
 import { CRAFTING_RECIPES, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
@@ -12453,7 +12453,25 @@ function craftingLogDiskAmount(user) {
   return Math.max(0, Math.floor(Number(user?.pilotSkills?.disks || 0)));
 }
 
-// Un craft est faisable : crédits + ressources + objets + disques de log.
+// Munitions live (player.ammo), repli sur la sauvegarde.
+function craftingAmmoAmount(user, ammoId) {
+  const id = String(ammoId || "");
+  if (!id) return 0;
+  try {
+    if (typeof player !== "undefined" && player && player.ammo && Number.isFinite(Number(player.ammo[id]))) {
+      return Math.max(0, Math.floor(Number(player.ammo[id]) || 0));
+    }
+  } catch {}
+  return Math.max(0, Math.floor(Number(user?.ammo?.[id] || 0)));
+}
+
+const CRAFTING_AMMO_NAMES = { x1: "LCB-10", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x6: "RSB-75", sab: "SAB-50", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL" };
+function craftingAmmoName(ammoId) {
+  const id = String(ammoId || "");
+  return CRAFTING_AMMO_NAMES[id] || `Munitions ${id.toUpperCase()}`;
+}
+
+// Un craft est faisable : crédits + ressources + objets + disques de log + munitions.
 function canAffordCraftingRecipe(user, recipe, quantity = 1) {
   if (Number(user?.credits || 0) < Number(recipe?.costs?.credits || 0) * quantity) return false;
   for (const [id, amount] of Object.entries(recipe?.costs?.resources || {})) {
@@ -12461,6 +12479,9 @@ function canAffordCraftingRecipe(user, recipe, quantity = 1) {
   }
   for (const [id, amount] of Object.entries(recipe?.costs?.items || {})) {
     if (craftingItemAmount(user, id) < Number(amount) * quantity) return false;
+  }
+  for (const [id, amount] of Object.entries(recipe?.costs?.ammo || {})) {
+    if (craftingAmmoAmount(user, id) < Number(amount) * quantity) return false;
   }
   if (craftingLogDiskAmount(user) < Math.max(0, Math.floor(Number(recipe?.costs?.logDisks || 0))) * quantity) return false;
   return true;
@@ -12578,8 +12599,7 @@ function describeCraftingCosts(user, recipe, quantity) {
       + `<span class="assemblyCostMeta"><span class="assemblyCostName">${escapeHtml(def?.name || id)}</span></span>`
       + `<strong>${formatInteger(owned)} / ${formatInteger(required)}</strong></li>`;
   });
-  const logDiskRequired = Math.max(0, Math.floor(Number(recipe.costs?.logDisks || 0))) * quantity;
-  const logDiskRows = logDiskRequired > 0 ? (() => {
+  const logDiskRequired = Math.max(0, Math.floor(Number(recipe.costs?.logDisks || 0))) * quantity;  const logDiskRows = logDiskRequired > 0 ? (() => {
     const owned = craftingLogDiskAmount(user);
     const ok = owned >= logDiskRequired;
     return [`<li class="assemblyCostRow${ok ? " enough" : " missing"}">`
@@ -12588,6 +12608,16 @@ function describeCraftingCosts(user, recipe, quantity) {
       + `<strong>${formatInteger(owned)} / ${formatInteger(logDiskRequired)}</strong></li>`];
   })() : [];
   rows.push(...itemRows, ...logDiskRows);
+  const ammoRows = Object.entries(recipe.costs?.ammo || {}).map(([id, amount]) => {
+    const required = Number(amount) * quantity;
+    const owned = craftingAmmoAmount(user, id);
+    const ok = owned >= required;
+    return `<li class="assemblyCostRow${ok ? " enough" : " missing"}">`
+      + `<img src="${escapeHtml(craftingAmmoIcon(id))}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
+      + `<span class="assemblyCostMeta"><span class="assemblyCostName">Munitions ${escapeHtml(craftingAmmoName(id))}</span></span>`
+      + `<strong>${formatInteger(owned)} / ${formatInteger(required)}</strong></li>`;
+  });
+  rows.push(...ammoRows);
   const creditRequired = Number(recipe.costs?.credits || 0) * quantity;
   const creditOwned = Number(user.credits || 0);
   const creditOk = creditOwned >= creditRequired;
@@ -25307,13 +25337,38 @@ function killRewards(e) {
   // fusionnés dans ce toast (un 2e groupe écraserait celui-ci).
   const directLines = Array.isArray(e._directDropLines) ? e._directDropLines.filter(Boolean).map(String) : [];
   try { delete e._directDropLines; } catch {}
-  addGameLog([`${killLabel} · +${formatInteger(credits)} crédits · +${xpText} · +${honorText}`, ...directLines].join(" · "), "reward");
+  // Drop booster NPC : DLB aléatoire (normaux 7,5 %, boss 15 %, uber 85 %),
+  // + NPC-B01/B02 à 95 % sur les uber. Activation directe, comme un achat.
+  const boosterDropLines = [];
+  try {
+    const t = String(e.type || "");
+    const isUber = /^npc_Uber_/i.test(t);
+    const rate = isUber ? 0.85 : /^npc_Boss_/i.test(t) ? 0.15 : 0.075;
+    const pool = ["dmgdlb", "dmgdlb2", "shddlb", "hpdlb", "epdlb", "hondlb"];
+    const picks = [];
+    if (Math.random() < rate) picks.push(pool[(Math.random() * pool.length) | 0]);
+    if (isUber && Math.random() < 0.95) picks.push(Math.random() < 0.5 ? "npc" : "npcb2");
+    for (const bid of picks) {
+      const def = getBooster(bid);
+      if (!def) continue;
+      if (!account.user) loadAccountUser();
+      if (!account.user) continue;
+      account.user.boosters = normalizeBoostersState(account.user.boosters);
+      const now = Date.now();
+      const cur = Number(account.user.boosters.active[def.id] || 0);
+      account.user.boosters.active[def.id] = (cur > now ? cur : now) + Math.max(1, Number(def.durationSec) || 0) * 1000;
+      boosterDropLines.push(`Booster ${def.name} activé (${formatBoosterDuration(def.durationSec)})`);
+    }
+    if (boosterDropLines.length) markProgressDirty();
+  } catch {}
+  addGameLog([`${killLabel} · +${formatInteger(credits)} crédits · +${xpText} · +${honorText}`, ...directLines, ...boosterDropLines].join(" · "), "reward");
   showNotificationGroup([
     killLabel,
     `Vous avez reçu ${formatInteger(credits)} crédits`,
     `Vous avez gagné ${xpText}`,
     `Vous avez gagné ${honorText}`,
     ...directLines,
+    ...boosterDropLines,
   ], "info", { whiteTerms, violetTerms });
   // Le groupe partage les recompenses et les objectifs de quete, mais la
   // fiche "NPC & Grades" reste personnelle : seul le tueur est credite.

@@ -2061,6 +2061,8 @@ function renderShopMeasured(user) {
   shopList.innerHTML = "";
 
   let list = getShopListFor(shopTab);
+  // Articles retirés de la vente (Prometheus, A-BL : quêtes et assemblage uniquement).
+  if (Array.isArray(list)) list = list.filter((it) => !it?.shopHidden);
   if (shopTab === "ships") {
     const q = shipSearchQuery.trim().toLowerCase();
     if (q) {

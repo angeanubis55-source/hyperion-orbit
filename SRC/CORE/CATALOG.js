@@ -68,9 +68,9 @@ export const CATALOG = {
   { id: "ammo_x3", name: "MCB-50", price: 150000, give: { ammo: { x3: 1000 } },
     code: "MCB-50", mult: 3, laser: "vert",
     desc: "Batterie capacité max : dégâts triplés (×3).", effect: "Tirs verts." },
-  { id: "ammo_x4", name: "UCB-100", price: 500000, give: { ammo: { x4: 1000 } },
+  { id: "ammo_x4", name: "UCB-100", price: 500000, shopHidden: true, give: { ammo: { x4: 1000 } },
     code: "UCB-100", mult: 4, laser: "blanc",
-    desc: "Batterie ultra capacité : dégâts quadruplés (×4).", effect: "Tirs blancs." },
+    desc: "Batterie ultra capacité : dégâts quadruplés (×4). Assemblage uniquement.", effect: "Tirs blancs." },
   { id: "ammo_sab", name: "SAB-50", price: 250000, give: { ammo: { sab: 1000 } },
     code: "SAB-50", mult: 2, laser: "bleu (cercles)",
     desc: "Vole le bouclier adverse et recharge le tien. Aucun dégât coque.", effect: "Cercles bleus + faisceau inversé (cible → toi)." },
@@ -78,9 +78,9 @@ export const CATALOG = {
     code: "RSB-75", mult: 6, laser: "orange",
     desc: "Batterie de salve rapide : dégâts sextuplés (×6).", effect: "Tirs oranges." },
   // Munitions spéciales officielles (effets : voir COMBAT/AMMO_TYPES.js).
-  { id: "ammo_rcb", name: "RCB-140", price: 3000000, give: { ammo: { rcb: 1000 } },
+  { id: "ammo_rcb", name: "RCB-140", price: 3000000, shopHidden: true, give: { ammo: { rcb: 1000 } },
     code: "RCB-140", mult: 7, laser: "violet",
-    desc: "Munition d'événement : dégâts septuplés (×7).", effect: "Tirs violets." },
+    desc: "Munition d'événement : dégâts septuplés (×7). Assemblage uniquement.", effect: "Tirs violets." },
   { id: "ammo_cbo", name: "CBO-100", price: 1000000, give: { ammo: { cbo: 1000 } },
     code: "CBO-100", mult: 3, laser: "violet (absorption)",
     desc: "Dégâts triplés (×3) + vole le bouclier adverse (×1).", effect: "Faisceau inversé (cible → toi)." },
@@ -106,7 +106,7 @@ export const CATALOG = {
     code: "SBL-100", mult: 4, laser: "cyan",
     desc: "Dégâts quadruplés (×4), ×8 contre les Sibelons.", effect: "Tirs cyan." },
   { id: "ammo_abl", name: "A-BL", price: 1000000, give: { ammo: { abl: 1000 } },
-    code: "A-BL", mult: 4, laser: "rose",
+    code: "A-BL", mult: 4, laser: "rose", shopHidden: true,
     desc: "Dégâts quadruplés (×4), ×8 contre Invoke et Mindfire Behemoth.", effect: "Tirs roses." },
   ].map((item) => {
     const ammoId = Object.keys(item.give.ammo)[0];
@@ -123,7 +123,9 @@ export const CATALOG = {
     give: { rockets: { [r.id]: r.packSize } },
     icon: rocketShopIcon(r.id),
     manual: r.manual !== false,
-    desc: rocketDescription(r),
+    desc: rocketDescription(r.id),
+    // R-IC3 / RC-100 / SHG retirés de la vente (assemblage uniquement).
+    ...(r.id === "ric3" || r.id === "rc100" || r.id === "shg01" || r.id === "shg02" ? { shopHidden: true } : {}),
   })),
 
   // Générateurs de vitesse officiels (darkorbitwiki.com/equipment/generators).
@@ -183,7 +185,7 @@ export const CATALOG = {
     { id: "laser_caucasus", name: "laser Caucasus", price: 42000000, icon: "/ASSETS/LASERS/caucasus_100x100.png", module: { type: "laser", damage: 200, vsMatch: [/^npc_/], vsMult: 1.15, vsLabel: "aliens", overdrive: 100 }, desc: "200 dégâts +15 % vs aliens, +100/canon tous les 5 tirs (ex : 10 = +1000)." },
     { id: "laser_lf5", name: "laser LF-5", price: 70000000, icon: "/ASSETS/LASERS/lf_5_100x100.png", module: { type: "laser", damage: 245 }, desc: "245 dégâts, constant PVE/PVP, sans bonus." },
     { id: "laser_lf5al", name: "laser LF-5 Anchorlock", price: 72000000, icon: "/ASSETS/LASERS/lf_5_al_100x100.png", module: { type: "laser", damage: 245 }, desc: "245 dégâts, bonus PVP + ralentissements (sans effet vs aliens)." },
-    { id: "laser_prl", name: "laser PR-L Prometheus", price: 150000000, icon: "/ASSETS/LASERS/pr_l_100x100.png", module: { type: "laser", damage: 210, vsMatch: [/Impulse/, /Attend/, /Invoke/, /Mindfire/], vsMult: 3.5, vsLabel: "aliens Blacklight", overdrive: 200 }, desc: "210 dégâts, +200/canon tous les 5 tirs (ex : 35 = +7000), ×3,5 vs Impulse, Attend, Invoke et Mindfire (Strokelight exclu : NPC standard)." },
+    { id: "laser_prl", name: "laser PR-L Prometheus", price: 150000000, shopHidden: true, icon: "/ASSETS/LASERS/pr_l_100x100.png", module: { type: "laser", damage: 210, vsMatch: [/Impulse/, /Attend/, /Invoke/, /Mindfire/], vsMult: 3.5, vsLabel: "aliens Blacklight", overdrive: 200 }, desc: "210 dégâts, +200/canon tous les 5 tirs (ex : 35 = +7000), ×3,5 vs Impulse, Attend, Invoke et Mindfire (Strokelight exclu : NPC standard). Quêtes et assemblage uniquement." },
     { id: "laser_osl", name: "laser OS-L Odysseus", price: 380000000, icon: "/ASSETS/LASERS/os_l_100x100.png", module: { type: "laser", damage: 220, critPct: 3 }, desc: "220 dégâts, critique à 200 % : +3 % de chance par canon, +9 % dès 3 montés." },
     { id: "laser_lf5mf", name: "laser LF-5 Mortifier", price: 850000000, icon: "/ASSETS/LASERS/lf_5_mf_100x100.png", module: { type: "laser", damage: 295, mf: true }, desc: "295 dégâts, dégâts globaux +1 % à +7 % dès 3 montés." },
     ],
@@ -207,7 +209,7 @@ export const CATALOG = {
 
   // Tickets : relance gratuite à la roulette des modules (image fournie plus tard).
   tickets: [
-    { id: "ticket_module_reroll", name: "Ticket relance module", price: 25000000, icon: "/ASSETS/ITEMS/TICKET_MODULE_REROLL.png", ticket: { kind: "module_reroll" }, desc: "Une relance gratuite à la roulette des modules." },
+    { id: "ticket_module_reroll", name: "Ticket relance module", price: 125000000, icon: "/ASSETS/ITEMS/TICKET_MODULE_REROLL.png", ticket: { kind: "module_reroll" }, desc: "Une relance gratuite à la roulette des modules." },
   ],
 
   // Gears P.E.T officiels (darkorbitwiki.com/p-e-t). Prix uridium → crédits (×1000).
@@ -283,13 +285,16 @@ export const CATALOG = {
   })),
 
   // Boosters officiels (stock consommable, activation depuis la fenêtre Boosters).
-  boosters: BOOSTERS.map((b) => ({
+  // EPHON retiré de la vente (quêtes et assemblage uniquement).
+  // DLB + NPC-B01/B02 retirés de la vente (drops NPC uniquement).
+  boosters: BOOSTERS.filter((b) => b?.id !== "ephon").map((b) => ({
     id: `booster_${b.id}`,
     name: `${b.name} (${b.code})`,
     price: b.price,
     icon: b.icon,
     desc: b.desc,
     booster: { id: b.id },
+    ...(["dmgdlb", "dmgdlb2", "shddlb", "hpdlb", "epdlb", "hondlb", "npc", "npcb2"].includes(b?.id) ? { shopHidden: true } : {}),
   })),
 
   // ✅ auto depuis SHIP_PACKS (price propre à chaque vaisseau, fallback heuristique)

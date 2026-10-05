@@ -45,7 +45,7 @@ export const CRAFTING_RECIPES = Object.freeze([
       credits: 0,
       resources: { mucosum: 6, scrap: 1, plasmide: 2 },
     },
-    output: { ammo: { x2: 1000 } },
+    output: { ammo: { x2: 10000 } },
   }),
   Object.freeze({
     id: "craft_x3",
@@ -55,7 +55,7 @@ export const CRAFTING_RECIPES = Object.freeze([
       credits: 0,
       resources: { scrap: 12, mucosum: 8, plasmide: 2 },
     },
-    output: { ammo: { x3: 1000 } },
+    output: { ammo: { x3: 10000 } },
   }),
   Object.freeze({
     id: "craft_x4",
@@ -65,7 +65,7 @@ export const CRAFTING_RECIPES = Object.freeze([
       credits: 0,
       resources: { scrap: 50, mucosum: 75, plasmide: 10 },
     },
-    output: { ammo: { x4: 1000 } },
+    output: { ammo: { x4: 10000 } },
   }),
   Object.freeze({
     id: "craft_x6",
@@ -75,7 +75,17 @@ export const CRAFTING_RECIPES = Object.freeze([
       credits: 0,
       resources: { scrap: 100, mucosum: 100, plasmide: 100 },
     },
-    output: { ammo: { x6: 1000 } },
+    output: { ammo: { x6: 10000 } },
+  }),
+  Object.freeze({
+    id: "craft_rcb",
+    name: "Munitions RCB-140",
+    rarity: "epic",
+    costs: {
+      credits: 0,
+      resources: { scrap: 150, mucosum: 150, plasmide: 150 },
+    },
+    output: { ammo: { rcb: 10000 } },
   }),
   Object.freeze({
     id: "craft_nano_condensator",
@@ -202,6 +212,46 @@ export const CRAFTING_RECIPES = Object.freeze([
       resources: { plasmide: 215, scrap: 55, prismatium: 2 },
     },
     output: { rockets: { ubr100: 1000 } },
+  }),
+  Object.freeze({
+    id: "craft_ric3",
+    name: "Roquettes R-IC3",
+    rarity: "rare",
+    costs: {
+      credits: 0,
+      resources: { scrap: 25, mucosum: 38, plasmide: 5 },
+    },
+    output: { rockets: { ric3: 1000 } },
+  }),
+  Object.freeze({
+    id: "craft_rc100",
+    name: "Roquettes RC-100",
+    rarity: "rare",
+    costs: {
+      credits: 0,
+      resources: { scrap: 27, mucosum: 40, plasmide: 7 },
+    },
+    output: { rockets: { rc100: 1000 } },
+  }),
+  Object.freeze({
+    id: "craft_shg01",
+    name: "Roquettes SHG-01",
+    rarity: "rare",
+    costs: {
+      credits: 0,
+      resources: { scrap: 25, mucosum: 38, plasmide: 5 },
+    },
+    output: { rockets: { shg01: 1000 } },
+  }),
+  Object.freeze({
+    id: "craft_shg02",
+    name: "Roquettes SHG-02",
+    rarity: "rare",
+    costs: {
+      credits: 0,
+      resources: { scrap: 27, mucosum: 40, plasmide: 7 },
+    },
+    output: { rockets: { shg02: 1000 } },
   }),
   Object.freeze({
     id: "craft_boost_hp",
@@ -399,20 +449,22 @@ export const CRAFTING_RECIPES = Object.freeze([
     name: "Laser PR-L Prometheus",
     rarity: "legendary",
     costs: {
-      credits: 100000000,
-      resources: { rinusk: 1500, blacklight_trace: 180 },
+      credits: 25000000,
+      resources: { rinusk: 6000 },
+      ammo: { x4: 15000, x6: 2500 },
     },
     output: { items: { laser_prl: 1 } },
   }),
   Object.freeze({
-    id: "craft_abl_1000",
-    name: "Munitions A-BL (1000)",
+    id: "craft_abl_25000",
+    name: "Munitions A-BL (25 000)",
     rarity: "rare",
     costs: {
-      credits: 5000000,
-      resources: { rinusk: 250, blacklight_trace: 50 },
+      credits: 15000000,
+      resources: { rinusk: 1500 },
+      ammo: { x4: 10000 },
     },
-    output: { ammo: { abl: 1000 } },
+    output: { ammo: { abl: 25000 } },
   }),
   Object.freeze({
     id: "craft_blacklight_cipher",
