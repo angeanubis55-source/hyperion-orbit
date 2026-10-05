@@ -882,6 +882,7 @@ function describePeer(pid) {
         x: Number(s.x) || 0, y: Number(s.y) || 0, hpPct: Number(s.hpPct ?? 1), shPct: Number(s.shPct ?? 1),
         hpMax: Number(s.hpMax) || 1, shMax: Number(s.shMax) || 0, dead: s.dead === true,
         shipId: String(s.shipId || "").slice(0, 64), petActive: s.peta === 1,
+        b2: Array.isArray(s.b2) ? s.b2.map((v) => String(v || "")).filter((v) => ["dmg2", "shd2", "hp2", "ep2", "hon2", "rep2", "res2", "sreg2"].includes(v)).slice(0, 8) : [],
         combat: s.combat === "npc" || s.combat === "player" ? s.combat : "",
         targetName: String(s.targetName || "").slice(0, 64),
         targetHpPct: Number(s.targetHpPct ?? 0), targetShPct: Number(s.targetShPct ?? 0),
@@ -1886,6 +1887,11 @@ wss.on("connection", (ws) => {
       }
       if (Number.isFinite(Number(msg.angle))) state.angle = Number(msg.angle);
       if (typeof msg.shipId === "string" && msg.shipId) state.shipId = String(msg.shipId).slice(0, 64);
+      // B02 actifs (bonus de groupe) : ids validés, diffusés au groupe.
+      if (Array.isArray(msg.b2)) {
+        const ok = ["dmg2", "shd2", "hp2", "ep2", "hon2", "rep2", "res2", "sreg2"];
+        state.b2 = msg.b2.map((v) => String(v || "")).filter((v) => ok.includes(v)).slice(0, 8);
+      }
       if (Number.isFinite(Number(msg.hswap))) state.hswap = Math.max(0, Math.min(3, Number(msg.hswap)));
       if (!authed && typeof msg.pseudo === "string" && msg.pseudo.trim()) state.pseudo = String(msg.pseudo).slice(0, 20);
       if (typeof msg.dead === "boolean") state.dead = msg.dead;

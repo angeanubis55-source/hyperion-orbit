@@ -1485,6 +1485,8 @@ function sendNow(local, force = false) {
       moving: local.moving === true,
       angle: Number(local.angle) || 0,
       shipId: String(local.shipId || ""),
+      // B02 actifs (bonus de groupe) : ids synchronisés pour la fenêtre Boosters.
+      b2: Array.isArray(local.b2) ? local.b2.map(String).slice(0, 8) : [],
       hswap: Math.max(0, Math.min(3, Number(local.hswap) || 0)),
       pseudo: String(local.pseudo || "Pilote").slice(0, 20),
       dead: local.dead === true,

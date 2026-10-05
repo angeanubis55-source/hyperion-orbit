@@ -86,7 +86,7 @@ import {
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { findCatalogItem } from "./CATALOG.js";
-import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBoosterDuration, BOOSTERS, getBooster, normalizeBoostersState } from "../DATA/BOOSTERS.js";
+import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBoosterDuration, BOOSTERS, getBooster, normalizeBoostersState, GROUP_BOOSTER_IDS, GROUP_BOOSTER_BONUS } from "../DATA/BOOSTERS.js";
 import { pilotSkillMults } from "../DATA/PILOT_SKILLS.js";
 import { CRAFTING_RECIPES, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
@@ -8683,6 +8683,39 @@ function boosterFacetIcon(facet) {
   return facet.def.iconMini || facet.def.icon;
 }
 
+// Ids des boosters B02 actifs (bonus de groupe), pour la synchro réseau.
+function activeGroupBoosterIds() {
+  try {
+    const now = Date.now();
+    const out = [];
+    for (const id of GROUP_BOOSTER_IDS) {
+      if (boosterTimeLeftMs(account.user?.boosters, id, now) > 0) out.push(id);
+    }
+    return out;
+  } catch { return []; }
+}
+
+// B02 actifs des AUTRES membres du groupe : { boosterId: nbMembres }.
+// Moi exclu (mon B02 s'affiche déjà en propre). Uniquement les membres
+// sur la MÊME carte que moi.
+function groupBoosterCounts() {
+  const counts = {};
+  try {
+    const me = String(netMyId());
+    const here = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+    for (const m of getNetGroup()?.members || []) {
+      if (!m || String(m.id) === me) continue;
+      if (m.online === false) continue;
+      if (String(m.map || "").toLowerCase() !== here) continue;
+      for (const id of (Array.isArray(m.b2) ? m.b2 : [])) {
+        if (!GROUP_BOOSTER_IDS.includes(String(id))) continue;
+        counts[String(id)] = Math.max(0, Number(counts[String(id)]) || 0) + 1;
+      }
+    }
+  } catch {}
+  return counts;
+}
+
 function renderBoosterWindow() {
   const list = document.getElementById("boosterList");
   if (!list) return;
@@ -8704,10 +8737,30 @@ function renderBoosterWindow() {
       facets.push({ def, key, pct: Number(value) || 0 });
     }
   }
+  // B02 du groupe (autres membres) : une carte GROUPE par booster, sans
+  // timer, au % proportionnel au nombre de membres (GROUPE X5...).
+  try {
+    for (const [bid, n] of Object.entries(groupBoosterCounts())) {
+      if (!(Number(n) > 0)) continue;
+      const bonus = GROUP_BOOSTER_BONUS[bid];
+      const def = BOOSTERS.find((b) => b.id === bid);
+      if (!bonus || !def) continue;
+      const key = Object.keys(bonus)[0];
+      if (!BOOSTER_FAMILY_ORDER.includes(key)) continue;
+      facets.push({ def, key, pct: (Number(Object.values(bonus)[0]) || 0) * Number(n), group: Number(n) });
+    }
+  } catch {}
   const rowHtml = (facet) => {
-    const leftMs = boosterTimeLeftMs(user?.boosters, facet.def.id, now);
     const color = BOOSTER_FAMILY_COLORS[facet.key] || "#effbff";
     const icon = boosterFacetIcon(facet);
+    if (facet.group) {
+      const label = facet.group > 1 ? `GROUPE X${facet.group}` : "GROUPE";
+      return `<div class="boosterRow compact" data-booster="${facet.def.id}" data-family="${facet.key}" data-group="${facet.group}" style="--boost:${color}" title="${facet.def.name} — bonus de groupe (${facet.group} membre${facet.group > 1 ? "s" : ""})">`
+      + `<img src="${icon}" alt="${facet.def.code}">`
+      + `<strong class="boosterCode">${label}</strong>`
+      + `</div>`;
+    }
+    const leftMs = boosterTimeLeftMs(user?.boosters, facet.def.id, now);
     return `<div class="boosterRow compact" data-booster="${facet.def.id}" data-family="${facet.key}" style="--boost:${color}" title="${facet.def.name} — ${facet.def.desc}">
       <img src="${icon}" alt="${facet.def.code}">
       <strong class="boosterCode">${facet.def.code}</strong>
@@ -8740,6 +8793,15 @@ function refreshBoosterCountdowns() {
   const now = Date.now();
   const user = account.user || getCurrentUserFull();
   let changed = false;
+  // B02 du groupe : tout changement (activation, expiration, arrivée,
+  // départ) re-rend les cartes GROUPE.
+  try {
+    const sig = JSON.stringify(groupBoosterCounts());
+    if (sig !== refreshBoosterCountdowns._groupSig) {
+      refreshBoosterCountdowns._groupSig = sig;
+      changed = true;
+    }
+  } catch {}
   for (const def of BOOSTERS) {
     const el = list.querySelector(`[data-booster-countdown="${def.id}"]`);
     if (!el) continue;
@@ -16673,7 +16735,24 @@ function tickInstaShield(dt) {
 // ============================================================
 function playerBoosterMults() {
   try {
-    return activeBoosterMults(account.user?.boosters, Date.now());
+    const base = activeBoosterMults(account.user?.boosters, Date.now());
+    // Bonus de groupe B02 (proportionnel aux autres membres) : s'additionne
+    // aux mults perso. En solo ou sans B02 autour : aucun changement.
+    try {
+      const counts = groupBoosterCounts();
+      for (const [bid, n] of Object.entries(counts)) {
+        if (!(Number(n) > 0)) continue;
+        const bonus = GROUP_BOOSTER_BONUS[bid];
+        if (!bonus) continue;
+        for (const [k, v] of Object.entries(bonus)) {
+          const add = (Number(v) || 0) * Number(n);
+          if (!add) continue;
+          if (k === "hitPct") base.hit = (Number(base.hit) || 0) + add;
+          else if (k in base) base[k] = Number(base[k] || 1) + add / 100;
+        }
+      }
+    } catch {}
+    return base;
   } catch {
     return { dmg: 1, shield: 1, hp: 1, exp: 1, honor: 1, repair: 1, res: 1, petXp: 1, hit: 0, sreg: 1, box: 1, quest: 1 };
   }
@@ -37144,6 +37223,8 @@ function frame(t) {
       pushNetplayLocal({
         x: player.x, y: player.y, angle: player.angle,
         vx: player.vx, vy: player.vy,
+        // B02 actifs (bonus de groupe) : ids synchronisés pour la fenêtre Boosters.
+        b2: activeGroupBoosterIds(),
         // Destination de deplacement (click-to-move / bot) : le receveur
         // predit le long du segment exact au lieu d'extrapoler a l'aveugle
         // (fini les micro-saccades en ligne droite).

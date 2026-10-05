@@ -44,6 +44,7 @@ function publicGroup(gid, ctx) {
       return {
         id: String(pid), pseudo: cleanPseudo(d.pseudo) || "Pilote", map: String(d.map || ""), online: !!d.online,
         instance: d.instance === true, x: Number(d.x) || 0, y: Number(d.y) || 0,
+        b2: Array.isArray(d.b2) ? d.b2.map((v) => String(v || "")).slice(0, 8) : [],
         hpPct: Math.max(0, Math.min(1, Number(d.hpPct ?? 1))), shPct: Math.max(0, Math.min(1, Number(d.shPct ?? 1))),
         hpMax: Math.max(1, Number(d.hpMax) || 1), shMax: Math.max(0, Number(d.shMax) || 0),
         dead: d.dead === true, shipId: String(d.shipId || "").slice(0, 64), petActive: d.petActive === true,
