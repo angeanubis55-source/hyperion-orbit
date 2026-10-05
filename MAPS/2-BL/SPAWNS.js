@@ -1,4 +1,4 @@
-// 2-BL : 40 Impulse II + 20 Attend IX (boss : cas par cas plus tard).
+// 2-BL : 60 Impulse II + 29 Attend IX (boss : cas par cas plus tard).
 // Triangle BL : 2-8 (retour) + 1-BL + 3-BL.
 
 const rand = (a,b)=>a+Math.random()*(b-a);
@@ -6,7 +6,7 @@ const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
 
 export function getZoneSpawns(WORLD) {
   const pad = 300;
-  const N = 60;
+  const N = 89;
 
   const minDist = 0;
   const minDist2 = minDist * minDist;
@@ -15,10 +15,10 @@ export function getZoneSpawns(WORLD) {
   let tries = 0;
   const maxTries = 6000;
 
-  // ✅ Quotas EXACTS : 40 Impulse II + 20 Attend IX
+  // ✅ Quotas EXACTS : 60 Impulse II + 29 Attend IX
   const quota = [
-    { type: "npc_Impulse_II", left: 40 },
-    { type: "npc_Attend_IX", left: 20 },
+    { type: "npc_Impulse_II", left: 60 },
+    { type: "npc_Attend_IX", left: 29 },
   ];
 
   function pickQuotaType() {
@@ -67,9 +67,74 @@ export function getZoneSpawns(WORLD) {
       maxAlive: 1,
       aggroRange: 750,
       leashRange: 1700,
-      aggroHold: 4,
+      aggroHold: 8,
     });
   }
+
+  // ✅ Boss BL : 10 Invoke (zone 5000,11000 -> 14400,13500) + Mindfire fixe.
+  // Tous immobiles (speed 0, comme le Cubikon). Respawn : Invoke 90 s,
+  // Mindfire 5 min (délais dans UNIVERSE_SIM).
+  // Les Invoke ne spawnent jamais dans les zones grises (murs).
+  const INVOKE_AREA = { x1: 5000, y1: 11000, x2: 14400, y2: 13500 };
+  const INVOKE_WALLS = getZoneWalls(WORLD);
+  const INVOKE_MARGIN = 120;
+  function inGreyZone(x, y) {
+    for (const wl of INVOKE_WALLS) {
+      const hw = Number(wl?.w || 0) / 2 + INVOKE_MARGIN;
+      const hh = Number(wl?.h || 0) / 2 + INVOKE_MARGIN;
+      if (Math.abs(x - Number(wl?.x || 0)) <= hw && Math.abs(y - Number(wl?.y || 0)) <= hh) return true;
+    }
+    return false;
+  }
+  function pickInvokePos() {
+    let x = rand(INVOKE_AREA.x1, INVOKE_AREA.x2);
+    let y = rand(INVOKE_AREA.y1, INVOKE_AREA.y2);
+    for (let t = 0; t < 12 && inGreyZone(x, y); t++) {
+      x = rand(INVOKE_AREA.x1, INVOKE_AREA.x2);
+      y = rand(INVOKE_AREA.y1, INVOKE_AREA.y2);
+    }
+    return { x, y };
+  }
+  for (let i = 0; i < 10; i++) {
+    const pos = pickInvokePos();
+    camps.push({
+      type: "npc_Invoke_XVI",
+      x: pos.x,
+      y: pos.y,
+      spawnArea: { ...INVOKE_AREA },
+      speed: 0,
+      radius: 350,
+      respawn: 0,
+      maxAlive: 1,
+      aggroRange: 750,
+      leashRange: 1700,
+      aggroHold: 8,
+    });
+  }
+  camps.push({
+    type: "npc_Strokelight_Barrage",
+    x: 19500, y: 5750,
+    fixed: true,
+    speed: 0,
+    radius: 350,
+    respawn: 0,
+    maxAlive: 1,
+    aggroRange: 750,
+    leashRange: 1700,
+    aggroHold: 8,
+  });
+  camps.push({
+    type: "npc_Mindfire_Behemoth",
+    x: 7250, y: 5275,
+    fixed: true,
+    speed: 0,
+    radius: 350,
+    respawn: 0,
+    maxAlive: 1,
+    aggroRange: 750,
+    leashRange: 1700,
+    aggroHold: 8,
+  });
 
   return camps;
 }

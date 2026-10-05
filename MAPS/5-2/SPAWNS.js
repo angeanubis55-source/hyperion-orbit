@@ -1,4 +1,4 @@
-﻿const rand = (a,b)=>a+Math.random()*(b-a);
+const rand = (a,b)=>a+Math.random()*(b-a);
 const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
 
 export function getZoneSpawns(WORLD) {
@@ -39,7 +39,7 @@ export function getZoneSpawns(WORLD) {
       }
     }
 
-    // sécurité
+    // s�curit�
     for (const q of quota) {
       if (q.left > 0) {
         q.left--;
@@ -71,7 +71,7 @@ export function getZoneSpawns(WORLD) {
       maxAlive: 1,
       aggroRange: 750,
       leashRange: 1700,
-      aggroHold: 4,
+      aggroHold: 8,
     });
   }
 
@@ -117,7 +117,7 @@ sprites: {
 }
 
 export function getZoneSafeModules(WORLD) {
-  // ✅ coin haut-gauche (position du bloc)
+  // ? coin haut-gauche (position du bloc)
   const baseX = 800;
   const baseY = 800;
 

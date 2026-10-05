@@ -119,7 +119,7 @@ import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
-drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect,
+drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, drainNetSunInbox,
 getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation } from "./NETPLAY.js";
 import {
   createGatePortalState,
@@ -22315,13 +22315,27 @@ function currentMapId() {
 }
 
 // ✅ Blacklight (1-BL / 2-BL / 3-BL) : seuls les dégâts des JOUEURS sont
-// x2 (officiel). Les NPC infligent leurs dégâts normaux.
+// majorés (x1.25, sauf Orcus / Orcus Plus qui restent x1). Les NPC
+// infligent leurs dégâts normaux.
 const BL_MAP_IDS = new Set(["1-bl", "2-bl", "3-bl"]);
 function isBlacklightMap(mapId = currentMapId()) {
   return BL_MAP_IDS.has(String(mapId || "").trim().toLowerCase());
 }
+function isOrcusBase() {
+  try {
+    const shipId = String(getActiveHangarFromUser(account?.user)?.shipId || account?.user?.ship || "").toLowerCase();
+    const base = String(getShipDesignBaseId(shipId) || shipId).toLowerCase();
+    if (base === "orcus" || base === "orcus_plus") return true;
+  } catch {}
+  try {
+    const raw = String(account?.user?.ship || "").toLowerCase();
+    if (raw === "orcus" || raw === "orcus_plus" || raw.startsWith("orcus_")) return true;
+  } catch {}
+  return false;
+}
 function blMapDamageMult() {
-  return isBlacklightMap() ? 2 : 1;
+  if (!isBlacklightMap()) return 1;
+  return isOrcusBase() ? 1 : 1.25;
 }
 
 // Maps doublées (1-BL / 2-BL / 3-BL / 4-5 : 22000x14000 vs 11000x7000
@@ -22808,6 +22822,44 @@ function preloadCollectables(mapId = currentMapId()) {
     jobs.push(ensureCollectableLoaded(type));
   }
   return jobs;
+}
+
+// Soleils personnels Invoke / Mindfire : un soleil PAR joueur éligible
+// (top 10 dégâts, même contenu pour tous), réservé via onlyBy.
+// Si le joueur n'est plus sur la map, le soleil est mis en attente et
+// spawné à son retour (pas de despawn : npcDespawnAfter 0).
+const pendingPersonalSuns = []; // { map, type, x, y }
+const claimedSunKeys = new Set(); // "uid:seq" déjà honorés (reward + message)
+function grantPersonalSun(type, x, y, mapId) {
+  try {
+    const cfg = COLLECTABLE_DEFS[type];
+    if (!cfg || cfg.enabled === false) return false;
+    const map = String(mapId || "").toLowerCase();
+    if (map && map !== String(currentMapId() || "").toLowerCase()) {
+      if (pendingPersonalSuns.length < 24) {
+        pendingPersonalSuns.push({ map, type, x: Number(x) || 0, y: Number(y) || 0 });
+      }
+      return true;
+    }
+    const jx = (Number(x) || 0) + rand(-70, 70);
+    const jy = (Number(y) || 0) + rand(-70, 70);
+    return spawnCollectableAt(type, jx, jy, {
+      armed: false,
+      fromNpc: type === "Mindfire_Sun_Box" ? "npc_Mindfire_Behemoth" : "npc_Invoke_XVI",
+      despawnAfter: 0,
+      onlyBy: String(netMyId()),
+    });
+  } catch { return false; }
+}
+function drainPendingPersonalSuns() {
+  if (!pendingPersonalSuns.length || player.dead || !started) return;
+  const map = String(currentMapId() || "").toLowerCase();
+  for (let i = pendingPersonalSuns.length - 1; i >= 0; i--) {
+    const p = pendingPersonalSuns[i];
+    if (!p || String(p.map || "").toLowerCase() !== map) continue;
+    pendingPersonalSuns.splice(i, 1);
+    try { grantPersonalSun(p.type, p.x, p.y, p.map); } catch {}
+  }
 }
 
 function spawnCollectableAt(type, x, y, opts = {}) {
@@ -25215,6 +25267,24 @@ function killRewards(e) {
   } catch {}
 
   markProgressDirty();
+  // Soleil personnel Invoke / Mindfire : le serveur dit si je suis dans le
+  // top 10 dégâts (même contenu pour tous). Récompense de destruction (déjà
+  // appliquée plus haut via serverReward.percent) : partagée entre tous les
+  // tapeurs au prorata, calculée côté serveur.
+  try {
+    if (e._netUid && serverReward && serverReward.sun === true
+      && (e.type === "npc_Invoke_XVI" || e.type === "npc_Mindfire_Behemoth")) {
+      const sunType = (serverReward.sunType === "Mindfire_Sun_Box" || e.type === "npc_Mindfire_Behemoth")
+        ? "Mindfire_Sun_Box" : "Sun_Box";
+      const sunKey = `${String(e._netUid || "")}:${Number(e._netSeq) || 0}`;
+      if (!claimedSunKeys.has(sunKey)) {
+        claimedSunKeys.add(sunKey);
+        if (claimedSunKeys.size > 64) claimedSunKeys.delete(claimedSunKeys.keys().next().value);
+        grantPersonalSun(sunType, Number(serverReward.sunX) || e.x, Number(serverReward.sunY) || e.y,
+          serverReward.map || window.__CURRENT_MAP_ID__);
+      }
+    }
+  } catch {}
   // La sauvegarde temporisée regroupe les destructions rapprochées et évite
   // de sérialiser tout le compte au milieu de chaque frame de combat.
 }
@@ -25286,6 +25356,23 @@ function updateBossEncounters() {
 }
 
 function processDeaths() {
+  try { drainPendingPersonalSuns(); } catch {}
+  // Soleils personnels via message dédié (top 10 parti avant la mort, ou
+  // présent : dédupliqué avec le spawn du npcReward par clé uid:seq).
+  try {
+    let sunEvs = null;
+    try { sunEvs = drainNetSunInbox(); } catch { sunEvs = null; }
+    if (sunEvs && sunEvs.length) {
+      for (const s of sunEvs) {
+        if (!s || (s.sunType !== "Sun_Box" && s.sunType !== "Mindfire_Sun_Box")) continue;
+        const key = `${String(s.uid || "")}:${Number(s.seq) || 0}`;
+        if (claimedSunKeys.has(key)) continue;
+        claimedSunKeys.add(key);
+        if (claimedSunKeys.size > 64) claimedSunKeys.delete(claimedSunKeys.keys().next().value);
+        grantPersonalSun(s.sunType, Number(s.x) || 0, Number(s.y) || 0, s.map);
+      }
+    }
+  } catch {}
   return measureGameTask("processDeaths", processDeathsMeasured);
 }
 
@@ -25349,6 +25436,18 @@ function processDeathsMeasured() {
 
     // Multi : kill d'un autre joueur — explosion vue, mais ni butin ni recompenses.
     if (e._netSilent) {
+      // Repli Invoke / Mindfire : récompense serveur perdue — le premier
+      // attaquant (loot owner) garde au moins son soleil personnel.
+      try {
+        if ((e.type === "npc_Invoke_XVI" || e.type === "npc_Mindfire_Behemoth") && e._netLootOwner === true) {
+          const sunKey = `${String(e._netUid || "")}:${Number(e._netSeq) || 0}`;
+          if (!claimedSunKeys.has(sunKey)) {
+            claimedSunKeys.add(sunKey);
+            if (claimedSunKeys.size > 64) claimedSunKeys.delete(claimedSunKeys.keys().next().value);
+            grantPersonalSun(e.type === "npc_Mindfire_Behemoth" ? "Mindfire_Sun_Box" : "Sun_Box", e.x, e.y, String(window.__CURRENT_MAP_ID__ || ""));
+          }
+        }
+      } catch {}
       enemies.splice(i, 1);
       continue;
     }
@@ -25373,7 +25472,10 @@ if (
   ownsNpcLoot &&
   !e.noRewards &&
   e.type !== "npc_Protegit" &&
-  e.type !== "npc_Barrage_Seeker_Rocket"
+  e.type !== "npc_Barrage_Seeker_Rocket" &&
+  // Invoke / Mindfire partagés : pas de soleil automatique — un soleil
+  // PERSONNEL est accordé via la récompense serveur (top 10 dégâts).
+  !((e.type === "npc_Invoke_XVI" || e.type === "npc_Mindfire_Behemoth") && !!e._netUid)
 ) {
   const dropCfg = COLLECTABLE_DEFS[dropType] || {};
 

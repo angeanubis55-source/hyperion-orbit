@@ -131,7 +131,7 @@ export function getZoneSpawns(WORLD) {
 
       leashRange: 1700,
 
-      aggroHold: 4,
+      aggroHold: 8,
 
     });
 

@@ -1,4 +1,4 @@
-// 1-BL : 40 Impulse II + 20 Attend IX (boss : cas par cas plus tard).
+// 1-BL : 60 Impulse II + 29 Attend IX (boss : cas par cas plus tard).
 // Triangle BL : 1-8 (retour) + 2-BL + 3-BL.
 
 const rand = (a,b)=>a+Math.random()*(b-a);
@@ -6,7 +6,7 @@ const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
 
 export function getZoneSpawns(WORLD) {
   const pad = 300;
-  const N = 60;
+  const N = 89;
 
   const minDist = 0;
   const minDist2 = minDist * minDist;
@@ -15,10 +15,10 @@ export function getZoneSpawns(WORLD) {
   let tries = 0;
   const maxTries = 6000;
 
-  // ✅ Quotas EXACTS : 40 Impulse II + 20 Attend IX
+  // ✅ Quotas EXACTS : 60 Impulse II + 29 Attend IX
   const quota = [
-    { type: "npc_Impulse_II", left: 40 },
-    { type: "npc_Attend_IX", left: 20 },
+    { type: "npc_Impulse_II", left: 60 },
+    { type: "npc_Attend_IX", left: 29 },
   ];
 
   function pickQuotaType() {
@@ -67,12 +67,12 @@ export function getZoneSpawns(WORLD) {
       maxAlive: 1,
       aggroRange: 750,
       leashRange: 1700,
-      aggroHold: 4,
+      aggroHold: 8,
     });
   }
 
   // ✅ Boss BL : 10 Invoke (zone 300,300 -> 5000,8000) + Strok + Mindfire fixes.
-  // Tous immobiles (speed 0, comme le Cubikon). Respawn : Invoke 30 s,
+  // Tous immobiles (speed 0, comme le Cubikon). Respawn : Invoke 90 s,
   // Strok/Mindfire 5 min (délais dans UNIVERSE_SIM).
   // Les Invoke ne spawnent jamais dans les zones grises (murs).
   const INVOKE_AREA = { x1: 300, y1: 300, x2: 5000, y2: 8000 };
@@ -108,7 +108,7 @@ export function getZoneSpawns(WORLD) {
       maxAlive: 1,
       aggroRange: 750,
       leashRange: 1700,
-      aggroHold: 4,
+      aggroHold: 8,
     });
   }
   camps.push({
@@ -121,7 +121,7 @@ export function getZoneSpawns(WORLD) {
     maxAlive: 1,
     aggroRange: 750,
     leashRange: 1700,
-    aggroHold: 4,
+    aggroHold: 8,
   });
   camps.push({
     type: "npc_Mindfire_Behemoth",
@@ -133,7 +133,7 @@ export function getZoneSpawns(WORLD) {
     maxAlive: 1,
     aggroRange: 750,
     leashRange: 1700,
-    aggroHold: 4,
+    aggroHold: 8,
   });
 
   return camps;

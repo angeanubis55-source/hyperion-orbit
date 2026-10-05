@@ -36,11 +36,31 @@ function aggroRangeMultFor(mapId) {
   return DOUBLE_RANGE_MAP_IDS.has(String(mapId || "").trim().toLowerCase()) ? 2 : 1;
 }
 
-// Blacklight uniquement : seuls les dégâts des JOUEURS sont x2 (officiel),
-// comme en solo. Les NPC infligent leurs dégâts normaux.
+// Mindfire / Invoke / Protegit : pas de top dégâts — la cible est
+// retirée au hasard parmi les tapeurs toutes les 3 s.
+const SHUFFLE_THREAT_TYPES = new Set([
+  "npc_Mindfire_Behemoth",
+  "npc_Invoke_XVI",
+  "npc_Protegit",
+  "npc_Protegit_maudite",
+  "npc_Protegit_maudite2",
+  "npc_Protegit_maudite3",
+]);
+const THREAT_SHUFFLE_MS = 3000;
+// Hystérésis du top dégâts : il faut dépasser la cible actuelle de 25 %.
+const THREAT_OVERTAKE_MULT = 1.25;
+
+// Blacklight : seuls les dégâts des joueurs sont majorés (x1.25, sauf
+// Orcus / Orcus Plus qui restent x1), comme en solo. Les NPC infligent
+// leurs dégâts normaux.
 const BL_MAP_IDS = new Set(["1-bl", "2-bl", "3-bl"]);
-function blDamageMultFor(mapId) {
-  return BL_MAP_IDS.has(String(mapId || "").trim().toLowerCase()) ? 2 : 1;
+function isOrcusShipId(shipId) {
+  const s = String(shipId || "").trim().toLowerCase();
+  return s === "orcus" || s === "orcus_plus" || s.startsWith("orcus_") || s.startsWith("orcus-plus");
+}
+function blDamageMultFor(mapId, shipId) {
+  if (!BL_MAP_IDS.has(String(mapId || "").trim().toLowerCase())) return 1;
+  return isOrcusShipId(shipId) ? 1 : 1.25;
 }
 
 function statsFor(type) {
@@ -182,6 +202,7 @@ export class ZoneNpcSim {
       x: Number(x) || 0, y: Number(y) || 0,
       dead: f.dead === true,
       safe: f.safe === true,
+      shipId: String(f.shipId || prev?.shipId || ""),
       untargetableUntil: Math.max(0, Number(f.untargetableUntil) || 0),
       cloaked,
     });
@@ -222,6 +243,84 @@ export class ZoneNpcSim {
       x: clamp(px, 80, this.world.w - 80),
       y: clamp(py, 80, this.world.h - 80),
     };
+  }
+
+  // Portée de menace : même rayon que l'acquisition (x2 sur BL / 4-5).
+  // Un top dégâts hors de portée ne retient plus le NPC : il prend le
+  // meilleur tapeur à portée au lieu de le suivre à l'infini.
+  threatRangeFor(e) {
+    return (Number(e?.aggroRange) || 700) * aggroRangeMultFor(this.mapId);
+  }
+
+  threatCandidateOk(e, pid, nowMs) {
+    const p = this.players.get(String(pid));
+    if (!p) return null;
+    if (!this.validTarget(p) && !this.retaliationOpen(e, pid, nowMs)) return null;
+    return p;
+  }
+
+  // Tirage aléatoire parmi les tapeurs à portée (Mindfire / Invoke /
+  // Protegit) : switch toutes les 3 s. Un seul candidat → pas de switch
+  // (flux existant). Cible actuelle sortie des candidats → switch immédiat.
+  // Retourne { id, x, y } pour un SWITCH, null pour garder le flux existant.
+  shuffleThreatTarget(e, nowMs) {
+    if (!e || !e.dmgBy || e.dmgSeq !== e.seq) return null;
+    const range = this.threatRangeFor(e);
+    const cands = [];
+    for (const [pid] of e.dmgBy) {
+      const p = this.threatCandidateOk(e, pid, nowMs);
+      if (!p) continue;
+      const d = Math.hypot(Number(p.x) - e.x, Number(p.y) - e.y);
+      if (d > range) continue;
+      cands.push(String(pid));
+    }
+    if (cands.length < 2) return null;
+    const cur = e.chaseId != null ? String(e.chaseId) : (e.aggroBy != null ? String(e.aggroBy) : null);
+    if (cur && cands.includes(cur) && nowMs < Number(e.threatShuffleAt || 0)) return null;
+    const pick = cands[(Math.random() * cands.length) | 0] || cands[0];
+    e.threatShuffleAt = nowMs + THREAT_SHUFFLE_MS;
+    const p = this.players.get(pick);
+    return p ? { id: pick, x: p.x, y: p.y } : null;
+  }
+
+  // Menace : le plus gros dégâts cumulés de l'incarnation parmi les joueurs
+  // attaquables À PORTÉE, avec hystérésis (il faut dépasser la cible
+  // actuelle de 25 % pour la détrôner). Sans ça, à plusieurs tapeurs le
+  // NPC yoyote entre le dernier tapeur et le plus proche à chaque salve.
+  // Retourne { id, x, y } pour un SWITCH, null pour garder le flux existant.
+  topThreatTarget(e, nowMs) {
+    if (!e || !e.dmgBy || e.dmgSeq !== e.seq) return null;
+    const range = this.threatRangeFor(e);
+    const inRange = (pid) => {
+      const p = this.players.get(String(pid));
+      if (!p) return false;
+      const d = Math.hypot(Number(p.x) - e.x, Number(p.y) - e.y);
+      return d <= range;
+    };
+    let curId = e.chaseId != null ? String(e.chaseId) : (e.aggroBy != null ? String(e.aggroBy) : null);
+    let curDmg = 0;
+    if (curId) {
+      const p = this.players.get(curId);
+      if (p && (this.validTarget(p) || this.retaliationOpen(e, curId, nowMs)) && inRange(curId)) {
+        curDmg = Math.max(0, Number(e.dmgBy.get(curId)) || 0);
+      } else {
+        curId = null;
+      }
+    }
+    let bestId = null, bestDmg = 0;
+    for (const [pid, total] of e.dmgBy) {
+      if (pid === curId) continue;
+      const p = this.players.get(pid);
+      if (!p) continue;
+      if (!this.validTarget(p) && !this.retaliationOpen(e, pid, nowMs)) continue;
+      if (!inRange(pid)) continue;
+      const dmg = Math.max(0, Number(total) || 0);
+      if (dmg > bestDmg) { bestDmg = dmg; bestId = pid; }
+    }
+    if (bestId == null) return null;
+    if (curId != null && bestDmg < curDmg * THREAT_OVERTAKE_MULT) return null;
+    const p = this.players.get(bestId);
+    return p ? { id: bestId, x: p.x, y: p.y } : null;
   }
 
   // Cible valide : vivante, hors zone sure et non camouflée (ultime ou CPU).
@@ -734,7 +833,7 @@ drainPlayerHits() {
     // Blacklight : seuls les dégâts des joueurs sont x2 (officiel, parité solo).
     // Strokelight Barrage : insensible (officiel : NPC normal en map BL).
     const strokNoBonus = String(entry.type || "") === "npc_Strokelight_Barrage";
-    const buffed = Math.max(0, raw) * (strokNoBonus ? 1 : blDamageMultFor(this.mapId));
+    const buffed = Math.max(0, raw) * (strokNoBonus ? 1 : blDamageMultFor(this.mapId, shooter?.shipId));
     // Premier attaquant = credit du kill (pas le coup de grace).
     if (entry.firstBy == null) entry.firstBy = String(clientId);
     entry.lastHitBy = String(clientId);
@@ -785,6 +884,17 @@ drainPlayerHits() {
       });
       applied = Number(res?.total) || 0;
     }
+    // Cumul des dégâts par joueur et par incarnation (top dégâts Invoke /
+    // Mindfire). Reset automatique si l'entrée est recyclée (seq change).
+    if (applied > 0) {
+      try {
+        if (!entry.dmgBy || entry.dmgSeq !== entry.seq) {
+          entry.dmgBy = new Map();
+          entry.dmgSeq = entry.seq;
+        }
+        entry.dmgBy.set(String(clientId), Math.max(0, Number(entry.dmgBy.get(String(clientId))) || 0) + applied);
+      } catch {}
+    }
     // Feed degats (100 ms) : les autres ecrans voient les chiffres.
     if (applied > 0) {
       const key = `${uid}|${clientId}`;
@@ -796,8 +906,16 @@ drainPlayerHits() {
     // Pendant l'IEM, ses tirs peuvent continuer a toucher le NPC mais ne
     // doivent pas recreer silencieusement l'ancien lock.
     if (this.validTarget(shooter) || (shooter.safe === true && nowMs >= Number(shooter.untargetableUntil || 0))) {
-      entry.aggroBy = String(clientId);
-      entry.aggroUntil = nowMs + (Number(entry.aggroHoldMs) || 3500);
+      // Un hit ne vole plus l'aggro à chaque salve (c'était le yoyo à
+      // plusieurs tapeurs). Le tapeur prend l'aggro si elle est libre ou
+      // expirée, la refresh s'il la détient ; sinon le tick tranche via la
+      // menace (top dégâts + hystérésis).
+      const holdUntil = nowMs + (Number(entry.aggroHoldMs) || 3500);
+      const curBy = entry.aggroBy != null ? String(entry.aggroBy) : null;
+      if (!curBy || nowMs >= Number(entry.aggroUntil || 0) || curBy === String(clientId)) {
+        entry.aggroBy = String(clientId);
+        entry.aggroUntil = holdUntil;
+      }
       entry.pendingAggroBy = null;
       entry.retreating = false;
     }
@@ -842,7 +960,23 @@ drainPlayerHits() {
       }
       try { this.spawnOnKillWave(entry, nowMs); } catch {}
       try { markDead(this.universe, this.mapId, uid, Date.now()); } catch {}
-      this.deaths.push({ uid, type: entry.type, x: Math.round(entry.x), y: Math.round(entry.y), killer: entry.killer, cause: "gun", seq: entry.seq || 0, at: Date.now() });
+      const death = { uid, type: entry.type, x: Math.round(entry.x), y: Math.round(entry.y), killer: entry.killer, cause: "gun", seq: entry.seq || 0, at: Date.now() };
+      // Invoke / Mindfire : classement dégâts pour les soleils (top 10) et
+      // la récompense de destruction proportionnelle (tous les tapeurs).
+      if (entry.type === "npc_Invoke_XVI" || entry.type === "npc_Mindfire_Behemoth") {
+        try {
+          const shares = [];
+          if (entry.dmgBy && entry.dmgSeq === entry.seq) {
+            for (const [pid, total] of entry.dmgBy) {
+              const dmg = Math.max(0, Math.round(Number(total) || 0));
+              if (dmg > 0 && String(pid).startsWith("u_")) shares.push([String(pid), dmg]);
+            }
+          }
+          shares.sort((a, b) => b[1] - a[1]);
+          death.shares = shares.slice(0, 24);
+        } catch {}
+      }
+      this.deaths.push(death);
     }
   }
 
@@ -1073,8 +1207,22 @@ drainPlayerHits() {
           if (d < closeD) { closeD = d; close = { id: pid, x: p.x, y: p.y }; }
         }
       }
-      const chase = attacker || close;
+      // Menace : Mindfire / Invoke / Protegit = tirage aléatoire toutes
+      // les 3 s ; tous les autres = top dégâts à portée (+ hystérésis).
+      // Ne s'applique qu'en SWITCH ; sinon le flux attacker / close garde
+      // la main.
+      let threat = null;
+      try {
+        threat = SHUFFLE_THREAT_TYPES.has(String(e.type || ""))
+          ? this.shuffleThreatTarget(e, nowMs)
+          : this.topThreatTarget(e, nowMs);
+      } catch {}
+      const chase = threat || attacker || close;
       if (chase) e.retreating = false;
+      if (threat) {
+        e.aggroBy = threat.id;
+        e.aggroUntil = nowMs + (Number(e.aggroHoldMs) || 3500);
+      }
       e.chaseId = chase ? chase.id : null;
       // Desengage par une ZNA : le NPC s'eloigne et recharge seulement son
       // bouclier. Sa coque ne se regenere jamais lors de ce repli.

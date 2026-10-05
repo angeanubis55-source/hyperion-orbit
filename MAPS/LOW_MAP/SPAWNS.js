@@ -42,7 +42,7 @@ export function getZoneSpawns(WORLD) {
         maxAlive: 1,
         aggroRange: 950,
         leashRange: 2400,
-        aggroHold: 5,
+        aggroHold: 8,
         raidWave: wave,
         // Vague : chaque camp spawn une seule fois (pas de respawn
         // tant que la vague est active, sinon la vague ne se finit jamais).
@@ -80,3 +80,4 @@ export function getZoneSafeModules(WORLD) {
     beacons: [],
   };
 }
+

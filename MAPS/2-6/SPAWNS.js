@@ -65,7 +65,7 @@ export function getZoneSpawns(WORLD) {
       speed: 0,             // ✅ Cubikon immobile (position fixe)
       aggroRange: 750,
       leashRange: 1700,
-      aggroHold: 4,
+      aggroHold: 8,
     });
   }
 
@@ -92,7 +92,7 @@ export function getZoneSpawns(WORLD) {
       maxAlive: 1,
       aggroRange: 750,
       leashRange: 1700,
-      aggroHold: 4,
+      aggroHold: 8,
     });
   }
 

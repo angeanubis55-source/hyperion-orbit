@@ -377,6 +377,14 @@ export function drainNetPvpKillInbox() {
   if (!netPvpKillInbox.length) return [];
   return netPvpKillInbox.splice(0, netPvpKillInbox.length);
 }
+// Soleils personnels Invoke / Mindfire (top 10 dégâts) : { map, uid, seq,
+// sunType, x, y }. Indépendant des récompenses de destruction (le joueur
+// a pu quitter la map avant la mort).
+const netSunInbox = [];
+export function drainNetSunInbox() {
+  if (!netSunInbox.length) return [];
+  return netSunInbox.splice(0, netSunInbox.length);
+}
 // Tirs allies exacts (vrais + faux) : { t:shot/rshot, ... } a jouer aussitot.
 const netShotInbox = [];
 // IEM / ISH synchronises : evenement immediat pour casser les locks et
@@ -947,6 +955,9 @@ export function ensureNetplayConnection() {
     }
     if (msg.t === "npcReward") {      const key = `${String(msg.map || "").toLowerCase()}:${String(msg.uid || "")}:${Number(msg.seq) || 0}`;
       netNpcRewardInbox.set(key, {
+        map: String(msg.map || "").toLowerCase(),
+        uid: String(msg.uid || ""),
+        seq: Number(msg.seq) || 0,
         credits: Math.max(0, Math.floor(Number(msg.credits) || 0)),
         exp: Math.max(0, Math.floor(Number(msg.exp) || 0)),
         honor: Math.max(0, Math.floor(Number(msg.honor) || 0)),
@@ -959,8 +970,25 @@ export function ensureNetplayConnection() {
         totalHonor: Number.isFinite(Number(msg.totalHonor)) ? Math.floor(Number(msg.totalHonor)) : null,
         ownsKill: msg.ownsKill === true,
         percent: Math.max(0, Math.min(100, Math.floor(Number(msg.percent) || 0))),
+        // Soleil personnel Invoke / Mindfire (top 10 dégâts).
+        sun: msg.sun === true,
+        sunType: typeof msg.sunType === "string" ? String(msg.sunType).slice(0, 40) : null,
+        sunX: Number.isFinite(Number(msg.sunX)) ? Math.round(Number(msg.sunX)) : 0,
+        sunY: Number.isFinite(Number(msg.sunY)) ? Math.round(Number(msg.sunY)) : 0,
       });
       if (netNpcRewardInbox.size > 64) netNpcRewardInbox.delete(netNpcRewardInbox.keys().next().value);
+      return;
+    }
+    if (msg.t === "npcSun" && msg && typeof msg === "object") {
+      if (netSunInbox.length > 32) netSunInbox.shift();
+      netSunInbox.push({
+        map: String(msg.map || "").toLowerCase(),
+        uid: String(msg.uid || ""),
+        seq: Number(msg.seq) || 0,
+        sunType: typeof msg.sunType === "string" ? String(msg.sunType).slice(0, 40) : null,
+        x: Number.isFinite(Number(msg.x)) ? Math.round(Number(msg.x)) : 0,
+        y: Number.isFinite(Number(msg.y)) ? Math.round(Number(msg.y)) : 0,
+      });
       return;
     }
     if (msg.t === "lowRaid" && msg && typeof msg === "object") {

@@ -989,7 +989,47 @@ function removeFromAllRooms(id) {
   instancePeers.delete(String(id));
 }
 
+// Top 10 dégâts Invoke / Mindfire (soleils personnels, même partis).
+function sunTopIds(death) {
+  try {
+    if (death?.type !== "npc_Invoke_XVI" && death?.type !== "npc_Mindfire_Behemoth") return [];
+    if (!Array.isArray(death?.shares) || !death.shares.length) return [];
+    return death.shares
+      .filter((s) => Array.isArray(s) && String(s[0]).startsWith("u_") && Number(s[1]) > 0)
+      .map((s) => [String(s[0]), Math.max(0, Number(s[1]) || 0)])
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map((s) => s[0]);
+  } catch { return []; }
+}
+
 function npcRewardShares(killerId, mapId, death) {
+  // Invoke XVI / Mindfire Behemoth : pas de partage de groupe.
+  // - Destruction (credits/EXP/honneur) : TOUS les tapeurs présents sur la
+  //   map, au prorata des dégâts (floor + reste au top dégâts).
+  // - Soleil : top 10 dégâts (même s'ils ont quitté la map), même contenu.
+  if ((death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth")
+    && Array.isArray(death?.shares) && death.shares.length) {
+    try {
+      const ranked = death.shares
+        .filter((s) => Array.isArray(s) && String(s[0]).startsWith("u_") && Number(s[1]) > 0)
+        .map((s) => [String(s[0]), Math.max(0, Number(s[1]) || 0)])
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 24);
+      if (ranked.length) {
+        const sunIds = new Set(ranked.slice(0, 10).map((s) => s[0]));
+        let room = null;
+        try { room = rooms.get(String(mapId)); } catch {}
+        const present = ranked.filter(([pid]) => { try { return !!room && room.has(pid); } catch { return false; } });
+        const eligible = present.length ? present : [[String(killerId), 1]];
+        const total = eligible.reduce((s, [, d]) => s + d, 0) || 1;
+        const floors = eligible.map(([, d]) => Math.max(0, Math.floor(d * 100 / total)));
+        const acc = floors.reduce((s, v) => s + v, 0);
+        floors[0] = Math.max(0, floors[0] + (100 - acc));
+        return eligible.map(([pid], i) => ({ pid, percent: floors[i], sun: sunIds.has(pid) }));
+      }
+    } catch {}
+  }
   let eligible = [String(killerId)];
   try {
     const group = socialDescribeGroup(killerId, { describe: (pid) => describePeer(pid) });
@@ -1057,6 +1097,25 @@ function pumpNpcRewards(budgetMs = 12) {
     if (!killerId.startsWith("u_") || death?.cause !== "gun") { queuedNpcRewardKeys.delete(deathKey); continue; }
     if (rewardedNpcDeaths.has(deathKey)) { queuedNpcRewardKeys.delete(deathKey); continue; }
     let complete = true;
+    const isSunBoss = death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth";
+    const sunType = death?.type === "npc_Mindfire_Behemoth" ? "Mindfire_Sun_Box"
+      : death?.type === "npc_Invoke_XVI" ? "Sun_Box" : null;
+    // Soleils : annoncés à TOUS les top 10 (présents ou partis) via un
+    // message dédié ; le client déduplique (un joueur présent reçoit aussi
+    // son npcReward avec sun:true). Une seule annonce par mort.
+    if (isSunBoss && item.sunSent !== true) {
+      item.sunSent = true;
+      try {
+        const sunMsg = {
+          t: "npcSun", map: String(mapId),
+          uid: String(death.uid), seq: Number(death.seq) || 0,
+          sunType, x: Math.round(Number(death?.x) || 0), y: Math.round(Number(death?.y) || 0),
+        };
+        for (const pid of sunTopIds(death)) {
+          try { sendToPeer(pid, sunMsg); } catch {}
+        }
+      } catch {}
+    }
     for (const share of npcRewardShares(killerId, mapId, death)) {
       const accountId = share.pid.slice(2);
       const txKey = `npc:${serverRunId}:${deathKey}:${accountId}`;
@@ -1066,6 +1125,11 @@ function pumpNpcRewards(budgetMs = 12) {
       sendToPeer(share.pid, {
         t: "npcReward", map: String(mapId), uid: String(death.uid), seq: Number(death.seq) || 0,
         killer: killerId, percent: share.percent, ...reward,
+        // Soleil personnel (top 10 dégâts, même parti de la map).
+        sun: isSunBoss && share.sun === true,
+        sunType,
+        sunX: isSunBoss ? Math.round(Number(death?.x) || 0) : 0,
+        sunY: isSunBoss ? Math.round(Number(death?.y) || 0) : 0,
       });
       // Une part SQLite (~8 ms) peut deja depasser le budget : on sort pour
       // laisser respirer l'event loop, la suite passe au prochain tour.
@@ -2110,7 +2174,7 @@ setInterval(() => {
             s.serverSafe = serverSafe && s.safe === true;
             const serverDead = s.pvpDead === true || !(Number(s.hp) > 0);
             const swapUntargetableUntil = Number(s.hswap) > 0 ? now + Number(s.hswap) * 1000 + 150 : 0;
-            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: Math.max(Number(s.iemUntil) || 0, swapUntargetableUntil), cloaked: s.cloaked === true || s.cloakCpu === true });
+            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: Math.max(Number(s.iemUntil) || 0, swapUntargetableUntil), cloaked: s.cloaked === true || s.cloakCpu === true, shipId: s.shipId });
           }
         }
         if (typeof sim.prunePlayers === "function") {
