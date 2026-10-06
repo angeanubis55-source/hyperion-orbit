@@ -171,7 +171,7 @@ function engineBot(walls, start, goal, npc = null) {
   const source = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
   const from = source.indexOf("function botMovementStep("), to = source.indexOf("function botClampCombatTarget(", from);
   const context = vm.createContext({
-    hangarSwapFx: null, Bot: { active: true, manualT: 0, combatTargetId: npc?.id, combatMoveTargetId: npc?.id },
+    hangarSwapFx: null, StarJump: { channel: null }, Bot: { active: true, manualT: 0, combatTargetId: npc?.id, combatMoveTargetId: npc?.id },
     moveTarget: { active: true, ...goal }, player: { ...start, r: 18, baseSpeed: 400, vx: 0, vy: 0 },
     pointer: { down: false }, performance: { now: () => 10000 }, isZoneMap: true, zoneWalls: walls,
     WORLD: { w: 4000, h: 4000 }, attackActive: !!npc, enemies: npc ? [npc] : [],
@@ -179,7 +179,8 @@ function engineBot(walls, start, goal, npc = null) {
     botNpcInWall: () => false, botNpcBanWall: () => { context.banned = true; },
     stopAttack: () => { context.attackActive = false; }, computeBotWallMove, playerSlowMult,
   });
-  vm.runInContext(source.slice(from, to), context);
+  const lockFrom = source.indexOf("function isPlayerMovementLocked("), lockTo = source.indexOf("\n}", lockFrom);
+  vm.runInContext(source.slice(lockFrom, lockTo + 2) + "\n" + source.slice(from, to), context);
   return context;
 }
 
@@ -312,7 +313,7 @@ test("le vrai tick passe entre exploration, navigation et fuite puis reprend la 
   Object.assign(c.Bot, { active: true, manualT: 0, mode: "kill", formMove: "wheel", cfgFly: "1",
     formFlee: "ring", cfgFlee: "2", formTravel: "heart", cfgTravel: "", flee: true });
   Object.assign(c, {
-    started: true, player: { x: 1000, y: 1000, hp: 100, hpMax: 100 }, WORLD: { w: 4000, h: 4000 },
+    started: true, StarJump: { channel: null }, player: { x: 1000, y: 1000, hp: 100, hpMax: 100 }, WORLD: { w: 4000, h: 4000 },
     window: { __CURRENT_MAP_ID__: "1-1" }, rules: {}, moveTarget: { active: false },
     enemies: [], collectables: [], attackActive: false, Target: { get: () => null },
     botNearestNpc: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},

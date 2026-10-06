@@ -56,8 +56,9 @@ import {
 } from "../DATA/SKYLAB.js";
 import { ROCKET_TYPES } from "../../COMBAT/ROCKET_TYPES.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneLevel, getIrisPrice, MAX_IRIS_DRONES, SPECIAL_DRONE_PRICE } from "../../DRONE/DRONE_TYPES.js";
-import { createPet, emptyPetFit, getPetHullBonusHp, getPetHullPrice, getPetLevel, getPetMaxHp, getPetSlots, getPetShieldBonus, normalizePetMode, normalizePetPseudo, PET_DEFAULT_PSEUDO, PET_FUEL_MAX, PET_HULL_MAX_BUYS, PET_SLOTS } from "../../PET/PET_TYPES.js";
+import { createPet, emptyPetFit, getPetHullPrice, getPetLevel, getPetSlots, normalizePetMode, normalizePetPseudo, PET_DEFAULT_PSEUDO, PET_FUEL_MAX, PET_HULL_MAX_BUYS, PET_SLOTS } from "../../PET/PET_TYPES.js";
 import { activeBoosterMults, getBooster, normalizeBoostersState } from "../DATA/BOOSTERS.js";
+import { getPetVitalLimits } from "../../PET/PET_VITALS.js";
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 
 // localStorage keys
@@ -872,9 +873,8 @@ function ensureUserShape(u) {
     u.pet.map = typeof u.pet.map === "string" && u.pet.map ? u.pet.map : null;
     // Coque+ : 10 achats max, +10 000 HP définitifs chacun (persisté).
     u.pet.hullUpgrades = Math.max(0, Math.min(PET_HULL_MAX_BUYS, Math.floor(Number(u.pet.hullUpgrades) || 0)));
-    // HP persistés (pleins par défaut). Le max suit le niveau + Coque+.
-    const petHpMax = getPetMaxHp(u.pet.level) + getPetHullBonusHp(u.pet);
-    u.pet.hp = Number.isFinite(Number(u.pet.hp)) ? Math.max(0, Math.min(petHpMax, Math.floor(Number(u.pet.hp)))) : petHpMax;
+    // Le plafond HP est appliqué après la migration des fits et hangars :
+    // le borner ici à la coque de base annulerait les réparations avec bonus.
     // Bouclier : null = plein (le max dépend de l'équipement du hangar actif).
     if (u.pet.sh != null && !Number.isFinite(Number(u.pet.sh))) u.pet.sh = null;
     if (u.pet.sh != null && Number.isFinite(Number(u.pet.sh))) u.pet.sh = Math.max(0, Math.floor(Number(u.pet.sh)));
@@ -1079,6 +1079,12 @@ function ensureUserShape(u) {
   // Items retirés du jeu : purge des vieilles sauvegardes.
   purgeRemovedItemIds(u);
 
+  if (u.pet?.owned === true) {
+    const { hpMax } = getPetVitalLimits(u.pet, u);
+    u.pet.hp = Number.isFinite(Number(u.pet.hp))
+      ? Math.max(0, Math.min(hpMax, Math.floor(Number(u.pet.hp)))) : hpMax;
+  }
+
   return u;
 }
 
@@ -1129,13 +1135,7 @@ function computeCombatFromFit(fit) {
 
 function petShieldCapacity(user) {
   if (user?.pet?.owned !== true) return 0;
-  const hangar = getActiveHangar(user);
-  const fit = getPetFit(user.pet, hangar?.id, hangar?.activeConfig);
-  const multiplier = 1 + getPetShieldBonus(getPetLevel(user.pet.exp)) / 100;
-  return Math.max(0, Math.floor((fit.generators || []).reduce((sum, id) => {
-    const item = id ? findCatalogItem(id) : null;
-    return sum + (item?.module?.type === "shield" ? Number(item.module.bonusShield || 0) : 0);
-  }, 0) * multiplier));
+  return getPetVitalLimits(user.pet, user).shMax;
 }
 
 export function saveUser(user, options = {}) {  user.schemaVersion = STORAGE_SCHEMA_VERSION;
@@ -2010,7 +2010,7 @@ export function repairPet() {
     return { ok: false, error: `Il faut ${PET_REPAIR_COST} crédits.`, user: u };
   }
   u.credits = Math.max(0, Number(u.credits) || 0) - PET_REPAIR_COST;
-  u.pet.hp = Math.max(1, Math.floor((getPetMaxHp(getPetLevel(u.pet.exp)) + getPetHullBonusHp(u.pet)) * 0.1));
+  u.pet.hp = Math.max(1, Math.floor(getPetVitalLimits(u.pet, u).hpMax * 0.1));
   u.pet.sh = 0;
   u.pet.active = false;
   ensureUserShape(u);
@@ -4008,22 +4008,19 @@ export function pilotCargoCapacity(u) {
 
 // Achat d'un pack de disques de log (boutique pilote).
 export function buyLogDiskPack() {
-  const u = getCurrentUserFull();
+  // Le compte réseau est déjà chargé : pas de migration des hangars,
+  // inventaire et équipements pour un achat qui ne touche que deux champs.
+  const u = netActive() ? netList()[0] || null : getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
   const price = LOGDISK_PRICE * LOGDISK_PACK;
   if (Math.floor(Number(u.credits || 0)) < price) return { ok: false, error: "Crédits insuffisants.", user: u };
   u.credits = Math.max(0, Math.floor(Number(u.credits || 0)) - price);
   ensurePilotSkills(u);
   u.pilotSkills.disks += LOGDISK_PACK;
-  // Le compte en mémoire est canonique. Ne lance aucune sérialisation dédiée
-  // ici : la sauvegarde périodique normale persistera crédits + disques sans
-  // provoquer un second gel juste après le clic.
-  if (netActive()) noteNetPurchase(price);
-  try {
-    window.dispatchEvent(new CustomEvent("orbit:user-updated", {
-      detail: { userId: u.id, revision: u.revision, source: "progress" },
-    }));
-  } catch {}
+  // Débit et disques font partie de la même sauvegarde, même hors combat
+  // ou si le joueur referme immédiatement la fenêtre de l'arbre.
+  noteNetPurchase(price);
+  saveUser(u, { source: "pilot-disks" });
   return { ok: true, user: u, disks: u.pilotSkills.disks };
 }
 

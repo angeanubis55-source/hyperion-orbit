@@ -110,8 +110,7 @@ function els() {
   };
 }
 
-// La carte réécrit son innerHTML : la popup est recréée/rattachée à chaque
-// rebuild au lieu d'être perdue.
+// La popup reste le même élément quand les modules de la carte évoluent.
 function ensurePopup(map) {
   let pop = map.querySelector(":scope > #skylabPopup");
   if (!pop) {
@@ -249,7 +248,7 @@ function renderMap(sky, now, force = false) {
     return;
   }
   mapSig = sig;
-  map.innerHTML = SKYLAB_MODULES.map((def) => {
+  const html = SKYLAB_MODULES.map((def) => {
     const m = sky.modules?.[def.id] || { level: 0 };
     return layerBoxHtml(def, Math.floor(Number(m.level) || 0));
   }).join("") + SKYLAB_MODULES.map((def) => {
@@ -265,7 +264,16 @@ function renderMap(sky, now, force = false) {
       + `<span class="nodeName">${escapeHtml(def.name)}</span>${nodeSubHtml(def, m, level, now, sky)}</div>`;
   }).join("")
     + `<span class="skylabEnergyLine" data-energy-line>${energyLineHtml(skyLabEnergyOf(sky))}</span>`;
-  map.append(ensurePopup(map));
+  const popup = ensurePopup(map);
+  const layers = document.createElement("template");
+  layers.innerHTML = html;
+  // Ne jamais détacher la popup : même la réinsertion du même élément
+  // ferait perdre le focus et la sélection native d'un champ numérique.
+  for (const child of [...map.childNodes]) {
+    if (child !== popup) child.remove();
+  }
+  map.prepend(layers.content);
+  if (popup.parentNode !== map) map.append(popup);
 }
 
 function skyLabEnergyOf(sky) {
@@ -300,6 +308,9 @@ function refreshMapTimers(sky, now) {
 }
 
 function popupSigFor(sky, user, now) {
+  // Stocks, crédits, sens et délai se rafraîchissent déjà en place dans
+  // refreshTransportDynamic. Ils ne changent pas la structure du formulaire.
+  if (selectedModule === "transport") return "transport";
   const m = sky.modules?.[selectedModule] || {};
   const credits = Math.max(0, Math.floor(Number(user?.credits) || 0));
   const bucket = (id) => Math.floor(Math.floor(Number(sky.stock?.[id]) || 0) / 25);

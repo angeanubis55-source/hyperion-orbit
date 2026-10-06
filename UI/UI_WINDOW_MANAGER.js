@@ -798,6 +798,7 @@ minimize(id) {
     }
 
   }, 380);
+  window.dispatchEvent(new CustomEvent("orbit:window-minimized", { detail: { id } }));
 },
 
 restore(id) {
@@ -970,6 +971,14 @@ restore(id) {
       if (!w) return false;
       const savedOpen = loadWindowOpenState(id);
       return savedOpen === null ? !w.root.classList.contains("gameWinMinimized") : savedOpen;
+    },
+
+    focus(id) {
+      const w = windows.get(id);
+      if (w && w.card.style.display !== 'none') {
+        keepWindowInsideViewport(w.card);
+        bringWindowToFront(w.card);
+      }
     },
 
     setTitle(id, title) {

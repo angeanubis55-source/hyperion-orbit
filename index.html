@@ -173,6 +173,10 @@
 
 <div id="pilotWindow" class="panel pilotPanel">
   <div class="pilotBody">
+    <div class="pilotBalance">
+      <span>Crédits disponibles</span>
+      <strong id="pilotCredits">0</strong>
+    </div>
     <div class="pilotHead">
       <div class="pilotStatus"><span id="pilotPoints" class="pilotPoints"></span><span class="pilotSep">-</span><span id="pilotAvail" class="pilotAvail"></span><span class="pilotSep">-</span><span id="pilotLeft" class="pilotLeft"></span><span class="pilotSep">-</span><span id="pilotDisks" class="pilotDisks"></span></div>
       <span class="pilotHeadBtns">
@@ -554,6 +558,43 @@
             </section>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div id="starMapWindow" class="panel starMapPanel">
+      <div class="starMapBody">
+        <div class="starMapMain">
+          <div class="starMapViewTools" data-no-drag>
+            <span class="starMapHint">Molette pour zoomer · Glisser pour explorer · Cliquer un portail pour afficher le trajet</span>
+          </div>
+          <div class="starMapScrollFrame" data-no-drag>
+            <div id="starMapViewport" class="starMapViewport">
+              <div id="starMapStage" class="starMapStage">
+                <div id="starMapTree" class="starMapTree">
+                  <svg id="starMapEdges"></svg>
+                  <div id="starMapNodes"></div>
+                </div>
+              </div>
+            </div>
+            <input id="starMapScrollX" class="starMapScroll horizontal" type="range" min="0" max="0" value="0" step="1" aria-label="Défilement horizontal de la carte" disabled>
+            <input id="starMapScrollY" class="starMapScroll vertical" type="range" min="0" max="0" value="0" step="1" aria-label="Défilement vertical de la carte" disabled>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="starMapInfoWindow" class="panel starMapInfoPanel gameWinMinimized" style="display:none">
+      <div class="gameWinBar">
+        <span class="gameWinIcon" aria-hidden="true"><img class="menuIconImg" src="ASSETS/UI/MENU/spacemap.png" alt="" draggable="false"></span>
+        <span id="starMapSelName" class="gameWinTitle">Aucune carte</span>
+        <button id="starMapInfoMinimize" class="gameWinMinBtn" type="button" aria-label="Réduire les détails de la carte" title="Réduire" data-no-drag>−</button>
+      </div>
+      <div class="starMapSide">
+          <div id="starMapSelInfo" class="starMapSelInfo"></div>
+          <div class="starMapItinerary"><h4>Trajet depuis votre position</h4><div id="starMapItinerary"></div></div>
+          <div class="starMapConnections"><h4>Portails de cette carte</h4><div id="starMapConnections"></div></div>
+          <button id="starMapJumpBtn" type="button" disabled>Jump</button>
+          <div id="starMapStatus" class="starMapStatus"></div>
       </div>
     </div>
 

@@ -2,10 +2,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname, basename } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer } from "node:net";
 import { once } from "node:events";
 import WebSocket from "ws";
@@ -18,13 +18,19 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeout: 65000 }, async t => {
   const temporary = await mkdtemp(join(tmpdir(), "orbit-anticheat-"));
+  // Isoler les assertions de dégâts PvP des tirs aléatoires de Streuners.
+  // La simulation NPC reste active ; seul ce serveur éphémère filtre ses coups.
+  const serverFixture = join(temporary, "server-fixture.mjs");
+  await writeFile(serverFixture, `import { ZoneNpcSim } from ${JSON.stringify(new URL("./NPC_ROOM.js", import.meta.url).href)};
+ZoneNpcSim.prototype.drainPlayerHits = function() { this.playerHits.length = 0; return []; };
+`);
   const reserve = createServer();
   reserve.listen(0, "127.0.0.1");
   await once(reserve, "listening");
   const port = reserve.address().port;
   await new Promise(resolve => reserve.close(resolve));
   const password = "isolated-anticheat-test";
-  const server = spawn(process.execPath, [fileURLToPath(new URL("./MULTI_SERVER.js", import.meta.url))], {
+  const server = spawn(process.execPath, ["--import", pathToFileURL(serverFixture).href, fileURLToPath(new URL("./MULTI_SERVER.js", import.meta.url))], {
     cwd: temporary, windowsHide: true,
     env: { ...process.env, PORT: String(port), ORBIT_ADMIN_PASS: password },
     stdio: ["ignore", "pipe", "pipe"],
@@ -100,7 +106,8 @@ test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeo
   const alice = await makeAccount("anticheat-alice");
   const bob = await makeAccount("anticheat-bob", "1-1", { x: 4600, y: 3500 });
   const a = await connect(alice), b = await connect(bob);
-  const idle = await connect(await makeAccount("anticheat-idle"));
+  const idleAccount = await makeAccount("anticheat-idle");
+  const idle = await connect(idleAccount);
   const idleHeartbeat = setInterval(() => idle.send({ t: "ping", t0: Date.now() }), 3000);
   t.after(() => clearInterval(idleHeartbeat));
   const silent = await connect(await makeAccount("anticheat-silent"));
@@ -240,6 +247,22 @@ test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeo
   light.send({ t: "skillUse", skill: "ability_lightning", enabled: true });
   const expired = await light.snapshot();
   assert.equal(expired.vmax, Math.floor(lightProfile.speed), "expiration et cooldown appliques sur le vrai serveur");
+  // Un vrai changement de coque conserve son effet portail distant mais
+  // ne doit jamais accorder de protection PvP pendant ces trois secondes.
+  const idleHeaders = { Authorization: `Bearer ${idleAccount.token}`, 'content-type': 'application/json' };
+  const idleUser = (await api('/api/me', { headers: idleHeaders })).user;
+  idleUser.revision = Number(idleUser.revision || 0) + 1;
+  idleUser.hangars.find(h => h.active).shipId = lightningShip.id;
+  await api('/api/save', { method: 'POST', headers: idleHeaders, body: JSON.stringify({ user: idleUser }) });
+  const shipChangeAt = idle.messages.length;
+  idle.send({ ...idle.pos, shipId: lightningShip.id });
+  const swapped = await idle.wait(m => m.t === 'snapshot' && m.players.some(p => p.id === idle.id && p.shipId === lightningShip.id && p.hswap > 0), shipChangeAt)
+    .then(m => m.players.find(p => p.id === idle.id));
+  const swapHitAt = idle.messages.length;
+  b.send({ t: 'pvpHit', target: idle.id, dmg: 1000 });
+  const hitWhileSwapping = await idle.wait(m => m.t === 'snapshot' && m.players.some(p => p.id === idle.id && p.pvpHp < swapped.pvpHp && p.hswap > 0), swapHitAt)
+    .then(m => m.players.find(p => p.id === idle.id));
+  assert.ok(hitWhileSwapping.pvpHp < swapped.pvpHp, 'un vrai swipe reste vulnerable pendant l effet portail distant');
   assert.equal(idle.ws.readyState, WebSocket.OPEN, "le joueur immobile reste connecte");
   assert.ok((await peers()).peers.some(p => p.id === idle.id), "les pings maintiennent la presence sans nouvelles positions");
   await idle.snapshot();
@@ -264,6 +287,26 @@ test("WebSocket : stats forgées, téléports, portails et reconnexion", { timeo
   assert.equal(arrived.map, "1-1");
   assert.equal(arrived.x, 10232);
   assert.equal(arrived.y, 5900);
+  // Présence de groupe : coupure brève et refresh conservent l'identité.
+  const inviteAt = portalPeer.messages.length;
+  idle.send({ t: "groupInvite", to: portalAccount.user.pseudo });
+  await portalPeer.wait(m => m.t === "groupInvite", inviteAt);
+  const joinedAt = idle.messages.length;
+  portalPeer.send({ t: "groupAccept" });
+  const joined = await idle.wait(m => m.t === "groupUpdate" && m.group?.members.length === 2, joinedAt);
+  const initialMember = joined.group.members.find(m => m.id === portalPeer.id);
+  assert.equal(initialMember.pseudo, "anticheat-portal");
+  assert.equal(initialMember.map, "1-1");
+  portalPeer.ws.close(); await once(portalPeer.ws, "close");
+  const offlineAt = idle.messages.length;
+  idle.send({ t: "groupSync" });
+  const offline = await idle.wait(m => m.t === "groupUpdate" && m.group?.members.some(p => p.id === portalPeer.id && p.online === false), offlineAt);
+  const offlineMember = offline.group.members.find(m => m.id === portalPeer.id);
+  for (const key of ["pseudo", "map", "shipId"]) assert.equal(offlineMember[key], initialMember[key]);
+  const returnedAt = idle.messages.length;
+  await connect(portalAccount, "1-1");
+  const returned = await idle.wait(m => m.t === "groupUpdate" && m.group?.members.some(p => p.id === portalPeer.id && p.online === true), returnedAt);
+  assert.equal(returned.group.members.find(m => m.id === portalPeer.id).pseudo, "anticheat-portal");
   const mimesisShip = SHIP_PACKS.find(p => abilityShipKeyFor(p.id) === "mimesis");
   const mimesis = await connect(await makeAccount("anticheat-phase", "1-1", { x: 4500, y: 3500 }, mimesisShip.id));
   const phaseAt = mimesis.messages.length;

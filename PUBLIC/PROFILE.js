@@ -30,7 +30,7 @@ import {
 } from "../SRC/CORE/ACCOUNT.js";
 
 import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
-import { apiAccountIdentity, apiPseudoFree, netActive } from "../SRC/CORE/ACCOUNT_NET.js";
+import { apiAccountIdentity, apiPseudoFree, netActive, netList } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
@@ -51,6 +51,7 @@ import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDron
 import { emptyPetFit, getPetHullPrice, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLevelXp, getPetSlots, getPetSpritePath, PET_FUEL_MAX, PET_HULL_MAX_BUYS } from "../PET/PET_TYPES.js";
 import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 import { appendToFitSlots, compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
+import { pruneUnavailableLoadout } from "../SRC/CORE/FIT_INVENTORY.js";
 import { rarityForCatalogItem } from "../SRC/DATA/CRAFTING.js";
 import { getBooster, formatBoosterDuration, formatBoosterCountdown } from "../SRC/DATA/BOOSTERS.js";
 
@@ -494,6 +495,7 @@ function getHangarActionAccess(action) {
   }
   const access = window.__ORBIT_ENGINE__?.getHangarAccess?.();
   if (!access) return { ok: false, error: "Le moteur du jeu n'est pas encore prêt." };
+  if (action === "swipe" && !access.canSwap) return { ok: false, error: access.swapError };
   if (action === "activate" && !access.canActivate) return { ok: false, error: access.activationError };
   if (action === "equip" && !access.canEquip) return { ok: false, error: access.equipmentError };
   return { ok: true, access };
@@ -1861,7 +1863,7 @@ if (!isIntegratedInGame && isGameOpen()) {
   );
 }
 
-  const access = getHangarActionAccess("activate");
+  const access = getHangarActionAccess("swipe");
   if (!access.ok) return rejectSwipe(access.error);
 
   // ✅ En jeu : 1,5 s sur l'ancienne coque, échange sous le portail, puis
@@ -5518,6 +5520,7 @@ function saveFitModal() {
   saveGameBeforeProfileAction();
   user = getCurrentUserFull();
   if (!user) return showFitError("Non connecté.");
+  reconcileFitInventory(user);
   compactCurrentFit();
   const usage = computeUsage(fitState.draft);
 
@@ -5654,6 +5657,7 @@ function openFitModal(hangarId) {
   fitState.configNo = Number(h.activeConfig) === 2 ? 2 : 1;
   fitState.stash = {};
   if (!initFitDrafts(hangarId, fitState.configNo)) return setMsg("Hangar introuvable", false);
+  reconcileFitInventory(user);
   refreshFitApplyButton();
 
 const titleEl = document.getElementById("fitTitle");
@@ -6232,6 +6236,21 @@ compactCurrentFit();
 
 // One refresh per mutation, and only for the visible panel.
 let accountRefreshFrame = 0;
+function reconcileFitInventory(currentUser) {
+  if (!fitState.hangarId) return;
+  const prune = draft => pruneUnavailableLoadout({ ship: draft.draft, drones: draft.droneDrafts, pet: draft.petDraft }, currentUser);
+  let removed = prune(fitState);
+  for (const draft of Object.values(fitState.stash || {})) removed += prune(draft);
+  if (!removed) return;
+  compactCurrentFit();
+  compactAllDroneDrafts();
+  compactCurrentPetDraft();
+  clearFitSelection();
+  renderSlots();
+  renderDroneEquipment(currentUser);
+  renderPetEquipment(currentUser);
+  renderInventoryPalette();
+}
 function profileIsVisible() {
   const overlay = document.getElementById("profileOverlay");
   return !!overlay && overlay.style.display !== "none" && !overlay.hidden
@@ -6249,12 +6268,21 @@ function renderActiveProfilePanel({ mutation = false } = {}) {
   if (tab === "shop" && !document.getElementById("shopWindowPanel") && !(mutation && shopTab === "extras")) renderShop(user);
 }
 
-window.addEventListener("orbit:user-updated", () => {
+window.addEventListener("orbit:user-updated", event => {
+  // Les disques ne modifient ni inventaire équipé ni brouillons de hangar.
+  // Mettre à jour le solde sans normaliser et reconstruire ces panneaux.
+  if (event?.detail?.source === "pilot-disks") {
+    if (!shopIsVisible()) return;
+    user = netList()[0] || getCurrentUserFull();
+    if (user && shopTab !== "extras") renderShop(user);
+    return;
+  }
   if ((!profileIsVisible() && !shopIsVisible() && !hangarIsVisible() && !settingsAccountVisible()) || accountRefreshFrame) return;
   accountRefreshFrame = requestAnimationFrame(() => {
     accountRefreshFrame = 0;
     user = getCurrentUserFull();
     if (!user) return;
+    reconcileFitInventory(user);
     if (profileIsVisible()) {
       renderHeader(user);
       renderActiveProfilePanel({ mutation: true });
@@ -6267,6 +6295,10 @@ window.addEventListener("orbit:user-updated", () => {
       renderInventoryPalette();
     }
   });
+});
+
+window.addEventListener("orbit:net-adopted", () => {
+  window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { source: "progress" } }));
 });
 
 // Onglet Compte déplacé dans Paramètres (voir switchSettingsTab moteur).

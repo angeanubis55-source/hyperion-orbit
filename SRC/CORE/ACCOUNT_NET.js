@@ -13,6 +13,14 @@ let memUser = null;
 let memToken = null;
 let saveTimer = null;
 let saveInFlight = null;
+let identityWriter = null;
+// Référence serveur indépendante du compte mutable. Une révision locale
+// élevée ne prouve pas que ses achats incluent les dernières récompenses.
+let serverBase = null;
+let retrySave = null;
+let knownRewardRevision = 0;
+const serverRewards = new Map();
+let nextSaveId = 0;
 let pendingGalaxyGates = null;
 function cachePendingGalaxyGates() {
   if (memUser?.id) lsSet(`orbit_pending_gg:${memUser.id}`, pendingGalaxyGates ? JSON.stringify(pendingGalaxyGates) : null);
@@ -27,42 +35,7 @@ function retainPendingGalaxyGates(user) {
   if (pendingGalaxyGates && user) user.galaxyGates = structuredClone(pendingGalaxyGates);
   return user;
 }
-// Sélection de hangar/design pas encore confirmée par le serveur. Elle doit
-// survivre à un 409 provoqué entre-temps par une récompense ou un autre save.
-let pendingHangarSelection = null;
-let observedShipSelection = null;
-let observedHangarSelection = null;
 let refreshStarted = false;
-let pendingPurchaseCredits = 0;
-const pendingPurchaseStock = { ammo: {}, rockets: {} };
-const pendingConsumedStock = { ammo: {}, rockets: {}, ores: {} };
-// Ventes d'équipement pas encore acceptées par le serveur : rejouées sur le
-// canon en cas de 409 (comme les achats). Sans ça, le MAX des compteurs et
-// l'union des modules du merge ressuscitent les objets vendus pendant que
-// le canon serveur retire les crédits = rollback + duplication.
-const pendingEquipmentSales = { counts: {}, moduleIds: [], credits: 0 };
-// Delta Skylab (stock) pas encore accepté : signé par ressource (transporteur
-// sky->soute = négatif, soute->sky = positif). Rejoué sur le canon en cas de
-// 409 : le merge ne touche pas au skylab, donc sans replay le canon restaure
-// le stock (dup côté soute via le MAX des minerais) ou l'annule.
-const pendingSkylabDelta = {};
-// Énergie Galaxy gagnée (échange Palladium) pas encore acceptée : rejouée
-// sur le canon en cas de 409 (le merge ne touche pas aux gates). Sinon la
-// dépense Palladium est rejouée mais pas le gain = perte nette.
-let pendingGateEnergy = 0;
-// Stock d'améliorations consommé par les tirs (par slot) + essence P.E.T
-// brûlée, pas encore acceptés : rejoués sur le canon en cas de 409. Sinon
-// le canon (plus haut) restaure le stock = tirs/essence gratuits. Même
-// pattern que les minerais dépensés.
-const pendingConsumedUpgrades = {};
-let pendingConsumedPetFuel = 0;
-// Charges d'améliorations (raffinage -> slots laser/rocket/speed/shield) pas
-// encore acceptées par le serveur : sur 409, le canon (sans la charge)
-// écraserait le slot = dépôt "mis puis enlevé et remis dans la liste".
-const pendingUpgradeCharges = {};
-// Miroir local de ORE_RESOURCE_IDS (SRC/DATA/RESOURCES.js) : ce module reste
-// sans import (pas de cycle avec ACCOUNT.js).
-const ORE_IDS = Object.freeze(["palladium", "prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "xenomit", "osmium"]);
 
 function lsGet(k) {
   try { return localStorage.getItem(k); } catch { return null; }
@@ -91,23 +64,6 @@ export function netStore(list) {
   const arr = Array.isArray(list) ? list : [];
   const mine = (memUser && arr.find((u) => u && u.id === memUser.id)) || arr[0] || null;
   if (mine && typeof mine === "object") {
-    try {
-      const newActive = mine?.hangars?.find((h) => h?.active)
-        || mine?.hangars?.find((h) => h?.shipId === mine?.ship)
-        || null;
-      const newShipId = String(mine?.ship || "");
-      const newHangarId = String(newActive?.id || "");
-      if (observedShipSelection !== null
-        && (newShipId !== observedShipSelection || newHangarId !== observedHangarSelection)) {
-        pendingHangarSelection = {
-          ship: mine.ship,
-          hangarId: newActive?.id || null,
-          hangar: newActive ? structuredClone(newActive) : null,
-        };
-      }
-      observedShipSelection = newShipId;
-      observedHangarSelection = newHangarId;
-    } catch {}
     // Memes garde-fous que le legacy (writeUsers) : plafond historique,
     // sentinelle Infinity -> -1 (JSON ne porte pas Infinity).
     try {
@@ -115,7 +71,7 @@ export function netStore(list) {
         mine.inventory.moduleRollHistory = mine.inventory.moduleRollHistory.slice(-500);
       }
     } catch {}
-    if (JSON.stringify(mine.galaxyGates) !== JSON.stringify(memUser?.galaxyGates)) {
+    if (JSON.stringify(mine.galaxyGates) !== JSON.stringify(serverBase?.galaxyGates)) {
       pendingGalaxyGates = mine.galaxyGates ? structuredClone(mine.galaxyGates) : null;
     }
     memUser = retainPendingSelections(JSON.parse(JSON.stringify(mine, (k, v) => (v === Infinity ? -1 : v))));
@@ -125,115 +81,20 @@ export function netStore(list) {
   }
 }
 
-// Enregistre le prix d'un achat jusqu'a ce que le serveur ait accepte la
-// sauvegarde correspondante. Sur 409, ce debit sera rejoue sur le canon.
-export function noteNetPurchase(totalPrice, stockGains = null) {
-  if (!netActive()) return;
-  const price = Math.max(0, Math.floor(Number(totalPrice) || 0));
-  if (price > 0) pendingPurchaseCredits += price;
-  for (const field of ["ammo", "rockets"]) {
-    const gains = stockGains?.[field];
-    if (!gains || typeof gains !== "object") continue;
-    for (const [id, amount] of Object.entries(gains)) {
-      if (id === "x1") continue;
-      const add = Math.max(0, Math.floor(Number(amount) || 0));
-      if (add > 0) pendingPurchaseStock[field][id] = Math.max(0, Number(pendingPurchaseStock[field][id]) || 0) + add;
-    }
-  }
-}
-
-export function noteNetConsumption(field, id, amount) {
-  if (!netActive() || !pendingConsumedStock[field]) return;
-  const key = String(id || "").toLowerCase();
-  const used = Math.max(0, Math.floor(Number(amount) || 0));
-  if (key && used > 0) pendingConsumedStock[field][key] = Math.max(0, Number(pendingConsumedStock[field][key]) || 0) + used;
-}
-
-// Vente d'équipement (compteurs inventaire et/ou ids de modules + crédits
-// gagnés) en attente d'acceptation serveur. Rejouée sur le canon en cas
-// de 409 (comme les achats et les minerais dépensés).
-export function noteNetEquipmentSold({ counts = null, moduleIds = null, credits = 0 } = {}) {
-  if (!netActive()) return;
-  if (counts && typeof counts === "object") {
-    for (const [id, qty] of Object.entries(counts)) {
-      const key = String(id || "");
-      const q = Math.max(0, Math.floor(Number(qty) || 0));
-      if (key && q > 0) pendingEquipmentSales.counts[key] = Math.max(0, Math.floor(Number(pendingEquipmentSales.counts[key]) || 0)) + q;
-    }
-  }
-  if (Array.isArray(moduleIds)) {
-    for (const mid of moduleIds) {
-      const key = String(mid?.id ?? mid ?? "");
-      if (key) pendingEquipmentSales.moduleIds.push(key);
-    }
-  }
-  const gain = Math.max(0, Math.floor(Number(credits) || 0));
-  if (gain > 0) pendingEquipmentSales.credits = Math.max(0, Math.floor(Number(pendingEquipmentSales.credits) || 0)) + gain;
-}
-
-// Charge d'amélioration (raffinage) en attente d'acceptation serveur.
-// Rejouée sur le canon en cas de 409 (comme les achats).
-export function noteNetUpgradeCharge(slot, ore, stock) {
-  if (!netActive()) return;
-  const key = String(slot || "").toLowerCase();
-  const st = Math.max(0, Math.floor(Number(stock) || 0));
-  if (!key || !(st > 0)) return;
-  pendingUpgradeCharges[key] = { ore: String(ore || ""), stock: st };
-  // Nouvelle charge = nouveau compteur : la consommation notée portait sur
-  // l'ancien stock (sinon re-soustraction sur le stock neuf).
-  delete pendingConsumedUpgrades[key];
-}
-
-function clearPendingPurchaseStock(snapshot) {
-  for (const field of ["ammo", "rockets"]) {
-    for (const [id, amount] of Object.entries(snapshot?.[field] || {})) {
-      const left = Math.max(0, Number(pendingPurchaseStock[field][id]) || 0) - Math.max(0, Number(amount) || 0);
-      if (left > 0) pendingPurchaseStock[field][id] = left;
-      else delete pendingPurchaseStock[field][id];
-    }
-  }
-}
-
-function clearPendingConsumedStock(snapshot) {
-  for (const field of ["ammo", "rockets"]) {
-    for (const [id, amount] of Object.entries(snapshot?.[field] || {})) {
-      const left = Math.max(0, Number(pendingConsumedStock[field][id]) || 0) - Math.max(0, Number(amount) || 0);
-      if (left > 0) pendingConsumedStock[field][id] = left;
-      else delete pendingConsumedStock[field][id];
-    }
-  }
-  // Minerais : soldés via leur propre snapshot (consumedOresAtSend), pas via
-  // les stocks du snapshot poussé (qui donneraient un solde faux -> la
-  // dépense serait re-soustraite à chaque 409 = rollback à zéro).
-}
-
-// Mouvement Skylab <-> soute en attente d'acceptation serveur (delta signé).
-export function noteNetSkylabMoved(id, delta) {
-  if (!netActive()) return;
-  const key = String(id || "");
-  const d = Math.floor(Number(delta) || 0);
-  if (!key || d === 0) return;
-  pendingSkylabDelta[key] = Math.floor(Number(pendingSkylabDelta[key]) || 0) + d;
-}
-
-export function noteNetGateEnergy(amount) {
-  if (!netActive()) return;
-  const g = Math.max(0, Math.floor(Number(amount) || 0));
-  if (g > 0) pendingGateEnergy = Math.max(0, Math.floor(Number(pendingGateEnergy) || 0)) + g;
-}
-
-export function noteNetUpgradeConsumed(slot, amount) {
-  if (!netActive()) return;
-  const key = String(slot || "").toLowerCase();
-  const used = Math.max(0, Math.floor(Number(amount) || 0));
-  if (key && used > 0) pendingConsumedUpgrades[key] = Math.max(0, Math.floor(Number(pendingConsumedUpgrades[key]) || 0)) + used;
-}
-
-export function noteNetPetFuelConsumed(amount) {
-  if (!netActive()) return;
-  const used = Math.max(0, Math.floor(Number(amount) || 0));
-  if (used > 0) pendingConsumedPetFuel = Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0)) + used;
-}
+// Les mutateurs demandent une sauvegarde ici. Le delta vient maintenant de
+// memUser - serverBase, arbre et équipements compris. Un deuxième journal
+// arithmétique débiterait les mêmes opérations deux fois.
+function noteAccountMutation() { if (netActive()) schedulePush(); }
+export const noteNetPurchase = noteAccountMutation;
+export const noteNetConsumption = noteAccountMutation;
+export const noteNetEquipmentSold = noteAccountMutation;
+export const noteNetUpgradeCharge = noteAccountMutation;
+export const noteNetSkylabMoved = noteAccountMutation;
+export const noteNetGateEnergy = noteAccountMutation;
+export const noteNetUpgradeConsumed = noteAccountMutation;
+export const noteNetPetFuelConsumed = noteAccountMutation;
+export const noteNetCreditGain = noteAccountMutation;
+export const noteNetResourceGain = noteAccountMutation;
 
 // Sélections (munitions, roquettes, lanceurs, autos, formation) en attente
 // d'acceptation serveur : rejouées sur le canon en cas de 409. Sans ça,
@@ -306,92 +167,14 @@ function clearPendingSelections(versions, snapshot, acceptedUser) {
   }
   cachePendingSelections();
 }
-// Gains locaux pas encore acceptés (crédits / ressources NON-minerais) :
-// rejoués en AJOUT sur le canon en cas de 409. Les minerais, compteurs et
-// munitions achetées ont déjà leurs propres canaux (MAX ou replay d'achat) —
-// ne surtout pas les noter ici aussi (double comptage avec le MAX).
-let pendingGainedCredits = 0;
-const pendingGainedResources = {};
-export function noteNetCreditGain(amount) {
-  if (!netActive()) return;
-  const g = Math.max(0, Math.floor(Number(amount) || 0));
-  if (g > 0) pendingGainedCredits = Math.max(0, Math.floor(Number(pendingGainedCredits) || 0)) + g;
-}
-export function noteNetResourceGain(gains = null) {
-  if (!netActive()) return;
-  if (!gains || typeof gains !== "object") return;
-  for (const [id, qty] of Object.entries(gains)) {
-    const key = String(id || "");
-    const q = Math.max(0, Math.floor(Number(qty) || 0));
-    if (key && q > 0) pendingGainedResources[key] = Math.max(0, Math.floor(Number(pendingGainedResources[key]) || 0)) + q;
-  }
-}
-
-function clearPendingEquipmentSales(snapshot) {
-  for (const [id, qty] of Object.entries(snapshot?.counts || {})) {
-    const left = Math.max(0, Math.floor(Number(pendingEquipmentSales.counts[id]) || 0)) - Math.max(0, Math.floor(Number(qty) || 0));
-    if (left > 0) pendingEquipmentSales.counts[id] = left;
-    else delete pendingEquipmentSales.counts[id];
-  }
-  // Ids de modules : multi-ensemble (retire une occurrence par id envoyé).
-  const sentIds = Array.isArray(snapshot?.moduleIds) ? snapshot.moduleIds.map(String) : [];
-  if (sentIds.length && pendingEquipmentSales.moduleIds.length) {
-    const surplus = new Map();
-    for (const id of sentIds) surplus.set(id, (surplus.get(id) || 0) + 1);
-    pendingEquipmentSales.moduleIds = pendingEquipmentSales.moduleIds.filter((id) => {
-      const left = surplus.get(String(id)) || 0;
-      if (left > 0) { surplus.set(String(id), left - 1); return false; }
-      return true;
-    });
-  }
-  pendingEquipmentSales.credits = Math.max(0, Math.floor(Number(pendingEquipmentSales.credits) || 0) - Math.max(0, Math.floor(Number(snapshot?.credits) || 0)));
-}
-
-function clearPendingSkylabDelta(snapshot) {
-  for (const [id, delta] of Object.entries(snapshot || {})) {
-    const d = Math.floor(Number(delta) || 0);
-    if (d === 0) continue;
-    const left = Math.floor(Number(pendingSkylabDelta[id]) || 0) - d;
-    if (left === 0) delete pendingSkylabDelta[id];
-    else pendingSkylabDelta[id] = left;
-  }
-}
-
-function clearPendingConsumedUpgrades(snapshot) {
-  for (const [slot, amount] of Object.entries(snapshot || {})) {
-    const left = Math.max(0, Math.floor(Number(pendingConsumedUpgrades[slot]) || 0)) - Math.max(0, Math.floor(Number(amount) || 0));
-    if (left > 0) pendingConsumedUpgrades[slot] = left;
-    else delete pendingConsumedUpgrades[slot];
-  }
-}
-
-function clearPendingGainedResources(snapshot) {
-  for (const [id, qty] of Object.entries(snapshot || {})) {
-    const left = Math.max(0, Math.floor(Number(pendingGainedResources[id]) || 0)) - Math.max(0, Math.floor(Number(qty) || 0));
-    if (left > 0) pendingGainedResources[id] = left;
-    else delete pendingGainedResources[id];
-  }
-}
-
-function resetPendingPurchases() {
-  pendingPurchaseCredits = 0;
-  pendingPurchaseStock.ammo = {};
-  pendingPurchaseStock.rockets = {};
-  pendingConsumedStock.ammo = {};
-  pendingConsumedStock.rockets = {};
-  pendingConsumedStock.ores = {};
-  pendingEquipmentSales.counts = {};
-  pendingEquipmentSales.moduleIds = [];
-  pendingEquipmentSales.credits = 0;
-  for (const k of Object.keys(pendingSkylabDelta)) delete pendingSkylabDelta[k];
-  pendingGateEnergy = 0;
-  for (const k of Object.keys(pendingConsumedUpgrades)) delete pendingConsumedUpgrades[k];
-  pendingConsumedPetFuel = 0;
-  pendingGainedCredits = 0;
-  for (const k of Object.keys(pendingGainedResources)) delete pendingGainedResources[k];
-  for (const k of Object.keys(pendingSelections)) delete pendingSelections[k];
-  for (const k of Object.keys(pendingSelectionVersions)) delete pendingSelectionVersions[k];
-  for (const k of Object.keys(pendingUpgradeCharges)) delete pendingUpgradeCharges[k];
+function resetPendingAccountState() {
+  for (const key of Object.keys(pendingSelections)) delete pendingSelections[key];
+  for (const key of Object.keys(pendingSelectionVersions)) delete pendingSelectionVersions[key];
+  serverBase = null;
+  retrySave = null;
+  knownRewardRevision = 0;
+  serverRewards.clear();
+  identityWriter = null;
 }
 
 export function netSetCurrent(cur) {
@@ -403,10 +186,7 @@ export function netSetCurrent(cur) {
     pendingGalaxyGates = null;
     try { clearTimeout(saveTimer); } catch {}
     saveTimer = null;
-    resetPendingPurchases();
-    pendingHangarSelection = null;
-    observedShipSelection = null;
-    observedHangarSelection = null;
+    resetPendingAccountState();
     lsSet(TOKEN_KEY, null);
     lsSet(CACHE_KEY, null);
     lsSet(CUR_KEY, null);
@@ -428,7 +208,7 @@ function flushAccountCache() {
   // Une deconnexion ne doit jamais etre suivie par la resurrection du cache.
   if (!user || !netActive() || user.id !== memUser.id) return;
   try {
-    lsSet(CACHE_KEY, JSON.stringify({ user, at: Date.now() }));
+    lsSet(CACHE_KEY, JSON.stringify({ user, base: serverBase, retrySave, rewards: [...serverRewards], at: Date.now() }));
   } catch {}
 }
 
@@ -450,19 +230,16 @@ function readCache() {
     const raw = lsGet(CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed.user === "object" && parsed.user.id) return parsed.user;
+    if (parsed && typeof parsed.user === "object" && parsed.user.id) {
+      serverBase = copy(parsed.base?.id === parsed.user.id ? parsed.base : parsed.user);
+      retrySave = parsed.retrySave?.user?.id === parsed.user.id ? parsed.retrySave : null;
+      serverRewards.clear();
+      for (const [revision, reward] of parsed.rewards || []) serverRewards.set(revision, reward);
+      knownRewardRevision = Math.max(Number(serverBase.revision) || 0, ...serverRewards.keys());
+      return parsed.user;
+    }
   } catch {}
   return null;
-}
-
-function observeHangarSelection(user) {
-  try {
-    const active = user?.hangars?.find((h) => h?.active)
-      || user?.hangars?.find((h) => h?.shipId === user?.ship)
-      || null;
-    observedShipSelection = String(user?.ship || "");
-    observedHangarSelection = String(active?.id || "");
-  } catch {}
 }
 
 // Boot synchrone (import) depuis token + cache. Le refresh async suit.
@@ -476,7 +253,7 @@ export function bootNetFromCache() {
     memUser = cached;
     restorePendingSelections();
     restorePendingGalaxyGates();
-    observeHangarSelection(memUser);
+    if (retrySave || !same(memUser, serverBase)) schedulePush();
     if (!refreshStarted) {
       refreshStarted = true;
       setTimeout(() => { refreshNetUser().catch(() => {}); }, 0);
@@ -492,9 +269,14 @@ export function enterNetMode(token, user) {
   memToken = String(token || "");
   memUser = user && typeof user === "object" ? user : null;
   if (!memToken || !memUser) return false;
+  saveInFlight = null;
+  identityWriter = null;
+  serverRewards.clear();
+  knownRewardRevision = Number(memUser.revision) || 0;
+  serverBase = copy(memUser);
+  retrySave = null;
   restorePendingSelections();
   restorePendingGalaxyGates();
-  observeHangarSelection(memUser);
   lsSet(TOKEN_KEY, memToken);
   writeCache(memUser, true);
   try {
@@ -569,7 +351,17 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
   const allowed = new Set(["pseudo", "email", "password"]);
   const key = String(kind || "").toLowerCase();
   if (!allowed.has(key)) return { ok: false, error: "Modification inconnue." };
+  if (identityWriter) return { ok: false, error: "Une modification du compte est déjà en cours." };
+  let writer = null;
   try {
+    if (saveInFlight) await saveInFlight;
+    if (retrySave) {
+      await flushNetUser();
+      if (retrySave) return { ok: false, error: "La sauvegarde précédente attend encore la connexion." };
+    }
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    writer = {}; identityWriter = writer;
+    clearTimeout(saveTimer); saveTimer = null;
     const out = await api(`/api/account/${key}`, {
       method: "POST",
       body: { value, currentPassword },
@@ -577,17 +369,17 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
     });
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     if (out?.ok && out.user) {
-      memUser = retainPendingSelections(out.user);
-      if (Object.keys(pendingSelections).length) {
-        memUser.revision = Math.max(0, Number(memUser.revision) || 0) + 1;
-        schedulePush();
-      }
-      writeCache(memUser);
+      adoptServerUser(out.user, { reason: "account" });
       try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "account" } })); } catch {}
     }
     return out || { ok: false, error: "Réponse serveur invalide." };
   } catch {
     return { ok: false, error: "Réseau." };
+  } finally {
+    if (writer && identityWriter === writer) {
+      identityWriter = null;
+      if (netActive() && !same(memUser, serverBase)) schedulePush();
+    }
   }
 }
 
@@ -609,474 +401,196 @@ function noteConflict() {
   return conflictTimes.length;
 }
 
-// Champs strictement croissants (aucune mécanique légitime ne les fait
-// baisser : que des +=) : lors d'une adoption du canon serveur (409,
-// refresh), on garde le MAX pour ne pas annuler les gains locaux non
-// encore poussés (ex : XP d'un kill juste avant un give admin). Sans ça :
-// XP qui monte (gain local) puis redescend (adopt du canon sans le gain).
-// Volontairement limité à l'XP/compteurs/minerais : crédits, munitions et
-// honneur (pénalité -50 % au changement de firme) peuvent baisser
-// légitimement. Les minerais sont sûrs ici : toutes les dépenses
-// (vente, échange, raffinage, atelier, transporteur) écrivent le canon
-// directement ET resynchronisent le moteur — seul le moteur collecte
-// (jamais le serveur), donc moteur > canon = gain non poussé.
-function mergeProgressiveFields(prev, next) {
-  if (!prev || !next || typeof next !== "object") return next;
-  try {
-    if (prev.stats && next.stats && typeof next.stats === "object") {
-      if (Number(prev.stats.exp) > Number(next.stats.exp || 0)) {
-        next.stats.exp = Math.max(0, Math.floor(Number(prev.stats.exp)));
+const copy = value => value === undefined ? undefined : structuredClone(value);
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
+
+function additivePath(path) {
+  return path === "credits" || /^(ammo|rockets|inventory\.(counts|resources)|skylab\.stock)\.[^.]+$/.test(path)
+    || path === "pet.fuel" || /^upgrades\.[^.]+\.stock$/.test(path) || path === "galaxyGates.energy"
+    || /^pilotSkills\.(disks|points)$/.test(path)
+    || /^stats\.(exp|honor|lifetimeKills|npcKills\.[^.]+)$/.test(path)
+    || path === "pet.exp" || /^drones\.items\.[^.]+\.exp$/.test(path);
+}
+
+// Fusion à trois états : canon reçu + changements locaux depuis la dernière
+// référence connue. Les dépenses et les gains sont appliqués une seule fois.
+function rebaseValue(base, local, remote, path = "") {
+  if (same(local, base)) return copy(remote);
+  if (additivePath(path) && (typeof local === "number" || local === undefined)
+    && (typeof base === "number" || base === undefined) && (typeof remote === "number" || remote === undefined)) {
+    if (local === -1 || base === -1 || remote === -1) return copy(local ?? remote);
+    const value = (Number(remote) || 0) + (Number(local) || 0) - (Number(base) || 0);
+    return path === "stats.honor" ? value : Math.max(0, value);
+  }
+  if (same(remote, base)) return copy(local);
+  if (Array.isArray(local) && Array.isArray(remote)) {
+    const before = Array.isArray(base) ? base : [];
+    const keyed = ["hangars", "drones.items", "inventory.shipModules", "inventory.moduleRollHistory"].includes(path);
+    if (keyed) {
+      const b = new Map(before.map(v => [String(v?.id), v]));
+      const l = new Map(local.map(v => [String(v?.id), v]));
+      const r = new Map(remote.map(v => [String(v?.id), v]));
+      const result = [];
+      for (const id of new Set([...r.keys(), ...l.keys()])) {
+        const merged = rebaseValue(b.get(id), l.get(id), r.get(id), `${path}.${id}`);
+        if (merged !== undefined) result.push(merged);
       }
-      if (Number(prev.stats.lifetimeKills) > Number(next.stats.lifetimeKills || 0)) {
-        next.stats.lifetimeKills = Math.max(0, Math.floor(Number(prev.stats.lifetimeKills)));
-      }
-      const pKills = prev.stats.npcKills, nKills = next.stats.npcKills;
-      if (pKills && nKills && typeof pKills === "object" && typeof nKills === "object"
-        && !Array.isArray(pKills) && !Array.isArray(nKills)) {
-        for (const [type, count] of Object.entries(pKills)) {
-          if (Number(count) > Number(nKills[type] || 0)) {
-            nKills[type] = Math.max(0, Math.floor(Number(count)));
-          }
-        }
-      }
+      return path === "inventory.moduleRollHistory" ? result.slice(-500) : result;
     }
-    if (Array.isArray(prev.drones?.items) && Array.isArray(next.drones?.items)) {
-      const byId = new Map();
-      for (const d of next.drones.items) {
-        if (d && d.id != null) byId.set(String(d.id), d);
-      }
-      for (const pd of prev.drones.items) {
-        if (!pd || pd.id == null) continue;
-        const nd = byId.get(String(pd.id));
-        if (!nd) {
-          next.drones.items.push(pd);
-          byId.set(String(pd.id), pd);
-          continue;
-        }
-        if (Number(pd.exp) > Number(nd.exp || 0)) nd.exp = Math.max(0, Number(pd.exp));
-        if (Number(pd.level) > Number(nd.level || 0)) nd.level = Math.max(0, Math.floor(Number(pd.level)));
-      }
-      if (Array.isArray(prev.drones.formations) && Array.isArray(next.drones.formations)) {
-        const formations = new Set(next.drones.formations.map(String));
-        for (const id of prev.drones.formations) {
-          if (id != null && !formations.has(String(id))) {
-            next.drones.formations.push(id);
-            formations.add(String(id));
-          }
-        }
-      }
+    if (["inventory.modules", "inventory.ships", "inventory.shipDesigns", "drones.formations", "quests.completed"].includes(path)) {
+      const b = new Set(before), l = new Set(local), r = new Set(remote);
+      for (const id of b) if (!l.has(id)) r.delete(id);
+      for (const id of l) if (!b.has(id)) r.add(id);
+      return [...r];
     }
-    if (prev.pet && next.pet && typeof next.pet === "object") {
-      if (Number(prev.pet.exp) > Number(next.pet.exp || 0)) next.pet.exp = Math.max(0, Number(prev.pet.exp));
-      if (Number(prev.pet.level) > Number(next.pet.level || 0)) next.pet.level = Math.max(0, Math.floor(Number(prev.pet.level)));
+    // Les slots ordonnés d'un équipement forment un seul choix utilisateur.
+    return copy(local);
+  }
+  if (object(local) && object(remote)) {
+    const result = {};
+    for (const key of new Set([...Object.keys(base || {}), ...Object.keys(remote), ...Object.keys(local)])) {
+      if (["__proto__", "constructor", "prototype"].includes(key)) continue;
+      const value = rebaseValue(base?.[key], local[key], remote[key], path ? `${path}.${key}` : key);
+      if (value !== undefined) result[key] = value;
     }
-    // Améliorations chargées (raffinage -> slots) : une charge validée
-    // localement ne doit jamais disparaître quand le canon serveur (sans la
-    // charge, push pas encore accepté) est adopté. Même minerai : MAX du
-    // stock (consommation par tir non poussée à chaque coup). Slot vide côté
-    // canon : on garde la charge locale. Minerai remplacé : le canon tranche
-    // (le replay pendingUpgradeCharges couvre le cas récent).
-    if (prev.upgrades && next.upgrades && typeof next.upgrades === "object" && !Array.isArray(next.upgrades)) {
-      for (const [slot, loaded] of Object.entries(prev.upgrades)) {
-        const key = String(slot || "").toLowerCase();
-        if (!key || !loaded || typeof loaded !== "object") continue;
-        const pStock = Math.max(0, Math.floor(Number(loaded.stock) || 0));
-        if (!(pStock > 0)) continue;
-        const pOre = String(loaded.ore || "");
-        const cur = next.upgrades[key];
-        const nStock = cur && typeof cur === "object" ? Math.max(0, Math.floor(Number(cur.stock) || 0)) : 0;
-        if (!cur || typeof cur !== "object" || !(nStock > 0)) {
-          next.upgrades[key] = { ore: pOre, stock: pStock };
-        } else if (String(cur.ore || "") === pOre && pStock > nStock) {
-          next.upgrades[key] = { ore: pOre, stock: pStock };
-        }
-      }
-    }
-    // Vaisseaux/designs/hangars possédés localement mais absents du canon
-    // serveur (achat boutique pas encore poussé lors d'un 409) : union.
-    // Un achat validé localement ne doit jamais disparaître avec l'illusion
-    // d'un remboursement. Les vaisseaux ne se revendent pas : l'union ne
-    // ressuscite aucun bien vendu.
-    if (prev.inventory && next.inventory && typeof next.inventory === "object") {
-      for (const key of ["ships", "shipDesigns"]) {
-        if (Array.isArray(prev.inventory[key]) && Array.isArray(next.inventory[key])) {
-          const have = new Set(next.inventory[key].map(String));
-          for (const id of prev.inventory[key]) {
-            if (id != null && !have.has(String(id))) {
-              next.inventory[key].push(id);
-              have.add(String(id));
-            }
-          }
-        }
-      }
-      // Modules vaisseaux + historique roulette : union par id. Un tirage
-      // validé localement ne doit jamais disparaître quand le canon serveur
-      // (récompense NPC, give admin, 2e onglet...) est adopté après un 409.
-      // Sans ça : module "comme si on l'avait pas eu" (ni inventaire, ni
-      // historique). L'historique reste plafonné à 500 (garde les + récents,
-      // dont le tirage qui vient d'être fait).
-      for (const key of ["shipModules", "moduleRollHistory"]) {
-        if (Array.isArray(prev.inventory[key]) && Array.isArray(next.inventory[key])) {
-          const have = new Set();
-          for (const m of next.inventory[key]) {
-            if (m && m.id != null) have.add(String(m.id));
-          }
-          for (const m of prev.inventory[key]) {
-            if (m && m.id != null && !have.has(String(m.id))) {
-              next.inventory[key].push(m);
-              have.add(String(m.id));
-            }
-          }
-          if (key === "moduleRollHistory" && next.inventory[key].length > 500) {
-            next.inventory[key] = next.inventory[key].slice(-500);
-          }
-        }
-      }
-      const pCounts = prev.inventory.counts, nCounts = next.inventory.counts;
-      if (pCounts && nCounts && typeof pCounts === "object" && typeof nCounts === "object") {
-        for (const [id, count] of Object.entries(pCounts)) {
-          if (Number(count) > Number(nCounts[id] || 0)) nCounts[id] = Math.max(0, Math.floor(Number(count) || 0));
-        }
-      }
-      // Minerais de soute (cf. ORE_RESOURCE_IDS dans SRC/DATA/RESOURCES.js) :
-      // la collecte crédite le moteur en local, le push suit en debounce 2 s.
-      // Entre les deux, un adopt du canon (récompense NPC...) écrasait le gain :
-      // soute qui monte à la collecte puis redescend — le plus visible sur le
-      // Palladium (+1 par rocher). On garde le MAX par minerai, comme l'XP.
-      const pRes = prev.inventory.resources, nRes = next.inventory.resources;
-      if (pRes && nRes && typeof pRes === "object" && typeof nRes === "object"
-        && !Array.isArray(pRes) && !Array.isArray(nRes)) {
-        for (const id of ORE_IDS) {
-          const pv = Math.max(0, Math.floor(Number(pRes[id]) || 0));
-          if (pv > Math.max(0, Math.floor(Number(nRes[id]) || 0))) nRes[id] = pv;
-        }
-      }
-    }
-    if (Array.isArray(prev.hangars) && Array.isArray(next.hangars)) {
-      const have = new Set(next.hangars.filter(Boolean).map((h) => String(h?.shipId)));
-      for (const h of prev.hangars) {
-        if (h && typeof h === "object" && !have.has(String(h?.shipId))) {
-          next.hangars.push(h);
-          have.add(String(h?.shipId));
-        }
-      }
-    }
-    // Boosters : chaque achat ne fait que PROLONGER le timer actif (jamais de
-    // baisse légitime). En plein fight, une récompense NPC écrite côté serveur
-    // fait échouer le push de l'achat (409) : sans ce MAX, le canon serveur
-    // (sans l'achat) écrase le timer local = achat "crédité puis rollback".
-    // Les crédits gardent le canon serveur (peuvent baisser légitimement).
-    if (prev.boosters && next.boosters && typeof next.boosters === "object") {
-      const pActive = prev.boosters.active, nActive = next.boosters.active;
-      if (pActive && nActive && typeof pActive === "object" && typeof nActive === "object"
-        && !Array.isArray(pActive) && !Array.isArray(nActive)) {
-        for (const [id, expiresAt] of Object.entries(pActive)) {
-          if (Number(expiresAt) > Number(nActive[id] || 0)) {
-            nActive[id] = Math.max(0, Number(expiresAt));
-          }
-        }
-      }
-    }
-    // Une recompense NPC est maintenant ecrite par le serveur avant que le
-    // kill local ait forcement pousse sa quete. Lors de l'adoption de cette
-    // revision, garde le maximum de chaque objectif et les missions terminees.
-    const pQuests = prev.quests, nQuests = next.quests;
-    if (pQuests && nQuests && typeof pQuests === "object" && typeof nQuests === "object") {
-      const completed = new Set([...(Array.isArray(nQuests.completed) ? nQuests.completed : []), ...(Array.isArray(pQuests.completed) ? pQuests.completed : [])].map(String));
-      nQuests.completed = [...completed];
-      // Abandons explicites : purgés des deux côtés, jamais ressuscités.
-      const tombstones = { ...((pQuests.abandoned && typeof pQuests.abandoned === "object") ? pQuests.abandoned : {}), ...((nQuests.abandoned && typeof nQuests.abandoned === "object") ? nQuests.abandoned : {}) };
-      for (const id of completed) delete tombstones[id];
-      nQuests.abandoned = tombstones;
-      for (const id of Object.keys(tombstones)) { delete nQuests.active[id]; }
-      nQuests.active ||= {};
-      for (const [questId, previousProgress] of Object.entries(pQuests.active || {})) {
-        if (completed.has(String(questId))) { delete nQuests.active[questId]; continue; }
-        if (!nQuests.active[questId] || typeof nQuests.active[questId] !== "object") {
-          nQuests.active[questId] = { ...(previousProgress || {}) };
-          continue;
-        }
-        for (const [objectiveId, count] of Object.entries(previousProgress || {})) {
-          if (Number(count) > Number(nQuests.active[questId][objectiveId] || 0)) {
-            nQuests.active[questId][objectiveId] = Math.max(0, Math.floor(Number(count) || 0));
-          }
-        }
-      }
-    }
-  } catch {}
-  return next;
+    return result;
+  }
+  // XP/counters déjà crédités côté serveur : ne pas rejouer la récompense.
+  if (/^(stats\.|quests\.active\.|pet\.(exp|level)$|drones\.items\.[^.]+\.(exp|level)$)/.test(path)
+    && typeof local === "number" && typeof remote === "number") return Math.max(local, remote);
+  return copy(local);
+}
+
+function rebaseUser(local, remote, base = serverBase) {
+  const result = rebaseValue(base || {}, local, remote);
+  for (const key of ["id", "pseudo", "email", "password", "_adminWriteToken"]) {
+    if (remote[key] !== undefined) result[key] = remote[key];
+  }
+  result.revision = remote.revision;
+  return retainPendingSelections(result);
+}
+
+function addRewardToBase(base, reward) {
+  if (!base) return;
+  base.credits = Math.max(0, Number(base.credits) || 0) + Math.max(0, Number(reward.credits) || 0);
+  base.stats ||= {};
+  for (const [field, gain] of [["exp", reward.exp], ["honor", reward.honor]]) {
+    base.stats[field] = (Number(base.stats[field]) || 0) + Math.max(0, Number(gain) || 0);
+  }
+  if (reward.ownsKill && reward.type) {
+    base.stats.lifetimeKills = (Number(base.stats.lifetimeKills) || 0) + 1;
+    base.stats.npcKills ||= {};
+    base.stats.npcKills[reward.type] = (Number(base.stats.npcKills[reward.type]) || 0) + 1;
+  }
+  for (const drone of base.drones?.items || []) drone.exp = (Number(drone.exp) || 0) + Math.max(0, Number(reward.exp) || 0) * 0.05;
+  if (base.pet?.owned && base.pet.active) base.pet.exp = (Number(base.pet.exp) || 0) + Math.max(0, Number(reward.petExp) || 0);
+}
+
+// Appelé avant d'appliquer un gain WebSocket au moteur. Un gain déjà présent
+// dans un canon HTTP ne doit pas augmenter les crédits une seconde fois.
+export function noteNetServerReward(reward) {
+  if (!netActive() || !serverBase) return true;
+  const revision = Math.floor(Number(reward?.revision) || 0);
+  if (revision <= knownRewardRevision) return false;
+  serverRewards.set(revision, copy(reward));
+  knownRewardRevision = revision;
+  addRewardToBase(serverBase, reward);
+  writeCache(memUser);
+  return true;
+}
+
+function acceptServerBase(user) {
+  serverBase = copy(user);
+  const revision = Math.floor(Number(user.revision) || 0);
+  knownRewardRevision = Math.max(knownRewardRevision, revision);
+  for (const [rev, reward] of serverRewards) {
+    if (rev <= revision) serverRewards.delete(rev);
+    else addRewardToBase(serverBase, reward);
+  }
+}
+
+function adoptServerUser(user, { base = serverBase, admin = false, reason = "refresh", conflicts } = {}) {
+  if (reason !== "saved") {
+    try { window.dispatchEvent(new CustomEvent("orbit:net-before-adopt")); } catch {}
+  }
+  memUser = admin ? retainPendingSelections(copy(user)) : rebaseUser(memUser, user, base);
+  acceptServerBase(user);
+  pendingGalaxyGates = same(memUser.galaxyGates, serverBase.galaxyGates) ? null : copy(memUser.galaxyGates);
+  if (!same(memUser, serverBase) || Object.keys(pendingSelections).length) {
+    memUser.revision = Math.max(Number(user.revision) || 0, Number(memUser.revision) || 0) + 1;
+    schedulePush();
+  }
+  // L'état et sa référence doivent être persistés ensemble avant le journal
+  // GG, sinon un reload peut rejouer ce journal sur une référence plus vieille.
+  writeCache(memUser, true);
+  cachePendingGalaxyGates();
+  if (reason !== "saved") {
+    try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason, conflicts } })); } catch {}
+  }
 }
 
 async function pushNow() {
   saveTimer = null;
+  if (identityWriter) { schedulePush(); return { ok: false, busy: true }; }
   if (saveInFlight) {
-    // Une seule sauvegarde en vol : achats, pagehide et timer ne doivent
-    // pas acquitter les memes changements avec des reponses concurrentes.
     if (netActive()) schedulePush();
     return saveInFlight;
   }
-  saveInFlight = pushSnapshot();
-  try { return await saveInFlight; }
-  finally { saveInFlight = null; }
+  const flight = pushSnapshot();
+  saveInFlight = flight;
+  try { return await flight; }
+  finally { if (saveInFlight === flight) saveInFlight = null; }
 }
 
 async function pushSnapshot() {
   if (!netActive()) return { ok: false };
   const token = memToken;
-  // getCurrentUserFull/saveUser peuvent muter memUser pendant la requete.
-  // Le contenu et la revision envoyes doivent rester immuables.
-  const snapshot = structuredClone(memUser);
-  const galaxyGatesAtSend = JSON.stringify(snapshot.galaxyGates);
-  const purchaseCreditsAtSend = pendingPurchaseCredits;
-  const purchaseStockAtSend = JSON.parse(JSON.stringify(pendingPurchaseStock));
-  const consumedStockAtSend = JSON.parse(JSON.stringify(pendingConsumedStock));
-  const equipmentSalesAtSend = {
-    counts: { ...pendingEquipmentSales.counts },
-    moduleIds: [...pendingEquipmentSales.moduleIds],
-    credits: Math.max(0, Math.floor(Number(pendingEquipmentSales.credits) || 0)),
-  };
-  const skylabDeltaAtSend = { ...pendingSkylabDelta };
-  const gateEnergyAtSend = Math.max(0, Math.floor(Number(pendingGateEnergy) || 0));
-  const consumedUpgradesAtSend = { ...pendingConsumedUpgrades };
-  const consumedPetFuelAtSend = Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0));
-  const gainedCreditsAtSend = Math.max(0, Math.floor(Number(pendingGainedCredits) || 0));
-  const gainedResourcesAtSend = { ...pendingGainedResources };
-  const selectionsAtSend = { ...pendingSelectionVersions };
-  const consumedOresAtSend = JSON.parse(JSON.stringify(pendingConsumedStock.ores || {}));
-  const upgradeChargesAtSend = JSON.parse(JSON.stringify(pendingUpgradeCharges));
-  let out = null;
+  // En cas de réponse perdue, renvoyer exactement la même opération.
+  // Le serveur peut l'avoir enregistrée avant la coupure du transport.
+  if (!retrySave) {
+    try { window.dispatchEvent(new CustomEvent("orbit:net-before-save")); } catch {}
+    retrySave = {
+      user: JSON.parse(JSON.stringify(memUser, (key, value) => value === Infinity ? -1 : value)), baseRevision: Number(serverBase?.revision) || 0,
+      saveId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${++nextSaveId}`,
+      selections: { ...pendingSelectionVersions },
+    };
+    retrySave.user.revision = Math.max(Number(retrySave.user.revision) || 0, retrySave.baseRevision + 1);
+  }
+  const sent = retrySave;
+  writeCache(memUser, true);
+  let out;
   try {
-    out = await api("/api/save", { method: "POST", body: { user: snapshot }, token });
+    out = await api("/api/save", { method: "POST", body: {
+      user: sent.user, baseRevision: sent.baseRevision, saveId: sent.saveId,
+    }, token });
   } catch {
     if (netActive() && memToken === token) schedulePush();
     return { ok: false, error: "Reseau." };
   }
-  if (!netActive() || memToken !== token || String(memUser.id) !== String(snapshot.id)) return { ok: false, ignored: true };
-  if (out && out.ok) {
-    if (JSON.stringify(pendingGalaxyGates) === galaxyGatesAtSend) pendingGalaxyGates = null;
+  if (!netActive() || memToken !== token || String(memUser.id) !== String(sent.user.id)) return { ok: false, ignored: true };
+  if (out?.ok && out.user) {
+    retrySave = null;
+    clearPendingSelections(sent.selections, sent.user, out.user);
+    if (same(pendingGalaxyGates, sent.user.galaxyGates)) pendingGalaxyGates = null;
     cachePendingGalaxyGates();
-    pendingPurchaseCredits = Math.max(0, pendingPurchaseCredits - purchaseCreditsAtSend);
-    clearPendingPurchaseStock(purchaseStockAtSend);
-    clearPendingConsumedStock(consumedStockAtSend);
-    clearPendingEquipmentSales(equipmentSalesAtSend);
-    clearPendingSkylabDelta(skylabDeltaAtSend);
-    pendingGateEnergy = Math.max(0, Math.floor(Number(pendingGateEnergy) || 0) - gateEnergyAtSend);
-    clearPendingConsumedUpgrades(consumedUpgradesAtSend);
-    pendingConsumedPetFuel = Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0) - consumedPetFuelAtSend);
-    pendingGainedCredits = Math.max(0, Math.floor(Number(pendingGainedCredits) || 0) - gainedCreditsAtSend);
-    clearPendingGainedResources(gainedResourcesAtSend);
-    clearPendingSelections(selectionsAtSend, snapshot, out.user);
-    // Minerais dépensés couverts par le snapshot accepté : on ne solde que
-    // ce qui était en attente à l'envoi (une nouvelle dépense en vol reste).
-    for (const [id, sent] of Object.entries(consumedOresAtSend || {})) {
-      const key = String(id || "").toLowerCase();
-      if (!key) continue;
-      const left = Math.max(0, Number(pendingConsumedStock.ores[key]) || 0) - Math.max(0, Number(sent) || 0);
-      if (left > 0) pendingConsumedStock.ores[key] = left;
-      else delete pendingConsumedStock.ores[key];
-    }
-    // Charges d'améliorations couvertes par le snapshot accepté (inchangées
-    // pendant le vol : une nouvelle charge reste en attente).
-    for (const [k, sent] of Object.entries(upgradeChargesAtSend || {})) {
-      const cur = pendingUpgradeCharges[k];
-      if (cur && String(cur.ore) === String(sent?.ore) && Math.floor(Number(cur.stock) || 0) === Math.floor(Number(sent?.stock) || 0)) {
-        delete pendingUpgradeCharges[k];
-      }
-    }
-    if (out.user && typeof out.user === "object") {
-      const sentRev = Math.max(0, Math.floor(Number(snapshot?.revision) || 0));
-      const liveRev = Math.max(0, Math.floor(Number(memUser?.revision) || 0));
-      if (liveRev <= sentRev) {
-        // Aucun changement local pendant la requete : la reponse peut devenir
-        // le nouvel etat canonique.
-        memUser = retainPendingSelections(retainPendingGalaxyGates(out.user));
-        if (Object.keys(pendingSelections).length) {
-          memUser.revision = Math.max(0, Number(memUser.revision) || 0) + 1;
-          schedulePush();
-        }
-        writeCache(memUser);
-      } else {
-        // Une recompense (notamment le bonus de fin de Galaxy Gate) a ete
-        // ajoutee pendant que cette ancienne sauvegarde etait en vol. Ne
-        // jamais la remplacer par la reponse correspondant au vieux snapshot;
-        // programme plutot l'envoi de la revision locale plus recente.
-        writeCache(memUser);
-        schedulePush();
-      }
-    }
-    try {
-      const sentActive = snapshot?.hangars?.find((h) => h?.active)
-        || snapshot?.hangars?.find((h) => h?.shipId === snapshot?.ship);
-      if (pendingHangarSelection
-        && String(snapshot?.ship || "") === String(pendingHangarSelection.ship || "")
-        && String(sentActive?.id || "") === String(pendingHangarSelection.hangarId || "")) {
-        pendingHangarSelection = null;
-      }
-    } catch {}
+    // Seules les mutations survenues après ce snapshot restent à pousser.
+    adoptServerUser(out.user, { base: sent.user, reason: "saved" });
     return out;
   }
-  if (out && out.status === 409 && out.stale && out.user) {
-    // Plus recent ailleurs (2e onglet, give admin...) : on adopte le canon
-    // SANS recharger la page (fini les refresh forcés surprises).
-    // mergeProgressiveFields : les gains d'XP locaux non poussés survivent.
-    // Le moteur re-synchronise via l'événement orbit:net-adopted puis
-    // repousse l'état mémoire : convergence, jamais de reload.
-    const conflicts = noteConflict();
-    // Une écriture admin (crédits/EXP/honneur) doit être adoptée exactement,
-    // y compris lorsqu'elle diminue une valeur. La fusion par maximum, utile
-    // pour les conflits ordinaires de gains, annulerait sinon les retraits.
-    memUser = out.adminConflict === true ? out.user : mergeProgressiveFields(memUser, out.user);
-    retainPendingGalaxyGates(memUser);
-    if (out.adminConflict !== true && pendingHangarSelection) {
-      const pending = pendingHangarSelection;
-      memUser.hangars = Array.isArray(memUser.hangars) ? memUser.hangars : [];
-      if (pending.hangar && pending.hangarId) {
-        const index = memUser.hangars.findIndex((h) => String(h?.id || "") === String(pending.hangarId));
-        if (index >= 0) memUser.hangars[index] = structuredClone(pending.hangar);
-        else memUser.hangars.push(structuredClone(pending.hangar));
-      }
-      for (const h of memUser.hangars) h.active = String(h?.id || "") === String(pending.hangarId || "");
-      memUser.ship = pending.ship;
-    }
-    if (out.adminConflict !== true && pendingPurchaseCredits > 0) {
-      memUser.credits = Math.max(0, Math.floor(Number(memUser.credits) || 0) - pendingPurchaseCredits);
-    }
-    if (out.adminConflict !== true) {
-      for (const field of ["ammo", "rockets"]) {
-        memUser[field] ||= {};
-        for (const [id, amount] of Object.entries(pendingPurchaseStock[field])) {
-          memUser[field][id] = Math.max(0, Math.floor(Number(memUser[field][id]) || 0)) + Math.max(0, Math.floor(Number(amount) || 0));
-        }
-        for (const [id, amount] of Object.entries(pendingConsumedStock[field])) {
-          memUser[field][id] = Math.max(0, Math.floor(Number(memUser[field][id]) || 0) - Math.max(0, Math.floor(Number(amount) || 0)));
-        }
-      }
-      // Minerais dépensés (vente, raffinage, charge d'amélioration, échange)
-      // pas encore acceptés : on rejoue la dépense sur le canon, sinon le
-      // MAX du merge les ressuscite et le dépôt semble annulé.
-      // Soldés aussitôt (baked dans memUser qui sera poussé) : un 2e 409
-      // avant le push ne doit pas les re-soustraire (= rollback à zéro).
-      memUser.inventory ||= {};
-      memUser.inventory.resources ||= {};
-      for (const [id, amount] of Object.entries(pendingConsumedStock.ores)) {
-        const key = String(id || "").toLowerCase();
-        if (!key) continue;
-        memUser.inventory.resources[key] = Math.max(0, Math.floor(Number(memUser.inventory.resources[key]) || 0) - Math.max(0, Math.floor(Number(amount) || 0)));
-        delete pendingConsumedStock.ores[key];
-      }
-      // Charges d'améliorations en attente : restaurées sur le canon
-      // (soldées aussitôt, même raison).
-      memUser.upgrades ||= {};
-      for (const [slot, charge] of Object.entries(pendingUpgradeCharges)) {
-        const key = String(slot || "").toLowerCase();
-        const st = Math.max(0, Math.floor(Number(charge?.stock) || 0));
-        if (!key || !(st > 0)) continue;
-        memUser.upgrades[key] = { ore: String(charge?.ore || ""), stock: st };
-        delete pendingUpgradeCharges[key];
-      }
-      // Ventes d'équipement (compteurs, modules, crédits gagnés) pas encore
-      // acceptées : on rejoue la vente sur le canon, sinon le MAX des
-      // compteurs et l'union des modules du merge ressuscitent les objets
-      // vendus pendant que le canon retire les crédits = rollback + dup.
-      // Soldées aussitôt (baked dans memUser qui sera poussé) : un 2e 409
-      // avant le push ne doit pas les re-soustraire (= rollback à zéro).
-      memUser.inventory ||= {};
-      memUser.inventory.counts ||= {};
-      for (const [id, qty] of Object.entries(pendingEquipmentSales.counts)) {
-        const key = String(id || "");
-        if (!key) continue;
-        memUser.inventory.counts[key] = Math.max(0, Math.floor(Number(memUser.inventory.counts[key]) || 0) - Math.max(0, Math.floor(Number(qty) || 0)));
-        if (!(Number(memUser.inventory.counts[key]) > 0) && Array.isArray(memUser.inventory.modules)) {
-          memUser.inventory.modules = memUser.inventory.modules.filter((x) => String(x) !== key);
-        }
-      }
-      if (pendingEquipmentSales.moduleIds.length) {
-        const gone = new Set(pendingEquipmentSales.moduleIds.map(String));
-        if (Array.isArray(memUser.inventory.shipModules)) {
-          memUser.inventory.shipModules = memUser.inventory.shipModules.filter((m) => !gone.has(String(m?.id)));
-        }
-        if (Array.isArray(memUser.inventory.moduleRollHistory)) {
-          memUser.inventory.moduleRollHistory = memUser.inventory.moduleRollHistory.filter((h) => !gone.has(String(h?.id)));
-        }
-      }
-      if (pendingEquipmentSales.credits > 0) {
-        memUser.credits = Math.max(0, Math.floor(Number(memUser.credits) || 0)) + Math.max(0, Math.floor(Number(pendingEquipmentSales.credits) || 0));
-      }
-      pendingEquipmentSales.counts = {};
-      pendingEquipmentSales.moduleIds = [];
-      pendingEquipmentSales.credits = 0;
-      // Transferts Skylab <-> soute : rejoue le delta signé sur le stock du
-      // canon (soldé aussitôt, même raison que ci-dessus).
-      memUser.skylab ||= {};
-      memUser.skylab.stock ||= {};
-      for (const [id, delta] of Object.entries(pendingSkylabDelta)) {
-        const key = String(id || "");
-        const d = Math.floor(Number(delta) || 0);
-        if (!key || d === 0) continue;
-        memUser.skylab.stock[key] = Math.max(0, Math.floor(Number(memUser.skylab.stock[key]) || 0) + d);
-      }
-      for (const k of Object.keys(pendingSkylabDelta)) delete pendingSkylabDelta[k];
-      if (pendingGateEnergy > 0) {
-        memUser.galaxyGates ||= {};
-        memUser.galaxyGates.energy = Math.max(0, Math.floor(Number(memUser.galaxyGates.energy) || 0)) + Math.max(0, Math.floor(Number(pendingGateEnergy) || 0));
-        pendingGateEnergy = 0;
-      }
-      // Tir: stock d'améliorations consommé (soldé aussitôt, même raison).
-      memUser.upgrades ||= {};
-      for (const [slot, amount] of Object.entries(pendingConsumedUpgrades)) {
-        const key = String(slot || "").toLowerCase();
-        const used = Math.max(0, Math.floor(Number(amount) || 0));
-        if (!key || !(used > 0)) continue;
-        const loaded = memUser.upgrades[key];
-        if (loaded && typeof loaded === "object") {
-          loaded.stock = Math.max(0, Math.floor(Number(loaded.stock) || 0) - used);
-        }
-        delete pendingConsumedUpgrades[key];
-      }
-      // Essence P.E.T. brûlée (soldée aussitôt, même raison).
-      if (pendingConsumedPetFuel > 0 && memUser.pet && typeof memUser.pet === "object") {
-        memUser.pet.fuel = Math.max(0, Math.floor(Number(memUser.pet.fuel) || 0) - Math.max(0, Math.floor(Number(pendingConsumedPetFuel) || 0)));
-      }
-      pendingConsumedPetFuel = 0;
-      // Gains locaux (crédits / ressources non-minerais) : ajoutés au canon.
-      if (pendingGainedCredits > 0) {
-        memUser.credits = Math.max(0, Math.floor(Number(memUser.credits) || 0)) + Math.max(0, Math.floor(Number(pendingGainedCredits) || 0));
-        pendingGainedCredits = 0;
-      }
-      if (Object.keys(pendingGainedResources).length) {
-        memUser.inventory ||= {};
-        memUser.inventory.resources ||= {};
-        for (const [id, qty] of Object.entries(pendingGainedResources)) {
-          const key = String(id || "");
-          const q = Math.max(0, Math.floor(Number(qty) || 0));
-          if (!key || !(q > 0)) continue;
-          memUser.inventory.resources[key] = Math.max(0, Math.floor(Number(memUser.inventory.resources[key]) || 0)) + q;
-        }
-        for (const k of Object.keys(pendingGainedResources)) delete pendingGainedResources[k];
-      }
-    }
-    // Les choix restent en attente jusqu'a confirmation, y compris lors
-    // d'une correction admin. Les totaux serveur restent ceux adoptes.
-    retainPendingSelections(memUser);
-    memUser.revision = Math.max(
-      Math.floor(Number(memUser.revision) || 0),
-      Math.floor(Number(out.user.revision) || 0),
-    ) + 1;
-    writeCache(memUser);
-    try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "stale", conflicts } })); } catch {}
-    schedulePush();
+  if (out?.status === 409 && out.stale && out.user) {
+    retrySave = null;
+    adoptServerUser(out.user, { admin: out.adminConflict === true, reason: "stale", conflicts: noteConflict() });
     return out;
   }
-  if (out && out.status === 401) {
-    // Session morte : bascule locale (reconnecte-toi via AUTH).
+  if (out?.status === 401) {
     enterLocalFallback();
     return out;
   }
-  if (out && out.user && typeof out.user === "object") {
-    // Conflit pseudo/email : le serveur tranche, on adopte le canon.
-    memUser = retainPendingSelections(out.user);
-    writeCache(memUser);
-  }
+  // Les erreurs transitoires gardent leur identifiant de sauvegarde.
+  // Un refus explicite de validation libère le snapshot pour sa correction.
+  if (out?.status >= 400 && out.status < 500 && out.status !== 429) retrySave = null;
+  if (netActive()) schedulePush();
   return out || { ok: false };
 }
 
@@ -1089,40 +603,20 @@ export async function flushNetUser() {
 
 async function refreshNetUser() {
   if (!netActive()) return;
-  const token = memToken;
-  const userId = memUser.id;
-  let out = null;
-  try {
-    out = await api("/api/me", { token });
-  } catch {
-    return;
-  }
+  const token = memToken, userId = memUser.id;
+  let out;
+  try { out = await api("/api/me", { token }); } catch { return; }
   if (!netActive() || memToken !== token || memUser.id !== userId) return;
-  if (!out || !out.ok || !out.user) {
-    if (out && out.status === 401) enterLocalFallback();
+  if (!out?.ok || !out.user) {
+    if (out?.status === 401) enterLocalFallback();
     return;
   }
-  const srvRev = Math.floor(Number(out.user.revision) || 0);
-  const memRev = Math.floor(Number(memUser?.revision) || 0);
-  if (srvRev > memRev) {
-    // Serveur plus récent qu'au boot : on adopte sans recharger
-    // (le moteur vivant se resynchronise via orbit:net-adopted).
-    // Un nouveau token signale une attribution/retrait admin : adoption
-    // exacte, sinon le MAX de l'EXP annulerait notamment un retrait.
-    const serverAdminToken = String(out.user?._adminWriteToken || "");
-    const localAdminToken = String(memUser?._adminWriteToken || "");
-    memUser = serverAdminToken && serverAdminToken !== localAdminToken
-      ? out.user
-      : mergeProgressiveFields(memUser, out.user);
-    retainPendingGalaxyGates(memUser);
-    retainPendingSelections(memUser);
-    if (Object.keys(pendingSelections).length) {
-      memUser.revision = Math.max(srvRev, Number(memUser.revision) || 0) + 1;
-      schedulePush();
-    }
-    writeCache(memUser);
-    try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason: "refresh" } })); } catch {}
-  }
+  // Résoudre d'abord une sauvegarde dont la réponse a été perdue : autrement
+  // ce refresh ne peut pas savoir quels achats le serveur a déjà appliqués.
+  if (retrySave || saveInFlight) { schedulePush(); return; }
+  if (Number(out.user.revision) <= Number(serverBase?.revision)) return;
+  const admin = !!out.user._adminWriteToken && out.user._adminWriteToken !== serverBase?._adminWriteToken;
+  adoptServerUser(out.user, { admin });
 }
 
 function enterLocalFallback() {
@@ -1131,7 +625,7 @@ function enterLocalFallback() {
   memToken = null;
   try { clearTimeout(saveTimer); } catch {}
   saveTimer = null;
-  resetPendingPurchases();
+  resetPendingAccountState();
   lsSet(TOKEN_KEY, null);
   lsSet(CACHE_KEY, null);
   lsSet(CUR_KEY, null);

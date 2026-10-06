@@ -7,6 +7,7 @@ import { drawCombatFloatTexts } from "./COMBAT_TEXT_RENDERER.js";
 import { NpcEngine } from "../../NPC/NPC_ENGINE_RENDERER.js";
 import { ShipEngine } from "../../SHIP/SHIP_ENGINE_RENDERER.js";
 import { PetEngine } from "../../PET/PET_ENGINE_RENDERER.js";
+import { getPetVitalLimits } from "../../PET/PET_VITALS.js";
 import {
   PET_BUOY_COOLDOWN_SEC,
   PET_BUOY_DAMAGE_PCT,
@@ -76,7 +77,7 @@ import {
   tickCurrentUserAuction,
 } from "./ACCOUNT.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
-import { flushNetUser, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
+import { flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
   GALAXY_GATE_DEFINITIONS,
@@ -97,7 +98,7 @@ import { getShipPackById as getShipPackByIdData, getShipDesignBaseId } from "../
 import { getAbilityInfo, formatAbilityTiming, policeAbilityIds, abilityIconFile } from "../../SHIP/SHIP_ABILITIES.js";
 import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, formationDockIcon, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath, isClassicFormation } from "../../DRONE/DRONE_TYPES.js";
 import { getOfficialDroneFormationPositions } from "../../DRONE/DRONE_FORMATIONS.js";
-import { PET_XP_SHARE, PET_FUEL_MAX, PET_FUEL_TICK_SEC, PET_FUEL_BASE_TICK, PET_FUEL_GEAR_TICK, PET_FUEL_ONESHOT, getPetDamageBonus, getPetHullBonusHp, getPetLevel, getPetLevelXp, getPetMaxHp, getPetNextLevelXp, getPetShieldBonus, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
+import { PET_XP_SHARE, PET_FUEL_MAX, PET_FUEL_TICK_SEC, PET_FUEL_BASE_TICK, PET_FUEL_GEAR_TICK, PET_FUEL_ONESHOT, getPetDamageBonus, getPetLevel, getPetLevelXp, getPetNextLevelXp, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
 import { clamp, circleRectResolve, clampSegmentToWalls, dist2, movingCircleHit, segCircleHit } from "./COLLISION.js";
 import { createKeyboardState, createPointerState } from "./INPUT.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "../../COMBAT/COMBAT_RULES.js";
@@ -122,7 +123,7 @@ import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
   drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetDecloakInbox,
-getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation } from "./NETPLAY.js";
+  getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -147,7 +148,7 @@ import {
   drawTargetLock,
   drawToastMessage,
 } from "../../UI/UI_CANVAS_HUD.js";
-import { renderMinimap } from "../../UI/UI_MINIMAP.js";
+import { renderMinimap, getMinimapPortalColors } from "../../UI/UI_MINIMAP.js";
 import { drawWallLayer } from "./WORLD_LAYER_RENDERER.js";
 import { advancePlayerToTarget, attractPickups, playerSlowMult, tickFloatingTexts, tickLifetimeItems, updatePlayerVelocity } from "./FRAME_SYSTEMS.js";
 import { calculateRankPoints, getLevelInfo, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo, grantExperience, grantHonor, ADMIN_RANK } from "./PROGRESSION.js";
@@ -165,7 +166,7 @@ import { initPilotSkillsUI, renderPilotSkillsWindow, tickPilotSkillsDisplay } fr
 import { initTdmUI } from "../../UI/UI_TDM.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
 import { canUseFactionModule, getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
-import { checkMapAccess } from "./MAP_ACCESS.js";
+import { checkMapAccess, getMapRequiredLevel } from "./MAP_ACCESS.js";
 import {
   QUEST_DEFINITIONS,
   MAX_ACTIVE_QUESTS,
@@ -184,6 +185,8 @@ import {
 } from "../DATA/COLLECTABLES.js";
 import { getResourceName, getResourceIcon, isOreResource, cargoAdd, cargoUsed, CARGO_CAPACITY, REFINERY_RECIPES, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOTS, UPGRADE_SLOT_ORES, UPGRADE_ORE_BONUS } from "../DATA/RESOURCES.js";
 import { PALLADIUM_PER_GALAXY_ENERGY, palladiumExchangeForEnergy } from "./GALAXY_GATES.js";
+import { STARMAP_NODES, STARMAP_UNIT, STARMAP_NODE, STARMAP_ART, STARMAP_JUMP_CHANNEL_SEC, STARMAP_JUMP_REUSE_SEC, STARMAP_JUMP_FX_SEC } from "../DATA/STARMAP.js";
+import { createStarMapLayout, findStarMapItinerary } from "./STARMAP_LAYOUT.js";
 import { getNpcCargoOres } from "../../NPC/NPC_CARGO.js";
 import { rollNpcAssemblyBox, rollNpcAssemblyDirect } from "../../NPC/NPC_ASSEMBLY.js";
 import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketDockIcon, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
@@ -542,6 +545,7 @@ function applyRadiation(dt) {
   const radRest = absorbPetLinkDamage(dmg);
   player.hp -= radRest;
   if (radRest > 0) {
+    onPlayerPreparationDamage(radRest, 0);
     const shown = Math.max(1, Math.round(radRest));
     addPlayerCombatFloat(shown, "rgba(255,80,100,0.95)");
   }
@@ -1054,6 +1058,14 @@ const ui = {
   ggSpinBtn: document.getElementById("ggSpinBtn"),
   ggNpcRewardScale: document.getElementById("ggNpcRewardScale"),
   ggDeployBtn: document.getElementById("ggDeployBtn"),
+  starMapWindow: document.getElementById("starMapWindow"),
+  starMapTree: document.getElementById("starMapTree"),
+  starMapEdges: document.getElementById("starMapEdges"),
+  starMapNodes: document.getElementById("starMapNodes"),
+  starMapSelName: document.getElementById("starMapSelName"),
+  starMapSelInfo: document.getElementById("starMapSelInfo"),
+  starMapJumpBtn: document.getElementById("starMapJumpBtn"),
+  starMapStatus: document.getElementById("starMapStatus"),
   orbitNotifications: document.getElementById("orbitNotifications"),
   gameLogEntries: document.getElementById("gameLogEntries"),
   gameLogWindow: document.getElementById("gameLogWindow"),
@@ -4084,6 +4096,7 @@ function startPhaseOutCooldown() {
 }
 function activatePhaseOut() {
   if (player.dead || !started) return;
+  if (isPlayerMovementLocked()) return;
   const cd = Number(player.phaseOutCd || 0);
   if (cd > 0) {
     showNotification(`Sortie de phase : recharge ${formatAbilityCd(cd)}`, 2, "info");
@@ -8601,6 +8614,9 @@ function registerHudWindows() {
   reg("questOfferWindow", "Terminal de quêtes", menuIcon("quests"), false, { dock: false });
   window.GameWindowManager?.close?.("questOfferWindow");
   reg("galaxyGateWindow", "Galaxy Gates", menuIcon("ggBuilder"), false);
+  reg("starMapWindow", "Carte Stellaire", menuIcon("spacemap"), false);
+  reg("starMapInfoWindow", "Détails de la carte", menuIcon("spacemap"), false, { dock: false });
+  window.GameWindowManager.close("starMapInfoWindow");
   reg("gameLogWindow", "LOG", menuIcon("log"), false);
   reg("chatWindow", "Chat", menuIcon("chat"), true);
   reg("groupWindow", "Groupe", menuIcon("group"), false);
@@ -8657,19 +8673,21 @@ initAuctionUI({
   notify: (text, dur = 2.5, type = "info") => showNotification(text, dur, type),
   markDirty: () => markProgressDirty(),
 });
+function flushPilotProgressBeforeAction() {
+  // Sauver les gains et stocks encore dans le moteur avant qu'un achat,
+  // échange ou reset relise le compte et en adopte le solde.
+  if (started && account.user && account.dirty) saveProgressNow();
+}
 initPilotSkillsUI({
   getUser: () => account.user,
+  getCredits: () => player.credits,
+  beforeAction: flushPilotProgressBeforeAction,
   afterAction: (action = "skills") => {
     // Acheter des disques ne change aucun bonus : mise à jour légère du HUD,
     // sans relire/normaliser tout le compte ni recalculer l'équipement.
     if (action === "disks") {
-      const fresh = getCurrentUserFull();
-      if (fresh) {
-        account.user = preserveLivePetVitals(account.user, fresh);
-        player.credits = Math.max(0, Number(fresh.credits) || 0);
-      }
-      markProgressDirty();
-      drawUI();
+      // L'événement pilot-disks a déjà adopté le solde. Aucun état de combat
+      // n'a changé : ne pas provoquer une deuxième sauvegarde complète.
       window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
       return;
     }
@@ -11024,7 +11042,7 @@ function botOrderMove(x, y, tag) {
 
 // Prochain pas du bot : le trajet contourne les murs sans modifier l'ordre final.
 function botMovementStep(dt) {
-  if (hangarSwapFx || !Bot.active || !moveTarget.active || player.dead || pointer.down
+  if (isPlayerMovementLocked() || !Bot.active || !moveTarget.active || player.dead || pointer.down
     || performance.now() - Number(Bot.manualT || 0) < 2500
     || !isZoneMap || !zoneWalls?.length) {
     Bot.wallSteer = null;
@@ -11426,6 +11444,7 @@ function tickBot(dt) {
   Bot.combatMoveTargetId = null;
   try { botRecordSightings(dt); } catch {}
   if (!Bot.active) return;
+  if (StarJump.channel) return;
   if (!started || player.dead) {
     // Compteur de kills/boxes : la cible a disparu pendant la mort.
     Bot.lastNpcId = null;
@@ -12273,20 +12292,7 @@ function getPetGearRangeWithRadar(key, level, pet, user) {
   return radar > 0 ? base * (1 + radar / 100) : base;
 }
 function petShieldMaxForHud(pet, user) {
-  const hangar = (user?.hangars || []).find((h) => h?.active) || null;
-  const hid = hangar ? String(hangar.id) : null;
-  const cfg = String(Number(hangar?.activeConfig) === 2 ? 2 : 1);
-  const fit = hid ? getPetFit(pet, hid, cfg) : null;
-  const mult = 1 + getPetShieldBonus(getPetLevel(pet?.exp)) / 100;
-  let max = 0;
-  for (const itemId of fit?.generators || []) {
-    const item = itemId ? findCatalogItem(itemId) : null;
-    if (item?.module?.type === "shield") max += Number(item.module.bonusShield || 0) * mult;
-  }
-  // Protocole bouclier (AI-SM) : +X % sur le propre bouclier du REX.
-  const shieldPct = getPetProtocolPct(pet, user, "shield");
-  if (shieldPct > 0) max *= 1 + shieldPct / 100;
-  return Math.max(0, Math.floor(max * (1 + goliathHeatPct() / 100)));
+  return getPetVitalLimits(pet, user).shMax;
 }
 
 function wirePetWindow() {
@@ -14932,7 +14938,7 @@ function saveProgressNowMeasured() {
   upgrades: account.user.upgrades,
   skylab: account.user.skylab,
   auction: account.user.auction,
-hangarState: !player.dead && started ? {
+hangarState: !player.dead && started && !hangarLocationTransferPending() ? {
     id: SESSION_HANGAR_ID || null,
     x: player.x,
     y: player.y,
@@ -15189,6 +15195,7 @@ function savedShPct() {
 }
 
 function savePositionNow() {
+  if (hangarLocationTransferPending()) return;
   if (!account.user) return;
   if (player.dead || !started) return;
   
@@ -19411,6 +19418,7 @@ function rememberPointer(e) {
 }
 
 function setMoveTargetFromScreen(clientX, clientY) {
+  if (isPlayerMovementLocked()) return;
   // ✅ Tout clic manuel sur la map annule l'ordre de collecte
   cancelCollectableTarget();
   try { botNotifyManual(); } catch {}
@@ -22239,6 +22247,7 @@ function cancelCollectableTarget() {
 
 function selectCollectable(c) {
   if (!c) return;
+  if (isPlayerMovementLocked()) return;
 
   cancelCollectableTarget();
 
@@ -22832,10 +22841,7 @@ function goliathHeatPct() {
 // PV max du REX : base niveau + Coque+ (définitif), puis protocole
 // coque (AI-HP, +X % sur ses propres HP), puis bonus HEAT du Goliath Plus.
 function petMaxHpWithHeat(pet) {
-  const base = getPetMaxHp(getPetLevel(pet?.exp)) + getPetHullBonusHp(pet);
-  const hpPct = getPetProtocolPct(pet, account.user, "hp");
-  const withProto = hpPct > 0 ? base * (1 + hpPct / 100) : base;
-  return Math.floor(withProto * (1 + goliathHeatPct() / 100));
+  return getPetVitalLimits(pet, account.user).hpMax;
 }
 
 // Soute lue depuis le compte en mémoire (pas de relecture storage à chaque frame).
@@ -22865,9 +22871,9 @@ function consumeUpgradeStock(slot, amount = 1) {
   loaded.stock = Math.max(0, stock - used);
   // Mode multi : sinon un 409 restaure le stock du canon (tirs gratuits).
   try { noteNetUpgradeConsumed(slot, used); } catch {}
+  markProgressDirty();
   refreshUpgradeSlotDom(slot);
   if (loaded.stock <= 0) {
-    markProgressDirty();
     // updateCurrentUserProgress ne contient pas `upgrades` : sauvegarde le
     // compte complet au palier zero pour que le minerai ne reapparaisse pas.
     try { saveUser(account.user, { source: "progress" }); } catch {}
@@ -25234,7 +25240,8 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
     result.total = result.hp;
     try {
       const absorb = Number(player.shAbsorb) > 0 ? Number(player.shAbsorb) : 0.8;
-      damagePlayerLayers(player, shared, absorb, 0, playerPilotMults().tough);
+      const sharedDamage = damagePlayerLayers(player, shared, absorb, 0, playerPilotMults().tough);
+      onPlayerPreparationDamage(sharedDamage.hp, sharedDamage.sh);
       player.attackedT = REPAIR.cooldown;
       if (player.hp <= 0) {
         player.hp = 0;
@@ -25406,7 +25413,7 @@ function npcEffectiveSpeed(e, fallback = 320) {
 }
 
 function hurtPlayer(amount, source = null) {
-  if (player.dead || hangarSwapFx || player.iFrames > 0 || (player.invincibleT || 0) > 0) return;
+  if (player.dead || player.iFrames > 0 || (player.invincibleT || 0) > 0) return;
 
   // Blacklight : dégâts des NPC non doublés (officiel : seul le joueur
   // tape x2). Les renvois vers les NPC repassent par damageEnemy qui
@@ -25553,6 +25560,7 @@ function hurtPlayer(amount, source = null) {
     player.hp = Math.min(player.hpMax, player.hp + redirected);
   }
 
+  onPlayerPreparationDamage(Math.max(0, dmgRes.hp - redirected), dmgRes.sh);
   addPlayerCombatFloat(Math.max(0, Math.round(amount - redirected)), "rgba(255,80,100,0.95)");
 
   if (player.hp <= 0) {
@@ -25648,7 +25656,8 @@ function killRewards(e) {
     honor = Math.max(0, Math.floor(Number(serverReward.baseHonor) || 0));
     gainedXp = Math.max(0, Math.floor(Number(serverReward.exp) || 0));
     gainedHonor = Math.max(0, Math.floor(Number(serverReward.honor) || 0));
-    player.credits += credits;
+    const applyReward = noteNetServerReward(serverReward);
+    if (applyReward) player.credits += credits;
     // saveUser/netStore remplace le cache reseau par un clone. `account.user`
     // peut donc encore pointer sur l'ancien objet : le kill y apparait, puis
     // la sauvegarde de position relit le clone sans XP et donne l'impression
@@ -25662,7 +25671,7 @@ function killRewards(e) {
     } else if (!account.user) {
       loadAccountUser();
     }
-    if (account.user) {
+    if (account.user && applyReward) {
       account.user.credits = Math.max(0, Math.floor(Number(account.user.credits) || 0)) + credits;
       account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
       // Le serveur fournit aussi les totaux apres transaction. Utiliser le
@@ -26339,14 +26348,15 @@ function applyLowRaidReward(reward) {
   const honor = Math.max(0, Math.floor(Number(reward.baseHonor) || 0));
   const gainedXp = Math.max(0, Math.floor(Number(reward.exp) || 0));
   const gainedHonor = Math.max(0, Math.floor(Number(reward.honor) || 0));
-  player.credits += credits;
+  const applyReward = noteNetServerReward(reward);
+  if (applyReward) player.credits += credits;
   const currentAccountUser = getCurrentUserFull();
   if (currentAccountUser && (!account.user || String(currentAccountUser.id) === String(account.user.id))) {
     account.user = currentAccountUser;
   } else if (!account.user) {
     loadAccountUser();
   }
-  if (account.user) {
+  if (account.user && applyReward) {
     account.user.credits = Math.max(0, Math.floor(Number(account.user.credits) || 0)) + credits;
     account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
     const serverTotalExp = reward.totalExp == null ? null : Math.max(0, Math.floor(Number(reward.totalExp) || 0));
@@ -30044,6 +30054,7 @@ let miniPing = null;
 mini.style.touchAction = "none";
 
 function setMoveTargetFromMiniEvent(clientX, clientY) {
+  if (isPlayerMovementLocked()) return;
   // ✅ Un clic minimap annule aussi l'ordre de collecte
   cancelCollectableTarget();
 
@@ -30809,7 +30820,6 @@ function drawNetplayRemotes(ox, oy) {
       const remaining = Number(r.hswap);
       if (remaining > 0 && remaining <= HANGAR_SWAP_DURATION) {
         const elapsed = HANGAR_SWAP_DURATION - remaining;
-        drawHangarSwapShield(elapsed);
         drawHangarSwapImage(elapsed, HANGAR_SWAP_DURATION);
       }
     } catch {}
@@ -33985,8 +33995,9 @@ if (startHintT > 0) {
   refreshHoldMoveTarget();
   const movementStepTarget = botMovementStep(dt);
   let mx = 0, my = 0;
+  const movementLocked = isPlayerMovementLocked();
 
-if (hangarSwapFx) {
+if (movementLocked) {
   moveTarget.active = false;
   player.vx = 0;
   player.vy = 0;
@@ -34007,7 +34018,7 @@ if (hangarSwapFx) {
   }
 }
 
-  if (!hangarSwapFx) updatePlayerVelocity(player, { x: mx, y: my }, dt);
+  if (!movementLocked) updatePlayerVelocity(player, { x: mx, y: my }, dt);
 
   // Fortification (officiel) : vitesse plafonnée à 200 pendant l'effet.
   if ((player.fortifyT || 0) > 0) {
@@ -34018,7 +34029,7 @@ if (hangarSwapFx) {
     }
   }
 
-  if (!player.dead && !hangarSwapFx) {
+  if (!player.dead && !movementLocked) {
     advancePlayerToTarget(player, movementStepTarget, dt);
 
     if (isZoneMap) {
@@ -34070,6 +34081,7 @@ if (hangarSwapFx) {
     }
     if (self && Number(self.pvpAt) > 0 && Number(self.pvpAt) !== lastPvpAdoptAt) {
       lastPvpAdoptAt = Number(self.pvpAt);
+      const beforeHp = player.hp, beforeSh = player.sh;
       if (player.hpMax > 0 && Number.isFinite(Number(self.hp))) {
         player.hp = Math.max(0, Math.min(player.hp, Math.min(player.hpMax, Number(self.hp))));
       }
@@ -34077,6 +34089,7 @@ if (hangarSwapFx) {
         player.sh = Math.max(0, Math.min(player.sh, Math.min(player.shMax, Number(self.sh))));
       }
       // Sous le feu ennemi : pas de regen ni de reparation (comme hurtPlayer).
+      onPlayerPreparationDamage(beforeHp - player.hp, beforeSh - player.sh);
       // Ca bloque aussi la zone de non-agression (safe = hors combat).
       player.attackedT = REPAIR.cooldown;
       try { resetRepairCooldown(); } catch {}
@@ -34125,6 +34138,7 @@ if (hangarSwapFx) {
       lastNpcDamageAdoptSeq = npcDamageSeq;
       const npcHpDamage = Math.max(0, Number(self.npcHpDamage) || 0);
       const npcShDamage = Math.max(0, Number(self.npcShDamage) || 0);
+      const beforeHp = player.hp, beforeSh = player.sh;
       if (npcHpDamage > 0 || npcShDamage > 0) {
         player.hp = Math.max(0, player.hp - npcHpDamage);
         player.sh = Math.max(0, player.sh - npcShDamage);
@@ -34140,6 +34154,7 @@ if (hangarSwapFx) {
       // Un trou reseau peut faire manquer plusieurs revisions de degats.
       // La mort serveur reste definitive meme si seul le dernier coup arrive.
       if (self.dead === true) player.hp = 0;
+      onPlayerPreparationDamage(Math.max(npcHpDamage, beforeHp - player.hp), Math.max(npcShDamage, beforeSh - player.sh));
       player.attackedT = REPAIR.cooldown;
       try { resetRepairCooldown(); } catch {}
       try {
@@ -34202,6 +34217,7 @@ if (hangarSwapFx) {
   }
   updatePet(dt);
   try { tickHangarSwap(dt); } catch (error) { console.warn("Hangar swap tick:", error); }
+  try { tickStarJump(dt); } catch (error) { console.warn("Star jump tick:", error); }
   try { tickLowRaidClient(); } catch (error) { console.warn("Low raid tick:", error); }
   try { tickBot(dt); } catch (error) { console.warn("BOT tick:", error); }
   if (started) {
@@ -35876,6 +35892,7 @@ function drawBotMinimalScene(ox, oy) {
   ctx.restore();
   drawPlayerBars(px, py);
   drawMinimalMinimap();
+  drawStarJumpHud(px, py);
   drawToast();
   drawRadiationWarning();
 }
@@ -36446,8 +36463,7 @@ function draw() {
 
     // Comme dans le client officiel, la flamme recouvre sa sortie de réacteur.
     drawShipEngineFx();
-    // Échange de hangar : coque -> ISH -> portail.
-    try { drawHangarSwapShield(hangarSwapFx?.t); } catch {}
+    // Échange de hangar : animation du portail.
     try { drawHangarSwapFx(); } catch {}
 
 // Pod de réparation : complétion visuelle des coques Aegis, par-dessus.
@@ -36932,6 +36948,7 @@ function draw() {
   drawPlayerBars(px, py);
   ctx.restore();
   drawMinimap();
+  drawStarJumpHud(px, py);
   drawToast();
   drawRadiationWarning();
 }
@@ -37688,10 +37705,12 @@ function saveStateImmediate() {
     persistUniverse();
     persistCollectables({ force: true });
   } catch {}
-  if (SESSION_HANGAR_ID) {
-    saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
-  } else {
-    saveActiveHangarState(player.x, player.y, currentMap, savedHpPct(), savedShPct());
+  if (!hangarLocationTransferPending()) {
+    if (SESSION_HANGAR_ID) {
+      saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
+    } else {
+      saveActiveHangarState(player.x, player.y, currentMap, savedHpPct(), savedShPct());
+    }
   }
 
 updateCurrentUserProgress({
@@ -37831,16 +37850,20 @@ function getHangarAccess() {
   const onEquipmentMap = equipmentMaps.has(currentMap);
   const inEquipmentBase = onEquipmentMap && playerIsInBaseZone();
 
-  let activationError = "";
-  if (!inNonAggressionZone) activationError = "Place-toi dans une zone de non-agression pour changer de vaisseau.";
-  else if (attackedCooldownMs > 0) activationError = `Attends ${Math.ceil(attackedCooldownMs / 1000)} s après la dernière attaque reçue.`;
-  else if (switchCooldownMs > 0) activationError = `Attends ${Math.ceil(switchCooldownMs / 1000)} s avant un nouveau changement de vaisseau.`;
+  let swapError = "";
+  if (attackedCooldownMs > 0) swapError = `Attends ${Math.ceil(attackedCooldownMs / 1000)} s après la dernière attaque reçue.`;
+  else if (switchCooldownMs > 0) swapError = `Attends ${Math.ceil(switchCooldownMs / 1000)} s avant un nouveau changement de vaisseau.`;
+  const activationError = !inNonAggressionZone
+    ? "Place-toi dans une zone de non-agression pour changer de vaisseau."
+    : swapError;
 
   let equipmentError = "";
   if (!onEquipmentMap) equipmentError = `L'équipement est disponible uniquement sur les bases ${factionSector}-1, ${factionSector}-8 ou 5-2.`;
   else if (!inEquipmentBase) equipmentError = "Rapproche-toi de la base centrale pour modifier l'équipement.";
 
   return {
+    canSwap: !swapError,
+    swapError,
     canActivate: !activationError,
     activationError,
     canEquip: !equipmentError,
@@ -37901,6 +37924,717 @@ function applyHangarDesignLive() {
 }
 
 // ============================================================
+// Carte Stellaire : star jump (saut direct vers une map).
+// Arbre des maps + traits de portails, sélection au clic, bouton Jump :
+// 10 s de charge avec l'anim de jump (swipe), puis saut à une position
+// aléatoire de la carte. En multi l'arrivée est validée par le serveur
+// (requestStarJumpArrival), sinon tirage local.
+// ============================================================
+const starMapById = new Map(STARMAP_NODES.map((n) => [String(n.id).toLowerCase(), n]));
+const starMapEls = new Map();
+const STARMAP_GROUP_LABELS = Object.freeze({
+  mmo: "MMO", eic: "EIC", vru: "VRU", bl: "Blacklight",
+  pvp: "PvP", pirate: "Pirates", event: "Spéciale", gate: "Gate",
+});
+const StarJump = { selected: null, channel: null, lastJumpAt: 0, built: false, refreshAt: 0,
+  layout: null, viewScale: 1, zoomScale: 1, fitView: true,
+  restoreInfoOnOpen: false,
+  routeVisible: false,
+  hoverMap: null, hoverPortal: null, pinnedRoute: null, connectionsFor: null, artLoading: null,
+  itinerary: null, itineraryFor: null, routeVia: null };
+
+function starJumpCurrentMap() {
+  try { return String(getCurrentZoneMapId() || window.__CURRENT_MAP_ID__ || "1-1").toLowerCase(); }
+  catch { return "1-1"; }
+}
+
+function syncStarMapScrollbars() {
+  const viewport = document.getElementById('starMapViewport');
+  if (!viewport) return;
+  for (const [id, range, value] of [
+    ['starMapScrollX', viewport.scrollWidth - viewport.clientWidth, viewport.scrollLeft],
+    ['starMapScrollY', viewport.scrollHeight - viewport.clientHeight, viewport.scrollTop],
+  ]) {
+    const bar = document.getElementById(id);
+    if (!bar) continue;
+    bar.max = String(Math.max(0, range)); bar.value = String(Math.round(value)); bar.disabled = range <= 0;
+  }
+}
+
+function updateStarMapView() {
+  const viewport = document.getElementById("starMapViewport"), stage = document.getElementById("starMapStage");
+  const tree = ui.starMapTree, layout = StarJump.layout;
+  if (!viewport || !stage || !tree || !layout || !viewport.clientWidth || !viewport.clientHeight) return;
+  const w = viewport.clientWidth, h = viewport.clientHeight;
+  const oldScale = StarJump.viewScale;
+  const centerX = (viewport.scrollLeft + w / 2 - (parseFloat(tree.style.left) || 0)) / oldScale;
+  const centerY = (viewport.scrollTop + h / 2 - (parseFloat(tree.style.top) || 0)) / oldScale;
+  const fitScale = Math.min(1, w / layout.width, h / layout.height);
+  const scale = StarJump.fitView ? fitScale : Math.max(fitScale, Math.min(1.5, StarJump.zoomScale));
+  StarJump.fitView = scale <= fitScale;
+  // En vue complete, le contenu tient exactement dans le viewport : aucun
+  // arrondi de scale ne doit faire apparaitre puis disparaitre les scrollbars.
+  const width = StarJump.fitView ? w : Math.max(w, Math.ceil(layout.width * scale));
+  const height = StarJump.fitView ? h : Math.max(h, Math.ceil(layout.height * scale));
+  const left = Math.max(0, (width - layout.width * scale) / 2), top = Math.max(0, (height - layout.height * scale) / 2);
+  stage.style.width = `${width}px`; stage.style.height = `${height}px`;
+  tree.style.left = `${left}px`; tree.style.top = `${top}px`;
+  tree.style.transform = `scale(${scale})`;
+  tree.style.setProperty("--starMapScale", String(scale));
+  StarJump.viewScale = scale;
+  StarJump.zoomScale = scale;
+  if (StarJump.fitView) { viewport.scrollLeft = 0; viewport.scrollTop = 0; }
+  else {
+    viewport.scrollLeft = centerX * scale + left - w / 2;
+    viewport.scrollTop = centerY * scale + top - h / 2;
+  }
+  syncStarMapScrollbars();
+}
+
+function zoomStarMap(factor, pointer = null) {
+  const viewport = document.getElementById('starMapViewport'), tree = ui.starMapTree;
+  let anchor = null;
+  if (pointer && viewport && tree) {
+    const bounds = viewport.getBoundingClientRect();
+    const x = pointer.clientX - bounds.left - viewport.clientLeft;
+    const y = pointer.clientY - bounds.top - viewport.clientTop;
+    anchor = { x, y,
+      mapX: (viewport.scrollLeft + x - (parseFloat(tree.style.left) || 0)) / StarJump.viewScale,
+      mapY: (viewport.scrollTop + y - (parseFloat(tree.style.top) || 0)) / StarJump.viewScale };
+  }
+  StarJump.fitView = false;
+  StarJump.zoomScale = StarJump.viewScale * factor;
+  updateStarMapView();
+  if (anchor && !StarJump.fitView) {
+    viewport.scrollLeft = anchor.mapX * StarJump.viewScale + (parseFloat(tree.style.left) || 0) - anchor.x;
+    viewport.scrollTop = anchor.mapY * StarJump.viewScale + (parseFloat(tree.style.top) || 0) - anchor.y;
+    syncStarMapScrollbars();
+  }
+}
+
+function centerStarMapNode(id, onlyWhenHidden = false) {
+  if (StarJump.fitView) return;
+  const viewport = document.getElementById("starMapViewport"), node = starMapEls.get(String(id).toLowerCase());
+  const position = StarJump.layout?.positions.get(node?.dataset.mapId);
+  if (!viewport || !node || !position) return;
+  if (onlyWhenHidden) {
+    const a = node.getBoundingClientRect(), b = viewport.getBoundingClientRect();
+    if (a.left >= b.left && a.right <= b.right && a.top >= b.top && a.bottom <= b.bottom) return;
+  }
+  viewport.scrollLeft = position.x * StarJump.viewScale + (parseFloat(ui.starMapTree.style.left) || 0) - viewport.clientWidth / 2;
+  viewport.scrollTop = position.y * StarJump.viewScale + (parseFloat(ui.starMapTree.style.top) || 0) - viewport.clientHeight / 2;
+}
+
+function highlightStarMapLinks() {
+  const routes = StarJump.layout?.routes || [], active = new Set();
+  const itinerary = new Set((StarJump.itinerary?.steps || []).map(s => s.key));
+  const hover = StarJump.hoverPortal, map = StarJump.hoverMap || (StarJump.routeVisible ? StarJump.selected : null);
+  for (const route of routes) {
+    const match = hover ? ((route.a === hover.map && route.source.id === hover.id)
+      || (route.b === hover.map && route.destination.id === hover.id))
+      : StarJump.pinnedRoute ? route.key === StarJump.pinnedRoute : route.a === map || route.b === map;
+    if (match) active.add(route.key);
+  }
+  ui.starMapTree?.classList.toggle("has-portal-focus", !!hover || !!StarJump.pinnedRoute);
+  for (const line of ui.starMapEdges?.querySelectorAll(".starMapWire") || []) {
+    line.classList.toggle("highlighted", active.has(line.dataset.key));
+    line.classList.toggle("itinerary", itinerary.has(line.dataset.key));
+  }
+  for (const portal of ui.starMapNodes?.querySelectorAll(".starMapPortal,.starMapArrival") || []) {
+    portal.classList.toggle("highlighted", routes.some(r => (active.has(r.key) || itinerary.has(r.key))
+      && ((r.a === portal.dataset.mapId && r.source.id === portal.dataset.portalId)
+        || (r.b === portal.dataset.mapId && r.destination.id === portal.dataset.portalId))));
+  }
+}
+
+function refreshStarMapItinerary(cur, sel) {
+  const routes = StarJump.layout?.routes || [];
+  const sector = String(getFaction((account.user || getCurrentUserFull())?.faction)?.sector || '1');
+  const via = StarJump.routeVia;
+  const signature = JSON.stringify([cur, sel?.id, sector, via, routes.length, StarJump.routeVisible]);
+  if (StarJump.itineraryFor === signature) return;
+  StarJump.itineraryFor = signature;
+  StarJump.itinerary = sel && StarJump.routeVisible ? findStarMapItinerary(routes, cur, sel.id, { sector, via }) : null;
+  const itinerary = StarJump.itinerary, container = document.getElementById('starMapItinerary');
+  if (container) {
+    container.replaceChildren();
+    if (!sel || !StarJump.routeVisible) container.textContent = 'Choisissez une carte ou un portail.';
+    else if (!routes.length) container.textContent = 'Chargement des portails…';
+    else if (!itinerary) container.textContent = `Aucun trajet par les portails depuis ${cur.toUpperCase()}.`;
+    else if (!itinerary.steps.length) container.textContent = 'Vous êtes déjà sur cette carte.';
+    else {
+      const summary = document.createElement('div');
+      summary.textContent = `${itinerary.steps.length} passage${itinerary.steps.length > 1 ? 's' : ''} par portail`;
+      if (itinerary.totalCost) summary.textContent += ` · ${formatInteger(itinerary.totalCost)} crédits`;
+      const list = document.createElement('ol');
+      for (const step of itinerary.steps) {
+        const item = document.createElement('li');
+        item.dataset.from = step.from; item.dataset.to = step.to; item.dataset.portalId = step.portalId;
+        item.textContent = `${step.from.toUpperCase()} → ${step.to.toUpperCase()}`;
+        if (step.cost || (step.conditional && step.from.toLowerCase() === 'low')) {
+          const note = document.createElement('small');
+          note.textContent = step.cost ? `${formatInteger(step.cost)} crédits` : 'Retour selon votre firme';
+          item.appendChild(note);
+        }
+        list.appendChild(item);
+      }
+      container.append(summary, list);
+    }
+  }
+  const destination = String(itinerary?.maps.at(-1) || sel?.id || '').toLowerCase();
+  for (const [id, node] of starMapEls) {
+    const steps = (itinerary?.maps || []).flatMap((map, i) => map.toLowerCase() === id ? [i + 1] : []);
+    node.classList.toggle('on-route', !!itinerary?.steps.length && !!steps.length);
+    const badge = node.querySelector('.starMapRouteStep');
+    if (badge) { badge.hidden = !itinerary?.steps.length || !steps.length || id === destination; badge.textContent = steps.join(' / '); }
+  }
+}
+
+// Fond façon minimap par nœud : WORLD + portails (+ murs si la map en a).
+// Chargé en tâche de fond à la première ouverture, mis en cache session.
+const starMapArt = new Map();
+function paintStarMapNode(n) {
+  try {
+    const key = String(n.id).toLowerCase();
+    const el = starMapEls.get(key);
+    const cv = el?.querySelector("canvas.starMapArt");
+    if (!cv) return;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    const W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+    const art = starMapArt.get(key);
+    if (!art || art.failed) return;
+    const sx = W / Math.max(1, Number(art.w) || 1), sy = H / Math.max(1, Number(art.h) || 1);
+    ctx.lineWidth = 1.5;
+    for (const p of art.portals || []) {
+      if (p.hidden || p.arrival || starMapById.has(String(p.toMap).toLowerCase())) continue;
+      if (/^[123]-1$/.test(key) && GALAXY_GATE_DEFINITIONS[String(p.toMap).toLowerCase()]) continue;
+      let stroke = "rgba(124,240,255,0.9)";
+      try { stroke = getMinimapPortalColors(p).stroke || stroke; } catch {}
+      ctx.strokeStyle = stroke;
+      ctx.beginPath();
+      ctx.arc(Number(p.x) * sx, Number(p.y) * sy, 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } catch {}
+}
+
+function ensureStarMapArt() {
+  if (StarJump.artLoading) return StarJump.artLoading;
+  StarJump.artLoading = Promise.all(STARMAP_NODES.map(async n => {
+    const key = String(n.id).toLowerCase();
+    if (starMapArt.has(key)) {
+      // Déjà chargé : repeint (au cas où le canvas a été reconstruit).
+      try { paintStarMapNode(n); } catch {}
+      return;
+    }
+    starMapArt.set(key, null);
+      try {
+        const [wmod, smod] = await Promise.all([
+          import(`../../MAPS/${n.folder}/WORLD.js`),
+          n.id === "qz" ? Promise.resolve(null) : import(`../../MAPS/${n.folder}/SPAWNS.js`),
+        ]);
+        const W = wmod?.WORLD || { w: 11000, h: 7000 };
+        const portals = (smod?.getZonePortals?.(W) || [])
+          .filter((p) => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)))
+          .map((p) => ({ id: p.id, x: Number(p.x), y: Number(p.y), toMap: p.toMap, toPortal: p.toPortal,
+            hidden: p.hidden, factionReturn: p.factionReturn, shortcutCreditCost: p.shortcutCreditCost }));
+        if (n.id === "qz" && wmod.QZ_ENTRY) portals.push({ id: "qz_entry", x: wmod.QZ_ENTRY.x,
+          y: W.h * wmod.QZ_ENTRY.yRatio, hidden: true, arrival: true });
+        let walls = [];
+        try { walls = smod?.getZoneWalls?.(W) || []; } catch {}
+        starMapArt.set(key, { w: Number(W.w) || 11000, h: Number(W.h) || 7000, portals, walls });
+      } catch {
+        starMapArt.set(key, { failed: true });
+      }
+      try { paintStarMapNode(n); } catch {}
+  })).then(() => {
+    const maps = new Map([...starMapArt].filter(([, data]) => data && !data.failed)
+      .map(([id, data]) => [starMapById.get(id).id, data]));
+    StarJump.layout = createStarMapLayout(STARMAP_NODES, STARMAP_UNIT, STARMAP_NODE, STARMAP_ART, maps);
+    drawStarMapRoutes();
+    StarJump.connectionsFor = null;
+    refreshStarMap();
+  }).catch(error => console.warn("Carte stellaire :", error));
+  return StarJump.artLoading;
+}
+
+function drawStarMapRoutes() {
+  const svg = ui.starMapEdges, NS = "http://www.w3.org/2000/svg";
+  if (!svg) return;
+  const routes = StarJump.layout?.routes || [];
+  svg.innerHTML = `<defs><marker id="smArrow" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,3 L0,6 z" fill="#8ff1ff"></path></marker></defs>`;
+  for (const route of routes) {
+    if (!route.points.length) continue;
+    const line = document.createElementNS(NS, "polyline");
+    line.dataset.from = route.a; line.dataset.to = route.b; line.dataset.key = route.key;
+    line.dataset.sourcePortal = route.source.id; line.dataset.targetPortal = route.destination.id;
+    line.dataset.oneWay = String(route.oneWay);
+    line.setAttribute("class", `starMapWire${route.cost ? " shortcut" : ""}${route.conditional ? " conditional" : ""}`);
+    line.setAttribute("points", route.points.map(p => `${p.x},${p.y}`).join(" "));
+    line.setAttribute("fill", "none"); line.setAttribute("stroke-width", "1.5");
+    line.setAttribute("vector-effect", "non-scaling-stroke"); line.setAttribute("stroke-linejoin", "round");
+    if (route.oneWay) line.setAttribute("marker-end", "url(#smArrow)");
+    svg.appendChild(line);
+  }
+  for (const n of STARMAP_NODES) {
+    const node = starMapEls.get(n.id.toLowerCase()), art = starMapArt.get(n.id.toLowerCase());
+    if (!node || !art || art.failed) continue;
+    node.querySelectorAll(".starMapPortal,.starMapArrival").forEach(p => p.remove());
+    for (const p of art.portals) {
+      const related = routes.filter(r => (r.a === n.id && r.source.id === p.id) || (r.b === n.id && r.destination.id === p.id));
+      if (!related.length) continue;
+      const arrival = p.hidden || p.arrival;
+      const el = document.createElement(arrival ? "span" : "button");
+      el.className = arrival ? "starMapArrival" : `starMapPortal${p.shortcutCreditCost ? " shortcut" : ""}${n.id === "low" || String(p.toMap) === "low" || String(p.toMap) === "qz" ? " special" : ""}`;
+      el.dataset.mapId = n.id; el.dataset.portalId = p.id;
+      el.style.left = `${STARMAP_ART.x - 1 + p.x / art.w * STARMAP_ART.w}px`;
+      el.style.top = `${STARMAP_ART.y - 1 + p.y / art.h * STARMAP_ART.h}px`;
+      if (arrival) {
+        el.title = n.id === "qz" ? "Point d’arrivée en QZ" : "Point d’arrivée — sens unique";
+      } else {
+        el.type = "button";
+        let targetId = p.toMap;
+        if (p.factionReturn) {
+          const sector = getFaction((account.user || getCurrentUserFull())?.faction)?.sector || "1";
+          targetId = `${sector}-3`;
+        }
+        const target = starMapById.get(String(targetId).toLowerCase());
+        const pair = related.find(r => r.a === target?.id || r.b === target?.id) || related[0];
+        const label = `${n.id.toUpperCase()} ${pair.oneWay ? "→" : "↔"} ${String(targetId).toUpperCase()}`;
+        el.title = label + (p.factionReturn ? " — retour selon votre firme" : p.shortcutCreditCost ? ` — ${formatInteger(p.shortcutCreditCost)} crédits` : "");
+        el.setAttribute("aria-label", el.title);
+        const tip = document.createElement("span"); tip.className = "starMapPortalTip"; tip.textContent = el.title; el.appendChild(tip);
+        el.addEventListener("click", e => {
+          e.stopPropagation(); StarJump.hoverPortal = null;
+          starMapSelect(targetId, pair.key, { from: n.id, portalId: p.id });
+          StarJump.fitView = true; updateStarMapView();
+        });
+        el.addEventListener("mouseenter", () => { StarJump.hoverPortal = { map: n.id, id: p.id }; highlightStarMapLinks(); });
+        el.addEventListener("mouseleave", () => { StarJump.hoverPortal = null; highlightStarMapLinks(); });
+        el.addEventListener("focus", () => { StarJump.hoverPortal = { map: n.id, id: p.id }; highlightStarMapLinks(); });
+        el.addEventListener("blur", () => { StarJump.hoverPortal = null; highlightStarMapLinks(); });
+      }
+      node.appendChild(el);
+    }
+  }
+  highlightStarMapLinks();
+}
+
+function showStarMapInfo() {
+  const info = document.getElementById('starMapInfoWindow'), manager = window.GameWindowManager;
+  if (!info || !manager) return;
+  if (manager.isOpen('starMapInfoWindow')) { manager.focus('starMapInfoWindow'); return; }
+  const place = !info.classList.contains('floating');
+  manager.restore('starMapInfoWindow');
+  if (place) {
+    const bounds = ui.starMapWindow.getBoundingClientRect(), card = info.getBoundingClientRect();
+    info.style.left = `${Math.max(16, Math.min(window.innerWidth - card.width - 16, bounds.right - card.width - 18))}px`;
+    info.style.top = `${Math.max(16, Math.min(window.innerHeight - card.height - 16, bounds.top + 48))}px`;
+  }
+}
+
+function clearStarMapRoute() {
+  StarJump.routeVisible = false;
+  StarJump.pinnedRoute = null;
+  StarJump.routeVia = null;
+  refreshStarMap();
+}
+
+function starMapSelect(id, routeKey = null, via = null) {
+  const node = starMapById.get(String(id || "").toLowerCase());
+  if (!node) return;
+  StarJump.selected = node.id;
+  StarJump.routeVisible = true;
+  StarJump.pinnedRoute = routeKey;
+  StarJump.routeVia = via;
+  try {
+    if (ui.starMapStatus && !node.jumpable && node.reason) ui.starMapStatus.textContent = node.reason;
+    else if (ui.starMapStatus && !StarJump.channel) ui.starMapStatus.textContent = "";
+  } catch {}
+  refreshStarMap();
+  centerStarMapNode(node.id, true);
+  showStarMapInfo();
+}
+
+function starMapEdgeCount(id) {
+  const key = String(id || "").toLowerCase();
+  let n = 0;
+  for (const { a, b } of StarJump.layout?.routes || []) {
+    if (String(a).toLowerCase() === key || String(b).toLowerCase() === key) n++;
+  }
+  return n;
+}
+
+function renderStarMap() {
+  const tree = ui.starMapTree, nodesEl = ui.starMapNodes, svg = ui.starMapEdges;
+  if (!tree || !nodesEl || !svg) return;
+  const NS = "http://www.w3.org/2000/svg";
+  if (!StarJump.built) {
+    StarJump.built = true;
+    window.addEventListener('orbit:window-minimized', event => {
+      if (event.detail?.id === 'starMapInfoWindow' && window.GameWindowManager?.isOpen('starMapWindow')) clearStarMapRoute();
+    });
+    const layout = createStarMapLayout(STARMAP_NODES, STARMAP_UNIT, STARMAP_NODE, STARMAP_ART);
+    StarJump.layout = layout;
+    const pos = layout.positions, W = layout.width, H = layout.height;
+    tree.style.width = `${W}px`;
+    tree.style.height = `${H}px`;
+    svg.setAttribute("width", String(W));
+    svg.setAttribute("height", String(H));
+    svg.innerHTML = "";
+    nodesEl.innerHTML = "";
+    starMapEls.clear();
+    for (const n of STARMAP_NODES) {
+      const p = pos.get(n.id);
+      const d = document.createElement("div");
+      d.className = `starMapNode group-${n.group}`;
+      d.dataset.mapId = n.id;
+      d.style.left = `${p.x}px`;
+      d.style.top = `${p.y}px`;
+      const cv = document.createElement("canvas");
+      cv.className = "starMapArt";
+      cv.width = STARMAP_ART.w;
+      cv.height = STARMAP_ART.h;
+      d.appendChild(cv);
+      const lb = document.createElement("div");
+      lb.className = "starMapLabel";
+      lb.textContent = String(n.id).toUpperCase();
+      d.appendChild(lb);
+      const step = document.createElement('span'); step.className = 'starMapRouteStep'; step.hidden = true; d.appendChild(step);
+      d.title = `${String(n.id).toUpperCase()} · ${STARMAP_GROUP_LABELS[n.group] || n.group}`;
+      d.addEventListener("click", () => starMapSelect(n.id));
+      d.addEventListener("mouseenter", () => { StarJump.hoverMap = n.id; highlightStarMapLinks(); });
+      d.addEventListener("mouseleave", () => { StarJump.hoverMap = null; highlightStarMapLinks(); });
+      nodesEl.appendChild(d);
+      starMapEls.set(String(n.id).toLowerCase(), d);
+    }
+    try { ui.starMapJumpBtn?.addEventListener("click", () => startStarJump()); } catch {}
+    const viewport = document.getElementById("starMapViewport");
+    if (viewport) {
+      new ResizeObserver(updateStarMapView).observe(viewport);
+      viewport.addEventListener('scroll', syncStarMapScrollbars, { passive: true });
+      viewport.addEventListener('wheel', e => {
+        e.preventDefault(); e.stopPropagation();
+        if (!Number.isFinite(e.deltaY) || !e.deltaY) return;
+        const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? viewport.clientHeight : 1;
+        const delta = Math.max(-160, Math.min(160, e.deltaY * unit));
+        zoomStarMap(Math.exp(-delta * 0.002), e);
+      }, { passive: false });
+      for (const [id, axis] of [['starMapScrollX', 'scrollLeft'], ['starMapScrollY', 'scrollTop']]) {
+        document.getElementById(id)?.addEventListener('input', e => { viewport[axis] = Number(e.target.value); });
+      }
+      let pan = null, panDragged = false;
+      ui.starMapWindow.addEventListener('click', e => {
+        if (panDragged) { panDragged = false; return; }
+        if (e.target.closest('.starMapNode, .gameWinBar, button, input')) return;
+        clearStarMapRoute();
+      });
+      viewport.addEventListener("pointerdown", e => {
+        if (e.button !== 0 || e.target.closest(".starMapNode,button")) return;
+        // Un clic sur le rail ou le curseur natif appartient au navigateur,
+        // pas au glisser du schema (capture + preventDefault le bloquaient).
+        const bounds = viewport.getBoundingClientRect();
+        if (e.target === viewport || e.clientX < bounds.left + viewport.clientLeft
+          || e.clientX >= bounds.left + viewport.clientLeft + viewport.clientWidth
+          || e.clientY < bounds.top + viewport.clientTop
+          || e.clientY >= bounds.top + viewport.clientTop + viewport.clientHeight) return;
+        pan = { x: e.clientX, y: e.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
+        panDragged = false;
+        viewport.setPointerCapture(e.pointerId); viewport.classList.add("panning"); e.preventDefault();
+      });
+      viewport.addEventListener("pointermove", e => {
+        if (!pan) return;
+        if (Math.hypot(e.clientX - pan.x, e.clientY - pan.y) > 5) panDragged = true;
+        viewport.scrollLeft = pan.left - e.clientX + pan.x; viewport.scrollTop = pan.top - e.clientY + pan.y;
+      });
+      for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) viewport.addEventListener(name, () => { pan = null; viewport.classList.remove("panning"); });
+    }
+    ensureStarMapArt();
+  }
+  updateStarMapView();
+  if (!StarJump.selected) {
+    const cur = starMapById.get(starJumpCurrentMap());
+    if (cur) StarJump.selected = cur.id;
+    centerStarMapNode(StarJump.selected);
+  }
+  refreshStarMap();
+}
+
+function starMapJumpReuseLeftSec() {
+  const left = STARMAP_JUMP_REUSE_SEC - (Date.now() - StarJump.lastJumpAt) / 1000;
+  return left > 0 ? Math.ceil(left) : 0;
+}
+
+function refreshStarMap() {
+  const cur = starJumpCurrentMap();
+  const sel = StarJump.selected ? starMapById.get(String(StarJump.selected).toLowerCase()) : null;
+  const ch = StarJump.channel;
+  refreshStarMapItinerary(cur, sel);
+  highlightStarMapLinks();
+  const connectionList = document.getElementById("starMapConnections");
+  if (connectionList && sel && StarJump.connectionsFor !== sel.id) {
+    StarJump.connectionsFor = sel.id;
+    connectionList.replaceChildren();
+    for (const route of StarJump.layout?.routes || []) {
+      if (route.a !== sel.id && route.b !== sel.id) continue;
+      const other = route.a === sel.id ? route.b : route.a;
+      const button = document.createElement("button"); button.type = "button"; button.className = "starMapConnection";
+      const label = document.createElement("span"), note = document.createElement("small");
+      label.textContent = `${route.oneWay ? route.a === sel.id ? "→" : "←" : "↔"} ${other.toUpperCase()}`;
+      note.textContent = route.conditional ? "Retour selon firme" : route.cost ? `${formatInteger(route.cost)} cr.` : route.oneWay ? "Sens unique" : "Portail";
+      button.append(label, note); button.addEventListener("click", () => starMapSelect(other, route.key)); connectionList.appendChild(button);
+    }
+  }
+  for (const [key, el] of starMapEls) {
+    try {
+      el.classList.toggle("current", key === cur);
+      el.classList.toggle("selected", StarJump.routeVisible && !!sel && key === String(sel.id).toLowerCase());
+      const nd = starMapById.get(key);
+      el.classList.toggle("disabled", !!nd && nd.jumpable !== true);
+      let dot = el.querySelector(":scope > .dot");
+      if (key === cur && !dot) {
+        dot = document.createElement("span");
+        dot.className = "dot";
+        el.appendChild(dot);
+      } else if (key !== cur && dot) {
+        dot.remove();
+      }
+    } catch {}
+  }
+  try {
+    if (ui.starMapSelName) ui.starMapSelName.textContent = sel ? String(sel.id).toUpperCase() : "Aucune carte";
+    if (ui.starMapSelInfo && sel) {
+      const user = account.user || getCurrentUserFull();
+      let req = 1;
+      try { req = getMapRequiredLevel(sel.id, getFaction(user?.faction).sector); } catch {}
+      ui.starMapSelInfo.innerHTML =
+        `<div>Groupe : <b>${STARMAP_GROUP_LABELS[sel.group] || sel.group}</b></div>` +
+        `<div>Liaisons : <b>${starMapEdgeCount(sel.id)}</b></div>` +
+        `<div>Niveau requis : <b>${req}</b></div>` +
+        (sel.jumpable !== true && sel.reason ? `<div>${sel.reason}</div>` : "") +
+        (normalizeMapId(sel.id) === normalizeMapId(cur) ? `<div><b>Position actuelle</b></div>` : "");
+    } else if (ui.starMapSelInfo) {
+      ui.starMapSelInfo.innerHTML = "<div>Clique une carte de l'arbre.</div>";
+    }
+    const btn = ui.starMapJumpBtn;
+    if (btn) {
+      const reuseLeft = starMapJumpReuseLeftSec();
+      const canJump = !!sel && sel.jumpable === true
+        && normalizeMapId(sel.id) !== normalizeMapId(cur)
+        && !ch && reuseLeft <= 0 && started && !player.dead && rules?.mode !== "gate";
+      btn.disabled = !canJump;
+      btn.classList.toggle("channel", !!ch);
+      if (ch && sel && String(ch.target).toLowerCase() === String(sel.id).toLowerCase()) {
+        btn.textContent = ch.validating ? "Validation…" : `Jump (${Math.max(0, Math.ceil(ch.dur - ch.t))}s)`;
+      } else if (reuseLeft > 0) {
+        btn.textContent = `Jump (${reuseLeft}s)`;
+      } else {
+        btn.textContent = "Jump";
+      }
+    }
+    if (ui.starMapStatus && !ch) {
+      if (sel && sel.jumpable !== true && sel.reason) ui.starMapStatus.textContent = sel.reason;
+      else if (!ui.starMapStatus.textContent || /Saut (vers|annulé|terminé)|Réutilisation|Serveur|Niveau|Impossible|Déjà|Carte/.test(ui.starMapStatus.textContent)) {
+        ui.starMapStatus.textContent = "";
+      }
+    }
+  } catch {}
+}
+
+function cancelStarJump(reason) {
+  if (!StarJump.channel) return;
+  StarJump.channel = null;
+  try { SFX.stop("swReady"); SFX.stop("swJump"); } catch {}
+  try { if (reason) showToast(reason, 1.6); } catch {}
+  refreshStarMap();
+}
+
+function isPlayerMovementLocked() {
+  return !!(hangarSwapFx || StarJump.channel);
+}
+
+function startStarJump() {
+  try {
+    if (!started || player.dead) { showToast("Vaisseau indisponible.", 1.4); return false; }
+    if (StarJump.channel) { showToast("Saut en cours…", 1.2); return false; }
+    if (hangarSwapFx || hangarActivationPreparation) { showToast("Échange en cours…", 1.2); return false; }
+    if (rules?.mode === "gate") { showToast("Impossible en Galaxy Gate.", 1.6); return false; }
+    const sel = StarJump.selected ? starMapById.get(String(StarJump.selected).toLowerCase()) : null;
+    if (!sel) { showToast("Choisis une carte.", 1.4); return false; }
+    if (sel.jumpable !== true) { showToast(sel.reason || "Destination indisponible.", 1.6); return false; }
+    const cur = starJumpCurrentMap();
+    if (normalizeMapId(sel.id) === normalizeMapId(cur)) { showToast("Déjà sur place.", 1.4); return false; }
+    const reuseLeft = starMapJumpReuseLeftSec();
+    if (reuseLeft > 0) { showToast(`Jump en recharge (${reuseLeft}s).`, 1.4); return false; }
+    const user = account.user || getCurrentUserFull();
+    const access = checkMapAccess(sel.id, getLevelInfo(Number(user?.stats?.exp || 0)).level, getFaction(user?.faction).sector);
+    if (!access.ok) {
+      SFX.play("swDeny");
+      showToast(`Accès refusé — niveau ${access.required} requis pour ${String(sel.id).toUpperCase()} (niveau ${access.level})`, 2.4);
+      return false;
+    }
+    // Précharge la map cible pendant la charge (comme les portails).
+    try { Promise.resolve(window.__PRELOAD_MAP__?.(sel.id)).catch(() => {}); } catch {}
+    // Précharge les frames de l'anim de jump (comme le hangar swap).
+    try {
+      for (let i = 0; i < Math.max(1, Number(HANGAR_SWAP_FX.frames || 1)); i++) loadImage(getPortalFrameSrc(HANGAR_SWAP_FX, i));
+    } catch {}
+    try { SFX.play("swReady"); } catch {}
+    StarJump.channel = { target: sel.id, t: 0, dur: STARMAP_JUMP_CHANNEL_SEC, startMap: cur, fxOn: false, validating: false };
+    cancelCollectableTarget();
+    moveTarget.active = false;
+    player.vx = 0;
+    player.vy = 0;
+    updateStarJumpCountdown(StarJump.channel);
+    if (ui.starMapStatus) ui.starMapStatus.textContent = `Saut vers ${String(sel.id).toUpperCase()}…`;
+    refreshStarMap();
+    const manager = window.GameWindowManager;
+    if (manager?.isOpen('starMapWindow')) manager.minimize('starMapWindow');
+    if (manager?.isOpen('starMapInfoWindow')) {
+      StarJump.restoreInfoOnOpen = true;
+      manager.minimize('starMapInfoWindow');
+    }
+    return true;
+  } catch { return false; }
+}
+
+async function executeStarJump(ch) {
+  const target = ch.target;
+  ch.validating = true;
+  refreshStarMap();
+  const fail = (msg) => {
+    StarJump.channel = null;
+    try { SFX.stop("swReady"); SFX.stop("swJump"); } catch {}
+    try { showToast(msg, 2); } catch {}
+    try { if (ui.starMapStatus) ui.starMapStatus.textContent = msg; } catch {}
+    refreshStarMap();
+  };
+  try {
+    let ax = NaN, ay = NaN;
+    const multi = (typeof netplayBoxesActive === "function" && netplayBoxesActive());
+    if (multi) {
+      // Arrivée validée par le serveur (anti-triche) avant de changer de map.
+      let ans = null;
+      try { ans = await requestStarJumpArrival(target); } catch { ans = null; }
+      if (!ans || ans.ok !== true || !Number.isFinite(Number(ans.x)) || !Number.isFinite(Number(ans.y))) {
+        const reason = ans?.reason === "cooldown" ? "Réutilisation trop rapide — réessaie dans quelques secondes."
+          : ans?.reason === "unreachable" ? "Destination injoignable."
+          : "Serveur injoignable — saut annulé.";
+        return fail(reason);
+      }
+      ax = Number(ans.x); ay = Number(ans.y);
+    } else {
+      // Solo : tirage local dans la taille réelle de la map cible.
+      let w = 11000, h = 7000;
+      try {
+        const mod = await import(`../../MAPS/${target}/WORLD.js`);
+        if (Number(mod?.WORLD?.w) > 0) w = Number(mod.WORLD.w);
+        if (Number(mod?.WORLD?.h) > 0) h = Number(mod.WORLD.h);
+      } catch {}
+      ax = Math.round(300 + Math.random() * Math.max(1, w - 600));
+      ay = Math.round(300 + Math.random() * Math.max(1, h - 600));
+    }
+    // Annulé pendant l'attente (mort, changement de map) : on ne saute plus.
+    if (StarJump.channel !== ch || player.dead || starJumpCurrentMap() !== ch.startMap) {
+      StarJump.channel = null;
+      refreshStarMap();
+      return;
+    }
+    setRespawnOverride({ map: target, x: Math.round(ax), y: Math.round(ay) });
+    player.invincibleT = Math.max(Number(player.invincibleT) || 0, STARMAP_JUMP_FX_SEC + 1);
+    player.iFrames = Math.max(Number(player.iFrames) || 0, STARMAP_JUMP_FX_SEC + 1);
+    StarJump.lastJumpAt = Date.now();
+    // Canal libéré AVANT le switch : le changement de map ne doit pas
+    // déclencher l'annulation ("Carte changée") du tick suivant.
+    StarJump.channel = null;
+    try {
+      await goToMapFast(target);
+    } catch (error) {
+      console.warn("Star jump impossible :", error);
+      window.__GO_TO_MAP__?.(target);
+      return;
+    }
+    try { SFX.stop("swJump"); SFX.play("swDone"); } catch {}
+    try { showNotification(`Arrivée : ${String(target).toUpperCase()}`, 2.5, "info"); } catch {}
+    try { if (ui.starMapStatus) ui.starMapStatus.textContent = ""; } catch {}
+    refreshStarMap();
+  } catch {
+    fail("Saut impossible.");
+  }
+}
+
+function tickStarJump(dt) {
+  const ch = StarJump.channel;
+  if (ch) {
+    ch.t += Math.max(0, Number(dt) || 0);
+    if (player.dead) { cancelStarJump("Saut annulé — vaisseau détruit."); return; }
+    if (starJumpCurrentMap() !== ch.startMap) { cancelStarJump("Carte changée — saut annulé."); return; }
+    // Dernières secondes : animation du portail, toujours annulable par les dégâts.
+    if (!ch.fxOn && ch.t >= ch.dur - STARMAP_JUMP_FX_SEC) {
+      ch.fxOn = true;
+      try { moveTarget.active = false; player.vx = 0; player.vy = 0; } catch {}
+      try { SFX.play("swJump"); } catch {}
+      addGameLog(`Jump vers ${String(ch.target).toUpperCase()} : portail activé.`, "info");
+    }
+    updateStarJumpCountdown(ch);
+    if (ch.t >= ch.dur && !ch.validating) executeStarJump(ch);
+  }
+  try {
+    const open = ui.starMapWindow && ui.starMapWindow.style.display !== "none"
+      && !ui.starMapWindow.classList.contains("gameWinMinimized")
+      && !ui.starMapWindow.classList.contains("gameWinClosing");
+    if (!open && window.GameWindowManager?.isOpen('starMapInfoWindow')) {
+      StarJump.restoreInfoOnOpen = true;
+      window.GameWindowManager.minimize('starMapInfoWindow');
+    }
+    if (open) {
+      // Construction une fois, rafraîchi 2x/s (compte à rebours, sélection).
+      if (!StarJump.built) renderStarMap();
+      if (!StarJump.selected) {
+        const cur = starMapById.get(starJumpCurrentMap());
+        if (cur) StarJump.selected = cur.id;
+      }
+      const now = performance.now();
+      if (now - StarJump.refreshAt > 500) { StarJump.refreshAt = now; refreshStarMap(); }
+      if (StarJump.restoreInfoOnOpen) {
+        StarJump.restoreInfoOnOpen = false;
+        showStarMapInfo();
+      }
+    }
+  } catch (e) { try { window.__STARJUMP_ERR__ = String(e?.stack || e); } catch {} }
+}
+
+function updateStarJumpCountdown(ch) {
+  const seconds = Math.max(0, Math.ceil(ch.dur - ch.t));
+  if (ch.loggedSeconds === seconds) return;
+  ch.loggedSeconds = seconds;
+  if (seconds > 0) showNotification(String(seconds), 1.1, "info", { log: false, stagger: false });
+  const destination = String(ch.target).toUpperCase();
+  addGameLog(seconds > 0
+    ? `Jump vers ${destination} dans ${seconds} seconde${seconds > 1 ? 's' : ''}.`
+    : `Jump vers ${destination} : départ.`, "info");
+}
+
+function drawStarJumpHud(px, py) {
+  const ch = StarJump.channel;
+  if (!ch || player.dead) return;
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.translate(px, py);
+  drawStarJumpFx();
+  ctx.restore();
+}
+
+function drawStarJumpFx() {
+  const ch = StarJump.channel;
+  if (!ch || !ch.fxOn) return;
+  const t = Math.min(STARMAP_JUMP_FX_SEC, Math.max(0, ch.t - (ch.dur - STARMAP_JUMP_FX_SEC)));
+  try { drawHangarSwapImage(t, STARMAP_JUMP_FX_SEC); } catch {}
+}
+
+// ============================================================
 // Échange de hangar animé (swipe) : 1,5 s sur l'ancienne coque, bascule,
 // puis 1,5 s sur la nouvelle. La position de l'ancien vaisseau est
 // sauvegardée dans son hangar avant l'animation.
@@ -37908,10 +38642,39 @@ function applyHangarDesignLive() {
 const HANGAR_SWAP_HALF_DURATION = 1.5;
 const HANGAR_SWAP_DURATION = HANGAR_SWAP_HALF_DURATION * 2;
 let hangarSwapFx = null; // { t, dur, switchAt, switched, hangarId }
+let hangarActivationPreparation = null;
+
+function hangarLocationTransferPending() {
+  return hangarSwapFx?.mode === 'travel' && hangarSwapFx.transitioning === true;
+}
+
+function onPlayerPreparationDamage(hp, shield) {
+  if (!(Number(hp) > 0 || Number(shield) > 0)) return;
+  if (StarJump.channel && !StarJump.channel.validating) cancelStarJump("Jump annulé.");
+  cancelHangarPreparation();
+}
+
+function cancelHangarPreparation() {
+  const pending = hangarActivationPreparation, fx = hangarSwapFx;
+  if (!pending && (!fx || fx.switched)) return false;
+  const message = pending || fx?.mode === "travel" ? "Activation annulée." : "Swipe annulé.";
+  hangarActivationPreparation = null;
+  pending?.cancel();
+  if (fx && !fx.switched) {
+    clearTimeout(fx.soundTimer);
+    hangarSwapFx = null;
+    fx.resolve?.({ ok: false, error: message });
+  }
+  try { SFX.stop("swReady"); SFX.stop("swJump"); } catch {}
+  showToast(message, 2);
+  return true;
+}
 
 function requestHangarSwap(hangarId) {
-  if (hangarSwapFx) { showToast("Échange en cours…", 1.2); return false; }
+  if (hangarSwapFx || hangarActivationPreparation || StarJump.channel) { showToast("Échange ou saut en cours…", 1.2); return false; }
   if (!started || player.dead) return false;
+  const access = getHangarAccess();
+  if (!access.canSwap) { showToast(access.swapError, 1.6); return false; }
   const u = account.user || getCurrentUserFull();
   const cur = getActiveHangarFromUser(u);
   if (!cur || String(cur.id) === String(hangarId)) return false;
@@ -37928,7 +38691,6 @@ function requestHangarSwap(hangarId) {
     const frames = Math.max(1, Number(fx.frames || 1));
     for (let i = 0; i < frames; i++) loadImage(getPortalFrameSrc(fx, i));
   } catch {}
-  try { ensureInstaShieldLoaded(); } catch {}
   try { moveTarget.active = false; player.vx = 0; player.vy = 0; } catch {}
   hangarSwapFx = {
     t: 0,
@@ -37937,15 +38699,14 @@ function requestHangarSwap(hangarId) {
     switched: false,
     hangarId: target.id,
   };
-  try { player.invincibleT = Math.max(Number(player.invincibleT) || 0, HANGAR_SWAP_DURATION); } catch {}
-  try { player.iFrames = Math.max(Number(player.iFrames) || 0, HANGAR_SWAP_DURATION + 0.3); } catch {}
   try { SFX.play("swReady"); } catch {}
-  try { setTimeout(() => { try { SFX.play("swJump"); } catch {} }, 500); } catch {}
+  const fx = hangarSwapFx;
+  fx.soundTimer = setTimeout(() => { if (hangarSwapFx === fx) { try { SFX.play("swJump"); } catch {} } }, 500);
   return true;
 }
 
 async function activateHangarAtSavedLocation(hangarId) {
-  if (hangarSwapFx) return { ok: false, error: "Échange déjà en cours." };
+  if (hangarSwapFx || hangarActivationPreparation || StarJump.channel) return { ok: false, error: "Échange ou saut déjà en cours." };
   if (!started || player.dead) return { ok: false, error: "Le vaisseau n'est pas disponible." };
   const access = getHangarAccess();
   if (!access.canActivate) return { ok: false, error: access.activationError };
@@ -37956,7 +38717,7 @@ async function activateHangarAtSavedLocation(hangarId) {
   if (!current || !target) return { ok: false, error: "Hangar introuvable." };
   if (String(current.id) === String(target.id)) return { ok: false, error: "Ce hangar est déjà actif." };
 
-  let destination = getHangarStateById(target.id);
+  let destination = structuredClone(getHangarStateById(target.id));
   let destinationMap = String(destination?.map || "").toLowerCase();
   const savedX = Number(destination?.pos?.x);
   const savedY = Number(destination?.pos?.y);
@@ -37982,24 +38743,36 @@ async function activateHangarAtSavedLocation(hangarId) {
   }
 
   // Valide et précharge la destination avant de modifier le hangar actif.
+  const sourceMap = String(window.__CURRENT_MAP_ID__ || "1-1").toLowerCase();
+  const preparation = { cancelled: false, cancel: null };
+  const interrupted = new Promise(resolve => { preparation.cancel = () => { preparation.cancelled = true; resolve(false); }; });
+  hangarActivationPreparation = preparation;
   if (destinationMap !== String(window.__CURRENT_MAP_ID__ || "").toLowerCase()) {
-    try { await window.__PRELOAD_MAP__?.(destinationMap); }
-    catch { return { ok: false, error: `La carte ${destinationMap.toUpperCase()} est indisponible.` }; }
+    try {
+      const ready = await Promise.race([Promise.resolve(window.__PRELOAD_MAP__?.(destinationMap)).then(() => true), interrupted]);
+      if (!ready) return { ok: false, error: "Activation annulée." };
+    } catch {
+      if (hangarActivationPreparation === preparation) hangarActivationPreparation = null;
+      return { ok: false, error: `La carte ${destinationMap.toUpperCase()} est indisponible.` };
+    }
   }
+  if (preparation.cancelled) return { ok: false, error: "Activation annulée." };
+  if (player.dead || sourceMap !== String(window.__CURRENT_MAP_ID__ || "").toLowerCase()
+    || String(getActiveHangarFromUser(account.user)?.id) !== String(current.id)) {
+    cancelHangarPreparation();
+    return { ok: false, error: "Activation annulée." };
+  }
+  hangarActivationPreparation = null;
 
   const oldMap = String(window.__CURRENT_MAP_ID__ || "1-1");
   saveHangarStateById(current.id, player.x, player.y, oldMap, savedHpPct(), savedShPct());
   try {
     const fx = HANGAR_SWAP_FX;
     for (let i = 0; i < Math.max(1, Number(fx.frames || 1)); i++) loadImage(getPortalFrameSrc(fx, i));
-    ensureInstaShieldLoaded();
   } catch {}
   moveTarget.active = false;
   player.vx = 0;
   player.vy = 0;
-  try { player.invincibleT = Math.max(Number(player.invincibleT) || 0, HANGAR_SWAP_DURATION); } catch {}
-  try { player.iFrames = Math.max(Number(player.iFrames) || 0, HANGAR_SWAP_DURATION + 0.3); } catch {}
-  try { SFX.play("swReady"); setTimeout(() => { try { SFX.play("swJump"); } catch {} }, 500); } catch {}
 
   return await new Promise((resolve) => {
     hangarSwapFx = {
@@ -38015,36 +38788,60 @@ async function activateHangarAtSavedLocation(hangarId) {
       oldMap: oldMap.toLowerCase(),
       resolve,
     };
+    const fx = hangarSwapFx;
+    try { SFX.play("swReady"); } catch {}
+    fx.soundTimer = setTimeout(() => { if (hangarSwapFx === fx) { try { SFX.play("swJump"); } catch {} } }, 500);
   });
 }
 
 async function completeHangarTravelMidpoint(fx) {
-  let result = null;
-  try { result = setActiveHangar(fx.hangarId); }
-  catch (error) { result = { ok: false, error: String(error?.message || error) }; }
-  if (!result?.ok) throw new Error(result?.error || "Activation impossible.");
-  if (fx.destinationMap !== fx.oldMap) await window.__SWITCH_MAP__(fx.destinationMap, null);
+  const multiplayer = netActive();
+  try {
+    if (multiplayer) {
+      // Persiste le depart pendant que le hangar cible est encore inactif.
+      // Le serveur choisit l'arrivee depuis ce hangar sauvegarde, jamais depuis
+      // des coordonnees libres du client ni une exemption de l'anti-cheat.
+      let saved = await flushNetUser();
+      for (let retry = 0; saved?.stale && retry < 2; retry++) saved = await flushNetUser();
+      if (!saved?.ok) throw new Error("Sauvegarde impossible — activation annulée.");
+      const arrival = await requestHangarArrival(fx.hangarId);
+      if (!arrival?.ok || !Number.isFinite(Number(arrival.x)) || !Number.isFinite(Number(arrival.y))) {
+        throw new Error("Arrivée non validée par le serveur — activation annulée.");
+      }
+      fx.destinationMap = String(arrival.map).toLowerCase();
+      fx.destination.pos = { x: Number(arrival.x), y: Number(arrival.y) };
+    }
+    let result = null;
+    try { result = setActiveHangar(fx.hangarId); }
+    catch (error) { result = { ok: false, error: String(error?.message || error) }; }
+    if (!result?.ok) throw new Error(result?.error || "Activation impossible.");
+    if (fx.destinationMap !== fx.oldMap) await window.__SWITCH_MAP__(fx.destinationMap, null);
 
-  const px = Number(fx.destination?.pos?.x);
-  const py = Number(fx.destination?.pos?.y);
-  if (Number.isFinite(px) && Number.isFinite(py)) {
-    player.x = clamp(px, player.r, WORLD.w - player.r);
-    player.y = clamp(py, player.r, WORLD.h - player.r);
+    const px = Number(fx.destination?.pos?.x);
+    const py = Number(fx.destination?.pos?.y);
+    if (Number.isFinite(px) && Number.isFinite(py)) {
+      player.x = clamp(px, player.r, WORLD.w - player.r);
+      player.y = clamp(py, player.r, WORLD.h - player.r);
+    }
+    moveTarget.active = false;
+    player.vx = 0;
+    player.vy = 0;
+    camera.x = player.x;
+    camera.y = player.y;
+    if (Number.isFinite(Number(fx.destination?.hpPct))) player.hp = Math.max(1, Math.floor(player.hpMax * clamp(Number(fx.destination.hpPct), 0, 1)));
+    if (Number.isFinite(Number(fx.destination?.shPct))) player.sh = Math.max(0, Math.floor(player.shMax * clamp(Number(fx.destination.shPct), 0, 1)));
+    saveHangarStateById(fx.hangarId, player.x, player.y, fx.destinationMap, savedHpPct(), savedShPct());
+    markHangarChanged();
+    drawUI();
+    if (multiplayer) await flushNetUser();
+  } finally {
+    if (multiplayer) finishHangarArrival();
   }
-  moveTarget.active = false;
-  player.vx = 0;
-  player.vy = 0;
-  camera.x = player.x;
-  camera.y = player.y;
-  if (Number.isFinite(Number(fx.destination?.hpPct))) player.hp = Math.max(1, Math.floor(player.hpMax * clamp(Number(fx.destination.hpPct), 0, 1)));
-  if (Number.isFinite(Number(fx.destination?.shPct))) player.sh = Math.max(0, Math.floor(player.shMax * clamp(Number(fx.destination.shPct), 0, 1)));
-  saveHangarStateById(fx.hangarId, player.x, player.y, fx.destinationMap, savedHpPct(), savedShPct());
-  markHangarChanged();
-  drawUI();
 }
 
 function tickHangarSwap(dt) {
   if (!hangarSwapFx) return;
+  if (player.dead && !hangarSwapFx.switched) { cancelHangarPreparation(); return; }
   if (hangarSwapFx.transitioning) {
     player.vx = 0;
     player.vy = 0;
@@ -38112,21 +38909,6 @@ function drawHangarSwapImage(elapsed, duration = HANGAR_SWAP_DURATION) {
   ctx.save();
   ctx.globalAlpha = 0.9 * fade;
   drawCenteredImage(ctx, img, w, h);
-  ctx.restore();
-}
-
-function drawHangarSwapShield(elapsed) {
-  if (!Number.isFinite(Number(elapsed)) || elapsed < 0) return;
-  if (!instaShieldReady || !instaShieldImgs?.length) return;
-  const progress = clamp(Number(elapsed) / HANGAR_SWAP_DURATION, 0, 0.999);
-  const idx = Math.min(instaShieldImgs.length - 1, Math.floor(progress * instaShieldImgs.length));
-  const img = instaShieldImgs[idx];
-  if (!isImgReady(img)) return;
-  ctx.save();
-  ctx.imageSmoothingEnabled = false;
-  ctx.imageSmoothingQuality = "low";
-  ctx.globalAlpha = 1;
-  ctx.drawImage(img, -INSTA_SHIELD_PACK.w / 2, -INSTA_SHIELD_PACK.h / 2, INSTA_SHIELD_PACK.w, INSTA_SHIELD_PACK.h);
   ctx.restore();
 }
 
@@ -38246,6 +39028,13 @@ window.addEventListener("storage", (e) => {
 // la page (fini les refresh forcés). L'état mémoire est repoussé juste
 // après pour converger (les crédits d'un give apparaissent en direct).
 // Volontairement silencieux : aucun message affiché aux utilisateurs.
+// Préserver les stocks et crédits encore dans la simulation avant qu'un
+// snapshot ou un canon HTTP ne lise le compte (la sauvegarde de jeu est différée).
+const saveLiveProgressBeforeNetwork = () => {
+  if (started && account.user && account.dirty) saveProgressNow();
+};
+window.addEventListener("orbit:net-before-save", saveLiveProgressBeforeNetwork);
+window.addEventListener("orbit:net-before-adopt", saveLiveProgressBeforeNetwork);
 window.addEventListener("orbit:net-adopted", (e) => {
   try {
     if (!account.user) loadAccountUser();
@@ -38270,8 +39059,19 @@ window.addEventListener("orbit:user-updated", event => {
   // Évite de relire le compte et de recalculer tout l'équipement après chaque
   // destruction ou collecte.
   if (event?.detail?.source === "progress") return;
+  if (event?.detail?.source === "pilot-disks") {
+    const fresh = netList()[0] || getCurrentUserFull();
+    if (fresh) {
+      account.user = preserveLivePetVitals(account.user, fresh);
+      if (started) player.credits = Math.max(0, Number(fresh.credits) || 0);
+    }
+    return;
+  }
   const refreshed = getCurrentUserFull();
   if (!refreshed) return;
+  // Tous les mutateurs du compte (vente, boutique, arbre, hangar) publient
+  // cet événement. Le prochain save du moteur doit utiliser leur solde.
+  if (started) player.credits = Math.max(0, Number(refreshed.credits) || 0);
   const previous = account.user;
   const previousHangar = getActiveHangarFromUser(previous);
   const nextHangar = getActiveHangarFromUser(refreshed);

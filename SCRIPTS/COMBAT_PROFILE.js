@@ -6,7 +6,7 @@ import { activeBoosterMults, GROUP_BOOSTER_BONUS } from "../SRC/DATA/BOOSTERS.js
 import { pilotSkillMults } from "../SRC/DATA/PILOT_SKILLS.js";
 import { UPGRADE_ORE_BONUS } from "../SRC/DATA/RESOURCES.js";
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
-import { getPetLevel, getPetMaxHp, getPetHullBonusHp, getPetShieldBonus, getPetStage } from "../PET/PET_TYPES.js";
+import { getPetVitalLimits } from "../PET/PET_VITALS.js";
 import { ROCKET_TYPES } from "../COMBAT/ROCKET_TYPES.js";
 import { abilityShipKeyFor, getAbilitiesForShip } from "../SHIP/SHIP_ABILITIES.js";
 import { acBucket } from "./ANTICHEAT.js";
@@ -49,14 +49,7 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
   const cfg = String(Number(hangar.activeConfig) === 2 ? 2 : 1);
   const pet = user.pet;
   const petFit = pet?.fitsByHangar?.[hangar.id]?.[cfg] || pet?.fits?.[cfg] || pet?.fit || {};
-  const petLevel = getPetLevel(pet?.exp);
-  const heat = baseId === "goliath_plus" ? 1 + Math.min(50, Math.max(1, getPetStage(petLevel)) * 10) / 100 : 1;
-  const petProtocol = (key) => (petFit.protocols || []).reduce((sum, id) => {
-    const p = findCatalogItem(id)?.petProtocol;
-    return sum + (p?.key === key ? Number(p.pct) || 0 : 0);
-  }, 0);
-  const petShield = (petFit.generators || []).reduce((sum, id) => sum + (Number(findCatalogItem(id)?.module?.bonusShield) || 0), 0)
-    * pct(getPetShieldBonus(petLevel)) * pct(petProtocol("shield")) * heat;
+  const petLimits = getPetVitalLimits(pet, user, hangar);
   const petDamage = (petFit.lasers || []).reduce((sum, id) => sum + (Number(findCatalogItem(id)?.module?.damage) || 0), 0);
   const fit = hangar.fits?.[cfg] || hangar.fit || {};
   return {
@@ -76,8 +69,8 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
     rocketIds,
     cloakSkill: getAbilitiesForShip(abilityShipKeyFor(ship.id)).find(a => /cloak/.test(a.id)) || null,
     petOwned: !!pet?.owned,
-    petHpMax: pet?.owned ? clamp((getPetMaxHp(petLevel) + getPetHullBonusHp(pet)) * pct(petProtocol("hp")) * heat, 1, 5e7) : 0,
-    petShMax: pet?.owned ? clamp(petShield, 0, 5e7) : 0,
+    petHpMax: pet?.owned ? clamp(petLimits.hpMax, 1, 5e7) : 0,
+    petShMax: pet?.owned ? clamp(petLimits.shMax, 0, 5e7) : 0,
   };
 }
 

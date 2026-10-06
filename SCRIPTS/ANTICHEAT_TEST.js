@@ -157,6 +157,34 @@ test("les malus de formation et les boosters de groupe restent appliqués", () =
   assert.ok(boosted.shMax > diamond.shMax);
 });
 
+test('activation serveur : seuls les hangars possedes et leur position sauvegardee donnent droit au transfert', () => {
+  const source = readFileSync(new URL('./MULTI_SERVER.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const from = source.indexOf('function handleHangarArrivalRequest('), to = source.indexOf('\n}', from);
+  assert.ok(from >= 0 && to > from);
+  for (const map of ['1-1', '1-2']) {
+    const replies = [], user = { faction: 'mmo', hangars: [
+      { id: 'current', active: true }, { id: 'target', lastMap: map, lastPos: { x: 4200, y: 3500 } },
+    ] };
+    const state = { x: 1500, y: 1500, hp: 100, safe: true }, ws = { readyState: 1, send: text => replies.push(JSON.parse(text)) };
+    const c = vm.createContext({ Date: { now: () => 10000 },
+      npcSims: new Map([['1-1', { inSafe: () => true }]]), getAccountGameplayData: () => user,
+      serverMaps: new Map([['1-1', { world: { w: 10000, h: 10000 } }], ['1-2', { world: { w: 10000, h: 10000 } }]]),
+      baseArrival: () => ({ x: 1500, y: 1500 }), getFactionHomeMap: () => '1-1',
+      removeFromAllRooms: () => {}, roomFor: () => new Map(), ensureNpcSim: () => {}, sendBoxSync: () => {},
+    });
+    vm.runInContext(source.slice(from, to + 2), c);
+    const activate = key => c.handleHangarArrivalRequest(ws, { id: 'player', state }, 'account', '1-1', key, () => {});
+    activate('unknown'); assert.equal(replies.at(-1).ok, false); assert.equal(state.x, 1500);
+    activate('current'); assert.equal(replies.at(-1).ok, false); assert.equal(state.x, 1500);
+    state.safe = false; activate('target'); assert.equal(replies.at(-1).ok, false);
+    state.safe = true; state.npcAt = 9900; activate('target'); assert.equal(replies.at(-1).ok, false);
+    state.npcAt = 0; activate('target'); assert.equal(replies.at(-1).ok, true);
+    assert.equal(state.x, 4200); assert.equal(state.y, 3500); assert.equal(state.serverMap, map);
+    assert.equal(state.teleportSeq, 1);
+    activate('target'); assert.equal(replies.at(-1).reason, 'cooldown');
+  }
+});
+
 test("le changement de configuration serveur conserve les PV et les boucliers déjà dépensés", () => {
   const source = readFileSync(new URL("./MULTI_SERVER.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const start = source.indexOf("function refreshCombatProfile(");

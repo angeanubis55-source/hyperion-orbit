@@ -44,6 +44,7 @@ function els() {
     root: document.getElementById("pilotWindow"),
     points: document.getElementById("pilotPoints"),
     disks: document.getElementById("pilotDisks"),
+    credits: document.getElementById("pilotCredits"),
     buyBtn: document.getElementById("pilotBuyDisks"),
     exchangeBtn: document.getElementById("pilotExchange"),
     resetBtn: document.getElementById("pilotReset"),
@@ -87,19 +88,24 @@ function reqText(skill, state) {
   return parts;
 }
 
-export function renderPilotSkillsWindow() {
-  const { root, points, disks, buyBtn, exchangeBtn, resetBtn, panels, detail } = els();
+function refreshPilotCredits() {
+  const { credits, buyBtn, resetBtn } = els();
+  const user = ctx?.getUser?.();
+  const balance = Math.max(0, Math.floor(Number(ctx?.getCredits?.() ?? user?.credits) || 0));
+  const text = formatInteger(balance);
+  if (credits && credits.textContent !== text) credits.textContent = text;
+  if (buyBtn) buyBtn.disabled = !user || balance < LOGDISK_PRICE * LOGDISK_PACK;
+  if (resetBtn) resetBtn.disabled = !user || balance < pilotResetCost(user.pilotSkills?.resets);
+}
+
+function refreshPilotSummary() {
+  const { root, points, disks, buyBtn, exchangeBtn, resetBtn } = els();
   const availEl = document.getElementById("pilotAvail");
   const leftEl = document.getElementById("pilotLeft");
-  if (!root || !panels) return;
-  let user = null;
-  try {
-    user = ctx?.getUser?.();
-  } catch {
-    user = null;
-  }
+  if (!root) return;
   const state = livePilot();
   if (!state) return;
+  refreshPilotCredits();
   if (!getPilotSkill(selectedId)) selectedId = "shiphull01";
 
   const spent = pilotPointsSpent(state);
@@ -128,8 +134,20 @@ export function renderPilotSkillsWindow() {
       : `${formatInteger(diskCount)} / ${formatInteger(nextNeed)} Disques`;
   }
   if (buyBtn) buyBtn.title = `Acheter ${LOGDISK_PACK} disques de log (${formatInteger(LOGDISK_PRICE * LOGDISK_PACK)} crédits)`;
-  if (exchangeBtn) exchangeBtn.title = nextNeed == null ? "Maximum atteint" : `Échanger ${formatInteger(nextNeed)} disques contre 1 point`;
+  if (exchangeBtn) {
+    exchangeBtn.title = nextNeed == null ? "Maximum atteint" : `Échanger ${formatInteger(nextNeed)} disques contre 1 point`;
+    exchangeBtn.disabled = nextNeed == null || diskCount < nextNeed;
+  }
   if (resetBtn) resetBtn.title = `Réinitialiser l'arbre (${formatInteger(resetCost)} crédits, ${spent} PP rendus)`;
+
+  return state;
+}
+
+export function renderPilotSkillsWindow() {
+  const { root, panels, detail } = els();
+  if (!root || !panels) return;
+  const state = refreshPilotSummary();
+  if (!state) return;
 
   const nodeHtml = (s) => {
     const lvl = Math.max(0, Math.floor(Number(state.spent?.[s.id]) || 0));
@@ -191,6 +209,7 @@ function onPilotClick(event) {
   }
   const invest = el.closest("[data-pilot-invest]");
   if (invest && !invest.disabled) {
+    ctx?.beforeAction?.();
     const res = investPilotSkill(invest.dataset.pilotInvest);
     if (!res?.ok) {
       ctx?.toast?.(res?.error || "Impossible.", 2.2);
@@ -202,17 +221,19 @@ function onPilotClick(event) {
     return;
   }
   if (el.closest("#pilotBuyDisks")) {
+    ctx?.beforeAction?.();
     const res = buyLogDiskPack();
     if (!res?.ok) {
       ctx?.toast?.(res?.error || "Impossible.", 2.2);
       return;
     }
     ctx?.afterAction?.("disks");
-    try { renderPilotSkillsWindow(); } catch {}
+    try { refreshPilotSummary(); } catch {}
     ctx?.toast?.(`+${LOGDISK_PACK} disques de log.`, 1.8);
     return;
   }
   if (el.closest("#pilotExchange")) {
+    ctx?.beforeAction?.();
     const res = exchangeLogDisksForPoint();
     if (!res?.ok) {
       ctx?.toast?.(res?.error || "Impossible.", 2.2);
@@ -224,6 +245,7 @@ function onPilotClick(event) {
     return;
   }
   if (el.closest("#pilotReset")) {
+    ctx?.beforeAction?.();
     const res = resetPilotSkills();
     if (!res?.ok) {
       ctx?.toast?.(res?.error || "Impossible.", 2.2);
@@ -243,7 +265,7 @@ let lastPilotRefresh = 0;
 export function tickPilotSkillsDisplay() {
   if (!ctx) return;
   const now = Date.now();
-  if (now - lastPilotRefresh < 2000) return;
+  if (now - lastPilotRefresh < 500) return;
   lastPilotRefresh = now;
   let root = null;
   let panels = null;
@@ -256,6 +278,7 @@ export function tickPilotSkillsDisplay() {
   if (!root || !panels) return;
   if (root.style.display === "none" || root.classList.contains("gameWinMinimized")) return;
   try {
+    refreshPilotCredits();
     if (!panels.querySelector("[data-pilot-node]")) renderPilotSkillsWindow();
   } catch {}
 }
@@ -266,6 +289,39 @@ export function initPilotSkillsUI(context) {
   if (!root || root.__pilotWired) return;
   root.__pilotWired = true;
   root.addEventListener("click", onPilotClick);
+  const refresh = () => {
+    if (root.style.display !== "none" && !root.classList.contains("gameWinMinimized")) {
+      try { renderPilotSkillsWindow(); } catch {}
+    }
+  };
+  // Les écouteurs moteur adoptent le compte après ceux de cette fenêtre.
+  // Attendre la fin de l'événement évite de réafficher une ancienne copie.
+  let refreshQueued = false;
+  let fullRefreshQueued = false;
+  const queueRefresh = (full = true) => {
+    fullRefreshQueued ||= full;
+    if (refreshQueued) return;
+    refreshQueued = true;
+    queueMicrotask(() => {
+      const full = fullRefreshQueued;
+      refreshQueued = false;
+      fullRefreshQueued = false;
+      if (full) refresh();
+      else if (root.style.display !== "none" && !root.classList.contains("gameWinMinimized")) {
+        try { refreshPilotSummary(); } catch {}
+      }
+    });
+  };
+  window.addEventListener("orbit:net-adopted", () => queueRefresh());
+  window.addEventListener("orbit:user-updated", event => {
+    const source = event?.detail?.source;
+    if (source !== "progress") queueRefresh(source !== "pilot-disks");
+  });
+  window.addEventListener("orbit:profile-progress", () => {
+    if (root.style.display !== "none" && !root.classList.contains("gameWinMinimized")) {
+      try { refreshPilotCredits(); } catch {}
+    }
+  });
   window.addEventListener("orbit:window-restored", (event) => {
     if (event.detail?.id === "pilotWindow") {
       try { renderPilotSkillsWindow(); } catch {}

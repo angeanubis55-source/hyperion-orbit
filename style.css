@@ -3238,6 +3238,268 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   max-height:min(820px,calc(100vh - 24px));
   box-sizing:border-box;
 }
+/* ---- Carte Stellaire (star jump) ---- */
+.starMapPanel {
+  width:min(1500px,calc(100vw - 80px)) !important;
+  min-width:0 !important;
+  height:min(900px,calc(100vh - 96px));
+  max-height:min(900px,calc(100vh - 96px)) !important;
+  box-sizing:border-box;
+}
+.starMapBody {
+  min-width:0;
+  height:calc(100% - 26px);
+  box-sizing:border-box;
+  padding:14px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  color:#dff7ff;
+  overflow:hidden;
+}
+.starMapMain {
+  min-width:0;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  border:0;
+  border-radius:0;
+  background:transparent;
+}
+.starMapViewTools {
+  display:flex;
+  align-items:center;
+  flex:none;
+  padding:2px 8px;
+}
+.starMapHint { color:#9fc6d4; font-size:13px; line-height:17px; font-weight:600; }
+.starMapScrollFrame { flex:1; min-width:0; min-height:0; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr); background:transparent; }
+.starMapViewport { grid-area:1/1; min-width:0; min-height:0; overflow:auto; scrollbar-width:none; overflow-anchor:none; overscroll-behavior:contain; cursor:grab; touch-action:none; }
+.starMapViewport::-webkit-scrollbar { display:none; }
+.starMapScroll {
+  display:none;
+  appearance:none; min-width:0; min-height:0; margin:0; padding:0; border:0;
+  border-radius:0; background:transparent; accent-color:#64b9d5; touch-action:none;
+}
+.starMapScroll.horizontal { grid-area:2/1; width:100%; height:16px; cursor:ew-resize; }
+.starMapScroll.vertical { grid-area:1/2; width:16px; height:100%; writing-mode:vertical-lr; direction:ltr; cursor:ns-resize; }
+.starMapScroll::-webkit-slider-runnable-track { background:transparent; }
+.starMapScroll::-webkit-slider-thumb { appearance:none; width:22px; height:16px; border:2px solid transparent; border-radius:5px; background:#438ba3; }
+.starMapScroll.vertical::-webkit-slider-thumb { width:16px; height:22px; }
+.starMapScroll::-moz-range-track { background:transparent; }
+.starMapScroll::-moz-range-thumb { width:18px; height:12px; border:2px solid transparent; border-radius:5px; background:#438ba3; }
+.starMapScroll.vertical::-moz-range-thumb { width:12px; height:18px; }
+.starMapScroll:hover:not(:disabled)::-webkit-slider-thumb { background:#7df0ff; }
+.starMapScroll:focus-visible { outline:1px solid #7df0ff; outline-offset:-1px; }
+.starMapScroll:disabled { opacity:.3; cursor:default; }
+.starMapScroll:disabled::-webkit-slider-thumb { background:transparent; }
+.starMapScroll:disabled::-moz-range-thumb { background:transparent; }
+.starMapViewport.panning { cursor:grabbing; user-select:none; }
+.starMapStage { position:relative; overflow:hidden; }
+.starMapTree {
+  position:absolute;
+  transform-origin:0 0;
+  --starMapScale:1;
+}
+.starMapTree svg {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  pointer-events:none;
+  z-index:2;
+}
+.starMapNode {
+  --starMapTint:126,136,148;
+  --starMapTintEnd:var(--starMapTint);
+  position:absolute;
+  width:224px;
+  height:176px;
+  margin:-88px 0 0 -112px;
+  padding:0;
+  overflow:visible;
+  border:1px solid rgba(151,167,181,.3);
+  border-radius:8px;
+  background:#050e18;
+  cursor:pointer;
+  user-select:none;
+  box-sizing:border-box;
+}
+.starMapNode canvas.starMapArt {
+  position:absolute;
+  left:10px;
+  top:38px;
+  display:block;
+  width:202px;
+  height:124px;
+  border-radius:3px;
+}
+.starMapNode .starMapLabel {
+  position:absolute;
+  inset:0 0 auto;
+  z-index:3;
+  height:28px;
+  display:grid;
+  place-items:center;
+  color:#fff;
+  background:linear-gradient(135deg,rgba(var(--starMapTint),.72),rgba(var(--starMapTintEnd),.42));
+  border-radius:7px 7px 0 0;
+  font:800 15px/1 ui-sans-serif,system-ui;
+  letter-spacing:.5px;
+}
+.starMapNode:hover:not(:disabled) {
+  border-color:rgba(190,202,213,.55);
+}
+.starMapNode.group-mmo { --starMapTint:240,117,42; --starMapTintEnd:194,48,40; }
+.starMapNode.group-eic { --starMapTint:52,141,246; }
+.starMapNode.group-vru { --starMapTint:50,184,100; }
+.starMapNode.group-bl { --starMapTint:167,86,223; }
+.starMapNode.group-pvp { --starMapTint:222,64,73; }
+.starMapNode[data-map-id="qz"] { --starMapTint:241,91,171; }
+.starMapNode.on-route .starMapLabel { background:linear-gradient(135deg,rgba(var(--starMapTint),.9),rgba(var(--starMapTintEnd),.62)); }
+.starMapNode.selected .starMapLabel { color:#fff4d2; background:linear-gradient(135deg,rgba(225,173,61,.95),rgba(162,108,26,.85)); }
+.starMapNode.disabled {
+  cursor:pointer;
+}
+.starMapNode.disabled .starMapLabel::after {
+  content:"PORTAILS";
+  position:absolute;
+  right:8px;
+  top:10px;
+  color:#b7bdcd;
+  font-size:8px;
+  letter-spacing:.3px;
+}
+.starMapPortal,.starMapArrival {
+  position:absolute;
+  z-index:4;
+  width:13px;
+  height:13px;
+  margin:-6.5px;
+  padding:0;
+  box-sizing:border-box;
+  border:2px solid #7df0ff;
+  border-radius:50%;
+  background:#071522;
+  box-shadow:0 0 6px rgba(124,240,255,.25);
+}
+.starMapPortal { cursor:pointer; }
+.starMapPortal.shortcut { border-color:#ffd06a; }
+.starMapPortal.special { border-color:#c690ff; }
+.starMapArrival { border-style:dashed; border-color:#9ca9b8; }
+.starMapPortal.highlighted,.starMapPortal:hover,.starMapPortal:focus-visible { background:#7df0ff; box-shadow:0 0 9px #7df0ff; }
+.starMapPortal .starMapPortalTip {
+  display:none;
+  position:absolute;
+  bottom:16px;
+  left:50%;
+  transform:translateX(-50%);
+  white-space:nowrap;
+  padding:5px 7px;
+  border:1px solid #7df0ff;
+  border-radius:4px;
+  color:#fff;
+  background:#03101c;
+  font:700 11px/1.3 ui-sans-serif,system-ui;
+  pointer-events:none;
+}
+.starMapPortal:hover .starMapPortalTip,.starMapPortal:focus-visible .starMapPortalTip { display:block; }
+.starMapWire { stroke:#64b9d5; opacity:.45; transition:opacity .15s; }
+.starMapWire.shortcut { stroke:#ffd06a; stroke-dasharray:5 5; }
+.starMapWire.conditional { stroke:#bb8cef; stroke-dasharray:5 4; }
+.starMapWire.highlighted { opacity:1; stroke:#8ff1ff; filter:drop-shadow(0 0 3px rgba(124,240,255,.4)); }
+.starMapWire.shortcut.highlighted { stroke:#ffd06a; }
+.starMapWire.conditional.highlighted { stroke:#cfadff; }
+.starMapWire.itinerary { opacity:1; stroke:#ffd878; stroke-width:2; }
+.starMapTree.has-portal-focus .starMapWire:not(.highlighted):not(.itinerary) { opacity:.07; }
+.starMapRouteStep {
+  position:absolute; z-index:4; left:7px; top:0;
+  padding:0; background:transparent; color:#ffd878; font:800 15px/28px ui-sans-serif,system-ui;
+}
+.starMapConnections h4,.starMapItinerary h4 { margin:0 0 8px; color:#9fc6d4; font-size:12px; }
+#starMapItinerary { font-size:12px; line-height:1.6; color:#cfeBF6; }
+#starMapItinerary ol { padding-left:23px; margin:8px 0; }
+#starMapItinerary li { padding:3px 0; }
+#starMapItinerary li::marker { color:#ffd878; font-weight:700; }
+#starMapItinerary small { display:block; color:#9fc6d4; }
+#starMapConnections { display:grid; gap:6px; }
+.starMapConnection {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:8px;
+  border:0;
+  border-bottom:1px solid rgba(124,240,255,.2);
+  border-radius:0;
+  background:transparent;
+  color:#dff7ff;
+  text-align:left;
+  cursor:pointer;
+}
+.starMapConnection:hover { border-color:#7df0ff; }
+.starMapConnection small { color:#9fc6d4; font-size:10px; }
+.starMapNode .dot {
+  position:absolute;
+  top:3px;
+  right:5px;
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#50ff91;
+  box-shadow:0 0 6px rgba(80,255,145,.9);
+}
+.starMapInfoPanel { width:min(320px,calc(100vw - 32px)) !important; min-width:0 !important; max-height:min(800px,calc(100vh - 80px)) !important; }
+.starMapSide {
+  min-width:0;
+  min-height:0;
+  overflow:auto;
+  scrollbar-width:none;
+  max-height:min(772px,calc(100vh - 108px));
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:12px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+}
+.starMapSide::-webkit-scrollbar { display:none; }
+.starMapSelInfo {
+  display:grid;
+  gap:6px;
+  color:#cfeBF6;
+  font-size:12px;
+  line-height:1.5;
+}
+.starMapSelInfo b { color:#fff; }
+#starMapJumpBtn {
+  min-height:42px;
+  border:1px solid rgba(124,240,255,.45);
+  border-radius:10px;
+  color:#fff;
+  background:linear-gradient(135deg,rgba(0,145,190,.5),rgba(0,70,100,.45));
+  font:900 14px/1 ui-sans-serif,system-ui;
+  letter-spacing:1px;
+  cursor:pointer;
+}
+#starMapJumpBtn:hover:not(:disabled) {
+  border-color:rgba(124,240,255,.8);
+  box-shadow:0 0 16px rgba(0,217,255,.25);
+}
+#starMapJumpBtn:disabled {
+  opacity:.4;
+  cursor:default;
+}
+#starMapJumpBtn.channel {
+  border-color:rgba(255,205,82,.8);
+}
+.starMapStatus {
+  min-height:36px;
+  color:#9fc6d4;
+  font-size:11px;
+  line-height:1.5;
+  text-align:center;
+}
 .ggBody {
   min-width:0;
   padding:14px;
@@ -16788,6 +17050,27 @@ input[type=number] {
   align-items:center;
   gap:10px;
   flex-wrap:wrap;
+}
+.pilotBalance {
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+.pilotBalance span {
+  display:block;
+  color:rgba(204,228,241,.55);
+  font-size:8px;
+  font-weight:800;
+  text-transform:uppercase;
+}
+.pilotBalance strong {
+  display:block;
+  margin-top:2px;
+  color:#75e8ff;
+  font-size:16px;
+}
+.pilotHeadBtns button:disabled {
+  opacity:.45;
+  cursor:default;
 }
 .pilotStatus {
   flex:1;

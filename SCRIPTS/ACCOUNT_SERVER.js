@@ -115,6 +115,15 @@ export function initAccountDb() {
       expires_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE TABLE IF NOT EXISTS account_save_tx (
+      user_id TEXT NOT NULL,
+      save_id TEXT NOT NULL,
+      request_hash TEXT NOT NULL,
+      metadata TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, save_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_account_save_tx_created ON account_save_tx(user_id, created_at DESC);
     CREATE TABLE IF NOT EXISTS pvp_stats (
       user_id TEXT PRIMARY KEY,
       kills INTEGER NOT NULL DEFAULT 0,
@@ -1739,6 +1748,17 @@ function handleSave(req, body, res) {
   if (String(blob.id || "") !== String(me.id)) {
     return json(res, 403, { ok: false, error: "Compte refuse." });
   }
+  const saveId = String(body.saveId || "").slice(0, 128);
+  const requestHash = saveId ? createHash("sha256").update(JSON.stringify({ user: blob, baseRevision: body.baseRevision })).digest("hex") : "";
+  if (saveId) {
+    const receipt = db.prepare("SELECT request_hash, metadata FROM account_save_tx WHERE user_id = ? AND save_id = ?").get(me.id, saveId);
+    if (receipt) {
+      if (receipt.request_hash !== requestHash) return json(res, 409, { ok: false, error: "Identifiant de sauvegarde réutilisé avec un contenu différent." });
+      // Reconstitue exactement le snapshot accepté, même si une récompense
+      // a depuis modifié le compte. Le client acquitte ainsi la bonne dépense.
+      return json(res, 200, { ok: true, duplicate: true, user: { ...blob, ...JSON.parse(receipt.metadata) } });
+    }
+  }
   // Une attribution admin peut arriver pendant que le joueur possède déjà
   // plusieurs sauvegardes locales en attente. Leur revision peut être plus
   // grande que celle du serveur tout en transportant les anciens totaux.
@@ -1757,6 +1777,11 @@ function handleSave(req, body, res) {
     });
   }
   const incomingRev = Math.floor(Number(blob.revision) || 0);
+  // La révision locale peut augmenter plusieurs fois pendant un achat.
+  // Elle ne permet pas d'écraser un canon que le client n'a jamais reçu.
+  if (body.baseRevision !== undefined && (!Number.isSafeInteger(body.baseRevision) || body.baseRevision !== Number(me.revision))) {
+    return json(res, 409, { ok: false, stale: true, error: "Compte modifié depuis la dernière synchronisation.", user: rowToPublic(me) });
+  }
   if (!(incomingRev > Number(me.revision) || 0)) {
     // Client en retard (autre PC/onglet plus recent) : on renvoie le canon.
     return json(res, 409, { ok: false, stale: true, error: "Sauvegarde perimee.", user: rowToPublic(me) });
@@ -1800,9 +1825,21 @@ function handleSave(req, body, res) {
   }
   data.password = pwHash;
   try {
+    db.exec("BEGIN IMMEDIATE");
     db.prepare("UPDATE users SET pseudo = ?, pseudo_norm = ?, email = ?, faction = ?, password_hash = ?, data = ?, revision = ?, updated_at = ? WHERE id = ?")
       .run(finalPseudo, norm(finalPseudo), finalEmail, faction, pwHash, JSON.stringify(data), incomingRev, data.updatedAt, me.id);
+    if (saveId) {
+      const metadata = { id: data.id, pseudo: data.pseudo, email: data.email, faction: data.faction,
+        password: data.password, revision: data.revision, updatedAt: data.updatedAt };
+      db.prepare("INSERT INTO account_save_tx (user_id, save_id, request_hash, metadata, created_at) VALUES (?, ?, ?, ?, ?)")
+        .run(me.id, saveId, requestHash, JSON.stringify(metadata), data.updatedAt);
+      // Petits reçus seulement ; conserver les 256 dernières opérations.
+      db.prepare("DELETE FROM account_save_tx WHERE user_id = ? AND save_id IN (SELECT save_id FROM account_save_tx WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET 256)")
+        .run(me.id, me.id);
+    }
+    db.exec("COMMIT");
   } catch {
+    try { db.exec("ROLLBACK"); } catch {}
     return json(res, 409, { ok: false, error: "Pseudo ou email déjà utilisé." });
   }
   return json(res, 200, { ok: true, conflict: conflict || undefined, user: rowToPublic({ id: me.id, pseudo: finalPseudo, email: finalEmail, faction, data: JSON.stringify(data) }) });

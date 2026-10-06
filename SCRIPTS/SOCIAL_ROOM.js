@@ -1,5 +1,5 @@
 // SCRIPTS/SOCIAL_ROOM.js — Groupes (escadrilles) + murmures inter-joueurs.
-// Groupes éphémères cross-map (max 5, leader = créateur) + chat de groupe.
+// Groupes éphémères cross-map (max 10, leader = créateur) + chat de groupe.
 // Les amis persistants vivent dans ACCOUNT_SERVER.js (table friends) ;
 // ici : invites, membership, relais des messages. Le câblage réseau
 // (lookup par pseudo, envoi ciblé) est injecté par MULTI_SERVER.js.
@@ -34,15 +34,20 @@ const cleanPseudo = (s) => String(s || "").replace(/\s+/g, " ").trim().slice(0, 
 function publicGroup(gid, ctx) {
   const g = groups.get(gid);
   if (!g) return null;
+  // La fiche réseau peut manquer pendant une reconnexion. Ne pas remplacer
+  // l'identité connue par « Pilote / ? », ni traiter le cache comme connecté.
+  const details = g.memberDetails || (g.memberDetails = new Map());
   return {
     id: gid,
     leader: String(g.leader),
     invitesLocked: g.invitesLocked === true,
     rally: g.rally && Number(g.rally.expiresAt) > Date.now() ? { ...g.rally } : null,
     members: g.members.map((pid) => {
-      const d = ctx.describe(pid) || {};
-      return {
-        id: String(pid), pseudo: cleanPseudo(d.pseudo) || "Pilote", map: String(d.map || ""), online: !!d.online,
+      const live = ctx.describe(pid);
+      const previous = details.get(String(pid));
+      const d = live || previous || {};
+      const member = {
+        id: String(pid), pseudo: cleanPseudo(d.pseudo) || previous?.pseudo || "Pilote", map: String(d.map || previous?.map || ""), online: !!live?.online,
         instance: d.instance === true, x: Number(d.x) || 0, y: Number(d.y) || 0,
         b2: Array.isArray(d.b2) ? d.b2.map((v) => String(v || "")).slice(0, 8) : [],
         hpPct: Math.max(0, Math.min(1, Number(d.hpPct ?? 1))), shPct: Math.max(0, Math.min(1, Number(d.shPct ?? 1))),
@@ -55,6 +60,14 @@ function publicGroup(gid, ctx) {
         targetHpMax: Math.max(0, Number(d.targetHpMax) || 0),
         targetShMax: Math.max(0, Number(d.targetShMax) || 0),
       };
+      if (live) details.set(String(pid), member);
+      if (!member.online) {
+        member.b2 = [];
+        member.combat = "";
+        member.targetName = "";
+        member.targetHpPct = member.targetShPct = member.targetHpMax = member.targetShMax = 0;
+      }
+      return member;
     }),
   };
 }
@@ -72,11 +85,13 @@ function pushGroup(gid, ctx, extra = {}) {
 }
 
 function leaveGroup(pid, ctx) {
+  clearDisconnectTimer(pid);
   const gid = memberGroup.get(pid);
   if (!gid) return false;
   const g = groups.get(gid);
   if (!g) { memberGroup.delete(pid); return false; }
   g.members = g.members.filter((m) => String(m) !== String(pid));
+  g.memberDetails?.delete(String(pid));
   memberGroup.delete(pid);
   if (g.members.length <= 1) {
     dissolveGroup(gid, ctx);
@@ -93,6 +108,7 @@ function dissolveGroup(gid, ctx) {
     const g = groups.get(gid);
     if (!g) return;
     for (const m of g.members) {
+      clearDisconnectTimer(m);
       memberGroup.delete(String(m));
       try { ctx.sendTo(String(m), { t: "groupUpdate", group: null }); } catch {}
     }
@@ -169,27 +185,37 @@ export function socialDescribeGroup(pid, ctx) {
 // Changement de map / pseudo : rafraîchit la fiche groupe des coéquipiers.
 export function socialPeerChanged(pid, ctx) {
   try {
-    const timer = disconnectTimers.get(String(pid));
-    if (timer) { clearTimeout(timer); disconnectTimers.delete(String(pid)); }
+    clearDisconnectTimer(pid);
     const gid = memberGroup.get(String(pid));
     if (gid && groups.has(gid)) pushGroup(gid, ctx);
   } catch {}
 }
 
 // Déconnexion : quitte le groupe + purge les invites le concernant.
-export function socialPeerGone(pid, ctx) {
+function clearDisconnectTimer(pid) {
+  const key = String(pid);
+  const timer = disconnectTimers.get(key);
+  if (timer != null) clearTimeout(timer);
+  disconnectTimers.delete(key);
+}
+
+export function socialPeerGone(pid, ctx, { graceMs = DISCONNECT_GRACE_MS } = {}) {
   try {
     pruneInvites(Date.now(), ctx);
     for (const [target, inv] of invites) {
       if (String(target) === String(pid) || String(inv?.from) === String(pid)) invites.delete(target);
     }
     const key = String(pid);
-    const previous = disconnectTimers.get(key);
-    if (previous) clearTimeout(previous);
+    clearDisconnectTimer(key);
+    // MULTI_SERVER a déjà conservé le socket pendant sa grâce de reconnexion.
+    // À son expiration, quitter immédiatement plutôt que doubler ce délai.
+    if (graceMs <= 0) { leaveGroup(key, ctx); return; }
+    const gid = memberGroup.get(key);
+    if (gid) pushGroup(gid, ctx);
     disconnectTimers.set(key, setTimeout(() => {
       disconnectTimers.delete(key);
       try { leaveGroup(key, ctx); } catch {}
-    }, DISCONNECT_GRACE_MS));
+    }, graceMs));
   } catch {}
 }
 
@@ -279,6 +305,8 @@ export function handleSocialMessage(ctx, msg) {
       if (!target || String(g.leader) === target) return true;
       if (!g.members.some((m) => String(m) === target)) { ctx.send({ t: "groupNotice", text: "Pas dans ton groupe." }); return true; }
       g.members = g.members.filter((m) => String(m) !== target);
+      clearDisconnectTimer(target);
+      g.memberDetails?.delete(target);
       memberGroup.delete(target);
       try { ctx.sendTo(target, { t: "groupUpdate", group: null }); } catch {}
       try { ctx.sendTo(target, { t: "groupNotice", text: "Tu as été exclu du groupe." }); } catch {}

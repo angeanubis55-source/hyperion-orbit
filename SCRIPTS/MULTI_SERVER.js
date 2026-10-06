@@ -33,6 +33,7 @@ import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus }
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 import { GROUP_BOOSTER_BONUS } from "../SRC/DATA/BOOSTERS.js";
+import { STARMAP_JUMP_REUSE_SEC } from "../SRC/DATA/STARMAP.js";
 
 const serverMaps = await loadServerMaps();
 const securityStates = new Map();
@@ -79,7 +80,8 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
     if (prior && (prior.hangarId !== profile.hangarId || prior.config !== profile.config) && !state.pvpDead && state.hp > 0) {
       state.sh = Math.min(profile.shMax, shields[key] ?? profile.shMax);
     }
-    if (prior && prior.shipId !== profile.shipId) state._swapUntil = now + 3000;
+    // Duree de l'effet portail distant, sans protection contre les degats.
+    if (prior && prior.shipId !== profile.shipId) state._swapFxUntil = now + 3000;
     state._combat = profile;
     state._config = profile.config;
     state._combatRev = state._account.revision;
@@ -93,7 +95,7 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
     state.moveSpeed = profile.speed;
     state.b2 = Object.keys(GROUP_BOOSTER_BONUS).filter(id => now < Number(state._account.boosters?.active?.[id] || 0));
   }
-  state.hswap = Math.max(0, (Number(state._swapUntil || 0) - now) / 1000);
+  state.hswap = Math.max(0, (Number(state._swapFxUntil || 0) - now) / 1000);
   return state._combat;
 }
 
@@ -452,7 +454,7 @@ function handleAdminApi(request, response, pathname) {
                 describe: (p) => (String(p) === pid
                   ? { id: pid, pseudo: String(res.pseudo || "Pilote").slice(0, 20), online: false }
                   : describePeer(p)),
-              });
+              }, { graceMs: 0 });
             } catch {}
             // Amis : refresh live de leur liste + présence hors ligne.
             try {
@@ -860,7 +862,7 @@ function finalizePeerGone(pid, snap) {
     findByPseudo: (pseudo) => findPeerByPseudo(pseudo),
     describe: (p) => describePeer(p),
   };
-  try { socialPeerGone(key, ctx); } catch {}
+  try { socialPeerGone(key, ctx, { graceMs: 0 }); } catch {}
   try { if (snap?.authed && snap?.accountId) notifyFriendPresence(snap.accountId, false); } catch {}
   try { removeFromAllRooms(key); } catch {}
 }
@@ -1028,6 +1030,104 @@ function sendBoxSync(ws, mapId) {
   });
 }
 
+// Star jump (Carte Stellaire) : aller validé sans portail. Le client attend
+// {t:"starJump"} avec les coordonnées AVANT de changer de map ; son {t:"map"}
+// suivant est alors un no-op (déjà sur place côté serveur).
+// Refusé : instances, gates, raid Low, même map, cooldowns.
+// Refusé : instances, gates, raid Low, Maudite, 5-2, Blacklight, même map, cooldowns.
+const STAR_JUMP_BLOCKED_MAPS = new Set(["alpha", "beta", "gamma", "qz", "low", "maudite", "5-2", "1-bl", "2-bl", "3-bl"]);
+const STAR_JUMP_REUSE_MS = STARMAP_JUMP_REUSE_SEC * 1000;
+const STAR_JUMP_MAP_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
+
+async function handleStarJumpRequest(ws, peer, fromMap, target, setMapId) {
+  const now = Date.now();
+  const deny = (reason) => {
+    try { if (ws.readyState === 1) ws.send(JSON.stringify({ t: "starJump", ok: false, map: target, reason })); } catch {}
+  };
+  try {
+    const { id, state } = peer;
+    if (!target || !serverMaps.has(target) || STAR_JUMP_BLOCKED_MAPS.has(target)) return deny("unreachable");
+    if (target === String(fromMap || "").toLowerCase()) return deny("same-map");
+    if (now < Number(state.starJumpCdUntil || 0) || now < Number(state.portalCdUntil || 0)) return deny("cooldown");
+    const world = serverMaps.get(target)?.world || { w: 11000, h: 7000 };
+    // Murs de la map d'arrivée (jamais dedans) : sim NPC si dispo, sinon import direct.
+    let walls = [];
+    try {
+      const sim = await Promise.resolve(ensureNpcSim(target)).catch(() => null);
+      if (sim && typeof sim.then !== "function" && Array.isArray(sim.walls)) walls = sim.walls;
+    } catch {}
+    if (!walls.length) {
+      try {
+        const dir = STAR_JUMP_MAP_ALIASES[target] || target;
+        const spawns = await import(`../MAPS/${dir}/SPAWNS.js`);
+        if (typeof spawns?.getZoneWalls === "function") walls = spawns.getZoneWalls(world) || [];
+      } catch {}
+    }
+    let ax = Math.round(world.w / 2), ay = Math.round(world.h / 2);
+    for (let t = 0; t < 12; t++) {
+      const cx = Math.round(300 + Math.random() * Math.max(1, world.w - 600));
+      const cy = Math.round(300 + Math.random() * Math.max(1, world.h - 600));
+      let blocked = false;
+      for (const wl of walls) {
+        const hw = Number(wl?.w || 0) / 2 + 60, hh = Number(wl?.h || 0) / 2 + 60;
+        if (Math.abs(cx - Number(wl?.x || 0)) <= hw && Math.abs(cy - Number(wl?.y || 0)) <= hh) { blocked = true; break; }
+      }
+      if (!blocked) { ax = cx; ay = cy; break; }
+    }
+    state._arrival = { x: ax, y: ay, until: now + 15000 };
+    state.x = ax;
+    state.y = ay;
+    state.vx = 0; state.vy = 0; state.moving = false;
+    state.teleportSeq = (Number(state.teleportSeq) || 0) + 1;
+    state.starJumpCdUntil = now + STAR_JUMP_REUSE_MS;
+    state.portalCdUntil = now + 5000;
+    state.serverMap = target;
+    try {
+      removeFromAllRooms(id);
+      setMapId({ mapId: target });
+      roomFor(target).set(id, { ws, state });
+      ensureNpcSim(target);
+      sendBoxSync(ws, target);
+    } catch {}
+    if (ws.readyState === 1) ws.send(JSON.stringify({ t: "starJump", ok: true, map: target, x: ax, y: ay }));
+  } catch {
+    deny("error");
+  }
+}
+
+function handleHangarArrivalRequest(ws, peer, accountId, fromMap, hangarId, setMapId) {
+  const { id, state } = peer, now = Date.now();
+  const reply = body => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'hangarArrival', hangarId, ...body })); };
+  const deny = reason => reply({ ok: false, reason });
+  if (!accountId || state.instance || state._clockGuard?.blocked || state.pvpDead || !(state.hp > 0)) return deny('unavailable');
+  if (now < Number(state.hangarArrivalCdUntil || 0)) return deny('cooldown');
+  const sourceSim = npcSims.get(fromMap);
+  if (state.safe !== true || !sourceSim?.inSafe(state.x, state.y)) return deny('unsafe');
+  if (now - Math.max(Number(state.pvpAt) || 0, Number(state.npcAt) || 0) < 5000) return deny('combat');
+  const user = getAccountGameplayData(accountId);
+  const current = user?.hangars?.find(h => h?.active);
+  const target = user?.hangars?.find(h => String(h?.id) === hangarId);
+  if (!target || target === current) return deny('hangar');
+  const map = String(target.lastMap || getFactionHomeMap(user.faction)).toLowerCase();
+  const world = serverMaps.get(map)?.world;
+  if (!world) return deny('destination');
+  const base = baseArrival(serverMaps, map, user.faction);
+  const x = Number(target.lastPos?.x ?? base.x), y = Number(target.lastPos?.y ?? base.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 18 || y < 18 || x > world.w - 18 || y > world.h - 18) return deny('destination');
+  // Seule la position du hangar possede et sauvegarde donne droit au transfert.
+  // Le client ne fournit aucune coordonnee ni exemption de mouvement.
+  state._arrival = { x, y, until: now + 15000 };
+  Object.assign(state, { x, y, vx: 0, vy: 0, moving: false, motionBlocked: false,
+    teleportSeq: (Number(state.teleportSeq) || 0) + 1, moveBuck: 0, moveBuckT: now,
+    serverMap: map, hangarArrivalCdUntil: now + 5000, updatedAt: now });
+  removeFromAllRooms(id);
+  setMapId(map);
+  roomFor(map).set(id, { ws, state });
+  ensureNpcSim(map);
+  sendBoxSync(ws, map);
+  reply({ ok: true, map, x, y });
+}
+
 function broadcastRoom(room, payload, excludeId = null) {
   for (const [pid, entry] of room) {
     if (excludeId != null && String(pid) === String(excludeId)) continue;
@@ -1078,29 +1178,34 @@ function findPeerByPseudo(pseudo) {
   return null;
 }
 
-// Fiche d'un pilote connecté (pseudo + map, même en instance).
+// Fiche d'un pilote présent, y compris pendant la grâce de reconnexion.
 function describePeer(pid) {
   const id = String(pid);
+  let entry = null, map = "", instance = false;
   for (const [mkey, room] of rooms) {
     const e = room.get(id);
     if (e) {
-      const s = e.state || {};
-      return {
-        id, pseudo: String(s.pseudo || "Pilote").slice(0, 20), map: mkey, online: true, instance: false, clanTag: String(s.clanTag || "").slice(0, 5),
-        x: Number(s.x) || 0, y: Number(s.y) || 0, hpPct: Number(s.hpPct ?? 1), shPct: Number(s.shPct ?? 1),
-        hpMax: Number(s.hpMax) || 1, shMax: Number(s.shMax) || 0, dead: s.dead === true,
-        shipId: String(s.shipId || "").slice(0, 64), petActive: s.peta === 1,
-        b2: Array.isArray(s.b2) ? s.b2.map((v) => String(v || "")).filter((v) => ["dmg2", "shd2", "hp2", "ep2", "hon2", "rep2", "res2", "sreg2"].includes(v)).slice(0, 8) : [],
-        combat: s.combat === "npc" || s.combat === "player" ? s.combat : "",
-        targetName: String(s.targetName || "").slice(0, 64),
-        targetHpPct: Number(s.targetHpPct ?? 0), targetShPct: Number(s.targetShPct ?? 0),
-        targetHpMax: Number(s.targetHpMax) || 0, targetShMax: Number(s.targetShMax) || 0,
-      };
+      entry = e; map = mkey;
+      break;
     }
   }
-  const ie = instancePeers.get(id);
-  if (ie) return { id, pseudo: String(ie.state?.pseudo || "Pilote").slice(0, 20), map: String(ie.mapId || ""), online: true, instance: true, dead: ie.state?.dead === true, shipId: String(ie.state?.shipId || "").slice(0, 64), petActive: ie.state?.peta === 1 };
-  return null;
+  if (!entry) {
+    entry = instancePeers.get(id);
+    if (entry) { map = String(entry.mapId || ""); instance = true; }
+  }
+  if (!entry) return null;
+  const s = entry.state || {};
+  return {
+    id, pseudo: String(s.pseudo || "Pilote").slice(0, 20), map, online: entry.ws?.readyState === 1, instance, clanTag: String(s.clanTag || "").slice(0, 5),
+    x: Number(s.x) || 0, y: Number(s.y) || 0, hpPct: Number(s.hpPct ?? 1), shPct: Number(s.shPct ?? 1),
+    hpMax: Number(s.hpMax) || 1, shMax: Number(s.shMax) || 0, dead: s.dead === true,
+    shipId: String(s.shipId || "").slice(0, 64), petActive: s.peta === 1,
+    b2: Array.isArray(s.b2) ? s.b2.map((v) => String(v || "")).filter((v) => ["dmg2", "shd2", "hp2", "ep2", "hon2", "rep2", "res2", "sreg2"].includes(v)).slice(0, 8) : [],
+    combat: s.combat === "npc" || s.combat === "player" ? s.combat : "",
+    targetName: String(s.targetName || "").slice(0, 64),
+    targetHpPct: Number(s.targetHpPct ?? 0), targetShPct: Number(s.targetShPct ?? 0),
+    targetHpMax: Number(s.targetHpMax) || 0, targetShMax: Number(s.targetShMax) || 0,
+  };
 }
 
 function sendToPeer(pid, obj) {
@@ -1830,7 +1935,6 @@ wss.on("connection", (ws) => {
         const hasStatus = (Number(msg.slowPct) > 0 && Number(msg.slowSec) > 0) || Number(msg.freezeSec) > 0;
         if (!Number.isFinite(dmg) || dmg < 0 || dmg > 1e7 || (dmg === 0 && !hasStatus)) return;
         if (foe.state.dead) return;
-        if (now < Number(foe.state._swapUntil || 0)) return;
         if (now < Number(foe.state.ishUntil || 0)) return;
         if (now < Number(foe.state.iemUntil || 0)) return;
         // Deja tue (pos de mort pas encore arrivee) : pas de double kill.
@@ -2151,6 +2255,15 @@ wss.on("connection", (ws) => {
       } catch {}
       if (state._clockGuard?.blocked) { stopRejectedMotion(state); correctState(); return; }
       const nextMap = String(msg.map || mapId || "1-1").toLowerCase();
+      // Star jump (Carte Stellaire) : arrivée validée côté serveur, sans portail.
+      // Le client attend {t:"starJump"} avec les coordonnées d'arrivée AVANT
+      // de changer de map ; son {t:"map"} suivant est alors un no-op.
+      if (msg.starJump === true && msg.instance !== true) {
+        handleStarJumpRequest(ws, { id, state }, mapId, nextMap, (obj) => {
+          mapId = obj.mapId;
+        });
+        return;
+      }
       if (!changeMap(nextMap, msg.instance === true)) { correctState(); return; }
       state._joined = true;
       const socialCtx = () => ({
@@ -2282,6 +2395,11 @@ wss.on("connection", (ws) => {
           } catch {}
         }
       } catch {}
+      return;
+    }
+    if (msg.t === 'hangarArrival') {
+      handleHangarArrivalRequest(ws, { id, state }, authed ? accountId : null, mapId,
+        String(msg.hangarId || '').slice(0, 64), next => { mapId = next; });
       return;
     }
     if (msg.t === "pos") {
@@ -2656,8 +2774,7 @@ setInterval(() => {
             const serverSafe = typeof sim.inSafe === "function" ? sim.inSafe(s.x, s.y) : false;
             s.serverSafe = serverSafe && s.safe === true;
             const serverDead = s.pvpDead === true || !(Number(s.hp) > 0);
-            const swapUntargetableUntil = Number(s._swapUntil || 0);
-            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: Math.max(Number(s.iemUntil) || 0, swapUntargetableUntil), cloaked: s.cloaked === true || s.cloakCpu === true, shipId: s.shipId });
+            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: Number(s.iemUntil) || 0, cloaked: s.cloaked === true || s.cloakCpu === true, shipId: s.shipId });
           }
         }
         if (typeof sim.prunePlayers === "function") {
@@ -2673,7 +2790,7 @@ setInterval(() => {
             const victim = room.get(String(hit?.playerId));
             const s = victim?.state;
             if (!s || s.pvpDead === true || !(Number(s.hp) > 0)) continue;
-            if (Date.now() < Number(s._swapUntil || 0) || Date.now() < Number(s.ishUntil || 0) || Date.now() < Number(s.iemUntil || 0)) continue;
+            if (Date.now() < Number(s.ishUntil || 0) || Date.now() < Number(s.iemUntil || 0)) continue;
             if (s.serverSafe === true) {
               // Riposte ZNA : seul le NPC visé peut blesser un joueur
               // protégé (parité solo). Tous les autres impacts sont ignorés.

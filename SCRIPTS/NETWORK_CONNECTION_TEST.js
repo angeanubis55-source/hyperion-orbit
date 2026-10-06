@@ -33,6 +33,37 @@ function client() {
   return { api: context, sockets, intervals, timeouts, advance: ms => { now += ms; } };
 }
 
+test('activation : les anciennes positions restent bloquees jusqu a l adoption de l arrivee serveur', async () => {
+  const c = client(), socket = c.sockets[0];
+  socket.receive({ t: 'welcome', authed: true, id: 'test', at: 1000 });
+  c.api.pushNetplayLocal({ x: 100, y: 100 });
+  const arrival = c.api.requestHangarArrival('target');
+  const sent = socket.sent.length;
+  c.advance(100);
+  c.api.pushNetplayLocal({ x: 100, y: 100 });
+  assert.equal(socket.sent.length, sent);
+  assert.equal(socket.sent.at(-1).hangarId, 'target');
+  socket.receive({ t: 'hangarArrival', hangarId: 'another', ok: true, x: 10, y: 10, map: '1-2' });
+  c.api.pushNetplayLocal({ x: 100, y: 100 });
+  assert.equal(socket.sent.length, sent, 'une reponse pour un autre hangar ne libere pas le transfert');
+  socket.receive({ t: 'hangarArrival', hangarId: 'target', ok: true, x: 4200, y: 3500, map: '1-1' });
+  assert.equal((await arrival).x, 4200);
+  c.api.pushNetplayLocal({ x: 100, y: 100 });
+  assert.equal(socket.sent.length, sent, 'le chargement de la carte ne renvoie pas la position du depart');
+  c.api.finishHangarArrival();
+  assert.equal(c.api.sendNetplayBackgroundState(true), false, 'aucun ancien paquet conserve a la liberation');
+  c.api.pushNetplayLocal({ x: 4200, y: 3500 });
+  assert.equal(socket.sent.at(-1).x, 4200);
+});
+
+test('activation : une coupure libere immediatement la requete en attente', async () => {
+  const c = client(), socket = c.sockets[0];
+  socket.receive({ t: 'welcome', authed: true, id: 'test', at: 1000 });
+  const arrival = c.api.requestHangarArrival('target');
+  socket.close();
+  assert.equal((await arrival).ok, false);
+});
+
 test("l'horloge x50 ne multiplie ni la simulation ni les recharges", () => {
   const c = client();
   c.sockets[0].receive({ t: "welcome", authed: true, id: "test", at: 10000 });
@@ -83,17 +114,34 @@ test("un gel et un ralentissement recus une seule fois expirent pendant un trou 
 });
 
 test("une mort NPC recue apres des paquets manques est adoptee une seule fois", () => {
+  const damageEvents = [];
   const from = engine.indexOf("    const npcDamageSeq =");
   const to = engine.indexOf("  } catch {}\n  // Multi PvP : pool PET", from);
   assert.ok(from > 0 && to > from);
   const context = vm.createContext({ self: { dead: true, npcAt: 20000, npcSeq: 20, npcHpDamage: 10, npcShDamage: 0 },
     player: { hp: 800, sh: 0, hpMax: 1000, shMax: 0, dead: false }, lastNpcDamageAdoptSeq: 1, lastNpcDamageAdoptAt: 10000,
     REPAIR: { cooldown: 10 }, enemies: [], die: () => { context.player.dead = true; },
+    onPlayerPreparationDamage: (hp, shield) => damageEvents.push([hp, shield]),
   });
   const adopt = () => vm.runInContext(`(() => {${engine.slice(from, to)}})()`, context);
   adopt(); assert.equal(context.player.dead, true); assert.equal(context.player.hp, 0);
   context.player.dead = false; context.player.hp = 100;
   adopt(); assert.equal(context.player.hp, 100, "le meme paquet ne tue pas de nouveau apres reparation");
+  assert.deepEqual(damageEvents, [[800, 0]], "la preparation n est notifiee qu une fois des degats serveur");
+});
+
+test("un coup PvP sur le bouclier notifie la preparation une seule fois", () => {
+  const from = engine.indexOf('    if (self && Number(self.pvpAt) > 0'), to = engine.indexOf('    const npcDamageSeq =', from);
+  assert.ok(from > 0 && to > from);
+  const damageEvents = [];
+  const context = vm.createContext({ self: { pvpAt: 10000, hp: 100, sh: 90 },
+    player: { hp: 100, hpMax: 100, sh: 100, shMax: 100, dead: false }, lastPvpAdoptAt: 0,
+    REPAIR: { cooldown: 10 }, onPlayerPreparationDamage: (hp, shield) => damageEvents.push([hp, shield]),
+  });
+  const adopt = () => vm.runInContext(`(() => {${engine.slice(from, to)}})()`, context);
+  adopt(); adopt();
+  assert.equal(context.player.sh, 90);
+  assert.deepEqual(damageEvents, [[0, 10]]);
 });
 
 test("la pause mesure le retour a la normale sans accumuler de temps de rattrapage", () => {

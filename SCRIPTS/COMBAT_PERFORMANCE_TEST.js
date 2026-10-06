@@ -11,6 +11,7 @@ import { createDeferredPersistence } from "../SRC/CORE/DEFERRED_PERSISTENCE.js";
 import { drawCombatFloatTexts } from "../SRC/CORE/COMBAT_TEXT_RENDERER.js";
 import { tickFloatingTexts } from "../SRC/CORE/FRAME_SYSTEMS.js";
 import { QUEST_DEFINITIONS, getQuestObjectives, normalizeQuestState, recordQuestProgress, isQuestComplete, claimQuest } from "../QUEST/QUEST_TYPES.js";
+import { LOGDISK_PACK, LOGDISK_PRICE, normalizePilotSkills } from "../SRC/DATA/PILOT_SKILLS.js";
 
 // Exerce les fonctions livrées sans démarrer une session ou un serveur réel.
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
@@ -43,6 +44,7 @@ test("recompense NPC partage : compte canonique sans normalisation, gains conser
   const user = { id: "pilot", credits: 100, revision: 1, stats: { exp: 10, honor: 2, lifetimeKills: 0, npcKills: {} } };
   const old = { ...user, credits: 50, stats: { ...user.stats } };
   const context = vm.createContext({ account: { user: old }, netList: () => [user],
+    noteNetServerReward: () => true,
     getCurrentUserFull: () => { throw new Error("Normalisation pendant la mort"); },
     player: { credits: 100, kills: 0 }, NPC_TYPES: { npc_test: { name: "Test" } },
     getActiveDroneFormation: () => ({}), calculateRankPoints: () => 42, formatInteger,
@@ -59,6 +61,64 @@ test("recompense NPC partage : compte canonique sans normalisation, gains conser
   assert.equal(user.stats.honor, 7);
   assert.equal(user.stats.npcKills.npc_test, 1);
   assert.equal(user.revision, 2);
+});
+
+test("une mutation du compte actualise le solde du moteur avant sa prochaine sauvegarde", () => {
+  const start = engine.indexOf('window.addEventListener("orbit:user-updated", event => {');
+  const from = engine.indexOf("{", start) + 1, to = engine.indexOf("  const previous = account.user;", from);
+  assert.ok(start >= 0 && to > from);
+  const ctx = vm.createContext({ started: true, player: { credits: 100 }, fresh: { credits: 20 }, event: { detail: { source: "account" } },
+    getCurrentUserFull: () => ctx.fresh });
+  const sync = () => vm.runInContext(`(() => { ${engine.slice(from, to)} })()`, ctx);
+  sync(); assert.equal(ctx.player.credits, 20, "un achat baisse le solde live");
+  ctx.fresh.credits = 500; sync(); assert.equal(ctx.player.credits, 500, "une vente augmente le solde live");
+  ctx.event.detail.source = "progress"; ctx.fresh.credits = 1; sync(); assert.equal(ctx.player.credits, 500, "une ancienne sauvegarde de progression ne remplace pas le live");
+});
+
+test("une amélioration consommée avant épuisement fait partie de la prochaine sauvegarde réseau", () => {
+  let dirty = false;
+  const ctx = vm.createContext({ account: { user: { upgrades: { laser: { ore: "seprom", stock: 100 } } } },
+    noteNetUpgradeConsumed: () => {}, markProgressDirty: () => { dirty = true; }, refreshUpgradeSlotDom: () => {},
+  });
+  vm.runInContext(engineFunction("consumeUpgradeStock"), ctx);
+  assert.equal(ctx.consumeUpgradeStock("laser", 3), true);
+  assert.equal(ctx.account.user.upgrades.laser.stock, 97); assert.equal(dirty, true);
+});
+
+test("l'achat de disques depuis la fenêtre conserve les crédits gagnés avant l'autosave", () => {
+  const pilotUi = readFileSync(new URL("../UI/UI_PILOT_SKILLS.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const accountSource = readFileSync(new URL("../SRC/CORE/ACCOUNT.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const user = { id: "pilot", credits: 2_000_000, pilotSkills: { disks: 0 } };
+  const writes = [];
+  class Element { closest(selector) { return selector === "#pilotBuyDisks" ? this : null; } }
+  const context = vm.createContext({ Element, LOGDISK_PACK, LOGDISK_PRICE,
+    netActive: () => false,
+    started: true, account: { user, dirty: true }, player: { credits: 5_000_000 },
+    getCurrentUserFull: () => user, ensurePilotSkills: u => { u.pilotSkills = normalizePilotSkills(u.pilotSkills); },
+    noteNetPurchase() {}, saveUser: u => writes.push(structuredClone(u)), refreshPilotSummary() {},
+    saveProgressNow: () => { user.credits = context.player.credits; context.account.dirty = false; },
+  });
+  vm.runInContext(engineFunction("flushPilotProgressBeforeAction") + "\n"
+    + engineFunction("buyLogDiskPack", accountSource) + "\n" + engineFunction("onPilotClick", pilotUi), context);
+  context.ctx = { beforeAction: context.flushPilotProgressBeforeAction,
+    afterAction: () => { context.player.credits = user.credits; }, toast() {} };
+  context.onPilotClick({ target: new Element() });
+  assert.equal(user.credits, 2_000_000); assert.equal(context.player.credits, 2_000_000);
+  assert.equal(user.pilotSkills.disks, 10); assert.equal(writes.length, 1);
+  assert.equal(writes[0].credits, 2_000_000); assert.equal(writes[0].pilotSkills.disks, 10);
+  context.onPilotClick({ target: new Element() });
+  assert.equal(user.credits, 2_000_000); assert.equal(user.pilotSkills.disks, 10); assert.equal(writes.length, 1);
+});
+
+test("acheter des disques actualise le moteur sans recalculer les équipements ni normaliser le compte", () => {
+  const start = engine.indexOf('window.addEventListener("orbit:user-updated", event => {');
+  const from = engine.indexOf("{", start) + 1, to = engine.indexOf("  const previous = account.user;", from);
+  const fresh = { id: "a", credits: 7_000_000, pilotSkills: { disks: 10 } };
+  const ctx = vm.createContext({ started: true, player: { credits: 10_000_000 }, account: { user: { id: "a" } },
+    event: { detail: { source: "pilot-disks" } }, netList: () => [fresh],
+    getCurrentUserFull: () => { throw new Error("Normalisation inutile après achat de disques"); } });
+  vm.runInContext(engineFunction("preserveLivePetVitals") + `\n(() => { ${engine.slice(from, to)} })()`, ctx);
+  assert.equal(ctx.player.credits, 7_000_000); assert.equal(ctx.account.user, fresh);
 });
 
 function targetHarness(enemies) {
@@ -189,7 +249,7 @@ test("notifications : toutes les insertions avant lecture des hauteurs, tous les
 test("cache compte : ecritures regroupees, derniere revision et deconnexion respectees", () => {
   const source = readFileSync(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const timers = [], idle = [], writes = [];
-  const context = vm.createContext({ memUser: { id: "pilot" }, CACHE_KEY: "cache",
+  const context = vm.createContext({ memUser: { id: "pilot" }, CACHE_KEY: "cache", serverBase: null, retrySave: null, serverRewards: new Map(),
     setTimeout: fn => timers.push(fn), requestIdleCallback: fn => idle.push(fn),
     netActive: () => !!context.memUser, lsSet: (key, value) => writes.push(JSON.parse(value).user),
   });

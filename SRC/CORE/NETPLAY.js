@@ -775,6 +775,12 @@ export function ensureNetplayConnection() {
     netAuthed = false;
     lastLatencyMs = null;
     // Coupure (restart serveur, réseau) : purge immédiate du partagé —
+    if (hangarArrivalPending) {
+      const pending = hangarArrivalPending;
+      hangarArrivalPending = null;
+      clearTimeout(pending.timer);
+      pending.resolve({ ok: false, reason: 'offline' });
+    }
     // aucun fantôme (distants, NPC, box, tirs, groupe, raid), partout.
     // La grâce 12 s ne concerne que le refresh d'un AUTRE joueur vu par
     // le serveur ; ici c'est NOUS qui sommes coupés : écran net aussitôt.
@@ -811,8 +817,34 @@ export function ensureNetplayConnection() {
     if (msg.t === "welcome" && msg.clockBlocked === true) setSimulationBlocked(true);
     if (msg.t === "clock") return;
     if (msg.t === "stateCorrection") {
+      if (hangarArrivalPending || hangarArrivalApplying) return;
       if (!Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) return;
       try { window.dispatchEvent(new CustomEvent("orbit:server-position", { detail: msg })); } catch {}
+      return;
+    }
+    if (msg.t === "hangarArrival") {
+      const pending = hangarArrivalPending;
+      if (!pending || String(msg.hangarId) !== pending.hangarId) return;
+      hangarArrivalPending = null;
+      clearTimeout(pending.timer);
+      hangarArrivalApplying = msg.ok === true;
+      pending.resolve({ ...msg, ok: msg.ok === true });
+      return;
+    }
+    // Réponse à requestStarJumpArrival : arrivée validée (ou refus) par le serveur.
+    if (msg.t === "starJump") {
+      const pending = starJumpPending;
+      starJumpPending = null;
+      try { if (pending?.timer) clearTimeout(pending.timer); } catch {}
+      try {
+        pending?.resolve({
+          ok: msg.ok === true,
+          x: Number(msg.x),
+          y: Number(msg.y),
+          map: String(msg.map || ""),
+          reason: String(msg.reason || ""),
+        });
+      } catch {}
       return;
     }
     if (msg.t === "maintenance") {
@@ -1576,6 +1608,7 @@ export function ensureNetplayConnection() {
 }
 
 function sendNow(local, force = false) {
+  if (hangarArrivalPending || hangarArrivalApplying) return;
   if (!ws || ws.readyState !== 1) return;
   const now = performance.now();
   if (!force && now - lastSendMs < NET_SEND_INTERVAL_MS) return; // 20 Hz max
@@ -1821,6 +1854,54 @@ export function requestBoxSync() {
   } catch {
     return false;
   }
+}
+
+// Star jump (Carte Stellaire) : demande d'arrivée validée par le serveur.
+// Retourne une promesse résolue par le dispatch "starJump", ou null si
+// l'envoi est impossible (hors ligne / instance / requête déjà en cours).
+let hangarArrivalPending = null;
+let hangarArrivalApplying = false;
+export function finishHangarArrival() {
+  hangarArrivalApplying = false;
+  pendingLocal = null;
+}
+export function requestHangarArrival(hangarId) {
+  if (suspended || instanceMode || !netAuthed || !ws || ws.readyState !== 1
+    || hangarArrivalPending || hangarArrivalApplying) return null;
+  const key = String(hangarId || '').slice(0, 64);
+  if (!key) return null;
+  return new Promise(resolve => {
+    const timer = setTimeout(() => {
+      if (hangarArrivalPending?.resolve !== resolve) return;
+      hangarArrivalPending = null;
+      resolve({ ok: false, reason: 'timeout' });
+    }, 5000);
+    timer.unref?.();
+    hangarArrivalPending = { hangarId: key, resolve, timer };
+    try { ws.send(JSON.stringify({ t: 'hangarArrival', hangarId: key })); }
+    catch { clearTimeout(timer); hangarArrivalPending = null; resolve({ ok: false, reason: 'offline' }); }
+  });
+}
+
+let starJumpPending = null;
+export function requestStarJumpArrival(mapId) {
+  if (suspended || instanceMode === true || !ws || ws.readyState !== 1) return null;
+  if (starJumpPending) return null;
+  const map = String(mapId || "").toLowerCase().slice(0, 32);
+  if (!map) return null;
+  try {
+    ws.send(JSON.stringify({ t: "map", map, starJump: true }));
+  } catch {
+    return null;
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      if (starJumpPending?.resolve === resolve) starJumpPending = null;
+      try { resolve({ ok: false, x: NaN, y: NaN, map, reason: "timeout" }); } catch {}
+    }, 5000);
+    try { timer.unref?.(); } catch {}
+    starJumpPending = { resolve, timer, map };
+  });
 }
 
 // Anciennete (ms) de la derniere preuve de vie box, Infinity si jamais recue.
@@ -2123,7 +2204,7 @@ export function sendSkillUse(skill, details = {}) {
 // Ce module ne fait que le reseau : envoi 20 Hz + snapshots + extrapolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, netplayLocalUpdateDue, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
+  window.__NETPLAY__ = { pushNetplayLocal, netplayLocalUpdateDue, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, claimNetBox, requestBoxSync, requestStarJumpArrival, netBoxSyncAgeMs, netBoxSnapshotReady, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;

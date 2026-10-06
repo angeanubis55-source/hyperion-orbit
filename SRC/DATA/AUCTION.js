@@ -3,13 +3,13 @@
 // SRC/DATA/AUCTION.js — Enchères façon DarkOrbit (données + règles pures).
 // Lots FIXES chaque heure pile de Paris (Europe/Paris, reset à :00),
 // pas de roulement aléatoire, dans cet ordre :
-//   1-3. munitions x2 / x3 / x4 (pack 1000)
-//   4. munition x6 (pack 250)
+//   1-3. munitions x2 / x3 / x4 (pack 10 000)
+//   4. munition x6 (pack 2 500)
 //   5. bouclier SG3N-B02
 //   6. générateur G3N-7900
 //   7-10. lasers LF-2 / LF-3 / LF-4 / LF-5
 //   11. drone Iris (masqué si 8 possédés)
-//   12-13. roquettes PLT-3030 / PLT-2021 (x100 chacune)
+//   12-13. roquettes PLT-3030 / PLT-2021 (x1 000 chacune)
 //   14-17. boosters B01 x10 (10 h) : Expérience / Dégâts / Coque / Bouclier
 //   18-20. vaisseaux Goliath / Vengeance / Leonov (masqués si possédés)
 //   21. 1 design aléatoire par heure, déterministe (même pour tous)
@@ -69,7 +69,7 @@ export function parisHourSeed(nowMs = Date.now()) {
 // Version du cycle : bumpée à chaque changement de la liste fixe.
 // Les sauvegardes avec une autre version voient leurs lots purgés
 // (avec remboursement des mises réservées) puis reconstruits en fixe.
-export const AUCTION_CYCLE_VERSION = 8;
+export const AUCTION_CYCLE_VERSION = 9;
 
 // Prix de départ : -70 % (30 % du prix).
 export const AUCTION_START_RATIO = 0.3;
@@ -81,8 +81,8 @@ export const AUCTION_RESOURCE_OFFERS = Object.freeze([]);
 export const AUCTION_PETFUEL_QTY = 250;
 export const AUCTION_BOOSTER_QTY = 10;
 
-// Pack custom : 250x RSB-75 (x6) au lieu du pack boutique de 1000.
-export const AUCTION_X6_QTY = 250;
+// Pack custom : 2 500x RSB-75 (x6), prix au prorata du pack boutique.
+export const AUCTION_X6_QTY = 2500;
 // Boosters B01 : x10 = 10 h cumulées au gain.
 export const AUCTION_B01_HOURS = 10;
 
@@ -178,12 +178,12 @@ export function buildHourlyLots(catalog, filters = {}, nowMs = Date.now(), rng =
     return lot;
   };
 
-  // 1-3. Munitions x2 / x3 / x4 (pack boutique 1000).
-  pushCatalog("ammo_x2");
-  pushCatalog("ammo_x3");
-  pushCatalog("ammo_x4");
+  // 1-3. Munitions x2 / x3 / x4 : 10 packs boutique (10 000 tirs).
+  pushCatalog("ammo_x2", 10);
+  pushCatalog("ammo_x3", 10);
+  pushCatalog("ammo_x4", 10);
 
-  // 4. Munition x6 : pack custom de 250 (prix au prorata du pack 1000).
+  // 4. Munition x6 : pack custom de 2 500 (prix au prorata du pack 1000).
   {
     const item = findInCatalog(catalog, "ammo_x6");
     if (item) {
@@ -221,9 +221,9 @@ export function buildHourlyLots(catalog, filters = {}, nowMs = Date.now(), rng =
     }
   }
 
-  // 12-13. Roquettes PLT-3030 / PLT-2021 : x100 chacune (10 packs boutique).
-  pushCatalog("rocket_plt3030", 10);
-  pushCatalog("rocket_plt2021", 10);
+  // 12-13. Roquettes PLT-3030 / PLT-2021 : x1 000 chacune (100 packs boutique).
+  pushCatalog("rocket_plt3030", 100);
+  pushCatalog("rocket_plt2021", 100);
 
   // 14-17. Boosters B01 x10 (= 10 h) : Expérience / Dégâts / Coque / Bouclier.
   pushCatalog("booster_ep", AUCTION_B01_HOURS);

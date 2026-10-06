@@ -2,7 +2,7 @@ import { startOrbitGame } from "../../SRC/CORE/ORBIT_ENGINE.js";
 import { createImageLoader } from "../../SRC/CORE/IMAGE_LOADER.js";
 import { createSFX } from "../../SRC/CORE/SFX.js";
 
-import { WORLD } from "./WORLD.js";
+import { WORLD, QZ_ENTRY } from "./WORLD.js";
 import { getWavePlan, DEFAULT_WAVE_TYPE } from "./WAVES.js";
 
 import { SHIP_PACKS } from "../../SHIP/SHIP_PACKS.js";
@@ -46,7 +46,7 @@ export function init() {
           ];
         }),
       },
-      playerSpawn: { x: 520, yRatio: 0.5 },
+      playerSpawn: QZ_ENTRY,
     },
   });
 }
