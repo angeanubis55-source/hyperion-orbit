@@ -33,7 +33,7 @@ import {
   pickNearestWithin,
 } from "../../PET/PET_GEARS.js";
 import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_TRAILS.js";
-import { computeBotCombatMove, computeWallDetour } from "./BOT_NAVIGATION.js";
+import { computeBotCombatMove, computeWallDetour, isPointInWall, isSegmentBlocked } from "./BOT_NAVIGATION.js";
 import { SpatialIndex } from "./SPATIAL_INDEX.js";
 import { normalizeMapId } from "./MAP_REGISTRY.js";
 import { getPortalSkinForMap } from "./PORTAL_SKINS.js";
@@ -10492,6 +10492,52 @@ function botNpcVisible(e) {
   } catch { return true; }
 }
 
+// NPC coincé dans un mur (maps BL) : le bot l'ignore. Marge = rayon NPC
+// (+ un peu) pour ne pas viser un centre englouti dans le caillou.
+// Hors map zone ou sans murs : jamais bloqué.
+function botNpcInWall(e) {
+  try {
+    if (!isZoneMap || !Array.isArray(zoneWalls) || !zoneWalls.length) return false;
+    if (!e) return false;
+    const m = Math.max(0, Number(e.r) || 18);
+    return isPointInWall(Number(e.x) || 0, Number(e.y) || 0, zoneWalls, m);
+  } catch { return false; }
+}
+
+// Bannissement court d'un NPC en mur : évite de re-locker aussitôt la même
+// cible inatteignable (le filtre live suffit en patrouille, mais le lock
+// persistant doit être cassé explicitement). Clé = id NPC, valeur = now ms.
+function botNpcWallBanActive(id) {
+  try {
+    const ban = Bot.npcWallBan;
+    if (!ban || typeof ban !== "object") return false;
+    const until = Number(ban[String(id)] || 0);
+    if (!(until > Date.now())) {
+      if (until) { try { delete ban[String(id)]; } catch {} }
+      return false;
+    }
+    return true;
+  } catch { return false; }
+}
+
+function botNpcBanWall(e, ms = 8000) {
+  try {
+    if (!e || e.id == null) return;
+    if (!Bot.npcWallBan || typeof Bot.npcWallBan !== "object") Bot.npcWallBan = {};
+    Bot.npcWallBan[String(e.id)] = Date.now() + Math.max(1000, Number(ms) || 8000);
+  } catch {}
+}
+
+function botNpcSelectable(e) {
+  if (!e || Number(e.hp) <= 0) return false;
+  if (e.isPetTarget) return false;
+  try { if (!Bot.npcAllow.has(String(e.type))) return false; } catch { return false; }
+  if (!botNpcVisible(e)) return false;
+  if (botNpcInWall(e)) return false;
+  try { if (e.id != null && botNpcWallBanActive(e.id)) return false; } catch {}
+  return true;
+}
+
 function botNearestQuestNpc(set) {
   let best = null;
   let bestD2 = Infinity;
@@ -10504,6 +10550,9 @@ function botNearestQuestNpc(set) {
     // Pas de wallhack : comme un joueur, le bot ne voit que dans son rayon
     // (lock conservé : la cible engagée reste suivie).
     if (!botNpcVisible(e)) continue;
+    // NPC dans un mur : ignoré (inatteignable, pas de glitch contre le mur).
+    if (botNpcInWall(e)) continue;
+    try { if (e.id != null && botNpcWallBanActive(e.id)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
     const pr = botNpcPrio(e.type);
     const bpr = best ? botNpcPrio(best.type) : -1;
@@ -10535,6 +10584,9 @@ function botNearestNpc() {
     // Pas de wallhack : comme un joueur, le bot ne voit que dans son rayon
     // (lock conservé : la cible engagée reste suivie).
     if (!botNpcVisible(e)) continue;
+    // NPC dans un mur : ignoré (inatteignable, pas de glitch contre le mur).
+    if (botNpcInWall(e)) continue;
+    try { if (e.id != null && botNpcWallBanActive(e.id)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
     const pr = botNpcPrio(e.type);
     const bpr = best ? botNpcPrio(best.type) : -1;
@@ -10548,7 +10600,8 @@ function botNearestNpc() {
 function botNearestNpcByDistance() {
   const found = nearestSpatialNpc(player.x, player.y, (e) => e
     && Number(e.hp) > 0 && !e.isPetTarget && Bot.npcAllow.has(String(e.type))
-    && botNpcVisible(e));
+    && botNpcVisible(e) && !botNpcInWall(e)
+    && !(e.id != null && botNpcWallBanActive(e.id)));
   return found ? { npc: found.item, d2: found.d2 } : null;
 }
 
@@ -10575,6 +10628,9 @@ function botNearestNpcInRange(maxD) {
     if (!Bot.npcAllow.has(String(e.type))) continue;
     // Pas de wallhack : rayon capteurs comme un joueur.
     if (!botNpcVisible(e)) continue;
+    // NPC dans un mur : ignoré (inatteignable, pas de glitch contre le mur).
+    if (botNpcInWall(e)) continue;
+    try { if (e.id != null && botNpcWallBanActive(e.id)) continue; } catch {}
     const d2 = dist2(player.x, player.y, e.x, e.y);
     if (d2 > lim2) continue;
     const pr = botNpcPrio(e.type);
@@ -10696,6 +10752,8 @@ function botConcurrentNpc(engageMax, locked) {
   const okTarget = (e) => {
     if (!e || e.isPetTarget || Number(e.hp) <= 0) return false;
     try { if (!enemies.includes(e)) return false; } catch { return false; }
+    if (botNpcInWall(e)) return false;
+    try { if (e.id != null && botNpcWallBanActive(e.id)) return false; } catch {}
     try { return dist2(player.x, player.y, e.x, e.y) <= lim2; } catch { return false; }
   };
   try {
@@ -11636,8 +11694,21 @@ function tickBot(dt) {
       const cur = Bot.combatTargetId == null ? Target.get() : botLocked;
       if (cur && !cur.isPetTarget && Number(cur.hp) > 0 && enemies.includes(cur)
         && Bot.npcAllow.has(String(cur.type))) {
-        lockedNpc = cur;
-        botLockNpc(cur);
+        // NPC rentré/coincé dans un mur : on casse le lock au lieu de
+        // glitcher contre le mur en attendant qu'il ressorte. Ban court
+        // pour ne pas le re-locker aussitôt.
+        if (botNpcInWall(cur)) {
+          try { botNpcBanWall(cur, 8000); } catch {}
+          try { if (botTargetIsNpc(cur) && Target.get()) Target.clear(); } catch {}
+          try { if (attackActive) stopAttack(); } catch {}
+          Bot.combatTargetId = null;
+          Bot.lastNpcId = null;
+          Bot.lastNpcKey = null;
+          lockedNpc = null;
+        } else {
+          lockedNpc = cur;
+          botLockNpc(cur);
+        }
       } else {
         Bot.combatTargetId = null;
       }
@@ -33842,6 +33913,9 @@ if (hangarSwapFx) {
   // En combat (attaque active), l'orbite pilote déjà en évitant les murs :
   // on n'applique ici que les demi-tours d'urgence (vrai blocage), sinon
   // les deux systèmes se battent et ça oscille.
+  // Exception : approche lointaine derrière un mur (NPC de l'autre côté,
+  // hors portée laser) — l'orbite locale vibre contre le mur sans progresser,
+  // on laisse alors le BFS faire le tour au lieu d'attendre.
   if (!hangarSwapFx && Bot.active === true && moveTarget.active && !player.dead
     && !pointer.down && isZoneMap && Array.isArray(zoneWalls) && zoneWalls.length
     && (mx !== 0 || my !== 0)) {
@@ -33853,7 +33927,51 @@ if (hangarSwapFx) {
         walls: zoneWalls, radius: player.r || 18, state: Bot.wallSteer, dt,
         bounds: { minX: 100, minY: 100, maxX: WORLD.w - 100, maxY: WORLD.h - 100 },
       });
-      if (steer && steer.detour === true && (!attackActive || steer.freeing === true)) {
+      let allowDetour = !attackActive || steer.freeing === true;
+      // NPC verrouillé de l'autre côté d'un mur + hors portée : approche BFS.
+      if (!allowDetour && attackActive) {
+        try {
+          let combatNpc = null;
+          if (Bot.combatTargetId != null) {
+            combatNpc = enemies.find((enemy) => botNpcHasLockKey(enemy, Bot.combatTargetId)) || null;
+          }
+          if (!combatNpc) {
+            try {
+              const t = Target.get();
+              if (t && !t.isPetTarget && Number(t.hp) > 0) combatNpc = t;
+            } catch {}
+          }
+          if (combatNpc && !botNpcInWall(combatNpc)) {
+            const npcD = Math.hypot(Number(combatNpc.x) - player.x, Number(combatNpc.y) - player.y);
+            let engageMax = 0;
+            try { engageMax = botEngageRange(); } catch { engageMax = 0; }
+            // Hors portée laser + mur entre nous et lui = il faut contourner,
+            // pas orbiter contre le mur en espérant qu'il se rapproche.
+            if (npcD > Math.max(80, Number(engageMax) || 0)
+              && isSegmentBlocked(player.x, player.y, Number(combatNpc.x), Number(combatNpc.y),
+                zoneWalls, (player.r || 18) + 8)) {
+              const approach = computeWallDetour({
+                fromX: player.x, fromY: player.y,
+                toX: Number(combatNpc.x), toY: Number(combatNpc.y),
+                walls: zoneWalls, radius: player.r || 18, state: Bot.wallSteer, dt,
+                bounds: { minX: 100, minY: 100, maxX: WORLD.w - 100, maxY: WORLD.h - 100 },
+              });
+              if (approach && (approach.detour === true || approach.freeing === true)) {
+                const adx = approach.x - player.x, ady = approach.y - player.y;
+                if (Math.hypot(adx, ady) > 1) { mx = adx / Math.hypot(adx, ady); my = ady / Math.hypot(adx, ady); }
+                allowDetour = false;
+                // moveTarget suit le contournement pour ne pas tirer droit au
+                // prochain tick (évite l'oscillation orbite/BFS).
+                moveTarget.x = approach.x;
+                moveTarget.y = approach.y;
+              } else {
+                allowDetour = true;
+              }
+            }
+          }
+        } catch {}
+      }
+      if (allowDetour && steer && steer.detour === true) {
         const sdx = steer.x - player.x, sdy = steer.y - player.y;
         const sd = Math.hypot(sdx, sdy);
         if (sd > 1) { mx = sdx / sd; my = sdy / sd; }

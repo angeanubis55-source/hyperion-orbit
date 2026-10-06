@@ -28,6 +28,32 @@ function segmentHitsRect(ax, ay, bx, by, rect, margin) {
     || seg(ax, ay, bx, by, left, bottom, left, top);
 }
 
+// Le point est-il dans un mur (gonflé de margin) ? NPC coincé dans un
+// caillou = à ignorer côté ciblage bot.
+export function isPointInWall(x, y, walls, margin = 0) {
+  if (!Array.isArray(walls) || !walls.length) return false;
+  const px = Number(x) || 0, py = Number(y) || 0;
+  const m = Math.max(0, Number(margin) || 0);
+  for (const w of walls) {
+    if (!w) continue;
+    const e = rectEdges(w);
+    if (px >= e.left - m && px <= e.right + m && py >= e.top - m && py <= e.bottom + m) return true;
+  }
+  return false;
+}
+
+// Le segment AB traverse-t-il un mur (gonflé de margin) ? NPC de l'autre
+// côté = à contourner via BFS, pas à foncer droit dessus.
+export function isSegmentBlocked(ax, ay, bx, by, walls, margin = 0) {
+  if (!Array.isArray(walls) || !walls.length) return false;
+  const m = Math.max(0, Number(margin) || 0);
+  for (const w of walls) {
+    if (!w) continue;
+    if (segmentHitsRect(ax, ay, bx, by, w, m)) return true;
+  }
+  return false;
+}
+
 // Foulée max du WP retourné : on vise le coin par petits pas recalculés
 // à chaque frame (la trajectoire épouse le contour au lieu de couper les
 // coins en ligne droite). Le coin réel reste mémorisé pour l'état.
