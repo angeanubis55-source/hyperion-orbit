@@ -453,6 +453,19 @@ export const CRAFTING_RECIPES = Object.freeze([
   }),
   // ---- Blacklight (quêtes BL) ----
   Object.freeze({
+    id: "craft_seprom_5000",
+    name: "Seprom (5 000)",
+    description: "Minerai pour améliorer les lasers, les roquettes et le bouclier.",
+    rarity: "rare",
+    costs: {
+      // Recette officielle : 10 000 Uridium, convertis en crédits (×1000).
+      // https://board-es.darkorbit.com/threads/faqs-sistema-de-mejoras-y-ensamblaje.142120/
+      credits: 10000000,
+      resources: { rinusk: 1250, blacklight_trace: 250 },
+    },
+    output: { resources: { seprom: 5000 } },
+  }),
+  Object.freeze({
     id: "craft_prometheus",
     name: "Laser PR-L Prometheus",
     description: "210 dégâts, +200 tous les 5 tirs ; ×3,5 sur Impulse, Attend, Invoke et Mindfire.",
