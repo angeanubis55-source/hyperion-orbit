@@ -33,7 +33,7 @@ import {
   pickNearestWithin,
 } from "../../PET/PET_GEARS.js";
 import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_TRAILS.js";
-import { computeBotCombatMove, computeWallDetour, isPointInWall, isSegmentBlocked } from "./BOT_NAVIGATION.js";
+import { computeBotCombatMove, computeBotWallMove, isPointInWall } from "./BOT_NAVIGATION.js";
 import { SpatialIndex } from "./SPATIAL_INDEX.js";
 import { normalizeMapId } from "./MAP_REGISTRY.js";
 import { getPortalSkinForMap } from "./PORTAL_SKINS.js";
@@ -10994,6 +10994,43 @@ function botOrderMove(x, y, tag) {
   moveTarget.active = true;
   moveTarget.x = x;
   moveTarget.y = y;
+}
+
+// Prochain pas du bot : le trajet contourne les murs sans modifier l'ordre final.
+function botMovementStep(dt) {
+  if (hangarSwapFx || !Bot.active || !moveTarget.active || player.dead || pointer.down
+    || performance.now() - Number(Bot.manualT || 0) < 2500
+    || !isZoneMap || !zoneWalls?.length) {
+    Bot.wallSteer = null;
+    return moveTarget;
+  }
+  let combatNpc = null;
+  if (attackActive) {
+    if (Bot.combatTargetId != null) combatNpc = enemies.find(e => botNpcHasLockKey(e, Bot.combatTargetId)) || null;
+    if (!combatNpc) { const current = Target.get(); if (current && !current.isPetTarget && current.hp > 0) combatNpc = current; }
+    if (botNpcInWall(combatNpc)) combatNpc = null;
+  }
+  Bot.wallSteer ||= {};
+  const steer = computeBotWallMove({ player, target: moveTarget, npc: combatNpc, walls: zoneWalls,
+    bounds: { minX: 100, minY: 100, maxX: WORLD.w - 100, maxY: WORLD.h - 100 }, state: Bot.wallSteer, dt });
+  if (steer.unreachable) {
+    // Un objectif isole par les murs ne doit pas retenir le bot sur place.
+    if (Bot.wallSteer.unreachableT > 0.75 && playerSlowMult(player) > 0) {
+      if (combatNpc) {
+        botNpcBanWall(combatNpc);
+        try { stopAttack(); Target.clear(); } catch {}
+        Bot.combatTargetId = null; Bot.lastNpcId = null; Bot.lastNpcKey = null; Bot.steering = null;
+      }
+      moveTarget.active = false; Bot.moveTag = null; Bot.roamT = 0;
+    }
+    return { active: false, x: player.x, y: player.y };
+  }
+  if (!steer.detour) return moveTarget;
+  if (steer.adjusted && Math.hypot(steer.x - player.x, steer.y - player.y) <= 0.5) {
+    moveTarget.active = false;
+    return moveTarget;
+  }
+  return { active: true, x: steer.x, y: steer.y };
 }
 
 // Conserve le rayon de combat meme pres d'un bord. Un clamp direct peut
@@ -33885,99 +33922,29 @@ if (startHintT > 0) {
   }
 
   refreshHoldMoveTarget();
+  const movementStepTarget = botMovementStep(dt);
   let mx = 0, my = 0;
 
 if (hangarSwapFx) {
   moveTarget.active = false;
   player.vx = 0;
   player.vy = 0;
-} else if (moveTarget.active && !player.dead) {
-  const dx = moveTarget.x - player.x;
-  const dy = moveTarget.y - player.y;
+} else if (movementStepTarget.active && !player.dead) {
+  const dx = movementStepTarget.x - player.x;
+  const dy = movementStepTarget.y - player.y;
   const d = Math.hypot(dx, dy);
 
   if (d <= 0.5) {
-    player.x = moveTarget.x;
-    player.y = moveTarget.y;
+    player.x = movementStepTarget.x;
+    player.y = movementStepTarget.y;
     player.vx = 0;
     player.vy = 0;
-    moveTarget.active = false;
+    movementStepTarget.active = false;
   } else {
     mx = dx / d;
     my = dy / d;
   }
 }
-
-  // Bot : contourne les murs au lieu de foncer dedans (maps BL). Pilotage
-  // manuel inchangé (pointer enfoncé = le joueur décide).
-  // En combat (attaque active), l'orbite pilote déjà en évitant les murs :
-  // on n'applique ici que les demi-tours d'urgence (vrai blocage), sinon
-  // les deux systèmes se battent et ça oscille.
-  // Exception : approche lointaine derrière un mur (NPC de l'autre côté,
-  // hors portée laser) — l'orbite locale vibre contre le mur sans progresser,
-  // on laisse alors le BFS faire le tour au lieu d'attendre.
-  if (!hangarSwapFx && Bot.active === true && moveTarget.active && !player.dead
-    && !pointer.down && isZoneMap && Array.isArray(zoneWalls) && zoneWalls.length
-    && (mx !== 0 || my !== 0)) {
-    try {
-      Bot.wallSteer = Bot.wallSteer && typeof Bot.wallSteer === "object" ? Bot.wallSteer : {};
-      const steer = computeWallDetour({
-        fromX: player.x, fromY: player.y,
-        toX: moveTarget.x, toY: moveTarget.y,
-        walls: zoneWalls, radius: player.r || 18, state: Bot.wallSteer, dt,
-        bounds: { minX: 100, minY: 100, maxX: WORLD.w - 100, maxY: WORLD.h - 100 },
-      });
-      let allowDetour = !attackActive || steer.freeing === true;
-      // NPC verrouillé de l'autre côté d'un mur + hors portée : approche BFS.
-      if (!allowDetour && attackActive) {
-        try {
-          let combatNpc = null;
-          if (Bot.combatTargetId != null) {
-            combatNpc = enemies.find((enemy) => botNpcHasLockKey(enemy, Bot.combatTargetId)) || null;
-          }
-          if (!combatNpc) {
-            try {
-              const t = Target.get();
-              if (t && !t.isPetTarget && Number(t.hp) > 0) combatNpc = t;
-            } catch {}
-          }
-          if (combatNpc && !botNpcInWall(combatNpc)) {
-            const npcD = Math.hypot(Number(combatNpc.x) - player.x, Number(combatNpc.y) - player.y);
-            let engageMax = 0;
-            try { engageMax = botEngageRange(); } catch { engageMax = 0; }
-            // Hors portée laser + mur entre nous et lui = il faut contourner,
-            // pas orbiter contre le mur en espérant qu'il se rapproche.
-            if (npcD > Math.max(80, Number(engageMax) || 0)
-              && isSegmentBlocked(player.x, player.y, Number(combatNpc.x), Number(combatNpc.y),
-                zoneWalls, (player.r || 18) + 8)) {
-              const approach = computeWallDetour({
-                fromX: player.x, fromY: player.y,
-                toX: Number(combatNpc.x), toY: Number(combatNpc.y),
-                walls: zoneWalls, radius: player.r || 18, state: Bot.wallSteer, dt,
-                bounds: { minX: 100, minY: 100, maxX: WORLD.w - 100, maxY: WORLD.h - 100 },
-              });
-              if (approach && (approach.detour === true || approach.freeing === true)) {
-                const adx = approach.x - player.x, ady = approach.y - player.y;
-                if (Math.hypot(adx, ady) > 1) { mx = adx / Math.hypot(adx, ady); my = ady / Math.hypot(adx, ady); }
-                allowDetour = false;
-                // moveTarget suit le contournement pour ne pas tirer droit au
-                // prochain tick (évite l'oscillation orbite/BFS).
-                moveTarget.x = approach.x;
-                moveTarget.y = approach.y;
-              } else {
-                allowDetour = true;
-              }
-            }
-          }
-        } catch {}
-      }
-      if (allowDetour && steer && steer.detour === true) {
-        const sdx = steer.x - player.x, sdy = steer.y - player.y;
-        const sd = Math.hypot(sdx, sdy);
-        if (sd > 1) { mx = sdx / sd; my = sdy / sd; }
-      }
-    } catch {}
-  }
 
   if (!hangarSwapFx) updatePlayerVelocity(player, { x: mx, y: my }, dt);
 
@@ -33991,7 +33958,7 @@ if (hangarSwapFx) {
   }
 
   if (!player.dead && !hangarSwapFx) {
-    advancePlayerToTarget(player, moveTarget, dt);
+    advancePlayerToTarget(player, movementStepTarget, dt);
 
     if (isZoneMap) {
       resolvePlayerWalls();

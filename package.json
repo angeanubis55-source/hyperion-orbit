@@ -12,6 +12,7 @@
     "test:browser": "node SCRIPTS/SMOKE_BROWSER.js",
     "test:anticheat-browser": "node SCRIPTS/CHEAT_ENGINE_BROWSER_TEST.js",
     "test:selections-browser": "node SCRIPTS/ACCOUNT_SELECTION_BROWSER_TEST.js",
+    "test:bot-walls-browser": "node SCRIPTS/BOT_WALL_BROWSER_TEST.js",
     "test:loading": "node SCRIPTS/VERIFY_SECTOR_LOADING.js",
     "test:loading-progress": "node SCRIPTS/LOADING_PROGRESS_BROWSER_TEST.js",
     "profile:canvas": "node SCRIPTS/PROFILE_CANVAS.js"
