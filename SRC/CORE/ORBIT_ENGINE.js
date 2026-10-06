@@ -13111,9 +13111,13 @@ function renderCraftingWindow(message = "") {
     selectedCraftingRecipeId = visibleRecipes[0]?.id || CRAFTING_RECIPES[0]?.id || null;
   }
   // Bandeau haut : images seules, scroll horizontal.
+  const recipeButtons = [...ui.craftingRecipes.children];
+  const rebuildStrip = recipeButtons.length !== visibleRecipes.length
+    || visibleRecipes.some((recipe, index) => recipeButtons[index]?.dataset.recipeId !== recipe.id);
   if (!visibleRecipes.length) {
     ui.craftingRecipes.innerHTML = `<div class="assemblyEmpty"><b>Aucune recette pour le moment</b></div>`;
-  } else {
+  } else if (rebuildStrip) {
+    const scrollLeft = ui.craftingRecipes.scrollLeft;
     ui.craftingRecipes.innerHTML = visibleRecipes.map(recipe => {
       const rarity = ITEM_RARITIES[recipe.rarity] || ITEM_RARITIES.common;
       const ownershipBlock = getCraftingOwnershipBlock(user, recipe, 1);
@@ -13122,11 +13126,21 @@ function renderCraftingWindow(message = "") {
       return `<button type="button" role="option" aria-selected="${recipe.id === selectedCraftingRecipeId ? "true" : "false"}" class="assemblyThumb rarity-${rarity.id}${recipe.id === selectedCraftingRecipeId ? " active" : ""}${ownershipBlock ? " ownedLimit" : ""}${affordable && !ownershipBlock ? "" : " cantAfford"}" data-recipe-id="${escapeHtml(recipe.id)}" title="${escapeHtml(recipe.name)}">`
         + `<img src="${escapeHtml(icon)}" alt="${escapeHtml(recipe.name)}" loading="lazy" draggable="false" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'"></button>`;
     }).join("");
+    ui.craftingRecipes.scrollLeft = scrollLeft;
+  } else {
+    // Les mises a jour du profil, de quantite et d'achat conservent les
+    // boutons : ni le defilement du bandeau ni son focus ne sont perdus.
+    visibleRecipes.forEach((recipe, index) => {
+      const button = recipeButtons[index];
+      const selected = recipe.id === selectedCraftingRecipeId;
+      const ownershipBlock = getCraftingOwnershipBlock(user, recipe, 1);
+      const affordable = canAffordCraftingRecipe(user, recipe, 1);
+      button.classList.toggle('active', selected);
+      button.classList.toggle('ownedLimit', Boolean(ownershipBlock));
+      button.classList.toggle('cantAfford', !affordable || Boolean(ownershipBlock));
+      button.setAttribute('aria-selected', String(selected));
+    });
   }
-  queueMicrotask(() => {
-    const active = ui.craftingRecipes?.querySelector(".assemblyThumb.active");
-    active?.scrollIntoView({ block: "nearest", inline: "center" });
-  });
   const recipe = CRAFTING_RECIPES.find(entry => entry.id === selectedCraftingRecipeId) || visibleRecipes[0];
   if (!recipe) {
     if (ui.craftingDetail) ui.craftingDetail.innerHTML = `<div class="assemblyDetailCard"><div class="assemblyEmpty"><b>En attente de recettes</b><span>Dès qu'une recette existe, son coût et son résultat s'affichent ici.</span></div></div>`;
@@ -38236,7 +38250,7 @@ function updateStarMapView() {
   syncStarMapScrollbars();
 }
 
-function zoomStarMap(factor, pointer = null) {
+function zoomStarMap(factor, pointer = null, mapAnchor = null) {
   const viewport = document.getElementById('starMapViewport'), tree = ui.starMapTree;
   let anchor = null;
   if (pointer && viewport && tree) {
@@ -38244,8 +38258,8 @@ function zoomStarMap(factor, pointer = null) {
     const x = pointer.clientX - bounds.left - viewport.clientLeft;
     const y = pointer.clientY - bounds.top - viewport.clientTop;
     anchor = { x, y,
-      mapX: (viewport.scrollLeft + x - (parseFloat(tree.style.left) || 0)) / StarJump.viewScale,
-      mapY: (viewport.scrollTop + y - (parseFloat(tree.style.top) || 0)) / StarJump.viewScale };
+      mapX: mapAnchor?.x ?? (viewport.scrollLeft + x - (parseFloat(tree.style.left) || 0)) / StarJump.viewScale,
+      mapY: mapAnchor?.y ?? (viewport.scrollTop + y - (parseFloat(tree.style.top) || 0)) / StarJump.viewScale };
   }
   StarJump.fitView = false;
   StarJump.zoomScale = StarJump.viewScale * factor;
@@ -38627,13 +38641,42 @@ function renderStarMap() {
       for (const [id, axis] of [['starMapScrollX', 'scrollLeft'], ['starMapScrollY', 'scrollTop']]) {
         document.getElementById(id)?.addEventListener('input', e => { viewport[axis] = Number(e.target.value); });
       }
-      let pan = null, panDragged = false;
+      let pan = null, pinch = null, panDragged = false;
+      const touches = new Map();
+      const touchPair = () => {
+        const [a, b] = touches.values();
+        return a && b ? { clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2,
+          distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)) } : null;
+      };
+      const beginPinch = () => {
+        const pair = touchPair(), bounds = viewport.getBoundingClientRect();
+        pinch = { distance: pair.distance, scale: StarJump.viewScale, anchor: {
+          x: (viewport.scrollLeft + pair.clientX - bounds.left - viewport.clientLeft - (parseFloat(tree.style.left) || 0)) / StarJump.viewScale,
+          y: (viewport.scrollTop + pair.clientY - bounds.top - viewport.clientTop - (parseFloat(tree.style.top) || 0)) / StarJump.viewScale,
+        } };
+        pan = null; panDragged = true;
+        viewport.classList.add('panning');
+        for (const id of touches.keys()) viewport.setPointerCapture(id);
+      };
+      // Un glisser ou pincement sur une carte ne doit pas devenir un clic
+      // de selection au relachement des doigts.
+      viewport.addEventListener('click', e => {
+        if (!panDragged) return;
+        if (!touches.size) panDragged = false;
+        e.preventDefault(); e.stopImmediatePropagation();
+      }, true);
       ui.starMapWindow.addEventListener('click', e => {
-        if (panDragged) { panDragged = false; return; }
         if (e.target.closest('.starMapNode, .gameWinBar, button, input')) return;
         clearStarMapRoute();
       });
       viewport.addEventListener("pointerdown", e => {
+        if (!touches.size && !pan) panDragged = false;
+        if (e.pointerType === 'touch') {
+          touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          if (touches.size >= 2) { beginPinch(); e.preventDefault(); }
+          else pan = { id: e.pointerId, x: e.clientX, y: e.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
+          return;
+        }
         if (e.button !== 0 || e.target.closest(".starMapNode,button")) return;
         // Un clic sur le rail ou le curseur natif appartient au navigateur,
         // pas au glisser du schema (capture + preventDefault le bloquaient).
@@ -38642,16 +38685,51 @@ function renderStarMap() {
           || e.clientX >= bounds.left + viewport.clientLeft + viewport.clientWidth
           || e.clientY < bounds.top + viewport.clientTop
           || e.clientY >= bounds.top + viewport.clientTop + viewport.clientHeight) return;
-        pan = { x: e.clientX, y: e.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
+        pan = { id: e.pointerId, x: e.clientX, y: e.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
         panDragged = false;
         viewport.setPointerCapture(e.pointerId); viewport.classList.add("panning"); e.preventDefault();
       });
       viewport.addEventListener("pointermove", e => {
-        if (!pan) return;
-        if (Math.hypot(e.clientX - pan.x, e.clientY - pan.y) > 5) panDragged = true;
+        if (touches.has(e.pointerId)) {
+          touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          if (pinch) {
+            const pair = touchPair();
+            zoomStarMap(pinch.scale * pair.distance / pinch.distance / StarJump.viewScale, pair, pinch.anchor);
+            e.preventDefault();
+            return;
+          }
+        }
+        if (!pan || pan.id !== e.pointerId) return;
+        if (Math.hypot(e.clientX - pan.x, e.clientY - pan.y) > 5) {
+          panDragged = true;
+          viewport.setPointerCapture(e.pointerId); viewport.classList.add('panning');
+        }
+        if (e.pointerType === 'touch' && !panDragged) return;
+        e.preventDefault();
         viewport.scrollLeft = pan.left - e.clientX + pan.x; viewport.scrollTop = pan.top - e.clientY + pan.y;
       });
-      for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) viewport.addEventListener(name, () => { pan = null; viewport.classList.remove("panning"); });
+      const endPointer = e => {
+        // Le transfert de capture d'une carte au viewport produit aussi
+        // lostpointercapture sur cette carte : le geste reste actif.
+        if (e.type === 'lostpointercapture' && e.target !== viewport) return;
+        if (touches.delete(e.pointerId)) {
+          pinch = null;
+          if (touches.size >= 2) { beginPinch(); return; }
+          const [remaining] = touches.entries();
+          pan = remaining ? { id: remaining[0], x: remaining[1].x, y: remaining[1].y,
+            left: viewport.scrollLeft, top: viewport.scrollTop } : null;
+        } else if (pan?.id === e.pointerId) pan = null;
+        if (!pan && !pinch) viewport.classList.remove('panning');
+      };
+      for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) viewport.addEventListener(name, endPointer);
+      const resetPointers = () => {
+        const ids = [...touches.keys()];
+        touches.clear(); pan = null; pinch = null;
+        viewport.classList.remove('panning');
+        for (const id of ids) if (viewport.hasPointerCapture(id)) viewport.releasePointerCapture(id);
+      };
+      window.addEventListener('blur', resetPointers);
+      window.addEventListener('orbit:window-minimized', e => { if (e.detail?.id === 'starMapWindow') resetPointers(); });
     }
     ensureStarMapArt();
   }

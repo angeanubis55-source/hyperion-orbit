@@ -490,6 +490,74 @@ window.__ORBIT_ENGINE__ = {`));
   await page.mouse.move(empty.x - 150, empty.y, { steps: 8 }); await page.mouse.up();
   assert.ok(await page.$eval('#starMapViewport', el => el.scrollLeft) > beforePan + 100, 'glisser du schema conserve');
   await readableView();
+
+  // Vrais contacts tactiles, y compris quand les doigts commencent sur
+  // une carte : zoom local, ancrage, limites et retour au glisser simple.
+  const desktopSize = page.viewportSize();
+  const touchSession = await page.context().newCDPSession(page);
+  await touchSession.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await readableView();
+  const touchCenter = await page.locator('.starMapNode[data-map-id="1-1"] .starMapArt').boundingBox();
+  const fingerCenter = { x: touchCenter.x + touchCenter.width / 2, y: touchCenter.y + touchCenter.height / 2 };
+  const mapAt = point => page.evaluate(point => {
+    const viewport = document.getElementById('starMapViewport'), tree = document.getElementById('starMapTree');
+    const bounds = viewport.getBoundingClientRect(), scale = new DOMMatrix(getComputedStyle(tree).transform).a;
+    return { scale, x: (viewport.scrollLeft + point.x - bounds.left - viewport.clientLeft - (parseFloat(tree.style.left) || 0)) / scale,
+      y: (viewport.scrollTop + point.y - bounds.top - viewport.clientTop - (parseFloat(tree.style.top) || 0)) / scale };
+  }, point);
+  const contact = (id, x, y) => ({ id, x, y, radiusX: 3, radiusY: 3, force: 1 });
+  const pair = distance => [contact(1, fingerCenter.x - distance / 2, fingerCenter.y), contact(2, fingerCenter.x + distance / 2, fingerCenter.y)];
+  const touch = async (type, touchPoints) => {
+    await touchSession.send('Input.dispatchTouchEvent', { type, touchPoints });
+    // Chromium peut regrouper les mouvements jusqu'a la frame suivante.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  };
+  assert.equal(await page.evaluate(points => points.every(point => document.elementFromPoint(point.x, point.y)?.closest('.starMapNode')),
+    pair(60)), true, 'les doigts commencent sur la carte');
+  const beforePinch = await mapAt(fingerCenter);
+  await touch('touchStart', pair(60));
+  await touch('touchMove', pair(84));
+  await page.waitForFunction(() => new DOMMatrix(getComputedStyle(document.getElementById('starMapTree')).transform).a > 1.3);
+  const pinched = await mapAt(fingerCenter);
+  assert.ok(Math.abs(pinched.scale - 1.4) < .01, 'ecarter les doigts zoome selon leur distance');
+  assert.ok(Math.hypot(pinched.x - beforePinch.x, pinched.y - beforePinch.y) < 2, 'le point entre les doigts reste fixe');
+  assert.equal(await page.evaluate(() => window.visualViewport.scale), 1, 'le geste ne zoome pas la page du jeu');
+  await touch('touchMove', pair(110));
+  assert.equal((await mapAt(fingerCenter)).scale, 1.5, 'limite de zoom maximum respectee');
+  await touch('touchMove', pair(60));
+  assert.ok(Math.abs((await mapAt(fingerCenter)).scale - 1) < .01, 'rapprocher les doigts dezoome');
+  const viewportFit = await page.$eval('#starMapViewport', el => {
+    const tree = document.getElementById('starMapTree');
+    return Math.min(1, el.clientWidth / tree.offsetWidth, el.clientHeight / tree.offsetHeight);
+  });
+  await touch('touchMove', pair(4));
+  assert.ok(Math.abs((await mapAt(fingerCenter)).scale - viewportFit) < .00001, 'le dezoom tactile s arrete quand tout est visible');
+  await touch('touchMove', pair(60));
+  await touch('touchEnd', [pair(60)[1]]);
+  const beforeSingleFinger = await page.$eval('#starMapViewport', el => el.scrollLeft);
+  const remaining = contact(1, fingerCenter.x - 65, fingerCenter.y);
+  await touch('touchMove', [remaining]);
+  await touch('touchEnd', []);
+  assert.ok(await page.$eval('#starMapViewport', el => el.scrollLeft) > beforeSingleFinger + 30,
+    'le doigt restant peut glisser la carte apres un pincement');
+  assert.equal(await page.locator('#starMapInfoWindow').isVisible(), false, 'aucune selection parasite apres le geste');
+  assert.equal(await page.$eval('#starMapViewport', el => el.classList.contains('panning')), false);
+
+  await touch('touchStart', pair(60)); await touch('touchMove', pair(72));
+  await touch('touchCancel', []);
+  assert.equal(await page.$eval('#starMapViewport', el => el.classList.contains('panning')), false, 'un geste interrompu libere le glisser');
+  await page.setViewportSize(desktopSize);
+  await readableView();
+  const tapCard = await page.locator('.starMapNode[data-map-id="1-1"] .starMapLabel').boundingBox();
+  await touch('touchStart', [contact(1, tapCard.x + tapCard.width / 2, tapCard.y + tapCard.height / 2)]);
+  await touch('touchEnd', []);
+  assert.equal(await page.locator('#starMapInfoWindow').isVisible(), true, 'un appui simple selectionne encore une carte');
+  await closeInfo();
+  await touchSession.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  await touchSession.detach();
+  console.log('zoom tactile sur telephone : ancrage, limites, glisser, annulation et selection valides');
+
   const portal = page.locator('.starMapNode[data-map-id="1-1"] .starMapPortal[data-portal-id="p_11_to_12"]');
   await portal.hover();
   assert.equal(await page.$$eval('.starMapWire.highlighted', els => els.length), 1, 'survol isole la liaison du portail');
