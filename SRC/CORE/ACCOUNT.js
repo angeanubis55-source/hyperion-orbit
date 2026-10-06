@@ -1,7 +1,7 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
-import { bootNetFromCache, flushNetUser, netActive, netCurrent, netList, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSelection, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
+import { bootNetFromCache, flushNetUser, netActive, netCurrent, netHasPendingSave, netList, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSelection, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
 // Multi : session serveur restauree au chargement (token + cache local),
 // puis refresh async via /api/me (revision canonique).
 try { bootNetFromCache(); } catch {}
@@ -1256,13 +1256,42 @@ export function login(pseudoOrEmail, password) {
   return { ok: true, user: { id: u.id, pseudo: u.pseudo, email: u.email } };
 }
 
-export function logout() {
-  writeCurrent(null);
-  return { ok: true };
+let logoutPending = false;
+export function isLogoutPending() { return logoutPending; }
+
+export async function logout() {
+  if (logoutPending) return { ok: false, error: "Déconnexion déjà en cours." };
+  logoutPending = true;
+  try {
+    prepareCurrentUserMutation();
+    if (netActive()) {
+      const userId = netCurrent()?.id;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const saved = await flushNetUser();
+        if (!netActive() || netCurrent()?.id !== userId) {
+          return { ok: false, error: "La session a changé pendant la sauvegarde." };
+        }
+        if (!saved?.ok && !saved?.stale) {
+          return { ok: false, error: "Sauvegarde non confirmée. Réessaie de te déconnecter quand la connexion revient." };
+        }
+        // Des gains peuvent arriver pendant la requête : confirmer également
+        // ce dernier état avant d'effacer le cache et de révoquer la session.
+        prepareCurrentUserMutation();
+        if (saved?.ok && !netHasPendingSave()) break;
+      }
+      if (netHasPendingSave()) {
+        return { ok: false, error: "La sauvegarde est encore en attente. Réessaie dans quelques instants." };
+      }
+    }
+    writeCurrent(null);
+    return { ok: true };
+  } finally {
+    logoutPending = false;
+  }
 }
 
 export function updateCurrentUserEmail(email, currentPassword) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
 
   const nextEmail = String(email || "").trim().toLowerCase();
@@ -1283,7 +1312,7 @@ export function updateCurrentUserEmail(email, currentPassword) {
 }
 
 export function updateCurrentUserPseudo(pseudo, currentPassword) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
 
   const nextPseudo = String(pseudo || "").trim();
@@ -1310,7 +1339,7 @@ export function updateCurrentUserPseudo(pseudo, currentPassword) {
 export const PET_PSEUDO_CHANGE_CREDIT_COST = 1000000;
 
 export function updateCurrentUserPetPseudo(pseudo, { free = false } = {}) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
   const nextPseudo = String(pseudo || "").trim();
@@ -1333,7 +1362,7 @@ export function updateCurrentUserPetPseudo(pseudo, { free = false } = {}) {
 }
 
 export function changeCurrentUserPassword(currentPassword, newPassword) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   if (!verifyPassword(u.password, String(currentPassword || ""))) {
     return { ok: false, error: "Mot de passe actuel incorrect." };
@@ -1351,7 +1380,7 @@ export function changeCurrentUserPassword(currentPassword, newPassword) {
 export const FACTION_CHANGE_CREDIT_COST = 50000000;
 
 export function changeCurrentUserFaction(nextFaction) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
 
   const factionId = normalizeFactionId(nextFaction, null);
@@ -1422,7 +1451,29 @@ export function getCurrentUserFull() {
   return u;
 }
 
+let preparingMutation = false;
+export function prepareCurrentUserMutation() {
+  if (preparingMutation || typeof window === "undefined" || typeof CustomEvent === "undefined") return;
+  preparingMutation = true;
+  try {
+    window.dispatchEvent(new CustomEvent("orbit:account-before-mutation"));
+  } finally {
+    preparingMutation = false;
+  }
+}
+
+export function getCurrentUserForMutation() {
+  // Achats, ventes, équipements et transferts doivent partir du dernier état
+  // joué, même si l'autosave de combat n'a pas encore eu lieu.
+  prepareCurrentUserMutation();
+  return getCurrentUserFull();
+}
+
 export function updateCurrentUserProgress(patch = {}) {
+  // Les sauvegardes complètes du moteur portent les crédits. Les changements
+  // ponctuels (sélection du dock, par exemple) doivent d'abord conserver ses
+  // stocks et son P.E.T, sans faire réentrer la sauvegarde complète.
+  if (patch.credits == null) prepareCurrentUserMutation();
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
 
@@ -1584,7 +1635,7 @@ export function updateCurrentUserProgress(patch = {}) {
  * - Tout le reste: achetable plusieurs fois => counts[itemId]++
  */
 export function buyItem(itemId, requestedQuantity = 1, options = {}) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
 
   const item = findCatalogItem(itemId);
@@ -1783,7 +1834,7 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
 }
 
 export function buyCurrentUserDrone(type) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   const definition = DRONE_TYPES[type];
   if (!u || !definition) return { ok: false, error: "Drone introuvable." };
   const owned = u.drones.items.filter(drone => drone.type === type).length;
@@ -1800,7 +1851,7 @@ export function buyCurrentUserDrone(type) {
 }
 
 export function activateCurrentUserBooster(catalogItemId) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   const item = findCatalogItem(catalogItemId);
   const def = getBooster(item?.booster?.id);
@@ -1818,7 +1869,7 @@ export function activateCurrentUserBooster(catalogItemId) {
 }
 
 export function buyCurrentUserDroneFormation(formationId) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   const formation = DRONE_FORMATIONS.find(entry => entry.id === formationId);
   if (!u || !formation) return { ok: false, error: "Formation introuvable." };
   if (u.drones.formations.includes(formation.id)) return { ok: false, error: "Formation déjà possédée." };
@@ -1832,7 +1883,7 @@ export function buyCurrentUserDroneFormation(formationId) {
 }
 
 export function setCurrentUserDroneFormation(formationId) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   const formation = DRONE_FORMATIONS.find(entry => entry.id === formationId);
   if (!u || !formation || !u.drones.formations.includes(formationId)) return { ok: false, error: "Formation non possédée." };
   if (u.drones.items.length < formation.minDrones) return { ok: false, error: `Il faut au moins ${formation.minDrones} drones.` };
@@ -1847,7 +1898,7 @@ export function setCurrentUserDroneFormation(formationId) {
 }
 
 export function saveCurrentUserDroneFit(droneId, fit, configNo = null, hangarId = null) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   const drone = u?.drones?.items?.find(entry => entry.id === droneId);
   const definition = drone ? DRONE_TYPES[drone.type] : null;
   if (!u || !drone || !definition) return { ok: false, error: "Drone introuvable." };
@@ -1873,7 +1924,7 @@ export function saveCurrentUserDroneFit(droneId, fit, configNo = null, hangarId 
 }
 
 export function saveCurrentUserDroneFits(fits) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   const activeHangar = getActiveHangar(u);
   let applied = 0;
@@ -1903,7 +1954,7 @@ export function saveCurrentUserDroneFits(fits) {
 }
 
 export function grantCurrentUserDroneExperience(amount) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   const gained = Math.max(0, Number(amount) || 0) * 0.05;
   const levelUps = [];
@@ -1922,7 +1973,7 @@ export function saveCurrentUserPetFit(fit, configNo = null, hangarId = null) {
 }
 
 export function saveCurrentUserPetFits(fits) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
   const previousPetShieldMax = petShieldCapacity(u);
@@ -1971,7 +2022,7 @@ export function saveCurrentUserPetFits(fits) {
 }
 
 export function grantCurrentUserPetExperience(amount) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   // L'XP n'est comptabilisée que si le P.E.T est activé (bouton play).
   if (u.pet?.owned !== true || u.pet?.active !== true) return { ok: true, user: u, gained: 0, levelUps: [] };
@@ -1985,7 +2036,7 @@ export function grantCurrentUserPetExperience(amount) {
 
 // Bouton play/stop de la fenêtre P.E.T en jeu.
 export function setPetActive(active) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
   if (active === true && !(Number(u.pet.hp) > 0)) return { ok: false, error: "REX détruit, répare-le." };
@@ -2002,7 +2053,7 @@ export function setPetActive(active) {
 // sans activation (il faut rappuyer sur play).
 export const PET_REPAIR_COST = 10000;
 export function repairPet() {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
   if (Number(u.pet.hp) > 0) return { ok: false, error: "REX intact." };
@@ -2020,7 +2071,7 @@ export function repairPet() {
 
 // Dropdown passif / combat de la fenêtre P.E.T en jeu.
 export function setPetMode(mode) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
   u.pet.mode = normalizePetMode(mode);
@@ -2031,7 +2082,7 @@ export function setPetMode(mode) {
 
 // Sélecteur de gear de la fenêtre P.E.T en jeu (un seul actif à la fois).
 export function setPetActiveGear(key) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
   const k = key == null || key === "" ? null : String(key).toLowerCase();
@@ -2043,7 +2094,7 @@ export function setPetActiveGear(key) {
 }
 
 export function spinCurrentUserGalaxyGate(gateId, count = 1, rng = Math.random) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const creditsBefore = Math.max(0, Math.floor(Number(u.credits) || 0));
   const result = spinGalaxyGate(u.galaxyGates, gateId, count, u.credits, rng);
@@ -2071,7 +2122,7 @@ export function spinCurrentUserGalaxyGate(gateId, count = 1, rng = Math.random) 
 }
 
 export function armCurrentUserGalaxyGateMultiplier(gateId, armed = true) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const result = setGalaxyGateMultiplierArmed(u.galaxyGates, gateId, armed);
   if (!result.ok) return { ok: false, error: "Aucun multiplicateur disponible.", state: result.state };
@@ -2081,7 +2132,7 @@ export function armCurrentUserGalaxyGateMultiplier(gateId, armed = true) {
 }
 
 export function grantCurrentUserGalaxyEnergy(amount) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const gained = Math.max(0, Math.floor(Number(amount) || 0));
   u.galaxyGates.energy += gained;
@@ -2092,7 +2143,7 @@ export function grantCurrentUserGalaxyEnergy(amount) {
 }
 
 export function consumeCurrentUserGalaxyGate(gateId) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const result = consumeBuiltGalaxyGate(u.galaxyGates, gateId);
   if (!result.ok) return { ok: false, error: "Cette Galaxy Gate n'est pas construite.", state: result.state };
@@ -2102,7 +2153,7 @@ export function consumeCurrentUserGalaxyGate(gateId) {
 }
 
 export function deployCurrentUserGalaxyGate(gateId) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const result = deployBuiltGalaxyGate(u.galaxyGates, gateId);
   if (!result.ok) return { ok: false, error: "Cette Gate ne peut pas être envoyée sur la map.", state: result.state };
@@ -2116,7 +2167,7 @@ export function completeCurrentUserGalaxyGate(gateId, currentUser = null, option
   // objet courant (sauvegarde differee). Utiliser cet objet evite qu'une
   // mutation de Gate reparte d'une copie reseau plus ancienne et efface
   // l'XP/l'honneur gagnes pendant la derniere vague.
-  const u = currentUser || getCurrentUserFull();
+  const u = currentUser || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const result = completeActiveGalaxyGate(u.galaxyGates, gateId);
   if (!result.ok) return { ok: false, error: "Aucune Galaxy Gate active correspondante." };
@@ -2170,7 +2221,7 @@ export function completeCurrentUserGalaxyGate(gateId, currentUser = null, option
 }
 
 export function loseCurrentUserGalaxyGateLife(gateId, currentUser = null) {
-  const u = currentUser || getCurrentUserFull();
+  const u = currentUser || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const result = loseGalaxyGateLife(u.galaxyGates, gateId);
   if (!result.ok) return { ok: false, error: "Aucune Galaxy Gate active correspondante.", ...result };
@@ -2180,7 +2231,7 @@ export function loseCurrentUserGalaxyGateLife(gateId, currentUser = null) {
 }
 
 export function saveCurrentUserGalaxyGateWave(gateId, wave, currentUser = null) {
-  const u = currentUser || getCurrentUserFull();
+  const u = currentUser || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const id = String(gateId || "").toLowerCase();
   if (u.galaxyGates.active !== id) return { ok: false, error: "Galaxy Gate inactive." };
@@ -2204,7 +2255,7 @@ export function saveCurrentUserGalaxyGateWave(gateId, wave, currentUser = null) 
 // Persistance immédiate (saveUser synchrone) : un refresh juste après le
 // kill doit retrouver le compteur, contrairement à markProgressDirty (15 s).
 export function recordCurrentUserGalaxyGateWaveKill(gateId, wave, count = 1, currentUser = null) {
-  const u = currentUser || getCurrentUserFull();
+  const u = currentUser || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const id = String(gateId || "").toLowerCase();
   if (u.galaxyGates.active !== id) return { ok: false, error: "Galaxy Gate inactive." };
@@ -2226,7 +2277,7 @@ export function getCurrentUserGalaxyGateWaveKills(gateId) {
 
 // ✅ Purge explicite des kills intra-vague (sécurité, ex : reset manuel).
 export function clearCurrentUserGalaxyGateWaveKills(gateId) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const result = clearGalaxyGateWaveKills(u.galaxyGates, gateId);
   if (!result.ok) return { ok: false, error: "Galaxy Gate inconnue." };
@@ -2239,7 +2290,7 @@ export function clearCurrentUserGalaxyGateWaveKills(gateId) {
 // Hangar API
 // ---------------------------
 export function setActiveHangar(hangarId) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
 
   const hs = Array.isArray(u.hangars) ? u.hangars : [];
@@ -2262,7 +2313,7 @@ export function setActiveHangar(hangarId) {
 // ✅ Applique un design (variante cosmétique) à un hangar existant.
 // Le hangar garde son id/équipement mais change de modèle visuel.
 export function setHangarDesign(hangarId, designId) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   if (!hangarId) return { ok: false, error: "Hangar inexistant." };
   if (!designId || designId === "none") {
@@ -2326,7 +2377,7 @@ export function getHangarById(hangarId) {
  * Sauvegarde un fit complet (draft -> saved)
  */
 export function saveHangarFit(hangarId, fitDraft, configNo = null) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
 
   const h = (u.hangars || []).find((x) => x?.id === hangarId);
@@ -2356,7 +2407,7 @@ export function saveHangarFit(hangarId, fitDraft, configNo = null) {
 
 // Validate the whole displayed configuration before publishing one account update.
 export function saveHangarLoadout(hangarId, { ship, drones = {}, pet = null }, configNo = null) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   const h = u.hangars.find(entry => entry.id === hangarId);
   if (!h) return { ok: false, error: "Hangar introuvable." };
@@ -2422,7 +2473,7 @@ export function saveHangarLoadout(hangarId, { ship, drones = {}, pet = null }, c
 }
 
 export function setActiveHangarConfig(hangarId, configNo) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
 
   const h = (u.hangars || []).find((x) => x?.id === hangarId);
@@ -2600,7 +2651,7 @@ export function _dangerResetAll() {
 }
 
 export function sellItem(itemId, qty = 1, options = {}) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
 
   itemId = String(itemId || "");
@@ -2969,7 +3020,7 @@ export function sellUnitPrice(kind, id, module = null) {
 // Vente de modules de vaisseau (groupe identique). Les copies montées dans
 // les shipMods exigent force:true (retrait partout, comme les équipements).
 export function sellShipModules(groupKey, qty = 1, options = {}) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   const key = String(groupKey || "");
   qty = Math.max(1, Math.floor(Number(qty) || 0));
   if (!u || !key) return { ok: false, error: "Non connecté." };
@@ -3055,7 +3106,7 @@ export function moduleDailyRollInfo(u) {
 // ✅ Roulette ship modules
 // ---------------------------
 export function buyModuleRoll(cost = 250000) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
 
   // Ticket de relance prioritaire : une roulette gratuite.
@@ -3085,7 +3136,7 @@ export function buyModuleRoll(cost = 250000) {
 }
 
 export function addShipModule(moduleObj) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
 
   ensureUserShape(u);
@@ -3107,7 +3158,7 @@ export function addShipModule(moduleObj) {
 // reste APPEND-ONLY (on ne supprime jamais l'ancien tirage : la pastille
 // reroll est simplement désactivée quand le module n'est plus possédé).
 export function replaceShipModule(oldId, newModule) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
 
   ensureUserShape(u);
@@ -3134,7 +3185,7 @@ export function replaceShipModule(oldId, newModule) {
 // l'animation, le module est déjà persisté (inventaire + historique).
 // options.payWith: "ticket" | "credits" | undefined (auto = ticket si dispo).
 export function buyAndAddShipModule(cost, moduleObj, options = {}) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
 
   if (!moduleObj || typeof moduleObj !== "object") {
@@ -3192,7 +3243,7 @@ export function buyAndAddShipModule(cost, moduleObj, options = {}) {
 // Historique append-only : l'ancien tirage reste visible.
 // options.payWith: "ticket" | "credits" | undefined (auto = ticket si dispo).
 export function buyAndReplaceShipModule(cost, oldId, newModule, options = {}) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
 
   if (!newModule || typeof newModule !== "object") {
@@ -3294,7 +3345,7 @@ export function saveHangarStateById(hangarId, x, y, mapId, hpPct, shPct) {
 export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
   // Assemblage désactivé (voir CRAFTING_ENABLED) : refusé, code conservé.
   if (!CRAFTING_ENABLED) return { ok: false, error: "Assemblage désactivé." };
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const recipe = getCraftingRecipe(recipeId);
   if (!recipe) return { ok: false, error: "Recette introuvable." };
@@ -3458,7 +3509,7 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
 
 // Raffinage minerais -> minerais nobles (ratios officiels, voir REFINERY_RECIPES).
 export function refineCurrentUserOre(recipeId, requestedQuantity = 1, options = {}) {
-  const u = options.user || getCurrentUserFull();
+  const u = options.user || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const recipe = getRefineryRecipe(recipeId);
   if (!recipe) return { ok: false, error: "Recette introuvable." };
@@ -3484,7 +3535,7 @@ export function refineCurrentUserOre(recipeId, requestedQuantity = 1, options = 
 
 // Vente de minerais au comptoir pirate (prix fixes, tout le stock du minerai).
 // bonusPct : bonus Cargo Trader du P.E.T (0 = plein tarif).
-export function sellCurrentUserOre(resourceId, bonusPct = 0) {  const u = getCurrentUserFull();
+export function sellCurrentUserOre(resourceId, bonusPct = 0) {  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const id = String(resourceId || "");
   const price = Math.max(0, Math.floor(Number(ORE_SELL_PRICES[id]) || 0));
@@ -3508,7 +3559,7 @@ export function sellCurrentUserOre(resourceId, bonusPct = 0) {  const u = getCur
 
 // Échange Palladium -> énergie Galaxy (10:1, comptoir pirate). Tout le possible.
 export function exchangeCurrentUserPalladiumForEnergy() {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   u.inventory ||= {};
   u.inventory.resources ||= {};
@@ -3529,7 +3580,7 @@ export function exchangeCurrentUserPalladiumForEnergy() {
 
 // Charge des minerais sur un équipement (1 minerai = 10 tirs ou 10 minutes).
 export function chargeShipUpgrade(slotId, oreId, oreAmount = 1) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const slot = String(slotId || "");
   const ore = String(oreId || "");
@@ -3567,7 +3618,7 @@ function ensureSkylab(u) {
 // Démarre la construction (niveau 1) ou l'amélioration d'un module.
 // Coûts : crédits du joueur + Prometium/Endurium/Terbium du stock Skylab.
 export function startSkylabUpgrade(moduleId, nowMs = Date.now()) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const now = Number(nowMs) || Date.now();
   const sky = ensureSkylab(u);
@@ -3592,7 +3643,7 @@ export function startSkylabUpgrade(moduleId, nowMs = Date.now()) {
 
 // Active / met en pause un module (collecteurs, raffineries, xeno).
 export function setSkylabModuleEnabled(moduleId, enabled) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const def = getSkylabModuleDef(moduleId);
   if (!def) return { ok: false, error: "Module inconnu.", user: u };
@@ -3608,7 +3659,7 @@ export function setSkylabModuleEnabled(moduleId, enabled) {
 
 // Achète le robot unique d'un collecteur (+5 %, 50 000 crédits, 48 h de vie).
 export function buySkylabRobot(moduleId, nowMs = Date.now()) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   if (!isCollectorModule(moduleId)) return { ok: false, error: "Robots réservés aux collecteurs.", user: u };
   const now = Number(nowMs) || Date.now();
@@ -3707,7 +3758,7 @@ export function instantSkylabTransport(amounts, toSky = false, nowMs = Date.now(
 }
 
 function prepareSkylabTransport(nowMs = Date.now()) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const now = Number(nowMs) || Date.now();
   const sky = ensureSkylab(u);
@@ -3874,7 +3925,7 @@ function pushAuctionHistory(auction, entry) {
 // Placer une mise (montant total, pas un ajout). Réserve immédiate en crédits.
 export function placeAuctionBid(lotId, amount, nowMs = Date.now()) {
   if (sharedAuctionMode === true) return { ok: false, shared: true, error: "Enchères partagées : mise via le serveur." };
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const auction = ensureAuction(u);
   const lot = auction.lots.find((entry) => String(entry?.id) === String(lotId));
@@ -4008,6 +4059,7 @@ export function pilotCargoCapacity(u) {
 
 // Achat d'un pack de disques de log (boutique pilote).
 export function buyLogDiskPack() {
+  prepareCurrentUserMutation();
   // Le compte réseau est déjà chargé : pas de migration des hangars,
   // inventaire et équipements pour un achat qui ne touche que deux champs.
   const u = netActive() ? netList()[0] || null : getCurrentUserFull();
@@ -4026,7 +4078,7 @@ export function buyLogDiskPack() {
 
 // Échange de disques contre 1 point pilote (table officielle, max 50).
 export function exchangeLogDisksForPoint() {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   ensurePilotSkills(u);
   const owned = Math.max(0, Math.floor(Number(u.pilotSkills.points) || 0));
@@ -4045,7 +4097,7 @@ export function exchangeLogDisksForPoint() {
 
 // Investit 1 point pilote dans un talent (aucun autre coût).
 export function investPilotSkill(skillId) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   const skill = getPilotSkill(skillId);
   if (!skill) return { ok: false, error: "Talent introuvable.", user: u };
@@ -4062,7 +4114,7 @@ export function investPilotSkill(skillId) {
 
 // Reset de l'arbre (points conservés, coût doublé à chaque reset).
 export function resetPilotSkills() {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   ensurePilotSkills(u);
   const cost = pilotResetCost(u.pilotSkills.resets);
@@ -4094,7 +4146,7 @@ export function isSharedAuctionMode() {
 // Gain d'un lot partagé remporté : même attribution que le local,
 // historique "Remporté par <pseudo>".
 export function applySharedAuctionWin(entry) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false };
   const amount = Math.max(0, Math.floor(Number(entry?.amount) || 0));
   const by = String(entry?.by || u?.pseudo || "Joueur").slice(0, 20);
@@ -4129,7 +4181,7 @@ export function applySharedAuctionWin(entry) {
 // Surenchère subie sur un lot partagé : mise réservée remboursée,
 // historique "Perdu".
 export function applySharedAuctionLoss(entry) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false };
   const amount = Math.max(0, Math.floor(Number(entry?.amount) || 0));
   const by = String(entry?.by || "").slice(0, 20);
@@ -4143,7 +4195,7 @@ export function applySharedAuctionLoss(entry) {
 
 // Lot partagé sans mise : historique "Expiré" (comme le local).
 export function pushSharedAuctionExpired(name) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false };
   const auction = ensureAuction(u);
   pushAuctionHistory(auction, { name: String(name || "Lot"), result: "expired", amount: 0, by: "" });
@@ -4154,7 +4206,7 @@ export function pushSharedAuctionExpired(name) {
 
 export function tickCurrentUserAuction(nowMs = Date.now()) {
   if (sharedAuctionMode === true) return { ok: true, user: null, events: [], changed: false, shared: true };
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const now = Number(nowMs) || Date.now();
   const auction = ensureAuction(u);

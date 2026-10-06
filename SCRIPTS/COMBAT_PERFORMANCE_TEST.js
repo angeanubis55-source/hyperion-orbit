@@ -12,6 +12,7 @@ import { drawCombatFloatTexts } from "../SRC/CORE/COMBAT_TEXT_RENDERER.js";
 import { tickFloatingTexts } from "../SRC/CORE/FRAME_SYSTEMS.js";
 import { QUEST_DEFINITIONS, getQuestObjectives, normalizeQuestState, recordQuestProgress, isQuestComplete, claimQuest } from "../QUEST/QUEST_TYPES.js";
 import { LOGDISK_PACK, LOGDISK_PRICE, normalizePilotSkills } from "../SRC/DATA/PILOT_SKILLS.js";
+import { createDefaultSkylabState, normalizeSkylabState, tickSkylabState } from "../SRC/DATA/SKYLAB.js";
 
 // Exerce les fonctions livrées sans démarrer une session ou un serveur réel.
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
@@ -22,6 +23,28 @@ function engineFunction(name, source = engine) {
   assert.ok(end > start, name);
   return source.slice(start, end + 2);
 }
+
+test("Skylab : la déconnexion stabilise le stock et une coupure rattrape toute la production différée", () => {
+  const source = readFileSync(new URL("../UI/UI_SKYLAB.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const user = { skylab: createDefaultSkylabState(1000) };
+  user.skylab.modules.prometium_collector.level = 2;
+  const expected = normalizeSkylabState(structuredClone(user.skylab));
+  const before = structuredClone(user.skylab);
+  let closing = true;
+  const context = vm.createContext({ ctx: { getUser: () => user }, isLogoutPending: () => closing,
+    deferredProductionSeconds: 0, Date: { now: () => 20000 }, normalizeSkylabState, tickSkylabState,
+    lastDirtyMark: 20000, lastDynamicRefresh: 20000 });
+  vm.runInContext(engineFunction("tickSkylabProduction", source), context);
+  context.tickSkylabProduction(0.5); context.tickSkylabProduction(0.5);
+  assert.deepEqual(user.skylab, before, "aucun gain n'arrive derrière la sauvegarde finale");
+  closing = false; context.tickSkylabProduction(1);
+  tickSkylabState(expected, 20000, 2);
+  assert.deepEqual(user.skylab.stock, expected.stock);
+  assert.ok(user.skylab.stock.prometium > before.stock.prometium);
+  assert.equal(user.skylab.lastTickAt, 20000);
+  context.tickSkylabProduction(1); tickSkylabState(expected, 20000, 1);
+  assert.deepEqual(user.skylab.stock, expected.stock, "la période différée n'est pas comptée deux fois");
+});
 
 test("stockage des cargos : aucune serialisation dans la frame, etat recent et flush a la fermeture", () => {
   const callbacks = [], writes = [];
@@ -68,7 +91,7 @@ test("une mutation du compte actualise le solde du moteur avant sa prochaine sau
   const from = engine.indexOf("{", start) + 1, to = engine.indexOf("  const previous = account.user;", from);
   assert.ok(start >= 0 && to > from);
   const ctx = vm.createContext({ started: true, player: { credits: 100 }, fresh: { credits: 20 }, event: { detail: { source: "account" } },
-    getCurrentUserFull: () => ctx.fresh });
+    getCurrentUserFull: () => ctx.fresh, syncPlayerStocksFromAccount() {} });
   const sync = () => vm.runInContext(`(() => { ${engine.slice(from, to)} })()`, ctx);
   sync(); assert.equal(ctx.player.credits, 20, "un achat baisse le solde live");
   ctx.fresh.credits = 500; sync(); assert.equal(ctx.player.credits, 500, "une vente augmente le solde live");
@@ -95,7 +118,7 @@ test("l'achat de disques depuis la fenêtre conserve les crédits gagnés avant 
     netActive: () => false,
     started: true, account: { user, dirty: true }, player: { credits: 5_000_000 },
     getCurrentUserFull: () => user, ensurePilotSkills: u => { u.pilotSkills = normalizePilotSkills(u.pilotSkills); },
-    noteNetPurchase() {}, saveUser: u => writes.push(structuredClone(u)), refreshPilotSummary() {},
+    prepareCurrentUserMutation() {}, noteNetPurchase() {}, saveUser: u => writes.push(structuredClone(u)), refreshPilotSummary() {},
     saveProgressNow: () => { user.credits = context.player.credits; context.account.dirty = false; },
   });
   vm.runInContext(engineFunction("flushPilotProgressBeforeAction") + "\n"

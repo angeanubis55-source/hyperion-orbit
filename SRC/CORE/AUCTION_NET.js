@@ -12,7 +12,7 @@ import {
   netMyId,
 } from "./NETPLAY.js";
 import {
-  getCurrentUserFull,
+  getCurrentUserForMutation,
   saveUser,
   setSharedAuctionMode,
   applySharedAuctionWin,
@@ -187,7 +187,7 @@ function applySync(msg, now) {
     }
   } catch {}
   // Relecture APRES rattrapage (applySettle a pu rembourser + vider les lots).
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { events };
   // Anciennes réservations (cycle manqué sans règlement) : rembourse.
   const oldByKey = new Map();
@@ -214,6 +214,7 @@ function applySync(msg, now) {
         const srvTop = Math.max(0, Math.floor(Number(srv?.topBid) || 0));
         const srvBidderId = String(srv?.topBidderId || "");
         const confirmedMine = srvBidderId !== "" && srvBidderId === me && srvTop > 0;
+        if (confirmedMine && srvTop >= Number(pend.amount || 0)) pending.delete(key);
         if (!confirmedMine) {
           const localLot = (u.auction?.lots || []).find((l) => String(l?.catalogId) === String(srv?.catalogId || key));
           if (localLot && Number(localLot.myBid) > 0) {
@@ -260,7 +261,7 @@ function applySync(msg, now) {
 }
 
 function applyUpdate(msg, now) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u || sharedActive !== true) return { events: [] };
   const events = [];
   const srv = msg?.lot;
@@ -275,6 +276,14 @@ function applyUpdate(msg, now) {
   const lots = Array.isArray(u.auction?.lots) ? u.auction.lots : [];
   const idx = lots.findIndex((l) => String(l?.catalogId) === catalogId);
   const carried = idx >= 0 ? Number(lots[idx]?.myBid) || 0 : 0;
+  const pend = pending.get(key);
+  const confirmed = String(srv.topBidderId || "") === meId() && Number(srv.topBid) >= Number(pend?.amount || 0);
+  if (pend && !confirmed && now - Number(pend.at || 0) < PENDING_HOLD_MS) {
+    // Une mise rivale peut avoir été diffusée avant notre demande, puis
+    // arriver pendant l'attente. Le rejet/la confirmation tranche d'abord,
+    // sinon cet update rembourse la réserve, puis le rejet rembourse encore.
+    return { events };
+  }
   const { lot, refunded, outbidBy } = mergeSingleLot(srv, u, carried);
   if (pending.has(key)) {
     const me = meId();
@@ -302,9 +311,22 @@ function applyUpdate(msg, now) {
 // fois — double diffusion, reconnexion, double onglet — ne doit jamais
 // payer deux fois). Persiste en local (12 derniers), partage entre onglets.
 const SETTLED_KEY = "orbit_auction_settled_v1";
+const SETTLED_OWNER_KEY = `${SETTLED_KEY}:legacy-owner`;
+function settledStorageKey() { return `${SETTLED_KEY}:${meId()}`; }
 function settledCycles() {
   try {
-    const raw = JSON.parse(localStorage.getItem(SETTLED_KEY) || "[]");
+    let cached = localStorage.getItem(settledStorageKey());
+    if (cached == null) {
+      // L'ancien journal était commun à tous les comptes du navigateur.
+      // Le conserver pour le compte de migration, sans bloquer les autres.
+      const legacy = localStorage.getItem(SETTLED_KEY);
+      let owner = localStorage.getItem(SETTLED_OWNER_KEY);
+      if (legacy && !owner) { owner = meId(); localStorage.setItem(SETTLED_OWNER_KEY, owner); }
+      if (legacy && owner === meId()) {
+        cached = legacy; localStorage.setItem(settledStorageKey(), cached);
+      }
+    }
+    const raw = JSON.parse(cached || "[]");
     return new Set(Array.isArray(raw) ? raw.map(String).slice(-12) : []);
   } catch { return new Set(); }
 }
@@ -313,11 +335,11 @@ function markCycleSettled(cycleId) {
     const set = settledCycles();
     set.add(String(cycleId));
     const arr = [...set].slice(-12);
-    localStorage.setItem(SETTLED_KEY, JSON.stringify(arr));
+    localStorage.setItem(settledStorageKey(), JSON.stringify(arr));
   } catch {}
 }
 function applySettle(msg) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u || sharedActive !== true) return { events: [], profileDirty: false };
   const cycleId = String(msg?.cycle ?? "");
   if (cycleId && settledCycles().has(cycleId)) return { events: [], profileDirty: false };
@@ -362,7 +384,7 @@ function applySettle(msg) {
     }
   }
   try {
-    const cur = getCurrentUserFull();
+    const cur = getCurrentUserForMutation();
     if (cur) {
       cur.auction = normalizeAuctionState({ v: AUCTION_CYCLE_VERSION, lots: [], history: cur.auction?.history || [] });
       saveUser(cur);
@@ -373,7 +395,7 @@ function applySettle(msg) {
 }
 
 function applyReject(msg) {
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u || sharedActive !== true) return { events: [] };
   const events = [];
   const key = String(msg?.key || "");
@@ -469,13 +491,17 @@ export function pumpSharedAuction(nowMs = Date.now()) {
 export function placeSharedBid(lotId, amount) {
   if (sharedActive !== true) return { ok: false, error: "Hors ligne (serveur injoignable)." };
   if (!netIsAuthed()) return { ok: false, error: "Connecte-toi pour miser en ligne." };
-  const u = getCurrentUserFull();
+  const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const lots = Array.isArray(u.auction?.lots) ? u.auction.lots : [];
   const lot = lots.find((entry) => String(entry?.id) === String(lotId));
   if (!lot) return { ok: false, error: "Lot introuvable." };
   const key = String(lot.catalogId || "");
   if (!key || isLotMaskedForUser(lot, u)) return { ok: false, error: "Lot indisponible." };
+  const awaiting = pending.get(key);
+  if (awaiting && Date.now() - Number(awaiting.at || 0) < PENDING_HOLD_MS) {
+    return { ok: false, error: "Ta précédente mise attend la confirmation du serveur." };
+  }
   if (Math.max(0, Number(lot.endsAt) || 0) <= Date.now()) return { ok: false, error: "Enchère terminée." };
   const bid = Math.max(0, Math.floor(Number(amount) || 0));
   const minimum = auctionMinNextBid(lot);

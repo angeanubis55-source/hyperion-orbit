@@ -80,6 +80,7 @@ try {
     } catch { await route.fulfill({ status: 404, body: "Not found" }); }
   });
   await page.addInitScript(({ token, user }) => {
+    if (location.pathname.endsWith("/AUTH.html")) return;
     if (localStorage.getItem("orbit_token") !== token) {
       localStorage.setItem("orbit_token", token);
       localStorage.setItem("orbit_user_cache", JSON.stringify({ user }));
@@ -250,10 +251,61 @@ try {
   await page.waitForTimeout(1500);
   assert.equal(await sendInput.evaluate(el => el === document.activeElement), true);
   assert.equal(await sendInput.inputValue(), "42");
+  await page.locator('[data-window-id="skylabWindow"]').click();
+  await page.locator('[data-window-id="auctionWindow"]').click();
+  const auctionInput = page.locator('#auctionWindow input[data-auction-bid]').first();
+  await auctionInput.waitFor({ state: "visible" });
+  await auctionInput.fill("123456"); await auctionInput.press("Control+a");
+  assert.equal(await page.evaluate(async () => {
+    const input = document.querySelector('#auctionWindow input[data-auction-bid]');
+    const { renderAuctionWindow } = await import("/UI/UI_AUCTION.js");
+    // Mise serveur / rattrapage de l'affichage pendant une saisie.
+    renderAuctionWindow();
+    return document.activeElement === input && document.querySelector('#auctionWindow input[data-auction-bid]') === input;
+  }), true);
+  await page.keyboard.type("42"); assert.equal(await auctionInput.inputValue(), "42");
+  // Une confirmation ne doit pas détacher les objets employés par le jeu.
+  assert.equal(await page.evaluate(async () => {
+    const { getCurrentUserFull } = await import("/SRC/CORE/ACCOUNT.js");
+    const { flushNetUser } = await import("/SRC/CORE/ACCOUNT_NET.js");
+    const user = getCurrentUserFull(), pet = user.pet, resources = user.inventory.resources;
+    const result = await flushNetUser();
+    const after = getCurrentUserFull();
+    return result.ok && user === after && pet === after.pet && resources === after.inventory.resources;
+  }), true);
+  await page.locator('[data-window-id="auctionWindow"]').click();
+  interceptNextSave = true;
+  const logoutPurchase = await page.evaluate(async () => {
+    const account = await import("/SRC/CORE/ACCOUNT.js");
+    const bought = account.buyLogDiskPack();
+    return { bought, credits: account.getCurrentUserFull().credits, disks: account.getCurrentUserFull().pilotSkills.disks };
+  });
+  assert.equal(logoutPurchase.bought.ok, true);
+  await page.locator("#btnSessionMenu").click();
+  await page.locator("#btnLogout").click();
+  for (let i = 0; i < 80 && !held; i++) await pause(50);
+  assert.ok(held, "la déconnexion attend la sauvegarde de l'achat");
+  assert.equal(await page.locator("#btnLogout").isDisabled(), true);
+  assert.equal(await page.locator("#btnLogout").innerText(), "Sauvegarde…");
+  assert.equal(await page.evaluate(() => localStorage.getItem("orbit_token")), account.token);
+  const savedAtLogout = (await (await fetch(url + "/api/me", { headers })).json()).user;
+  assert.equal(savedAtLogout.credits, logoutPurchase.credits);
+  assert.equal(savedAtLogout.pilotSkills.disks, logoutPurchase.disks);
+  await held.route.fulfill({ response: held.response }); held = null;
+  await page.waitForURL("**/PUBLIC/AUTH.html");
+  assert.equal(await page.evaluate(() => localStorage.getItem("orbit_token")), null);
+  let revoked;
+  for (let i = 0; i < 30; i++) {
+    revoked = await fetch(url + "/api/me", { headers });
+    if (revoked.status === 401) break;
+    await pause(50);
+  }
+  assert.equal(revoked.status, 401);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ selections: wanted, delayedResponse: "OK", conflict409: "OK", reload: "OK",
     pilotSkills: "OK", logDisks: "OK", pilotCreditBalance: "OK", pilotScreenshot,
-    saleWithOpenDraft: "OK", bothConfigurations: "OK", skylabInputFocus: "OK", credits: restored.credits, errors }));
+    saleWithOpenDraft: "OK", bothConfigurations: "OK", skylabInputFocus: "OK", auctionInputFocus: "OK",
+    liveAccountReferences: "OK", logoutWaitsForSave: "OK", credits: restored.credits, errors }));
 } catch (error) {
   console.error(JSON.stringify({ errors, consoleErrors: consoleErrors.slice(-10),
     screen: await page?.evaluate(() => document.body.innerText.slice(-2500)).catch(() => "unavailable"), server: output.slice(-2000) }));

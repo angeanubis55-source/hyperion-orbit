@@ -6118,9 +6118,21 @@ document.getElementById("btnHangarHub")?.addEventListener("click", () => {
   else openHangarOverlay();
 });
 
-btnLogout?.addEventListener("click", () => {
-  logout();
-  location.href = AUTH_URL;
+btnLogout?.addEventListener("click", async () => {
+  if (btnLogout.disabled) return;
+  btnLogout.disabled = true;
+  const previousText = btnLogout.textContent;
+  btnLogout.textContent = "Sauvegarde…";
+  try {
+    const result = await logout();
+    if (!result?.ok) return showToast(result?.error || "Déconnexion impossible.", "error");
+    location.href = AUTH_URL;
+  } catch {
+    showToast("Sauvegarde impossible. Réessaie quand la connexion revient.", "error");
+  } finally {
+    btnLogout.disabled = false;
+    btnLogout.textContent = previousText;
+  }
 });
 
 btnSessionMenu?.addEventListener("click", (event) => {

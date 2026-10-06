@@ -44,6 +44,100 @@ function client(storage = new Map()) {
   return { api, requests, storage, timers, mutate, conflict, accept, refresh, current: () => api.netList()[0] };
 }
 
+function wireLogout(c) {
+  const start = account.indexOf("export async function logout("), end = account.indexOf("\n}", start) + 2;
+  assert.ok(start >= 0 && end > start);
+  Object.assign(c.api, { prepareCurrentUserMutation() {}, writeCurrent: value => c.api.netSetCurrent(value) });
+  vm.runInContext("let logoutPending = false;\n" + account.slice(start, end).replace(/^export /gm, ""), c.api);
+}
+
+test("la déconnexion attend aussi l'achat réalisé pendant la sauvegarde en cours", async () => {
+  const c = client(); c.api.enterNetMode("token", user()); wireLogout(c);
+  c.mutate(u => { u.credits -= 3_000_000; u.pilotSkills.disks = 10; });
+  const leaving = c.api.logout(), first = c.requests.at(-1);
+  assert.equal(first.path, "/api/save"); assert.equal(c.api.netActive(), true);
+  c.mutate(u => { u.credits -= 3_000_000; u.pilotSkills.disks += 10; });
+  first.reply(200, { ok: true, user: first.body.user });
+  for (let i = 0; i < 12; i++) await Promise.resolve();
+  const last = c.requests.at(-1); assert.equal(last.path, "/api/save");
+  assert.equal(last.body.user.credits, 94_000_000); assert.equal(last.body.user.pilotSkills.disks, 20);
+  assert.equal(c.api.netActive(), true, "ne révoque pas le token avant la confirmation finale");
+  last.reply(200, { ok: true, user: last.body.user });
+  assert.equal((await leaving).ok, true); assert.equal(c.api.netActive(), false);
+  assert.equal(c.requests.at(-1).path, "/api/logout");
+});
+
+test("une déconnexion avec coupure conserve la session et la sauvegarde à renvoyer", async () => {
+  const c = client(); c.api.enterNetMode("token", user()); wireLogout(c);
+  c.mutate(u => { u.credits -= 3_000_000; u.pilotSkills.disks = 10; });
+  const leaving = c.api.logout(), first = c.requests.at(-1); first.reject(new Error("Coupure"));
+  assert.equal((await leaving).ok, false); assert.equal(c.api.netActive(), true);
+  assert.equal(c.current().pilotSkills.disks, 10); assert.equal(c.storage.get("orbit_token"), "token");
+  assert.ok(JSON.parse(c.storage.get("orbit_user_cache")).retrySave);
+  const sent = await c.accept(); assert.deepEqual(sent, first.body);
+});
+
+test("sauvegarder le compte ne détache pas les objets utilisés par le moteur", async () => {
+  const c = client(); c.api.enterNetMode("token", user());
+  const live = c.current(), pet = live.pet, resources = live.inventory.resources;
+  c.api.netStore([live]);
+  assert.equal(c.current(), live);
+  resources.prometium = 50; pet.hp = 5000; pet.fuel -= 4;
+  const sent = await c.accept();
+  assert.equal(sent.user.inventory.resources.prometium, 50);
+  assert.equal(sent.user.pet.hp, 5000); assert.equal(sent.user.pet.fuel, 96);
+});
+
+test("une confirmation de sauvegarde ne détache ni le compte ni le PET, même avec des changements en vol", async () => {
+  const c = client(); c.api.enterNetMode("token", user());
+  const live = c.current(), pet = live.pet, resources = live.inventory.resources;
+  const saving = c.api.flushNetUser(), request = c.requests.at(-1);
+  pet.hp = 5000; pet.fuel -= 4; resources.prometium = 50;
+  request.reply(200, { ok: true, user: request.body.user }); await saving;
+  assert.equal(c.current(), live); assert.equal(c.current().pet, pet);
+  assert.equal(c.current().inventory.resources, resources);
+  pet.hp = 7000; resources.prometium += 10;
+  const sent = await c.accept();
+  assert.equal(sent.user.pet.hp, 7000); assert.equal(sent.user.pet.fuel, 96);
+  assert.equal(sent.user.inventory.resources.prometium, 60);
+});
+
+test("la sentinelle de stock infini ne relance pas une sauvegarde déjà confirmée", async () => {
+  const c = client(); c.api.enterNetMode("token", user());
+  // Une lecture normalise -1 en Infinity dans le compte chargé.
+  c.current().ammo.x4 = Infinity;
+  const sent = await c.accept(); assert.equal(sent.user.ammo.x4, -1);
+  assert.equal(c.current().revision, sent.user.revision);
+  assert.equal([...c.timers.values()].some(t => t.ms === 2000), false);
+  c.api.flushAccountCache();
+  assert.equal(JSON.parse(c.storage.get("orbit_user_cache")).user.ammo.x4, -1);
+});
+
+test("l'ordre des champs serveur ne crée pas une nouvelle sauvegarde après confirmation", async () => {
+  const c = client(); c.api.enterNetMode("token", user());
+  const saving = c.api.flushNetUser(), request = c.requests.at(-1);
+  const remote = Object.fromEntries(Object.entries(request.body.user).reverse());
+  remote.pet = Object.fromEntries(Object.entries(remote.pet).reverse());
+  request.reply(200, { ok: true, user: remote }); await saving;
+  assert.equal(c.current().revision, remote.revision);
+  assert.equal(c.api.netHasPendingSave(), false);
+  assert.equal([...c.timers.values()].some(t => t.ms === 2000), false);
+});
+
+test("une récompense PET confirmée avant le canon d'activation n'est pas créditée deux fois", async () => {
+  const c = client(), initial = user(); initial.pet.exp = 0;
+  c.api.enterNetMode("token", structuredClone(initial));
+  c.mutate(u => { u.pet.active = true; });
+  const reward = { revision: 3, exp: 20, petExp: 2 };
+  assert.equal(c.api.noteNetServerReward(reward), true);
+  c.mutate(u => { u.stats.exp += 20; u.pet.exp += 2; });
+  await c.conflict({ ...initial, revision: 2, pet: { ...initial.pet, active: true } });
+  assert.equal(c.current().pet.exp, 2);
+  await c.conflict({ ...initial, revision: 3, stats: { ...initial.stats, exp: 30 },
+    pet: { ...initial.pet, active: true, exp: 2 } });
+  assert.equal(c.current().pet.exp, 2);
+});
+
 test("achat de disques et investissements survivent à plusieurs conflits sans perdre ni redébiter les crédits", async () => {
   const c = client(), initial = user(); c.api.enterNetMode("token", structuredClone(initial));
   c.mutate(u => { u.credits -= 3_000_000; u.pilotSkills.disks += 10; u.pilotSkills.spent.engineering = 2; });
@@ -202,10 +296,30 @@ test("le journal GG après un conflit utilise la même référence que le cache 
   assert.equal(reloaded.current().galaxyGates.energy, 8);
 });
 
+for (const action of ["refresh", "conflict"]) {
+  test(`un canon ${action} plus ancien que la récompense WebSocket ne retire pas le gain`, async () => {
+    const c = client(), initial = user(); c.api.enterNetMode("token", structuredClone(initial));
+    c.mutate(u => { u.credits -= 3_000_000; u.pilotSkills.disks = 10; });
+    const reward = { revision: 3, credits: 500, exp: 20, honor: 2, ownsKill: true, type: "npc_test" };
+    assert.equal(c.api.noteNetServerReward(reward), true);
+    c.mutate(u => { u.credits += 500; u.stats.exp += 20; u.stats.honor += 2;
+      u.stats.lifetimeKills++; u.stats.npcKills.npc_test = 1; });
+    await c[action]({ ...initial, revision: 2 });
+    assert.equal(c.current().credits, 97_000_500); assert.equal(c.current().pilotSkills.disks, 10);
+    assert.equal(c.current().stats.exp, 30); assert.equal(c.current().stats.honor, 7);
+    assert.equal(c.current().stats.lifetimeKills, 1); assert.equal(c.current().stats.npcKills.npc_test, 1);
+    await c.conflict({ ...initial, revision: 3, credits: 100_000_500,
+      stats: { ...initial.stats, exp: 30, honor: 7, lifetimeKills: 1, npcKills: { npc_test: 1 } } });
+    assert.equal(c.current().credits, 97_000_500); assert.equal(c.current().stats.exp, 30);
+    await c.accept();
+    assert.equal(c.api.noteNetServerReward(reward), false);
+  });
+}
+
 test("l'achat réel de disques appelle la sauvegarde, même sans attendre un kill", () => {
   const c = client(); c.api.enterNetMode("token", user());
   Object.assign(c.api, { getCurrentUserFull: () => { throw new Error("Normalisation pendant l'achat réseau"); }, ensurePilotSkills: u => { u.pilotSkills = normalizePilotSkills(u.pilotSkills); },
-    LOGDISK_PRICE, LOGDISK_PACK, saveUser: u => { u.revision++; c.api.netStore([u]); } });
+    LOGDISK_PRICE, LOGDISK_PACK, prepareCurrentUserMutation() {}, saveUser: u => { u.revision++; c.api.netStore([u]); } });
   const start = account.indexOf("export function buyLogDiskPack()"), end = account.indexOf("// Échange de disques", start);
   vm.runInContext(account.slice(start, end).replace(/^export /gm, ""), c.api);
   const result = c.api.buyLogDiskPack(); assert.equal(result.ok, true);

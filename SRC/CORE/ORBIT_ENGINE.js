@@ -12303,7 +12303,7 @@ function wirePetWindow() {
     if (!(Number(pet.hp) > 0)) {
       // Flush memoire -> store : sinon la reparation lit un store perime
       // (kill recent pas encore sauvegarde) et repond "REX intact." a tort.
-      try { if (account.user) saveUser(account.user, { notify: false }); } catch {}
+      try { if (account.user) saveProgressNow(); } catch {}
       const out = repairPet();
       if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
       account.user = out.user;
@@ -12503,7 +12503,7 @@ function applyPetModeValue(v) {
       // Les helpers de compte relisent le store : pousse d'abord les PV et le
       // bouclier live pour qu'un changement de gear ne restaure pas une valeur
       // ancienne (souvent 0 juste apres un combat).
-      try { if (account.user) saveUser(account.user, { notify: false }); } catch {}
+      try { if (account.user) saveProgressNow(); } catch {}
       const outMode = setPetMode("passive");
       if (!outMode?.ok) return showToast(outMode?.error || "Impossible.", 1.5);
       const out = setPetActiveGear(key);
@@ -12520,7 +12520,7 @@ function applyPetModeValue(v) {
     if (traWindowActive()) endTraSession();
     if (hplLinkActive()) endHplLink("gear");
     if (buoySessionActive()) endBuoySession("gear");
-    try { if (account.user) saveUser(account.user, { notify: false }); } catch {}
+    try { if (account.user) saveProgressNow(); } catch {}
     const out = setPetMode(v);
     if (!out?.ok) {
       showToast(out?.error || "Impossible.", 1.5);
@@ -15530,6 +15530,56 @@ ui.cfgToggleBtn?.addEventListener("click", () => {
   trySwitchConfig(current === 1 ? 2 : 1);
 });
 
+function syncPlayerStocksFromAccount(fresh) {
+  // Les mutations et adoptions conservent d'abord la progression live.
+  // Adopter ensuite le stock exact : MAX ressusciterait les tirs consommés
+  // et les munitions vendues, puis annulerait un achat au prochain autosave.
+  const a = fresh.ammo || {};
+  // Préfère la sélection persistée (fresh), sinon garde celle en mémoire.
+  const rawActive = String(fresh.ammoActive ?? fresh.ammo?.active ?? player.ammo?.active ?? "x1").toLowerCase();
+  const active = AMMO[rawActive] ? rawActive : "x1";
+
+  player.ammo = {
+    ...player.ammo,
+    active,
+    x1: Infinity,
+    x2: Math.max(0, Number(a.x2 || 0)),
+    x3: Math.max(0, Number(a.x3 || 0)),
+    x4: Math.max(0, Number(a.x4 || 0)),
+    x6: Math.max(0, Number(a.x6 || 0)),
+    sab: Math.max(0, Number(a.sab || 0)),
+    rcb: Math.max(0, Number(a.rcb || 0)),
+    cbo: Math.max(0, Number(a.cbo || 0)),
+    job: Math.max(0, Number(a.job || 0)),
+    rb: Math.max(0, Number(a.rb || 0)),
+    pib: Math.max(0, Number(a.pib || 0)),
+    idb: Math.max(0, Number(a.idb || 0)),
+    vb: Math.max(0, Number(a.vb || 0)),
+    emaa: Math.max(0, Number(a.emaa || 0)),
+    sbl: Math.max(0, Number(a.sbl || 0)),
+    abl: Math.max(0, Number(a.abl || 0)),
+  };
+
+  // Roquettes : appliquer aussi les diminutions confirmées.
+  const rk = fresh.rockets || {};
+  const nextRockets = { ...player.rockets };
+  for (const id of ROCKET_IDS) {
+    nextRockets[id] = Math.max(0, Math.floor(Number(rk[id] || 0)));
+  }
+  player.rockets = nextRockets;
+  if (ROCKET_TYPES[String(fresh.rocketActive || "").toLowerCase()]) {
+    player.rocketActive = String(fresh.rocketActive).toLowerCase();
+  }
+  player.rocketAuto = fresh.rocketAuto === true;
+  player.launcherActive = ROCKET_TYPES[String(fresh.launcherActive || "").toLowerCase()] ? String(fresh.launcherActive).toLowerCase() : "eco10";
+  player.launcherAuto = fresh.launcherAuto === true;
+
+  if (player.ammo.active !== "x1" && ammoCount(player.ammo.active) <= 0) {
+    player.ammo.active = "x1";
+  }
+
+}
+
 function syncPlayerFromAccount() {
   const fresh = getCurrentUserFull();
   if (!fresh) return false;
@@ -15548,56 +15598,7 @@ function syncPlayerFromAccount() {
   // ✅ crédits toujours synchronisés avec le compte
   player.credits = Math.max(0, Number(fresh.credits || 0));
 
-  // ✅ munitions synchronisées aussi si achat en boutique profil.
-  // Max par type (jamais d'écrasement vers le bas) : le compte persisté
-  // peut être en retard sur la session (tirs entre deux saves) — un sync
-  // aveugle effaçait du stock, voire tout si le snapshot était vide.
-  const a = fresh.ammo || {};
-  // Préfère la sélection persistée (fresh), sinon garde celle en mémoire.
-  const rawActive = String(fresh.ammoActive ?? fresh.ammo?.active ?? player.ammo?.active ?? "x1").toLowerCase();
-  const active = AMMO[rawActive] ? rawActive : "x1";
-
-  player.ammo = {
-    ...player.ammo,
-    active,
-    x1: Infinity,
-    x2: Math.max(Math.max(0, Number(player.ammo?.x2 || 0)), Math.max(0, Number(a.x2 || 0))),
-    x3: Math.max(Math.max(0, Number(player.ammo?.x3 || 0)), Math.max(0, Number(a.x3 || 0))),
-    x4: Math.max(Math.max(0, Number(player.ammo?.x4 || 0)), Math.max(0, Number(a.x4 || 0))),
-    x6: Math.max(Math.max(0, Number(player.ammo?.x6 || 0)), Math.max(0, Number(a.x6 || 0))),
-    sab: Math.max(Math.max(0, Number(player.ammo?.sab || 0)), Math.max(0, Number(a.sab || 0))),
-    rcb: Math.max(Math.max(0, Number(player.ammo?.rcb || 0)), Math.max(0, Number(a.rcb || 0))),
-    cbo: Math.max(Math.max(0, Number(player.ammo?.cbo || 0)), Math.max(0, Number(a.cbo || 0))),
-    job: Math.max(Math.max(0, Number(player.ammo?.job || 0)), Math.max(0, Number(a.job || 0))),
-    rb: Math.max(Math.max(0, Number(player.ammo?.rb || 0)), Math.max(0, Number(a.rb || 0))),
-    pib: Math.max(Math.max(0, Number(player.ammo?.pib || 0)), Math.max(0, Number(a.pib || 0))),
-    idb: Math.max(Math.max(0, Number(player.ammo?.idb || 0)), Math.max(0, Number(a.idb || 0))),
-    vb: Math.max(Math.max(0, Number(player.ammo?.vb || 0)), Math.max(0, Number(a.vb || 0))),
-    emaa: Math.max(Math.max(0, Number(player.ammo?.emaa || 0)), Math.max(0, Number(a.emaa || 0))),
-    sbl: Math.max(Math.max(0, Number(player.ammo?.sbl || 0)), Math.max(0, Number(a.sbl || 0))),
-    abl: Math.max(Math.max(0, Number(player.ammo?.abl || 0)), Math.max(0, Number(a.abl || 0))),
-  };
-
-  // ✅ roquettes synchronisées aussi si achat en boutique profil (max aussi).
-  const rk = fresh.rockets || {};
-  const nextRockets = { ...player.rockets };
-  for (const id of ROCKET_IDS) {
-    nextRockets[id] = Math.max(
-      Math.max(0, Math.floor(Number(player.rockets?.[id] || 0))),
-      Math.max(0, Math.floor(Number(rk[id] || 0))),
-    );
-  }
-  player.rockets = nextRockets;
-  if (ROCKET_TYPES[String(fresh.rocketActive || "").toLowerCase()]) {
-    player.rocketActive = String(fresh.rocketActive).toLowerCase();
-  }
-  player.rocketAuto = fresh.rocketAuto === true;
-  player.launcherActive = ROCKET_TYPES[String(fresh.launcherActive || "").toLowerCase()] ? String(fresh.launcherActive).toLowerCase() : "eco10";
-  player.launcherAuto = fresh.launcherAuto === true;
-
-  if (player.ammo.active !== "x1" && ammoCount(player.ammo.active) <= 0) {
-    player.ammo.active = "x1";
-  }
+  syncPlayerStocksFromAccount(fresh);
 
   updateAmmoUI();
   drawUI();
@@ -20170,7 +20171,7 @@ function onPetTookDamage() {
     petState.assistTarget = null;
     petState.combatTarget = null;
     markProgressDirty();
-    try { saveUser(account.user, { notify: false }); } catch {}
+    try { saveProgressNow(); } catch {}
     try { showToast("REX touché : réparation interrompue", 1.6); } catch {}
   }
 }
@@ -21301,14 +21302,9 @@ function tickPetFuel(dt) {
   const take = Math.floor(petState.fuelRest);
   if (take <= 0) return;
   petState.fuelRest -= take;
-  // account.user peut etre une ancienne copie apres netStore. Rattache la
-  // consommation au canon avant de retirer le carburant, sinon un sync le
-  // remplit de nouveau (notamment au passage exact a zero).
-  const current = getCurrentUserFull();
-  if (current?.pet?.owned === true) {
-    account.user = current;
-    pet = current.pet;
-  }
+  // Consommer sur le REX vivant, comme les améliorations au tir. Relire un
+  // ancien compte ici annulait les soins, l'XP et les collectes entre deux
+  // autosaves. Les hooks sauvegardent ce delta avant toute mutation/adoption.
   pet.fuel = Math.max(0, Math.floor(Number(pet.fuel) || 0) - take);
   // Mode multi : sinon un 409 remplit le réservoir depuis le canon.
   try { noteNetPetFuelConsumed(take); } catch {}
@@ -21326,11 +21322,9 @@ function tickPetFuel(dt) {
 // Prélèvement one-shot (kamikaze / sacrifice) : 3 × économie, min 1.
 function consumePetOneshotFuel(pet, user) {
   if (!pet) return { ok: false };
-  const current = getCurrentUserFull();
-  if (current?.pet?.owned === true) {
-    account.user = current;
-    user = current;
-    pet = current.pet;
+  if (account.user?.id === user?.id && account.user?.pet?.owned === true) {
+    user = account.user;
+    pet = user.pet;
   }
   const cost = Math.max(1, Math.round(PET_FUEL_ONESHOT * petFuelEcoMult(pet, user)));
   const have = Math.max(0, Math.floor(Number(pet.fuel) || 0));
@@ -25658,11 +25652,9 @@ function killRewards(e) {
     gainedHonor = Math.max(0, Math.floor(Number(serverReward.honor) || 0));
     const applyReward = noteNetServerReward(serverReward);
     if (applyReward) player.credits += credits;
-    // saveUser/netStore remplace le cache reseau par un clone. `account.user`
-    // peut donc encore pointer sur l'ancien objet : le kill y apparait, puis
-    // la sauvegarde de position relit le clone sans XP et donne l'impression
-    // que la recompense a ete retiree. Toujours repartir du canon local
-    // courant avant d'appliquer le delta confirme par le serveur.
+    // Un refresh ou un conflit peut adopter un nouveau compte. Repartir
+    // du canon local courant avant d'appliquer le gain confirmé évite
+    // d'écrire la récompense dans un ancien objet du moteur.
     // Le cache reseau contient deja le compte charge. Sa reference canonique
     // evite de normaliser tous les hangars/inventaires pendant chaque kill.
     const currentAccountUser = preserveLivePetVitals(account.user, netList()[0] || getCurrentUserFull());
@@ -39035,6 +39027,7 @@ const saveLiveProgressBeforeNetwork = () => {
 };
 window.addEventListener("orbit:net-before-save", saveLiveProgressBeforeNetwork);
 window.addEventListener("orbit:net-before-adopt", saveLiveProgressBeforeNetwork);
+window.addEventListener("orbit:account-before-mutation", saveLiveProgressBeforeNetwork);
 window.addEventListener("orbit:net-adopted", (e) => {
   try {
     if (!account.user) loadAccountUser();
@@ -39072,6 +39065,7 @@ window.addEventListener("orbit:user-updated", event => {
   // Tous les mutateurs du compte (vente, boutique, arbre, hangar) publient
   // cet événement. Le prochain save du moteur doit utiliser leur solde.
   if (started) player.credits = Math.max(0, Number(refreshed.credits) || 0);
+  if (started) syncPlayerStocksFromAccount(refreshed);
   const previous = account.user;
   const previousHangar = getActiveHangarFromUser(previous);
   const nextHangar = getActiveHangarFromUser(refreshed);

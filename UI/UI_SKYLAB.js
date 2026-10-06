@@ -37,6 +37,7 @@ import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 import {
   buySkylabRobot,
   instantSkylabTransport,
+  isLogoutPending,
   loadSkylabFromShip,
   setSkylabModuleEnabled,
   startSkylabUpgrade,
@@ -52,6 +53,7 @@ try {
 } catch {}
 let lastDynamicRefresh = 0;
 let lastDirtyMark = 0;
+let deferredProductionSeconds = 0;
 
 const NODE_POS = Object.freeze({
   // Zone modules officielle 772x364 (internalSkylab.css : #modules).
@@ -674,6 +676,13 @@ function onSkylabInput(event) {
 
 export function tickSkylabProduction(dtRealSec) {
   if (!ctx) return;
+  const elapsed = Math.max(0, Number(dtRealSec) || 0);
+  // Stabiliser le compte pendant sa confirmation de déconnexion. Si elle
+  // échoue, la production différée reprend sans perdre ce temps écoulé.
+  if (isLogoutPending()) {
+    deferredProductionSeconds += elapsed;
+    return;
+  }
   let user = null;
   try {
     user = ctx.getUser?.();
@@ -685,7 +694,8 @@ export function tickSkylabProduction(dtRealSec) {
   const now = Date.now();
   let res;
   try {
-    res = tickSkylabState(user.skylab, now, Math.max(0, Number(dtRealSec) || 0));
+    res = tickSkylabState(user.skylab, now, elapsed + deferredProductionSeconds);
+    deferredProductionSeconds = 0;
   } catch { return; }
   if (res?.completed?.length) {
     for (const moduleId of res.completed) {

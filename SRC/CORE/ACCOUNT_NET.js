@@ -74,7 +74,11 @@ export function netStore(list) {
     if (JSON.stringify(mine.galaxyGates) !== JSON.stringify(serverBase?.galaxyGates)) {
       pendingGalaxyGates = mine.galaxyGates ? structuredClone(mine.galaxyGates) : null;
     }
-    memUser = retainPendingSelections(JSON.parse(JSON.stringify(mine, (k, v) => (v === Infinity ? -1 : v))));
+    // Le moteur conserve des références à ce compte et à son P.E.T. Les
+    // détacher à chaque save perdrait les mutations de la frame suivante.
+    // Seuls la référence serveur et le snapshot envoyé sont des copies.
+    sanitizeInfiniteValues(mine);
+    memUser = retainPendingSelections(mine);
     cachePendingGalaxyGates();
     writeCache(memUser);
     schedulePush();
@@ -208,7 +212,8 @@ function flushAccountCache() {
   // Une deconnexion ne doit jamais etre suivie par la resurrection du cache.
   if (!user || !netActive() || user.id !== memUser.id) return;
   try {
-    lsSet(CACHE_KEY, JSON.stringify({ user, base: serverBase, retrySave, rewards: [...serverRewards], at: Date.now() }));
+    lsSet(CACHE_KEY, JSON.stringify({ user, base: serverBase, retrySave, rewards: [...serverRewards], at: Date.now() },
+      (key, value) => value === Infinity ? -1 : value));
   } catch {}
 }
 
@@ -402,8 +407,46 @@ function noteConflict() {
 }
 
 const copy = value => value === undefined ? undefined : structuredClone(value);
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function same(a, b) {
+  if (a === Infinity) a = -1;
+  if (b === Infinity) b = -1;
+  if (a === b) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length
+      && a.every((value, index) => same(value ?? null, b[index] ?? null));
+  }
+  // Les champs JSON n'ont pas d'ordre. Une réponse serveur qui les réordonne
+  // confirme le même état, sans relancer une écriture ou bloquer le logout.
+  const keys = Object.keys(a).filter(key => a[key] !== undefined);
+  return keys.length === Object.keys(b).filter(key => b[key] !== undefined).length
+    && keys.every(key => Object.hasOwn(b, key) && same(a[key], b[key]));
+}
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
+
+function sanitizeInfiniteValues(value, seen = new WeakSet()) {
+  if (!value || typeof value !== "object" || seen.has(value)) return;
+  seen.add(value);
+  for (const key of Object.keys(value)) {
+    if (value[key] === Infinity) value[key] = -1;
+    else sanitizeInfiniteValues(value[key], seen);
+  }
+}
+
+function replaceAccountObject(target, source) {
+  for (const key of Object.keys(target)) {
+    if (!Object.hasOwn(source, key)) delete target[key];
+  }
+  if (Array.isArray(target)) target.length = source.length;
+  for (const [key, value] of Object.entries(source)) {
+    if (["__proto__", "constructor", "prototype"].includes(key)) continue;
+    if (target[key] === value) continue;
+    if ((object(target[key]) && object(value)) || (Array.isArray(target[key]) && Array.isArray(value))) {
+      replaceAccountObject(target[key], value);
+    } else target[key] = value;
+  }
+  return target;
+}
 
 function additivePath(path) {
   return path === "credits" || /^(ammo|rockets|inventory\.(counts|resources)|skylab\.stock)\.[^.]+$/.test(path)
@@ -484,7 +527,13 @@ function addRewardToBase(base, reward) {
     base.stats.npcKills[reward.type] = (Number(base.stats.npcKills[reward.type]) || 0) + 1;
   }
   for (const drone of base.drones?.items || []) drone.exp = (Number(drone.exp) || 0) + Math.max(0, Number(reward.exp) || 0) * 0.05;
-  if (base.pet?.owned && base.pet.active) base.pet.exp = (Number(base.pet.exp) || 0) + Math.max(0, Number(reward.petExp) || 0);
+  const petGain = Math.max(0, Number(reward.petExp) || 0);
+  // Le reçu confirme le gain serveur. Le canon de référence peut encore
+  // précéder l'activation du REX : son ancien flag active ne tranche pas.
+  if (petGain > 0) {
+    base.pet ||= {};
+    base.pet.exp = (Number(base.pet.exp) || 0) + petGain;
+  }
 }
 
 // Appelé avant d'appliquer un gain WebSocket au moteur. Un gain déjà présent
@@ -514,7 +563,20 @@ function adoptServerUser(user, { base = serverBase, admin = false, reason = "ref
   if (reason !== "saved") {
     try { window.dispatchEvent(new CustomEvent("orbit:net-before-adopt")); } catch {}
   }
-  memUser = admin ? retainPendingSelections(copy(user)) : rebaseUser(memUser, user, base);
+  let remote = user;
+  if (!admin && reason !== "saved") {
+    // HTTP peut arriver après un gain WebSocket plus récent. La référence
+    // contient déjà ce gain : compléter aussi le canon reçu avant la fusion,
+    // sinon son retard ressemble à une dépense et retire la récompense.
+    remote = copy(user);
+    for (const [revision, reward] of serverRewards) {
+      if (revision > Number(user.revision || 0)) addRewardToBase(remote, reward);
+    }
+  }
+  const merged = admin ? retainPendingSelections(copy(user)) : rebaseUser(memUser, remote, base);
+  // Les confirmations sont silencieuses : mettre à jour les objets déjà
+  // utilisés par le moteur, plutôt que lui laisser un ancien compte détaché.
+  memUser = reason === "saved" ? replaceAccountObject(memUser, merged) : merged;
   acceptServerBase(user);
   pendingGalaxyGates = same(memUser.galaxyGates, serverBase.galaxyGates) ? null : copy(memUser.galaxyGates);
   if (!same(memUser, serverBase) || Object.keys(pendingSelections).length) {
@@ -599,6 +661,11 @@ export async function flushNetUser() {
   try { clearTimeout(saveTimer); } catch {}
   saveTimer = null;
   return pushNow();
+}
+
+export function netHasPendingSave() {
+  return netActive() && (!!retrySave || !same(memUser, serverBase)
+    || Object.keys(pendingSelections).length > 0 || pendingGalaxyGates != null);
 }
 
 async function refreshNetUser() {

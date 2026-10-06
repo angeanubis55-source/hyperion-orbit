@@ -237,9 +237,10 @@ export function renderAuctionWindow() {
       return true;
     })
     .sort((a, b) => Number(a?.endsAt) - Number(b?.endsAt));
+  const rowsReused = lots.length > 0 && refreshAuctionRowsInPlace(auction, user, shared);
   if (!lots.length) {
     list.innerHTML = `<div class="auctionEmpty">Prochain cycle dans quelques instants.</div>`;
-  } else {
+  } else if (!rowsReused) {
     const pseudo = String(user?.pseudo || "Joueur");
     list.innerHTML = lots.map((lot) => {
       const leading = lot.topBidder === "you" && Number(lot.myBid) > 0;
