@@ -171,7 +171,7 @@ function engineBot(walls, start, goal, npc = null) {
   const source = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
   const from = source.indexOf("function botMovementStep("), to = source.indexOf("function botClampCombatTarget(", from);
   const context = vm.createContext({
-    hangarSwapFx: null, Bot: { active: true, manualT: 0, combatTargetId: npc?.id },
+    hangarSwapFx: null, Bot: { active: true, manualT: 0, combatTargetId: npc?.id, combatMoveTargetId: npc?.id },
     moveTarget: { active: true, ...goal }, player: { ...start, r: 18, baseSpeed: 400, vx: 0, vy: 0 },
     pointer: { down: false }, performance: { now: () => 10000 }, isZoneMap: true, zoneWalls: walls,
     WORLD: { w: 4000, h: 4000 }, attackActive: !!npc, enemies: npc ? [npc] : [],
@@ -233,6 +233,27 @@ test("un NPC dans une zone fermee est laisse de cote sans vibration ni teleporta
   assert.equal(c.moveTarget.active, false);
 });
 
+test("la poursuite contourne le NPC derriere le mur avec les tirs coupes hors de portee", () => {
+  const walls = [{ x: 2000, y: 2000, w: 100, h: 800 }];
+  const enemy = { id: 1, x: 2600, y: 2000, hp: 100 };
+  const c = engineBot(walls, { x: 1600, y: 2000 }, { x: 1700, y: 2000 }, enemy);
+  c.attackActive = false;
+  const step = c.botMovementStep(1 / 60);
+  assert.equal(step.active, true);
+  assert.ok(step.x > 1900, "le navigateur vise le contour du NPC, pas l'orbite du cote du joueur");
+  assert.ok(Math.abs(step.y - 2000) > 400);
+});
+
+test("une collecte ou une fuite conserve sa destination malgre un NPC verrouille", () => {
+  const walls = [{ x: 2000, y: 2000, w: 100, h: 800 }];
+  const enemy = { id: 1, x: 2600, y: 2000, hp: 100 };
+  const c = engineBot(walls, { x: 1600, y: 2000 }, { x: 1700, y: 2000 }, enemy);
+  c.Bot.combatMoveTargetId = null;
+  assert.equal(c.botMovementStep(1 / 60), c.moveTarget);
+  c.Bot.combatMoveTargetId = 2;
+  assert.equal(c.botMovementStep(1 / 60), c.moveTarget);
+});
+
 test("le bot laisse le pilotage manuel intact, pendant et apres le clic", () => {
   const walls = [{ x: 2000, y: 2000, w: 100, h: 800 }];
   for (const mode of ["inactive", "pointer", "manual-pause"]) {
@@ -242,4 +263,79 @@ test("le bot laisse le pilotage manuel intact, pendant et apres le clic", () => 
     if (mode === "manual-pause") c.Bot.manualT = 9000;
     assert.equal(c.botMovementStep(1 / 60), c.moveTarget);
   }
+});
+
+function botProfileContext(saved = {}) {
+  const source = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
+  const from = source.indexOf("const Bot = {"), to = source.indexOf("function botLog(", from);
+  let stored = JSON.stringify(saved);
+  const context = vm.createContext({
+    BOT_STORE_KEY: "bot-test", BOT_TAB_LEGACY: {}, BOT_AMMO_IDS: [],
+    document: { querySelector: () => null },
+    localStorage: { getItem: () => stored, setItem: (key, value) => { stored = value; } },
+    performance: { now: () => 10000 },
+    botApplyFormation: value => { context.appliedFormation = value; },
+    botApplyConfig: value => { context.appliedConfig = value; },
+  });
+  vm.runInContext(source.slice(from, to) + "\nglobalThis.Bot = Bot;", context);
+  const profileFrom = source.indexOf("function botApplyMoveProfile("), profileTo = source.indexOf("function botApplyConfig(", profileFrom);
+  vm.runInContext(source.slice(profileFrom, profileTo), context);
+  context.saved = () => JSON.parse(stored);
+  return { context, source };
+}
+
+test("les anciens choix de deplacement migrent vers fuite et navigation", () => {
+  const { context: c } = botProfileContext({ formMove: "wheel", cfgFly: "2" });
+  c.botLoadConfig();
+  assert.equal(c.Bot.formFlee, "wheel"); assert.equal(c.Bot.cfgFlee, "2");
+  assert.equal(c.Bot.formTravel, "wheel"); assert.equal(c.Bot.cfgTravel, "2");
+});
+
+test("les trois profils se sauvegardent separement et le choix vide reste explicite", () => {
+  const { context: c } = botProfileContext({ formMove: "wheel", cfgFly: "2",
+    formFlee: "", cfgFlee: "", formTravel: "ring", cfgTravel: "1" });
+  c.botLoadConfig();
+  c.botSaveConfig();
+  const { context: restored } = botProfileContext(c.saved());
+  restored.botLoadConfig();
+  assert.equal(restored.Bot.formMove, "wheel"); assert.equal(restored.Bot.cfgFly, "2");
+  assert.equal(restored.Bot.formFlee, ""); assert.equal(restored.Bot.cfgFlee, "");
+  assert.equal(restored.Bot.formTravel, "ring"); assert.equal(restored.Bot.cfgTravel, "1");
+  restored.botApplyMoveProfile("travel");
+  assert.equal(restored.appliedFormation, "ring"); assert.equal(restored.appliedConfig, "1");
+  restored.botApplyMoveProfile("flee");
+  assert.equal(restored.appliedFormation, ""); assert.equal(restored.appliedConfig, "");
+});
+
+test("le vrai tick passe entre exploration, navigation et fuite puis reprend la recherche", () => {
+  const { context: c, source } = botProfileContext();
+  Object.assign(c.Bot, { active: true, manualT: 0, mode: "kill", formMove: "wheel", cfgFly: "1",
+    formFlee: "ring", cfgFlee: "2", formTravel: "heart", cfgTravel: "", flee: true });
+  Object.assign(c, {
+    started: true, player: { x: 1000, y: 1000, hp: 100, hpMax: 100 }, WORLD: { w: 4000, h: 4000 },
+    window: { __CURRENT_MAP_ID__: "1-1" }, rules: {}, moveTarget: { active: false },
+    enemies: [], collectables: [], attackActive: false, Target: { get: () => null },
+    botNearestNpc: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},
+    botApplyRocketFlags: () => {}, botRefreshHudThrottled: () => {}, botLog: () => {},
+    stopAttack: () => {}, cancelCollectableTarget: () => {},
+    botNearestSafeRefuge: () => ({ x: 1500, y: 1500, label: "Zone sure" }),
+    clamp: (value, min, max) => Math.max(min, Math.min(max, value)),
+  });
+  const from = source.indexOf("function tickBot("), to = source.indexOf("function botRefreshHudThrottled(", from);
+  vm.runInContext(source.slice(from, to), c);
+  c.tickBot(1 / 60);
+  assert.equal(c.appliedFormation, "wheel"); assert.equal(c.appliedConfig, "1");
+  assert.equal(c.moveTarget.active, true, "la recherche continue de deplacer le bot");
+  c.Bot.targetMap = "1-2";
+  c.tickBot(1 / 60);
+  assert.equal(c.appliedFormation, "heart"); assert.equal(c.appliedConfig, "");
+  c.player.hp = 20;
+  c.tickBot(1 / 60);
+  assert.equal(c.Bot.fleeing, true);
+  assert.equal(c.appliedFormation, "ring"); assert.equal(c.appliedConfig, "2");
+  assert.equal(c.moveTarget.x, 1500);
+  c.Bot.targetMap = ""; c.player.hp = 50;
+  c.tickBot(1 / 60);
+  assert.equal(c.Bot.fleeing, false);
+  assert.equal(c.appliedFormation, "wheel"); assert.equal(c.appliedConfig, "1");
 });

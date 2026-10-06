@@ -8927,6 +8927,10 @@ const Bot = {
   npcMapFilter: "",
   formMove: "",
   cfgFly: "",
+  formFlee: "",
+  cfgFlee: "",
+  formTravel: "",
+  cfgTravel: "",
   cfgPrev: 0,
   ammoPrev: "",
   petMode: "",
@@ -8955,6 +8959,7 @@ const Bot = {
   credits0: 0,
   exp0: 0,
   moveTag: null,
+  combatMoveTargetId: null,
   moveOrderedAt: 0,
   steering: null,
   postKillScanT: 0,
@@ -9037,6 +9042,10 @@ function botSaveConfig() {
       npcMapFilter: Bot.npcMapFilter,
       formMove: Bot.formMove,
       cfgFly: Bot.cfgFly,
+      formFlee: Bot.formFlee,
+      cfgFlee: Bot.cfgFlee,
+      formTravel: Bot.formTravel,
+      cfgTravel: Bot.cfgTravel,
       petMode: Bot.petMode,
       petEnabled: Bot.petEnabled,
       petAutoFuel: Bot.petAutoFuel,
@@ -9096,6 +9105,13 @@ function botLoadConfig() {
     if (typeof data.npcMapFilter === "string") Bot.npcMapFilter = data.npcMapFilter;
     if (typeof data.formMove === "string") Bot.formMove = data.formMove;
     if (data.cfgFly === "1" || data.cfgFly === "2") Bot.cfgFly = data.cfgFly;
+    // Les anciens profils partageaient exploration, fuite et voyage.
+    // Migrer les champs absents, mais conserver un choix explicite « — ».
+    for (const [formKey, cfgKey] of [["formFlee", "cfgFlee"], ["formTravel", "cfgTravel"]]) {
+      Bot[formKey] = typeof data[formKey] === "string" ? data[formKey] : Bot.formMove;
+      const savedCfg = data[cfgKey] === undefined ? Bot.cfgFly : data[cfgKey];
+      Bot[cfgKey] = savedCfg === "1" || savedCfg === "2" ? savedCfg : "";
+    }
     if (typeof data.petMode === "string") Bot.petMode = data.petMode;
     if (typeof data.petEnabled === "boolean") Bot.petEnabled = data.petEnabled;
     if (typeof data.petAutoFuel === "boolean") Bot.petAutoFuel = data.petAutoFuel;
@@ -9289,8 +9305,6 @@ function botSetActive(on) {
     Bot.grabCd = 0;
 
     botApplyPetMode();
-    botApplyFormation(Bot.formMove);
-    botApplyConfig(Bot.cfgFly);
     botLog(`Bot démarré (${BOT_MODULES[Bot.mode]?.label || Bot.mode})`);
   }
   botSaveConfig();
@@ -9316,6 +9330,14 @@ function botCombatDistance(npcOrType) {
   // Stay outside the target's firing radius whenever our laser range permits
   // it. Against equal/longer-range NPCs, hug our own maximum range.
   return Math.max(140, Math.min(laserRange - 5, Math.max(laserRange * 0.90, npcRange + 70)));
+}
+
+// Chaque phase de deplacement utilise ses propres choix d'equipement.
+function botApplyMoveProfile(phase) {
+  const [formKey, cfgKey] = phase === "flee" ? ["formFlee", "cfgFlee"]
+    : phase === "travel" ? ["formTravel", "cfgTravel"] : ["formMove", "cfgFly"];
+  botApplyFormation(Bot[formKey]);
+  botApplyConfig(Bot[cfgKey]);
 }
 
 // Bascule silencieuse de configuration 1/2 (même logique que le bouton,
@@ -10065,6 +10087,8 @@ function wireBotWindow() {
   // Formations drones par phase (option vide = ne pas changer).
   const formDefs = [
     ["botFormMove", "formMove"],
+    ["botFormFlee", "formFlee"],
+    ["botFormTravel", "formTravel"],
     ["botFormCollect", "formCollect"],
   ];
   for (const [elId, key] of formDefs) {
@@ -10091,6 +10115,8 @@ function wireBotWindow() {
   // Configurations 1/2 par phase, style boutons segmentés (—, 1, 2).
   const cfgSegDefs = [
     ["botCfgFlySeg", "cfgFly"],
+    ["botCfgFleeSeg", "cfgFlee"],
+    ["botCfgTravelSeg", "cfgTravel"],
     ["botCfgCollectSeg", "cfgCollect"],
   ];
   for (const [elId, key] of cfgSegDefs) {
@@ -11005,9 +11031,10 @@ function botMovementStep(dt) {
     return moveTarget;
   }
   let combatNpc = null;
-  if (attackActive) {
-    if (Bot.combatTargetId != null) combatNpc = enemies.find(e => botNpcHasLockKey(e, Bot.combatTargetId)) || null;
-    if (!combatNpc) { const current = Target.get(); if (current && !current.isPetTarget && current.hp > 0) combatNpc = current; }
+  // La poursuite conserve son trajet meme lorsque le contour passe hors
+  // de portee et coupe les tirs. Collecte, fuite et voyage gardent leur ordre.
+  if (Bot.combatMoveTargetId != null && Bot.combatMoveTargetId === Bot.combatTargetId) {
+    combatNpc = enemies.find(e => botNpcHasLockKey(e, Bot.combatMoveTargetId) && Number(e.hp) > 0 && !e.isPetTarget) || null;
     if (botNpcInWall(combatNpc)) combatNpc = null;
   }
   Bot.wallSteer ||= {};
@@ -11083,6 +11110,7 @@ function botKiteCombatMove(npc, d, standD, dt) {
   });
   Bot.steering = { ...steering.state, npcId: npc.id };
   botOrderMove(steering.x, steering.y, npc.id);
+  Bot.combatMoveTargetId = Bot.combatTargetId;
   return;
 
   /* Legacy steering kept temporarily below for easy comparison while the
@@ -11280,8 +11308,7 @@ function botTickGalaxyEnter(dt) {
   const homeMap = String(getFactionHomeMap(user?.faction) || "").toLowerCase();
   const curMap = String(window.__CURRENT_MAP_ID__ || "1-1").toLowerCase();
   Bot.ggJumpCd -= dt;
-  botApplyFormation(Bot.formTravel || Bot.formMove);
-  botApplyConfig(Bot.cfgTravel || Bot.cfgFly);
+  botApplyMoveProfile("travel");
   // 1. Rejoindre la base mère (voyage physique portail par portail).
   if (homeMap && curMap !== homeMap) {
     if (!botPortalIndex) {
@@ -11395,6 +11422,8 @@ function botNearestSafeRefuge(x, y) {
 }
 
 function tickBot(dt) {
+  // Seul l'ordre de combat de ce tick peut imposer le NPC au navigateur.
+  Bot.combatMoveTargetId = null;
   try { botRecordSightings(dt); } catch {}
   if (!Bot.active) return;
   if (!started || player.dead) {
@@ -11522,8 +11551,7 @@ function tickBot(dt) {
     } else {
       Bot.status = "Fuite — réparation";
       Bot.target = `Coque ${Math.round(hpPct)} % (reprise à ${resumeAt} %)`;
-      botApplyFormation(Bot.formMove);
-      botApplyConfig(Bot.cfgFly);
+      botApplyMoveProfile("flee");
       const shelter = botNearestSafeRefuge(player.x, player.y);
       if (shelter) {
         if (attackActive) { try { stopAttack(); } catch {} }
@@ -11628,8 +11656,7 @@ function tickBot(dt) {
       } else {
         Bot.status = "Vente — comptoir";
         Bot.target = `Comptoir (${Math.round(Math.sqrt(trade.d2))}m)`;
-        botApplyFormation(Bot.formMove);
-        botApplyConfig(Bot.cfgFly);
+        botApplyMoveProfile("explore");
         if (attackActive) { try { stopAttack(); } catch {} }
         moveTarget.active = true;
         moveTarget.x = clamp(trade.pos.x, 80, WORLD.w - 80);
@@ -11652,8 +11679,7 @@ function tickBot(dt) {
   if (wantMap && wantMap !== curMap) {
     Bot.travelCd -= dt;
     Bot.jumpCd -= dt;
-    botApplyFormation(Bot.formMove);
-    botApplyConfig(Bot.cfgFly);
+    botApplyMoveProfile("travel");
     if (!botPortalIndex) {
       Bot.status = `Voyage → ${String(effRaw).toUpperCase()}`;
       Bot.target = "Cartographie des portails…";
@@ -11918,9 +11944,7 @@ function tickBot(dt) {
     // style DarkBot, avec sécurité anti-blocage à 30 s).
     // Fin d'engagement : on oublie la munition speciale en cours.
     try { botClearSpecialAmmo(); } catch {}
-    // Aucun changement de profil pendant la recherche : après un kill, on
-    // conserve le profil du NPC jusqu'à ce qu'une nouvelle action réelle
-    // (autre NPC, collecte ou fuite) fournisse son propre profil.
+    botApplyMoveProfile("explore");
     Bot.roamT -= dt;
     if (Bot.roamT <= 0 || !moveTarget.active) {
       Bot.roamT = 6;

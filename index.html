@@ -698,9 +698,11 @@
             <label class="botField"><span>Morts max (0 = illimité)</span><input id="botMaxDeaths" type="number" min="0" max="999" step="1" value="0" /></label>
           </div>
           <div class="botSection" data-bot-section="general">
-            <div class="botSectionTitle">Exploration et fuite</div>
-            <div class="botCfgRow"><span>Exploration</span><div class="botSeg" id="botCfgFlySeg"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormMove" aria-label="Formation en déplacement"></select></div>
-            <small class="botNote">La même configuration est utilisée pour explorer et fuir.</small>
+            <div class="botSectionTitle">Exploration, fuite et navigation</div>
+            <div class="botCfgRow"><span>Exploration</span><div class="botSeg" id="botCfgFlySeg" role="group" aria-label="Configuration d’exploration"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormMove" aria-label="Formation d’exploration"></select></div>
+            <div class="botCfgRow"><span>Fuite</span><div class="botSeg" id="botCfgFleeSeg" role="group" aria-label="Configuration de fuite"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormFlee" aria-label="Formation de fuite"></select></div>
+            <div class="botCfgRow"><span>Navigation</span><div class="botSeg" id="botCfgTravelSeg" role="group" aria-label="Configuration de navigation"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormTravel" aria-label="Formation de navigation"></select></div>
+            <small class="botNote">Exploration : recherche de cibles. Fuite : repli pour se réparer. Navigation : trajet entre les cartes. — conserve le réglage actuel.</small>
           </div>
           <div class="botSection" data-bot-section="general">
             <div class="botSectionTitle">Compétences auto</div>
