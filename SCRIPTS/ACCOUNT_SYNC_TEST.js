@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { pruneUnavailableLoadout } from "../SRC/CORE/FIT_INVENTORY.js";
 import { normalizePilotSkills, canInvestPilotSkill, LOGDISK_PRICE, LOGDISK_PACK } from "../SRC/DATA/PILOT_SKILLS.js";
-import { planAutoUpgradeCharges, UPGRADE_SLOT_ORES } from '../SRC/DATA/RESOURCES.js';
+import { planAutoUpgradeCharges, UPGRADE_SLOT_ORES, upgradeOreCapacity } from '../SRC/DATA/RESOURCES.js';
 
 const source = readFileSync(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8").replace(/^export /gm, "");
 const account = readFileSync(new URL("../SRC/CORE/ACCOUNT.js", import.meta.url), "utf8");
@@ -54,7 +54,7 @@ function wireLogout(c) {
 
 test('le partage automatique reste acquis apres un conflit et conserve les nouveaux minerais serveur', async () => {
   const c = client(), initial = user(); c.api.enterNetMode('token', structuredClone(initial));
-  Object.assign(c.api, { UPGRADE_SLOT_ORES, planAutoUpgradeCharges, ensureUserShape() {},
+  Object.assign(c.api, { UPGRADE_SLOT_ORES, upgradeOreCapacity, planAutoUpgradeCharges, ensureUserShape() {},
     getCurrentUserForMutation: () => c.current(), saveUser: u => { u.revision++; c.api.netStore([u]); } });
   for (const name of ['chargeShipUpgrade', 'chargeShipUpgradesAutomatically']) {
     const from = account.indexOf(`export function ${name}(`), end = account.indexOf('\n}', from) + 2;

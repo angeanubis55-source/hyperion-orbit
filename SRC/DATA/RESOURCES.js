@@ -85,6 +85,7 @@ export const ORE_SELL_PRICES = Object.freeze({
 // Améliorations d'équipement (onglet Upgrade du vrai DO) : minerai chargé = bonus.
 // Charge = 100 unités. Lasers/roquettes : 1/salve. Bouclier/vitesse : 1/60 s.
 export const UPGRADE_CHARGE_COST = 100;
+export const UPGRADE_STOCK_MAX = 1000000;
 
 export const UPGRADE_SLOTS = Object.freeze([
   Object.freeze({ id: "laser", name: "Dégâts lasers", unit: "tirs", icon: "/ASSETS/LASERS/lf_3_100x100.png", help: "Charge un minerai sur les lasers : +dégâts à chaque tir. 1 minerai = 10 tirs. Prometid +15 %, Promerium +30 %, Seprom +60 %, Osmium +50 %." }),
@@ -108,10 +109,19 @@ export const UPGRADE_ORE_BONUS = Object.freeze({
   osmium: Object.freeze({ laser: 0.50, rocket: 0.50, shield: 0.50 }),
 });
 
+// Nombre de minerais entiers encore chargeables (1 minerai = 10 unites).
+// Un changement de minerai remplace l'ancien stock, comme le chargement manuel.
+export function upgradeOreCapacity(upgrades = {}, slot, ore) {
+  if (!(UPGRADE_SLOT_ORES[slot] || []).includes(ore)) return 0;
+  const loaded = upgrades?.[slot];
+  const stock = String(loaded?.ore) === ore ? Math.max(0, Math.floor(Number(loaded.stock) || 0)) : 0;
+  return Math.max(0, Math.floor((UPGRADE_STOCK_MAX - stock) / 10));
+}
+
 // Partager chaque minerai entre les seuls emplacements compatibles choisis.
 // Les restes tournent entre eux : trois collectes d'une unite ne vont pas
 // toujours au premier emplacement. Aucun stock ni choix n'est modifie ici.
-export function planAutoUpgradeCharges(resources = {}, selections = {}, cursors = {}) {
+export function planAutoUpgradeCharges(resources = {}, selections = {}, cursors = {}, upgrades = {}) {
   const groups = new Map(), charges = [], nextCursors = { ...cursors };
   for (const { id: slot } of UPGRADE_SLOTS) {
     const ore = String(selections[slot] || '');
@@ -122,13 +132,29 @@ export function planAutoUpgradeCharges(resources = {}, selections = {}, cursors 
   for (const [ore, slots] of groups) {
     const raw = Number(resources[ore]);
     if (!Number.isFinite(raw) || raw < 1) continue;
-    const owned = Math.floor(raw), share = Math.floor(owned / slots.length), remainder = owned % slots.length;
+    let remaining = Math.floor(raw);
     const cursor = Math.max(0, Math.floor(Number(cursors[ore]) || 0)) % slots.length;
-    slots.forEach((slot, i) => {
-      const amount = share + ((i - cursor + slots.length) % slots.length < remainder ? 1 : 0);
-      if (amount > 0) charges.push({ slot, ore, amount });
-    });
-    nextCursors[ore] = (cursor + remainder) % slots.length;
+    const entries = slots.map((slot, index) => ({ slot, index, amount: 0, capacity: upgradeOreCapacity(upgrades, slot, ore) }));
+    let active = entries.filter(entry => entry.capacity > 0).sort((a, b) =>
+      (a.index - cursor + slots.length) % slots.length - (b.index - cursor + slots.length) % slots.length);
+    let nextCursor = cursor;
+    while (remaining > 0 && active.length) {
+      const share = Math.floor(remaining / active.length);
+      if (share === 0) {
+        for (const entry of active.slice(0, remaining)) {
+          entry.amount++; remaining--;
+          nextCursor = (entry.index + 1) % slots.length;
+        }
+      } else {
+        for (const entry of active) {
+          const amount = Math.min(share, entry.capacity - entry.amount);
+          entry.amount += amount; remaining -= amount;
+        }
+      }
+      active = active.filter(entry => entry.amount < entry.capacity);
+    }
+    for (const { slot, amount } of entries) if (amount > 0) charges.push({ slot, ore, amount });
+    nextCursors[ore] = nextCursor;
   }
   return { charges, cursors: nextCursors };
 }

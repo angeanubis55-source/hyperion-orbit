@@ -15,7 +15,7 @@ import { compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit 
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
-import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, planAutoUpgradeCharges, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
+import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, upgradeOreCapacity, planAutoUpgradeCharges, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
 import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
 import {
   AUCTION_ACTIVE_LOTS,
@@ -3588,10 +3588,14 @@ export function chargeShipUpgrade(slotId, oreId, oreAmount = 1, options = {}) {
   const slot = String(slotId || "");
   const ore = String(oreId || "");
   if (!(UPGRADE_SLOT_ORES[slot] || []).includes(ore)) return { ok: false, error: "Minerai incompatible.", user: u };
-  const amount = Math.max(1, Math.floor(Number(oreAmount) || 1));
   u.inventory ||= {};
   u.inventory.resources ||= {};
   const owned = Math.max(0, Math.floor(Number(u.inventory.resources[ore]) || 0));
+  const capacity = upgradeOreCapacity(u.upgrades, slot, ore);
+  if (capacity <= 0) return { ok: false, error: "Limite de raffinage : 1 000 000 par équipement.", user: u };
+  const requested = oreAmount === Infinity ? owned : Math.max(1, Math.floor(Number(oreAmount) || 1));
+  const amount = Math.min(requested, capacity);
+  if (amount <= 0) return { ok: false, error: "Stock de minerai vide.", user: u };
   if (owned < amount) return { ok: false, error: `Il faut ${amount} ${ore} (stock : ${owned}).`, user: u };
   u.upgrades ||= {};
   const current = u.upgrades[slot] || {};
@@ -3608,7 +3612,7 @@ export function chargeShipUpgrade(slotId, oreId, oreAmount = 1, options = {}) {
     noteNetConsumption("ores", ore, amount);
     noteNetUpgradeCharge(slot, ore, u.upgrades[slot].stock);
   }
-  return { ok: true, user: u, slot, ore, stock: u.upgrades[slot].stock };
+  return { ok: true, user: u, slot, ore, amount, stock: u.upgrades[slot].stock };
 }
 
 // Une seule preparation/sauvegarde pour tous les slots, meme avec le meme
@@ -3616,11 +3620,11 @@ export function chargeShipUpgrade(slotId, oreId, oreAmount = 1, options = {}) {
 export function chargeShipUpgradesAutomatically(selections, options = {}) {
   const u = options.user || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté.", consumed: 0 };
-  const plan = planAutoUpgradeCharges(u.inventory?.resources, selections, options.cursors);
+  const plan = planAutoUpgradeCharges(u.inventory?.resources, selections, options.cursors, u.upgrades);
   let consumed = 0;
   for (const { slot, ore, amount } of plan.charges) {
     const result = chargeShipUpgrade(slot, ore, amount, { user: u, deferSave: true });
-    if (result.ok) consumed += amount;
+    if (result.ok) consumed += result.amount;
   }
   if (consumed > 0 && !options.deferSave) {
     ensureUserShape(u);

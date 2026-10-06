@@ -5,6 +5,7 @@ import { petEscortTarget, stepPetMotion, petCombatVelocity, orientPet } from "..
 import { measureGameTask, recordGameTask } from "./PERFORMANCE_TIMINGS.js";
 import { createDeferredPersistence } from "./DEFERRED_PERSISTENCE.js";
 import { drawCombatFloatTexts } from "./COMBAT_TEXT_RENDERER.js";
+import { createSpriteOutlineCache } from "./SPRITE_OUTLINE_CACHE.js";
 import { NpcEngine } from "../../NPC/NPC_ENGINE_RENDERER.js";
 import { ShipEngine } from "../../SHIP/SHIP_ENGINE_RENDERER.js";
 import { PetEngine } from "../../PET/PET_ENGINE_RENDERER.js";
@@ -186,7 +187,7 @@ import {
   COLLECTABLE_SPAWN as DEFAULT_COLLECTABLE_SPAWN,
   COLLECTABLE_TYPES as DEFAULT_COLLECTABLE_TYPES,
 } from "../DATA/COLLECTABLES.js";
-import { getResourceName, getResourceIcon, isOreResource, cargoAdd, cargoUsed, CARGO_CAPACITY, REFINERY_RECIPES, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOTS, UPGRADE_SLOT_ORES, UPGRADE_ORE_BONUS } from "../DATA/RESOURCES.js";
+import { getResourceName, getResourceIcon, isOreResource, cargoAdd, cargoUsed, CARGO_CAPACITY, REFINERY_RECIPES, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOTS, UPGRADE_SLOT_ORES, UPGRADE_ORE_BONUS, UPGRADE_STOCK_MAX, upgradeOreCapacity } from "../DATA/RESOURCES.js";
 import { PALLADIUM_PER_GALAXY_ENERGY, palladiumExchangeForEnergy } from "./GALAXY_GATES.js";
 import { STARMAP_NODES, STARMAP_UNIT, STARMAP_NODE, STARMAP_ART, STARMAP_JUMP_CHANNEL_SEC, STARMAP_JUMP_REUSE_SEC, STARMAP_JUMP_FX_SEC } from "../DATA/STARMAP.js";
 import { createStarMapLayout, findStarMapItinerary } from "./STARMAP_LAYOUT.js";
@@ -9446,8 +9447,8 @@ function botRefineUpgrades() {
       if (amount <= 0) continue;
       const out = chargeShipUpgrade(slot, ore, amount);
       if (out?.ok) {
-        consumed += amount;
-        botLog(`Raffinage ${slot} : +${amount * 10} (${ore})`);
+        consumed += out.amount;
+        botLog(`Raffinage ${slot} : +${out.amount * 10} (${ore})`);
       }
     }
     if (consumed > 0) {
@@ -13461,15 +13462,17 @@ function renderUpgradeAmountDialog() {
   const user = account.user || getCurrentUserFull();
   const owned = Math.max(0, Math.floor(Number(user?.inventory?.resources?.[pendingUpgrade.ore]) || 0));
   const slot = UPGRADE_SLOTS.find(entry => entry.id === pendingUpgrade.slot) || {};
+  const available = Math.min(owned, upgradeOreCapacity(user?.upgrades, pendingUpgrade.slot, pendingUpgrade.ore));
   ui.upgAmountBtns.innerHTML = UPGRADE_AMOUNT_CHOICES.map(n => {
     const isMax = n === "max";
-    const disabled = isMax ? owned <= 0 : owned < n;
+    const disabled = isMax ? available <= 0 : available < n;
     const active = pendingUpgradeAmount === n ? "active" : "";
     return `<button type="button" data-upgrade-amount="${n}" class="${active}"${disabled ? " disabled" : ""}>${isMax ? "MAX" : n}</button>`;
   }).join("");
-  const amount = pendingUpgradeAmount === "max" ? Math.min(owned, 100000) : pendingUpgradeAmount;
+  const amount = pendingUpgradeAmount === "max" ? available : Math.min(available, pendingUpgradeAmount);
   const gives = amount * 10;
-  if (ui.upgAmountPreview) ui.upgAmountPreview.textContent = `${pendingUpgradeAmount === "max" ? "MAX" : pendingUpgradeAmount} minerai → +${formatInteger(gives)} ${slot.unit || "tirs"} (stock : ${formatInteger(owned)})`;
+  if (ui.upgAmountPreview) ui.upgAmountPreview.textContent = `${pendingUpgradeAmount === "max" ? "MAX" : pendingUpgradeAmount} minerai → +${formatInteger(gives)} ${slot.unit || "tirs"} (stock : ${formatInteger(owned)} · plafond : ${formatInteger(UPGRADE_STOCK_MAX)})`;
+  if (ui.upgAmountOk) ui.upgAmountOk.disabled = available <= 0 || (pendingUpgradeAmount !== "max" && pendingUpgradeAmount > available);
 }
 
 function closeUpgradeAmountDialog() {
@@ -13518,10 +13521,9 @@ ui.upgAmountCancel?.addEventListener("click", closeUpgradeAmountDialog);
 ui.upgAmountOk?.addEventListener("click", () => {
   if (!pendingUpgrade) return closeUpgradeAmountDialog();
   saveProgressNow();
-  const user = account.user || getCurrentUserFull();
-  const owned = Math.max(0, Math.floor(Number(user?.inventory?.resources?.[pendingUpgrade.ore]) || 0));
-  // MAX plafonné à 100 000 minerais (= 1 000 000 tirs/minutes).
-  const amount = pendingUpgradeAmount === "max" ? Math.min(owned, 100000) : pendingUpgradeAmount;
+  // La limite tient compte du stock deja charge et reste verifiee au moment
+  // de la validation, meme si le raffinage auto a rempli le slot entretemps.
+  const amount = pendingUpgradeAmount === "max" ? Infinity : pendingUpgradeAmount;
   const result = chargeShipUpgrade(pendingUpgrade.slot, pendingUpgrade.ore, amount);
   if (!result.ok) {
     account.user = result.user || account.user;
@@ -23125,7 +23127,7 @@ function refreshUpgradeSlotDom(slot) {
   const status = el.closest(".upgCard")?.querySelector(".upgStatus");
   if (status) {
     const bonusPct = Math.round(Number(UPGRADE_ORE_BONUS[String(loaded.ore)]?.[slot] || 0) * 100);
-    status.textContent = stock > 0 ? `+${bonusPct}%` : "";
+    status.textContent = stock > 0 ? `+${bonusPct}%${stock >= UPGRADE_STOCK_MAX ? " · MAX" : ""}` : "";
   }
 }
 
@@ -24664,6 +24666,7 @@ function drawCollectables(ox, oy) {
 // Silhouettes colorées (clé libre, ex type:frame) pour un contour qui suit
 // la sprite. Cache 24 max. Dessinées avant la sprite, qui passe par-dessus.
 const petLocatorOutlines = new Map();
+const spriteOutlineCache = createSpriteOutlineCache();
 // Dernières frames prêtes des icônes d'aptitude (anti-coupure pendant charge).
 const contSpriteCache = {};
 
@@ -24689,54 +24692,7 @@ function outlineSilhouette(cacheKey, img, w, h, color) {
 
 // Contour pulsé centré sur l'origine (contexte translaté : NPC, joueur).
 function strokeOutlineCentered(sil, w, h, color, alpha) {
-  ctx.save();
-  ctx.globalAlpha = Math.max(0.3, Math.min(1, alpha));
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 12;
-  for (let k = 0; k < 8; k++) {
-    const a = (k / 8) * Math.PI * 2;
-    ctx.drawImage(sil, -w / 2 + Math.cos(a) * 2, -h / 2 + Math.sin(a) * 2, w, h);
-  }
-  ctx.restore();
-}
-
-// Halo restreint à la moitié basse avec fondu en dégradé (pas de coupure
-// nette) : rendu sur calque temporaire puis masque vertical destination-in.
-let bottomHalfScratch = null;
-function drawEnemyContourBottomHalf(sil, w, h, color, alpha) {
-  const pad = 16;
-  const cw = Math.max(1, Math.ceil(w + pad * 2));
-  const ch = Math.max(1, Math.ceil(h + pad * 2));
-  if (!bottomHalfScratch || bottomHalfScratch.width !== cw || bottomHalfScratch.height !== ch) {
-    bottomHalfScratch = document.createElement("canvas");
-    bottomHalfScratch.width = cw;
-    bottomHalfScratch.height = ch;
-  }
-  const g = bottomHalfScratch.getContext("2d");
-  g.save();
-  g.clearRect(0, 0, cw, ch);
-  g.globalAlpha = Math.max(0.3, Math.min(1, alpha));
-  g.shadowColor = color;
-  g.shadowBlur = 12;
-  const ox = pad - w / 2, oy = pad - h / 2;
-  for (let k = 0; k < 8; k++) {
-    const a = (k / 8) * Math.PI * 2;
-    g.drawImage(sil, ox + Math.cos(a) * 2, oy + Math.sin(a) * 2, w, h);
-  }
-  g.restore();
-  // Fondu : transparent au-dessus de ~30 % de la hauteur, opaque sous ~62 %.
-  g.save();
-  g.globalCompositeOperation = "destination-in";
-  const grad = g.createLinearGradient(0, pad + h * 0.30, 0, pad + h * 0.62);
-  grad.addColorStop(0, "rgba(0,0,0,0)");
-  grad.addColorStop(1, "rgba(0,0,0,1)");
-  g.fillStyle = grad;
-  g.fillRect(0, 0, cw, ch);
-  g.restore();
-  ctx.save();
-  ctx.globalAlpha = 1;
-  ctx.drawImage(bottomHalfScratch, -w / 2 - pad, -h / 2 - pad, cw, ch);
-  ctx.restore();
+  spriteOutlineCache.draw(ctx, sil, w, h, color, alpha);
 }
 
 function petLocatorPulse() {
@@ -24765,15 +24721,9 @@ function drawPetLocator(ox, oy) {
       const h = foe.isBoss ? baseH * 1.05 : baseH;
       // Contour rouge qui suit la sprite (silhouette derrière, pulsée).
       // Dessiné avant : la sprite du NPC passe par-dessus.
-      const outline = outlineSilhouette(`pet:${foe.type}:${idx}`, img, w, h, "#ff2e4d");
       ctx.save();
-      ctx.globalAlpha = Math.max(0.3, Math.min(1, pulse));
-      ctx.shadowColor = "rgba(255,46,77,0.95)";
-      ctx.shadowBlur = 16;
-      for (let k = 0; k < 8; k++) {
-        const a = (k / 8) * Math.PI * 2;
-        ctx.drawImage(outline, sx - w / 2 + Math.cos(a) * 2, sy - h / 2 + Math.sin(a) * 2, w, h);
-      }
+      ctx.translate(sx, sy);
+      spriteOutlineCache.draw(ctx, img, w, h, "#ff2e4d", pulse, 16);
       ctx.restore();
       return;
     }
@@ -30383,7 +30333,16 @@ function minimapAllies() {
   } catch { return escortShips; }
 }
 
+let minimapLastDraw = -Infinity;
+let minimapLastWorld = null;
+let minimapLastSize = "";
 function drawMinimap() {
+  // This independent canvas retains its bitmap. Update at 30 Hz rather
+  // than scanning every NPC and rebuilding the static key at monitor FPS.
+  const now = performance.now();
+  const size = `${mini.width}:${mini.height}:${mini.clientWidth}:${mini.clientHeight}:${window.devicePixelRatio}`;
+  if (WORLD === minimapLastWorld && size === minimapLastSize && now - minimapLastDraw < 1000 / 30) return;
+  minimapLastDraw = now; minimapLastWorld = WORLD; minimapLastSize = size;
   // Rendu en pixels CSS (bitmap = CSS × DPR, voir applyMinimapProportions) :
   // net à toutes les tailles, même après +.
   const cssW = mini.clientWidth || 0;
@@ -31582,12 +31541,7 @@ function drawEnemyContour(e, cfg, exactFrame, color, alpha = petLocatorPulse(), 
   const baseH = sp.h ?? sp.size ?? 160;
   const w = e.isBoss ? baseW * 1.05 : baseW;
   const h = e.isBoss ? baseH * 1.05 : baseH;
-  const sil = outlineSilhouette(`npc:${e.type}:${idx}`, img, w, h, color);
-  if (bottomHalf === true) {
-    drawEnemyContourBottomHalf(sil, w, h, color, alpha);
-    return;
-  }
-  strokeOutlineCentered(sil, w, h, color, alpha);
+  spriteOutlineCache.draw(ctx, img, w, h, color, alpha, 12, bottomHalf === true);
 }
 
 function drawRocketDebuffEffect(e) {  const slowed = (e.rocketSlowT || 0) > 0;
@@ -37373,8 +37327,9 @@ updateConfigButtons();
   const latency = netLatencyMs();
   setHudText(ui.pingTxt, latency == null ? "—" : String(latency));
   if (ui.fpsTxt) {
-    const perf = performanceMonitor.snapshot();
-    setHudText(ui.fpsTxt, String(fpsValue || perf.fps || 0));
+    // fpsValue already refreshes every 250 ms. Avoid sorting all frame
+    // samples at display FPS when the displayed value is already known.
+    setHudText(ui.fpsTxt, String(fpsValue || performanceMonitor.snapshot().fps || 0));
   }
 }
 

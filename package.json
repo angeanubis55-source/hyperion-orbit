@@ -15,6 +15,7 @@
     "test:pilot-purchase-browser": "node SCRIPTS/PILOT_PURCHASE_BROWSER_TEST.js",
     "test:refinery-auto-browser": "node SCRIPTS/REFINERY_AUTO_BROWSER_TEST.js",
     "test:bot-walls-browser": "node SCRIPTS/BOT_WALL_BROWSER_TEST.js",
+    "test:bl-performance-browser": "node SCRIPTS/BL_PERFORMANCE_BROWSER_TEST.js",
     "test:starmap-browser": "node SCRIPTS/STARMAP_BROWSER_TEST.js",
     "test:loading": "node SCRIPTS/VERIFY_SECTOR_LOADING.js",
     "test:loading-progress": "node SCRIPTS/LOADING_PROGRESS_BROWSER_TEST.js",

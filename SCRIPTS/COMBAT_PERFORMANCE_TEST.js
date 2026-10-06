@@ -9,6 +9,7 @@ import { guidedChaseSpeed } from "../COMBAT/PROJECTILES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
 import { createDeferredPersistence } from "../SRC/CORE/DEFERRED_PERSISTENCE.js";
 import { drawCombatFloatTexts } from "../SRC/CORE/COMBAT_TEXT_RENDERER.js";
+import { createSpriteOutlineCache } from "../SRC/CORE/SPRITE_OUTLINE_CACHE.js";
 import { tickFloatingTexts } from "../SRC/CORE/FRAME_SYSTEMS.js";
 import { QUEST_DEFINITIONS, getQuestObjectives, normalizeQuestState, recordQuestProgress, isQuestComplete, claimQuest } from "../QUEST/QUEST_TYPES.js";
 import { LOGDISK_PACK, LOGDISK_PRICE, normalizePilotSkills } from "../SRC/DATA/PILOT_SKILLS.js";
@@ -327,6 +328,81 @@ function canvas() {
   }
   return ctx;
 }
+
+function outlineCanvasFactory() {
+  const canvases = [];
+  function createCanvas() {
+    const context = canvas();
+    context.drawImage = (...args) => context.calls.push({ method: 'drawImage', args, blur: context.shadowBlur });
+    context.fillRect = () => {};
+    context.createLinearGradient = () => ({ addColorStop() {} });
+    const element = { width: 0, height: 0, context, getContext: () => context };
+    canvases.push(element);
+    return element;
+  }
+  return { canvases, createCanvas };
+}
+
+test('les 32 frames du Mindfire gardent leur contour en cache pendant les pulsations', () => {
+  const factory = outlineCanvasFactory(), cache = createSpriteOutlineCache(factory), main = factory.createCanvas().context;
+  const images = Array.from({ length: 32 }, () => ({}));
+  for (const image of images) cache.draw(main, image, 800, 640, '#ff2e4d', 1, 16);
+  const creations = factory.canvases.length;
+  for (const alpha of [0.3, 0.6, 0.95]) for (const image of images) {
+    cache.draw(main, image, 800, 640, '#ff2e4d', alpha, 16);
+  }
+  assert.equal(factory.canvases.length, creations, 'aucun recalcul du halo apres le premier cycle');
+  const drawings = main.calls.filter(call => call.method === 'drawImage');
+  assert.equal(drawings.length, 128, 'un seul dessin par contour et par frame');
+  assert.ok(drawings.every(call => call.blur === 0));
+  assert.ok(drawings.every(call => Math.max(call.args[0].width, call.args[0].height) <= 512));
+  assert.equal(cache.stats().entries, 32); assert.ok(cache.stats().pixels <= 8 * 1024 * 1024);
+});
+
+test('les contours distinguent sprites, couleur, taille et masque, et liberent les anciens bitmaps', () => {
+  const factory = outlineCanvasFactory(), cache = createSpriteOutlineCache({ ...factory, maxEntries: 3 });
+  const main = factory.createCanvas().context, image = {};
+  cache.draw(main, image, 100, 80, 'red', 0.5);
+  cache.draw(main, image, 100, 80, 'blue', 0.5);
+  cache.draw(main, image, 100, 80, 'red', 0.9); // refresh the red entry
+  cache.draw(main, image, 200, 160, 'red', 0.5);
+  const creations = factory.canvases.length;
+  cache.draw(main, image, 100, 80, 'red', 0.5);
+  assert.equal(factory.canvases.length, creations);
+  cache.draw(main, image, 100, 80, 'red', 0.5, 12, true);
+  const drawings = main.calls.filter(call => call.method === 'drawImage');
+  assert.equal(drawings[1].args[0].width, 0, 'le bitmap le moins utilise est libere');
+  assert.notEqual(drawings[0].args[0], drawings.at(-1).args[0], 'le masque bas a sa propre entree');
+  cache.draw(main, {}, 100, 80, 'red', 0.5);
+  assert.equal(cache.stats().entries, 3);
+  cache.clear(); assert.deepEqual(cache.stats(), { entries: 0, pixels: 0 });
+  assert.ok(drawings.every(call => call.args[0].width === 0));
+  const tiny = createSpriteOutlineCache({ ...factory, maxPixels: 10000 });
+  tiny.draw(main, image, 800, 640, 'red', 1);
+  assert.ok(tiny.stats().pixels <= 10000);
+});
+
+test('la mini-carte reste reactive aux changements de carte et de taille sans recalcul a chaque frame', () => {
+  let now = 0; const draws = [];
+  const context = vm.createContext({ performance: { now: () => now }, window: { devicePixelRatio: 1 },
+    mini: { width: 300, height: 205, clientWidth: 300, clientHeight: 205 }, mctx: { setTransform() {} },
+    account: { user: {} }, player: { x: 21000, y: 6220 }, WORLD: { w: 30000, h: 18000 },
+    enemies: Array.from({ length: 101 }, (_, id) => ({ id, hp: 100 })),
+    minimapAllies: () => [], getInteractivePortals: () => [], gateReturnPortal: null,
+    isZoneMap: true, zoneSafe: null, zoneWalls: [], rules: {}, moveTarget: {}, miniPing: {}, camera: {},
+    innerWidth: 1600, innerHeight: 900, Target: { get: () => null },
+    renderMinimap: (_, options) => draws.push(options),
+  });
+  vm.runInContext('let minimapLastDraw = -Infinity, minimapLastWorld = null, minimapLastSize = "";\n' +
+    engineFunction('drawMinimap'), context);
+  for (let i = 0; i <= 240; i++) { now = i * 1000 / 240; context.drawMinimap(); }
+  assert.ok(draws.length >= 25 && draws.length <= 31);
+  assert.equal(draws.at(-1).enemies, context.enemies);
+  let count = draws.length;
+  context.WORLD = { w: 11000, h: 7000 }; context.drawMinimap(); assert.equal(draws.length, ++count);
+  context.mini.width += 20; context.drawMinimap(); assert.equal(draws.length, ++count);
+  context.window.devicePixelRatio = 2; context.drawMinimap(); assert.equal(draws.length, ++count);
+});
 
 test("guidage : les corrections reseau ne multiplient pas la vitesse des roquettes", () => {
   assert.equal(guidedChaseSpeed(1500, 0, 0), 1500);

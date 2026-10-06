@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { planAutoUpgradeCharges, REFINERY_RECIPES } from '../SRC/DATA/RESOURCES.js';
-import { chargeShipUpgradesAutomatically, refineCurrentUserOre } from '../SRC/CORE/ACCOUNT.js';
+import { chargeShipUpgrade, chargeShipUpgradesAutomatically, refineCurrentUserOre } from '../SRC/CORE/ACCOUNT.js';
 
 const all = { laser: 'promerium', rocket: 'promerium', speed: 'promerium', shield: 'promerium' };
 test('une meme ressource se repartit en parts egales sur les quatre slots', () => {
@@ -71,6 +71,50 @@ test('le chargement automatique cumule le stock existant du meme minerai', () =>
   const user = { inventory: { resources: { seprom: 6 } }, upgrades: { laser: { ore: 'seprom', stock: 99 } } };
   const result = chargeShipUpgradesAutomatically({ laser: 'seprom', rocket: 'seprom' }, { user, deferSave: true });
   assert.equal(result.consumed, 6); assert.equal(user.upgrades.laser.stock, 129); assert.equal(user.upgrades.rocket.stock, 30);
+});
+
+test('chaque equipement sature a un million sans debiter les minerais excedentaires', () => {
+  for (const slot of Object.keys(all)) {
+    const user = { inventory: { resources: { promerium: 120000 } }, upgrades: { [slot]: { ore: 'promerium', stock: 999980 } } };
+    const result = chargeShipUpgrade(slot, 'promerium', Infinity, { user, deferSave: true });
+    assert.equal(result.ok, true); assert.equal(result.amount, 2);
+    assert.equal(user.upgrades[slot].stock, 1000000); assert.equal(user.inventory.resources.promerium, 119998);
+    const blocked = chargeShipUpgrade(slot, 'promerium', 1, { user, deferSave: true });
+    assert.equal(blocked.ok, false); assert.equal(user.inventory.resources.promerium, 119998);
+  }
+});
+
+test('une quantite explicite et un changement de minerai respectent aussi le plafond', () => {
+  const user = { inventory: { resources: { seprom: 150000 } }, upgrades: { laser: { ore: 'promerium', stock: 1000000 } } };
+  const result = chargeShipUpgrade('laser', 'seprom', 150000, { user, deferSave: true });
+  assert.equal(result.amount, 100000); assert.equal(user.upgrades.laser.stock, 1000000);
+  assert.equal(user.upgrades.laser.ore, 'seprom'); assert.equal(user.inventory.resources.seprom, 50000);
+});
+
+test('auto-raffinage repartit le surplus entre slots disponibles et conserve le reste', () => {
+  const user = { inventory: { resources: { promerium: 100 } }, upgrades: {
+    laser: { ore: 'promerium', stock: 1000000 }, rocket: { ore: 'promerium', stock: 999980 },
+    speed: { ore: 'promerium', stock: 999500 }, shield: { ore: 'promerium', stock: 999500 },
+  } };
+  const result = chargeShipUpgradesAutomatically(all, { user, deferSave: true });
+  assert.equal(result.consumed, 100); assert.equal(user.inventory.resources.promerium, 0);
+  assert.equal(user.upgrades.laser.stock, 1000000); assert.equal(user.upgrades.rocket.stock, 1000000);
+  assert.equal(user.upgrades.speed.stock, 999990); assert.equal(user.upgrades.shield.stock, 999990);
+  user.inventory.resources.promerium = 10;
+  const topUp = chargeShipUpgradesAutomatically(all, { user, deferSave: true, cursors: result.cursors });
+  assert.equal(topUp.consumed, 2); assert.equal(user.inventory.resources.promerium, 8);
+  for (const slot of Object.keys(all)) assert.equal(user.upgrades[slot].stock, 1000000);
+  assert.equal(chargeShipUpgradesAutomatically(all, { user, deferSave: true }).consumed, 0);
+  assert.equal(user.inventory.resources.promerium, 8);
+});
+
+test('un reliquat de moins de dix unites ou un ancien stock au-dessus du plafond ne consomme rien', () => {
+  for (const stock of [999999, 1500000]) {
+    const user = { inventory: { resources: { promerium: 100 } }, upgrades: { laser: { ore: 'promerium', stock } } };
+    assert.equal(chargeShipUpgrade('laser', 'promerium', 1, { user, deferSave: true }).ok, false);
+    assert.equal(chargeShipUpgradesAutomatically({ laser: 'promerium' }, { user, deferSave: true }).consumed, 0);
+    assert.equal(user.inventory.resources.promerium, 100); assert.equal(user.upgrades.laser.stock, stock);
+  }
 });
 
 test('les preferences sont liees au compte reseau avant le chargement du compte moteur', () => {
