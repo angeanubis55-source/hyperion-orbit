@@ -12,6 +12,26 @@ const maps = new Map(await Promise.all(nodes.map(async n => {
 })));
 const layout = createStarMapLayout(nodes, unit, size, art, maps);
 
+test('le groupe MMO superieur libere le centre de la 4-4', () => {
+  for (const id of ['1-5', '1-6', '1-7', '1-8']) assert.ok(layout.positions.get(id).y < layout.positions.get('4-4').y, id);
+  for (const node of nodes) assert.ok(layout.positions.get(node.id).y - size.h / 2 >= 48, 'marge haute conservee');
+});
+
+test('deux liaisons ne partagent aucun segment de ligne', () => {
+  const overlaps = [];
+  const segments = layout.routes.flatMap(r => r.points.slice(1).map((p, i) => ({ key: r.key, a: r.points[i], b: p })));
+  for (let i = 0; i < segments.length; i++) for (let j = i + 1; j < segments.length; j++) {
+    const { key: ka, a, b } = segments[i], { key: kb, a: c, b: d } = segments[j];
+    if (ka === kb) continue;
+    const horizontal = a.y === b.y && c.y === d.y && Math.abs(a.y - c.y) < .01;
+    const vertical = a.x === b.x && c.x === d.x && Math.abs(a.x - c.x) < .01;
+    const axis = horizontal ? 'x' : 'y';
+    if ((horizontal || vertical) && Math.min(Math.max(a[axis], b[axis]), Math.max(c[axis], d[axis]))
+      - Math.max(Math.min(a[axis], b[axis]), Math.min(c[axis], d[axis])) > .01) overlaps.push([ka, kb, a, b, c, d]);
+  }
+  assert.deepEqual(overlaps, []);
+});
+
 test('les six cartes annexes sont visibles sans autoriser Jump', () => {
   assert.equal(nodes.length, 35);
   for (const id of ['1-BL', '2-BL', '3-BL', '5-2', 'low', 'qz']) assert.equal(nodes.find(n => n.id === id)?.jumpable, false, id);

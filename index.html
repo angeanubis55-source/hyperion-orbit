@@ -129,6 +129,7 @@
     <div id="refineryStock" class="refineryStock"></div>
     <div id="refineryRecipes" class="refineryRecipes"></div>
     <div class="refineryFooter">
+      <label class="refineryAuto"><input id="refineryAutoUpgrades" type="checkbox"><span>Raffinage auto des équipements</span></label>
       <label class="refineryAuto"><input id="refineryAuto" type="checkbox"><span>Auto-raffinage</span></label>
       <button id="refineryAllBtn" type="button" data-refinery-all>Tout raffiner</button>
     </div>
@@ -751,7 +752,8 @@
             <label class="botField"><span>Assaillants (nombre)</span><input id="botIemFoes" type="number" min="1" max="10" step="1" value="3" /></label>
             <label class="botCheck"><input id="botSkillIsh" type="checkbox" /><span>ISH sous (coque %)</span></label>
             <label class="botField"><span>Seuil ISH (% coque)</span><input id="botIshPct" type="number" min="5" max="90" step="1" value="20" /></label>
-            <small class="botNote">REP = robot réparateur passif, toujours actif (30 000 crédits par IEM/ISH).</small>
+            <label class="botCheck"><input id="botSkillCloak" type="checkbox" /><span>Camouflage automatique</span></label>
+            <small class="botNote">Camouflage après la destruction de la cible du bot : 30 000 crédits par activation. REP = robot réparateur passif, toujours actif (30 000 crédits par IEM/ISH).</small>
           </div>
           <div class="botSection" data-bot-section="rex">
             <div class="botSectionTitle">REX pendant le bot</div>
@@ -765,6 +767,8 @@
             <label class="botCheck"><input id="botFlee" type="checkbox" checked /><span>Fuir vers la zone de non-agression la plus proche pour se réparer sous</span></label>
             <label class="botField"><span>Seuil de fuite (% coque)</span><input id="botFleePct" type="number" min="5" max="90" step="1" value="25" /></label>
             <label class="botField"><span>Reprise à (% coque)</span><input id="botFleeResume" type="number" min="10" max="100" step="1" value="45" /></label>
+            <label class="botCheck"><input id="botFleeCloak" type="checkbox" /><span>Camouflage automatique pour réparer</span></label>
+            <small class="botNote">Une activation au début de la fuite, dès que le CPU est prêt : 30 000 crédits.</small>
           </div>
           <div class="botSection botSpan" data-bot-section="npc">
             <div class="botSectionTitle botRowTitle"><span>NPC à tuer <small id="botNpcCount" class="botCount"></small></span><span class="botMiniActions"><button id="botNpcAll" type="button">Tout</button><button id="botNpcNone" type="button">Aucun</button></span></div>

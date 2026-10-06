@@ -60,9 +60,16 @@ export function netCurrent() {
   return { id: memUser.id, pseudo: memUser.pseudo, email: memUser.email };
 }
 
-export function netStore(list) {
+export function netStore(list, { pilotDisksOnly = false } = {}) {
   const arr = Array.isArray(list) ? list : [];
   const mine = (memUser && arr.find((u) => u && u.id === memUser.id)) || arr[0] || null;
+  // Ce mutateur ne touche que crédits et disques, sur le compte déjà chargé.
+  // Garder l'envoi/cache habituel sans parcourir tout l'inventaire au clic.
+  if (pilotDisksOnly && mine && mine === memUser) {
+    writeCache(memUser);
+    schedulePush();
+    return;
+  }
   if (mine && typeof mine === "object") {
     // Memes garde-fous que le legacy (writeUsers) : plafond historique,
     // sentinelle Infinity -> -1 (JSON ne porte pas Infinity).

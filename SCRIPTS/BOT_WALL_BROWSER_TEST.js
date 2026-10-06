@@ -57,10 +57,13 @@ window.__BOT_COMBAT_WALL_TEST__ = () => {
       { name: 'corner', start: { x: 4595, y: 7593 }, goal: { x: 4307, y: 6600 }, seconds: 25 },
       { name: 'impulse-corner', type: 'npc_Impulse_II', start: { x: 4595, y: 7593 }, goal: { x: 4800, y: 7150 }, seconds: 25 },
       { name: 'long-wall', start: { x: 6500, y: 4000 }, goal: { x: 7900, y: 4000 }, seconds: 70 },
+      { name: 'search-invoke', search: true, type: 'npc_Invoke_XVI', start: { x: 11000, y: 13000 }, goal: { x: 3000, y: 5000 }, seconds: 70 },
+      { name: 'search-mindfire', search: true, type: 'npc_Mindfire_Behemoth', start: { x: 11000, y: 13000 }, goal: { x: 21000, y: 6220 }, seconds: 70 },
+      { name: 'search-strokelight', search: true, type: 'npc_Strokelight_Barrage', start: { x: 11000, y: 13000 }, goal: { x: 3140, y: 1290 }, seconds: 70 },
     ]) {
       const npc = { id: 987654, type: scenario.type || 'npc_Invoke_XVI', hp: 1e9, hpMax: 1e9, r: 50,
         vx: 0, vy: 0, shootRange: 750, ...scenario.goal };
-      enemies.splice(0, enemies.length, npc);
+      enemies.splice(0, enemies.length, ...(scenario.search ? [] : [npc]));
       Object.assign(player, { ...scenario.start, r: 18, baseSpeed: 712, vx: 0, vy: 0, hp: player.hpMax,
         dead: false, freezeT: 0, rocketSlowT: 0 });
       Object.assign(Bot, { active: true, manualT: -1e9, mode: 'kill', module: 'farm', wallSteer: null,
@@ -69,10 +72,13 @@ window.__BOT_COMBAT_WALL_TEST__ = () => {
         flee: false, fleeing: false, selling: false, cargo: false,
         targetMap: '', travelOverride: null, petEnabled: false, skillIem: false, skillIsh: false,
         questsAccept: false, questsClaim: false, lastNpcId: null, lastNpcKey: null, moveTag: null,
-        npcWallBan: {}, rangeRecoveryId: null, lastBoxId: null });
+        npcWallBan: {}, rangeRecoveryId: null, lastBoxId: null, blSearch: {} });
+      if (scenario.search) Bot.npcAllow = new Set([scenario.type]);
       moveTarget.active = false; attackActive = false; playerRange = 1000; Target.clear();
       let travelled = 0, collisions = 0, clearFrames = 0, idleFrames = 0, longestIdle = 0;
       tickBot(1 / 60);
+      const firstWaypoint = { x: moveTarget.x, y: moveTarget.y }, searchType = Bot.blSearch.target?.type;
+      let arrived = false;
       for (let i = 0; i < scenario.seconds * 60; i++) {
         const target = botMovementStep(1 / 60), oldX = player.x, oldY = player.y;
         updatePlayerVelocity(player, { x: target.active ? target.x - player.x : 0,
@@ -83,8 +89,10 @@ window.__BOT_COMBAT_WALL_TEST__ = () => {
         for (const wall of zoneWalls) if (circleRectResolve(player.x, player.y, player.r, wall)) collisions++;
         if (!isSegmentBlocked(player.x, player.y, npc.x, npc.y, zoneWalls, 24)) clearFrames++;
         tickBot(1 / 60);
+        if (scenario.search && Math.hypot(player.x - firstWaypoint.x, player.y - firstWaypoint.y) < 150) { arrived = true; break; }
       }
       results.push({ name: scenario.name, travelled, collisions, clearFrames, longestIdle,
+        search: !!scenario.search, arrived, searchType, requestedType: scenario.type, firstWaypoint,
         status: Bot.status, target: Bot.target, x: player.x, y: player.y });
     }
     return results;
@@ -149,10 +157,25 @@ try {
   const combat = await page.evaluate(() => window.__BOT_COMBAT_WALL_TEST__());
   for (const result of combat) {
     assert.equal(result.collisions, 0, result.name);
-    assert.ok(result.clearFrames > 60, result.name + ': rejoint la cible derriere le mur');
+    if (result.search) {
+      assert.equal(result.searchType, result.requestedType, result.name + ': cherche dans le bon habitat');
+      assert.equal(result.arrived, true, result.name + ': rejoint le secteur sans NPC visible');
+    } else assert.ok(result.clearFrames > 60, result.name + ': rejoint la cible derriere le mur');
     assert.ok(result.longestIdle < 60, result.name + ': reste mobile');
   }
   await page.locator('[data-window-id="botWindow"]').click();
+  await page.locator('#botSkillCloak').check();
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('orbit_bot_config_v1')).skillCloak), true,
+    'la nouvelle case sauvegarde le camouflage automatique');
+  await page.locator('#botSkillCloak').uncheck();
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('orbit_bot_config_v1')).skillCloak), false);
+  await page.locator('#botFleeCloak').check();
+  assert.deepEqual(await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('orbit_bot_config_v1'));
+    return { fleeCloak: saved.fleeCloak, skillCloak: saved.skillCloak };
+  }), { fleeCloak: true, skillCloak: false }, 'camouflage de reparation independant du camouflage apres un kill');
+  await page.locator('#botFleeCloak').uncheck();
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('orbit_bot_config_v1')).fleeCloak), false);
   const profiles = [
     { config: 'botCfgFlySeg', formation: 'botFormMove', configKey: 'cfgFly', formKey: 'formMove', value: '1' },
     { config: 'botCfgFleeSeg', formation: 'botFormFlee', configKey: 'cfgFlee', formKey: 'formFlee', value: '2' },

@@ -75,7 +75,8 @@ try {
   page.on('websocket', socket => socket.on('framereceived', frame => {
     try { const msg = JSON.parse(String(frame.payload)); if (msg.t === 'hangarArrival' || msg.t === 'stateCorrection') console.log('reponse transfert:', msg); } catch {}
   }));
-  await page.route("**/*", async (route) => {
+  // Servir egalement les modules demandes par le Worker de routage.
+  await page.context().route("**/*", async (route) => {
     const parsed = new URL(route.request().url());
     if (parsed.origin !== url || parsed.pathname === "/index.html" || parsed.pathname.startsWith("/api/")) return route.continue();
     try {
@@ -85,6 +86,8 @@ try {
       // Acces aux vrais degats uniquement dans la reponse HTTP de ce test.
       if (parsed.pathname === '/SRC/CORE/ORBIT_ENGINE.js') {
         assert.ok(body.toString().includes('window.__ORBIT_ENGINE__ = {'));
+        body = Buffer.from(body.toString().replace('worker.onmessage = ({ data }) => {',
+          'worker.onmessage = ({ data }) => { window.__STARMAP_WORKER_READY__ = !data.error;'));
         body = Buffer.from(body.toString().replace('window.__ORBIT_ENGINE__ = {', `
 window.__STARMAP_DAMAGE_TEST__ = amount => { hurtPlayer(amount); return { preparing: !!StarJump.channel, hp: player.hp, shield: player.sh }; };
 window.__STARMAP_MOVEMENT_TEST__ = {
@@ -98,6 +101,8 @@ window.__ORBIT_ENGINE__ = {`));
     } catch { await route.fulfill({ status: 404, body: "Not found" }); }
   });
   await page.addInitScript(({ token, user }) => {
+    // Un refresh doit relire le cache du jeu, jamais reinstaller la fixture.
+    if (localStorage.getItem("orbit_token")) return;
     localStorage.setItem("orbit_token", token);
     localStorage.setItem("orbit_user_cache", JSON.stringify({ user }));
     localStorage.setItem("orbit_current_user", JSON.stringify({ id: user.id, pseudo: user.pseudo, email: user.email }));
@@ -141,7 +146,21 @@ window.__ORBIT_ENGINE__ = {`));
   // 1. Icône dock + ouverture fenêtre.
   const dockBtn = await page.waitForSelector('[data-window-id="starMapWindow"]', { timeout: 15000 });
   assert.ok(dockBtn, "dock starMap");
+  await page.evaluate(() => {
+    window.__STAR_MAP_OPENING_CHECK__ = null;
+    window.addEventListener('orbit:window-restored', e => {
+      if (e.detail?.id !== 'starMapWindow') return;
+      const card = document.getElementById('starMapWindow'), tree = document.getElementById('starMapTree');
+      window.__STAR_MAP_OPENING_CHECK__ = { animation: getComputedStyle(card).animationName,
+        nodes: document.querySelectorAll('.starMapNode').length, scale: new DOMMatrix(getComputedStyle(tree).transform).a };
+    });
+  });
   await dockBtn.click();
+  const opening = await page.evaluate(() => window.__STAR_MAP_OPENING_CHECK__);
+  assert.equal(opening.animation, 'gameWindowOpen', 'animation appliquee avant le premier affichage');
+  assert.equal(opening.nodes, 35, 'schema construit avant ouverture');
+  assert.ok(opening.scale > 0 && opening.scale < 1, 'schema ajuste des la premiere image');
+  await page.waitForFunction(() => !document.getElementById('starMapWindow').classList.contains('gameWinOpening'));
   await page.waitForSelector("#starMapWindow:not(.gameWinMinimized)", { timeout: 10000 });
   await page.waitForFunction(() => document.querySelectorAll(".starMapNode").length === 35 &&
     document.querySelectorAll("#starMapEdges polyline").length === 59, null, { timeout: 20000 });
@@ -188,6 +207,9 @@ window.__ORBIT_ENGINE__ = {`));
   const edges = await page.$$eval("#starMapEdges polyline", (els) => els.length);
   console.log("edges:", edges);
   assert.equal(edges, 59);
+  assert.equal(await page.evaluate(() => window.__STARMAP_WORKER_READY__), true, 'les liaisons sont calculees hors du fil du jeu');
+  assert.equal(await page.locator('.starMapArrival').count(), 0, 'aucun faux portail d arrivee en 4-4 ni QZ');
+  assert.equal(await page.locator('#starMapEdges mask, #starMapEdges polyline[mask]').count(), 0, 'les liaisons restent entieres aux croisements');
   // Exclues du système : gates, low, qz, maudite, 5-2, BL.
   const labels = nodes.join(" ");
   for (const banned of ["alpha", "beta", "gamma", "maudite"]) {
@@ -233,6 +255,7 @@ window.__ORBIT_ENGINE__ = {`));
           [line.dataset.to, line.dataset.targetPortal, points.at(-1)]]) {
           const marker = [...document.querySelectorAll('.starMapPortal, .starMapArrival')]
             .find(el => el.dataset.mapId.toLowerCase() === map.toLowerCase() && el.dataset.portalId === portal);
+          if (!marker && ((map === 'qz' && portal === 'qz_entry') || (map === '4-4' && line.dataset.oneWay === 'true'))) continue;
           if (!marker) { detached.push([map, portal, 'missing']); continue; }
           const rect = marker.getBoundingClientRect();
           const screen = new DOMPoint(point.x, point.y).matrixTransform(line.getScreenCTM());
@@ -301,6 +324,71 @@ window.__ORBIT_ENGINE__ = {`));
   assert.equal(itinerary[0].from, '1-1');
   assert.deepEqual(itinerary.at(-1), { from: '1-8', to: '1-BL', portal: 'p_18_to_1BL' });
   assert.equal(await page.$$eval('.starMapWire.itinerary', els => els.length), itinerary.length, 'toutes les liaisons du trajet sont visibles');
+  await page.waitForFunction(() => document.querySelector('.starMapRouteFlow')?.getAnimations()[0]?.startTime != null);
+  const flow = await page.evaluate(() => {
+    const path = document.querySelector('.starMapRouteFlow');
+    const expected = [...document.querySelectorAll('#starMapItinerary li')].flatMap(step => {
+      const wire = [...document.querySelectorAll('.starMapWire.itinerary')].find(line =>
+        (line.dataset.from === step.dataset.from && line.dataset.sourcePortal === step.dataset.portalId)
+        || (line.dataset.to === step.dataset.from && line.dataset.targetPortal === step.dataset.portalId));
+      const points = wire.getAttribute('points').trim().split(/\s+/).map(pair => {
+        const [x, y] = pair.split(',').map(Number); return { x, y };
+      });
+      if (wire.dataset.from !== step.dataset.from) points.reverse();
+      return points;
+    }).filter((p, i, points) => !i || p.x !== points[i - 1].x || p.y !== points[i - 1].y)
+      .map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
+    window.__STAR_MAP_FLOW_TEST__ = path;
+    const animation = path.getAnimations()[0], matrix = path.getCTM();
+    return { d: path.dataset.routePath, expected, x: matrix.e, y: matrix.f,
+      start: animation.startTime, repeat: animation.effect.getTiming().iterations };
+  });
+  assert.equal(flow.d, flow.expected, 'la lumiere suit toutes les etapes dans le sens depart-destination');
+  assert.equal((flow.d.match(/M/g) || []).length, 1, 'un seul depart pour le trajet entier');
+  assert.equal(flow.repeat, Infinity, 'le trajet anime recommence en boucle');
+  await page.waitForTimeout(450);
+  assert.ok(await page.evaluate(previous => {
+    const path = document.querySelector('.starMapRouteFlow');
+    const matrix = path.getCTM();
+    return path === window.__STAR_MAP_FLOW_TEST__ && path.getAnimations()[0].startTime === previous.start
+      && Math.hypot(matrix.e - previous.x, matrix.f - previous.y) > 5;
+  }, flow), 'l animation avance sans redemarrer a chaque rafraichissement');
+  const motionSamples = await page.evaluate(async () => {
+    const svg = document.getElementById('starMapEdges'), flow = document.querySelector('.starMapRouteFlow');
+    const animation = flow.getAnimations()[0], duration = animation.effect.getTiming().duration;
+    const clock = animation.currentTime, probe = document.createElementNS(svg.namespaceURI, 'path');
+    probe.setAttribute('d', flow.dataset.routePath); svg.querySelector('defs').appendChild(probe);
+    const length = probe.getTotalLength(), samples = [];
+    animation.pause();
+    try {
+      // Juste avant et juste apres B : verifier le retour immediat a A.
+      for (const progress of [0, .25, .55, .999, 1.001]) {
+        animation.currentTime = duration * progress;
+        await new Promise(requestAnimationFrame);
+        const matrix = svg.getCTM().inverse().multiply(flow.getCTM());
+        const expected = probe.getPointAtLength(length * (progress % 1));
+        samples.push({ progress, error: Math.hypot(matrix.e - expected.x, matrix.f - expected.y) });
+      }
+    } finally {
+      probe.remove(); animation.currentTime = clock; animation.play();
+    }
+    return samples;
+  });
+  for (const sample of motionSamples) assert.ok(sample.error < 1, `progression continue sans attente : ${JSON.stringify(sample)}`);
+  const assertRouteAnimationMoving = async () => {
+    assert.equal(await page.locator('.starMapRouteFlow').count(), 1);
+    await page.waitForFunction(() => document.querySelector('.starMapRouteFlow')?.getAnimations()[0]?.startTime != null);
+    const sample = () => page.$eval('.starMapRouteFlow', flow => {
+      const matrix = flow.ownerSVGElement.getCTM().inverse().multiply(flow.getCTM());
+      return { x: matrix.e, y: matrix.f, start: flow.getAnimations()[0].startTime };
+    });
+    const before = await sample();
+    await page.waitForTimeout(450);
+    const after = await sample();
+    assert.equal(after.start, before.start, 'le rafraichissement ne relance pas la boucle');
+    assert.ok(Math.hypot(after.x - before.x, after.y - before.y) > 5,
+      'le point dore avance aussi apres la reouverture');
+  };
   assert.equal(await page.$$eval('.starMapNode.on-route', els => els.length), itinerary.length + 1, 'toutes les etapes sont marquees');
   assert.equal(await page.evaluate(() => window.__CURRENT_MAP_ID__), '1-1', 'le clic affiche le trajet sans lancer de voyage');
   assert.equal(await page.$eval('#starMapJumpBtn', el => el.disabled), true);
@@ -312,15 +400,33 @@ window.__ORBIT_ENGINE__ = {`));
   await page.waitForFunction(() => !document.getElementById('starMapInfoWindow').classList.contains('gameWinOpening')
     && getComputedStyle(document.getElementById('starMapInfoWindow')).display !== 'none');
   assert.equal(await page.locator('.starMapWire.itinerary').count(), itinerary.length, 'reduire la carte conserve le trajet pour sa reouverture');
+  await assertRouteAnimationMoving();
+  for (const delay of [0, 20, 60]) {
+    const retiredAnimations = await page.evaluate(async delay => {
+      const retired = [];
+      for (const id of ['1-5', '1-6', '2-7', '1-1', '4-4', '1-8', '1-5']) {
+        const previous = document.querySelector('.starMapRouteFlow'), animation = previous?.getAnimations()[0];
+        document.querySelector(`.starMapNode[data-map-id="${id}"] .starMapLabel`).click();
+        if (animation && previous !== document.querySelector('.starMapRouteFlow')) retired.push(animation.playState);
+        if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      return retired;
+    }, delay);
+    assert.ok(retiredAnimations.length > 0 && retiredAnimations.every(state => state === 'idle'),
+      'les anciennes animations sont annulees a chaque changement de destination');
+    await assertRouteAnimationMoving();
+  }
   await page.click('.starMapHint');
   await page.waitForTimeout(650);
   assert.equal(await page.locator('.starMapWire.itinerary').count(), 0, 'clic sur le fond efface durablement le trajet');
+  assert.equal(await page.locator('.starMapRouteFlow').count(), 0, 'effacer le trajet retire aussi son animation');
   assert.equal(await page.locator('.starMapNode.on-route').count(), 0, 'les etapes sont effacees aussi');
   await page.locator('.starMapNode[data-map-id="1-8"] .starMapPortal[data-portal-id="p_18_to_1BL"]').click();
   assert.equal(await page.locator('.starMapWire.itinerary').count(), itinerary.length, 'un clic portail affiche de nouveau le trajet');
   await closeInfo();
   await page.waitForTimeout(650);
   assert.equal(await page.locator('.starMapWire.itinerary').count(), 0, 'reduire les details seuls efface durablement le trajet');
+  assert.equal(await page.locator('.starMapRouteFlow').count(), 0, 'fermer les details retire aussi son animation');
   await page.locator('.starMapNode[data-map-id="1-8"] .starMapPortal[data-portal-id="p_18_to_1BL"]').click();
   await page.waitForFunction(() => !document.getElementById('starMapInfoWindow').classList.contains('gameWinOpening'));
   const infoBefore = await page.locator('#starMapInfoWindow').boundingBox();
@@ -450,6 +556,10 @@ window.__ORBIT_ENGINE__ = {`));
   const btnText = await page.$eval("#starMapJumpBtn", (e) => e.textContent);
   console.log("bouton pendant charge:", btnText);
   assert.ok(/^Jump \([1-9]s\)$/.test(btnText), btnText);
+  // Garder une destination plus lointaine pendant le saut deja lance.
+  // A l'arrivee, le trajet se recalcule alors que la fenetre est reduite.
+  await closeInfo();
+  await page.click('.starMapNode[data-map-id="1-BL"] .starMapLabel');
   await page.click('[data-window-id="starMapWindow"]');
   await page.waitForSelector('#starMapInfoWindow', { state: 'hidden' });
   await page.waitForFunction(() => window.__starJumpDraws.swipeFrames > 0, null, { timeout: 15000 });
@@ -472,6 +582,9 @@ window.__ORBIT_ENGINE__ = {`));
   assert.ok(jumpLogs.includes('Jump vers 1-2 : portail activé.'), 'activation du swipe dans le journal');
   await page.click('[data-window-id="starMapWindow"]');
   await page.waitForFunction(() => !document.getElementById('starMapWindow').classList.contains('gameWinOpening'));
+  assert.equal(await page.locator('#starMapItinerary li').first().getAttribute('data-from'), '1-2',
+    'le trajet repart de la nouvelle carte apres le saut');
+  await assertRouteAnimationMoving();
   await page.click('.starMapNode[data-map-id="1-1"] .starMapLabel');
   assert.equal(await page.$eval('#starMapJumpBtn', el => el.disabled), true, 'Jump en recharge apres arrivee');
   await page.waitForFunction(() => !document.getElementById('starMapJumpBtn').disabled, null, { timeout: 6500 });
@@ -499,6 +612,34 @@ window.__ORBIT_ENGINE__ = {`));
   }, account.user.id);
   assert.equal(await page.evaluate(() => window.__CURRENT_MAP_ID__), '1-1', 'le Jump annule ne change pas la carte');
   console.log('Jump annule sur degats et message journal verifie');
+  // Recharger en mouvement avant l'autosave conserve le dernier snapshot,
+  // puis la reconnexion et le prochain save ne doivent pas le remplacer.
+  await page.addInitScript(() => {
+    const cache = JSON.parse(localStorage.getItem('orbit_user_cache') || 'null');
+    window.__REFRESH_POSITION_EXPECTED__ = cache?.user?.hangars?.find(h => h.active)?.lastPos;
+  });
+  const refreshDeparture = await page.evaluate(() => window.__STARMAP_MOVEMENT_TEST__.state());
+  await page.evaluate(() => window.__STARMAP_MOVEMENT_TEST__.order());
+  await page.waitForFunction(start => {
+    const current = window.__STARMAP_MOVEMENT_TEST__.state();
+    return Math.hypot(current.x - start.x, current.y - start.y) > 150;
+  }, refreshDeparture, { timeout: 10000 });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#loadingStartBtn:not([disabled])', { timeout: 90000 });
+  await page.click('#loadingStartBtn');
+  await page.waitForFunction(() => getComputedStyle(document.getElementById('loadingOverlay')).display === 'none', null, { timeout: 60000 });
+  const refreshedPosition = await page.evaluate(() => ({
+    ...window.__STARMAP_MOVEMENT_TEST__.state(), expected: window.__REFRESH_POSITION_EXPECTED__, map: window.__CURRENT_MAP_ID__,
+  }));
+  assert.equal(refreshedPosition.map, '1-1');
+  assert.equal(refreshedPosition.x, refreshedPosition.expected.x, 'le demarrage conserve le snapshot de fermeture');
+  assert.equal(refreshedPosition.y, refreshedPosition.expected.y);
+  await page.waitForTimeout(1500);
+  await page.evaluate(async () => { const { flushNetUser } = await import('/SRC/CORE/ACCOUNT_NET.js'); await flushNetUser(); });
+  const refreshStored = (await (await fetch(url + '/api/me', { headers: { Authorization: `Bearer ${account.token}` } })).json()).user;
+  assert.deepEqual(refreshStored.hangars.find(h => h.active).lastPos, refreshedPosition.expected,
+    'le prochain save serveur conserve aussi la position restauree');
+  console.log('refresh en mouvement : position exacte restauree et confirmee serveur');
   assert.ok(errors.length === 0, "erreurs page: " + errors.slice(0, 3).join(" | "));
   console.log("STARMAP SMOKE OK");
 } catch (error) {

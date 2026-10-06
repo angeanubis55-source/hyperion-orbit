@@ -72,9 +72,11 @@ export function findStarMapItinerary(routes, from, to, { sector = '1', via = nul
 
 export function createStarMapLayout(nodes, unit, size, art, maps = new Map()) {
   const pad = 48, gap = 18;
+  const minCol = Math.min(0, ...nodes.map(n => Number(n.col)));
+  const minRow = Math.min(0, ...nodes.map(n => Number(n.row)));
   const positions = new Map(nodes.map(n => [n.id, {
-    x: pad + size.w / 2 + Number(n.col) * unit.w,
-    y: pad + size.h / 2 + Number(n.row) * unit.h,
+    x: pad + size.w / 2 + (Number(n.col) - minCol) * unit.w,
+    y: pad + size.h / 2 + (Number(n.row) - minRow) * unit.h,
   }]));
   const width = Math.ceil(Math.max(...[...positions.values()].map(p => p.x)) + size.w / 2 + pad);
   const height = Math.ceil(Math.max(...[...positions.values()].map(p => p.y)) + size.h / 2 + pad);
@@ -89,17 +91,22 @@ export function createStarMapLayout(nodes, unit, size, art, maps = new Map()) {
     end: projectStarMapPortal(positions.get(pair.b), pair.destination, maps.get(pair.b), size, art),
   }));
   // Les sorties laterales et basses gardent les fils hors du titre de la carte.
-  const ports = (box, anchor) => [
-    { x: box.left - gap, y: anchor.y, direction: 1 },
-    { x: box.right + gap, y: anchor.y, direction: 1 },
-    { x: anchor.x, y: box.bottom + gap, direction: 2 },
-  ].map(p => ({ ...p, length: Math.abs(p.x - anchor.x) + Math.abs(p.y - anchor.y) }));
+  const ports = (box, anchor) => [0, -8, 8].flatMap(offset => [
+    { x: box.left - gap, y: anchor.y + offset, direction: 1 },
+    { x: box.right + gap, y: anchor.y + offset, direction: 1 },
+    { x: anchor.x + offset, y: box.bottom + gap, direction: 2 },
+  ]).map(p => ({ ...p, length: Math.abs(p.x - anchor.x) + Math.abs(p.y - anchor.y),
+    connector: [anchor, p.direction === 1 ? { x: anchor.x, y: p.y } : { x: p.x, y: anchor.y }, { x: p.x, y: p.y }] }));
   for (const pair of pairs) {
     pair.starts = ports(byId.get(pair.a), pair.start);
     pair.ends = ports(byId.get(pair.b), pair.end);
   }
   const xSet = new Set([gap, width - gap]), ySet = new Set([gap, height - gap]);
-  for (const b of boxes) { xSet.add(b.left - gap); xSet.add(b.right + gap); ySet.add(b.top - gap); ySet.add(b.bottom + gap); }
+  // Plusieurs voies paralleles : deux liens ne doivent pas partager un fil.
+  for (const b of boxes) for (const lane of [gap, gap + 8, gap + 16]) {
+    xSet.add(b.left - lane); xSet.add(b.right + lane);
+    ySet.add(b.top - lane); ySet.add(b.bottom + lane);
+  }
   for (const pair of pairs) for (const p of [...pair.starts, ...pair.ends]) { xSet.add(p.x); ySet.add(p.y); }
   const xs = [...xSet].sort((a, b) => a - b), ys = [...ySet].sort((a, b) => a - b);
   const xIndex = new Map(xs.map((x, i) => [x, i])), yIndex = new Map(ys.map((y, i) => [y, i]));
@@ -144,9 +151,15 @@ export function createStarMapLayout(nodes, unit, size, art, maps = new Map()) {
     }
     return first;
   };
-  const usage = new Map();
-  const route = pair => {
-    const starts = pair.starts.filter(p => free[indexOf(p)]), ends = pair.ends.filter(p => free[indexOf(p)]);
+  const usage = new Map(), occupied = [], usedDirections = new Uint8Array(count);
+  const overlaps = (a, b, c, d) => (a.x === b.x && c.x === d.x && a.x === c.x
+    && Math.min(Math.max(a.y, b.y), Math.max(c.y, d.y)) - Math.max(Math.min(a.y, b.y), Math.min(c.y, d.y)) > .01)
+    || (a.y === b.y && c.y === d.y && a.y === c.y
+      && Math.min(Math.max(a.x, b.x), Math.max(c.x, d.x)) - Math.max(Math.min(a.x, b.x), Math.min(c.x, d.x)) > .01);
+  const connectorFree = p => p.connector.every((q, i, points) => !i || !occupied.some(([a, b]) => overlaps(points[i - 1], q, a, b)));
+  const route = (pair, allowOverlap = false) => {
+    const starts = pair.starts.filter(p => free[indexOf(p)] && (allowOverlap || connectorFree(p))),
+      ends = pair.ends.filter(p => free[indexOf(p)] && (allowOverlap || connectorFree(p)));
     if (!starts.length || !ends.length) return [];
     const goals = new Map(ends.map(p => [indexOf(p), p]));
     const heuristic = i => {
@@ -164,20 +177,32 @@ export function createStarMapLayout(nodes, unit, size, art, maps = new Map()) {
       const current = pop(heap), state = current.state, i = Math.floor(state / 3), direction = state % 3;
       if (current.travelled !== costs[state]) continue;
       if (goals.has(i)) {
-        const points = [pair.end];
+        const points = [];
         for (let j = state; j >= 0; j = previous[j]) points.push(pointAt(Math.floor(j / 3)));
-        points.push(pair.start); points.reverse();
+        points.reverse();
+        let root = state; while (previous[root] >= 0) root = previous[root];
+        const first = starts.find(p => indexOf(p) === indexOf(points[0]) && p.direction === root % 3);
+        const last = goals.get(i);
+        points.unshift(...first.connector.slice(0, -1));
+        points.push(...last.connector.slice(0, -1).reverse());
         for (let j = state; previous[j] >= 0; j = previous[j]) {
-          const key = [Math.floor(j / 3), Math.floor(previous[j] / 3)].sort((x, y) => x - y).join(':');
+          const here = Math.floor(j / 3), before = Math.floor(previous[j] / 3);
+          const key = [here, before].sort((x, y) => x - y).join(':');
           usage.set(key, (usage.get(key) || 0) + 1);
+          usedDirections[here] |= j % 3; usedDirections[before] |= j % 3;
         }
-        return points.filter((p, j) => j === 0 || j === points.length - 1
-          || !((points[j - 1].x === p.x && p.x === points[j + 1].x)
-            || (points[j - 1].y === p.y && p.y === points[j + 1].y)));
+        for (let j = 1; j < points.length; j++) occupied.push([points[j - 1], points[j]]);
+        const unique = points.filter((p, j) => !j || p.x !== points[j - 1].x || p.y !== points[j - 1].y);
+        return unique.filter((p, j) => j === 0 || j === unique.length - 1
+          || !((unique[j - 1].x === p.x && p.x === unique[j + 1].x)
+            || (unique[j - 1].y === p.y && p.y === unique[j + 1].y)));
       }
       for (const [next, length, nextDirection] of neighbors[i]) {
         const key = [i, next].sort((x, y) => x - y).join(':');
-        const cost = costs[state] + length + (usage.get(key) || 0) * 22 + (direction !== nextDirection ? 32 : 0);
+        if (!allowOverlap && usage.has(key)) continue;
+        const crossing = (usedDirections[next] & (3 ^ nextDirection)) || (usedDirections[i] & (3 ^ nextDirection));
+        const cost = costs[state] + length + (usage.get(key) || 0) * length * 100
+          + (direction !== nextDirection ? 32 : 0) + (crossing ? 250 : 0);
         const nextState = next * 3 + nextDirection;
         if (cost >= costs[nextState]) continue;
         costs[nextState] = cost; previous[nextState] = state;
@@ -187,6 +212,9 @@ export function createStarMapLayout(nodes, unit, size, art, maps = new Map()) {
     return [];
   };
   const routes = pairs.sort((a, b) => Math.abs(a.start.x - a.end.x) + Math.abs(a.start.y - a.end.y)
-    - Math.abs(b.start.x - b.end.x) - Math.abs(b.start.y - b.end.y)).map(pair => ({ ...pair, points: route(pair) }));
+    - Math.abs(b.start.x - b.end.x) - Math.abs(b.start.y - b.end.y)).map(pair => {
+      const points = route(pair);
+      return { ...pair, points: points.length ? points : route(pair, true) };
+    });
   return { width, height, positions, routes };
 }

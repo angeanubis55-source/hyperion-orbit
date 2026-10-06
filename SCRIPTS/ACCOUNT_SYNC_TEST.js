@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { pruneUnavailableLoadout } from "../SRC/CORE/FIT_INVENTORY.js";
 import { normalizePilotSkills, canInvestPilotSkill, LOGDISK_PRICE, LOGDISK_PACK } from "../SRC/DATA/PILOT_SKILLS.js";
+import { planAutoUpgradeCharges, UPGRADE_SLOT_ORES } from '../SRC/DATA/RESOURCES.js';
 
 const source = readFileSync(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8").replace(/^export /gm, "");
 const account = readFileSync(new URL("../SRC/CORE/ACCOUNT.js", import.meta.url), "utf8");
@@ -22,7 +23,7 @@ function client(storage = new Map()) {
   const api = vm.createContext({ structuredClone, AbortController,
     localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
     window: { addEventListener: (type, fn) => listeners.set(type, fn), dispatchEvent: event => listeners.get(event.type)?.(event) },
-    CustomEvent: class { constructor(type) { this.type = type; } },
+    CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
     setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id),
     fetch: (path, options) => new Promise((resolve, reject) => requests.push({ path, body: options.body && JSON.parse(options.body),
       reply: (status, value) => resolve({ status, json: async () => value }), reject })),
@@ -50,6 +51,27 @@ function wireLogout(c) {
   Object.assign(c.api, { prepareCurrentUserMutation() {}, writeCurrent: value => c.api.netSetCurrent(value) });
   vm.runInContext("let logoutPending = false;\n" + account.slice(start, end).replace(/^export /gm, ""), c.api);
 }
+
+test('le partage automatique reste acquis apres un conflit et conserve les nouveaux minerais serveur', async () => {
+  const c = client(), initial = user(); c.api.enterNetMode('token', structuredClone(initial));
+  Object.assign(c.api, { UPGRADE_SLOT_ORES, planAutoUpgradeCharges, ensureUserShape() {},
+    getCurrentUserForMutation: () => c.current(), saveUser: u => { u.revision++; c.api.netStore([u]); } });
+  for (const name of ['chargeShipUpgrade', 'chargeShipUpgradesAutomatically']) {
+    const from = account.indexOf(`export function ${name}(`), end = account.indexOf('\n}', from) + 2;
+    vm.runInContext(account.slice(from, end).replace(/^export /gm, ''), c.api);
+  }
+  const result = c.api.chargeShipUpgradesAutomatically({ laser: 'seprom', rocket: 'seprom', shield: 'seprom' });
+  assert.equal(result.consumed, 100);
+  const stocks = plain(c.current().upgrades);
+  const remote = structuredClone(initial); remote.revision++;
+  remote.inventory.resources.seprom += 7; remote.credits += 500;
+  await c.conflict(remote);
+  assert.equal(c.current().inventory.resources.seprom, 7);
+  assert.deepEqual(plain(c.current().upgrades), stocks);
+  assert.equal(c.current().credits, initial.credits + 500);
+  await c.accept(); assert.equal(c.current().inventory.resources.seprom, 7);
+  assert.deepEqual(plain(c.current().upgrades), stocks);
+});
 
 test("la déconnexion attend aussi l'achat réalisé pendant la sauvegarde en cours", async () => {
   const c = client(); c.api.enterNetMode("token", user()); wireLogout(c);
@@ -325,6 +347,40 @@ test("l'achat réel de disques appelle la sauvegarde, même sans attendre un kil
   const result = c.api.buyLogDiskPack(); assert.equal(result.ok, true);
   assert.equal(c.current().revision, 2); assert.equal(c.current().credits, 97_000_000); assert.equal(c.current().pilotSkills.disks, 10);
   c.api.flushAccountCache(); assert.equal(JSON.parse(c.storage.get("orbit_user_cache")).user.pilotSkills.disks, 10);
+});
+
+test("l'achat réseau prépare le solde sans sauvegarde complète et conserve les consommations jusqu'à l'envoi", async () => {
+  const c = client(); c.api.enterNetMode("token", user());
+  const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const extract = (text, name) => {
+    const start = text.indexOf(`function ${name}(`), end = text.indexOf("\n}", start);
+    assert.ok(start >= 0 && end > start, name); return text.slice(start, end + 2);
+  };
+  const live = c.current();
+  let fullSaves = 0, walks = 0;
+  Object.assign(c.api, { LOGDISK_PRICE, LOGDISK_PACK, STORAGE_SCHEMA_VERSION: 4,
+    started: true, account: { user: live, dirty: true }, player: { credits: 100_012_500, ammo: { x4: 80 } },
+    readUsers: () => c.api.netList(), writeUsers: (list, options) => c.api.netStore(list, options),
+    petShieldCapacity: () => { throw new Error("Recalcul PET pendant l'achat de disques"); },
+    getCurrentUserFull: () => { throw new Error("Normalisation pendant l'achat de disques"); },
+    ensurePilotSkills: u => { u.pilotSkills = normalizePilotSkills(u.pilotSkills); },
+    saveProgressNow: () => { fullSaves++; live.ammo.x4 = c.api.player.ammo.x4; c.api.account.dirty = false; },
+    sanitizeInfiniteValues: () => { walks++; },
+  });
+  vm.runInContext("let preparingMutation = false;\n" + ["prepareCurrentUserMutation", "saveUser", "buyLogDiskPack"].map(name => extract(account.replace(/\r\n/g, "\n"), name)).join("\n")
+    + "\n" + extract(engine, "saveLiveProgressBeforeNetwork"), c.api);
+  c.api.window.addEventListener("orbit:account-before-mutation", c.api.saveLiveProgressBeforeNetwork);
+  c.api.window.addEventListener("orbit:net-before-save", c.api.saveLiveProgressBeforeNetwork);
+  c.api.window.addEventListener("orbit:user-updated", event => {
+    if (event.detail.source === "pilot-disks") c.api.player.credits = live.credits;
+  });
+  assert.equal(c.api.buyLogDiskPack().ok, true);
+  assert.equal(live.credits, 97_012_500); assert.equal(live.pilotSkills.disks, 10);
+  assert.equal(c.api.player.credits, live.credits);
+  assert.equal(fullSaves, 0); assert.equal(walks, 0); assert.equal(c.api.account.dirty, true);
+  const sent = await c.accept();
+  assert.equal(fullSaves, 1); assert.equal(sent.user.ammo.x4, 80);
+  assert.equal(sent.user.credits, 97_012_500); assert.equal(sent.user.pilotSkills.disks, 10);
 });
 
 test("les deux points prérequis restent disponibles après synchronisation pour investir le talent suivant", async () => {

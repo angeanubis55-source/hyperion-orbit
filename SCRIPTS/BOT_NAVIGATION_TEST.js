@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BOT_RANGE, computeBotCombatMove, computeBotWallMove, computeWallDetour, isSegmentBlocked } from "../SRC/CORE/BOT_NAVIGATION.js";
+import { BOT_RANGE, computeBotCombatMove, computeBotWallMove, computeWallDetour, isSegmentBlocked, isPointInWall } from "../SRC/CORE/BOT_NAVIGATION.js";
+import { blacklightSearchTarget } from '../SRC/CORE/BOT_SEARCH.js';
 import { circleRectResolve } from "../SRC/CORE/COLLISION.js";
 import { advancePlayerToTarget, updatePlayerVelocity, playerSlowMult } from "../SRC/CORE/FRAME_SYSTEMS.js";
 import { getZoneWalls } from "../MAPS/1-BL/SPAWNS.js";
@@ -9,6 +10,59 @@ import vm from "node:vm";
 
 const bounds = { minX: 0, minY: 0, maxX: 10000, maxY: 6000, margin: 80 };
 const npc = { id: 7, x: 5000, y: 3000, vx: 0, vy: 0, hp: 100 };
+
+for (const mapId of ['1-BL', '2-BL', '3-BL']) {
+  const { WORLD: world } = await import(`../MAPS/${mapId}/WORLD.js`);
+  const spawns = await import(`../MAPS/${mapId}/SPAWNS.js`);
+  const camps = spawns.getZoneSpawns(world), walls = spawns.getZoneWalls(world);
+  test(`${mapId} : la recherche reste dans les habitats coches et contourne les murs`, () => {
+    const types = ['npc_Invoke_XVI', 'npc_Mindfire_Behemoth', 'npc_Strokelight_Barrage'];
+    const state = {}, player = { x: world.w / 2, y: world.h / 2, r: 18 };
+    const args = { mapId, world, camps, walls, player, allowed: new Set(types), state };
+    const visits = new Set();
+    for (let i = 0; i < 45; i++) {
+      const target = blacklightSearchTarget(args);
+      assert.ok(target && types.includes(target.type));
+      assert.equal(isPointInWall(target.x, target.y, walls, 30), false);
+      assert.ok(target.x >= 100 && target.x <= world.w - 100 && target.y >= 100 && target.y <= world.h - 100);
+      const camp = camps.find(c => c.type === target.type), area = camp.spawnArea;
+      if (area) assert.ok(target.x >= area.x1 && target.x <= area.x2 && target.y >= area.y1 && target.y <= area.y2);
+      else assert.ok(Math.hypot(target.x - camp.x, target.y - camp.y) <= 600);
+      visits.add(target.type); Object.assign(player, target);
+    }
+    assert.equal(visits.size, 3, 'aucun boss coche ne reste oublie');
+    args.allowed = new Set(['npc_Mindfire_Behemoth']);
+    assert.equal(blacklightSearchTarget(args).type, 'npc_Mindfire_Behemoth', 'un changement de selection remplace le parcours');
+    args.allowed.clear(); assert.equal(blacklightSearchTarget(args), null);
+    args.allowed.add(types[0]); args.mapId = '1-1'; assert.equal(blacklightSearchTarget(args), null);
+  });
+}
+
+test('un long trajet BL ne change pas de destination toutes les six secondes', () => {
+  const player = { x: 100, y: 100 }, state = {}, walls = [];
+  const args = { mapId: '1-BL', world: { w: 30000, h: 20000 }, player, walls, state,
+    allowed: new Set(['npc_Mindfire_Behemoth']), camps: [{ type: 'npc_Mindfire_Behemoth', fixed: true, x: 20000, y: 8000 }] };
+  const target = blacklightSearchTarget(args);
+  for (let i = 0; i < 30; i++) {
+    player.x += 200;
+    assert.equal(blacklightSearchTarget({ ...args, dt: 1 }), target);
+  }
+  for (let i = 0; i < 30; i++) {
+    player.y += 400;
+    assert.equal(blacklightSearchTarget({ ...args, dt: 1 }), target, 'un detour qui eloigne du but reste suivi');
+  }
+  const next = blacklightSearchTarget({ ...args, dt: 1, failed: true });
+  assert.notDeepEqual(next, target, 'un trajet inatteignable est abandonne');
+});
+
+test('une recherche BL immobile finit par changer de point', () => {
+  const args = { mapId: '1-BL', world: { w: 30000, h: 20000 }, player: { x: 100, y: 100 }, walls: [], state: {},
+    allowed: new Set(['npc_Mindfire_Behemoth']), camps: [{ type: 'npc_Mindfire_Behemoth', fixed: true, x: 20000, y: 8000 }] };
+  const target = blacklightSearchTarget(args);
+  for (let i = 0; i < 19; i++) assert.equal(blacklightSearchTarget({ ...args, dt: 1 }), target);
+  assert.notDeepEqual(blacklightSearchTarget({ ...args, dt: 1 }), target);
+});
+
 const run = (x, state = {}) => computeBotCombatMove({ player: { x, y: 3000 }, npc, range: 1000, bounds, state });
 
 test("keeps a safety margin inside laser range", () => {
@@ -316,7 +370,7 @@ test("le vrai tick passe entre exploration, navigation et fuite puis reprend la 
     started: true, StarJump: { channel: null }, player: { x: 1000, y: 1000, hp: 100, hpMax: 100 }, WORLD: { w: 4000, h: 4000 },
     window: { __CURRENT_MAP_ID__: "1-1" }, rules: {}, moveTarget: { active: false },
     enemies: [], collectables: [], attackActive: false, Target: { get: () => null },
-    botNearestNpc: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},
+    botNearestNpc: () => null, botBlacklightSearch: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},
     botApplyRocketFlags: () => {}, botRefreshHudThrottled: () => {}, botLog: () => {},
     stopAttack: () => {}, cancelCollectableTarget: () => {},
     botNearestSafeRefuge: () => ({ x: 1500, y: 1500, label: "Zone sure" }),
@@ -339,4 +393,160 @@ test("le vrai tick passe entre exploration, navigation et fuite puis reprend la 
   c.tickBot(1 / 60);
   assert.equal(c.Bot.fleeing, false);
   assert.equal(c.appliedFormation, "wheel"); assert.equal(c.appliedConfig, "1");
+});
+
+function autoCloakContext() {
+  const { context: c, source } = botProfileContext();
+  Object.assign(c.Bot, { active: true, skillCloak: true, manualT: 0, lastNpcKey: 'local:7' });
+  const user = { credits: 60000 };
+  Object.assign(c, { started: true, player: { dead: false, credits: 60000, cpuCloak: false },
+    cloakCd: 0, CPU_CLOAK_COST: 30000, CPU_CLOAK_COOLDOWN: 1, enemies: [],
+    currentMapId: () => '1-7', isPlayerCloaked: () => false,
+    isPlayerCpuCloaked: () => c.player.cpuCloak === true, persistCpuCloak: () => {},
+    account: { user }, getCurrentUserFull: () => user, markProgressDirty: () => {},
+    purchases: [], noteNetPurchase: amount => c.purchases.push(amount),
+    notifications: [], showNotification: message => c.notifications.push(message), updateSkillUI: () => {},
+    stopAttack: () => { c.attackStopped = true; }, botLog: message => { c.lastLog = message; },
+  });
+  const locks = source.slice(source.indexOf('function botNpcLockKey('), source.indexOf('function botLockNpc('));
+  const auto = source.slice(source.indexOf('function botQueueCloakAfterKill('), source.indexOf('function tickBot('));
+  const cpu = source.slice(source.indexOf('function toggleCpuCloak('), source.indexOf('function activatePoliceCloak('));
+  vm.runInContext(locks + auto + cpu, c);
+  return c;
+}
+
+test('camouflage bot : mort confirmee de la cible, une seule activation et un seul debit', () => {
+  const c = autoCloakContext(), npc = { id: 7, hp: 0 };
+  c.botQueueCloakAfterKill(npc);
+  assert.equal(c.Bot.cloakPendingMap, '1-7'); assert.equal(c.attackStopped, true);
+  assert.equal(c.botTickAutoCloak(), true);
+  assert.equal(c.player.cpuCloak, true); assert.equal(c.player.credits, 30000);
+  assert.equal(c.account.user.credits, 30000); assert.deepEqual(c.purchases, [30000]);
+  c.botQueueCloakAfterKill(npc); c.botTickAutoCloak();
+  assert.equal(c.player.cpuCloak, true); assert.deepEqual(c.purchases, [30000]);
+});
+
+test('camouflage bot : attend la recharge du CPU sans payer ni spammer de messages', () => {
+  const c = autoCloakContext(); c.cloakCd = .5;
+  c.botQueueCloakAfterKill({ id: 7, hp: 0 });
+  for (let i = 0; i < 20; i++) assert.equal(c.botTickAutoCloak(), true);
+  assert.equal(c.player.credits, 60000); assert.deepEqual(c.notifications, []);
+  c.cloakCd = 0; c.botTickAutoCloak();
+  assert.equal(c.player.credits, 30000); assert.equal(c.Bot.cloakPendingMap, null);
+});
+
+test('camouflage bot : ignore NPC vivants, autres cibles, predictions serveur et retraits sans mort', () => {
+  for (const npc of [{ id: 7, hp: 1 }, { id: 8, hp: 0 }, { id: 7, hp: 0, suppressDeathExplosion: true },
+    { id: 7, hp: 0, _netUid: 'shared', _netSeq: 1, _netKiller: null }]) {
+    const c = autoCloakContext(); c.botQueueCloakAfterKill(npc);
+    assert.equal(c.Bot.cloakPendingMap, null); assert.equal(c.botTickAutoCloak(), false);
+    assert.deepEqual(c.purchases, []);
+  }
+});
+
+test('camouflage bot : la reapparition du meme NPC reseau permet une nouvelle activation', () => {
+  const c = autoCloakContext(), npc = { id: 7, hp: 0, _netUid: 'shared', _netSeq: 1, _netKiller: true };
+  c.Bot.lastNpcKey = 'net:shared:1'; c.botQueueCloakAfterKill(npc); c.botTickAutoCloak();
+  c.player.cpuCloak = false; npc._netSeq = 2; c.Bot.lastNpcKey = 'net:shared:2';
+  c.botQueueCloakAfterKill(npc); c.botTickAutoCloak();
+  assert.deepEqual(c.purchases, [30000, 30000]); assert.equal(c.player.credits, 0);
+});
+
+test('camouflage bot : pas de debit si deja camoufle, pauvre, mort, arrete ou sur une autre carte', () => {
+  for (const condition of ['cloaked', 'credits', 'dead', 'stopped', 'disabled', 'map']) {
+    const c = autoCloakContext(); c.botQueueCloakAfterKill({ id: 7, hp: 0 });
+    if (condition === 'cloaked') c.player.cpuCloak = true;
+    if (condition === 'credits') c.player.credits = 29999;
+    if (condition === 'dead') c.player.dead = true;
+    if (condition === 'stopped') c.Bot.active = false;
+    if (condition === 'disabled') c.Bot.skillCloak = false;
+    if (condition === 'map') c.currentMapId = () => '1-6';
+    assert.equal(c.botTickAutoCloak(), false); assert.equal(c.Bot.cloakPendingMap, null);
+    assert.deepEqual(c.purchases, []);
+  }
+});
+
+test('camouflage bot : option desactivee par defaut et conservee dans les reglages', () => {
+  const { context: c } = botProfileContext(); c.botLoadConfig();
+  assert.equal(c.Bot.skillCloak, false);
+  c.Bot.skillCloak = true; c.botSaveConfig();
+  const { context: restored } = botProfileContext(c.saved()); restored.botLoadConfig();
+  assert.equal(restored.Bot.skillCloak, true); assert.equal(restored.Bot.cloakPendingMap, null);
+});
+
+function repairCloakContext() {
+  const c = autoCloakContext();
+  Object.assign(c.Bot, { skillCloak: false, lastNpcKey: null, fleeCloak: true, mode: 'kill' });
+  Object.assign(c.player, { x: 1000, y: 1000, hp: 20, hpMax: 100 });
+  Object.assign(c, {
+    StarJump: { channel: null }, WORLD: { w: 4000, h: 4000 },
+    window: { __CURRENT_MAP_ID__: '1-7' }, rules: {}, moveTarget: { active: false },
+    collectables: [], attackActive: true, Target: { get: () => null },
+    botNearestNpc: () => null, botBlacklightSearch: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},
+    botApplyRocketFlags: () => {}, botRefreshHudThrottled: () => {}, cancelCollectableTarget: () => {},
+    stopAttack: () => { c.attackActive = false; },
+    botNearestSafeRefuge: () => ({ x: 1500, y: 1500, label: 'Zone sure' }),
+    clamp: (value, min, max) => Math.max(min, Math.min(max, value)),
+  });
+  const source = readFileSync(new URL('../SRC/CORE/ORBIT_ENGINE.js', import.meta.url), 'utf8');
+  const from = source.indexOf('function tickBot('), to = source.indexOf('function botRefreshHudThrottled(', from);
+  vm.runInContext(source.slice(from, to), c);
+  return c;
+}
+
+test('camouflage reparation : attend le CPU en continuant la fuite, puis un seul debit par repli', () => {
+  const c = repairCloakContext(); c.cloakCd = .5;
+  for (let i = 0; i < 20; i++) c.tickBot(1 / 60);
+  assert.equal(c.Bot.fleeing, true); assert.equal(c.attackActive, false);
+  assert.equal(c.moveTarget.active, true); assert.equal(c.moveTarget.x, 1500);
+  assert.equal(c.player.cpuCloak, false); assert.deepEqual(c.purchases, []);
+  assert.deepEqual(c.notifications, []);
+  c.cloakCd = 0; c.tickBot(1 / 60);
+  assert.equal(c.player.cpuCloak, true); assert.equal(c.account.user.credits, 30000);
+  assert.equal(c.Bot.fleeCloakUsed, true);
+  c.player.cpuCloak = false; // IEM ou Mindfire : pas d'achat en boucle.
+  for (let i = 0; i < 20; i++) c.tickBot(1 / 60);
+  assert.deepEqual(c.purchases, [30000]);
+  c.player.hp = 50; c.tickBot(1 / 60);
+  assert.equal(c.Bot.fleeing, false); assert.equal(c.Bot.fleeCloakUsed, false);
+  c.player.hp = 20; c.tickBot(1 / 60);
+  assert.equal(c.player.cpuCloak, true); assert.deepEqual(c.purchases, [30000, 30000]);
+});
+
+test('camouflage reparation : deja camoufle, pas de paiement ni de desactivation', () => {
+  for (const kind of ['cpu', 'ultimate']) {
+    const c = repairCloakContext();
+    if (kind === 'cpu') c.player.cpuCloak = true;
+    else c.isPlayerCloaked = () => true;
+    c.tickBot(1 / 60);
+    assert.equal(c.Bot.fleeing, true); assert.equal(c.Bot.fleeCloakUsed, true);
+    assert.equal(c.player.cpuCloak, kind === 'cpu'); assert.deepEqual(c.purchases, []);
+  }
+});
+
+test('camouflage reparation : aucun achat hors reparation ou si desactive, pauvre, mort ou arrete', () => {
+  for (const condition of ['disabled', 'no-flee', 'healthy', 'credits', 'dead', 'stopped', 'manual']) {
+    const c = repairCloakContext();
+    if (condition === 'disabled') c.Bot.fleeCloak = false;
+    if (condition === 'no-flee') c.Bot.flee = false;
+    if (condition === 'healthy') c.player.hp = 100;
+    if (condition === 'credits') c.player.credits = 29999;
+    if (condition === 'dead') c.player.dead = true;
+    if (condition === 'stopped') c.Bot.active = false;
+    if (condition === 'manual') c.Bot.manualT = 9999;
+    c.botTickRepairCloak();
+    if (condition !== 'dead') c.tickBot(1 / 60);
+    assert.equal(c.player.cpuCloak, false); assert.deepEqual(c.purchases, []);
+    assert.deepEqual(c.notifications, []);
+  }
+});
+
+test('camouflage reparation : reglage independant sauvegarde, etat du repli non persiste', () => {
+  const { context: c } = botProfileContext(); c.botLoadConfig();
+  assert.equal(c.Bot.fleeCloak, false); assert.equal(c.Bot.skillCloak, false);
+  c.Bot.fleeCloak = true; c.Bot.fleeCloakUsed = true; c.botSaveConfig();
+  assert.equal(c.saved().fleeCloakUsed, undefined);
+  const { context: restored } = botProfileContext(c.saved()); restored.botLoadConfig();
+  assert.equal(restored.Bot.fleeCloak, true); assert.equal(restored.Bot.skillCloak, false);
+  assert.equal(restored.Bot.fleeCloakUsed, false);
 });

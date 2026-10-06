@@ -9,6 +9,7 @@ import { getItemRarity } from "./ITEM_RARITIES.js";
 //   Object.freeze({
 //     id: "craft_apis",            // unique, préfixe craft_ conseillé
 //     name: "Drone Apis",          // nom affiché
+//     description: "...",         // résumé court (sinon repris du catalogue)
 //     rarity: "epic",              // rare | epic | legendary (common = masquée)
 //     costs: {
 //       credits: 50000000,         // crédits
@@ -90,6 +91,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   Object.freeze({
     id: "craft_nano_condensator",
     name: "Condensateur nano",
+    description: "Composant d’assemblage pour drones et vaisseaux.",
     rarity: "rare",
     costs: {
       credits: 0,
@@ -100,6 +102,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   Object.freeze({
     id: "craft_high_frequency_cable",
     name: "Câble haute fréquence",
+    description: "Composant pour le LF-3, le P.E.T. et certains vaisseaux.",
     rarity: "rare",
     costs: {
       credits: 0,
@@ -110,6 +113,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   Object.freeze({
     id: "craft_prismatic_socket",
     name: "Prise prismatique",
+    description: "Composant destiné à l’assemblage de vaisseaux.",
     rarity: "rare",
     costs: {
       credits: 0,
@@ -120,6 +124,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   Object.freeze({
     id: "craft_hybrid_processor",
     name: "Processeur hybride",
+    description: "Composant pour le drone Iris et certains vaisseaux.",
     rarity: "rare",
     costs: {
       credits: 0,
@@ -130,6 +135,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   Object.freeze({
     id: "craft_nano_case",
     name: "Boîte nano",
+    description: "Composant pour le LF-3, le P.E.T. et certains vaisseaux.",
     rarity: "rare",
     costs: {
       credits: 0,
@@ -140,6 +146,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   Object.freeze({
     id: "craft_micro_transistor",
     name: "Micro transistor",
+    description: "Composant pour Venom, Diminisher, Spectrum et Solace.",
     rarity: "rare",
     costs: {
       credits: 0,
@@ -326,6 +333,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   Object.freeze({
     id: "craft_leonov",
     name: "Leonov",
+    description: "Vaisseau renforcé sur les petites cartes de sa firme.",
     rarity: "legendary",
     costs: {
       credits: 0,
@@ -447,6 +455,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   Object.freeze({
     id: "craft_prometheus",
     name: "Laser PR-L Prometheus",
+    description: "210 dégâts, +200 tous les 5 tirs ; ×3,5 sur Impulse, Attend, Invoke et Mindfire.",
     rarity: "legendary",
     costs: {
       credits: 25000000,
@@ -469,6 +478,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   Object.freeze({
     id: "craft_blacklight_cipher",
     name: "Code secret Black Light",
+    description: "Objet spécial assemblé à partir des ressources Blacklight.",
     rarity: "legendary",
     costs: {
       credits: 75000000,

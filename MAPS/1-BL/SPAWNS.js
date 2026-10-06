@@ -1,6 +1,8 @@
 // 1-BL : 60 Impulse II + 29 Attend IX (boss : cas par cas plus tard).
 // Triangle BL : 1-8 (retour) + 2-BL + 3-BL.
 
+import { INVOKE_SPAWN_MIN_DISTANCE, pickSpacedSpawnPosition } from "../../NPC/NPC_SPAWN_POSITION.js";
+
 const rand = (a,b)=>a+Math.random()*(b-a);
 const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
 
@@ -77,23 +79,11 @@ export function getZoneSpawns(WORLD) {
   // Les Invoke ne spawnent jamais dans les zones grises (murs).
   const INVOKE_AREA = { x1: 300, y1: 300, x2: 5000, y2: 8000 };
   const INVOKE_WALLS = getZoneWalls(WORLD);
-  const INVOKE_MARGIN = 120;
-  function inGreyZone(x, y) {
-    for (const wl of INVOKE_WALLS) {
-      const hw = Number(wl?.w || 0) / 2 + INVOKE_MARGIN;
-      const hh = Number(wl?.h || 0) / 2 + INVOKE_MARGIN;
-      if (Math.abs(x - Number(wl?.x || 0)) <= hw && Math.abs(y - Number(wl?.y || 0)) <= hh) return true;
-    }
-    return false;
-  }
   function pickInvokePos() {
-    let x = rand(INVOKE_AREA.x1, INVOKE_AREA.x2);
-    let y = rand(INVOKE_AREA.y1, INVOKE_AREA.y2);
-    for (let t = 0; t < 12 && inGreyZone(x, y); t++) {
-      x = rand(INVOKE_AREA.x1, INVOKE_AREA.x2);
-      y = rand(INVOKE_AREA.y1, INVOKE_AREA.y2);
-    }
-    return { x, y };
+    const point = pickSpacedSpawnPosition({ area: INVOKE_AREA, walls: INVOKE_WALLS,
+      occupied: camps.filter(camp => camp.type === "npc_Invoke_XVI") });
+    if (!point) throw new Error("Aucune position libre pour un Invoke sur 1-BL");
+    return point;
   }
   for (let i = 0; i < 10; i++) {
     const pos = pickInvokePos();
@@ -102,6 +92,7 @@ export function getZoneSpawns(WORLD) {
       x: pos.x,
       y: pos.y,
       spawnArea: { ...INVOKE_AREA },
+      spawnMinDistance: INVOKE_SPAWN_MIN_DISTANCE,
       speed: 0,
       radius: 350,
       respawn: 0,

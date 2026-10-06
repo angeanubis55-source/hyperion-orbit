@@ -221,7 +221,7 @@ function onPilotClick(event) {
     return;
   }
   if (el.closest("#pilotBuyDisks")) {
-    ctx?.beforeAction?.();
+    ctx?.beforeAction?.("disks");
     const res = buyLogDiskPack();
     if (!res?.ok) {
       ctx?.toast?.(res?.error || "Impossible.", 2.2);

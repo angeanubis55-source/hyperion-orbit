@@ -807,6 +807,7 @@ restore(id) {
   saveWindowOpenState(id, true);
   clearTimeout(w.animationTimer);
   w.card.classList.remove("gameWinClosing");
+  w.card.classList.remove("gameWinOpening");
 
   // ✅ on retire l'état réduit sur root ET card
   w.root.classList.remove("gameWinMinimized");
@@ -836,8 +837,9 @@ restore(id) {
     w.card.style.setProperty("--dock-x-near", `${(dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)) * 0.68}px`);
     w.card.style.setProperty("--dock-y-near", `${(dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)) * 0.68}px`);
   }
-  w.card.classList.remove("gameWinOpening");
-  requestAnimationFrame(() => w.card.classList.add("gameWinOpening"));
+  // Demarrer avant le premier affichage : sinon la fenetre apparait une
+  // image a sa taille finale avant de repartir du dock.
+  w.card.classList.add("gameWinOpening");
   w.animationTimer = setTimeout(() => w.card.classList.remove("gameWinOpening"), 300);
 
   // ✅ sécurité : si le moteur remet display none/block au mauvais moment

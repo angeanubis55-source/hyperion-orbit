@@ -460,7 +460,10 @@ export function initTdmUI() {
     if (event.key === "Escape" && sellDialog) closeSellDialog();
   });
 
-  const resync = () => {
+  const resync = event => {
+    // Les disques de log appartiennent à l'arbre : aucune case de cet
+    // inventaire ne change, même lorsque la fenêtre est ouverte.
+    if (event?.detail?.source === "pilot-disks") return;
     try {
       void render();
     } catch {}

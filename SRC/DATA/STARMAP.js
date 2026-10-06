@@ -28,18 +28,19 @@ export const STARMAP_NODES = Object.freeze([
   N("3-4", 3.3, 4.8, "vru"), N("3-3", 5.5, 3.2, "vru"),
   N("3-2", 4.4, 5.5, "vru"), N("3-1", 5.5, 6.4, "vru"),
   // Upper : conserver le losange MMO et les deux branches EIC/VRU.
-  N("1-8", 6.9, 2.8, "mmo"), N("1-6", 7.8, 1.45, "mmo"),
-  N("1-7", 8.7, 2.8, "mmo"), N("1-5", 7.8, 4.0, "mmo"),
-  N("4-4", 10.5, 2.8, "pvp"), N("4-5", 10.05, 5.3, "pvp"),
-  N("2-5", 12.4, 2.0, "eic"), N("2-6", 12.4, 0.4, "eic"),
-  N("2-7", 13.6, 1.1, "eic"), N("2-8", 13.6, 0, "eic"),
-  N("3-5", 12.1, 4.4, "vru"), N("3-7", 13.2, 4.4, "vru"),
-  N("3-6", 12.45, 6.0, "vru"), N("3-8", 13.55, 6.0, "vru"),
-  N("1-BL", 9.0, 0, "bl", false),
-  N("2-BL", 15.2, 0, "bl", false), N("3-BL", 15.2, 6.0, "bl", false),
-  N("5-2", 10.9, 7.1, "pirate", false),
+  N("1-8", 7.8, -1.45, "mmo"), N("1-6", 6.9, -0.1, "mmo"),
+  N("1-7", 8.7, -0.1, "mmo"), N("1-5", 7.8, 1.1, "mmo"),
+  N("4-4", 8.5, 2.8, "pvp"), N("4-5", 8.05, 5.3, "pvp"),
+  N("2-5", 10.4, 2.0, "eic"), N("2-6", 10.4, 0.4, "eic"),
+  N("2-7", 11.6, 1.1, "eic"), N("2-8", 11.6, 0, "eic"),
+  N("3-5", 10.1, 4.4, "vru"), N("3-7", 11.2, 4.4, "vru"),
+  N("3-6", 10.45, 6.0, "vru"), N("3-8", 11.55, 6.0, "vru"),
+  // Blacklight MMO au-dessus du losange, avec sa propre marge.
+  N("1-BL", 7.8, -2.7, "bl", false),
+  N("2-BL", 13.2, 0, "bl", false), N("3-BL", 13.2, 6.0, "bl", false),
+  N("5-2", 8.9, 7.1, "pirate", false),
   N("low", 1.2, 0.9, "event", false, "LOW_MAP"),
-  N("qz", 9.0, 6.5, "event", false, "BLIGHTED_MAP"),
+  N("qz", 7.0, 6.5, "event", false, "BLIGHTED_MAP"),
 ]);
 
 // Les liaisons viennent des vrais SPAWNS de chaque carte via STARMAP_LAYOUT.

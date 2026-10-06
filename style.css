@@ -289,7 +289,7 @@ html.orbitSessionReady #loadingOverlay {
 }
 .assemblyDetailHead {
   display:grid;
-  grid-template-columns:76px minmax(0,1fr);
+  grid-template-columns:76px minmax(0,1fr) minmax(0,1.3fr);
   gap:12px;
   align-items:center;
 }
@@ -307,6 +307,21 @@ html.orbitSessionReady #loadingOverlay {
   display:grid;
   gap:3px;
   min-width:0;
+}
+.assemblyDescription {
+  margin:0;
+  min-width:0;
+  color:#bfd5df;
+  font-size:12px;
+  font-weight:500;
+  line-height:1.45;
+  text-align:center;
+  text-wrap:pretty;
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  max-height:2.9em;
+  overflow:hidden;
 }
 .assemblyRarity {
   font-size:10px;
@@ -843,6 +858,7 @@ html.orbitSessionReady #loadingOverlay {
 .refineryFooter {
   display:flex;
   flex-direction:row;
+  flex-wrap:wrap;
   align-items:center;
   gap:10px;
 }
@@ -857,6 +873,7 @@ html.orbitSessionReady #loadingOverlay {
   appearance:none;
   -webkit-appearance:none;
   width:17px;
+  flex:none;
   height:17px;
   margin:0;
   display:grid;
@@ -3246,6 +3263,22 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   max-height:min(900px,calc(100vh - 96px)) !important;
   box-sizing:border-box;
 }
+.upgAutoOre {
+  width:100%;
+  min-width:0;
+  min-height:30px;
+  padding:5px 7px;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:7px;
+  background:rgba(3,20,33,.92);
+  color:#eaffff;
+  font:600 11px/1.2 ui-sans-serif,system-ui;
+  cursor:pointer;
+}
+.upgAutoOre:focus {
+  outline:1px solid #7cf0ff;
+  outline-offset:1px;
+}
 .starMapBody {
   min-width:0;
   height:calc(100% - 26px);
@@ -3411,6 +3444,11 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 .starMapWire.shortcut.highlighted { stroke:#ffd06a; }
 .starMapWire.conditional.highlighted { stroke:#cfadff; }
 .starMapWire.itinerary { opacity:1; stroke:#ffd878; stroke-width:2; }
+.starMapRouteFlow {
+  pointer-events:none;
+}
+.starMapRouteGlow { fill:#ffd878; opacity:.28; }
+.starMapRouteLight { fill:#fff3bb; stroke:#ffca50; stroke-width:2; }
 .starMapTree.has-portal-focus .starMapWire:not(.highlighted):not(.itinerary) { opacity:.07; }
 .starMapRouteStep {
   position:absolute; z-index:4; left:7px; top:0;
@@ -3438,15 +3476,38 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 }
 .starMapConnection:hover { border-color:#7df0ff; }
 .starMapConnection small { color:#9fc6d4; font-size:10px; }
-.starMapNode .dot {
+.starMapCurrentMarker {
   position:absolute;
-  top:3px;
-  right:5px;
-  width:7px;
-  height:7px;
+  inset:0;
+  z-index:5;
+  pointer-events:none;
+  animation:starMapCurrentBlink 1.2s ease-in-out infinite;
+}
+.starMapCurrentLabel {
+  position:absolute;
+  left:0;
+  bottom:100%;
+  width:100%;
+  margin-bottom:8px;
+  color:#50ff91;
+  text-align:center;
+  white-space:nowrap;
+  font:800 18px/1.2 ui-sans-serif,system-ui;
+  text-shadow:0 0 8px rgba(80,255,145,.7),0 2px 3px #000;
+}
+.starMapCurrentMarker .dot {
+  position:absolute;
+  top:-7px;
+  right:-7px;
+  width:14px;
+  height:14px;
   border-radius:50%;
   background:#50ff91;
-  box-shadow:0 0 6px rgba(80,255,145,.9);
+  box-shadow:0 0 10px rgba(80,255,145,.9);
+}
+@keyframes starMapCurrentBlink {
+  0%,100% { opacity:1; }
+  50% { opacity:.25; }
 }
 .starMapInfoPanel { width:min(320px,calc(100vw - 32px)) !important; min-width:0 !important; max-height:min(800px,calc(100vh - 80px)) !important; }
 .starMapSide {
@@ -13137,13 +13198,25 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview {
   pointer-events: none !important;
 }
 #fitCard .fitSlotsScroll {
-  overflow: hidden !important;
-  scrollbar-width: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin !important;
+  scrollbar-gutter: stable;
+  overscroll-behavior-y: contain;
 }
 #fitCard .fitSlotsScroll::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
+  display: block !important;
+  width: 8px !important;
+}
+#fitCard .fitSlotsScroll::-webkit-scrollbar-track {
+  background: #07131f;
+}
+#fitCard .fitSlotsScroll::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: #285a72;
+}
+#fitCard .fitSlotsScroll::-webkit-scrollbar-thumb:hover {
+  background: #4489a7;
 }
 #fitCard .fitSlotGroup {
   border: 0 !important;
@@ -18881,7 +18954,7 @@ html body #hangarOverlay #hangarWindow.gameWindow.fit-open > .gameWinBar .gameWi
   background:linear-gradient(135deg,rgba(255,209,92,.38),rgba(255,209,92,.15)) !important;
 }
 #fitOverlay #fitCard #fitSlotsShipMods.slotGridModules {
-  grid-template-columns:repeat(auto-fill,minmax(170px,1fr)) !important;
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr)) !important;
 }
 #fitOverlay #fitCard #shipModsCount {
   display:none !important;
@@ -18928,8 +19001,8 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   padding:6px 8px !important;
 }
 #fitOverlay #fitCard #fitSlotsShipMods .slotCell.shipModSlot img {
-  width:30px !important;
-  height:30px !important;
+  width:40px !important;
+  height:40px !important;
   flex:0 0 auto !important;
 }
 #fitOverlay #fitCard .shipModSlotDetails {
@@ -18955,11 +19028,14 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   grid-auto-rows:auto !important;
 }
 #fitOverlay #fitCard #fitSlotsShipMods .slotCell.shipModSlot {
-  min-height:110px !important;
-  height:110px !important;
+  min-height:144px !important;
+  height:auto !important;
+  padding:12px !important;
 }
 #fitOverlay #fitCard .fitSlotGroup[data-slot-type="shipMods"] .slotCell {
-  height:110px !important;
+  min-height:144px !important;
+  height:144px !important;
+  box-sizing:border-box !important;
 }
 #fitOverlay #fitCard #fitSlotsLasers .slotCell:not(.filled), #fitOverlay #fitCard #fitSlotsGens .slotCell:not(.filled), #fitOverlay #fitCard #fitSlotsExtras .slotCell:not(.filled), #fitOverlay #fitCard #fitSlotsShipMods .slotCell:not(.filled), #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot:not(.filled), #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot:not(.filled), #fitOverlay #fitCard #fitPetWorkspace .petFitSlot:not(.filled) {
   border-color:rgba(169,188,199,.35) !important;

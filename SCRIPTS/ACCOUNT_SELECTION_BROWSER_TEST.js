@@ -155,17 +155,23 @@ try {
   const displayedPilotCredits = async () => Number((await page.locator("#pilotCredits").innerText()).replace(/\D/g, ""));
   assert.equal(await displayedPilotCredits(), beforeBuy.credits);
   await page.evaluate(() => {
-    window.pilotClickPerf = { node: document.querySelector("#pilotPanels [data-pilot-node]"), clickMs: null };
+    window.pilotClickPerf = { clickMs: null, nodesReused: null };
     window.addEventListener("click", event => {
-      if (event.target.closest?.("#pilotBuyDisks")) window.pilotClickPerf.start = performance.now();
+      if (event.target.closest?.("#pilotBuyDisks")) {
+        window.pilotClickPerf.start = performance.now();
+        window.pilotClickPerf.node = document.querySelector("#pilotPanels [data-pilot-node]");
+      }
     }, true);
     window.addEventListener("click", event => {
-      if (event.target.closest?.("#pilotBuyDisks")) window.pilotClickPerf.clickMs = performance.now() - window.pilotClickPerf.start;
+      if (event.target.closest?.("#pilotBuyDisks")) {
+        window.pilotClickPerf.clickMs = performance.now() - window.pilotClickPerf.start;
+        window.pilotClickPerf.nodesReused = window.pilotClickPerf.node === document.querySelector("#pilotPanels [data-pilot-node]");
+      }
     });
   });
   await page.locator("#pilotBuyDisks").click();
   const pilotClickPerf = await page.evaluate(() => ({ clickMs: window.pilotClickPerf.clickMs,
-    nodesReused: window.pilotClickPerf.node === document.querySelector("#pilotPanels [data-pilot-node]") }));
+    nodesReused: window.pilotClickPerf.nodesReused }));
   console.log(JSON.stringify({ pilotClickPerf }));
   assert.equal(pilotClickPerf.nodesReused, true, "l'achat conserve les noeuds de l'arbre et leurs images");
   assert.equal(await displayedPilotCredits(), beforeBuy.credits - 3_000_000);

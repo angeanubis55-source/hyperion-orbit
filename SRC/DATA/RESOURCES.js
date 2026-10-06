@@ -108,6 +108,31 @@ export const UPGRADE_ORE_BONUS = Object.freeze({
   osmium: Object.freeze({ laser: 0.50, rocket: 0.50, shield: 0.50 }),
 });
 
+// Partager chaque minerai entre les seuls emplacements compatibles choisis.
+// Les restes tournent entre eux : trois collectes d'une unite ne vont pas
+// toujours au premier emplacement. Aucun stock ni choix n'est modifie ici.
+export function planAutoUpgradeCharges(resources = {}, selections = {}, cursors = {}) {
+  const groups = new Map(), charges = [], nextCursors = { ...cursors };
+  for (const { id: slot } of UPGRADE_SLOTS) {
+    const ore = String(selections[slot] || '');
+    if (!(UPGRADE_SLOT_ORES[slot] || []).includes(ore)) continue;
+    if (!groups.has(ore)) groups.set(ore, []);
+    groups.get(ore).push(slot);
+  }
+  for (const [ore, slots] of groups) {
+    const raw = Number(resources[ore]);
+    if (!Number.isFinite(raw) || raw < 1) continue;
+    const owned = Math.floor(raw), share = Math.floor(owned / slots.length), remainder = owned % slots.length;
+    const cursor = Math.max(0, Math.floor(Number(cursors[ore]) || 0)) % slots.length;
+    slots.forEach((slot, i) => {
+      const amount = share + ((i - cursor + slots.length) % slots.length < remainder ? 1 : 0);
+      if (amount > 0) charges.push({ slot, ore, amount });
+    });
+    nextCursors[ore] = (cursor + remainder) % slots.length;
+  }
+  return { charges, cursors: nextCursors };
+}
+
 // Raffinage officiel (ratios du client d'origine) : minerais bruts -> minerais nobles.
 export const REFINERY_RECIPES = Object.freeze([
   Object.freeze({ id: "prometid", name: "Prometid", inputs: Object.freeze({ prometium: 20, endurium: 10 }), output: Object.freeze({ id: "prometid", amount: 1 }) }),

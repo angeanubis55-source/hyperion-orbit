@@ -1,5 +1,6 @@
 import { protegitPatrol } from "../NPC/PROTEGIT_MOVEMENT.js";
 import { npcFleeDirection } from "../NPC/NPC_FLEE.js";
+import { pickSpacedSpawnPosition } from "../NPC/NPC_SPAWN_POSITION.js";
 // SCRIPTS/NPC_ROOM.js — Simulation NPC serveur pour les maps zone.
 // Reutilise les modules purs du jeu : UNIVERSE_SIM (slots/respawn),
 // NPC_TYPES (stats), COMBAT_RULES (degats), MAPS/<id>/SPAWNS+WORLD (camps).
@@ -182,6 +183,7 @@ export class ZoneNpcSim {
         fixed: c?.fixed === true,
         // Zone de spawn (ex : Invoke BL) : { x1, y1, x2, y2 }.
         spawnArea: c?.spawnArea || null,
+        spawnMinDistance: Math.max(0, Number(c?.spawnMinDistance) || 0),
         // Raid Low : numéro de vague (0/undefined = camp normal permanent).
         raidWave: Math.max(0, Math.floor(Number(c?.raidWave) || 0)) || 0,
         // Raid Low : IA chasseur type gate (traque map-wide, pas de fuite).
@@ -450,6 +452,12 @@ export class ZoneNpcSim {
 
   areaPos(camp, pad = 80) {
     const a = camp?.spawnArea;
+    if (camp.spawnMinDistance > 0) {
+      return pickSpacedSpawnPosition({ area: a, walls: this.walls || [],
+        minDistance: camp.spawnMinDistance,
+        occupied: [...this.entries.values()].filter(entry => entry.hp > 0
+          && entry.type === camp.type && entry.campId !== camp.id) });
+    }
     if (a && [a.x1, a.y1, a.x2, a.y2].every((v) => Number.isFinite(Number(v)))) {
       const ax1 = Math.min(Number(a.x1), Number(a.x2));
       const ax2 = Math.max(Number(a.x1), Number(a.x2));
@@ -476,10 +484,11 @@ export class ZoneNpcSim {
   spawnFor(camp, nowMs) {
     const uid = slotUid(this.mapId, camp.id);
     const stats = statsFor(camp.type);
-    if (!stats) return; // type inconnu : slot ignore definitivement
+    if (!stats) return false; // type inconnu : slot ignore definitivement
     const isCubikon = camp.type === "npc_Cubikon";
     const isFixedCamp = isCubikon || camp.fixed === true;
     const pos = isFixedCamp ? { x: camp.x, y: camp.y } : this.areaPos(camp);
+    if (!pos) return false;
     markAlive(this.universe, this.mapId, uid, nowMs);
     // Camp à usage unique (raid) : marqué comme spawné pour cette
     // activation de vague (anti-respawn, voir tick).
@@ -506,6 +515,7 @@ export class ZoneNpcSim {
       orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
       seq: (Number(prev?.seq) || 0) + 1, // incarnation : anti-confusion au respawn
     });
+    return true;
   }
 
 
@@ -1027,8 +1037,8 @@ drainPlayerHits() {
         continue;
       }
       if (!statsFor(camp.type)) continue; // type inconnu : on n'essaie plus
-      this.spawnFor(camp, nowMs);
-      this.campT.set(camp.id, camp.respawn);
+      const spawned = this.spawnFor(camp, nowMs);
+      this.campT.set(camp.id, spawned === false ? 1 : camp.respawn);
     }
     // 1bis) Vagues Cubikon : transitions d'animation, spawn partage,
     // dechet des minions orphelins et re-armement apres 15 s sans coup.

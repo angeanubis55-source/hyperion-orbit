@@ -1,5 +1,6 @@
 import { protegitPatrol } from "../../NPC/PROTEGIT_MOVEMENT.js";
 import { npcFleeDirection } from "../../NPC/NPC_FLEE.js";
+import { pickSpacedSpawnPosition } from "../../NPC/NPC_SPAWN_POSITION.js";
 import { petEscortTarget, stepPetMotion, petCombatVelocity, orientPet } from "../../PET/PET_MOTION.js";
 import { measureGameTask, recordGameTask } from "./PERFORMANCE_TIMINGS.js";
 import { createDeferredPersistence } from "./DEFERRED_PERSISTENCE.js";
@@ -35,6 +36,7 @@ import {
 } from "../../PET/PET_GEARS.js";
 import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_TRAILS.js";
 import { computeBotCombatMove, computeBotWallMove, isPointInWall } from "./BOT_NAVIGATION.js";
+import { blacklightSearchTarget } from "./BOT_SEARCH.js";
 import { SpatialIndex } from "./SPATIAL_INDEX.js";
 import { normalizeMapId } from "./MAP_REGISTRY.js";
 import { getPortalSkinForMap } from "./PORTAL_SKINS.js";
@@ -64,6 +66,7 @@ import {
   sellCurrentUserOre,
   exchangeCurrentUserPalladiumForEnergy,
   chargeShipUpgrade,
+  chargeShipUpgradesAutomatically,
   setCurrentUserDroneFormation,
   getPetFit,
   getDroneFit,
@@ -92,7 +95,7 @@ import { pilotSkillMults } from "../DATA/PILOT_SKILLS.js";
 import { CRAFTING_RECIPES, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
 import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
-import { getShipEffectStats } from "../../SHIP/SHIP_BONUSES.js";
+import { getShipEffectStats, getShipBonusInfo } from "../../SHIP/SHIP_BONUSES.js";
 import { GAME_VERSION } from "../DATA/VERSION.js";
 import { getShipPackById as getShipPackByIdData, getShipDesignBaseId } from "../../SHIP/SHIP_PACKS.js";
 import { getAbilityInfo, formatAbilityTiming, policeAbilityIds, abilityIconFile } from "../../SHIP/SHIP_ABILITIES.js";
@@ -1080,6 +1083,7 @@ const ui = {
   refineryStock: document.getElementById("refineryStock"),
   refineryRecipes: document.getElementById("refineryRecipes"),
   refineryAuto: document.getElementById("refineryAuto"),
+  refineryAutoUpgrades: document.getElementById("refineryAutoUpgrades"),
   refineryAllBtn: document.getElementById("refineryAllBtn"),
   refineryUpgrades: document.getElementById("refineryUpgrades"),
   upgAmountDialog: document.getElementById("upgAmountDialog"),
@@ -8673,7 +8677,10 @@ initAuctionUI({
   notify: (text, dur = 2.5, type = "info") => showNotification(text, dur, type),
   markDirty: () => markProgressDirty(),
 });
-function flushPilotProgressBeforeAction() {
+function flushPilotProgressBeforeAction(action) {
+  // L'achat réseau prépare uniquement le solde dans ACCOUNT.js. Les tirs,
+  // soins et collectes seront sauvegardés par l'envoi normal du compte.
+  if (action === "disks" && netActive()) return;
   // Sauver les gains et stocks encore dans le moteur avant qu'un achat,
   // échange ou reset relise le compte et en adopte le solde.
   if (started && account.user && account.dirty) saveProgressNow();
@@ -8686,9 +8693,8 @@ initPilotSkillsUI({
     // Acheter des disques ne change aucun bonus : mise à jour légère du HUD,
     // sans relire/normaliser tout le compte ni recalculer l'équipement.
     if (action === "disks") {
-      // L'événement pilot-disks a déjà adopté le solde. Aucun état de combat
-      // n'a changé : ne pas provoquer une deuxième sauvegarde complète.
-      window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+      // pilot-disks a déjà adopté le solde et actualise le résumé de l'arbre.
+      // L'inventaire et les autres fenêtres n'ont aucun changement à afficher.
       return;
     }
     syncPlayerFromAccount();
@@ -8993,6 +8999,8 @@ const Bot = {
   x6ArmedAt: 0,
   flee: true,
   fleePct: 25,
+  fleeCloak: false,
+  fleeCloakUsed: false,
 
 
 
@@ -9019,6 +9027,8 @@ const Bot = {
   skillIem: false,
   iemFoes: 3,
   skillIsh: false,
+  skillCloak: false,
+  cloakPendingMap: null,
   ishPct: 20,
   kills: 0,
   boxes: 0,
@@ -9031,6 +9041,7 @@ const Bot = {
   roamX: 0,
   roamY: 0,
   roamT: 0,
+  blSearch: {},
   grabCd: 0,
   travelCd: 0,
   repairT: 0,
@@ -9082,6 +9093,7 @@ function botSaveConfig() {
       npcSeen: Bot.npcSeen,
       flee: Bot.flee,
       fleePct: Bot.fleePct,
+      fleeCloak: Bot.fleeCloak,
 
 
 
@@ -9090,6 +9102,7 @@ function botSaveConfig() {
       skillIem: Bot.skillIem,
       iemFoes: Bot.iemFoes,
       skillIsh: Bot.skillIsh,
+      skillCloak: Bot.skillCloak,
       ishPct: Bot.ishPct,
       kills: Bot.kills,
       boxes: Bot.boxes,
@@ -9148,6 +9161,7 @@ function botLoadConfig() {
     const rw = Math.floor(Number(data.reviveWait));
     Bot.reviveWait = Number.isFinite(rw) ? Math.max(0, Math.min(60, rw)) : 3;
     if (typeof data.flee === "boolean") Bot.flee = data.flee;
+    if (typeof data.fleeCloak === "boolean") Bot.fleeCloak = data.fleeCloak;
     const fp = Math.floor(Number(data.fleePct));
     if (Number.isFinite(fp)) Bot.fleePct = Math.max(5, Math.min(90, fp));
 
@@ -9162,6 +9176,7 @@ function botLoadConfig() {
     const foes = Math.floor(Number(data.iemFoes));
     if (Number.isFinite(foes)) Bot.iemFoes = Math.max(1, Math.min(10, foes));
     if (typeof data.skillIsh === "boolean") Bot.skillIsh = data.skillIsh;
+    if (typeof data.skillCloak === "boolean") Bot.skillCloak = data.skillCloak;
     const ishp = Math.floor(Number(data.ishPct));
     if (Number.isFinite(ishp)) Bot.ishPct = Math.max(5, Math.min(90, ishp));
     if (data.npcAmmo && typeof data.npcAmmo === "object") {
@@ -9279,6 +9294,7 @@ function botRefreshStats() {
 
 function botSetActive(on) {
   Bot.active = !!on;
+  Bot.fleeCloakUsed = false;
   Bot.repairT = 0;
   Bot.travelCd = 0;
   Bot.jumpCd = 0;
@@ -9295,6 +9311,7 @@ function botSetActive(on) {
   Bot.moveOrderedAt = 0;
   Bot.steering = null;
   Bot.postKillScanT = 0;
+  Bot.cloakPendingMap = null;
   Bot.rangeRecoveryId = null;
   Bot.rangeRecovering = false;
   Bot.closeId = null;
@@ -10191,6 +10208,14 @@ function wireBotWindow() {
       fleeBox.addEventListener("change", () => { Bot.flee = fleeBox.checked; if (!Bot.flee) Bot.fleeing = false; botSaveConfig(); });
     }
   }
+  const fleeCloakBox = document.getElementById("botFleeCloak");
+  if (fleeCloakBox) {
+    fleeCloakBox.checked = Bot.fleeCloak;
+    if (!fleeCloakBox.dataset.wired) {
+      fleeCloakBox.dataset.wired = "1";
+      fleeCloakBox.addEventListener("change", () => { Bot.fleeCloak = fleeCloakBox.checked; botSaveConfig(); });
+    }
+  }
   const fleePct = document.getElementById("botFleePct");  if (fleePct) {
     fleePct.value = Bot.fleePct;
     if (!fleePct.dataset.wired) {
@@ -10249,6 +10274,18 @@ function wireBotWindow() {
     if (!skillIshBox.dataset.wired) {
       skillIshBox.dataset.wired = "1";
       skillIshBox.addEventListener("change", () => { Bot.skillIsh = skillIshBox.checked; botSaveConfig(); });
+    }
+  }
+  const skillCloakBox = document.getElementById("botSkillCloak");
+  if (skillCloakBox) {
+    skillCloakBox.checked = Bot.skillCloak;
+    if (!skillCloakBox.dataset.wired) {
+      skillCloakBox.dataset.wired = "1";
+      skillCloakBox.addEventListener("change", () => {
+        Bot.skillCloak = skillCloakBox.checked;
+        if (!Bot.skillCloak) Bot.cloakPendingMap = null;
+        botSaveConfig();
+      });
     }
   }
   const ishPct = document.getElementById("botIshPct");
@@ -11439,6 +11476,59 @@ function botNearestSafeRefuge(x, y) {
   return candidates[0] || null;
 }
 
+function botBlacklightSearch(dt) {
+  if (Bot.mode === "collect" || Bot.module === "quest" || !isBlacklightMap()) return null;
+  return blacklightSearchTarget({ mapId: currentMapId(), camps: zoneCamps, allowed: Bot.npcAllow,
+    world: WORLD, walls: zoneWalls, player, sensorRange: NPC_SENSOR_RANGES.visibility,
+    state: Bot.blSearch, dt, failed: Bot.moveTag === "search-bl" && !moveTarget.active });
+}
+
+function botQueueCloakAfterKill(npc) {
+  const key = botNpcLockKey(npc);
+  if (!Bot.active || !Bot.skillCloak || !started || player.dead || !npc
+      || !(npc.hp <= 0) || npc._botCloakQueued === key || npc.noRewards || npc.suppressDeathExplosion
+      || npc._netPlayer || npc._netPet || (npc._netUid && npc._netKiller == null)
+      || performance.now() - Bot.manualT < 2500
+      || !botNpcHasLockKey(npc, Bot.lastNpcKey)) return;
+  npc._botCloakQueued = key;
+  Bot.cloakPendingMap = currentMapId();
+  stopAttack();
+}
+
+function botTickAutoCloak() {
+  if (Bot.cloakPendingMap == null) return false;
+  if (!Bot.active || !Bot.skillCloak || !started || player.dead
+      || Bot.cloakPendingMap !== currentMapId() || isPlayerCpuCloaked() || isPlayerCloaked()
+      || player.credits < CPU_CLOAK_COST) {
+    Bot.cloakPendingMap = null;
+    return false;
+  }
+  // Attendre la courte recharge apres le dernier tir avant de reprendre
+  // une cible : sinon les nouveaux tirs retarderaient toujours le camouflage.
+  if (cloakCd > 0) return true;
+  toggleCpuCloak();
+  Bot.cloakPendingMap = null;
+  if (isPlayerCpuCloaked()) botLog("Camouflage auto après destruction du NPC (30 000 crédits)");
+  return true;
+}
+
+function botTickRepairCloak() {
+  if (!Bot.active || !Bot.flee || !Bot.fleeing || !Bot.fleeCloak || Bot.fleeCloakUsed
+      || !started || player.dead) return;
+  if (isPlayerCpuCloaked() || isPlayerCloaked()) {
+    Bot.fleeCloakUsed = true;
+    return;
+  }
+  // La fuite continue pendant la recharge. Une seule activation par repli,
+  // même si le camouflage est dissipé : éviter des dépenses en boucle.
+  if (cloakCd > 0 || player.credits < CPU_CLOAK_COST) return;
+  toggleCpuCloak();
+  if (isPlayerCpuCloaked()) {
+    Bot.fleeCloakUsed = true;
+    botLog("Camouflage auto pour réparation (30 000 crédits)");
+  }
+}
+
 function tickBot(dt) {
   // Seul l'ordre de combat de ce tick peut imposer le NPC au navigateur.
   Bot.combatMoveTargetId = null;
@@ -11446,6 +11536,8 @@ function tickBot(dt) {
   if (!Bot.active) return;
   if (StarJump.channel) return;
   if (!started || player.dead) {
+    Bot.cloakPendingMap = null;
+    Bot.fleeCloakUsed = false;
     // Compteur de kills/boxes : la cible a disparu pendant la mort.
     Bot.lastNpcId = null;
     Bot.lastNpcKey = null;
@@ -11521,6 +11613,15 @@ function tickBot(dt) {
 
   // Flags roquettes auto tenus en continu (restaurés à l'arrêt).
   botApplyRocketFlags();
+  if (Bot.skillCloak && Bot.lastNpcKey != null) {
+    const killed = enemies.find(enemy => enemy && enemy.hp <= 0 && botNpcHasLockKey(enemy, Bot.lastNpcKey));
+    if (killed) botQueueCloakAfterKill(killed);
+  }
+  if (Bot.cloakPendingMap != null && botTickAutoCloak()) {
+    Bot.status = "Camouflage automatique";
+    botRefreshHudThrottled(dt);
+    return;
+  }
 
   // Compétences auto : IEM si assailli par N+, ISH si coque critique.
   // Vérifiés prêts avant appel (pas de spam de toasts de recharge).
@@ -11556,6 +11657,7 @@ function tickBot(dt) {
   const hpPct = (Number(player.hp) || 0) / hpMaxSafe * 100;
   if (Bot.flee && !Bot.fleeing && hpPct < Bot.fleePct) {
     Bot.fleeing = true;
+    Bot.fleeCloakUsed = false;
     try { stopAttack(); } catch {}
     try { cancelCollectableTarget(); } catch {}
     try { if (Target.get()) Target.clear(); } catch {}
@@ -11566,10 +11668,13 @@ function tickBot(dt) {
     const resumeAt = Math.max(Math.min(100, Bot.fleeResume), Bot.fleePct + 5);
     if (hpPct >= resumeAt) {
       Bot.fleeing = false;
+      Bot.fleeCloakUsed = false;
       botLog(`Réparé (${Math.round(hpPct)} %) — reprise du farm`);
     } else {
       Bot.status = "Fuite — réparation";
       Bot.target = `Coque ${Math.round(hpPct)} % (reprise à ${resumeAt} %)`;
+      if (attackActive) { try { stopAttack(); } catch {} }
+      if (Bot.fleeCloak) botTickRepairCloak();
       botApplyMoveProfile("flee");
       const shelter = botNearestSafeRefuge(player.x, player.y);
       if (shelter) {
@@ -11964,8 +12069,11 @@ function tickBot(dt) {
     // Fin d'engagement : on oublie la munition speciale en cours.
     try { botClearSpecialAmmo(); } catch {}
     botApplyMoveProfile("explore");
+    const blTarget = botBlacklightSearch(dt);
     Bot.roamT -= dt;
-    if (Bot.roamT <= 0 || !moveTarget.active) {
+    if (blTarget) {
+      botOrderMove(blTarget.x, blTarget.y, "search-bl");
+    } else if (Bot.roamT <= 0 || !moveTarget.active) {
       Bot.roamT = 6;
       Bot.roamX = 120 + Math.random() * Math.max(240, WORLD.w - 240);
       Bot.roamY = 120 + Math.random() * Math.max(240, WORLD.h - 240);
@@ -11990,6 +12098,7 @@ function tickBot(dt) {
     }
     Bot.status = Bot.mode === "collect" ? "Collecte — patrouille" : Bot.mode === "kill" ? "Chasse — patrouille" : "Farm — patrouille";
     Bot.target = "Recherche de cible…";
+    if (blTarget) Bot.target = `Recherche : ${NPC_TYPES[blTarget.type]?.name || blTarget.type}`;
     if (Bot.module === "quest") {
       Bot.status = "Quêtes — patrouille";
       Bot.target = "Aucune cible (accepte des quêtes)";
@@ -12755,6 +12864,30 @@ function craftingAmmoName(ammoId) {
   return CRAFTING_AMMO_NAMES[id] || `Munitions ${id.toUpperCase()}`;
 }
 
+function craftingRecipeDescription(recipe) {
+  if (recipe.description) return recipe.description;
+  const output = recipe.output || {};
+  const itemId = Object.keys(output.items || {})[0];
+  if (itemId) {
+    const item = findCatalogItem(itemId);
+    if (item?.desc) return item.desc;
+    if (itemId.startsWith("booster_")) return getBooster(itemId.slice(8))?.desc || "";
+  }
+  const ammoId = Object.keys(output.ammo || {})[0];
+  if (ammoId) return findCatalogItem(`ammo_${ammoId}`)?.desc || "Munitions pour les canons laser.";
+  const rocketId = Object.keys(output.rockets || {})[0];
+  if (rocketId) return findCatalogItem(`rocket_${rocketId}`)?.desc || "Munitions pour le lanceur de roquettes.";
+  const shipId = Object.keys(output.ships || {})[0];
+  if (shipId) {
+    const info = getShipBonusInfo(shipId);
+    return [info?.effet, info?.competence].filter(Boolean).join(" · ") || "Vaisseau à équiper dans le hangar.";
+  }
+  if (output.pet) return "Compagnon de combat et de collecte, à équiper de matériel P.E.T.";
+  if (output.drones) return "Drone à deux emplacements pour lasers et générateurs de bouclier.";
+  if (output.formations) return "Formation de drones modifiant les bonus de votre vaisseau.";
+  return "Composant utilisé dans les recettes d’assemblage.";
+}
+
 // Un craft est faisable : crédits + ressources + objets + disques de log + munitions.
 function canAffordCraftingRecipe(user, recipe, quantity = 1) {
   if (Number(user?.credits || 0) < Number(recipe?.costs?.credits || 0) * quantity) return false;
@@ -13007,10 +13140,12 @@ function renderCraftingWindow(message = "") {
   const costs = describeCraftingCosts(user, recipe, quantity);
   const outputs = describeCraftingOutputs(recipe, quantity);
   const mainIcon = craftingRecipeMainIcon(recipe);
+  const description = craftingRecipeDescription(recipe);
   ui.craftingDetail.innerHTML = `<div class="assemblyDetailCard rarity-${rarity.id}">`
     + `<div class="assemblyDetailHead">`
     + `<img class="assemblyMainIcon" src="${escapeHtml(mainIcon)}" alt="" loading="lazy" draggable="false" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
-    + `<div class="assemblyTitleRow"><span class="assemblyRarity">${escapeHtml(rarity.name)}</span><h3>${escapeHtml(recipe.name)}</h3></div></div>`
+    + `<div class="assemblyTitleRow"><span class="assemblyRarity">${escapeHtml(rarity.name)}</span><h3>${escapeHtml(recipe.name)}</h3></div>`
+    + `<p class="assemblyDescription" title="${escapeHtml(description)}">${escapeHtml(description)}</p></div>`
     + `<div class="assemblyCols"><div class="assemblySubCard"><h4>Coût ×${formatInteger(quantity)}</h4><ul class="assemblyCosts">${costs}</ul></div>`
     + `<div class="assemblySubCard"><h4>Résultat ×${formatInteger(quantity)}</h4><ul class="assemblyResults">${outputs}</ul></div></div>`
     + `</div>`;
@@ -13063,11 +13198,41 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
 // Toujours au Max : seules les recettes faisables s'affichent.
 // Auto : raffine dès qu'une recette devient disponible.
 // ============================================================
+const refineryEquipmentPrefs = { ores: {}, cursors: {} };
+
+function refineryEquipmentPrefsKey() {
+  // Le compte du moteur est encore vide pendant le montage des fenetres.
+  const id = account.user?.id || netList()[0]?.id || getCurrentUserFull()?.id || "local";
+  return `orbit_refinery_equipment:${id}`;
+}
+
+function saveRefineryEquipmentPrefs() {
+  try {
+    localStorage.setItem(refineryEquipmentPrefsKey(), JSON.stringify({
+      enabled: ui.refineryAutoUpgrades?.checked === true, ...refineryEquipmentPrefs,
+    }));
+  } catch {}
+}
+
+function refineryChargeEquipment({ deferSave = false, applyStats = true } = {}) {
+  if (!ui.refineryAutoUpgrades?.checked || !account.user) return 0;
+  const result = chargeShipUpgradesAutomatically(refineryEquipmentPrefs.ores, {
+    user: account.user, cursors: refineryEquipmentPrefs.cursors, deferSave,
+  });
+  if (!(result.consumed > 0)) return 0;
+  account.user = result.user;
+  refineryEquipmentPrefs.cursors = result.cursors;
+  saveRefineryEquipmentPrefs();
+  if (applyStats) applyCurrentConfigStats(false, null, true);
+  return result.consumed;
+}
+
 function refineryRefineAll() {
   if (!account.user) loadAccountUser();
   if (!account.user) return 0;
   // Passes répétées : une recette peut débloquer la suivante (ex : Xenomit -> Promerium).
   let total = 0;
+  let charged = refineryChargeEquipment({ deferSave: true, applyStats: false });
   for (let pass = 0; pass < 10; pass++) {
     let progress = 0;
     for (const recipe of REFINERY_RECIPES) {
@@ -13075,6 +13240,9 @@ function refineryRefineAll() {
       if (result.ok) {
         account.user = result.user;
         progress += result.gained;
+        // Un minerai choisi pour l'equipement sert d'abord a le charger,
+        // avant qu'une recette suivante ne le transforme en autre chose.
+        charged += refineryChargeEquipment({ deferSave: true, applyStats: false });
       }
     }
     total += progress;
@@ -13082,12 +13250,13 @@ function refineryRefineAll() {
   }
   // Une collecte peut declencher toute une chaine de recettes : persiste
   // une seule fois, sans reconstruire l'equipement entre chaque recette.
-  if (total > 0) saveUser(account.user, { source: "progress" });
+  if (total > 0 || charged > 0) saveUser(account.user, { source: "progress" });
+  if (charged > 0) applyCurrentConfigStats(false, null, true);
   return total;
 }
 
 function maybeRefineryAuto() {
-  if (!ui.refineryAuto?.checked) return 0;
+  if (!ui.refineryAuto?.checked) return refineryChargeEquipment();
   return refineryRefineAll();
 }
 
@@ -13101,7 +13270,8 @@ function renderRefineryWindow(message = "") {
   // Anti-flash : on ne reconstruit que si les stocks ont vraiment changé.
   const sig = ["prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "xenomit", "palladium", "osmium"]
     .map(id => `${id}:${Math.floor(Number(resources[id]) || 0)}`).join(",")
-    + "|upg:" + ["laser", "rocket", "speed", "shield"].map(slot => `${slot}:${upgrades[slot]?.ore || "-"}:${Math.floor(Number(upgrades[slot]?.stock) || 0)}`).join(",");
+    + "|upg:" + ["laser", "rocket", "speed", "shield"].map(slot => `${slot}:${upgrades[slot]?.ore || "-"}:${Math.floor(Number(upgrades[slot]?.stock) || 0)}`).join(",")
+    + "|auto:" + UPGRADE_SLOTS.map(slot => `${slot.id}:${refineryEquipmentPrefs.ores[slot.id] || ""}`).join(",");
   if (ui.refineryWindow && ui.refineryWindow.dataset.stockSig === sig) return;
   if (ui.refineryWindow) ui.refineryWindow.dataset.stockSig = sig;
   const stockIds = ["palladium", "prometium", "endurium", "terbium", "prometid", "duranium", "promerium", "seprom", "xenomit", "osmium"];
@@ -13134,7 +13304,9 @@ function renderRefineryWindow(message = "") {
   }
   // Améliorations d'équipement : cartes avec slot drag & drop.
   if (ui.refineryUpgrades) {
-    ui.refineryUpgrades.innerHTML = UPGRADE_SLOTS.map(slot => {
+    // Garder les select en place, meme quand un tir ou une collecte change
+    // les compteurs : la liste ouverte et le focus ne doivent pas sauter.
+    if (ui.refineryUpgrades.querySelectorAll(".upgCard").length !== UPGRADE_SLOTS.length) ui.refineryUpgrades.innerHTML = UPGRADE_SLOTS.map(slot => {
       const loaded = upgrades[slot.id] || {};
       const stock = Math.max(0, Math.floor(Number(loaded.stock) || 0));
       const bonusPct = Math.round(Number(UPGRADE_ORE_BONUS[String(loaded.ore)]?.[slot.id] || 0) * 100);
@@ -13146,18 +13318,56 @@ function renderRefineryWindow(message = "") {
         + `<img class="upgIcon" src="${escapeHtml(slot.icon)}" alt="${escapeHtml(slot.name)}" loading="lazy" draggable="false">`
         + `<b class="upgName">${escapeHtml(slot.name)}</b>`
         + `<div class="upgSlot${stock > 0 ? " filled" : ""}" data-upgrade-slot="${escapeHtml(slot.id)}">${slotInner}</div>`
-        + `<small class="upgStatus">${escapeHtml(status)}</small></div>`;
+        + `<small class="upgStatus">${escapeHtml(status)}</small>`
+        + `<select class="upgAutoOre" data-upgrade-auto-ore="${escapeHtml(slot.id)}" aria-label="Raffinage auto : ${escapeHtml(slot.name)}">`
+        + `<option value="">Aucun</option>`
+        + UPGRADE_SLOT_ORES[slot.id].map(ore => `<option value="${escapeHtml(ore)}">${escapeHtml(getResourceName(ore))} (+${Math.round(UPGRADE_ORE_BONUS[ore][slot.id] * 100)} %)</option>`).join("")
+        + `</select></div>`;
     }).join("");
+    for (const slot of UPGRADE_SLOTS) {
+      refreshUpgradeSlotDom(slot.id);
+      const select = ui.refineryUpgrades.querySelector(`[data-upgrade-auto-ore="${slot.id}"]`);
+      const value = refineryEquipmentPrefs.ores[slot.id] || "";
+      if (select && select.value !== value) select.value = value;
+    }
   }
 }
 
-// Persistance checkbox auto-raffinage (sinon décochée à chaque refresh).
-try {
+// Le compte est initialise plus bas : restaurer les preferences apres le
+// montage du moteur, avant le premier rendu des cartes.
+queueMicrotask(() => { try {
   if (ui.refineryAuto) ui.refineryAuto.checked = localStorage.getItem("orbit_refinery_auto") === "1";
-} catch {}
+  const stored = JSON.parse(localStorage.getItem(refineryEquipmentPrefsKey()) || "null");
+  if (stored) {
+    if (ui.refineryAutoUpgrades) ui.refineryAutoUpgrades.checked = stored.enabled === true;
+    for (const slot of UPGRADE_SLOTS) {
+      const ore = String(stored.ores?.[slot.id] || "");
+      refineryEquipmentPrefs.ores[slot.id] = UPGRADE_SLOT_ORES[slot.id].includes(ore) ? ore : "";
+    }
+    refineryEquipmentPrefs.cursors = stored.cursors && typeof stored.cursors === "object" ? stored.cursors : {};
+  }
+} catch {} });
+ui.refineryAutoUpgrades?.addEventListener("change", () => {
+  saveRefineryEquipmentPrefs();
+  if (ui.refineryAutoUpgrades.checked) { saveProgressNow(); maybeRefineryAuto(); }
+  renderRefineryWindow();
+  updateResourceHud(ui, player, currentCargo());
+});
+ui.refineryUpgrades?.addEventListener("change", event => {
+  const select = event.target.closest("[data-upgrade-auto-ore]");
+  if (!select) return;
+  const slot = select.dataset.upgradeAutoOre, ore = select.value;
+  if (!UPGRADE_SLOT_ORES[slot] || (ore && !UPGRADE_SLOT_ORES[slot].includes(ore))) return;
+  refineryEquipmentPrefs.ores[slot] = ore;
+  saveRefineryEquipmentPrefs();
+  if (ui.refineryAutoUpgrades?.checked) { saveProgressNow(); maybeRefineryAuto(); }
+  renderRefineryWindow();
+  updateResourceHud(ui, player, currentCargo());
+});
 ui.refineryAuto?.addEventListener("change", () => {
   try { localStorage.setItem("orbit_refinery_auto", ui.refineryAuto?.checked ? "1" : "0"); } catch {}
   if (ui.refineryAuto?.checked) {
+    saveProgressNow();
     refineryRefineAll();
     renderRefineryWindow();
   } else {
@@ -17320,6 +17530,7 @@ function tickAuctionLogic() {
   }
 }
 let refineryLiveT = 0;
+let refineryEquipmentT = 0;
 
 function boosterActiveSignature() {
   const active = account.user?.boosters?.active || {};
@@ -17331,6 +17542,13 @@ function boosterActiveSignature() {
 
 function tickBoosters(dt) {
   if (!started) return;
+  if (ui.refineryAutoUpgrades?.checked) {
+    refineryEquipmentT += dt;
+    if (refineryEquipmentT >= 1) {
+      refineryEquipmentT = 0;
+      maybeRefineryAuto();
+    }
+  }
   // Usure améliorations bouclier/vitesse : 1 minerai / 60 s.
   upgradeDrainT += dt;
   if (upgradeDrainT >= 60) {
@@ -18282,8 +18500,8 @@ function restorePlayerStockFromUser(u) {
   launcherPhase = "reload";
   launcherPhaseT = 0;
   // Restaure la munition du dock rapide (sinon retour x1).
-  // setAmmo valide le stock et marque dirty uniquement si changement.
-  setAmmo(String(u.ammoActive ?? u.ammo?.active ?? player.ammo.active ?? "x1").toLowerCase());
+  // Lecture du compte : aucune sauvegarde avant la restauration de position.
+  setAmmo(String(u.ammoActive ?? u.ammo?.active ?? player.ammo.active ?? "x1").toLowerCase(), { persist: false });
   updateAmmoUI();
   return true;
 }
@@ -18311,22 +18529,24 @@ function mirrorConsumedStock(field, id, value) {
   } catch {}
 }
 
-function setAmmo(key) {
+function setAmmo(key, { persist = true } = {}) {
   if (!AMMO[key]) return;
   if (key !== "x1" && ammoCount(key) <= 0) key = "x1";
   if (player.ammo.active !== key) player.ammo.active = key;
-  // Persiste la sélection du dock rapide (sinon refresh => retour x1).
-  markProgressDirty();
-  // Écriture immédiate de la sélection dans le compte : sans ça, un sync
-  // (boutique, craft, enchères, net-adopted...) relit l'ancien ammoActive
-  // persisté et réécrit l'ancienne munition par-dessus (ex. x4 → retour x3).
-  // updateCurrentUserProgress ne touche qu'ammoActive et publie en
-  // source "progress" (ignorée par le listener orbit:user-updated) : pas de
-  // boucle de resync.
-  try {
-    const out = updateCurrentUserProgress({ ammoActive: key });
-    if (out?.ok && out.user && account) account.user = out.user;
-  } catch {}
+  if (persist) {
+    // Persiste les choix du joueur, jamais une simple restauration du compte.
+    markProgressDirty();
+    // Écriture immédiate de la sélection dans le compte : sans ça, un sync
+    // (boutique, craft, enchères, net-adopted...) relit l'ancien ammoActive
+    // persisté et réécrit l'ancienne munition par-dessus (ex. x4 → retour x3).
+    // updateCurrentUserProgress ne touche qu'ammoActive et publie en
+    // source "progress" (ignorée par le listener orbit:user-updated) : pas de
+    // boucle de resync.
+    try {
+      const out = updateCurrentUserProgress({ ammoActive: key });
+      if (out?.ok && out.user && account) account.user = out.user;
+    } catch {}
+  }
   updateAmmoUI();
 }
 
@@ -25942,6 +26162,8 @@ function processDeathsMeasured() {
       }
     } else if (e.hp > 0) continue;
 
+    botQueueCloakAfterKill(e);
+
     // Multi : kill partage — libere le lock (pas de report sur le respawn,
     // donc pas de point rouge persistant au loin sur la minimap).
     if (e._netUid) {
@@ -29048,7 +29270,6 @@ for (let i = collectables.length - 1; i >= 0; i--) {
           camp.t = 1;
           continue;
         }
-        try { markAlive(universe, curMap, uid, worldClock.now()); } catch {}
       }
       const scatter = !isFixedCamp && (!slot || slot.scattered === false);
       let x = 0, y = 0;
@@ -29088,6 +29309,16 @@ for (let i = collectables.length - 1; i >= 0; i--) {
   }
 }
 
+      if (camp.spawnMinDistance > 0) {
+        const position = pickSpacedSpawnPosition({ area: camp.spawnArea, walls: zoneWalls || [],
+          minDistance: camp.spawnMinDistance, preferred: { x, y },
+          occupied: enemies.filter(enemy => enemy && enemy.hp > 0 && enemy.type === camp.type) });
+        if (!position) { camp.t = 1; continue; }
+        x = position.x; y = position.y;
+      }
+      if (slot?.alive === false) {
+        try { markAlive(universe, curMap, uid, worldClock.now()); } catch {}
+      }
       const e = makeEnemy(camp.type, x, y);
       if (e) {
         e.homeX = null;
@@ -29223,6 +29454,7 @@ collectableFarTickT = 0;
             y: Number(s.homeY),
             fixed: tuning.fixed === true,
             spawnArea: tuning.spawnArea || null,
+            spawnMinDistance: tuning.spawnMinDistance || 0,
             radius: tuning.radius ?? 350,
             respawn: tuning.respawn ?? 1.5,
             maxAlive: tuning.maxAlive ?? 1,
@@ -37935,6 +38167,27 @@ const StarJump = { selected: null, channel: null, lastJumpAt: 0, built: false, r
   hoverMap: null, hoverPortal: null, pinnedRoute: null, connectionsFor: null, artLoading: null,
   itinerary: null, itineraryFor: null, routeVia: null };
 
+window.addEventListener('orbit:window-restored', event => {
+  if (event.detail?.id === 'starMapWindow') {
+    const flow = ui.starMapEdges?.querySelector('.starMapRouteFlow');
+    flow?.getAnimations().forEach(animation => animation.cancel());
+    flow?.remove();
+    renderStarMap();
+  }
+});
+
+function calculateStarMapRoutes(maps) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./STARMAP_LAYOUT_WORKER.js', import.meta.url), { type: 'module' });
+    worker.onmessage = ({ data }) => {
+      worker.terminate();
+      if (data.error) reject(new Error(data.error)); else resolve(data.layout);
+    };
+    worker.onerror = event => { worker.terminate(); reject(new Error(event.message || 'Routage indisponible')); };
+    worker.postMessage({ nodes: STARMAP_NODES, unit: STARMAP_UNIT, size: STARMAP_NODE, art: STARMAP_ART, maps });
+  }).catch(() => createStarMapLayout(STARMAP_NODES, STARMAP_UNIT, STARMAP_NODE, STARMAP_ART, maps));
+}
+
 function starJumpCurrentMap() {
   try { return String(getCurrentZoneMapId() || window.__CURRENT_MAP_ID__ || "1-1").toLowerCase(); }
   catch { return "1-1"; }
@@ -38017,6 +38270,62 @@ function centerStarMapNode(id, onlyWhenHidden = false) {
   viewport.scrollTop = position.y * StarJump.viewScale + (parseFloat(ui.starMapTree.style.top) || 0) - viewport.clientHeight / 2;
 }
 
+function updateStarMapRouteAnimation() {
+  const svg = ui.starMapEdges;
+  if (!svg) return;
+  const previous = svg.querySelector(".starMapRouteFlow");
+  const steps = StarJump.routeVisible ? StarJump.itinerary?.steps || [] : [];
+  if (!steps.length) {
+    previous?.getAnimations().forEach(animation => animation.cancel());
+    previous?.remove();
+    return;
+  }
+  const signature = JSON.stringify(steps.map(step => [step.key, step.from]));
+  if (previous?.dataset.routeSignature === signature) return;
+  previous?.getAnimations().forEach(animation => animation.cancel());
+  previous?.remove();
+  // Un changement de carte peut recalculer le trajet fenetre reduite.
+  // Ne lancer l'animation qu'une fois le schema affiche.
+  if (!svg.getClientRects().length || ui.starMapWindow?.classList.contains('gameWinClosing')
+      || ui.starMapWindow?.classList.contains('gameWinMinimized')) return;
+  const routes = new Map((StarJump.layout?.routes || []).map(route => [route.key, route]));
+  const journey = [];
+  for (const step of steps) {
+    const route = routes.get(step.key);
+    if (!route?.points.length) return;
+    const points = route.a === step.from ? route.points : [...route.points].reverse();
+    // Un chemin unique, y compris entre le portail d'arrivee et celui de
+    // depart de chaque carte : le repere ne saute pas d'un trait a l'autre.
+    for (const point of points) {
+      const last = journey.at(-1);
+      if (!last || last.x !== point.x || last.y !== point.y) journey.push(point);
+    }
+  }
+  const distances = [0];
+  for (let i = 1; i < journey.length; i++) distances.push(distances[i - 1]
+    + Math.hypot(journey[i].x - journey[i - 1].x, journey[i].y - journey[i - 1].y));
+  const length = distances.at(-1);
+  if (!(length > 0)) return;
+  const NS = "http://www.w3.org/2000/svg";
+  const flow = document.createElementNS(NS, "g");
+  flow.setAttribute("class", "starMapRouteFlow");
+  flow.dataset.routeSignature = signature;
+  flow.dataset.routePath = journey.map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ");
+  flow.setAttribute("transform", `translate(${journey[0].x},${journey[0].y})`);
+  for (const [radius, className] of [[14, "starMapRouteGlow"], [6, "starMapRouteLight"]]) {
+    const dot = document.createElementNS(NS, "circle");
+    dot.setAttribute("r", String(radius)); dot.setAttribute("class", className);
+    flow.appendChild(dot);
+  }
+  svg.appendChild(flow);
+  // Une seule boucle pour le trajet entier. Les offsets suivent les distances
+  // pour garder une vitesse constante, meme entre deux portails d'une carte.
+  flow.animate(journey.map((point, i) => ({
+    transform: `translate(${point.x}px, ${point.y}px)`, offset: distances[i] / length,
+  })), { duration: Math.max(2, Math.min(7, length / 1300)) * 1000,
+    iterations: Infinity, easing: "linear" });
+}
+
 function highlightStarMapLinks() {
   const routes = StarJump.layout?.routes || [], active = new Set();
   const itinerary = new Set((StarJump.itinerary?.steps || []).map(s => s.key));
@@ -38037,6 +38346,7 @@ function highlightStarMapLinks() {
       && ((r.a === portal.dataset.mapId && r.source.id === portal.dataset.portalId)
         || (r.b === portal.dataset.mapId && r.destination.id === portal.dataset.portalId))));
   }
+  updateStarMapRouteAnimation();
 }
 
 function refreshStarMapItinerary(cur, sel) {
@@ -38083,7 +38393,7 @@ function refreshStarMapItinerary(cur, sel) {
 }
 
 // Fond façon minimap par nœud : WORLD + portails (+ murs si la map en a).
-// Chargé en tâche de fond à la première ouverture, mis en cache session.
+// Chargé en tâche de fond au démarrage, mis en cache session.
 const starMapArt = new Map();
 function paintStarMapNode(n) {
   try {
@@ -38141,10 +38451,10 @@ function ensureStarMapArt() {
         starMapArt.set(key, { failed: true });
       }
       try { paintStarMapNode(n); } catch {}
-  })).then(() => {
+  })).then(async () => {
     const maps = new Map([...starMapArt].filter(([, data]) => data && !data.failed)
       .map(([id, data]) => [starMapById.get(id).id, data]));
-    StarJump.layout = createStarMapLayout(STARMAP_NODES, STARMAP_UNIT, STARMAP_NODE, STARMAP_ART, maps);
+    StarJump.layout = await calculateStarMapRoutes(maps);
     drawStarMapRoutes();
     StarJump.connectionsFor = null;
     refreshStarMap();
@@ -38177,15 +38487,13 @@ function drawStarMapRoutes() {
     for (const p of art.portals) {
       const related = routes.filter(r => (r.a === n.id && r.source.id === p.id) || (r.b === n.id && r.destination.id === p.id));
       if (!related.length) continue;
-      const arrival = p.hidden || p.arrival;
-      const el = document.createElement(arrival ? "span" : "button");
-      el.className = arrival ? "starMapArrival" : `starMapPortal${p.shortcutCreditCost ? " shortcut" : ""}${n.id === "low" || String(p.toMap) === "low" || String(p.toMap) === "qz" ? " special" : ""}`;
+      if (p.hidden || p.arrival) continue;
+      const el = document.createElement("button");
+      el.className = `starMapPortal${p.shortcutCreditCost ? " shortcut" : ""}${n.id === "low" || String(p.toMap) === "low" || String(p.toMap) === "qz" ? " special" : ""}`;
       el.dataset.mapId = n.id; el.dataset.portalId = p.id;
       el.style.left = `${STARMAP_ART.x - 1 + p.x / art.w * STARMAP_ART.w}px`;
       el.style.top = `${STARMAP_ART.y - 1 + p.y / art.h * STARMAP_ART.h}px`;
-      if (arrival) {
-        el.title = n.id === "qz" ? "Point d’arrivée en QZ" : "Point d’arrivée — sens unique";
-      } else {
+      {
         el.type = "button";
         let targetId = p.toMap;
         if (p.factionReturn) {
@@ -38221,7 +38529,9 @@ function showStarMapInfo() {
   const place = !info.classList.contains('floating');
   manager.restore('starMapInfoWindow');
   if (place) {
-    const bounds = ui.starMapWindow.getBoundingClientRect(), card = info.getBoundingClientRect();
+    // Mesurer la taille finale, independamment du scale de l'animation.
+    const bounds = { right: ui.starMapWindow.offsetLeft + ui.starMapWindow.offsetWidth, top: ui.starMapWindow.offsetTop };
+    const card = { width: info.offsetWidth, height: info.offsetHeight };
     info.style.left = `${Math.max(16, Math.min(window.innerWidth - card.width - 16, bounds.right - card.width - 18))}px`;
     info.style.top = `${Math.max(16, Math.min(window.innerHeight - card.height - 16, bounds.top + 48))}px`;
   }
@@ -38385,13 +38695,20 @@ function refreshStarMap() {
       el.classList.toggle("selected", StarJump.routeVisible && !!sel && key === String(sel.id).toLowerCase());
       const nd = starMapById.get(key);
       el.classList.toggle("disabled", !!nd && nd.jumpable !== true);
-      let dot = el.querySelector(":scope > .dot");
-      if (key === cur && !dot) {
-        dot = document.createElement("span");
+      let marker = el.querySelector(":scope > .starMapCurrentMarker");
+      if (key === cur && !marker) {
+        marker = document.createElement("span");
+        marker.className = "starMapCurrentMarker";
+        const dot = document.createElement("span");
         dot.className = "dot";
-        el.appendChild(dot);
-      } else if (key !== cur && dot) {
-        dot.remove();
+        dot.setAttribute("aria-hidden", "true");
+        const label = document.createElement("span");
+        label.className = "starMapCurrentLabel";
+        label.textContent = "Carte actuelle";
+        marker.append(dot, label);
+        el.appendChild(marker);
+      } else if (key !== cur && marker) {
+        marker.remove();
       }
     } catch {}
   }
@@ -39022,9 +39339,16 @@ window.addEventListener("storage", (e) => {
 // Volontairement silencieux : aucun message affiché aux utilisateurs.
 // Préserver les stocks et crédits encore dans la simulation avant qu'un
 // snapshot ou un canon HTTP ne lise le compte (la sauvegarde de jeu est différée).
-const saveLiveProgressBeforeNetwork = () => {
+function saveLiveProgressBeforeNetwork(event) {
+  if (event?.detail?.scope === "credits" && started && netActive()) {
+    const live = netList()[0];
+    if (live && live === account.user) {
+      live.credits = Math.max(0, Math.floor(Number(player.credits) || 0));
+      return;
+    }
+  }
   if (started && account.user && account.dirty) saveProgressNow();
-};
+}
 window.addEventListener("orbit:net-before-save", saveLiveProgressBeforeNetwork);
 window.addEventListener("orbit:net-before-adopt", saveLiveProgressBeforeNetwork);
 window.addEventListener("orbit:account-before-mutation", saveLiveProgressBeforeNetwork);
@@ -39199,6 +39523,9 @@ if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[currentGateMapId] && cur.g
 const pack = getShipPackByIdData(cur.ship) || SHIP_PACKS[0];
 ACTIVE_SHIP = pack;
 document.documentElement.classList.add("orbitHudReady");
+
+// Preparer le schema ferme. A l'ouverture, seule sa mise a l'echelle reste a faire.
+renderStarMap();
 
 prepareGameAssets().catch((error) => {
   console.error("Erreur de préparation:", error);

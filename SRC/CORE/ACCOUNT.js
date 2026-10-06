@@ -15,7 +15,7 @@ import { compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit 
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
-import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
+import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, planAutoUpgradeCharges, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
 import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
 import {
   AUCTION_ACTIVE_LOTS,
@@ -107,9 +107,9 @@ function readUsers() {
   return list;
 }
 
-function writeUsers(users) {
+function writeUsers(users, options = {}) {
   // Multi : memoire + push serveur (memes garde-fous que le legacy).
-  try { if (netActive()) { netStore(Array.isArray(users) ? users : []); return; } } catch {}
+  try { if (netActive()) { netStore(Array.isArray(users) ? users : [], options); return; } } catch {}
   const list = Array.isArray(users) ? users : [];
   // Borne l'historique de roulette avant sérialisation : c'est ce qui
   // faisait gonfler orbit_users à 1.6MB -> 600ms de freeze par save.
@@ -1143,16 +1143,19 @@ export function saveUser(user, options = {}) {  user.schemaVersion = STORAGE_SCH
   user.revision = Math.max(0, Math.floor(Number(user.revision) || 0)) + 1;
   const users = readUsers();
   const idx = users.findIndex((x) => x?.id === user.id);
-  const previousPetMax = Number.isFinite(Number(options.previousPetShieldMax))
-    ? Math.max(0, Number(options.previousPetShieldMax))
-    : petShieldCapacity(users[idx]);
-  const nextPetMax = petShieldCapacity(user);
-  if (user.pet?.owned === true && previousPetMax !== nextPetMax) {
-    user.pet.sh = resizeShield({ sh: user.pet.sh ?? previousPetMax, shMax: previousPetMax }, nextPetMax).sh;
+  const pilotDisksOnly = options.source === "pilot-disks";
+  if (!pilotDisksOnly) {
+    const previousPetMax = Number.isFinite(Number(options.previousPetShieldMax))
+      ? Math.max(0, Number(options.previousPetShieldMax))
+      : petShieldCapacity(users[idx]);
+    const nextPetMax = petShieldCapacity(user);
+    if (user.pet?.owned === true && previousPetMax !== nextPetMax) {
+      user.pet.sh = resizeShield({ sh: user.pet.sh ?? previousPetMax, shMax: previousPetMax }, nextPetMax).sh;
+    }
   }
   if (idx >= 0) users[idx] = user;
   else users.push(user);
-  writeUsers(users);
+  writeUsers(users, { pilotDisksOnly });
   if (options.notify !== false && typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
     window.dispatchEvent(new CustomEvent("orbit:user-updated", {
       detail: { userId: user.id, revision: user.revision, source: options.source || "account" },
@@ -1452,11 +1455,11 @@ export function getCurrentUserFull() {
 }
 
 let preparingMutation = false;
-export function prepareCurrentUserMutation() {
+export function prepareCurrentUserMutation(options = {}) {
   if (preparingMutation || typeof window === "undefined" || typeof CustomEvent === "undefined") return;
   preparingMutation = true;
   try {
-    window.dispatchEvent(new CustomEvent("orbit:account-before-mutation"));
+    window.dispatchEvent(new CustomEvent("orbit:account-before-mutation", { detail: options }));
   } finally {
     preparingMutation = false;
   }
@@ -3579,8 +3582,8 @@ export function exchangeCurrentUserPalladiumForEnergy() {
 }
 
 // Charge des minerais sur un équipement (1 minerai = 10 tirs ou 10 minutes).
-export function chargeShipUpgrade(slotId, oreId, oreAmount = 1) {
-  const u = getCurrentUserForMutation();
+export function chargeShipUpgrade(slotId, oreId, oreAmount = 1, options = {}) {
+  const u = options.user || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const slot = String(slotId || "");
   const ore = String(oreId || "");
@@ -3597,13 +3600,33 @@ export function chargeShipUpgrade(slotId, oreId, oreAmount = 1) {
   u.upgrades[slot] = String(current.ore) === ore
     ? { ore, stock: Math.max(0, Math.floor(Number(current.stock) || 0)) + amount * 10 }
     : { ore, stock: amount * 10 };
-  ensureUserShape(u);
-  saveUser(u);
+  if (!options.deferSave) {
+    ensureUserShape(u);
+    saveUser(u);
+  }
   if (netActive()) {
     noteNetConsumption("ores", ore, amount);
     noteNetUpgradeCharge(slot, ore, u.upgrades[slot].stock);
   }
   return { ok: true, user: u, slot, ore, stock: u.upgrades[slot].stock };
+}
+
+// Une seule preparation/sauvegarde pour tous les slots, meme avec le meme
+// minerai : aucun slot ne vide le stock avant le calcul des autres parts.
+export function chargeShipUpgradesAutomatically(selections, options = {}) {
+  const u = options.user || getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté.", consumed: 0 };
+  const plan = planAutoUpgradeCharges(u.inventory?.resources, selections, options.cursors);
+  let consumed = 0;
+  for (const { slot, ore, amount } of plan.charges) {
+    const result = chargeShipUpgrade(slot, ore, amount, { user: u, deferSave: true });
+    if (result.ok) consumed += amount;
+  }
+  if (consumed > 0 && !options.deferSave) {
+    ensureUserShape(u);
+    saveUser(u, { source: "progress" });
+  }
+  return { ok: true, user: u, consumed, cursors: plan.cursors };
 }
 
 // ---------------------------
@@ -4059,7 +4082,7 @@ export function pilotCargoCapacity(u) {
 
 // Achat d'un pack de disques de log (boutique pilote).
 export function buyLogDiskPack() {
-  prepareCurrentUserMutation();
+  prepareCurrentUserMutation(netActive() ? { scope: "credits" } : {});
   // Le compte réseau est déjà chargé : pas de migration des hangars,
   // inventaire et équipements pour un achat qui ne touche que deux champs.
   const u = netActive() ? netList()[0] || null : getCurrentUserFull();

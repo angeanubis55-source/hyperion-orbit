@@ -24,6 +24,37 @@ function engineFunction(name, source = engine) {
   return source.slice(start, end + 2);
 }
 
+test('restaurer les stocks ne sauvegarde pas la position provisoire du demarrage', () => {
+  const user = { credits: 12345, ammoActive: 'x4', ammo: { active: 'x4', x4: 20 }, rockets: { r310: 7 },
+    hangars: [{ id: 'h', lastMap: '1-5', lastPos: { x: 6100, y: 4100 } }] };
+  let writes = 0, dirty = 0;
+  const ctx = vm.createContext({ player: { x: 5500, y: 3500, ammo: { active: 'x1' } }, account: { user },
+    AMMO: { x1: {}, x4: {} }, ROCKET_IDS: ['r310', 'eco10'], ROCKET_TYPES: { r310: {}, eco10: {} },
+    markProgressDirty: () => dirty++, updateAmmoUI() {},
+    updateCurrentUserProgress() { writes++; user.hangars[0].lastPos = { x: ctx.player.x, y: ctx.player.y }; return { ok: true, user }; },
+  });
+  vm.runInContext(['ammoCount', 'setAmmo', 'restorePlayerStockFromUser'].map(name => engineFunction(name)).join('\n'), ctx);
+  ctx.restorePlayerStockFromUser(user);
+  assert.equal(ctx.player.ammo.active, 'x4'); assert.equal(ctx.player.ammo.x4, 20);
+  assert.equal(ctx.player.credits, 12345); assert.equal(ctx.player.rockets.r310, 7);
+  assert.equal(writes, 0); assert.equal(dirty, 0);
+  assert.deepEqual(user.hangars[0].lastPos, { x: 6100, y: 4100 });
+  user.ammo.x4 = 0;
+  ctx.restorePlayerStockFromUser(user);
+  assert.equal(ctx.player.ammo.active, 'x1', 'un stock vide conserve le repli sur X1');
+  assert.equal(writes, 0); assert.equal(dirty, 0);
+});
+
+test('le choix manuel de munition reste sauvegarde immediatement', () => {
+  const patches = []; let dirty = 0;
+  const ctx = vm.createContext({ player: { ammo: { active: 'x1', x4: 20 } }, account: { user: {} }, AMMO: { x1: {}, x4: {} },
+    markProgressDirty: () => dirty++, updateAmmoUI() {}, updateCurrentUserProgress: patch => { patches.push(patch.ammoActive); },
+  });
+  vm.runInContext(['ammoCount', 'setAmmo'].map(name => engineFunction(name)).join('\n'), ctx);
+  ctx.setAmmo('x4'); ctx.setAmmo('x1');
+  assert.equal(ctx.player.ammo.active, 'x1'); assert.deepEqual(patches, ['x4', 'x1']); assert.equal(dirty, 2);
+});
+
 test("Skylab : la déconnexion stabilise le stock et une coupure rattrape toute la production différée", () => {
   const source = readFileSync(new URL("../UI/UI_SKYLAB.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const user = { skylab: createDefaultSkylabState(1000) };
@@ -240,12 +271,12 @@ test("raffinage auto : chaine complete, une sauvegarde, debits reseau conserves"
   }
   let saves = 0, reads = 0;
   const debits = {};
-  const context = vm.createContext({ account: { user }, REFINERY_RECIPES, getRefineryRecipe, refineOreOutput,
+  const context = vm.createContext({ account: { user }, ui: { refineryAutoUpgrades: { checked: false } }, REFINERY_RECIPES, getRefineryRecipe, refineOreOutput,
     netActive: () => true, noteNetConsumption: (field, id, count) => { assert.equal(field, "ores"); debits[id] = (debits[id] || 0) + count; },
     getCurrentUserFull: () => { reads++; return user; }, ensureUserShape: u => u,
     saveUser: (u, options) => { assert.equal(u, user); assert.equal(options.source, "progress"); saves++; },
   });
-  vm.runInContext(engineFunction("refineCurrentUserOre", source) + "\n" + engineFunction("refineryRefineAll"), context);
+  vm.runInContext(engineFunction("refineCurrentUserOre", source) + "\n" + engineFunction("refineryChargeEquipment") + "\n" + engineFunction("refineryRefineAll"), context);
   assert.equal(context.refineryRefineAll(), expectedGain);
   assert.deepEqual(user, expected);
   assert.deepEqual(debits, expectedDebits);

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { getCurrentUserFull, buyItem, sellCurrentUserOre, setPetMode, updateCurrentUserProgress,
-  loadSkylabFromShip } from "../SRC/CORE/ACCOUNT.js";
+  loadSkylabFromShip, chargeShipUpgradesAutomatically } from "../SRC/CORE/ACCOUNT.js";
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
 import { ORE_SELL_PRICES } from "../SRC/DATA/RESOURCES.js";
 
@@ -112,6 +112,23 @@ test("transport Skylab : n'efface pas les ressources encore présentes dans le m
 test("les simples lectures du compte ne déclenchent pas de sauvegarde de combat", t => {
   const { flushes } = session(t);
   getCurrentUserFull(); getCurrentUserFull(); assert.equal(flushes(), 0);
+});
+
+test("le chargement automatique partage le minerai sans perdre les gains et consommations en cours", t => {
+  const { ctx, original, flushes } = session(t);
+  ctx.account.user.inventory.resources.seprom = 501;
+  const result = chargeShipUpgradesAutomatically({ laser: 'seprom', rocket: 'seprom', shield: 'seprom', speed: 'seprom' });
+  assert.equal(result.consumed, 501);
+  assert.equal(flushes(), 1, 'une seule preparation pour les trois slots compatibles');
+  for (const slot of ['laser', 'rocket', 'shield']) assert.equal(result.user.upgrades[slot].stock, 1670);
+  assert.equal(result.user.upgrades.speed?.stock || 0, 0);
+  assert.equal(result.user.inventory.resources.seprom || 0, 0);
+  assert.equal(result.user.credits, original.credits + 12500);
+  assert.equal(result.user.ammo.x4, 80); assert.equal(result.user.rockets.plt2026, 18);
+  ctx.saveProgressNowMeasured();
+  const saved = getCurrentUserFull();
+  assert.equal(saved.upgrades.laser.stock, 1670);
+  assert.equal(saved.inventory.resources.seprom || 0, 0);
 });
 
 test("consommer l'essence PET ne recharge pas un ancien compte et ne retire pas les soins", t => {
