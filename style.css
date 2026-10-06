@@ -3928,6 +3928,8 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 }
 .ggHistory {
   min-width:0;
+  height:420px;
+  min-height:420px;
   max-height:420px;
   overflow-y:auto;
   overflow-x:hidden;
@@ -4007,7 +4009,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 .questSeriesInfo b {
   color:#ffd071;
 }
-@media (max-width:900px){.galaxyGatePanel{min-width:calc(100vw - 24px)}.ggWorkspace{grid-template-columns:1fr}.ggGateNav .ggTabs{grid-template-columns:repeat(3,1fr)}.ggHistory{max-height:180px}.ggCore{grid-template-columns:1fr 1fr}.ggSpinControls{grid-template-columns:1fr 1fr}.ggSpinControls label{grid-column:1}.ggSpinControls select{grid-column:2}.ggSpinControls #ggSpinBtn{grid-column:1/-1}}
+@media (max-width:900px){.galaxyGatePanel{min-width:calc(100vw - 24px)}.ggWorkspace{grid-template-columns:1fr}.ggGateNav .ggTabs{grid-template-columns:repeat(3,1fr)}.ggHistory{height:180px;min-height:180px;max-height:180px}.ggCore{grid-template-columns:1fr 1fr}.ggSpinControls{grid-template-columns:1fr 1fr}.ggSpinControls label{grid-column:1}.ggSpinControls select{grid-column:2}.ggSpinControls #ggSpinBtn{grid-column:1/-1}}
 .orbitNotifications {
   position:fixed;
   z-index:12000;

@@ -400,7 +400,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
   },
 
   // Box lâchée par l'Invoke XVI à sa mort (jamais en ambient).
-  // Contenu : Rinusk 55-80 + Traceurs 30-40.
+  // Contenu : Rinusk 55-80 + Traceurs 30-40 + Fragments éternels 30-50.
   Sun_Box: {
     name: "Sun Box",
     maps: "*",
@@ -424,7 +424,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
       randomStart: true,
       glow: false,
     },
-    rewards: { resources: { rinusk: [55, 80], blacklight_trace: [30, 40] } },
+    rewards: { resources: { rinusk: [55, 80], blacklight_trace: [30, 40], eternal_fragment: [30, 50] } },
   },
 
   // Box lâchée par le Mindfire Behemoth à sa mort (jamais en ambient).
@@ -432,6 +432,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
   // EXP 8.5-12.5M + Honneur 52.5-72.5k + Crédits 16.5-22.5M + Uridium 5400-5900.
   // Pas d'uridium en jeu : converti en crédits x10000, donc crédits
   // 70 500 000 - 81 500 000 (16.5M+54M -> 22.5M+59M).
+  // Custom : Rinusk 1500-2500 + Fragments éternels 250-350.
   Mindfire_Sun_Box: {
     name: "Sun Box",
     maps: "*",
@@ -459,7 +460,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
       credits: [70500000, 81500000],
       exp: [8500000, 12500000],
       honor: [52500, 72500],
-      resources: { rinusk: [100, 120], blacklight_trace: [120, 140], mindfire_cerebrum: [30, 45] },
+      resources: { rinusk: [1500, 2500], blacklight_trace: [120, 140], mindfire_cerebrum: [30, 45], eternal_fragment: [250, 350] },
     },
   },
 });

@@ -159,7 +159,7 @@ export class ZoneNpcSim {
         }
         if (typeof spawns?.getZonePortals === "function") {
           for (const portal of spawns.getZonePortals(world) || []) {
-            if (!portal) continue;
+            if (!portal || portal.hidden === true) continue;
             const destination = String(portal.toMap || "").trim().toLowerCase();
             // Les portails de Galaxy Gates ne fournissent jamais de zone sure.
             if (["alpha", "beta", "gamma"].includes(destination)) continue;

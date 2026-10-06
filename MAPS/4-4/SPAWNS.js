@@ -126,6 +126,18 @@ export function getZonePortals(WORLD) {
       toMap: "3-5",
       toPortal: "p_35_to_4-4",
     },
+    {
+      // Aller simple depuis 5-2 : point d'arrivée uniquement (près du centre).
+      // hidden = ni rendu, ni clic, ni touche J, ni retour, ni safe : juste
+      // la résolution du spawn d'arrivée + la transition serveur.
+      id: "p_4-4_to_5-2",
+      x: 11500,
+      y: 6750,
+      r: 520,
+      toMap: "5-2",
+      toPortal: "p_52_to_44",
+      hidden: true,
+    },
 
 
 

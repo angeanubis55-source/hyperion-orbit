@@ -57,10 +57,20 @@ function drawMinimapStatic(cctx, cw, ch, world, portals, isZoneMap, safeZone, re
       cctx.beginPath();
       cctx.arc(x, y, radius, 0, Math.PI * 2);
       cctx.stroke();
-      cctx.fillStyle = colors.fill;
-      cctx.beginPath();
-      cctx.arc(x, y, 2.5, 0, Math.PI * 2);
-      cctx.fill();
+      // Destination au-dessus du portail (ex : 4-4, LOW, ALPHA).
+      const dest = String(portal?.toMap || "").trim().toUpperCase();
+      if (dest) {
+        cctx.save();
+        cctx.font = "900 9px ui-sans-serif, system-ui";
+        cctx.textAlign = "center";
+        cctx.textBaseline = "bottom";
+        cctx.lineWidth = 3;
+        cctx.strokeStyle = "rgba(3,12,20,0.9)";
+        cctx.strokeText(dest, x, y - radius - 2);
+        cctx.fillStyle = "rgba(220,245,255,0.95)";
+        cctx.fillText(dest, x, y - radius - 2);
+        cctx.restore();
+      }
     }
     cctx.restore();
   }

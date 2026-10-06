@@ -15633,7 +15633,10 @@ const gateReturnPortal = createGatePortalState();
 
 function getInteractivePortals() {
   const list = isZoneMap
-    ? (zonePortals || []).filter(isZonePortalAvailable)
+    // hidden = marqueur d'arrivée d'un aller simple (ex : 4-4 depuis 5-2) :
+    // ni rendu, ni clic, ni touche J, ni retour. Le spawn d'arrivée le
+    // résout directement via zonePortals (pas via cette liste).
+    ? (zonePortals || []).filter((ptl) => ptl?.hidden !== true && isZonePortalAvailable(ptl))
     : (betweenWaves ? [portal, gateReturnPortal].filter(ptl => ptl.active) : []);
   // Raid Low : vague en cours = portail retour masqué (pas de sortie).
   if (isLowRaidRunning()) return list.filter(ptl => ptl?.factionReturn !== true);
@@ -23020,12 +23023,26 @@ function pushAmbientCollectableInstance(slot, mapId) {
   ensureCollectableLoaded(slot.type);
   const sp = cfg.sprite || {};
   const frames = Math.max(1, Number(sp.frames || 1));
+  let bx = clamp(Number(slot.x) || 0, 80, WORLD.w - 80);
+  let by = clamp(Number(slot.y) || 0, 80, WORLD.h - 80);
+  // Slots persistés avant l'ajout des murs (ex : 5-2) : afficher au bord du
+  // mur, jamais dedans, sinon la box est non récoltable.
+  const boxR = Number(cfg.r ?? cfg.radius ?? 32) + 8;
+  for (let pass = 0; pass < 2; pass++) {
+    if (!Array.isArray(zoneWalls) || !zoneWalls.length) break;
+    for (const w of zoneWalls) {
+      const push = circleRectResolve(bx, by, boxR, w);
+      if (!push) continue;
+      bx += push.x;
+      by += push.y;
+    }
+  }
   collectables.push({
     id: newId(),
     type: slot.type,
     map: mapId,
-    x: clamp(Number(slot.x) || 0, 80, WORLD.w - 80),
-    y: clamp(Number(slot.y) || 0, 80, WORLD.h - 80),
+    x: bx,
+    y: by,
     r: Number(cfg.r ?? cfg.radius ?? 32),
     pickupRadius: Number(cfg.pickupRadius ?? cfg.r ?? cfg.radius ?? 42),
     armed: false,
@@ -23037,8 +23054,13 @@ function pushAmbientCollectableInstance(slot, mapId) {
   indexCollectableAdded(collectables[collectables.length - 1]);
 }
 
-// Position d'un nouveau slot : aléatoire, espacée des slots existants.
+// Position d'un nouveau slot : aléatoire, espacée des slots existants,
+// jamais dans un mur (bonus / palladium récoltables partout).
 function pickAmbientSlotPosition() {
+  for (let t = 0; t < 12; t++) {
+    const pos = spawnRandomOnMap();
+    if (!spawnPosInWall(pos.x, pos.y, 40)) return pos;
+  }
   return spawnRandomOnMap();
 }
 
@@ -23155,12 +23177,25 @@ function spawnCollectableAtRestored(drop, elapsedSec) {
   ensureCollectableLoaded(drop.type);
   const sp = cfg.sprite || {};
   const frames = Math.max(1, Number(sp.frames || 1));
+  let dx = clamp(Number(drop.x) || 0, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
+  let dy = clamp(Number(drop.y) || 0, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
+  // Drop persisté avant l'ajout des murs : restaurer au bord, jamais dedans.
+  const dropR = Number(cfg.r ?? cfg.radius ?? 32) + 8;
+  for (let pass = 0; pass < 2; pass++) {
+    if (!Array.isArray(zoneWalls) || !zoneWalls.length) break;
+    for (const w of zoneWalls) {
+      const push = circleRectResolve(dx, dy, dropR, w);
+      if (!push) continue;
+      dx += push.x;
+      dy += push.y;
+    }
+  }
   collectables.push({
     id: newId(),
     type: drop.type,
     map: currentMapId(),
-    x: clamp(Number(drop.x) || 0, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN),
-    y: clamp(Number(drop.y) || 0, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN),
+    x: dx,
+    y: dy,
     r: Number(cfg.r ?? cfg.radius ?? 32),
     pickupRadius: Number(cfg.pickupRadius ?? cfg.r ?? cfg.radius ?? 42),
     armed: false,
@@ -29655,6 +29690,8 @@ function getNearestPortalTo(x, y, { excludeAnnex = false } = {}) {
   let best = null;
   let bestD2 = Infinity;
   for (const p of zonePortals) {
+    // Marqueur d'arrivée d'aller simple : jamais une option de respawn.
+    if (p?.hidden === true) continue;
     if (excludeAnnex && isAnnexPortal(p)) continue;
     const d2 = dist2(x, y, p.x, p.y);
     if (d2 < bestD2) {

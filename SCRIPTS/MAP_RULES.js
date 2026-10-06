@@ -39,7 +39,9 @@ export function mapTransition(maps, state, fromMap, toMap, faction, now) {
     return { ...baseArrival(maps, toMap, faction), revive: true };
   }
   if (now < Number(state.portalCdUntil || 0)) return null;
-  const source = maps.get(fromMap)?.portals.find(p => String(p.toMap).toLowerCase() === toMap
+  // hidden = marqueur d'arrivée d'un aller simple : jamais un départ.
+  const source = maps.get(fromMap)?.portals.find(p => p?.hidden !== true
+    && String(p.toMap).toLowerCase() === toMap
     && near(state, p, Math.max(450, Number(p.r) || 0) + 150));
   if (!source) return null;
   const target = maps.get(toMap)?.portals.find(p => String(p.id) === String(source.toPortal))
@@ -59,7 +61,7 @@ export function reviveArrival(maps, state, map, faction, x, y) {
   const base = map === respawnMap(faction, map) ? baseArrival(maps, map, faction) : null;
   if (base && near({ x, y }, base, base.radius)) return base;
   if (near({ x, y }, state, 150)) return { x: state.x, y: state.y, radius: 150 };
-  const portals = (maps.get(map)?.portals || []).filter(p => !["low", "qz", "alpha", "beta", "gamma", "maudite", "5-2"].includes(String(p.toMap).toLowerCase()));
+  const portals = (maps.get(map)?.portals || []).filter(p => p?.hidden !== true && !["low", "qz", "alpha", "beta", "gamma", "maudite", "5-2"].includes(String(p.toMap).toLowerCase()));
   const closest = portals.sort((a, b) => Math.hypot(a.x - state.x, a.y - state.y) - Math.hypot(b.x - state.x, b.y - state.y))[0];
   return closest && near({ x, y }, closest, 150) ? { x: closest.x, y: closest.y, radius: 150 } : null;
 }

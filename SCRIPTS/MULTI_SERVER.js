@@ -957,8 +957,24 @@ function collectableAllowedOnMap(cfg, mapId) {
   return (Array.isArray(maps) ? maps : [maps]).some((value) => String(value || "").toLowerCase() === id);
 }
 
+function boxPosInWall(x, y, walls) {
+  if (!Array.isArray(walls) || !walls.length) return false;
+  for (const w of walls) {
+    const hw = Number(w?.w || 0) / 2 + 40, hh = Number(w?.h || 0) / 2 + 40;
+    if (Math.abs(Number(x) - Number(w?.x || 0)) <= hw && Math.abs(Number(y) - Number(w?.y || 0)) <= hh) return true;
+  }
+  return false;
+}
+
 function randomBoxPosition(sim) {
   const world = sim?.world || { w: 11000, h: 7000 };
+  // La sim NPC charge déjà les murs de la map (sim.walls) : jamais de box
+  // bonus / palladium / cargo dedans, sinon non récoltable.
+  const walls = sim?.walls || [];
+  for (let t = 0; t < 12; t++) {
+    const pos = { x: Math.round(80 + Math.random() * Math.max(1, world.w - 160)), y: Math.round(80 + Math.random() * Math.max(1, world.h - 160)) };
+    if (!boxPosInWall(pos.x, pos.y, walls)) return pos;
+  }
   return { x: Math.round(80 + Math.random() * Math.max(1, world.w - 160)), y: Math.round(80 + Math.random() * Math.max(1, world.h - 160)) };
 }
 
