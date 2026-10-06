@@ -25564,17 +25564,17 @@ function killRewards(e) {
   // fusionnés dans ce toast (un 2e groupe écraserait celui-ci).
   const directLines = Array.isArray(e._directDropLines) ? e._directDropLines.filter(Boolean).map(String) : [];
   try { delete e._directDropLines; } catch {}
-  // Drop booster NPC : DLB aléatoire (normaux 7,5 %, boss 15 %, uber 85 %),
-  // + NPC-B01/B02 à 95 % sur les uber. Activation directe, comme un achat.
+  // Drop booster NPC : DLB aléatoire (normaux 0,5 %, boss 15 %, uber 85 %),
+  // + NPC-B01/B02 à 35 % partout. Activation directe, comme un achat.
   const boosterDropLines = [];
   try {
     const t = String(e.type || "");
     const isUber = /^npc_Uber_/i.test(t);
-    const rate = isUber ? 0.85 : /^npc_Boss_/i.test(t) ? 0.15 : 0.075;
+    const rate = isUber ? 0.85 : /^npc_Boss_/i.test(t) ? 0.15 : 0.005;
     const pool = ["dmgdlb", "dmgdlb2", "shddlb", "hpdlb", "epdlb", "hondlb"];
     const picks = [];
     if (Math.random() < rate) picks.push(pool[(Math.random() * pool.length) | 0]);
-    if (isUber && Math.random() < 0.95) picks.push(Math.random() < 0.5 ? "npc" : "npcb2");
+    if (Math.random() < 0.35) picks.push(Math.random() < 0.5 ? "npc" : "npcb2");
     for (const bid of picks) {
       const def = getBooster(bid);
       if (!def) continue;
