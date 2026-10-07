@@ -48,10 +48,11 @@ function refinery(resources, selections, equipment = true, ores = false) {
     account: { user }, ui: { refineryAuto: { checked: ores }, refineryAutoUpgrades: { checked: equipment } },
     REFINERY_RECIPES, chargeShipUpgradesAutomatically, refineCurrentUserOre,
     localStorage: { setItem() {} }, loadAccountUser() {}, applyCurrentConfigStats() { ctx.stats++; },
-    saveUser(user) { saved.push(structuredClone(user)); }, stats: 0,
+    saveUser(user) { saved.push(structuredClone(user)); }, stats: 0, started: true,
   });
-  vm.runInContext(`const refineryEquipmentPrefs = { ores: ${JSON.stringify(selections)}, cursors: {} };\n` +
-    ['refineryEquipmentPrefsKey', 'saveRefineryEquipmentPrefs', 'refineryChargeEquipment', 'refineryRefineAll', 'maybeRefineryAuto'].map(engineFunction).join('\n'), ctx);
+  const timer = engine.slice(engine.indexOf('const REFINERY_AUTO_INTERVAL_SEC'), engine.indexOf('\n\nfunction refineryEquipmentPrefsKey'));
+  vm.runInContext(`const refineryEquipmentPrefs = { ores: ${JSON.stringify(selections)}, cursors: {} };\n` + timer + '\n' +
+    ['refineryEquipmentPrefsKey', 'saveRefineryEquipmentPrefs', 'refineryChargeEquipment', 'refineryRefineAll', 'maybeRefineryAuto', 'tickRefineryAuto'].map(engineFunction).join('\n'), ctx);
   return { ctx, user, saved };
 }
 test('les deux automatismes decoches ne touchent ni minerais ni equipement', () => {
@@ -66,6 +67,50 @@ test('auto-raffinage charge le produit choisi avant la transformation suivante e
   assert.equal(user.inventory.resources.promerium, 0);
   assert.equal(user.inventory.resources.seprom || 0, 0);
   assert.equal(saved.length, 1); assert.equal(ctx.stats, 1);
+});
+
+test('le lot de trois secondes cumule les collectes, raffine et charge avec une seule sauvegarde', () => {
+  const { ctx, user, saved } = refinery({ prometid: 200, duranium: 200, xenomit: 20 }, all, true, true);
+  ctx.tickRefineryAuto(1);
+  user.inventory.resources.prometid += 200;
+  user.inventory.resources.duranium += 200;
+  user.inventory.resources.xenomit += 20;
+  ctx.tickRefineryAuto(1);
+  assert.equal(saved.length, 0); assert.equal(ctx.stats, 0);
+  assert.equal(user.inventory.resources.prometid, 400); assert.deepEqual(user.upgrades, {});
+  ctx.tickRefineryAuto(1);
+  for (const slot of Object.keys(all)) assert.equal(user.upgrades[slot].stock, 100);
+  assert.equal(user.inventory.resources.promerium, 0);
+  assert.equal(saved.length, 1); assert.equal(ctx.stats, 1);
+  ctx.tickRefineryAuto(3);
+  assert.equal(saved.length, 1); assert.equal(ctx.stats, 1, 'lot vide sans recalcul');
+});
+
+test('le meme timer fonctionne avec chacun des deux automatismes seul', () => {
+  const classic = refinery({ prometium: 100, endurium: 100 }, {}, false, true);
+  classic.ctx.tickRefineryAuto(2.5);
+  assert.equal(classic.user.inventory.resources.prometid || 0, 0);
+  classic.ctx.tickRefineryAuto(0.5);
+  assert.equal(classic.user.inventory.resources.prometid, 5);
+  assert.equal(classic.saved.length, 1); assert.equal(classic.ctx.stats, 0);
+
+  const equipment = refinery({ promerium: 120, prometium: 100, endurium: 100 }, all, true, false);
+  equipment.ctx.tickRefineryAuto(2.5);
+  assert.deepEqual(equipment.user.upgrades, {});
+  equipment.ctx.tickRefineryAuto(0.5);
+  assert.equal(equipment.user.inventory.resources.prometium, 100, 'raffinage classique desactive');
+  for (const slot of Object.keys(all)) assert.equal(equipment.user.upgrades[slot].stock, 300);
+  assert.equal(equipment.saved.length, 1); assert.equal(equipment.ctx.stats, 1);
+});
+
+test('desactiver les automatismes remet leur delai a zero', () => {
+  const { ctx, user, saved } = refinery({ promerium: 120 }, all, true, false);
+  ctx.tickRefineryAuto(2);
+  ctx.ui.refineryAutoUpgrades.checked = false; ctx.tickRefineryAuto(1);
+  ctx.ui.refineryAutoUpgrades.checked = true; ctx.tickRefineryAuto(1);
+  assert.deepEqual(user.upgrades, {}); assert.equal(saved.length, 0);
+  ctx.tickRefineryAuto(2);
+  assert.equal(saved.length, 1);
 });
 test('le chargement automatique cumule le stock existant du meme minerai', () => {
   const user = { inventory: { resources: { seprom: 6 } }, upgrades: { laser: { ore: 'seprom', stock: 99 } } };

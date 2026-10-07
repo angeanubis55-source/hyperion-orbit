@@ -13217,9 +13217,11 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
 // ============================================================
 // Raffinage minerais -> minerais nobles (ratios officiels)
 // Toujours au Max : seules les recettes faisables s'affichent.
-// Auto : raffine dès qu'une recette devient disponible.
+// Auto : raffinage et chargement des equipements regroupes toutes les 3 s.
 // ============================================================
 const refineryEquipmentPrefs = { ores: {}, cursors: {} };
+const REFINERY_AUTO_INTERVAL_SEC = 3;
+let refineryAutoT = 0;
 
 function refineryEquipmentPrefsKey() {
   // Le compte du moteur est encore vide pendant le montage des fenetres.
@@ -13248,13 +13250,13 @@ function refineryChargeEquipment({ deferSave = false, applyStats = true } = {}) 
   return result.consumed;
 }
 
-function refineryRefineAll() {
+function refineryRefineAll({ refineOres = true } = {}) {
   if (!account.user) loadAccountUser();
   if (!account.user) return 0;
   // Passes répétées : une recette peut débloquer la suivante (ex : Xenomit -> Promerium).
   let total = 0;
   let charged = refineryChargeEquipment({ deferSave: true, applyStats: false });
-  for (let pass = 0; pass < 10; pass++) {
+  for (let pass = 0; refineOres && pass < 10; pass++) {
     let progress = 0;
     for (const recipe of REFINERY_RECIPES) {
       const result = refineCurrentUserOre(recipe.id, Infinity, { user: account.user, deferSave: true });
@@ -13277,8 +13279,19 @@ function refineryRefineAll() {
 }
 
 function maybeRefineryAuto() {
-  if (!ui.refineryAuto?.checked) return refineryChargeEquipment();
-  return refineryRefineAll();
+  if (!ui.refineryAuto?.checked && !ui.refineryAutoUpgrades?.checked) return 0;
+  return refineryRefineAll({ refineOres: ui.refineryAuto?.checked === true });
+}
+
+function tickRefineryAuto(dt) {
+  if (!started || (!ui.refineryAuto?.checked && !ui.refineryAutoUpgrades?.checked)) {
+    refineryAutoT = 0;
+    return;
+  }
+  refineryAutoT += Math.max(0, Number(dt) || 0);
+  if (refineryAutoT < REFINERY_AUTO_INTERVAL_SEC) return;
+  refineryAutoT %= REFINERY_AUTO_INTERVAL_SEC;
+  maybeRefineryAuto();
 }
 
 function renderRefineryWindow(message = "") {
@@ -17554,7 +17567,6 @@ function tickAuctionLogic() {
   }
 }
 let refineryLiveT = 0;
-let refineryEquipmentT = 0;
 
 function boosterActiveSignature() {
   const active = account.user?.boosters?.active || {};
@@ -17566,13 +17578,7 @@ function boosterActiveSignature() {
 
 function tickBoosters(dt) {
   if (!started) return;
-  if (ui.refineryAutoUpgrades?.checked) {
-    refineryEquipmentT += dt;
-    if (refineryEquipmentT >= 1) {
-      refineryEquipmentT = 0;
-      maybeRefineryAuto();
-    }
-  }
+  tickRefineryAuto(dt);
   // Usure améliorations bouclier/vitesse : 1 minerai / 60 s.
   upgradeDrainT += dt;
   if (upgradeDrainT >= 60) {
@@ -24026,8 +24032,7 @@ function applyCollectableReward(c) {
 
   if (!cargoRefused) advanceQuestProgress("collect", c.type);
 
-  // Raffinage : auto dès qu'une recette est faisable, puis temps réel à chaque collecte.
-  maybeRefineryAuto();
+  // Les minerais collectes attendent le prochain lot automatique de 3 s.
   if (ui.refineryWindow && ui.refineryWindow.style.display !== "none" && !ui.refineryWindow.classList.contains("gameWinMinimized")) {
     renderRefineryWindow();
   }
