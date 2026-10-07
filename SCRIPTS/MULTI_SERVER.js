@@ -284,7 +284,7 @@ function handleAdminApi(request, response, pathname) {
         });
       }
     }
-    // Joueurs en instance perso (Galaxy Gates : alpha/beta/gamma) : hors
+    // Joueurs en instance perso (Galaxy Gates : alpha/beta/gamma/delta/epsilon) : hors
     // room mais connectés — visibles ici avec le badge gate.
     for (const [pid, entry] of instancePeers) {
       const s = entry?.state || {};
@@ -974,23 +974,39 @@ function collectableAllowedOnMap(cfg, mapId) {
   return (Array.isArray(maps) ? maps : [maps]).some((value) => String(value || "").toLowerCase() === id);
 }
 
-function boxPosInWall(x, y, walls) {
+// Marge anti-murs des box : le client récolte au point (x, y-70) avec un
+// vaisseau de rayon ~14 + tolérance 18. Une box à 40px du mur laissait son
+// point de collecte dans le mur => non récoltable (cargo / palladium...).
+// 140px garantit box + point de collecte atteignables.
+const BOX_WALL_CLEAR = 140;
+const BOX_COLLECT_DY = -70;
+const BOX_COLLECT_CLEAR = 52;
+
+function boxPosInWall(x, y, walls, clear = BOX_WALL_CLEAR) {
   if (!Array.isArray(walls) || !walls.length) return false;
+  const m = Math.max(0, Number(clear) || 0);
   for (const w of walls) {
-    const hw = Number(w?.w || 0) / 2 + 40, hh = Number(w?.h || 0) / 2 + 40;
+    const hw = Number(w?.w || 0) / 2 + m, hh = Number(w?.h || 0) / 2 + m;
     if (Math.abs(Number(x) - Number(w?.x || 0)) <= hw && Math.abs(Number(y) - Number(w?.y || 0)) <= hh) return true;
   }
   return false;
 }
 
+function boxCollectPointInWall(x, y, walls) {
+  return boxPosInWall(Number(x) || 0, (Number(y) || 0) + BOX_COLLECT_DY, walls, BOX_COLLECT_CLEAR);
+}
+
 function randomBoxPosition(sim) {
   const world = sim?.world || { w: 11000, h: 7000 };
   // La sim NPC charge déjà les murs de la map (sim.walls) : jamais de box
-  // bonus / palladium / cargo dedans, sinon non récoltable.
+  // bonus / palladium / cargo dedans ni trop près, sinon le point de
+  // collecte (70px au-dessus) est dans le mur et la box non récoltable.
   const walls = sim?.walls || [];
-  for (let t = 0; t < 12; t++) {
+  for (let t = 0; t < 24; t++) {
     const pos = { x: Math.round(80 + Math.random() * Math.max(1, world.w - 160)), y: Math.round(80 + Math.random() * Math.max(1, world.h - 160)) };
-    if (!boxPosInWall(pos.x, pos.y, walls)) return pos;
+    if (boxPosInWall(pos.x, pos.y, walls)) continue;
+    if (boxCollectPointInWall(pos.x, pos.y, walls)) continue;
+    return pos;
   }
   return { x: Math.round(80 + Math.random() * Math.max(1, world.w - 160)), y: Math.round(80 + Math.random() * Math.max(1, world.h - 160)) };
 }
@@ -1050,7 +1066,7 @@ function sendBoxSync(ws, mapId) {
 // suivant est alors un no-op (déjà sur place côté serveur).
 // Refusé : instances, gates, raid Low, même map, cooldowns.
 // Refusé : instances, gates, raid Low, Maudite, 5-2, Blacklight, même map, cooldowns.
-const STAR_JUMP_BLOCKED_MAPS = new Set(["alpha", "beta", "gamma", "qz", "low", "maudite", "5-2", "1-bl", "2-bl", "3-bl"]);
+const STAR_JUMP_BLOCKED_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "qz", "low", "maudite", "5-2", "1-bl", "2-bl", "3-bl"]);
 const STAR_JUMP_REUSE_MS = STARMAP_JUMP_REUSE_SEC * 1000;
 const STAR_JUMP_MAP_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
 
@@ -1620,7 +1636,7 @@ wss.on("connection", (ws) => {
       // Reprise d'une instance sauvegardée : son économie reste locale.
       const savedMap = state._account?.hangars?.find(h => h?.active)?.lastMap;
       if (!arrival && !state._joined && instance && String(savedMap).toLowerCase() === nextMap
-        && ["alpha", "beta", "gamma", "qz"].includes(nextMap)) arrival = { instance: true };
+        && ["alpha", "beta", "gamma", "delta", "epsilon", "qz"].includes(nextMap)) arrival = { instance: true };
     }
     if (!arrival || instance !== (arrival.instance === true)) return false;
     if (instance) {

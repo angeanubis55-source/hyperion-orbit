@@ -42,6 +42,8 @@ export function getNpcHonorReward(npc, definition = {}) {
   if (type.startsWith("Uber_")) { type = type.slice(5); multiplier *= 8; }
   if (type.endsWith("_beta")) { type = type.slice(0, -5); multiplier *= 2; }
   if (type.endsWith("_gamma")) { type = type.slice(0, -6); multiplier *= 3; }
+  if (type.endsWith("_delta")) { type = type.slice(0, -6); multiplier *= 4; }
+  if (type.endsWith("_epsilon")) type = type.slice(0, -8);
   if (type.endsWith("_alpha")) type = type.slice(0, -6);
   const known = BASE_NPC_HONOR[type];
   return Math.max(0, Math.floor(known == null ? credits * 0.1 : known * multiplier));

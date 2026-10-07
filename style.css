@@ -3668,7 +3668,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   box-shadow:0 0 16px rgba(0,217,255,.12);
   color:#eaffff;
 }
-.ggGateNav .ggTabs:has(button.active) button::after {
+.ggGateNav .ggTabsGroup:has(button.active) button::after {
   content:"";
   position:absolute;
   right:7px;
@@ -3701,10 +3701,26 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 .ggGateNav .ggTabs {
   display:grid;
   grid-template-columns:1fr;
-  gap:7px;
+  gap:0;
   padding-top:10px;
   padding-bottom:10px;
-  border-bottom:1px solid rgba(124,240,255,.2);
+}
+/* ✅ Groupes d'onglets GG : Ensemble ABG séparé de Delta (roues isolées). */
+.ggGateNav .ggTabsGroup {
+  display:grid;
+  grid-template-columns:1fr;
+  gap:6px;
+}
+.ggGateNav .ggTabsGroup[data-gg-group="delta"],
+.ggGateNav .ggTabsGroup[data-gg-group="epsilon"] {
+  margin-top:3px;
+  padding-top:3px;
+  border-top:1px solid rgba(124,240,255,.25);
+}
+.ggGateNav .ggTabsButtons {
+  display:grid;
+  grid-template-columns:1fr;
+  gap:2px;
 }
 .ggGateNav .ggTabs button {
   font-weight:900;
@@ -4332,7 +4348,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 .questSeriesInfo b {
   color:#ffd071;
 }
-@media (max-width:900px){.galaxyGatePanel{min-width:calc(100vw - 24px)}.ggWorkspace{grid-template-columns:1fr}.ggGateNav .ggTabs{grid-template-columns:repeat(3,1fr)}.ggHistory{height:180px;min-height:180px;max-height:180px}.ggCore{grid-template-columns:1fr 1fr}.ggSpinControls{grid-template-columns:1fr 1fr}.ggSpinControls label{grid-column:1}.ggSpinControls select{grid-column:2}.ggSpinControls #ggSpinBtn{grid-column:1/-1}}
+@media (max-width:900px){.galaxyGatePanel{min-width:calc(100vw - 24px)}.ggWorkspace{grid-template-columns:1fr}.ggGateNav .ggTabs{grid-template-columns:repeat(2,1fr)}.ggHistory{height:180px;min-height:180px;max-height:180px}.ggCore{grid-template-columns:1fr 1fr}.ggSpinControls{grid-template-columns:1fr 1fr}.ggSpinControls label{grid-column:1}.ggSpinControls select{grid-column:2}.ggSpinControls #ggSpinBtn{grid-column:1/-1}}
 .orbitNotifications {
   position:fixed;
   z-index:12000;

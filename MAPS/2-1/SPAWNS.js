@@ -354,6 +354,134 @@ export function getZonePortals(WORLD) {
 
     },
 
+    {
+
+      id: "p_11_to_delta",
+
+      x: 9288,
+
+      y: 4200,
+
+      r: 260,
+
+      toMap: "delta",
+
+ sprites: {
+
+    idle: {
+
+      src: "ASSETS/DELTA_PORTAL/DESACTIVE.png",
+
+      w: 400,
+
+      h: 560,
+
+      yOff: 0,
+
+    },
+
+
+
+    open: {
+
+      src: "ASSETS/DELTA_PORTAL/ACTIVE.png",
+
+      w: 400,
+
+      h: 560,
+
+      yOff: 0,
+
+    },
+
+
+
+    jump: {
+
+      src: "ASSETS/DELTA_PORTAL/JUMP.png",
+
+      w: 400,
+
+      h: 560,
+
+      yOff: 0,
+
+      scale: 1,
+
+      spinSpeed: 0,
+
+      alpha: 1,
+
+    },
+
+  },
+
+    },
+
+    {
+
+      id: "p_11_to_epsilon",
+
+      x: 8411,
+
+      y: 3896,
+
+      r: 260,
+
+      toMap: "epsilon",
+
+ sprites: {
+
+    idle: {
+
+      src: "ASSETS/EPSILON_PORTAL/DESACTIVE.png",
+
+      w: 406,
+
+      h: 474,
+
+      yOff: 0,
+
+    },
+
+
+
+    open: {
+
+      src: "ASSETS/EPSILON_PORTAL/ACTIVE.png",
+
+      w: 406,
+
+      h: 474,
+
+      yOff: 0,
+
+    },
+
+
+
+    jump: {
+
+      src: "ASSETS/EPSILON_PORTAL/JUMP.png",
+
+      w: 406,
+
+      h: 474,
+
+      yOff: 0,
+
+      scale: 1,
+
+      spinSpeed: 0,
+
+      alpha: 1,
+
+    },
+
+  },
+
+    },
+
   ];
 }
 

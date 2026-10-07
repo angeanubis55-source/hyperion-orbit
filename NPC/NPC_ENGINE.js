@@ -204,6 +204,66 @@ export const NPC_ENGINE_ASSIGNMENTS = Object.freeze({
     "engineType": 0,
     "smokeType": 0
   },
+  "npc_Streuner_delta": {
+    "npcId": 1,
+    "positionClass": "Streuner",
+    "engineType": 0,
+    "smokeType": 0
+  },
+  "npc_Saimon_delta": {
+    "npcId": 6,
+    "positionClass": "Saimon",
+    "engineType": 0,
+    "smokeType": 0
+  },
+  "npc_Sibelon_delta": {
+    "npcId": 5,
+    "positionClass": "Sibelon",
+    "engineType": 2,
+    "smokeType": 0
+  },
+  "npc_Protegit_delta": {
+    "npcId": 12,
+    "positionClass": "Protegit",
+    "engineType": 0,
+    "smokeType": 0
+  },
+  "npc_Marauder_epsilon": {
+    "npcId": 43,
+    "positionClass": "Outcast",
+    "engineType": 0,
+    "smokeType": 0
+  },
+  "npc_Outcast_epsilon": {
+    "npcId": 44,
+    "positionClass": "Outcast",
+    "engineType": 0,
+    "smokeType": 0
+  },
+  "npc_Corsair_epsilon": {
+    "npcId": 45,
+    "positionClass": "Corsair",
+    "engineType": 0,
+    "smokeType": 0
+  },
+  "npc_Convict_epsilon": {
+    "npcId": 48,
+    "positionClass": "Convict",
+    "engineType": 0,
+    "smokeType": 0
+  },
+  "npc_Hooligan_epsilon": {
+    "npcId": 46,
+    "positionClass": "Convict",
+    "engineType": 0,
+    "smokeType": 0
+  },
+  "npc_Ravager_epsilon": {
+    "npcId": 47,
+    "positionClass": "Convict",
+    "engineType": 0,
+    "smokeType": 0
+  },
   "npc_Cote_Lo": {
     "npcId": 213,
     "positionClass": "cote-lo",

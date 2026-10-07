@@ -22,7 +22,7 @@ export function usePhaseOut(state, profile, map, world, now, random = Math.rando
   const key = "ability_mimesis_phase-out";
   if (!profile || state.pvpDead || !(state.hp > 0)
     || !getAbilitiesForShip(abilityShipKeyFor(profile.shipId)).some(a => a.id === key)
-    || /low|uba/.test(map) || /^5(?:-|$|\.)/.test(map) || ["alpha", "beta", "gamma", "qz"].includes(map)
+    || /low|uba/.test(map) || /^5(?:-|$|\.)/.test(map) || ["alpha", "beta", "gamma", "delta", "epsilon", "qz"].includes(map)
     || !(world?.w > 160) || !(world?.h > 160)) return null;
   const cooldowns = state._moveCooldowns || (state._moveCooldowns = {});
   if (now < Number(cooldowns[key] || 0)) return null;

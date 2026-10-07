@@ -11256,16 +11256,19 @@ function botTickGalaxySpin(dt) {
   const st = user?.galaxyGates;
   if (!st) return false;
   // Alpha / Beta / Gamma ne font qu'un (groupe "ensemble") : spinner Alpha.
+  // (Delta a sa propre roue, hors bot pour le moment.)
   const gateId = "alpha";
+  const ggEnsMult = Number(st.multipliers?.ensemble ?? st.multiplier);
+  const ggEnsArmed = (st.multiplierArmed?.ensemble ?? st.multiplierArmed) === true;
   // Multiplicateur auto : on l'arme dès qu'il est disponible (x2+).
-  if (Bot.ggAutoMult && Number(st.multiplier) > 1 && st.multiplierArmed !== true) {
+  if (Bot.ggAutoMult && ggEnsMult > 1 && ggEnsArmed !== true) {
     try {
       const armed = armCurrentUserGalaxyGateMultiplier(gateId, true);
       if (armed?.ok) {
         account.user = armed.user;
         loadAccountUser();
         renderGalaxyGateWindow("Multiplicateur activé (bot).");
-        botLog(`GG ${gateId.toUpperCase()} : multiplicateur x${armed.state?.multiplier ?? st.multiplier} activé`);
+        botLog(`GG ${gateId.toUpperCase()} : multiplicateur x${armed.state?.multipliers?.ensemble ?? armed.state?.multiplier ?? ggEnsMult} activé`);
         user = armed.user;
       }
     } catch {}
@@ -13603,10 +13606,14 @@ function renderGalaxyGateWindow(message = "") {
   const completion = gate.completion;
   ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${formatInteger(completion.exp)} XP</span><span>${formatInteger(completion.honor)} honneur</span><span>${formatInteger(completion.credits)} crédits</span><span>${formatInteger(completion.x4)} UCB-100</span>`;
   ui.ggNpcRewardScale.innerHTML = `Récompenses des NPC <em>×${gate.rewardScale}</em>`;
-  ui.ggMultiplier.textContent = `x${state.multiplier}`;
+  // ✅ multiplicateur affiché/armé par groupe de spin (ABG vs Delta isolés).
+  const ggSpinGroup = gate.group || gate.id;
+  const ggGroupMultiplier = Math.min(5, Math.max(1, Number(state.multipliers?.[ggSpinGroup]) || 1));
+  const ggGroupArmed = state.multiplierArmed?.[ggSpinGroup] === true;
+  ui.ggMultiplier.textContent = `x${ggGroupMultiplier}`;
   if (ui.ggMultiplierBtn) {
-    const armed = state.multiplierArmed === true;
-    ui.ggMultiplierBtn.disabled = state.multiplier <= 1;
+    const armed = ggGroupArmed;
+    ui.ggMultiplierBtn.disabled = ggGroupMultiplier <= 1;
     ui.ggMultiplierBtn.classList.toggle("active", armed);
     const actionLabel = ui.ggMultiplierBtn.querySelector(".ggMultiplierAction");
     if (actionLabel) actionLabel.textContent = armed ? "Activée" : "Désactivée";
@@ -13633,10 +13640,17 @@ function renderGalaxyGateWindow(message = "") {
   // ✅ plus de bouton "Préparer" : le placement sur la map est automatique.
   if (ui.ggDeployBtn) ui.ggDeployBtn.remove();
   ui.ggDeployBtn = null;
-  ui.ggTabs.innerHTML = Object.values(GALAXY_GATE_DEFINITIONS).map(item => {
+  // ✅ onglets groupés : Ensemble ABG (roue commune) séparé de Delta (roue isolée).
+  const ggTabButton = (item) => {
     const parts = state.built[item.id] >= GALAXY_GATE_BUILD_LIMIT ? item.requiredParts : state.parts[item.id];
     return `<button type="button" data-gg-gate="${escapeHtml(item.id)}" class="${item.id === gate.id ? "active" : ""}">${escapeHtml(item.name)}<small>${parts}/${item.requiredParts}</small></button>`;
-  }).join("");
+  };
+  const ensembleTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "ensemble").map(ggTabButton).join("");
+  const deltaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "delta").map(ggTabButton).join("");
+  const epsilonTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "epsilon").map(ggTabButton).join("");
+  ui.ggTabs.innerHTML = `<div class="ggTabsGroup" data-gg-group="ensemble"><div class="ggTabsButtons">${ensembleTabs}</div></div>`
+    + `<div class="ggTabsGroup" data-gg-group="delta"><div class="ggTabsButtons">${deltaTabs}</div></div>`
+    + `<div class="ggTabsGroup" data-gg-group="epsilon"><div class="ggTabsButtons">${epsilonTabs}</div></div>`;
   const history = [...state.history].reverse();
   ui.ggHistory.innerHTML = history.length ? history.map(entry => {
     const reward = entry.rewards || {};
@@ -13709,7 +13723,8 @@ ui.ggSpinCount?.addEventListener("change", () => renderGalaxyGateWindow());
 
 ui.ggMultiplierBtn?.addEventListener("click", () => {
   const state = getCurrentUserFull()?.galaxyGates;
-  const armed = state?.multiplierArmed === true;
+  const group = GALAXY_GATE_DEFINITIONS[selectedGalaxyGateId]?.group || selectedGalaxyGateId || "ensemble";
+  const armed = state?.multiplierArmed?.[group] === true;
   const result = armCurrentUserGalaxyGateMultiplier(selectedGalaxyGateId, !armed);
   if (!result.ok) return renderGalaxyGateWindow(result.error);
   account.user = result.user;
@@ -13905,7 +13920,7 @@ const TRADE_BUTTON = {
 // 4-1..4-4 utilisent BATTLE/4-x, comme chaque map utilise son propre skin.
 function getPortalSpriteSet(ptl = null) {
   const gateId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
-  const isGalaxyGate = ["alpha", "beta", "gamma"].includes(gateId);
+  const isGalaxyGate = ["alpha", "beta", "gamma", "delta", "epsilon"].includes(gateId);
   const destination = isGalaxyGate && ptl === portal ? gateId
     : isGalaxyGate && ptl === gateReturnPortal
       ? getFactionHomeMap((account.user || getCurrentUserFull())?.faction)
@@ -23240,18 +23255,69 @@ function collectableRespawnDelayMs(type) {
 // Multi : instance d'une box partagee (le slot appartient au serveur,
 // aucune ecriture store). Meme forme que les ambiantes pour la collecte.
 // Pas de filtre map ici (comme pushAmbient) : l'hote a deja filtre.
+// Marge anti-murs des box (cargo / palladium / ressources...) : le vaisseau
+// doit pouvoir atteindre le point de collecte (70px au-dessus de la box)
+// avec son rayon + tolérance, sinon la box est non récoltable.
+// Box center à 140 du mur => point de collecte encore à ~70 du mur.
+const COLLECTABLE_WALL_CLEAR = 140;
+const COLLECTABLE_PICKUP_DY = -70;
+const COLLECTABLE_COLLECT_CLEAR = 52;
+
+function boxCollectPointClear(x, y) {
+  if (!Array.isArray(zoneWalls) || !zoneWalls.length) return true;
+  const cx = Number(x) || 0;
+  const cy = (Number(y) || 0) + COLLECTABLE_PICKUP_DY;
+  for (const w of zoneWalls) {
+    if (circleRectResolve(cx, cy, COLLECTABLE_COLLECT_CLEAR, w)) return false;
+  }
+  return true;
+}
+
+// Repousse une box + son point de collecte hors des murs.
+// Retourne { x, y } corrigés (jamais dans un mur, point de collecte atteignable).
+function resolveBoxOutsideWalls(x, y, boxR) {
+  let bx = Number(x) || 0;
+  let by = Number(y) || 0;
+  if (!Array.isArray(zoneWalls) || !zoneWalls.length) return { x: bx, y: by };
+  const r = Math.max(Number(boxR) || 32, COLLECTABLE_WALL_CLEAR);
+  for (let pass = 0; pass < 4; pass++) {
+    let moved = false;
+    for (const w of zoneWalls) {
+      const push = circleRectResolve(bx, by, r, w);
+      if (push) { bx += push.x; by += push.y; moved = true; }
+    }
+    // Le point de collecte (70px au-dessus) doit rester atteignable :
+    // s'il est dans un mur, on décale la box du même vecteur.
+    const ccx = bx;
+    const ccy = by + COLLECTABLE_PICKUP_DY;
+    for (const w of zoneWalls) {
+      const push = circleRectResolve(ccx, ccy, COLLECTABLE_COLLECT_CLEAR, w);
+      if (push) { bx += push.x; by += push.y; moved = true; }
+    }
+    if (!moved) break;
+  }
+  return { x: bx, y: by };
+}
+
 function pushNetBoxInstance(box) {
   const cfg = COLLECTABLE_DEFS[box.type] || {};
   if (!cfg || cfg.enabled === false) return false;
   ensureCollectableLoaded(box.type);
   const sp = cfg.sprite || {};
   const frames = Math.max(1, Number(sp.frames || 1));
+  let _nx = clamp(Number(box.x) || 0, 80, WORLD.w - 80);
+  let _ny = clamp(Number(box.y) || 0, 80, WORLD.h - 80);
+  try {
+    const _fixed = resolveBoxOutsideWalls(_nx, _ny, Number(cfg.r ?? cfg.radius ?? 32) + 8);
+    _nx = clamp(_fixed.x, 80, WORLD.w - 80);
+    _ny = clamp(_fixed.y, 80, WORLD.h - 80);
+  } catch {}
   collectables.push({
     id: newId(),
     type: box.type,
     map: currentMapId(),
-    x: clamp(Number(box.x) || 0, 80, WORLD.w - 80),
-    y: clamp(Number(box.y) || 0, 80, WORLD.h - 80),
+    x: _nx,
+    y: _ny,
     r: Number(cfg.r ?? cfg.radius ?? 32),
     pickupRadius: Number(cfg.pickupRadius ?? cfg.r ?? cfg.radius ?? 42),
     armed: false,
@@ -23275,18 +23341,15 @@ function pushAmbientCollectableInstance(slot, mapId) {
   const frames = Math.max(1, Number(sp.frames || 1));
   let bx = clamp(Number(slot.x) || 0, 80, WORLD.w - 80);
   let by = clamp(Number(slot.y) || 0, 80, WORLD.h - 80);
-  // Slots persistés avant l'ajout des murs (ex : 5-2) : afficher au bord du
-  // mur, jamais dedans, sinon la box est non récoltable.
+  // Slots persistés avant l'ajout des murs (ex : 5-2) : afficher loin du
+  // mur, jamais dedans, sinon la box est non récoltable (point de collecte
+  // 70px au-dessus inatteignable).
   const boxR = Number(cfg.r ?? cfg.radius ?? 32) + 8;
-  for (let pass = 0; pass < 2; pass++) {
-    if (!Array.isArray(zoneWalls) || !zoneWalls.length) break;
-    for (const w of zoneWalls) {
-      const push = circleRectResolve(bx, by, boxR, w);
-      if (!push) continue;
-      bx += push.x;
-      by += push.y;
-    }
-  }
+  try {
+    const fixed = resolveBoxOutsideWalls(bx, by, boxR);
+    bx = clamp(fixed.x, 80, WORLD.w - 80);
+    by = clamp(fixed.y, 80, WORLD.h - 80);
+  } catch {}
   collectables.push({
     id: newId(),
     type: slot.type,
@@ -23307,11 +23370,14 @@ function pushAmbientCollectableInstance(slot, mapId) {
 // Position d'un nouveau slot : aléatoire, espacée des slots existants,
 // jamais dans un mur (bonus / palladium récoltables partout).
 function pickAmbientSlotPosition() {
-  for (let t = 0; t < 12; t++) {
+  for (let t = 0; t < 24; t++) {
     const pos = spawnRandomOnMap();
-    if (!spawnPosInWall(pos.x, pos.y, 40)) return pos;
+    if (spawnPosInWall(pos.x, pos.y, COLLECTABLE_WALL_CLEAR)) continue;
+    if (!boxCollectPointClear(pos.x, pos.y)) continue;
+    return pos;
   }
-  return spawnRandomOnMap();
+  const fallback = spawnRandomOnMap();
+  return resolveBoxOutsideWalls(fallback.x, fallback.y, COLLECTABLE_WALL_CLEAR);
 }
 
 // Respawn aléatoire d'un slot dû (comme les NPC : jamais à la même place).
@@ -23429,17 +23495,13 @@ function spawnCollectableAtRestored(drop, elapsedSec) {
   const frames = Math.max(1, Number(sp.frames || 1));
   let dx = clamp(Number(drop.x) || 0, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
   let dy = clamp(Number(drop.y) || 0, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
-  // Drop persisté avant l'ajout des murs : restaurer au bord, jamais dedans.
-  const dropR = Number(cfg.r ?? cfg.radius ?? 32) + 8;
-  for (let pass = 0; pass < 2; pass++) {
-    if (!Array.isArray(zoneWalls) || !zoneWalls.length) break;
-    for (const w of zoneWalls) {
-      const push = circleRectResolve(dx, dy, dropR, w);
-      if (!push) continue;
-      dx += push.x;
-      dy += push.y;
-    }
-  }
+  // Drop persisté avant l'ajout des murs : restaurer loin du mur, jamais
+  // dedans (point de collecte 70px au-dessus sinon inatteignable).
+  try {
+    const fixed = resolveBoxOutsideWalls(dx, dy, Number(cfg.r ?? cfg.radius ?? 32) + 8);
+    dx = fixed.x;
+    dy = fixed.y;
+  } catch {}
   collectables.push({
     id: newId(),
     type: drop.type,
@@ -23618,17 +23680,13 @@ function spawnCollectableAt(type, x, y, opts = {}) {
   let cx = clamp(x, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
   let cy = clamp(y, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
   // Jamais dans un mur (zones grises) : un NPC tué dans un caillou doit
-  // laisser son cargo / soleil au bord du mur, sinon non récoltable.
-  const boxR = Number(cfg.r ?? cfg.radius ?? 32) + 8;
-  for (let pass = 0; pass < 2; pass++) {
-    if (!Array.isArray(zoneWalls) || !zoneWalls.length) break;
-    for (const w of zoneWalls) {
-      const push = circleRectResolve(cx, cy, boxR, w);
-      if (!push) continue;
-      cx += push.x;
-      cy += push.y;
-    }
-  }
+  // laisser son cargo / soleil loin du mur, sinon le point de collecte
+  // (70px au-dessus) est inatteignable et la box non récoltable.
+  try {
+    const fixed = resolveBoxOutsideWalls(cx, cy, Number(cfg.r ?? cfg.radius ?? 32) + 8);
+    cx = fixed.x;
+    cy = fixed.y;
+  } catch {}
   cx = clamp(cx, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
   cy = clamp(cy, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
   const despawnAfter = collectableDropLifetimeSec(type, opts.despawnAfter);
@@ -28361,7 +28419,7 @@ function portalProvidesSafety(portal) {
   const playerSector = getFaction((account.user || getCurrentUserFull())?.faction).sector;
   if (sectorMatch && sectorMatch[1] !== playerSector) return false;
   const destination = String(portal?.toMap || "").trim().toLowerCase();
-  return !["alpha", "beta", "gamma"].includes(destination);
+  return !["alpha", "beta", "gamma", "delta", "epsilon"].includes(destination);
 }
 
 function baseProvidesSafety() {
@@ -29888,7 +29946,7 @@ function die() {
 // ✅ Portails annexes (par destination) : jamais utilisés pour une
 // réapparition au portail — low, QZ, Galaxy Gates (aussi celles des X-1),
 // map maudite et 5-2 (portail central de 4-5).
-const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "maudite", "5-2"]);
+const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "maudite", "5-2"]);
 
 function isAnnexPortal(portal) {
   // Retour Low : exclu aussi (sinon réapparition sur le portail masqué).

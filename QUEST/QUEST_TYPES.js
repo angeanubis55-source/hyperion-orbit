@@ -281,6 +281,8 @@ const GALAXY_ENERGY_CONTRACTS = [
   EQ("energy_pirate_cells", "Marché noir", "Intercepte une cargaison énergétique en territoire pirate.", [K("interceptor", "npc_Interceptor", 150, "Éliminer des Interceptors", "5-2"), C("palladium", "Palladium_Ore", 250, "Collecter du Palladium", "5-2")], 5000000, 2500000, 5000, 50, "energy_crystal_reserve"),
   EQ("energy_cube_core", "Cœurs à prendre", "Brise les défenses Cubikon et récupère leurs noyaux les plus stables.", [K("cubikon", "npc_Cubikon", 20, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 400, "Éliminer des Protegits")], 60000000, 30000000, 120000, 75, "energy_pirate_cells"),
   EQ("energy_gate_trinity", "Triple saut", "Termine une fois chaque portail de l’ensemble Alpha, Beta et Gamma.", [G("alpha"), G("beta"), G("gamma")], 35000000, 17500000, 35000, 100, "energy_cube_core"),
+  EQ("energy_gate_delta", "Saut Delta", "Termine le portail Delta, isolé de l’ensemble Alpha, Beta et Gamma.", [G("delta")], 45000000, 22500000, 45000, 150, "energy_gate_trinity"),
+  EQ("energy_gate_epsilon", "Saut Epsilon", "Termine le portail pirate Epsilon, isolé des autres roues.", [G("epsilon")], 55000000, 27500000, 55000, 200, "energy_gate_delta"),
   EQ("energy_ultimate_stock", "Coffre du vétéran", "Prouve ton endurance dans les Gates et contre les unités d’élite.", [G("alpha", 5), G("beta", 3), G("gamma", 2), K("uber", "npc_Uber_Kristallon", 50, "Éliminer des Uber Kristallons", "4-5")], 50000000, 25000000, 50000, 250, "energy_gate_trinity"),
 ];
 
@@ -597,6 +599,12 @@ const QUEST_CATALOG = [
   Q("gate_gamma", "Gueule Gamma", "Termine la Galaxy Gate Gamma.", [G("gamma")], 3400000, 1200000, 3400, "gate_beta"),
   Q("gate_trinity", "Trinité de feu", "Achève les trois Gates de l’ensemble Alpha, Beta et Gamma.", [G("alpha"), G("beta"), G("gamma")], 9000000, 3150000, 9000, "gate_gamma"),
   Q("gate_veteran", "Vétéran des gouffres", "Répète les Gates jusqu’à maîtriser leurs vagues.", [G("alpha", 3), G("beta", 2), G("gamma", 2)], 22500000, 8000000, 22500, "gate_trinity"),
+  Q("gate_delta", "Gueule Delta", "Termine la Galaxy Gate Delta (roue isolée, 128 pièces, 10 vagues).", [G("delta")], 5000000, 1750000, 5000, "gate_gamma"),
+  Q("gate_tetrad", "Tétrade de feu", "Achève les quatre Gates : Alpha, Beta, Gamma et Delta.", [G("alpha"), G("beta"), G("gamma"), G("delta")], 14000000, 4900000, 14000, "gate_delta"),
+  Q("gate_delta_veteran", "Vétéran Delta", "Répète la Galaxy Gate Delta jusqu’à la maîtriser.", [G("delta", 3)], 30000000, 10500000, 30000, "gate_tetrad"),
+  Q("gate_epsilon", "Gueule Epsilon", "Termine la Galaxy Gate Epsilon (roue isolée, 99 pièces, 11 vagues pirates).", [G("epsilon")], 3000000, 1050000, 3000, "gate_delta"),
+  Q("gate_pentad", "Pentade de feu", "Achève les cinq Gates : Alpha, Beta, Gamma, Delta et Epsilon.", [G("alpha"), G("beta"), G("gamma"), G("delta"), G("epsilon")], 18000000, 6300000, 18000, "gate_epsilon"),
+  Q("gate_epsilon_veteran", "Vétéran Epsilon", "Répète la Galaxy Gate Epsilon jusqu’à la maîtriser.", [G("epsilon", 3)], 20000000, 7000000, 20000, "gate_pentad"),
 
   Q("collector_route", "La grande rafle", "Récupère toutes les formes de cargaisons courantes.", [C("bonus", "Bonus_Box", 100, "Collecter des Bonus Boxes"), C("cargo", "Cargo_Box", 100, "Collecter des Cargo Boxes"), C("booty", "Green_Booty_Box", 10, "Collecter des Green Booty Boxes")], 5000000, 2500000, 10000),
   Q("astral_reserves", "Poussière d’étoiles", "Récupère les caches les plus rares disponibles.", [C("astral", "Astral_Prime_Box", 10, "Collecter des Astral Prime Boxes"), C("alloy", "Hybrid_Alloy_Box", 25, "Collecter des Hybrid Alloy Boxes")], 12000000, 6000000, 24000),

@@ -33,7 +33,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
     name: "Bonus Box",
     maps: "*",
     // GG / Low / QZ : aucune box ambiente, uniquement cargo + drops NPC.
-    denyMaps: ["alpha", "beta", "gamma", "low", "qz", "5-2", "1-bl", "2-bl", "3-bl"],
+    denyMaps: ["alpha", "beta", "gamma", "delta", "epsilon", "low", "qz", "5-2", "1-bl", "2-bl", "3-bl"],
     qty: 50,
     spawnBatch: 50,
     minSpacing: 100,
@@ -74,7 +74,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
     enabled: false,
     maps: "*",
     // GG / Low / QZ : aucune box ambiente, uniquement cargo + drops NPC.
-    denyMaps: ["alpha", "beta", "gamma", "low", "qz"],
+    denyMaps: ["alpha", "beta", "gamma", "delta", "epsilon", "low", "qz"],
     qty: 10,
     spawnBatch: 10,
     minSpacing: 100,

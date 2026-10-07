@@ -39,7 +39,7 @@ const JUMP_FX_BY_CATEGORY = Object.freeze({
 });
 
 // Skins des portails spéciaux (assets conservés, tailles d'origine du jeu).
-// Branchés sur la destination : alpha/beta/gamma + pirates (5-2 <-> 4-5).
+// Branchés sur la destination : alpha/beta/gamma/delta/epsilon + pirates (5-2 <-> 4-5).
 const SPECIAL_SKINS = Object.freeze({
   alpha: Object.freeze({
     idle: { src: "ASSETS/ALPHA_PORTAL/DESACTIVE.png", w: 500, h: 500, yOff: 0 },
@@ -57,6 +57,18 @@ const SPECIAL_SKINS = Object.freeze({
     idle: { src: "ASSETS/GAMMA_PORTAL/DESACTIVE.png", w: 360, h: 421, yOff: 0 },
     open: { src: "ASSETS/GAMMA_PORTAL/ACTIVE.png", w: 360, h: 421, yOff: 0 },
     jump: { src: "ASSETS/GAMMA_PORTAL/JUMP.png", w: 360, h: 421, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+    jumpFxPath: null,
+  }),
+  delta: Object.freeze({
+    idle: { src: "ASSETS/DELTA_PORTAL/DESACTIVE.png", w: 400, h: 560, yOff: 0 },
+    open: { src: "ASSETS/DELTA_PORTAL/ACTIVE.png", w: 400, h: 560, yOff: 0 },
+    jump: { src: "ASSETS/DELTA_PORTAL/JUMP.png", w: 400, h: 560, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+    jumpFxPath: null,
+  }),
+  epsilon: Object.freeze({
+    idle: { src: "ASSETS/EPSILON_PORTAL/DESACTIVE.png", w: 406, h: 474, yOff: 0 },
+    open: { src: "ASSETS/EPSILON_PORTAL/ACTIVE.png", w: 406, h: 474, yOff: 0 },
+    jump: { src: "ASSETS/EPSILON_PORTAL/JUMP.png", w: 406, h: 474, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
     jumpFxPath: null,
   }),
   pirates: Object.freeze({
@@ -116,6 +128,8 @@ export function getPortalSkinForMap(toMap) {
   if (lower === "alpha") return SPECIAL_SKINS.alpha;
   if (lower === "beta") return SPECIAL_SKINS.beta;
   if (lower === "gamma") return SPECIAL_SKINS.gamma;
+  if (lower === "delta") return SPECIAL_SKINS.delta;
+  if (lower === "epsilon") return SPECIAL_SKINS.epsilon;
   if (PIRATES_DESTINATIONS.includes(lower)) return SPECIAL_SKINS.pirates;
   // Portails par map : NORMAUX / BATTLE / BL / QZ.
   const dir = SKIN_DIR_BY_MAP.get(id);

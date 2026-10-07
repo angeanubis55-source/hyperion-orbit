@@ -4,7 +4,21 @@ export const GALAXY_GATE_DEFINITIONS = Object.freeze({
   alpha: Object.freeze({ id: "alpha", name: "Alpha", group: "ensemble", requiredParts: 34, maxWaves: 11, maxLives: 5, image: "ASSETS/ALPHA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 6000000, honor: 150000, credits: 20000000, x4: 30000 }), rewardScale: 1 }),
   beta: Object.freeze({ id: "beta", name: "Beta", group: "ensemble", requiredParts: 48, maxWaves: 11, maxLives: 5, image: "ASSETS/BETA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 12000000, honor: 300000, credits: 35000000, x4: 60000 }), rewardScale: 2 }),
   gamma: Object.freeze({ id: "gamma", name: "Gamma", group: "ensemble", requiredParts: 82, maxWaves: 11, maxLives: 5, image: "ASSETS/GAMMA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 18000000, honor: 450000, credits: 50000000, x4: 100000 }), rewardScale: 3 }),
+  // ✅ Delta : roue de spin isolée (groupe "delta"), 128 pièces / 10 vagues (officiel).
+  delta: Object.freeze({ id: "delta", name: "Delta", group: "delta", requiredParts: 128, maxWaves: 10, maxLives: 5, image: "ASSETS/DELTA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 13500000, honor: 337500, credits: 65000000, x4: 67500 }), rewardScale: 4 }),
+  // ✅ Epsilon : roue de spin isolée (groupe "epsilon"), 99 pièces / 11 vagues pirates (officiel).
+  epsilon: Object.freeze({ id: "epsilon", name: "Epsilon", group: "epsilon", requiredParts: 99, maxWaves: 11, maxLives: 5, image: "ASSETS/EPSILON_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 7500000, honor: 225000, credits: 30000000, x4: 30000 }), rewardScale: 1 }),
 });
+
+// Groupes de spin : "ensemble" (Alpha/Beta/Gamma, une seule roue), "delta" et
+// "epsilon" (roues isolées).
+export const GALAXY_GATE_SPIN_GROUPS = Object.freeze(["ensemble", "delta", "epsilon"]);
+
+// Groupe de spin d'une gate (roue utilisée pour les pièces/doublons/multiplicateur).
+export function getGalaxyGateSpinGroup(gateId) {
+  const gate = GALAXY_GATE_DEFINITIONS[String(gateId || "").toLowerCase()];
+  return gate ? (gate.group || gate.id) : null;
+}
 
 export const GALAXY_SPIN_CREDIT_COST = 100000;
 export const GALAXY_GATE_BUILD_LIMIT = 1;
@@ -29,9 +43,9 @@ export function normalizeGalaxyGateState(raw) {
     deployed: {},
     completed: {},
     lives: {},
-    // ✅ multiplicateur unique partagé entre Alpha / Beta / Gamma.
-    multiplier: 1,
-    multiplierArmed: false,
+    // ✅ multiplicateurs par groupe de spin : "ensemble" (ABG), "delta" et "epsilon" isolés.
+    multipliers: { ensemble: 1, delta: 1, epsilon: 1 },
+    multiplierArmed: { ensemble: false, delta: false, epsilon: false },
     active: GALAXY_GATE_DEFINITIONS[String(source.active || "").toLowerCase()] ? String(source.active).toLowerCase() : null,
     activeWave: Math.max(1, Math.floor(Number(source.activeWave) || 1)),
     // ✅ progression persistée par gate : permet d'alterner librement
@@ -64,17 +78,28 @@ export function normalizeGalaxyGateState(raw) {
       ? { wave: killWave, killed }
       : { wave: 0, killed: 0 };
   }
-  // ✅ migration : ancien format 1 multiplicateur par gate -> 1 seul partagé (on garde le max).
-  let sharedMultiplier = Math.min(5, Math.max(1, Math.floor(Number(source.multiplier) || 1)));
-  let sharedArmed = source.multiplierArmed === true && sharedMultiplier > 1;
+  // ✅ migration : ancien format 1 multiplicateur scalaire partagé (+ legacy
+  // par gate) -> multiplicateurs par groupe de spin (ensemble = max hérité).
+  const clampMult = (value) => Math.min(5, Math.max(1, Math.floor(Number(value) || 1)));
+  const legacyScalar = clampMult(source.multiplier);
+  const legacyScalarArmed = source.multiplierArmed === true && legacyScalar > 1;
+  const groupMax = { ensemble: legacyScalar, delta: 1, epsilon: 1 };
+  const groupArmed = { ensemble: legacyScalarArmed, delta: false, epsilon: false };
   for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) {
-    const legacyValue = Math.min(5, Math.max(1, Math.floor(Number(source.multipliers?.[gate.id]) || 1)));
-    if (legacyValue > sharedMultiplier) sharedMultiplier = legacyValue;
-    if (source.multiplierArmed?.[gate.id] === true && legacyValue > 1) sharedArmed = true;
+    const group = gate.group || gate.id;
+    // Ancien format objet par gate (alpha/beta/gamma) : reporté sur son groupe.
+    const legacyValue = clampMult(source.multipliers?.[gate.id]);
+    if (Number(source.multipliers?.[gate.id]) > 0 && legacyValue > (groupMax[group] || 1)) groupMax[group] = legacyValue;
+    if (source.multiplierArmed?.[gate.id] === true && legacyValue > 1) groupArmed[group] = true;
   }
-  state.multiplier = sharedMultiplier;
-  state.multiplierArmed = sharedArmed && sharedMultiplier > 1;
-  // ✅ migration : ancien format 1 multiplicateur par gate -> 1 seul partagé (on garde le max).
+  for (const group of GALAXY_GATE_SPIN_GROUPS) {
+    // Nouveau format objet par groupe (ensemble/delta) : prioritaire.
+    const stored = Number(source.multipliers?.[group]);
+    state.multipliers[group] = Number.isFinite(stored) && stored > 0 ? clampMult(stored) : (groupMax[group] || 1);
+    const storedArmed = source.multiplierArmed?.[group];
+    const armed = typeof storedArmed === "boolean" ? storedArmed : (groupArmed[group] === true);
+    state.multiplierArmed[group] = armed && state.multipliers[group] > 1;
+  }
   // ✅ auto-placement : une GG terminée est directement posée sur la map.
   // Une sauvegarde legacy avec built=1 + deployed=false migre vers
   // built=0 + deployed=true (sauf si la gate est en cours -> stock conservé).
@@ -120,21 +145,25 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
     const gates = groupGates;
     return gates[Math.min(gates.length - 1, Math.floor(Math.max(0, Math.min(0.999999, Number(rng()) || 0)) * gates.length))];
   };
+  // ✅ doublons et multiplicateur armé : strictement isolés par groupe de spin
+  // (un doublon Delta ne booste que Delta, jamais l'ensemble ABG).
   const registerDuplicate = (duplicateGate) => {
-    state.multiplier = Math.min(5, state.multiplier + 1);
+    const group = duplicateGate.group || duplicateGate.id;
+    state.multipliers[group] = Math.min(5, Math.max(1, Number(state.multipliers?.[group]) || 1) + 1);
     state.lastOpenedGate = duplicateGate.id;
-    if (state.multiplier >= 5) state.multiplierArmed = true;
-    rewards.duplicates.push({ gate: duplicateGate.id, multiplier: state.multiplier });
+    if (state.multipliers[group] >= 5) state.multiplierArmed[group] = true;
+    rewards.duplicates.push({ gate: duplicateGate.id, multiplier: state.multipliers[group] });
   };
   const applyArmedMultiplier = (rewardType, rewardId, baseAmount, maximum = Infinity) => {
-    if (state.multiplierArmed !== true || state.multiplier <= 1) return Math.min(baseAmount, maximum);
-    const multiplier = state.multiplier;
-    const amount = Math.min(baseAmount * multiplier, maximum);
-    const application = { gate: gate.id, multiplier, spin: performed, rewardType, rewardId, amount };
+    const armed = state.multiplierArmed?.[spinGroup] === true;
+    const owned = Math.min(5, Math.max(1, Number(state.multipliers?.[spinGroup]) || 1));
+    if (armed !== true || owned <= 1) return Math.min(baseAmount, maximum);
+    const amount = Math.min(baseAmount * owned, maximum);
+    const application = { gate: gate.id, multiplier: owned, spin: performed, rewardType, rewardId, amount };
     rewards.multiplierApplied ||= application;
     rewards.multiplierApplications.push(application);
-    state.multiplierArmed = false;
-    state.multiplier = 1;
+    state.multiplierArmed[spinGroup] = false;
+    state.multipliers[spinGroup] = 1;
     return amount;
   };
 
@@ -238,8 +267,9 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
 
 export function setGalaxyGateMultiplierArmed(stateInput, gateId, armed = true) {
   const state = normalizeGalaxyGateState(stateInput);
-  if (state.multiplier <= 1) return { ok: false, state };
-  state.multiplierArmed = armed === true;
+  const group = getGalaxyGateSpinGroup(gateId) || "ensemble";
+  if (Math.min(5, Math.max(1, Number(state.multipliers?.[group]) || 1)) <= 1) return { ok: false, state };
+  state.multiplierArmed[group] = armed === true;
   return { ok: true, state };
 }
 
