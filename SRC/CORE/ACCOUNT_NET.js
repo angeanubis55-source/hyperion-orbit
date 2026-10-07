@@ -60,13 +60,13 @@ export function netCurrent() {
   return { id: memUser.id, pseudo: memUser.pseudo, email: memUser.email };
 }
 
-export function netStore(list, { pilotDisksOnly = false } = {}) {
+export function netStore(list, { pilotDisksOnly = false, durable = false } = {}) {
   const arr = Array.isArray(list) ? list : [];
   const mine = (memUser && arr.find((u) => u && u.id === memUser.id)) || arr[0] || null;
   // Ce mutateur ne touche que crédits et disques, sur le compte déjà chargé.
   // Garder l'envoi/cache habituel sans parcourir tout l'inventaire au clic.
   if (pilotDisksOnly && mine && mine === memUser) {
-    writeCache(memUser);
+    writeCache(memUser, durable);
     schedulePush();
     return;
   }
@@ -87,7 +87,7 @@ export function netStore(list, { pilotDisksOnly = false } = {}) {
     sanitizeInfiniteValues(mine);
     memUser = retainPendingSelections(mine);
     cachePendingGalaxyGates();
-    writeCache(memUser);
+    writeCache(memUser, durable);
     schedulePush();
   }
 }

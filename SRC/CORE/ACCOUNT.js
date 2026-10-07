@@ -1155,7 +1155,7 @@ export function saveUser(user, options = {}) {  user.schemaVersion = STORAGE_SCH
   }
   if (idx >= 0) users[idx] = user;
   else users.push(user);
-  writeUsers(users, { pilotDisksOnly });
+  writeUsers(users, { pilotDisksOnly, durable: options.durable === true });
   if (options.notify !== false && typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
     window.dispatchEvent(new CustomEvent("orbit:user-updated", {
       detail: { userId: user.id, revision: user.revision, source: options.source || "account" },
@@ -3505,7 +3505,9 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
     if (ammoId !== "x1") u.ammo[ammoId] = Math.max(0, Number(u.ammo[ammoId] || 0) + Number(unitAmount || 0) * quantity);
   }
   ensureUserShape(u);
-  saveUser(u);
+  // Le resultat d'un craft doit survivre a un refresh immediat, meme avant
+  // l'envoi HTTP ou le prochain temps libre du navigateur.
+  saveUser(u, { durable: true });
   localStorage.setItem("orbit_sync", String(Date.now()));
   return { ok: true, user: u, recipe, quantity };
 }

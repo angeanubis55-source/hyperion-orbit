@@ -13204,8 +13204,14 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
   try { advanceQuestProgress("craft", String(recipe.id), Math.max(1, Math.floor(Number(quantity) || 1))); } catch {}
   syncPlayerFromAccount();
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
-  showNotification(`${result.recipe.name} assemblé`, 2.5, "reward", { goldTerms: [result.recipe.name] });
-  renderCraftingWindow();
+  const resourceOutput = Object.entries(result.recipe.output?.resources || {})
+    .map(([id, amount]) => `${formatInteger(Number(amount) * result.quantity)} ${getResourceName(id, Number(amount) * result.quantity)}`)
+    .join(", ");
+  const craftMessage = resourceOutput
+    ? `+${resourceOutput} en soute.`
+    : `${result.quantity} × ${result.recipe.name} assemblé(s).`;
+  showNotification(craftMessage, 3.5, "reward", { goldTerms: [result.recipe.name] });
+  renderCraftingWindow(craftMessage);
 });
 
 // ============================================================
@@ -13543,7 +13549,9 @@ window.addEventListener("orbit:window-restored", event => {
   if (event.detail?.id === "craftingWindow") renderCraftingWindow();
   if (event.detail?.id === "refineryWindow") renderRefineryWindow();
 });
-window.addEventListener("orbit:profile-progress", () => renderCraftingWindow());
+window.addEventListener("orbit:profile-progress", () => {
+  if (document.getElementById("craftingWindow")?.style.display !== "none") renderCraftingWindow();
+});
 window.addEventListener("orbit:profile-progress", () => {
   // Commerce <-> raffinage synchronisés même sans action directe (collecte,
   // récompense, autre onglet...) : re-rend les fenêtres ouvertes.
@@ -17580,7 +17588,7 @@ function tickBoosters(dt) {
   if (boosterResyncT >= 2) {
     boosterResyncT = 0;
     try {
-      const fresh = getCurrentUserFull();
+      const fresh = netList()[0] || getCurrentUserFull();
       if (fresh && Number(fresh.revision || 0) !== Number(account.user?.revision || 0)) {
         // Minerais : jamais de redescente sur un gain local pas encore
         // persisté (collecte +1 par +1 : le Palladium rendait ça visible).

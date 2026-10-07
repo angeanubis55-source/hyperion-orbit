@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { NETWORK_TIMING_GRACE_SEC } from "../SRC/CORE/NETWORK_TIMING.js";
 
 // Execute les vrais handlers du client avec sockets et horloge controles.
-const source = readFileSync(new URL("../SRC/CORE/NETPLAY.js", import.meta.url), "utf8").replace(/^export /gm, "");
+const source = readFileSync(new URL("../SRC/CORE/NETPLAY.js", import.meta.url), "utf8").replace(/^export /gm, "").replace(/^import .*NETWORK_TIMING.*\r?\n/gm, "");
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const linkCheck = engine.slice(engine.indexOf("function netLinkAliveInGame()"), engine.indexOf("function setLinkOverlay("));
 
@@ -19,7 +20,7 @@ function client() {
     close(code = 1000, reason = "") { this.readyState = 3; this.onclose({ code, reason }); }
   }
   const context = vm.createContext({
-    window: {}, location: { protocol: "http:", host: "localhost" },
+    NETWORK_TIMING_GRACE_SEC, window: {}, location: { protocol: "http:", host: "localhost" },
     localStorage: { getItem: () => "test-token" },
     performance: { now: () => now }, Date: { now: () => now }, WebSocket: Socket,
     setInterval: (fn, ms) => { const id = ++nextTimer; intervals.set(id, { fn, ms }); return id; },
@@ -32,6 +33,24 @@ function client() {
   sockets[0].open();
   return { api: context, sockets, intervals, timeouts, advance: ms => { now += ms; } };
 }
+
+test("un retard reseau ponctuel de 200 ms ne coupe pas les frames normales", () => {
+  const c = client(), socket = c.sockets[0];
+  socket.receive({ t: "welcome", authed: true, id: "test", at: 10000 });
+  let simulated = 0;
+  for (let frame = 1; frame <= 120; frame++) {
+    c.advance(1000 / 60);
+    // Un paquet toutes les 50 ms, puis quatre paquets retenus et livres ensemble.
+    if (frame % 3 === 0 && (frame < 30 || frame >= 42)) {
+      socket.receive({ t: "clock", at: 10000 + frame * 1000 / 60 });
+    }
+    const step = c.api.netSimulationStep(1 / 60);
+    assert.ok(Math.abs(step - 1 / 60) < 1e-8, `frame ${frame} interrompue`);
+    simulated += step;
+  }
+  assert.ok(Math.abs(simulated - 2) < 1e-8);
+  assert.equal(c.api.netSpeedGuardActive(), false);
+});
 
 test('activation : les anciennes positions restent bloquees jusqu a l adoption de l arrivee serveur', async () => {
   const c = client(), socket = c.sockets[0];
@@ -75,7 +94,7 @@ test("l'horloge x50 ne multiplie ni la simulation ni les recharges", () => {
     simulated += c.api.netSimulationStep(50 / 60);
   }
   assert.ok(simulated <= 12.1 + 1e-8);
-  assert.ok(simulated >= 9.8 && simulated <= 10.1, "le rythme reste normal jusqu'a la confirmation sur deux fenetres");
+  assert.ok(simulated >= 9.8 && simulated <= 10 + NETWORK_TIMING_GRACE_SEC, "le rythme reste normal jusqu'a la confirmation sur deux fenetres");
   assert.equal(c.api.netSpeedGuardActive(), true);
   assert.ok(90 - simulated > 79, "une recharge de 90 s ne peut pas finir en douze secondes");
   assert.equal(c.api.netGameTimeMs(), 22000, "les timestamps d'aptitude suivent aussi le serveur");
@@ -155,7 +174,7 @@ test("la pause mesure le retour a la normale sans accumuler de temps de rattrapa
   assert.ok(report.requestedSeconds / report.serverSeconds > 0.95);
   socket.receive({ t: "speedGuard", blocked: false, recovered: true });
   assert.equal(c.api.netSpeedGuardActive(), false);
-  assert.ok(c.api.netSimulationStep(1) <= 0.1, "aucun rattrapage des six secondes de pause");
+  assert.ok(c.api.netSimulationStep(1) <= NETWORK_TIMING_GRACE_SEC, "aucun rattrapage des six secondes de pause");
 });
 
 test("les observateurs ignorent la prediction refusee et limitent le rendu a la vitesse valide", () => {
@@ -210,7 +229,7 @@ test("les reconnexions ne renouvellent pas la marge d'interpolation", () => {
     socket.open(); socket.receive({ t: "welcome", authed: true, id: "test", at: 10000 });
     simulated += c.api.netSimulationStep(1);
   }
-  assert.ok(simulated <= 0.1 + 1e-8);
+  assert.ok(simulated <= NETWORK_TIMING_GRACE_SEC + 1e-8);
 });
 
 test("une coupure ne repasse pas la simulation en horloge locale accelerable", () => {

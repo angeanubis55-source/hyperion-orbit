@@ -2,6 +2,8 @@
 // Solo-safe : si le WS est injoignable, le jeu continue en solo sans erreur.
 // Protocole compatible SCRIPTS/MULTI_SERVER.js (rooms par map, snapshot 20 Hz).
 
+import { NETWORK_TIMING_GRACE_SEC } from "./NETWORK_TIMING.js";
+
 let ws = null;
 let myId = "";
 let connected = false;
@@ -53,9 +55,9 @@ export function netSimulationStep(requestedSeconds) {
   if (simulationServerAt === null) return netConnected() ? 0 : requested;
   simulationRequested += requested;
   if (simulationBlocked) return 0;
-  // Dette fixe de 100 ms pour lisser les snapshots a 20 Hz. Elle doit etre
-  // remboursee : les frames et les reconnexions ne multiplient pas la marge.
-  const step = Math.min(requested, Math.max(0, simulationCredit + 0.1));
+  // Dette fixe pour absorber aussi les retards ponctuels des snapshots a 20 Hz.
+  // Elle est remboursee : frames et reconnexions ne multiplient pas la marge.
+  const step = Math.min(requested, Math.max(0, simulationCredit + NETWORK_TIMING_GRACE_SEC));
   simulationCredit -= step;
   return step;
 }

@@ -5,6 +5,8 @@ import vm from "node:vm";
 import { pruneUnavailableLoadout } from "../SRC/CORE/FIT_INVENTORY.js";
 import { normalizePilotSkills, canInvestPilotSkill, LOGDISK_PRICE, LOGDISK_PACK } from "../SRC/DATA/PILOT_SKILLS.js";
 import { planAutoUpgradeCharges, UPGRADE_SLOT_ORES, upgradeOreCapacity } from '../SRC/DATA/RESOURCES.js';
+import { CRAFTING_ENABLED, getCraftingRecipe } from '../SRC/DATA/CRAFTING.js';
+import { isOreResource } from '../SRC/DATA/RESOURCES.js';
 
 const source = readFileSync(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8").replace(/^export /gm, "");
 const account = readFileSync(new URL("../SRC/CORE/ACCOUNT.js", import.meta.url), "utf8");
@@ -51,6 +53,41 @@ function wireLogout(c) {
   Object.assign(c.api, { prepareCurrentUserMutation() {}, writeCurrent: value => c.api.netSetCurrent(value) });
   vm.runInContext("let logoutPending = false;\n" + account.slice(start, end).replace(/^export /gm, ""), c.api);
 }
+
+test("le craft de 25000 Seprom est durable avant les timers et survit a une ancienne confirmation", async () => {
+  const c = client(), initial = user();
+  Object.assign(initial.inventory.resources, { rinusk: 6250, blacklight_trace: 1250 });
+  c.api.enterNetMode("token", structuredClone(initial));
+  Object.assign(c.api, { CRAFTING_ENABLED, getCraftingRecipe, isOreResource, STORAGE_SCHEMA_VERSION: 4,
+    getCurrentUserForMutation: () => c.current(), ensureUserShape() {}, petShieldCapacity: () => 0,
+    readUsers: () => c.api.netList(), writeUsers: (list, options) => c.api.netStore(list, options),
+  });
+  const normalizedAccount = account.replace(/\r\n/g, "\n");
+  for (const name of ["saveUser", "craftCurrentUserRecipe"]) {
+    const from = normalizedAccount.indexOf(`function ${name}(`), end = normalizedAccount.indexOf("\n}", from) + 2;
+    vm.runInContext(normalizedAccount.slice(from, end), c.api);
+  }
+  const beforeCraft = c.api.flushNetUser(), older = c.requests.at(-1);
+  assert.equal(c.api.craftCurrentUserRecipe("craft_seprom_5000", 5).ok, true);
+  const cache = JSON.parse(c.storage.get("orbit_user_cache"));
+  assert.equal(cache.user.inventory.resources.seprom, 25100);
+  assert.equal(cache.user.credits, 50000000);
+  // Aucun timer idle/cache ni HTTP du craft n'a encore pu etre execute.
+  const reloaded = client(new Map(c.storage));
+  assert.equal(reloaded.api.bootNetFromCache(), true);
+  assert.equal(reloaded.current().inventory.resources.seprom, 25100);
+  older.reply(200, { ok: true, user: older.body.user });
+  await beforeCraft;
+  assert.equal(c.current().inventory.resources.seprom, 25100);
+  const remote = structuredClone(initial); remote.revision = 3; remote.credits += 500;
+  await c.conflict(remote);
+  assert.equal(c.current().inventory.resources.seprom, 25100);
+  assert.equal(c.current().credits, 50000500);
+  assert.equal(c.current().inventory.resources.rinusk || 0, 0);
+  await c.accept();
+  assert.equal(c.current().inventory.resources.seprom, 25100);
+  assert.equal(c.current().credits, 50000500);
+});
 
 test('le partage automatique reste acquis apres un conflit et conserve les nouveaux minerais serveur', async () => {
   const c = client(), initial = user(); c.api.enterNetMode('token', structuredClone(initial));

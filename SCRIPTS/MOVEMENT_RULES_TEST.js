@@ -4,6 +4,7 @@ import { SHIP_PACKS } from "../SHIP/SHIP_PACKS.js";
 import { abilityShipKeyFor } from "../SHIP/SHIP_ABILITIES.js";
 import { playerSlowMult } from "../SRC/CORE/FRAME_SYSTEMS.js";
 import { acAuditWindow } from "./ANTICHEAT.js";
+import { NETWORK_TIMING_GRACE_SEC } from "../SRC/CORE/NETWORK_TIMING.js";
 import { movementSpeed, movementWindow, takeMovement, useMovementAbility, stopMovementAbility, syncMovementAbility, usePhaseOut } from "./MOVEMENT_RULES.js";
 
 const profile = (ship = "phoenixbleu") => ({ shipId: SHIP_PACKS.find(p => abilityShipKeyFor(p.id) === ship || p.id.toLowerCase() === ship)?.id || ship,
@@ -21,24 +22,24 @@ test("un speed hack modere reste bloque sur une duree longue", t => {
     if (!move(s, p, i * 26, 0, 10000 + i * 50).accepted) rejections++;
   }
   assert.ok(rejections > 0);
-  assert.ok(s.x <= 400 * 20 * 1.01 + 42);
+  assert.ok(s.x <= 400 * 20 * 1.01 + 400 * NETWORK_TIMING_GRACE_SEC + 2);
 });
 
 test("les rafales de messages ne donnent pas du temps supplementaire", t => {
   t.mock.method(console, "log", () => {});
   const s = state(), p = profile();
   for (let i = 1; i <= 300; i++) move(s, p, i, 0, 10000);
-  assert.equal(s.x, 42, "la dette fixe de 100 ms et l'arrondi ne se multiplient pas avec les paquets");
+  assert.equal(s.x, p.speed * NETWORK_TIMING_GRACE_SEC + 2, "la dette fixe et l'arrondi ne se multiplient pas avec les paquets");
 });
 
 test("la marge d'interpolation du client est acceptee aussi pendant un bonus", () => {
   const s = state(), p = profile("lightning");
   useMovementAbility(s, p, "ability_lightning", true, 10000);
-  // Le client peut consommer 100 ms d'avance entre deux ticks serveur.
-  assert.equal(move(s, p, 80, 0, 10000).accepted, true);
-  assert.equal(move(s, p, 120, 0, 10050).accepted, true);
-  assert.equal(move(s, p, 160, 0, 10100).accepted, true);
-  assert.equal(move(s, p, 200, 0, 10100).accepted, false, "une rafale ne renouvelle pas la marge");
+  const lead = 800 * NETWORK_TIMING_GRACE_SEC;
+  assert.equal(move(s, p, lead, 0, 10000).accepted, true);
+  assert.equal(move(s, p, lead + 40, 0, 10050).accepted, true);
+  assert.equal(move(s, p, lead + 80, 0, 10100).accepted, true);
+  assert.equal(move(s, p, lead + 120, 0, 10100).accepted, false, "une rafale ne renouvelle pas la marge");
 });
 
 test("les coordonnees arrondies et les orbites restent valides a plusieurs cadences", () => {

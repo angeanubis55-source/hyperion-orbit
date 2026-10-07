@@ -57,6 +57,7 @@ window.__REFINERY_TEST__ = {
   state: () => structuredClone({ resources: account.user.inventory.resources, upgrades: account.user.upgrades, credits: player.credits, ammo: player.ammo.x4,
     key: refineryEquipmentPrefsKey(), preferences: refineryEquipmentPrefs, stored: localStorage.getItem(refineryEquipmentPrefsKey()), enabled: ui.refineryAutoUpgrades.checked }),
   dirty: () => { player.credits += 12345; player.ammo.x4--; markProgressDirty(); },
+  fundCraft: () => { player.credits += 50000000; noteNetCreditGain(50000000); markProgressDirty(); },
   give: ores => { for (const [ore, amount] of Object.entries(ores)) {
     account.user.inventory.resources[ore] = (account.user.inventory.resources[ore] || 0) + amount;
     noteNetResourceGain(ore, amount);
@@ -122,6 +123,34 @@ window.__ORBIT_ENGINE__ = {`));
   for (const slot of slots) assert.equal(await select(slot).inputValue(), slot === 'speed' ? '' : 'seprom');
   state = await page.evaluate(() => window.__REFINERY_TEST__.state());
   for (const slot of ['laser', 'rocket', 'shield']) assert.equal(state.upgrades[slot].stock, 40);
+  // Craft reel depuis la fenetre, puis confirmation serveur et rechargement.
+  await page.locator('#refineryAutoUpgrades').uncheck();
+  await page.locator('#refineryAuto').uncheck();
+  await page.evaluate(() => {
+    window.__REFINERY_TEST__.fundCraft();
+    window.__REFINERY_TEST__.give({ rinusk: 6250, blacklight_trace: 1250 });
+  });
+  await page.click('[data-window-id="craftingWindow"]');
+  await page.locator('[data-recipe-id="craft_seprom_5000"]').click();
+  await page.locator('#craftingQuantity').selectOption('5');
+  await page.locator('#craftingBuildBtn').click();
+  state = await page.evaluate(() => window.__REFINERY_TEST__.state());
+  assert.equal(state.resources.seprom, 25000);
+  assert.equal(state.credits, 5012345);
+  assert.match((await page.locator('#craftingMessage').innerText()).replace(/\s/g, ''), /25000Seprom/);
+  await page.evaluate(() => import('/SRC/CORE/ACCOUNT_NET.js').then(m => m.flushNetUser()));
+  const canonicalCraft = (await (await fetch(url + '/api/me', { headers })).json()).user;
+  assert.equal(canonicalCraft.inventory.resources.seprom, 25000);
+  assert.equal(canonicalCraft.inventory.resources.rinusk || 0, 0);
+  await page.reload({ waitUntil: 'domcontentloaded' }); await start();
+  state = await page.evaluate(() => window.__REFINERY_TEST__.state());
+  assert.equal(state.resources.seprom, 25000, 'les cinq packs restent apres reconnexion');
+  // Avec le chargement automatique, la soute se vide mais tout passe en charges.
+  if (!await page.locator('#refineryWindow').isVisible()) await page.click('[data-window-id="refineryWindow"]');
+  await page.locator('#refineryAutoUpgrades').check();
+  state = await page.evaluate(() => window.__REFINERY_TEST__.state());
+  assert.equal(state.resources.seprom || 0, 0);
+  assert.equal(['laser', 'rocket', 'shield'].reduce((n, slot) => n + state.upgrades[slot].stock - 40, 0), 250000);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ sharedOre: 'OK', compatibleLists: 'OK', focus: 'OK', closedWindow: 'OK', persistence: 'OK', state, errors }));
 } finally {

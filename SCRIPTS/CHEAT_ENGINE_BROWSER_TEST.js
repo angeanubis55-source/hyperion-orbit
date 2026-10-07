@@ -9,6 +9,7 @@ import { join, resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:net";
 import { chromium } from "playwright-core";
+import { NETWORK_TIMING_GRACE_SEC } from "../SRC/CORE/NETWORK_TIMING.js";
 
 const temporary = await mkdtemp(join(tmpdir(), "orbit-clock-browser-"));
 const reserve = createServer();
@@ -44,7 +45,7 @@ try {
   game.on("pageerror", e => errors.push(e.message)); admin.on("pageerror", e => errors.push(e.message));
   await game.goto(url + "/admin.html");
   await game.evaluate(token => localStorage.setItem("orbit_token", token), account.token);
-  const net = (await readFile(new URL("../SRC/CORE/NETPLAY.js", import.meta.url), "utf8")).replace(/^export /gm, "");
+  const net = `const NETWORK_TIMING_GRACE_SEC = ${NETWORK_TIMING_GRACE_SEC};\n` + (await readFile(new URL("../SRC/CORE/NETPLAY.js", import.meta.url), "utf8")).replace(/^export /gm, "").replace(/^import .*NETWORK_TIMING.*\r?\n/gm, "");
   const engine = await readFile(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
   const ui = (await readFile(new URL("../SRC/CORE/SPEED_GUARD_UI.js", import.meta.url), "utf8")).replace(/^export /gm, "");
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
@@ -89,6 +90,8 @@ try {
     window.testFrameTimer = setInterval(() => frame(performance.now()), 16);
   ` });
   await game.waitForFunction(() => netplayStatus().authed);
+  // Mesurer apres l'authentification, dont le delai varie avec la charge CPU.
+  await game.evaluate(() => { simulationSeconds = 0; shots = 0; abilityCd = 90; fireCd = 0; });
   await game.waitForTimeout(3000);
   const normal = await game.evaluate(() => ({ time: simulationSeconds, shots, abilityCd }));
   assert.ok(normal.time >= 2.7 && normal.time <= 3.5, JSON.stringify(normal));

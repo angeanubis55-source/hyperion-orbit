@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { getCurrentUserFull, buyItem, sellCurrentUserOre, setPetMode, updateCurrentUserProgress,
-  loadSkylabFromShip, chargeShipUpgradesAutomatically } from "../SRC/CORE/ACCOUNT.js";
+  loadSkylabFromShip, chargeShipUpgradesAutomatically, craftCurrentUserRecipe } from "../SRC/CORE/ACCOUNT.js";
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
 import { ORE_SELL_PRICES } from "../SRC/DATA/RESOURCES.js";
 
@@ -112,6 +112,20 @@ test("transport Skylab : n'efface pas les ressources encore présentes dans le m
 test("les simples lectures du compte ne déclenchent pas de sauvegarde de combat", t => {
   const { flushes } = session(t);
   getCurrentUserFull(); getCurrentUserFull(); assert.equal(flushes(), 0);
+});
+
+test("cinq packs de Seprom restent en soute apres le craft et l'autosave", t => {
+  const { ctx, original } = session(t);
+  Object.assign(ctx.account.user.inventory.resources, { rinusk: 6250, blacklight_trace: 1250 });
+  const result = craftCurrentUserRecipe("craft_seprom_5000", 5);
+  assert.equal(result.ok, true);
+  assert.equal(result.user.inventory.resources.seprom, 25000);
+  assert.equal(result.user.inventory.resources.rinusk || 0, 0);
+  assert.equal(result.user.inventory.resources.blacklight_trace || 0, 0);
+  assert.equal(result.user.credits, original.credits + 12500 - 50000000);
+  assert.equal(ctx.account.user.inventory.resources.seprom, 25000);
+  ctx.saveProgressNowMeasured();
+  assert.equal(getCurrentUserFull().inventory.resources.seprom, 25000);
 });
 
 test("le chargement automatique partage le minerai sans perdre les gains et consommations en cours", t => {

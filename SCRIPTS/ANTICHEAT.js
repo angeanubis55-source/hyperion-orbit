@@ -2,6 +2,8 @@
 // horloge serveur, logs et audit avant examen par la modération. Le client
 // est entièrement modifiable (Cheat Engine) : seule la validation serveur
 // compte. Module pur (aucun effet de bord) : testable unitairement.
+import { NETWORK_TIMING_GRACE_SEC } from "../SRC/CORE/NETWORK_TIMING.js";
+
 const SERVER_VMAX = 1500;
 const FAR_JUMP_NO_HEAL = 4000;
 const MOVE_BUCKET_CAP = 8000;
@@ -148,11 +150,11 @@ export function acMoveTake(state, nx, ny, nowMs, allowance = null) {
     buck = Math.min(cap, buck + (allowance?.distance ?? realDt * refill));
     const dx = nx - keep.x, dy = ny - keep.y;
     const jumpDist = Math.hypot(dx, dy);
-    // Meme marge fixe de 100 ms que l'interpolation du moteur client.
+    // Meme marge fixe que la simulation du moteur client.
     // Les vitesses viennent du serveur et la dette est remboursee : aucun
     // nouveau credit par paquet, ni par activation/coupure d'aptitude.
     if (cap > 0) state.moveTimingGrace = Math.max(Number(state.moveTimingGrace) || 0,
-      (allowance?.capacitySpeed ?? refill) * 0.1);
+      (allowance?.capacitySpeed ?? refill) * NETWORK_TIMING_GRACE_SEC);
     const debtLimit = cap > 0 ? 2 + (Number(state.moveTimingGrace) || 0) : 0;
     // Deux unites supplementaires absorbent l'arrondi des positions. La dette est
     // remboursee sur le paquet suivant : le spam ne multiplie pas la marge.
