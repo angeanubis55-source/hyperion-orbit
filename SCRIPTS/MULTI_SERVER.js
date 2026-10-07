@@ -24,6 +24,7 @@ import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminShipFamilies } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
+import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
 import { updateClockGuard, stopRejectedMotion } from "./CLOCK_GUARD.js";
 import { takeMovement, useMovementAbility, syncMovementAbility, movementSpeed, usePhaseOut } from "./MOVEMENT_RULES.js";
 import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival, respawnMap } from "./MAP_RULES.js";
@@ -51,7 +52,7 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
   const requestedConfig = Number(message.config) === 2 ? 2 : Number(message.config) === 1 ? 1 : null;
   if (!state._account || now - Number(state._accountAt || 0) >= 1000
     || (message.shipId && message.shipId !== state.shipId)) {
-    state._account = getAccountGameplayData(accountId);
+    state._account = getAccountGameplayData(accountId, state._account);
     state._accountAt = now;
   }
   if (!state._account) return null;
@@ -70,6 +71,19 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
         if (now < Number(member?._account?.boosters?.active?.[id] || 0)) groupBoosters[id] = (groupBoosters[id] || 0) + 1;
       }
     }
+    // Les compteurs/positions du compte sont souvent inchanges. Le controle
+    // d'une seconde verifie les expirations et le groupe sans reconstruire
+    // tout l'equipement si les droits de combat sont toujours les memes.
+    const boosterSignature = Object.entries(state._account.boosters?.active || {})
+      .filter(([, until]) => now < Number(until)).map(([id]) => id).sort().join(",")
+      + "|" + Object.entries(groupBoosters).sort(([a], [b]) => a.localeCompare(b)).map(([id, count]) => `${id}:${count}`).join(",");
+    if (state._combat && state._combatRev === state._account.revision && state._combatMap === map
+      && (!state._config || state._combat.config === state._config)
+      && state._combatBoosterSignature === boosterSignature) {
+      state._combatAt = now;
+      state.hswap = Math.max(0, (Number(state._swapFxUntil || 0) - now) / 1000);
+      return state._combat;
+    }
     const profile = combatProfile(state._account, map, state._config, groupBoosters);
     if (!profile) return null;
     const prior = state._combat;
@@ -87,6 +101,7 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
     state._combatRev = state._account.revision;
     state._combatMap = map;
     state._combatAt = now;
+    state._combatBoosterSignature = boosterSignature;
     state.shipId = profile.shipId;
     state.absorb = profile.absorb;
     state.evade = profile.evade;
@@ -2738,14 +2753,13 @@ setInterval(() => {
 }, 250);
 
 // Broadcast + simu NPC 20 Hz par room, uniquement aux sockets ouvertes.
-// Les NPC inactifs à plus de 2 000 unités de tous les joueurs voyagent à 1 Hz ;
+// Les NPC inactifs a plus de 2 000 unites voyagent a 1 Hz, repartis sur les ticks ;
 // leur simulation reste à 20 Hz et les NPC actifs/proches restent toujours
 // dans chaque snapshot. Les joueurs lointains restent, eux, à 10 Hz.
 let snapshotTick = 0;
 setInterval(() => {
   const now = Date.now();
   snapshotTick++;
-  const fullNpcTick = snapshotTick % 20 === 0;
   const fullPlayerTick = (snapshotTick & 1) === 0;
   const includePlayerStatic = snapshotTick % PLAYER_STATIC_REFRESH_TICKS === 0;
   // Les instances n'ont pas de snapshot partage, mais gardent le meme rythme
@@ -2956,22 +2970,7 @@ setInterval(() => {
       delete entry._staticChanged;
       delete entry._staticSignature;
     }
-    let npcForNetwork = npc;
-    if (!fullNpcTick && Array.isArray(npc?.list) && npc.list.length) {
-      const nearRadiusSq = NPC_NEAR_PLAYER_RADIUS * NPC_NEAR_PLAYER_RADIUS;
-      const damaged = new Set(Array.isArray(npc.dmg) ? npc.dmg.map((entry) => String(entry?.uid || "")) : []);
-      const activeList = npc.list.filter((entry) => {
-        if (!entry || entry.alive === false || entry.aggro != null || entry.cube || damaged.has(String(entry.uid || ""))) return true;
-        if (Number(entry.slowT) > 0 || Number(entry.freezeT) > 0) return true;
-        const nx = Number(entry.x) || 0, ny = Number(entry.y) || 0;
-        for (const playerState of players) {
-          const dx = nx - Number(playerState.x || 0), dy = ny - Number(playerState.y || 0);
-          if (dx * dx + dy * dy <= nearRadiusSq) return true;
-        }
-        return false;
-      });
-      npcForNetwork = { ...npc, list: activeList };
-    }
+    const npcForNetwork = selectNpcSnapshot(npc, players, snapshotTick, NPC_NEAR_PLAYER_RADIUS);
     const payload = JSON.stringify({ t: "snapshot", map: key, at: now, players: playersForNetwork, npc: npcForNetwork });
     for (const [, entry] of room) {
       try {

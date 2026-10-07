@@ -1425,8 +1425,15 @@ export function clanMemberUserIds(clanId) {
 
 // WS multi : verifie un token de compte hors HTTP (hello).
 // Retourne { id, pseudo } ou null (invite / token mort).
-export function getAccountGameplayData(accountId) {
+export function getAccountGameplayData(accountId, previous = null) {
   initAccountDb();
+  // Le poll WS reste a une seconde. Une revision inchangee ne justifie pas
+  // de relire et parser le JSON complet de l'inventaire a chaque passage.
+  if (previous && String(previous.id) === String(accountId)) {
+    const current = db.prepare("SELECT revision FROM users WHERE id = ?").get(String(accountId));
+    if (!current) return null;
+    if (Number(current.revision) === Number(previous.revision)) return previous;
+  }
   const row = db.prepare("SELECT data, faction, revision FROM users WHERE id = ?").get(String(accountId));
   if (!row) return null;
   try {

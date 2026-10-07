@@ -228,6 +228,53 @@ test("les coefficients forgés sont remplacés avant application et débit du bu
   for (const dmg of [NaN, Infinity, -1]) assert.equal(validateCombatHit(profile, { dmg }), null);
 });
 
+test("le poll serveur ne reconstruit pas le profil inchange mais suit compte, boosters et groupe", () => {
+  const source = readFileSync(new URL("./MULTI_SERVER.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const start = source.indexOf("function refreshCombatProfile("), end = source.indexOf("\n}", start);
+  let now = 10000, builds = 0;
+  let user = { ...fixture(), id: 'test', revision: 1, boosters: { active: { dmg: 40000 } } };
+  const member = { _account: { boosters: { active: {} } } };
+  const c = vm.createContext({ Date: { now: () => now },
+    getAccountGameplayData: () => user,
+    socialDescribeGroup: () => ({ members: [{ id: 'other', online: true, map: '1-1' }] }),
+    describePeer() {}, findPeerState: () => member,
+    combatProfile: (...args) => { builds++; return combatProfile(...args); }, acPoolResize, GROUP_BOOSTER_BONUS,
+  });
+  vm.runInContext(source.slice(start, end + 2), c);
+  const state = { id: 'u_test' };
+  const refresh = () => c.refreshCombatProfile(state, 'test', '1-1');
+  const first = refresh();
+  for (let second = 1; second <= 25; second++) { now += 1000; assert.equal(refresh(), first); }
+  assert.equal(builds, 1, '25 polls, un seul calcul d equipement');
+  user = { ...user, revision: 2 }; now += 1000;
+  assert.notEqual(refresh(), first); assert.equal(builds, 2);
+  now = 41000; refresh(); assert.equal(builds, 3, 'expiration du booster');
+  member._account.boosters.active.dmg2 = 50000; now += 1000;
+  refresh(); assert.equal(builds, 4, 'nouveau bonus de groupe');
+  now = 51000; refresh(); assert.equal(builds, 5, 'expiration du bonus partage');
+});
+
+test("le cache gameplay verifie la revision et ne sert pas un autre compte ou un compte supprime", () => {
+  const source = readFileSync(new URL('./ACCOUNT_SERVER.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const start = source.indexOf('export function getAccountGameplayData('), end = source.indexOf('\n}', start);
+  let row = { data: JSON.stringify({ id: 'test', hangars: [{ id: 'h1' }] }), faction: 'mmo', revision: 1 };
+  let fullReads = 0;
+  const c = vm.createContext({ initAccountDb() {}, db: { prepare: sql => ({ get: () => {
+    if (!row) return undefined;
+    if (sql.startsWith('SELECT revision')) return { revision: row.revision };
+    fullReads++; return row;
+  } }) } });
+  vm.runInContext(source.slice(start, end + 2).replace(/^export /, ''), c);
+  const first = c.getAccountGameplayData('test');
+  for (let i = 0; i < 30; i++) assert.equal(c.getAccountGameplayData('test', first), first);
+  assert.equal(fullReads, 1);
+  row = { ...row, revision: 2, data: JSON.stringify({ id: 'test', hangars: [{ id: 'new-hangar' }] }) };
+  const updated = c.getAccountGameplayData('test', first);
+  assert.equal(updated.hangars[0].id, 'new-hangar'); assert.equal(updated.revision, 2);
+  assert.notEqual(c.getAccountGameplayData('other', updated), updated, 'identite differente ne reutilise pas le cache');
+  row = null; assert.equal(c.getAccountGameplayData('test', updated), null);
+});
+
 test("le gel vient d'une roquette possédée avec son propre cooldown serveur", () => {
   const p = combatProfile(fixture(), "1-1"), state = {};
   const message = { dmg: 0, rocket: "ric3", freezeSec: 999, slowPct: 95 };

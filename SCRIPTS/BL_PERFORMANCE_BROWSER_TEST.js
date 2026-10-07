@@ -46,6 +46,10 @@ const hook = `window.__BL_PROFILE__ = {
     if (on) Target.set(npc); else Target.clear();
     attackActive = on;
   },
+  move: on => {
+    moveTarget.active = on;
+    if (on) { moveTarget.x = player.x + 600; moveTarget.y = player.y + 100; }
+  },
   contours: () => {
     const images = NPC_TYPES.npc_Mindfire_Behemoth.sprite._imgs;
     const target = document.createElement('canvas'); target.width = 900; target.height = 800;
@@ -133,6 +137,23 @@ try {
     localStorage.setItem("orbit_token", token); localStorage.setItem("orbit_user_cache", JSON.stringify({ user }));
     localStorage.setItem("orbit_current_user", JSON.stringify({ id: user.id, pseudo: user.pseudo, email: user.email }));
     sessionStorage.setItem("orbit_assets_preloaded_v1", "ready"); sessionStorage.setItem("spawnMapId", "1-BL");
+    const NativeSocket = WebSocket;
+    window.__SNAPSHOT_PROFILE__ = { samples: [], maxHandlerMs: 0 };
+    window.WebSocket = class extends NativeSocket {
+      set onmessage(handler) {
+        super.onmessage = event => {
+          const start = performance.now();
+          try { handler(event); } finally {
+            const profile = window.__SNAPSHOT_PROFILE__;
+            profile.maxHandlerMs = Math.max(profile.maxHandlerMs, performance.now() - start);
+            if (event.data.includes('"t":"snapshot"')) {
+              profile.samples.push({ at: start, bytes: event.data.length });
+              if (profile.samples.length > 300) profile.samples.shift();
+            }
+          }
+        };
+      }
+    };
   }, { token: account.token, user: canonical });
   await page.goto(url + "/index.html?map=1-BL", { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#loadingStartBtn:not([disabled])", { timeout: 90000 }); await page.click("#loadingStartBtn");
@@ -147,11 +168,12 @@ try {
   assert.equal(contours.first, true); assert.equal(contours.topVisible, false); assert.equal(contours.bottomVisible, true);
   console.log(JSON.stringify({ contours }));
   await page.waitForTimeout(2000);
-  for (const scenario of ['normal', 'marker', 'pet-locator', 'combat']) {
+  for (const scenario of ['normal', 'marker', 'pet-locator', 'combat', 'movement', 'moving-combat']) {
     await page.evaluate(scenario => {
       window.__BL_PROFILE__.mark(scenario === 'marker');
       window.__BL_PROFILE__.locator(scenario === 'pet-locator');
-      window.__BL_PROFILE__.combat(scenario === 'combat');
+      window.__BL_PROFILE__.combat(scenario === 'combat' || scenario === 'moving-combat');
+      window.__BL_PROFILE__.move(scenario === 'movement' || scenario === 'moving-combat');
     }, scenario);
     if (scenario === 'pet-locator') {
       // Activation recalls the PET and clears its previous selection.
@@ -159,16 +181,24 @@ try {
       await page.waitForFunction(() => !document.getElementById('petNpcRow').hidden);
       await page.evaluate(() => document.querySelector('#petNpcList [data-value="npc_Mindfire_Behemoth"]').click());
     }
-    await page.evaluate(() => window.HyperionPerformance.reset());
+    await page.evaluate(() => {
+      window.HyperionPerformance.reset();
+      window.__SNAPSHOT_PROFILE__.samples.length = 0; window.__SNAPSHOT_PROFILE__.maxHandlerMs = 0;
+    });
     await page.waitForTimeout(3000);
     const state = await page.evaluate(() => window.__BL_PROFILE__.state());
     const timings = await page.evaluate(() => window.HyperionPerformance.snapshot());
+    const network = await page.evaluate(() => {
+      const p = window.__SNAPSHOT_PROFILE__, sizes = p.samples.map(s => s.bytes).sort((a, b) => a - b);
+      return { samples: sizes.length, maxBytes: sizes.at(-1), medianBytes: sizes[Math.floor(sizes.length / 2)], maxHandlerMs: p.maxHandlerMs };
+    });
     assert.equal(state.player.dead, false); assert.ok(state.npcs >= 101);
     assert.ok(timings['frame.draw'].count > 30);
     if (scenario === 'pet-locator') assert.notEqual(state.locator, null, 'le vrai localisateur reste actif');
-    if (scenario === 'combat') assert.ok(state.mindfire[0].hp < 135000000, 'les tirs atteignent le Mindfire');
+    if (scenario === 'combat' || scenario === 'moving-combat') assert.ok(state.mindfire[0].hp < 135000000, 'les tirs atteignent le Mindfire');
     console.log(JSON.stringify({ scenario, state, drawMs: timings['frame.draw'].averageMs,
-      updateMs: timings['frame.update'].averageMs, totalMs: timings['frame.total'].averageMs, errors }));
+      updateMs: timings['frame.update'].averageMs, totalMs: timings['frame.total'].averageMs,
+      maxFrameCpuMs: timings['frame.total'].maxMs, network, errors }));
     if (scenario === 'pet-locator' && process.argv.includes('--screenshot')) {
       await page.screenshot({ path: 'SCRIPTS/_BL_QA.png' });
     }

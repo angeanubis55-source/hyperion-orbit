@@ -10,6 +10,7 @@ import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
 import { createDeferredPersistence } from "../SRC/CORE/DEFERRED_PERSISTENCE.js";
 import { drawCombatFloatTexts } from "../SRC/CORE/COMBAT_TEXT_RENDERER.js";
 import { createSpriteOutlineCache } from "../SRC/CORE/SPRITE_OUTLINE_CACHE.js";
+import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
 import { tickFloatingTexts } from "../SRC/CORE/FRAME_SYSTEMS.js";
 import { QUEST_DEFINITIONS, getQuestObjectives, normalizeQuestState, recordQuestProgress, isQuestComplete, claimQuest } from "../QUEST/QUEST_TYPES.js";
 import { LOGDISK_PACK, LOGDISK_PRICE, normalizePilotSkills } from "../SRC/DATA/PILOT_SKILLS.js";
@@ -17,6 +18,41 @@ import { createDefaultSkylabState, normalizeSkylabState, tickSkylabState } from 
 
 // Exerce les fonctions livrées sans démarrer une session ou un serveur réel.
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+
+test('les NPC lointains sont tous actualises en une seconde sans paquet massif', () => {
+  const npc = { list: Array.from({ length: 500 }, (_, i) => ({ uid: `npc_${i}`, type: 'npc_Streuner',
+    x: 10000 + i, y: 10000, hp: 800, sh: 400, alive: true, seq: 1 })), deaths: [], dmg: [], gone: [] };
+  const seen = new Map();
+  let largest = 0;
+  for (let tick = 1; tick <= 20; tick++) {
+    const packet = selectNpcSnapshot(npc, [{ x: 0, y: 0 }], tick);
+    largest = Math.max(largest, Buffer.byteLength(JSON.stringify(packet)));
+    for (const entry of packet.list) seen.set(entry.uid, (seen.get(entry.uid) || 0) + 1);
+  }
+  assert.equal(seen.size, 500);
+  assert.ok([...seen.values()].every(count => count === 1));
+  const previousPeak = Buffer.byteLength(JSON.stringify(npc));
+  assert.ok(largest < previousPeak * 0.1, `${largest} / ${previousPeak} octets`);
+  // Un changement d'ordre de la liste ne change pas les NPC servis au meme tick.
+  assert.deepEqual(selectNpcSnapshot(npc, [], 7).list.map(e => e.uid).sort(),
+    selectNpcSnapshot({ ...npc, list: [...npc.list].reverse() }, [], 7).list.map(e => e.uid).sort());
+});
+
+test('combat et proximite NPC restent a 20 Hz, y compris morts et debuffs', () => {
+  const immediate = [
+    { uid: 'near', x: 100, y: 100 }, { uid: 'near-second-player', x: 20000, y: 20000 },
+    { uid: 'aggro', x: 10000, y: 10000, aggro: 'p1' },
+    { uid: 'dying', x: 10000, y: 10000, alive: false },
+    { uid: 'hit', x: 10000, y: 10000 }, { uid: 'cube', x: 10000, y: 10000, cube: 'open' },
+    { uid: 'slow', x: 10000, y: 10000, slowT: 1 }, { uid: 'frozen', x: 10000, y: 10000, freezeT: 1 },
+  ];
+  const npc = { list: immediate, dmg: [{ uid: 'hit', total: 300 }], deaths: [{ uid: 'dying' }], gone: ['despawn'] };
+  for (let tick = 1; tick <= 40; tick++) {
+    const packet = selectNpcSnapshot(npc, [{ x: 0, y: 0 }, { x: 20000, y: 20000 }], tick);
+    assert.deepEqual(packet.list, immediate);
+    assert.equal(packet.dmg, npc.dmg); assert.equal(packet.deaths, npc.deaths); assert.equal(packet.gone, npc.gone);
+  }
+});
 function engineFunction(name, source = engine) {
   const start = source.indexOf(`function ${name}(`);
   assert.ok(start >= 0, name);
