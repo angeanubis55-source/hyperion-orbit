@@ -976,7 +976,7 @@ export const NPC_TYPES = {
     onKill: { spawn: [ { type: "npc_Boss_Lordakia_delta", count: 4, radius: 120 } ] },
   },
   npc_SaNeJiEwZ_delta: {
-    name: "[ψ] SaNeJiEwZ δ",
+    name: "-=[ SaNeJiEwZ ]=- δ",
     sprite: { path: "NPC/NPC_SPRITES/SANEJIEWZ/", frames: 32, firstNumber: 1, ext: ".png", w: 160, h: 143 },
     playSprite: false,
     passiveNative: false,
