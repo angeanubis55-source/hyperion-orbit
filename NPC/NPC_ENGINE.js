@@ -858,6 +858,18 @@ export const NPC_ENGINE_ASSIGNMENTS = Object.freeze({
     "engineType": 0,
     "smokeType": 0
   },
+  "npc_Infernal": {
+    "npcId": 0,
+    "positionClass": "UnidentifiedDreadnought",
+    "engineType": 0,
+    "smokeType": 0
+  },
+  "npc_Devourer": {
+    "npcId": 0,
+    "positionClass": "UnidentifiedBattleship",
+    "engineType": 0,
+    "smokeType": 0
+  },
   "npc_Protegit_maudite2": {
     "npcId": 12,
     "positionClass": "Protegit",

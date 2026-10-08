@@ -8,11 +8,13 @@ export const GALAXY_GATE_DEFINITIONS = Object.freeze({
   delta: Object.freeze({ id: "delta", name: "Delta", group: "delta", requiredParts: 128, maxWaves: 10, maxLives: 5, image: "ASSETS/DELTA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 13500000, honor: 337500, credits: 65000000, x4: 67500 }), rewardScale: 4 }),
   // ✅ Epsilon : roue de spin isolée (groupe "epsilon"), 99 pièces / 11 vagues pirates (officiel).
   epsilon: Object.freeze({ id: "epsilon", name: "Epsilon", group: "epsilon", requiredParts: 99, maxWaves: 11, maxLives: 5, image: "ASSETS/EPSILON_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 7500000, honor: 225000, credits: 30000000, x4: 30000 }), rewardScale: 1 }),
+  // ✅ Zeta : roue de spin isolée (groupe "zeta"), 111 pièces / 10 vagues (finale scriptée Devourer).
+  zeta: Object.freeze({ id: "zeta", name: "Zeta", group: "zeta", requiredParts: 111, maxWaves: 10, maxLives: 5, image: "ASSETS/ZETA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 9000000, honor: 300000, credits: 45000000, x4: 37500 }), rewardScale: 1 }),
 });
 
-// Groupes de spin : "ensemble" (Alpha/Beta/Gamma, une seule roue), "delta" et
-// "epsilon" (roues isolées).
-export const GALAXY_GATE_SPIN_GROUPS = Object.freeze(["ensemble", "delta", "epsilon"]);
+// Groupes de spin : "ensemble" (Alpha/Beta/Gamma, une seule roue), "delta",
+// "epsilon" et "zeta" (roues isolées).
+export const GALAXY_GATE_SPIN_GROUPS = Object.freeze(["ensemble", "delta", "epsilon", "zeta"]);
 
 // Groupe de spin d'une gate (roue utilisée pour les pièces/doublons/multiplicateur).
 export function getGalaxyGateSpinGroup(gateId) {
@@ -43,9 +45,9 @@ export function normalizeGalaxyGateState(raw) {
     deployed: {},
     completed: {},
     lives: {},
-    // ✅ multiplicateurs par groupe de spin : "ensemble" (ABG), "delta" et "epsilon" isolés.
-    multipliers: { ensemble: 1, delta: 1, epsilon: 1 },
-    multiplierArmed: { ensemble: false, delta: false, epsilon: false },
+    // ✅ multiplicateurs par groupe de spin : "ensemble" (ABG), "delta", "epsilon" et "zeta" isolés.
+    multipliers: { ensemble: 1, delta: 1, epsilon: 1, zeta: 1 },
+    multiplierArmed: { ensemble: false, delta: false, epsilon: false, zeta: false },
     active: GALAXY_GATE_DEFINITIONS[String(source.active || "").toLowerCase()] ? String(source.active).toLowerCase() : null,
     activeWave: Math.max(1, Math.floor(Number(source.activeWave) || 1)),
     // ✅ progression persistée par gate : permet d'alterner librement
@@ -83,8 +85,8 @@ export function normalizeGalaxyGateState(raw) {
   const clampMult = (value) => Math.min(5, Math.max(1, Math.floor(Number(value) || 1)));
   const legacyScalar = clampMult(source.multiplier);
   const legacyScalarArmed = source.multiplierArmed === true && legacyScalar > 1;
-  const groupMax = { ensemble: legacyScalar, delta: 1, epsilon: 1 };
-  const groupArmed = { ensemble: legacyScalarArmed, delta: false, epsilon: false };
+  const groupMax = { ensemble: legacyScalar, delta: 1, epsilon: 1, zeta: 1 };
+  const groupArmed = { ensemble: legacyScalarArmed, delta: false, epsilon: false, zeta: false };
   for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) {
     const group = gate.group || gate.id;
     // Ancien format objet par gate (alpha/beta/gamma) : reporté sur son groupe.

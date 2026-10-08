@@ -3712,7 +3712,8 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   gap:6px;
 }
 .ggGateNav .ggTabsGroup[data-gg-group="delta"],
-.ggGateNav .ggTabsGroup[data-gg-group="epsilon"] {
+.ggGateNav .ggTabsGroup[data-gg-group="epsilon"],
+.ggGateNav .ggTabsGroup[data-gg-group="zeta"] {
   margin-top:3px;
   padding-top:3px;
   border-top:1px solid rgba(124,240,255,.25);

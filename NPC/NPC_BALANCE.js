@@ -311,4 +311,5 @@ export const NPC_REWARDS = Object.freeze({
   npc_Infernal: { credits: 25000, exp: 8000, honor: 4 },
   npc_Scorcher: { credits: 150000, exp: 15000, honor: 8 },
   npc_Melter: { credits: 400000, exp: 55000, honor: 12 },
+  npc_Devourer: { credits: 2500000, exp: 1000000, honor: 512 },
 });

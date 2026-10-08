@@ -163,7 +163,7 @@ export class ZoneNpcSim {
             if (!portal || portal.hidden === true) continue;
             const destination = String(portal.toMap || "").trim().toLowerCase();
             // Les portails de Galaxy Gates ne fournissent jamais de zone sure.
-            if (["alpha", "beta", "gamma", "delta", "epsilon"].includes(destination)) continue;
+            if (["alpha", "beta", "gamma", "delta", "epsilon", "zeta"].includes(destination)) continue;
             // Rayon 500 : parité solo (450 + SAFE_ZONE_MARGIN côté client).
             safe.push({ x: Number(portal.x) || 0, y: Number(portal.y) || 0, r: 500 });
           }

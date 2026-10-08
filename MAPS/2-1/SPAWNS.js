@@ -482,6 +482,70 @@ export function getZonePortals(WORLD) {
 
     },
 
+    {
+
+      id: "p_11_to_zeta",
+
+      x: 7911,
+
+      y: 4666,
+
+      r: 260,
+
+      toMap: "zeta",
+
+ sprites: {
+
+    idle: {
+
+      src: "ASSETS/ZETA_PORTAL/DESACTIVE.png",
+
+      w: 498,
+
+      h: 490,
+
+      yOff: 0,
+
+    },
+
+
+
+    open: {
+
+      src: "ASSETS/ZETA_PORTAL/ACTIVE.png",
+
+      w: 498,
+
+      h: 490,
+
+      yOff: 0,
+
+    },
+
+
+
+    jump: {
+
+      src: "ASSETS/ZETA_PORTAL/JUMP.png",
+
+      w: 498,
+
+      h: 490,
+
+      yOff: 0,
+
+      scale: 1,
+
+      spinSpeed: 0,
+
+      alpha: 1,
+
+    },
+
+  },
+
+    },
+
   ];
 }
 

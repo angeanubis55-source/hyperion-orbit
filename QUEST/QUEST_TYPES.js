@@ -283,6 +283,7 @@ const GALAXY_ENERGY_CONTRACTS = [
   EQ("energy_gate_trinity", "Triple saut", "Termine une fois chaque portail de l’ensemble Alpha, Beta et Gamma.", [G("alpha"), G("beta"), G("gamma")], 35000000, 17500000, 35000, 100, "energy_cube_core"),
   EQ("energy_gate_delta", "Saut Delta", "Termine le portail Delta, isolé de l’ensemble Alpha, Beta et Gamma.", [G("delta")], 45000000, 22500000, 45000, 150, "energy_gate_trinity"),
   EQ("energy_gate_epsilon", "Saut Epsilon", "Termine le portail pirate Epsilon, isolé des autres roues.", [G("epsilon")], 55000000, 27500000, 55000, 200, "energy_gate_delta"),
+  EQ("energy_gate_zeta", "Saut Zeta", "Termine le portail Zeta et son Devourer à paliers.", [G("zeta")], 65000000, 32500000, 65000, 250, "energy_gate_epsilon"),
   EQ("energy_ultimate_stock", "Coffre du vétéran", "Prouve ton endurance dans les Gates et contre les unités d’élite.", [G("alpha", 5), G("beta", 3), G("gamma", 2), K("uber", "npc_Uber_Kristallon", 50, "Éliminer des Uber Kristallons", "4-5")], 50000000, 25000000, 50000, 250, "energy_gate_trinity"),
 ];
 
@@ -605,6 +606,9 @@ const QUEST_CATALOG = [
   Q("gate_epsilon", "Gueule Epsilon", "Termine la Galaxy Gate Epsilon (roue isolée, 99 pièces, 11 vagues pirates).", [G("epsilon")], 3000000, 1050000, 3000, "gate_delta"),
   Q("gate_pentad", "Pentade de feu", "Achève les cinq Gates : Alpha, Beta, Gamma, Delta et Epsilon.", [G("alpha"), G("beta"), G("gamma"), G("delta"), G("epsilon")], 18000000, 6300000, 18000, "gate_epsilon"),
   Q("gate_epsilon_veteran", "Vétéran Epsilon", "Répète la Galaxy Gate Epsilon jusqu’à la maîtriser.", [G("epsilon", 3)], 20000000, 7000000, 20000, "gate_pentad"),
+  Q("gate_zeta", "Gueule Zeta", "Termine la Galaxy Gate Zeta (roue isolée, 111 pièces, finale Devourer à paliers).", [G("zeta")], 4000000, 1400000, 4000, "gate_epsilon"),
+  Q("gate_hexad", "Hexade de feu", "Achève les six Gates : Alpha, Beta, Gamma, Delta, Epsilon et Zeta.", [G("alpha"), G("beta"), G("gamma"), G("delta"), G("epsilon"), G("zeta")], 22000000, 7700000, 22000, "gate_zeta"),
+  Q("gate_zeta_veteran", "Vétéran Zeta", "Répète la Galaxy Gate Zeta jusqu’à la maîtriser.", [G("zeta", 3)], 25000000, 8750000, 25000, "gate_hexad"),
 
   Q("collector_route", "La grande rafle", "Récupère toutes les formes de cargaisons courantes.", [C("bonus", "Bonus_Box", 100, "Collecter des Bonus Boxes"), C("cargo", "Cargo_Box", 100, "Collecter des Cargo Boxes"), C("booty", "Green_Booty_Box", 10, "Collecter des Green Booty Boxes")], 5000000, 2500000, 10000),
   Q("astral_reserves", "Poussière d’étoiles", "Récupère les caches les plus rares disponibles.", [C("astral", "Astral_Prime_Box", 10, "Collecter des Astral Prime Boxes"), C("alloy", "Hybrid_Alloy_Box", 25, "Collecter des Hybrid Alloy Boxes")], 12000000, 6000000, 24000),

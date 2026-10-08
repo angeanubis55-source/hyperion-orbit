@@ -13648,9 +13648,11 @@ function renderGalaxyGateWindow(message = "") {
   const ensembleTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "ensemble").map(ggTabButton).join("");
   const deltaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "delta").map(ggTabButton).join("");
   const epsilonTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "epsilon").map(ggTabButton).join("");
+  const zetaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "zeta").map(ggTabButton).join("");
   ui.ggTabs.innerHTML = `<div class="ggTabsGroup" data-gg-group="ensemble"><div class="ggTabsButtons">${ensembleTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="delta"><div class="ggTabsButtons">${deltaTabs}</div></div>`
-    + `<div class="ggTabsGroup" data-gg-group="epsilon"><div class="ggTabsButtons">${epsilonTabs}</div></div>`;
+    + `<div class="ggTabsGroup" data-gg-group="epsilon"><div class="ggTabsButtons">${epsilonTabs}</div></div>`
+    + `<div class="ggTabsGroup" data-gg-group="zeta"><div class="ggTabsButtons">${zetaTabs}</div></div>`;
   const history = [...state.history].reverse();
   ui.ggHistory.innerHTML = history.length ? history.map(entry => {
     const reward = entry.rewards || {};
@@ -13920,7 +13922,7 @@ const TRADE_BUTTON = {
 // 4-1..4-4 utilisent BATTLE/4-x, comme chaque map utilise son propre skin.
 function getPortalSpriteSet(ptl = null) {
   const gateId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
-  const isGalaxyGate = ["alpha", "beta", "gamma", "delta", "epsilon"].includes(gateId);
+  const isGalaxyGate = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"].includes(gateId);
   const destination = isGalaxyGate && ptl === portal ? gateId
     : isGalaxyGate && ptl === gateReturnPortal
       ? getFactionHomeMap((account.user || getCurrentUserFull())?.faction)
@@ -13941,6 +13943,8 @@ function getPortalSpriteSet(ptl = null) {
       ...DEFAULT_PORTAL_JUMP_FX,
       // Animation de saut de la catégorie (25 frames 320x320).
       ...(!ptl?.sprites?.jumpFx && skin?.jumpFxPath ? { path: skin.jumpFxPath } : {}),
+      // ✅ nombre de frames propre au skin (ex. Zeta : 18 frames 300x300).
+      ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxFrames) > 0 ? { frames: Math.floor(Number(skin.jumpFxFrames)) } : {}),
       ...(ptl?.sprites?.jumpFx || {}),
     },
 
@@ -26077,6 +26081,13 @@ function triggerBossEncounterPhase(boss, damageDone) {
   const phaseTypes = Array.isArray(config?.phaseTypes) ? config.phaseTypes : [];
   const phaseCount = phaseGroups?.length || phaseTypes.length;
   if (!state || state.invulnerable || damageDone <= 0 || state.phase >= phaseCount) return false;
+  // ✅ paliers réservés à la finale (Zeta) : la vague 9 n'a que la garde initiale.
+  if (config?.phasesFinalWaveOnly === true) {
+    try {
+      const maxWaves = Math.max(1, Number(GALAXY_GATE_DEFINITIONS[String(window.__CURRENT_MAP_ID__ || "").toLowerCase()]?.maxWaves) || 1);
+      if (Number(wave) < maxWaves) return false;
+    } catch { return false; }
+  }
   // Brouillé : la phase attend la fin du brouillage (re-testée à chaque hit).
   if (isEntityJammed(boss)) return false;
 
@@ -28419,7 +28430,7 @@ function portalProvidesSafety(portal) {
   const playerSector = getFaction((account.user || getCurrentUserFull())?.faction).sector;
   if (sectorMatch && sectorMatch[1] !== playerSector) return false;
   const destination = String(portal?.toMap || "").trim().toLowerCase();
-  return !["alpha", "beta", "gamma", "delta", "epsilon"].includes(destination);
+  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta"].includes(destination);
 }
 
 function baseProvidesSafety() {
@@ -28599,6 +28610,16 @@ if (waveSpawns.remaining > 0 && enemies.length < MAX_ALIVE) {
     if (e) {
       e._onKill = next?.onKill || null;
       if (!isEncounterBoss && rules?.bossEncounter?.initialGuard) e._bossInitialGuard = true;
+      // ✅ boss de vague : même état encounter que le spawn factory (Zeta).
+      if (isEncounterBoss) {
+        e._bossEncounter = {
+          phase: 0,
+          invulnerable: !!rules?.bossEncounter?.initialGuard,
+          initialGuard: !!rules?.bossEncounter?.initialGuard,
+          minionIds: [],
+        };
+        e._stationaryBoss = !!rules?.bossEncounter?.stationary;
+      }
       enemies.push(e);
     }
 
@@ -29946,7 +29967,7 @@ function die() {
 // ✅ Portails annexes (par destination) : jamais utilisés pour une
 // réapparition au portail — low, QZ, Galaxy Gates (aussi celles des X-1),
 // map maudite et 5-2 (portail central de 4-5).
-const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "maudite", "5-2"]);
+const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "maudite", "5-2"]);
 
 function isAnnexPortal(portal) {
   // Retour Low : exclu aussi (sinon réapparition sur le portail masqué).
@@ -31585,6 +31606,24 @@ function drawEnemyBody(e, exactFrame = null) {
   ctx.imageSmoothingEnabled = false;
   drawCenteredImage(ctx, img, w, h);
   ctx.restore();
+  // ✅ bulle ISH sur boss invulnérable (finale Zeta) : anim en boucle.
+  try {
+    if (e._bossEncounter?.invulnerable && Number(e.hp) > 0) {
+      ensureInstaShieldLoaded();
+      if (instaShieldReady && instaShieldImgs?.length) {
+        const frames = instaShieldImgs.length;
+        const idx = Math.floor(performance.now() / 1000 * 30) % frames;
+        const shieldImg = instaShieldImgs[idx];
+        if (shieldImg) {
+          const s = Math.max(w, h) * 1.25;
+          ctx.save();
+          ctx.globalAlpha = 0.9;
+          drawCenteredImage(ctx, shieldImg, s, s);
+          ctx.restore();
+        }
+      }
+    }
+  } catch {}
 }
 
 // Taille du sprite d'un NPC (même calcul que drawEnemyBody) : sert aux

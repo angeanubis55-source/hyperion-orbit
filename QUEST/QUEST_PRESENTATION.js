@@ -164,6 +164,7 @@ const GATE_PORTAL_SPRITES = {
   gamma: { src: "ASSETS/GAMMA_PORTAL/ACTIVE.png", w: 360, h: 421 },
   delta: { src: "ASSETS/DELTA_PORTAL/ACTIVE.png", w: 400, h: 560 },
   epsilon: { src: "ASSETS/EPSILON_PORTAL/ACTIVE.png", w: 406, h: 474 },
+  zeta: { src: "ASSETS/ZETA_PORTAL/ACTIVE.png", w: 498, h: 490 },
 };
 const VISIT_PORTAL_SPRITE = { src: "ASSETS/STANDARD_PORTAL/ACTIVE.png", w: 320, h: 320 };
 const PIRATE_PORTAL_SPRITE = { src: "ASSETS/PIRATES_PORTAL/ACTIVE.png", w: 362, h: 387 };

@@ -284,7 +284,7 @@ function handleAdminApi(request, response, pathname) {
         });
       }
     }
-    // Joueurs en instance perso (Galaxy Gates : alpha/beta/gamma/delta/epsilon) : hors
+    // Joueurs en instance perso (Galaxy Gates : alpha/beta/gamma/delta/epsilon/zeta) : hors
     // room mais connectés — visibles ici avec le badge gate.
     for (const [pid, entry] of instancePeers) {
       const s = entry?.state || {};
@@ -1066,7 +1066,7 @@ function sendBoxSync(ws, mapId) {
 // suivant est alors un no-op (déjà sur place côté serveur).
 // Refusé : instances, gates, raid Low, même map, cooldowns.
 // Refusé : instances, gates, raid Low, Maudite, 5-2, Blacklight, même map, cooldowns.
-const STAR_JUMP_BLOCKED_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "qz", "low", "maudite", "5-2", "1-bl", "2-bl", "3-bl"]);
+const STAR_JUMP_BLOCKED_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "qz", "low", "maudite", "5-2", "1-bl", "2-bl", "3-bl"]);
 const STAR_JUMP_REUSE_MS = STARMAP_JUMP_REUSE_SEC * 1000;
 const STAR_JUMP_MAP_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
 
@@ -1636,7 +1636,7 @@ wss.on("connection", (ws) => {
       // Reprise d'une instance sauvegardée : son économie reste locale.
       const savedMap = state._account?.hangars?.find(h => h?.active)?.lastMap;
       if (!arrival && !state._joined && instance && String(savedMap).toLowerCase() === nextMap
-        && ["alpha", "beta", "gamma", "delta", "epsilon", "qz"].includes(nextMap)) arrival = { instance: true };
+        && ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "qz"].includes(nextMap)) arrival = { instance: true };
     }
     if (!arrival || instance !== (arrival.instance === true)) return false;
     if (instance) {

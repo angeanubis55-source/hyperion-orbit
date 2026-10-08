@@ -2731,7 +2731,7 @@ export const NPC_TYPES = {
   },
   npc_Infernal: {
     name: "-=[ Infernal ]=-",
-    sprite: { path: "NPC/NPC_SPRITES/UNIDENTIFIED_DESTROYER/", frames: 32, firstNumber: 1, ext: ".png", w: 135, h: 120 },
+    sprite: { path: "NPC/NPC_SPRITES/INFERNAL/", frames: 32, firstNumber: 1, ext: ".png", w: 135, h: 120 },
     playSprite: false,
     passiveNative: false,
     spriteSpeed: 0,
@@ -2740,7 +2740,7 @@ export const NPC_TYPES = {
   },
   npc_Scorcher: {
     name: "-=[ Scorcher ]=-",
-    sprite: { path: "NPC/NPC_SPRITES/UNIDENTIFIED_DREADNOUGHT/", frames: 32, firstNumber: 1, ext: ".png", w: 173, h: 153 },
+    sprite: { path: "NPC/NPC_SPRITES/SCORCHER/", frames: 32, firstNumber: 1, ext: ".png", w: 143, h: 143 },
     playSprite: false,
     passiveNative: false,
     spriteSpeed: 0,
@@ -2755,6 +2755,15 @@ export const NPC_TYPES = {
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
     r: 41, hp: 400000, shield: 300000, speed: 370, bulletDmg: 5000, bulletSpeed: 4500, shootRange: 600,
+  },
+  npc_Devourer: {
+    name: "-=[ Devourer ]=-",
+    sprite: { path: "NPC/NPC_SPRITES/DEVOURER/", frames: 16, firstNumber: 1, ext: ".png", w: 683, h: 683 },
+    playSprite: true,
+    passiveNative: true,
+    spriteSpeed: 20,
+    bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 40, h: 15, glow: true, invert: true },
+    r: 40, hp: 2000000, shield: 1000000, speed: 220, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 600,
   },
 
 };

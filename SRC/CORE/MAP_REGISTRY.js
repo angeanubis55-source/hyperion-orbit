@@ -8,6 +8,7 @@ export const MAP_LOADERS = Object.freeze({
   gamma: () => import("../../MAPS/GAMMA_MAP/GATE.js"),
   delta: () => import("../../MAPS/DELTA_MAP/GATE.js"),
   epsilon: () => import("../../MAPS/EPSILON_MAP/GATE.js"),
+  zeta: () => import("../../MAPS/ZETA_MAP/GATE.js"),
   low: () => import("../../MAPS/LOW_MAP/MAP.js"),
   qz: () => import("../../MAPS/BLIGHTED_MAP/GATE.js"),
   "1-1": () => import("../../MAPS/1-1/MAP.js"),
