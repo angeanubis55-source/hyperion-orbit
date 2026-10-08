@@ -319,12 +319,19 @@ export const CATALOG = {
     })),
 };
 
-export function findCatalogItem(itemId) {
-  for (const cat of Object.values(CATALOG)) {
-    if (!Array.isArray(cat)) continue;
-    const it = cat.find(x => x?.id === itemId);
-    if (it) return it;
+// Le catalogue est construit une seule fois. Garder les objets d'origine et
+// le premier ID rencontre conserve les memes prix, modules et priorites.
+const catalogItemsById = new Map();
+for (const category of Object.values(CATALOG)) {
+  if (!Array.isArray(category)) continue;
+  for (const item of category) {
+    if (item?.id == null || catalogItemsById.has(item.id)) continue;
+    catalogItemsById.set(item.id, item);
   }
-  return null;
+}
+
+export function findCatalogItem(itemId) {
+  if (itemId == null) return null;
+  return catalogItemsById.get(itemId) || null;
 }
 

@@ -15,6 +15,7 @@ import { tickFloatingTexts } from "../SRC/CORE/FRAME_SYSTEMS.js";
 import { QUEST_DEFINITIONS, getQuestObjectives, normalizeQuestState, recordQuestProgress, isQuestComplete, claimQuest } from "../QUEST/QUEST_TYPES.js";
 import { LOGDISK_PACK, LOGDISK_PRICE, normalizePilotSkills } from "../SRC/DATA/PILOT_SKILLS.js";
 import { createDefaultSkylabState, normalizeSkylabState, tickSkylabState } from "../SRC/DATA/SKYLAB.js";
+import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 
 // Exerce les fonctions livrées sans démarrer une session ou un serveur réel.
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
@@ -60,6 +61,56 @@ function engineFunction(name, source = engine) {
   assert.ok(end > start, name);
   return source.slice(start, end + 2);
 }
+
+test('catalogue indexe : tous les objets et la priorite du premier ID sont conserves', () => {
+  const seen = new Set();
+  for (const category of Object.values(CATALOG)) {
+    if (!Array.isArray(category)) continue;
+    for (const item of category) {
+      if (!item?.id || seen.has(item.id)) continue;
+      seen.add(item.id);
+      assert.strictEqual(findCatalogItem(item.id), item, item.id);
+    }
+  }
+  assert.ok(seen.size > 100);
+  for (const missing of [null, undefined, '', 'unknown-catalog-item', {}, 0]) {
+    assert.equal(findCatalogItem(missing), null);
+  }
+});
+
+test('HUD : un calcul du dock par image, actions immediates entre deux images', () => {
+  let dockUpdates = 0;
+  const noop = () => {};
+  const ctx = vm.createContext({
+    rules: { mode: 'zone' }, ui: {}, account: { user: { id: 'hud-test', stats: {} } },
+    player: { credits: 100, kills: 0, hp: 100, hpMax: 100, repairT: 6, ammo: { x6: 0 } },
+    REPAIR: { cooldown: 6, ratePct: 0.05 }, PULSE_COST: 1, ISH_COST: 1, SMB_COST: 1, CPU_CLOAK_COST: 1,
+    started: true, wave: 0, waveSpawns: { remaining: 0 }, enemies: [],
+    lastQuestTerminalAccess: false, hasQuestTerminalAccess: () => false,
+    getLevelInfo: () => ({}), calculateRankPoints: () => 0, publicPlayerId: () => '1234567',
+    formatInteger, clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+    currentCargo: () => 0, isOreTradeWindowOpen: () => false, canUseSkill: () => true,
+    isPlayerCpuCloaked: () => false, getRsbPercent: () => 100, ammoCount: () => 0,
+    netLatencyMs: () => 10, GAME_VERSION: 'test',
+    pulseCd: 0, ishCd: 0, smbCd: 0, cloakCd: 0,
+    setHudText: noop, setHudClass: noop, updateConfigButtons: noop, updateResourceHud: noop,
+    updateProgressHud: noop, updatePetHud: noop, updateWaveHud: noop,
+    syncActionDockState: () => dockUpdates++,
+  });
+  const hudStart = engine.indexOf('function drawUI(');
+  const hudEnd = engine.indexOf('\n// ============================================================', hudStart);
+  assert.ok(hudStart >= 0 && hudEnd > hudStart);
+  vm.runInContext(['updateSkillUI', 'updateRepairUI'].map(name => engineFunction(name)).join('\n')
+    + '\n' + engine.slice(hudStart, hudEnd), ctx);
+  ctx.drawUI();
+  assert.equal(dockUpdates, 1);
+  ctx.updateSkillUI();
+  assert.equal(dockUpdates, 2, 'une aptitude actualise le dock immediatement');
+  ctx.updateRepairUI();
+  assert.equal(dockUpdates, 3, 'la reparation actualise le dock immediatement');
+  ctx.drawUI();
+  assert.equal(dockUpdates, 4, 'le rendu suivant actualise toujours le dock');
+});
 
 test('restaurer les stocks ne sauvegarde pas la position provisoire du demarrage', () => {
   const user = { credits: 12345, ammoActive: 'x4', ammo: { active: 'x4', x4: 20 }, rockets: { r310: 7 },

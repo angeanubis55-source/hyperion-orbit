@@ -19298,7 +19298,7 @@ function tickRepair(dt) {
   }
 }
 
-function updateRepairUI() {
+function updateRepairUI(syncDock = true) {
   const pct = REPAIR.cooldown <= 0 ? 1 : clamp(player.repairT / REPAIR.cooldown, 0, 1);
   const needs = !player.dead && player.hp < player.hpMax - 0.01;
 
@@ -19312,7 +19312,7 @@ function updateRepairUI() {
   setHudClass(ui.btnRepair, "disabled", player.dead);
   // Note : le glow "repairing" est piloté dans syncActionDockState (les boutons
   // visibles sont des clones ; ui.btnRepair est détaché après init du dock).
-  syncActionDockState();
+  if (syncDock) syncActionDockState();
 }
 
 // ============================================================
@@ -26949,7 +26949,7 @@ function canUseSkill(cost) {
   return started && !player.dead && player.credits >= cost;
 }
 
-function updateSkillUI() {
+function updateSkillUI(syncDock = true) {
   const pulseOk = canUseSkill(PULSE_COST) && pulseCd <= 0;
   const ishOk = canUseSkill(ISH_COST) && ishCd <= 0;
   const smbOk = canUseSkill(SMB_COST) && smbCd <= 0;
@@ -26968,7 +26968,7 @@ function updateSkillUI() {
   try {
     if (ui.cloakTxt) ui.cloakTxt.textContent = isPlayerCpuCloaked() ? "ACTIF" : (cloakOk ? "PRET" : "—");
   } catch {}
-  syncActionDockState();
+  if (syncDock) syncActionDockState();
 }
 
 function npcIsEngagingPlayer(enemy) {
@@ -37474,8 +37474,11 @@ updateConfigButtons();
 
   setHudText(ui.shopCredits, formatInteger(player.credits));
 
-  updateSkillUI();
-  updateRepairUI();
+  // Une seule passe du dock par HUD ; les appels hors rendu conservent
+  // leur actualisation immediate (selection, aptitudes, reparation).
+  updateSkillUI(false);
+  updateRepairUI(false);
+  syncActionDockState();
 
   // IEM : pas de % qui remonte, la progression est montrée par le voile
   // circulaire du dock (voir syncActionDockState). Ici on affiche le temps
