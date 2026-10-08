@@ -26422,8 +26422,20 @@ if (e.type === "npc_Cubikon") {
       const onKillAction = e._onKill;
       e._onKill = null;
       const completesGate = !!onKillAction?.tp?.factionBase || !!onKillAction?.completeSpecialGate;
+      // ✅ finale multi-NPC (ex. Delta : 3 SaNeJiEwZ avec TP) : seul le
+      // dernier NPC du plan de vague déclenche téléport + validation.
+      // Les autres = kills normaux (sinon la gate se termine au 1er kill).
+      // Les renforts dynamiques hors plan (Protegit du Cubikon...) ne bloquent
+      // jamais la fin : seul le plan compte.
+      let gateTpReady = true;
+      if (completesGate && onKillAction?.tp?.factionBase && rules?.mode === "gate") {
+        try {
+          const planTypes = new Set((currentWavePlan?.spawns || []).map(s => String(s?.type || "")));
+          gateTpReady = !enemies.some(o => o && o !== e && Number(o.hp) > 0 && planTypes.has(String(o.type || "")));
+        } catch { gateTpReady = true; }
+      }
       // Un brouillage peut supprimer des renforts, jamais bloquer la fin GG.
-      if (!isEntityJammed(e) || completesGate) {
+      if ((!isEntityJammed(e) || completesGate) && gateTpReady) {
         runOnKillAction(onKillAction, {
           x: e.x,
           y: e.y,

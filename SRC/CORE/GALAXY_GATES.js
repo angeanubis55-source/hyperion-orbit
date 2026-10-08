@@ -5,7 +5,7 @@ export const GALAXY_GATE_DEFINITIONS = Object.freeze({
   beta: Object.freeze({ id: "beta", name: "Beta", group: "ensemble", requiredParts: 48, maxWaves: 11, maxLives: 5, image: "ASSETS/BETA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 12000000, honor: 300000, credits: 35000000, x4: 60000 }), rewardScale: 2 }),
   gamma: Object.freeze({ id: "gamma", name: "Gamma", group: "ensemble", requiredParts: 82, maxWaves: 11, maxLives: 5, image: "ASSETS/GAMMA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 18000000, honor: 450000, credits: 50000000, x4: 100000 }), rewardScale: 3 }),
   // ✅ Delta : roue de spin isolée (groupe "delta"), 128 pièces / 10 vagues (officiel).
-  delta: Object.freeze({ id: "delta", name: "Delta", group: "delta", requiredParts: 128, maxWaves: 10, maxLives: 5, image: "ASSETS/DELTA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 13500000, honor: 337500, credits: 65000000, x4: 67500 }), rewardScale: 4 }),
+  delta: Object.freeze({ id: "delta", name: "Delta", group: "delta", requiredParts: 128, maxWaves: 10, maxLives: 5, image: "ASSETS/DELTA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 13500000, honor: 337500, credits: 65000000, x4: 67500 }), rewardScale: 3 }),
   // ✅ Epsilon : roue de spin isolée (groupe "epsilon"), 99 pièces / 11 vagues pirates (officiel).
   epsilon: Object.freeze({ id: "epsilon", name: "Epsilon", group: "epsilon", requiredParts: 99, maxWaves: 11, maxLives: 5, image: "ASSETS/EPSILON_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 7500000, honor: 225000, credits: 30000000, x4: 30000 }), rewardScale: 1 }),
   // ✅ Zeta : roue de spin isolée (groupe "zeta"), 111 pièces / 10 vagues (finale scriptée Devourer).

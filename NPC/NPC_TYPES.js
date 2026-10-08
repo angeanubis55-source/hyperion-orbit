@@ -836,7 +836,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/X1.png", w: 46, h: 16, glow: true, invert: true },
-    r: 18, hp: 3200, shield: 1600, speed: 270, bulletDmg: 80, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 2000, shield: 1000, speed: 270, bulletDmg: 50, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Lordakia_delta: {
     name: "-=[ Lordakia ]=- δ",
@@ -845,7 +845,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 8000, shield: 8000, speed: 320, bulletDmg: 320, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 5000, shield: 5000, speed: 320, bulletDmg: 200, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Mordon_delta: {
     name: "-=[ Mordon ]=- δ",
@@ -854,7 +854,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 80000, shield: 40000, speed: 125, bulletDmg: 1600, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 50000, shield: 25000, speed: 125, bulletDmg: 1000, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Saimon_delta: {
     name: "-=[ Saimon ]=- δ",
@@ -863,7 +863,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 24000, shield: 24000, speed: 320, bulletDmg: 800, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 15000, shield: 15000, speed: 320, bulletDmg: 500, bulletSpeed: 4500, shootRange: 500,
   },
   npc_StreuneR8_delta: {
     name: "-=[ StreuneR ]=- δ",
@@ -872,7 +872,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/X1.png", w: 78, h: 20, glow: true, invert: true },
-    r: 18, hp: 160000, shield: 120000, speed: 280, bulletDmg: 1800, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 100000, shield: 75000, speed: 280, bulletDmg: 1125, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Boss_Lordakia_delta: {
     name: "..::{ Boss Lordakia }::.. δ",
@@ -881,7 +881,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 32000, shield: 32000, speed: 400, bulletDmg: 1280, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 20000, shield: 20000, speed: 400, bulletDmg: 800, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Boss_Saimon_delta: {
     name: "..::{ Boss Saimon }::.. δ",
@@ -890,7 +890,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 96000, shield: 48000, speed: 300, bulletDmg: 3200, bulletSpeed: 4500, shootRange: 550,
+    r: 18, hp: 60000, shield: 30000, speed: 300, bulletDmg: 2000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Boss_Mordon_delta: {
     name: "..::{ Boss Mordon }::.. δ",
@@ -899,7 +899,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 320000, shield: 160000, speed: 150, bulletDmg: 6400, bulletSpeed: 4500, shootRange: 550,
+    r: 18, hp: 200000, shield: 100000, speed: 150, bulletDmg: 4000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Kristallin_delta: {
     name: "-=[ Kristallin ]=- δ",
@@ -908,7 +908,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLIN.png", w: 46, h: 16, glow: true , invert: true},
-    r: 18, hp: 200000, shield: 160000, speed: 320, bulletDmg: 6000, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 125000, shield: 100000, speed: 320, bulletDmg: 3750, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Lordakium_delta: {
     name: "-=[ Lordakium ]=- δ",
@@ -917,7 +917,7 @@ export const NPC_TYPES = {
     passiveNative: true,
     spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/LORDAKIUM.png", w: 97, h: 37, glow: true, invert: true },
-    r: 18, hp: 1200000, shield: 800000, speed: 230, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 750000, shield: 500000, speed: 230, bulletDmg: 7500, bulletSpeed: 4500, shootRange: 500,
     onKill: { spawn: [ { type: "npc_Lordakia_delta", count: 3, radius: 120 } ] },
   },
   npc_Sibelonit_delta: {
@@ -927,7 +927,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 160000, shield: 160000, speed: 320, bulletDmg: 5000, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 100000, shield: 100000, speed: 320, bulletDmg: 3125, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Sibelon_delta: {
     name: "-=[ Sibelon ]=- δ",
@@ -936,7 +936,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 800000, shield: 800000, speed: 100, bulletDmg: 10000, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 500000, shield: 500000, speed: 100, bulletDmg: 6250, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Boss_StreuneR8_delta: {
     name: "..::{ Boss StreuneR }::.. δ",
@@ -945,7 +945,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
-    r: 18, hp: 320000, shield: 160000, speed: 200, bulletDmg: 7200, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 200000, shield: 100000, speed: 200, bulletDmg: 4500, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Kristallon_delta: {
     name: "-=[ Kristallon ]=- δ",
@@ -954,7 +954,7 @@ export const NPC_TYPES = {
     passiveNative: true,
     spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 40, h: 15, glow: true, invert: true },
-    r: 18, hp: 1600000, shield: 1200000, speed: 250, bulletDmg: 18000, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 1000000, shield: 750000, speed: 250, bulletDmg: 11250, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Protegit_delta: {
     name: "-=[ Protegit ]=- δ",
@@ -963,7 +963,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL6.png", w: 46, h: 16, glow: true, invert: true },
-    r: 18, hp: 200000, shield: 160000, speed: 420, bulletDmg: 6000, bulletSpeed: 4500, shootRange: 620,
+    r: 18, hp: 125000, shield: 100000, speed: 420, bulletDmg: 3750, bulletSpeed: 4500, shootRange: 620,
   },
   npc_Boss_Lordakium_delta: {
     name: "..::{ Boss Lordakium }::.. δ",
@@ -972,7 +972,7 @@ export const NPC_TYPES = {
     passiveNative: true,
     spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/LORDAKIUM.png", w: 97, h: 37, glow: true, invert: true },
-    r: 18, hp: 4800000, shield: 3200000, speed: 200, bulletDmg: 48000, bulletSpeed: 4500, shootRange: 550,
+    r: 18, hp: 3000000, shield: 2000000, speed: 200, bulletDmg: 30000, bulletSpeed: 4500, shootRange: 550,
     onKill: { spawn: [ { type: "npc_Boss_Lordakia_delta", count: 4, radius: 120 } ] },
   },
   npc_SaNeJiEwZ_delta: {
