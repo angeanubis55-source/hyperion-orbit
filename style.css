@@ -3713,7 +3713,10 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 }
 .ggGateNav .ggTabsGroup[data-gg-group="delta"],
 .ggGateNav .ggTabsGroup[data-gg-group="epsilon"],
-.ggGateNav .ggTabsGroup[data-gg-group="zeta"] {
+.ggGateNav .ggTabsGroup[data-gg-group="zeta"],
+.ggGateNav .ggTabsGroup[data-gg-group="kappa"],
+.ggGateNav .ggTabsGroup[data-gg-group="lambda"],
+.ggGateNav .ggTabsGroup[data-gg-group="kronos"] {
   margin-top:3px;
   padding-top:3px;
   border-top:1px solid rgba(124,240,255,.25);

@@ -33,7 +33,7 @@ export function baseArrival(maps, map, faction) {
 // La destination est déduite du portail à la position serveur. Une chaîne
 // map fournie par le client n'accorde aucune exemption de déplacement.
 export function mapTransition(maps, state, fromMap, toMap, faction, now) {
-  if (!maps.has(toMap) && !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "qz"].includes(toMap)) return null;
+  if (!maps.has(toMap) && !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "qz"].includes(toMap)) return null;
   if (state.pvpDead === true || state.hp <= 0) {
     if (toMap !== respawnMap(faction, fromMap)) return null;
     return { ...baseArrival(maps, toMap, faction), revive: true };
@@ -47,7 +47,7 @@ export function mapTransition(maps, state, fromMap, toMap, faction, now) {
   const target = maps.get(toMap)?.portals.find(p => String(p.id) === String(source.toPortal))
     || maps.get(toMap)?.portals.find(p => String(p.toMap).toLowerCase() === fromMap);
   return target ? { x: target.x, y: target.y, radius: 650 }
-    : ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "qz"].includes(toMap) ? { instance: true }
+    : ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "qz"].includes(toMap) ? { instance: true }
     : toMap === "maudite" ? baseArrival(maps, toMap, faction) : null;
 }
 
@@ -61,7 +61,7 @@ export function reviveArrival(maps, state, map, faction, x, y) {
   const base = map === respawnMap(faction, map) ? baseArrival(maps, map, faction) : null;
   if (base && near({ x, y }, base, base.radius)) return base;
   if (near({ x, y }, state, 150)) return { x: state.x, y: state.y, radius: 150 };
-  const portals = (maps.get(map)?.portals || []).filter(p => p?.hidden !== true && !["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "maudite", "5-2"].includes(String(p.toMap).toLowerCase()));
+  const portals = (maps.get(map)?.portals || []).filter(p => p?.hidden !== true && !["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "maudite", "5-2"].includes(String(p.toMap).toLowerCase()));
   const closest = portals.sort((a, b) => Math.hypot(a.x - state.x, a.y - state.y) - Math.hypot(b.x - state.x, b.y - state.y))[0];
   return closest && near({ x, y }, closest, 150) ? { x: closest.x, y: closest.y, radius: 150 } : null;
 }

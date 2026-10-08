@@ -212,7 +212,7 @@ window.__ORBIT_ENGINE__ = {`));
   assert.equal(await page.locator('#starMapEdges mask, #starMapEdges polyline[mask]').count(), 0, 'les liaisons restent entieres aux croisements');
   // Exclues du système : gates, low, qz, maudite, 5-2, BL.
   const labels = nodes.join(" ");
-  for (const banned of ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "maudite"]) {
+  for (const banned of ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "maudite"]) {
     assert.ok(!labels.toLowerCase().split(" ").includes(banned), "exclue absente: " + banned);
   }
   const disabled = await page.$$eval(".starMapNode.disabled", (els) => els.length);

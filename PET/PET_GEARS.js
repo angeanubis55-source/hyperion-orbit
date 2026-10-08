@@ -80,7 +80,7 @@ export const PET_GEAR_ORE_TYPES = Object.freeze([
 ]);
 
 // Cadences (anti-rafale) : 1 collecte toutes les 0,3 s, 1 scan locator toutes les 0,5 s.
-export const PET_GEAR_PICK_DELAY = 0.3;
+export { PET_GEAR_PICK_DELAY } from "../SRC/CORE/COLLECTION_TIMING.js";
 export const PET_GEAR_LOCATOR_DELAY = 0.5;
 
 /**

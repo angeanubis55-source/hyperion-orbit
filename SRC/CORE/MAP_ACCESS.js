@@ -23,7 +23,7 @@
 // - 5-2 (pirates) : 12 comme les 5-x officiels
 // - MAUDITE (cimetière Cubikon, contenu niveau 4-5) : 12
 // - low / qz : aucune limite (déjà verrouillées par leurs coûts d'entrée)
-// - Galaxy Gates alpha / beta / gamma / delta / epsilon / zeta : 1 (déjà verrouillées par pièces et énergie)
+// - Galaxy Gates alpha / beta / gamma / delta / epsilon / zeta / kappa / lambda / kronos : 1 (déjà verrouillées par pièces et énergie)
 
 const OWN_SECTOR_LEVELS = Object.freeze({ 1: 1, 2: 1, 3: 2, 4: 3, 5: 10, 6: 11, 7: 11 });
 const ENEMY_SECTOR_LEVELS = Object.freeze({ 1: 16, 2: 13, 3: 5, 4: 5, 5: 14, 6: 15, 7: 15 });
@@ -45,6 +45,9 @@ const SPECIAL_MAP_LEVELS = Object.freeze({
   delta: 1,
   epsilon: 1,
   zeta: 1,
+  kappa: 1,
+  lambda: 1,
+  kronos: 1,
 });
 
 export function getMapRequiredLevel(mapId, playerSector = null) {

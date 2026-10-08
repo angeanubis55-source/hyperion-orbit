@@ -284,6 +284,9 @@ const GALAXY_ENERGY_CONTRACTS = [
   EQ("energy_gate_delta", "Saut Delta", "Termine le portail Delta, isolé de l’ensemble Alpha, Beta et Gamma.", [G("delta")], 45000000, 22500000, 45000, 150, "energy_gate_trinity"),
   EQ("energy_gate_epsilon", "Saut Epsilon", "Termine le portail pirate Epsilon, isolé des autres roues.", [G("epsilon")], 55000000, 27500000, 55000, 200, "energy_gate_delta"),
   EQ("energy_gate_zeta", "Saut Zeta", "Termine le portail Zeta et son Devourer à paliers.", [G("zeta")], 65000000, 32500000, 65000, 250, "energy_gate_epsilon"),
+  EQ("energy_gate_kappa", "Saut Kappa", "Termine le portail Kappa et ses onze vagues mixtes.", [G("kappa")], 75000000, 37500000, 75000, 300, "energy_gate_zeta"),
+  EQ("energy_gate_lambda", "Saut Lambda", "Termine le portail Lambda et ses sept vagues de Boss.", [G("lambda")], 85000000, 42500000, 85000, 350, "energy_gate_kappa"),
+  EQ("energy_gate_kronos", "Saut Kronos", "Termine le portail Kronos et ses treize vagues Saturn.", [G("kronos")], 100000000, 50000000, 100000, 400, "energy_gate_lambda"),
   EQ("energy_ultimate_stock", "Coffre du vétéran", "Prouve ton endurance dans les Gates et contre les unités d’élite.", [G("alpha", 5), G("beta", 3), G("gamma", 2), K("uber", "npc_Uber_Kristallon", 50, "Éliminer des Uber Kristallons", "4-5")], 50000000, 25000000, 50000, 250, "energy_gate_trinity"),
 ];
 
@@ -609,6 +612,15 @@ const QUEST_CATALOG = [
   Q("gate_zeta", "Gueule Zeta", "Termine la Galaxy Gate Zeta (roue isolée, 111 pièces, finale Devourer à paliers).", [G("zeta")], 4000000, 1400000, 4000, "gate_epsilon"),
   Q("gate_hexad", "Hexade de feu", "Achève les six Gates : Alpha, Beta, Gamma, Delta, Epsilon et Zeta.", [G("alpha"), G("beta"), G("gamma"), G("delta"), G("epsilon"), G("zeta")], 22000000, 7700000, 22000, "gate_zeta"),
   Q("gate_zeta_veteran", "Vétéran Zeta", "Répète la Galaxy Gate Zeta jusqu’à la maîtriser.", [G("zeta", 3)], 25000000, 8750000, 25000, "gate_hexad"),
+  Q("gate_kappa", "Gueule Kappa", "Termine la Galaxy Gate Kappa (roue isolée, 120 pièces, 11 vagues mixtes).", [G("kappa")], 4500000, 1575000, 4500, "gate_zeta"),
+  Q("gate_heptad", "Heptade de feu", "Achève les sept Gates : Alpha, Beta, Gamma, Delta, Epsilon, Zeta et Kappa.", [G("alpha"), G("beta"), G("gamma"), G("delta"), G("epsilon"), G("zeta"), G("kappa")], 26000000, 9100000, 26000, "gate_kappa"),
+  Q("gate_kappa_veteran", "Vétéran Kappa", "Répète la Galaxy Gate Kappa jusqu’à la maîtriser.", [G("kappa", 3)], 30000000, 10500000, 30000, "gate_heptad"),
+  Q("gate_lambda", "Gueule Lambda", "Termine la Galaxy Gate Lambda (roue isolée, 45 pièces, 7 vagues de Boss).", [G("lambda")], 2000000, 700000, 2000, "gate_kappa"),
+  Q("gate_octad", "Octade de feu", "Achève les huit Gates : Alpha, Beta, Gamma, Delta, Epsilon, Zeta, Kappa et Lambda.", [G("alpha"), G("beta"), G("gamma"), G("delta"), G("epsilon"), G("zeta"), G("kappa"), G("lambda")], 30000000, 10500000, 30000, "gate_lambda"),
+  Q("gate_lambda_veteran", "Vétéran Lambda", "Répète la Galaxy Gate Lambda jusqu’à la maîtriser.", [G("lambda", 3)], 15000000, 5250000, 15000, "gate_octad"),
+  Q("gate_kronos", "Couronne Kronos", "Termine la Galaxy Gate Kronos, forgée par les huit autres Gates (21 pièces, 13 vagues Saturn).", [G("kronos")], 6000000, 2100000, 6000, "gate_lambda"),
+  Q("gate_couronne", "Couronne des neuf", "Achève les neuf Gates : Alpha, Beta, Gamma, Delta, Epsilon, Zeta, Kappa, Lambda et Kronos.", [G("alpha"), G("beta"), G("gamma"), G("delta"), G("epsilon"), G("zeta"), G("kappa"), G("lambda"), G("kronos")], 36000000, 12600000, 36000, "gate_kronos"),
+  Q("gate_kronos_veteran", "Vétéran Kronos", "Répète la Galaxy Gate Kronos jusqu’à la maîtriser.", [G("kronos", 3)], 40000000, 14000000, 40000, "gate_couronne"),
 
   Q("collector_route", "La grande rafle", "Récupère toutes les formes de cargaisons courantes.", [C("bonus", "Bonus_Box", 100, "Collecter des Bonus Boxes"), C("cargo", "Cargo_Box", 100, "Collecter des Cargo Boxes"), C("booty", "Green_Booty_Box", 10, "Collecter des Green Booty Boxes")], 5000000, 2500000, 10000),
   Q("astral_reserves", "Poussière d’étoiles", "Récupère les caches les plus rares disponibles.", [C("astral", "Astral_Prime_Box", 10, "Collecter des Astral Prime Boxes"), C("alloy", "Hybrid_Alloy_Box", 25, "Collecter des Hybrid Alloy Boxes")], 12000000, 6000000, 24000),

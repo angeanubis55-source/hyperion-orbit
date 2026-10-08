@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { acMoveTake, acBucket, acPoolResize, acHealTake, acAuditWindow, acAuditScore, acRecordViolation } from "./ANTICHEAT.js";
+import { acMoveTake, acBucket, acPoolResize, acHealTake, acAuditWindow, acAuditScore, acRecordViolation, acRecordCollection } from "./ANTICHEAT.js";
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { loadServerMaps, mapTransition, validArrival, reviveArrival } from "./MAP_RULES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
@@ -72,6 +72,60 @@ test("l'audit attend 10 secondes même pour le premier kill", () => {
   const r = acAuditWindow(a, 20000);
   assert.equal(r.rates.kills, 1);
   assert.equal(r.score, 0);
+});
+
+test("la recolte normale du vaisseau, du PET et de Triple barrage ne cumule aucun soupcon", () => {
+  const cases = [
+    { profile: { petOwned: false }, collections: 50 },
+    { profile: { petOwned: true, petCollectors: 1 }, collections: 34 },
+    { profile: { petOwned: true, petCollectors: 1 }, collections: 84 },
+    { profile: { petOwned: true, petCollectors: 3 }, collections: 150 },
+  ];
+  for (const { profile, collections } of cases) {
+    const audit = { t: 10000, score: 0 };
+    for (let window = 0; window < 12; window++) {
+      for (let i = 0; i < collections; i++) acRecordCollection(audit, profile);
+      const result = acAuditWindow(audit, 20000 + window * 10000);
+      assert.equal(result.score, 0);
+      assert.equal(result.punish, false);
+      assert.deepEqual(result.triggers, []);
+      assert.equal(audit.boxes, 0);
+      assert.equal(audit.boxLimit, 0);
+    }
+  }
+});
+
+test("des collectes hors cadence restent sanctionnees, meme avec un PET", () => {
+  for (const profile of [{ petOwned: false }, { petOwned: true, petCollectors: 1 }, { petOwned: true, petCollectors: 3 }]) {
+    const audit = { t: 10000, score: 0 };
+    for (let window = 0; window < 2; window++) {
+      for (let i = 0; i < 500; i++) acRecordCollection(audit, profile);
+      const result = acAuditWindow(audit, 20000 + window * 10000);
+      assert.equal(result.score, (window + 1) * 50);
+      assert.ok(result.triggers.some(trigger => trigger.startsWith("boxes/10s")));
+      assert.equal(result.punish, window === 1);
+    }
+  }
+});
+
+test("l'audit conserve les collecteurs de la fenetre sans les reporter sur la suivante", () => {
+  const audit = { t: 10000, score: 0 };
+  for (let i = 0; i < 84; i++) acRecordCollection(audit, { petOwned: true, petCollectors: 1 });
+  acRecordCollection(audit, { petOwned: false });
+  assert.equal(acAuditWindow(audit, 20000).score, 0);
+  for (let i = 0; i < 84; i++) acRecordCollection(audit, { petOwned: false, petCollectors: 999 });
+  const result = acAuditWindow(audit, 30000);
+  assert.equal(result.score, 15, "sans PET possede, aucune capacite supplementaire");
+});
+
+test("les collecteurs PET viennent des aptitudes du hangar serveur", () => {
+  const user = fixture();
+  user.pet = { owned: true };
+  assert.equal(combatProfile(user, "1-1").petCollectors, 1);
+  user.hangars[0].shipId = "zephyr";
+  assert.equal(combatProfile(user, "1-1").petCollectors, 3);
+  user.pet.owned = false;
+  assert.equal(combatProfile(user, "1-1").petCollectors, 0);
 });
 
 test("des téléportations seules font monter le score jusqu'au gel", () => {

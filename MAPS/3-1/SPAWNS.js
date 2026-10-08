@@ -546,6 +546,148 @@ export function getZonePortals(WORLD) {
 
     },
 
+    {
+
+      id: "p_11_to_kappa",
+
+      x: 9000,
+
+      y: 3275,
+
+      r: 260,
+
+      toMap: "kappa",
+
+ sprites: {
+
+    idle: {
+
+      src: "ASSETS/KAPPA_PORTAL/DESACTIVE.png",
+
+      w: 407,
+
+      h: 427,
+
+      yOff: 0,
+
+    },
+
+
+
+    open: {
+
+      src: "ASSETS/KAPPA_PORTAL/ACTIVE.png",
+
+      w: 407,
+
+      h: 427,
+
+      yOff: 0,
+
+    },
+
+
+
+    jump: {
+
+      src: "ASSETS/KAPPA_PORTAL/JUMP.png",
+
+      w: 407,
+
+      h: 427,
+
+      yOff: 0,
+
+      scale: 1,
+
+      spinSpeed: 0,
+
+      alpha: 1,
+
+    },
+
+  },
+
+    },
+
+    {
+
+      id: "p_11_to_lambda",
+
+      x: 9245,
+
+      y: 2081,
+
+      r: 260,
+
+      toMap: "lambda",
+
+ sprites: {
+
+    idle: {
+
+      src: "ASSETS/LAMBDA_PORTAL/DESACTIVE.png",
+
+      w: 402,
+
+      h: 401,
+
+      yOff: 0,
+
+    },
+
+
+
+    open: {
+
+      src: "ASSETS/LAMBDA_PORTAL/ACTIVE.png",
+
+      w: 402,
+
+      h: 401,
+
+      yOff: 0,
+
+    },
+
+
+
+    jump: {
+
+      src: "ASSETS/LAMBDA_PORTAL/JUMP.png",
+
+      w: 402,
+
+      h: 401,
+
+      yOff: 0,
+
+      scale: 1,
+
+      spinSpeed: 0,
+
+      alpha: 1,
+
+    },
+
+  },
+
+    },
+
+    {
+
+      id: "p_11_to_kronos",
+
+      x: 9860,
+
+      y: 4394,
+
+      r: 260,
+
+      toMap: "kronos",
+
+    },
+
   ];
 }
 

@@ -13,7 +13,7 @@ import { calculateRankPoints, getQuestExperienceReward, getQuestHonorReward } fr
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.js";
 import { compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
-import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
+import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, KRONOS_PARTS_BY_GATE, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, upgradeOreCapacity, planAutoUpgradeCharges, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
 import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
@@ -2176,6 +2176,29 @@ export function completeCurrentUserGalaxyGate(gateId, currentUser = null, option
   if (!result.ok) return { ok: false, error: "Aucune Galaxy Gate active correspondante." };
   const reward = GALAXY_GATE_DEFINITIONS[String(gateId || "").toLowerCase()]?.completion;
   u.galaxyGates = result.state;
+  // ✅ Kronos (officiel) : chaque gate terminée crédite des parts Kronos
+  // (total 21). Promotion auto en gate construite + pose auto sur la map.
+  let kronosGranted = 0;
+  try {
+    const doneId = String(gateId || "").toLowerCase();
+    const kronosDef = GALAXY_GATE_DEFINITIONS.kronos;
+    kronosGranted = Math.max(0, Math.floor(Number(KRONOS_PARTS_BY_GATE?.[doneId]) || 0));
+    if (kronosDef && kronosGranted > 0) {
+      u.galaxyGates.parts ||= {};
+      u.galaxyGates.built ||= {};
+      u.galaxyGates.parts.kronos = Math.max(0, Math.floor(Number(u.galaxyGates.parts.kronos) || 0)) + kronosGranted;
+      while (u.galaxyGates.parts.kronos >= kronosDef.requiredParts
+        && Math.max(0, Math.floor(Number(u.galaxyGates.built.kronos) || 0)) < GALAXY_GATE_BUILD_LIMIT) {
+        u.galaxyGates.parts.kronos -= kronosDef.requiredParts;
+        u.galaxyGates.built.kronos = Math.max(0, Math.floor(Number(u.galaxyGates.built.kronos) || 0)) + 1;
+      }
+      if (Math.max(0, Math.floor(Number(u.galaxyGates.built.kronos) || 0)) >= GALAXY_GATE_BUILD_LIMIT) {
+        u.galaxyGates.parts.kronos = 0;
+      }
+      const dep = deployBuiltGalaxyGate(u.galaxyGates, "kronos");
+      if (dep?.ok) u.galaxyGates = dep.state;
+    }
+  } catch { kronosGranted = 0; }
   // Le moteur GG affiche un premier decompte avant le message de recompense.
   // Dans ce mode, on valide la Gate maintenant mais il distribuera le gain
   // exactement au moment du message (puis le sauvegardera immediatement).

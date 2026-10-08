@@ -10,11 +10,22 @@ export const GALAXY_GATE_DEFINITIONS = Object.freeze({
   epsilon: Object.freeze({ id: "epsilon", name: "Epsilon", group: "epsilon", requiredParts: 99, maxWaves: 11, maxLives: 5, image: "ASSETS/EPSILON_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 7500000, honor: 225000, credits: 30000000, x4: 30000 }), rewardScale: 1 }),
   // ✅ Zeta : roue de spin isolée (groupe "zeta"), 111 pièces / 10 vagues (finale scriptée Devourer).
   zeta: Object.freeze({ id: "zeta", name: "Zeta", group: "zeta", requiredParts: 111, maxWaves: 10, maxLives: 5, image: "ASSETS/ZETA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 9000000, honor: 300000, credits: 45000000, x4: 37500 }), rewardScale: 1 }),
+  // ✅ Kappa : roue de spin isolée (groupe "kappa"), 120 pièces / 11 vagues mixtes (officiel).
+  kappa: Object.freeze({ id: "kappa", name: "Kappa", group: "kappa", requiredParts: 120, maxWaves: 11, maxLives: 5, image: "ASSETS/KAPPA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 13500000, honor: 487500, credits: 60000000, x4: 45000 }), rewardScale: 1 }),
+  // ✅ Lambda : roue de spin isolée (groupe "lambda"), 45 pièces / 7 vagues de Boss (officiel).
+  lambda: Object.freeze({ id: "lambda", name: "Lambda", group: "lambda", requiredParts: 45, maxWaves: 7, maxLives: 5, image: "ASSETS/LAMBDA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 4125000, honor: 150000, credits: 15000000, x4: 15000 }), rewardScale: 1 }),
+  // ✅ Kronos : PAS de roue (construction fidèle via complétions des autres gates), 21 pièces / 13 vagues Saturn.
+  kronos: Object.freeze({ id: "kronos", name: "Kronos", group: null, requiredParts: 21, maxWaves: 13, maxLives: 5, image: "ASSETS/KRONOS_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 18000000, honor: 675000, credits: 80000000, x4: 37500 }), rewardScale: 1 }),
 });
 
 // Groupes de spin : "ensemble" (Alpha/Beta/Gamma, une seule roue), "delta",
-// "epsilon" et "zeta" (roues isolées).
-export const GALAXY_GATE_SPIN_GROUPS = Object.freeze(["ensemble", "delta", "epsilon", "zeta"]);
+// "epsilon", "zeta", "kappa" et "lambda" (roues isolées).
+// Kronos n'a pas de roue (construction via complétions, voir KRONOS_PARTS_BY_GATE).
+export const KRONOS_PARTS_BY_GATE = Object.freeze({
+  alpha: 4, beta: 3, gamma: 1, delta: 1, epsilon: 4, zeta: 1, kappa: 2, lambda: 5,
+});
+// "epsilon", "zeta", "kappa" et "lambda" (roues isolées).
+export const GALAXY_GATE_SPIN_GROUPS = Object.freeze(["ensemble", "delta", "epsilon", "zeta", "kappa", "lambda"]);
 
 // Groupe de spin d'une gate (roue utilisée pour les pièces/doublons/multiplicateur).
 export function getGalaxyGateSpinGroup(gateId) {
@@ -45,9 +56,9 @@ export function normalizeGalaxyGateState(raw) {
     deployed: {},
     completed: {},
     lives: {},
-    // ✅ multiplicateurs par groupe de spin : "ensemble" (ABG), "delta", "epsilon" et "zeta" isolés.
-    multipliers: { ensemble: 1, delta: 1, epsilon: 1, zeta: 1 },
-    multiplierArmed: { ensemble: false, delta: false, epsilon: false, zeta: false },
+    // ✅ multiplicateurs par groupe de spin : "ensemble" (ABG), "delta", "epsilon", "zeta", "kappa" et "lambda" isolés.
+    multipliers: { ensemble: 1, delta: 1, epsilon: 1, zeta: 1, kappa: 1, lambda: 1 },
+    multiplierArmed: { ensemble: false, delta: false, epsilon: false, zeta: false, kappa: false, lambda: false },
     active: GALAXY_GATE_DEFINITIONS[String(source.active || "").toLowerCase()] ? String(source.active).toLowerCase() : null,
     activeWave: Math.max(1, Math.floor(Number(source.activeWave) || 1)),
     // ✅ progression persistée par gate : permet d'alterner librement
@@ -85,8 +96,8 @@ export function normalizeGalaxyGateState(raw) {
   const clampMult = (value) => Math.min(5, Math.max(1, Math.floor(Number(value) || 1)));
   const legacyScalar = clampMult(source.multiplier);
   const legacyScalarArmed = source.multiplierArmed === true && legacyScalar > 1;
-  const groupMax = { ensemble: legacyScalar, delta: 1, epsilon: 1, zeta: 1 };
-  const groupArmed = { ensemble: legacyScalarArmed, delta: false, epsilon: false, zeta: false };
+  const groupMax = { ensemble: legacyScalar, delta: 1, epsilon: 1, zeta: 1, kappa: 1, lambda: 1 };
+  const groupArmed = { ensemble: legacyScalarArmed, delta: false, epsilon: false, zeta: false, kappa: false, lambda: false };
   for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) {
     const group = gate.group || gate.id;
     // Ancien format objet par gate (alpha/beta/gamma) : reporté sur son groupe.
@@ -124,6 +135,8 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
   const state = normalizeGalaxyGateState(stateInput);
   const gate = GALAXY_GATE_DEFINITIONS[String(gateId || "").toLowerCase()];
   if (!gate) return { ok: false, error: "Galaxy Gate inconnue.", state, credits };
+  // ✅ Kronos n'a pas de roue : parts via complétions des autres gates.
+  if (gate.id === "kronos") return { ok: false, error: "Kronos se construit en terminant les autres Galaxy Gates.", state, credits };
   const spins = Math.min(100, Math.max(1, Math.floor(Number(count) || 1)));
   let balance = Math.max(0, Math.floor(Number(credits) || 0));
   const rewards = {

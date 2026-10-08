@@ -52,6 +52,7 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
   const petLimits = getPetVitalLimits(pet, user, hangar);
   const petDamage = (petFit.lasers || []).reduce((sum, id) => sum + (Number(findCatalogItem(id)?.module?.damage) || 0), 0);
   const fit = hangar.fits?.[cfg] || hangar.fit || {};
+  const abilities = getAbilitiesForShip(abilityShipKeyFor(ship.id));
   return {
     shipId: ship.id, baseId, hangarId: String(hangar.id), config: Number(cfg),
     hpMax: clamp(hpMax, 1, 1e9), shMax: clamp(shMax, 0, 1e9),
@@ -67,8 +68,10 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
       // SMB + impacts des aptitudes : enveloppe compatible avec les coques.
       50000, hpMax * 0.25), 1, 1e8),
     rocketIds,
-    cloakSkill: getAbilitiesForShip(abilityShipKeyFor(ship.id)).find(a => /cloak/.test(a.id)) || null,
+    cloakSkill: abilities.find(a => /cloak/.test(a.id)) || null,
     petOwned: !!pet?.owned,
+    // Le PET et les deux clones de Triple barrage peuvent recolter ensemble.
+    petCollectors: pet?.owned ? (abilities.some(a => a.id === "ability_zephyr_tbr") ? 3 : 1) : 0,
     petHpMax: pet?.owned ? clamp(petLimits.hpMax, 1, 5e7) : 0,
     petShMax: pet?.owned ? clamp(petLimits.shMax, 0, 5e7) : 0,
   };

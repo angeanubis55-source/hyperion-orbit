@@ -112,6 +112,35 @@ const BASE_CARGO = Object.freeze({
   npc_Synk: Object.freeze({ ...tri(800, 800, 800), prometid: 128, duranium: 128, promerium: 8, xenomit: 16 }),
   // Demaner Freighter (~ niveau Emperor_Sibelon / 2).
   npc_Demaner_Freighter: Object.freeze({ ...tri(2400, 2400, 2400), prometid: 1024, duranium: 1024, promerium: 128, xenomit: 128 }),
+  // Saturn de Kronos (minerais officiels de la gate).
+  npc_Saturn_Phoenix: Object.freeze({ ...tri(45, 45, 45), prometid: 20, duranium: 20 }),
+  npc_Saturn_Yamato: Object.freeze({ ...tri(45, 45, 45), prometid: 20, duranium: 20 }),
+  npc_Saturn_Defcom: Object.freeze({ ...tri(75, 75, 75), prometid: 50, duranium: 50 }),
+  npc_Saturn_Liberator: Object.freeze({ ...tri(75, 75, 75), prometid: 50, duranium: 50 }),
+  npc_Saturn_Nostromo: Object.freeze({ ...tri(75, 75, 75), prometid: 50, duranium: 50 }),
+  npc_Saturn_Piranha: Object.freeze({ ...tri(75, 75, 75), prometid: 50, duranium: 50 }),
+  npc_Saturn_Bigboy: Object.freeze({ ...tri(150, 150, 150), prometid: 100, duranium: 100, promerium: 12 }),
+  npc_Saturn_Vengeance: Object.freeze({ ...tri(100, 100, 100), prometid: 75, duranium: 75, promerium: 8 }),
+  npc_Saturn_Goliath: Object.freeze({ ...tri(150, 150, 150), prometid: 100, duranium: 100, promerium: 12 }),
+  npc_Saturn_Leonov: Object.freeze({ ...tri(100, 100, 100), prometid: 75, duranium: 75, promerium: 8 }),
+  npc_Saturn_Venom: Object.freeze({ ...tri(150, 150, 150), prometid: 100, duranium: 100, promerium: 12 }),
+  npc_Saturn_Sentinel: Object.freeze({ ...tri(150, 150, 150), prometid: 100, duranium: 100, promerium: 12 }),
+  npc_Saturn_Spectrum: Object.freeze({ ...tri(150, 150, 150), prometid: 100, duranium: 100, promerium: 12 }),
+  npc_Saturn_Diminisher: Object.freeze({ ...tri(150, 150, 150), prometid: 100, duranium: 100, promerium: 12 }),
+  npc_Saturn_Solace: Object.freeze({ ...tri(150, 150, 150), prometid: 100, duranium: 100, promerium: 12 }),
+  npc_Saturn_Revenge: Object.freeze({ ...tri(100, 100, 100), prometid: 75, duranium: 75, promerium: 8 }),
+  npc_Saturn_Enforcer: Object.freeze({ ...tri(150, 150, 150), prometid: 100, duranium: 100, promerium: 12 }),
+  npc_Saturn_Lightning: Object.freeze({ ...tri(100, 100, 100), prometid: 75, duranium: 75, promerium: 8 }),
+  npc_Saturn_Avenger: Object.freeze({ ...tri(100, 100, 100), prometid: 75, duranium: 75, promerium: 8 }),
+  npc_Saturn_Bastion: Object.freeze({ ...tri(100, 100, 100), prometid: 75, duranium: 75, promerium: 8 }),
+  npc_Saturn_Spearhead: Object.freeze({ ...tri(100, 100, 100), prometid: 75, duranium: 75, promerium: 8 }),
+  npc_Saturn_Citadel: Object.freeze({ ...tri(300, 300, 300), prometid: 200, duranium: 200, promerium: 20 }),
+  npc_Saturn_Aegis: Object.freeze({ ...tri(150, 150, 150), prometid: 100, duranium: 100, promerium: 12 }),
+  npc_Saturn_Crimson: Object.freeze({ ...tri(150, 150, 150), prometid: 100, duranium: 100, promerium: 12 }),
+  npc_Saturn_Jade: Object.freeze({ ...tri(150, 150, 150), prometid: 100, duranium: 100, promerium: 12 }),
+  npc_Saturn_Sapphire: Object.freeze({ ...tri(150, 150, 150), prometid: 100, duranium: 100, promerium: 12 }),
+  npc_Saturn_Evil_Clone: Object.freeze({ ...tri(400, 400, 400), prometid: 200, duranium: 200, promerium: 25 }),
+  npc_Saturn_Evil_Iris: Object.freeze({ ...tri(100, 100, 100), prometid: 16, duranium: 16, promerium: 2 }),
   // Éclaireurs / roquettes (~ niveau Sibelon).
   npc_Streuner_Rocketeer: Object.freeze({ ...tri(200, 200, 200), prometid: 32, duranium: 32, promerium: 4 }),
   npc_Seeker_Rocket: Object.freeze({ ...tri(200, 200, 200), prometid: 32, duranium: 32, promerium: 4 }),
@@ -246,7 +275,7 @@ export function fallbackCargoFor(type) {
 export function getNpcCargoOres(type, mapId = null) {
   let key = String(type || "");
   let gateMult = 1;
-  const gate = key.match(/_(alpha|beta|gamma|delta|epsilon|zeta)$/);
+  const gate = key.match(/_(alpha|beta|gamma|delta|epsilon|zeta|kappa|lambda)$/);
   if (gate) {
     gateMult = gate[1] === "beta" ? 2 : gate[1] === "gamma" ? 3 : gate[1] === "delta" ? 3 : 1;
     key = key.slice(0, -gate[0].length);

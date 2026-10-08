@@ -113,6 +113,7 @@ import { addProjectile, advanceProjectile, blendVelocityDirection, guidedChaseSp
 import { createWaveSpawnState } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
+import { COLLECTABLE_PICKUP_HOLD_SEC } from "./COLLECTION_TIMING.js";
 import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, setNpcVelocity } from "../../NPC/NPC_AI.js";
 import { DEFAULT_NPC_RADAR_FADE_START, getNpcSensorRanges, npcSensorOpacity, shouldDetectNpc } from "../../NPC/NPC_SENSORS.js";
 import { shouldRunNpcFrame } from "../../NPC/NPC_ACTIVITY.js";
@@ -13635,8 +13636,9 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggWave.textContent = `${activeWave} / ${gate.maxWaves}`;
   const selectedSpinCount = Math.max(1, Number(ui.ggSpinCount?.value || 1));
   ui.ggCreditCost.textContent = formatInteger(GALAXY_SPIN_CREDIT_COST * selectedSpinCount);
-  ui.ggSpinBtn.hidden = false;
-  ui.ggSpinBtn.disabled = false;
+  ui.ggSpinBtn.hidden = gate.id === "kronos";
+  ui.ggSpinBtn.disabled = gate.id === "kronos";
+  if (ui.ggSpinCount) ui.ggSpinCount.disabled = gate.id === "kronos";
   // ✅ plus de bouton "Préparer" : le placement sur la map est automatique.
   if (ui.ggDeployBtn) ui.ggDeployBtn.remove();
   ui.ggDeployBtn = null;
@@ -13649,10 +13651,16 @@ function renderGalaxyGateWindow(message = "") {
   const deltaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "delta").map(ggTabButton).join("");
   const epsilonTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "epsilon").map(ggTabButton).join("");
   const zetaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "zeta").map(ggTabButton).join("");
+  const kappaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "kappa").map(ggTabButton).join("");
+  const lambdaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "lambda").map(ggTabButton).join("");
+  const kronosTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => item.id === "kronos").map(ggTabButton).join("");
   ui.ggTabs.innerHTML = `<div class="ggTabsGroup" data-gg-group="ensemble"><div class="ggTabsButtons">${ensembleTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="delta"><div class="ggTabsButtons">${deltaTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="epsilon"><div class="ggTabsButtons">${epsilonTabs}</div></div>`
-    + `<div class="ggTabsGroup" data-gg-group="zeta"><div class="ggTabsButtons">${zetaTabs}</div></div>`;
+    + `<div class="ggTabsGroup" data-gg-group="zeta"><div class="ggTabsButtons">${zetaTabs}</div></div>`
+    + `<div class="ggTabsGroup" data-gg-group="kappa"><div class="ggTabsButtons">${kappaTabs}</div></div>`
+    + `<div class="ggTabsGroup" data-gg-group="lambda"><div class="ggTabsButtons">${lambdaTabs}</div></div>`
+    + `<div class="ggTabsGroup" data-gg-group="kronos"><div class="ggTabsButtons">${kronosTabs}</div></div>`;
   const history = [...state.history].reverse();
   ui.ggHistory.innerHTML = history.length ? history.map(entry => {
     const reward = entry.rewards || {};
@@ -13922,7 +13930,7 @@ const TRADE_BUTTON = {
 // 4-1..4-4 utilisent BATTLE/4-x, comme chaque map utilise son propre skin.
 function getPortalSpriteSet(ptl = null) {
   const gateId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
-  const isGalaxyGate = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"].includes(gateId);
+  const isGalaxyGate = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos"].includes(gateId);
   const destination = isGalaxyGate && ptl === portal ? gateId
     : isGalaxyGate && ptl === gateReturnPortal
       ? getFactionHomeMap((account.user || getCurrentUserFull())?.faction)
@@ -13943,10 +13951,10 @@ function getPortalSpriteSet(ptl = null) {
       ...DEFAULT_PORTAL_JUMP_FX,
       // Animation de saut de la catégorie (25 frames 320x320).
       ...(!ptl?.sprites?.jumpFx && skin?.jumpFxPath ? { path: skin.jumpFxPath } : {}),
-      // ✅ nombre de frames et taille propres au skin (ex. Epsilon : 12 frames 250x250, Zeta : 18).
+      // ✅ nombre/frames/taille/forcage propres au skin (ex. Kronos : 18/6 frames, tailles réelles).
       ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxFrames) > 0 ? { frames: Math.floor(Number(skin.jumpFxFrames)) } : {}),
-      ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxW) > 0 ? { w: Math.floor(Number(skin.jumpFxW)) } : {}),
-      ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxH) > 0 ? { h: Math.floor(Number(skin.jumpFxH)) } : {}),
+      ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxW) > 0 ? { w: Math.floor(Number(skin?.jumpFxW)) } : {}),
+      ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxH) > 0 ? { h: Math.floor(Number(skin?.jumpFxH)) } : {}),
       ...(ptl?.sprites?.jumpFx || {}),
     },
 
@@ -13964,13 +13972,15 @@ function getPortalSpriteSet(ptl = null) {
         ...(ptl?.jumpButton?.mouse || {}),
       },
 
-      click: {
-        ...DEFAULT_PORTAL_JUMP_BUTTON.click,
-        ...(ptl?.jumpButton?.click || {}),
+        click: {
+          ...DEFAULT_PORTAL_JUMP_BUTTON.click,
+          ...(ptl?.jumpButton?.click || {}),
+        },
       },
-    },
-  };
-}
+
+      portalPreview: ptl?.sprites?.portalPreview || skin?.portalPreview || null,
+    };
+  }
 
 function getPortalFrameSrc(pack, index) {
   if (!pack) return null;
@@ -14004,7 +14014,15 @@ function preloadPortalSprites(ptl = null) {
   const jobs = [];
 
   if (spr.idle?.src) jobs.push(loadImage(spr.idle.src, { priority: true }));
-  if (spr.open?.src) jobs.push(loadImage(spr.open.src, { priority: true }));
+  // ✅ aperçu destination (ex. Saturne Kronos).
+  if (spr.portalPreview?.image) jobs.push(loadImage(spr.portalPreview.image, { priority: true }));
+  // ✅ open animé : précharge toutes les frames (sinon seule la 1re s'affiche).
+  if (spr.open && Number(spr.open.frames) > 1 && spr.open.path) {
+    const frames = Math.max(1, Number(spr.open.frames));
+    for (let i = 0; i < frames; i++) {
+      jobs.push(loadImage(getPortalFrameSrc(spr.open, i), { priority: true }));
+    }
+  } else if (spr.open?.src) jobs.push(loadImage(spr.open.src, { priority: true }));
   if (spr.jump?.src) jobs.push(loadImage(spr.jump.src, { priority: true }));
 
   const btn = spr.jumpButton;
@@ -22495,7 +22513,7 @@ const COLLECTABLE_PICKUP = {
   offsetX: 0,
   offsetY: -70,      // ✅ le vaisseau se place 50px au-dessus de la box
   centerRadius: 18,
-  holdDuration: 0.2,
+  holdDuration: COLLECTABLE_PICKUP_HOLD_SEC,
 };
 
 function cancelCollectableTarget() {
@@ -28444,7 +28462,7 @@ function portalProvidesSafety(portal) {
   const playerSector = getFaction((account.user || getCurrentUserFull())?.faction).sector;
   if (sectorMatch && sectorMatch[1] !== playerSector) return false;
   const destination = String(portal?.toMap || "").trim().toLowerCase();
-  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta"].includes(destination);
+  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos"].includes(destination);
 }
 
 function baseProvidesSafety() {
@@ -29981,7 +29999,7 @@ function die() {
 // ✅ Portails annexes (par destination) : jamais utilisés pour une
 // réapparition au portail — low, QZ, Galaxy Gates (aussi celles des X-1),
 // map maudite et 5-2 (portail central de 4-5).
-const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "maudite", "5-2"]);
+const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "maudite", "5-2"]);
 
 function isAnnexPortal(portal) {
   // Retour Low : exclu aussi (sinon réapparition sur le portail masqué).
@@ -32164,7 +32182,14 @@ function drawZonePortals(ox, oy) {
     const spr = getPortalSpriteSet(ptl);
 
     const imgIdle = getCachedImage(spr.idle?.src);
-    const imgOpen = getCachedImage(spr.open?.src);
+    // ✅ open animé (ex. Kronos idle_01..06) : cycle en boucle si les anims
+    // sont ON, sinon figé sur l'image 1.
+    let openAnimsNow = true;
+    try { openAnimsNow = GAME_SETTINGS.portalAnims === true; } catch {}
+    const openAnim = spr.open && Number(spr.open.frames) > 1 && spr.open.path;
+    const imgOpen = openAnim
+      ? getCachedImage(getPortalFrameSrc(spr.open, openAnimsNow ? Math.floor(performance.now() / 1000 * Math.max(1, Number(spr.open.fps || 8))) % Math.max(1, Number(spr.open.frames)) : 0))
+      : getCachedImage(spr.open?.src);
 
     if (!isImgReady(imgIdle) || !isImgReady(imgOpen)) continue;
 
@@ -32189,6 +32214,33 @@ function drawZonePortals(ox, oy) {
       h
     );
 
+    // ✅ aperçu destination dans l'anneau (ex. Saturne Kronos) : disque
+    // clippé (forme du mask), dérive lente + parallaxe selon le vaisseau.
+    try {
+      const preview = spr.portalPreview;
+      if (preview?.image) {
+        const previewImg = getCachedImage(preview.image);
+        if (isImgReady(previewImg)) {
+          const size = Math.max(1, Number(preview.size) || 160);
+          // ✅ disque visible (forme du mask) : image fixe centrée, ratio natif.
+          const clipR = Math.max(1, Number(preview.clip) || Math.min(size, 170)) / 2;
+          // ✅ ratio natif conservé (ex. scène 768x479) : pas d'étirement.
+          const natW = Number(previewImg.naturalWidth) || size;
+          const natH = Number(previewImg.naturalHeight) || size;
+          const drawW = size;
+          const drawH = Math.max(1, size * natH / Math.max(1, natW));
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(x, y, clipR, 0, TAU);
+          ctx.clip();
+          ctx.globalAlpha = 1;
+          ctx.drawImage(previewImg, x - drawW / 2, y - drawH / 2, drawW, drawH);
+          ctx.restore();
+          ctx.globalAlpha = 1;
+        }
+      }
+    } catch {}
+
     // Option "Animations des portails" : ON = respiration continue de
     // l'ACTIVE par-dessus la DESACTIVE (coupée pendant le saut : ACTIVE
     // fixe + sprite jump) ; OFF (défaut) = toujours ACTIVE fixe.
@@ -32198,6 +32250,9 @@ function drawZonePortals(ox, oy) {
       // ✅ Respiration : dès que le portail est visible, l'ACTIVE oscille
       // en continu par-dessus la DESACTIVE (phase propre à chaque portail).
       // Pas de proximité, pas de phases : toujours le même cycle.
+      // ✅ open animé (ex. boucle idle Kronos) : joué à fond en continu,
+      // sans respiration (sinon la boucle s'éteint et se rallume).
+      const openAnimLoop = spr.open && Number(spr.open.frames) > 1 && spr.open.path;
       const nowMs = performance.now();
       const breatheA = 0.5 - 0.5 * Math.cos(nowMs / 1000 * TAU / 2.4 + (Number(ptl.x) + Number(ptl.y)) * 0.01);
       const openW = spr.open.w || w;
@@ -32205,7 +32260,7 @@ function drawZonePortals(ox, oy) {
       const openScale = Number(spr.open.scale ?? 1);
       const openXOff = Number(spr.open.xOff || 0);
       const openYOff = Number(spr.open.yOff || 0);
-      ctx.globalAlpha = clamp(breatheA, 0, 1);
+      ctx.globalAlpha = openAnimLoop ? 1 : clamp(breatheA, 0, 1);
       ctx.drawImage(
         imgOpen,
         x + openXOff - (openW * openScale) / 2,
@@ -39394,6 +39449,26 @@ window.__ORBIT_ENGINE__ = {
   showNotification,
   syncPlayerFromAccount,
   applyAccountAmmoToPlayer,
+  // ✅ DEBUG : construit + pose toutes les Galaxy Gates (pièces max).
+  // Console (F12) : __ORBIT_ENGINE__.giveAllGalaxyGates()
+  giveAllGalaxyGates() {
+    const user = getCurrentUserFull();
+    if (!user) return "Aucun utilisateur connecté.";
+    const st = normalizeGalaxyGateState(user.galaxyGates);
+    for (const def of Object.values(GALAXY_GATE_DEFINITIONS)) {
+      st.parts[def.id] = 0;
+      st.built[def.id] = GALAXY_GATE_BUILD_LIMIT;
+      st.deployed[def.id] = true;
+      st.lives[def.id] = def.maxLives;
+    }
+    user.galaxyGates = st;
+    account.user = user;
+    try { loadAccountUser(); } catch {}
+    try { saveProgressNow(); } catch {}
+    try { renderGalaxyGateWindow("Toutes les gates construites (debug)."); } catch {}
+    try { window.dispatchEvent(new CustomEvent("orbit:galaxy-gates")); } catch {}
+    return "OK : toutes les gates construites et posées sur la map.";
+  },
   getEquipmentState() {
     const hangar = getActiveHangarFromUser(account.user);
     const pet = account.user?.pet;

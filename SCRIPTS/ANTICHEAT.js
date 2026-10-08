@@ -3,6 +3,7 @@
 // est entièrement modifiable (Cheat Engine) : seule la validation serveur
 // compte. Module pur (aucun effet de bord) : testable unitairement.
 import { NETWORK_TIMING_GRACE_SEC } from "../SRC/CORE/NETWORK_TIMING.js";
+import { COLLECTABLE_PICKUP_HOLD_SEC, PET_GEAR_PICK_DELAY } from "../SRC/CORE/COLLECTION_TIMING.js";
 
 const SERVER_VMAX = 1500;
 const FAR_JUMP_NO_HEAL = 4000;
@@ -93,10 +94,27 @@ export function acRecordViolation(state, kind, now, details = {}) {
 // ~2 fenêtres grossières ou ~7 fenêtres simples d'affilée.
 const AUDIT_WIN_MS = 10000;
 const AUDIT_KILLS_SOFT = 40, AUDIT_KILLS_HARD = 120;
-const AUDIT_BOXES_SOFT = 15, AUDIT_BOXES_HARD = 50;
+// Un vaisseau peut recolter 5 fois/s, un PET environ 3,3 fois/s.
+// 25 % de marge absorbent les frontieres de fenetre et les paquets retardes.
+const AUDIT_BOXES_SOFT = Math.ceil(AUDIT_WIN_MS / 1000 / COLLECTABLE_PICKUP_HOLD_SEC * 1.25);
+const AUDIT_BOXES_HARD = AUDIT_BOXES_SOFT * 2;
 const AUDIT_DMG_SOFT = 2e9, AUDIT_DMG_HARD = 4.5e9;
 const AUDIT_SOFT_SCORE = 15, AUDIT_HARD_SCORE = 50;
 const AUDIT_DECAY = 10, AUDIT_PUNISH_SCORE = 100;
+
+function collectionAuditLimit(profile) {
+  // Le profil provient du compte serveur, jamais du paquet de collecte.
+  const petCollectors = profile?.petOwned ? Math.min(3, Math.max(1, Math.floor(Number(profile.petCollectors) || 1))) : 0;
+  return Math.ceil(AUDIT_WIN_MS / 1000 * (1 / COLLECTABLE_PICKUP_HOLD_SEC
+    + petCollectors / Math.max(COLLECTABLE_PICKUP_HOLD_SEC, PET_GEAR_PICK_DELAY)) * 1.25);
+}
+
+export function acRecordCollection(audit, profile) {
+  audit.boxes = (Number(audit.boxes) || 0) + 1;
+  // Garder les collecteurs autorises pendant la fenetre, meme si le PET est
+  // coupe ou si le hangar change avant le passage de l'audit.
+  audit.boxLimit = Math.max(Number(audit.boxLimit) || 0, collectionAuditLimit(profile));
+}
 
 // rates = { kills, boxes, dmg } sur la fenêtre. Retourne
 // { score, punish, triggers: [libellés pour la preuve] }.
@@ -111,7 +129,9 @@ export function acAuditScore(prevScore, rates) {
   const fmtInt = (v) => String(Math.round(v));
   const fmtDmg = (v) => v >= 1e9 ? `${(v / 1e9).toFixed(1)} Md` : `${Math.round(v / 1e6)} M`;
   check(rates?.kills, AUDIT_KILLS_SOFT, AUDIT_KILLS_HARD, "kills/10s", fmtInt);
-  check(rates?.boxes, AUDIT_BOXES_SOFT, AUDIT_BOXES_HARD, "boxes/10s", fmtInt);
+  const boxLimit = Math.max(AUDIT_BOXES_SOFT, Math.min(collectionAuditLimit({ petOwned: true, petCollectors: 3 }),
+    Number(rates?.boxLimit) || AUDIT_BOXES_SOFT));
+  check(rates?.boxes, boxLimit, boxLimit * 2, "boxes/10s", fmtInt);
   check(rates?.dmg, AUDIT_DMG_SOFT, AUDIT_DMG_HARD, "dégâts/10s", fmtDmg);
   for (const [kind, label] of [["movement", "mouvements refusés"], ["combat", "impacts refusés"]]) {
     const count = Number(rates?.[`${kind}Rejected`]) || 0;
@@ -212,6 +232,7 @@ export function acAuditWindow(audit, nowMs, teleStrike = 0) {
   const rates = {
     kills: Math.max(0, Number(audit.kills) || 0) * f,
     boxes: Math.max(0, Number(audit.boxes) || 0) * f,
+    boxLimit: Math.max(AUDIT_BOXES_SOFT, Number(audit.boxLimit) || 0),
     dmg: Math.max(0, Number(audit.dmg) || 0) * f,
     teleports: Math.max(0, teleStrike - (Number(audit.teleAt) || 0)),
     movementRejected: Math.max(0, Number(audit.movementRejected) || 0) * f,
@@ -220,7 +241,7 @@ export function acAuditWindow(audit, nowMs, teleStrike = 0) {
     combatSeconds: (audit.combatSeconds?.length || 0) * f,
   };
   const result = acAuditScore(audit.score, rates);
-  Object.assign(audit, { t: nowMs, kills: 0, boxes: 0, dmg: 0, teleAt: teleStrike, score: result.score,
+  Object.assign(audit, { t: nowMs, kills: 0, boxes: 0, boxLimit: 0, dmg: 0, teleAt: teleStrike, score: result.score,
     movementRejected: 0, movementSeconds: [], combatRejected: 0, combatSeconds: [] });
   return { ...result, rates };
 }

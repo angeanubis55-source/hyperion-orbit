@@ -39,7 +39,7 @@ const JUMP_FX_BY_CATEGORY = Object.freeze({
 });
 
 // Skins des portails spéciaux (assets conservés, tailles d'origine du jeu).
-// Branchés sur la destination : alpha/beta/gamma/delta/epsilon/zeta + pirates (5-2 <-> 4-5).
+// Branchés sur la destination : alpha/beta/gamma/delta/epsilon/zeta/kappa/lambda/kronos + pirates (5-2 <-> 4-5).
 const SPECIAL_SKINS = Object.freeze({
   alpha: Object.freeze({
     idle: { src: "ASSETS/ALPHA_PORTAL/DESACTIVE.png", w: 500, h: 500, yOff: 0 },
@@ -84,6 +84,32 @@ const SPECIAL_SKINS = Object.freeze({
     jumpFxFrames: 18,
     jumpFxW: 300,
     jumpFxH: 300,
+  }),
+  kappa: Object.freeze({
+    idle: { src: "ASSETS/KAPPA_PORTAL/DESACTIVE.png", w: 407, h: 427, yOff: 0 },
+    open: { src: "ASSETS/KAPPA_PORTAL/ACTIVE.png", w: 407, h: 427, yOff: 0 },
+    jump: { src: "ASSETS/KAPPA_PORTAL/JUMP.png", w: 407, h: 427, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+    jumpFxPath: null,
+  }),
+  lambda: Object.freeze({
+    idle: { src: "ASSETS/LAMBDA_PORTAL/DESACTIVE.png", w: 402, h: 401, yOff: 0 },
+    open: { src: "ASSETS/LAMBDA_PORTAL/ACTIVE.png", w: 402, h: 401, yOff: 0 },
+    jump: { src: "ASSETS/LAMBDA_PORTAL/JUMP.png", w: 402, h: 401, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+    jumpFxPath: null,
+  }),
+  kronos: Object.freeze({
+    idle: { src: "ASSETS/KRONOS_PORTAL/DESACTIVE.png?v=kronos-1", w: 410, h: 353, yOff: 0 },
+    // ✅ les 3 états = image de base ; la couche open joue idle_01..06 en boucle.
+    // (src = 1re frame, repli pour le code lisant open.src directement.)
+    open: { src: "ASSETS/KRONOS_PORTAL/IDLE/1.png", path: "ASSETS/KRONOS_PORTAL/IDLE/", firstNumber: 1, ext: ".png", frames: 6, fps: 8, w: 410, h: 353, yOff: 0 },
+    jump: { src: "ASSETS/KRONOS_PORTAL/JUMP.png?v=kronos-1", w: 410, h: 353, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+    // ✅ aperçu Saturne dans l'anneau : image fixe clippée en disque.
+    portalPreview: Object.freeze({ image: "ASSETS/KRONOS_PORTAL/MAP_PREVIEW.png", size: 480, clip: 170 }),
+    // ✅ anim de saut : jump_01..06 (distincte de la boucle idle).
+    jumpFxPath: "ASSETS/KRONOS_PORTAL/JUMP_FX/",
+    jumpFxFrames: 6,
+    jumpFxW: 410,
+    jumpFxH: 353,
   }),
   pirates: Object.freeze({
     idle: { src: "ASSETS/PIRATES_PORTAL/DESACTIVE.png", w: 362, h: 387, yOff: 0 },
@@ -145,6 +171,9 @@ export function getPortalSkinForMap(toMap) {
   if (lower === "delta") return SPECIAL_SKINS.delta;
   if (lower === "epsilon") return SPECIAL_SKINS.epsilon;
   if (lower === "zeta") return SPECIAL_SKINS.zeta;
+  if (lower === "kappa") return SPECIAL_SKINS.kappa;
+  if (lower === "lambda") return SPECIAL_SKINS.lambda;
+  if (lower === "kronos") return SPECIAL_SKINS.kronos;
   if (PIRATES_DESTINATIONS.includes(lower)) return SPECIAL_SKINS.pirates;
   // Portails par map : NORMAUX / BATTLE / BL / QZ.
   const dir = SKIN_DIR_BY_MAP.get(id);

@@ -690,7 +690,7 @@ test('GG : portail gauche gate et portail droit base de la firme, assets existan
   const {getPortalSkinForMap}=await import('../SRC/CORE/PORTAL_SKINS.js');
   const {getFactionHomeMap}=await import('../SRC/CORE/FACTIONS.js');
   const {existsSync}=await import('node:fs');
-  for(const gate of ['alpha','beta','gamma','delta','epsilon','zeta']) for(const faction of ['mmo','eic','vru']) {
+  for(const gate of ['alpha','beta','gamma','delta','epsilon','zeta','kappa','lambda','kronos']) for(const faction of ['mmo','eic','vru']) {
     const portal={},gateReturnPortal={};
     const context=vm.createContext({window:{__CURRENT_MAP_ID__:gate},rules:{},portal,gateReturnPortal,account:{user:{faction}},getFactionHomeMap,getPortalSkinForMap,PORTAL_IDLE_SPR:{},PORTAL_OPEN_SPR:{},PORTAL_JUMP_SPR:{},DEFAULT_PORTAL_JUMP_SPR:{},DEFAULT_PORTAL_JUMP_FX:{},DEFAULT_PORTAL_JUMP_BUTTON:{}});
     vm.runInContext(engineFunction('getPortalSpriteSet'),context);
@@ -699,7 +699,8 @@ test('GG : portail gauche gate et portail droit base de la firme, assets existan
     for(const state of ['idle','open','jump']) {
       assert.equal(left[state].src,getPortalSkinForMap(gate)[state].src);
       assert.equal(right[state].src,getPortalSkinForMap(getFactionHomeMap(faction))[state].src);
-      assert.ok(existsSync(left[state].src)); assert.ok(existsSync(right[state].src));
+      // ✅ les skins peuvent porter un query anti-cache (?v=...) : test d'existence sur le chemin seul.
+      assert.ok(existsSync(String(left[state].src).split("?")[0])); assert.ok(existsSync(String(right[state].src).split("?")[0]));
     }
   }
 });
