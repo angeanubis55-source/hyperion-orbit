@@ -308,8 +308,13 @@ export const NPC_REWARDS = Object.freeze({
   npc_Subjugate_XXVIII: { credits: 50000, exp: 25000, honor: 100 },
   npc_Dictate_XCIX: { credits: 50000, exp: 25000, honor: 100 },
   npc_Spinelus: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Infernal: { credits: 25000, exp: 8000, honor: 4 },
-  npc_Scorcher: { credits: 150000, exp: 15000, honor: 8 },
+  npc_Infernal: { credits: 25000, exp: 8800, honor: 4 },
+  npc_Scorcher: { credits: 150000, exp: 16500, honor: 8 },
   npc_Melter: { credits: 400000, exp: 55000, honor: 12 },
   npc_Devourer: { credits: 2500000, exp: 1000000, honor: 512 },
+  // Variantes Zeta : mêmes gains que les bases (suffixe ζ).
+  npc_Infernal_zeta: { credits: 25000, exp: 8800, honor: 4 },
+  npc_Scorcher_zeta: { credits: 150000, exp: 16500, honor: 8 },
+  npc_Melter_zeta: { credits: 400000, exp: 55000, honor: 12 },
+  npc_Devourer_zeta: { credits: 2500000, exp: 1000000, honor: 512 },
 });

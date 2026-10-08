@@ -33,13 +33,13 @@ export function init() {
       // ✅ Finale scriptée : Devourer invulnérable sous gardes (vague 9 : garde
       // initiale seule) puis 7 paliers en vague 10 (phasesFinalWaveOnly).
       bossEncounter: {
-        bossType: "npc_Devourer",
+        bossType: "npc_Devourer_zeta",
         name: "Zeta",
         initialGuard: true,
         phasesFinalWaveOnly: true,
         phaseGroups: [
-          [{ type: "npc_Infernal", count: 4 }],
-          [{ type: "npc_Scorcher", count: 6 }],
+          [{ type: "npc_Infernal_zeta", count: 4 }],
+          [{ type: "npc_Scorcher_zeta", count: 6 }],
           [
             { type: "npc_Streuner", count: 2 },
             { type: "npc_StreuneR8", count: 2 },

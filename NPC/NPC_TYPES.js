@@ -2765,6 +2765,43 @@ export const NPC_TYPES = {
     bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 40, h: 15, glow: true, invert: true },
     r: 40, hp: 2000000, shield: 1000000, speed: 220, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 600,
   },
+  // Variantes Zeta (stats/rewards identiques aux bases, suffixe ζ).
+  npc_Infernal_zeta: {
+    name: "-=[ Infernal ]=- ζ",
+    sprite: { path: "NPC/NPC_SPRITES/INFERNAL/", frames: 32, firstNumber: 1, ext: ".png", w: 135, h: 120 },
+    playSprite: false,
+    passiveNative: false,
+    spriteSpeed: 0,
+    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
+    r: 24, hp: 60000, shield: 50000, speed: 400, bulletDmg: 1000, bulletSpeed: 4500, shootRange: 550,
+  },
+  npc_Scorcher_zeta: {
+    name: "-=[ Scorcher ]=- ζ",
+    sprite: { path: "NPC/NPC_SPRITES/SCORCHER/", frames: 32, firstNumber: 1, ext: ".png", w: 143, h: 143 },
+    playSprite: false,
+    passiveNative: false,
+    spriteSpeed: 0,
+    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
+    r: 31, hp: 200000, shield: 200000, speed: 380, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+  },
+  npc_Melter_zeta: {
+    name: "-=[ Melter ]=- ζ",
+    sprite: { path: "NPC/NPC_SPRITES/MELTER/", frames: 32, firstNumber: 1, ext: ".png", w: 225, h: 200 },
+    playSprite: false,
+    passiveNative: false,
+    spriteSpeed: 0,
+    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
+    r: 41, hp: 400000, shield: 300000, speed: 370, bulletDmg: 5000, bulletSpeed: 4500, shootRange: 600,
+  },
+  npc_Devourer_zeta: {
+    name: "-=[ Devourer ]=- ζ",
+    sprite: { path: "NPC/NPC_SPRITES/DEVOURER/", frames: 16, firstNumber: 1, ext: ".png", w: 683, h: 683 },
+    playSprite: true,
+    passiveNative: true,
+    spriteSpeed: 20,
+    bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 40, h: 15, glow: true, invert: true },
+    r: 40, hp: 2000000, shield: 1000000, speed: 220, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 600,
+  },
 
 };
 

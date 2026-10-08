@@ -246,7 +246,7 @@ export function fallbackCargoFor(type) {
 export function getNpcCargoOres(type, mapId = null) {
   let key = String(type || "");
   let gateMult = 1;
-  const gate = key.match(/_(alpha|beta|gamma|delta|epsilon)$/);
+  const gate = key.match(/_(alpha|beta|gamma|delta|epsilon|zeta)$/);
   if (gate) {
     gateMult = gate[1] === "beta" ? 2 : gate[1] === "gamma" ? 3 : gate[1] === "delta" ? 3 : 1;
     key = key.slice(0, -gate[0].length);
