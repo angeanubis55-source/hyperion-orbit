@@ -41,7 +41,18 @@ export function initFriendsUI() {
   started = true;
   const status = document.getElementById("friendsStatus"), list = document.getElementById("friendsList"), reqList = document.getElementById("friendsRequests"), addInput = document.getElementById("friendAddInput"), search = document.getElementById("friendsSearch"), badge = document.getElementById("friendsRequestBadge");
   if (!list) return;
-  let friends = [], requests = [], activeTab = "friends", query = "", lastSignature = "";
+  let friends = [], requests = [], activeTab = "friends", query = "", lastSignature = "", needsRender = false;
+
+  // Fenêtre fermée = pas de rendu (test DOM gratuit, sans localStorage).
+  function isFriendsOpen() {
+    try {
+      const el = document.getElementById("friendsWindow");
+      if (!el) return false;
+      if (el.style.display === "none") return false;
+      if (el.classList.contains("gameWinMinimized") || el.classList.contains("gameWinClosing")) return false;
+      return true;
+    } catch { return false; }
+  }
 
   function liveMap() {
     try { return new Map(getNetFriendsOnline().map(friend => [String(friend.id), friend])); } catch { return new Map(); }
@@ -106,12 +117,17 @@ export function initFriendsUI() {
       requests = Array.isArray(requestData.requests) ? requestData.requests : [];
       updateHeader(message);
     } catch { updateHeader("Hors ligne — serveur injoignable"); }
-    renderFriends(); renderRequests();
+    // Données à jour dans tous les cas (badge), rendu seulement si ouvert.
+    if (isFriendsOpen()) { renderFriends(); renderRequests(); needsRender = false; }
+    else needsRender = true;
   }
 
   function poll() {
     try {
       if (drainNetFriendRequestInbox().length || consumeFriendsDirty()) { load(); return; }
+      // Fenêtre fermée : pas de comparaison ni rendu, juste le badge.
+      if (!isFriendsOpen()) return;
+      if (needsRender) { needsRender = false; updateHeader(); renderFriends(); renderRequests(); return; }
       const signature = JSON.stringify(getNetFriendsOnline());
       if (signature !== lastSignature) { lastSignature = signature; updateHeader(); renderFriends(); }
     } catch {}
@@ -157,6 +173,11 @@ export function initFriendsUI() {
     await load();
   });
 
-  setTab("friends"); load(); setInterval(load, 30000); setInterval(poll, 1000); poll();
+  setTab("friends"); load();
+  // Recharge auto toutes les 30 s seulement si quelqu'un regarde
+  // (sinon : demande réseau + rendu pour rien sur téléphone).
+  // Les changements live passent par le poll (dirty/inbox) dans tous les cas.
+  setInterval(() => { try { if (isFriendsOpen()) load(); } catch {} }, 30000);
+  setInterval(poll, 1000); poll();
   window.addEventListener("orbit:window-restored", event => { if (event?.detail?.id === "friendsWindow") load(); });
 }

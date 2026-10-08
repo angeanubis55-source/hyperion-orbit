@@ -111,6 +111,18 @@ export function initClanUI() {
   let clan = null, clans = [], mine = [], rels = { active: [], incoming: [], outgoing: [] };
   let activeTab = "infos";
   let lastInClan = null;
+  let needsRender = false;
+
+  // Fenêtre fermée = pas de rendu (test DOM gratuit, sans localStorage).
+  function isClanOpen() {
+    try {
+      const el = document.getElementById("clanWindow");
+      if (!el) return false;
+      if (el.style.display === "none") return false;
+      if (el.classList.contains("gameWinMinimized") || el.classList.contains("gameWinClosing")) return false;
+      return true;
+    } catch { return false; }
+  }
 
   function appliedTags() {
     try { return new Set(mine.map((a) => String(a.tag || "").toUpperCase())); } catch { return new Set(); }
@@ -384,7 +396,10 @@ export function initClanUI() {
           updateHeader(message);
         } catch { updateHeader("Hors ligne — serveur injoignable"); }
       }
-      render();
+      // Données + tags diplo à jour dans tous les cas (couleurs en jeu),
+      // gros rendu des listes seulement si quelqu'un regarde.
+      if (isClanOpen()) { render(); needsRender = false; }
+      else needsRender = true;
     } finally {
       loading = false;
     }
@@ -393,6 +408,8 @@ export function initClanUI() {
   function poll() {
     try {
       if (consumeClanDirty()) { load(); return; }
+      // Données arrivées fenêtre fermée : on ré-affiche à l'ouverture.
+      if (needsRender && isClanOpen()) { needsRender = false; render(); }
     } catch {}
   }
 
@@ -598,10 +615,11 @@ export function initClanUI() {
     } catch (error) { updateHeader(String(error?.message || "Diplomatie impossible.")); }
   });
   setTab("infos"); load();
-  // Auto-refresh 5 s, mais jamais pendant que la souris est sur la fenêtre
-  // (sinon la liste se re-rend sous les doigts : clics ratés, select qui
-  // se referme). Les notifs live (poll) rechargent quand même.
-  setInterval(() => { try { if (!document.querySelector("#clanWindow:hover")) load(); } catch { load(); } }, 5000);
+  // Auto-refresh 5 s, seulement si la fenêtre est ouverte (et jamais pendant
+  // que la souris est dessus : sinon la liste se re-rend sous les doigts).
+  // Fenêtre fermée : aucun fetch, aucun rendu — la réouverture recharge.
+  // Les notifs live (poll) rechargent quand même.
+  setInterval(() => { try { if (isClanOpen() && !document.querySelector("#clanWindow:hover")) load(); } catch { try { load(); } catch {} } }, 5000);
   setInterval(poll, 1000); poll();
   window.addEventListener("orbit:window-restored", (event) => { if (event?.detail?.id === "clanWindow") load(); });
 }

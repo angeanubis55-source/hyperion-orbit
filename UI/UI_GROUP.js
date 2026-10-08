@@ -34,6 +34,21 @@ export function initGroupUI() {
   let kickMode = false;
   const myId = () => { try { return String(netMyId() || ""); } catch { return ""; } };
 
+  // Fenêtre fermée = pas de rendu (même logique que carte stellaire /
+  // assemblage) : test DOM gratuit, sans lecture localStorage.
+  function isGroupOpen() {
+    try {
+      const el = document.getElementById("groupWindow");
+      if (!el) return false;
+      if (el.style.display === "none") return false;
+      if (el.classList.contains("gameWinMinimized") || el.classList.contains("gameWinClosing")) return false;
+      return true;
+    } catch { return false; }
+  }
+
+  // Invitations reçues fenêtre fermée : gardées pour l'ouverture (jamais perdues).
+  let pendingInvites = [];
+
   function renderGroup() {
     let group = null;
     try { group = getNetGroup(); } catch {}
@@ -84,6 +99,7 @@ export function initGroupUI() {
     try { list = drainNetGroupInviteInbox(); } catch {}
     // Acceptation auto (solo + case cochée) : rejoint la 1re invitation
     // sans l'afficher. Les autres éventuelles s'affichent normalement.
+    // Ça marche aussi fenêtre fermée (pas besoin de voir pour rejoindre).
     try {
       if (list.length && autoAccept?.checked && !getNetGroup()) {
         const first = list.shift();
@@ -93,6 +109,27 @@ export function initGroupUI() {
         }
       }
     } catch {}
+    if (!isGroupOpen()) {
+      // Fenêtre fermée : on stocke les invitations (sans toucher au DOM),
+      // elles s'afficheront à l'ouverture. Les expirées sont purgées.
+      const nowTs = Date.now();
+      for (const invite of list) {
+        if (!pendingInvites.some(p => String(p.from) === String(invite.from))) pendingInvites.push(invite);
+      }
+      pendingInvites = pendingInvites.filter(p => (Number(p.expiresAt) || nowTs + 15000) > nowTs);
+      return;
+    }
+    // Fenêtre ouverte : on fusionne les gardées + les nouvelles, sans doublons.
+    const seen = new Set(), merged = [];
+    for (const invite of [...pendingInvites, ...list]) {
+      const key = String(invite.from);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(invite);
+    }
+    pendingInvites = [];
+    const nowTs = Date.now();
+    list = merged.filter(invite => (Number(invite.expiresAt) || nowTs + 15000) > nowTs);
     for (const invite of list) {
       if (invites.querySelector(`[data-inv-from="${CSS.escape(String(invite.from))}"]`)) continue;
       const row = document.createElement("div");
@@ -106,14 +143,30 @@ export function initGroupUI() {
   }
 
   function pollNotices() {
+    let items = [];
+    try { items = drainNetGroupNoticeInbox(); } catch {}
+    // Fenêtre fermée : on vide juste la boîte (notifications éphémères),
+    // sans toucher au DOM.
+    if (!isGroupOpen()) return;
     try {
-      for (const notice of drainNetGroupNoticeInbox()) { const row = document.createElement("div"); row.className = "groupNotice"; row.dataset.text = String(notice.text || ""); if (notice.expiresAt) row.dataset.expiresAt = String(notice.expiresAt); row.textContent = row.dataset.text; notices?.prepend(row); while (notices?.children.length > 5) notices.removeChild(notices.lastChild); }
+      for (const notice of items) { const row = document.createElement("div"); row.className = "groupNotice"; row.dataset.text = String(notice.text || ""); if (notice.expiresAt) row.dataset.expiresAt = String(notice.expiresAt); row.textContent = row.dataset.text; notices?.prepend(row); while (notices?.children.length > 5) notices.removeChild(notices.lastChild); }
       for (const row of notices?.querySelectorAll("[data-expires-at]") || []) { const left = Math.max(0, Math.ceil((Number(row.dataset.expiresAt) - Date.now()) / 1000)); row.textContent = `${row.dataset.text} (${left}s)`; if (!left) row.remove(); }
     } catch {}
   }
 
   let signature = "", syncAt = 0;
-  function poll() { try { if (netplayStatus().connected && Date.now() - syncAt > 2000) { syncAt = Date.now(); sendGroupSync(); } renderInvites(); pollNotices(); const next = JSON.stringify(getNetGroup()); if (next !== signature) { signature = next; renderGroup(); } } catch {} }
+  function poll() {
+    try {
+      // Sync réseau gardée dans tous les cas (jeu en groupe), throttlée à 2 s.
+      if (netplayStatus().connected && Date.now() - syncAt > 2000) { syncAt = Date.now(); sendGroupSync(); }
+      renderInvites();
+      pollNotices();
+      // Barres de vie : recalculées seulement si quelqu'un les regarde.
+      if (!isGroupOpen()) return;
+      const next = JSON.stringify(getNetGroup());
+      if (next !== signature) { signature = next; renderGroup(); }
+    } catch {}
+  }
   document.getElementById("groupLeaveBtn")?.addEventListener("click", () => { sendGroupLeave(); signature = ""; });
   document.getElementById("groupInviteBtn")?.addEventListener("click", () => { if (input?.disabled) return; const value = input?.value.trim(); if (value) sendGroupInvite(value); if (input) input.value = ""; });
   document.getElementById("groupInviteLockBtn")?.addEventListener("click", () => sendGroupInviteLock(!getNetGroup()?.invitesLocked));
@@ -122,4 +175,10 @@ export function initGroupUI() {
   invites.addEventListener("click", event => { const button = event.target.closest("button"); if (!button) return; if (button.dataset.accept) sendGroupAccept(); else if (button.dataset.decline) sendGroupDecline(); button.closest("[data-inv-from]")?.remove(); signature = ""; });
   members.addEventListener("click", event => { if (!kickMode) return; const card = event.target.closest("[data-kick-member]"); if (!card) return; sendGroupKick(card.dataset.kickMember); kickMode = false; renderGroup(); });
   renderGroup(); setInterval(poll, 500); poll();
+  // À l'ouverture : tout ré-afficher (groupe + invitations gardées).
+  // (Gardé pour les tests hors navigateur : pas de window dans ce cas.)
+  try { window.addEventListener("orbit:window-restored", event => {
+    if (event?.detail?.id !== "groupWindow") return;
+    try { signature = ""; renderGroup(); renderInvites(); pollNotices(); } catch {}
+  }); } catch {}
 }

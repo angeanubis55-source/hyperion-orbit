@@ -12837,6 +12837,22 @@ let lastPetPlaySig = "";
 
 let selectedCraftingRecipeId = CRAFTING_RECIPES[0]?.id || null;
 
+// Fenêtre fermée = zéro calcul (même logique que la carte stellaire) :
+// test DOM gratuit d'abord, gestionnaire ensuite seulement si ouvert.
+function isCraftingOpen() {
+  try {
+    const el = document.getElementById("craftingWindow");
+    if (!el) return false;
+    if (el.style.display === "none") return false;
+    if (el.classList.contains("gameWinMinimized") || el.classList.contains("gameWinClosing")) return false;
+    const manager = window.GameWindowManager;
+    if (manager?.isOpen) {
+      try { if (!manager.isOpen('craftingWindow')) return false; } catch {}
+    }
+    return true;
+  } catch { return false; }
+}
+
 function craftingResourceAmount(user, resourceId) {
   return Math.max(0, Number(user?.inventory?.resources?.[resourceId] || 0));
 }
@@ -13105,6 +13121,10 @@ function renderCraftingWindow(message = "") {
     if (ui.craftingBuildBtn) ui.craftingBuildBtn.disabled = true;
     return;
   }
+  // Fenêtre fermée = zéro calcul : le rendu ne se fait qu'à l'ouverture
+  // (même logique que la carte stellaire). Test DOM gratuit d'abord, pour
+  // éviter toute lecture localStorage quand c'est fermé.
+  if (!isCraftingOpen()) return;
   if (!ui.craftingRecipes || !ui.craftingDetail) return;
   const user = getCurrentUserFull();
   if (!user) return;
@@ -13567,7 +13587,7 @@ window.addEventListener("orbit:window-restored", event => {
   if (event.detail?.id === "refineryWindow") renderRefineryWindow();
 });
 window.addEventListener("orbit:profile-progress", () => {
-  if (document.getElementById("craftingWindow")?.style.display !== "none") renderCraftingWindow();
+  if (isCraftingOpen()) renderCraftingWindow();
 });
 window.addEventListener("orbit:profile-progress", () => {
   // Commerce <-> raffinage synchronisés même sans action directe (collecte,
@@ -38318,8 +38338,54 @@ const StarJump = { selected: null, channel: null, lastJumpAt: 0, built: false, r
   hoverMap: null, hoverPortal: null, pinnedRoute: null, connectionsFor: null, artLoading: null,
   itinerary: null, itineraryFor: null, routeVia: null };
 
+// Fenêtre fermée = zéro calcul (sauf saut en cours : compte à rebours + messages gardés).
+// Ordre volontaire : test DOM d'abord (gratuit), gestionnaire ensuite seulement
+// si le DOM dit "ouvert". Ça évite toute lecture localStorage à chaque image
+// quand c'est fermé (isOpen lit le stockage à chaque appel).
+function isStarMapOpen() {
+  try {
+    const el = ui.starMapWindow;
+    if (!el) return false;
+    if (el.style.display === "none") return false;
+    if (el.classList.contains("gameWinMinimized") || el.classList.contains("gameWinClosing")) return false;
+    const manager = window.GameWindowManager;
+    if (manager?.isOpen) {
+      try { if (!manager.isOpen('starMapWindow')) return false; } catch {}
+    }
+    return true;
+  } catch { return false; }
+}
+
+// Fenêtre d'infos orpheline (ouverte alors que la carte est fermée) : test DOM
+// gratuit d'abord, gestionnaire seulement si le DOM dit "ouvert".
+function isStarMapInfoOrphan() {
+  try {
+    const info = document.getElementById('starMapInfoWindow');
+    if (!info) return false;
+    if (info.style.display === "none") return false;
+    if (info.classList.contains("gameWinMinimized") || info.classList.contains("gameWinClosing")) return false;
+    const manager = window.GameWindowManager;
+    if (manager?.isOpen) {
+      try { if (!manager.isOpen('starMapInfoWindow')) return false; } catch {}
+    }
+    return true;
+  } catch { return false; }
+}
+
+window.addEventListener('orbit:window-minimized', event => {
+  if (event.detail?.id !== 'starMapWindow') return;
+  try {
+    const flow = ui.starMapEdges?.querySelector('.starMapRouteFlow');
+    flow?.getAnimations().forEach(animation => animation.cancel());
+    flow?.remove();
+  } catch {}
+  StarJump.hoverMap = null;
+  StarJump.hoverPortal = null;
+});
+
 window.addEventListener('orbit:window-restored', event => {
   if (event.detail?.id === 'starMapWindow') {
+    if (!isStarMapOpen()) return;
     const flow = ui.starMapEdges?.querySelector('.starMapRouteFlow');
     flow?.getAnimations().forEach(animation => animation.cancel());
     flow?.remove();
@@ -38358,6 +38424,7 @@ function syncStarMapScrollbars() {
 }
 
 function updateStarMapView() {
+  if (!isStarMapOpen()) return;
   const viewport = document.getElementById("starMapViewport"), stage = document.getElementById("starMapStage");
   const tree = ui.starMapTree, layout = StarJump.layout;
   if (!viewport || !stage || !tree || !layout || !viewport.clientWidth || !viewport.clientHeight) return;
@@ -38422,6 +38489,7 @@ function centerStarMapNode(id, onlyWhenHidden = false) {
 }
 
 function updateStarMapRouteAnimation() {
+  if (!isStarMapOpen()) return;
   const svg = ui.starMapEdges;
   if (!svg) return;
   const previous = svg.querySelector(".starMapRouteFlow");
@@ -38478,6 +38546,7 @@ function updateStarMapRouteAnimation() {
 }
 
 function highlightStarMapLinks() {
+  if (!isStarMapOpen()) return;
   const routes = StarJump.layout?.routes || [], active = new Set();
   const itinerary = new Set((StarJump.itinerary?.steps || []).map(s => s.key));
   const hover = StarJump.hoverPortal, map = StarJump.hoverMap || (StarJump.routeVisible ? StarJump.selected : null);
@@ -38501,6 +38570,7 @@ function highlightStarMapLinks() {
 }
 
 function refreshStarMapItinerary(cur, sel) {
+  if (!isStarMapOpen()) return;
   const routes = StarJump.layout?.routes || [];
   const sector = String(getFaction((account.user || getCurrentUserFull())?.faction)?.sector || '1');
   const via = StarJump.routeVia;
@@ -38606,6 +38676,9 @@ function ensureStarMapArt() {
     const maps = new Map([...starMapArt].filter(([, data]) => data && !data.failed)
       .map(([id, data]) => [starMapById.get(id).id, data]));
     StarJump.layout = await calculateStarMapRoutes(maps);
+    // Refermée pendant le chargement : on garde les données mais on ne dessine rien.
+    // Le dessin se fera à la prochaine ouverture.
+    if (!isStarMapOpen()) return;
     drawStarMapRoutes();
     StarJump.connectionsFor = null;
     refreshStarMap();
@@ -38614,6 +38687,7 @@ function ensureStarMapArt() {
 }
 
 function drawStarMapRoutes() {
+  if (!isStarMapOpen()) return;
   const svg = ui.starMapEdges, NS = "http://www.w3.org/2000/svg";
   if (!svg) return;
   const routes = StarJump.layout?.routes || [];
@@ -38721,6 +38795,8 @@ function starMapEdgeCount(id) {
 }
 
 function renderStarMap() {
+  // Construction paresseuse : rien tant que la fenêtre n'est pas ouverte.
+  if (!isStarMapOpen()) return;
   const tree = ui.starMapTree, nodesEl = ui.starMapNodes, svg = ui.starMapEdges;
   if (!tree || !nodesEl || !svg) return;
   const NS = "http://www.w3.org/2000/svg";
@@ -38885,6 +38961,10 @@ function starMapJumpReuseLeftSec() {
 }
 
 function refreshStarMap() {
+  // Fenêtre fermée : rien à rafraîchir (le marqueur "carte actuelle"
+  // sera remis à jour à la prochaine ouverture). Le saut en cours garde
+  // quand même son compte à rebours + messages via son propre tick.
+  if (!isStarMapOpen()) return;
   const cur = starJumpCurrentMap();
   const sel = StarJump.selected ? starMapById.get(String(StarJump.selected).toLowerCase()) : null;
   const ch = StarJump.channel;
@@ -39102,30 +39182,43 @@ function tickStarJump(dt) {
       try { SFX.play("swJump"); } catch {}
       addGameLog(`Jump vers ${String(ch.target).toUpperCase()} : portail activé.`, "info");
     }
+    // Compte à rebours + messages gardés même fenêtre fermée (voulu).
     updateStarJumpCountdown(ch);
     if (ch.t >= ch.dur && !ch.validating) executeStarJump(ch);
   }
-  try {
-    const open = ui.starMapWindow && ui.starMapWindow.style.display !== "none"
-      && !ui.starMapWindow.classList.contains("gameWinMinimized")
-      && !ui.starMapWindow.classList.contains("gameWinClosing");
-    if (!open && window.GameWindowManager?.isOpen('starMapInfoWindow')) {
-      StarJump.restoreInfoOnOpen = true;
-      window.GameWindowManager.minimize('starMapInfoWindow');
+  // Fenêtre fermée et pas de saut : zéro calcul, on sort sans toucher au DOM.
+  // (La fenêtre d'infos orpheline est juste re-rangée, sans refresh.)
+  let open = false;
+  try { open = isStarMapOpen(); } catch { open = false; }
+  if (!open) {
+    if (!ch) {
+      try {
+        if (isStarMapInfoOrphan()) {
+          StarJump.restoreInfoOnOpen = true;
+          window.GameWindowManager.minimize('starMapInfoWindow');
+        }
+      } catch {}
+      return;
     }
-    if (open) {
-      // Construction une fois, rafraîchi 2x/s (compte à rebours, sélection).
-      if (!StarJump.built) renderStarMap();
-      if (!StarJump.selected) {
-        const cur = starMapById.get(starJumpCurrentMap());
-        if (cur) StarJump.selected = cur.id;
-      }
-      const now = performance.now();
-      if (now - StarJump.refreshAt > 500) { StarJump.refreshAt = now; refreshStarMap(); }
-      if (StarJump.restoreInfoOnOpen) {
-        StarJump.restoreInfoOnOpen = false;
-        showStarMapInfo();
-      }
+    // Saut en cours + fenêtre fermée : le compte à rebours ci-dessus suffit.
+    return;
+  }
+  try {
+    if (!StarJump.built) renderStarMap();
+    // Rouvert après un chargement fini fenêtre fermée : dessiner les traits manqués.
+    try {
+      if (StarJump.built && StarJump.layout && ui.starMapEdges
+        && !ui.starMapEdges.querySelector('.starMapWire')) drawStarMapRoutes();
+    } catch {}
+    if (!StarJump.selected) {
+      const cur = starMapById.get(starJumpCurrentMap());
+      if (cur) StarJump.selected = cur.id;
+    }
+    const now = performance.now();
+    if (now - StarJump.refreshAt > 500) { StarJump.refreshAt = now; refreshStarMap(); }
+    if (StarJump.restoreInfoOnOpen) {
+      StarJump.restoreInfoOnOpen = false;
+      showStarMapInfo();
     }
   } catch (e) { try { window.__STARJUMP_ERR__ = String(e?.stack || e); } catch {} }
 }
@@ -39759,8 +39852,9 @@ const pack = getShipPackByIdData(cur.ship) || SHIP_PACKS[0];
 ACTIVE_SHIP = pack;
 document.documentElement.classList.add("orbitHudReady");
 
-// Preparer le schema ferme. A l'ouverture, seule sa mise a l'echelle reste a faire.
-renderStarMap();
+// Carte stellaire paresseuse : rien n'est construit ni chargé tant que
+// la fenêtre n'est pas ouverte (cf. tickStarJump + renderStarMap).
+// Le premier affichage construit le schéma puis charge les 35 cartes en fond.
 
 prepareGameAssets().catch((error) => {
   console.error("Erreur de préparation:", error);
