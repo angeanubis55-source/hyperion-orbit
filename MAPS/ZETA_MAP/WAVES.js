@@ -3,7 +3,7 @@
 // vagues 1-8 classiques, vague 9 = Devourer invulnérable + 6 à 12 Infernal
 // (tirage par run), vague 10 = finale scriptée (Devourer + 2 Infernal, puis
 // 7 paliers via bossEncounter).
-export const DEFAULT_WAVE_TYPE = "npc_Infernal_zeta_zeta";
+export const DEFAULT_WAVE_TYPE = "npc_Infernal_zeta";
 
 export const WAVE_PLANS = [
   null,
