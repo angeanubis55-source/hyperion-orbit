@@ -13943,8 +13943,10 @@ function getPortalSpriteSet(ptl = null) {
       ...DEFAULT_PORTAL_JUMP_FX,
       // Animation de saut de la catégorie (25 frames 320x320).
       ...(!ptl?.sprites?.jumpFx && skin?.jumpFxPath ? { path: skin.jumpFxPath } : {}),
-      // ✅ nombre de frames propre au skin (ex. Zeta : 18 frames 300x300).
+      // ✅ nombre de frames et taille propres au skin (ex. Epsilon : 12 frames 250x250, Zeta : 18).
       ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxFrames) > 0 ? { frames: Math.floor(Number(skin.jumpFxFrames)) } : {}),
+      ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxW) > 0 ? { w: Math.floor(Number(skin.jumpFxW)) } : {}),
+      ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxH) > 0 ? { h: Math.floor(Number(skin.jumpFxH)) } : {}),
       ...(ptl?.sprites?.jumpFx || {}),
     },
 

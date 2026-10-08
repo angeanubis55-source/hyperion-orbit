@@ -71,6 +71,8 @@ const SPECIAL_SKINS = Object.freeze({
     jump: { src: "ASSETS/EPSILON_PORTAL/JUMP.png", w: 406, h: 474, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
     jumpFxPath: "ASSETS/EPSILON_PORTAL/JUMP_FX/",
     jumpFxFrames: 12,
+    jumpFxW: 250,
+    jumpFxH: 250,
   }),
   // ✅ Zeta : DESACTIVE + ACTIVE = même image (normal), JUMP = frozen,
   // anim de saut = effect__00..17 (18 frames 300x300).
@@ -80,6 +82,8 @@ const SPECIAL_SKINS = Object.freeze({
     jump: { src: "ASSETS/ZETA_PORTAL/JUMP.png", w: 498, h: 490, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
     jumpFxPath: "ASSETS/ZETA_PORTAL/JUMP_FX/",
     jumpFxFrames: 18,
+    jumpFxW: 300,
+    jumpFxH: 300,
   }),
   pirates: Object.freeze({
     idle: { src: "ASSETS/PIRATES_PORTAL/DESACTIVE.png", w: 362, h: 387, yOff: 0 },
