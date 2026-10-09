@@ -482,15 +482,19 @@ function schedulePush(urgent = true) {
   // Debug mode : urgent = 5 s, paresseux (gains de farm/quêtes) = 15 s.
   // Sinon : 2 s dans tous les cas, comme avant.
   const wantUrgent = urgent !== false;
+  let debug = false;
+  try { debug = isPhoneMode(); } catch {}
   if (saveTimer != null) {
-    if (wantUrgent && !pushUrgentArmed) {
+    // En mode normal, délais identiques (2 s) : on ne reprogramme jamais
+    // (comportement historique exact). En Debug, un urgent devance un paresseux.
+    if (debug && wantUrgent && !pushUrgentArmed) {
       try { clearTimeout(saveTimer); } catch {}
       saveTimer = null;
     } else return;
   }
   pushUrgentArmed = wantUrgent;
   let delay = 2000;
-  try { if (isPhoneMode()) delay = wantUrgent ? 5000 : 15000; } catch {}
+  try { if (debug) delay = wantUrgent ? 5000 : 15000; } catch {}
   // Debug mode : l'armement est horodaté (métronome visible dans le rapport).
   try { noteSaveOp("push-arme", 0, 0, wantUrgent ? "urgent" : "paresseux"); } catch {}
   saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, delay);
@@ -703,7 +707,13 @@ function adoptServerUser(user, { base = serverBase, admin = false, reason = "ref
   pendingGalaxyGates = same(memUser.galaxyGates, serverBase.galaxyGates) ? null : copy(memUser.galaxyGates);
   if (!same(memUser, serverBase) || Object.keys(pendingSelections).length) {
     memUser.revision = Math.max(Number(user.revision) || 0, Number(memUser.revision) || 0) + 1;
-    schedulePush();
+    // Debug mode : après un envoi réussi, sans choix en attente, le ré-armement
+    // est paresseux (15 s) au lieu d'entretenir un métronome de 5 s en farm.
+    // Sinon (conflit, refresh, admin, sélections) : urgent comme avant.
+    // La fusion ci-dessus s'applique dans tous les cas, immédiatement.
+    const hasPendingChoices = Object.keys(pendingSelections).length > 0;
+    if (reason === "saved" && !hasPendingChoices) schedulePush(false);
+    else schedulePush();
   }
   // Debug mode : la fusion complète est tracée (gros poste suspect en farm).
   try { noteSaveOp("adopt-merge", performance.now() - tMerge0, 0, reason); } catch {}
