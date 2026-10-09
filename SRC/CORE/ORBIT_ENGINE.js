@@ -20263,18 +20263,23 @@ try {
 try {
   tickBackground(universe, worldClock.now(), { skipMapId: String(window.__CURRENT_MAP_ID__ || "") });
 } catch {}
-// Tick de fond continu : toutes les 5s les maps sans joueur avancent
-// (respawns dus + derive bornee). Throttle dans persistUniverse.
+// Tick de fond continu : les maps sans joueur avancent (respawns dus +
+// derive bornee). Throttle dans persistUniverse.
+// Debug mode : toutes les 30 s au lieu de 5 s. La sim est en temps absolu
+// (respawnAtMs, updatedAtMs) avec rattrapage, donc tick espacé = même état,
+// sans la réécriture d'~1 Mo toutes les 5 s qui gelait le téléphone ~200 ms.
+// Sinon comportement normal (5 s).
 try {
   if (typeof window !== "undefined" && !window.__UNIVERSE_BG_TICK__) {
     window.__UNIVERSE_BG_TICK__ = true;
+    const bgIntervalMs = isPhoneMode() ? 30000 : 5000;
     setInterval(() => {
       try {
         tickBackground(universe, worldClock.now(), { skipMapId: String(window.__CURRENT_MAP_ID__ || "") });
         persistUniverse();
         persistCollectables();
       } catch {}
-    }, 5000);
+    }, bgIntervalMs);
   }
 } catch {}
 const persistUniverse = createDeferredPersistence(force => {
@@ -20282,7 +20287,7 @@ const persistUniverse = createDeferredPersistence(force => {
   try {
     measureGameTask("persistUniverse", () => universeStorage?.setItem?.(UNIVERSE_KEY, serializeUniverse(universe)));
   } catch {}
-}, { now: () => worldClock.now() });
+}, { now: () => worldClock.now(), intervalMs: isPhoneMode() ? 30000 : 5000 });
 // Monde continu collectables : même rythme que l'univers (5 s, force au quit).
 let collectableStore = createCollectableStore();
 try {
@@ -20294,7 +20299,7 @@ const persistCollectables = createDeferredPersistence(() => {
   try {
     measureGameTask("persistCollectables", () => universeStorage?.setItem?.(COLLECTABLE_STORE_KEY, serializeCollectableStore(collectableStore)));
   } catch {}
-}, { now: () => worldClock.now() });
+}, { now: () => worldClock.now(), intervalMs: isPhoneMode() ? 30000 : 5000 });
 // ✅ Purge des ressources d'une Galaxy Gate terminée/perdue : supprime les
 // collectables non ramassés (cargos + assemblage) en mémoire ET dans le
 // store persisté. Évite l'accumulation quand on enchaîne les runs
