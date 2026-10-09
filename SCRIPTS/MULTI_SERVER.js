@@ -607,7 +607,7 @@ function handleAdminApi(request, response, pathname) {
               return;
             }
             setCubikonFouActive(true);
-            cubikonFouBlast("⚡ Cubikon Fou — C'EST PARTI ! 250 Protegit !");
+            cubikonFouBlast("⚡ Cubikon Fou — C'EST PARTI ! 100 Protegit !");
           };
           cubikonFouCountdownTimer = setTimeout(tickCountdown, 1000);
           adminJson(response, 200, { ok: true, active: false, countdown: true });
