@@ -571,6 +571,7 @@ const ITEM_ICONS = {
   ammo_emaa: ITEM_ICON_BASE + "AMMO_EMAA.png",
   ammo_sbl: ITEM_ICON_BASE + "AMMO_SBL.png",
   ammo_abl: ITEM_ICON_BASE + "AMMO_ABL.png",
+  ammo_tent: ITEM_ICON_BASE + "AMMO_TENT.png",
   // Roquettes : icônes de /COMBAT/ROCKET_SPRITES/ (ton dossier). Fallbacks automatiques si absent.
   rocket_r310: "/COMBAT/ROCKET_SPRITES/R-310_100X100.png",
   ammo_r310: "/COMBAT/ROCKET_SPRITES/R-310_100X100.png",
@@ -1006,7 +1007,7 @@ const INVENTORY_AMMO_NAMES = Object.freeze({
   job: "Munitions JOB-100", rb: "Munitions RB-214",
   pib: "Munitions PIB-100", idb: "Munitions IDB-125",
   vb: "Munitions VB-142", emaa: "Munitions EMAA-20",
-  sbl: "Munitions SBL-100", abl: "Munitions A-BL",
+  sbl: "Munitions SBL-100", abl: "Munitions A-BL", tent: "Munitions TENT-100",
   r310: "Roquette R-310",
 });
 
@@ -1243,6 +1244,7 @@ function inventoryTooltipText(entry) {
     if (Number.isFinite(Number(module.bonusSpeed))) lines.push(`Vitesse : +${formatNumber(module.bonusSpeed)}`);
     if (Number.isFinite(Number(module.bonusShield))) lines.push(`Bouclier : +${formatNumber(module.bonusShield)}`);
     if (module.key) lines.push(`Effet : ${humanizeInventoryId(module.key)}`);
+    if (entry.item?.desc && !entry.item?.petGear) lines.push(entry.item.desc);
     if (entry.item?.petProtocol) lines.push(`Bonus : +${Number(entry.item.petProtocol.pct) || 0} % ${petProtocolStatLabel(entry.item.petProtocol.key)} (équipé sur le P.E.T)`);
     if (entry.item?.petGear && entry.item.desc) lines.push(entry.item.desc);
     lines.push(entry.detail);
@@ -1326,6 +1328,24 @@ function inventoryModuleCardHtml(entry) {
     + `<span class="invModStats">${stats}</span>`;
 }
 
+// Infobulle riche des munitions (inventaire) : nom en gros centré,
+// quantité centrée juste en dessous, puis description une phrase par ligne.
+function inventoryAmmoTooltipHtml(entry) {
+  const rocket = getRocketType(entry?.id);
+  const desc = rocket
+    ? rocketDescription(rocket)
+    : (AMMO?.[entry?.id] ? ammoDescription(entry.id) : "");
+  const parts = [
+    `<div class="ttAmmoName">${escapeHtml(entry?.name || "Munition")}</div>`,
+    `<div class="ttAmmoQty">${escapeHtml(inventoryQuantityLabel(entry?.quantity))}</div>`,
+  ];
+  for (const sentence of String(desc).split("\n")) {
+    const text = sentence.trim();
+    if (text) parts.push(`<div class="ttAmmoDesc">${escapeHtml(text)}</div>`);
+  }
+  return parts.join("");
+}
+
 // Encode un fragment HTML pour un attribut data-* : les textes sont déjà
 // échappés en amont (entités présentes), on ne protège que les guillemets.
 function htmlForDataAttr(html) {
@@ -1398,7 +1418,10 @@ function renderInventoryMeasured(u) {
       const rarity = inventoryEntryRarity(entry);
       entry.rarity = rarity;
       const isMod = entry.kind === "module";
-      const richTip = isMod ? htmlForDataAttr(inventoryModuleTooltipHtml(entry)) : "";
+      const isAmmo = entry.kind === "ammo";
+      const richTip = isMod
+        ? htmlForDataAttr(inventoryModuleTooltipHtml(entry))
+        : isAmmo ? htmlForDataAttr(inventoryAmmoTooltipHtml(entry)) : "";
       return `<article class="inventorySlot rarity-${escapeHtml(rarity.id)}${isMod ? " is-module" : ""}" data-rarity="${escapeHtml(rarity.id)}" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(inventoryTooltipText(entry))}"${richTip ? ` data-tooltip-html="${richTip}"` : ""} tabindex="0" aria-label="${escapeHtml(inventoryTooltipText(entry).replace(/\n/g, ". "))}">
         ${isMod ? inventoryModuleCardHtml(entry) : `<img src="${escapeHtml(inventoryItemIcon(entry))}" alt="" />`}
         ${stacked ? `<span class="inventorySlotQuantity">${escapeHtml(quantity)}</span>` : ""}
@@ -3102,7 +3125,7 @@ if (isShipLike) {
   statLine = `<p class="shopItemStat">Dégâts de base par tir <strong>${formatNumber(it.module.damage || 0)}</strong>${it?.module?.vsLabel ? ` · bonus vs <strong>${escapeHtml(it.module.vsLabel)}</strong>` : ""}${it?.petOnly ? " · <strong>P.E.T uniquement</strong>" : ""}</p>`;
   if (it?.desc) statLine += `<p class="shopItemStat">${escapeHtml(it.desc)}</p>`;
 } else if (it?.give?.ammo) {
-  const ammoDesc = it?.desc ? `<p class="shopItemStat">${escapeHtml(it.desc)}</p>` : "";
+  const ammoDesc = it?.desc ? `<p class="shopItemStat ammoDesc">${escapeHtml(it.desc).replace(/\n/g, "<br>")}</p>` : "";
   statLine = `${ammoDesc}`;
 } else if (it?.give?.rockets) {
   const rocket = getRocketType(ammoKey);
@@ -3158,9 +3181,8 @@ if (isDrone) {
   stockLine = `<p class="shopAmmoOwned">${formationOwned ? (active ? "Formation active" : "Formation possédée") : `Nécessite au moins ${it?.formation?.minDrones || 4} drones`}</p>`;
 } else if (!isShipLike && ammoQty) {
   stockLine = `
-    <p class="shopAmmoOwned">
-      Munitions ${String(ammoKey).toUpperCase()} — quantité possédée :
-      <strong data-shop-stock style="color: #00d9ff;">${formatNumber(ammoQty.qty)}</strong>
+    <p class="shopAmmoOwned ammoStock">
+      <strong data-shop-stock>${formatNumber(ammoQty.qty)}</strong>
     </p>
   `;
 } else if (it?.booster?.id) {
@@ -3221,14 +3243,23 @@ if (isDrone) {
     `;
   }
   // Preview uniforme : card 105x105, item 100x100 centré (hors vaisseaux,
-  // qui gardent leur grand conteneur d'aperçu).
-  const previewCard = isShipLike ? previewHtml : `<div class="shopPreviewCard">${previewHtml}</div>`;
+  // qui gardent leur grand conteneur d'aperçu). Munitions : badge "x1000".
+  const isAmmoPreview = !isShipLike && cat === "ammo";
+  const previewCard = isShipLike ? previewHtml : `<div class="shopPreviewCard${isAmmoPreview ? " ammoCard" : ""}">${previewHtml}${isAmmoPreview ? `<img class="shopPackBadge big" src="/ASSETS/ITEMS/CARD_1000.png" alt="x1000" onerror="this.onerror=null;this.style.display='none'" />` : ""}</div>`;
+
+  // Munitions : 1 achat = 1 pack (ex : ×1 000). Unités reçues = quantité × pack.
+  const ammoUnitsPerPack = (() => {
+    try {
+      const v = Object.values(it?.give?.ammo || {})[0];
+      return Math.max(1, Math.floor(Number(v) || 1000));
+    } catch { return 1000; }
+  })();
 
   shopPreview.innerHTML = `
     <div class="tile">
       ${previewCard}
 
-      <h3>
+      <h3${isAmmo ? ` class="ammoTitle"` : ""}>
         ${it?.name || it?.id} 
         ${owned ? `<span class="pill">Possédé</span>` : ""}
       </h3>
@@ -3236,12 +3267,18 @@ if (isDrone) {
       ${stockLine}
       ${statLine}
 
-      ${!isUnique ? `
+      ${!isUnique ? (isAmmo && !groupRef ? `
+        <div class="shopAmmoBuyRow">
+          <span class="shopAmmoPrice"><span id="shopPurchaseTotal">${formatNumber(price)}</span> Crédits</span>
+          <input id="shopBuyQuantity" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="Quantité à acheter" />
+          <span class="shopAmmoUnits"><span id="shopAmmoUnitsVal">${formatNumber(ammoUnitsPerPack)}</span> Unitées</span>
+        </div>
+      ` : `
         <div class="shopPurchaseRow">
           <div class="shopPurchaseInfo">
             ${groupRef
               ? `<label for="shopBuyLevel">Niveau</label>`
-              : `<label for="shopBuyQuantity">${it?.give?.rockets ? "Quantité à acheter × 10" : isAmmo ? "Quantité à acheter × 1 000" : "Quantité à acheter"}</label>`}
+              : isAmmo ? "" : `<label for="shopBuyQuantity">${it?.give?.rockets ? "Quantité à acheter × 10" : "Quantité à acheter"}</label>`}
             <div class="shopPurchasePrice">
               <span>Prix</span>
               <strong><span id="shopPurchaseTotal">${formatNumber(price)}</span> crédits</strong>
@@ -3261,6 +3298,7 @@ if (isDrone) {
           ` : `
           <div class="shopQuantityBox">
             <input id="shopBuyQuantity" type="number" min="1" max="5000" step="1" value="1" inputmode="numeric" aria-label="Quantité à acheter" />
+            ${isAmmo ? "" : `
             <select id="shopBuyQuantityPreset" aria-label="Quantités prédéfinies">
               <option value="1">1</option>
               <option value="5">5</option>
@@ -3272,11 +3310,11 @@ if (isDrone) {
               <option value="2000">2000</option>
               <option value="5000">5000</option>
               <option value="max">Max</option>
-            </select>
+            </select>`}
           </div>
           `}
         </div>
-      ` : ""}
+      `) : ""}
       
       ${isUnique ? `<p style="margin: 12px 0; font-size: 18px;">
         <strong style="color: #00d9ff;">Prix total:</strong>
@@ -3298,10 +3336,13 @@ if (isDrone) {
   const quantityPreset = document.getElementById("shopBuyQuantityPreset");
   const levelInput = document.getElementById("shopBuyLevel");
   const totalEl = document.getElementById("shopPurchaseTotal");
-  // Quantité max : 5000 partout ; essence limitée aussi par la place restante.
+  // Quantité max : 5000 partout sauf munitions (sans plafond) ; essence
+  // limitée aussi par la place restante.
   const quantityCapNow = () => isFuel
     ? Math.max(1, Math.min(5000, fuelSpaceNow() || 1))
-    : 5000;
+    : isAmmo
+      ? Infinity
+      : 5000;
   const maxAffordableNow = () => {
     if (!(price > 0)) return quantityCapNow();
     const afford = Math.floor(Number(user?.credits || 0) / price);
@@ -3322,6 +3363,8 @@ if (isDrone) {
       }
     }
     if (totalEl) totalEl.textContent = formatNumber(total);
+    const ammoUnitsEl = document.getElementById("shopAmmoUnitsVal");
+    if (ammoUnitsEl) ammoUnitsEl.textContent = formatNumber(quantity * ammoUnitsPerPack);
     const gateUnmet = petGateUnmetNow();
     const full = isFuel && user?.pet?.owned === true && fuelSpaceNow() <= 0;
     btn.disabled = (owned && !formationOwned) || (formationOwned && user?.drones?.activeFormation === it?.formation?.id) || (!formationOwned && Number(user?.credits || 0) < total) || gateUnmet || full;
@@ -3855,7 +3898,7 @@ function petProtocolStatLabel(key) {
   if (key === "damage") return "dégâts";
   if (key === "shield") return "bouclier";
   if (key === "hp") return "coque";
-  if (key === "alien") return "dégâts Alien";
+  if (key === "alien") return "dégâts NPC";
   if (key === "cargo") return "soute cargo";
   if (key === "radar") return "radar";
   if (key === "salvage") return "récupération";
@@ -6421,6 +6464,7 @@ export {
   inventoryItemIcon,
   inventoryTooltipText,
   inventoryModuleTooltipHtml,
+  inventoryAmmoTooltipHtml,
   inventoryModuleCardHtml,
   inventoryEntryRarity,
   inventoryQuantityLabel,

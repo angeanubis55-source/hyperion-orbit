@@ -15,40 +15,44 @@ export const AMMO = {
   rcb: { mult: 7.0, cooldown: 5, color: "rgba(200,60,255,0.95)" },
   cbo: { mult: 3.0, leechMult: 1.0, color: "rgba(150,90,255,0.95)" },
   job: { mult: 2.0, vsNpcMult: 3.5, color: "rgba(220,255,80,0.95)" },
-  rb: { mult: 4.0, vsMatch: [/^npc_Demaner/], vsMult: 8.0, color: "rgba(255,210,80,0.95)" },
+  rb: { mult: 4.0, vsMatch: [/^npc_Demaner/, /SaNeJiEwZ/], vsMult: 8.0, color: "rgba(255,210,80,0.95)" },
   pib: { mult: 4.0, slowPct: 10, slowDuration: 15, color: "rgba(61,255,140,0.95)" },
   idb: { mult: 1.0, ramp: true, rampStep: 1.25, rampMax: 6.0, rampResetMs: 3000, color: "rgba(255,80,200,0.95)" },
   vb: { mult: 4.0, vsMatch: [/Styxus/, /Charopos/], vsMult: 7.0, color: "rgba(170,80,255,0.95)" },
   emaa: { mult: 4.0, vsMatch: [/Mimesis/], vsMult: 7.0, color: "rgba(140,255,120,0.95)" },
-  sbl: { mult: 4.0, vsMatch: [/^npc_Sibelon/], vsMult: 8.0, color: "rgba(80,220,255,0.95)" },
+  sbl: { mult: 4.0, vsMatch: [/^npc_(?!.*Sibelonit).*Sibelon/], vsMult: 8.0, color: "rgba(80,220,255,0.95)" },
   abl: { mult: 4.0, vsMatch: [/Invoke/, /Mindfire/], vsMult: 8.0, color: "rgba(255,110,180,0.95)" },
+  tent: { mult: 4.0, vsMatch: [/Lordakium/], vsMult: 8.0, color: "rgba(122,111,255,0.95)" },
 };
 
 const AMMO_DESCRIPTIONS = Object.freeze({
-  x1: "Inflige ×1 les dégâts laser de base.",
-  x2: "Inflige ×2 les dégâts laser de base.",
-  x3: "Inflige ×3 les dégâts laser de base.",
-  x4: "Inflige ×4 les dégâts laser de base.",
-  sab: "Absorbe un montant de bouclier égal à ×2 les dégâts laser et le transfère à votre vaisseau. N'inflige aucun dégât à la coque.",
-  x6: "Inflige ×6 les dégâts laser de base.",
-  rcb: "Inflige ×7 les dégâts laser de base.",
-  cbo: "Inflige ×3 les dégâts laser et absorbe en plus du bouclier à hauteur de ×1.",
-  job: "Inflige ×2 aux joueurs et ×3,5 aux aliens.",
-  rb: "Inflige ×4, ou ×8 contre les Demaners.",
-  pib: "Inflige ×4 et ralentit la cible de 10 % pendant 15 s.",
-  idb: "Commence à ×1, gagne ×1,25 par tir jusqu'à ×6, puis revient à ×1 après 3 s sans tirer.",
-  vb: "Inflige ×4, ou ×7 contre Styxus et Charopos.",
-  emaa: "Inflige ×4, ou ×7 contre les Mimesis.",
-  sbl: "Inflige ×4, ou ×8 contre les Sibelons.",
-  abl: "Inflige ×4, ou ×8 contre Invoke et Mindfire Behemoth.",
+  x1: "Munition de base, stock infini.\nDégâts laser ×1.\nIdéale pour finir un ennemi sans gaspiller de munitions.",
+  x2: "Dégâts laser ×2.",
+  x3: "Dégâts laser ×3.",
+  x4: "Dégâts laser ×4.\nPuissante mais chère : à réserver aux gros NPC et aux JOUEURS.",
+  sab: "Vole du bouclier x2 de tes dégâts laser et recharge le tien du même montant.",
+  x6: "Salve rapide à ×6 les dégâts laser.",
+  rcb: "Salve rapide à ×7, la munition la plus puissante.",
+  cbo: "Dégâts ×3 et vol de bouclier (×1 de tes dégâts) dans le même tir.",
+  job: "Dégâts ×2 contre les JOUEURS, ×3,5 contre les NPC.",
+  rb: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×8 contre les Demaners, SaNeJiEwZ et Demaner Freighter.",
+  pib: "Dégâts ×4 contre les NPC et les JOUEURS.\nRalentit la cible de 10 % pendant 15 s.",
+  idb: "Commence à ×1 puis augmente de ×1 à chaque tir qui touche, jusqu'à ×6.\nRetombe à ×1 après 3 s sans tirer.",
+  vb: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×7 contre Styxus et Charopos.",
+  emaa: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×7 contre les Mimesis.",
+  sbl: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×8 contre les Sibelons (Boss, Uber, Emperor).",
+  abl: "Dégâts ×4, ou ×8 contre Invoke et Mindfire Behemoth.",
+  tent: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×8 contre les Lordakiums (Boss, Uber, Emperor).",
 });
 
 export function ammoDescription(id) {
   const key = String(id || "").toLowerCase();
   const description = AMMO_DESCRIPTIONS[key] || "Munition laser.";
   const cooldown = Number(AMMO[key]?.cooldown);
+  // RSB-75 : note courte sur la même ligne, pas de 2e ligne.
+  if (key === "x6" && cooldown > 0) return `${description} (5s de cooldown)`;
   return cooldown > 0
-    ? `${description} Temps de recharge : ${String(cooldown).replace(".", ",")} s (partagé entre RSB-75 et RCB-140).`
+    ? `${description}\nTemps de recharge : ${String(cooldown).replace(".", ",")} s (partagé entre RSB-75 et RCB-140).`
     : description;
 }
 
@@ -75,6 +79,7 @@ export const PLAYER_BULLET_SPRITES = {
   emaa: { src: "COMBAT/MUNITIONS/EMAA.png", w: 74, h: 12, glow: true, rotateOffset: Math.PI },
   sbl: { src: "COMBAT/MUNITIONS/SBL.png", w: 114, h: 18, glow: true, rotateOffset: Math.PI },
   abl: { src: "COMBAT/MUNITIONS/ABL.png", w: 43, h: 12, glow: true, rotateOffset: Math.PI },
+  tent: { src: "COMBAT/MUNITIONS/TENTACUL.png", w: 78, h: 18, glow: true, rotateOffset: Math.PI },
   // Roquettes : sprites officiels extraits des rocketN.swf (voir COMBAT/ROCKET_TYPES.js
 //   pour le mapping). w/h = tailles natives : pas de déformation au rendu.
   r310: { src: "COMBAT/MUNITIONS/R310.png", w: 26, h: 5, glow: true, rotateOffset: Math.PI },

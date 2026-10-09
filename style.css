@@ -7273,6 +7273,9 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 .ammoBtn[data-ammo="abl"] {
   --c:#ff6eb4;
 }
+.ammoBtn[data-ammo="tent"] {
+  --c:#8a7bff;
+}
 .ammoBtn[data-skill="pulse"] {
   --c:#b342ff;
 }
@@ -8114,6 +8117,19 @@ body.orbitNoFade #gameWindowDock, body.orbitNoFade #ammoBar, body.orbitNoFade .g
   height:48px;
   padding:4px;
   border-radius:10px;
+}
+.shopPreviewCard.ammoCard {
+  position:relative;
+}
+.shopPreviewCard .shopPackBadge.big {
+  position:absolute;
+  left:-36px;
+  top:-36px;
+  z-index:5;
+  width:100px;
+  height:auto;
+  pointer-events:none;
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,.65));
 }
 .shopMeta {
   flex:1;
@@ -9907,6 +9923,9 @@ body #profileOverlay #panel_shop .shopLayout {
 #ammoBar .compactAmmoBtn[data-ammo="abl"]::before {
   background-image:url("ASSETS/CONTROL_MENU/ammunition_laser_a-bl.png");
 }
+#ammoBar .compactAmmoBtn[data-ammo="tent"]::before {
+  background-image:url("ASSETS/ITEMS/AMMO_TENT.png");
+}
 #ammoBar .compactAmmoBtn[data-ammo] > strong {
   display:none !important;
 }
@@ -10871,6 +10890,23 @@ body > .inventoryTooltip .ttModNeg {
   color:#ff5566 !important;
   font-size:12px !important;
   font-weight:800 !important;
+}
+body > .inventoryTooltip .ttAmmoDesc {
+  color:#f4fbff !important;
+  font-size:12px !important;
+  font-weight:600 !important;
+}
+body > .inventoryTooltip .ttAmmoName {
+  color:#eaffff !important;
+  font-size:14px !important;
+  font-weight:900 !important;
+  text-align:center !important;
+}
+body > .inventoryTooltip .ttAmmoQty {
+  color:#ffd56a !important;
+  font-size:12px !important;
+  font-weight:800 !important;
+  text-align:center !important;
 }
 #profileOverlay .inventorySlot[class*="rarity-"] {
   border-color: color-mix(in srgb, var(--rarity) 48%, transparent) !important;
@@ -11894,6 +11930,27 @@ html body #profileOverlay .shipPreviewContainer {
   color: #75e8ff !important;
   font-size: 13px !important;
 }
+#profileOverlay .shopPreview .shopItemStat.ammoDesc {
+  color:#f4fbff !important;
+  font-weight:600 !important;
+  line-height:1.6 !important;
+  margin-top:6px !important;
+  text-align:center !important;
+}
+#profileOverlay .shopPreview h3.ammoTitle {
+  text-align:center !important;
+  font-size:20px !important;
+  margin-bottom:0 !important;
+}
+#profileOverlay .shopPreview .shopAmmoOwned.ammoStock {
+  text-align:center !important;
+  margin:0 !important;
+  line-height:1 !important;
+}
+#profileOverlay .shopPreview .shopAmmoOwned.ammoStock strong {
+  color:#ffd56a !important;
+  font-size:16px !important;
+}
 #profileOverlay .shopPreview .shopItemStat.shopAbility img {
   width: 26px !important;
   height: 26px !important;
@@ -11979,6 +12036,51 @@ html body #profileOverlay .shipPreviewContainer {
   color: #72efff !important;
   font-size: 13px !important;
   white-space: nowrap !important;
+}
+#profileOverlay .shopAmmoBuyRow {
+  margin: 14px 0 0 !important;
+  padding: 14px 4px 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 12px !important;
+  border-top: 1px solid rgba(124,240,255,.15) !important;
+}
+#profileOverlay .shopAmmoPrice {
+  flex:1 !important;
+  color:#eaffff !important;
+  font-size:13px !important;
+  font-weight:800 !important;
+  white-space:nowrap !important;
+  text-align:right !important;
+}
+#profileOverlay .shopAmmoBuyRow > input {
+  flex: 0 0 90px !important;
+  width: 90px !important;
+  height: 36px !important;
+  padding: 0 8px !important;
+  box-sizing: border-box !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.30) !important;
+  border-radius: 7px !important;
+  color: #effcff !important;
+  background: #051521 !important;
+  font: 900 12px/1 system-ui !important;
+  text-align: center !important;
+}
+#profileOverlay .shopAmmoBuyRow > input:focus {
+  border-color: #69e9ff !important;
+}
+#profileOverlay .shopAmmoUnits {
+  flex:1 !important;
+  color:rgba(225,241,249,.78) !important;
+  font-size:13px !important;
+  font-weight:800 !important;
+  white-space:nowrap !important;
+  text-align:left !important;
+}
+#profileOverlay .shopAmmoUnits span {
+  color: #ffd56a !important;
 }
 #profileOverlay .shopBuySection {
   margin-top: 12px !important;
@@ -14546,6 +14648,27 @@ html body #shopOverlay .shopPreviewContainer, html body #shopOverlay .shipPrevie
   color: #75e8ff !important;
   font-size: 13px !important;
 }
+#shopOverlay .shopPreview .shopItemStat.ammoDesc {
+  color:#f4fbff !important;
+  font-weight:600 !important;
+  line-height:1.6 !important;
+  margin-top:6px !important;
+  text-align:center !important;
+}
+#shopOverlay .shopPreview h3.ammoTitle {
+  text-align:center !important;
+  font-size:20px !important;
+  margin-bottom:0 !important;
+}
+#shopOverlay .shopPreview .shopAmmoOwned.ammoStock {
+  text-align:center !important;
+  margin:0 !important;
+  line-height:1 !important;
+}
+#shopOverlay .shopPreview .shopAmmoOwned.ammoStock strong {
+  color:#ffd56a !important;
+  font-size:16px !important;
+}
 #shopOverlay .shopPreview .shopItemStat.shopAbility img {
   width: 26px !important;
   height: 26px !important;
@@ -14635,6 +14758,51 @@ html body #shopOverlay .shopPreviewContainer, html body #shopOverlay .shipPrevie
 }
 #shopOverlay .shopQuantityBox > input:focus {
   border-color: #69e9ff !important;
+}
+#shopOverlay .shopAmmoBuyRow {
+  margin: 14px 0 0 !important;
+  padding: 14px 4px 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 12px !important;
+  border-top: 1px solid rgba(124,240,255,.15) !important;
+}
+#shopOverlay .shopAmmoPrice {
+  flex: 1 !important;
+  color: #eaffff !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+  text-align: right !important;
+}
+#shopOverlay .shopAmmoBuyRow > input {
+  flex: 0 0 90px !important;
+  width: 90px !important;
+  height: 36px !important;
+  padding: 0 8px !important;
+  box-sizing: border-box !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.30) !important;
+  border-radius: 7px !important;
+  color: #effcff !important;
+  background: #051521 !important;
+  font: 900 12px/1 system-ui !important;
+  text-align: center !important;
+}
+#shopOverlay .shopAmmoBuyRow > input:focus {
+  border-color: #69e9ff !important;
+}
+#shopOverlay .shopAmmoUnits {
+  flex:1 !important;
+  color:rgba(225,241,249,.78) !important;
+  font-size:13px !important;
+  font-weight:800 !important;
+  white-space:nowrap !important;
+  text-align:left !important;
+}
+#shopOverlay .shopAmmoUnits span {
+  color: #ffd56a !important;
 }
 #shopOverlay .shopQuantityBox > select {
   width: 100% !important;
@@ -20639,6 +20807,23 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   color:#ff5566 !important;
   font-size:12px !important;
   font-weight:800 !important;
+}
+#tdmWindow .tdmTooltip .ttAmmoDesc {
+  color:#f4fbff !important;
+  font-size:12px !important;
+  font-weight:600 !important;
+}
+#tdmWindow .tdmTooltip .ttAmmoName {
+  color:#eaffff !important;
+  font-size:14px !important;
+  font-weight:900 !important;
+  text-align:center !important;
+}
+#tdmWindow .tdmTooltip .ttAmmoQty {
+  color:#ffd56a !important;
+  font-size:12px !important;
+  font-weight:800 !important;
+  text-align:center !important;
 }
 #settingsWindow .accountCard {
   overflow:visible !important;

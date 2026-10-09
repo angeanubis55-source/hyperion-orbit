@@ -77,35 +77,36 @@ export function rocketEffectLabel(rocketOrId) {
   if (!rocket) return "Effet inconnu";
   const format = (value) => Math.round(Number(value) || 0).toLocaleString("fr-FR");
   const effect = rocket.effect || null;
-  if (effect?.appearance) return "Change l'apparence du vaisseau ciblé (aucun dégât)";
+  if (effect?.appearance) return "Change l'apparence du vaisseau ciblé (aucun dégât, visuel uniquement)";
   if (effect?.freezeSec) {
-    const base = `Gèle la cible pendant ${format(effect.freezeSec)} s`;
-    return rocket.damage > 0 ? `${format(rocket.damage)} dégâts + ${base.toLowerCase()}` : base;
+    const base = `Immobilise (gel) la cible pendant ${format(effect.freezeSec)} s`;
+    return rocket.damage > 0 ? `${format(rocket.damage)} dégâts + ${base.toLowerCase()}` : `${base} (aucun dégât)`;
   }
-  if (effect?.pierceShield) return `${format(rocket.damage)} dégâts directs coque (ignore le bouclier)`;
-  if (effect?.piercePct) return `${format(rocket.damage)} dégâts dont ${format(effect.piercePct * 100)} % ignorent le bouclier`;
+  if (effect?.pierceShield) return `${format(rocket.damage)} dégâts directement à la coque (ignore le bouclier)`;
+  if (effect?.piercePct) return `${format(rocket.damage)} dégâts dont ${format(effect.piercePct * 100)} % traversent le bouclier`;
   if (effect?.shieldDrain && effect?.leechPct) {
-    return `${format(effect.shieldDrain)} de bouclier absorbé par roquette (${format(effect.leechPct * 100)} % reversés)`;
+    return `Vole ${format(effect.shieldDrain)} de bouclier par roquette, dont ${format(effect.leechPct * 100)} % rechargent ton bouclier`;
   }
   if (effect?.slowPct && effect?.accuracyPenaltyPct) {
-    return `Ralentit de ${format(effect.slowPct)} % et réduit la précision de ${format(effect.accuracyPenaltyPct)} % pendant ${format(effect.duration)} s`;
+    return `Ralentit de ${format(effect.slowPct)} % et réduit la précision de ${format(effect.accuracyPenaltyPct)} % pendant ${format(effect.duration)} s (aucun dégât)`;
   }
-  if (effect?.slowPct) return `Ralentit la cible de ${format(effect.slowPct)} % pendant ${format(effect.duration)} s`;
-  if (effect?.accuracyPenaltyPct) return `Précision réduite de ${format(effect.accuracyPenaltyPct)} % pendant ${format(effect.duration)} s`;
+  if (effect?.slowPct) return `Ralentit la cible de ${format(effect.slowPct)} % pendant ${format(effect.duration)} s (aucun dégât)`;
+  if (effect?.accuracyPenaltyPct) return `Précision de la cible réduite de ${format(effect.accuracyPenaltyPct)} % pendant ${format(effect.duration)} s (aucun dégât)`;
   if (effect?.shieldDrain && rocket.damage > 0) {
-    return `${format(rocket.damage)} dégâts + ${format(effect.shieldDrain)} de bouclier absorbé par roquette`;
+    return `${format(rocket.damage)} dégâts + ${format(effect.shieldDrain)} de bouclier volé par roquette`;
   }
-  if (effect?.shieldDrain) return `${format(effect.shieldDrain)} de bouclier absorbé par roquette`;
+  if (effect?.shieldDrain) return `Vole ${format(effect.shieldDrain)} de bouclier par roquette (aucun dégât)`;
   return `${format(rocket.damage)} dégâts par roquette`;
 }
 
 export function rocketDescription(rocketOrId) {
   const rocket = typeof rocketOrId === "string" ? getRocketType(rocketOrId) : rocketOrId;
   if (!rocket) return "Roquette inconnue.";
-  if (rocket.manual === false) return `Lance-roquettes. ${rocketEffectLabel(rocket)}.`;
+  if (rocket.manual === false) return `Lance-roquettes (salve automatique). ${rocketEffectLabel(rocket)}.`;
   const cooldown = Number(rocket.cooldown) || 0;
   const cooldownLabel = cooldown.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
-  return `Tir manuel. ${rocketEffectLabel(rocket)}. Temps de recharge : ${cooldownLabel} s.`;
+  const rate = cooldown <= 1 ? "Tir manuel (ESPACE, environ 1 tir/s). " : "Tir manuel (ESPACE). ";
+  return `${rate}${rocketEffectLabel(rocket)}. Temps de recharge : ${cooldownLabel} s.`;
 }
 
 export function rocketShopIcon(id) {

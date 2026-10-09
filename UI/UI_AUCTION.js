@@ -49,6 +49,7 @@ const AUCTION_AMMO_ICONS = Object.freeze({
   ammo_emaa: "/ASSETS/ITEMS/AMMO_EMAA.png",
   ammo_sbl: "/ASSETS/ITEMS/AMMO_SBL.png",
   ammo_abl: "/ASSETS/ITEMS/AMMO_ABL.png",
+  ammo_tent: "/ASSETS/ITEMS/AMMO_TENT.png",
 });
 
 const AUCTION_FALLBACK_ICON = "/ASSETS/ITEMS/G3N-1010.png";

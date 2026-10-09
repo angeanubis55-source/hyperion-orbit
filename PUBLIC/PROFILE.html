@@ -534,6 +534,69 @@
       padding: 0;
     }
 
+    .shopPreviewCard.ammoCard{
+      position: relative;
+    }
+
+    .shopPreviewCard .shopPackBadge.big{
+      position: absolute;
+      left: -36px;
+      top: -36px;
+      z-index: 5;
+      width: 100px;
+      height: auto;
+      pointer-events: none;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,.65));
+    }
+
+    .shopAmmoBuyRow{
+      margin: 14px 0 0;
+      padding: 14px 4px 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      border-top: 1px solid rgba(124,240,255,.15);
+    }
+
+    .shopAmmoPrice{
+      flex: 1;
+      color: #eaffff;
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    .shopAmmoBuyRow > input{
+      flex: 0 0 90px;
+      width: 90px;
+      height: 36px;
+      padding: 0 8px;
+      box-sizing: border-box;
+      outline: 0;
+      border: 1px solid rgba(124,240,255,.30);
+      border-radius: 7px;
+      color: #effcff;
+      background: #051521;
+      font-size: 12px;
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .shopAmmoUnits{
+      flex: 1;
+      color: rgba(225,241,249,.78);
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+      text-align: left;
+    }
+
+    .shopAmmoUnits span{
+      color: #ffd56a;
+    }
+
     /* Petites cartes boutique : P.E.T / GEAR / PROTO (même base). */
     .shopPetBadge{
       display: inline-block;

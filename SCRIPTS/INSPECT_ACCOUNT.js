@@ -35,7 +35,7 @@ try {
   console.log(`  dernière écriture : ${fmtDate(Math.max(Number(data.updatedAt) || 0, Number(row.updated_at) || 0))}`);
   console.log(`  crédits : ${Math.max(0, Math.floor(Number(data.credits) || 0)).toLocaleString("fr-FR")}`);
   const ammo = (data.ammo && typeof data.ammo === "object") ? data.ammo : {};
-  console.log(`  munitions : ${["x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl"].map((k) => `${k}=${Math.floor(Number(ammo[k]) || 0)}`).join(" ")} (active=${data.ammoActive || ammo.active || "?"})`);
+  console.log(`  munitions : ${["x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent"].map((k) => `${k}=${Math.floor(Number(ammo[k]) || 0)}`).join(" ")} (active=${data.ammoActive || ammo.active || "?"})`);
   const rockets = (data.rockets && typeof data.rockets === "object") ? data.rockets : {};
   console.log(`  roquettes : ${Object.entries(rockets).map(([k, v]) => `${k}=${Math.floor(Number(v) || 0)}`).join(" ") || "(aucune)"}`);
   const lots = Array.isArray(data?.auction?.lots) ? data.auction.lots : [];

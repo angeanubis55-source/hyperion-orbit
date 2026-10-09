@@ -100,7 +100,11 @@ function slotHtml(b, entry) {
   const rarity = b.inventoryEntryRarity(entry);
   entry.rarity = rarity;
   const isMod = entry.kind === "module";
-  const richTip = isMod ? b.htmlForDataAttr(b.inventoryModuleTooltipHtml(entry)) : "";
+  const richTip = isMod
+    ? b.htmlForDataAttr(b.inventoryModuleTooltipHtml(entry))
+    : entry.kind === "ammo" && b.inventoryAmmoTooltipHtml
+      ? b.htmlForDataAttr(b.inventoryAmmoTooltipHtml(entry))
+      : "";
   const tip = b.inventoryTooltipText(entry);
   const key = slotKey(entry);
   const selected = selectedKeys.has(key) ? " selected" : "";

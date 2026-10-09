@@ -56,7 +56,7 @@ function treeThumbSize(source) {
   return normalizedSpriteSize(source, TREE_THUMB_TARGET);
 }
 
-const QUEST_AMMO_LABELS = { x1: "LCB-10", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x6: "RSB-75", sab: "SAB-50", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL" };
+const QUEST_AMMO_LABELS = { x1: "LCB-10", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x6: "RSB-75", sab: "SAB-50", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", tent: "TENT-100" };
 const QUEST_LASER_LABELS = { laser_prl: "Laser Prometheus" };
 function questLaserLabel(id) {
   if (QUEST_LASER_LABELS[id]) return QUEST_LASER_LABELS[id];

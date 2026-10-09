@@ -14,7 +14,7 @@ import { DatabaseSync } from "node:sqlite";
 import { join, resolve } from "node:path";
 
 const DB_PATH = join(resolve(process.cwd(), "SERVER_DATA"), "orbit.db");
-const VALID_AMMO = new Set(["x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl"]);
+const VALID_AMMO = new Set(["x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent"]);
 
 const target = String(process.argv[2] || "").trim();
 const type = String(process.argv[3] || "").trim().toLowerCase();
