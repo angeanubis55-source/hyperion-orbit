@@ -470,7 +470,7 @@ export function initTdmUI() {
   };
   window.addEventListener("orbit:profile-progress", resync);
   window.addEventListener("orbit:user-updated", resync);
-  window.addEventListener("orbit:window-restored", (e) => {
+  window.addEventListener("orbit:window-restoring", (e) => {
     if (e?.detail?.id === "tdmWindow") resync();
   });
   document.querySelector('[data-window-id="tdmWindow"]')?.addEventListener("click", () => {

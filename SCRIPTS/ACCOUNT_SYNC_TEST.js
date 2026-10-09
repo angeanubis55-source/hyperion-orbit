@@ -81,7 +81,7 @@ test("cache decoupe : un quota atteint garde le precedent manifeste et ses blocs
 
 function client(storage = new Map()) {
   const requests = [], timers = new Map(), listeners = new Map(); let timerId = 0;
-  const api = vm.createContext({ structuredClone, AbortController, performance, isPhoneMode: () => false, noteSaveOp() {},
+  const api = vm.createContext({ structuredClone, AbortController, performance,
     localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
     window: { addEventListener: (type, fn) => listeners.set(type, fn), dispatchEvent: event => listeners.get(event.type)?.(event) },
     CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },

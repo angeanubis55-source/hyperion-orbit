@@ -471,7 +471,7 @@ test('les contours distinguent sprites, couleur, taille et masque, et liberent l
 
 test('la mini-carte reste reactive aux changements de carte et de taille sans recalcul a chaque frame', () => {
   let now = 0; const draws = [];
-  const context = vm.createContext({ performance: { now: () => now }, isPhoneMode: () => false, window: { devicePixelRatio: 1 },
+  const context = vm.createContext({ performance: { now: () => now }, window: { devicePixelRatio: 1 },
     mini: { width: 300, height: 205, clientWidth: 300, clientHeight: 205 }, mctx: { setTransform() {} },
     account: { user: {} }, player: { x: 21000, y: 6220 }, WORLD: { w: 30000, h: 18000 },
     enemies: Array.from({ length: 101 }, (_, id) => ({ id, hp: 100 })),
@@ -483,7 +483,7 @@ test('la mini-carte reste reactive aux changements de carte et de taille sans re
   vm.runInContext('let minimapLastDraw = -Infinity, minimapLastWorld = null, minimapLastSize = "";\n' +
     engineFunction('drawMinimap'), context);
   for (let i = 0; i <= 240; i++) { now = i * 1000 / 240; context.drawMinimap(); }
-  assert.ok(draws.length >= 18 && draws.length <= 21);
+  assert.ok(draws.length >= 19 && draws.length <= 21);
   assert.equal(draws.at(-1).enemies, context.enemies);
   let count = draws.length;
   context.WORLD = { w: 11000, h: 7000 }; context.drawMinimap(); assert.equal(draws.length, ++count);

@@ -1,7 +1,6 @@
 "use strict";
 
 import { clamp } from "../SRC/CORE/COLLISION.js";
-import { isPhoneMode } from "../SRC/CORE/PHONE_MODE.js";
 
 export function getMinimapPortalColors(portal, isReturn = false) {
   if (isReturn) return { stroke: "rgba(255,178,92,0.9)", fill: "rgba(255,178,92,0.95)" };
@@ -15,30 +14,6 @@ export function getMinimapPortalColors(portal, isReturn = false) {
 }
 
 const minimapStaticCache = new Map();
-
-// Debug mode : la clé statique (4 JSON.stringify + 3 parcours à 20 Hz pour
-// des portails/murs qui ne bougent jamais) est recalculée seulement si sa
-// signature légère change. Sinon calcul direct comme avant.
-let staticKeySig = null;
-let staticKeyCached = "";
-function minimapStaticKeyCached(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls) {
-  const list = portals || [];
-  const mods = safeZone?.modules || [];
-  const beacons = safeZone?.beacons || [];
-  const wl = walls || [];
-  const cheap = [
-    world?.w, world?.h, width, height, isZoneMap ? 1 : 0, list.length,
-    returnPortal ? list.indexOf(returnPortal) : -1,
-    mods.length, beacons.length,
-    rallyZone ? `${rallyZone.x},${rallyZone.y},${rallyZone.r}` : "",
-    wl.length,
-  ].join("|");
-  if (cheap === staticKeySig && staticKeyCached) return staticKeyCached;
-  const full = minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls);
-  staticKeySig = cheap;
-  staticKeyCached = full;
-  return full;
-}
 
 function minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls) {
   const portalKey = (portals || []).map((p) => [p.x, p.y, p.r, p.toMap, p.shortcutCreditCost]);
@@ -208,14 +183,7 @@ function drawMinimapStatic(cctx, cw, ch, world, portals, isZoneMap, safeZone, re
 }
 
 function getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls) {
-  let key = "";
-  try {
-    key = isPhoneMode()
-      ? minimapStaticKeyCached(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls)
-      : minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls);
-  } catch {
-    key = minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls);
-  }
+  const key = minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls);
   let entry = minimapStaticCache.get(key);
   if (!entry) {
     const canvas = document.createElement("canvas");

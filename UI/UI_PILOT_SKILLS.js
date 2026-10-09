@@ -322,7 +322,7 @@ export function initPilotSkillsUI(context) {
       try { refreshPilotCredits(); } catch {}
     }
   });
-  window.addEventListener("orbit:window-restored", (event) => {
+  window.addEventListener("orbit:window-restoring", (event) => {
     if (event.detail?.id === "pilotWindow") {
       try { renderPilotSkillsWindow(); } catch {}
     }

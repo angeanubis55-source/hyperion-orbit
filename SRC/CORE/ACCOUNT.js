@@ -1155,11 +1155,7 @@ export function saveUser(user, options = {}) {  user.schemaVersion = STORAGE_SCH
   }
   if (idx >= 0) users[idx] = user;
   else users.push(user);
-  // Debug mode : les sauvegardes automatiques (source "progress" : filet,
-  // raffinage auto, quêtes auto...) arment un envoi paresseux. Les actions
-  // directes (achats, changements de carte...) restent urgentes : elles
-  // n'ont pas de source ou en ont une autre.
-  writeUsers(users, { pilotDisksOnly, durable: options.durable === true, pushLazy: options.pushLazy === true || options.source === "progress" });
+  writeUsers(users, { pilotDisksOnly, durable: options.durable === true });
   if (options.notify !== false && typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
     window.dispatchEvent(new CustomEvent("orbit:user-updated", {
       detail: { userId: user.id, revision: user.revision, source: options.source || "account" },
@@ -1476,10 +1472,7 @@ export function getCurrentUserForMutation() {
   return getCurrentUserFull();
 }
 
-export function updateCurrentUserProgress(patch = {}, opts = {}) {
-  // opts.pushLazy : le filet périodique (et lui seul) demande un envoi
-  // paresseux en Debug mode. Les écritures directes (sélections...) restent
-  // urgentes pour ne jamais perdre un choix en cas de crash.
+export function updateCurrentUserProgress(patch = {}) {
   // Les sauvegardes complètes du moteur portent les crédits. Les changements
   // ponctuels (sélection du dock, par exemple) doivent d'abord conserver ses
   // stocks et son P.E.T, sans faire réentrer la sauvegarde complète.
@@ -1634,9 +1627,7 @@ export function updateCurrentUserProgress(patch = {}, opts = {}) {
       pushedAt: Date.now(),
     };
   } catch {}
-  // Mode apply-only (filet réseau) : valeurs appliquées en mémoire, aucune
-  // persistance ici (le push/adopt en cours les emporte). Sinon sauvegarde.
-  if (!opts?.applyOnly) saveUser(u, { source: "progress", pushLazy: opts?.pushLazy === true });
+  saveUser(u, { source: "progress" });
 
   return { ok: true, user: u };
 }

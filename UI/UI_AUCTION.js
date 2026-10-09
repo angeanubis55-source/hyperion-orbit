@@ -21,7 +21,6 @@ import {
   placeSharedBid,
 } from "../SRC/CORE/AUCTION_NET.js";
 import { getShipPackById } from "../SHIP/SHIP_PACKS.js";
-import { isPhoneMode } from "../SRC/CORE/PHONE_MODE.js";
 import {
   SHIP_ITEM_DIR,
   SHIP_ITEM_FULL_IDS,
@@ -199,32 +198,6 @@ function lotIcon(lot) {
     return `/COMBAT/ROCKET_SPRITES/${rid}_100X100.png`;
   }
   return AUCTION_FALLBACK_ICON;
-}
-
-// Fenêtre fermée = pas de rendu (même logique que groupe/amis/clan) :
-// les données + crédits restent à jour, seul le gros rendu attend l'ouverture.
-// Test DOM gratuit, sans lecture localStorage.
-let auctionNeedsRender = false;
-export function isAuctionOpen() {
-  try {
-    const root = document.getElementById("auctionWindow");
-    if (!root) return false;
-    if (root.style.display === "none") return false;
-    if (root.classList.contains("gameWinMinimized") || root.classList.contains("gameWinClosing")) return false;
-    return true;
-  } catch { return false; }
-}
-// Rendu si ouvert, sinon on note qu'il faudra ré-afficher à l'ouverture.
-// (Actif seulement en mode téléphone ; sinon rendu direct comme avant.)
-export function requestAuctionRender() {
-  try {
-    if (!isPhoneMode() || isAuctionOpen()) {
-      renderAuctionWindow();
-      auctionNeedsRender = false;
-    } else {
-      auctionNeedsRender = true;
-    }
-  } catch {}
 }
 
 export function renderAuctionWindow() {
@@ -445,16 +418,8 @@ export function tickAuctionDisplay() {
   try {
     if (auctionNetDirty()) {
       clearAuctionNetDirty();
-      // Données réseau arrivées : rendu seulement si regardé.
-      requestAuctionRender();
-      return;
-    }
-  } catch {}
-  // Changements en attente + fenêtre rouverte : on ré-affiche.
-  try {
-    if (auctionNeedsRender && isAuctionOpen()) {
-      auctionNeedsRender = false;
       renderAuctionWindow();
+      return;
     }
   } catch {}
   const now = Date.now();
@@ -489,11 +454,10 @@ export function initAuctionUI(context) {
   root.addEventListener("click", onAuctionClick);
   root.addEventListener("keydown", onAuctionKeydown);
   root.addEventListener("input", onAuctionInput);
-  window.addEventListener("orbit:window-restored", (event) => {
+  window.addEventListener("orbit:window-restoring", (event) => {
     if (event.detail?.id === "auctionWindow") {
-      try { renderAuctionWindow(); auctionNeedsRender = false; } catch {}
+      try { renderAuctionWindow(); } catch {}
     }
   });
-  // Init : rendu seulement si déjà ouvert, sinon ce sera fait à l'ouverture.
-  try { requestAuctionRender(); } catch {}
+  try { renderAuctionWindow(); } catch {}
 }

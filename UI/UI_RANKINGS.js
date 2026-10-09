@@ -57,7 +57,7 @@ export function initRankingsUI() {
   load();
   setInterval(load, 30000);
   try {
-    window.addEventListener("orbit:window-restored", (e) => {
+    window.addEventListener("orbit:window-restoring", (e) => {
       if (e?.detail?.id === "rankingWindow") {
         load();
         if (document.querySelector('#rankingWindow [data-ranking-pane="npcs"]')?.classList.contains("active")) {

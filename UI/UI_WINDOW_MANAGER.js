@@ -122,11 +122,12 @@ function applySavedWindowPosition(id, card) {
     )
     : null;
 
-  const p = clampToScreen(
-    card,
-    Number.isFinite(saved.left) ? saved.left : 14,
-    Number.isFinite(saved.top) ? saved.top : 14
-  );
+  // Le viewport est borne apres application de la largeur sauvegardee.
+  // Mesurer ici forcerait une mise en page avec l'ancienne geometrie.
+  const p = {
+    left: Number.isFinite(saved.left) ? saved.left : 14,
+    top: Number.isFinite(saved.top) ? saved.top : 14,
+  };
 
   card.classList.add("floating");
 
@@ -329,8 +330,7 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
     }
   }
 
-function prepareFloating(card) {
-  const r = card.getBoundingClientRect();
+function prepareFloating(card, r = card.getBoundingClientRect()) {
 
   card.classList.add("floating");
 
@@ -356,9 +356,8 @@ function prepareFloating(card) {
   bringWindowToFront(card);
 }
 
-  function clampToScreen(card, left, top) {
+  function clampToScreen(card, left, top, rect = card.getBoundingClientRect()) {
     const margin = 8;
-    const rect = card.getBoundingClientRect();
     const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
     const maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
 
@@ -369,24 +368,30 @@ function prepareFloating(card) {
   }
 
   function keepWindowInsideViewport(card, { centerIfUnpositioned = false } = {}) {
-    if (!card) return;
+    if (!card) return null;
     const margin = 8;
+    // Regrouper les contraintes avant la mesure ; reutiliser ensuite cette
+    // geometrie pour le placement et l'animation d'ouverture.
+    card.style.maxHeight = `${Math.max(120, window.innerHeight - margin * 2)}px`;
+    const hasPosition = card.classList.contains("floating") && Number.isFinite(parseFloat(card.style.left)) && Number.isFinite(parseFloat(card.style.top));
     let rect = card.getBoundingClientRect();
+    if (!hasPosition) {
+      prepareFloating(card, rect);
+      rect = card.getBoundingClientRect();
+    }
     if (rect.width > window.innerWidth - margin * 2) {
       card.style.width = `${Math.max(140, window.innerWidth - margin * 2)}px`;
       rect = card.getBoundingClientRect();
     }
-    card.style.maxHeight = `${Math.max(120, window.innerHeight - margin * 2)}px`;
-    const hasPosition = card.classList.contains("floating") && Number.isFinite(parseFloat(card.style.left)) && Number.isFinite(parseFloat(card.style.top));
-    if (!hasPosition) prepareFloating(card);
-    rect = card.getBoundingClientRect();
     const requestedLeft = centerIfUnpositioned && !hasPosition ? (window.innerWidth - rect.width) / 2 : rect.left;
     const requestedTop = centerIfUnpositioned && !hasPosition ? (window.innerHeight - rect.height) / 2 : rect.top;
-    const p = clampToScreen(card, requestedLeft, requestedTop);
-    card.style.left = `${Math.round(p.left)}px`;
-    card.style.top = `${Math.round(p.top)}px`;
+    const p = clampToScreen(card, requestedLeft, requestedTop, rect);
+    const left = Math.round(p.left), top = Math.round(p.top);
+    card.style.left = `${left}px`;
+    card.style.top = `${top}px`;
     card.style.right = "auto";
     card.style.bottom = "auto";
+    return { left, top, width: rect.width, height: rect.height };
   }
 
   function applyMinimapProportions(card, width) {
@@ -804,6 +809,10 @@ minimize(id) {
 restore(id) {
   const w = windows.get(id);
   if (!w) return;
+  // Lire le dock avant de rendre la fenetre visible : aucune mesure apres
+  // les ecritures de position qui declencherait une nouvelle mise en page.
+  const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);
+  const dockRect = dockBtn?.getBoundingClientRect();
   saveWindowOpenState(id, true);
   clearTimeout(w.animationTimer);
   w.card.classList.remove("gameWinClosing");
@@ -818,15 +827,15 @@ restore(id) {
   w.card.style.display = "block";
 
   const restoredSavedPosition = applySavedWindowPosition(id, w.card);
-  keepWindowInsideViewport(w.card, { centerIfUnpositioned: !restoredSavedPosition });
-
   w.card.style.visibility = "visible";
   w.card.style.opacity = "1";
+  // Le contenu peut changer la taille (parametres, arbre, raffinage).
+  // Le construire avant de mesurer evite une seconde mise en page pendant
+  // l'animation, et le placement tient compte de la taille finale.
+  window.dispatchEvent(new CustomEvent("orbit:window-restoring", { detail: { id } }));
+  const cardRect = keepWindowInsideViewport(w.card, { centerIfUnpositioned: !restoredSavedPosition });
   bringWindowToFront(w.card);
-  const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);
-  if (dockBtn) {
-    const cardRect = w.card.getBoundingClientRect();
-    const dockRect = dockBtn.getBoundingClientRect();
+  if (dockRect && cardRect) {
     w.card.style.setProperty("--dock-x", `${dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)}px`);
     w.card.style.setProperty("--dock-y", `${dockRect.top + dockRect.height / 2 - (cardRect.top + cardRect.height / 2)}px`);
     w.card.style.setProperty("--dock-scale", String(Math.max(0.08, Math.min(0.25, dockRect.width / cardRect.width))));

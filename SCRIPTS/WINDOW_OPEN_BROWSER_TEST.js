@@ -1,5 +1,5 @@
-// Vrai jeu et serveur sur compte SQLite temporaire. Le crochet de simulation
-// est injecte uniquement dans la reponse HTTP du test, jamais dans le jeu livre.
+// Ouverture des fenetres avec un gros inventaire, sur compte/serveur temporaires.
+// Verifie les mesures de geometrie et le placement apres rendu et redimensionnement.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const temporary = await mkdtemp(join(tmpdir(), "orbit-account-portal-"));
+const temporary = await mkdtemp(join(tmpdir(), "orbit-window-open-"));
 await writeFile(join(temporary, "index.html"), await readFile(join(root, "index.html")));
 const reserve = createServer();
 await new Promise(resolve => reserve.listen(0, "127.0.0.1", resolve));
@@ -36,7 +36,7 @@ try {
   }
   assert.ok(ready, output);
   const registered = await fetch(url + "/api/register", { method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ pseudo: "account-portal", email: "account-portal@example.test", password: "test-password-123", faction: "mmo" }) });
+    body: JSON.stringify({ pseudo: "window-open", email: "window-open@example.test", password: "test-password-123", faction: "mmo" }) });
   assert.ok(registered.ok); const account = await registered.json();
   const petFit = { lasers: [null], generators: [null, null], gears: ['gear_gel1'], protocols: [null, null] };
   const user = { ...account.user, revision: account.user.revision + 1, schemaVersion: 4,
@@ -75,49 +75,68 @@ try {
     sessionStorage.setItem("orbit_assets_preloaded_v1", "ready"); sessionStorage.setItem("spawnMapId", "1-BL");
   }, { token: account.token, user: canonical });
   await page.goto(url + "/index.html?map=1-BL", { waitUntil: "domcontentloaded" });
-  await page.waitForSelector("#loadingStartBtn:not([disabled])", { timeout: 90000 }); await page.waitForTimeout(16000); await page.click("#loadingStartBtn");
+  await page.waitForSelector("#loadingStartBtn:not([disabled])", { timeout: 90000 }); await page.click("#loadingStartBtn");
   await page.waitForSelector("#game", { state: "visible", timeout: 15000 });
   await page.waitForFunction(() => !document.documentElement.classList.contains("orbitBooting") &&
     getComputedStyle(document.getElementById("loadingOverlay")).display === "none");
 
   await page.waitForTimeout(1500);
-  const performanceResult = await page.evaluate(async () => {
-    const net = window.__ACCOUNT_NET__;
-    const writes = [];
-    await net.flushNetUser();
-    const nativeSet = Storage.prototype.setItem;
-    Storage.prototype.setItem = function(key, value) {
-      const t = performance.now();
-      nativeSet.call(this, key, value);
-      if (key.startsWith('orbit_user_cache')) writes.push({ bytes: value.length, ms: performance.now() - t });
-    };
-    try {
-      for (let i = 0; i < 4; i++) {
-        net.netList()[0].pet.fuel -= 1;
-        await net.flushNetUser();
-      }
-      return { storage: { count: writes.length,
-        totalBytes: writes.reduce((n, w) => n + w.bytes, 0), maxBytes: Math.max(...writes.map(w => w.bytes)),
-        totalMs: writes.reduce((n, w) => n + w.ms, 0) } };
-    } finally { Storage.prototype.setItem = nativeSet; }
-  });
-  console.log(JSON.stringify(performanceResult));
-  assert.ok(performanceResult.storage.maxBytes < 100000);
-  assert.ok(performanceResult.storage.totalBytes < 1000000);
-  const documentId = await page.evaluate(() => window.__transitionDocument = Math.random());
-  for (const map of ['5-2', '1-1', '1-2', '1-1']) {
-    await page.evaluate(async map => { await window.__SWITCH_MAP__(map); }, map);
-    assert.equal(await page.evaluate(() => window.__CURRENT_MAP_ID__), map);
-    assert.equal(await page.evaluate(() => window.__transitionDocument), documentId);
-    console.log('Transition OK:', map);
+
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+  const results = [];
+  for (const id of ['galaxyGateWindow', 'settingsWindow', 'refineryWindow', 'pilotWindow']) {
+    await page.evaluate(id => {
+      window.GameWindowManager.close(id);
+      localStorage.setItem(`orbit_hud_window_pos:${id}`, JSON.stringify({ left: 99999, top: 99999, width: 900 }));
+    }, id);
+    const times = [], reads = [];
+    for (let repeat = 0; repeat < 3; repeat++) {
+      const measurement = await page.evaluate(id => {
+        const card = document.getElementById(id), original = Element.prototype.getBoundingClientRect;
+        let reads = 0;
+        Element.prototype.getBoundingClientRect = function() {
+          if (this === card) reads++;
+          return original.call(this);
+        };
+        const start = performance.now();
+        try {
+          window.GameWindowManager.restore(id);
+          return { ms: performance.now() - start, reads };
+        } finally { Element.prototype.getBoundingClientRect = original; }
+      }, id);
+      times.push(measurement.ms); reads.push(measurement.reads);
+      assert.equal(measurement.reads, 1, `${id}: une mesure suffit apres application de la position`);
+      await page.waitForFunction(id => !document.getElementById(id).classList.contains('gameWinOpening'), id);
+      const position = await page.evaluate(id => {
+        const el = document.getElementById(id), r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom,
+          width: r.width, height: r.height, maxRight: innerWidth - 8, maxBottom: innerHeight - 8,
+          open: window.GameWindowManager.isOpen(id), animating: el.classList.contains('gameWinOpening') };
+      }, id);
+      assert.equal(position.open, true); assert.equal(position.animating, false);
+      assert.ok(position.width >= 160 && position.height >= 40, `${id}: taille visible`);
+      assert.ok(position.left >= 7 && position.top >= 7 && position.right <= position.maxRight + 1 &&
+        position.bottom <= position.maxBottom + 1, `${id}: ${JSON.stringify(position)}`);
+      await page.evaluate(id => window.GameWindowManager.close(id), id);
+      await page.waitForTimeout(100);
+    }
+    results.push({ id, reads, timesMs: times.map(t => Math.round(t * 10) / 10) });
   }
-  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('orbit_user_cache')).format), 2);
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.__ACCOUNT_NET__?.netList()[0]?.inventory?.shipModules?.length === 1200);
+  // La position sauvegardee reste bornee apres un changement de viewport.
+  await page.setViewportSize({ width: 900, height: 700 });
+  await page.evaluate(() => window.GameWindowManager.restore('galaxyGateWindow'));
+  await page.waitForFunction(() => !document.getElementById('galaxyGateWindow').classList.contains('gameWinOpening'));
+  const visible = await page.evaluate(() => {
+    const r = document.getElementById('galaxyGateWindow').getBoundingClientRect();
+    return r.left >= 7 && r.top >= 7 && r.right <= innerWidth - 7 && r.bottom <= innerHeight - 7;
+  });
+  assert.equal(visible, true);
   assert.deepEqual(errors, []);
+  console.log(JSON.stringify({ results }));
 } finally {
   if (browser) await browser.close();
   const stopped = server.exitCode === null ? once(server, "exit") : Promise.resolve(); server.kill(); await stopped;
-  assert.equal(dirname(resolve(temporary)), resolve(tmpdir())); assert.ok(basename(temporary).startsWith("orbit-account-portal-"));
+  assert.equal(dirname(resolve(temporary)), resolve(tmpdir())); assert.ok(basename(temporary).startsWith("orbit-window-open-"));
   await rm(temporary, { recursive: true, force: true });
 }

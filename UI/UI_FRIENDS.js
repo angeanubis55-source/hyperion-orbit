@@ -6,7 +6,6 @@ import {
   sendFriendPing, sendFriendResponded,
 } from "../SRC/CORE/NETPLAY.js";
 import { getShipDesignBaseId, getShipPackById } from "../SHIP/SHIP_PACKS.js";
-import { isPhoneMode } from "../SRC/CORE/PHONE_MODE.js";
 import { escapeHtml } from "./UI_DOM.js";
 
 let started = false;
@@ -42,18 +41,7 @@ export function initFriendsUI() {
   started = true;
   const status = document.getElementById("friendsStatus"), list = document.getElementById("friendsList"), reqList = document.getElementById("friendsRequests"), addInput = document.getElementById("friendAddInput"), search = document.getElementById("friendsSearch"), badge = document.getElementById("friendsRequestBadge");
   if (!list) return;
-  let friends = [], requests = [], activeTab = "friends", query = "", lastSignature = "", needsRender = false;
-
-  // Fenêtre fermée = pas de rendu (test DOM gratuit, sans localStorage).
-  function isFriendsOpen() {
-    try {
-      const el = document.getElementById("friendsWindow");
-      if (!el) return false;
-      if (el.style.display === "none") return false;
-      if (el.classList.contains("gameWinMinimized") || el.classList.contains("gameWinClosing")) return false;
-      return true;
-    } catch { return false; }
-  }
+  let friends = [], requests = [], activeTab = "friends", query = "", lastSignature = "";
 
   function liveMap() {
     try { return new Map(getNetFriendsOnline().map(friend => [String(friend.id), friend])); } catch { return new Map(); }
@@ -118,19 +106,12 @@ export function initFriendsUI() {
       requests = Array.isArray(requestData.requests) ? requestData.requests : [];
       updateHeader(message);
     } catch { updateHeader("Hors ligne — serveur injoignable"); }
-    // Données à jour dans tous les cas (badge), rendu seulement si ouvert
-    // (mode téléphone) ; sinon rendu direct comme avant.
-    if (!isPhoneMode() || isFriendsOpen()) { renderFriends(); renderRequests(); needsRender = false; }
-    else needsRender = true;
+    renderFriends(); renderRequests();
   }
 
   function poll() {
     try {
       if (drainNetFriendRequestInbox().length || consumeFriendsDirty()) { load(); return; }
-      // Fenêtre fermée : pas de comparaison ni rendu, juste le badge
-      // (mode téléphone) ; sinon comportement normal.
-      if (isPhoneMode() && !isFriendsOpen()) return;
-      if (needsRender) { needsRender = false; updateHeader(); renderFriends(); renderRequests(); return; }
       const signature = JSON.stringify(getNetFriendsOnline());
       if (signature !== lastSignature) { lastSignature = signature; updateHeader(); renderFriends(); }
     } catch {}
@@ -176,11 +157,6 @@ export function initFriendsUI() {
     await load();
   });
 
-  setTab("friends"); load();
-  // Recharge auto toutes les 30 s seulement si quelqu'un regarde
-  // (mode téléphone : sinon demande réseau + rendu pour rien sur téléphone).
-  // Les changements live passent par le poll (dirty/inbox) dans tous les cas.
-  setInterval(() => { try { if (!isPhoneMode() || isFriendsOpen()) load(); } catch {} }, 30000);
-  setInterval(poll, 1000); poll();
-  window.addEventListener("orbit:window-restored", event => { if (event?.detail?.id === "friendsWindow") load(); });
+  setTab("friends"); load(); setInterval(load, 30000); setInterval(poll, 1000); poll();
+  window.addEventListener("orbit:window-restoring", event => { if (event?.detail?.id === "friendsWindow") load(); });
 }

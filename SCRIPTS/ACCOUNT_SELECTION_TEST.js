@@ -15,7 +15,7 @@ const user = (revision = 1, selection = before) => ({ id: "pilot", revision, cre
 function client(storage = new Map()) {
   const requests = [], timers = new Map(), events = [];
   let timerId = 0;
-  const api = vm.createContext({ structuredClone, AbortController, performance, isPhoneMode: () => false, noteSaveOp() {},
+  const api = vm.createContext({ structuredClone, AbortController, performance,
     localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
     window: { addEventListener() {}, dispatchEvent: event => events.push(event) },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },

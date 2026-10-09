@@ -752,7 +752,7 @@ export function initSkylabUI(context) {
       try { renderSkylabWindow(); } catch {}
     }, { capture: true });
   }
-  window.addEventListener("orbit:window-restored", (event) => {
+  window.addEventListener("orbit:window-restoring", (event) => {
     if (event.detail?.id === "skylabWindow") renderSkylabWindow();
   });
   catchUpOffline();

@@ -2,7 +2,7 @@ import { protegitPatrol } from "../../NPC/PROTEGIT_MOVEMENT.js";
 import { npcFleeDirection } from "../../NPC/NPC_FLEE.js";
 import { pickSpacedSpawnPosition } from "../../NPC/NPC_SPAWN_POSITION.js";
 import { petEscortTarget, stepPetMotion, petCombatVelocity, orientPet } from "../../PET/PET_MOTION.js";
-import { measureGameTask, recordGameTask, gamePerformanceTimings } from "./PERFORMANCE_TIMINGS.js";
+import { measureGameTask, recordGameTask } from "./PERFORMANCE_TIMINGS.js";
 import { createDeferredPersistence } from "./DEFERRED_PERSISTENCE.js";
 import { drawCombatFloatTexts } from "./COMBAT_TEXT_RENDERER.js";
 import { createSpriteOutlineCache } from "./SPRITE_OUTLINE_CACHE.js";
@@ -81,9 +81,7 @@ import {
   tickCurrentUserAuction,
 } from "./ACCOUNT.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
-import { flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain,
-noteNetPetFuelConsumed, noteNetPetFuelTick, noteNetPurchase, noteNetQuestGain, noteNetResourceGain, noteNetServerReward,
-noteNetUpgradeConsumed, sendJankReport } from "./ACCOUNT_NET.js";
+import { flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
   GALAXY_GATE_DEFINITIONS,
@@ -115,8 +113,6 @@ import { addProjectile, advanceProjectile, blendVelocityDirection, guidedChaseSp
 import { createWaveSpawnState } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
-import { isPhoneMode, setPhoneModeCached } from "./PHONE_MODE.js";
-import { startJankRecorder, noteJankFrame, noteGuardBlock, noteSaveOp, clearJankReport, clearGuardLog, setJankListener, setJankTimingsProvider, setJankAccountBreakdown, getJankSummary, getJankContext, getJankReport } from "./JANK_RECORDER.js";
 import { COLLECTABLE_PICKUP_HOLD_SEC } from "./COLLECTION_TIMING.js";
 import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, setNpcVelocity } from "../../NPC/NPC_AI.js";
 import { DEFAULT_NPC_RADAR_FADE_START, getNpcSensorRanges, npcSensorOpacity, shouldDetectNpc } from "../../NPC/NPC_SENSORS.js";
@@ -165,7 +161,7 @@ import { formatInteger } from "./NUMBER_FORMAT.js";
 import { escapeHtml } from "../../UI/UI_DOM.js";
 import { wireWikiWindow } from "../../UI/UI_WIKI.js";
 import { initSkylabUI, tickSkylabProduction } from "../../UI/UI_SKYLAB.js";
-import { initAuctionUI, requestAuctionRender, tickAuctionDisplay } from "../../UI/UI_AUCTION.js";
+import { initAuctionUI, renderAuctionWindow, tickAuctionDisplay } from "../../UI/UI_AUCTION.js";
 import { initChatUI } from "../../UI/UI_CHAT.js";
 import { initGroupUI } from "../../UI/UI_GROUP.js";
 import { initFriendsUI } from "../../UI/UI_FRIENDS.js";
@@ -2245,15 +2241,9 @@ function findEnemyByPersistedTarget(saved) {
 // Snapshot continu (toutes les 2 s + pagehide) : cibles mono-cible +
 // debuffs NPC (mark/neutr/jamx/keres...). Sans ça, un refresh perdrait
 // l'accroche NPC alors que l'effet continue en temps absolu.
-// Optimisé téléphone (si mode activé) : balayage mémoire d'abord, une seule
-// lecture, une seule écriture et seulement si quelque chose a changé. Au repos
-// (vol, farm sans ces capacités) : zéro accès au stockage.
 function snapshotAbilityTargetsTick() {
   try {
     if (!started || player.dead) return;
-    // Mode téléphone : on n'écrit que si quelque chose a changé ; sinon
-    // comportement normal (écriture toutes les 2 s).
-    const lazySnap = isPhoneMode();
     const pairs = [
       ["shlFx", player.linkTarget], ["diminishFx", player.diminishTarget],
       ["cyborgFx", player.cyborgTarget], ["venomFx", player.venomTarget],
@@ -2263,64 +2253,18 @@ function snapshotAbilityTargetsTick() {
       ["chsFx", player.chsTarget], ["sleightFx", player.sleightTarget],
       ["hecateFx", player.hecateTarget], ["hecatePlusFx", player.hecatePlusTarget],
     ];
-    // 1. Mémoire seule : y a-t-il une cible vivante accrochée ?
-    let anyLive = false;
-    for (const [, tgt] of pairs) {
-      if (tgt && tgt.hp > 0) { anyLive = true; break; }
-    }
-    // 2. Mémoire seule : y a-t-il un debuff actif ?
-    let anyDebuff = !!player.keresSprActive;
-    if (!anyDebuff) {
-      for (const e of enemies) {
-        if (!e || !(e.hp > 0)) continue;
-        if ((e.markT || 0) > 0.05 || (e.neutrT || 0) > 0.05
-          || (e.jamxT || 0) > 0.05 || (e.creedT || 0) > 0.05
-          || (e.keresSprT || 0) > 0.05 || (e.sleightSlowT || 0) > 0.05
-          || (player.diminishTarget === e && (player.diminishT || 0) > 0)) {
-          anyDebuff = true;
-          break;
-        }
-      }
-    }
-    // 3. Une seule lecture (sert aussi à repérer un nettoyage éventuel).
-    let all = readAbilityTargets();
-    if (!all || typeof all !== "object" || Array.isArray(all)) all = {};
-    const scope = abilityShipScope();
-    const prefix = `${scope}::`;
-    let hasScopeData = false;
-    for (const k in all) {
-      if (k.startsWith(prefix)) { hasScopeData = true; break; }
-    }
-    // Rien d'actif et rien de stocké : on ne touche pas au stockage.
-    if (lazySnap && !anyLive && !anyDebuff && !hasScopeData) return;
-    let dirty = false;
-    const sameExtra = (a, b) => {
-      try { return JSON.stringify(a || null) === JSON.stringify(b || null); }
-      catch { return false; }
-    };
-    // 4. Cibles : on n'écrit que si la cible change (identifiant/carte).
-    // Le champ `at` n'est lu nulle part (la reprise utilise identifiant +
-    // carte) : inutile de le rafraîchir toutes les 2 s quand on reste
-    // accroché au même NPC.
-    const mapId = String(window.__CURRENT_MAP_ID__ || currentMapId() || "");
     for (const [fx, tgt] of pairs) {
-      const key = `${prefix}${fx}`;
-      if (tgt && tgt.hp > 0) {
-        const uid = String(tgt.universeUid != null ? tgt.universeUid : tgt.id);
-        const prev = all[key];
-        if (!lazySnap || !prev || String(prev.uid) !== uid || String(prev.map || "") !== mapId || !sameExtra(prev.extra, null)) {
-          all[key] = { uid, map: mapId, at: Date.now(), extra: null };
-          dirty = true;
+      try {
+        if (tgt && tgt.hp > 0) persistAbilityTarget(fx, tgt);
+        else {
+          // Nettoie les cibles mortes (évite un ré-accrochage fantôme).
+          const saved = readAbilityTarget(fx);
+          if (saved) clearAbilityTarget(fx);
         }
-      } else if (key in all) {
-        // Nettoie les cibles mortes (évite un ré-accrochage fantôme).
-        delete all[key];
-        dirty = true;
-      }
+      } catch {}
     }
     // Keres Spread : liste des infectés (pas de réinfection même cast).
     try {
-      const key = `${prefix}keresSprFx`;
       if (player.keresSprActive) {
         const uids = [];
         for (const e of enemies) {
@@ -2328,25 +2272,13 @@ function snapshotAbilityTargetsTick() {
             uids.push(String(e.universeUid != null ? e.universeUid : e.id));
           }
         }
-        const anchor = enemies.find((e) => e && (e.keresSprT || 0) > 0) || null;
-        if (!anchor) {
-          if (key in all) { delete all[key]; dirty = true; }
-        } else {
-          const anchorUid = String(anchor.universeUid != null ? anchor.universeUid : anchor.id);
-          const prev = all[key];
-          if (!lazySnap || !prev || String(prev.uid) !== anchorUid || String(prev.map || "") !== mapId
-            || !sameExtra(prev.extra, { uids })) {
-            all[key] = { uid: anchorUid, map: mapId, at: Date.now(), extra: { uids } };
-            dirty = true;
-          }
-        }
-      } else if (lazySnap && key in all) {
-        delete all[key];
-        dirty = true;
+        persistAbilityTarget("keresSprFx", enemies.find((e) => e && (e.keresSprT || 0) > 0) || null, { uids });
       }
     } catch {}
     // Debuffs NPC en temps absolu (reprise animation côté NPC).
     try {
+      const all = readAbilityTargets();
+      const scope = abilityShipScope();
       const debuffs = [];
       for (const e of enemies) {
         if (!e || !(e.hp > 0)) continue;
@@ -2361,38 +2293,9 @@ function snapshotAbilityTargetsTick() {
         put("diminishT", (player.diminishTarget === e) ? player.diminishT : 0);
         if (any) debuffs.push(entry);
       }
-      const key = `${prefix}npcDebuffs`;
-      if (!debuffs.length) {
-        if (!lazySnap) {
-          // Comportement normal : la clé est toujours (ré)écrite.
-          all[key] = debuffs;
-          dirty = true;
-        } else if (key in all) {
-          // Mode téléphone : on retire la liste vide plutôt que stocker un tableau vide.
-          delete all[key];
-          dirty = true;
-        }
-      } else if (!lazySnap || !sameExtra(all[key], debuffs)) {
-        all[key] = debuffs;
-        dirty = true;
-      }
+      all[`${scope}::npcDebuffs`] = debuffs;
+      localStorage.setItem(ABILITY_TARGET_KEY, JSON.stringify(all));
     } catch {}
-    // 5. Une seule écriture, seulement si quelque chose a changé.
-    // Debug mode : tracée (durée + taille) pour le rapport saccades.
-    if (dirty) {
-      const t0 = performance.now();
-      let bytes = 0;
-      try {
-        const json = JSON.stringify(all);
-        bytes = json.length;
-        localStorage.setItem(ABILITY_TARGET_KEY, json);
-      } catch {
-        try { localStorage.setItem(ABILITY_TARGET_KEY, JSON.stringify(all)); } catch {}
-      }
-      if (jankRecorderOn) {
-        try { noteSaveOp("capacites", performance.now() - t0, bytes); } catch {}
-      }
-    }
   } catch {}
 }
 try {
@@ -7788,10 +7691,6 @@ const DEFAULT_GAME_SETTINGS = {
   drones: true,
   remoteDrones: true,
   autoStart: false,
-  // Mode téléphone (affiché "Debug mode", Paramètres > Général > Démarrage) :
-  // fenêtres fermées = zéro calcul (carte stellaire paresseuse, assemblage,
-  // groupe/amis/clan, enchères, snapshot capacités). Décoché = normal d'avant.
-  phoneMode: false,
   shipEffect: true,
   shipSmoke: true,
   npcEngineEffects: true,
@@ -8018,8 +7917,6 @@ function loadGameSettings() {
 }
 
 const GAME_SETTINGS = loadGameSettings();
-// Pousse la valeur aux modules UI (même onglet, sans relire localStorage).
-setPhoneModeCached(GAME_SETTINGS.phoneMode);
 
 function saveGameSettings() {
   try {
@@ -8031,7 +7928,6 @@ function setGameSetting(key, value) {
   if (!(key in GAME_SETTINGS)) return;
 
   GAME_SETTINGS[key] = !!value;
-  if (key === "phoneMode") setPhoneModeCached(value);
   if (key === "sound") {
     GAME_SETTINGS.soundVolume = GAME_SETTINGS.sound
       ? Math.max(1, Number(GAME_SETTINGS.soundVolume) || DEFAULT_GAME_SETTINGS.soundVolume)
@@ -8463,9 +8359,6 @@ function renderSettingsWindow() {
   const autoStart = document.getElementById("optAutoStart");
   const textures = document.getElementById("optTextures");
   if (autoStart) autoStart.checked = !!GAME_SETTINGS.autoStart;
-  const phoneMode = document.getElementById("optPhoneMode");
-  if (phoneMode) phoneMode.checked = !!GAME_SETTINGS.phoneMode;
-  try { refreshJankSummary(); } catch {}
   if (textures) textures.checked = !!GAME_SETTINGS.textures;
   const drones = document.getElementById("optDrones");
   if (drones) drones.checked = !!GAME_SETTINGS.drones;
@@ -8518,63 +8411,6 @@ function normalizeSettingsWindow() {
   }
 }
 
-// Debug mode : résumé des saccades dans Paramètres > Général > Démarrage.
-// Appelé à l'ouverture des paramètres et à chaque saccade (texte seul,
-// rien si les paramètres sont fermés).
-// Debug mode : balance des sections du compte pour le rapport (QUOI est
-// gros : hangars ? modules ? historique ?). Calculée sur demande (clic),
-// pas en continu : ~1 sérialisation, seulement quand on lit le rapport.
-function computeAccountBreakdown() {
-  const out = {};
-  try {
-    const u = account?.user || getCurrentUserFull() || netList()[0] || null;
-    if (!u || typeof u !== "object") return out;
-    const seen = new Set(["hangars", "drones", "inventory", "pet", "quests", "skylab", "stats", "auction", "galaxyGates", "ammo", "rockets", "boosters", "pilotSkills"]);
-    for (const key of seen) {
-      try {
-        const v = u[key];
-        if (v === undefined || v === null) continue;
-        out[key] = JSON.stringify(v)?.length || 0;
-      } catch {}
-    }
-    try {
-      const rest = {};
-      for (const key of Object.keys(u)) {
-        if (!seen.has(key)) rest[key] = u[key];
-      }
-      out.autres = JSON.stringify(rest)?.length || 0;
-    } catch {}
-  } catch {}
-  return out;
-}
-
-function refreshJankSummary() {
-  const box = document.getElementById("jankSummary");
-  const btn = document.getElementById("btnCopyJankReport");
-  const clearBtn = document.getElementById("btnClearJankReport");
-  const sendBtn = document.getElementById("btnSendJankReport");
-  if (!box && !btn && !clearBtn && !sendBtn) return;
-  let on = false;
-  try { on = isPhoneMode(); } catch {}
-  if (btn) btn.disabled = !on;
-  if (clearBtn) clearBtn.disabled = !on;
-  if (sendBtn) sendBtn.disabled = !on;
-  if (!box) return;
-  if (!on) {
-    box.textContent = "Active le Debug mode pour enregistrer les saccades.";
-    return;
-  }
-  try {
-    const s = getJankSummary();
-    const dur = s.sessionSec >= 60
-      ? `${Math.floor(s.sessionSec / 60)}min${String(s.sessionSec % 60).padStart(2, "0")}`
-      : `${s.sessionSec}s`;
-    box.textContent = s.count
-      ? `${s.count} saccade${s.count > 1 ? "s" : ""} · max ${s.max}ms · moyenne ${s.avg}ms · session ${dur}`
-      : "Aucune saccade enregistrée pour l'instant. Joue quelques minutes.";
-  } catch {}
-}
-
 function wireSettingsWindow() {
   const soundBtn = document.getElementById("optSound");
   const volume = document.getElementById("optVolume");
@@ -8594,7 +8430,7 @@ function wireSettingsWindow() {
     normalizeSettingsWindow();
   }
 
-  window.addEventListener("orbit:window-restored", (event) => {
+  window.addEventListener("orbit:window-restoring", (event) => {
     if (event.detail?.id === "settingsWindow") normalizeSettingsWindow();
   });
 
@@ -8621,117 +8457,6 @@ function wireSettingsWindow() {
   autoStart?.addEventListener("change", () => {
     setGameSetting("autoStart", autoStart.checked);
   });
-
-  // Debug mode : le (dés)activer redémarre le jeu pour tout réappliquer
-  // proprement (le mode agit dès le démarrage : schéma stellaire, rendus
-  // initiaux). Réglage déjà sauvé par setGameSetting, on sauve la partie
-  // puis on recharge.
-  document.getElementById("optPhoneMode")?.addEventListener("change", (ev) => {
-    const on = !!ev.currentTarget.checked;
-    setGameSetting("phoneMode", on);
-    try { showToast(on ? "Debug mode activé — redémarrage…" : "Debug mode désactivé — redémarrage…", 1.4); } catch {}
-    try { if (typeof saveProgressNow === "function") saveProgressNow(); } catch {}
-    try { if (typeof saveStateImmediate === "function") saveStateImmediate(); } catch {}
-    setTimeout(() => { try { location.reload(); } catch {} }, 900);
-  });
-
-  // Rapport saccades : copié dans le presse-papiers (Chrome téléphone OK en
-  // HTTPS), sinon zone de texte à copier à la main.
-  // Rapport saccades : envoyé direct au panneau admin (un appui suffit).
-  // Le bouton Copier reste en secours (hors-ligne...).
-  document.getElementById("btnSendJankReport")?.addEventListener("click", async (ev) => {
-    const btn = ev?.currentTarget;
-    if (btn) btn.disabled = true;
-    try {
-      let text = "";
-      try {
-        setJankAccountBreakdown(computeAccountBreakdown());
-        text = getJankReport(GAME_VERSION);
-      } catch {}
-      let summary = { count: 0, max: 0, avg: 0, sessionSec: 0 };
-      try { summary = getJankSummary() || summary; } catch {}
-      let ctx = { map: "?", fps: 0, npcs: 0, players: 0 };
-      try {
-        const c = getJankContext();
-        if (c && typeof c === "object") ctx = c;
-      } catch {}
-      const res = await sendJankReport({
-        report: text,
-        version: GAME_VERSION,
-        count: summary.count,
-        maxMs: summary.max,
-        avgMs: summary.avg,
-        sessionSec: summary.sessionSec,
-        map: ctx.map,
-        fps: ctx.fps,
-        npcs: ctx.npcs,
-        players: ctx.players,
-      });
-      showToast(res?.ok === true ? "Rapport envoyé — merci !" : String(res?.error || "Envoi impossible."), res?.ok === true ? 2 : 2.5);
-    } catch {
-      try { showToast("Envoi impossible.", 2); } catch {}
-    } finally {
-      if (btn) btn.disabled = false;
-    }
-  });
-
-  document.getElementById("btnCopyJankReport")?.addEventListener("click", async () => {    let text = "Rapport indisponible.";
-    try {
-      setJankAccountBreakdown(computeAccountBreakdown());
-      text = getJankReport(GAME_VERSION);
-    } catch {}
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        showToast("Rapport copié — envoie-le nous !", 2);
-        return;
-      }
-      throw new Error("presse-papiers indisponible");
-    } catch {
-      try {
-        const area = document.getElementById("jankReportArea");
-        if (area) {
-          area.hidden = false;
-          area.value = text;
-          area.focus();
-          area.select();
-        }
-        showToast("Sélectionne et copie le texte ci-dessous", 2.5);
-      } catch {}
-    }
-  });
-
-  // Recommencer le comptage : vide session + historique garde, masque
-  // l'ancien texte, rafraîchit le résumé. L'enregistrement repart aussitôt.
-  document.getElementById("btnClearJankReport")?.addEventListener("click", () => {
-    try { clearJankReport(); } catch {}
-    try { clearGuardLog(); } catch {}
-    try {
-      const area = document.getElementById("jankReportArea");
-      if (area) {
-        area.value = "";
-        area.hidden = true;
-      }
-    } catch {}
-    try { refreshJankSummary(); } catch {}
-    try { showToast("Comptage recommencé — joue quelques minutes", 2); } catch {}
-  });
-
-  // Résumé à jour à l'ouverture des paramètres + à chaque saccade.
-  window.addEventListener("orbit:window-restored", (event) => {
-    if (event.detail?.id === "settingsWindow") {
-      try { refreshJankSummary(); } catch {}
-    }
-  });
-  try {
-    setJankListener(() => {
-      try {
-        const card = document.getElementById("settingsWindow");
-        if (!card || card.style.display === "none") return;
-        refreshJankSummary();
-      } catch {}
-    });
-  } catch {}
 
   drones?.addEventListener("change", () => {
     setGameSetting("drones", drones.checked);
@@ -8852,7 +8577,6 @@ document.getElementById("btnResetAllSettings")?.addEventListener("click", () => 
   updateMusicPlayback();
   restartFrameScheduler();
   renderSettingsWindow();
-  setPhoneModeCached(GAME_SETTINGS.phoneMode);
   showToast("Paramètres restaurés", 1.3);
 });
   renderSettingsWindow();
@@ -9173,7 +8897,7 @@ function refreshBoosterCountdowns() {
   if (changed) renderBoosterWindow();
 }
 
-window.addEventListener("orbit:window-restored", (event) => {
+window.addEventListener("orbit:window-restoring", (event) => {
   if (event.detail?.id === "boosterWindow") renderBoosterWindow();
 });
 
@@ -10802,7 +10526,7 @@ function wireBotWindow() {
       }
     }
   } catch {}
-  window.addEventListener("orbit:window-restored", (event) => {
+  window.addEventListener("orbit:window-restoring", (event) => {
     if (event.detail?.id === "botWindow") {
       botRefreshHud();
       // L'équipement REX a pu changer (boutique) : on resynchronise la liste.
@@ -13113,22 +12837,6 @@ let lastPetPlaySig = "";
 
 let selectedCraftingRecipeId = CRAFTING_RECIPES[0]?.id || null;
 
-// Fenêtre fermée = zéro calcul (même logique que la carte stellaire) :
-// test DOM gratuit d'abord, gestionnaire ensuite seulement si ouvert.
-function isCraftingOpen() {
-  try {
-    const el = document.getElementById("craftingWindow");
-    if (!el) return false;
-    if (el.style.display === "none") return false;
-    if (el.classList.contains("gameWinMinimized") || el.classList.contains("gameWinClosing")) return false;
-    const manager = window.GameWindowManager;
-    if (manager?.isOpen) {
-      try { if (!manager.isOpen('craftingWindow')) return false; } catch {}
-    }
-    return true;
-  } catch { return false; }
-}
-
 function craftingResourceAmount(user, resourceId) {
   return Math.max(0, Number(user?.inventory?.resources?.[resourceId] || 0));
 }
@@ -13397,10 +13105,6 @@ function renderCraftingWindow(message = "") {
     if (ui.craftingBuildBtn) ui.craftingBuildBtn.disabled = true;
     return;
   }
-  // Fenêtre fermée = zéro calcul en mode téléphone : le rendu ne se fait
-  // qu'à l'ouverture (même logique que la carte stellaire). Test DOM
-  // gratuit d'abord, pour éviter toute lecture localStorage quand c'est fermé.
-  if (isPhoneMode() && !isCraftingOpen()) return;
   if (!ui.craftingRecipes || !ui.craftingDetail) return;
   const user = getCurrentUserFull();
   if (!user) return;
@@ -13858,12 +13562,12 @@ ui.upgAmountOk?.addEventListener("click", () => {
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
 queueMicrotask(() => renderRefineryWindow());
-window.addEventListener("orbit:window-restored", event => {
+window.addEventListener("orbit:window-restoring", event => {
   if (event.detail?.id === "craftingWindow") renderCraftingWindow();
   if (event.detail?.id === "refineryWindow") renderRefineryWindow();
 });
 window.addEventListener("orbit:profile-progress", () => {
-  if (isCraftingOpen()) renderCraftingWindow();
+  if (document.getElementById("craftingWindow")?.style.display !== "none") renderCraftingWindow();
 });
 window.addEventListener("orbit:profile-progress", () => {
   // Commerce <-> raffinage synchronisés même sans action directe (collecte,
@@ -14879,8 +14583,7 @@ function scheduleProgressSave() {
   if (progressSaveIdleHandle) return;
   const persist = () => {
     progressSaveIdleHandle = 0;
-    // Filet périodique : envoi paresseux en Debug mode (15 s), urgent sinon.
-    if (account.user && account.dirty) saveProgressNow({ pushLazy: true });
+    if (account.user && account.dirty) saveProgressNow();
   };
   if (typeof requestIdleCallback === "function") {
     progressSaveIdleHandle = requestIdleCallback(persist, { timeout: 1200 });
@@ -15378,14 +15081,13 @@ function claimQuestReward(questId) {
   const creditsGained = Math.max(0, Math.floor(Number(reward.credits || 0) * questMult));
   player.credits += creditsGained;
   // Mode multi : sinon les gains sont perdus sur 409 (canon serveur).
-  // Gain de quête (farm) : envoi paresseux en Debug mode (15 s), urgent sinon.
-  // L'argument munitions de noteNetPurchase est de toute façon ignoré.
-  try { noteNetQuestGain(); } catch {}
+  try { noteNetCreditGain(creditsGained); } catch {}
   const ammoRewards = Object.entries(reward.ammo || {}).filter(([type, amount]) => Object.hasOwn(player.ammo, type) && Number(amount) > 0);
   const ammoGained = ammoRewards.map(([type, amount]) => [type, Math.max(0, Math.floor(Number(amount) * questMult || 0))]);
   for (const [type, gained] of ammoGained) player.ammo[type] += gained;
   if (ammoGained.length) {
     updateAmmoUI();
+    try { noteNetPurchase(0, { ammo: Object.fromEntries(ammoGained) }); } catch {}
   }
   // Lasers offerts (ex : Prometheus) : stockés en inventaire (modules),
   // à équiper manuellement via les slots lasers.
@@ -15500,13 +15202,11 @@ function sanitizeRocketsForSave() {
   return out;
 }
 
-function saveProgressNow(opts = {}) {
-  // opts.pushLazy : seul le filet périodique le demande (envoi paresseux en
-  // Debug mode). Les appels directs (achats, quêtes...) restent urgents.
-  return measureGameTask("saveProgressNow", () => saveProgressNowMeasured(opts));
+function saveProgressNow() {
+  return measureGameTask("saveProgressNow", saveProgressNowMeasured);
 }
 
-function saveProgressNowMeasured(opts = {}) {
+function saveProgressNowMeasured() {
   // Les missions peuvent être acceptées depuis le terminal avant que la
   // boucle de jeu ait initialisé `account.user`. Recharge alors le compte
   // directement afin de ne jamais perdre la sauvegarde des quêtes.
@@ -15786,54 +15486,10 @@ function savePositionNow() {
   if (player.dead || !started) return;
 
   const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
-  // En multi, la position part au serveur via les pushes (le spawn/arrivée
-  // serveur lit le blob) : mémoire seule ici, sans réécrire tout le compte
-  // (~1 Mo), sans bumper la révision, sans push immédiat. Le filet 15 s et
-  // les autres pushes emportent la position à jour.
-  // En solo, chemin complet inchangé (orbit_users EST la sauvegarde).
-  try {
-    if (typeof netActive === "function" && netActive()) {
-      const seen = new Set();
-      for (const u of [account.user, netList()[0], getCurrentUserFull()]) {
-        try {
-          if (!u || typeof u !== "object" || seen.has(u)) continue;
-          seen.add(u);
-          const h = (u.hangars || []).find(x => x?.id === SESSION_HANGAR_ID)
-            || (u.hangars || []).find(x => x?.active)
-            || (u.hangars || [])[0] || null;
-          if (!h) continue;
-          const px = Number(player.x), py = Number(player.y);
-          if (Number.isFinite(px) && Number.isFinite(py)) h.lastPos = { x: px, y: py };
-          h.lastMap = String(currentMap).toLowerCase();
-          const hp = savedHpPct(), sh = savedShPct();
-          if (Number.isFinite(Number(hp))) h.lastHpPct = Math.max(0, Math.min(1, Number(hp)));
-          if (Number.isFinite(Number(sh))) h.lastShPct = Math.max(0, Math.min(1, Number(sh)));
-        } catch {}
-      }
-      if (jankRecorderOn) {
-        try { noteSaveOp("position-memoire", 0, 0, "multi"); } catch {}
-      }
-      return;
-    }
-  } catch {}
   if (SESSION_HANGAR_ID) {
-    const t0 = performance.now();
-    try {
-      saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
-    } finally {
-      if (jankRecorderOn) {
-        try { noteSaveOp("position-complet", performance.now() - t0, 0, "solo"); } catch {}
-      }
-    }
+    saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
   } else {
-    const t0 = performance.now();
-    try {
-      saveActiveHangarState(player.x, player.y, currentMap, savedHpPct(), savedShPct());
-    } finally {
-      if (jankRecorderOn) {
-        try { noteSaveOp("position-complet", performance.now() - t0, 0, "solo"); } catch {}
-      }
-    }
+    saveActiveHangarState(player.x, player.y, currentMap, savedHpPct(), savedShPct());
   }
 }
 
@@ -15984,31 +15640,6 @@ function getSpeedBreakdown() {
     speedItems,
     speedModules,
   };
-}
-
-// Debug mode : le détail vitesse est calculé 1x par image et partagé entre
-// le familier, le HUD et l'envoi réseau (mêmes entrées dans la même image =
-// même résultat). Sinon calcul direct comme avant.
-let speedCacheFrame = -1;
-let speedCacheValue = null;
-function getSpeedBreakdownCached() {
-  try {
-    if (!isPhoneMode()) return getSpeedBreakdown();
-    if (typeof frameSeq === "number" && speedCacheFrame === frameSeq && speedCacheValue) {
-      return speedCacheValue;
-    }
-  } catch {
-    return getSpeedBreakdown();
-  }
-  let v = null;
-  try { v = getSpeedBreakdown(); } catch { return getSpeedBreakdown(); }
-  try {
-    if (typeof frameSeq === "number") {
-      speedCacheFrame = frameSeq;
-      speedCacheValue = v;
-    }
-  } catch {}
-  return v;
 }
 
 function getConfigCooldownLeft() {
@@ -17994,8 +17625,7 @@ function tickAuctionLogic() {
         window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
       }
       if (pump.dirty) {
-        // Rendu seulement si la fenêtre est ouverte (données déjà resync ci-dessus).
-        try { requestAuctionRender(); } catch {}
+        try { renderAuctionWindow(); } catch {}
       }
       for (const ev of pump.events || []) {
         if (ev?.type === "won") showNotification(`Enchère remportée : ${ev.name} !`, 3.5, "reward");
@@ -18015,8 +17645,7 @@ function tickAuctionLogic() {
     syncPlayerFromAccount();
     markProgressDirty();
     window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
-    // Rendu seulement si la fenêtre est ouverte (même logique que le partagé).
-    try { requestAuctionRender(); } catch {}
+    try { renderAuctionWindow(); } catch {}
   }
   for (const ev of res.events || []) {
     if (ev?.type === "won") showNotification(`Enchère remportée : ${ev.name} !`, 3.5, "reward");
@@ -20483,48 +20112,26 @@ try {
 try {
   tickBackground(universe, worldClock.now(), { skipMapId: String(window.__CURRENT_MAP_ID__ || "") });
 } catch {}
-// Tick de fond continu : les maps sans joueur avancent (respawns dus +
-// derive bornee). Throttle dans persistUniverse.
-// Debug mode : toutes les 30 s au lieu de 5 s. La sim est en temps absolu
-// (respawnAtMs, updatedAtMs) avec rattrapage, donc tick espacé = même état,
-// sans la réécriture d'~1 Mo toutes les 5 s qui gelait le téléphone ~200 ms.
-// Sinon comportement normal (5 s).
+// Tick de fond continu : toutes les 5s les maps sans joueur avancent
+// (respawns dus + derive bornee). Throttle dans persistUniverse.
 try {
   if (typeof window !== "undefined" && !window.__UNIVERSE_BG_TICK__) {
     window.__UNIVERSE_BG_TICK__ = true;
-    const bgIntervalMs = isPhoneMode() ? 30000 : 5000;
     setInterval(() => {
       try {
         tickBackground(universe, worldClock.now(), { skipMapId: String(window.__CURRENT_MAP_ID__ || "") });
         persistUniverse();
         persistCollectables();
       } catch {}
-    }, bgIntervalMs);
+    }, 5000);
   }
 } catch {}
 const persistUniverse = createDeferredPersistence(force => {
   worldClock.markTick({ force });
   try {
-    measureGameTask("persistUniverse", () => {
-      // Debug mode : sépare sérialisation / écriture + taille, pour voir
-      // dans le rapport qui des deux gèle le téléphone.
-      let json = "";
-      try {
-        const t0 = performance.now();
-        json = serializeUniverse(universe);
-        const t1 = performance.now();
-        universeStorage?.setItem?.(UNIVERSE_KEY, json);
-        const t2 = performance.now();
-        if (jankRecorderOn) {
-          try { noteSaveOp("univers-json", t1 - t0, json.length); } catch {}
-          try { noteSaveOp("univers-stockage", t2 - t1, json.length); } catch {}
-        }
-      } catch {
-        try { universeStorage?.setItem?.(UNIVERSE_KEY, serializeUniverse(universe)); } catch {}
-      }
-    });
+    measureGameTask("persistUniverse", () => universeStorage?.setItem?.(UNIVERSE_KEY, serializeUniverse(universe)));
   } catch {}
-}, { now: () => worldClock.now(), intervalMs: isPhoneMode() ? 30000 : 5000 });
+}, { now: () => worldClock.now() });
 // Monde continu collectables : même rythme que l'univers (5 s, force au quit).
 let collectableStore = createCollectableStore();
 try {
@@ -20534,24 +20141,9 @@ try {
 }
 const persistCollectables = createDeferredPersistence(() => {
   try {
-    measureGameTask("persistCollectables", () => {
-      let json = "";
-      try {
-        const t0 = performance.now();
-        json = serializeCollectableStore(collectableStore);
-        const t1 = performance.now();
-        universeStorage?.setItem?.(COLLECTABLE_STORE_KEY, json);
-        const t2 = performance.now();
-        if (jankRecorderOn) {
-          try { noteSaveOp("collectables-json", t1 - t0, json.length); } catch {}
-          try { noteSaveOp("collectables-stockage", t2 - t1, json.length); } catch {}
-        }
-      } catch {
-        try { universeStorage?.setItem?.(COLLECTABLE_STORE_KEY, serializeCollectableStore(collectableStore)); } catch {}
-      }
-    });
+    measureGameTask("persistCollectables", () => universeStorage?.setItem?.(COLLECTABLE_STORE_KEY, serializeCollectableStore(collectableStore)));
   } catch {}
-}, { now: () => worldClock.now(), intervalMs: isPhoneMode() ? 30000 : 5000 });
+}, { now: () => worldClock.now() });
 // ✅ Purge des ressources d'une Galaxy Gate terminée/perdue : supprime les
 // collectables non ramassés (cargos + assemblage) en mémoire ET dans le
 // store persisté. Évite l'accumulation quand on enchaîne les runs
@@ -21645,7 +21237,7 @@ function tickPetKamikaze(dt) {
     return true;
   }
   // Fonce tout droit sur le point visé.
-  const ownerSpeed = Math.max(260, getSpeedBreakdownCached().total);
+  const ownerSpeed = Math.max(260, getSpeedBreakdown().total);
   const kkSpeed = Math.max(620, ownerSpeed * 2);
   const n = dist || 1;
   stepPetMotion(petState, (dx / n) * kkSpeed, (dy / n) * kkSpeed, dt, WORLD, RADIATION_SPAWN_MARGIN);
@@ -22050,8 +21642,7 @@ function tickPetFuel(dt) {
   // autosaves. Les hooks sauvegardent ce delta avant toute mutation/adoption.
   pet.fuel = Math.max(0, Math.floor(Number(pet.fuel) || 0) - take);
   // Mode multi : sinon un 409 remplit le réservoir depuis le canon.
-  // Palier continu : paresseux en Debug (15 s), urgent sinon.
-  try { noteNetPetFuelTick(); } catch {}
+  try { noteNetPetFuelConsumed(take); } catch {}
   markProgressDirty();
   if (pet.fuel <= 0) {
     pet.fuel = 0;
@@ -22299,7 +21890,7 @@ function updatePet(dt) {
     }
   }
   if (!target) petState.combatTarget = null;
-  const ownerSpeed = Math.max(260, getSpeedBreakdownCached().total) * playerSlowMult(player);
+  const ownerSpeed = Math.max(260, getSpeedBreakdown().total) * playerSlowMult(player);
   // Close / intermediate / far zones blend continuously into catch-up speed.
   const catchup = clamp((ownerDistance - 220) / 680, 0, 1);
   const followSpeed = ownerSpeed * (1.05 + catchup * 0.30);
@@ -24223,9 +23814,7 @@ function spawnCollectableAt(type, x, y, opts = {}) {
       ores: instance.oreRemainder,
       noDefReward: instance.rewardOverride != null,
       expiresAtMs: despawnAfter > 0 ? worldClock.now() + despawnAfter * 1000 : 0,
-    // Debug mode : plafond anti-accumulation (200/map, expirés d'abord).
-    // Sinon : jamais de suppression, comme avant.
-    }, worldClock.now(), { maxDropsPerMap: isPhoneMode() ? 200 : 0 });
+    });
     instance.dropUid = String(record.uid);
     persistCollectables();
   } catch {}
@@ -25307,14 +24896,6 @@ function makeEnemy(type, x, y) {
   });
   if (!factoryEntity) return null;
   enemiesById.set(factoryEntity.id, factoryEntity);
-  // Debug mode : précalcule une fois les tests de type faits sinon à chaque
-  // image par NPC (regex "uber" dans draw). Coût unique au spawn, résultat
-  // identique.
-  try {
-    const t = String(factoryEntity.type || type || "");
-    factoryEntity._isUber = /uber/i.test(t);
-    factoryEntity._isUberMordon = t === "npc_Uber_Mordon";
-  } catch {}
   const encounter = rules?.bossEncounter;
   if (encounter?.bossType === type) {
     factoryEntity._bossEncounter = {
@@ -29254,10 +28835,6 @@ function isRemoteGroupMember(r) {
 }
 const netPlayerProxies = new Map(); // clientId -> entite cible
 const netPetProxies = new Map(); // clientId -> proxy du PET allie (lock + degats PvP)
-// Debug mode : listes de présence réutilisées (clear) au lieu de recréées
-// à chaque image. Sinon allocation directe comme avant.
-const netSeenReusable = new Set();
-const netPetSeenReusable = new Set();
 let lastPvpAdoptAt = 0;
 let lastNpcDamageAdoptAt = 0;
 let lastNpcDamageAdoptSeq = 0;
@@ -29266,21 +28843,8 @@ function syncNetPlayers(dt = 0.016) {
   let remotes = null;
   try { remotes = getNetplayRemotes(); } catch { remotes = null; }
   try { tickNetplayRemotes(dt); } catch {}
-  let seen, petSeen;
-  try {
-    if (isPhoneMode()) {
-      netSeenReusable.clear();
-      netPetSeenReusable.clear();
-      seen = netSeenReusable;
-      petSeen = netPetSeenReusable;
-    } else {
-      seen = new Set();
-      petSeen = new Set();
-    }
-  } catch {
-    seen = new Set();
-    petSeen = new Set();
-  }
+  const seen = new Set();
+  const petSeen = new Set();
   if (remotes && netplayNpcActive()) {
     for (const [rid, r] of remotes) {
       if (!r) continue;
@@ -29445,10 +29009,6 @@ try {
 // - apparition / positions (interpolees) / HP / angle depuis le serveur ;
 // - mort + killer depuis le serveur (processDeaths tranche les recompenses) ;
 // - repli solo : purge les entites reseau, le spawner local reprend.
-// Debug mode : tables de présence réutilisées (clear) au lieu de recréées
-// à chaque image. Sinon allocation directe comme avant.
-const netNpcsSeenReusable = new Set();
-const netUidToEnemyReusable = new Map();
 function syncNetNpcs(dt) {
   // Reboot serveur (run changé, consommé via welcome) : purge déterministe
   // des entités réseau. Le seq serveur repart de zéro : un cadavre conservé
@@ -29471,17 +29031,7 @@ function syncNetNpcs(dt) {
     return;
   }
   const k = Math.max(0, Math.min(1, (Number(dt) || 0.016) * 6));
-  let seen;
-  try {
-    if (isPhoneMode()) {
-      netNpcsSeenReusable.clear();
-      seen = netNpcsSeenReusable;
-    } else {
-      seen = new Set();
-    }
-  } catch {
-    seen = new Set();
-  }
+  const seen = new Set();
   const now = performance.now();
   // Doublons locaux (spawnes avant le premier snapshot ou pendant une
   // coupure) : le serveur possede les spawns de zone, on les retire pour
@@ -29552,17 +29102,7 @@ function syncNetNpcs(dt) {
   } catch {}
   // Index uid -> entite (une passe) : la recherche lineaire par snapshot
   // coutait O(n2) par frame (~0.2 ms a 220 NPC, quadratique au-dela).
-  let netUidToEnemy;
-  try {
-    if (isPhoneMode()) {
-      netUidToEnemyReusable.clear();
-      netUidToEnemy = netUidToEnemyReusable;
-    } else {
-      netUidToEnemy = new Map();
-    }
-  } catch {
-    netUidToEnemy = new Map();
-  }
+  const netUidToEnemy = new Map();
   try {
     let currentTarget = null;
     try { currentTarget = Target.get(); } catch {}
@@ -30967,14 +30507,11 @@ let minimapLastDraw = -Infinity;
 let minimapLastWorld = null;
 let minimapLastSize = "";
 function drawMinimap() {
-  // This independent canvas retains its bitmap. Update at 20 Hz (même
-  // cadence que les snapshots réseau : au-delà, l'œil ne voit rien de plus
-  // sur des pastilles) rather than scanning every NPC at monitor FPS.
-  // Debug mode : 10 Hz suffisent (2x moins de travail encore).
+  // This independent canvas retains its bitmap. Update at 20 Hz rather
+  // than scanning every NPC and rebuilding the static key at monitor FPS.
   const now = performance.now();
   const size = `${mini.width}:${mini.height}:${mini.clientWidth}:${mini.clientHeight}:${window.devicePixelRatio}`;
-  const minimapBudget = isPhoneMode() ? 100 : 1000 / 20;
-  if (WORLD === minimapLastWorld && size === minimapLastSize && now - minimapLastDraw < minimapBudget) return;
+  if (WORLD === minimapLastWorld && size === minimapLastSize && now - minimapLastDraw < 1000 / 20) return;
   minimapLastDraw = now; minimapLastWorld = WORLD; minimapLastSize = size;
   // Rendu en pixels CSS (bitmap = CSS × DPR, voir applyMinimapProportions) :
   // net à toutes les tailles, même après +.
@@ -31146,10 +30683,6 @@ function netplayNpcActive() {
   try { return isZoneMap && netNpcFresh(); } catch { return false; }
 }
 const netplaySpriteCache = new Map();
-// Debug mode : mémo des champs quasi statiques de l'envoi 20 Hz (drones,
-// grade, firme, designs, icône formation, modules). Recalculés seulement
-// quand la signature change, sinon réutilisés tels quels.
-const netStaticMemo = { sig: null, dslots: "", rankPath: "", firm: "", dind: "", ficon: "", mind: "" };
 // Etats moteurs (flammes) des vaisseaux distants, par id joueur.
 const netplayEngines = new Map();
 // Mouvement visuel des formations de drones distantes, par id joueur.
@@ -34004,7 +33537,7 @@ function update(dt) {
       // Clones autonomes (même schéma que le PET) : weave de combat autour
       // de la cible du REX, sinon collecte chacun sur sa box (G-AL/G-AR),
       // sinon escorte du REX. Cap : cible en combat, direction de vol sinon.
-      const ownerSpeed = Math.max(260, getSpeedBreakdownCached().total) * playerSlowMult(player);
+      const ownerSpeed = Math.max(260, getSpeedBreakdown().total) * playerSlowMult(player);
       const followSpeed = ownerSpeed * 1.1;
       const tgt = petState.target && petState.target.hp > 0 ? petState.target : null;
       const tbrGears = petActiveGears();
@@ -34808,8 +34341,7 @@ function update(dt) {
   if (account.user && started && !player.dead) {
     positionSaveCd -= dt;
     if (positionSaveCd <= 0) {
-      // Debug mode : sauvegarde de position espacée (10 s au lieu de 3 s).
-      positionSaveCd = isPhoneMode() ? 10 : 3;
+      positionSaveCd = 3;
       const posMap = window.__CURRENT_MAP_ID__ || "1-1";
       if (posMap !== lastPositionSave.map
         || Math.abs(player.x - lastPositionSave.x) > 1
@@ -34953,8 +34485,7 @@ if (movementLocked) {
 
   if (!isZoneMap) waveController(dt);
   else zoneController(dt);
-  // Debug mode : ces splits attribuent les pics de frame.update dans le rapport.
-  measureGameTask("syncNetNpcs", () => syncNetNpcs(dt));
+  syncNetNpcs(dt);
   try { syncNetPlayers(dt); } catch {}
   // Multi PvP : PV autoritaires serveur — on n'adopte que les baisses
   // (les soins locaux remontent au serveur via les pos, qui les suit).
@@ -35101,8 +34632,7 @@ if (movementLocked) {
   if (typeof tickStrokelightBarrage === "function") {
     try { tickStrokelightBarrage(dt); } catch (error) { console.warn("Strokelight barrage tick:", error); }
   }
-  // Debug mode : splits pour attribuer les pics de frame.update dans le rapport.
-  measureGameTask("updatePet", () => updatePet(dt));
+  updatePet(dt);
   try { tickHangarSwap(dt); } catch (error) { console.warn("Hangar swap tick:", error); }
   try { tickStarJump(dt); } catch (error) { console.warn("Star jump tick:", error); }
   try { tickLowRaidClient(); } catch (error) { console.warn("Low raid tick:", error); }
@@ -36699,7 +36229,7 @@ function drawBotMinimalScene(ox, oy) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(Number(enemy.angle) || 0);
-    ctx.fillStyle = selected ? "#ffd36b" : (isPhoneMode() ? !!enemy._isUber : /uber/i.test(String(enemy.type || ""))) ? "#ff8a58" : "#ff596c";
+    ctx.fillStyle = selected ? "#ffd36b" : /uber/i.test(String(enemy.type || "")) ? "#ff8a58" : "#ff596c";
     ctx.beginPath();
     ctx.moveTo(size, 0);
     ctx.lineTo(-size * .7, -size * .62);
@@ -36932,9 +36462,7 @@ function draw() {
     }
     // Tous les Ubers du jeu : contour rouge de base (comme le localisateur).
     // Uber Mordon : contour restreint à la moitié basse.
-    // Debug mode : flags précalculés au spawn au lieu de regex par image.
-    const eIsUber = isPhoneMode() ? e._isUber === true : /uber/i.test(String(e.type || ""));
-    if (eIsUber) drawEnemyContour(e, enemyConfig, enemySpriteFrame, "#ff4655", undefined, isPhoneMode() ? e._isUberMordon === true : String(e.type || "") === "npc_Uber_Mordon");
+    if (/uber/i.test(String(e.type || ""))) drawEnemyContour(e, enemyConfig, enemySpriteFrame, "#ff4655", undefined, String(e.type || "") === "npc_Uber_Mordon");
     // Keres Spread : même effet que le localisateur ennemi du PET (doré),
     // en vert clignotant progressif, dessiné AVANT le corps (le sprite passe par-dessus).
     if ((e.keresSprT || 0) > 0 && e.hp > 0) {
@@ -37967,7 +37495,7 @@ updateProgressHud(ui, st, lvl);
 setHudText(ui.playerIdTxt, publicPlayerId(u?.id));
 
 if (ui.spdTxt) {
-  const spd = getSpeedBreakdownCached();
+  const spd = getSpeedBreakdown();
 
   setHudText(ui.spdTxt, formatInteger(spd.total));
 
@@ -38280,8 +37808,6 @@ let frameScheduleGeneration = 0;
 // Un palier se fait en sautant des vsync (pas de timer : stable, pas de
 // drift, pas de tearing).
 let lastFrameStart = 0;
-// Compteur d'images (partagé : cache vitesse 1x/image en Debug mode).
-let frameSeq = 0;
 // MessageChannel = pas de clamp 4 ms des setTimeout imbriqués, donc la boucle
 // libre monte bien au-delà des Hz (là où setTimeout plafonnerait vers 250).
 let fpsFreeChannel = null;
@@ -38303,9 +37829,6 @@ function ensureFpsFreeChannel() {
   return fpsFreeChannel;
 }
 
-// Enregistreur de saccades (Debug mode) : activé au démarrage si coché
-// (la bascule redémarre le jeu, donc l'état boot = le réglage).
-let jankRecorderOn = false;
 function scheduleNextFrame() {
   const generation = frameScheduleGeneration;
   if (document.visibilityState === "hidden") {
@@ -38350,29 +37873,10 @@ function restartFrameScheduler() {
 }
 
 let speedGuardRecoveryReloading = false;
-let speedGuardBlockedAt = 0;
 function handleSpeedGuardState(event) {
   renderSpeedGuard(event.detail?.blocked === true && kickedReason == null);
-  // Debug mode : horodate chaque blocage du garde dans le rapport saccades
-  // (persiste même si la récupération recharge la page juste après).
-  try {
-    if (event.detail?.blocked === true) {
-      if (!speedGuardBlockedAt) speedGuardBlockedAt = Date.now();
-    } else if (speedGuardBlockedAt) {
-      const ms = Date.now() - speedGuardBlockedAt;
-      speedGuardBlockedAt = 0;
-      if (jankRecorderOn) noteGuardBlock(ms);
-    }
-  } catch {}
   if (event.detail?.recovered === true && !speedGuardRecoveryReloading && kickedReason == null) {
     speedGuardRecoveryReloading = true;
-    // Vide le blocage en cours dans le rapport AVANT le reload (sinon perdu).
-    try {
-      if (speedGuardBlockedAt) {
-        if (jankRecorderOn) noteGuardBlock(Date.now() - speedGuardBlockedAt);
-        speedGuardBlockedAt = 0;
-      }
-    } catch {}
     // Resynchronise les aptitudes locales avec leurs echeances serveur.
     location.reload();
   }
@@ -38382,14 +37886,9 @@ window.addEventListener("orbit:speed-guard", handleSpeedGuardState);
 function frame(t) {
   const frameCpuStartedAt = performance.now();
   lastFrameStart = t;
-  frameSeq++;
   const realDt = Math.max(0, (t - last) / 1000);
   last = t;
   performanceMonitor.record(realDt);
-  // Debug mode : note les trous d'images (coût nul quand coupé).
-  if (jankRecorderOn) {
-    try { noteJankFrame(realDt); } catch {}
-  }
 
   fpsAcc += realDt;
   fpsFrames++;
@@ -38435,34 +37934,9 @@ function frame(t) {
       // Cadence + vitesse : inutiles (les tirs partent en evenements exacts).
       const ammoKeyNow = player.ammo.active || "x1";
       let dslotsNow = "";
-      // Debug mode : champs quasi statiques recalculés seulement quand la
-      // signature change (voir netStaticMemo), sinon réutilisés.
-      let netStaticHit = false;
-      try {
-        if (isPhoneMode()) {
-          const su = account?.user;
-          const sigParts = [
-            su?.id, su?.ship, su?.faction, dformId,
-            (su?.drones?.items || []).length, su?.revision,
-          ];
-          try {
-            const ah = getActiveHangarFromUser(su);
-            sigParts.push(ah?.id, Number(ah?.activeConfig) === 2 ? 2 : 1);
-          } catch {}
-          const sig = sigParts.join("|");
-          if (netStaticMemo.sig === sig) {
-            dslotsNow = netStaticMemo.dslots;
-            netStaticHit = true;
-          } else {
-            netStaticMemo.sig = sig;
-          }
-        }
-      } catch {}
       try {
         const items = account?.user?.drones?.items || [];
-        if (!netStaticHit) {
-          dslotsNow = items.slice(0, 12).map(d => `${String(d?.type || "iris").slice(0, 24)}:${Math.max(1, Number(d?.level) || 1)}`).join(",");
-        }
+        dslotsNow = items.slice(0, 12).map(d => `${String(d?.type || "iris").slice(0, 24)}:${Math.max(1, Number(d?.level) || 1)}`).join(",");
       } catch {}
       // Zone sure : le serveur calme les NPC. Position seule, même en
       // combat : tirer depuis un portail / une base (ou y fuir en étant
@@ -38471,15 +37945,7 @@ function frame(t) {
       let netSafe = false;
       try { netSafe = playerProtectedSpot(); } catch {}
       // Plaque alliee (grade, firme, drones, modules, formation).
-      // Debug mode : réutilise le mémo si la signature est inchangée.
       let rankPathNow = "", firmNow = "", dindNow = "", ficonNow = "", mindNow = "";
-      if (netStaticHit) {
-        rankPathNow = netStaticMemo.rankPath;
-        firmNow = netStaticMemo.firm;
-        dindNow = netStaticMemo.dind;
-        ficonNow = netStaticMemo.ficon;
-        mindNow = netStaticMemo.mind;
-      } else {
       try {
         const stats = account.user?.stats || {};
         const isPolice = String(ACTIVE_SHIP?.id || "").toLowerCase() === "police";
@@ -38513,17 +37979,6 @@ function frame(t) {
         const moduleColorByType = { hp: "rgb(70,210,105)", shd: "rgb(45,150,255)", dmg: "rgb(255,70,70)", spc: "rgb(255,215,70)" };
         mindNow = equippedModules.map(module => moduleColorByType[module.type]).filter(Boolean).join("|");
       } catch {}
-      try {
-        if (isPhoneMode()) {
-          netStaticMemo.dslots = dslotsNow;
-          netStaticMemo.rankPath = rankPathNow;
-          netStaticMemo.firm = firmNow;
-          netStaticMemo.dind = dindNow;
-          netStaticMemo.ficon = ficonNow;
-          netStaticMemo.mind = mindNow;
-        }
-      } catch {}
-      }
       // PET allie : actif, niveau, position + direction (rendu miroir).
       // + pseudo et firme pour l'etiquette distante (comme sur notre ecran).
       let petA = 0, petL = 1, petX = 0, petY = 0, petD = 0, petN = "", petF = "";
@@ -38601,7 +38056,7 @@ function frame(t) {
         petSh: (function () { try { const p = account.user?.pet; if (!p) return 1; const m = Math.max(0, Number(petShieldMaxForHud(p, account.user)) || 0); if (!(m > 0)) return 1; const c = p.sh != null && Number.isFinite(Number(p.sh)) ? Number(p.sh) : m; return Math.max(0, Math.min(1, c / m)); } catch { return 1; } })(),
         petHpMax: (function () { try { const p = account.user?.pet; return Math.max(1, Math.round(Number(petMaxHpWithHeat(p)) || 1)); } catch { return 1; } })(),
         petShMax: (function () { try { const p = account.user?.pet; return Math.max(0, Math.round(Number(petShieldMaxForHud(p, account.user)) || 0)); } catch { return 0; } })(),
-        vmax: (function () { try { return Math.max(50, Math.round(Number(getSpeedBreakdownCached()?.total) || Number(player.baseSpeed) || 300)); } catch { return 300; } })(),
+        vmax: (function () { try { return Math.max(50, Math.round(Number(getSpeedBreakdown()?.total) || Number(player.baseSpeed) || 300)); } catch { return 300; } })(),
       });
       } catch {}
       finally { recordGameTask("frame.netPush", performance.now() - netPushStartedAt); }
@@ -38712,7 +38167,7 @@ updateCurrentUserProgress({
   },
   // Sélections : voir ci-dessus (écriture immédiate, jamais l'autosave).
   rockets: sanitizeRocketsForSave(),
-}, { pushLazy: opts?.pushLazy === true, applyOnly: opts?.applyOnly === true });
+});
 }
 
 async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
@@ -38909,54 +38364,8 @@ const StarJump = { selected: null, channel: null, lastJumpAt: 0, built: false, r
   hoverMap: null, hoverPortal: null, pinnedRoute: null, connectionsFor: null, artLoading: null,
   itinerary: null, itineraryFor: null, routeVia: null };
 
-// Fenêtre fermée = zéro calcul (sauf saut en cours : compte à rebours + messages gardés).
-// Ordre volontaire : test DOM d'abord (gratuit), gestionnaire ensuite seulement
-// si le DOM dit "ouvert". Ça évite toute lecture localStorage à chaque image
-// quand c'est fermé (isOpen lit le stockage à chaque appel).
-function isStarMapOpen() {
-  try {
-    const el = ui.starMapWindow;
-    if (!el) return false;
-    if (el.style.display === "none") return false;
-    if (el.classList.contains("gameWinMinimized") || el.classList.contains("gameWinClosing")) return false;
-    const manager = window.GameWindowManager;
-    if (manager?.isOpen) {
-      try { if (!manager.isOpen('starMapWindow')) return false; } catch {}
-    }
-    return true;
-  } catch { return false; }
-}
-
-// Fenêtre d'infos orpheline (ouverte alors que la carte est fermée) : test DOM
-// gratuit d'abord, gestionnaire seulement si le DOM dit "ouvert".
-function isStarMapInfoOrphan() {
-  try {
-    const info = document.getElementById('starMapInfoWindow');
-    if (!info) return false;
-    if (info.style.display === "none") return false;
-    if (info.classList.contains("gameWinMinimized") || info.classList.contains("gameWinClosing")) return false;
-    const manager = window.GameWindowManager;
-    if (manager?.isOpen) {
-      try { if (!manager.isOpen('starMapInfoWindow')) return false; } catch {}
-    }
-    return true;
-  } catch { return false; }
-}
-
-window.addEventListener('orbit:window-minimized', event => {
-  if (event.detail?.id !== 'starMapWindow') return;
-  try {
-    const flow = ui.starMapEdges?.querySelector('.starMapRouteFlow');
-    flow?.getAnimations().forEach(animation => animation.cancel());
-    flow?.remove();
-  } catch {}
-  StarJump.hoverMap = null;
-  StarJump.hoverPortal = null;
-});
-
-window.addEventListener('orbit:window-restored', event => {
+window.addEventListener('orbit:window-restoring', event => {
   if (event.detail?.id === 'starMapWindow') {
-    if (isPhoneMode() && !isStarMapOpen()) return;
     const flow = ui.starMapEdges?.querySelector('.starMapRouteFlow');
     flow?.getAnimations().forEach(animation => animation.cancel());
     flow?.remove();
@@ -38995,7 +38404,6 @@ function syncStarMapScrollbars() {
 }
 
 function updateStarMapView() {
-  if (isPhoneMode() && !isStarMapOpen()) return;
   const viewport = document.getElementById("starMapViewport"), stage = document.getElementById("starMapStage");
   const tree = ui.starMapTree, layout = StarJump.layout;
   if (!viewport || !stage || !tree || !layout || !viewport.clientWidth || !viewport.clientHeight) return;
@@ -39060,7 +38468,6 @@ function centerStarMapNode(id, onlyWhenHidden = false) {
 }
 
 function updateStarMapRouteAnimation() {
-  if (isPhoneMode() && !isStarMapOpen()) return;
   const svg = ui.starMapEdges;
   if (!svg) return;
   const previous = svg.querySelector(".starMapRouteFlow");
@@ -39117,7 +38524,6 @@ function updateStarMapRouteAnimation() {
 }
 
 function highlightStarMapLinks() {
-  if (isPhoneMode() && !isStarMapOpen()) return;
   const routes = StarJump.layout?.routes || [], active = new Set();
   const itinerary = new Set((StarJump.itinerary?.steps || []).map(s => s.key));
   const hover = StarJump.hoverPortal, map = StarJump.hoverMap || (StarJump.routeVisible ? StarJump.selected : null);
@@ -39141,7 +38547,6 @@ function highlightStarMapLinks() {
 }
 
 function refreshStarMapItinerary(cur, sel) {
-  if (isPhoneMode() && !isStarMapOpen()) return;
   const routes = StarJump.layout?.routes || [];
   const sector = String(getFaction((account.user || getCurrentUserFull())?.faction)?.sector || '1');
   const via = StarJump.routeVia;
@@ -39247,9 +38652,6 @@ function ensureStarMapArt() {
     const maps = new Map([...starMapArt].filter(([, data]) => data && !data.failed)
       .map(([id, data]) => [starMapById.get(id).id, data]));
     StarJump.layout = await calculateStarMapRoutes(maps);
-    // Refermée pendant le chargement : on garde les données mais on ne dessine rien.
-    // Le dessin se fera à la prochaine ouverture.
-    if (isPhoneMode() && !isStarMapOpen()) return;
     drawStarMapRoutes();
     StarJump.connectionsFor = null;
     refreshStarMap();
@@ -39258,7 +38660,6 @@ function ensureStarMapArt() {
 }
 
 function drawStarMapRoutes() {
-  if (isPhoneMode() && !isStarMapOpen()) return;
   const svg = ui.starMapEdges, NS = "http://www.w3.org/2000/svg";
   if (!svg) return;
   const routes = StarJump.layout?.routes || [];
@@ -39366,8 +38767,6 @@ function starMapEdgeCount(id) {
 }
 
 function renderStarMap() {
-  // Construction paresseuse : rien tant que la fenêtre n'est pas ouverte.
-  if (isPhoneMode() && !isStarMapOpen()) return;
   const tree = ui.starMapTree, nodesEl = ui.starMapNodes, svg = ui.starMapEdges;
   if (!tree || !nodesEl || !svg) return;
   const NS = "http://www.w3.org/2000/svg";
@@ -39532,10 +38931,6 @@ function starMapJumpReuseLeftSec() {
 }
 
 function refreshStarMap() {
-  // Fenêtre fermée : rien à rafraîchir (le marqueur "carte actuelle"
-  // sera remis à jour à la prochaine ouverture). Le saut en cours garde
-  // quand même son compte à rebours + messages via son propre tick.
-  if (isPhoneMode() && !isStarMapOpen()) return;
   const cur = starJumpCurrentMap();
   const sel = StarJump.selected ? starMapById.get(String(StarJump.selected).toLowerCase()) : null;
   const ch = StarJump.channel;
@@ -39753,47 +39148,30 @@ function tickStarJump(dt) {
       try { SFX.play("swJump"); } catch {}
       addGameLog(`Jump vers ${String(ch.target).toUpperCase()} : portail activé.`, "info");
     }
-    // Compte à rebours + messages gardés même fenêtre fermée (voulu).
     updateStarJumpCountdown(ch);
     if (ch.t >= ch.dur && !ch.validating) executeStarJump(ch);
   }
-  // Fenêtre fermée : en mode téléphone on sort sans toucher au DOM
-  // (zéro calcul, sauf le compte à rebours du saut ci-dessus) ; sinon
-  // comportement normal (fenêtre d'infos orpheline re-rangée, sans refresh).
-  const lazyStarMap = isPhoneMode();
-  let open = false;
-  try { open = isStarMapOpen(); } catch { open = false; }
-  if (!open) {
-    if (lazyStarMap && ch) {
-      // Saut en cours + fenêtre fermée : le compte à rebours ci-dessus suffit.
-      return;
-    }
-    if (!ch) {
-      try {
-        if (isStarMapInfoOrphan()) {
-          StarJump.restoreInfoOnOpen = true;
-          window.GameWindowManager.minimize('starMapInfoWindow');
-        }
-      } catch {}
-    }
-    return;
-  }
   try {
-    if (!StarJump.built) renderStarMap();
-    // Rouvert après un chargement fini fenêtre fermée : dessiner les traits manqués.
-    try {
-      if (StarJump.built && StarJump.layout && ui.starMapEdges
-        && !ui.starMapEdges.querySelector('.starMapWire')) drawStarMapRoutes();
-    } catch {}
-    if (!StarJump.selected) {
-      const cur = starMapById.get(starJumpCurrentMap());
-      if (cur) StarJump.selected = cur.id;
+    const open = ui.starMapWindow && ui.starMapWindow.style.display !== "none"
+      && !ui.starMapWindow.classList.contains("gameWinMinimized")
+      && !ui.starMapWindow.classList.contains("gameWinClosing");
+    if (!open && window.GameWindowManager?.isOpen('starMapInfoWindow')) {
+      StarJump.restoreInfoOnOpen = true;
+      window.GameWindowManager.minimize('starMapInfoWindow');
     }
-    const now = performance.now();
-    if (now - StarJump.refreshAt > 500) { StarJump.refreshAt = now; refreshStarMap(); }
-    if (StarJump.restoreInfoOnOpen) {
-      StarJump.restoreInfoOnOpen = false;
-      showStarMapInfo();
+    if (open) {
+      // Construction une fois, rafraîchi 2x/s (compte à rebours, sélection).
+      if (!StarJump.built) renderStarMap();
+      if (!StarJump.selected) {
+        const cur = starMapById.get(starJumpCurrentMap());
+        if (cur) StarJump.selected = cur.id;
+      }
+      const now = performance.now();
+      if (now - StarJump.refreshAt > 500) { StarJump.refreshAt = now; refreshStarMap(); }
+      if (StarJump.restoreInfoOnOpen) {
+        StarJump.restoreInfoOnOpen = false;
+        showStarMapInfo();
+      }
     }
   } catch (e) { try { window.__STARJUMP_ERR__ = String(e?.stack || e); } catch {} }
 }
@@ -40250,19 +39628,7 @@ function saveLiveProgressBeforeNetwork(event) {
       return;
     }
   }
-  // Debug mode : applique les valeurs live en mémoire SANS refaire une
-  // sauvegarde complète (qui ré-armerait un envoi et bouclerait toutes les
-  // 5 s : push → sauvegarde → envoi → ...). Le push/adopt en cours emporte
-  // les valeurs appliquées ; le filet 15 s reste le filet de sécurité.
-  // Sinon sauvegarde complète comme avant.
-  if (started && account.user && account.dirty) {
-    try {
-      if (isPhoneMode()) saveProgressNow({ applyOnly: true });
-      else saveProgressNow();
-    } catch {
-      try { saveProgressNow(); } catch {}
-    }
-  }
+  if (started && account.user && account.dirty) saveProgressNow();
 }
 window.addEventListener("orbit:net-before-save", saveLiveProgressBeforeNetwork);
 window.addEventListener("orbit:net-before-adopt", saveLiveProgressBeforeNetwork);
@@ -40439,33 +39805,8 @@ const pack = getShipPackByIdData(cur.ship) || SHIP_PACKS[0];
 ACTIVE_SHIP = pack;
 document.documentElement.classList.add("orbitHudReady");
 
-// Carte stellaire : en mode téléphone rien n'est construit ni chargé tant
-// que la fenêtre n'est pas ouverte (cf. tickStarJump + renderStarMap).
-// Sinon comportement normal : schéma préparé au démarrage.
-if (!isPhoneMode()) {
-  try { renderStarMap(); } catch {}
-}
-
-// Debug mode : démarre l'enregistreur de saccades (contexte = carte + FPS).
-if (isPhoneMode()) {
-  jankRecorderOn = true;
-  try {
-    startJankRecorder(() => {
-      let map = "?";
-      try { map = String(window.__CURRENT_MAP_ID__ || currentMapId() || "?"); } catch {}
-      let npcs = 0, players = 0;
-      try { npcs = Array.isArray(enemies) ? enemies.length : 0; } catch {}
-      try {
-        const remotes = getNetplayRemotes();
-        players = remotes && typeof remotes.size === "number" ? remotes.size : 0;
-      } catch {}
-      return { map, fps: fpsValue, npcs, players };
-    });
-    setJankTimingsProvider(() => {
-      try { return gamePerformanceTimings.snapshot(); } catch { return null; }
-    });
-  } catch {}
-}
+// Preparer le schema ferme. A l'ouverture, seule sa mise a l'echelle reste a faire.
+renderStarMap();
 
 prepareGameAssets().catch((error) => {
   console.error("Erreur de préparation:", error);

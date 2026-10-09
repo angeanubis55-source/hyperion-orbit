@@ -1,14 +1,9 @@
 // SRC/CORE/ACCOUNT_NET.js — Comptes serveur (mode multi).
 // Standalone : aucun import métier (pas de cycle avec ACCOUNT.js).
-// Seule exception : PHONE_MODE.js (module feuille, aucun import) pour
-// espacer l'envoi auto en Debug mode.
 // - legacy (aucun token) : ACCOUNT.js utilise localStorage comme avant ;
 // - net (token + cache) : readUsers/writeUsers/readCurrent/writeCurrent
-//   branchent ici ; les saves partent en POST /api/save (debounce 2 s,
-//   5 s en Debug mode) ;
+//   branchent ici ; les saves partent en POST /api/save (debounce 2 s) ;
 // - revision serveur strictement croissante : anti-ecrasement (409 stale).
-import { isPhoneMode } from "./PHONE_MODE.js";
-import { noteSaveOp } from "./JANK_RECORDER.js";
 
 const TOKEN_KEY = "orbit_token";
 const CACHE_KEY = "orbit_user_cache";
@@ -65,7 +60,7 @@ export function netCurrent() {
   return { id: memUser.id, pseudo: memUser.pseudo, email: memUser.email };
 }
 
-export function netStore(list, { pilotDisksOnly = false, durable = false, pushLazy = false } = {}) {
+export function netStore(list, { pilotDisksOnly = false, durable = false } = {}) {
   const arr = Array.isArray(list) ? list : [];
   const mine = (memUser && arr.find((u) => u && u.id === memUser.id)) || arr[0] || null;
   // Ce mutateur ne touche que crédits et disques, sur le compte déjà chargé.
@@ -93,8 +88,7 @@ export function netStore(list, { pilotDisksOnly = false, durable = false, pushLa
     memUser = retainPendingSelections(mine);
     cachePendingGalaxyGates();
     writeCache(memUser, durable);
-    // Filet périodique : envoi paresseux en Debug mode, urgent sinon.
-    schedulePush(pushLazy !== true);
+    schedulePush();
   }
 }
 
@@ -228,7 +222,6 @@ const cacheJson = value => JSON.stringify(value, (key, item) => item === Infinit
 
 function writeSplitAccountCache(state) {
   const chunks = new Map(), created = [];
-  let writtenBytes = 0;
   const store = value => {
     const json = cacheJson(value);
     let key = chunks.get(json) || cacheChunks.get(json);
@@ -238,7 +231,6 @@ function writeSplitAccountCache(state) {
     if (!key) {
       key = `${CACHE_KEY}:chunk:${cacheEpoch}:${++nextCacheChunk}`;
       localStorage.setItem(key, json); // Ne pas publier le manifeste en cas de quota.
-      writtenBytes += json.length;
       created.push(key);
     }
     chunks.set(json, key);
@@ -276,7 +268,6 @@ function writeSplitAccountCache(state) {
       rewards: state.rewards };
     const json = JSON.stringify(manifest);
     localStorage.setItem(CACHE_KEY, json);
-    writtenBytes += json.length;
   } catch (error) {
     for (const key of created) { try { localStorage.removeItem(key); } catch {} }
     throw error;
@@ -285,7 +276,6 @@ function writeSplitAccountCache(state) {
     if (!chunks.has(json)) { try { localStorage.removeItem(key); } catch {} }
   }
   cacheChunks = chunks;
-  return writtenBytes;
 }
 
 function clearAccountCache() {
@@ -327,21 +317,15 @@ function flushAccountCache() {
   // Une deconnexion ne doit jamais etre suivie par la resurrection du cache.
   if (!user || !netActive() || user.id !== memUser.id) return;
   try {
-    const t0 = performance.now();
     const state = { user, base: serverBase, retrySave, rewards: [...serverRewards] };
     // Les petits comptes gardent le format historique. Une fois découpé,
     // conserver ce format même après une vente massive de modules.
     if (cacheChunks.size || cacheJson(user.inventory || {}).length > 65536) {
-      const writtenBytes = writeSplitAccountCache(state);
-      try { noteSaveOp("cache-blocs", performance.now() - t0, writtenBytes); } catch {}
+      writeSplitAccountCache(state);
       return;
     }
     const json = cacheJson(state);
-    const t1 = performance.now();
     lsSet(CACHE_KEY, json);
-    const t2 = performance.now();
-    try { noteSaveOp("cache-json", t1 - t0, json.length); } catch {}
-    try { noteSaveOp("cache-stockage", t2 - t1, json.length); } catch {}
   } catch {}
 }
 
@@ -374,67 +358,6 @@ function readCache() {
     }
   } catch {}
   return null;
-}
-
-// Envoi d'un rapport saccades (Debug mode) : Bearer si connecté, sinon
-// pseudo local (le serveur taggue "invité"). Anti-spam : 5 min côté client
-// (le serveur applique 10/min/IP + 3/heure/joueur).
-const JANK_SEND_KEY = "orbit_jank_last_send";
-export async function sendJankReport({ report = "", version = "", count = 0, maxMs = 0, avgMs = 0, sessionSec = 0, map = "", fps = 0, npcs = 0, players = 0 } = {}) {
-  const text = String(report || "");
-  if (text.length < 10 || text.length > 32768) return { ok: false, error: "Rapport vide ou trop gros." };
-  try {
-    const last = Number(localStorage.getItem(JANK_SEND_KEY) || 0);
-    if (Date.now() - last < 5 * 60 * 1000) return { ok: false, error: "Déjà envoyé il y a moins de 5 min." };
-  } catch {}
-  const authed = netActive() && memToken && memUser;
-  const pseudo = authed
-    ? String(memUser.pseudo || "Pilote")
-    : String(getLocalReportPseudo());
-  const body = {
-    pseudo,
-    version: String(version || "").slice(0, 16),
-    map: String(map || "").slice(0, 16),
-    fps: Math.max(0, Math.floor(Number(fps) || 0)),
-    npcs: Math.max(0, Math.floor(Number(npcs) || 0)),
-    players: Math.max(0, Math.floor(Number(players) || 0)),
-    count: Math.max(0, Math.floor(Number(count) || 0)),
-    maxMs: Math.max(0, Math.floor(Number(maxMs) || 0)),
-    avgMs: Math.max(0, Math.floor(Number(avgMs) || 0)),
-    sessionSec: Math.max(0, Math.floor(Number(sessionSec) || 0)),
-    report: text,
-  };
-  try {
-    const out = await api("/api/jank-report", {
-      method: "POST",
-      body,
-      token: authed ? memToken : undefined,
-    });
-    if (out?.status === 429 || out?.error) {
-      if (String(out?.error || "").includes("heure")) return { ok: false, error: "3 rapports par heure maximum." };
-      if (out?.status === 429) return { ok: false, error: "Trop d'envois, réessaie dans une minute." };
-      return { ok: false, error: String(out?.error || "Envoi impossible.") };
-    }
-    if (!out || out.ok !== true) return { ok: false, error: "Envoi impossible." };
-    try { localStorage.setItem(JANK_SEND_KEY, String(Date.now())); } catch {}
-    return { ok: true };
-  } catch {
-    return { ok: false, error: "Hors ligne — garde le bouton Copier." };
-  }
-}
-
-function getLocalReportPseudo() {
-  try {
-    const raw = localStorage.getItem("orbit_current_user");
-    const parsed = raw ? JSON.parse(raw) : null;
-    if (parsed?.pseudo) return String(parsed.pseudo);
-  } catch {}
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    if (parsed?.user?.pseudo) return String(parsed.user.pseudo);
-  } catch {}
-  return "Pilote";
 }
 
 // Boot synchrone (import) depuis token + cache. Le refresh async suit.
@@ -492,17 +415,10 @@ async function api(path, { method = "GET", body, token, timeout = 15000 } = {}) 
     const headers = {};
     if (body !== undefined) headers["content-type"] = "application/json; charset=utf-8";
     if (token) headers.Authorization = `Bearer ${token}`;
-    // Debug mode : la sérialisation du body /api/save (~1 Mo) est tracée.
-    // C'est du temps main-thread synchrone avant l'envoi réseau (async).
-    const tBody0 = performance.now();
-    const bodyText = body !== undefined ? JSON.stringify(body) : undefined;
-    try {
-      if (path === "/api/save") noteSaveOp("push-json", performance.now() - tBody0, (bodyText || "").length);
-    } catch {}
     const res = await fetch(path, {
       method,
       headers,
-      body: bodyText,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: ctrl.signal,
     });
     const data = await res.json().catch(() => ({}));
@@ -585,58 +501,11 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
   }
 }
 
-let pushUrgentArmed = true;
-function schedulePush(urgent = true) {
-  // Les mutations suivantes ne repoussent pas un envoi deja programme,
-  // sauf passage en urgent (un achat ne doit pas attendre un envoi paresseux).
-  // Debug mode : urgent = 5 s, paresseux (gains de farm/quêtes) = 15 s.
-  // Sinon : 2 s dans tous les cas, comme avant.
-  const wantUrgent = urgent !== false;
-  let debug = false;
-  try { debug = isPhoneMode(); } catch {}
-  if (saveTimer != null) {
-    // En mode normal, délais identiques (2 s) : on ne reprogramme jamais
-    // (comportement historique exact). En Debug, un urgent devance un paresseux.
-    if (debug && wantUrgent && !pushUrgentArmed) {
-      try { clearTimeout(saveTimer); } catch {}
-      saveTimer = null;
-    } else return;
-  }
-  pushUrgentArmed = wantUrgent;
-  let delay = 2000;
-  try { if (debug) delay = wantUrgent ? 5000 : 15000; } catch {}
-  // Debug mode : l'armement est horodaté + attribué (métronome visible dans
-  // le rapport, avec le fichier:ligne de l'origine réelle — on saute les
-  // intermédiaires saveUser/writeUsers). Coût ~0,1ms par armement.
-  try {
-    let who = wantUrgent ? "urgent" : "paresseux";
-    if (debug) {
-      const stack = String(new Error("trace").stack || "").split("\n").slice(1);
-      for (const line of stack) {
-        if (!line) continue;
-        if (line.includes("ACCOUNT_NET.js")) continue;
-        if (/\/ACCOUNT\.js:\d+/.test(line)) continue;
-        const m = /([^/()\s]+\.js):(\d+)/.exec(line);
-        if (m) {
-          who += ` via ${m[1]}:${m[2]}`;
-          break;
-        }
-      }
-      who = who.slice(0, 80);
-    }
-    noteSaveOp("push-arme", 0, 0, who);
-  } catch {}
-  saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, delay);
+function schedulePush() {
+  // Les kills suivants ne repoussent pas une sauvegarde deja programmee.
+  if (saveTimer != null) return;
+  saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, 2000);
 }
-
-// Gains de farm/quêtes : déjà crédités en mémoire et (kills) en base serveur.
-// L'envoi du blob peut attendre le prochain cycle paresseux en Debug mode.
-export function noteNetQuestGain() { if (netActive()) schedulePush(false); }
-// Carburant REX (palier toutes les 2 s, même en passif) : quelques unités par
-// palier, sync via les cycles suivants. Paresseux en Debug (15 s), urgent
-// sinon — comme avant dans ce cas (2 s). Le one-shot (kamikaze/sacrifice)
-// garde l'urgent (événement de combat rare).
-export function noteNetPetFuelTick() { if (netActive()) schedulePush(false); }
 
 // Conflits d'écriture (409) : normaux isolément (give admin...), mais en
 // rafale ils signalent 2 writers sur le même compte (2e onglet/fenêtre) :
@@ -795,16 +664,6 @@ export function noteNetServerReward(reward) {
   if (revision <= knownRewardRevision) return false;
   serverRewards.set(revision, copy(reward));
   knownRewardRevision = revision;
-  // Debug mode : borne dure anti-accumulation (100 dernières). Les révisions
-  // plus vieilles sont déjà couvertes par knownRewardRevision (rejetées) et
-  // purgées dans acceptServerBase : rien ne les relit.
-  try {
-    if (isPhoneMode()) {
-      while (serverRewards.size > 100) {
-        serverRewards.delete(serverRewards.keys().next().value);
-      }
-    }
-  } catch {}
   addRewardToBase(serverBase, reward);
   pendingCacheUser = memUser;
   return true;
@@ -834,28 +693,7 @@ function adoptServerUser(user, { base = serverBase, admin = false, reason = "ref
       if (revision > Number(user.revision || 0)) addRewardToBase(remote, reward);
     }
   }
-  const tMerge0 = performance.now();
-  // Debug mode, fast-path prouvé identique : si rien n'a changé localement
-  // depuis la référence (same(memUser, base)), rebaseUser() rendrait
-  // exactement copy(remote) + champs identité + revision (sa première
-  // branche). On court-circuite la récursion complète (~40-70ms sur gros
-  // compte). Sinon fusion complète comme avant.
-  let merged;
-  let debugFastAdopt = false;
-  try {
-    debugFastAdopt = isPhoneMode() && !admin && reason === "saved" && same(memUser, base);
-  } catch { debugFastAdopt = false; }
-  if (debugFastAdopt) {
-    merged = copy(remote);
-    for (const key of ["id", "pseudo", "email", "password", "_adminWriteToken"]) {
-      if (remote[key] !== undefined) merged[key] = remote[key];
-    }
-    merged.revision = remote.revision;
-    merged = retainPendingSelections(merged);
-    try { noteSaveOp("adopt-vite", performance.now() - tMerge0, 0, reason); } catch {}
-  } else {
-    merged = admin ? retainPendingSelections(copy(user)) : rebaseUser(memUser, remote, base);
-  }
+  const merged = admin ? retainPendingSelections(copy(user)) : rebaseUser(memUser, remote, base);
   // Les confirmations sont silencieuses : mettre à jour les objets déjà
   // utilisés par le moteur, plutôt que lui laisser un ancien compte détaché.
   memUser = reason === "saved" ? replaceAccountObject(memUser, merged) : merged;
@@ -864,26 +702,9 @@ function adoptServerUser(user, { base = serverBase, admin = false, reason = "ref
   pendingGalaxyGates = same(memUser.galaxyGates, serverBase.galaxyGates) ? null : copy(memUser.galaxyGates);
   if (!same(memUser, serverBase) || Object.keys(pendingSelections).length) {
     memUser.revision = Math.max(Number(user.revision) || 0, Number(memUser.revision) || 0) + 1;
-    // Debug mode : après un envoi réussi, sans choix en attente, le ré-armement
-    // est paresseux (15 s) au lieu d'entretenir un métronome de 5 s en farm.
-    // Sinon (conflit, refresh, admin, sélections) : urgent comme avant.
-    // La fusion ci-dessus s'applique dans tous les cas, immédiatement.
-    const hasPendingChoices = Object.keys(pendingSelections).length > 0;
-    if (reason === "saved" && !hasPendingChoices) schedulePush(false);
-    else schedulePush();
+    schedulePush();
   }
-  // Debug mode : la fusion complète est tracée (gros poste suspect en farm).
-  // (Le fast-path ci-dessus trace "adopt-vite" à la place.)
-  try { if (!debugFastAdopt) noteSaveOp("adopt-merge", performance.now() - tMerge0, 0, reason); } catch {}
-  // L'état et sa référence doivent être persistés ensemble avant le journal
-  // GG, sinon un reload peut rejouer ce journal sur une référence plus vieille.
-  // Debug mode : pas de 2e sérialisation ~1.8 Mo ici — le prochain push
-  // l'écrit déjà en immédiat, et le canon est en base serveur. En cas de
-  // crash, le refresh adopte le canon plus récent (rebase additif).
-  let debugDeferCache = false;
-  try { debugDeferCache = isPhoneMode(); } catch {}
-  if (debugDeferCache) pendingCacheUser = memUser;
-  else writeCache(memUser, true);
+  writeCache(memUser, true);
   cachePendingGalaxyGates();
   if (reason !== "saved") {
     try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason, conflicts } })); } catch {}
@@ -892,7 +713,6 @@ function adoptServerUser(user, { base = serverBase, admin = false, reason = "ref
 
 async function pushNow() {
   saveTimer = null;
-  pushUrgentArmed = true;
   if (identityWriter) { schedulePush(); return { ok: false, busy: true }; }
   if (saveInFlight) {
     if (netActive()) schedulePush();
@@ -911,20 +731,16 @@ async function pushSnapshot() {
   // Le serveur peut l'avoir enregistrée avant la coupure du transport.
   if (!retrySave) {
     try { window.dispatchEvent(new CustomEvent("orbit:net-before-save")); } catch {}
-    const t0 = performance.now();
     retrySave = {
       user: JSON.parse(JSON.stringify(memUser, (key, value) => value === Infinity ? -1 : value)), baseRevision: Number(serverBase?.revision) || 0,
       saveId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${++nextSaveId}`,
       selections: { ...pendingSelectionVersions },
     };
-    // Debug mode : durée du clone (~ taille mesurée par cache-json juste après).
-    try { noteSaveOp("push-clone", performance.now() - t0, 0); } catch {}
     retrySave.user.revision = Math.max(Number(retrySave.user.revision) || 0, retrySave.baseRevision + 1);
   }
   const sent = retrySave;
   writeCache(memUser, true);
   let out;
-  const postT0 = performance.now();
   try {
     out = await api("/api/save", { method: "POST", body: {
       user: sent.user, baseRevision: sent.baseRevision, saveId: sent.saveId,
@@ -932,8 +748,6 @@ async function pushSnapshot() {
   } catch {
     if (netActive() && memToken === token) schedulePush();
     return { ok: false, error: "Reseau." };
-  } finally {
-    try { noteSaveOp("push-post", performance.now() - postT0, 0); } catch {}
   }
   if (!netActive() || memToken !== token || String(memUser.id) !== String(sent.user.id)) return { ok: false, ignored: true };
   if (out?.ok && out.user) {
@@ -965,7 +779,6 @@ export async function flushNetUser() {
   flushAccountCache();
   try { clearTimeout(saveTimer); } catch {}
   saveTimer = null;
-  pushUrgentArmed = true;
   return pushNow();
 }
 
