@@ -607,7 +607,7 @@ function handleAdminApi(request, response, pathname) {
               return;
             }
             setCubikonFouActive(true);
-            cubikonFouBlast("⚡ Cubikon Fou — C'EST PARTI ! 100 Protegit !");
+            cubikonFouBlast("⚡ Cubikon Fou — C'EST PARTI ! 200 Protegit !");
           };
           cubikonFouCountdownTimer = setTimeout(tickCountdown, 1000);
           adminJson(response, 200, { ok: true, active: false, countdown: true });
@@ -1504,7 +1504,7 @@ function queueNpcDeaths(mapId, deaths) {
     if (!killerId.startsWith("u_") || death.cause !== "gun") continue;
     const deathKey = npcDeathKey(mapId, death);
     if (rewardedNpcDeaths.has(deathKey) || queuedNpcRewardKeys.has(deathKey)) continue;
-    if (pendingNpcRewards.length >= 500) {
+    if (pendingNpcRewards.length >= 2000) {
       const dropped = pendingNpcRewards.shift();
       if (dropped) queuedNpcRewardKeys.delete(dropped.deathKey);
     }
@@ -1515,7 +1515,7 @@ function queueNpcDeaths(mapId, deaths) {
 function awardNpcDeaths(mapId, deaths) {
   queueNpcDeaths(mapId, deaths);
 }
-function pumpNpcRewards(budgetMs = 12) {
+function pumpNpcRewards(budgetMs = 16) {
   const start = Date.now();
   const now = Date.now();
   for (const [key, at] of rewardedNpcDeaths) if (now - at > 10 * 60_000) rewardedNpcDeaths.delete(key);
@@ -1581,15 +1581,15 @@ function pumpNpcRewards(budgetMs = 12) {
       rewardedNpcDeaths.set(deathKey, now);
     } else pendingNpcRewards.push({ mapId, death, deathKey });
   }
-  if (pendingNpcRewards.length > 400) {
+  if (pendingNpcRewards.length > 1500) {
     try { console.log(`[multi:npc] file recompenses saturee (${pendingNpcRewards.length}), delestage des plus anciennes`); } catch {}
-    const dropped = pendingNpcRewards.splice(0, pendingNpcRewards.length - 400);
+    const dropped = pendingNpcRewards.splice(0, pendingNpcRewards.length - 1500);
     for (const item of dropped) queuedNpcRewardKeys.delete(item?.deathKey);
   }
 }
 setInterval(() => {
-  try { pumpNpcRewards(12); } catch {}
-}, 100);
+  try { pumpNpcRewards(16); } catch {}
+}, 80);
 
 // --- Audit anticheat périodique (10 s) + sanction (kick + gel, JAMAIS de
 // ban auto : l'admin tranche après inspection). Voir ANTICHEAT.js.
@@ -1636,7 +1636,7 @@ function runCheatAudit() {
   for (const [pid, st] of peers) {
     const a = st._audit;
     if (!a || typeof a !== "object") continue;
-    const r = acAuditWindow(a, now, Number(st.teleStrike || 0));
+    const r = acAuditWindow(a, now, Number(st.teleStrike || 0), isCubikonFouActive() ? { soft: 1000, hard: 1500 } : 1);
     if (!r) continue;
     const rates = r.rates;
     const score = r.score;

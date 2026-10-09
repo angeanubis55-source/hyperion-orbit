@@ -118,7 +118,10 @@ export function acRecordCollection(audit, profile) {
 
 // rates = { kills, boxes, dmg } sur la fenêtre. Retourne
 // { score, punish, triggers: [libellés pour la preuve] }.
-export function acAuditScore(prevScore, rates) {
+// killThresholds (défaut 1) : nombre = multiplicateur des seuils kills
+// (40/120) ; objet { soft, hard } = seuils explicites. Pendant l'événement
+// Cubikon Fou : { soft: 1000, hard: 1500 }.
+export function acAuditScore(prevScore, rates, killThresholds = 1) {
   let score = Math.max(0, Math.floor(Number(prevScore) || 0));
   const triggers = [];
   const check = (value, soft, hard, label, fmt) => {
@@ -128,7 +131,16 @@ export function acAuditScore(prevScore, rates) {
   };
   const fmtInt = (v) => String(Math.round(v));
   const fmtDmg = (v) => v >= 1e9 ? `${(v / 1e9).toFixed(1)} Md` : `${Math.round(v / 1e6)} M`;
-  check(rates?.kills, AUDIT_KILLS_SOFT, AUDIT_KILLS_HARD, "kills/10s", fmtInt);
+  let killSoft = AUDIT_KILLS_SOFT, killHard = AUDIT_KILLS_HARD;
+  if (typeof killThresholds === "number") {
+    const killMult = Math.max(1, Number(killThresholds) || 1);
+    killSoft = AUDIT_KILLS_SOFT * killMult;
+    killHard = AUDIT_KILLS_HARD * killMult;
+  } else if (killThresholds && typeof killThresholds === "object") {
+    killSoft = Math.max(1, Number(killThresholds.soft) || AUDIT_KILLS_SOFT);
+    killHard = Math.max(killSoft, Number(killThresholds.hard) || AUDIT_KILLS_HARD);
+  }
+  check(rates?.kills, killSoft, killHard, "kills/10s", fmtInt);
   const boxLimit = Math.max(AUDIT_BOXES_SOFT, Math.min(collectionAuditLimit({ petOwned: true, petCollectors: 3 }),
     Number(rates?.boxLimit) || AUDIT_BOXES_SOFT));
   check(rates?.boxes, boxLimit, boxLimit * 2, "boxes/10s", fmtInt);
@@ -225,7 +237,7 @@ export function acPoolResize(state, hpMax, shMax) {
 }
 
 // Aucun taux extrapolé depuis une fenêtre de quelques millisecondes.
-export function acAuditWindow(audit, nowMs, teleStrike = 0) {
+export function acAuditWindow(audit, nowMs, teleStrike = 0, killThresholds = 1) {
   const elapsed = nowMs - Number(audit.t);
   if (!Number.isFinite(elapsed) || elapsed < AUDIT_WIN_MS) return null;
   const f = AUDIT_WIN_MS / elapsed;
@@ -240,7 +252,7 @@ export function acAuditWindow(audit, nowMs, teleStrike = 0) {
     combatRejected: Math.max(0, Number(audit.combatRejected) || 0) * f,
     combatSeconds: (audit.combatSeconds?.length || 0) * f,
   };
-  const result = acAuditScore(audit.score, rates);
+  const result = acAuditScore(audit.score, rates, killThresholds);
   Object.assign(audit, { t: nowMs, kills: 0, boxes: 0, boxLimit: 0, dmg: 0, teleAt: teleStrike, score: result.score,
     movementRejected: 0, movementSeconds: [], combatRejected: 0, combatSeconds: [] });
   return { ...result, rates };

@@ -76,13 +76,13 @@ function blDamageMultFor(mapId, shipId) {
 
 // ---------------------------
 // Événement "Cubikon Fou" (admin) : les Cubikons normaux restent identiques
-// mais crachent jusqu'à 100 Protegit (vague unique, top-up continu).
+// mais crachent jusqu'à 200 Protegit (vague unique, top-up continu).
 // État GLOBAL (toutes les maps), piloté par le panneau admin via
 // MULTI_SERVER (pas de persistance : mémoire seule,
 // un restart serveur retombe en normal).
 // ---------------------------
-export const CUBIKON_FOU_WAVE_MAX = 100;
-export const CUBIKON_FOU_WAVE_SIZE = 100; // vague unique de 100 d'un coup
+export const CUBIKON_FOU_WAVE_MAX = 200;
+export const CUBIKON_FOU_WAVE_SIZE = 200; // vague unique de 200 d'un coup
 
 let cubikonFouActive = false;
 export function isCubikonFouActive() {

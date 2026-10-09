@@ -22560,7 +22560,7 @@ const ENTITY_LIMITS = Object.freeze({
   enemyBullets: 900,
   explosions: 48,
   sparks: 180,
-  floatTexts: 140,
+  floatTexts: 220,
   lasers: 80,
   pulseFxs: 12,
   smbFxs: 12,
@@ -26460,10 +26460,18 @@ function processDeathsMeasured() {
         e._netReward = takeNetNpcReward(window.__CURRENT_MAP_ID__, e._netUid, e._netSeq);
         if (!e._netReward) {
           // La recompense est deja commitee en base par le serveur. Si son
-          // message temps reel se perd, ne garde pas eternnellement le cadavre
-          // (il bloquerait aussi le respawn de la nouvelle incarnation).
+          // message temps reel se perd (rafale : pompe/inbox saturées), ne
+          // garde pas eternnellement le cadavre (il bloquerait aussi le
+          // respawn de la nouvelle incarnation). Attente allongée (12 s)
+          // pour laisser la pompe serveur drainer les rafales.
           e._netRewardWaitAt ||= performance.now();
-          if (performance.now() - e._netRewardWaitAt < 5000) { e.hp = 0; continue; }
+          if (performance.now() - e._netRewardWaitAt < 12000) { e.hp = 0; continue; }
+          // Filet quêtes : le kill est tranché côté serveur (crédits commis),
+          // seul l'affichage manque. La quête et le compteur comptent quand même.
+          try {
+            player.kills++;
+            measureGameTask("npcDeath.quests", () => advanceQuestProgress("kill", e.type));
+          } catch {}
           e._netSilent = true;
         }
       }
