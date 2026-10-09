@@ -1548,4 +1548,3 @@ drainPlayerHits() {
     return serializeUniverse(this.universe);
   }
 }
- 
