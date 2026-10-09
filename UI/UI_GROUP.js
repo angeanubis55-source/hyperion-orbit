@@ -1,5 +1,6 @@
 "use strict";
 import { getNetGroup, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupSync, sendGroupInviteLock, sendGroupRally, netMyId, netplayStatus } from "../SRC/CORE/NETPLAY.js";
+import { isPhoneMode } from "../SRC/CORE/PHONE_MODE.js";
 import { escapeHtml } from "./UI_DOM.js";
 import { getShipDesignBaseId, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 
@@ -109,9 +110,9 @@ export function initGroupUI() {
         }
       }
     } catch {}
-    if (!isGroupOpen()) {
-      // Fenêtre fermée : on stocke les invitations (sans toucher au DOM),
-      // elles s'afficheront à l'ouverture. Les expirées sont purgées.
+    // Mode téléphone + fenêtre fermée : on stocke les invitations (sans
+    // toucher au DOM), elles s'afficheront à l'ouverture. Sinon rendu direct.
+    if (isPhoneMode() && !isGroupOpen()) {
       const nowTs = Date.now();
       for (const invite of list) {
         if (!pendingInvites.some(p => String(p.from) === String(invite.from))) pendingInvites.push(invite);
@@ -146,8 +147,8 @@ export function initGroupUI() {
     let items = [];
     try { items = drainNetGroupNoticeInbox(); } catch {}
     // Fenêtre fermée : on vide juste la boîte (notifications éphémères),
-    // sans toucher au DOM.
-    if (!isGroupOpen()) return;
+    // sans toucher au DOM. (Actif seulement en mode téléphone.)
+    if (isPhoneMode() && !isGroupOpen()) return;
     try {
       for (const notice of items) { const row = document.createElement("div"); row.className = "groupNotice"; row.dataset.text = String(notice.text || ""); if (notice.expiresAt) row.dataset.expiresAt = String(notice.expiresAt); row.textContent = row.dataset.text; notices?.prepend(row); while (notices?.children.length > 5) notices.removeChild(notices.lastChild); }
       for (const row of notices?.querySelectorAll("[data-expires-at]") || []) { const left = Math.max(0, Math.ceil((Number(row.dataset.expiresAt) - Date.now()) / 1000)); row.textContent = `${row.dataset.text} (${left}s)`; if (!left) row.remove(); }
@@ -161,8 +162,9 @@ export function initGroupUI() {
       if (netplayStatus().connected && Date.now() - syncAt > 2000) { syncAt = Date.now(); sendGroupSync(); }
       renderInvites();
       pollNotices();
-      // Barres de vie : recalculées seulement si quelqu'un les regarde.
-      if (!isGroupOpen()) return;
+      // Barres de vie : recalculées seulement si quelqu'un les regarde
+      // (mode téléphone) ; sinon à chaque changement comme avant.
+      if (isPhoneMode() && !isGroupOpen()) return;
       const next = JSON.stringify(getNetGroup());
       if (next !== signature) { signature = next; renderGroup(); }
     } catch {}

@@ -6,6 +6,7 @@ import {
   sendFriendPing, sendFriendResponded,
 } from "../SRC/CORE/NETPLAY.js";
 import { getShipDesignBaseId, getShipPackById } from "../SHIP/SHIP_PACKS.js";
+import { isPhoneMode } from "../SRC/CORE/PHONE_MODE.js";
 import { escapeHtml } from "./UI_DOM.js";
 
 let started = false;
@@ -117,16 +118,18 @@ export function initFriendsUI() {
       requests = Array.isArray(requestData.requests) ? requestData.requests : [];
       updateHeader(message);
     } catch { updateHeader("Hors ligne — serveur injoignable"); }
-    // Données à jour dans tous les cas (badge), rendu seulement si ouvert.
-    if (isFriendsOpen()) { renderFriends(); renderRequests(); needsRender = false; }
+    // Données à jour dans tous les cas (badge), rendu seulement si ouvert
+    // (mode téléphone) ; sinon rendu direct comme avant.
+    if (!isPhoneMode() || isFriendsOpen()) { renderFriends(); renderRequests(); needsRender = false; }
     else needsRender = true;
   }
 
   function poll() {
     try {
       if (drainNetFriendRequestInbox().length || consumeFriendsDirty()) { load(); return; }
-      // Fenêtre fermée : pas de comparaison ni rendu, juste le badge.
-      if (!isFriendsOpen()) return;
+      // Fenêtre fermée : pas de comparaison ni rendu, juste le badge
+      // (mode téléphone) ; sinon comportement normal.
+      if (isPhoneMode() && !isFriendsOpen()) return;
       if (needsRender) { needsRender = false; updateHeader(); renderFriends(); renderRequests(); return; }
       const signature = JSON.stringify(getNetFriendsOnline());
       if (signature !== lastSignature) { lastSignature = signature; updateHeader(); renderFriends(); }
@@ -175,9 +178,9 @@ export function initFriendsUI() {
 
   setTab("friends"); load();
   // Recharge auto toutes les 30 s seulement si quelqu'un regarde
-  // (sinon : demande réseau + rendu pour rien sur téléphone).
+  // (mode téléphone : sinon demande réseau + rendu pour rien sur téléphone).
   // Les changements live passent par le poll (dirty/inbox) dans tous les cas.
-  setInterval(() => { try { if (isFriendsOpen()) load(); } catch {} }, 30000);
+  setInterval(() => { try { if (!isPhoneMode() || isFriendsOpen()) load(); } catch {} }, 30000);
   setInterval(poll, 1000); poll();
   window.addEventListener("orbit:window-restored", event => { if (event?.detail?.id === "friendsWindow") load(); });
 }

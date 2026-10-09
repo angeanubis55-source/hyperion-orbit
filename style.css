@@ -17604,6 +17604,17 @@ input[type=number] {
   color:#6f9aaa;
   font:650 9px/1.4 ui-sans-serif,system-ui;
 }
+#settingsWindow .jankReportArea {
+  width:100%;
+  min-height:120px;
+  resize:vertical;
+  border:1px solid rgba(124,240,255,.28);
+  border-radius:8px;
+  background:#04121c;
+  color:#dcf8ff;
+  font:400 10px/1.5 ui-monospace,monospace;
+  padding:8px;
+}
 #settingsWindow .settingsResetBtn {
   min-height:34px;
   margin:0;

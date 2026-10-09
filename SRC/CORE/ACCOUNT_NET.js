@@ -1,9 +1,13 @@
 // SRC/CORE/ACCOUNT_NET.js — Comptes serveur (mode multi).
-// Standalone : aucun import (pas de cycle avec ACCOUNT.js).
+// Standalone : aucun import métier (pas de cycle avec ACCOUNT.js).
+// Seule exception : PHONE_MODE.js (module feuille, aucun import) pour
+// espacer l'envoi auto en Debug mode.
 // - legacy (aucun token) : ACCOUNT.js utilise localStorage comme avant ;
 // - net (token + cache) : readUsers/writeUsers/readCurrent/writeCurrent
-//   branchent ici ; les saves partent en POST /api/save (debounce 2 s) ;
+//   branchent ici ; les saves partent en POST /api/save (debounce 2 s,
+//   5 s en Debug mode) ;
 // - revision serveur strictement croissante : anti-ecrasement (409 stale).
+import { isPhoneMode } from "./PHONE_MODE.js";
 
 const TOKEN_KEY = "orbit_token";
 const CACHE_KEY = "orbit_user_cache";
@@ -397,8 +401,11 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
 
 function schedulePush() {
   // Les kills suivants ne repoussent pas une sauvegarde deja programmee.
+  // Debug mode : envoi espacé (5 s au lieu de 2 s), moins de réveils réseau.
   if (saveTimer != null) return;
-  saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, 2000);
+  let delay = 2000;
+  try { if (isPhoneMode()) delay = 5000; } catch {}
+  saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, delay);
 }
 
 // Conflits d'écriture (409) : normaux isolément (give admin...), mais en

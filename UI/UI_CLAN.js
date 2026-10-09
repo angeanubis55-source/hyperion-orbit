@@ -15,6 +15,7 @@ import {
   consumeClanDirty, sendClanNotify, sendDiploNotify, setNetDiplo, netMyId,
 } from "../SRC/CORE/NETPLAY.js";
 import { escapeHtml } from "./UI_DOM.js";
+import { isPhoneMode } from "../SRC/CORE/PHONE_MODE.js";
 
 let started = false;
 let clanDialogPending = false;
@@ -397,8 +398,8 @@ export function initClanUI() {
         } catch { updateHeader("Hors ligne — serveur injoignable"); }
       }
       // Données + tags diplo à jour dans tous les cas (couleurs en jeu),
-      // gros rendu des listes seulement si quelqu'un regarde.
-      if (isClanOpen()) { render(); needsRender = false; }
+      // gros rendu des listes seulement si quelqu'un regarde (mode téléphone).
+      if (!isPhoneMode() || isClanOpen()) { render(); needsRender = false; }
       else needsRender = true;
     } finally {
       loading = false;
@@ -615,11 +616,12 @@ export function initClanUI() {
     } catch (error) { updateHeader(String(error?.message || "Diplomatie impossible.")); }
   });
   setTab("infos"); load();
-  // Auto-refresh 5 s, seulement si la fenêtre est ouverte (et jamais pendant
-  // que la souris est dessus : sinon la liste se re-rend sous les doigts).
+  // Auto-refresh 5 s, seulement si la fenêtre est ouverte en mode téléphone
+  // (et jamais pendant que la souris est dessus : sinon la liste se re-rend
+  // sous les doigts). Sinon comportement normal.
   // Fenêtre fermée : aucun fetch, aucun rendu — la réouverture recharge.
   // Les notifs live (poll) rechargent quand même.
-  setInterval(() => { try { if (isClanOpen() && !document.querySelector("#clanWindow:hover")) load(); } catch { try { load(); } catch {} } }, 5000);
+  setInterval(() => { try { if ((!isPhoneMode() || isClanOpen()) && !document.querySelector("#clanWindow:hover")) load(); } catch { try { load(); } catch {} } }, 5000);
   setInterval(poll, 1000); poll();
   window.addEventListener("orbit:window-restored", (event) => { if (event?.detail?.id === "clanWindow") load(); });
 }

@@ -113,6 +113,8 @@ import { addProjectile, advanceProjectile, blendVelocityDirection, guidedChaseSp
 import { createWaveSpawnState } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
+import { isPhoneMode, setPhoneModeCached } from "./PHONE_MODE.js";
+import { startJankRecorder, noteJankFrame, setJankListener, getJankSummary, getJankReport } from "./JANK_RECORDER.js";
 import { COLLECTABLE_PICKUP_HOLD_SEC } from "./COLLECTION_TIMING.js";
 import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, setNpcVelocity } from "../../NPC/NPC_AI.js";
 import { DEFAULT_NPC_RADAR_FADE_START, getNpcSensorRanges, npcSensorOpacity, shouldDetectNpc } from "../../NPC/NPC_SENSORS.js";
@@ -161,7 +163,7 @@ import { formatInteger } from "./NUMBER_FORMAT.js";
 import { escapeHtml } from "../../UI/UI_DOM.js";
 import { wireWikiWindow } from "../../UI/UI_WIKI.js";
 import { initSkylabUI, tickSkylabProduction } from "../../UI/UI_SKYLAB.js";
-import { initAuctionUI, renderAuctionWindow, tickAuctionDisplay } from "../../UI/UI_AUCTION.js";
+import { initAuctionUI, requestAuctionRender, tickAuctionDisplay } from "../../UI/UI_AUCTION.js";
 import { initChatUI } from "../../UI/UI_CHAT.js";
 import { initGroupUI } from "../../UI/UI_GROUP.js";
 import { initFriendsUI } from "../../UI/UI_FRIENDS.js";
@@ -2241,9 +2243,15 @@ function findEnemyByPersistedTarget(saved) {
 // Snapshot continu (toutes les 2 s + pagehide) : cibles mono-cible +
 // debuffs NPC (mark/neutr/jamx/keres...). Sans ça, un refresh perdrait
 // l'accroche NPC alors que l'effet continue en temps absolu.
+// Optimisé téléphone (si mode activé) : balayage mémoire d'abord, une seule
+// lecture, une seule écriture et seulement si quelque chose a changé. Au repos
+// (vol, farm sans ces capacités) : zéro accès au stockage.
 function snapshotAbilityTargetsTick() {
   try {
     if (!started || player.dead) return;
+    // Mode téléphone : on n'écrit que si quelque chose a changé ; sinon
+    // comportement normal (écriture toutes les 2 s).
+    const lazySnap = isPhoneMode();
     const pairs = [
       ["shlFx", player.linkTarget], ["diminishFx", player.diminishTarget],
       ["cyborgFx", player.cyborgTarget], ["venomFx", player.venomTarget],
@@ -2253,18 +2261,64 @@ function snapshotAbilityTargetsTick() {
       ["chsFx", player.chsTarget], ["sleightFx", player.sleightTarget],
       ["hecateFx", player.hecateTarget], ["hecatePlusFx", player.hecatePlusTarget],
     ];
-    for (const [fx, tgt] of pairs) {
-      try {
-        if (tgt && tgt.hp > 0) persistAbilityTarget(fx, tgt);
-        else {
-          // Nettoie les cibles mortes (évite un ré-accrochage fantôme).
-          const saved = readAbilityTarget(fx);
-          if (saved) clearAbilityTarget(fx);
+    // 1. Mémoire seule : y a-t-il une cible vivante accrochée ?
+    let anyLive = false;
+    for (const [, tgt] of pairs) {
+      if (tgt && tgt.hp > 0) { anyLive = true; break; }
+    }
+    // 2. Mémoire seule : y a-t-il un debuff actif ?
+    let anyDebuff = !!player.keresSprActive;
+    if (!anyDebuff) {
+      for (const e of enemies) {
+        if (!e || !(e.hp > 0)) continue;
+        if ((e.markT || 0) > 0.05 || (e.neutrT || 0) > 0.05
+          || (e.jamxT || 0) > 0.05 || (e.creedT || 0) > 0.05
+          || (e.keresSprT || 0) > 0.05 || (e.sleightSlowT || 0) > 0.05
+          || (player.diminishTarget === e && (player.diminishT || 0) > 0)) {
+          anyDebuff = true;
+          break;
         }
-      } catch {}
+      }
+    }
+    // 3. Une seule lecture (sert aussi à repérer un nettoyage éventuel).
+    let all = readAbilityTargets();
+    if (!all || typeof all !== "object" || Array.isArray(all)) all = {};
+    const scope = abilityShipScope();
+    const prefix = `${scope}::`;
+    let hasScopeData = false;
+    for (const k in all) {
+      if (k.startsWith(prefix)) { hasScopeData = true; break; }
+    }
+    // Rien d'actif et rien de stocké : on ne touche pas au stockage.
+    if (lazySnap && !anyLive && !anyDebuff && !hasScopeData) return;
+    let dirty = false;
+    const sameExtra = (a, b) => {
+      try { return JSON.stringify(a || null) === JSON.stringify(b || null); }
+      catch { return false; }
+    };
+    // 4. Cibles : on n'écrit que si la cible change (identifiant/carte).
+    // Le champ `at` n'est lu nulle part (la reprise utilise identifiant +
+    // carte) : inutile de le rafraîchir toutes les 2 s quand on reste
+    // accroché au même NPC.
+    const mapId = String(window.__CURRENT_MAP_ID__ || currentMapId() || "");
+    for (const [fx, tgt] of pairs) {
+      const key = `${prefix}${fx}`;
+      if (tgt && tgt.hp > 0) {
+        const uid = String(tgt.universeUid != null ? tgt.universeUid : tgt.id);
+        const prev = all[key];
+        if (!lazySnap || !prev || String(prev.uid) !== uid || String(prev.map || "") !== mapId || !sameExtra(prev.extra, null)) {
+          all[key] = { uid, map: mapId, at: Date.now(), extra: null };
+          dirty = true;
+        }
+      } else if (key in all) {
+        // Nettoie les cibles mortes (évite un ré-accrochage fantôme).
+        delete all[key];
+        dirty = true;
+      }
     }
     // Keres Spread : liste des infectés (pas de réinfection même cast).
     try {
+      const key = `${prefix}keresSprFx`;
       if (player.keresSprActive) {
         const uids = [];
         for (const e of enemies) {
@@ -2272,13 +2326,25 @@ function snapshotAbilityTargetsTick() {
             uids.push(String(e.universeUid != null ? e.universeUid : e.id));
           }
         }
-        persistAbilityTarget("keresSprFx", enemies.find((e) => e && (e.keresSprT || 0) > 0) || null, { uids });
+        const anchor = enemies.find((e) => e && (e.keresSprT || 0) > 0) || null;
+        if (!anchor) {
+          if (key in all) { delete all[key]; dirty = true; }
+        } else {
+          const anchorUid = String(anchor.universeUid != null ? anchor.universeUid : anchor.id);
+          const prev = all[key];
+          if (!lazySnap || !prev || String(prev.uid) !== anchorUid || String(prev.map || "") !== mapId
+            || !sameExtra(prev.extra, { uids })) {
+            all[key] = { uid: anchorUid, map: mapId, at: Date.now(), extra: { uids } };
+            dirty = true;
+          }
+        }
+      } else if (lazySnap && key in all) {
+        delete all[key];
+        dirty = true;
       }
     } catch {}
     // Debuffs NPC en temps absolu (reprise animation côté NPC).
     try {
-      const all = readAbilityTargets();
-      const scope = abilityShipScope();
       const debuffs = [];
       for (const e of enemies) {
         if (!e || !(e.hp > 0)) continue;
@@ -2293,9 +2359,26 @@ function snapshotAbilityTargetsTick() {
         put("diminishT", (player.diminishTarget === e) ? player.diminishT : 0);
         if (any) debuffs.push(entry);
       }
-      all[`${scope}::npcDebuffs`] = debuffs;
-      localStorage.setItem(ABILITY_TARGET_KEY, JSON.stringify(all));
+      const key = `${prefix}npcDebuffs`;
+      if (!debuffs.length) {
+        if (!lazySnap) {
+          // Comportement normal : la clé est toujours (ré)écrite.
+          all[key] = debuffs;
+          dirty = true;
+        } else if (key in all) {
+          // Mode téléphone : on retire la liste vide plutôt que stocker un tableau vide.
+          delete all[key];
+          dirty = true;
+        }
+      } else if (!lazySnap || !sameExtra(all[key], debuffs)) {
+        all[key] = debuffs;
+        dirty = true;
+      }
     } catch {}
+    // 5. Une seule écriture, seulement si quelque chose a changé.
+    if (dirty) {
+      try { localStorage.setItem(ABILITY_TARGET_KEY, JSON.stringify(all)); } catch {}
+    }
   } catch {}
 }
 try {
@@ -7691,6 +7774,10 @@ const DEFAULT_GAME_SETTINGS = {
   drones: true,
   remoteDrones: true,
   autoStart: false,
+  // Mode téléphone (affiché "Debug mode", Paramètres > Général > Démarrage) :
+  // fenêtres fermées = zéro calcul (carte stellaire paresseuse, assemblage,
+  // groupe/amis/clan, enchères, snapshot capacités). Décoché = normal d'avant.
+  phoneMode: false,
   shipEffect: true,
   shipSmoke: true,
   npcEngineEffects: true,
@@ -7917,6 +8004,8 @@ function loadGameSettings() {
 }
 
 const GAME_SETTINGS = loadGameSettings();
+// Pousse la valeur aux modules UI (même onglet, sans relire localStorage).
+setPhoneModeCached(GAME_SETTINGS.phoneMode);
 
 function saveGameSettings() {
   try {
@@ -7928,6 +8017,7 @@ function setGameSetting(key, value) {
   if (!(key in GAME_SETTINGS)) return;
 
   GAME_SETTINGS[key] = !!value;
+  if (key === "phoneMode") setPhoneModeCached(value);
   if (key === "sound") {
     GAME_SETTINGS.soundVolume = GAME_SETTINGS.sound
       ? Math.max(1, Number(GAME_SETTINGS.soundVolume) || DEFAULT_GAME_SETTINGS.soundVolume)
@@ -8359,6 +8449,9 @@ function renderSettingsWindow() {
   const autoStart = document.getElementById("optAutoStart");
   const textures = document.getElementById("optTextures");
   if (autoStart) autoStart.checked = !!GAME_SETTINGS.autoStart;
+  const phoneMode = document.getElementById("optPhoneMode");
+  if (phoneMode) phoneMode.checked = !!GAME_SETTINGS.phoneMode;
+  try { refreshJankSummary(); } catch {}
   if (textures) textures.checked = !!GAME_SETTINGS.textures;
   const drones = document.getElementById("optDrones");
   if (drones) drones.checked = !!GAME_SETTINGS.drones;
@@ -8411,6 +8504,32 @@ function normalizeSettingsWindow() {
   }
 }
 
+// Debug mode : résumé des saccades dans Paramètres > Général > Démarrage.
+// Appelé à l'ouverture des paramètres et à chaque saccade (texte seul,
+// rien si les paramètres sont fermés).
+function refreshJankSummary() {
+  const box = document.getElementById("jankSummary");
+  const btn = document.getElementById("btnCopyJankReport");
+  if (!box && !btn) return;
+  let on = false;
+  try { on = isPhoneMode(); } catch {}
+  if (btn) btn.disabled = !on;
+  if (!box) return;
+  if (!on) {
+    box.textContent = "Active le Debug mode pour enregistrer les saccades.";
+    return;
+  }
+  try {
+    const s = getJankSummary();
+    const dur = s.sessionSec >= 60
+      ? `${Math.floor(s.sessionSec / 60)}min${String(s.sessionSec % 60).padStart(2, "0")}`
+      : `${s.sessionSec}s`;
+    box.textContent = s.count
+      ? `${s.count} saccade${s.count > 1 ? "s" : ""} · max ${s.max}ms · moyenne ${s.avg}ms · session ${dur}`
+      : "Aucune saccade enregistrée pour l'instant. Joue quelques minutes.";
+  } catch {}
+}
+
 function wireSettingsWindow() {
   const soundBtn = document.getElementById("optSound");
   const volume = document.getElementById("optVolume");
@@ -8457,6 +8576,61 @@ function wireSettingsWindow() {
   autoStart?.addEventListener("change", () => {
     setGameSetting("autoStart", autoStart.checked);
   });
+
+  // Debug mode : le (dés)activer redémarre le jeu pour tout réappliquer
+  // proprement (le mode agit dès le démarrage : schéma stellaire, rendus
+  // initiaux). Réglage déjà sauvé par setGameSetting, on sauve la partie
+  // puis on recharge.
+  document.getElementById("optPhoneMode")?.addEventListener("change", (ev) => {
+    const on = !!ev.currentTarget.checked;
+    setGameSetting("phoneMode", on);
+    try { showToast(on ? "Debug mode activé — redémarrage…" : "Debug mode désactivé — redémarrage…", 1.4); } catch {}
+    try { if (typeof saveProgressNow === "function") saveProgressNow(); } catch {}
+    try { if (typeof saveStateImmediate === "function") saveStateImmediate(); } catch {}
+    setTimeout(() => { try { location.reload(); } catch {} }, 900);
+  });
+
+  // Rapport saccades : copié dans le presse-papiers (Chrome téléphone OK en
+  // HTTPS), sinon zone de texte à copier à la main.
+  document.getElementById("btnCopyJankReport")?.addEventListener("click", async () => {
+    let text = "Rapport indisponible.";
+    try { text = getJankReport(GAME_VERSION); } catch {}
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        showToast("Rapport copié — envoie-le nous !", 2);
+        return;
+      }
+      throw new Error("presse-papiers indisponible");
+    } catch {
+      try {
+        const area = document.getElementById("jankReportArea");
+        if (area) {
+          area.hidden = false;
+          area.value = text;
+          area.focus();
+          area.select();
+        }
+        showToast("Sélectionne et copie le texte ci-dessous", 2.5);
+      } catch {}
+    }
+  });
+
+  // Résumé à jour à l'ouverture des paramètres + à chaque saccade.
+  window.addEventListener("orbit:window-restored", (event) => {
+    if (event.detail?.id === "settingsWindow") {
+      try { refreshJankSummary(); } catch {}
+    }
+  });
+  try {
+    setJankListener(() => {
+      try {
+        const card = document.getElementById("settingsWindow");
+        if (!card || card.style.display === "none") return;
+        refreshJankSummary();
+      } catch {}
+    });
+  } catch {}
 
   drones?.addEventListener("change", () => {
     setGameSetting("drones", drones.checked);
@@ -8577,6 +8751,7 @@ document.getElementById("btnResetAllSettings")?.addEventListener("click", () => 
   updateMusicPlayback();
   restartFrameScheduler();
   renderSettingsWindow();
+  setPhoneModeCached(GAME_SETTINGS.phoneMode);
   showToast("Paramètres restaurés", 1.3);
 });
   renderSettingsWindow();
@@ -13121,10 +13296,10 @@ function renderCraftingWindow(message = "") {
     if (ui.craftingBuildBtn) ui.craftingBuildBtn.disabled = true;
     return;
   }
-  // Fenêtre fermée = zéro calcul : le rendu ne se fait qu'à l'ouverture
-  // (même logique que la carte stellaire). Test DOM gratuit d'abord, pour
-  // éviter toute lecture localStorage quand c'est fermé.
-  if (!isCraftingOpen()) return;
+  // Fenêtre fermée = zéro calcul en mode téléphone : le rendu ne se fait
+  // qu'à l'ouverture (même logique que la carte stellaire). Test DOM
+  // gratuit d'abord, pour éviter toute lecture localStorage quand c'est fermé.
+  if (isPhoneMode() && !isCraftingOpen()) return;
   if (!ui.craftingRecipes || !ui.craftingDetail) return;
   const user = getCurrentUserFull();
   if (!user) return;
@@ -17599,7 +17774,8 @@ function tickAuctionLogic() {
         window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
       }
       if (pump.dirty) {
-        try { renderAuctionWindow(); } catch {}
+        // Rendu seulement si la fenêtre est ouverte (données déjà resync ci-dessus).
+        try { requestAuctionRender(); } catch {}
       }
       for (const ev of pump.events || []) {
         if (ev?.type === "won") showNotification(`Enchère remportée : ${ev.name} !`, 3.5, "reward");
@@ -17619,7 +17795,8 @@ function tickAuctionLogic() {
     syncPlayerFromAccount();
     markProgressDirty();
     window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
-    try { renderAuctionWindow(); } catch {}
+    // Rendu seulement si la fenêtre est ouverte (même logique que le partagé).
+    try { requestAuctionRender(); } catch {}
   }
   for (const ev of res.events || []) {
     if (ev?.type === "won") showNotification(`Enchère remportée : ${ev.name} !`, 3.5, "reward");
@@ -30481,11 +30658,14 @@ let minimapLastDraw = -Infinity;
 let minimapLastWorld = null;
 let minimapLastSize = "";
 function drawMinimap() {
-  // This independent canvas retains its bitmap. Update at 30 Hz rather
-  // than scanning every NPC and rebuilding the static key at monitor FPS.
+  // This independent canvas retains its bitmap. Update at 20 Hz (même
+  // cadence que les snapshots réseau : au-delà, l'œil ne voit rien de plus
+  // sur des pastilles) rather than scanning every NPC at monitor FPS.
+  // Debug mode : 10 Hz suffisent (2x moins de travail encore).
   const now = performance.now();
   const size = `${mini.width}:${mini.height}:${mini.clientWidth}:${mini.clientHeight}:${window.devicePixelRatio}`;
-  if (WORLD === minimapLastWorld && size === minimapLastSize && now - minimapLastDraw < 1000 / 30) return;
+  const minimapBudget = isPhoneMode() ? 100 : 1000 / 20;
+  if (WORLD === minimapLastWorld && size === minimapLastSize && now - minimapLastDraw < minimapBudget) return;
   minimapLastDraw = now; minimapLastWorld = WORLD; minimapLastSize = size;
   // Rendu en pixels CSS (bitmap = CSS × DPR, voir applyMinimapProportions) :
   // net à toutes les tailles, même après +.
@@ -34315,7 +34495,8 @@ function update(dt) {
   if (account.user && started && !player.dead) {
     positionSaveCd -= dt;
     if (positionSaveCd <= 0) {
-      positionSaveCd = 3;
+      // Debug mode : sauvegarde de position espacée (10 s au lieu de 3 s).
+      positionSaveCd = isPhoneMode() ? 10 : 3;
       const posMap = window.__CURRENT_MAP_ID__ || "1-1";
       if (posMap !== lastPositionSave.map
         || Math.abs(player.x - lastPositionSave.x) > 1
@@ -37803,6 +37984,9 @@ function ensureFpsFreeChannel() {
   return fpsFreeChannel;
 }
 
+// Enregistreur de saccades (Debug mode) : activé au démarrage si coché
+// (la bascule redémarre le jeu, donc l'état boot = le réglage).
+let jankRecorderOn = false;
 function scheduleNextFrame() {
   const generation = frameScheduleGeneration;
   if (document.visibilityState === "hidden") {
@@ -37863,6 +38047,10 @@ function frame(t) {
   const realDt = Math.max(0, (t - last) / 1000);
   last = t;
   performanceMonitor.record(realDt);
+  // Debug mode : note les trous d'images (coût nul quand coupé).
+  if (jankRecorderOn) {
+    try { noteJankFrame(realDt); } catch {}
+  }
 
   fpsAcc += realDt;
   fpsFrames++;
@@ -38385,7 +38573,7 @@ window.addEventListener('orbit:window-minimized', event => {
 
 window.addEventListener('orbit:window-restored', event => {
   if (event.detail?.id === 'starMapWindow') {
-    if (!isStarMapOpen()) return;
+    if (isPhoneMode() && !isStarMapOpen()) return;
     const flow = ui.starMapEdges?.querySelector('.starMapRouteFlow');
     flow?.getAnimations().forEach(animation => animation.cancel());
     flow?.remove();
@@ -38424,7 +38612,7 @@ function syncStarMapScrollbars() {
 }
 
 function updateStarMapView() {
-  if (!isStarMapOpen()) return;
+  if (isPhoneMode() && !isStarMapOpen()) return;
   const viewport = document.getElementById("starMapViewport"), stage = document.getElementById("starMapStage");
   const tree = ui.starMapTree, layout = StarJump.layout;
   if (!viewport || !stage || !tree || !layout || !viewport.clientWidth || !viewport.clientHeight) return;
@@ -38489,7 +38677,7 @@ function centerStarMapNode(id, onlyWhenHidden = false) {
 }
 
 function updateStarMapRouteAnimation() {
-  if (!isStarMapOpen()) return;
+  if (isPhoneMode() && !isStarMapOpen()) return;
   const svg = ui.starMapEdges;
   if (!svg) return;
   const previous = svg.querySelector(".starMapRouteFlow");
@@ -38546,7 +38734,7 @@ function updateStarMapRouteAnimation() {
 }
 
 function highlightStarMapLinks() {
-  if (!isStarMapOpen()) return;
+  if (isPhoneMode() && !isStarMapOpen()) return;
   const routes = StarJump.layout?.routes || [], active = new Set();
   const itinerary = new Set((StarJump.itinerary?.steps || []).map(s => s.key));
   const hover = StarJump.hoverPortal, map = StarJump.hoverMap || (StarJump.routeVisible ? StarJump.selected : null);
@@ -38570,7 +38758,7 @@ function highlightStarMapLinks() {
 }
 
 function refreshStarMapItinerary(cur, sel) {
-  if (!isStarMapOpen()) return;
+  if (isPhoneMode() && !isStarMapOpen()) return;
   const routes = StarJump.layout?.routes || [];
   const sector = String(getFaction((account.user || getCurrentUserFull())?.faction)?.sector || '1');
   const via = StarJump.routeVia;
@@ -38678,7 +38866,7 @@ function ensureStarMapArt() {
     StarJump.layout = await calculateStarMapRoutes(maps);
     // Refermée pendant le chargement : on garde les données mais on ne dessine rien.
     // Le dessin se fera à la prochaine ouverture.
-    if (!isStarMapOpen()) return;
+    if (isPhoneMode() && !isStarMapOpen()) return;
     drawStarMapRoutes();
     StarJump.connectionsFor = null;
     refreshStarMap();
@@ -38687,7 +38875,7 @@ function ensureStarMapArt() {
 }
 
 function drawStarMapRoutes() {
-  if (!isStarMapOpen()) return;
+  if (isPhoneMode() && !isStarMapOpen()) return;
   const svg = ui.starMapEdges, NS = "http://www.w3.org/2000/svg";
   if (!svg) return;
   const routes = StarJump.layout?.routes || [];
@@ -38796,7 +38984,7 @@ function starMapEdgeCount(id) {
 
 function renderStarMap() {
   // Construction paresseuse : rien tant que la fenêtre n'est pas ouverte.
-  if (!isStarMapOpen()) return;
+  if (isPhoneMode() && !isStarMapOpen()) return;
   const tree = ui.starMapTree, nodesEl = ui.starMapNodes, svg = ui.starMapEdges;
   if (!tree || !nodesEl || !svg) return;
   const NS = "http://www.w3.org/2000/svg";
@@ -38964,7 +39152,7 @@ function refreshStarMap() {
   // Fenêtre fermée : rien à rafraîchir (le marqueur "carte actuelle"
   // sera remis à jour à la prochaine ouverture). Le saut en cours garde
   // quand même son compte à rebours + messages via son propre tick.
-  if (!isStarMapOpen()) return;
+  if (isPhoneMode() && !isStarMapOpen()) return;
   const cur = starJumpCurrentMap();
   const sel = StarJump.selected ? starMapById.get(String(StarJump.selected).toLowerCase()) : null;
   const ch = StarJump.channel;
@@ -39186,11 +39374,17 @@ function tickStarJump(dt) {
     updateStarJumpCountdown(ch);
     if (ch.t >= ch.dur && !ch.validating) executeStarJump(ch);
   }
-  // Fenêtre fermée et pas de saut : zéro calcul, on sort sans toucher au DOM.
-  // (La fenêtre d'infos orpheline est juste re-rangée, sans refresh.)
+  // Fenêtre fermée : en mode téléphone on sort sans toucher au DOM
+  // (zéro calcul, sauf le compte à rebours du saut ci-dessus) ; sinon
+  // comportement normal (fenêtre d'infos orpheline re-rangée, sans refresh).
+  const lazyStarMap = isPhoneMode();
   let open = false;
   try { open = isStarMapOpen(); } catch { open = false; }
   if (!open) {
+    if (lazyStarMap && ch) {
+      // Saut en cours + fenêtre fermée : le compte à rebours ci-dessus suffit.
+      return;
+    }
     if (!ch) {
       try {
         if (isStarMapInfoOrphan()) {
@@ -39198,9 +39392,7 @@ function tickStarJump(dt) {
           window.GameWindowManager.minimize('starMapInfoWindow');
         }
       } catch {}
-      return;
     }
-    // Saut en cours + fenêtre fermée : le compte à rebours ci-dessus suffit.
     return;
   }
   try {
@@ -39852,9 +40044,24 @@ const pack = getShipPackByIdData(cur.ship) || SHIP_PACKS[0];
 ACTIVE_SHIP = pack;
 document.documentElement.classList.add("orbitHudReady");
 
-// Carte stellaire paresseuse : rien n'est construit ni chargé tant que
-// la fenêtre n'est pas ouverte (cf. tickStarJump + renderStarMap).
-// Le premier affichage construit le schéma puis charge les 35 cartes en fond.
+// Carte stellaire : en mode téléphone rien n'est construit ni chargé tant
+// que la fenêtre n'est pas ouverte (cf. tickStarJump + renderStarMap).
+// Sinon comportement normal : schéma préparé au démarrage.
+if (!isPhoneMode()) {
+  try { renderStarMap(); } catch {}
+}
+
+// Debug mode : démarre l'enregistreur de saccades (contexte = carte + FPS).
+if (isPhoneMode()) {
+  jankRecorderOn = true;
+  try {
+    startJankRecorder(() => {
+      let map = "?";
+      try { map = String(window.__CURRENT_MAP_ID__ || currentMapId() || "?"); } catch {}
+      return { map, fps: fpsValue };
+    });
+  } catch {}
+}
 
 prepareGameAssets().catch((error) => {
   console.error("Erreur de préparation:", error);

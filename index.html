@@ -289,6 +289,10 @@
             <article class="settingsCard">
               <div class="settingsSectionSub">Démarrage</div>
               <label class="settingsCheck" for="optAutoStart"><input id="optAutoStart" type="checkbox" /><span><b>Démarrage automatique</b><small>Lance directement la partie après le chargement.</small></span></label>
+              <label class="settingsCheck" for="optPhoneMode"><input id="optPhoneMode" type="checkbox" /><span><b>Debug mode</b><small>Fenêtres fermées = zéro calcul. Redémarre le jeu.</small></span></label>
+              <p id="jankSummary" class="settingsHint"></p>
+              <button id="btnCopyJankReport" class="settingsResetBtn" type="button">Copier le rapport saccades</button>
+              <textarea id="jankReportArea" class="jankReportArea" readonly hidden></textarea>
             </article>
             <article class="settingsCard">
               <div class="settingsSectionSub">Combat</div>
