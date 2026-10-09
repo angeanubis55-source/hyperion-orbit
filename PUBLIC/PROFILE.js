@@ -3271,7 +3271,7 @@ if (isDrone) {
         <div class="shopAmmoBuyRow">
           <span class="shopAmmoPrice"><span id="shopPurchaseTotal">${formatNumber(price)}</span> Crédits</span>
           <input id="shopBuyQuantity" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="Quantité à acheter" />
-          <span class="shopAmmoUnits"><span id="shopAmmoUnitsVal">${formatNumber(ammoUnitsPerPack)}</span> Unitées</span>
+          <span class="shopAmmoUnits"><span id="shopAmmoUnitsVal">${formatNumber(ammoUnitsPerPack)}</span> <span class="shopAmmoUnitWord">Unitées</span></span>
         </div>
       ` : `
         <div class="shopPurchaseRow">

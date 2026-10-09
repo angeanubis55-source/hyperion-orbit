@@ -763,7 +763,7 @@ test('GG : portail gauche gate et portail droit base de la firme, assets existan
 test('Cubikon : renfort sous cinq survivants, aucun apres reset ou mort', () => {
   const server=readFileSync(new URL('./NPC_ROOM.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   const start=server.indexOf('  refillCubikonMinions('),end=server.indexOf('\n  }',start)+4;
-  const ctx=vm.createContext({});
+  const ctx=vm.createContext({ ZoneNpcSim: { cubikonRefillBelow: () => 5, cubikonWaveSize: () => 20, cubikonWaveMax: () => 20 } });
   vm.runInContext('class Refill { '+server.slice(start,end)+' }; globalThis.Refill=Refill;',ctx);
   for(const count of [0,4,5,20]) {
     const cub={type:'npc_Cubikon',uid:'cube',hp:100,cubeArmed:true,lastCubeHitAt:1000};

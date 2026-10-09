@@ -74,6 +74,25 @@ function blDamageMultFor(mapId, shipId) {
   return isOrcusShipId(shipId) ? 1 : 1.25;
 }
 
+// ---------------------------
+// Événement "Cubikon Fou" (admin) : les Cubikons normaux restent identiques
+// mais crache 25x plus de Protegit. État GLOBAL (toutes les maps), piloté
+// par le panneau admin via MULTI_SERVER (pas de persistance : mémoire seule,
+// un restart serveur retombe en normal).
+// ---------------------------
+export const CUBIKON_FOU_MINION_MULT = 25;
+export const CUBIKON_FOU_WAVE_MAX = 500; // 20 x 25
+export const CUBIKON_FOU_WAVE_SIZE = 100; // vagues de 100 (perf : pas 500 d'un coup)
+
+let cubikonFouActive = false;
+export function isCubikonFouActive() {
+  return cubikonFouActive === true;
+}
+export function setCubikonFouActive(active) {
+  cubikonFouActive = active === true;
+  return cubikonFouActive;
+}
+
 function statsFor(type) {
   const cfg = NPC_TYPES[type];
   if (!cfg) return null;
@@ -537,6 +556,17 @@ drainPlayerHits() {
   // minions sont retires silencieusement et la vague est re-armee.
   static CUBIKON_WAVE_SIZE = 20;
   static CUBIKON_WAVE_MAX = 20;
+  // Événement Cubikon Fou : 25x plus de Protegit (vagues de 100, plafond 500).
+  static cubikonWaveSize() {
+    return isCubikonFouActive() ? CUBIKON_FOU_WAVE_SIZE : ZoneNpcSim.CUBIKON_WAVE_SIZE;
+  }
+  static cubikonWaveMax() {
+    return isCubikonFouActive() ? CUBIKON_FOU_WAVE_MAX : ZoneNpcSim.CUBIKON_WAVE_MAX;
+  }
+  // Seuil de re-remplissage : <5 en normal, top-up continu jusqu'au plafond en fou.
+  static cubikonRefillBelow() {
+    return isCubikonFouActive() ? ZoneNpcSim.cubikonWaveMax() : 5;
+  }
 
   // --- Lock premier attaquant (visuel rouge / gris) ---
   // Le détenteur garde le rouge tant qu'il inflige des dégâts, reste en vie
@@ -588,7 +618,7 @@ drainPlayerHits() {
   refillCubikonMinions(cub, nowMs) {
     if (cub?.type !== "npc_Cubikon" || !(cub.hp > 0) || !cub.cubeArmed || cub.cube) return;
     if (nowMs - Number(cub.lastCubeHitAt || 0) > 15000) return;
-    if (this.countCubikonMinions(cub.uid) < 5) {
+    if (this.countCubikonMinions(cub.uid) < ZoneNpcSim.cubikonRefillBelow()) {
       cub.cube = { phase: "delay", until: nowMs + 2000, spawnAt: nowMs + 4600 };
     }
   }
@@ -599,8 +629,8 @@ drainPlayerHits() {
     if (!stats) return;
     const linked = this.countCubikonMinions(cub.uid);
     const toSpawn = Math.min(
-      ZoneNpcSim.CUBIKON_WAVE_SIZE,
-      Math.max(0, ZoneNpcSim.CUBIKON_WAVE_MAX - linked)
+      ZoneNpcSim.cubikonWaveSize(),
+      Math.max(0, ZoneNpcSim.cubikonWaveMax() - linked)
     );
     for (let i = 0; i < toSpawn; i++) {
       const ang = Math.random() * TAU;
@@ -841,6 +871,34 @@ drainPlayerHits() {
     }
   }
 
+  // Fin d'événement Cubikon Fou (admin) : TOUS les Cubikons explosent pour
+  // laisser respawner des normaux. Mort SANS récompense (killer vide +
+  // cause "event" : pumpNpcRewards ignore), visuel = mort normale côté client.
+  // Les minions sont libérés (désagrégation via releaseCubikonMinions).
+  // Retourne le nombre de Cubikons détruits.
+  detonateAllCubikons(nowMs = Date.now()) {
+    let count = 0;
+    for (const [uid, entry] of [...this.entries]) {
+      if (!entry || entry.type !== "npc_Cubikon" || !(entry.hp > 0)) continue;
+      entry.hp = 0;
+      entry.sh = 0;
+      entry.cube = null;
+      entry.cubeArmed = false;
+      entry.killer = "";
+      entry.cause = "event";
+      entry.deadAt = nowMs;
+      try { this.releaseCubikonMinions(entry, nowMs); } catch {}
+      try { markDead(this.universe, this.mapId, uid, Date.now()); } catch {}
+      this.deaths.push({
+        uid, type: entry.type,
+        x: Math.round(entry.x), y: Math.round(entry.y),
+        killer: "", cause: "event", seq: entry.seq || 0, at: Date.now(),
+      });
+      count++;
+    }
+    return count;
+  }
+
   applyHit(clientId, hit) {
     const uid = String(hit?.uid || "");
     const entry = this.entries.get(uid);
@@ -955,7 +1013,7 @@ drainPlayerHits() {
       // (Si le coup est fatal, la mort ci-dessous libere les minions.)
       entry.lastCubeHitAt = nowMs;
       if (entry.hp > 0 && !entry.cubeArmed && !entry.cube) {
-        if (this.countCubikonMinions(uid) < ZoneNpcSim.CUBIKON_WAVE_MAX) {
+        if (this.countCubikonMinions(uid) < ZoneNpcSim.cubikonWaveMax()) {
           entry.cubeArmed = true;
           entry.cube = { phase: "delay", until: nowMs + 2000, spawnAt: nowMs + 4600 };
         }

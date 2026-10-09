@@ -5,6 +5,7 @@ import { dirname, extname, join, normalize, resolve } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
+import { setCubikonFouActive, isCubikonFouActive } from "./NPC_ROOM.js";
 import {
   ANTICHEAT as AC,
   acBucket,
@@ -416,7 +417,11 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, accounts: out, guests, onlineCount, total: out.length });
     return true;
   }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold") && request.method === "POST") {
+  if (pathname === "/api/admin/cubikon-fou" && request.method === "GET") {
+    adminJson(response, 200, { ok: true, active: isCubikonFouActive(), countdown: cubikonFouCountdownTimer != null });
+    return true;
+  }
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold" || pathname === "/api/admin/cubikon-fou") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
         if (pathname === "/api/admin/delete") {
@@ -565,6 +570,47 @@ function handleAdminApi(request, response, pathname) {
           if (chatHistory.length > 40) chatHistory.splice(0, chatHistory.length - 40);
           broadcastAll(JSON.stringify({ t: "chatMsg", ...entry }));
           adminJson(response, 200, { ok: true });
+          return;
+        }
+        if (pathname === "/api/admin/cubikon-fou") {
+          const want = body?.active;
+          // Désactivation : immédiate (annule aussi un décompte en cours).
+          if (want !== true) {
+            cubikonFouCancelCountdown();
+            const wasActive = isCubikonFouActive();
+            setCubikonFouActive(false);
+            let detonated = 0;
+            if (wasActive) {
+              try { detonated = cubikonFouDetonateEverywhere(); } catch {}
+              cubikonFouBlast("⚡ Événement Cubikon Fou terminé ! Les Cubikons explosent, retour à la normale.");
+            }
+            adminJson(response, 200, { ok: true, active: false, detonated });
+            return;
+          }
+          // Activation (déjà actif / décompte en cours : rien à relancer).
+          if (isCubikonFouActive()) {
+            adminJson(response, 200, { ok: true, active: true });
+            return;
+          }
+          if (cubikonFouCountdownTimer != null) {
+            adminJson(response, 200, { ok: true, active: false, countdown: true });
+            return;
+          }
+          cubikonFouBlast(`⚡ ÉVÉNEMENT Cubikon Fou dans ${CUBIKON_FOU_COUNTDOWN_FROM}…`);
+          let left = CUBIKON_FOU_COUNTDOWN_FROM;
+          const tickCountdown = () => {
+            cubikonFouCountdownTimer = null;
+            left -= 1;
+            if (left > 0) {
+              cubikonFouBlast(`⚡ Cubikon Fou dans ${left}…`);
+              cubikonFouCountdownTimer = setTimeout(tickCountdown, 1000);
+              return;
+            }
+            setCubikonFouActive(true);
+            cubikonFouBlast("⚡ Cubikon Fou — C'EST PARTI ! 25× plus de Protegit !");
+          };
+          cubikonFouCountdownTimer = setTimeout(tickCountdown, 1000);
+          adminJson(response, 200, { ok: true, active: false, countdown: true });
           return;
         }
         if (pathname === "/api/admin/unban") {
@@ -915,6 +961,45 @@ const pvpFarm = new Map(); // anti-farm : "tueur|victime" -> { n, t0 } (rendemen
 const chatHistory = []; // global : [{ from, text, at }] (40 derniers)
 const chatLastById = new Map(); // anti-spam : id -> timestamp dernier message
 const clanChatLast = new Map(); // anti-spam tchat de clan : id -> timestamp
+
+// ---------------------------
+// Événement "Cubikon Fou" (admin) : Cubikons normaux mais 25x plus de
+// Protegit (voir NPC_ROOM). État mémoire seule (restart = retour normal).
+// Activation : décompte 5→1 en annonce globale puis GO.
+// Désactivation : annonce + explosion de TOUS les Cubikons (respawn normaux).
+// ---------------------------
+const CUBIKON_FOU_COUNTDOWN_FROM = 5;
+let cubikonFouCountdownTimer = null;
+
+function cubikonFouBlast(text) {
+  try {
+    const entry = { from: "[ADMIN]", text: String(text || "").slice(0, 200), at: Date.now(), by: "admin", adminBlast: true };
+    chatHistory.push(entry);
+    if (chatHistory.length > 40) chatHistory.splice(0, chatHistory.length - 40);
+    broadcastAll(JSON.stringify({ t: "chatMsg", ...entry }));
+  } catch {}
+}
+
+function cubikonFouCancelCountdown() {
+  if (cubikonFouCountdownTimer) {
+    try { clearTimeout(cubikonFouCountdownTimer); } catch {}
+    cubikonFouCountdownTimer = null;
+  }
+}
+
+function cubikonFouDetonateEverywhere() {
+  let total = 0;
+  const nowMs = Date.now();
+  try {
+    for (const [, sim] of npcSims) {
+      if (!sim || typeof sim.detonateAllCubikons !== "function") continue;
+      // Les sims peuvent être des promesses en cours de chargement.
+      if (typeof sim.then === "function") continue;
+      try { total += sim.detonateAllCubikons(nowMs) || 0; } catch {}
+    }
+  } catch {}
+  return total;
+}
 
 // Tchat de clan : diffusé aux membres connectés (rooms + instances).
 // Comparaison sur le tag en mémoire (rafraîchi au hello + ping 15 s).

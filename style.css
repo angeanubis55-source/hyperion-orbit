@@ -12082,6 +12082,9 @@ html body #profileOverlay .shipPreviewContainer {
 #profileOverlay .shopAmmoUnits span {
   color: #ffd56a !important;
 }
+#profileOverlay .shopAmmoUnits span.shopAmmoUnitWord {
+  color: #f4fbff !important;
+}
 #profileOverlay .shopBuySection {
   margin-top: 12px !important;
   padding-top: 12px !important;
@@ -14803,6 +14806,9 @@ html body #shopOverlay .shopPreviewContainer, html body #shopOverlay .shipPrevie
 }
 #shopOverlay .shopAmmoUnits span {
   color: #ffd56a !important;
+}
+#shopOverlay .shopAmmoUnits span.shopAmmoUnitWord {
+  color: #f4fbff !important;
 }
 #shopOverlay .shopQuantityBox > select {
   width: 100% !important;
