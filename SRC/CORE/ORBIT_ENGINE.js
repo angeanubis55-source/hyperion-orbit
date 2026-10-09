@@ -6490,6 +6490,34 @@ function breakCpuCloak(reason) {
   showNotification(reason === "iem" ? "CPU CL04K-XL dévoilé par une IEM !" : reason === "mindfire" ? "CPU CL04K-XL dissipé par le Mindfire !" : "CPU CL04K-XL désactivé (attaque)", 2, "info");
   try { updateSkillUI(); } catch {}
 }
+// ✅ Galaxy Gates : le camouflage ne suit pas dans la gate. Suspendu à
+// l'entrée (sans cooldown ni coût), restauré après la récompense ou
+// l'échec — uniquement si on est entré camouflé.
+let gateCloakSuspended = null;
+function suspendCloakForGate() {
+  if (gateCloakSuspended) return;
+  const cloakT = Math.max(0, Number(player.cloakT) || 0);
+  const cpu = player.cpuCloak === true;
+  if (cloakT <= 0 && cpu !== true) return;
+  gateCloakSuspended = { cloakT, cpu };
+  player.cloakT = 0;
+  if (cpu === true) {
+    player.cpuCloak = false;
+    try { persistCpuCloak(); } catch {}
+  }
+  try { showToast("Camouflage désactivé pour la Galaxy Gate", 1.6); } catch {}
+}
+function restoreCloakAfterGate() {
+  if (!gateCloakSuspended) return;
+  const saved = gateCloakSuspended;
+  gateCloakSuspended = null;
+  if (Math.max(0, Number(saved.cloakT) || 0) > 0) player.cloakT = Math.max(0, Number(saved.cloakT) || 0);
+  if (saved.cpu === true) {
+    player.cpuCloak = true;
+    try { persistCpuCloak(); } catch {}
+  }
+  try { showToast("Camouflage réactivé", 1.6); } catch {}
+}
 // Halo Mindfire : dissipe le camouflage du joueur (ultime + CPU).
 function stripCloakByMindfire() {
   if (player.dead) return;
@@ -10750,12 +10778,21 @@ function botNearestNpcInRange(maxD) {
   return best;
 }
 
+// Munition laser effective pour ce NPC : la configurée seulement si le
+// stock suit, sinon X1 (infini). Sans ce repli, le bot redemande la munition
+// vide à chaque frame (setAmmo + persist + UI) et écrase les FPS.
+function botEffectiveLaserAmmo(npc) {
+  const want = String(Bot.npcAmmo[String(npc?.type)] || "x1").toLowerCase();
+  if (want !== "x1" && AMMO[want] && ammoCount(want) > 0) return want;
+  return "x1";
+}
+
 // Munition configuree pour ce NPC (retombe sur X1 si stock vide).
 function botApplyNpcAmmo(npc) {
   const current = String(player.ammo.active || "").toLowerCase();
   if (Bot.x6Armed || (current === "sab" && Bot.sabPrev)) return;
-  const wantAmmo = Bot.npcAmmo[String(npc.type)] || "x1";
-  if (wantAmmo && AMMO[wantAmmo] && player.ammo.active !== wantAmmo) {
+  const wantAmmo = botEffectiveLaserAmmo(npc);
+  if (player.ammo.active !== wantAmmo) {
     try { setAmmo(wantAmmo); } catch {}
   }
 }
@@ -10775,7 +10812,12 @@ function botAutoSpecialAmmo(npc, d, engageMax) {
   // voler son ticket de retour : si on est en plein SAB, on y revient après).
   const npcAutoX6 = Bot.npcX6[String(npc.type)] === true;
   const npcAutoSab = Bot.npcSab[String(npc.type)] === true;
-  const configuredLaser = Bot.npcAmmo[String(npc.type)] || "x1";
+  // Laser de retour avec repli stock (config épuisée → X1) : évite de
+  // redemander chaque frame une munition vide (spam persist + UI, chute FPS).
+  const configuredRaw = String(Bot.npcAmmo[String(npc.type)] || "x1").toLowerCase();
+  const configuredLaser = configuredRaw !== "x1" && AMMO[configuredRaw] && ammoCount(configuredRaw) > 0
+    ? configuredRaw
+    : "x1";
   if (!npcAutoSab && cur === "sab" && !Bot.x6Armed) {
     Bot.sabPrev = "";
     Bot.x6BackToSab = false;
@@ -10805,10 +10847,12 @@ function botAutoSpecialAmmo(npc, d, engageMax) {
       let back = "";
       if (Bot.x6BackToSab === true) {
         Bot.x6BackToSab = false;
-        back = npcAutoSab && shieldUp ? "sab" : configuredLaser;
+        back = npcAutoSab && shieldUp && ammoCount("sab") > 0 ? "sab" : configuredLaser;
       } else {
-        back = Bot.specialPrev && AMMO[Bot.specialPrev] ? Bot.specialPrev : "";
+        const prev = Bot.specialPrev && AMMO[Bot.specialPrev] ? Bot.specialPrev : "";
         Bot.specialPrev = "";
+        // Le précédent peut s'être épuisé pendant le burst : repli stock.
+        back = prev && (prev === "x1" || ammoCount(prev) > 0) ? prev : configuredLaser;
       }
       if (back && back !== String(player.ammo.active || "").toLowerCase()) {
         try { startAttack(back); } catch {}
@@ -10827,8 +10871,10 @@ function botAutoSpecialAmmo(npc, d, engageMax) {
       return;
     }
     if (cur === "sab" && (!shieldUp || ammoCount("sab") <= 0)) {
-      const back = Bot.sabPrev && AMMO[Bot.sabPrev] ? Bot.sabPrev : "";
+      const prev = Bot.sabPrev && AMMO[Bot.sabPrev] ? Bot.sabPrev : "";
       Bot.sabPrev = "";
+      // Le précédent peut s'être épuisé pendant le SAB : repli stock.
+      const back = prev && (prev === "x1" || ammoCount(prev) > 0) ? prev : configuredLaser;
       if (back && back !== String(player.ammo.active || "").toLowerCase()) {
         try { startAttack(back); } catch {}
       }
@@ -10845,7 +10891,8 @@ function botClearSpecialAmmo() {
     back = Bot.sabPrev;
   }
   if (back && AMMO[back] && back !== "x6" && back !== "sab") {
-    try { setAmmo(back); } catch {}
+    // Repli stock : le précédent peut s'être épuisé (→ X1, converge).
+    try { setAmmo(back === "x1" || ammoCount(back) > 0 ? back : "x1"); } catch {}
   }
   Bot.specialPrev = "";
   Bot.sabPrev = "";
@@ -10941,7 +10988,7 @@ function botGrabBoxForFight(npc, standD) {
     // font alterner le point de mouvement a chaque tick.
     if (Bot.lastBoxId != null) {
       const current = collectables.find((c) => c && String(c.id) === String(Bot.lastBoxId));
-      if (current && Bot.boxAllow.has(String(current.type))) {
+      if (current && Bot.boxAllow.has(String(current.type)) && !botBoxBanned(current)) {
         const currentD2 = dist2(player.x, player.y, current.x, current.y);
         const currentNpcD = Math.hypot(current.x - npc.x, current.y - npc.y);
         const releaseR = BOT_GRAB_RADIUS + 120;
@@ -10979,8 +11026,27 @@ function botGrabBoxForFight(npc, standD) {
 
 function botNearestBox() {
   const found = nearestSpatialCollectable(player.x, player.y,
-    (c) => c && Bot.boxAllow.has(String(c.type)), Bot.boxRadius);
+    (c) => c && Bot.boxAllow.has(String(c.type)) && !botBoxBanned(c), Bot.boxRadius);
   return found ? { box: found.item, d2: found.d2 } : null;
+}
+
+// ✅ Box inatteignable (mur/bord/point de collecte bloqué) : le bot ne doit
+// jamais rester collé dessus. Ban temporaire + abandon après 5 s sans progrès.
+function botBoxBanned(box) {
+  try {
+    const until = Bot.boxBan?.[String(box?.id)];
+    if (until) {
+      if (Date.now() < until) return true;
+      delete Bot.boxBan[String(box.id)];
+    }
+  } catch {}
+  return false;
+}
+function botBoxBan(box, ms = 30000) {
+  try {
+    Bot.boxBan ||= {};
+    Bot.boxBan[String(box?.id)] = Date.now() + Math.max(1000, Number(ms) || 30000);
+  } catch {}
 }
 
 // Itinéraire physique entre deux maps via le graphe des portails (BFS).
@@ -11412,7 +11478,8 @@ function botTickGalaxyEnter(dt) {
       return true;
     }
     const nextHop = route[1] || homeMap;
-    const portalStep = (zonePortals || []).find((p) => String(p.toMap || "").toLowerCase() === nextHop);
+    // ✅ jamais de départ via un portail caché (marqueur d'arrivée d'aller simple).
+    const portalStep = (zonePortals || []).find((p) => !p?.hidden && String(p.toMap || "").toLowerCase() === nextHop);
     if (!portalStep) {
       Bot.status = "Galaxy Gates";
       Bot.target = `Portail vers ${nextHop.toUpperCase()} introuvable`;
@@ -11854,7 +11921,8 @@ function tickBot(dt) {
       return;
     }
     const nextHop = route[1] || wantMap;
-    const portal = (zonePortals || []).find((p) => String(p.toMap || "").toLowerCase() === nextHop);
+    // ✅ jamais de départ via un portail caché (marqueur d'arrivée d'aller simple).
+    const portal = (zonePortals || []).find((p) => !p?.hidden && String(p.toMap || "").toLowerCase() === nextHop);
     if (!portal) {
       Bot.status = `Voyage → ${Bot.targetMap.toUpperCase()}`;
       Bot.target = `Portail vers ${nextHop.toUpperCase()} introuvable ici`;
@@ -11892,7 +11960,7 @@ function tickBot(dt) {
   if (wantBox && Bot.lastBoxId != null) {
     try {
       lockedBox = collectables.find((box) => box && String(box.id) === String(Bot.lastBoxId)
-        && Bot.boxAllow.has(String(box.type))) || null;
+        && Bot.boxAllow.has(String(box.type)) && !botBoxBanned(box)) || null;
     } catch { lockedBox = null; }
   }
   const selectedBox = lockedBox
@@ -12257,6 +12325,30 @@ function tickBot(dt) {
     botApplyFormation(Bot.formCollect || Bot.formMove);
     botApplyConfig(Bot.cfgCollect || Bot.cfgFly);
     const d = Math.hypot(box.x - player.x, box.y - player.y);
+    // ✅ anti-freeze : aucune progression vers la box depuis 5 s (mur, bord,
+    // point de collecte bloqué) => ban 30 s + suivante, au lieu de rester collé.
+    const boxId = String(box.id);
+    if (Bot.boxStuckId !== boxId || d > Bot.boxStuckBest + 200) {
+      Bot.boxStuckId = boxId;
+      Bot.boxStuckBest = d;
+      Bot.boxStuckT = 0;
+    } else if (d < Bot.boxStuckBest - 5) {
+      Bot.boxStuckBest = d;
+      Bot.boxStuckT = 0;
+    } else {
+      Bot.boxStuckT = Math.max(0, Number(Bot.boxStuckT) || 0) + Math.max(0, Number(dt) || 0);
+      if (Bot.boxStuckT > 5) {
+        try { botBoxBan(box); } catch {}
+        try { if (collectableTargetId === box.id) cancelCollectableTarget(); } catch {}
+        Bot.lastBoxId = null;
+        Bot.boxStuckId = null;
+        Bot.boxStuckT = 0;
+        Bot.boxStuckBest = 0;
+        Bot.status = Bot.mode === "collect" ? "Collecte — box inaccessible, suivante" : "Farm — box inaccessible, suivante";
+        botRefreshHudThrottled(dt);
+        return;
+      }
+    }
     const boxName = String(COLLECTABLE_TYPES[box.type]?.name || box.type || "Box");
     // Simultané : on lock et on tire dès que ça porte, SANS quitter la box.
     // Le vaisseau continue vers la collecte pendant que les lasers partent.
@@ -14292,6 +14384,8 @@ function purgeNpcsForJump() {
 
 function startZonePortalJump(ptl, entryConfirmed = false) {
   if (!ptl || ptl.jumping) return false;
+  // ✅ portail caché = marqueur d'arrivée d'un aller simple, jamais un départ.
+  if (ptl.hidden === true) return false;
   // Raid Low : pas de sortie pendant une vague (le portail est masqué,
   // ceci est le garde-fou pour les déclenchements directs comme le bot).
   if (ptl.factionReturn === true && isLowRaidRunning()) {
@@ -14401,6 +14495,8 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
     }
     account.user = access.user;
     renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[gateId].name} activée`);
+    // ✅ pas de camouflage dans la gate (restauré après récompense/échec).
+    try { suspendCloakForGate(); } catch {}
     // ✅ arrivée de l'autre côté = son "saut terminée" (comme les portails de zone).
     try { sessionStorage.setItem("orbit_gate_jump", "1"); } catch {}
   }
@@ -18700,7 +18796,10 @@ function mirrorConsumedStock(field, id, value) {
 function setAmmo(key, { persist = true } = {}) {
   if (!AMMO[key]) return;
   if (key !== "x1" && ammoCount(key) <= 0) key = "x1";
-  if (player.ammo.active !== key) player.ammo.active = key;
+  // Déjà actif : rien à faire (anti-spam : évite persist + UI à chaque frame
+  // quand le bot redemande la munition courante).
+  if (player.ammo.active === key) return;
+  player.ammo.active = key;
   if (persist) {
     // Persiste les choix du joueur, jamais une simple restauration du compte.
     markProgressDirty();
@@ -18718,6 +18817,10 @@ function setAmmo(key, { persist = true } = {}) {
   updateAmmoUI();
 }
 
+// Anti-spam de la notification de bascule X1 (une par épuisement).
+let ammoFallbackNotifiedKey = "";
+let ammoFallbackNotifiedAt = 0;
+
 function consumeAmmo(shots) {
   const k = player.ammo.active;
   if (k === "x1") return;
@@ -18727,6 +18830,16 @@ function consumeAmmo(shots) {
   mirrorConsumedStock("ammo", k, player.ammo[k]);
   if (player.ammo[k] <= 0 && player.ammo.active !== "x1") {
     player.ammo.active = "x1";
+    // Bascule visible : une seule notification par épuisement (pas de spam,
+    // même pattern que les roquettes). Throttle si le stock oscille à 0.
+    try {
+      const now = Date.now();
+      if (ammoFallbackNotifiedKey !== k || now - ammoFallbackNotifiedAt > 8000) {
+        ammoFallbackNotifiedKey = k;
+        ammoFallbackNotifiedAt = now;
+        showNotification(`Plus de ${BOT_AMMO_NAMES[k] || String(k).toUpperCase()} — retour X1.`, 2.5, "info");
+      }
+    } catch {}
     // Bascule persistée (événement rare : une seule fois par épuisement) :
     // sinon le stockage garde l'ancienne munition et le prochain sync y revient.
     try {
@@ -23396,6 +23509,18 @@ function boxCollectPointClear(x, y) {
   return true;
 }
 
+// Marge jouable : une box naît toujours en zone collectable (150px des
+// bords + hors murs, point de collecte inclus), y compris en radiation
+// (le bot ne peut rien récolter hors map).
+const BOX_SPAWN_BORDER = 150;
+function clampBoxToPlayable(x, y) {
+  const cx = Number(x) || 0, cy = Number(y) || 0;
+  return {
+    x: clamp(cx, BOX_SPAWN_BORDER, Math.max(BOX_SPAWN_BORDER, WORLD.w - BOX_SPAWN_BORDER)),
+    y: clamp(cy, BOX_SPAWN_BORDER, Math.max(BOX_SPAWN_BORDER, WORLD.h - BOX_SPAWN_BORDER)),
+  };
+}
+
 // Repousse une box + son point de collecte hors des murs.
 // Retourne { x, y } corrigés (jamais dans un mur, point de collecte atteignable).
 function resolveBoxOutsideWalls(x, y, boxR) {
@@ -23431,9 +23556,15 @@ function pushNetBoxInstance(box) {
   let _nx = clamp(Number(box.x) || 0, 80, WORLD.w - 80);
   let _ny = clamp(Number(box.y) || 0, 80, WORLD.h - 80);
   try {
+    const _playable = clampBoxToPlayable(_nx, _ny);
+    _nx = _playable.x;
+    _ny = _playable.y;
+  } catch {}
+  try {
     const _fixed = resolveBoxOutsideWalls(_nx, _ny, Number(cfg.r ?? cfg.radius ?? 32) + 8);
-    _nx = clamp(_fixed.x, 80, WORLD.w - 80);
-    _ny = clamp(_fixed.y, 80, WORLD.h - 80);
+    const _reclamped = clampBoxToPlayable(_fixed.x, _fixed.y);
+    _nx = _reclamped.x;
+    _ny = _reclamped.y;
   } catch {}
   collectables.push({
     id: newId(),
@@ -23464,14 +23595,20 @@ function pushAmbientCollectableInstance(slot, mapId) {
   const frames = Math.max(1, Number(sp.frames || 1));
   let bx = clamp(Number(slot.x) || 0, 80, WORLD.w - 80);
   let by = clamp(Number(slot.y) || 0, 80, WORLD.h - 80);
+  try {
+    const _playable = clampBoxToPlayable(bx, by);
+    bx = _playable.x;
+    by = _playable.y;
+  } catch {}
   // Slots persistés avant l'ajout des murs (ex : 5-2) : afficher loin du
   // mur, jamais dedans, sinon la box est non récoltable (point de collecte
   // 70px au-dessus inatteignable).
   const boxR = Number(cfg.r ?? cfg.radius ?? 32) + 8;
   try {
     const fixed = resolveBoxOutsideWalls(bx, by, boxR);
-    bx = clamp(fixed.x, 80, WORLD.w - 80);
-    by = clamp(fixed.y, 80, WORLD.h - 80);
+    const reclamped = clampBoxToPlayable(fixed.x, fixed.y);
+    bx = reclamped.x;
+    by = reclamped.y;
   } catch {}
   collectables.push({
     id: newId(),
@@ -23800,18 +23937,20 @@ function spawnCollectableAt(type, x, y, opts = {}) {
 
   const sp = cfg.sprite || {};
   const frames = Math.max(1, Number(sp.frames || 1));
-  let cx = clamp(x, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
-  let cy = clamp(y, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
+  // ✅ zone collectable garantie : marge bords + hors murs (radiation : point de chute).
+  let playable = null;
+  try { playable = clampBoxToPlayable(x, y); } catch { playable = null; }
+  let cx = playable ? playable.x : clamp(x, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
+  let cy = playable ? playable.y : clamp(y, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
   // Jamais dans un mur (zones grises) : un NPC tué dans un caillou doit
   // laisser son cargo / soleil loin du mur, sinon le point de collecte
   // (70px au-dessus) est inatteignable et la box non récoltable.
   try {
     const fixed = resolveBoxOutsideWalls(cx, cy, Number(cfg.r ?? cfg.radius ?? 32) + 8);
-    cx = fixed.x;
-    cy = fixed.y;
+    const reclamped = clampBoxToPlayable(fixed.x, fixed.y);
+    cx = reclamped.x;
+    cy = reclamped.y;
   } catch {}
-  cx = clamp(cx, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
-  cy = clamp(cy, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
   const despawnAfter = collectableDropLifetimeSec(type, opts.despawnAfter);
 
   const instance = {
@@ -26644,6 +26783,8 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
     ];
     showNotificationGroup(messages, "reward");
     addGameLog(`${gateName} · ${messages.join(" · ")}`, "reward");
+    // ✅ camouflage suspendu à l'entrée : restauré juste après la récompense.
+    try { restoreCloakAfterGate(); } catch {}
   }, 3000);
 
   scheduleCountdown(3700);
@@ -30069,6 +30210,8 @@ function die() {
         // inaccessible puisque la gate n'existe plus).
         try { purgeGateCollectables(defeatedGateId); } catch {}
         showNotificationGroup([`Galaxy Gate ${gateName} perdue`, "Il ne vous reste plus aucune vie."]);
+        // ✅ camouflage suspendu à l'entrée : restauré aussi en cas d'échec.
+        try { restoreCloakAfterGate(); } catch {}
       }
       else showNotificationGroup([`Vaisseau détruit dans la Galaxy Gate ${gateName}`, `${lifeResult.lives} vie${lifeResult.lives > 1 ? "s" : ""} restante${lifeResult.lives > 1 ? "s" : ""}`]);
       renderGalaxyGateWindow();
@@ -32328,7 +32471,8 @@ function drawZonePortals(ox, oy) {
     );
 
     // ✅ aperçu destination dans l'anneau (ex. Saturne Kronos) : disque
-    // clippé (forme du mask), dérive lente + parallaxe selon le vaisseau.
+    // clippé, image fixe centrée au ratio natif. Dessiné SOUS l'idle et
+    // SOUS l'animation de saut (ordre : aperçu → idle → jump).
     try {
       const preview = spr.portalPreview;
       if (preview?.image) {
@@ -32350,16 +32494,14 @@ function drawZonePortals(ox, oy) {
           ctx.drawImage(previewImg, x - drawW / 2, y - drawH / 2, drawW, drawH);
           ctx.restore();
           ctx.globalAlpha = 1;
-          ctx.drawImage(previewImg, x - (drawW * growK) / 2, y - (drawH * growK) / 2, drawW * growK, drawH * growK);
-          ctx.restore();
-          ctx.globalAlpha = 1;
         }
       }
     } catch {}
 
     // Option "Animations des portails" : ON = respiration continue de
-    // l'ACTIVE par-dessus la DESACTIVE (coupée pendant le saut : ACTIVE
-    // fixe + sprite jump) ; OFF (défaut) = toujours ACTIVE fixe.
+    // l'ACTIVE par-dessus la DESACTIVE (coupée pendant le saut sauf boucle
+    // idle animée type Kronos : le jump joue par-dessus l'idle) ; OFF
+    // (défaut) = toujours ACTIVE fixe.
     let portalAnimsOn = true;
     try { portalAnimsOn = GAME_SETTINGS.portalAnims === true; } catch {}
     if (portalAnimsOn && !ptl.jumping) {
@@ -32395,9 +32537,18 @@ function drawZonePortals(ox, oy) {
       const openYOff = Number(spr.open.yOff || 0);
       let openAlpha = 1;
       if (ptl.jumping && portalAnimsOn) {
-        const nowMs = performance.now();
-        const breatheA = 0.5 - 0.5 * Math.cos(nowMs / 1000 * TAU / 2.4 + (Number(ptl.x) + Number(ptl.y)) * 0.01);
-        openAlpha = breatheA + (1 - breatheA) * clamp(jumpFade, 0, 1);
+        // ✅ boucle idle animée (ex. Kronos idle_01..06) : le FX de saut joue
+        // PAR-DESSUS l'idle, sans le remplacer ni l'effacer (alpha 1 continu).
+        const openAnimLoop = spr.open && Number(spr.open.frames) > 1 && spr.open.path;
+        if (openAnimLoop) {
+          openAlpha = 1;
+        } else {
+          const nowMs = performance.now();
+          const breatheA = 0.5 - 0.5 * Math.cos(nowMs / 1000 * TAU / 2.4 + (Number(ptl.x) + Number(ptl.y)) * 0.01);
+          // ✅ passation douce idle -> jump : le vortex s'efface pendant que le
+          // FX de saut monte (plus de superposition brutale). Continu à fade=0.
+          openAlpha = breatheA + (1 - breatheA) * clamp(jumpFade, 0, 1) * 0.25;
+        }
       }
       ctx.globalAlpha = clamp(openAlpha, 0, 1);
       ctx.drawImage(
@@ -39882,10 +40033,11 @@ if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[currentGateMapId] && cur.g
   // ✅ alternance libre : l'accès direct (URL) à une gate déployée ou déjà
   // commencée bascule dessus au lieu de renvoyer à la base mère.
   const directAccess = consumeCurrentUserGalaxyGate(currentGateMapId);
-  if (directAccess.ok) {
-    account.user = directAccess.user;
-    renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[currentGateMapId].name} activée`);
-  } else {
+    if (directAccess.ok) {
+      account.user = directAccess.user;
+      renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[currentGateMapId].name} activée`);
+      try { suspendCloakForGate(); } catch {}
+    } else {
     const homeMap = getFactionHomeMap(cur.faction);
     showToast("Galaxy Gate non construite", 1.5);
     window.__GO_TO_MAP__?.(homeMap);

@@ -4,9 +4,10 @@ import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 // UI/UI_TDM.js — Fenêtre Inventaire : rend le même inventaire que l'Espace
 // pilote (mêmes sections, icônes, quantités, tooltips — builders partagés de
 // PUBLIC/PROFILE.js), de façon indépendante, avec switch par catégorie +
-// recherche + pagination.
+// recherche + filtre vaisseau (modules possédés) + pagination.
 
 import { getCurrentUserFull, sellItem, sellShipModules, sellUnitPrice, shipModuleGroupKey } from "../SRC/CORE/ACCOUNT.js";
+import { getShipPackById, getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
 import { inventoryPage } from "./UI_INVENTORY.js";
 import { escapeHtml } from "./UI_DOM.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
@@ -26,9 +27,15 @@ const TABS = [
 
 let activeTab = "all";
 let searchQuery = "";
+let shipFilter = "";
+// Faculté de module : "" (tous), "hp", "shd", "dmg" ou "spc".
+let typeFilter = "";
+const MODULE_TYPE_IDS = ["hp", "shd", "dmg", "spc"];
+const MODULE_TYPE_NAMES = { hp: "HP · PV", shd: "SHD · Bouclier", dmg: "DMG · Dégâts", spc: "SPC · Spécial" };
 let pageIndex = 0;
 let pagerEl = null;
 let lastSignature = "";
+let lastShipOptionsKey = "";
 // Sélection unique pour la vente : clé stable "kind:id".
 const selectedKeys = new Set();
 // Snapshot frais des entrées affichées (module objet inclus), par clé.
@@ -92,12 +99,13 @@ function slotHtml(b, entry) {
   const quantity = entry.quantityLabel || b.inventoryQuantityLabel(entry.quantity);
   const rarity = b.inventoryEntryRarity(entry);
   entry.rarity = rarity;
-  const richTip = entry.kind === "module" ? b.htmlForDataAttr(b.inventoryModuleTooltipHtml(entry)) : "";
+  const isMod = entry.kind === "module";
+  const richTip = isMod ? b.htmlForDataAttr(b.inventoryModuleTooltipHtml(entry)) : "";
   const tip = b.inventoryTooltipText(entry);
   const key = slotKey(entry);
   const selected = selectedKeys.has(key) ? " selected" : "";
-  return `<article class="inventorySlot rarity-${escapeHtml(rarity.id)}${selected}" data-key="${escapeHtml(key)}" data-entry-id="${escapeHtml(String(entry.id ?? ""))}" data-quantity="${escapeHtml(String(entry.quantity ?? ""))}" data-rarity="${escapeHtml(rarity.id)}" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(tip)}"${richTip ? ` data-tooltip-html="${richTip}"` : ""} tabindex="0" aria-label="${escapeHtml(tip.replace(/\n/g, ". "))}">`
-    + `<img src="${escapeHtml(b.inventoryItemIcon(entry))}" alt="" />`
+  return `<article class="inventorySlot rarity-${escapeHtml(rarity.id)}${selected}${isMod ? " is-module" : ""}" data-key="${escapeHtml(key)}" data-entry-id="${escapeHtml(String(entry.id ?? ""))}" data-quantity="${escapeHtml(String(entry.quantity ?? ""))}" data-rarity="${escapeHtml(rarity.id)}" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(tip)}"${richTip ? ` data-tooltip-html="${richTip}"` : ""} tabindex="0" aria-label="${escapeHtml(tip.replace(/\n/g, ". "))}">`
+    + (isMod && b.inventoryModuleCardHtml ? b.inventoryModuleCardHtml(entry) : `<img src="${escapeHtml(b.inventoryItemIcon(entry))}" alt="" />`)
     + `${stacked ? `<span class="inventorySlotQuantity">${escapeHtml(quantity)}</span>` : ""}`
     + `</article>`;
 }
@@ -267,6 +275,104 @@ function confirmSellDialog() {
   } catch {}
 }
 
+// Vaisseaux pour lesquels on possède des modules (triés par nom) + comptage.
+// Un vaisseau sans module n'apparaît jamais dans la liste.
+function moduleShipOptions(user) {
+  const counts = new Map();
+  for (const m of user?.inventory?.shipModules || []) {
+    const id = String(m?.shipId || "");
+    if (!id) continue;
+    counts.set(id, (counts.get(id) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([id, count]) => {
+      let name = "";
+      try { name = getShipPackById(id)?.name || ""; } catch {}
+      return { id, name: name || id, count };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+}
+
+// Nombre max de lignes visibles du menu déroulant (le reste via scrollbar).
+const SHIP_FILTER_MAX_ROWS = 10;
+let lastShipOptions = [];
+let lastShipFilterShown = null;
+
+// Libellé du bouton : "Tous les vaisseaux" ou "Nom (n)".
+function shipFilterLabel(options) {
+  if (!shipFilter) return "Tous les vaisseaux";
+  const found = (options || lastShipOptions).find((o) => o.id === shipFilter);
+  return found ? `${found.name} (${found.count})` : "Tous les vaisseaux";
+}
+
+// Reconstruit le menu déroulant vaisseaux (sans toucher au DOM si rien
+// n'a changé). La sélection est conservée si elle existe encore, sinon
+// retour à "Tous".
+function refreshShipFilter(user) {
+  const btn = $("tdmShipBtn");
+  const popup = $("tdmShipPopup");
+  const label = $("tdmShipBtnLabel");
+  if (!btn || !popup) return;
+  const options = moduleShipOptions(user);
+  lastShipOptions = options;
+  if (shipFilter && !options.some((o) => o.id === shipFilter)) shipFilter = "";
+  const key = options.map((o) => `${o.id}:${o.count}`).join("|");
+  if (key !== lastShipOptionsKey) {
+    lastShipOptionsKey = key;
+    popup.innerHTML = `<div class="tdmShipOpt" data-ship="" role="option" aria-selected="${!shipFilter}">Tous les vaisseaux</div>`
+      + options.map((o) => `<div class="tdmShipOpt" data-ship="${escapeHtml(o.id)}" role="option" aria-selected="${o.id === shipFilter}">${escapeHtml(o.name)} (${o.count})</div>`).join("");
+    lastShipFilterShown = shipFilter;
+  } else if (lastShipFilterShown !== shipFilter) {
+    lastShipFilterShown = shipFilter;
+    for (const el of popup.querySelectorAll(".tdmShipOpt")) {
+      const active = String(el.getAttribute("data-ship") || "") === shipFilter;
+      el.classList.toggle("selected", active);
+      el.setAttribute("aria-selected", String(active));
+    }
+  }
+  if (label) {
+    const text = shipFilterLabel(options);
+    if (label.textContent !== text) label.textContent = text;
+  }
+}
+
+// Ouverture / fermeture du menu (aria-expanded synchronisé).
+function setShipPopupOpen(open) {
+  const btn = $("tdmShipBtn");
+  const popup = $("tdmShipPopup");
+  if (!btn || !popup) return;
+  popup.hidden = !open;
+  btn.setAttribute("aria-expanded", String(!!open));
+}
+
+function isShipPopupOpen() {
+  const popup = $("tdmShipPopup");
+  return !!popup && !popup.hidden;
+}
+
+// Un filtre faculté actif ne garde que les modules de ce type
+// (tout le reste est masqué, quel que soit l'onglet).
+function entryMatchesType(entry) {
+  if (!typeFilter) return true;
+  if (!entry || typeof entry !== "object") return false;
+  return entry.kind === "module" && String(entry.module?.type || "") === typeFilter;
+}
+
+// Un filtre vaisseau actif ne garde que le vaisseau lui-même, ses designs
+// et ses modules (tout le reste est masqué, quel que soit l'onglet).
+function entryMatchesShip(entry) {
+  if (!shipFilter) return true;
+  if (!entry || typeof entry !== "object") return false;
+  if (entry.kind === "module") return String(entry.module?.shipId || "") === shipFilter;
+  if (entry.kind === "ship") return String(entry.id || "") === shipFilter;
+  if (entry.kind === "shipDesign") {
+    const id = String(entry.id || "");
+    if (id === shipFilter) return true;
+    try { return String(getShipDesignBaseId(id) || "") === shipFilter; } catch { return false; }
+  }
+  return false;
+}
+
 async function render() {
   if (!shouldRefreshWindow("tdmWindow")) return;
   const dst = $("tdmInventorySections");
@@ -304,11 +410,14 @@ async function render() {
 
   const tab = TABS.find((t) => t.id === activeTab) || TABS[0];
   const q = searchQuery.trim().toLocaleLowerCase("fr");
+  refreshShipFilter(user);
   const filtered = sections.map((section) => ({
     ...section,
     items: (section.items || []).filter((entry) => {
       if (tab.kinds && !tab.kinds.includes(entry.kind)) return false;
       if (q && !`${entry.name} ${entry.detail} ${entry.id} ${entry.searchText || ""}`.toLocaleLowerCase("fr").includes(q)) return false;
+      if (!entryMatchesShip(entry)) return false;
+      if (!entryMatchesType(entry)) return false;
       return true;
     }),
   }));
@@ -322,7 +431,7 @@ async function render() {
   // Même optimisation que l'Espace pilote : données inchangées = pas de rebuild DOM.
   let signature = "";
   try {
-    signature = JSON.stringify([activeTab, q, pageIndex, filtered]);
+    signature = JSON.stringify([activeTab, q, shipFilter, typeFilter, pageIndex, filtered]);
   } catch {}
   if (signature && signature === lastSignature) return;
   lastSignature = signature;
@@ -330,7 +439,7 @@ async function render() {
   hideTooltip();
   dst.innerHTML = result.slots.length
     ? result.slots.map((entry) => slotHtml(b, entry)).join("")
-    : emptyHtml(q || activeTab !== "all" ? "Aucun résultat." : "Aucun élément possédé.");
+    : emptyHtml(q || shipFilter || typeFilter || activeTab !== "all" ? "Aucun résultat." : "Aucun élément possédé.");
 }
 
 function hideTooltip() {
@@ -408,6 +517,37 @@ export function initTdmUI() {
 
   search?.addEventListener("input", () => {
     searchQuery = search.value || "";
+    pageIndex = 0;
+    void render();
+  });
+
+  // Menu déroulant vaisseaux : ouvrir / fermer + sélection.
+  $("tdmShipBtn")?.addEventListener("click", () => {
+    setShipPopupOpen(!isShipPopupOpen());
+  });
+  $("tdmShipPopup")?.addEventListener("click", (event) => {
+    const opt = event.target instanceof Element ? event.target.closest(".tdmShipOpt") : null;
+    if (!opt) return;
+    shipFilter = String(opt.getAttribute("data-ship") || "");
+    pageIndex = 0;
+    setShipPopupOpen(false);
+    void render();
+  });
+  // Clic ailleurs / Échap : referme le menu.
+  document.addEventListener("click", (event) => {
+    if (!isShipPopupOpen()) return;
+    const combo = document.getElementById("tdmShipCombo");
+    if (combo && event.target instanceof Element && combo.contains(event.target)) return;
+    setShipPopupOpen(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && isShipPopupOpen()) setShipPopupOpen(false);
+  });
+
+  // Faculté de module (HP / SHD / DMG / SPC) : natif, 5 options fixes.
+  $("tdmTypeFilter")?.addEventListener("change", (event) => {
+    const v = String(event?.target?.value || "").toLowerCase();
+    typeFilter = MODULE_TYPE_IDS.includes(v) ? v : "";
     pageIndex = 0;
     void render();
   });

@@ -17,6 +17,11 @@ import {
   buyAndAddShipModule,
   buyAndReplaceShipModule,
   moduleDailyRollInfo,
+  moduleRerollInvested,
+  shipModuleGroupKey,
+  getFitPresets,
+  saveFitPreset,
+  deleteFitPreset,
   updateCurrentUserEmail,
   updateCurrentUserPseudo,
   updateCurrentUserPetPseudo,
@@ -801,6 +806,8 @@ function generateShipModule(user, opts = {}) {
     rarity,
     iconKey: `${type}-${tier}`,
     createdAt: now,
+    rerolls: 0,
+    rerollCredits: 0,
   };
 }
 
@@ -1083,12 +1090,15 @@ function buildInventorySections(u) {
     }
   }
 
-  // Modules strictement identiques (mêmes stats) groupés en un slot ×n.
+  // Modules strictement identiques (mêmes stats + même historique crédits)
+  // groupés en un slot ×n (même clé que la vente : shipModuleGroupKey).
   const moduleGroups = new Map();
   (u?.inventory?.shipModules || []).forEach((module, index) => {
     const compatibleShip = getShipPack(module?.shipId);
     const rarityMeta = moduleRarityMeta(module);
-    const key = JSON.stringify({ t: module?.type || "", tier: module?.tier || "", ship: module?.shipId || "", b: module?.bonuses || [] });
+    let key = "";
+    try { key = shipModuleGroupKey(module); }
+    catch { key = JSON.stringify({ t: module?.type || "", tier: module?.tier || "", ship: module?.shipId || "", b: module?.bonuses || [] }); }
     const existing = moduleGroups.get(key);
     if (existing) {
       existing.quantity += 1;
@@ -1298,6 +1308,24 @@ function inventoryModuleTooltipHtml(entry) {
   return parts.join("");
 }
 
+// Carte module à taille fixe (inventaire) : icône module + image vaisseau
+// + stats en colonne (vert bonus / rouge malus). Sans nom, rareté ni texte
+// vaisseau (détails dans l'infobulle). Utilisée par l'Espace pilote et la
+// fenêtre Inventaire en jeu (même rendu, pas un carré).
+function inventoryModuleCardHtml(entry) {
+  const module = entry?.module || {};
+  const bonuses = Array.isArray(module?.bonuses) ? module.bonuses : [];
+  const stats = bonuses.length ? bonuses.map((bonus) => {
+    const pct = Number(bonus?.pct || 0);
+    const sign = pct > 0 ? "+" : "";
+    const cls = pct > 0 ? "invModPos" : pct < 0 ? "invModNeg" : "invModLine";
+    return `<span class="${cls}">${escapeHtml(`${sign}${formatNumber(pct)}% ${formatStatLabel(bonus?.stat)}`)}</span>`;
+  }).join("") : `<span class="invModLine">Aucun bonus</span>`;
+  return `<img class="invModIcon" src="${escapeHtml(moduleIconSrc(module?.type, module?.tier))}" alt="" />`
+    + `<img class="invModShip" src="${escapeHtml(shipPreviewSrc(module?.shipId))}" alt="" />`
+    + `<span class="invModStats">${stats}</span>`;
+}
+
 // Encode un fragment HTML pour un attribut data-* : les textes sont déjà
 // échappés en amont (entités présentes), on ne protège que les guillemets.
 function htmlForDataAttr(html) {
@@ -1369,9 +1397,10 @@ function renderInventoryMeasured(u) {
       const quantity = entry.quantityLabel || inventoryQuantityLabel(entry.quantity);
       const rarity = inventoryEntryRarity(entry);
       entry.rarity = rarity;
-      const richTip = entry.kind === "module" ? htmlForDataAttr(inventoryModuleTooltipHtml(entry)) : "";
-      return `<article class="inventorySlot rarity-${escapeHtml(rarity.id)}" data-rarity="${escapeHtml(rarity.id)}" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(inventoryTooltipText(entry))}"${richTip ? ` data-tooltip-html="${richTip}"` : ""} tabindex="0" aria-label="${escapeHtml(inventoryTooltipText(entry).replace(/\n/g, ". "))}">
-        <img src="${escapeHtml(inventoryItemIcon(entry))}" alt="" />
+      const isMod = entry.kind === "module";
+      const richTip = isMod ? htmlForDataAttr(inventoryModuleTooltipHtml(entry)) : "";
+      return `<article class="inventorySlot rarity-${escapeHtml(rarity.id)}${isMod ? " is-module" : ""}" data-rarity="${escapeHtml(rarity.id)}" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(inventoryTooltipText(entry))}"${richTip ? ` data-tooltip-html="${richTip}"` : ""} tabindex="0" aria-label="${escapeHtml(inventoryTooltipText(entry).replace(/\n/g, ". "))}">
+        ${isMod ? inventoryModuleCardHtml(entry) : `<img src="${escapeHtml(inventoryItemIcon(entry))}" alt="" />`}
         ${stacked ? `<span class="inventorySlotQuantity">${escapeHtml(quantity)}</span>` : ""}
       </article>`;
     }).join("") : `<div class="inventoryEmpty">${query ? "Aucun résultat." : "Aucun élément possédé."}</div>`;
@@ -2786,6 +2815,7 @@ function renderExtrasRoulette(user) {
     if (!u2) { setMsg("Non connecté.", false); return; }
     const mod = generateShipModule(u2);
     mod.rerolls = 0;
+    mod.rerollCredits = 0;
 
     const saved = buyAndAddShipModule(MODULE_ROLL_COST, mod, { payWith: "credits" });
     if (!saved?.ok) {
@@ -2871,8 +2901,12 @@ function renderExtrasRoulette(user) {
     };
     user = getCurrentUserFull();
     if (!user) { setMsg("Non connecté.", false); return; }
-    const owned = (user?.inventory?.shipModules || []).some((m) => String(m?.id) === String(oldId));
-    if (!owned) { setMsg("Module plus en inventaire : relance impossible.", false); return; }
+    const oldModule = (user?.inventory?.shipModules || []).find((m) => String(m?.id) === String(oldId));
+    if (!oldModule) { setMsg("Module plus en inventaire : relance impossible.", false); return; }
+    // Source de vérité : le module en inventaire (pas le snapshot UI).
+    // rerolls sert à la progression du coût, rerollCredits aux crédits
+    // réellement dépensés (tickets exclus de la revente).
+    const liveRerolls = Number(oldModule?.rerolls ?? oldRerolls) || 0;
 
     const newMod = generateShipModule(user, {
       shipId: snap.shipId,
@@ -2882,7 +2916,9 @@ function renderExtrasRoulette(user) {
       statCount: snap.statCount,
     });
     // Le compteur de relances est persisté sur le module lui-même.
-    newMod.rerolls = oldRerolls + 1;
+    newMod.rerolls = liveRerolls + 1;
+    // buyAndReplaceShipModule recalcule rerollCredits (ticket = +0,
+    // crédits = +cost) à partir de l'ancien module : on ne pré-remplit pas.
 
     // Relance : ticket automatique si dispo, sinon crédits (pas de choix).
     const repl = buyAndReplaceShipModule(cost, oldId, newMod);
@@ -4581,25 +4617,34 @@ function isItemAllowedInSlot(slotType, itemId) {
 }
 
 // -------------------- Presets --------------------
-function presetStorageKey(u, hangarId) {
-  const uid = String(u?.email || u?.pseudo || "guest");
-  return `orbit_fit_presets:${uid}:${String(hangarId || "")}`;
-}
-
+// Presets persistés dans le compte (clé stable : hangarId), avec migration
+// automatique de l'ancien localStorage `orbit_fit_presets:*`.
 function loadPresets(u, hangarId) {
   try {
-    const raw = localStorage.getItem(presetStorageKey(u, hangarId));
-    const obj = raw ? JSON.parse(raw) : {};
-    return obj && typeof obj === "object" ? obj : {};
+    const presets = getFitPresets(hangarId);
+    return presets && typeof presets === "object" ? presets : {};
   } catch {
     return {};
   }
 }
 
-function savePresets(u, hangarId, presetsObj) {
-  try {
-    localStorage.setItem(presetStorageKey(u, hangarId), JSON.stringify(presetsObj || {}));
-  } catch {}
+// Un preset peut référencer des objets vendus depuis : on neutralise les ids
+// morts au chargement (catalogue disparu ou module roulette vendu).
+function sanitizePresetDraft(p, currentUser) {
+  const ownedMods = new Set((currentUser?.inventory?.shipModules || []).map((m) => String(m?.id)));
+  const cleanList = (arr, isMod) => (Array.isArray(arr) ? arr : []).map((id) => {
+    if (id == null) return null;
+    const key = String(id);
+    if (!key) return null;
+    if (isMod) return ownedMods.has(key) ? key : null;
+    return findCatalogItem(key) ? key : null;
+  });
+  return {
+    lasers: cleanList(p?.lasers, false),
+    gens: cleanList(p?.gens, false),
+    extras: cleanList(p?.extras, false),
+    shipMods: cleanList(p?.shipMods, true),
+  };
 }
 
 function refreshPresetSelect() {
@@ -4616,6 +4661,7 @@ function refreshPresetSelect() {
     opt.textContent = n;
     sel.appendChild(opt);
   }
+  sel.value = "";
 }
 
 function resetAllSlots() {
@@ -5762,9 +5808,9 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
     btnSavePreset.onclick = () => {
       const name = String(inpPresetName.value || "").trim();
       if (!name) return showFitError("Donne un nom au preset");
-      const presets = loadPresets(user, fitState.hangarId);
-      presets[name] = structuredClone(fitState.draft);
-      savePresets(user, fitState.hangarId, presets);
+      const res = saveFitPreset(fitState.hangarId, name, structuredClone(fitState.draft));
+      if (!res?.ok) return showFitError(res?.error || "Sauvegarde impossible");
+      user = getCurrentUserFull() || res.user || user;
       inpPresetName.value = "";
       showFitError("");
       refreshPresetSelect();
@@ -5780,9 +5826,10 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
       const key = String(selPreset.value || "");
       if (!key) return showFitError("Choisis un preset");
       const presets = loadPresets(user, fitState.hangarId);
-      const p = presets[key];
-      if (!p) return showFitError("Preset introuvable");
+      const raw = presets[key];
+      if (!raw) return showFitError("Preset introuvable");
 
+      const p = sanitizePresetDraft(raw, user);
       fitState.draft = {
         lasers: normalizeFitArray(p.lasers, fitState.slots.lasers),
         gens: normalizeFitArray(p.gens, fitState.slots.gens),
@@ -5805,11 +5852,9 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
     btnDel.onclick = () => {
       const key = String(selPreset.value || "");
       if (!key) return showFitError("Choisis un preset");
-      const presets = loadPresets(user, fitState.hangarId);
-      if (!presets[key]) return showFitError("Preset introuvable");
-
-      delete presets[key];
-      savePresets(user, fitState.hangarId, presets);
+      const res = deleteFitPreset(fitState.hangarId, key);
+      if (!res?.ok) return showFitError(res?.error || "Suppression impossible");
+      user = getCurrentUserFull() || res.user || user;
 
       showFitError("");
       refreshPresetSelect();
@@ -6376,6 +6421,7 @@ export {
   inventoryItemIcon,
   inventoryTooltipText,
   inventoryModuleTooltipHtml,
+  inventoryModuleCardHtml,
   inventoryEntryRarity,
   inventoryQuantityLabel,
   htmlForDataAttr,

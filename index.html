@@ -653,6 +653,26 @@
             <span>Recherche</span>
             <input id="tdmInventorySearch" type="search" autocomplete="off" placeholder="Objet, ressource, vaisseau..." />
           </label>
+          <div class="tdmShipField">
+            <span>Vaisseau</span>
+            <div class="tdmShipCombo" id="tdmShipCombo">
+              <button type="button" id="tdmShipBtn" class="tdmShipBtn" aria-haspopup="listbox" aria-expanded="false">
+                <span id="tdmShipBtnLabel" class="tdmShipBtnLabel">Tous les vaisseaux</span>
+                <span class="tdmShipChevron" aria-hidden="true">▾</span>
+              </button>
+              <div class="tdmShipPopup" id="tdmShipPopup" role="listbox" aria-label="Filtrer par vaisseau (modules possédés)" hidden></div>
+            </div>
+          </div>
+          <label class="tdmTypeField">
+            <span>Type</span>
+            <select id="tdmTypeFilter" aria-label="Filtrer par faculté de module">
+              <option value="">Tous types</option>
+              <option value="hp">HP · PV</option>
+              <option value="shd">SHD · Bouclier</option>
+              <option value="dmg">DMG · Dégâts</option>
+              <option value="spc">SPC · Spécial</option>
+            </select>
+          </label>
         </div>
         <nav class="tdmTabs" aria-label="Catégories d'inventaire">
           <button class="tdmTab active" data-tdm-tab="all" type="button">Tout</button>

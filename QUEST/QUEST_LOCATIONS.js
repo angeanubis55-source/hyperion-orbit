@@ -80,6 +80,9 @@ export async function loadPortalIndex() {
       if (typeof module.getZonePortals !== "function") return;
       const dests = new Set();
       for (const portal of module.getZonePortals(WORLD_SAMPLE) || []) {
+        // hidden = marqueur d'arrivée d'un aller simple (ex. 4-4 <- 5-2) :
+        // jamais un départ, donc jamais une liaison pour le voyage physique.
+        if (!portal || portal.hidden === true) continue;
         const to = String(portal?.toMap || "").toLowerCase();
         if (!to || GATE_MAPS.has(to)) continue;
         dests.add(to);

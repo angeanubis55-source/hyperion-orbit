@@ -712,6 +712,87 @@ export function purgeRemovedItemIds(u) {
   return u;
 }
 
+// ---------------------------
+// Presets d'équipement (par hangar, persistés dans le compte)
+// ---------------------------
+// Avant : localStorage seul, clé `orbit_fit_presets:<email|pseudo>:<hangarId>`
+// → presets perdus au changement de pseudo/email, au nettoyage du navigateur
+// ou sur un autre appareil. Désormais stockés sur le compte (sauvegardé +
+// synchronisé comme le reste), avec migration automatique de l'ancien format.
+export const FIT_PRESET_MAX_PER_HANGAR = 24;
+export const FIT_PRESET_MAX_NAME = 40;
+
+function normalizeFitPresetDraft(draft) {
+  const cleanArr = (v) => (Array.isArray(v) ? v : []).map((id) => {
+    if (id == null) return null;
+    const key = String(id);
+    return key ? key : null;
+  });
+  const d = draft && typeof draft === "object" ? draft : {};
+  return {
+    lasers: cleanArr(d.lasers),
+    gens: cleanArr(d.gens),
+    extras: cleanArr(d.extras),
+    shipMods: cleanArr(d.shipMods),
+  };
+}
+
+function normalizeFitPresets(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [hangarId, group] of Object.entries(raw)) {
+    const hid = String(hangarId || "");
+    if (!hid || !group || typeof group !== "object" || Array.isArray(group)) continue;
+    const clean = {};
+    for (const rawName of Object.keys(group).slice(0, FIT_PRESET_MAX_PER_HANGAR)) {
+      const name = String(rawName || "").trim().slice(0, FIT_PRESET_MAX_NAME);
+      if (!name) continue;
+      clean[name] = normalizeFitPresetDraft(group[rawName]);
+    }
+    if (Object.keys(clean).length) out[hid] = clean;
+  }
+  return out;
+}
+
+// Migration idempotente : rapatrie les presets localStorage legacy
+// (`orbit_fit_presets:<n'importe quel uid>:<hangarId>`) dans le compte.
+// Le compte gagne en cas de conflit de nom ; les clés legacy sont supprimées.
+function migrateLegacyFitPresets(u) {
+  try {
+    if (typeof localStorage === "undefined") return false;
+    const pending = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (typeof key === "string" && key.startsWith("orbit_fit_presets:")) pending.push(key);
+    }
+    if (!pending.length) return false;
+    u.fitPresets ??= {};
+    let merged = false;
+    for (const key of pending) {
+      let obj = null;
+      try {
+        const raw = localStorage.getItem(key);
+        obj = raw ? JSON.parse(raw) : null;
+      } catch { obj = null; }
+      // Dernier segment = hangarId (les ids hangar ne contiennent jamais ":").
+      const parts = String(key).split(":");
+      const hid = parts.length > 1 ? String(parts[parts.length - 1] || "") : "";
+      if (hid && obj && typeof obj === "object" && !Array.isArray(obj)) {
+        u.fitPresets[hid] ??= {};
+        for (const [rawName, draft] of Object.entries(obj)) {
+          const name = String(rawName || "").trim().slice(0, FIT_PRESET_MAX_NAME);
+          if (!name || u.fitPresets[hid][name]) continue;
+          if (Object.keys(u.fitPresets[hid]).length >= FIT_PRESET_MAX_PER_HANGAR) break;
+          u.fitPresets[hid][name] = normalizeFitPresetDraft(draft);
+          merged = true;
+        }
+      }
+      try { localStorage.removeItem(key); } catch {}
+    }
+    return merged;
+  } catch { return false; }
+}
+
 function ensureUserShape(u) {
   if (!u || typeof u !== "object") return null;
 
@@ -1069,6 +1150,10 @@ function ensureUserShape(u) {
     // compat : h.fit pointe toujours vers la config active
     h.fit = h.fits[String(h.activeConfig)];
   }
+
+  // Presets d'équipement (persistés dans le compte) + migration legacy.
+  u.fitPresets = normalizeFitPresets(u.fitPresets);
+  try { if (migrateLegacyFitPresets(u)) u.fitPresets = normalizeFitPresets(u.fitPresets); } catch {}
 
   // Migration doublon starter (legacy "PhoenixBleu" vs "phoenix_bleu") :
   // ids normalisés au canonique + hangars dédupliqués par base.
@@ -2435,6 +2520,75 @@ export function saveHangarFit(hangarId, fitDraft, configNo = null) {
   return { ok: true, user: u, config: Number(cfg) };
 }
 
+// ---------------------------
+// Presets d'équipement (persistés dans le compte, par hangar)
+// ---------------------------
+function fitPresetGroupOf(u, hangarId) {
+  const hid = String(hangarId || "");
+  if (!hid) return {};
+  const group = u?.fitPresets?.[hid];
+  if (!group || typeof group !== "object" || Array.isArray(group)) return {};
+  const out = {};
+  for (const [name, draft] of Object.entries(group)) {
+    out[name] = normalizeFitPresetDraft(draft);
+  }
+  return out;
+}
+
+export function getFitPresets(hangarId) {
+  const u = getCurrentUserForMutation();
+  if (!u || !hangarId) return {};
+  ensureUserShape(u);
+  let migrated = false;
+  try { migrated = migrateLegacyFitPresets(u); } catch { migrated = false; }
+  if (migrated) {
+    u.fitPresets = normalizeFitPresets(u.fitPresets);
+    saveUser(u);
+    writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+  }
+  return fitPresetGroupOf(u, hangarId);
+}
+
+export function saveFitPreset(hangarId, name, draft) {
+  const u = getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Non connecté." };
+  const hid = String(hangarId || "");
+  if (!hid) return { ok: false, error: "Hangar inexistant." };
+  if (!(u.hangars || []).some((h) => String(h?.id) === hid)) return { ok: false, error: "Hangar introuvable." };
+  const cleanName = String(name || "").trim().slice(0, FIT_PRESET_MAX_NAME);
+  if (!cleanName) return { ok: false, error: "Donne un nom au preset." };
+  if (!draft || typeof draft !== "object") return { ok: false, error: "Configuration invalide." };
+  ensureUserShape(u);
+  try { migrateLegacyFitPresets(u); } catch {}
+  u.fitPresets ??= {};
+  u.fitPresets[hid] ??= {};
+  u.fitPresets[hid][cleanName] = normalizeFitPresetDraft(draft);
+  u.fitPresets = normalizeFitPresets(u.fitPresets);
+  saveUser(u);
+  writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+  try { localStorage.setItem("orbit_sync", String(Date.now())); } catch {}
+  if (netActive()) flushNetUser().catch(() => {});
+  return { ok: true, user: u, presets: fitPresetGroupOf(u, hid) };
+}
+
+export function deleteFitPreset(hangarId, name) {
+  const u = getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Non connecté." };
+  const hid = String(hangarId || "");
+  const cleanName = String(name || "").trim();
+  if (!hid || !cleanName) return { ok: false, error: "Choisis un preset." };
+  ensureUserShape(u);
+  try { migrateLegacyFitPresets(u); } catch {}
+  if (!u.fitPresets?.[hid]?.[cleanName]) return { ok: false, error: "Preset introuvable." };
+  delete u.fitPresets[hid][cleanName];
+  if (!Object.keys(u.fitPresets[hid]).length) delete u.fitPresets[hid];
+  saveUser(u);
+  writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+  try { localStorage.setItem("orbit_sync", String(Date.now())); } catch {}
+  if (netActive()) flushNetUser().catch(() => {});
+  return { ok: true, user: u, presets: fitPresetGroupOf(u, hid) };
+}
+
 // Validate the whole displayed configuration before publishing one account update.
 export function saveHangarLoadout(hangarId, { ship, drones = {}, pet = null }, configNo = null) {
   const u = getCurrentUserForMutation();
@@ -3000,8 +3154,17 @@ function ammoPackUnitPrice(itemId) {
   return null;
 }
 
-// Total investi en relances d'un module (même formule que nextModuleRerollCost).
+// Total investi en relances d'un module (crédits réellement dépensés).
+// Les relances payées par ticket ne coûtent aucun crédit : elles ne doivent
+// PAS augmenter le prix de revente. Le cumul est stocké sur le module
+// (rerollCredits) ; le compteur rerolls continue lui d'augmenter (même avec
+// un ticket) car il sert à la progression du coût de la prochaine relance.
 export function moduleRerollInvested(module) {
+  const explicit = Number(module?.rerollCredits);
+  if (Number.isFinite(explicit) && explicit >= 0) {
+    return Math.floor(explicit);
+  }
+  // Compat : anciennes sauvegardes sans rerollCredits (tout était en crédits).
   const rerolls = Math.max(0, Math.floor(Number(module?.rerolls) || 0));
   const base = Math.max(0, Math.floor(Number(MODULE_ROLL_COST) || 0));
   let total = 0;
@@ -3011,8 +3174,9 @@ export function moduleRerollInvested(module) {
   return total;
 }
 
-// Prix de revente d'un module : base rareté (entière) + relances investies / 2.
-// Ex : commun sans relance → 500 k ; légendaire 4 relances → 2,5 M + 390 M.
+// Prix de revente d'un module : base rareté (entière) + crédits de relance / 2.
+// Seuls les crédits dépensés comptent (tickets exclus via rerollCredits).
+// Ex : commun sans relance → 500 k ; légendaire 4 relances crédits → 2,5 M + 390 M.
 export function moduleSellUnitPrice(module) {
   const rarity = getModuleRarity(module?.bonuses?.length);
   const base = Number(MODULE_SELL_PRICES[rarity]) || 0;
@@ -3020,12 +3184,17 @@ export function moduleSellUnitPrice(module) {
 }
 
 // Clé de groupage des modules strictement identiques (même que l'inventaire).
+// Inclut rerolls + crédits investis : deux modules aux mêmes bonus mais avec
+// des historiques de paiement différents n'ont pas le même prix de revente
+// ni le même coût de prochaine relance, donc pas le même slot.
 export function shipModuleGroupKey(module) {
   return JSON.stringify({
     t: module?.type || "",
     tier: module?.tier || "",
     ship: module?.shipId || "",
     b: module?.bonuses || [],
+    r: Math.max(0, Math.floor(Number(module?.rerolls) || 0)),
+    c: moduleRerollInvested(module),
   });
 }
 
@@ -3094,19 +3263,24 @@ export function sellShipModules(groupKey, qty = 1, options = {}) {
   }
   if (toSell.length < qty) return { ok: false, error: "Pas assez d'exemplaires." };
   const sellSet = new Set(toSell);
+  // Gain calculé module par module (chaque module a son propre historique
+  // de crédits dépensés ; les tickets ne comptent pas).
+  const byId = new Map(owned.map((m) => [String(m?.id), m]));
+  let gain = 0;
+  for (const mid of toSell) gain += moduleSellUnitPrice(byId.get(mid) || owned[0]);
+  const unitAvg = Math.floor(gain / Math.max(1, toSell.length));
   u.inventory.shipModules = all.filter((m) => !sellSet.has(String(m?.id)));
   // L'historique des tirages (boutique) ne garde pas les modules vendus.
   if (Array.isArray(u.inventory?.moduleRollHistory)) {
     u.inventory.moduleRollHistory = u.inventory.moduleRollHistory.filter((h) => !sellSet.has(String(h?.id)));
   }
-  const gain = unit * toSell.length;
   u.credits = Number(u.credits || 0) + gain;
   // Mode multi : idem ci-dessus (union des modules au merge sinon).
   noteNetEquipmentSold({ moduleIds: toSell, credits: gain });
   ensureUserShape(u);
   saveUser(u);
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
-  return { ok: true, user: u, gain, gainEach: unit, quantity: toSell.length, stripped };
+  return { ok: true, user: u, gain, gainEach: unitAvg, quantity: toSell.length, stripped };
 }
 
 // ---------------------------
@@ -3187,6 +3361,7 @@ export function addShipModule(moduleObj) {
 // ✅ Reroll : remplace le module précédent en inventaire, mais l'historique
 // reste APPEND-ONLY (on ne supprime jamais l'ancien tirage : la pastille
 // reroll est simplement désactivée quand le module n'est plus possédé).
+// Conserve les crédits déjà investis (les tickets n'en ajoutent pas).
 export function replaceShipModule(oldId, newModule) {
   const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
@@ -3197,9 +3372,18 @@ export function replaceShipModule(oldId, newModule) {
     return { ok: false, error: "Module invalide." };
   }
 
+  let carriedCredits = 0;
+  let carriedRerolls = 0;
   if (oldId) {
+    const old = (u.inventory?.shipModules || []).find((m) => String(m?.id) === String(oldId));
+    if (old) {
+      carriedCredits = moduleRerollInvested(old);
+      carriedRerolls = Math.max(0, Math.floor(Number(old?.rerolls) || 0));
+    }
     u.inventory.shipModules = u.inventory.shipModules.filter((m) => m?.id !== oldId);
   }
+  if (!Number.isFinite(Number(newModule.rerolls))) newModule.rerolls = carriedRerolls;
+  if (!Number.isFinite(Number(newModule.rerollCredits))) newModule.rerollCredits = carriedCredits;
 
   u.inventory.shipModules.push(newModule);
   u.inventory.moduleRollHistory.push({ ...newModule });
@@ -3249,6 +3433,9 @@ export function buyAndAddShipModule(cost, moduleObj, options = {}) {
   }
 
   u.inventory.shipModules.push(moduleObj);
+  // Nouveau module : aucun crédit de relance investi.
+  if (!Number.isFinite(Number(moduleObj.rerolls))) moduleObj.rerolls = 0;
+  if (!Number.isFinite(Number(moduleObj.rerollCredits))) moduleObj.rerollCredits = 0;
   u.inventory.moduleRollHistory.push({
     ...moduleObj,
     rollPayment: usedTicket
@@ -3272,6 +3459,9 @@ export function buyAndAddShipModule(cost, moduleObj, options = {}) {
 // ✅ Reroll ATOMIQUE (1 seule sauvegarde) : paiement + remplacement.
 // Historique append-only : l'ancien tirage reste visible.
 // options.payWith: "ticket" | "credits" | undefined (auto = ticket si dispo).
+// Le compteur rerolls augmente à chaque relance (ticket ou crédits) pour la
+// progression du coût, mais rerollCredits n'augmente qu'en crédits : la
+// revente ne tient compte que des crédits dépensés.
 export function buyAndReplaceShipModule(cost, oldId, newModule, options = {}) {
   const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
@@ -3283,6 +3473,12 @@ export function buyAndReplaceShipModule(cost, oldId, newModule, options = {}) {
   ensureUserShape(u);
   if (!Array.isArray(u.inventory.shipModules)) u.inventory.shipModules = [];
   if (!Array.isArray(u.inventory.moduleRollHistory)) u.inventory.moduleRollHistory = [];
+
+  const old = oldId ? (u.inventory.shipModules || []).find((m) => String(m?.id) === String(oldId)) : null;
+  const oldRerolls = Math.max(0, Math.floor(Number(old?.rerolls) || Number(newModule?.rerolls) || 0));
+  // Si l'appelant a déjà fait oldRerolls+1, on garde ; sinon on incrémente.
+  const targetRerolls = Math.max(oldRerolls + (old ? 1 : 0), Math.max(0, Math.floor(Number(newModule?.rerolls) || 0)));
+  const oldCredits = old ? moduleRerollInvested(old) : Math.max(0, Math.floor(Number(newModule?.rerollCredits) || 0));
 
   const payWith = String(options?.payWith || "auto").toLowerCase();
   const tickets = Math.max(0, Math.floor(Number(u.inventory?.counts?.["ticket_module_reroll"]) || 0));
@@ -3298,6 +3494,9 @@ export function buyAndReplaceShipModule(cost, oldId, newModule, options = {}) {
     u.credits -= cost;
     noteNetPurchase(cost);
   }
+
+  newModule.rerolls = targetRerolls;
+  newModule.rerollCredits = oldCredits + (usedTicket ? 0 : Math.max(0, Math.floor(Number(cost) || 0)));
 
   if (oldId) {
     u.inventory.shipModules = u.inventory.shipModules.filter((m) => m?.id !== oldId);

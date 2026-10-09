@@ -134,3 +134,11 @@ test('le trajet prefere les portails gratuits mais conserve un raccourci payant 
   assert.deepEqual(findStarMapItinerary(routes, 'a', 'a').steps, []);
   assert.equal(findStarMapItinerary(routes, 'a', 'c', { via: { from: 'a', portalId: 'absent' } }), null);
 });
+
+test("l'index bot exclut les portails cachés (aller simple 4-4 <- 5-2)", async () => {
+  const { loadPortalIndex } = await import('../QUEST/QUEST_LOCATIONS.js');
+  const index = await loadPortalIndex();
+  assert.ok(!(index['4-4'] || []).includes('5-2'), 'pas de départ 4-4 -> 5-2');
+  assert.ok((index['4-5'] || []).includes('5-2'), 'entrée 4-5 -> 5-2 conservée');
+  assert.ok((index['5-2'] || []).includes('4-4'), 'retour 5-2 -> 4-4 conservé');
+});

@@ -420,6 +420,8 @@ export function recordPvpPetKill(accountId) {
 // Admin (panneau /api/admin/give, meme effet que SCRIPTS/GIVE_CREDITS.js) :
 // ajoute/retire des crédits à un compte par pseudo. Révision bumpée :
 // le client adopte la version serveur à sa prochaine synchro.
+// Plafond par opération : 1 million de Mds (1e15, montants exacts garantis).
+const ADMIN_GIVE_CREDITS_MAX = 1e15;
 export function adminGiveCredits(pseudo, amount) {
   try {
     initAccountDb();
@@ -429,7 +431,7 @@ export function adminGiveCredits(pseudo, amount) {
     if (!row) return { ok: false, error: "Compte introuvable." };
     const delta = Math.floor(Number(String(amount ?? "").replace(/[\s_]/g, "")) || 0);
     if (!Number.isFinite(delta) || delta === 0) return { ok: false, error: "Montant invalide (entier non nul)." };
-    if (Math.abs(delta) > 1e12) return { ok: false, error: "Montant trop grand (max 1 000 Mds)." };
+    if (Math.abs(delta) > ADMIN_GIVE_CREDITS_MAX) return { ok: false, error: "Montant trop grand (max 1 million de Mds)." };
     let data = {};
     try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
     const before = Math.max(0, Math.floor(Number(data.credits) || 0));
@@ -1679,6 +1681,7 @@ export function adminGiveModule(pseudo, shipId, stat, pct) {
       rarity: "common",
       iconKey: `${type}-x3`,
       rerolls: 0,
+      rerollCredits: 0,
       createdAt: now,
     };
     data.inventory.shipModules.push(mod);
