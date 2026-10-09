@@ -38632,7 +38632,7 @@ updateCurrentUserProgress({
   },
   // Sélections : voir ci-dessus (écriture immédiate, jamais l'autosave).
   rockets: sanitizeRocketsForSave(),
-}, { pushLazy: opts?.pushLazy === true });
+}, { pushLazy: opts?.pushLazy === true, applyOnly: opts?.applyOnly === true });
 }
 
 async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
@@ -40170,7 +40170,19 @@ function saveLiveProgressBeforeNetwork(event) {
       return;
     }
   }
-  if (started && account.user && account.dirty) saveProgressNow();
+  // Debug mode : applique les valeurs live en mémoire SANS refaire une
+  // sauvegarde complète (qui ré-armerait un envoi et bouclerait toutes les
+  // 5 s : push → sauvegarde → envoi → ...). Le push/adopt en cours emporte
+  // les valeurs appliquées ; le filet 15 s reste le filet de sécurité.
+  // Sinon sauvegarde complète comme avant.
+  if (started && account.user && account.dirty) {
+    try {
+      if (isPhoneMode()) saveProgressNow({ applyOnly: true });
+      else saveProgressNow();
+    } catch {
+      try { saveProgressNow(); } catch {}
+    }
+  }
 }
 window.addEventListener("orbit:net-before-save", saveLiveProgressBeforeNetwork);
 window.addEventListener("orbit:net-before-adopt", saveLiveProgressBeforeNetwork);

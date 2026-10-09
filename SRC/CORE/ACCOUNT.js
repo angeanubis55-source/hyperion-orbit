@@ -1630,7 +1630,9 @@ export function updateCurrentUserProgress(patch = {}, opts = {}) {
       pushedAt: Date.now(),
     };
   } catch {}
-  saveUser(u, { source: "progress", pushLazy: opts?.pushLazy === true });
+  // Mode apply-only (filet réseau) : valeurs appliquées en mémoire, aucune
+  // persistance ici (le push/adopt en cours les emporte). Sinon sauvegarde.
+  if (!opts?.applyOnly) saveUser(u, { source: "progress", pushLazy: opts?.pushLazy === true });
 
   return { ok: true, user: u };
 }
