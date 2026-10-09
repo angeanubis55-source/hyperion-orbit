@@ -15679,8 +15679,35 @@ function savePositionNow() {
   if (hangarLocationTransferPending()) return;
   if (!account.user) return;
   if (player.dead || !started) return;
-  
+
   const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
+  // En multi, la position part au serveur via les pushes (le spawn/arrivée
+  // serveur lit le blob) : mémoire seule ici, sans réécrire tout le compte
+  // (~1 Mo), sans bumper la révision, sans push immédiat. Le filet 15 s et
+  // les autres pushes emportent la position à jour.
+  // En solo, chemin complet inchangé (orbit_users EST la sauvegarde).
+  try {
+    if (typeof netActive === "function" && netActive()) {
+      const seen = new Set();
+      for (const u of [account.user, netList()[0], getCurrentUserFull()]) {
+        try {
+          if (!u || typeof u !== "object" || seen.has(u)) continue;
+          seen.add(u);
+          const h = (u.hangars || []).find(x => x?.id === SESSION_HANGAR_ID)
+            || (u.hangars || []).find(x => x?.active)
+            || (u.hangars || [])[0] || null;
+          if (!h) continue;
+          const px = Number(player.x), py = Number(player.y);
+          if (Number.isFinite(px) && Number.isFinite(py)) h.lastPos = { x: px, y: py };
+          h.lastMap = String(currentMap).toLowerCase();
+          const hp = savedHpPct(), sh = savedShPct();
+          if (Number.isFinite(Number(hp))) h.lastHpPct = Math.max(0, Math.min(1, Number(hp)));
+          if (Number.isFinite(Number(sh))) h.lastShPct = Math.max(0, Math.min(1, Number(sh)));
+        } catch {}
+      }
+      return;
+    }
+  } catch {}
   if (SESSION_HANGAR_ID) {
     saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
   } else {

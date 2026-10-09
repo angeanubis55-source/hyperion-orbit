@@ -552,6 +552,10 @@ function addRewardToBase(base, reward) {
 
 // Appelé avant d'appliquer un gain WebSocket au moteur. Un gain déjà présent
 // dans un canon HTTP ne doit pas augmenter les crédits une seconde fois.
+// Le cache (~2-3 Mo : user + base + retry) est réécrit au prochain push
+// (pushSnapshot l'écrit déjà en immédiat) : pas à chaque kill en farm.
+// La récompense est déjà commise côté serveur (awardNpcKill) : rien ne se
+// perd si l'onglet survit jusqu'au push, et le rebase additif récupère sinon.
 export function noteNetServerReward(reward) {
   if (!netActive() || !serverBase) return true;
   const revision = Math.floor(Number(reward?.revision) || 0);
@@ -559,7 +563,7 @@ export function noteNetServerReward(reward) {
   serverRewards.set(revision, copy(reward));
   knownRewardRevision = revision;
   addRewardToBase(serverBase, reward);
-  writeCache(memUser);
+  pendingCacheUser = memUser;
   return true;
 }
 
