@@ -17901,6 +17901,10 @@ function tickGameVersionCheck(dt) {
   try { srv = String(netServerVersion() || ""); } catch { return; }
   const mine = String(GAME_VERSION || "");
   if (!srv || !mine || srv === mine) return;
+  armVersionReload(srv, mine);
+}
+function armVersionReload(srv, mine) {
+  if (versionReloadArmed) return;
   versionReloadArmed = true;
   try { showNotification(`Mise à jour du jeu reçue (v${mine} → v${srv}) — actualisation dans 5 s…`, 5, "info"); } catch {}
   setTimeout(() => {
@@ -17910,6 +17914,34 @@ function tickGameVersionCheck(dt) {
     setTimeout(() => { try { location.reload(); } catch {} }, 1500);
   }, 5000);
 }
+// Retour d'onglet (veille téléphone...) : le WS peut être mort, donc le
+// check par pong ne voit plus rien. On relit la version par HTTP (petit
+// fichier, sans cache) : si le serveur a bougé pendant l'absence, on
+// recharge au lieu de jouer sur du vieux code indéfiniment.
+let visibilityVersionCheckAt = 0;
+function checkVersionOnReturn() {
+  try {
+    if (versionReloadArmed || kickedReason != null) return;
+    if (typeof document === "undefined" || document.visibilityState !== "visible") return;
+    const now = Date.now();
+    if (now - visibilityVersionCheckAt < 30000) return;
+    visibilityVersionCheckAt = now;
+    fetch("SRC/DATA/VERSION.js", { cache: "no-store" }).then((r) => r.text()).then((t) => {
+      try {
+        const m = /GAME_VERSION\s*=\s*"([^"]+)"/.exec(String(t || ""));
+        const srv = m ? m[1] : "";
+        const mine = String(GAME_VERSION || "");
+        if (!srv || !mine || srv === mine) return;
+        armVersionReload(srv, mine);
+      } catch {}
+    }).catch(() => {});
+  } catch {}
+}
+try {
+  window.addEventListener("visibilitychange", () => {
+    try { if (document.visibilityState === "visible") checkVersionOnReturn(); } catch {}
+  });
+} catch {}
 
 function tickAuctionLogic() {
   if (!account.user) return;
