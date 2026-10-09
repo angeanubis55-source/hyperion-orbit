@@ -37,7 +37,7 @@ export const PET_GEAR_SACRIFICE_COOLDOWN_SEC = Object.freeze([90]);
 // Dégâts fixes + rayon + cooldown par niveau (voir CATALOG desc).
 export const PET_GEAR_KAMIKAZE_DAMAGE = Object.freeze([25000, 50000, 75000]);
 export const PET_GEAR_KAMIKAZE_RADIUS = Object.freeze([250, 350, 450]);
-export const PET_GEAR_KAMIKAZE_COOLDOWN_SEC = Object.freeze([120, 60, 30]);
+export const PET_GEAR_KAMIKAZE_COOLDOWN_SEC = Object.freeze([45, 30, 15]);
 
 // Lien HP (G-HPL, niveau unique) : dégâts coque redirigés vers le REX,
 // durée 20 s, cooldown 240 s. Mixé au mode combat + éclair entre les deux.
