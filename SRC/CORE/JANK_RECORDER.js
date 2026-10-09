@@ -293,3 +293,11 @@ export function clearJankReport() {
   maxMs = 0;
   sessionStart = Date.now();
 }
+
+// Bouton "Recommencer" : vide aussi l'historique persistant du garde
+// (sinon il reviendrait dans le prochain rapport).
+export function clearGuardLog() {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.removeItem(GUARD_KEY);
+  } catch {}
+}

@@ -114,7 +114,7 @@ import { createWaveSpawnState } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
 import { isPhoneMode, setPhoneModeCached } from "./PHONE_MODE.js";
-import { startJankRecorder, noteJankFrame, noteGuardBlock, noteSaveOp, setJankListener, setJankTimingsProvider, getJankSummary, getJankReport } from "./JANK_RECORDER.js";
+import { startJankRecorder, noteJankFrame, noteGuardBlock, noteSaveOp, clearJankReport, clearGuardLog, setJankListener, setJankTimingsProvider, getJankSummary, getJankReport } from "./JANK_RECORDER.js";
 import { COLLECTABLE_PICKUP_HOLD_SEC } from "./COLLECTION_TIMING.js";
 import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, setNpcVelocity } from "../../NPC/NPC_AI.js";
 import { DEFAULT_NPC_RADAR_FADE_START, getNpcSensorRanges, npcSensorOpacity, shouldDetectNpc } from "../../NPC/NPC_SENSORS.js";
@@ -8522,10 +8522,12 @@ function normalizeSettingsWindow() {
 function refreshJankSummary() {
   const box = document.getElementById("jankSummary");
   const btn = document.getElementById("btnCopyJankReport");
-  if (!box && !btn) return;
+  const clearBtn = document.getElementById("btnClearJankReport");
+  if (!box && !btn && !clearBtn) return;
   let on = false;
   try { on = isPhoneMode(); } catch {}
   if (btn) btn.disabled = !on;
+  if (clearBtn) clearBtn.disabled = !on;
   if (!box) return;
   if (!on) {
     box.textContent = "Active le Debug mode pour enregistrer les saccades.";
@@ -8626,6 +8628,22 @@ function wireSettingsWindow() {
         showToast("Sélectionne et copie le texte ci-dessous", 2.5);
       } catch {}
     }
+  });
+
+  // Recommencer le comptage : vide session + historique garde, masque
+  // l'ancien texte, rafraîchit le résumé. L'enregistrement repart aussitôt.
+  document.getElementById("btnClearJankReport")?.addEventListener("click", () => {
+    try { clearJankReport(); } catch {}
+    try { clearGuardLog(); } catch {}
+    try {
+      const area = document.getElementById("jankReportArea");
+      if (area) {
+        area.value = "";
+        area.hidden = true;
+      }
+    } catch {}
+    try { refreshJankSummary(); } catch {}
+    try { showToast("Comptage recommencé — joue quelques minutes", 2); } catch {}
   });
 
   // Résumé à jour à l'ouverture des paramètres + à chaque saccade.
