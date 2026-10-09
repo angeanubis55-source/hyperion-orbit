@@ -82,7 +82,7 @@ import {
 } from "./ACCOUNT.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
 import { flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain,
-noteNetPetFuelConsumed, noteNetPurchase, noteNetQuestGain, noteNetResourceGain, noteNetServerReward,
+noteNetPetFuelConsumed, noteNetPetFuelTick, noteNetPurchase, noteNetQuestGain, noteNetResourceGain, noteNetServerReward,
 noteNetUpgradeConsumed, sendJankReport } from "./ACCOUNT_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
@@ -21971,7 +21971,8 @@ function tickPetFuel(dt) {
   // autosaves. Les hooks sauvegardent ce delta avant toute mutation/adoption.
   pet.fuel = Math.max(0, Math.floor(Number(pet.fuel) || 0) - take);
   // Mode multi : sinon un 409 remplit le réservoir depuis le canon.
-  try { noteNetPetFuelConsumed(take); } catch {}
+  // Palier continu : paresseux en Debug (15 s), urgent sinon.
+  try { noteNetPetFuelTick(); } catch {}
   markProgressDirty();
   if (pet.fuel <= 0) {
     pet.fuel = 0;

@@ -495,15 +495,35 @@ function schedulePush(urgent = true) {
   pushUrgentArmed = wantUrgent;
   let delay = 2000;
   try { if (debug) delay = wantUrgent ? 5000 : 15000; } catch {}
-  // Debug mode : l'armement est horodaté (métronome visible dans le rapport).
-  try { noteSaveOp("push-arme", 0, 0, wantUrgent ? "urgent" : "paresseux"); } catch {}
+  // Debug mode : l'armement est horodaté + attribué (métronome visible dans
+  // le rapport, avec le fichier:ligne de l'appelant). Coût ~0,1ms par armement.
+  try {
+    let who = wantUrgent ? "urgent" : "paresseux";
+    if (debug) {
+      const stack = String(new Error("trace").stack || "").split("\n").slice(1);
+      for (const line of stack) {
+        if (!line || line.includes("ACCOUNT_NET.js")) continue;
+        const m = /([^/()\s]+\.js):(\d+)/.exec(line);
+        if (m) {
+          who += ` via ${m[1]}:${m[2]}`;
+          break;
+        }
+      }
+      who = who.slice(0, 80);
+    }
+    noteSaveOp("push-arme", 0, 0, who);
+  } catch {}
   saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, delay);
 }
 
 // Gains de farm/quêtes : déjà crédités en mémoire et (kills) en base serveur.
 // L'envoi du blob peut attendre le prochain cycle paresseux en Debug mode.
-// Comportement normal : identique à schedulePush().
 export function noteNetQuestGain() { if (netActive()) schedulePush(false); }
+// Carburant REX (palier toutes les 2 s, même en passif) : quelques unités par
+// palier, sync via les cycles suivants. Paresseux en Debug (15 s), urgent
+// sinon — comme avant dans ce cas (2 s). Le one-shot (kamikaze/sacrifice)
+// garde l'urgent (événement de combat rare).
+export function noteNetPetFuelTick() { if (netActive()) schedulePush(false); }
 
 // Conflits d'écriture (409) : normaux isolément (give admin...), mais en
 // rafale ils signalent 2 writers sur le même compte (2e onglet/fenêtre) :
