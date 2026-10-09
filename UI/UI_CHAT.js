@@ -1,4 +1,5 @@
 "use strict";
+import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 
 import { drainNetChatInbox, sendChat, sendWhisper, sendClanChat, netMyId, netMyPseudo, netplayStatus } from "../SRC/CORE/NETPLAY.js";
 import { escapeHtml } from "./UI_DOM.js";
@@ -27,10 +28,14 @@ export function initChatUI() {
 
   let shown = 0;
   let online = true;
+  let onlineNeedsRender = false;
+  let pendingMessages = [];
 
   function setOnline(v) {
-    if (v === online) return;
+    if (v === online && !onlineNeedsRender) return;
     online = v;
+    if (!shouldRefreshWindow("chatWindow")) { onlineNeedsRender = true; return; }
+    onlineNeedsRender = false;
     if (status) {
       status.textContent = v ? "Connecté" : "Hors ligne (serveur injoignable)";
       status.classList.toggle("offline", !v);
@@ -46,6 +51,9 @@ export function initChatUI() {
     row.innerHTML = `<span class="chatTime">${escapeHtml(fmtTime(m.at))}</span> <span class="chatFrom">${escapeHtml(m.from)}</span><span class="chatSep"> : </span><span class="chatText">${escapeHtml(m.text)}</span>`;
     entries.appendChild(row);
     while (entries.children.length > MAX_SHOWN) entries.removeChild(entries.firstChild);
+  }
+
+  function announceMessage(m) {
     // Annonce admin : bannière en jeu (au-dessus du toast de zone),
     // même en gate. Ignorée si vieille (> 60 s : rejeu d'historique).
     if (m.adminBlast === true && m.from === "[ADMIN]" && Date.now() - Number(m.at || 0) < 60000) {
@@ -57,8 +65,12 @@ export function initChatUI() {
     try {
       const st = netplayStatus();
       setOnline(!!st.connected);
-      const inbox = drainNetChatInbox();
-      if (!inbox.length) return;
+      const received = drainNetChatInbox();
+      for (const message of received) announceMessage(message);
+      pendingMessages = pendingMessages.concat(received).slice(-MAX_SHOWN);
+      if (!shouldRefreshWindow("chatWindow") || !pendingMessages.length) return;
+      const inbox = pendingMessages;
+      pendingMessages = [];
       const empty = entries.querySelector(".chatEmpty");
       if (empty) empty.remove();
       for (const m of inbox) appendMessage(m);
@@ -119,6 +131,9 @@ export function initChatUI() {
     submit();
   });
 
+  window.addEventListener("orbit:window-restoring", event => {
+    if (event.detail?.id === "chatWindow") poll();
+  });
   setInterval(poll, 250);
   poll();
 }

@@ -1,4 +1,5 @@
 "use strict";
+import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 import { getNetGroup, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupSync, sendGroupInviteLock, sendGroupRally, netMyId, netplayStatus } from "../SRC/CORE/NETPLAY.js";
 import { escapeHtml } from "./UI_DOM.js";
 import { getShipDesignBaseId, getShipPackById } from "../SHIP/SHIP_PACKS.js";
@@ -35,6 +36,7 @@ export function initGroupUI() {
   const myId = () => { try { return String(netMyId() || ""); } catch { return ""; } };
 
   function renderGroup() {
+    if (!shouldRefreshWindow("groupWindow")) return;
     let group = null;
     try { group = getNetGroup(); } catch {}
     const leave = document.getElementById("groupLeaveBtn"), lock = document.getElementById("groupInviteLockBtn"), rally = document.getElementById("groupRallyBtn"), kickBtn = document.getElementById("groupKickModeBtn"), inviteBtn = document.getElementById("groupInviteBtn"), actions = document.querySelector("#groupWindow .groupActions");
@@ -79,9 +81,12 @@ export function initGroupUI() {
     if (inviteBtn) inviteBtn.disabled = invitesDisabled;
   }
 
+  let pendingInvites = [], pendingNotices = [];
   function renderInvites() {
-    let list = [];
-    try { list = drainNetGroupInviteInbox(); } catch {}
+    let list = pendingInvites;
+    pendingInvites = [];
+    try { list = list.concat(drainNetGroupInviteInbox()); } catch {}
+    list = list.filter(invite => !invite.expiresAt || Number(invite.expiresAt) > Date.now());
     // Acceptation auto (solo + case cochée) : rejoint la 1re invitation
     // sans l'afficher. Les autres éventuelles s'affichent normalement.
     try {
@@ -93,6 +98,10 @@ export function initGroupUI() {
         }
       }
     } catch {}
+    if (!shouldRefreshWindow("groupWindow")) {
+      pendingInvites = list.slice(-20);
+      return;
+    }
     for (const invite of list) {
       if (invites.querySelector(`[data-inv-from="${CSS.escape(String(invite.from))}"]`)) continue;
       const row = document.createElement("div");
@@ -107,13 +116,18 @@ export function initGroupUI() {
 
   function pollNotices() {
     try {
-      for (const notice of drainNetGroupNoticeInbox()) { const row = document.createElement("div"); row.className = "groupNotice"; row.dataset.text = String(notice.text || ""); if (notice.expiresAt) row.dataset.expiresAt = String(notice.expiresAt); row.textContent = row.dataset.text; notices?.prepend(row); while (notices?.children.length > 5) notices.removeChild(notices.lastChild); }
+      pendingNotices = pendingNotices.concat(drainNetGroupNoticeInbox())
+        .filter(notice => !notice.expiresAt || Number(notice.expiresAt) > Date.now()).slice(-5);
+      if (!shouldRefreshWindow("groupWindow")) return;
+      const received = pendingNotices;
+      pendingNotices = [];
+      for (const notice of received) { const row = document.createElement("div"); row.className = "groupNotice"; row.dataset.text = String(notice.text || ""); if (notice.expiresAt) row.dataset.expiresAt = String(notice.expiresAt); row.textContent = row.dataset.text; notices?.prepend(row); while (notices?.children.length > 5) notices.removeChild(notices.lastChild); }
       for (const row of notices?.querySelectorAll("[data-expires-at]") || []) { const left = Math.max(0, Math.ceil((Number(row.dataset.expiresAt) - Date.now()) / 1000)); row.textContent = `${row.dataset.text} (${left}s)`; if (!left) row.remove(); }
     } catch {}
   }
 
   let signature = "", syncAt = 0;
-  function poll() { try { if (netplayStatus().connected && Date.now() - syncAt > 2000) { syncAt = Date.now(); sendGroupSync(); } renderInvites(); pollNotices(); const next = JSON.stringify(getNetGroup()); if (next !== signature) { signature = next; renderGroup(); } } catch {} }
+  function poll() { try { if (netplayStatus().connected && Date.now() - syncAt > 2000) { syncAt = Date.now(); sendGroupSync(); } renderInvites(); pollNotices(); if (!shouldRefreshWindow("groupWindow")) return; const next = JSON.stringify(getNetGroup()); if (next !== signature) { signature = next; renderGroup(); } } catch {} }
   document.getElementById("groupLeaveBtn")?.addEventListener("click", () => { sendGroupLeave(); signature = ""; });
   document.getElementById("groupInviteBtn")?.addEventListener("click", () => { if (input?.disabled) return; const value = input?.value.trim(); if (value) sendGroupInvite(value); if (input) input.value = ""; });
   document.getElementById("groupInviteLockBtn")?.addEventListener("click", () => sendGroupInviteLock(!getNetGroup()?.invitesLocked));
@@ -121,5 +135,8 @@ export function initGroupUI() {
   document.getElementById("groupKickModeBtn")?.addEventListener("click", () => { kickMode = !kickMode; renderGroup(); });
   invites.addEventListener("click", event => { const button = event.target.closest("button"); if (!button) return; if (button.dataset.accept) sendGroupAccept(); else if (button.dataset.decline) sendGroupDecline(); button.closest("[data-inv-from]")?.remove(); signature = ""; });
   members.addEventListener("click", event => { if (!kickMode) return; const card = event.target.closest("[data-kick-member]"); if (!card) return; sendGroupKick(card.dataset.kickMember); kickMode = false; renderGroup(); });
+  window.addEventListener("orbit:window-restoring", event => {
+    if (event.detail?.id === "groupWindow") { signature = ""; renderGroup(); poll(); }
+  });
   renderGroup(); setInterval(poll, 500); poll();
 }

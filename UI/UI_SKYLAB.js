@@ -1,4 +1,5 @@
 "use strict";
+import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 
 // UI/UI_SKYLAB.js — Fenêtre Skylab (comme le vrai DarkOrbit) : production en
 // continu, amélioration des modules jusqu'au niveau 20, robots des
@@ -519,6 +520,7 @@ function refreshTransportDynamic(sky, now) {
 }
 
 export function renderSkylabWindow(force = false) {
+  if (!shouldRefreshWindow("skylabWindow")) return;
   const { root } = els();
   if (!root) return;
   const sky = liveSkylab();

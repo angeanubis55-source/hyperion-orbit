@@ -1,4 +1,5 @@
 "use strict";
+import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 
 // UI/UI_TDM.js — Fenêtre Inventaire : rend le même inventaire que l'Espace
 // pilote (mêmes sections, icônes, quantités, tooltips — builders partagés de
@@ -267,6 +268,7 @@ function confirmSellDialog() {
 }
 
 async function render() {
+  if (!shouldRefreshWindow("tdmWindow")) return;
   const dst = $("tdmInventorySections");
   if (!dst) return;
   ensurePager(dst);
@@ -286,6 +288,7 @@ async function render() {
   try {
     b = await loadBuilders();
   } catch {}
+  if (!shouldRefreshWindow("tdmWindow")) return;
   if (!b?.buildInventorySections) {
     hideTooltip();
     dst.innerHTML = emptyHtml("Inventaire indisponible pour le moment.");

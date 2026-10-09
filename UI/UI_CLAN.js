@@ -1,4 +1,5 @@
 "use strict";
+import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 
 // Vrai panneau de clan façon DarkOrbit : onglets Infos / Membres /
 // Rangs / Diplomatie (+ liste publique + création quand on est sans clan).
@@ -133,6 +134,7 @@ export function initClanUI() {
   }
 
   function updateHeader(message = "") {
+    if (!shouldRefreshWindow("clanWindow")) return;
     if (status) status.textContent = message || (clan ? `[${clan.tag}] ${clan.name} — ${clan.members.length}/30` : "Sans clan — crée le tien ou postule ci-dessous.");
   }
 
@@ -143,6 +145,7 @@ export function initClanUI() {
   }
 
   function render() {
+    if (!shouldRefreshWindow("clanWindow")) return;
     const inClan = !!clan;
     createPane.classList.toggle("active", !inClan);
     managePane.classList.toggle("active", inClan);
@@ -359,8 +362,8 @@ export function initClanUI() {
         try {
           const [meData, listData, mineData] = await Promise.all([
             apiClan("/api/clans/me", "GET"),
-            apiClan("/api/clans/list", "GET").catch(() => ({ clans: [] })),
-            apiClan("/api/clans/my-applications", "GET").catch(() => ({ applications: [] })),
+            shouldRefreshWindow("clanWindow") ? apiClan("/api/clans/list", "GET").catch(() => ({ clans: [] })) : { clans },
+            shouldRefreshWindow("clanWindow") ? apiClan("/api/clans/my-applications", "GET").catch(() => ({ applications: [] })) : { applications: mine },
           ]);
           clan = meData.clan && typeof meData.clan === "object" ? meData.clan : null;
           clans = Array.isArray(listData.clans) ? listData.clans : [];

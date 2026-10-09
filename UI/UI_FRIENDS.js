@@ -1,4 +1,5 @@
 "use strict";
+import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 
 import {
   getNetFriendsOnline, sendGroupInvite,
@@ -48,6 +49,7 @@ export function initFriendsUI() {
   }
 
   function updateHeader(message = "") {
+    if (!shouldRefreshWindow("friendsWindow")) return;
     const online = liveMap().size;
     if (status) status.textContent = message || `${online}/${friends.length} ami${friends.length > 1 ? "s" : ""} en ligne`;
     if (badge) { badge.textContent = String(requests.length); badge.hidden = requests.length === 0; }
@@ -62,6 +64,7 @@ export function initFriendsUI() {
   }
 
   function renderFriends() {
+    if (!shouldRefreshWindow("friendsWindow")) return;
     const live = liveMap();
     const filtered = friends
       .filter(friend => !query || String(friend.pseudo || "").toLowerCase().includes(query))
@@ -90,6 +93,7 @@ export function initFriendsUI() {
   }
 
   function renderRequests() {
+    if (!shouldRefreshWindow("friendsWindow")) return;
     if (!reqList) return;
     if (!requests.length) { reqList.innerHTML = `<div class="friendsEmpty">Aucune demande en attente.</div>`; return; }
     reqList.innerHTML = requests.map(request => {
@@ -99,17 +103,20 @@ export function initFriendsUI() {
   }
 
   async function load(message = "") {
+    if (!shouldRefreshWindow("friendsWindow")) return;
     try {
       if (!authHeaders()) { friends = []; requests = []; updateHeader("Connecte-toi pour gérer tes amis."); renderFriends(); renderRequests(); return; }
       const [friendData, requestData] = await Promise.all([apiFriends("/api/friends", "GET"), apiFriends("/api/friends/requests", "GET")]);
       friends = Array.isArray(friendData.friends) ? friendData.friends : [];
       requests = Array.isArray(requestData.requests) ? requestData.requests : [];
+      if (!shouldRefreshWindow("friendsWindow")) return;
       updateHeader(message);
     } catch { updateHeader("Hors ligne — serveur injoignable"); }
     renderFriends(); renderRequests();
   }
 
   function poll() {
+    if (!shouldRefreshWindow("friendsWindow")) return;
     try {
       if (drainNetFriendRequestInbox().length || consumeFriendsDirty()) { load(); return; }
       const signature = JSON.stringify(getNetFriendsOnline());

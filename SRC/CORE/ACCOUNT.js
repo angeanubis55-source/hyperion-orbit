@@ -13,7 +13,7 @@ import { calculateRankPoints, getQuestExperienceReward, getQuestHonorReward } fr
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.js";
 import { compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
-import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, KRONOS_PARTS_BY_GATE, loseGalaxyGateLife, normalizeGalaxyGateState, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
+import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, KRONOS_PARTS_BY_GATE, loseGalaxyGateLife, normalizeGalaxyGateState, normalizeGalaxyGateWave, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, upgradeOreCapacity, planAutoUpgradeCharges, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
 import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
@@ -653,7 +653,11 @@ export function purgeRemovedItemIds(u) {
     }
   }
   if (Array.isArray(u.inventory?.shipModules)) {
-    u.inventory.shipModules = u.inventory.shipModules.filter((m) => !isRemovedItemId(m?.id));
+    // Garder la liste quand rien n'est retire : les lectures ordinaires ne
+    // doivent pas invalider les snapshots et blocs de sauvegarde des modules.
+    if (u.inventory.shipModules.some(m => isRemovedItemId(m?.id))) {
+      u.inventory.shipModules = u.inventory.shipModules.filter((m) => !isRemovedItemId(m?.id));
+    }
   }
   if (Array.isArray(u.inventory?.modules)) {
     u.inventory.modules = u.inventory.modules.filter((id) => !isRemovedItemId(id));
@@ -2261,7 +2265,7 @@ export function saveCurrentUserGalaxyGateWave(gateId, wave, currentUser = null) 
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const id = String(gateId || "").toLowerCase();
   if (u.galaxyGates.active !== id) return { ok: false, error: "Galaxy Gate inactive." };
-  const w = Math.max(1, Math.floor(Number(wave) || 1));
+  const w = normalizeGalaxyGateWave(id, wave);
   const prevKills = getGalaxyGateWaveKills(u.galaxyGates, id);
   u.galaxyGates.activeWave = w;
   // ✅ miroir persisté par gate (alternance Alpha/Beta/Gamma sans perte).
@@ -2280,12 +2284,12 @@ export function saveCurrentUserGalaxyGateWave(gateId, wave, currentUser = null) 
 // ✅ Enregistre 1 NPC du plan de vague éliminé (GG en cours).
 // Persistance immédiate (saveUser synchrone) : un refresh juste après le
 // kill doit retrouver le compteur, contrairement à markProgressDirty (15 s).
-export function recordCurrentUserGalaxyGateWaveKill(gateId, wave, count = 1, currentUser = null) {
+export function recordCurrentUserGalaxyGateWaveKill(gateId, wave, count = 1, currentUser = null, npcType = null) {
   const u = currentUser || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const id = String(gateId || "").toLowerCase();
   if (u.galaxyGates.active !== id) return { ok: false, error: "Galaxy Gate inactive." };
-  const result = recordGalaxyGateWaveKill(u.galaxyGates, id, wave, count);
+  const result = recordGalaxyGateWaveKill(u.galaxyGates, id, wave, count, npcType);
   if (!result.ok) return { ok: false, error: "Galaxy Gate inconnue." };
   u.galaxyGates = result.state;
   // ✅ source "progress" : le moteur ne recharge pas tout l'équipement à

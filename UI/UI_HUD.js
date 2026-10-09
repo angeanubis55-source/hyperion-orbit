@@ -1,5 +1,7 @@
 "use strict";
 
+import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
+
 import { clamp } from "../SRC/CORE/COLLISION.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 
@@ -32,6 +34,7 @@ const setDisplay = (element, display) => {
 };
 
 export function updateResourceHud(ui, player, cargo) {
+  if (!shouldRefreshWindow("boxVitals")) return;
   const hp = Math.floor(Number(player.hp) || 0);
   const shield = Math.floor(Number(player.sh) || 0);
   const hpMax = Math.floor(Number(player.hpMax) || 0);
@@ -57,6 +60,7 @@ export function updateResourceHud(ui, player, cargo) {
 }
 
 export function updateProgressHud(ui, stats, levelInfo) {
+  if (!shouldRefreshWindow("boxMeta")) return;
   setText(ui.honorTxt, formatInteger(stats?.honor));
   setText(ui.xpTxt, formatInteger(stats?.exp));
   setText(ui.rankPtsTxt, formatInteger(stats?.rankPoints));
@@ -64,6 +68,7 @@ export function updateProgressHud(ui, stats, levelInfo) {
 }
 
 export function updateWaveHud(ui, { started, wave, remaining, alive }) {
+  if (!shouldRefreshWindow("boxWave")) return;
   setText(ui.waveTxt, started ? formatInteger(wave) : "—");
   setText(ui.spawnLeftTxt, started ? formatInteger(remaining) : "—");
   setText(ui.aliveTxt, started ? formatInteger(alive) : "—");

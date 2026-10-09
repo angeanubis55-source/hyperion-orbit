@@ -79,6 +79,145 @@ test("cache decoupe : un quota atteint garde le precedent manifeste et ses blocs
   assert.equal(reloaded.current().credits, 100000000);
 });
 
+for (const count of [0, 1, 32, 33, 3000]) {
+  test(`modules (${count}) : reutiliser les snapshots sans serialiser les modules inchanges`, async () => {
+    const c = client(), initial = user();
+    initial.inventory.shipModules = Array.from({ length: count }, (_, i) => ({ id: `m-${i}`,
+      bonuses: [{ stat: "damage", pct: i % 20 }], description: "module".repeat(40) }));
+    c.api.enterNetMode("token", initial);
+    const liveList = c.current().inventory.shipModules, liveFirst = liveList[0];
+    vm.runInContext(`globalThis.moduleSerializations = 0;
+      const originalJsonStringify = JSON.stringify;
+      JSON.stringify = function(value, ...args) {
+        if (value?.bonuses || value?.inventory?.shipModules ||
+          (Array.isArray(value) && value.some(item => item?.bonuses))) moduleSerializations++;
+        return originalJsonStringify(value, ...args);
+      };`, c.api);
+    const reference = vm.runInContext("serverBase.inventory.shipModules", c.api);
+    for (let i = 0; i < 3; i++) {
+      c.mutate(u => { u.pet.fuel--; u.credits++; });
+      const sent = await c.accept();
+      assert.equal(sent.user.inventory.shipModules.length, count);
+      assert.equal(c.current().inventory.shipModules, liveList);
+      assert.equal(c.current().inventory.shipModules[0], liveFirst);
+      assert.equal(vm.runInContext("serverBase.inventory.shipModules", c.api), reference);
+    }
+    assert.equal(c.api.moduleSerializations, 0);
+    assert.equal(c.current().pet.fuel, 97);
+  });
+}
+
+test("modules : modifier un bonus pendant l'envoi conserve le recu et la modification suivante", async () => {
+  const c = client(); c.api.enterNetMode("token", largeUser());
+  c.mutate(u => { u.pet.fuel--; });
+  const saving = c.api.flushNetUser(), request = c.requests.at(-1);
+  c.mutate(u => { u.inventory.shipModules[0].stats.damage = 901; });
+  request.reply(200, { ok: true, user: structuredClone(request.body.user) }); await saving;
+  assert.equal(request.body.user.inventory.shipModules[0].stats.damage, 0);
+  assert.equal(c.current().inventory.shipModules[0].stats.damage, 901);
+  assert.equal(vm.runInContext("serverBase.inventory.shipModules[0].stats.damage", c.api), 0);
+  const next = await c.accept();
+  assert.equal(next.user.inventory.shipModules[0].stats.damage, 901);
+  assert.equal(c.api.netHasPendingSave(), false);
+});
+
+test("modules : modifier un seul bonus ne serialise qu'un seul module", async () => {
+  const c = client(); c.api.enterNetMode("token", largeUser());
+  vm.runInContext(`globalThis.changedModulesSerialized = 0;
+    const nativeStringify = JSON.stringify;
+    JSON.stringify = function(value, ...args) {
+      if (value?.id?.startsWith("module-") && value.stats) changedModulesSerialized++;
+      return nativeStringify(value, ...args);
+    };`, c.api);
+  const writes = [], setItem = c.api.localStorage.setItem;
+  c.api.localStorage.setItem = (key, value) => { writes.push(value.length); setItem(key, value); };
+  c.mutate(u => { u.inventory.shipModules[500].stats.damage = 42; });
+  const sent = await c.accept();
+  assert.equal(sent.user.inventory.shipModules[500].stats.damage, 42);
+  assert.equal(c.api.changedModulesSerialized, 1);
+  assert.ok(writes.reduce((sum, count) => sum + count, 0) < 100000);
+  assert.equal(vm.runInContext("Object.isFrozen(serverBase.inventory.shipModules[500].stats)", c.api), true);
+  assert.equal(Object.isFrozen(c.current().inventory.shipModules[500].stats), false);
+});
+
+test("modules : achats, ventes et relances survivent au conflit puis a la recharge", async () => {
+  const c = client(), initial = largeUser(); c.api.enterNetMode("token", initial);
+  c.mutate(u => {
+    u.inventory.shipModules.splice(0, 2);
+    u.inventory.shipModules.push({ id: "reroll", stats: { damage: 40 } }, { id: "bought", stats: { shield: 50 } });
+    u.credits -= 1000;
+  });
+  const remote = largeUser(); remote.revision = 20;
+  remote.inventory.shipModules.push({ id: "server-drop", stats: { damage: 30 } });
+  await c.conflict(remote);
+  const ids = c.current().inventory.shipModules.map(m => m.id);
+  assert.ok(!ids.includes("module-0") && !ids.includes("module-1"));
+  assert.ok(ids.includes("reroll") && ids.includes("bought") && ids.includes("server-drop"));
+  const liveDrop = c.current().inventory.shipModules.find(m => m.id === "server-drop");
+  liveDrop.stats.damage = 55;
+  assert.equal(vm.runInContext('serverBase.inventory.shipModules.find(m => m.id === "server-drop").stats.damage', c.api), 30);
+  await c.accept();
+  const reloaded = client(new Map(c.storage)); assert.equal(reloaded.api.bootNetFromCache(), true);
+  assert.deepEqual(plain(reloaded.current().inventory.shipModules), plain(c.current().inventory.shipModules));
+  assert.equal(reloaded.current().credits, 99_999_000);
+});
+
+test("modules : une sauvegarde de progression ne lit pas les bonus au clic", () => {
+  const c = client(), initial = user(); let reads = 0;
+  const module = { id: "tracked", stats: { damage: 2 } };
+  initial.inventory.shipModules = [module]; c.api.enterNetMode("token", initial);
+  Object.defineProperty(module, "stats", { enumerable: true, get: () => { reads++; return { damage: 2 }; } });
+  c.mutate(u => { u.credits++; });
+  assert.equal(reads, 0);
+});
+
+test("modules : un recu compact acquitte le snapshot exact et conserve les changements en vol", async () => {
+  const c = client(); c.api.enterNetMode("token", largeUser());
+  c.mutate(u => { u.credits -= 1000; });
+  const saving = c.api.flushNetUser(), request = c.requests.at(-1);
+  assert.equal(request.body.compactSave, true);
+  c.mutate(u => { u.inventory.shipModules[0].stats.damage = 41; u.pet.fuel--; });
+  request.reply(200, { ok: true, snapshotAccepted: true, saveId: request.body.saveId,
+    user: { id: "pilot", revision: request.body.user.revision, pseudo: "Canon" } });
+  const out = await saving;
+  assert.equal(out.user.inventory.shipModules[0].stats.damage, 0);
+  assert.equal(c.current().inventory.shipModules[0].stats.damage, 41);
+  assert.equal(c.current().pet.fuel, 99); assert.equal(c.current().pseudo, "Canon");
+  assert.equal(c.current().credits, 99_999_000);
+  const next = await c.accept(); assert.equal(next.user.inventory.shipModules[0].stats.damage, 41);
+});
+
+test("modules : un recu compact portant un autre saveId ne perd pas l'operation", async () => {
+  const c = client(); c.api.enterNetMode("token", user());
+  c.mutate(u => { u.credits -= 1000; });
+  const saving = c.api.flushNetUser(), request = c.requests.at(-1);
+  request.reply(200, { ok: true, snapshotAccepted: true, saveId: "other", user: { id: "pilot", revision: 500 } });
+  assert.equal((await saving).ok, false);
+  assert.equal(c.api.netHasPendingSave(), true);
+  const retried = await c.accept(); assert.deepEqual(retried, request.body);
+  assert.equal(c.current().credits, 99_999_000);
+});
+
+test("modules : les changements finalises par le moteur avant l'envoi sont inclus", async () => {
+  const c = client(); c.api.enterNetMode("token", largeUser());
+  c.api.window.addEventListener("orbit:net-before-save", () => {
+    c.api.writeCache(c.current(), true);
+    c.current().inventory.shipModules[0].stats.damage = 25;
+  });
+  const sent = await c.accept();
+  assert.equal(sent.user.inventory.shipModules[0].stats.damage, 25);
+});
+
+test("modules : purger les anciens items conserve une liste valide en place", () => {
+  const start = account.indexOf("export function purgeRemovedItemIds("), end = account.indexOf("\nfunction ensureUserShape(", start);
+  const context = vm.createContext({ isRemovedItemId: value => value === "removed" });
+  vm.runInContext(account.slice(start, end).replace(/^export /gm, ""), context);
+  const modules = [{ id: "valid" }], current = { inventory: { shipModules: modules } };
+  context.purgeRemovedItemIds(current); assert.equal(current.inventory.shipModules, modules);
+  modules.push({ id: "removed" }); context.purgeRemovedItemIds(current);
+  assert.deepEqual(current.inventory.shipModules, [{ id: "valid" }]);
+});
+
 function client(storage = new Map()) {
   const requests = [], timers = new Map(), listeners = new Map(); let timerId = 0;
   const api = vm.createContext({ structuredClone, AbortController, performance,

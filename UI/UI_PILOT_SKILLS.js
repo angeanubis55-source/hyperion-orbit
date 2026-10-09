@@ -1,4 +1,5 @@
 "use strict";
+import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 
 // UI/UI_PILOT_SKILLS.js — Arbre de pilotage façon DarkOrbit : 3 panneaux,
 // 25 talents, points via disques de log, reset payant.
@@ -144,6 +145,7 @@ function refreshPilotSummary() {
 }
 
 export function renderPilotSkillsWindow() {
+  if (!shouldRefreshWindow("pilotWindow")) return;
   const { root, panels, detail } = els();
   if (!root || !panels) return;
   const state = refreshPilotSummary();

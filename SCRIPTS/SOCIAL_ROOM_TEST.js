@@ -125,6 +125,7 @@ test("la carte de groupe affiche Hors ligne sans perdre le nom ni afficher un po
   });
   const source = readFileSync(new URL("../UI/UI_GROUP.js", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "");
   vm.runInNewContext(`${source}\ninitGroupUI();`, { escapeHtml,
+    shouldRefreshWindow: () => true, window: { addEventListener() {} },
     document: { getElementById: id => nodes.get(id), querySelector: () => null },
     localStorage: { getItem: () => null }, getNetGroup: () => group,
     netMyId: () => "u_a", netplayStatus: () => ({ connected: false }),

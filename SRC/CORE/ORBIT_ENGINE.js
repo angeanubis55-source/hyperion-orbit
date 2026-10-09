@@ -2,6 +2,7 @@ import { protegitPatrol } from "../../NPC/PROTEGIT_MOVEMENT.js";
 import { npcFleeDirection } from "../../NPC/NPC_FLEE.js";
 import { pickSpacedSpawnPosition } from "../../NPC/NPC_SPAWN_POSITION.js";
 import { petEscortTarget, stepPetMotion, petCombatVelocity, orientPet } from "../../PET/PET_MOTION.js";
+import { normalizeBackgroundRefresh, setBackgroundRefresh, shouldRefreshWindow } from "./BACKGROUND_REFRESH.js";
 import { measureGameTask, recordGameTask } from "./PERFORMANCE_TIMINGS.js";
 import { createDeferredPersistence } from "./DEFERRED_PERSISTENCE.js";
 import { drawCombatFloatTexts } from "./COMBAT_TEXT_RENDERER.js";
@@ -84,7 +85,7 @@ import { pumpSharedAuction } from "./AUCTION_NET.js";
 import { flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
-  GALAXY_GATE_DEFINITIONS,
+  normalizeGalaxyGateWave, GALAXY_GATE_DEFINITIONS,
   GALAXY_SPIN_CREDIT_COST,
   normalizeGalaxyGateState,
 } from "./GALAXY_GATES.js";
@@ -110,7 +111,7 @@ import { createSpatialPairIndex, rebuildIdIndex } from "./SPATIAL_INDEX.js";
 import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "./RENDERING.js";
 import { spawnNpcEntity } from "../../NPC/NPC_SPAWNER.js";
 import { addProjectile, advanceProjectile, blendVelocityDirection, guidedChaseSpeed, guideLauncherRocketVelocity, launcherRocketLaunchAngle, removeProjectile } from "../../COMBAT/PROJECTILES.js";
-import { createWaveSpawnState } from "./WAVES.js";
+import { createWaveSpawnState, remainingWaveSpawns } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
 import { COLLECTABLE_PICKUP_HOLD_SEC } from "./COLLECTION_TIMING.js";
@@ -7715,6 +7716,7 @@ const DEFAULT_GAME_SETTINGS = {
   doubleClickAttack: true,
   // FPS maximum : 0 = auto (vsync, calé sur les Hz de l'écran).
   fpsLimit: 0,
+  backgroundRefresh: "enabled",
   keybinds: { ...DEFAULT_KEYBINDS },
   // Volumes individuels (0..100) et muets par son, persistés comme le reste.
   sfxVolumes: { ...DEFAULT_SFX_VOLUMES },
@@ -7860,6 +7862,7 @@ function loadGameSettings() {
     };
     settings.soundVolume = clamp(Math.round(Number(settings.soundVolume) || 0), 0, 100);
     settings.fpsLimit = normalizeFpsLimit(settings.fpsLimit);
+    settings.backgroundRefresh = normalizeBackgroundRefresh(settings.backgroundRefresh);
     settings.fxDensity = normalizeFxDensity(settings.fxDensity);
     // Le preset affiché reflète toujours la réalité (sinon "Personnalisé").
     settings.gfxQuality = matchGfxQuality(settings);
@@ -7917,6 +7920,7 @@ function loadGameSettings() {
 }
 
 const GAME_SETTINGS = loadGameSettings();
+setBackgroundRefresh(GAME_SETTINGS.backgroundRefresh);
 
 function saveGameSettings() {
   try {
@@ -7989,6 +7993,13 @@ function setFpsLimit(value) {
     GAME_SETTINGS.fpsLimit > 0 ? `FPS maximum : ${GAME_SETTINGS.fpsLimit}` : "FPS : auto (écran)",
     1.1
   );
+}
+
+function setBackgroundRefreshSetting(value) {
+  GAME_SETTINGS.backgroundRefresh = setBackgroundRefresh(value);
+  saveGameSettings();
+  renderSettingsWindow();
+  window.dispatchEvent(new CustomEvent("orbit:background-refresh-changed"));
 }
 
 // Preset qualité : applique le bundle d'un coup. "Personnalisé" = lecture
@@ -8339,6 +8350,8 @@ function updateSettingsButton(id, isOn, onText, offText) {
 }
 
 function renderSettingsWindow() {
+  updateHudKeyHints();
+  if (!shouldRefreshWindow("settingsWindow")) return;
   updateSettingsButton(
     "optSound",
     GAME_SETTINGS.sound,
@@ -8397,10 +8410,11 @@ function renderSettingsWindow() {
   if (fpsLimit) fpsLimit.value = String(normalizeFpsLimit(GAME_SETTINGS.fpsLimit));
   const gfxQuality = document.getElementById("optGfxQuality");
   if (gfxQuality) gfxQuality.value = normalizeGfxQuality(GAME_SETTINGS.gfxQuality);
+  const backgroundRefresh = document.getElementById("optBackgroundRefresh");
+  if (backgroundRefresh) backgroundRefresh.value = normalizeBackgroundRefresh(GAME_SETTINGS.backgroundRefresh);
 
   renderKeybindRows();
   renderSfxRows();
-  updateHudKeyHints();
 }
 
 function normalizeSettingsWindow() {
@@ -8431,7 +8445,7 @@ function wireSettingsWindow() {
   }
 
   window.addEventListener("orbit:window-restoring", (event) => {
-    if (event.detail?.id === "settingsWindow") normalizeSettingsWindow();
+    if (event.detail?.id === "settingsWindow") { normalizeSettingsWindow(); renderSettingsWindow(); }
   });
 
   soundBtn?.addEventListener("click", () => {
@@ -8521,6 +8535,10 @@ function wireSettingsWindow() {
     setGameSetting("doubleClickAttack", doubleClickAttack.checked);
   });
 
+  document.getElementById("optBackgroundRefresh")?.addEventListener("change", event => {
+    setBackgroundRefreshSetting(event.currentTarget.value);
+  });
+
   fpsLimitSel?.addEventListener("change", () => {
     setFpsLimit(Number(fpsLimitSel.value));
   });
@@ -8571,6 +8589,8 @@ document.getElementById("btnResetAllSettings")?.addEventListener("click", () => 
     sfxVolumes: { ...DEFAULT_SFX_VOLUMES },
     sfxMuted: {},
   });
+  setBackgroundRefresh(GAME_SETTINGS.backgroundRefresh);
+  window.dispatchEvent(new CustomEvent("orbit:background-refresh-changed"));
   saveGameSettings();
   applySfxSettings();
   SFX?.setMasterVolume?.(GAME_SETTINGS.soundVolume / 100);
@@ -8798,6 +8818,7 @@ function groupBoosterCounts() {
 }
 
 function renderBoosterWindow() {
+  if (!shouldRefreshWindow("boosterWindow")) return;
   const list = document.getElementById("boosterList");
   if (!list) return;
   const user = account.user || getCurrentUserFull();
@@ -9233,6 +9254,7 @@ function botSwitchTab(name) {
 }
 
 function botRefreshHud() {
+  if (!shouldRefreshWindow("botWindow")) return;
   const statusEl = document.getElementById("botStatusTxt");
   const targetEl = document.getElementById("botTargetTxt");
   const playEl = document.getElementById("botPlayBtn");
@@ -9254,6 +9276,7 @@ function botRefreshHud() {
 
 // Stats de session (onglet Stats) : durée, gains et taux horaires.
 function botRefreshStats() {
+  if (!shouldRefreshWindow("botWindow")) return;
   const set = (id, txt) => {
     const el = document.getElementById(id);
     if (el && el.textContent !== txt) el.textContent = txt;
@@ -9413,7 +9436,7 @@ function botSellOres() {
     if (total > 0) {
       account.user = getCurrentUserFull();
       player.credits = Number(account.user?.credits) || player.credits;
-      setHudText(ui.shopCredits, formatInteger(player.credits));
+      if (shouldRefreshWindow("shopWindow")) setHudText(ui.shopCredits, formatInteger(player.credits));
       markProgressDirty();
       saveProgressNow();
       window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
@@ -9593,6 +9616,7 @@ function botPetGearUnion() {
 // Options REX du bot : Passif / Combat + modules équipés (gear:key).
 // Reconstruit à chaque ouverture (l'équipement peut changer en boutique).
 function botRefreshPetOptions() {
+  if (!shouldRefreshWindow("botWindow")) return;
   const sel = document.getElementById("botPetMode");
   if (!sel) return;
   const prev = Bot.petMode || "";
@@ -9829,6 +9853,7 @@ function botFormationOptions(selected) {
 // (Re)construit la liste NPC : triés par nom, filtrés par map + recherche,
 // avec distance de combat par NPC.
 function botRenderNpcList() {
+  if (!shouldRefreshWindow("botWindow")) return;
   const list = document.getElementById("botNpcList");
   if (!list) return;
   const q = String(document.getElementById("botNpcSearch")?.value || "").toLowerCase();
@@ -10531,6 +10556,8 @@ function wireBotWindow() {
       botRefreshHud();
       // L'équipement REX a pu changer (boutique) : on resynchronise la liste.
       botRefreshPetOptions();
+      botRenderNpcList();
+      botRefreshStats();
     }
   });
   // La liste NPC dépend de l'index des maps (chargé en async) : on la
@@ -12422,7 +12449,7 @@ function wirePetWindow() {
       if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
       account.user = out.user;
       player.credits = out.user.credits;
-      setHudText(ui.shopCredits, formatInteger(player.credits));
+      if (shouldRefreshWindow("shopWindow")) setHudText(ui.shopCredits, formatInteger(player.credits));
       loadAccountUser();
       markProgressDirty();
       window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
@@ -12435,7 +12462,7 @@ function wirePetWindow() {
       if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
       account.user = out.user;
       player.credits = out.user.credits;
-      setHudText(ui.shopCredits, formatInteger(player.credits));
+      if (shouldRefreshWindow("shopWindow")) setHudText(ui.shopCredits, formatInteger(player.credits));
       loadAccountUser();
       markProgressDirty();
       window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
@@ -12454,7 +12481,7 @@ function wirePetWindow() {
     if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
     account.user = out.user;
     player.credits = out.user.credits;
-    setHudText(ui.shopCredits, formatInteger(player.credits));
+    if (shouldRefreshWindow("shopWindow")) setHudText(ui.shopCredits, formatInteger(player.credits));
     loadAccountUser();
     markProgressDirty();
     window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
@@ -12649,6 +12676,7 @@ function applyPetModeValue(v) {
 }
 
 function updatePetHud() {
+  if (!shouldRefreshWindow("petWindow")) return;
   const pet = account.user?.pet?.owned === true ? account.user.pet : null;
   const has = !!pet;
   if (ui.petNoPet) ui.petNoPet.hidden = has;
@@ -13097,6 +13125,7 @@ function describeCraftingOutputs(recipe, quantity) {
 }
 
 function renderCraftingWindow(message = "") {
+  if (!shouldRefreshWindow("craftingWindow")) return;
   // Assemblage coupé (CRAFTING_ENABLED=false) : on masque la fenêtre.
   if (!CRAFTING_ENABLED) {
     document.getElementById("craftingWindow")?.style.setProperty("display", "none", "important");
@@ -13299,6 +13328,7 @@ function tickRefineryAuto(dt) {
 }
 
 function renderRefineryWindow(message = "") {
+  if (!shouldRefreshWindow("refineryWindow")) return;
   if (!ui.refineryRecipes || !ui.refineryStock) return;
   const user = account.user || getCurrentUserFull();
   if (!user) return;
@@ -13389,7 +13419,7 @@ ui.refineryAutoUpgrades?.addEventListener("change", () => {
   saveRefineryEquipmentPrefs();
   if (ui.refineryAutoUpgrades.checked) { saveProgressNow(); maybeRefineryAuto(); }
   renderRefineryWindow();
-  updateResourceHud(ui, player, currentCargo());
+  if (shouldRefreshWindow("boxVitals")) updateResourceHud(ui, player, currentCargo());
 });
 ui.refineryUpgrades?.addEventListener("change", event => {
   const select = event.target.closest("[data-upgrade-auto-ore]");
@@ -13400,7 +13430,7 @@ ui.refineryUpgrades?.addEventListener("change", event => {
   saveRefineryEquipmentPrefs();
   if (ui.refineryAutoUpgrades?.checked) { saveProgressNow(); maybeRefineryAuto(); }
   renderRefineryWindow();
-  updateResourceHud(ui, player, currentCargo());
+  if (shouldRefreshWindow("boxVitals")) updateResourceHud(ui, player, currentCargo());
 });
 ui.refineryAuto?.addEventListener("change", () => {
   try { localStorage.setItem("orbit_refinery_auto", ui.refineryAuto?.checked ? "1" : "0"); } catch {}
@@ -13592,6 +13622,7 @@ function formatGalaxyGatePartRewards(reward) {
 }
 
 function renderGalaxyGateWindow(message = "") {
+  if (!shouldRefreshWindow("galaxyGateWindow")) return;
   if (!ui.ggTabs) return;
   const user = getCurrentUserFull();
   const state = user?.galaxyGates;
@@ -13722,6 +13753,23 @@ function renderGalaxyGateWindow(message = "") {
   }).join("") : `<div class="ggHistoryEmpty">Aucun spin enregistré.</div>`;
 }
 
+window.addEventListener("orbit:window-restoring", event => {
+  if (event.detail?.id === "galaxyGateWindow") renderGalaxyGateWindow();
+  if (event.detail?.id === "questWindow") renderQuestWindow();
+  if (event.detail?.id === "questOfferWindow") renderQuestTerminal();
+  if (event.detail?.id === "oreTradeWindow") renderOreTradeWindow();
+});
+window.addEventListener("orbit:background-refresh-changed", () => {
+  renderGalaxyGateWindow();
+  renderBoosterWindow();
+  renderCraftingWindow();
+  renderRefineryWindow();
+  renderOreTradeWindow();
+  renderQuestWindow();
+  renderQuestTerminal();
+  renderStarMap();
+});
+
 ui.ggTabs?.addEventListener("click", event => {
   const button = event.target.closest("[data-gg-gate]");
   if (!button) return;
@@ -13785,6 +13833,7 @@ renderGalaxyGateWindow();
 // ============================================================
 const MAX_ALIVE = 100;
 let currentWavePlan = null;
+let mapSwitchInProgress = false;
 let NPC_SENSOR_RANGES = getNpcSensorRanges(rules);
 
 const TAU = Math.PI * 2;
@@ -14663,6 +14712,7 @@ let questJournalRenderPending = false;
 let questTerminalRenderPending = false;
 
 function renderQuestWindow() {
+  if (!shouldRefreshWindow("questWindow")) { questJournalRenderPending = true; return; }
   if (!ui.questList) return;
   questJournalRenderPending = false;
   // Rattrape le cas où le moteur a été instancié avant la session utilisateur
@@ -14861,6 +14911,7 @@ function centerQuestTreeOn(id) {
 }
 
 function renderQuestTerminal() {
+  if (!shouldRefreshWindow("questOfferWindow")) { questTerminalRenderPending = true; return; }
   if (!ui.questOfferDetail || !ui.questOfferList) return;
   questTerminalRenderPending = false;
   const hasAccess = hasQuestTerminalAccess();
@@ -15744,6 +15795,7 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
 }
 
 function updateConfigButtons() {
+  if (!shouldRefreshWindow("boxVitals")) return;
   const active = getActiveConfigNo();
   const left = getConfigCooldownLeft();
 
@@ -15987,6 +16039,7 @@ function formatGameLogDate(timestamp) {
 }
 
 async function renderGameLog() {
+  if (!shouldRefreshWindow("gameLogWindow")) return;
   if (!ui.gameLogEntries) return;
   const token = ++gameLogRenderToken;
   const userId = getGameLogUserId();
@@ -16001,7 +16054,7 @@ async function renderGameLog() {
     const offset = gameLogPage * GAME_LOG_PAGE_SIZE;
     result = { entries: filtered.slice(offset, offset + GAME_LOG_PAGE_SIZE), hasNext: filtered.length > offset + GAME_LOG_PAGE_SIZE };
   }
-  if (token !== gameLogRenderToken) return;
+  if (token !== gameLogRenderToken || !shouldRefreshWindow("gameLogWindow")) return;
   ui.gameLogEntries.innerHTML = result.entries.length
     ? result.entries.map(entry => `<div class="gameLogEntry ${escapeHtml(entry.type)}"><time>${formatGameLogDate(entry.timestamp)}</time><span>${escapeHtml(entry.text)}</span></div>`).join("")
     : `<div class="gameLogEmpty">Aucun événement${gameLogQuery ? " correspondant" : ""}.</div>`;
@@ -26463,7 +26516,7 @@ if (e.type === "npc_Cubikon") {
     // et les minions de phases de boss sont exclus).
     try {
       const killedGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
-      if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[killedGateId] && !betweenWaves) {
+      if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[killedGateId] && !betweenWaves && e._gateWave === wave) {
         const planTypes = currentWavePlan?.spawns;
         if (Array.isArray(planTypes)) {
           for (const spawn of planTypes) {
@@ -26471,7 +26524,7 @@ if (e.type === "npc_Cubikon") {
               // Passe l'etat vivant du moteur : il contient deja les credits,
               // l'XP et l'honneur de ce kill. La copie du cache reseau peut
               // avoir jusqu'a 15 s de retard et ne doit jamais les ecraser.
-              const recorded = recordCurrentUserGalaxyGateWaveKill(killedGateId, wave, 1, account.user);
+              const recorded = recordCurrentUserGalaxyGateWaveKill(killedGateId, wave, 1, account.user, e.type);
               if (recorded.ok) account.user = recorded.user;
               break;
             }
@@ -26488,17 +26541,13 @@ if (e.type === "npc_Cubikon") {
       const onKillAction = e._onKill;
       e._onKill = null;
       const completesGate = !!onKillAction?.tp?.factionBase || !!onKillAction?.completeSpecialGate;
-      // ✅ finale multi-NPC (ex. Delta : 3 SaNeJiEwZ avec TP) : seul le
-      // dernier NPC du plan de vague déclenche téléport + validation.
-      // Les autres = kills normaux (sinon la gate se termine au 1er kill).
-      // Les renforts dynamiques hors plan (Protegit du Cubikon...) ne bloquent
-      // jamais la fin : seul le plan compte.
+      // La fin des GG connues est validee par le controleur de vague.
+      // Le boss peut mourir avant ses escorts ou avant la fin des spawns :
+      // son action ne doit ni terminer la gate trop tot, ni etre perdue.
       let gateTpReady = true;
       if (completesGate && onKillAction?.tp?.factionBase && rules?.mode === "gate") {
-        try {
-          const planTypes = new Set((currentWavePlan?.spawns || []).map(s => String(s?.type || "")));
-          gateTpReady = !enemies.some(o => o && o !== e && Number(o.hp) > 0 && planTypes.has(String(o.type || "")));
-        } catch { gateTpReady = true; }
+        const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+        gateTpReady = !GALAXY_GATE_DEFINITIONS[gateId];
       }
       // Un brouillage peut supprimer des renforts, jamais bloquer la fin GG.
       if ((!isEntityJammed(e) || completesGate) && gateTpReady) {
@@ -26615,7 +26664,6 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
     try { purgeGateCollectables(gateId); } catch {}
     setRespawnOverride({ map: destinationMap, baseCenter: true, fallback: getFactionBaseSpawn(user?.faction) });
     addGameLog(`Retour vers la base mère ${destinationMap}`, "info");
-    gateCompletionPending = false;
     if (typeof window.__SWITCH_MAP__ === "function" && String(destinationMap) !== gateId) {
       try {
         await window.__SWITCH_MAP__(destinationMap);
@@ -26625,7 +26673,7 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
       }
     }
     if (typeof window.__GO_TO_MAP__ === "function" && String(destinationMap) !== gateId) window.__GO_TO_MAP__(destinationMap);
-    else resetRun({ randomSpawn: false });
+    else goToMapFast(destinationMap).catch(error => console.error("Retour de Gate impossible :", error));
   }, 8500);
 }
 
@@ -28586,27 +28634,18 @@ function finishWaveCountdownNotice() {
 }
 
 function beginWave() {
+  const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+  if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[gateId]) wave = normalizeGalaxyGateWave(gateId, wave);
   const plan = getWavePlan(wave);
   currentWavePlan = plan;
-
-  waveSpawns.load(plan.spawns || []);
-  // ✅ reprise intra-vague (refresh / mort + re-entrée) : les NPC du plan
-  // déjà tués ne respawnent pas. On consomme les `killed` premières unités
-  // de la file sans les faire apparaître (ex : 12 NPC, 8 tués -> 4 restants).
+  let spawns = plan.spawns || [];
   try {
-    const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
     if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[gateId]) {
       const progress = getCurrentUserGalaxyGateWaveKills(gateId);
-      if (progress && Number(progress.wave) === wave && Number(progress.killed) > 0) {
-        let skip = Math.min(Math.max(0, Math.floor(Number(progress.killed) || 0)), waveSpawns.remaining);
-        while (skip > 0 && waveSpawns.remaining > 0) {
-          waveSpawns.consume();
-          skip--;
-        }
-        waveSpawns.timer = 0.35;
-      }
+      if (progress && Number(progress.wave) === wave) spawns = remainingWaveSpawns(spawns, progress);
     }
   } catch {}
+  waveSpawns.load(spawns);
   betweenWaves = false;
   waveStartCountdown = rules?.mode === "gate" ? GATE_WAVE_COUNTDOWN_SECONDS : 0;
   waveCountdownSecond = -1;
@@ -28619,8 +28658,26 @@ function beginWave() {
   if (waveStartCountdown > 0) updateWaveCountdownNotice();
 }
 
+function tryCompleteClearedGalaxyGate() {
+  if (mapSwitchInProgress) return true;
+  const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+  const gate = rules?.mode === "gate" ? GALAXY_GATE_DEFINITIONS[gateId] : null;
+  if (!gate || wave < gate.maxWaves) return false;
+  if (gateCompletionPending) return true;
+  if (waveSpawns.remaining > 0) return false;
+  // Les renforts dynamiques hors plan (Protegit, phases...) ne bloquent
+  // pas la fin. Tous les NPC prevus dans la derniere vague doivent mourir.
+  const planTypes = new Set((currentWavePlan?.spawns || []).map(spawn => String(spawn?.type || "")));
+  // Attendre aussi le retrait des NPC morts : processDeaths doit d'abord
+  // crediter le dernier kill et enregistrer sa progression avant le bonus.
+  if (enemies.some(enemy => enemy && !enemy._bossPhaseMinion && !enemy.masterId && planTypes.has(String(enemy.type || "")))) return false;
+  runOnKillAction({ tp: { factionBase: true } });
+  return true;
+}
+
 function onWaveCleared() {
   if (gateCompletionPending) return;
+  if (tryCompleteClearedGalaxyGate()) return;
   betweenWaves = true;
   resetGatePortalState(portal, { active: true, switchDuration: portal.switchDur });
   portal.switchDur = Math.max(0.1, Number(portal.switchDur || 1));
@@ -28652,7 +28709,7 @@ function tryStartNextWave() {
 }
 
 function waveController(dt) {
-  if (!started || player.dead || betweenWaves) return;
+  if (!started || player.dead || betweenWaves || mapSwitchInProgress) return;
 
   if (waveStartCountdown > 0) {
     waveStartCountdown = Math.max(0, waveStartCountdown - dt);
@@ -28686,6 +28743,7 @@ if (waveSpawns.remaining > 0 && enemies.length < MAX_ALIVE) {
 
     const e = makeEnemy(type, x, y);
     if (e) {
+      e._gateWave = wave;
       e._onKill = next?.onKill || null;
       if (!isEncounterBoss && rules?.bossEncounter?.initialGuard) e._bossInitialGuard = true;
       // ✅ boss de vague : même état encounter que le spawn factory (Zeta).
@@ -28705,6 +28763,7 @@ if (waveSpawns.remaining > 0 && enemies.length < MAX_ALIVE) {
   }
 }
 
+  if (tryCompleteClearedGalaxyGate()) return;
   if (waveSpawns.remaining === 0 && enemies.length === 0) {
     onWaveCleared();
   }
@@ -30507,6 +30566,7 @@ let minimapLastDraw = -Infinity;
 let minimapLastWorld = null;
 let minimapLastSize = "";
 function drawMinimap() {
+  if (!shouldRefreshWindow("minimap")) return;
   // This independent canvas retains its bitmap. Update at 20 Hz rather
   // than scanning every NPC and rebuilding the static key at monitor FPS.
   const now = performance.now();
@@ -31882,6 +31942,7 @@ for (const state of Object.values(TRADE_BUTTON).filter(value => value?.src)) {
 // Comptoir pirate 5-2 : vente minerais, ouvert UNIQUEMENT via le bouton monde.
 // ============================================================
 function renderOreTradeWindow() {
+  if (!shouldRefreshWindow("oreTradeWindow")) return;
   if (!ui.otRows) return;
   const user = account.user || getCurrentUserFull();
   if (!user) return;
@@ -31972,7 +32033,7 @@ ui.oreTradeWindow?.addEventListener("click", (event) => {
   if (!result.ok) return;
   account.user = result.user;
   player.credits = result.user.credits;
-  setHudText(ui.shopCredits, formatInteger(player.credits));
+  if (shouldRefreshWindow("shopWindow")) setHudText(ui.shopCredits, formatInteger(player.credits));
   showNotificationGroup([`Vente : ${formatInteger(result.quantity)} ${getResourceName(result.resourceId, result.quantity)} → +${formatInteger(result.gained)} crédits${traBonus > 0 ? ` (+${traBonus} % Trader)` : ""}`], "reward", { whiteTerms: [`+${formatInteger(result.gained)}`] });
   renderOreTradeWindow();
   // Commerce <-> raffinage synchronisés : la vente change les stocks affichés
@@ -32143,10 +32204,16 @@ function drawPlayerDrones() {
 }
 
 function tickGatePortalJumps(dt) {
-  if (isZoneMap || !betweenWaves) return false;
+  if (isZoneMap || !betweenWaves || mapSwitchInProgress) return false;
   const completed = advanceGatePortalJumps(getInteractivePortals(), dt);
   if (!completed) return false;
   if (completed.action === "continue") {
+    const currentGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+    const gate = GALAXY_GATE_DEFINITIONS[currentGateId];
+    if (gate && wave >= gate.maxWaves) {
+      tryCompleteClearedGalaxyGate();
+      return true;
+    }
     betweenWaves = false;
     wave++;
     const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
@@ -32281,6 +32348,9 @@ function drawZonePortals(ox, oy) {
           ctx.clip();
           ctx.globalAlpha = 1;
           ctx.drawImage(previewImg, x - drawW / 2, y - drawH / 2, drawW, drawH);
+          ctx.restore();
+          ctx.globalAlpha = 1;
+          ctx.drawImage(previewImg, x - (drawW * growK) / 2, y - (drawH * growK) / 2, drawW * growK, drawH * growK);
           ctx.restore();
           ctx.globalAlpha = 1;
         }
@@ -37467,8 +37537,10 @@ function drawUI() {
     setHudDisplay(ui.boxWave, !zoneMode && waveWindowOpen ? "block" : "none");
   }
 
-  setHudText(ui.credits, formatInteger(player.credits));
-  setHudText(ui.kills, formatInteger(player.kills));
+  if (shouldRefreshWindow("boxMeta")) {
+    setHudText(ui.credits, formatInteger(player.credits));
+    setHudText(ui.kills, formatInteger(player.kills));
+  }
 
   if (ui.gygerimStatus) {
     const bossType = rules?.bossEncounter?.bossType;
@@ -37489,12 +37561,14 @@ const u = account.user || null;
 const st = u?.stats || {};
 
 const exp = Number(st.exp || 0);
-const lvl = getLevelInfo(exp);
+const lvl = shouldRefreshWindow("boxMeta") ? getLevelInfo(exp) : null;
 st.rankPoints = calculateRankPoints(st);
-updateProgressHud(ui, st, lvl);
-setHudText(ui.playerIdTxt, publicPlayerId(u?.id));
+if (shouldRefreshWindow("boxMeta")) {
+  updateProgressHud(ui, st, lvl);
+  setHudText(ui.playerIdTxt, publicPlayerId(u?.id));
+}
 
-if (ui.spdTxt) {
+if (ui.spdTxt && shouldRefreshWindow("boxVitals")) {
   const spd = getSpeedBreakdown();
 
   setHudText(ui.spdTxt, formatInteger(spd.total));
@@ -37510,7 +37584,7 @@ if (ui.spdTxt) {
 
 updateConfigButtons();
 
-  updateResourceHud(ui, player, currentCargo());
+  if (shouldRefreshWindow("boxVitals")) updateResourceHud(ui, player, currentCargo());
   // Comptoir pirate : la fenêtre se ferme dès qu'on s'éloigne du bouton.
   if (isOreTradeWindowOpen() && !isTradeWindowAnchored()) closeOreTradeWindow();
   // Terminal de quêtes : pareil, uniquement via le bouton monde.
@@ -37518,7 +37592,7 @@ updateConfigButtons();
   updatePetHud();
   updateWaveHud(ui, { started, wave, remaining: waveSpawns.remaining, alive: enemies.length });
 
-  setHudText(ui.shopCredits, formatInteger(player.credits));
+  if (shouldRefreshWindow("shopWindow")) setHudText(ui.shopCredits, formatInteger(player.credits));
 
   // Une seule passe du dock par HUD ; les appels hors rendu conservent
   // leur actualisation immediate (selection, aptitudes, reparation).
@@ -37548,8 +37622,10 @@ updateConfigButtons();
     started && !player.dead && ammoCount("x6") > 0 && rsbLikeCooldown("x6") <= 0
   );
 
-  setHudText(ui.miniMapName, `Map : ${rules?.mapName || rules?.mapLabel || "—"}`);
-  setHudText(ui.miniPos, `Pos : ${formatInteger(player.x)} / ${formatInteger(player.y)}`);
+  if (shouldRefreshWindow("minimap")) {
+    setHudText(ui.miniMapName, `Map : ${rules?.mapName || rules?.mapLabel || "—"}`);
+    setHudText(ui.miniPos, `Pos : ${formatInteger(player.x)} / ${formatInteger(player.y)}`);
+  }
 
   setHudText(ui.versionTxt, `BETA PRIVEE v${GAME_VERSION}`);
   const latency = netLatencyMs();
@@ -38172,6 +38248,8 @@ updateCurrentUserProgress({
 
 async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   if (!nextConfig?.WORLD || !mapId) throw new Error("Configuration de destination invalide");
+  mapSwitchInProgress = true;
+  try {
 
   // Coupe immédiatement toutes les entités de l'ancienne carte. Attendre le
   // prochain envoi réseau laissait parfois un ancien NPC apparaître après le saut.
@@ -38201,6 +38279,7 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   await Promise.allSettled(jobs);
 
   saveStateImmediate();
+  gateCompletionPending = false;
   WORLD = nextWorld;
   getWavePlan = nextConfig.getWavePlan || (() => ({ spawns: [] }));
   DEFAULT_WAVE_TYPE = nextConfig.DEFAULT_WAVE_TYPE || "dummy";
@@ -38248,6 +38327,9 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
     saveProgressNow?.();
   } catch {}
   return true;
+  } finally {
+    mapSwitchInProgress = false;
+  }
 }
 
 const HANGAR_ACTION_DELAY_MS = 5000;
@@ -38328,7 +38410,7 @@ function applyHangarDesignLive() {
     // recalcule les stats (hp, bouclier, vitesse, dégâts…) en valeurs absolues
     applyCurrentConfigStats(false, null, true);
 
-  updateResourceHud(ui, player, currentCargo());
+  if (shouldRefreshWindow("boxVitals")) updateResourceHud(ui, player, currentCargo());
   // Raffinerie ouverte : compteurs d'usure en (quasi) direct, sans reconstruire à chaque frame.
   if (ui.refineryWindow && ui.refineryWindow.style.display !== "none" && !ui.refineryWindow.classList.contains("gameWinMinimized")) {
     const nowMs = performance.now();
@@ -38767,6 +38849,7 @@ function starMapEdgeCount(id) {
 }
 
 function renderStarMap() {
+  if (!shouldRefreshWindow("starMapWindow")) return;
   const tree = ui.starMapTree, nodesEl = ui.starMapNodes, svg = ui.starMapEdges;
   if (!tree || !nodesEl || !svg) return;
   const NS = "http://www.w3.org/2000/svg";
@@ -38931,6 +39014,7 @@ function starMapJumpReuseLeftSec() {
 }
 
 function refreshStarMap() {
+  if (!shouldRefreshWindow("starMapWindow")) return;
   const cur = starJumpCurrentMap();
   const sel = StarJump.selected ? starMapById.get(String(StarJump.selected).toLowerCase()) : null;
   const ch = StarJump.channel;
@@ -39150,6 +39234,14 @@ function tickStarJump(dt) {
     }
     updateStarJumpCountdown(ch);
     if (ch.t >= ch.dur && !ch.validating) executeStarJump(ch);
+  }
+  if (!shouldRefreshWindow(ui.starMapWindow)) {
+    const info = document.getElementById('starMapInfoWindow');
+    if (info && info.style.display !== 'none' && !info.classList.contains('gameWinMinimized') && !info.classList.contains('gameWinClosing')) {
+      StarJump.restoreInfoOnOpen = true;
+      window.GameWindowManager?.minimize('starMapInfoWindow');
+    }
+    return;
   }
   try {
     const open = ui.starMapWindow && ui.starMapWindow.style.display !== "none"

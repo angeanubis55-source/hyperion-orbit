@@ -1,4 +1,5 @@
 "use strict";
+import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 
 import { netMyPseudo } from "../SRC/CORE/NETPLAY.js";
 import { getRankInfo } from "../SRC/CORE/PROGRESSION.js";
@@ -16,10 +17,12 @@ export function initRankingsUI() {
   if (!body) return;
 
   async function load() {
+    if (!shouldRefreshWindow("rankingWindow")) return;
     try {
       if (status) status.textContent = "Chargement…";
       const res = await fetch("/api/rankings", { cache: "no-store" });
       const out = await res.json().catch(() => ({}));
+      if (!shouldRefreshWindow("rankingWindow")) return;
       if (!out || out.ok !== true || !Array.isArray(out.list)) {
         if (status) status.textContent = "Hors ligne (serveur injoignable)";
         return;
@@ -50,6 +53,7 @@ export function initRankingsUI() {
         status.textContent = myIdx >= 0 ? `Tu es #${myIdx + 1}` : `${out.list.length} pilote${out.list.length > 1 ? "s" : ""} classé${out.list.length > 1 ? "s" : ""}`;
       }
     } catch {
+      if (!shouldRefreshWindow("rankingWindow")) return;
       if (status) status.textContent = "Hors ligne (serveur injoignable)";
     }
   }

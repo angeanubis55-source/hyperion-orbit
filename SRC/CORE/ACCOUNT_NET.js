@@ -84,7 +84,9 @@ export function netStore(list, { pilotDisksOnly = false, durable = false } = {})
     // Le moteur conserve des références à ce compte et à son P.E.T. Les
     // détacher à chaque save perdrait les mutations de la frame suivante.
     // Seuls la référence serveur et le snapshot envoyé sont des copies.
-    sanitizeInfiniteValues(mine);
+    // Les modules sont normalises dans leur snapshot, au moment de l'E/S.
+    // Une consommation de carburant ne doit pas parcourir leurs bonus.
+    sanitizeInfiniteValues(mine, new WeakSet(), true);
     memUser = retainPendingSelections(mine);
     cachePendingGalaxyGates();
     writeCache(memUser, durable);
@@ -220,10 +222,117 @@ let nextCacheChunk = 0;
 const cacheEpoch = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 const cacheJson = value => JSON.stringify(value, (key, item) => item === Infinity ? -1 : item);
 
+// Les modules live restent modifiables. Seules leurs copies internes sont
+// partagees entre cache, recu et reference serveur. Verifier leurs champs
+// une fois par operation detecte aussi une modification imbriquee en place.
+const MODULE_LISTS = ["shipModules", "moduleRollHistory"];
+const immutableModules = new WeakSet();
+const moduleCopies = new WeakMap();
+const moduleJson = new WeakMap();
+const moduleBlocks = new WeakMap();
+let moduleScope = null;
+function withModuleScope(fn) {
+  if (moduleScope) return fn();
+  moduleScope = new WeakMap();
+  try { return fn(); } finally { moduleScope = null; }
+}
+function snapshotModuleValue(value, previous, memoize = false) {
+  if (value === Infinity) return -1;
+  if (typeof value === "number" && !Number.isFinite(value)) return null;
+  if (!value || typeof value !== "object") return value;
+  if (immutableModules.has(value)) return value;
+  if (memoize) previous = moduleCopies.get(value) || previous;
+  const array = Array.isArray(value);
+  const keys = array ? null : Object.keys(value);
+  const definedKeys = array ? 0 : keys.reduce((count, key) => count + (value[key] !== undefined ? 1 : 0), 0);
+  let next = (array ? Array.isArray(previous) && previous.length === value.length
+    : previous && !Array.isArray(previous) && Object.keys(previous).length === definedKeys)
+    ? previous : (array ? new Array(value.length) : {});
+  const visit = key => {
+    const item = snapshotModuleValue(array ? value[key] ?? null : value[key], previous?.[key], memoize && array);
+    if (next && next[key] === item && Object.hasOwn(next, key)) return;
+    if (next === previous) next = array ? previous.slice()
+      : Object.fromEntries(keys.filter(name => value[name] !== undefined && Object.hasOwn(previous, name)).map(name => [name, previous[name]]));
+    Object.defineProperty(next, key, { value: item, writable: true, enumerable: true, configurable: true });
+  };
+  if (array) { for (let i = 0; i < value.length; i++) visit(i); }
+  else { for (const key of keys) if (value[key] !== undefined) visit(key); }
+  if (next !== previous) { Object.freeze(next); immutableModules.add(next); }
+  if (memoize) moduleCopies.set(value, next);
+  return next;
+}
+function captureModuleSections(user, reference = null) {
+  if (!user?.inventory) return user;
+  const inventory = { ...user.inventory };
+  for (const key of MODULE_LISTS) {
+    const list = inventory[key];
+    if (Array.isArray(list)) {
+      inventory[key] = moduleScope?.get(list) || snapshotModuleValue(list, reference?.inventory?.[key], true);
+      moduleScope?.set(list, inventory[key]);
+    }
+  }
+  return { ...user, inventory };
+}
+function copyAccount(user, reference = null, jsonCompatible = false) {
+  if (!user) return user;
+  const captured = captureModuleSections(user, reference);
+  const small = { ...captured, inventory: captured.inventory && { ...captured.inventory } };
+  for (const key of MODULE_LISTS) if (small.inventory) delete small.inventory[key];
+  const result = jsonCompatible ? JSON.parse(cacheJson(small)) : copy(small);
+  for (const key of MODULE_LISTS) {
+    if (Array.isArray(captured.inventory?.[key])) result.inventory[key] = captured.inventory[key];
+    else if (captured.inventory && Object.hasOwn(captured.inventory, key)) result.inventory[key] = copy(captured.inventory[key]);
+  }
+  return result;
+}
+function moduleListJson(list) {
+  let json = moduleJson.get(list);
+  if (json === undefined) {
+    json = `[${list.map(value => {
+      if (!value || typeof value !== "object") return cacheJson(value) ?? "null";
+      let item = moduleJson.get(value);
+      if (item === undefined) { item = cacheJson(value); moduleJson.set(value, item); }
+      return item;
+    }).join(",")}]`;
+    moduleJson.set(list, json);
+  }
+  return json;
+}
+function inventoryJson(inventory) {
+  const small = { ...inventory };
+  const lists = [];
+  for (const key of MODULE_LISTS) {
+    if (!Array.isArray(small[key])) continue;
+    lists.push(`${JSON.stringify(key)}:${moduleListJson(small[key])}`);
+    delete small[key];
+  }
+  const fields = cacheJson(small).slice(1, -1);
+  return `{${[fields, ...lists].filter(Boolean).join(",")}}`;
+}
+function accountJson(snapshot) {
+  if (!snapshot?.inventory) return cacheJson(snapshot);
+  const user = { ...snapshot }; delete user.inventory;
+  const userFields = cacheJson(user).slice(1, -1);
+  return `{${userFields}${userFields ? "," : ""}"inventory":${inventoryJson(snapshot.inventory)}}`;
+}
+function accountSaveJson(sent) {
+  return `{"user":${accountJson(sent.user)},"baseRevision":${cacheJson(sent.baseRevision)},"saveId":${cacheJson(sent.saveId)},"compactSave":true}`;
+}
+function inlineCacheJson(state) {
+  const retry = state.retrySave;
+  let retryJson = "null";
+  if (retry) {
+    const meta = { ...retry }; delete meta.user;
+    const fields = cacheJson(meta).slice(1, -1);
+    retryJson = `{${fields}${fields ? "," : ""}"user":${accountJson(retry.user)}}`;
+  }
+  return `{"user":${accountJson(state.user)},"base":${accountJson(state.base)},"retrySave":${retryJson},"rewards":${cacheJson(state.rewards)}}`;
+}
+
 function writeSplitAccountCache(state) {
   const chunks = new Map(), created = [];
-  const store = value => {
-    const json = cacheJson(value);
+  const store = (value, serialized) => {
+    const json = serialized === undefined ? cacheJson(value) : serialized;
     let key = chunks.get(json) || cacheChunks.get(json);
     // Un autre onglet (profil/jeu) peut avoir remplacé le manifeste et
     // nettoyé ce bloc depuis notre précédente écriture.
@@ -240,7 +349,13 @@ function writeSplitAccountCache(state) {
     if (value === null || typeof value !== "object") return { v: value === Infinity ? -1 : value };
     if (Array.isArray(value)) {
       const parts = [];
-      for (let i = 0; i < value.length; i += 32) parts.push(store(value.slice(i, i + 32)));
+      let blocks = immutableModules.has(value) ? moduleBlocks.get(value) : null;
+      if (!blocks && immutableModules.has(value)) {
+        blocks = [];
+        for (let i = 0; i < value.length; i += 32) blocks.push(moduleListJson(value.slice(i, i + 32)));
+        moduleBlocks.set(value, blocks);
+      }
+      for (let i = 0; i < value.length; i += 32) parts.push(store(blocks ? null : value.slice(i, i + 32), blocks?.[i / 32]));
       return { a: parts };
     }
     if (object(value) && depth < 2) {
@@ -263,6 +378,7 @@ function writeSplitAccountCache(state) {
     }) };
   };
   try {
+    state = { ...state, user: captureModuleSections(state.user, state.base) };
     const manifest = { format: 2, user: encodeUser(state.user), base: encodeUser(state.base),
       retrySave: state.retrySave ? { ...state.retrySave, user: encodeUser(state.retrySave.user) } : null,
       rewards: state.rewards };
@@ -311,20 +427,24 @@ function decodeSplitAccountCache(manifest) {
 }
 
 function flushAccountCache() {
+  return withModuleScope(flushAccountCacheScoped);
+}
+function flushAccountCacheScoped() {
   cacheWriteScheduled = false;
   const user = pendingCacheUser;
   pendingCacheUser = null;
   // Une deconnexion ne doit jamais etre suivie par la resurrection du cache.
   if (!user || !netActive() || user.id !== memUser.id) return;
   try {
-    const state = { user, base: serverBase, retrySave, rewards: [...serverRewards] };
+    const state = { user: captureModuleSections(user, serverBase), base: serverBase, retrySave, rewards: [...serverRewards] };
     // Les petits comptes gardent le format historique. Une fois découpé,
     // conserver ce format même après une vente massive de modules.
-    if (cacheChunks.size || cacheJson(user.inventory || {}).length > 65536) {
+    if (cacheChunks.size || (user.inventory?.shipModules?.length || 0) >= 128
+      || inventoryJson(state.user.inventory || {}).length > 65536) {
       writeSplitAccountCache(state);
       return;
     }
-    const json = cacheJson(state);
+    const json = inlineCacheJson(state);
     lsSet(CACHE_KEY, json);
   } catch {}
 }
@@ -349,8 +469,9 @@ function readCache() {
     let parsed = JSON.parse(raw);
     if (parsed?.format === 2) parsed = decodeSplitAccountCache(parsed);
     if (parsed && typeof parsed.user === "object" && parsed.user.id) {
-      serverBase = copy(parsed.base?.id === parsed.user.id ? parsed.base : parsed.user);
-      retrySave = parsed.retrySave?.user?.id === parsed.user.id ? parsed.retrySave : null;
+      serverBase = copyAccount(parsed.base?.id === parsed.user.id ? parsed.base : parsed.user);
+      retrySave = parsed.retrySave?.user?.id === parsed.user.id
+        ? { ...parsed.retrySave, user: copyAccount(parsed.retrySave.user, serverBase, true) } : null;
       serverRewards.clear();
       for (const [revision, reward] of parsed.rewards || []) serverRewards.set(revision, reward);
       knownRewardRevision = Math.max(Number(serverBase.revision) || 0, ...serverRewards.keys());
@@ -391,7 +512,7 @@ export function enterNetMode(token, user) {
   identityWriter = null;
   serverRewards.clear();
   knownRewardRevision = Number(memUser.revision) || 0;
-  serverBase = copy(memUser);
+  serverBase = copyAccount(memUser);
   retrySave = null;
   restorePendingSelections();
   restorePendingGalaxyGates();
@@ -408,17 +529,17 @@ export function enterNetMode(token, user) {
   return true;
 }
 
-async function api(path, { method = "GET", body, token, timeout = 15000 } = {}) {
+async function api(path, { method = "GET", body, bodyJson, token, timeout = 15000 } = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => { try { ctrl.abort(); } catch {} }, Math.max(500, timeout));
   try {
     const headers = {};
-    if (body !== undefined) headers["content-type"] = "application/json; charset=utf-8";
+    if (body !== undefined || bodyJson !== undefined) headers["content-type"] = "application/json; charset=utf-8";
     if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch(path, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: bodyJson !== undefined ? bodyJson : body !== undefined ? JSON.stringify(body) : undefined,
       signal: ctrl.signal,
     });
     const data = await res.json().catch(() => ({}));
@@ -521,6 +642,10 @@ function noteConflict() {
 
 const copy = value => value === undefined ? undefined : structuredClone(value);
 function same(a, b) {
+  if (moduleScope) {
+    if (a && typeof a === "object" && moduleScope.has(a)) a = moduleScope.get(a);
+    if (b && typeof b === "object" && moduleScope.has(b)) b = moduleScope.get(b);
+  }
   if (a === Infinity) a = -1;
   if (b === Infinity) b = -1;
   if (a === b) return true;
@@ -537,16 +662,20 @@ function same(a, b) {
 }
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
 
-function sanitizeInfiniteValues(value, seen = new WeakSet()) {
+function sanitizeInfiniteValues(value, seen = new WeakSet(), skipModules = false) {
   if (!value || typeof value !== "object" || seen.has(value)) return;
   seen.add(value);
   for (const key of Object.keys(value)) {
+    if (skipModules && MODULE_LISTS.includes(key) && Array.isArray(value[key])) continue;
     if (value[key] === Infinity) value[key] = -1;
-    else sanitizeInfiniteValues(value[key], seen);
+    else sanitizeInfiniteValues(value[key], seen, skipModules);
   }
 }
 
 function replaceAccountObject(target, source) {
+  // Egalite verifiee pendant cette operation : garder les listes live et
+  // leurs objets au lieu de recopier chaque champ de chaque module.
+  if (Array.isArray(target) && moduleScope?.has(target) && same(target, source)) return target;
   for (const key of Object.keys(target)) {
     if (!Object.hasOwn(source, key)) delete target[key];
   }
@@ -670,7 +799,7 @@ export function noteNetServerReward(reward) {
 }
 
 function acceptServerBase(user) {
-  serverBase = copy(user);
+  serverBase = copyAccount(user, serverBase);
   const revision = Math.floor(Number(user.revision) || 0);
   knownRewardRevision = Math.max(knownRewardRevision, revision);
   for (const [rev, reward] of serverRewards) {
@@ -680,15 +809,20 @@ function acceptServerBase(user) {
 }
 
 function adoptServerUser(user, { base = serverBase, admin = false, reason = "refresh", conflicts } = {}) {
+  return withModuleScope(() => adoptServerUserScoped(user, { base, admin, reason, conflicts }));
+}
+function adoptServerUserScoped(user, { base, admin, reason, conflicts }) {
   if (reason !== "saved") {
     try { window.dispatchEvent(new CustomEvent("orbit:net-before-adopt")); } catch {}
   }
+  captureModuleSections(memUser);
+  user = copyAccount(user, base);
   let remote = user;
   if (!admin && reason !== "saved") {
     // HTTP peut arriver après un gain WebSocket plus récent. La référence
     // contient déjà ce gain : compléter aussi le canon reçu avant la fusion,
     // sinon son retard ressemble à une dépense et retire la récompense.
-    remote = copy(user);
+    remote = copyAccount(user);
     for (const [revision, reward] of serverRewards) {
       if (revision > Number(user.revision || 0)) addRewardToBase(remote, reward);
     }
@@ -696,6 +830,15 @@ function adoptServerUser(user, { base = serverBase, admin = false, reason = "ref
   const merged = admin ? retainPendingSelections(copy(user)) : rebaseUser(memUser, remote, base);
   // Les confirmations sont silencieuses : mettre à jour les objets déjà
   // utilisés par le moteur, plutôt que lui laisser un ancien compte détaché.
+  // Une fusion peut choisir un bloc interne. Ne jamais l'exposer comme une
+  // liste live mutable, sinon elle modifierait aussi la reference serveur.
+  for (const key of MODULE_LISTS) {
+    const list = merged.inventory?.[key];
+    if (Array.isArray(list)) {
+      const live = memUser.inventory?.[key];
+      merged.inventory[key] = live && same(live, list) ? live : copy(list);
+    }
+  }
   memUser = reason === "saved" ? replaceAccountObject(memUser, merged) : merged;
   acceptServerBase(user);
   retainPendingSelections(memUser);
@@ -725,14 +868,22 @@ async function pushNow() {
 }
 
 async function pushSnapshot() {
+  // Cette portee ne dure que jusqu'au premier await : reutiliser la
+  // verification pour le recu et son cache, sans figer les frames suivantes.
+  return withModuleScope(pushSnapshotScoped);
+}
+async function pushSnapshotScoped() {
   if (!netActive()) return { ok: false };
   const token = memToken;
   // En cas de réponse perdue, renvoyer exactement la même opération.
   // Le serveur peut l'avoir enregistrée avant la coupure du transport.
   if (!retrySave) {
     try { window.dispatchEvent(new CustomEvent("orbit:net-before-save")); } catch {}
+    // Les listeners peuvent finaliser le compte : verifier leurs modules
+    // apres l'evenement, meme si l'un d'eux a ecrit un cache intermediaire.
+    moduleScope = new WeakMap();
     retrySave = {
-      user: JSON.parse(JSON.stringify(memUser, (key, value) => value === Infinity ? -1 : value)), baseRevision: Number(serverBase?.revision) || 0,
+      user: withModuleScope(() => copyAccount(memUser, serverBase, true)), baseRevision: Number(serverBase?.revision) || 0,
       saveId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${++nextSaveId}`,
       selections: { ...pendingSelectionVersions },
     };
@@ -742,15 +893,22 @@ async function pushSnapshot() {
   writeCache(memUser, true);
   let out;
   try {
-    out = await api("/api/save", { method: "POST", body: {
-      user: sent.user, baseRevision: sent.baseRevision, saveId: sent.saveId,
-    }, token });
+    out = await api("/api/save", { method: "POST", bodyJson: accountSaveJson(sent), token });
   } catch {
     if (netActive() && memToken === token) schedulePush();
     return { ok: false, error: "Reseau." };
   }
   if (!netActive() || memToken !== token || String(memUser.id) !== String(sent.user.id)) return { ok: false, ignored: true };
   if (out?.ok && out.user) {
+    if (out.snapshotAccepted === true) {
+      // Le serveur confirme exactement le recu envoye ; seuls ses champs
+      // d'identite/revision changent. Un ancien serveur renvoie le compte
+      // entier et continue a fonctionner sans cette optimisation.
+      if (out.saveId !== sent.saveId || String(out.user.id) !== String(sent.user.id)) {
+        schedulePush(); return { ok: false, error: "Recu de sauvegarde invalide." };
+      }
+      out.user = { ...sent.user, ...out.user };
+    }
     retrySave = null;
     clearPendingSelections(sent.selections, sent.user, out.user);
     if (same(pendingGalaxyGates, sent.user.galaxyGates)) pendingGalaxyGates = null;
@@ -776,7 +934,9 @@ async function pushSnapshot() {
 }
 
 export async function flushNetUser() {
-  flushAccountCache();
+  // Un nouvel envoi ecrit deja son cache apres la synchronisation moteur.
+  // Pendant un envoi existant, persister quand meme les changements recents.
+  if (saveInFlight || identityWriter) flushAccountCache();
   try { clearTimeout(saveTimer); } catch {}
   saveTimer = null;
   return pushNow();

@@ -82,7 +82,7 @@ test('HUD : un calcul du dock par image, actions immediates entre deux images', 
   let dockUpdates = 0;
   const noop = () => {};
   const ctx = vm.createContext({
-    rules: { mode: 'zone' }, ui: {}, account: { user: { id: 'hud-test', stats: {} } },
+    rules: { mode: 'zone' }, ui: {}, shouldRefreshWindow: () => true, account: { user: { id: 'hud-test', stats: {} } },
     player: { credits: 100, kills: 0, hp: 100, hpMax: 100, repairT: 6, ammo: { x6: 0 } },
     REPAIR: { cooldown: 6, ratePct: 0.05 }, PULSE_COST: 1, ISH_COST: 1, SMB_COST: 1, CPU_CLOAK_COST: 1,
     started: true, wave: 0, waveSpawns: { remaining: 0 }, enemies: [],
@@ -392,11 +392,14 @@ test("cache compte : ecritures regroupees, derniere revision et deconnexion resp
   const source = readFileSync(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const timers = [], idle = [], writes = [];
   const context = vm.createContext({ memUser: { id: "pilot" }, CACHE_KEY: "cache", serverBase: null, retrySave: null, serverRewards: new Map(), cacheChunks: new Map(), cacheJson: JSON.stringify, performance,
+    withModuleScope: fn => fn(), captureModuleSections: user => user,
+    inventoryJson: JSON.stringify, inlineCacheJson: JSON.stringify,
     setTimeout: fn => timers.push(fn), requestIdleCallback: fn => idle.push(fn),
     netActive: () => !!context.memUser, lsSet: (key, value) => writes.push(JSON.parse(value).user),
   });
   vm.runInContext("let pendingCacheUser = null; let cacheWriteScheduled = false;\n"
-    + engineFunction("flushAccountCache", source) + "\n" + engineFunction("writeCache", source), context);
+    + engineFunction("flushAccountCache", source) + "\n" + engineFunction("flushAccountCacheScoped", source)
+    + "\n" + engineFunction("writeCache", source), context);
   context.writeCache({ id: "pilot", revision: 1 });
   context.writeCache({ id: "pilot", revision: 2 });
   assert.equal(writes.length, 0); assert.equal(timers.length, 1);
@@ -471,7 +474,7 @@ test('les contours distinguent sprites, couleur, taille et masque, et liberent l
 
 test('la mini-carte reste reactive aux changements de carte et de taille sans recalcul a chaque frame', () => {
   let now = 0; const draws = [];
-  const context = vm.createContext({ performance: { now: () => now }, window: { devicePixelRatio: 1 },
+  const context = vm.createContext({ shouldRefreshWindow: () => true, performance: { now: () => now }, window: { devicePixelRatio: 1 },
     mini: { width: 300, height: 205, clientWidth: 300, clientHeight: 205 }, mctx: { setTransform() {} },
     account: { user: {} }, player: { x: 21000, y: 6220 }, WORLD: { w: 30000, h: 18000 },
     enemies: Array.from({ length: 101 }, (_, id) => ({ id, hp: 100 })),
@@ -938,4 +941,3 @@ test('camouflage CPU : refresh conserve activation, compte isole et mort efface 
  ctx.account.user.id='a';ctx.player.dead=true;vm.runInContext('persistCpuCloak(); player.dead=false; restoreCpuCloak()',ctx);assert.equal(ctx.player.cpuCloak,false);
  ctx.player.cpuCloak=true;vm.runInContext('persistCpuCloak(); player.cpuCloak=false; persistCpuCloak(); restoreCpuCloak()',ctx);assert.equal(ctx.player.cpuCloak,false);
 });
-

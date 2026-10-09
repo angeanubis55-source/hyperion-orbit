@@ -60,4 +60,27 @@ test("API sauvegarde : référence périmée refusée et réponse perdue acquitt
   const otherAccount = await api("/api/register", { body: { pseudo: "account-save-other", email: "other@example.test", password: "isolated-password-123", faction: "eic" } });
   const forbidden = await api("/api/save", { token: otherAccount.token, body: purchase });
   assert.equal(forbidden.status, 403, "un reçu n'autorise jamais une autre identité à acquitter le compte");
+
+  const compactSnapshot = { ...current.user, revision: current.user.revision + 1,
+    inventory: { ...current.user.inventory, shipModules: Array.from({ length: 3000 }, (_, i) => ({
+      id: `module-${i}`, bonuses: [{ stat: "damage", pct: i % 20 }], description: "module".repeat(40),
+    })) } };
+  const compactBody = { user: compactSnapshot, baseRevision: current.user.revision, saveId: "compact-modules", compactSave: true };
+  const compact = await save(compactBody);
+  assert.equal(compact.ok, true); assert.equal(compact.snapshotAccepted, true);
+  assert.equal(compact.saveId, compactBody.saveId); assert.equal(compact.user.inventory, undefined);
+  assert.ok(JSON.stringify(compact).length < 2000, "le recu ne renvoie pas les 3000 modules");
+  const reconstructed = { ...compactSnapshot, ...compact.user };
+  assert.deepEqual((await api("/api/me", { token })).user, reconstructed);
+  const later = await save({ user: { ...reconstructed, revision: reconstructed.revision + 1, credits: reconstructed.credits + 50 },
+    baseRevision: reconstructed.revision, saveId: "after-compact" });
+  assert.equal(later.ok, true);
+  const compactDuplicate = await save(compactBody);
+  assert.equal(compactDuplicate.duplicate, true); assert.equal(compactDuplicate.snapshotAccepted, true);
+  assert.deepEqual(compactDuplicate.user, compact.user, "la reponse perdue acquitte le recu initial");
+  const fullDuplicate = await save({ ...compactBody, compactSave: false });
+  assert.deepEqual(fullDuplicate.user, reconstructed, "les anciens clients recoivent encore le compte complet");
+  const compactStale = await save({ ...compactBody, saveId: "compact-stale" });
+  assert.equal(compactStale.status, 409); assert.equal(compactStale.snapshotAccepted, undefined);
+  assert.equal(compactStale.user.inventory.shipModules.length, 3000, "un conflit renvoie toujours le canon complet");
 });

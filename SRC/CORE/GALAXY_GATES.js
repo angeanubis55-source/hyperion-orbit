@@ -47,6 +47,13 @@ export function palladiumExchangeForEnergy(owned, requested = Infinity) {
   return { energies, cost: energies * PALLADIUM_PER_GALAXY_ENERGY, remaining: stock - energies * PALLADIUM_PER_GALAXY_ENERGY };
 }
 
+export function normalizeGalaxyGateWave(gateId, value) {
+  const gate = GALAXY_GATE_DEFINITIONS[String(gateId || "").toLowerCase()];
+  const number = Number(value);
+  const wave = Number.isFinite(number) ? Math.max(1, Math.floor(number)) : 1;
+  return gate ? Math.min(gate.maxWaves, wave) : wave;
+}
+
 export function normalizeGalaxyGateState(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
   const state = {
@@ -86,10 +93,16 @@ export function normalizeGalaxyGateState(raw) {
     // kill) : seul { wave: 0 } signifie « aucune progression ».
     const rawKills = source.waveKills?.[gate.id];
     const killWave = Math.min(gate.maxWaves, Math.max(0, Math.floor(Number(rawKills?.wave) || 0)));
-    const killed = Math.max(0, Math.floor(Number(rawKills?.killed) || 0));
+    const killed = Number.isFinite(Number(rawKills?.killed)) ? Math.max(0, Math.floor(Number(rawKills.killed))) : 0;
     state.waveKills[gate.id] = (rawKills && typeof rawKills === "object" && killWave >= 1)
       ? { wave: killWave, killed }
       : { wave: 0, killed: 0 };
+    if (killWave >= 1 && rawKills?.byType && typeof rawKills.byType === "object") {
+      const entries = Object.entries(rawKills.byType).filter(([type, count]) =>
+        type.startsWith("npc_") && type.length <= 128 && Number.isFinite(Number(count)) && Number(count) > 0);
+      state.waveKills[gate.id].byType = Object.fromEntries(entries.map(([type, count]) => [type, Math.floor(Number(count))]));
+      state.waveKills[gate.id].killed = Math.max(killed, Object.values(state.waveKills[gate.id].byType).reduce((sum, count) => sum + count, 0));
+    }
   }
   // ✅ migration : ancien format 1 multiplicateur scalaire partagé (+ legacy
   // par gate) -> multiplicateurs par groupe de spin (ensemble = max hérité).
@@ -125,8 +138,8 @@ export function normalizeGalaxyGateState(raw) {
   }
   // ✅ la vague persistée de la gate active fait foi (vieilles saves sans `waves`).
   if (state.active && GALAXY_GATE_DEFINITIONS[state.active]) {
-    if (state.waves[state.active] > 0) state.activeWave = Math.min(GALAXY_GATE_DEFINITIONS[state.active].maxWaves, state.waves[state.active]);
-    else state.waves[state.active] = Math.min(GALAXY_GATE_DEFINITIONS[state.active].maxWaves, state.activeWave);
+    state.activeWave = normalizeGalaxyGateWave(state.active, state.waves[state.active] || state.activeWave);
+    state.waves[state.active] = state.activeWave;
   }
   return state;
 }
@@ -345,17 +358,18 @@ export function getGalaxyGateWaveKills(stateInput, gateId) {
   return {
     wave: Math.max(0, Math.floor(Number(entry?.wave) || 0)),
     killed: Math.max(0, Math.floor(Number(entry?.killed) || 0)),
+    ...(entry?.byType ? { byType: { ...entry.byType } } : {}),
   };
 }
 
 // ✅ Incrémente les kills intra-vague (NPC du plan de vague éliminé).
 // Si la vague ne correspond pas à celle mémorisée, on repart de `count`
 // (nouvelle vague). Retourne le compteur à jour.
-export function recordGalaxyGateWaveKill(stateInput, gateId, wave, count = 1) {
+export function recordGalaxyGateWaveKill(stateInput, gateId, wave, count = 1, npcType = null) {
   const state = normalizeGalaxyGateState(stateInput);
   const id = String(gateId || "").toLowerCase();
   if (!GALAXY_GATE_DEFINITIONS[id]) return { ok: false, state };
-  const w = Math.max(1, Math.floor(Number(wave) || 1));
+  const w = normalizeGalaxyGateWave(id, wave);
   const delta = Math.max(1, Math.floor(Number(count) || 1));
   state.waveKills ||= {};
   const prev = state.waveKills[id];
@@ -363,6 +377,11 @@ export function recordGalaxyGateWaveKill(stateInput, gateId, wave, count = 1) {
     prev.killed = Math.max(0, Math.floor(Number(prev.killed) || 0)) + delta;
   } else {
     state.waveKills[id] = { wave: w, killed: delta };
+  }
+  if (typeof npcType === "string" && npcType.startsWith("npc_")) {
+    const entry = state.waveKills[id];
+    entry.byType ||= {};
+    entry.byType[npcType] = (Number(entry.byType[npcType]) || 0) + delta;
   }
   return { ok: true, state, ...state.waveKills[id] };
 }
@@ -372,7 +391,7 @@ export function resetGalaxyGateWaveKills(stateInput, gateId, wave) {
   const state = normalizeGalaxyGateState(stateInput);
   const id = String(gateId || "").toLowerCase();
   if (!GALAXY_GATE_DEFINITIONS[id]) return { ok: false, state };
-  const w = Math.max(1, Math.floor(Number(wave) || 1));
+  const w = normalizeGalaxyGateWave(id, wave);
   state.waveKills ||= {};
   state.waveKills[id] = { wave: w, killed: 0 };
   return { ok: true, state };

@@ -1,4 +1,5 @@
 "use strict";
+import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 
 // UI/UI_AUCTION.js — Enchères façon DarkOrbit : lots fixes chaque heure,
 // mise réservée aussitôt, remboursement si surenchère.
@@ -201,6 +202,7 @@ function lotIcon(lot) {
 }
 
 export function renderAuctionWindow() {
+  if (!shouldRefreshWindow("auctionWindow")) return;
   const { root, list, history, credits } = els();
   try { refreshAuctionTimer(); } catch {}
   if (!root || !list) return;
@@ -414,6 +416,7 @@ function rowCountMismatch(list, lots) {
 // (solo) ou pumpSharedAuction (partagé : re-rendu sur dirty serveur +
 // patch live chaque seconde panneau ouvert).
 export function tickAuctionDisplay() {
+  if (!shouldRefreshWindow("auctionWindow")) return;
   if (!ctx) return;
   try {
     if (auctionNetDirty()) {

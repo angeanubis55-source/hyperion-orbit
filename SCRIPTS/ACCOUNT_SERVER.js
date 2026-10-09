@@ -1744,6 +1744,16 @@ function handleAccountIdentity(req, body, res, kind) {
   return json(res, 200, { ok: true, user: rowToPublic({ id: me.id, pseudo, email, faction: me.faction, data: JSON.stringify(data) }) });
 }
 
+// Le blob accepte ne differe de la requete que par ces champs serveur.
+// Un recu compact evite de renvoyer et reparcourir tous les modules ; il
+// confirme un saveId precis, y compris apres une reponse perdue.
+function saveResponseUser(body, user) {
+  if (body.compactSave !== true || !body.saveId) return { user };
+  const metadata = {};
+  for (const key of ["id", "pseudo", "email", "faction", "password", "revision", "updatedAt"]) metadata[key] = user[key];
+  return { snapshotAccepted: true, saveId: String(body.saveId).slice(0, 128), user: metadata };
+}
+
 // POST /api/save { user } — plein blob, revision strictement croissante.
 function handleSave(req, body, res) {
   const me = authUser(req);
@@ -1763,7 +1773,8 @@ function handleSave(req, body, res) {
       if (receipt.request_hash !== requestHash) return json(res, 409, { ok: false, error: "Identifiant de sauvegarde réutilisé avec un contenu différent." });
       // Reconstitue exactement le snapshot accepté, même si une récompense
       // a depuis modifié le compte. Le client acquitte ainsi la bonne dépense.
-      return json(res, 200, { ok: true, duplicate: true, user: { ...blob, ...JSON.parse(receipt.metadata) } });
+      return json(res, 200, { ok: true, duplicate: true,
+        ...saveResponseUser(body, { ...blob, ...JSON.parse(receipt.metadata) }) });
     }
   }
   // Une attribution admin peut arriver pendant que le joueur possède déjà
@@ -1849,7 +1860,9 @@ function handleSave(req, body, res) {
     try { db.exec("ROLLBACK"); } catch {}
     return json(res, 409, { ok: false, error: "Pseudo ou email déjà utilisé." });
   }
-  return json(res, 200, { ok: true, conflict: conflict || undefined, user: rowToPublic({ id: me.id, pseudo: finalPseudo, email: finalEmail, faction, data: JSON.stringify(data) }) });
+  const responseUser = body.compactSave === true && saveId ? data
+    : rowToPublic({ id: me.id, pseudo: finalPseudo, email: finalEmail, faction, data: JSON.stringify(data) });
+  return json(res, 200, { ok: true, conflict: conflict || undefined, ...saveResponseUser(body, responseUser) });
 }
 
 export function handleAccountApi(req, res) {
