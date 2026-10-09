@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 
-const source = readFileSync(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8").replace(/^export /gm, "");
+const source = readFileSync(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "");
 const before = { ammoActive: "x3", rocketActive: "r310", launcherActive: "eco10", droneFormation: "standard", droneFormationAt: 1000 };
 const after = { ammoActive: "x4", rocketActive: "plt2026", launcherActive: "hstrm01", droneFormation: "butterfly", droneFormationAt: 10000 };
 const user = (revision = 1, selection = before) => ({ id: "pilot", revision, credits: 100, stats: { exp: 10 },
@@ -15,7 +15,7 @@ const user = (revision = 1, selection = before) => ({ id: "pilot", revision, cre
 function client(storage = new Map()) {
   const requests = [], timers = new Map(), events = [];
   let timerId = 0;
-  const api = vm.createContext({ structuredClone, AbortController,
+  const api = vm.createContext({ structuredClone, AbortController, performance, isPhoneMode: () => false, noteSaveOp() {},
     localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
     window: { addEventListener() {}, dispatchEvent: event => events.push(event) },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },

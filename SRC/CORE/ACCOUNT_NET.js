@@ -205,7 +205,7 @@ export function netSetCurrent(cur) {
     saveTimer = null;
     resetPendingAccountState();
     lsSet(TOKEN_KEY, null);
-    lsSet(CACHE_KEY, null);
+    clearAccountCache();
     lsSet(CUR_KEY, null);
     if (tok) {
       try {
@@ -218,6 +218,108 @@ export function netSetCurrent(cur) {
 
 let pendingCacheUser = null;
 let cacheWriteScheduled = false;
+// Gros inventaires : blocs immuables partagés par user/base/retry. Le petit
+// manifeste est remplacé en dernier : une écriture interrompue laisse le
+// précédent cache entier lisible, y compris le reçu à renvoyer.
+let cacheChunks = new Map();
+let nextCacheChunk = 0;
+const cacheEpoch = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+const cacheJson = value => JSON.stringify(value, (key, item) => item === Infinity ? -1 : item);
+
+function writeSplitAccountCache(state) {
+  const chunks = new Map(), created = [];
+  let writtenBytes = 0;
+  const store = value => {
+    const json = cacheJson(value);
+    let key = chunks.get(json) || cacheChunks.get(json);
+    // Un autre onglet (profil/jeu) peut avoir remplacé le manifeste et
+    // nettoyé ce bloc depuis notre précédente écriture.
+    if (key && localStorage.getItem(key) == null) key = null;
+    if (!key) {
+      key = `${CACHE_KEY}:chunk:${cacheEpoch}:${++nextCacheChunk}`;
+      localStorage.setItem(key, json); // Ne pas publier le manifeste en cas de quota.
+      writtenBytes += json.length;
+      created.push(key);
+    }
+    chunks.set(json, key);
+    return { c: key };
+  };
+  const encode = (value, depth = 0) => {
+    if (value === null || typeof value !== "object") return { v: value === Infinity ? -1 : value };
+    if (Array.isArray(value)) {
+      const parts = [];
+      for (let i = 0; i < value.length; i += 32) parts.push(store(value.slice(i, i + 32)));
+      return { a: parts };
+    }
+    if (object(value) && depth < 2) {
+      return { o: Object.entries(value).filter(([, v]) => v !== undefined)
+        .map(([key, v]) => [key, encode(v, depth + 1)]) };
+    }
+    return store(value);
+  };
+  // Réutiliser les sections égales au lieu de les sérialiser trois fois.
+  const sections = new Map();
+  const encodeUser = user => {
+    if (!user) return null;
+    return { o: Object.entries(user).filter(([, v]) => v !== undefined).map(([key, value]) => {
+      const prior = sections.get(key) || [];
+      const identical = prior.find(entry => same(entry.value, value));
+      if (identical) return [key, identical.encoded];
+      const encoded = encode(value);
+      prior.push({ value, encoded }); sections.set(key, prior);
+      return [key, encoded];
+    }) };
+  };
+  try {
+    const manifest = { format: 2, user: encodeUser(state.user), base: encodeUser(state.base),
+      retrySave: state.retrySave ? { ...state.retrySave, user: encodeUser(state.retrySave.user) } : null,
+      rewards: state.rewards };
+    const json = JSON.stringify(manifest);
+    localStorage.setItem(CACHE_KEY, json);
+    writtenBytes += json.length;
+  } catch (error) {
+    for (const key of created) { try { localStorage.removeItem(key); } catch {} }
+    throw error;
+  }
+  for (const [json, key] of cacheChunks) {
+    if (!chunks.has(json)) { try { localStorage.removeItem(key); } catch {} }
+  }
+  cacheChunks = chunks;
+  return writtenBytes;
+}
+
+function clearAccountCache() {
+  lsSet(CACHE_KEY, null);
+  for (const key of cacheChunks.values()) lsSet(key, null);
+  cacheChunks.clear();
+  pendingCacheUser = null;
+}
+
+function decodeSplitAccountCache(manifest) {
+  const chunks = new Map();
+  const decode = node => {
+    if (node == null) return null;
+    if (Object.hasOwn(node, "v")) return node.v;
+    if (node.c) {
+      if (!String(node.c).startsWith(`${CACHE_KEY}:chunk:`)) throw new Error("Bloc de cache invalide");
+      const json = localStorage.getItem(node.c);
+      if (json == null) throw new Error("Bloc de cache manquant");
+      chunks.set(json, node.c);
+      // Chaque référence est décodée séparément : user/base/retry ne doivent
+      // jamais partager d'objets mutables après un rechargement.
+      return JSON.parse(json);
+    }
+    if (node.a) return node.a.flatMap(decode);
+    if (node.o) return Object.fromEntries(node.o.map(([key, value]) => [key, decode(value)]));
+    throw new Error("Cache invalide");
+  };
+  const state = { user: decode(manifest.user), base: decode(manifest.base),
+    retrySave: manifest.retrySave ? { ...manifest.retrySave, user: decode(manifest.retrySave.user) } : null,
+    rewards: manifest.rewards };
+  cacheChunks = chunks;
+  return state;
+}
+
 function flushAccountCache() {
   cacheWriteScheduled = false;
   const user = pendingCacheUser;
@@ -226,8 +328,15 @@ function flushAccountCache() {
   if (!user || !netActive() || user.id !== memUser.id) return;
   try {
     const t0 = performance.now();
-    const json = JSON.stringify({ user, base: serverBase, retrySave, rewards: [...serverRewards] },
-      (key, value) => value === Infinity ? -1 : value);
+    const state = { user, base: serverBase, retrySave, rewards: [...serverRewards] };
+    // Les petits comptes gardent le format historique. Une fois découpé,
+    // conserver ce format même après une vente massive de modules.
+    if (cacheChunks.size || cacheJson(user.inventory || {}).length > 65536) {
+      const writtenBytes = writeSplitAccountCache(state);
+      try { noteSaveOp("cache-blocs", performance.now() - t0, writtenBytes); } catch {}
+      return;
+    }
+    const json = cacheJson(state);
     const t1 = performance.now();
     lsSet(CACHE_KEY, json);
     const t2 = performance.now();
@@ -253,7 +362,8 @@ function readCache() {
   try {
     const raw = lsGet(CACHE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw);
+    let parsed = JSON.parse(raw);
+    if (parsed?.format === 2) parsed = decodeSplitAccountCache(parsed);
     if (parsed && typeof parsed.user === "object" && parsed.user.id) {
       serverBase = copy(parsed.base?.id === parsed.user.id ? parsed.base : parsed.user);
       retrySave = parsed.retrySave?.user?.id === parsed.user.id ? parsed.retrySave : null;
@@ -593,14 +703,17 @@ function additivePath(path) {
 // Fusion à trois états : canon reçu + changements locaux depuis la dernière
 // référence connue. Les dépenses et les gains sont appliqués une seule fois.
 function rebaseValue(base, local, remote, path = "") {
-  if (same(local, base)) return copy(remote);
+  // Les branches inchangées gardent les objets live. Le canon est copié
+  // séparément dans acceptServerBase : aucune référence mutable partagée.
+  // Cela évite de cloner puis recopier tous les modules à chaque confirmation.
+  if (same(remote, base)) return local;
+  if (same(local, base)) return remote;
   if (additivePath(path) && (typeof local === "number" || local === undefined)
     && (typeof base === "number" || base === undefined) && (typeof remote === "number" || remote === undefined)) {
     if (local === -1 || base === -1 || remote === -1) return copy(local ?? remote);
     const value = (Number(remote) || 0) + (Number(local) || 0) - (Number(base) || 0);
     return path === "stats.honor" ? value : Math.max(0, value);
   }
-  if (same(remote, base)) return copy(local);
   if (Array.isArray(local) && Array.isArray(remote)) {
     const before = Array.isArray(base) ? base : [];
     const keyed = ["hangars", "drones.items", "inventory.shipModules", "inventory.moduleRollHistory"].includes(path);
@@ -640,12 +753,12 @@ function rebaseValue(base, local, remote, path = "") {
 }
 
 function rebaseUser(local, remote, base = serverBase) {
-  const result = rebaseValue(base || {}, local, remote);
+  const result = { ...rebaseValue(base || {}, local, remote) };
   for (const key of ["id", "pseudo", "email", "password", "_adminWriteToken"]) {
     if (remote[key] !== undefined) result[key] = remote[key];
   }
   result.revision = remote.revision;
-  return retainPendingSelections(result);
+  return result;
 }
 
 function addRewardToBase(base, reward) {
@@ -747,6 +860,7 @@ function adoptServerUser(user, { base = serverBase, admin = false, reason = "ref
   // utilisés par le moteur, plutôt que lui laisser un ancien compte détaché.
   memUser = reason === "saved" ? replaceAccountObject(memUser, merged) : merged;
   acceptServerBase(user);
+  retainPendingSelections(memUser);
   pendingGalaxyGates = same(memUser.galaxyGates, serverBase.galaxyGates) ? null : copy(memUser.galaxyGates);
   if (!same(memUser, serverBase) || Object.keys(pendingSelections).length) {
     memUser.revision = Math.max(Number(user.revision) || 0, Number(memUser.revision) || 0) + 1;
@@ -886,7 +1000,7 @@ function enterLocalFallback() {
   saveTimer = null;
   resetPendingAccountState();
   lsSet(TOKEN_KEY, null);
-  lsSet(CACHE_KEY, null);
+  clearAccountCache();
   lsSet(CUR_KEY, null);
   // Session morte en cours de jeu (401) : on prévient, sinon le joueur
   // continue sans compte et les gains (XP/honneur) partent dans le vide

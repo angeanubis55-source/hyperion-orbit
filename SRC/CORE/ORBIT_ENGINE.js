@@ -17697,7 +17697,10 @@ let retryCount = 0;
 function netLinkReadyForEntry() {
   try {
     if (!netConnected()) return false;
-    if (netHelloAckAge() > 15000) return false;
+    // Le hello reste valide pendant toute la vie du socket. Un chargement
+    // de ressources de plus de 15 s ne doit pas bloquer le bouton Départ.
+    if (!Number.isFinite(netHelloAckAge())) return false;
+    if (netServerMessageAge() >= 30000) return false;
     return true;
   } catch {
     return false;
@@ -17874,6 +17877,15 @@ function tickLinkHeartbeat(realDt) {
 // puis on recharge (sauvegarde d'abord : position + progression).
 let versionCheckT = 0;
 let versionReloadArmed = false;
+function isNewerGameVersion(candidate, current) {
+  if (!/^\d+(\.\d+)*$/.test(candidate) || !/^\d+(\.\d+)*$/.test(current)) return false;
+  const next = candidate.split(".").map(Number), previous = current.split(".").map(Number);
+  for (let i = 0; i < Math.max(next.length, previous.length); i++) {
+    const delta = (next[i] || 0) - (previous[i] || 0);
+    if (delta) return delta > 0;
+  }
+  return false;
+}
 function forceReloadAfterServerRestart() {
   if (versionReloadArmed || kickedReason != null) return;
   versionReloadArmed = true;
@@ -17904,7 +17916,9 @@ function tickGameVersionCheck(dt) {
   armVersionReload(srv, mine);
 }
 function armVersionReload(srv, mine) {
-  if (versionReloadArmed) return;
+  // Pendant un déploiement le fichier client peut précéder le redémarrage
+  // du processus serveur. Sa version plus ancienne ne justifie aucun reload.
+  if (versionReloadArmed || !isNewerGameVersion(srv, mine)) return;
   versionReloadArmed = true;
   try { showNotification(`Mise à jour du jeu reçue (v${mine} → v${srv}) — actualisation dans 5 s…`, 5, "info"); } catch {}
   setTimeout(() => {
@@ -38642,7 +38656,7 @@ window.addEventListener("orbit:server-position", async (event) => {
   } finally { serverPositionCorrectionRunning = false; }
 });
 
-function saveStateImmediate() {
+function saveStateImmediate(opts = {}) {
   try { if (sessionStorage.getItem("orbit_faction_transfer")) return; } catch {}
   if (!account.user) return;
   if (!started) return;

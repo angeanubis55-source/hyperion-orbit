@@ -34,6 +34,32 @@ function client() {
   return { api: context, sockets, intervals, timeouts, advance: ms => { now += ms; } };
 }
 
+test("Depart : un hello ancien reste valide avec du trafic recent, mais pas apres coupure", () => {
+  const from = engine.indexOf("function netLinkReadyForEntry()"), to = engine.indexOf("function waitNetLink(", from);
+  let connected = true, ackAge = 45000, messageAge = 100;
+  const context = vm.createContext({ netConnected: () => connected,
+    netHelloAckAge: () => ackAge, netServerMessageAge: () => messageAge });
+  vm.runInContext(engine.slice(from, to), context);
+  assert.equal(context.netLinkReadyForEntry(), true);
+  ackAge = Infinity; assert.equal(context.netLinkReadyForEntry(), false);
+  ackAge = 45000; messageAge = 30000; assert.equal(context.netLinkReadyForEntry(), false);
+  messageAge = 0; connected = false; assert.equal(context.netLinkReadyForEntry(), false);
+});
+
+test("version : aucun rechargement vers un serveur plus ancien pendant le deploiement", () => {
+  const from = engine.indexOf("function isNewerGameVersion("), to = engine.indexOf("function forceReloadAfterServerRestart(", from);
+  const context = vm.createContext({});
+  vm.runInContext(engine.slice(from, to), context);
+  for (const [next, current, expected] of [["0.327", "0.328", false], ["0.328", "0.328", false],
+    ["0.329", "0.328", true], ["0.10", "0.9", true], ["invalide", "0.328", false]]) {
+    assert.equal(context.isNewerGameVersion(next, current), expected);
+  }
+  const start = engine.indexOf("function armVersionReload("), end = engine.indexOf("// Retour d'onglet", start);
+  vm.runInContext("let versionReloadArmed = false;\n" + engine.slice(start, end), context);
+  context.armVersionReload("0.327", "0.328"); // Aucun timer ni appel UI ne doit être tenté.
+  assert.equal(vm.runInContext("versionReloadArmed", context), false);
+});
+
 test("un retard reseau ponctuel de 200 ms ne coupe pas les frames normales", () => {
   const c = client(), socket = c.sockets[0];
   socket.receive({ t: "welcome", authed: true, id: "test", at: 10000 });

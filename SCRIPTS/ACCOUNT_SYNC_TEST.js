@@ -8,7 +8,7 @@ import { planAutoUpgradeCharges, UPGRADE_SLOT_ORES, upgradeOreCapacity } from '.
 import { CRAFTING_ENABLED, getCraftingRecipe } from '../SRC/DATA/CRAFTING.js';
 import { isOreResource } from '../SRC/DATA/RESOURCES.js';
 
-const source = readFileSync(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8").replace(/^export /gm, "");
+const source = readFileSync(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "");
 const account = readFileSync(new URL("../SRC/CORE/ACCOUNT.js", import.meta.url), "utf8");
 const user = () => ({ id: "pilot", revision: 1, credits: 100_000_000, stats: { exp: 10, honor: 5, npcKills: {}, lifetimeKills: 0 },
   pilotSkills: { disks: 0, points: 10, resets: 0, spent: { shiphull01: 2 } },
@@ -20,9 +20,68 @@ const user = () => ({ id: "pilot", revision: 1, credits: 100_000_000, stats: { e
 });
 const plain = value => JSON.parse(JSON.stringify(value));
 
+function largeUser() {
+  const initial = user();
+  initial.inventory.shipModules = Array.from({ length: 1200 }, (_, i) => ({
+    id: `module-${i}`, stats: { damage: i, shield: 10 }, description: "module".repeat(95),
+  }));
+  return initial;
+}
+
+test("gros compte : les variations de carburant ne reecrivent aucun bloc d'inventaire", async () => {
+  const c = client(), writes = [];
+  const setItem = c.api.localStorage.setItem;
+  c.api.localStorage.setItem = (key, value) => { writes.push({ key, bytes: value.length }); setItem(key, value); };
+  c.api.enterNetMode("token", largeUser());
+  assert.equal(JSON.parse(c.storage.get("orbit_user_cache")).format, 2);
+  writes.length = 0;
+  c.mutate(u => { u.pet.fuel -= 4; });
+  await c.accept();
+  assert.ok(writes.length > 0);
+  assert.ok(writes.every(w => w.bytes < 32768), "pas de reecriture du blob de 2,6 Mo");
+  assert.ok(writes.reduce((total, w) => total + w.bytes, 0) < 32768);
+  const reloaded = client(new Map(c.storage));
+  assert.equal(reloaded.api.bootNetFromCache(), true);
+  assert.equal(reloaded.current().pet.fuel, 96);
+  assert.equal(reloaded.current().inventory.shipModules.length, 1200);
+  const canonical = vm.runInContext("serverBase.inventory.shipModules[0].stats.damage", reloaded.api);
+  reloaded.current().inventory.shipModules[0].stats.damage = 999;
+  assert.equal(vm.runInContext("serverBase.inventory.shipModules[0].stats.damage", reloaded.api), canonical);
+});
+
+test("gros compte : coupure et recharge conservent exactement le recu a renvoyer", async () => {
+  const c = client(); c.api.enterNetMode("token", largeUser());
+  c.mutate(u => { u.credits -= 3000000; u.inventory.shipModules.shift(); });
+  const saving = c.api.flushNetUser(), request = c.requests.at(-1);
+  request.reject(new Error("coupure")); await saving;
+  const reloaded = client(new Map(c.storage));
+  assert.equal(reloaded.api.bootNetFromCache(), true);
+  const sent = await reloaded.accept();
+  assert.deepEqual(sent, request.body);
+  assert.equal(reloaded.current().inventory.shipModules.length, 1199);
+  assert.equal(reloaded.current().credits, 97000000);
+});
+
+test("cache decoupe : un quota atteint garde le precedent manifeste et ses blocs", () => {
+  const c = client(); c.api.enterNetMode("token", largeUser());
+  const before = c.storage.get("orbit_user_cache"), setItem = c.api.localStorage.setItem;
+  c.api.localStorage.setItem = (key, value) => {
+    if (key === "orbit_user_cache") throw new Error("quota");
+    setItem(key, value);
+  };
+  c.current().inventory.shipModules[0].stats.damage = 999;
+  c.current().credits -= 100;
+  c.api.writeCache(c.current(), true);
+  assert.equal(c.storage.get("orbit_user_cache"), before);
+  const reloaded = client(new Map(c.storage));
+  assert.equal(reloaded.api.bootNetFromCache(), true);
+  assert.equal(reloaded.current().inventory.shipModules[0].stats.damage, 0);
+  assert.equal(reloaded.current().credits, 100000000);
+});
+
 function client(storage = new Map()) {
   const requests = [], timers = new Map(), listeners = new Map(); let timerId = 0;
-  const api = vm.createContext({ structuredClone, AbortController,
+  const api = vm.createContext({ structuredClone, AbortController, performance, isPhoneMode: () => false, noteSaveOp() {},
     localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
     window: { addEventListener: (type, fn) => listeners.set(type, fn), dispatchEvent: event => listeners.get(event.type)?.(event) },
     CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
