@@ -96,6 +96,14 @@
     <p id="bcMsg" class="msg"></p>
   </div>
   <div class="card">
+    <h2>Rapports saccades <span id="jankCount" class="badge off">0</span></h2>
+    <p class="sub">Debug mode des joueurs (Paramètres > Démarrage). 50 derniers gardés.</p>
+    <table>
+      <thead><tr><th>Reçu</th><th>Pseudo</th><th>Version</th><th>Carte</th><th>Saccades / max</th><th>Actions</th></tr></thead>
+      <tbody id="jankRows"><tr><td colspan="6">Aucun rapport.</td></tr></tbody>
+    </table>
+  </div>
+  <div class="card">
     <h2>Joueurs <span id="accountCount" class="badge off">0</span></h2>
     <div class="searchRow"><input id="accountSearch" type="text" placeholder="Rechercher un pseudo…" maxlength="20" autocomplete="off"></div>
     <table>
@@ -475,6 +483,7 @@
       try { await refreshBans(); } catch {}
       try { await refreshCheat(); } catch {}
       try { await refreshAccounts(); } catch {}
+      try { await refreshJank(); } catch {}
     } catch {}
   }
   const accountRowByKey = new Map();
@@ -605,6 +614,82 @@
       };
       td.appendChild(unban);
       tb.appendChild(tr);
+    }
+  }
+  /* ---------- Rapports saccades (Debug mode joueurs) ---------- */
+  let jankSig = "";
+  function fmtClock(at) {
+    try {
+      const d = new Date(Number(at) || Date.now());
+      const p = (n) => String(n).padStart(2, "0");
+      return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    } catch { return ""; }
+  }
+  async function refreshJank() {
+    const tb = $("jankRows");
+    if (!tb) return;
+    const out = await call("/api/admin/jank?limit=50");
+    const list = (out && Array.isArray(out.reports)) ? out.reports : [];
+    const sig = JSON.stringify(list.map((r) => [r.id, r.created_at]));
+    // Tableau figé si rien n'a changé (la modale ouverte ne se referme pas).
+    if (sig === jankSig) return;
+    jankSig = sig;
+    $("jankCount").textContent = String(list.length);
+    tb.innerHTML = "";
+    if (!list.length) tb.innerHTML = `<tr><td colspan="6">Aucun rapport.</td></tr>`;
+    for (const r of list) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td></td>`;
+      const c = tr.children;
+      c[0].textContent = fmtClock(r.created_at);
+      c[1].textContent = r.pseudo;
+      c[2].textContent = r.version || "—";
+      c[3].textContent = String(r.map || "—").toUpperCase();
+      c[4].textContent = `${r.count} / ${r.max_ms}ms`;
+      const view = mkBtn("Voir");
+      view.onclick = () => openJankModal(r.id, r.pseudo);
+      const del = mkBtn("Supprimer", true);
+      del.onclick = async () => {
+        try {
+          const res = await call("/api/admin/jank-delete", { method: "POST", body: JSON.stringify({ id: r.id }) });
+          if (!res || res.ok !== true) throw new Error("Échec.");
+          jankSig = "";
+          toast("Rapport supprimé.", "ok");
+        } catch (e) {
+          toast(e?.message || "Erreur.", "err");
+        }
+        refresh();
+      };
+      c[5].appendChild(view);
+      c[5].appendChild(del);
+      tb.appendChild(tr);
+    }
+  }
+  async function openJankModal(id, pseudo) {
+    try {
+      const out = await call(`/api/admin/jank?id=${encodeURIComponent(id)}`);
+      const rep = out && out.report;
+      if (!rep) throw new Error("Rapport introuvable.");
+      openModal({
+        title: `Rapport — ${rep.pseudo}`,
+        sub: `v${rep.version || "?"} · carte ${String(rep.map || "?").toUpperCase()} · ${rep.count} saccades (max ${rep.max_ms}ms) · ${fmtClock(rep.created_at)}`,
+        bodyHTML: `<pre style="white-space:pre-wrap;word-break:break-word;max-height:50vh;overflow:auto;margin:0;font-size:12px;">${esc(rep.report)}</pre>`,
+        actions: [
+          { label: "Fermer", onClick: closeModal },
+          { label: "Supprimer", danger: true, onClick: async () => {
+            try {
+              const res = await call("/api/admin/jank-delete", { method: "POST", body: JSON.stringify({ id }) });
+              if (!res || res.ok !== true) throw new Error("Échec.");
+              jankSig = "";
+              closeModal();
+              toast("Rapport supprimé.", "ok");
+            } catch (e) { modalError(e?.message || "Erreur."); return; }
+            refresh();
+          } },
+        ],
+      });
+    } catch (e) {
+      toast(e?.message || "Erreur.", "err");
     }
   }
   function fmtDateTime(at) {

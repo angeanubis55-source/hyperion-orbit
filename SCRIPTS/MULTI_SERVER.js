@@ -23,7 +23,10 @@ const {
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminShipFamilies } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill,
+recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser,
+clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor,
+adminGiveModule, adminListAccounts, adminDeleteAccount, adminShipFamilies, listJankReports, getJankReport, deleteJankReport } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
 import { updateClockGuard, stopRejectedMotion } from "./CLOCK_GUARD.js";
@@ -361,6 +364,24 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, ships: adminShipFamilies() });
     return true;
   }
+  if (pathname === "/api/admin/jank" && request.method === "GET") {
+    // Rapports saccades (Debug mode) : liste (extraits) ou rapport complet (?id=).
+    try {
+      const q = new URL(request.url, "http://localhost").searchParams;
+      const id = String(q.get("id") || "");
+      if (id) {
+        const row = getJankReport(id);
+        if (!row) { adminJson(response, 404, { ok: false, error: "Rapport introuvable." }); return true; }
+        adminJson(response, 200, { ok: true, report: row });
+        return true;
+      }
+      const limit = Math.max(1, Math.min(50, Math.floor(Number(q.get("limit")) || 50)));
+      adminJson(response, 200, { ok: true, reports: listJankReports(limit) });
+    } catch {
+      adminJson(response, 500, { ok: false, error: "Erreur serveur." });
+    }
+    return true;
+  }
   if (pathname === "/api/admin/accounts" && request.method === "GET") {
     // Tous les comptes (connectés + hors ligne) + invités connectés.
     // Mêmes actions que les connectés : mute/ban/give par id/pseudo.
@@ -416,9 +437,18 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, accounts: out, guests, onlineCount, total: out.length });
     return true;
   }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold") && request.method === "POST") {
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold" || pathname === "/api/admin/jank-delete") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
+        if (pathname === "/api/admin/jank-delete") {
+          const res = deleteJankReport(String(body?.id || ""));
+          if (!res || res.ok !== true) {
+            adminJson(response, 404, { ok: false, error: "Rapport introuvable." });
+            return;
+          }
+          adminJson(response, 200, { ok: true });
+          return;
+        }
         if (pathname === "/api/admin/delete") {
           // Suppression DEFINITIVE d'un compte : users, sessions, pvp_stats,
           // npc_reward_tx, amis + demandes (les deux sens). Le classement et

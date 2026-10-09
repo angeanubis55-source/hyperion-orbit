@@ -107,6 +107,15 @@ export function setJankListener(fn) {
   listener = typeof fn === "function" ? fn : null;
 }
 
+// Contexte live (pour l'envoi : mêmes champs que chaque ligne du rapport).
+export function getJankContext() {
+  try {
+    return context();
+  } catch {
+    return { map: "?", fps: 0, npcs: 0, players: 0 };
+  }
+}
+
 // Télémétrie sauvegardes : chaque écriture lourde est notée (nom, durée,
 // taille, heure, note). Coût négligeable (quelques nombres, que sur écriture).
 // Inactif = coût nul (un booléen testé par l'appelant).
@@ -182,7 +191,7 @@ function engineSection() {
     const snap = timingsProvider ? timingsProvider() : null;
     if (!snap || typeof snap !== "object") return lines;
     lines.push("--- Moteur (moyenne / max par image ou appel) ---");
-    const pick = ["frame.total", "frame.update", "frame.draw", "frame.ui", "frame.netPush", "frame.netVisuals", "saveProgressNow", "persistUniverse", "persistCollectables", "processDeaths"];
+    const pick = ["frame.total", "frame.update", "syncNetNpcs", "updatePet", "frame.draw", "frame.ui", "frame.netPush", "frame.netVisuals", "saveProgressNow", "persistUniverse", "persistCollectables", "processDeaths", "npcDeath.rewards"];
     for (const key of pick) {
       const e = snap[key];
       if (!e || !(Number(e.count) > 0)) continue;

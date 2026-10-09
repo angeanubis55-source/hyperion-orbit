@@ -1155,7 +1155,7 @@ export function saveUser(user, options = {}) {  user.schemaVersion = STORAGE_SCH
   }
   if (idx >= 0) users[idx] = user;
   else users.push(user);
-  writeUsers(users, { pilotDisksOnly, durable: options.durable === true });
+  writeUsers(users, { pilotDisksOnly, durable: options.durable === true, pushLazy: options.pushLazy === true });
   if (options.notify !== false && typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
     window.dispatchEvent(new CustomEvent("orbit:user-updated", {
       detail: { userId: user.id, revision: user.revision, source: options.source || "account" },
@@ -1472,7 +1472,10 @@ export function getCurrentUserForMutation() {
   return getCurrentUserFull();
 }
 
-export function updateCurrentUserProgress(patch = {}) {
+export function updateCurrentUserProgress(patch = {}, opts = {}) {
+  // opts.pushLazy : le filet périodique (et lui seul) demande un envoi
+  // paresseux en Debug mode. Les écritures directes (sélections...) restent
+  // urgentes pour ne jamais perdre un choix en cas de crash.
   // Les sauvegardes complètes du moteur portent les crédits. Les changements
   // ponctuels (sélection du dock, par exemple) doivent d'abord conserver ses
   // stocks et son P.E.T, sans faire réentrer la sauvegarde complète.
@@ -1627,7 +1630,7 @@ export function updateCurrentUserProgress(patch = {}) {
       pushedAt: Date.now(),
     };
   } catch {}
-  saveUser(u, { source: "progress" });
+  saveUser(u, { source: "progress", pushLazy: opts?.pushLazy === true });
 
   return { ok: true, user: u };
 }

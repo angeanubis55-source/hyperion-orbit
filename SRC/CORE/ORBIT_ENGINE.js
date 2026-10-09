@@ -81,7 +81,9 @@ import {
   tickCurrentUserAuction,
 } from "./ACCOUNT.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
-import { flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetQuestGain, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
+import { flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain,
+noteNetPetFuelConsumed, noteNetPurchase, noteNetQuestGain, noteNetResourceGain, noteNetServerReward,
+noteNetUpgradeConsumed, sendJankReport } from "./ACCOUNT_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
   GALAXY_GATE_DEFINITIONS,
@@ -114,7 +116,7 @@ import { createWaveSpawnState } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
 import { isPhoneMode, setPhoneModeCached } from "./PHONE_MODE.js";
-import { startJankRecorder, noteJankFrame, noteGuardBlock, noteSaveOp, clearJankReport, clearGuardLog, setJankListener, setJankTimingsProvider, getJankSummary, getJankReport } from "./JANK_RECORDER.js";
+import { startJankRecorder, noteJankFrame, noteGuardBlock, noteSaveOp, clearJankReport, clearGuardLog, setJankListener, setJankTimingsProvider, getJankSummary, getJankContext, getJankReport } from "./JANK_RECORDER.js";
 import { COLLECTABLE_PICKUP_HOLD_SEC } from "./COLLECTION_TIMING.js";
 import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, setNpcVelocity } from "../../NPC/NPC_AI.js";
 import { DEFAULT_NPC_RADAR_FADE_START, getNpcSensorRanges, npcSensorOpacity, shouldDetectNpc } from "../../NPC/NPC_SENSORS.js";
@@ -8523,11 +8525,13 @@ function refreshJankSummary() {
   const box = document.getElementById("jankSummary");
   const btn = document.getElementById("btnCopyJankReport");
   const clearBtn = document.getElementById("btnClearJankReport");
-  if (!box && !btn && !clearBtn) return;
+  const sendBtn = document.getElementById("btnSendJankReport");
+  if (!box && !btn && !clearBtn && !sendBtn) return;
   let on = false;
   try { on = isPhoneMode(); } catch {}
   if (btn) btn.disabled = !on;
   if (clearBtn) clearBtn.disabled = !on;
+  if (sendBtn) sendBtn.disabled = !on;
   if (!box) return;
   if (!on) {
     box.textContent = "Active le Debug mode pour enregistrer les saccades.";
@@ -8606,8 +8610,42 @@ function wireSettingsWindow() {
 
   // Rapport saccades : copié dans le presse-papiers (Chrome téléphone OK en
   // HTTPS), sinon zone de texte à copier à la main.
-  document.getElementById("btnCopyJankReport")?.addEventListener("click", async () => {
-    let text = "Rapport indisponible.";
+  // Rapport saccades : envoyé direct au panneau admin (un appui suffit).
+  // Le bouton Copier reste en secours (hors-ligne...).
+  document.getElementById("btnSendJankReport")?.addEventListener("click", async (ev) => {
+    const btn = ev?.currentTarget;
+    if (btn) btn.disabled = true;
+    try {
+      let text = "";
+      try { text = getJankReport(GAME_VERSION); } catch {}
+      let summary = { count: 0, max: 0, avg: 0, sessionSec: 0 };
+      try { summary = getJankSummary() || summary; } catch {}
+      let ctx = { map: "?", fps: 0, npcs: 0, players: 0 };
+      try {
+        const c = getJankContext();
+        if (c && typeof c === "object") ctx = c;
+      } catch {}
+      const res = await sendJankReport({
+        report: text,
+        version: GAME_VERSION,
+        count: summary.count,
+        maxMs: summary.max,
+        avgMs: summary.avg,
+        sessionSec: summary.sessionSec,
+        map: ctx.map,
+        fps: ctx.fps,
+        npcs: ctx.npcs,
+        players: ctx.players,
+      });
+      showToast(res?.ok === true ? "Rapport envoyé — merci !" : String(res?.error || "Envoi impossible."), res?.ok === true ? 2 : 2.5);
+    } catch {
+      try { showToast("Envoi impossible.", 2); } catch {}
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  document.getElementById("btnCopyJankReport")?.addEventListener("click", async () => {    let text = "Rapport indisponible.";
     try { text = getJankReport(GAME_VERSION); } catch {}
     try {
       if (navigator.clipboard?.writeText) {
@@ -14808,7 +14846,8 @@ function scheduleProgressSave() {
   if (progressSaveIdleHandle) return;
   const persist = () => {
     progressSaveIdleHandle = 0;
-    if (account.user && account.dirty) saveProgressNow();
+    // Filet périodique : envoi paresseux en Debug mode (15 s), urgent sinon.
+    if (account.user && account.dirty) saveProgressNow({ pushLazy: true });
   };
   if (typeof requestIdleCallback === "function") {
     progressSaveIdleHandle = requestIdleCallback(persist, { timeout: 1200 });
@@ -15428,11 +15467,13 @@ function sanitizeRocketsForSave() {
   return out;
 }
 
-function saveProgressNow() {
-  return measureGameTask("saveProgressNow", saveProgressNowMeasured);
+function saveProgressNow(opts = {}) {
+  // opts.pushLazy : seul le filet périodique le demande (envoi paresseux en
+  // Debug mode). Les appels directs (achats, quêtes...) restent urgents.
+  return measureGameTask("saveProgressNow", () => saveProgressNowMeasured(opts));
 }
 
-function saveProgressNowMeasured() {
+function saveProgressNowMeasured(opts = {}) {
   // Les missions peuvent être acceptées depuis le terminal avant que la
   // boucle de jeu ait initialisé `account.user`. Recharge alors le compte
   // directement afin de ne jamais perdre la sauvegarde des quêtes.
@@ -34832,7 +34873,8 @@ if (movementLocked) {
 
   if (!isZoneMap) waveController(dt);
   else zoneController(dt);
-  syncNetNpcs(dt);
+  // Debug mode : ces splits attribuent les pics de frame.update dans le rapport.
+  measureGameTask("syncNetNpcs", () => syncNetNpcs(dt));
   try { syncNetPlayers(dt); } catch {}
   // Multi PvP : PV autoritaires serveur — on n'adopte que les baisses
   // (les soins locaux remontent au serveur via les pos, qui les suit).
@@ -34979,7 +35021,8 @@ if (movementLocked) {
   if (typeof tickStrokelightBarrage === "function") {
     try { tickStrokelightBarrage(dt); } catch (error) { console.warn("Strokelight barrage tick:", error); }
   }
-  updatePet(dt);
+  // Debug mode : splits pour attribuer les pics de frame.update dans le rapport.
+  measureGameTask("updatePet", () => updatePet(dt));
   try { tickHangarSwap(dt); } catch (error) { console.warn("Hangar swap tick:", error); }
   try { tickStarJump(dt); } catch (error) { console.warn("Star jump tick:", error); }
   try { tickLowRaidClient(); } catch (error) { console.warn("Low raid tick:", error); }
@@ -38589,7 +38632,7 @@ updateCurrentUserProgress({
   },
   // Sélections : voir ci-dessus (écriture immédiate, jamais l'autosave).
   rockets: sanitizeRocketsForSave(),
-});
+}, { pushLazy: opts?.pushLazy === true });
 }
 
 async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {

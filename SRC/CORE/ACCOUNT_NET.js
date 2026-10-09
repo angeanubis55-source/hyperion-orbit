@@ -65,7 +65,7 @@ export function netCurrent() {
   return { id: memUser.id, pseudo: memUser.pseudo, email: memUser.email };
 }
 
-export function netStore(list, { pilotDisksOnly = false, durable = false } = {}) {
+export function netStore(list, { pilotDisksOnly = false, durable = false, pushLazy = false } = {}) {
   const arr = Array.isArray(list) ? list : [];
   const mine = (memUser && arr.find((u) => u && u.id === memUser.id)) || arr[0] || null;
   // Ce mutateur ne touche que crédits et disques, sur le compte déjà chargé.
@@ -93,7 +93,8 @@ export function netStore(list, { pilotDisksOnly = false, durable = false } = {})
     memUser = retainPendingSelections(mine);
     cachePendingGalaxyGates();
     writeCache(memUser, durable);
-    schedulePush();
+    // Filet périodique : envoi paresseux en Debug mode, urgent sinon.
+    schedulePush(pushLazy !== true);
   }
 }
 
@@ -265,6 +266,67 @@ function readCache() {
   return null;
 }
 
+// Envoi d'un rapport saccades (Debug mode) : Bearer si connecté, sinon
+// pseudo local (le serveur taggue "invité"). Anti-spam : 5 min côté client
+// (le serveur applique 10/min/IP + 3/heure/joueur).
+const JANK_SEND_KEY = "orbit_jank_last_send";
+export async function sendJankReport({ report = "", version = "", count = 0, maxMs = 0, avgMs = 0, sessionSec = 0, map = "", fps = 0, npcs = 0, players = 0 } = {}) {
+  const text = String(report || "");
+  if (text.length < 10 || text.length > 32768) return { ok: false, error: "Rapport vide ou trop gros." };
+  try {
+    const last = Number(localStorage.getItem(JANK_SEND_KEY) || 0);
+    if (Date.now() - last < 5 * 60 * 1000) return { ok: false, error: "Déjà envoyé il y a moins de 5 min." };
+  } catch {}
+  const authed = netActive() && memToken && memUser;
+  const pseudo = authed
+    ? String(memUser.pseudo || "Pilote")
+    : String(getLocalReportPseudo());
+  const body = {
+    pseudo,
+    version: String(version || "").slice(0, 16),
+    map: String(map || "").slice(0, 16),
+    fps: Math.max(0, Math.floor(Number(fps) || 0)),
+    npcs: Math.max(0, Math.floor(Number(npcs) || 0)),
+    players: Math.max(0, Math.floor(Number(players) || 0)),
+    count: Math.max(0, Math.floor(Number(count) || 0)),
+    maxMs: Math.max(0, Math.floor(Number(maxMs) || 0)),
+    avgMs: Math.max(0, Math.floor(Number(avgMs) || 0)),
+    sessionSec: Math.max(0, Math.floor(Number(sessionSec) || 0)),
+    report: text,
+  };
+  try {
+    const out = await api("/api/jank-report", {
+      method: "POST",
+      body,
+      token: authed ? memToken : undefined,
+    });
+    if (out?.status === 429 || out?.error) {
+      if (String(out?.error || "").includes("heure")) return { ok: false, error: "3 rapports par heure maximum." };
+      if (out?.status === 429) return { ok: false, error: "Trop d'envois, réessaie dans une minute." };
+      return { ok: false, error: String(out?.error || "Envoi impossible.") };
+    }
+    if (!out || out.ok !== true) return { ok: false, error: "Envoi impossible." };
+    try { localStorage.setItem(JANK_SEND_KEY, String(Date.now())); } catch {}
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Hors ligne — garde le bouton Copier." };
+  }
+}
+
+function getLocalReportPseudo() {
+  try {
+    const raw = localStorage.getItem("orbit_current_user");
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed?.pseudo) return String(parsed.pseudo);
+  } catch {}
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed?.user?.pseudo) return String(parsed.user.pseudo);
+  } catch {}
+  return "Pilote";
+}
+
 // Boot synchrone (import) depuis token + cache. Le refresh async suit.
 export function bootNetFromCache() {
   try {
@@ -320,10 +382,17 @@ async function api(path, { method = "GET", body, token, timeout = 15000 } = {}) 
     const headers = {};
     if (body !== undefined) headers["content-type"] = "application/json; charset=utf-8";
     if (token) headers.Authorization = `Bearer ${token}`;
+    // Debug mode : la sérialisation du body /api/save (~1 Mo) est tracée.
+    // C'est du temps main-thread synchrone avant l'envoi réseau (async).
+    const tBody0 = performance.now();
+    const bodyText = body !== undefined ? JSON.stringify(body) : undefined;
+    try {
+      if (path === "/api/save") noteSaveOp("push-json", performance.now() - tBody0, (bodyText || "").length);
+    } catch {}
     const res = await fetch(path, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: bodyText,
       signal: ctrl.signal,
     });
     const data = await res.json().catch(() => ({}));
@@ -625,6 +694,7 @@ function adoptServerUser(user, { base = serverBase, admin = false, reason = "ref
       if (revision > Number(user.revision || 0)) addRewardToBase(remote, reward);
     }
   }
+  const tMerge0 = performance.now();
   const merged = admin ? retainPendingSelections(copy(user)) : rebaseUser(memUser, remote, base);
   // Les confirmations sont silencieuses : mettre à jour les objets déjà
   // utilisés par le moteur, plutôt que lui laisser un ancien compte détaché.
@@ -635,6 +705,8 @@ function adoptServerUser(user, { base = serverBase, admin = false, reason = "ref
     memUser.revision = Math.max(Number(user.revision) || 0, Number(memUser.revision) || 0) + 1;
     schedulePush();
   }
+  // Debug mode : la fusion complète est tracée (gros poste suspect en farm).
+  try { noteSaveOp("adopt-merge", performance.now() - tMerge0, 0, reason); } catch {}
   // L'état et sa référence doivent être persistés ensemble avant le journal
   // GG, sinon un reload peut rejouer ce journal sur une référence plus vieille.
   writeCache(memUser, true);

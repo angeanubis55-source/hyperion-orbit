@@ -225,11 +225,33 @@ export function initAccountDb() {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_clan_log_clan ON clan_log(clan_id, created_at);
+    CREATE TABLE IF NOT EXISTS jank_reports (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      pseudo TEXT NOT NULL,
+      version TEXT NOT NULL DEFAULT '',
+      map TEXT NOT NULL DEFAULT '',
+      fps INTEGER NOT NULL DEFAULT 0,
+      npcs INTEGER NOT NULL DEFAULT 0,
+      players INTEGER NOT NULL DEFAULT 0,
+      count INTEGER NOT NULL DEFAULT 0,
+      max_ms INTEGER NOT NULL DEFAULT 0,
+      avg_ms INTEGER NOT NULL DEFAULT 0,
+      session_sec INTEGER NOT NULL DEFAULT 0,
+      report TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_jank_created ON jank_reports(created_at DESC);
   `);
   // Menage des sessions expirees (toutes les heures).
   const purge = () => {
     try { db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(Date.now()); } catch {}
     try { db.prepare("DELETE FROM npc_reward_tx WHERE created_at < ?").run(Date.now() - 7 * 24 * 3600_000); } catch {}
+    // Rapports saccades : 50 derniers + 30 jours max.
+    try {
+      db.prepare("DELETE FROM jank_reports WHERE rowid NOT IN (SELECT rowid FROM jank_reports ORDER BY created_at DESC LIMIT 50)").run();
+    } catch {}
+    try { db.prepare("DELETE FROM jank_reports WHERE created_at < ?").run(Date.now() - 30 * 24 * 3600_000); } catch {}
   };
   purge();
   setInterval(purge, 3600_000).unref?.();
@@ -350,6 +372,76 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
 
 function sessionKey(token) {
   return sha256hex(`session::${String(token || "")}`);
+}
+
+// Rapports saccades (Debug mode) : dépôt joueur (connecté ou invité taggé),
+// lecture/suppression admin. Rétention : 50 derniers + 3/heure/joueur.
+const JANK_REPORT_MAX_CHARS = 32768;
+const JANK_KEEP_LAST = 50;
+export function submitJankReport({ userId = "", pseudo = "", version = "", map = "", fps = 0, npcs = 0, players = 0, count = 0, maxMs = 0, avgMs = 0, sessionSec = 0, report = "" } = {}) {
+  initAccountDb();
+  const text = String(report || "");
+  if (text.length < 10 || text.length > JANK_REPORT_MAX_CHARS || text.includes("\0")) return { ok: false, error: "FORMAT" };
+  const uid = String(userId || "").slice(0, 80);
+  if (!uid) return { ok: false, error: "NOUSER" };
+  const now = Date.now();
+  try {
+    const recent = db.prepare("SELECT COUNT(*) AS n FROM jank_reports WHERE user_id = ? AND created_at > ?").get(uid, now - 3600_000);
+    if (Number(recent?.n) >= 3) return { ok: false, error: "QUOTA" };
+  } catch {}
+  const row = {
+    id: uuid(),
+    user_id: uid,
+    pseudo: String(pseudo || "Pilote").slice(0, 20),
+    version: String(version || "").slice(0, 16),
+    map: String(map || "").slice(0, 16),
+    fps: Math.max(0, Math.floor(Number(fps) || 0)),
+    npcs: Math.max(0, Math.floor(Number(npcs) || 0)),
+    players: Math.max(0, Math.floor(Number(players) || 0)),
+    count: Math.max(0, Math.floor(Number(count) || 0)),
+    max_ms: Math.max(0, Math.floor(Number(maxMs) || 0)),
+    avg_ms: Math.max(0, Math.floor(Number(avgMs) || 0)),
+    session_sec: Math.max(0, Math.floor(Number(sessionSec) || 0)),
+    report: text,
+    created_at: now,
+  };
+  try {
+    db.prepare(`INSERT INTO jank_reports (id, user_id, pseudo, version, map, fps, npcs, players, count, max_ms, avg_ms, session_sec, report, created_at)
+      VALUES (@id, @user_id, @pseudo, @version, @map, @fps, @npcs, @players, @count, @max_ms, @avg_ms, @session_sec, @report, @created_at)`).run(row);
+    db.prepare("DELETE FROM jank_reports WHERE rowid NOT IN (SELECT rowid FROM jank_reports ORDER BY created_at DESC LIMIT 50)").run();
+  } catch {
+    return { ok: false, error: "DB" };
+  }
+  return { ok: true, id: row.id };
+}
+
+export function listJankReports(limit = 50) {
+  initAccountDb();
+  const n = Math.max(1, Math.min(50, Math.floor(Number(limit) || 50)));
+  try {
+    return db.prepare("SELECT id, user_id, pseudo, version, map, fps, npcs, players, count, max_ms, avg_ms, session_sec, created_at, substr(report, 1, 500) AS excerpt FROM jank_reports ORDER BY created_at DESC LIMIT ?").all(n) || [];
+  } catch {
+    return [];
+  }
+}
+
+export function getJankReport(id) {
+  initAccountDb();
+  try {
+    return db.prepare("SELECT * FROM jank_reports WHERE id = ?").get(String(id || "")) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function deleteJankReport(id) {
+  initAccountDb();
+  try {
+    const r = db.prepare("DELETE FROM jank_reports WHERE id = ?").run(String(id || ""));
+    return { ok: Number(r?.changes) > 0 };
+  } catch {
+    return { ok: false };
+  }
 }
 
 function findSession(token) {
@@ -1977,6 +2069,49 @@ export function handleAccountApi(req, res) {
     if (rateLimited(`${ip}:/api/save`, 120)) return json(res, 429, { ok: false, error: "Trop de sauvegardes, reessaie dans un instant." });
     readBody(req, res, (body) => {
       try { handleSave(req, body, res); } catch {
+        json(res, 500, { ok: false, error: "Erreur serveur." });
+      }
+    });
+    return true;
+  }
+  if (pathname === "/api/jank-report" && req.method === "POST") {
+    // Rapport saccades (Debug mode) : pseudo et id croisés côté serveur si
+    // Bearer valide (anti-spoof), sinon invité taggé par IP hachée.
+    if (rateLimited(`${ip}:/api/jank-report`, 10)) return json(res, 429, { ok: false, error: "Trop de rapports, reessaie dans une minute." });
+    readBody(req, res, (body) => {
+      try {
+        let userId = "", pseudo = "";
+        try {
+          const me = authUser(req);
+          if (me) {
+            userId = String(me.id);
+            pseudo = String(me.pseudo || body?.pseudo || "Pilote");
+          }
+        } catch {}
+        if (!userId) {
+          userId = `guest:${sha256hex(`jank::${ip}`).slice(0, 16)}`;
+          pseudo = `Invité ${String(body?.pseudo || "").slice(0, 20) || "?"}`;
+        }
+        const r = submitJankReport({
+          userId,
+          pseudo,
+          version: body?.version,
+          map: body?.map,
+          fps: body?.fps,
+          npcs: body?.npcs,
+          players: body?.players,
+          count: body?.count,
+          maxMs: body?.maxMs,
+          avgMs: body?.avgMs,
+          sessionSec: body?.sessionSec,
+          report: body?.report,
+        });
+        if (!r.ok) {
+          if (r.error === "QUOTA") return json(res, 429, { ok: false, error: "3 rapports par heure maximum." });
+          return json(res, 400, { ok: false, error: "Rapport invalide." });
+        }
+        return json(res, 200, { ok: true, id: r.id });
+      } catch {
         json(res, 500, { ok: false, error: "Erreur serveur." });
       }
     });
