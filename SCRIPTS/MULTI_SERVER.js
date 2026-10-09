@@ -1528,6 +1528,7 @@ function pumpNpcRewards(budgetMs = 16) {
     if (!killerId.startsWith("u_") || death?.cause !== "gun") { queuedNpcRewardKeys.delete(deathKey); continue; }
     if (rewardedNpcDeaths.has(deathKey)) { queuedNpcRewardKeys.delete(deathKey); continue; }
     let complete = true;
+    let failed = false;
     const isSunBoss = death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth";
     const sunType = death?.type === "npc_Mindfire_Behemoth" ? "Mindfire_Sun_Box"
       : death?.type === "npc_Invoke_XVI" ? "Sun_Box" : null;
@@ -1548,10 +1549,13 @@ function pumpNpcRewards(budgetMs = 16) {
       } catch {}
     }
     for (const share of npcRewardShares(killerId, mapId, death)) {
+      // Part à 0 % (grand groupe) : rien à commettre, déterministe.
+      // Sans ce garde, l'item est réenfilé pour toujours et empoisonne la pompe.
+      if (!(Number(share.percent) > 0)) continue;
       const accountId = share.pid.slice(2);
       const txKey = `npc:${serverRunId}:${deathKey}:${accountId}`;
       const reward = awardNpcKill(accountId, death.type, mapId, share.percent, share.pid === killerId, txKey);
-      if (!reward) { complete = false; continue; }
+      if (!reward) { failed = true; complete = false; continue; }
       if (reward.duplicate) continue;
       // Audit anticheat : kill crédité au tueur (strictement serveur).
       if (share.pid === killerId) {
@@ -1576,9 +1580,21 @@ function pumpNpcRewards(budgetMs = 16) {
     // Une erreur SQLite transitoire sera retentee au tour suivant (en fin de
     // file pour ne pas bloquer les autres). Les parts deja commitees sont
     // protegees par npc_reward_tx et ignorees via duplicate.
+    // Anti-poison : un item qui échoue vraiment en boucle (ex : compte
+    // corrompu) serait réenfilé pour toujours et étoufferait la pompe :
+    // abandon après 5 passages avec log. Les simples dépassements de
+    // budget ne comptent pas comme échecs.
     if (complete) {
       queuedNpcRewardKeys.delete(deathKey);
       rewardedNpcDeaths.set(deathKey, now);
+    } else if (failed) {
+      item.fails = (Number(item.fails) || 0) + 1;
+      if (item.fails >= 5) {
+        try { console.log(`[multi:npc] recompense abandonnee apres 5 echecs (${deathKey} ${death?.type})`); } catch {}
+        queuedNpcRewardKeys.delete(deathKey);
+      } else {
+        pendingNpcRewards.push(item);
+      }
     } else pendingNpcRewards.push({ mapId, death, deathKey });
   }
   if (pendingNpcRewards.length > 1500) {
