@@ -128,6 +128,34 @@ export function setJankTimingsProvider(fn) {
   timingsProvider = typeof fn === "function" ? fn : null;
 }
 
+// Balance des sections du compte (Debug, calculée sur demande au moment du
+// rapport, pas en continu : ~1 sérialisation, seulement au clic).
+// Dit QUOI est gros dans le compte (hangars ? modules ? historique ?).
+let accountBreakdown = null;
+export function setJankAccountBreakdown(obj) {
+  try {
+    accountBreakdown = obj && typeof obj === "object" ? obj : null;
+  } catch {
+    accountBreakdown = null;
+  }
+}
+
+function accountSection() {
+  const lines = [];
+  try {
+    if (!accountBreakdown) return lines;
+    const rows = Object.entries(accountBreakdown)
+      .map(([k, v]) => [String(k), Math.max(0, Math.round(Number(v) || 0))])
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 14);
+    if (!rows.length) return lines;
+    lines.push("--- Compte (taille par section) ---");
+    for (const [k, v] of rows) lines.push(`${k} : ~${formatKo(v)}`);
+  } catch {}
+  return lines;
+}
+
 export function noteSaveOp(name, ms, bytes, note) {
   if (!active) return;
   try {
@@ -278,6 +306,7 @@ export function getJankReport(version) {
     }
     for (const l of saveOpsSection()) lines.push(l);
     for (const l of engineSection()) lines.push(l);
+    for (const l of accountSection()) lines.push(l);
     try {
       const c = context();
       lines.push(`--- Contexte (fin de session) ---`);

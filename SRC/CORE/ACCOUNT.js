@@ -1155,7 +1155,11 @@ export function saveUser(user, options = {}) {  user.schemaVersion = STORAGE_SCH
   }
   if (idx >= 0) users[idx] = user;
   else users.push(user);
-  writeUsers(users, { pilotDisksOnly, durable: options.durable === true, pushLazy: options.pushLazy === true });
+  // Debug mode : les sauvegardes automatiques (source "progress" : filet,
+  // raffinage auto, quêtes auto...) arment un envoi paresseux. Les actions
+  // directes (achats, changements de carte...) restent urgentes : elles
+  // n'ont pas de source ou en ont une autre.
+  writeUsers(users, { pilotDisksOnly, durable: options.durable === true, pushLazy: options.pushLazy === true || options.source === "progress" });
   if (options.notify !== false && typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
     window.dispatchEvent(new CustomEvent("orbit:user-updated", {
       detail: { userId: user.id, revision: user.revision, source: options.source || "account" },

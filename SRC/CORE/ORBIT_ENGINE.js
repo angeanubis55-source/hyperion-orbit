@@ -116,7 +116,7 @@ import { createWaveSpawnState } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
 import { isPhoneMode, setPhoneModeCached } from "./PHONE_MODE.js";
-import { startJankRecorder, noteJankFrame, noteGuardBlock, noteSaveOp, clearJankReport, clearGuardLog, setJankListener, setJankTimingsProvider, getJankSummary, getJankContext, getJankReport } from "./JANK_RECORDER.js";
+import { startJankRecorder, noteJankFrame, noteGuardBlock, noteSaveOp, clearJankReport, clearGuardLog, setJankListener, setJankTimingsProvider, setJankAccountBreakdown, getJankSummary, getJankContext, getJankReport } from "./JANK_RECORDER.js";
 import { COLLECTABLE_PICKUP_HOLD_SEC } from "./COLLECTION_TIMING.js";
 import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, setNpcVelocity } from "../../NPC/NPC_AI.js";
 import { DEFAULT_NPC_RADAR_FADE_START, getNpcSensorRanges, npcSensorOpacity, shouldDetectNpc } from "../../NPC/NPC_SENSORS.js";
@@ -8521,6 +8521,33 @@ function normalizeSettingsWindow() {
 // Debug mode : résumé des saccades dans Paramètres > Général > Démarrage.
 // Appelé à l'ouverture des paramètres et à chaque saccade (texte seul,
 // rien si les paramètres sont fermés).
+// Debug mode : balance des sections du compte pour le rapport (QUOI est
+// gros : hangars ? modules ? historique ?). Calculée sur demande (clic),
+// pas en continu : ~1 sérialisation, seulement quand on lit le rapport.
+function computeAccountBreakdown() {
+  const out = {};
+  try {
+    const u = account?.user || getCurrentUserFull() || netList()[0] || null;
+    if (!u || typeof u !== "object") return out;
+    const seen = new Set(["hangars", "drones", "inventory", "pet", "quests", "skylab", "stats", "auction", "galaxyGates", "ammo", "rockets", "boosters", "pilotSkills"]);
+    for (const key of seen) {
+      try {
+        const v = u[key];
+        if (v === undefined || v === null) continue;
+        out[key] = JSON.stringify(v)?.length || 0;
+      } catch {}
+    }
+    try {
+      const rest = {};
+      for (const key of Object.keys(u)) {
+        if (!seen.has(key)) rest[key] = u[key];
+      }
+      out.autres = JSON.stringify(rest)?.length || 0;
+    } catch {}
+  } catch {}
+  return out;
+}
+
 function refreshJankSummary() {
   const box = document.getElementById("jankSummary");
   const btn = document.getElementById("btnCopyJankReport");
@@ -8617,7 +8644,10 @@ function wireSettingsWindow() {
     if (btn) btn.disabled = true;
     try {
       let text = "";
-      try { text = getJankReport(GAME_VERSION); } catch {}
+      try {
+        setJankAccountBreakdown(computeAccountBreakdown());
+        text = getJankReport(GAME_VERSION);
+      } catch {}
       let summary = { count: 0, max: 0, avg: 0, sessionSec: 0 };
       try { summary = getJankSummary() || summary; } catch {}
       let ctx = { map: "?", fps: 0, npcs: 0, players: 0 };
@@ -8646,7 +8676,10 @@ function wireSettingsWindow() {
   });
 
   document.getElementById("btnCopyJankReport")?.addEventListener("click", async () => {    let text = "Rapport indisponible.";
-    try { text = getJankReport(GAME_VERSION); } catch {}
+    try {
+      setJankAccountBreakdown(computeAccountBreakdown());
+      text = getJankReport(GAME_VERSION);
+    } catch {}
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);

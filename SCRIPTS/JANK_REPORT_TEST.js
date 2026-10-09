@@ -8,6 +8,7 @@ import {
   getJankSummary,
   getJankReport,
   setJankTimingsProvider,
+  setJankAccountBreakdown,
   clearJankReport,
 } from "../SRC/CORE/JANK_RECORDER.js";
 
@@ -72,4 +73,15 @@ test("sans stockage ni PerformanceObserver, rien ne casse", () => {
   noteGuardBlock(50);
   const report = getJankReport("0.319");
   assert.match(report, /Rapport saccades/);
+});
+
+test("la balance du compte liste les sections par taille", () => {
+  freshSession();
+  setJankAccountBreakdown({ hangars: 500000, drones: 200000, stats: 500 });
+  const report = getJankReport("0.319");
+  assert.match(report, /--- Compte \(taille par section\) ---/);
+  const hi = report.indexOf("hangars");
+  const lo = report.indexOf("stats");
+  assert.ok(hi >= 0 && lo > hi, "tri décroissant");
+  setJankAccountBreakdown(null);
 });

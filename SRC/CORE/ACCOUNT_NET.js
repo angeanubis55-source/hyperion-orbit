@@ -496,13 +496,16 @@ function schedulePush(urgent = true) {
   let delay = 2000;
   try { if (debug) delay = wantUrgent ? 5000 : 15000; } catch {}
   // Debug mode : l'armement est horodaté + attribué (métronome visible dans
-  // le rapport, avec le fichier:ligne de l'appelant). Coût ~0,1ms par armement.
+  // le rapport, avec le fichier:ligne de l'origine réelle — on saute les
+  // intermédiaires saveUser/writeUsers). Coût ~0,1ms par armement.
   try {
     let who = wantUrgent ? "urgent" : "paresseux";
     if (debug) {
       const stack = String(new Error("trace").stack || "").split("\n").slice(1);
       for (const line of stack) {
-        if (!line || line.includes("ACCOUNT_NET.js")) continue;
+        if (!line) continue;
+        if (line.includes("ACCOUNT_NET.js")) continue;
+        if (/\/ACCOUNT\.js:\d+/.test(line)) continue;
         const m = /([^/()\s]+\.js):(\d+)/.exec(line);
         if (m) {
           who += ` via ${m[1]}:${m[2]}`;
@@ -719,7 +722,27 @@ function adoptServerUser(user, { base = serverBase, admin = false, reason = "ref
     }
   }
   const tMerge0 = performance.now();
-  const merged = admin ? retainPendingSelections(copy(user)) : rebaseUser(memUser, remote, base);
+  // Debug mode, fast-path prouvé identique : si rien n'a changé localement
+  // depuis la référence (same(memUser, base)), rebaseUser() rendrait
+  // exactement copy(remote) + champs identité + revision (sa première
+  // branche). On court-circuite la récursion complète (~40-70ms sur gros
+  // compte). Sinon fusion complète comme avant.
+  let merged;
+  let debugFastAdopt = false;
+  try {
+    debugFastAdopt = isPhoneMode() && !admin && reason === "saved" && same(memUser, base);
+  } catch { debugFastAdopt = false; }
+  if (debugFastAdopt) {
+    merged = copy(remote);
+    for (const key of ["id", "pseudo", "email", "password", "_adminWriteToken"]) {
+      if (remote[key] !== undefined) merged[key] = remote[key];
+    }
+    merged.revision = remote.revision;
+    merged = retainPendingSelections(merged);
+    try { noteSaveOp("adopt-vite", performance.now() - tMerge0, 0, reason); } catch {}
+  } else {
+    merged = admin ? retainPendingSelections(copy(user)) : rebaseUser(memUser, remote, base);
+  }
   // Les confirmations sont silencieuses : mettre à jour les objets déjà
   // utilisés par le moteur, plutôt que lui laisser un ancien compte détaché.
   memUser = reason === "saved" ? replaceAccountObject(memUser, merged) : merged;
@@ -736,10 +759,17 @@ function adoptServerUser(user, { base = serverBase, admin = false, reason = "ref
     else schedulePush();
   }
   // Debug mode : la fusion complète est tracée (gros poste suspect en farm).
-  try { noteSaveOp("adopt-merge", performance.now() - tMerge0, 0, reason); } catch {}
+  // (Le fast-path ci-dessus trace "adopt-vite" à la place.)
+  try { if (!debugFastAdopt) noteSaveOp("adopt-merge", performance.now() - tMerge0, 0, reason); } catch {}
   // L'état et sa référence doivent être persistés ensemble avant le journal
   // GG, sinon un reload peut rejouer ce journal sur une référence plus vieille.
-  writeCache(memUser, true);
+  // Debug mode : pas de 2e sérialisation ~1.8 Mo ici — le prochain push
+  // l'écrit déjà en immédiat, et le canon est en base serveur. En cas de
+  // crash, le refresh adopte le canon plus récent (rebase additif).
+  let debugDeferCache = false;
+  try { debugDeferCache = isPhoneMode(); } catch {}
+  if (debugDeferCache) pendingCacheUser = memUser;
+  else writeCache(memUser, true);
   cachePendingGalaxyGates();
   if (reason !== "saved") {
     try { window.dispatchEvent(new CustomEvent("orbit:net-adopted", { detail: { reason, conflicts } })); } catch {}
