@@ -8,6 +8,7 @@
 //   5 s en Debug mode) ;
 // - revision serveur strictement croissante : anti-ecrasement (409 stale).
 import { isPhoneMode } from "./PHONE_MODE.js";
+import { noteSaveOp } from "./JANK_RECORDER.js";
 
 const TOKEN_KEY = "orbit_token";
 const CACHE_KEY = "orbit_user_cache";
@@ -223,8 +224,14 @@ function flushAccountCache() {
   // Une deconnexion ne doit jamais etre suivie par la resurrection du cache.
   if (!user || !netActive() || user.id !== memUser.id) return;
   try {
-    lsSet(CACHE_KEY, JSON.stringify({ user, base: serverBase, retrySave, rewards: [...serverRewards], at: Date.now() },
-      (key, value) => value === Infinity ? -1 : value));
+    const t0 = performance.now();
+    const json = JSON.stringify({ user, base: serverBase, retrySave, rewards: [...serverRewards] },
+      (key, value) => value === Infinity ? -1 : value);
+    const t1 = performance.now();
+    lsSet(CACHE_KEY, json);
+    const t2 = performance.now();
+    try { noteSaveOp("cache-json", t1 - t0, json.length); } catch {}
+    try { noteSaveOp("cache-stockage", t2 - t1, json.length); } catch {}
   } catch {}
 }
 
@@ -399,14 +406,31 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
   }
 }
 
-function schedulePush() {
-  // Les kills suivants ne repoussent pas une sauvegarde deja programmee.
-  // Debug mode : envoi espacé (5 s au lieu de 2 s), moins de réveils réseau.
-  if (saveTimer != null) return;
+let pushUrgentArmed = true;
+function schedulePush(urgent = true) {
+  // Les mutations suivantes ne repoussent pas un envoi deja programme,
+  // sauf passage en urgent (un achat ne doit pas attendre un envoi paresseux).
+  // Debug mode : urgent = 5 s, paresseux (gains de farm/quêtes) = 15 s.
+  // Sinon : 2 s dans tous les cas, comme avant.
+  const wantUrgent = urgent !== false;
+  if (saveTimer != null) {
+    if (wantUrgent && !pushUrgentArmed) {
+      try { clearTimeout(saveTimer); } catch {}
+      saveTimer = null;
+    } else return;
+  }
+  pushUrgentArmed = wantUrgent;
   let delay = 2000;
-  try { if (isPhoneMode()) delay = 5000; } catch {}
+  try { if (isPhoneMode()) delay = wantUrgent ? 5000 : 15000; } catch {}
+  // Debug mode : l'armement est horodaté (métronome visible dans le rapport).
+  try { noteSaveOp("push-arme", 0, 0, wantUrgent ? "urgent" : "paresseux"); } catch {}
   saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, delay);
 }
+
+// Gains de farm/quêtes : déjà crédités en mémoire et (kills) en base serveur.
+// L'envoi du blob peut attendre le prochain cycle paresseux en Debug mode.
+// Comportement normal : identique à schedulePush().
+export function noteNetQuestGain() { if (netActive()) schedulePush(false); }
 
 // Conflits d'écriture (409) : normaux isolément (give admin...), mais en
 // rafale ils signalent 2 writers sur le même compte (2e onglet/fenêtre) :
@@ -562,6 +586,16 @@ export function noteNetServerReward(reward) {
   if (revision <= knownRewardRevision) return false;
   serverRewards.set(revision, copy(reward));
   knownRewardRevision = revision;
+  // Debug mode : borne dure anti-accumulation (100 dernières). Les révisions
+  // plus vieilles sont déjà couvertes par knownRewardRevision (rejetées) et
+  // purgées dans acceptServerBase : rien ne les relit.
+  try {
+    if (isPhoneMode()) {
+      while (serverRewards.size > 100) {
+        serverRewards.delete(serverRewards.keys().next().value);
+      }
+    }
+  } catch {}
   addRewardToBase(serverBase, reward);
   pendingCacheUser = memUser;
   return true;
@@ -612,6 +646,7 @@ function adoptServerUser(user, { base = serverBase, admin = false, reason = "ref
 
 async function pushNow() {
   saveTimer = null;
+  pushUrgentArmed = true;
   if (identityWriter) { schedulePush(); return { ok: false, busy: true }; }
   if (saveInFlight) {
     if (netActive()) schedulePush();
@@ -630,16 +665,20 @@ async function pushSnapshot() {
   // Le serveur peut l'avoir enregistrée avant la coupure du transport.
   if (!retrySave) {
     try { window.dispatchEvent(new CustomEvent("orbit:net-before-save")); } catch {}
+    const t0 = performance.now();
     retrySave = {
       user: JSON.parse(JSON.stringify(memUser, (key, value) => value === Infinity ? -1 : value)), baseRevision: Number(serverBase?.revision) || 0,
       saveId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${++nextSaveId}`,
       selections: { ...pendingSelectionVersions },
     };
+    // Debug mode : durée du clone (~ taille mesurée par cache-json juste après).
+    try { noteSaveOp("push-clone", performance.now() - t0, 0); } catch {}
     retrySave.user.revision = Math.max(Number(retrySave.user.revision) || 0, retrySave.baseRevision + 1);
   }
   const sent = retrySave;
   writeCache(memUser, true);
   let out;
+  const postT0 = performance.now();
   try {
     out = await api("/api/save", { method: "POST", body: {
       user: sent.user, baseRevision: sent.baseRevision, saveId: sent.saveId,
@@ -647,6 +686,8 @@ async function pushSnapshot() {
   } catch {
     if (netActive() && memToken === token) schedulePush();
     return { ok: false, error: "Reseau." };
+  } finally {
+    try { noteSaveOp("push-post", performance.now() - postT0, 0); } catch {}
   }
   if (!netActive() || memToken !== token || String(memUser.id) !== String(sent.user.id)) return { ok: false, ignored: true };
   if (out?.ok && out.user) {
@@ -678,6 +719,7 @@ export async function flushNetUser() {
   flushAccountCache();
   try { clearTimeout(saveTimer); } catch {}
   saveTimer = null;
+  pushUrgentArmed = true;
   return pushNow();
 }
 

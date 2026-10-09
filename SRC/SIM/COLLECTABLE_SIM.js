@@ -144,7 +144,11 @@ export function reviveCollectableSlot(store, mapId, uid, x, y) {
 }
 
 // Drops dynamiques (cargo / assemblage, à durée de vie) : { uid, type, x, y, amount, fromNpc, ores, noDefReward, expiresAtMs }.
-export function addCollectableDrop(store, mapId, drop = {}, nowMs = 0) {
+// options.maxDropsPerMap (>0) : plafond anti-accumulation (Debug mode).
+// Sans plafond (0/omis) : comportement historique, jamais de suppression.
+// Au-delà : on retire d'abord un expiré, sinon le plus ancien. Les instances
+// déjà en scène gardent leur dropUid (retrait store sans effet au ramassage).
+export function addCollectableDrop(store, mapId, drop = {}, nowMs = 0, options = {}) {
   const entry = getMapEntry(store, String(mapId), true);
   const uid = String(drop?.uid || `${String(drop?.type || "drop")}#${Date.now()}#${entry.drops.length}`);
   const record = {
@@ -159,6 +163,20 @@ export function addCollectableDrop(store, mapId, drop = {}, nowMs = 0) {
     expiresAtMs: Math.max(0, Math.floor(Number(drop?.expiresAtMs) || 0)),
   };
   entry.drops.push(record);
+  try {
+    const cap = Math.max(0, Math.floor(Number(options?.maxDropsPerMap) || 0));
+    if (cap > 0) {
+      const now = Math.floor(Number(nowMs) || 0);
+      while (entry.drops.length > cap) {
+        const expiredIdx = entry.drops.findIndex((d) => {
+          const exp = Math.floor(Number(d?.expiresAtMs) || 0);
+          return exp > 0 && now >= exp;
+        });
+        if (expiredIdx >= 0) entry.drops.splice(expiredIdx, 1);
+        else entry.drops.shift();
+      }
+    }
+  } catch {}
   return record;
 }
 

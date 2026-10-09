@@ -2,7 +2,7 @@ import { protegitPatrol } from "../../NPC/PROTEGIT_MOVEMENT.js";
 import { npcFleeDirection } from "../../NPC/NPC_FLEE.js";
 import { pickSpacedSpawnPosition } from "../../NPC/NPC_SPAWN_POSITION.js";
 import { petEscortTarget, stepPetMotion, petCombatVelocity, orientPet } from "../../PET/PET_MOTION.js";
-import { measureGameTask, recordGameTask } from "./PERFORMANCE_TIMINGS.js";
+import { measureGameTask, recordGameTask, gamePerformanceTimings } from "./PERFORMANCE_TIMINGS.js";
 import { createDeferredPersistence } from "./DEFERRED_PERSISTENCE.js";
 import { drawCombatFloatTexts } from "./COMBAT_TEXT_RENDERER.js";
 import { createSpriteOutlineCache } from "./SPRITE_OUTLINE_CACHE.js";
@@ -81,7 +81,7 @@ import {
   tickCurrentUserAuction,
 } from "./ACCOUNT.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
-import { flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
+import { flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetQuestGain, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
   GALAXY_GATE_DEFINITIONS,
@@ -114,7 +114,7 @@ import { createWaveSpawnState } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
 import { isPhoneMode, setPhoneModeCached } from "./PHONE_MODE.js";
-import { startJankRecorder, noteJankFrame, setJankListener, getJankSummary, getJankReport } from "./JANK_RECORDER.js";
+import { startJankRecorder, noteJankFrame, noteGuardBlock, noteSaveOp, setJankListener, setJankTimingsProvider, getJankSummary, getJankReport } from "./JANK_RECORDER.js";
 import { COLLECTABLE_PICKUP_HOLD_SEC } from "./COLLECTION_TIMING.js";
 import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, setNpcVelocity } from "../../NPC/NPC_AI.js";
 import { DEFAULT_NPC_RADAR_FADE_START, getNpcSensorRanges, npcSensorOpacity, shouldDetectNpc } from "../../NPC/NPC_SENSORS.js";
@@ -2376,8 +2376,20 @@ function snapshotAbilityTargetsTick() {
       }
     } catch {}
     // 5. Une seule écriture, seulement si quelque chose a changé.
+    // Debug mode : tracée (durée + taille) pour le rapport saccades.
     if (dirty) {
-      try { localStorage.setItem(ABILITY_TARGET_KEY, JSON.stringify(all)); } catch {}
+      const t0 = performance.now();
+      let bytes = 0;
+      try {
+        const json = JSON.stringify(all);
+        bytes = json.length;
+        localStorage.setItem(ABILITY_TARGET_KEY, json);
+      } catch {
+        try { localStorage.setItem(ABILITY_TARGET_KEY, JSON.stringify(all)); } catch {}
+      }
+      if (jankRecorderOn) {
+        try { noteSaveOp("capacites", performance.now() - t0, bytes); } catch {}
+      }
     }
   } catch {}
 }
@@ -15276,13 +15288,14 @@ function claimQuestReward(questId) {
   const creditsGained = Math.max(0, Math.floor(Number(reward.credits || 0) * questMult));
   player.credits += creditsGained;
   // Mode multi : sinon les gains sont perdus sur 409 (canon serveur).
-  try { noteNetCreditGain(creditsGained); } catch {}
+  // Gain de quête (farm) : envoi paresseux en Debug mode (15 s), urgent sinon.
+  // L'argument munitions de noteNetPurchase est de toute façon ignoré.
+  try { noteNetQuestGain(); } catch {}
   const ammoRewards = Object.entries(reward.ammo || {}).filter(([type, amount]) => Object.hasOwn(player.ammo, type) && Number(amount) > 0);
   const ammoGained = ammoRewards.map(([type, amount]) => [type, Math.max(0, Math.floor(Number(amount) * questMult || 0))]);
   for (const [type, gained] of ammoGained) player.ammo[type] += gained;
   if (ammoGained.length) {
     updateAmmoUI();
-    try { noteNetPurchase(0, { ammo: Object.fromEntries(ammoGained) }); } catch {}
   }
   // Lasers offerts (ex : Prometheus) : stockés en inventaire (modules),
   // à équiper manuellement via les slots lasers.
@@ -15705,13 +15718,30 @@ function savePositionNow() {
           if (Number.isFinite(Number(sh))) h.lastShPct = Math.max(0, Math.min(1, Number(sh)));
         } catch {}
       }
+      if (jankRecorderOn) {
+        try { noteSaveOp("position-memoire", 0, 0, "multi"); } catch {}
+      }
       return;
     }
   } catch {}
   if (SESSION_HANGAR_ID) {
-    saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
+    const t0 = performance.now();
+    try {
+      saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
+    } finally {
+      if (jankRecorderOn) {
+        try { noteSaveOp("position-complet", performance.now() - t0, 0, "solo"); } catch {}
+      }
+    }
   } else {
-    saveActiveHangarState(player.x, player.y, currentMap, savedHpPct(), savedShPct());
+    const t0 = performance.now();
+    try {
+      saveActiveHangarState(player.x, player.y, currentMap, savedHpPct(), savedShPct());
+    } finally {
+      if (jankRecorderOn) {
+        try { noteSaveOp("position-complet", performance.now() - t0, 0, "solo"); } catch {}
+      }
+    }
   }
 }
 
@@ -15862,6 +15892,31 @@ function getSpeedBreakdown() {
     speedItems,
     speedModules,
   };
+}
+
+// Debug mode : le détail vitesse est calculé 1x par image et partagé entre
+// le familier, le HUD et l'envoi réseau (mêmes entrées dans la même image =
+// même résultat). Sinon calcul direct comme avant.
+let speedCacheFrame = -1;
+let speedCacheValue = null;
+function getSpeedBreakdownCached() {
+  try {
+    if (!isPhoneMode()) return getSpeedBreakdown();
+    if (typeof frameSeq === "number" && speedCacheFrame === frameSeq && speedCacheValue) {
+      return speedCacheValue;
+    }
+  } catch {
+    return getSpeedBreakdown();
+  }
+  let v = null;
+  try { v = getSpeedBreakdown(); } catch { return getSpeedBreakdown(); }
+  try {
+    if (typeof frameSeq === "number") {
+      speedCacheFrame = frameSeq;
+      speedCacheValue = v;
+    }
+  } catch {}
+  return v;
 }
 
 function getConfigCooldownLeft() {
@@ -20312,7 +20367,24 @@ try {
 const persistUniverse = createDeferredPersistence(force => {
   worldClock.markTick({ force });
   try {
-    measureGameTask("persistUniverse", () => universeStorage?.setItem?.(UNIVERSE_KEY, serializeUniverse(universe)));
+    measureGameTask("persistUniverse", () => {
+      // Debug mode : sépare sérialisation / écriture + taille, pour voir
+      // dans le rapport qui des deux gèle le téléphone.
+      let json = "";
+      try {
+        const t0 = performance.now();
+        json = serializeUniverse(universe);
+        const t1 = performance.now();
+        universeStorage?.setItem?.(UNIVERSE_KEY, json);
+        const t2 = performance.now();
+        if (jankRecorderOn) {
+          try { noteSaveOp("univers-json", t1 - t0, json.length); } catch {}
+          try { noteSaveOp("univers-stockage", t2 - t1, json.length); } catch {}
+        }
+      } catch {
+        try { universeStorage?.setItem?.(UNIVERSE_KEY, serializeUniverse(universe)); } catch {}
+      }
+    });
   } catch {}
 }, { now: () => worldClock.now(), intervalMs: isPhoneMode() ? 30000 : 5000 });
 // Monde continu collectables : même rythme que l'univers (5 s, force au quit).
@@ -20324,7 +20396,22 @@ try {
 }
 const persistCollectables = createDeferredPersistence(() => {
   try {
-    measureGameTask("persistCollectables", () => universeStorage?.setItem?.(COLLECTABLE_STORE_KEY, serializeCollectableStore(collectableStore)));
+    measureGameTask("persistCollectables", () => {
+      let json = "";
+      try {
+        const t0 = performance.now();
+        json = serializeCollectableStore(collectableStore);
+        const t1 = performance.now();
+        universeStorage?.setItem?.(COLLECTABLE_STORE_KEY, json);
+        const t2 = performance.now();
+        if (jankRecorderOn) {
+          try { noteSaveOp("collectables-json", t1 - t0, json.length); } catch {}
+          try { noteSaveOp("collectables-stockage", t2 - t1, json.length); } catch {}
+        }
+      } catch {
+        try { universeStorage?.setItem?.(COLLECTABLE_STORE_KEY, serializeCollectableStore(collectableStore)); } catch {}
+      }
+    });
   } catch {}
 }, { now: () => worldClock.now(), intervalMs: isPhoneMode() ? 30000 : 5000 });
 // ✅ Purge des ressources d'une Galaxy Gate terminée/perdue : supprime les
@@ -21420,7 +21507,7 @@ function tickPetKamikaze(dt) {
     return true;
   }
   // Fonce tout droit sur le point visé.
-  const ownerSpeed = Math.max(260, getSpeedBreakdown().total);
+  const ownerSpeed = Math.max(260, getSpeedBreakdownCached().total);
   const kkSpeed = Math.max(620, ownerSpeed * 2);
   const n = dist || 1;
   stepPetMotion(petState, (dx / n) * kkSpeed, (dy / n) * kkSpeed, dt, WORLD, RADIATION_SPAWN_MARGIN);
@@ -22073,7 +22160,7 @@ function updatePet(dt) {
     }
   }
   if (!target) petState.combatTarget = null;
-  const ownerSpeed = Math.max(260, getSpeedBreakdown().total) * playerSlowMult(player);
+  const ownerSpeed = Math.max(260, getSpeedBreakdownCached().total) * playerSlowMult(player);
   // Close / intermediate / far zones blend continuously into catch-up speed.
   const catchup = clamp((ownerDistance - 220) / 680, 0, 1);
   const followSpeed = ownerSpeed * (1.05 + catchup * 0.30);
@@ -23997,7 +24084,9 @@ function spawnCollectableAt(type, x, y, opts = {}) {
       ores: instance.oreRemainder,
       noDefReward: instance.rewardOverride != null,
       expiresAtMs: despawnAfter > 0 ? worldClock.now() + despawnAfter * 1000 : 0,
-    });
+    // Debug mode : plafond anti-accumulation (200/map, expirés d'abord).
+    // Sinon : jamais de suppression, comme avant.
+    }, worldClock.now(), { maxDropsPerMap: isPhoneMode() ? 200 : 0 });
     instance.dropUid = String(record.uid);
     persistCollectables();
   } catch {}
@@ -25079,6 +25168,14 @@ function makeEnemy(type, x, y) {
   });
   if (!factoryEntity) return null;
   enemiesById.set(factoryEntity.id, factoryEntity);
+  // Debug mode : précalcule une fois les tests de type faits sinon à chaque
+  // image par NPC (regex "uber" dans draw). Coût unique au spawn, résultat
+  // identique.
+  try {
+    const t = String(factoryEntity.type || type || "");
+    factoryEntity._isUber = /uber/i.test(t);
+    factoryEntity._isUberMordon = t === "npc_Uber_Mordon";
+  } catch {}
   const encounter = rules?.bossEncounter;
   if (encounter?.bossType === type) {
     factoryEntity._bossEncounter = {
@@ -29018,6 +29115,10 @@ function isRemoteGroupMember(r) {
 }
 const netPlayerProxies = new Map(); // clientId -> entite cible
 const netPetProxies = new Map(); // clientId -> proxy du PET allie (lock + degats PvP)
+// Debug mode : listes de présence réutilisées (clear) au lieu de recréées
+// à chaque image. Sinon allocation directe comme avant.
+const netSeenReusable = new Set();
+const netPetSeenReusable = new Set();
 let lastPvpAdoptAt = 0;
 let lastNpcDamageAdoptAt = 0;
 let lastNpcDamageAdoptSeq = 0;
@@ -29026,8 +29127,21 @@ function syncNetPlayers(dt = 0.016) {
   let remotes = null;
   try { remotes = getNetplayRemotes(); } catch { remotes = null; }
   try { tickNetplayRemotes(dt); } catch {}
-  const seen = new Set();
-  const petSeen = new Set();
+  let seen, petSeen;
+  try {
+    if (isPhoneMode()) {
+      netSeenReusable.clear();
+      netPetSeenReusable.clear();
+      seen = netSeenReusable;
+      petSeen = netPetSeenReusable;
+    } else {
+      seen = new Set();
+      petSeen = new Set();
+    }
+  } catch {
+    seen = new Set();
+    petSeen = new Set();
+  }
   if (remotes && netplayNpcActive()) {
     for (const [rid, r] of remotes) {
       if (!r) continue;
@@ -29192,6 +29306,10 @@ try {
 // - apparition / positions (interpolees) / HP / angle depuis le serveur ;
 // - mort + killer depuis le serveur (processDeaths tranche les recompenses) ;
 // - repli solo : purge les entites reseau, le spawner local reprend.
+// Debug mode : tables de présence réutilisées (clear) au lieu de recréées
+// à chaque image. Sinon allocation directe comme avant.
+const netNpcsSeenReusable = new Set();
+const netUidToEnemyReusable = new Map();
 function syncNetNpcs(dt) {
   // Reboot serveur (run changé, consommé via welcome) : purge déterministe
   // des entités réseau. Le seq serveur repart de zéro : un cadavre conservé
@@ -29214,7 +29332,17 @@ function syncNetNpcs(dt) {
     return;
   }
   const k = Math.max(0, Math.min(1, (Number(dt) || 0.016) * 6));
-  const seen = new Set();
+  let seen;
+  try {
+    if (isPhoneMode()) {
+      netNpcsSeenReusable.clear();
+      seen = netNpcsSeenReusable;
+    } else {
+      seen = new Set();
+    }
+  } catch {
+    seen = new Set();
+  }
   const now = performance.now();
   // Doublons locaux (spawnes avant le premier snapshot ou pendant une
   // coupure) : le serveur possede les spawns de zone, on les retire pour
@@ -29285,7 +29413,17 @@ function syncNetNpcs(dt) {
   } catch {}
   // Index uid -> entite (une passe) : la recherche lineaire par snapshot
   // coutait O(n2) par frame (~0.2 ms a 220 NPC, quadratique au-dela).
-  const netUidToEnemy = new Map();
+  let netUidToEnemy;
+  try {
+    if (isPhoneMode()) {
+      netUidToEnemyReusable.clear();
+      netUidToEnemy = netUidToEnemyReusable;
+    } else {
+      netUidToEnemy = new Map();
+    }
+  } catch {
+    netUidToEnemy = new Map();
+  }
   try {
     let currentTarget = null;
     try { currentTarget = Target.get(); } catch {}
@@ -30869,6 +31007,10 @@ function netplayNpcActive() {
   try { return isZoneMap && netNpcFresh(); } catch { return false; }
 }
 const netplaySpriteCache = new Map();
+// Debug mode : mémo des champs quasi statiques de l'envoi 20 Hz (drones,
+// grade, firme, designs, icône formation, modules). Recalculés seulement
+// quand la signature change, sinon réutilisés tels quels.
+const netStaticMemo = { sig: null, dslots: "", rankPath: "", firm: "", dind: "", ficon: "", mind: "" };
 // Etats moteurs (flammes) des vaisseaux distants, par id joueur.
 const netplayEngines = new Map();
 // Mouvement visuel des formations de drones distantes, par id joueur.
@@ -33723,7 +33865,7 @@ function update(dt) {
       // Clones autonomes (même schéma que le PET) : weave de combat autour
       // de la cible du REX, sinon collecte chacun sur sa box (G-AL/G-AR),
       // sinon escorte du REX. Cap : cible en combat, direction de vol sinon.
-      const ownerSpeed = Math.max(260, getSpeedBreakdown().total) * playerSlowMult(player);
+      const ownerSpeed = Math.max(260, getSpeedBreakdownCached().total) * playerSlowMult(player);
       const followSpeed = ownerSpeed * 1.1;
       const tgt = petState.target && petState.target.hp > 0 ? petState.target : null;
       const tbrGears = petActiveGears();
@@ -36416,7 +36558,7 @@ function drawBotMinimalScene(ox, oy) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(Number(enemy.angle) || 0);
-    ctx.fillStyle = selected ? "#ffd36b" : /uber/i.test(String(enemy.type || "")) ? "#ff8a58" : "#ff596c";
+    ctx.fillStyle = selected ? "#ffd36b" : (isPhoneMode() ? !!enemy._isUber : /uber/i.test(String(enemy.type || ""))) ? "#ff8a58" : "#ff596c";
     ctx.beginPath();
     ctx.moveTo(size, 0);
     ctx.lineTo(-size * .7, -size * .62);
@@ -36649,7 +36791,9 @@ function draw() {
     }
     // Tous les Ubers du jeu : contour rouge de base (comme le localisateur).
     // Uber Mordon : contour restreint à la moitié basse.
-    if (/uber/i.test(String(e.type || ""))) drawEnemyContour(e, enemyConfig, enemySpriteFrame, "#ff4655", undefined, String(e.type || "") === "npc_Uber_Mordon");
+    // Debug mode : flags précalculés au spawn au lieu de regex par image.
+    const eIsUber = isPhoneMode() ? e._isUber === true : /uber/i.test(String(e.type || ""));
+    if (eIsUber) drawEnemyContour(e, enemyConfig, enemySpriteFrame, "#ff4655", undefined, isPhoneMode() ? e._isUberMordon === true : String(e.type || "") === "npc_Uber_Mordon");
     // Keres Spread : même effet que le localisateur ennemi du PET (doré),
     // en vert clignotant progressif, dessiné AVANT le corps (le sprite passe par-dessus).
     if ((e.keresSprT || 0) > 0 && e.hp > 0) {
@@ -37682,7 +37826,7 @@ updateProgressHud(ui, st, lvl);
 setHudText(ui.playerIdTxt, publicPlayerId(u?.id));
 
 if (ui.spdTxt) {
-  const spd = getSpeedBreakdown();
+  const spd = getSpeedBreakdownCached();
 
   setHudText(ui.spdTxt, formatInteger(spd.total));
 
@@ -37995,6 +38139,8 @@ let frameScheduleGeneration = 0;
 // Un palier se fait en sautant des vsync (pas de timer : stable, pas de
 // drift, pas de tearing).
 let lastFrameStart = 0;
+// Compteur d'images (partagé : cache vitesse 1x/image en Debug mode).
+let frameSeq = 0;
 // MessageChannel = pas de clamp 4 ms des setTimeout imbriqués, donc la boucle
 // libre monte bien au-delà des Hz (là où setTimeout plafonnerait vers 250).
 let fpsFreeChannel = null;
@@ -38063,10 +38209,29 @@ function restartFrameScheduler() {
 }
 
 let speedGuardRecoveryReloading = false;
+let speedGuardBlockedAt = 0;
 function handleSpeedGuardState(event) {
   renderSpeedGuard(event.detail?.blocked === true && kickedReason == null);
+  // Debug mode : horodate chaque blocage du garde dans le rapport saccades
+  // (persiste même si la récupération recharge la page juste après).
+  try {
+    if (event.detail?.blocked === true) {
+      if (!speedGuardBlockedAt) speedGuardBlockedAt = Date.now();
+    } else if (speedGuardBlockedAt) {
+      const ms = Date.now() - speedGuardBlockedAt;
+      speedGuardBlockedAt = 0;
+      if (jankRecorderOn) noteGuardBlock(ms);
+    }
+  } catch {}
   if (event.detail?.recovered === true && !speedGuardRecoveryReloading && kickedReason == null) {
     speedGuardRecoveryReloading = true;
+    // Vide le blocage en cours dans le rapport AVANT le reload (sinon perdu).
+    try {
+      if (speedGuardBlockedAt) {
+        if (jankRecorderOn) noteGuardBlock(Date.now() - speedGuardBlockedAt);
+        speedGuardBlockedAt = 0;
+      }
+    } catch {}
     // Resynchronise les aptitudes locales avec leurs echeances serveur.
     location.reload();
   }
@@ -38076,6 +38241,7 @@ window.addEventListener("orbit:speed-guard", handleSpeedGuardState);
 function frame(t) {
   const frameCpuStartedAt = performance.now();
   lastFrameStart = t;
+  frameSeq++;
   const realDt = Math.max(0, (t - last) / 1000);
   last = t;
   performanceMonitor.record(realDt);
@@ -38128,9 +38294,34 @@ function frame(t) {
       // Cadence + vitesse : inutiles (les tirs partent en evenements exacts).
       const ammoKeyNow = player.ammo.active || "x1";
       let dslotsNow = "";
+      // Debug mode : champs quasi statiques recalculés seulement quand la
+      // signature change (voir netStaticMemo), sinon réutilisés.
+      let netStaticHit = false;
+      try {
+        if (isPhoneMode()) {
+          const su = account?.user;
+          const sigParts = [
+            su?.id, su?.ship, su?.faction, dformId,
+            (su?.drones?.items || []).length, su?.revision,
+          ];
+          try {
+            const ah = getActiveHangarFromUser(su);
+            sigParts.push(ah?.id, Number(ah?.activeConfig) === 2 ? 2 : 1);
+          } catch {}
+          const sig = sigParts.join("|");
+          if (netStaticMemo.sig === sig) {
+            dslotsNow = netStaticMemo.dslots;
+            netStaticHit = true;
+          } else {
+            netStaticMemo.sig = sig;
+          }
+        }
+      } catch {}
       try {
         const items = account?.user?.drones?.items || [];
-        dslotsNow = items.slice(0, 12).map(d => `${String(d?.type || "iris").slice(0, 24)}:${Math.max(1, Number(d?.level) || 1)}`).join(",");
+        if (!netStaticHit) {
+          dslotsNow = items.slice(0, 12).map(d => `${String(d?.type || "iris").slice(0, 24)}:${Math.max(1, Number(d?.level) || 1)}`).join(",");
+        }
       } catch {}
       // Zone sure : le serveur calme les NPC. Position seule, même en
       // combat : tirer depuis un portail / une base (ou y fuir en étant
@@ -38139,7 +38330,15 @@ function frame(t) {
       let netSafe = false;
       try { netSafe = playerProtectedSpot(); } catch {}
       // Plaque alliee (grade, firme, drones, modules, formation).
+      // Debug mode : réutilise le mémo si la signature est inchangée.
       let rankPathNow = "", firmNow = "", dindNow = "", ficonNow = "", mindNow = "";
+      if (netStaticHit) {
+        rankPathNow = netStaticMemo.rankPath;
+        firmNow = netStaticMemo.firm;
+        dindNow = netStaticMemo.dind;
+        ficonNow = netStaticMemo.ficon;
+        mindNow = netStaticMemo.mind;
+      } else {
       try {
         const stats = account.user?.stats || {};
         const isPolice = String(ACTIVE_SHIP?.id || "").toLowerCase() === "police";
@@ -38173,6 +38372,17 @@ function frame(t) {
         const moduleColorByType = { hp: "rgb(70,210,105)", shd: "rgb(45,150,255)", dmg: "rgb(255,70,70)", spc: "rgb(255,215,70)" };
         mindNow = equippedModules.map(module => moduleColorByType[module.type]).filter(Boolean).join("|");
       } catch {}
+      try {
+        if (isPhoneMode()) {
+          netStaticMemo.dslots = dslotsNow;
+          netStaticMemo.rankPath = rankPathNow;
+          netStaticMemo.firm = firmNow;
+          netStaticMemo.dind = dindNow;
+          netStaticMemo.ficon = ficonNow;
+          netStaticMemo.mind = mindNow;
+        }
+      } catch {}
+      }
       // PET allie : actif, niveau, position + direction (rendu miroir).
       // + pseudo et firme pour l'etiquette distante (comme sur notre ecran).
       let petA = 0, petL = 1, petX = 0, petY = 0, petD = 0, petN = "", petF = "";
@@ -38250,7 +38460,7 @@ function frame(t) {
         petSh: (function () { try { const p = account.user?.pet; if (!p) return 1; const m = Math.max(0, Number(petShieldMaxForHud(p, account.user)) || 0); if (!(m > 0)) return 1; const c = p.sh != null && Number.isFinite(Number(p.sh)) ? Number(p.sh) : m; return Math.max(0, Math.min(1, c / m)); } catch { return 1; } })(),
         petHpMax: (function () { try { const p = account.user?.pet; return Math.max(1, Math.round(Number(petMaxHpWithHeat(p)) || 1)); } catch { return 1; } })(),
         petShMax: (function () { try { const p = account.user?.pet; return Math.max(0, Math.round(Number(petShieldMaxForHud(p, account.user)) || 0)); } catch { return 0; } })(),
-        vmax: (function () { try { return Math.max(50, Math.round(Number(getSpeedBreakdown()?.total) || Number(player.baseSpeed) || 300)); } catch { return 300; } })(),
+        vmax: (function () { try { return Math.max(50, Math.round(Number(getSpeedBreakdownCached()?.total) || Number(player.baseSpeed) || 300)); } catch { return 300; } })(),
       });
       } catch {}
       finally { recordGameTask("frame.netPush", performance.now() - netPushStartedAt); }
@@ -40090,7 +40300,16 @@ if (isPhoneMode()) {
     startJankRecorder(() => {
       let map = "?";
       try { map = String(window.__CURRENT_MAP_ID__ || currentMapId() || "?"); } catch {}
-      return { map, fps: fpsValue };
+      let npcs = 0, players = 0;
+      try { npcs = Array.isArray(enemies) ? enemies.length : 0; } catch {}
+      try {
+        const remotes = getNetplayRemotes();
+        players = remotes && typeof remotes.size === "number" ? remotes.size : 0;
+      } catch {}
+      return { map, fps: fpsValue, npcs, players };
+    });
+    setJankTimingsProvider(() => {
+      try { return gamePerformanceTimings.snapshot(); } catch { return null; }
     });
   } catch {}
 }
