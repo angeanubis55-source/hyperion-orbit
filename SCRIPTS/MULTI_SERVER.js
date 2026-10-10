@@ -27,10 +27,9 @@ import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill,
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
 import { updateClockGuard, stopRejectedMotion } from "./CLOCK_GUARD.js";
-import { takeMovement, useMovementAbility, syncMovementAbility, movementSpeed, usePhaseOut } from "./MOVEMENT_RULES.js";
+import { takeMovement, useMovementAbility, syncMovementAbility, movementSpeed, usePhaseOut, shipOwnsAbility, dashTargetKey, isMovementAbilityKey } from "./MOVEMENT_RULES.js";
 import { isAbilityFxBroadcastable, pruneAbilityFxMap, abilityHitBypass, isExecutionAbility, EXEC_WINDOW_MS, EXEC_HIT_CAP_PVP, EXEC_HIT_CAP_NPC } from "../SRC/CORE/ABILITY_FX.js";
-import { abilityShipKeyFor, getAbilitiesForShip, getAbilityInfo, policeAbilityIds } from "../SHIP/SHIP_ABILITIES.js";
-import { getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
+import { getAbilityInfo } from "../SHIP/SHIP_ABILITIES.js";
 
 // --- Auras d'aptitudes visibles par les autres (Phase 2) ---
 // Le serveur reste autoritaire : chaque cast ability_* est validé
@@ -46,24 +45,9 @@ const ABILITY_CLOAK_SILENT = new Set([
   "ability_spearhead_ultimate-cloak",
   "ability_spearhead-plus_ultimate-cloak",
 ]);
-let policeAbilityIdSet = null;
 function ownsAbility(profile, skill) {
-  try {
-    const shipId = String(profile?.shipId || "").toLowerCase();
-    if (!shipId || !skill) return false;
-    if (shipId === "police") {
-      if (!policeAbilityIdSet) policeAbilityIdSet = new Set((policeAbilityIds() || []).map((s) => String(s).toLowerCase()));
-      return policeAbilityIdSet.has(String(skill).toLowerCase());
-    }
-    const key = abilityShipKeyFor(shipId);
-    const keys = key ? [key] : [];
-    try {
-      const base = getShipDesignBaseId(shipId);
-      if (base && base !== shipId && !keys.includes(base)) keys.push(base);
-    } catch {}
-    if (!keys.length) return false;
-    return keys.some((k) => getAbilitiesForShip(k).some((a) => String(a?.id || "").toLowerCase() === String(skill).toLowerCase()));
-  } catch { return false; }
+  // Source unique : MOVEMENT_RULES.shipOwnsAbility (Police + designs).
+  try { return shipOwnsAbility(profile?.shipId, skill); } catch { return false; }
 }
 function clearAbilityFx(state) {
   try { state._abilityFx = {}; } catch {}
@@ -2059,8 +2043,16 @@ wss.on("connection", (ws) => {
           }
           const nowFx = Date.now();
           try { trackAbilityFx(state, profile, skill, msg, room, id, nowFx); } catch {}
-          if (useMovementAbility(state, profile, skill, msg.enabled !== false, Date.now(), movementTarget(msg.target), String(msg.target || ""))) {
+          const moveOk = useMovementAbility(state, profile, skill, msg.enabled !== false, Date.now(), movementTarget(msg.target), String(msg.target || ""));
+          if (moveOk) {
             state.moveSpeed = movementSpeed(state, profile, Date.now());
+          } else if (msg.enabled !== false && isMovementAbilityKey(skill)) {
+            // Refusé (mauvais vaisseau, cooldown, cible, portée, bouclier) :
+            // le client annule son effet local au lieu de rubber-bander
+            // pendant toute la durée. Convergence, pas d'entêtement.
+            try {
+              if (ws.readyState === 1) ws.send(JSON.stringify({ t: "skillDenied", skill }));
+            } catch {}
           }
           return;
         }
@@ -2177,6 +2169,13 @@ wss.on("connection", (ws) => {
           }
           // Comme en local (hurtPlayer) : 20 % restants seulement.
           dmg = Math.max(0, Number(dmg) || 0) * 0.2;
+        }
+        // Flux visuel victime : la conversion est silencieuse sinon (le
+        // client n'adopte que les baisses). La victime affiche le +X vert
+        // et remonte sa barre à l'adoption (voir bloc pvpAt côté client).
+        if (orcusHeal > 0) {
+          foe.state.orcusHealAt = now;
+          foe.state.orcusHealAmt = orcusHeal;
         }
         if (msg.kind === "sab") {
           const drained = Math.min(Math.max(0, Number(foe.state.sh) || 0), dmg);
@@ -2677,7 +2676,7 @@ wss.on("connection", (ws) => {
       }
       const profile = refreshCombatProfile(state, accountId, mapId, msg);
       if (!profile) return;
-      syncMovementAbility(state, profile, Date.now(), movementTarget(state._moveEffect?.targetKey));
+      syncMovementAbility(state, profile, Date.now(), (k) => movementTarget(k));
       // Vitesse de l'equipement + aptitude autorisee, selon le temps serveur.
       // Les timestamps et vmax du client n'accordent aucun droit de mouvement.
       const declaredVmax = movementSpeed(state, profile, Date.now());
@@ -2720,7 +2719,8 @@ wss.on("connection", (ws) => {
           }
         } else {
           // Décision de déplacement : voir SCRIPTS/ANTICHEAT.js (testable).
-          const mv = takeMovement(state, profile, nx, ny, nowMove, movementTarget(state._moveEffect?.targetKey));
+          const mv = takeMovement(state, profile, nx, ny, nowMove,
+            movementTarget(dashTargetKey(state, profile, nowMove)));
           state.x = mv.x;
           state.y = mv.y;
           movementAccepted = mv.accepted;
@@ -3184,6 +3184,9 @@ setInterval(() => {
         combat: s.combat === "player" ? "player" : (s.combat === "npc" ? "npc" : ""),
         iemT: Math.max(0, (Number(s.iemUntil) || 0) - now) / 1000,
         ishT: Math.max(0, (Number(s.ishUntil) || 0) - now) / 1000,
+        // Conversion Orcus subie (+X verts victime, voir adoption pvpAt).
+        ohAt: Number(s.orcusHealAt) || 0,
+        ohAmt: Math.max(0, Math.round(Number(s.orcusHealAmt) || 0)),
         // Auras d'aptitudes visibles (Phase 2) : [[code, secLeft, x, y, target]].
         // Cibles joueurs mortes parties déjà purgées (canaux auto-coupés).
         afx: pruneFxForSnapshot(s._abilityFx) });

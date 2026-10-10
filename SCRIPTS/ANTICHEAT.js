@@ -176,9 +176,12 @@ export function acMoveTake(state, nx, ny, nowMs, allowance = null) {
     if (cap > 0) state.moveTimingGrace = Math.max(Number(state.moveTimingGrace) || 0,
       (allowance?.capacitySpeed ?? refill) * NETWORK_TIMING_GRACE_SEC);
     const debtLimit = cap > 0 ? 2 + (Number(state.moveTimingGrace) || 0) : 0;
+    // Grâce ponctuelle (activation d'aptitude, dash validé) : salle
+    // d'acceptation check-only, jamais créditée au seau.
+    const graceRoom = cap > 0 ? Math.max(0, Number(allowance?.grace) || 0) : 0;
     // Deux unites supplementaires absorbent l'arrondi des positions. La dette est
     // remboursee sur le paquet suivant : le spam ne multiplie pas la marge.
-    if (jumpDist <= buck + debtLimit) {
+    if (jumpDist <= buck + debtLimit + graceRoom) {
       state.moveBuck = buck - jumpDist;
       state._rejPos = null;
       return { x: nx, y: ny, accepted: true };
@@ -191,7 +194,8 @@ export function acMoveTake(state, nx, ny, nowMs, allowance = null) {
       x: keep.x, y: keep.y, requestedX: nx, requestedY: ny,
       distance: Math.round(jumpDist), allowedDistance: Math.round(Math.max(0, buck + debtLimit)),
       speed: refill, elapsedMs: Math.round(realDt * 1000),
-      ability: state._moveEffect && nowMs < state._moveEffect.until ? state._moveEffect.key : null });
+      ability: (() => { try { const m = state._moveEffects; if (!m || typeof m !== "object") return state._moveEffect?.key || null;
+        const ks = Object.keys(m).filter(k => Number(m[k]?.until) > nowMs); return ks.length ? ks : null; } catch { return null; } })() });
     const far = jumpDist > FAR_JUMP_NO_HEAL;
     state.teleWarn = Number(state.teleWarn || 0) + 1;
     if (far) {

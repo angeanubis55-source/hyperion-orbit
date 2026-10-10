@@ -128,7 +128,7 @@ import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
 import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive } from "./NETPLAY.js";
-  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
+  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
   drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetDecloakInbox,
   getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
@@ -1517,14 +1517,34 @@ function reportMovementAbility(skill, enabled = true, target = null) {
   if (!key) return;
   try { sendSkillUse(key, { enabled, target: target?._netPlayer || target?._netUid || "" }); } catch {}
 }
+// Refus serveur (skillDenied) : annule l'effet mouvement local pour
+// converger au lieu de rubber-bander. Chaque cancel est un no-op si
+// l'effet n'est pas actif : aucun risque à appeler en aveugle.
+function cancelMovementAbilityByServer(abilityId) {
+  const key = String(abilityId || "").toLowerCase();
+  if (!key.startsWith("ability_")) return;
+  try {
+    if (key === "ability_lightning") { cancelLight(); return; }
+    if (key === "ability_citadel_travel" || key === "ability_citadel-plus_travel") { cancelTravel(); return; }
+    if (key === "ability_yamato_travel") { cancelYamatoTravel(); return; }
+    if (key === "ability_holo_self-reversal") { cancelHoloSelf(); return; }
+    if (key === "ability_retiarus_spc") { cancelSpc(); return; }
+    if (key === "ability_retiarus-plus_spcp") { cancelSpcPlus(); return; }
+    if (key === "ability_pusat-plus_speed-sap") { cancelSap(); return; }
+    if (key === "ability_solace-plus_nano-cluster-repairer-plus") { player.solBoostT = 0; return; }
+    if (key === "ability_tartarus_speed-boost") { player.tartBoostOn = false; return; }
+    if (key === "ability_tartarus-plus_speed-boost-plus") { player.tartPlusBoostOn = false; return; }
+    if (key === "ability_mimesis_scramble") { cancelScramble(); return; }
+    if (key === "ability_keres_sle") { cancelSleight(); return; }
+  } catch {}
+}
 // Phase 2 (visibilité réseau) : annonce un cast d'aptitude NON-mouvement
 // au serveur (validation + diffusion aura/flash aux autres joueurs).
 // Les aptitudes mouvement passent déjà par reportMovementAbility ;
 // les camouflages ne sont jamais annoncés (invisibilité gameplay).
 // À appeler sur le chemin de SUCCÈS des activate* (après les checks
 // cooldown/mort), et avec enabled=false sur les coupures toggle.
-function reportAbilityCast(abilityId, enabled = true) {
-  try {
+function reportAbilityCast(abilityId, enabled = true) {  try {
     const key = String(abilityId || "").toLowerCase();
     if (!key.startsWith("ability_")) return;
     if (key === "ability_admin-ultimate-cloaking"
@@ -29249,6 +29269,7 @@ function isRemoteGroupMember(r) {
 const netPlayerProxies = new Map(); // clientId -> entite cible
 const netPetProxies = new Map(); // clientId -> proxy du PET allie (lock + degats PvP)
 let lastPvpAdoptAt = 0;
+let lastOrcusHealAt = 0;
 let lastNpcDamageAdoptAt = 0;
 let lastNpcDamageAdoptSeq = 0;
 let lastPetPvpAdoptAt = 0;
@@ -31460,6 +31481,14 @@ function spawnNetRocketVisual(ev) {
 }
 
 function tickNetplayVisuals(dt) {
+  // Refus serveur d'une aptitude mouvement : annule l'effet local pour
+  // converger (fini le rubber-band permanent en cas de désaccord :
+  // mauvais vaisseau, cooldown, cible, portée, bouclier).
+  try {
+    for (const denied of drainNetSkillDenied()) {
+      try { cancelMovementAbilityByServer(String(denied?.skill || "")); } catch {}
+    }
+  } catch {}
   try {
     for (const ev of drainNetSkillInbox()) {
       if (!ev?.by) continue;
@@ -35306,6 +35335,24 @@ if (movementLocked) {
       }
       // Sous le feu ennemi : pas de regen ni de reparation (comme hurtPlayer).
       onPlayerPreparationDamage(beforeHp - player.hp, beforeSh - player.sh);
+      // Conversion Orcus/Orcus Plus subie en PvP : le serveur a soigné en
+      // silence (le client n'adopte que les baisses). On remonte ici avec
+      // le +X vert, comme hurtPlayer en local (même style).
+      try {
+        const ohAt = Number(self.ohAt) || 0, ohAmt = Math.max(0, Math.round(Number(self.ohAmt) || 0));
+        if (ohAt > 0 && ohAt !== lastOrcusHealAt) {
+          lastOrcusHealAt = ohAt;
+          if (ohAmt > 0 && !player.dead && Number(player.hpMax) > 0) {
+            player.hp = Math.max(0, Math.min(Number(player.hpMax), Number(player.hp || 0) + ohAmt));
+            addFloatText(
+              Number(player.x || 0) + (Math.random() - 0.5) * 60,
+              Number(player.y || 0) - 90 - Math.random() * 20,
+              ohAmt, "rgba(80,255,125,0.98)",
+              { text: `+${DMG_FMT.format(ohAmt)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+            );
+          }
+        }
+      } catch {}
       // Ca bloque aussi la zone de non-agression (safe = hors combat).
       player.attackedT = REPAIR.cooldown;
       try { resetRepairCooldown(); } catch {}

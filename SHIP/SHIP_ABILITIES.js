@@ -39,6 +39,9 @@ export const ABILITY_ICON_OVERRIDES = Object.freeze({
   "ability_citadel-plus_fortify": "ABILITY_CITADEL_FORTIFY.PNG",
   "ability_citadel-plus_protection": "ABILITY_CITADEL_PROTECTION.PNG",
   "ability_citadel-plus_travel": "ABILITY_CITADEL_TRAVEL.PNG",
+  "ability_orcus-plus_assimilate": "ABILITY_ORCUS_ASSIMILATE.PNG",
+  "ability_orcus-plus_target-marker": "ABILITY_SPEARHEAD_TARGET-MARKER.PNG",
+  "ability_yamato_travel": "ABILITY_CITADEL_TRAVEL.PNG",
 });
 
 export function abilityIconFile(abilityId) {

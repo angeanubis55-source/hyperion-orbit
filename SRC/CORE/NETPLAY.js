@@ -502,6 +502,13 @@ export function drainNetSkillInbox() {
   if (!netSkillInbox.length) return [];
   return netSkillInbox.splice(0, netSkillInbox.length);
 }
+// Refus d'aptitude mouvement par le serveur : le client annule son effet
+// local (convergence anti-rubber-band). { skill }.
+const netSkillDenied = [];
+export function drainNetSkillDenied() {
+  if (!netSkillDenied.length) return [];
+  return netSkillDenied.splice(0, netSkillDenied.length);
+}
 // Chat global : { from, text, at } recus ou rejoues (historique).
 const netChatInbox = [];
 export function drainNetChatInbox() {
@@ -1187,8 +1194,16 @@ export function ensureNetplayConnection() {
       };
       return;
     }
-    if (msg.t === "skillFx" && typeof msg.skill === "string") {
+    if (msg.t === "skillDenied" && typeof msg.skill === "string") {
       const key = String(msg.skill).toLowerCase();
+      if (/^ability_[a-z0-9_-]{1,64}$/.test(key)) {
+        if (netSkillDenied.length > 8) netSkillDenied.shift();
+        // Soi-même uniquement : le serveur ne l'envoie qu'au lanceur.
+        netSkillDenied.push({ skill: key, at: Date.now() });
+      }
+      return;
+    }
+    if (msg.t === "skillFx" && typeof msg.skill === "string") {      const key = String(msg.skill).toLowerCase();
       const isAbility = key.startsWith("ability_") && !ABILITY_CLOAK_SKILLS.has(key);
       if (msg.skill === "iem" || msg.skill === "ish" || msg.skill === "smb" || isAbility) {
         if (netSkillInbox.length > 24) netSkillInbox.shift();
@@ -1304,6 +1319,9 @@ export function ensureNetplayConnection() {
             freezeT: Math.max(0, Number(p.freezeT) || 0),
             iemT: Math.max(0, Number(p.iemT) || 0),
             ishT: Math.max(0, Number(p.ishT) || 0),
+            // Conversion Orcus subie : +X verts à afficher (+ remontée).
+            ohAt: Number(p.ohAt) || 0,
+            ohAmt: Math.max(0, Math.round(Number(p.ohAmt) || 0)),
             at: now,
           };
           continue;

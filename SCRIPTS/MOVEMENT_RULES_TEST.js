@@ -143,7 +143,7 @@ test("annulation et changement de coque coupent le boost sans effacer la recharg
   assert.equal(useMovementAbility(s, p, "ability_lightning", true, 11001), false);
   useMovementAbility(s, p, "ability_lightning", true, 80000);
   syncMovementAbility(s, profile(), 81000);
-  assert.equal(s._moveEffect, null);
+  assert.deepEqual(s._moveEffects || {}, {});
 });
 
 test("un paquet retarde garde le credit gagne avant la coupure d'un bonus", () => {
@@ -222,7 +222,7 @@ test("Mimesis exige un bouclier et se coupe lors d'un changement de configuratio
   s.sh = 100;
   assert.equal(useMovementAbility(s, p, key, true, 10000), true);
   syncMovementAbility(s, { ...p, config: 2 }, 10001);
-  assert.equal(s._moveEffect, null);
+  assert.deepEqual(s._moveEffects || {}, {});
   assert.equal(useMovementAbility(s, p, key, true, 10002), false);
 });
 
@@ -235,7 +235,7 @@ test("Keres exige une cible reelle et son dash doit la rejoindre", () => {
   assert.equal(takeMovement(s, p, 200, 0, 10100, target).accepted, true);
   target.hp = 0;
   syncMovementAbility(s, p, 10101, target);
-  assert.equal(s._moveEffect, null);
+  assert.deepEqual(s._moveEffects || {}, {});
 });
 
 test("la teleportation Mimesis est choisie par le serveur et respecte son cooldown et les cartes", () => {
@@ -247,4 +247,63 @@ test("la teleportation Mimesis est choisie par le serveur et respecte son cooldo
   const next = usePhaseOut(s, p, "1-1", world, 310000, () => 0.5);
   assert.equal(next.x, 500);
   assert.ok(Math.abs(next.y - 1000) < 1e-9);
+});
+
+test("police : tous ses boosts de mouvement sont acceptés (pas de rollback)", () => {
+  const p = profile("police");
+  for (const key of ["ability_tartarus_speed-boost", "ability_citadel_travel",
+    "ability_lightning", "ability_keres_sle"]) {
+    const s = state();
+    const target = { id: "npc", hp: 100, x: 2000, y: 0 };
+    assert.equal(useMovementAbility(s, p, key, true, 10000, target, "npc"), true, key);
+  }
+});
+
+test("cumul : toggle tartarus + voyage multiplient (pas de refus)", () => {
+  const s = state(), p = profile("police");
+  assert.equal(useMovementAbility(s, p, "ability_tartarus_speed-boost", true, 10000), true);
+  assert.equal(useMovementAbility(s, p, "ability_citadel_travel", true, 10010), true);
+  assert.equal(movementSpeed(s, p, 10020), Math.floor(400 * 1.3 * 2));
+  // Couper l'un garde l'autre.
+  assert.equal(useMovementAbility(s, p, "ability_tartarus_speed-boost", false, 10030), true);
+  assert.equal(movementSpeed(s, p, 10040), 800);
+  assert.equal(movementSpeed(s, p, 20000), 400);
+});
+
+test("dash keres : 20 pas soutenus sans rejet (pas de rollback)", () => {
+  const s = state(), p = profile("keres");
+  const target = { id: "npc", hp: 100, x: 3000, y: 0 };
+  assert.equal(useMovementAbility(s, p, "ability_keres_sle", true, 10000, target, "npc"), true);
+  let rej = 0;
+  let x = 0;
+  for (let i = 1; i <= 20; i++) {
+    const now = 10000 + i * 50;
+    target.x = x + 1500;
+    syncMovementAbility(s, p, now, target);
+    // x5 réel : 400 * 5 * 0.05 = 100 / pos.
+    const r = takeMovement(s, p, x + 100, 0, now, target);
+    if (r.accepted) x = r.x; else rej++;
+    s.x = x;
+  }
+  assert.equal(rej, 0, `${rej} rejets sur 20 pas de dash`);
+  assert.equal(s.teleWarn || 0, 0);
+});
+
+test("grâce d'activation : positions en vol avant traitement serveur acceptées", () => {
+  const s = state(), p = profile("citadel");
+  let t = 0;
+  for (let i = 1; i <= 40; i++) { t = i * 50; const r = takeMovement(s, p, i * 20, 0, t, null); if (r.accepted) s.x = r.x; }
+  // 2 positions boostées avant que le serveur ne traite le skillUse (+120 ms).
+  assert.equal(takeMovement(s, p, s.x + 40, 0, 2050, null).accepted, true);
+  const r2 = takeMovement(s, p, s.x + 40, 0, 2100, null);
+  if (r2.accepted) s.x = r2.x;
+  assert.equal(useMovementAbility(s, p, "ability_citadel_travel", true, 2120), true);
+  for (let i = 43; i <= 52; i++) {
+    const now = i * 50;
+    const r = takeMovement(s, p, s.x + 40, 0, now, null);
+    assert.equal(r.accepted, true, `pos ${now}`);
+    s.x = r.x;
+  }
+  // 800 (base) + 40 (2e pos en vol avancée) + 400 (boost) : aucun rollback.
+  assert.equal(Math.round(s.x), 40 * 20 + 1 * 40 + 10 * 40);
 });
