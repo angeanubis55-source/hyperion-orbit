@@ -2454,8 +2454,17 @@ function renderExtrasRoulette(user) {
   }
   function filteredModuleHistory(currentUser) {
     const history = Array.isArray(currentUser?.inventory?.moduleRollHistory)
-      ? currentUser.inventory.moduleRollHistory
+      ? currentUser.inventory.moduleRollHistory.slice()
       : [];
+    // Modules possédés mais jamais tirés (quêtes, migration, admin) :
+    // absents de l'historique des tirages, on les rajoute pour l'affichage.
+    const seenIds = new Set(history.map((module) => String(module?.id)));
+    for (const module of currentUser?.inventory?.shipModules || []) {
+      if (!seenIds.has(String(module?.id))) {
+        history.push(module);
+        seenIds.add(String(module?.id));
+      }
+    }
     const searched = history.filter((module) => moduleHistoryMatches(module, historyShipQuery));
     const ownedIds = new Set((currentUser?.inventory?.shipModules || []).map((m) => String(m?.id)));
     return searched.filter((module) => ownedIds.has(String(module?.id)));
