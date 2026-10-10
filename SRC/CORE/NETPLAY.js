@@ -360,7 +360,7 @@ export function getNetSelf() {
   const elapsed = Math.max(0, (performance.now() - selfServ.at) / 1000);
   return { ...selfServ, slowT: Math.max(0, selfServ.slowT - elapsed),
     freezeT: Math.max(0, selfServ.freezeT - elapsed), iemT: Math.max(0, selfServ.iemT - elapsed),
-    ishT: Math.max(0, selfServ.ishT - elapsed) };
+    ishT: Math.max(0, selfServ.ishT - elapsed), jamT: Math.max(0, (selfServ.jamT || 0) - elapsed) };
 }
 // Feed degats allies : { uid, by, total } (chiffres sur la cible, sans effet).
 const netDmgInbox = [];
@@ -1203,12 +1203,16 @@ export function ensureNetplayConnection() {
       }
       return;
     }
-    if (msg.t === "skillFx" && typeof msg.skill === "string") {      const key = String(msg.skill).toLowerCase();
+    if (msg.t === "skillFx" && typeof msg.skill === "string") {
+      const key = String(msg.skill).toLowerCase();
       const isAbility = key.startsWith("ability_") && !ABILITY_CLOAK_SKILLS.has(key);
       if (msg.skill === "iem" || msg.skill === "ish" || msg.skill === "smb" || isAbility) {
         if (netSkillInbox.length > 24) netSkillInbox.shift();
         netSkillInbox.push({
           skill: key,
+          enabled: msg.enabled !== false,
+          phase: msg.phase === "heal" ? "heal" : "",
+          amount: Math.max(0, Math.min(35000, Math.round(Number(msg.amount) || 0))),
           by: String(msg.by || "").slice(0, 64),
           until: Math.max(0, Number(msg.until) || 0),
           at: Math.max(0, Number(msg.at) || Date.now()),
@@ -1216,6 +1220,7 @@ export function ensureNetplayConnection() {
           y: Number.isFinite(Number(msg.y)) ? Math.round(Number(msg.y)) : 0,
           target: String(msg.target || "").slice(0, 64),
         });
+        dbgRecordSkillFx({ skill: key, by: String(msg.by || "") });
         return;
       }
       if (key.startsWith("ability_")) return; // cloak ou inconnu : ignoré silencieusement
@@ -1322,6 +1327,8 @@ export function ensureNetplayConnection() {
             // Conversion Orcus subie : +X verts à afficher (+ remontée).
             ohAt: Number(p.ohAt) || 0,
             ohAmt: Math.max(0, Math.round(Number(p.ohAmt) || 0)),
+            // Brouillage subi (JAMX/Creed/Neutralizing) : verrou modules.
+            jamT: Math.max(0, Number(p.jamT) || 0),
             at: now,
           };
           continue;
@@ -1521,6 +1528,7 @@ export function ensureNetplayConnection() {
           ishT: Math.max(0, Number(p.ishT) || 0),
           // Auras d'aptitudes visibles (Phase 2) : [[code, secLeft, x, y]].
           afx: sanitizeAbilityFxList(p.afx),
+          _abilityFxAt: now,
           // PET allie : actif, niveau, position.
           peta: p.peta === 1 ? 1 : 0,
           petl: Math.max(1, Math.min(32, Math.round(Number(p.petl ?? prev?.petl) || 1))),
@@ -2078,6 +2086,21 @@ export function tickNetplayRemotes(dt = 0.016) {
   const k = 1 - Math.exp(-18 * frameDt);
   const now = performance.now();
   for (const r of remotes.values()) {
+    // Expire les auras même entre les snapshots ou pendant un trou réseau.
+    const fxElapsed = Math.max(0, now - Number(r._abilityFxAt ?? now)) / 1000;
+    r._abilityFxAt = now;
+    if (Array.isArray(r.afx)) {
+      let live = 0;
+      for (const entry of r.afx) {
+        entry[1] = Math.max(0, Number(entry[1]) - fxElapsed);
+        if (entry[1] > 0) r.afx[live++] = entry;
+      }
+      r.afx.length = live;
+    }
+    if (r.dead || r.cloaked || r.cloakCpu) {
+      r.afx = [];
+      r.fxFlash = null;
+    }
     // Plafond adapte a la cadence observee de l'emetteur : sans lui, un flux
     // a 1 Hz (onglet reduit) depasse systematiquement sa vraie cadence puis
     // revient en arriere a chaque paquet (dent de scie = teleportations).
@@ -2269,9 +2292,31 @@ export function sendSkillUse(skill, details = {}) {
   if (key !== "iem" && key !== "ish" && key !== "smb" && !/^ability_[a-z0-9_-]{1,56}$/.test(key)) return false;
   try {
     ws.send(JSON.stringify({ t: "skillUse", skill: key, enabled: details.enabled !== false,
+      phase: details.phase === "heal" ? "heal" : undefined,
+      amount: details.phase === "heal" ? Math.max(0, Math.min(35000, Math.round(Number(details.amount) || 0))) : undefined,
       target: String(details.target || "").slice(0, 64) }));
+    try {
+      if (key.startsWith("ability_")) {
+        dbgAbilitySent.unshift({ skill: key, at: Date.now() });
+        if (dbgAbilitySent.length > 10) dbgAbilitySent.length = 10;
+      }
+    } catch {}
     return true;
   } catch { return false; }
+}
+
+// Diagnostic live des aptitudes réseau (console : window.__ABILITY_NET__).
+// Permet de vérifier chaque maillon : émission lanceur, réception ami,
+// auras snapshot par distant. Aucun impact gameplay.
+const dbgAbilitySent = [];
+const dbgAbilityFx = [];
+function dbgRecordSkillFx(ev) {
+  try {
+    const sk = String(ev?.skill || "");
+    if (!sk.startsWith("ability_")) return;
+    dbgAbilityFx.unshift({ skill: sk, by: String(ev?.by || ""), at: Date.now() });
+    if (dbgAbilityFx.length > 10) dbgAbilityFx.length = 10;
+  } catch {}
 }
 
 // Le rendu des autres joueurs est dans ORBIT_ENGINE (acces aux sprites).
@@ -2283,4 +2328,16 @@ try {
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;
   window.__NETPERF__ = netPerf;
+  // Diagnostic aptitudes : maillon émission / réception / auras par distant.
+  window.__ABILITY_NET__ = {
+    sent: () => dbgAbilitySent.slice(),
+    recvFx: () => dbgAbilityFx.slice(),
+    remotesAfx: () => {
+      const out = {};
+      try {
+        for (const [rid, r] of remotes) out[String(rid)] = Array.isArray(r?.afx) ? r.afx.slice() : [];
+      } catch {}
+      return out;
+    },
+  };
 } catch {}

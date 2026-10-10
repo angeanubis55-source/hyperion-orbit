@@ -28,7 +28,7 @@ import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
 import { updateClockGuard, stopRejectedMotion } from "./CLOCK_GUARD.js";
 import { takeMovement, useMovementAbility, syncMovementAbility, movementSpeed, usePhaseOut, shipOwnsAbility, dashTargetKey, isMovementAbilityKey } from "./MOVEMENT_RULES.js";
-import { isAbilityFxBroadcastable, pruneAbilityFxMap, abilityHitBypass, isExecutionAbility, EXEC_WINDOW_MS, EXEC_HIT_CAP_PVP, EXEC_HIT_CAP_NPC, healSpecFor, HEAL_MIN_INTERVAL_MS } from "../SRC/CORE/ABILITY_FX.js";
+import { isAbilityFxBroadcastable, pruneAbilityFxMap, abilityHitBypass, isExecutionAbility, EXEC_WINDOW_MS, EXEC_AURA_GRACE_MS, EXEC_HIT_CAP_PVP, EXEC_HIT_CAP_NPC, healSpecFor, HEAL_MIN_INTERVAL_MS, fxDebuffsOn } from "../SRC/CORE/ABILITY_FX.js";
 import { getAbilityInfo } from "../SHIP/SHIP_ABILITIES.js";
 
 // --- Auras d'aptitudes visibles par les autres (Phase 2) ---
@@ -55,6 +55,28 @@ function clearAbilityFx(state) {
   try { state._orcusUntil = 0; } catch {}
   try { state._execWindow = null; } catch {}
 }
+// Debuffs du lanceur sur une cible (uid NPC ou id joueur) : Diminisher
+// (+50 % dégâts bouclier), Holo (+10 % totaux), Marqueur (+10 % péné).
+// Les ralentissements transitent déjà par les hits de statut.
+function casterDebuffOn(state, targetId, now) {
+  try { return fxDebuffsOn(state?._abilityFx, targetId, now); } catch {}
+  return { weaken: 0, penBonus: 0, dmgMult: 1 };
+}
+// Ticks visuels uniquement : aucun soin supplémentaire appliqué ici.
+function relayAbilityHealFx(state, skill, msg, room, id, now) {
+  if (skill !== "ability_liberator-plus_self-repair" || state.pvpDead || !(state.hp > 0)) return false;
+  const fx = state._abilityFx?.[skill];
+  if (!fx || !(now < Number(fx.until) + 2000) || !(now >= Number(fx.from) + 800)) return false;
+  const amount = Number(msg.amount);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 35000) return false;
+  if (Number(fx.healTicks || 0) >= 10 || now - Number(fx.lastHealAt ?? fx.from) < HEAL_MIN_INTERVAL_MS) return false;
+  fx.lastHealAt = now;
+  fx.healTicks = Number(fx.healTicks || 0) + 1;
+  broadcastRoom(room, JSON.stringify({ t: "skillFx", skill, phase: "heal", by: id,
+    amount: Math.round(amount), at: now, until: now }));
+  return true;
+}
+
 function trackAbilityFx(state, profile, skill, msg, room, id, now) {
   const key = String(skill || "").toLowerCase();
   if (ABILITY_CLOAK_SILENT.has(key)) return false;
@@ -67,6 +89,9 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now) {
     ? state._abilityCds
     : (state._abilityCds = {});
   const enabled = msg.enabled !== false;
+  // Les boosts n'ont qu'une validation : celle des règles de mouvement.
+  const movementAbility = isMovementAbilityKey(key);
+  const movementEffect = state._moveEffects?.[key];
   const durSec = Number(info.durationSec);
   const cdSec = Number(info.cooldownSec);
   if (enabled === false) {
@@ -91,7 +116,7 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now) {
     } catch {}
     return true;
   }
-  if (now < Number(cds[key] || 0)) return false;
+  if (!movementAbility && now < Number(cds[key] || 0)) return false;
   const hasDuration = Number.isFinite(durSec) && durSec > 0;
   const isToggle = !hasDuration && cdSec === 0;
   const isWindowExec = key === "ability_retiarus_chs" || key === "ability_retiarus-plus_chsp";
@@ -110,7 +135,10 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now) {
   // suit le lanceur (0,0). Les debuffs mono-cible portent la cible.
   const isZone = info.target === "zone";
   const fx = {
-    until: now + (hasDuration ? durSec * 1000 : isToggle ? 3600_000 : 3000),
+    from: now,
+    until: movementAbility && movementEffect
+      ? (Number.isFinite(movementEffect.until) ? movementEffect.until : now + 3600_000)
+      : now + (hasDuration ? durSec * 1000 : isToggle ? 3600_000 : 3000),
     x: isZone ? Math.round(Number(state.x) || 0) : 0,
     y: isZone ? Math.round(Number(state.y) || 0) : 0,
     target: info.target === "enemy" || info.target === "ally" ? target : "",
@@ -120,7 +148,7 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now) {
     // Les casts instantanés (durée 0, non-toggle) ne laissent pas d'aura :
     // seul le skillFx immédiat est visible (flash). On les stocke quand
     // même 3 s pour les rooms à faible cadence ? Non : snapshot seul.
-    if (hasDuration || isToggle) state._abilityFx[key] = fx;
+    if (hasDuration || isToggle || movementEffect) state._abilityFx[key] = fx;
   } catch {}
   // Orcus Assimilation : la conversion 80 % dégâts -> PV doit valoir aussi
   // contre les joueurs (le client n'adopte que les baisses serveur).
@@ -137,6 +165,28 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now) {
     // Soins instantanés : rien à diffuser (ni aura ni flash).
     return true;
   }
+  // Brouillage JAMX/Creed (zone) + Neutralizing (mono-cible) : les victimes
+  // joueurs sont brouillées (locks coupés + modules verrouillés côté client,
+  // via snapshot jamT). Valeurs officielles : 500px/3s, 1000px/6s, 3s.
+  try {
+    if (key === "ability_spearhead_jam-x" || key === "ability_spearhead-plus_jamx-creed") {
+      const radius = key === "ability_spearhead-plus_jamx-creed" ? 1000 : 500;
+      const dur = key === "ability_spearhead-plus_jamx-creed" ? 6000 : 3000;
+      for (const [, pentry] of room) {
+        const ps = pentry?.state;
+        if (!ps || ps === state || ps.pvpDead === true || !(Number(ps.hp) > 0)) continue;
+        const dx = Number(ps.x) - Number(state.x), dy = Number(ps.y) - Number(state.y);
+        if (dx * dx + dy * dy > radius * radius) continue;
+        ps._jamUntil = Math.max(Number(ps._jamUntil) || 0, now + dur);
+      }
+    } else if (key === "ability_spearhead-plus_neutralizing-marker") {
+      const foe = room.get(String(msg.target));
+      if (foe && foe !== null && foe.state && foe.state !== state
+        && foe.state.pvpDead !== true && Number(foe.state.hp) > 0) {
+        foe.state._jamUntil = Math.max(Number(foe.state._jamUntil) || 0, now + 3000);
+      }
+    }
+  } catch {}
   try {
     broadcastRoom(room, JSON.stringify({ t: "skillFx", skill: key, by: id, at: now,
       until: fx.until, x: fx.x, y: fx.y, target: fx.target }));
@@ -1985,6 +2035,14 @@ wss.on("connection", (ws) => {
             return;
           }
         }
+        // Debuffs du lanceur sur ce NPC (Diminisher/Holo/Marqueur) : appliqués
+        // après validation (montants bornés, auras vérifiées).
+        try {
+          const dd = casterDebuffOn(shooter, msg.uid, now);
+          if (dd.weaken > 0) msg.weaken = Math.max(Number(msg.weaken) || 0, dd.weaken);
+          if (dd.penBonus > 0) msg.pen = Math.max(0, Math.min(1, (Number(msg.pen) || 0) + dd.penBonus));
+          if (dd.dmgMult > 1 && Number(msg.dmg) > 0) msg.dmg = Number(msg.dmg) * dd.dmgMult;
+        } catch {}
         // Anti-rafale : seaux par attaquant (horloge serveur). Rafales AoE
         // légitimes OK, spam Cheat Engine étouffé (mitigation + log).
         // Dégâts nuls (spam de freeze/ralentissement) : coût x5.
@@ -2030,6 +2088,16 @@ wss.on("connection", (ws) => {
         const room = rooms.get(mapId);
         if (!room || !room.has(id)) return;
         const skill = String(msg.skill || "").toLowerCase();
+        if (msg.phase === "heal") {
+          relayAbilityHealFx(state, skill, msg, room, id, Date.now());
+          return;
+        }
+        // Brouillé (JAMX/Creed/Neutralizing subi) : modules verrouillés
+        // (aptitudes + consommables). La propulsion reste libre (esquive).
+        if (Date.now() < Number(state._jamUntil || 0)) {
+          if (skill === "iem" || skill === "ish" || skill === "smb"
+            || (skill.startsWith("ability_") && !isMovementAbilityKey(skill))) return;
+        }
         if (skill.startsWith("ability_")) {
           const profile = refreshCombatProfile(state, accountId, mapId);
           if (skill === "ability_mimesis_phase-out") {
@@ -2042,8 +2110,11 @@ wss.on("connection", (ws) => {
             return;
           }
           const nowFx = Date.now();
-          try { trackAbilityFx(state, profile, skill, msg, room, id, nowFx); } catch {}
-          const moveOk = useMovementAbility(state, profile, skill, msg.enabled !== false, Date.now(), movementTarget(msg.target), String(msg.target || ""));
+          const movementAbility = isMovementAbilityKey(skill);
+          const moveOk = movementAbility && useMovementAbility(state, profile, skill, msg.enabled !== false, nowFx, movementTarget(msg.target), String(msg.target || ""));
+          if (!movementAbility || moveOk) {
+            try { trackAbilityFx(state, profile, skill, msg, room, id, nowFx); } catch {}
+          }
           if (moveOk) {
             state.moveSpeed = movementSpeed(state, profile, Date.now());
           } else if (msg.enabled !== false && isMovementAbilityKey(skill)) {
@@ -2177,16 +2248,70 @@ wss.on("connection", (ws) => {
           foe.state.orcusHealAt = now;
           foe.state.orcusHealAmt = orcusHeal;
         }
+        // Debuffs d'aptitudes posés sur la VICTIME par un tiers (le client
+        // ne voit que son propre lock) : on balaye les auras de la room
+        // ciblant la victime. Diminisher +50 % dégâts bouclier, Holo +10 %
+        // dégâts totaux, Marqueur +10 % pénétration, Disarray bouclier max
+        // divisé par 2. Scramble +65 % évasion : aura de la victime elle-même.
+        let debWeaken = 0, debDmgMult = 1, debPenBonus = 0, debShMaxMult = 1;
+        try {
+          for (const [, pentry] of room) {
+            const dd = fxDebuffsOn(pentry?.state?._abilityFx, foe.state.id, now);
+            debWeaken = Math.max(debWeaken, dd.weaken);
+            debDmgMult = Math.max(debDmgMult, dd.dmgMult);
+            debPenBonus = Math.max(debPenBonus, dd.penBonus);
+            const fxm = pentry?.state?._abilityFx;
+            if (fxm && typeof fxm === "object") {
+              for (const [ak, ae] of Object.entries(fxm)) {
+                if (ak === "ability_disruptor_shield-disarray" && ae
+                  && String(ae.target || "") === String(foe.state.id)
+                  && Number(ae.until) > now) debShMaxMult = 0.5;
+              }
+            }
+          }
+        } catch {}
+        let evadeEff = Math.max(0, Math.min(0.9, Number(foe.state.evade) || 0));
+        try {
+          const vm = foe.state._moveEffects;
+          if (vm && typeof vm === "object") {
+            for (const [vk, ve] of Object.entries(vm)) {
+              if (vk === "ability_mimesis_scramble" && ve && Number(ve.until) > now) {
+                evadeEff = Math.min(0.9, evadeEff + 0.65);
+                break;
+              }
+            }
+          }
+        } catch {}
         if (msg.kind === "sab") {
           const drained = Math.min(Math.max(0, Number(foe.state.sh) || 0), dmg);
           foe.state.sh = Math.max(0, Number(foe.state.sh) - drained);
           applied = drained;
         } else {
-          if (Math.random() < Math.max(0, Math.min(0.9, Number(foe.state.evade) || 0))) return;
-          const res = damagePlayerLayers(foe.state, dmg, Math.max(0, Math.min(1, Number(foe.state.absorb) || 0.8)), pen, 0);
-          applied = Number(res?.total) || 0;
-          foe.state.hp = Math.max(0, Number(foe.state.hp) || 0);
-          foe.state.sh = Math.max(0, Number(foe.state.sh) || 0);
+          if (Math.random() < evadeEff) return;
+          // Diminisher : +50 % au prorata du bouclier restant.
+          if (debWeaken > 0 && dmg > 0) {
+            const sh0 = Number(foe.state.sh) || 0, hp0 = Number(foe.state.hp) || 0;
+            const share = (sh0 + hp0) > 0 ? sh0 / (sh0 + hp0) : 0;
+            dmg = dmg * (1 + debWeaken * share);
+          }
+          if (debDmgMult > 1 && dmg > 0) dmg = dmg * debDmgMult;
+          let penEff = pen;
+          if (debPenBonus > 0) penEff = Math.max(0, Math.min(1, penEff + debPenBonus));
+          if (debShMaxMult < 1) {
+            // Bouclier max réduit : calcul sur copie (pas de mutation
+            // persistante à restaurer), couches réimportées ensuite.
+            const cutMax = Math.max(0, Math.floor(Number(foe.state.shMax || 0) * debShMaxMult));
+            const probe = { ...foe.state, shMax: cutMax, sh: Math.min(Number(foe.state.sh || 0), cutMax) };
+            const res = damagePlayerLayers(probe, dmg, Math.max(0, Math.min(1, Number(foe.state.absorb) || 0.8)), penEff, 0);
+            applied = Number(res?.total) || 0;
+            foe.state.hp = Math.max(0, Number(probe.hp) || 0);
+            foe.state.sh = Math.max(0, Number(probe.sh) || 0);
+          } else {
+            const res = damagePlayerLayers(foe.state, dmg, Math.max(0, Math.min(1, Number(foe.state.absorb) || 0.8)), penEff, 0);
+            applied = Number(res?.total) || 0;
+            foe.state.hp = Math.max(0, Number(foe.state.hp) || 0);
+            foe.state.sh = Math.max(0, Number(foe.state.sh) || 0);
+          }
         }
         foe.state.pvpAt = now;
         // Blackout remontées : un soin (pos) qui arrive juste après ce coup
@@ -2286,7 +2411,8 @@ wss.on("connection", (ws) => {
     }
     if (msg.t === "heal") {
       // Soin de groupe (aptitude) vers un joueur : le serveur tranche puis
-      // la victime affiche le +X via le flux ohAt/ohAmt (comme l'Orcus).
+      // le pod Aegis confirme le gain par skillFx, les autres soins
+      // utilisent encore le flux ohAt/ohAmt (comme l'Orcus).
       // Validation : vaisseau, aura active (HoT/pod en cours, pas de soin
       // volant), rayon (pod = point posé serveur, HoT = lanceur), montant
       // plafonné, cadence 800 ms par couple, bouclier cohérent.
@@ -2301,12 +2427,18 @@ wss.on("connection", (ws) => {
         if (!ownsAbility(profile, ab)) return;
         const now = Date.now();
         if (state.pvpDead === true || !(Number(state.hp) > 0)) return;
-        if (!abilityHitBypass(state, ab, now)) return;
+        // Les soins ont leur propre registre : le droit d'exécution des
+        // aptitudes de dégâts ne peut pas valider un pod ou une réparation.
+        if (!(Number(state._abilityFx?.[ab]?.until) + EXEC_AURA_GRACE_MS > now)) return;
         const me = room.get(id);
         const foe = room.get(String(msg.target));
         if (!foe || !me || foe === me) return;
         const st = foe.state;
         if (!st || st.pvpDead === true || !(Number(st.hp) > 0)) return;
+        if (ab === "ability_aegis_repair-pod") {
+          const group = socialGroupOf(id);
+          if (!group || socialGroupOf(String(st.id)) !== group) return;
+        }
         if (Boolean(msg.sh) !== spec.shield) return;
         // Rayon : pods autour du point posé (état serveur), HoTs autour
         // du lanceur (comme pickHealAlly en local).
@@ -2325,14 +2457,21 @@ wss.on("connection", (ws) => {
         if (now - Number(hm[hk] || 0) < HEAL_MIN_INTERVAL_MS) return;
         hm[hk] = now;
         if (Object.keys(hm).length > 64) { try { state._healAt = { [hk]: now }; } catch {} }
+        const before = Number(spec.shield ? st.sh : st.hp) || 0;
         if (spec.shield) {
           if (!(Number(st.shMax) > 0)) return;
           st.sh = Math.max(0, Math.min(Number(st.shMax), Number(st.sh || 0) + amt));
         } else {
           st.hp = Math.max(0, Math.min(Number(st.hpMax) || 1, Number(st.hp || 0) + amt));
         }
-        st.orcusHealAt = now;
-        st.orcusHealAmt = amt;
+        if (ab === "ability_aegis_repair-pod") {
+          const gain = Math.max(0, Math.round(Number(st.hp) - before));
+          broadcastRoom(room, JSON.stringify({ t: "skillFx", skill: ab, phase: "heal",
+            by: id, target: String(st.id), amount: gain, at: now, until: now }));
+        } else {
+          st.orcusHealAt = now;
+          st.orcusHealAmt = amt;
+        }
       } catch {}
       return;
     }
@@ -3202,7 +3341,9 @@ setInterval(() => {
       if (!list.length) return list;
       return list.filter((entry) => {
         const tgt = entry && entry[4] ? String(entry[4]) : "";
-        return !tgt || livePeerIds.has(tgt);
+        // Une cible d'aptitude peut aussi être un NPC partagé (uid).
+        return !tgt || livePeerIds.has(tgt)
+          || Number(npcSims.get(key)?.entries?.get(tgt)?.hp) > 0;
       });
     };
     for (const [, entry] of room) {
@@ -3210,6 +3351,12 @@ setInterval(() => {
       if (!s) continue;
       // Anti-fantôme : pas de pos envoyée = invisible pour les autres.
       if (s._posOk !== true) continue;
+      // Un dash arrivé ou un canal interrompu perd aussi son aura visuelle.
+      for (const skill of Object.keys(s._abilityFx || {})) {
+        if (isMovementAbilityKey(skill) && !(Number(s._moveEffects?.[skill]?.until) > now)) {
+          delete s._abilityFx[skill];
+        }
+      }
       players.push({ id: s.id, pseudo: s.pseudo, clan: String(s.clanTag || "").slice(0, 5), shipId: s.shipId, hswap: Math.max(0, Math.min(3, Number(s.hswap) || 0)), x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, moving: s.moving === true, motionBlocked: s.motionBlocked === true, teleportSeq: Number(s.teleportSeq) || 0, mx: Math.round(Number(s.mx) || 0), my: Math.round(Number(s.my) || 0), cloakCpu: s.cloakCpu === true, cloaked: s.cloaked === true, vmax: Math.max(50, Math.min(7500, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
         // PvP : PV autoritaires + date du dernier coup recu + attaquant (anneau Ship_damage).
         pvpAt: Number(s.pvpAt) || 0, pvpFrom: s.pvpFrom != null ? String(s.pvpFrom) : null, pvpHp: Math.max(0, Math.round(Number(s.hp) || 0)), pvpSh: Math.max(0, Math.round(Number(s.sh) || 0)),
@@ -3236,6 +3383,8 @@ setInterval(() => {
         combat: s.combat === "player" ? "player" : (s.combat === "npc" ? "npc" : ""),
         iemT: Math.max(0, (Number(s.iemUntil) || 0) - now) / 1000,
         ishT: Math.max(0, (Number(s.ishUntil) || 0) - now) / 1000,
+        // Brouillage subi (JAMX/Creed/Neutralizing) : locks coupés + verrou.
+        jamT: Math.max(0, (Number(s._jamUntil) || 0) - now) / 1000,
         // Conversion Orcus subie (+X verts victime, voir adoption pvpAt).
         ohAt: Number(s.orcusHealAt) || 0,
         ohAmt: Math.max(0, Math.round(Number(s.orcusHealAmt) || 0)),

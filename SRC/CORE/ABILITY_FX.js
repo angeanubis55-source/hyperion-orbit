@@ -116,6 +116,25 @@ export function isHealAbility(abilityId) {
   return !!healSpecFor(abilityId);
 }
 
+// Debuffs d'un lanceur sur une cible (uid NPC ou id joueur) : Diminisher
+// (+50 % dégâts bouclier), Holo (+10 % totaux), Marqueur (+10 % péné).
+// Pur et testable ; utilisé pour les hits NPC comme PvP.
+export function fxDebuffsOn(fxMap, targetId, now) {
+  const out = { weaken: 0, penBonus: 0, dmgMult: 1 };
+  try {
+    if (!fxMap || typeof fxMap !== "object") return out;
+    for (const [ak, ae] of Object.entries(fxMap)) {
+      if (!ae || String(ae.target || "") !== String(targetId || "")) continue;
+      if (!(Number(ae.until) > now)) continue;
+      if (ak === "ability_diminisher") out.weaken = Math.max(out.weaken, 0.5);
+      else if (ak === "ability_holo_enemy-reversal") out.dmgMult = Math.max(out.dmgMult, 1.1);
+      else if (ak === "ability_spearhead_target-marker" || ak === "ability_spearhead-plus_target-marker"
+        || ak === "ability_orcus-plus_target-marker") out.penBonus = Math.max(out.penBonus, 0.1);
+    }
+  } catch {}
+  return out;
+}
+
 export const ABILITY_FX_CODES = Object.freeze({
   1: "ability_admin-ultimate-cloaking", // NOTE: jamais diffusé (cloak invisible)
   2: "ability_aegis_repair-pod",
@@ -234,7 +253,6 @@ const INSTANT_HEAL_NO_AURA = new Set([
   "ability_hammerclaw-plus_hp-repair",
   "ability_hammerclaw_shield-repair",
   "ability_hammerclaw-plus_shield-repair",
-  "ability_liberator-plus_self-repair",
   "ability_solace",
   "ability_solace-plus_nano-cluster-repairer-plus",
 ]);

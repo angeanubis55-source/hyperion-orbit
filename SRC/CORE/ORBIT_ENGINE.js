@@ -1517,6 +1517,19 @@ function reportMovementAbility(skill, enabled = true, target = null) {
   if (!key) return;
   try { sendSkillUse(key, { enabled, target: target?._netPlayer || target?._netUid || "" }); } catch {}
 }
+// Ralentissement PvP : le slow posé sur l'objet local ne traverse pas le
+// réseau pour un joueur (proxy). On relaie via un hit de statut (dmg 0,
+// déjà accepté par le serveur pour les roquettes de contrôle) : la victime
+// est ralentie autoritairement + voit le sprite SLOW officiel.
+function relaySlowToPlayer(t, pct, sec) {
+  try {
+    if (!t || t._netPlayer == null) return;
+    if (!netplayNpcActive()) return;
+    sendPvpHit({ target: t._netPlayer, dmg: 0,
+      slowPct: Math.max(0, Math.min(95, Number(pct) || 0)),
+      slowSec: Math.max(0, Math.min(30, Number(sec) || 0)) });
+  } catch {}
+}
 // Refus serveur (skillDenied) : annule l'effet mouvement local pour
 // converger au lieu de rubber-bander. Chaque cancel est un no-op si
 // l'effet n'est pas actif : aucun risque à appeler en aveugle.
@@ -1655,20 +1668,28 @@ function activateInc(forcePlus) {
 }
 // Tient un NPC : attaques coupees + aspire en orbite autour de nous.
 function incBurn(plus) {
-  // Brûlure 1 hit/s à TOUS les ennemis autour (chaque variante son halo).
+  // Brûlure 1 hit/s à TOUS les ennemis autour (NPC + joueurs hostiles,
+  // pas de tir ami ; chaque variante son halo).
   const dmg = plus ? INC_PLUS_DPS : INC_DPS;
   const r2 = (plus ? INC_PLUS_RADIUS : INC_RADIUS) ** 2;
-  for (const e of enemies) {
-    if (!e || !(e.hp > 0)) continue;
-    try {
-      if (dist2(player.x, player.y, e.x, e.y) > r2) continue;
-    } catch { continue; }
+  const burnHit = (e) => {
     let out = null;
     try { out = damageEnemy(e, dmg); } catch {}
     if (out && (out.total || 0) > 0) {
       try { queueVolleyFloat(e, out, volleySeq++, 1); } catch {}
     }
+  };
+  for (const e of enemies) {
+    if (!e || !(e.hp > 0)) continue;
+    try {
+      if (dist2(player.x, player.y, e.x, e.y) > r2) continue;
+    } catch { continue; }
+    burnHit(e);
   }
+  try {
+    const pr = plus ? INC_PLUS_RADIUS : INC_RADIUS;
+    for (const e of pvpFoesInRadius(player.x, player.y, pr)) burnHit(e);
+  } catch {}
 }
 // Burst final d'Incinération (fin NATURELLE du halo uniquement, jamais sur
 // toggle-cut) : 75k à tous les ennemis dans le halo + éjection radiale des
@@ -1681,17 +1702,21 @@ function incFinalBurst(plus) {
   const ability = plus ? "ability_solaris-plus_incinerate-plus" : "ability_solaris_inc";
   const r2 = radius * radius;
   const cx = Number(player.x) || 0, cy = Number(player.y) || 0;
-  for (const e of enemies) {
-    if (!e || !(e.hp > 0)) continue;
-    try {
-      if (dist2(cx, cy, e.x, e.y) > r2) continue;
-    } catch { continue; }
+  const burstHit = (e) => {
     let out = null;
     try { out = damageEnemy(e, INC_FINAL_DMG, undefined, undefined, { ability }); } catch {}
     if (out && (out.total || 0) > 0) {
       try { queueVolleyFloat(e, out, volleySeq++, 1); } catch {}
     }
-    // Éjection NPC uniquement (ni joueur local ni proxy réseau).
+  };
+  for (const e of enemies) {
+    if (!e || !(e.hp > 0)) continue;
+    try {
+      if (dist2(cx, cy, e.x, e.y) > r2) continue;
+    } catch { continue; }
+    burstHit(e);
+    // Éjection NPC uniquement (ni joueur local ni proxy réseau : les
+    // joueurs sont éjectés côté serveur, voir pvpHit).
     try {
       if (e._netPlayer != null || e._netPet != null || e.isPetTarget) continue;
       const dx = Number(e.x) - cx, dy = Number(e.y) - cy;
@@ -1700,6 +1725,10 @@ function incFinalBurst(plus) {
       e.y = Number(e.y) + (dy / d) * eject;
     } catch {}
   }
+  // Joueurs hostiles : burst 75k tagué (serveur : bypass + éjection).
+  try {
+    for (const e of pvpFoesInRadius(cx, cy, radius)) burstHit(e);
+  } catch {}
 }
 // Sentinel Forteresse : +10 % du précédent (composé) au max ET au courant
 // pendant 10 s (~x2,6 total), shimmer officiel en boucle + son chaque seconde.
@@ -2019,6 +2048,7 @@ function activateSap() {
   try {
     t.rocketSlowPct = Math.max(Number(t.rocketSlowPct || 0), SAP_SLOW_PCT);
     t.rocketSlowT = Math.max(Number(t.rocketSlowT || 0), SAP_DURATION);
+    relaySlowToPlayer(t, SAP_SLOW_PCT, SAP_DURATION);
   } catch {}
   persistCdUntil("sapFx", SAP_DURATION);
   showNotification("Siphon vitesse actif (10 s) : cible -10 %, nous +10 %", 2.5, "info");
@@ -2074,20 +2104,27 @@ function activateRipper() {
   showNotification("Éventreur actif (3 s) : 10k +300 % laser/s dans 600, -50 % subis", 2.5, "info");
 }
 function ripperTick() {
-  // 10k + 300 % de nos dégâts laser de base, à TOUS les ennemis dans 600.
+  // 10k + 300 % de nos dégâts laser de base, à TOUS les ennemis dans 600
+  // (NPC + joueurs hostiles, pas de tir ami).
   const dmg = Math.round(RIPPER_FLAT + Number(player.baseDamage || 0) * RIPPER_LASER_PCT);
   const r2 = RIPPER_RADIUS * RIPPER_RADIUS;
-  for (const e of enemies) {
-    if (!e || !(e.hp > 0)) continue;
-    try {
-      if (dist2(player.x, player.y, e.x, e.y) > r2) continue;
-    } catch { continue; }
+  const ripperHit = (e) => {
     let out = null;
     try { out = damageEnemy(e, dmg); } catch {}
     if (out && (out.total || 0) > 0) {
       try { queueVolleyFloat(e, out, volleySeq++, 1); } catch {}
     }
+  };
+  for (const e of enemies) {
+    if (!e || !(e.hp > 0)) continue;
+    try {
+      if (dist2(player.x, player.y, e.x, e.y) > r2) continue;
+    } catch { continue; }
+    ripperHit(e);
   }
+  try {
+    for (const e of pvpFoesInRadius(player.x, player.y, RIPPER_RADIUS)) ripperHit(e);
+  } catch {}
 }
 // Dernier rempart : intercepte TOUTES les morts (lasers, kamikaze, radiation...).
 // À 1 PV : full heal +x max, anim LAST_STAND une fois, effect repris après.
@@ -2892,9 +2929,8 @@ function activateTravel() {
   showNotification("Voyage actif (5 s) : vitesse x2", 2, "info");
 }
 // --- Voyage Yamato : clone du Voyage Citadel, état séparé.
-// reportMovementAbility("travel") résout déjà l'id du vaisseau actif
-// (ability_yamato_travel via currentAbilityShipMatch), et le serveur
-// connaît la règle (MOVEMENT_RULES). Visuel : même SPEED_BUFF_EFFECT.
+// Identifiant explicite : reste distinct du Voyage Citadel, même sur Police.
+// La règle serveur et le rendu partagé utilisent le même boost de 5 secondes.
 function startYamatoTravelCooldown() {
   player.yamatoCd = YAMATO_TRAVEL_COOLDOWN;
   persistCdUntil("yamatoFx", 0);
@@ -2902,7 +2938,7 @@ function startYamatoTravelCooldown() {
 }
 function cancelYamatoTravel() {
   if ((player.yamatoT || 0) <= 0) return;
-  reportMovementAbility("travel", false);
+  reportMovementAbility("ability_yamato_travel", false);
   player.yamatoT = 0;
   startYamatoTravelCooldown();
 }
@@ -2915,7 +2951,7 @@ function activateYamatoTravel() {
   }
   if ((player.yamatoT || 0) > 0) return;
   player.yamatoT = YAMATO_TRAVEL_DURATION;
-  reportMovementAbility("travel");
+  reportMovementAbility("ability_yamato_travel");
   persistCdUntil("yamatoFx", YAMATO_TRAVEL_DURATION);
   try {
     for (let i = 1; i <= 3; i++) {
@@ -3351,7 +3387,13 @@ function activateTempestLink() {
       try { queueVolleyFloat(current, out, volleySeq++, 1); } catch {}
     }
     // Stop 1 s : image ICE officielle comme les R-IC3 (via drawRocketDebuffEffect).
+    // Joueur : relais serveur (statut gelé autoritaire + sprite ICE victime).
     try { current.freezeT = Math.max(Number(current.freezeT || 0), TEMPEST_LINK_STUN); } catch {}
+    try {
+      if (current && current._netPlayer != null && netplayNpcActive()) {
+        sendPvpHit({ target: current._netPlayer, dmg: 0, freezeSec: TEMPEST_LINK_STUN });
+      }
+    } catch {}
     player.tempestLinkFx.push({ target: current, start: now });
     player.tempestLinkBeams.push({ a: prev, b: current, until: now + TEMPEST_LINK_BEAM_LIFE });
     dmg *= TEMPEST_LINK_DECAY;
@@ -3601,6 +3643,7 @@ function activateMark() {
   }
   t.markT = MARK_DURATION;
   try { applyMarkSlow(t, MARK_SLOW); } catch {}
+  try { relaySlowToPlayer(t, MARK_SLOW_PCT, MARK_SLOW); } catch {}
   player.markTgtObj = t;
   persistCdUntil("markFx", MARK_DURATION);
   try {
@@ -3636,6 +3679,7 @@ function activateNeutr() {
   }
   t.neutrT = NEUTR_DURATION;
   try { applyMarkSlow(t, NEUTR_DURATION); } catch {}
+  try { relaySlowToPlayer(t, NEUTR_SLOW_PCT, NEUTR_DURATION); } catch {}
   persistCdUntil("neutrFx", NEUTR_DURATION);
   try {
     for (let i = 1; i <= MARK_SPR_FRAMES; i++) {
@@ -3904,6 +3948,7 @@ function activateHoloEnemy() {
   try {
     t.rocketSlowPct = Math.max(Number(t.rocketSlowPct || 0), HOLO_SLOW_PCT);
     t.rocketSlowT = Math.max(Number(t.rocketSlowT || 0), HOLO_DURATION);
+    relaySlowToPlayer(t, HOLO_SLOW_PCT, HOLO_DURATION);
   } catch {}
   persistCdUntil("holoEnemyFx", HOLO_DURATION);
   try {
@@ -3960,6 +4005,7 @@ function activateGa() {
   try {
     t.rocketSlowPct = Math.max(Number(t.rocketSlowPct || 0), isHyperionBattleMap() ? GA_SLOW_BATTLE : GA_SLOW_NORMAL);
     t.rocketSlowT = Math.max(Number(t.rocketSlowT || 0), GA_DURATION);
+    relaySlowToPlayer(t, isHyperionBattleMap() ? GA_SLOW_BATTLE : GA_SLOW_NORMAL, GA_DURATION);
   } catch {}
   persistCdUntil("gaFx", GA_DURATION);
   try {
@@ -4107,6 +4153,7 @@ function keresSprInfect(e) {
   try {
     e.rocketSlowPct = Math.max(Number(e.rocketSlowPct || 0), SPR_SLOW_PCT);
     e.rocketSlowT = Math.max(Number(e.rocketSlowT || 0), SPR_DURATION);
+    relaySlowToPlayer(e, SPR_SLOW_PCT, SPR_DURATION);
   } catch {}
   return true;
 }
@@ -4381,6 +4428,7 @@ function startLibRepCooldown() {
 }
 function cancelLibRep() {
   if ((player.libRepT || 0) <= 0) return;
+  reportAbilityCast("ability_liberator-plus_self-repair", false);
   player.libRepT = 0;
   startLibRepCooldown();
 }
@@ -4391,6 +4439,8 @@ function libRepHealTick() {
   const old = Number(player.hp || 0);
   player.hp = Math.min(Number(player.hpMax || 0), old + LIBREP_AMOUNT);
   const gain = Math.round(Number(player.hp || 0) - old);
+  // Notification visuelle du tick ; les PV passent toujours par l'état local.
+  try { sendSkillUse("ability_liberator-plus_self-repair", { phase: "heal", amount: gain }); } catch {}
   try {
     addFloatText(
       Number(player.x || 0) + (Math.random() - 0.5) * 60,
@@ -4411,6 +4461,7 @@ function activateLibRep() {
   if ((player.libRepT || 0) > 0) return;
   player.libRepT = LIBREP_DURATION;
   player.libRepAcc = 0;
+  reportAbilityCast("ability_liberator-plus_self-repair");
   persistCdUntil("libRepFx", LIBREP_DURATION);
   try {
     for (let i = 1; i <= LIBREP_FRAMES; i++) {
@@ -5583,6 +5634,15 @@ function nebulaDamageTick() {
   };
   try {
     for (const e of enemies) tickTarget(e, (t, dmg) => damageEnemy(t, dmg));
+    // Joueurs hostiles dans la nébuleuse (pas de tir ami ; le masque
+    // exact est revérifié dans tickTarget).
+    try {
+      if (player.nebX != null && player.nebY != null) {
+        for (const e of pvpFoesInRadius(player.nebX, player.nebY, NEBULA_RADIUS)) {
+          tickTarget(e, (t, dmg) => damageEnemy(t, dmg));
+        }
+      }
+    } catch {}
     for (const esc of escortShips) {
       tickTarget(esc, (t, dmg) => { t.hp = Math.max(0, Number(t.hp || 0) - dmg); });
     }
@@ -5611,6 +5671,9 @@ function nebulaDamageTick() {
 // Apparition/disparition en fondu (1 s / 1,5 s), jamais de pop.
 function drawDeployedNebula(ox, oy) {
   if ((player.nebT || 0) <= 0 || player.nebX == null || player.nebY == null) return;
+  drawNebulaAt(player.nebX + ox, player.nebY + oy, player.nebT);
+}
+function drawNebulaAt(x, y, remaining) {
   const t = performance.now() / 1000;
   const frame = (Math.floor(t * NEBULA_FPS) % NEBULA_FRAMES) + 1;
   const src = `ASSETS/APTITUDES/BASILISK_NOXIOUS_NEBULA/${frame}.png`;
@@ -5618,12 +5681,12 @@ function drawDeployedNebula(ox, oy) {
   const rFrame = (Math.floor(t * NEBULA_FPS) % NEBULA_RADIUS_FRAMES) + 1;
   const rSrc = `ASSETS/APTITUDES/BASILISK_NOXIOUS_NEBULA_RADIUS/${rFrame}.png`;
   const rImage = getCachedImage(rSrc);
-  const elapsed = NEBULA_DURATION - player.nebT;
-  const fade = Math.min(1, elapsed / 1) * Math.max(0, Math.min(1, player.nebT / 1.5));
+  const elapsed = NEBULA_DURATION - remaining;
+  const fade = Math.min(1, elapsed / 1) * Math.max(0, Math.min(1, remaining / 1.5));
   if (fade <= 0) return;
   ctx.save();
   ctx.globalAlpha = fade;
-  ctx.translate(player.nebX + ox, player.nebY + oy);
+  ctx.translate(x, y);
   if (isImgReady(image)) {
     drawCenteredImage(ctx, image, 500, 291);
     // Deuxième nébuleuse en miroir gauche-droite (même frame, même taille).
@@ -5699,6 +5762,7 @@ function startRepairPodCooldown() {
 // Le pod posé est annulé (mort, changement de vaisseau) : la recharge démarre.
 function cancelRepairPod() {
   if ((player.podT || 0) <= 0) return;
+  reportAbilityCast("ability_aegis_repair-pod", false);
   player.podT = 0;
   player.podX = null;
   player.podY = null;
@@ -5720,6 +5784,7 @@ function activateRepairPod() {
   player.podPulseT = 0;
   player.podLastPulseSec = -1;
   player.podHealAcc = 0;
+  reportAbilityCast("ability_aegis_repair-pod");
   // Pas de recharge à l'activation : elle démarre à la fin ou à la coupure.
   persistCdUntil("podFx", REPAIR_POD_DURATION);
   try {
@@ -5746,7 +5811,7 @@ function healRepairPodTick() {
       { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
     );
   }
-  // Joueurs de même firme dans le pod (serveur tranche + diffuse le +X).
+  // Membres du groupe dans le pod (le serveur vérifie et confirme le gain).
   try {
     if (player.podX != null && player.podY != null) {
       healPlayerAllies("ability_aegis_repair-pod", REPAIR_POD_HEAL, false, player.podX, player.podY, REPAIR_POD_RADIUS, false);
@@ -5764,13 +5829,16 @@ function healRepairPodTick() {
 // Pod posé + halo vert (rayon 300), dessinés par-dessus tout.
 function drawDeployedPod(ox, oy) {
   if ((player.podT || 0) <= 0 || player.podX == null || player.podY == null) return;
+  drawRepairPodAt(player.podX + ox, player.podY + oy);
+}
+function drawRepairPodAt(x, y) {
   const frame = (Math.floor(performance.now() / 1000 * REPAIR_POD_FPS) % REPAIR_POD_FRAMES) + 1;
   const src = `ASSETS/APTITUDES/AEGIS_PODS/${frame}.png`;
   const image = getCachedImage(src);
   if (isImgReady(image)) {
     // Vraie taille du sprite (153x154).
     ctx.save();
-    ctx.translate(player.podX + ox, player.podY + oy);
+    ctx.translate(x, y);
     drawCenteredImage(ctx, image, 153, 154);
     ctx.restore();
   } else {
@@ -6087,17 +6155,7 @@ function drawDeployedHammerPod(ox, oy, plus) {
   const pX = plus ? player.hammerPodPlusX : player.hammerPodX;
   const pY = plus ? player.hammerPodPlusY : player.hammerPodY;
   if ((pT || 0) <= 0 || pX == null || pY == null) return;
-  const frame = (Math.floor(performance.now() / 1000 * REPAIR_POD_FPS) % REPAIR_POD_FRAMES) + 1;
-  const src = `ASSETS/APTITUDES/AEGIS_PODS/${frame}.png`;
-  const image = getCachedImage(src);
-  if (isImgReady(image)) {
-    ctx.save();
-    ctx.translate(pX + ox, pY + oy);
-    drawCenteredImage(ctx, image, 153, 154);
-    ctx.restore();
-  } else {
-    try { loadImage(src, { priority: true }); } catch {}
-  }
+  drawRepairPodAt(pX + ox, pY + oy);
 }
 // Recharge d'une aptitude pour le voile de CD des slots (même système que
 // roquettes/formations : classe cdVeil + variable --cd). Les aptitudes non
@@ -7074,9 +7132,15 @@ function initializeCustomActionBar() {
           } catch {}
           return;
         }
+        // Brouillé (JAMX/Creed/Neutralizing subi) : modules verrouillés.
+        if ((player.jamT || 0) > 0 && !isCloakAbility(name) && !MOVEMENT_ANNOUNCED_ABILITIES.has(String(name).toLowerCase())) {
+          showNotification("Modules brouillés : impossible d'activer", 1.5, "info");
+          return;
+        }
         // Phase 2 (visibilité réseau) : annonce optimiste du cast aux autres
         // joueurs. Le serveur valide (vaisseau + vivant + cooldown) et diffuse
         // l'aura/le flash. Exclus : camouflages (invisibles par design) et
+        // pod Aegis et auto-réparation (annoncés après activation réussie), et
         // aptitudes mouvement (déjà annoncées via reportMovementAbility dans
         // leurs activate, avec l'état enabled correct pour les toggles).
         // La cible lockée est jointe (marqueurs, venom, ancre...), sinon les
@@ -7084,7 +7148,8 @@ function initializeCustomActionBar() {
         // à cible ennemie sans lock ne sont PAS annoncées : l'activate local
         // refuserait ("verrouille d'abord") mais le serveur aurait déjà
         // consommé cooldown/aura -> désync au cast réel suivant.
-        if (!isCloakAbility(name) && !MOVEMENT_ANNOUNCED_ABILITIES.has(String(name).toLowerCase())) {
+        if (!isCloakAbility(name) && name !== "ability_liberator-plus_self-repair" && name !== "ability_aegis_repair-pod"
+          && !MOVEMENT_ANNOUNCED_ABILITIES.has(String(name).toLowerCase())) {
           try {
             const needTarget = String(getAbilityInfo(name)?.target || "") === "enemy";
             const lt = Target.get();
@@ -17151,25 +17216,29 @@ function drawShipEngineFx() {
 // début, 3 en croisière, descente 3→2→1 à la fin. À l'arrêt : alternance
 // 3↔2 toutes les 100 ms (jamais figé sur une image).
 // elapsed/remaining paramétrables (Sleight réutilise le même effet).
-function travelBuffFrame(elapsed = TRAVEL_DURATION - Number(player.travelT || 0), remaining = Number(player.travelT || 0)) {
-  const moving = Math.hypot(Number(player.vx || 0), Number(player.vy || 0)) > 8;
+function travelBuffFrame(elapsed = TRAVEL_DURATION - Number(player.travelT || 0), remaining = Number(player.travelT || 0), moving = Math.hypot(Number(player.vx || 0), Number(player.vy || 0)) > 8) {
   if (!moving) return (Math.floor(performance.now() / 100) % 2) + 2;
   if (elapsed < 0.6) return Math.min(3, 1 + Math.floor(elapsed / 0.2));
   if (remaining < 0.6) return Math.max(1, Math.ceil(remaining / 0.2));
   return 3;
 }
 function drawTravelEngineFx(elapsed, remaining, backOffset = 0) {
-  const frameIdx = travelBuffFrame(elapsed, remaining);
+  drawTravelEngineFxFor(player, ACTIVE_SHIP, getPlayerSpriteFrame(), elapsed, remaining, backOffset);
+}
+function drawTravelEngineFxFor(entity, pack, frame, elapsed, remaining, backOffset = 0, moving = Math.hypot(Number(entity.vx || 0), Number(entity.vy || 0)) > 8) {
+  if (!GAME_SETTINGS.shipSmoke) return;
+  const frameIdx = elapsed == null
+    ? (moving ? 3 : ((Math.floor(performance.now() / 100) % 2) + 2))
+    : travelBuffFrame(elapsed, remaining, moving);
   const src = `ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${frameIdx}.png`;
   const img = getCachedImage(src);
   if (!isImgReady(img)) {
     try { loadImage(src, { priority: true }); } catch {}
     return;
   }
-  const frame = getPlayerSpriteFrame();
-  const emitters = shipEngine.emitters(player, ACTIVE_SHIP, frame);
+  const emitters = shipEngine.emitters(entity, pack, frame);
   if (!emitters.length) return;
-  const angle = shipEngine.heading(player, ACTIVE_SHIP, frame);
+  const angle = shipEngine.heading(entity, pack, frame);
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.globalCompositeOperation = "lighter";
@@ -31278,6 +31347,33 @@ function warmNetplayRemoteAssets(remote) {
       if (getPetStage(remote.petl) >= 6) loadImage(`/PET/PET_SPRITES/NIVEAU5/${frame}.png`, { priority: true });
     } catch {}
   }
+  // Sprites d'aptitudes des auras actives (rendu distant fidèle au local).
+  try {
+    const afx = Array.isArray(remote.afx) ? remote.afx : [];
+    const seen = new Set();
+    for (const entry of afx) {
+      if (!Array.isArray(entry)) continue;
+      const code = Math.floor(Number(entry[0]) || 0);
+      if (!(code > 0) || seen.has(code)) continue;
+      seen.add(code);
+      for (const [folder, frames] of (REMOTE_FX_PRELOAD[code] || [])) {
+        const base = String(folder).includes("/") ? String(folder) : `ASSETS/APTITUDES/${folder}`;
+        for (let i = 1; i <= frames; i++) {
+          try { loadImage(`${base}/${i}.png`, { priority: true }); } catch {}
+        }
+      }
+    }
+    const fl = remote.fxFlash;
+    if (fl && Number(fl.until) > performance.now() && Number(fl.code) > 0) {
+      for (const [folder, frames] of (REMOTE_FX_PRELOAD[Math.floor(Number(fl.code))] || [])) {
+        try {
+          const base = String(folder).includes("/") ? String(folder) : `ASSETS/APTITUDES/${folder}`;
+          loadImage(`${base}/1.png`, { priority: true });
+        } catch {}
+        void frames;
+      }
+    }
+  } catch {}
 }
 
 // Multi : projectiles visuels de l'allie, joues a la reception des
@@ -31493,6 +31589,29 @@ function spawnNetRocketVisual(ev) {
   } catch {}
 }
 
+function showRemoteAbilityHeal(ev, remote) {
+  if (!remote || remote.dead || remote.cloaked || remote.cloakCpu) return;
+  const selected = Target.get();
+  if (!selected || String(selected._netPlayer || "") !== String(ev.by)) return;
+  const amount = Number(ev.amount);
+  if (!Number.isFinite(amount) || amount < 0) return;
+  addFloatText(Number(remote.rx ?? remote.x) + (Math.random() - 0.5) * 60,
+    Number(remote.ry ?? remote.y) - 90 - Math.random() * 20,
+    amount, "rgba(80,255,125,0.98)",
+    { text: `+${DMG_FMT.format(amount)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+}
+
+function applyRepairPodHeal(ev) {
+  if (player.dead || (player.tempestBackupT || 0) > 0) return;
+  const amount = Math.max(0, Math.min(18000, Math.round(Number(ev.amount) || 0)));
+  const before = Number(player.hp) || 0;
+  player.hp = Math.min(Number(player.hpMax) || 0, before + amount);
+  const gain = Math.max(0, Math.round(player.hp - before));
+  addFloatText(Number(player.x) + (Math.random() - 0.5) * 60,
+    Number(player.y) - 90 - Math.random() * 20, gain, "rgba(80,255,125,0.98)",
+    { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+}
+
 function tickNetplayVisuals(dt) {
   // Refus serveur d'une aptitude mouvement : annule l'effet local pour
   // converger (fini le rubber-band permanent en cas de désaccord :
@@ -31505,9 +31624,26 @@ function tickNetplayVisuals(dt) {
   try {
     for (const ev of drainNetSkillInbox()) {
       if (!ev?.by) continue;
+      if (ev.phase === "heal" && ev.skill === "ability_aegis_repair-pod" && ev.target) {
+        if (String(ev.target) === String(netMyId())) applyRepairPodHeal(ev);
+        else showRemoteAbilityHeal({ ...ev, by: ev.target }, getNetplayRemotes()?.get(String(ev.target)));
+        continue;
+      }
       if (String(ev.by) === String(netMyId())) continue;
       const remote = getNetplayRemotes()?.get(String(ev.by));
-      if (remote) {
+      if (ev.phase === "heal") {
+        showRemoteAbilityHeal(ev, remote);
+        continue;
+      }
+      if (ev.enabled === false) {
+        if (remote) {
+          const code = abilityFxCodeFor(ev.skill);
+          remote.afx = (Array.isArray(remote.afx) ? remote.afx : []).filter(entry => Number(entry[0]) !== code);
+          if (Number(remote.fxFlash?.code) === code) remote.fxFlash = null;
+        }
+        continue;
+      }
+      if (remote && (ev.skill === "iem" || ev.skill === "smb" || ev.skill === "ish")) {
         playNetSpatialSound(ev.skill === "iem" ? "pulseIEM" : ev.skill === "smb" ? "smbBomb" : "ishShield", Number(remote.rx ?? remote.x), Number(remote.ry ?? remote.y), {
           cooldown: 0.05,
           maxVoices: 4,
@@ -31547,6 +31683,8 @@ function tickNetplayVisuals(dt) {
             remote.fxFlash = {
               code: abilityFxCodeFor(akey),
               until: performance.now() + 1800,
+              startedAt: performance.now(),
+              sec: Math.max(0, (Number(ev.until) - Number(ev.at)) / 1000),
               x: Number(ev.x) || 0,
               y: Number(ev.y) || 0,
               target: String(ev.target || ""),
@@ -31580,202 +31718,286 @@ function tickNetplayVisuals(dt) {
 // Style par code ABILITY_FX : self = anneau sur le lanceur (couleur),
 // zone = anneau au sol (rayon), target = anneau sur la cible (couleur),
 // link = trait lanceur->cible (couleur), speed = streaks de vitesse.
-const REMOTE_FX_STYLE = {
-  2:  { zone: 400, color: "55,255,125" },   // repair-pod
-  3:  { self: 1, color: "255,210,74" },     // valour
-  4:  { zone: 500, color: "124,255,158" },  // nebula
-  5:  { self: 1, color: "255,68,22" },      // bsk
-  6:  { self: 1, color: "124,240,255" },    // rvg
-  7:  { self: 1, link: 1, color: "180,140,255" }, // shl
-  8:  { self: 1, zone: 600, color: "150,90,255" },  // draw-fire
-  9:  { self: 1, zone: 600, color: "150,90,255" },  // draw-fire Plus
-  10: { self: 1, color: "255,255,255" },    // fortify
-  11: { self: 1, color: "255,255,255" },    // fortify Plus
-  12: { self: 1, link: 1, color: "200,170,255" }, // protection
-  13: { self: 1, link: 1, color: "200,170,255" }, // protection Plus
-  14: { speed: 1 }, 15: { speed: 1 }, 16: { speed: 1 }, // travels + yamato
-  17: { self: 1, color: "102,204,255" },    // prism
-  18: { self: 1, color: "102,204,255" },    // spectrum
-  19: { self: 1, color: "102,204,255" },    // spectrum Plus
-  20: { self: 1, color: "180,240,255" },    // sentinel
-  21: { self: 1, color: "190,120,255" },    // orcus
-  22: { self: 1, zone: 600, color: "255,106,0" },  // inc
-  23: { self: 1, zone: 800, color: "255,106,0" },  // inc Plus
-  24: { zone: 400, color: "55,255,125" },   // hammer pod
-  25: { zone: 600, color: "55,255,125" },   // hammer pod Plus
-  26: { self: 1, color: "55,255,125" },     // realloc
-  27: { target: 1, color: "255,80,220" },   // cyborg singularity
-  28: { target: 1, color: "255,80,220" },   // venom
-  29: { target: 1, color: "255,160,64" },   // diminisher
-  30: { target: 1, color: "192,128,255" },  // ddol
-  31: { self: 1, color: "255,237,176" },    // redirect
-  32: { target: 1, color: "96,160,255" },   // disarray
-  33: { self: 1, color: "128,240,255" },    // holo self
-  34: { target: 1, color: "128,240,255" },  // holo enemy
-  35: { target: 1, color: "255,210,74" },   // hyperion ga
-  36: { link: 1, color: "255,255,255" },    // hyperion qa (flash)
-  37: { link: 1, color: "120,230,255" },    // hecate
-  38: { link: 1, color: "120,230,255" },    // hecate Plus
-  39: { self: 1, color: "255,210,74" },     // stockpile
-  40: { speed: 1 },                        // lightning
-  41: { self: 1, color: "255,255,255" },    // hologram
-  42: { self: 1, color: "255,120,220" },    // scramble
-  43: {}, 44: {},                          // spc/spcp : aucun visuel local non plus
-  45: { link: 1, color: "255,80,80" },      // chs
-  46: { link: 1, color: "255,80,80" },      // chsp
-  47: { self: 1, zone: 600, color: "255,210,80" },  // ripper
-  48: { self: 1, color: "80,255,125" },     // last-stand
-  49: { target: 1, color: "96,160,255" },   // sap (slow cible)
-  50: { self: 1, color: "157,223,255" },    // volt discharge
-  51: { self: 1, color: "255,255,255" },    // volt backup
-  52: { link: 1, color: "80,120,255" },     // voltage link
-  53: {}, 54: {},                          // rapid-fire : roquettes visibles déjà
-  55: { speed: 1 }, 56: { speed: 1 },       // tartarus boosts
-  57: { self: 1, zone: 500, color: "255,255,255" },  // jamx
-  58: { self: 1, zone: 1000, color: "255,255,255" }, // creed
-  59: { target: 1, color: "255,210,74" },   // marker
-  60: { target: 1, color: "255,210,74" },   // marker Plus
-  61: { target: 1, color: "255,210,74" },   // marker Orcus Plus
-  62: { target: 1, color: "255,255,255" },  // neutralizing
-  63: { recon: 1, color: "255,255,255" },  // recon : balayage radar
-  64: { recon: 1, color: "255,255,255" },  // recon Plus : idem
-  76: { self: 1, color: "180,240,255" },    // mmt
-  77: { self: 1, color: "124,240,255" },    // tbr (clones non répliqués, anneau seul)
-  78: { target: 1, color: "124,255,158" },  // keres spr
-  79: { speed: 1 },                        // keres sle (dash)
-  80: {},                                 // frozen claw : gel déjà visible (freezeT/ICE)
-  81: {},                                 // phase-out : téléport visible (teleportSeq)
-  82: { self: 1, color: "190,120,255" },   // orcus Plus (même visuel, 24 s)
-  // Codes sans rendu distant (jamais diffusés par le serveur) :
-  1: {},                                  // admin cloak : invisible par design
-  65: {}, 66: {},                         // spearhead cloaks : invisibles par design
-  67: {}, 68: {},                         // soins aegis : barres HP/SH suffisent
-  69: {}, 70: {}, 71: {}, 72: {},         // soins hammerclaw : idem
-  73: {}, 74: {}, 75: {},                 // librep/solace/solace+ : idem
+// Préchargement des sprites d'aptitudes pour les auras distantes actives.
+const REMOTE_FX_PRELOAD = {
+  5: [["BERSERKER_BERSERK_EFFECT", 83]],
+  8: [["CITADEL_IGNIFUGE", 10]], 9: [["CITADEL_IGNIFUGE", 10]],
+  14: [["SPEED_BUFF_EFFECT", 3]], 15: [["SPEED_BUFF_EFFECT", 3]],
+  16: [["SPEED_BUFF_EFFECT", 3]], 40: [["SPEED_BUFF_EFFECT", 3]],
+  55: [["SPEED_BUFF_EFFECT", 3]], 56: [["SPEED_BUFF_EFFECT", 3]],
+  79: [["SPEED_BUFF_EFFECT", 3]],
+  17: [["SPECTRUM_PRISMATIC_SHIELDING", 35]],
+  18: [["SPECTRUM_PRISMATIC_SHIELDING", 35]],
+  19: [["SPECTRUM_PRISMATIC_SHIELDING", 35]],
+  21: [["ORCUS_ASSIMILATE", 42]], 82: [["ORCUS_ASSIMILATE", 42]],
+  27: [["VENOM_SINGULARITY", 35]], 28: [["VENOM_SINGULARITY", 35]],
+  29: [["DIMINISHER_WEAKEN_SHIELDS", 27]],
+  30: [["DISRUPTOR_DDOL", 40]],
+  33: [["HOLO_SELF_REVERSAL", 53]], 34: [["HOLO_SELF_REVERSAL", 53]],
+  35: [["HYPERION_EFFECT_SHOT", 5], ["HYPERION_EFFECT_START", 40],
+    ["HYPERION_EFFECT_CONTINUED", 30], ["HYPERION_EFFECT_FINISH", 15]],
+  39: [["HECATE_PLUS_STOCKPILE", 25]],
+  45: [["COMBAT/RAYGUN/RAYGUN1", 36], ["COMBAT/RAYGUN/RAYGUN2", 36]],
+  46: [["COMBAT/RAYGUN/RAYGUN1", 36]],
+  48: [["PALADIN_LAST_STAND", 50], ["PALADIN_LAST_STAND_EFFECT", 40]],
+  50: [["TEMPEST_VOLT_DISCHARGE", 60]],
+  51: [["TEMPEST_VOLT_BACKUP", 60]],
+  52: [["TEMPEST_VOLTAGE_LINK_STUN", 60]],
+  59: [["SPEARHEAD_PLUS_NEUTRALIZING_MARKER", 24]],
+  60: [["SPEARHEAD_PLUS_NEUTRALIZING_MARKER", 24]],
+  61: [["SPEARHEAD_PLUS_NEUTRALIZING_MARKER", 24]],
+  62: [["SPEARHEAD_PLUS_NEUTRALIZING_MARKER", 24]],
+  73: [["HEAL_EFFECT", 18]], 74: [["HEAL_EFFECT", 18]], 75: [["HEAL_EFFECT", 18]],
 };
-// Résout la position monde d'une cible réseau (moi ou un distant).
-function remoteFxTargetPos(target) {
+// Table de rendu distant : fidèle au visuel local du lanceur
+// ("ce que je vois = ce qu'ils voient"). Légende kind :
+// - "sprite" : boucle ASSETS/APTITUDES (folder/fps/frames, taille, dy) ;
+// - "outline" : contour évidé sur la coque (couleur, alpha|fn) ;
+// - "flames" : SPEED_BUFF_EFFECT aux réacteurs (boosts) ;
+// - "ring" : drawFireRing réel (incinération) ;
+// - "suck" : halo aspirant exact (drawfire/realloc) ;
+// - "link"/"beam"/"zigzag"/"raygun" : traits lanceur->cible ;
+// - "tsprite"/"toutline"/"ticon" : effet sur la CIBLE ;
+// - "ghosts"/"pets" : clones ; "none" : aucun visuel local non plus.
+const REMOTE_FX_STYLE = {
+  2: { kind: "none" }, // pod : sprite déployé déjà visible (monde)
+  3: { kind: "none" }, // valour : buff dégâts, aucun visuel coque
+  4: { kind: "none" }, // nebula : sprite déployé déjà visible (monde)
+  5: { kind: "berserk" }, // BSK : tremblement + contour + sprite 83f
+  6: { kind: "outline", color: "#7cf0ff", pulse: "pet" }, // rvg
+  7: { kind: "zigzag" }, // SHL : lien violet électrique
+  8: { kind: "drawfire" }, 9: { kind: "drawfire" }, // ignifuge + halo aspirant
+  10: { kind: "outline", color: "#ffffff", pulse: "blink10" }, // fortify
+  11: { kind: "outline", color: "#ffffff", pulse: "blink10" }, // fortify Plus
+  12: { kind: "none" }, 13: { kind: "none" }, // protection : halos monde partagés
+  14: { kind: "flames" }, 15: { kind: "flames" }, 16: { kind: "flames" }, // voyages
+  17: { kind: "sprite", folder: "SPECTRUM_PRISMATIC_SHIELDING", fps: 30, frames: 35, w: 200, h: 200 },
+  18: { kind: "sprite", folder: "SPECTRUM_PRISMATIC_SHIELDING", fps: 30, frames: 35, w: 200, h: 200 },
+  19: { kind: "both", outline: { color: "#7cf0ff", pulse: "pet" }, sprite: { folder: "SPECTRUM_PRISMATIC_SHIELDING", fps: 30, frames: 35, w: 200, h: 200 } },
+  20: { kind: "none" }, // sentinel : barres + shimmer (comme en local)
+  21: { kind: "sprite", folder: "ORCUS_ASSIMILATE", fps: 30, frames: 42, w: 226, h: 226 },
+  22: { kind: "ring", radius: 600 }, 23: { kind: "ring", radius: 800 }, // incinération
+  24: { kind: "none" }, 25: { kind: "none" }, // pods : sprites déployés (monde)
+  26: { kind: "suck", radius: 700, glow: "55,255,125", stroke: "rgba(80,255,145,0.95)" }, // realloc
+  27: { kind: "tsprite", folder: "VENOM_SINGULARITY", fps: 30, frames: 35, w: 300, h: 300, dx: 56, dy: 51 },
+  28: { kind: "tsprite", folder: "VENOM_SINGULARITY", fps: 30, frames: 35, w: 300, h: 300, dx: 56, dy: 51 },
+  29: { kind: "tsprite", folder: "DIMINISHER_WEAKEN_SHIELDS", fps: 30, frames: 27, w: 200, h: 200 },
+  30: { kind: "tsprite", folder: "DISRUPTOR_DDOL", fps: 30, frames: 40, w: 250, h: 250 },
+  31: { kind: "blinkredraw", alphaFn: "redirect" }, // redirect : clignotement
+  32: { kind: "disarray" }, // cible bleue animée sur l'ennemi
+  33: { kind: "sprite", folder: "HOLO_SELF_REVERSAL", fps: 30, frames: 53, w: 220, h: 220 },
+  34: { kind: "tsprite", folder: "HOLO_SELF_REVERSAL", fps: 30, frames: 53, w: 220, h: 220 },
+  35: { kind: "ga" }, // séquence Hyperion sur la cible
+  36: { kind: "none" }, // QA : charge + salve déjà visibles
+  37: { kind: "beam" }, 38: { kind: "beam" }, // faisceau Hecate exact
+  39: { kind: "sprite", folder: "HECATE_PLUS_STOCKPILE", fps: 30, frames: 25, w: 256, h: 256 },
+  40: { kind: "flames" }, // lightning
+  41: { kind: "ghosts" }, // hologramme : 4 vrais sosies + pop
+  42: { kind: "blinkredraw", alphaFn: "scramble" }, // scramble : clignotement doux
+  43: { kind: "none" }, 44: { kind: "none" }, // spc/spcp : aucun visuel local
+  45: { kind: "raygun", folders: ["RAYGUN1", "RAYGUN2"] },
+  46: { kind: "raygun", folders: ["RAYGUN1", "RAYGUN1"] },
+  47: { kind: "none" }, // ripper : pulsations monde partagées
+  48: { kind: "sprite", folder: "PALADIN_LAST_STAND_EFFECT", fps: 30, frames: 40, w: 250, h: 250 },
+  49: { kind: "none" }, // sap : sprite SLOW auto via statut serveur
+  50: { kind: "sprite", folder: "TEMPEST_VOLT_DISCHARGE", fps: 30, frames: 60, w: 220, h: 220 },
+  51: { kind: "both", outline: { color: "rainbow", pulse: 0.95 }, tremble: 3 }, // volt backup actif
+  52: { kind: "tlink" }, // lien volt + stun sur la cible (flash)
+  53: { kind: "none" }, 54: { kind: "none" }, // rapid-fire : roquettes visibles
+  55: { kind: "flames" }, 56: { kind: "flames" }, // boosts tartarus
+  57: { kind: "jamring", radius: 500 }, 58: { kind: "jamring", radius: 1000 }, // JAMX/Creed
+  59: { kind: "tmark", color: "#ffd700", blinkHz: 14 }, // marqueur doré + icône
+  60: { kind: "tmark", color: "#ffd700", blinkHz: 14 },
+  61: { kind: "tmark", color: "#ffd700", blinkHz: 14 },
+  62: { kind: "tmark", color: "#ffffff", blinkHz: 10 }, // neutralisant + icône
+  63: { kind: "none" }, 64: { kind: "none" }, // recon : minimap uniquement
+  76: { kind: "none" }, // MMT : aucun visuel local (portée seule)
+  77: { kind: "pets" }, // TBR : 2 échos REX
+  78: { kind: "none" }, // SPR : slow auto via statut serveur
+  79: { kind: "flames" }, // sleight (dash)
+  80: { kind: "none" }, // frozen claw : ICE auto (freezeT)
+  81: { kind: "none" }, // phase-out : téléport visible
+  82: { kind: "sprite", folder: "ORCUS_ASSIMILATE", fps: 30, frames: 42, w: 226, h: 226 },
+  1: { kind: "none" }, // admin cloak : invisible par design
+  65: { kind: "none" }, 66: { kind: "none" }, // cloaks : invisibles par design
+  67: { kind: "none" }, 68: { kind: "none" }, // soins : +X personnels
+  69: { kind: "none" }, 70: { kind: "none" }, 71: { kind: "none" }, 72: { kind: "none" },
+  73: { kind: "sprite", folder: "HEAL_EFFECT", fps: 30, frames: 18, w: 100, h: 100, dy: -35 },
+  74: { kind: "sprite", folder: "HEAL_EFFECT", fps: 30, frames: 18, w: 100, h: 100, dy: -35 },
+  75: { kind: "sprite", folder: "HEAL_EFFECT", fps: 30, frames: 18, w: 100, h: 100, dy: -35 },
+};
+// Diagnostic live : derniers effets distants dessinés (console).
+const netAbilityDrawn = [];
+try {
+  window.__ABILITY_NET_DRAWN__ = () => netAbilityDrawn.slice();
+} catch {}
+// Tremblement distant (Berserk progressif comme en local, Volt Back-up
+// fixe) : appliqué à la translation avant dessin de la coque.
+function remoteAbilityShake(r) {
+  let sx = 0, sy = 0;
   try {
-    const id = String(target || "");
-    if (!id) return null;
-    if (id === String(netMyId())) return { x: Number(player.x) || 0, y: Number(player.y) || 0 };
-    const rem = getNetplayRemotes()?.get(id);
-    if (rem && !rem.dead) return { x: Number(rem.rx ?? rem.x) || 0, y: Number(rem.ry ?? rem.y) || 0 };
+    const afx = Array.isArray(r.afx) ? r.afx : [];
+    for (const entry of afx) {
+      if (!Array.isArray(entry)) continue;
+      const code = Math.floor(Number(entry[0]) || 0);
+      if (code === 5) {
+        const prog = Math.max(0, Math.min(1, 1 - Number(entry[1] || 0) / BSK_DURATION));
+        const mag = 1 + 5 * prog;
+        sx += (Math.random() * 2 - 1) * mag;
+        sy += (Math.random() * 2 - 1) * mag;
+      } else if (code === 51) {
+        sx += (Math.random() * 2 - 1) * 3;
+        sy += (Math.random() * 2 - 1) * 3;
+      }
+    }
+  } catch {}
+  return { x: sx, y: sy };
+}
+// Boost de vitesse distant actif ? (flammes SPEED_BUFF_EFFECT au lieu des
+// réacteurs normaux, comme drawShipEngineFx en local.)
+function remoteBoostInfo(r) {
+  const boostCode = code => code === 14 || code === 15 || code === 16 || code === 40
+    || code === 55 || code === 56 || code === 79;
+  try {
+    const afx = Array.isArray(r.afx) ? r.afx : [];
+    for (const entry of afx) {
+      if (!Array.isArray(entry)) continue;
+      const code = Math.floor(Number(entry[0]) || 0);
+      if (boostCode(code) && Number(entry[1]) > 0) {
+        return { code, sec: Number(entry[1]) || 0 };
+      }
+    }
+    // Le cast confirmé démarre le visuel avant le prochain snapshot.
+    const fl = r.fxFlash;
+    const now = performance.now();
+    if (fl && boostCode(Number(fl.code)) && Number(fl.until) > now
+      && Number(fl.startedAt) >= Number(r.lastSeen || 0)) {
+      const sec = Number(fl.sec) - Math.max(0, now - Number(fl.startedAt)) / 1000;
+      if (sec > 0) return { code: Number(fl.code), sec };
+    }
   } catch {}
   return null;
 }
-function drawRemoteAbilityFx(r) {
+function drawRemoteAbilityFx(r, shipFx) {
   const nowMs = performance.now();
   const rx = Number(r.rx ?? r.x) || 0, ry = Number(r.ry ?? r.y) || 0;
+  // Coque distante (outlines, sosies, redraws). Résolue ici si l'appelant
+  // ne l'a pas fournie.
+  let shipImg = (shipFx && typeof shipFx === "object" && shipFx.img) || null;
+  let sw = (shipFx && Number(shipFx.w)) || 170, sh = (shipFx && Number(shipFx.h)) || 170;
+  let shipFrame = (shipFx && Number(shipFx.frame)) || 0;
+  let packId = (shipFx && shipFx.packId) || "";
+  if (!shipImg) {
+    try {
+      const resolved = rfxRemoteShip(r);
+      if (resolved) {
+        shipImg = resolved.img; sw = resolved.w; sh = resolved.h;
+        shipFrame = resolved.frame; packId = resolved.packId;
+      }
+    } catch {}
+  }
+  // Diagnostic live (window.__ABILITY_NET_DRAWN__) : ce qui a été dessiné.
+  try {
+    const codes = [];
+    for (const entry of (Array.isArray(r.afx) ? r.afx : [])) {
+      if (Array.isArray(entry) && Number(entry[0]) > 0) codes.push(Number(entry[0]));
+    }
+    if (r.fxFlash && Number(r.fxFlash.until) > nowMs && Number(r.fxFlash.code) > 0) codes.push(Number(r.fxFlash.code));
+    if (codes.length) {
+      netAbilityDrawn.unshift({ id: String(r.id || ""), codes, at: Date.now() });
+      if (netAbilityDrawn.length > 10) netAbilityDrawn.length = 10;
+    }
+  } catch {}
   const now = nowMs / 1000;
   const pulse = 0.65 + 0.35 * Math.sin(now * 5);
-  const drawSelfRing = (color) => {
+  // Boucle de sprite officielle (même formule que le rendu local).
+  const fxLoop = (folder, fps, frames, w, h, dy = 0) => {
+    const f = (Math.floor(nowMs / 1000 * fps) % frames) + 1;
+    const src = `ASSETS/APTITUDES/${folder}/${f}.png`;
+    const img = getCachedImage(src);
+    if (isImgReady(img)) {
+      if (dy) { ctx.save(); ctx.translate(0, dy); drawCenteredImage(ctx, img, w, h); ctx.restore(); }
+      else drawCenteredImage(ctx, img, w, h);
+    } else { try { loadImage(src, { priority: true }); } catch {} }
+  };
+  // Contour évidé sur la coque distante (même recette que le local).
+  const fxOutline = (color, alpha) => {
+    if (!isImgReady(shipImg)) return;
+    const sil = outlineSilhouette(`netfxship:${r.id}:${packId}:${shipFrame}`, shipImg, sw, sh, color);
+    strokeOutlineCentered(sil, sw, sh, color, alpha);
+    drawCenteredImage(ctx, shipImg, sw, sh);
+  };
+  // Coque distante résolue (pour outlines, sosies, redraws).
+  function rfxRemoteShip(rem) {
+    try {
+      const pk = netplayPackFor(rem.shipId);
+      if (!pk || !pk._ready || !pk._imgs || !pk._imgs.length) return null;
+      const fr = Math.max(1, Number(pk.frames) || pk._imgs.length || 1);
+      const fi = angleToFrameIndex((Number(rem.rangle ?? rem.angle) || 0) + (pk?.angleOffset || 0), fr);
+      const si = pk._imgs[fi] || pk._imgs[0];
+      if (!isImgReady(si)) return null;
+      return { pack: pk, img: si, w: pk.w ?? 170, h: pk.h ?? 170, frame: fi, packId: pk?.id || rem.shipId };
+    } catch { return null; }
+  }
+  // Clignotement (Redirect/Scramble) : la coque redessinée en alpha modulé,
+  // exactement comme le rendu local.
+  const drawBlinkRedraw = (alphaFn) => {
+    if (!isImgReady(shipImg)) return;
+    const a = alphaFn === "redirect"
+      ? (Math.sin(nowMs / 1000 * 14) > 0 ? 1 : 0.45)
+      : 0.45 + 0.4 * (0.5 + 0.5 * Math.sin(nowMs / 1000 * Math.PI * 2));
     ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.strokeStyle = `rgba(${color},${0.55 + 0.35 * pulse})`;
-    ctx.lineWidth = 3;
-    ctx.shadowColor = `rgba(${color},1)`;
-    ctx.shadowBlur = 12;
-    ctx.beginPath();
-    ctx.arc(0, 0, 46 + 6 * pulse, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(0, 0, 58 - 5 * pulse, now * 1.4, now * 1.4 + Math.PI * 1.5);
-    ctx.stroke();
+    ctx.globalAlpha *= a;
+    drawCenteredImage(ctx, shipImg, sw, sh);
     ctx.restore();
   };
-  const drawZoneRing = (wx, wy, radius, color) => {
-    const ox = wx - rx, oy = wy - ry;
+  // Halo aspirant exact (Draw Fire violet, Realloc vert) : pulsation 1/s,
+  // l'anneau naît au bord et se referme au centre.
+  const drawSuckHalo = (radius, glow, stroke) => {
+    const prog = (nowMs / 1000) % 1;
+    const rr = Math.max(4, radius * (1 - prog));
     ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.strokeStyle = `rgba(${color},${0.5 + 0.3 * pulse})`;
-    ctx.lineWidth = 3;
-    ctx.shadowColor = `rgba(${color},1)`;
-    ctx.shadowBlur = 10;
+    ctx.globalAlpha = Math.max(0, Math.min(1, 0.25 + prog * 0.55));
+    try { ctx.drawImage(haloGlowSprite(glow), -rr, -rr, rr * 2, rr * 2); } catch {}
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = Math.max(0.5, 2 + prog * 4);
     ctx.beginPath();
-    ctx.arc(ox, oy, Math.max(20, radius), 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.globalAlpha = 0.10 + 0.05 * pulse;
-    ctx.fillStyle = `rgba(${color},1)`;
-    ctx.beginPath();
-    ctx.arc(ox, oy, Math.max(20, radius), 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  };
-  const drawLink = (tx, ty, color) => {
-    const ox = tx - rx, oy = ty - ry;
-    if (Math.hypot(ox, oy) > 3000) return;
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.strokeStyle = `rgba(${color},${0.6 + 0.3 * pulse})`;
-    ctx.lineWidth = 2.5;
-    ctx.shadowColor = `rgba(${color},1)`;
-    ctx.shadowBlur = 8;
-    ctx.setLineDash([10, 7]);
-    ctx.lineDashOffset = -now * 40;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(ox, oy);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
-  };
-  const drawTargetRing = (tx, ty, color) => {
-    const ox = tx - rx, oy = ty - ry;
-    if (Math.hypot(ox, oy) > 3000) return;
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.strokeStyle = `rgba(${color},${0.6 + 0.3 * pulse})`;
-    ctx.lineWidth = 3;
-    ctx.shadowColor = `rgba(${color},1)`;
-    ctx.shadowBlur = 12;
-    ctx.beginPath();
-    ctx.arc(ox, oy, 44 + 6 * pulse, 0, Math.PI * 2);
+    ctx.arc(0, 0, rr, 0, TAU);
     ctx.stroke();
     ctx.restore();
   };
-  const drawSpeedStreaks = () => {
-    const ang = Number(r.rangle ?? r.angle) || 0;
+  // Anneau de Jamx/Creed : halo arc-en-ciel expansif (repli du halo monde).
+  const drawJamRing = (maxR, ageSec) => {
+    const k = Math.max(0, Math.min(1, ageSec / 1.0));
+    const rr = Math.max(8, maxR * k);
+    const hue = Math.floor(nowMs / 100) % 360;
     ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.strokeStyle = `rgba(160,230,255,${0.5 + 0.3 * pulse})`;
-    ctx.lineWidth = 2;
-    ctx.rotate(ang);
-    for (let i = -1; i <= 1; i++) {
-      ctx.beginPath();
-      ctx.moveTo(-50, i * 16);
-      ctx.lineTo(-50 - 34 - 14 * pulse, i * 16);
-      ctx.stroke();
-    }
+    ctx.globalAlpha = 0.8 * (1 - k * 0.7);
+    ctx.strokeStyle = `hsl(${hue},100%,60%)`;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(0, 0, rr, 0, TAU);
+    ctx.stroke();
     ctx.restore();
   };
-  // Hologramme Mimesis distant : 4 échos (positions dérivées, effet 3 s).
-  // En local ce sont de vrais sosies qui explosent ; ici échos non
-  // verrouillables (l'explosion de fin est le halo + son déjà diffusés).
-  const drawHoloEchoes = (secLeft) => {
+  // Hologramme Mimesis distant : 4 VRAIS sosies (coque du distant, comme en
+  // local) + pop final. Non verrouillables (leurres 3 s).
+  const drawHoloGhosts = (secLeft) => {
+    if (!isImgReady(shipImg)) return;
     const offs = [[-95, 0], [95, 0], [0, -70], [0, 70]];
     const fade = Math.max(0.12, Math.min(1, Number(secLeft || 1.8) / 3));
     const flick = 0.35 + 0.25 * Math.sin(now * 25);
     ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = Math.min(0.75, fade * flick + 0.15);
-    ctx.strokeStyle = "rgba(180,240,255,0.9)";
-    ctx.lineWidth = 2;
+    ctx.globalAlpha = Math.min(0.8, fade * flick + 0.2);
+    ctx.imageSmoothingEnabled = false;
     for (const [ox, oy] of offs) {
       ctx.save();
       ctx.translate(ox, oy);
-      ctx.beginPath();
-      ctx.moveTo(18, 0);
-      ctx.lineTo(-12, -11);
-      ctx.lineTo(-6, 0);
-      ctx.lineTo(-12, 11);
-      ctx.closePath();
-      ctx.stroke();
+      drawCenteredImage(ctx, shipImg, sw, sh);
       ctx.restore();
     }
     ctx.restore();
-    // Pop final (dernière demi-seconde) : anneau expansif sur chaque écho.
+    // Pop final (dernière demi-seconde) : anneau expansif sur chaque sosie.
     if (Number(secLeft) < 0.5) {
       const k = 1 - Math.max(0, Number(secLeft) || 0) * 2;
       ctx.save();
@@ -31790,82 +32012,540 @@ function drawRemoteAbilityFx(r) {
       ctx.restore();
     }
   };
-  // Triple barrage distant : 2 échos REX autour du PET (ou du vaisseau).
+  // Triple barrage distant : 2 échos REX (vrai sprite du PET distant).
   // Rôle combat (réservoirs HP liés) local uniquement, comme avant.
   const drawTbrEchoes = () => {
-    let px = 0, py = 0;
+    let px = 0, py = 0, pl = 1;
     try {
       if (Number(r.peta) === 1) {
         px = (Number(r.petrx ?? r.petx) || 0) - rx;
         py = (Number(r.petry ?? r.pety) || 0) - ry;
+        pl = Math.max(1, Math.min(32, Math.round(Number(r.petl) || 1)));
       }
     } catch {}
+    const pframe = ((Math.floor(nowMs / 1000 * 8) % 32) + 1);
+    let pimg = null;
+    try {
+      pimg = getCachedImage(`${getPetStageBase(pl)}${pframe}.png`);
+      if (!isImgReady(pimg)) { loadImage(`${getPetStageBase(pl)}${pframe}.png`, { priority: true }); pimg = null; }
+    } catch { pimg = null; }
     const flick = 0.45 + 0.25 * Math.sin(now * 9);
     ctx.save();
-    ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = flick;
-    ctx.strokeStyle = "rgba(121,245,255,0.95)";
-    ctx.lineWidth = 2;
-    ctx.shadowColor = "rgba(121,245,255,1)";
-    ctx.shadowBlur = 8;
+    ctx.imageSmoothingEnabled = false;
     for (const [ox, oy] of [[px - 55, py], [px + 55, py]]) {
-      ctx.beginPath();
-      ctx.arc(ox, oy, 16, 0, Math.PI * 2);
-      ctx.stroke();
+      if (pimg) {
+        ctx.save();
+        ctx.translate(ox, oy);
+        drawCenteredImage(ctx, pimg, 64, 56);
+        ctx.restore();
+      } else {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.strokeStyle = "rgba(121,245,255,0.95)";
+        ctx.lineWidth = 2;
+        ctx.shadowColor = "rgba(121,245,255,1)";
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(ox, oy, 16, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
     ctx.restore();
   };
-  // Recon distant : balayage radar au-dessus du vaisseau (perception x2).
-  const drawReconSweep = (color) => {
-    const sweep = now * 2.2;
+  // Icône de statut 44px au-dessus de la cible (marqueur / JAMX : même
+  // recette que les icônes par la barre de vie des NPC).
+  const rfxStatusIcon = (folder, fps, frames, ox, oy) => {
+    const f = (Math.floor(nowMs / 1000 * fps) % frames) + 1;
+    const src = `ASSETS/APTITUDES/${folder}/${f}.png`;
+    const img = getCachedImage(src);
+    if (isImgReady(img)) {
+      ctx.save();
+      ctx.translate(ox, oy);
+      drawCenteredImage(ctx, img, 44, 44);
+      ctx.restore();
+    } else { try { loadImage(src, { priority: true }); } catch {} }
+  };
+  // Cible monde d'une aura (moi / distant / NPC partagé).
+  const rfxTargetWorld = (targetId) => {
+    try {
+      const id = String(targetId || "");
+      if (!id) return null;
+      if (id === String(netMyId())) return { x: Number(player.x) || 0, y: Number(player.y) || 0, kind: "me" };
+      const rem = getNetplayRemotes()?.get(id);
+      if (rem && !rem.dead) return { x: Number(rem.rx ?? rem.x) || 0, y: Number(rem.ry ?? rem.y) || 0, kind: "remote", remote: rem };
+      try {
+        const npc = enemiesById.get(id);
+        if (npc && Number(npc.hp) > 0) return { x: Number(npc.x) || 0, y: Number(npc.y) || 0, kind: "npc", npc };
+      } catch {}
+      try {
+        for (const e of enemies) {
+          if (e && String(e._netUid || "") === id && Number(e.hp) > 0) return { x: Number(e.x) || 0, y: Number(e.y) || 0, kind: "npc", npc: e };
+        }
+      } catch {}
+    } catch {}
+    return null;
+  };
+  // Contour sur la cible : coque du joueur visé (outline) ou NPC (contour).
+  const rfxTargetOutline = (tp, color, alpha) => {
+    if (!tp) return;
+    const ox = tp.x - rx, oy = tp.y - ry;
+    if (Math.hypot(ox, oy) > 3000) return;
+    if (tp.kind === "npc" && tp.npc) {
+      try {
+        const cfg = (typeof NPC_TYPES !== "undefined" && NPC_TYPES[tp.npc.type]) || {};
+        ctx.save();
+        ctx.translate(ox, oy);
+        drawEnemyContour(tp.npc, cfg, getEnemySpriteFrame(tp.npc, cfg, cfg.sprite), color, alpha);
+        ctx.restore();
+      } catch {}
+      return;
+    }
+    let fx = null;
+    try {
+      if (tp.kind === "me") {
+        const pk = ACTIVE_SHIP || SHIP_PACKS[0];
+        const fi = getPlayerSpriteFrame();
+        const si = (playerImgs[fi] || playerImgs[0]);
+        if (isImgReady(si)) fx = { img: si, w: pk.w ?? 170, h: pk.h ?? 170, frame: fi, key: `ship:${pk?.id || "player"}:${fi}` };
+      } else if (tp.remote) {
+        fx = rfxRemoteShip(tp.remote);
+        if (fx) fx = { ...fx, key: `netfxship:${tp.remote.id}:${fx.packId}:${fx.frame}` };
+      }
+    } catch {}
+    if (!fx) return;
+    ctx.save();
+    ctx.translate(ox, oy);
+    const sil = outlineSilhouette(fx.key, fx.img, fx.w, fx.h, color);
+    strokeOutlineCentered(sil, fx.w, fx.h, color, alpha);
+    drawCenteredImage(ctx, fx.img, fx.w, fx.h);
+    ctx.restore();
+  };
+  const drawShlLink = (tx, ty) => {
+    const ox = tx - rx, oy = ty - ry;
+    const x1 = 0, y1 = 0, x2 = ox, y2 = oy;
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 1 || len > 3000) return;
+    const nx = -dy / len, ny = dx / len;
+    const segs = 9;
+    const pass = (color, width, amp) => {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineJoin = "round";
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      for (let i = 1; i < segs; i++) {
+        const t = i / segs;
+        const off = (Math.random() * 2 - 1) * amp * Math.sin(t * Math.PI);
+        ctx.lineTo(x1 + dx * t + nx * off, y1 + dy * t + ny * off);
+      }
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      ctx.restore();
+    };
+    pass("rgba(190,120,255,0.85)", 5, 30);
+    pass("rgba(255,255,255,0.9)", 2, 30);
+    for (const [hx, hy] of [[x1, y1], [x2, y2]]) {
+      const glow = ctx.createRadialGradient(hx, hy, 0, hx, hy, 34);
+      glow.addColorStop(0, "rgba(200,150,255,0.5)");
+      glow.addColorStop(1, "rgba(200,150,255,0)");
+      ctx.save();
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 34, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+  };
+  // Faisceau Hecate exact : halo large + mid + flux + cœur + halos aux bouts.
+  const drawHecateBeam = (tx, ty) => {
+    const ox = tx - rx, oy = ty - ry;
+    if (Math.hypot(ox, oy) < 1 || Math.hypot(ox, oy) > 3000) return;
+    const t = now;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    ctx.strokeStyle = `rgba(${color},${0.55 + 0.3 * pulse})`;
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 2; i++) {
-      const a0 = sweep + i * Math.PI;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "rgba(170,90,255,0.22)";
+    ctx.lineWidth = 12;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(ox, oy); ctx.stroke();
+    ctx.strokeStyle = "rgba(200,140,255,0.65)";
+    ctx.lineWidth = 4;
+    ctx.shadowColor = "rgba(180,110,255,1)";
+    ctx.shadowBlur = 14;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(ox, oy); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(230,200,255,0.9)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([16, 14]);
+    ctx.lineDashOffset = -t * 160;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(ox, oy); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(255,255,255,0.95)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(ox, oy); ctx.stroke();
+    ctx.restore();
+    for (const [hx, hy, rr] of [[0, 0, 30], [ox, oy, 42]]) {
+      const glow = ctx.createRadialGradient(hx, hy, 0, hx, hy, rr);
+      glow.addColorStop(0, "rgba(190,130,255,0.55)");
+      glow.addColorStop(1, "rgba(190,130,255,0)");
+      ctx.save();
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(0, -62, 24, a0, a0 + Math.PI * 0.7);
+      ctx.arc(hx, hy, rr, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+  };
+  // Lien Volt : éclair bleu nuit simple + stun sur la cible (flash).
+  const drawTempestLink = (tx, ty, flashLeft) => {
+    const ox = tx - rx, oy = ty - ry;
+    const len = Math.hypot(ox, oy);
+    if (len < 1 || len > 3000) return;
+    const fade = Math.max(0, Math.min(1, Number(flashLeft || 0) / TEMPEST_LINK_BEAM_LIFE));
+    const nx = -oy / len, ny = ox / len;
+    const segs = 9;
+    const pass = (color, width) => {
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineJoin = "round";
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      for (let i = 1; i < segs; i++) {
+        const t = i / segs;
+        const off = (Math.random() * 2 - 1) * 30 * Math.sin(t * Math.PI);
+        ctx.lineTo(ox * t + nx * off, oy * t + ny * off);
+      }
+      ctx.lineTo(ox, oy);
       ctx.stroke();
+      ctx.restore();
+    };
+    pass("rgba(30,50,180,0.85)", 5);
+    pass("rgba(160,190,255,0.9)", 2);
+    const age = Math.max(0, 1.8 - Number(flashLeft || 0));
+    const lFrame = Math.floor(age * TEMPEST_LINK_FPS) + 1;
+    if (lFrame >= 1 && lFrame <= TEMPEST_LINK_FRAMES) {
+      const lSrc = `ASSETS/APTITUDES/TEMPEST_VOLTAGE_LINK_STUN/${lFrame}.png`;
+      const lImg = getCachedImage(lSrc);
+      ctx.save();
+      ctx.translate(ox, oy);
+      if (isImgReady(lImg)) drawCenteredImage(ctx, lImg, 220, 220);
+      else { try { loadImage(lSrc, { priority: true }); } catch {} }
+      ctx.restore();
+    }
+  };
+  // RAYGUN étiré lanceur->cible (même recette que le local).
+  const drawChsRay = (tx, ty, folders, flashLeft) => {
+    const ox = tx - rx, oy = ty - ry;
+    const rlen = Math.hypot(ox, oy);
+    if (rlen < 1 || rlen > 4000) return;
+    const rayTotal = RAYGUN_FRAMES / RAYGUN_FPS;
+    const rayEl = Math.max(0, Math.min(rayTotal, 1.8 - Number(flashLeft || 0)));
+    const rayFrame = (Math.floor(rayEl * RAYGUN_FPS) % RAYGUN_FRAMES) + 1;
+    const rAng = Math.atan2(oy, ox) + Math.PI;
+    for (const folder of folders) {
+      const rSrc = `COMBAT/RAYGUN/${folder}/${rayFrame}.png`;
+      const rImg = getCachedImage(rSrc);
+      if (isImgReady(rImg)) {
+        ctx.save();
+        ctx.translate(ox / 2, oy / 2);
+        ctx.rotate(rAng);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(rImg, -rlen / 2, -128, rlen, 256);
+        ctx.restore();
+      } else { try { loadImage(rSrc, { priority: true }); } catch {} }
+    }
+  };
+  // Séquence GA sur la cible (SHOT voyageur + START/CONTINUED/FINISH).
+  const drawGaFx = (tx, ty, secLeft) => {
+    const ox = tx - rx, oy = ty - ry;
+    if (Math.hypot(ox, oy) > 3000) return;
+    const dur = GA_DURATION;
+    const gaElapsed = Math.max(0, dur - Number(secLeft || 0));
+    const gaStartDur = GA_START_FRAMES / GA_FPS;
+    const gaFinishDur = GA_FINISH_FRAMES / GA_FPS;
+    const show = (src, size, dx = 0, dy = 0) => {
+      const img = getCachedImage(src);
+      ctx.save();
+      ctx.translate(ox + dx, oy + dy);
+      if (isImgReady(img)) drawCenteredImage(ctx, img, size, size);
+      else { try { loadImage(src, { priority: true }); } catch {} }
+      ctx.restore();
+    };
+    if (gaElapsed < GA_SHOT_TRAVEL) {
+      const k = Math.max(0, Math.min(1, gaElapsed / GA_SHOT_TRAVEL));
+      const sFrame = (Math.floor(gaElapsed * GA_FPS) % GA_SHOT_FRAMES) + 1;
+      show(`ASSETS/APTITUDES/HYPERION_EFFECT_SHOT/${sFrame}.png`, 140, -ox * (1 - k), -oy * (1 - k));
+    } else if (gaElapsed < GA_SHOT_TRAVEL + gaStartDur) {
+      const sElapsed = gaElapsed - GA_SHOT_TRAVEL;
+      const sFrame = Math.max(1, Math.min(GA_START_FRAMES, Math.floor(sElapsed * GA_FPS) + 1));
+      show(`ASSETS/APTITUDES/HYPERION_EFFECT_START/${sFrame}.png`, 280);
+      if (sFrame >= GA_START_OVERLAY_FROM) {
+        const cFrame = Math.max(1, Math.min(GA_CONT_FRAMES,
+          Math.floor((sFrame - GA_START_OVERLAY_FROM) / (GA_START_FRAMES - GA_START_OVERLAY_FROM) * GA_CONT_FRAMES) + 1));
+        show(`ASSETS/APTITUDES/HYPERION_EFFECT_CONTINUED/${cFrame}.png`, 280);
+      }
+    } else if (Number(secLeft || 0) > gaFinishDur) {
+      const cElapsed = gaElapsed - GA_SHOT_TRAVEL - gaStartDur;
+      const cFrame = (Math.floor(cElapsed * GA_FPS) % GA_CONT_FRAMES) + 1;
+      show(`ASSETS/APTITUDES/HYPERION_EFFECT_CONTINUED/${cFrame}.png`, 300);
+    } else {
+      const fElapsed = gaFinishDur - Number(secLeft || 0);
+      const fFrame = Math.max(1, Math.min(GA_FINISH_FRAMES, Math.floor(fElapsed * GA_FPS) + 1));
+      show(`ASSETS/APTITUDES/HYPERION_EFFECT_FINISH/${fFrame}.png`, 300);
+    }
+  };
+  // Cible bleue Disarray exacte (anneau + arcs + ticks orbitaux).
+  const drawDisarrayFx = (tx, ty, tr) => {
+    const ox = tx - rx, oy = ty - ry;
+    if (Math.hypot(ox, oy) > 3000) return;
+    const rr = Math.max(48, tr);
+    const t = now;
+    const blip = 0.55 + petLocatorPulse() * 0.3;
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.globalAlpha = Math.max(0, Math.min(1, blip));
+    ctx.strokeStyle = "rgba(90,170,255,0.95)";
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.stroke();
+    ctx.lineWidth = 5;
+    ctx.setLineDash([rr * 0.5, rr * 0.35]);
+    ctx.lineDashOffset = -t * rr * 0.9;
+    ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.stroke();
+    ctx.lineWidth = 4;
+    ctx.setLineDash([rr * 0.3, rr * 0.45]);
+    ctx.lineDashOffset = t * rr * 1.2;
+    ctx.beginPath(); ctx.arc(0, 0, rr * 0.72, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    const a1 = t * 1.8;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    for (let k = 0; k < 4; k++) {
+      const a = a1 + k * Math.PI / 2;
+      const c = Math.cos(a), s = Math.sin(a);
+      ctx.moveTo(c * (rr - 6), s * (rr - 6));
+      ctx.lineTo(c * (rr + 18), s * (rr + 18));
+    }
+    ctx.stroke();
+    ctx.fillStyle = "rgba(140,200,255,0.95)";
+    const a2 = -t * 2.6;
+    for (let k = 0; k < 3; k++) {
+      const a = a2 + k * TAU / 3;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * rr * 0.72, Math.sin(a) * rr * 0.72, 4, 0, TAU);
+      ctx.fill();
     }
     ctx.restore();
   };
-  const applyEntry = (code, fxX, fxY, fxTarget, secLeft) => {
+  // Répartiteur fidèle : même recette que le rendu local du lanceur.
+  // secLeft vient du snapshot (aura) ou vaut 1.8 (flash) ; flashLeft = 1.8
+  // pour les casts instantanés, 0 pour les auras.
+  const applyEntry = (code, fxX, fxY, fxTarget, secLeft, flashLeft) => {
     const st = REMOTE_FX_STYLE[Number(code)];
-    if (!st) return;
-    if (st.self) drawSelfRing(st.color);
-    if (st.zone) {
-      const wx = fxX || rx, wy = fxY || ry;
-      drawZoneRing(wx, wy, st.zone, st.color);
-    }
-    if (st.speed) drawSpeedStreaks();
-    if (st.recon) drawReconSweep(st.color);
-    if (Number(code) === 41) drawHoloEchoes(secLeft);
-    if (Number(code) === 77) drawTbrEchoes();
-    if ((st.link || st.target) && fxTarget) {
-      const tp = remoteFxTargetPos(fxTarget);
-      if (!tp) return;
-      if (st.link) drawLink(tp.x, tp.y, st.color);
-      if (st.target) drawTargetRing(tp.x, tp.y, st.color);
-    }
+    if (!st || st.kind === "none") return;
+    const kind = st.kind;
+    try {
+      if (kind === "sprite") { fxLoop(st.folder, st.fps, st.frames, st.w, st.h, st.dy || 0); return; }
+      if (kind === "outline") {
+        const a = st.pulse === "pet" ? petLocatorPulse()
+          : st.pulse === "blink10" ? (Math.sin(nowMs / 1000 * 10) > 0 ? 0.95 : 0.2)
+          : Number(st.pulse) || 1;
+        fxOutline(st.color, a);
+        return;
+      }
+      if (kind === "both") {
+        if (st.outline) {
+          const c = st.outline.color;
+          const a = c === "rainbow"
+            ? 0.95
+            : (st.outline.pulse === "pet" ? petLocatorPulse() : Number(st.outline.pulse) || 1);
+          const col = c === "rainbow" ? `hsl(${(Math.floor(nowMs / 100) % 12) * 30},100%,60%)` : c;
+          fxOutline(col, a);
+        }
+        if (st.sprite) { const s = st.sprite; fxLoop(s.folder, s.fps, s.frames, s.w, s.h, s.dy || 0); }
+        return;
+      }
+      if (kind === "berserk") {
+        const dur = Number(getAbilityInfo("ability_berserker_bsk")?.durationSec) || BSK_DURATION;
+        const prog = Math.max(0, Math.min(1, 1 - Number(secLeft || 0) / dur));
+        fxOutline("#ff4416", 0.65 + Math.sin(nowMs / 1000 * (5 + 9 * prog)) * 0.25);
+        fxLoop("BERSERKER_BERSERK_EFFECT", BSK_FPS, BSK_FRAMES, 226, 226);
+        return;
+      }
+      if (kind === "flames") {
+        // Les flammes sont dessinées une seule fois, avec les réacteurs.
+        return;
+      }
+      if (kind === "ring") { ctx.save(); ctx.translate(fxX - rx, fxY - ry); drawFireRing(st.radius); ctx.restore(); return; }
+      if (kind === "suck") { drawSuckHalo(st.radius, st.glow, st.stroke); return; }
+      if (kind === "ghosts") { drawHoloGhosts(secLeft); return; }
+      if (kind === "pets") { drawTbrEchoes(); return; }
+      if (kind === "blinkredraw") { drawBlinkRedraw(st.alphaFn); return; }
+      if (kind === "zigzag" && fxTarget) {
+        const tp = rfxTargetWorld(fxTarget);
+        if (tp) drawShlLink(tp.x, tp.y);
+        return;
+      }
+      if (kind === "beam" && fxTarget) {
+        const tp = rfxTargetWorld(fxTarget);
+        if (tp) drawHecateBeam(tp.x, tp.y);
+        return;
+      }
+      if (kind === "tlink" && fxTarget) {
+        const tp = rfxTargetWorld(fxTarget);
+        if (tp) drawTempestLink(tp.x, tp.y, flashLeft);
+        return;
+      }
+      if (kind === "raygun" && fxTarget) {
+        const tp = rfxTargetWorld(fxTarget);
+        if (tp) drawChsRay(tp.x, tp.y, st.folders, flashLeft);
+        return;
+      }
+      if (kind === "ga" && fxTarget) {
+        const tp = rfxTargetWorld(fxTarget);
+        if (tp) drawGaFx(tp.x, tp.y, secLeft);
+        return;
+      }
+      if (kind === "tsprite" && fxTarget) {
+        const tp = rfxTargetWorld(fxTarget);
+        if (!tp) return;
+        const ox = tp.x - rx, oy = tp.y - ry;
+        if (Math.hypot(ox, oy) > 3000) return;
+        ctx.save();
+        ctx.translate(ox + (st.dx || 0), oy + (st.dy || 0));
+        fxLoop(st.folder, st.fps, st.frames, st.w, st.h);
+        ctx.restore();
+        return;
+      }
+      if (kind === "disarray" && fxTarget) {
+        const tp = rfxTargetWorld(fxTarget);
+        if (!tp) return;
+        let tr = 78;
+        try {
+          if (tp.kind === "npc" && tp.npc) {
+            const sz = enemySpriteSize(tp.npc);
+            tr = Math.max(48, Math.max(sz.w, sz.h) / 2 + 30);
+          }
+        } catch {}
+        drawDisarrayFx(tp.x, tp.y, tr);
+        return;
+      }
+      if (kind === "tmark" && fxTarget) {
+        const tp = rfxTargetWorld(fxTarget);
+        if (!tp) return;
+        const blink = st.blinkHz === 14
+          ? 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(nowMs / 1000 * 14))
+          : 0.3 + 0.65 * (0.5 + 0.5 * Math.sin(nowMs / 1000 * 10));
+        rfxTargetOutline(tp, st.color, blink);
+        const ox = tp.x - rx, oy = tp.y - ry;
+        if (Math.hypot(ox, oy) <= 3000) rfxStatusIcon("SPEARHEAD_PLUS_NEUTRALIZING_MARKER", MARK_SPR_FPS, MARK_SPR_FRAMES, ox + 34, oy - 70);
+        return;
+      }
+      if (kind === "jamring") {
+        const age = Math.max(0, 1.8 - Number(flashLeft || 0));
+        drawJamRing(st.radius, age);
+        return;
+      }
+    } catch {}
   };
-  // Auras persistantes (snapshot).
+  // Auras persistantes (snapshot). flashLeft = 0.
   try {
     const afx = Array.isArray(r.afx) ? r.afx : [];
     for (const entry of afx.slice(0, 8)) {
       if (!Array.isArray(entry)) continue;
       const code = Math.floor(Number(entry[0]) || 0);
-      if (!(code > 0)) continue;
-      applyEntry(code, Number(entry[2]) || 0, Number(entry[3]) || 0, entry[4], Number(entry[1]) || 0);
+      if (!(code > 0) || !(Number(entry[1]) > 0)) continue;
+      try {
+        applyEntry(code, Number(entry[2]) || 0, Number(entry[3]) || 0, entry[4], Number(entry[1]) || 0, 0);
+      } catch {}
     }
   } catch {}
   // Flash d'activation (1,8 s, casts instantanés + timing des poses).
   try {
     const fl = r.fxFlash;
-    if (fl && Number(fl.until) > nowMs && Number(fl.code) > 0) {
-      applyEntry(Number(fl.code), Number(fl.x) || 0, Number(fl.y) || 0, fl.target, 1.8);
+    if (fl && Number(fl.until) > nowMs && Number(fl.code) > 0
+      && !(Array.isArray(r.afx) && r.afx.some(entry => Number(entry[0]) === Number(fl.code) && Number(entry[1]) > 0))) {
+      const left = (Number(fl.until) - nowMs) / 1000;
+      const secLeft = Math.max(0, Number(fl.sec || 1.8) - Math.max(0, nowMs - Number(fl.startedAt ?? nowMs)) / 1000);
+      try {
+        applyEntry(Number(fl.code), Number(fl.x) || 0, Number(fl.y) || 0, fl.target, secLeft, left);
+      } catch {}
     }
   } catch {}
+}
+
+// Les zones déployées restent au point de cast et ont leur propre visibilité.
+function drawNetplayAbilityZones(ox, oy) {
+  const remotes = getNetplayRemotes();
+  if (!remotes) return;
+  const now = performance.now();
+  for (const r of remotes.values()) {
+    if (!r || r.dead || r.cloaked || r.cloakCpu) continue;
+    if (!(r.afx?.length > 0) && !(Number(r.fxFlash?.until) > now)) {
+      r._abilityZonePulses?.clear();
+      continue;
+    }
+    const entries = Array.isArray(r.afx) ? r.afx.slice() : [];
+    const fl = r.fxFlash;
+    if (fl && fl.until > now && !entries.some(entry => Number(entry[0]) === Number(fl.code))) {
+      entries.push([fl.code, Math.max(0, Number(fl.sec || 1.8) - (now - Number(fl.startedAt ?? now)) / 1000), fl.x, fl.y, fl.target]);
+    }
+    const pulses = r._abilityZonePulses || (r._abilityZonePulses = new Map());
+    const active = new Set();
+    for (const [code, remaining, fxX, fxY] of entries) {
+      if (!(remaining > 0)) continue;
+      const pod = code === 2 || code === 24 || code === 25;
+      const nebula = code === 4;
+      const protection = code === 12 || code === 13;
+      const ripper = code === 47;
+      if (!pod && !nebula && !protection && !ripper) continue;
+      const x = pod || nebula ? fxX : Number(r.rx ?? r.x);
+      const y = pod || nebula ? fxY : Number(r.ry ?? r.y);
+      const radius = nebula ? NEBULA_RADIUS : pod ? (code === 25 ? HAMMER_PLUS_POD_RADIUS : REPAIR_POD_RADIUS)
+        : protection ? PROTECTION_RADIUS : RIPPER_RADIUS;
+      active.add(code);
+      if (x + ox < -radius || y + oy < -radius || x + ox > innerWidth + radius || y + oy > innerHeight + radius) continue;
+      if (pod) drawRepairPodAt(x + ox, y + oy);
+      else if (nebula) drawNebulaAt(x + ox, y + oy, remaining);
+      if (!nebula) {
+        const duration = Number(getAbilityInfo(abilityIdForFxCode(code))?.durationSec) || remaining;
+        const sec = Math.floor(Math.max(0, duration - remaining));
+        if (pulses.get(code) !== sec) {
+          pulses.set(code, sec);
+          spawnHaloPulse(x, y, radius, pod ? 0.9 : 1,
+            pod ? "55,255,125" : protection ? "200,170,255" : "255,210,80",
+            pod ? "80,255,145" : protection ? "230,210,255" : "255,240,170", null, 1, 6, false);
+        }
+      }
+    }
+    for (const code of pulses.keys()) if (!active.has(code)) pulses.delete(code);
+  }
+}
+
+function drawNetplayAbilityEffects(ox, oy) {
+  const remotes = getNetplayRemotes();
+  if (!remotes) return;
+  const now = performance.now();
+  for (const r of remotes.values()) {
+    if (!r || r.dead || r.cloaked || r.cloakCpu) continue;
+    if (!(r.afx?.length > 0) && !(Number(r.fxFlash?.until) > now)) continue;
+    // Une aura sur une cible reste visible même si son lanceur est hors écran.
+    ctx.save();
+    try {
+      ctx.translate(Number(r.rx ?? r.x) + ox, Number(r.ry ?? r.y) + oy);
+      drawRemoteAbilityFx(r);
+    } finally { ctx.restore(); }
+  }
 }
 
 function drawNetplayRemotes(ox, oy) {
@@ -31949,7 +32629,11 @@ function drawNetplayRemotes(ox, oy) {
     // Tirs de l'allie : vrais projectiles visuels (tickNetplayVisuals),
     // pas de faisceau.
     ctx.save();
-    ctx.translate(x, y);
+    // Tremblement d'aptitude distante (voir remoteAbilityShake).
+    try {
+      const rfxShake = remoteAbilityShake(r);
+      ctx.translate(x + rfxShake.x, y + rfxShake.y);
+    } catch { ctx.translate(x, y); }
     const pack = netplayPackFor(r.shipId);
     let drawn = false;
     let remoteFrame = 0;
@@ -32013,8 +32697,8 @@ function drawNetplayRemotes(ox, oy) {
     } catch {}
     // Phase 2 : auras d'aptitudes distantes (halos, contours, pods, liens,
     // marqueurs, streaks de vitesse). Camouflages jamais diffusés : rien ici.
-    try { drawRemoteAbilityFx(r); } catch {}
     // Reacteurs du copain (memes flammes que la coque locale).
+    // Boost actif : SPEED_BUFF_EFFECT à la place, comme en local.
     try {
       let eng = netplayEngines.get(r.id);
       if (!eng) {
@@ -32030,8 +32714,16 @@ function drawNetplayRemotes(ox, oy) {
       eng.y = wy;
       eng.px = wx;
       eng.py = wy;
-      shipEngine.update(eng, pack, 0.016, GAME_SETTINGS.shipSmoke);
-      shipEngine.draw(ctx, eng, pack, isImgReady, remoteFrame);
+      const rBoost = remoteBoostInfo(r);
+      if (rBoost) {
+        const dur = Number(getAbilityInfo(abilityIdForFxCode(rBoost.code) || "")?.durationSec) || 0;
+        const elapsed = dur > 0 ? Math.max(0, dur - rBoost.sec) : null;
+        const moving = r.moving === true || Math.hypot(Number(r.vx) || 0, Number(r.vy) || 0) > 8;
+        drawTravelEngineFxFor(eng, pack, remoteFrame, elapsed, rBoost.sec, 24, moving);
+      } else {
+        shipEngine.update(eng, pack, 0.016, GAME_SETTINGS.shipSmoke);
+        shipEngine.draw(ctx, eng, pack, isImgReady, remoteFrame);
+      }
       // Les flammes seules etaient dessinees auparavant. Le meme emetteur de
       // particules que le vaisseau local produit maintenant la trainee monde,
       // avec un accumulateur persistant dans `eng`.
@@ -32393,10 +33085,44 @@ const AEGIS_POD_FRAMES = 32;
 // Montants officiels : Aegis 280k/140k coque, 125k/75k bouclier ;
 // Hammerclaw 350k/175k coque, 180k/120k bouclier.
 const ALLY_HEAL_RADIUS = 1000;
-// Soins de groupe (HoTs + pods) vers les JOUEURS de même firme autour.
+// Joueurs hostiles dans un rayon (AoE d'aptitudes) : même firme, même
+// clan ou ZNA exclus (pas de tir ami). Les dégâts partent en pvpHit
+// (serveur tranche, victime voit les chiffres via le feed).
+function pvpFoesInRadius(cx, cy, radius) {
+  const out = [];
+  try {
+    if (player.dead || !started || !netplayNpcActive()) return out;
+    let myFirm = "";
+    try { myFirm = String(account.user?.faction || "").toLowerCase(); } catch {}
+    let myClan = "";
+    try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
+    const r2 = Number(radius) * Number(radius);
+    if (!(r2 > 0)) return out;
+    let remotes = null;
+    try { remotes = getNetplayRemotes(); } catch {}
+    for (const e of netPlayerProxies.values()) {
+      if (!e || !e._netPlayer || !(Number(e.hp) > 0)) continue;
+      if (e._netSafe === true) continue;
+      const dx = Number(e.x) - cx, dy = Number(e.y) - cy;
+      if (dx * dx + dy * dy > r2) continue;
+      let firm = "", tag = "";
+      try {
+        const rem = remotes?.get(String(e._netPlayer));
+        firm = String(rem?.firm || "").toLowerCase();
+        tag = String(rem?.clan || "").toUpperCase();
+      } catch {}
+      if (myFirm && firm && firm === myFirm) continue;
+      if (myClan && tag && tag === myClan) continue;
+      out.push(e);
+    }
+  } catch {}
+  return out;
+}
+// Pod Aegis : membres du groupe autour du pod. Les autres réparations
+// conservent leur sélection de joueurs de même firme.
 // Le serveur tranche et crédite (rayon, montant, cadence, aura active) ;
-// la victime affiche le +X via le flux ohAt/ohAmt. Ici : prédiction locale
-// du +X sur la cible (comme les chiffres de dégâts sur les ennemis).
+// Le pod Aegis transmet le gain confirmé par skillFx à chaque bénéficiaire.
+// Les autres soins utilisent le flux ohAt/ohAmt et leur prédiction locale.
 // - single=true (HoTs) : le plus blessé seulement ;
 // - single=false (pods) : tous les blessés dans le rayon.
 function healPlayerAllies(abilityId, allyAmt, isShield, cx, cy, radius, single) {
@@ -32406,9 +33132,12 @@ function healPlayerAllies(abilityId, allyAmt, isShield, cx, cy, radius, single) 
     if (!key.startsWith("ability_")) return;
     const amt = Math.round(Number(allyAmt) || 0);
     if (!(amt > 0) || !(radius > 0)) return;
+    const groupPod = key === "ability_aegis_repair-pod";
+    const members = groupPod ? new Set((getNetGroup()?.members || []).map(member => String(member.id))) : null;
+    if (groupPod && !members.size) return;
     let myFirm = "";
     try { myFirm = String(account.user?.faction || "").toLowerCase(); } catch {}
-    if (!myFirm) return;
+    if (!groupPod && !myFirm) return;
     let remotes = null;
     try { remotes = getNetplayRemotes(); } catch { return; }
     if (!remotes || !remotes.size) return;
@@ -32417,7 +33146,7 @@ function healPlayerAllies(abilityId, allyAmt, isShield, cx, cy, radius, single) 
     const cands = [];
     for (const [rid, r] of remotes) {
       if (!r || r.dead || String(rid) === me) continue;
-      if (String(r.firm || "").toLowerCase() !== myFirm) continue;
+      if (groupPod ? !members.has(String(rid)) : String(r.firm || "").toLowerCase() !== myFirm) continue;
       const rx = Number(r.rx ?? r.x), ry = Number(r.ry ?? r.y);
       if (!Number.isFinite(rx) || !Number.isFinite(ry)) continue;
       const dx = rx - cx, dy = ry - cy;
@@ -32435,6 +33164,7 @@ function healPlayerAllies(abilityId, allyAmt, isShield, cx, cy, radius, single) 
     const yOff = isShield ? -110 : -90;
     for (const c of list) {
       try { sendHealAlly({ target: c.rid, amt, ability: key, shield: isShield }); } catch {}
+      if (groupPod) continue; // Le +X est affiché à réception du gain confirmé.
       try {
         addFloatText(
           c.rx + (Math.random() - 0.5) * 60,
@@ -35398,6 +36128,17 @@ if (movementLocked) {
       player.rocketSlowPct = Number(self.slowPct) || 0;
       player.rocketSlowT = Math.max(Number(player.rocketSlowT) || 0, Number(self.slowT) || 0);
       player.freezeT = Math.max(Number(player.freezeT) || 0, Number(self.freezeT) || 0);
+      // Brouillage subi : modules verrouillés + lock coupé (comme une IEM).
+      player.jamT = Math.max(0, Number(self.jamT) || 0);
+      if ((player.jamT || 0) > 0) {
+        try {
+          const locked = Target.get();
+          if (locked && (locked._netPlayer != null || locked._netPet != null)) {
+            Target.clear();
+            attackActive = false;
+          }
+        } catch {}
+      }
     }
     if (self && Number(self.pvpAt) > 0 && Number(self.pvpAt) !== lastPvpAdoptAt) {
       lastPvpAdoptAt = Number(self.pvpAt);
@@ -38147,6 +38888,7 @@ function draw() {
 
   // Multi etape 1 : autres joueurs de la meme map (interpole, triangle + pseudo).
   try { drawNetplayRemotes(ox, oy); } catch {}
+  try { drawNetplayAbilityEffects(ox, oy); } catch {}
 
   // ✅ bubble d'impact PAR-DESSUS le vaisseau : elle reste visible même si
   // le point d'impact est sur la silhouette du vaisseau.
@@ -38159,6 +38901,7 @@ function draw() {
   try { drawDeployedHammerPod(ox, oy, true); } catch {}
   // Nébuleuse toxique posée (Basilisk).
   try { drawDeployedNebula(ox, oy); } catch {}
+  try { drawNetplayAbilityZones(ox, oy); } catch {}
   // SHL (Berserker) : lien visible entre le vaisseau et la cible.
   // Même zigzag électrique que le lien du REX, mais en violet.
   try {

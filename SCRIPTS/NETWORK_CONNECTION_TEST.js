@@ -341,6 +341,59 @@ test("une coupure reseau conserve la reconnexion automatique", () => {
   assert.equal(c.intervals.size, 1);
 });
 
+test("aptitudes distantes : annulation transmise et auras expirées sans nouveau snapshot", () => {
+  const c = client(), socket = c.sockets[0];
+  socket.receive({ t: "snapshot", at: 10000, players: [{ id: "remote", x: 100, y: 100, afx: [[10, 1, 0, 0, ""]] }] });
+  const remote = c.api.getNetplayRemotes().get("remote");
+  c.advance(400); c.api.tickNetplayRemotes(0.016);
+  assert.ok(Math.abs(remote.afx[0][1] - 0.6) < 1e-8);
+  c.api.tickNetplayRemotes(0.016);
+  assert.ok(Math.abs(remote.afx[0][1] - 0.6) < 1e-8, "pas de double décompte dans la même frame");
+  socket.receive({ t: "skillFx", skill: "ability_citadel_fortify", by: "remote", enabled: false, at: 10400, until: 10400 });
+  assert.equal(c.api.drainNetSkillInbox()[0].enabled, false);
+  c.advance(800); c.api.tickNetplayRemotes(0.016);
+  assert.equal(remote.afx.length, 0);
+});
+
+test("Liberator Plus : le protocole conserve l'aura complète et les montants des ticks", () => {
+  const c = client(), socket = c.sockets[0];
+  c.api.sendSkillUse("ability_liberator-plus_self-repair", { phase: "heal", amount: 10000 });
+  assert.equal(socket.sent.at(-1).phase, "heal");
+  assert.equal(socket.sent.at(-1).amount, 10000);
+  socket.receive({ t: "snapshot", at: 10000, players: [{ id: "remote", x: 100, y: 100, afx: [[73, 10, 0, 0, ""]] }] });
+  assert.equal(c.api.getNetplayRemotes().get("remote").afx[0][1], 10);
+  socket.receive({ t: "skillFx", by: "remote", skill: "ability_liberator-plus_self-repair", phase: "heal", amount: 10000, at: 11000, until: 11000 });
+  const event = c.api.drainNetSkillInbox()[0];
+  assert.equal(event.phase, "heal");
+  assert.equal(event.amount, 10000);
+});
+
+test("aptitudes distantes : mort et camouflage effacent les visuels précédents", () => {
+  for (const state of [{ dead: true }, { cloaked: true }, { cloakCpu: true }]) {
+    const c = client(), socket = c.sockets[0];
+    socket.receive({ t: "snapshot", at: 10000, players: [{ id: "remote", x: 100, y: 100, afx: [[10, 10, 0, 0, ""]], ...state }] });
+    const remote = c.api.getNetplayRemotes().get("remote");
+    remote.fxFlash = { code: 10, until: 99999 };
+    c.api.tickNetplayRemotes(0.016);
+    assert.equal(remote.afx.length, 0);
+    assert.equal(remote.fxFlash, null);
+  }
+});
+
+test("pod Aegis : le protocole livre le gain confirmé avec son bénéficiaire", () => {
+  const c = client(), socket = c.sockets[0];
+  c.api.sendHealAlly({ target: "recipient", ability: "ability_aegis_repair-pod", amt: 18000 });
+  assert.equal(socket.sent.at(-1).target, "recipient");
+  assert.equal(socket.sent.at(-1).amt, 18000);
+  socket.receive({ t: "skillFx", by: "caster", target: "recipient", skill: "ability_aegis_repair-pod",
+    phase: "heal", amount: 1000, at: 11000, until: 11000 });
+  const event = c.api.drainNetSkillInbox()[0];
+  assert.equal(event.target, "recipient");
+  assert.equal(event.phase, "heal");
+  assert.equal(event.amount, 1000);
+  assert.equal(c.api.drainNetSkillInbox().length, 0, "événement consommé une seule fois");
+});
+
 test("une session remplacee affiche son motif meme si la simulation est gelee", () => {
   const c = client();
   Object.assign(c.api, { started: true, starting: false, linkDead: true, kickedReason: null,

@@ -17,6 +17,7 @@ import {
   healSpecFor,
   isHealAbility,
   HEAL_MIN_INTERVAL_MS,
+  fxDebuffsOn,
 } from "../SRC/CORE/ABILITY_FX.js";
 import { ABILITIES, ABILITY_IDS, getAbilityInfo } from "../SHIP/SHIP_ABILITIES.js";
 import { useMovementAbility, movementSpeed } from "./MOVEMENT_RULES.js";
@@ -36,7 +37,6 @@ test("toutes les aptitudes done ont un code fx, sauf camouflages et soins instan
     "ability_hammerclaw-plus_hp-repair",
     "ability_hammerclaw_shield-repair",
     "ability_hammerclaw-plus_shield-repair",
-    "ability_liberator-plus_self-repair",
     "ability_solace",
     "ability_solace-plus_nano-cluster-repairer-plus",
   ]);
@@ -155,6 +155,23 @@ test("bypass aura : actif ou grâce 2 s, sinon refusé", () => {
   assert.equal(abilityHitBypass({ _abilityFx: { ability_venom: { until: now - 1000 } } }, "ability_venom", now), true, "grâce");
   assert.equal(abilityHitBypass({ _abilityFx: { ability_venom: { until: now - 5000 } } }, "ability_venom", now), false);
   assert.equal(abilityHitBypass({ _abilityFx: {} }, "ability_lightning", now), false);
+});
+
+test("debuffs lanceur : diminish/holo/marqueurs, expirés ignorés", () => {
+  const now = 5_000_000;
+  assert.deepEqual(fxDebuffsOn(null, "u_v", now), { weaken: 0, penBonus: 0, dmgMult: 1 });
+  const fx = {
+    ability_diminisher: { until: now + 5000, target: "u_v" },
+    "ability_holo_enemy-reversal": { until: now + 5000, target: "u_v" },
+    "ability_spearhead-plus_target-marker": { until: now + 5000, target: "u_v" },
+    ability_venom: { until: now + 5000, target: "u_v" },
+    ability_diminisher_expired: { until: now - 1, target: "u_v" },
+  };
+  assert.deepEqual(fxDebuffsOn(fx, "u_v", now), { weaken: 0.5, penBonus: 0.1, dmgMult: 1.1 });
+  assert.deepEqual(fxDebuffsOn(fx, "u_autre", now), { weaken: 0, penBonus: 0, dmgMult: 1 });
+  assert.deepEqual(
+    fxDebuffsOn({ ability_diminisher: { until: now - 100, target: "u_v" } }, "u_v", now),
+    { weaken: 0, penBonus: 0, dmgMult: 1 });
 });
 
 test("registre soins groupe : 9 aptitudes, rayons et caps officiels", () => {
