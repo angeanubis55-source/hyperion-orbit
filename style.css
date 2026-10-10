@@ -21392,6 +21392,11 @@ html body #profileOverlay .shopPreview .previewOwnedCheck {
   color:#00ff88 !important;
   font-weight:900 !important;
 }
+/* Jauges + mode P.E.T masqués (P.E.T inactif) : bat le display !important. */
+html body #petWindow.petMetersHidden .barWrap.petMeters,
+html body #petWindow.petMetersHidden .petModeRow {
+  display:none !important;
+}
 /* Descriptions gears/protocoles : une seule ligne, sans retour auto. */
 html body #shopOverlay .shopPreview .shopItemStat.singleline,
 html body #profileOverlay .shopPreview .shopItemStat.singleline {

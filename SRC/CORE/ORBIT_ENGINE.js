@@ -101,6 +101,7 @@ import { getShipEffectStats, getShipBonusInfo } from "../../SHIP/SHIP_BONUSES.js
 import { GAME_VERSION } from "../DATA/VERSION.js";
 import { getShipPackById as getShipPackByIdData, getShipDesignBaseId } from "../../SHIP/SHIP_PACKS.js";
 import { getAbilityInfo, formatAbilityTiming, policeAbilityIds, abilityIconFile } from "../../SHIP/SHIP_ABILITIES.js";
+import { abilityFxCodeFor, abilityIdForFxCode } from "./ABILITY_FX.js";
 import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, formationDockIcon, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath, isClassicFormation } from "../../DRONE/DRONE_TYPES.js";
 import { getOfficialDroneFormationPositions } from "../../DRONE/DRONE_FORMATIONS.js";
 import { PET_XP_SHARE, PET_FUEL_MAX, PET_FUEL_TICK_SEC, PET_FUEL_BASE_TICK, PET_FUEL_GEAR_TICK, PET_FUEL_ONESHOT, getPetDamageBonus, getPetLevel, getPetLevelXp, getPetNextLevelXp, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
@@ -1127,6 +1128,7 @@ const ui = {
   petFuelTxt: document.getElementById("petFuelTxt"),
   petFuelBuyBtn: document.getElementById("petFuelBuyBtn"),
   petNoPet: document.getElementById("petNoPet"),
+  petMeters: document.querySelector("#petWindow .petMeters"),
 
   honorTxt: document.getElementById("honorTxt"),
   xpTxt: document.getElementById("xpTxt"),
@@ -1284,6 +1286,10 @@ const PROTECTION_SHARE = 0.25;
 // 1→2→3→2→1, alternance 3↔2 à l'arrêt toutes les 100 ms).
 const TRAVEL_DURATION = 5;
 const TRAVEL_COOLDOWN = 60;
+// Voyage Yamato : clone exact du Voyage Citadel (x2, 5 s, CD 60 s),
+// état SÉPARÉ (yamatoT/yamatoCd) — pas de partage avec travelT.
+const YAMATO_TRAVEL_DURATION = 5;
+const YAMATO_TRAVEL_COOLDOWN = 60;
 // Fortification (Citadel / Citadel+, officiel) : 10 s, recharge 360 s.
 // -80 % de dégâts subis, vitesse plafonnée à 200, pas de saut (portails).
 // Visuel : contour uber blanc clignotant.
@@ -1511,6 +1517,24 @@ function reportMovementAbility(skill, enabled = true, target = null) {
   if (!key) return;
   try { sendSkillUse(key, { enabled, target: target?._netPlayer || target?._netUid || "" }); } catch {}
 }
+// Phase 2 (visibilité réseau) : annonce un cast d'aptitude NON-mouvement
+// au serveur (validation + diffusion aura/flash aux autres joueurs).
+// Les aptitudes mouvement passent déjà par reportMovementAbility ;
+// les camouflages ne sont jamais annoncés (invisibilité gameplay).
+// À appeler sur le chemin de SUCCÈS des activate* (après les checks
+// cooldown/mort), et avec enabled=false sur les coupures toggle.
+function reportAbilityCast(abilityId, enabled = true) {
+  try {
+    const key = String(abilityId || "").toLowerCase();
+    if (!key.startsWith("ability_")) return;
+    if (key === "ability_admin-ultimate-cloaking"
+      || key === "ability_spearhead_ultimate-cloak"
+      || key === "ability_spearhead-plus_ultimate-cloak") return;
+    let target = null;
+    try { target = Target.get(); } catch { target = null; }
+    sendSkillUse(key, { enabled, target: target?._netPlayer || target?._netUid || "" });
+  } catch {}
+}
 
 function activateSolPlus() {
   if (player.dead || !started) return;
@@ -1549,16 +1573,22 @@ function drawFireRing(radius) {
   ctx.stroke();
   ctx.restore();
 }
-// --- Solaris Incinerate officiel : 10 s, 10k dps dans 300 autour (100k).
-// Toggle (re-clic = arret + recharge). JAMX plus tard.
-// Solaris Plus : 15k dps dans 600 autour (150k), CD 80 s.
-const INC_DURATION = 10;
+// --- Solaris Incineration (spec SHIP_ABILITIES) : halo 3 s puis burst
+// final 75k + éjection (1200 base / 1600 Plus). Toggle (re-clic = arrêt
+// SANS burst + recharge). Brûlure 1 hit/s pendant le halo conservée.
+// Solaris Plus : même modèle, halo 800, CD 80 s. Passif Locked+Loaded
+// (voir shipPassiveDamageMult).
+const INC_DURATION = 3;
 const INC_COOLDOWN = 90;
-const INC_RADIUS = 300;
+const INC_RADIUS = 600;
 const INC_DPS = 25000;
+const INC_FINAL_DMG = 75000;
+const INC_EJECT = 1200;
+const INC_PLUS_DURATION = 3;
 const INC_PLUS_COOLDOWN = 80;
-const INC_PLUS_RADIUS = 600;
+const INC_PLUS_RADIUS = 800;
 const INC_PLUS_DPS = 50000;
+const INC_PLUS_EJECT = 1600;
 function startIncCooldown(plus) {
   // Variante explicite (true = Plus, false = base) ; sans param = le vaisseau.
   // Chaque bouton gère SA compétence : finir/couper l'une ne touche pas l'autre.
@@ -1589,6 +1619,7 @@ function activateInc(forcePlus) {
   // L'autre variante tourne en parallèle sans être touchée.
   if (plus ? (player.incPlusT || 0) > 0 : (player.incT || 0) > 0) {
     startIncCooldown(plus);
+    reportAbilityCast(plus ? "ability_solaris-plus_incinerate-plus" : "ability_solaris_inc", false);
     showNotification("Incinération coupée", 1.5, "info");
     return;
   }
@@ -1597,9 +1628,9 @@ function activateInc(forcePlus) {
     showNotification(`Incinération${plus ? " Plus" : ""} : recharge ${Math.ceil(cd)} s`, 2, "info");
     return;
   }
-  if (plus) { player.incPlusT = INC_DURATION; player.incPlusAcc = 0; }
+  if (plus) { player.incPlusT = INC_PLUS_DURATION; player.incPlusAcc = 0; }
   else { player.incT = INC_DURATION; player.incAcc = 0; }
-  persistCdUntil(plus ? "incPlusFx" : "incFx", INC_DURATION);
+  persistCdUntil(plus ? "incPlusFx" : "incFx", plus ? INC_PLUS_DURATION : INC_DURATION);
   showNotification(plus ? "Halo 800" : "Halo 600", 2.5, "info");
 }
 // Tient un NPC : attaques coupees + aspire en orbite autour de nous.
@@ -1617,6 +1648,37 @@ function incBurn(plus) {
     if (out && (out.total || 0) > 0) {
       try { queueVolleyFloat(e, out, volleySeq++, 1); } catch {}
     }
+  }
+}
+// Burst final d'Incinération (fin NATURELLE du halo uniquement, jamais sur
+// toggle-cut) : 75k à tous les ennemis dans le halo + éjection radiale des
+// NPC (1200 base / 1600 Plus). Les joueurs adverses subissent le burst via
+// damageEnemy->sendPvpHit ; leur mouvement reste autoritaire serveur (pas
+// de téléport forcée distante).
+function incFinalBurst(plus) {
+  const radius = plus ? INC_PLUS_RADIUS : INC_RADIUS;
+  const eject = plus ? INC_PLUS_EJECT : INC_EJECT;
+  const ability = plus ? "ability_solaris-plus_incinerate-plus" : "ability_solaris_inc";
+  const r2 = radius * radius;
+  const cx = Number(player.x) || 0, cy = Number(player.y) || 0;
+  for (const e of enemies) {
+    if (!e || !(e.hp > 0)) continue;
+    try {
+      if (dist2(cx, cy, e.x, e.y) > r2) continue;
+    } catch { continue; }
+    let out = null;
+    try { out = damageEnemy(e, INC_FINAL_DMG, undefined, undefined, { ability }); } catch {}
+    if (out && (out.total || 0) > 0) {
+      try { queueVolleyFloat(e, out, volleySeq++, 1); } catch {}
+    }
+    // Éjection NPC uniquement (ni joueur local ni proxy réseau).
+    try {
+      if (e._netPlayer != null || e._netPet != null || e.isPetTarget) continue;
+      const dx = Number(e.x) - cx, dy = Number(e.y) - cy;
+      const d = Math.hypot(dx, dy) || 1;
+      e.x = Number(e.x) + (dx / d) * eject;
+      e.y = Number(e.y) + (dy / d) * eject;
+    } catch {}
   }
 }
 // Sentinel Forteresse : +10 % du précédent (composé) au max ET au courant
@@ -1784,6 +1846,10 @@ function startChsCooldown() {
 }
 function cancelChsCharge() {
   // Charge interrompue (cible morte, mort, refresh) : pas de recharge.
+  // Le serveur est prévenu (fenêtre d'exécution + cooldown libérés).
+  try {
+    sendSkillUse(player.chsPlus ? "ability_retiarus-plus_chsp" : "ability_retiarus_chs", { enabled: false });
+  } catch {}
   player.chsPhase = null;
   player.chsT = 0;
   player.chsTarget = null;
@@ -1816,6 +1882,12 @@ function activateChs(isPlus = false) {
     t.rocketSlowT = Math.max(Number(t.rocketSlowT || 0), player.chsDur);
   } catch {}
   persistCdUntil("chsFx", player.chsDur + 5);
+  // Fenêtre d'exécution serveur (one-shot vérifié) : après validation du
+  // lock, avec la cible jointe (joueur ou NPC).
+  try {
+    sendSkillUse(isPlus ? "ability_retiarus-plus_chsp" : "ability_retiarus_chs",
+      { target: t?._netPlayer || t?._netUid || "" });
+  } catch {}
   try { SFX.play("retiarusCharge", { cooldown: 0.05, cut: true }); } catch {}
   try {
     for (let i = 1; i <= RAYGUN_FRAMES; i++) {
@@ -1870,9 +1942,12 @@ function fireChsBeam(t) {
   player.combatT = 5.0;
   // 100 % de la vie de la cible : one-shot (seul le passif Paladin survit).
   // +10 % de marge : la variance de ±5 % des dégâts ne doit jamais le rater.
+  // Tag d'exécution : le serveur contourne l'enveloppe du profil sur droit
+  // frais (fenêtre posée au cast), sinon le one-shot serait rejeté.
   const dmg = Math.round((Number(t.sh || 0) + Number(t.hp || 0)) * 1.1);
+  const chsAbility = player.chsPlus ? "ability_retiarus-plus_chsp" : "ability_retiarus_chs";
   let out = null;
-  try { out = damageEnemy(t, dmg, 1.0); } catch {}
+  try { out = damageEnemy(t, dmg, 1.0, undefined, { ability: chsAbility }); } catch {}
   if (out && (out.total || 0) > 0) {
     try { queueVolleyFloat(t, out, volleySeq++, 1); } catch {}
   }
@@ -2019,6 +2094,7 @@ function tryLastStand() {
     );
   } catch {}
   showNotification("Dernier rempart : coque restaurée !", 2.5, "info");
+  reportAbilityCast("ability_paladin_last-stand");
   return true;
 }
 // Orcus Assimilate : 80 % de TOUS les dégâts reçus (NPC + joueurs) convertis
@@ -2402,6 +2478,7 @@ function shipAbilityTimerMap() {
       ["drawFireFx", "drawFire", "drawFireT", "drawFireCd", DRAW_FIRE_DURATION, DRAW_FIRE_COOLDOWN],
       ["protectionFx", "protection", "protectionT", "protectionCd", PROTECTION_DURATION, PROTECTION_COOLDOWN],
       ["travelFx", "travel", "travelT", "travelCd", TRAVEL_DURATION, TRAVEL_COOLDOWN],
+      ["yamatoFx", "yamato", "yamatoT", "yamatoCd", YAMATO_TRAVEL_DURATION, YAMATO_TRAVEL_COOLDOWN],
       ["fortifyFx", "fortify", "fortifyT", "fortifyCd", FORTIFY_DURATION, FORTIFY_COOLDOWN],
       ["prismFx", "prism", "prismT", "prismCd", PRISM_DURATION, PRISM_COOLDOWN],
       ["specFx", "spec", "specT", "specCd", SPEC_DURATION, SPEC_COOLDOWN],
@@ -2421,7 +2498,7 @@ function shipAbilityTimerMap() {
       ["sentFx", "sent", "sentT", "sentCd", SENT_DURATION, SENT_COOLDOWN],
       ["reconFx", "recon", "reconT", "reconCd", RECON_DURATION, RECON_COOLDOWN],
       ["incFx", "inc", "incT", "incCd", INC_DURATION, INC_COOLDOWN],
-      ["incPlusFx", "incPlus", "incPlusT", "incPlusCd", INC_DURATION, INC_PLUS_COOLDOWN],
+      ["incPlusFx", "incPlus", "incPlusT", "incPlusCd", INC_PLUS_DURATION, INC_PLUS_COOLDOWN],
       ["sapFx", "sap", "sapT", "sapCd", SAP_DURATION, SAP_COOLDOWN],
       ["spcFx", "spc", "spcT", "spcCd", SPC_DURATION, SPC_COOLDOWN],
       ["spcPlusFx", "spcPlus", "spcPlusT", "spcPlusCd", SPCP_DURATION, SPCP_COOLDOWN],
@@ -2528,6 +2605,12 @@ function handleShipAbilitySwitch(prevScope, nextScope) {
     const prev = abilityShipScope(prevScope);
     const next = abilityShipScope(nextScope);
     if (!prev || !next || prev === next) return;
+    // Camouflage actif : coupé comme à la mort, la recharge démarre
+    // (sinon l'effet serait annulé sans contrepartie).
+    if ((player.cloakT || 0) > 0) {
+      player.cloakT = 0;
+      startPoliceCloakCooldown();
+    }
     saveShipTimersToScope(prev);
     clearPlayerAbilityTimers();
     loadShipTimersFromScope(next);
@@ -2572,6 +2655,7 @@ function activateShl() {
   // Annulable à tout moment : réactiver coupe le lien (la recharge démarre).
   if ((player.shlT || 0) > 0) {
     cancelShl();
+    reportAbilityCast("ability_berserker_shl", false);
     showNotification("Lien coupé", 2, "info");
     return;
   }
@@ -2780,6 +2864,39 @@ function activateTravel() {
   player.travelT = TRAVEL_DURATION;
   reportMovementAbility("travel");
   persistCdUntil("travelFx", TRAVEL_DURATION);
+  try {
+    for (let i = 1; i <= 3; i++) {
+      loadImage(`ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${i}.png`, { priority: true });
+    }
+  } catch {}
+  showNotification("Voyage actif (5 s) : vitesse x2", 2, "info");
+}
+// --- Voyage Yamato : clone du Voyage Citadel, état séparé.
+// reportMovementAbility("travel") résout déjà l'id du vaisseau actif
+// (ability_yamato_travel via currentAbilityShipMatch), et le serveur
+// connaît la règle (MOVEMENT_RULES). Visuel : même SPEED_BUFF_EFFECT.
+function startYamatoTravelCooldown() {
+  player.yamatoCd = YAMATO_TRAVEL_COOLDOWN;
+  persistCdUntil("yamatoFx", 0);
+  persistCdUntil("yamato", YAMATO_TRAVEL_COOLDOWN);
+}
+function cancelYamatoTravel() {
+  if ((player.yamatoT || 0) <= 0) return;
+  reportMovementAbility("travel", false);
+  player.yamatoT = 0;
+  startYamatoTravelCooldown();
+}
+function activateYamatoTravel() {
+  if (player.dead || !started) return;
+  const cd = Number(player.yamatoCd || 0);
+  if (cd > 0) {
+    showNotification(`Voyage : recharge ${Math.ceil(cd)} s`, 2, "info");
+    return;
+  }
+  if ((player.yamatoT || 0) > 0) return;
+  player.yamatoT = YAMATO_TRAVEL_DURATION;
+  reportMovementAbility("travel");
+  persistCdUntil("yamatoFx", YAMATO_TRAVEL_DURATION);
   try {
     for (let i = 1; i <= 3; i++) {
       loadImage(`ASSETS/APTITUDES/SPEED_BUFF_EFFECT/${i}.png`, { priority: true });
@@ -3129,6 +3246,7 @@ function tryTempestBackup() {
     }
   } catch {}
   showNotification("Volt Back-up : invincible 10 s — soigne-toi vite !", 3, "info");
+  reportAbilityCast("ability_tempest_volt-backup");
   return true;
 }
 // --- Volt Discharge : +1 % laser par laser équipé (vaisseau + drones).
@@ -3564,15 +3682,16 @@ function cyborgBeamTick() {
   }
   // Exécution dès que la cible passe sous 150k HP.
   if (tgt.hp > 0 && Number(tgt.hp || 0) < CYBORG_EXECUTE) {
-    try { singularityExecute(tgt, CYBORG_EXECUTE, "Singularité II"); } catch {}
+    try { singularityExecute(tgt, CYBORG_EXECUTE, "Singularité II", "ability_cyborg_singularity"); } catch {}
   }
 }
 // Exécution de fin de singularité : cible sous le seuil = one-shot direct coque.
-function singularityExecute(tgt, threshold, label) {
+// Tag d'exécution vérifié serveur (aura active requise), sinon 99M rejetés.
+function singularityExecute(tgt, threshold, label, ability) {
   if (!tgt || !(tgt.hp > 0)) return false;
   if (Number(tgt.hp || 0) >= threshold) return false;
   let out = null;
-  try { out = damageEnemy(tgt, 99999999, 1.0); } catch {}
+  try { out = damageEnemy(tgt, 99999999, 1.0, undefined, { ability }); } catch {}
   if (out && (out.total || 0) > 0) {
     try { queueVolleyFloat(tgt, out, volleySeq++, 1); } catch {}
   }
@@ -3634,7 +3753,7 @@ function venomBeamTick() {
   }
   // Exécution dès que la cible passe sous 100k HP.
   if (tgt.hp > 0 && Number(tgt.hp || 0) < VENOM_EXECUTE) {
-    try { singularityExecute(tgt, VENOM_EXECUTE, "Singularité"); } catch {}
+    try { singularityExecute(tgt, VENOM_EXECUTE, "Singularité", "ability_venom"); } catch {}
   }
 }
 function activateVenom() {
@@ -4903,6 +5022,13 @@ function restorePersistedCds() {
   } else {
     player.travelCd = Math.min(TRAVEL_COOLDOWN, Math.max(Number(player.travelCd || 0), persistedCdLeft("travel")));
   }
+  // Voyage Yamato coupé par un refresh : même règle, état séparé.
+  if (persistedCdLeft("yamatoFx") > 0) {
+    player.yamatoT = 0;
+    startYamatoTravelCooldown();
+  } else {
+    player.yamatoCd = Math.min(YAMATO_TRAVEL_COOLDOWN, Math.max(Number(player.yamatoCd || 0), persistedCdLeft("yamato")));
+  }
   // Fortification coupée par un refresh : effet perdu, la recharge démarre.
   if (persistedCdLeft("fortifyFx") > 0) {
     player.fortifyT = 0;
@@ -5259,6 +5385,7 @@ function restorePersistedCds() {
     applyT("drawFireFx", "drawFireT", DRAW_FIRE_DURATION);
     applyT("protectionFx", "protectionT", PROTECTION_DURATION);
     applyT("travelFx", "travelT", TRAVEL_DURATION);
+    applyT("yamatoFx", "yamatoT", YAMATO_TRAVEL_DURATION);
     applyT("fortifyFx", "fortifyT", FORTIFY_DURATION);
     applyT("prismFx", "prismT", PRISM_DURATION);
     applyT("specFx", "specT", SPEC_DURATION);
@@ -5276,7 +5403,7 @@ function restorePersistedCds() {
     applyT("reconFx", "reconT", RECON_DURATION);
     // Incinération : deux circuits indépendants (parallèle possible).
     if (applyT("incFx", "incT", INC_DURATION)) player.incAcc = 0;
-    if (applyT("incPlusFx", "incPlusT", INC_DURATION)) player.incPlusAcc = 0;
+    if (applyT("incPlusFx", "incPlusT", INC_PLUS_DURATION)) player.incPlusAcc = 0;
     applyT("sapFx", "sapT", SAP_DURATION);
     applyT("spcFx", "spcT", SPC_DURATION);
     applyT("spcPlusFx", "spcPlusT", SPCP_DURATION);
@@ -6060,6 +6187,13 @@ function getAbilityCooldown(abilityId) {
     }
     return { left: Number(player.travelCd || 0), max: TRAVEL_COOLDOWN };
   }
+  if (travelId === "ability_yamato_travel") {
+    if ((player.yamatoT || 0) > 0) {
+      const total = YAMATO_TRAVEL_DURATION + YAMATO_TRAVEL_COOLDOWN;
+      return { left: total, max: total };
+    }
+    return { left: Number(player.yamatoCd || 0), max: YAMATO_TRAVEL_COOLDOWN };
+  }
   const fortifyId = String(abilityId || "").toLowerCase();
   if (fortifyId === "ability_citadel_fortify" || fortifyId === "ability_citadel-plus_fortify") {
     if ((player.fortifyT || 0) > 0) {
@@ -6227,8 +6361,9 @@ function getAbilityCooldown(abilityId) {
     }
     return { left: Number(player.holoGramCd || 0), max: HOLOGRAM_COOLDOWN };
   }
-  // Orcus : pendant les 20 s voile plein, après la recharge descend.
-  if (String(abilityId || "").toLowerCase() === "ability_orcus_assimilate") {
+  // Orcus / Orcus Plus : pendant l'effet voile plein, après la recharge descend.
+  if (String(abilityId || "").toLowerCase() === "ability_orcus_assimilate"
+    || String(abilityId || "").toLowerCase() === "ability_orcus-plus_assimilate") {
     if ((player.orcusT || 0) > 0) {
       const total = Number(player.orcusDuration || activeOrcusDuration()) + ORCUS_COOLDOWN;
       return { left: total, max: total };
@@ -6268,7 +6403,7 @@ function getAbilityCooldown(abilityId) {
     }
     return { left: Number(player.reconCd || 0), max: RECON_COOLDOWN };
   }
-  // Solaris / Plus : pendant les 10 s voile plein, après la recharge descend.
+  // Solaris / Plus : pendant le halo voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_solaris_inc") {
     if ((player.incT || 0) > 0) {
       const total = INC_DURATION + INC_COOLDOWN;
@@ -6278,7 +6413,7 @@ function getAbilityCooldown(abilityId) {
   }
   if (String(abilityId || "").toLowerCase() === "ability_solaris-plus_incinerate-plus") {
     if ((player.incPlusT || 0) > 0) {
-      const total = INC_DURATION + INC_PLUS_COOLDOWN;
+      const total = INC_PLUS_DURATION + INC_PLUS_COOLDOWN;
       return { left: total, max: total };
     }
     return { left: Number(player.incPlusCd || 0), max: INC_PLUS_COOLDOWN };
@@ -6802,7 +6937,7 @@ function initializeCustomActionBar() {
     { ship: "Lightning", ships: ["lightning", "vengeance_lightning"], ids: ["ability_lightning"] },
     { ship: "Mimesis", ships: ["mimesis"], ids: ["ability_mimesis_hologram", "ability_mimesis_phase-out", "ability_mimesis_scramble"] },
     { ship: "Orcus", ships: ["orcus"], ids: ["ability_orcus_assimilate"] },
-    { ship: "Orcus Plus", ships: ["orcus_plus"], ids: ["ability_orcus_assimilate", "ability_orcus-plus_target-marker"] },
+    { ship: "Orcus Plus", ships: ["orcus_plus"], ids: ["ability_orcus-plus_assimilate", "ability_orcus-plus_target-marker"] },
     { ship: "Paladin", ships: ["paladin"], ids: ["ability_paladin_last-stand", "ability_paladin_ripper"] },
     { ship: "Pusat Plus", ships: ["pusat_plus"], ids: ["ability_pusat-plus_speed-sap"] },
     { ship: "Retiarus Plus", ships: ["retiarus_plus"], ids: ["ability_retiarus-plus_chsp", "ability_retiarus-plus_spcp"] },
@@ -6820,8 +6955,32 @@ function initializeCustomActionBar() {
     { ship: "Tartarus", ships: ["tartarus"], ids: ["ability_tartarus_rapid-fire", "ability_tartarus_speed-boost"] },
     { ship: "Tempest", ships: ["tempest"], ids: ["ability_tempest_volt-backup", "ability_tempest_volt-discharge", "ability_tempest_voltage-link"] },
     { ship: "Venom", ships: ["venom"], ids: ["ability_venom"] },
+    { ship: "Yamato", ships: ["yamato", "yamato_ronin", "yamato_violet"], ids: ["ability_yamato_travel"] },
     { ship: "Zephyr", ships: ["zephyr"], ids: ["ability_zephyr_mmt", "ability_zephyr_tbr"] },
   ];
+  // Aptitudes qui s'annoncent déjà au réseau dans leurs activate via
+  // reportMovementAbility / sendSkillUse (état enabled géré pour les
+  // toggles) : le dispatch ne doit pas les ré-émettre en optimiste.
+  const MOVEMENT_ANNOUNCED_ABILITIES = new Set([
+    "ability_lightning",
+    "ability_citadel_travel",
+    "ability_citadel-plus_travel",
+    "ability_yamato_travel",
+    "ability_holo_self-reversal",
+    "ability_retiarus_spc",
+    "ability_retiarus-plus_spcp",
+    "ability_pusat-plus_speed-sap",
+    "ability_solace-plus_nano-cluster-repairer-plus",
+    "ability_tartarus_speed-boost",
+    "ability_tartarus-plus_speed-boost-plus",
+    "ability_mimesis_scramble",
+    "ability_mimesis_phase-out",
+    "ability_keres_sle",
+    // Tir chargé : émission explicite dans activateChs (après validation du
+    // lock) + cancelChsCharge, car la charge (~3 s) peut avorter.
+    "ability_retiarus_chs",
+    "ability_retiarus-plus_chsp",
+  ]);
   function abilityIconSrc(name) {
     return `ASSETS/APTITUDES/ICONS/${abilityIconFile(name)}`;
   }
@@ -6849,7 +7008,7 @@ function initializeCustomActionBar() {
         let tip = `${abilityInfo.name}\n${description}`;
         if (abilityInfo.buff) tip += `\nBuff : ${abilityInfo.buff}`;
         if (abilityInfo.nerf) tip += `\nNerf : ${abilityInfo.nerf}`;
-        if (name === "ability_orcus_assimilate") tip += `\nTemps : 20 s (24 s sur Orcus Plus)`;
+        if (name === "ability_orcus_assimilate" || name === "ability_orcus-plus_assimilate") tip += `\nTemps : 20 s (24 s sur Orcus Plus)`;
         else if (Number.isFinite(dur) && dur > 0) tip += `\nTemps : ${dur} s`;
         else if (dur === 0) tip += `\nImmédiat`;
         if (Number.isFinite(cd) && cd > 0) tip += `\nCD : ${cd} s`;
@@ -6881,6 +7040,25 @@ function initializeCustomActionBar() {
             refreshActiveActionPalette?.();
           } catch {}
           return;
+        }
+        // Phase 2 (visibilité réseau) : annonce optimiste du cast aux autres
+        // joueurs. Le serveur valide (vaisseau + vivant + cooldown) et diffuse
+        // l'aura/le flash. Exclus : camouflages (invisibles par design) et
+        // aptitudes mouvement (déjà annoncées via reportMovementAbility dans
+        // leurs activate, avec l'état enabled correct pour les toggles).
+        // La cible lockée est jointe (marqueurs, venom, ancre...), sinon les
+        // autres ne pourraient pas afficher l'effet sur elle. Les aptitudes
+        // à cible ennemie sans lock ne sont PAS annoncées : l'activate local
+        // refuserait ("verrouille d'abord") mais le serveur aurait déjà
+        // consommé cooldown/aura -> désync au cast réel suivant.
+        if (!isCloakAbility(name) && !MOVEMENT_ANNOUNCED_ABILITIES.has(String(name).toLowerCase())) {
+          try {
+            const needTarget = String(getAbilityInfo(name)?.target || "") === "enemy";
+            const lt = Target.get();
+            if (!needTarget || (lt && lt.hp > 0)) {
+              sendSkillUse(name, { target: lt?._netPlayer || lt?._netUid || "" });
+            }
+          } catch {}
         }
         if (isCloakAbility(name)) {
           activatePoliceCloak();
@@ -6920,6 +7098,10 @@ function initializeCustomActionBar() {
         }
         if (name === "ability_citadel_travel" || name === "ability_citadel-plus_travel") {
           activateTravel();
+          return;
+        }
+        if (name === "ability_yamato_travel") {
+          activateYamatoTravel();
           return;
         }
         if (name === "ability_citadel_fortify" || name === "ability_citadel-plus_fortify") {
@@ -7045,7 +7227,7 @@ function initializeCustomActionBar() {
           activateHologram();
           return;
         }
-        if (name === "ability_orcus_assimilate") {
+        if (name === "ability_orcus_assimilate" || name === "ability_orcus-plus_assimilate") {
           activateOrcus();
           return;
         }
@@ -7560,6 +7742,7 @@ function initializeCustomActionBar() {
       try { cancelDrawFire(); } catch {}
       try { cancelProtection(); } catch {}
       try { cancelTravel(); } catch {}
+      try { cancelYamatoTravel(); } catch {}
       try { cancelFortify(); } catch {}
   try { cancelPrism(); } catch {}
   try { cancelSpec(); } catch {}
@@ -12840,6 +13023,10 @@ function updatePetHud() {
         ? "+100 essence — 10 000 crédits (sans activer le REX)"
         : shownActive ? "Désactiver le P.E.T" : "Activer le P.E.T");
     setHudClass(ui.petPlayBtn, "isOn", shownActive);
+    // Jauges (coque, bouclier, carburant, niveau) masquées quand le bouton
+    // affiche goutte, clé ou play : visibles uniquement P.E.T actif.
+    // (Classe dédiée : le display:grid !important du CSS bat le style inline.)
+    try { ui.petWindow?.classList.toggle("petMetersHidden", !shownActive); } catch {}
   }
   // Menu custom Mode (+ gears équipés, noms boutique, un seul choix actif).
   if (ui.petModeBtn && ui.petModeList) {
@@ -15480,6 +15667,7 @@ window.resetAllSkills = function resetAllSkills() {
   try { player.drawFireCd = 0; } catch {}
   try { player.protectionCd = 0; } catch {}
   try { player.travelCd = 0; } catch {}
+  try { player.yamatoCd = 0; } catch {}
   try { player.fortifyCd = 0; } catch {}
   try { player.prismCd = 0; } catch {}
   try { player.specCd = 0; } catch {}
@@ -16567,6 +16755,8 @@ function pickEnemyAtScreen(sx, sy) {
       for (const e of netPlayerProxies.values()) {
         if (!e || !(e.hp > 0)) continue;
         if (Number(e._netIemT || 0) > 0) continue;
+        // Camouflage d'aptitude : non verrouillable (comme sous IEM).
+        if (e._netCloaked === true) continue;
         const dx = w.x - e.x;
         const dy = w.y - e.y;
         if (Math.abs(dx) > 85 || Math.abs(dy) > 85) continue;
@@ -16914,6 +17104,7 @@ function drawShipEngineFx() {
   // Voyage (Citadel), Postcombustion (Lightning) et Sleight (Keres) :
   // à la place des réacteurs, le speed buff effect.
   if ((player.travelT || 0) > 0) { drawTravelEngineFx(TRAVEL_DURATION - Number(player.travelT || 0), Number(player.travelT || 0), 24); return; }
+  if ((player.yamatoT || 0) > 0) { drawTravelEngineFx(YAMATO_TRAVEL_DURATION - Number(player.yamatoT || 0), Number(player.yamatoT || 0), 24); return; }
   if ((player.lightT || 0) > 0) { drawTravelEngineFx(LIGHT_DURATION - Number(player.lightT || 0), Number(player.lightT || 0), 24); return; }
   if ((player.solBoostT || 0) > 0) { drawTravelEngineFx(SOLACE_PLUS_BOOST - Number(player.solBoostT || 0), Number(player.solBoostT || 0), 24); return; }
   if ((player.sleightT || 0) > 0) { drawTravelEngineFx(Number(player.sleightElapsed || 0), 1, 24); return; }
@@ -19201,6 +19392,7 @@ function syncActionDockState() {
         : lowId === "ability_citadel_draw-fire" || lowId === "ability_citadel-plus_draw-fire" ? Number(player.drawFireT || 0)
         : lowId === "ability_citadel_protection" || lowId === "ability_citadel-plus_protection" ? Number(player.protectionT || 0)
         : lowId === "ability_citadel_travel" || lowId === "ability_citadel-plus_travel" ? Number(player.travelT || 0)
+        : lowId === "ability_yamato_travel" ? Number(player.yamatoT || 0)
         : lowId === "ability_citadel_fortify" || lowId === "ability_citadel-plus_fortify" ? Number(player.fortifyT || 0)
         : lowId === "ability_citadel-plus_prismatic-endurance" ? Number(player.prismT || 0)
         : lowId === "ability_spectrum" ? Number(player.specT || 0)
@@ -19222,7 +19414,7 @@ function syncActionDockState() {
         : lowId === "ability_lightning" ? Number(player.lightT || 0)
         : lowId === "ability_mimesis_scramble" ? (Number(player.scrambleT || 0) > 0 ? 1 : 0)
         : lowId === "ability_mimesis_hologram" ? (player.holoGramPhase != null ? 1 : 0)
-        : lowId === "ability_orcus_assimilate" ? Number(player.orcusT || 0)
+        : lowId === "ability_orcus_assimilate" || lowId === "ability_orcus-plus_assimilate" ? Number(player.orcusT || 0)
         : lowId === "ability_cyborg_singularity" ? Number(player.cyborgT || 0)
         : lowId === "ability_venom" ? Number(player.venomT || 0)
         : lowId === "ability_sentinel" ? Number(player.sentT || 0)
@@ -19866,6 +20058,16 @@ function updateTradeButtonCursor(clientX, clientY) {
   return Boolean(hoveredModule);
 }
 
+// Survol NPC / P.E.T (même main que box, portails et terminaux).
+function updateEnemyCursor(clientX, clientY) {
+  let hovered = null;
+  try {
+    if (typeof pickEnemyAtScreen === "function") hovered = pickEnemyAtScreen(clientX, clientY);
+  } catch {}
+  if (hovered) canvas.style.cursor = "pointer";
+  return Boolean(hovered);
+}
+
 function isPlayerNearTradeModule(module) {
   if (!module) return false;
   if (isPlayerNearBaseModule(module)) return true;
@@ -19897,7 +20099,9 @@ canvas.addEventListener(
 
     const overTradeButton = updateTradeButtonCursor(e.clientX, e.clientY);
 
-    if (!overPortalButton && !overQuestButton && !overTradeButton) {
+    const overEnemy = updateEnemyCursor(e.clientX, e.clientY);
+
+    if (!overPortalButton && !overQuestButton && !overTradeButton && !overEnemy) {
       updateCollectableCursor(e.clientX, e.clientY);
     }
   },
@@ -25704,7 +25908,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
     const amount = Math.max(0, Math.round(Number(dmg) || 0));
     try {
       sendPvpHit({ target: e._netPlayer, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult,
-        slowPct: opts.slowPct, slowSec: opts.slowSec, freezeSec: opts.freezeSec, rocket: opts.rocket });
+        slowPct: opts.slowPct, slowSec: opts.slowSec, freezeSec: opts.freezeSec, rocket: opts.rocket, ability: opts.ability });
     } catch {}
     return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
   }
@@ -25837,6 +26041,7 @@ e._pendingSpawn = 20;
         slowSec: opts.slowSec,
         freezeSec: opts.freezeSec,
         rocket: opts.rocket,
+        ability: opts.ability,
       });
     } catch {}
   }
@@ -25988,8 +26193,10 @@ function hurtPlayer(amount, source = null) {
     return;
   }
 
-  // Orcus Assimilate : 80 % de tous les dégâts reçus (NPC + joueurs)
-  // convertis en PV (+x verts). Les 20 % restants passent normalement.
+  // Orcus Assimilate : 80 % des dégâts NPC reçus convertis en PV (+x verts).
+  // Les 20 % restants passent normalement. Les dégâts de JOUEURS sont
+  // convertis côté serveur (pvpHit, _orcusUntil) car le client n'adopte
+  // que les baisses serveur.
   if ((player.orcusT || 0) > 0) {
     const conv = Math.max(0, Math.round(Number(amount) || 0) * ORCUS_ABSORB);
     if (conv > 0 && !player.dead) {
@@ -29100,7 +29307,15 @@ function syncNetPlayers(dt = 0.016) {
       e.rocketSlowT = Number(r.rocketSlowT) || 0;
       e.freezeT = Number(r.freezeT) || 0;
       e._netIemT = Number(r.iemT) || 0;
+      e._netCloaked = r.cloaked === true;
+      // Phase 2 : auras d'aptitudes visibles ([code, secLeft, x, y, target]).
+      e.afx = Array.isArray(r.afx) ? r.afx : [];
       if (e._netIemT > 0 && Target.get() === e) {
+        Target.clear();
+        attackActive = false;
+      }
+      // Camouflage d'aptitude du distant : lock coupé comme par une IEM.
+      if (r.cloaked === true && Target.get() === e) {
         Target.clear();
         attackActive = false;
       }
@@ -30112,6 +30327,20 @@ function die() {
   try { cancelDrawFire(); } catch {}
   try { cancelProtection(); } catch {}
   try { cancelTravel(); } catch {}
+  try { cancelYamatoTravel(); } catch {}
+  // Tartarus boosts (toggles) : coupés à la mort comme au switch.
+  try {
+    if (player.tartBoostOn === true) {
+      player.tartBoostOn = false;
+      reportMovementAbility("ability_tartarus_speed-boost", false);
+    }
+  } catch {}
+  try {
+    if (player.tartPlusBoostOn === true) {
+      player.tartPlusBoostOn = false;
+      reportMovementAbility("ability_tartarus-plus_speed-boost-plus", false);
+    }
+  } catch {}
   try { cancelFortify(); } catch {}
   try { cancelPrism(); } catch {}
   try { cancelDiminish(); } catch {}
@@ -30688,6 +30917,8 @@ function minimapAllies() {
     const dots = [];
     for (const rr of remotes.values()) {
       if (!rr || rr.dead) continue;
+      // Camouflage d'aptitude : pas de point (le CPU garde le sien).
+      if (rr.cloaked === true) continue;
       const firm = String(rr.firm || "").toLowerCase();
       const same = myFirm !== "" && firm === myFirm;
       const tag = String(rr.clan || "").toUpperCase().slice(0, 5);
@@ -31258,6 +31489,28 @@ function tickNetplayVisuals(dt) {
         // Mine SMB-01 distante : la vraie vidéo smartbomb + son d'explosion.
         // Posée au point de réception : ne suit pas le joueur distant.
         if (remote) spawnSmbFx(Number(remote.rx ?? remote.x), Number(remote.ry ?? remote.y), 1, false);
+      } else if (typeof ev.skill === "string" && String(ev.skill).startsWith("ability_")) {
+        // Phase 2 : flash d'activation d'aptitude distante (1,8 s).
+        // Les auras persistantes arrivent via snapshot afx ; ce flash couvre
+        // les casts instantanés (rafales déjà visibles via projectiles, QA,
+        // lien Volt, tir chargé...) + le timing des poses de zone.
+        // Camouflages : jamais diffusés par le serveur, ignorés par sécurité.
+        try {
+          const akey = String(ev.skill).toLowerCase();
+          if (akey === "ability_admin-ultimate-cloaking"
+            || akey === "ability_spearhead_ultimate-cloak"
+            || akey === "ability_spearhead-plus_ultimate-cloak") {
+            // invisible par design
+          } else if (remote && abilityFxCodeFor(akey) > 0) {
+            remote.fxFlash = {
+              code: abilityFxCodeFor(akey),
+              until: performance.now() + 1800,
+              x: Number(ev.x) || 0,
+              y: Number(ev.y) || 0,
+              target: String(ev.target || ""),
+            };
+          }
+        } catch {}
       }
     }
   } catch {}
@@ -31271,6 +31524,306 @@ function tickNetplayVisuals(dt) {
       else spawnNetShotVisual(ev);
     } catch {}
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — rendu distant des aptitudes (tout le monde voit les effets).
+// Source : r.afx = [[code, secLeft, x, y, target]] (snapshot serveur validé)
+// + r.fxFlash (flash d'activation instantanée, voir tickNetplayVisuals).
+// Le ctx est déjà translaté sur le distant (0,0 = lanceur). Les zones
+// posées (pods...) se dessinent en offset (fxX - rx, fxY - ry).
+// Volontairement en primitifs Canvas (pas de nouveaux assets) : encadré,
+// lisible, pas de risque de 404. Les camouflages n'arrivent jamais ici.
+// ---------------------------------------------------------------------------
+// Style par code ABILITY_FX : self = anneau sur le lanceur (couleur),
+// zone = anneau au sol (rayon), target = anneau sur la cible (couleur),
+// link = trait lanceur->cible (couleur), speed = streaks de vitesse.
+const REMOTE_FX_STYLE = {
+  2:  { zone: 400, color: "55,255,125" },   // repair-pod
+  3:  { self: 1, color: "255,210,74" },     // valour
+  4:  { zone: 500, color: "124,255,158" },  // nebula
+  5:  { self: 1, color: "255,68,22" },      // bsk
+  6:  { self: 1, color: "124,240,255" },    // rvg
+  7:  { self: 1, link: 1, color: "180,140,255" }, // shl
+  8:  { self: 1, zone: 600, color: "150,90,255" },  // draw-fire
+  9:  { self: 1, zone: 600, color: "150,90,255" },  // draw-fire Plus
+  10: { self: 1, color: "255,255,255" },    // fortify
+  11: { self: 1, color: "255,255,255" },    // fortify Plus
+  12: { self: 1, link: 1, color: "200,170,255" }, // protection
+  13: { self: 1, link: 1, color: "200,170,255" }, // protection Plus
+  14: { speed: 1 }, 15: { speed: 1 }, 16: { speed: 1 }, // travels + yamato
+  17: { self: 1, color: "102,204,255" },    // prism
+  18: { self: 1, color: "102,204,255" },    // spectrum
+  19: { self: 1, color: "102,204,255" },    // spectrum Plus
+  20: { self: 1, color: "180,240,255" },    // sentinel
+  21: { self: 1, color: "190,120,255" },    // orcus
+  22: { self: 1, zone: 600, color: "255,106,0" },  // inc
+  23: { self: 1, zone: 800, color: "255,106,0" },  // inc Plus
+  24: { zone: 400, color: "55,255,125" },   // hammer pod
+  25: { zone: 600, color: "55,255,125" },   // hammer pod Plus
+  26: { self: 1, color: "55,255,125" },     // realloc
+  27: { target: 1, color: "255,80,220" },   // cyborg singularity
+  28: { target: 1, color: "255,80,220" },   // venom
+  29: { target: 1, color: "255,160,64" },   // diminisher
+  30: { target: 1, color: "192,128,255" },  // ddol
+  31: { self: 1, color: "255,237,176" },    // redirect
+  32: { target: 1, color: "96,160,255" },   // disarray
+  33: { self: 1, color: "128,240,255" },    // holo self
+  34: { target: 1, color: "128,240,255" },  // holo enemy
+  35: { target: 1, color: "255,210,74" },   // hyperion ga
+  36: { link: 1, color: "255,255,255" },    // hyperion qa (flash)
+  37: { link: 1, color: "120,230,255" },    // hecate
+  38: { link: 1, color: "120,230,255" },    // hecate Plus
+  39: { self: 1, color: "255,210,74" },     // stockpile
+  40: { speed: 1 },                        // lightning
+  41: { self: 1, color: "255,255,255" },    // hologram
+  42: { self: 1, color: "255,120,220" },    // scramble
+  43: {}, 44: {},                          // spc/spcp : aucun visuel local non plus
+  45: { link: 1, color: "255,80,80" },      // chs
+  46: { link: 1, color: "255,80,80" },      // chsp
+  47: { self: 1, zone: 600, color: "255,210,80" },  // ripper
+  48: { self: 1, color: "80,255,125" },     // last-stand
+  49: { target: 1, color: "96,160,255" },   // sap (slow cible)
+  50: { self: 1, color: "157,223,255" },    // volt discharge
+  51: { self: 1, color: "255,255,255" },    // volt backup
+  52: { link: 1, color: "80,120,255" },     // voltage link
+  53: {}, 54: {},                          // rapid-fire : roquettes visibles déjà
+  55: { speed: 1 }, 56: { speed: 1 },       // tartarus boosts
+  57: { self: 1, zone: 500, color: "255,255,255" },  // jamx
+  58: { self: 1, zone: 1000, color: "255,255,255" }, // creed
+  59: { target: 1, color: "255,210,74" },   // marker
+  60: { target: 1, color: "255,210,74" },   // marker Plus
+  61: { target: 1, color: "255,210,74" },   // marker Orcus Plus
+  62: { target: 1, color: "255,255,255" },  // neutralizing
+  63: { recon: 1, color: "255,255,255" },  // recon : balayage radar
+  64: { recon: 1, color: "255,255,255" },  // recon Plus : idem
+  76: { self: 1, color: "180,240,255" },    // mmt
+  77: { self: 1, color: "124,240,255" },    // tbr (clones non répliqués, anneau seul)
+  78: { target: 1, color: "124,255,158" },  // keres spr
+  79: { speed: 1 },                        // keres sle (dash)
+  80: {},                                 // frozen claw : gel déjà visible (freezeT/ICE)
+  81: {},                                 // phase-out : téléport visible (teleportSeq)
+  82: { self: 1, color: "190,120,255" },   // orcus Plus (même visuel, 24 s)
+  // Codes sans rendu distant (jamais diffusés par le serveur) :
+  1: {},                                  // admin cloak : invisible par design
+  65: {}, 66: {},                         // spearhead cloaks : invisibles par design
+  67: {}, 68: {},                         // soins aegis : barres HP/SH suffisent
+  69: {}, 70: {}, 71: {}, 72: {},         // soins hammerclaw : idem
+  73: {}, 74: {}, 75: {},                 // librep/solace/solace+ : idem
+};
+// Résout la position monde d'une cible réseau (moi ou un distant).
+function remoteFxTargetPos(target) {
+  try {
+    const id = String(target || "");
+    if (!id) return null;
+    if (id === String(netMyId())) return { x: Number(player.x) || 0, y: Number(player.y) || 0 };
+    const rem = getNetplayRemotes()?.get(id);
+    if (rem && !rem.dead) return { x: Number(rem.rx ?? rem.x) || 0, y: Number(rem.ry ?? rem.y) || 0 };
+  } catch {}
+  return null;
+}
+function drawRemoteAbilityFx(r) {
+  const nowMs = performance.now();
+  const rx = Number(r.rx ?? r.x) || 0, ry = Number(r.ry ?? r.y) || 0;
+  const now = nowMs / 1000;
+  const pulse = 0.65 + 0.35 * Math.sin(now * 5);
+  const drawSelfRing = (color) => {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = `rgba(${color},${0.55 + 0.35 * pulse})`;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = `rgba(${color},1)`;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(0, 0, 46 + 6 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 58 - 5 * pulse, now * 1.4, now * 1.4 + Math.PI * 1.5);
+    ctx.stroke();
+    ctx.restore();
+  };
+  const drawZoneRing = (wx, wy, radius, color) => {
+    const ox = wx - rx, oy = wy - ry;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = `rgba(${color},${0.5 + 0.3 * pulse})`;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = `rgba(${color},1)`;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(ox, oy, Math.max(20, radius), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.10 + 0.05 * pulse;
+    ctx.fillStyle = `rgba(${color},1)`;
+    ctx.beginPath();
+    ctx.arc(ox, oy, Math.max(20, radius), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  };
+  const drawLink = (tx, ty, color) => {
+    const ox = tx - rx, oy = ty - ry;
+    if (Math.hypot(ox, oy) > 3000) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = `rgba(${color},${0.6 + 0.3 * pulse})`;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = `rgba(${color},1)`;
+    ctx.shadowBlur = 8;
+    ctx.setLineDash([10, 7]);
+    ctx.lineDashOffset = -now * 40;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(ox, oy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  };
+  const drawTargetRing = (tx, ty, color) => {
+    const ox = tx - rx, oy = ty - ry;
+    if (Math.hypot(ox, oy) > 3000) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = `rgba(${color},${0.6 + 0.3 * pulse})`;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = `rgba(${color},1)`;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(ox, oy, 44 + 6 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  };
+  const drawSpeedStreaks = () => {
+    const ang = Number(r.rangle ?? r.angle) || 0;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = `rgba(160,230,255,${0.5 + 0.3 * pulse})`;
+    ctx.lineWidth = 2;
+    ctx.rotate(ang);
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.moveTo(-50, i * 16);
+      ctx.lineTo(-50 - 34 - 14 * pulse, i * 16);
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+  // Hologramme Mimesis distant : 4 échos (positions dérivées, effet 3 s).
+  // En local ce sont de vrais sosies qui explosent ; ici échos non
+  // verrouillables (l'explosion de fin est le halo + son déjà diffusés).
+  const drawHoloEchoes = (secLeft) => {
+    const offs = [[-95, 0], [95, 0], [0, -70], [0, 70]];
+    const fade = Math.max(0.12, Math.min(1, Number(secLeft || 1.8) / 3));
+    const flick = 0.35 + 0.25 * Math.sin(now * 25);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = Math.min(0.75, fade * flick + 0.15);
+    ctx.strokeStyle = "rgba(180,240,255,0.9)";
+    ctx.lineWidth = 2;
+    for (const [ox, oy] of offs) {
+      ctx.save();
+      ctx.translate(ox, oy);
+      ctx.beginPath();
+      ctx.moveTo(18, 0);
+      ctx.lineTo(-12, -11);
+      ctx.lineTo(-6, 0);
+      ctx.lineTo(-12, 11);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+    // Pop final (dernière demi-seconde) : anneau expansif sur chaque écho.
+    if (Number(secLeft) < 0.5) {
+      const k = 1 - Math.max(0, Number(secLeft) || 0) * 2;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = `rgba(180,240,255,${0.8 * (1 - k)})`;
+      ctx.lineWidth = 3;
+      for (const [ox, oy] of offs) {
+        ctx.beginPath();
+        ctx.arc(ox, oy, 20 + 60 * k, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  };
+  // Triple barrage distant : 2 échos REX autour du PET (ou du vaisseau).
+  // Rôle combat (réservoirs HP liés) local uniquement, comme avant.
+  const drawTbrEchoes = () => {
+    let px = 0, py = 0;
+    try {
+      if (Number(r.peta) === 1) {
+        px = (Number(r.petrx ?? r.petx) || 0) - rx;
+        py = (Number(r.petry ?? r.pety) || 0) - ry;
+      }
+    } catch {}
+    const flick = 0.45 + 0.25 * Math.sin(now * 9);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = flick;
+    ctx.strokeStyle = "rgba(121,245,255,0.95)";
+    ctx.lineWidth = 2;
+    ctx.shadowColor = "rgba(121,245,255,1)";
+    ctx.shadowBlur = 8;
+    for (const [ox, oy] of [[px - 55, py], [px + 55, py]]) {
+      ctx.beginPath();
+      ctx.arc(ox, oy, 16, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+  // Recon distant : balayage radar au-dessus du vaisseau (perception x2).
+  const drawReconSweep = (color) => {
+    const sweep = now * 2.2;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = `rgba(${color},${0.55 + 0.3 * pulse})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 2; i++) {
+      const a0 = sweep + i * Math.PI;
+      ctx.beginPath();
+      ctx.arc(0, -62, 24, a0, a0 + Math.PI * 0.7);
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+  const applyEntry = (code, fxX, fxY, fxTarget, secLeft) => {
+    const st = REMOTE_FX_STYLE[Number(code)];
+    if (!st) return;
+    if (st.self) drawSelfRing(st.color);
+    if (st.zone) {
+      const wx = fxX || rx, wy = fxY || ry;
+      drawZoneRing(wx, wy, st.zone, st.color);
+    }
+    if (st.speed) drawSpeedStreaks();
+    if (st.recon) drawReconSweep(st.color);
+    if (Number(code) === 41) drawHoloEchoes(secLeft);
+    if (Number(code) === 77) drawTbrEchoes();
+    if ((st.link || st.target) && fxTarget) {
+      const tp = remoteFxTargetPos(fxTarget);
+      if (!tp) return;
+      if (st.link) drawLink(tp.x, tp.y, st.color);
+      if (st.target) drawTargetRing(tp.x, tp.y, st.color);
+    }
+  };
+  // Auras persistantes (snapshot).
+  try {
+    const afx = Array.isArray(r.afx) ? r.afx : [];
+    for (const entry of afx.slice(0, 8)) {
+      if (!Array.isArray(entry)) continue;
+      const code = Math.floor(Number(entry[0]) || 0);
+      if (!(code > 0)) continue;
+      applyEntry(code, Number(entry[2]) || 0, Number(entry[3]) || 0, entry[4], Number(entry[1]) || 0);
+    }
+  } catch {}
+  // Flash d'activation (1,8 s, casts instantanés + timing des poses).
+  try {
+    const fl = r.fxFlash;
+    if (fl && Number(fl.until) > nowMs && Number(fl.code) > 0) {
+      applyEntry(Number(fl.code), Number(fl.x) || 0, Number(fl.y) || 0, fl.target, 1.8);
+    }
+  } catch {}
 }
 
 function drawNetplayRemotes(ox, oy) {
@@ -31321,7 +31874,9 @@ function drawNetplayRemotes(ox, oy) {
     // CPU CL04K-XL distant : vaisseau invisible (ni coque, ni réacteurs, ni
     // drones, ni plaque). Le point minimap reste (pas de filtre de ce côté)
     // et le proxy reste cliquable : un clic réussi affiche le LOCK.
-    if (r.cloakCpu === true) continue;
+    // Camouflage d'aptitude distant : invisible aussi (sprite + minimap),
+    // lock coupé dans syncNetPlayers ; le proxy reste pour les cibles d'aura.
+    if (r.cloakCpu === true || r.cloaked === true) continue;
     // Même règle que les NPC (capteurs 1800) : au-delà, pas de sprite.
     // Exceptions : lock, combat (mêmes cas que le filtre réseau serveur),
     // membre du groupe. Le PET de l'allié suit son porteur (même bloc).
@@ -31341,7 +31896,9 @@ function drawNetplayRemotes(ox, oy) {
           } catch {}
           if (!keepRemote && (r.atk === true || r.combat === "player"
             || Number(r.slowT) > 0 || Number(r.freezeT) > 0
-            || Number(r.iemT) > 0 || Number(r.ishT) > 0)) keepRemote = true;
+            || Number(r.iemT) > 0 || Number(r.ishT) > 0
+            || (Array.isArray(r.afx) && r.afx.length > 0)
+            || (r.fxFlash && Number(r.fxFlash.until) > performance.now()))) keepRemote = true;
           if (!keepRemote && isRemoteGroupMember(r)) keepRemote = true;
           if (!keepRemote) continue;
         }
@@ -31412,6 +31969,9 @@ function drawNetplayRemotes(ox, oy) {
         }
       }
     } catch {}
+    // Phase 2 : auras d'aptitudes distantes (halos, contours, pods, liens,
+    // marqueurs, streaks de vitesse). Camouflages jamais diffusés : rien ici.
+    try { drawRemoteAbilityFx(r); } catch {}
     // Reacteurs du copain (memes flammes que la coque locale).
     try {
       let eng = netplayEngines.get(r.id);
@@ -33623,6 +34183,16 @@ function update(dt) {
   } else {
     player.travelCd = Math.max(0, (player.travelCd || 0) - dt);
   }
+  // Voyage Yamato : même effet, état séparé.
+  if ((player.yamatoT || 0) > 0) {
+    player.yamatoT = Math.max(0, player.yamatoT - dt);
+    if (player.yamatoT <= 0) {
+      startYamatoTravelCooldown();
+      showNotification("Voyage terminé", 2, "info");
+    }
+  } else {
+    player.yamatoCd = Math.max(0, (player.yamatoCd || 0) - dt);
+  }
   // Fortification (Citadel / Citadel+) : 10 s (-50 % gérés dans hurtPlayer),
   // recharge 360 s.
   if ((player.fortifyT || 0) > 0) {
@@ -34266,8 +34836,8 @@ function update(dt) {
   } else {
     player.orcusCd = Math.max(0, (player.orcusCd || 0) - dt);
   }
-  // Solaris officiel : 10 s de brulure 1 hit/s, toggle par bouton.
-  // Normale et Plus sont indépendantes et peuvent tourner en parallèle.
+  // Solaris (spec) : halo 3 s, 1 hit/s, puis burst final 75k + éjection
+  // sur fin NATURELLE uniquement. Normale et Plus indépendantes.
   if ((player.incT || 0) > 0) {
     player.incT = Math.max(0, player.incT - dt);
     player.incAcc = Number(player.incAcc || 0) + dt;
@@ -34276,6 +34846,7 @@ function update(dt) {
       try { incBurn(false); } catch {}
     }
     if ((player.incT || 0) <= 0) {
+      try { incFinalBurst(false); } catch {}
       startIncCooldown(false);
       showNotification("Incineration terminee", 2, "info");
     }
@@ -34290,6 +34861,7 @@ function update(dt) {
       try { incBurn(true); } catch {}
     }
     if ((player.incPlusT || 0) <= 0) {
+      try { incFinalBurst(true); } catch {}
       startIncCooldown(true);
       showNotification("Incineration Plus terminee", 2, "info");
     }

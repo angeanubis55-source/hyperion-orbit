@@ -435,7 +435,7 @@ export const ABILITIES = Object.freeze({
   "ability_solaris_inc": A(
     "ability_solaris_inc", "solaris", "Solaris", "Incinération", "zone",
     "Halo 600 pendant 3 s, fin : 75k + éjection 1200.",
-    "", "", 90, 3, "done" // ?
+    "", "", 90, 3, "done" // ✅
   ),
 
   // ---- Solaris Plus ----
@@ -443,7 +443,7 @@ export const ABILITIES = Object.freeze({
   "ability_solaris-plus_incinerate-plus": A(
     "ability_solaris-plus_incinerate-plus", "solaris_plus", "Solaris Plus", "Incinération Plus", "zone",
     "Halo 800 3 s, fin 75k + éjection 1600, passif +3 %/module.",
-    "", "", 80, 3, "done" // ?
+    "", "", 80, 3, "done" // ✅
   ),
 
   // ---- Spearhead ----
@@ -563,7 +563,7 @@ export const ABILITIES = Object.freeze({
   "ability_yamato_travel": A(
     "ability_yamato_travel", "yamato", "Yamato", "Voyage", "self",
     "Boost de vitesse temporaire.",
-    "Icône Voyage Citadel réutilisée (pas d'icône Yamato).", "ABILITY_CITADEL_TRAVEL.PNG", 60, 5, "todo"
+    "Icône Voyage Citadel réutilisée (pas d'icône Yamato).", "ABILITY_CITADEL_TRAVEL.PNG", 60, 5, "done" // ✅
   ),
 
   // ---- Zephyr ----

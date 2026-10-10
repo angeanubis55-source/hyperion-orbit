@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { NETWORK_TIMING_GRACE_SEC } from "../SRC/CORE/NETWORK_TIMING.js";
+import { sanitizeAbilityFxList } from "../SRC/CORE/ABILITY_FX.js";
 
 // Execute les vrais handlers du client avec sockets et horloge controles.
-const source = readFileSync(new URL("../SRC/CORE/NETPLAY.js", import.meta.url), "utf8").replace(/^export /gm, "").replace(/^import .*NETWORK_TIMING.*\r?\n/gm, "");
+const source = readFileSync(new URL("../SRC/CORE/NETPLAY.js", import.meta.url), "utf8").replace(/^export /gm, "").replace(/^import .*NETWORK_TIMING.*\r?\n/gm, "").replace(/^import .*ABILITY_FX.*\r?\n/gm, "");
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const linkCheck = engine.slice(engine.indexOf("function netLinkAliveInGame()"), engine.indexOf("function setLinkOverlay("));
 
@@ -20,7 +21,7 @@ function client() {
     close(code = 1000, reason = "") { this.readyState = 3; this.onclose({ code, reason }); }
   }
   const context = vm.createContext({
-    NETWORK_TIMING_GRACE_SEC, window: {}, location: { protocol: "http:", host: "localhost" },
+    NETWORK_TIMING_GRACE_SEC, sanitizeAbilityFxList, window: {}, location: { protocol: "http:", host: "localhost" },
     localStorage: { getItem: () => "test-token" },
     performance: { now: () => now }, Date: { now: () => now }, WebSocket: Socket,
     setInterval: (fn, ms) => { const id = ++nextTimer; intervals.set(id, { fn, ms }); return id; },

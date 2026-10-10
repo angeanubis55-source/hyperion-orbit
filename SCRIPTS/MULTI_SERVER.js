@@ -28,6 +28,137 @@ import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
 import { updateClockGuard, stopRejectedMotion } from "./CLOCK_GUARD.js";
 import { takeMovement, useMovementAbility, syncMovementAbility, movementSpeed, usePhaseOut } from "./MOVEMENT_RULES.js";
+import { isAbilityFxBroadcastable, pruneAbilityFxMap, abilityHitBypass, isExecutionAbility, EXEC_WINDOW_MS, EXEC_HIT_CAP_PVP, EXEC_HIT_CAP_NPC } from "../SRC/CORE/ABILITY_FX.js";
+import { abilityShipKeyFor, getAbilitiesForShip, getAbilityInfo, policeAbilityIds } from "../SHIP/SHIP_ABILITIES.js";
+import { getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
+
+// --- Auras d'aptitudes visibles par les autres (Phase 2) ---
+// Le serveur reste autoritaire : chaque cast ability_* est validé
+// (vaisseau propriétaire + vivant + cooldown), stocké avec expiration,
+// purgé à la mort / changement de vaisseau / changement de map, puis
+// exposé dans le snapshot via `afx` ([code, secLeft, x, y, target]).
+// Les camouflages ne transitent JAMAIS (invisibilité gameplay).
+// Les soins instantanés sans aura ne transitent pas (barres HP/SH
+// suffisent). Les casts instantanés (rafales, QA, lien...) partent en
+// skillFx immédiat (flash visible) sans aura persistante.
+const ABILITY_CLOAK_SILENT = new Set([
+  "ability_admin-ultimate-cloaking",
+  "ability_spearhead_ultimate-cloak",
+  "ability_spearhead-plus_ultimate-cloak",
+]);
+let policeAbilityIdSet = null;
+function ownsAbility(profile, skill) {
+  try {
+    const shipId = String(profile?.shipId || "").toLowerCase();
+    if (!shipId || !skill) return false;
+    if (shipId === "police") {
+      if (!policeAbilityIdSet) policeAbilityIdSet = new Set((policeAbilityIds() || []).map((s) => String(s).toLowerCase()));
+      return policeAbilityIdSet.has(String(skill).toLowerCase());
+    }
+    const key = abilityShipKeyFor(shipId);
+    const keys = key ? [key] : [];
+    try {
+      const base = getShipDesignBaseId(shipId);
+      if (base && base !== shipId && !keys.includes(base)) keys.push(base);
+    } catch {}
+    if (!keys.length) return false;
+    return keys.some((k) => getAbilitiesForShip(k).some((a) => String(a?.id || "").toLowerCase() === String(skill).toLowerCase()));
+  } catch { return false; }
+}
+function clearAbilityFx(state) {
+  try { state._abilityFx = {}; } catch {}
+  try { state._abilityCds = {}; } catch {}
+  try { state._orcusUntil = 0; } catch {}
+  try { state._execWindow = null; } catch {}
+}
+function trackAbilityFx(state, profile, skill, msg, room, id, now) {
+  const key = String(skill || "").toLowerCase();
+  if (ABILITY_CLOAK_SILENT.has(key)) return false;
+  let info = null;
+  try { info = getAbilityInfo(key); } catch { info = null; }
+  if (!info) return false;
+  if (!ownsAbility(profile, key)) return false;
+  if (state.pvpDead === true || !(Number(state.hp) > 0)) return false;
+  const cds = (state._abilityCds && typeof state._abilityCds === "object")
+    ? state._abilityCds
+    : (state._abilityCds = {});
+  const enabled = msg.enabled !== false;
+  const durSec = Number(info.durationSec);
+  const cdSec = Number(info.cooldownSec);
+  if (enabled === false) {
+    // Annulation (toggle off / lien coupé / charge avortée) : purge
+    // immédiate + broadcast de fin pour que les autres effacent sans
+    // attendre l'expiration. Charge avortée = fizzle : aucun cooldown
+    // (comme en local, cancelChsCharge ne recharge pas).
+    try {
+      if (state._abilityFx && typeof state._abilityFx === "object") delete state._abilityFx[key];
+    } catch {}
+    if (key === "ability_orcus_assimilate" || key === "ability_orcus-plus_assimilate") {
+      try { state._orcusUntil = 0; } catch {}
+    }
+    if (key === "ability_retiarus_chs" || key === "ability_retiarus-plus_chsp") {
+      try { state._execWindow = null; } catch {}
+      try { if (state._abilityCds && typeof state._abilityCds === "object") delete state._abilityCds[key]; } catch {}
+    } else if (Number.isFinite(cdSec) && cdSec > 0) {
+      cds[key] = now + cdSec * 1000;
+    }
+    try {
+      broadcastRoom(room, JSON.stringify({ t: "skillFx", skill: key, by: id, at: now, until: now, enabled: false }));
+    } catch {}
+    return true;
+  }
+  if (now < Number(cds[key] || 0)) return false;
+  const hasDuration = Number.isFinite(durSec) && durSec > 0;
+  const isToggle = !hasDuration && cdSec === 0;
+  const isWindowExec = key === "ability_retiarus_chs" || key === "ability_retiarus-plus_chsp";
+  // Cooldown : les toggles partent au (dé)cochage, les autres à la fin
+  // d'effet côté client ; ici on pose un garde-fou anti-spam minimal
+  // (durée + recharge) sans casser les toggles. Exécutions : le local
+  // applique 20/18 min ; le backstop serveur est borné (refresh en pleine
+  // charge sans cancel possible) — la fenêtre single-shot reste la vraie
+  // limite (un beam par cast).
+  if (isWindowExec) cds[key] = now + Math.min(Number(cdSec) || 0, 120) * 1000;
+  else if (hasDuration) cds[key] = now + (durSec + (Number.isFinite(cdSec) && cdSec > 0 ? cdSec : 0)) * 1000;
+  else if (!isToggle && Number.isFinite(cdSec) && cdSec > 0) cds[key] = now + cdSec * 1000;
+  else if (isToggle) cds[key] = now + 1500;
+  const target = String(msg.target || "").slice(0, 64);
+  // Position : zones posées (pods, nébuleuse) = point de cast ; le reste
+  // suit le lanceur (0,0). Les debuffs mono-cible portent la cible.
+  const isZone = info.target === "zone";
+  const fx = {
+    until: now + (hasDuration ? durSec * 1000 : isToggle ? 3600_000 : 3000),
+    x: isZone ? Math.round(Number(state.x) || 0) : 0,
+    y: isZone ? Math.round(Number(state.y) || 0) : 0,
+    target: info.target === "enemy" || info.target === "ally" ? target : "",
+  };
+  try {
+    if (!state._abilityFx || typeof state._abilityFx !== "object") state._abilityFx = {};
+    // Les casts instantanés (durée 0, non-toggle) ne laissent pas d'aura :
+    // seul le skillFx immédiat est visible (flash). On les stocke quand
+    // même 3 s pour les rooms à faible cadence ? Non : snapshot seul.
+    if (hasDuration || isToggle) state._abilityFx[key] = fx;
+  } catch {}
+  // Orcus Assimilation : la conversion 80 % dégâts -> PV doit valoir aussi
+  // contre les joueurs (le client n'adopte que les baisses serveur).
+  if (key === "ability_orcus_assimilate" || key === "ability_orcus-plus_assimilate") {
+    try { state._orcusUntil = fx.until; } catch {}
+  }
+  // One-shots instantanés (Tir chargé) : pas d'aura, mais une fenêtre
+  // d'exécution single-shot vérifiée au moment du hit (beam ~3 s après
+  // le cast). Sans elle, l'enveloppe du profil rejetterait le 100 % vie.
+  if (key === "ability_retiarus_chs" || key === "ability_retiarus-plus_chsp") {
+    try { state._execWindow = { key, until: now + EXEC_WINDOW_MS }; } catch {}
+  }
+  if (!isAbilityFxBroadcastable(key) && !hasDuration && !isToggle) {
+    // Soins instantanés : rien à diffuser (ni aura ni flash).
+    return true;
+  }
+  try {
+    broadcastRoom(room, JSON.stringify({ t: "skillFx", skill: key, by: id, at: now,
+      until: fx.until, x: fx.x, y: fx.y, target: fx.target }));
+  } catch {}
+  return true;
+}
 import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival, respawnMap } from "./MAP_RULES.js";
 import { getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
@@ -96,7 +227,12 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
       state.sh = Math.min(profile.shMax, shields[key] ?? profile.shMax);
     }
     // Duree de l'effet portail distant, sans protection contre les degats.
-    if (prior && prior.shipId !== profile.shipId) state._swapFxUntil = now + 3000;
+    // Changement de vaisseau : les auras d'aptitudes ne suivent pas
+    // (le nouveau récupère les siennes, comme les CDs Orcus côté client).
+    if (prior && prior.shipId !== profile.shipId) {
+      state._swapFxUntil = now + 3000;
+      clearAbilityFx(state);
+    }
     state._combat = profile;
     state._config = profile.config;
     state._combatRev = state._account.revision;
@@ -1840,11 +1976,30 @@ wss.on("connection", (ws) => {
         if (!shooter || shooter.pvpDead === true || !(Number(shooter.hp) > 0)) return;
         const now = Date.now();
         const profile = refreshCombatProfile(shooter, accountId, mapId);
-        msg = validateCombatHit(profile, msg, shooter, now);
-        if (!msg) {
-          acStrike(shooter, "hitStrike");
-          acRecordViolation(shooter, "profile", now, { reason: "Impact NPC hors du profil autorise", unverified: true });
-          return;
+        // Hits d'exécution d'aptitude (one-shots) : droit frais vérifié
+        // (fenêtre CHS consommée, ou aura active) -> contourne l'enveloppe
+        // du profil, marqué execOk pour la simu (plafond relevé). Seaux
+        // anticheat conservés. Sinon validation standard.
+        let execOk = false;
+        try {
+          const ab = String(msg.ability || "").toLowerCase();
+          if (ab && isExecutionAbility(ab) && abilityHitBypass(shooter, ab, now)) {
+            const cap = EXEC_HIT_CAP_NPC;
+            const rawDmg = Number(msg.dmg);
+            if (Number.isFinite(rawDmg) && rawDmg > 0 && rawDmg <= cap && ownsAbility(profile, ab)) {
+              execOk = true;
+              msg = { ...msg, dmg: rawDmg, execOk: true };
+              try { console.log(`[multi:exec] ${shooter.pseudo} ${ab} ${Math.round(rawDmg)} (${mapId})`); } catch {}
+            }
+          }
+        } catch {}
+        if (!execOk) {
+          msg = validateCombatHit(profile, msg, shooter, now);
+          if (!msg) {
+            acStrike(shooter, "hitStrike");
+            acRecordViolation(shooter, "profile", now, { reason: "Impact NPC hors du profil autorise", unverified: true });
+            return;
+          }
         }
         // Anti-rafale : seaux par attaquant (horloge serveur). Rafales AoE
         // légitimes OK, spam Cheat Engine étouffé (mitigation + log).
@@ -1902,6 +2057,8 @@ wss.on("connection", (ws) => {
             }
             return;
           }
+          const nowFx = Date.now();
+          try { trackAbilityFx(state, profile, skill, msg, room, id, nowFx); } catch {}
           if (useMovementAbility(state, profile, skill, msg.enabled !== false, Date.now(), movementTarget(msg.target), String(msg.target || ""))) {
             state.moveSpeed = movementSpeed(state, profile, Date.now());
           }
@@ -1945,11 +2102,32 @@ wss.on("connection", (ws) => {
         if (!foe || !me) return;
         if (foe === me || me.state.pvpDead === true || !(me.state.hp > 0)) return;
         const profile = refreshCombatProfile(me.state, accountId, mapId);
-        msg = validateCombatHit(profile, msg, me.state);
-        if (!msg) {
-          acStrike(me.state, "pvpStrike");
-          acRecordViolation(me.state, "profile", Date.now(), { reason: "Impact PvP hors du profil autorise", unverified: true });
-          return;
+        // Hits d'exécution d'aptitude : droit frais vérifié -> enveloppe
+        // contournée (plafond EXEC_HIT_CAP_PVP), hit normalisé à la main.
+        // Seaux anticheat conservés ci-dessous. Sinon validation standard.
+        let execBypass = false;
+        let execAbility = "";
+        try {
+          const ab = String(msg.ability || "").toLowerCase();
+          const rawExec = Number(msg.dmg);
+          if (ab && isExecutionAbility(ab) && abilityHitBypass(me.state, ab, Date.now())
+            && Number.isFinite(rawExec) && rawExec > 0 && rawExec <= EXEC_HIT_CAP_PVP
+            && ownsAbility(profile, ab)) {
+            execBypass = true;
+            execAbility = ab;
+            msg = { target: msg.target, dmg: rawExec, kind: msg.kind === "sab" ? "sab" : "direct",
+              pen: Math.max(0, Math.min(1, Number(msg.pen ?? 1))), critChance: 0, critMult: 1,
+              weaken: 0, slowPct: 0, slowSec: 0, freezeSec: 0 };
+            try { console.log(`[multi:exec] ${me.state.pseudo} ${ab} ${Math.round(rawExec)} pvp (${mapId})`); } catch {}
+          }
+        } catch {}
+        if (!execBypass) {
+          msg = validateCombatHit(profile, msg, me.state);
+          if (!msg) {
+            acStrike(me.state, "pvpStrike");
+            acRecordViolation(me.state, "profile", Date.now(), { reason: "Impact PvP hors du profil autorise", unverified: true });
+            return;
+          }
         }
         const now = Date.now();
         // Anti-rafale PvP : mêmes seaux (plus stricts : TTK faibles).
@@ -1963,9 +2141,11 @@ wss.on("connection", (ws) => {
           }
           return;
         }
-        const dmg = Number(msg.dmg);
+        let dmg = Number(msg.dmg);
         const hasStatus = (Number(msg.slowPct) > 0 && Number(msg.slowSec) > 0) || Number(msg.freezeSec) > 0;
-        if (!Number.isFinite(dmg) || dmg < 0 || dmg > 1e7 || (dmg === 0 && !hasStatus)) return;
+        // Exécution vérifiée : plafond relevé (le droit a été contrôlé).
+        const dmgCap = execBypass === true ? EXEC_HIT_CAP_PVP : 1e7;
+        if (!Number.isFinite(dmg) || dmg < 0 || dmg > dmgCap || (dmg === 0 && !hasStatus)) return;
         if (foe.state.dead) return;
         if (now < Number(foe.state.ishUntil || 0)) return;
         if (now < Number(foe.state.iemUntil || 0)) return;
@@ -1982,6 +2162,22 @@ wss.on("connection", (ws) => {
         if (dx * dx + dy * dy > reach * reach) return;
         const pen = Math.max(0, Math.min(1, Number(msg.pen ?? 0)));
         let applied = 0;
+        // Orcus Assimilation de la VICTIME : 80 % des dégâts PvP convertis
+        // en PV (plafond hpMax), 20 % restants appliqués normalement.
+        // Sans ça, la conversion locale (hurtPlayer) ne vaudrait que vs NPC
+        // car le client n'adopte que les baisses serveur.
+        let orcusHeal = 0;
+        if (now < Number(foe.state._orcusUntil || 0) && dmg > 0) {
+          const conv = Math.max(0, Math.round(Number(dmg) || 0) * 0.8);
+          if (conv > 0) {
+            const hpMax = Math.max(1, Math.round(Number(foe.state.hpMax) || 1));
+            const before = Math.max(0, Math.round(Number(foe.state.hp) || 0));
+            foe.state.hp = Math.min(hpMax, before + conv);
+            orcusHeal = Math.max(0, Math.round(Number(foe.state.hp) || 0) - before);
+          }
+          // Comme en local (hurtPlayer) : 20 % restants seulement.
+          dmg = Math.max(0, Number(dmg) || 0) * 0.2;
+        }
         if (msg.kind === "sab") {
           const drained = Math.min(Math.max(0, Number(foe.state.sh) || 0), dmg);
           foe.state.sh = Math.max(0, Number(foe.state.sh) - drained);
@@ -2011,6 +2207,33 @@ wss.on("connection", (ws) => {
           foe.state.moveBuck = 0;
           foe.state.freezeUntil = Math.max(Number(foe.state.freezeUntil) || 0, now + freezeSec * 1000);
         }
+        // Incinération (burst final vérifié) : éjection radiale de la victime
+        // (1200 base / 1600 Plus), comme les NPC en local. Mouvement forcé
+        // serveur : teleportSeq + stateCorrection comme usePhaseOut, sinon
+        // l'anticheat de déplacement de la victime la renverrait en arrière.
+        try {
+          if (execBypass === true && (execAbility === "ability_solaris_inc"
+            || execAbility === "ability_solaris-plus_incinerate-plus")
+            && Number(foe.state.hp) > 0) {
+            const push = execAbility === "ability_solaris-plus_incinerate-plus" ? 1600 : 1200;
+            const fdx = Number(foe.state.x) - Number(me.state.x);
+            const fdy = Number(foe.state.y) - Number(me.state.y);
+            const flen = Math.hypot(fdx, fdy) || 1;
+            const world = serverMaps.get(mapId)?.world;
+            if (world && Number(world.w) > 160 && Number(world.h) > 160) {
+              const nx = Math.max(80, Math.min(Number(world.w) - 80, Number(foe.state.x) + (fdx / flen) * push));
+              const ny = Math.max(80, Math.min(Number(world.h) - 80, Number(foe.state.y) + (fdy / flen) * push));
+              Object.assign(foe.state, { x: nx, y: ny, vx: 0, vy: 0, moving: false,
+                motionBlocked: false, teleportSeq: (Number(foe.state.teleportSeq) || 0) + 1,
+                moveBuck: 0, moveBuckT: now });
+              try {
+                if (foe.ws && foe.ws.readyState === 1) {
+                  foe.ws.send(JSON.stringify({ t: "stateCorrection", map: mapId, x: nx, y: ny }));
+                }
+              } catch {}
+            }
+          }
+        } catch {}
         // Feed degats : la victime voit les chiffres (comme les NPC).
         if (applied > 0) {
           try { audOf(me.state).dmg += applied; } catch {}
@@ -2027,6 +2250,8 @@ wss.on("connection", (ws) => {
         try {
           if (Number(foe.state.hp) <= 0 && wasAlive !== false) {
             foe.state.pvpDead = true;
+            // Mort : les auras du vaincu disparaissent pour tous.
+            clearAbilityFx(foe.state);
             const total = Math.max(1, Number(foe.state.hpMax) || 1) + Math.max(0, Number(foe.state.shMax) || 0);
             // Anti-farm meme victime : 100 % / 50 % / 25 % / 0 sur 60 min.
             const fkey = `${id}|${foe.state.id}`;
@@ -2444,6 +2669,8 @@ wss.on("connection", (ws) => {
         if (!changeMap(requestedMap)) { correctState(); return; }
         removeFromAllRooms(id);
         mapId = requestedMap;
+        // Changement de map : les auras posées ne traversent pas.
+        clearAbilityFx(state);
         roomFor(mapId).set(id, { ws, state });
         ensureNpcSim(mapId);
         sendBoxSync(ws, mapId);
@@ -2909,12 +3136,29 @@ setInterval(() => {
       }
     } catch {}
     const players = [];
+    // Ids des pairs vivants : purge les auras ciblant un joueur mort/parti
+    // (canal local auto-coupé à la mort de la cible, ex : venom, hecate).
+    const livePeerIds = new Set();
+    try {
+      for (const [pid, pentry] of room) {
+        const ps = pentry?.state;
+        if (ps && ps._posOk === true && ps.pvpDead !== true && Number(ps.hp) > 0) livePeerIds.add(String(pid));
+      }
+    } catch {}
+    const pruneFxForSnapshot = (fxMap) => {
+      const list = pruneAbilityFxMap(fxMap, now);
+      if (!list.length) return list;
+      return list.filter((entry) => {
+        const tgt = entry && entry[4] ? String(entry[4]) : "";
+        return !tgt || livePeerIds.has(tgt);
+      });
+    };
     for (const [, entry] of room) {
       const s = entry?.state;
       if (!s) continue;
       // Anti-fantôme : pas de pos envoyée = invisible pour les autres.
       if (s._posOk !== true) continue;
-      players.push({ id: s.id, pseudo: s.pseudo, clan: String(s.clanTag || "").slice(0, 5), shipId: s.shipId, hswap: Math.max(0, Math.min(3, Number(s.hswap) || 0)), x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, moving: s.moving === true, motionBlocked: s.motionBlocked === true, teleportSeq: Number(s.teleportSeq) || 0, mx: Math.round(Number(s.mx) || 0), my: Math.round(Number(s.my) || 0), cloakCpu: s.cloakCpu === true, vmax: Math.max(50, Math.min(7500, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
+      players.push({ id: s.id, pseudo: s.pseudo, clan: String(s.clanTag || "").slice(0, 5), shipId: s.shipId, hswap: Math.max(0, Math.min(3, Number(s.hswap) || 0)), x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, moving: s.moving === true, motionBlocked: s.motionBlocked === true, teleportSeq: Number(s.teleportSeq) || 0, mx: Math.round(Number(s.mx) || 0), my: Math.round(Number(s.my) || 0), cloakCpu: s.cloakCpu === true, cloaked: s.cloaked === true, vmax: Math.max(50, Math.min(7500, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
         // PvP : PV autoritaires + date du dernier coup recu + attaquant (anneau Ship_damage).
         pvpAt: Number(s.pvpAt) || 0, pvpFrom: s.pvpFrom != null ? String(s.pvpFrom) : null, pvpHp: Math.max(0, Math.round(Number(s.hp) || 0)), pvpSh: Math.max(0, Math.round(Number(s.sh) || 0)),
         npcAt: Number(s.npcAt) || 0, npcSeq: Math.max(0, Math.floor(Number(s.npcSeq) || 0)), npcFrom: s.npcFrom != null ? String(s.npcFrom) : null,
@@ -2939,7 +3183,10 @@ setInterval(() => {
         safe: s.safe === true,
         combat: s.combat === "player" ? "player" : (s.combat === "npc" ? "npc" : ""),
         iemT: Math.max(0, (Number(s.iemUntil) || 0) - now) / 1000,
-        ishT: Math.max(0, (Number(s.ishUntil) || 0) - now) / 1000 });
+        ishT: Math.max(0, (Number(s.ishUntil) || 0) - now) / 1000,
+        // Auras d'aptitudes visibles (Phase 2) : [[code, secLeft, x, y, target]].
+        // Cibles joueurs mortes parties déjà purgées (canaux auto-coupés).
+        afx: pruneFxForSnapshot(s._abilityFx) });
       const output = players[players.length - 1];
       const staticSignature = [output.pseudo, output.clan, output.shipId, output.drones, output.dform, output.dslots,
         output.rank, output.firm, output.dind, output.ficon, output.mind, output.petl, output.petn, output.petf].join("|");
@@ -2952,7 +3199,8 @@ setInterval(() => {
       playersForNetwork = players.filter((entry, index) => {
         if (entry.dead || entry.atk || entry.combat === "player"
           || Number(entry.slowT) > 0 || Number(entry.freezeT) > 0
-          || Number(entry.iemT) > 0 || Number(entry.ishT) > 0) return true;
+          || Number(entry.iemT) > 0 || Number(entry.ishT) > 0
+          || (Array.isArray(entry.afx) && entry.afx.length > 0)) return true;
         for (let otherIndex = 0; otherIndex < players.length; otherIndex++) {
           if (otherIndex === index) continue;
           const other = players[otherIndex];

@@ -1,4 +1,5 @@
 import { abilityShipKeyFor, getAbilitiesForShip } from "../SHIP/SHIP_ABILITIES.js";
+import { getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
 import { ANTICHEAT, acMoveTake, acRecordViolation } from "./ANTICHEAT.js";
 
 // Valeurs des aptitudes effectivement branchees dans FRAME_SYSTEMS.
@@ -6,6 +7,7 @@ const rules = {
   "ability_lightning": { mult: 2, duration: 10, cooldown: 60 },
   "ability_citadel_travel": { mult: 2, duration: 5, cooldown: 60 },
   "ability_citadel-plus_travel": { mult: 2, duration: 5, cooldown: 60 },
+  "ability_yamato_travel": { mult: 2, duration: 5, cooldown: 60 },
   "ability_holo_self-reversal": { mult: 1.1, duration: 15, cooldown: 15 },
   "ability_retiarus_spc": { mult: 1.1, duration: 10, cooldown: 240 },
   "ability_retiarus-plus_spcp": { mult: 1.2, duration: 10, cooldown: 240 },
@@ -103,7 +105,17 @@ export function syncMovementAbility(state, profile, now, target = null) {
 
 export function useMovementAbility(state, profile, key, enabled, now, target = null, targetKey = "") {
   const rule = rules[key];
-  if (!rule || !profile || !getAbilitiesForShip(abilityShipKeyFor(profile.shipId)).some(a => a.id === key)) return false;
+  // Un design hérite des aptitudes de sa coque (comme la palette cliente
+  // currentAbilityShipMatch : rawShipId, baseShipId, slice(0,2)). Ex :
+  // yamato_ronin -> yamato, vengeance_lightning -> lightning.
+  const shipId = String(profile?.shipId || "");
+  const keys = [abilityShipKeyFor(shipId)];
+  try {
+    const base = getShipDesignBaseId(shipId);
+    if (base && base !== shipId) keys.push(base);
+  } catch {}
+  const owned = keys.some((k) => k && getAbilitiesForShip(k).some(a => a.id === key));
+  if (!rule || !profile || !owned) return false;
   const cooldowns = state._moveCooldowns || (state._moveCooldowns = {});
   const effect = state._moveEffect;
   if (enabled === false) {

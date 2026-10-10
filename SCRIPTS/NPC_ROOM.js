@@ -856,7 +856,11 @@ drainPlayerHits() {
     const raw = Number(hit?.dmg);
     // Conserve le plafond historique : certaines configurations tres haut
     // niveau peuvent legitimement depasser 10 M sur un impact cumule.
-    if (!Number.isFinite(raw) || raw < 0 || raw > 1e8) return;
+    // Hits d'exécution d'aptitude vérifiés côté serveur (execOk, voir
+    // MULTI_SERVER : fenêtre/aura contrôlée) : plafond relevé pour les
+    // one-shots (Tir chargé, exécutions, bursts) sur gros NPC.
+    const rawCap = hit?.execOk === true ? 2e9 : 1e8;
+    if (!Number.isFinite(raw) || raw < 0 || raw > rawCap) return;
     // Blacklight : dégâts joueurs x1.25 (sauf Orcus x1), comme en solo.
     // Strokelight Barrage : insensible (NPC normal en map BL).
     const strokNoBonus = String(entry.type || "") === "npc_Strokelight_Barrage";

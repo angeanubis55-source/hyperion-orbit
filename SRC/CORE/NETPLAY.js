@@ -3,6 +3,23 @@
 // Protocole compatible SCRIPTS/MULTI_SERVER.js (rooms par map, snapshot 20 Hz).
 
 import { NETWORK_TIMING_GRACE_SEC } from "./NETWORK_TIMING.js";
+import { sanitizeAbilityFxList } from "./ABILITY_FX.js";
+
+// Tag d'aptitude des hits d'exécution (one-shots vérifiés serveur).
+// Borné strictement : tout le reste est ignoré à l'envoi comme en réception.
+const ABILITY_HIT_RE = /^ability_[a-z0-9_-]{1,64}$/;
+function abilityHitTag(value) {
+  const key = String(value || "").toLowerCase();
+  return ABILITY_HIT_RE.test(key) ? key : "";
+}
+
+// Aptitudes camouflage : jamais affichées en distant (défense en
+// profondeur — le serveur ne les diffuse déjà pas).
+const ABILITY_CLOAK_SKILLS = new Set([
+  "ability_admin-ultimate-cloaking",
+  "ability_spearhead_ultimate-cloak",
+  "ability_spearhead-plus_ultimate-cloak",
+]);
 
 let ws = null;
 let myId = "";
@@ -1170,15 +1187,23 @@ export function ensureNetplayConnection() {
       };
       return;
     }
-    if (msg.t === "skillFx" && (msg.skill === "iem" || msg.skill === "ish" || msg.skill === "smb")) {
-      if (netSkillInbox.length > 24) netSkillInbox.shift();
-      netSkillInbox.push({
-        skill: msg.skill,
-        by: String(msg.by || "").slice(0, 64),
-        until: Math.max(0, Number(msg.until) || 0),
-        at: Math.max(0, Number(msg.at) || Date.now()),
-      });
-      return;
+    if (msg.t === "skillFx" && typeof msg.skill === "string") {
+      const key = String(msg.skill).toLowerCase();
+      const isAbility = key.startsWith("ability_") && !ABILITY_CLOAK_SKILLS.has(key);
+      if (msg.skill === "iem" || msg.skill === "ish" || msg.skill === "smb" || isAbility) {
+        if (netSkillInbox.length > 24) netSkillInbox.shift();
+        netSkillInbox.push({
+          skill: key,
+          by: String(msg.by || "").slice(0, 64),
+          until: Math.max(0, Number(msg.until) || 0),
+          at: Math.max(0, Number(msg.at) || Date.now()),
+          x: Number.isFinite(Number(msg.x)) ? Math.round(Number(msg.x)) : 0,
+          y: Number.isFinite(Number(msg.y)) ? Math.round(Number(msg.y)) : 0,
+          target: String(msg.target || "").slice(0, 64),
+        });
+        return;
+      }
+      if (key.startsWith("ability_")) return; // cloak ou inconnu : ignoré silencieusement
     }
     if (msg.t === "boxesSync" && Array.isArray(msg.boxes)) {
       // Etat complet pour le nouveau venu (meme map uniquement).
@@ -1399,6 +1424,9 @@ export function ensureNetplayConnection() {
           vy: svy,
           // CPU CL04K-XL distant : vaisseau non rendu (point + proxy gardés).
           cloakCpu: p.cloakCpu === true,
+          // Camouflage d'aptitude distant : ni sprite ni point minimap
+          // (proxy gardé pour la résolution des cibles, lock coupé moteur).
+          cloaked: p.cloaked === true,
           // Destination de deplacement (pilotage de la prediction).
           moving,
           dx, dy,
@@ -1473,6 +1501,8 @@ export function ensureNetplayConnection() {
           freezeT: Math.max(0, Number(p.freezeT) || 0),
           iemT: Math.max(0, Number(p.iemT) || 0),
           ishT: Math.max(0, Number(p.ishT) || 0),
+          // Auras d'aptitudes visibles (Phase 2) : [[code, secLeft, x, y]].
+          afx: sanitizeAbilityFxList(p.afx),
           // PET allie : actif, niveau, position.
           peta: p.peta === 1 ? 1 : 0,
           petl: Math.max(1, Math.min(32, Math.round(Number(p.petl ?? prev?.petl) || 1))),
@@ -1961,6 +1991,11 @@ export function sendPvpHit(hit) {
   if (!ws || ws.readyState !== 1 || !hit || !hit.target) return;
   try {
     const h = { t: "pvpHit", target: String(hit.target) };
+    const ability = abilityHitTag(hit.ability);
+    // Hits d'exécution vérifiés serveur : plafond relevé (le serveur
+    // tranche : enveloppe contournée uniquement sur droit frais).
+    const dmgCap = ability ? 2e9 : 1e7;
+    if (ability) h.ability = ability;
     if (typeof hit.rocket === "string") h.rocket = hit.rocket.slice(0, 16);
     if (hit.kind === "sab") {
       h.kind = "sab";
@@ -1975,7 +2010,7 @@ export function sendPvpHit(hit) {
       if (Number(hit.freezeSec) > 0) h.freezeSec = Math.min(5, Number(hit.freezeSec));
     }
     const hasStatus = (h.slowPct > 0 && h.slowSec > 0) || h.freezeSec > 0;
-    if ((!(h.dmg > 0) && !hasStatus) || h.dmg > 1e7) return;
+    if ((!(h.dmg > 0) && !hasStatus) || h.dmg > dmgCap) return;
     ws.send(JSON.stringify(h));
   } catch {}
 }
@@ -1987,6 +2022,8 @@ export function sendNetHit(hit) {
   if (!ws || ws.readyState !== 1 || !hit || !hit.uid) return;
   try {
     const h = { t: "hit", uid: String(hit.uid) };
+    const ability = abilityHitTag(hit.ability);
+    if (ability) h.ability = ability;
     if (typeof hit.rocket === "string") h.rocket = hit.rocket.slice(0, 16);
     if (hit.kind === "sab") {
       h.kind = "sab";

@@ -11,6 +11,8 @@ export function playerSlowMult(player) {
     mult *= Math.max(0.05, 1 - pct / 100);
   }
   if (player && (Number(player.travelT) || 0) > 0) mult *= 2;
+  // Voyage Yamato : même effet x2, état séparé (yamatoT).
+  if (player && (Number(player.yamatoT) || 0) > 0) mult *= 2;
   // Postcombustion (Lightning) : x2 comme le Voyage Citadel.
   if (player && (Number(player.lightT) || 0) > 0) mult *= 2;
   // Représailles (Berserker, officiel) : -5 % de vitesse pendant l'effet.

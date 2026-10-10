@@ -35,7 +35,7 @@ const SHIP_BASE_INFO = {
   liberator: { effet: null, competence: null },
   mimesis: { effet: "+10% Bouclier, +5% Pénétration", competence: "Brouillage / Sortie de phase" },
   nostromo: { effet: null, competence: null },
-  orcus: { effet: "Modules équipés x1.5", competence: "Duplication / Assimilation" },
+  orcus: { effet: "Modules équipés x1.5", competence: "Assimilation" },
   paladin: { effet: null, competence: "Éventreur / Dernier rempart" },
   phoenix_bleu: { effet: null, competence: null },
   piranha: { effet: null, competence: null },
