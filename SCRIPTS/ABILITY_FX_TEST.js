@@ -13,6 +13,10 @@ import {
   EXEC_WINDOW_MS,
   EXEC_HIT_CAP_PVP,
   EXEC_HIT_CAP_NPC,
+  HEAL_ABILITIES,
+  healSpecFor,
+  isHealAbility,
+  HEAL_MIN_INTERVAL_MS,
 } from "../SRC/CORE/ABILITY_FX.js";
 import { ABILITIES, ABILITY_IDS, getAbilityInfo } from "../SHIP/SHIP_ABILITIES.js";
 import { useMovementAbility, movementSpeed } from "./MOVEMENT_RULES.js";
@@ -151,6 +155,30 @@ test("bypass aura : actif ou grâce 2 s, sinon refusé", () => {
   assert.equal(abilityHitBypass({ _abilityFx: { ability_venom: { until: now - 1000 } } }, "ability_venom", now), true, "grâce");
   assert.equal(abilityHitBypass({ _abilityFx: { ability_venom: { until: now - 5000 } } }, "ability_venom", now), false);
   assert.equal(abilityHitBypass({ _abilityFx: {} }, "ability_lightning", now), false);
+});
+
+test("registre soins groupe : 9 aptitudes, rayons et caps officiels", () => {
+  const expected = {
+    "ability_aegis_hp-repair": { radius: 1000, cap: 40000, shield: false },
+    "ability_aegis_shield-repair": { radius: 1000, cap: 25000, shield: true },
+    "ability_aegis_repair-pod": { radius: 400, cap: 18000, shield: false },
+    "ability_hammerclaw_hp-repair": { radius: 1000, cap: 50000, shield: false },
+    "ability_hammerclaw_shield-repair": { radius: 1000, cap: 60000, shield: true },
+    "ability_hammerclaw_repair-pod": { radius: 400, cap: 17500, shield: false },
+    "ability_hammerclaw-plus_hp-repair": { radius: 1000, cap: 65000, shield: false },
+    "ability_hammerclaw-plus_shield-repair": { radius: 1000, cap: 80000, shield: true },
+    "ability_hammerclaw-plus_repair-pod": { radius: 600, cap: 20000, shield: false },
+  };
+  assert.equal(Object.keys(HEAL_ABILITIES).length, 9);
+  for (const [id, spec] of Object.entries(expected)) {
+    assert.ok(isHealAbility(id), id);
+    assert.deepEqual(healSpecFor(id), { ...spec, mode: spec.radius <= 600 ? "pod" : "hot" }, id);
+    // Chaque soin de groupe est une aptitude branchée du registre.
+    assert.equal(getAbilityInfo(id)?.status, "done", id);
+  }
+  assert.equal(isHealAbility("ability_solace"), false, "solace = soi uniquement");
+  assert.equal(isHealAbility("ability_orcus_assimilate"), false, "orcus = autre circuit");
+  assert.ok(HEAL_MIN_INTERVAL_MS >= 500);
 });
 
 // --- Yamato : règle mouvement + multiplicateur local ---

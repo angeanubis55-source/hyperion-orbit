@@ -128,7 +128,7 @@ import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
 import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive } from "./NETPLAY.js";
-  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
+  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
   drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetDecloakInbox,
   getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
@@ -5746,6 +5746,12 @@ function healRepairPodTick() {
       { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
     );
   }
+  // Joueurs de même firme dans le pod (serveur tranche + diffuse le +X).
+  try {
+    if (player.podX != null && player.podY != null) {
+      healPlayerAllies("ability_aegis_repair-pod", REPAIR_POD_HEAL, false, player.podX, player.podY, REPAIR_POD_RADIUS, false);
+    }
+  } catch {}
   try {
     for (const esc of escortShips) {
       if (!esc || !(esc.hp > 0) || player.podX == null) continue;
@@ -6066,6 +6072,13 @@ function healHammerPodTick(plus) {
       if (dist2(esc.x, esc.y, px, py) <= r2) {
         esc.hp = Math.min(Number(esc.hpMax || 0), Number(esc.hp || 0) + amt);
       }
+    }
+  } catch {}
+  // Joueurs de même firme dans le pod (serveur tranche + diffuse le +X).
+  try {
+    if (px != null && py != null) {
+      healPlayerAllies(plus ? "ability_hammerclaw-plus_repair-pod" : "ability_hammerclaw_repair-pod",
+        amt, false, px, py, pr, false);
     }
   } catch {}
 }
@@ -32380,8 +32393,60 @@ const AEGIS_POD_FRAMES = 32;
 // Montants officiels : Aegis 280k/140k coque, 125k/75k bouclier ;
 // Hammerclaw 350k/175k coque, 180k/120k bouclier.
 const ALLY_HEAL_RADIUS = 1000;
-function pickHealAlly(isShield) {
+// Soins de groupe (HoTs + pods) vers les JOUEURS de même firme autour.
+// Le serveur tranche et crédite (rayon, montant, cadence, aura active) ;
+// la victime affiche le +X via le flux ohAt/ohAmt. Ici : prédiction locale
+// du +X sur la cible (comme les chiffres de dégâts sur les ennemis).
+// - single=true (HoTs) : le plus blessé seulement ;
+// - single=false (pods) : tous les blessés dans le rayon.
+function healPlayerAllies(abilityId, allyAmt, isShield, cx, cy, radius, single) {
   try {
+    if (player.dead || !started) return;
+    const key = String(abilityId || "").toLowerCase();
+    if (!key.startsWith("ability_")) return;
+    const amt = Math.round(Number(allyAmt) || 0);
+    if (!(amt > 0) || !(radius > 0)) return;
+    let myFirm = "";
+    try { myFirm = String(account.user?.faction || "").toLowerCase(); } catch {}
+    if (!myFirm) return;
+    let remotes = null;
+    try { remotes = getNetplayRemotes(); } catch { return; }
+    if (!remotes || !remotes.size) return;
+    const me = String(netMyId() || "");
+    const r2 = Number(radius) * Number(radius);
+    const cands = [];
+    for (const [rid, r] of remotes) {
+      if (!r || r.dead || String(rid) === me) continue;
+      if (String(r.firm || "").toLowerCase() !== myFirm) continue;
+      const rx = Number(r.rx ?? r.x), ry = Number(r.ry ?? r.y);
+      if (!Number.isFinite(rx) || !Number.isFinite(ry)) continue;
+      const dx = rx - cx, dy = ry - cy;
+      if (dx * dx + dy * dy > r2) continue;
+      const pct = isShield
+        ? (Number(r.shMax) > 0 ? Number(r.shPct ?? 1) : 1)
+        : Number(r.hpPct ?? 1);
+      if (!(pct < 1)) continue;
+      cands.push({ rid: String(rid), rx, ry, pct });
+    }
+    if (!cands.length) return;
+    cands.sort((a, b) => a.pct - b.pct);
+    const list = single ? cands.slice(0, 1) : cands;
+    const color = isShield ? "rgba(70,180,255,0.98)" : "rgba(80,255,125,0.98)";
+    const yOff = isShield ? -110 : -90;
+    for (const c of list) {
+      try { sendHealAlly({ target: c.rid, amt, ability: key, shield: isShield }); } catch {}
+      try {
+        addFloatText(
+          c.rx + (Math.random() - 0.5) * 60,
+          c.ry + yOff - Math.random() * 20,
+          amt, color,
+          { text: `+${DMG_FMT.format(amt)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
+        );
+      } catch {}
+    }
+  } catch {}
+}
+function pickHealAlly(isShield) {  try {
     const r2 = ALLY_HEAL_RADIUS * ALLY_HEAL_RADIUS;
     const key = isShield ? "sh" : "hp";
     const maxKey = isShield ? "shMax" : "hpMax";
@@ -32399,8 +32464,7 @@ function pickHealAlly(isShield) {
   } catch { return null; }
 }
 function healAllyOrSelf(allyAmount, selfAmount, isShield) {
-  if (player.dead) return 0;
-  const color = isShield ? "rgba(70,180,255,0.98)" : "rgba(80,255,125,0.98)";
+  if (player.dead) return 0;  const color = isShield ? "rgba(70,180,255,0.98)" : "rgba(80,255,125,0.98)";
   const yOff = isShield ? -110 : -90;
   const key = isShield ? "sh" : "hp";
   const maxKey = isShield ? "shMax" : "hpMax";
@@ -34063,6 +34127,10 @@ function update(dt) {
       if (player[hAcc] >= 1) {
         player[hAcc] -= 1;
         try { healAllyOrSelf(hpPlus ? HAMMER_PLUS_HP_ALLY : HAMMER_HP_AMOUNT, hpPlus ? HAMMER_PLUS_HP_SELF : HAMMER_HP_SELF, false); } catch {}
+        try {
+          healPlayerAllies(hpPlus ? "ability_hammerclaw-plus_hp-repair" : "ability_hammerclaw_hp-repair",
+            hpPlus ? HAMMER_PLUS_HP_ALLY : HAMMER_HP_AMOUNT, false, player.x, player.y, 1000, true);
+        } catch {}
       }
       if (player[hT] <= 0) {
         startHammerHpCooldown(hpPlus);
@@ -34085,6 +34153,10 @@ function update(dt) {
       if (player[sAcc] >= 1) {
         player[sAcc] -= 1;
         try { healAllyOrSelf(shPlus ? HAMMER_PLUS_SH_ALLY : HAMMER_SH_AMOUNT, shPlus ? HAMMER_PLUS_SH_SELF : HAMMER_SH_SELF, true); } catch {}
+        try {
+          healPlayerAllies(shPlus ? "ability_hammerclaw-plus_shield-repair" : "ability_hammerclaw_shield-repair",
+            shPlus ? HAMMER_PLUS_SH_ALLY : HAMMER_SH_AMOUNT, true, player.x, player.y, 1000, true);
+        } catch {}
       }
       if (player[sT] <= 0) {
         startHammerShCooldown(shPlus);
@@ -34807,6 +34879,8 @@ function update(dt) {
     if (player.healHpAcc >= 1) {
       player.healHpAcc -= 1;
       try { healAllyOrSelf(HP_REPAIR_AMOUNT, HP_REPAIR_SELF, false); } catch {}
+      // Joueurs de même firme : le plus blessé dans 1000 (serveur tranche).
+      try { healPlayerAllies("ability_aegis_hp-repair", HP_REPAIR_AMOUNT, false, player.x, player.y, 1000, true); } catch {}
     }
     if (player.healHpT <= 0) {
       startHpRepairCooldown();
@@ -34822,6 +34896,7 @@ function update(dt) {
     if (player.healShAcc >= 1) {
       player.healShAcc -= 1;
       try { healAllyOrSelf(SH_REPAIR_AMOUNT, SH_REPAIR_SELF, true); } catch {}
+      try { healPlayerAllies("ability_aegis_shield-repair", SH_REPAIR_AMOUNT, true, player.x, player.y, 1000, true); } catch {}
     }
     if (player.healShT <= 0) {
       startShRepairCooldown();

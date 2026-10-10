@@ -86,6 +86,36 @@ export function abilityHitBypass(state, abilityId, now) {
   }
   return false;
 }
+// ---------------------------------------------------------------------------
+// Soins de groupe (joueurs de même firme) : HoTs mono-cible + pods de zone.
+// Le client envoie {t:"heal"} (1/s, rythme des ticks), le serveur valide
+// (vaisseau, aura active, rayon, montant, cadence) puis crédite la victime,
+// qui affiche le +X via le flux ohAt/ohAmt existant. Soins sur soi et
+// escortes restent 100 % locaux (pas de réseau).
+// Montants = ticks officiels par seconde (voir ORBIT_ENGINE).
+// ---------------------------------------------------------------------------
+export const HEAL_ABILITIES = Object.freeze({
+  "ability_aegis_hp-repair": { radius: 1000, cap: 40000, shield: false, mode: "hot" },
+  "ability_aegis_shield-repair": { radius: 1000, cap: 25000, shield: true, mode: "hot" },
+  "ability_aegis_repair-pod": { radius: 400, cap: 18000, shield: false, mode: "pod" },
+  "ability_hammerclaw_hp-repair": { radius: 1000, cap: 50000, shield: false, mode: "hot" },
+  "ability_hammerclaw_shield-repair": { radius: 1000, cap: 60000, shield: true, mode: "hot" },
+  "ability_hammerclaw_repair-pod": { radius: 400, cap: 17500, shield: false, mode: "pod" },
+  "ability_hammerclaw-plus_hp-repair": { radius: 1000, cap: 65000, shield: false, mode: "hot" },
+  "ability_hammerclaw-plus_shield-repair": { radius: 1000, cap: 80000, shield: true, mode: "hot" },
+  "ability_hammerclaw-plus_repair-pod": { radius: 600, cap: 20000, shield: false, mode: "pod" },
+});
+// Cadence min entre deux soins (même lanceur -> même cible -> même aptitude).
+export const HEAL_MIN_INTERVAL_MS = 800;
+
+export function healSpecFor(abilityId) {
+  return HEAL_ABILITIES[String(abilityId || "").toLowerCase()] || null;
+}
+
+export function isHealAbility(abilityId) {
+  return !!healSpecFor(abilityId);
+}
+
 export const ABILITY_FX_CODES = Object.freeze({
   1: "ability_admin-ultimate-cloaking", // NOTE: jamais diffusé (cloak invisible)
   2: "ability_aegis_repair-pod",

@@ -28,7 +28,7 @@ import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
 import { updateClockGuard, stopRejectedMotion } from "./CLOCK_GUARD.js";
 import { takeMovement, useMovementAbility, syncMovementAbility, movementSpeed, usePhaseOut, shipOwnsAbility, dashTargetKey, isMovementAbilityKey } from "./MOVEMENT_RULES.js";
-import { isAbilityFxBroadcastable, pruneAbilityFxMap, abilityHitBypass, isExecutionAbility, EXEC_WINDOW_MS, EXEC_HIT_CAP_PVP, EXEC_HIT_CAP_NPC } from "../SRC/CORE/ABILITY_FX.js";
+import { isAbilityFxBroadcastable, pruneAbilityFxMap, abilityHitBypass, isExecutionAbility, EXEC_WINDOW_MS, EXEC_HIT_CAP_PVP, EXEC_HIT_CAP_NPC, healSpecFor, HEAL_MIN_INTERVAL_MS } from "../SRC/CORE/ABILITY_FX.js";
 import { getAbilityInfo } from "../SHIP/SHIP_ABILITIES.js";
 
 // --- Auras d'aptitudes visibles par les autres (Phase 2) ---
@@ -2281,6 +2281,58 @@ wss.on("connection", (ws) => {
             } catch {}
           }
         } catch {}
+      } catch {}
+      return;
+    }
+    if (msg.t === "heal") {
+      // Soin de groupe (aptitude) vers un joueur : le serveur tranche puis
+      // la victime affiche le +X via le flux ohAt/ohAmt (comme l'Orcus).
+      // Validation : vaisseau, aura active (HoT/pod en cours, pas de soin
+      // volant), rayon (pod = point posé serveur, HoT = lanceur), montant
+      // plafonné, cadence 800 ms par couple, bouclier cohérent.
+      try {
+        if (!authed || !accountId || state.instance === true) return;
+        const room = rooms.get(mapId);
+        if (!room || !room.has(id)) return;
+        const ab = String(msg.ability || "").toLowerCase();
+        const spec = healSpecFor(ab);
+        if (!spec) return;
+        const profile = refreshCombatProfile(state, accountId, mapId);
+        if (!ownsAbility(profile, ab)) return;
+        const now = Date.now();
+        if (state.pvpDead === true || !(Number(state.hp) > 0)) return;
+        if (!abilityHitBypass(state, ab, now)) return;
+        const me = room.get(id);
+        const foe = room.get(String(msg.target));
+        if (!foe || !me || foe === me) return;
+        const st = foe.state;
+        if (!st || st.pvpDead === true || !(Number(st.hp) > 0)) return;
+        if (Boolean(msg.sh) !== spec.shield) return;
+        // Rayon : pods autour du point posé (état serveur), HoTs autour
+        // du lanceur (comme pickHealAlly en local).
+        let ox = Number(state.x), oy = Number(state.y);
+        if (spec.mode === "pod") {
+          const fx = state._abilityFx && typeof state._abilityFx === "object" ? state._abilityFx[ab] : null;
+          if (!fx || !Number.isFinite(Number(fx.x)) || !Number.isFinite(Number(fx.y))) return;
+          ox = Number(fx.x); oy = Number(fx.y);
+        }
+        const dx = Number(st.x) - ox, dy = Number(st.y) - oy;
+        if (dx * dx + dy * dy > Number(spec.radius) * Number(spec.radius)) return;
+        const amt = Math.max(0, Math.min(Number(spec.cap), Math.round(Number(msg.amt) || 0)));
+        if (!(amt > 0)) return;
+        const hk = `${ab}|${foe.state.id}|${spec.shield ? "sh" : "hp"}`;
+        const hm = state._healAt && typeof state._healAt === "object" ? state._healAt : (state._healAt = {});
+        if (now - Number(hm[hk] || 0) < HEAL_MIN_INTERVAL_MS) return;
+        hm[hk] = now;
+        if (Object.keys(hm).length > 64) { try { state._healAt = { [hk]: now }; } catch {} }
+        if (spec.shield) {
+          if (!(Number(st.shMax) > 0)) return;
+          st.sh = Math.max(0, Math.min(Number(st.shMax), Number(st.sh || 0) + amt));
+        } else {
+          st.hp = Math.max(0, Math.min(Number(st.hpMax) || 1, Number(st.hp || 0) + amt));
+        }
+        st.orcusHealAt = now;
+        st.orcusHealAmt = amt;
       } catch {}
       return;
     }

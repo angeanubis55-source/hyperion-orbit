@@ -2245,6 +2245,23 @@ export function tickNetplayRemotes(dt = 0.016) {
   }
 }
 
+// Soin de groupe (aptitude) vers un joueur : le serveur valide (vaisseau,
+// aura active, rayon, montant, cadence) puis crédite la victime, qui affiche
+// le +X via le flux ohAt/ohAmt. Plafond client large, le serveur tranche.
+export function sendHealAlly(heal) {
+  if (suspended || instanceMode === true) return false;
+  if (!ws || ws.readyState !== 1 || !heal || !heal.target) return false;
+  const ability = abilityHitTag(heal.ability);
+  if (!ability) return false;
+  const amt = Math.max(0, Math.min(300000, Math.round(Number(heal.amt) || 0)));
+  if (!(amt > 0)) return false;
+  try {
+    ws.send(JSON.stringify({ t: "heal", target: String(heal.target).slice(0, 64),
+      amt, ability, sh: heal.shield === true ? 1 : 0 }));
+    return true;
+  } catch { return false; }
+}
+
 export function sendSkillUse(skill, details = {}) {
   if (suspended || instanceMode === true) return false;
   if (!ws || ws.readyState !== 1) return false;
