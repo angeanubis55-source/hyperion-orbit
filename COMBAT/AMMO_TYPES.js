@@ -32,7 +32,7 @@ const AMMO_DESCRIPTIONS = Object.freeze({
   x4: "Dégâts laser ×4.\nPuissante mais chère : à réserver aux gros NPC et aux JOUEURS.",
   sab: "Vole du bouclier x2 de tes dégâts laser et recharge le tien du même montant.",
   x6: "Salve rapide à ×6 les dégâts laser.",
-  rcb: "Salve rapide à ×7, la munition la plus puissante.",
+  rcb: "Salve rapide à ×7 les dégâts laser.",
   cbo: "Dégâts ×3 et vol de bouclier (×1 de tes dégâts) dans le même tir.",
   job: "Dégâts ×2 contre les JOUEURS, ×3,5 contre les NPC.",
   rb: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×8 contre les Demaners, SaNeJiEwZ et Demaner Freighter.",
@@ -49,8 +49,8 @@ export function ammoDescription(id) {
   const key = String(id || "").toLowerCase();
   const description = AMMO_DESCRIPTIONS[key] || "Munition laser.";
   const cooldown = Number(AMMO[key]?.cooldown);
-  // RSB-75 : note courte sur la même ligne, pas de 2e ligne.
-  if (key === "x6" && cooldown > 0) return `${description} (5s de cooldown)`;
+  // RSB-75 / RCB-140 : pas de note de cooldown dans la description.
+  if (key === "x6" || key === "rcb") return description;
   return cooldown > 0
     ? `${description}\nTemps de recharge : ${String(cooldown).replace(".", ",")} s (partagé entre RSB-75 et RCB-140).`
     : description;
@@ -79,7 +79,7 @@ export const PLAYER_BULLET_SPRITES = {
   emaa: { src: "COMBAT/MUNITIONS/EMAA.png", w: 74, h: 12, glow: true, rotateOffset: Math.PI },
   sbl: { src: "COMBAT/MUNITIONS/SBL.png", w: 114, h: 18, glow: true, rotateOffset: Math.PI },
   abl: { src: "COMBAT/MUNITIONS/ABL.png", w: 43, h: 12, glow: true, rotateOffset: Math.PI },
-  tent: { src: "COMBAT/MUNITIONS/TENTACUL.png", w: 78, h: 18, glow: true, rotateOffset: Math.PI },
+  tent: { src: "COMBAT/MUNITIONS/TENTACUL.png", w: 78, h: 18, glow: true, rotateOffset: 0 },
   // Roquettes : sprites officiels extraits des rocketN.swf (voir COMBAT/ROCKET_TYPES.js
 //   pour le mapping). w/h = tailles natives : pas de déformation au rendu.
   r310: { src: "COMBAT/MUNITIONS/R310.png", w: 26, h: 5, glow: true, rotateOffset: Math.PI },

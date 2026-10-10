@@ -1139,7 +1139,7 @@ export function ensureNetplayConnection() {
         sunX: Number.isFinite(Number(msg.sunX)) ? Math.round(Number(msg.sunX)) : 0,
         sunY: Number.isFinite(Number(msg.sunY)) ? Math.round(Number(msg.sunY)) : 0,
       });
-      if (netNpcRewardInbox.size > 512) netNpcRewardInbox.delete(netNpcRewardInbox.keys().next().value);
+      if (netNpcRewardInbox.size > 64) netNpcRewardInbox.delete(netNpcRewardInbox.keys().next().value);
       return;
     }
     if (msg.t === "npcSun" && msg && typeof msg === "object") {      if (netSunInbox.length > 32) netSunInbox.shift();

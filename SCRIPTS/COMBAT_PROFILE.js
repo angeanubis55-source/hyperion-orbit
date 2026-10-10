@@ -62,7 +62,7 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
       + Number(stats.formationEffects?.shieldAbsorptionPct || 0) / 100, 0, 1),
     evade: clamp((stats.bonusEvasionPct + pilot.evadePct + Number(stats.formationEffects?.evasionPct || 0)) / 100, 0, 0.9),
     penetration: clamp(stats.bonusPenetrationPct / 100, 0, 1),
-    critChance: osl ? Math.max(0.05, Math.min(0.5, (3 * osl + (osl >= 3 ? 9 : 0)) / 100)) : 0.05,
+    critChance: osl ? 0.05 + (3 * osl) / 100 : 0.05,
     critMult: osl ? 2 : 1.5,
     maxDamage: clamp(Math.max(laser * 8 * 4, rocket * 10, petDamage * 8 * 4,
       // SMB + impacts des aptitudes : enveloppe compatible avec les coques.

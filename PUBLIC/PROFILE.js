@@ -42,7 +42,7 @@ import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, ge
 import { getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
 import { getAbilitiesForShip, getAbilityInfo, policeAbilityIds, abilityShipKeyFor, formatAbilityTiming } from "../SHIP/SHIP_ABILITIES.js";
 import { SHIP_ITEM_DIR, SHIP_ITEM_FULL_IDS, SHIP_ITEM_TRAIT_IDS, SHIP_TRAIT_DIR } from "../SHIP/SHIP_ITEMS.js";
-import { escapeHtml } from "../UI/UI_DOM.js";
+import { escapeHtml, stripNonDigits, wireDigitsOnly } from "../UI/UI_DOM.js";
 import { PILOT_RANKS, calculateRankPoints, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo } from "../SRC/CORE/PROGRESSION.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 import { FACTIONS, getFaction } from "../SRC/CORE/FACTIONS.js";
@@ -52,13 +52,14 @@ import { AMMO, ammoDescription } from "../COMBAT/AMMO_TYPES.js";
 import { getRocketType, rocketDescription } from "../COMBAT/ROCKET_TYPES.js";
 import { getResourceName, getResourceIcon } from "../SRC/DATA/RESOURCES.js";
 import { getItemRarity, ITEM_RARITIES } from "../SRC/DATA/ITEM_RARITIES.js";
-import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getIrisPrice } from "../DRONE/DRONE_TYPES.js";
+import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getDroneShopStillPath, getIrisPrice } from "../DRONE/DRONE_TYPES.js";
 import { emptyPetFit, getPetHullPrice, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLevelXp, getPetSlots, getPetSpritePath, PET_FUEL_MAX, PET_HULL_MAX_BUYS } from "../PET/PET_TYPES.js";
 import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 import { appendToFitSlots, compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
 import { pruneUnavailableLoadout } from "../SRC/CORE/FIT_INVENTORY.js";
 import { rarityForCatalogItem } from "../SRC/DATA/CRAFTING.js";
 import { getBooster, formatBoosterDuration, formatBoosterCountdown } from "../SRC/DATA/BOOSTERS.js";
+import { SHIP_PREVIEW_SCALES } from "../SRC/DATA/SHIP_PREVIEW_SCALES.js";
 
 // ✅ détecte si index.html (le jeu) est ouvert
 function isGameOpen() {
@@ -158,6 +159,9 @@ let selectedShopItemId = null;
 let selectedHangarId = null;
 let shopRenderToken = 0;
 let rouletteRailCells = [];
+// Dropdown quantités boutique (custom, refermée au clic ailleurs / Échap) :
+// écouteurs document branchés une seule fois (renderShopPreview re-rend souvent).
+let shopQtyDocWired = false;
 let moduleReroll = null;
 // Tirage auto (roulette) : enchaîne les tirages de base tant que la case
 // est cochée et que les crédits suivent. Persisté entre les re-renders.
@@ -399,9 +403,18 @@ function getShopListFor(cat) {
   }
   const direct = CATALOG?.[cat];
   if (Array.isArray(direct) && direct.length) {
-    // Onglet Roquettes : manuelles d'abord, lance-roquettes ensuite.
+    // Onglet Munitions : prix croissant (moins cher en haut).
+    if (cat === "ammo") {
+      return [...direct].sort((a, b) => Number(a?.price || 0) - Number(b?.price || 0));
+    }
+    // Onglet Roquettes : manuelles d'abord, lance-roquettes ensuite
+    // (jamais mélangées), prix croissant dans chaque groupe.
     if (cat === "rockets") {
-      return [...direct].sort((a, b) => Number(b.manual !== false) - Number(a.manual !== false));
+      const byPrice = (a, b) => Number(a?.price || 0) - Number(b?.price || 0);
+      return [
+        ...direct.filter((x) => x.manual !== false).sort(byPrice),
+        ...direct.filter((x) => x.manual === false).sort(byPrice),
+      ];
     }
     if (cat === "designs") {
       // groupe les designs par vaisseau de base (l'ordre du fichier est déjà cohérent)
@@ -484,6 +497,14 @@ function petShopSelectedLevel(group, user) {
 
 function formatNumber(num) {
   return formatInteger(num);
+}
+
+// Quantités d'une description boutique en bleu (comme les générateurs :
+// .shopItemStat strong est cyan). S'applique sur du texte déjà échappé :
+// les entités HTML (&...;) sont préservées.
+function highlightShopDescNumbers(escapedHtml) {
+  return String(escapedHtml || "").replace(/(&[A-Za-z0-9#]+;)|(^|[^A-Za-z0-9])([x×]\s?\d+(?:[.,]\d+)?|\d+(?:\s\d{3})*(?:[.,]\d+)?\s?%|\d+(?:\s\d{3})*(?:[.,]\d+)?)/gi, (m, ent, pre, num) =>
+    (ent ? m : `${pre}<strong>${num}</strong>`));
 }
 
 function hasIntegratedHangarWindow() {
@@ -762,7 +783,8 @@ function generateShipModule(user, opts = {}) {
   const type = opts.type || pickWeighted(MODULE_TYPE_WEIGHTS);
   const statCount = opts.statCount || pickWeighted(getModuleStatCountWeights(tier));
 
-  const ships = Array.isArray(CATALOG?.ships) ? CATALOG.ships : [];
+  const ships = (Array.isArray(CATALOG?.ships) ? CATALOG.ships : [])
+    .filter((s) => String(s?.ship?.id || "").toLowerCase() !== "police" && !s?.shopHidden);
   const shipPick = ships.length ? ships[randInt(0, ships.length - 1)] : null;
   const shipId = opts.shipId || shipPick?.ship?.id || "UnknownShip";
   const familyId = opts.familyId || getShipFamilyId(shipId);
@@ -2200,71 +2222,34 @@ function renderShopMeasured(user) {
 
     const title = document.createElement("b");
     title.textContent = it.name || it.id;
-    // Onglet fusionné GEARS + PROTOCOLES : petites cartes comme P.E.T,
-    // mais "GEAR" sur les gears et "PROTO" sur les protocoles.
-    const mergedPetKind = (() => {
-      if (shopTab !== "petEquipment") return "";
-      if (it?.kind === "gear" || it?.kind === "protocol") return it.kind;
-      const lv0 = Array.isArray(it?.levels) ? it.levels[0] : it;
-      if (lv0?.petGear) return "gear";
-      if (lv0?.petProtocol) return "protocol";
-      if (it?.petGear) return "gear";
-      if (it?.petProtocol) return "protocol";
-      return "";
-    })();
-    if (mergedPetKind) {
-      const badge = document.createElement("span");
-      const isProto = mergedPetKind === "protocol";
-      badge.className = "shopPetBadge" + (isProto ? " shopProtoBadge" : " shopGearBadge");
-      badge.textContent = isProto ? "PROTO" : "GEAR";
-      badge.title = isProto ? "Protocole P.E.T" : "Gear P.E.T";
-      title.appendChild(document.createTextNode(" "));
-      title.appendChild(badge);
-    } else if (it?.petOnly || it?.petGear || it?.petProtocol || it?.petFuel || it?.petHull) {
+    // Onglet fusionné GEARS + PROTOCOLES : pas de badge dans la liste
+    // (GEAR / PROTO retirés, comme ROQUETTE et VITESSE / BOUCLIER).
+    if (shopTab !== "petEquipment" && (it?.petOnly || it?.petGear || it?.petProtocol || it?.petFuel || it?.petHull)) {
       const badge = document.createElement("span");
       badge.className = "shopPetBadge";
       badge.textContent = "P.E.T";
       title.appendChild(document.createTextNode(" "));
       title.appendChild(badge);
     }
-    // Onglet Roquettes fusionné : petite carte comme P.E.T.
-    // Libellés courts : "ROQUETTE" / "L-ROQUETTES".
-    if (shopTab === "rockets") {
-      const badge = document.createElement("span");
-      const isLauncher = it.manual === false;
-      badge.className = "shopPetBadge shopWideBadge" + (isLauncher ? " shopLauncherBadge" : "");
-      badge.textContent = isLauncher ? "L-ROQUETTES" : "ROQUETTE";
-      badge.title = isLauncher ? "Lance-roquettes" : "Roquette manuelle";
-      title.appendChild(document.createTextNode(" "));
-      title.appendChild(badge);
-    }
-    // Onglet Générateurs fusionné : petites cartes "VITESSE" / "BOUCLIER".
-    if (shopTab === "generators") {
-      const modType = it?.module?.type
-        || (String(it?.id || "").startsWith("shd_") ? "shield"
-          : String(it?.id || "").startsWith("spd_") ? "speed" : "");
-      const isShield = modType === "shield";
-      const badge = document.createElement("span");
-      badge.className = "shopPetBadge shopWideBadge" + (isShield ? " shopShieldBadge" : " shopSpeedBadge");
-      badge.textContent = isShield ? "BOUCLIER" : "VITESSE";
-      badge.title = isShield ? "Générateur de bouclier" : "Générateur de vitesse";
-      title.appendChild(document.createTextNode(" "));
-      title.appendChild(badge);
-    }
+    // (Badges ROQUETTE / L-ROQUETTES retirés : pas de badge dans la liste.)
+    // Onglet Générateurs fusionné : pas de badge dans la liste
+    // (VITESSE / BOUCLIER retirés).
 
     const sub = document.createElement("span");
-    sub.innerHTML = `${formatNumber(price)} crédits`
-      + (shopTab === "designs" ? ` · ${getShipPack(it.design?.base)?.name || it.design?.base}` : "")
-      + (ownedShip || ownedFormation || ownedPet || ownedHullRow ? ` · <span style="color:#00ff88;">Possédé</span>` : "")
-      + (it.drone ? ` · ${ownedDrone}/${it.drone.type === "iris" ? 8 : 1}` : "")
-      + ((it.petGear || it.petProtocol) ? ` · ×${formatNumber(ownedPetGear)}${petGearReq > 0 ? ` · niv. P.E.T ${petGearReq}+` : ""}` : "")
-      + (it?.petHull ? ` · ${hullBuysRow}/${PET_HULL_MAX_BUYS}` : "")
-      + (groupLevels ? ` · ×${formatNumber(ownedPetGear)} · Niveaux 1-${groupLevels.length}` : "");
+    sub.innerHTML = `<span class="shopRowPrice"><span class="shopPriceValue">${formatNumber(price)}</span> <span class="shopPriceCurrency">crédits</span></span>`;
 
     meta.appendChild(title);
     meta.appendChild(sub);
     row.appendChild(img);
     row.appendChild(meta);
+    // Check "possédé" collé à droite (hors zone grise .shopMeta).
+    if (ownedShip || ownedFormation || ownedPet || ownedHullRow) {
+      const check = document.createElement("span");
+      check.className = "shopOwnedCheck";
+      check.title = "Possédé";
+      check.textContent = "✓";
+      row.appendChild(check);
+    }
 
     row.addEventListener("click", () => {
       selectedShopItemId = it.id;
@@ -2308,7 +2293,7 @@ function renderShipsGrid(user) {
   gridContainer.innerHTML = "";
   gridContainer.scrollTop = 0;
 
-  const list = [...(getShopListFor("ships") || [])].sort((a, b) => Number(a?.price || 0) - Number(b?.price || 0));
+  const list = [...(getShopListFor("ships") || [])].filter((it) => !it?.shopHidden).sort((a, b) => Number(a?.price || 0) - Number(b?.price || 0));
   if (!Array.isArray(list) || !list.length) {
     gridContainer.innerHTML = `
       <div class="tile">
@@ -2357,7 +2342,7 @@ card.className = "shipCard" + (owned ? " owned" : "");
       </div>
 
       <div class="shipPrice">
-        <span class="amount">${formatNumber(price)}</span> crédits
+        <span class="amount">${formatNumber(price)}</span> <span class="shipPriceCurrency">crédits</span>
       </div>
 
       <button class="primary" style="width: 100%;" ${(!can || owned) ? "disabled" : ""} data-ship-buy="${it.id}">
@@ -3041,13 +3026,24 @@ function renderShopPreview(user, it, cat) {
   const fuelSpace = fuelSpaceNow();
   const fuelFull = isFuel && user?.pet?.owned === true && fuelSpace <= 0;
   const owned = isShipLike ? (isDesign ? alreadyOwnsDesign(user, shipId) : alreadyOwnsShip(user, shipId)) : isDrone ? droneCount >= droneLimit : isPet ? petOwned : isHull ? hullOwned : Boolean(formationOwned);
-  const isUnique = isShipLike || isDrone || isFormation || isPet || isHull;
+  const isUnique = isShipLike || isDrone || isFormation || isPet;
 const counts = user?.inventory?.counts || {};
 const countOwned = Number(counts[it?.id] || 0);
 
 const ammoQty = getAmmoQtyForShopItem(user, it);
 const isAmmo = !!ammoQty;
 const ammoKey = ammoQty?.key || "";
+// Générateurs + canons laser : même mise en page que les munitions dans
+// l'aperçu (bloc Coût d'achat + stock actuel + stock après achat).
+const isGeneratorCat = (cat === "generators" || cat === "speedGen" || cat === "shieldGen");
+const isLaserCat = (cat === "lasers");
+// Boosters : même mise en page que les munitions (l'achat prolonge le timer).
+const isBoosterPreview = !groupRef && !!it?.booster?.id;
+// Essence P.E.T : même mise en page que les munitions.
+const isFuelPreview = !groupRef && !!it?.petFuel;
+// Coque+ P.E.T : même mise en page que les munitions (prix ×2 à chaque achat).
+const isHullPreview = !groupRef && !!it?.petHull;
+const useAmmoLayout = !isUnique && !groupRef && (isAmmo || isGeneratorCat || isLaserCat || isBoosterPreview || isFuelPreview || isHullPreview);
 
 let stockLine = "";
 let statLine = "";
@@ -3058,27 +3054,31 @@ if (isShipLike) {
     const pack = getShipPack(shipId);
     const slots = getShipSlots(shipId);
     statLine = `
-      <p class="shopItemStat" style="margin-top:8px;">
-        HP <strong>${formatNumber(pack?.hp ?? 0)}</strong>
-        · Vitesse <strong>${formatNumber(pack?.speed ?? 0)}</strong>
-        · Laser <strong>${slots.lasers}</strong>
-        · Générateur <strong>${slots.gens}</strong>
-        · Extras <strong>${slots.extras}</strong>
-        · Modules <strong>${slots.shipMods}</strong>
+      <p class="shopItemStat shipStatLine" style="margin-top:8px;text-align:center;">
+        <span style="color:#ffffff;">HP</span> <strong>${formatNumber(pack?.hp ?? 0)}</strong>
+        <span style="color:#ffffff;">Vitesse</span> <strong>${formatNumber(pack?.speed ?? 0)}</strong>
+        <span style="color:#ffffff;">Laser</span> <strong>${slots.lasers}</strong>
+        <span style="color:#ffffff;">Générateur</span> <strong>${slots.gens}</strong>
+        <span style="color:#ffffff;">Extras</span> <strong>${slots.extras}</strong>
+        <span style="color:#ffffff;">Modules</span> <strong>${slots.shipMods}</strong>
       </p>
     `;
   }
-  if (isDesign) {
-    const basePack = getShipPack(it?.design?.base);
-    statLine += `<p class="shopItemStat">Vaisseau de base : <strong>${escapeHtml(basePack?.name || it?.design?.base || "")}</strong></p>`;
-  }
+  // (Lignes "Vaisseau de base" et héritage retirées de l'aperçu designs.)
   // Gains officiels : effet passif + compétence (vaisseaux uniquement :
   // les designs n'apportent aucun effet actif, seulement un bonus passif).
   const shipBonus = isShipLike && shipId ? getShipBonusInfo(shipId) : null;
   if (shipBonus) {
     // Ligne affichée seulement si le vaisseau/design a vraiment l'info.
     if (shipBonus.effet) {
-      statLine += `<p class="shopItemStat">Effet : <strong>${escapeHtml(shipBonus.effet)}</strong></p>`;
+      // Leonov uniquement : un effet par ligne (texte source en \n).
+      const isLeonovEffet = String(shipId || "").toLowerCase() === "leonov";
+      const effetBody = isLeonovEffet
+        ? String(shipBonus.effet).split(/\r?\n/).map((part) => part.trim()
+          ? highlightShopDescNumbers(escapeHtml(part.trim()))
+          : "").join("<br>")
+        : highlightShopDescNumbers(escapeHtml(shipBonus.effet)).replace(/\n/g, "<br>");
+      statLine += `<p class="shopItemStat shopEffetLine"><strong style="color:#ffd56a;">Effet :</strong>${isLeonovEffet ? "<br>" : " "}${effetBody}</p>`;
     }
     if (shipBonus.competence) {
       // Vaisseaux : clé directe. Designs (ex : vengeance_lightning[_frost...]
@@ -3091,7 +3091,7 @@ if (isShipLike) {
       if (shipAbilities.length > 6) {
         // Nombreuses aptitudes (Police) : toutes les icônes côte à côte,
         // retour à la ligne vers le bas (pas de scroll), détail au survol.
-        statLine += `<p class="shopItemStat">Compétence : <strong>${escapeHtml(shipBonus.competence)}</strong></p>`;
+        statLine += `<p class="shopItemStat shopAbilityTitle">${escapeHtml(shipBonus.competence)}</p>`;
         statLine += `<div class="shopAbilitiesGrid">`;
         for (const ab of shipAbilities) {
           const timing = formatAbilityTiming(ab);
@@ -3100,91 +3100,94 @@ if (isShipLike) {
         }
         statLine += `</div>`;
       } else if (shipAbilities.length) {
-        statLine += `<p class="shopItemStat">Compétence :</p>`;
         for (const ab of shipAbilities) {
-          const timing = formatAbilityTiming(ab);
-          statLine += `<p class="shopItemStat shopAbility"><img src="${escapeHtml(ab.icon)}" alt=""> - <strong>${escapeHtml(ab.name)}</strong> : ${escapeHtml(ab.description)}${timing ? ` <em>(${escapeHtml(timing)})</em>` : ""}</p>`;
+          statLine += `<p class="shopItemStat shopAbility"><img src="${escapeHtml(ab.icon)}" alt=""> <strong>${escapeHtml(ab.name)}</strong> : <span>${escapeHtml(ab.description)}</span></p>`;
         }
       } else if (!isDesign) {
-        statLine += `<p class="shopItemStat">Compétence : <strong>${escapeHtml(shipBonus.competence)}</strong></p>`;
+        statLine += `<p class="shopItemStat shopAbilityTitle">${escapeHtml(shipBonus.competence)}</p>`;
       }
     }
-    // Designs : si le vaisseau de base a des aptitudes, on rassure.
-    if (isDesign && shipId) {
-      const baseKey = abilityShipKeyFor(getShipDesignBaseId(shipId) || "");
-      if (baseKey && getAbilitiesForShip(baseKey).length) {
-        statLine += `<p class="shopItemStat shopAbilityInherit">Ce design hérite des aptitudes du vaisseau de base.</p>`;
-      }
-    }
+  // (Note d'héritage des aptitudes retirée.)
   }
 } else if (it?.module?.type === "speed") {
-  statLine = `<p class="shopItemStat">Vitesse par générateur <strong>+${formatNumber(it.module.bonusSpeed || 0)}</strong></p>`;
+  statLine = `<p class="shopItemStat ammoDesc">Vitesse par générateur + <strong>${formatNumber(it.module.bonusSpeed || 0)}</strong></p>`;
 } else if (it?.module?.type === "shield") {
-  statLine = `<p class="shopItemStat">Bouclier par générateur <strong>+${formatNumber(it.module.bonusShield || 0)}</strong>${Number(it.module.absorbPct) > 0 ? ` · absorption <strong>${formatNumber(it.module.absorbPct)} %</strong>` : ""}${it?.petOnly ? " · <strong>P.E.T uniquement</strong>" : ""}</p>`;
+  statLine = `<p class="shopItemStat ammoDesc">Bouclier par générateur + <strong>${formatNumber(it.module.bonusShield || 0)}</strong>${Number(it.module.absorbPct) > 0 ? `<br>Absorption <strong>${formatNumber(it.module.absorbPct)} %</strong>` : ""}${it?.petOnly ? `<br>P.E.T uniquement` : ""}</p>`;
 } else if (it?.module?.type === "laser") {
-  statLine = `<p class="shopItemStat">Dégâts de base par tir <strong>${formatNumber(it.module.damage || 0)}</strong>${it?.module?.vsLabel ? ` · bonus vs <strong>${escapeHtml(it.module.vsLabel)}</strong>` : ""}${it?.petOnly ? " · <strong>P.E.T uniquement</strong>" : ""}</p>`;
-  if (it?.desc) statLine += `<p class="shopItemStat">${escapeHtml(it.desc)}</p>`;
+  statLine = "";
+  if (it?.desc) {
+    // P.E.T uniquement sur sa propre ligne (comme les générateurs) :
+    // la mention inline est retirée de la description.
+    let laserDesc = escapeHtml(it.desc);
+    if (it?.petOnly) laserDesc = laserDesc.replace(/,?\s*montable uniquement sur le P\.E\.T\.?/i, "").trim();
+    statLine += `<p class="shopItemStat ammoDesc">${laserDesc ? `${highlightShopDescNumbers(laserDesc).replace(/\n/g, "<br>")}<br>` : ""}${it?.petOnly ? "P.E.T uniquement" : ""}</p>`;
+  } else if (it?.petOnly) {
+    statLine += `<p class="shopItemStat ammoDesc">P.E.T uniquement</p>`;
+  }
 } else if (it?.give?.ammo) {
-  const ammoDesc = it?.desc ? `<p class="shopItemStat ammoDesc">${escapeHtml(it.desc).replace(/\n/g, "<br>")}</p>` : "";
+  const ammoDesc = it?.desc ? `<p class="shopItemStat ammoDesc">${highlightShopDescNumbers(escapeHtml(it.desc)).replace(/\n/g, "<br>")}</p>` : "";
   statLine = `${ammoDesc}`;
 } else if (it?.give?.rockets) {
   const rocket = getRocketType(ammoKey);
-  statLine = `<p class="shopItemStat">${escapeHtml(it?.desc || rocketDescription(rocket))}</p>`;
+  statLine = `<p class="shopItemStat ammoDesc">${highlightShopDescNumbers(escapeHtml(it?.desc || rocketDescription(rocket))).replace(/\n/g, "<br>")}</p>`;
 } else if (it?.petProtocol) {
   const req = Math.max(0, Number(it.petLevel) || 0);
-  statLine = `<p class="shopItemStat">Bonus <strong>+${Number(it.petProtocol.pct) || 0} % ${escapeHtml(petProtocolStatLabel(it.petProtocol.key))}</strong>.</p>`;
-  if (req > 0) statLine += `<p class="shopItemStat">Nécessite le <strong>P.E.T niveau ${req}</strong>.</p>`;
+  statLine = `<p class="shopItemStat ammoDesc singleline"><strong>+${Number(it.petProtocol.pct) || 0} % ${escapeHtml(petProtocolStatLabel(it.petProtocol.key))}</strong></p>`;
+  if (req > 0) statLine += `<p class="shopItemStat ammoDesc singleline">Nécessite le <strong>P.E.T niveau ${req}</strong></p>`;
 } else if (it?.petGear) {
   const req = Math.max(0, Number(it.petLevel) || 0);
-  statLine = `<p class="shopItemStat">Gear P.E.T — <strong>${escapeHtml(it.desc || "utilitaire")}</strong>.</p>`;
-  if (req > 0) statLine += `<p class="shopItemStat">Nécessite le <strong>P.E.T niveau ${req}</strong>.</p>`;
+  const gearDesc = String(it.desc || "utilitaire").replace(/\.+$/, "");
+  statLine = `<p class="shopItemStat ammoDesc singleline"><strong>${escapeHtml(gearDesc)}</strong></p>`;
+  if (req > 0) statLine += `<p class="shopItemStat ammoDesc singleline">Nécessite le <strong>P.E.T niveau ${req}</strong></p>`;
 } else if (isFuel) {
-  statLine = `<p class="shopItemStat">Essence P.E.T — <strong>recharge +1 carburant / unité</strong> (100 crédits / unité).</p>`;
-  statLine += `<p class="shopItemStat">Nécessite le <strong>P.E.T</strong> (réservoir ${formatNumber(PET_FUEL_MAX)}).</p>`;
+  // Essence : pas de phrase descriptive (titre + bloc d'achat uniquement).
+  statLine = "";
 } else if (isHull) {
-  statLine = `<p class="shopItemStat">Coque+ P.E.T — <strong>+10 000 HP définitifs</strong> au REX.</p>`;
-  statLine += hullOwned
-    ? `<p class="shopItemStat"><strong>Amélioration au maximum (${hullBuys}/${PET_HULL_MAX_BUYS}).</strong></p>`
-    : `<p class="shopItemStat">Prochain achat : <strong>${formatNumber(hullPriceNow)} crédits</strong> (${hullBuys}/${PET_HULL_MAX_BUYS}, prix ×2 à chaque achat).</p>`;
+  statLine = `<p class="shopItemStat ammoDesc">Coque+ P.E.T — <strong>+10 000 HP définitifs</strong> au P.E.T.</p>`;
 } else if (it?.booster?.id) {
-  const boosterDef = getBooster(it.booster.id);
-  statLine = `<p class="shopItemStat">${escapeHtml(it.desc || "")}</p>`;
-  if (boosterDef) statLine += `<p class="shopItemStat">Durée par activation : <strong>${formatBoosterDuration(boosterDef.durationSec)}</strong> · activation depuis la fenêtre Boosters.</p>`;
+  // "pendant 1 h" retiré de l'aperçu (la durée reste visible via le timer).
+  // Bonus Box / Quêtes : description entière en bleu.
+  const boosterDesc = String(it.desc || "").replace(/\s*pendant\s+\d+(?:[.,]\d+)?\s*h(?=\.?)/gi, "");
+  const boosterDescHtml = highlightShopDescNumbers(escapeHtml(boosterDesc)).replace(/\n/g, "<br>");
+  const boosterAllBlue = it?.booster?.id === "bb" || it?.booster?.id === "qr";
+  statLine = `<p class="shopItemStat ammoDesc">${boosterAllBlue ? `<strong>${escapeHtml(boosterDesc).replace(/\n/g, "<br>")}</strong>` : boosterDescHtml}</p>`;
 }
 if (isFormation) {
   const formation = DRONE_FORMATIONS.find(entry => entry.id === it?.formation?.id);
-  statLine = `<p class="shopItemStat formationDescription">${escapeHtml(formation?.description || "Aucun bonus ni malus")}</p>`;
+  // Stats une par ligne (sans "·"), chiffres en bleu.
+  const formationDescHtml = highlightShopDescNumbers(escapeHtml(formation?.description || "Aucun bonus ni malus")).replace(/\n/g, "<br>");
+  statLine = `<p class="shopItemStat ammoDesc">${formationDescHtml.split(/\s*·\s*/).map((part) => part.trim()).filter(Boolean).join("<br>")}</p>`;
 }
 if (isPet) {
-  statLine = `<p class="shopItemStat">Compagnon P.E.T — ramasseur et soutien de combat.</p>`;
+  // Ligne "Compagnon P.E.T" masquée.
+  statLine = ``;
 }
 
 if (isDrone) {
-  stockLine = `<p class="shopAmmoOwned">Drones possédés : <strong>${droneCount} / ${droneLimit}</strong></p>`;
+  stockLine = `<p class="shopItemStat ammoDesc">Drones possédés : ${droneCount} / ${droneLimit}</p>`;
 } else if (isPet) {
-  const petLevel = Math.max(0, Number(user?.pet?.level) || 0);
-  const petExp = Math.max(0, Number(user?.pet?.exp) || 0);
-  stockLine = petOwned
-    ? `<p class="shopAmmoOwned">P.E.T possédé — Niveau ${petLevel} · ${formatNumber(Math.floor(petExp))} XP · ${escapeHtml(getPetLevelBonus(petLevel))}</p>`
-    : `<p class="shopAmmoOwned">P.E.T non possédé — achat unique · gagne 5 % de ton XP</p>`;
-} else if (isFuel) {
+  // P.E.T : aucune ligne de stock (masquée).
+  stockLine = ``;
+} else if (isFuel && !useAmmoLayout) {
   const fuel = Math.max(0, Math.floor(Number(user?.pet?.fuel) || 0));
   stockLine = user?.pet?.owned === true
     ? `<p class="shopAmmoOwned">Réservoir : <strong data-shop-stock style="color: #00d9ff;">${formatNumber(fuel)} / ${formatNumber(PET_FUEL_MAX)}</strong></p>`
-    : `<p class="shopAmmoOwned">P.E.T non possédé — essence inutilisable sans REX</p>`;
-} else if (isHull) {
+    : `<p class="shopAmmoOwned">P.E.T non possédé — essence inutilisable sans P.E.T</p>`;
+} else if (isHull && !useAmmoLayout) {
   stockLine = user?.pet?.owned === true
     ? `<p class="shopAmmoOwned">Coque+ : <strong data-shop-stock style="color: #00d9ff;">${hullBuys} / ${PET_HULL_MAX_BUYS}</strong></p>`
-    : `<p class="shopAmmoOwned">P.E.T non possédé — Coque+ inutilisable sans REX</p>`;
+    : `<p class="shopAmmoOwned">P.E.T non possédé — Coque+ inutilisable sans P.E.T</p>`;
 } else if (isFormation) {
   const active = user?.drones?.activeFormation === it?.formation?.id;
-  stockLine = `<p class="shopAmmoOwned">${formationOwned ? (active ? "Formation active" : "Formation possédée") : `Nécessite au moins ${it?.formation?.minDrones || 4} drones`}</p>`;
-} else if (!isShipLike && ammoQty) {
-  stockLine = `
-    <p class="shopAmmoOwned ammoStock">
-      <strong data-shop-stock>${formatNumber(ammoQty.qty)}</strong>
-    </p>
-  `;
+  const minDronesReq = it?.formation?.minDrones || 4;
+  const droneTotal = (user?.drones?.items || []).length;
+  stockLine = formationOwned
+    ? (active ? `<p class="shopAmmoOwned">Formation active</p>` : ``)
+    : (droneTotal < minDronesReq ? `<p class="shopAmmoOwned"><span class="shopFormationReq">Nécessite au moins ${minDronesReq} drones</span></p>` : ``);
+} else if (!isShipLike && (ammoQty || useAmmoLayout)) {
+  // Munitions + générateurs + lasers + boosters + essence + coque : quantité
+  // affichée dans le bloc d'achat (mise en page ammo) : pas de ligne séparée.
+  stockLine = ``;
 } else if (it?.booster?.id) {
   // Boosters : l'achat boutique part DIRECTEMENT dans le timer actif
   // (pas de stock) — afficher Actif + temps restant plutôt que "Stock 0".
@@ -3197,7 +3200,7 @@ if (isDrone) {
   stockLine = bLeft > 0
     ? `<p class="shopAmmoOwned">Booster : <strong data-booster-status="active" style="color: #00ff88;">Actif</strong> · reste <strong data-booster-countdown="${bActiveUntil}" style="color: #00ff88;">${formatBoosterCountdown(bLeft)}</strong>${bStockHtml}</p>`
     : `<p class="shopAmmoOwned">Booster : <strong data-booster-status="inactive" style="color: #ff4d5e;">Inactif</strong>${bStockHtml}</p>`;
-} else if (!isShipLike) {
+} else if (!isShipLike && !groupRef) {
   stockLine = `
     <p style="margin: 8px 0;">
       Stock possédé : 
@@ -3206,7 +3209,7 @@ if (isDrone) {
   `;
 }
 
-  const imgSrc = it?.preview || (isShipLike ? shipPreviewSrc(shipId) : iconForItem(it, cat));
+  const imgSrc = it?.preview || (isShipLike ? shipPreviewSrc(shipId) : isDrone ? getDroneShopStillPath(it?.drone?.type) : iconForItem(it, cat));
 
   // Gears / protocoles P.E.T : P.E.T requis + palier de niveau officiel.
   // Essence / Coque+ : P.E.T possédé requis (sans palier de niveau).
@@ -3225,9 +3228,17 @@ if (isDrone) {
     
     // Container de 400x400px
     const containerSize = 400;
-    
-    // Calculer le scale pour que le vaisseau rentre dans le container
-    const scale = Math.min(containerSize / shipW, containerSize / shipH, 1) * 0.8; // 0.8 pour laisser un peu de marge
+
+    // Échelle initiale sur les dimensions du vaisseau de base (les designs
+    // type Empyrian ont des frames à grandes marges) ; table mesurée
+    // hors-ligne (SHIP_PREVIEW_SCALES) pour un rendu à taille du vaisseau.
+    const refPack = (isDesign && it?.design?.base) ? (getShipPack(it.design.base) || pack) : pack;
+    const refW = Number(refPack?.w) || shipW;
+    const refH = Number(refPack?.h) || shipH;
+    const mapScale = SHIP_PREVIEW_SCALES[String(shipId || "").toLowerCase()];
+    const scale = (typeof mapScale === "number" && mapScale > 0)
+      ? mapScale
+      : Math.min(containerSize / refW, containerSize / refH, 1) * 0.8; // 0.8 pour laisser un peu de marge
     const mirrorCss = isMirroredShip(shipId) ? " scaleX(-1)" : "";
 
     previewHtml = `
@@ -3239,39 +3250,144 @@ if (isDrone) {
   } else {
     const previewFallback = it?.preview ? ` onerror="this.onerror=null;this.src='${iconForItem(it, cat)}'"` : "";
     previewHtml = `
-      <img src="${imgSrc}" alt="${it?.name || it?.id}"${previewFallback} class="bigImg ${isDrone ? "droneShopImage" : isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "generators", "lasers", "extras", "pets", "petGears", "petProtocols", "petEquipment", "boosters"].includes(cat) ? " equipShopImage" : ""}" />
+      <img src="${imgSrc}" alt="${it?.name || it?.id}"${previewFallback} class="${(isDrone || isPet) ? "stillPreviewImg" : `bigImg ${isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "generators", "lasers", "extras", "pets", "petGears", "petProtocols", "petEquipment", "boosters"].includes(cat) ? " equipShopImage" : ""}`}" />
     `;
   }
   // Preview uniforme : card 105x105, item 100x100 centré (hors vaisseaux,
   // qui gardent leur grand conteneur d'aperçu). Munitions : badge "x1000".
-  const isAmmoPreview = !isShipLike && cat === "ammo";
-  const previewCard = isShipLike ? previewHtml : `<div class="shopPreviewCard${isAmmoPreview ? " ammoCard" : ""}">${previewHtml}${isAmmoPreview ? `<img class="shopPackBadge big" src="/ASSETS/ITEMS/CARD_1000.png" alt="x1000" onerror="this.onerror=null;this.style.display='none'" />` : ""}</div>`;
+  const isAmmoPreview = !isShipLike && (cat === "ammo" || it?.give?.rockets);
+  const previewCard = isShipLike ? previewHtml : (isDrone || isPet) ? `<div class="stillPreviewWrap">${previewHtml}</div>` : `<div class="shopPreviewCard${isAmmoPreview ? " ammoCard" : ""}">${previewHtml}${isAmmoPreview ? `<img class="shopPackBadge big" src="/ASSETS/ITEMS/CARD_1000.png" alt="x1000" onerror="this.onerror=null;this.style.display='none'" />` : ""}</div>`;
 
-  // Munitions : 1 achat = 1 pack (ex : ×1 000). Unités reçues = quantité × pack.
+  // Munitions / roquettes : 1 achat = 1 pack (ex : ×1 000 / ×10).
+  // Unités reçues = quantité × pack.
   const ammoUnitsPerPack = (() => {
     try {
-      const v = Object.values(it?.give?.ammo || {})[0];
+      const v = Object.values(it?.give?.ammo || it?.give?.rockets || {})[0];
       return Math.max(1, Math.floor(Number(v) || 1000));
     } catch { return 1000; }
   })();
+  // Générateurs / lasers / boosters : 1 achat = 1 unité (même mise en page que les munitions).
+  const previewUnitsPerPack = isAmmo ? ammoUnitsPerPack : 1;
+  const previewUnitWord = isAmmo
+    ? (it?.give?.rockets
+      ? (it?.manual === false ? "Roquette de Lance-Roquette(s)" : "Roquette(s)")
+      : "Munition(s) Laser")
+    : isBoosterPreview ? "boosters"
+    : isLaserCat ? "Canon(s) Laser"
+    : isFuelPreview ? "carburants"
+    : isHullPreview ? "Coque+"
+    : it?.module?.type === "speed" ? "Générateur(s) de Vitesse"
+    : "Générateur(s) de Bouclier";
+  const previewCurrentQty = isAmmo ? (ammoQty?.qty || 0) : isFuelPreview ? fuelNow : isHullPreview ? hullBuys : countOwned;
+  // Coque+ : total géométrique (prix ×2 à chaque achat).
+  const hullTotalFor = (start, qty) => {
+    let t = 0;
+    for (let i = 0; i < Math.max(0, qty); i++) t += getPetHullPrice(start + i);
+    return t;
+  };
+  const hullMaxFor = (credits, start) => {
+    let n = 0, spent = 0;
+    while (start + n < PET_HULL_MAX_BUYS) {
+      const p = getPetHullPrice(start + n);
+      if (spent + p > credits) break;
+      spent += p; n++;
+    }
+    return Math.max(1, n);
+  };
+  // Niveau coque actuel relu sur l'utilisateur courant (rafraîchi après achat).
+  const hullStartNow = () => Math.max(0, Math.min(PET_HULL_MAX_BUYS, Math.floor(Number(user?.pet?.hullUpgrades) || 0)));
+  // Niveaux cibles proposés pour la coque (niveau actuel + 1 → 10).
+  const hullTargetOptions = isHullPreview ? (() => {
+    const arr = [];
+    for (let lv = Math.min(hullBuys + 1, PET_HULL_MAX_BUYS); lv <= PET_HULL_MAX_BUYS; lv++) arr.push(String(lv));
+    arr.push("max");
+    return arr;
+  })() : null;
+  // Titre preview : préfixe catégorie, sans doublon quand le nom contient
+  // déjà le mot ("Roquette Roquette R-310", "Canon Laser laser LF-3").
+  const rawTitleName = it?.name || it?.id;
+  let titlePrefix = (useAmmoLayout && !isBoosterPreview && !isFuelPreview && !isHullPreview) ? previewUnitWord.replace("(s)", "") : "";
+  let titleName = rawTitleName;
+  if (titlePrefix) {
+    const lowerName = String(rawTitleName).toLowerCase();
+    if (lowerName.startsWith("roquette") && (titlePrefix === "Roquette" || titlePrefix === "Roquette de Lance-Roquette")) {
+      titleName = titlePrefix === "Roquette de Lance-Roquette" ? `Roquette de Lance-Roquette ${String(rawTitleName).slice(8).trim()}` : String(rawTitleName);
+      titlePrefix = "";
+    } else if (lowerName.startsWith("laser ") && titlePrefix === "Canon Laser") {
+      titleName = String(rawTitleName).slice(6).trim();
+    }
+  }
+  // Boosters : l'achat prolonge le timer actif (durée × quantité).
+  const boosterDefPreview = isBoosterPreview ? getBooster(it?.booster?.id) : null;
+  const boosterKeyPreview = isBoosterPreview ? String(boosterDefPreview?.id || it?.booster?.id || "") : "";
+  const boosterDurMsPreview = isBoosterPreview ? Math.max(1, Number(boosterDefPreview?.durationSec) || 0) * 1000 : 0;
+  const boosterUntilPreview = isBoosterPreview ? Math.max(0, Math.floor(Number(user?.boosters?.active?.[boosterKeyPreview] || 0))) : 0;
+  const boosterLeftPreview = boosterUntilPreview - Date.now();
+  const boosterStockPreview = isBoosterPreview ? Math.max(0, Math.floor(Number(user?.inventory?.counts?.[it?.id] || 0))) : 0;
+  // Bloc coût d'achat vaisseaux/designs (après effet et capacités).
+  // Drones : même présentation (le nom contient déjà "Drone").
+  // Formations : idem (le nom contient déjà "Formation").
+  const droneCostBlockHtml = `
+        <p class="shopAmmoCost shipCostBlock"><span class="shopAmmoWord">Coût d'achat pour</span> <span class="shopAmmoGold">${escapeHtml(it?.name || it?.id)}</span> <span class="shopAmmoWord">:</span> <span id="shopPurchaseTotal">${formatNumber(price)}</span> <span class="shopAmmoWord">crédits</span></p>`;
+  const shipCostBlockHtml = `
+        <p class="shopAmmoCost shipCostBlock"><span class="shopAmmoWord">Coût d'achat pour</span> ${isDesign ? `<span class="shopAmmoGold">Design ${escapeHtml(it?.name || it?.id)}</span>` : `<span class="shopAmmoWord">Vaisseau</span> <span class="shopAmmoGold">${escapeHtml(it?.name || it?.id)}</span>`} <span class="shopAmmoWord">:</span> <span id="shopPurchaseTotal">${formatNumber(price)}</span> <span class="shopAmmoWord">crédits</span></p>
+        ${(isDesign && !alreadyOwnsShip(user, it?.design?.base)) ? `<p class="shopDesignWarn" style="margin:6px 0 0;text-align:center;font-size:12px;font-weight:600;">Vous ne possédez pas le vaisseau.</p>` : ""}`;
 
   shopPreview.innerHTML = `
     <div class="tile">
       ${previewCard}
 
-      <h3${isAmmo ? ` class="ammoTitle"` : ""}>
-        ${it?.name || it?.id} 
-        ${owned ? `<span class="pill">Possédé</span>` : ""}
+      <h3${(isAmmo || isGeneratorCat || isLaserCat || isBoosterPreview || isFuelPreview || isHullPreview || isShipLike || isDrone || isFormation || isPet || cat === "petEquipment") ? ` class="ammoTitle"` : ""}>
+        ${titlePrefix ? `${escapeHtml(titlePrefix)} ` : ""}${escapeHtml(titleName)}
+        ${owned ? ` <span class="previewOwnedWord">Possédé</span> <span class="previewOwnedCheck">✓</span>` : ""}
       </h3>
 
       ${stockLine}
       ${statLine}
 
-      ${!isUnique ? (isAmmo && !groupRef ? `
+      ${!isUnique ? (useAmmoLayout ? `
         <div class="shopAmmoBuyRow">
-          <span class="shopAmmoPrice"><span id="shopPurchaseTotal">${formatNumber(price)}</span> Crédits</span>
-          <input id="shopBuyQuantity" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="Quantité à acheter" />
-          <span class="shopAmmoUnits"><span id="shopAmmoUnitsVal">${formatNumber(ammoUnitsPerPack)}</span> <span class="shopAmmoUnitWord">Unitées</span></span>
+          <div class="shopAmmoQtyRow">
+            <label for="shopBuyQuantity">${isHullPreview ? "Niveau :" : "Montant :"}</label>
+            <input id="shopBuyQuantity" type="number" min="1" step="1" value="${isHullPreview ? Math.min(hullBuys + 1, PET_HULL_MAX_BUYS) : 1}" inputmode="numeric" aria-label="Quantité à acheter" />
+            <div class="shopQtyCombo" id="shopQtyCombo">
+              <button type="button" id="shopQtyBtn" class="shopQtyBtn" aria-haspopup="listbox" aria-expanded="false">
+                <span id="shopQtyBtnLabel">${isHullPreview ? Math.min(hullBuys + 1, PET_HULL_MAX_BUYS) : 1}</span><span aria-hidden="true">▾</span>
+              </button>
+              <div class="shopQtyPopup" id="shopQtyPopup" role="listbox" aria-label="Quantités prédéfinies" hidden>
+                ${(isHullPreview ? hullTargetOptions : ["1", "5", "10", "25", "50", "100", "1000", "2000", "5000", "max"]).map((v) => `<div class="shopQtyOpt" data-qty="${v}" role="option">${v === "max" ? "Max" : v}</div>`).join("")}
+              </div>
+            </div>
+          </div>
+          <p class="shopAmmoCost"><span class="shopAmmoWord">Coût d'achat pour</span> <span id="shopAmmoUnitsVal">${formatNumber(previewUnitsPerPack)}</span> <span class="shopAmmoWord">${previewUnitWord} :</span> <span id="shopPurchaseTotal">${formatNumber(price)}</span> <span class="shopAmmoWord">Crédits</span></p>
+          ${isBoosterPreview ? `
+          <p class="shopAmmoStock"><span class="shopAmmoWord">Temps actif actuel :</span> ${boosterLeftPreview > 0
+            ? `<strong data-booster-status="active" style="color: #00ff88;">Actif</strong> <span class="shopAmmoWord">· reste</span> <strong data-booster-countdown="${boosterUntilPreview}" style="color: #00ff88;">${formatBoosterCountdown(boosterLeftPreview)}</strong>`
+            : `<strong data-booster-status="inactive" style="color: #ff4d5e;">Inactif</strong>`}${boosterStockPreview > 0 ? ` <span class="shopAmmoWord">· en stock :</span> <span data-shop-stock class="shopAmmoGold">${formatNumber(boosterStockPreview)}</span>` : ""}</p>
+          <p class="shopAmmoStock"><span class="shopAmmoWord">Temps après l'achat :</span> <span id="shopBoosterAfterVal" class="shopAmmoGold">${formatBoosterCountdown(Math.max(0, boosterLeftPreview) + boosterDurMsPreview)}</span></p>
+          ` : `
+          <p class="shopAmmoStock"><span class="shopAmmoWord">${isHullPreview ? "Niveau actuel :" : `Quantité actuelle de ${previewUnitWord} :`}</span> <span data-shop-stock class="shopAmmoGold">${formatNumber(previewCurrentQty)}</span></p>
+          <p class="shopAmmoStock"><span class="shopAmmoWord">${isHullPreview ? "Niveau après l'achat :" : "Quantité possible après l'achat :"}</span> <span id="shopAmmoAfterVal" class="shopAmmoGold">${formatNumber(isHullPreview ? Math.min(PET_HULL_MAX_BUYS, previewCurrentQty + previewUnitsPerPack) : previewCurrentQty + previewUnitsPerPack)}</span></p>
+          `}
+        </div>
+      ` : groupRef ? `
+        <div class="shopAmmoBuyRow">
+          <div class="shopAmmoQtyRow">
+            <label for="shopBuyLevel">Niveau :</label>
+            <select id="shopBuyLevel" class="shopLevelSelect" aria-label="Niveau à acheter">
+              ${groupRef.levels.map((e) => {
+                const lv = petShopLevelOf(e);
+                const req = Math.max(0, Number(e?.petLevel) || 0);
+                const petLevel = Math.max(0, Number(user?.pet?.level) || getPetLevel(user?.pet?.exp));
+                const locked = user?.pet?.owned !== true || petLevel < req;
+                const label = `Niveau ${lv}${locked && lv !== 4 ? (user?.pet?.owned !== true ? " (P.E.T requis)" : ` (P.E.T ${req} requis)`) : ""}`;
+                return `<option value="${lv}"${lv === petShopLevelOf(it) ? " selected" : ""}${locked ? " disabled" : ""}>${escapeHtml(label)}</option>`;
+              }).join("")}
+            </select>
+          </div>
+          <p class="shopAmmoCost"><span class="shopAmmoWord">Coût d'achat pour Niveau ${petShopLevelOf(it)} :</span> <span id="shopPurchaseTotal">${formatNumber(price)}</span> <span class="shopAmmoWord">Crédits</span></p>
+          <p class="shopAmmoStock"><span class="shopAmmoWord">Quantité actuelle :</span> <span data-shop-stock class="shopAmmoGold">${formatNumber(countOwned)}</span></p>
+          <p class="shopAmmoStock"><span class="shopAmmoWord">Quantité possible après l'achat :</span> <span id="shopAmmoAfterVal" class="shopAmmoGold">${formatNumber(countOwned + 1)}</span></p>
         </div>
       ` : `
         <div class="shopPurchaseRow">
@@ -3316,10 +3432,12 @@ if (isDrone) {
         </div>
       `) : ""}
       
-      ${isUnique ? `<p style="margin: 12px 0; font-size: 18px;">
-        <strong style="color: #00d9ff;">Prix total:</strong>
-        <span id="shopPurchaseTotal" style="font-weight: 900; color: #00ff88;">${formatNumber(price)}</span> crédits
-      </p>` : ""}
+      ${isUnique ? (isShipLike ? shipCostBlockHtml : (isDrone || isFormation || isPet) ? droneCostBlockHtml : `
+        <p style="margin: 12px 0; font-size: 18px;">
+          <strong style="color: #00d9ff;">Prix total :</strong>
+          <span id="shopPurchaseTotal" style="font-weight: 900; color: #00ff88;">${formatNumber(price)}</span> crédits
+        </p>
+      `) : ""}
 
       <div class="shopBuySection">
         <button id="btnBuyPreview" class="primary" style="width: 100%;" ${(Number(user?.credits || 0) < price || (owned && !formationOwned) || petGateUnmetNow() || fuelFull) ? "disabled" : ""}>
@@ -3337,42 +3455,95 @@ if (isDrone) {
   const levelInput = document.getElementById("shopBuyLevel");
   const totalEl = document.getElementById("shopPurchaseTotal");
   // Quantité max : 5000 partout sauf munitions (sans plafond) ; essence
-  // limitée aussi par la place restante.
+  // = la place restante pour atteindre le réservoir max (50 000) ; coque+
+  // = les achats restants (10 max).
   const quantityCapNow = () => isFuel
-    ? Math.max(1, Math.min(5000, fuelSpaceNow() || 1))
-    : isAmmo
-      ? Infinity
-      : 5000;
+    ? Math.max(1, fuelSpaceNow() || 1)
+    : isHullPreview
+      ? Math.max(1, PET_HULL_MAX_BUYS - Math.max(0, Math.floor(Number(user?.pet?.hullUpgrades) || 0)))
+      : isAmmo
+        ? Infinity
+        : 5000;
   const maxAffordableNow = () => {
     if (!(price > 0)) return quantityCapNow();
+    if (isHullPreview) {
+      const start = hullStartNow();
+      return Math.min(PET_HULL_MAX_BUYS, start + hullMaxFor(Number(user?.credits || 0), start));
+    }
     const afford = Math.floor(Number(user?.credits || 0) / price);
     return Math.max(1, Math.min(quantityCapNow(), afford || 1));
   };
+  // Coque+ : la saisie est un NIVEAU cible (converti en quantité).
   const normalizeQuantity = () => groupRef
     ? 1
     : isUnique
       ? 1
-      : Math.min(quantityCapNow(), Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
+      : isHullPreview
+        ? Math.max(1, Math.min(PET_HULL_MAX_BUYS - hullStartNow(), Math.floor(Number(quantityInput?.value) || 0) - hullStartNow()))
+        : Math.min(quantityCapNow(), Math.max(1, Math.floor(Number(quantityInput?.value) || 1)));
   const updatePurchaseSummary = (event = null) => {
     const quantity = normalizeQuantity();
-    const total = price * quantity;
+    const hullStart = hullStartNow();
+    const hullMaxed = isHullPreview && hullStart >= PET_HULL_MAX_BUYS;
+    const total = isHullPreview ? (hullMaxed ? 0 : hullTotalFor(hullStart, quantity)) : price * quantity;
     if (quantityInput) {
-      quantityInput.max = String(quantityCapNow());
+      quantityInput.max = String(isHullPreview ? PET_HULL_MAX_BUYS : quantityCapNow());
       if (event?.type === "change" || document.activeElement !== quantityInput) {
-        quantityInput.value = String(quantity);
+        quantityInput.value = String(isHullPreview ? Math.min(PET_HULL_MAX_BUYS, hullStart + quantity) : quantity);
       }
     }
     if (totalEl) totalEl.textContent = formatNumber(total);
+    // Coque+ : menu des niveaux reconstruit quand le niveau change (après achat).
+    const qtyPopupEl = document.getElementById("shopQtyPopup");
+    if (qtyPopupEl && isHullPreview) {
+      const fromLevel = hullStart + 1;
+      if (qtyPopupEl.dataset.hullFrom !== String(fromLevel)) {
+        qtyPopupEl.dataset.hullFrom = String(fromLevel);
+        let optsHtml = "";
+        for (let lv = Math.min(fromLevel, PET_HULL_MAX_BUYS); lv <= PET_HULL_MAX_BUYS; lv++) {
+          optsHtml += `<div class="shopQtyOpt" data-qty="${lv}" role="option">${lv}</div>`;
+        }
+        optsHtml += `<div class="shopQtyOpt" data-qty="max" role="option">Max</div>`;
+        qtyPopupEl.innerHTML = optsHtml;
+      }
+    }
+    const qtyBtnLabel = document.getElementById("shopQtyBtnLabel");
+    if (qtyBtnLabel && quantityInput) qtyBtnLabel.textContent = String(quantityInput.value || "");
     const ammoUnitsEl = document.getElementById("shopAmmoUnitsVal");
-    if (ammoUnitsEl) ammoUnitsEl.textContent = formatNumber(quantity * ammoUnitsPerPack);
+    if (ammoUnitsEl) ammoUnitsEl.textContent = formatNumber(quantity * previewUnitsPerPack);
+    const ammoAfterEl = document.getElementById("shopAmmoAfterVal");
+    if (ammoAfterEl) {
+      const cur = isAmmo
+        ? Math.max(0, Math.floor(Number(getAmmoQtyForShopItem(user, it)?.qty || 0)))
+        : isFuelPreview
+          ? Math.max(0, Math.floor(Number(user?.pet?.fuel || 0)))
+          : isHullPreview
+            ? hullStart
+            : Math.max(0, Math.floor(Number(user?.inventory?.counts?.[it?.id] || 0)));
+      ammoAfterEl.textContent = formatNumber(isHullPreview ? Math.min(PET_HULL_MAX_BUYS, cur + quantity * previewUnitsPerPack) : cur + quantity * previewUnitsPerPack);
+    }
+    const boosterAfterEl = document.getElementById("shopBoosterAfterVal");
+    if (boosterAfterEl && isBoosterPreview) {
+      const untilNow = Math.max(0, Math.floor(Number(user?.boosters?.active?.[boosterKeyPreview] || 0)));
+      boosterAfterEl.textContent = formatBoosterCountdown(Math.max(0, untilNow - Date.now()) + quantity * boosterDurMsPreview);
+    }
     const gateUnmet = petGateUnmetNow();
     const full = isFuel && user?.pet?.owned === true && fuelSpaceNow() <= 0;
-    btn.disabled = (owned && !formationOwned) || (formationOwned && user?.drones?.activeFormation === it?.formation?.id) || (!formationOwned && Number(user?.credits || 0) < total) || gateUnmet || full;
-    if (!owned && !formationOwned) {
+    // Possession relue sur l'utilisateur courant (ex : coque+ maxée à l'achat).
+    const nowOwned = owned || (isHullPreview && hullMaxed);
+    btn.disabled = (nowOwned && !formationOwned) || (formationOwned && user?.drones?.activeFormation === it?.formation?.id) || (!formationOwned && Number(user?.credits || 0) < total) || gateUnmet || full;
+    if (!nowOwned && !formationOwned) {
       btn.textContent = gateUnmet ? petGateLabel() : full ? "Réservoir plein" : (isUnique ? `Acheter (${formatNumber(total)})` : "Acheter");
+    } else if (nowOwned && !formationOwned && btn.textContent !== "Déjà possédé") {
+      btn.textContent = "Déjà possédé";
     }
   };
 
+  quantityInput?.addEventListener("input", () => {
+    // Chiffres uniquement (jamais de lettres) : nettoyé avant tout calcul.
+    stripNonDigits(quantityInput);
+  });
+  try { wireDigitsOnly(quantityInput); } catch {}
   quantityInput?.addEventListener("input", updatePurchaseSummary);
   quantityInput?.addEventListener("change", updatePurchaseSummary);
   // Le menu déroulant reporte son montant dans la zone de saisie libre
@@ -3384,6 +3555,45 @@ if (isDrone) {
     }
     updatePurchaseSummary();
   });
+  // Dropdown custom des quantités (munitions) : options centrées + scrollbar.
+  const qtyBtn = document.getElementById("shopQtyBtn");
+  const qtyPopup = document.getElementById("shopQtyPopup");
+  const qtyLabel = document.getElementById("shopQtyBtnLabel");
+  const setQtyPopupOpen = (open) => {
+    if (!qtyBtn || !qtyPopup) return;
+    qtyPopup.hidden = !open;
+    qtyBtn.setAttribute("aria-expanded", String(!!open));
+  };
+  qtyBtn?.addEventListener("click", () => {
+    setQtyPopupOpen(!!qtyPopup?.hidden);
+  });
+  qtyPopup?.addEventListener("click", (event) => {
+    const opt = event.target instanceof Element ? event.target.closest("[data-qty]") : null;
+    if (!opt || !quantityInput) return;
+    const v = String(opt.getAttribute("data-qty") || "");
+    quantityInput.value = v === "max" ? String(maxAffordableNow()) : v;
+    if (qtyLabel) qtyLabel.textContent = v === "max" ? "Max" : v;
+    setQtyPopupOpen(false);
+    updatePurchaseSummary();
+  });
+  if (!shopQtyDocWired && typeof document !== "undefined") {
+    shopQtyDocWired = true;
+    document.addEventListener("click", (event) => {
+      const popup = document.getElementById("shopQtyPopup");
+      if (!popup || popup.hidden) return;
+      const combo = document.getElementById("shopQtyCombo");
+      if (combo && event.target instanceof Element && combo.contains(event.target)) return;
+      popup.hidden = true;
+      document.getElementById("shopQtyBtn")?.setAttribute("aria-expanded", "false");
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      const popup = document.getElementById("shopQtyPopup");
+      if (!popup || popup.hidden) return;
+      popup.hidden = true;
+      document.getElementById("shopQtyBtn")?.setAttribute("aria-expanded", "false");
+    });
+  }
   levelInput?.addEventListener("change", () => {
     if (!groupRef) return;
     petShopLevelSel[groupRef.id] = Number(levelInput.value) || 1;
@@ -3448,6 +3658,14 @@ if (isDrone) {
           }
           const txt = formatBoosterCountdown(left);
           if (el.textContent !== txt) el.textContent = txt;
+          // "Temps après l'achat" suit le compte à rebours en direct.
+          try {
+            const afterEl = shopPreview.querySelector("#shopBoosterAfterVal");
+            if (afterEl && typeof normalizeQuantity === "function" && boosterDurMsPreview > 0) {
+              const afterTxt = formatBoosterCountdown(left + Math.max(1, normalizeQuantity()) * boosterDurMsPreview);
+              if (afterEl.textContent !== afterTxt) afterEl.textContent = afterTxt;
+            }
+          } catch {}
         } catch {}
       }, 1000);
     }
@@ -3455,7 +3673,8 @@ if (isDrone) {
 
   btn.addEventListener("click", () => {
     const quantity = normalizeQuantity();
-    const totalPrice = price * quantity;
+    const hullStartBuy = Math.max(0, Math.min(PET_HULL_MAX_BUYS, Math.floor(Number(user?.pet?.hullUpgrades) || 0)));
+    const totalPrice = isHullPreview ? hullTotalFor(hullStartBuy, quantity) : price * quantity;
     if (formationOwned) {
       const activated = setCurrentUserDroneFormation(it.formation.id);
       if (!activated.ok) return showToast(activated.error, "error");
@@ -3464,7 +3683,7 @@ if (isDrone) {
       syncGameCredits();
       return;
     }
-    if (owned || Number(user?.credits || 0) < totalPrice) return;
+    if (owned || (isHullPreview && hullStartBuy >= PET_HULL_MAX_BUYS) || Number(user?.credits || 0) < totalPrice) return;
     if (petGateUnmetNow()) return showToast(petGateLabel(), "error");
 
     const itemName = it?.name || it?.id;
@@ -3480,7 +3699,7 @@ if (isDrone) {
             showToast(out?.error || "Achat impossible", 'error');
             return;
           }
-          showToast(`REX "${petPseudo}" acheté avec succès !`, 'success');
+          showToast(`P.E.T "${petPseudo}" acheté avec succès !`, 'success');
           user = getCurrentUserFull();
           renderHeader(user);
           renderStats(user);
@@ -3895,16 +4114,16 @@ const PET_FIT_GROUPS = Object.freeze([
 ]);
 
 function petProtocolStatLabel(key) {
-  if (key === "damage") return "dégâts";
-  if (key === "shield") return "bouclier";
-  if (key === "hp") return "coque";
-  if (key === "alien") return "dégâts NPC";
-  if (key === "cargo") return "soute cargo";
-  if (key === "radar") return "radar";
-  if (key === "salvage") return "récupération";
-  if (key === "aim") return "précision";
-  if (key === "evasion") return "évasion";
-  if (key === "eco") return "économie fuel";
+  if (key === "damage") return "dégâts laser du P.E.T";
+  if (key === "shield") return "bouclier du P.E.T";
+  if (key === "hp") return "HP du P.E.T";
+  if (key === "alien") return "dégâts laser contre les NPC du P.E.T";
+  if (key === "cargo") return "soute cargo du VAISSEAU";
+  if (key === "radar") return "radar du P.E.T";
+  if (key === "salvage") return "récolte du P.E.T";
+  if (key === "aim") return "précision laser du P.E.T";
+  if (key === "evasion") return "évitement du P.E.T";
+  if (key === "eco") return "économie d'essence du P.E.T";
   return String(key || "");
 }
 

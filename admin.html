@@ -96,12 +96,6 @@
     <p id="bcMsg" class="msg"></p>
   </div>
   <div class="card">
-    <h2>Événement Cubikon Fou <span id="cubikonFouBadge" class="badge off">Inactif</span></h2>
-    <p class="sub">Cubikons normaux mais jusqu'à 200 Protegit. Activer = décompte 5 s en annonce globale puis GO. Désactiver = annonce + explosion de tous les Cubikons (respawn normaux).</p>
-    <div class="row"><button id="cubikonFouBtn" type="button">Activer</button></div>
-    <p id="cubikonFouMsg" class="msg"></p>
-  </div>
-  <div class="card">
     <h2>Joueurs <span id="accountCount" class="badge off">0</span></h2>
     <div class="searchRow"><input id="accountSearch" type="text" placeholder="Rechercher un pseudo…" maxlength="20" autocomplete="off"></div>
     <table>
@@ -264,6 +258,15 @@
     const setAmt = (v) => { $("giveAmt").value = fmtN(v); };
     $("giveChipsAdd").querySelectorAll("button").forEach((b) => { b.onclick = () => setAmt(Number(b.dataset.amt)); });
     $("giveChipsSub").querySelectorAll("button").forEach((b) => { b.onclick = () => setAmt(Number(b.dataset.amt)); });
+    $("giveAmt").addEventListener("input", () => {
+      // Chiffres uniquement (jamais de lettres) ; "-" initial gardé (retrait).
+      const el = $("giveAmt");
+      if (!el) return;
+      const raw = String(el.value || "");
+      const neg = raw.trim().startsWith("-");
+      const clean = (neg ? "-" : "") + raw.replace(/[^0-9]/g, "").slice(0, 15);
+      if (clean !== raw) el.value = clean;
+    });
     $("giveAmt").addEventListener("keydown", (e) => {
       if (e.key === "Enter") $("modalActions").lastChild.click();
     });
@@ -481,33 +484,7 @@
       try { await refreshBans(); } catch {}
       try { await refreshCheat(); } catch {}
       try { await refreshAccounts(); } catch {}
-      try { await refreshCubikonFou(); } catch {}
     } catch {}
-  }
-  async function refreshCubikonFou() {
-    const badge = $("cubikonFouBadge");
-    const btn = $("cubikonFouBtn");
-    if (!badge || !btn) return;
-    try {
-      const out = await call("/api/admin/cubikon-fou");
-      const active = out?.active === true;
-      const counting = !active && out?.countdown === true;
-      badge.textContent = active ? "ACTIF" : counting ? "DÉCOMPTE…" : "Inactif";
-      badge.className = "badge " + (active ? "ok" : "off");
-      btn.textContent = (active || counting) ? "Désactiver" : "Activer";
-    } catch {}
-  }
-  async function toggleCubikonFou() {
-    const btn = $("cubikonFouBtn");
-    const turningOff = btn && btn.textContent === "Désactiver";
-    try {
-      const out = await call("/api/admin/cubikon-fou", { method: "POST", body: JSON.stringify({ active: !turningOff }) });
-      if (!out || out.ok !== true) throw new Error("Échec.");
-      toast(turningOff
-        ? `Événement désactivé${Number(out.detonated) > 0 ? ` (${out.detonated} Cubikon(s) explosé(s))` : ""}.`
-        : (out.countdown ? "Décompte lancé !" : "Événement actif !"), "ok");
-    } catch (e) { toast(e?.message || "Erreur.", "err"); }
-    try { await refreshCubikonFou(); } catch {}
   }
   const accountRowByKey = new Map();
   async function refreshAccounts() {
@@ -767,7 +744,6 @@
   $("passInput").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
   $("bcBtn").onclick = broadcast;
   $("bcInput").addEventListener("keydown", (e) => { if (e.key === "Enter") broadcast(); });
-  $("cubikonFouBtn").onclick = toggleCubikonFou;
   $("chatReplyBtn").onclick = replyChat;
   $("chatReplyInput").addEventListener("keydown", (e) => { if (e.key === "Enter") replyChat(); });
   let searchT = 0;

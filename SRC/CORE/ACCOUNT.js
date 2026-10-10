@@ -1744,25 +1744,27 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
   const isBooster = !!item.booster?.id;
   const isPet = !!item.pet?.id;
   const isHull = !!item.petHull;
-  // Coque+ : 1 par 1 (prix exponentiel selon le nombre déjà possédé).
+  // Coque+ : achats groupés possibles (prix exponentiel selon le nombre déjà possédé).
   if (isHull) {
     if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
     const owned = Math.max(0, Math.min(PET_HULL_MAX_BUYS, Math.floor(Number(u.pet.hullUpgrades) || 0)));
     if (owned >= PET_HULL_MAX_BUYS) return { ok: false, error: `Coque+ au maximum (${PET_HULL_MAX_BUYS}/10).` };
-    const hullPrice = getPetHullPrice(owned);
-    if (u.credits < hullPrice) return { ok: false, error: "Crédits insuffisants." };
-    u.credits -= hullPrice;
-    noteNetPurchase(hullPrice);
-    u.pet.hullUpgrades = owned + 1;
-    incCount(u, item.id, 1);
+    const qty = Math.max(1, Math.min(PET_HULL_MAX_BUYS - owned, Math.floor(Number(requestedQuantity) || 1)));
+    let hullTotal = 0;
+    for (let i = 0; i < qty; i++) hullTotal += getPetHullPrice(owned + i);
+    if (u.credits < hullTotal) return { ok: false, error: "Crédits insuffisants." };
+    u.credits -= hullTotal;
+    noteNetPurchase(hullTotal);
+    u.pet.hullUpgrades = owned + qty;
+    incCount(u, item.id, qty);
     ensureUserShape(u);
     saveUser(u);
-    return { ok: true, user: u, quantity: 1, totalPrice: hullPrice };
+    return { ok: true, user: u, quantity: qty, totalPrice: hullTotal };
   }
-  // Essence : recharge directe du réservoir (quantité 1..5000).
+  // Essence : recharge directe du réservoir (jusqu'au max 50 000 en un achat).
   if (item.petFuel) {
     if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
-    const qty = Math.min(5000, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
+    const qty = Math.min(PET_FUEL_MAX, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
     const space = Math.max(0, PET_FUEL_MAX - Math.max(0, Math.floor(Number(u.pet.fuel) || 0)));
     if (space <= 0) return { ok: false, error: "Réservoir plein." };
     const buyQty = Math.min(qty, space);

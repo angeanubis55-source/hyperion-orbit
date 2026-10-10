@@ -33,37 +33,37 @@
 //     HSTRM01=r9, UBR100=r10, BDR1211=r11, SAR01=r12, SAR02=r13, CBR=r14,
 //     ECO10=r20 (bleu), PIR100=r22.
 
-function def(id, name, short, file, damage, cooldown, packPrice, manual = true, packSize = 10, effect = null) {
+function def(id, name, short, file, damage, cooldown, packPrice, manual = true, packSize = 1000, effect = null) {
   return Object.freeze({ id, name, short, file, damage, cooldown, packPrice, packSize, manual, effect: effect ? Object.freeze(effect) : null });
 }
 
 export const ROCKET_TYPES = Object.freeze({
   // Standards : tirables au lanceur natif (ESPACE).
-  r310: def("r310", "Roquette R-310", "310", "R-310_100X100.png", 1000, 1.0, 30000),
-  plt2021: def("plt2021", "Roquette PLT-2021", "021", "PLT-2021_100X100.png", 4000, 1.0, 60000),
-  plt2026: def("plt2026", "Roquette PLT-2026", "026", "PLT-2026_100X100.png", 2000, 1.0, 40000),
-  plt3030: def("plt3030", "Roquette PLT-3030", "030", "PLT-3030_100X100.png", 6000, 1.0, 170000),
-  dcr250: def("dcr250", "Roquette DCR-250", "DCR", "DCR-250_100X100.png", 0, 30, 12000, true, 10, { slowPct: 30, duration: 5 }),
-  pld8: def("pld8", "Roquette PLD-8", "PLD", "PLD-8_100X100.png", 0, 30, 90000, true, 10, { accuracyPenaltyPct: 40, duration: 5 }),
-  bdr1211: def("bdr1211", "Roquette BDR-1211", "BDR", "BDR-1211_100X100.png", 7500, 1.0, 250000),
-  wizx: def("wizx", "Roquette WIZ-X", "WIZ", "WIZ-X_100X100.png", 0, 15, 20000, true, 10, { appearance: true }),
-  ric3: def("ric3", "Roquette R-IC3", "IC3", "R-IC3_100X100.png", 0, 30, 150000, true, 10, { freezeSec: 2 }),
-  rc100: def("rc100", "Roquette RC-100", "RC", "RC-100_100X100.png", 0, 30, 150000, true, 10, { freezeSec: 3 }),
-  sr5: def("sr5", "Roquette SR-5", "SR5", "SR-5_100X100.png", 0, 30, 280000, true, 10, { shieldDrain: 80000, leechPct: 0.5 }),
-  agt500: def("agt500", "Roquette AGT-500", "AGT", "AGT-500_100X100.png", 25000, 30, 350000),
-  sp100x: def("sp100x", "Roquette SP-100X", "SPX", "SP-100X_100X100.png", 7200, 30, 200000, true, 10, { pierceShield: true }),
-  k300m: def("k300m", "Roquette K-300M", "K3M", "K-300M_100X100.png", 0, 30, 120000, true, 10, { slowPct: 20, accuracyPenaltyPct: 5, duration: 2 }),
+  r310: def("r310", "Roquette R-310", "310", "R-310_100X100.png", 1000, 1.0, 100000),
+  plt2021: def("plt2021", "Roquette PLT-2021", "021", "PLT-2021_100X100.png", 4000, 1.0, 400000),
+  plt2026: def("plt2026", "Roquette PLT-2026", "026", "PLT-2026_100X100.png", 2000, 1.0, 200000),
+  plt3030: def("plt3030", "Roquette PLT-3030", "030", "PLT-3030_100X100.png", 6000, 1.0, 600000),
+  dcr250: def("dcr250", "Roquette DCR-250", "DCR", "DCR-250_100X100.png", 0, 30, 120000, true, 1000, { slowPct: 30, duration: 5 }),
+  pld8: def("pld8", "Roquette PLD-8", "PLD", "PLD-8_100X100.png", 0, 30, 900000, true, 1000, { accuracyPenaltyPct: 40, duration: 5 }),
+  bdr1211: def("bdr1211", "Roquette BDR-1211", "BDR", "BDR-1211_100X100.png", 7500, 1.0, 750000),
+  wizx: def("wizx", "Roquette WIZ-X", "WIZ", "WIZ-X_100X100.png", 0, 15, 200000, true, 1000, { appearance: true }),
+  ric3: def("ric3", "Roquette R-IC3", "IC3", "R-IC3_100X100.png", 0, 30, 1500000, true, 1000, { freezeSec: 2 }),
+  rc100: def("rc100", "Roquette RC-100", "RC", "RC-100_100X100.png", 0, 30, 1500000, true, 1000, { freezeSec: 3 }),
+  sr5: def("sr5", "Roquette SR-5", "SR5", "SR-5_100X100.png", 0, 30, 2800000, true, 1000, { shieldDrain: 80000, leechPct: 0.5 }),
+  agt500: def("agt500", "Roquette AGT-500", "AGT", "AGT-500_100X100.png", 25000, 30, 2500000),
+  sp100x: def("sp100x", "Roquette SP-100X", "SPX", "SP-100X_100X100.png", 7200, 30, 7200000, true, 1000, { pierceShield: true }),
+  k300m: def("k300m", "Roquette K-300M", "K3M", "K-300M_100X100.png", 0, 30, 1200000, true, 1000, { slowPct: 20, accuracyPenaltyPct: 5, duration: 2 }),
   // Lance-roquettes : pas de tir manuel pour l'instant (mécanique à venir).
-  eco10: def("eco10", "Roquette ECO-10", "ECO", "ECO-10_100X100.png", 2000, 3.0, 30000, false),
-  pir100: def("pir100", "Roquette PIR-100", "PIR", "PIR-100_100X100.png", 3500, 3.5, 180000, false, 10, { shieldDrain: 2500 }),
-  bdr1212: def("bdr1212", "Roquette BDR-1212", "BD2", "BDR-1212_100X100.png", 4000, 3.5, 220000, false),
-  shg01: def("shg01", "Roquette SHG-01", "SH1", "SHG-01_100X100.png", 5000, 3.5, 200000, false, 10, { piercePct: 0.5 }),
-  shg02: def("shg02", "Roquette SHG-02", "SH2", "SHG-02_100X100.png", 7500, 3.5, 280000, false, 10, { piercePct: 0.75 }),
-  ubr100: def("ubr100", "Roquette UBR-100", "UBR", "UBR-100_100X100.png", 7500, 3.5, 200000, false),
-  cbr: def("cbr", "Roquette CBR", "CBR", "CBR_100X100.png", 3000, 3.0, 40000, false, 10, { shieldDrain: 3000 }),
-  sar01: def("sar01", "Roquette SAR-01", "SA1", "SAR-01_100X100.png", 0, 3.0, 50000, false, 10, { shieldDrain: 1000 }),
-  sar02: def("sar02", "Roquette SAR-02", "SA2", "SAR-02_100X100.png", 0, 3.5, 160000, false, 10, { shieldDrain: 4000 }),
-  hstrm01: def("hstrm01", "Roquette HSTRM-01", "HST", "HSTRM-01_100X100.png", 4000, 4.0, 150000, false),
+  eco10: def("eco10", "Roquette ECO-10", "ECO", "ECO-10_100X100.png", 2000, 3.0, 2000000, false),
+  pir100: def("pir100", "Roquette PIR-100", "PIR", "PIR-100_100X100.png", 3500, 3.5, 3500000, false, 1000, { shieldDrain: 2500 }),
+  bdr1212: def("bdr1212", "Roquette BDR-1212", "BD2", "BDR-1212_100X100.png", 4000, 3.5, 4000000, false),
+  shg01: def("shg01", "Roquette SHG-01", "SH1", "SHG-01_100X100.png", 5000, 3.5, 5000000, false, 1000, { piercePct: 0.5 }),
+  shg02: def("shg02", "Roquette SHG-02", "SH2", "SHG-02_100X100.png", 7500, 3.5, 7500000, false, 1000, { piercePct: 0.75 }),
+  ubr100: def("ubr100", "Roquette UBR-100", "UBR", "UBR-100_100X100.png", 7500, 3.5, 7500000, false),
+  cbr: def("cbr", "Roquette CBR", "CBR", "CBR_100X100.png", 3000, 3.0, 3000000, false, 1000, { shieldDrain: 3000 }),
+  sar01: def("sar01", "Roquette SAR-01", "SA1", "SAR-01_100X100.png", 0, 3.0, 500000, false, 1000, { shieldDrain: 1000 }),
+  sar02: def("sar02", "Roquette SAR-02", "SA2", "SAR-02_100X100.png", 0, 3.5, 2000000, false, 1000, { shieldDrain: 4000 }),
+  hstrm01: def("hstrm01", "Roquette HSTRM-01", "HST", "HSTRM-01_100X100.png", 4000, 4.0, 4000000, false),
 });
 
 export const ROCKET_IDS = Object.freeze(Object.keys(ROCKET_TYPES));
@@ -77,10 +77,10 @@ export function rocketEffectLabel(rocketOrId) {
   if (!rocket) return "Effet inconnu";
   const format = (value) => Math.round(Number(value) || 0).toLocaleString("fr-FR");
   const effect = rocket.effect || null;
-  if (effect?.appearance) return "Change l'apparence du vaisseau ciblé (aucun dégât, visuel uniquement)";
+  if (effect?.appearance) return "Change l'apparence du vaisseau ciblé (visuel uniquement)";
   if (effect?.freezeSec) {
     const base = `Immobilise (gel) la cible pendant ${format(effect.freezeSec)} s`;
-    return rocket.damage > 0 ? `${format(rocket.damage)} dégâts + ${base.toLowerCase()}` : `${base} (aucun dégât)`;
+    return rocket.damage > 0 ? `${format(rocket.damage)} dégâts + ${base.toLowerCase()}` : base;
   }
   if (effect?.pierceShield) return `${format(rocket.damage)} dégâts directement à la coque (ignore le bouclier)`;
   if (effect?.piercePct) return `${format(rocket.damage)} dégâts dont ${format(effect.piercePct * 100)} % traversent le bouclier`;
@@ -88,25 +88,26 @@ export function rocketEffectLabel(rocketOrId) {
     return `Vole ${format(effect.shieldDrain)} de bouclier par roquette, dont ${format(effect.leechPct * 100)} % rechargent ton bouclier`;
   }
   if (effect?.slowPct && effect?.accuracyPenaltyPct) {
-    return `Ralentit de ${format(effect.slowPct)} % et réduit la précision de ${format(effect.accuracyPenaltyPct)} % pendant ${format(effect.duration)} s (aucun dégât)`;
+    return `Ralentit de ${format(effect.slowPct)} % et réduit la précision de ${format(effect.accuracyPenaltyPct)} % pendant ${format(effect.duration)} s`;
   }
-  if (effect?.slowPct) return `Ralentit la cible de ${format(effect.slowPct)} % pendant ${format(effect.duration)} s (aucun dégât)`;
-  if (effect?.accuracyPenaltyPct) return `Précision de la cible réduite de ${format(effect.accuracyPenaltyPct)} % pendant ${format(effect.duration)} s (aucun dégât)`;
+  if (effect?.slowPct) return `Ralentit la cible de ${format(effect.slowPct)} % pendant ${format(effect.duration)} s`;
+  if (effect?.accuracyPenaltyPct) return `Précision de la cible réduite de ${format(effect.accuracyPenaltyPct)} % pendant ${format(effect.duration)} s`;
   if (effect?.shieldDrain && rocket.damage > 0) {
     return `${format(rocket.damage)} dégâts + ${format(effect.shieldDrain)} de bouclier volé par roquette`;
   }
-  if (effect?.shieldDrain) return `Vole ${format(effect.shieldDrain)} de bouclier par roquette (aucun dégât)`;
+  if (effect?.shieldDrain) return `Vole ${format(effect.shieldDrain)} de bouclier par roquette`;
   return `${format(rocket.damage)} dégâts par roquette`;
 }
 
 export function rocketDescription(rocketOrId) {
   const rocket = typeof rocketOrId === "string" ? getRocketType(rocketOrId) : rocketOrId;
   if (!rocket) return "Roquette inconnue.";
-  if (rocket.manual === false) return `Lance-roquettes (salve automatique). ${rocketEffectLabel(rocket)}.`;
+  if (rocket.manual === false) return `${rocketEffectLabel(rocket)}.`;
   const cooldown = Number(rocket.cooldown) || 0;
+  // Seules les recharges longues (30 s) sont affichées.
+  if (cooldown < 30) return `${rocketEffectLabel(rocket)}.`;
   const cooldownLabel = cooldown.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
-  const rate = cooldown <= 1 ? "Tir manuel (ESPACE, environ 1 tir/s). " : "Tir manuel (ESPACE). ";
-  return `${rate}${rocketEffectLabel(rocket)}. Temps de recharge : ${cooldownLabel} s.`;
+  return `${rocketEffectLabel(rocket)}.\nTemps de recharge : ${cooldownLabel} s.`;
 }
 
 export function rocketShopIcon(id) {

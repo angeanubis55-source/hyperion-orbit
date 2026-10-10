@@ -6157,7 +6157,8 @@ function getAbilityCooldown(abilityId) {
   }
   // Spearhead Target Marker : instant, juste la recharge 360 s.
   if (String(abilityId || "").toLowerCase() === "ability_spearhead_target-marker"
-    || String(abilityId || "").toLowerCase() === "ability_spearhead-plus_target-marker") {
+    || String(abilityId || "").toLowerCase() === "ability_spearhead-plus_target-marker"
+    || String(abilityId || "").toLowerCase() === "ability_orcus-plus_target-marker") {
     return { left: Number(player.markCd || 0), max: MARK_CD };
   }
   // Spearhead Plus Neutralizing Marker : instant, juste la recharge 360 s.
@@ -6800,7 +6801,8 @@ function initializeCustomActionBar() {
     { ship: "Liberator Plus", ships: ["liberator_plus"], ids: ["ability_liberator-plus_self-repair"] },
     { ship: "Lightning", ships: ["lightning", "vengeance_lightning"], ids: ["ability_lightning"] },
     { ship: "Mimesis", ships: ["mimesis"], ids: ["ability_mimesis_hologram", "ability_mimesis_phase-out", "ability_mimesis_scramble"] },
-    { ship: "Orcus / Orcus Plus", ships: ["orcus", "orcus_plus"], ids: ["ability_orcus_assimilate"] },
+    { ship: "Orcus", ships: ["orcus"], ids: ["ability_orcus_assimilate"] },
+    { ship: "Orcus Plus", ships: ["orcus_plus"], ids: ["ability_orcus_assimilate", "ability_orcus-plus_target-marker"] },
     { ship: "Paladin", ships: ["paladin"], ids: ["ability_paladin_last-stand", "ability_paladin_ripper"] },
     { ship: "Pusat Plus", ships: ["pusat_plus"], ids: ["ability_pusat-plus_speed-sap"] },
     { ship: "Retiarus Plus", ships: ["retiarus_plus"], ids: ["ability_retiarus-plus_chsp", "ability_retiarus-plus_spcp"] },
@@ -6987,7 +6989,7 @@ function initializeCustomActionBar() {
           activateCreed();
           return;
         }
-        if (name === "ability_spearhead_target-marker" || name === "ability_spearhead-plus_target-marker") {
+        if (name === "ability_spearhead_target-marker" || name === "ability_spearhead-plus_target-marker" || name === "ability_orcus-plus_target-marker") {
           activateMark();
           return;
         }
@@ -13285,7 +13287,7 @@ function renderCraftingWindow(message = "") {
     + `<div class="assemblyDetailHead">`
     + `<img class="assemblyMainIcon" src="${escapeHtml(mainIcon)}" alt="" loading="lazy" draggable="false" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
     + `<div class="assemblyTitleRow"><span class="assemblyRarity">${escapeHtml(rarity.name)}</span><h3>${escapeHtml(recipe.name)}</h3></div>`
-    + `<p class="assemblyDescription" title="${escapeHtml(description)}">${escapeHtml(description)}</p></div>`
+    + `<p class="assemblyDescription" title="${escapeHtml(description)}">${escapeHtml(description).replace(/\n/g, "<br>")}</p></div>`
     + `<div class="assemblyCols"><div class="assemblySubCard"><h4>Coût ×${formatInteger(quantity)}</h4><ul class="assemblyCosts">${costs}</ul></div>`
     + `<div class="assemblySubCard"><h4>Résultat ×${formatInteger(quantity)}</h4><ul class="assemblyResults">${outputs}</ul></div></div>`
     + `</div>`;
@@ -15840,11 +15842,10 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   player.laserMods = Array.isArray(stats.laserMods) ? stats.laserMods : [];
   // Drones : bonus par canon aussi (overdrive/vs/instable x nombre équipé).
   player.droneLaserMods = Array.isArray(stats.droneLaserMods) ? stats.droneLaserMods : [];
-  // OS-L Odysseus : +3 % de critique par canon, +9 % dès 3 montés, dégâts ×2.
-  // Formule officielle : min(50 %, 3n + (n≥3 ? 9 : 0)).
+  // OS-L Odysseus : 5 % de base + 3 % de critique par canon, sans limite, dégâts ×2.
   let oslCount = 0;
   for (const m of player.laserMods) if (Number(m?.critPct || 0) > 0) oslCount += 1;
-  player.critChance = oslCount > 0 ? Math.max(0.05, Math.min(0.5, (3 * oslCount + (oslCount >= 3 ? 9 : 0)) / 100)) : 0.05;
+  player.critChance = oslCount > 0 ? 0.05 + (3 * oslCount) / 100 : 0.05;
   player.critMult = oslCount > 0 ? 2.0 : 1.5;
 
   if (!player.dead) {
@@ -18676,7 +18677,7 @@ function resetPlayerToBase() {
   player.droneLaserMods = Array.isArray(stats.droneLaserMods) ? stats.droneLaserMods : [];
   let oslCount = 0;
   for (const m of player.laserMods) if (Number(m?.critPct || 0) > 0) oslCount += 1;
-  player.critChance = oslCount > 0 ? Math.max(0.05, Math.min(0.5, (3 * oslCount + (oslCount >= 3 ? 9 : 0)) / 100)) : 0.05;
+  player.critChance = oslCount > 0 ? 0.05 + (3 * oslCount) / 100 : 0.05;
   player.critMult = oslCount > 0 ? 2.0 : 1.5;
 
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
@@ -22560,7 +22561,7 @@ const ENTITY_LIMITS = Object.freeze({
   enemyBullets: 900,
   explosions: 48,
   sparks: 180,
-  floatTexts: 220,
+  floatTexts: 140,
   lasers: 80,
   pulseFxs: 12,
   smbFxs: 12,
@@ -26252,17 +26253,17 @@ function killRewards(e) {
   // fusionnés dans ce toast (un 2e groupe écraserait celui-ci).
   const directLines = Array.isArray(e._directDropLines) ? e._directDropLines.filter(Boolean).map(String) : [];
   try { delete e._directDropLines; } catch {}
-  // Drop booster NPC : DLB aléatoire (normaux 0,5 %, boss 15 %, uber 85 %),
-  // + NPC-B01/B02 à 35 % partout. Activation directe, comme un achat.
+  // Drop booster NPC : uniquement sur les Ubers (DLB aléatoire 85 %,
+  // + NPC-B01/B02 à 35 %). Rien sur les NPC classiques et les boss.
   const boosterDropLines = [];
   try {
     const t = String(e.type || "");
     const isUber = /^npc_Uber_/i.test(t);
-    const rate = isUber ? 0.85 : /^npc_Boss_/i.test(t) ? 0.15 : 0.005;
+    const rate = isUber ? 0.85 : 0;
     const pool = ["dmgdlb", "dmgdlb2", "shddlb", "hpdlb", "epdlb", "hondlb"];
     const picks = [];
-    if (Math.random() < rate) picks.push(pool[(Math.random() * pool.length) | 0]);
-    if (Math.random() < 0.35) picks.push(Math.random() < 0.5 ? "npc" : "npcb2");
+    if (rate > 0 && Math.random() < rate) picks.push(pool[(Math.random() * pool.length) | 0]);
+    if (isUber && Math.random() < 0.35) picks.push(Math.random() < 0.5 ? "npc" : "npcb2");
     for (const bid of picks) {
       const def = getBooster(bid);
       if (!def) continue;
@@ -26460,18 +26461,10 @@ function processDeathsMeasured() {
         e._netReward = takeNetNpcReward(window.__CURRENT_MAP_ID__, e._netUid, e._netSeq);
         if (!e._netReward) {
           // La recompense est deja commitee en base par le serveur. Si son
-          // message temps reel se perd (rafale : pompe/inbox saturées), ne
-          // garde pas eternnellement le cadavre (il bloquerait aussi le
-          // respawn de la nouvelle incarnation). Attente allongée (12 s)
-          // pour laisser la pompe serveur drainer les rafales.
+          // message temps reel se perd, ne garde pas eternnellement le cadavre
+          // (il bloquerait aussi le respawn de la nouvelle incarnation).
           e._netRewardWaitAt ||= performance.now();
-          if (performance.now() - e._netRewardWaitAt < 12000) { e.hp = 0; continue; }
-          // Filet quêtes : le kill est tranché côté serveur (crédits commis),
-          // seul l'affichage manque. La quête et le compteur comptent quand même.
-          try {
-            player.kills++;
-            measureGameTask("npcDeath.quests", () => advanceQuestProgress("kill", e.type));
-          } catch {}
+          if (performance.now() - e._netRewardWaitAt < 5000) { e.hp = 0; continue; }
           e._netSilent = true;
         }
       }
@@ -28515,7 +28508,7 @@ player.volleyCount = (player.volleyCount || 0) + 1;
 consumeUpgradeStock("laser", countPlayerLasers());
 // Bonus par canon x nombre équipé : vaisseau + drones.
 // 1x PR-L = +200, 2x = +400, 35x = +7000 tous les 5 tirs.
-// Idem vsMatch (LF-3, AA-1, PR-L Blacklight...) et U-LF4 instable.
+// Idem vsMatch (LF-3, Magmadrill, Paritydrill, AA-1/AAP-1 Mimesis, PR-L Blacklight...) et U-LF4 instable.
 let laserBase = player.baseDamage + laserFitVsExtra(player.laserMods, t, player.droneLaserMods);
 laserBase += laserFitUnstableDelta(player.laserMods, player.droneLaserMods);
 const overdrive = laserFitOverdrive(player.laserMods, player.droneLaserMods, player.volleyCount);

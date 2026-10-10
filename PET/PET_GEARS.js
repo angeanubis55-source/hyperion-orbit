@@ -9,16 +9,17 @@
 // en réutilisant getPetEquippedGearLevels().
 "use strict";
 
-// Portées par niveau de gear (index = niveau 1..3) : officielles pour
+// Portées par niveau de gear (index = niveau 1..4) : officielles pour
 // l'auto-loot (G-AL / G-AR), divisées par 2 pour le localisateur (G-EL).
+// Niveau 4 = +25 % du niveau 3 (P.E.T 20 requis).
 export const PET_GEAR_RANGES = Object.freeze({
-  al: Object.freeze([700, 1500, 3000]),
-  ar: Object.freeze([700, 1500, 3000]),
-  el: Object.freeze([1000, 1500, 2500]),
+  al: Object.freeze([700, 1500, 3000, 3750]),
+  ar: Object.freeze([700, 1500, 3000, 3750]),
+  el: Object.freeze([1000, 1500, 2500, 3125]),
 });
 
 // Régénération coque G-REP : % de la coque max par seconde (pallier d'1 s).
-export const PET_GEAR_REPAIR_PCT = Object.freeze([3, 4, 5]);
+export const PET_GEAR_REPAIR_PCT = Object.freeze([3, 4, 5, 6.25]);
 
 // Recharge passive du bouclier : % du bouclier max par seconde (pallier d'1 s),
 // comme la réparation du vaisseau.
@@ -26,8 +27,8 @@ export const PET_SHIELD_REGEN_PCT_PER_SEC = 5;
 
 // Cargo Trader (G-TRA) : fenêtre commerce hors base, bonus de vente et cooldown par niveau.
 export const PET_GEAR_TRADE_WINDOW_SEC = 10;
-export const PET_GEAR_TRADE_COOLDOWN_SEC = Object.freeze([300, 120, 30]);
-export const PET_GEAR_TRADE_BONUS_PCT = Object.freeze([5, 15, 30]);
+export const PET_GEAR_TRADE_COOLDOWN_SEC = Object.freeze([300, 120, 30, 15]);
+export const PET_GEAR_TRADE_BONUS_PCT = Object.freeze([5, 15, 30, 37.5]);
 
 // Flamme sacrificielle (G-FS, niveau unique) : transfère le bouclier du REX
 // vers le vaisseau (tout si besoin), cooldown 90 s.
@@ -35,9 +36,9 @@ export const PET_GEAR_SACRIFICE_COOLDOWN_SEC = Object.freeze([90]);
 
 // Kamikaze (G-KK) : le REX fonce sur sa cible verrouillée puis explose.
 // Dégâts fixes + rayon + cooldown par niveau (voir CATALOG desc).
-export const PET_GEAR_KAMIKAZE_DAMAGE = Object.freeze([25000, 50000, 75000]);
-export const PET_GEAR_KAMIKAZE_RADIUS = Object.freeze([250, 350, 450]);
-export const PET_GEAR_KAMIKAZE_COOLDOWN_SEC = Object.freeze([45, 30, 15]);
+export const PET_GEAR_KAMIKAZE_DAMAGE = Object.freeze([25000, 50000, 75000, 93750]);
+export const PET_GEAR_KAMIKAZE_RADIUS = Object.freeze([250, 350, 450, 550]);
+export const PET_GEAR_KAMIKAZE_COOLDOWN_SEC = Object.freeze([45, 30, 15, 10]);
 
 // Lien HP (G-HPL, niveau unique) : dégâts coque redirigés vers le REX,
 // durée 20 s, cooldown 240 s. Mixé au mode combat + éclair entre les deux.

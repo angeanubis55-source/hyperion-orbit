@@ -61,6 +61,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   Object.freeze({
     id: "craft_x4",
     name: "Munitions X4",
+    description: "Dégâts laser ×4.",
     rarity: "rare",
     costs: {
       credits: 0,
@@ -468,7 +469,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   Object.freeze({
     id: "craft_prometheus",
     name: "Laser PR-L Prometheus",
-    description: "210 dégâts, +200 tous les 5 tirs ; ×3,5 sur Impulse, Attend, Invoke et Mindfire.",
+    description: "210 dégâts,\n+200 tous les 5 tirs,\n×3,5 contre Impulse, Attend, Invoke et Mindfire.",
     rarity: "legendary",
     costs: {
       credits: 25000000,

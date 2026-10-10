@@ -9,7 +9,7 @@ import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 import { getCurrentUserFull, sellItem, sellShipModules, sellUnitPrice, shipModuleGroupKey } from "../SRC/CORE/ACCOUNT.js";
 import { getShipPackById, getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
 import { inventoryPage } from "./UI_INVENTORY.js";
-import { escapeHtml } from "./UI_DOM.js";
+import { escapeHtml, stripNonDigits, wireDigitsOnly } from "./UI_DOM.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 
 let started = false;
@@ -597,6 +597,8 @@ export function initTdmUI() {
       refreshSellDialogTotal();
     });
   });
+  try { wireDigitsOnly($("tdmSellQty")); } catch {}
+  $("tdmSellQty")?.addEventListener("input", () => { stripNonDigits($("tdmSellQty")); });
   $("tdmSellQty")?.addEventListener("input", refreshSellDialogTotal);
   $("tdmSellCancel")?.addEventListener("click", closeSellDialog);
   $("tdmSellConfirm")?.addEventListener("click", confirmSellDialog);

@@ -311,17 +311,12 @@ html.orbitSessionReady #loadingOverlay {
 .assemblyDescription {
   margin:0;
   min-width:0;
-  color:#bfd5df;
+  color:#f4fbff;
   font-size:12px;
-  font-weight:500;
-  line-height:1.45;
+  font-weight:600;
+  line-height:1.6;
   text-align:center;
   text-wrap:pretty;
-  display:-webkit-box;
-  -webkit-box-orient:vertical;
-  -webkit-line-clamp:2;
-  max-height:2.9em;
-  overflow:hidden;
 }
 .assemblyRarity {
   font-size:10px;
@@ -8143,6 +8138,18 @@ body.orbitNoFade #gameWindowDock, body.orbitNoFade #ammoBar, body.orbitNoFade .g
   color:rgba(232,244,255,.6);
   font-size:12px;
 }
+.shopMeta .shopRowPrice {
+  color:#ffd24d !important;
+  font-size:11px !important;
+  font-weight:600 !important;
+}
+.shopMeta .shopRowPrice .shopPriceValue {
+  color:#ffd24d !important;
+}
+.shopMeta .shopRowPrice .shopPriceCurrency {
+  color:#ffffff !important;
+  font-weight:600 !important;
+}
 .shopPreview .bigImg {
   width:100%;
   max-width:400px;
@@ -8239,11 +8246,16 @@ body.orbitNoFade #gameWindowDock, body.orbitNoFade #ammoBar, body.orbitNoFade .g
   margin-bottom:12px;
   font-size:16px;
   text-align:center;
+  color:#ffffff;
 }
 #profileOverlay .shipPrice .amount {
-  color:#00ff88;
+  color:#ffd24d;
   font-size:20px;
   font-weight:900;
+}
+#profileOverlay .shipPrice .shipPriceCurrency {
+  color:#ffffff;
+  font-weight:600;
 }
 #confirmOverlay {
   z-index:230000 !important;
@@ -11745,12 +11757,13 @@ body > .inventoryTooltip .ttAmmoQty {
 }
 #profileOverlay .shopBalance {
   flex: 0 0 auto !important;
+  margin-left: auto !important;
   text-align: right !important;
 }
 #profileOverlay .shopBalance span {
   display: block !important;
-  color: rgba(204,228,241,.55) !important;
-  font-size: 8px !important;
+  color: #ffffff !important;
+  font-size: 9px !important;
   font-weight: 800 !important;
   text-transform: uppercase !important;
 }
@@ -11758,7 +11771,7 @@ body > .inventoryTooltip .ttAmmoQty {
   display: block !important;
   margin-top: 2px !important;
   color: #75e8ff !important;
-  font-size: 16px !important;
+  font-size: 18px !important;
 }
 #profileOverlay #shopTabs.subtabs {
   flex: 0 0 auto !important;
@@ -11903,11 +11916,6 @@ html body #profileOverlay .shipPreviewContainer {
   background: transparent !important;
 }
 #profileOverlay .shipPreviewContainer img {
-  width: auto !important;
-  height: auto !important;
-  max-width: 74% !important;
-  max-height: 74% !important;
-  transform: none !important;
   image-rendering: pixelated !important;
   object-fit: contain !important;
 }
@@ -11933,23 +11941,24 @@ html body #profileOverlay .shipPreviewContainer {
 #profileOverlay .shopPreview .shopItemStat.ammoDesc {
   color:#f4fbff !important;
   font-weight:600 !important;
+  font-size:12px !important;
   line-height:1.6 !important;
   margin-top:6px !important;
   text-align:center !important;
+}
+#profileOverlay .shopPreview .shopItemStat.ammoDesc strong {
+  margin-left:0 !important;
 }
 #profileOverlay .shopPreview h3.ammoTitle {
   text-align:center !important;
   font-size:20px !important;
   margin-bottom:0 !important;
 }
-#profileOverlay .shopPreview .shopAmmoOwned.ammoStock {
-  text-align:center !important;
-  margin:0 !important;
-  line-height:1 !important;
-}
-#profileOverlay .shopPreview .shopAmmoOwned.ammoStock strong {
+#profileOverlay .shopPreview h3.ammoTitle .ammoTitleQty {
   color:#ffd56a !important;
-  font-size:16px !important;
+  font-size:20px !important;
+  margin-left:10px !important;
+  white-space:nowrap !important;
 }
 #profileOverlay .shopPreview .shopItemStat.shopAbility img {
   width: 26px !important;
@@ -12041,20 +12050,25 @@ html body #profileOverlay .shipPreviewContainer {
   margin: 14px 0 0 !important;
   padding: 14px 4px 0 !important;
   display: flex !important;
+  flex-direction: column !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: 12px !important;
-  border-top: 1px solid rgba(124,240,255,.15) !important;
+  gap: 8px !important;
 }
-#profileOverlay .shopAmmoPrice {
-  flex:1 !important;
-  color:#eaffff !important;
-  font-size:13px !important;
-  font-weight:800 !important;
-  white-space:nowrap !important;
-  text-align:right !important;
+#profileOverlay .shopAmmoQtyRow {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
 }
-#profileOverlay .shopAmmoBuyRow > input {
+#profileOverlay .shopAmmoQtyRow > label {
+  color: #f4fbff !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+}
+#profileOverlay .shopAmmoBuyRow > input,
+#profileOverlay .shopAmmoQtyRow > input {
   flex: 0 0 90px !important;
   width: 90px !important;
   height: 36px !important;
@@ -12068,22 +12082,113 @@ html body #profileOverlay .shipPreviewContainer {
   font: 900 12px/1 system-ui !important;
   text-align: center !important;
 }
-#profileOverlay .shopAmmoBuyRow > input:focus {
+#profileOverlay .shopAmmoBuyRow > input:focus,
+#profileOverlay .shopAmmoQtyRow > input:focus {
   border-color: #69e9ff !important;
 }
-#profileOverlay .shopAmmoUnits {
-  flex:1 !important;
-  color:rgba(225,241,249,.78) !important;
-  font-size:13px !important;
-  font-weight:800 !important;
-  white-space:nowrap !important;
-  text-align:left !important;
+#profileOverlay .shopQtyCombo {
+  position: relative !important;
+  flex: 0 0 90px !important;
+  width: 90px !important;
 }
-#profileOverlay .shopAmmoUnits span {
-  color: #ffd56a !important;
+#profileOverlay .shopQtyBtn {
+  width: 100% !important;
+  height: 36px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 0 8px !important;
+  box-sizing: border-box !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.30) !important;
+  border-radius: 7px !important;
+  color: #effcff !important;
+  background: #051521 !important;
+  font: 900 12px/1 system-ui !important;
+  cursor: pointer !important;
 }
-#profileOverlay .shopAmmoUnits span.shopAmmoUnitWord {
+#profileOverlay .shopQtyBtn:focus {
+  border-color: #69e9ff !important;
+}
+#profileOverlay .shopQtyPopup {
+  position: absolute !important;
+  top: calc(100% + 4px) !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 60 !important;
+  background: #051521 !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
+  border-radius: 8px !important;
+  padding: 4px !important;
+  max-height: 264px !important;
+  overflow-y: auto !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5) !important;
+}
+#profileOverlay .shopQtyOpt {
+  padding: 4px 8px !important;
+  border-radius: 6px !important;
+  font: 800 12px/1.5 ui-sans-serif,system-ui !important;
+  color: #effcff !important;
+  cursor: pointer !important;
+  text-align: center !important;
+}
+#profileOverlay .shopQtyOpt:hover {
+  background: rgba(0,217,255,.15) !important;
+}
+#profileOverlay .shopQtyPopup::-webkit-scrollbar {
+  width: 8px !important;
+}
+#profileOverlay .shopQtyPopup::-webkit-scrollbar-track {
+  background: rgba(255,255,255,.05) !important;
+  border-radius: 10px !important;
+}
+#profileOverlay .shopQtyPopup::-webkit-scrollbar-thumb {
+  background: rgba(0,217,255,.3) !important;
+  border-radius: 10px !important;
+}
+#profileOverlay .shopAmmoCost {
+  margin: 0 !important;
   color: #f4fbff !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  text-align: center !important;
+}
+#profileOverlay .shopAmmoCost #shopPurchaseTotal {
+  color: #ffd56a !important;
+  font-size: 16px !important;
+}
+#profileOverlay .shopAmmoCost #shopAmmoUnitsVal {
+  color: #ffd56a !important;
+  font-size: 16px !important;
+}
+#profileOverlay .shopAmmoCost .shopAmmoWord {
+  color: #f4fbff !important;
+}
+#profileOverlay .shopAmmoStock {
+  margin: 2px 0 0 !important;
+  color: #f4fbff !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  text-align: center !important;
+}
+#profileOverlay .shopAmmoCost + .shopAmmoStock {
+  margin-top: 35px !important;
+}
+#profileOverlay .shopAmmoStock .shopAmmoWord {
+  color: #f4fbff !important;
+}
+#profileOverlay .shopAmmoStock .shopAmmoGold {
+  color: #ffd56a !important;
+  font-size: 16px !important;
+}
+#profileOverlay .shopAmmoCost .shopAmmoGold {
+  color: #ffd56a !important;
+  font-size: 16px !important;
+}
+#profileOverlay .shopAmmoStock [data-booster-status],
+#profileOverlay .shopAmmoStock [data-booster-countdown] {
+  font-size: 16px !important;
 }
 #profileOverlay .shopBuySection {
   margin-top: 12px !important;
@@ -14455,12 +14560,13 @@ html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover
 }
 #shopOverlay .shopBalance {
   flex: 0 0 auto !important;
+  margin-left: auto !important;
   text-align: right !important;
 }
 #shopOverlay .shopBalance span {
   display: block !important;
-  color: rgba(204,228,241,.55) !important;
-  font-size: 8px !important;
+  color: #ffffff !important;
+  font-size: 9px !important;
   font-weight: 800 !important;
   text-transform: uppercase !important;
 }
@@ -14468,7 +14574,7 @@ html body #shopOverlay #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover
   display: block !important;
   margin-top: 2px !important;
   color: #75e8ff !important;
-  font-size: 16px !important;
+  font-size: 18px !important;
 }
 html body #shopOverlay .shopRow {
   background-image: none !important;
@@ -14624,11 +14730,6 @@ html body #shopOverlay .shopPreviewContainer, html body #shopOverlay .shipPrevie
   background: transparent !important;
 }
 #shopOverlay .shipPreviewContainer img {
-  width: auto !important;
-  height: auto !important;
-  max-width: 74% !important;
-  max-height: 74% !important;
-  transform: none !important;
   image-rendering: pixelated !important;
   object-fit: contain !important;
 }
@@ -14654,21 +14755,30 @@ html body #shopOverlay .shopPreviewContainer, html body #shopOverlay .shipPrevie
 #shopOverlay .shopPreview .shopItemStat.ammoDesc {
   color:#f4fbff !important;
   font-weight:600 !important;
+  font-size:12px !important;
   line-height:1.6 !important;
   margin-top:6px !important;
   text-align:center !important;
+}
+#shopOverlay .shopPreview .shopItemStat.ammoDesc strong {
+  margin-left:0 !important;
 }
 #shopOverlay .shopPreview h3.ammoTitle {
   text-align:center !important;
   font-size:20px !important;
   margin-bottom:0 !important;
 }
-#shopOverlay .shopPreview .shopAmmoOwned.ammoStock {
+#shopOverlay .shopAmmoStock {
+  margin:2px 0 0 !important;
+  color:#f4fbff !important;
+  font-size:13px !important;
+  font-weight:800 !important;
   text-align:center !important;
-  margin:0 !important;
-  line-height:1 !important;
 }
-#shopOverlay .shopPreview .shopAmmoOwned.ammoStock strong {
+#shopOverlay .shopAmmoStock .shopAmmoWord {
+  color:#f4fbff !important;
+}
+#shopOverlay .shopAmmoStock .shopAmmoGold {
   color:#ffd56a !important;
   font-size:16px !important;
 }
@@ -14766,20 +14876,25 @@ html body #shopOverlay .shopPreviewContainer, html body #shopOverlay .shipPrevie
   margin: 14px 0 0 !important;
   padding: 14px 4px 0 !important;
   display: flex !important;
+  flex-direction: column !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: 12px !important;
-  border-top: 1px solid rgba(124,240,255,.15) !important;
+  gap: 8px !important;
 }
-#shopOverlay .shopAmmoPrice {
-  flex: 1 !important;
-  color: #eaffff !important;
+#shopOverlay .shopAmmoQtyRow {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+}
+#shopOverlay .shopAmmoQtyRow > label {
+  color: #f4fbff !important;
   font-size: 13px !important;
   font-weight: 800 !important;
   white-space: nowrap !important;
-  text-align: right !important;
 }
-#shopOverlay .shopAmmoBuyRow > input {
+#shopOverlay .shopAmmoBuyRow > input,
+#shopOverlay .shopAmmoQtyRow > input {
   flex: 0 0 90px !important;
   width: 90px !important;
   height: 36px !important;
@@ -14793,22 +14908,111 @@ html body #shopOverlay .shopPreviewContainer, html body #shopOverlay .shipPrevie
   font: 900 12px/1 system-ui !important;
   text-align: center !important;
 }
-#shopOverlay .shopAmmoBuyRow > input:focus {
+#shopOverlay .shopAmmoBuyRow > input:focus,
+#shopOverlay .shopAmmoQtyRow > input:focus,
+#shopOverlay .shopQtyBtn:focus {
   border-color: #69e9ff !important;
 }
-#shopOverlay .shopAmmoUnits {
-  flex:1 !important;
-  color:rgba(225,241,249,.78) !important;
-  font-size:13px !important;
-  font-weight:800 !important;
-  white-space:nowrap !important;
-  text-align:left !important;
+#shopOverlay .shopQtyCombo {
+  position: relative !important;
+  flex: 0 0 90px !important;
+  width: 90px !important;
 }
-#shopOverlay .shopAmmoUnits span {
-  color: #ffd56a !important;
+#shopOverlay .shopQtyBtn {
+  width: 100% !important;
+  height: 36px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 0 8px !important;
+  box-sizing: border-box !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.30) !important;
+  border-radius: 7px !important;
+  color: #effcff !important;
+  background: #051521 !important;
+  font: 900 12px/1 system-ui !important;
+  cursor: pointer !important;
 }
-#shopOverlay .shopAmmoUnits span.shopAmmoUnitWord {
+#shopOverlay .shopQtyPopup {
+  position: absolute !important;
+  top: calc(100% + 4px) !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 60 !important;
+  background: #051521 !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
+  border-radius: 8px !important;
+  padding: 4px !important;
+  max-height: 264px !important;
+  overflow-y: auto !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5) !important;
+}
+#shopOverlay .shopQtyOpt {
+  padding: 4px 8px !important;
+  border-radius: 6px !important;
+  font: 800 12px/1.5 ui-sans-serif,system-ui !important;
+  color: #effcff !important;
+  cursor: pointer !important;
+  text-align: center !important;
+}
+#shopOverlay .shopQtyOpt:hover {
+  background: rgba(0,217,255,.15) !important;
+}
+#shopOverlay .shopQtyPopup::-webkit-scrollbar {
+  width: 8px !important;
+}
+#shopOverlay .shopQtyPopup::-webkit-scrollbar-track {
+  background: rgba(255,255,255,.05) !important;
+  border-radius: 10px !important;
+}
+#shopOverlay .shopQtyPopup::-webkit-scrollbar-thumb {
+  background: rgba(0,217,255,.3) !important;
+  border-radius: 10px !important;
+}
+#shopOverlay .shopAmmoCost {
+  margin: 0 !important;
   color: #f4fbff !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  text-align: center !important;
+}
+#shopOverlay .shopAmmoCost #shopPurchaseTotal {
+  color: #ffd56a !important;
+  font-size: 16px !important;
+}
+#shopOverlay .shopAmmoCost #shopAmmoUnitsVal {
+  color: #ffd56a !important;
+  font-size: 16px !important;
+}
+#shopOverlay .shopAmmoCost .shopAmmoWord {
+  color: #f4fbff !important;
+}
+#shopOverlay .shopAmmoStock {
+  margin: 2px 0 0 !important;
+  color: #f4fbff !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  text-align: center !important;
+}
+#shopOverlay .shopAmmoCost + .shopAmmoStock {
+  margin-top: 35px !important;
+}
+#shopOverlay .shopAmmoStock .shopAmmoWord {
+  color: #f4fbff !important;
+}
+#shopOverlay .shopAmmoStock .shopAmmoGold {
+  color: #ffd56a !important;
+  font-size: 16px !important;
+}
+#shopOverlay .shopAmmoCost .shopAmmoGold {
+  color: #ffd56a !important;
+  font-size: 16px !important;
+}
+#shopOverlay .shopAmmoStock [data-booster-status],
+#shopOverlay .shopAmmoStock [data-booster-countdown] {
+  font-size: 16px !important;
 }
 #shopOverlay .shopQuantityBox > select {
   width: 100% !important;
@@ -15013,6 +15217,7 @@ body #shopOverlay .shopRow img.formationShopRowImage {
   #shopOverlay .profileHeaderCard { grid-column: 1 !important; grid-row: 2 !important; padding: 8px !important; border-right: 0 !important; border-bottom: 1px solid rgba(124,240,255,.16) !important; }
   #shopOverlay .profileTabs { flex-direction: row !important; overflow-x: auto !important; }
   #shopOverlay .profileTabs .tabBtn { justify-content: center !important; }
+  #shopOverlay .profileTabs .tabBtn[data-shop="extras"] { margin-top: 0 !important; }
   #shopOverlay .profileMainCard { grid-column: 1 !important; grid-row: 3 !important; padding: 8px !important; }
   #shopOverlay #shopWindowPanel .shopLayout { grid-template-columns: 1fr !important; overflow-y: auto !important; }
   #shopOverlay #shopWindowPanel .shopList { max-height: 210px !important; }
@@ -20988,4 +21193,225 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   #settingsWindow .settingsPage[data-settings-page="account"] .accountSecurityCard .passwordFields{
     grid-template-columns:1fr !important;
   }
+}
+/* Prix boutique (liste) : montant dore + "credits" blanc.
+   Place en fin de fichier pour battre :
+   - #profileOverlay .shopMeta span
+   - #shopOverlay .shopMeta span */
+html body #shopOverlay .shopMeta .shopRowPrice,
+html body #profileOverlay .shopMeta .shopRowPrice,
+html body #shopOverlay .shopMeta span.shopRowPrice,
+html body #profileOverlay .shopMeta span.shopRowPrice {
+  color:#ffd24d !important;
+  font-size:11px !important;
+  font-weight:600 !important;
+}
+html body #shopOverlay .shopMeta .shopRowPrice .shopPriceValue,
+html body #profileOverlay .shopMeta .shopRowPrice .shopPriceValue,
+html body #shopOverlay .shopMeta span.shopRowPrice span.shopPriceValue,
+html body #profileOverlay .shopMeta span.shopRowPrice span.shopPriceValue {
+  color:#ffd24d !important;
+  font-size:11px !important;
+  font-weight:600 !important;
+}
+html body #shopOverlay .shopMeta .shopRowPrice .shopPriceCurrency,
+html body #profileOverlay .shopMeta .shopRowPrice .shopPriceCurrency,
+html body #shopOverlay .shopMeta span.shopRowPrice span.shopPriceCurrency,
+html body #profileOverlay .shopMeta span.shopRowPrice span.shopPriceCurrency {
+  color:#ffffff !important;
+  font-size:10px !important;
+  font-weight:600 !important;
+}
+/* Modules + historique des modules : tous les textes gris en blanc
+   (accents cyan/doré et couleurs de rareté conservés). */
+html body #shopOverlay .extrasRouletteCost,
+html body #profileOverlay .extrasRouletteCost,
+html body #shopOverlay .extrasRouletteHeader p,
+html body #profileOverlay .extrasRouletteHeader p,
+html body #shopOverlay .moduleCostLabel,
+html body #profileOverlay .moduleCostLabel,
+html body #shopOverlay .moduleCreditCost,
+html body #profileOverlay .moduleCreditCost,
+html body #shopOverlay .moduleTicketStock,
+html body #profileOverlay .moduleTicketStock,
+html body #shopOverlay .moduleDailyRolls,
+html body #profileOverlay .moduleDailyRolls,
+html body #shopOverlay .moduleAutoRoll span,
+html body #profileOverlay .moduleAutoRoll span,
+html body #shopOverlay .moduleHistoryPanel > header span,
+html body #profileOverlay .moduleHistoryPanel > header span,
+html body #shopOverlay .moduleHistoryIndex,
+html body #profileOverlay .moduleHistoryIndex,
+html body #shopOverlay .moduleHistoryMeta span:not(.moduleHistoryRarity),
+html body #profileOverlay .moduleHistoryMeta span:not(.moduleHistoryRarity),
+html body #shopOverlay .moduleHistoryRow time,
+html body #profileOverlay .moduleHistoryRow time,
+html body #shopOverlay .moduleHistoryEmpty,
+html body #profileOverlay .moduleHistoryEmpty,
+html body #shopOverlay .moduleHistoryReroll,
+html body #profileOverlay .moduleHistoryReroll,
+html body #shopOverlay .moduleHistoryPayment,
+html body #profileOverlay .moduleHistoryPayment,
+html body #shopOverlay .moduleHistoryPayment.legacy,
+html body #profileOverlay .moduleHistoryPayment.legacy,
+html body #shopOverlay .moduleTicketCost small,
+html body #profileOverlay .moduleTicketCost small {
+  color:#ffffff !important;
+}
+/* Compétences boutique : centrées, texte blanc. */
+html body #shopOverlay .shopPreview .shopItemStat.shopAbility,
+html body #profileOverlay .shopPreview .shopItemStat.shopAbility {
+  display:block !important;
+  margin:2px 0 !important;
+  text-align:center !important;
+  color:#ffffff !important;
+}
+html body #shopOverlay .shopPreview .shopItemStat.shopAbilityTitle,
+html body #profileOverlay .shopPreview .shopItemStat.shopAbilityTitle {
+  text-align:center !important;
+  color:#ffffff !important;
+}
+html body #shopOverlay .shopPreview .shopItemStat.shopEffetLine,
+html body #profileOverlay .shopPreview .shopItemStat.shopEffetLine {
+  text-align:center !important;
+  color:#ffffff !important;
+}
+html body #shopOverlay .shopPreview .shopItemStat.shopEffetLine > strong:first-child,
+html body #profileOverlay .shopPreview .shopItemStat.shopEffetLine > strong:first-child {
+  color:#ffd56a !important;
+}
+html body #shopOverlay .shopPreview .shopItemStat.shopEffetLine strong,
+html body #profileOverlay .shopPreview .shopItemStat.shopEffetLine strong {
+  margin-left:0 !important;
+}
+html body #shopOverlay .shopPreview .shopItemStat.shipStatLine strong,
+html body #profileOverlay .shopPreview .shopItemStat.shipStatLine strong {
+  margin-left:0 !important;
+}
+html body #shopOverlay .shopPreview .shopItemStat.shopAbility strong,
+html body #profileOverlay .shopPreview .shopItemStat.shopAbility strong,
+html body #shopOverlay .shopPreview .shopItemStat.shopAbilityTitle,
+html body #profileOverlay .shopPreview .shopItemStat.shopAbilityTitle {
+  color:#ffd56a !important;
+}
+html body #shopOverlay .shopPreview .shopItemStat.shopAbility em,
+html body #profileOverlay .shopPreview .shopItemStat.shopAbility em {
+  color:#ffffff !important;
+}
+html body #shopOverlay .shopPreview .shopAbilitiesGrid,
+html body #profileOverlay .shopPreview .shopAbilitiesGrid {
+  justify-content:center !important;
+}
+html body #shopOverlay .shopPreview p.shopDesignWarn,
+html body #profileOverlay .shopPreview p.shopDesignWarn {
+  color:#ff5b6a !important;
+}
+html body #shopOverlay .shopPreview .shopFormationReq,
+html body #profileOverlay .shopPreview .shopFormationReq {
+  color:#ff5b6a !important;
+  font-weight:600 !important;
+}
+/* Bloc coût d'achat vaisseaux/designs : centré, rapproché du dessus. */
+html body #shopOverlay .shopPreview .shopAmmoCost.shipCostBlock,
+html body #profileOverlay .shopPreview .shopAmmoCost.shipCostBlock {
+  margin-top:8px !important;
+  text-align:center !important;
+}
+/* Previews boutique : pas de séparateur au-dessus d'Acheter. */
+html body #shopOverlay .shopPreview .shopBuySection,
+html body #profileOverlay .shopPreview .shopBuySection {
+  border-top:0 !important;
+}
+/* Sélecteur de niveau gears/protocoles dans la ligne façon munitions. */
+.shopAmmoQtyRow > select.shopLevelSelect {
+  flex:1 1 auto !important;
+  min-width:0 !important;
+  max-width:230px !important;
+  height:36px !important;
+  padding:0 26px 0 10px !important;
+  box-sizing:border-box !important;
+  outline:0 !important;
+  border:1px solid rgba(124,240,255,.30) !important;
+  border-radius:7px !important;
+  color:#effcff !important;
+  background-color:#051521 !important;
+  font-size:12px !important;
+  font-weight:900 !important;
+  text-align:center !important;
+  text-overflow:ellipsis !important;
+  cursor:pointer !important;
+}
+.shopAmmoQtyRow > select.shopLevelSelect:focus {
+  border-color:#69e9ff !important;
+}
+.shopAmmoQtyRow > select.shopLevelSelect option {
+  color:#effcff !important;
+  background-color:#071622 !important;
+}
+/* Previews hors carte (drones, formations, P.E.T, gears) : taille réelle. */
+html body #shopOverlay .shopPreview .stillPreviewWrap,
+html body #profileOverlay .shopPreview .stillPreviewWrap {
+  display:flex !important;
+  justify-content:center !important;
+  margin:0 auto 16px !important;
+}
+html body #shopOverlay .shopPreview .stillPreviewWrap img.stillPreviewImg,
+html body #profileOverlay .shopPreview .stillPreviewWrap img.stillPreviewImg,
+html body #shopOverlay .shopPreview .dronePreviewWrap img.droneShopImage,
+html body #profileOverlay .shopPreview .dronePreviewWrap img.droneShopImage {
+  width:auto !important;
+  height:auto !important;
+  max-width:100% !important;
+  max-height:none !important;
+  padding:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  transform:none !important;
+}
+/* Check "possédé" des lignes boutique : vert, visible, collé à droite. */
+html body #shopOverlay .shopRow > .shopOwnedCheck,
+html body #profileOverlay .shopRow > .shopOwnedCheck {
+  margin-left:auto !important;
+  flex:0 0 auto !important;
+  align-self:center !important;
+  color:#00ff88 !important;
+  font-weight:900 !important;
+  font-size:18px !important;
+  line-height:1 !important;
+}
+/* Mention "Possédé ✓" des previews : vert + espacée. */
+html body #shopOverlay .shopPreview .previewOwnedWord,
+html body #profileOverlay .shopPreview .previewOwnedWord {
+  color:#00ff88 !important;
+  font-weight:700 !important;
+  letter-spacing:1px !important;
+  margin-left:8px !important;
+}
+html body #shopOverlay .shopPreview .previewOwnedCheck,
+html body #profileOverlay .shopPreview .previewOwnedCheck {
+  color:#00ff88 !important;
+  font-weight:900 !important;
+}
+/* Descriptions gears/protocoles : une seule ligne, sans retour auto. */
+html body #shopOverlay .shopPreview .shopItemStat.singleline,
+html body #profileOverlay .shopPreview .shopItemStat.singleline {
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+/* Lignes de stock des previews (drones, P.E.T...) : centrées. */
+html body #shopOverlay .shopPreview .shopAmmoOwned,
+html body #profileOverlay .shopPreview .shopAmmoOwned {
+  text-align:center !important;
+}
+/* Onglet MODULES collé tout en bas de la liste des onglets. */
+html body #shopOverlay .profileHeaderCard .profileTabs,
+html body #profileOverlay .profileHeaderCard .profileTabs {
+  flex:1 1 auto !important;
+}
+html body #shopOverlay #shopWindowTabs .tabBtn[data-shop="extras"],
+html body #profileOverlay #shopWindowTabs .tabBtn[data-shop="extras"],
+html body #profileOverlay #shopTabs .subtabBtn[data-shop="extras"] {
+  order:99 !important;
+  margin-top:auto !important;
 }

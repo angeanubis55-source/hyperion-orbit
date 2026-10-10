@@ -71,7 +71,7 @@ export const ABILITIES = Object.freeze({
     name: "Camouflage ultime",
     target: "self",
     icon: abilityIconPath("ability_admin-ultimate-cloaking"),
-    description: "30 s invisible : les NPC perdent la cible (le joueur garde sa mini-carte et son rendu 50 %). Le slot se noircit dès l'activation, la recharge de 240 s ne descend qu'à la fin ou à la coupure (attaque, mort, refresh).",
+    description: "Invisible 30 s (NPC aveugles), coupée par attaque.",
     notes: "",
     cooldownSec: 240,
     durationSec: 30,
@@ -80,47 +80,47 @@ export const ABILITIES = Object.freeze({
 
   // ---- Aegis ----
   "ability_aegis_hp-repair": A(
-    "ability_aegis_hp-repair", "aegis", "Aegis", "Réparation coque", "self",
-    "+280k PV allié (140k soi) répartis sur 7 s (40k/20k par s), +X vert chaque seconde.",
+    "ability_aegis_hp-repair", "aegis", "Aegis",     "Réparation coque", "self",
+    "+280k PV allié (140k soi) sur 7 s.",
     "", "", 90, 7, "done" // ✅
   ),
   "ability_aegis_shield-repair": A(
-    "ability_aegis_shield-repair", "aegis", "Aegis", "Réparation bouclier", "self",
-    "+125k bouclier allié (75k soi) répartis sur 5 s (25k/15k par s), +X bleu chaque seconde.",
+    "ability_aegis_shield-repair", "aegis", "Aegis",     "Réparation bouclier", "self",
+    "+125k bouclier allié (75k soi) sur 5 s.",
     "", "", 30, 5, "done" // ✅
   ),
   "ability_aegis_repair-pod": A(
-    "ability_aegis_repair-pod", "aegis", "Aegis", "Pod de réparation", "zone",
-    "Pose le pod sous le vaisseau (position au clic) : 10 s, halo vert rayon 400, +18k PV/s aux vaisseaux dedans (180k max). Le pod de la coque est caché jusqu'à la fin de la recharge de 120 s.",
+    "ability_aegis_repair-pod", "aegis", "Aegis",     "Pod de réparation", "zone",
+    "Pod 10 s : +18k PV/s aux vaisseaux dedans (180k max).",
     "", "", 120, 10, "done" // ✅
   ),
 
   // ---- Basilisk ----
   "ability_basilisk_heightened-valour": A(
-    "ability_basilisk_heightened-valour", "basilisk", "Basilisk", "Valeur exaltée", "self",
-    "+0,5 % de dégâts par seconde pendant 30 s, plafonné +10 % (lasers). Sans visuel. Recharge 100 s.",
+    "ability_basilisk_heightened-valour", "basilisk", "Basilisk",     "Valeur exaltée", "self",
+    "+0,5 % dégâts/s pendant 30 s (max +10 %).",
     "", "", 100, 30, "done" // ✅
   ),
   "ability_basilisk_noxious-nebula": A(
-    "ability_basilisk_noxious-nebula", "basilisk", "Basilisk", "Nuage toxique", "zone",
-    "Posée sous le vaisseau : 10 s, 14000 dégâts/s à TOUT LE MONDE dessus (NPC, escortes, nous, notre PET), +5 % par seconde (stack par cible). Fondu d'apparition/disparition. Recharge 180 s.",
+    "ability_basilisk_noxious-nebula", "basilisk", "Basilisk",     "Nuage toxique", "zone",
+    "Zone 10 s : 14000 dégâts/s à tous dessus, +5 %/s.",
     "", "", 180, 10, "done" // ✅
   ),
 
   // ---- Berserker ----
   "ability_berserker_bsk": A(
-    "ability_berserker_bsk", "berserker", "Berserker", "Berserk", "self",
-    "30 s : tremblement croissant + contour orange pulsé de plus en plus vite (style ubers). +1 % dégâts par 1 % PV manquant (lasers). Recharge 60 s.",
+    "ability_berserker_bsk", "berserker", "Berserker",     "Berserk", "self",
+    "+1 % dégâts par 1 % PV manquant pendant 30 s.",
     "", "", 60, 30, "done" // ✅
   ),
   "ability_berserker_rvg": A(
-    "ability_berserker_rvg", "berserker", "Berserker", "Représailles", "enemy",
-    "6 s : 100 % des dégâts renvoyés à chaque attaquant (pas de lock requis, rien subi ni affiché sur nous) + contour cyan évidé, vitesse -5 %. Recharge 180 s.",
+    "ability_berserker_rvg", "berserker", "Berserker",     "Représailles", "enemy",
+    "100 % des dégâts renvoyés pendant 6 s, vitesse -5 %.",
     "", "", 180, 6, "done" // ✅
   ),
   "ability_berserker_shl": A(
-    "ability_berserker_shl", "berserker", "Berserker", "Lien de bouclier", "enemy",
-    "60 s : les dégâts infligés au bouclier de la cible verrouillée sont encaissés par vous. Cassé hors de portée, annulable à tout moment.",
+    "ability_berserker_shl", "berserker", "Berserker",     "Lien de bouclier", "enemy",
+    "Encaisse les dégâts bouclier de la cible pendant 60 s.",
     "", "", 10, 60, "done" // ✅
   ),
 
@@ -132,24 +132,24 @@ export const ABILITIES = Object.freeze({
   ),
   "ability_citadel_fortify": A(
     "ability_citadel_fortify", "citadel", "Citadel", "Fortification", "self",
-    "-80 % de dégâts subis, vitesse plafonnée à 200, pas de saut.",
+    "-80 % dégâts subis, vitesse max 200, pas de saut.",
     "", "", 360, 10, "done" // ✅
   ),
   "ability_citadel_protection": A(
     "ability_citadel_protection", "citadel", "Citadel", "Protection", "ally",
-    "Encaisse à la place d'un allié une partie des dégâts qu'il subit.",
+    "Encaisse les dégâts d'un allié.",
     "", "", 60, 10, "done" // ✅
   ),
   "ability_citadel_travel": A(
     "ability_citadel_travel", "citadel", "Citadel", "Voyage", "self",
-    "Boost de vitesse temporaire pour se déplacer vite.",
+    "Boost de vitesse temporaire.",
     "", "", 60, 5, "done" // ✅
   ),
 
   // ---- Citadel Plus ----
   "ability_citadel-plus_prismatic-endurance": A(
     "ability_citadel-plus_prismatic-endurance", "citadel_plus", "Citadel Plus", "Endurance prismatique", "self",
-    "Renforce durablement la résistance de la coque et du bouclier.",
+    "Renforce coque et bouclier durablement.",
     "Valeurs exactes à confirmer en jeu.", "", 200, 25, "done" // ✅
   ),
   "ability_citadel-plus_draw-fire": A(
@@ -159,17 +159,17 @@ export const ABILITIES = Object.freeze({
   ),
   "ability_citadel-plus_fortify": A(
     "ability_citadel-plus_fortify", "citadel_plus", "Citadel Plus", "Fortification", "self",
-    "-80 % de dégâts subis, vitesse plafonnée à 200, pas de saut.",
+    "-80 % dégâts subis, vitesse max 200, pas de saut.",
     "Héritée du Citadel de base.", "ABILITY_CITADEL_FORTIFY.PNG", 360, 10, "done" // ✅
   ),
   "ability_citadel-plus_protection": A(
     "ability_citadel-plus_protection", "citadel_plus", "Citadel Plus", "Protection", "ally",
-    "Encaisse à la place d'un allié une partie des dégâts qu'il subit.",
+    "Encaisse les dégâts d'un allié.",
     "Héritée du Citadel de base.", "ABILITY_CITADEL_PROTECTION.PNG", 60, 10, "done" // ✅
   ),
   "ability_citadel-plus_travel": A(
     "ability_citadel-plus_travel", "citadel_plus", "Citadel Plus", "Voyage", "self",
-    "Boost de vitesse temporaire pour se déplacer vite.",
+    "Boost de vitesse temporaire.",
     "Héritée du Citadel de base.", "ABILITY_CITADEL_TRAVEL.PNG", 60, 5, "done" // ✅
   ),
 
@@ -178,190 +178,202 @@ export const ABILITIES = Object.freeze({
   // ~315k sur 30 s). Sprite VENOM_SINGULARITY sur la cible. EMP/JAMX plus tard.
   "ability_cyborg_singularity": A(
     "ability_cyborg_singularity", "cyborg", "Cyborg", "Singularité II", "enemy",
-    "Dégâts croissants directs en coque sur la cible lockée : 6900 +300/hit (cap 13600) pendant 30 s. Exécution dès < 150k HP.",
+    "6900 +300/hit en coque (cap 13600) 30 s, exécution < 150k HP.",
     "Icône Venom réutilisée (pas d'icône Cyborg).", "ABILITY_VENOM.PNG", 270, 30, "done" // ✅
   ),
 
   // ---- Diminisher ----
   "ability_diminisher": A(
     "ability_diminisher", "diminisher", "Diminisher", "Affaiblissement", "enemy",
-    "La cible verrouillée : son bouclier prend +50 % de dégâts de nos lasers pendant 15 s. Contrecoup : -30 % de notre bouclier à la fin.",
+    "Cible : +50 % dégâts bouclier 15 s, -30 % notre bouclier après.",
     "", "", 90, 15, "done" // ✅
   ),
 
   // ---- Disruptor ----
   "ability_disruptor_ddol": A(
     "ability_disruptor_ddol", "disruptor", "Disruptor", "DDoL", "enemy",
-    "Dérègle le cooldown des lasers de la cible verrouillée (3 à 5 s aléatoires) pendant 10 s.",
+    "Dérègle les lasers ennemis (3 à 5 s) pendant 10 s.",
     "", "", 60, 10, "done"
   ), // ✅
   "ability_disruptor_redirect": A(
     "ability_disruptor_redirect", "disruptor", "Disruptor", "Redirection", "self",
-    "Pendant 5 s, tous les dégâts subis partent sur la cible verrouillée (rien subi), ses lasers sont désactivés 4 s.",
+    "5 s : dégâts subis renvoyés, lasers ennemis coupés 4 s.",
     "", "", 40, 5, "done"
   ), // ✅
   "ability_disruptor_shield-disarray": A(
     "ability_disruptor_shield-disarray", "disruptor", "Disruptor", "Désordre bouclier", "enemy",
-    "Bouclier max de la cible -50 % pendant 5 s (actuel écrêté), le retiré revient par-dessus à la fin.",
+    "Bouclier max cible -50 % pendant 5 s.",
     "", "", 120, 5, "done"
   ), // ✅
 
   // ---- Goliath X ----
   "ability_goliath-x_frozen-claw": A(
     "ability_goliath-x_frozen-claw", "goliath_x", "Goliath X", "Griffe gelée", "enemy",
-    "Envoie gratuitement une R-IC3 sur la cible verrouillée (gel 2 s). Passif : +2 % dégâts laser, +2 % XP.",
+    "R-IC3 gratuite (gel 2 s). Passif : +2 % dégâts, +2 % XP.",
     "", "", 90, 2, "done"
   ), // ✅
 
   // ---- Hammerclaw (base, officiel : mêmes 3 soins que l'Aegis en plus fort) ----
   "ability_hammerclaw_hp-repair": A(
     "ability_hammerclaw_hp-repair", "hammerclaw", "Hammerclaw", "Réparation coque", "ally",
-    "Soigne un allié jusqu'à 350k PV (175k pour soi) répartis sur 7 s.",
+    "Soigne 350k PV allié (175k soi) sur 7 s.",
     "", "ABILITY_AEGIS_HP-REPAIR.PNG", 150, 7, "done"
   ), // ✅
   "ability_hammerclaw_shield-repair": A(
     "ability_hammerclaw_shield-repair", "hammerclaw", "Hammerclaw", "Réparation bouclier", "ally",
-    "Répare le bouclier d'un allié jusqu'à 180k (120k pour soi) répartis sur 3 s.",
+    "Répare 180k bouclier allié (120k soi) sur 3 s.",
     "", "ABILITY_AEGIS_SHIELD-REPAIR.PNG", 60, 3, "done"
   ), // ✅
   "ability_hammerclaw_repair-pod": A(
     "ability_hammerclaw_repair-pod", "hammerclaw", "Hammerclaw", "Pod de réparation", "zone",
-    "Pose le pod : 10 s, +175k PV max aux vaisseaux dedans.",
+    "Pod 10 s : +175k PV max aux vaisseaux dedans.",
     "", "ABILITY_AEGIS_REPAIR-POD.PNG", 160, 10, "done"
   ), // ✅
 
   // ---- Hammerclaw Plus ----
   "ability_hammerclaw-plus_reallocate": A(
     "ability_hammerclaw-plus_reallocate", "hammerclaw_plus", "Hammerclaw Plus", "Réallocation", "self",
-    "Pendant 10 s, 20 % des dégâts infligés partent en pot commun, distribué en PV à la fin (nous + escortes à 700).",
+    "10 s : 20 % des dégâts en pot commun, rendus en PV.",
     "", "", 180, 10, "done"
   ), // ✅
   "ability_hammerclaw-plus_hp-repair": A(
     "ability_hammerclaw-plus_hp-repair", "hammerclaw_plus", "Hammerclaw Plus", "Réparation coque", "ally",
-    "Soigne un allié jusqu'à 450k PV (225k pour soi) répartis sur 6 s.",
+    "Soigne 450k PV allié (225k soi) sur 6 s.",
     "Héritée du Hammerclaw de base (montants/durée Plus).", "ABILITY_AEGIS_HP-REPAIR.PNG", 160, 6, "done"
   ), // ✅
   "ability_hammerclaw-plus_shield-repair": A(
     "ability_hammerclaw-plus_shield-repair", "hammerclaw_plus", "Hammerclaw Plus", "Réparation bouclier", "ally",
-    "Répare le bouclier d'un allié jusqu'à 240k (150k pour soi) répartis sur 3 s.",
+    "Répare 240k bouclier allié (150k soi) sur 3 s.",
     "Héritée du Hammerclaw de base (montants Plus).", "ABILITY_AEGIS_SHIELD-REPAIR.PNG", 80, 3, "done"
   ), // ✅
   "ability_hammerclaw-plus_repair-pod": A(
     "ability_hammerclaw-plus_repair-pod", "hammerclaw_plus", "Hammerclaw Plus", "Pod de réparation", "zone",
-    "Pose le pod : 8 s, rayon 600, +200k PV max aux vaisseaux dedans.",
+    "Pod 8 s, rayon 600 : +200k PV max dedans.",
     "Héritée du Hammerclaw de base (montant/durée/rayon Plus).", "ABILITY_AEGIS_REPAIR-POD.PNG", 60, 8, "done"
   ), // ✅
 
   // ---- Hecate ----
   "ability_hecate_particle-beam": A(
     "ability_hecate_particle-beam", "hecate", "Hecate", "Faisceau à particules", "enemy",
-    "Canal sur la cible lockée : 8050 + 6000 dégâts/coque par hit pendant 5 s, vitesse -10 %.",
+    "Canal 5 s : 8050 + 6000 dégâts par hit, vitesse -10 %.",
     "", "", 85, 5, "done"
   ), // ✅
 
   // ---- Hecate Plus ----
   "ability_hecate-plus_particle-beam-plus": A(
     "ability_hecate-plus_particle-beam-plus", "hecate_plus", "Hecate Plus", "Faisceau à particules Plus", "enemy",
-    "Canal sur la cible lockée : 10000 + 6000 dégâts/coque par hit pendant 6 s, vitesse -10 %.",
+    "Canal 6 s : 10000 + 6000 dégâts par hit, vitesse -10 %.",
     "", "", 120, 6, "done"
   ), // ✅
   "ability_hecate-plus_stockpile": A(
     "ability_hecate-plus_stockpile", "hecate_plus", "Hecate Plus", "Stockpile", "self",
-    "Tuer un PNJ ajoute une charge à Stockpile (max 10). Tant que Stockpile n'est pas activé : portée +5 par charge. À l'activation : force du bouclier augmentée pendant 10 s (+0,2 % par charge, chaque charge donnant 0,2 % de plus que la précédente, soit 11 % à 10 charges). Portée réinitialisée à l'origine et charges remises à 0.",
+    "+1 charge/kill (max 10) : +5 portée et +0,2 % bouclier par charge.",
     "", "", 0, 10, "done"
   ), // ✅
 
   // ---- Holo ----
   "ability_holo_enemy-reversal": A(
     "ability_holo_enemy-reversal", "holo", "Holo", "Inversion ennemie", "enemy",
-    "Cible verrouillée : -10 % vitesse et +10 % dégâts subis pendant 15 s. CD 15 s.",
+    "Cible : -10 % vitesse, +10 % dégâts subis pendant 15 s.",
     "", "", 15, 15, "done" // ✅
   ),
   "ability_holo_self-reversal": A(
     "ability_holo_self-reversal", "holo", "Holo", "Inversion (soi)", "self",
-    "+10 % dégâts laser et +10 % vitesse pendant 15 s. CD 15 s.",
+    "+10 % dégâts et +10 % vitesse pendant 15 s.",
     "", "", 15, 15, "done" // ✅
   ),
 
   // ---- Hyperion ----
   "ability_hyperion_ga": A(
     "ability_hyperion_ga", "hyperion", "Hyperion", "Ancre gravitationnelle", "enemy",
-    "Tir SHOT 100% touché sur cible verrouillée, puis START + CONTINUED (dès frame 26) + FINISH : 10 s au total. Cible ralentie 80% (40% en battle).",
+    "Ralentit la cible de 80 % pendant 10 s.",
     "", "", 300, 10, "done" // ✅
   ),
   // QA : salve classique en munition X0 (gratuite) : dégâts x6 x2.5, toujours critique.
   "ability_hyperion_qa": A(
     "ability_hyperion_qa", "hyperion", "Hyperion", "QA", "enemy",
-    "Salve classique en X0 (gratuite) : dégâts x6 x2.5, coup critique garanti.",
+    "Salve X0 gratuite : dégâts x6 x2.5, critique garanti.",
     "CD à confirmer.", "", 90, 0, "done" // ✅
   ),
 
   // ---- Keres ----
   "ability_keres_sle": A(
     "ability_keres_sle", "keres", "Keres", "Sleight", "enemy",
-    "Lock suffit (aucune limite de distance) : dash x5 jusqu'à 200 de la cible. Réacteurs remplacés par le speed buff Citadel.",
+    "Dash x5 jusqu'à 200 de la cible, sans limite de distance.",
     "CD à confirmer.", "", 120, 0, "done" // ✅
   ),
   "ability_keres_spr": A(
     "ability_keres_spr", "keres", "Keres", "Spread", "enemy",
-    "Cible lockée ralentie 20% 10s, contour vert locator clignotant. Contagion à 300 : 10s reparties, max 10, pas de réinfection même cast.",
+    "Cible ralentie 20 % 10 s, contagion à 300 (max 10).",
     "", "", 300, 10, "done" // ✅
   ),
 
   // ---- Liberator Plus ----
   "ability_liberator-plus_self-repair": A(
     "ability_liberator-plus_self-repair", "liberator_plus", "Liberator Plus", "Auto-réparation", "self",
-    "Restaure 35.000 HP/s pendant 10 s (350.000 max).",
+    "+35000 PV/s pendant 10 s (350000 max).",
     "", "", 100, 10, "done" // ✅
   ),
 
   // ---- Lightning (Vengeance) ----
   "ability_lightning": A(
     "ability_lightning", "lightning", "Lightning", "Postcombustion", "self",
-    "Boost vitesse x2 pendant 10 s. Réacteurs remplacés par le speed buff (comme le Voyage Citadel).",
+    "Vitesse x2 pendant 10 s.",
     "", "", 60, 10, "done" // ✅
   ),
 
   // ---- Mimesis ----
   "ability_mimesis_hologram": A(
     "ability_mimesis_hologram", "mimesis", "Mimesis", "Hologramme", "self",
-    "Son puis fausse explosion par-dessus nous : 4 clones identiques qui restent près (formation drones live) et explosent à 3 s. Locks sur nous effacés.",
+    "4 clones qui explosent à 3 s, locks effacés.",
     "CD à confirmer.", "", 300, 3, "done" // ✅
   ),
   "ability_mimesis_phase-out": A(
     "ability_mimesis_phase-out", "mimesis", "Mimesis", "Sortie de phase", "self",
-    "Téléportation 500u aléatoire (hors radiation). Interdit gates/LoW/UBA/pirates. Sans animation.",
+    "Téléportation aléatoire 500u (hors radiation).",
     "", "", 300, 0, "done" // ✅
   ),
   "ability_mimesis_scramble": A(
     "ability_mimesis_scramble", "mimesis", "Mimesis", "Brouillage", "self",
-    "+65% évasion, +25% dégâts laser, +25% vitesse, -5% shield max/s. Coupé à 0 shield ou change config. Vaisseau clignotant.",
+    "+65 % évasion, +25 % dégâts/vitesse, -5 % bouclier/s.",
     "", "", 300, 0, "done" // ✅
   ),
 
   // ---- Orcus ----
   "ability_orcus_assimilate": A(
     "ability_orcus_assimilate", "orcus", "Orcus / Orcus Plus", "Assimilation", "self",
-    "80 % de tous les dégâts reçus convertis en PV pendant 20 s (24 s sur Orcus Plus).",
+    "80 % des dégâts reçus en PV pendant 20 s.",
     "", "", 540, 20, "done" // ✅
+  ),
+
+  // ---- Orcus Plus ----
+  "ability_orcus-plus_assimilate": A(
+    "ability_orcus-plus_assimilate", "orcus_plus", "Orcus Plus", "Assimilation", "self",
+    "80 % des dégâts reçus en PV pendant 24 s.",
+    "Héritée de l'Orcus de base (même branchement moteur).", "ABILITY_ORCUS_ASSIMILATE.PNG", 540, 24, "done" // ✅
+  ),
+  "ability_orcus-plus_target-marker": A(
+    "ability_orcus-plus_target-marker", "orcus_plus", "Orcus Plus", "Marqueur", "enemy",
+    "Marque 15 s : ralenti 10 %, +10 % pénétration subie.",
+    "Même effet que le Marqueur Spearhead.", "ABILITY_SPEARHEAD_TARGET-MARKER.PNG", 360, 15, "done" // ✅
   ),
 
   // ---- Paladin ----
  "ability_paladin_last-stand": A(
     "ability_paladin_last-stand", "paladin", "Paladin", "Dernier rempart", "self",
-    "Passif : à 1 PV, restore 100% HP (+x max) et joue l'anim sur le vaisseau.",
+    "Passif : à 1 PV, 100 % HP restaurés.",
     "", "", 600, 0, "done" // ✅
   ),
   "ability_paladin_ripper": A(
     "ability_paladin_ripper", "paladin", "Paladin", "Éventreur", "enemy",
-    "3 s : halo jaune 600, 10k +300% laser/s à tous dedans. -50% dégâts subis.",
+    "3 s : 10k +300 % laser/s autour, -50 % subis.",
     "", "", 60, 3, "done" // ✅
   ),
 
   // ---- Pusat Plus ----
   "ability_pusat-plus_speed-sap": A(
     "ability_pusat-plus_speed-sap", "pusat_plus", "Pusat Plus", "Siphon vitesse", "enemy",
-    "Cible lockée -10 % vitesse (effet ralenti), nous +10 % vitesse, pendant 10 s.",
+    "Cible -10 % vitesse, nous +10 % pendant 10 s.",
     "", "", 60, 10, "done" // ✅
   ),
 
@@ -370,12 +382,12 @@ export const ABILITIES = Object.freeze({
   // Charge Shot : charge (son, -50% nous + ralenti, -25% cible) puis RAYGUN one-shot 100% vie. CD 20 min.
   "ability_retiarus_chs": A(
     "ability_retiarus_chs", "retiarus", "Retiarus", "Tir chargé", "enemy",
-    "Charge (son, -50% vitesse + ralenti nous, -25% cible) puis RAYGUN : 100% de la vie. Lock suffit, sans portée.",
+    "Charge puis RAYGUN : 100 % de la vie, sans portée.",
     "", "", 1200, 0, "done" // ✅
   ),
   "ability_retiarus_spc": A(
     "ability_retiarus_spc", "retiarus", "Retiarus", "Supercharge", "self",
-    "+10% vitesse pendant 10 s. Sans visuel.",
+    "+10 % vitesse pendant 10 s.",
     "", "", 240, 10, "done" // ✅
   ),
 
@@ -384,12 +396,12 @@ export const ABILITIES = Object.freeze({
   // SPCP : +20% vitesse 10s.
   "ability_retiarus-plus_chsp": A(
     "ability_retiarus-plus_chsp", "retiarus_plus", "Retiarus Plus", "Tir super-chargé", "enemy",
-    "Charge (son, -25% vitesse nous et cible) puis RAYGUN1 doublé : 100% vie. Lock suffit, sans portée.",
+    "Charge puis RAYGUN1 doublé : 100 % vie, sans portée.",
     "", "", 1080, 0, "done" // ✅
   ),
   "ability_retiarus-plus_spcp": A(
     "ability_retiarus-plus_spcp", "retiarus_plus", "Retiarus Plus", "Supercharge Plus", "self",
-    "+20% vitesse pendant 10 s. Sans visuel.",
+    "+20 % vitesse pendant 10 s.",
     "", "", 240, 10, "done" // ✅
   ),
 
@@ -398,7 +410,7 @@ export const ABILITIES = Object.freeze({
   // Shimmer en boucle + son/s. -30% vitesse. Actif que si bouclier, cassé au change config. Bonus retiré à la fin.
   "ability_sentinel": A(
     "ability_sentinel", "sentinel", "Sentinel", "Forteresse", "self",
-    "Bouclier +10%/s (composé) pendant 10 s. Shimmer en boucle. -30% vitesse.",
+    "Bouclier +10 %/s pendant 10 s, -30 % vitesse.",
     "CD à confirmer.", "", 180, 10, "done" // ✅
   ),
 
@@ -406,7 +418,7 @@ export const ABILITIES = Object.freeze({
   // Nano : 35% max HP instant, sprite HEAL_EFFECT sur nous, +x vert. CD 90s.
   "ability_solace": A(
     "ability_solace", "solace", "Solace", "Nano-réparateur", "self",
-    "Instant : +35 % HP max.",
+    "+35 % HP max instantané.",
     "", "", 90, 0, "done" // ✅
   ),
 
@@ -414,7 +426,7 @@ export const ABILITIES = Object.freeze({
   // Pareil en 100% + boost vitesse 100% 1s (speed buff effect). CD 90s.
   "ability_solace-plus_nano-cluster-repairer-plus": A(
     "ability_solace-plus_nano-cluster-repairer-plus", "solace_plus", "Solace Plus", "Nano-réparateur Plus", "self",
-    "Instant : +100 % HP max + boost vitesse 100 % 1 s.",
+    "+100 % HP max, +100 % vitesse 1 s.",
     "", "", 90, 0, "done" // ✅
   ),
 
@@ -422,7 +434,7 @@ export const ABILITIES = Object.freeze({
   // Halo blanc nacre 600 : attaques coupees, aspires + orbite 3s, 1 halo/s. Fin : 75k + ejection 1200.
   "ability_solaris_inc": A(
     "ability_solaris_inc", "solaris", "Solaris", "Incinération", "zone",
-    "3 s : halo 600, attaques coupees, orbite. Fin : 75k + ejection 1200.",
+    "Halo 600 pendant 3 s, fin : 75k + éjection 1200.",
     "", "", 90, 3, "done" // ?
   ),
 
@@ -430,7 +442,7 @@ export const ABILITIES = Object.freeze({
   // Pareil : halo 800, 75k + ejection 1600. Passif Locked+Loaded.
   "ability_solaris-plus_incinerate-plus": A(
     "ability_solaris-plus_incinerate-plus", "solaris_plus", "Solaris Plus", "Incinération Plus", "zone",
-    "3 s : halo 800, attaques coupees, orbite. Fin : 75k + ejection 1600. Passif +3%/module.",
+    "Halo 800 3 s, fin 75k + éjection 1600, passif +3 %/module.",
     "", "", 80, 3, "done" // ?
   ),
 
@@ -443,17 +455,17 @@ export const ABILITIES = Object.freeze({
   ),
   "ability_spearhead_jam-x": A(
     "ability_spearhead_jam-x", "spearhead", "Spearhead", "JAMX", "enemy",
-    "Brouille tout dans 500px pendant 3 s (capacités + extras, sauf move et tirs).",
+    "Brouille tout à 500px pendant 3 s.",
     "Recharge 180 s.", "", 180, 0, "done" // ✅
   ),
   "ability_spearhead_target-marker": A(
     "ability_spearhead_target-marker", "spearhead", "Spearhead", "Marqueur", "enemy",
-    "Marque 15 s : contour doré, ralenti 10 % (3 s), +10 % pénétration subie.",
+    "Marque 15 s : ralenti 10 %, +10 % pénétration subie.",
     "Recharge 360 s.", "", 360, 15, "done" // ✅
   ),
   "ability_spearhead_ultimate-cloak": A(
     "ability_spearhead_ultimate-cloak", "spearhead", "Spearhead", "Camouflage ultime", "self",
-    "30 s invisible comme le Police (rendu 50 %, NPC aveugles). Recharge 240 s, cassée par attaque.",
+    "Invisible 30 s, cassé par attaque.",
     "", "", 240, 30, "done" // ✅
   ),
 
@@ -461,101 +473,108 @@ export const ABILITIES = Object.freeze({
   // Recon + cloak branchés. JAMX Creed / Neutralizing / Marqueur : noms + icônes visibles, à rebrancher plus tard.
   "ability_spearhead-plus_jamx-creed": A(
     "ability_spearhead-plus_jamx-creed", "spearhead_plus", "Spearhead Plus", "JAMX Creed", "enemy",
-    "Brouille tout dans 1000px pendant 6 s (capacités + extras, sauf move et tirs).",
+    "Brouille tout à 1000px pendant 6 s.",
     "Recharge 200 s.", "", 200, 0, "done" // ✅
   ),
   "ability_spearhead-plus_neutralizing-marker": A(
     "ability_spearhead-plus_neutralizing-marker", "spearhead_plus", "Spearhead Plus", "Marqueur neutralisant", "enemy",
-    "Neutralise 3 s : contour blanc, modules coupés, ralenti 10 % (3 s).",
+    "Neutralise 3 s : modules coupés, ralenti 10 %.",
     "Recharge 360 s.", "", 360, 3, "done" // ✅
   ),
   "ability_spearhead-plus_target-marker": A(
     "ability_spearhead-plus_target-marker", "spearhead_plus", "Spearhead Plus", "Marqueur", "enemy",
-    "Marque 15 s : contour doré, ralenti 10 % (3 s), +10 % pénétration subie.",
+    "Marque 15 s : ralenti 10 %, +10 % pénétration subie.",
     "Identique au Spearhead de base.", "ABILITY_SPEARHEAD_TARGET-MARKER.PNG", 360, 15, "done" // ✅
   ),
   "ability_spearhead-plus_recon": A(
     "ability_spearhead-plus_recon", "spearhead_plus", "Spearhead Plus", "Recon", "self",
-    "Minimap x2 pendant 30 s (comme le Spearhead de base).",
+    "Minimap x2 pendant 30 s.",
     "Hérité du Spearhead de base.", "ABILITY_SPEARHEAD_DOUBLE-MINIMAP.PNG", 90, 30, "done" // ✅
   ),
   "ability_spearhead-plus_ultimate-cloak": A(
     "ability_spearhead-plus_ultimate-cloak", "spearhead_plus", "Spearhead Plus", "Camouflage ultime", "self",
-    "30 s invisible comme le Police (rendu 50 %, NPC aveugles). Recharge 240 s, cassée par attaque.",
+    "Invisible 30 s, cassé par attaque.",
     "", "ABILITY_SPEARHEAD_ULTIMATE-CLOAK.PNG", 240, 30, "done" // ✅
   ),
 
   // ---- Spectrum ----
   "ability_spectrum": A(
     "ability_spectrum", "spectrum", "Spectrum", "Blindage prismatique", "self",
-    "-90 % dégâts laser subis, -25 % dégâts laser infligés pendant 10 s.",
+    "-90 % subis, -25 % infligés pendant 10 s.",
     "Officiel : durée 10 s, recharge 180 s.", "", 180, 10, "done" // ✅
   ),
 
   // ---- Spectrum Plus ----
   "ability_spectrum-plus_prismatic-reflecting": A(
     "ability_spectrum-plus_prismatic-reflecting", "spectrum_plus", "Spectrum Plus", "Réflexion prismatique", "self",
-    "-70 % dégâts laser subis, 70 % réfléchis à chaque attaquant, -50 % infligés pendant 8 s.",
+    "-70 % subis, 70 % réfléchis, -50 % infligés pendant 8 s.",
     "Officiel : durée 8 s, recharge 180 s.", "", 180, 8, "done" // ✅
   ),
 
   // ---- Tartarus ----
   "ability_tartarus_rapid-fire": A(
     "ability_tartarus_rapid-fire", "tartarus", "Tartarus", "Tir rapide", "self",
-    "Balance 15 roquettes du lanceur actif sur la cible (gratuites).",
+    "15 roquettes gratuites sur la cible.",
     "Instant, recharge 72 s.", "", 72, 0, "done" // ✅
   ),
   "ability_tartarus_speed-boost": A(
     "ability_tartarus_speed-boost", "tartarus", "Tartarus", "Boost vitesse", "self",
-    "Toggle : +30 % vitesse, -5 % dégâts laser. Re-clic pour couper.",
+    "+30 % vitesse, -5 % dégâts (toggle).",
     "Toggle infini, pas de recharge. Visuel speed_buff_effect.", "", 0, null, "done" // ✅
   ),
 
   // ---- Tartarus Plus ----
   "ability_tartarus-plus_rapid-fire-plus": A(
     "ability_tartarus-plus_rapid-fire-plus", "tartarus_plus", "Tartarus Plus", "Tir rapide Plus", "self",
-    "Balance 30 roquettes du lanceur actif (gratuites) + overdrive +20 % pendant 3 s.",
+    "30 roquettes gratuites + overdrive +20 % pendant 3 s.",
     "Officiel adapté : durée 3 s, recharge 72 s.", "", 72, 3, "done" // ✅
   ),
   "ability_tartarus-plus_speed-boost-plus": A(
     "ability_tartarus-plus_speed-boost-plus", "tartarus_plus", "Tartarus Plus", "Boost vitesse Plus", "self",
-    "Toggle : +45 % vitesse, -25 % dégâts laser. Re-clic pour couper.",
+    "+45 % vitesse, -25 % dégâts (toggle).",
     "Officiel : 10 s entre on/off. Visuel speed_buff_effect. Passif : 20 % roquette extra.", "", 10, null, "done" // ✅
   ),
 
   // ---- Tempest ----
   "ability_tempest_volt-backup": A(
     "ability_tempest_volt-backup", "tempest", "Tempest", "Secours volt", "self",
-    "Passif : à 0 HP, 1 HP + invincible 10 s (aucun soin possible), puis explosion.",
+    "À 0 HP : 1 HP + invincible 10 s, puis explosion.",
     "Passif genre Paladin, recharge 360 s.", "", 360, 10, "done" // ✅
   ),
   "ability_tempest_volt-discharge": A(
     "ability_tempest_volt-discharge", "tempest", "Tempest", "Décharge", "self",
-    "+1 % dégâts laser par canon équipé (vaisseau + drones) pendant 20 s.",
+    "+1 % dégâts par canon équipé pendant 20 s.",
     "Recharge 60 s.", "", 60, 20, "done" // ✅
   ),
   "ability_tempest_voltage-link": A(
     "ability_tempest_voltage-link", "tempest", "Tempest", "Lien volt", "enemy",
-    "Chaîne jusqu'à 10 cibles : 50k −5 % par saut, stop 1 s (freeze).",
+    "Chaîne 10 cibles : 50k −5 %/saut, freeze 1 s.",
     "Instant, recharge 120 s.", "", 120, 0, "done" // ✅
   ),
 
   // ---- Venom ----
   "ability_venom": A(
     "ability_venom", "venom", "Venom", "Singularité", "enemy",
-    "Dégâts croissants directs en coque sur la cible lockée : 1500 +200/hit (cap 8500) pendant 35 s. Exécution dès < 100k HP.",
+    "1500 +200/hit en coque (cap 8500) 35 s, exécution < 100k HP.",
     "Officiel : durée 35 s, recharge 120 s.", "", 120, 35, "done" // ✅
+  ),
+
+  // ---- Yamato ----
+  "ability_yamato_travel": A(
+    "ability_yamato_travel", "yamato", "Yamato", "Voyage", "self",
+    "Boost de vitesse temporaire.",
+    "Icône Voyage Citadel réutilisée (pas d'icône Yamato).", "ABILITY_CITADEL_TRAVEL.PNG", 60, 5, "todo"
   ),
 
   // ---- Zephyr ----
   "ability_zephyr_mmt": A(
     "ability_zephyr_mmt", "zephyr", "Zephyr", "MMT", "self",
-    "Distance d'attaque x2 (portée 700 -> 1400) pendant 10 s.",
+    "Portée x2 (700 -> 1400) pendant 10 s.",
     "Recharge 360 s.", "", 360, 10, "done" // ✅
   ),
   "ability_zephyr_tbr": A(
     "ability_zephyr_tbr", "zephyr", "Zephyr", "Triple barrage", "self",
-    "2 clones du PET pendant 60 s (même tir, PV liés, PET off = fin).",
+    "2 clones du PET pendant 60 s.",
     "Recharge 600 s.", "", 600, 60, "done" // ✅
   ),
 });

@@ -5,7 +5,6 @@ import { dirname, extname, join, normalize, resolve } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
-import { setCubikonFouActive, isCubikonFouActive } from "./NPC_ROOM.js";
 import {
   ANTICHEAT as AC,
   acBucket,
@@ -417,11 +416,7 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, accounts: out, guests, onlineCount, total: out.length });
     return true;
   }
-  if (pathname === "/api/admin/cubikon-fou" && request.method === "GET") {
-    adminJson(response, 200, { ok: true, active: isCubikonFouActive(), countdown: cubikonFouCountdownTimer != null });
-    return true;
-  }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold" || pathname === "/api/admin/cubikon-fou") && request.method === "POST") {
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
         if (pathname === "/api/admin/delete") {
@@ -570,47 +565,6 @@ function handleAdminApi(request, response, pathname) {
           if (chatHistory.length > 40) chatHistory.splice(0, chatHistory.length - 40);
           broadcastAll(JSON.stringify({ t: "chatMsg", ...entry }));
           adminJson(response, 200, { ok: true });
-          return;
-        }
-        if (pathname === "/api/admin/cubikon-fou") {
-          const want = body?.active;
-          // Désactivation : immédiate (annule aussi un décompte en cours).
-          if (want !== true) {
-            cubikonFouCancelCountdown();
-            const wasActive = isCubikonFouActive();
-            setCubikonFouActive(false);
-            let detonated = 0;
-            if (wasActive) {
-              try { detonated = cubikonFouDetonateEverywhere(); } catch {}
-              cubikonFouBlast("⚡ Événement Cubikon Fou terminé ! Les Cubikons explosent, retour à la normale.");
-            }
-            adminJson(response, 200, { ok: true, active: false, detonated });
-            return;
-          }
-          // Activation (déjà actif / décompte en cours : rien à relancer).
-          if (isCubikonFouActive()) {
-            adminJson(response, 200, { ok: true, active: true });
-            return;
-          }
-          if (cubikonFouCountdownTimer != null) {
-            adminJson(response, 200, { ok: true, active: false, countdown: true });
-            return;
-          }
-          cubikonFouBlast(`⚡ ÉVÉNEMENT Cubikon Fou dans ${CUBIKON_FOU_COUNTDOWN_FROM}…`);
-          let left = CUBIKON_FOU_COUNTDOWN_FROM;
-          const tickCountdown = () => {
-            cubikonFouCountdownTimer = null;
-            left -= 1;
-            if (left > 0) {
-              cubikonFouBlast(`⚡ Cubikon Fou dans ${left}…`);
-              cubikonFouCountdownTimer = setTimeout(tickCountdown, 1000);
-              return;
-            }
-            setCubikonFouActive(true);
-            cubikonFouBlast("⚡ Cubikon Fou — C'EST PARTI ! 200 Protegit !");
-          };
-          cubikonFouCountdownTimer = setTimeout(tickCountdown, 1000);
-          adminJson(response, 200, { ok: true, active: false, countdown: true });
           return;
         }
         if (pathname === "/api/admin/unban") {
@@ -961,45 +915,6 @@ const pvpFarm = new Map(); // anti-farm : "tueur|victime" -> { n, t0 } (rendemen
 const chatHistory = []; // global : [{ from, text, at }] (40 derniers)
 const chatLastById = new Map(); // anti-spam : id -> timestamp dernier message
 const clanChatLast = new Map(); // anti-spam tchat de clan : id -> timestamp
-
-// ---------------------------
-// Événement "Cubikon Fou" (admin) : Cubikons normaux mais 25x plus de
-// Protegit (voir NPC_ROOM). État mémoire seule (restart = retour normal).
-// Activation : décompte 5→1 en annonce globale puis GO.
-// Désactivation : annonce + explosion de TOUS les Cubikons (respawn normaux).
-// ---------------------------
-const CUBIKON_FOU_COUNTDOWN_FROM = 5;
-let cubikonFouCountdownTimer = null;
-
-function cubikonFouBlast(text) {
-  try {
-    const entry = { from: "[ADMIN]", text: String(text || "").slice(0, 200), at: Date.now(), by: "admin", adminBlast: true };
-    chatHistory.push(entry);
-    if (chatHistory.length > 40) chatHistory.splice(0, chatHistory.length - 40);
-    broadcastAll(JSON.stringify({ t: "chatMsg", ...entry }));
-  } catch {}
-}
-
-function cubikonFouCancelCountdown() {
-  if (cubikonFouCountdownTimer) {
-    try { clearTimeout(cubikonFouCountdownTimer); } catch {}
-    cubikonFouCountdownTimer = null;
-  }
-}
-
-function cubikonFouDetonateEverywhere() {
-  let total = 0;
-  const nowMs = Date.now();
-  try {
-    for (const [, sim] of npcSims) {
-      if (!sim || typeof sim.detonateAllCubikons !== "function") continue;
-      // Les sims peuvent être des promesses en cours de chargement.
-      if (typeof sim.then === "function") continue;
-      try { total += sim.detonateAllCubikons(nowMs) || 0; } catch {}
-    }
-  } catch {}
-  return total;
-}
 
 // Tchat de clan : diffusé aux membres connectés (rooms + instances).
 // Comparaison sur le tag en mémoire (rafraîchi au hello + ping 15 s).
@@ -1504,7 +1419,7 @@ function queueNpcDeaths(mapId, deaths) {
     if (!killerId.startsWith("u_") || death.cause !== "gun") continue;
     const deathKey = npcDeathKey(mapId, death);
     if (rewardedNpcDeaths.has(deathKey) || queuedNpcRewardKeys.has(deathKey)) continue;
-    if (pendingNpcRewards.length >= 2000) {
+    if (pendingNpcRewards.length >= 500) {
       const dropped = pendingNpcRewards.shift();
       if (dropped) queuedNpcRewardKeys.delete(dropped.deathKey);
     }
@@ -1515,7 +1430,7 @@ function queueNpcDeaths(mapId, deaths) {
 function awardNpcDeaths(mapId, deaths) {
   queueNpcDeaths(mapId, deaths);
 }
-function pumpNpcRewards(budgetMs = 16) {
+function pumpNpcRewards(budgetMs = 12) {
   const start = Date.now();
   const now = Date.now();
   for (const [key, at] of rewardedNpcDeaths) if (now - at > 10 * 60_000) rewardedNpcDeaths.delete(key);
@@ -1528,7 +1443,6 @@ function pumpNpcRewards(budgetMs = 16) {
     if (!killerId.startsWith("u_") || death?.cause !== "gun") { queuedNpcRewardKeys.delete(deathKey); continue; }
     if (rewardedNpcDeaths.has(deathKey)) { queuedNpcRewardKeys.delete(deathKey); continue; }
     let complete = true;
-    let failed = false;
     const isSunBoss = death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth";
     const sunType = death?.type === "npc_Mindfire_Behemoth" ? "Mindfire_Sun_Box"
       : death?.type === "npc_Invoke_XVI" ? "Sun_Box" : null;
@@ -1549,13 +1463,10 @@ function pumpNpcRewards(budgetMs = 16) {
       } catch {}
     }
     for (const share of npcRewardShares(killerId, mapId, death)) {
-      // Part à 0 % (grand groupe) : rien à commettre, déterministe.
-      // Sans ce garde, l'item est réenfilé pour toujours et empoisonne la pompe.
-      if (!(Number(share.percent) > 0)) continue;
       const accountId = share.pid.slice(2);
       const txKey = `npc:${serverRunId}:${deathKey}:${accountId}`;
       const reward = awardNpcKill(accountId, death.type, mapId, share.percent, share.pid === killerId, txKey);
-      if (!reward) { failed = true; complete = false; continue; }
+      if (!reward) { complete = false; continue; }
       if (reward.duplicate) continue;
       // Audit anticheat : kill crédité au tueur (strictement serveur).
       if (share.pid === killerId) {
@@ -1580,32 +1491,20 @@ function pumpNpcRewards(budgetMs = 16) {
     // Une erreur SQLite transitoire sera retentee au tour suivant (en fin de
     // file pour ne pas bloquer les autres). Les parts deja commitees sont
     // protegees par npc_reward_tx et ignorees via duplicate.
-    // Anti-poison : un item qui échoue vraiment en boucle (ex : compte
-    // corrompu) serait réenfilé pour toujours et étoufferait la pompe :
-    // abandon après 5 passages avec log. Les simples dépassements de
-    // budget ne comptent pas comme échecs.
     if (complete) {
       queuedNpcRewardKeys.delete(deathKey);
       rewardedNpcDeaths.set(deathKey, now);
-    } else if (failed) {
-      item.fails = (Number(item.fails) || 0) + 1;
-      if (item.fails >= 5) {
-        try { console.log(`[multi:npc] recompense abandonnee apres 5 echecs (${deathKey} ${death?.type})`); } catch {}
-        queuedNpcRewardKeys.delete(deathKey);
-      } else {
-        pendingNpcRewards.push(item);
-      }
     } else pendingNpcRewards.push({ mapId, death, deathKey });
   }
-  if (pendingNpcRewards.length > 1500) {
+  if (pendingNpcRewards.length > 400) {
     try { console.log(`[multi:npc] file recompenses saturee (${pendingNpcRewards.length}), delestage des plus anciennes`); } catch {}
-    const dropped = pendingNpcRewards.splice(0, pendingNpcRewards.length - 1500);
+    const dropped = pendingNpcRewards.splice(0, pendingNpcRewards.length - 400);
     for (const item of dropped) queuedNpcRewardKeys.delete(item?.deathKey);
   }
 }
 setInterval(() => {
-  try { pumpNpcRewards(16); } catch {}
-}, 80);
+  try { pumpNpcRewards(12); } catch {}
+}, 100);
 
 // --- Audit anticheat périodique (10 s) + sanction (kick + gel, JAMAIS de
 // ban auto : l'admin tranche après inspection). Voir ANTICHEAT.js.
@@ -1652,7 +1551,7 @@ function runCheatAudit() {
   for (const [pid, st] of peers) {
     const a = st._audit;
     if (!a || typeof a !== "object") continue;
-    const r = acAuditWindow(a, now, Number(st.teleStrike || 0), isCubikonFouActive() ? { soft: 1000, hard: 1500 } : 1);
+    const r = acAuditWindow(a, now, Number(st.teleStrike || 0));
     if (!r) continue;
     const rates = r.rates;
     const score = r.score;

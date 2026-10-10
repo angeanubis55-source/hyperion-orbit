@@ -22,8 +22,8 @@ export const BOOSTERS = Object.freeze([
   {
     id: "dmg2",
     code: "DMG-B02",
-    name: "Booster Dégâts B02",
-    desc: "Dégâts laser +10 % pendant 1 h. Bonus de groupe : +1 % dégâts. Partage de groupe indisponible en solo.",
+    name: "Booster Dégâts",
+    desc: "Dégâts laser +10 %,\n+1 % pour les membres du groupe sur la même carte.",
     price: 2000000,
     durationSec: 3600,
     icon: "/ASSETS/BOOSTERS/dmg2.png",
@@ -77,7 +77,7 @@ export const BOOSTERS = Object.freeze([
   {
     id: "npcb2",
     code: "NPC-B02",
-    name: "Booster Dégâts NPC B02",
+    name: "Booster Dégâts NPC",
     desc: "Dégâts +10 % pendant 1 h (toutes les cibles du jeu sont des NPC).",
     price: 2000000,
     durationSec: 3600,
@@ -100,8 +100,8 @@ export const BOOSTERS = Object.freeze([
   {
     id: "shd2",
     code: "SHD-B02",
-    name: "Booster Bouclier B02",
-    desc: "Bouclier max +25 % pendant 1 h. Bonus de groupe : +2 % bouclier. Partage de groupe indisponible en solo.",
+    name: "Booster Bouclier",
+    desc: "Bouclier max +25 %,\n+2 % pour les membres du groupe sur la même carte.",
     price: 2000000,
     durationSec: 3600,
     icon: "/ASSETS/BOOSTERS/shd2.png",
@@ -134,8 +134,8 @@ export const BOOSTERS = Object.freeze([
   {
     id: "hp2",
     code: "HP-B02",
-    name: "Booster Coque B02",
-    desc: "Points de vie max +10 % pendant 1 h. Bonus de groupe : +1 % coque. Partage de groupe indisponible en solo.",
+    name: "Booster Coque",
+    desc: "Points de vie max +10 %,\n+1 % pour les membres du groupe sur la même carte.",
     price: 2000000,
     durationSec: 3600,
     icon: "/ASSETS/BOOSTERS/hp2.png",
@@ -168,8 +168,8 @@ export const BOOSTERS = Object.freeze([
   {
     id: "ep2",
     code: "EP-B02",
-    name: "Booster Expérience B02",
-    desc: "Expérience gagnée +10 % pendant 1 h. Bonus de groupe : +5 % expérience. Partage de groupe indisponible en solo.",
+    name: "Booster Expérience",
+    desc: "Expérience gagnée +10 %,\n+5 % pour les membres du groupe sur la même carte.",
     price: 2000000,
     durationSec: 3600,
     icon: "/ASSETS/BOOSTERS/ep2.png",
@@ -202,9 +202,9 @@ export const BOOSTERS = Object.freeze([
     id: "ephon",
     code: "EPHON-1",
     name: "Booster Expérience + Honneur",
-    desc: "Expérience +100 % et honneur +100 % pendant 1 h.",
+    desc: "Expérience +100 % et honneur +100 % pendant 2 h.",
     price: 25000000,
-    durationSec: 3600,
+    durationSec: 7200,
     icon: "/ASSETS/BOOSTERS/ephon.png",
     iconMini: "/ASSETS/BOOSTERS/CAT/ep.png",
     effect: Object.freeze({ expPct: 100, honorPct: 100 }),
@@ -224,8 +224,8 @@ export const BOOSTERS = Object.freeze([
   {
     id: "hon2",
     code: "HON-B02",
-    name: "Booster Honneur B02",
-    desc: "Honneur gagné +10 % pendant 1 h. Bonus de groupe : +5 % honneur. Partage de groupe indisponible en solo.",
+    name: "Booster Honneur",
+    desc: "Honneur gagné +10 %,\n+5 % pour les membres du groupe sur la même carte.",
     price: 2000000,
     durationSec: 3600,
     icon: "/ASSETS/BOOSTERS/hon2.png",
@@ -269,8 +269,8 @@ export const BOOSTERS = Object.freeze([
   {
     id: "rep2",
     code: "REP-B02",
-    name: "Booster Réparation B02",
-    desc: "Vitesse de réparation +10 % pendant 1 h. Bonus de groupe : +1 % réparation. Partage de groupe indisponible en solo.",
+    name: "Booster Réparation",
+    desc: "Vitesse de réparation +10 %,\n+1 % pour les membres du groupe sur la même carte.",
     price: 2000000,
     durationSec: 3600,
     icon: "/ASSETS/BOOSTERS/rep2.png",
@@ -303,8 +303,8 @@ export const BOOSTERS = Object.freeze([
   {
     id: "res2",
     code: "RES-B02",
-    name: "Booster Ressources B02",
-    desc: "Ressources des cargos NPC +25 % pendant 1 h. Bonus de groupe : +10 % ressources. Partage de groupe indisponible en solo.",
+    name: "Booster Ressources",
+    desc: "Ressources des cargos NPC +25 %,\n+10 % pour les membres du groupe sur la même carte.",
     price: 2000000,
     durationSec: 3600,
     icon: "/ASSETS/BOOSTERS/res2.png",
@@ -326,8 +326,8 @@ export const BOOSTERS = Object.freeze([
   {
     id: "sreg2",
     code: "SREG-B02",
-    name: "Booster Régén Bouclier B02",
-    desc: "Recharge du bouclier (robot) +25 % pendant 1 h. Bonus de groupe : +1 %. Partage de groupe indisponible en solo.",
+    name: "Booster Régén Bouclier",
+    desc: "Recharge du bouclier (robot) +25 %,\n+1 % pour les membres du groupe sur la même carte.",
     price: 2000000,
     durationSec: 3600,
     icon: "/ASSETS/BOOSTERS/sreg2.png",
@@ -460,19 +460,33 @@ export function activeBoosterMults(boosters, now = Date.now()) {
 }
 
 export function formatBoosterDuration(durationSec) {
-  const total = Math.max(0, Math.floor(Number(durationSec) || 0));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  if (hours > 0) return `${hours} h${minutes > 0 ? ` ${minutes} min` : ""}`;
-  if (minutes > 0) return `${minutes} min`;
-  return `${total} s`;
+  return formatBoosterSpan(durationSec, false);
 }
 
 export function formatBoosterCountdown(ms) {
-  const total = Math.max(0, Math.ceil(Number(ms || 0) / 1000));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const seconds = total % 60;
-  const pad = (n) => String(n).padStart(2, "0");
-  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
+  return formatBoosterSpan(Math.ceil(Number(ms || 0) / 1000), true);
+}
+
+// Durées lisibles : mois, semaines (sem), jours (j), sinon composite.
+// Le compte à rebours affiche toujours h/m/s sous 1 jour pour voir défiler
+// (ex : 23h 59m 59s).
+function formatBoosterSpan(totalSec, fullHMS = false) {
+  const total = Math.max(0, Math.floor(Number(totalSec) || 0));
+  const MONTH = 30 * 86400, WEEK = 7 * 86400, DAY = 86400;
+  if (total >= MONTH) return `${Math.floor(total / MONTH)} mois`;
+  if (total >= WEEK) { const w = Math.floor(total / WEEK); return `${w} semaine${w > 1 ? "s" : ""}`; }
+  if (total >= DAY) { const d = Math.floor(total / DAY); return `${d} jour${d > 1 ? "s" : ""}`; }
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (fullHMS) {
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+  const parts = [];
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  if (s > 0 || parts.length === 0) parts.push(`${s}s`);
+  return parts.join(" ");
 }

@@ -463,12 +463,18 @@
       font-size: 16px;
       text-align: center;
       margin-bottom: 12px;
+      color: #ffffff;
     }
 
     .shipCard .shipPrice .amount{
       font-weight: 900;
-      color: #00ff88;
+      color: #ffd24d;
       font-size: 20px;
+    }
+
+    .shipCard .shipPrice .shipPriceCurrency{
+      color: #ffffff;
+      font-weight: 600;
     }
 
     .shopList{
@@ -553,22 +559,28 @@
       margin: 14px 0 0;
       padding: 14px 4px 0;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 12px;
-      border-top: 1px solid rgba(124,240,255,.15);
+      gap: 8px;
     }
 
-    .shopAmmoPrice{
-      flex: 1;
-      color: #eaffff;
+    .shopAmmoQtyRow{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .shopAmmoQtyRow > label{
+      color: #f4fbff;
       font-size: 13px;
       font-weight: 800;
       white-space: nowrap;
-      text-align: right;
     }
 
-    .shopAmmoBuyRow > input{
+    .shopAmmoBuyRow > input,
+    .shopAmmoQtyRow > input{
       flex: 0 0 90px;
       width: 90px;
       height: 36px;
@@ -584,21 +596,125 @@
       text-align: center;
     }
 
-    .shopAmmoUnits{
-      flex: 1;
-      color: rgba(225,241,249,.78);
-      font-size: 13px;
+    .shopQtyCombo{
+      position: relative;
+      flex: 0 0 90px;
+      width: 90px;
+    }
+
+    .shopQtyBtn{
+      width: 100%;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 0 8px;
+      box-sizing: border-box;
+      outline: 0;
+      border: 1px solid rgba(124,240,255,.30);
+      border-radius: 7px;
+      color: #effcff;
+      background: #051521;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .shopQtyPopup{
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 60;
+      background: #051521;
+      border: 1px solid rgba(124,240,255,.38);
+      border-radius: 8px;
+      padding: 4px;
+      max-height: 264px;
+      overflow-y: auto;
+      box-shadow: 0 8px 24px rgba(0,0,0,.5);
+    }
+
+    .shopQtyOpt{
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
       font-weight: 800;
-      white-space: nowrap;
-      text-align: left;
+      color: #effcff;
+      cursor: pointer;
+      text-align: center;
     }
 
-    .shopAmmoUnits span{
-      color: #ffd56a;
+    .shopQtyOpt:hover{
+      background: rgba(0,217,255,.15);
     }
 
-    .shopAmmoUnits span.shopAmmoUnitWord{
+    .shopQtyPopup::-webkit-scrollbar{
+      width: 8px;
+    }
+
+    .shopQtyPopup::-webkit-scrollbar-track{
+      background: rgba(255,255,255,.05);
+      border-radius: 10px;
+    }
+
+    .shopQtyPopup::-webkit-scrollbar-thumb{
+      background: rgba(0,217,255,.3);
+      border-radius: 10px;
+    }
+
+    .shopAmmoCost{
+      margin: 0;
       color: #f4fbff;
+      font-size: 16px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .shopAmmoCost #shopPurchaseTotal{
+      color: #ffd56a;
+      font-size: 16px;
+    }
+
+    .shopAmmoCost #shopAmmoUnitsVal{
+      color: #ffd56a;
+      font-size: 16px;
+    }
+
+    .shopAmmoCost .shopAmmoWord{
+      color: #f4fbff;
+    }
+
+    .shopAmmoStock{
+      margin: 2px 0 0;
+      color: #f4fbff;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .shopAmmoCost + .shopAmmoStock{
+      margin-top: 35px;
+    }
+
+    .shopAmmoStock .shopAmmoWord{
+      color: #f4fbff;
+    }
+
+    .shopAmmoStock .shopAmmoGold{
+      color: #ffd56a;
+      font-size: 16px;
+    }
+
+    .shopAmmoCost .shopAmmoGold{
+      color: #ffd56a;
+      font-size: 16px;
+    }
+
+    .shopAmmoStock [data-booster-status],
+    .shopAmmoStock [data-booster-countdown]{
+      font-size: 16px;
     }
 
     /* Petites cartes boutique : P.E.T / GEAR / PROTO (même base). */
@@ -651,6 +767,29 @@
     .shopMeta span{
       color: var(--muted);
       font-size: 12px;
+    }
+
+    .shopMeta .shopRowPrice,
+    html body #shopOverlay .shopMeta .shopRowPrice,
+    html body #profileOverlay .shopMeta .shopRowPrice{
+      color: #ffd24d;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .shopMeta .shopRowPrice .shopPriceValue,
+    html body #shopOverlay .shopMeta .shopRowPrice .shopPriceValue,
+    html body #profileOverlay .shopMeta .shopRowPrice .shopPriceValue{
+      color: #ffd24d;
+      font-size: 11px;
+    }
+
+    .shopMeta .shopRowPrice .shopPriceCurrency,
+    html body #shopOverlay .shopMeta .shopRowPrice .shopPriceCurrency,
+    html body #profileOverlay .shopMeta .shopRowPrice .shopPriceCurrency{
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 600;
     }
 
     .shopPreview{
@@ -1094,6 +1233,6 @@
     </div>
   </div>
 
-  <script type="module" src="./PROFILE.js"></script>
+  <script type="module" src="./PROFILE.js?v=shop-labels-20"></script>
 </body>
 </html>
