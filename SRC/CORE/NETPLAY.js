@@ -384,6 +384,7 @@ export function getNetSelf() {
   return { ...selfServ, slowT: Math.max(0, selfServ.slowT - elapsed),
     freezeT: Math.max(0, selfServ.freezeT - elapsed), iemT: Math.max(0, selfServ.iemT - elapsed),
     ishT: Math.max(0, selfServ.ishT - elapsed), jamT: Math.max(0, (selfServ.jamT || 0) - elapsed),
+    jamxT: Math.max(0, (selfServ.jamxT || 0) - elapsed), abilityFxElapsed: elapsed,
     redirectSilenceT: Math.max(0, (selfServ.redirectSilenceT || 0) - elapsed),
     disarrayT: Math.max(0, (selfServ.disarrayT || 0) - elapsed),
     voltBackupT: Math.max(0, (selfServ.voltBackupT || 0) - elapsed),
@@ -1365,7 +1366,9 @@ export function ensureNetplayConnection() {
             ohAmt: Math.max(0, Math.round(Number(p.ohAmt) || 0)),
             // Brouillage subi (JAMX/Creed/Neutralizing) : verrou modules.
             jamT: Math.max(0, Number(p.jamT) || 0),
+            jamxT: Math.max(0, Number(p.jamxT) || 0),
             jamAt: Number(p.jamAt) || 0,
+            afx: sanitizeAbilityFxList(p.afx),
             at: now,
           };
           continue;
@@ -1565,6 +1568,7 @@ export function ensureNetplayConnection() {
           freezeT: Math.max(0, Number(p.freezeT) || 0),
           iemT: Math.max(0, Number(p.iemT) || 0),
           ishT: Math.max(0, Number(p.ishT) || 0),
+          jamxT: Math.max(0, Number(p.jamxT) || 0),
           // Auras d'aptitudes visibles (Phase 2) : [[code, secLeft, x, y]].
           afx: sanitizeAbilityFxList(p.afx),
           _abilityFxAt: now,
@@ -2135,6 +2139,7 @@ export function tickNetplayRemotes(dt = 0.016) {
     // Expire les auras même entre les snapshots ou pendant un trou réseau.
     const fxElapsed = Math.max(0, now - Number(r._abilityFxAt ?? now)) / 1000;
     r._abilityFxAt = now;
+    r.jamxT = Math.max(0, Number(r.jamxT || 0) - fxElapsed);
     if (Array.isArray(r.afx)) {
       let live = 0;
       for (const entry of r.afx) {

@@ -90,6 +90,7 @@ function jamPlayerAbilities(state, room, now, durationMs) {
   state._cloakUntil = 0;
   state._jamAt = now;
   state._jamUntil = Math.max(Number(state._jamUntil) || 0, now + durationMs);
+  state._jamxUntil = Math.max(Number(state._jamxUntil) || 0, now + durationMs);
   state.moveSpeed = movementSpeed(state, state._combat, now);
   state.vmax = state.moveSpeed;
 }
@@ -3578,6 +3579,7 @@ setInterval(() => {
         ishT: Math.max(0, (Number(s.ishUntil) || 0) - now) / 1000,
         // Brouillage subi (JAMX/Creed/Neutralizing) : locks coupés + verrou.
         jamT: Math.max(0, (Number(s._jamUntil) || 0) - now) / 1000,
+        jamxT: Math.max(0, (Number(s._jamxUntil) || 0) - now) / 1000,
         jamAt: Number(s._jamAt) || 0,
         // Conversion Orcus subie (+X verts victime, voir adoption pvpAt).
         ohAt: Number(s.orcusHealAt) || 0,

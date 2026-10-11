@@ -22707,26 +22707,28 @@ function petLinkBeam(x1, y1, x2, y2) {
 
 // JAMX / Creed : halo arc-en-ciel expansif, version simple (1 anneau fin,
 // pas de shadowBlur pour les perfs, teinte qui tourne).
+function drawJamxHalo(x, y, r, maxR) {
+  if (!(r > 0) || !(maxR > r)) return;
+  const fade = Math.max(0, Math.min(1, 1 - r / maxR));
+  ctx.save();
+  ctx.globalAlpha = 0.8 * fade;
+  ctx.strokeStyle = `hsl(${Math.floor(Date.now() / 100) % 360},100%,60%)`;
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
 function drawJamxHalos(ox, oy) {
   const halos = player?.jamxHalos;
   if (!Array.isArray(halos) || !halos.length || player.dead || !started) return;
-  const t = performance.now() / 1000;
-  const hue = Math.floor(t * 10) % 360;
   for (const h of halos) {
     if (!h) continue;
     const r = Number(h.r || 0);
     if (r <= 0) continue;
     const x = Number(h.x || 0) + ox, y = Number(h.y || 0) + oy;
     if (x < -r || y < -r || x > innerWidth + r || y > innerHeight + r) continue;
-    const fade = Math.max(0, Math.min(1, 1 - r / Math.max(1, Number(h.max || 1))));
-    ctx.save();
-    ctx.globalAlpha = 0.8 * fade;
-    ctx.strokeStyle = `hsl(${hue},100%,60%)`;
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, TAU);
-    ctx.stroke();
-    ctx.restore();
+    drawJamxHalo(x, y, r, Number(h.max || 0));
   }
 }
 
@@ -32249,17 +32251,7 @@ function drawRemoteAbilityFx(r, shipFx) {
   };
   // Anneau de Jamx/Creed : halo arc-en-ciel expansif (repli du halo monde).
   const drawJamRing = (maxR, ageSec) => {
-    const k = Math.max(0, Math.min(1, ageSec / 1.0));
-    const rr = Math.max(8, maxR * k);
-    const hue = Math.floor(nowMs / 100) % 360;
-    ctx.save();
-    ctx.globalAlpha = 0.8 * (1 - k * 0.7);
-    ctx.strokeStyle = `hsl(${hue},100%,60%)`;
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.arc(0, 0, rr, 0, TAU);
-    ctx.stroke();
-    ctx.restore();
+    if (displayHalosOn()) drawJamxHalo(0, 0, 40 + maxR * 2.2 * ageSec, maxR);
   };
   // Hologramme Mimesis distant : 4 VRAIS sosies (coque du distant, comme en
   // local) + pop final. Non verrouillables (leurres 3 s).
@@ -32299,12 +32291,21 @@ function drawRemoteAbilityFx(r, shipFx) {
     const f = (Math.floor(nowMs / 1000 * fps) % frames) + 1;
     const src = `ASSETS/APTITUDES/${folder}/${f}.png`;
     const img = getCachedImage(src);
+    const cacheKey = `netstatus:${folder}`;
+    let draw = null;
     if (isImgReady(img)) {
+      draw = img;
+      contSpriteCache[cacheKey] = img;
+    } else {
+      try { loadImage(src, { priority: true }); } catch {}
+      if (isImgReady(contSpriteCache[cacheKey])) draw = contSpriteCache[cacheKey];
+    }
+    if (draw) {
       ctx.save();
       ctx.translate(ox, oy);
-      drawCenteredImage(ctx, img, 44, 44);
+      drawCenteredImage(ctx, draw, 44, 44);
       ctx.restore();
-    } else { try { loadImage(src, { priority: true }); } catch {} }
+    }
   };
   // Cible monde d'une aura (moi / distant / NPC partagé).
   const rfxTargetWorld = (targetId) => {
@@ -32709,6 +32710,15 @@ function drawRemoteAbilityFx(r, shipFx) {
       }
     } catch {}
   };
+  // Le brouillage JAMX est porte par la victime, sur tous les ecrans.
+  if (Number(r.jamxT) > 0) {
+    const tp = rfxTargetWorld(r.id);
+    if (tp) {
+      const blink = 0.3 + 0.65 * (0.5 + 0.5 * Math.sin(nowMs / 1000 * 10));
+      rfxTargetOutline(tp, "#9aa0a8", blink);
+      rfxStatusIcon("SPEARHEAD_PLUS_JAMX_CREED_REVERSAL_IMMUNITY", JAMX_SPR_FPS, JAMX_SPR_FRAMES, tp.x - rx + 82, tp.y - ry - 70);
+    }
+  }
   // Auras persistantes (snapshot). flashLeft = 0.
   try {
     const afx = Array.isArray(r.afx) ? r.afx : [];
@@ -32790,7 +32800,7 @@ function drawNetplayAbilityEffects(ox, oy) {
   for (const r of remotes.values()) {
     if (!r || r.dead || r.cloaked || r.cloakCpu) continue;
     drawTbrClones(ox, oy, r);
-    if (!(r.afx?.length > 0) && !(Number(r.fxFlash?.until) > now) && !r.voltBackupReady && !r.voltLinkFx) continue;
+    if (!(r.afx?.length > 0) && !(Number(r.fxFlash?.until) > now) && !r.voltBackupReady && !r.voltLinkFx && !(Number(r.jamxT) > 0)) continue;
     drawRemoteTempestChain(r, ox, oy);
     // Une aura sur une cible reste visible même si son lanceur est hors écran.
     ctx.save();
@@ -32803,14 +32813,23 @@ function drawNetplayAbilityEffects(ox, oy) {
   // effets ciblés sur un joueur, avec la même recette que les observateurs.
   if (!player.dead) {
     const afx = [];
+    const self = getNetSelf();
+    for (const entry of self?.afx || []) {
+      const code = Number(entry[0]);
+      const remaining = Number(entry[1]) - Number(self.abilityFxElapsed || 0);
+      // Les NPC ont deja leur contour local ; les joueurs utilisent le rendu partage.
+      if (code >= 59 && code <= 62 && remaining > 0 && remotes.has(String(entry[4] || ""))) {
+        afx.push([code, remaining, entry[2], entry[3], entry[4]]);
+      }
+    }
     for (const [code, remaining, target] of [[30, player.ddolT, player.ddolTarget], [32, player.disarrayT, player.disarrayTarget]]) {
       if (remaining > 0 && target?._netPlayer && target.hp > 0) afx.push([code, remaining, 0, 0, String(target._netPlayer)]);
     }
-    if (afx.length) {
+    if (afx.length || Number(self?.jamxT) > 0) {
       ctx.save();
       try {
         ctx.translate(player.x + ox, player.y + oy);
-        drawRemoteAbilityFx({ id: netMyId(), rx: player.x, ry: player.y, afx });
+        drawRemoteAbilityFx({ id: netMyId(), rx: player.x, ry: player.y, afx, jamxT: self?.jamxT });
       } finally { ctx.restore(); }
     }
   }
