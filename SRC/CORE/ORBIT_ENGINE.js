@@ -20657,6 +20657,9 @@ canvas.addEventListener(
 
     if (e.button !== 0) return;
 
+    // Le toucher est gere par le jeu : pas de selection native du canvas.
+    if (e.pointerType === "touch" && e.cancelable) e.preventDefault();
+
 pointer.begin(e);
 
     canvas.setPointerCapture(e.pointerId);
