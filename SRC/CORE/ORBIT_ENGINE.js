@@ -3448,6 +3448,7 @@ function tbrPetOk() {
   return !!(pet?.owned && pet?.active === true && Number(pet.hp) > 0 && petState.ready && !player.dead && started);
 }
 function startTbrCooldown() {
+  try { sendSkillUse("ability_zephyr_tbr", { enabled: false }); } catch {}
   player.tbrCd = TBR_COOLDOWN;
   player.tbrT = 0;
   player.tbrClones = [];
@@ -3498,6 +3499,7 @@ function activateTbr() {
     fireCd: 0.5 + i * 0.5,
   }));
   player.tbrT = TBR_DURATION;
+  try { sendSkillUse("ability_zephyr_tbr"); } catch {}
   persistCdUntil("tbrFx", TBR_DURATION);
   showNotification("Triple barrage : 2 clones PET (60 s) !", 2.5, "info");
 }
@@ -3524,7 +3526,8 @@ function tbrCloneFire(c) {
   const perShot = (total * (ammoCfg.mult || 1)) / shots.length;
   const life = bulletLifeForRange(playerRange, speed);
   const perp = angle + Math.PI / 2;
-  for (const off of shots) {
+  const missRolls = shots.map(() => Math.random() < petMissChance(pet, account.user));
+  shots.forEach((off, index) => {
     const sx = c.x + Math.cos(angle) * 50 + Math.cos(perp) * off;
     const sy = c.y + Math.sin(angle) * 50 + Math.sin(perp) * off;
     const dx = tgt.x - sx, dy = tgt.y - sy;
@@ -3534,11 +3537,28 @@ function tbrCloneFire(c) {
       r: 6, life, dmg: perShot,
       key: ammoKey, side: "player", targetId: tgt.id, homing: true,
       isSab: false,
-      miss: Math.random() < petMissChance(pet, account.user),
+      miss: missRolls[index],
       ownerEscortId: c.id, volleyId, volleySize: shots.length,
     }, ENTITY_LIMITS.playerBullets);
-  }
+  });
+  try {
+    sendShotEvent({ t: "shot", key: ammoKey, n: shots.length,
+      petClone: c.id === "tbr0" ? 0 : 1,
+      petTarget: tgt.isPetTarget === true ? "owner" : (tgt._netPet || undefined),
+      x: Math.round(c.x), y: Math.round(c.y), ang: angle,
+      tx: Math.round(tgt.x), ty: Math.round(tgt.y), spd: Math.round(speed),
+      miss: missRolls.some(Boolean), v: volleyId });
+  } catch {}
   playEscortShot(ammoKey);
+  const salvoShots = isRsbLike(ammoKey) ? 12 : 6;
+  const salvoInterval = isRsbLike(ammoKey) ? 1 / 12 : 0.2;
+  for (let i = 1; i < salvoShots; i++) {
+    const items = stage >= 4 && i % 2 === 0 ? [[-SIDE_OFFSET, 0], [SIDE_OFFSET, 0]] : [[0, 0]];
+    scheduleEscortSalvoPart(i * salvoInterval, {
+      escortId: c.id, targetId: tgt.id, speed, life, volleyId,
+      volleySize: items.length, key: ammoKey, items,
+    });
+  }
 }
 function nearestTempestLinkNext(from, hit, radius) {
   let best = null;
@@ -7254,6 +7274,7 @@ function initializeCustomActionBar() {
           && name !== "ability_aegis_hp-repair" && name !== "ability_aegis_shield-repair"
           && !name.startsWith("ability_disruptor_")
           && !name.startsWith("ability_tempest_")
+          && name !== "ability_zephyr_tbr"
           && !MOVEMENT_ANNOUNCED_ABILITIES.has(String(name).toLowerCase())) {
           try {
             const needTarget = String(getAbilityInfo(name)?.target || "") === "enemy";
@@ -22917,26 +22938,33 @@ function drawPet(ox, oy) {
 }
 
 // Clones TBR (Zephyr) : même sprite, pseudo et firme que le PET, + moteurs.
-// Durée de vie gérée par le tick (10 s, mort liée, PET off = fin).
-function drawTbrClones(ox, oy) {
-  const clones = player?.tbrClones;
+// Durée de vie gérée par le tick (60 s, mort liée, PET off = fin).
+function drawTbrClones(ox, oy, remote = null) {
+  const clones = remote ? remote.tbrClones : player?.tbrClones;
   if (!Array.isArray(clones) || !clones.length) return;
-  if (player.dead || !started) return;
+  if (remote ? remote.dead || remote.peta !== 1 || !(remote.tbrUntil > performance.now()) : player.dead || !started) return;
   const pet = account.user?.pet;
-  if (!pet?.owned || pet?.active !== true) return;
-  const level = getPetLevel(pet.exp);
-  const petPseudo = String(pet?.pseudo || "REX");
-  const petFaction = getFaction(pet?.faction || account.user?.faction);
+  if (!remote && (!pet?.owned || pet?.active !== true)) return;
+  const level = remote ? remote.petl : getPetLevel(pet.exp);
+  const petPseudo = String((remote ? remote.petn : pet?.pseudo) || "REX");
+  const petFaction = getFaction(remote ? remote.petf || remote.firm : pet?.faction || account.user?.faction);
   for (const c of clones) {
-    if (!c || !(Number(c.hp) > 0)) continue;
-    const x = Number(c.x || 0) + ox;
-    const y = Number(c.y || 0) + oy;
+    if (!c || (!remote && !(Number(c.hp) > 0))) continue;
+    const x = Number(c.rx ?? c.x) + ox;
+    const y = Number(c.ry ?? c.y) + oy;
     if (x < -160 || y < -160 || x > innerWidth + 160 || y > innerHeight + 160) continue;
-    const frame = ((angleToFrameIndex(Number(c.angle || 0), 32) + 16) % 32) + 1;
-    const image = getCachedImage(`${getPetStageBase(level)}${frame}.png`);
-    const baseImage = getPetStage(level) >= 6
-      ? getCachedImage(`/PET/PET_SPRITES/NIVEAU5/${frame}.png`)
-      : null;
+    const frame = ((angleToFrameIndex(Number(c.rangle ?? c.angle) || 0, 32) + 16) % 32) + 1;
+    const imagePath = `${getPetStageBase(level)}${frame}.png`;
+    const image = getCachedImage(imagePath);
+    const basePath = getPetStage(level) >= 6 ? `/PET/PET_SPRITES/NIVEAU5/${frame}.png` : null;
+    const baseImage = basePath ? getCachedImage(basePath) : null;
+    if (!isImgReady(image)) { try { loadImage(imagePath, { priority: true }); } catch {} }
+    if (basePath && !isImgReady(baseImage)) { try { loadImage(basePath, { priority: true }); } catch {} }
+    if (remote) {
+      const now = performance.now();
+      try { petEngine.update(c, Math.min(0.1, Math.max(0, (now - (c._engineAt ?? now - 16)) / 1000)), GAME_SETTINGS.shipSmoke); } catch {}
+      c._engineAt = now;
+    }
     ctx.save();
     ctx.translate(x, y);
     ctx.globalCompositeOperation = "source-over";
@@ -28722,20 +28750,25 @@ function scheduleEscortSalvoPart(delay, entry) {
 
 function spawnEscortSalvoDecoy(e) {
   const isPet = e.escortId === "pet";
+  const isTbr = e.escortId === "tbr0" || e.escortId === "tbr1";
   if (isPet && (!account.user?.pet?.active || !petState.ready || player.dead)) return;
   if (isPet && (petState.returning || petState.target?.id !== e.targetId
     || (normalizePetMode(account.user?.pet?.mode) !== "combat" && !hplLinkActive()))) return;
-  const escort = isPet ? petState : getEscortById(e.escortId);
+  if (isTbr && (!(player.tbrT > 0) || !tbrPetOk() || petKamikaze.active
+    || petState.returning || petState.target?.id !== e.targetId)) return;
+  const escort = isPet ? petState : isTbr
+    ? player.tbrClones?.find(c => c.id === e.escortId) : getEscortById(e.escortId);
   const t2 = getEnemyById(e.targetId);
   if (!escort || (isPet ? account.user?.pet?.hp <= 0 : escort.hp <= 0) || !t2 || t2.hp <= 0) return;
-  // Multi : faux tirs du PET visibles par le 2e compte (origine = PET).
-  // Les escortes non-PET restent locales (pas de position partagee).
+  if (isTbr && dist2(escort.x, escort.y, t2.x, t2.y) > 305 * 305) return;
+  // Multi : faux tirs du PET et de ses clones depuis leur propre position.
   // Jamais MISS, meme volley (deduplique l'affichage MISS distant).
-  if (isPet) {
+  if (isPet || isTbr) {
     try {
       sendShotEvent({
         t: "shot", key: e.key || "x1", n: (e.items || []).length || 1,
-        petSource: true,
+        petSource: isPet,
+        petClone: isTbr ? (e.escortId === "tbr0" ? 0 : 1) : undefined,
         petTarget: t2.isPetTarget === true ? "owner" : (t2._netPet || undefined),
         x: Math.round(escort.x), y: Math.round(escort.y),
         ang: Math.atan2(t2.y - escort.y, t2.x - escort.x),
@@ -28747,7 +28780,7 @@ function spawnEscortSalvoDecoy(e) {
   const ang2 = Math.atan2(t2.y - escort.y, t2.x - escort.x);
   const fx2 = Math.cos(ang2), fy2 = Math.sin(ang2);
   const px2 = -fy2, py2 = fx2;
-  const muzzle = isPet ? 50 : (escort.pack?.r || 34) + 10;
+  const muzzle = isPet || isTbr ? 50 : (escort.pack?.r || 34) + 10;
   const muzzle2X = escort.x + fx2 * muzzle;
   const muzzle2Y = escort.y + fy2 * muzzle;
   for (const [off, aOff] of e.items) {
@@ -31604,6 +31637,10 @@ function netVisualShotOrigin(ev) {
   try {
     const remote = getNetplayRemotes().get(String(ev?.by || ""));
     if (!remote) return fallback;
+    if (ev?.petClone === 0 || ev?.petClone === 1) {
+      const clone = remote.tbrClones?.[ev.petClone];
+      return clone ? { x: Number(clone.rx ?? clone.x), y: Number(clone.ry ?? clone.y) } : fallback;
+    }
     if (ev?.petSource === true) {
       return { x: Number(remote.petrx ?? remote.petx), y: Number(remote.petry ?? remote.pety) };
     }
@@ -31827,6 +31864,7 @@ function tickNetplayVisuals(dt) {
       }
       if (ev.enabled === false) {
         if (remote) {
+          if (ev.skill === "ability_zephyr_tbr") { remote.tbrClones = []; remote.tbrUntil = 0; }
           const code = abilityFxCodeFor(ev.skill);
           remote.afx = (Array.isArray(remote.afx) ? remote.afx : []).filter(entry => Number(entry[0]) !== code);
           if (Number(remote.fxFlash?.code) === code) remote.fxFlash = null;
@@ -32002,7 +32040,7 @@ const REMOTE_FX_STYLE = {
   62: { kind: "tmark", color: "#ffffff", blinkHz: 10 }, // neutralisant + icône
   63: { kind: "none" }, 64: { kind: "none" }, // recon : minimap uniquement
   76: { kind: "none" }, // MMT : aucun visuel local (portée seule)
-  77: { kind: "pets" }, // TBR : 2 échos REX
+  77: { kind: "none" }, // TBR : vrais clones rendus à leurs positions réseau
   78: { kind: "none" }, // SPR : slow auto via statut serveur
   79: { kind: "flames" }, // sleight (dash)
   80: { kind: "none" }, // frozen claw : ICE auto (freezeT)
@@ -32202,48 +32240,6 @@ function drawRemoteAbilityFx(r, shipFx) {
       }
       ctx.restore();
     }
-  };
-  // Triple barrage distant : 2 échos REX (vrai sprite du PET distant).
-  // Rôle combat (réservoirs HP liés) local uniquement, comme avant.
-  const drawTbrEchoes = () => {
-    let px = 0, py = 0, pl = 1;
-    try {
-      if (Number(r.peta) === 1) {
-        px = (Number(r.petrx ?? r.petx) || 0) - rx;
-        py = (Number(r.petry ?? r.pety) || 0) - ry;
-        pl = Math.max(1, Math.min(32, Math.round(Number(r.petl) || 1)));
-      }
-    } catch {}
-    const pframe = ((Math.floor(nowMs / 1000 * 8) % 32) + 1);
-    let pimg = null;
-    try {
-      pimg = getCachedImage(`${getPetStageBase(pl)}${pframe}.png`);
-      if (!isImgReady(pimg)) { loadImage(`${getPetStageBase(pl)}${pframe}.png`, { priority: true }); pimg = null; }
-    } catch { pimg = null; }
-    const flick = 0.45 + 0.25 * Math.sin(now * 9);
-    ctx.save();
-    ctx.globalAlpha = flick;
-    ctx.imageSmoothingEnabled = false;
-    for (const [ox, oy] of [[px - 55, py], [px + 55, py]]) {
-      if (pimg) {
-        ctx.save();
-        ctx.translate(ox, oy);
-        drawCenteredImage(ctx, pimg, 64, 56);
-        ctx.restore();
-      } else {
-        ctx.save();
-        ctx.globalCompositeOperation = "lighter";
-        ctx.strokeStyle = "rgba(121,245,255,0.95)";
-        ctx.lineWidth = 2;
-        ctx.shadowColor = "rgba(121,245,255,1)";
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.arc(ox, oy, 16, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-    ctx.restore();
   };
   // Icône de statut 44px au-dessus de la cible (marqueur / JAMX : même
   // recette que les icônes par la barre de vie des NPC).
@@ -32580,7 +32576,6 @@ function drawRemoteAbilityFx(r, shipFx) {
       if (kind === "ring") { ctx.save(); ctx.translate(fxX - rx, fxY - ry); drawFireRing(st.radius); ctx.restore(); return; }
       if (kind === "suck") { drawSuckHalo(st.radius, st.glow, st.stroke); return; }
       if (kind === "ghosts") { drawHoloGhosts(secLeft); return; }
-      if (kind === "pets") { drawTbrEchoes(); return; }
       if (kind === "blinkredraw") { drawBlinkRedraw(st.alphaFn); return; }
       if (kind === "redirect") {
         if (isImgReady(shipImg)) {
@@ -32742,6 +32737,7 @@ function drawNetplayAbilityEffects(ox, oy) {
   const now = performance.now();
   for (const r of remotes.values()) {
     if (!r || r.dead || r.cloaked || r.cloakCpu) continue;
+    drawTbrClones(ox, oy, r);
     if (!(r.afx?.length > 0) && !(Number(r.fxFlash?.until) > now) && !r.voltBackupReady && !r.voltLinkFx) continue;
     drawRemoteTempestChain(r, ox, oy);
     // Une aura sur une cible reste visible même si son lanceur est hors écran.
@@ -39912,9 +39908,9 @@ function frame(t) {
         // CPU CL04K-XL actif : les autres ne rendent plus le vaisseau
         // (le point minimap et le proxy cliquable restent).
         cloakCpu: player.cpuCloak === true,
-        // Camouflage (ultime ou CPU) : les NPC PARTAGÉS doivent aussi
-        // perdre la cible côté serveur (sinon ils tirent un invisible).
-        cloaked: (player.cloakT || 0) > 0 || player.cpuCloak === true,
+        // Seul le camouflage d'aptitude masque le point sur la mini-carte.
+        // Le serveur combine les deux camouflages pour l'aggro des NPC.
+        cloaked: (player.cloakT || 0) > 0,
         hpPct: player.hpMax > 0 ? player.hp / player.hpMax : 1,
         shPct: player.shMax > 0 ? player.sh / player.shMax : 1,
         collectUid: activeCollectable?.slotUid ? String(activeCollectable.slotUid) : "",
@@ -39948,6 +39944,8 @@ function frame(t) {
         evade: Math.max(0, Math.min(0.9, Number(activeFormationEffects().evasionPct || 0) / 100)),
         range: Math.max(200, Math.min(5000, Math.round(Number(playerRange) || 800))),
         peta: petA, petl: petL, petx: petX, pety: petY, petd: petD, petn: petN, petf: petF,
+        tbrClones: petA === 1 && player.tbrT > 0
+          ? (player.tbrClones || []).slice(0, 2).map(c => [c.x, c.y, c.angle]) : [],
         petHp: (function () { try { const p = account.user?.pet; if (!p) return 1; const m = Math.max(1, Number(petMaxHpWithHeat(p)) || 1); return Math.max(0, Math.min(1, Number(p.hp) / m)); } catch { return 1; } })(),
         petSh: (function () { try { const p = account.user?.pet; if (!p) return 1; const m = Math.max(0, Number(petShieldMaxForHud(p, account.user)) || 0); if (!(m > 0)) return 1; const c = p.sh != null && Number.isFinite(Number(p.sh)) ? Number(p.sh) : m; return Math.max(0, Math.min(1, c / m)); } catch { return 1; } })(),
         petHpMax: (function () { try { const p = account.user?.pet; return Math.max(1, Math.round(Number(petMaxHpWithHeat(p)) || 1)); } catch { return 1; } })(),

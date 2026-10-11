@@ -145,6 +145,7 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
   const durSec = Number(info.durationSec);
   const cdSec = Number(info.cooldownSec);
   if (enabled === false) {
+    if (key === "ability_zephyr_tbr") state.tbrClones = [];
     // Annulation (toggle off / lien coupé / charge avortée) : purge
     // immédiate + broadcast de fin pour que les autres effacent sans
     // attendre l'expiration. Charge avortée = fizzle : aucun cooldown
@@ -167,6 +168,7 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
     return true;
   }
   if (!movementAbility && now < Number(cds[key] || 0)) return false;
+  if (key === "ability_zephyr_tbr" && !profile.petOwned) return false;
   const target = String(msg.target || "").slice(0, 64);
   const voltChain = key === "ability_tempest_voltage-link" ? validateVoltChain(state, room, sim, msg) : null;
   if (voltChain && !voltChain.length) return false;
@@ -2665,6 +2667,11 @@ wss.on("connection", (ws) => {
         if (typeof msg.kind === "string") out.kind = String(msg.kind).slice(0, 16);
         if (typeof msg.petTarget === "string") out.petTarget = String(msg.petTarget).slice(0, 64);
         if (msg.petSource === true) out.petSource = true;
+        if (msg.petClone === 0 || msg.petClone === 1) {
+          if (state.peta !== 1 || state.dead || state.pvpDead || state.petDead === true
+            || !(state._abilityFx?.ability_zephyr_tbr?.until > Date.now())) return;
+          out.petClone = msg.petClone;
+        }
         for (const k of ["x", "y", "ang", "tx", "ty", "spd", "arcScale", "arcBoost", "prange"]) {
           if (Number.isFinite(Number(msg[k]))) out[k] = Number(msg[k]);
         }
@@ -2999,14 +3006,15 @@ wss.on("connection", (ws) => {
       // CPU natif : son coût en crédits sera validé lors de la migration
       // économique, comme les coûts IEM/ISH/SMB existants.
       if (typeof msg.cloakCpu === "boolean") state.cloakCpu = msg.cloakCpu;
-      // Camouflage (ultime ou CPU) : les NPC partagés perdent la cible.
+      // Camouflage d'aptitude : masque aussi le point sur la mini-carte.
+      // Le CPU reste distinct ; les NPC reçoivent l'union des deux états.
       if (typeof msg.cloaked === "boolean") {
         const nowCloak = Date.now();
         if (msg.cloaked && !state.cloaked && profile.cloakSkill && nowCloak >= Number(state._cloakCdUntil || 0)) {
           state._cloakUntil = nowCloak + (Number(profile.cloakSkill.durationSec) || 30) * 1000;
           state._cloakCdUntil = nowCloak + (Number(profile.cloakSkill.cooldownSec) || 240) * 1000;
         }
-        state.cloaked = msg.cloaked && (state.cloakCpu || nowCloak < Number(state._cloakUntil || 0));
+        state.cloaked = msg.cloaked && nowCloak < Number(state._cloakUntil || 0);
       }
       if (typeof msg.safe === "boolean") state.safe = msg.safe;
       if (Number.isFinite(Number(msg.hpPct))) state.hpPct = Math.max(0, Math.min(1, Number(msg.hpPct)));
@@ -3126,6 +3134,14 @@ wss.on("connection", (ws) => {
         }
       }
       if (Number.isFinite(Number(msg.petd))) state.petd = Math.round(Number(msg.petd) * 100) / 100;
+      // Triple barrage : deux positions visuelles, uniquement pendant le cast validé.
+      const tbrActive = state.peta === 1 && !state.dead && !state.pvpDead
+        && state._abilityFx?.ability_zephyr_tbr?.until > Date.now();
+      state.tbrClones = tbrActive && Array.isArray(msg.tbrClones)
+        ? msg.tbrClones.slice(0, 2).filter(c => Array.isArray(c) && c.length === 3
+          && c.every(n => Number.isFinite(Number(n)))
+          && Math.hypot(Number(c[0]) - Number(state.x), Number(c[1]) - Number(state.y)) <= PET_LEASH)
+          .map(c => [Math.round(Number(c[0])), Math.round(Number(c[1])), Math.round(Number(c[2]) * 100) / 100]) : [];
       if (typeof msg.petn === "string") state.petn = String(msg.petn).slice(0, 32);
       if (typeof msg.petf === "string") state.petf = String(msg.petf).slice(0, 16);
       // PV du PET (lock info allie) : 0..1 declare, jamais de montee serveur.
@@ -3486,6 +3502,10 @@ setInterval(() => {
         peta: s.peta === 1 ? 1 : 0, petl: Math.max(1, Math.min(32, Math.round(Number(s.petl) || 1))),
         petx: Math.round(Number(s.petx) || 0), pety: Math.round(Number(s.pety) || 0),
         petd: Math.round(Number(s.petd || 0) * 100) / 100,
+        tbrClones: s.peta === 1 && !s.dead && !s.pvpDead && s.petDead !== true
+          && s._abilityFx?.ability_zephyr_tbr?.until > now ? s.tbrClones || [] : [],
+        tbrT: s.peta === 1 && !s.dead && !s.pvpDead && s.petDead !== true
+          ? Math.max(0, (Number(s._abilityFx?.ability_zephyr_tbr?.until) || 0) - now) / 1000 : 0,
         petn: String(s.petn || "").slice(0, 32), petf: String(s.petf || "").slice(0, 16),
         petHp: Number.isFinite(Number(s.petHp)) ? Math.max(0, Math.min(1, Number(s.petHp))) : 1,
         petSh: Number.isFinite(Number(s.petSh)) ? Math.max(0, Math.min(1, Number(s.petSh))) : 1,

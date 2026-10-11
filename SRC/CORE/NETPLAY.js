@@ -51,6 +51,19 @@ function readVoltLinkFx(value, now, serverNow, previous) {
   if (Number(previous?.at) === Number(value.at)) return previous;
   return { at: Number(value.at), startedAt: now - Math.max(0, serverNow - Number(value.at)), chain: sanitizeVoltChain(value.chain) };
 }
+function readTbrClones(value, previous = []) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 2).map((point, index) => {
+    if (!Array.isArray(point) || !point.slice(0, 3).every(n => Number.isFinite(Number(n))) || point.length !== 3) return null;
+    const x = Number(point[0]), y = Number(point[1]), angle = Number(point[2]);
+    const clone = previous[index] || {};
+    const snap = !previous[index] || Math.hypot(x - Number(clone.rx), y - Number(clone.ry)) > 1500;
+    Object.assign(clone, { x, y, angle,
+      rx: snap ? x : clone.rx, ry: snap ? y : clone.ry,
+      rangle: snap ? angle : clone.rangle });
+    return clone;
+  }).filter(Boolean);
+}
 function observeSimulationClock(at) {
   if (!Number.isFinite(at) || at <= 0) return;
   if (simulationServerAt === null) {
@@ -1556,6 +1569,8 @@ export function ensureNetplayConnection() {
           _abilityFxAt: now,
           // PET allie : actif, niveau, position.
           peta: p.peta === 1 ? 1 : 0,
+          tbrClones: p.peta === 1 && Number(p.tbrT) > 0 ? readTbrClones(p.tbrClones, prev?.tbrClones) : [],
+          tbrUntil: now + Math.max(0, Math.min(60, Number(p.tbrT) || 0)) * 1000,
           petl: Math.max(1, Math.min(32, Math.round(Number(p.petl ?? prev?.petl) || 1))),
           petx, pety,
           petvx: p.peta === 1 ? (petPositionChanged ? petVelocity.vx : Number(prev?.petvx || 0)) : 0,
@@ -1737,7 +1752,7 @@ function sendNow(local, force = false) {
       pseudo: String(local.pseudo || "Pilote").slice(0, 20),
       dead: local.dead === true,
       cloakCpu: local.cloakCpu === true,
-      cloaked: local.cloaked === true || local.cloakCpu === true,
+      cloaked: local.cloaked === true,
       hpPct: Number.isFinite(Number(local.hpPct)) ? local.hpPct : 1,
       shPct: Number.isFinite(Number(local.shPct)) ? local.shPct : 1,
       collectUid: String(local.collectUid || "").slice(0, 64),
@@ -1779,6 +1794,8 @@ function sendNow(local, force = false) {
       petx: Math.round(Number(local.petx) || 0),
       pety: Math.round(Number(local.pety) || 0),
       petd: Number(local.petd) || 0,
+      tbrClones: local.peta === 1 && Array.isArray(local.tbrClones)
+        ? local.tbrClones.slice(0, 2).map(c => [Math.round(Number(c[0]) || 0), Math.round(Number(c[1]) || 0), Number(c[2]) || 0]) : [],
       petn: String(local.petn || "").slice(0, 32),
       petf: String(local.petf || "").slice(0, 16),
       petHp: Number.isFinite(Number(local.petHp)) ? Math.max(0, Math.min(1, Number(local.petHp))) : 1,
@@ -1878,6 +1895,7 @@ export function sendShotEvent(ev) {
     if (typeof ev.kind === "string") o.kind = String(ev.kind).slice(0, 16);
     if (typeof ev.petTarget === "string") o.petTarget = String(ev.petTarget).slice(0, 64);
     if (ev.petSource === true) o.petSource = true;
+    if (ev.petClone === 0 || ev.petClone === 1) o.petClone = ev.petClone;
     for (const k of ["x", "y", "ang", "tx", "ty", "spd", "arcScale", "arcBoost", "prange"]) {
       if (Number.isFinite(Number(ev[k]))) o[k] = Number(ev[k]);
     }
@@ -2126,6 +2144,18 @@ export function tickNetplayRemotes(dt = 0.016) {
     if (r.dead || r.cloaked || r.cloakCpu) {
       r.afx = [];
       r.fxFlash = null;
+    }
+    if (r.dead || r.peta !== 1 || !(r.tbrUntil > now)) r.tbrClones = [];
+    for (const clone of r.tbrClones || []) {
+      const dx = clone.x - clone.rx, dy = clone.y - clone.ry;
+      const distance = Math.hypot(dx, dy);
+      const cloneK = distance > 0 ? Math.min(k, NET_MAX_ESTIMATED_SPEED * frameDt / distance) : k;
+      const moveX = dx * cloneK, moveY = dy * cloneK;
+      clone.vx = frameDt > 0 ? moveX / frameDt : 0;
+      clone.vy = frameDt > 0 ? moveY / frameDt : 0;
+      clone.rx += moveX;
+      clone.ry += moveY;
+      clone.rangle += Math.atan2(Math.sin(clone.angle - clone.rangle), Math.cos(clone.angle - clone.rangle)) * k;
     }
     // Plafond adapte a la cadence observee de l'emetteur : sans lui, un flux
     // a 1 Hz (onglet reduit) depasse systematiquement sa vraie cadence puis
