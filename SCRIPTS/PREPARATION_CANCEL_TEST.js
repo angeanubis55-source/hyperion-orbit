@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { damagePlayerLayers } from '../COMBAT/COMBAT_RULES.js';
 import { advancePlayerToTarget, updatePlayerVelocity } from '../SRC/CORE/FRAME_SYSTEMS.js';
+import { beginGatePortalJump, getPortalJumpFade, getPortalOpenFade, tickGatePortalJumps as advanceGatePortalJumps } from '../SRC/CORE/PORTAL_SYSTEM.js';
 
 // Exerce les fonctions du moteur livre, avec des horloges et comptes isoles.
 const source = readFileSync(new URL('../SRC/CORE/ORBIT_ENGINE.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -12,7 +13,7 @@ function engineFunction(name, asynchronous = false) {
   assert.ok(start >= 0 && end > start, name);
   return `${asynchronous ? 'async ' : ''}${source.slice(start, end + 2)}`;
 }
-const functions = ['onPlayerPreparationDamage', 'cancelHangarPreparation', 'cancelStarJump', 'isPlayerMovementLocked', 'requestHangarSwap', 'tickHangarSwap', 'hurtPlayer']
+const functions = ['onPlayerPreparationDamage', 'cancelHangarPreparation', 'cancelStarJump', 'isPortalJumpInProgress', 'isPlayerMovementLocked', 'requestHangarSwap', 'tickHangarSwap', 'hurtPlayer']
   .map(name => engineFunction(name)).concat(['activateHangarAtSavedLocation', 'completeHangarTravelMidpoint'].map(name => engineFunction(name, true))).join('\n');
 
 function harness() {
@@ -22,6 +23,7 @@ function harness() {
   const noop = () => {};
   const context = vm.createContext({
     StarJump: { channel: null }, hangarSwapFx: null, hangarActivationPreparation: null,
+    portalJumpActive: false, mapSwitchInProgress: false,
     player: { hp: 100, hpMax: 100, sh: 100, shMax: 100, shAbsorb: 1, dead: false, iFrames: 0, invincibleT: 0, x: 100, y: 100, r: 18 },
     started: true, account: { user }, window: { __CURRENT_MAP_ID__: '1-1' },
     structuredClone, netActive: () => false,
@@ -319,4 +321,149 @@ test('Jump : decompte de 10 a 1 dans l affichage rapide, sans doublon et sans fa
   assert.deepEqual(notices.map(args => args[0]), ['10', '9', '8', '7', '6', '5', '4', '3', '2', '1']);
   assert.ok(notices.every(args => args[3].log === false && args[3].stagger === false));
   assert.equal(logs.length, 11, 'une ligne par seconde, puis depart');
+});
+
+function portalHarness(zone = true) {
+  const h = harness(), c = h.context, draws = [];
+  const portals = [{ id: 'first', x: 100, y: 100, toMap: '1-2', jumpDur: 2, active: true },
+    { id: 'other', x: 220, y: 100, toMap: '1-3', jumpDur: 2, active: true, buttonPressed: true, buttonHovered: true }];
+  const noop = () => {};
+  Object.assign(c, {
+    isZoneMap: zone, betweenWaves: true, zonePortals: portals, portal: portals[0], gateReturnPortal: portals[1],
+    GALAXY_GATE_DEFINITIONS: {}, rules: {}, wave: 1, isLowRaidRunning: () => false, isZonePortalAvailable: () => true,
+    Target: { get: () => null }, enemies: [], enemyBullets: [], GAME_SETTINGS: { portalAnims: true }, mapPortalLock: 0,
+    isPlayerNearPortal: p => Math.hypot(p.x - c.player.x, p.y - c.player.y) <= 450,
+    getLevelInfo: () => ({ level: 30 }), getFaction: () => ({ sector: '1' }), checkMapAccess: () => ({ ok: true }),
+    cancelCollectableTarget: () => { c.collecting = false; }, collecting: true,
+    pointer: { dragArmed: true, dragging: true, followWhileDown: true }, canvas: { style: {} },
+    preloadPortalJumpSequence: noop, stopRepairSound: noop, markProgressDirty: noop,
+    getGateReturnMap: () => '1-1', preloadRespawnMap: noop, setRespawnOverride: noop, getFactionBaseSpawn: () => ({}),
+    saveCurrentUserGalaxyGateWave: () => ({ ok: true, user: c.account.user }), renderGalaxyGateWindow: noop,
+    beginWave: () => { c.betweenWaves = false; }, advanceGatePortalJumps, beginGatePortalJump,
+    computePortalOpenFade: getPortalOpenFade, computePortalJumpFade: getPortalJumpFade,
+    screenToWorld: (x, y) => ({ x, y }), isBeyondSensorRadius: () => false,
+    performance: { now: () => 1000 }, TAU: Math.PI * 2,
+    getPortalSpriteSet: () => ({ idle: { src: 'idle.png', w: 128, h: 128 }, open: { src: 'open.png' },
+      jump: { src: 'jump.png' }, jumpButton: { idle: { src: 'button.png' }, mouse: { src: 'button-hover.png' },
+        click: { src: 'button-click.png' }, w: 80, h: 30, yOff: -30 } }),
+    getCachedImage: src => ({ src, complete: true, naturalWidth: 128, naturalHeight: 128 }),
+    isImgReady: img => !!img, ctx: new Proxy({}, { get: (_, key) => key === 'drawImage'
+      ? img => draws.push(img.src) : noop }),
+    refreshHoldMoveTarget: noop, botMovementStep: () => c.moveTarget, dt: .1,
+    updatePlayerVelocity, advancePlayerToTarget, resolvePlayerWalls: noop,
+    sessionStorage: { setItem: noop, removeItem: noop }, console: { warn: noop, error: noop },
+  });
+  c.window.setTimeout = c.setTimeout; c.window.__PRELOAD_MAP__ = () => Promise.resolve();
+  c.player.baseSpeed = 400;
+  vm.runInContext(['lockPortalJump', 'startZonePortalJump', 'finishZonePortalJump', 'tickZonePortalJumps',
+    'getInteractivePortals', 'getPortalOpenFade', 'getPortalJumpFade', 'pickPortalButtonAtScreen', 'updatePortalButtonCursor',
+    'drawZonePortals', 'startGatePortalJump', 'tickGatePortalJumps', 'setMoveTargetFromScreen',
+    'setMoveTargetFromMiniEvent', 'selectCollectable', 'activatePhaseOut'].map(name => engineFunction(name)).join('\n'), c);
+  const from = source.indexOf('  refreshHoldMoveTarget();\n  const movementStepTarget = botMovementStep(dt);');
+  const to = source.indexOf('\n  updateShipMoveSound();', from);
+  vm.runInContext(`function movementFrame() {${source.slice(from, to)}\n}`, c);
+  return { ...h, portals, draws };
+}
+
+for (const zone of [true, false]) {
+  test(`Portail ${zone ? 'zone' : 'GG'} : stop immediat, souris, minimap, collecte et mouvement bot bloques`, async () => {
+    const { context: c, portals } = portalHarness(zone);
+    Object.assign(c.moveTarget, { active: true, x: 500, y: 500 });
+    c.player.vx = c.player.vy = 400;
+    if (zone) assert.equal(c.startZonePortalJump(portals[0]), true);
+    else c.startGatePortalJump(portals[0], 'continue');
+    assert.equal(c.player.vx, 0); assert.equal(c.player.vy, 0); assert.equal(c.moveTarget.active, false);
+    assert.equal(c.collecting, false); assert.equal(c.pointer.followWhileDown, false);
+    assert.equal(c.pointer.dragging, false); assert.equal(c.pointer.dragArmed, false);
+    assert.ok(c.isPlayerMovementLocked());
+    c.setMoveTargetFromScreen(500, 500); c.setMoveTargetFromMiniEvent(500, 500);
+    c.selectCollectable({ id: 'box', x: 500, y: 500 }); c.activatePhaseOut();
+    assert.equal(c.moveTarget.active, false);
+    for (let i = 0; i < 50; i++) {
+      Object.assign(c.moveTarget, { active: true, x: 500, y: 500 }); c.player.vx = c.player.vy = 400;
+      c.movementFrame();
+      assert.equal(c.player.x, 100); assert.equal(c.player.y, 100);
+      assert.equal(c.player.vx, 0); assert.equal(c.moveTarget.active, false);
+    }
+    await Promise.resolve();
+  });
+
+  test(`Portail ${zone ? 'zone' : 'GG'} : tous les boutons caches et non cliquables, portail et animation conserves`, () => {
+    const { context: c, portals, draws } = portalHarness(zone);
+    c.drawZonePortals(0, 0);
+    assert.equal(draws.filter(src => src.startsWith('button')).length, 2);
+    assert.equal(c.pickPortalButtonAtScreen(portals[1].x, portals[1].y - 30), portals[1]);
+    if (zone) c.startZonePortalJump(portals[0]); else c.startGatePortalJump(portals[0], 'continue');
+    draws.length = 0; c.drawZonePortals(0, 0);
+    assert.equal(draws.filter(src => src.startsWith('button')).length, 0);
+    assert.equal(draws.filter(src => src === 'idle.png').length, 2);
+    assert.ok(draws.includes('jump.png'));
+    assert.equal(portals[1].buttonHovered, false); assert.equal(portals[1].buttonPressed, false);
+    assert.equal(c.pickPortalButtonAtScreen(portals[1].x, portals[1].y - 30), null);
+    assert.equal(c.updatePortalButtonCursor(portals[1].x, portals[1].y - 30), false);
+    if (zone) assert.equal(c.startZonePortalJump(portals[1]), false);
+    else c.startGatePortalJump(portals[1], 'return');
+    assert.notEqual(portals[1].jumping, true, 'un second portail ne peut pas demarrer');
+  });
+}
+
+test('Portail refuse ou confirmation non acceptee : aucun verrou de mouvement ou de bouton', () => {
+  const { context: c, portals } = portalHarness();
+  c.isPlayerNearPortal = () => false;
+  assert.equal(c.startZonePortalJump(portals[0]), false);
+  c.isPlayerNearPortal = () => true; c.checkMapAccess = () => ({ ok: false, required: 40, level: 30 });
+  assert.equal(c.startZonePortalJump(portals[0]), false);
+  c.checkMapAccess = () => ({ ok: true }); c.player.credits = 100;
+  portals[0].entryCost = 1; c.requestPortalEntryConfirmation = () => true;
+  assert.equal(c.startZonePortalJump(portals[0]), true);
+  assert.equal(portals[0].jumping, undefined); assert.equal(c.isPlayerMovementLocked(), false);
+  assert.equal(c.pickPortalButtonAtScreen(portals[1].x, portals[1].y - 30), portals[1]);
+});
+
+test('Portail de zone : verrou jusqu a la fin du prechargement et du changement de carte', async () => {
+  const { context: c, portals, draws } = portalHarness();
+  let finishPreload, finishSwitch, switches = 0;
+  c.window.__PRELOAD_MAP__ = () => new Promise(resolve => { finishPreload = resolve; });
+  c.window.__SWITCH_MAP__ = () => { switches++; return new Promise(resolve => { finishSwitch = resolve; }); };
+  c.startZonePortalJump(portals[0]); c.tickZonePortalJumps(3);
+  assert.equal(switches, 0); assert.ok(c.isPlayerMovementLocked());
+  finishPreload(); await new Promise(resolve => setImmediate(resolve));
+  c.tickZonePortalJumps(.1); c.tickZonePortalJumps(.1);
+  assert.equal(switches, 1); assert.ok(c.isPlayerMovementLocked());
+  c.drawZonePortals(0, 0); assert.equal(draws.some(src => src.startsWith('button')), false);
+  c.zonePortals = [{ ...portals[1], jumping: false }];
+  finishSwitch(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(c.isPlayerMovementLocked(), false);
+  Object.assign(c.moveTarget, { active: true, x: 500, y: 500 }); c.movementFrame();
+  assert.ok(c.player.x > 100 && c.player.y > 100);
+  assert.equal(c.pickPortalButtonAtScreen(220, 70), c.zonePortals[0]);
+});
+
+test('Portail GG Continuer : mouvement libere a la nouvelle vague, aucun retour concurrent', () => {
+  const { context: c, portals } = portalHarness(false);
+  c.startGatePortalJump(portals[0], 'continue'); c.startGatePortalJump(portals[1], 'return');
+  assert.equal(c.tickGatePortalJumps(1), false); assert.ok(c.isPlayerMovementLocked());
+  assert.equal(c.tickGatePortalJumps(1), true); assert.equal(c.wave, 2);
+  assert.equal(c.isPlayerMovementLocked(), false); assert.equal(c.moveTarget.active, false);
+  assert.equal(c.player.x, 5000); assert.equal(c.player.y, 5000);
+});
+
+test('Portail GG Retour : boutons et mouvement restent bloques pendant le transit async', async () => {
+  const { context: c, portals } = portalHarness(false);
+  let arrive;
+  c.goToMapFast = () => new Promise(resolve => { arrive = resolve; });
+  c.startGatePortalJump(portals[1], 'return'); c.tickGatePortalJumps(2);
+  assert.ok(c.isPlayerMovementLocked()); assert.equal(portals[1].jumping, false);
+  assert.equal(c.pickPortalButtonAtScreen(100, 70), null);
+  arrive('switched'); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(c.isPlayerMovementLocked(), false);
+});
+
+test('Chargement de carte : aucun mouvement ni bouton avant la fin de la bascule', () => {
+  const { context: c, draws } = portalHarness();
+  c.mapSwitchInProgress = true;
+  assert.ok(c.isPlayerMovementLocked()); assert.equal(c.pickPortalButtonAtScreen(100, 70), null);
+  c.drawZonePortals(0, 0); assert.equal(draws.some(src => src.startsWith('button')), false);
+  c.mapSwitchInProgress = false;
+  assert.equal(c.isPlayerMovementLocked(), false);
 });

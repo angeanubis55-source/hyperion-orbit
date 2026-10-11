@@ -14552,6 +14552,7 @@ renderGalaxyGateWindow();
 const MAX_ALIVE = 100;
 let currentWavePlan = null;
 let mapSwitchInProgress = false;
+let portalJumpActive = false;
 let NPC_SENSOR_RANGES = getNpcSensorRanges(rules);
 
 const TAU = Math.PI * 2;
@@ -15017,8 +15018,27 @@ function purgeNpcsForJump() {
   try { enemyBullets.length = 0; } catch {}
 }
 
+function isPortalJumpInProgress() {
+  return portalJumpActive || mapSwitchInProgress;
+}
+
+function lockPortalJump() {
+  portalJumpActive = true;
+  cancelCollectableTarget();
+  moveTarget.active = false;
+  player.vx = 0;
+  player.vy = 0;
+  pointer.dragArmed = false;
+  pointer.dragging = false;
+  pointer.followWhileDown = false;
+  for (const ptl of getInteractivePortals()) {
+    ptl.buttonHovered = false;
+    ptl.buttonPressed = false;
+  }
+}
+
 function startZonePortalJump(ptl, entryConfirmed = false) {
-  if (!ptl || ptl.jumping) return false;
+  if (!ptl || ptl.jumping || isPortalJumpInProgress()) return false;
   // ✅ portail caché = marqueur d'arrivée d'un aller simple, jamais un départ.
   if (ptl.hidden === true) return false;
   // Raid Low : pas de sortie pendant une vague (le portail est masqué,
@@ -15177,6 +15197,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   } catch {}
   try { enemyBullets.length = 0; } catch {}
 
+  lockPortalJump();
   ptl.jumping = true;
   ptl.jumpT = 0;
   ptl.jumpDur = Math.max(0.1, Number(ptl.jumpDur ?? 2));
@@ -15230,7 +15251,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   ptl.holdT = 0;
   ptl.closeT = 0;
 
-  // ✅ le joueur peut quitter le portail, le jump continue quand même
+  // Le verrou du saut reste actif jusqu'a l'arrivee sur la prochaine carte.
   mapPortalLock = Math.max(mapPortalLock, ptl.jumpDur + 0.25);
 
   const destinationMap = String(ptl.jumpMap || ptl.toMap || "inconnue");
@@ -15253,7 +15274,9 @@ function finishZonePortalJump(ptl) {
   ptl.jumpSwitchPending = true;
 
   if (typeof window.__SWITCH_MAP__ === "function") {
-    window.__SWITCH_MAP__(toMap, toPortal).catch((error) => {
+    window.__SWITCH_MAP__(toMap, toPortal).then(() => {
+      portalJumpActive = false;
+    }).catch((error) => {
       console.error("Changement interne impossible:", error);
       ptl.jumpSwitchPending = false;
       window.__GO_TO_MAP__?.(toMap, toPortal);
@@ -20313,6 +20336,7 @@ function isPlayerNearPortal(ptl) {
 }
 
 function pickPortalButtonAtScreen(clientX, clientY) {
+  if (isPortalJumpInProgress()) return null;
   const portals = getInteractivePortals();
   if (!portals.length) return null;
 
@@ -30461,6 +30485,7 @@ for (let i = collectables.length - 1; i >= 0; i--) {
 // Death / Respawn
 // ============================================================
 function resetRun({ randomSpawn = false, preparedZoneCamps = null, preparedZonePortals = null } = {}) {
+  portalJumpActive = false;
   let spawnedFromPortal = false;
   attackActive = false;
   laserCombatInRange = null;
@@ -30848,6 +30873,7 @@ function die() {
   laserCombatInRange = null;
   escapeWatch = null;
   player.dead = true;
+  portalJumpActive = false;
   // Mort = aptitudes coupées : leurs recharges démarrent.
   // Le CPU CL04K-XL tombe aussi (sans recharge, silencieux).
   if ((player.cloakT || 0) > 0) {
@@ -34138,13 +34164,14 @@ ui.oreTradeWindow?.addEventListener("click", (event) => {
 });
 
 function startGatePortalJump(ptl, action) {
-  if (!ptl || ptl.jumping || !isPlayerNearPortal(ptl)) return;
+  if (!ptl || ptl.jumping || isPortalJumpInProgress() || !isPlayerNearPortal(ptl)) return;
   // Fortification (officiel) : aucun saut pendant l'effet.
   if ((player.fortifyT || 0) > 0) {
     showNotification("Fortification : saut impossible pendant l'effet", 2, "info");
     return;
   }
   if (beginGatePortalJump(ptl, action, portal.switchDur)) {
+    lockPortalJump();
     // ✅ Même logique que les portails de zone : pas de purge d'avant-saut
     // (freeze puis dash des NPC pendant l'animation). On libère juste le
     // lock + tirs en vol et on protège le joueur.
@@ -34334,6 +34361,7 @@ function tickGatePortalJumps(dt) {
     SFX.stop("swReady");
     SFX.play("swDone");
     try { sessionStorage.removeItem("orbit_gate_jump"); } catch {}
+    portalJumpActive = false;
     beginWave();
   } else {
     const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
@@ -34351,7 +34379,9 @@ function tickGatePortalJumps(dt) {
     const returnMap = getGateReturnMap();
     try { preloadRespawnMap(returnMap); } catch {}
     setRespawnOverride({ map: returnMap, baseCenter: true, fallback: getFactionBaseSpawn((account.user || getCurrentUserFull())?.faction) });
-    goToMapFast(returnMap).catch((error) => {
+    goToMapFast(returnMap).then(result => {
+      if (result !== "reloaded") portalJumpActive = false;
+    }).catch((error) => {
       console.warn("Retour de Galaxy Gate impossible :", error);
       window.__GO_TO_MAP__?.(returnMap);
     });
@@ -34688,7 +34718,7 @@ function drawZonePortals(ox, oy) {
     // ========================================================
     const btn = spr.jumpButton;
 
-    if (btn && !ptl.jumping) {
+    if (btn && !ptl.jumping && !isPortalJumpInProgress()) {
       let buttonSprite = btn.idle;
 
       if (ptl.buttonPressed) {
@@ -41262,7 +41292,7 @@ function cancelStarJump(reason) {
 }
 
 function isPlayerMovementLocked() {
-  return !!(hangarSwapFx || StarJump.channel);
+  return !!(hangarSwapFx || StarJump.channel || isPortalJumpInProgress());
 }
 
 function startStarJump() {

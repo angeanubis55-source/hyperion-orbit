@@ -225,6 +225,7 @@ function engineBot(walls, start, goal, npc = null) {
   const source = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
   const from = source.indexOf("function botMovementStep("), to = source.indexOf("function botClampCombatTarget(", from);
   const context = vm.createContext({
+    portalJumpActive: false, mapSwitchInProgress: false,
     hangarSwapFx: null, StarJump: { channel: null }, Bot: { active: true, manualT: 0, combatTargetId: npc?.id, combatMoveTargetId: npc?.id },
     moveTarget: { active: true, ...goal }, player: { ...start, r: 18, baseSpeed: 400, vx: 0, vy: 0 },
     pointer: { down: false }, performance: { now: () => 10000 }, isZoneMap: true, zoneWalls: walls,
@@ -234,7 +235,8 @@ function engineBot(walls, start, goal, npc = null) {
     stopAttack: () => { context.attackActive = false; }, computeBotWallMove, playerSlowMult,
   });
   const lockFrom = source.indexOf("function isPlayerMovementLocked("), lockTo = source.indexOf("\n}", lockFrom);
-  vm.runInContext(source.slice(lockFrom, lockTo + 2) + "\n" + source.slice(from, to), context);
+  const portalFrom = source.indexOf("function isPortalJumpInProgress("), portalTo = source.indexOf("\n}", portalFrom);
+  vm.runInContext(source.slice(portalFrom, portalTo + 2) + "\n" + source.slice(lockFrom, lockTo + 2) + "\n" + source.slice(from, to), context);
   return context;
 }
 
