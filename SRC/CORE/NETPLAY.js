@@ -51,6 +51,13 @@ function readVoltLinkFx(value, now, serverNow, previous) {
   if (Number(previous?.at) === Number(value.at)) return previous;
   return { at: Number(value.at), startedAt: now - Math.max(0, serverNow - Number(value.at)), chain: sanitizeVoltChain(value.chain) };
 }
+function readHyperionFx(value, now, serverNow, previous) {
+  if (!value || !(Number(value.until) > serverNow)) return null;
+  if (previous && previous.from === Number(value.from)) return previous;
+  return { from: Number(value.from), startedAt: now - Math.max(0, serverNow - Number(value.from)),
+    duration: Math.max(0, (Number(value.until) - Number(value.from)) / 1000),
+    x: Number(value.x) || 0, y: Number(value.y) || 0, target: String(value.target || "").slice(0, 64) };
+}
 function readTbrClones(value, previous = []) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 2).map((point, index) => {
@@ -63,6 +70,13 @@ function readTbrClones(value, previous = []) {
       rangle: snap ? angle : clone.rangle });
     return clone;
   }).filter(Boolean);
+}
+function readHoloClones(value, previous = []) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 4).filter(p => Array.isArray(p) && p.length === 4 && p.slice(1).every(Number.isFinite)).map(p => {
+    const old = previous.find(c => c.id === String(p[0]));
+    return { id: String(p[0]), x: p[1], y: p[2], angle: p[3], rx: old?.rx ?? p[1], ry: old?.ry ?? p[2], rangle: old?.rangle ?? p[3] };
+  });
 }
 function observeSimulationClock(at) {
   if (!Number.isFinite(at) || at <= 0) return;
@@ -385,6 +399,11 @@ export function getNetSelf() {
     freezeT: Math.max(0, selfServ.freezeT - elapsed), iemT: Math.max(0, selfServ.iemT - elapsed),
     ishT: Math.max(0, selfServ.ishT - elapsed), jamT: Math.max(0, (selfServ.jamT || 0) - elapsed),
     jamxT: Math.max(0, (selfServ.jamxT || 0) - elapsed), abilityFxElapsed: elapsed,
+    sprT: Math.max(0, (selfServ.sprT || 0) - elapsed),
+    sprCastT: Math.max(0, (selfServ.sprCastT || 0) - elapsed),
+    sprCd: Math.max(0, (selfServ.sprCd || 0) - elapsed),
+    lastStandCd: Math.max(0, (selfServ.lastStandCd || 0) - elapsed),
+    forcedLock: elapsed < selfServ.forcedLockT ? selfServ.forcedLock : "",
     redirectSilenceT: Math.max(0, (selfServ.redirectSilenceT || 0) - elapsed),
     disarrayT: Math.max(0, (selfServ.disarrayT || 0) - elapsed),
     voltBackupT: Math.max(0, (selfServ.voltBackupT || 0) - elapsed),
@@ -1227,7 +1246,7 @@ export function ensureNetplayConnection() {
       if (/^ability_[a-z0-9_-]{1,64}$/.test(key)) {
         if (netSkillDenied.length > 8) netSkillDenied.shift();
         // Soi-même uniquement : le serveur ne l'envoie qu'au lanceur.
-        netSkillDenied.push({ skill: key, at: Date.now() });
+        netSkillDenied.push({ skill: key, cooldown: Math.max(0, Number(msg.cooldown) || 0), at: Date.now() });
       }
       return;
     }
@@ -1235,12 +1254,17 @@ export function ensureNetplayConnection() {
       const key = String(msg.skill).toLowerCase();
       const isAbility = key.startsWith("ability_") && !ABILITY_CLOAK_SKILLS.has(key);
       if (msg.skill === "iem" || msg.skill === "ish" || msg.skill === "smb" || isAbility) {
-        if (netSkillInbox.length > 24) netSkillInbox.shift();
+        if (netSkillInbox.length > 128) netSkillInbox.shift();
         netSkillInbox.push({
           skill: key,
           enabled: msg.enabled !== false,
-          phase: msg.phase === "heal" || msg.phase === "unlink" ? msg.phase : "",
-          amount: Math.max(0, Math.min(40000, Math.round(Number(msg.amount) || 0))),
+          phase: ["heal", "unlink", "fire", "proc", "clones"].includes(msg.phase) ? msg.phase : "",
+          forced: msg.forced === true,
+          amount: Math.max(0, Math.min(1e9, Math.round(Number(msg.amount) || 0))),
+          hp: Number.isFinite(Number(msg.hp)) ? Math.max(0, Number(msg.hp)) : undefined,
+          sh: Number.isFinite(Number(msg.sh)) ? Math.max(0, Number(msg.sh)) : undefined,
+          healSeq: Number(msg.healSeq) || 0,
+          shMax: Number.isFinite(Number(msg.shMax)) ? Math.max(0, Number(msg.shMax)) : undefined,
           shield: msg.shield === true,
           by: String(msg.by || "").slice(0, 64),
           until: Math.max(0, Number(msg.until) || 0),
@@ -1369,6 +1393,18 @@ export function ensureNetplayConnection() {
             jamxT: Math.max(0, Number(p.jamxT) || 0),
             jamAt: Number(p.jamAt) || 0,
             afx: sanitizeAbilityFxList(p.afx),
+            shieldBuffSeq: Number(p.shieldBuffSeq) || 0,
+            abilityHealSeq: Number(p.abilityHealSeq) || 0,
+            shMax: Math.max(0, Number(p.shMax) || 0),
+            stockCharges: Math.max(0, Math.min(10, Number(p.stockCharges) || 0)),
+            sprT: Math.max(0, Number(p.sprT) || 0),
+            sprCastT: Math.max(0, Number(p.sprCastT) || 0),
+            sprCd: Math.max(0, Number(p.sprCd) || 0),
+            forcedLock: String(p.forcedLock || "").slice(0, 64),
+            forcedLockT: Math.max(0, Number(p.forcedLockT) || 0),
+            lastStandReady: p.lastStandReady === true,
+            lastStandCd: Math.max(0, Number(p.lastStandCd) || 0),
+            lastStandAt: Number(p.lastStandAt) || 0,
             at: now,
           };
           continue;
@@ -1476,12 +1512,29 @@ export function ensureNetplayConnection() {
         } : rawPetVelocity;
         const petPositionChanged = !prev || petx !== Number(prev.petx) || pety !== Number(prev.pety);
         const entry = prev || {};
+        const swapDuration = Math.max(0.1, Math.min(3, Number(p.hswapDur) || 3));
+        const swapRemaining = Math.max(0, Math.min(swapDuration, Number(p.hswap) || 0));
+        const swapPaused = swapRemaining > 0 && p.hswapPaused === true;
+        const swapId = Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number(p.hswapId) || 0)));
+        const swapElapsed = swapDuration - swapRemaining;
+        const continuingSwap = prev && prev.hswap > 0 && prev.hswapDur === swapDuration && prev.hswapId === swapId;
+        const sinceSwapTick = continuingSwap && !prev.hswapPaused
+          ? Math.max(0, now - Number(prev._abilityFxAt ?? now)) / 1000 : 0;
+        const previousSwapElapsed = Math.min(swapDuration, (Number(prev?.hswapElapsed) || 0) + sinceSwapTick);
+        // Une horloge continue entre les paquets, sans retour de frame en cas de jitter.
+        const renderedSwapElapsed = swapRemaining > 0 && continuingSwap && !swapPaused
+          ? Math.max(previousSwapElapsed, previousSwapElapsed + (swapElapsed - previousSwapElapsed) * 0.2)
+          : swapElapsed;
         Object.assign(entry, {
           id,
           pseudo: String(p.pseudo ?? prev?.pseudo ?? "Pilote").slice(0, 20),
           clan: String(p.clan ?? prev?.clan ?? "").toUpperCase().slice(0, 5),
           shipId: String(p.shipId ?? prev?.shipId ?? ""),
-          hswap: Math.max(0, Math.min(3, Number(p.hswap) || 0)),
+          hswap: swapRemaining > 0 ? Math.max(0, swapDuration - renderedSwapElapsed) : 0,
+          hswapDur: swapDuration,
+          hswapElapsed: renderedSwapElapsed,
+          hswapPaused: swapPaused,
+          hswapId: swapId,
           x, y,
           motionBlocked, teleportSeq,
           renderDelay: motionBlocked || teleported ? 0 : Number(prev?.renderDelay || 0),
@@ -1556,6 +1609,11 @@ export function ensureNetplayConnection() {
           hpMax: Math.max(1, Math.round(Number(p.hpMax) || 1)),
           shMax: Math.max(0, Math.round(Number(p.shMax) || 0)),
           voltBackupReady: p.vbReady === true,
+          lastStandReady: p.lastStandReady === true,
+          lastStandAt: Number(p.lastStandAt) || 0,
+          lastStandT: Math.max(0, Number(p.lastStandT) || 0),
+          holoClones: readHoloClones(p.holoClones, prev?.holoClones),
+          holoBoomStartedAt: prev?.holoBoomStartedAt || 0,
           voltLinkFx: readVoltLinkFx(p.voltLink, now, sourceAt, prev?.voltLinkFx),
           range: Math.max(200, Math.min(5000, Number(p.range) || 800)),
           pvpAt: Number(p.pvpAt) || 0,
@@ -1565,12 +1623,15 @@ export function ensureNetplayConnection() {
           npcDamage: Math.max(0, Number(p.npcDamage) || 0),
           rocketSlowPct: Math.max(0, Math.min(95, Number(p.slowPct) || 0)),
           rocketSlowT: Math.max(0, Number(p.slowT) || 0),
+          keresSprT: Math.max(0, Number(p.sprT) || 0),
           freezeT: Math.max(0, Number(p.freezeT) || 0),
           iemT: Math.max(0, Number(p.iemT) || 0),
           ishT: Math.max(0, Number(p.ishT) || 0),
           jamxT: Math.max(0, Number(p.jamxT) || 0),
           // Auras d'aptitudes visibles (Phase 2) : [[code, secLeft, x, y]].
           afx: sanitizeAbilityFxList(p.afx),
+          gaFx: readHyperionFx(p.gaFx, now, sourceAt, prev?.gaFx),
+          qaFx: readHyperionFx(p.qaFx, now, sourceAt, prev?.qaFx),
           _abilityFxAt: now,
           // PET allie : actif, niveau, position.
           peta: p.peta === 1 ? 1 : 0,
@@ -1677,6 +1738,7 @@ export function ensureNetplayConnection() {
             cubeT: Math.max(0, Number(n.cubeT) || 0),
             rocketSlowPct: Math.max(0, Math.min(95, Number(n.slowPct) || 0)),
             rocketSlowT: Math.max(0, Number(n.slowT) || 0),
+            keresSprT: Math.max(0, Number(n.sprT) || 0),
             jamT: Math.max(0, Number(n.jamT) || 0),
             freezeT: Math.max(0, Number(n.freezeT) || 0),
             lastSeen: now,
@@ -1755,6 +1817,9 @@ function sendNow(local, force = false) {
       // B02 actifs (bonus de groupe) : ids synchronisés pour la fenêtre Boosters.
       b2: Array.isArray(local.b2) ? local.b2.map(String).slice(0, 8) : [],
       hswap: Math.max(0, Math.min(3, Number(local.hswap) || 0)),
+      hswapDur: Math.max(0.1, Math.min(3, Number(local.hswapDur) || 3)),
+      hswapPaused: local.hswapPaused === true,
+      hswapId: Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number(local.hswapId) || 0))),
       pseudo: String(local.pseudo || "Pilote").slice(0, 20),
       dead: local.dead === true,
       cloakCpu: local.cloakCpu === true,
@@ -1793,6 +1858,9 @@ function sendNow(local, force = false) {
       hpMax: Math.max(1, Math.round(Number(local.hpMax) || 1)),
       shMax: Math.max(0, Math.round(Number(local.shMax) || 0)),
       disarraySeq: Number(local.disarraySeq) || 0,
+      lockedTarget: String(local.lockedTarget || "").slice(0, 64),
+      shieldBuffSeq: Number(local.shieldBuffSeq) || 0,
+      abilityHealSeq: Number(local.abilityHealSeq) || 0,
       range: Math.max(200, Math.min(5000, Number(local.range) || 800)),
       peta: local.peta === 1 ? 1 : 0,
       petl: Math.max(1, Math.min(32, Math.round(Number(local.petl) || 1))),
@@ -1802,6 +1870,8 @@ function sendNow(local, force = false) {
       petd: Number(local.petd) || 0,
       tbrClones: local.peta === 1 && Array.isArray(local.tbrClones)
         ? local.tbrClones.slice(0, 2).map(c => [Math.round(Number(c[0]) || 0), Math.round(Number(c[1]) || 0), Number(c[2]) || 0]) : [],
+      holoClones: Array.isArray(local.holoClones) ? local.holoClones.slice(0, 4)
+        .map(c => [String(c[0]).slice(0, 48), Math.round(Number(c[1]) || 0), Math.round(Number(c[2]) || 0), Number(c[3]) || 0]) : [],
       petn: String(local.petn || "").slice(0, 32),
       petf: String(local.petf || "").slice(0, 16),
       petHp: Number.isFinite(Number(local.petHp)) ? Math.max(0, Math.min(1, Number(local.petHp))) : 1,
@@ -1899,6 +1969,7 @@ export function sendShotEvent(ev) {
     const o = { t: ev.t === "rshot" ? "rshot" : "shot" };
     if (typeof ev.key === "string") o.key = String(ev.key).slice(0, 16);
     if (typeof ev.kind === "string") o.kind = String(ev.kind).slice(0, 16);
+    if (abilityHitTag(ev.ability)) o.ability = abilityHitTag(ev.ability);
     if (typeof ev.petTarget === "string") o.petTarget = String(ev.petTarget).slice(0, 64);
     if (ev.petSource === true) o.petSource = true;
     if (ev.petClone === 0 || ev.petClone === 1) o.petClone = ev.petClone;
@@ -2139,6 +2210,10 @@ export function tickNetplayRemotes(dt = 0.016) {
     // Expire les auras même entre les snapshots ou pendant un trou réseau.
     const fxElapsed = Math.max(0, now - Number(r._abilityFxAt ?? now)) / 1000;
     r._abilityFxAt = now;
+    if (r.hswap > 0 && !r.hswapPaused) {
+      r.hswapElapsed = Math.min(r.hswapDur, Number(r.hswapElapsed || 0) + fxElapsed);
+      r.hswap = Math.max(0, r.hswapDur - r.hswapElapsed);
+    }
     r.jamxT = Math.max(0, Number(r.jamxT || 0) - fxElapsed);
     if (Array.isArray(r.afx)) {
       let live = 0;
@@ -2152,8 +2227,12 @@ export function tickNetplayRemotes(dt = 0.016) {
       r.afx = [];
       r.fxFlash = null;
     }
+    if (r.dead) r.hswap = 0;
     if (r.dead || r.peta !== 1 || !(r.tbrUntil > now)) r.tbrClones = [];
-    for (const clone of r.tbrClones || []) {
+    if (r.dead || !r.afx?.some(entry => Number(entry[0]) === 41 && Number(entry[1]) > 0)) r.holoClones = [];
+    r.lastStandT = Math.max(0, Number(r.lastStandT || 0) - fxElapsed);
+    r.keresSprT = Math.max(0, Number(r.keresSprT || 0) - fxElapsed);
+    for (const clone of [...(r.tbrClones || []), ...(r.holoClones || [])]) {
       const dx = clone.x - clone.rx, dy = clone.y - clone.ry;
       const distance = Math.hypot(dx, dy);
       const cloneK = distance > 0 ? Math.min(k, NET_MAX_ESTIMATED_SPEED * frameDt / distance) : k;
@@ -2355,9 +2434,11 @@ export function sendSkillUse(skill, details = {}) {
   if (key !== "iem" && key !== "ish" && key !== "smb" && !/^ability_[a-z0-9_-]{1,56}$/.test(key)) return false;
   try {
     ws.send(JSON.stringify({ t: "skillUse", skill: key, enabled: details.enabled !== false,
-      phase: details.phase === "heal" || details.phase === "unlink" ? details.phase : undefined,
+      phase: details.phase === "heal" || details.phase === "unlink" || details.phase === "fire" ? details.phase : undefined,
+      chargeSec: Number.isFinite(Number(details.chargeSec)) ? Math.max(0.5, Math.min(10, Number(details.chargeSec))) : undefined,
       amount: details.phase === "heal" ? Math.max(0, Math.min(35000, Math.round(Number(details.amount) || 0))) : undefined,
       target: String(details.target || "").slice(0, 64),
+      rocket: typeof details.rocket === "string" ? details.rocket.slice(0, 16) : undefined,
       chain: key === "ability_tempest_voltage-link" && Array.isArray(details.chain)
         ? details.chain.slice(0, 10).map(id => String(id).slice(0, 64)) : undefined }));
     try {

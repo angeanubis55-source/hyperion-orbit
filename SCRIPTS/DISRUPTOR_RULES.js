@@ -39,7 +39,7 @@ export function syncDisruptorEffects(room, sim, now) {
     syncDisarrayShield(state, baseMax, effect?.disarray || 0, now);
   };
   for (const [id, { state }] of room) {
-    if (state) update(state, id, state._combat?.shMax ?? ((Number(state.shMax) || 0) + (Number(state._disarrayRemoved) || 0)));
+    if (state) update(state, id, state._abilityShieldMax ?? state._combat?.shMax ?? ((Number(state.shMax) || 0) + (Number(state._disarrayRemoved) || 0)));
   }
   for (const [id, npc] of sim?.entries || []) {
     update(npc, id, (Number(npc.shMax) || 0) + (Number(npc._disarrayRemoved) || 0));

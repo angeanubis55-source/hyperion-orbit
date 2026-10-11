@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname, basename } from "node:path";
@@ -10,14 +10,17 @@ import { createServer } from "node:net";
 import { once } from "node:events";
 import WebSocket from "ws";
 import vm from "node:vm";
-import { abilityFxCodeFor, abilityIdForFxCode } from "../SRC/CORE/ABILITY_FX.js";
-import { getAbilityInfo } from "../SHIP/SHIP_ABILITIES.js";
+import { abilityFxCodeFor, abilityIdForFxCode, healSpecFor, ABILITY_FX_CODES } from "../SRC/CORE/ABILITY_FX.js";
+import { getAbilityInfo, ABILITY_IDS, abilityShipKeyFor } from "../SHIP/SHIP_ABILITIES.js";
 import { SHIP_PACKS } from "../SHIP/SHIP_PACKS.js";
 import { ShipEngine } from "../SHIP/SHIP_ENGINE_RENDERER.js";
+import { CATALOG } from "../SRC/CORE/CATALOG.js";
 
 // Exécute les vrais chemins du moteur avec un Canvas instrumenté.
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
 const server = readFileSync(new URL("./MULTI_SERVER.js", import.meta.url), "utf8");
+const numericConstants = Object.fromEntries([...engine.matchAll(/^const ([A-Z][A-Z0-9_]*) = (\d+(?:\.\d+)?);/gm)]
+  .map(match => [match[1], Number(match[2])]));
 function section(source, start, end) {
   const from = source.indexOf(start), to = source.indexOf(end, from);
   assert.ok(from >= 0 && to > from, start);
@@ -25,18 +28,23 @@ function section(source, start, end) {
 }
 function visuals() {
   let now = 1000;
-  const draws = [], sounds = [], halos = [], translations = [], floats = [];
+  const draws = [], sounds = [], halos = [], translations = [], floats = [], renderErrors = [], strokes = [];
   const image = { complete: true, naturalWidth: 100 };
   const ctx = new Proxy({ globalAlpha: 1 }, { get: (target, key) => key in target ? target[key]
     : key === "translate" ? (...args) => translations.push(args)
+    : key === "stroke" ? () => strokes.push({ color: target.strokeStyle })
+    : key === "createRadialGradient" || key === "createLinearGradient" ? () => ({ addColorStop() {} })
     : key === "drawImage" ? (img, ...args) => draws.push({ img, args }) : () => {} });
   const shipEngine = new ShipEngine(async () => image);
   const normalDraws = [];
   shipEngine.draw = (...args) => normalDraws.push(args);
   const remotes = new Map();
   const context = vm.createContext({
+    ...numericConstants,
     performance: { now: () => now }, Date, Math, ctx, window: {},
-    innerWidth: 1000, innerHeight: 800, abilityFxCodeFor, abilityIdForFxCode, getAbilityInfo,
+    innerWidth: 1000, innerHeight: 800, abilityFxCodeFor, abilityIdForFxCode, getAbilityInfo, healSpecFor,
+    netHoloClonesSeen: new Map(), spawnExplosion: () => {},
+    drawTbrClones: () => {}, drawRemoteTempestChain: () => {}, getNetSelf: () => null,
     getNetplayRemotes: () => remotes, netMyId: () => "me", player: { x: 100, y: 100 },
     drainNetSkillInbox: () => [], drainNetSkillDenied: () => [], drainNetShotEvents: () => [],
     playNetSpatialSound: (...args) => sounds.push(args),
@@ -54,15 +62,255 @@ function visuals() {
     addFloatText: (...args) => floats.push(args),
     shipEngine, GAME_SETTINGS: { shipSmoke: true }, ACTIVE_SHIP: null,
     TRAVEL_DURATION: 5, getPlayerSpriteFrame: () => 0,
+    renderErrors,
+    haloGlowSprite: () => image,
+    SHIP_PACKS, playerImgs: [image], contSpriteCache: {},
+    displayHalosOn: () => true,
+    ensureShieldShimmerLoaded: () => {}, shieldShimmerImgs: Array(30).fill(image),
+    SHIELD_SHIMMER_PACK: { frames: 30, fps: 30 },
+    clamp: (value, lo, hi) => Math.max(lo, Math.min(hi, value)),
   });
-  vm.runInContext(section(engine, "function showRemoteAbilityHeal(", "function drawNetplayRemotes("), context);
+  vm.runInContext(section(engine, "function showRemoteAbilityHeal(", "function drawNetplayRemotes(")
+    .replaceAll("catch {}", "catch (error) { renderErrors.push(error); }"), context);
   vm.runInContext(section(engine, "function drawNebulaAt(", "function startHpRepairCooldown("), context);
   vm.runInContext(section(engine, "function drawRepairPodAt(", "const HAMMER_HP_DURATION"), context);
   vm.runInContext(section(engine, "function travelBuffFrame(", "let shipEffectFor ="), context);
+  vm.runInContext(section(engine, "function drawFireRing(", "function startIncCooldown("), context);
+  vm.runInContext(section(engine, "function drawGravityAnchorFx(", "function startGaCooldown("), context);
+  vm.runInContext(section(engine, "function drawJamxHalo(", "function drawJamxHalos("), context);
   vm.runInContext("function renderRemoteBoost(r, eng, pack, remoteFrame) {\n"
     + section(engine, "      const rBoost = remoteBoostInfo(r);", "      // Les flammes seules") + "\n}", context);
-  return { api: context, remotes, draws, sounds, halos, translations, floats, normalDraws, advance: ms => { now += ms; } };
+  return { api: context, remotes, draws, sounds, halos, translations, floats, normalDraws, renderErrors, strokes, advance: ms => { now += ms; } };
 }
+
+test("Orcus / Plus : activation locale 20/24 s, annulation et recharge de 540 s", () => {
+  for (const [ship, skill, seconds] of [["orcus", "ability_orcus_assimilate", 20],
+    ["orcus_plus", "ability_orcus-plus_assimilate", 24]]) {
+    const v = visuals(), casts = [], persisted = [], loads = [];
+    Object.assign(v.api, { started: true, ORCUS_PLUS_DURATION: 24, account: { user: {} },
+      getActiveHangarFromUser: () => ({ shipId: ship }), getShipDesignBaseId: id => id,
+      currentAbilityVariant: () => skill, reportAbilityCast: (...args) => casts.push(args),
+      persistCdUntil: (...args) => persisted.push(args), loadImage: path => loads.push(path),
+      showNotification() {}, formatAbilityCd: String });
+    vm.runInContext(section(engine, "function startOrcusCooldown(", "// --- Lightning Postcombustion"), v.api);
+    v.api.activateOrcus();
+    assert.equal(v.api.player.orcusT, seconds); assert.equal(v.api.player.orcusDuration, seconds);
+    assert.equal(casts[0][0], skill);
+    assert.deepEqual(persisted[0], ["orcusFx", seconds]);
+    assert.equal(loads.length, 42);
+    for (const path of loads) assert.ok(existsSync(new URL("../" + path, import.meta.url)), path);
+    v.api.activateOrcus(); assert.equal(casts.length, 1, "pas de double activation");
+    v.api.cancelOrcus();
+    assert.equal(v.api.player.orcusT, 0); assert.equal(v.api.player.orcusCd, 540);
+    assert.deepEqual(casts[1], [skill, false]);
+    v.api.activateOrcus(); assert.equal(casts.length, 2, "recharge respectee");
+  }
+});
+
+test("Orcus / Plus : meme sprite local et distant, une seule aura jusqu a la fin", () => {
+  for (const [code, seconds] of [[21, 20], [82, 24]]) {
+    const v = visuals(), remote = { id: "orcus", afx: [[code, seconds, 0, 0, ""]],
+      fxFlash: { code, until: 2800, startedAt: 1000, sec: seconds } };
+    vm.runInContext("function drawLocalAssimilate() {\n" + section(engine,
+      "    // Orcus : sprite ORCUS_ASSIMILATE", "    // Paladin Dernier rempart") + "\n}", v.api);
+    for (const ms of [0, 1000, 7000, (seconds - 8.1) * 1000]) {
+      v.advance(ms); v.draws.length = 0;
+      v.api.player.orcusT = 0.1;
+      v.api.drawLocalAssimilate(); v.api.drawRemoteAbilityFx(remote);
+      assert.equal(v.draws.length, 2, "un dessin local et un distant, sans doublon de flash");
+      assert.equal(v.draws[0].img.path, v.draws[1].img.path);
+      assert.match(v.draws[0].img.path, /ORCUS_ASSIMILATE/);
+      assert.equal(v.draws[0].w, 226); assert.equal(v.draws[1].w, 226);
+      assert.equal(v.draws[0].h, 226); assert.equal(v.draws[1].h, 226);
+    }
+    v.api.player.orcusT = 0; remote.afx[0][1] = 0; v.draws.length = 0;
+    v.api.drawLocalAssimilate(); v.api.drawRemoteAbilityFx(remote);
+    assert.equal(v.draws.length, 0);
+  }
+});
+
+test("Orcus / Plus : +X et +0 verts pour le beneficiaire et l observateur qui le verrouille", () => {
+  for (const skill of ["ability_orcus_assimilate", "ability_orcus-plus_assimilate"]) {
+    const v = visuals(), remote = { id: "friend", x: 300, y: 300 };
+    v.remotes.set(remote.id, remote);
+    Object.assign(v.api.player, { hp: 90000, hpMax: 100000, sh: 10000, shMax: 10000 });
+    let nextEvent;
+    v.api.drainNetSkillInbox = () => { const events = nextEvent ? [nextEvent] : []; nextEvent = null; return events; };
+    for (const amount of [8000, 0]) {
+      nextEvent = { by: "me", target: "me", skill, phase: "heal", amount, healSeq: amount ? 1 : 2, hp: 98000, sh: 10000 };
+      v.api.tickNetplayVisuals(0.016);
+      assert.equal(v.api.player.hp, 98000);
+      assert.equal(v.floats.at(-1)[4].text, `+${amount}`);
+      assert.equal(v.floats.at(-1)[3], "rgba(80,255,125,0.98)");
+      const count = v.floats.length; v.api.tickNetplayVisuals(0.016);
+      assert.equal(v.floats.length, count, "pas de double affichage au tick suivant");
+      nextEvent = { by: "friend", target: "friend", skill, phase: "heal", amount };
+      v.api.Target.get = () => null; v.api.tickNetplayVisuals(0.016);
+      assert.equal(v.floats.length, count, "pas de chiffre distant sans lock");
+      nextEvent = { by: "friend", target: "friend", skill, phase: "heal", amount };
+      v.api.Target.get = () => ({ _netPlayer: "friend" }); v.api.tickNetplayVisuals(0.016);
+      assert.equal(v.floats.at(-1)[4].text, `+${amount}`);
+      assert.equal(v.floats.at(-1)[3], "rgba(80,255,125,0.98)");
+      assert.equal(remote.fxFlash, undefined);
+    }
+  }
+});
+
+test("tous les codes visuels : rendu sans exception sur toute la duree", () => {
+  const failures = [];
+  const missing = new Set();
+  for (const [code, skill] of Object.entries(ABILITY_FX_CODES)) {
+    if (/ultimate-cloak|ultimate-cloaking/.test(skill)) continue;
+    const v = visuals(), duration = Number(getAbilityInfo(skill)?.durationSec) || 3;
+    v.api.player.x = 300; v.api.player.y = 200;
+    const r = { id: "caster", x: 100, y: 100, afx: [[Number(code), duration, 100, 100, "me"]],
+      fxFlash: { code: Number(code), sec: duration, until: 3000, startedAt: 1000, target: "me", phase: "fire" } };
+    v.remotes.set(r.id, r);
+    for (const elapsed of [0, .1, .5, .9]) {
+      r.afx[0][1] = duration * (1 - elapsed);
+      v.api.drawRemoteAbilityFx(r);
+      failures.push(...v.renderErrors.map(e => `${skill}, progression ${elapsed}: ${e}`));
+      v.renderErrors.length = 0;
+      v.advance(200);
+    }
+    for (const draw of v.draws) if (draw.img?.path && !existsSync(new URL(`../${draw.img.path.replace(/^\//, "")}`, import.meta.url))) missing.add(draw.img.path);
+  }
+  assert.deepEqual(failures, []);
+  assert.deepEqual([...missing], [], "sprites demandes par les vrais chemins de rendu");
+});
+
+test("WebSocket : toutes les aptitudes manuelles partagees, snapshots et annulation", { timeout: 30000 }, async t => {
+  const { connect } = await visualServer(t);
+  const caster = await connect("all-abilities-caster", "police", { pet: true, shield: true });
+  const observer = await connect("all-abilities-observer", "aegis", { shield: true, faction: "eic" });
+  caster.send({ ...caster.pos, lockedTarget: observer.id });
+  const special = new Set(["ability_admin-ultimate-cloaking", "ability_spearhead_ultimate-cloak", "ability_spearhead-plus_ultimate-cloak",
+    "ability_mimesis_phase-out", "ability_paladin_last-stand", "ability_tempest_volt-backup"]);
+  for (const skill of ABILITY_IDS.filter(id => !special.has(id))) {
+    await t.test(skill, async () => {
+      const start = observer.messages.length;
+      caster.send({ t: "skillUse", skill, target: observer.id, chain: [observer.id], rocket: "eco10", chargeSec: 3 });
+      const cast = await observer.wait(e => e.t === "skillFx" && e.by === caster.id && e.skill === skill && !e.phase, start);
+      assert.ok(cast.until > cast.at);
+      if (getAbilityInfo(skill).durationSec > 0) {
+        await observer.wait(e => e.t === "snapshot" && e.players.some(p => p.id === caster.id
+          && p.afx.some(entry => entry[0] === abilityFxCodeFor(skill))), start);
+      }
+      const end = observer.messages.length;
+      caster.send({ t: "skillUse", skill, enabled: false });
+      await observer.wait(e => e.t === "skillFx" && e.by === caster.id && e.skill === skill && e.enabled === false, end);
+      await observer.wait(e => e.t === "snapshot" && e.players.some(p => p.id === caster.id
+        && !p.afx.some(entry => entry[0] === abilityFxCodeFor(skill))), end);
+    });
+  }
+});
+
+test("WebSocket : six reparations verrouillees, +0, mauvais destinataire et delock definitif", { timeout: 15000 }, async t => {
+  const { connect, pause } = await visualServer(t);
+  const caster = await connect("linked-repairs-caster", "police");
+  const target = await connect("linked-repairs-target", "aegis", { shield: true, faction: "eic" });
+  const other = await connect("linked-repairs-other", "aegis", { shield: true });
+  caster.send({ ...caster.pos, lockedTarget: target.id });
+  const skills = ABILITY_IDS.filter(id => healSpecFor(id)?.mode === "hot");
+  for (const skill of skills) caster.send({ t: "skillUse", skill, target: target.id });
+  await target.wait(e => e.t === "snapshot" && e.players.some(p => p.id === caster.id
+    && skills.every(skill => p.afx.some(entry => entry[0] === abilityFxCodeFor(skill) && entry[4] === target.id))));
+  await pause(900);
+  for (const skill of skills) {
+    const spec = healSpecFor(skill), start = target.messages.length;
+    caster.send({ t: "heal", ability: skill, target: target.id, amt: spec.cap, sh: spec.shield ? 1 : 0 });
+    const event = await target.wait(e => e.t === "skillFx" && e.skill === skill && e.phase === "heal" && e.target === target.id, start);
+    assert.equal(event.amount, 0, skill); assert.equal(event.shield, spec.shield);
+    const wrong = other.messages.length;
+    caster.send({ t: "heal", ability: skill, target: other.id, amt: spec.cap, sh: spec.shield ? 1 : 0 });
+    await pause(15);
+    assert.equal(other.messages.slice(wrong).some(e => e.phase === "heal" && e.target === other.id && e.skill === skill), false);
+  }
+  const unlocked = target.messages.length;
+  caster.send({ ...caster.pos, lockedTarget: "" });
+  await target.wait(e => e.t === "snapshot" && e.players.some(p => p.id === caster.id
+    && skills.every(skill => p.afx.some(entry => entry[0] === abilityFxCodeFor(skill) && !entry[4]))), unlocked);
+  caster.send({ ...caster.pos, lockedTarget: target.id });
+  await pause(850);
+  const after = target.messages.length;
+  for (const skill of skills) {
+    const spec = healSpecFor(skill);
+    caster.send({ t: "heal", ability: skill, target: target.id, amt: spec.cap, sh: spec.shield ? 1 : 0 });
+  }
+  await pause(150);
+  assert.equal(target.messages.slice(after).some(e => e.phase === "heal" && e.target === target.id), false);
+});
+
+test("WebSocket : Triple barrage et Hologramme transmettent les clones et coupent leurs tirs", { timeout: 12000 }, async t => {
+  const { connect, pause } = await visualServer(t);
+  const caster = await connect("clones-caster", "police", { pet: true }), observer = await connect("clones-observer", "aegis");
+  const pos = { ...caster.pos, peta: 1, petHp: 1, petx: 700, pety: 700 };
+  caster.send(pos);
+  let start = observer.messages.length;
+  caster.send({ t: "skillUse", skill: "ability_zephyr_tbr" });
+  await observer.wait(e => e.skill === "ability_zephyr_tbr" && e.t === "skillFx", start);
+  caster.send({ ...pos, tbrClones: [[750,700,0], [700,750,1]] });
+  const snapshot = await observer.wait(e => e.t === "snapshot" && e.players.some(p => p.id === caster.id && p.tbrClones?.length === 2), start);
+  assert.equal(snapshot.players.find(p => p.id === caster.id).tbrClones.length, 2);
+  for (const petClone of [0,1]) {
+    start = observer.messages.length;
+    caster.send({ t: "shot", petClone, x: 700, y: 700, tx: 800, ty: 700, key: "x1", spd: 4000 });
+    await observer.wait(e => e.t === "shot" && e.by === caster.id && e.petClone === petClone, start);
+  }
+  caster.send({ t: "skillUse", skill: "ability_zephyr_tbr", enabled: false });
+  await observer.wait(e => e.skill === "ability_zephyr_tbr" && e.enabled === false, start);
+  start = observer.messages.length;
+  caster.send({ t: "shot", petClone: 0, x: 700, y: 700, tx: 800, ty: 700 });
+  await pause(100); assert.equal(observer.messages.slice(start).some(e => e.t === "shot" && e.petClone === 0), false);
+  caster.send({ t: "skillUse", skill: "ability_mimesis_hologram", chargeSec: .5 });
+  await observer.wait(e => e.skill === "ability_mimesis_hologram" && e.phase === "clones", start);
+  caster.send({ ...pos, holoClones: [["c1",700,700,0], ["c2",730,700,0], ["c3",700,730,0], ["c4",730,730,0]] });
+  await observer.wait(e => e.t === "snapshot" && e.players.some(p => p.id === caster.id && p.holoClones?.length === 4), start);
+  start = observer.messages.length;
+  caster.send({ t: "skillUse", skill: "ability_mimesis_hologram", enabled: false });
+  await observer.wait(e => e.t === "snapshot" && e.players.some(p => p.id === caster.id && p.holoClones?.length === 0), start);
+});
+
+test("Triple barrage : chaque faux laser part du clone interpole et inflige zero degat", () => {
+  const v = visuals(), bullets = [];
+  Object.assign(v.api, { bullets, addCappedProjectile: (list, bullet) => list.push(bullet),
+    netVisualTarget: () => "target", PLAYER_SHOT_SFX: { x1: "laser" }, getNetGroup: () => null,
+    ENTITY_LIMITS: { playerBullets: 320 } });
+  vm.runInContext(section(engine, "function netVisualShotOrigin(", "function spawnNetRocketVisual("), v.api);
+  v.remotes.set("caster", { id: "caster", tbrClones: [{ rx: 100, ry: 200 }, { rx: 300, ry: 400 }] });
+  for (const petClone of [0,1]) v.api.spawnNetShotVisual({ by: "caster", petClone, x: 999, y: 999, tx: 500, ty: 500, n: 1, v: 42 });
+  assert.equal(bullets.length, 2); assert.equal(v.sounds.length, 1, "la meme salve ne double pas le son");
+  assert.ok(bullets[0].x < 200 && bullets[1].x < 400);
+  for (const bullet of bullets) assert.equal(bullet.dmg, 0);
+});
+
+test("Solaris / Plus : le halo suit le lanceur en mouvement", () => {
+  for (const code of [22, 23]) {
+    const v = visuals();
+    v.api.drawRemoteAbilityFx({ id: "caster", x: 700, y: 800, afx: [[code, 2, 100, 100, ""]] });
+    assert.equal(v.strokes.length, 2);
+    assert.deepEqual(v.translations, [], "le contexte est deja centre sur le lanceur, aucun decalage vers le point de cast");
+  }
+});
+
+test("degats clients : berserk, valour, Spectrum, Holo, Scramble, Tartarus et Decharge", () => {
+  const v = visuals();
+  for (const name of ["berserkDamageMult", "valourDamageMult", "specDamageMult", "holoDamageMult", "scrambleDamageMult", "tartBoostLaserMult", "countTempestDischargeLasers", "tempestDischargeMult"]) {
+    const start = engine.indexOf(`function ${name}(`), end = engine.indexOf("\n}", start) + 2;
+    assert.ok(start >= 0 && end > start);
+    vm.runInContext(engine.slice(start, end), v.api);
+  }
+  Object.assign(v.api.player, { hp: 50000, hpMax: 100000, bskT: 10, valMult: .5, holoSelfT: 10, scrambleT: 10, specT: 10 });
+  assert.equal(v.api.berserkDamageMult(), 1.5); assert.equal(v.api.valourDamageMult(), 1.1);
+  assert.equal(v.api.holoDamageMult(), 1.1); assert.equal(v.api.scrambleDamageMult(), 1.25);
+  assert.equal(v.api.specDamageMult(), .75); v.api.player.specPlusT = 10; assert.equal(v.api.specDamageMult(), .5);
+  v.api.player.tartBoostOn = true; assert.equal(v.api.tartBoostLaserMult(), .95);
+  v.api.player.tartPlusBoostOn = true; assert.equal(v.api.tartBoostLaserMult(), .75);
+  Object.assign(v.api.player, { tempestDischT: 10, laserMods: [{ damage: 100 }, { damage: 200 }, { damage: 0 }], droneLaserMods: Array(20).fill({ damage: 500 }) });
+  assert.equal(v.api.tempestDischargeMult(), 1.02, "uniquement les canons equipes sur le vaisseau");
+  Object.assign(v.api.player, { bskT: 0, valMult: 0, holoSelfT: 0, scrambleT: 0, specT: 0, specPlusT: 0, tartBoostOn: false, tartPlusBoostOn: false, tempestDischT: 0 });
+  for (const name of ["berserkDamageMult", "valourDamageMult", "specDamageMult", "holoDamageMult", "scrambleDamageMult", "tartBoostLaserMult", "tempestDischargeMult"]) assert.equal(v.api[name](), 1, name);
+});
 
 test("observateur : annuler un effet l'efface sans flash ni son", () => {
   const v = visuals();
@@ -289,7 +537,7 @@ test("Aegis : les ticks locaux transmettent les gains réels et +0, sans annonce
   const sent = [], player = { hp: 99000, hpMax: 100000, sh: 49000, shMax: 50000 };
   let ally = null;
   const context = vm.createContext({ player, pickHealAlly: () => ally, addFloatText: () => {},
-    sendSkillUse: (...args) => sent.push(args), DMG_FMT: { format: String } });
+    sendSkillUse: (...args) => sent.push(args), DMG_FMT: { format: String }, netplayNpcActive: () => false });
   vm.runInContext(section(engine, "function healAllyOrSelf(", "function drawAegisRepairPod("), context);
   for (const shield of [false, true]) {
     const skill = shield ? "ability_aegis_shield-repair" : "ability_aegis_hp-repair";
@@ -423,8 +671,9 @@ ZoneNpcSim.prototype.drainPlayerHits = function() { this.playerHits.length = 0; 
     const account = await api("/api/register", null, { pseudo, email: `${pseudo}@example.test`, password: "ability-test-123", faction: options.faction || "mmo" });
     const position = options.position || { x: 700, y: 700 };
     const user = { ...account.user, revision: Number(account.user.revision || 1) + 1,
+      ...(options.pet ? { pet: { ...account.user.pet, owned: true, active: true, hp: 10000, sh: 0, level: 1, fits: { "1": { lasers: [] } } } } : {}),
       hangars: [{ id: "test-hangar", active: true, shipId, activeConfig: 1, lastMap: "1-1", lastPos: position,
-        fits: { "1": { lasers: [], gens: [], extras: [], shipMods: [] }, "2": { lasers: [], gens: [], extras: [], shipMods: [] } } }] };
+        fits: { "1": { lasers: [], gens: options.shield ? [Object.values(CATALOG).flat().find(item => item?.module?.type === "shield" && !item.petOnly).id] : [], extras: [], shipMods: [] }, "2": { lasers: [], gens: [], extras: [], shipMods: [] } } }] };
     await api("/api/save", account.token, { user });
     const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`), messages = [];
     sockets.push(socket);
@@ -465,7 +714,7 @@ test("Aegis WebSocket : soins sur soi +X/+0 coque et bouclier, et gains alliés 
   await observer.wait(message => message.t === "snapshot" && message.players.some(entry => entry.id === observer.id && entry.pvpHp === observerMax - 45000), damagedAt);
   for (const skill of [hpSkill, shSkill]) {
     const start = observer.messages.length;
-    caster.send({ t: "skillUse", skill });
+    caster.send({ t: "skillUse", skill, target: observer.id });
     await observer.wait(message => message.t === "skillFx" && message.skill === skill && message.phase !== "heal", start);
   }
   await pause(1050);

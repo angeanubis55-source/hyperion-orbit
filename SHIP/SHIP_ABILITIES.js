@@ -1,4 +1,7 @@
 "use strict";
+export const HYPERION_QA_DAMAGE = 125000;
+export const HYPERION_QA_BURST_SEC = 2.5;
+export const HYPERION_QA_SALVOS = 30;
 
 // Registre descriptif des aptitudes (boutique / palette).
 // But : dire pour chaque aptitude CE QU'ELLE FAIT, avec les champs prêts
@@ -219,13 +222,13 @@ export const ABILITIES = Object.freeze({
   // ---- Hammerclaw (base, officiel : mêmes 3 soins que l'Aegis en plus fort) ----
   "ability_hammerclaw_hp-repair": A(
     "ability_hammerclaw_hp-repair", "hammerclaw", "Hammerclaw", "Réparation coque", "ally",
-    "Soigne 350k PV allié (175k soi) sur 7 s.",
-    "", "ABILITY_AEGIS_HP-REPAIR.PNG", 150, 7, "done"
+    "Soigne 350k PV au joueur verrouillé (175k soi) sur 7 s, portée 1000.",
+    "Déverrouiller ou sortir de portée coupe le lien jusqu'au prochain lancement.", "ABILITY_AEGIS_HP-REPAIR.PNG", 150, 7, "done"
   ), // ✅
   "ability_hammerclaw_shield-repair": A(
     "ability_hammerclaw_shield-repair", "hammerclaw", "Hammerclaw", "Réparation bouclier", "ally",
-    "Répare 180k bouclier allié (120k soi) sur 3 s.",
-    "", "ABILITY_AEGIS_SHIELD-REPAIR.PNG", 60, 3, "done"
+    "Répare 180k bouclier au joueur verrouillé (120k soi) sur 3 s, portée 1000.",
+    "Déverrouiller ou sortir de portée coupe le lien jusqu'au prochain lancement.", "ABILITY_AEGIS_SHIELD-REPAIR.PNG", 60, 3, "done"
   ), // ✅
   "ability_hammerclaw_repair-pod": A(
     "ability_hammerclaw_repair-pod", "hammerclaw", "Hammerclaw", "Pod de réparation", "zone",
@@ -241,13 +244,13 @@ export const ABILITIES = Object.freeze({
   ), // ✅
   "ability_hammerclaw-plus_hp-repair": A(
     "ability_hammerclaw-plus_hp-repair", "hammerclaw_plus", "Hammerclaw Plus", "Réparation coque", "ally",
-    "Soigne 450k PV allié (225k soi) sur 6 s.",
-    "Héritée du Hammerclaw de base (montants/durée Plus).", "ABILITY_AEGIS_HP-REPAIR.PNG", 160, 6, "done"
+    "Soigne 450k PV au joueur verrouillé (225k soi) sur 6 s, portée 1000.",
+    "Déverrouiller ou sortir de portée coupe le lien jusqu'au prochain lancement.", "ABILITY_AEGIS_HP-REPAIR.PNG", 160, 6, "done"
   ), // ✅
   "ability_hammerclaw-plus_shield-repair": A(
     "ability_hammerclaw-plus_shield-repair", "hammerclaw_plus", "Hammerclaw Plus", "Réparation bouclier", "ally",
-    "Répare 240k bouclier allié (150k soi) sur 3 s.",
-    "Héritée du Hammerclaw de base (montants Plus).", "ABILITY_AEGIS_SHIELD-REPAIR.PNG", 80, 3, "done"
+    "Répare 240k bouclier au joueur verrouillé (150k soi) sur 3 s, portée 1000.",
+    "Déverrouiller ou sortir de portée coupe le lien jusqu'au prochain lancement.", "ABILITY_AEGIS_SHIELD-REPAIR.PNG", 80, 3, "done"
   ), // ✅
   "ability_hammerclaw-plus_repair-pod": A(
     "ability_hammerclaw-plus_repair-pod", "hammerclaw_plus", "Hammerclaw Plus", "Pod de réparation", "zone",
@@ -292,11 +295,11 @@ export const ABILITIES = Object.freeze({
     "Ralentit la cible de 80 % pendant 10 s.",
     "", "", 300, 10, "done" // ✅
   ),
-  // QA : salve classique en munition X0 (gratuite) : dégâts x6 x2.5, toujours critique.
+  // QA : rafale X0 gratuite, degats fixes avant les protections de la cible.
   "ability_hyperion_qa": A(
     "ability_hyperion_qa", "hyperion", "Hyperion", "QA", "enemy",
-    "Salve X0 gratuite : dégâts x6 x2.5, critique garanti.",
-    "CD à confirmer.", "", 90, 0, "done" // ✅
+    "Rafale X0 gratuite : 125 000 dégâts répartis sur 2,5 s après la charge.",
+    "Recharge 90 s.", "", 90, 0, "done" // ✅
   ),
 
   // ---- Keres ----

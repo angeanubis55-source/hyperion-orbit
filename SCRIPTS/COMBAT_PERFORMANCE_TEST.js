@@ -16,6 +16,8 @@ import { QUEST_DEFINITIONS, getQuestObjectives, normalizeQuestState, recordQuest
 import { LOGDISK_PACK, LOGDISK_PRICE, normalizePilotSkills } from "../SRC/DATA/PILOT_SKILLS.js";
 import { createDefaultSkylabState, normalizeSkylabState, tickSkylabState } from "../SRC/DATA/SKYLAB.js";
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
+import { AMMO } from "../COMBAT/AMMO_TYPES.js";
+import { HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../SHIP/SHIP_ABILITIES.js";
 
 // Exerce les fonctions livrées sans démarrer une session ou un serveur réel.
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
@@ -61,6 +63,143 @@ function engineFunction(name, source = engine) {
   assert.ok(end > start, name);
   return source.slice(start, end + 2);
 }
+
+function salvoHarness({ ammo = 'x4', stock = 100, pair = false } = {}) {
+  const target = { id: 'target', x: 200, y: 0, hp: 1000000, r: 18 };
+  const packets = [], consumption = [];
+  const noop = () => {}, one = () => 1;
+  const context = vm.createContext({
+    player: { x: 0, y: 0, r: 30, hp: 100000, dead: false, altShot: pair,
+      ammo: { active: ammo, x4: stock, x6: stock, rcb: stock, sab: stock, cbo: stock },
+      baseFireRate: 1, fireRateMult: 1, baseBulletSpeed: 4000, baseDamage: 1000,
+      laserMods: [{ damage: 500 }], droneLaserMods: [{ damage: 500 }] },
+    Target: { get: () => target }, account: { user: {} }, started: true,
+    playerRange: 1000, bullets: [], pendingSalvo: [], volleySeq: 1,
+    fireCooldown: 0, rsbCooldown: 0, rcbCooldown: 0, RSB_COOLDOWN: 5, RCB_COOLDOWN: 5,
+    attackActive: false, laserCombatInRange: null, escapeWatch: null,
+    ammoFallbackNotifiedKey: '', ammoFallbackNotifiedAt: 0, BOT_AMMO_NAMES: {},
+    idbRamp: { mult: 1, lastUse: 0 }, AMMO, BASE_RUN: { bulletSpeedDistGain: 0 },
+    SAB50: { bulletSpeedMult: 1, drainMult: 2 }, PLAYER_SHOTS: { missChance: 0 },
+    SIDE_OFFSET: 12, SIDE_DMG_SPLIT: 0.5, ENTITY_LIMITS: { playerBullets: 1000 },
+    QA_BURST_TIME: HYPERION_QA_BURST_SEC, HYPERION_QA_DAMAGE, HYPERION_QA_SALVOS,
+    getNetSelf: () => null, netPvpBlocked: () => false, hyperionTargetBlocked: () => false,
+    getEnemyById: id => id === target.id && target.hp > 0 ? target : null,
+    dist2: (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2,
+    bulletLifeForRange: () => 1, addCappedProjectile: (list, bullet) => list.push(bullet),
+    sendShotEvent: packet => packets.push(packet),
+    noteNetConsumption: (field, key, count) => consumption.push({ field, key, count }),
+    playerBoosterMults: () => ({ dmg: 1, hit: 0 }),
+    playerPilotMults: () => ({ alienDmg: 1, laserHit: 0 }), playerUpgradeMults: () => ({ laser: 1 }),
+    formationNpcDamageMult: one, formationPlayerLaserDamageMult: one,
+    buoyDamageMult: one, valourDamageMult: one, berserkDamageMult: one, holoDamageMult: one,
+    scrambleDamageMult: one, specDamageMult: one, tempestDischargeMult: one, shipPassiveDamageMult: one,
+    breakPoliceCloak: noop, playPlayerShot: noop, consumeUpgradeStock: noop, maybeTriggerLaser: noop,
+    mirrorConsumedStock: noop, markProgressDirty: noop, updateAmmoUI: noop,
+    updateCurrentUserProgress: () => ({}), showNotification: noop, announceLaserCombatRange: noop,
+    sendSkillUse: noop, startQaCooldown: noop,
+  });
+  // Load the actual firing, selection, queue and emission paths together.
+  vm.runInContext('const isRsbLike = key => key === "x6" || key === "rcb";\n'
+    + ['rsbLikeCooldown', 'ammoCount', 'setAmmo', 'consumeAmmo', 'countPlayerLasers',
+      'resolveAmmoMult', 'laserFitVsExtra', 'laserFitUnstableDelta', 'laserFitOverdrive',
+      'clearPendingSalvo', 'scheduleSalvoPart', 'spawnScheduledSalvo', 'spawnSalvoDecoy',
+      'tickPendingSalvo', 'scheduleSwitchDecoys', 'tryFireOnce', 'startAttack', 'stopAttack',
+      'fireQaSalvo', 'spawnQaSalvoPart',
+    ].map(name => name === 'tryFireOnce'
+      ? engine.slice(engine.indexOf('function tryFireOnce('), engine.indexOf('\nlet isZoneMap'))
+      : engineFunction(name)).join('\n'), context);
+  return { context, target, packets, consumption };
+}
+
+for (const burst of ['x6', 'rcb']) {
+  for (const pair of [false, true]) {
+    test(`${burst} : x4 -> rafale -> x4 garde les tirs en attente et en vol (paire=${pair})`, () => {
+      const { context: c, packets, consumption } = salvoHarness({ pair });
+      c.startAttack('x4');
+      c.tickPendingSalvo(0.21);
+      c.startAttack(burst);
+      c.tickPendingSalvo(0.21);
+      const burstId = packets.find(p => p.key === burst).v;
+      const shotsInFlight = c.bullets.filter(b => b.volleyId === burstId);
+      assert.ok(shotsInFlight.some(b => b.visual));
+      c.startAttack('x4');
+      assert.ok(shotsInFlight.every(b => b.key === burst), 'les lasers en vol restent inchanges');
+      c.tickPendingSalvo(2);
+      const events = packets.filter(p => p.v === burstId);
+      assert.equal(events.length, 12, 'la rafale rapide se termine entierement');
+      assert.ok(events.every(p => p.key === burst), 'la munition reseau reste celle du depart');
+      assert.equal(packets.filter(p => p.key === 'x4').length, 6, 'la premiere rafale x4 finit aussi');
+      assert.equal(c.bullets.filter(b => b.volleyId === burstId).reduce((sum, b) => sum + b.dmg, 0),
+        1000 * AMMO[burst].mult);
+      assert.deepEqual(consumption, [{ field: 'ammo', key: 'x4', count: 2 },
+        { field: 'ammo', key: burst, count: 2 }]);
+      assert.equal(c.player.ammo.x4, 98); assert.equal(c.player.ammo[burst], 98);
+      assert.equal(c.rsbCooldown, 5); assert.equal(c.rcbCooldown, 5);
+      c.fireCooldown = 0;
+      assert.equal(c.tryFireOnce(), true);
+      assert.equal(c.player.ammo.x4, 96, 'seul un nouveau vrai tir consomme du x4');
+    });
+  }
+  test(`${burst} : un switch pendant le cooldown ne coupe aucune rafale deja lancee`, () => {
+    const { context: c, packets } = salvoHarness({ ammo: burst });
+    c.startAttack(burst); c.startAttack('x4');
+    const burstId = packets[0].v;
+    c.startAttack(burst);
+    c.tickPendingSalvo(2);
+    assert.equal(packets.filter(p => p.v === burstId).length, 12);
+    assert.ok(packets.filter(p => p.v === burstId).every(p => p.key === burst));
+    assert.equal(packets.filter(p => p.key === 'x4').length, 6);
+  });
+  test(`${burst} : le dernier stock et le repli automatique x1 preservent la rafale`, () => {
+    const { context: c, packets, consumption } = salvoHarness({ ammo: burst, stock: 2 });
+    c.startAttack(burst);
+    assert.equal(c.player.ammo.active, 'x1');
+    c.tickPendingSalvo(2);
+    assert.equal(packets.length, 12);
+    assert.ok(packets.every(p => p.key === burst));
+    assert.equal(c.player.ammo[burst], 0);
+    assert.deepEqual(consumption, [{ field: 'ammo', key: burst, count: 2 }]);
+  });
+}
+
+for (const ammo of ['sab', 'cbo']) {
+  test(`${ammo} : le switch x4 conserve la munition et le sens de l'absorption`, () => {
+    const { context: c, packets } = salvoHarness({ ammo });
+    c.startAttack(ammo); c.startAttack('x4');
+    c.tickPendingSalvo(2);
+    assert.equal(packets.length, 6);
+    assert.ok(packets.every(p => p.key === ammo && p.sab));
+    assert.ok(c.bullets.every(b => b.key === ammo && b.sabReverse && b.vx < 0));
+  });
+}
+
+test('QA : la rafale reste X0, gratuite et a 125000 degats pendant les switches x6/rcb/x4', () => {
+  const { context: c, target, packets, consumption } = salvoHarness();
+  assert.equal(c.fireQaSalvo(target), true);
+  c.tickPendingSalvo(0.3);
+  c.startAttack('x6'); c.tickPendingSalvo(0.3);
+  c.startAttack('x4'); c.tickPendingSalvo(0.3);
+  c.startAttack('rcb'); c.tickPendingSalvo(3);
+  const qa = c.bullets.filter(b => b.ability === 'ability_hyperion_qa');
+  const events = packets.filter(p => p.key === 'x0');
+  assert.equal(events.length, HYPERION_QA_SALVOS);
+  assert.equal(qa.reduce((sum, b) => sum + b.dmg, 0), HYPERION_QA_DAMAGE);
+  assert.ok(qa.every(b => b.key === 'x0' && !b.miss));
+  assert.ok(events.every(p => qa.some(b => b.volleyId === p.v)));
+  assert.deepEqual(consumption, [{ field: 'ammo', key: 'x6', count: 2 },
+    { field: 'ammo', key: 'x4', count: 2 }]);
+});
+
+test('QA : arreter le tir normal preserve la capacite ; vider la scene annule tout', () => {
+  const { context: c, target, packets } = salvoHarness();
+  c.fireQaSalvo(target); c.startAttack('x4');
+  c.tickPendingSalvo(0.21); c.stopAttack(); c.tickPendingSalvo(3);
+  assert.equal(packets.filter(p => p.key === 'x0').length, HYPERION_QA_SALVOS);
+  assert.equal(c.bullets.filter(b => b.ability === 'ability_hyperion_qa')
+    .reduce((sum, b) => sum + b.dmg, 0), HYPERION_QA_DAMAGE);
+  c.fireQaSalvo(target); assert.ok(c.pendingSalvo.length > 0);
+  c.clearPendingSalvo(); assert.equal(c.pendingSalvo.length, 0);
+});
 
 test('catalogue indexe : tous les objets et la priorite du premier ID sont conserves', () => {
   const seen = new Set();
@@ -273,7 +412,7 @@ function targetHarness(enemies) {
     petLockValid: () => true, getEnemyById: id => enemies.find(e => e.id === id),
     player: { shPen: 0 }, NPC_TYPES: {}, rules: {}, damageEnemyLayers,
     blMapDamageMult: () => 1, diminishWeakened: () => false, holoEnemyWeakened: () => false,
-    triggerBossEncounterPhase: () => {}, sendNetHit: () => {},
+    triggerBossEncounterPhase: () => {}, sendNetHit: () => {}, breakLocalRepairLinks: () => {}, netplayNpcActive: () => true,
   });
   const damage = engineFunction('refreshCubikonFromMinionHit') + '\n' + engine.slice(engine.indexOf("function damageEnemy("), engine.indexOf("function applyRocketHit("));
   const deaths = engine.slice(engine.indexOf("function processDeathsMeasured("), engine.indexOf("function scheduleGalaxyGateCompletion("));
@@ -635,7 +774,7 @@ function shotHarness({ shared = true, active = true, shots = false, impacts = fa
     addCappedProjectile: (list, bullet) => list.push(bullet), enemyBullets: projectiles,
     NPC_SHOT_RULES: { missChance: 0, homing: true, hitRadiusBonus: 0 }, ENTITY_LIMITS: { enemyBullets: 500 },
   });
-  vm.runInContext(engineFunction("enemyShoot"), context);
+  vm.runInContext(engineFunction("npcLaserAccuracyPenalty") + "\n" + engineFunction("enemyShoot"), context);
   context.enemyShoot({ hp: 100, _netUid: shared ? "npc1" : null, x: 0, y: 0, shootRange: 1000, shootRate: 1, bulletDmg: 10 }, .016, combatTarget);
   return projectiles;
 }

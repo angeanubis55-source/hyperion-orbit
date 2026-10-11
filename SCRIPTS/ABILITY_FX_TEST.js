@@ -30,15 +30,6 @@ test("toutes les aptitudes done ont un code fx, sauf camouflages et soins instan
     "ability_admin-ultimate-cloaking",
     "ability_spearhead_ultimate-cloak",
     "ability_spearhead-plus_ultimate-cloak",
-    // Soins instantanés : barres HP/SH suffisent, pas d'aura.
-    "ability_aegis_hp-repair",
-    "ability_aegis_shield-repair",
-    "ability_hammerclaw_hp-repair",
-    "ability_hammerclaw-plus_hp-repair",
-    "ability_hammerclaw_shield-repair",
-    "ability_hammerclaw-plus_shield-repair",
-    "ability_solace",
-    "ability_solace-plus_nano-cluster-repairer-plus",
   ]);
   for (const id of ABILITY_IDS) {
     const info = ABILITIES[id];
@@ -176,15 +167,15 @@ test("debuffs lanceur : diminish/holo/marqueurs, expirés ignorés", () => {
 
 test("registre soins groupe : 9 aptitudes, rayons et caps officiels", () => {
   const expected = {
-    "ability_aegis_hp-repair": { radius: 1000, cap: 40000, shield: false },
-    "ability_aegis_shield-repair": { radius: 1000, cap: 25000, shield: true },
+    "ability_aegis_hp-repair": { radius: 700, cap: 40000, shield: false, ticks: 7 },
+    "ability_aegis_shield-repair": { radius: 700, cap: 25000, shield: true, ticks: 5 },
     "ability_aegis_repair-pod": { radius: 400, cap: 18000, shield: false },
-    "ability_hammerclaw_hp-repair": { radius: 1000, cap: 50000, shield: false },
-    "ability_hammerclaw_shield-repair": { radius: 1000, cap: 60000, shield: true },
+    "ability_hammerclaw_hp-repair": { radius: 1000, cap: 50000, shield: false, ticks: 7 },
+    "ability_hammerclaw_shield-repair": { radius: 1000, cap: 60000, shield: true, ticks: 3 },
     "ability_hammerclaw_repair-pod": { radius: 400, cap: 17500, shield: false },
-    "ability_hammerclaw-plus_hp-repair": { radius: 1000, cap: 65000, shield: false },
-    "ability_hammerclaw-plus_shield-repair": { radius: 1000, cap: 80000, shield: true },
-    "ability_hammerclaw-plus_repair-pod": { radius: 600, cap: 20000, shield: false },
+    "ability_hammerclaw-plus_hp-repair": { radius: 1000, cap: 75000, shield: false, ticks: 6 },
+    "ability_hammerclaw-plus_shield-repair": { radius: 1000, cap: 80000, shield: true, ticks: 3 },
+    "ability_hammerclaw-plus_repair-pod": { radius: 600, cap: 25000, shield: false },
   };
   assert.equal(Object.keys(HEAL_ABILITIES).length, 9);
   for (const [id, spec] of Object.entries(expected)) {

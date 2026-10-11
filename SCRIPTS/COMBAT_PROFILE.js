@@ -8,8 +8,9 @@ import { UPGRADE_ORE_BONUS } from "../SRC/DATA/RESOURCES.js";
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { getPetVitalLimits } from "../PET/PET_VITALS.js";
 import { ROCKET_TYPES } from "../COMBAT/ROCKET_TYPES.js";
-import { abilityShipKeyFor, getAbilitiesForShip } from "../SHIP/SHIP_ABILITIES.js";
+import { abilityShipKeyFor, getAbilitiesForShip, HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../SHIP/SHIP_ABILITIES.js";
 import { acBucket } from "./ANTICHEAT.js";
+import { isAbilityDamage, validateAbilityDamage } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 const pct = (v) => 1 + Math.max(0, Number(v) || 0) / 100;
@@ -60,8 +61,11 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
     range: 1400, // couvre le doublement de portée des aptitudes existantes
     absorb: clamp((stats.bonusAbsorb > 0 ? stats.bonusAbsorb / 100 : 0.8)
       + Number(stats.formationEffects?.shieldAbsorptionPct || 0) / 100, 0, 1),
+    shieldTough: clamp(Number(pilot.shieldToughPct) / 100, 0, 0.9),
     evade: clamp((stats.bonusEvasionPct + pilot.evadePct + Number(stats.formationEffects?.evasionPct || 0)) / 100, 0, 0.9),
     penetration: clamp(stats.bonusPenetrationPct / 100, 0, 1),
+    butterfly: Number(stats.formationEffects?.penetrationPct || stats.formationEffects?.shieldPenetrationPct || 0) >= 20,
+    laserDamage: clamp(laser, 0, 1e8),
     critChance: osl ? 0.05 + (3 * osl) / 100 : 0.05,
     critMult: osl ? 2 : 1.5,
     maxDamage: clamp(Math.max(laser * 8 * 4, rocket * 10, petDamage * 8 * 4,
@@ -79,9 +83,25 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
 
 // Ne copie jamais les coefficients, critiques ou effets arbitraires du
 // client. Les effets de roquette viennent de la définition serveur.
-export function validateCombatHit(profile, message, state = null, now = Date.now()) {
+export function validateCombatHit(profile, message, state = null, now = Date.now(), target = null) {
   if (!profile || !message) return null;
   const dmg = Number(message.dmg);
+  if (message.ability === "ability_hyperion_qa") {
+    const window = state?._qaWindow;
+    const target = String(message.target || message.uid || "");
+    if (!window?.fired || now >= window.until || window.target !== target || state.safe === true
+      || !Number.isFinite(dmg) || !(dmg > 0) || dmg > Math.min(Math.ceil(HYPERION_QA_DAMAGE / HYPERION_QA_SALVOS), window.remaining)) return null;
+    // Budget progressif : la rafale ne peut pas infliger ses 125k d'un seul coup.
+    // 250 ms de marge couvrent les impacts regroupés par la cadence réseau.
+    const intervalMs = HYPERION_QA_BURST_SEC * 1000 / HYPERION_QA_SALVOS;
+    const salvos = Math.min(HYPERION_QA_SALVOS, Math.max(0, 1 + Math.floor((now - window.firedAt + 250) / intervalMs)));
+    const available = Math.floor(HYPERION_QA_DAMAGE * salvos / HYPERION_QA_SALVOS);
+    if (HYPERION_QA_DAMAGE - window.remaining + dmg > available) return null;
+    window.remaining = Math.max(0, window.remaining - dmg);
+    return { uid: message.uid, target: message.target, dmg, kind: "direct", pen: profile.penetration,
+      critChance: 1, critMult: 1, variance: 0, ability: "ability_hyperion_qa" };
+  }
+  if (isAbilityDamage(message.ability)) return validateAbilityDamage(profile, message, state, target, now);
   if (!Number.isFinite(dmg) || dmg < 0 || dmg > profile.maxDamage) return null;
   const hit = { uid: message.uid, target: message.target, dmg,
     kind: message.kind === "sab" ? "sab" : "direct",
@@ -89,9 +109,14 @@ export function validateCombatHit(profile, message, state = null, now = Date.now
     weaken: 0, slowPct: 0, slowSec: 0, freezeSec: 0, accuracyPenaltyPct: 0, accuracySec: 0, rocket: "" };
   const rocketKey = String(message.rocket || "");
   if (rocketKey) {
+    const cast = state?._freeRocketCast;
+    const free = cast && cast.key === message.ability && cast.rocket === rocketKey && cast.until > now
+      && cast.target === String(message.target || message.uid) && cast.hits < cast.launched;
+    if (message.ability && !free) return null;
     if (!profile.rocketIds.includes(rocketKey) && !(now < Number(state?._launchedRocketIds?.[rocketKey] || 0))) return null;
     const effect = ROCKET_TYPES[rocketKey]?.effect || {};
     hit.rocket = rocketKey;
+    if (free) { cast.hits++; hit.ability = cast.key; }
     hit.accuracyPenaltyPct = effect.accuracyPenaltyPct || 0;
     hit.accuracySec = effect.duration || 0;
     hit.pen = effect.pierceShield ? 1 : effect.piercePct ?? profile.penetration;
@@ -99,7 +124,7 @@ export function validateCombatHit(profile, message, state = null, now = Date.now
     hit.slowSec = effect.duration || 0;
     hit.freezeSec = effect.freezeSec || 0;
     if (state && (hit.slowPct > 0 || hit.freezeSec > 0 || hit.accuracyPenaltyPct > 0)
-      && !acBucket(state, `Control:${rocketKey}`, now, 1, 1 / Math.max(1, ROCKET_TYPES[rocketKey].cooldown), 1)) return null;
+      && !acBucket(state, `Control:${rocketKey}:${hit.ability || "standard"}`, now, 1, 1 / Math.max(1, ROCKET_TYPES[rocketKey].cooldown), 1)) return null;
   }
   if (dmg === 0 && !(hit.slowPct > 0 && hit.slowSec > 0) && !(hit.freezeSec > 0) && !(hit.accuracyPenaltyPct > 0)) return null;
   return hit;

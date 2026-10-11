@@ -8,6 +8,8 @@ import { CATALOG } from "../SRC/CORE/CATALOG.js";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { GROUP_BOOSTER_BONUS } from "../SRC/DATA/BOOSTERS.js";
+import { activeAbility } from "./ABILITY_RUNTIME.js";
+import { syncDisarrayShield } from "./DISRUPTOR_RULES.js";
 
 const items = Object.values(CATALOG).flat().filter(i => i && typeof i === "object");
 const laser = items.find(i => i.module?.type === "laser" && !i.petOnly);
@@ -248,7 +250,8 @@ test("le changement de configuration serveur conserve les PV et les boucliers dÃ
   let now = 10000;
   const context = vm.createContext({ state: { id: "u_test" }, message: {}, Date: { now: () => now },
     getAccountGameplayData: () => user, socialDescribeGroup: () => null, describePeer: () => null,
-    findPeerState: () => null, combatProfile, acPoolResize, SERVER_VMAX: 1500, GROUP_BOOSTER_BONUS });
+    findPeerState: () => null, combatProfile, acPoolResize, SERVER_VMAX: 1500, GROUP_BOOSTER_BONUS, activeAbility, syncDisarrayShield,
+    swapFxRemaining: () => 0 });
   vm.runInContext(source.slice(start, end + 2), context);
   vm.runInContext('refreshCombatProfile(state, "test", "1-1", message)', context);
   context.state.hp = 100; context.state.sh = 0;
@@ -292,7 +295,8 @@ test("le poll serveur ne reconstruit pas le profil inchange mais suit compte, bo
     getAccountGameplayData: () => user,
     socialDescribeGroup: () => ({ members: [{ id: 'other', online: true, map: '1-1' }] }),
     describePeer() {}, findPeerState: () => member,
-    combatProfile: (...args) => { builds++; return combatProfile(...args); }, acPoolResize, GROUP_BOOSTER_BONUS,
+    combatProfile: (...args) => { builds++; return combatProfile(...args); }, acPoolResize, GROUP_BOOSTER_BONUS, activeAbility, syncDisarrayShield,
+    swapFxRemaining: () => 0,
   });
   vm.runInContext(source.slice(start, end + 2), c);
   const state = { id: 'u_test' };

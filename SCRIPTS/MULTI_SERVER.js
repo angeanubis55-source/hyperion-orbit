@@ -28,10 +28,13 @@ import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
 import { updateClockGuard, stopRejectedMotion } from "./CLOCK_GUARD.js";
 import { takeMovement, useMovementAbility, stopMovementAbility, syncMovementAbility, movementSpeed, usePhaseOut, shipOwnsAbility, dashTargetKey, isMovementAbilityKey } from "./MOVEMENT_RULES.js";
-import { isAbilityFxBroadcastable, pruneAbilityFxMap, abilityHitBypass, isExecutionAbility, EXEC_WINDOW_MS, EXEC_AURA_GRACE_MS, EXEC_HIT_CAP_PVP, EXEC_HIT_CAP_NPC, healSpecFor, HEAL_MIN_INTERVAL_MS, fxDebuffsOn } from "../SRC/CORE/ABILITY_FX.js";
-import { getAbilityInfo } from "../SHIP/SHIP_ABILITIES.js";
+import { isAbilityFxBroadcastable, pruneAbilityFxMap, isExecutionAbility, EXEC_WINDOW_MS, EXEC_AURA_GRACE_MS, EXEC_HIT_CAP_PVP, healSpecFor, HEAL_MIN_INTERVAL_MS, fxDebuffsOn } from "../SRC/CORE/ABILITY_FX.js";
+import { hostileAbility, unlimitedAbilityRange } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
+import { getAbilityInfo, HYPERION_QA_DAMAGE } from "../SHIP/SHIP_ABILITIES.js";
+import { ROCKET_TYPES } from "../COMBAT/ROCKET_TYPES.js";
 import { syncDisarrayShield, syncDisruptorEffects, laserDisrupted, redirectedPlayer } from "./DISRUPTOR_RULES.js";
 import { tempestBackupActive, tempestBackupReady, triggerTempestBackup, expireTempestBackup, validateVoltChain } from "./TEMPEST_RULES.js";
+import { abilityDamage, activeAbility, fortifyActive, triggerPaladin, tickAbilityStates, recordAbilityDamageDealt, recordAbilityNpcKill } from "./ABILITY_RUNTIME.js";
 
 // --- Auras d'aptitudes visibles par les autres (Phase 2) ---
 // Le serveur reste autoritaire : chaque cast ability_* est validé
@@ -56,6 +59,9 @@ function clearAbilityFx(state) {
   try { state._abilityCds = {}; } catch {}
   try { state._orcusUntil = 0; } catch {}
   try { state._execWindow = null; } catch {}
+  state._qaWindow = null;
+  state._freeRocketCast = null;
+  state.holoClones = [];
 }
 function jamPlayerAbilities(state, room, now, durationMs) {
   const active = new Set([
@@ -81,6 +87,9 @@ function jamPlayerAbilities(state, room, now, durationMs) {
   state._abilityFx = {};
   state._orcusUntil = 0;
   state._execWindow = null;
+  state._qaWindow = null;
+  state._freeRocketCast = null;
+  state.holoClones = [];
   if (state._tempestBackupUntil > now) state._tempestBackupCdUntil = now + 360000;
   state._tempestBackupUntil = 0;
   state._tempestBackupRequestedUntil = 0;
@@ -127,11 +136,11 @@ function casterDebuffOn(state, targetId, now) {
   try { return fxDebuffsOn(state?._abilityFx, targetId, now); } catch {}
   return { weaken: 0, penBonus: 0, dmgMult: 1 };
 }
-function isAegisRepair(skill) {
-  return skill === "ability_aegis_hp-repair" || skill === "ability_aegis_shield-repair";
+function isLinkedRepair(skill) {
+  return healSpecFor(skill)?.mode === "hot";
 }
-function breakAegisRepairLink(state, skill, room, id, now) {
-  if (!isAegisRepair(skill)) return;
+function breakRepairLink(state, skill, room, id, now) {
+  if (!isLinkedRepair(skill)) return;
   const fx = state._abilityFx?.[skill];
   if (!fx?.target) return;
   fx.target = "";
@@ -164,6 +173,70 @@ function relayAbilityHealFx(state, skill, msg, room, id, now) {
   return true;
 }
 
+function hyperionSafeBlocked(state, target, sim, targetIsPlayer) {
+  const protectedPlayer = p => p?.safe === true && (!sim?.inSafe || sim.inSafe(p.x, p.y));
+  return !!(protectedPlayer(state) || (targetIsPlayer ? protectedPlayer(target) : target && sim?.inSafe(target.x, target.y)));
+}
+function hyperionTargetAllowed(state, target, sim, targetIsPlayer) {
+  if (!target || target === state || target.dead || target.pvpDead || !(target.hp > 0)) return false;
+  if (hyperionSafeBlocked(state, target, sim, targetIsPlayer)) return false;
+  return Math.hypot(Number(target.x) - Number(state.x), Number(target.y) - Number(state.y)) <= (Number(state.range) || 800);
+}
+function emitAbilityEvent(room, event) {
+  const target = room?.get(String(event.target || event.by))?.state;
+  if (target && (event.phase === "heal" || event.phase === "proc")) {
+    target._abilityHealSeq = (Number(target._abilityHealSeq) || 0) + 1;
+    Object.assign(event, { healSeq: target._abilityHealSeq, hp: target.hp, sh: target.sh, shMax: target.shMax });
+  }
+  broadcastRoom(room, JSON.stringify(event));
+}
+function broadcastChargedShot(room, state, hit, now) {
+  if (hit.ability !== "ability_retiarus_chs" && hit.ability !== "ability_retiarus-plus_chsp") return;
+  delete state._abilityFx?.[hit.ability];
+  broadcastRoom(room, JSON.stringify({ t: "skillFx", skill: hit.ability, phase: "fire", by: state.id,
+    target: String(hit.target || hit.uid), x: state.x, y: state.y, at: now, until: now + 1200 }));
+}
+function applyServerAbilityDamage(room, sim, victim, damage, pen, now, sourceId, sourceProfile = null, weaken = 0, secondary = false) {
+  const context = {
+    room, sourceProfile,
+    emit: event => emitAbilityEvent(room, event),
+    allied: (a, b) => {
+      const group = socialGroupOf(String(a.id));
+      return group ? socialGroupOf(String(b.id)) === group : !!a.firm && a.firm === b.firm;
+    },
+  };
+  const secondaryHit = (target, amount, penetration, by) => {
+    if (!target || target.safe || !(target.hp > 0)) return;
+    const result = abilityDamage(target, amount, penetration, now, context, true);
+    target.pvpAt = now;
+    target.pvpFrom = String(by);
+    target.dmgBlockUntil = now + 500;
+    if (result.total > 0) {
+      const map = String(sim?.mapId || target.serverMap || "");
+      let feed = pvpFeeds.get(map);
+      if (!feed) { feed = new Map(); pvpFeeds.set(map, feed); }
+      const key = `${target.id}|${by}`, prior = feed.get(key);
+      feed.set(key, { uid: String(target.id), by: String(by), total: Math.round((prior?.total || 0) + result.total) });
+    }
+    if (!(target.hp > 0) && !triggerTempestBackup(target, room, now)) {
+      target.dead = true;
+      target.pvpDead = true;
+      clearAbilityFx(target);
+      if (room.has(String(by))) awardPlayerKill(room, String(by), target, now);
+    }
+  };
+  context.transfer = (target, amount, penetration) => secondaryHit(target, amount, penetration, sourceId);
+  context.reflect = (caster, amount, penetration, toLock = false) => {
+    const reflectedId = toLock ? String(caster.lockedTarget || "") : String(sourceId);
+    const source = room.get(reflectedId)?.state;
+    if (source) secondaryHit(source, amount, penetration, caster.id);
+    else if (sim?.entries?.get(reflectedId)?.hp > 0 && !sim.inSafe(sim.entries.get(reflectedId).x, sim.entries.get(reflectedId).y)) {
+      sim.applyHit(String(caster.id), { uid: reflectedId, dmg: amount, pen: penetration,
+        critChance: 0, critMult: 1, variance: 0, execOk: true });
+    }
+  };
+  return abilityDamage(victim, damage, pen, now, context, secondary, weaken);
+}
 function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
   const key = String(skill || "").toLowerCase();
   if (ABILITY_CLOAK_SILENT.has(key)) return false;
@@ -179,10 +252,30 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
   // Les boosts n'ont qu'une validation : celle des règles de mouvement.
   const movementAbility = isMovementAbilityKey(key);
   const movementEffect = state._moveEffects?.[key];
-  const durSec = Number(info.durationSec);
+  const hyperionGa = key === "ability_hyperion_ga";
+  const hyperionQa = key === "ability_hyperion_qa";
+  const chargedShot = key === "ability_retiarus_chs" || key === "ability_retiarus-plus_chsp";
+  const durSec = hyperionQa || chargedShot ? Math.max(0.5, Math.min(10, Number(msg.chargeSec) || (chargedShot ? 3 : 2.5)))
+    : key === "ability_mimesis_hologram" ? 3 + Math.max(0.5, Math.min(10, Number(msg.chargeSec) || 1.5))
+    : Number(info.durationSec) * (profile.baseId === "centurion" ? 0.5 : 1);
   const cdSec = Number(info.cooldownSec);
+  if (hyperionQa && msg.phase === "fire") {
+    const window = state._qaWindow;
+    const target = String(msg.target || "").slice(0, 64);
+    if (!window || window.fired || window.target !== target || now + 250 < window.readyAt || now >= window.until
+      || !hyperionTargetAllowed(state, room.get(target)?.state || sim?.entries?.get(target), sim, room.has(target))) return false;
+    window.fired = true;
+    window.firedAt = now;
+    window.until = now + 10000;
+    cds[key] = now + cdSec * 1000;
+    if (state._abilityFx) delete state._abilityFx[key];
+    broadcastRoom(room, JSON.stringify({ t: "skillFx", skill: key, by: id, at: now, until: now, enabled: false, phase: "fire" }));
+    return true;
+  }
   if (enabled === false) {
     if (key === "ability_zephyr_tbr") state.tbrClones = [];
+    if (key === "ability_mimesis_hologram") state.holoClones = [];
+    if (state._freeRocketCast?.key === key) state._freeRocketCast = null;
     // Annulation (toggle off / lien coupé / charge avortée) : purge
     // immédiate + broadcast de fin pour que les autres effacent sans
     // attendre l'expiration. Charge avortée = fizzle : aucun cooldown
@@ -194,11 +287,17 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
       try { state._orcusUntil = 0; } catch {}
     }
     if (key === "ability_retiarus_chs" || key === "ability_retiarus-plus_chsp") {
-      try { state._execWindow = null; } catch {}
-      try { if (state._abilityCds && typeof state._abilityCds === "object") delete state._abilityCds[key]; } catch {}
+      const charge = state._execWindow;
+      if (charge?.key === key) {
+        state._execWindow = null;
+        if (!charge.used) delete cds[key];
+      }
+    } else if (hyperionQa && state._qaWindow && !state._qaWindow.fired) {
+      delete cds[key];
     } else if (Number.isFinite(cdSec) && cdSec > 0) {
       cds[key] = now + cdSec * 1000;
     }
+    if (hyperionQa) state._qaWindow = null;
     try {
       broadcastRoom(room, JSON.stringify({ t: "skillFx", skill: key, by: id, at: now, until: now, enabled: false }));
     } catch {}
@@ -207,6 +306,21 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
   if (!movementAbility && now < Number(cds[key] || 0)) return false;
   if (key === "ability_zephyr_tbr" && !profile.petOwned) return false;
   const target = String(msg.target || "").slice(0, 64);
+  const victim = room.get(target)?.state || sim?.entries?.get(target);
+  if (key === "ability_berserker_shl" && (!victim || victim === state || victim.dead || victim.pvpDead
+    || !(victim.hp > 0) || !(victim.shMax > 0) || Math.hypot(victim.x - state.x, victim.y - state.y) > (Number(state.range) || 800))) return false;
+  const freeRocket = key === "ability_goliath-x_frozen-claw" ? "ric3"
+    : key === "ability_tartarus_rapid-fire" || key === "ability_tartarus-plus_rapid-fire-plus" ? String(msg.rocket || "eco10") : "";
+  if (freeRocket && (!ROCKET_TYPES[freeRocket] || (freeRocket !== "ric3" && ROCKET_TYPES[freeRocket].manual !== false)
+    || !hyperionTargetAllowed(state, victim, sim, room.has(target)))) return false;
+  if (hostileAbility(key, info)) {
+    if (hyperionSafeBlocked(state, victim, sim, room.has(target))) return false;
+    if (info.target === "enemy" && (!victim || victim === state || victim.dead || victim.pvpDead || !(victim.hp > 0))) return false;
+    const range = /ability_hecate.*particle-beam/.test(key) ? 1000 : Number(state.range) || 800;
+    if (info.target === "enemy" && !unlimitedAbilityRange(key) && key !== "ability_keres_sle"
+      && Math.hypot(victim.x - state.x, victim.y - state.y) > range) return false;
+  }
+  if ((hyperionGa || hyperionQa) && !hyperionTargetAllowed(state, room.get(target)?.state || sim?.entries?.get(target), sim, room.has(target))) return false;
   const targetMarker = key === "ability_spearhead_target-marker" || key === "ability_spearhead-plus_target-marker"
     || key === "ability_orcus-plus_target-marker";
   if (targetMarker) {
@@ -230,8 +344,8 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
   // applique 20/18 min ; le backstop serveur est borné (refresh en pleine
   // charge sans cancel possible) — la fenêtre single-shot reste la vraie
   // limite (un beam par cast).
-  if (isWindowExec) cds[key] = now + Math.min(Number(cdSec) || 0, 120) * 1000;
-  else if (hasDuration) cds[key] = now + ((targetMarker ? 0 : durSec) + (Number.isFinite(cdSec) && cdSec > 0 ? cdSec : 0)) * 1000;
+  if (isWindowExec) cds[key] = now + durSec * 1000 + cdSec * 1000;
+  else if (hasDuration) cds[key] = now + ((targetMarker || key === "ability_goliath-x_frozen-claw" ? 0 : durSec) + (Number.isFinite(cdSec) && cdSec > 0 ? cdSec : 0)) * 1000;
   else if (!isToggle && Number.isFinite(cdSec) && cdSec > 0) cds[key] = now + cdSec * 1000;
   else if (isToggle) cds[key] = now + 1500;
   // Position : zones posées (pods, nébuleuse) = point de cast ; le reste
@@ -242,15 +356,35 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
     until: movementAbility && movementEffect
       ? (Number.isFinite(movementEffect.until) ? movementEffect.until : now + 3600_000)
       : now + (hasDuration ? durSec * 1000 : isToggle ? 3600_000 : 3000),
-    x: isZone ? Math.round(Number(state.x) || 0) : 0,
-    y: isZone ? Math.round(Number(state.y) || 0) : 0,
-    target: info.target === "enemy" || info.target === "ally" || isAegisRepair(key) || key === "ability_disruptor_redirect" ? target : "",
+    x: isZone || hyperionGa ? Math.round(Number(state.x) || 0) : 0,
+    y: isZone || hyperionGa ? Math.round(Number(state.y) || 0) : 0,
+    target: info.target === "enemy" || info.target === "ally" || isLinkedRepair(key) || key === "ability_disruptor_redirect" ? target : "",
   };
-  if (isAegisRepair(key)) {
+  fx.config = profile.config;
+  if (key === "ability_solace") fx.until = now + 1000;
+  if (freeRocket) state._freeRocketCast = { key, rocket: freeRocket, target, until: now + 20000,
+    launched: 0, hits: 0, count: key === "ability_tartarus-plus_rapid-fire-plus" ? 30 : key === "ability_tartarus_rapid-fire" ? 15 : 1 };
+  if (key === "ability_sentinel") { fx.baseShield = profile.shMax; fx.shieldTicks = 0; }
+  if (key === "ability_hecate-plus_stockpile") {
+    const charges = Math.min(10, Number(state._stockCharges) || 0);
+    fx.shieldBonus = 0.002 * charges * (charges + 1) / 2;
+    state._stockCharges = 0;
+  }
+  if (key === "ability_keres_spr") fx.infected = { [target]: now + 10000 };
+  const neutralMarker = key === "ability_spearhead-plus_neutralizing-marker";
+  const targetSlow = key === "ability_holo_enemy-reversal" || key === "ability_pusat-plus_speed-sap" || neutralMarker ? 10
+    : key === "ability_keres_spr" ? 20 : chargedShot ? 25 : 0;
+  if (victim && targetSlow) {
+    if (room.has(target)) takeMovement(victim, victim._combat, victim.x, victim.y, now);
+    victim.slowPct = Math.max(now < Number(victim.slowUntil) ? Number(victim.slowPct) || 0 : 0, targetSlow);
+    victim.slowUntil = Math.max(Number(victim.slowUntil) || 0, now + (chargedShot ? durSec : neutralMarker ? 3 : key === "ability_holo_enemy-reversal" ? 15 : 10) * 1000);
+  }
+  if (isLinkedRepair(key)) {
     const linked = room.get(fx.target)?.state;
     const dx = Number(linked?.x) - Number(state.x), dy = Number(linked?.y) - Number(state.y);
+    const radius = healSpecFor(key).radius;
     if (!linked || linked === state || linked.dead || linked.pvpDead || !(Number(linked.hp) > 0)
-      || linked.cloaked || linked.cloakCpu || !(dx * dx + dy * dy <= 700 * 700)) fx.target = "";
+      || linked.cloaked || linked.cloakCpu || !(dx * dx + dy * dy <= radius * radius)) fx.target = "";
   }
   if (voltChain) {
     fx.until = now + 2000;
@@ -268,12 +402,21 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
     victim.slowPct = Math.max(now < Number(victim.slowUntil) ? Number(victim.slowPct) || 0 : 0, 10);
     victim.slowUntil = Math.max(Number(victim.slowUntil) || 0, now + 10000);
   }
+  if (hyperionGa) {
+    const victim = room.get(target)?.state || sim?.entries?.get(target);
+    if (room.has(target)) takeMovement(victim, victim._combat, victim.x, victim.y, now);
+    const map = String(sim?.mapId || state.serverMap || "").toLowerCase();
+    const slowPct = /^4(-|$|\.)/.test(map) || /-4\.1$/.test(map) ? 40 : 80;
+    victim.slowPct = Math.max(now < Number(victim.slowUntil) ? Number(victim.slowPct) || 0 : 0, slowPct);
+    victim.slowUntil = Math.max(Number(victim.slowUntil) || 0, fx.until);
+  }
+  if (hyperionQa) state._qaWindow = { target, readyAt: fx.until, until: fx.until + 10000, fired: false, remaining: HYPERION_QA_DAMAGE };
   try {
     if (!state._abilityFx || typeof state._abilityFx !== "object") state._abilityFx = {};
     // Les casts instantanés (durée 0, non-toggle) ne laissent pas d'aura :
     // seul le skillFx immédiat est visible (flash). On les stocke quand
     // même 3 s pour les rooms à faible cadence ? Non : snapshot seul.
-    if (hasDuration || isToggle || movementEffect) state._abilityFx[key] = fx;
+    if (hasDuration || isToggle || movementEffect || key === "ability_solace") state._abilityFx[key] = fx;
   } catch {}
   // Orcus Assimilation : la conversion 80 % dégâts -> PV doit valoir aussi
   // contre les joueurs (le client n'adopte que les baisses serveur).
@@ -284,7 +427,13 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
   // d'exécution single-shot vérifiée au moment du hit (beam ~3 s après
   // le cast). Sans elle, l'enveloppe du profil rejetterait le 100 % vie.
   if (key === "ability_retiarus_chs" || key === "ability_retiarus-plus_chsp") {
-    try { state._execWindow = { key, until: now + EXEC_WINDOW_MS }; } catch {}
+    try { state._execWindow = { key, target, readyAt: now + durSec * 1000, until: now + durSec * 1000 + EXEC_WINDOW_MS }; } catch {}
+  }
+  if (key === "ability_solace" || key === "ability_solace-plus_nano-cluster-repairer-plus") {
+    const before = state.hp;
+    state.hp = Math.min(state.hpMax, state.hp + state.hpMax * (key === "ability_solace" ? profile.baseId === "centurion" ? 0.2 : 0.35 : 1));
+    emitAbilityEvent(room, { t: "skillFx", skill: key, phase: "heal", by: id, target: id,
+      amount: Math.round(state.hp - before), hp: state.hp, sh: state.sh, at: now, until: now });
   }
   if (!isAbilityFxBroadcastable(key) && !hasDuration && !isToggle) {
     // Soins instantanés : rien à diffuser (ni aura ni flash).
@@ -342,6 +491,22 @@ setInterval(() => {
   }
 }, 60_000).unref?.();
 
+function swapFxRemaining(state, now) {
+  return Math.max(0, Math.min(Number(state._swapFxDuration) || 3, state._swapFxPaused
+    ? Number(state._swapFxRemaining) || 0 : (Number(state._swapFxUntil) - now) / 1000 || 0));
+}
+function syncSwapFx(state, msg, now) {
+  if (!Number.isFinite(Number(msg.hswap))) return;
+  // Etat purement visuel : aucun droit de mouvement ni protection contre les degats.
+  const duration = Math.max(0.1, Math.min(3, Number(msg.hswapDur) || 3));
+  const remaining = state.dead || state.pvpDead ? 0 : Math.max(0, Math.min(duration, Number(msg.hswap)));
+  state._swapFxFromClient = true;
+  state._swapFxDuration = duration;
+  state._swapFxId = Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number(msg.hswapId) || 0)));
+  state._swapFxRemaining = remaining;
+  state._swapFxPaused = remaining > 0 && msg.hswapPaused === true;
+  state._swapFxUntil = now + remaining * 1000;
+}
 function refreshCombatProfile(state, accountId, map, message = {}) {
   if (!accountId) return null;
   const now = Date.now();
@@ -377,7 +542,7 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
       && (!state._config || state._combat.config === state._config)
       && state._combatBoosterSignature === boosterSignature) {
       state._combatAt = now;
-      state.hswap = Math.max(0, (Number(state._swapFxUntil || 0) - now) / 1000);
+      state.hswap = swapFxRemaining(state, now);
       return state._combat;
     }
     const profile = combatProfile(state._account, map, state._config, groupBoosters);
@@ -386,9 +551,13 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
     const shields = state._configShields || (state._configShields = {});
     const key = `${profile.hangarId}:${profile.config}`;
     if (prior) shields[`${prior.hangarId}:${prior.config}`] = Math.max(0, Number(state.sh) || 0);
+    const sentinel = activeAbility(state, "ability_sentinel", now);
+    const shieldMax = sentinel?.config === profile.config ? Math.floor(sentinel.baseShield * 1.1 ** Math.min(10, Math.floor((now - sentinel.from) / 1000))) : profile.shMax;
+    if (state._abilityShieldMax !== shieldMax) state._shieldBuffSeq = (Number(state._shieldBuffSeq) || 0) + 1;
+    state._abilityShieldMax = shieldMax;
     const disarrayRemoved = Number(state._disarrayRemoved) || 0;
-    acPoolResize(state, profile.hpMax, Math.max(0, profile.shMax - disarrayRemoved));
-    syncDisarrayShield(state, profile.shMax, Number(state._disarrayUntil) || 0, now);
+    acPoolResize(state, profile.hpMax, Math.max(0, shieldMax - disarrayRemoved));
+    syncDisarrayShield(state, shieldMax, Number(state._disarrayUntil) || 0, now);
     if (prior && (prior.hangarId !== profile.hangarId || prior.config !== profile.config) && !state.pvpDead && state.hp > 0) {
       state.sh = Math.min(state.shMax, shields[key] ?? state.shMax);
     }
@@ -396,7 +565,7 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
     // Changement de vaisseau : les auras d'aptitudes ne suivent pas
     // (le nouveau récupère les siennes, comme les CDs Orcus côté client).
     if (prior && prior.shipId !== profile.shipId) {
-      state._swapFxUntil = now + 3000;
+      if (!state._swapFxFromClient) state._swapFxUntil = now + 3000;
       clearAbilityFx(state);
     }
     state._combat = profile;
@@ -413,7 +582,7 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
     state.moveSpeed = profile.speed;
     state.b2 = Object.keys(GROUP_BOOSTER_BONUS).filter(id => now < Number(state._account.boosters?.active?.[id] || 0));
   }
-  state.hswap = Math.max(0, (Number(state._swapFxUntil || 0) - now) / 1000);
+  state.hswap = swapFxRemaining(state, now);
   return state._combat;
 }
 
@@ -1588,6 +1757,33 @@ function ensureNpcSim(mapId) {
   const key = String(mapId || "1-1").toLowerCase();
   if (npcSims.has(key)) return npcSims.get(key);
   const pending = ZoneNpcSim.create(key, savedNpcRespawns[key] || null).then((sim) => {
+    if (sim) sim.redirectShieldDamage = (victim, result, sourceId, at) => {
+      const room = rooms.get(key);
+      if (!room || !(result.sh > 0)) return;
+      for (const { state: caster } of room.values()) {
+        const link = activeAbility(caster, "ability_berserker_shl", at);
+        if (link?.target !== String(victim.uid) || !(caster.hp > 0) || caster.safe || caster.dead || caster.pvpDead
+          || Math.hypot(caster.x - victim.x, caster.y - victim.y) > (Number(caster.range) || 800)) continue;
+        victim.sh = Math.min(victim.shMax, victim.sh + result.sh);
+        const damage = applyServerAbilityDamage(room, sim, caster, result.sh, 0, at, sourceId, room.get(String(sourceId))?.state?._combat, 0, true);
+        caster.pvpAt = at;
+        caster.pvpFrom = String(sourceId);
+        caster.dmgBlockUntil = at + 500;
+        let feed = pvpFeeds.get(key);
+        if (!feed) { feed = new Map(); pvpFeeds.set(key, feed); }
+        const feedKey = `${caster.id}|${sourceId}`, prior = feed.get(feedKey);
+        feed.set(feedKey, { uid: String(caster.id), by: String(sourceId), total: Math.round((prior?.total || 0) + damage.total) });
+        if (!(caster.hp > 0) && !triggerTempestBackup(caster, room, at)) {
+          caster.dead = true;
+          caster.pvpDead = true;
+          clearAbilityFx(caster);
+          if (String(sourceId) !== String(caster.id)) awardPlayerKill(room, String(sourceId), caster, at);
+        }
+        result.total -= result.sh;
+        result.sh = 0;
+        break;
+      }
+    };
     npcSims.set(key, sim || null);
     return sim || null;
   }).catch(() => {
@@ -1775,6 +1971,7 @@ function pumpNpcRewards(budgetMs = 12) {
       if (reward.duplicate) continue;
       // Audit anticheat : kill crédité au tueur (strictement serveur).
       if (share.pid === killerId) {
+        recordAbilityNpcKill(rewardState, Number(death.at) || Date.now());
         try {
           const ps = findPeerState(share.pid);
           if (ps) audOf(ps).kills += 1;
@@ -1933,6 +2130,7 @@ wss.on("connection", (ws) => {
     if (nextMap === mapId && instance === (state.instance === true)) return true;
     if (!authed || !accountId) return false;
     const now = Date.now();
+    if (fortifyActive(state, now)) return false;
     let arrival;
     if (state.instance === true) {
       if (instance || nextMap !== state._instanceReturn?.map) return false;
@@ -2143,35 +2341,22 @@ wss.on("connection", (ws) => {
         if (!authed || !accountId) return;
         const shooter = rooms.get(mapId)?.get(id)?.state;
         if (!shooter || shooter.pvpDead === true || !(Number(shooter.hp) > 0)) return;
+        if (msg.ability === "ability_hyperion_qa") {
+          const sim = npcSims.get(mapId);
+          if (shooter.safe === true || hyperionSafeBlocked(shooter, sim?.entries?.get(String(msg.uid)), sim, false)) return;
+        }
         const now = Date.now();
         const profile = refreshCombatProfile(shooter, accountId, mapId);
         // Hits d'exécution d'aptitude (one-shots) : droit frais vérifié
         // (fenêtre CHS consommée, ou aura active) -> contourne l'enveloppe
         // du profil, marqué execOk pour la simu (plafond relevé). Seaux
         // anticheat conservés. Sinon validation standard.
-        let execOk = false;
-        try {
-          const ab = String(msg.ability || "").toLowerCase();
-          if (ab && isExecutionAbility(ab) && abilityHitBypass(shooter, ab, now)) {
-            const cap = EXEC_HIT_CAP_NPC;
-            const rawDmg = Number(msg.dmg);
-            if (Number.isFinite(rawDmg) && rawDmg > 0 && rawDmg <= cap && ownsAbility(profile, ab)) {
-              execOk = true;
-              msg = { ...msg, dmg: rawDmg, execOk: true };
-              try { console.log(`[multi:exec] ${shooter.pseudo} ${ab} ${Math.round(rawDmg)} (${mapId})`); } catch {}
-            }
-          }
-        } catch {}
-        if (!execOk) {
-          msg = validateCombatHit(profile, msg, shooter, now);
-          if (!msg) {
-            acStrike(shooter, "hitStrike");
-            acRecordViolation(shooter, "profile", now, { reason: "Impact NPC hors du profil autorise", unverified: true });
-            return;
-          }
-        }
-        // Debuffs du lanceur sur ce NPC (Diminisher/Holo/Marqueur) : appliqués
-        // après validation (montants bornés, auras vérifiées).
+        const simTarget = npcSims.get(mapId)?.entries?.get(String(msg.uid));
+        if (msg.ability && hyperionSafeBlocked(shooter, simTarget, npcSims.get(mapId), false)) return;
+        msg = validateCombatHit(profile, msg, shooter, now, simTarget);
+        if (!msg) return;
+        broadcastChargedShot(rooms.get(mapId), shooter, msg, now);
+        msg.unlimitedRange = unlimitedAbilityRange(msg.ability);
         try {
           const dd = casterDebuffOn(shooter, msg.uid, now);
           if (dd.weaken > 0) msg.weaken = Math.max(Number(msg.weaken) || 0, dd.weaken);
@@ -2200,7 +2385,7 @@ wss.on("connection", (ws) => {
           syncDisruptorEffects(rooms.get(mapId), sim, now);
           if (laserDisrupted(shooter, msg, now)) return;
           const appliedHit = Number(sim.applyHit(id, msg)) || 0;
-          if (appliedHit > 0) { try { audOf(shooter).dmg += appliedHit; } catch {} }
+          if (appliedHit > 0) { recordAbilityDamageDealt(shooter, appliedHit, now); try { audOf(shooter).dmg += appliedHit; } catch {} }
           // Diagnostic multi (console serveur) : hits recus par map.
           hitStats.count++;
           hitStats.byMap.set(mapId, (hitStats.byMap.get(mapId) || 0) + 1);
@@ -2229,6 +2414,7 @@ wss.on("connection", (ws) => {
         const room = rooms.get(mapId);
         if (!room || !room.has(id)) return;
         const skill = String(msg.skill || "").toLowerCase();
+        if (skill === "ability_paladin_last-stand") return; // Déclenchement dans le calcul des dégâts, jamais au clic.
         // Les annulations restent permises ; toutes les activations sont bloquées.
         if (Date.now() < Number(state._jamUntil || 0) && msg.enabled !== false && msg.phase !== "unlink") return;
         if (skill === "ability_tempest_volt-backup") {
@@ -2238,7 +2424,7 @@ wss.on("connection", (ws) => {
           return;
         }
         if (msg.phase === "unlink") {
-          breakAegisRepairLink(state, skill, room, id, Date.now());
+          breakRepairLink(state, skill, room, id, Date.now());
           return;
         }
         if (msg.phase === "heal") {
@@ -2260,7 +2446,12 @@ wss.on("connection", (ws) => {
           const movementAbility = isMovementAbilityKey(skill);
           const moveOk = movementAbility && useMovementAbility(state, profile, skill, msg.enabled !== false, nowFx, movementTarget(msg.target), String(msg.target || ""));
           if (!movementAbility || moveOk) {
-            try { trackAbilityFx(state, profile, skill, msg, room, id, nowFx, npcSims.get(mapId)); } catch {}
+            const accepted = trackAbilityFx(state, profile, skill, msg, room, id, nowFx, npcSims.get(mapId));
+            if (!accepted && msg.enabled !== false) {
+              if (movementAbility) stopMovementAbility(state, profile, nowFx, skill);
+              if (ws.readyState === 1) ws.send(JSON.stringify({ t: "skillDenied", skill,
+                cooldown: Math.max(0, (Number(state._abilityCds?.[skill]) - nowFx) / 1000 || 0) }));
+            }
             syncDisruptorEffects(room, npcSims.get(mapId), nowFx);
           }
           if (moveOk) {
@@ -2312,34 +2503,19 @@ wss.on("connection", (ws) => {
         const me = room.get(id);
         if (!foe || !me) return;
         if (foe === me || me.state.pvpDead === true || !(me.state.hp > 0)) return;
+        if (msg.ability === "ability_hyperion_qa"
+          && (me.state.safe === true || foe.state.safe === true)) return;
         const profile = refreshCombatProfile(me.state, accountId, mapId);
         // Hits d'exécution d'aptitude : droit frais vérifié -> enveloppe
         // contournée (plafond EXEC_HIT_CAP_PVP), hit normalisé à la main.
         // Seaux anticheat conservés ci-dessous. Sinon validation standard.
-        let execBypass = false;
-        let execAbility = "";
-        try {
-          const ab = String(msg.ability || "").toLowerCase();
-          const rawExec = Number(msg.dmg);
-          if (ab && isExecutionAbility(ab) && abilityHitBypass(me.state, ab, Date.now())
-            && Number.isFinite(rawExec) && rawExec > 0 && rawExec <= EXEC_HIT_CAP_PVP
-            && ownsAbility(profile, ab)) {
-            execBypass = true;
-            execAbility = ab;
-            msg = { target: msg.target, dmg: rawExec, kind: msg.kind === "sab" ? "sab" : "direct",
-              pen: Math.max(0, Math.min(1, Number(msg.pen ?? 1))), critChance: 0, critMult: 1,
-              weaken: 0, slowPct: 0, slowSec: 0, freezeSec: 0 };
-            try { console.log(`[multi:exec] ${me.state.pseudo} ${ab} ${Math.round(rawExec)} pvp (${mapId})`); } catch {}
-          }
-        } catch {}
-        if (!execBypass) {
-          msg = validateCombatHit(profile, msg, me.state);
-          if (!msg) {
-            acStrike(me.state, "pvpStrike");
-            acRecordViolation(me.state, "profile", Date.now(), { reason: "Impact PvP hors du profil autorise", unverified: true });
-            return;
-          }
-        }
+        const impactNow = Date.now();
+        if (me.state.safe === true || foe.state.safe === true) return;
+        msg = validateCombatHit(profile, msg, me.state, impactNow, foe.state);
+        if (!msg) return;
+        broadcastChargedShot(room, me.state, msg, impactNow);
+        const execBypass = msg.execOk === true;
+        const execAbility = msg.abilityFinal ? msg.ability : "";
         const now = Date.now();
         // Anti-rafale PvP : mêmes seaux (plus stricts : TTK faibles).
         const pvpDmg = Math.max(0, Number(msg.dmg) || 0);
@@ -2371,7 +2547,7 @@ wss.on("connection", (ws) => {
         const reach = (Number(me.state.range) || 800) + 800;
         const dx = Number(foe.state.x) - Number(me.state.x);
         const dy = Number(foe.state.y) - Number(me.state.y);
-        if (dx * dx + dy * dy > reach * reach) return;
+        if (dx * dx + dy * dy > reach * reach && !unlimitedAbilityRange(msg.ability)) return;
         syncDisruptorEffects(room, npcSims.get(mapId), now);
         if (!execBypass && laserDisrupted(me.state, msg, now)) return;
         const statusFoe = foe;
@@ -2396,30 +2572,6 @@ wss.on("connection", (ws) => {
         // en PV (plafond hpMax), 20 % restants appliqués normalement.
         // Sans ça, la conversion locale (hurtPlayer) ne vaudrait que vs NPC
         // car le client n'adopte que les baisses serveur.
-        let orcusHeal = 0;
-        if (now < Number(foe.state._orcusUntil || 0) && dmg > 0) {
-          const conv = Math.max(0, Math.round(Number(dmg) || 0) * 0.8);
-          if (conv > 0) {
-            const hpMax = Math.max(1, Math.round(Number(foe.state.hpMax) || 1));
-            const before = Math.max(0, Math.round(Number(foe.state.hp) || 0));
-            foe.state.hp = Math.min(hpMax, before + conv);
-            orcusHeal = Math.max(0, Math.round(Number(foe.state.hp) || 0) - before);
-          }
-          // Comme en local (hurtPlayer) : 20 % restants seulement.
-          dmg = Math.max(0, Number(dmg) || 0) * 0.2;
-        }
-        // Flux visuel victime : la conversion est silencieuse sinon (le
-        // client n'adopte que les baisses). La victime affiche le +X vert
-        // et remonte sa barre à l'adoption (voir bloc pvpAt côté client).
-        if (orcusHeal > 0) {
-          foe.state.orcusHealAt = now;
-          foe.state.orcusHealAmt = orcusHeal;
-        }
-        // Debuffs d'aptitudes posés sur la VICTIME par un tiers (le client
-        // ne voit que son propre lock) : on balaye les auras de la room
-        // ciblant la victime. Diminisher +50 % dégâts bouclier, Holo +10 %
-        // dégâts totaux, Marqueur +10 % pénétration. Désordre est déjà
-        // appliqué au pool. Scramble +65 % évasion : aura de la victime.
         let debWeaken = 0, debDmgMult = 1, debPenBonus = 0;
         try {
           for (const [, pentry] of room) {
@@ -2448,15 +2600,10 @@ wss.on("connection", (ws) => {
         } else {
           if (Math.random() < evadeEff) return;
           // Diminisher : +50 % au prorata du bouclier restant.
-          if (debWeaken > 0 && dmg > 0) {
-            const sh0 = Number(foe.state.sh) || 0, hp0 = Number(foe.state.hp) || 0;
-            const share = (sh0 + hp0) > 0 ? sh0 / (sh0 + hp0) : 0;
-            dmg = dmg * (1 + debWeaken * share);
-          }
           if (debDmgMult > 1 && dmg > 0) dmg = dmg * debDmgMult;
           let penEff = pen;
           if (debPenBonus > 0) penEff = Math.max(0, Math.min(1, penEff + debPenBonus));
-          const res = damagePlayerLayers(foe.state, dmg, Math.max(0, Math.min(1, Number(foe.state.absorb) || 0.8)), penEff, 0);
+          const res = applyServerAbilityDamage(room, npcSims.get(mapId), foe.state, dmg, penEff, now, id, profile, debWeaken);
           applied = Number(res?.total) || 0;
           foe.state.hp = Math.max(0, Number(foe.state.hp) || 0);
           foe.state.sh = Math.max(0, Number(foe.state.sh) || 0);
@@ -2488,7 +2635,7 @@ wss.on("connection", (ws) => {
         // serveur : teleportSeq + stateCorrection comme usePhaseOut, sinon
         // l'anticheat de déplacement de la victime la renverrait en arrière.
         try {
-          if (execBypass === true && (execAbility === "ability_solaris_inc"
+          if (msg.abilityFinal === true && (execAbility === "ability_solaris_inc"
             || execAbility === "ability_solaris-plus_incinerate-plus")
             && Number(foe.state.hp) > 0) {
             const push = execAbility === "ability_solaris-plus_incinerate-plus" ? 1600 : 1200;
@@ -2512,6 +2659,7 @@ wss.on("connection", (ws) => {
         } catch {}
         // Feed degats : la victime voit les chiffres (comme les NPC).
         if (applied > 0) {
+          recordAbilityDamageDealt(me.state, applied, now);
           try { audOf(me.state).dmg += applied; } catch {}
           const fkey = `${foe.state.id}|${id}`;
           let feed = pvpFeeds.get(mapId);
@@ -2563,16 +2711,16 @@ wss.on("connection", (ws) => {
         if (!st || st.pvpDead === true || !(Number(st.hp) > 0)) return;
         if (!spec.shield && tempestBackupActive(st, now)) return;
         const repairFx = state._abilityFx?.[ab];
-        if (isAegisRepair(ab) && (String(repairFx?.target || "") !== String(st.id)
+        if (isLinkedRepair(ab) && (String(repairFx?.target || "") !== String(st.id)
           || !(now >= Number(repairFx.from) + HEAL_MIN_INTERVAL_MS)
-          || Number(repairFx.linkHealTicks || 0) >= (spec.shield ? 5 : 7))) return;
-        if (ab === "ability_aegis_repair-pod") {
+          || Number(repairFx.linkHealTicks || 0) >= spec.ticks)) return;
+        if (spec.mode === "pod") {
           const group = socialGroupOf(id);
           if (!group || socialGroupOf(String(st.id)) !== group) return;
         }
         if (Boolean(msg.sh) !== spec.shield) return;
         // Rayon : pods autour du point posé (état serveur), HoTs autour
-        // du lanceur (comme pickHealAlly en local).
+        // du lanceur vers le joueur capture au lancement.
         let ox = Number(state.x), oy = Number(state.y);
         if (spec.mode === "pod") {
           const fx = state._abilityFx && typeof state._abilityFx === "object" ? state._abilityFx[ab] : null;
@@ -2588,21 +2736,18 @@ wss.on("connection", (ws) => {
         if (now - Number(hm[hk] || 0) < HEAL_MIN_INTERVAL_MS) return;
         hm[hk] = now;
         if (Object.keys(hm).length > 64) { try { state._healAt = { [hk]: now }; } catch {} }
-        if (isAegisRepair(ab)) repairFx.linkHealTicks = Number(repairFx.linkHealTicks || 0) + 1;
+        if (isLinkedRepair(ab)) repairFx.linkHealTicks = Number(repairFx.linkHealTicks || 0) + 1;
         const before = Number(spec.shield ? st.sh : st.hp) || 0;
         if (spec.shield) {
-          if (!(Number(st.shMax) > 0) && ab !== "ability_aegis_shield-repair") return;
-          st.sh = Math.max(0, Math.min(Number(st.shMax), Number(st.sh || 0) + amt));
+          if (!(Number(st.shMax) > 0) && !isLinkedRepair(ab)) return;
+          st.sh = Math.max(0, Math.min(Number(st.shMax) || 0, Number(st.sh || 0) + amt));
         } else {
           st.hp = Math.max(0, Math.min(Number(st.hpMax) || 1, Number(st.hp || 0) + amt));
         }
-        if (ab === "ability_aegis_repair-pod" || ab === "ability_aegis_hp-repair" || ab === "ability_aegis_shield-repair") {
+        {
           const gain = Math.max(0, Math.round(Number(spec.shield ? st.sh : st.hp) - before));
-          broadcastRoom(room, JSON.stringify({ t: "skillFx", skill: ab, phase: "heal",
-            by: id, target: String(st.id), amount: gain, shield: spec.shield, at: now, until: now }));
-        } else {
-          st.orcusHealAt = now;
-          st.orcusHealAmt = amt;
+          emitAbilityEvent(room, { t: "skillFx", skill: ab, phase: "heal",
+            by: id, target: String(st.id), amount: gain, shield: spec.shield, at: now, until: now });
         }
       } catch {}
       return;
@@ -2715,8 +2860,12 @@ wss.on("connection", (ws) => {
         const out = { t: msg.t, by: id, map: mapId };
         if (msg.t === "rshot" && authed) {
           const profile = refreshCombatProfile(state, accountId, mapId);
-          const key = String(msg.key || "");
-          if (profile?.rocketIds.includes(key)) {
+          const key = String(msg.key || msg.kind || "");
+          const cast = state._freeRocketCast;
+          const free = cast && cast.key === msg.ability && cast.rocket === key && cast.until > Date.now() && cast.launched < cast.count;
+          if (msg.ability && !free) return;
+          if (free) cast.launched++;
+          if (profile?.rocketIds.includes(key) || free) {
             state._launchedRocketIds ||= {};
             state._launchedRocketIds[key] = Date.now() + 20000;
           }
@@ -3002,6 +3151,7 @@ wss.on("connection", (ws) => {
         ensureNpcSim(mapId);
         sendBoxSync(ws, mapId);
       }
+      syncSwapFx(state, msg, Date.now());
       const profile = refreshCombatProfile(state, accountId, mapId, msg);
       if (!profile) return;
       syncMovementAbility(state, profile, Date.now(), (k) => movementTarget(k));
@@ -3083,6 +3233,16 @@ wss.on("connection", (ws) => {
       if (typeof msg.atk === "boolean") state.atk = msg.atk;
       if (msg.combat === "npc" || msg.combat === "player" || msg.combat === "") state.combat = msg.combat;
       if (typeof msg.targetName === "string") state.targetName = String(msg.targetName).slice(0, 64);
+      if (typeof msg.lockedTarget === "string") {
+        state.lockedTarget = msg.lockedTarget.slice(0, 64);
+        const room = rooms.get(mapId);
+        for (const skill of Object.keys(state._abilityFx || {})) {
+          if (isLinkedRepair(skill) && state._abilityFx[skill]?.target
+            && state._abilityFx[skill].target !== state.lockedTarget) {
+            breakRepairLink(state, skill, room, id, Date.now());
+          }
+        }
+      }
       if (Number.isFinite(Number(msg.targetHpPct))) state.targetHpPct = Math.max(0, Math.min(1, Number(msg.targetHpPct)));
       if (Number.isFinite(Number(msg.targetShPct))) state.targetShPct = Math.max(0, Math.min(1, Number(msg.targetShPct)));
       if (Number.isFinite(Number(msg.targetHpMax))) state.targetHpMax = Math.max(0, Math.min(1e12, Math.round(Number(msg.targetHpMax))));
@@ -3151,7 +3311,8 @@ wss.on("connection", (ws) => {
           // soin efficace sous le feu direct).
           const blocked = Date.now() < Number(state.dmgBlockUntil || 0);
           const backupActive = tempestBackupActive(state, nowH);
-          if (!backupActive && cHp < state.hp) state.hp = cHp;
+          const abilityHealCurrent = Number(msg.abilityHealSeq || 0) === Number(state._abilityHealSeq || 0);
+          if (!backupActive && abilityHealCurrent && cHp < state.hp) state.hp = cHp;
           else if (!backupActive && cHp > state.hp && !blocked) {
             if (cHp - state.hp > hm * 0.5) {
               state.healWarn = Number(state.healWarn || 0) + 1;
@@ -3162,8 +3323,9 @@ wss.on("connection", (ws) => {
             // Plafonné au budget (voir ci-dessus).
             state.hp = healTake(state.hp, cHp, hm, "healBudHp");
           }
-          const shieldStateCurrent = Number(msg.disarraySeq || 0) === Number(state._disarraySeq || 0);
-          if (shieldStateCurrent && cSh < state.sh) state.sh = cSh;
+          const shieldStateCurrent = Number(msg.disarraySeq || 0) === Number(state._disarraySeq || 0)
+            && Number(msg.shieldBuffSeq || 0) === Number(state._shieldBuffSeq || 0);
+          if (shieldStateCurrent && abilityHealCurrent && cSh < state.sh) state.sh = cSh;
           else if (shieldStateCurrent && cSh > state.sh && !blocked) {
             if (sm > 0 && cSh - state.sh > sm * 0.5) {
               state.healWarn = Number(state.healWarn || 0) + 1;
@@ -3178,7 +3340,7 @@ wss.on("connection", (ws) => {
       if (state.hp <= 1 && Date.now() < Number(state._tempestBackupRequestedUntil || 0)) {
         triggerTempestBackup(state, rooms.get(mapId), Date.now(), true);
       }
-      if (!(state.hp > 0) && !triggerTempestBackup(state, rooms.get(mapId), Date.now())) { state.pvpDead = true; state.dead = true; }
+      if (!(state.hp > 0) && !triggerPaladin(state, Date.now(), event => emitAbilityEvent(rooms.get(mapId), event)) && !triggerTempestBackup(state, rooms.get(mapId), Date.now())) { state.pvpDead = true; state.dead = true; }
       if (msg.peta === 1 || msg.peta === 0) state.peta = profile.petOwned && msg.peta === 1 ? 1 : 0;
       if (Number.isFinite(Number(msg.petl))) state.petl = Math.max(1, Math.min(32, Math.round(Number(msg.petl))));
       if (Number.isFinite(Number(msg.petx)) && Number.isFinite(Number(msg.pety))) {
@@ -3195,6 +3357,11 @@ wss.on("connection", (ws) => {
       // Triple barrage : deux positions visuelles, uniquement pendant le cast validé.
       const tbrActive = state.peta === 1 && !state.dead && !state.pvpDead
         && state._abilityFx?.ability_zephyr_tbr?.until > Date.now();
+      const holoFx = state._abilityFx?.ability_mimesis_hologram;
+      state.holoClones = holoFx?.clonesStarted && holoFx.until > Date.now() && Array.isArray(msg.holoClones)
+        ? msg.holoClones.slice(0, 4).filter(c => Array.isArray(c) && c.length === 4 && typeof c[0] === "string"
+          && c.slice(1).every(Number.isFinite) && Math.hypot(c[1] - state.x, c[2] - state.y) <= 3000)
+          .map(c => [c[0].slice(0, 48), c[1], c[2], c[3]]) : [];
       state.tbrClones = tbrActive && Array.isArray(msg.tbrClones)
         ? msg.tbrClones.slice(0, 2).filter(c => Array.isArray(c) && c.length === 3
           && c.every(n => Number.isFinite(Number(n)))
@@ -3366,6 +3533,7 @@ setInterval(() => {
         state._tempestBackupKiller = "";
       }
     }
+    tickAbilityStates(room, npcSims.get(key), now, event => emitAbilityEvent(room, event), socialGroupOf);
     syncDisruptorEffects(room, npcSims.get(key), now);
     // Les sockets silencieux sont fermes par le heartbeat. Le handler close
     // retire ensuite la presence via la grace habituelle de reconnexion.
@@ -3408,7 +3576,8 @@ setInterval(() => {
               try { safeHitOk = typeof sim.allowsSafeHit === "function" && sim.allowsSafeHit(hit?.npcUid, String(hit?.playerId)) === true; } catch {}
               if (!safeHitOk) continue;
             }
-            if (Math.random() < Math.max(0, Math.min(0.9, Number(s.evade) || 0))) continue;
+            const scramble = activeAbility(s, "ability_mimesis_scramble", now);
+            if (Math.random() < Math.max(0, Math.min(0.9, (Number(s.evade) || 0) + (scramble ? 0.65 : 0)))) continue;
             const hitNow = Date.now();
             const damage = Math.max(0, Math.min(1e8, Number(hit?.damage) || 0));
             if (!(damage > 0)) continue;
@@ -3424,7 +3593,7 @@ setInterval(() => {
                 continue;
               }
             }
-            const result = damagePlayerLayers(s, damage, Math.max(0, Math.min(1, Number(s.absorb) || 0.8)), 0, 0);
+            const result = applyServerAbilityDamage(room, sim, s, damage, 0, hitNow, String(hit.npcUid));
             s.hp = Math.max(0, Number(s.hp) || 0);
             s.sh = Math.max(0, Number(s.sh) || 0);
             if (!npcHitVictims.has(s)) {
@@ -3526,12 +3695,13 @@ setInterval(() => {
       if (s._posOk !== true) continue;
       // Un dash arrivé ou un canal interrompu perd aussi son aura visuelle.
       for (const skill of Object.keys(s._abilityFx || {})) {
-        if (isAegisRepair(skill) && s._abilityFx[skill]?.target) {
+        if (isLinkedRepair(skill) && s._abilityFx[skill]?.target) {
           const linked = room.get(s._abilityFx[skill].target)?.state;
           const dx = Number(linked?.x) - Number(s.x), dy = Number(linked?.y) - Number(s.y);
+          const radius = healSpecFor(skill).radius;
           if (!linked || linked.dead || linked.pvpDead || !(Number(linked.hp) > 0)
-            || linked.cloaked || linked.cloakCpu || !(dx * dx + dy * dy <= 700 * 700)) {
-            breakAegisRepairLink(s, skill, room, s.id, now);
+            || linked.cloaked || linked.cloakCpu || !(dx * dx + dy * dy <= radius * radius)) {
+            breakRepairLink(s, skill, room, s.id, now);
           }
         }
         if (isMovementAbilityKey(skill) && !(Number(s._moveEffects?.[skill]?.until) > now)) {
@@ -3586,8 +3756,27 @@ setInterval(() => {
         ohAmt: Math.max(0, Math.round(Number(s.orcusHealAmt) || 0)),
         // Auras d'aptitudes visibles (Phase 2) : [[code, secLeft, x, y, target]].
         // Cibles joueurs mortes parties déjà purgées (canaux auto-coupés).
+        shieldBuffSeq: Number(s._shieldBuffSeq) || 0,
+        sprT: Math.max(0, (Number(s._sprUntil) - now) / 1000 || 0),
+        sprCastT: Math.max(0, (Number(s._abilityFx?.ability_keres_spr?.until) - now) / 1000 || 0),
+        sprCd: Math.max(0, (Number(s._abilityCds?.ability_keres_spr) - now) / 1000 || 0),
+        forcedLock: s._drawFireUntil > now ? String(s._drawFireBy || "") : "",
+        forcedLockT: Math.max(0, (Number(s._drawFireUntil) - now) / 1000 || 0),
+        abilityHealSeq: Number(s._abilityHealSeq) || 0,
+        stockCharges: Number(s._stockCharges) || 0,
+        lastStandReady: ownsAbility(s._combat, "ability_paladin_last-stand") && now >= Number(s._lastStandCdUntil || 0) && now >= Number(s._jamUntil || 0),
+        lastStandCd: Math.max(0, (Number(s._lastStandCdUntil) - now) / 1000 || 0),
+        lastStandAt: Number(s._lastStandAt) || 0,
+        lastStandT: Math.max(0, (Number(s._lastStandAt) + 1667 - now) / 1000 || 0),
+        holoClones: s._abilityFx?.ability_mimesis_hologram?.until > now ? s.holoClones || [] : [],
         afx: pruneFxForSnapshot(s._abilityFx) });
       const output = players[players.length - 1];
+      output.hswap = swapFxRemaining(s, now);
+      output.hswapDur = Number(s._swapFxDuration) || 3;
+      output.hswapId = Number(s._swapFxId) || 0;
+      output.hswapPaused = s._swapFxPaused === true;
+      output.gaFx = s._abilityFx?.ability_hyperion_ga?.until > now ? s._abilityFx.ability_hyperion_ga : null;
+      output.qaFx = s._abilityFx?.ability_hyperion_qa?.until > now ? s._abilityFx.ability_hyperion_qa : null;
       output.dead = s.dead === true || s.pvpDead === true || !(Number(s.hp) > 0);
       output.hpPct = Math.max(0, Math.min(1, Number(s.hp) / Math.max(1, Number(s.hpMax) || 1)));
       output.shPct = s.shMax > 0 ? Math.max(0, Math.min(1, Number(s.sh) / Number(s.shMax))) : 0;

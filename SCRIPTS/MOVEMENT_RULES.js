@@ -1,6 +1,7 @@
 import { abilityShipKeyFor, getAbilitiesForShip, policeAbilityIds, abilityIconFile } from "../SHIP/SHIP_ABILITIES.js";
 import { getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
 import { ANTICHEAT, acMoveTake, acRecordViolation } from "./ANTICHEAT.js";
+import { abilitySpeedMult, fortifyActive } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
 
 // Valeurs des aptitudes effectivement branchees dans FRAME_SYSTEMS.
 const rules = {
@@ -103,7 +104,8 @@ export function movementSpeed(state, profile, now) {
   let mult = 1;
   for (const e of activeMoveEffects(state, profile, now)) mult *= Number(e.mult) || 1;
   const slow = now < Number(state.slowUntil || 0) ? Math.min(95, Math.max(0, Number(state.slowPct) || 0)) : 0;
-  return Math.max(0, Math.floor(profile.speed) * mult * (1 - slow / 100));
+  const speed = Math.max(0, Math.floor(profile.speed) * mult * abilitySpeedMult(state, now) * (1 - slow / 100));
+  return fortifyActive(state, now) ? Math.min(200, speed) : speed;
 }
 
 // Integrer les changements de vitesse avec l'horloge serveur : un bonus
@@ -111,6 +113,10 @@ export function movementSpeed(state, profile, now) {
 export function movementWindow(state, profile, now) {
   const from = Math.max(now - ANTICHEAT.MOVE_NETWORK_WINDOW_MS, Math.min(now, Number(state.moveBuckT ?? now)));
   const marks = [from, now];
+  for (const fx of Object.values(state._abilityFx || {})) {
+    for (const time of [fx?.from, fx?.until]) if (time > from && time < now) marks.push(time);
+  }
+  if (state._execWindow?.readyAt > from && state._execWindow.readyAt < now) marks.push(state._execWindow.readyAt);
   // Marques de TOUS les effets connus (même expirés : une fin de bonus dans
   // la fenêtre doit rester intégrée précisément).
   try {

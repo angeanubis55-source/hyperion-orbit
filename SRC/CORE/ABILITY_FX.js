@@ -90,20 +90,20 @@ export function abilityHitBypass(state, abilityId, now) {
 // Soins de groupe (joueurs de même firme) : HoTs mono-cible + pods de zone.
 // Le client envoie {t:"heal"} (1/s, rythme des ticks), le serveur valide
 // (vaisseau, aura active, rayon, montant, cadence) puis crédite la victime,
-// qui affiche le +X via le flux ohAt/ohAmt existant. Soins sur soi et
-// escortes restent 100 % locaux (pas de réseau).
+// qui affiche +X/+0 via skillFx. Les liens gardent la cible du lancement ;
+// les pods soignent le groupe. Les soins personnels Hammerclaw sont serveur.
 // Montants = ticks officiels par seconde (voir ORBIT_ENGINE).
 // ---------------------------------------------------------------------------
 export const HEAL_ABILITIES = Object.freeze({
-  "ability_aegis_hp-repair": { radius: 700, cap: 40000, shield: false, mode: "hot" },
-  "ability_aegis_shield-repair": { radius: 700, cap: 25000, shield: true, mode: "hot" },
+  "ability_aegis_hp-repair": { radius: 700, cap: 40000, shield: false, mode: "hot", ticks: 7 },
+  "ability_aegis_shield-repair": { radius: 700, cap: 25000, shield: true, mode: "hot", ticks: 5 },
   "ability_aegis_repair-pod": { radius: 400, cap: 18000, shield: false, mode: "pod" },
-  "ability_hammerclaw_hp-repair": { radius: 1000, cap: 50000, shield: false, mode: "hot" },
-  "ability_hammerclaw_shield-repair": { radius: 1000, cap: 60000, shield: true, mode: "hot" },
+  "ability_hammerclaw_hp-repair": { radius: 1000, cap: 50000, shield: false, mode: "hot", ticks: 7 },
+  "ability_hammerclaw_shield-repair": { radius: 1000, cap: 60000, shield: true, mode: "hot", ticks: 3 },
   "ability_hammerclaw_repair-pod": { radius: 400, cap: 17500, shield: false, mode: "pod" },
-  "ability_hammerclaw-plus_hp-repair": { radius: 1000, cap: 65000, shield: false, mode: "hot" },
-  "ability_hammerclaw-plus_shield-repair": { radius: 1000, cap: 80000, shield: true, mode: "hot" },
-  "ability_hammerclaw-plus_repair-pod": { radius: 600, cap: 20000, shield: false, mode: "pod" },
+  "ability_hammerclaw-plus_hp-repair": { radius: 1000, cap: 75000, shield: false, mode: "hot", ticks: 6 },
+  "ability_hammerclaw-plus_shield-repair": { radius: 1000, cap: 80000, shield: true, mode: "hot", ticks: 3 },
+  "ability_hammerclaw-plus_repair-pod": { radius: 600, cap: 25000, shield: false, mode: "pod" },
 });
 // Cadence min entre deux soins (même lanceur -> même cible -> même aptitude).
 export const HEAL_MIN_INTERVAL_MS = 800;
@@ -243,23 +243,11 @@ export function abilityIdForFxCode(code) {
 
 // true si l'aptitude doit être visible par les autres joueurs.
 // - faux pour les camouflages (invisibles par design) ;
-// - faux pour les soins instantanés sans visuel persistant (les autres
-//   voient les barres HP/SH, pas l'aura) ;
 // - vrai pour tout le reste (halos, contours, pods, zones, rayons, boosts).
-const INSTANT_HEAL_NO_AURA = new Set([
-  "ability_hammerclaw_hp-repair",
-  "ability_hammerclaw-plus_hp-repair",
-  "ability_hammerclaw_shield-repair",
-  "ability_hammerclaw-plus_shield-repair",
-  "ability_solace",
-  "ability_solace-plus_nano-cluster-repairer-plus",
-]);
-
 export function isAbilityFxBroadcastable(abilityId) {
   const key = String(abilityId || "").toLowerCase();
   if (!key.startsWith("ability_")) return false;
   if (NEVER_BROADCAST.has(key)) return false;
-  if (INSTANT_HEAL_NO_AURA.has(key)) return false;
   return CODE_BY_ID.has(key);
 }
 

@@ -858,7 +858,7 @@ drainPlayerHits() {
     if (!shooter || shooter.dead) return;
     const dx = Number(entry.x) - Number(shooter.x);
     const dy = Number(entry.y) - Number(shooter.y);
-    if (dx * dx + dy * dy > 6500 * 6500) return;
+    if (dx * dx + dy * dy > 6500 * 6500 && hit?.unlimitedRange !== true) return;
     const raw = Number(hit?.dmg);
     // Conserve le plafond historique : certaines configurations tres haut
     // niveau peuvent legitimement depasser 10 M sur un impact cumule.
@@ -920,14 +920,22 @@ drainPlayerHits() {
         shieldSpread: entry.spread,
         critChance: Number.isFinite(Number(hit?.critChance)) ? clamp(Number(hit.critChance), 0, 1) : 0.05,
         critMultiplier: Number.isFinite(Number(hit?.critMult)) ? clamp(Number(hit.critMult), 1, 2) : 1.5,
-        variance: 0.05,
+        variance: Number.isFinite(hit?.variance) ? hit.variance : 0.05,
         random: Math.random,
       });
+      this.redirectShieldDamage?.(entry, res, String(clientId), nowMs);
       applied = Number(res?.total) || 0;
     }
     // Cumul des dégâts par joueur et par incarnation (top dégâts Invoke /
     // Mindfire). Reset automatique si l'entrée est recyclée (seq change).
     if (applied > 0) {
+      if (hit?.abilityFinal && (hit.ability === "ability_solaris_inc" || hit.ability === "ability_solaris-plus_incinerate-plus") && entry.hp > 0) {
+        const distance = Math.hypot(entry.x - shooter.x, entry.y - shooter.y) || 1;
+        const push = hit.ability === "ability_solaris_inc" ? 1200 : 1600;
+        entry.x = clamp(entry.x + (entry.x - shooter.x) / distance * push, 80, this.world.w - 80);
+        entry.y = clamp(entry.y + (entry.y - shooter.y) / distance * push, 80, this.world.h - 80);
+        entry._incHold = null;
+      }
       try {
         if (!entry.dmgBy || entry.dmgSeq !== entry.seq) {
           entry.dmgBy = new Map();
@@ -1174,6 +1182,18 @@ drainPlayerHits() {
         // la perte de vie continue a chaque tick.
       }
       const frozen = nowMs < Number(e.freezeUntil || 0);
+      const inc = e._incHold;
+      const incCaster = inc && inc.until > nowMs ? this.players.get(String(inc.by)) : null;
+      if (incCaster && !incCaster.dead && !incCaster.safe) {
+        inc.angle += dt * 2;
+        const tx = incCaster.x + Math.cos(inc.angle) * inc.radius, ty = incCaster.y + Math.sin(inc.angle) * inc.radius;
+        const k = 1 - Math.exp(-dt * 8);
+        e.x += (tx - e.x) * k;
+        e.y += (ty - e.y) * k;
+        e.angle = Math.atan2(incCaster.y - e.y, incCaster.x - e.x);
+        e.shootT = Math.max(Number(e.shootT) || 0, 0.25);
+        continue;
+      }
       const slowMult = nowMs < Number(e.slowUntil || 0)
         ? Math.max(0.05, 1 - clamp(Number(e.slowPct) || 0, 0, 95) / 100)
         : 1;
@@ -1274,7 +1294,10 @@ drainPlayerHits() {
           ? this.shuffleThreatTarget(e, nowMs)
           : this.topThreatTarget(e, nowMs);
       } catch {}
-      const chase = threat || attacker || close;
+      const taunter = nowMs < Number(e._drawFireUntil) ? this.players.get(String(e._drawFireBy)) : null;
+      const taunted = this.validTarget(taunter) && Math.hypot(taunter.x - e.x, taunter.y - e.y) <= 600
+        ? { id: String(e._drawFireBy), x: taunter.x, y: taunter.y } : null;
+      const chase = taunted || threat || attacker || close;
       if (chase) e.retreating = false;
       if (threat) {
         e.aggroBy = threat.id;
@@ -1478,6 +1501,7 @@ drainPlayerHits() {
           hpMax: e.hpMax, shMax: e.shMax, alive: true, seq: e.seq || 0,
           slowPct: nowMs < Number(e.slowUntil || 0) ? Number(e.slowPct) || 0 : 0,
           slowT: Math.max(0, (Number(e.slowUntil) || 0) - nowMs) / 1000,
+          sprT: Math.max(0, (Number(e._sprUntil) - nowMs) / 1000 || 0),
           jamT: Math.max(0, (Number(e.jamUntil) || 0) - nowMs) / 1000,
           freezeT: Math.max(0, (Number(e.freezeUntil) || 0) - nowMs) / 1000,
           aggro: aggroId,
