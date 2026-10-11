@@ -6522,7 +6522,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 }
 .rankingHead,.rankingRow {
   display:grid;
-  grid-template-columns:34px 40px 56px minmax(0,1fr) 80px;
+  grid-template-columns:34px 40px 56px minmax(0,1fr) minmax(90px,max-content);
   gap:6px;
   align-items:center;
   padding:5px 11px;
@@ -6598,6 +6598,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 }
 .rankingHead span:last-child {
   text-align:center;
+  white-space:nowrap;
 }
 .rankingNum {
   text-align:right;
@@ -6608,6 +6609,10 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   color:#ffd36b;
   font-weight:800;
   font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:clip;
+  min-width:0;
 }
 .rankingEmpty {
   padding:20px;

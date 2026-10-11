@@ -1931,12 +1931,14 @@ export function handleAccountApi(req, res) {
         list.push({
           pseudo: String(r.pseudo || "Pilote").slice(0, 20),
           points: kills * 10 + Math.floor(totalExp / 1000 + totalHonneur / 100),
-          rankPoints, honor, faction,
+          exp: totalExp,
+          honor: totalHonneur,
+          rankPoints, faction,
           _kills: kills,
         });
       }
       list.sort((a, b) => b.points - a.points || b._kills - a._kills);
-      return json(res, 200, { ok: true, list: list.slice(0, 100).map(({ pseudo, points, rankPoints, honor, faction }) => ({ pseudo, points, rankPoints, honor, faction })) });
+      return json(res, 200, { ok: true, list: list.slice(0, 100).map(({ pseudo, points, exp, rankPoints, honor, faction }) => ({ pseudo, points, exp: exp || 0, rankPoints, honor, faction })) });
     } catch {
       return json(res, 500, { ok: false, error: "Erreur serveur." });
     }
